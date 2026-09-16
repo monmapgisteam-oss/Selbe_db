@@ -23,6 +23,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { TOLOV, type Zov } from '@/lib/zovshoorol';
 import { groupWorks, STAGE_LABEL } from '@/lib/hyanaltGroup';
+import { dayKey } from '@/lib/format';
 import { STAGE_ORDER, F as HF } from '@/lib/hyanalt';
 import {
   SOURCE_NAME, TH, ageDays, fin, grade, reviewCounts, samePkg, toWork,
@@ -100,11 +101,17 @@ export const NODE_SOURCE: Record<SchemId, readonly SourceKey[]> = {
 
 const cell = (v: string | number | null, kind?: MetricKind): Cell => ({ v, kind });
 
-/** ms → «YYYY-MM-DD». ⚠️ UTC-гээр — орон нутгийн бүсээр огноо нэг хоног ухарна. */
-const dayText = (ms: number | null): string => {
-  if (ms == null || !Number.isFinite(ms)) return '—';
-  return new Date(ms).toISOString().slice(0, 10);
-};
+/**
+ * ms → «YYYY-MM-DD» ОРОН НУТГИЙН огноогоор.
+ *
+ * ⚠️ 2026-09-16: урьд нь `toISOString().slice(0, 10)` байв — тэр нь UTC-гээр
+ *    хөрвүүлдэг тул Улаанбаатар (+08) дээр орон нутгийн 00:00–07:59-д
+ *    тэмдэглэгдсэн зөвшөөрлийн огноо ӨМНӨХ өдөр харагддаг байлаа.
+ *    `format.dayKey` нь тэр зангаас зайлсхийсэн ГАНЦ эх сурвалж
+ *    (`live.ts`, `ipcTable.ts` 2026-09-15-нд шилжсэн; энэ файл орхигдсон).
+ */
+const dayText = (ms: number | null): string =>
+  (ms == null || !Number.isFinite(ms) ? '—' : dayKey(ms));
 
 const noName = (): string => tr('нэргүй');
 

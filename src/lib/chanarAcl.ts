@@ -77,7 +77,7 @@ export const subscribeChanarAcl = acl.subscribe;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteChanar = (
-  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<ChanarRole>[] }[],
+  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
 ): void => acl.syncRemote(rows);
 
 /** Аккаунтад үүрэг ба багц олгох (бүх үүрэгт ижил багц) */

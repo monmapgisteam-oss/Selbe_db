@@ -219,8 +219,29 @@ console.log('✅ permissions.initRemote — 6 синк бүр console.error, cap
   assert.ok(!/num: '10',/.test(src),
     "findTableUrl: num:'10' — 11 хуурамч item үүсгэвэл жинхэнэ хүснэгт цонхноос гарч remote УНТАРНА");
   assert.ok(/num: '100',/.test(src), "findTableUrl: num нь '100' байх ёстой");
+
+  /* ⚠️ GRANTS УНШИЛТЫН ТЭГШ ХЭМ — 2026-09-16-ны аудитын олдвор.
+     `fetchAll` нь `grants`-ыг ЗӨВХӨН `__chanar__:` салаанд уншдаг байв;
+     `__huvaari__:` ба `__obyem__:` хаядаг байсан тул хуудас сэргээх бүрд
+     үүрэг×багцын ҮРЖВЭР эргэж ирж, «Багц 1-д зохиогч, Багц 5-д батлагч»
+     гэсэн хүн Багц 1-д Ч БАТЛАГЧ болж, `decidePlan`-ийн зохиогч=батлагч
+     татгалзалтаар тэр багц ГАЦДАГ байлаа. Гурван салаа ижил уншина. */
+  const grantsReads = (src.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
+  assert.equal(grantsReads, 3,
+    `fetchAll: grants уншилт ЯГ 3 байх ёстой (huvaari · obyem · chanar), олдсон: ${grantsReads}`);
+  /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
+  const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
+  assert.equal(grantsWrites, 3,
+    `upsert: grants бичилт ЯГ 3 байх ёстой, олдсон: ${grantsWrites}`);
+  /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
+     салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
+  for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow']) {
+    const decl = src.slice(src.indexOf(`export type ${t} = {`), src.indexOf(`export type ${t} = {`) + 220);
+    assert.match(decl, /grants\?: Grant\[\]/,
+      `${t}: \`grants\` талбар ил зарлагдаагүй — cast-аар нуугдвал уншилт дахин орхигдоно`);
+  }
 }
-console.log('✅ permsRemote — 5 угтвар бүр Map · findOids хуудаслалттай · хайлт 100');
+console.log('✅ permsRemote — 5 угтвар Map · хуудаслалт · хайлт 100 · grants 3/3 тэгш хэм');
 
 /* ══════════ 6. UserAdmin.flipScoped — ГУРВАН ДЭД СИСТЕМД НЭГ ЗАМ ══════════ */
 /**

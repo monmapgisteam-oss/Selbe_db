@@ -78,7 +78,30 @@ export type QaqcRow = { user: string; bagts: string[] };
  * ⚠️ `QaqcRow`-оос ЯЛГААТАЙ нь `roles` талбартай: хуваарь нь ХОЁР үүрэгтэй
  * (зохиогч · батлагч) тул нэг мөрөнд аль нь болохыг хадгална.
  */
-export type HuvaariRow = { user: string; roles: string[]; bagts: string[] };
+/**
+ * ХУВААРИЛАЛТЫН `views` НҮДНИЙ JSON — гурван үүрэгтэй систем (Хуваарь · Обьём ·
+ * Чанарын баримт) ижил хэлбэрээр бичдэг.
+ *
+ * ⚠️ `grants` НЬ ҮНЭН ЭХ СУРВАЛЖ (2026-09-09). `roles`/`bagts` нь зөвхөн
+ *    ХУУЧИН клиент build уншиж чадах НӨӨЦ нэгдэл — үүрэг тус бүр аль багцад
+ *    хамаарахыг АЛДДАГ (үржвэр болно).
+ *
+ * ⚠️ 2026-09-16-ны аудит: `fetchAll` нь `grants`-ыг ЗӨВХӨН `__chanar__:`
+ *    салаанд уншдаг байв; `__huvaari__:` ба `__obyem__:` салаанууд хаядаг
+ *    байсан тул хуудас сэргээх бүрд үржвэр ЭРГЭЖ ИРДЭГ байлаа («Багц 1-д
+ *    зохиогч, Багц 5.1-д батлагч» → хоёуланд нь ХОЁУЛАА). Тэр нь
+ *    `decidePlan`-ийн зохиогч=батлагч татгалзалтаар багцыг ГАЦААНА. Гурван
+ *    салаа ижил төрөл ашиглаж, ижил уншилт хийх ёстой — тиймээс энэ төрөл.
+ */
+type ViewsJson = { roles?: string[]; bagts?: string[]; grants?: Grant[] };
+
+export type HuvaariRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  /** ⚠️ Байвал ЭНЭ давамгайлна (`scopedAcl.syncRemote`) */
+  grants?: Grant[];
+};
 
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН хуваарилалтын нэг мөр — `__obyem__:` угтвартай.
@@ -86,13 +109,25 @@ export type HuvaariRow = { user: string; roles: string[]; bagts: string[] };
  * ⚠️ `HuvaariRow`-той ижил бүтэц, ӨӨР асуулт: тэр нь ОГНОО төлөвлөх эрх,
  * энэ нь ОБЬЁМ. Хоёр үүрэг: `editor` (засварлагч) · `approver` (батлагч).
  */
-export type ObyemRow = { user: string; roles: string[]; bagts: string[] };
+export type ObyemRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
+  grants?: Grant[];
+};
 
 /**
  * ЧАНАРЫН БАРИМТЫН хуваарилалтын нэг мөр — `__chanar__:` угтвартай.
  * ⚠️ ДӨРВӨН үүрэг (author · tuh · chanar · habea) — `chanarAcl.ts`.
  */
-export type ChanarRow = { user: string; roles: string[]; bagts: string[] };
+export type ChanarRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
+  grants?: Grant[];
+};
 
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
@@ -363,14 +398,14 @@ export async function fetchAll(
       if (a.username.startsWith(CHANAR_PREFIX)) {
         const user = a.username.slice(CHANAR_PREFIX.length).toLowerCase();
         try {
-          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[]; grants?: Grant[] };
+          const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (user) {
             chanarBy.set(user, {
               user,
               roles: Array.isArray(d.roles) ? d.roles : [],
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
               ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
-            } as ChanarRow);
+            });
           }
         } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
         continue;
@@ -380,12 +415,13 @@ export async function fetchAll(
       if (a.username.startsWith(OBYEM_PREFIX)) {
         const user = a.username.slice(OBYEM_PREFIX.length).toLowerCase();
         try {
-          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[] };
+          const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (user) {
             obyemBy.set(user, {
               user,
               roles: Array.isArray(d.roles) ? d.roles : [],
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
             });
           }
         } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }
@@ -396,12 +432,13 @@ export async function fetchAll(
       if (a.username.startsWith(HUVAARI_PREFIX)) {
         const user = a.username.slice(HUVAARI_PREFIX.length).toLowerCase();
         try {
-          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[] };
+          const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (user) {
             huvaariBy.set(user, {
               user,
               roles: Array.isArray(d.roles) ? d.roles : [],
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
             });
           }
         } catch { /* эвдэрсэн мөр — алгасна (хуваарилалтгүйтэй ижил, fail-closed) */ }

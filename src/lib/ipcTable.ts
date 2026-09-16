@@ -101,7 +101,36 @@ export function payRows(pays: readonly Row[]): PayRow[] {
   for (const r of pays) {
     (r[P.kind] === HO_IPC.kinds.advance ? adv : work).push(r);
   }
-  work.sort((a, b) => (num(a[P.ipcNo]) ?? 0) - (num(b[P.ipcNo]) ?? 0));
+  /*
+   * ⚠️ ДУГААРГҮЙ МӨР нь ЭХЭНД БИШ, ХАМГИЙН АРД (2026-09-16-ны гүн шалгалт).
+   *    `ipcAuto.autoInsert` нь `ipc_dugaar` бичдэггүй (санхүүгийн газар нөхнө)
+   *    тул `?? 0` эрэмбэ нь AUTO мөрийг дугаар 1-ийн ӨМНӨ суулгаж, түүнээс
+   *    хойшхи БҮХ мөрийн `cum` тэр дүнгээр хөөрдөг байв. Амьдаар 7 AUTO мөр бий.
+   *
+   * ⚠️ Энэ засвар `ipcLink.linkContract` дээр 2026-09-15-нд хийгдсэн ч ЭНД
+   *    хүрээгүй байв — дээрх `⚠️` тайлбар «`linkContract`-ийн зөрүү нь ЯГ ЭНЭ
+   *    хуримтлалаар бодогддог» гэж хоёрыг тэнцүү гэж баталдаг атлаа бодитоор
+   *    зөрдөг байлаа (IPC-01-ийн `cum` нэг газар 1400, нөгөө газар 900).
+   *    Хоёр газар ИЖИЛ эрэмбэтэй байх ЁСТОЙ.
+   */
+  const ordNo = (r: Row): number => {
+    const n = num(r[P.ipcNo]);
+    return n == null ? Number.POSITIVE_INFINITY : n;
+  };
+  const ordDay = (r: Row): number => {
+    const t = Date.parse(String(r[P.payDate] ?? ''));
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
+  work.sort((a, b) => {
+    const oa = ordNo(a);
+    const ob = ordNo(b);
+    /* ⚠️ Хасахгүй ЖИШНЭ — `∞ − ∞ = NaN` нь эрэмбийг эвдэнэ */
+    if (oa !== ob) return oa < ob ? -1 : 1;
+    const da = ordDay(a);
+    const db = ordDay(b);
+    if (da !== db) return da < db ? -1 : 1;
+    return 0;
+  });
 
   let acc: number | null = null;
   const out: PayRow[] = [];

@@ -69,7 +69,7 @@ export const subscribeObyemAcl = acl.subscribe;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteObyem = (
-  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<ObyemRole>[] }[],
+  rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
 ): void => acl.syncRemote(rows);
 
 /** Аккаунтад обьёмын үүрэг ба багц олгох / шинэчлэх */
