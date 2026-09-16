@@ -181,30 +181,52 @@ export const CAPS: { key: CapKey; icon: string }[] = [
  * харагдацыг мартвал эрх нь чимээгүй утгагүй байв: `eronhii` үүрэг зөвхөн
  * «Гүйцэтгэл» харагдацтай тул эзэн нь хуудас руу орох замгүй. Эрх олгосон нь
  * тэр хуудсыг харах зөвшөөрөл гэсэн үг — хоёр удаа асуухгүй.
+ *
+ * ⚠️ МАССИВ БОЛОВ (2026-09-16). Урьд нь эрх бүр ЯГ НЭГ харагдацтай байв.
+ *    `planApprove` нь ХОЁР харагдац шаардана — батлах ДАРААЛАЛ
+ *    (`huvaariBatlah`) ба өөрөө БАТЛАХ хуудас (`huvaari`), учир нь
+ *    «Батлах» нь дараалалаас `huvaari` руу ШИЛЖДЭГ (батлах логик
+ *    хуулбарлагдаагүй — `Huvaari.save` → `applyUpdates` → `decidePlan`
+ *    гинж тэнд л байна). Хоёрын аль нэгийг хаавал эрх нь дуусгах замгүй.
+ *
+ * ⚠️ БҮХ утга массив — нэг нь string, нөгөө нь массив байх ХООРДМОЛ хэлбэр
+ *    `capViewsOf`-ыг чимээгүй эвдэнэ (доорх тайлбарыг үз).
  */
-export const CAP_HOST_VIEW: Record<CapKey, ViewKey> = {
-  addRow: 'guitsetgel',
+export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
+  addRow: ['guitsetgel'],
   /* ⚠️ 2026-09-03: «Гүйцэтгэл»-ээс ӨӨРИЙН харагдац руу шилжив. Эрх нь энэ
      харагдацыг автоматаар нээнэ — эс бөгөөс QAQC эрх олгосон инженер
      чанарын хуудас руу орох замгүй үлдэнэ. */
-  qaqc: 'qaqc',
-  zovshoorol: 'zovshoorol',
-  finEdit: 'finance',
-  finRow: 'finance',
-  plan: 'huvaari',
-  planApprove: 'huvaari',
+  qaqc: ['qaqc'],
+  zovshoorol: ['zovshoorol'],
+  finEdit: ['finance'],
+  finRow: ['finance'],
+  plan: ['huvaari'],
+  /* ⚠️ ДАРААЛАЛ ЧУХАЛ: [0] нь «гэр» — батлагчийн байгалийн бууж ирэх газар
+     нь ДАРААЛАЛ, тэндээс батлах хуудас руу шилжинэ. */
+  planApprove: ['huvaariBatlah', 'huvaari'],
   /* ⚠️ Хоёулаа «Гүйцэтгэл» — багана нь «Гүйцэтгэл бөглөх» хуудсанд байна */
-  obyemEdit: 'guitsetgel',
-  obyemApprove: 'guitsetgel',
-  gazar: 'gazar',
-  butets: 'dedButets',
-  chanarAuthor: 'chanar',
-  chanarReview: 'chanar',
+  obyemEdit: ['guitsetgel'],
+  obyemApprove: ['guitsetgel'],
+  gazar: ['gazar'],
+  butets: ['dedButets'],
+  /* ⚠️ Чанарын баримт (irgediin-hurteemj, 2026-09-16) — массив хэлбэрт
+     (tezu-bonu-гийн шинэ төрөл) нийцүүлэв. */
+  chanarAuthor: ['chanar'],
+  chanarReview: ['chanar'],
 };
 
-/** Хэрэглэгчийн эрхүүдээс гарах харагдацууд (давхардалгүй). */
+/**
+ * Хэрэглэгчийн эрхүүдээс гарах харагдацууд (давхардалгүй).
+ *
+ * ⚠️ `flatMap` — `map` БИШ (2026-09-16). `CAP_HOST_VIEW` массив болсон тул
+ *    `map` нь `ViewKey[][]` буцаана; `new Set` нь массивыг СУУРИАР
+ *    давхардалгүйжүүлдэг тул юу ч хасагдахгүй, улмаар `resolveAccess`
+ *    (permissions.ts)-ийн `includes` ХЭЗЭЭ Ч таарахгүй болж БҮХ хүний
+ *    эрхийн харагдац чимээгүй алга болно.
+ */
 export function capViewsOf(username?: string | null): ViewKey[] {
-  return [...new Set(capsOf(username).map((c) => CAP_HOST_VIEW[c]))];
+  return [...new Set(capsOf(username).flatMap((c) => CAP_HOST_VIEW[c]))];
 }
 
 const VALID = new Set<string>(CAPS.map((c) => c.key));

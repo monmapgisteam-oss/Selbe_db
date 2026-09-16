@@ -4781,6 +4781,7 @@ export type ViewKey =
   | "gazar"
   | "analysis"
   | "huvaari"
+  | "huvaariBatlah"
   | "tailan"
   | "finance"
   | "habea"
@@ -4987,6 +4988,40 @@ export const VIEWS: {
     title: tr('Хуваарь'),
     desc: tr('Ажлын эхлэх, дуусах хугацаа — блокийн хэмнэлээр'),
     icon: "calendar",
+    hue: "#0891b2",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ХУВААРЬ БАТЛАХ — батлахыг хүлээж буй саналуудын ДАРААЛАЛ (2026-09-16).
+   *
+   * ⚠️ ЯАГААД ТУСДАА ХАРАГДАЦ (хэрэглэгч: «аль аль багц ямар төлөвлөгөө
+   *    ирүүлсэнийг харж батлах хэсэг огт алга»): батлагч нь «Хуваарь»
+   *    хуудсан дээрх хоёр сонгогчоор багц бүрийг ГАРААР нэг нэгээр нээж
+   *    «энд хүлээгдэж буй санал байна уу?» гэж шалгах цорын ганц замтай
+   *    байв. Багц нь хэдэн арав. `huvaariBatlah.loadAllPending()` нь бүх
+   *    pending-ийг НЭГ query-гээр татдаг байсан ч нэг ч дуудагчгүй байлаа —
+   *    энэ харагдац түүнийг дуусгана.
+   *
+   * ⚠️ БАТЛАХ нь ЭНД БИШ, «Хуваарь» хуудсанд хийгдэнэ: товч дарахад тэр
+   *    багцаар `Huvaari` нээгдэж, шийдвэрлэх цонх өөрөө гарна. Батлах нь
+   *    `save` → `applyUpdates` → `decidePlan` гэсэн гурван шаттай гинж
+   *    (`Huvaari.tsx`) бөгөөд «бичих зүйлгүй», «бичилт унасан» салаануудыг
+   *    агуулна — хуулбарлавал нэг нь чимээгүй хоцорно.
+   *
+   * ⚠️ БУЦААХ нь дараалал дээрээ: эх өгөгдөлд ЮУ Ч бичдэггүй
+   *    (`decidePlan` ганцаараа) тул шилжих шаардлагагүй.
+   *
+   * ⚠️ Порталын зураг/каталоггүй, өөрийн бүтэцтэй → `standalone`.
+   */
+  {
+    key: "huvaariBatlah",
+    title: tr('Хуваарь батлах'),
+    desc: tr('Батлахыг хүлээж буй хуваарийн саналууд — бүх багцаар'),
+    /* ⚠️ `CAPS.planApprove`-ийн дүрстэй ижил (caps.ts) — нэг л эрхийн хуудас */
+    icon: "shield",
+    /* «Хуваарь»-тай ижил өнгө — нэг сэдвийн хоёр хуудас */
     hue: "#0891b2",
     layers: [],
     initial: [],
@@ -5274,7 +5309,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["gdash", "schem", "dashboard", "tailan"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 

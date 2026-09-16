@@ -246,9 +246,12 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>
                   <div className={s.aclRoleHead}>{tr('Нэмэлт эрх')}</div>
+                  {/* ⚠️ `join` ЗААВАЛ (2026-09-16): `CAP_HOST_VIEW` нь массив
+                      болсон тул шууд өгвөл React түүнийг тусгаарлагчгүй
+                      нийлүүлж «huvaariBatlahhuvaari» болгоно. */}
                   <div className={s.aclPkgs}>
                     {u.caps.map((c) => (
-                      <span key={c} className={s.aclPkg} title={CAP_HOST_VIEW[c as CapKey]}>
+                      <span key={c} className={s.aclPkg} title={CAP_HOST_VIEW[c as CapKey].join(', ')}>
                         {capLabelShort(c as CapKey)}
                       </span>
                     ))}

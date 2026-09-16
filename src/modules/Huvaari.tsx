@@ -205,7 +205,23 @@ type Drag = { oid: number; mode: DragMode; anchor: number; orig: Span | null };
 const inScope = (scope: string[] | null, group: string): boolean =>
   scope == null || scope.includes(group);
 
-export function Huvaari() {
+export function Huvaari({
+  jump, onJumpDone,
+}: {
+  /**
+   * «ХУВААРЬ БАТЛАХ» ДАРААЛАЛААС ШИЛЖИЖ ИРСЭН БАТЛАХ ХҮСЭЛТ (2026-09-16).
+   *
+   * ⚠️ Дараалал нь эх өгөгдөлд БИЧИХГҮЙ (`HuvaariBatlah.tsx`-ийн толгой):
+   *    батлах гинж (`save` → `applyUpdates` → `decidePlan`) ЗӨВХӨН энд
+   *    байдаг тул товч дарахад тэр багцаар энэ хуудас нээгдэж, шийдвэрлэх
+   *    цонх өөрөө гарна.
+   * ⚠️ `Portal`-ийн САНАХ ОЙН төлөв — URL ч, `sessionStorage` ч БИШ: тэр
+   *    хоёр нь F5-ыг давж, шийдвэрлэгдсэн саналын цонхыг дахин нээх байлаа.
+   */
+  jump?: { pkgKey: string; oid: number } | null;
+  /** Хүсэлтийг НЭГ л удаа хэрэглэсний дараа цэвэрлэнэ */
+  onJumpDone?: () => void;
+} = {}) {
   const { user, status } = useAuth();
   /* ⚠️ Хуваарийн хуваарилалт ӨӨРИЙН хадгалалттай — түүнд захиалахгүй бол
      админы өөрчлөлт энэ хуудсанд хүрэхгүй. */
@@ -1430,6 +1446,46 @@ export function Huvaari() {
   }, [pkg.key, user, status]);
 
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
+
+  /**
+   * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
+   *
+   * ⚠️ ХОЁР ШАТТАЙ: эхлээд БАГЦЫГ солино, `refreshFlow` (дээрх эффект)
+   *    `pending`-ийг хүргэтэл ХҮЛЭЭНЭ, дараа л цонхыг нээнэ. Шууд нээвэл
+   *    зурагдалтын `flowBox === 'decide' && pending` хамгаалалт юу ч
+   *    зурахгүй — товч дарсан атлаа ЮУ Ч болоогүй мэт харагдана.
+   *
+   * ⚠️ ХОЦОРСОН ШИЙДВЭР ӨӨРӨӨ ИЛЭРНЭ: `pending` нь өөр `oid`-тай (эсвэл
+   *    `null`) бол зуур өөр батлагч шийдсэн гэсэн үг. Дуугүй өнгөрвөл
+   *    батлагч хоосон хуудас хараад гайхна.
+   *
+   * ⚠️ `kind` (Төлөвлөгөө ↔ Гэрээ) табыг АВТОМАТААР СОЛИХГҮЙ — доорх
+   *    `decide`-ийн дүрэм: «батлагч юу батлахаа ӨӨРӨӨ мэдэж байх ёстой».
+   *    Табын зөрүүний алдаа зориулалтаараа гарна; дараалал нь `kind`-ыг
+   *    мөр ба товчны `title`-д бичсэнээр түүнийг гайхалтай биш болгоно.
+   */
+  useEffect(() => {
+    if (!jump) return;
+    const target = PKGS.find((p) => p.key === jump.pkgKey);
+    /* 1-р шат: багц соль — дараагийн тойрогт `pending` ирнэ */
+    if (target && target.key !== pkg.key) { setPkg(target); return; }
+    /* ⚠️ Багц СОЛИГДОЖ амжаагүй байж болно (`loadedPkg` биш, `pkg.key`-ээр
+       шалгав) — `refreshFlow` ажиллаж дуустал `flowReady` нь `null` хэвээр. */
+    if (flowReady === null) return;
+    if (pending?.oid === jump.oid) {
+      setFlowBox('decide');
+      onJumpDone?.();
+      return;
+    }
+    if (!target) {
+      setErr(tr('Багцын түлхүүр бүртгэлд алга — «{0}».', jump.pkgKey));
+      onJumpDone?.();
+      return;
+    }
+    setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
+    onJumpDone?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump, pkg.key, pending, flowReady]);
 
   /** Ноорогийг илгээлтийн агуулга болгоно — гурван ноорог нэг дор */
   const buildPayload = useCallback((): PlanPayload => {
