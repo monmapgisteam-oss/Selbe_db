@@ -4791,6 +4791,7 @@ export type ViewKey =
   | "zovshoorol"
   | "guitsetgel"
   | "qaqc"
+  | "chanar"
   | "schem";
 
 export const VIEWS: {
@@ -5151,6 +5152,27 @@ export const VIEWS: {
     desc: tr('М-акт · FIC · MA · MIR — Inspection Test Plan-ийн баримт бичиг'),
     icon: "file",
     hue: "#d97706",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
+    /**
+     * ЧАНАРЫН БАРИМТ — MS · MA · MIR · FIC · NCR-ийн батлах урсгал.
+     *
+     * ⚠️ «Чанар (QAQC)»-ААС ТУСДАА (2026-09-16, хэрэглэгчийн шийдвэр:
+     *    «ШИНЭ цэс»). Тэр нь Inspection Test Plan-ийн 9 баганыг бөглөх
+     *    хүснэгт; энэ нь Чанарын хэлтсийн 5 процессын зураглалаар явдаг
+     *    БАРИМТЫН УРСГАЛ — ирүүлэх · зэрэгцээ хянах · буцаах · батлах.
+     *    Нэг цэсэнд хольвол хоёр өөр ажлын урсгал нэг хуудсанд шахагдана.
+     *
+     * ⚠️ ГАЗРЫН ЗУРАГГҮЙ — хүснэгт (`Selbe_Chanar_Barimt`) геометргүй.
+     */
+    key: "chanar",
+    title: tr('Чанарын баримт'),
+    desc: tr('Ажлын аргачлал · материал баталгаажуулалт · үл тохирол — ирүүлэх, хянах, батлах'),
+    icon: "shield",
+    hue: "#b45309",
     layers: [],
     initial: [],
     standalone: true,

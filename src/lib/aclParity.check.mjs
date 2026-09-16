@@ -78,6 +78,7 @@ const ACL_FILES = [
   ['src/lib/huvaariAcl.ts', 'huvaari'],
   ['src/lib/obyemAcl.ts', 'obyem'],
   ['src/lib/qaqcAcl.ts', 'qaqc'],
+  ['src/lib/chanarAcl.ts', 'chanar'],
 ];
 for (const [f, name] of ACL_FILES) {
   const src = readCode(f);
@@ -182,13 +183,14 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
   assert.equal(silent.length, 0,
     `initRemote-д ЧИМЭЭГҮЙ catch ${silent.length} үлдсэн — ACL синк унасныг хэн ч мэдэхгүй`);
   const logged = body.match(/catch\s*\(e\)\s*\{[\s\S]*?console\.error/g) ?? [];
-  assert.equal(logged.length, 5,
-    `initRemote-ийн 5 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+  /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`) */
+  assert.equal(logged.length, 6,
+    `initRemote-ийн 6 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');
 }
-console.log('✅ permissions.initRemote — 5 синк бүр console.error, caps нь trusted авна');
+console.log('✅ permissions.initRemote — 6 синк бүр console.error, caps нь trusted авна');
 
 /* ══════════ 5. permsRemote — НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР бүх угтварт ══════════ */
 /**

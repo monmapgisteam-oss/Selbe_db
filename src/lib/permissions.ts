@@ -344,6 +344,15 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     console.error('[selbe] обьёмын хуваарилалтын синк амжилтгүй:', e);
   }
 
+  // 8) Чанарын баримтын хуваарилалт (`__chanar__:`) → chanarAcl.ts
+  //    ⚠️ QAQC-ийнхаас ТУСДАА — тэр нь ITP бөглөх, энэ нь баримт батлуулах.
+  try {
+    const ch = await import('./chanarAcl');
+    ch._syncRemoteChanar(remote.chanar ?? []);
+  } catch (e) {
+    console.error('[selbe] чанарын баримтын хуваарилалтын синк амжилтгүй:', e);
+  }
+
   notify();
   return true;
 }

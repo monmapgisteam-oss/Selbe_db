@@ -29,6 +29,7 @@ import { listAssigns, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { listQaqcAssigns, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { listObyemAssigns, subscribeObyemAcl } from '@/lib/obyemAcl';
+import { listChanarAssigns, subscribeChanarAcl } from '@/lib/chanarAcl';
 import { resolveAccess } from '@/lib/permissions';
 import { VIEWS } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -51,6 +52,9 @@ const issueText = (i: PkgIssue): string => {
   if (i.key === 'obyemSelfApprove') {
     return tr('{0}: {1} нь засварлагч БА батлагч хоёулаа — обьёмын засвар гацна.', i.args[0], i.args[1]);
   }
+  if (i.key === 'chanarNoReviewer') {
+    return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — гурван хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн аргачлал хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
+  }
   if (i.key === 'flowGap') {
     return tr('{0}: гүйцэтгэлийн урсгалын {1} шат томилогдоогүй — илгээлт тэр шатанд зогсоно.', i.args[0], i.args[1]);
   }
@@ -58,10 +62,20 @@ const issueText = (i: PkgIssue): string => {
 };
 
 /** Үүргийн монгол нэр — дэд систем бүрд өөр */
-const roleLabel = (kind: 'huvaari' | 'obyem', role: string): string => {
+const roleLabel = (kind: 'huvaari' | 'obyem' | 'chanar', role: string): string => {
   if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : tr('Батлагч');
+  if (kind === 'chanar') {
+    if (role === 'author') return tr('Гүйцэтгэгч');
+    if (role === 'tuh') return tr('ТУХ');
+    if (role === 'chanar') return tr('Чанар');
+    if (role === 'habea') return tr('ХАБЭА');
+    return role;
+  }
   return role === 'editor' ? tr('Засварлагч') : tr('Батлагч');
 };
+/** «tuh, habea» → «ТУХ, ХАБЭА» */
+const chanarRoleNames = (list: string): string =>
+  list.split(',').map((r) => roleLabel('chanar', r.trim())).join(', ');
 
 /** Багцын жагсаалт — `null` = бүх багц */
 const bagtsText = (b: string[] | null): string =>
@@ -77,6 +91,8 @@ const capLabelShort = (k: CapKey): string => {
   if (k === 'planApprove') return tr('Хуваарь батлах');
   if (k === 'obyemEdit') return tr('Обьём засах');
   if (k === 'obyemApprove') return tr('Обьём батлах');
+  if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх');
+  if (k === 'chanarReview') return tr('Чанарын баримт хянах');
   if (k === 'gazar') return tr('Газар');
   if (k === 'butets') return tr('Дэд бүтэц');
   return k;
@@ -92,6 +108,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
   useEffect(() => subscribeQaqcAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => tick((n) => n + 1)), []);
+  useEffect(() => subscribeChanarAcl(() => tick((n) => n + 1)), []);
 
   const [mode, setMode] = useState<'user' | 'pkg'>('pkg');
 
@@ -103,6 +120,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
     qaqc: listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts })),
     huvaari: listHuvaariAssigns(),
     obyem: listObyemAssigns(),
+    chanar: listChanarAssigns(),
     caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
       const a = resolveAccess(u);
@@ -181,6 +199,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
 
               <RoleBlock title={tr('Хуваарь')} kind="huvaari" map={p.huvaari} />
               <RoleBlock title={tr('Инженерийн обьём')} kind="obyem" map={p.obyem} />
+              <RoleBlock title={tr('Чанарын баримт')} kind="chanar" map={p.chanar} />
 
               <div className={s.aclRole}>
                 <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
@@ -215,6 +234,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
 
               <UserRoles title={tr('Хуваарь')} kind="huvaari" lines={u.huvaari} />
               <UserRoles title={tr('Инженерийн обьём')} kind="obyem" lines={u.obyem} />
+              <UserRoles title={tr('Чанарын баримт')} kind="chanar" lines={u.chanar} />
 
               {u.qaqc !== null && (
                 <div className={s.aclRole}>
@@ -246,7 +266,8 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
         <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('qaqc')}>{tr('Чанар')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('huvaari')}>{tr('Хуваарь')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('obyem')}>{tr('Обьём')}</button>
+        <button type="button" className={s.aclPkg} onClick={() => onGo('obyem')}>{tr('Обьём')}</button>{' '}
+        <button type="button" className={s.aclPkg} onClick={() => onGo('chanar')}>{tr('Чанарын баримт')}</button>
       </p>
     </div>
   );
@@ -255,7 +276,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
 /** Багцын хөзөр дэх нэг дэд системийн үүргүүд */
 function RoleBlock({
   title, kind, map,
-}: { title: string; kind: 'huvaari' | 'obyem'; map: Record<string, string[]> }) {
+}: { title: string; kind: 'huvaari' | 'obyem' | 'chanar'; map: Record<string, string[]> }) {
   const roles = Object.keys(map);
   return (
     <div className={s.aclRole}>
@@ -274,7 +295,7 @@ function RoleBlock({
 /** Хүний хөзөр дэх нэг дэд системийн үүргүүд */
 function UserRoles({
   title, kind, lines,
-}: { title: string; kind: 'huvaari' | 'obyem'; lines: RoleLine[] }) {
+}: { title: string; kind: 'huvaari' | 'obyem' | 'chanar'; lines: RoleLine[] }) {
   if (!lines.length) return null;
   return (
     <div className={s.aclRole}>

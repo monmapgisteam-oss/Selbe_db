@@ -21,7 +21,7 @@ const G1 = PKG_GROUPS[1];
 
 /** Хоосон эх сурвалж */
 const empty = () => ({
-  users: [], flow: [], qaqc: [], huvaari: [], obyem: [], caps: {}, views: {},
+  users: [], flow: [], qaqc: [], huvaari: [], obyem: [], chanar: [], caps: {}, views: {},
 });
 
 /* ── 1. ЭРХГҮЙ хүн — `any: false` ── */
@@ -163,5 +163,29 @@ console.log('✅ багц хоорондоо тусгаарлагдсан');
   assert.equal(allPkgErh(src).length, PKG_GROUPS.length, 'багцын тоо зөрөв');
 }
 console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
+
+/* ── 8. Чанарын баримт — гурван хянагч бүгд, зохиогчоос өөр ── */
+{
+  const only = { ...empty(), chanar: [{ user: 'g', grants: [{ role: 'author', bagts: [G0] }] }] };
+  const i1 = pkgErh(only, G0).issues.find((i) => i.key === 'chanarNoReviewer');
+  assert.ok(i1, 'зохиогч бий, хянагчгүй → гацаа');
+  assert.equal(i1.args[1], 'tuh, chanar, habea');
+  const self = { ...empty(), chanar: [{ user: 'g', grants: [
+    { role: 'author', bagts: [G0] }, { role: 'tuh', bagts: [G0] }, { role: 'chanar', bagts: [G0] }, { role: 'habea', bagts: [G0] },
+  ] }] };
+  assert.equal(pkgErh(self, G0).issues.find((i) => i.key === 'chanarNoReviewer').args[1], 'tuh, chanar, habea',
+    'зохиогч=хянагч нь томилоогүйтэй адил');
+  const full = { ...empty(), chanar: [
+    { user: 'g', grants: [{ role: 'author', bagts: [G0] }] },
+    { user: 't', grants: [{ role: 'tuh', bagts: ['*'] }, { role: 'habea', bagts: [G0] }] },
+    { user: 'q', grants: [{ role: 'chanar', bagts: [G0] }] },
+  ] };
+  assert.ok(!pkgErh(full, G0).issues.some((i) => i.key === 'chanarNoReviewer'), 'бүрэн томилогдсон → гацаагүй');
+  assert.deepEqual(pkgErh(full, G0).chanar.tuh, ['t']);
+  assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
+  const u = userErh(full, 't');
+  assert.equal(u.chanar.length, 2); assert.equal(u.chanar[0].bagts, null, '* → null'); assert.equal(u.any, true);
+}
+console.log('✅ чанарын баримт — 3 хянагч, зохиогч≠хянагч');
 
 console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт');
