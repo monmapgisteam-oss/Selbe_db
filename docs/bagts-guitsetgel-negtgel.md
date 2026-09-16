@@ -7,6 +7,9 @@ https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/
   selbe_bagts_guitsetgel_negtgel/FeatureServer/169
 ```
 
+⚠️ Энэ нь **нэг хүснэгтийн** гүн баримт. Системийн ерөнхий зураглал →
+[`docs/SYSTEM.md`](SYSTEM.md).
+
 Кодын ганц эх сурвалж: [`src/lib/services.ts`](../src/lib/services.ts) → `BAGTS_NEGTGEL`.
 Бичдэг цорын ганц зам: [`src/lib/negtgelWrite.ts`](../src/lib/negtgelWrite.ts) → `registerApproved()`.
 Уншдаг: [`src/lib/live.ts`](../src/lib/live.ts) → `loadPkgProgress()`.

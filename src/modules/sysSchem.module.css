@@ -1,0 +1,187 @@
+/*
+ * СИСТЕМИЙН СХЕМ — зурсан зураг.
+ *
+ * ⚠️ Карт нь HTML `<button>` (үнэмлэхүй байрлалтай), ирмэг нь түүний АРД
+ * байрлах НЭГ `<svg>`. Хоёулаа `layoutOf()`-ийн НЭГ координатыг хэрэглэнэ
+ * тул хэзээ ч зөрөхгүй — `schem.module.css`-ийн батлагдсан загвар.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ───────── Толгой ба тайлбар ───────── */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.title { margin: 0; color: var(--ink); font-size: 16px; font-weight: 650; }
+.sub { margin: 2px 0 0; color: var(--ink-3); font-size: 12px; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.legend li { display: flex; align-items: center; gap: 6px; }
+
+.dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+
+/* ───────── Бүлгийн өнгө ─────────
+   ⚠️ Өнгө нь ҮҮРГИЙГ заана, чимэг БИШ: эх сурвалж → дамжуулах → бодолт →
+   дэлгэц гэсэн урсгал зүүнээс баруун тийш өнгөөр ч уншигдана. */
+.t_src   { --tone: #0891b2; }
+.t_flow  { --tone: #64748b; }
+.t_calc  { --tone: #7c3aed; }
+.t_view  { --tone: #16a34a; }
+.t_write { --tone: #f59e0b; }
+.t_cross { --tone: #dc2626; }
+
+.dot.t_src, .dot.t_flow, .dot.t_calc,
+.dot.t_view, .dot.t_write, .dot.t_cross { background: var(--tone); }
+
+/* ───────── Зурагны талбай ───────── */
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+}
+
+/* ⚠️ `transform-origin: center` — масштаблахад зураг ТӨВДӨӨ үлдэнэ. */
+.stage { position: relative; transform-origin: center; flex: none; }
+
+.edges { position: absolute; inset: 0; pointer-events: none; }
+
+/* ───────── Ирмэг ─────────
+   ⚠️ Гурван төрөл ХАРААГААР ялгарна: үндсэн нь тод, тэжээх нь тасархай,
+   буцах нь улаан. Нэг хэлбэрээр зурвал «эрх нь дэлгэцийн дараа ирдэг»
+   гэсэн худал дараалал уншигдана. */
+.edgeMain { fill: none; stroke: var(--line-strong); stroke-width: 1.6; }
+.edgeFeed { fill: none; stroke: var(--line-strong); stroke-width: 1.3; stroke-dasharray: 5 4; opacity: 0.75; }
+.edgeBack { fill: none; stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 3 3; }
+
+/* ───────── Карт ───────── */
+
+.card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  /* ⚠️ Зүүн ирмэгийн өнгөт зурвас — бүлгийг картан дээр НЭГ харцаар хэлнэ. */
+  border-left: 3px solid var(--tone);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.card:hover { background: color-mix(in srgb, var(--tone) 8%, var(--surface-2)); }
+.cardOn {
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, var(--surface-2));
+}
+
+.cardIcon { color: var(--tone); display: flex; }
+.cardIcon svg { width: 16px; height: 16px; }
+
+.cardTitle { font-size: 12.5px; font-weight: 650; line-height: 1.3; }
+
+.cardDesc {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  line-height: 1.4;
+  /* ⚠️ Хоёр мөрөөр таслана — гурав дахь мөр картаас халина. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────── Дэлгэрэнгүй самбар ───────── */
+
+.panel {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.panelHead strong { flex: 1; min-width: 0; }
+
+.close {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  cursor: pointer;
+}
+.close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+
+.panelDesc { margin: 6px 0 10px; color: var(--ink-2); font-size: 12.5px; }
+
+.panelActs { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.act,
+.actGhost {
+  padding: 6px 13px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.act { border: 1px solid transparent; background: var(--data); color: #fff; }
+/* ⚠️ ХОЁРДОГЧ загвар — хоёр товч ижил жинтэй бол аль нь гол үйлдэл болох нь
+   мэдэгдэхгүй. */
+.actGhost { border: 1px solid var(--line-strong); background: transparent; color: var(--ink-2); }
+.actGhost:hover { color: var(--ink); }
+
+/* ───────── Нарийн дэлгэц ─────────
+   ⚠️ `--bp-split` (1180px) — порталын нэгдсэн босго. Схем нь масштаблагддаг
+   тул давхар дүрэм бага: зөвхөн зай ба бичгийн хэмжээ хумина. */
+@media (max-width: 1180px) {
+  .canvas { padding: 8px; }
+  .legend { gap: 6px 12px; font-size: 11px; }
+}
+
+@media (max-width: 620px) {
+  .head { gap: 8px; }
+  .title { font-size: 15px; }
+  .sub { font-size: 11.5px; }
+}

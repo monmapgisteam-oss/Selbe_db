@@ -1,0 +1,232 @@
+/*
+ * СИСТЕМИЙН БАРИМТЫН ХАРАГДАЦ.
+ *
+ * ⚠️ Зүүн талд бүлгийн жагсаалт, баруун талд агуулга. `--bp-split` (1180px)
+ * дээр БОСОО өрөгдөнө — порталын бусад гурван баганат зохион байгуулалттай
+ * ИЖИЛ босго ([globals.css]-ийн 5 шатлал).
+ */
+
+.wrap {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+}
+
+/* ───────── Зүүн: бүлгүүд ───────── */
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border-right: 1px solid var(--line);
+}
+
+.sideHead {
+  padding: 4px 8px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.sideItem {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  /* ⚠️ Урт бүлгийн нэр багана тэлэхгүй — тасалж харуулна. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sideItem:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.sideOn { background: color-mix(in srgb, var(--data) 15%, transparent); color: var(--ink); font-weight: 600; }
+
+/* ───────── Баруун: агуулга ───────── */
+
+.main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  /* ⚠️ Доод зай: сүүлийн догол мөр ирмэгт наалдвал «үргэлжилсээр байна уу»
+     гэсэн эргэлзээ төрүүлнэ. */
+  padding: 22px 30px 40px;
+  /* ⚠️ Уншигдах урт: 78 тэмдэгтээс илүү өргөн мөр нүд ядраана. */
+  max-width: 900px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.main p { margin: 0 0 12px; }
+.main hr { margin: 20px 0; border: 0; border-top: 1px solid var(--line); }
+.main code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+}
+.main a { color: var(--data); }
+
+.h1 { margin: 0 0 16px; color: var(--ink); font-size: 21px; font-weight: 700; line-height: 1.3; }
+.h2 { margin: 26px 0 10px; color: var(--ink); font-size: 16.5px; font-weight: 650; }
+.h3 { margin: 20px 0 8px; color: var(--ink); font-size: 14px; font-weight: 650; }
+.h4 { margin: 16px 0 6px; color: var(--ink-2); font-size: 13px; font-weight: 650; }
+
+.list { margin: 0 0 12px; padding-left: 20px; }
+.list li { margin: 3px 0; }
+
+/* ⚠️ Ишлэл нь ихэвчлэн `⚠️` анхааруулга — ялгарч харагдах ёстой. */
+.quote {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--data);
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in srgb, var(--data) 7%, transparent);
+}
+.quote p:last-child { margin: 0; }
+
+.code {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  /* ⚠️ Урт мөр хуудсыг ХЭВТЭЭ сунгахгүй — блок дотроо гүйнэ. */
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ───────── Хүснэгт ───────── */
+
+/* ⚠️ Нарийн дэлгэцэд өргөн хүснэгт хальдаг тул ХӨНДЛӨН гүйлгэнэ. */
+.tableWrap { margin: 0 0 16px; overflow-x: auto; }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.table th,
+.table td {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.table th {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.table tbody tr:nth-child(2n) { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+
+/* ───────── Бүлэг хоорондын шилжилт ───────── */
+
+/* ⚠️ Товч мэт БИШ, холбоос мэт харагдана — гэхдээ `<a>` биш учир нь хуудас
+   ачаалахгүй, зөвхөн бүлэг солино. */
+.jump {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--data);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.jump:hover { color: var(--ink); }
+
+/* ───────── Диаграм ───────── */
+
+.diagram {
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.diagramHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.diagramHead:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.diagramHint { color: var(--ink-3); font-weight: 400; }
+.diagram .code { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+
+/* ───────── Нарийн дэлгэц ─────────
+   ⚠️ `--bp-split` (1180px) — порталын бусад гурван баганат зохион
+   байгуулалттай ИЖИЛ босго. */
+@media (max-width: 1180px) {
+  .wrap {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sideHead { display: none; }
+  .sideItem { padding: 6px 10px; font-size: 12px; }
+  .main { padding: 16px 18px 32px; }
+}
+
+@media (max-width: 620px) {
+  .main { padding: 14px 14px 28px; font-size: 13px; }
+  .h1 { font-size: 18px; }
+  .h2 { font-size: 15px; }
+}
+
+/* ───────── Схемийн таб ─────────
+   ⚠️ Бичвэрийн бүлгүүдээс ЯЛГАРНА: схем нь өөр төрлийн агуулга (зураг),
+   жагсаалтын дундуур адилхан харагдвал «энэ ч бас бүлэг» гэж уншигдана. */
+.sideSchem {
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+
+/* ⚠️ Схем нь БҮТЭН өндрийг эзэлнэ (масштаблагдана) тул уншигдах өргөний
+   хязгаар ба доод зай ХАМААРАХГҮЙ. */
+.mainSchem {
+  max-width: none;
+  padding: 12px 14px;
+  overflow: hidden;
+}

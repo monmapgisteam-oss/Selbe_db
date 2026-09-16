@@ -60,6 +60,9 @@ const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari)
 /* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
    багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
 const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
+/* ⚠️ Системийн баримт — 54 КБ бичвэр агуулдаг тул ЗААВАЛ dynamic: нээгээгүй
+   хэрэглэгч тэр жинг ачаалахгүй. */
+const SysDoc = dynamic(() => import('@/modules/SysDoc'), { ssr: false });
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
@@ -564,6 +567,7 @@ function PortalContent(
   const isQaqc = view === 'qaqc';
   const isZovshoorol = view === 'zovshoorol';
   const isSchem = view === 'schem';
+  const isSysDoc = view === 'sysdoc';
   /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
   const isPkgFin = view === 'pkgFin';
   const isPkgProg = view === 'pkgProg';
@@ -744,6 +748,8 @@ function PortalContent(
                                      хэрэгтэй. URL-аар тойрч болохгүй — энэ
                                      функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
                                   ? <Schem setView={setView} navScope={navScope} />
+                                : isSysDoc
+                                  ? <SysDoc setView={setView} />
                                   : <Suitability dim={dim} setDim={setDim} />}
             </ErrorBoundary>
           </div>
