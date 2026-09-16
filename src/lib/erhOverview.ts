@@ -51,6 +51,8 @@ export type ErhSource = {
   qaqc: { user: string; bagts: string[] }[];
   huvaari: ScopedRow[];
   obyem: ScopedRow[];
+  /** Чанарын баримт — 4 үүрэг (author · tuh · chanar · habea), 2026-09-16 */
+  chanar: ScopedRow[];
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -73,6 +75,7 @@ export type UserErh = {
   qaqc: string[] | null;
   huvaari: RoleLine[];
   obyem: RoleLine[];
+  chanar: RoleLine[];
   caps: string[];
   views: { open: number; total: number };
   /** Ямар нэг эрх байгаа эсэх — «юу ч хийхгүй» аккаунтыг ялгана */
@@ -99,6 +102,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
 
   const huvaari = lines(src.huvaari);
   const obyem = lines(src.obyem);
+  const chanar = lines(src.chanar);
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
 
@@ -108,9 +112,10 @@ export function userErh(src: ErhSource, user: string): UserErh {
     qaqc: q ? bagtsOf(q.bagts) : null,
     huvaari,
     obyem,
+    chanar,
     caps,
     views,
-    any: !!f || !!q || huvaari.length > 0 || obyem.length > 0 || caps.length > 0,
+    any: !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0 || caps.length > 0,
   };
 }
 
@@ -123,6 +128,7 @@ export type PkgErh = {
   /** Үүрэг → эзэд */
   huvaari: Record<string, string[]>;
   obyem: Record<string, string[]>;
+  chanar: Record<string, string[]>;
   /** Гацаа ба цоорхойн жагсаалт — `pkgIssues` бөглөнө */
   issues: PkgIssue[];
 };
@@ -172,8 +178,9 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
 
   const huvaari = byRole(src.huvaari);
   const obyem = byRole(src.obyem);
+  const chanar = byRole(src.chanar);
 
-  return { bagts, flow, qaqc, huvaari, obyem, issues: pkgIssues(bagts, flow, huvaari, obyem) };
+  return { bagts, flow, qaqc, huvaari, obyem, chanar, issues: pkgIssues(bagts, flow, huvaari, obyem, chanar) };
 }
 
 /**
@@ -188,8 +195,23 @@ function pkgIssues(
   flow: Record<Stage, string[]>,
   huvaari: Record<string, string[]>,
   obyem: Record<string, string[]>,
+  chanar: Record<string, string[]>,
 ): PkgIssue[] {
   const out: PkgIssue[] = [];
+
+  /* ── Чанарын баримт — ГУРВАН хянагч БҮГД зөвшөөрөх ёстой ── */
+  const cA = chanar.author ?? [];
+  if (cA.length) {
+    /* ⚠️ Зохиогчоос ӨӨР хүн тухайн хянагчийн үүрэгт байх ёстой —
+       `chanarMs.review` зохиогч=хянагчийг татгалздаг тул зохиогч л
+       томилогдсон үүрэг нь «томилоогүй»-тэй адил. Нэг ч үүрэг дутвал
+       `resolve` хэзээ ч «Батлагдсан» өгөхгүй → багцын аргачлал МӨНХӨД хүлээнэ. */
+    const missing = ['tuh', 'chanar', 'habea']
+      .filter((r) => !(chanar[r] ?? []).some((u) => !cA.includes(u)));
+    if (missing.length) {
+      out.push({ tone: 'bad', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')] });
+    }
+  }
 
   /* ── Хуваарь ── */
   const hA = huvaari.author ?? [];

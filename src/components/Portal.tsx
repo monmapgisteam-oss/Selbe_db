@@ -52,6 +52,7 @@ const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then(
 const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
 const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
 const Qaqc = dynamic(() => import('@/modules/Qaqc').then((m) => m.Qaqc), { ssr: false });
+const Chanar = dynamic(() => import('@/modules/Chanar').then((m) => m.Chanar), { ssr: false });
 const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
 const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
@@ -565,6 +566,7 @@ function PortalContent(
   const isDedButets = view === 'dedButets';
   const isGuitsetgel = view === 'guitsetgel';
   const isQaqc = view === 'qaqc';
+  const isChanar = view === 'chanar';
   const isZovshoorol = view === 'zovshoorol';
   const isSchem = view === 'schem';
   const isSysDoc = view === 'sysdoc';
@@ -743,6 +745,8 @@ function PortalContent(
                                   ? <Guitsetgel />
                                 : isQaqc
                                   ? <Qaqc />
+                                : isChanar
+                                  ? <Chanar />
                                 : isSchem
                                   /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд
                                      хэрэгтэй. URL-аар тойрч болохгүй — энэ

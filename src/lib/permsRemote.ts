@@ -88,6 +88,12 @@ export type HuvaariRow = { user: string; roles: string[]; bagts: string[] };
  */
 export type ObyemRow = { user: string; roles: string[]; bagts: string[] };
 
+/**
+ * ЧАНАРЫН БАРИМТЫН хуваарилалтын нэг мөр — `__chanar__:` угтвартай.
+ * ⚠️ ДӨРВӨН үүрэг (author · tuh · chanar · habea) — `chanarAcl.ts`.
+ */
+export type ChanarRow = { user: string; roles: string[]; bagts: string[] };
+
 const TITLE = 'Selbe_Permissions';
 const TABLE_NAME = 'permissions';
 /** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
@@ -100,6 +106,8 @@ const QAQC_PREFIX = '__qaqc__:';
 const HUVAARI_PREFIX = '__huvaari__:';
 /** Инженерийн төлөвлөсөн обьёмын хуваарилалтын угтвар — хуваариныхаас ялгана */
 const OBYEM_PREFIX = '__obyem__:';
+/** Чанарын баримтын хуваарилалтын угтвар — QAQC-ийнхаас ялгана */
+const CHANAR_PREFIX = '__chanar__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -316,7 +324,7 @@ export async function fetchAll(
   canCreate = false,
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
-  huvaari: HuvaariRow[]; obyem: ObyemRow[];
+  huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[];
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -347,8 +355,26 @@ export async function fetchAll(
     /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
     const huvaariBy = new Map<string, HuvaariRow>();
     const obyemBy = new Map<string, ObyemRow>();
+    const chanarBy = new Map<string, ChanarRow>();
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Чанарын баримтын хуваарилалтын мөр ── */
+      if (a.username.startsWith(CHANAR_PREFIX)) {
+        const user = a.username.slice(CHANAR_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as { roles?: string[]; bagts?: string[]; grants?: Grant[] };
+          if (user) {
+            chanarBy.set(user, {
+              user,
+              roles: Array.isArray(d.roles) ? d.roles : [],
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
+            } as ChanarRow);
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
+        continue;
+      }
 
       /* ── Инженерийн төлөвлөсөн обьёмын хуваарилалтын мөр ── */
       if (a.username.startsWith(OBYEM_PREFIX)) {
@@ -452,6 +478,7 @@ export async function fetchAll(
       qaqc: [...qaqcBy.values()],
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
+      chanar: [...chanarBy.values()],
     };
   } catch {
     return null;
@@ -657,6 +684,27 @@ export function obyemUpsert(
     views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
+}
+
+/**
+ * Чанарын баримтын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * ⚠️ `huvaariUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
+ */
+export function chanarUpsert(
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
+): Promise<boolean> {
+  const key = CHANAR_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
+    docs: 0,
+  });
+}
+
+/** Чанарын баримтын хуваарилалтыг арилгах */
+export function chanarRemove(user: string): Promise<boolean> {
+  return removeByKey(CHANAR_PREFIX + user.toLowerCase());
 }
 
 /** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */

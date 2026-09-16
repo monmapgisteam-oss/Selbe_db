@@ -25,6 +25,11 @@ import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { QaqcAcl } from '@/modules/QaqcAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
+import { ChanarAcl } from '@/modules/ChanarAcl';
+import {
+  ALL_BAGTS as CHANAR_ALL_BAGTS, listChanarAssigns, purgeChanarAssign, removeChanarAssign,
+  setChanarGrants, subscribeChanarAcl, type ChanarRole,
+} from '@/lib/chanarAcl';
 import {
   ALL_BAGTS as HUVAARI_ALL_BAGTS, listHuvaariAssigns, purgeHuvaariAssign, removeHuvaariAssign,
   setHuvaariGrants, subscribeHuvaariAcl, type PlanRole,
@@ -73,6 +78,8 @@ const capLabel = (k: CapKey): string => {
   if (k === 'planApprove') return tr('Хуваарь батлах');
   if (k === 'obyemEdit') return tr('Инженерийн обьём засах');
   if (k === 'obyemApprove') return tr('Инженерийн обьём батлах');
+  if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)');
+  if (k === 'chanarReview') return tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА)');
   if (k === 'gazar') return tr('Газрын төлөв засах');
   if (k === 'butets') return tr('Дэд бүтцийн атрибут засах');
   return k;
@@ -104,6 +111,12 @@ const capHint = (k: CapKey): string => {
   }
   if (k === 'planApprove') {
     return tr('Гүйцэтгэгчийн илгээсэн хуваарийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л огноо эх хуудсанд бичигдэж, тайлан ба хоцрогдлын тооцоонд орно. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Хуваарийн эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
+  }
+  if (k === 'chanarAuthor') {
+    return tr('«Чанарын баримт» харагдацад ажлын аргачлал (MS) боловсруулж, ТУХ · Чанар · ХАБЭА-д хянуулахаар илгээх. Энд асаахад БҮХ багцад гүйцэтгэгч болно — тодорхой багц бол «Чанарын баримтын эрх» хуудсыг ашиглана уу.');
+  }
+  if (k === 'chanarReview') {
+    return tr('«Чанарын баримт» харагдацад ирүүлсэн аргачлалыг хянаж зөвшөөрөх/татгалзах. АЛЬ хянагч (ТУХ · Чанар · ХАБЭА) болохыг «Чанарын баримтын эрх» хуудас заана — энд асаахад бүх багцад ТУХ-ийн үүрэг олгогдоно.');
   }
   if (k === 'obyemEdit') {
     return tr('«Гүйцэтгэл бөглөх» хуудасны «Инженерийн төлөвлөсөн обьём» баганын нүднүүдийг ЗАСАХ. Засвар нь шууд бичигдэхгүй — батлагчид илгээгдэж, батлагдтал үндсэн өгөгдөл хөдлөхгүй. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн обьёмын эрх» хуудсыг ашиглана уу.');
@@ -182,7 +195,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    хоёр байнгын асуултад хариулах газар БАЙХГҮЙ байв — таван бүлгийг
    *    тус тусад нь нээж хайх ёстой байлаа.
    */
-  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem'>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'chanar'>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -309,6 +322,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeQaqcAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeHuvaariAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
@@ -448,7 +462,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * @param kind аль дэд систем
    */
   const flipScoped = (
-    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem',
+    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar',
   ) => {
     /*
      * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-07 · 08). `set*` нь super-д
@@ -489,6 +503,28 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       r = on
         ? removeQaqcAssign(u.username)
         : setQaqcAssign(u.username, cur?.bagts.length ? cur.bagts : [QAQC_ALL_BAGTS]);
+    } else if (kind === 'chanar') {
+      /*
+       * ⚠️ ЧАНАРЫН БАРИМТ — ДӨРВӨН ҮҮРЭГ, хоёр эрх (2026-09-16). `chanarReview`
+       *    нь гурван хянагчийн НЭГ эрх тул унтраалгаас асаахад аль хянагч
+       *    болохыг мэдэх аргагүй — ТУХ-ийг өгнө; Чанар/ХАБЭА-г панелаас.
+       *    Унтраахад ГУРВАН хянагчийн үүргийг бүгдийг хасна (эрх нэг тул).
+       */
+      const cur = listChanarAssigns().find((a) => a.user === key);
+      const grants = (cur?.grants ?? []).map((g) => ({ ...g })) as { role: ChanarRole; bagts: string[] }[];
+      const isAuthor = cap === 'chanarAuthor';
+      const touched: ChanarRole[] = isAuthor ? ['author'] : ['tuh', 'chanar', 'habea'];
+      let next: { role: ChanarRole; bagts: string[] }[];
+      if (on) {
+        next = grants.filter((g) => !touched.includes(g.role));
+      } else {
+        const inherit = [...new Set(grants.flatMap((g) => g.bagts))];
+        const role: ChanarRole = isAuthor ? 'author' : 'tuh';
+        next = grants.some((g) => g.role === role)
+          ? grants
+          : [...grants, { role, bagts: inherit.length ? inherit : [CHANAR_ALL_BAGTS] }];
+      }
+      r = !next.length ? removeChanarAssign(u.username) : setChanarGrants(u.username, next);
     } else {
       /*
        * ⚠️ ХУВААРЬ ба ОБЬЁМ — ИЖИЛ ЛОГИК, ЗӨВХӨН НЭР ӨӨР (2026-09-09). Урьд нь
@@ -566,6 +602,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (c === 'qaqc') { flipScoped(u, c, on, 'qaqc'); return; }
     if (c === 'plan' || c === 'planApprove') { flipScoped(u, c, on, 'huvaari'); return; }
     if (c === 'obyemEdit' || c === 'obyemApprove') { flipScoped(u, c, on, 'obyem'); return; }
+    if (c === 'chanarAuthor' || c === 'chanarReview') { flipScoped(u, c, on, 'chanar'); return; }
     void toggleCap(u.username, c, !on).then((r) => {
       setCapErr((prev) => {
         const m = new Map(prev);
@@ -656,9 +693,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const hvOk = await purgeHuvaariAssign(uname);
           /* ⚠️ Обьёмын хуваарилалт нь ӨӨР мөр (`__obyem__:`) — тусад нь арилгана */
           const obOk = await purgeObyemAssign(uname);
+          /* ⚠️ Чанарын баримтын хуваарилалт нь ӨӨР мөр (`__chanar__:`) — тусад нь арилгана */
+          const chOk = await purgeChanarAssign(uname);
           const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r && flowOk && qaqcOk && hvOk && obOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
@@ -669,6 +708,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             if (!(await purgeQaqcAssign(uname))) bad = true;
             if (!(await purgeHuvaariAssign(uname))) bad = true;
             if (!(await purgeObyemAssign(uname))) bad = true;
+            if (!(await purgeChanarAssign(uname))) bad = true;
             if (!(await setCaps(uname, []))) bad = true;
           }
           const r = await clearOverride(uname);
@@ -900,6 +940,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="frame" size={14} />
           {tr('Инженерийн обьёмын эрх')}
         </button>
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'chanar' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'chanar'}
+          onClick={() => setPane('chanar')}
+        >
+          <Icon name="shield" size={14} />
+          {tr('Чанарын баримтын эрх')}
+        </button>
       </aside>
 
       <div className={s.main}>
@@ -912,6 +961,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               </p>
             </header>
             <ErhOverview onGo={(x) => setPane(x as typeof pane)} />
+          </>
+        ) : pane === 'chanar' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Чанарын баримтын эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('Ажлын аргачлал (MS) ирүүлэх гүйцэтгэгч ба хянах ТУХ · Чанар · ХАБЭА аккаунтад багц хуваарилна. QAQC (ITP) ба гүйцэтгэлийн урсгалын эрхээс тусдаа.')}
+              </p>
+            </header>
+            <ChanarAcl />
           </>
         ) : pane === 'obyem' ? (
           <>
