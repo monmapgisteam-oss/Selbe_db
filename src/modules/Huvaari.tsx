@@ -1417,10 +1417,24 @@ export function Huvaari({
    *    хоцрогдлын дохио тогтвортой (2026-09-07, хэрэглэгчийн шийдвэр).
    */
 
+  /**
+   * ⚠️ ХОЦОРСОН ХАРИУГ ХАЯНА (2026-09-16 аудит). Урьд нь багц солигдоход
+   *    хуучин багцын хүсэлт `pending`-ийг ДАРЖ бичдэг байв: дараалалаас
+   *    үсрэхэд эхний багцын хариу зорилтот багцынхыг түрүүлж ирж, jump
+   *    эффект «аль хэдийн шийдвэрлэгдсэн» гэсэн ХУДАЛ алдаа өгдөг байлаа.
+   *    Одоо хүсэлт бүр дугаартай — сүүлийнхээс бусдын хариу үл тоомсорлогдоно.
+   *    Мөн эхлэхэд `flowReady`/`pending`-ийг ЦЭВЭРЛЭНЭ — jump эффект `null`-ийг
+   *    «хараахан ачаалаагүй» гэж уншдаг тул зөв хүлээнэ.
+   */
+  const flowSeq = useRef(0);
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
   const refreshFlow = useCallback(async () => {
+    const my = ++flowSeq.current;
+    const live = () => my === flowSeq.current;
+    setFlowReady(null); setPending(null); setLastDecision(null);
     try {
       const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
+      if (!live()) return;
       const ready = st.ok;
       setFlowReady(ready);
       setFlowWhy(ready ? '' : (
@@ -1433,11 +1447,15 @@ export function Huvaari({
               : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
       ));
       const p = ready ? await loadPending(pkg.key) : null;
+      if (!live()) return;
       setPending(p);
       /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
          хоёуланг зэрэг харуулбал аль нь одоогийн байдал болох нь ойлгомжгүй. */
-      setLastDecision(ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null);
+      const last = ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null;
+      if (!live()) return;
+      setLastDecision(last);
     } catch {
+      if (!live()) return;
       setFlowReady(false);
       setFlowWhy(tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
       setPending(null);

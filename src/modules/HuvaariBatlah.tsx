@@ -34,7 +34,7 @@
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
@@ -220,6 +220,11 @@ export function HuvaariBatlah({
 
   const dirty = !!q || !!grp;
 
+  /* ⚠️ Салсны дараа setState дуудахгүй (2026-09-16 аудит) — `toggle`-ийн
+     async ачаалалт ба `reject`-ийн `finally` хоёулаа энэ тугийг шалгана. */
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
   /* ══════════════════════ МӨР ДЭЛГЭХ ══════════════════════ */
   const toggle = useCallback((oid: number) => {
     setOpen((cur) => (cur === oid ? null : oid));
@@ -233,7 +238,7 @@ export function HuvaariBatlah({
         /* ⚠️ `loadPayload` нь ӨӨРӨӨ `parsePayload`-оор задалж, эвдэрсэн бол
            `null` буцаана — энд дахин задлах шаардлагагүй. */
         const p = await loadPayload(oid).catch(() => null);
-        setDetail((m2) => new Map(m2).set(oid, p ? { k: 'ok', p } : { k: 'fail' }));
+        if (alive.current) setDetail((m2) => new Map(m2).set(oid, p ? { k: 'ok', p } : { k: 'fail' }));
       })();
       return next;
     });
@@ -268,7 +273,7 @@ export function HuvaariBatlah({
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   }, [reason, busy, user, reload]);
 
@@ -405,7 +410,9 @@ export function HuvaariBatlah({
                     detail={detail.get(x.oid)} busy={busy}
                     reason={reason.get(x.oid) ?? ''}
                     onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
-                    onReject={() => void reject(x)}
+                    /* ⚠️ Өөрийн илгээлт бол товч ГАРАХГҮЙ (2026-09-16 аудит) —
+                       дарахад `decidePlan` татгалзах л байсан, эвдэрсэн товч. */
+                    onReject={isOwn(x) ? undefined : () => void reject(x)}
                     ownWhy={tr('Энэ багцын түлхүүр бүртгэлд алга — «Хуваарь» хуудас руу шилжих боломжгүй. Буцаавал гүйцэтгэгч зөв багцаар дахин илгээнэ.')}
                   />
                 ))}
@@ -446,7 +453,7 @@ function Row({
   const fig = useMemo(() => {
     if (!p) return null;
     const entries = Object.entries(p.spans);
-    const live = entries.flatMap(([, a]) => a.filter((x) => x != null));
+    const live = entries.flatMap(([, a]) => (Array.isArray(a) ? a : []).filter((x) => x != null));
     return {
       rowsN: entries.length,
       spansN: live.length,

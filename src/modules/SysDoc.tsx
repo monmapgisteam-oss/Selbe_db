@@ -55,16 +55,18 @@ function inline(text: string, key: string, onJump: (id: string) => void): ReactN
       if (id) {
         out.push(
           <button key={k} type="button" className={s.jump} onClick={() => onJump(id)}>
-            {label}
+            {inline(label, `${k}l`, onJump)}
           </button>,
         );
       } else if (/^https?:/.test(href)) {
-        out.push(<a key={k} href={href} target="_blank" rel="noreferrer">{label}</a>);
+        out.push(<a key={k} href={href} target="_blank" rel="noreferrer">{inline(label, `${k}l`, onJump)}</a>);
       } else {
         /* Кодын файл руу заасан холбоос — порталаас нээх боломжгүй тул
            зөвхөн нэрийг үлдээнэ (⚠️ холбоос мэт харагдвал дарж үзээд юу ч
            болохгүй нь эвгүй). */
-        out.push(<code key={k}>{label}</code>);
+        /* ⚠️ Шошго ихэвчлэн `` `CLAUDE.md` `` хэлбэртэй — хашилтыг хасна, эс бөгөөс
+           `<code>` дотор давхар хашилт харагдана (9 газар, 2026-09-16 аудит). */
+        out.push(<code key={k}>{label.replace(/^`|`$/g, '')}</code>);
       }
       return;
     }
@@ -126,9 +128,27 @@ function Body({ src, onJump }: { src: string; onJump: (id: string) => void }) {
       while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
         buf.push(lines[i++].replace(/^\s*>\s?/, ''));
       }
+      /* ⚠️ Мөр бүр тусдаа `<p>` БИШ (2026-09-16 аудит): олон мөрт `**тод**`
+         хагасаараа тасарч `**` ил гардаг, `> - …` нь жагсаалт биш бичиг мэт
+         зурагддаг байв. Хоосон `>` мөр л догол салгана; `- ` мөр жагсаалт болно. */
+      const blocks: { kind: 'p' | 'ul'; lines: string[] }[] = [];
+      for (const b of buf) {
+        const last = blocks[blocks.length - 1];
+        if (!b.trim()) { if (last && last.lines.length) blocks.push({ kind: 'p', lines: [] }); continue; }
+        if (isBullet(b)) {
+          const li = b.replace(/^\s*[-·]\s+/, '');
+          if (last?.kind === 'ul') last.lines.push(li); else blocks.push({ kind: 'ul', lines: [li] });
+          continue;
+        }
+        if (last?.kind === 'p') last.lines.push(b.trim()); else blocks.push({ kind: 'p', lines: [b.trim()] });
+      }
       out.push(
         <blockquote key={`q${i}`} className={s.quote}>
-          {buf.filter(Boolean).map((b, n) => <p key={n}>{inline(b, `q${i}${n}`, onJump)}</p>)}
+          {blocks.filter((x) => x.lines.length).map((x, n) => (
+            x.kind === 'ul'
+              ? <ul key={n} className={s.list}>{x.lines.map((li, m) => <li key={m}>{inline(li, `q${i}${n}${m}`, onJump)}</li>)}</ul>
+              : <p key={n}>{inline(x.lines.join(' '), `q${i}${n}`, onJump)}</p>
+          ))}
         </blockquote>,
       );
       continue;
@@ -179,7 +199,14 @@ function Body({ src, onJump }: { src: string; onJump: (id: string) => void }) {
       const numbered = isNum(line);
       const items: string[] = [];
       while (i < lines.length && (numbered ? isNum(lines[i]) : isBullet(lines[i]))) {
-        items.push(lines[i++].replace(/^\s*(?:[-·]|\d+[.)])\s+/, ''));
+        let item = lines[i++].replace(/^\s*(?:[-·]|\d+[.)])\s+/, '');
+        /* ⚠️ ҮРГЭЛЖЛЭЛ МӨР (2+ зайтай догол, 2026-09-16 аудит): урьд нь тусдаа
+           `<p>` болж жагсаалтыг ТАСАЛЖ, дараагийн `-` мөр шинэ жагсаалт эхлүүлдэг
+           байв — 14 газар. Одоо өмнөх зүйлдээ нийлнэ. */
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !isBullet(lines[i]) && !isNum(lines[i])) {
+          item += ' ' + lines[i++].trim();
+        }
+        items.push(item);
       }
       const List = numbered ? 'ol' : 'ul';
       out.push(

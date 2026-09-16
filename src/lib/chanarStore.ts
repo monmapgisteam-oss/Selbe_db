@@ -36,6 +36,7 @@ import {
   review as reviewPure, submit as submitPure,
   type MsDoc, type MsBody, type Reviewer, type Review, type Verdict, EMPTY_BODY,
 } from './chanarMs';
+import { isAuthorFor, reviewerRolesFor } from './chanarAcl';
 
 const TITLE = 'Selbe_Chanar_Barimt';
 const TABLE_NAME = 'chanar_barimt';
@@ -212,8 +213,14 @@ export async function listAttachments(oid: number): Promise<Attachment[]> {
   if (!url) return [];
   const j = await req(`${url}/${Number(oid)}/attachments`, {});
   const infos = (j.attachmentInfos as { id: number; name: string; size: number }[]) ?? [];
+  /* ⚠️ ТОКЕН ХОЛБООСОНД (2026-09-16 аудит): хүснэгт зөвхөн байгууллагад
+     нээлттэй тул токенгүй `<a href>` шинэ табд нэвтрэлт шаардаж эсвэл хоосон
+     буцаадаг. `habeaUzleg`-ийн ижил шийдэл — хэрэглэгчийн ӨӨРИЙН богино
+     хугацаат токен; хугацаа нь дуусахаар холбоос хүчингүй болно. */
+  const tok = await getToken();
+  const q = tok ? `?token=${encodeURIComponent(tok.token)}` : '';
   return infos.map((a) => ({
-    id: a.id, name: a.name, size: a.size, url: `${url}/${Number(oid)}/attachments/${a.id}`,
+    id: a.id, name: a.name, size: a.size, url: `${url}/${Number(oid)}/attachments/${a.id}${q}`,
   }));
 }
 
@@ -381,6 +388,9 @@ export async function createDraft(args: {
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй — админд хандана уу.') };
   const org = orgCode(args.bagts);
   if (!org) return { ok: false, error: tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', args.bagts) };
+  /* ⚠️ ЭРХИЙГ ЭНД Ч ШАЛГАНА (2026-09-16 аудит): урьд нь зөвхөн UI (`canAct`)
+     шалгадаг байв — консолоос дуудсан хэн ч мөр үүсгэж чаддаг байлаа. */
+  if (!isAuthorFor(args.author, args.bagts)) return { ok: false, error: tr('Энэ багцад аргачлал ирүүлэх эрхгүй.') };
   const existing = await loadDocs(kind);
   const seq = nextSeq(existing, args.bagts);
   const no = docNo(args.bagts, seq, 0, kind);
@@ -403,9 +413,25 @@ export async function createDraft(args: {
       adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
     const r = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
-    return r?.success && r.objectId != null
-      ? { ok: true, oid: r.objectId }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!(r?.success && r.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    /* ⚠️ ДУГААРЫН ДАВХАРДАЛ (2026-09-16 аудит): `nextSeq` клиентэд бодогддог,
+       ArcGIS-д unique хязгаар ҮГҮЙ. Хоёр зохиогч нэг багцад зэрэг үүсгэвэл ижил
+       `seq` → `latest()` нэгийг нь ЖАГСААЛТААС НУУДАГ. Бичсэний ДАРАА тулгаж,
+       ХОЖУУ (их OBJECTID) нь дараагийн дугаарт шилжинэ — эхнийх хөндөгдөхгүй. */
+    const after = await loadDocs(kind);
+    const twins = after.filter((d) => d.bagts === args.bagts && d.seq === seq && d.rev === 0);
+    if (twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== r.objectId) {
+      const seq2 = nextSeq(after, args.bagts);
+      const no2 = docNo(args.bagts, seq2, 0, kind);
+      if (no2) {
+        const j2 = await req(`${url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: { [F.oid]: r.objectId, [F.seq]: seq2, [F.docNo]: no2 } }]),
+          rollbackOnFailure: 'true',
+        });
+        if (!editOk(j2.updateResults)) return { ok: false, error: tr('Давхардсан дугаарыг засаж чадсангүй — дахин оролдоно уу.') };
+      }
+    }
+    return { ok: true, oid: r.objectId };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -420,27 +446,53 @@ export async function saveDraft(args: {
 }): Promise<Result> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
   if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
-  const st = s(cur[0][F.status]);
-  const author = (s(cur[0][F.author]) ?? '').toLowerCase();
-  if (author !== args.who.trim().toLowerCase()) return { ok: false, error: tr('Зөвхөн зохиогч засна.') };
-  if (st !== MS_STATUS.draft && st !== MS_STATUS.returned) {
+  const doc = toDoc(cur[0]);
+  if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
+  if (doc.author.trim().toLowerCase() !== args.who.trim().toLowerCase()) return { ok: false, error: tr('Зөвхөн зохиогч засна.') };
+  if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) {
     return { ok: false, error: tr('Хянагдаж буй эсвэл батлагдсан баримтыг засах боломжгүй.') };
   }
   try {
+    if (doc.status === MS_STATUS.draft) {
+      /* Ноорог — ижил мөрийг шинэчилнэ */
+      const j = await req(`${url}/applyEdits`, {
+        updates: JSON.stringify([{ attributes: {
+          [F.oid]: args.oid, [F.title]: args.title.trim(), [F.body]: JSON.stringify(args.body),
+        } }]),
+        rollbackOnFailure: 'true',
+      });
+      return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    }
+    /*
+     * ⚠️ БУЦААГДСАН мөрийг ГАЗАР ДЭЭР НЬ ЗАСАХГҮЙ (2026-09-16 аудит). Урьд нь
+     *    засдаг байсан тул rev N-ийн бие нь хянагчдын ТАТГАЛЗСАН агуулга биш,
+     *    засварласны дараах болж, «Өөрчлөлтийн түүх» өөрөө өөрийгөө няцаадаг
+     *    байв. Одоо буцаагдсан мөр ХЭВЭЭР үлдэж, засвар нь rev+1 ШИНЭ НООРОГ
+     *    болно; `submitDoc` тэр ноорогийг (draft → ижил мөр) илгээнэ.
+     */
+    const kind = (s(cur[0][F.kind]) ?? 'MS') as DocKind;
+    const rev = doc.rev + 1;
+    const no = docNo(doc.bagts, doc.seq, rev, kind);
+    if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
+    const attrs: Attrs = {
+      [F.kind]: kind, [F.docNo]: no, [F.org]: doc.org, [F.bagts]: doc.bagts,
+      [F.seq]: doc.seq, [F.rev]: rev, [F.title]: args.title.trim(),
+      [F.status]: MS_STATUS.draft, [F.author]: doc.author,
+      [F.reviews]: JSON.stringify(emptyReviews()), [F.body]: JSON.stringify(args.body),
+    };
     const j = await req(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid, [F.title]: args.title.trim(), [F.body]: JSON.stringify(args.body),
-      } }]),
-      rollbackOnFailure: 'true',
+      adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
+    return a?.success && a.objectId != null
+      ? { ok: true, oid: a.objectId }
+      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
-
 /**
  * ИРҮҮЛЭХ — 2-р алхам. Буцаагдсанаас дахин ирүүлбэл ШИНЭ МӨР (`rev+1`),
  * хуучин мөр ТҮҮХ болж үлдэнэ.
@@ -506,25 +558,52 @@ export async function reviewDoc(args: {
 }): Promise<Result> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, HEAD);
-  if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй — устгагдсан байж магадгүй.') };
-  const doc = toDoc(cur[0]);
-  if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
-  const r = reviewPure(doc, { as: args.as, who: args.who, verdict: args.verdict, note: args.note });
-  if (!r.ok) return r;
-  const decided = r.status === MS_STATUS.approved || r.status === MS_STATUS.returned;
-  try {
-    const j = await req(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid,
-        [F.status]: r.status,
-        [F.reviews]: JSON.stringify(r.reviews),
-        [F.decidedAt]: decided ? Date.now() : null,
-      } }]),
-      rollbackOnFailure: 'true',
-    });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+  const me = args.who.trim().toLowerCase();
+  /*
+   * ⚠️ ЗЭРЭГЦЭЭ ХЯНАГЧДЫН RACE (2026-09-16 аудит). `hyanalt` JSON нь НЭГ талбар
+   *    бөгөөд ArcGIS-д «зөвхөн өөрчлөгдсөн бол бич» (CAS) байхгүй: ТУХ ба Чанар
+   *    нэг секундэд дарвал хоёулаа `{}` уншиж, хоёр дахь бичилт эхнийхийг
+   *    ЧИМЭЭГҮЙ АРИЛГАДАГ байв — муу хувилбарт 3/3 «Батлагдсан» нь 1 бүртгэлтэй
+   *    «Буцаагдсан»-аар дарагддаг. Одоо бичсэний ДАРАА дахин уншиж ӨӨРИЙН
+   *    шийдвэр байгаа эсэхийг тулгана; алга бол (дарагдсан) шинэ мөр дээр
+   *    дахин нийлүүлж бичнэ. Хоёр бичигчийн аль дарагдсан нь дахин оролдох тул
+   *    гурван оролдлогод нийлдэг. Өөр хянагчийн шийдвэр ТӨЛӨВИЙГ хааж амжсан
+   *    бол `reviewPure` тэр шалтгаанаар татгалзана — энэ нь зөв.
+   */
+  let last: Result = { ok: false, error: tr('Шийдвэр хадгалагдсангүй.') };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, HEAD);
+    if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй — устгагдсан байж магадгүй.') };
+    const doc = toDoc(cur[0]);
+    if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
+    /* ⚠️ ҮҮРГИЙГ ЭНД Ч ШАЛГАНА — `canAct`-ийн «консолоос дуудсан ч энэ л барина»
+       гэсэн амлалт ACL-ийн хувьд UI-д л үнэн байв. */
+    if (!reviewerRolesFor(args.who, doc.bagts).includes(args.as)) {
+      return { ok: false, error: tr('Энэ багцад «{0}» үүргээр хянах эрхгүй.', args.as) };
+    }
+    const r = reviewPure(doc, { as: args.as, who: args.who, verdict: args.verdict, note: args.note });
+    if (!r.ok) return r;
+    const decided = r.status === MS_STATUS.approved || r.status === MS_STATUS.returned;
+    try {
+      const j = await req(`${url}/applyEdits`, {
+        updates: JSON.stringify([{ attributes: {
+          [F.oid]: args.oid,
+          [F.status]: r.status,
+          [F.reviews]: JSON.stringify(r.reviews),
+          [F.decidedAt]: decided ? Date.now() : null,
+        } }]),
+        rollbackOnFailure: 'true',
+      });
+      if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    } catch (e) {
+      return { ok: false, error: String((e as Error).message || e) };
+    }
+    /* Бичсэний дараа тулгах */
+    const after = await query(`${F.oid} = ${Number(args.oid)}`, HEAD);
+    const fresh = after.length ? toDoc(after[0]) : null;
+    const mine = fresh?.reviews[args.as];
+    if (mine && mine.who === me) return { ok: true, oid: args.oid };
+    last = { ok: false, error: tr('Өөр хянагч зэрэг бичсэн тул шийдвэр дахин хадгалагдаж чадсангүй — дахин оролдоно уу.') };
   }
+  return last;
 }

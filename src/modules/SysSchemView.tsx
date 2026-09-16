@@ -54,7 +54,9 @@ export function SysSchemView({
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth - 24;
       const h = el.clientHeight - 24;
-      setK(Math.min(1, Math.max(0.42, Math.min(w / L.w, h / L.h))));
+      /* ⚠️ Доод хязгаар 0.55 (2026-09-16): 0.42-д карт 80×44px, гарчиг ~5px —
+         уншигдахгүй. Түүнээс нарийн дэлгэцэд канвас ГҮЙЛГЭГДЭНЭ. */
+      setK(Math.min(1, Math.max(0.55, Math.min(w / L.w, h / L.h))));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -82,6 +84,10 @@ export function SysSchemView({
       </div>
 
       <div className={s.canvas} ref={wrap}>
+        {/* ⚠️ Гадна боодол нь МАСШТАБЛАГДСАН хэмжээтэй — `transform` нь layout-д
+            нөлөөлдөггүй тул түүнгүйгээр гүйлгэх талбай зурсан хэмжээгээрээ
+            (1262×712) үлдэж, жижиг дэлгэцэд хоосон зай гүйлгэгддэг байв. */}
+        <div style={{ width: L.w * k, height: L.h * k, flex: 'none' }}>
         <div className={s.stage} style={{ width: L.w, height: L.h, transform: `scale(${k})` }}>
           <svg
             className={s.edges}
@@ -131,6 +137,7 @@ export function SysSchemView({
               </button>
             );
           })}
+        </div>
         </div>
       </div>
 

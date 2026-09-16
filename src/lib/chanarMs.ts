@@ -285,6 +285,11 @@ export function review(
   const me = args.who.trim().toLowerCase();
   if (!me) return { ok: false, error: 'Хянагчийн нэр хоосон' };
   if (!isReviewer(args.as)) return { ok: false, error: 'Хянагчийн үүрэг танигдсангүй' };
+  /* ⚠️ Гадны утга (2026-09-16 аудит): `VERDICT`-ээс өөр мөр нүд дүүргэж `resolve`
+     аль ч талд тооцохгүй, дараагийн уншилтад хаягддаг байв — бичилт явсан хэвээр. */
+  if (args.verdict !== VERDICT.approve && args.verdict !== VERDICT.return) {
+    return { ok: false, error: 'Шийдвэрийн утга танигдсангүй' };
+  }
   if (doc.status !== MS_STATUS.review) {
     return { ok: false, error: 'Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй' };
   }

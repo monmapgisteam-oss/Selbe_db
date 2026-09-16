@@ -157,7 +157,9 @@ export const SYS_NODES: readonly SysNode[] = [
   {
     id: 'acl', title: tr('Эрх'),
     desc: tr('Ганц хүснэгт · хаалттай бол татгалзана'),
-    view: null, doc: '05-erh-batlah', icon: 'users', col: 2, row: 4, tone: 'cross',
+    /* ⚠️ (4,0) — `fill`-ийн ШУУД ДЭЭР (2026-09-16): урьд нь (2,4)-өөс диагонал
+       ирмэг col 3-ын дөрвөн картыг огтолж байв. Одоо босоо салбараар шууд. */
+    view: null, doc: '05-erh-batlah', icon: 'users', col: 4, row: 0, tone: 'cross',
   },
   {
     id: 'ext', title: tr('Гадаад холболт'),

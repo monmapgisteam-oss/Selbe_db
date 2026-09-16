@@ -62,15 +62,19 @@
   min-height: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  /* ⚠️ `auto` (2026-09-16): доод масштабаас нарийн дэлгэцэд тасалж хаях биш,
+     гүйлгэж харуулна. */
+  overflow: auto;
   padding: 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md, 10px);
 }
 
-/* ⚠️ `transform-origin: center` — масштаблахад зураг ТӨВДӨӨ үлдэнэ. */
-.stage { position: relative; transform-origin: center; flex: none; }
+/* ⚠️ `transform-origin: top left` (2026-09-16) — гадна боодол масштаблагдсан
+   хэмжээтэй тул тайз түүний зүүн дээд булангаас эхэлж яг багтана; төвлүүлэлтийг
+   `.canvas`-ийн `place-items` хийнэ. */
+.stage { position: relative; transform-origin: top left; flex: none; }
 
 .edges { position: absolute; inset: 0; pointer-events: none; }
 

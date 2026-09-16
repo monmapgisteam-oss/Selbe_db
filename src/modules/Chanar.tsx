@@ -67,6 +67,8 @@ const tagCls = (st: MsStatus): string => {
 
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 
+/** Хавсралт + аль хувилбарын мөрөнд байгаа нь (№6 аудит, 2026-09-16) */
+type Att = Attachment & { parentOid: number };
 export function Chanar() {
   const { user } = useAuth();
   const me = user?.username ?? '';
@@ -86,7 +88,7 @@ export function Chanar() {
 
   const [sel, setSel] = useState<number | null>(null);
   const [body, setBody] = useState<MsBody | null>(null);
-  const [atts, setAtts] = useState<Attachment[]>([]);
+  const [atts, setAtts] = useState<Att[]>([]);
   /* Засварын ноорог — зөвхөн `edit` горимд */
   const [edit, setEdit] = useState(false);
   const [dTitle, setDTitle] = useState('');
@@ -122,16 +124,42 @@ export function Chanar() {
 
   /* Сонгоход бие ба хавсралтыг татна */
   useEffect(() => {
-    if (sel == null) { setBody(null); setAtts([]); setEdit(false); return; }
+    /* ⚠️ `setEdit(false)` ЭНД БАЙХГҮЙ (2026-09-16 аудит): `startNew` нь
+       `setSel(null); setEdit(true)` дуудахад энэ салбар шинэ маягтыг гарч
+       ирмэгц ХААДАГ байв — зөвхөн юу ч сонгоогүй үед л ажиллаж байлаа.
+       Сонголт цэвэрлэх газрууд (багц солих) маягтаа өөрсдөө хаана. */
+    if (sel == null) { setBody(null); return; }
     let live = true;
     setBody(null); setEdit(false);
-    void Promise.all([loadBody(sel), listAttachments(sel)]).then(([b, a]) => {
+    void loadBody(sel).then((b) => {
       if (!live) return;
       setBody(b ?? { ...EMPTY_BODY });
-      setAtts(a);
     }).catch((e) => live && setErr(String((e as Error).message || e)));
     return () => { live = false; };
   }, [sel]);
+
+  /*
+   * ⚠️ ХАВСРАЛТ БҮХ ХУВИЛБАРААС (2026-09-16 аудит). Дахин ирүүлэхэд `submitDoc`
+   *    ШИНЭ OBJECTID үүсгэдэг тул гэрчилгээ, лабораторийн хавсралт хуучин мөрд
+   *    үлдэж, хянагч шинэ хувилбарыг «хавсралтгүй» гэж хардаг байв. Түүхийн
+   *    мөр бүрээс цуглуулна; устгах нь зөвхөн ОДООГИЙН мөрийнхөд.
+   */
+  const attIds = useMemo(
+    () => (sel == null ? [] : [...new Set([sel, ...hist.map((h) => h.oid)])]),
+    [sel, hist],
+  );
+  const reloadAtts = useCallback(async () => {
+    const ls = await Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))));
+    setAtts(ls.flat());
+  }, [attIds]);
+  useEffect(() => {
+    if (!attIds.length) { setAtts([]); return; }
+    let live = true;
+    void Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))))
+      .then((ls) => { if (live) setAtts(ls.flat()); })
+      .catch((e) => live && setErr(String((e as Error).message || e)));
+    return () => { live = false; };
+  }, [attIds]);
 
   const act = doc ? canAct(doc, me || null, myRoles) : { edit: false, submit: false, review: [] as Reviewer[] };
 
@@ -174,8 +202,15 @@ export function Chanar() {
   const saveEdit = async () => {
     if (!doc) return;
     if (!dTitle.trim()) { setErr(tr('Аргачлалын нэрийг бичнэ үү.')); return; }
-    const ok = await run(() => saveDraft({ oid: doc.oid, who: me, title: dTitle, body: dBody }), tr('Ноорог хадгалагдлаа.'));
-    if (ok) { setEdit(false); setBody({ ...dBody }); }
+    let oid = doc.oid;
+    const ok = await run(async () => {
+      const r = await saveDraft({ oid: doc.oid, who: me, title: dTitle, body: dBody });
+      if (r.ok) oid = r.oid;
+      return r;
+    }, tr('Ноорог хадгалагдлаа.'));
+    /* ⚠️ Буцаагдсан баримтыг засахад `saveDraft` rev+1 ШИНЭ мөр үүсгэнэ —
+       түүн рүү шилжинэ, эс бөгөөс дэлгэц хуучин (татгалзсан) хувилбар дээр үлдэнэ. */
+    if (ok) { setEdit(false); if (oid !== doc.oid) setSel(oid); else setBody({ ...dBody }); }
   };
 
   /* ── 2-р алхам: ирүүлэх ── */
@@ -207,21 +242,26 @@ export function Chanar() {
     if (!doc || !files?.length) return;
     setBusy(true); setErr('');
     try {
+      /* ⚠️ ХЭМЖЭЭГ ИЛГЭЭХИЙН ӨМНӨ (2026-09-16 аудит): урьд нь файлыг бүтнээр
+         илгээсний дараа л сервер татгалздаг байв. AGOL hosted хүснэгтийн
+         хавсралтын хязгаар 10 МБ орчим — түүнээс дээшийг эндээс л таслана. */
+      const MAX_ATT = 10 * 1024 * 1024;
       for (const f of Array.from(files)) {
+        if (f.size > MAX_ATT) { setErr(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); break; }
         const r = await addAttachment(doc.oid, f);
         if (!r.ok) { setErr(r.error ?? tr('Хавсралт хадгалагдсангүй.')); break; }
       }
-      setAtts(await listAttachments(doc.oid));
+      await reloadAtts();
     } finally {
       setBusy(false);
     }
   };
-  const removeAtt = async (a: Attachment) => {
+  const removeAtt = async (a: Att) => {
     if (!doc || !window.confirm(tr('«{0}» хавсралтыг устгах уу?', a.name))) return;
     setBusy(true);
     try {
-      if (!(await deleteAttachment(doc.oid, a.id))) setErr(tr('Хавсралт устгагдсангүй.'));
-      setAtts(await listAttachments(doc.oid));
+      if (!(await deleteAttachment(a.parentOid, a.id))) setErr(tr('Хавсралт устгагдсангүй.'));
+      await reloadAtts();
     } finally {
       setBusy(false);
     }
@@ -361,7 +401,12 @@ export function Chanar() {
                     <div key={a.id} className={s.att}>
                       <a href={a.url} target="_blank" rel="noreferrer">{a.name}</a>
                       <span className={s.attSize}>{kb(a.size)}</span>
-                      {act.edit && (
+                      {a.parentOid !== doc.oid && (
+                        <span className={s.attSize} title={tr('Өмнөх хувилбарын хавсралт')}>
+                          R{hist.find((h) => h.oid === a.parentOid)?.rev ?? '?'}
+                        </span>
+                      )}
+                      {act.edit && a.parentOid === doc.oid && (
                         <button type="button" className={s.btn} disabled={busy} onClick={() => void removeAtt(a)}>✕</button>
                       )}
                     </div>

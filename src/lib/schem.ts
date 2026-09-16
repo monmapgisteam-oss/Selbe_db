@@ -319,6 +319,25 @@ export function layout(nodes: readonly SchemNode[] = NODES): {
  * `back` нь ДООГУУР нуман: урвуу чиглэлийг шулуунаар зурвал `main` ирмэгтэй
  * давхарлаж, хоёулаа уншигдахгүй болно.
  */
+/**
+ * ТОХОЙ ЗАМ — мөрийн ЗАЙГААР (`g`) явж хоёр картыг холбоно (2026-09-16).
+ *
+ * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: системийн схем (`sysSchem.ts`) 5×5 нягт торонд
+ *    зурагддаг. Тэнд (а) баруунаас зүүн тийш `main`/`feed` ирмэг ба
+ *    (б) зорилт нь эхийнхээ ШУУД ДЭЭР байрласан `back` ирмэг бий — хоёулаа
+ *    хуучин 6×4 схемд хэзээ ч тохиолдоогүй тул Безье нь картуудыг
+ *    дундуур нь нэвтэлж байв (тоон дээжээр батлагдсан). Мөрүүдийн хоорондох
+ *    34px зай нь ХООСОН — тохой тэр зайгаар явна.
+ */
+function elbow(x1: number, y1: number, x2: number, y2: number, g: number): string {
+  const r = 12;
+  const sy1 = g > y1 ? 1 : -1;
+  const sx = x2 > x1 ? 1 : -1;
+  const sy2 = y2 > g ? 1 : -1;
+  return `M ${x1} ${y1} L ${x1} ${g - sy1 * r} Q ${x1} ${g} ${x1 + sx * r} ${g} `
+    + `L ${x2 - sx * r} ${g} Q ${x2} ${g} ${x2} ${g + sy2 * r} L ${x2} ${y2}`;
+}
+
 export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
   const ay = a.y + a.h / 2;
   const by = b.y + b.h / 2;
@@ -331,6 +350,12 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
   if (kind === 'back') {
     const x1 = a.x + a.w / 2;
     const x2 = b.x + b.w / 2;
+    /* ⚠️ Зорилт эхийнхээ ДЭЭР бүхэлдээ байвал (2026-09-16): дээгүүр нуман
+       зурахад эхийн шууд дээрх картыг босоогоор нэвтэлдэг байв. Хоёр мөрийн
+       ХООРОНДОХ зайгаар тохойлно — эхийн дээд ирмэгээс, зорилтын доод ирмэг рүү. */
+    if (b.y + b.h < a.y) {
+      return elbow(x1, a.y, x2, b.y + b.h, (b.y + b.h + a.y) / 2);
+    }
     const up = Math.min(a.y, b.y) - 22;
     return `M ${x1} ${a.y} C ${x1} ${up}, ${x2} ${up}, ${x2} ${b.y}`;
   }
@@ -348,6 +373,21 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
     const y2 = down ? b.y : b.y + b.h;
     const dy = Math.max(20, Math.abs(y2 - y1) * 0.55) * (down ? 1 : -1);
     return `M ${cx1} ${y1} C ${cx1} ${y1 + dy}, ${cx2} ${y2 - dy}, ${cx2} ${y2}`;
+  }
+
+  /**
+   * ⚠️ ЗҮҮН ТИЙШ (b нь a-гийн зүүнд, 2026-09-16). Доорх хэвтээ салбар
+   *    «b нь баруунд» гэж үздэг тул `dx = max(28, сөрөг) = 28` болж, зам
+   *    a-гийн БАРУУН ирмэгээс гарч хоёр картыг ч нэвтэлдэг байв. Өөр мөрөнд
+   *    бол мөрийн зайгаар тохойлно; нэг мөрөнд бол дээгүүр нуман.
+   */
+  if (b.x + b.w <= a.x) {
+    const cx1 = a.x + a.w / 2;
+    const cx2 = b.x + b.w / 2;
+    if (b.y >= a.y + a.h) return elbow(cx1, a.y + a.h, cx2, b.y, (a.y + a.h + b.y) / 2);
+    if (b.y + b.h <= a.y) return elbow(cx1, a.y, cx2, b.y + b.h, (b.y + b.h + a.y) / 2);
+    const up = Math.min(a.y, b.y) - 22;
+    return `M ${cx1} ${a.y} C ${cx1} ${up}, ${cx2} ${up}, ${cx2} ${b.y}`;
   }
 
   const x1 = a.x + a.w;

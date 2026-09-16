@@ -47,7 +47,9 @@ const VIEW_BLOCK = SERVICES.slice(SERVICES.indexOf('export const VIEWS'));
 /* `key: "gdash",` ба түүний дараах `title: tr('...')` хосыг цуглуулна */
 const views = [];
 {
-  const re = /key:\s*"([A-Za-z0-9]+)"[\s\S]{0,400}?title:\s*tr\(\s*'([^']+)'/g;
+  /* ⚠️ Цонх 1500 (2026-09-16): `key` ба `title` хооронд урт ⚠️ тайлбартай
+     entry 400-д багтахгүй чимээгүй алгасагддаг байв. Доор `key:` тоолж ТУЛГАНА. */
+  const re = /key:\s*"([A-Za-z0-9]+)"[\s\S]{0,1500}?title:\s*tr\(\s*'([^']+)'/g;
   let m;
   while ((m = re.exec(VIEW_BLOCK)) !== null) views.push({ key: m[1], title: m[2] });
 }
@@ -63,6 +65,9 @@ const TABLE1 = T_START >= 0 && T_END > T_START ? DOC04.slice(T_START, T_END) : '
 
 console.log('\nШ1 · Харагдацууд');
 chk('VIEWS олдсон', views.length > 0, `${views.length} ширхэг`);
+/* Бүх `key:` мөр title-тайгаа хослов уу — алгассан entry энд улаан болно */
+const keyLines = (VIEW_BLOCK.slice(0, VIEW_BLOCK.indexOf('export const VIEW_BY_KEY')).match(/^\s*key:\s*"[A-Za-z0-9]+"/gm) ?? []).length;
+chk('key бүр title-тайгаа танигдсан', keyLines === views.length, `${keyLines} key ↔ ${views.length} хос`);
 chk('§1 хүснэгт олдсон', TABLE1.length > 0);
 
 const missing = views.filter((v) => !TABLE1.includes(v.title));

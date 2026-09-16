@@ -439,11 +439,39 @@ export async function loadPayload(oid: number): Promise<PlanPayload | null> {
  * ⚠️ Хагас задарсан ноорог хэрэглэвэл огноо ЧИМЭЭГҮЙ устана. Тиймээс бүтэн
  *    эсэхийг шалгаж, эргэлзвэл ТАТГАЛЗАНА.
  */
+/**
+ * `spans`-ийг ШАЛГАЖ ЦЭВЭРЛЭНЭ (2026-09-16 аудит).
+ *
+ * ⚠️ Урьд нь `typeof === "object"` л шалгаад `as` гэж хөрвүүлдэг байв. Нэг
+ *    эвдэрсэн мөр (`{"12": 5}`, `{"12": null}`) дараалалд дэлгэгдэхэд render
+ *    дотор `a.filter` TypeError шидэж, `ErrorBoundary` БҮХ «Хуваарь батлах»
+ *    харагдацыг унагадаг байлаа — нэг мөр биш. Одоо мөр тус бүрээр
+ *    fail-closed: массив бус утга, тоо бус `start`/`end` ХАЯГДАНА.
+ * ⚠️ ХООСОН `{}` нь ХҮЧИНТЭЙ (`huvaariBatlah.check` §«хоосон spans»): «юу ч
+ *    өөрчлөгдөөгүй» илгээлтийг `null` болговол батлагч «агуулга уншигдсангүй»
+ *    гэсэн ХУДАЛ алдаа хараад илгээлт мөнхөд гацна. Тиймээс энд `null`
+ *    буцаахгүй — эвдэрсэн зүйлийг л хаяна, юу ч үлдэхгүй бол `{}`.
+ */
+function sanitizeSpans(raw: object): PlanPayload['spans'] {
+  const out: PlanPayload['spans'] = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(v)) continue;
+    const ok = v.filter((x) => (
+      x == null
+      || (typeof x === 'object'
+        && Number.isFinite((x as { start?: unknown }).start)
+        && Number.isFinite((x as { end?: unknown }).end))
+    ));
+    out[k] = ok as PlanPayload['spans'][string];
+  }
+  return out;
+}
+
 export function parsePayload(raw: string): PlanPayload | null {
   try {
     const j = JSON.parse(raw) as Partial<PlanPayload>;
     if (!j || typeof j !== 'object') return null;
-    const spans = j.spans && typeof j.spans === 'object' ? j.spans : null;
+    const spans = j.spans && typeof j.spans === 'object' ? sanitizeSpans(j.spans) : null;
     if (!spans) return null;
     /*
      * ⚠️ БУЦАЖ НИЙЦТЭЙ: 2026-09-11-ээс ӨМНӨХ илгээлтэд `kind` БАЙХГҮЙ.
@@ -454,7 +482,7 @@ export function parsePayload(raw: string): PlanPayload | null {
     const kind: PlanPayloadKind = j.kind === 'geree' ? 'geree' : 'plan';
     return {
       kind,
-      spans: spans as PlanPayload['spans'],
+      spans,
       deps: (j.deps && typeof j.deps === 'object' ? j.deps : {}) as PlanPayload['deps'],
       obyem: (j.obyem && typeof j.obyem === 'object' ? j.obyem : {}) as PlanPayload['obyem'],
     };

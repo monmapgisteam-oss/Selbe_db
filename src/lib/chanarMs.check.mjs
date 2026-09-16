@@ -227,4 +227,16 @@ const base = () => ({
   assert.equal(b1s1.rev, 2, '⚠️ сүүлийн хувилбар л жагсаалтад');
 }
 
+/* ══ 9. ORG_CODE ⊇ PKG_GROUPS — АНХААРУУЛГА (2026-09-16 аудит) ══
+ * ⚠️ `assert` БИШ: гүйцэтгэгчийн код нь албан баримтын дугаарт ордог тул
+ *    кодоор зохиож болохгүй — ЗӨВХӨН хэрэглэгч өгнө. Дутуу багцад «+ Шинэ
+ *    аргачлал» ажиллахгүй гэдгийг энд ил хэлнэ (5/15 багц, 2026-09-16). */
+{
+  const { PKG_GROUPS } = await import('@/modules/sheet/bagts.pkg.ts');
+  const { ORG_CODE: OC } = await import('@/lib/chanarMs.ts');
+  const miss = PKG_GROUPS.filter((g) => !OC[g]);
+  if (miss.length) console.warn(`⚠️ ORG_CODE-д ${miss.length} багц ДУТУУ — тэдгээрт аргачлал үүсэх боломжгүй: ${miss.join(' · ')}`);
+  else console.log('✅ ORG_CODE бүх багцыг хамарсан');
+}
+
 console.log('chanarMs.check ✓');

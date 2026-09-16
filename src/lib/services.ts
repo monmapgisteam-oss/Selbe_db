@@ -5307,9 +5307,9 @@ export const HOME_SECTIONS: {
    * `Root` нь «Бусад хэсэг» болгон нүүрт гаргана (хүрэх зам алдагдахгүй) — тэр
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
-  { id: "review", title: tr('Тойм'), views: ["gdash", "schem", "dashboard", "tailan"] },
+  { id: "review", title: tr('Тойм'), views: ["gdash", "schem", "dashboard", "tailan", "sysdoc"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "chanar"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 
@@ -5426,7 +5426,9 @@ export const ROLE_ACCESS: Record<
     // ⚠️ Урьд нь `sheet` («Гүйцэтгэл бөглөх») байсныг `guitsetgel` болгов —
     //    хоёр харагдац НЭГ болсон (доорх §ГҮЙЦЭТГЭЛ-ийг үз). Эрх нь
     //    хумигдаагүй: бөглөх хуудас нь тэр харагдацын нэг таб болсон.
-    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari"],
+    // ⚠️ `sysdoc` (2026-09-16): системийн баримт нь ШИЙДВЭР ГАРГАГЧИД зориулагдсан
+    //    тул зөвхөн super биш, ердийн үүрэгт ч нээлттэй. Өгөгдөл уншдаггүй.
+    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "guitsetgel", "huvaari", "sysdoc"],
     docs: true,
     home: "plan",
   },
