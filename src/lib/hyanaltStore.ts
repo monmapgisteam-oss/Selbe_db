@@ -33,6 +33,64 @@ import {
   DECISION, F, HYANALT, STATUS,
   type Attrs, type Decision, type Row, type Status,
 } from './hyanalt';
+import {
+  bagtsFor, isViewOnly, stageOfUser,
+} from './guitsetgelAcl';
+
+/**
+ * ДОМЭЙН ТҮВШНИЙ ЭРХИЙН ХАМГААЛАЛТ (2026-09-16-ны аудит).
+ *
+ * ⚠️ ЯАГААД ЗААВАЛ ЭНД: урьд нь `apply`/`recheck` нь ЗӨВХӨН
+ *    (а) буцаахад шалтгаан бий эсэх, (б) серверийн төлөв claim-тай
+ *    таарах эсэхийг шалгадаг байв. `who` нь хэн болохыг НЭГ Ч удаа
+ *    шалгадаггүй байсан тул эрхийн БҮХ шийдвэр зөвхөн `Guitsetgel.tsx`-ийн
+ *    зурагдалтад (`readOnly` prop, `mine` тооцоолол, жагсаалтын шүүлт)
+ *    байлаа — тэдгээр нь зурагдах агшны шийдвэр.
+ *
+ * ⚠️ НӨЛӨӨ: «Гүйцэтгэл» харагдац руу орох ЭРХТЭЙ ямар ч аккаунт (урсгалын
+ *    гишүүд + `addRow`/`obyemEdit`/`obyemApprove` эрхтэй хүн бүр) консолоос
+ *    `apply({ oid, stage: 'director', decision: approve, who })` дуудаж,
+ *    `registerNow` → `archiveSubmission` → `applyAdds` гэсэн БУЦААШГҮЙ
+ *    архивын бичилтийг өдөөж чаддаг байв — өөрийн багцаас ГАДУУР ч,
+ *    `viewOnly` (зөвхөн харах) тэмдэгтэй ч, өөрийн бөглөсөн хуудсаа ч.
+ *
+ * ⚠️ ЭНЭ ФАЙЛ бол цорын ганц архив бичигч тул шалгуур ЭНД байх ёстой —
+ *    төслийн бусад гурван урсгал ЯГ ИЙМ зарчимтай, ил бичигдсэн:
+ *      · `caps.ts`      «UID-д биш, домэйн функцэд»
+ *      · `huvaariBatlah` «Энэ шалгуур UI-д БИШ, ЭНД байх ёстой»
+ *      · `chanarMs`     «ДҮРМҮҮД ЭНД, UI-Д БИШ … Консолоос дуудсан ч энэ л барина»
+ *
+ * ⚠️ `me` нь ArcGIS-ийн ХЭРЭГЛЭГЧИЙН НЭР байх ёстой — `who` (дэлгэцийн
+ *    бүтэн нэр) БИШ. `who` нь ArcGIS-д хадгалагдах өгөгдөл, `me` нь
+ *    эрхийн шалгуур: хоёр өөр зорилго, хоёр өөр параметр.
+ *
+ * ⚠️ FAIL-CLOSED: `me` хоосон бол ТАТГАЛЗАНА. Нэвтрэлт унтраалттай
+ *    (хөгжүүлэлт) үед `stageOfUser` нь `null` буцаах тул тэр орчинд
+ *    шалгуурыг ТОЙРУУЛАХ ёстой — дуудагч `bypass` тугийг ил өгнө
+ *    (`authStatus === 'off'` эсвэл админы шат сонголт).
+ *
+ * ⚠️ `null` = ХЯЗГААРГҮЙ хүрээ, `[]` = ЮУ Ч БИШ (`bagtsFor`-ийн гэрээ).
+ *    Хоёрыг андуурвал эрх гоожих эсвэл бүх хүн түгжигдэнэ.
+ */
+function authz(
+  stage: 'engineer' | 'manager' | 'director',
+  me: string | undefined,
+  bagts: string,
+  bypass: boolean,
+): string | null {
+  if (bypass) return null;
+  const u = (me ?? '').trim();
+  if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
+  if (isViewOnly(u)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — шийдвэр гаргах боломжгүй.');
+  if (stageOfUser(u) !== stage) {
+    return tr('Та энэ шатны хянагчаар томилогдоогүй байна.');
+  }
+  const sc = bagtsFor(u, stage);
+  if (sc !== null && !sc.includes(bagts)) {
+    return tr('Энэ багц танд хуваарилагдаагүй байна.');
+  }
+  return null;
+}
 
 /* ── ArcGIS ↔ програмын хэлбэр ── */
 
@@ -488,7 +546,20 @@ export async function apply(a: {
   decision: Decision;
   /** ⚠️ Буцаах үед ХООСОН БАЙЖ БОЛОХГҮЙ */
   reason?: string;
+  /** ArcGIS-д БИЧИГДЭХ дэлгэцийн нэр (өгөгдөл) */
   who: string;
+  /**
+   * ЭРХИЙН ШАЛГУУРТ хэрэглэгдэх ArcGIS-ийн ХЭРЭГЛЭГЧИЙН НЭР.
+   * ⚠️ `who`-гоос ТУСДАА: тэр нь бүтэн нэр (давхардаж, солигдож болно),
+   *    энэ нь ACL-ийн түлхүүр. Хоёрыг хольвол эрх нэрээр гоожино.
+   */
+  me?: string;
+  /**
+   * ЭРХИЙН ШАЛГУУРЫГ ТОЙРУУЛАХ — ЗӨВХӨН нэвтрэлт унтраалттай (хөгжүүлэлт)
+   * эсвэл админ шатаа ил сонгосон үед (`resolveFlowStage.canPick`).
+   * ⚠️ Анхдагч нь `false` (fail-closed): дуудагч ил хүсэх ёстой.
+   */
+  bypass?: boolean;
 }): Promise<Result> {
   const returning = a.decision === DECISION.return;
   const reason = (a.reason ?? '').trim();
@@ -549,6 +620,18 @@ export async function apply(a: {
     if (!cur || cur[F.status] !== REVIEW_STATUS[a.stage]) {
       emit();
       return { ok: false, error: STALE };
+    }
+    /*
+     * ⚠️ ЭРХИЙГ СЕРВЕРИЙН МӨРӨӨС ШАЛГАНА (2026-09-16-ны аудит): багцын
+     *    нэр нь ЗӨВХӨН тэнд байгаа тул хүрээний шалгуур `cur`-аас ХОЙШ
+     *    байх ЁСТОЙ. Дуудагчийн өгсөн ямар ч утгад итгэхгүй.
+     * ⚠️ БИЧИЛТЭЭС ӨМНӨ: доорх `archiveSubmission` → `applyAdds` нь
+     *    БУЦААШГҮЙ архивын бичилт тул нэг ч талбар хөндөгдөхөөс өмнө
+     *    таслах ёстой.
+     */
+    {
+      const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true);
+      if (deny) { emit(); return { ok: false, error: deny }; }
     }
     /*
      * ⚠️ АРХИВЛАЛТ нь хяналтын мөрийг засахаас ӨМНӨ (дизайны дүрэм 5d).
@@ -658,6 +741,10 @@ export async function recheck(
    *    буцаахад БАГЦЫН МЕНЕЖЕР. Логик нь ижил, зөвхөн талбар ба шат өөр.
    */
   by: 'engineer' | 'manager' = 'engineer',
+  /** ЭРХИЙН ШАЛГУУРЫН хэрэглэгчийн нэр — `who` (дэлгэцийн нэр) БИШ */
+  me?: string,
+  /** Шалгуурыг тойруулах — зөвхөн нэвтрэлтгүй/админы шат сонголт */
+  bypass = false,
 ): Promise<Result> {
   let prev: Row | undefined;
   try { prev = await liveRow(oid); } catch (e) { return fail(e); }
@@ -666,6 +753,12 @@ export async function recheck(
   //    давхар дахин шалгалт (давхар мөр) эсвэл өөр төлөвт бичихээс сэргийлнэ.
   const want = by === 'engineer' ? STATUS.managerReturned : STATUS.directorReturned;
   if (prev[F.status] !== want) { emit(); return { ok: false, error: STALE }; }
+  /* ⚠️ `apply`-тай ИЖИЛ шалгуур — дахин шалгалт нь мөрийг дээд шат руу
+     дахин илгээдэг тул эрхийн ижил жинтэй (`hyanaltStore`-ийн authz). */
+  {
+    const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true);
+    if (deny) { emit(); return { ok: false, error: deny }; }
+  }
 
   const t = Date.now();
 

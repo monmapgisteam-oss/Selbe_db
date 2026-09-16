@@ -38,6 +38,12 @@ const strip = (src) => src
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
 
+/**
+ * `<scopeFn>(…) ?? []`  ба  `<scopeFn>(…) || []` хэв шинж.
+ * ⚠️ Тусад нь тогтмол: regex-ийн escape-ийг нэг л газар бичнэ.
+ */
+const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
+
 /* ══════════ 1. set*Assign ба remove*Assign нь ИЖИЛ хатуу шалгууртай ══════════ */
 /**
  * ⚠️ `sync` нь «бүх зүйл бүтсэн үү» гэсэн ГАНЦ хариу — админы UI түүнээс
@@ -450,4 +456,49 @@ console.log('\naclParity.check: ok');
       `UserAdmin.requestClose: ${st} алга — панел дахин нээхэд хуучин сонголт/алдаа үлдэнэ`);
   }
 }
+
+/* ══════════ ХҮРЭЭНИЙ `null` ≠ `[]` — ХЭРЭГЛЭГЧ ТАЛД ══════════ */
+/**
+ * ⚠️ 2026-09-16-ны аудитын олдвор (`Qaqc.tsx`). `scopedAcl.scope`-ийн ГЭРЭЭ:
+ *    `null` = ХЯЗГААРГҮЙ, `[]` = ЮУ Ч БИШ. Хэрэглэгч талд
+ *    `(scope(...) ?? []).includes(x)` гэж бичвэл `null` нь `[]` болж,
+ *    «БҮХ багц» хуваарилагдсан хүн ямар ч багц дээр эрхгүй болно.
+ *
+ *    Тэр нь АНХДАГЧ зам байв: эрх олгох хоёр стандарт зам хоёулаа
+ *    `[ALL_BAGTS]` бичдэг тул `scope` нь `null` буцаадаг. Панелд эрх
+ *    ОЛГОГДСОН гэж харагдаж, хуудас нээгдэж, гэвч засагдахгүй байлаа —
+ *    чимээгүй инверс, улаан алдаа ч, тайлбар ч байхгүй.
+ *
+ * ⚠️ Гурван хөрш модуль ЗӨВ байсан (`Huvaari` `inScope`, `FillNew`
+ *    `sc0 === null || …`, `chanarAcl`) — тэгш байдлын шалгуур яг ийм
+ *    зөрүүг барих ёстой байсан ч бариагүй.
+ *
+ * ДҮРЭМ: хүрээ буцаадаг функцийн хариуг `?? []` / `|| []`-ЭЭР хавсаргаад
+ * шууд `.includes` дуудаж БОЛОХГҮЙ — `x === null || x.includes(...)` бич.
+ */
+{
+  const SCOPE_FNS = [
+    'bagtsScope', 'qaqcScope', 'huvaariScope', 'obyemScope', 'chanarScope', 'bagtsFor',
+  ];
+  const consumers = [
+    'src/modules/Qaqc.tsx',
+    'src/modules/Huvaari.tsx',
+    'src/modules/HuvaariBatlah.tsx',
+    'src/modules/Chanar.tsx',
+    'src/modules/Guitsetgel.tsx',
+    'src/modules/sheet/FillNew.tsx',
+    'src/lib/hyanaltStore.ts',
+  ];
+  for (const p of consumers) {
+    if (!fs.existsSync(p)) continue;
+    const code = readCode(p);
+    for (const fn of SCOPE_FNS) {
+      const re = new RegExp(fn + BAD_SCOPE);
+      assert.ok(!re.test(code),
+        p + ': ' + fn + ' -ийн ХЯЗГААРГҮЙ (null) хариуг `?? []` болгож байна — «бүх багц» хуваарилагдсан хүн эрхгүй болно');
+    }
+  }
+}
+console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?? []` хориотой');
+
 console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps · r.ok×3 · cap orphan · ноорог үлдэх');

@@ -12,6 +12,7 @@
  *   6. Хасаад шууд дахин нэмэхэд хойшилсон revoke шинэ grant-ыг дардаг байв.
  */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 /* ── window/localStorage shim — permissions.ts 'use client' ── */
 const mem = new Map();
@@ -228,5 +229,62 @@ _syncRemoteAssigns([{ user: 'keep', stage: 'engineer', bagts: ['Багц 1'], vi
   assert.equal(resolveFlowStage('keep', null).canReview, false);
 }
 console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдвэрлэхгүй; багц·шат хэвээр');
+
+
+/* ══════════ ШИЙДВЭР ГАРГАХ ЗАМ — ДОМЭЙН ТҮВШИНД ХАМГААЛАГДСАН ══════════ */
+/**
+ * ⚠️ 2026-09-16-ны аудитын олдвор: `hyanaltStore.apply`/`recheck` нь `who`
+ *    хэн болохыг НЭГ Ч удаа шалгадаггүй байв. Эрхийн БҮХ шийдвэр зөвхөн
+ *    `Guitsetgel.tsx`-ийн зурагдалтад (`readOnly` prop, `mine`, жагсаалтын
+ *    шүүлт) байсан — тэдгээр нь зурагдах агшны шийдвэр.
+ *
+ *    НӨЛӨӨ: «Гүйцэтгэл» харагдац руу орох эрхтэй ямар ч аккаунт консолоос
+ *    `apply({ oid, stage: 'director', decision: approve, who })` дуудаж,
+ *    `archiveSubmission` → `applyAdds` гэсэн БУЦААШГҮЙ архивын бичилтийг
+ *    өдөөж чаддаг байв — өөрийн багцаас гадуур ч, `viewOnly` тэмдэгтэй ч.
+ *
+ * ⚠️ Төслийн бусад ГУРВАН урсгал («UI-д БИШ, домэйн функцэд») энэ зарчмыг
+ *    ил бичсэн тул хяналтын урсгал ч ижил байх ЁСТОЙ. Энэ шалгуур нь тэр
+ *    хамгаалалт БУЦААЖ АЛГА БОЛОХООС сэргийлнэ.
+ *
+ * ⚠️ Эх кодоор шалгана: `apply` нь ArcGIS-гүйгээр ажиллахгүй (архив бичдэг).
+ */
+{
+  const S = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+
+  assert.ok(/function authz\(/.test(S),
+    'hyanaltStore: домэйн эрхийн хамгаалагч (authz) АЛГА — UI л барина');
+  assert.ok(/from '\.\/guitsetgelAcl'/.test(S),
+    'hyanaltStore: ACL импортлоогүй — эрхийг хаанаас ч шалгаж чадахгүй');
+  for (const n of ['stageOfUser', 'isViewOnly', 'bagtsFor']) {
+    assert.ok(S.includes(n + '('),
+      'hyanaltStore.authz: ' + n + ' шалгагдаагүй');
+  }
+
+  /* ⚠️ АРХИВЛАЛТААС ӨМНӨ: `applyAdds` нь буцаашгүй тул нэг ч талбар
+     хөндөгдөхөөс өмнө таслах ёстой. Дараалал нь шалгуурын БҮХ утга. */
+  const ia = S.indexOf('const deny = authz(a.stage');
+  const iar = S.indexOf('archiveSubmission(cur)');
+  assert.ok(ia > 0, 'apply-д authz дуудагдаагүй');
+  assert.ok(iar > ia,
+    'hyanaltStore: authz нь archiveSubmission-оос ХОЙШ — архивын бичилт таслагдахгүй');
+
+  assert.ok(S.includes('const deny = authz(by, me'),
+    'hyanaltStore.recheck: authz алга — дахин шалгалтаар тойрч гарна');
+
+  /* ⚠️ FAIL-CLOSED: `bypass` нь ил хүсэгдэх ёстой, анхдагчаар НЭЭЛТТЭЙ биш */
+  assert.ok(/bypass\?: boolean;/.test(S) && /a\.bypass === true/.test(S),
+    'hyanaltStore: bypass нь fail-closed биш — шалгуур анхдагчаар тойрогдоно');
+
+  /* ⚠️ `me` (ACL түлхүүр) ба `who` (бичигдэх дэлгэцийн нэр) ХОЛИХГҮЙ:
+     `who` нь `fullName` тул давхардаж, солигдож болно — эрхийн шалгуурт
+     хэрэглэвэл нэрээр эрх гоожино. */
+  const G = fs.readFileSync('src/modules/Guitsetgel.tsx', 'utf8');
+  assert.ok(/me=\{user\?\.username\}/.test(G),
+    'Guitsetgel: me (username) дамжуулагдаагүй — authz хэнийг ч танихгүй');
+  assert.ok(!/me=\{who\}/.test(G),
+    'Guitsetgel: me нь who (дэлгэцийн нэр)-гоор дамжсан — ACL нэрээр гоожно');
+}
+console.log('✅ ШИЙДВЭР — домэйн түвшинд шалгагдана, архивлалтаас ӨМНӨ, fail-closed');
 
 console.log('\nacl: ok — fail-closed · шат=томилгоо · нэг аккаунт нэг шат · tombstone · дараалал · харагч');
