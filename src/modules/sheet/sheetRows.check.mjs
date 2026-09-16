@@ -30,10 +30,22 @@ console.log('✅ sheetRows.bagts = pkg.group (label биш)');
 /* ── 2. bagtsKey: label ба group нь ЯЛГААТАЙ түлхүүр ── */
 const { bagtsKey, buildingKey } = await import('@/lib/services.ts');
 const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
-for (const p of PKGS) {
+/**
+ * ⚠️ ЗӨВХӨН ОЛОН ХУУДАСТАЙ БАГЦАД (2026-09-16). Давхардлын эрсдэл нь нэг
+ *    багц ХЭД ХЭДЭН хуудастай (9F · 12F) үед л үүснэ — тэнд `label` нь
+ *    давхраараа ялгагдах ЁСТОЙ, эс бөгөөс `PkgProg`-д блок давхардана.
+ *
+ *    Нэмэлт багцууд (5.x · 6.x · 10) нь давхраар салдаггүй тул хуудас ГАНЦ
+ *    бөгөөд `label === group` — давхардах зүйл байхгүй.
+ */
+const multi = PKGS.filter((x) => PKGS.filter((y) => y.group === x.group).length > 1);
+assert.ok(multi.length >= 6, `олон хуудастай багц дор хаяж 6 байх ёстой, олдсон: ${multi.length}`);
+for (const p of multi) {
   assert.notEqual(bagtsKey(p.group), bagtsKey(p.label),
     `${p.key}: group ба label нэг түлхүүрт нийлэв — buildingKey давхардлыг барихгүй`);
 }
+
+
 /* Нэг багцын 9F ба 12F хуудас ИЖИЛ group-тэй тул ижил түлхүүр — санаатай */
 const b2 = PKGS.filter((p) => p.group === 'Багц 2');
 assert.equal(b2.length, 2, 'Багц 2-т 2 хуудас байх ёстой');
