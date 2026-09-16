@@ -590,8 +590,23 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 
 /* ══════════ Нэг ажил ══════════ */
 
-function Item({ work, stage, who, onFix, readOnly, isSuper }: {
+function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   work: Work; stage: Stage; who: string; onFix: () => void;
+  /**
+   * ЭРХИЙН ШАЛГУУРЫН ХЭРЭГЛЭГЧИЙН НЭР (ArcGIS username).
+   *
+   * ⚠️ `who`-ГООС ТУСДАА (2026-09-16-ны аудит): `who` нь ArcGIS-д
+   *    БИЧИГДЭХ дэлгэцийн бүтэн нэр (давхардаж, солигдож болно), энэ нь
+   *    ACL-ийн ТҮЛХҮҮР. `hyanaltStore.authz` нь домэйн түвшинд түүгээр
+   *    шат ба багцын хүрээг шалгана — UI-ийн `readOnly`/`mine` нь
+   *    зурагдалтын шийдвэр тул консолын дуудлагыг барьдаггүй байв.
+   */
+  me?: string;
+  /**
+   * Домэйн шалгуурыг ТОЙРУУЛАХ — нэвтрэлт унтраалттай (дев) эсвэл админ
+   * шатаа ил сонгосон үед. ⚠️ Эс бөгөөс тэр хоёр орчинд хяналт ажиллахгүй.
+   */
+  bypass?: boolean;
   /**
    * Системийн админ уу (`resolveFlowStage().canPick`).
    *
@@ -737,6 +752,12 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
       decision,
       reason: decision === DECISION.return ? badText() : reason,
       who,
+      /* ⚠️ `me` нь ЭРХИЙН түлхүүр (ArcGIS username), `who` нь БИЧИГДЭХ
+         дэлгэцийн нэр — хоёр өөр зорилго (`hyanaltStore.authz`). */
+      me,
+      /* ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл админ шатаа ил сонгосон үед л
+         домэйн шалгуурыг тойруулна — эс бөгөөс тэр хоёр орчинд ажиллахгүй. */
+      bypass,
     }));
 
   const reviewing =
@@ -877,13 +898,13 @@ function Item({ work, stage, who, onFix, readOnly, isSuper }: {
                   />
                   <div className={s.row}>
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass))}>
                       {stage === 'manager'
                         ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
                         : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy, me, bypass))}>
                       {stage === 'manager'
                         ? tr('Асуудал байна — инженерт буцаах')
                         : tr('Асуудал байна — компанид буцаах')}
@@ -1283,7 +1304,7 @@ export function Guitsetgel() {
                       : tr('Хүлээгдэж буй ажил алга.')}
                 </div>
               ) : (
-                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)
+                mine.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)
               )}
             </div>
 
@@ -1297,7 +1318,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{inReview.length}</span>
                     </div>
                     {inReview.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
+                      <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1308,7 +1329,7 @@ export function Guitsetgel() {
                       <span className={s.groupCount}>{done.length}</span>
                     </div>
                     {done.map((w) => (
-                      <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
+                      <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
                     ))}
                   </div>
                 )}
@@ -1320,7 +1341,7 @@ export function Guitsetgel() {
                     <span>{tr('Бусад ажил')}</span>
                     <span className={s.groupCount}>{others.length}</span>
                   </div>
-                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)}
+                  {others.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />)}
                 </div>
               )
             )}

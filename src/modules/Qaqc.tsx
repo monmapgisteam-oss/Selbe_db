@@ -205,9 +205,34 @@ export function Qaqc() {
    * ⚠️ `pkg`-ЭЭС ХАМААРНА тул түүний ДАРАА тодорхойлогдоно — багц солиход
    *    дахин бодогдох ёстой.
    */
+  /**
+   * ⚠️ `null` = ХЯЗГААРГҮЙ, `[]` = ЮУ Ч БИШ (2026-09-16-ны аудит).
+   *
+   * Урьд нь `(qaqcScope(...) ?? []).includes(pkg.group)` байсан нь `null`-ыг
+   * `[]` болгож, «бүх багц» хуваарилагдсан хүнд `.includes` нь ҮРГЭЛЖ `false`
+   * буцаадаг байв — тэр хүн ямар ч багц дээр засаж чаддаггүй.
+   *
+   * ⚠️ ЭНЭ НЬ АНХДАГЧ ЗАМ байсан тул нөлөө нь бүрэн: эрх олгох ХОЁР
+   *    стандарт зам хоёулаа `[ALL_BAGTS]` бичдэг —
+   *      · `QaqcAcl.tsx` «нэмэх» → `setQaqcAssign(add, [ALL_BAGTS])`
+   *      · `UserAdmin.tsx` эрхийн унтраалга → багцгүй хүнд `[QAQC_ALL_BAGTS]`
+   *    улмаар `qaqcScope` нь `null` буцаана. Панелд эрх ОЛГОГДСОН гэж
+   *    харагдаж, хуудас нээгдэж, гэвч ITP багана засагдахгүй байлаа.
+   *
+   * ⚠️ `unrestricted` нь ЗӨВХӨН `authStatus === 'off'` ба хатуу `super`-ыг
+   *    хамардаг — «бүх багц» хуваарилагдсан ЖИРИЙН аккаунтыг хамардаггүй.
+   *
+   * ⚠️ Гурван хөрш модуль ЯГ зөв байсан (`Huvaari.tsx` `inScope`,
+   *    `FillNew.tsx` `sc0 === null || …`, `chanarAcl.ts`) — QAQC л хоцорсон.
+   *    Шинэ хэрэглэгч нэмэхдээ тэдгээрийн хэлбэрийг ДАГА.
+   */
   const canEdit = useMemo(
-    () => hasCap(user?.username, 'qaqc')
-      && (unrestricted || (qaqcScope(user?.username) ?? []).includes(pkg.group)),
+    () => {
+      if (!hasCap(user?.username, 'qaqc')) return false;
+      if (unrestricted) return true;
+      const sc = qaqcScope(user?.username);
+      return sc === null || sc.includes(pkg.group);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, capN, aclN, unrestricted, pkg.group],
   );

@@ -64,6 +64,36 @@ const sharingUrl = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
  */
 const ATTEMPT_KEY = 'selbe-auth-attempt';
 
+/**
+ * `ATTEMPT_KEY`-ИЙН ХАМГААЛАГДСАН ХАНДАЛТ (2026-09-16-ны аудит).
+ *
+ * ⚠️ ЯАГААД ЗААВАЛ: хатуу нууцлалтай хөтөч (Firefox strict · Safari «бүх
+ *    cookie хаах» · байгууллагын «сайтын өгөгдөл хаах» бодлого) нь
+ *    `sessionStorage`-д хандахад ЗҮГЭЭР `null` буцаадаггүй, ШИДДЭГ.
+ *
+ * ⚠️ НӨЛӨӨ нь бүх апп: доорх дуудлагууд нэвтрэлтийн эффект ба «Нэвтрэх»
+ *    товчны дотор байдаг тул шидсэн алдаа нь порталыг бүхэлд нь root
+ *    ErrorBoundary-ийн бүтэн дэлгэцийн алдаа болгож, ХЭН Ч НЭВТРЭЖ
+ *    ЧАДАХГҮЙ болно. `signIn`-д бүр хоёр дахин: `try`-д шидээд `catch`-д
+ *    дахин шидэж, баригдаагүй promise болж гардаг байв.
+ *
+ * ⚠️ Энэ хамгаалалт `Root.tsx` (2026-09-15), `AgentChat`, `permissions`,
+ *    `caps`, `guitsetgelAcl`, `scopedAcl`-д АЛЬ ХЭДИЙН хийгдсэн байсан ч
+ *    БҮХ ЗАМЫГ гаталдаг ЭНЭ файл мартагдсан байв.
+ *
+ * ⚠️ Уншилт унавал `null` (=«оролдлого байгаагүй») — тэр нь зөв fallback:
+ *    хамгийн ихдээ нэг удаагийн алдааны мессеж харагдахгүй, нэвтрэлт нь
+ *    ХЭВЭЭР ажиллана.
+ */
+const attemptGet = (): string | null => {
+  try { return sessionStorage.getItem(ATTEMPT_KEY); } catch { return null; }
+};
+const attemptSet = () => {
+  try { sessionStorage.setItem(ATTEMPT_KEY, '1'); } catch { /* хатуу нууцлал */ }
+};
+const attemptClear = () => {
+  try { sessionStorage.removeItem(ATTEMPT_KEY); } catch { /* хатуу нууцлал */ }
+};
 const describe = (e: unknown): string => {
   if (e instanceof Error) {
     const d = (e as { details?: { message?: string; httpStatus?: number } }).details;
@@ -197,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
         if (!alive) return;
-        sessionStorage.removeItem(ATTEMPT_KEY);
+        attemptClear();
         setUser(info);
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
@@ -207,8 +237,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (notAuthed) console.debug('[selbe] нэвтрээгүй байна (хэвийн):', e);
         else console.error('[selbe] нэвтрэлт шалгах үед:', e);
         if (!alive) return;
-        const wasAttempt = sessionStorage.getItem(ATTEMPT_KEY);
-        sessionStorage.removeItem(ATTEMPT_KEY);
+        const wasAttempt = attemptGet();
+        attemptClear();
         if (wasAttempt) setError(describe(e));
         setStatus('signed-out');
       } finally {
@@ -282,7 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     setError(null);
-    sessionStorage.setItem(ATTEMPT_KEY, '1');
+    attemptSet();
     try {
       // ⚠️ OAuthInfo бүртгэл дуусахыг хүлээнэ — эрт дарахад redirect алдагдах race-аас сэргийлнэ
       await oauthReadyRef.current;
@@ -291,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await esriId.getCredential(sharingUrl());
     } catch (e) {
       console.error('[selbe] нэвтрэх үед:', e);
-      sessionStorage.removeItem(ATTEMPT_KEY);
+      attemptClear();
       setError(describe(e));
     }
   };
