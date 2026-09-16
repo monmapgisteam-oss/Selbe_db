@@ -346,7 +346,6 @@ export function AuthNotice() {
   return (
     <div className={s.screen}>
       <div className={s.card}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt="" className={s.logo} />
         <div className={s.title}>{tr('Сэлбэ портал')}</div>
 
@@ -355,7 +354,6 @@ export function AuthNotice() {
             {user && (
               <div className={s.user}>
                 {user.thumbnail && (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={user.thumbnail} alt="" className={s.avatar} />
                 )}
                 <div style={{ textAlign: 'left' }}>

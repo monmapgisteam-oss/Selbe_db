@@ -10,7 +10,9 @@
   display: grid;
   grid-template-columns: minmax(280px, 30%) 1fr;
   gap: 12px;
+  /* ⚠️ `dvh` — гар утасны хаягийн барыг дагана (2026-09-16). */
   height: calc(100vh - 190px);
+  height: calc(100dvh - 190px);
   min-height: 420px;
 }
 
@@ -208,7 +210,10 @@
 @media (max-width: 900px) {
   /* ⚠️ Нарийн дэлгэцэнд ХООРОНДОО — хоёр багана 280px-ээс доош шахагдвал
      ажлын нэр бүрэн таслагдана. */
-  .wrap { grid-template-columns: 1fr; height: auto; }
+  /* ⚠️ `min-height` ЦУЦЛАНА (2026-09-16): `height: auto` болгосон ч 420px
+     хүчээр барьсаар байсан тул гар утас ХЭВТЭЭ байрлалд (өндөр ≈380px)
+     агуулга дэлгэцээс халина. */
+  .wrap { grid-template-columns: 1fr; height: auto; min-height: 0; }
   .list { max-height: 40vh; }
 }
 

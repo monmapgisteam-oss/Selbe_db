@@ -139,7 +139,6 @@ export function Home({
       {/* ── Дээд навигацийн зурвас — лого · цэс · нэвтрэлт ── */}
       <header className={s.navbar}>
         <div className={s.brand}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="" className={s.logo} />
           <span className={s.brandDivider} aria-hidden />
           <span className={s.brandText}>
@@ -236,7 +235,6 @@ export function Home({
             <>
               <span className={s.userChip}>
                 {user.thumbnail ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={user.thumbnail} alt="" className={s.avatar} />
                 ) : (
                   <span className={s.avatarFallback} aria-hidden>{initials(user.fullName)}</span>

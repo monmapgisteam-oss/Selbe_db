@@ -2181,7 +2181,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     if (!n) return null;
     return { pct: sum / n, blocks: n, label: `${others[0].floors}F` };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bp, pkg.group, pkg.key, sc]);
 
   const pkgPct = useMemo(() => {
@@ -2207,7 +2206,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       ? avg(computeAll(rowsAll, nBld, asOf, {}, {}, hasObyem, planPct))
       : draft;
     return { saved, draft, blocks };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount]);
 
   /* ══════════ ХУВААЛЦСАН НООРОГ — ОРОЛЦОГЧ ба «ИЛГЭЭХ»-ИЙН ТҮГЖЭЭ ══════════
@@ -2287,7 +2285,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       else if (meKey && mineRef.current.has(k)) bump(meKey);
     }
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, byMap, meKey]);
 
   /** Өөрөө «дуусгасан» гэж тэмдэглэсэн эсэх — товч «Дахин засах» болно */
@@ -3313,7 +3310,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteTick, pkg.key]);
 
   /**
@@ -3432,7 +3428,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
     timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
     return () => { alive = false; if (timer) clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, noEdit, sc, rows.length, pkg.key]);
 
   /**
@@ -3474,7 +3469,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteTick, remoteState, pvDirty, pkg.key]);
 
   /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */

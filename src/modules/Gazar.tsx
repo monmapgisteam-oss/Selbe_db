@@ -804,7 +804,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       pRight: toItems(pRight, P.fields.right, 'n', tr('нэгж')),
       pUse: toItems(pUse, P.fields.landuse, 'n', tr('нэгж')),
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aoiKey]);
 
   const d = q.state === 'ready' ? q.data : null;
@@ -970,13 +969,13 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           clearToken={clearToken}
         />
 
-        /*
+        {/*
          * ⚠️ ТАЛБАР ЗАСАХ ОРОХ ЦЭГ ХАСАГДСАН (2026-09-15, хэрэглэгчийн
          *    заавар: «талбар засах хэрэггүй шүү» — `tailan` салбар).
          *    `GazarEdit`, `parcelEdit`, `gazar` эрх нь ХЭВЭЭР үлдсэн —
          *    сэргээвэл энэ блокийг буцааж, `viewEdit.check.mjs`-ийн §5-д
          *    «Газар»-ыг дахин нэмнэ.
-         */
+         */}
 
         {/* ⚠️ 2026-08-20: Урьд нь ЭНД зөвхөн 2D/3D/BIM + «Полигон зурах» байв —
             Давхарга ч, Тунгалаг ч, Бүс ч байхгүй тул кадастрын гурван давхаргаас

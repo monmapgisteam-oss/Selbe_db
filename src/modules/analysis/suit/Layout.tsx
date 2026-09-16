@@ -18,13 +18,35 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
   const shell = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
-  // Хадгалсан өргөнийг сэргээх
+  /**
+   * Хадгалсан өргөнийг сэргээх.
+   *
+   * ⚠️ 2026-09-16: урьд нь хадгалсан утгыг ШУУД `setProperty`-д дамжуулдаг байв.
+   * Хоёр занга:
+   *   (1) `try/catch` нь зөвхөн эвдэрсэн JSON-ыг барьдаг — хүчинтэй JSON боловч
+   *       буруу утга (`{"--left-w":"abc"}`) чимээгүй нэвтэрч CSS-д `abc` бичигдэнэ.
+   *   (2) ХЯЗГААР шалгагддаггүй байсан: ширээн дээр 620+620 болгож чирээд ГАР
+   *       УТСААР нээхэд 1245px хатуу багана сэргэж, газрын зураг (`1fr`) 0px
+   *       болж ArcGIS `MapView` ЧИМЭЭГҮЙ хоосон зурагддаг байв.
+   * `SplitGrip.parseSides`-ийн батлагдсан загвар — хэлбэр ба муж хоёуланг нь
+   * шалгана, хязгаар нь чирэлттэй ИЖИЛ (`PANEL_MIN`…`PANEL_MAX`).
+   */
   useEffect(() => {
     if (!shell.current) return;
-    try {
-      const saved = JSON.parse(localStorage.getItem(PANEL_KEY) || '{}') as Record<string, string>;
-      for (const [k, v] of Object.entries(saved)) shell.current.style.setProperty(k, v);
-    } catch { /* хадгалсан утга гэмтсэн бол анхныг нь ашиглана */ }
+    let saved: unknown;
+    try { saved = JSON.parse(localStorage.getItem(PANEL_KEY) || '{}'); } catch { return; }
+    if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return;
+    const src = saved as Record<string, unknown>;
+    for (const k of Object.keys(DEFAULTS)) {
+      const v = src[k];
+      if (typeof v !== 'string') continue;
+      /* `330px` хэлбэрийг ЗААВАЛ шаардана — `%`, `calc()`, хог мөрийг хаяна */
+      const m = /^(d+(?:.d+)?)px$/.exec(v.trim());
+      if (!m) continue;
+      const n = Number(m[1]);
+      if (!Number.isFinite(n) || n < PANEL_MIN || n > PANEL_MAX) continue;
+      shell.current.style.setProperty(k, `${Math.round(n)}px`);
+    }
   }, []);
 
   const save = () => {

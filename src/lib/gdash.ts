@@ -1108,8 +1108,10 @@ export type Kpi = {
  */
 export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | null = null): Kpi {
   let budget = 0;
+  /* ⚠️ `wTop` (жинлэсэн дунджийн хүртвэр) ХАСАГДСАН (2026-09-16): гүйцэтгэлийн
+     хувь нь `stagePct` буюу ӨӨР эхээс ирдэг болсон (2026-09-08) тул бодогдоод
+     хэзээ ч уншигддаггүй үлдэгдэл байв. `wSum` нь ХАМРАЛТАД хэрэгтэй хэвээр. */
   let wSum = 0;
-  let wTop = 0;
   const types = new Set<string>();
 
   for (const r of rows) {
@@ -1124,10 +1126,10 @@ export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | nul
      */
     if (r.inTotal) budget += r.cost;
     if (r.type) types.add(r.type);
-    /* ⚠️ Хэмжигдээгүй ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ */
+    /* ⚠️ Хэмжигдээгүй ажил ХАМРАЛТАД орохгүй — `progress == null` нь «мэдээлэлгүй»
+       гэсэн үг бөгөөд 0 гүйцэтгэлтэй ИЖИЛ БИШ. */
     if (r.inTotal && r.progress != null && r.cost > 0) {
       wSum += r.cost;
-      wTop += (r.cost * r.progress) / 100;
     }
   }
 

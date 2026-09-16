@@ -144,8 +144,17 @@ const INFRA_PACKS: Pack[] = buildPacks(null).filter((x) => {
  * жагсаалт өөрөө дагана. Давхаргын дугаар нь үйлчилгээ өөрчлөгдөхөд
  * шилждэг тул `infra:1` гэж бичих нь хамгийн эмзэг сонголт байх байв.
  */
-const WELL_IDS = DED_BUTETS_LAYER_IDS.filter(
-  (id) => /^Багц .*· Бохир худаг$/.test(LAYER_BY_ID[id]?.title ?? ''),
+/*
+ * ⚠️ 2026-09-16 ЗАСВАР: шүүлт нь КИРИЛЛ regex байв (`/^Багц .*· Бохир худаг$/`).
+ * Гэтэл `LAYER_BY_ID[id].title` нь `services.ts`-д МОДУЛЬ АЧААЛАХ ҮЕД `tr()`-ээр
+ * орчуулагддаг тул en горимд «Package 5.1 · sewer chambers» болж, regex НЭГ Ч
+ * давхаргатай таарахгүй → `WELL_IDS = []` → KPI чимээгүй ТЭГ. Яг 9 сарын 14-ний
+ * `cntOf(t, "et:3")` алдааны давталт. Одоо суффиксийг `tr()`-ЭЭР ЗОХИОНО —
+ * толинд орчуулга нь нэгэн ижил тул аль ч хэлэнд таарна.
+ */
+const WELL_SUFFIX = `· ${tr('Бохир худаг')}`;
+const WELL_IDS = DED_BUTETS_LAYER_IDS.filter((id) =>
+  (LAYER_BY_ID[id]?.title ?? '').endsWith(WELL_SUFFIX),
 );
 
 if (process.env.NODE_ENV !== 'production' && WELL_IDS.length === 0) {
@@ -326,9 +335,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * алдааных нь хугацаагүй үлддэг байв — хэрэглэгч дараагийн үйлдлээ хийхэд
    * хуучин алдаа зурагт өлгөөтэй хэвээр, аль үйлдлийнх нь болох нь мэдэгдэхгүй.
    */
+  /* ⚠️ Таймерыг ref-д барина: цэвэрлэхгүй үлдээвэл хэрэглэгч 4 секунд дотор өөр
+     харагдац руу шилжихэд салсан бүрэлдэхүүн дээр `setSaved` дуудагдана
+     (2026-09-16). Мөн дараалсан toast хуучин таймераа тэглэнэ — эс тэгвээс
+     эхнийх нь хугацаа дуусахад ХОЁР ДАХЬ мэдэгдэл эрт арилна. */
+  const toastTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
   const toast = useCallback((msg: string) => {
     setSaved(msg);
-    window.setTimeout(() => setSaved(''), 4000);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setSaved(''), 4000);
   }, []);
 
   /**

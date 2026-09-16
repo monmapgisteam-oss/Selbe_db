@@ -495,28 +495,39 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
   if (!rows.length) return [];
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  const res = await fetch(`${url}/queryAttachments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      f: 'json',
-      objectIds: rows.map((x) => x.oid).join(','),
-      attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
-      token: auth.token,
-    }),
-  });
-  /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана */
-  const j = await res.json() as {
-    error?: { message?: string };
-    attachmentGroups?: {
-      parentObjectId: number;
-      attachmentInfos?: { id: number; name?: string; contentType?: string }[];
-    }[];
-  };
-  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+  /* ⚠️ БАГЦЛАН асууна (2026-09-16). Урьд нь БҮХ oid нэг хүсэлтэд орж байв:
+     ArcGIS нь `attachmentGroups`-ыг `maxRecordCount`-оор ЧИМЭЭГҮЙ тасалдаг тул
+     үзлэг олон болоход слайдер «12 зураг» гэж харуулж, бодит 40-ийн 28 нь алга
+     болдог — тайралтыг заасан туг Ч БАЙХГҮЙ. 100-гийн багц нь серверийн
+     анхдагч хязгаараас доогуур. */
+  const OID_BATCH = 100;
+  const groups: {
+    parentObjectId: number;
+    attachmentInfos?: { id: number; name?: string; contentType?: string }[];
+  }[] = [];
+  for (let i = 0; i < rows.length; i += OID_BATCH) {
+    const chunk = rows.slice(i, i + OID_BATCH);
+    const res = await fetch(`${url}/queryAttachments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        f: 'json',
+        objectIds: chunk.map((x) => x.oid).join(','),
+        attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
+        token: auth.token,
+      }),
+    });
+    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана */
+    const j = await res.json() as {
+      error?: { message?: string };
+      attachmentGroups?: typeof groups;
+    };
+    if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+    groups.push(...(j.attachmentGroups ?? []));
+  }
   const byOid = new Map(rows.map((x) => [x.oid, x]));
   const out: (UzPhoto & { d: number })[] = [];
-  for (const g of j.attachmentGroups ?? []) {
+  for (const g of groups) {
     const r = byOid.get(g.parentObjectId);
     if (!r) continue;
     for (const a of g.attachmentInfos ?? []) {
@@ -563,7 +574,7 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
           type="button"
           className={h.slideNav}
           disabled={n < 2}
-          onClick={() => setIdx((cur - 1 + n) % n)}
+          onClick={() => setIdx((i) => (Math.min(i, n - 1) - 1 + n) % n)}
           aria-label={tr('Өмнөх зураг')}
         >
           ‹
@@ -577,7 +588,7 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
           type="button"
           className={h.slideNav}
           disabled={n < 2}
-          onClick={() => setIdx((cur + 1) % n)}
+          onClick={() => setIdx((i) => (Math.min(i, n - 1) + 1) % n)}
           aria-label={tr('Дараагийн зураг')}
         >
           ›

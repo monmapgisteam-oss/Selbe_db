@@ -148,7 +148,11 @@ function useTip() {
 function Tip({ x, y, label, value, color, hint }: TipData) {
   // Цонхны ирмэгээс хальтал эсрэг тал руу эргэнэ (хэмжээг нь мэдэхгүй тул
   // хамгийн өргөн боломжит утгаар бариулна — `max-width` нь 260px)
-  const flipX = x > window.innerWidth - 280;
+  /* ⚠️ `typeof window` хамгаалалт (2026-09-16): төсөл нь `output: export` тул
+     энэ мөр серверт ажиллах боломж бий. Tooltip нь hover-ийн дараа л зурагддаг
+     тул одоогоор хүрэхгүй ч хамгаалалтгүй хэв маяг үлдээхгүй. */
+  const vw = typeof window === 'undefined' ? 1280 : window.innerWidth;
+  const flipX = x > vw - 280;
   const flipY = y < 110;
   const c = color ?? 'var(--data)';
   return (
@@ -177,7 +181,6 @@ function Tip({ x, y, label, value, color, hint }: TipData) {
             /* ⚠️ Түлхүүр нь ИНДЕКСЭЭР: зураас олон удаа давтагдаж болох тул
                утгыг нь түлхүүр болговол React давхардсан түлхүүр гэж
                гомдоллоно. Жагсаалт нь дахин эрэмбэлэгддэггүй тул аюулгүй. */
-            // eslint-disable-next-line react/no-array-index-key
             ? <i key={`hr${i}`} className={s.tipRule} aria-hidden />
             : <span key={h} className={s.tipHint}>{h}</span>
         ))}

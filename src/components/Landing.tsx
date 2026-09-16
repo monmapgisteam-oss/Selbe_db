@@ -29,7 +29,6 @@ export function Landing() {
 
       {/* ── Зүүн дээд: лого · Баруун дээд: нэвтрэх ── */}
       <header className={s.top}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt={tr('Сэлбэ')} className={s.logo} />
         <button type="button" className={s.enter} onClick={signIn} disabled={busy}>
           {busy ? tr('Шалгаж байна…') : tr('Нэвтрэх')}

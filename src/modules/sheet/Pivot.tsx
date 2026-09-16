@@ -525,7 +525,6 @@ export default function Pivot() {
       "\n" + tr('Сэргээх үү?');
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(bagts, ognoo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, rows, buildings, bagts, ognoo]);
 
   // Persist: pending өөрчлөгдөх бүрд draft-ыг шинэчилнэ. Хоосон болоход
@@ -545,7 +544,6 @@ export default function Pivot() {
       if (r) cells.push([`${rowKey(r)}|${k.slice(i + 1)}`, v]);
     }
     if (cells.length) saveDraftLS({ t: Date.now(), bagts, ognoo, cells });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, rows, bagts, ognoo]);
 
   // Close-guard: нийтлэгдээгүй засвар эсвэл хавсаргаагүй зурагтай үед таб
@@ -1597,7 +1595,6 @@ export default function Pivot() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={attachmentUrl(aFid, a.id)}
                                 alt={a.name}
@@ -1616,7 +1613,6 @@ export default function Pivot() {
                         ))
                       : local.map((f, i) => (
                           <div key={i} className={st.imgCell}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={f.url}
                               alt={f.file.name}

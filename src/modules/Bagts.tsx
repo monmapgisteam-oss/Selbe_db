@@ -893,6 +893,5 @@ function usePkgTotals(ids: string[]): Async<{ title: string; n: number; qty: str
       }
       return p;
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }

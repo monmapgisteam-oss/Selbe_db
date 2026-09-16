@@ -4012,6 +4012,7 @@ const en: Record<string, string> = {
   "Багц 11 · гадна ус хангамжын цагираг системийн худаг": "Package 11 · water ring main chambers",
   "Багц 13 · 2000м3 усан сан": "Package 13 · 2,000 m³ reservoir",
   "Багц 15 · Насос станцын өргөтгөлийн барилга": "Package 15 · pump station extension building",
+  "Бохир худаг": "sewer chambers",
   "Багц 5.1 · Бохир худаг": "Package 5.1 · sewer chambers",
   "Багц 5.1 · Лотки": "Package 5.1 · cable trays",
   "Багц 5.1 · Бохир шугам": "Package 5.1 · sewer pipeline",

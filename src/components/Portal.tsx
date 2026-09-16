@@ -256,7 +256,6 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
       }}
     >
       <style>{'@keyframes selbeSpin{to{transform:rotate(360deg)}}@keyframes selbePulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/logo.svg" alt="" width={60} height={60} style={{ animation: 'selbePulse 1.8s ease-in-out infinite' }} />
       <div style={{
         width: 40, height: 40, borderRadius: '50%',
@@ -633,7 +632,6 @@ function PortalContent(
             disabled={!onHome}
             title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className={s.logo} />
             {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДАВ (хэрэглэгчийн хүсэлт) — толгойд
                 зөвхөн брэндийн нэр үлдэнэ. `brandText`-ийг хэвээр үлдээв: логоны

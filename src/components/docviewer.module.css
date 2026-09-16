@@ -16,7 +16,10 @@
   display: flex;
   flex-direction: column;
   width: 94vw;
+  /* ⚠️ `dvh` (2026-09-16) — гар утсан дээр `vh` нь хаягийн барыг тооцдоггүй
+     тул баримтын доод хэсэг ба хаах товч барын ард үлддэг байв. */
   height: 92vh;
+  height: 92dvh;
   max-width: 1400px;
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
@@ -150,6 +153,7 @@
 @media (max-width: 720px) {
   .side { width: 168px; }
   .modal { width: 96vw; height: 94vh; }
+  .modal { height: 94dvh; }
 }
 
 /*

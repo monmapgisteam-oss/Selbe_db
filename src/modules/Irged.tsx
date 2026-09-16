@@ -241,14 +241,12 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Урьд нь ХОЁР `queryCount` явдаг байсныг НЭГ `groupBy` болгов: хүсэлт
    *    цөөрөөд талбайн мэдээлэл нэмэгдэв.
    */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const qBuilt = useAsync(loadGerBuilt, []);
 
   /**
    * ТӨЛӨВЛӨСӨН НИЙГМИЙН БАЙГУУЛАМЖ — АМЬД хүчин чадал (`Huchin_chadal`).
    * ⚠️ Урьд нь «Дараа» талын БҮХ тоо `brief.ts`-ийн хатуу мөрөөс гардаг байв.
    */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const qSoc = useAsync(loadSocPlanned, []);
 
   /**
@@ -261,9 +259,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Хоёулаа `cached` тул НЭМЭЛТ хүсэлт үүсэхгүй: `loadHeadline`-ыг
    * `HeadKpi` аль хэдийн дуудсан, `loadHousing` нь нүүр/тайлантай дундаа.
    */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const qHead = useAsync(loadHeadline, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const qHousing = useAsync(loadHousing, []);
 
   /** `BENEFITS[].live` → амьд тоо. Хараахан ирээгүй бол `null` (хатуу утга үлдэнэ). */

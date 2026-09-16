@@ -577,10 +577,18 @@ const loadPhotos = (oid: number): Promise<Photo[]> => {
   if (!p) {
     p = fetch(`${HABEA.incident.url}/${oid}/attachments?f=json`)
       .then((r) => r.json())
-      .then((j: { attachmentInfos?: { id: number; contentType?: string; name?: string }[] }) =>
-        (j.attachmentInfos ?? [])
+      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана. Урьд нь
+         `{error:{…}}` ирэхэд `?? []` дамжиж «зураг алга» гэсэн ХУДАЛ хариу
+         болдог байв (2026-09-16). `habeaUzleg`-ийн зам үүнийг зөв хийдэг. */
+      .then((j: {
+        error?: { message?: string };
+        attachmentInfos?: { id: number; contentType?: string; name?: string }[];
+      }) => {
+        if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+        return (j.attachmentInfos ?? [])
           .filter((a) => String(a.contentType ?? '').startsWith('image/'))
-          .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id) })));
+          .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id) }));
+      });
     // ⚠️ АМЖИЛТГҮЙ амлалтыг кэшлэхгүй — үлдээвэл «дахин оролдох» хэзээ ч сэргэхгүй
     p.catch(() => photoCache.delete(oid));
     photoCache.set(oid, p);

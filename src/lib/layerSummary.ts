@@ -99,13 +99,18 @@ async function build(layerId: string): Promise<LayerSummary> {
       .filter((v) => v != null && v !== '');
     if (!vals.length) { empty.push(f.alias); continue; }
 
-    const isNum = vals.every((v) => typeof v === 'number' && Number.isFinite(v));
+    /* ⚠️ Төрлийг СХЕМЭЭС авна, утгаас ТААМАГЛАХГҮЙ (2026-09-16). Урьд нь
+       `vals.every(typeof v === 'number')` байв: Double талбарт нэг ч текст мөр
+       (жиш. «DN200») орвол бүтэн талбар текст гэж ангилагдаж, `min … max` ба
+       уртын нийлбэр АЛГА болж, оронд нь санамсаргүй 5 утга «чип» болж гардаг. */
+    const nums = vals.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    const isNum = f.kind === 'number' && nums.length > 0;
     if (isNum && !f.codes) {
-      const ns = vals as number[];
+      const ns = nums;
       fields.push({
         name: f.name,
         label: f.alias,
-        filled: vals.length,
+        filled: nums.length,
         top: null,
         num: {
           min: Math.min(...ns),

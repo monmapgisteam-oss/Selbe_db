@@ -630,7 +630,11 @@
   .side { display: flex; gap: 6px; padding: 8px 12px; border-right: none; border-bottom: 1px solid var(--line); }
   .sideHead { display: none; }
   .sideItem { width: auto; }
-  .main { padding: 0 16px; }
+  /* ⚠️ ДООД зай ХЭВЭЭР (2026-09-16): урьд нь `0 16px` байсан нь `.main`-ий
+     `padding-bottom: 24px`-ыг ЦУЦЛАЖ, нарийн дэлгэцэд сүүлийн карт ирмэгт
+     наалдан гүйлтийн ёроол таслагдаж байв — энэ нь яг тэр өмнө зассан
+     «доош гүйхгүй» алдааны нарийн дэлгэц дэх хувилбар. */
+  .main { padding: 0 16px 24px; }
   /*
    * ⚠️ `.saveBar` нь `.main`-ий дотоод зайг СӨРӨГ margin-аар нөхөж ирмэг рүү
    *   нааддаг (0 -24px ↔ padding 0 24px). Энэ таслалт дээр `.main` нь 16px

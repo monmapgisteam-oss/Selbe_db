@@ -711,7 +711,6 @@ export function SuitMap({
     bimWidgetRef.current = widget;
 
     return clear;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready]);
 
   /** Панелийг заагчийн хажууд, зургийн хүрээнээс гарахгүйгээр */
@@ -978,7 +977,6 @@ export function SuitMap({
       })
       .catch(() => {});
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bldFocus, ready]);
 
   /**

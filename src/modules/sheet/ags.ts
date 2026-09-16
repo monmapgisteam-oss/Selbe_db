@@ -28,7 +28,6 @@ export const base =
   "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function agsFetch(
   url: string,
   params: Record<string, string>,

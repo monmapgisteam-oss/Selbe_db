@@ -555,7 +555,6 @@ export function Huvaari() {
        шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
        болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
 
   const n = sc?.bld.length ?? 0;
@@ -1428,7 +1427,6 @@ export function Huvaari() {
       setPending(null);
       setLastDecision(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg.key, user, status]);
 
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);

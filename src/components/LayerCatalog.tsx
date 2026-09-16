@@ -173,9 +173,7 @@ export const LayerCatalog = memo(function LayerCatalog({
      харагдаж байгаа тул тоолуур түүнийг алгасвал зөрөлдөнө. */
   const forcedIds = [...(ALWAYS_ON_IDS as readonly string[]), ...(forced ?? [])];
   const forcedAll = forcedIds.filter((id) => all.includes(id));
-  const onCount = new Set(
-    [...visible.filter((id) => all.includes(id)), ...forcedAll],
-  ).size;
+  /* ⚠️ `onCount` нь ХАЙЛТЫН дараа бодогдоно — доороос харна уу. */
 
   /*
    * ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
@@ -198,6 +196,20 @@ export const LayerCatalog = memo(function LayerCatalog({
     return `${d?.title ?? ''} ${groupTitle}`.toLowerCase().includes(needle);
   };
 
+  /*
+   * ТОЛГОЙН «N асаалттай» — ХАЙЛТААР шүүгдсэн мөрүүдийн тоо (2026-09-16).
+   *
+   * ⚠️ Урьд нь шүүгдээгүй `all`-аас бодогдож байв: хайлтад таарахгүй ч
+   *    үргэлж асаалттай давхарга (`ALWAYS_ON_IDS`, `forced`) жагсаалтаас
+   *    АЛГА болсон хэрнээ тоолуурт үлдэж, «3 асаалттай» гэж уншаад ганц мөр
+   *    харагддаг байлаа — тоолуур ба жагсаалт зөрөлдөнө.
+   */
+  const shown = groups.flatMap((g) => g.ids.filter((id) => hit(id, g.title)));
+  const onCount = new Set([
+    ...visible.filter((id) => shown.includes(id)),
+    ...forcedAll.filter((id) => shown.includes(id)),
+  ]).size;
+
   return (
     <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
@@ -217,7 +229,7 @@ export const LayerCatalog = memo(function LayerCatalog({
         <div className={s.headText}>
           <span className={s.title}>{tr('Давхарга')}</span>
           <span className={s.sub}>
-            {num(all.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
+            {num(shown.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
             {totals.state === 'loading' && <> {tr('· тоолж байна…')}</>}
             {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
@@ -498,7 +510,6 @@ function FacetRows({
     const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
     return groups(rows, f.field, tr('Бүртгэгдээгүй'), ['n', 'q'])
       .sort((a, b) => b.values.n - a.values.n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
 
   // ⚠️ Алдааг ЧИМЭЭГҮЙ null болгохгүй (query.ts-ийн дүрэм) — дэд мөрүүд дуугүй

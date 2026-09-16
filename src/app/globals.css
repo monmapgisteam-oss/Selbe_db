@@ -214,7 +214,15 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/*
+ * ⚠️ `100dvh` (2026-09-16) — гар утасны хөтөч дээр `100%`/`100vh` нь хаягийн
+ * бар ХАРАГДАЖ байхад хүртэл БҮТЭН дэлгэцийн өндрөөр тооцогддог. Үр дүнд
+ * порталын доод зурвас (`overflow: hidden` тул гүйлгэх ч аргагүй) бар доор
+ * далд үлддэг. `dvh` нь бар нуугдах/гарахыг дагана. Эхний мөр нь fallback —
+ * `dvh` дэмжихгүй хуучин хөтөч түүн дээр үлдэнэ.
+ */
 html, body { height: 100%; }
+html, body { height: 100dvh; }
 
 body {
   background: var(--bg);
@@ -224,6 +232,10 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  /* ⚠️ Зүсэлттэй (notch) төхөөрөмжийн аюулгүй бүс — `viewportFit: 'cover'`-тэй
+     хосолж ажиллана (`layout.tsx`). Дэмжихгүй хөтчид `0px` унана. */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* Дэлгэц бага үед портал босоо байрлалтай болж, хуудас БОСООГООР гүйдэг болно.

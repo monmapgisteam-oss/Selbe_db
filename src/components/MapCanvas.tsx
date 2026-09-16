@@ -2727,7 +2727,10 @@ export const MapCanvas = memo(function MapCanvas({
       return n;
     };
     // Цэвэр DARK загвар (аппын design token) — хэвтээ ИКОН action-bar
-    const panel = mk('div', 'width:238px;padding:15px;display:flex;flex-direction:column;gap:12px;'
+    /* ⚠️ `min(…, 92vw)` (2026-09-16): тогтмол px нь 390px өргөнтэй утсанд газрын
+       зургийн ~61%-ийг халхалдаг байв. Виджет нь ArcGIS-ийн overlay тул CSS
+       media query-гээр гаднаас засах боломжгүй — өргөнийг ЭНД хязгаарлана. */
+    const panel = mk('div', 'width:min(238px, 92vw);padding:15px;display:flex;flex-direction:column;gap:12px;'
       + 'background:var(--surface);color:var(--ink);font-family:inherit');
     panel.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Шинжилгээ')));
     const bar = mk('div', 'display:flex;gap:6px');
@@ -2861,7 +2864,8 @@ export const MapCanvas = memo(function MapCanvas({
     let vAbort: AbortController | null = null;
     let vWatch: __esri.WatchHandle | null = null;
 
-    const panelV = mk('div', 'width:250px;padding:15px;display:flex;flex-direction:column;gap:11px;'
+    /* ⚠️ `min(…, 92vw)` — дээрх «Шинжилгээ» панелийн ижил шалтгаан. */
+    const panelV = mk('div', 'width:min(250px, 92vw);padding:15px;display:flex;flex-direction:column;gap:11px;'
       + 'background:var(--surface);color:var(--ink)');
     panelV.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Эзлэхүүн хэмжилт')));
     const vPlace = mk('button', 'width:100%;padding:9px;border-radius:8px;border:1px solid transparent;'
@@ -2932,7 +2936,8 @@ export const MapCanvas = memo(function MapCanvas({
 
     // ══════════ СЛАЙД ══════════
     const slides: Slide[] = [];
-    const panelS = mk('div', 'width:262px;padding:15px;display:flex;flex-direction:column;gap:11px;'
+    /* ⚠️ `min(…, 92vw)` — дээрх «Шинжилгээ» панелийн ижил шалтгаан. */
+    const panelS = mk('div', 'width:min(262px, 92vw);padding:15px;display:flex;flex-direction:column;gap:11px;'
       + 'max-height:72vh;overflow:auto;background:var(--surface);color:var(--ink)');
     panelS.append(mk('div', 'font-size:0.92rem;font-weight:700;color:var(--ink)', tr('Слайд')));
     const listDiv = mk('div', 'display:flex;flex-direction:column;gap:6px');

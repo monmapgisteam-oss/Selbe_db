@@ -43,7 +43,12 @@
 /* ── Гэрээний толгой (дэлгэх товч) ── */
 .gBtn {
   /* ⚠️ Бүтэн өргөнд дарагдах ёстой — товч нь мөр шиг ажиллана */
-  display: flex; align-items: center; gap: 10px; width: 100%;
+  /* ⚠️ `flex-wrap: wrap` (2026-09-16): элементүүдийн хамгийн бага өргөн ≈970px
+     (нэр + гүйцэтгэгч 260 + тэмдэглэгээ + гэрээт/олгосон дүн ×2 + тууз 118).
+     Урьд нь нэг мөрөнд хүчээр багтаж, 1180px-ээс доош `body{overflow-x:hidden}`
+     идэвхжихэд «олгосон» дүн ба хувийн тууз ТАЙРАГДАЖ, хүрэх арга үлддэггүй
+     байв. Эвхэгдэхэд хоёр мөр болж бүгд уншигдана. */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%;
   padding: 9px 12px; font: inherit; text-align: left;
   background: color-mix(in srgb, var(--ink) 3.5%, transparent);
   border: 0; cursor: pointer; color: var(--ink);
@@ -51,7 +56,12 @@
 .gBtn:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
 .caret { font-size: 10px; color: var(--ink-3); width: 10px; flex-shrink: 0; }
-.gTitle { font-weight: 650; white-space: nowrap; }
+/* ⚠️ Гэрээний нэр нь мөрийн ЦОРЫН ГАНЦ уян элемент — `min-width: 0` (flex-ийн
+   анхдагч `auto`-г цуцална) ба ellipsis-гүйгээр агшихгүй тул бусдыг түлхэнэ. */
+.gTitle {
+  font-weight: 650; white-space: nowrap;
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 .gMeta {
   color: var(--ink-3); font-size: 11.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -62,7 +72,9 @@
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 999px; padding: 1px 7px; white-space: nowrap;
 }
-.gSpacer { flex: 1 1 auto; }
+/* ⚠️ Түлхэгч нь эвхэгдсэн үед мөр ЭЗЛЭХГҮЙ (`flex-basis: 0`) — эс тэгвээс
+   хоёр дахь мөрийг дангаар нь эзэлж хоосон зурвас үлдээнэ. */
+.gSpacer { flex: 1 1 0; min-width: 0; }
 
 .gSum {
   display: inline-flex; align-items: baseline; gap: 5px;

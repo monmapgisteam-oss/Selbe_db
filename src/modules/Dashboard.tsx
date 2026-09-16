@@ -197,7 +197,6 @@ import { useBagtsTable, type BagtsRow } from '@/lib/execData';
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
 function useFinData(): Async<FinData> {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   return useAsync(loadFinData, []);
 }
 
@@ -363,21 +362,14 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const d: DashData = {
     bagts: useBagtsTable(),
     fin: useFinData(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     pkgProg: useAsync(loadPkgProgress, []),
     parcels: useLeftParcels(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     land: useAsync(loadLandStatus, []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     headline: useAsync(loadHeadline, []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     budget: useAsync(loadBudget, []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     social: useAsync(loadSocial, []),
     sources: useSources(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     prog: useAsync(loadBlockProgress, []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     hist: useAsync(loadBlockHistory, []),
     netTotals: usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS),
     powTotals: usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS),
@@ -1315,9 +1307,7 @@ export function HeadKpi({ bagts }: { bagts: Async<BagtsRow[]> }) {
   // ⚠️ Толгой/явцыг ЭНД амьдаар ачаална (prop-оор БИШ) — «Иргэдэд хүрэх үр өгөөж»
   //    (Irged.tsx) энэ мөрийг зөвхөн `bagts`-аар дахин ашиглана. loadHeadline/
   //    loadProjectProgress нь cached тул давхар хүсэлт үүсэхгүй.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const hq = useAsync(loadHeadline, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const pq = useAsync(loadFinData, []);
   const h = hq.state === 'ready' ? hq.data : null;
   /* ⚠️ 2026-08-21: Төсөл_Гүйцэтгэл_ хасагдаж, эх нь TASK_SHEET болов */

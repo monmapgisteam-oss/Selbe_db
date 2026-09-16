@@ -96,8 +96,10 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  height: 100vh;
-  max-height: 100vh;
+  /* ⚠️ Өндөр ЗААХГҮЙ (2026-09-16): `position: fixed; inset: 0` нь өөрөө
+     ХАРАГДАХ талбайн яг өндрийг өгдөг. Урьд нь нэмж бичсэн `height: 100vh`
+     нь гар утсан дээр visual viewport-оос ӨНДӨР болж, доод багаж зурвасыг
+     хаягийн барын ард оруулдаг байв — `inset` нь зөв, `vh` нь буруу. */
   margin: 0;
   padding: 10px 12px 12px;
   background: var(--bg);

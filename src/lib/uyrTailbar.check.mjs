@@ -33,7 +33,7 @@ const fd = {
     extent: { xmin: 0, ymin: 0, xmax: 400, ymax: 400 },
   },
   depth: (_s, i) => dep[i],
-  speed: (_s, i) => 0.5,
+  speed: () => 0.5,
   terrain: (i) => ter[i],
   /* Урсгал УРАГШ (v < 0) */
   u: () => 0,

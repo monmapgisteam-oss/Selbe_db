@@ -654,7 +654,6 @@ function LayerTypeCharts({
         ? { ...x, label: tr('Бүсэд хамаарахгүй') }
         : x))
       .sort((a, b) => b.values.n - a.values.n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, f.field, where]);
 
   // ⚠️ Ганц ангилалтай бол задаргаа биш — давхарга өөрөө. Чарт нэмэхгүй.
@@ -845,7 +844,6 @@ function LayerDashboard({
       : null;
 
     return { facets, byZone };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.id, where]);
 
   /**

@@ -676,7 +676,6 @@ export function Overlay({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flood, playing, drawFrame]);
 
   const flowLayerRef = useRef<MediaLayer | null>(null);

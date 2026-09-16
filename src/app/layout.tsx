@@ -90,9 +90,22 @@ export const metadata: Metadata = {
   },
 };
 
+/*
+ * ХАРАГДАХ ТАЛБАР (viewport).
+ *
+ * ⚠️ `viewportFit: 'cover'` (2026-09-16) — эс тэгвээс iPhone-ий «зүсэлт»
+ * (notch, Dynamic Island) ба доод заагчийн бүсэд хуудас ОГТ хүрэхгүй, дэлгэцийн
+ * дээд/доод талд хар зурвас үлддэг. `cover`-тэй хамт `env(safe-area-inset-*)`
+ * ажиллаж эхэлнэ — `globals.css` тэдгээрийг `body`-ийн padding-д хэрэглэнэ.
+ *
+ * ⚠️ `maximumScale`/`userScalable` ТАВИХГҮЙ: томруулахыг хориглох нь
+ * хараа муутай хэрэглэгчийг гацаана. Порталд нягт хүснэгт олонтой тул
+ * томруулах нь ЗАЙЛШГҮЙ хэрэгтэй.
+ */
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 };
 
 // Гэрэл асах анивчилтыг (FOUC) зайлуулах — React ачаалахаас өмнө горимоо тавина.
