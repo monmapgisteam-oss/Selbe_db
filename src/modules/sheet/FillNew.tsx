@@ -3513,14 +3513,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   /* ══════════ ИНЖЕНЕРИЙН ОБЬЁМЫН УРСГАЛ ══════════ */
 
-  /** Хүлээгдэж буй илгээлтийг татах — багц солигдох ба шийдвэрийн дараа */
+  /**
+   * Хүлээгдэж буй илгээлтийг татах — багц солигдох ба шийдвэрийн дараа.
+   *
+   * ⚠️ БАГЦЫН ХАМГААЛАЛТ ЗААВАЛ (2026-09-16-ны аудит). Хоёр дараалсан
+   *    `await` (`loadObyemPending` → `loadObyemPayload`) хамгаалалтгүй
+   *    байсан тул багц А-гийн ХОЦОРСОН хариу Б дээр буудаг байв:
+   *      · `locked={!!pvSub}` → Б-гийн «Төлөвлөсөн обьём» багана ЗАСАГДАХГҮЙ
+   *        болж, шалтгаан нь эндүү тайлбартай («А-гийн илгээлт» гэж)
+   *      · баннер А-гийн нүдний тоо ба илгээгчийг Б дээр харуулна
+   *      · `preview` нь А-гийн утгыг Б-гийн мөрүүд рүү ObjectID ТААРВАЛ
+   *        давхарлана (oid нь давхаргаар дараалсан тул тааралдана)
+   *    Гарах цорын ганц зам нь багц дахин солих эсвэл хуудас шинэчлэх байв.
+   *
+   * ⚠️ `loadedPkgRef` нь ЭНЭ файлд аль хэдийн байсан (мөр ~1326) бөгөөд
+   *    зургаан газарт хэрэглэгддэг — обьёмын урсгал нь хожим нэмэгдэж
+   *    гэрийн хэв маягийг АВААГҮЙ байлаа.
+   */
   const refreshObyem = useCallback(async () => {
+    const want = pkg.key;
     try {
-      const sub = await loadObyemPending(pkg.key);
+      const sub = await loadObyemPending(want);
+      if (loadedPkgRef.current !== want) return;
       setPvSub(sub);
       /* Батлагч бол агуулгыг нь урьдчилан харуулна */
       if (sub) {
         const pl = await loadObyemPayload(sub.oid);
+        if (loadedPkgRef.current !== want) return;
         setPvPreview(pl ? new Map(pl.cells) : null);
       } else {
         setPvPreview(null);
@@ -4465,7 +4484,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             </button>
           </>
         )}
-        {pvErr && <span className={st.err}>{pvErr}</span>}
+        {pvErr && <span className={st.error}>{pvErr}</span>}
         {pvNote && <span className={st.muted}>{pvNote}</span>}
 
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}

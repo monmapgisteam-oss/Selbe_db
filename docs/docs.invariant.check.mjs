@@ -169,7 +169,13 @@ let diagrams = 0;
 let tooBig = [];
 for (const f of docFiles) {
   const src = read(f);
-  const blocks = [...src.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
+  /* ⚠️ `\r?\n` — ЗААВАЛ (2026-09-16): баримтын .md файлууд нь Windows дээр CRLF-ээр
+     хадгалагддаг тул `\n` ганцаараа НЭГ Ч диаграм олдоггүй байв. Шалгуур
+     «Диаграм олдсон · 0 ширхэг» гэж УНАЖ, улмаар доорх хэмжээний шалгуур
+     хоосон массив дээр өнгөрдөг байсан — 9 диаграм бүрэн шалгагдаагүй.
+     `git config core.autocrlf` нь орчноос хамаардаг тул regex өөрөө
+     хоёуланг хүлээх ёстой. */
+  const blocks = [...src.matchAll(/```mermaid\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
   for (const b of blocks) {
     diagrams += 1;
     let n;

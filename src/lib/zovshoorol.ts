@@ -429,6 +429,14 @@ export async function deleteZov(oid: number): Promise<void> {
     rollbackOnFailure: 'true',
   });
   const res = (j.deleteResults ?? []) as { success?: boolean; error?: { description?: string } }[];
+  /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-16-ны аудит).
+     Урьд нь `deleteResults` талбар БАЙХГҮЙ хариунд `res` нь `[]` болж,
+     `bad` нь `undefined`, функц хэвийн буцаж кэш цэвэрлэгддэг байв —
+     хэрэглэгч «устгалаа» гэж хараад зөвшөөрөл серверт ХЭВЭЭР үлдэнэ.
+     `agsFetch` нь зөвхөн ДЭЭД ТҮВШНИЙ `{error:…}`-ыг барьдаг тул хагас
+     дутуу 200 (схем зөрөх, proxy дахин бичих, буруу endpoint) ЭНД
+     баригдана. Дээрх `saveZov` аль хэдийн ижил хамгаалалттай. */
+  if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
   const bad = res.find((r) => r.success === false);
   if (bad) throw new Error(bad.error?.description || tr('Устгах амжилтгүй боллоо.'));
   invalidate('ZOVSHOOROL');

@@ -1931,11 +1931,14 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
    * ⚠️ Outline-ийн `+`/`−` товч АЛГА БОЛООГҮЙ — зурвасын мөрийн «БАГЦ» нүд рүү
    * шилжсэн (`bandCell`). Excel-д тэр товч торны зүүн гадна суудаг ч порталд
    * тусдаа багана болговол царцсан багануудын `left` гинж шилжинэ.
+   * ⚠️ 2026-09-16: хасалтын үлдэгдэл `OUT_W = 0` (ба түүнээс хамаарах
+   *    `f.xlNoOut` класс) БҮРМӨСӨН арилав — тэр класс `finance.module.css`-д
+   *    ОГТ БАЙХГҮЙ байсан тул салаа нь `className={undefined}` буцаах үхсэн
+   *    код байв (CSS модулийн аудит).
    * ⚠️ ЗАСВАР ба IPC-д гутал ХЭВЭЭР: тэнд Excel-ийн № багана байхгүй тул
    * мөрийн дугаар нь цорын ганц чиглүүлэгч, мөн засварын тамга тэнд гарна.
    */
   const xlView = dataKey === 'CASHFLOW_NEW' && !edit;
-  const OUT_W = 0;
 
   /** Анхны өргөн — эхний 5 багана (гутал + царцсан баганууд) */
   const FZ_DEF = [xlView ? 0 : 46, 230, 210, 120, 120];
@@ -3342,7 +3345,7 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
                   const st = editStamp(p.row);
                   return (
                     <td
-                      className={[f.xlNo, OUT_W ? f.xlNoOut : '', st ? f.xlNoEdited : ''].filter(Boolean).join(' ')}
+                      className={[f.xlNo, st ? f.xlNoEdited : ''].filter(Boolean).join(' ')}
                       style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }}
                       title={st
                         ? tr('Сүүлд зассан: {0} · {1}', st.who || tr('тодорхойгүй'), date(st.ms))

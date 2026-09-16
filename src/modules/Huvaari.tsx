@@ -1417,10 +1417,35 @@ export function Huvaari({
    *    хоцрогдлын дохио тогтвортой (2026-09-07, хэрэглэгчийн шийдвэр).
    */
 
+  /**
+   * БАТЛАХ УРСГАЛЫН ТӨЛӨВ АЛЬ БАГЦЫНХ БОЛОХ (2026-09-16-ны аудит).
+   *
+   * ⚠️ ЯАГААД ЗААВАЛ: `refreshFlow` нь ГУРВАН дараалсан `await` агуулна
+   *    (`planTableState` → `loadPending` → `loadHistory`) бөгөөд ArcGIS
+   *    секундээр хариулдаг. Батлагч багц А-г хараад Б рүү шилжихэд А-гийн
+   *    ХОЦОРСОН хариу дараа бууж `setPending(А-гийн санал)` хийдэг байв:
+   *    хуанли Б-г, шийдвэрлэх цонх А-г харуулж, «Батлах» дарахад БУРУУ
+   *    илгээлт батлагдана (`decide` нь `pending.oid` ба `pending.author`-ыг
+   *    шууд `decidePlan` руу дамжуулдаг).
+   *
+   * ⚠️ Багц солих цэвэрлэгээ (дээрх `[pkg]` эффект) `flowBox`/`previewing`/
+   *    `approving`-ийг тэглэдэг ч `pending`-ийг барьж чадахгүй — `refreshFlow`
+   *    түүнээс ХОЙШ асинхроноор дахин тавьдаг.
+   *
+   * ⚠️ Хэлбэр нь `FillNew.tsx`/`Qaqc.tsx`-ийн `loadedPkgRef`-тэй ижил:
+   *    зорилтот түлхүүрийг хаалтад БАРИАД, буулгах бүрд одоогийнхтой тулгана.
+   */
+  const flowPkgRef = useRef('');
+
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
   const refreshFlow = useCallback(async () => {
+    /* Энэ дуудлага АЛЬ багцад зориулагдсан — бүх буулгалт үүгээр хаагдана */
+    const want = pkg.key;
+    flowPkgRef.current = want;
+    const mine = () => flowPkgRef.current === want;
     try {
       const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
+      if (!mine()) return;
       const ready = st.ok;
       setFlowReady(ready);
       setFlowWhy(ready ? '' : (
@@ -1432,12 +1457,16 @@ export function Huvaari({
               ? tr('Порталын хайлт амжилтгүй: {0}', st.detail ?? '')
               : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
       ));
-      const p = ready ? await loadPending(pkg.key) : null;
+      const p = ready ? await loadPending(want) : null;
+      if (!mine()) return;
       setPending(p);
       /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
          хоёуланг зэрэг харуулбал аль нь одоогийн байдал болох нь ойлгомжгүй. */
-      setLastDecision(ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null);
+      const last = ready && !p ? ((await loadHistory(want, 1))[0] ?? null) : null;
+      if (!mine()) return;
+      setLastDecision(last);
     } catch {
+      if (!mine()) return;
       setFlowReady(false);
       setFlowWhy(tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
       setPending(null);
