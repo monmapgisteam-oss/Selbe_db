@@ -57,7 +57,9 @@ import {
  */
 export type UndoInfo =
   | { kind: 'add'; oid: number }
-  | { kind: 'attr'; oid: number; attrs: Record<string, unknown> };
+  | { kind: 'attr'; oid: number; attrs: Record<string, unknown> }
+  /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
+  | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown> }[] };
 import d from './dedButets.module.css';
 
 /**
@@ -82,6 +84,63 @@ const numOf = (v: unknown): number | null => {
   const x = Number(v);
   return v != null && v !== '' && Number.isFinite(x) ? x : null;
 };
+
+/**
+ * НЭГ ТАЛБАРЫН ОРОЛТ — домэйнтэй бол `<select>`, үгүй бол `<input>`.
+ *
+ * ⚠️ 2026-09-16-нд маягтын доторх `field()`-ээс ЭКСПОРТ болгон гаргав:
+ * олон мөрийн маягт (`DedButetsBatch`) ЯГ ижил оролт зурах ёстой — хуулбар
+ * бичвэл домэйн, тоон оролт, уртын хязгаарын дүрэм хоёр газарт зөрж хоцорно
+ * (файлын толгойн «нэг маягт» зарчим).
+ *
+ * ⚠️ `type="text"` САНААТАЙ — `type="number"` нь хөтөч бүрд өөр бөөрөнхийлж,
+ * аравтын таслалыг чимээгүй иддэг. Шалгалт нь `validateRow`-д.
+ *
+ * ⚠️ `placeholder` нь олон мөрийн маягтад «бүү хөндө» гэдгийг хэлдэг — дан
+ * маягт өгөхгүй.
+ */
+export function FieldInput({
+  f, value, err, disabled, onChange, hint, placeholder,
+}: {
+  f: FieldDef;
+  value: string;
+  err?: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+  hint?: ReactNode;
+  placeholder?: string;
+}) {
+  return (
+    <label className={d.f}>
+      <span className={d.fLabel}>{f.alias}</span>
+      {f.codes ? (
+        <select className={d.input} value={value} disabled={disabled}
+          onChange={(ev) => onChange(ev.target.value)}>
+          {/* ⚠️ Хоосон сонголт нь ЗӨВХӨН nullable талбарт — эс бөгөөс
+              шаардлагатай талбарыг санамсаргүй хоослох зам нээгдэнэ.
+              Олон мөрийн маягтад (`placeholder` өгсөн) хоосон = «бүү хөндө»
+              тул ҮРГЭЛЖ байна. */}
+          {(f.nullable || placeholder != null) && (
+            <option value="">{placeholder ?? tr('— сонгоогүй —')}</option>
+          )}
+          {f.codes.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+        </select>
+      ) : (
+        <input
+          className={d.input}
+          value={value}
+          disabled={disabled}
+          inputMode={f.kind === 'number' ? 'decimal' : undefined}
+          maxLength={f.length ?? undefined}
+          placeholder={placeholder}
+          onChange={(ev) => onChange(ev.target.value)}
+        />
+      )}
+      {hint}
+      {err && <span className={d.fErr}>{err}</span>}
+    </label>
+  );
+}
 
 export function DedButetsEdit({
   layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra,
@@ -231,40 +290,21 @@ export function DedButetsEdit({
   const geomArea = before ? numOf(before[GEOM_AREA]) : null;
 
   const field = (f: FieldDef) => {
-    const v = p?.[f.name] ?? '';
-    const e = err[f.name];
     const lenHint = LEN_FIELD.test(f.name) && geomLen != null;
     return (
-      <label className={d.f} key={f.name}>
-        <span className={d.fLabel}>{f.alias}</span>
-        {f.codes ? (
-          <select className={d.input} value={v} disabled={!canEdit || busy}
-            onChange={(ev) => set(f.name, ev.target.value)}>
-            {/* ⚠️ Хоосон сонголт нь ЗӨВХӨН nullable талбарт — эс бөгөөс
-                шаардлагатай талбарыг санамсаргүй хоослох зам нээгдэнэ. */}
-            {f.nullable && <option value="">{tr('— сонгоогүй —')}</option>}
-            {f.codes.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        ) : (
-          <input
-            className={d.input}
-            value={v}
-            disabled={!canEdit || busy}
-            /* ⚠️ `type="text"` САНААТАЙ — `type="number"` нь хөтөч бүрд өөр
-               бөөрөнхийлж, аравтын таслалыг чимээгүй иддэг. Шалгалт нь
-               `validateRow`-д (`Number.isFinite`). */
-            inputMode={f.kind === 'number' ? 'decimal' : undefined}
-            maxLength={f.length ?? undefined}
-            onChange={(ev) => set(f.name, ev.target.value)}
-          />
-        )}
-        {lenHint && (
+      <FieldInput
+        key={f.name}
+        f={f}
+        value={p?.[f.name] ?? ''}
+        err={err[f.name]}
+        disabled={!canEdit || busy}
+        onChange={(v) => set(f.name, v)}
+        hint={lenHint && (
           <span className={d.fHint}>
             {tr('Геометрийн бодит урт: {0} м', num(geomLen, 1))}
           </span>
         )}
-        {e && <span className={d.fErr}>{e}</span>}
-      </label>
+      />
     );
   };
 

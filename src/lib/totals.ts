@@ -83,6 +83,71 @@ export const geomText = (d: LayerDef): string =>
 const totalsCache = new Map<string, Map<string, Totals>>();
 
 /**
+ * ХӨТЧИЙН КЭШ (`localStorage`) — ХУУЧИН ДҮНГ ШУУД, ШИНИЙГ АРААС НЬ (stale-while-revalidate).
+ *
+ * ⚠️ 2026-09-16 (хэрэглэгч «Инженерийн дэд бүтэц» хуудсыг хурдан болгохыг
+ * хүссэн). Хэмжилт (амьд үйлчилгээ, 74 давхарга, 12 зэрэг): статистикийн
+ * нэг хүсэлт ДУНДЖААР 497 мс, бүгд 3.2 секунд — энэ хугацаанд KPI ба багцын
+ * жагсаалт «…» харагдана. Дүн нь session-ээс session-д бараг өөрчлөгдөхгүй
+ * тул сүүлд БҮРЭН ирсэн дүнг хөтчид хадгалж, дараагийн нээлтэд тэр даруй
+ * гаргана; амьд хүсэлтүүд араас нь ирж давхарга бүрээр ДАРЖ бичнэ.
+ *
+ * ⚠️ Түлхүүрт `epoch` ОРОХГҮЙ: засварын дараа `dropTotalsCache()` эринийг
+ * өсгөдөг ч хөтчийн кэш нь «сүүлийн бүрэн дүн» хэвээр — тэр нь хамгийн
+ * ихдээ нэг объектын зөрүүтэй, ~3 секундын дараа амьд дүнгээр солигдоно.
+ * `LiveTotals.stale` нь энэ агшинд `true` — дуудагч хүсвэл тэмдэглэнэ.
+ *
+ * ⚠️ ЗӨВХӨН БҮРЭН (нэг ч давхарга унаагүй) дүнг хадгална — дутуу хадгалбал
+ * унасан давхарга дараагийн нээлтэд ч «—» гэж гарна.
+ *
+ * ⚠️ `null ≠ 0` дүрэм: хадгалсан дүн нь БОДИТ хэмжилт (хуучин ч гэсэн), 0-ээр
+ * орлуулсан «мэдэхгүй» биш. Мэдэхгүй давхарга (кэшид байхгүй) `map`-д
+ * ОРОХГҮЙ хэвээр тул дуудагчийн `has()` шалгалт өмнөх шигээ ажиллана.
+ *
+ * Private горим, хаалттай storage → try/catch, чимээгүй алгасна.
+ */
+const PERSIST_PREFIX = 'selbe-totals:';
+/** Богино, тогтвортой түлхүүр — 74 id-ийн 1 KB мөрийг storage-ийн нэр болгохгүй */
+const hashKey = (s: string): string => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+const persistKey = (zone: string | null, ids: string[]) =>
+  `${PERSIST_PREFIX}${hashKey(`${zone ?? ''}|${ids.join(',')}`)}`;
+
+function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> | null {
+  try {
+    const raw = localStorage.getItem(persistKey(zone, ids));
+    if (!raw) return null;
+    const rows = JSON.parse(raw) as [string, number, number][];
+    if (!Array.isArray(rows)) return null;
+    const want = new Set(ids);
+    const map = new Map<string, Totals>();
+    for (const r of rows) {
+      if (!Array.isArray(r) || !want.has(r[0])) continue;
+      const n = Number(r[1]), q = Number(r[2]);
+      if (Number.isFinite(n) && Number.isFinite(q)) map.set(r[0], { n, q });
+    }
+    return map.size ? map : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersisted(zone: string | null, ids: string[], map: Map<string, Totals>): void {
+  try {
+    const rows = ids.filter((id) => map.has(id)).map((id) => {
+      const t = map.get(id)!;
+      return [id, t.n, t.q] as const;
+    });
+    localStorage.setItem(persistKey(zone, ids), JSON.stringify(rows));
+  } catch {
+    /* хаалттай storage — кэшгүй ажиллана */
+  }
+}
+
+/**
  * КЭШИЙГ ХҮЧИНГҮЙ БОЛГОХ ЗАМ — атрибут засварын дараа.
  *
  * ⚠️ ЯАГААД `dataBus.invalidate`-ЭЭР БОЛОХГҮЙ ВЭ: дээрх кэш нь `cached()`
@@ -191,6 +256,11 @@ export type LiveTotals = {
   total: number;
   /** БҮГД унасан — жинхэнэ алдаа (нэг нэгээр унах нь `map`-д дутуугаар илэрнэ) */
   error: Error | null;
+  /**
+   * `map`-ын зарим утга ХӨТЧИЙН КЭШЭЭС (өмнөх session) — амьд дүн хараахан
+   * бүгд ирээгүй. Бүгд ирмэгц `false`. Дуудагч заавал хэрэглэх албагүй.
+   */
+  stale: boolean;
 };
 
 export function usePlanTotalsLive(
@@ -201,17 +271,17 @@ export function usePlanTotalsLive(
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(",")}`;
   const [st, setSt] = useState<LiveTotals>(() => ({
-    map: new Map(), done: 0, total: ids.length, error: null,
+    map: new Map(), done: 0, total: ids.length, error: null, stale: false,
   }));
 
   useEffect(() => {
     if (!enabled) {
-      setSt({ map: new Map(), done: 0, total: 0, error: null });
+      setSt({ map: new Map(), done: 0, total: 0, error: null, stale: false });
       return undefined;
     }
     const hit = totalsCache.get(key);
     if (hit) {
-      setSt({ map: hit, done: hit.size, total: ids.length, error: null });
+      setSt({ map: hit, done: hit.size, total: ids.length, error: null, stale: false });
       return undefined;
     }
     let alive = true;
@@ -220,7 +290,16 @@ export function usePlanTotalsLive(
     const map = new Map<string, Totals>();
     let done = 0;
     let failed = 0;
-    setSt({ map, done: 0, total: ids.length, error: null });
+    /**
+     * ХӨТЧИЙН КЭШ — өмнөх session-ийн бүрэн дүн. Байвал ТЭР ДАРУЙ гаргана,
+     * амьд дүн ирэх бүрд давхарга бүрээр дарж бичнэ (`view()`). Байхгүй бол
+     * урьдын адил «…»-ээс эхэлнэ. (`totalsCache`-ийн тайлбарыг үз.)
+     */
+    const seed = loadPersisted(zone, ids);
+    /* Дэлгэцэнд өгөх Map: кэш доор, амьд дүн дээр. Амьд дүн бүгд ирмэгц
+       кэш хэрэггүй — зөвхөн амьд Map үлдэнэ. */
+    const view = () => (seed ? new Map([...seed, ...map]) : new Map(map));
+    setSt({ map: view(), done: 0, total: ids.length, error: null, stale: !!seed });
 
     /**
      * ⚠️ ХЭСЭГЧИЛСЭН ШИНЭЧЛЭЛ. Хүсэлт бүрд `setSt` дуудвал 74 рендер болно;
@@ -234,7 +313,7 @@ export function usePlanTotalsLive(
       if (!alive) return;
       /* ⚠️ Map-ыг ХУУЛЖ өгнө — React нь лавлагааны адилтгалаар шалгадаг тул
          нэг Map-ыг мутацлаад дамжуулбал дахин рендер ОГТ болохгүй. */
-      setSt({ map: new Map(map), done, total: ids.length, error: null });
+      setSt({ map: view(), done, total: ids.length, error: null, stale: !!seed });
     };
     const bump = () => { if (timer == null) timer = setTimeout(flush, 120); };
 
@@ -261,12 +340,18 @@ export function usePlanTotalsLive(
       }
       /* ⚠️ ЗӨВХӨН БҮРЭН дүнг кэшлэнэ — дутуу Map кэшлэгдвэл унасан давхарга
          session дуустал «—» хэвээр үлдэж, өөрөө эдгэрэхгүй. */
-      if (!failed) totalsCache.set(key, map);
+      if (!failed) {
+        totalsCache.set(key, map);
+        savePersisted(zone, ids, map);
+      }
+      /* ⚠️ Дууссаны дараа ЗӨВХӨН амьд Map: унасан давхарга кэшийн хуучин
+         дүнгээр «эдгэрч» харагдах ёсгүй — тэр нь «—» гэж ил гарна. */
       setSt({
         map: new Map(map),
         done: ids.length,
         total: ids.length,
         error: failed === ids.length ? (firstErr ?? new Error("no data")) : null,
+        stale: false,
       });
     })();
 

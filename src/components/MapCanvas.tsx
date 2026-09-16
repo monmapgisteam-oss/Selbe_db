@@ -1620,8 +1620,12 @@ export const MapCanvas = memo(function MapCanvas({
    *
    * ⚠️ Утгыг ref-ээр уншина: `drawToken`-ы эффект нь `drawKind`-ыг deps-даа
    * авбал төрөл солих бүрд ХҮСЭЭГҮЙ зураалт эхэлнэ.
+   *
+   * ⚠️ `'rectangle'` (2026-09-16) — «Инженерийн дэд бүтэц»-ийн олон объект
+   * сонгох хэрэгсэл. Гарах геометр нь ПОЛИГОН (`onSketch`-д яг полигон шиг
+   * ирнэ); зөвхөн зурах хөдөлгөөн нь чирэх тэгш өнцөгт.
    */
-  drawKind?: 'point' | 'polyline' | 'polygon';
+  drawKind?: 'point' | 'polyline' | 'polygon' | 'rectangle';
   /**
    * БАЙГАА ОБЪЕКТЫН ГЕОМЕТРИЙГ VERTEX-ЭЭР ЗАСАХ — `reshapeToken` өсөх агшинд
    * энэ геометрийг зурах давхаргад буулгаж, `SketchViewModel.update()`-ыг
@@ -1826,7 +1830,19 @@ export const MapCanvas = memo(function MapCanvas({
   const [initToken, setInitToken] = useState(0);
   /** Хулганы доорх объектын товч мэдээлэл */
   const [tip, setTip] = useState<
-    { x: number; y: number; id: string; attrs: Record<string, unknown> } | null
+    {
+      x: number; y: number; id: string; attrs: Record<string, unknown>;
+      /**
+       * Давхаргын талбарын тодорхойлолт — ArcGIS-ийн popup шиг alias ба
+       * домэйны ШОШГЫГ гаргахад (2026-09-16, хэрэглэгчийн хүсэлт).
+       *
+       * ⚠️ ЗУРГИЙН FeatureLayer-ЭЭС авна — нэмэлт REST хүсэлт ЯВУУЛАХГҮЙ.
+       * `loadLayerMeta`-г дуудвал (а) сүлжээ хөндөнө, (б) `butetsEdit` модулийг
+       * БҮХ харагдацын зургийн багцад чирнэ. Давхарга ачаалагдсаны дараа
+       * `fields` нь аль хэдийн санах ойд бий.
+       */
+      fields: readonly __esri.Field[] | null;
+    } | null
   >(null);
   /** Блок бүрийн нийт гүйцэтгэл — газрын зургийн өнгө ба tooltip-д хоёуланд нь */
   const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
@@ -2117,7 +2133,12 @@ export const MapCanvas = memo(function MapCanvas({
         const id = lyr == null ? '' : String(lyr.id);
         if (!lyr || !lyr.visible || PASSIVE.has(id)) continue;
         if (!LAYER_BY_ID[id]) continue;
-        return { attrs: x.graphic.attributes as Record<string, unknown>, id };
+        return {
+          attrs: x.graphic.attributes as Record<string, unknown>,
+          id,
+          /* ⚠️ Талбарын тодорхойлолт — tooltip-ийн alias/домэйнд (`tip.fields`) */
+          fields: (lyr as FeatureLayer).fields ?? null,
+        };
       }
       return null;
     };
@@ -2228,7 +2249,9 @@ export const MapCanvas = memo(function MapCanvas({
           const hit = pickHit(r);
           view.container.style.cursor = hit ? 'pointer' : 'default';
           // Товч мэдээллийн хайрцаг — заагчийн хажууд
-          setTip(hit ? { x: e.x, y: e.y, id: hit.id, attrs: hit.attrs } : null);
+          setTip(hit
+            ? { x: e.x, y: e.y, id: hit.id, attrs: hit.attrs, fields: hit.fields }
+            : null);
         })
         .catch(() => {})
         // ⚠️ finally — эс бөгөөс нэг унасан hitTest `busy`-г үүрд түгжинэ
@@ -3822,7 +3845,12 @@ export const MapCanvas = memo(function MapCanvas({
 
       {/* Хулганы доорх объектын ТОВЧ мэдээлэл. Дэлгэрэнгүй нь дарахад
           баруун самбарт гарна — энд зөвхөн «энэ юу вэ» гэдгийг хэлнэ. */}
-      {tip && <MapTip x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs} prog={blockProg} />}
+      {tip && (
+        <MapTip
+          x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs}
+          fields={tip.fields} prog={blockProg}
+        />
+      )}
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
           багана нь симбол, тоо, хэмжээг аль хэдийн хажууд нь харуулж байгаа тул
@@ -3845,19 +3873,93 @@ export const MapCanvas = memo(function MapCanvas({
  * тооцоолохын тулд хайрцгийн хэмжээг мэдэх шаардлагатай болох ба энэ нь рендер
  * бүрд `offsetWidth` уншиж, layout thrash үүсгэнэ.
  */
+/**
+ * TOOLTIP-Д ГАРГАХГҮЙ талбарууд — ArcGIS-ийн popup-д ч утгагүй техникийн багана.
+ *
+ * ⚠️ Засварын бүртгэлийн дөрөв (`CreationDate/Creator/EditDate/Editor`) МӨН
+ * хасагдана: тэдгээр нь 2026-09-16-нд үйлчилгээ дээр асагдсан бөгөөд мөр бүрт
+ * байдаг тул хулганы товч цонхыг дүүргэж, бодит атрибутыг доош түлхэнэ.
+ * «Хэн зассан» нь засварын маягт ба ArcGIS-ийн өөрийн хэрэгслээр харагдана.
+ */
+const TIP_SKIP = /^(objectid|globalid|se_anno|creationdate|creator|editdate|editor)$/i;
+const TIP_SKIP_PREFIX = /^shape(__|_|$)/i;
+
+/**
+ * ДОМЭЙНЫ КОДЫГ ШОШГО болгоно — ArcGIS-ийн popup-ийн зан.
+ *
+ * ⚠️ SDK нь `type`-ыг `'coded-value'` (зураастай) гэж нормчилдог ч REST-ийн
+ * түүхий JSON `'codedValue'` байдаг — хоёуланг нь хүлээж авна, эс бөгөөс
+ * шошго чимээгүй ажиллахаа больж түүхий код («ПЭ100») харагдана.
+ */
+const domainLabel = (f: __esri.Field, v: unknown): string | null => {
+  const dom = f.domain as { type?: string; codedValues?: { name?: string; code?: unknown }[] } | null;
+  if (!dom?.codedValues) return null;
+  const hit = dom.codedValues.find((c) => String(c.code) === String(v));
+  return hit?.name != null ? String(hit.name) : null;
+};
+
+/** Талбарын утгыг хүн уншихаар — төрөл ба домэйноор */
+const fieldText = (f: __esri.Field, v: unknown): string => {
+  const lab = domainLabel(f, v);
+  if (lab != null) return lab;
+  const t = String(f.type ?? '');
+  if (/date/i.test(t)) return date(v as string);
+  if (/double|single|integer/i.test(t)) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    /* ⚠️ Бүхэл тоог «12.0» гэж бичихгүй — ArcGIS-ийн popup ч тэгдэггүй */
+    return num(n, Number.isInteger(n) ? 0 : 2);
+  }
+  return text(v);
+};
+
 function MapTip({
-  x, y, id, attrs, prog,
+  x, y, id, attrs, fields, prog,
 }: {
   x: number;
   y: number;
   id: string;
   attrs: Record<string, unknown>;
+  /** Давхаргын талбарын тодорхойлолт — ArcGIS-ийн popup шиг alias/домэйнд */
+  fields: readonly __esri.Field[] | null;
   prog: BlockProgressMap | null;
 }) {
   const d = LAYER_BY_ID[id];
   if (!d) return null;
 
   const rows: { k: string; v: string }[] = [];
+
+  /**
+   * ИНЖЕНЕРИЙН ДЭД БҮТЭЦ (`infra:*`) — БҮХ АТРИБУТ, ArcGIS-ийн popup шиг
+   * (2026-09-16, хэрэглэгчийн хүсэлт: «зургаар оруулсан pop up биш, ArcGIS-ийн
+   * popup шиг атрибут нь харагддаг болго»).
+   *
+   * ⚠️ Урьд нь энэ давхаргууд доорх ерөнхий салаанд унаж, ЗӨВХӨН нэг мөр
+   * («Урт 98.3 м») харуулдаг байв: `LayerDef.facets` тэдэнд тодорхойлогдоогүй
+   * тул харуулах зүйл олдоггүй байсан юм. Эх үйлчилгээ нь монгол alias ба
+   * кодлогдсон домэйнтой (жиш. `Work_Status` → «Төрөл») тул түүхий схемээс
+   * шууд уншихад ArcGIS-тэй ижил цонх гарна.
+   *
+   * ⚠️ Бусад харагдацын tooltip-үүд (барилга, хяналт, газар, ЕТ) ХЭВЭЭР —
+   * тэдэнд гар аргаар сонгосон мөрүүд нь зориудаар богино байдаг.
+   */
+  if (id.startsWith('infra:') && fields?.length) {
+    for (const f of fields) {
+      const name = f.name ?? '';
+      if (!name || TIP_SKIP.test(name) || TIP_SKIP_PREFIX.test(name)) continue;
+      const v = attrs[name];
+      if (v == null || String(v).trim() === '') continue;
+      const isQty = d.qty?.field === name;
+      rows.push({
+        k: f.alias || name,
+        /* Хэмжээний талбарт нэгжийг залгана — «Урт м 98.3» гэхээс «98.3 м» дээр */
+        v: isQty ? `${fieldText(f, v)} ${tr(d.qty!.unit)}` : fieldText(f, v),
+      });
+    }
+    /* ⚠️ Атрибут огт олдохгүй бол доорх ерөнхий салаа руу УНАХГҮЙ — гарчиг
+       ганцаараа ч «энэ давхаргад мэдээлэл алга» гэдгийг зөв хэлнэ. */
+    return <TipBox x={x} y={y} hue={d.hue} title={d.title} rows={rows} />;
+  }
 
   if (d.qty && attrs[d.qty.field] != null) {
     const q = Number(attrs[d.qty.field]);
@@ -3910,13 +4012,28 @@ function MapTip({
     if (zoneId && zoneId !== ZONE_NONE.trim()) rows.push({ k: tr('Бүс'), v: zoneId });
   }
 
+  return <TipBox x={x} y={y} hue={d.hue} title={d.title} rows={rows} />;
+}
+
+/**
+ * Tooltip-ийн бүрхүүл — гарчиг + мөрүүд.
+ * ⚠️ `MapTip`-ийн ХОЁР гаралт (инженерийн бүрэн атрибут ба бусад харагдацын
+ * сонгосон мөрүүд) НЭГ зохиомжийг хуваалцана; хуулбарлавал өнгө, зай, дүрэм
+ * хоёр газарт зөрнө.
+ */
+function TipBox({
+  x, y, hue, title, rows,
+}: {
+  x: number; y: number; hue: string; title: string;
+  rows: { k: string; v: string }[];
+}) {
   return (
     <div
       className={s.tip}
-      style={{ left: x, top: y, '--tone': d.hue } as CSSProperties}
+      style={{ left: x, top: y, '--tone': hue } as CSSProperties}
       aria-hidden
     >
-      <div className={s.tipHead}>{d.title}</div>
+      <div className={s.tipHead}>{title}</div>
       {rows.length > 0 && (
         <dl className={s.tipRows}>
           {rows.map((r) => (

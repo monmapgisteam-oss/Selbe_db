@@ -532,6 +532,18 @@
   border-radius: var(--r-sm);
 }
 
+/* Амжилтын мэдэгдэл — самбар дотор (`DedButetsBatch`). Алдаатай ижил
+   хэмжээ, гэхдээ гол өнгө (--hue): «болсон» гэдэг нь улаанаас ялгарна. */
+.formOk {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--hue) 16%, transparent);
+  border-left: 3px solid var(--hue);
+  border-radius: var(--r-sm);
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -593,4 +605,20 @@
   font-size: 11px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Олноор засах — сонголтын удирдлага (`DedButetsBatch`-ийн дээр) ──
+   ⚠️ `.form`-той ижил зай, доор нь зураасаар маягтаас тусгаарлана:
+   «сонголт» ба «бөглөх» хоёр нь өөр алхам гэдгийг харуулна. */
+.mselBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.mselRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
