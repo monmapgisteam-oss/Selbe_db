@@ -57,6 +57,9 @@ const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), {
 /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
    нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
 const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
+/* ⚠️ Батлах дараалал нь `loadAllPending`-ээр БҮХ багцын pending мөрийг татдаг
+   тул зөвхөн нээгдэх үедээ (`Huvaari`-тай ижил шалтгаан). */
+const HuvaariBatlah = dynamic(() => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah), { ssr: false });
 /* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
    багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
 const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
@@ -554,7 +557,25 @@ function PortalContent(
   const isGdash = view === 'gdash';
   const isDash = view === 'dashboard';
   const isHuvaari = view === 'huvaari';
+  const isHuvaariBatlah = view === 'huvaariBatlah';
   const isTailan = view === 'tailan';
+  /**
+   * «ХУВААРЬ БАТЛАХ» → «ХУВААРЬ» ДАМЖУУЛАЛТ — ЗӨВХӨН САНАХ ОЙД.
+   *
+   * Батлах дараалал дээр «Хуваарь хуудсанд батлах» дарахад тэр багцаар
+   * `Huvaari` нээгдэж, шийдвэрлэх цонх өөрөө гарна (батлах логик тэнд л
+   * байна, хуулбарлагдаагүй — `HuvaariBatlah.tsx`-ийн толгойг үз).
+   *
+   * ⚠️ URL-Д БИЧИХГҮЙ: `writeParams` (urlState.ts) нь ТАНИХГҮЙ түлхүүрийг
+   *    хөнддөггүй тул `?approve=<oid>` нь харагдац солиход ч, F5-д ч ҮЛДЭЖ,
+   *    аль хэдийн шийдвэрлэгдсэн саналын цонхыг ДАХИН нээх байлаа. Мөн
+   *    хуваалцсан холбоос нь бусдад ч тэр цонхыг нээнэ.
+   * ⚠️ `sessionStorage` ч мөн адил F5-ыг ДАВНА — яг тэр эрсдэлээс
+   *    зайлсхийх шаардлагатай. React төлөв нь refresh-д үхдэг тул
+   *    цэвэрлэх юм байхгүй: энэ нь шинж, хязгаарлалт биш.
+   */
+  const [planJump, setPlanJump] = useState<{ pkgKey: string; oid: number } | null>(null);
+  const clearPlanJump = useCallback(() => setPlanJump(null), []);
   const isGazar = view === 'gazar';
   const isFinance = view === 'finance';
   const isHabea = view === 'habea';
@@ -718,7 +739,20 @@ function PortalContent(
               : isPkgProg
                 ? <PkgProg dim={dim} setDim={setDim} />
                   : isHuvaari
-                    ? <Huvaari />
+                    ? <Huvaari jump={planJump} onJumpDone={clearPlanJump} />
+                    : isHuvaariBatlah
+                    ? (
+                      <HuvaariBatlah
+                        navScope={navScope}
+                        /* ⚠️ `setView`-ЭЭР шилжинэ, URL-аар БИШ (`Schem`-ийн
+                           доорх дүрэмтэй ижил): тэр функц шүүлт, сонголт,
+                           давхаргыг цэвэрлэдэг. */
+                        onApprove={(pkgKey, oid) => {
+                          setPlanJump({ pkgKey, oid });
+                          setView('huvaari');
+                        }}
+                      />
+                    )
                     : isTailan
                       ? <Tailan />
                       : isGazar

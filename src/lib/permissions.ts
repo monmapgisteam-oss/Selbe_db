@@ -395,6 +395,10 @@ export function hasAccess(username?: string | null): boolean {
  * (`CAP_HOST_VIEW`) харагдацын жагсаалтад нь байхгүй ч нээгдэнэ. Эс бөгөөс
  * эрх олгосон атлаа хуудас руу орох замгүй — эрх чимээгүй утгагүй.
  * Устгагдсан (tombstone) аккаунт, `'all'` эрхтэй хүнд нөлөөлөхгүй.
+ *
+ * ⚠️ НЭГ эрх НЭГЭЭС ИЛҮҮ харагдац нээж болно (2026-09-16): `CAP_HOST_VIEW`
+ * нь массив болов. Энд кодын засвар шаардахгүй — `capViewsOf` нь
+ * `flatMap`-аар аль хэдийн хавтгай `ViewKey[]` буцаана.
  */
 export function resolveAccess(username?: string | null): Access | null {
   const base = resolveBaseAccess(username);
