@@ -24,7 +24,14 @@ import { join } from 'node:path';
 
 const BS = String.fromCharCode(92);
 const norm = (p) => p.split(BS).join('/');
-const read = (p) => readFileSync(p, 'utf8');
+/**
+ * ⚠️ CRLF → LF ЖИГДРҮҮЛНЭ (2026-09-16). Git нь эх файлыг LF-ээр хадгалдаг ч
+ *    Windows дээр checkout хийхэд CRLF болдог. Доорх шалгуурууд хатуу `\n`-ээр
+ *    хайдаг (жишээ нь mermaid блокийн эхлэл) тул CRLF орчинд НЭГ Ч диаграм
+ *    олдохгүй, тест «Диаграм олдсон · 0» гэж ХУДЛААР унадаг байв. Уншихдаа НЭГ
+ *    УДАА жигдрүүлбэл бүх шалгуурт, ирээдүйд нэмэгдэх шалгуурт ч хамаарна.
+ */
+const read = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
 
 let bad = 0;
 const ok = (b) => (b ? '✅' : '❌');
