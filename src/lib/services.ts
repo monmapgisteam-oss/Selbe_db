@@ -57,7 +57,7 @@ const HJ = env(
 /** Survey123 үйлчилгээний БҮТЭН хаяг: `…/FeatureServer` хүртэл. Хувьсагчид бүтэн URL
     (`…/rest/services/<нэр>/FeatureServer`) эсвэл зөвхөн нэр өгсөн ч ажиллана. */
 const svcRoot = (v: string | undefined, name: string): string => {
-  const raw = (v ?? "").trim().replace(//+$/, "").replace(//FeatureServer$/i, "");
+  const raw = (v ?? "").trim().replace(/\/+$/, "").replace(/\/FeatureServer$/i, "");
   return raw ? (raw.includes("://") ? raw : `${HJ}/${raw}`) : `${HJ}/${name}`;
 };
 const HABEA_SVC = {
