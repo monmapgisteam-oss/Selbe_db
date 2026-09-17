@@ -2375,6 +2375,23 @@ export const LAYERS: LayerDef[] = [
     auth: true,
     note: tr('Survey123 мобайл аппаас'),
   },
+  /* ⚠️ Захиалагчийн үзлэг — V1.1-ийн хажууд зэрэг харагдах тул ӨНГӨ нь
+     ногооноос (V1.1) тод ялгаатай цэнхэр. */
+  {
+    id: "habea:uzZ",
+    n: 0,
+    url: `${HJ}/service_923029f4289647bd8a34aaf8e93ec9c8/FeatureServer/0`,
+    title: tr('Захиалагчийн ажлын байрны үзлэг'),
+    topic: "monitor",
+    geom: "point",
+    hue: "#0284c7",
+    marker: "square",
+    size: 10,
+    noZone: true,
+    oid: "objectid",
+    auth: true,
+    note: tr('Survey123 мобайл аппаас'),
+  },
 
   /* ─────────── Газар чөлөөлөлт (полигоноор шүүх · тусдаа үйлчилгээ) ───────────
      ⚠️ topic:'gazar' тул каталогийн бүлэг (`LAYER_GROUPS`)-т ОРОХГҮЙ — зөвхөн
@@ -3678,6 +3695,19 @@ export const HABEA = {
       title: tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
       url: `${HABEA_SVC.uzlegG}/FeatureServer/0`,
     },
+    /**
+     * ЗАХИАЛАГЧИЙН АЖЛЫН БАЙРНЫ ҮЗЛЭГ (2026-09-17, хэрэглэгчийн хүсэлт).
+     * «Захиалагчийн ажлын байрны үзлэг» фокуст V1.1-тэй ЗЭРЭГЦЭЭ баруун талд.
+     *
+     * ⚠️ СХЕМ БАТЛАГДААГҮЙ: үйлчилгээ нь метадатад ч токен шаарддаг тул
+     * хөгжүүлэлтийн үед талбаруудыг нь шалгах боломжгүй байв. V1.1-тэй
+     * ИЖИЛ Survey123 маягт гэж үзэж `fields`-ийг хуваалцана. Талбар зөрвөл
+     * самбар «Бүртгэл алга» эсвэл код харуулна — ЧИМЭЭГҮЙ буруу тоо биш.
+     */
+    zahialagch: {
+      title: tr('Захиалагчийн ажлын байрны үзлэг'),
+      url: `${HJ}/service_923029f4289647bd8a34aaf8e93ec9c8/FeatureServer/0`,
+    },
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
       site: 'site', siteOther: 'site_other',
@@ -3687,6 +3717,14 @@ export const HABEA = {
       /** Үл нийцлийн зэрэг тус бүрийн ТОО — маягтын өөрийн нийлбэр талбарууд */
       major: 'cnt_major', minor: 'cnt_minor', obs: 'cnt_obs',
       conf: 'cnt_conf', na: 'cnt_na',
+      /**
+       * НИЙТ ОНОО — авсан ба боломжит (2026-09-17, амьд метадатаар батлав).
+       * ⚠️ ЗӨВХӨН V1.1-д бий; гүйцэтгэгчийн маягтад ОНООНЫ ТАЛБАР БАЙХГҮЙ (0/260)
+       * — уншихад `undefined` ирнэ, `habeaUzleg.norm` түүнийг `null` болгоно.
+       * ⚠️ `sc_all` (Double) нь масштаб нь тодорхойгүй тул ХЭРЭГЛЭХГҮЙ —
+       * долоо хоногийн оноог `Σ earned / Σ appl`-аар жигнэж бодно.
+       */
+      scEarned: 'sc_all_earned', scAppl: 'sc_all_appl',
     },
   },
 } as const;
@@ -4180,7 +4218,9 @@ export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:bu
  * ⚠️ `HABEA_LAYER_IDS`-ээс ТУСДАА: нэвтрэлт шаардлагатай тул каталогийн
  * тооллогод оруулахгүй, зөвхөн тухайн маягтын фокус нээлттэй үед харагдана.
  */
-export const HABEA_UZLEG_LAYER_ID = { v11: "habea:uzV11", guitsetgegch: "habea:uzG" } as const;
+export const HABEA_UZLEG_LAYER_ID = {
+  v11: "habea:uzV11", guitsetgegch: "habea:uzG", zahialagch: "habea:uzZ",
+} as const;
 
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
 /**

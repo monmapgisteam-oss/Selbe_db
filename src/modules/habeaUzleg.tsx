@@ -21,22 +21,22 @@
  * зарчим). Хоосныг нөхөх гэж ямар нэг тоо ЗОХИОЖ болохгүй.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
-import { queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, queryGroup, count, sum, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
-import { Section, Bars, Donut, Series, Loading, Empty } from '@/components/ui';
-import { num, date, text, dayKey } from '@/lib/format';
+import { Section, Bars, Series, Loading, Empty } from '@/components/ui';
+import { num, date, text, dayKey, pct } from '@/lib/format';
 import h from './habea.module.css';
 
 /* ═════════════════ Төрөл ═════════════════ */
 
 /** Аль маягт вэ */
-export type UzlegKind = 'v11' | 'guitsetgegch';
+export type UzlegKind = 'v11' | 'guitsetgegch' | 'zahialagch';
 
 const U = HABEA.uzleg.fields;
 
@@ -83,6 +83,18 @@ function loadDomains(url: string): Promise<Domains> {
 export type UzlegRow = {
   oid: number;
   site: string;
+  /**
+   * ДОЛОО ХОНОГИЙН КОД (`w1`…`w10`, `other`) — маягт өөрөө автоматаар
+   * бөглөдөг. Чарт ба шүүлтийн ТҮЛХҮҮР; шошгыг `weekLabel` гаргана.
+   */
+  week: string;
+  /**
+   * НИЙТ ОНОО — авсан / боломжит. `null` = маягтад онооны талбар БАЙХГҮЙ
+   * (гүйцэтгэгчийн маягт) эсвэл бөглөөгүй. ⚠️ 0-ээр орлуулахгүй: «0 оноо»
+   * ба «оноо байхгүй» өөр (`null ≠ 0`).
+   */
+  scE: number | null;
+  scA: number | null;
   company: string;
   /** Талбайн багцын нормчилсон түлхүүр (`bagtsKey`) — «Бусад» бол хоосон */
   bagtsK: string;
@@ -102,6 +114,32 @@ export type UzlegRow = {
 const nn = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
+};
+
+/** Тоо эсвэл `null` — талбар байхгүй/хоосон бол 0 БИШ `null` (`nn`-ээс ялгаатай) */
+const nnull = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
+
+/**
+ * Долоо хоногийн ДУГААР — `w37` ба `37` ХОЁУЛАНГ таньна.
+ *
+ * ⚠️ 2026-09-17-ны засвар: метадатын домэйн `w1`…`w10` гэж зарладаг ч АМЬД
+ * өгөгдөлд календарийн долоо хоногийн ДУГААР («15»…«37») бичигддэг. Зөвхөн
+ * `^w(\d+)$`-аар таньдаг байсан тул бүгд «танигдахгүй» болж эрэмбэ нь өгөгдлийн
+ * дараалал руу унаж, «37» хамгийн ЭХЭНД харагдаж байв.
+ */
+const weekNum = (k: string): number | null => {
+  const m = /^w?(\d+)$/i.exec(k.trim());
+  return m ? Number(m[1]) : null;
+};
+
+/** Долоо хоногийн шошго — `37` / `w37` → «37-р долоо хоног» */
+export const weekLabel = (k: string): string => {
+  const n = weekNum(k);
+  return n != null ? tr('{0}-р долоо хоног', String(n)) : k === 'other' ? tr('Бусад') : k;
 };
 
 /**
@@ -143,6 +181,32 @@ const CO_SFX: Record<string, string> = {
   osnaaug: 'OSNAAG',
 };
 
+/* ═════════════════ БАГЦ 2-ЫН ДЭД ТАЛБАЙГ НЭГТГЭХ ═════════════════ */
+
+/**
+ * «Багц 2 · 2.1 · 2.2 · 2.3-1 · 2.3-2» — НЭГ талбайн дэд хэсгүүд тул ХАБЭА-д
+ * НЭГ «Багц 2» болж харагдана (2026-09-16, хэрэглэгчийн хүсэлт).
+ *
+ * ⚠️ ЗӨВХӨН БАГЦ 2. «Багц 3.1/3.2/3.3» ба «Багц 4.1/4.2» нь ТУСДАА үлдэнэ —
+ * хэрэглэгчийн шийдвэр (тэдгээр нь бие даасан талбайнууд).
+ *
+ * ⚠️ ЗӨВХӨН ХАБЭА. `bagtsKey`-г өөрийг нь хөндвөл санхүү, гүйцэтгэл, дашбоард
+ * бүгд дагаж нэгдэх байв — тэнд «Багц 2.1» нь ӨӨР гэрээ, ӨӨР төсөв.
+ *
+ * ⚠️ ТҮҮХИЙ ШОШГООР таних (`bagtsKey`-ийн товчлолоор БИШ): `bagtsKey('Багц 2.1')`
+ * нь «БАГЦ21» бөгөөд тэр нь бодит «Багц 21» (Төрийн үйлчилгээний барилга)-ийн
+ * ЯГ түлхүүр — краны бүртгэлд тэр багц гарч ирвэл чимээгүй нийлэх байлаа.
+ * Тиймээс тусгаарлагч (`.` `-`) ЗААВАЛ шаардана: «Багц 21» тохирохгүй.
+ */
+const PKG2_RE = /^\s*багц\s*-?\s*2(\s*[.\-–]\s*\d[\d.\-–\s]*)?\s*$/i;
+
+/** ХАБЭА-гийн багцын ШОШГО — Багц 2-ын дэд талбай «Багц 2» болно */
+export const habeaPkgLabel = (raw: string): string => (PKG2_RE.test(raw) ? tr('Багц 2') : raw);
+
+/** ХАБЭА-гийн багцын ТҮЛХҮҮР — шүүлт, бүлэглэлт бүгд үүгээр */
+export const habeaPkgKey = (raw: unknown): string =>
+  (PKG2_RE.test(String(raw ?? '')) ? bagtsKey('Багц 2') : bagtsKey(raw));
+
 const norm = (r: Row, dom: Domains): UzlegRow => {
   /**
    * Домэйны код → нэр; «Бусад» (`other`) сонгосон үед жинхэнэ нэр нь
@@ -158,9 +222,12 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
   return {
     oid: nn(r.objectid ?? r.OBJECTID),
     site,
+    week: r[U.week] == null ? '' : String(r[U.week]),
+    scE: nnull(r[U.scEarned]),
+    scA: nnull(r[U.scAppl]),
     company: named(U.company, U.companyOther),
     /* ⚠️ «Бусад» талбай нь чөлөөт текст — багц гэж ТААМАГЛАХГҮЙ */
-    bagtsK: r[U.site] === 'other' ? '' : bagtsKey(site),
+    bagtsK: r[U.site] === 'other' ? '' : habeaPkgKey(site),
     coSfx: CO_SFX[String(r[U.company] ?? '')] ?? '',
     block: clean(r[U.block]),
     shift: named(U.shift),
@@ -219,7 +286,206 @@ const loaders: Record<UzlegKind, () => Promise<Row[]>> = {
     5 * 60_000,
     ['HABEA'],
   ),
+  zahialagch: cached(
+    () => loadPrivate(HABEA.uzleg.zahialagch.url),
+    5 * 60_000,
+    ['HABEA'],
+  ),
 };
+
+/**
+ * ЭХ СУРВАЛЖИЙН ГАРЧИГ — хоёр маягт зэрэгцэн харагдах үед (зүүн V1.1 ·
+ * баруун захиалагчийн) аль тал аль маягтынх болохыг хэлнэ. Картуудын
+ * гарчиг хоёр талд ИЖИЛ («Үл нийцлийн зэрэг») тул үүнгүйгээр ялгагдахгүй.
+ * Өнгөт дөрвөлжин нь газрын зураг дээрх тэр маягтын цэгтэй ижил өнгө.
+ */
+export function UzSrcHead({ title, hue }: { title: string; hue: string }) {
+  return (
+    <div className={h.srcHead}>
+      <i style={{ background: hue }} aria-hidden />
+      <span>{title}</span>
+    </div>
+  );
+}
+
+/* ═════════════════ Өмнөх долоо хоногийн дундаж оноо (KPI) ═════════════════ */
+
+/** ISO-8601 долоо хоногийн дугаар — Даваа гарагаас эхэлнэ, 1-р долоо хоног нь Пүрэв агуулсан */
+const isoWeek = (d: Date): number => {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - y0.getTime()) / 86_400_000 + 1) / 7);
+};
+
+/**
+ * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГ — Даваа 00:00-оос Даваа 00:00 хүртэл, ЛОКАЛ цагаар.
+ *
+ * ⚠️ Хэрэглэгчийн дүрэм (2026-09-17): «37-р долоо хоног дуусаад мэдээлэл нь
+ * 38 дахь долоо хоногтоо харагдана, 38 дуусахад 38-ийн дундажаар солигдоно».
+ * Өөрөөр хэлбэл ЯВАГДАЖ БУЙ долоо хоногийг БИШ, хамгийн сүүлд ДУУССАНЫГ —
+ * явагдаж буй долоо хоногийн дундаж Даваа гарагт ганц үзлэгээс бүрдэж,
+ * өдөр бүр үсэрч савлана.
+ *
+ * ⚠️ ЛОКАЛ цаг (Улаанбаатар UTC+8): `toISOString`-ийн UTC хил нь Даваа
+ * 00:00–08:00-ийн үзлэгийг ӨМНӨХ долоо хоногт хийх байлаа.
+ */
+export function prevWeek(now = new Date()): { start: Date; end: Date; no: number } {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  end.setDate(end.getDate() - ((end.getDay() + 6) % 7));
+  const start = new Date(end);
+  start.setDate(start.getDate() - 7);
+  return { start, end, no: isoWeek(start) };
+};
+
+/** ArcGIS SQL-ийн огноо — сервер UTC-ээр хадгалдаг тул локал хилийг UTC болгоно */
+const sqlTs = (d: Date) => `timestamp '${d.toISOString().slice(0, 19).replace('T', ' ')}'`;
+
+/**
+ * ОНОО БҮРТГЭДЭГ ЗАХИАЛАГЧИЙН ХОЁР МАЯГТ — KPI ба «компаниар» чарт ХОЁУЛАНГ
+ * нийлүүлнэ (2026-09-17, хэрэглэгчийн хүсэлт: «2 датаг 2 уулангийг нь ашигла»).
+ * ⚠️ Нэг нь ТАТАГДАХГҮЙ бол бүхэлдээ АЛДАА — хагас дүн гаргахгүй.
+ * ⚠️ Гүйцэтгэгчийн маягт ОРОХГҮЙ — түүнд онооны талбар байхгүй.
+ */
+const SCORE_URLS = [HABEA.uzleg.v11.url, HABEA.uzleg.zahialagch.url] as const;
+
+/** Өмнөх долоо хоногийн оноо — (талбай × компани)-ийн нэг нүд */
+export type ScoreRow = {
+  /** Хуудасны «Багц» шүүлтийн түлхүүр (`habeaPkgKey`) — «Бусад» талбайд хоосон */
+  pkgK: string;
+  /** Хуудасны «Компани» шүүлтийн түлхүүр (`CO_SFX`) — холбогдоогүй бол хоосон */
+  coSfx: string;
+  coCode: string;
+  coLabel: string;
+  /** Багцын ШОШГО (`habeaPkgLabel`) — «Үл нийцэл — багцаар»-т */
+  pkgLabel: string;
+  e: number;
+  a: number;
+  n: number;
+  /** Үл нийцэл = ноцтой + бага зэргийн (`cnt_major + cnt_minor`) */
+  nc: number;
+};
+
+export type WeekScores = { no: number; rows: ScoreRow[] };
+
+/**
+ * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ОНОО — (ТАЛБАЙ × КОМПАНИ)-ААР бүлэглэсэн, ХОЁР маягт.
+ *
+ * ⚠️ 2026-09-17: ДИНАМИК ШҮҮЛТ. Урьд нь бүх төслийн ГАНЦ нийлбэр татдаг тул
+ * «Багц»/«Компани» сонгоход KPI «—» болж, компаниар чарт огт өөрчлөгддөггүй
+ * байв (хэрэглэгч «бүх юм динамик шүүлтүүртэй юу» гэж шалгуулсан). Одоо
+ * сервер (талбай, компани)-аар бүлэглэж өгнө — хэдхэн арван мөр — харин
+ * шүүлт нь ЭНД, санах ойд (`weekScoreOf` · `weekScoreByCo`). Шүүлт солиход сүлжээ
+ * хөндөхгүй.
+ *
+ * ⚠️ Талбайн кодыг домэйноор НЭРЛЭЖ, `habeaPkgKey`-ээр багцын түлхүүр болгоно —
+ * үзлэгийн самбарын `bagtsK`-тэй ЯГ ижил (Багц 2-ын дэд талбайнууд нэгдэнэ).
+ * ⚠️ Жигнэсэн: Σавсан / Σболомжит — нүд бүрийн хувийг дундажлахгүй.
+ * ⚠️ Кэшийн TTL 5 минут — Даваа гараг дамжихад шинэ долоо хоногоор бодогдоно.
+ */
+export const loadWeekScores = cached(async (): Promise<WeekScores> => {
+  const auth = await getAuth();
+  if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
+  const w = prevWeek();
+  const where = `${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)}`;
+  const parts = await Promise.all(SCORE_URLS.map((url) => Promise.all([
+    queryGroup(
+      url,
+      `${U.site},${U.company}`,
+      /* ⚠️ Үл нийцлийг ОНООТОЙ НЭГ хүсэлтээр — долоо хоногийн хил, хоёр маягт,
+         талбайн нэгтгэл нь «Үл нийцэл — багцаар» чартад ЯГ ижил байх ёстой. */
+      [
+        sum(U.scEarned, 'e'), sum(U.scAppl, 'a'), count('objectid', 'n'),
+        sum(U.major, 'mj'), sum(U.minor, 'mn'),
+      ],
+      where,
+    ),
+    loadDomains(url),
+  ])));
+  const rows: ScoreRow[] = [];
+  for (const [grp, dom] of parts) {
+    for (const r of grp) {
+      const site = r[U.site] == null ? '' : String(r[U.site]);
+      const coCode = r[U.company] == null ? '' : String(r[U.company]);
+      const siteName = clean(dom[U.site]?.get(site) ?? site);
+      rows.push({
+        pkgK: !site || site === 'other' ? '' : habeaPkgKey(siteName),
+        pkgLabel: !site || site === 'other' ? '' : habeaPkgLabel(siteName),
+        coSfx: CO_SFX[coCode] ?? '',
+        coCode,
+        coLabel: coCode === 'other' ? tr('Бусад') : clean(dom[U.company]?.get(coCode) ?? coCode),
+        e: Number(r.e ?? 0),
+        a: Number(r.a ?? 0),
+        n: Number(r.n ?? 0),
+        nc: Number(r.mj ?? 0) + Number(r.mn ?? 0),
+      });
+    }
+  }
+  return { no: w.no, rows };
+}, 5 * 60_000, ['HABEA']);
+
+/** Хуудасны шүүлтээр нүднүүдийг шүүнэ — `filterUzleg`-тэй ижил «ба» дүрэм */
+const passScore = (r: ScoreRow, pkgs: readonly string[], cos: readonly string[]) =>
+  (!pkgs.length || pkgs.includes(r.pkgK)) && (!cos.length || cos.includes(r.coSfx));
+
+/** Долоо хоногийн ДУНДАЖ ОНОО — багц ба компанийн шүүлтийг ДАГАНА */
+export function weekScoreOf(
+  rows: readonly ScoreRow[], pkgs: readonly string[], cos: readonly string[],
+): { pct: number | null; n: number } {
+  let e = 0, a = 0, n = 0;
+  for (const r of rows) {
+    if (!passScore(r, pkgs, cos)) continue;
+    e += r.e; a += r.a; n += r.n;
+  }
+  return { pct: a > 0 ? (e / a) * 100 : null, n };
+}
+
+/**
+ * КОМПАНИАР ОНОО — багцын шүүлтийг ДАГАНА, компанийн шүүлтийг ҮЛ ТООМСОРЛОНО
+ * (ArcGIS-ийн хөндлөн шүүлт: чарт ӨӨРИЙН хэмжээсээр шүүгдэхгүй — эс бөгөөс
+ * нэг компани дармагц бусад нь алга болж дахин сонгох боломжгүй).
+ * Нэг компани хоёр маягт/олон талбайд байвал КОДООР нийлнэ.
+ */
+/**
+ * ӨМНӨХ ДОЛОО ХОНОГИЙН ҮЛ НИЙЦЭЛ — БАГЦААР (2026-09-17, хэрэглэгчийн хүсэлт:
+ * «Үзлэгийн оноо — компаниар»-ын ДООР, түүн шиг долоо хоногоор солигддог, 2
+ * маягтаас). Долоо хоногийн дүрэм нь `loadWeekScores`-тэй НЭГ.
+ *
+ * ⚠️ Компанийн шүүлтийг ДАГАНА, багцын шүүлтийг ҮЛ ТООМСОРЛОНО (өөрийн
+ * хэмжээс — дарахад бусад багц алга болохгүй, ArcGIS зан).
+ * ⚠️ «Бусад» талбай (`pkgK` хоосон) ОРОХГҮЙ — багц гэж таамаглахгүй.
+ */
+export function weekNcByPkg(rows: readonly ScoreRow[], cos: readonly string[]) {
+  const acc = new Map<string, { label: string; value: number }>();
+  for (const r of rows) {
+    if (!r.pkgK || r.nc <= 0 || !passScore(r, [], cos)) continue;
+    const cur = acc.get(r.pkgK) ?? { label: r.pkgLabel, value: 0 };
+    cur.value += r.nc;
+    acc.set(r.pkgK, cur);
+  }
+  return [...acc.entries()]
+    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: '#dc2626' }))
+    .sort((x, y) => y.value - x.value);
+}
+
+export function weekScoreByCo(rows: readonly ScoreRow[], pkgs: readonly string[]) {
+  const acc = new Map<string, { e: number; a: number; label: string; sfx: string }>();
+  for (const r of rows) {
+    if (!r.coCode || !passScore(r, pkgs, [])) continue;
+    const cur = acc.get(r.coCode) ?? { e: 0, a: 0, label: r.coLabel, sfx: r.coSfx };
+    cur.e += r.e;
+    cur.a += r.a;
+    acc.set(r.coCode, cur);
+  }
+  return [...acc.entries()]
+    .flatMap(([code, v]) => {
+      if (v.a <= 0) return [];
+      const p = (v.e / v.a) * 100;
+      return [{ key: v.sfx || `co:${code}`, label: v.label, value: p, display: pct(p, 0) }];
+    })
+    .sort((x, y) => y.value - x.value);
+}
 
 type State =
   | { state: 'idle' }
@@ -256,7 +522,7 @@ type State =
  * ⚠️ `day`/`month` нь ХУУДАСНЫ огнооны шүүлт — хүн хүч, осол,
  * үзлэг гурвуулаа дагана (`Habea.tsx`).
  */
-export type UzDim = 'sev' | 'shift' | 'company' | 'site' | 'day' | 'month';
+export type UzDim = 'sev' | 'shift' | 'company' | 'week' | 'day' | 'month';
 /* ⚠️ `string[]` (readonly БИШ): `Bars`/`Donut`-ийн `selected` нь өөрчлөгдөх массив
    хүлээдэг тул readonly дамжуулвал төрлийн алдаа гарна. Энд массивыг ОГТ
    мутацлахгүй — шинэчлэл нь `Habea.toggleDim`-д шинэ массиваар хийгдэнэ. */
@@ -287,6 +553,8 @@ export function uzPickRows(r: UzlegRow): [string, string][] {
 }
 
 export const uzValueLabel = (d: UzDim, v: string): string => {
+  /* Долоо хоног нь КОДООР (`w3`) хадгалагдана — чипэнд хүний нэрээр */
+  if (d === 'week') return weekLabel(v);
   if (d !== 'sev') return v;
   const m: Record<string, string> = {
     major: tr('Ноцтой үл нийцэл'),
@@ -321,7 +589,7 @@ export function uzPass(x: UzlegRow, uz: UzSel, except?: UzDim): boolean {
   if (except !== 'sev' && uz.sev.length && !uz.sev.some((k) => (SEV_OF[k]?.(x) ?? 0) > 0)) return false;
   if (except !== 'shift' && !inSet(uz.shift, x.shift)) return false;
   if (except !== 'company' && !inSet(uz.company, x.company)) return false;
-  if (except !== 'site' && !inSet(uz.site, x.site)) return false;
+  if (except !== 'week' && !inSet(uz.week, x.week)) return false;
   /* ⚠️ Өдөр/сарыг ЛОКАЛ огноогоор — цувааны түлхүүртэй ЯГ ижил `dayKey` */
   if (except !== 'day' && uz.day.length && !(x.d > 0 && uz.day.includes(dayKey(x.d)))) return false;
   if (except !== 'month' && uz.month.length && !(x.d > 0 && uz.month.includes(dayKey(x.d).slice(0, 7)))) return false;
@@ -376,6 +644,56 @@ export function useUzleg(kind: UzlegKind | null): State {
 /* ═════════════════ Нэгтгэл ═════════════════ */
 
 /** Түлхүүрээр тоолж, ихээс бага руу — «—» (бөглөөгүй) ХАСНА */
+/**
+ * ДОЛОО ХОНОГООР — оноо эсвэл тоо.
+ *
+ * ⚠️ ОНОО нь ЖИГНЭСЭН: `Σ авсан / Σ боломжит × 100`. Үзлэг бүрийн хувийг
+ * ДУНДАЖЛАХГҮЙ — 5 заалттай үзлэг 60 заалттайтай ижил жинтэй болж,
+ * долоо хоногийн бодит оноог гажуудуулна.
+ *
+ * ⚠️ Боломжит оноо 0 долоо хоног ГАРАХГҮЙ (`null ≠ 0`) — «0%» гэж зурвал
+ * «муу» гэж уншигдах ч үнэндээ хэмжилт алга.
+ *
+ * ⚠️ `score` нь олонлогт ЯДАЖ НЭГ онооны мөр байвал `true` — гүйцэтгэгчийн
+ * маягт (талбаргүй) бүхэлдээ ТООГООР гарна.
+ */
+function byWeek(rows: UzlegRow[]) {
+  const score = rows.some((x) => (x.scA ?? 0) > 0);
+  /* `d0` — тухайн долоо хоногийн ХАМГИЙН ЭРТ үзлэгийн огноо (эрэмбэд) */
+  const m = new Map<string, { n: number; e: number; a: number; d0: number }>();
+  for (const r of rows) {
+    if (!r.week) continue;
+    const cur = m.get(r.week) ?? { n: 0, e: 0, a: 0, d0: Infinity };
+    cur.n += 1;
+    if (r.scA != null && r.scA > 0) { cur.a += r.scA; cur.e += r.scE ?? 0; }
+    if (r.d > 0 && r.d < cur.d0) cur.d0 = r.d;
+    m.set(r.week, cur);
+  }
+  const items = [...m.entries()]
+    /**
+     * ⚠️ ЦАГ ХУГАЦААНЫ ДАРААЛЛААР — долоо хоногийн ЖИНХЭНЭ огноогоор, дугаараар
+     * БИШ: он солигдоход «52» нь «1»-ээс ӨМНӨ байх ёстой, дугаараар эрэмбэлбэл
+     * эсрэгээр. Огноогүй бол дугаараар, тэр ч үгүй бол («Бусад») хамгийн сүүлд.
+     * Хамгийн шинэ долоо хоног БАРУУН захад — гүйлгэгч тийшээ нээгддэг.
+     */
+    .sort((x, y) => {
+      const dx = x[1].d0, dy = y[1].d0;
+      if (dx !== dy && Number.isFinite(dx) && Number.isFinite(dy)) return dx - dy;
+      return (weekNum(x[0]) ?? 1e9) - (weekNum(y[0]) ?? 1e9);
+    })
+    .flatMap(([k, v]) => {
+      /* Шошго нь ТОВЧ («37-р») — нарийн баганад багтах ёстой;
+         бүтэн нэр нь hover-ийн гарчиг ба шүүлтийн чипэнд гарна. */
+      const wn = weekNum(k);
+      const short = wn != null ? tr('{0}-р', String(wn)) : weekLabel(k);
+      if (!score) return [{ key: k, label: short, value: v.n, display: num(v.n) }];
+      if (v.a <= 0) return [];
+      const p = (v.e / v.a) * 100;
+      return [{ key: k, label: short, value: p, display: pct(p, 0) }];
+    });
+  return { items, score };
+}
+
 function countBy(rows: UzlegRow[], of: (x: UzlegRow) => string) {
   const m = new Map<string, number>();
   for (const r of rows) {
@@ -446,11 +764,18 @@ function byDay(rows: UzlegRow[]) {
 }
 
 /**
- * ⚠️ Нэг дор харагдах өдрийн тоо — `Habea.tsx`-ийн `DAYS_VISIBLE`-тэй ИЖИЛ
- * утга. Доод зурваст хүн хүчний ба үзлэгийн өдрийн чарт ээлжлэн гардаг тул
- * баганын өргөн нь хоёуланд ижил байх ёстой.
+ * ЦАГ ХУГАЦААНЫ ЦУВААНД НЭГ ДОР ХАРАГДАХ ҮЕИЙН ТОО — ХАБЭА-гийн БҮХ
+ * өдөр · сар · долоо хоногийн чартад НЭГ утга.
+ *
+ * ⚠️ 2026-09-17: 8 → 7 (хэрэглэгчийн хүсэлт: «эхний харагдац нь сүүлийн 7
+ * утга, дараа нь гүйлгэнэ»). Өгөгдөл цаашид бөглөгдөж цуваа уртсах тул
+ * бүх цуваа гүйлгэгчтэй; нээгдэхдээ СҮҮЛИЙН үе рүү очно.
+ *
+ * ⚠️ ЭНД НЭГ Л УДАА — `Habea.tsx` үүнийг импортолно. Урьд нь хоёр файлд тус
+ * тусдаа тогтмол байж, «ИЖИЛ байх ёстой» гэсэн тайлбараар л холбогдож байв.
+ * ⚠️ Цуваа `SERIES_VISIBLE`-ээс богино бол гүйлгэгч гарахгүй — бүтэн өргөнд.
  */
-const DAYS_VISIBLE = 8;
+export const SERIES_VISIBLE = 7;
 
 function byMonth(rows: UzlegRow[]) {
   const m = new Map<string, number>();
@@ -620,7 +945,42 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
  * карт тавихгүй» дүрэм нь ЗҮҮН баганад хамаарахгүй: зүүн багана бүхэлдээ
  * гүйлгэгддэг (2026-09-06-ны хэрэглэгчийн хүсэлт).
  */
-export function UzlegLeft({ st, url, sel, onPick }: { st: State; url: string } & Pick) {
+/**
+ * ҮЛ НИЙЦЭЛ — БАГЦААР (2026-09-17, хэрэглэгчийн хүсэлт: «аль багц дээр хамгийн
+ * их үл нийцэл гарч байгааг харуул», «Үл нийцлийн зэрэг»-ийн ДООР).
+ *
+ * ⚠️ «Үл нийцэл» = НОЦТОЙ + БАГА ЗЭРГИЙН. Ажиглалт ба нийцсэн ОРОХГҮЙ —
+ * тэдгээрийг нэмбэл олон үзлэгтэй багц «муу» мэт харагдана.
+ * ⚠️ Мөрүүд нь хуудасны «Багц» шүүлтгүй олонлог (`pkgSt`) — дарахад тэр шүүлт
+ * тавигддаг тул өөрийн хэмжээсээр шүүгдвэл бусад багц алга болно (ArcGIS зан).
+ */
+function byPkgNc(rows: UzlegRow[]) {
+  const m = new Map<string, { label: string; value: number }>();
+  for (const r of rows) {
+    if (!r.bagtsK) continue;
+    const v = r.major + r.minor;
+    if (v <= 0) continue;
+    const cur = m.get(r.bagtsK) ?? { label: habeaPkgLabel(r.site), value: 0 };
+    cur.value += v;
+    m.set(r.bagtsK, cur);
+  }
+  return [...m.entries()]
+    .map(([key, v]) => ({ key, label: v.label, value: v.value, display: num(v.value), color: '#dc2626' }))
+    .sort((a, b) => b.value - a.value);
+}
+
+export function UzlegLeft({
+  st, url, sel, onPick, pkgSt, pkgSel, onPkg, photos = true,
+}: {
+  st: State;
+  url: string;
+  /** «Багц» шүүлтгүй олонлог — «Үл нийцэл — багцаар» чартад (`byPkgNc`) */
+  pkgSt?: State;
+  pkgSel?: string[];
+  onPkg?: (key: string) => void;
+  /** `false` — зургийг дуудагч өөрөө өөр газар (`UzlegPhotos`) байршуулна */
+  photos?: boolean;
+} & Pick) {
   if (st.state === 'loading') return <Section title={tr('Үзлэг')}><Loading /></Section>;
   if (st.state === 'error') {
     return (
@@ -637,33 +997,61 @@ export function UzlegLeft({ st, url, sel, onPick }: { st: State; url: string } &
   const sev = severity(st.rows.filter((x) => uzPass(x, sel, 'sev')));
   const shift = countBy(st.rows.filter((x) => uzPass(x, sel, 'shift')), (x) => x.shift);
   const total = sev.reduce((s, x) => s + x.value, 0);
+  const byPkg = pkgSt?.state === 'ready' ? byPkgNc(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
 
   return (
     <>
-      <Section title={tr('Үл нийцлийн зэрэг')} note={tr('{0} үзлэг', num(all.length))} tone="primary">
+      {/*
+        * ⚠️ ДУГУЙ ДИАГРАМ → SERIAL (баганан) ЧАРТ (2026-09-17, хэрэглэгчийн
+        * хүсэлт; өнгө ХЭВЭЭР — `severity()`-ийн `color`).
+        *
+        * ⚠️ ХЭВТЭЭ (`Bars`), босоо (`Series`) БИШ: зэргийн нэр урт («Бага
+        * зэргийн үл нийцэл») тул босоо баганын тэнхлэгт тасарч, `Series`-ийн
+        * шошго цөөлөх дүрэм нь заримыг нь бүр НУУДАГ. Хэвтээ мөрөнд нэр бүтэн
+        * уншигдана — ArcGIS-ийн serial chart-ын «эргүүлсэн» хувилбартай ижил.
+        *
+        * ⚠️ Дугуйн төвийн нийт заалтын тоо тэмдэглэлд шилжсэн — баганан чартад
+        * «төв» гэж байхгүй ч тэр тоо хэрэгтэй хэвээр.
+        */}
+      <Section
+        title={tr('Үл нийцлийн зэрэг')}
+        note={tr('{0} үзлэг · {1} заалт', num(all.length), num(total))}
+        tone="primary"
+      >
         {sev.length
-          ? (
-            <Donut
-              items={sev}
-              stack
-              size={110}
-              center={num(total)}
-              centerLabel={tr('заалт')}
-              selected={sel.sev}
-              onSelect={(k) => k !== '__other' && onPick('sev', k)}
-            />
-          )
+          ? <Bars items={sev} selected={sel.sev} onSelect={(k) => onPick('sev', k)} />
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>
+      {pkgSt && (
+        <Section
+          title={tr('Үл нийцэл — багцаар')}
+          note={byPkg.length ? tr('ноцтой ба бага зэргийн үл нийцэл') : undefined}
+        >
+          {byPkg.length
+            ? <Bars items={byPkg} selected={pkgSel ?? null} onSelect={onPkg} />
+            : <Empty label={tr('Үл нийцэл бүртгэгдээгүй')} />}
+        </Section>
+      )}
       <Section title={tr('Ээлжээр')}>
         {shift.length
           ? <Bars items={shift} selected={sel.shift} onSelect={(k) => onPick('shift', k)} />
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>
-      <Section title={tr('Хавсаргасан зураг')} note={tr('шинэ нь эхэндээ · дарж томруулна')}>
-        <UzPhotoSlider url={url} rows={all} />
-      </Section>
+      {photos && <UzlegPhotos st={st} url={url} sel={sel} />}
     </>
+  );
+}
+
+/**
+ * ХАВСАРГАСАН ЗУРАГ — тусдаа карт (2026-09-17): захиалагчийн хоёр маягтын
+ * горимд «Үзлэг — гүйцэтгэгчээр»-ийн ДООР байрлуулахын тулд салгав.
+ */
+export function UzlegPhotos({ st, url, sel }: { st: State; url: string; sel: UzSel }) {
+  if (st.state !== 'ready') return null;
+  return (
+    <Section title={tr('Хавсаргасан зураг')} note={tr('шинэ нь эхэндээ · дарж томруулна')}>
+      <UzPhotoSlider url={url} rows={st.rows.filter((x) => uzPass(x, sel))} />
+    </Section>
   );
 }
 
@@ -678,7 +1066,6 @@ export function UzlegRight({ st, sel, onPick }: { st: State } & Pick) {
   if (st.state !== 'ready') return null;
 
   const co = countBy(st.rows.filter((x) => uzPass(x, sel, 'company')), (x) => x.company);
-  const site = countBy(st.rows.filter((x) => uzPass(x, sel, 'site')), (x) => x.site);
 
   return (
     <>
@@ -688,14 +1075,6 @@ export function UzlegRight({ st, sel, onPick }: { st: State } & Pick) {
       >
         {co.length
           ? <Bars items={co} selected={sel.company} onSelect={(k) => onPick('company', k)} />
-          : <Empty label={tr('Бүртгэл алга')} />}
-      </Section>
-      <Section
-        title={tr('Үзлэг — талбайгаар')}
-        note={site.length ? tr('{0} талбай', num(site.length)) : undefined}
-      >
-        {site.length
-          ? <Bars items={site} selected={sel.site} onSelect={(k) => onPick('site', k)} />
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>
     </>
@@ -712,51 +1091,141 @@ export function UzlegRight({ st, sel, onPick }: { st: State } & Pick) {
  * ⚠️ ГҮЙЛГЭГЧ нээгдмэгц ТӨГСГӨЛ рүү: цуваа хуучнаас шинэ рүү өсдөг тул
  * эхлэлд үлдвэл хамгийн хуучин өдрүүд харагдана.
  */
+/**
+ * ЦУВААНЫ АЛХМЫН ШИЛЖҮҮЛЭГЧ — картын ГАРЧГИЙН мөрөнд.
+ *
+ * ⚠️ `Section`-д үйлдлийн слот БАЙХГҮЙ тул `note`-оор дамжуулна —
+ * тэр нь толгойн БАРУУН талд, тайлбар бичиг байдаг байрлал. Ингэснээр
+ * шилжүүлэгч нь картын дотоод агуулгыг ХӨНДӨХГҮЙ: чартын өндөр, гүйлгэгч
+ * бүгд хэвээр.
+ */
+/**
+ * ⚠️ `set` нь `null` байж БОЛНО — тэр үед шилжүүлэгч ЗУРАГДАХГҮЙ,
+ * зөвхөн тайлбар үлдэнэ. «Техник болон хүн цаг» фокуст сарын өгөгдөл нь
+ * ХАЖУУГИЙН баганад тусдаа чарт болж гардаг тул доод зурваст сэлгэх зүйл
+ * үлдэхгүй; товчийг үлдээвэл дарахад ижил чарт хоёр газар давхарлана.
+ */
+export const stepNote = (
+  step: 'day' | 'month',
+  set: ((v: 'day' | 'month') => void) | null,
+  note: ReactNode,
+) => (
+  <span className={h.stepWrap}>
+    {set && (
+    <span className={h.seg} role="group" aria-label={tr("Цувааны алхам")}>
+      <button
+        type="button"
+        className={`${h.segBtn} ${step === 'day' ? h.segOn : ''}`}
+        aria-pressed={step === 'day'}
+        onClick={() => set('day')}
+      >
+        {tr("Өдөр")}
+      </button>
+      <button
+        type="button"
+        className={`${h.segBtn} ${step === 'month' ? h.segOn : ''}`}
+        aria-pressed={step === 'month'}
+        onClick={() => set('month')}
+      >
+        {tr("Сар")}
+      </button>
+    </span>
+    )}
+    {note != null && <span className={h.stepNote}>{note}</span>}
+  </span>
+);
+
 export function UzlegFin({ st, sel, onPick }: { st: State } & Pick) {
   /* ⚠️ Hook-ууд эрт буцахаас ӨМНӨ — дараа нь байвал дуудлагын дараалал
      төлөв бүрд өөр болж React алдаа өгнө. */
   const scroll = useRef<HTMLDivElement>(null);
+  /**
+   * ӨДӨР ↔ САР — НЭГ КАРТ, гарчгийн шилжүүлэгчтэй (2026-09-17, хэрэглэгчийн
+   * хүсэлт: «Техник болон хүн цаг» дээрх хугацааны чарт шиг). Урьд нь өдөр
+   * ба сар ХОЁР тусдаа карт байв.
+   *
+   * ⚠️ Төлөв нь ЭНЭ бүрэлдэхүүнд — хоёр маягт зэрэгцэх горимд (`dual`) хагас
+   * бүр ӨӨРИЙН алхамтай: нэгийг сараар, нөгөөг өдрөөр харах нь хүчинтэй
+   * (хүн хүчний хоёр картын ижил зарчим).
+   */
+  const [step, setStep] = useState<'day' | 'month'>('day');
   const days = st.state === 'ready' ? byDay(st.rows.filter((x) => uzPass(x, sel, 'day'))) : [];
-  const dayCount = days.length;
+  const mon = st.state === 'ready' ? byMonth(st.rows.filter((x) => uzPass(x, sel, 'month'))) : [];
+  const series = step === 'day' ? days : mon;
+  const seriesLen = series.length;
+  /* ⚠️ Алхам солиход ч СҮҮЛИЙН үе рүү гүйлгэнэ — сарын цуваа өөр урттай тул
+     өмнөх гүйлгэлтийн байрлал утгагүй болно (`Habea`-ийн техникийн картын дүрэм). */
   useEffect(() => {
     const el = scroll.current;
     if (el) el.scrollLeft = el.scrollWidth;
-  }, [dayCount]);
+  }, [seriesLen, step]);
+
+  /* ДОЛОО ХОНОГИЙН ЦУВАА — мөн сүүлийн `SERIES_VISIBLE` үе, гүйлгэгчтэй.
+     ⚠️ Hook тул эрт буцахаас ӨМНӨ бодно (дээрх өдөр/сарын ижил шалтгаан). */
+  const wkScroll = useRef<HTMLDivElement>(null);
+  const wk = st.state === 'ready'
+    ? byWeek(st.rows.filter((x) => uzPass(x, sel, 'week')))
+    : { items: [], score: false };
+  const wkLen = wk.items.length;
+  useEffect(() => {
+    const el = wkScroll.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [wkLen]);
 
   if (st.state !== 'ready') return null;
 
-  const mon = byMonth(st.rows.filter((x) => uzPass(x, sel, 'month')));
   const recent = st.rows.filter((x) => uzPass(x, sel) && x.d > 0).sort((a, b) => b.d - a.d).slice(0, 1);
 
   return (
     <>
       <Section
-        title={tr('Үзлэг — өдрөөр')}
-        note={days.length ? tr('{0} өдөр', num(days.length)) : undefined}
+        title={step === 'day' ? tr('Үзлэг — өдрөөр') : tr('Үзлэг — сараар')}
+        note={stepNote(step, setStep,
+          step === 'day'
+            ? (days.length ? tr('{0} өдөр', num(days.length)) : null)
+            : (recent.length ? tr('сүүлийнх: {0}', date(recent[0].d)) : null))}
       >
-        {days.length
+        {series.length
           ? (
             <div className={h.dayScroll} ref={scroll}>
-              <div style={{ minWidth: `${Math.max(100, (days.length / DAYS_VISIBLE) * 100)}%` }}>
+              <div style={{ minWidth: `${Math.max(100, (series.length / SERIES_VISIBLE) * 100)}%` }}>
                 <Series
-                  items={days} height={110} unit={tr('үзлэг')} line showValues
-                  selected={sel.day} onSelect={(k) => onPick('day', k)}
+                  items={series} height={110} unit={tr('үзлэг')} line showValues
+                  selected={step === 'day' ? sel.day : sel.month}
+                  onSelect={(k) => onPick(step === 'day' ? 'day' : 'month', k)}
                 />
               </div>
             </div>
           )
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>
+      {/*
+        * ДОЛОО ХОНОГООР — ОНОО. ⚠️ 2026-09-17-нд ХОЁР УДАА өөрчлөгдсөн:
+        * «Үзлэг — талбайгаар»-ын оронд баруун баганад багана болж орсон,
+        * дараа нь хэрэглэгчийн хүсэлтээр («доошоо цуваул, smooth line
+        * болго») ЭНД, өдөр ба сарын цуваатай НЭГ ЗУРВАСТ, ижил муруйгаар.
+        * Гурвуулаа ЦАГ ХУГАЦААНЫ цуваа тул зэрэгцэн харагдах нь зөв.
+        *
+        * ⚠️ ГҮЙЦЭТГЭГЧИЙН МАЯГТАД ОНОО БАЙХГҮЙ — тэр үед ҮЗЛЭГИЙН ТОО гарна,
+        * гарчиг нь үүнийг ил хэлнэ. Оноог 0 гэж зурахгүй (`null ≠ 0`).
+        */}
       <Section
-        title={tr('Үзлэг — сараар')}
-        note={recent.length ? tr('сүүлийнх: {0}', date(recent[0].d)) : undefined}
+        title={wk.score ? tr('Үзлэг — долоо хоногоор, оноо') : tr('Үзлэг — долоо хоногоор')}
+        note={wk.items.length
+          ? (wk.score ? tr('авсан / боломжит оноо') : tr('оноо бүртгэгддэггүй · үзлэгийн тоо'))
+          : undefined}
       >
-        {mon.length
+        {wk.items.length
           ? (
-            <Series
-              items={mon} height={110} unit={tr('үзлэг')} line showValues
-              selected={sel.month} onSelect={(k) => onPick('month', k)}
-            />
+            <div className={h.dayScroll} ref={wkScroll}>
+              <div style={{ minWidth: `${Math.max(100, (wk.items.length / SERIES_VISIBLE) * 100)}%` }}>
+                <Series
+                  items={wk.items} height={110} line showValues
+                  color={wk.score ? '#16a34a' : undefined}
+                  selected={sel.week} onSelect={(k) => onPick('week', k)}
+                />
+              </div>
+            </div>
           )
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>
