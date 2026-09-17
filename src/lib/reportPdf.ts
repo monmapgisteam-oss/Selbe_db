@@ -127,11 +127,11 @@ export function buildReportDoc(
       foot: { fontSize: 7.5, color: '#6b7280', margin: [0, 18, 0, 0] },
     },
     footer: (page: number, count: number) => ({
-      text: tr('Сэлбэ 20 минутын хот — Ерөнхий тайлан · {0} / {1}', page, count),
+      text: tr('Сэлбэ 20 минутын хотын ерөнхий тайлан · {0} / {1}', page, count),
       style: 'foot', alignment: 'center', margin: [0, 0, 0, 0],
     }),
     content: [
-      { text: tr('Сэлбэ 20 минутын хот — Ерөнхий тайлан'), style: 'h1' },
+      { text: tr('Сэлбэ 20 минутын хотын ерөнхий тайлан'), style: 'h1' },
       { text: tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт · Огноо: {0}', dateStr), style: 'sub' },
       { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 1.2, lineColor: '#14181c' }] },
 
@@ -192,7 +192,7 @@ export function buildReportDoc(
       note(tr('Эзлэх жингийн нийлбэр {0} — гүйцэтгэл хараахан бүртгэгдээгүй багц байгаа тул нийт дүнг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
 
       ...section('4', tr('Газар чөлөөлөлт'),
-        tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь {2} байна. Ажлын үндсэн хэсэг дууссан ч {3} нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
+        tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь {2}. Шийдвэрлэгдээгүй нэгж талбарын тоо: {3}.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
       cap('4.1', tr('Нэгж талбарын төлөв')),
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Төлөв')), th(tr('Нэгж талбар'), true), th(tr('Эзлэх хувь'), true)],
@@ -239,7 +239,7 @@ export function buildReportDoc(
         ...progress.phases.map((p): TableCell[] => [td(`${p.no}. ${tr(p.name)}`), td(pct(p.pct, 2), true)]),
       ] }, layout: tableLayout },
 
-      cap('6.3', tr('Гүйцэтгэл хамгийн бага арван блок — анхаарал шаардсан ажлууд')),
+      cap('6.3', tr('Гүйцэтгэл хамгийн бага арван блок (анхаарал шаардсан ажлууд)')),
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Багц')), th(tr('Блок')), th(tr('Гүйцэтгэл'), true)],
         ...progress.slowest.map((b): TableCell[] => [td(tr(b.bagts)), td(b.block), td(pct(b.pct, 2), true)]),
@@ -265,7 +265,7 @@ export function buildReportDoc(
       /* ⚠️ 2026-09-06: 7.2 (сарын хуваарь) хасагдсаны дараа дугаарлалт
          үргэлжлэх ёстой — тайлан дотор цоорхой үлдээвэл уншигч «нэг хүснэгт
          хэвлэгдээгүй юм биш үү» гэж эргэлзэнэ. */
-      cap('7.2', tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')),
+      cap('7.2', tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')),
       { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээ'), true)],
         ...finance.byType.map((t): TableCell[] => [

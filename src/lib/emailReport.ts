@@ -99,7 +99,7 @@ export function download(filename: string, blob: Blob): void {
 }
 
 /** Мэйлийн богино гарчиг ба их бие */
-const subjectOf = (dateStr: string) => tr('Сэлбэ 20 минутын хот — Ерөнхий тайлан ({0})', dateStr);
+const subjectOf = (dateStr: string) => tr('Сэлбэ 20 минутын хотын ерөнхий тайлан ({0})', dateStr);
 const bodyText = tr('Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,');
 const bodyHtml = tr('<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>');
 

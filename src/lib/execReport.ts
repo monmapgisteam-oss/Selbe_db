@@ -24,10 +24,11 @@
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, monthKey } from '@/lib/format';
+import { num, pct, mnt, monthKey, sentenceCase } from '@/lib/format';
 import {
-  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, CONTRACTED,
+  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, CONTRACTED,
 } from '@/lib/gdash';
+import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadPlanCurve } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
@@ -67,6 +68,14 @@ export type ExecReport = {
     hse: { date: string; workers: number; equipment: number; manHours: number } | null;
     /** Ажлын төрөл бүрийн төсөв · гэрээлсэн · гүйцэтгэл (өртгөөр буурах) */
     byType: { label: string; cost: number; contract: number; perf: number | null; n: number; contracted: number }[];
+    /**
+     * ЗАХИРАМЖИЙН ЭХ ҮҮСВЭР — мөнгө ба ажлын тоо (дүнгээр буурах).
+     *
+     * ⚠️ Суурь нь НИЙТ ТӨСӨВ БИШ, эх үүсвэрийн талбаруудын нийлбэр:
+     * захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул хувь нь
+     * «эх үүсвэрүүдийн дотор эзлэх хувь» (`chartSourceAmount` §тайлбар).
+     */
+    bySource: { label: string; amount: number; contracted: number; n: number }[];
   };
   /** 05. Багцын гүйцэтгэл */
   prog: {
@@ -149,12 +158,27 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      `GeneralDash.catPct`-тай ижил дүрэм. */
   const catPct = new Map<string, number>();
   if (actual != null) catPct.set('ОРОН СУУЦНЫ ХОРООЛОЛ', actual);
-  const byType = chartTypeCost(cf, fillProg, catPct)
+  /**
+   * ⚠️ ХЭРЭГЛЭГЧЭЭС НУУСАН ХЭСЭГ ЧАРТАД Ч ОРОХГҮЙ (2026-09-17).
+   *
+   * «7 БОНДЫН ХҮҮ» нь санхүүжилтийн хүснэгтээс аль хэдийн нуугдсан
+   * (`FIN_XL_ROW_HIDE`, 2026-09-10-ны заавар: «хүмүүст ерөөсөө харуулахгүй»)
+   * атлаа тайлангийн ажлын төрлийн чартад «0 ₮ · —» гэсэн хоосон мөр болж
+   * гарсаар байв. Мөнгө нь 0 тул нийлбэр хөндөгдөхгүй.
+   */
+  const shown = cf.filter((r) => !FIN_XL_ROW_HIDE.includes(r.sec));
+  const byType = chartTypeCost(shown, fillProg, catPct)
     .map((b) => ({
-      label: b.label, cost: b.value, contract: b.sub, perf: b.perf ?? null,
+      /* ⚠️ Эх үйлчилгээний БҮХ ТОМ ҮСЭГТ нэрийг уншигдахуйц болгоно
+         (`sentenceCase` §тайлбар, 2026-09-17 хэрэглэгчийн заавар). */
+      label: sentenceCase(b.label), cost: b.value, contract: b.sub, perf: b.perf ?? null,
       n: b.count ?? 0, contracted: b.countSub ?? 0,
     }))
     .sort((a, b) => b.cost - a.cost);
+  /* ⚠️ Дашбоардын «Захирамжийн эх үүсвэр» чарттай ИЖИЛ эх */
+  const bySource = chartSourceMerged(cf).map((b) => ({
+    label: sentenceCase(b.label), amount: b.value, contracted: b.sub, n: b.count ?? 0,
+  }));
 
   /* ── 04. Багцын санхүү — `PkgFin.pkgFinRows`-тэй ИЖИЛ ── */
   const pf = pkgFinRows(packs, fin);
@@ -191,6 +215,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       },
       hse: hse ? { date: hse.date, workers: hse.workers, equipment: hse.equipment, manHours: hse.manHours } : null,
       byType,
+      bySource,
     },
     prog: {
       blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: bld.asOf,
@@ -223,49 +248,184 @@ async function loadExecReportRaw(): Promise<ExecReport> {
  * ⚠️ Босго тоонууд (5 нэгж хувь, 50%) нь ЗӨВХӨН «анхаарал татах» шүүлт —
  *    албан ёсны шалгуур биш. Албан босго тогтвол энд нэг газар солино.
  */
-export function execFindings(x: ExecReport): string[] {
-  const out: string[] = [];
-  if (x.prog.gap != null && x.prog.gap >= 5) {
-    out.push(tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).',
-      num(x.prog.gap, 1), pct(x.prog.planned, 1), pct(x.prog.actual, 1)));
-  } else if (x.prog.gap != null && x.prog.gap < 0) {
-    out.push(tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна.', num(-x.prog.gap, 1)));
+/**
+ * Нэг дүгнэлт — ТАЙЛАНГИЙН МӨР (2026-09-17, хэрэглэгчийн заавар:
+ * «ойлгомжтой тайлангийн формат руу оруул»).
+ *
+ * ⚠️ Урьд нь энэ нь энгийн `string[]` байсан тул 34 багцын нэр НЭГ
+ * өгүүлбэр дотор таслалаар цувж, хүн уншиж чаддаггүй байв. Одоо нэр
+ * жагсаалт нь `items`-д ТУСДАА гарч, дэлгэц дээр жагсаалт болж зурагдана.
+ *
+ * ⚠️ `sev` нь ЗӨВХӨН харагдацын эрэмбэ — албан ёсны ангилал БИШ. Босго
+ * тоонууд доор нэг газар бичигдсэн.
+ */
+export type ExecFinding = {
+  /** Хүндрэлийн зэрэг: bad = шийдвэр шаардсан, warn = анхаарах, info = мэдээлэл */
+  sev: 'bad' | 'warn' | 'info';
+  /** Аль хэсгийн асуудал бэ — тайлангийн бүлгийн нэр */
+  area: string;
+  /** Нэг өгүүлбэр — тоог агуулсан гол мэдэгдэл */
+  text: string;
+  /** Нэрсийн жагсаалт (багц, талбар…) — өгүүлбэрт ЦУВУУЛАХГҮЙ */
+  items?: string[];
+  /**
+   * ЗӨВЛӨМЖ — энэ асуудалд авах үйл ажиллагаа.
+   * ⚠️ Дүгнэлт нь «юу болсныг», зөвлөмж нь «юу хийхийг» хэлнэ. Хоёрыг
+   * нэг өгүүлбэрт нийлүүлбэл аль нь баримт, аль нь санал болох нь
+   * ялгагдахаа болино.
+   */
+  advice?: string;
+};
+
+/**
+ * АНХААРАХ АСУУДЛУУД — амьд тооноос үүсэх бүтэцтэй мөрүүд.
+ *
+ * ⚠️ Эрэмбэ нь ЧУХЛААС бага руу: зөвшөөрөл ба санхүүжилтийн гацаа нь
+ * шийдвэр шаарддаг тул дээр, мэдээллийн дутуу байдал доор.
+ */
+export function execFindings(x: ExecReport): ExecFinding[] {
+  const out: ExecFinding[] = [];
+  const A_PROG = tr('Гүйцэтгэл');
+  const A_FIN = tr('Санхүүжилт');
+  const A_LAND = tr('Газар чөлөөлөлт');
+  const A_ZOV = tr('Зөвшөөрөл');
+  const A_DATA = tr('Мэдээллийн бүрэн байдал');
+
+  /* ── Зөвшөөрөл — ажил эхлүүлэхэд шууд саад ── */
+  if (x.zov) {
+    if (x.zov.no > 0) {
+      out.push({
+        sev: 'bad', area: A_ZOV,
+        text: tr('{0} зөвшөөрөл олгогдоогүй, ажил эхлүүлэх шийдвэрт шууд нөлөөлнө.', num(x.zov.no)),
+        advice: tr('Олгосон байгууллагатай яаралтай уулзаж татгалзсан үндэслэлийг тодруулан, шаардлагатай нэмэлт материалыг бүрдүүлж дахин хүсэлт гаргах.'),
+      });
+    }
+    if (x.zov.wait > 0) {
+      out.push({
+        sev: 'warn', area: A_ZOV,
+        text: tr('{0} зөвшөөрөл хүлээгдэж байна.', num(x.zov.wait)),
+        advice: tr('Холбогдох байгууллагуудаас хариу өгөх хугацааг баталгаажуулж, шаардлагатай бол зохицуулах хурал зарлан шийдвэрлэх хугацааг товлох.'),
+      });
+    }
+    if (x.zov.unknown > 0) {
+      out.push({ sev: 'info', area: A_ZOV, text: tr('{0} зөвшөөрлийн төлөв танигдахгүй байна, бүртгэлийг засах шаардлагатай.', num(x.zov.unknown)) });
+    }
+  } else {
+    out.push({ sev: 'info', area: A_ZOV, text: tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ тайланд зөвшөөрлийн мэдээлэл ороогүй.') });
   }
-  if (x.prog.noData > 0) {
-    out.push(tr('{0} блокийн гүйцэтгэл хараахан бөглөгдөөгүй — тайлангийн биет хувь тэдгээрийг агуулахгүй.', num(x.prog.noData)));
-  }
-  const stalled = x.prog.packs.filter((p) => p.kind === 'build' && p.progress != null && p.progress < 5);
-  if (stalled.length) {
-    out.push(tr('{0} багц 5%-иас доош гүйцэтгэлтэй: {1}.', num(stalled.length), stalled.map((p) => p.name).join(', ')));
-  }
+
+  /* ── Санхүүжилт ── */
   if (x.fin.share != null && x.fin.share < 20) {
-    out.push(tr('Гэрээний дүнгийн ердөө {0} нь олгогдсон; олгогдоогүй үлдэгдэл {1} ₮.', pct(x.fin.share, 1), mnt(x.fin.remain)));
+    out.push({
+      sev: 'bad',
+      area: A_FIN,
+      /* ⚠️ `mnt()` нь ₮-г ӨӨРӨӨ нэмнэ — загварт давхар бичвэл «… ₮ ₮» болно */
+      text: tr('Гэрээний дүнгийн ердөө {0} нь олгогдсон; олгогдоогүй үлдэгдэл {1}.', pct(x.fin.share, 1), mnt(x.fin.remain)),
+      advice: tr('Санхүүжилтийн графикийг гэрээний хуваарьтай уялдуулан дахин хянаж, олголтын саатлын шалтгааныг багц тус бүрээр тодруулах.'),
+    });
   }
   const lowFin = x.fin.rows.filter((r) => r.pct != null && r.pct < 10 && r.plan > 0);
   if (lowFin.length) {
-    out.push(tr('{0} багцын санхүүжилт гэрээний дүнгийн 10%-д хүрээгүй: {1}.', num(lowFin.length), lowFin.map((r) => r.label).join(', ')));
-  }
-  if (x.gdash.landPct != null && x.gdash.land.remaining > 0) {
-    const top = x.gdash.land.reasons[0];
-    out.push(top
-      ? tr('Газар чөлөөлөлт {0} — {1} нэгж талбар чөлөөлөгдөөгүй; гол шалтгаан «{2}» ({3}).', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining), top.label, num(top.n))
-      : tr('Газар чөлөөлөлт {0} — {1} нэгж талбар чөлөөлөгдөөгүй.', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining)));
-  }
-  if (!x.gdash.hse) {
-    out.push(tr('ХАБ-ын хүн хүчний бүртгэл олдсонгүй — талбайн ажиллах хүчний мэдээлэл энэ тайланд алга.'));
+    out.push({
+      sev: 'warn',
+      area: A_FIN,
+      text: tr('{0} багцын санхүүжилт гэрээний дүнгийн 10%-д хүрээгүй.', num(lowFin.length)),
+      advice: tr('Санхүүжилтийн эрэмбийг тухайн ажлын эхлэх хуваарьтай уялдуулан дахин харах; олголт огт эхлээгүй багцуудын явцыг сар бүр хянах.'),
+      items: lowFin.map((r) => r.label),
+    });
   }
   if (x.gdash.budget > 0 && x.gdash.contract > 0) {
     const share = (x.gdash.contract / x.gdash.budget) * 100;
-    if (share < 90) out.push(tr('Нийт төсвийн {0} нь гэрээгээр баталгаажсан; {1} ₮ гэрээлэгдээгүй.', pct(share, 1), mnt(x.gdash.budget - x.gdash.contract)));
+    if (share < 90) {
+      out.push({
+        sev: 'warn',
+        area: A_FIN,
+        text: tr('Нийт төсвийн {0} нь гэрээгээр баталгаажсан; {1} гэрээлэгдээгүй үлдсэн.', pct(share, 1), mnt(x.gdash.budget - x.gdash.contract)),
+        advice: tr('Үлдэгдэл ажлын гүйцэтгэгч сонгон шалгаруулах, гэрээ байгуулах ажлыг эрчимжүүлж төлөвлөгөөт хугацаанд багтаах.'),
+      });
+    }
   }
-  if (x.zov) {
-    if (x.zov.no > 0) out.push(tr('{0} зөвшөөрөл ЗӨВШӨӨРӨГДӨӨГҮЙ — ажил эхлүүлэх шийдвэрт шууд нөлөөлнө.', num(x.zov.no)));
-    if (x.zov.wait > 0) out.push(tr('{0} зөвшөөрөл хүлээгдэж байна.', num(x.zov.wait)));
-    if (x.zov.unknown > 0) out.push(tr('{0} зөвшөөрлийн төлөв танигдахгүй байна — бүртгэлийг засах шаардлагатай.', num(x.zov.unknown)));
-  } else {
-    out.push(tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ тайланд зөвшөөрлийн мэдээлэл ороогүй.'));
+
+  /* ── Газар чөлөөлөлт ── */
+  if (x.gdash.landPct != null && x.gdash.land.remaining > 0) {
+    const top = x.gdash.land.reasons[0];
+    out.push({
+      sev: 'warn',
+      area: A_LAND,
+      text: top
+        ? tr('Газар чөлөөлөлт {0}, {1} нэгж талбар чөлөөлөгдөөгүй. Гол шалтгаан «{2}» ({3} талбар).', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining), top.label, num(top.n))
+        : tr('Газар чөлөөлөлт {0}, {1} нэгж талбар чөлөөлөгдөөгүй.', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining)),
+      advice: tr('Үлдсэн талбаруудад зориулсан хэлэлцээрийн баг байгуулж, гол шалтгаан тус бүрээр шийдвэрлэх хугацаатай зорилт тавих.'),
+    });
+  }
+
+  /* ── Гүйцэтгэл ── */
+  const stalled = x.prog.packs.filter((p) => p.kind === 'build' && p.progress != null && p.progress < 5);
+  if (stalled.length) {
+    out.push({
+      sev: 'bad',
+      area: A_PROG,
+      text: tr('{0} багц 5%-иас доош гүйцэтгэлтэй.', num(stalled.length)),
+      advice: tr('Эдгээр багцын ажил эхлэхэд саад болж буй хүчин зүйлийг (зөвшөөрөл, газар, санхүүжилт) тус бүрд нь тодруулж, хариуцагч томилох.'),
+      items: stalled.map((p) => p.name),
+    });
+  }
+  if (x.prog.gap != null && x.prog.gap >= 5) {
+    out.push({
+      sev: 'warn',
+      area: A_PROG,
+      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(x.prog.gap, 1), pct(x.prog.planned, 1), pct(x.prog.actual, 1)),
+      advice: tr('Хоцрогдолтой блокуудад хүн хүч, техник хэрэгслийн нэмэлт хуваарилалт хийж, сар бүрийн биет хэмжилтээр явцыг хянах.'),
+    });
+  } else if (x.prog.gap != null && x.prog.gap < 0) {
+    out.push({
+      sev: 'info',
+      area: A_PROG,
+      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна.', num(-x.prog.gap, 1)),
+      advice: tr('Одоогийн хурдыг барихын тулд хүн хүч, техник хэрэгслийн хуваарилалтыг тогтвортой хадгалж, хамгийн бага гүйцэтгэлтэй багцуудад нэмэлт анхаарал хандуулах.'),
+    });
+  }
+
+  /* ── Мэдээллийн дутуу байдал — тоог гажуудуулдаг тул ЗААВАЛ хэлнэ ── */
+  if (x.prog.noData > 0) {
+    out.push({
+      sev: 'info',
+      area: A_DATA,
+      text: tr('{0} блокийн гүйцэтгэл хараахан бөглөгдөөгүй, тайлангийн биет хувь тэдгээрийг агуулахгүй.', num(x.prog.noData)),
+    });
+  }
+  if (!x.gdash.hse) {
+    out.push({
+      sev: 'info',
+      area: A_DATA,
+      text: tr('ХАБ-ын хүн хүчний бүртгэл олдсонгүй, талбайн ажиллах хүчний мэдээлэл энэ тайланд алга.'),
+    });
   }
   return out;
+}
+
+/**
+ * ДҮГНЭЛТИЙГ ЭНГИЙН МӨР БОЛГОНО — PDF ба инфографикт.
+ *
+ * ⚠️ Тэр хоёр нь энгийн текстийн урсгал тул жагсаалтыг өгүүлбэрт нийлүүлнэ.
+ * Дэлгэц нь ЭСРЭГЭЭР бүтцээ хадгалж, жагсаалтыг тусад нь зурна.
+ */
+export function execFindingLines(x: ExecReport): string[] {
+  return execFindings(x).map((f) => (
+    f.items?.length ? `${f.text} ${f.items.join(', ')}.` : f.text
+  ));
+}
+
+/**
+ * ЗӨВХӨН МЭДЭГДЭЛ — нэрсийн жагсаалтгүй (2026-09-17).
+ *
+ * ⚠️ ИНФОГРАФИКТ зориулав. Тэр нь НЭГ ХУУДСАНД багтах ёстой график бөгөөд
+ * 34 багцын нэрийг тэнд цутгавал доод талын «Анхаарах асуудал» блок нь
+ * долоон мөр болж, бусад бүх хэсгийг шахна (хэрэглэгчийн шүүмж). Нэрс нь
+ * ТАЙЛАНД (дэлгэц ба PDF) бүрнээрээ гарна — мэдээлэл алдагдахгүй.
+ */
+export function execFindingBrief(x: ExecReport): string[] {
+  return execFindings(x).map((f) => f.text);
 }
 
 /* ═══════════════ AI дүгнэлт ═══════════════ */
