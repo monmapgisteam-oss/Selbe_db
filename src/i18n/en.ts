@@ -4391,7 +4391,8 @@ const en: Record<string, string> = {
   "Сонгосон объектуудын утгыг уншиж байна…": "Reading the values of the selected objects…",
   "Өөрчилсөн талбар алга.": "No fields changed.",
   "✓ Хадгалагдлаа — {0} объектын {1} талбар": "✓ Saved — {1} fields on {0} objects",
-  "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in."
+  "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in.",
+  "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen"
 };
 
 export default en;

@@ -378,6 +378,25 @@ export function Huvaari({
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [busy, setBusy] = useState(false);
+  /**
+   * БҮТЭН ДЭЛГЭЦ (2026-09-17, хэрэглэгчийн хүсэлт) — хуваарийн хүрээ ӨӨРӨӨ
+   * `requestFullscreen` авна: навигаци, толгой алга болж 1,400 мөрт хуанли бүтэн
+   * дэлгэцийг эзэлнэ. Esc-ээр гарахад `fullscreenchange` төлвийг буцаана.
+   * ⚠️ API-г зөвхөн товчны click дотор дуудна (хэрэглэгчийн үйлдэл шаарддаг).
+   */
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [fs, setFs] = useState(false);
+  const toggleFs = useCallback(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) el.requestFullscreen?.().then(() => setFs(true)).catch(() => {});
+    else document.exitFullscreen?.().catch(() => {});
+  }, []);
+  useEffect(() => {
+    const onChange = () => setFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
 
@@ -1993,7 +2012,7 @@ export function Huvaari({
   }
 
   return (
-    <div className={h.frame}>
+    <div className={h.frame} ref={frameRef}>
       {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ──
           ⚠️ 2026-09-02 (хэрэглэгч): урьд нь ГУРВАН зурвас байв — (1) багц
           сонгох толгой, (2) `Section`-ийн «Ажлын хуваарь» гарчиг, (3) шүүлт ба
@@ -2202,6 +2221,11 @@ export function Huvaari({
         )}
 
         <span className={h.spacer} />
+
+        <button type="button" className={h.tlZoomB} onClick={toggleFs}
+          title={fs ? tr('Бүтэн дэлгэцээс гарах (Esc)') : tr('Хуваарийг бүтэн дэлгэцээр')}>
+          {fs ? '🡼 ' + tr('Гарах') : '⛶ ' + tr('Бүтэн дэлгэц')}
+        </button>
 
         {sc && rows.length > 0 && (
           <span className={h.flowNote}>

@@ -21,6 +21,8 @@
   background: var(--bg);
   overflow: hidden;
 }
+/* Бүтэн дэлгэц (2026-09-17): толгойн зурвасгүй тул бүтэн өндөр */
+.frame:fullscreen { height: 100dvh; width: 100vw; }
 
 /**
  * ⚠️ ХҮСНЭГТИЙН КАРТ ҮЛДСЭН ӨНДРИЙГ ЭЗЭЛНЭ. `.frame` нь `overflow: hidden`
