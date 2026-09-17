@@ -1535,7 +1535,6 @@ const en: Record<string, string> = {
   "Сэлбэ": "Selbe",
   "СЭЛБЭ": "SELBE",
   "Сэлбэ 1 хил": "Selbe 1 boundary",
-  "Сэлбэ 2 хил": "Selbe 2 boundary",
   "Сэлбэ 20 минутын хот — Ерөнхий тайлан": "Selbe 20-Minute City — General report",
   "Сэлбэ 20 минутын хот — Ерөнхий тайлан · {0} / {1}": "Selbe 20-Minute City — General report · {0} / {1}",
   "Сэлбэ 20 минутын хот — Ерөнхий тайлан ({0})": "Selbe 20-Minute City — General report ({0})",
@@ -2066,11 +2065,6 @@ const en: Record<string, string> = {
   "Орчны гэрэл мэдрэгч": "Ambient light sensor",
   "Гадна орчны чийгшил": "Outdoor humidity",
   "Гадна орчны температур": "Outdoor temperature",
-  "Багц 5.1 · Гадна дулаан, ус, татуурга — худаг, камер": "Package 5.1 · External heating, water, sewerage — manholes and chambers",
-  "Багц 5.2 · Гадна дулаан, ус, татуурга — худаг, камер": "Package 5.2 · External heating, water, sewerage — manholes and chambers",
-  "Багц 5.3 · Гадна дулаан, ус, татуурга — худаг, камер": "Package 5.3 · External heating, water, sewerage — manholes and chambers",
-  "Багц 5.4 · Гадна дулаан, ус, татуурга — худаг, камер": "Package 5.4 · External heating, water, sewerage — manholes and chambers",
-  "Багц 14 · Дулаан хангамжийн нэвтрэх суваг — худаг, камер": "Package 14 · Heating supply access duct — manholes and chambers",
   "Дугуйн зам — тэнхлэг": "Cycle path — centreline",
   "Гэрлэн дохио": "Traffic signals",
   "Уулзвар": "Intersection",
@@ -4254,7 +4248,7 @@ const en: Record<string, string> = {
   "Чанарын баримт ирүүлэх": "Submit quality docs",
   "Чанарын баримт хянах": "Review quality docs",
   "{0}: чанарын баримтын хянагч дутуу ({1}) — гурван хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн аргачлал хэзээ ч батлагдахгүй.": "{0}: quality document reviewer missing ({1}) — all three reviewers must approve, so submitted method statements can never be approved.",
-  "ТУХ": "PMU",
+  "ТУХ": "PMU"
 };
 
 export default en;

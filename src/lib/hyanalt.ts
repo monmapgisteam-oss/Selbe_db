@@ -20,7 +20,9 @@
 import { invalidate } from './dataBus';
 
 export const HYANALT = {
-  url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/0',
+  /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
+     29/29 талбар, 22 мөр ижил. */
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/205',
   oid: 'OBJECTID',
 } as const;
 

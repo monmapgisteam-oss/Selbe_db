@@ -19,8 +19,8 @@ const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112-т — ижил 113 блок, `BAGTS`/`BLOK`
    талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
-const BLDG = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services'
-  + '/data/FeatureServer/112';
+const BLDG = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
+  + '/SELBE_ALL_DATA_0917/FeatureServer/112';
 const MASTER = `${HJ}/Tusliin_guitsetgel_master/FeatureServer/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.

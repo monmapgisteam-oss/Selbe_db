@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
  *     et:5  «Замын тэнхлэг»    → data/104
  *     et:2  «Автобусны буудал» → data/87
  */
-const TD = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer';
+const TD = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_0917/FeatureServer';
 const URL = `${TD}/108`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
 const ROAD_URL = `${TD}/104`;

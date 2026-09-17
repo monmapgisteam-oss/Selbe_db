@@ -213,6 +213,9 @@ const baseMap = () => Basemap.fromId('topo-vector');
  * `Monmap_zam` line дээр хэвээр (`netSources.ts`). «Бодит» сонгоход л ил болно.
  */
 const ROAD_TILE_URL =
+  /* ⚠️ 2026-09-17: ЗӨВХӨН ЭНЭ tile MUST дээр ҮЛДЭВ (хэрэглэгчийн шийдвэр). monmap-ын
+     `selberoad_0917` нь 32648 (UTM)-ээр нийтлэгдсэн тул 3857 зурагт зурагдахгүй;
+     Web Mercator-оор дахин нийтлэгдмэгц энэ хаягийг солино. Бусад бүх өгөгдөл monmap. */
   'https://vectortileservices-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_zam/VectorTileServer';
 
 export function SuitMap({

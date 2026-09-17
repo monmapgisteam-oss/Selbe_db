@@ -56,14 +56,24 @@ const HJ = env(
  * дугаарын зураглалыг `TD_LAYER` (LAYERS-ийн төгсгөлд) хийнэ; хуучин загвар
  * (webmap snapshot) нь `styleUrl`-ээр хэвээр хэрэглэгдэнэ.
  */
+/*
+ * ⚠️ 2026-09-17: MUST (`services-ap1 · ACqsMOmNLi5wIdIh`) → monmap (`HJ`).
+ *    Аюулгүй байдлын шийдвэр: бүх өгөгдөл НЭГ оргод, Organization-only
+ *    хуваалцаж, хэрэглэгчийн өөрийн OAuth токеноор л уншигдана. MUST-ийн
+ *    `data` (108) → `SELBE_ALL_DATA_0917` (76): нэр · дугаар · мөр · талбар
+ *    73/73 ижил (id нэг ч шилжээгүй), давхардсан 35-ыг зориудаар ХАСАВ
+ *    (`Инженерийн_дэд_бүтэц__Сэлбэ_0916`-той давхцсан `_0813` хуулбарууд ба
+ *    хаана ч лавлагддаггүй `po:*` тав). `toilet` → 115, `nogoon_analysis` →
+ *    118, `Example_data` → 123 (`Exampledata_iot`) мөн ЭНД нэгдэв.
+ */
 export const TD = `${env(
   process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
-  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services",
+  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
   /* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
      шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
      талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
      нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
-)}/data/FeatureServer`;
+)}/SELBE_ALL_DATA_0917/FeatureServer`;
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
@@ -114,8 +124,11 @@ export const ET_PKG = `${HJ}/Selbe_ET_20260725/FeatureServer`;
  * түүнээс үүсгэнэ — `NEXT_PUBLIC_ARCGIS_GAZAR` орчны хувьсагчаар дарж
  * бичих боломж ХЭВЭЭР үлдэнэ. Хаягийг шууд бичвэл тэр холбоос тасарна.
  */
-const TD_TAIL = '/data/FeatureServer';
-export const INFRA_SVC = `${TD.slice(0, TD.lastIndexOf(TD_TAIL))}/Test0911S/FeatureServer`;
+const TD_TAIL = '/SELBE_ALL_DATA_0917/FeatureServer';
+/* ⚠️ 2026-09-17: `Test0911S` (MUST) → `Инженерийн_дэд_бүтэц__Сэлбэ_0916` (monmap):
+   74/74 давхарга, id нэг ч шилжээгүй, Холбооны 4 давхарга илүү бүрэн. URL-д
+   кирилл нэр тул percent-encoded. */
+export const INFRA_SVC = `${TD.slice(0, TD.lastIndexOf(TD_TAIL))}/%D0%98%D0%BD%D0%B6%D0%B5%D0%BD%D0%B5%D1%80%D0%B8%D0%B9%D0%BD_%D0%B4%D1%8D%D0%B4_%D0%B1%D2%AF%D1%82%D1%8D%D1%86__%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_0916/FeatureServer`;
 
 /**
  * ЭХ ҮҮСВЭР — нэгтгэсэн үйлчилгээ (2026.03.08). Дулаан, цахилгаан, ус хангамжийн
@@ -587,17 +600,8 @@ const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/Feat
 
 /* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
 
-/**
- * ⚠️ ТУСДАА FeatureServer host (`services-ap1…/ACqsMOmNLi5wIdIh`) — ЕТ-ийн `HJ`
- * биш. Барилгын үнэлгээ (`selbe_B`) ба кадастрын нэгж (`Selbe_parcel`) нь
- * ЕТ нэгтгэлээс хасагдсан хэдий ч «Газар чөлөөлөлт» харагдацад полигоноор шүүх
- * эх сурвалж болж дахин ашиглагдана. Зөвхөн `gazar` харагдацад хэрэглэнэ —
- * `LAYER_GROUPS`/`PLAN_LAYER_IDS`-д ОРОХГҮЙ тул бусад каталог/нийлбэрт гарахгүй.
- */
-const GAZAR_FS = env(
-  process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
-  "https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services",
-);
+/* ⚠️ 2026-09-17: `GAZAR_FS` (MUST оргийн тусдаа хост) ХАСАГДАВ — газрын
+   давхаргууд `TD` (`SELBE_ALL_DATA_0917`) руу нэгдсэн, `khil2` хасагдсан. */
 
 /**
  * Барилгын үнэлгээ — полигон доторх барилгуудын тоо ба ГАЗАР ЧӨЛӨӨЛӨЛТИЙН
@@ -2067,98 +2071,10 @@ const PKG_LAYERS: LayerDef[] = PKG_ROWS.map(
  * харин багцын огтлолцлын тооцоог хөндөхгүй.
  */
 const TD_ONLY_LAYERS: LayerDef[] = [
-  /* ── Багц 5 · гадна дулаан, ус, ариутгах татуурга — ТАЛБАЙН хувилбар.
-       Шугаман хос нь pkg:108/106/104/102 (test_data 76/74/72/70). ── */
-  {
-    id: "po:108",
-    n: 75,
-    url: `${TD}/75`,
-    title: tr('Багц 5.1 · Гадна дулаан, ус, татуурга — худаг, камер'),
-    topic: "plan",
-    geom: "area",
-    hue: PKG_HUE.net,
-    fill: 0.3,
-    width: 0.8,
-    noZone: true,
-    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
-       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
-       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
-       систем талбар нь бодит м². */
-    qty: { field: "Shape__Area", unit: 'м²' },
-    note: 'БАГЦ-5.1',
-  },
-  {
-    id: "po:106",
-    n: 73,
-    url: `${TD}/73`,
-    title: tr('Багц 5.2 · Гадна дулаан, ус, татуурга — худаг, камер'),
-    topic: "plan",
-    geom: "area",
-    hue: PKG_HUE.net,
-    fill: 0.3,
-    width: 0.8,
-    noZone: true,
-    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
-       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
-       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
-       систем талбар нь бодит м². */
-    qty: { field: "Shape__Area", unit: 'м²' },
-    note: 'БАГЦ-5.2',
-  },
-  {
-    id: "po:104",
-    n: 71,
-    url: `${TD}/71`,
-    title: tr('Багц 5.3 · Гадна дулаан, ус, татуурга — худаг, камер'),
-    topic: "plan",
-    geom: "area",
-    hue: PKG_HUE.net,
-    fill: 0.3,
-    width: 0.8,
-    noZone: true,
-    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
-       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
-       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
-       систем талбар нь бодит м². */
-    qty: { field: "Shape__Area", unit: 'м²' },
-    note: 'БАГЦ-5.3',
-  },
-  {
-    id: "po:102",
-    n: 69,
-    url: `${TD}/69`,
-    title: tr('Багц 5.4 · Гадна дулаан, ус, татуурга — худаг, камер'),
-    topic: "plan",
-    geom: "area",
-    hue: PKG_HUE.net,
-    fill: 0.3,
-    width: 0.8,
-    noZone: true,
-    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
-       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
-       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
-       систем талбар нь бодит м². */
-    qty: { field: "Shape__Area", unit: 'м²' },
-    note: 'БАГЦ-5.4',
-  },
-  {
-    id: "po:95",
-    n: 62,
-    url: `${TD}/62`,
-    title: tr('Багц 14 · Дулаан хангамжийн нэвтрэх суваг — худаг, камер'),
-    topic: "plan",
-    geom: "area",
-    hue: PKG_HUE.src,
-    fill: 0.3,
-    width: 0.8,
-    noZone: true,
-    /* ⚠️ `Area_m2` БИШ: CAD-аас гаралтай тэр талбар 82–88% ХООСОН
-       ([75] 15/127 · [73] 27/195 · [71] 55/299 · [69] 38/232) тул түүгээр
-       тоолвол талбай 2.1–2.4 дахин ДУТУУ гарна. SR 32648 (UTM 48N) тул
-       систем талбар нь бодит м². */
-    qty: { field: "Shape__Area", unit: 'м²' },
-    note: 'БАГЦ-14',
-  },
+  /* ⚠️ 2026-09-17: `po:95…108` (Багц 5.x · Багц 14 худаг/камерын ТАЛБАЙН
+     хувилбар, тав) ХАСАГДАВ — `Test0911S`-ээр солигдсон, каталог · төлөвлөгөө ·
+     харагдац · анализ аль нь ч хэрэглэдэггүй байсан; `SELBE_ALL_DATA_0917`-д
+     нийтлэхдээ давхардал гэж устгасан. */
   /* ── Дугуйн замын ТЭНХЛЭГ. Полигон хувилбар нь `sb:15`/`dugui` ([39]) —
        энэ нь уртаар хэмжигдэх шугам (`urt_m`), бүсэд хуваарилагдана. ── */
   {
@@ -3133,21 +3049,8 @@ export const LAYERS: LayerDef[] = [
      (магента ба неон шар-ногоон — өөр хаана ч хэрэглэгддэггүй).
      ⚠️ ZONE_ID талбаргүй тул `noZone`; fill:0 — зөвхөн хүрээ, эс бөгөөс байнгын
      дүүргэлт бүх зургийг будна. */
-  {
-    id: "khil2",
-    n: 0,
-    /* ⚠️ ӨӨР org (services-ap1 / ACqsMOmNLi5wIdIh) — бүтэн URL. OID нь `FID`
-       (OBJECTID биш) тул буруу нэрээр COUNT() асуувал хүсэлт бүхэлдээ унана. */
-    url: `${GAZAR_FS}/%D0%A1%D1%8D%D0%BB%D0%B1%D1%8D_2_khil/FeatureServer/0`,
-    oid: "FID",
-    title: tr('Сэлбэ 2 хил'),
-    topic: "plan",
-    geom: "area",
-    hue: "#ff00ff",
-    fill: 0,
-    width: 1.8,
-    noZone: true,
-  },
+  /* ⚠️ 2026-09-17: `khil2` (Сэлбэ 2 хил, MUST `Сэлбэ_2_khil`) ХАСАГДАВ —
+     хэрэглэгчийн шийдвэр, monmap руу шилжүүлээгүй. `khil1` л үлдэнэ. */
   {
     id: "khil1",
     n: 2,
@@ -3328,7 +3231,7 @@ export const PLAN_ALWAYS_ON_IDS = ["et:27"] as const;
  * MapCanvas эдгээрийг `PASSIVE`-т нэмж, сонголтоос ХАСНА — ингэснээр дарах туяа
  * шууд доорх бодит объектод хүрнэ. (khil2 унтраалттай ч асаахад мөн адил.)
  */
-export const REFERENCE_IDS = ["khil1", "khil2"] as const;
+export const REFERENCE_IDS = ["khil1"] as const;
 
 /** Ихэнх давхарга ЕТ-ээс; хяналтынх нь өөрийн бүтэн хаягтай */
 /**
@@ -3604,7 +3507,8 @@ export const IRGED_TOILET = {
   title: tr('Нүхэн жорлон'),
   /* ⚠️ 2026-08-24: monmap-ын `selbe_UB_toilet_all`-аас нэгтгэсэн `toilet`
      үйлчилгээ рүү шилжив. Обьект 1675 = 1675, талбарууд бүрэн адил. */
-  url: `${GAZAR_FS}/toilet/FeatureServer/115`,
+  /* ⚠️ 2026-09-17: тусдаа `toilet` үйлчилгээ → `SELBE_ALL_DATA_0917`/115 (ижил дугаар). */
+  url: `${TD}/115`,
   /**
    * УЛБАР ШАР (хэрэглэгчийн сонголт) — гэрэлтэх эффекттэй хамт ажиллана.
    *
@@ -3674,7 +3578,7 @@ export const IRGED_BUILT = {
   id: "irged:built",
   title: tr('Одоогийн барилга (гэр хороолол)'),
   /* ⚠️ `HJ` (services.arcgis.com/HJzgwvlNIXssnQar) — үндсэн байгууллагын org.
-     `GAZAR_FS` нь ӨӨР org (services-ap1/ACqsMOmNLi5wIdIh) тул тэндээс хайвал
+     (2026-09-17-оос өмнө `GAZAR_FS` нь ӨӨР org байсан тул тэндээс хайвал
      404 буцаана. */
   url: `${HJ}/Irgeded_hureh_ur_uguuj/FeatureServer/0`,
   /** Ангиллын талбар — ЗӨВХӨН хоёр утгатай */
@@ -4250,7 +4154,7 @@ export const GROUP_LAYERS: Record<GroupKey, string[]> = {
   iot: [],
   // ⚠️ `bm146`/`bm145`/`bm87` ЭНДЭЭС ГАРСАН — одоо `src` бүлэгт. Хоёуланд
   //    нь байвал каталогт хоёр удаа гарч, `PLAN_LAYER_IDS` давхардана.
-  busad: ["khil1", "khil2", "road", "roadOld"],
+  busad: ["khil1", "road", "roadOld"],
 };
 
 /**
