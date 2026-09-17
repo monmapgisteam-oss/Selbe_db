@@ -40,8 +40,9 @@ const MAX_TURNS = 6;
  * `…workers.dev⏎/chat` рүү явж, URL хүчингүй болж AI чимээгүйхэн ажиллахаа
  * болино. (Бодитоор тохиолдсон: 2026.08.13, амьд багцаас илрүүлсэн.)
  */
-export const AGENT_API =
-  process.env.NEXT_PUBLIC_AGENT_API?.trim().replace(/\/+$/, '') || 'http://localhost:8787';
+/* ⚠️ 2026-09-17: fallback (localhost) ХАСАГДАВ — хаяг зөвхөн env-ээс (Variables `AGENT_API` / `.env`).
+   Хоосон бол `relayAlive()` false → AI товч идэвхгүй, бусад хэсэг хэвийн. */
+export const AGENT_API = (process.env.NEXT_PUBLIC_AGENT_API ?? '').trim().replace(/\/+$/, '');
 
 /**
  * Browser-ГҮЙ үйлчлүүлэгчийн (Telegram бот) реле-баталгаа.
@@ -132,6 +133,7 @@ async function callRelay(
 /** Реле асаалттай эсэх — UI үүнээс хамааран товчоо идэвхгүй болгоно */
 export async function relayAlive(signal?: AbortSignal): Promise<boolean> {
   try {
+    if (!AGENT_API) return false;
     const res = await fetch(`${AGENT_API}/health`, { signal });
     return res.ok;
   } catch {

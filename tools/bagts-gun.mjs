@@ -30,7 +30,9 @@
 
 import { readFileSync } from 'node:fs';
 
-const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
+const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
+if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
 
 /**
  * ⚠️ Жагсаалт нь `src/modules/sheet/bagts.pkg.ts`-ийн `PKGS`-тэй ЯГ таарна.

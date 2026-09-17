@@ -25,7 +25,7 @@ import type Geometry from '@arcgis/core/geometry/Geometry';
  */
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
-import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
+import { TD, layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType } from '@/lib/services';
 import { classifyBuilding, buildingTrips } from './transport';
 import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
@@ -285,9 +285,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   // ⚠️ 2026-08-24: monmap-ын `nogoon_baiguulamj`-аас MUST-ын
   //    `nogoon_baiguulamj_analysis`/118 руу шилжив. Обьект 807 = 807, талбай
   //    55 га = 55 га, `RefName_12`/`Angilal`/`Area_hec` талбар бүрэн адил.
-  const GREEN_DATA_URL =
-    /* ⚠️ 2026-09-17: MUST → monmap `SELBE_ALL_DATA_last_0917` (ижил дугаар 118). */
-    'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/118';
+  /* ⚠️ 2026-09-17: MUST → monmap `SELBE_ALL_DATA_last_0917` (ижил дугаар 118). */
+  const GREEN_DATA_URL = `${TD}/118`;
   const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);

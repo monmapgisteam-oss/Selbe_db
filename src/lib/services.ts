@@ -31,43 +31,50 @@
  * ⚠️ ОРЧНЫ ХУВЬСАГЧ (env) — ArcGIS/UBHUB үйлчилгээний ҮНДСЭН хаягуудыг НЭГ дороос
  * тохируулна (`.env`). `NEXT_PUBLIC_*` нь build үед шингэдэг (статик export).
  *
- * ⚠️ Env өгөгдөөгүй бол доорх FALLBACK (одоогийн ажиллаж буй утга) хэрэглэгдэнэ —
- * гол ажиллагаа env-гүйгээр ч эвдрэхгүй. Бүх дэд үйлчилгээ (ET, GAZAR, IMAGERY г.м.)
- * эдгээр суурьнаас template-ээр гардаг тул зөвхөн энд солиход хангалттай.
+ * ⚠️ 2026-09-17: КОД ДОТОР ҮЙЛЧИЛГЭЭНИЙ ЛИНК/FALLBACK ОГТ БАЙХГҮЙ (хэрэглэгчийн
+ *    шийдвэр). Хаяг бүр ЗӨВХӨН орчны хувьсагчаас — deploy-д GitHub Variables
+ *    (`deploy.yml` env блок), локалд `.env` (репод ордоггүй). Хувьсагч дутуу бол
+ *    `req()` build/ачаалалтын үед ИЛ алдаа шиднэ — чимээгүй буруу хаяг руу явахгүй.
+ *    Бүх дэд үйлчилгээ (ET, IMAGERY, BIM г.м.) эдгээр суурьнаас template-ээр гардаг.
  */
 import { PLAN2D_LAYERS } from './plan2d';
 import type { Stage } from './hyanalt';
 import { t as tr } from '@/lib/i18nCore';
 
-const env = (v: string | undefined, fallback: string): string =>
-  v == null || v === '' ? fallback : v;
+/**
+ * ⚠️ `process.env.NEXT_PUBLIC_X`-ийг ЗААВАЛ статик нэрээр дамжуулна — Next.js статик
+ *    export-д зөвхөн ийм хандалтыг build үед шингээдэг; `process.env[name]` хоосон.
+ *    Хоосон/`undefined` → ил алдаа (GitHub Actions тохируулаагүй Variable-ыг хоосон мөрөөр өгдөг).
+ */
+const req = (name: string, v: string | undefined): string => {
+  const s = (v ?? "").trim().replace(/\/+$/, "");
+  if (!s) throw new Error(`[Сэлбэ] ${name} тохируулаагүй — GitHub → Settings → Variables (deploy) эсвэл .env (локал) дээр нэмнэ үү.`);
+  return s;
+};
 
-/** Үндсэн байгууллагын FeatureServer суурь (org: HJzgwvlNIXssnQar) */
-const HJ = env(
-  process.env.NEXT_PUBLIC_ARCGIS_HJ,
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
-);
+/** Үндсэн байгууллагын FeatureServer суурь (`…/arcgis/rest/services`) */
+export const HJ = req("NEXT_PUBLIC_ARCGIS_HJ", process.env.NEXT_PUBLIC_ARCGIS_HJ);
 
 /**
  * ХАБЭА-ийн Survey123 ҮЙЛЧИЛГЭЭНИЙ НЭРС — орчны хувьсагчаас (2026-09-17, хэрэглэгч:
  * «үйлчилгээ огт код дотор байх ёсгүй»). Survey123 маягтыг дахин нийтлэхэд нэр нь
  * (`survey123_<GUID>`) солигддог тул GitHub Variables / `.env`-ээс өөрчилнө, код хөндөхгүй.
- * Fallback нь одоогийн нэрс — хувьсагчгүй ч ажиллана.
+ * Fallback БАЙХГҮЙ — хувьсагч дутуу бол `req()` алдаа шиднэ.
  */
 /** Survey123 үйлчилгээний БҮТЭН хаяг: `…/FeatureServer` хүртэл. Хувьсагчид бүтэн URL
     (`…/rest/services/<нэр>/FeatureServer`) эсвэл зөвхөн нэр өгсөн ч ажиллана. */
-const svcRoot = (v: string | undefined, name: string): string => {
-  const raw = (v ?? "").trim().replace(/\/+$/, "").replace(/\/FeatureServer$/i, "");
-  return raw ? (raw.includes("://") ? raw : `${HJ}/${raw}`) : `${HJ}/${name}`;
+const svcRoot = (name: string, v: string | undefined): string => {
+  const raw = req(name, v).replace(/\/FeatureServer$/i, "");
+  return raw.includes("://") ? raw : `${HJ}/${raw}`;
 };
 const HABEA_SVC = {
-  labor: svcRoot(process.env.NEXT_PUBLIC_HABEA_LABOR_SVC, "survey123_60cf822671df4c3681cf8f77317bdb4f"),
-  incident: svcRoot(process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC, "survey123_a4e9f3801ea84fdd99133b139557ca81"),
-  uzlegV11: svcRoot(process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC, "service_cbda4d63ef404e1189dc208280dd9a45"),
-  uzlegG: svcRoot(process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC, "service_92a6675c595e48118dcaa17e7dde5e78"),
+  labor: svcRoot("NEXT_PUBLIC_HABEA_LABOR_SVC", process.env.NEXT_PUBLIC_HABEA_LABOR_SVC),
+  incident: svcRoot("NEXT_PUBLIC_HABEA_INCIDENT_SVC", process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC),
+  uzlegV11: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_V11_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC),
+  uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
   /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
       нийтлэгдсэн, ОДООГООР портал уншдаггүй (0 мөр); харагдац нэмэгдэхэд эндээс авна. */
-  uzlegZahialagch: svcRoot(process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC, "service_923029f4289647bd8a34aaf8e93ec9c8"),
+  uzlegZahialagch: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC),
 } as const;
 
 /**
@@ -95,14 +102,11 @@ const HABEA_SVC = {
  *    хаана ч лавлагддаггүй `po:*` тав). `toilet` → 115, `nogoon_analysis` →
  *    118, `Example_data` → 123 (`Exampledata_iot`) мөн ЭНД нэгдэв.
  */
-export const TD = `${env(
-  process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
-  /* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
-     шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
-     талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
-     нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
-)}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+/* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
+   шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
+   талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
+   нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
+export const TD = `${req("NEXT_PUBLIC_ARCGIS_GAZAR", process.env.NEXT_PUBLIC_ARCGIS_GAZAR)}/SELBE_ALL_DATA_last_0917/FeatureServer`;
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
@@ -223,9 +227,9 @@ export const SOURCE_FS = {
    өгөгдөл огт уншигдахгүй (499 «Token Required») — зөвхөн UI-ийн бүтэц харах
    зориулалттай; өгөгдөлтэй хөгжүүлэлт нэвтрэлт асаалттай явна. */
 const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
-/* ⚠️ `env()` (`??` БИШ, 2026-09-17): GitHub Actions тохируулаагүй Variable-ыг ХООСОН мөрөөр
-   өгдөг — `??` бол хоосон appId үлдэж production build дээрх доорх `throw` унагана. */
-const AUTH_APP_ID = env(process.env.NEXT_PUBLIC_AUTH_APP_ID, "ZPJRqk1iiYcjYRLv");
+/* ⚠️ `AUTH_OFF=1` үед appId шаардахгүй (UI-ийн бүтэц харах горим); бусад үед `req()`. */
+const AUTH_APP_ID = AUTH_OFF ? (process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "").trim()
+  : req("NEXT_PUBLIC_AUTH_APP_ID", process.env.NEXT_PUBLIC_AUTH_APP_ID);
 if (!AUTH_OFF && !AUTH_APP_ID) {
   const msg = "NEXT_PUBLIC_AUTH_APP_ID хоосон байна. Нэвтрэлтийг САНААТАЙ унтраах бол "
     + "NEXT_PUBLIC_AUTH_OFF=1 гэж ил зарлана уу — эс бөгөөс бүх эрх, бүх "
@@ -258,8 +262,8 @@ export const AUTH = {
    * солилт CORS-д хаагддаг. `www.arcgis.com` аль ч origin-ыг зөвшөөрнө;
    * байгууллагаар хязгаарлах ажлыг `allowedOrgId` хийнэ.
    */
-  portalUrl: env(process.env.NEXT_PUBLIC_PORTAL_URL, "https://www.arcgis.com"),
-  allowedOrgId: env(process.env.NEXT_PUBLIC_ALLOWED_ORG_ID, "HJzgwvlNIXssnQar"),
+  portalUrl: req("NEXT_PUBLIC_PORTAL_URL", process.env.NEXT_PUBLIC_PORTAL_URL),
+  allowedOrgId: req("NEXT_PUBLIC_ALLOWED_ORG_ID", process.env.NEXT_PUBLIC_ALLOWED_ORG_ID),
 } as const;
 
 /** Эхлэх байрлал — төслийн талбайн төв */
@@ -2181,9 +2185,8 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
     : {}),
 }));
 
-const IOT_BASE =
-  process.env.NEXT_PUBLIC_ARCGIS_IOT ??
-  "https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services";
+/** IoT мэдрэгчийн FeatureServer суурь (`…/arcgis/rest/services`) — `sensors.ts` мөн эндээс. */
+export const IOT_BASE = req("NEXT_PUBLIC_ARCGIS_IOT", process.env.NEXT_PUBLIC_ARCGIS_IOT);
 
 /**
  * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
@@ -3230,10 +3233,7 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
 
 /* ══════════════════════ Растр ба 3D ══════════════════════ */
 
-const UBHUB = env(
-  process.env.NEXT_PUBLIC_UBHUB_IMAGERY,
-  "https://imagery.ubhub.mn/imagery/rest/services/Hosted",
-);
+const UBHUB = req("NEXT_PUBLIC_UBHUB_IMAGERY", process.env.NEXT_PUBLIC_UBHUB_IMAGERY);
 
 /**
  * Агаарын зураг — НЭГ нэгтгэсэн ImageServer (`selbe_ortho_merged`). СУУРЬ тул
@@ -3268,10 +3268,9 @@ export const IMAGERY = {
  * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
  * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
-const UBHUB_SCENE = env(
-  process.env.NEXT_PUBLIC_UBHUB_SCENE,
-  "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
-);
+const UBHUB_SCENE = req("NEXT_PUBLIC_UBHUB_SCENE", process.env.NEXT_PUBLIC_UBHUB_SCENE);
+/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IRGED_ORTHO үүнээс. */
+const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
 
 /**
  * «Иргэдэд хүрэх үр өгөөж» харагдацын 2D СУУРЬ ЗУРАГ — ортофото MapServer.
@@ -3479,19 +3478,15 @@ LAYER_BY_ID[IRGED_BUILT_DEF.id] = IRGED_BUILT_DEF;
 export const IRGED_ROAD = {
   id: "irged:road",
   title: tr('Зам'),
-  url: env(
-    process.env.NEXT_PUBLIC_IRGED_ROAD,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/Selbe_road/VectorTileServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE суурийн дэд үйлчилгээ. */
+  url: `${UBHUB_SCENE}/Selbe_road/VectorTileServer`,
 } as const;
 
 export const IRGED_ORTHO = {
   id: "irged:ortho",
   title: tr('Ортофото (Selbe_ortho)'),
-  url: env(
-    process.env.NEXT_PUBLIC_IRGED_ORTHO,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Selbe_ortho/MapServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE-тэй нэг сервер, `Hosted`-ын гадна. */
+  url: `${UBHUB_REST}/Selbe_ortho/MapServer`,
 } as const;
 
 export const SCENE = {
@@ -3513,10 +3508,7 @@ export const SCENE = {
  * Гадаргуугийн өндөр — 3D-д ЗААВАЛ. Меш нь 1325–1440 м ортометрик өндөрт байх
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
-export const ELEVATION_URL = env(
-  process.env.NEXT_PUBLIC_ELEVATION_URL,
-  "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
-);
+export const ELEVATION_URL = req("NEXT_PUBLIC_ELEVATION_URL", process.env.NEXT_PUBLIC_ELEVATION_URL);
 
 /**
  * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
@@ -3723,10 +3715,7 @@ export const laborCompanyFields = (sfx: string) => ({
  * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
  * хасагдаж, эдгээр нь оронд нь харагдана.
  */
-const BIM_ROOT = env(
-  process.env.NEXT_PUBLIC_BIM_ROOT,
-  "https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services",
-);
+const BIM_ROOT = req("NEXT_PUBLIC_BIM_ROOT", process.env.NEXT_PUBLIC_BIM_ROOT);
 
 export const BIM = {
   layers: Array.from({ length: 12 }, (_, i) => {

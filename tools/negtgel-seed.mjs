@@ -17,8 +17,10 @@
  *     node tools/negtgel-seed.mjs --clear   # ЗӨВХӨН устгана
  */
 
-const URL_ =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/selbe_bagts_guitsetgel_negtgel/FeatureServer/169';
+/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
+const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
+if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+const URL_ = `${HJ}/selbe_bagts_guitsetgel_negtgel/FeatureServer/169`;
 
 const F = {
   date: 'burtgesen_ognoo',
