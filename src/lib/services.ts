@@ -456,7 +456,7 @@ export type LayerDef = {
    * Гүйцэтгэлийн 16 үе шат, Survey123-ийн холбоост хүснэгтүүд зэрэг нь
    * ерөнхий «тоо + хэмжээ + ангилал» загварт багтахгүй.
    */
-  detail?: "building" | "survey";
+  detail?: "building"; // ⚠️ 2026-09-17: `"survey"` (mon:survey) төслөөс бүрэн хасагдав
   note?: string;
 };
 
@@ -602,13 +602,9 @@ const M2: Quantity = { field: "talbai_m2", unit: 'м²' };
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
 
 /**
- * ⚠️ Талбайн тайлангийн Survey123 — ХУУЧИН үйлчилгээндээ үлдэнэ: маягт өөрөө
- * энэ рүү бичдэг тул нэгтгэсэн `data`-д зөөх боломжгүй.
- *
  * ⚠️ 2026-08-24: `BUILDING_FS` (`building_GOL_barigdaj_ehelsen`) ХАСАГДАВ —
  * барилгын блок нэгтгэсэн `data`/112 руу шилжсэн (`BUILDING`-ийг үз).
  */
-const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/FeatureServer`;
 
 /* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
 
@@ -1584,36 +1580,6 @@ export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swi
   { value: 'Том гулсууран тоглоом', color: "#22c55e", kind: "set" },
 ];
 
-/** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
-export const SURVEY = {
-  url: `${SURVEY_FS}/0`,
-  oid: "objectid",
-  tables: {
-    beltgel: `${SURVEY_FS}/1`,
-    shoroo: `${SURVEY_FS}/2`,
-    suuri: `${SURVEY_FS}/3`,
-    ram: `${SURVEY_FS}/4`,
-    asuudal: `${SURVEY_FS}/5`,
-  },
-  fields: {
-    date: "ognoo",
-    user: "hereglegch",
-    contractor: "guitsetgegch",
-    bagts: "bagts",
-    building: "barilga",
-    buildingType: "barilga_torol",
-    floors: "davhar_too",
-    pours: "tsutgalt_too",
-    workers: "hun_huch",
-    machines: "tehnik_too",
-    /** Нийт барилга угсралтын гүйцэтгэл (%) */
-    total: "b_niit",
-    shortfall: "dutuu",
-    note: "erunhii_tailbar",
-    created: "CreationDate",
-  },
-} as const;
-
 /* ══════════════════════ Дэд бүтцийн багцын каталог ══════════════════════ */
 
 /**
@@ -2299,21 +2265,6 @@ export const LAYERS: LayerDef[] = [
        `Selbe_guitsetgel_consolidated`-ын амьд дүнгээр (`buildingProgressRenderer`)
        өөрөө тавьдаг хэвээр. */
   },
-  {
-    id: "mon:survey",
-    n: 0,
-    url: `${SURVEY_FS}/0`,
-    title: tr('Талбайн хяналтын тайлан'),
-    topic: "monitor",
-    geom: "point",
-    hue: "#0891b2",
-    marker: "circle",
-    size: 13,
-    noZone: true,
-    detail: "survey",
-    oid: "objectid",
-    note: tr('Survey123 мобайл аппаас'),
-  },
 
   /* ─────────── ХАБЭА — Цамхагт кран (тусдаа үйлчилгээ) ───────────
      ⚠️ URL inline: `HABEA` тогтмол ЭНЭ массиваас ДООР тодорхойлогддог тул TDZ-аас
@@ -2924,7 +2875,7 @@ export const LAYERS: LayerDef[] = [
  * агентын тулгалтаар (нэр · зориулалт · тоо · талбар) баталгаажсан зураглал.
  *
  * ⚠️ ЭНД БАЙХГҮЙ id-ууд ХУУЧИН үйлчилгээндээ үлдэнэ (нэгтгэсэн `data`-д
- * эквивалент алга): mon:building/mon:survey (AIL_TOO, GUITS_HV талбар [107]-д
+ * эквивалент алга): mon:building (AIL_TOO, GUITS_HV талбар [107]-д
  * дутуу), habea:osol + ХАБЭА-ийн хоёр Survey123.
  *
  * ⚠️ 2026-08-24: эквивалентгүй байсан `tree`, `sz:0`–`sz:3`, `et:26`,
@@ -4195,7 +4146,9 @@ export const MONITOR_GROUP = {
   icon: "target",
   hue: "#ea580c",
 };
-export const MONITOR_LAYER_IDS: string[] = ["mon:building", "mon:survey"];
+/* ⚠️ 2026-09-17: `mon:survey` (`selbe_site_monitoring` Survey123 тест) ХАСАГДАВ —
+   хэрэглэгч: «огт ашиглахгүй, гүйцэтгэл бөглөлтийг survey-ээр шийдэх гэж байсан тест». */
+export const MONITOR_LAYER_IDS: string[] = ["mon:building"];
 
 /** ХАБЭА-ийн давхаргууд — каталогид тусдаа бүлэг (харагдацын үндсэн давхаргууд) */
 export const HABEA_GROUP = {

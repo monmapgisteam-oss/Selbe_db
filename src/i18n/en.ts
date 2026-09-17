@@ -1551,7 +1551,6 @@ const en: Record<string, string> = {
   "талбайн %": "% of area",
   "Талбайн бүртгэл хоосон.": "The area log is empty.",
   "Талбайн давхарга": "Area layer",
-  "Талбайн хяналтын тайлан": "Site inspection report",
   "Талбайн эзлэх хувиар (30% ногоон)": "As a share of area (30% green)",
   "талбар": "parcels",
   "талбар байхгүй тул «": "field, so the “",

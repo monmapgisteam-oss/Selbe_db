@@ -29,11 +29,22 @@ if (!liveTok) {
     if (m) liveTok = m[1].trim();
   } catch { /* файл алга — хэвийн */ }
 }
+/* ⚠️ 2-Р ТОКЕН (2026-09-17): ХАБЭА Survey123 үйлчилгээнүүд тусдаа API key-тэй —
+   `ARCGIS_ADMIN_TOKEN_2` + `ARCGIS_ADMIN_TOKEN_2_SERVICES` (үйлчилгээний нэр, таслалаар). */
+let liveTok2 = process.env.ARCGIS_ADMIN_TOKEN_2 || '', liveTok2Svc = [];
+try {
+  const src = fs2();
+  if (!liveTok2) { const m = /^ARCGIS_ADMIN_TOKEN_2=(.+)$/m.exec(src); if (m) liveTok2 = m[1].trim(); }
+  const m2 = /^ARCGIS_ADMIN_TOKEN_2_SERVICES=(.+)$/m.exec(src); if (m2) liveTok2Svc = m2[1].split(',').map((x) => x.trim()).filter(Boolean);
+} catch { /* файл алга */ }
+function fs2() { return readFileSync(new URL('../.env.development.local', import.meta.url), 'utf8'); }
+const tokFor = (url) => (liveTok2 && liveTok2Svc.some((n) => url.includes(`/services/${n}/`)) ? liveTok2 : liveTok);
 if (liveTok) {
   const orig = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith(HJ)) {
+      const liveTok = tokFor(url);
       const b = init?.body;
       if (b instanceof URLSearchParams) {
         if (!b.has('token')) b.set('token', liveTok);
