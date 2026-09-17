@@ -379,24 +379,23 @@ export function Huvaari({
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [busy, setBusy] = useState(false);
   /**
-   * БҮТЭН ДЭЛГЭЦ (2026-09-17, хэрэглэгчийн хүсэлт) — хуваарийн хүрээ ӨӨРӨӨ
-   * `requestFullscreen` авна: навигаци, толгой алга болж 1,400 мөрт хуанли бүтэн
-   * дэлгэцийг эзэлнэ. Esc-ээр гарахад `fullscreenchange` төлвийг буцаана.
-   * ⚠️ API-г зөвхөн товчны click дотор дуудна (хэрэглэгчийн үйлдэл шаарддаг).
+   * БҮТЭН ДЭЛГЭЦ — ЗӨВХӨН хуваарийн хүснэгт (2026-09-17, хэрэглэгч: «Гүйцэтгэл
+   * бөглөх»-ийнхтэй адил). `FillNew`-ийн `wide`-тай ИЖИЛ загвар: хөтчийн
+   * `requestFullscreen` БИШ, `position: fixed` давхарга — дотоод цонх (popup
+   * хуанли, батлах асуулт) хэвээр ажиллана. Сешн хооронд санагдана.
    */
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [fs, setFs] = useState(false);
-  const toggleFs = useCallback(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) el.requestFullscreen?.().then(() => setFs(true)).catch(() => {});
-    else document.exitFullscreen?.().catch(() => {});
-  }, []);
+  const [wide, setWide] = useState(() => {
+    try { return localStorage.getItem('selbe-huvaari-wide') === '1'; } catch { return false; }
+  });
   useEffect(() => {
-    const onChange = () => setFs(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
+    try { localStorage.setItem('selbe-huvaari-wide', wide ? '1' : '0'); } catch { /* хаалттай орчин */ }
+  }, [wide]);
+  useEffect(() => {
+    if (!wide) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) setWide(false); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [wide]);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
 
@@ -2012,7 +2011,7 @@ export function Huvaari({
   }
 
   return (
-    <div className={h.frame} ref={frameRef}>
+    <div className={h.frame}>
       {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ──
           ⚠️ 2026-09-02 (хэрэглэгч): урьд нь ГУРВАН зурвас байв — (1) багц
           сонгох толгой, (2) `Section`-ийн «Ажлын хуваарь» гарчиг, (3) шүүлт ба
@@ -2222,10 +2221,6 @@ export function Huvaari({
 
         <span className={h.spacer} />
 
-        <button type="button" className={h.tlZoomB} onClick={toggleFs}
-          title={fs ? tr('Бүтэн дэлгэцээс гарах (Esc)') : tr('Хуваарийг бүтэн дэлгэцээр')}>
-          {fs ? '🡼 ' + tr('Гарах') : '⛶ ' + tr('Бүтэн дэлгэц')}
-        </button>
 
         {sc && rows.length > 0 && (
           <span className={h.flowNote}>
@@ -2388,7 +2383,21 @@ export function Huvaari({
       ) : (
         /* ⚠️ `title`/`note` ӨГӨХГҮЙ — толгойн мөр нь дээрх нэгтгэсэн зурваст
            уусав. `Section` нь `title`-гүй үед header-ээ огт зурдаггүй. */
+        <div className={wide ? h.wrapFull : h.wrapNorm}>
         <Section fill>
+          <div className={h.fullBar}>
+            <button
+              type="button"
+              className={wide ? h.fullBtnOn : h.fullBtn}
+              onClick={() => setWide((v) => !v)}
+              aria-pressed={wide}
+              title={wide ? tr('Бүтэн дэлгэцээс гарах (Esc)') : tr('Хуваарийг бүтэн дэлгэцээр')}
+            >
+              <span aria-hidden>{wide ? '✕' : '⛶'}</span>
+              {wide ? tr('Багасгах') : tr('Бүтэн дэлгэц')}
+            </button>
+            {wide && <span className={h.fullBarNote}>{pkg.label}{dirtyN ? ` · ${tr('өөрчлөлт')} ${dirtyN}` : ''}</span>}
+          </div>
           {canEdit && (
             <p className={h.plHint}>
               {tr('Ажлын нэр дээр дарж хуанлиар оруулна · мөрийн ард чирж муж татна · зурвасын голоос чирж зөөнө · ирмэгээс татаж уртасгана')}
@@ -2671,6 +2680,7 @@ export function Huvaari({
             </div>
           )}
         </Section>
+        </div>
       )}
 
       {modalRow && sc && (

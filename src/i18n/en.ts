@@ -4392,7 +4392,8 @@ const en: Record<string, string> = {
   "Өөрчилсөн талбар алга.": "No fields changed.",
   "✓ Хадгалагдлаа — {0} объектын {1} талбар": "✓ Saved — {1} fields on {0} objects",
   "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in.",
-  "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen"
+  "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen",
+  "өөрчлөлт": "changes"
 };
 
 export default en;
