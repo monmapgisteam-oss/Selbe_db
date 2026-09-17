@@ -928,7 +928,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ⚠️ `null` нь «цэвэрлэв» гэсэн дохио (`clearToken`) — маягт нээхгүй.
    */
   const onSketch = useCallback((g: __esri.Geometry | null) => {
-    if (!g) return;
+    if (!g) { if (rectDraw) setRectDraw(false); return; } // ⚠️ Esc-ээр цуцалсан бол горимоос гарна (2026-09-17)
     /**
      * ТЭГШ ӨНЦӨГТӨӨР СОНГОХ — дүрс нь объект БИШ, сонголтын хил.
      *

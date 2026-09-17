@@ -787,6 +787,7 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
        */
       outFields: [
         L.ognoo,
+        'objectid', // ⚠️ давхар өдрийн tie-break (2026-09-17) — давхаргын OID нэр жижиг үсэгтэй
         ...HABEA.labor.companies.flatMap((c) => {
           const f = laborCompanyFields(c.sfx);
           return [f.mongol, f.gadaad, f.niitAjiltan, f.niitTehnik];
@@ -800,7 +801,7 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
   /* ⚠️ НЭГ ӨДӨРТ ДАВХАР МӨР бий (228 өдрийн 3-т, `ceo/workforce.ts`) — тэр өдрийг
      нийлүүлбэл ажилтан/техник 2× гарна (2026-09-17). Дэлгэц (`Habea.tsx`) ба
      `workforce.ts` нэг мөр авдаг тул тайлан ч ХАМГИЙН СҮҮЛИЙН (OID их) нэгийг. */
-  const last = labor.slice().sort((a, b) => (nn(b[L.ognoo]) - nn(a[L.ognoo])) || (nn(b.OBJECTID) - nn(a.OBJECTID)))[0];
+  const last = labor.slice().sort((a, b) => (nn(b[L.ognoo]) - nn(a[L.ognoo])) || (nn(b.objectid) - nn(a.objectid)))[0];
   const day = last ? [last] : [];
   const at = (f: string) => day.reduce((a, r) => a + nn(r[f]), 0);
 

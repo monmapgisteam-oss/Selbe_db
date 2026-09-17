@@ -194,7 +194,7 @@ const ST_TEXT: Record<Status, string> = {
 };
 
 type DragMode = 'new' | 'move' | 'l' | 'r';
-type Drag = { oid: number; mode: DragMode; anchor: number; orig: Span | null };
+type Drag = { oid: number; mode: DragMode; anchor: number; orig: Span | null; /** чирэлтээс өмнөх сарын задаргаа — буцаахад (2026-09-17) */ origMonths?: Map<string, number> | null };
 
 /* ══════════════════ Үндсэн харагдац ══════════════════ */
 
@@ -499,7 +499,7 @@ export function Huvaari({
    *    нээгдсэн үед л дүүрнэ; «Тавих», «Арилгах» хоёулаа үүнийг цэвэрлэнэ —
    *    тэдгээр нь ЗӨВШӨӨРӨГДСӨН өөрчлөлт тул буцаах ёсгүй.
    */
-  const undoRef = useRef<{ oid: number; blk: number; span: Span | null } | null>(null);
+  const undoRef = useRef<{ oid: number; blk: number; span: Span | null; months: Map<string, number> | null } | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const jumped = useRef(false);
@@ -817,7 +817,7 @@ export function Huvaari({
      бодогддог тул зурвасыг `lo`-оос өмнө татмагц `from` бүтэн сараар эрт болж,
      чирэлтийн `anchor` (ИНДЕКС) нэг сараар зөрж муж сар сараар ухардаг байв. */
   const rangeRef = useRef(range);
-  if (!drag) rangeRef.current = range;
+  useEffect(() => { if (!drag) rangeRef.current = range; }, [drag, range]);
   const { from, to } = drag ? rangeRef.current : range;
   const px = ZOOM[zoom];
   const total = Math.round((to - from) / DAY) + 1;
@@ -1086,7 +1086,11 @@ export function Huvaari({
     const k = dayAt(e.clientX);
     lastDay.current = k;
     moved.current = false;
-    setDrag({ oid: r.oid, mode, anchor: k, orig: r.spans[blk] });
+    /* ⚠️ Сарын задаргааг ЧИРЭЛТЭЭС ӨМНӨ хуулна (2026-09-17): чирэлт `applyChanges`-аар
+       задаргааг хумьдаг тул буцаахад зөвхөн энэ хуулбар л бүтэн сэргээнэ. */
+    const blokName = sc?.bld[blk] ?? '';
+    const origMonths = r.des != null && blokName ? new Map(obOf(r.des, blokName)) : null;
+    setDrag({ oid: r.oid, mode, anchor: k, orig: r.spans[blk], origMonths });
     setSel(r.i);
   };
 
@@ -1148,7 +1152,7 @@ export function Huvaari({
          *    хэрэглэгч блок сольж болох тул бүх мужийг сэргээвэл өөр блокт
          *    хийсэн ажил алга болно.
          */
-        undoRef.current = { oid: drag.oid, blk, span: drag.orig };
+        undoRef.current = { oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null };
       }
     }
     setDrag(null);
@@ -2011,7 +2015,7 @@ export function Huvaari({
   }
 
   return (
-    <div className={h.frame}>
+    <div className={`${h.frame} ${wide ? h.frameWide : ''}`}>
       {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ──
           ⚠️ 2026-09-02 (хэрэглэгч): урьд нь ГУРВАН зурвас байв — (1) багц
           сонгох толгой, (2) `Section`-ийн «Ажлын хуваарь» гарчиг, (3) шүүлт ба
@@ -2383,7 +2387,6 @@ export function Huvaari({
       ) : (
         /* ⚠️ `title`/`note` ӨГӨХГҮЙ — толгойн мөр нь дээрх нэгтгэсэн зурваст
            уусав. `Section` нь `title`-гүй үед header-ээ огт зурдаггүй. */
-        <div className={wide ? h.wrapFull : h.wrapNorm}>
         <Section fill>
           <div className={h.fullBar}>
             <button
@@ -2680,7 +2683,6 @@ export function Huvaari({
             </div>
           )}
         </Section>
-        </div>
       )}
 
       {modalRow && sc && (
@@ -2713,12 +2715,10 @@ export function Huvaari({
               if (row) {
                 const next = row.spans.slice();
                 next[u.blk] = u.span;
-                /* ⚠️ Сарын задаргааг ХӨНДӨХГҮЙ (2026-09-17): урьд нь `new Map()` өгч
-                   ХАДГАЛАГДСАН задаргааг устгадаг байв — санамсаргүй чирээд X дарахад
-                   дараагийн `save` бүх сарын мөрийг `deletes`-т оруулна. `applyChanges`
-                   огноо өөрчлөгдсөн блокийг дахин тараадаг тул зурвас буцахад задаргаа
-                   ч дагаж буцна; `null` = ноорог хэвээр. */
-                applyModal(u.oid, next, null, null);
+                /* ⚠️ Сарын задаргааг ЧИРЭЛТЭЭС ӨМНӨХ хуулбараар сэргээнэ (2026-09-17):
+                   чирэлт `applyChanges`-аар задаргааг хумьсан байж болох тул `null`
+                   (хөндөхгүй) хангалтгүй, `new Map()` (устгах) буруу байв. */
+                applyModal(u.oid, next, null, u.months ?? null);
               }
             }
           }}

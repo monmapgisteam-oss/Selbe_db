@@ -4393,7 +4393,8 @@ const en: Record<string, string> = {
   "✓ Хадгалагдлаа — {0} объектын {1} талбар": "✓ Saved — {1} fields on {0} objects",
   "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in.",
   "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen",
-  "өөрчлөлт": "changes"
+  "өөрчлөлт": "changes",
+  "Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.": "The first {0} rows were written, then an error occurred: {1}. Press Save again to write the rest."
 };
 
 export default en;

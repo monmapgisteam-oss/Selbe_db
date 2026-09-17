@@ -618,6 +618,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
           { ...m.dailyDiff, field: m.field },
           dp,
           dp.length,
+          dailyDiffPoints(pts), // ⚠️ сүүлийн заалт хүрээнээс хамаарахгүй (2026-09-17)
         ));
       }
       return out;

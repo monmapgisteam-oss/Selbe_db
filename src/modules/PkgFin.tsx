@@ -341,7 +341,7 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       const plan = d.planTotal.get(p.key) ?? 0;
       const given = pkgGivenTotal(list, d);
       if (plan <= 0 && given <= 0) return null;
-      return { key: p.key, label: p.name, plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
+      return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
     })
     .filter((x): x is NonNullable<typeof x> => x != null)
     .sort((a, b) => b.given - a.given);
