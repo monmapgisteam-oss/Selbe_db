@@ -78,7 +78,13 @@
   transform: translate(14px, 14px);
   pointer-events: none;
   min-width: 150px;
-  max-width: 250px;
+  /* ⚠️ 2026-09-16: 250px → 300px. Инженерийн дэд бүтцийн tooltip нь ArcGIS-ийн
+     popup шиг БҮХ атрибутыг харуулдаг болсон тул «Тагны түвшин», «Шугамын
+     марк» зэрэг урт монгол alias шошго хоёр мөр болж тасардаг байв. */
+  max-width: 300px;
+  /* Талбар олонтой давхаргад ч дэлгэцээс халихгүй */
+  max-height: 60vh;
+  overflow-y: auto;
   padding: 8px 10px;
   border-radius: var(--r);
   border: 1px solid var(--line);

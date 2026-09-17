@@ -491,3 +491,103 @@ export async function saveRow(
   });
   return n;
 }
+
+/* ══════════════════ ОЛОН МӨР ЗЭРЭГ ЗАСАХ (2026-09-16) ══════════════════ */
+
+/**
+ * ⚠️ Хэрэглэгчийн хүсэлт: «нэг давхаргын олон мөрийг сонгож нэг бөглөхөд
+ * бүгдэд нь бичигдэх — ArcGIS Pro-гийн Calculate Field шиг, гэхдээ илүү
+ * амар». Нэг давхаргаар хязгаарлагдана: давхарга бүр өөр схемтэй тул нэг
+ * маягт зөвхөн нэг схемийг л зурж чадна.
+ *
+ * ⚠️ IN нөхцлийн УРТ: ArcGIS Online нь `IN (…)`-д хэдэн мянган утга даадаг ч
+ * POST-ын биеийг хэт томруулахгүйн тулд 200-аар багцална. `applyEdits` ч мөн
+ * адил — `bagtsSheet.applyUpdates`-ийн 500-ын сургамж (`rollbackOnFailure`
+ * зөвхөн нэг багц дотор үйлчилнэ) энд ч хамаарна: багц тус бүр атом, харин
+ * багцуудын хооронд бус. Тиймээс дуудагч тал амжилттай бичигдсэн мөрүүдийг
+ * л буцаах жагсаалтад авна (`saveRows` нь бичигдсэн oid-уудыг буцаадаг).
+ */
+const BATCH = 200;
+
+const chunks = <T,>(xs: T[], n: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
+  return out;
+};
+
+const inWhere = (meta: LayerMeta, oids: number[]): string =>
+  `${meta.oidField} IN (${oids.map((o) => Math.trunc(o)).join(',')})`;
+
+/** Олон мөрийг ТҮҮХИЙ утгаараа татна — буцаалтын «хуучин утга»-д */
+export async function loadRows(meta: LayerMeta, oids: number[]): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (const part of chunks(oids, BATCH)) {
+    rows.push(...await queryFeatures(meta.url, { where: inWhere(meta, part) }));
+  }
+  return rows;
+}
+
+/**
+ * ГЕОМЕТРТ ОРСОН объектуудын дугаар — тэгш өнцөгт/полигоноор сонгоход.
+ *
+ * ⚠️ `geometry` нь `toJSON()` хэлбэр, `spatialReference`-ээ агуулсан (зураг
+ * Web Mercator 102100). Үйлчилгээ UTM 48N-д хадгалагддаг тул `inSR`-ийг
+ * ЗААВАЛ дамжуулна — эс бөгөөс сервер координатыг өөрийн проекц гэж уншиж,
+ * юу ч олдохгүй (`loadGeometry`-ийн ижил анхааруулга).
+ */
+export async function queryOidsIn(meta: LayerMeta, geometry: unknown): Promise<number[]> {
+  const sr = (geometry as { spatialReference?: { wkid?: number; latestWkid?: number } } | null)
+    ?.spatialReference;
+  const wkid = sr?.latestWkid ?? sr?.wkid ?? 102100;
+  const rows = await queryFeatures(meta.url, {
+    outFields: [meta.oidField],
+    aoi: { geometry, wkid, type: 'polygon', rel: 'intersects' },
+  });
+  return rows
+    .map((r) => Number(r[meta.oidField]))
+    .filter((n) => Number.isFinite(n));
+}
+
+/**
+ * ИЖИЛ атрибутыг ОЛОН мөрөнд бичнэ.
+ *
+ * @returns бичигдсэн мөрийн дугаарууд — багц дундаа унавал ӨМНӨХ багцууд
+ *          бичигдсэн байх тул буцаалт зөвхөн тэдгээрт хамаарна.
+ */
+export async function saveRows(
+  meta: LayerMeta,
+  oids: number[],
+  attrs: Record<string, unknown>,
+): Promise<number[]> {
+  requireCap('butets'); // ⚠️ lib-түвшний эрх (merge 2026-09-17)
+  if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
+  if (!Object.keys(attrs).length || !oids.length) return [];
+  const done: number[] = [];
+  for (const part of chunks(oids, BATCH)) {
+    await applyAll(meta.url, meta.oidField, {
+      updates: part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })),
+    });
+    done.push(...part);
+  }
+  return done;
+}
+
+/**
+ * Мөр бүрийн ӨӨРИЙН хуучин утгыг буцааж бичнэ (олон мөрийн буцаалт).
+ *
+ * ⚠️ Мөр бүр ӨӨР утгатай тул `saveRows` шиг нэг атрибут түгээхгүй —
+ * `revertAttrs`-аар мөр тус бүрт бэлдсэн атрибутыг тэр мөрөнд л бичнэ.
+ */
+export async function revertRows(
+  meta: LayerMeta,
+  rows: { oid: number; attrs: Record<string, unknown> }[],
+): Promise<void> {
+  requireCap('butets');
+  if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
+  const live = rows.filter((r) => Object.keys(r.attrs).length);
+  for (const part of chunks(live, BATCH)) {
+    await applyAll(meta.url, meta.oidField, {
+      updates: part.map((r) => ({ [meta.oidField]: Math.trunc(r.oid), ...r.attrs })),
+    });
+  }
+}
