@@ -6,6 +6,7 @@
   "description": "Сэлбэ AI туслах — LLM түлхүүр барих реле (порталын build-д ОРОХГҮЙ)",
   "scripts": {
     "start": "node --env-file-if-exists=.env.local server.mjs",
+    "start:claude-code": "node --env-file-if-exists=.env.local server.mjs --backend=claude-code",
     "deploy": "wrangler deploy",
     "deploy:secret": "wrangler secret put ANTHROPIC_API_KEY",
     "deploy:log": "wrangler tail"

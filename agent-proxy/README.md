@@ -52,6 +52,77 @@ npm start
 
 Порталын талд `NEXT_PUBLIC_AGENT_API` (үндсэн `.env`) нь релений хаягийг заана.
 
+## Claude Code горим — API түлхүүргүй, энэ PC-ийн Claude бүртгэлээр
+
+Реле нь API түлхүүрийн оронд энэ PC дээр **нэвтэрсэн Claude Code**-ийг
+(`claude -p`) дуудаж болно (`claudeCode.mjs`). Порталын код өөрчлөгдөхгүй.
+
+```sh
+cd agent-proxy
+npm install
+npm run start:claude-code
+# [agent-proxy] хөдөлгүүр=claude-code  C:\...\claude.exe
+```
+
+- `claude` нь PATH эсвэл VS Code-ийн Claude Code өргөтгөлөөс автоматаар олдоно;
+  олдохгүй бол `.env.local`-д `CLAUDE_BIN=C:\...\claude.exe`.
+- Нэвтрээгүй бол терминалд `claude` → `/login`.
+- `.env.local`-д `ANTHROPIC_API_KEY` байвал `npm start` нь API горимд үлдэнэ;
+  `start:claude-code` нь түлхүүрийг үл тоож бүртгэлээр явна.
+- `claude` нь хэрэгсэлгүй (`--tools ""`), тохиргоо/CLAUDE.md/MCP уншихгүй,
+  хоосон түр хавтсанд ажилладаг — порталын хэрэгсэл (ArcGIS асуулга) browser-т
+  гүйцэтгэгдсээр.
+
+| Орчны хувьсагч | Анхдагч | Утга |
+|---|---|---|
+| `CLAUDE_BIN` | автоматаар | `claude.exe`-ийн зам |
+| `CLAUDE_MAX_PARALLEL` | `3` | Зэрэг ажиллах `claude` процесс |
+| `CLAUDE_TIMEOUT_MS` | `180000` | Нэг хүсэлтийн дээд хугацаа |
+| `CLAUDE_MAX_QUEUE` | `12` | Дараалалд хүлээх дээд тоо — хэтэрвэл «завгүй» (429) |
+| `CLAUDE_CACHE_TTL_MS` | `600000` | ЯГ ижил хүсэлтийн хариуг хадгалах хугацаа |
+| `ARCGIS_ORG_ID` | — | **Нийтэд гаргах бол заавал** — зөвхөн танай ArcGIS байгууллагын нэвтэрсэн хэрэглэгч |
+| `CF_TUNNEL_TOKEN` | — | Cloudflare Tunnel-ийн токен (`host/install.ps1` уншина) |
+
+Production-д зориулсан зан:
+
+- **Кэш + давхардал арилгах** — ЯГ ижил хүсэлт (жишээ: олон удирдлага нэг
+  цагт «AI дүгнэлт» дарах) 10 минут кэшээс ~0.2с-т; зэрэг ирсэн ижил хүсэлт
+  нэг `claude` процесс хуваалцана.
+- **Хурдны хязгаар хэрэглэгч бүрд** — IP (`cf-connecting-ip`) ба ArcGIS
+  хэрэглэгчийн нэрээр (урьд нь бүх хэрэглэгч нэг origin-оор хуваалцдаг байв).
+- **Дараалал хязгаартай** — 3 зэрэг, 12 хүлээлт; хэтэрвэл шууд «завгүй».
+- **`/health` = бэлэн эсэх** — эхлэхэд ба 10 мин тутам haiku-аар жижиг шалгалт;
+  Claude Code-оос гарсан бол 503 → порталын AI товч идэвхгүй болно.
+- **`claude.exe`-ийн зам хүсэлт бүрд шалгагдана** — VS Code өргөтгөл
+  шинэчлэгдэхэд унахгүй. Хост PC дээр бие даасан суулгалт зөвлөнө:
+  `irm https://claude.ai/install.ps1 | iex`.
+
+### smart.selbecity.mn-д энэ PC-ээс үйлчлэх (порт нээхгүй)
+
+1. **Cloudflare Tunnel үүсгэх** — Cloudflare Zero Trust → Networks → Tunnels →
+   Create (cloudflared) → Public hostname: жишээ нь `ai.selbecity.mn` →
+   Service `http://localhost:8787`. Токеныг хуулна.
+   `winget install --id Cloudflare.cloudflared`
+2. **`agent-proxy/.env.local`:**
+   ```
+   ALLOW_ORIGIN=https://smart.selbecity.mn,http://localhost:8123
+   ARCGIS_ORG_ID=<танай ArcGIS orgId>
+   CF_TUNNEL_TOKEN=<1-р алхмын токен>
+   ```
+   ⚠️ `ANTHROPIC_API_KEY`-г энд БҮҮ бич (claude-code горим түлхүүрийг үл тоодог ч андуурал үүсгэнэ).
+3. **Суулгах (нэг удаа):**
+   `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
+   → нэвтрэх бүрд реле ба тунель автоматаар асна, унавал дахин асна,
+   цахилгаанд залгаатай үед PC унтахгүй. Лог: `agent-proxy\host\logs\`.
+4. **Портал:** GitHub → Settings → Secrets and variables → Actions → Variables →
+   `AGENT_API` = `https://ai.selbecity.mn` → main руу deploy (утга build-д шингэнэ).
+5. **Шалгах:** `curl https://ai.selbecity.mn/health` → `{"ok":true}`.
+
+Устгах: `agent-proxy\host\uninstall.ps1`.
+
+⚠️ PC унтарвал / сүлжээ тасарвал AI ажиллахгүй (портал өөрөө ажилласаар,
+товч идэвхгүй болно). Хэрэглээ нь энэ PC-ийн Claude бүртгэлийн хязгаараас явна.
+
 ## Тест
 
 Репо-гийн үндсэн хавтаснаас — **түлхүүр шаардахгүй**:

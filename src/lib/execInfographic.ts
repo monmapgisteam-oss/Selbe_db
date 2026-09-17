@@ -1,19 +1,25 @@
 /**
- * УДИРДЛАГЫН ИНФОГРАФИК — нэг хуудас (A4 босоо, 1240×1754 px @150dpi) SVG →
- * PNG. Шийдвэр гаргагч нэг зураг харснаар төслийн байдлыг ойлгоно; мессенжер,
+ * УДИРДЛАГЫН ИНФОГРАФИК — нэг хуудас (A4 босоо, 1240×1754 px @150dpi).
+ * Шийдвэр гаргагч нэг зураг харснаар төслийн байдлыг ойлгоно; мессенжер,
  * илтгэл, мэйлд шууд хавсаргана.
  *
  * ⚠️ Өгөгдөл нь ЗӨВХӨН `ExecReport` — дэлгэц, PDF, AI дүгнэлттэй ижил эх.
  *    Энд тоо бодохгүй, зөвхөн ЗУРНА.
  *
- * ⚠️ SVG-г canvas-аар PNG болгодог тул ГАДНЫ ФОНТ, CSS хувьсагч, `foreignObject`
- *    хэрэглэхгүй — Chrome нь `<img>`-д ачаалсан SVG дотроос гадаад нөөц
- *    (`@font-face`, `<image href>`) татдаггүй, зураг хоосон гардаг. Системийн
- *    фонт (Segoe UI / Arial) кириллийг бүрэн дэмждэг.
+ * ⚠️ ЗУРААС ХОЁР ГАРЦТАЙ, НЭГ ЭХТЭЙ (2026-09-17, хоёр дахь хувилбар):
+ *    зурах үйлдлүүд (`Op[]`) нэг удаа угсрагдаад
+ *      · `toSvg()`   — дэлгэцийн урьдчилсан харагдац (`<img src=data:svg>`)
+ *      · `toPng()`   — Canvas 2D-ээр ШУУД зурж PNG (PDF-ийн 1-р хуудас ба
+ *                      PNG татах)
+ *    Урьд нь PNG-г SVG→`<img>`→canvas замаар авдаг байсан бөгөөд хэрэглэгч
+ *    PDF-д зураг ГАРААГҮЙ гэж мэдэгдэв: `<img>`-д ачаалсан SVG-г зарим хөтөч
+ *    (фонт ачаалалт дуусаагүй, data: URL-ийн хэмжээ) ХООСОН цагаанаар зурдаг.
+ *    Canvas 2D нь ийм завсрын алхамгүй — текст, тэгш өнцөгт, зураас бүр шууд
+ *    пиксел болно.
  *
- * ⚠️ Текстийг SVG өөрөө таслахгүй тул `wrap()`-аар ГАРААР мөр таслана.
- *    Тэмдэгтийн өргөнийг ойролцоогоор (0.52 × фонтын хэмжээ) тооцно —
- *    кирилл нь латинаас бага зэрэг өргөн тул хязгаарыг зориуд бага барина.
+ * ⚠️ Текстийг canvas ч, SVG ч өөрөө таслахгүй тул `wrap()`-аар ГАРААР мөр
+ *    таслана. Тэмдэгтийн өргөнийг ойролцоогоор тооцно — кирилл латинаас
+ *    бага зэрэг өргөн тул хязгаарыг зориуд бага барина.
  *
  * ⚠️ Өнгө ХАТУУ бичигдсэн: экспортлогдсон зураг нь аппын харанхуй/цайвар
  *    горимоос үл хамааран ЦАГААН цаасан дээр уншигдах ёстой. Утгууд нь
@@ -24,6 +30,7 @@
 import type { ExecReport } from '@/lib/execReport';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
+import { PARCEL_CLEARED } from '@/lib/services';
 
 export const INFO_W = 1240;
 export const INFO_H = 1754;
@@ -40,8 +47,79 @@ const WARN = '#ca8a04';
 const BAD = '#dc2626';
 const FONT = "'Segoe UI', 'Noto Sans', Arial, sans-serif";
 
+/* ═══════════════ Зурах үйлдлүүд ═══════════════ */
+
+type Anchor = 'start' | 'middle' | 'end';
+type TextOp = { k: 'text'; x: number; y: number; s: string; size: number; weight: number; fill: string; anchor: Anchor };
+type RectOp = { k: 'rect'; x: number; y: number; w: number; h: number; fill: string; r: number; stroke?: string };
+type LineOp = { k: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number };
+export type Op = TextOp | RectOp | LineOp;
+
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** SVG мөр — дэлгэцийн урьдчилсан харагдац */
+export function toSvg(ops: Op[]): string {
+  const out: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${INFO_W}" height="${INFO_H}" viewBox="0 0 ${INFO_W} ${INFO_H}">`,
+  ];
+  for (const o of ops) {
+    if (o.k === 'text') {
+      out.push(`<text x="${o.x}" y="${o.y}" font-family="${FONT}" font-size="${o.size}" font-weight="${o.weight}" fill="${o.fill}" text-anchor="${o.anchor}">${esc(o.s)}</text>`);
+    } else if (o.k === 'rect') {
+      out.push(`<rect x="${o.x}" y="${o.y}" width="${Math.max(0, o.w)}" height="${o.h}" fill="${o.fill}" rx="${o.r}"${o.stroke ? ` stroke="${o.stroke}" stroke-width="1"` : ''}/>`);
+    } else {
+      out.push(`<line x1="${o.x1}" y1="${o.y1}" x2="${o.x2}" y2="${o.y2}" stroke="${o.stroke}" stroke-width="${o.width}"/>`);
+    }
+  }
+  out.push('</svg>');
+  return out.join('\n');
+}
+
+/**
+ * Canvas 2D → PNG data URL. `scale` 2 = 300dpi (PNG татахад), 1 = PDF-д.
+ * ⚠️ `roundRect` нь 2023 оноос бүх хөтөчид байгаа ч хуучин хөтөчид байхгүй
+ *    байж болно — тэр үед энгийн `fillRect` (булан л алдагдана, зураг биш).
+ */
+export function toPng(ops: Op[], scale = 1): string {
+  const c = document.createElement('canvas');
+  c.width = INFO_W * scale;
+  c.height = INFO_H * scale;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error(tr('Инфографик зурахад алдаа гарлаа.'));
+  ctx.scale(scale, scale);
+  ctx.textBaseline = 'alphabetic';
+  const rr = (x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function' && r > 0) ctx.roundRect(x, y, w, h, r);
+    else ctx.rect(x, y, w, h);
+  };
+  for (const o of ops) {
+    if (o.k === 'text') {
+      ctx.font = `${o.weight >= 600 ? 'bold' : 'normal'} ${o.size}px ${FONT}`;
+      ctx.fillStyle = o.fill;
+      ctx.textAlign = o.anchor === 'middle' ? 'center' : o.anchor === 'end' ? 'right' : 'left';
+      ctx.fillText(o.s, o.x, o.y);
+    } else if (o.k === 'rect') {
+      const w = Math.max(0, o.w);
+      if (w <= 0 || o.h <= 0) continue;
+      rr(o.x, o.y, w, o.h, o.r);
+      ctx.fillStyle = o.fill;
+      ctx.fill();
+      if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = 1; ctx.stroke(); }
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(o.x1, o.y1);
+      ctx.lineTo(o.x2, o.y2);
+      ctx.strokeStyle = o.stroke;
+      ctx.lineWidth = o.width;
+      ctx.stroke();
+    }
+  }
+  return c.toDataURL('image/png');
+}
+
+/* ═══════════════ Туслах ═══════════════ */
 
 /** Тоймлосон мөнгө — инфографикт бүтэн 15 оронтой дүн багтахгүй */
 export const money = (v: number): string => {
@@ -70,76 +148,96 @@ export function wrap(text: string, maxChars: number): string[] {
   return out;
 }
 
-const text = (
-  x: number, y: number, s: string,
-  o: { size?: number; weight?: number | string; fill?: string; anchor?: 'start' | 'middle' | 'end'; family?: string } = {},
-) =>
-  `<text x="${x}" y="${y}" font-family="${o.family ?? FONT}" font-size="${o.size ?? 14}" font-weight="${o.weight ?? 400}" fill="${o.fill ?? INK}" text-anchor="${o.anchor ?? 'start'}">${esc(s)}</text>`;
+/** Нэрийг өгсөн пикселд багтаах — 12px фонтод ~6.3px/тэмдэгт */
+const clip = (s: string, px: number, size = 12): string => {
+  const max = Math.max(6, Math.floor(px / (size * 0.53)));
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+};
 
-const rect = (x: number, y: number, w: number, h: number, fill: string, r = 0, extra = '') =>
-  `<rect x="${x}" y="${y}" width="${Math.max(0, w)}" height="${h}" fill="${fill}" rx="${r}" ${extra}/>`;
-
-/** Хэсгийн гарчиг — дугаартай, доор нь зураас */
-function head(x: number, y: number, w: number, no: string, title: string, sub?: string): string {
-  return [
-    text(x, y, `${no ? `${no}  ` : ''}${title.toUpperCase()}`, { size: 15, weight: 700, fill: INK }),
-    sub ? text(x + w, y, sub, { size: 11, fill: INK3, anchor: 'end' }) : '',
-    `<line x1="${x}" y1="${y + 8}" x2="${x + w}" y2="${y + 8}" stroke="${INK}" stroke-width="1.2"/>`,
-  ].join('');
+class Painter {
+  ops: Op[] = [];
+  text(x: number, y: number, s: string, o: { size?: number; weight?: number; fill?: string; anchor?: Anchor } = {}) {
+    this.ops.push({ k: 'text', x, y, s, size: o.size ?? 14, weight: o.weight ?? 400, fill: o.fill ?? INK, anchor: o.anchor ?? 'start' });
+  }
+  rect(x: number, y: number, w: number, h: number, fill: string, r = 0, stroke?: string) {
+    this.ops.push({ k: 'rect', x, y, w, h, fill, r, stroke });
+  }
+  line(x1: number, y1: number, x2: number, y2: number, stroke = LINE, width = 1) {
+    this.ops.push({ k: 'line', x1, y1, x2, y2, stroke, width });
+  }
+  /** Хэсгийн гарчиг — дугаартай, доор нь зураас */
+  head(x: number, y: number, w: number, no: string, title: string, sub?: string) {
+    this.text(x, y, `${no ? `${no}  ` : ''}${title.toUpperCase()}`, { size: 15, weight: 700 });
+    if (sub) this.text(x + w, y, sub, { size: 11, fill: INK3, anchor: 'end' });
+    this.line(x, y + 8, x + w, y + 8, INK, 1.2);
+  }
+  /** Хэвтээ багана — нэр · зурвас · утга */
+  hbar(
+    x: number, y: number, w: number, label: string, frac: number, val: string,
+    o: { color?: string; hot?: boolean; nameW?: number; valW?: number } = {},
+  ) {
+    const nameW = o.nameW ?? 170;
+    const valW = o.valW ?? 150;
+    const trackX = x + nameW;
+    const trackW = w - nameW - valW - 8;
+    const f = Math.max(0, Math.min(1, frac));
+    this.text(x, y + 11, clip(label, nameW - 10), { size: 12, fill: INK2 });
+    this.rect(trackX, y, trackW, 14, SURF, 3);
+    this.rect(trackX, y, trackW * f, 14, o.color ?? (o.hot ? DATA : DATA_SOFT), 3);
+    this.text(x + w, y + 11, val, { size: 12, weight: 600, anchor: 'end' });
+  }
+  /** KPI хавтан */
+  tile(x: number, y: number, w: number, h: number, label: string, value: string, sub?: string) {
+    this.rect(x, y, w, h, '#fff', 8, LINE);
+    this.rect(x, y, 4, h, DATA, 2);
+    this.text(x + 16, y + 24, label, { size: 11, fill: INK3 });
+    this.text(x + 16, y + 56, value, { size: value.length > 16 ? 20 : 26, weight: 700 });
+    if (sub) this.text(x + 16, y + h - 12, clip(sub, w - 28, 10.5), { size: 10.5, fill: INK3 });
+  }
+  /** Нэг зурвас, өнгөт хэсгүүд + домог */
+  segments(x: number, y: number, w: number, segs: [number, string, string][], h = 18): number {
+    const total = segs.reduce((a, s) => a + s[0], 0);
+    let sx = x;
+    for (const [n, c] of segs) {
+      const sw = total ? (w * n) / total : 0;
+      this.rect(sx, y, sw, h, c);
+      if (sw > 28) this.text(sx + sw / 2, y + h - 5, String(n), { size: 11, weight: 700, fill: '#fff', anchor: 'middle' });
+      sx += sw;
+    }
+    let gx = x;
+    const ly = y + h + 16;
+    for (const [n, c, lb] of segs) {
+      this.rect(gx, ly - 9, 10, 10, c, 2);
+      const s = `${lb} ${n}`;
+      this.text(gx + 14, ly, s, { size: 10.5, fill: INK3 });
+      gx += 14 + s.length * 6 + 14;
+    }
+    return ly + 20;
+  }
 }
 
-/** Хэвтээ багана — нэр · зурвас · утга */
-function hbar(
-  x: number, y: number, w: number, label: string, frac: number, val: string,
-  o: { color?: string; hot?: boolean; nameW?: number; valW?: number; maxChars?: number } = {},
-): string {
-  const nameW = o.nameW ?? 170;
-  /* ⚠️ Нэрийн багана 12px фонтод ~6.3px/тэмдэгт — багтахгүй нэрийг таслана */
-  o.maxChars = o.maxChars ?? Math.max(8, Math.floor((nameW - 10) / 6.3));
-  const valW = o.valW ?? 150;
-  const trackX = x + nameW;
-  const trackW = w - nameW - valW - 8;
-  const f = Math.max(0, Math.min(1, frac));
-  return [
-    text(x, y + 11, label.length > o.maxChars! ? `${label.slice(0, o.maxChars! - 1)}…` : label, { size: 12, fill: INK2 }),
-    rect(trackX, y, trackW, 14, SURF, 3),
-    rect(trackX, y, trackW * f, 14, o.color ?? (o.hot ? DATA : DATA_SOFT), 3),
-    text(x + w, y + 11, val, { size: 12, weight: 600, fill: INK, anchor: 'end' }),
-  ].join('');
-}
-
-/** KPI хавтан */
-function tile(x: number, y: number, w: number, h: number, label: string, value: string, sub?: string): string {
-  return [
-    rect(x, y, w, h, '#fff', 8, `stroke="${LINE}" stroke-width="1"`),
-    rect(x, y, 4, h, DATA, 2),
-    text(x + 16, y + 24, label, { size: 11, fill: INK3 }),
-    text(x + 16, y + 58, value, { size: value.length > 16 ? 20 : 26, weight: 700, fill: INK }),
-    sub ? text(x + 16, y + h - 12, sub, { size: 10.5, fill: INK3 }) : '',
-  ].join('');
-}
+/* ═══════════════ Угсрах ═══════════════ */
 
 /**
- * Инфографикийн SVG мөр.
+ * Инфографикийн зурах үйлдлүүд.
  * @param summary AI дүгнэлт (байвал) — байхгүй бол дүрэмд суурилсан олдвор
  */
-export function buildInfographicSvg(
+export function buildInfographic(
   x: ExecReport, dateStr: string, findings: string[], summary: string | null,
-): string {
-  const M = 56;
+): Op[] {
+  const P = new Painter();
+  const M = 52;
   const W = INFO_W - M * 2;
-  const parts: string[] = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${INFO_W}" height="${INFO_H}" viewBox="0 0 ${INFO_W} ${INFO_H}">`);
-  parts.push(rect(0, 0, INFO_W, INFO_H, '#fff'));
+  P.rect(0, 0, INFO_W, INFO_H, '#fff');
 
   /* ── Толгой ── */
-  let y = 64;
-  parts.push(rect(0, 0, INFO_W, 8, DATA));
-  parts.push(text(M, y, tr('Сэлбэ 20 минутын хот'), { size: 30, weight: 800 }));
-  parts.push(text(M + W, y, dateStr, { size: 13, fill: INK3, anchor: 'end' }));
-  y += 30;
-  parts.push(text(M, y, tr('Удирдлагын товч тайлан — төслийн өнөөдрийн байдал нэг хуудсанд'), { size: 14, fill: INK2 }));
-  y += 22;
+  let y = 60;
+  P.rect(0, 0, INFO_W, 8, DATA);
+  P.text(M, y, tr('Сэлбэ ухаалаг хот'), { size: 30, weight: 800 });
+  P.text(M + W, y, dateStr, { size: 13, fill: INK3, anchor: 'end' });
+  y += 28;
+  P.text(M, y, tr('Удирдлагын товч тайлан — төслийн өнөөдрийн байдал нэг хуудсанд'), { size: 14, fill: INK2 });
+  y += 20;
 
   /* ── KPI зургаан хавтан ── */
   const g = x.gdash;
@@ -151,209 +249,178 @@ export function buildInfographicSvg(
     [tr('Газар чөлөөлөлт'), g.landPct == null ? '—' : pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), num(x.prog.households))],
   ];
-  const tw = (W - 16 * 2) / 3;
-  const th = 92;
+  const tw = (W - 14 * 2) / 3;
+  const th = 84;
   tiles.forEach((t, i) => {
-    const cx = M + (i % 3) * (tw + 16);
-    const cy = y + Math.floor(i / 3) * (th + 12);
-    parts.push(tile(cx, cy, tw, th, t[0], t[1], t[2]));
+    P.tile(M + (i % 3) * (tw + 14), y + Math.floor(i / 3) * (th + 10), tw, th, t[0], t[1], t[2]);
   });
-  y += th * 2 + 12 + 40;
+  y += th * 2 + 10 + 34;
 
-  /* ── Хоёр багана: зүүн — гүйцэтгэл, баруун — санхүү ── */
-  const colW = (W - 40) / 2;
+  const colW = (W - 36) / 2;
   const L = M;
-  const R = M + colW + 40;
-  const yTop = y;
+  const R = M + colW + 36;
 
-  /* Зүүн: 05. Багцын гүйцэтгэл */
-  let yl = yTop;
-  parts.push(head(L, yl, colW, '05', tr('Багцын гүйцэтгэл'), x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined));
-  yl += 34;
+  /* ═══ 1-р эгнээ: 05 гүйцэтгэл | 04 санхүү ═══ */
+  const y1 = y;
+  let yl = y1;
+  P.head(L, yl, colW, '05', tr('Багцын гүйцэтгэл'), x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined);
+  yl += 32;
   const p = x.prog;
-  /* Төлөвлөгөө vs бодит — хоёр зурвас */
-  parts.push(text(L, yl, tr('Орон сууцны барилга угсралт — төлөвлөгөө ба бодит'), { size: 12, fill: INK2 }));
-  yl += 12;
-  const planF = p.planned == null ? 0 : p.planned / 100;
-  const actF = p.actual == null ? 0 : p.actual / 100;
+  P.text(L, yl, tr('Орон сууцны барилга угсралт — төлөвлөгөө ба бодит'), { size: 12, fill: INK2 });
+  yl += 10;
   const late = p.gap != null && p.gap >= 5;
-  parts.push(hbar(L, yl, colW, tr('Төлөвлөгөө'), planF, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 110, valW: 90 }));
-  yl += 22;
-  parts.push(hbar(L, yl, colW, tr('Бодит'), actF, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 110, valW: 90 }));
-  yl += 22;
+  P.hbar(L, yl, colW, tr('Төлөвлөгөө'), (p.planned ?? 0) / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
+  yl += 20;
+  P.hbar(L, yl, colW, tr('Бодит'), (p.actual ?? 0) / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
+  yl += 20;
   if (p.gap != null) {
     const s = p.gap >= 0 ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1)) : tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1));
-    parts.push(text(L + colW, yl + 6, s, { size: 11.5, weight: 600, fill: late ? WARN : GOOD, anchor: 'end' }));
+    P.text(L + colW, yl + 6, s, { size: 11.5, weight: 600, fill: late ? WARN : GOOD, anchor: 'end' });
   }
-  yl += 30;
-  /* Багц бүрийн гүйцэтгэл — орон сууцны багцууд */
-  parts.push(text(L, yl, tr('Багц тус бүрийн биет гүйцэтгэл'), { size: 12, fill: INK2 }));
-  yl += 12;
+  yl += 26;
+  P.text(L, yl, tr('Багц тус бүрийн биет гүйцэтгэл'), { size: 12, fill: INK2 });
+  yl += 10;
   const buildPk = p.packs.filter((k) => k.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
   const best = buildPk.reduce((m, k) => Math.max(m, k.progress ?? 0), 0);
-  for (const k of buildPk.slice(0, 10)) {
+  for (const k of buildPk.slice(0, 8)) {
     const v = k.progress;
-    parts.push(hbar(L, yl, colW, k.name, v == null ? 0 : v / 100,
-      v == null ? tr('мэдээлэлгүй') : pct(v, 1), { hot: v != null && v === best && v > 0, nameW: 130, valW: 90 }));
-    yl += 22;
+    P.hbar(L, yl, colW, k.name, v == null ? 0 : v / 100, v == null ? tr('мэдээлэлгүй') : pct(v, 1), { hot: v != null && v === best && v > 0, nameW: 120, valW: 80 });
+    yl += 20;
   }
-  /* Блокийн түвшин — нэг зурвас, өнгөт хэсгүүд */
+  yl += 14;
+  P.text(L, yl, tr('Блокийн гүйцэтгэлийн түвшин ({0} блок, {1} бөглөгдөөгүй)', num(p.blocks), num(p.noData)), { size: 12, fill: INK2 });
   yl += 10;
-  parts.push(text(L, yl, tr('Блокийн гүйцэтгэлийн түвшин ({0} блок, {1} бөглөгдөөгүй)', num(p.blocks), num(p.noData)), { size: 12, fill: INK2 }));
-  yl += 12;
-  const lvSum = p.levels.reduce((a, l) => a + l.n, 0);
-  let lx = L;
-  for (const l of p.levels) {
-    const w = lvSum ? (colW * l.n) / lvSum : 0;
-    parts.push(rect(lx, yl, w, 16, l.color));
-    if (w > 28) parts.push(text(lx + w / 2, yl + 12, String(l.n), { size: 11, weight: 700, fill: '#fff', anchor: 'middle' }));
-    lx += w;
-  }
-  yl += 24;
-  let lgx = L;
-  for (const l of p.levels) {
-    parts.push(rect(lgx, yl - 9, 10, 10, l.color, 2));
-    const s = `${l.label} ${l.range}`;
-    parts.push(text(lgx + 14, yl, s, { size: 10.5, fill: INK3 }));
-    lgx += 14 + s.length * 5.9 + 14;
-  }
-  yl += 16;
+  yl = P.segments(L, yl, colW, p.levels.map((l) => [l.n, l.color, `${l.label} ${l.range}`]), 16);
 
-  /* Баруун: 04. Багцын санхүү */
-  let yr = yTop;
-  parts.push(head(R, yr, colW, '04', tr('Багцын санхүү')));
-  yr += 34;
+  let yr = y1;
+  P.head(R, yr, colW, '04', tr('Багцын санхүү'));
+  yr += 32;
   const f = x.fin;
-  parts.push(text(R, yr, tr('Гэрээний дүн ба олгосон санхүүжилт'), { size: 12, fill: INK2 }));
-  yr += 12;
-  parts.push(hbar(R, yr, colW, tr('Гэрээ'), 1, money(f.planTotal), { color: DATA_SOFT, nameW: 110, valW: 150 }));
-  yr += 22;
-  parts.push(hbar(R, yr, colW, tr('Олгосон'), f.planTotal > 0 ? f.given / f.planTotal : 0, money(f.given), { color: DATA, nameW: 110, valW: 150 }));
-  yr += 22;
-  parts.push(text(R + colW, yr + 6, f.share == null ? '' : tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' }));
-  yr += 30;
-  parts.push(text(R, yr, tr('Багц тус бүр — олгосон / гэрээ'), { size: 12, fill: INK2 }));
-  yr += 12;
-  for (const r of f.rows.slice(0, 12)) {
-    parts.push(hbar(R, yr, colW, r.label, r.pct == null ? 0 : r.pct / 100,
-      r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 130, valW: 190 }));
-    yr += 22;
+  P.text(R, yr, tr('Гэрээний дүн ба олгосон санхүүжилт'), { size: 12, fill: INK2 });
+  yr += 10;
+  P.hbar(R, yr, colW, tr('Гэрээ'), 1, money(f.planTotal), { color: DATA_SOFT, nameW: 100, valW: 140 });
+  yr += 20;
+  P.hbar(R, yr, colW, tr('Олгосон'), f.planTotal > 0 ? f.given / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
+  yr += 20;
+  if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
+  yr += 26;
+  P.text(R, yr, tr('Багц тус бүр — олгосон / гэрээ'), { size: 12, fill: INK2 });
+  yr += 10;
+  for (const r of f.rows.slice(0, 10)) {
+    P.hbar(R, yr, colW, r.label, (r.pct ?? 0) / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 120, valW: 180 });
+    yr += 20;
+  }
+  y = Math.max(yl, yr) + 30;
+
+  /* ═══ 2-р эгнээ: Газар чөлөөлөлт | ХАБ ═══ */
+  const y2 = y;
+  yl = y2;
+  P.head(L, yl, colW, '01', tr('Газар чөлөөлөлт'), tr('{0} нэгж талбар · {1} м²', num(g.land.total), num(g.land.areaM2)));
+  yl += 32;
+  /* ⚠️ Чөлөөлсөн төлөв ТҮҮХИЙ утгаар (`PARCEL_CLEARED`) — `land.ts`-тэй ижил
+     дүрэм; бусад төлөв бүр чөлөөлөгдөөгүй шалтгаан тул анхааруулгын өнгө. */
+  const alt = [WARN, BAD, INK3, DATA, '#b45309'];
+  let ai = 0;
+  const stSegs: [number, string, string][] = g.land.byStatus.map((b) => [
+    b.n, b.label === PARCEL_CLEARED ? GOOD : alt[ai++ % alt.length], b.label,
+  ]);
+  if (stSegs.length) yl = P.segments(L, yl, colW, stSegs, 18);
+  yl += 4;
+  P.text(L, yl, tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining)), { size: 12, fill: INK2 });
+  yl += 10;
+  const topReason = g.land.reasons[0]?.n ?? 0;
+  if (!g.land.reasons.length) { P.text(L, yl + 11, tr('Шалтгаан бүртгэгдээгүй'), { size: 11.5, fill: INK3 }); yl += 20; }
+  for (const r of g.land.reasons.slice(0, 5)) {
+    P.hbar(L, yl, colW, r.label, topReason ? r.n / topReason : 0, num(r.n), { color: WARN, nameW: 210, valW: 60 });
+    yl += 20;
   }
 
-  y = Math.max(yl, yr) + 34;
+  yr = y2;
+  P.head(R, yr, colW, '01', tr('ХАБ — талбайн хүн хүч'), g.hse?.date ? tr('сүүлийн бүртгэл {0}', g.hse.date) : undefined);
+  yr += 32;
+  if (!g.hse) {
+    P.text(R, yr + 8, tr('ХАБ-ын бүртгэл алга — мэдээлэлгүй.'), { size: 12, fill: INK3 });
+    yr += 28;
+  } else {
+    const hw = (colW - 12 * 2) / 3;
+    const hs: [string, string][] = [
+      [tr('Ажиллаж буй хүн'), num(g.hse.workers)],
+      [tr('Техник хэрэгсэл'), num(g.hse.equipment)],
+      [tr('Хүн цаг'), num(g.hse.manHours)],
+    ];
+    hs.forEach((t, i) => P.tile(R + i * (hw + 12), yr, hw, 76, t[0], t[1]));
+    yr += 76 + 14;
+    P.text(R, yr, tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.'), { size: 10.5, fill: INK3 });
+    yr += 16;
+  }
+  y = Math.max(yl, yr) + 30;
 
-  /* ── Зөвшөөрөл ба ажлын төрөл — хоёр багана ── */
-  const y2 = y;
-  let yz = y2;
-  parts.push(head(L, yz, colW, '', tr('Зөвшөөрөл')));
-  yz += 34;
+  /* ═══ 3-р эгнээ: Зөвшөөрөл | 01 ажлын төрөл ═══ */
+  const y3 = y;
+  yl = y3;
+  P.head(L, yl, colW, '', tr('Зөвшөөрөл'), x.zov ? tr('Нийт {0} зөвшөөрөл · {1} багц', num(x.zov.total), num(x.zov.byBagts.length)) : undefined);
+  yl += 32;
   if (!x.zov) {
-    parts.push(text(L, yz + 4, tr('Зөвшөөрлийн бүртгэл холбогдоогүй — мэдээлэлгүй.'), { size: 12, fill: INK3 }));
-    yz += 24;
+    P.text(L, yl + 4, tr('Зөвшөөрлийн бүртгэл холбогдоогүй — мэдээлэлгүй.'), { size: 12, fill: INK3 });
+    yl += 24;
   } else {
     const z = x.zov;
-    const segs: [number, string, string][] = [
+    yl = P.segments(L, yl, colW, [
       [z.ok, GOOD, tr('Зөвшөөрсөн')], [z.wait, WARN, tr('Хүлээгдэж буй')],
       [z.no, BAD, tr('Зөвшөөрөөгүй')], [z.unknown, INK3, tr('Танигдаагүй')],
-    ];
-    let sx = L;
-    for (const [n, c] of segs) {
-      const w = z.total ? (colW * n) / z.total : 0;
-      parts.push(rect(sx, yz, w, 22, c));
-      if (w > 30) parts.push(text(sx + w / 2, yz + 16, String(n), { size: 12, weight: 700, fill: '#fff', anchor: 'middle' }));
-      sx += w;
-    }
-    yz += 34;
-    let gx = L;
-    for (const [n, c, lb] of segs) {
-      parts.push(rect(gx, yz - 9, 10, 10, c, 2));
-      const s = `${lb} ${n}`;
-      parts.push(text(gx + 14, yz, s, { size: 11, fill: INK2 }));
-      gx += 14 + s.length * 6.2 + 16;
-    }
-    yz += 22;
-    parts.push(text(L, yz, tr('Нийт {0} зөвшөөрөл · {1} багц', num(z.total), num(z.byBagts.length)), { size: 11.5, fill: INK3 }));
-    yz += 20;
-    /* Багц бүрийн зөвшөөрсөн хувь */
-    for (const b of z.byBagts.slice(0, 8)) {
+    ], 20);
+    yl += 4;
+    for (const b of z.byBagts.slice(0, 7)) {
       const alert = b.no > 0 || b.unknown > 0;
-      parts.push(hbar(L, yz, colW, b.bagts, b.total ? b.ok / b.total : 0,
+      P.hbar(L, yl, colW, b.bagts, b.total ? b.ok / b.total : 0,
         `${b.ok}/${b.total}${b.wait ? ` · ${tr('хүлээгдэж')} ${b.wait}` : ''}${b.no ? ` · ${tr('татгалзсан')} ${b.no}` : ''}`,
-        { color: alert ? BAD : b.ok === b.total ? GOOD : DATA, nameW: 130, valW: 200 }));
-      yz += 22;
+        { color: alert ? BAD : b.ok === b.total ? GOOD : DATA, nameW: 120, valW: 190 });
+      yl += 20;
     }
   }
 
-  /* Ажлын төрөл — 01 */
-  let yt = y2;
-  parts.push(head(R, yt, colW, '01', tr('Ажлын төрлөөр — төсөв, гэрээ, гүйцэтгэл')));
-  yt += 34;
+  yr = y3;
+  P.head(R, yr, colW, '01', tr('Ажлын төрлөөр — төсөв, гэрээ, гүйцэтгэл'));
+  yr += 32;
   const top = g.byType[0]?.cost ?? 0;
-  for (const t of g.byType.slice(0, 8)) {
-    const perf = t.perf == null ? '—' : pct(t.perf, 1);
-    parts.push(hbar(R, yt, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${perf}`, {
-      color: DATA_SOFT, nameW: 210, valW: 170,
-    }));
-    /* Гэрээлсэн хэсэг — багана дотор бараан */
-    const trackX = R + 210;
-    const trackW = colW - 210 - 170 - 8;
-    parts.push(rect(trackX, yt, top ? (trackW * t.contract) / top : 0, 14, DATA, 3));
-    yt += 22;
+  const nameW = 200, valW = 170;
+  for (const t of g.byType.slice(0, 7)) {
+    P.hbar(R, yr, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
+    P.rect(R + nameW, yr, top ? ((colW - nameW - valW - 8) * t.contract) / top : 0, 14, DATA, 3);
+    yr += 20;
   }
-  yt += 4;
-  parts.push(rect(R, yt - 9, 10, 10, DATA, 2));
-  parts.push(text(R + 14, yt, tr('гэрээлсэн'), { size: 10.5, fill: INK3 }));
-  parts.push(rect(R + 90, yt - 9, 10, 10, DATA_SOFT, 2));
-  parts.push(text(R + 104, yt, tr('төсөв · ард нь гүйцэтгэлийн хувь'), { size: 10.5, fill: INK3 }));
-  yt += 16;
+  yr += 4;
+  P.rect(R, yr - 9, 10, 10, DATA, 2);
+  P.text(R + 14, yr, tr('гэрээлсэн'), { size: 10.5, fill: INK3 });
+  P.rect(R + 90, yr - 9, 10, 10, DATA_SOFT, 2);
+  P.text(R + 104, yr, tr('төсөв · ард нь гүйцэтгэлийн хувь'), { size: 10.5, fill: INK3 });
+  yr += 14;
+  y = Math.max(yl, yr) + 30;
 
-  y = Math.max(yz, yt) + 34;
-
-  /* ── Дүгнэлт ── */
-  const bottom = INFO_H - 48;
-  parts.push(head(M, y, W, '', summary ? tr('AI дүгнэлт') : tr('Анхаарах асуудал')));
-  y += 30;
+  /* ═══ Дүгнэлт ═══ */
+  const bottom = INFO_H - 46;
+  P.head(M, y, W, '', summary ? tr('AI дүгнэлт') : tr('Анхаарах асуудал'));
+  y += 26;
   const body = summary ?? findings.map((s) => `• ${s}`).join('\n');
-  const lines = wrap(body, 130);
-  const lh = 21;
-  const maxLines = Math.max(0, Math.floor((bottom - y - 8) / lh));
+  const lines = wrap(body, 140);
+  const lh = 19;
+  const maxLines = Math.max(0, Math.floor((bottom - y - 6) / lh));
   const shown = lines.slice(0, maxLines);
-  if (lines.length > maxLines && shown.length) shown[shown.length - 1] = `${shown[shown.length - 1].slice(0, 125)}…`;
+  if (lines.length > maxLines && shown.length) shown[shown.length - 1] = `${shown[shown.length - 1].slice(0, 135)}…`;
   for (const ln of shown) {
-    /* Хэсгийн нэр («Гол дүгнэлт:») — тод; жагсаалтын мөр — энгийн */
     const isHead = /^[^•*·-][^:]{1,40}:$/.test(ln.trim());
-    parts.push(text(M, y + 14, ln, { size: 14, weight: isHead ? 700 : 400, fill: isHead ? INK : INK2 }));
+    P.text(M, y + 13, ln, { size: 13, weight: isHead ? 700 : 400, fill: isHead ? INK : INK2 });
     y += lh;
   }
 
   /* ── Хөл ── */
-  parts.push(`<line x1="${M}" y1="${INFO_H - 34}" x2="${M + W}" y2="${INFO_H - 34}" stroke="${LINE}"/>`);
-  parts.push(text(M, INFO_H - 16, tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо ArcGIS-ээс амьдаар татагдсан.'), { size: 10, fill: INK3 }));
-  parts.push(text(M + W, INFO_H - 16, dateStr, { size: 10, fill: INK3, anchor: 'end' }));
-  parts.push('</svg>');
-  return parts.join('\n');
+  P.line(M, INFO_H - 32, M + W, INFO_H - 32, LINE);
+  P.text(M, INFO_H - 14, tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард (KPI · Газар чөлөөлөлт · ХАБ) · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо ArcGIS-ээс амьдаар татагдсан.'), { size: 10, fill: INK3 });
+  P.text(M + W, INFO_H - 14, dateStr, { size: 10, fill: INK3, anchor: 'end' });
+  return P.ops;
 }
 
-/**
- * SVG → PNG (data URL). Canvas-ын хэмжээ SVG-тэй ижил тул 150dpi A4.
- * ⚠️ `Image`-д data: URL өгнө (blob: биш) — зарим хөтөч blob SVG-г canvas-д
- *    «tainted» гэж үзээд `toDataURL` хориглодог.
- */
-export function svgToPng(svg: string, scale = 1): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = INFO_W * scale;
-      c.height = INFO_H * scale;
-      const ctx = c.getContext('2d');
-      if (!ctx) { reject(new Error('canvas')); return; }
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, c.width, c.height);
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      try { resolve(c.toDataURL('image/png')); } catch (e) { reject(e); }
-    };
-    img.onerror = () => reject(new Error(tr('Инфографик зурахад алдаа гарлаа.')));
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  });
+/** Дэлгэцийн урьдчилсан харагдацад — SVG data URL */
+export function infographicSvgUrl(ops: Op[]): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(toSvg(ops))}`;
 }

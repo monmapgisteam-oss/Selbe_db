@@ -17,6 +17,67 @@
 
 import { createServer } from "node:http";
 import Anthropic from "@anthropic-ai/sdk";
+import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
+
+/**
+ * АРЫН ХӨДӨЛГҮҮР (2026-09-17):
+ *   · `api`         — ANTHROPIC_API_KEY-ээр Messages API (урьдын зан)
+ *   · `claude-code` — энэ PC дээр нэвтэрсэн Claude Code (`claude -p`),
+ *                     түлхүүргүй. Дэлгэрэнгүйг `claudeCode.mjs`-ээс.
+ * ⚠️ Анхдагч нь ТҮЛХҮҮР БАЙВАЛ `api`, байхгүй бол `claude-code` — нэг
+ *    PC дээр хоёулаа тохирсон үед урьдын зан өөрчлөгдөхгүй.
+ */
+/* ⚠️ `--backend=claude-code` аргумент (`npm run start:claude-code`) — Windows дээр
+   `VAR=x cmd` синтакс ажиллахгүй тул орчны хувьсагчаас гадна аргументаар ч сонгоно. */
+const BACKEND =
+  process.argv.find((a) => a.startsWith("--backend="))?.slice(10) ||
+  process.env.AGENT_BACKEND ||
+  (process.env.ANTHROPIC_API_KEY ? "api" : "claude-code");
+/**
+ * БЭЛЭН БАЙДАЛ — Claude Code нэвтэрсэн эсэхийг эхлэхэд ба 10 мин тутам шалгана.
+ * ⚠️ `/health` нь ҮҮНИЙГ буцаана: портал `relayAlive()`-аар товчоо идэвхжүүлдэг
+ *    тул PC дээр Claude-ээс гарсан (logout) үед товч «ажиллаж байгаа» мэт
+ *    харагдаад дарахад унадаг байдлаас сэргийлнэ.
+ */
+let ready = { ok: BACKEND !== "claude-code", reason: "шалгаж байна" };
+if (BACKEND === "claude-code") {
+  const check = async () => {
+    ready = await selfTest();
+    console.log(`[agent-proxy] Claude Code бэлэн: ${ready.ok ? "тийм" : `ҮГҮЙ — ${ready.reason}`}`);
+  };
+  check();
+  setInterval(check, 10 * 60 * 1000).unref();
+}
+
+/**
+ * ArcGIS нэвтрэлт — `worker.mjs`-ийн ижил дүрэм. `ARCGIS_ORG_ID` тохируулсан
+ * үед л шаардана.
+ * ⚠️ Энэ PC-г Cloudflare Tunnel-ээр НИЙТЭД гаргах бол ЗААВАЛ тохируулна —
+ *    эс бөгөөс хаягийг олсон хэн ч энэ PC-ийн Claude бүртгэлийг зарцуулна.
+ */
+const ARCGIS_ORG_ID = process.env.ARCGIS_ORG_ID?.trim() || "";
+const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").replace(/\/+$/, "");
+const verified = new Map();
+async function checkArcGIS(token) {
+  if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
+  const hit = verified.get(token);
+  if (hit && hit.until > Date.now()) return { ok: true, username: hit.username };
+  let data;
+  try {
+    const r = await fetch(`${ARCGIS_PORTAL}/sharing/rest/community/self`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ f: "json", token }).toString(),
+    });
+    data = await r.json();
+  } catch {
+    return { ok: false, reason: "Нэвтрэлт шалгах үйлчилгээ хариу өгсөнгүй" };
+  }
+  if (!data || data.error || !data.username) return { ok: false, reason: "Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна" };
+  if (data.orgId !== ARCGIS_ORG_ID) return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
+  verified.set(token, { username: data.username, until: Date.now() + 5 * 60 * 1000 });
+  return { ok: true, username: data.username };
+}
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -61,6 +122,7 @@ const WITH_EFFORT = Boolean(EFFORT) && !/haiku/i.test(MODEL);
 /** Нэг хүсэлтэд зөвшөөрөх биеийн дээд хэмжээ — бүртгэл + яриа (2 МБ) */
 const MAX_BODY = 2 * 1024 * 1024;
 
+/* ⚠️ claude-code горимд түлхүүргүй ч SDK үүсгэх нь алдаа шидэхгүй — хүсэлт явуулах үед л шалгадаг. */
 const client = new Anthropic();
 
 const cors = (res, origin) => {
@@ -146,7 +208,8 @@ const server = createServer(async (req, res) => {
       json(res, 429, { error: "Хэт олон хүсэлт" });
       return;
     }
-    json(res, 200, { ok: true });
+    /* ⚠️ Шалтгааныг ЗАДЛАХГҮЙ — зөвхөн бэлэн эсэх */
+    json(res, ready.ok ? 200 : 503, { ok: ready.ok });
     return;
   }
 
@@ -164,8 +227,33 @@ const server = createServer(async (req, res) => {
 
   /* ⚠️ ХУРДНЫ ХЯЗГААР — Origin БАЙХГҮЙ (скрипт, curl) үед дээрх шалгалт
      бүхэлдээ алгасагддаг тул энэ нь тэр нүхийг хаана. */
-  if (rateLimited(origin || "anon")) {
-    json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт" });
+  /* ⚠️ ХЯЗГААРЫН ТҮЛХҮҮР (2026-09-17): урьд нь `origin` байсан тул production-д
+     БҮХ хэрэглэгч «https://smart.selbecity.mn» нэг түлхүүр хуваалцаж, нийлээд
+     минутад 40 хүсэлтэд хязгаарлагдаж байв (агентын нэг асуулт 2–5 хүсэлт).
+     Одоо эхлээд IP-ээр (Cloudflare Tunnel `cf-connecting-ip` дамжуулна), дараа
+     нь ArcGIS хэрэглэгчээр. */
+  /* ⚠️ Tailscale Funnel нь `x-forwarded-for`-оор дамжуулна — эс бөгөөс бүх
+     хэрэглэгч 127.0.0.1 болж нэг хязгаар хуваалцана. */
+  const ip =
+    req.headers["cf-connecting-ip"] ||
+    String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+    req.socket.remoteAddress || "anon";
+  if (rateLimited(`pre:${ip}`)) {
+    json(res, 429, { error: "Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
+    return;
+  }
+
+  let caller = `ip:${ip}`;
+  if (ARCGIS_ORG_ID) {
+    const auth = await checkArcGIS(req.headers["x-arcgis-token"]);
+    if (!auth.ok) {
+      json(res, 401, { error: auth.reason, retryable: false });
+      return;
+    }
+    caller = auth.username;
+  }
+  if (rateLimited(caller)) {
+    json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
     return;
   }
 
@@ -180,6 +268,29 @@ const server = createServer(async (req, res) => {
   const { system, messages, tools } = payload ?? {};
   if (!Array.isArray(messages) || !messages.length) {
     json(res, 400, { error: "`messages` хоосон байна" });
+    return;
+  }
+
+  /* ── Claude Code горим ── */
+  if (BACKEND === "claude-code") {
+    const bin = claudeBin();
+    if (!bin) {
+      json(res, 500, { error: "Энэ PC дээр Claude Code олдсонгүй — `CLAUDE_BIN` орчны хувьсагчид claude.exe-ийн замыг заана уу.", retryable: false });
+      return;
+    }
+    try {
+      const t0 = Date.now();
+      const out = await callClaudeCode({ system, messages, tools, model: MODEL, effort: EFFORT, bin });
+      const st = stats();
+      console.log(`[agent-proxy:claude-code] ${caller} ${out.cached ? "кэш" : `${Date.now() - t0}мс`} ${out.stop_reason} · ажиллаж ${st.running} · дараалал ${st.queued}`);
+      if (!out.cached) ready = { ok: true };
+      json(res, 200, out);
+    } catch (err) {
+      const e = err instanceof ClaudeCodeError ? err : new ClaudeCodeError(err?.message ?? "Тодорхойгүй алдаа", { status: 500 });
+      console.error("[agent-proxy:claude-code]", caller, e.message);
+      if (e.status === 401) ready = { ok: false, reason: e.message };
+      json(res, e.status, { error: e.message, retryable: e.retryable });
+    }
     return;
   }
 
@@ -253,13 +364,16 @@ const server = createServer(async (req, res) => {
 //    шалгадаггүй тул бүх интерфейс (0.0.0.0)-д сонсвол LAN-ийн хэн ч Origin-гүй
 //    хүсэлтээр түлхүүр зарцуулна. Локал хөгжүүлэлтэд хостын машин л хандана.
 server.listen(PORT, '127.0.0.1', () => {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (BACKEND === "claude-code") {
+    console.log(`[agent-proxy] хөдөлгүүр=claude-code  ${claudeBin() ?? "⚠️ claude олдсонгүй (CLAUDE_BIN тохируул)"}`);
+    if (!ARCGIS_ORG_ID) console.warn("[agent-proxy] ⚠️ ARCGIS_ORG_ID тохируулаагүй — нийтэд (tunnel) гаргах бол ЗААВАЛ тохируулна.");
+  } else if (!process.env.ANTHROPIC_API_KEY) {
     console.warn(
       "[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.",
     );
   }
   console.log(
-    `[agent-proxy] http://localhost:${PORT}  загвар=${MODEL}  effort=${EFFORT}`,
+    `[agent-proxy] http://localhost:${PORT}  хөдөлгүүр=${BACKEND}  загвар=${MODEL}  effort=${EFFORT}`,
   );
   console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(", ")}`);
 });
