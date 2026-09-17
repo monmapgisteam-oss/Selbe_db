@@ -90,20 +90,26 @@ export function RankBars({
   max?: number;
 }) {
   const vals = items.map((i) => i.value);
-  if (!items.length || !hasData(vals)) return null;
-  const top = max ?? Math.max(...vals.map((v) => v ?? 0), 0);
-  if (!(top > 0)) return null;
+  const valid = vals.filter((v): v is number => v != null && Number.isFinite(v));
+  if (!items.length || !valid.length) return <p className={c.note}>{tr('мэдээлэлгүй')}</p>;
+  // Keep a common baseline, including measured zeroes and values above 100%.
+  const top = Math.max(max ?? 0, ...valid, 1);
 
   return (
-    <figure className={c.fig} role="img" aria-label={title}>
+    <figure className={c.fig} aria-label={title}>
       <div className={c.bars}>
+        {/* ⚠️ ТЭНХЛЭГИЙН ШОШГО ХАСАГДСАН (2026-09-17, хэрэглэгчийн шүүмж:
+            «энэ илүү тоо юу вэ»). Дээд утга нь хамгийн урт зурвасын
+            ХАЖУУД аль хэдийн бүтнээр бичигдсэн байдаг тул тэнхлэг дээр
+            давтагдаад, уншигч хоёр өөр тоо байна гэж эргэлздэг байв.
+            Зурвасын урт нь өөрөө харьцааг хэлнэ. */}
         {items.map((it, i) => (
           <div key={`${it.label}-${i}`} className={c.barRow}>
             <span className={c.barName} title={it.label}>{it.label}</span>
             <span className={c.barTrack}>
               {/* ⚠️ Хэмжигдээгүйг (`null`) 0 гэж ЗУРАХГҮЙ — «мэдээлэлгүй» ба
                   «тэг гүйцэтгэл» хоёр огт өөр утгатай. */}
-              {it.value == null ? null : (
+              {it.value == null || !Number.isFinite(it.value) ? null : (
                 <span
                   className={`${c.bar} ${it.hot ? c.barHot : ''}`}
                   style={{ width: `${frac(it.value, top) * 100}%` }}
@@ -111,7 +117,7 @@ export function RankBars({
               )}
             </span>
             <span className={c.barVal}>
-              {it.value == null ? <i className={c.na}>{tr('мэдээлэлгүй')}</i> : (it.text ?? fmt(it.value))}
+              {it.value == null || !Number.isFinite(it.value) ? <i className={c.na}>{tr('мэдээлэлгүй')}</i> : (it.text ?? fmt(it.value))}
             </span>
           </div>
         ))}
@@ -221,7 +227,12 @@ export function Meter({
   /* ⚠️ Хоцрогдлыг ӨНГӨӨР заана — статусын өнгө яг энэ зориулалттай. */
   const late = plan != null && Number.isFinite(plan) && value < plan;
   return (
-    <div className={c.meter} role="img" aria-label={`${label}: ${pct(value, 2)}`}>
+    <div className={c.meterBlock}>
+      <div className={c.meterLegend}>
+        <span>{label} · {tr('Бодит')}: <b>{pct(value, 2)}</b></span>
+        {plan != null && Number.isFinite(plan) && <span>{tr('Төлөвлөгөө')}: <b>{pct(plan, 2)}</b></span>}
+      </div>
+    <div className={c.meter} aria-hidden="true">
       <span className={c.meterTrack}>
         <span
           className={`${c.meterFill} ${late ? c.t_warn : ''}`}
@@ -233,6 +244,7 @@ export function Meter({
         )}
       </span>
       <span className={c.meterVal}>{pct(value, 2)}</span>
+    </div>
     </div>
   );
 }
@@ -246,10 +258,21 @@ export type Kpi = { label: string; value: string; sub?: string };
  * ⚠️ Эдгээрийг график болгохгүй: нэг тоог багана болгон зурах нь мэдээлэл
  *    нэмэхгүй, зөвхөн зай иднэ. Тоо нь өөрөө «график».
  */
-export function KpiRow({ items }: { items: Kpi[] }) {
+export function KpiRow({ items, cols }: {
+  items: Kpi[];
+  /**
+   * БАГАНЫН ТОО — өгөөгүй бол өргөнөөр өөрөө хуваагдана (`auto-fit`).
+   * ⚠️ Тодорхой тоо өгөх шалтгаан: 4 картыг өргөн дэлгэц дээр НЭГ мөрөнд
+   * хавчуулбал нэр нь таслагдана; 2×2 нь уншигдахуйц (хэрэглэгчийн заавар).
+   */
+  cols?: number;
+}) {
   if (!items.length) return null;
   return (
-    <div className={c.kpis}>
+    <div
+      className={c.kpis}
+      style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}
+    >
       {items.map((k, i) => (
         <div key={`${k.label}-${i}`} className={c.kpi}>
           <span className={c.kpiLabel}>{k.label}</span>

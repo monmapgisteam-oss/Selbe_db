@@ -41,6 +41,7 @@ import {
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
+import { ReportContents } from './ReportContents';
 import r from './report.module.css';
 import e from './execReport.module.css';
 
@@ -80,7 +81,7 @@ function Cap({ no, children }: { no: string; children: React.ReactNode }) {
 const PROBES: { key: string; label: () => string; load: () => Promise<unknown> }[] = [
   { key: 'overall', label: () => tr('Нийт гүйцэтгэл (багцын жингээр)'), load: loadOverall },
   { key: 'progress', label: () => tr('Барилга угсралтын гүйцэтгэл'), load: loadProgress },
-  { key: 'finance', label: () => tr('Санхүүжилт — захирамж, гэрээ, олголт'), load: loadFinance },
+  { key: 'finance', label: () => tr('Санхүүжилт (захирамж, гэрээ, олголт)'), load: loadFinance },
   { key: 'land', label: () => tr('Газар чөлөөлөлт'), load: loadLand },
   { key: 'habea', label: () => tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'), load: loadHabeaSummary },
 ];
@@ -258,12 +259,12 @@ export function Tailan() {
   const [mode, setMode] = useState<'full' | 'exec'>('exec');
   const modes = (
     <div className={r.toolbar} style={{ marginBottom: 10 }}>
-      <div className={e.modes} role="tablist" aria-label={tr('Тайлангийн горим')}>
-        <button type="button" role="tab" aria-selected={mode === 'exec'}
+      <div className={e.modes} role="group" aria-label={tr('Тайлангийн горим')}>
+        <button type="button" aria-pressed={mode === 'exec'}
           className={`${e.mode} ${mode === 'exec' ? e.modeOn : ''}`} onClick={() => setMode('exec')}>
           {tr('Удирдлагын тайлан')}
         </button>
-        <button type="button" role="tab" aria-selected={mode === 'full'}
+        <button type="button" aria-pressed={mode === 'full'}
           className={`${e.mode} ${mode === 'full' ? e.modeOn : ''}`} onClick={() => setMode('full')}>
           {tr('Дэлгэрэнгүй тайлан')}
         </button>
@@ -380,7 +381,7 @@ function TailanFull() {
             className={r.btn}
             disabled={!ready || busy}
             onClick={sendWeb}
-            title={tr('New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол — мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана')}
+            title={tr('New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана')}
           >
             <Icon name="chart" size={15} />
             {tr('Шинэ Outlook / вэб')}
@@ -391,7 +392,7 @@ function TailanFull() {
             className={r.btn}
             disabled={!ready || busy}
             onClick={savePdf}
-            title={tr('Зөвхөн PDF файлыг татах — мэйл програм нээхгүй')}
+            title={tr('Зөвхөн PDF файлыг татах, мэйл програм нээхгүй')}
           >
             <Icon name="chart" size={15} />
             {tr('PDF татах')}
@@ -406,7 +407,7 @@ function TailanFull() {
 
       <article className={r.paper}>
         <header className={r.docHead}>
-          <h1 className={r.title}>{tr('Сэлбэ 20 минутын хот — Ерөнхий тайлан')}</h1>
+          <h1 className={r.title}>{tr('Сэлбэ 20 минутын хотын ерөнхий тайлан')}</h1>
           <p className={r.sub}>
             {tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт')}{date && <> {tr('· Огноо:')} {date}</>}
           </p>
@@ -434,7 +435,9 @@ function TailanFull() {
                 return (
                   <>
                     {/* ── Товч танилцуулга ── */}
+                    <ReportContents prefix="full" titles={[tr('Үндсэн үзүүлэлт'), tr('Орон сууцны багцууд'), tr('Багцын жигнэсэн гүйцэтгэл'), tr('Газар чөлөөлөлт'), tr('Нийгмийн үйлчилгээний барилга'), tr('Барилга угсралтын гүйцэтгэл'), tr('Санхүүжилтийн явц'), tr('Дэд бүтцийн хэрэгжилт'), tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй'), tr('Дүгнэлт, анхаарах асуудал')]} />
                     <div className={r.lead}>
+                      <h2 className={r.summaryTitle}>{tr('Товч хураангуй')}</h2>
                       <p>
                         {tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар')} <strong>{pct(x.overall.pct, 2)}</strong>{tr('-тай байна. Төслийн төсвийн')} <strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
                         {d.buildLag != null && (
@@ -463,7 +466,7 @@ function TailanFull() {
                     </div>
 
                     {/* ── 1. Үндсэн үзүүлэлт ── */}
-                    <section className={r.section}>
+                    <section id="full-1" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('1. Үндсэн үзүүлэлт')}</h2>
                       <p className={r.intro}>
                         {tr('Энэ хэсэгт төслийн цар хүрээ, гүйцэтгэл, санхүүжилтийн долоон гол үзүүлэлтийг нэгтгэв. Гүйцэтгэлийн хоёр өөр хэмжүүрийг ялган үзэх нь зүйтэй: төслийн нийт гүйцэтгэл нь багц бүрийг төсвийн жингээр нь тооцсон дүн бол барилга угсралтын гүйцэтгэл нь блокуудын энгийн дундаж.')}
@@ -483,7 +486,7 @@ function TailanFull() {
                       {/* Санхүүжилтийн гурван шат нь ХООРОНДОО хамаарна:
                           захирамж ⊇ гэрээ ⊇ олголт. Тиймээс хэсэг-бүтэн БИШ,
                           нэг тэнхлэг дээрх харьцуулалт. */}
-                      <Fig no="1">{tr('Санхүүжилтийн гурван шат — захирамжаас олголт хүртэл')}</Fig>
+                      <Fig no="1">{tr('Санхүүжилтийн гурван шат (захирамжаас олголт хүртэл)')}</Fig>
                       <RankBars
                         title={tr('Санхүүжилтийн гурван шатны харьцуулалт')}
                         items={[
@@ -526,7 +529,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 2. Орон сууцны багцууд ── */}
-                    <section className={r.section}>
+                    <section id="full-2" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('2. Орон сууцны багцууд')}</h2>
                       <p className={r.intro}>
                         {/* ⚠️ Багцын ТОО нь өгөгдлөөс (`sorted.length`) — урьд
@@ -548,10 +551,10 @@ function TailanFull() {
                           text: `${bn(budgetOf(b.key))} ₮`,
                         }))}
                       />
-                      <Fig no="2.2">{tr('Багц тус бүрийн гүйцэтгэл — хамгийн өндөр нь тодруулсан')}</Fig>
+                      <Fig no="2.2">{tr('Багц тус бүрийн гүйцэтгэл (хамгийн өндөр нь тодруулсан)')}</Fig>
                       <RankBars
                         title={tr('Багц тус бүрийн гүйцэтгэлийн хувь')}
-                        max={100}
+                        max={100} fmt={(v) => pct(v, 1)}
                         items={[...sorted]
                           /* ⚠️ Хэмжигдээгүйг -1 (2026-09-15-ны аудит): 0-оор
                              орлуулбал ЖИНХЭНЭ 0%-тай багцтай нэг байранд суух ба
@@ -598,7 +601,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 3. Багцын жигнэсэн гүйцэтгэл ── */}
-                    <section className={r.section}>
+                    <section id="full-3" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('3. Багцын жигнэсэн гүйцэтгэл')}</h2>
                       <p className={r.intro}>
                         {tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.')}
@@ -611,9 +614,10 @@ function TailanFull() {
                           харьцуулагдахгүй — хэрчим бүр өөр цэгээс эхэлдэг.
                           Хэвтээ багана нь бүгд НЭГ суурьтай тул урт нь шууд
                           харьцуулагдана. */}
-                      <Fig no="3">{tr('Багц бүрийн төсөвт эзлэх жин — нийт гүйцэтгэл голчлон эндээс хамаарна')}</Fig>
+                      <Fig no="3">{tr('Багц бүрийн төсөвт эзлэх жин (нийт гүйцэтгэл голчлон эндээс хамаарна)')}</Fig>
                       <RankBars
                         title={tr('Багц бүрийн төсөвт эзлэх жин')}
+                        fmt={(v) => pct(v, 1)}
                         items={[...x.overall.stages]
                           .filter((s) => s.weight != null && s.weight > 0)
                           .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
@@ -665,17 +669,17 @@ function TailanFull() {
                     </section>
 
                     {/* ── 4. Газар чөлөөлөлт ── */}
-                    <section className={r.section}>
+                    <section id="full-4" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('4. Газар чөлөөлөлт')}</h2>
                       <p className={r.intro}>
                         {tr('Төслийн талбайд нийт')} {num(x.land.parcels)} {tr('нэгж талбар (')}{num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь')}
-                        {' '}{x.land.pct != null ? pct(x.land.pct, 1) : '—'} {tr('байна. Ажлын үндсэн хэсэг дууссан ч')} {num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй хэвээр байгаа нь барилга угсралтын хуваарьт нөлөөлөх эрсдэлтэй.')}
+                        {' '}{x.land.pct != null ? pct(x.land.pct, 1) : '—'}. {tr('Шийдвэрлэгдээгүй нэгж талбарын тоо: {0}.', num(d.landLeft))}
                       </p>
                       {/* ⚠️ Нийт 2,117-гийн доторх хуваарилалт ч давхарласан зурвас
                           БИШ: «Бүрэн чөлөөлсөн» 80%-ийг эзлэхэд үлдсэн дөрөв нь
                           нимгэн хэрчим болж, хооронд нь харьцуулах боломжгүй.
                           Тусдаа багана нь 1,703 ↔ 201 ↔ 171-ийг ил харуулна. */}
-                      <Fig no="4">{tr('Нэгж талбарын төлөв — шийдвэрлэсэн ба үлдсэн')}</Fig>
+                      <Fig no="4">{tr('Нэгж талбарын төлөв (шийдвэрлэсэн ба үлдсэн)')}</Fig>
                       <RankBars
                         title={tr('Нэгж талбарын төлөв')}
                         items={[...x.land.byStatus]
@@ -729,7 +733,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 5. Нийгмийн үйлчилгээний барилга ── */}
-                    <section className={r.section}>
+                    <section id="full-5" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('5. Нийгмийн үйлчилгээний барилга')}</h2>
                       <p className={r.intro}>
                         {tr('Орон сууцны хорооллыг дагалдан ерөнхий төлөвлөгөөнд')}
@@ -757,7 +761,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 6. Барилга угсралтын гүйцэтгэл ── */}
-                    <section className={r.section}>
+                    <section id="full-6" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('6. Барилга угсралтын гүйцэтгэл')}</h2>
                       <p className={r.intro}>
                         {tr('Хяналтын')} {num(x.progress.blocks)} {tr('блокийн ажлын үе шат тус бүрийн гүйцэтгэлээс тооцсон дундаж')} {pct(x.progress.overall, 2)} {tr('байна')}
@@ -772,7 +776,7 @@ function TailanFull() {
                       <Fig no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Fig>
                       <RankBars
                         title={tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}
-                        max={100}
+                        max={100} fmt={(v) => pct(v, 1)}
                         items={[...x.progress.byBagts]
                           /* ⚠️ Хэмжигдээгүйг -1 — дээрх ижил дүрэм */
                           .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1))
@@ -800,7 +804,7 @@ function TailanFull() {
                       <Fig no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Fig>
                       <RankBars
                         title={tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}
-                        max={100}
+                        max={100} fmt={(v) => pct(v, 1)}
                         items={x.progress.phases.map((p) => ({ label: tr(p.name), value: p.pct, text: pct(p.pct, 2) }))}
                       />
                       <Cap no="6.2">{tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')}</Cap>
@@ -817,7 +821,7 @@ function TailanFull() {
                       </ResizableTable>
 
                       <Cap no="6.3">
-                        {tr('Гүйцэтгэл хамгийн бага арван блок — анхаарал шаардсан ажлууд')}
+                        {tr('Гүйцэтгэл хамгийн бага арван блок (анхаарал шаардсан ажлууд)')}
                       </Cap>
                       <ResizableTable storeKey="tailan.udaan" className={r.table}>
                         <thead><tr><th>{tr('Багц')}</th><th>{tr('Блок')}</th><th className={r.num}>{tr('Гүйцэтгэл')}</th></tr></thead>
@@ -837,7 +841,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 7. Санхүүжилтийн явц ── */}
-                    <section className={r.section}>
+                    <section id="full-7" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('7. Санхүүжилтийн явц')}</h2>
                       <p className={r.intro}>
                         {/* ⚠️ Эх үүсвэрийн ТОО нь өгөгдлөөс — урьд нь «дөрвөн»
@@ -859,7 +863,7 @@ function TailanFull() {
                           .map((s, i) => ({
                             label: tr(s.label),
                             value: s.value,
-                            text: `${bn(s.value)} ₮ · ${srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—'}`,
+                            text: `${bn(s.value)} ₮`,
                             hot: i === 0,
                           }))}
                       />
@@ -886,7 +890,7 @@ function TailanFull() {
                           (7.2 график ба хүснэгт) ХАСАГДСАН — сарын төлөвлөгөө
                           нь хуучин `cashflow_0813`-ийнх байсан бөгөөд тэр
                           үйлчилгээ бүрмөсөн хаягдсан. PDF-д мөн адил. */}
-                      <Cap no="7.2">{tr('Ажлын төрлөөр — төсөв ба гэрээний дүн')}</Cap>
+                      <Cap no="7.2">{tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>
                         <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээ')}</th></tr></thead>
                         <tbody>
@@ -918,7 +922,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 8. Дэд бүтцийн хэрэгжилт ── */}
-                    <section className={r.section}>
+                    <section id="full-8" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('8. Дэд бүтцийн хэрэгжилт')}</h2>
                       <p className={r.intro}>
                         {tr('Ерөнхий төлөвлөгөөний')} {num(x.infra.totals.layers)} {tr('давхаргад')}
@@ -968,7 +972,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 9. ХАБЭА ── */}
-                    <section className={r.section}>
+                    <section id="full-9" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('9. Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй')}</h2>
                       <p className={r.intro}>
                         {x.habea.date && <>{x.habea.date}{tr('-ны байдлаар')} </>}
@@ -1024,7 +1028,7 @@ function TailanFull() {
                     </section>
 
                     {/* ── 10. Дүгнэлт ── */}
-                    <section className={r.section}>
+                    <section id="full-10" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('10. Дүгнэлт, анхаарах асуудал')}</h2>
                       <p className={r.intro}>
                         {tr('Дээрх өгөгдөлд тулгуурлан анхаарал шаардсан дараах асуудлыг тодруулав.')}

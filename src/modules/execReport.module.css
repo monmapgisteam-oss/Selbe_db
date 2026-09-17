@@ -60,31 +60,23 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
-  font-size: 0.72rem;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink);
 }
 .aiEmpty { font-style: italic; color: var(--ink-3); }
 
-/* Инфографикийн урьдчилсан харагдац — цаасны өргөнд багтсан зураг */
-.preview {
-  margin: 12px 0 26px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-  background: #fff;
-}
-.preview img { display: block; width: 100%; height: auto; }
-
-/* Хоёр багана — гүйцэтгэл ба санхүү зэрэгцээ (нарийн дэлгэцэд нэг багана) */
-.two {
+/*
+ * ⚠️ НЭГ БАГАНА (2026-09-17, хэрэглэгчийн заавар: «2 багана биш 1 болго»).
+ * Хоёр баганат тор нь тэгш бус урттай блокуудыг зэрэгцүүлж, нэг тал нь
+ * хоосон үлддэг байв; уншлагын дараалал ч эвдэрнэ. PDF нь угаасаа нэг
+ * багана тул дэлгэц ба баримт одоо ижил.
+ */
+.one {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 24px;
 }
-@media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
 
 /* Төлөвийн өнгөт нүд */
 .warn { background: color-mix(in srgb, var(--warn) 18%, transparent); }
@@ -94,5 +86,122 @@
 @media print {
   .modes, .btn2 { display: none; }
   .ai { background: #f6f6f6; border-color: #999; color: #000; }
-  .preview { break-inside: avoid; }
 }
+
+/*
+ * ── ГОЛ ДҮГНЭЛТ — ТАЙЛАНГИЙН ХЭЛБЭР (2026-09-17, хэрэглэгчийн заавар:
+ *    «ойлгомжтой тайлангийн формат руу оруул») ──
+ *
+ * ⚠️ `.ai` дээрх `white-space: pre-wrap` нь ЧӨЛӨӨТ ТЕКСТЭД (AI дүгнэлт)
+ *    зориулагдсан. Бүтэцтэй жагсаалтад тэр нь илүүдэл хоосон мөр үүсгэдэг
+ *    тул энд буцаана.
+ */
+.aiText { margin: 0; white-space: pre-wrap; }
+
+.findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.finding {
+  padding-left: 11px;
+  /* Хүндрэлийн зэргийг ӨНГӨТ зураасаар — дугуй тэмдэг нь мөрийн эхлэлийг бүдгэрүүлдэг */
+  border-left: 2px solid var(--tone, var(--line-strong));
+}
+.sev_bad { --tone: var(--bad); }
+.sev_warn { --tone: var(--warn); }
+.sev_info { --tone: var(--line-strong); }
+
+.findingTop { margin: 0; }
+/* Хэсгийн нэр — жижиг том үсэгт шошго, мэдэгдлийн ӨМНӨ нэг мөрөнд */
+.findingArea {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--tone, var(--ink-3));
+  vertical-align: 1px;
+}
+.findingText { color: var(--ink); }
+
+/* Нэрсийн жагсаалт — хоёр багана, урт нэр таслагдахгүй */
+.findingItems {
+  margin: 6px 0 0;
+  padding: 0 0 0 16px;
+  columns: 2;
+  column-gap: 18px;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+.findingItems li { break-inside: avoid; margin-bottom: 5px; }
+.mode:focus-visible, .btn2:focus-visible { outline: 2px solid var(--data); outline-offset: -3px; }
+@media print {
+  .aiHead, .findingText { color: #000; }
+  .findingArea, .findingItems { color: #333; }
+  .finding { break-inside: avoid; }
+}
+@media (max-width: 720px) { .findingItems { columns: 1; } }
+
+/*
+ * ── ТОЛГОЙ (2026-09-17, хэрэглэгчийн заавар: том үсэг, голлосон, арай
+ *    жижиг фонт) ──
+ * ⚠️ `report.module.css`-ийг ХӨНДӨӨГҮЙ санаатай: түүнийг ерөнхий тайлан ч
+ *    хэрэглэдэг бөгөөд энэ заавар ЗӨВХӨН удирдлагын тайланд хамаарна.
+ */
+.docHeadMid { text-align: center; }
+.titleUp {
+  text-transform: uppercase;
+  /* Том үсэг нь өөрөө том харагддаг тул хэмжээг бууруулж, зайг нээв */
+  font-size: clamp(18px, 1.7vw, 23px);
+  letter-spacing: 0.04em;
+}
+.subMid { text-align: center; }
+
+/* Дүгнэлт дэх хавсралтын заалт — гол өгүүлбэрээс бүдэг */
+.findingRef { color: var(--ink-3); }
+
+/* ── ХАВСРАЛТ ── */
+.appHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 16px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.appN { flex: none; font-size: 0.72rem; font-weight: 500; color: var(--ink-3); }
+
+/*
+ * ── ЦААСНЫ ХЭМЖЭЭ (2026-09-17, хэрэглэгчийн хүсэлт: «одоо харагдаж буй A4
+ *    жижгэрүүлж болох уу») ──
+ *
+ * ⚠️ `report.module.css`-ийн `.paper` (1080px) нь A4-ээс ӨРГӨН: 96dpi-д A4
+ *    нь ~794px. Тиймээс баримт «цаас» шиг биш, өргөн дэлгэц шиг харагдаж
+ *    байв. Энд A4-ийн бодит өргөнд ойртуулж, зай ба мөрийн өндрийг хамт
+ *    хуманa — эс бөгөөс зөвхөн өргөн нарийсаж, текст сийрэг хэвээр үлдэнэ.
+ * ⚠️ ЗӨВХӨН энэ тайлан: `.paper`-ийг ерөнхий тайлан ч хэрэглэдэг.
+ */
+.paperA4 {
+  max-width: 820px;
+  padding: 34px 44px 46px;
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+/* Багажны зурвас цаасны өргөнтэй эгнэнэ — эс бөгөөс товчнууд халина */
+.narrow { max-width: 820px; }
+
+@media (max-width: 720px) {
+  .paperA4 { padding: 22px 16px 32px; }
+}
+
+/* KPI хүснэгтийн утгын хажуугийн тодотгол (төсвийн %, үлдсэн талбар…) */
+.kpiSub { font-weight: 400; color: var(--ink-3); }

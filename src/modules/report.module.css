@@ -6,12 +6,13 @@
   height: 100%;
   overflow-y: auto;
   background: var(--bg);
-  padding: 24px 16px 60px;
+  padding: 28px 24px 72px;
+  scroll-behavior: smooth;
 }
 
 /* Багажны зурвас — хэвлэхэд нуугдана */
 .toolbar {
-  max-width: 860px;
+  max-width: 1080px;
   margin: 0 auto 16px;
   display: flex;
   align-items: center;
@@ -41,46 +42,47 @@
 
 /* Цаас */
 .paper {
-  max-width: 860px;
+  max-width: 1080px;
   margin: 0 auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: 48px 56px 56px;
+  padding: 48px 64px 64px;
+  box-shadow: 0 8px 32px #00000006;
   color: var(--ink);
-  line-height: 1.5;
+  line-height: 1.7;
 }
 
 .docHead {
+  border-top: 3px solid var(--data, var(--accent));
   border-bottom: 1px solid var(--line-strong);
-  padding-bottom: 14px;
-  margin-bottom: 22px;
+  padding: 24px 0;
+  margin-bottom: 28px;
 }
 .title {
-  font-size: 20px;
+  font-size: clamp(23px, 2.4vw, 32px);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;
   color: var(--ink);
 }
-.sub { margin-top: 6px; font-size: 11.5px; color: var(--ink-3); }
+.sub { margin-top: 12px; font-size: 12px; color: var(--ink-3); }
 
-.section { margin-top: 26px; }
+.section { margin-top: 40px; scroll-margin-top: 24px; }
 .section:first-of-type { margin-top: 0; }
 .h2 {
-  font-size: 13.5px;
+  font-size: 18px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: -0.01em;
   color: var(--ink);
   border-bottom: 1px solid var(--line);
-  padding-bottom: 6px;
-  margin-bottom: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
 }
 .intro {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--ink-2);
-  margin-bottom: 10px;
+  margin-bottom: 18px;
 }
 
 /* Хүснэгт */
@@ -91,7 +93,7 @@
 }
 .table th, .table td {
   border: 1px solid var(--line);
-  padding: 6px 10px;
+  padding: 9px 12px;
   text-align: left;
   vertical-align: top;
 }
@@ -100,12 +102,11 @@
   font-weight: 600;
   color: var(--ink-3);
   font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  line-height: 1.5;
 }
 .table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
 /* Тоон багана — баруун зэрэгцүүлэлт */
-.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Нийт мөр — тодотгол */
 .total td { font-weight: 600; background: color-mix(in srgb, var(--hue, var(--accent)) 8%, var(--surface)); }
 
@@ -142,6 +143,7 @@
 }
 .lead p + p { margin-top: 9px; }
 .lead strong { color: var(--ink); font-weight: 600; }
+.summaryTitle { font-size: 15px; font-weight: 600; color: var(--ink); margin: 0 0 12px; }
 
 /* Дүгнэлт — жагсаалт */
 .findings { margin: 4px 0 0; padding-left: 18px; font-size: 0.86rem; color: var(--ink-2); }
@@ -167,9 +169,31 @@
   color: var(--bad-ink);
 }
 
+.contents { padding: 18px 0 24px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+.contentsTitle { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 12px; }
+.contents ol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; list-style: none; padding: 0; margin: 0; }
+.contents a { display: flex; gap: 12px; color: var(--ink-2); font-size: 13px; text-decoration: none; }
+.contents a span { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.contents a:hover { color: var(--data); text-decoration: underline; }
+.contents a:focus-visible, .btn:focus-visible { outline: 2px solid var(--data); outline-offset: 4px; }
+.tableScroll { overflow-x: auto; margin-bottom: 16px; }
+.paper div:has(> .table) { overflow-x: auto; }
+.tableScroll:focus-visible { outline: 2px solid var(--data); }
+
+@media (max-width: 720px) {
+  .wrap { padding: 16px 10px 40px; }
+  .paper { padding: 24px 18px 36px; }
+  .contents ol { grid-template-columns: 1fr; }
+  .h2 { font-size: 16px; }
+  .section { margin-top: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .wrap { scroll-behavior: auto; } }
+
 @media print {
   .wrap { background: #fff; padding: 0; overflow: visible; }
-  .toolbar { display: none; }
+  .toolbar, .contents { display: none; }
+  .tableScroll { overflow: visible; }
+  .paper div:has(> .table) { overflow: visible; }
   .paper {
     max-width: none;
     margin: 0;
@@ -180,7 +204,8 @@
     color: #000;
     background: #fff;
   }
-  .title, .h2, .docHead, .caption { color: #000; }
+  .title, .h2, .docHead, .caption, .summaryTitle { color: #000; }
+  .lead strong, .findings strong { color: #000; }
   /* ⚠️ 2026-09-08 — .sub/.note/.findings нь --ink-2/--ink-3 дээр үлдсэн байв:
      харанхуй горимд хэвлэхэд цагаан цаасан дээр цагаанаар гарч алга болдог. */
   .findings { color: #222; }
@@ -192,7 +217,10 @@
   .table th, .table td { border-color: #999; }
   .table thead th { background: #eee; color: #000; }
   .table tbody tr:nth-child(even) td { background: #f6f6f6; }
-  .section { break-inside: avoid; }
+  .section { break-inside: auto; }
+  .h2, .caption { break-after: avoid; }
+  .intro, .lead, .findings { orphans: 3; widows: 3; }
+  .table thead { display: table-header-group; }
   .table { break-inside: auto; }
   .table tr { break-inside: avoid; }
 }

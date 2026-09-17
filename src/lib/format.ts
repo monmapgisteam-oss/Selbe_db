@@ -247,3 +247,39 @@ export const catHex = (i: number, dark = false): string =>
  * ангиллын өнгөтэй андуурагддаг байв.
  */
 export const NO_DATA = 'var(--ink-3)';
+
+/**
+ * «ОРОН СУУЦНЫ ХОРООЛОЛ» → «Орон сууцны хороолол».
+ *
+ * ⚠️ Эх үйлчилгээнд ангиллын нэр БҮХ ТОМ ҮСГЭЭР бичигдсэн байдаг. Албан ёсны
+ * тайланд ийнхүү гаргавал хашгирсан мэт уншигдана (2026-09-17, хэрэглэгчийн
+ * заавар: «uppercase биш»).
+ *
+ * ⚠️ ЗӨВХӨН бүхэлдээ том үсэгтэй мөрийг хөрвүүлнэ — зөв бичигдсэн нэрийг
+ * эвдэхгүй.
+ * ⚠️ ТОВЧИЛСОН ҮГ ХЭВЭЭР: «ТЭЗҮ, ЗУРАГ ТӨСӨЛ» → «ТЭЗҮ, зураг төсөл».
+ * Энгийн `toLowerCase` нь «Тэзү» болгож, утгагүй үг гаргана.
+ */
+const ACRONYMS = new Set([
+  'ТЭЗҮ', 'ГИШС', 'ХАБ', 'АТД', 'ХТП', 'РП', 'ХБГ', 'УБ', 'СБД', 'ЧД', 'IoT', 'QAQC', 'PDF',
+]);
+
+export function sentenceCase(s: string): string {
+  const t = String(s ?? '').trim();
+  if (!t) return t;
+  const up = t.toLocaleUpperCase('mn-MN');
+  /* Бүхэлдээ том үсэгтэй ЭСЭХ — үсэггүй мөрийг ч энд шүүнэ */
+  if (t !== up || t === t.toLocaleLowerCase('mn-MN')) return t;
+  let first = true;
+  return t
+    .split(/([^\p{L}\p{N}]+)/u)
+    .map((tok) => {
+      if (!/\p{L}/u.test(tok)) return tok;
+      if (ACRONYMS.has(tok)) { first = false; return tok; }
+      const low = tok.toLocaleLowerCase('mn-MN');
+      if (!first) return low;
+      first = false;
+      return low.charAt(0).toLocaleUpperCase('mn-MN') + low.slice(1);
+    })
+    .join('');
+}
