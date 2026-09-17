@@ -600,15 +600,11 @@ const M: Quantity = { field: "urt_m", unit: 'м' };
 const M2: Quantity = { field: "talbai_m2", unit: 'м²' };
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
+/* ⚠️ 2026-09-17: Талбайн хяналтын Survey123 (`selbe_site_monitoring`,
+   `survey123_e98bd…_results`) ТӨСЛӨӨС БҮРМӨСӨН ХАСАГДСАН — гүйцэтгэл бөглөлтийг
+   survey-ээр шийдэх гэсэн ТУРШИЛТ байсан, хэрэглэгчийн шийдвэр. Гүйцэтгэл нь
+   «Гүйцэтгэл бөглөх» хүснэгтээс л (`BUILDING` + `loadBlockProgress`). */
 
-/**
- * ⚠️ Талбайн тайлангийн Survey123 — ХУУЧИН үйлчилгээндээ үлдэнэ: маягт өөрөө
- * энэ рүү бичдэг тул нэгтгэсэн `data`-д зөөх боломжгүй.
- *
- * ⚠️ 2026-08-24: `BUILDING_FS` (`building_GOL_barigdaj_ehelsen`) ХАСАГДАВ —
- * барилгын блок нэгтгэсэн `data`/112 руу шилжсэн (`BUILDING`-ийг үз).
- */
-const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/FeatureServer`;
 
 /* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
 
@@ -1584,35 +1580,6 @@ export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swi
   { value: 'Том гулсууран тоглоом', color: "#22c55e", kind: "set" },
 ];
 
-/** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
-export const SURVEY = {
-  url: `${SURVEY_FS}/0`,
-  oid: "objectid",
-  tables: {
-    beltgel: `${SURVEY_FS}/1`,
-    shoroo: `${SURVEY_FS}/2`,
-    suuri: `${SURVEY_FS}/3`,
-    ram: `${SURVEY_FS}/4`,
-    asuudal: `${SURVEY_FS}/5`,
-  },
-  fields: {
-    date: "ognoo",
-    user: "hereglegch",
-    contractor: "guitsetgegch",
-    bagts: "bagts",
-    building: "barilga",
-    buildingType: "barilga_torol",
-    floors: "davhar_too",
-    pours: "tsutgalt_too",
-    workers: "hun_huch",
-    machines: "tehnik_too",
-    /** Нийт барилга угсралтын гүйцэтгэл (%) */
-    total: "b_niit",
-    shortfall: "dutuu",
-    note: "erunhii_tailbar",
-    created: "CreationDate",
-  },
-} as const;
 
 /* ══════════════════════ Дэд бүтцийн багцын каталог ══════════════════════ */
 
@@ -2298,21 +2265,6 @@ export const LAYERS: LayerDef[] = [
        тоололд худал өнгө/тоо өгдөг байв. Гүйцэтгэлийн будалтыг MapCanvas нь
        `Selbe_guitsetgel_consolidated`-ын амьд дүнгээр (`buildingProgressRenderer`)
        өөрөө тавьдаг хэвээр. */
-  },
-  {
-    id: "mon:survey",
-    n: 0,
-    url: `${SURVEY_FS}/0`,
-    title: tr('Талбайн хяналтын тайлан'),
-    topic: "monitor",
-    geom: "point",
-    hue: "#0891b2",
-    marker: "circle",
-    size: 13,
-    noZone: true,
-    detail: "survey",
-    oid: "objectid",
-    note: tr('Survey123 мобайл аппаас'),
   },
 
   /* ─────────── ХАБЭА — Цамхагт кран (тусдаа үйлчилгээ) ───────────
@@ -4191,11 +4143,12 @@ export const BASE_MAP_IDS: readonly string[] = [
 export const MONITOR_GROUP = {
   key: "monitor" as const,
   title: tr('Барилгын хяналт'),
-  desc: tr('Блокийн гүйцэтгэл, талбайн тайлан'),
+  desc: tr('Блокийн гүйцэтгэл'),
   icon: "target",
   hue: "#ea580c",
 };
-export const MONITOR_LAYER_IDS: string[] = ["mon:building", "mon:survey"];
+/* ⚠️ `mon:survey` 2026-09-17-нд хасагдсан (selbe_site_monitoring туршилт) */
+export const MONITOR_LAYER_IDS: string[] = ["mon:building"];
 
 /** ХАБЭА-ийн давхаргууд — каталогид тусдаа бүлэг (харагдацын үндсэн давхаргууд) */
 export const HABEA_GROUP = {

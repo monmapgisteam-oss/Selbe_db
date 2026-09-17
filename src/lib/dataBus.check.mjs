@@ -96,7 +96,7 @@ check('тайлсны дараа дуудагдахгүй', fired === 1);
 
 console.log('\n5. Алдаатай татах — кэшлэгдэхгүй');
 let nBad = 0;
-const loadBad = cached(async () => { nBad += 1; throw new Error('сүлжээ'); }, undefined, ['SURVEY']);
+const loadBad = cached(async () => { nBad += 1; throw new Error('сүлжээ'); }, undefined, ['HABEA']);
 await loadBad().catch(() => {});
 await loadBad().catch(() => {});
 check('алдааны дараа ДАХИН оролдов', nBad === 2);

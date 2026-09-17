@@ -98,7 +98,7 @@ chk(
  * ⚠️ `DataKey` нэгдлийн гишүүдийг `dataBus.ts`-ээс шууд уншина.
  */
 const BUS = read('src/lib/dataBus.ts');
-const keyBlock = BUS.slice(BUS.indexOf('export type DataKey'), BUS.indexOf("'SURVEY'") + 10);
+const keyBlock = BUS.slice(BUS.indexOf('export type DataKey'), BUS.indexOf("'ZOVSHOOROL'") + 14);
 const keys = [...keyBlock.matchAll(/\|\s*'([A-Z_]+)'/g)].map((m) => m[1]);
 
 const DOC03 = read('docs/system/03-ogogdliin-zam.md');

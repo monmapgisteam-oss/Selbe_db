@@ -45,7 +45,7 @@ import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
-  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
+  ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
   type LayerDef,
 } from '@/lib/services';
@@ -3982,19 +3982,6 @@ function MapTip({
     /* ⚠️ null ≠ 0 (2026-09-17) — «Айл» хоосон бол «—», 0 биш (доорх survey-тэй ижил). */
     rows.push({ k: tr('Айл'), v: attrs[F.households] == null ? '—' : num(Number(attrs[F.households])) });
     rows.push({ k: tr('Гүйцэтгэгч'), v: text(attrs[F.contractor]) });
-  } else if (d.id === 'mon:survey') {
-    const F = SURVEY.fields;
-    rows.push({ k: tr('Огноо'), v: date(attrs[F.date] as string) });
-    rows.push({ k: tr('Барилга'), v: text(attrs[F.building]) });
-    /* ⚠️ null ≠ 0 (2026-09-16-ны аудит). Урьд нь `?? 0` байсан тул
-       судлаачийн ХООСОН орхисон `b_niit` нь «0% гүйцэтгэл» гэж гарч,
-       хэмжигдээгүй барилга «гүйцэтгэгч юу ч хийгээгүй» гэж уншигддаг байв.
-       Дээрх барилгын мөр (`g == null ? '—'`) ба хажуугийн огноо/текст
-       (`date`/`text` нь хоосонд '—' буцаадаг) БҮГД зөв байсан тул нэг
-       tooltip дотор «огноо —, гүйцэтгэл 0%» гэсэн зөрчил үүсдэг байлаа.
-       ⚠️ `Number(null)` нь 0 болдог тул `pct()`-ийн ӨӨРИЙН null салаа
-       энэ зам дээр хэзээ ч ажиллахгүй — шалгалт ЭНД байх ёстой. */
-    rows.push({ k: tr('Гүйцэтгэл'), v: attrs[F.total] == null ? '—' : pct(Number(attrs[F.total]), 0) });
   } else if (d.id === 'land:left') {
     // Кадастрын нэр/хаяг нь facets-т ОРОХГҮЙ (117 ба 137 өөр утга — задаргаа
     // болгож болохгүй), гэхдээ талбар дээр хулгана хүргэхэд хамгийн хэрэгтэй
