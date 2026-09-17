@@ -191,7 +191,7 @@ export function CashflowPlan({
           [CF_MONTH.amount]: pct == null ? null : (cost * pct) / 100,
         };
       });
-      const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates });
+      const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates }, { cap: 'finEdit' });
       invalidate('CASHFLOW_NEW');
       setPend({});
       setMsg(tr('{0} сар хадгалагдав', n));

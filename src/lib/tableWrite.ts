@@ -11,6 +11,9 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
+import { requireCap } from './who';
+import type { CapKey } from './caps';
 
 /** Сервер өөрөө удирддаг талбарууд — БИЧИХГҮЙ (илгээвэл хүсэлт бүхэлдээ унана) */
 const SERVER_FIELDS = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
@@ -28,7 +31,7 @@ async function post(url: string, body: Record<string, string>): Promise<Record<s
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ ...body, f: 'json' }),
+    body: new URLSearchParams({ ...tokenParam(), ...body, f: 'json' }),
   });
   /* ⚠️ ArcGIS алдаатай ч HTTP 200 буцаадаг — биеийг ЗААВАЛ шалгана */
   const j = (await res.json()) as Record<string, unknown>;
@@ -43,7 +46,13 @@ async function post(url: string, body: Record<string, string>): Promise<Record<s
  * ⚠️ `applyEdits` нь мөр БҮРИЙН үр дүнг тусад нь буцаадаг: бүхэл хүсэлт
  * амжилттай мэт харагдаад дотор нь `success: false` мөр байж болно.
  */
-function check(list: ApplyResult[], label: string): number[] {
+function check(list: ApplyResult[], label: string, expected: number): number[] {
+  /* ⚠️ ХООСОН/ДУТУУ ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17): схем зөрөх, proxy
+     дахин бичих зэрэгт 200 + хоосон массив ирдэг — `find` юу ч олохгүй тул
+     дуудагч (`saveParcel`, `butetsEdit.saveRow`) «хадгалагдлаа» гэж худал
+     мэдээлдэг байв. `submission.ts:727`, `zovshoorol.deleteZov`-той ижил дүрэм. */
+  if (list.length !== expected)
+    throw new Error(`${label}: ${tr('сервер {0}/{1} мөрийн хариу буцаав — бичигдээгүй гэж үзнэ', list.length, expected)}`);
   const bad = list.find((r) => r.success === false);
   if (bad) throw new Error(`${label}: ${bad.error?.description || tr('амжилтгүй')}`);
   return list.map((r) => r.objectId).filter((x): x is number => typeof x === 'number');
@@ -115,6 +124,7 @@ export async function applyAll(
     updates?: Record<string, unknown>[];
     deletes?: number[];
   },
+  opts?: { cap?: CapKey },
 ): Promise<EditResult> {
   const adds = (edit.adds ?? []).map((a) => {
     const { geometry, ...attrs } = a;
@@ -141,9 +151,13 @@ export async function applyAll(
   if (updates.length) body.updates = JSON.stringify(updates);
   if (deletes.length) body.deletes = deletes.join(',');
 
+  /* ⚠️ ЭРХИЙГ lib-д ШАЛГАНА (2026-09-17): дуудагч `cap` өгвөл UI-ийн товчноос
+     үл хамааран энд хаагдана. Өгөөгүй бол хуучин зан төлөв (дуудагч өөрөө
+     `requireCap` дуудсан байх ёстой). */
+  if (opts?.cap) requireCap(opts.cap);
   const j = await post(`${url}/applyEdits`, body);
-  const oids = check((j.addResults ?? []) as ApplyResult[], tr('Мөр нэмэх'));
-  const nUpd = check((j.updateResults ?? []) as ApplyResult[], tr('Утга засах')).length;
-  const nDel = check((j.deleteResults ?? []) as ApplyResult[], tr('Мөр устгах')).length;
+  const oids = check((j.addResults ?? []) as ApplyResult[], tr('Мөр нэмэх'), adds.length);
+  const nUpd = check((j.updateResults ?? []) as ApplyResult[], tr('Утга засах'), updates.length).length;
+  const nDel = check((j.deleteResults ?? []) as ApplyResult[], tr('Мөр устгах'), deletes.length).length;
   return { n: oids.length + nUpd + nDel, oids };
 }

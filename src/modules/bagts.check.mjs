@@ -19,6 +19,12 @@
 import assert from 'node:assert/strict';
 import { loadSheetRows, sheetBagtsNames } from './sheet/sheetRows.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
 
 /** `useBagtsWorks`-ийн хуулбар: батч = (блок, агшин), гүн толгойг дараалллаас */

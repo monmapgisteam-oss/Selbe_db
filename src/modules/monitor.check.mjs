@@ -19,11 +19,17 @@ import assert from 'node:assert/strict';
 import { loadBlockProgress, loadBlockHistory, progressSeries } from '../lib/blockProgress.ts';
 import { loadSheetRows } from './sheet/sheetRows.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112 руу шилжив — ижил 113 блок, `BAGTS` ба
    `BLOK` талбар хэвээр тул нийлүүлэх түлхүүр (`buildingKey`) өөрчлөгдөөгүй. */
 const BLDG =
-  'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer/112';
+  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/112';
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');

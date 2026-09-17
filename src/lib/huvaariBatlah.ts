@@ -17,9 +17,9 @@
  * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛААС (`hyanalt.ts`) ТУСДАА. Тэр нь БОДИТ гүйцэтгэлийн
  * 4 шатат урсгал (компани → инженер → менежер → захирал), энэ нь ТӨЛӨВЛӨГӨӨНИЙ
  * 2 шатат урсгал. Хольвол «хуваарийг зөвшөөрсөн» нь «гүйцэтгэлийг зөвшөөрсөн»
- * гэж уншигдаж, хариуцлага замхарна. Мөн `hyanalt` үйлчилгээ нь ӨӨР
- * байгууллагад (ACqsMOmNLi5wIdIh) бөгөөд түүний талбарууд гүйцэтгэлийн 60
- * баганын загварт хатуу уягдсан тул хуваарийн зурвасыг тэнд хийж болохгүй.
+ * гэж уншигдаж, хариуцлага замхарна. Мөн `hyanalt` үйлчилгээний талбарууд
+ * гүйцэтгэлийн 60 баганын загварт хатуу уягдсан тул хуваарийн зурвасыг
+ * тэнд хийж болохгүй (2026-09-17-ноос ижил оргод ч тусдаа үйлчилгээ).
  *
  * ⚠️ ХАДГАЛАЛТ: ӨӨРИЙН ArcGIS хүснэгт (`Selbe_Huvaari_Batlah`).
  * `Selbe_Permissions`-ийн `__flow__:`/`__cap__:`/`__qaqc__:` мөрийн загварыг
@@ -32,6 +32,7 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
+import { huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
 
 /** Илгээлтийн төлөв */
@@ -281,7 +282,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch) url = await createTable(auth.token, auth.user);
+  /* ⚠️ ЗӨВХӨН ЭЗЭН ҮҮСГЭНЭ (`permsRemote`-ийн 2026-09-15-ны дүрэм, энд 2026-09-17). */
+  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase()))
+    url = await createTable(auth.token, auth.user);
   if (url) tableUrlCache = url;
   return url;
 }
@@ -512,6 +515,12 @@ export async function submitPlan(args: {
   note?: string;
   payload: PlanPayload;
 }): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
+  if (AUTH.appId) {
+    const sc = huvaariScope(args.author, 'author');
+    if (sc !== null && !sc.includes(args.pkgGroup))
+      return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
+  }
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const already = await loadPending(args.pkgKey);
@@ -603,8 +612,14 @@ export async function decidePlan(args: {
    *    нэр чимээгүй дарагдана. Мөр нь ганц тул `applyEdits` алдаа өгөхгүй —
    *    ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
+  if (AUTH.appId) {
+    const sc = huvaariScope(me, 'approver');
+    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+      return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
+  }
   /*
    * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС (2026-09-15-ны аудит).
    *    Дээрх эрт шалгуур нь дуудагчийн өгсөн утгад найддаг тул консолоос

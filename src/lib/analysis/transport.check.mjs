@@ -10,6 +10,12 @@
  */
 import assert from 'node:assert/strict';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /*
  * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): `Selbe_ET_20260721` хаагдсан (499).
  * Давхаргууд нэгтгэсэн `data` үйлчилгээнд шилжсэн — дугаарын зураглал нь
@@ -18,7 +24,7 @@ import assert from 'node:assert/strict';
  *     et:5  «Замын тэнхлэг»    → data/104
  *     et:2  «Автобусны буудал» → data/87
  */
-const TD = 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/data/FeatureServer';
+const TD = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer';
 const URL = `${TD}/108`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
 const ROAD_URL = `${TD}/104`;

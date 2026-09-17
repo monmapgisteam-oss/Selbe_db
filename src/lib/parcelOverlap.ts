@@ -19,6 +19,7 @@
  */
 
 import { PARCEL_LEFT, LAYER_BY_ID, parcelLeftWhere } from './services';
+import { tokenParam, tokenQs } from '@/lib/authToken';
 import { withSlot } from './query';
 import { register } from './dataBus';
 
@@ -63,7 +64,7 @@ async function post(url: string, params: Record<string, string>) {
     const res = await fetch(`${url}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ...params, f: 'json' }),
+      body: new URLSearchParams({ ...tokenParam(), ...params, f: 'json' }),
     });
     if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
     const j = await res.json();
@@ -76,7 +77,7 @@ async function post(url: string, params: Record<string, string>) {
 let srCache: Promise<number> | null = null;
 function parcelSR(): Promise<number> {
   if (!srCache)
-    srCache = fetch(`${PARCEL_LEFT.url}?f=json`)
+    srCache = fetch(`${PARCEL_LEFT.url}?f=json${tokenQs()}`)
       .then((r) => r.json())
       .then((m) => {
         const sr = m?.extent?.spatialReference;

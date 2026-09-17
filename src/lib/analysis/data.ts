@@ -286,7 +286,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   //    `nogoon_baiguulamj_analysis`/118 руу шилжив. Обьект 807 = 807, талбай
   //    55 га = 55 га, `RefName_12`/`Angilal`/`Area_hec` талбар бүрэн адил.
   const GREEN_DATA_URL =
-    'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/nogoon_baiguulamj_analysis/FeatureServer/118';
+    /* ⚠️ 2026-09-17: MUST → monmap `SELBE_ALL_DATA_last_0917` (ижил дугаар 118). */
+    'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/118';
   const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);

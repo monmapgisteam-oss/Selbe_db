@@ -368,7 +368,12 @@ export function canAct(
   const editable = doc.status === MS_STATUS.draft || doc.status === MS_STATUS.returned;
   /* ⚠️ Нэвтрээгүй (`u` хоосон) хүнд хянах товч ГАРАХГҮЙ — `review()` хоосон
      нэрийг татгалздаг ч дэлгэц дээр товч харагдах нь өөрөө буруу. */
-  const reviewable = !!u && doc.status === MS_STATUS.review && !mine
+  /* ⚠️ `review()`-ийн «нэг хүн зөвхөн НЭГ үүргээр» дүрмийг ЭНД ч давтана
+     (2026-09-17): 3 үүрэгтэй хүн нэгээр нь шийдвэрлэсний дараа бусад товч
+     хэвээр харагдаж, дарахад л татгалзагддаг байв. */
+  const already = !!u && (Object.values(doc.reviews) as (Review | null)[])
+    .some((r) => r != null && r.who.trim().toLowerCase() === u);
+  const reviewable = !!u && doc.status === MS_STATUS.review && !mine && !already
     ? roles.filter((r) => !doc.reviews[r])
     : [];
   return { edit: mine && editable, submit: mine && editable, review: reviewable };

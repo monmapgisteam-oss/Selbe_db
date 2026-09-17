@@ -28,8 +28,10 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam, tokenQs } from '@/lib/authToken';
 import { LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
 import { queryFeatures, type Row } from '@/lib/query';
+import { requireCap } from '@/lib/who';
 import { applyAll } from '@/lib/tableWrite';
 
 /* ══════════════════ Схем ══════════════════ */
@@ -165,7 +167,7 @@ export async function loadLayerMeta(layerId: string): Promise<LayerMeta> {
   if (!L) throw new Error(tr('Давхарга танигдсангүй: {0}', layerId));
 
   const url = layerUrl(L);
-  const res = await fetch(`${url}?f=json`);
+  const res = await fetch(`${url}?f=json${tokenQs()}`);
   const j = (await res.json()) as {
     error?: { message?: string };
     fields?: RawField[];
@@ -242,6 +244,7 @@ export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknow
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       f: 'json',
+      ...tokenParam(),
       where: oidWhere(meta, oid),
       outFields: meta.oidField,
       returnGeometry: 'true',
@@ -272,6 +275,7 @@ export async function saveGeometry(
   oid: number,
   geometry: unknown,
 ): Promise<void> {
+  requireCap('butets'); // ⚠️ lib-түвшний эрх (2026-09-17)
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (geometry == null) throw new Error(tr('Геометр зураагүй байна'));
   await applyAll(meta.url, meta.oidField, {
@@ -403,6 +407,7 @@ export async function applyAttrs(
   oid: number,
   attrs: Record<string, unknown>,
 ): Promise<void> {
+  requireCap('butets');
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length) return;
   await applyAll(meta.url, meta.oidField, {
@@ -418,6 +423,7 @@ export async function applyAttrs(
  * ЗААВАЛ баталгаажуулалт асуух ёстой.
  */
 export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
+  requireCap('butets');
   await applyAll(meta.url, meta.oidField, { deletes: [Math.trunc(oid)] });
 }
 
@@ -440,6 +446,7 @@ export async function createRow(
   geometry: unknown,
   patch: Patch,
 ): Promise<number> {
+  requireCap('butets');
   if (!meta.canCreate) throw new Error(tr('Энэ давхарга шинэ объект нэмэхийг зөвшөөрөхгүй байна'));
   if (geometry == null) throw new Error(tr('Геометр зураагүй байна'));
 
@@ -476,6 +483,7 @@ export async function saveRow(
   const d = diffRow(meta, before, patch);
   const n = Object.keys(d).length;
   if (n === 0) return 0;
+  requireCap('butets');
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
 
   await applyAll(meta.url, meta.oidField, {

@@ -13,6 +13,7 @@
  */
 
 import { HOME } from '@/lib/services';
+import { tokenQs } from '@/lib/authToken';
 import { withSlot, isRateLimit } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import type { Network, Pt } from './traffic';
@@ -109,10 +110,10 @@ const pageQuery = (offset: number) => new URLSearchParams({
  */
 const slotFetch = <T extends { error?: { message?: string } }>(url: string, signal?: AbortSignal): Promise<T> =>
   withSlot(async () => {
-    const r: T = await fetch(url, { signal }).then((x) => x.json());
+    const r: T = await fetch(url + tokenQs(), { signal }).then((x) => x.json());
     if (r.error && isRateLimit(r.error.message ?? '')) {
       await new Promise((res) => setTimeout(res, 500 + Math.random() * 300));
-      return (await fetch(url, { signal }).then((x) => x.json())) as T;
+      return (await fetch(url + tokenQs(), { signal }).then((x) => x.json())) as T;
     }
     return r;
   });

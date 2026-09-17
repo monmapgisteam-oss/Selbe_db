@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL } from '@/lib/zovshoorol.ts';
+
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
 const rows = await loadZov();
 assert.ok(rows, 'татаж чадсангүй');
 assert.ok(rows.length > 0, 'мөр алга');

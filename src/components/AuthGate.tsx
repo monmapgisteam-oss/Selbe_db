@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf } from '@/lib/permissions';
+import { setCurrentUser } from '@/lib/who';
+import { registerIdentity } from '@/lib/authToken';
 import s from './auth.module.css';
 
 /**
@@ -146,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         oauthReady();
+        /* ⚠️ Бүх REST `fetch` энэ бүртгэлээр токеноо авна (`authToken.ts`). */
+        registerIdentity(esriId, sharingUrl());
 
         await esriId.checkSignInStatus(sharingUrl());
 
@@ -228,6 +232,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!alive) return;
         attemptClear();
+        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) энэ нэрийг уншина. */
+        setCurrentUser(admitted ? info.username : null);
         setUser(info);
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
@@ -239,7 +245,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         const wasAttempt = attemptGet();
         attemptClear();
-        if (wasAttempt) setError(describe(e));
+        /* ⚠️ Нэвтэрсэн атлаа portal/эрхийн хүснэгт унавал (`!notAuthed`)
+           шалтгааныг ИЛ харуулна (2026-09-17) — урьд нь чимээгүй «нэвтрээгүй»
+           дэлгэц гарч, «Нэвтрэх» дарахад credential хүчинтэй тул redirect ч
+           үгүй, төлөв ч солигдохгүй мөнхөд гацдаг байв. */
+        if (wasAttempt || !notAuthed) setError(describe(e));
+        setCurrentUser(null);
         setStatus('signed-out');
       } finally {
         // ⚠️ import унасан ч signIn мөнхөд хүлээхгүй — давхар resolve нь хоргүй
@@ -319,6 +330,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
       // popup:false тул энэ нь хуудсыг ArcGIS нэвтрэлт рүү чиглүүлж, буцаж ирнэ
       await esriId.getCredential(sharingUrl());
+      /* ⚠️ Энд ХҮРСЭН бол redirect болоогүй — localStorage-д хүчинтэй
+         credential байсан (шалгалт өөр шалтгаанаар унасан). Эффект `[]`
+         deps тул дахин ажиллахгүй — хуудсыг дахин ачаалж шалгалтыг
+         эхнээс нь явуулна (2026-09-17). Урьд нь гарц зөвхөн F5 байв. */
+      window.location.reload();
     } catch (e) {
       console.error('[selbe] нэвтрэх үед:', e);
       attemptClear();

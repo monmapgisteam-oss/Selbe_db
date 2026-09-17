@@ -22,7 +22,7 @@
     "i18n:prune": "node tools/i18n-extract.mjs --prune",
     "iot:watch": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-watch.mjs",
     "iot:verify": "node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify2.mjs",
-    "test:live": "node src/lib/filters.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgress.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/transport.check.mjs && npm run test:agent && npm run test:drift",
+    "test:live": "node --import ./tools/ts-alias.mjs src/lib/filters.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgress.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/transport.check.mjs && npm run test:agent && npm run test:drift",
     "test:all": "npm test && npm run test:live",
     "docs:build": "node tools/sysdocs-build.mjs"
   },

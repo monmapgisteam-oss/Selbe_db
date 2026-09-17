@@ -1,11 +1,9 @@
 /**
  * ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — схем ба ArcGIS REST давхарга.
  *
- * ⚠️ ЭНЭ ҮЙЛЧИЛГЭЭ СЭЛБЭГИЙН БУСДААС ӨӨР БАЙГУУЛЛАГАД байна:
- *     хяналт      → ACqsMOmNLi5wIdIh (services-ap1)
- *     эх хүснэгт  → HJzgwvlNIXssnQar (services)
- * Тиймээс хоёрыг SQL-ээр нэгтгэх БОЛОМЖГҮЙ — програм тус тусад нь асууж,
- * `Эх_мөрийн_дугаар`-аар өөрөө холбоно.
+ * ⚠️ 2026-09-17-ноос энэ хүснэгт ч monmap (HJzgwvlNIXssnQar)-д — гэхдээ эх
+ *    хүснэгтүүдээс ТУСДАА үйлчилгээ тул SQL-ээр нэгтгэх БОЛОМЖГҮЙ хэвээр —
+ *    програм тус тусад нь асууж, `Эх_мөрийн_дугаар`-аар өөрөө холбоно.
  *
  * ⚠️ Талбарын нэрийг компонент дотор ШУУД бичихгүй — бүгд `F`-ээс. Нэр
  * өөрчлөгдвөл ЗӨВХӨН энд засна.
@@ -18,9 +16,12 @@
  */
 
 import { invalidate } from './dataBus';
+import { tokenParam, tokenQs } from '@/lib/authToken';
 
 export const HYANALT = {
-  url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/0',
+  /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
+     29/29 талбар, 22 мөр ижил. */
+  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/205',
   oid: 'OBJECTID',
 } as const;
 
@@ -177,7 +178,7 @@ let missingCache: string[] | null = null;
 export async function missingDirectorFields(): Promise<string[] | null> {
   if (missingCache) return missingCache;
   try {
-    const res = await fetch(`${HYANALT.url}?f=json`);
+    const res = await fetch(`${HYANALT.url}?f=json${tokenQs()}`);
     if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
     const j = (await res.json()) as {
       fields?: { name: string }[];
@@ -231,7 +232,7 @@ async function post(path: string, body: Record<string, string>): Promise<Record<
   const res = await fetch(HYANALT.url + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }).toString(),
+    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }).toString(),
   });
   if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
 

@@ -22,6 +22,9 @@ import {
   loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
+/* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
+export { aggregateMonths } from '@/modules/pkgShared';
 import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
@@ -41,7 +44,7 @@ import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgres
 type ProgPt = { label: string; plan: number; act: number | null; vol: number | null };
 import {
   BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
-  PKG_FAMILY_BY_BAGTS, zoneWhere, cfMonthAxis, parcelOidsWhere } from '@/lib/services';
+  zoneWhere, parcelOidsWhere } from '@/lib/services';
 import { cat, shade, num, pct, monthKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -67,21 +70,6 @@ import ts from './pkgProg.module.css';
  * нэгтгэл батлагдмагц устгаж болно.
  */
 
-const HUE = LAYER_BY_ID[BLOCK_LAYER].hue;
-
-/**
- * БАГЦЫН АНГИЛАЛ (2026-08-21, хэрэглэгчийн хүсэлт) — жагсаалт, «Төслийн
- * төрөл» chart, «Блокийн төлөв»-ийн асуудалтай талбарын тоолол гурвуулаа
- * ЭНЭ нэг ангиллыг хэрэглэнэ. Блоктой багц = барилга угсралт; бусад нь
- * PKG_TABLE-ийн гэр бүлээс: soc = нийгмийн барилга, site = өндөржилт,
- * үлдсэн (net/pow/src/com) = дэд бүтэц.
- */
-type PackCat = 'build' | 'infra' | 'soc' | 'site';
-const catOf = (p: Pack): PackCat => {
-  if (p.kind === 'build') return 'build';
-  const fam = PKG_FAMILY_BY_BAGTS[p.key];
-  return fam === 'soc' ? 'soc' : fam === 'site' ? 'site' : 'infra';
-};
 /** Дараалал нь дэлгэцийн дараалал; нэрийг render үед tr()-ээр авна */
 /**
  * БАРИЛГА УГСРАЛТЫН АНГИЛАЛ — жагсаалтын ТОЛГОЙД гардаг (2026-09-10).
@@ -1204,45 +1192,8 @@ function LevelsCard({
  */
 /** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
 
-/**
- * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд: төлөвлөгөө = бүх гэрээний сарын нийлбэр,
- * олгосон = бүх багцын IPC нийлбэр, өссөн хувь = нийлбэрийн харьцаа,
- * биет = биет дататай багцуудын дундаж.
- */
-export /**
- * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд.
- *
- * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ ХАСАГДСАН — `cashflow_0813`-ийн «САР»
- *    мөрүүд байхгүй болсон. Үлдсэн хоёр цуваа хоёулаа БОДИТ хэмжилт.
- */
-function aggregateMonths(d: FinData) {
-  /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
-     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */
-  const labels = cfMonthAxis();
-  return labels.map((label) => {
-    let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(label) ?? 0; });
-    // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын дунджийн ДУНДАЖ БИШ. Давхар
-    //    дундаж нь блок цөөтэй багцыг том багцтай ижил жинтэй болгож гажуудуулж,
-    //    мөн дэлгэц дээрх PackKpi-ийн блок-жигнэсэн дүнтэй зөрдөг. Багц бүрийг
-    //    блокийнх нь тоогоор жигнэнэ: Σ(pct_p · blocks_p) / Σ blocks_p.
-    let physW = 0, physN = 0;
-    d.phys.forEach((byMon, k) => {
-      const v = byMon.get(label);
-      if (v == null) return;
-      const w = d.physCnt.get(k)?.get(label) ?? 1;
-      physW += v * w;
-      physN += w;
-    });
-    return {
-      label,
-      given,
-      // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
-      //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
-      phys: physN > 0 ? physW / physN : null,
-    };
-  });
-}
+/* ⚠️ `aggregateMonths` · `catOf` · `HUE` → `pkgShared.ts` (2026-09-17): хоёр
+   харагдацын ижил хуулбар нэг эх сурвалж болов. */
 
 
 /**

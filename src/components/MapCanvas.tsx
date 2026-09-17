@@ -3977,7 +3977,8 @@ function MapTip({
     const g = prog?.get(buildingKey(attrs[F.bagts], blk))?.overall ?? null;
     rows.push({ k: tr('Блок'), v: blk });
     rows.push({ k: tr('Гүйцэтгэл'), v: g == null ? '—' : pct(g, 0) });
-    rows.push({ k: tr('Айл'), v: num(Number(attrs[F.households] ?? 0)) });
+    /* ⚠️ null ≠ 0 (2026-09-17) — «Айл» хоосон бол «—», 0 биш (доорх survey-тэй ижил). */
+    rows.push({ k: tr('Айл'), v: attrs[F.households] == null ? '—' : num(Number(attrs[F.households])) });
     rows.push({ k: tr('Гүйцэтгэгч'), v: text(attrs[F.contractor]) });
   } else if (d.id === 'mon:survey') {
     const F = SURVEY.fields;

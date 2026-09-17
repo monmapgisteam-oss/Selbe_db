@@ -51,7 +51,7 @@ import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend } from '@/co
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
-import { INITIAL_MAP_LAYERS, LAYER_BY_ID } from '@/lib/services';
+import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID } from '@/lib/services';
 import { blank, ha, mnt, num, text } from '@/lib/format';
 import {
   AIR_LEVELS, AQI_BAND, EXPOSURE, FLOOD_LEVELS, GRADE_COLOR, GRADE_LABEL, HAZARDS, KIND_LABEL,
@@ -111,16 +111,15 @@ const INITIAL_IDS: string[] = [];
  * ⚠️ Эдгээр нь бүгд ШУГАМАН давхарга тул `classOf` нь `pipe` (92,000 ₮/м)
  * ангилалд оруулна — үнэлгээ нь УРТААР бодогдоно (`DamageRow.length`).
  */
+/* ⚠️ 2026-09-17 (2): ЕТ-ийн `et:*` инженерийн шугамууд үйлчилгээнээс устгагдсан →
+   `Инженерийн_дэд_бүтэц__Сэлбэ_0916`-ийн дулаан · цэвэр ус · бохир ус · цахилгааны
+   ШУГАМАН давхаргууд (`infra:*`). Цэг/талбай (худаг, ДХТ) нь `pipe` биш тул орохгүй. */
 const ASSESS_IDS: string[] = [
   ...INITIAL_MAP_LAYERS,
-  // Дулаан хангамж
-  'et:7', 'et:10', 'et:9', 'et:11', 'et:8',
-  // Цэвэр ус
-  'et:4', 'et:23',
-  // Бохир ус, хөрсний ус
-  'et:17', 'et:16', 'et:3',
-  // Цахилгаан
-  'et:124', 'et:125', 'et:126', 'et:127',
+  ...INFRA_SYSTEMS
+    .filter((x) => x.key === 'heat' || x.key === 'water' || x.key === 'sewer' || x.key === 'power')
+    .flatMap((x) => x.ids)
+    .filter((id) => LAYER_BY_ID[id]?.geom === 'line'),
 ];
 
 /**

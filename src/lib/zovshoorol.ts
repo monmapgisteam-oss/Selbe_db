@@ -10,6 +10,7 @@
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
+import { requireCap } from '@/lib/who';
 
 /**
  * ⚠️ Давхаргын дугаар нь 0 БИШ — 171. Нэг үйлчилгээнд олон хүснэгт
@@ -159,7 +160,9 @@ export async function loadZov(): Promise<Zov[] | null> {
         where: '1=1',
         outFields: '*',
         returnGeometry: 'false',
-        orderByFields: `${F.bagts} ASC, ${F.shat} ASC`,
+        /* ⚠️ OID нь tie-breaker (2026-09-17): (bagts, shat) давтагдаж болох тул
+           2000-аас дээш үед хуудасны заагт мөр давхардах/алдагдах байв. */
+        orderByFields: `${F.bagts} ASC, ${F.shat} ASC, ${F.oid} ASC`,
         resultRecordCount: '2000',
         resultOffset: String(offset),
       });
@@ -363,6 +366,7 @@ export function diffZov(before: Zov, d: ZovDraft): Record<string, unknown> {
  * дуудлага ОГТ ХИЙХГҮЙ (`diffParcel`/`saveParcel`-ийн ижил гэрээ).
  */
 export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number> {
+  requireCap('zovshoorol'); // ⚠️ lib-түвшний эрх (2026-09-17) — урьд нь зөвхөн UI
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
   const attributes = zovAttrs(d);
   const edit: Record<string, string> = { rollbackOnFailure: 'true' };
@@ -408,6 +412,7 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
 
 /** Устгах. ⚠️ Буцаах боломжгүй тул дуудагч тал ЗААВАЛ баталгаажуулсан байна. */
 export async function deleteZov(oid: number): Promise<void> {
+  requireCap('zovshoorol');
   if (!URL) throw new Error(tr('Зөвшөөрлийн үйлчилгээ холбогдоогүй байна.'));
   /**
    * ⚠️ 2026-09-04: `oid = 0` нь «OBJECTID уншигдаагүй» гэсэн утгатай. Урьд нь

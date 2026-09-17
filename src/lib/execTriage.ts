@@ -64,6 +64,13 @@ export type Variance = {
   all: VarianceWork[];
   /** Уншиж чадаагүй багцын тоо (үйлчилгээ унасан г.м.) */
   failedPkgs: number;
+  /**
+   * ХЭМЖИГДЭХ багцын тоо — обьёмын баганатай (блоктой) + уншигдаагүй.
+   * ⚠️ 2026-09-17: блокгүй 8 багцад `sc.obyem = []` тул тэд ХЭЗЭЭ Ч унахгүй,
+   *    зөрүү ч гаргахгүй — `failedPkgs >= PKGS.length` (18) хэзээ ч биелэхгүй
+   *    байв. Түвшинг ЭНЭ тоотой харьцуулна.
+   */
+  measurable?: number;
 };
 
 /**
@@ -91,6 +98,8 @@ export function loadVariance(): Promise<Variance> {
   varCache = (async () => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
       const sc = await loadSchema(pkg);
+      /* Блокгүй багц — обьёмын багана алга, хэмжигдэхгүй (`null`). */
+      if (sc.obyem.length === 0) return null;
       /* Зөвхөн зөрүү бодоход хэрэгтэй талбарууд — бүтэн «*» татахад мөр ~60+
          баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит) */
       const need = [
@@ -112,14 +121,16 @@ export function loadVariance(): Promise<Variance> {
       }
       return out;
     }));
-    const ok = results.filter((x): x is PromiseFulfilledResult<VarianceWork[]> => x.status === 'fulfilled');
-    const all = ok.flatMap((x) => x.value).sort((a, b) => b.mnt - a.mnt);
+    const ok = results.filter((x): x is PromiseFulfilledResult<VarianceWork[] | null> => x.status === 'fulfilled');
+    const measured = ok.filter((x) => x.value != null).length;
+    const all = ok.flatMap((x) => x.value ?? []).sort((a, b) => b.mnt - a.mnt);
     return {
       works: all.length,
       totalMnt: all.reduce((s, w) => s + w.mnt, 0),
       top: all.slice(0, 8),
       all,
       failedPkgs: results.length - ok.length,
+      measurable: measured + (results.length - ok.length),
     };
   })().catch((e) => { varCache = null; throw e; });
   return varCache;

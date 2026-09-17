@@ -21,6 +21,12 @@
 import assert from 'node:assert/strict';
 import { loadBlockHistory, progressSeries } from './blockProgress.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const hist = await loadBlockHistory();
 const keys = [...hist.keys()];
 

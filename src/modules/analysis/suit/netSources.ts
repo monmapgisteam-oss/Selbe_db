@@ -23,6 +23,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import {
   buildNetwork, markDuplicates, nodeByIntersection,
@@ -113,7 +114,7 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     // ① Одоогийн бодит замын line (Monmap_zam_selbe, 113 feature, polyline).
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
     // test_data [98] monmap_road_simulation — 2026-08-13 шилжив (113 feature)
-    url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/98',
+    url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/98',
     nodeIntersections: true, // ⚠️ урт шугам уулзвар гатална — таслахгүй бол сүлжээ бутарна
     directed: true, // ⚠️ line сумтай — машин зөвхөн тэр зүг явна
   },
@@ -125,7 +126,7 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     // ② Ерөнхий төлөвлөгөөний машин явах line (selbe_zam_tuluwlult, 205 feature).
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
     // test_data [104] ET_road_simulation — 2026-08-13 шилжив (205 feature)
-    url: 'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/104',
+    url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/104',
     nodeIntersections: true, // ⚠️ таслахгүй бол 3.7% холбогдоно; таславал 88.9%
     directed: true, // line сумтай — 141 мухар бүгд 60м дотор гарцтай (тасралтгүй)
   },
@@ -220,7 +221,7 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
 /** `gerlen_dohio` FeatureServer — уулзвар бүр 4 line (approach), code 1-4. */
 const SIGNAL_LAYER_URL =
   // test_data [103] gerlen_dohio — 2026-08-13 шилжив (талбарууд ижил)
-  'https://services-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_data/FeatureServer/103';
+  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/103';
 
 let signalCache: Promise<SignalDef[]> | null = null;
 
@@ -274,7 +275,7 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
       features?: SignalFeature[];
       exceededTransferLimit?: boolean;
       error?: { message?: string };
-    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
+    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}${tokenQs()}`).then((x) => x.json());
     if (page.error) throw new Error(page.error.message ?? tr('гэрлэн дохио query алдаа'));
     const got = page.features ?? [];
     feats.push(...got);

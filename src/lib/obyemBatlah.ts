@@ -17,9 +17,9 @@
  * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛААС (`hyanalt.ts`) ТУСДАА. Тэр нь БОДИТ гүйцэтгэлийн
  * 4 шатат урсгал (компани → инженер → менежер → захирал), энэ нь ТӨЛӨВЛӨСӨН
  * ОБЬЁМЫН 2 шатат урсгал. Хольвол «обьёмыг зөвшөөрсөн» нь «гүйцэтгэлийг
- * зөвшөөрсөн» гэж уншигдаж, хариуцлага замхарна. Мөн `hyanalt` үйлчилгээ нь
- * ӨӨР байгууллагад (ACqsMOmNLi5wIdIh) бөгөөд түүний талбарууд гүйцэтгэлийн 60
- * баганын загварт хатуу уягдсан.
+ * зөвшөөрсөн» гэж уншигдаж, хариуцлага замхарна. Мөн `hyanalt` үйлчилгээний
+ * талбарууд гүйцэтгэлийн 60 баганын загварт хатуу уягдсан (2026-09-17-ноос
+ * ижил оргод ч тусдаа үйлчилгээ).
  *
  * ⚠️ ХУВААРИЙН УРСГАЛААС (`huvaariBatlah.ts`) МӨН ТУСДАА. Тэр нь ОГНОО
  * («хэзээ»), энэ нь ОБЬЁМ («хэр их»). `huvaariBatlah` нь багц бүрд ЗӨВХӨН НЭГ
@@ -36,6 +36,7 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
+import { obyemScope } from './obyemAcl';
 import { t as tr } from '@/lib/i18nCore';
 
 /** Илгээлтийн төлөв */
@@ -258,7 +259,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch) url = await createTable(auth.token, auth.user);
+  /* ⚠️ ЗӨВХӨН ЭЗЭН ҮҮСГЭНЭ (`permsRemote`-ийн 2026-09-15-ны дүрэм, энд 2026-09-17). */
+  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase()))
+    url = await createTable(auth.token, auth.user);
   if (url) tableUrlCache = url;
   return url;
 }
@@ -428,6 +431,12 @@ export async function submitObyem(args: {
   if (!args.payload.cells.length) {
     return { ok: false, error: tr('Өөрчлөгдсөн нүд алга.') };
   }
+  /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
+  if (AUTH.appId) {
+    const sc = obyemScope(args.author, 'editor');
+    if (sc !== null && !sc.includes(args.pkgGroup))
+      return { ok: false, error: tr('Энэ багцад обьём илгээх эрхгүй.') };
+  }
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const already = await loadPending(args.pkgKey);
@@ -515,8 +524,14 @@ export async function decideObyem(args: {
    *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
    *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
+  if (AUTH.appId) {
+    const sc = obyemScope(me, 'approver');
+    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+      return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
+  }
   /*
    * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС (2026-09-15-ны аудит),
    *    `huvaariBatlah`-тай ижил дүрэм. Дээрх эрт шалгуур нь дуудагчийн утгад

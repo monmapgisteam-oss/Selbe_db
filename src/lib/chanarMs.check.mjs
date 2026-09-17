@@ -201,6 +201,9 @@ const base = () => ({
   /* Хянагч: зөвхөн өгөөгүй үүргээр */
   const half = { ...d, reviews: { ...emptyReviews(), tuh: { who: 'x', at: T, verdict: VERDICT.approve, note: null } } };
   assert.deepEqual(canAct(half, 'rev', ['tuh', 'chanar']).review, ['chanar'], 'tuh өгсөн → зөвхөн chanar үлдэнэ');
+  /* ⚠️ Нэг хүн нэг үүрэг (2026-09-17): ТУХ-аар өөрөө шийдсэн хүнд бусад товч гарахгүй */
+  const mineHalf = { ...d, reviews: { ...emptyReviews(), tuh: { who: 'REV', at: T, verdict: VERDICT.approve, note: null } } };
+  assert.deepEqual(canAct(mineHalf, 'rev', ['tuh', 'chanar', 'habea']).review, [], 'өөрөө нэг үүргээр шийдсэн → бусад үүрэг хаагдана');
   /* Хянагч бус: хоосон */
   assert.deepEqual(canAct(d, 'rev', []).review, []);
   /* Нэвтрээгүй */

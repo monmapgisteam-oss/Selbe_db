@@ -64,6 +64,20 @@ const contract = (o = {}) => ({
   assert.equal(r[2].cum, 50, '20 + 30');
 }
 {
+  /* ⚠️ №2б — ДУГААРГҮЙ (AUTO) мөр эрэмбийн АРД, хуримтлалд хамгийн сүүлд
+     (2026-09-16-ны засварын тест, 2026-09-17-нд нэмэв). Урьд нь `?? 0`
+     эрэмбэ нь AUTO мөрийг №1-ийн ӨМНӨ суулгаж, бүх cum хөөрдөг байв. */
+  const r = payRows([
+    pay(9, work, 5, { [P.ipcNo]: null, [P.payDate]: null }),
+    pay(3, work, 30, { [P.ipcNo]: 2, [P.payDate]: '2026-06-14' }),
+    pay(2, work, 20, { [P.ipcNo]: 1, [P.payDate]: '2026-03-20' }),
+  ]);
+  assert.deepEqual(r.map((x) => x.oid), [2, 3, 9], '⚠️ AUTO (дугааргүй) мөр ХАМГИЙН АРД');
+  assert.equal(r[0].cum, 20);
+  assert.equal(r[1].cum, 50);
+  assert.equal(r[2].cum, 55, 'AUTO мөр хуримтлалд сүүлд орно');
+}
+{
   /* ⚠️ №3 — огноо ХООСОН байсан ч IPC дугаараар зөв эрэмбэлэгдэнэ */
   const r = payRows([
     pay(2, work, 30, { [P.ipcNo]: 2, [P.payDate]: null }),

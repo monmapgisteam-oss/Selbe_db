@@ -315,8 +315,14 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    архивт аль хэдийн буусан. Сүлжээ тасарч товч дахин дарагдвал ижил
    *    жааз ХОЁР удаа бичигдэх байлаа.
    */
-  if (staged.done || staged.payload.archiveOid != null)
-    return { ok: true, archiveOid: staged.payload.archiveOid ?? 0 };
+  /* ⚠️ `day`-г ЭНД Ч буцаана (2026-09-17): урьд нь дахин оролдох замд
+     `archivedDay` undefined болж IPC мөр (доорх `ipcAuto`) алгасагддаг байв.
+     Илгээсэн өдөр (`fillMs`) — архивласан бодит өдөр (залруулагдсан бол
+     тухайн өдөр) `approvedAt`-аас. */
+  if (staged.done || staged.payload.archiveOid != null) {
+    const ms = staged.payload.approvedAt ?? staged.payload.fillMs;
+    return { ok: true, archiveOid: staged.payload.archiveOid ?? 0, day: ms != null ? new Date(ms).toISOString().slice(0, 10) : undefined };
+  }
 
   /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ
      (дээрх `ARCHIVED`-ийн ⚠️). Агуулга шинэчлэгдсэн бол түлхүүр өөрчлөгдөх
@@ -477,6 +483,23 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
     assertFrameLength(frame.length, loaded.frameLen + added, pkg.label);
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+  /*
+   * ⚠️ БИЧИХИЙН ӨМНӨ ДАХИН ШАЛГАНА (2026-09-17): ArcGIS-д compare-and-set
+   *    байхгүй тул хоёр таб/хоёр захирал зэрэг «Батлах» дарвал хоёул
+   *    дээрх уншилтыг давж ирнэ. Жааз угсрах (loadRows + buildFrame) нь
+   *    секундүүд үргэлжилдэг тул нөгөө таб энэ хооронд `done|` болгосон
+   *    байж болно — бичихийн яг өмнө сервер дээрх төлөвийг дахин үзнэ.
+   *    Цонх бүрэн хаагдахгүй (атом биш), харин секундээс мс болж нарийсна.
+   */
+  {
+    const again = await readSubmissionByOid(subOid);
+    if (!again.ok) return { ok: false, error: again.error };
+    if (!again.sub) return { ok: false, error: tr('Илгээлт энэ хооронд устгагдлаа — архивт юу ч бичсэнгүй') };
+    if (again.sub.done || again.sub.payload.archiveOid != null)
+      return { ok: true, archiveOid: again.sub.payload.archiveOid ?? 0, day: msToDay(fillMs) };
+    if (again.sub.at !== staged.at)
+      return { ok: false, error: tr('Илгээлт энэ хооронд өөрчлөгдлөө — дахин нээж баталгаажуулна уу') };
   }
   let firstOid: number | null = null;
   /* ⚠️ БИЧИГДСЭН МӨРИЙН ДУГААР — унасан үед буцааж устгахад ЗААВАЛ хэрэгтэй. */
@@ -647,6 +670,12 @@ export async function apply(a: {
       if (!ar.ok) return { ok: false, error: ar.error };
       archiveOid = ar.archiveOid;
       archivedDay = ar.day;
+      /* ⚠️ Архивласны ДАРАА мөрийн төлөвийг ДАХИН ШАЛГАХГҮЙ (2026-09-17-ны
+         аудит): «буцаах» ба «батлах» зэрэг дарагдсан үед жааз архивт
+         бичигдчихсэн байхад STALE-ээр зогсвол өнчин жааз үлдэж, нэгтгэл/IPC
+         хэзээ ч ажиллахгүй. Архив бичигдсэн бол хяналтын мөр ЗААВАЛ түүнийг
+         дагана — «шилжүүлсэн» нь өгөгдөлтэйгээ нийцнэ. Давхар-батлах уралдаанд
+         `archiveSubmission` `done|`-оор idempotent тул хоёр дахь жааз үүсэхгүй. */
     }
 
     await updateRows([attrs]);

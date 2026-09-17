@@ -1325,6 +1325,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const loadedPkgRef = useRef("");
   /**
+   * ОДОО СОНГОГДСОН багцын түлхүүр — синхрон. ⚠️ `loadedPkgRef`-ээс ЯЛГААТАЙ:
+   *    тэр нь «мөрүүд АЧААЛАГДСАН» гэсэн утгатай (loadRows дуустал `""`).
+   *    Мөр ачаалахаас ХАМААРАХГҮЙ асинхрон урсгал (обьёмын илгээлт) энийг
+   *    хэрэглэнэ — эс бөгөөс жижиг query нь 1000+ мөрийн хуудаснаас
+   *    түрүүлж ирээд `"" !== pkg.key` гэж хаягдана (2026-09-17-ны шалгалт).
+   */
+  const pkgKeyRef = useRef(pkg.key);
+  pkgKeyRef.current = pkg.key;
+  /**
    * НООРОГИЙН ХОЁР ТУГ — багц солих эффект ЭДГЭЭРИЙГ цэвэрлэдэг тул
    * түүнээс ДЭЭР зарлагдана (эс бөгөөс зарлагдахаасаа өмнө ашиглагдана).
    * · `keepDraft` — «Дараа шийднэ» гэж хаасан ноорогийг автомат
@@ -1445,6 +1454,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   useEffect(() => {
     let alive = true;
     loadedPkgRef.current = "";
+    /* ⚠️ Обьёмын илгээлтийн төлөв ӨМНӨХ багцынх — шууд цэвэрлэнэ (2026-09-17):
+       шинэ багцын query унавал А-гийн баннер Б дээр үлдэх байв. */
+    setPvSub(null);
+    setPvPreview(null);
     /* ⚠️ НООРОГИЙН ХОЁР ТУГ ЗААВАЛ ТЭГЛЭГДЭНЭ (2026-09-03-ны аудит):
        · `remoteQueue` — хуучин багцын ноорог шинэ багцын слотод бичигдэхээс;
        · `keepDraft` — «Дараа шийднэ» гэсэн шийдвэр НЭГ багцад л хамаарна.
@@ -1804,7 +1817,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        менежерийн батламжийн жааз ГУРВУУЛАА хийдэг — гурван хуулбар
        салбарлавал нэмсэн ажил гурван өөр газар буух эрсдэлтэй. */
     (base: SheetRow[]): SheetRow[] =>
-      !sc || !nBld ? base : insertAdds(base, adds, sc, nBld),
+      /* ⚠️ `!nBld` ХАСАГДСАН (2026-09-17) — блокгүй 8 багцад нэмсэн мөр алга
+         болдог байв (`calc`-ийн ижил товчлолтой адил алдаа). */
+      !sc ? base : insertAdds(base, adds, sc, nBld),
     [adds, sc, nBld],
   );
 
@@ -3541,20 +3556,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *        давхарлана (oid нь давхаргаар дараалсан тул тааралдана)
    *    Гарах цорын ганц зам нь багц дахин солих эсвэл хуудас шинэчлэх байв.
    *
-   * ⚠️ `loadedPkgRef` нь ЭНЭ файлд аль хэдийн байсан (мөр ~1326) бөгөөд
-   *    зургаан газарт хэрэглэгддэг — обьёмын урсгал нь хожим нэмэгдэж
-   *    гэрийн хэв маягийг АВААГҮЙ байлаа.
+   * ⚠️ `pkgKeyRef` (БИШ `loadedPkgRef`, 2026-09-17): `loadedPkgRef` нь мөрүүд
+   *    ачаалагдтал `""` тул энэ жижиг query үргэлж түрүүлж ирээд хаягдаж,
+   *    хүлээгдэж буй илгээлт багц нээхэд ХЭЗЭЭ Ч харагдахгүй байв.
    */
   const refreshObyem = useCallback(async () => {
     const want = pkg.key;
     try {
       const sub = await loadObyemPending(want);
-      if (loadedPkgRef.current !== want) return;
+      if (pkgKeyRef.current !== want) return;
       setPvSub(sub);
       /* Батлагч бол агуулгыг нь урьдчилан харуулна */
       if (sub) {
         const pl = await loadObyemPayload(sub.oid);
-        if (loadedPkgRef.current !== want) return;
+        if (pkgKeyRef.current !== want) return;
         setPvPreview(pl ? new Map(pl.cells) : null);
       } else {
         setPvPreview(null);
