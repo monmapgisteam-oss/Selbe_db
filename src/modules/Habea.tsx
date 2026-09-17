@@ -30,18 +30,21 @@ import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
-  bagtsKey, laborCompanyFields,
+  laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
 import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
+  habeaPkgKey, habeaPkgLabel, loadWeekScores, weekScoreOf, weekScoreByCo, weekNcByPkg, UzSrcHead, stepNote,
+  UzlegPhotos,
+  SERIES_VISIBLE,
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
 import { MultiSelect } from '@/components/MultiSelect';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty } from '@/components/ui';
-import { num, date, text, dayKey } from '@/lib/format';
+import { num, date, text, dayKey, pct } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -201,7 +204,7 @@ const normIncident = (r: Row): Inc => ({
   oid: nn(r['objectid']),
   d: nn(r[I.ognoo]), // ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17) — доорх ⚠️ дүрэм: огноогүй маягт хасагдана
   bagtsRaw: text(r[I.bagts], '—'),
-  bagtsK: bagtsKey(r[I.bagts]),
+  bagtsK: habeaPkgKey(r[I.bagts]),
   company: clean(r[I.company]),
   type: text(r[I.turul], '—'),
   cause: text(r[I.shaltgaanTurul], '—'),
@@ -231,7 +234,7 @@ const normCrane = (r: Row): Crane => ({
   dugaar: text(r[C.dugaar], '—'),
   blok: text(r[C.blok], '—'),
   bagtsRaw: text(r[C.bagts], '—'),
-  bagtsK: bagtsKey(r[C.bagts]),
+  bagtsK: habeaPkgKey(r[C.bagts]),
   undur: nn(r[C.undur]),
   sunUrt: nn(r[C.sunUrt]),
   tuluv: text(r[C.tuluv], '—'),
@@ -285,7 +288,7 @@ function laborState(rows: Row[]): {
       const gadaad = nn(latest[f.gadaad]);
       const bagtsRaw = c.bagts ?? text(latest[f.bagts], '');
       return {
-        key: c.sfx, label: c.label, code: c.code, bagtsRaw, bagtsK: bagtsKey(bagtsRaw),
+        key: c.sfx, label: c.label, code: c.code, bagtsRaw, bagtsK: habeaPkgKey(bagtsRaw),
         mongol, gadaad,
         ajiltan: nn(latest[f.niitAjiltan]) || mongol + gadaad,
         tehnik: nn(latest[f.niitTehnik]),
@@ -370,7 +373,7 @@ function companyTotals(rows: Row[]) {
       key: c.sfx,
       code: c.code,
       label: c.label,
-      bagtsK: c.bagts ? bagtsKey(c.bagts) : '',
+      bagtsK: c.bagts ? habeaPkgKey(c.bagts) : '',
       ajiltan: rows.reduce((s, r) => s + nn(r[f.niitAjiltan]), 0),
       tehnik: rows.reduce((s, r) => s + nn(r[f.niitTehnik]), 0),
       /* ⚠️ Задаргаа нь `niitAjiltan`-тай ТЭНЦЭХГҮЙ: маягтад монгол/гадаад
@@ -500,72 +503,33 @@ function byMonthSeries(daily: { key: string; value: number }[]) {
 /* ─────────── Туслах дүрслэл ─────────── */
 
 /**
- * ЦУВААНЫ АЛХМЫН ШИЛЖҮҮЛЭГЧ — картын ГАРЧГИЙН мөрөнд.
+ * KPI НҮД — шошго · том тоо · (харьцааны зурвас) · (тайлбар).
  *
- * ⚠️ `Section`-д үйлдлийн слот БАЙХГҮЙ тул `note`-оор дамжуулна —
- * тэр нь толгойн БАРУУН талд, тайлбар бичиг байдаг байрлал. Ингэснээр
- * шилжүүлэгч нь картын дотоод агуулгыг ХӨНДӨХГҮЙ: чартын өндөр, гүйлгэгч
- * бүгд хэвээр.
+ * ⚠️ 2026-09-17 ШИНЭ ЗОХИОМЖ (хэрэглэгчийн хүсэлт: «энэ хэсгийг гоё харуулмаар»).
+ * Урьд нь `habeaOv .tile` (13px тоо, `space-between`) байсан тул тоо нүдний ёроолд
+ * жижгээр наалдаж, дээр нь их хоосон зай үлдэж, урт шошготой нүд (захиалагчийн
+ * үзлэг) бусдаасаа өөр өндөрт тоогоо харуулдаг байв. Одоо ӨӨРИЙН ангиуд
+ * (`h.kt*`) — `habeaOv`-ийг хөндөхгүй.
+ *
+ * ⚠️ ШОШГО нь ХОЁР МӨРИЙН ТОГТМОЛ өндөртэй, ДООД ирмэгтээ зэрэгцэнэ — нэг мөр ба
+ * хоёр мөр шошготой нүднүүдийн ТОО нэг хэвтээ шугам дээр гарна.
+ * ⚠️ `ratio` (0–1) — хувь/харьцаа утгатай нүдэнд (оноо, идэвхтэй кран) нимгэн
+ * зурвас. Бусад нь (нийлбэр тоо) зурвасгүй: харьцуулах суурь байхгүй.
  */
-/**
- * ⚠️ `set` нь `null` байж БОЛНО — тэр үед шилжүүлэгч ЗУРАГДАХГҮЙ,
- * зөвхөн тайлбар үлдэнэ. «Техник болон хүн цаг» фокуст сарын өгөгдөл нь
- * ХАЖУУГИЙН баганад тусдаа чарт болж гардаг тул доод зурваст сэлгэх зүйл
- * үлдэхгүй; товчийг үлдээвэл дарахад ижил чарт хоёр газар давхарлана.
- */
-const stepNote = (
-  step: 'day' | 'month',
-  set: ((v: 'day' | 'month') => void) | null,
-  note: ReactNode,
+const kpiTile = (
+  val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null,
 ) => (
-  <span className={h.stepWrap}>
-    {set && (
-    <span className={h.seg} role="group" aria-label={tr("Цувааны алхам")}>
-      <button
-        type="button"
-        className={`${h.segBtn} ${step === 'day' ? h.segOn : ''}`}
-        aria-pressed={step === 'day'}
-        onClick={() => set('day')}
-      >
-        {tr("Өдөр")}
-      </button>
-      <button
-        type="button"
-        className={`${h.segBtn} ${step === 'month' ? h.segOn : ''}`}
-        aria-pressed={step === 'month'}
-        onClick={() => set('month')}
-      >
-        {tr("Сар")}
-      </button>
-    </span>
+  <div className={h.kt}>
+    <div className={h.ktLabel}>{label}</div>
+    <div className={h.ktVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
+    {ratio != null && Number.isFinite(ratio) && (
+      <div className={h.ktBar} aria-hidden>
+        <span style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }} />
+      </div>
     )}
-    {note != null && <span className={h.stepNote}>{note}</span>}
-  </span>
-);
-
-const kpiTile = (val: ReactNode, label: string, unit?: string) => (
-  // `h.kpiCenter` — шошго/утгыг голлуулах ХАБЭА-гийн нэмэлт (`overview`-ийн
-  // `.tile` нь зүүн зэрэгцүүлдэг бөгөөд түүнийг өөр модулиуд ч хэрэглэдэг).
-  <div className={`${o.tile} ${h.kpiCenter}`}>
-    <div className={o.tileVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
-    <div className={o.tileLabel}>{label}</div>
+    {sub && <div className={h.ktSub}>{sub}</div>}
   </div>
 );
-
-/** Багцаар бүлэглэсэн нийлбэр — бар бүр bagtsKey түлхүүртэй (хөндлөн шүүлтэд) */
-function byPkg<T extends { bagtsK: string; bagtsRaw: string }>(items: T[], val: (x: T) => number) {
-  const m = new Map<string, { label: string; value: number }>();
-  items.forEach((x) => {
-    if (!x.bagtsK) return;
-    const cur = m.get(x.bagtsK);
-    if (cur) cur.value += val(x);
-    else m.set(x.bagtsK, { label: tr(x.bagtsRaw) || '—', value: val(x) });
-  });
-  return [...m.entries()]
-    .map(([key, v]) => ({ key, ...v }))
-    .filter((x) => x.value > 0)
-    .sort((a, b) => b.value - a.value);
-}
 
 /* ─────────── Ослын хавсаргасан зураг (attachment) ─────────── */
 
@@ -759,12 +723,14 @@ const FOCUS_CHIPS: {
 }[] = [
   { key: 'inc', label: () => tr('Осол, зөрчил'), count: (n) => n },
   { key: 'labor', label: () => tr('Техник болон хүн цаг'), count: () => null },
-  { key: 'v11', label: () => tr('Ажлын байрны үзлэг V1.1'), count: () => null },
+  /* ⚠️ 2026-09-17: «Ажлын байрны үзлэг V1.1» → «Захиалагчийн ажлын байрны үзлэг».
+     Түлхүүр нь `v11` хэвээр: энэ фокус одоо ХОЁР маягтыг зэрэгцүүлнэ —
+     зүүн талд V1.1, баруун талд захиалагчийн шинэ маягт (`dual`). */
+  { key: 'v11', label: () => tr('Захиалагчийн ажлын байрны үзлэг'), count: () => null },
   { key: 'guitsetgegch', label: () => tr('Гүйцэтгэгчийн ажлын байрны үзлэг'), count: () => null },
 ];
 
-/** «Техник — өдрөөр» цуваанд НЭГ ДОР харагдах өдрийн тоо — үлдсэн нь гүйлгэлтээр */
-const DAYS_VISIBLE = 8;
+/* ⚠️ Цувааны харагдах үеийн тоо `SERIES_VISIBLE` (=7) — `habeaUzleg`-ээс, НЭГ эх сурвалж. */
 /* ─────────── Хөндлөн шүүлтийн загвар ─────────── */
 
 /**
@@ -786,7 +752,7 @@ const DAYS_VISIBLE = 8;
 type Dim2 = 'pkg' | 'co' | 'incType' | 'cause' | 'incCompany' | 'craneState'
   /* ⚠️ 2026-09-15: ҮЗЛЭГИЙН чартын хэмжээсүүд — ЗӨВХӨН үзлэгийн самбарыг
      шүүнэ (ослын `incType` нь зөвхөн ослыг шүүдэгтэй ижил хамрах хүрээ). */
-  | 'uzSev' | 'uzShift' | 'uzCompany' | 'uzSite'
+  | 'uzSev' | 'uzShift' | 'uzCompany' | 'uzWeek'
   /* ⚠️ ХУУДАСНЫ ОГНОО — хүн хүч, осол, үзлэг гурвуулаа дагана (кран огноогүй).
      Хүн хүчний ба үзлэгийн өдөр/сарын цуваа ИЖИЛ хэмжээсийг тавина. */
   | 'day' | 'month';
@@ -807,8 +773,8 @@ type Sel = Record<SelDim, string[]>;
  * ⚠️ Огноо (`day`/`month`) ЭНД ОРОХГҮЙ: тэр нь хуудасны шүүлт тул
  * маягт солиход ч хүн хүч, ослын шүүлт хэвээр үлдэх ёстой.
  */
-const NO_UZ_SEL: Pick<Sel, 'uzSev' | 'uzShift' | 'uzCompany' | 'uzSite'> = {
-  uzSev: [], uzShift: [], uzCompany: [], uzSite: [],
+const NO_UZ_SEL: Pick<Sel, 'uzSev' | 'uzShift' | 'uzCompany' | 'uzWeek'> = {
+  uzSev: [], uzShift: [], uzCompany: [], uzWeek: [],
 };
 
 const NO_SEL: Sel = {
@@ -822,7 +788,7 @@ const inSet = (arr: readonly string[], v: string) => arr.length === 0 || arr.inc
 /** Үзлэгийн самбарын хэмжээс → хуудасны сонголтын түлхүүр */
 const UZ_DIM: Record<UzDim, SelDim> = {
   sev: 'uzSev', shift: 'uzShift', company: 'uzCompany',
-  site: 'uzSite', day: 'day', month: 'month',
+  week: 'uzWeek', day: 'day', month: 'month',
 };
 
 /**
@@ -832,7 +798,7 @@ const UZ_DIM: Record<UzDim, SelDim> = {
 const PKG_OF_CO: ReadonlyMap<string, string> = new Map<string, string>(
   HABEA.labor.companies
     .filter((x) => x.bagts)
-    .map((x) => [x.sfx, bagtsKey(x.bagts as string)] as const),
+    .map((x) => [x.sfx, habeaPkgKey(x.bagts as string)] as const),
 );
 
 /** Хүний уншиж болох нэр — идэвхтэй шүүлтийн чипэнд гарна */
@@ -849,7 +815,7 @@ const DIM_LABEL: Record<Dim2, string> = {
   uzSev: tr('Үл нийцлийн зэрэг'),
   uzShift: tr('Ээлж'),
   uzCompany: tr('Үзлэгийн компани'),
-  uzSite: tr('Үзлэгийн талбай'),
+  uzWeek: tr('Үзлэгийн долоо хоног'),
   day: tr('Өдөр'),
   month: tr('Сар'),
 };
@@ -871,6 +837,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const totals = usePlanTotals(null, catOpen, CATALOG_IDS);
   /** Панелийн хэмжээ — чирж тохируулна, `localStorage`-д хадгалагдана */
   const panes = usePanes();
+  /* Өмнөх долоо хоногийн дундаж оноо — KPI (`loadWeekScore` нь 5 мин кэштэй) */
+  /* Өмнөх долоо хоногийн оноо — (талбай × компани) нүд, шүүлт нь санах ойд */
+  const weekScores = useAsync(loadWeekScores, []);
 
   /* Олон хэмжээст хөндлөн шүүлт + зурган дээрээс сонгосон объект */
   const [sel, setSel] = useState<Sel>(NO_SEL);
@@ -930,6 +899,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     focus === 'v11' || focus === 'guitsetgegch' ? focus : null;
   /* ⚠️ Залхуу ачаалалт: фокус үзлэг рүү орсон үед л татна */
   const uz = useUzleg(uzlegKind);
+  /**
+   * ХОЁР МАЯГТ ЗЭРЭГЦЭЭ (2026-09-17, хэрэглэгчийн хүсэлт) — «Захиалагчийн
+   * ажлын байрны үзлэг» фокуст зүүн талд V1.1, баруун талд захиалагчийн
+   * маягт ИЖИЛ чартуудаар. Гүйцэтгэгчийн маягтын фокус ганц эх сурвалжтай
+   * хэвээр.
+   *
+   * ⚠️ Чартын СОНГОЛТ (`uzSel`) хоёр талд НЭГ: зэрэг, ээлж, долоо хоног дарахад
+   * хоёр маягт ИЖИЛ нөхцлөөр шүүгдэж шууд харьцуулагдана.
+   */
+  const dual = focus === 'v11';
+  const uz2 = useUzleg(dual ? 'zahialagch' : null);
   /** Зүүн багана агуулгатай эсэх — торны баганын тоог шийднэ */
   /**
    * ⚠️ АНХНЫ ХАРАГДАЦАД ч ҮНЭН (2026-09-06): «Монгол, гадаад» донат тийш
@@ -1045,7 +1025,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setPicked(null);
   }, []);
 
-  /** Чартын багана дарахад — тухайн багцыг сонголтод нэмнэ/хасна */
+  /** Чартын багана дарахад — тухайн багцыг сонголтод нэмнэ/хасна («Үл нийцэл — багцаар») */
   const togglePkg = useCallback((k: string) => {
     setPkgs((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPicked(null);
@@ -1124,12 +1104,18 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const pickCraneOid = picked && (picked.id === 'habea:crane' || picked.id === 'habea:buffer')
     ? nn(picked.id === 'habea:buffer' ? picked.attrs[C.bufferLink] : picked.attrs[C.oid])
     : 0;
+  /* ⚠️ OBJECTID нь маягт БҮРТ 1-ээс эхэлдэг — хоёр маягт зэрэг байхад
+     «oid 5» аль маягтынх болохыг ДАВХАРГААР нь ялгана, эс бөгөөс V1.1-ийн
+     цэг дарахад захиалагчийн маягтын 5-р үзлэг шүүгдэнэ. */
+  const pickUzZ = picked?.id === HABEA_UZLEG_LAYER_ID.zahialagch;
   const pickUzOid = picked
-    && (picked.id === HABEA_UZLEG_LAYER_ID.v11 || picked.id === HABEA_UZLEG_LAYER_ID.guitsetgegch)
+    && (picked.id === HABEA_UZLEG_LAYER_ID.v11 || picked.id === HABEA_UZLEG_LAYER_ID.guitsetgegch
+      || pickUzZ)
     ? nn(picked.attrs['objectid'])
     : 0;
-  const pickUzRow = pickUzOid && uz.state === 'ready'
-    ? uz.rows.find((x) => x.oid === pickUzOid) ?? null
+  const pickSrc = pickUzZ ? uz2 : uz;
+  const pickUzRow = pickUzOid && pickSrc.state === 'ready'
+    ? pickSrc.rows.find((x) => x.oid === pickUzOid) ?? null
     : null;
 
   const incOn = Boolean(
@@ -1179,8 +1165,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Үзлэгийн чартын сонголт — ТОГТВОРТОЙ лавлагаа (газрын зургийн шүүлт дагана) */
   const uzSel = useMemo(() => ({
     sev: sel.uzSev, shift: sel.uzShift, company: sel.uzCompany,
-    site: sel.uzSite, day: sel.day, month: sel.month,
-  }), [sel.uzSev, sel.uzShift, sel.uzCompany, sel.uzSite, sel.day, sel.month]);
+    week: sel.uzWeek, day: sel.day, month: sel.month,
+  }), [sel.uzSev, sel.uzShift, sel.uzCompany, sel.uzWeek, sel.day, sel.month]);
 
   /**
    * Үзлэгийн СУУРЬ олонлог — багц/компани ба газрын зургаас дарсан үзлэг.
@@ -1191,12 +1177,31 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const uzF = useMemo(() => {
     const base = filterUzleg(uz, pkgs, cos);
-    if (!pickUzOid || base.state !== 'ready') return base;
+    if (!pickUzOid || pickUzZ || base.state !== 'ready') return base;
     return { ...base, rows: base.rows.filter((x) => x.oid === pickUzOid) };
-  }, [uz, pkgs, cos, pickUzOid]);
+  }, [uz, pkgs, cos, pickUzOid, pickUzZ]);
+  /* «БАГЦ» ШҮҮЛТГҮЙ олонлог — «Үл нийцэл — багцаар» чартад (өөрийн хэмжээсээр
+     шүүгдэхгүй, ArcGIS зан). Компани ба цэгийн сонголтыг ДАГАНА. */
+  const uzNoPkg = useMemo(() => {
+    const base = filterUzleg(uz, [], cos);
+    if (!pickUzOid || pickUzZ || base.state !== 'ready') return base;
+    return { ...base, rows: base.rows.filter((x) => x.oid === pickUzOid) };
+  }, [uz, cos, pickUzOid, pickUzZ]);
+  const uzNoPkg2 = useMemo(() => {
+    const base = filterUzleg(uz2, [], cos);
+    if (!pickUzOid || !pickUzZ || base.state !== 'ready') return base;
+    return { ...base, rows: base.rows.filter((x) => x.oid === pickUzOid) };
+  }, [uz2, cos, pickUzOid, pickUzZ]);
+  /** Захиалагчийн маягт — `uzF`-тэй ИЖИЛ дүрэм, өөрийн цэгийн сонголтоор */
+  const uzF2 = useMemo(() => {
+    const base = filterUzleg(uz2, pkgs, cos);
+    if (!pickUzOid || !pickUzZ || base.state !== 'ready') return base;
+    return { ...base, rows: base.rows.filter((x) => x.oid === pickUzOid) };
+  }, [uz2, pkgs, cos, pickUzOid, pickUzZ]);
 
   /** Фокусын маягтын газрын зургийн давхарга — фокус байхгүй бол `null` */
   const uzLayerId = uzlegKind ? HABEA_UZLEG_LAYER_ID[uzlegKind] : null;
+  const uzLayerId2 = dual ? HABEA_UZLEG_LAYER_ID.zahialagch : null;
 
   /**
    * ҮЗЛЭГ → ГАЗРЫН ЗУРАГ. Үзлэгийн самбарт тоологдсон ЯГ тэр мөрүүдийг зурагт
@@ -1212,12 +1217,36 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const ids = uzF.rows.filter((x) => uzPass(x, uzSel)).map((x) => x.oid).filter((o) => o > 0);
     return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
   }, [uzLayerId, pkgs.length, cos.length, pickUzOid, uzSel, uzF]);
+  /** Захиалагчийн маягтын давхаргын шүүлт — `uzWhere`-тэй ижил дүрэм */
+  const uzWhere2 = useMemo(() => {
+    if (!uzLayerId2) return null;
+    const on = pkgs.length || cos.length || pickUzOid
+      || Object.values(uzSel).some((v) => v.length);
+    if (!on || uzF2.state !== 'ready') return null;
+    const ids = uzF2.rows.filter((x) => uzPass(x, uzSel)).map((x) => x.oid).filter((o) => o > 0);
+    return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
+  }, [uzLayerId2, pkgs.length, cos.length, pickUzOid, uzSel, uzF2]);
 
   /** Газрын зурагт харагдах давхаргууд — каталогийн сонголт + фокусын үзлэг */
-  const mapVisible = useMemo(
-    () => (uzLayerId ? [...visible, uzLayerId] : visible),
-    [visible, uzLayerId],
-  );
+  /**
+   * ГАЗРЫН ЗУРАГ ФОКУСЫГ ДАГАНА (2026-09-17, хэрэглэгчийн хүсэлт: «эндээс
+   * сонгоод дарахад тухайн мэдээлэл map дээрээ шүүгдэж харагдах»).
+   *
+   *   осол, зөрчил            → зөвхөн ослын цэг
+   *   захиалагчийн үзлэг       → зөвхөн V1.1 + захиалагчийн маягтын цэг
+   *   гүйцэтгэгчийн үзлэг      → зөвхөн тэр маягтын цэг
+   *   техник, хүн цаг · анхны → каталогийн сонголт хэвээр (хүн хүчний бүртгэл
+   *                              газрын зурагт БАЙРШИЛГҮЙ — нуух юм алга)
+   *
+   * ⚠️ `visible`-ийг ӨӨРЧЛӨХГҮЙ, зөвхөн ГАРАЛТ дээр давхарлана: фокусаас гармагц
+   * хэрэглэгчийн каталогийн сонголт бүтнээрээ сэргэнэ (`DedButets.mapVisible`-ийн ижил).
+   */
+  const mapVisible = useMemo(() => {
+    const uzIds = [...(uzLayerId ? [uzLayerId] : []), ...(uzLayerId2 ? [uzLayerId2] : [])];
+    if (focus === 'inc') return visible.filter((id) => id === 'habea:osol');
+    if (uzlegKind) return uzIds;
+    return visible;
+  }, [visible, focus, uzlegKind, uzLayerId, uzLayerId2]);
 
   const layerWhere = useMemo(() => {
     if (!incOn && !craneOn && !uzWhere) return undefined;
@@ -1236,8 +1265,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       : null;
     const out: Record<string, string | null> = { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
     if (uzLayerId) out[uzLayerId] = uzWhere;
+    if (uzLayerId2) out[uzLayerId2] = uzWhere2;
     return out;
-  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere]);
+  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2]);
 
   /**
    * Монгол/гадаад — БҮХ бүртгэлийн нийлбэр (сонгосон гүйцэтгэгчийг дагана).
@@ -1286,6 +1316,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      руу: үзлэг (фокус нээлттэй үед) → осол → кран. */
   const zoomTo: [string, string] | null = uzLayerId && uzWhere
     ? [uzLayerId, uzWhere]
+    : uzLayerId2 && uzWhere2
+      ? [uzLayerId2, uzWhere2]
     : layerWhere?.['habea:osol'] && incOn
       ? ['habea:osol', layerWhere['habea:osol']]
       : layerWhere?.['habea:crane'] && craneOn
@@ -1344,7 +1376,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    бөгжинд «—» зүсмэгээр тусдаа харагдана. Өнөөдөр 0 ийм кран.
    */
   const craneUp = fCrane.filter((x) => x.tuluv !== 'Буусан' && x.tuluv !== '—').length;
-  const craneByPkg = byPkg(cranes.filter((x) => cranePass(x, 'pkg')), () => 1);
   /* ⚠️ `avgUndur` / `avgSum` (дундаж өндөр ба сумны урт) ХАСАГДАВ
      (2026-09-06, хэрэглэгчийн хүсэлт): краны төлөвийн доор гарч байсан
      «Өндөр 38.0 м · сум 47.9 м» мөр нь төлөвийн задаргаатай ямар ч
@@ -1436,7 +1467,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const m = new Map<string, string>();
     /* ЭХЛЭЭД бодит өгөгдөл — шошго нь эх сурвалжийн ЯГ бичиглэлээр гарна */
     for (const x of [...inc, ...cranes, ...labor.rows]) {
-      if (x.bagtsK && !m.has(x.bagtsK)) m.set(x.bagtsK, tr(x.bagtsRaw) || x.bagtsK);
+      if (x.bagtsK && !m.has(x.bagtsK)) m.set(x.bagtsK, tr(habeaPkgLabel(x.bagtsRaw)) || x.bagtsK);
     }
     /**
      * ДАРАА нь ГҮЙЦЭТГЭГЧИЙН БҮРТГЭЛ — өгөгдөлд гараагүй багцыг нөхнө.
@@ -1454,8 +1485,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      */
     for (const co of HABEA.labor.companies) {
       if (!co.bagts) continue;
-      const k = bagtsKey(co.bagts);
-      if (k && !m.has(k)) m.set(k, tr(co.bagts.replace(/\s*-\s*/, ' ').trim()));
+      const k = habeaPkgKey(co.bagts);
+      if (k && !m.has(k)) m.set(k, tr(habeaPkgLabel(co.bagts.replace(/\s*-\s*/, ' ').trim())));
     }
     return [...m.entries()]
       .map(([key, label]) => ({ key, label }))
@@ -1645,59 +1676,37 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
           tr('Кран'),
           craneUp === fCrane.length ? undefined : tr('идэвхтэй'),
+          undefined,
+          craneUp === fCrane.length || !fCrane.length ? null : craneUp / fCrane.length,
         )}
         {kpiTile(num(fInc.length), tr('Осол, зөрчил'))}
+        {/**
+          * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ДУНДАЖ ОНОО (2026-09-17, хэрэглэгчийн хүсэлт).
+          * Дүрэм, тооцоо: `habeaUzleg.prevWeek` ба `loadWeekScore`.
+          *
+          * ⚠️ 2026-09-17: «Багц» ба «Компани» шүүлтийг ДАГАНА (урьд нь «—» болдог
+          * байв) — `weekScoreOf` нь (талбай × компани) нүдээр шүүнэ.
+          * ⚠️ Оноо бүртгэгдээгүй бол «—» (`null`), 0% БИШ.
+          */}
+        {kpiTile(
+          weekScores.state !== 'ready'
+            ? '—'
+            : ((v) => (v == null ? '—' : pct(v, 0)))(weekScoreOf(weekScores.data.rows, pkgs, cos).pct),
+          /* ⚠️ ДЭЭД мөр = эх сурвалж, ДООД мөр = хугацаа (2026-09-17, хэрэглэгчийн
+             хүсэлт). V1.1 бол ЗАХИАЛАГЧИЙН маягт — гүйцэтгэгчийнхөөс ялгах нь
+             чухал, учир нь гүйцэтгэгчийн маягтад оноо огт бүртгэгддэггүй. */
+          tr('Захиалагчийн ажлын байрны үзлэг'),
+          undefined,
+          weekScores.state === 'ready'
+            ? tr('{0}-р долоо хоногийн дундаж оноо', num(weekScores.data.no))
+            : tr('Долоо хоногийн дундаж оноо'),
+          weekScores.state === 'ready'
+            ? ((v) => (v == null ? null : v / 100))(weekScoreOf(weekScores.data.rows, pkgs, cos).pct)
+            : null,
+        )}
 
       </div>
 
-      {/* ── ГҮЙЦЭТГЭГЧИЙН ШҮҮЛТҮҮР — KPI-ийн ЯГ доор, зурагтай ижил өргөн ──
-          Дашбоардын хөндлөн шүүлтийн НЭГ удирдлага: сонгоход ажилтан, техник,
-          монгол/гадаад нь тухайн компанийн баганаас ЯГ, харин осол зөрчил,
-          кран, газрын зургийн гурван давхарга нь түүний БАГЦААР шүүгдэнэ
-          (ослын бүртгэлийн компанийн нэр чөлөөт текст, 31 тэмдэгтээр
-          таслагдсан тул нэрээр тааруулах боломжгүй — багц бол цорын ганц
-          найдвартай түлхүүр).
-
-          Тоо нь БҮХ ХУГАЦААНЫ ажилтны нийлбэр (хүн-өдөр) — жагсаалт өдөр бүр
-          өөрчлөгдөхгүй байх ёстой. */}
-      {/* ⚠️ Зурвас нь ҮРГЭЛЖ гарна (2026-09-06): урьд нь зөвхөн компанийн
-          сонголт байсан тул `coOptions` хоосон үед бүхэлдээ алга болдог
-          байв. Одоо ослын шүүлтүүр мөн энд суудаг — тэр нь компанийн
-          өгөгдлөөс ҮЛ ХАМААРНА. */}
-      <div className={h.filters}>
-        {/* ── ОСЛЫН ЧАРТЫН ШҮҮЛТҮҮР — «Төслийн дэлгэрэнгүй мэдээлэл»-ийн
-            капсул чиптэй ЯГ ИЖИЛ загвар (`dashboardOv.module.css .railItem`):
-            зүүн талд төлөвийн бөгж, дунд нь нэр, баруун талд утга; идэвхтэй
-            үед дүүрэн будагдана. ── */}
-        {FOCUS_CHIPS.map((f) => {
-          const on = focus === f.key;
-          return (
-            <button
-              key={f.key ?? 'all'}
-              type="button"
-              aria-pressed={on}
-              className={`${h.incChip} ${on ? h.incChipOn : ''}`}
-              /* Дахин дарвал анхны харагдац руу буцна */
-              /* ⚠️ Үзлэгийн чартын сонголтыг ЦУЦАЛНА: V1.1 ба гүйцэтгэгчийн маягт
-                 ӨӨР компани, талбайн жагсаалттай тул нэгийнх нь сонголт нөгөөд
-                 хуучирч үлдвэл самбар «Бүртгэл алга» гэж шалтгаангүй хоосорно. */
-              onClick={() => { setFocus(on ? null : f.key); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setPicked(null); }}
-            >
-              <span className={h.incChipLabel}>{f.label()}</span>
-              {f.count(fInc.length) != null && (
-                <b className={`${h.incChipVal} num`}>{num(f.count(fInc.length) as number)}</b>
-              )}
-            </button>
-          );
-        })}
-
-        {/* ── БАГЦААР ШҮҮХ ──
-            ⚠️ Гурван эх сурвалж ЦӨМ багцтай тул энэ нь хамгийн ӨРГӨН хамрах
-            хүрээтэй шүүлт: осол · кран · ажилтан · газрын зургийн гурван
-            давхарга бүгд дагана. Тиймээс компаниас ӨМНӨ байрлана. ── */}
-        {filterPills}
-        {coNote && <span className={h.coNote}>{coNote}</span>}
-      </div>
 
 
       {/* ── ЗҮҮН багана: осол зөрчлийн аналитик ──
@@ -1784,7 +1793,31 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         </>)}
 
-        {uzlegKind && <UzlegLeft st={uzF} url={HABEA.uzleg[uzlegKind].url} sel={uzSel} onPick={onUzPick} />}
+        {/* ── ЦАМХАГТ КРАН — ТӨЛӨВ — анхны харагдацад ЗҮҮН баганад, «Компаниар —
+            монгол, гадаад»-ын ДООР (2026-09-17, хэрэглэгчийн хүсэлт). Урьд нь
+            баруун баганад байв. ── */}
+        {focus === null && (
+        <Section title={tr('Цамхагт кран — төлөв')}>
+          {craneByStatus.length
+            ? <Donut items={craneByStatus} stack size={110} center={num(craneStatusBase.length)} centerLabel={tr('кран')}
+                selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
+            : <Empty label={tr('Бүртгэл алга')} />}
+        </Section>
+        )}
+
+        {/* ⚠️ Хоёр маягтын горимд ЗҮҮН багана = V1.1-ийн БҮХ чарт (гүйцэтгэгчээр
+            ч энд — баруун багана захиалагчийн маягтад зориулагдсан). */}
+        {dual && <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />}
+        {uzlegKind && (
+          <UzlegLeft
+            st={uzF} url={HABEA.uzleg[uzlegKind].url} sel={uzSel} onPick={onUzPick}
+            pkgSt={uzNoPkg} pkgSel={pkgs} onPkg={togglePkg}
+            /* ⚠️ Хоёр маягтын горимд зураг «гүйцэтгэгчээр»-ийн ДООР (хэрэглэгчийн хүсэлт) */
+            photos={!dual}
+          />
+        )}
+        {dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.v11.url} sel={uzSel} />}
         {incOpen && (<>
         <Section title={tr('Осол, зөрчил — төрлөөр')} note={tr('{0} бүртгэл', num(fInc.length))} tone="primary">
           {incByType.length
@@ -1902,6 +1935,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {(pkgOptions.length > 0 || coOptions.length > 0) && (
           <div className={h.mapFilter} role="group" aria-label={tr('Газрын зургийн шүүлтүүр')}>
             {filterPills}
+            {/* ⚠️ Сонголт тохирохгүй үеийн тайлбар — картаас энд шилжсэн (шүүлттэйгээ хамт) */}
+            {coNote && <span className={h.coNote}>{coNote}</span>}
           </div>
         )}
 
@@ -1928,6 +1963,73 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           сурвалж тул шүүлтүүр сонгосон үед үлдэх ёсгүй (2026-09-06). ── */}
       {rOpen && (
       <div className={h.r}>
+        {/* ⚠️ ШҮҮЛТҮҮРИЙН МӨР — БАРУУН БАГАНЫН ОРОЙД (2026-09-17, хэрэглэгчийн
+            хүсэлт: «Үзлэг — гүйцэтгэгчээр» чартын ДЭЭР). Урьд нь зургийн
+            дээгүүр бүтэн өргөнөөр (`flt` мөр) байв. Одоо баганын эхний хүүхэд
+            тул харагдац бүрд тухайн баганын картуудын ЯГ дээр суудаг —
+            үзлэгийн фокуст энэ нь «Үзлэг — гүйцэтгэгчээр».
+
+            ⚠️ `rOpen` ҮРГЭЛЖ үнэн байх ЁСТОЙ: баруун багана нуугдвал
+            (`data-r='0'`) шүүлтүүр хамт алга болж, хуудас бүхэлдээ
+            удирдлагагүй үлдэнэ. */}
+        {/* ── ГҮЙЦЭТГЭГЧИЙН ШҮҮЛТҮҮР — KPI-ийн ЯГ доор, зурагтай ижил өргөн ──
+            Дашбоардын хөндлөн шүүлтийн НЭГ удирдлага: сонгоход ажилтан, техник,
+            монгол/гадаад нь тухайн компанийн баганаас ЯГ, харин осол зөрчил,
+            кран, газрын зургийн гурван давхарга нь түүний БАГЦААР шүүгдэнэ
+            (ослын бүртгэлийн компанийн нэр чөлөөт текст, 31 тэмдэгтээр
+            таслагдсан тул нэрээр тааруулах боломжгүй — багц бол цорын ганц
+            найдвартай түлхүүр).
+
+            Тоо нь БҮХ ХУГАЦААНЫ ажилтны нийлбэр (хүн-өдөр) — жагсаалт өдөр бүр
+            өөрчлөгдөхгүй байх ёстой. */}
+        {/* ⚠️ Зурвас нь ҮРГЭЛЖ гарна (2026-09-06): урьд нь зөвхөн компанийн
+            сонголт байсан тул `coOptions` хоосон үед бүхэлдээ алга болдог
+            байв. Одоо ослын шүүлтүүр мөн энд суудаг — тэр нь компанийн
+            өгөгдлөөс ҮЛ ХАМААРНА. */}
+        <div className={h.filters}>
+          {/* ⚠️ ХОЁР БҮЛЭГТЭЙ КАРТ (2026-09-17, хэрэглэгчийн хүсэлт «гоё
+              харагдуул, доошоо зөөж»). Нарийн баганад зургаан капсул нэг
+              мөрөнд урсахад өргөн нь тэгш бус тасарч эмх замбараагүй
+              харагдаж байв. Одоо: (1) МЭДЭЭЛЭЛ — дөрвөн эх сурвалж 2×2
+              ТЭНЦҮҮ хавтан, (2) ШҮҮЛТ — багц ба компани тус бүр бүтэн
+              өргөнтэй мөр. Хоёр бүлэг нь үүргээрээ ялгаатай: эхнийх нь АЛЬ
+              мэдээллийг харах, хоёр дахь нь ТҮҮНИЙГ хэрхэн шүүх. */}
+          <div className={h.fltGroup}>
+          <span className={h.fltHead}>{tr('Мэдээлэл')}</span>
+          <div className={h.focusGrid}>
+          {/* ── ОСЛЫН ЧАРТЫН ШҮҮЛТҮҮР — «Төслийн дэлгэрэнгүй мэдээлэл»-ийн
+              капсул чиптэй ЯГ ИЖИЛ загвар (`dashboardOv.module.css .railItem`):
+              зүүн талд төлөвийн бөгж, дунд нь нэр, баруун талд утга; идэвхтэй
+              үед дүүрэн будагдана. ── */}
+          {FOCUS_CHIPS.map((f) => {
+            const on = focus === f.key;
+            return (
+              <button
+                key={f.key ?? 'all'}
+                type="button"
+                aria-pressed={on}
+                className={`${h.incChip} ${on ? h.incChipOn : ''}`}
+                /* Дахин дарвал анхны харагдац руу буцна */
+                /* ⚠️ Үзлэгийн чартын сонголтыг ЦУЦАЛНА: V1.1 ба гүйцэтгэгчийн маягт
+                   ӨӨР компани, талбайн жагсаалттай тул нэгийнх нь сонголт нөгөөд
+                   хуучирч үлдвэл самбар «Бүртгэл алга» гэж шалтгаангүй хоосорно. */
+                onClick={() => { setFocus(on ? null : f.key); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setPicked(null); }}
+              >
+                <span className={h.incChipLabel}>{f.label()}</span>
+                {f.count(fInc.length) != null && (
+                  <b className={`${h.incChipVal} num`}>{num(f.count(fInc.length) as number)}</b>
+                )}
+              </button>
+            );
+          })}
+          </div>
+          </div>
+
+          {/* ⚠️ «ШҮҮЛТ» БҮЛЭГ (Багц · Компани) ЭНДЭЭС ХАСАГДАВ (2026-09-17,
+              хэрэглэгчийн хүсэлт): газрын зураг дээрх шүүлтүүртэй ЯГ ижил
+              (`filterPills` — нэг бүрэлдэхүүн, нэг төлөв) тул давхардал байв.
+              Шүүлт одоо ЗӨВХӨН газрын зургийн баруун дээд буланд. */}
+        </div>
         {/* ── ОСЛЫН ФОКУС: дэлгэрэнгүй жагсаалт ЭНД (зүүнээс зөөгдсөн) ──
             ⚠️ Жагсаалт нь дотроо гүйлгэгддэг тул баганын ЦОРЫН ГАНЦ карт
             байх ёстой: хажууд нь өөр карт тавибал хоёулаа хагасхан өндөртэй
@@ -1967,7 +2069,18 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
 
-        {uzlegKind && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {uzlegKind && !dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {/* ⚠️ Хоёр маягтын горимд БАРУУН багана = захиалагчийн маягтын, зүүнтэй
+            ЯГ ИЖИЛ чартууд (зэрэг · ээлж · зураг · гүйцэтгэгчээр). */}
+        {dual && (<>
+          <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
+          <UzlegLeft
+            st={uzF2} url={HABEA.uzleg.zahialagch.url} sel={uzSel} onPick={onUzPick}
+            pkgSt={uzNoPkg2} pkgSel={pkgs} onPkg={togglePkg} photos={false}
+          />
+          <UzlegRight st={uzF2} sel={uzSel} onPick={onUzPick} />
+          <UzlegPhotos st={uzF2} url={HABEA.uzleg.zahialagch.url} sel={uzSel} />
+        </>)}
 
         {/* ── ХҮН ХҮЧНИЙ ФОКУС — БАРУУНД КОМПАНИАР хүний тоо ──
             ⚠️ Дарахад тухайн гүйцэтгэгчээр БҮХ хуудас шүүгдэнэ
@@ -2020,17 +2133,61 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             байгаа» тул `craneActive` нь ҮРГЭЛЖ нийт тоотой тэнцэж «50/50» гэж
             утгагүй давхардаж байв. Өгөгдөлд «Буусан» гарч эхэлбэл эргүүлж
             тавихад утгатай болно. */}
-        <Section title={tr('Цамхагт кран — төлөв')}>
-          {craneByStatus.length
-            ? <Donut items={craneByStatus} stack size={110} center={num(craneStatusBase.length)} centerLabel={tr('кран')}
-                selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
-            : <Empty label={tr('Бүртгэл алга')} />}
+        {/**
+          * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ОНОО — КОМПАНИАР (2026-09-17, хэрэглэгчийн
+          * хүсэлт: «Цамхагт кран — төлөв»-ийн ДЭЭР). V1.1 маягтаас, дээд KPI-тэй
+          * ИЖИЛ дүрмээр (`habeaUzleg.loadWeekScoreByCo`).
+          *
+          * ⚠️ Дарахад хуудасны «Компани» шүүлт тавигдана — зөвхөн хүн хүчний
+          * бүртгэлтэй холбогдсон компани (`co:` угтвартай түлхүүр дарахад юу ч
+          * болохгүй). ⚠️ 2026-09-17: «Багц» шүүлтийг ДАГАНА (`weekScoreByCo`).
+          */}
+        <Section
+          title={tr('Үзлэгийн оноо — компаниар')}
+          note={weekScores.state === 'ready' ? tr('{0}-р долоо хоногийн дундаж', num(weekScores.data.no)) : undefined}
+        >
+          {weekScores.state === 'loading'
+            ? <Loading />
+            : weekScores.state === 'error'
+              ? <Empty label={tr('Татагдсангүй: {0}', weekScores.error.message)} />
+              : weekScoreByCo(weekScores.data.rows, pkgs).length
+                ? (
+                  <Bars
+                    items={weekScoreByCo(weekScores.data.rows, pkgs)}
+                    selected={cos}
+                    onSelect={(k) => { if (!k.startsWith('co:')) toggleCo(k); }}
+                  />
+                )
+                : <Empty label={tr('Энэ долоо хоногт оноо бүртгэгдээгүй')} />}
         </Section>
-        <Section title={tr('Кран — багцаар')} note={tr('дарж бүгдийг шүүнэ')}>
-          {craneByPkg.length
-            ? <Bars items={craneByPkg} selected={pkgEff ? [...pkgEff] : null} onSelect={togglePkg} />
-            : <Empty label={tr('Бүртгэл алга')} />}
+        {/**
+          * ӨМНӨХ ДОЛОО ХОНОГИЙН ҮЛ НИЙЦЭЛ — БАГЦААР (2026-09-17, хэрэглэгчийн хүсэлт).
+          * «Үзлэгийн оноо — компаниар»-ын ДООР, ижил долоо хоног, ижил хоёр маягт
+          * (`habeaUzleg.weekNcByPkg`). Дарахад хуудасны «Багц» шүүлт тавигдана.
+          *
+          * ⚠️ «Цамхагт кран — төлөв» ЭНДЭЭС зүүн баганад («Компаниар — монгол,
+          * гадаад»-ын доор) шилжсэн — баруун багана үзлэгийн хоёр чарттай болов.
+          */}
+        <Section
+          title={tr('Үл нийцэл — багцаар')}
+          note={weekScores.state === 'ready' ? tr('{0}-р долоо хоногийн ноцтой ба бага зэргийн үл нийцэл', num(weekScores.data.no)) : undefined}
+        >
+          {weekScores.state === 'loading'
+            ? <Loading />
+            : weekScores.state === 'error'
+              ? <Empty label={tr('Татагдсангүй: {0}', weekScores.error.message)} />
+              : weekNcByPkg(weekScores.data.rows, cos).length
+                ? (
+                  <Bars
+                    items={weekNcByPkg(weekScores.data.rows, cos)}
+                    selected={pkgs}
+                    onSelect={togglePkg}
+                  />
+                )
+                : <Empty label={tr('Энэ долоо хоногт үл нийцэл бүртгэгдээгүй')} />}
         </Section>
+        {/* ⚠️ «Кран — багцаар» 2026-09-17-нд ХАСАГДАВ (хэрэглэгчийн хүсэлт) —
+            багцаар шүүх нь дээд талын «Багц» шүүлтүүрт бий. */}
         </>)}
       </div>
       )}
@@ -2039,7 +2196,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           хамаарна (2026-09-06): анхны харагдац ба «Техник болон хүн цаг»
           үед ажилтан/техникийн цуваа, ослын фокуст зураг + компаниар,
           үзлэгийн фокуст гүйцэтгэгч + талбай + сараар. «Осол, зөрчил —
-          багцаар» хасагдсан; багцаар шүүх нь «Кран — багцаар»-т үлдсэн. ── */}
+          багцаар» ба «Кран — багцаар» хасагдсан; багцаар шүүх нь дээд талын
+          «Багц» шүүлтүүрт. ── */}
       {/* ⚠️ `data-cols` нь БАГАНЫН ТООГ сольдог. Тогтмол 4 багана
           үлдээвэл 2 картын горимд тэдгээр нь зүүн хагаст шахагдаж, баруун
           тал хоосон үлдэнэ. Горим бүрд:
@@ -2047,6 +2205,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             хүн хүч → 2 (ажилтан · техник)
             үзлэг  → 2 (өдрөөр · сараар — 2026-09-15, урьд нь 1)
             (гүйцэтгэгч ба талбайн задаргаа нь баруун баганад — `UzlegRight`) */}
+      {/* ⚠️ Хоёр маягтын горимд ХОЁР хагас (зүүн V1.1 · баруун захиалагч), хагас
+          бүрд өдөр · сар · долоо хоногийн гурван цуваа (`.finHalf`). */}
       <div className={h.fin} data-cols="2"
         style={panes.styleFor('fin1', 'fin2')}>
         {incOpen && (<>
@@ -2060,7 +2220,21 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         </>)}
 
-        {uzlegKind && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {uzlegKind && !dual && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {dual && (<>
+          <div className={h.finHalf}>
+            <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />
+            <div className={h.finHalfGrid}>
+              <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />
+            </div>
+          </div>
+          <div className={h.finHalf}>
+            <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
+            <div className={h.finHalfGrid}>
+              <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} />
+            </div>
+          </div>
+        </>)}
 
         {laborOpen && (<>
         {/* Ажилтны тоо ӨДРӨӨР. Багана 213 хүртэл болох тул хэвтээ гүйлгэгчид
@@ -2080,7 +2254,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {(aStep === 'day' ? byDay : byMonth).length
             ? (
               <div className={h.dayScroll} ref={dayScroll}>
-                <div style={{ minWidth: `${Math.max(100, ((aStep === 'day' ? byDay : byMonth).length / DAYS_VISIBLE) * 100)}%` }}>
+                <div style={{ minWidth: `${Math.max(100, ((aStep === 'day' ? byDay : byMonth).length / SERIES_VISIBLE) * 100)}%` }}>
                   <Series
                     items={aStep === 'day' ? byDay : byMonth}
                     height={110}
@@ -2096,7 +2270,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             : surveyEmpty}
         </Section>
         {/* Техник ӨДРӨӨР — ажилтны цувааны ХАЖУУД, ижил хэлээр, ижил өргөнд.
-            Хоёулаа `DAYS_VISIBLE` өдөр зэрэг харуулна. */}
+            Хоёулаа `SERIES_VISIBLE` өдөр зэрэг харуулна. */}
         <Section
           title={tStep === 'day' ? tr("Техник — өдрөөр") : tr("Техник — сараар")}
           note={stepNote(tStep, setTehnikStep,
@@ -2107,7 +2281,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {(tStep === 'day' ? techDay : techMonth).length
             ? (
               <div className={h.dayScroll} ref={techScroll}>
-                <div style={{ minWidth: `${Math.max(100, ((tStep === 'day' ? techDay : techMonth).length / DAYS_VISIBLE) * 100)}%` }}>
+                <div style={{ minWidth: `${Math.max(100, ((tStep === 'day' ? techDay : techMonth).length / SERIES_VISIBLE) * 100)}%` }}>
                   <Series
                     items={tStep === 'day' ? techDay : techMonth}
                     height={110}
@@ -2132,10 +2306,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ⚠️ Бариул нь баганын ЗААГ бүрд — тоо нь ҮРГЭЛЖ (багана − 1).
             Илүү бариул зурвал хоосон баганы ирмэгийг чирч, юу ч хөдлөхгүй
             байдалд хүргэнэ. */}
-        {/* ⚠️ Үзлэгийн горимд ГАНЦ карт тул ЗААГ байхгүй — бариул ч байхгүй */}
-        {!uzlegKind && (
-          <div className={h.gripCol} style={{ gridColumn: 1, gridRow: 1, right: -8 }} {...panes.grip('fin1')} />
-        )}
+        {/* ⚠️ Бариулын тоо = багана − 1 — бүх горим ХОЁР багана. */}
+        <div className={h.gripCol} style={{ gridColumn: 1, gridRow: 1, right: -8 }} {...panes.grip('fin1')} />
+        {/* ⚠️ Үзлэгийн горим ч 2 карттай болсон (2026-09-17: өдөр ба сар НЭГ
+            картад шилжүүлэгчтэй нэгдсэн) тул хоёр дахь бариул хэрэггүй. */}
       </div>
 
       {/* ── Панелийн хэмжээ тохируулах бариулууд ──

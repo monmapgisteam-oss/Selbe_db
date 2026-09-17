@@ -11,6 +11,12 @@
    ══════════════════════════════════════════════════════════ */
 
 .shell {
+  /* ⚠️ `--accent` ГЛОБАЛ БИШ (зөвхөн `dashboardOv` ба `suitability` модульд
+     тодорхойлогддог). Энд тодорхойлоогүй байсан тул `var(--accent)` ХҮЧИНГҮЙ болж,
+     идэвхтэй чипийн дэвсгэр тунгалаг, бичиг нь `--surface` өнгөөр — ХАРАНХУЙ
+     дэвсгэр дээр ХАРАНХУЙ бичиг болж «хоосон цагаан хүрээ» шиг харагдаж байв
+     (2026-09-17, хэрэглэгчийн скриншот). `dashboardOv`-той ижил утга. */
+  --accent: var(--data);
   height: 100%;
   /* ⚠️ Бариулууд нь grid-ийн НҮДЭНД байрлаж, түүнийхээ ирмэг рүү шилжинэ —
      absolute хүүхдийн эх нь `.shell` байх ёстой. */
@@ -20,11 +26,16 @@
   padding: 8px;
   /* Өргөн/өндөр нь CSS хувьсагчаар — `usePanes` чирэх явцад ЭДГЭЭРИЙГ шууд
      бичдэг (React дахин зурахгүй). Хувьсагч тавиагүй бол анхны утга. */
+  /* ⚠️ 2026-09-17: зүүн 316 · баруун 344 → ХОЁУЛАА 340px, чирэхэд ч ХОЛБООТОЙ
+     (`habeaPanes.LINKED`). Хоёр маягт зэрэгцэх горимд ИЖИЛ чартууд тэгш
+     өргөнд харагдаж харьцуулагдана. */
   grid-template-columns:
-    var(--col-l, 316px)    /* зүүн: осол зөрчил */
+    var(--col-l, 340px)    /* зүүн: осол зөрчил */
     minmax(0, 1fr)         /* төв: зураг */
-    var(--col-r, 344px);   /* баруун: кран · хүн хүч */
-  grid-template-rows: auto auto minmax(0, 1fr) var(--row-fin, auto);
+    var(--col-r, 340px);   /* баруун: кран · хүн хүч */
+  /* ⚠️ 2026-09-17: шүүлтүүрийн мөр (`flt`) тороос ХАСАГДАВ — баруун
+     баганын оройд шилжсэн (`Habea.tsx` §r). Мөрийн тоо 4 → 3. */
+  grid-template-rows: auto minmax(0, 1fr) var(--row-fin, auto);
   /* ⚠️ ШҮҮЛТҮҮР нь KPI-аас ДЭЭР (2026-09-06, хэрэглэгчийн хүсэлт): доорх
      тоонууд шүүлтээс ХАМААРЧ өөрчлөгддөг тул шалтгаан нь үр дүнгээсээ
      дээр байх ёстой. Урьд нь эсрэгээр байсан тул хэрэглэгч тоог хараад
@@ -34,7 +45,6 @@
      багана ДЭЭД талдаа тулна. ⚠️ grid-ийн area нь ТЭГШ ӨНЦӨГТ байх ёстой тул
      шүүлтийн мөрийг бүтэн өргөнд тавьж болохгүй — тэгвэл `list`/`r` тасална. */
   grid-template-areas:
-    'list flt r'
     'list kpi r'
     'list map r'
     'fin  fin fin';
@@ -62,9 +72,8 @@
 .shell[data-list='0'][data-r='1'] {
   grid-template-columns:
     minmax(0, 1fr)
-    var(--col-r, 344px);
+    var(--col-r, 340px);
   grid-template-areas:
-    'flt r'
     'kpi r'
     'map r'
     'fin fin';
@@ -73,10 +82,9 @@
 /* Зүүн БАЙНА · баруун ХООСОН — осол эсвэл үзлэгийн фокус */
 .shell[data-list='1'][data-r='0'] {
   grid-template-columns:
-    var(--col-l, 316px)
+    var(--col-l, 340px)
     minmax(0, 1fr);
   grid-template-areas:
-    'list flt'
     'list kpi'
     'list map'
     'fin  fin';
@@ -86,7 +94,6 @@
 .shell[data-list='0'][data-r='0'] {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    'flt'
     'kpi'
     'map'
     'fin';
@@ -199,30 +206,148 @@
    ⚠️ Ангийн нэрийг ХОЁР УДАА бичсэн нь санамсаргүй БИШ: `.tile`-тэй адил нэг
    ангийн жинтэй байвал аль нь давах нь CSS багцлагдах дараалалаас хамаарч
    тогтворгүй болно. Давхардуулснаар жин нь өснө. */
-.kpiCenter.kpiCenter {
+/* ══ KPI НҮД (`Habea.kpiTile`, 2026-09-17 шинэ зохиомж) ══
+   Шошго дээр · том тоо · нимгэн харьцааны зурвас · тайлбар. Бүх мөр ГОЛЛОСОН.
+   ⚠️ `habeaOv .tile`-ийг ашиглахгүй — тэр нь тоог ёроолд жижгээр наалдуулдаг. */
+.kt {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px 12px;
   text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
-/* Утгын мөр нь flex (тоо + нэгж) — түүнийг мөн голлуулна */
-.kpiCenter > div { justify-content: center; }
+/* ⚠️ ХОЁР МӨРИЙН ТОГТМОЛ өндөр, доод ирмэгтээ — нэг ба хоёр мөр шошготой
+   нүднүүдийн ТОО нэг шугам дээр гарна (`2.6em` = 10px × 1.3 × 2). */
+.ktLabel {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 2.6em;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ktVal {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  min-width: 0;
+}
+/* ⚠️ `clamp` — 6 нүд нэг мөрөнд багтах нарийн өргөнд «2,065,424» хальж
+   тасрахгүй; өргөн дэлгэцэд 22px хүртэл томорно. */
+.ktVal b {
+  font-size: clamp(16px, 1.45vw, 22px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ktVal i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* Харьцааны зурвас — өгөгдлийн өнгөөр, ард нь бүдэг зам (утга 0 ч ЗАМ харагдана) */
+.ktBar {
+  width: min(132px, 80%);
+  height: 4px;
+  margin-top: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--data) 18%, transparent);
+}
+.ktBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--data);
+}
+.ktSub {
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--ink-3);
+}
 
 
 /* ── Гүйцэтгэгчийн шүүлтүүрийн мөр — KPI-ийн ЯГ доор, зурагтай ижил өргөн ──
    Нэг унжих жагсаалт + сонгосон утгын тайлбар. Зурвасын өндөр ТОГТМОЛ тул
    газрын зураг шахагдахгүй. */
+/* ⚠️ 2026-09-17: БАРУУН БАГАНЫН ОРОЙД (344px) — тор дээрх `grid-area` ХАСАГДАВ.
+   Нарийн баганад зургаан чип нэг мөрөнд багтахгүй тул ХЭВТЭЭ ГҮЙЛГЭЭ
+   БИШ `flex-wrap`: гүйлгэвэл «Компани» шүүлтүүр харагдахгүй нуугдана.
+   `flex: none` — багана нь flex багана тул агуулгаараа хумигдахгүй. */
 .filters {
-  grid-area: flt;
+  flex: none;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
-  padding: 5px 8px;
+  padding: 10px 10px 11px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
+
+/* Бүлэг — гарчиг + агуулга. Хоёр бүлгийн хооронд нарийн зураас: «аль
+   мэдээлэл» ба «хэрхэн шүүх» гэсэн хоёр өөр алхам гэдгийг нүдэнд хэлнэ. */
+.fltGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.fltGroup + .fltGroup {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.fltHead {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--ink-3);
+}
+
+/**
+ * ДӨРВӨН ЭХ СУРВАЛЖ — 2×2 ТЭНЦҮҮ ХАВТАН.
+ *
+ * ⚠️ Капсулын (`border-radius: 999px`, `nowrap`) дүрмийг ЗӨВХӨН энд
+ * дарна: «Гүйцэтгэгчийн ажлын байрны үзлэг» нь хагас баганад нэг мөрөнд
+ * багтахгүй тул нэр ХОЁР МӨРӨНД ороох ёстой, эс бөгөөс тайрагдана.
+ * `align-items: stretch` — нэг мөрийн хоёр хавтан ижил өндөртэй байна.
+ */
+.focusGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+}
+.focusGrid .incChip {
+  width: 100%;
+  min-height: 40px;
+  padding: 7px 9px;
+  gap: 8px;
+  border-radius: var(--r-sm);
+}
+.focusGrid .incChipLabel {
+  flex: 1;
+  white-space: normal;
+  line-height: 1.25;
+}
+
 /* ══ КОМПАНИ БҮРИЙН МОНГОЛ/ГАДААД задаргаа ══
    Мөр бүр: нэр · 100% зурвас · гадаадын хувь. Зурвасууд НЭГ баганад
    эгнэдэг тул компаниудыг нүдээр шууд харьцуулна (`Bars` нь хоёр
@@ -567,6 +692,47 @@
   min-width: 0;
 }
 
+/* ══ ХОЁР МАЯГТ ЗЭРЭГЦЭЭ (2026-09-17) ══
+   Эх сурвалжийн гарчиг — аль багана/хагас аль маягтынх болохыг хэлнэ.
+   Өнгөт дөрвөлжин = газрын зураг дээрх тэр маягтын цэгийн өнгө. */
+.srcHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 2px 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+}
+.srcHead i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.srcHead span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Доод зурвасын хагас — гарчиг + гурван цуваа. ⚠️ `min-width: 0` ЗААВАЛ:
+   grid-ийн хүүхэд агуулгаараа тэлж, хөрш хагасыг дэлгэцээс түлхэнэ. */
+.finHalf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.finHalfGrid {
+  display: grid;
+  /* 2026-09-17: өдөр/сар нэг картад нэгдсэн тул хагас бүрд ХОЁР карт */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.finHalfGrid > section { min-width: 0; }
+
 /* Газрын зураг — карттай ижил hairline хүрээ, сүүдэргүй (envhub) */
 .map {
   grid-area: map;
@@ -607,6 +773,16 @@
    гурвуулаа доор байвал зурвас өндөрсөж, зураг дэлгэцээс гарч байв. */
 .fin[data-cols='1'] {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* ГУРВАН багана — үзлэгийн горим: өдөр · сар · долоо хоногийн оноо (2026-09-17).
+   ⚠️ Эхний хоёр трек хувьсагчаар (`--fin-1`, `--fin-2`) — бариул `fin1`/`fin2`
+   тэдгээрийг чирнэ; сүүлийнх нь үлдсэн зайг эзэлнэ. */
+.fin[data-cols='3'] {
+  grid-template-columns:
+    var(--fin-1, minmax(0, 1fr))
+    var(--fin-2, minmax(0, 1fr))
+    minmax(0, 1fr);
 }
 
 /* «Бүгдийг арилгах» — зурган дээрх шүүлтийн чипүүдийн хажууд, хоёроос дээш
@@ -895,12 +1071,11 @@
 @media (max-width: 1180px) {
   .shell {
     grid-template-columns: 1fr;
-    /* ⚠️ 'flt' (шүүлтийн зурвас) заавал орно — үгүй бол auto-placement нь түүнийг
-       хуудасны ХАМГИЙН ДООД мөрөнд шидэж, шүүдэг зургаасаа тасардаг байв
-       (2026-08-21 аудит). Зургийн мөрөнд 240px доод шал — намхан дэлгэцэд
-       52vh хэт жижигрэхээс хамгаална. */
-    grid-template-rows: auto auto auto max(240px, 52vh) auto auto;
-    grid-template-areas: 'flt' 'kpi' 'list' 'map' 'r' 'fin';
+    /* ⚠️ 2026-09-17: шүүлтийн зурвас тор дээр БАЙХГҮЙ — `r` баганын оройд
+       шилжсэн тул тэр багана дотроо дагаж явна. Зургийн мөрөнд 240px доод
+       шал — намхан дэлгэцэд 52vh хэт жижигрэхээс хамгаална. */
+    grid-template-rows: auto auto max(240px, 52vh) auto auto;
+    grid-template-areas: 'kpi' 'list' 'map' 'r' 'fin';
     height: auto;
     overflow: visible;
   }
