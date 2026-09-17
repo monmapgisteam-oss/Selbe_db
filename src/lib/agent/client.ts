@@ -73,7 +73,10 @@ const BOT_SECRET = process.env.AGENT_BOT_SECRET;
  * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон) эсвэл локал реле үед энэ нь
  * `null` буцаана — тэр тохиолдолд реле ч токен шаардахгүй.
  */
-async function arcgisToken(): Promise<string | null> {
+/* ⚠️ 2026-09-17: экспортлогдсон — «Удирдлагын тайлан»-гийн AI дүгнэлт
+   (`execReport.askExecSummary`) хэрэгсэлгүй ГАНЦ хүсэлтээр реле рүү явдаг
+   тул `ask()`-ийн гогцоог хэрэглэхгүй, харин ижил нэвтрэлтийн толгой хэрэгтэй. */
+export async function arcgisToken(): Promise<string | null> {
   if (!AUTH.appId) return null;
   try {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');

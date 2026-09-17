@@ -57,8 +57,14 @@ const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
 /** Гарчиг дахь кириллийг MIME-encoded-word болгоно */
 const encHeader = (str: string) => `=?UTF-8?B?${b64utf8(str)}?=`;
 
-/** pdfmake-ээр PDF үүсгэж base64 буцаана (динамик ачаалалт) */
-async function makePdfBase64(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<string> {
+/**
+ * pdfmake баримтыг base64 PDF болгоно (динамик ачаалалт).
+ *
+ * ⚠️ 2026-09-17: экспортлогдсон — «Удирдлагын тайлан» (`execPdf.ts`) ижил
+ *    ачаалагч, ижил фонтын VFS хэрэглэнэ; хоёр газар давтвал pdfmake хоёр
+ *    удаа ачаалагдаж, VFS хоёр удаа бүртгэгдэнэ.
+ */
+export async function renderPdfBase64(doc: unknown): Promise<string> {
   const mod = await import('pdfmake/build/pdfmake');
   const vfsMod = await import('pdfmake/build/vfs_fonts');
   // ⚠️ UMD/CJS interop — build нь `module.exports`-оор гардаг тул `.default`.
@@ -70,15 +76,18 @@ async function makePdfBase64(rows: BagtsRow[], dateStr: string, extra: ReportExt
   const vfs = (vfsMod as unknown as { default?: unknown }).default ?? vfsMod;
   if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs);
   else pdfMake.vfs = vfs;
-
-  const doc = buildReportDoc(rows, dateStr, extra);
   // ⚠️ pdfmake 0.3.x — `getBase64()` нь PROMISE (callback БИШ). Callback дамжуулбал
   //    Promise шийдэгдэхгүй, товч мөнхөд «Бэлтгэж байна…» дээр гацна.
   return pdfMake.createPdf(doc).getBase64();
 }
 
+/** pdfmake-ээр PDF үүсгэж base64 буцаана (динамик ачаалалт) */
+async function makePdfBase64(rows: BagtsRow[], dateStr: string, extra: ReportExtra): Promise<string> {
+  return renderPdfBase64(buildReportDoc(rows, dateStr, extra));
+}
+
 /** Blob-ыг файл болгож татна */
-function download(filename: string, blob: Blob): void {
+export function download(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

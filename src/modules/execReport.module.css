@@ -1,0 +1,98 @@
+/* УДИРДЛАГЫН ТАЙЛАН — «Тайлан» харагдацын хоёр дахь горим.
+   Цаас, хүснэгт, гарчиг нь `report.module.css`-ээс; энд зөвхөн энэ горимд
+   ӨВӨРМӨЦ хэсгүүд: горим сэлгэгч, AI дүгнэлтийн хайрцаг, инфографикийн
+   урьдчилсан харагдац. */
+
+/* Горим сэлгэгч — сегмент товч */
+.modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+.mode {
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.mode + .mode { border-left: 1px solid var(--line); }
+.mode:hover { background: var(--surface-2); }
+.modeOn { background: var(--hue, var(--accent)); color: var(--hue-ink, #fff); }
+.modeOn:hover { background: var(--hue, var(--accent)); }
+
+/* Хоёрдогч товч — AI дүгнэлт (гол товчноос ялгаатай, тодруулгагүй) */
+.btn2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.btn2:hover { background: var(--surface-2); }
+.btn2:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* AI дүгнэлт — тэргүү хэсэгтэй ижил хүрээ, гэхдээ өөр зааг өнгө */
+.ai {
+  margin: 0 0 22px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--data);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+.aiHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.aiEmpty { font-style: italic; color: var(--ink-3); }
+
+/* Инфографикийн урьдчилсан харагдац — цаасны өргөнд багтсан зураг */
+.preview {
+  margin: 12px 0 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: #fff;
+}
+.preview img { display: block; width: 100%; height: auto; }
+
+/* Хоёр багана — гүйцэтгэл ба санхүү зэрэгцээ (нарийн дэлгэцэд нэг багана) */
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+
+/* Төлөвийн өнгөт нүд */
+.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+.good { color: var(--good-ink, var(--good)); font-weight: 600; }
+
+@media print {
+  .modes, .btn2 { display: none; }
+  .ai { background: #f6f6f6; border-color: #999; color: #000; }
+  .preview { break-inside: avoid; }
+}

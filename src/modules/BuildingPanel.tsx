@@ -136,8 +136,19 @@ const oidWhere = (oids: number[]) =>
  * `BuildingSummary` нэг л удаа дуудна; `loadBlockProgress` нь cache-тэй тул
  * газрын зургийн өнгө, tooltip, баруун самбартай ЯГ нэг эх сурвалж.
  */
+/**
+ * ⚠️ 2026-09-17: ачаалагч нь hook-оос САЛСАН — «Удирдлагын тайлан»
+ * (`src/lib/execReport.ts`) React-гүй орчинд (PDF/инфографик угсрах) ЯГ
+ * ИЖИЛ багцын тоог хэрэглэнэ. Hook нь урьдын адил ажиллана.
+ */
+export type BuildingsData = Awaited<ReturnType<typeof loadBuildings>>;
+
 export function useBuildings() {
-  return useAsync(async () => {
+  return useAsync(loadBuildings, []);
+}
+
+export async function loadBuildings() {
+  {
     const [rows, prog, hist] = await Promise.all([
       queryFeatures(BUILDING.url, {
         outFields: [BUILDING.oid, F.bagts, F.block, F.contractor, F.floors, F.households],
@@ -215,7 +226,7 @@ export function useBuildings() {
         };
       }).filter((st) => phaseName.has(st.key)),
     };
-  }, []);
+  }
 }
 
 /* ═════════════ Явцын муруй — өдөр / сараар ═════════════ */
