@@ -25,7 +25,8 @@ import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { loadExecReport, execFindings, askExecSummary } from '@/lib/execReport';
-import { buildInfographicSvg, money } from '@/lib/execInfographic';
+import { buildInfographic, infographicSvgUrl, money } from '@/lib/execInfographic';
+import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
 import { TOLOV } from '@/lib/zovshoorol';
@@ -60,11 +61,10 @@ export function ExecReport() {
   const x = q.state === 'ready' ? q.data : null;
   const findings = useMemo(() => (x ? execFindings(x) : []), [x]);
   /* Инфографикийн урьдчилсан харагдац — SVG-г шууд <img>-д (PNG хөрвүүлэлтгүй, хурдан) */
-  const previewSrc = useMemo(() => {
-    if (!x) return '';
-    const svg = buildInfographicSvg(x, date || new Date().toLocaleDateString('mn-MN'), findings, summary);
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  }, [x, date, findings, summary]);
+  const previewSrc = useMemo(
+    () => (x ? infographicSvgUrl(buildInfographic(x, date || new Date().toLocaleDateString('mn-MN'), findings, summary)) : ''),
+    [x, date, findings, summary],
+  );
 
   const run = useCallback(async (what: 'pdf' | 'png' | 'ai') => {
     if (!x || busy) return;
@@ -109,7 +109,7 @@ export function ExecReport() {
 
       <article className={r.paper}>
         <header className={r.docHead}>
-          <h1 className={r.title}>{tr('Сэлбэ 20 минутын хот — Удирдлагын тайлан')}</h1>
+          <h1 className={r.title}>{tr('Сэлбэ ухаалаг хот — Удирдлагын тайлан')}</h1>
           <p className={r.sub}>
             {tr('Шийдвэр гаргагчид зориулсан товч тайлан')}{date && <> {tr('· Огноо:')} {date}</>}
           </p>
@@ -174,6 +174,49 @@ export function ExecReport() {
                   </tbody>
                 </table>
                 <p className={r.note}>{tr('Нийт төсөв (KPI) нь Excel-ийн НИЙТ хамрах хүрээгээр; төрлийн хүснэгтийн нийлбэр нь бүх мөрөөр тул зөрж болно.')}</p>
+
+                <div className={e.two}>
+                  {/* ── Газар чөлөөлөлт — 01-ийн карт ── */}
+                  <div>
+                    <Cap no="1.1">{tr('Газар чөлөөлөлт — нэгж талбарын төлөв')}</Cap>
+                    <table className={r.table}>
+                      <thead><tr><th>{tr('Төлөв')}</th><th className={r.num}>{tr('Талбар')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
+                      <tbody>
+                        {x.gdash.land.byStatus.map((b) => (
+                          <tr key={b.label}>
+                            <td className={b.label === PARCEL_CLEARED ? '' : e.warn}>{b.label}</td>
+                            <td className={r.num}>{num(b.n)}</td>
+                            <td className={r.num}>{x.gdash.land.total ? pct((b.n / x.gdash.land.total) * 100, 1) : '—'}</td>
+                          </tr>
+                        ))}
+                        <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.land.total)}</td><td className={r.num}>{x.gdash.landPct == null ? '—' : tr('чөлөөлсөн {0}', pct(x.gdash.landPct, 1))}</td></tr>
+                      </tbody>
+                    </table>
+                    {x.gdash.land.reasons.length > 0 && (
+                      <>
+                        <Fig no="2.1">{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
+                        <RankBars
+                          title={tr('Чөлөөгдөөгүй талбарын шалтгаан')}
+                          items={x.gdash.land.reasons.map((rs, i) => ({ label: rs.label, value: rs.n, hot: i === 0 }))}
+                        />
+                      </>
+                    )}
+                  </div>
+                  {/* ── ХАБ — 01-ийн карт ── */}
+                  <div>
+                    <Cap no="1.2">{tr('ХАБ — талбайн хүн хүч')}{x.gdash.hse?.date ? ` · ${x.gdash.hse.date}` : ''}</Cap>
+                    {x.gdash.hse ? (
+                      <>
+                        <KpiRow items={[
+                          { label: tr('Ажиллаж буй хүн'), value: num(x.gdash.hse.workers) },
+                          { label: tr('Техник хэрэгсэл'), value: num(x.gdash.hse.equipment) },
+                          { label: tr('Хүн цаг'), value: num(x.gdash.hse.manHours) },
+                        ]} />
+                        <p className={r.note}>{tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.')}</p>
+                      </>
+                    ) : <p className={r.note}>{tr('ХАБ-ын бүртгэл алга — мэдээлэлгүй.')}</p>}
+                  </div>
+                </div>
               </section>
 
               <div className={e.two}>
@@ -287,7 +330,7 @@ export function ExecReport() {
               </section>
 
               <p className={r.note} style={{ marginTop: 22 }}>
-                {tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо тайлан үүсгэх агшинд ArcGIS-ээс амьдаар татагдсан; дэлгэц дээрх дашбоардтай ижил.')}
+                {tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард (KPI · Газар чөлөөлөлт · ХАБ) · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо тайлан үүсгэх агшинд ArcGIS-ээс амьдаар татагдсан; дэлгэц дээрх дашбоардтай ижил.')}
               </p>
             </>
           )}

@@ -15,7 +15,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { execFindings, type ExecReport } from '@/lib/execReport';
 import { TOLOV } from '@/lib/zovshoorol';
-import { buildInfographicSvg, svgToPng, money, INFO_W, INFO_H } from '@/lib/execInfographic';
+import { PARCEL_CLEARED } from '@/lib/services';
+import { buildInfographic, toPng, money, INFO_W, INFO_H } from '@/lib/execInfographic';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 
 const HEAD = '#eef1f5';
@@ -99,7 +100,8 @@ export async function buildExecDoc(
   x: ExecReport, dateStr: string, summary: string | null,
 ): Promise<TDocumentDefinitions> {
   const findings = execFindings(x);
-  const infoPng = await svgToPng(buildInfographicSvg(x, dateStr, findings, summary));
+  /* ⚠️ Canvas 2D-ээр ШУУД (SVG→<img> замгүй) — тайлбарыг `execInfographic.ts`-ээс */
+  const infoPng = toPng(buildInfographic(x, dateStr, findings, summary), 1);
   const g = x.gdash;
   const p = x.prog;
   const f = x.fin;
@@ -125,7 +127,7 @@ export async function buildExecDoc(
       foot: { fontSize: 7.5, color: '#6b7280' },
     },
     footer: (page: number, count: number) => ({
-      text: tr('Сэлбэ 20 минутын хот — Удирдлагын тайлан · {0} / {1}', page, count),
+      text: tr('Сэлбэ ухаалаг хот — Удирдлагын тайлан · {0} / {1}', page, count),
       style: 'foot', alignment: 'center',
     }),
     content: [
@@ -134,7 +136,7 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'after' },
 
       /* ── 2. Дүгнэлт + KPI ── */
-      { text: tr('Сэлбэ 20 минутын хот — Удирдлагын тайлан'), style: 'h1' },
+      { text: tr('Сэлбэ ухаалаг хот — Удирдлагын тайлан'), style: 'h1' },
       { text: tr('Шийдвэр гаргагчид зориулсан товч тайлан · Огноо: {0}', dateStr), style: 'sub' },
       { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 1.2, lineColor: '#14181c' }] },
 
@@ -179,6 +181,36 @@ export async function buildExecDoc(
           td(num(g.byType.reduce((a, t) => a + t.contract, 0)), true, TOTAL), td('', true, TOTAL)],
       ] }, layout: tableLayout },
       note(tr('Нийт төсөв (KPI) нь Excel-ийн НИЙТ хамрах хүрээгээр; төрлийн хүснэгтийн нийлбэр нь бүх мөрөөр тул зөрж болно.')),
+
+      /* ── Газар чөлөөлөлт ба ХАБ — 01-ийн хоёр карт ── */
+      cap(tr('Газар чөлөөлөлт — нэгж талбарын төлөв')),
+      { table: { headerRows: 1, widths: ['*', 60, 90, 55], body: [
+        [th(tr('Төлөв')), th(tr('Талбар'), true), th(tr('Талбай (м²)'), true), th(tr('Хувь'), true)],
+        ...g.land.byStatus.map((b): TableCell[] => [
+          td(b.label), td(num(b.n), true), td(num(b.areaM2), true),
+          td(g.land.total ? pct((b.n / g.land.total) * 100, 1) : '—', true, b.label === PARCEL_CLEARED ? undefined : WARN_BG),
+        ]),
+        [td(tr('Нийт'), false, TOTAL), td(num(g.land.total), true, TOTAL), td(num(g.land.areaM2), true, TOTAL),
+          td(g.landPct == null ? '—' : tr('чөлөөлсөн {0}', pct(g.landPct, 1)), true, TOTAL)],
+      ] }, layout: tableLayout },
+      ...(g.land.reasons.length ? [
+        cap(tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(g.land.remaining))),
+        { table: { headerRows: 1, widths: ['*', 60, 55], body: [
+          [th(tr('Шалтгаан')), th(tr('Талбар'), true), th(tr('Хувь'), true)],
+          ...g.land.reasons.map((r): TableCell[] => [
+            td(r.label), td(num(r.n), true), td(g.land.remaining ? pct((r.n / g.land.remaining) * 100, 1) : '—', true),
+          ]),
+        ] }, layout: tableLayout } as Content,
+      ] : [note(tr('Чөлөөгдөөгүй талбарын шалтгаан бүртгэгдээгүй.'))]),
+      cap(tr('ХАБ — талбайн хүн хүч')),
+      ...(g.hse ? [
+        kpiRow([
+          { label: tr('Ажиллаж буй хүн'), value: num(g.hse.workers), sub: g.hse.date ? tr('сүүлийн бүртгэл {0}', g.hse.date) : undefined },
+          { label: tr('Техник хэрэгсэл'), value: num(g.hse.equipment) },
+          { label: tr('Хүн цаг'), value: num(g.hse.manHours) },
+        ]),
+        note(tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.')),
+      ] : [note(tr('ХАБ-ын бүртгэл алга — мэдээлэлгүй.'))]),
 
       /* ── 3. Гүйцэтгэл + санхүү ── */
       { text: '', pageBreak: 'after' },
@@ -255,7 +287,7 @@ export async function buildExecDoc(
         ] : [note(tr('Бүх зөвшөөрөл зөвшөөрөгдсөн.'))]),
       ]),
 
-      note(tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо тайлан үүсгэх агшинд ArcGIS-ээс амьдаар татагдсан; дэлгэц дээрх дашбоардтай ижил.')),
+      note(tr('Эх сурвалж: Сэлбэ портал — 01. Ерөнхий дашбоард (KPI · Газар чөлөөлөлт · ХАБ) · 05. Багцын гүйцэтгэл · 04. Багцын санхүү · Зөвшөөрөл. Бүх тоо тайлан үүсгэх агшинд ArcGIS-ээс амьдаар татагдсан; дэлгэц дээрх дашбоардтай ижил.')),
     ],
   };
 }
@@ -272,7 +304,7 @@ export async function downloadExecPdf(x: ExecReport, dateStr: string, summary: s
 
 /** Инфографикийг ЗУРАГ (PNG, 2× нарийвчлал) болгож татна */
 export async function downloadInfographic(x: ExecReport, dateStr: string, summary: string | null): Promise<void> {
-  const png = await svgToPng(buildInfographicSvg(x, dateStr, execFindings(x), summary), 2);
+  const png = toPng(buildInfographic(x, dateStr, execFindings(x), summary), 2);
   const bytes = Uint8Array.from(atob(png.split(',')[1]), (c) => c.charCodeAt(0));
   download(PNG_NAME, new Blob([bytes], { type: 'image/png' }));
 }
