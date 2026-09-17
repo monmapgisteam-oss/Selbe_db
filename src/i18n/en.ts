@@ -4394,7 +4394,11 @@ const en: Record<string, string> = {
   "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in.",
   "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen",
   "өөрчлөлт": "changes",
-  "Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.": "The first {0} rows were written, then an error occurred: {1}. Press Save again to write the rest."
+  "Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.": "The first {0} rows were written, then an error occurred: {1}. Press Save again to write the rest.",
+  "Үргэлжлэх хоног": "Duration in days",
+  "Эхлэх огноог эхлээд сонгоно": "Choose the start date first",
+  "Хоног бичихэд дуусах огноо автоматаар бодогдоно": "Type the number of days and the end date is computed automatically",
+  "Эхлэх огноо + хоног → дуусах огноо": "Start date + days → end date"
 };
 
 export default en;

@@ -3099,6 +3099,28 @@ function PlanModal({
   const days = ms1 != null && ms2 != null && !bad ? spanDays({ start: ms1, end: ms2 }) : null;
 
   /**
+   * ҮРГЭЛЖЛЭХ ХОНОГ — засварлагддаг талбар (2026-09-17, хэрэглэгчийн хүсэлт:
+   * «эхлэх огноо сонгоод хоногоо бичихэд дуусах огноо автоматаар гарна»).
+   * Текст төлөв `durTxt` нь a/z-ээс гарсан `days`-тай хоёр талдаа синк:
+   *   · хоног бичихэд → `z = endOf(ms1, n)` (хоёр тал орсон, `plan.endOf`);
+   *   · эхлэхийг өөрчлөхөд хоног хадгалагдсан бол дуусах дагаж хөдөлнө;
+   *   · дуусахыг гараар өөрчлөхөд хоног дагаж шинэчлэгдэнэ (effect).
+   */
+  const [durTxt, setDurTxt] = useState('');
+  useEffect(() => { setDurTxt(days != null ? String(days) : ''); }, [days]);
+  const onDur = (v: string) => {
+    setDurTxt(v);
+    const n = Math.floor(Number(v));
+    if (n >= 1 && ms1 != null) setZ(msToDay(endOf(ms1, n)));
+  };
+  const onStart = (v: string) => {
+    setA(v);
+    const s = dayToMs(v);
+    const n = Math.floor(Number(durTxt));
+    if (s != null && n >= 1) setZ(msToDay(endOf(s, n)));
+  };
+
+  /**
    * ЭНЭ блокийн бүлгийн муж — ЗӨВХӨН МЭДЭЭЛЭЛ.
    * ⚠️ 2026-09-06-нд ХЯЗГААР БАЙХАА БОЛИВ (хэрэглэгч: «бүлгийн range
    *    ажлын range-ээс хамаардаг болго»). Хавчилт (`clamp`), «хальсан»
@@ -3252,17 +3274,27 @@ function PlanModal({
           <label className={h.mdField}>
             {tr('Эхлэх')}
             <input type="date" className={h.select} value={a} disabled={!dEdit}
-              onChange={(e) => setA(e.target.value)} />
+              onChange={(e) => onStart(e.target.value)} />
+          </label>
+          {/* ⚠️ Үргэлжлэх хоног — бичихэд дуусах огноо автоматаар (2026-09-17) */}
+          <label className={h.mdField}>
+            {tr('Үргэлжлэх')}
+            <span className={h.mdDays}>
+              <input type="number" min={1} max={3650} className={h.numIn} value={durTxt}
+                disabled={!dEdit || ms1 == null}
+                placeholder={ms1 == null ? '—' : ''}
+                aria-label={tr('Үргэлжлэх хоног')}
+                title={ms1 == null ? tr('Эхлэх огноог эхлээд сонгоно') : tr('Хоног бичихэд дуусах огноо автоматаар бодогдоно')}
+                onChange={(e) => onDur(e.target.value)} />
+              {' '}{tr('хоног')}
+            </span>
           </label>
           <label className={h.mdField}>
             {tr('Дуусах')}
             <input type="date" className={h.select} value={z} disabled={!dEdit}
               onChange={(e) => setZ(e.target.value)} />
           </label>
-          <span className={h.mdDays}>
-            {bad ? <b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b>
-              : days != null ? <>{num(days)} {tr('хоног')}</> : '—'}
-          </span>
+          {bad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b></span>}
         </div>
 
 
