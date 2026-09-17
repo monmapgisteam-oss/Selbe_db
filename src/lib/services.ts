@@ -3538,10 +3538,9 @@ export const IRGED_ORTHO = {
 export const ORTHO_SWIPE = {
   id: "ortho:swipe",
   title: tr('Ортофото — хуучин (Selbe_ortho)'),
-  url: env(
-    process.env.NEXT_PUBLIC_ORTHO_SWIPE,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Selbe_ortho/MapServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — `IRGED_ORTHO`-той ЯГ нэг хаяг,
+     UBHUB_REST суурийн дэд үйлчилгээ. Ялгаа нь зөвхөн давхаргын `id`. */
+  url: `${UBHUB_REST}/Selbe_ortho/MapServer`,
 } as const;
 
 /**
@@ -3632,10 +3631,9 @@ export const SCENE = {
 export const MESH_SWIPE = {
   id: "mesh:swipe",
   title: tr('Бодит загвар — шинэ (2026-09-17)'),
-  url: env(
-    process.env.NEXT_PUBLIC_MESH_SWIPE,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/Selbe_mesh_0917/SceneServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — бусад меш (`Selbe1_slpk` г.м.)-тэй
+     нэг сервер дээрх `Hosted` дэд үйлчилгээ. */
+  url: `${UBHUB_SCENE}/Selbe_mesh_0917/SceneServer`,
 } as const;
 
 /**
