@@ -344,6 +344,17 @@ export function filterUzleg(st: State, pkgs: readonly string[], cos: readonly st
 }
 type Pick = { sel: UzSel; onPick: (d: UzDim, key: string) => void };
 
+/**
+ * Нэг маягтын хэвийн болгосон мөрүүд — React-гүй.
+ * ⚠️ 2026-09-17: «Багц ажлын оноо»-ны ХАБЭА бүлэг ЗӨВХӨН ажлын байрны үзлэгээр
+ *    дүгнэгдэнэ (`src/lib/ceo/scorecardLoad.ts`) — `useUzleg`-тэй ЯГ ижил
+ *    ачаалагч, домэйн, хэвийн болголт; кэш хуваалцана.
+ */
+export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
+  const [rows, dom] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
+  return rows.map((r) => norm(r, dom));
+}
+
 export function useUzleg(kind: UzlegKind | null): State {
   const [st, setSt] = useState<State>({ state: 'idle' });
 

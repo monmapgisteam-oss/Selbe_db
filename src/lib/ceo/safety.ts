@@ -251,13 +251,20 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
  *    `HABEA` тагаар Survey123 руу бичсэн код `invalidate('HABEA')` дуудахад
  *    энэ кэш хаягдана.
  */
-export const loadSafetyKpi = cached(async (): Promise<KpiResult> => {
+/**
+ * ⚠️ 2026-09-17: мөрүүд тусдаа кэштэй — «Багц ажлын оноо» (`scorecardLoad.ts`)
+ *    багц бүрийн ослыг эндээс тоолно; ижил хүснэгтийг хоёр дахин татахгүй.
+ */
+export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const I = HABEA.incident.fields;
   const raw = await queryFeatures(HABEA.incident.url, {
     /* ⚠️ `CreationDate` заавал — огноогүй мөрийн нөөц зам (толгойн тайлбар) */
     outFields: [...Object.values(I), 'objectid', CREATED_FIELD],
     orderBy: `${I.ognoo} DESC`,
   });
-  const now = Date.now();
-  return computeSafety(raw.map(toSafetyRow), now);
+  return raw.map(toSafetyRow);
 }, 5 * 60_000, ['HABEA']);
+
+export const loadSafetyKpi = cached(async (): Promise<KpiResult> => (
+  computeSafety(await loadSafetyRows(), Date.now())
+), 5 * 60_000, ['HABEA']);

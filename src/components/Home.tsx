@@ -12,7 +12,10 @@ import { DocViewer } from './DocViewer';
    ⚠️ 2026-08-24: ӨГӨГДЛИЙН ачаалагчид ч тийш нүүсэн (`loadHeadline`,
    `loadHousing`, `loadSocial`…). Ингэснээр нүүрийн эхний chunk улам хөнгөрч,
    супер БУС хэрэглэгч тэдгээр асуулгыг огт ажиллуулахгүй боллоо. */
-const CeoBoard = dynamic(() => import('./CeoBoard').then((m) => m.CeoBoard), { ssr: false });
+/* ⚠️ 2026-09-17 (хэрэглэгчийн шийдвэр): 13 карттай схем самбар «Багц ажлын оноо»-оор солигдов —
+   74 багц ажил, ажлын төрлөөр бүлэглэж 6 бүлгийн оноо (`CeoScorecard.tsx`). Хуучин үзүүлэлтүүд
+   дэлгэрэнгүйн доор бүлэг бүрт хэвээр. */
+const CeoScorecard = dynamic(() => import('./CeoScorecard').then((m) => m.CeoScorecard), { ssr: false });
 import type { ViewKey } from '@/lib/services';
 import s from './home.module.css';
 
@@ -293,7 +296,7 @@ export function Home({
             үгийн цонх гаргадаг (OAuth-той оргийн аккаунт тэнд татгалзагдана). Нэвтрэх
             зам ЗӨВХӨН дээрх «Нэвтрэх» (OAuth). */}
         {status === 'signed-in' || status === 'off' ? (
-          <CeoBoard onView={onEnterView} />
+          <CeoScorecard onView={onEnterView} />
         ) : (
           <div className={s.boardGate}>
             <p>{tr('Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.')}</p>
