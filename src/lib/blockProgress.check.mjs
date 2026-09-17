@@ -15,6 +15,12 @@
 import assert from 'node:assert/strict';
 import { loadBlockProgress } from './blockProgress.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112-т — ижил 113 блок, `BAGTS`/`BLOK`

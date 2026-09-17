@@ -21,6 +21,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
    зөрвөл «Ийм талбар алга» гэж унана. */
 import { CASHFLOW_NEW } from '@/lib/services.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /**
  * ⚠️ ПОРТЫГ ХАТУУ БИЧИХГҮЙ. Урьд нь 8799/8788 гэж тогтоосон байсан бөгөөд
  * өмнөх ажиллалтын үлдэгдэл процесс (эсвэл зэрэг явж буй өөр session) портыг

@@ -13,11 +13,11 @@ import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
 /**
- * ⚠️ `Dashboard` нь СТАТИК ХЭВЭЭР — тэр бол `DEFAULT_VIEW`. Динамик болговол
- * аппын хамгийн түгээмэл зам дээр нэмэлт сүлжээний эргэлт, нэмэлт спиннер
- * үүсгэх ба ямар ч байсан татагдана. Мөн `MapCanvas` (+ `@arcgis/core`) нь
- * түүний дамжсан хамаарал тул эхний ачаалалтад зайлшгүй орно — газрын зураг
- * бол анхдагч харагдацын гол агуулга.
+ * ⚠️ `Dashboard` СТАТИК импорт. Анх `DEFAULT_VIEW` байсан тул «нэмэлт спиннергүй
+ * байх» үүднээс статик болгосон; 2026-09-ээс `DEFAULT_VIEW = "gdash"`
+ * (`GeneralDash`, доор dynamic) болсон ч Dashboard-ыг статик үлдээв — `MapCanvas`
+ * (+ `@arcgis/core`) нь түүний дамжсан хамаарал бөгөөд бүх зурагтай харагдацад
+ * ямар ч байсан татагдана; Dashboard өөрөө жижиг тул chunk болгох ашиггүй.
  */
 import { Dashboard } from '@/modules/Dashboard';
 /* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн

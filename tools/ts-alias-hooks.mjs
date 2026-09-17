@@ -63,3 +63,25 @@ export async function resolve(specifier, context, next) {
   }
   throw lastErr;
 }
+
+/*
+ * ⚠️ АМЬД ШАЛГУУРЫГ АЛГАСАХ (2026-09-17): `ts-alias.mjs` org-only үйлчилгээг
+ *    тандаад `liveSkip` дамжуулна. `SELBE_LIVE_SKIP` тэмдэгтэй `.check.mjs`
+ *    файлыг ажиллуулахгүй, оронд нь ⏭ мэдэгдэл хэвлэдэг хоосон модуль өгнө.
+ *    Файл дотроос `process.exit()` дуудвал Windows дээр libuv assertion-оор
+ *    унадаг тул ЭНД (эх код ачаалахаас өмнө) шийднэ.
+ */
+let liveSkip = false;
+export function initialize(data) { liveSkip = !!data?.liveSkip; }
+
+export async function load(url, context, next) {
+  const r = await next(url, context);
+  if (liveSkip && /\.check\.mjs$/.test(url) && r.source != null) {
+    const src = typeof r.source === 'string' ? r.source : Buffer.from(r.source).toString('utf8');
+    if (src.includes('SELBE_LIVE_SKIP')) {
+      const msg = '⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
+      return { ...r, source: `console.log(${JSON.stringify(msg)});\nexport {};\n` };
+    }
+  }
+  return r;
+}

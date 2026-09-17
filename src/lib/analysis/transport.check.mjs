@@ -10,6 +10,12 @@
  */
 import assert from 'node:assert/strict';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /*
  * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): `Selbe_ET_20260721` хаагдсан (499).
  * Давхаргууд нэгтгэсэн `data` үйлчилгээнд шилжсэн — дугаарын зураглал нь
