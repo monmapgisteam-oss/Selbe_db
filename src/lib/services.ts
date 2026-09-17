@@ -201,7 +201,9 @@ export const SOURCE_FS = {
    өгөгдөл огт уншигдахгүй (499 «Token Required») — зөвхөн UI-ийн бүтэц харах
    зориулалттай; өгөгдөлтэй хөгжүүлэлт нэвтрэлт асаалттай явна. */
 const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
-const AUTH_APP_ID = process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv";
+/* ⚠️ `env()` (`??` БИШ, 2026-09-17): GitHub Actions тохируулаагүй Variable-ыг ХООСОН мөрөөр
+   өгдөг — `??` бол хоосон appId үлдэж production build дээрх доорх `throw` унагана. */
+const AUTH_APP_ID = env(process.env.NEXT_PUBLIC_AUTH_APP_ID, "ZPJRqk1iiYcjYRLv");
 if (!AUTH_OFF && !AUTH_APP_ID) {
   const msg = "NEXT_PUBLIC_AUTH_APP_ID хоосон байна. Нэвтрэлтийг САНААТАЙ унтраах бол "
     + "NEXT_PUBLIC_AUTH_OFF=1 гэж ил зарлана уу — эс бөгөөс бүх эрх, бүх "
