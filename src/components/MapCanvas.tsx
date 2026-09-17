@@ -13,6 +13,7 @@ import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import Graphic from '@arcgis/core/Graphic';
 import Polygon from '@arcgis/core/geometry/Polygon';
+import Point from '@arcgis/core/geometry/Point';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
@@ -33,6 +34,9 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
+import Swipe from '@arcgis/core/widgets/Swipe';
+import SceneModification from '@arcgis/core/layers/support/SceneModification';
+import SceneModifications from '@arcgis/core/layers/support/SceneModifications';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -44,6 +48,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  ORTHO_SWIPE, MESH_SWIPE, IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, SURVEY, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
@@ -275,92 +280,25 @@ const toiletDot = (hex: string) =>
     symbol: {
       type: 'simple-marker',
       style: 'circle',
-      size: 7,
-      color: c(hex, 0.85),
+      /* ⚠️ 7 → 4.5 → 3px (2026-09-17). Кластер хасагдсан тул 1,675 цэг ойртоход
+         зэрэг гарах бөгөөд том цэг нь бие биендээ наалдаж толбо болно.
+         3px дээр цэгүүд нягт газар ч тус тусдаа тоологдоно; уншигдацыг
+         гэрэлтүүлэг (`TOILET_EFFECT`) хангана. */
+      size: 3,
+      color: c(hex, 0.9),
       outline: { width: 0 },
     },
   }) as unknown as RendererProp;
 
 /**
- * 2D-гийн КЛАСТЕР — холоос бүлэглэж, дотор нь ТООГ бичнэ.
+ * ⚠️ 2026-09-17: НҮХЭН ЖОРЛОНГИЙН КЛАСТЕР БҮРМӨСӨН ХАСАГДАВ (хэрэглэгчийн
+ * шийдвэр). Бөмбөлгүүд нь хамрах хүрээний буферийн тойрог, тэдгээрийн
+ * шошготой давхарлаж зураг холилдож байв. Одоо жорлон бүр ӨӨРИЙН цэгээрээ
+ * зурагдана; холоос давхарга нь `minScale`-ээр өөрөө хаагдана.
  *
- * ⚠️ 1,675 цэгийг холоос ганц ганцаар нь харуулах утгагүй: бие биенээ дарж
- * тасралтгүй толбо болно. Кластер нь «энд хэд байна» гэдгийг ТООГООР хэлнэ.
- *
- * ⚠️ Хэмжээ нь ТООГООР — `clusterMinSize`/`clusterMaxSize` хооронд. Тиймээс
- * `toiletDot` дээр масштабын size visual variable БАЙЖ БОЛОХГҮЙ (дээр хассан).
- *
- * ⚠️ Шошгын гэрэлтүүлэг (halo) нь давхаргын өнгөөр — цагаан тоо цэнхэр дугуй
- * дээр, гадна талд нь цэнхэр хүрээтэй: ортофотогийн ямар ч дэвсгэр дээр
- * уншигдана.
+ * Кластерын бүтэн тодорхойлолт (`toiletCluster`, `TOILET_CLUSTER_SCALE`)
+ * git түүхэнд үлдсэн — буцаах бол тэндээс.
  */
-const toiletCluster = (hex: string) =>
-  ({
-    type: 'cluster',
-    clusterRadius: '56px',
-    popupEnabled: false,
-    /**
-     * ⚠️ `maxScale` — кластер энэ масштабаас ОЙР болоход өөрөө УНТАРНА (цэг тус
-     * бүрээрээ гарна). Гараар `view.scale` сонсох шаардлагагүй.
-     */
-    maxScale: TOILET_CLUSTER_SCALE,
-    /**
-     * КЛАСТЕРЫН ӨӨРИЙН RENDERER — хэмжээ БА өнгө хоёулаа `cluster_count`-оос.
-     *
-     * ⚠️ Өөрийн renderer өгсөн үед `clusterMinSize`/`clusterMaxSize` үл
-     * хэрэгсэгдэнэ — хэмжээг size visual variable ӨӨРӨӨ хариуцна.
-     *
-     * ⚠️ Дүүргэлт 50% ТУНГАЛАГ: кластер нь ортофотог дарах ёсгүй — доорх зураг
-     * шууд мэдэгдэнэ.
-     *
-     * ⚠️ Хүрээ нь НИМГЭН, ХАГАС ТУНГАЛАГ цагаан (1px, 0.5). Хатуу цагаан хүрээ
-     * нь дугуйг «таслаад» дотрын тунгалаг байдлыг үгүй хийдэг; огт хүрээгүй бол
-     * бүдэг дугуй ортофотогийн эрээн дэвсгэр дээр ирмэгээ алддаг. Энэ хоёрын
-     * дунд — хэлбэр нь мэдэгдэнэ, доорх зураг ч харагдана.
-     *
-     * ⚠️ Тунгалаг байдал нь БҮХ кластерт ижил (color visual variable ХАСАВ) —
-     * ялгааг зөвхөн ХЭМЖЭЭ хэлнэ. Хоёр суваг (хэмжээ + өнгө) нэг л зүйлийг
-     * давхардуулж хэлэх нь илүүц.
-     *
-     * ⚠️ Доторх ЦАГААН ТОО бүдгэрэхгүй — шошго нь симболын өнгөнөөс ХАМААРАХГҮЙ.
-     */
-    renderer: {
-      type: 'simple',
-      symbol: {
-        type: 'simple-marker',
-        style: 'circle',
-        color: c(hex, 0.5),
-        outline: { color: [255, 255, 255, 0.5], width: 1 },
-      },
-      visualVariables: [{
-        type: 'size',
-        field: 'cluster_count',
-        stops: [
-          { value: 2, size: 16 },
-          { value: 250, size: 40 },
-        ],
-      }],
-    },
-    labelsVisible: true,
-    labelingInfo: [{
-      deconflictionStrategy: 'none',
-      labelExpressionInfo: { expression: "Text($feature.cluster_count, '#,###')" },
-      labelPlacement: 'center-center',
-      symbol: {
-        type: 'text',
-        color: '#ffffff',
-        haloColor: '#0f141a',
-        haloSize: '1px',
-        font: { size: 10, weight: 'bold' },
-      },
-    }],
-  }) as unknown as __esri.FeatureReductionCluster;
-
-/**
- * Кластер ↔ ганц цэг СОЛИГДОХ масштаб. Үүнээс ХОЛ бол кластер, ОЙР бол цэг
- * тус бүрээрээ. (3D-гийн callout нь 1:1,000 — өөр, бүр ойрын түвшин.)
- */
-const TOILET_CLUSTER_SCALE = 2_500;
 
 /**
  * ГЭРЭЛТҮҮЛЭГ — МАСШТАБААС хамаарна (ArcGIS-ийн scale-dependent effect).
@@ -388,16 +326,23 @@ const TOILET_CLUSTER_SCALE = 2_500;
  * ⚠️ ЗӨВХӨН 2D-д үйлчилнэ (SceneView `effect`-ийг үл тоомсорлоно).
  */
 const BUILT_EFFECT = [
-  { scale: 20_000, value: 'bloom(0.2, 0.3px, 0.3)' },
-  { scale: 6_000, value: 'bloom(0.4, 0.35px, 0.2)' },
-  { scale: 1_500, value: 'bloom(0.6, 0.4px, 0.15)' },
+  /* ⚠️ 2026-09-17: гэрэлтэлтийг ~ГУРАВНЫ НЭГ болгов. Өмнө нь 6,627 полигон
+     зэрэг гэрэлтэж, ойртох тусам зураг бүхэлдээ цайрч ортофото уншигдахаа
+     больдог байв. Хамгийн хол зумд огт гэрэлтэхгүй — тэнд полигон нь ялгагдах
+     ч шаардлагагүй (`minScale: 20,000`-аар аль хэдийн хаагдана). */
+  { scale: 20_000, value: 'bloom(0, 0.3px, 0.3)' },
+  { scale: 6_000, value: 'bloom(0.12, 0.35px, 0.25)' },
+  { scale: 1_500, value: 'bloom(0.22, 0.4px, 0.2)' },
 ] as unknown as __esri.Effect;
 
 const TOILET_EFFECT = [
-  { scale: 20_000, value: 'bloom(0.15, 0.4px, 0.35)' },
-  { scale: 8_000, value: 'bloom(0.3, 0.4px, 0.28)' },
-  { scale: 2_500, value: 'bloom(0.55, 0.45px, 0.2)' },
-  { scale: 1_000, value: 'bloom(1.0, 0.5px, 0.1)' },
+  /* ⚠️ 2026-09-17: цэг 4.5px болж жижгэрсэн тул гэрэлтүүлгийг НЭМЭВ — жижиг
+     цэг ортофотогийн эрээн дэвсгэр дээр өөрөө алга болдог; bloom нь түүнийг
+     дэвсгэрээс таслаж, нягт хэсэгт ч тоологдохуйц үлдээнэ. */
+  { scale: 20_000, value: 'bloom(0.3, 0.45px, 0.3)' },
+  { scale: 8_000, value: 'bloom(0.5, 0.45px, 0.25)' },
+  { scale: 2_500, value: 'bloom(0.8, 0.5px, 0.18)' },
+  { scale: 1_000, value: 'bloom(1.2, 0.55px, 0.1)' },
 ] as unknown as __esri.Effect;
 
 /**
@@ -699,6 +644,21 @@ const zoneTypeRenderer = (d: LayerDef) => ({
  * ⚠️ `uniform` горимд ч ажиллана — газар чөлөөлөлтийн зураг дээр `land:left`-ийг
  * `Tuluv` төлөвөөр (чөлөөлсөн/цэвэрлэсэн/үлдсэн) будахад хэрэгтэй.
  */
+/**
+ * ОРТОФОТО ХАРЬЦУУЛАЛТЫН ХАЖУУГИЙН ДАВХАРГУУД.
+ *
+ * Swipe нь ортофотогоос гадна ДУРЫН давхаргыг тал руу нь тасалж чадна. Хоёр
+ * ортофото нь ӨӨР ХУГАЦААНЫ зураг тул тэдэн дээр тохирох сэдвийн давхаргыг
+ * тавибал харьцуулалт нь «зураг ↔ зураг» биш «БАЙДАЛ ↔ БАЙДАЛ» болно:
+ *   · ЗҮҮН (хуучин ортофото) — ОДООГИЙН байдал: гэр хорооллын барилга, нүхэн жорлон
+ *   · БАРУУН (шинэ ортофото) — БАРИГДАЖ буй: 113 блокийн гүйцэтгэл
+ *
+ * ⚠️ Таслалт нь зөвхөн ЗУРАГЛАЛД нөлөөлнө; давхаргыг swipe асаахад ИЛ болгож,
+ * унтраахад өмнөх төлөвт нь буцаана (`swipeShownRef`).
+ */
+const SWIPE_OLD_IDS = [IRGED_BUILT.id, IRGED_TOILET.id];
+const SWIPE_NEW_IDS = ['mon:building'];
+
 const paintRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint!.field,
@@ -983,6 +943,8 @@ const PASSIVE = new Set<string>([
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
+  // Харьцуулалтын шинэ меш — зөвхөн харах, дарж сонгогдохгүй
+  MESH_SWIPE.id,
   // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
   ...REFERENCE_IDS,
 ]);
@@ -1011,6 +973,7 @@ const NO_HIGHLIGHT = new Set<string>([
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
+  MESH_SWIPE.id,
   ...REFERENCE_IDS,
 ]);
 
@@ -1020,6 +983,17 @@ const NO_HIGHLIGHT = new Set<string>([
  * давхарга 0 м-т үлдэж мешийн доор алга болно.
  */
 const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerProperties['elevationInfo'];
+
+/**
+ * 3D-д вектор давхаргыг МЕШИЙН ГАДАРГУУ дээр наана.
+ *
+ * ⚠️ `on-the-ground` нь ГАЗРЫН гадаргуу (terrain) дээр наадаг бөгөөд
+ * фотограмметрийн меш нь түүний ДЭЭР 10–20 м зузаанаар суудаг тул бүх полигон
+ * (бүс, зам, ногоон байгууламж…) мешийн ДОТОР булагдаж, 3D-д «давхарга
+ * асаасан ч харагдахгүй» байв. `relative-to-scene` нь мешийн гадаргууг олж
+ * түүн дээр байрлуулна.
+ */
+const ON_SCENE = { mode: 'relative-to-scene' } as unknown as __esri.FeatureLayerProperties['elevationInfo'];
 
 /**
  * @param uniform — давхарга бүрийг ГАНЦ жигд өнгөөр (өөрийн `hue`) зурна;
@@ -1067,6 +1041,20 @@ function buildLayers(uniform = false): Layer[] {
       id: `${IMAGERY_ID}:${i}`, url, visible: true,
       format: 'jpgpng', popupEnabled: false, legendEnabled: false,
     })),
+  }));
+
+  /* Ортофото ХАРЬЦУУЛАЛТ (swipe) — ХУУЧИН ортофото, одоогийнхын ЯГ ДЭЭР.
+     ⚠️ Дээр байх ёстой: swipe нь ЗӨВХӨН ҮҮНИЙГ тасалдаг (зүүн талд ил,
+     баруун талд алга). Ингэснээр баруун тал нь ЖИРИЙН зураг хэвээр — бусад
+     давхарга, суурь зураг, харагдацын логикт огт хүрэхгүй.
+     Эхлээд УНТРААЛТТАЙ; каталогт ОРОХГҮЙ (`listMode: 'hide'`). */
+  L.push(new MapImageLayer({
+    id: ORTHO_SWIPE.id,
+    title: ORTHO_SWIPE.title,
+    url: ORTHO_SWIPE.url,
+    visible: false,
+    listMode: 'hide',
+    legendEnabled: false,
   }));
 
   /* «Иргэдэд хүрэх үр өгөөж»-ийн ортофото (динамик MapServer) — вектор давхаргын
@@ -1121,6 +1109,22 @@ function buildLayers(uniform = false): Layer[] {
     effect: TOILET_EFFECT,
   }));
 
+  /**
+   * ⚠️ 2026-09-17: ЗУРГАН ДЭЭР БҮДЭГ ӨНГӨ (хэрэглэгчийн шийдвэр).
+   *
+   * Каталогийн тод өнгө (`#e879f9` фукси, `#22d3ee` цайвар хөх) нь 6,627
+   * полигон дээр давтагдахад ортофотог бүрхэж, зураг «замбараагүй» болдог байв.
+   * Энд ЗӨВХӨН ЗУРГАНД зориулж ханалтыг нь бууруулж, дүүргэлт/хүрээг нимгэлнэ —
+   * КАРТУУДЫН (бөгж, тайлбар) өнгө нь `IRGED_BUILT_DEF`-ээрээ ТОД хэвээр:
+   * жижиг дүрс дээр тод өнгө хэрэгтэй, том талбай дээр хортой.
+   */
+  const builtMapDef: LayerDef = {
+    ...IRGED_BUILT_DEF,
+    fill: 0.1,
+    width: 0.9,
+    paint: { ...IRGED_BUILT_DEF.paint!, values: IRGED_BUILT_MAP_HUE },
+  };
+
   /* ГЭР ХОРООЛЛЫН ОДООГИЙН БАРИЛГА — «Иргэдэд хүрэх үр өгөөж»-ийн «ӨМНӨ» тал.
      6,627 полигон, `Type`-аар өнгө ялгана (Байшин · Гэр).
 
@@ -1142,7 +1146,7 @@ function buildLayers(uniform = false): Layer[] {
     outFields: [IRGED_BUILT.typeField],
     elevationInfo: ON_GROUND,
     minScale: 20_000,
-    renderer: paintRenderer(IRGED_BUILT_DEF),
+    renderer: paintRenderer(builtMapDef),
     effect: BUILT_EFFECT,
   }));
 
@@ -1877,6 +1881,22 @@ export const MapCanvas = memo(function MapCanvas({
   }, [ortho]);
 
   /**
+   * Ортофото харьцуулах (swipe) виджет — асаалттай үед л утгатай.
+   * ⚠️ `useRef`: DOM callback-ууд closure тул төлвийг ref-ээр уншина; мөн
+   * view устахад cleanup эндээс устгана (2D↔3D солиход ч үлдэхгүй).
+   */
+  const swipeRef = useRef<__esri.Swipe | null>(null);
+
+  /**
+   * Swipe асаахад ИЛ болгосон сэдвийн давхаргууд ба тэдний ӨМНӨХ төлөв —
+   * унтраахад яг байснаар нь буцаана (каталогийн чагтыг эвдэхгүй).
+   */
+  const swipeShownRef = useRef<{ layer: __esri.Layer; was: boolean }[]>([]);
+
+  /** 3D мешийн харьцуулалтыг унтраах функц (идэвхтэй үед л утгатай) */
+  const mesh3dOffRef = useRef<(() => void) | null>(null);
+
+  /**
    * БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-08-18) — зурган дээрх товч дарахад
    * апп бүхэлдээ browser-ийн бүтэн дэлгэцэд орж, зураг viewport-ыг дүүргэнэ
    * (`.fs` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
@@ -2071,6 +2091,309 @@ export const MapCanvas = memo(function MapCanvas({
       + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     fsBtn.addEventListener('click', () => toggleFsRef.current());
     view.ui.add(fsBtn, 'top-right');
+
+    /**
+     * ОРТОФОТО ХАРЬЦУУЛАХ (swipe) — ХУУЧИН `Selbe_ortho` ↔ ОДООГИЙН
+     * `selbe_ortho_merged`. Бариулыг чирэхэд хоёр хугацааны зураг солигдоно.
+     *
+     * ⚠️ ЗӨВХӨН 2D: `Swipe` виджет `MapView`-д л ажилладаг (SceneView-д
+     * давхаргыг хавтгайд таслах боломжгүй).
+     * ⚠️ Дизайн хөндөөгүй — бүтэн дэлгэцийн товчтой ЯГ ижил `esri-widget--button`
+     * загвар, ижил булан. Идэвхтэй үед зөвхөн өнгө нь `--hue` болно.
+     * ⚠️ Харьцуулалт нь каталогийн «Ортофото» чагтаас ХАМААРНА: одоогийн
+     * ортофото унтраалттай бол харьцуулах юм үлдэхгүй тул асаагаад эхэлнэ.
+     */
+    if (!is3D(dim)) {
+      const cmpLayer = map.findLayerById(ORTHO_SWIPE.id);
+      const swBtn = document.createElement('div');
+      swBtn.className = 'esri-widget--button esri-widget';
+      swBtn.setAttribute('role', 'button');
+      swBtn.setAttribute('tabindex', '0');
+      swBtn.setAttribute('aria-pressed', 'false');
+      swBtn.title = tr('Харьцуулах — зүүн: хуучин зураг + одоогийн барилга, баруун: шинэ зураг + баригдаж буй блок');
+      /* Дундуур нь босоо шугам татсан хоёр хагас — swipe-ийн бариулын дүрс */
+      swBtn.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+        + '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" '
+        + 'stroke="currentColor" stroke-width="1.5"/>'
+        + '<path d="M8 1.6v12.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+        + '<path d="M5.1 8H2.9M4.1 6.9 2.9 8l1.2 1.1M10.9 8h2.2M11.9 6.9 13.1 8l-1.2 1.1" '
+        + 'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      const markSwipe = (on: boolean) => {
+        swBtn.style.color = on ? 'var(--hue, #0d9488)' : '';
+        swBtn.setAttribute('aria-pressed', String(on));
+      };
+      const toggleSwipe = () => {
+        if (swipeRef.current) {
+          swipeRef.current.destroy();
+          swipeRef.current = null;
+          if (cmpLayer) cmpLayer.visible = false;
+          /* Сэдвийн давхаргуудыг swipe-аас ӨМНӨХ төлөвт нь буцаана */
+          for (const { layer, was } of swipeShownRef.current) layer.visible = was;
+          swipeShownRef.current = [];
+          markSwipe(false);
+          return;
+        }
+        if (!cmpLayer) return;
+        /**
+         * ⚠️ ЗӨВХӨН `leadingLayers` — `trailingLayers` ХООСОН.
+         *
+         * Урьд нь одоогийн ортофотог `trailingLayers`-т өгч байсан нь «Иргэдэд
+         * хүрэх үр өгөөж» мэтийн ӨӨРИЙН суурь зурагтай харагдацад бүх зургийг
+         * хоослож байв. Одоо баруун тал нь ЖИРИЙН зураг (юу ч таслагдахгүй),
+         * зүүн талд нь хуучин ортофото дээрээс нь наалдана — харьцуулалт ижил,
+         * гэхдээ бусад давхарга, харагдацын логикт огт хүрэхгүй.
+         */
+        cmpLayer.visible = true;
+        /**
+         * ⚠️ Харагдацын ӨӨРИЙН хуучин ортофотог (`irged:ortho` — ЯГ ИЖИЛ
+         * `Selbe_ortho` үйлчилгээ) мөн ЗҮҮН тийш таслана.
+         *
+         * Эс бөгөөс «Иргэдэд хүрэх үр өгөөж»-д тэр нь харьцуулах давхаргын
+         * ДЭЭР байрлаж, БАРУУН талд ч хуучин зураг гарах тул хоёр тал ЯГ ИЖИЛ
+         * харагддаг байв («ортофото өөрчлөгдөхгүй байна»). Таслалт нь зөвхөн
+         * ЗУРАГЛАЛД нөлөөлнө — давхаргын `visible` хөндөгдөхгүй тул тэр
+         * харагдацын логик хэвээр, swipe унтраахад бүрэн сэргэнэ.
+         */
+        const leading = [cmpLayer];
+        const viewOrtho = map.findLayerById(IRGED_ORTHO.id);
+        if (viewOrtho) leading.push(viewOrtho);
+
+        /* Сэдвийн давхаргууд — асаагаад өмнөх төлөвийг нь тэмдэглэнэ */
+        const trailing: __esri.Layer[] = [];
+        swipeShownRef.current = [];
+        const side = (ids: string[], into: __esri.Layer[]) => {
+          for (const id of ids) {
+            const l = map.findLayerById(id);
+            if (!l) continue;
+            swipeShownRef.current.push({ layer: l, was: l.visible });
+            l.visible = true;
+            into.push(l);
+          }
+        };
+        side(SWIPE_OLD_IDS, leading);
+        side(SWIPE_NEW_IDS, trailing);
+
+        swipeRef.current = new Swipe({
+          view: view as __esri.MapView,
+          leadingLayers: leading,
+          trailingLayers: trailing,
+          direction: 'horizontal',
+          position: 50,
+        });
+        view.ui.add(swipeRef.current);
+        markSwipe(true);
+      };
+      swBtn.addEventListener('click', toggleSwipe);
+      swBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwipe(); }
+      });
+      view.ui.add(swBtn, 'top-right');
+    }
+
+    /**
+     * 3D МЕШ ХАРЬЦУУЛАХ — ХУУЧИН (Сэлбэ 1, 2) ↔ ШИНЭ (`Selbe_mesh_0917`).
+     *
+     * ⚠️ `Swipe` виджет нь SceneView-д ОГТ ажилладаггүй (зөвхөн MapView). Тиймээс
+     * мешийг ТАЛБАЙГААР нь клип хийнэ: дэлгэцийн босоо шугамыг газарт буулгаж,
+     * зүүн талын олон өнцөгтөөр шинэ мешийг, баруун талынхаар хуучныг үлдээнэ.
+     *
+     * ⚠️ Клипийн олон өнцөгтийг ДЭЛГЭЦЭЭС буулгана (`toMap` 12 цэгээр) — хазайсан
+     * (tilt) камерт ч шугам яг босоо харагдана. Хавтгай тэгш өнцөгт ашиглавал
+     * хазайлттай үед газрын шугам налуу болж, бариулаас салдаг.
+     *
+     * ⚠️ Камер хөдлөхөд олон өнцөгт хуучирна — `stationary` болмогц дахин бодно.
+     */
+    if (dim === '3d') {
+      const sv = view as __esri.SceneView;
+      const swBtn3 = document.createElement('div');
+      swBtn3.className = 'esri-widget--button esri-widget';
+      swBtn3.setAttribute('role', 'button');
+      swBtn3.setAttribute('tabindex', '0');
+      swBtn3.setAttribute('aria-pressed', 'false');
+      swBtn3.title = tr('Меш харьцуулах — зүүн: шинэ, баруун: хуучин');
+      swBtn3.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+        + '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" '
+        + 'stroke="currentColor" stroke-width="1.5"/>'
+        + '<path d="M8 1.6v12.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+        + '<path d="M5.1 8H2.9M4.1 6.9 2.9 8l1.2 1.1M10.9 8h2.2M11.9 6.9 13.1 8l-1.2 1.1" '
+        + 'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      view.ui.add(swBtn3, 'top-right');
+
+      /** Хүрээнээс хол давах зай (м) — олон өнцөгт харагдах талбайг бүрэн хаана */
+      const FAR = 40000;
+      /** Дэлгэцийн байрлал 0..1 */
+      let frac = 0.5;
+
+      /** Дэлгэцийн `divX` босоо шугамыг газарт буулгаж, хоёр талын цагирагийг өгнө */
+      const ringsAt = (divX: number) => {
+        const h = sv.height || 0;
+        if (!h) return null;
+        const pts: number[][] = [];
+        /* ⚠️ 6 цэг ХАНГАЛТТАЙ: `toMap` нь 3D-д мешийн эсрэг туяа шиддэг тул
+           үнэтэй. 12 цэг дээр чирэлт мэдэгдэхүйц гацдаг байв. */
+        const N = 6;
+        for (let i = 0; i <= N; i++) {
+          const p = sv.toMap({ x: divX, y: (h * i) / N });
+          if (p) pts.push([p.x, p.y]);
+        }
+        if (pts.length < 2) return null;
+        const a = pts[0];
+        const b = pts[pts.length - 1];
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        // Шугамыг хоёр үзүүрээс нь сунгана — хүрээний гадна ч хамрагдана
+        const line = [
+          [a[0] - dx * FAR, a[1] - dy * FAR],
+          ...pts,
+          [b[0] + dx * FAR, b[1] + dy * FAR],
+        ];
+        const nx = -dy;
+        const ny = dx;
+        const side = (sgn: number) => [
+          ...line,
+          ...line.map(([x, y]) => [x + nx * FAR * sgn, y + ny * FAR * sgn]).reverse(),
+        ];
+        // Аль тал нь ДЭЛГЭЦИЙН зүүн вэ — бариулын зүүн талын цэгээр шалгана
+        const probe = sv.toMap({ x: Math.max(2, divX - 60), y: h / 2 });
+        const leftIsPlus = probe
+          ? (probe.x - a[0]) * nx + (probe.y - a[1]) * ny > 0
+          : true;
+        return {
+          left: side(leftIsPlus ? 1 : -1),
+          right: side(leftIsPlus ? -1 : 1),
+          sr: sv.spatialReference,
+        };
+      };
+
+      const clipTo = (ring: number[][], sr: __esri.SpatialReference) =>
+        new SceneModifications([
+          new SceneModification({
+            geometry: new Polygon({ rings: [ring], spatialReference: sr }),
+            // ⚠️ `clip` — олон өнцөгтийн ДОТОРХ хэсгийг л үлдээнэ
+            type: 'clip',
+          }),
+        ]);
+
+      type MeshLayer = __esri.IntegratedMeshLayer;
+      const oldMeshes = () => map.layers.toArray()
+        .filter((l) => String(l.id).startsWith('scene:')) as MeshLayer[];
+      const newMesh = () => map.findLayerById(MESH_SWIPE.id) as MeshLayer | null;
+
+      /**
+       * ⚠️ ЧИРЭХ ҮЕД МЕШИЙГ КАДР БҮРТ КЛИП ХИЙХГҮЙ.
+       *
+       * `modifications` онооход IntegratedMesh бүхэлдээ дахин клиплэгддэг —
+       * гурван давхарга × кадр бүр гэдэг нь чирэлтийг гацаана. Одоо чирэх үед
+       * ЗӨВХӨН цагаан шугам хөдөлж (DOM, үнэгүй), клип нь 140мс-ийн завсартай
+       * болон гараа авах агшинд л шинэчлэгдэнэ.
+       */
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let lastFrac = -1;
+      const applyClip = () => {
+        const nm = newMesh();
+        if (!nm) return;
+        // Өмнөхөөсөө бараг хөдлөөгүй бол дэмий клип хийхгүй
+        if (Math.abs(frac - lastFrac) < 0.004) return;
+        const r = ringsAt(Math.round((sv.width || 0) * frac));
+        if (!r) return;
+        lastFrac = frac;
+        nm.modifications = clipTo(r.left, r.sr);
+        for (const l of oldMeshes()) l.modifications = clipTo(r.right, r.sr);
+      };
+      const applySoon = () => {
+        if (timer) return;
+        timer = setTimeout(() => { timer = null; applyClip(); }, 140);
+      };
+      const applyNow = () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+        lastFrac = -1;
+        applyClip();
+      };
+
+      /* Бариул — 2D-гийн Esri swipe-тэй ИЖИЛ харагдац (цагаан шугам + бариул) */
+      let divider: HTMLDivElement | null = null;
+      let camWatch: __esri.WatchHandle | null = null;
+
+      const stopMesh = () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+        camWatch?.remove();
+        camWatch = null;
+        divider?.remove();
+        divider = null;
+        for (const l of oldMeshes()) l.modifications = null;
+        const nm = newMesh();
+        if (nm) { map.remove(nm); nm.destroy(); }
+        swBtn3.style.color = '';
+        swBtn3.setAttribute('aria-pressed', 'false');
+        mesh3dOffRef.current = null;
+      };
+
+      const startMesh = () => {
+        // Шинэ меш — ортофотогийн дараа, хуучин мешүүдтэй нэг түвшинд
+        map.add(new IntegratedMeshLayer({
+          id: MESH_SWIPE.id,
+          url: MESH_SWIPE.url,
+          title: MESH_SWIPE.title,
+          visible: true,
+        }), 1);
+
+        divider = document.createElement('div');
+        divider.style.cssText =
+          'position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;z-index:2;'
+          + 'background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);cursor:ew-resize;'
+          + `left:${frac * 100}%`;
+        const grip = document.createElement('div');
+        grip.style.cssText =
+          'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
+          + 'width:26px;height:26px;border-radius:3px;background:#fff;'
+          + 'box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:ew-resize;'
+          + 'display:flex;align-items:center;justify-content:center;color:#3c4a47;'
+          + 'font-size:12px;line-height:1;user-select:none';
+        grip.textContent = '||';
+        divider.append(grip);
+        (sv.container as HTMLElement).append(divider);
+
+        const onMove = (e: PointerEvent) => {
+          const box = (sv.container as HTMLElement).getBoundingClientRect();
+          frac = Math.min(0.98, Math.max(0.02, (e.clientX - box.left) / box.width));
+          if (divider) divider.style.left = `${frac * 100}%`;
+          applySoon();
+        };
+        const onUp = (e: PointerEvent) => {
+          divider?.releasePointerCapture?.(e.pointerId);
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          applyNow(); // гараа авмагц эцсийн байрлалаар яг таарна
+        };
+        divider.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          divider?.setPointerCapture?.(e.pointerId);
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+
+        /* Камер хөдлөхөд олон өнцөгт хуучирна — зогсмогц дахин бодно */
+        camWatch = reactiveUtils.watch(() => sv.stationary, (st) => { if (st) applyNow(); });
+        /* Меш ачаалагдсаны дараа л клип суудаг тул давхарга бэлэн болоход дахин */
+        newMesh()?.when?.(() => applyNow()).catch(() => {});
+        applyNow();
+
+        swBtn3.style.color = 'var(--hue, #0d9488)';
+        swBtn3.setAttribute('aria-pressed', 'true');
+        mesh3dOffRef.current = stopMesh;
+      };
+
+      const toggleMesh = () => (mesh3dOffRef.current ? stopMesh() : startMesh());
+      swBtn3.addEventListener('click', toggleMesh);
+      swBtn3.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMesh(); }
+      });
+    }
 
     view.when(() => {
       if (view.destroyed) return;
@@ -2267,6 +2590,19 @@ export const MapCanvas = memo(function MapCanvas({
       move.remove();
       leave.remove();
       fadeHandle.remove();
+      /* Ортофото харьцуулалт — view-тэй хамт дуусна (2D↔3D солиход ч).
+         ⚠️ Давхаргыг мөн НУУНА: Map нь кэшлэгддэг тул ил үлдвэл 3D-д хуучин
+         ортофото газарт наалдаж, мешийн дээр гарч ирнэ. */
+      swipeRef.current?.destroy();
+      swipeRef.current = null;
+      const cmpOff = map.findLayerById(ORTHO_SWIPE.id);
+      if (cmpOff) cmpOff.visible = false;
+      /* Swipe-ийн үед асаасан сэдвийн давхаргууд — Map кэшлэгддэг тул
+         view устахад ч өмнөх төлөвт нь буцаана */
+      for (const { layer, was } of swipeShownRef.current) layer.visible = was;
+      swipeShownRef.current = [];
+      mesh3dOffRef.current?.();
+      mesh3dOffRef.current = null;
       setTip(null);
       /**
        * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
@@ -2613,7 +2949,18 @@ export const MapCanvas = memo(function MapCanvas({
     const layer = map.findLayerById(IRGED_TOILET.id) as FeatureLayer | null;
     if (!layer) return;
 
-    layer.featureReduction = toiletFiltered ? null : toiletCluster(IRGED_TOILET.hue);
+    /**
+     * ⚠️ 2026-09-17: КЛАСТЕР БҮРМӨСӨН УНТРААВ (хэрэглэгчийн шийдвэр).
+     *
+     * Бөмбөлгүүд нь хамрах хүрээний буферийн тойрог, тэдгээрийн шошготой
+     * давхарлаж зураг холилдож байв. Одоо жорлон бүр ӨӨРИЙН цэгээрээ
+     * зурагдана — `minScale`-ийн улмаас холоос давхарга нь өөрөө хаагдах тул
+     * 1,675 цэг нэг дор гарах эрсдэлгүй.
+     *
+     * ⚠️ `toiletCluster` тодорхойлолтыг УСТГААГҮЙ — буцаах бол энэ мөрийг
+     * сэргээхэд хангалттай.
+     */
+    layer.featureReduction = null;
     return () => { layer.featureReduction = null; };
   }, [dim, ready, toiletOn, toiletFiltered]);
 
@@ -3429,17 +3776,181 @@ export const MapCanvas = memo(function MapCanvas({
     pulseLayer(layer);
   }, [pulseLayer]);
 
+
+  /**
+   * ХАМРАХ ХҮРЭЭНИЙ БУФЕР — нийгмийн байгууламжийн эргэн тойрны нормативын
+   * радиусыг ГАЗРЫН ЗУРАГТ тойрог болгож зурна (БНбД 30.01.03).
+   *
+   * ⚠️ ЗӨВХӨН 2D: 3D-д меш газрыг бүрхдэг тул хавтгай тойрог нь дотор нь
+   * булагдана. Мөн зөвхөн ТУХАЙН давхарга ИЛ үед — каталогоос унтраавал
+   * буфер нь ч арилна (эс бөгөөс «юуны тойрог вэ» гэдэг тайлагдахгүй).
+   *
+   * ⚠️ `geodesicBuffer` — Web Mercator дээр энгийн `buffer` нь өргөрөгөөс
+   * хамаарч радиусыг гажуудуулна (УБ-ын 47.9°-т ~1.5 дахин). Геодезик буфер
+   * нь газрын БОДИТ метрээр бодогдоно.
+   *
+   * ⚠️ Хүсэлт нь давхаргын ӨӨРИЙН `queryFeatures`-ээр (lib/query биш): тэр нь
+   * геометр буцаадаггүй (`returnGeometry: false`) бөгөөд давхарга нь зурагт
+   * аль хэдийн ачаалагдсан тул нэмэлт тохиргоо шаардахгүй.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+
+    const REACH_ID = 'irged:reach';
+    const on = new Set(visibleKey ? visibleKey.split(',') : []);
+    const want = is3D(dim)
+      ? []
+      : REACH_BUFFERS.filter((g) => g.ids.some((id) => on.has(id)));
+
+    let gl = map.findLayerById(REACH_ID) as GraphicsLayer | null;
+    if (!want.length) {
+      if (gl) { map.remove(gl); gl.destroy(); }
+      return;
+    }
+    if (!gl) {
+      /**
+       * ⚠️ БАЙРЛАЛ — ортофотогийн ЯГ ДЭЭР, вектор давхаргуудын ДООД талд.
+       *
+       * Түүхэн хоёр алдаа: (1) индекс 2 нь ортофотогийн ДООР орж тойрог огт
+       * харагдахгүй байв; (2) хамгийн дээр тавихад буферийн тасархай хүрээ ба
+       * «300 м» шошго нь нүхэн жорлонгийн кластер, тэдний цагаан тоон дээгүүр
+       * давхарлаж, зураг «холилдож» байв. Индексийг ортофотогийн бүлгээс
+       * БОДОЖ олох нь хоёуланг нь шийднэ — давхаргын тоо өөрчлөгдсөн ч зөв.
+       */
+      /* ⚠️ 2026-09-17: дахин ХАМГИЙН ДЭЭР. Доор тавьсан шалтгаан (жорлонгийн
+         кластерын бөмбөлөгтэй давхарлана) арилсан — кластер бүрмөсөн
+         хасагдсан. Дээр байснаар «300 м» шошго нь вектор давхаргад
+         далдлагдахгүй. Дүүргэлт 10% тул доорх зураг хэвээр уншигдана. */
+      gl = new GraphicsLayer({ id: REACH_ID, listMode: 'hide' });
+      map.add(gl);
+    }
+    const layer = gl;
+    let alive = true;
+
+    (async () => {
+      const graphics: Graphic[] = [];
+      for (const g of want) {
+        /* ⚠️ Бүлэгт ГАНЦ шошго: таван цэцэрлэгт «300 м» гэж таван удаа бичвэл
+           бичвэрүүд тойргуудын огтлолцол дээр овоолж уншигдахаа болино.
+           Радиус нь бүлэг дотроо ижил тул нэг удаа хэлэхэд хангалттай. */
+        let labelled = false;
+        for (const id of g.ids) {
+          const fl = map.findLayerById(id) as FeatureLayer | null;
+          if (!fl) continue;
+          try {
+            /* ⚠️ `load()` ЗААВАЛ: ачаалагдаагүй давхаргын `queryFeatures` нь
+               «Layer not loaded» гэж унадаг бөгөөд алдааг нь бид чимээгүй
+               залгидаг тул буфер огт үүсэхгүй байв. */
+            await fl.load();
+            const res = await fl.queryFeatures({
+              where: '1=1',
+              returnGeometry: true,
+              outFields: [fl.objectIdField],
+            });
+            for (const f of res.features) {
+              if (!f.geometry) continue;
+              /* Полигон барилгын ТӨВӨӨС буфер — ирмэгээс нь биш. Норматив нь
+                 «барилга хүртэлх зай» тул төв нь хамгийн ойрын төлөөлөл.
+                 ⚠️ `centroid` нь зөвхөн полигонд бий; цэгэн давхаргад
+                 геометр нь өөрөө төв, хүрээтэй бол хүрээний төв. */
+              const gm = f.geometry as __esri.Polygon;
+              const c = gm.centroid ?? gm.extent?.center ?? f.geometry;
+              /**
+               * ⚠️ БУФЕРИЙН ФУНКЦ нь ПРОЕКЦООС хамаарна.
+               *
+               * `data` үйлчилгээ нь UTM 48N (32648) — МЕТРИЙН проекц. Тэнд
+               * `geodesicBuffer` нь ДЭМЖИГДДЭГГҮЙ (зөвхөн WGS84/Web Mercator)
+               * бөгөөд чимээгүй `null` буцаадаг тул буфер огт үүсэхгүй байв —
+               * «2D дээр буфер харагдахгүй» гэдгийн ЖИНХЭНЭ шалтгаан.
+               * Метрийн проекцод энгийн (planar) буфер нь газрын бодит метр
+               * тул зөв; Web Mercator-т л геодезик хэрэгтэй (тэнд метр нь
+               * өргөрөгөөр гажина).
+               */
+              const wk = c.spatialReference?.wkid ?? 0;
+              const isMercator = wk === 3857 || wk === 102100 || wk === 4326;
+              const buf = (isMercator
+                ? geometryEngine.geodesicBuffer(c, g.m, 'meters')
+                : geometryEngine.buffer(c, g.m, 'meters')) as __esri.Polygon | null;
+              if (!buf) continue;
+              graphics.push(new Graphic({
+                geometry: buf,
+                symbol: {
+                  type: 'simple-fill',
+                  color: [...rgb(g.hue), 0.1],
+                  outline: { color: [...rgb(g.hue), 0.9], width: 1.6, style: 'dash' },
+                } as unknown as __esri.SimpleFillSymbol,
+              }));
+
+              /**
+               * ШОШГО — тойргийн ДЭЭД ирмэг дээр, радиусыг хэлнэ.
+               *
+               * ⚠️ Төвд БИШ ирмэгт: төвд нь барилга өөрөө байдаг тул бичвэр
+               * түүнийг халхалж, мөн олон тойрог давхцахад шошгууд төвүүд дээрээ
+               * овоолно. Ирмэг дээр байвал аль шошго аль тойрогтой нь холбоотой
+               * нь эргэлзээгүй.
+               * ⚠️ Проекц нь МЕТРийнх (UTM 48N) тул `y + радиус` нь яг тойргийн
+               * дээд цэг. Web Mercator-т ойролцоо боловч хазайлт нь шошгын
+               * байрлалд мэдэгдэхүйц биш.
+               * ⚠️ `haloColor` — ортофото нь ямар ч өнгөтэй байж болох тул
+               * бичвэр хүрээгүй бол алга болно.
+               */
+              if (labelled) continue;
+              labelled = true;
+              graphics.push(new Graphic({
+                geometry: new Point({
+                  x: (c as __esri.Point).x,
+                  y: (c as __esri.Point).y + g.m,
+                  spatialReference: c.spatialReference,
+                }),
+                symbol: {
+                  type: 'text',
+                  text: tr('{0} м', String(g.m)),
+                  /* Тойргийн хүрээтэй ижил ханалт — бүлэгт ГАНЦ шошго тул
+                     бүдгэрүүлэх шаардлагагүй, харин уншигдах ёстой. */
+                  color: [...rgb(g.hue), 0.95],
+                  haloColor: [12, 18, 22, 0.85],
+                  haloSize: 1.8,
+                  font: { size: 10.5, weight: 'bold' },
+                  yoffset: 3,
+                } as unknown as __esri.TextSymbol,
+              }));
+            }
+          } catch {
+            /* Давхарга ачаалагдаагүй/хаалттай — буферийг чимээгүй алгасна */
+          }
+        }
+      }
+      if (!alive || layer.destroyed) return;
+      layer.removeAll();
+      layer.addMany(graphics);
+    })();
+
+    return () => { alive = false; };
+  }, [ready, visibleKey, dim]);
+
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
 
+    /**
+     * ⚠️ Каталогийн вектор давхаргын ӨНДРИЙН ГОРИМ нь ГОРИМООС хамаарна:
+     * 2D-д газрын гадаргуу, 3D-д мешийн гадаргуу. `Map` кэшлэгддэг тул
+     * барих үед биш ЭНД, солих бүрд тавина.
+     */
+    const elev = dim === '3d' ? ON_SCENE : ON_GROUND;
+
     map.layers.forEach((l) => {
       if (l.id === IMAGERY_ID) { l.visible = ortho; return; }
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
+      // Ортофото/меш харьцуулалт — ЗӨВХӨН «Харьцуулах» товч удирдана (каталогт үл хамаарна)
+      if (l.id === ORTHO_SWIPE.id || l.id === MESH_SWIPE.id) return;
+      // Хамрах хүрээний буфер — өөрийн эффект удирдана (каталогт үл хамаарна)
+      if (l.id === 'irged:reach') return;
       if (l.id === 'sketch') { l.visible = true; return; }
       // Эх үүсвэрийн пульс-хуулбар — өөрийн анимаци удирдана, каталогт үл хамаарна.
       if (l.id === 'source:pulse') { l.visible = true; return; }
@@ -3531,6 +4042,14 @@ export const MapCanvas = memo(function MapCanvas({
         // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
         if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
         l.visible = show;
+        /**
+         * ⚠️ Өндрийн горим — ЗӨВХӨН каталогийн давхаргад (`LAYER_BY_ID`).
+         * 3D-д мешийн гадаргуу дээр, 2D-д газрын гадаргуу дээр. Меш, BIM, web
+         * scene-ийн давхаргууд өөрсдийн горимтой тул тэдэнд ХҮРЭХГҮЙ.
+         */
+        if (LAYER_BY_ID[String(l.id)]) {
+          (l as FeatureLayer).elevationInfo = elev as never;
+        }
       }
 
       /**

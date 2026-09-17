@@ -54,16 +54,19 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
-import { Bars, Data, Donut, Empty, Rows, Stat } from '@/components/ui';
+import { Empty } from '@/components/ui';
+import { Icon } from '@/components/Icon';
 import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
 import { useAsync } from '@/lib/useAsync';
-import { useFilter } from '@/lib/filter';
 import { queryCount } from '@/lib/query';
-import { BENEFITS, SOCIAL } from '@/lib/brief';
-import { loadHeadline, loadHousing } from '@/lib/live';
-import { loadGerBuilt, loadSocPlanned } from '@/lib/irged';
+import { SOCIAL } from '@/lib/brief';
+import { loadGerBuilt } from '@/lib/irged';
 import {
-  IRGED_BUILT, IRGED_BUILT_DEF, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
+  COAL_T_PER_HH, N_KG_PER_PERSON, PERSONS_PER_HH, PM25_KG_PER_T_COAL,
+  SLUDGE_M3_PER_PERSON, latrineLoad, stoveLoad,
+} from '@/lib/bohirdol';
+import {
+  IRGED_BUILT, IRGED_BUILT_MAP_HUE, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
   LAYER_BY_ID, LAYER_GROUPS, PKG_BY_FAMILY, groupOf,
 } from '@/lib/services';
 import { num } from '@/lib/format';
@@ -126,17 +129,6 @@ const ALWAYS = [IRGED_ROAD.id];
  */
 const headCount = (s: string) => Number(/^\s*(\d+)/.exec(s)?.[1] ?? 0);
 
-/**
- * Хоёр чартын НИЙТЛЭГ дээд хязгаар.
- *
- * ⚠️ ЗААВАЛ хуваалцана: тус тусдаа бодуулбал зүүн талын «2» баруун талын «5»-тай
- * ижил урттай зурагдаж, өсөлт огт мэдэгдэхгүй болно. Нэг хэмжүүр байж л
- * «өмнө → дараа» харьцуулалт үнэн болно.
- */
-const SOC_MAX = Math.max(...SOCIAL.rows.map((r) => r.total));
-
-/** SQL string literal — дан хашилтыг давхарлана */
-const sq = (v: string) => v.replace(/'/g, "''");
 
 /**
  * ХАВТАН — Ерөнхий дашбоардын `Panel`-тай ЯГ ИЖИЛ бүтэц (`Dashboard.tsx:159`).
@@ -148,6 +140,41 @@ const sq = (v: string) => v.replace(/'/g, "''");
  * агуулдаг (2026-08-25-ны салгалтаас үлдсэн) — тэдгээр нь энэ өдрийг хүртэл
  * ашиглагдаагүй байв.
  */
+/**
+ * ГИНЖ — «эх → шалтгаан → үр дагавар» гурван алхам, хооронд нь сум.
+ *
+ * ⚠️ Жүүр (трапец) БИШ: трапецийн өргөн нь хэмжээ заадаг мэт хуурмаг уншилт
+ * өгдөг байв — гурван алхам нь ГУРВАН ӨӨР НЭГЖТЭЙ (ш · м³ · тн) тул хооронд
+ * нь харьцуулах боломжгүй. Гинж нь зөвхөн ДАРААЛЛЫГ хэлнэ, хэмжээг огт
+ * дүрслэхгүй — тоо нь өөрсдөө ярина.
+ *
+ * ⚠️ SVG биш, CSS flex: текст хөтчийн жинхэнэ рендерээр гарч, нарийн баганад
+ * өөрөө мөр дамжина. SVG дотор текст масштаблагдахдаа бүдгэрдэг.
+ */
+function Chain({ steps }: {
+  steps: { key: string; value: string; unit: string; label: string; icon: string; end?: true }[];
+}) {
+  return (
+    <div className={i.chain}>
+      {steps.map((s) => (
+        <div key={s.key} className={`${i.chainStep} ${s.end ? i.chainEnd : ''}`}>
+          {/* Дүрсний тэмдэг — гинжний зангилаа. Холбогч шугам нь эдгээрийн
+              ТӨВӨӨР дамжина (`.chainStep::before`), тиймээс тусдаа сум
+              хэрэггүй: шугам өөрөө дарааллыг хэлнэ. */}
+          <span className={i.chainIcon} aria-hidden="true">
+            <Icon name={s.icon} size={16} />
+          </span>
+          <span className={i.chainVal}>
+            {s.value}
+            <em className={i.chainUnit}>{s.unit}</em>
+          </span>
+          <span className={i.chainTag}>{s.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Panel({ title, note, grow, children }: {
   title?: string;
   note?: ReactNode;
@@ -185,9 +212,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Самбар өөрийн сонголтыг ХАДГАЛАХГҮЙ: идэвхтэй түлхүүрээс уншина
    * (`filter.tsx`-ийн тайлбар). Хоёр карт зэрэг «сонгогдсон» харагдахгүй.
    */
-  const { toggle, active } = useFilter();
-  const selOf = (prefix: string) =>
-    active?.key.startsWith(prefix) ? active.key.slice(prefix.length) : null;
 
   const is2d = dim === '2d';
 
@@ -198,17 +222,18 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Суурьт байгаа нь «анхнаасаа асаалттай» гэсэн үг — `useLayerPicks` нь
    * каталогоос унтраасныг `off`-д бичдэг тул чагтаа авахад хэвийн унтарна.
    *
-   * ⚠️ Нийгмийн барилга ЗӨВХӨН 2D-д — 3D-д меш газрыг бүрхэх тул полигон нь
-   * дотор нь алга болно (урьдын зан төлөв хэвээр).
+   * ⚠️ 2026-09-17: Нийгмийн барилга ба гэр хорооллын барилга 3D-д Ч асаалттай.
+   * Урьд нь зөвхөн 2D-д байсан шалтгаан («меш газрыг бүрхэх тул полигон дотор
+   * нь алга болно») арилсан: `MapCanvas` одоо 3D-д каталогийн давхаргыг
+   * `relative-to-scene` өндрийн горимоор МЕШИЙН ГАДАРГУУ дээр байрлуулна.
    *
-   * ⚠️ 2D-д ортофото ҮРГЭЛЖ жагсаалтад: `MapCanvas` нь сонголт ХООСОН үед
+   * ⚠️ Ортофото нь 2D-д ҮЛДЭНЭ: `MapCanvas` нь сонголт ХООСОН үед
    * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг бүгдийг асаадаг — бүх чагтыг авбал
-   * ортофотогийн оронд тэдгээр гарч ирнэ.
+   * ортофотогийн оронд тэдгээр гарч ирнэ. 3D-д тэр нь мешийн ДООР үлдэх тул
+   * утгагүй (меш өөрөө газрын гадаргууг бүрэн орлоно).
    */
   const base = useMemo(() => {
-    /* ⚠️ Гэр хорооллын барилга нь ПОЛИГОН — 3D-д меш газрыг бүрхэх тул
-       дотор нь алга болно (нийгмийн барилгатай ЯГ ижил шалтгаан). */
-    const own = is2d ? [IRGED_TOILET.id, IRGED_BUILT.id, ...SOC_IDS] : [IRGED_TOILET.id];
+    const own = [IRGED_TOILET.id, IRGED_BUILT.id, ...SOC_IDS];
     return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...own] : [...ALWAYS, ...own];
   }, [is2d]);
 
@@ -243,30 +268,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const qBuilt = useAsync(loadGerBuilt, []);
 
-  /**
-   * ТӨЛӨВЛӨСӨН НИЙГМИЙН БАЙГУУЛАМЖ — АМЬД хүчин чадал (`Huchin_chadal`).
-   * ⚠️ Урьд нь «Дараа» талын БҮХ тоо `brief.ts`-ийн хатуу мөрөөс гардаг байв.
-   */
-  const qSoc = useAsync(loadSocPlanned, []);
-
-  /**
-   * АМЬД ХҮН АМ ба ӨРХ — `BENEFITS`-ийн `live` заалтыг гүйцэлдүүлнэ.
-   *
-   * ⚠️ 2026-09-06-ны ЗАСВАР: `BENEFITS`-ийн эхний мөр «44,518 иргэн» гэсэн
-   * ХАТУУ тоо байсан бол ЯГ ДЭЭР НЬ буй `HeadKpi` зурвас амьд 43,287-г
-   * харуулдаг байв — нэг дэлгэц дээр ХОЁР өөр хүн ам.
-   *
-   * ⚠️ Хоёулаа `cached` тул НЭМЭЛТ хүсэлт үүсэхгүй: `loadHeadline`-ыг
-   * `HeadKpi` аль хэдийн дуудсан, `loadHousing` нь нүүр/тайлантай дундаа.
-   */
-  const qHead = useAsync(loadHeadline, []);
-  const qHousing = useAsync(loadHousing, []);
-
-  /** `BENEFITS[].live` → амьд тоо. Хараахан ирээгүй бол `null` (хатуу утга үлдэнэ). */
-  const liveBenefit = (k: 'population' | 'households'): number | null => {
-    if (k === 'population') return qHead.state === 'ready' ? qHead.data.population : null;
-    return qHousing.state === 'ready' ? qHousing.data.ail : null;
-  };
 
   /** Толгойн үзүүлэлтэд — дашбоардтай ижил эх сурвалж */
   const bagts = useBagtsTable();
@@ -286,15 +287,34 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * нь тэр нэр буруу төлөөлнө.
    */
   const legend = useMemo(() => {
-    const byHue = new Map<string, { hue: string; ids: string[] }>();
+    /**
+     * ⚠️ ГЭР ХОРООЛЛЫН БАРИЛГА нь ЗУРАГ ДЭЭР ХОЁР ӨНГӨТЭЙ (`Type` талбараар:
+     * байшин · гэр) атлаа каталогид НЭГ `hue`-тэй тул тайлбарт «Одоогийн
+     * барилга (гэр хороолол)» гэсэн ГАНЦ мөр, түүнд огт тохирохгүй ягаан
+     * дөрвөлжинтэй гарч байв — зураг дээрх хоёр өнгө юу гэсэн үг нь
+     * тайлбараас олдохгүй. Тиймээс энэ давхаргыг хоёр мөр болгож задална.
+     */
+    const out: { hue: string; title: string; n: number }[] = [];
+    const rest: string[] = [];
     for (const id of visible) {
+      if (id === IRGED_BUILT.id) {
+        for (const t of [IRGED_BUILT.types.house, IRGED_BUILT.types.ger]) {
+          out.push({ hue: IRGED_BUILT_MAP_HUE[t], title: tr(t), n: 1 });
+        }
+        continue;
+      }
+      rest.push(id);
+    }
+
+    const byHue = new Map<string, { hue: string; ids: string[] }>();
+    for (const id of rest) {
       const L = LAYER_BY_ID[id];
       if (!L) continue;
       const cur = byHue.get(L.hue);
       if (cur) cur.ids.push(id);
       else byHue.set(L.hue, { hue: L.hue, ids: [id] });
     }
-    return [...byHue.values()].map(({ hue, ids }) => {
+    return [...out, ...[...byHue.values()].map(({ hue, ids }) => {
       if (ids.length === 1) {
         return { hue, title: LAYER_BY_ID[ids[0]].title, n: 1 };
       }
@@ -313,13 +333,11 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         title: (g && GROUP_TITLE[g]) || LAYER_BY_ID[ids[0]].title,
         n: ids.length,
       };
-    });
+    })];
   }, [visible]);
   const legendHidden = Math.max(0, legend.length - 8);
 
   const noop = useCallback(() => {}, []);
-
-  const paint = IRGED_BUILT_DEF.paint?.values ?? {};
 
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
@@ -332,159 +350,145 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       <SplitGrip {...side.right} />
       {/* ══════════ ӨМНӨ — одоогийн байдал ══════════ */}
       <div className={i.left}>
-        {/* Баганын толгой — хоёр баганад ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
-        <h3 className={`eyebrow ${i.colHd}`}>{tr('Өмнө')}</h3>
 
         {/**
-          * ⚠️ 1 КАРТ = 1 ЗҮЙЛ. Энэ дүрмийг 2026-09-06-нд ГУРВАН удаа зөрчсөн:
-          *   1. Эрсдэлийн хэмжүүр бүрийг ТУСДАА картад бүтэн зэрэглэлээр
-          *      (18 мөр, дөрвүүлээ ижил хэлбэртэй) — багана нэг л чарт мэт.
-          *   2. Түүнийг «зассан» гэж тоо + чартыг НЭГ картад давхарлав.
-          *   3. Чартыг салгасны дараа ч Stats картад ХОЁР-ГУРВАН ӨӨР
-          *      үзүүлэлт (жорлонгийн тоо · бохирдлын индекс · өрхийн тоо —
-          *      гурван өөр үйлчилгээнээс) хамт үлдэж байв.
-          * Одоо: карт бүрд ГАНЦ үзүүлэлт эсвэл ГАНЦ чарт.
+          * ГЭРИЙН ЗУУХНЫ УТАА — PM2.5, тн/жил.
           *
-          * ⚠️ «Ашиглаж буй 8,575 өрх» нүд БҮРМӨСӨН ХАСАГДАВ — тэр тоо
-          * зургийн ДЭЭД зурваст (`HeadKpi` → «Өрхийн орон сууц») аль хэдийн
-          * байдаг. Нэг дэлгэц дээр хоёр удаа гарах шалтгаангүй.
+          * ⚠️ ГУРВАН БАГАНА нь ГУРВАН ХУВИЛБАР: одоогийн уламжлалт зуух ·
+          * сайжруулсан зуух (улсын батламжийн дээд хязгаараар) · төвлөрсөн
+          * дулаан. Ингэснээр «зуух сольсон ч 48 тн үлдэнэ, төвлөрсөн дулаан л
+          * тэгд хүргэнэ» гэдэг нь нэг харцаар уншигдана — тоон жагсаалт
+          * (өмнөх хувилбар) үүнийг хэлж чаддаггүй байв.
+          *
+          * ⚠️ БҮГД НЭГ НЭГЖТЭЙ (тн/жил). Нүүрсний хэмжээ (42,875 тн) ба өрхөд
+          * ногдох дүн (52 кг) нь өөр нэгжтэй тул чартад ОРОХГҮЙ — доорх
+          * тайлбар мөрөнд үлдэнэ.
           */}
-        <Panel title={IRGED_TOILET.title} note={tr('гэр хороолол')}>
-          <Data q={qToilet} loading={tr('Тоолж байна…')} minH={54}>
-            {(n) => (
-              <div className={i.solo}>
-                <Stat value={num(n)} unit={tr('ш')} label={tr('Бүртгэгдсэн цэг')} />
-              </div>
-            )}
-          </Data>
+        <Panel title={tr('Гэрийн зуухны утаа')} note={tr('PM2.5 · тн/жил · тооцоолол')}>
+          {(() => {
+            /* ⚠️ ТӨЛӨВЛӨГӨӨТ өрхийн тоо (`loadHousing` → `AIL_TOO`, 8,575) ЭНД
+               ХЭРЭГЛЭХГҮЙ — тэр нь шинэ орон сууцанд орох өрх. «Өмнө» талын
+               суурь нь ОДОО байгаа зуухтай орон сууц: гэр + гэр хорооллын
+               байшин (`Irgeded_hureh_ur_uguuj`, амьд `groupBy`). */
+            const hh = qBuilt.state === 'ready'
+              ? qBuilt.data.reduce((t, x) => t + x.n, 0)
+              : null;
+            const s = hh == null ? null : stoveLoad(hh);
+            if (!s) return <Empty label={tr('Тооцоолж байна…')} />;
+            return (
+              <>
+                <Chain
+                  steps={[
+                    { key: 'hh', value: num(hh), unit: tr('гэр, байшин'), label: tr('нүүрсний зуухаар халаана'), icon: 'building' },
+                    { key: 'coal', value: num(s.coalT), unit: tr('тн'), label: tr('түүхий нүүрс жилд шатаана'), icon: 'flame' },
+                    { key: 'pm', value: num(s.pm25T), unit: tr('тн'), label: tr('PM2.5 агаарт ялгарна'), icon: 'waves', end: true },
+                  ]}
+                />
+                <p className={i.chartNote}>
+                  {tr('өрх тутам 5 тн нүүрс · 650 мг PM2.5/МЖ (уламжлалт зуух, SEET лаб 2014) · нэг өрхөд {0} кг',
+                    num(s.pm25KgPerHh))}
+                </p>
+              </>
+            );
+          })()}
         </Panel>
 
         {/**
-          * ⚠️ `Bars` БИШ `Donut` (хэрэглэгчийн хүсэлт, 2026-09-06). Хоёулаа
-          * ХЭСЭГ↔БҮХЭЛ харьцаа: 6,627 барилгын хэдэн хувь нь гэр вэ гэдгийг
-          * баганаас илүү бөгжөөр шууд уншина (тоо нь 11%, талбай нь 21% —
-          * зөрүү нь бөгж дээр нүдэнд шууд харагдана).
+          * НҮХЭН ЖОРЛОНГИЙН БОХИРДОЛ — хөрсөнд нэвчих АЗОТ, тн/жил.
           *
-          * ⚠️ `leaders` — тайлбарыг зүсмэг тус бүрээс ЗУРААС татаж ГАДНА бичнэ
-          * (дашбоардын «Ус хангамжийн эх үүсвэрийн чадал»-тай ЯГ ИЖИЛ хэлбэр,
-          * `Dashboard.tsx:3274`). Зүсмэг ХОЁРХОН тул шошго хоорондоо
-          * мөргөлдөхгүй; доод жагсаалт (`stack`) нь бөгжийг дэмий намхан
-          * болгоод, картыг уртасгадаг байв.
-          *
-          * ⚠️ Хоёр төрлийг ТУСАД НЬ. Нийлбэрийг ганц тоо болговол «6,627
-          * барилга» гэдэг нь гэр ба байшинг ялгахгүй — чөлөөлөлт, нүүлгэн
-          * шилжүүлэлтийн зардал хоёрт нь ЭРС өөр.
+          * ⚠️ Азотыг сонгосон шалтгаан: эзэлхүүн (м³) нь «хэр их хуримтлагдав»
+          * гэдгийг хэлдэг ч ХОР УРШИГ нь азот — битүүмжлэлгүй нүхнээс хөрсөнд,
+          * улмаар гүний усанд НИТРАТ болж нэвчиж, худгийн ус бохирдуулдаг.
+          * Эзэлхүүн ба жорлонгийн тоо нь доорх тайлбар мөрөнд.
           */}
-        <Panel title={tr('Одоогийн барилга')} note={tr('ш · төрлөөр')}>
-          <Data q={qBuilt} loading={tr('Тоолж байна…')} minH={220}>
-            {(rows) => (
-              <Donut
-                size={140}
-                width={22}
-                leaders
-                center={num(rows.reduce((t, b) => t + b.n, 0))}
-                centerLabel={tr('барилга')}
-                selected={selOf('irged:builtN:')}
-                onSelect={(k) => {
-                  const b = rows.find((x) => x.type === k);
-                  if (!b) return;
-                  toggle({
-                    key: `irged:builtN:${k}`,
-                    label: tr('Одоогийн барилга: {0}', tr(k)),
-                    group: tr('Гэр хороолол'),
-                    where: `${IRGED_BUILT.typeField} = N'${sq(k)}'`,
-                    view: 'irged',
-                    layerIds: IRGED_BUILT.id,
-                    color: paint[k],
-                  });
-                }}
-                items={rows.map((b) => ({
-                  key: b.type,
-                  label: tr(b.type),
-                  value: b.n,
-                  /* ⚠️ Өнгө нь ЗААВАЛ (`Donut` нь `color` шаардана) — давхаргын
-                     `paint`-аас, зурагтай яг ижил. Утга олдохгүй бол давхаргын
-                     үндсэн өнгө. */
-                  color: paint[b.type] ?? IRGED_BUILT_DEF.hue,
-                  display: tr('{0} ш', num(b.n)),
-                }))}
-              />
-            )}
-          </Data>
+        <Panel title={tr('Нүхэн жорлонгийн бохирдол')} note={tr('азот · тн/жил · тооцоолол')}>
+          {(() => {
+            /* ⚠️ Суурь нь БҮРТГЭГДСЭН ЖОРЛОНГИЙН ТОО — нэг жорлонг нэг өрх
+               хэрэглэдэг тул хүн ам нь тэрхүү тоо × өрхийн дундаж хэмжээ.
+               Орон сууцны нийт тоог өгвөл нэг нүхэнд 14 хүн ногдох бодит бус
+               тоо гарна (6,627 × 3.6 ÷ 1,675). */
+            const pits = qToilet.state === 'ready' ? qToilet.data : null;
+            const l = pits == null ? null : latrineLoad(pits);
+            if (!l) return <Empty label={tr('Тооцоолж байна…')} />;
+            return (
+              <>
+                <Chain
+                  steps={[
+                    { key: 'pit', value: num(pits), unit: tr('ш'), label: tr('битүүмжлэлгүй нүхэн жорлон'), icon: 'pin' },
+                    { key: 'sludge', value: num(l.sludgeM3), unit: tr('м³'), label: tr('ялгадас жилд хуримтлагдана'), icon: 'trash' },
+                    { key: 'n', value: num(l.nitrogenT), unit: tr('тн'), label: tr('азот хөрс, гүний усанд'), icon: 'droplet', end: true },
+                  ]}
+                />
+                <p className={i.chartNote}>
+                  {tr('нэг жорлон = нэг өрх · {0} хүн (өрхийн дундаж 3.6, ҮСХ) × 4.5 кг N (Jönsson 2004)',
+                    num(l.pop))}
+                </p>
+              </>
+            );
+          })()}
         </Panel>
 
-        {/* ⚠️ ТАЛБАЙН бөгж — `Shape__Area` нь үйлчилгээнд байсаар атал огт
-            харагддаггүй байв. Тоо ба талбай ХОЁР ӨӨР зураг өгнө: гэр нь
-            тоогоороо 11% ч талбайгаараа 21%. Хоёр бөгжийг зэрэгцүүлэн харахад
-            тэр зөрүү шууд уншигдана — тиймээс ХОЁУЛАА бөгж.
-            ⚠️ Дундаж ул мөрийг шошгонд үлдээв: «Гэр 77.2 м²» нь «Байшин
-            38.3 м²»-ээс хоёр дахин том гэдэг нь эх өгөгдлийн сануулга
-            (гэрийн полигон нь гэр биш, хашаа/тавцан бололтой). */}
-        <Panel title={tr('Барилгажсан талбай')} note={tr('м² · төрлөөр')}>
-          <Data q={qBuilt} loading={tr('Тоолж байна…')} minH={220}>
-            {(rows) => (
-              <Donut
-                size={140}
-                width={22}
-                leaders
-                /**
-                  * ⚠️ ЗҮСМЭГ БҮРИЙГ ДУГУЙРУУЛСНЫ ДАРАА нэмнэ — түүхий нийлбэрийг
-                  * дугуйруулбал БИШ. Түүхий утга нь 225,150.585 + 58,307.789 =
-                  * 283,458.374 → «283,458», гэтэл дэлгэц дээрх хоёр зүсмэг нь
-                  * «225,151» ба «58,308» буюу нийлээд 283,459 гэж уншигдана.
-                  * Нэг эсийн зөрүү ч гэсэн «голын тоо мөрүүдийнхээ нийлбэр биш»
-                  * гэсэн уншилт өгнө. Тиймээс ХАРАГДАХ утгуудаас нь бодно.
-                  */
-                center={num(rows.reduce((t, b) => t + Math.round(b.areaM2), 0))}
-                centerLabel={tr('м²')}
-                selected={selOf('irged:built:')}
-                onSelect={(k) => {
-                  const b = rows.find((x) => x.type === k);
-                  if (!b) return;
-                  toggle({
-                    key: `irged:built:${k}`,
-                    label: tr('Барилгажсан талбай: {0}', tr(k)),
-                    group: tr('Гэр хороолол'),
-                    where: `${IRGED_BUILT.typeField} = N'${sq(k)}'`,
-                    view: 'irged',
-                    layerIds: IRGED_BUILT.id,
-                    color: paint[k],
-                  });
-                }}
-                items={rows.map((b) => ({
-                  key: b.type,
-                  label: b.avgM2 == null
-                    ? tr(b.type)
-                    : tr('{0} · дундаж {1} м²', tr(b.type), num(b.avgM2, 1)),
-                  value: b.areaM2,
-                  color: paint[b.type] ?? IRGED_BUILT_DEF.hue,
-                  display: tr('{0} м²', num(b.areaM2)),
-                }))}
-              />
-            )}
-          </Data>
+        {/**
+          * НЭГ ОРОН СУУЦАНД НОГДОХ — дээрх хоёр картын ижил коэффициентийг
+          * НЭГЖ рүү буулгасан хувилбар.
+          *
+          * ⚠️ ШИНЭ таамаг НЭМЭХГҮЙ: 33,135 тн ба 345 тн-ыг 6,627-д, ялгадас ба
+          * азотыг 1,675 жорлонд хуваасан утгууд. Нийт дүн нь «хот даяар хэр их
+          * вэ» гэж хэлдэг ч «миний гэрт энэ хэр хамаатай вэ» гэдэгт хариулдаггүй
+          * тул эрчмийн үзүүлэлт нэмэв.
+          *
+          * ⚠️ ЗӨВХӨН ӨМНӨХ байдал — төлөвлөгөөт барилга, хүн ам, өрхийн тоо
+          * энэ баганад ОГТ орохгүй (хэрэглэгчийн шийдвэр, 2026-09-17).
+          */}
+        <Panel title={tr('Нэг өрхийн ялгаруулах бохирдол')} note={tr('жилд · тооцоолол')}>
+          <div className={i.factList}>
+            <div className={i.fact}>
+              <p className={i.factHead}>
+                <span className={i.factTag}>{tr('Түүхий нүүрс')}</span>
+                <span className={i.factDash}>—</span>
+                <span className={i.factVal}>
+                  {num(COAL_T_PER_HH)}
+                  <em className={i.factUnit}>{tr('тн')}</em>
+                </span>
+              </p>
+              <p className={i.factTxt}>{tr('халаалт, хоолны зуухны жилийн хэрэглээ · Дэлхийн банк (ASTAE), 2012')}</p>
+            </div>
+            <div className={i.fact}>
+              <p className={i.factHead}>
+                <span className={i.factTag}>{tr('PM2.5 ялгарал')}</span>
+                <span className={i.factDash}>—</span>
+                <span className={i.factVal}>
+                  {num(COAL_T_PER_HH * PM25_KG_PER_T_COAL)}
+                  <em className={i.factUnit}>{tr('кг')}</em>
+                </span>
+              </p>
+              <p className={i.factTxt}>{tr('уламжлалт зуух 650 мг/МЖ × 16 МЖ/кг · SEET лаб, 2014')}</p>
+            </div>
+            <div className={i.fact}>
+              <p className={i.factHead}>
+                <span className={i.factTag}>{tr('Ялгадас')}</span>
+                <span className={i.factDash}>—</span>
+                <span className={i.factVal}>
+                  {num(PERSONS_PER_HH * SLUDGE_M3_PER_PERSON, 2)}
+                  <em className={i.factUnit}>{tr('м³')}</em>
+                </span>
+              </p>
+              <p className={i.factTxt}>{tr('3.6 хүн × 0.05 м³ · WHO/SuSanA норм (40–60 л/хүн/жил)')}</p>
+            </div>
+            <div className={i.fact}>
+              <p className={i.factHead}>
+                <span className={i.factTag}>{tr('Азот')}</span>
+                <span className={i.factDash}>—</span>
+                <span className={i.factVal}>
+                  {num(PERSONS_PER_HH * N_KG_PER_PERSON, 1)}
+                  <em className={i.factUnit}>{tr('кг')}</em>
+                </span>
+              </p>
+              <p className={i.factTxt}>{tr('3.6 хүн × 4.5 кг N · Jönsson & Vinnerås, 2004')}</p>
+            </div>
+          </div>
         </Panel>
 
-        {/* «Дараа» талын «Байгууламж — дараа» карттай ЯГ ИЖИЛ загвар, НЭГ
-            хэмжүүр (`SOC_MAX`) — хоёр багананы баганыг зэрэгцүүлэн харахад
-            өсөлт шууд уншигдана. Шошгод эх текстийг нь бүтнээр («2 (1,440)»)
-            үлдээв: хүчин чадлын мэдээлэл хаягдахгүй.
-            ⚠️ Мөр бүрийн өнгө заахгүй — envhub-д өгөгдлийн ГАНЦ өнгө
-            (`Bars`-ын анхдагч var(--data)); ангиллыг дараалал нь ялгана.
-            ⚠️ ШҮҮЛТГҮЙ: эдгээр нь ОДОО БАЙГАА байгууламж бөгөөд порталын ямар ч
-            давхаргад зурагддаггүй (`brief.ts` мета). Шүүх товч өгвөл дарахад
-            зурагт юу ч болохгүй — худал амлалт. */}
-        <Panel title={tr('Байгууламж — өмнө')} note={`${SOCIAL.totals.now} ${tr('байгууламж')}`}>
-          <Bars
-            max={SOC_MAX}
-            items={SOCIAL.rows.map((r) => ({
-              key: r.label,
-              label: r.label,
-              value: headCount(r.now),
-              display: r.now,
-            }))}
-          />
-        </Panel>
 
         {/* ⚠️ 2026-09-06: Хамрах хүрээ/хүчин чадлын ТАЙЛБАРЫН карт УСТГАВ
             (хэрэглэгчийн шийдвэр). «5,220 сурагч, 1,840 хүүхэд · 39,635 м² ·
@@ -498,7 +502,34 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {/* Толгойн таван үзүүлэлт — зургийн ДЭЭД зурваст, «Өмнө»/«Дараа»
             баганын толгойтой НЭГ шугамд зэрэгцэнэ. */}
         <div className={i.kpi}>
-          <HeadKpi bagts={bagts} />
+          {/* ⚠️ Гурван нэмэлт нүд — гэр хорооллын БОДИТ тоо (`extra`).
+              Зүүн баганад тусдаа карт байсныг 2026-09-17-нд ЭНД зөөв: тэдгээр
+              нь зурвасын бусад үзүүлэлттэй ЯГ ижил төрлийн тоо тул нэг эгнээнд
+              байх нь зөв (хэрэглэгчийн шийдвэр). Тоонууд АМЬД. */}
+          <HeadKpi
+            bagts={bagts}
+            extra={[
+              {
+                v: qBuilt.state === 'ready'
+                  ? num(qBuilt.data.find((x) => x.type === IRGED_BUILT.types.house)?.n ?? 0)
+                  : '…',
+                unit: tr('ш'),
+                label: tr('Байшин'),
+              },
+              {
+                v: qBuilt.state === 'ready'
+                  ? num(qBuilt.data.find((x) => x.type === IRGED_BUILT.types.ger)?.n ?? 0)
+                  : '…',
+                unit: tr('ш'),
+                label: tr('Гэр'),
+              },
+              {
+                v: qToilet.state === 'ready' ? num(qToilet.data) : '…',
+                unit: tr('ш'),
+                label: tr('Нүхэн жорлон'),
+              },
+            ]}
+          />
         </div>
 
         {/**
@@ -585,107 +616,111 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
       {/* ══════════ ДАРАА — төлөвлөсөн ══════════ */}
       <div className={i.right}>
-        {/* Баганын толгой — зүүнтэй ЯГ ИЖИЛ eyebrow, ялгаа нь зөвхөн ҮГ */}
-        <h3 className={`eyebrow ${i.colHd}`}>{tr('Дараа')}</h3>
-
         {/* ⚠️ «Нийгмийн дэд бүтэц» Stats карт (Нийт болно 21 · Шинээр 12)
             ХАСАГДАВ: доорх чартын `note` нь «21 байгууламж» гэж хэлж,
             баганууд нь задаргааг нь харуулж байхад тэр хоёр тоо НЭМЭЛТ
             мэдээлэл өгөхгүй, зөвхөн нэг картад хоёр өөр үзүүлэлт нэмж байв. */}
-        {/* «Өмнө» талын ижил нэртэй карттай ЯГ ИЖИЛ загвар, НЭГ хэмжүүр
-            (`SOC_MAX`) — хоёр чартын баганыг зэрэгцүүлэн харахад өсөлт шууд
-            уншигдана. */}
-        <Panel title={tr('Байгууламж — дараа')} note={`${SOCIAL.totals.total} ${tr('байгууламж')}`}>
-          <Bars
-            max={SOC_MAX}
-            items={SOCIAL.rows.map((r) => ({
-              key: r.label,
-              label: r.label,
-              value: r.total,
-              display: String(r.total),
-            }))}
-          />
-        </Panel>
-
         {/**
-          * ТӨЛӨВЛӨСӨН БАЙГУУЛАМЖИЙН АМЬД ХҮЧИН ЧАДАЛ.
+          * НИЙГМИЙН БАЙГУУЛАМЖ — ТӨСЛИЙН ӨӨРИЙН ИНФОГРАФИКИЙН БҮТЭЦ.
           *
-          * ⚠️ Дээрх карттай ДАВХАРДАХГҮЙ: тэр нь `brief.ts`-ийн ӨМНӨ↔ДАРАА
-          * ТООН харьцуулалт (одоо байгааг агуулдаг цорын ганц эх сурвалж), энэ
-          * нь төлөвлөсөн барилгын АМЬД атрибут (хүчин чадал, талбай, давхар).
-          * Хоёр нь бие биенээ шалгана: сургууль 3,780 · цэцэрлэг 1,200 гэсэн
-          * `Huchin_chadal`-ийн нийлбэр нь `SOCIAL.rows.add`-тай ЯГ таарч байгаа
-          * нь хатуу мөрүүд хараахан хуучраагүйн баталгаа.
+          * ⚠️ Хэрэглэгчийн өгсөн эх загвар (2026-09-17): төрөл бүр нь
+          *   · НИЙТ тоо — том, зүүн талд, доор нь багтаамж;
+          *   · «Одоо байгаа» ба «шинээр» ХОЁР мөр, тус бүр 7 нүдтэй нэгжийн
+          *     зурвас (дүүрсэн нүд = тоо), баруун талд нь бичвэр задаргаа.
+          * Ингэснээр «хэд байснаа хэд болох» нь ХОЁР ТУСДАА мөрөөр харагдана —
+          * урьдын нэг мөрт хольсон хувилбарт «одоо» ба «шинэ» нь нэг эгнээнд
+          * нийлж, аль нь аль вэ гэдэг зөвхөн өнгөөр ялгарч байв.
+          *
+          * ⚠️ Нүдний тоо ТОГТМОЛ 7 — эх загвартай ижил. Бүх төрөл нэг хэмжүүрт
+          * болж, мөрүүд босоо тэнхлэгээр эгнэнэ. 7-оос их утга гарвал (одоогоор
+          * хамгийн их нь 5) илүүдлийг тоогоор нь хэлнэ.
           */}
-        <Panel title={tr('Төлөвлөсөн хүчин чадал')} note={tr('зориулалтаар')}>
-          <Data q={qSoc} loading={tr('Татаж байна…')} minH={120}>
-            {(rows) => (rows.length ? (
-              <Bars
-                selected={selOf('irged:soc:')}
-                onSelect={(k) => {
-                  const r = rows.find((x) => x.purpose === k);
-                  if (!r) return;
-                  /* ⚠️ `where` нь `1=1`: бүлгийн БҮХ объект хэрэгтэй бөгөөд
-                     давхарга бүр 1–2 мөртэй тул атрибутаар шүүх утгагүй.
-                     Ашиг нь `FilterProvider`-ийн НИСЛЭГ — сонгосон
-                     байгууламжууд руу зураг ойртоно (`zoomToWhere`). */
-                  toggle({
-                    key: `irged:soc:${k}`,
-                    label: tr('Төлөвлөсөн: {0}', tr(k)),
-                    group: tr('Нийгмийн дэд бүтэц'),
-                    where: '1=1',
-                    view: 'irged',
-                    layerIds: r.layerIds,
-                  });
-                }}
-                items={rows.map((r) => ({
-                  key: r.purpose,
-                  /* ⚠️ 2026-09-06: ТАЛБАЙН чарт ТУСДАА карт байсныг энд уусгав —
-                     хоёр чарт ЯГ ижил мөртэй, ижил дараалалтай, зөвхөн хэмжүүр нь
-                     өөр байсан тул баруун багана хоёр дахин урсаж, шинэ мэдээлэл
-                     нэмэгддэггүй байв. Одоо талбай/давхар нь шошгонд орно. */
-                  label: r.floors == null
-                    ? tr('{0} · {1} ш', tr(r.purpose), num(r.n))
-                    : tr('{0} · {1} ш · {2} давхар', tr(r.purpose), num(r.n), num(r.floors)),
-                  /* ⚠️ Чадалгүй мөрийг 0 гэж зурахгүй — багана нь хоосон
-                     үлдэж, утга нь талбайгаа л хэлнэ (`null ≠ 0`). */
-                  value: r.capacity ?? 0,
-                  display: r.capacity == null
-                    ? tr('{0} м²', num(r.floorArea))
-                    : tr('{0} · {1} м²', num(r.capacity), num(r.floorArea)),
-                }))}
-              />
-            ) : <Empty label={tr('Төлөвлөсөн байгууламж олдсонгүй')} />)}
-          </Data>
+        <Panel
+          title={tr('Нийгмийн байгууламж')}
+          note={tr('{0} → {1}', SOCIAL.totals.now, String(SOCIAL.totals.total))}
+        >
+          <div className={i.socList}>
+            {SOCIAL.rows.map((r) => {
+              const now = headCount(r.now);
+              const add = headCount(r.add);
+              /* «2 (1,440)» → «1,440». Хаалт доторх багтаамж байхгүй мөр бий. */
+              const cap = (v: string) => /\(([^)]+)\)/.exec(v)?.[1] ?? null;
+              const dots = (k: number) => Array.from({ length: 7 }, (_, n) => (
+                <i key={n} className={n < k ? i.socOn : i.socOff} />
+              ));
+              return (
+                <div key={r.label} className={i.socBlock}>
+                  <div className={i.socHead}>
+                    <b className={i.socTotal}>{r.total}</b>
+                    <span className={i.socName}>{r.label}</span>
+                  </div>
+                  <div className={i.socLine}>
+                    <span className={i.socWhen}>{tr('Одоо байгаа')}</span>
+                    <span className={i.socDots}>{dots(now)}</span>
+                    <span className={i.socFact}>
+                      {now ? <b>{now}</b> : <em>—</em>}
+                      {cap(r.now) && <em>{tr('{0} хүн', cap(r.now)!)}</em>}
+                    </span>
+                  </div>
+                  <div className={i.socLine}>
+                    <span className={i.socWhen}>{tr('шинээр')}</span>
+                    <span className={i.socDots}>{dots(add)}</span>
+                    <span className={i.socFact}>
+                      {add ? <b>{add}</b> : <em>—</em>}
+                      {cap(r.add) && <em>{tr('{0} хүн', cap(r.add)!)}</em>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </Panel>
 
         {/**
-          * ⚠️ `Stats` БИШ `Rows` (2026-09-06). `Stat` нь БОГИНО шошгонд
-          * зориулагдсан: шошго нь uppercase eyebrow, тооноос ДЭЭР, 26px
-          * нөөцөлсөн (`ui.module.css` → `.statLabel`). `BENEFITS`-ийн мөрүүд
-          * нь шошго БИШ, БҮТЭН ӨГҮҮЛБЭР («иргэн орчин үеийн орон сууц,
-          * төвлөрсөн инженерийн хангамжтай болно») тул тэнд 4–5 мөр болж
-          * дэлгэрч, тоо нь өөрийн тайлбарын доор жижигхэн үлдэж байв —
-          * унших дараалал урвуу. `Rows` нь эсрэгээрээ: өгүүлбэр зүүн талдаа
-          * хумигдаж мөр дамжина, ТОО баруун талдаа бүтнээр үлдэнэ.
+          * ХАМРАХ ХҮРЭЭ — ЯВГАН АЛХАХ ХУГАЦААНЫ ШУГАМ.
+          *
+          * ⚠️ Цагираг ба зурвас хоёулаа МЕТРийг дүрсэлдэг. Гэтэл төслийн
+          * амлалт нь «20 минутын хот» — иргэний хувьд хэмжүүр нь МЕТР биш
+          * ХУГАЦАА. Тиймээс нормативын радиусыг явган алхах минут болгож,
+          * 20 минутын шугам дээр байрлуулав: гурвуулаа шугамын эхний
+          * хагаст багтаж байгаа нь амлалтын биелэлтийг шууд харуулна.
+          *
+          * ⚠️ Хугацаа = радиус ÷ 83 м/мин (явган алхалтын дундаж 5 км/ц).
+          * ⚠️ Байрлал нь ХУВИАР (`left: %`) тул ямар ч өргөнд шугам эвдрэхгүй.
           */}
-        <Panel title={tr('Иргэдийн амьдралын чанар')}>
-          <Rows
-            items={BENEFITS.map((b) => {
-              /* ⚠️ `live` заалттай мөр АМЬД утгаар солигдоно. Тэр туг
-                 2026-08-13-наас хойш зарлагдсан атлаа ХЭН Ч уншдаггүй байсан
-                 тул мөрүүд хатуу хэвээр үлдэж, ЯГ дээрх `HeadKpi` зурвастай
-                 зөрдөг байв (44,518 ↔ амьд 43,287).
-                 ⚠️ Амьд утга ирээгүй байхад ХАТУУ утгыг харуулна — «…» гэж
-                 хоослох нь энэ карт бүхэлдээ анивчихад хүргэнэ. */
-              const v = b.live ? liveBenefit(b.live) : null;
-              return {
-                key: b.text,
-                value: <>{v == null ? b.value : num(v)}{b.unit ? ' ' + b.unit : ''}</>,
-              };
-            })}
-          />
+        <Panel title={tr('Хамрах хүрээ')} note={tr('явган алхах хугацаа · БНбД 30.01.03')}>
+          <div className={i.walkV}>
+            {/* ⚠️ БОСОО шугам: хэвтээ хувилбарт гурван шошго («Цэцэрлэг»,
+                «Сургууль», «Өрхийн эмнэлэг») 4, 6, 9 минутын ойрхон цэгүүд
+                дээр зэрэгцэж, үсэг нь давхцаж уншигдахаа больсон байв. Босоо
+                тэнхлэгт мөр бүр ӨӨРИЙН өндөрт суух тул хэчнээн урт нэр ч
+                хөршөө халхлахгүй. */}
+            <div className={i.walkLine}>
+              <i className={i.walkFill} />
+              {[
+                { key: 'kinder', m: 300, label: tr('Цэцэрлэг') },
+                { key: 'school', m: 500, label: tr('Сургууль') },
+                { key: 'clinic', m: 750, label: tr('Өрхийн эмнэлэг') },
+              ].map((r) => {
+                const min = r.m / 83;
+                return (
+                  <span key={r.key} className={i.walkStop} style={{ top: `${(min / 20) * 100}%` }}>
+                    <b>{Math.round(min)}</b>
+                    <em>{tr('мин')}</em>
+                    <span className={i.walkTag}>{r.label}</span>
+                    <span className={i.walkM}>{tr('{0} м', String(r.m))}</span>
+                  </span>
+                );
+              })}
+            </div>
+            <div className={i.walkEnd}>{tr('20 минутын хотын хязгаар')}</div>
+          </div>
+          <p className={i.chartNote}>
+            {tr('Нормативын радиусыг (БНбД 30.01.03) явган алхах хугацаа болгов — 83 м/мин буюу 5 км/ц. Гурвуулаа «20 минутын хот»-ын амлалтын эхний хагаст багтана.')}
+          </p>
         </Panel>
+
+
       </div>
     </div>
   );

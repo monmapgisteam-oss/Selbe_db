@@ -77,26 +77,80 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* ⚠️ 2026-09-17: 10 → 8px (нягтрал — багана гүйлгэхгүйгээр багтана) */
+  gap: 8px;
   overflow-y: auto;
 }
 .left { grid-area: left; }
 .right { grid-area: right; }
 
 /**
- * Баганын толгой — глобал `.eyebrow` (10–11px, uppercase, ink-3) дээр зөвхөн
- * байрлалын нэмэлт. Хоёр баганад ЯГ ИЖИЛ: «Өмнө/Дараа»-г үг нь л ялгана.
+ * ⚠️ «AI туслах» хөвөгч товч (`agent.module.css` → `.fab`, `position: fixed;
+ * right: 18px; bottom: 18px`, ~40px өндөр) нь баганын ДЭЭГҮҮР хөвч, сүүлийн
+ * мөрийг халхалдаг.
+ *
+ * Урьд нь баганад `padding-bottom: 64px` өгч байсан нь картыг ёроолд хүрэхээс
+ * нь өмнө таслаад, доор нь ХООСОН зай үлдээдэг байв. Одоо зайг картын ДОТОР
+ * өгнө: дэвсгэр нь баганын ёроол хүртэл үргэлжилж, зөвхөн БИЧВЭР нь товчноос
+ * дээш зогсоно.
  */
-.colHd {
-  flex: none;
-  padding: 2px 2px 0;
-}
+.right > .card:last-child { padding-bottom: 26px; }
+
+/**
+ * ⚠️ 2026-09-17: Нөөц зайг 56 → 26px болгов. Товч нь баруун ДООД БУЛАНД,
+ * ~180px өргөнтэй тул бүхэл мөрийг биш зөвхөн тэр булангийн ард орно; сүүлийн
+ * мөрийн бичвэр зүүн талдаа дуусдаг учир 26px хангалттай. Илүү нөөцлөвөл
+ * картын ёроолд агуулгагүй зурвас үлдэж, «хоосон зай» болж харагдана.
+ *
+ * Мөрүүд үлдсэн өндрийг ТЭНЦҮҮ хуваана (`.factList > *` → `flex: 1`) тул
+ * зай нь ганц газар хураагдахгүй, мөр хооронд жигд тарна.
+ */
 
 /**
  * overview-гийн `.panel` нь flex тохиргоогүй тул гүйдэг flex баганад агуулгаараа
- * хумигдаж мэднэ — энд `flex: none` даруулж өндрийг нь агуулгад нь өгнө.
+ * хумигдаж мэднэ — `flex: none` даруулж өндрийг нь агуулгад нь өгнө.
  */
 .card { flex: none; }
+
+/**
+ * ⚠️ 2026-09-17: Баганын ЁРООЛД хоосон зай үлдэхгүй болгов (хэрэглэгчийн
+ * шийдвэр) — гэхдээ ЗӨВХӨН СҮҮЛИЙН карт сунана.
+ *
+ * Бүх картыг сунгавал (`flex: 1`) бөгжтэй картуудын ДОТОР хоосон зай тэлж,
+ * чарт нь дээд захдаа наалддаг. Сүүлийнх нь жагсаалттай (текстэн мөрүүд) тул
+ * сунахад нүдэнд эвгүй зүйл үүсэхгүй, багана нь бүтнээр дүүрнэ.
+ * `0` нь ХУМИГДАХГҮЙ гэсэн үг — агуулга баганаас урт бол жамаараа үлдэж,
+ * багана өөрөө гүйнэ.
+ */
+/**
+ * ⚠️ ЗҮҮН БАГАНА: картууд АГУУЛГЫНХАА өндрөөр, ЗАЙ нь тогтмол (8px).
+ *
+ * Хоёр хувилбарыг туршиж УХРААВ:
+ *   · `flex: 1` (карт сунах) — агуулга голдоо үлдэж, карт бүрийн дээд/доод
+ *     талд хоосон зурвас гарна;
+ *   · `justify-content: space-between` — картуудын ДУНД 100px завсар үүснэ.
+ * Аль аль нь картыг агуулгаасаа салгаж «хоосон хайрцаг» болгоно. Үлдсэн зай
+ * баганын ЁРООЛД цугларах нь хамгийн жирийн бөгөөд нүдэнд хамгийн эвтэйхэн.
+ */
+/**
+ * ⚠️ Картууд АГУУЛГЫНХАА өндрөөр — сунгахгүй. Үлдсэн зай нь баганын ЁРООЛД
+ * цуглана.
+ *
+ * Дөрвөн хувилбарыг туршиж бүгдийг УХРААВ: (1) бүх картыг сунгах — агуулга
+ * голдоо үлдэж «хоосон хайрцаг» болно; (2) `space-between` — картуудын дунд
+ * 100px цоорхой; (3) зөвхөн сүүлчийн картыг сунгах — илүүдэл нэг картад
+ * цуглана; (4) карт + мөрүүдийг зэрэг сунгах — мөр хооронд тарж уншилт
+ * задарна. Аль ч тохиолдолд картын хүрээ агуулгаасаа салдаг.
+ */
+.left > .card,
+.right > .card { flex: none; }
+
+/**
+ * ⚠️ БАРУУН багана: картууд АГУУЛГЫНХАА өндрөөр (сунахгүй). Сунгаж үзсэн ч
+ * мөрүүд хэт тарж, долоон богино багана дэлгэцийн өндөрт цацагдаад уншихад
+ * хэцүү болсон тул болив — үлдсэн зай нь баганын ЁРООЛД цуглана.
+ */
+
 
 /**
  * ГАНЦ ҮЗҮҮЛЭЛТТЭЙ КАРТ — `Stat`-ын дотоод хайрцгийг тайлна.
@@ -188,4 +242,372 @@
 }
 @media (max-width: 1180px) {
   .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+}
+
+
+/* ══════════ ИРГЭДИЙН АМЬДРАЛЫН ЧАНАР — ангилал + тоо + тайлбар ══════════ */
+
+/**
+ * Жагсаалт нь картын биеийг БҮТНЭЭР эзэлнэ (`height: 100%`) бөгөөд мөрүүд
+ * үлдсэн зайг тэнцүү хуваана. Карт нь баганын сүүлчийнх тул сунадаг: өмнө нь
+ * зургаан мөр дээд талдаа хураагдаж, доор нь том хоосон зай үлддэг байв.
+ */
+/**
+ * ⚠️ 2026-09-17: Мөрүүд СУНАХАА БОЛИВ (`height: 100%` + `flex: 1` хасагдав).
+ * Карт нь баганын сүүлчийнх тул өндөр байсан бөгөөд дөрвөн мөр тэр өндрийг
+ * тэнцүү хувааж, мөр хооронд 40–50px хоосон зай үүсдэг байв — нэг мөрийн
+ * тоо ба тайлбар хоёр нь өөр хоёр «блок» мэт салж харагдана.
+ */
+.factList { display: flex; flex-direction: column; }
+
+/**
+ * Мөр: ангилал ба тоо НЭГ мөрөнд (хоёр өөр захад), тайлбар нь ДООГУУР бүтэн
+ * өргөнөөр. `grid` нь гурван элементийг хоёр мөрөнд байрлуулах хамгийн богино
+ * зам — тоо нь уртаасаа үл хамааран баруун захдаа тогтоно.
+ */
+/**
+ * ⚠️ 2026-09-17: ТООНЫ БАГАНА тусдаа, БОСОО ЗУРААСААР тусгаарлагдана
+ * (хэрэглэгчийн шийдвэр). Урьд нь тайлбар нь хоёр баганыг дамжиж, тоо нь
+ * өгүүлбэрийн урт бүрд өөр өөр цэгээс эхэлдэг байв — багана болж эгнэдэггүй.
+ *
+ * Тоо нь мөрийн ХОЁР эгнээг дамжин (`grid-row: 1 / -1`) сунах тул зураас нь
+ * мөр бүрд бүтнээр татагдаж, дээрээс доош ҮРГЭЛЖИЛСЭН шугам болно. Тиймээс
+ * доторх зайг МӨРД биш, НҮДЭНД нь өгнө (`padding-block`) — эс бөгөөс мөрийн
+ * зайд зураас тасарна.
+ */
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+/**
+ * ТОЛГОЙ МӨР — «Орон сууц — 43,287» (хэрэглэгчийн шийдвэр, 2026-09-17).
+ *
+ * ⚠️ `flex-wrap: wrap` — урт нэр («Инженерийн хангамж») нарийн баганад
+ * мурийвал тоо нь дараагийн мөрөнд БҮТНЭЭР бууна; дундуураа тасрахгүй.
+ */
+.factHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  margin: 0;
+}
+/* Холбогч зураас — нэр ба тооны аль алинаас БҮДЭГ */
+.factDash { color: var(--ink-3); }
+.fact:first-child { padding-top: 2px; }
+.fact:last-child { padding-bottom: 2px; }
+/* Эхний мөрийн дээд хүрээ илүүц — картын толгой өөрөө зураас татсан */
+.fact:first-child { border-top: none; }
+
+/* Ангилал — глобал `.eyebrow` дээр зөвхөн өнгөний өргөлт */
+/**
+ * ⚠️ 2026-09-17: `.eyebrow` (uppercase, өргөн зайтай) БОЛИВ. Тоотой нэг
+ * мөрөнд зураасаар холбогдох болсон тул том үсэг нь өгүүлбэр мэт уншигдахад
+ * саад болж байв («ОРОН СУУЦ — 43,287» гэхээс «Орон сууц — 43,287» илүү).
+ */
+.factTag {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/**
+ * ТОО — картын гол мэдээлэл. `tabular-nums` нь оронг эгнүүлж, зургаан мөрийн
+ * тоо баруун захдаа шулуун багана болно.
+ */
+/**
+ * ⚠️ 2026-09-17: БОСОО ЗУРААС ХАСАГДАВ. Тоонд 92px тогтмол багана нөөцлөхөд
+ * тайлбар нь нарийссан баганад 3 мөр болж мурийж, зургаан мөрийн өндөр жигд
+ * бус болж замбараагүй харагдаж байв. Одоо тоо нь ангиллынхаа МӨРӨНД, баруун
+ * захад; тайлбар нь БҮТЭН өргөнөөр 2 мөрт багтана. Мөр хоорондын hairline нь
+ * бүлэглэлтийг хангалттай хэлнэ.
+ */
+.factVal {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+/* Нэгж — тооноос ЖИЖИГ, бүдэг: «8,575 өрх» нь нэг бүхэл мэт уншигдана */
+.factUnit {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-left: 3px;
+}
+
+/* Тайлбар — хоёр баганыг дамжина, бүдэг жижиг бичвэр */
+.factTxt {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+
+
+
+
+
+
+/* Чартын доорх эх сурвалж/задаргааны мөр — чартаас бүдэг, жижиг */
+.chartNote {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+
+/* ══════════ БОХИРДЛЫН ДҮРСЛЭЛ — дүрстэй гурван алхмын гинж ══════════ */
+
+.chain { display: flex; flex-direction: column; }
+
+/**
+ * Алхам — зүүн талд ДҮРСНИЙ зангилаа, баруун талд тоо ба тайлбар.
+ *
+ * ⚠️ Холбогч шугам нь тусдаа элемент БИШ, `::before` псевдо: зангилааны
+ * ТӨВӨӨР (14px) доош татагдаж дараагийн зангилаа хүртэл үргэлжилнэ. Сүүлчийн
+ * алхамд шугам ХЭРЭГГҮЙ (`:last-child`) — эс бөгөөс хоосон зай руу унжина.
+ */
+.chainStep {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  column-gap: 12px;
+  row-gap: 1px;
+  padding-bottom: 16px;
+}
+.chainStep:last-child { padding-bottom: 0; }
+.chainStep::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 28px;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+.chainStep:last-child::before { display: none; }
+
+/* Зангилаа — дугуй тэмдэг, дүрс дотроо */
+.chainIcon {
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+}
+
+.chainVal {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.chainUnit { font-style: normal; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.chainTag { font-size: 11px; line-height: 1.35; color: var(--ink-3); }
+
+/* СҮҮЛЧИЙН алхам = үр дагавар, энэ картын хариулт — өнгөөр тодроно */
+.chainEnd .chainIcon {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  color: var(--bad);
+}
+.chainEnd .chainVal { color: var(--bad); }
+
+/* Чартын доорх эх сурвалж/задаргааны мөр — чартаас бүдэг, жижиг */
+.chartNote {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+
+/* ══════════ НИЙГМИЙН БАЙГУУЛАМЖ — төслийн инфографикийн бүтэц ══════════ */
+
+.socList { display: flex; flex-direction: column; }
+
+/* Төрөл бүр тусдаа блок — дээд хүрээгээр тусгаарлагдана */
+.socBlock { padding: 10px 0; border-top: 1px solid var(--line); }
+.socBlock:first-child { border-top: none; padding-top: 2px; }
+
+/* Толгой — НИЙТ тоо том, нэр нь хажууд */
+.socHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+  min-width: 0;
+}
+.socTotal {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--data);
+  font-variant-numeric: tabular-nums;
+}
+.socName {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  line-height: 1.25;
+  min-width: 0;
+}
+
+/**
+ * Мөр: «Одоо байгаа / шинээр» · нүднүүд · задаргаа.
+ * ⚠️ Нүдний багана нь `auto` — 7 нүд тогтмол өргөнтэй тул хоёр мөрийн нүд
+ * босоо тэнхлэгээр ЯГ эгнэнэ. Задаргаа нь үлдсэн зайг авна.
+ */
+.socLine {
+  display: grid;
+  grid-template-columns: 74px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.socWhen { font-size: 10.5px; color: var(--ink-3); }
+.socDots { display: flex; gap: 3px; }
+.socDots i { display: block; width: 12px; height: 12px; border-radius: 2px; }
+.socOn { background: var(--data); }
+.socOff { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.socFact {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.socFact b { font-size: 13px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.socFact em { font-style: normal; }
+
+/* Нарийн баганад — шошгын багана хумигдана */
+@media (max-width: 1180px) {
+  .socLine { grid-template-columns: 60px auto minmax(0, 1fr); }
+}
+
+/* ══════════ ХАМРАХ ХҮРЭЭ — БОСОО хугацааны шугам ══════════ */
+
+.walkV { padding: 4px 0 0; }
+
+/**
+ * Босоо тэнхлэг — дээр 0 мин, доор 20 мин. Өндөр нь ТОГТМОЛ (240px): гурван
+ * зогсоол 4 · 6 · 9 минутад буюу 48 · 72 · 108px-т суух тул мөр хоорондоо
+ * 24px-ээс ойртохгүй — ямар ч өргөнд давхцахгүй.
+ */
+.walkLine {
+  position: relative;
+  /**
+   * ⚠️ 240 → 150px. Гурван зогсоол нь 20 минутын тэнхлэгийн 20 · 30 · 45%-д
+   * буудаг тул тэнхлэгийн ДООД ТАЛ ҮРГЭЛЖ ХООСОН: 240px дээр 130px нь
+   * агуулгагүй зурвас байв. 150px дээр тэр хоосон хэсэг 80px болж хумигдана,
+   * зогсоолууд хоорондоо 15px зайтай хэвээр (давхцахгүй).
+   */
+  height: 150px;
+  margin-left: 3px;
+  /* Тэнхлэгийн шугам — зүүн захад, бүтэн өндрөөр */
+  background: linear-gradient(var(--surface-2), var(--surface-2)) left top/4px 100% no-repeat;
+}
+.walkFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--data) 60%, transparent),
+    color-mix(in srgb, var(--data) 10%, transparent));
+}
+
+/**
+ * Зогсоол — тэнхлэг дээрх цэг ба баруун талын шошго.
+ * ⚠️ `translateY(-50%)` — тоо нь тухайн минутын ЯГ түвшинд голлоно.
+ */
+.walkStop {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-left: 16px;
+  white-space: nowrap;
+}
+.walkStop::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--data);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.walkStop b {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.walkStop em { font-style: normal; font-size: 9.5px; color: var(--ink-3); }
+.walkTag { font-size: 11px; color: var(--ink-2); }
+.walkM { font-size: 9.5px; color: var(--ink-3); }
+
+/* Тэнхлэгийн төгсгөл — амлалтын хязгаар */
+.walkEnd {
+  margin: 4px 0 0 16px;
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+}
+
+/* Тайлбарын мөр — өнгөний түлхүүр ба утга */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.key { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.keyNow { background: var(--ink-3); opacity: 0.45; }
+.keyAdd { background: var(--data); }
+
+/* Чартын доорх эх сурвалж/задаргааны мөр */
+.chartNote {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
 }

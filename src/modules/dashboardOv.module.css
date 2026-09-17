@@ -494,17 +494,26 @@
 
 /* ⚠️ 2026-08-17: envhub-ийн KPI зурвас — тусдаа хавтангууд БИШ, НЭГ hairline
    хайрцаг дотор hairline заагтай нүднүүд (1px завсар + --line дэвсгэр). */
+/**
+ * ⚠️ 2026-09-17: НИЙЛСЭН хүснэгт → ТУСДАА хайрцгууд (санхүүгийн зурвастай
+ * ижил). Урьд нь 1px завсартай, нэг хүрээн дотор нийлсэн тул нүднүүд хуваагдсан
+ * ганц хавтан мэт харагдаж, доторх зүүн зэрэгцүүлэлт уншигдахгүй байв.
+ */
 .head {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
+  /**
+   * ⚠️ 2026-09-17: `auto-fit` → ТОГТМОЛ 4 БАГАНА (хэрэглэгчийн шийдвэр).
+   * Найман нүд 4 + 4 болж ХОЁР ЭГНЭЭНД жигд хуваагдана; `auto-fit` нь
+   * дэлгэцийн өргөнөөс хамаарч 5 + 3, 6 + 2 гэх мэт тэгш бус эгнээ үүсгэдэг
+   * байв. Нарийн дэлгэцэд доорх media дүрэм хоёр багана болгож хумина.
+   */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.head > * { border: none; border-radius: 0; }
+@media (max-width: 900px) {
+  .head { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ⚠️ `--tone` нь СОНГОМОЛ: «Багцын мэдээлэл» хавтан бүрд өөрийн өнгө дамжуулдаг
    тул дээд ирмэг нь өнгөтэй үлдэнэ. Дашбоард `--tone` дамжуулахгүй — өнгөгүй
@@ -523,17 +532,20 @@
  * муу — нүд нэг шугам дагаж уншиж чадахгүй. Одоо шошго+утга ДЭЭД талд наалдаж,
  * үлдсэнийг нь `.tileVal { margin-bottom: auto }` доод ирмэг рүү түлхэнэ.
  */
+/**
+ * ⚠️ 2026-09-17: ГОЛЛУУЛСАН → ЗҮҮН ЗЭРЭГЦҮҮЛСЭН (хэрэглэгчийн заасан лавлагаа:
+ * санхүүгийн зурвас, `pkgFinOv.module.css` → `.tile`). Голлуулсан үед тоонууд
+ * нүд бүрд өөр цэгээс эхэлдэг тул таван утгыг хооронд нь харьцуулахад нүд
+ * шугам дагаж чаддаггүй; зүүн ирмэгт эгнүүлбэл нэг босоо шугам дагана.
+ */
 .tile {
   display: flex;
   flex-direction: column;
-  /* ⚠️ 2026-09-06: ЗҮҮН зэрэгцүүлэлт → ГОЛЛУУЛСАН (хэрэглэгчийн заасан
-     лавлагаа: `[data-sec='bagts'] .zTop` зурвас, доор 1362-р мөр). Ижил
-     үүрэгтэй хоёр зурвас порталд хоёр өөр хэлбэртэй байх шалтгаангүй. */
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
-  gap: 7px;
-  text-align: center;
-  padding: 11px 12px;
+  gap: 5px;
+  text-align: left;
+  padding: 9px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -550,8 +562,14 @@
 .tileVal {
   display: flex;
   align-items: baseline;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  /**
+   * ⚠️ 2026-09-17: `wrap` → `nowrap`. «3,167,606,958,415 ₮» дээр НЭГЖ нь доош
+   * мөр шилжиж, нүднээс халин зурвасын ирмэгийг эвддэг байв. Тоо нь
+   * богиносгогддоггүй (`format.ts` → `mnt`-ийн шийдвэр) тул багтаалтыг ФОНТ
+   * ба нэг мөрөнд барих замаар шийднэ.
+   */
+  flex-wrap: nowrap;
   gap: 0 4px;
   min-width: 0;
   /* ⚠️ Зурвас/дэд мөрийг НҮДНИЙ ДООД ирмэг рүү түлхэнэ — утга нь бүх нүдэнд
@@ -568,7 +586,9 @@
  * утгын уртаар шийднэ) — `Stat`/`statValueLong`-той ЯГ ижил зарчим.
  */
 .tileVal b {
-  font-size: 24px;
+  /* ⚠️ 24 → 18px: лавлагаа зурваст тоо нь шошгоосоо ялгарах хэрнээ хавтанг
+     дүүргэдэггүй. Урт мөнгөн дүн `.tileValLong`-оор дахин багасна. */
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -576,8 +596,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ⚠️ ≥10 тэмдэгт (мөнгөн дүн) — ЗӨВХӨН тэр нүдэнд багасна */
-.tileValLong { font-size: 15px; letter-spacing: -0.02em; }
+/* ⚠️ ≥10 тэмдэгт (мөнгөн дүн) — ЗӨВХӨН тэр нүдэнд багасна.
+   2026-09-17: 15 → 13.5px. «3,167,606,958,415» нь 17 тэмдэгт бөгөөд 158px-ийн
+   нүдэнд 15px-ээр багтахгүй байв (нэгж нь доош унадаг байсны шалтгаан). */
+.tileValLong { font-size: 13.5px; letter-spacing: -0.02em; }
 
 .tileVal i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
@@ -586,7 +608,7 @@
    уншигдахаас нааш өнгө/хэмжээгээр «дэвсгэр» болгож болохгүй. */
 .tileLabel {
   width: 100%;
-  text-align: center;
+  text-align: left;
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1976,3 +1998,6 @@
   .shell,
   .shell[data-detail='1'] { overflow-x: auto; }
 }
+
+
+

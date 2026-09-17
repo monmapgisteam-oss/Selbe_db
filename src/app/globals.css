@@ -380,6 +380,22 @@ ul, ol { list-style: none; }
   box-shadow: var(--shadow-sm) !important;
 }
 .esri-widget--button:hover { background: var(--surface-2) !important; }
+
+/**
+ * ОРТОФОТО ХАРЬЦУУЛАХ (Swipe) — ДЭВСГЭРГҮЙ байх ЁСТОЙ.
+ *
+ * ⚠️ Swipe-ийн үндсэн элемент нь `esri-swipe esri-widget` класстай бөгөөд
+ * зураг даяар сунадаг. Дээрх `.esri-widget` дүрэм (`background: var(--surface)
+ * !important`) түүнд хүрч, БҮХ зургийг бараан дэвсгэрээр бүрхэж «дэлгэц
+ * харлах» алдаа үүсгэж байв. Бариул (`__handle`) ба шугам (`__divider`) нь
+ * SDK-ийн өөрийн загвартай хэвээр — зөвхөн контейнерийг ил тод болгоно.
+ */
+.esri-swipe,
+.esri-swipe__container {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
 .esri-attribution {
   background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
   color: var(--ink-3) !important;
