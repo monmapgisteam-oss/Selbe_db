@@ -288,7 +288,18 @@ export function Home({
           *    жагсаалтын 13 карт, 4 сэдэвчилсэн бүлэг. Задаргаа нь
           *    `CeoBoard.tsx` ба `src/lib/ceo/registry.ts`-ийн толгойд.
           */}
-        <CeoBoard onView={onEnterView} />
+        {/* ⚠️ НЭВТЭРСНИЙ ДАРАА Л (2026-09-17): үйлчилгээ Organization-only болсон тул
+            нэвтрээгүй үед 13 KPI бүгд 499 авч, JS API нь ArcGIS-ийн ХУУЧИН нэр/нууц
+            үгийн цонх гаргадаг (OAuth-той оргийн аккаунт тэнд татгалзагдана). Нэвтрэх
+            зам ЗӨВХӨН дээрх «Нэвтрэх» (OAuth). */}
+        {status === 'signed-in' || status === 'off' ? (
+          <CeoBoard onView={onEnterView} />
+        ) : (
+          <div className={s.boardGate}>
+            <p>{tr('Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.')}</p>
+            <button type="button" className={`${s.signBtn} ${s.signIn}`} onClick={onEnterAll}>{tr('Нэвтрэх')} →</button>
+          </div>
+        )}
       </main>
       )}
 

@@ -77,8 +77,10 @@ const fillOf = (sum: number | null): Fill => {
 };
 
 export function CashflowPlan({
-  works, months, onSaved,
+  works, months, onSaved, canEdit = true,
 }: {
+  /** `finEdit` эрх — үгүй бол нүд засагдахгүй, «Хадгалах» хаалттай (2026-09-17) */
+  canEdit?: boolean;
   /** Ажлын мөрүүд (78) — `Cashflow_start IS NULL` */
   works: Row[];
   /** Сарын мөрүүд (681) — `Cashflow_start IS NOT NULL` */
@@ -354,7 +356,7 @@ export function CashflowPlan({
           <button
             type="button"
             className={c.save}
-            disabled={busy || !dirty}
+            disabled={busy || !dirty || !canEdit}
             onClick={save}
           >
             {busy ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}

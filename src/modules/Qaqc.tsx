@@ -79,6 +79,10 @@ type Draft = {
 };
 
 const DRAFT_PREFIX = 'selbe-qaqc-draft:';
+/* ⚠️ Локал нооргийн түлхүүр ХЭРЭГЛЭГЧЭЭР (2026-09-17): нэг компьютер дээр А-гийн
+   нүд Б-гийн нэрээр бичигдэхээс. Алсын ноорог (`qaqcDraftRemote`) аль хэдийн
+   хэрэглэгчээр ялгадаг байсан — локал нь хоцорсон. */
+const dk = (u: string | null | undefined, pkgKey: string) => `${(u ?? '').trim().toLowerCase()}:${pkgKey}`;
 /**
  * НООРОГИЙН АМЬДРАХ ХУГАЦАА.
  *
@@ -593,7 +597,7 @@ export function Qaqc() {
          БАЙХГҮЙ: төлөв хоосон болсон нь «хэрэглэгч бүгдийг арилгасан»
          гэсэн үг — тэр үед ноорог ч устана (2026-09-06). */
       if (promptedPkgRef.current === pkg.key) {
-        clearDraftLS(pkg.key);
+        clearDraftLS(dk(user?.username, pkg.key));
         void clearQaqcDraft(pkg.key);
       }
       setSavedAt(null);
@@ -609,7 +613,7 @@ export function Qaqc() {
     const rowKeys: [number, string][] = [];
     for (const r of rows) if (usedOids.has(r.oid)) rowKeys.push([r.oid, `${r.no} ¦ ${r.work}`]);
     const draft: Draft = { t: at, cells: Object.entries(pend), rowKeys };
-    saveDraftLS(pkg.key, draft);
+    saveDraftLS(dk(user?.username, pkg.key), draft);
     /* ⚠️ Алсад ЭНД ШУУД бичихгүй — нүд бүрийн товшилтод хүсэлт явбал
        сүлжээ дүүрч бөглөлт удаашрана. Доорх завсарлагатай эффект илгээнэ. */
     remoteQueue.current = { pkg: pkg.key, draft };
@@ -675,7 +679,7 @@ export function Qaqc() {
     let alive = true;
 
     (async () => {
-      const local = readDraft(pkg.key);
+      const local = readDraft(dk(user?.username, pkg.key));
       /* ⚠️ ЛОКАЛ ба АЛСЫН хоёрыг АГШНААР харьцуулж ШИНИЙГ нь сонгоно —
          хуучныг тавибал өөр машин дээрх шинэ ажил чимээгүй дарагдана. */
       /*
@@ -686,7 +690,8 @@ export function Qaqc() {
        * нээнэ.
        */
       const rr = await readQaqcDraft(pkg.key);
-      if (!alive) return;
+      /* ⚠️ Багц солигдсон бол сэргээх тэмдгийг буцаана (`FillNew`-тэй ижил, 2026-09-17) */
+      if (!alive) { if (promptedPkgRef.current === pkg.key) promptedPkgRef.current = ''; return; }
       if (!rr.ok) {
         promptedPkgRef.current = '';
         show('warn', tr(
@@ -742,9 +747,12 @@ export function Qaqc() {
        * ХОЁУЛАНГ нь бүрмөсөн устгадаг байв — сүлжээний саат ч хангалттай.
        * Ноорог нь нийтлээгүй ажил тул эрх сэргэхэд эргэж ирэх ЁСТОЙ.
        */
-      if (!canEdit) return;
+      /* ⚠️ Эрх хараахан ирээгүй бол ДАХИН оролдох замыг нээнэ (2026-09-17): урьд нь
+         `promptedPkgRef` тавигдчихсан тул caps хожуу ирэхэд сэргээлт дахин
+         ажиллахгүй, нэг нүд бичмэгц ноорог бүхэлдээ дарагддаг байв. */
+      if (!canEdit) { promptedPkgRef.current = ''; return; }
       if (!count && !dropped) {
-        clearDraftLS(pkg.key);
+        clearDraftLS(dk(user?.username, pkg.key));
         void clearQaqcDraft(pkg.key);
         return;
       }
@@ -757,7 +765,8 @@ export function Qaqc() {
        * ⚠️ Үйлчилгээнд БИЧИГДЭХГҮЙ хэвээр: «Хадгалах» дарж байж бичигдэнэ.
        *    Тиймээс автоматаар буулгах нь өгөгдөлд эрсдэлгүй.
        */
-      if (count) setPend(cells);
+      /* ⚠️ НИЙЛҮҮЛНЭ, солихгүй: алсын уншилтыг хүлээх хооронд бичсэн нүд үлдэнэ */
+      if (count) setPend((cur) => ({ ...cells, ...cur }));
       /* ⚠️ Тохирохгүй нүд гарвал ЧИМЭЭГҮЙ орхихгүй — хэдэн нүд
          яагаад алга болсныг хэлнэ. */
       if (dropped) {
@@ -836,7 +845,7 @@ export function Qaqc() {
     if (!window.confirm(q)) return;
     setPend({});
     setEditCell(null);
-    clearDraftLS(pkg.key);
+    clearDraftLS(dk(user?.username, pkg.key));
     void clearQaqcDraft(pkg.key);
     clearRemoteQueue();
     show('ok', tr('Ноорог устгав.'));
@@ -864,9 +873,11 @@ export function Qaqc() {
       const n = await saveQaqc(pkg.key, updates);
       setPend({});
       setEditCell(null);
-      clearDraftLS(pkg.key);
-      void clearQaqcDraft(pkg.key);
+      clearDraftLS(dk(user?.username, pkg.key));
+      /* ⚠️ Эхлээд дараалал, дараа нь алсыг ХҮЛЭЭЖ устгана (2026-09-17) — үгүй бол
+         устгалын дараа буусан «зомби» ноорог дараагийн сешнд нүдийг хуучин утгаар дарна. */
       clearRemoteQueue();
+      await clearQaqcDraft(pkg.key);
       /* ⚠️ Хадгалсны дараа ЗААВАЛ дахин татна: хооронд нь өөр хүн бөглөсөн
          байж болно. Дэлгэц ба өгөгдөл зөрвөл дараагийн засвар хуучин суурин
          дээр явна. */

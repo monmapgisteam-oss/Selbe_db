@@ -246,11 +246,15 @@ export function Chanar() {
          илгээсний дараа л сервер татгалздаг байв. AGOL hosted хүснэгтийн
          хавсралтын хязгаар 10 МБ орчим — түүнээс дээшийг эндээс л таслана. */
       const MAX_ATT = 10 * 1024 * 1024;
+      /* ⚠️ Нэг файл унавал ҮЛДСЭНИЙГ ч илгээнэ, алдааг нэгтгэж хэлнэ (2026-09-17) —
+         урьд нь `break` тул бусад нь чимээгүй орхигддог байв. */
+      const errs: string[] = [];
       for (const f of Array.from(files)) {
-        if (f.size > MAX_ATT) { setErr(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); break; }
+        if (f.size > MAX_ATT) { errs.push(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); continue; }
         const r = await addAttachment(doc.oid, f);
-        if (!r.ok) { setErr(r.error ?? tr('Хавсралт хадгалагдсангүй.')); break; }
+        if (!r.ok) errs.push(`${f.name}: ${r.error ?? tr('Хавсралт хадгалагдсангүй.')}`);
       }
+      if (errs.length) setErr(errs.join(' · '));
       await reloadAtts();
     } finally {
       setBusy(false);

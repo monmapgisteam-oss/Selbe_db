@@ -17,6 +17,7 @@
 
 import { invalidate } from './dataBus';
 import { tokenParam, tokenQs } from '@/lib/authToken';
+import { t as tr } from '@/lib/i18nCore';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -316,7 +317,7 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
   if (results.some((r) => r.success)) invalidate('HYANALT');
   if (bad.length) {
     throw new HyanaltError(
-      `${bad.length} мөр хадгалагдсангүй: ${bad[0].error?.description ?? 'тодорхойгүй'}`,
+      tr('{0} мөр хадгалагдсангүй: {1}', bad.length, bad[0].error?.description ?? tr('тодорхойгүй')),
     );
   }
   return results;

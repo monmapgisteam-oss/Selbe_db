@@ -1771,7 +1771,9 @@ export const MapCanvas = memo(function MapCanvas({
     if (!ready) return;
     const l = mapRef.current?.findLayerById('tgl') as FeatureLayer | undefined;
     const view = viewRef.current;
-    if (!l || !view) return;
+    /* ⚠️ Цэгийн SVG дүрс ЗӨВХӨН цэгийн давхаргад (2026-09-17: `tgl` одоо ТАЛБАЙ,
+       `type` талбаргүй — unique-value renderer талбайд тавибал юу ч зурагдахгүй). */
+    if (!l || !view || LAYER_BY_ID['tgl']?.geom !== 'point') return;
     let last = 0;
     const apply = (scale: number) => {
       const px = toglPx(scale);
@@ -2442,7 +2444,7 @@ export const MapCanvas = memo(function MapCanvas({
     {
       const tgl3d = map.findLayerById('tgl3d');
       const tglDef = LAYER_BY_ID['tgl'];
-      if (dim === 'bim' && !tgl3d && tglDef) {
+      if (dim === 'bim' && !tgl3d && tglDef && tglDef.geom === 'point') {
         map.add(new FeatureLayer({
           id: 'tgl3d',
           url: layerUrl(tglDef),

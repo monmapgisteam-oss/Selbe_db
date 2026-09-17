@@ -246,11 +246,11 @@ export const loadHeadline = cached<Headline>(async () => {
     .sort((a, b) => (order.get(a.label) ?? 99) - (order.get(b.label) ?? 99));
 
   return {
-    areaHa: b ? Number(b[0]?.Hec_area ?? 0) : NaN,
+    areaHa: b && b[0]?.Hec_area != null ? Number(b[0].Hec_area) : NaN,
     population: built ? sumBy(built, (r) => Number(r.p ?? 0)) : NaN,
     investTotal: budget ? budget.total : NaN,
     investConfirmed: budget ? budget.contract : NaN,
-    greenHa: gr ? Number(gr.a ?? 0) / 10_000 : null,
+    greenHa: gr && gr.a != null ? Number(gr.a) / 10_000 : null, // ⚠️ null ≠ 0 (2026-09-17)
     byStatus,
     usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
   };
@@ -481,7 +481,9 @@ export const loadFillPkgProgress = cached<Map<string, number>>(async () => {
   const out = new Map<string, number>();
   for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
   return out;
-}, undefined, ['BAGTS_SHEET', 'BUILDING']);
+/* ⚠️ `CASHFLOW_NEW` нэмэгдэв (2026-09-17): дотор нь `loadBlockProgress` Багц 3.1-ийг
+   Cashflow-оос дардаг тул санхүүжилтийн засвар энэ кэшийг ч хуучруулна. */
+}, undefined, ['BAGTS_SHEET', 'BUILDING', 'CASHFLOW_NEW']);
 
 /**
  * БАГЦ 3.1-ИЙН ГҮЙЦЭТГЭЛ — САНХҮҮЖИЛТИЙН БҮРТГЭЛЭЭС (2026-09-10,

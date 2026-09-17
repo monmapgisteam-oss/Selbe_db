@@ -542,9 +542,12 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
 }
 
 /** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ */
-function summarize(m: Metric, pts: Reading[], total: number): MetricSeries {
+/* ⚠️ `all` = хүрээгээр огтлоогүй БҮТЭН цуваа (2026-09-17): «сүүлийн заалт»/нас нь
+   сонгосон хугацааны хүрээнээс хамаарах ёсгүй — 24 цагийн хүрээнд 1+ хоног хоцорсон
+   мэдрэгч «заалт алга» гэж худал сэрэмжлүүлдэг байв. */
+function summarize(m: Metric, pts: Reading[], total: number, all: Reading[] = pts): MetricSeries {
   const vals = pts.map((x) => x.v);
-  const last = pts.length ? pts[pts.length - 1] : null;
+  const last = all.length ? all[all.length - 1] : null;
   /* ⚠️ Тугтай хэмжигдэхүүнд Л хандлага бодно — циклтэй өгөгдөл дээр налуу нь
      тоо гаргах ч утга нь ХУДАЛ (дээрх `forecast`-ийн тайлбарыг үз). */
   const f = m.forecast ? fit(pts) : null;
@@ -584,7 +587,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
           where,
           outFields: ['received_datetime', m.field],
           // String талбар боловч ISO-8601 тул мөрийн эрэмбэ = хугацааны эрэмбэ
-          orderBy: 'received_datetime DESC',
+          orderBy: 'received_datetime DESC, OBJECTID DESC', // ⚠️ OID tie-break — хуудасны заагт давхардахгүй
           limit,
         }),
         // ⚠️ `limit` нь ХАТУУ таг тул татсан мөрийн тоо ≠ нийт. Жинхэнэ тоог
@@ -607,7 +610,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       // ⚠️ ХҮРЭЭГЭЭР огтолно (сервер талд БИШ — дээрх `RangeKey`-ийн тайлбарыг үз)
       const inRange = pts.filter((x) => x.t >= from);
 
-      const out = [summarize(m, inRange, total || inRange.length)];
+      const out = [summarize(m, inRange, total || inRange.length, pts)];
       // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
       if (m.dailyDiff) {
         const dp = dailyDiffPoints(inRange);
@@ -615,6 +618,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
           { ...m.dailyDiff, field: m.field },
           dp,
           dp.length,
+          dailyDiffPoints(pts), // ⚠️ сүүлийн заалт хүрээнээс хамаарахгүй (2026-09-17)
         ));
       }
       return out;
@@ -668,8 +672,10 @@ function cached<T>(fn: () => Promise<T>, ttlMs = 5 * 60_000): () => Promise<T> {
   return () => {
     if (!p || Date.now() - at > ttlMs) {
       at = Date.now();
-      p = fn();
-      p.catch(() => { p = null; });
+      const mine = fn();
+      p = mine;
+      /* ⚠️ Зөвхөн ӨӨРИЙГӨӨ цэвэрлэнэ (`live.ts`-ийн 2026-09-08-ны засвар) */
+      mine.catch(() => { if (p === mine) p = null; });
     }
     return p;
   };

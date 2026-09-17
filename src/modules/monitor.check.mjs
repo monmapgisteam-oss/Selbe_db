@@ -156,7 +156,12 @@ assert.ok(daily.length > 0, 'цуваа хоосон');
 
 const ringVals = keys.map((k) => prog.get(k).overall);
 const ring = ringVals.reduce((a, b) => a + b, 0) / ringVals.length;
-assert.ok(Math.abs(daily.at(-1).overall - ring) < 1e-9,
+/* ⚠️ Муруй нь блок бүрийн ОРГИЛ (peak — буурдаггүй) утгаар, цагираг нь ОДООГИЙН
+   утгаар бодогддог (2026-09-17): гүйцэтгэл засварлагдаж бага зэрэг БУУРСАН блок
+   байвал муруйн төгсгөл цагирагаас ЯЛИМГҮЙ дээгүүр байх нь ХЭВИЙН. Тиймээс
+   «яг тэнцүү» биш: доогуур байж БОЛОХГҮЙ, дээгүүр бол 0.05 нэгжээс хэтрэхгүй. */
+const ringGap = daily.at(-1).overall - ring;
+assert.ok(ringGap > -1e-9 && ringGap < 0.05,
   `муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) зөрж байна`);
 assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
 

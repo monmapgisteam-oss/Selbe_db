@@ -559,13 +559,23 @@ export async function saveRows(
   oids: number[],
   attrs: Record<string, unknown>,
 ): Promise<number[]> {
+  requireCap('butets'); // ⚠️ lib-түвшний эрх (merge 2026-09-17)
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length || !oids.length) return [];
   const done: number[] = [];
   for (const part of chunks(oids, BATCH)) {
-    await applyAll(meta.url, meta.oidField, {
-      updates: part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })),
-    });
+    try {
+      await applyAll(meta.url, meta.oidField, {
+        updates: part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })),
+      });
+    } catch (e) {
+      /* ⚠️ ХЭСЭГЧИЛСЭН БИЧИЛТ (2026-09-17): 2 дахь багц унавал эхнийх нь сервер дээр
+         бичигдсэн — дуудагч мэдэх ёстой (`done` алдаанд хавсарна). Дахин «Хадгалах»
+         дарахад ижил утга дахин бичигдэх тул аюулгүй. */
+      const err = e instanceof Error ? e : new Error(String(e));
+      (err as Error & { done?: number[] }).done = done.slice();
+      throw err;
+    }
     done.push(...part);
   }
   return done;
@@ -581,6 +591,7 @@ export async function revertRows(
   meta: LayerMeta,
   rows: { oid: number; attrs: Record<string, unknown> }[],
 ): Promise<void> {
+  requireCap('butets');
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   const live = rows.filter((r) => Object.keys(r.attrs).length);
   for (const part of chunks(live, BATCH)) {

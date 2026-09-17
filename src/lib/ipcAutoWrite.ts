@@ -18,6 +18,7 @@ import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { snapshotOf } from '@/lib/ipcLink';
 import { dayOf, planAuto, contractCodeOf, type AutoPlan } from '@/lib/ipcAuto';
+import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
 
@@ -37,13 +38,13 @@ export type AutoResult =
  */
 export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoResult> {
   const at = dayOf(day);
-  if (!at) return { ok: false, error: `Огноо танигдсангүй: ${day}` };
+  if (!at) return { ok: false, error: tr('Огноо танигдсангүй: {0}', day) };
 
   try {
     /* ── 1. Тухайн багцын БҮХ хуудасны тэр өдрийн дүнг нийлүүлнэ ──
        ⚠️ Багц бүр 1–2 хуудастай (9F + 12F) бөгөөд гэрээ нь НЭГ. */
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
-    if (!wanted.length) return { ok: false, error: `Багц олдсонгүй: ${bagts}` };
+    if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
 
     let obyem: number | null = null;
     let une: number | null = null;
@@ -79,8 +80,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     if (missing) {
       return {
         ok: false,
-        error: `Багцын ${wanted.length} хуудаснаас ${missing} нь тэр өдөр бөглөгдөөгүй `
-          + '— дутуу дүнгээр гүйцэтгэл бичихгүй.',
+        error: tr('Багцын {0} хуудаснаас {1} нь тэр өдөр бөглөгдөөгүй — дутуу дүнгээр гүйцэтгэл бичихгүй.', wanted.length, missing),
       };
     }
 
@@ -109,9 +109,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     }[];
     /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17) — `submission.ts`,
        `zovshoorol.deleteZov`-той ижил: нэг мөр илгээсэн тул яг нэг үр дүн ирнэ. */
-    if (res.length !== 1) return { ok: false, error: 'Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ' };
+    if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
     const bad = res.find((r) => r.success === false);
-    if (bad) return { ok: false, error: bad.error?.description || 'Бичих амжилтгүй' };
+    if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
 
     /* ⚠️ Кэшийг хүчингүй болгоно — эс бөгөөс «Санхүүжилт» хуудас шинэ
        мөрийг харахгүй (dataBus.invariant.check.mjs энэ дүрмийг барина). */

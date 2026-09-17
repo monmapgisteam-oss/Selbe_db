@@ -127,7 +127,7 @@ async function summaryOf(bagts: string, sheetOid: number) {
      */
     if (heads.length !== 1) {
       throw new Error(
-        `${bagts}: мөрийн дугаар ${sheetOid} нь ${hits.map((h) => h.p.label).join(' ба ')} хуудсанд зэрэг таарч байна — аль нь болох нь тодорхойгүй`,
+        tr('{0}: мөрийн дугаар {1} нь {2} хуудсанд зэрэг таарч байна — аль нь болох нь тодорхойгүй', bagts, sheetOid, hits.map((h) => h.p.label).join(tr(' ба '))),
       );
     }
     one = heads[0];

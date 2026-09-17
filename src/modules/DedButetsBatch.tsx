@@ -192,7 +192,11 @@ export function DedButetsBatch({
       onDone(done.length, changed.length, undo.length ? { kind: 'batch', rows: undo } : null);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
-      setFail(String((x as Error).message || x));
+      const partial = (x as { done?: number[] }).done;
+      const msg = String((x as Error).message || x);
+      setFail(partial?.length
+        ? tr('Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.', partial.length, msg)
+        : msg);
     } finally {
       setBusy(false);
     }

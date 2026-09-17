@@ -32,9 +32,15 @@ export type PickerProps = {
   anchor: DOMRect;
   onPick: (v: string) => void;
   onClose: () => void;
+  /**
+   * ҮРГЭЛЖЛЭХ ХОНОГ (2026-09-17, хэрэглэгчийн хүсэлт) — хуваарийн огнооны нүдэнд:
+   * «Эхлэх» нүдэнд бичсэн хоног нь огноо сонгоход дуусахыг хамт тавина; «Дуусах»
+   * нүдэнд «Тавих» дарахад эхлэхээс тооцно. Өгөөгүй бол мөр гарахгүй (asOf).
+   */
+  days?: { value: string; onChange: (v: string) => void; onApply: () => void; canApply: boolean };
 };
 
-export default function DatePicker({ value, anchor, onPick, onClose }: PickerProps) {
+export default function DatePicker({ value, anchor, onPick, onClose, days }: PickerProps) {
   const cur = value ? Date.parse(`${value}T00:00:00Z`) : null;
   const base = cur ?? todayMs();
   const [view, setView] = useState(() => {
@@ -180,6 +186,28 @@ export default function DatePicker({ value, anchor, onPick, onClose }: PickerPro
         })}
       </div>
 
+      {days && (
+        <div className={st.calFoot}>
+          <label className={st.calDays}>
+            {tr('Үргэлжлэх')}
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              className={st.calDaysIn}
+              value={days.value}
+              aria-label={tr('Үргэлжлэх хоног')}
+              onChange={(e) => days.onChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && days.canApply) { e.preventDefault(); days.onApply(); } }}
+            />
+            {tr('хоног')}
+          </label>
+          <button className={st.calBtn} disabled={!days.canApply} onClick={days.onApply}
+            title={tr('Эхлэх огноо + хоног → дуусах огноо')}>
+            {tr('Тавих')}
+          </button>
+        </div>
+      )}
       <div className={st.calFoot}>
         <button className={st.calBtn} onClick={() => onPick("")}>{tr('Цэвэрлэх')}</button>
         <button className={st.calBtn} onClick={() => onPick(ymd(today))}>{tr('Өнөөдөр')}</button>
