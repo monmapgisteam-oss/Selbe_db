@@ -43,8 +43,8 @@ export type DataKey =
   | 'SOURCE_FS'
   | 'HABEA'
   | 'HYANALT'
-  | 'ZOVSHOOROL'
-  | 'SURVEY';
+  | 'ZOVSHOOROL';
+  /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
 type Slot = { drop: () => void; reads: readonly DataKey[] };

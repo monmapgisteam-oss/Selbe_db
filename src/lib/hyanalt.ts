@@ -18,11 +18,12 @@
 import { invalidate } from './dataBus';
 import { tokenParam, tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
+import { HJ } from '@/lib/services';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
      29/29 талбар, 22 мөр ижил. */
-  url: 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/guitsetgel_bugluh_hyanalt/FeatureServer/205',
+  url: `${HJ}/guitsetgel_bugluh_hyanalt/FeatureServer/205`,
   oid: 'OBJECTID',
 } as const;
 

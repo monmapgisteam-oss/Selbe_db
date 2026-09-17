@@ -26,7 +26,7 @@ import { cached, loadFillPkgProgress } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey } from '@/lib/format';
 import {
-  loadGdashCf, loadContractSum, kpisOf, chartTypeCost, CONTRACTED,
+  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, CONTRACTED,
 } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPlanCurve } from '@/lib/planProgress';
@@ -51,7 +51,20 @@ export type ExecReport = {
     packages: number;
     types: number;
     landPct: number | null;
-    land: { total: number; cleared: number; remaining: number };
+    /**
+     * Газар чөлөөлөлт — 01-ийн «Газар чөлөөлөлт» карттай ИЖИЛ эх (`loadLandStatus`):
+     * төлөв бүрийн тоо ба чөлөөлөгдөөгүй шалтгаанууд (тоогоор буурах).
+     */
+    land: {
+      total: number; cleared: number; remaining: number; areaM2: number;
+      byStatus: { label: string; n: number; areaM2: number }[];
+      reasons: { label: string; n: number }[];
+    };
+    /**
+     * ХАБ — 01-ийн «ХАБ» карттай ИЖИЛ (`loadHseNow`): СҮҮЛИЙН бөглөгдсөн
+     * бүртгэлийн агшин; `null` = бүртгэл алга (0 БИШ).
+     */
+    hse: { date: string; workers: number; equipment: number; manHours: number } | null;
     /** Ажлын төрөл бүрийн төсөв · гэрээлсэн · гүйцэтгэл (өртгөөр буурах) */
     byType: { label: string; cost: number; contract: number; perf: number | null; n: number; contracted: number }[];
   };
@@ -97,10 +110,10 @@ export type ExecReport = {
  *    сүлжээний хүсэлт ҮҮСЭХГҮЙ; энд зөвхөн нэгтгэлийн үр дүнг хадгална.
  */
 export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
-  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
+  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
@@ -110,6 +123,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadPlanCurve(),
     /* ⚠️ Зөвшөөрөл унавал тайлан бүхэлдээ унахгүй — `null` = мэдээлэлгүй */
     loadZov().catch(() => null),
+    /* ⚠️ ХАБ мөн адил: маягт нь тусдаа survey тул унавал `null` (0 биш) */
+    loadHseNow().catch(() => null),
   ]);
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
@@ -169,7 +184,12 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress,
       packages: k.packages, types: k.types, landPct: land.pct,
-      land: { total: land.total, cleared: land.cleared, remaining: land.remaining },
+      land: {
+        total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
+        byStatus: land.byStatus.map((b) => ({ label: b.label, n: b.n, areaM2: b.areaM2 })),
+        reasons: land.reasons.map((r) => ({ label: r.label, n: r.n })),
+      },
+      hse: hse ? { date: hse.date, workers: hse.workers, equipment: hse.equipment, manHours: hse.manHours } : null,
       byType,
     },
     prog: {
@@ -226,7 +246,13 @@ export function execFindings(x: ExecReport): string[] {
     out.push(tr('{0} багцын санхүүжилт гэрээний дүнгийн 10%-д хүрээгүй: {1}.', num(lowFin.length), lowFin.map((r) => r.label).join(', ')));
   }
   if (x.gdash.landPct != null && x.gdash.land.remaining > 0) {
-    out.push(tr('Газар чөлөөлөлт {0} — {1} нэгж талбар чөлөөлөгдөөгүй.', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining)));
+    const top = x.gdash.land.reasons[0];
+    out.push(top
+      ? tr('Газар чөлөөлөлт {0} — {1} нэгж талбар чөлөөлөгдөөгүй; гол шалтгаан «{2}» ({3}).', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining), top.label, num(top.n))
+      : tr('Газар чөлөөлөлт {0} — {1} нэгж талбар чөлөөлөгдөөгүй.', pct(x.gdash.landPct, 1), num(x.gdash.land.remaining)));
+  }
+  if (!x.gdash.hse) {
+    out.push(tr('ХАБ-ын хүн хүчний бүртгэл олдсонгүй — талбайн ажиллах хүчний мэдээлэл энэ тайланд алга.'));
   }
   if (x.gdash.budget > 0 && x.gdash.contract > 0) {
     const share = (x.gdash.contract / x.gdash.budget) * 100;
@@ -257,6 +283,9 @@ export function execFacts(x: ExecReport): string {
   L.push(`Гүйцэтгэлийн хувь (6 шатны жигнэсэн): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
+  L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);
+  L.push(`Чөлөөлөгдөөгүй шалтгаан: ${x.gdash.land.reasons.map((r) => `${r.label} ${r.n}`).join('; ') || '—'}`);
+  L.push(`ХАБ (сүүлийн бүртгэл ${x.gdash.hse?.date || '—'}): ${x.gdash.hse ? `ажиллаж буй хүн ${x.gdash.hse.workers}, техник ${x.gdash.hse.equipment}, хүн цаг ${x.gdash.hse.manHours}` : 'мэдээлэлгүй'}`);
   L.push(`Ажлын төрлөөр (төсөв / гэрээлсэн / гүйцэтгэл):`);
   /* ⚠️ Өгөгдлийн мөрийг ЦЭВЭРЛЭНЭ (2026-09-17): мөр таслах/`#` гарчиг нь загварт заавар болохоос */
   const cl = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/^\s*#+\s*/, '').trim();
@@ -279,7 +308,7 @@ export function execFacts(x: ExecReport): string {
   return L.join('\n');
 }
 
-const SYSTEM = `Чи «Сэлбэ 20 минутын хот» төслийн удирдлагын тайлангийн туслах. Хэрэглэгч чамд төслийн дөрвөн дашбоардын ӨНӨӨДРИЙН тоог өгнө. Чи шийдвэр гаргагчид (хотын удирдлага, төслийн захирал) зориулсан ТОВЧ, ОЙЛГОМЖТОЙ дүгнэлт МОНГОЛООР бичнэ.
+const SYSTEM = `Чи «Сэлбэ ухаалаг хот» төслийн удирдлагын тайлангийн туслах. Хэрэглэгч чамд төслийн дөрвөн дашбоардын ӨНӨӨДРИЙН тоог өгнө. Чи шийдвэр гаргагчид (хотын удирдлага, төслийн захирал) зориулсан ТОВЧ, ОЙЛГОМЖТОЙ дүгнэлт МОНГОЛООР бичнэ.
 
 ХАТУУ ДҮРЭМ:
 1. ЗӨВХӨН өгөгдсөн тоог хэрэглэ. Тоо зохиохгүй, таамаглахгүй, гаднын мэдлэг нэмэхгүй.

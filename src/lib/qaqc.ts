@@ -23,8 +23,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
-
-const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
+import { HJ } from '@/lib/services';
 
 /** QAQC хүснэгтүүд байрлах үйлчилгээнүүд */
 export const QAQC_SERVICES = {

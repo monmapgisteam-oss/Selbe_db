@@ -1,0 +1,345 @@
+/* ═══════════════════════════════════════════════════════════
+   БАГЦ АЖЛЫН ОНОО — нүүрний удирдлагын самбар.
+   Гэрлэн дохио нь `--h` (kpiLevels LEVEL_TONE) — `ceoBoard.module.css`-тэй
+   нэг хэл: өнгө + тоо (өнгө ганцаараа утга дамжуулахгүй).
+   ═══════════════════════════════════════════════════════════ */
+
+.board { width: 100%; min-width: 0; }
+
+@media (min-width: 1500px) {
+  .board {
+    width: calc(100vw - 32px);
+    margin-inline: calc(50% - 50vw + 16px);
+  }
+}
+
+/* ══ Толгой ══ */
+.head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.title { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.counts { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.74rem; }
+.counts b { font-weight: 650; white-space: nowrap; }
+.cBad { color: var(--bad-ink, var(--bad)); }
+.cWarn { color: var(--warn-ink, var(--warn)); }
+.cGood { color: var(--good-ink, var(--good)); }
+.cNone { color: var(--ink-3); font-weight: 500 !important; }
+.legend { margin-left: auto; font-size: 0.68rem; color: var(--ink-3); }
+
+.err { font-size: 0.8rem; color: var(--bad-ink, var(--bad)); }
+.errMsg { color: var(--ink-3); }
+.retry {
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+  background: var(--surface); color: var(--ink); font-size: 0.75rem; cursor: pointer;
+}
+.warnLine { margin: 0 0 8px; font-size: 0.72rem; color: var(--warn-ink, var(--warn)); }
+
+/* ══ Оноо ══ */
+.score {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.74rem; font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--h) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--h) 55%, transparent);
+  white-space: nowrap;
+}
+.scoreBig { min-width: 52px; padding: 4px 10px; font-size: 1.05rem; border-radius: 8px; }
+/* «Дата хүлээгдэж буй» — өнгөгүй, тасархай хүрээ: оноо ч биш, эрсдэл ч биш */
+.pending {
+  font-size: 0.64rem; font-weight: 600; color: var(--ink-3);
+  background: transparent; border: 1px dashed var(--ink-3);
+}
+.scoreBig.pending { font-size: 0.78rem; }
+
+/* ══ Төслийн нийт ══ */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+@media (max-width: 1100px) { .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.sumTile {
+  display: grid; gap: 6px; justify-items: start; align-content: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface);
+  text-align: left; color: var(--ink); font: inherit; cursor: pointer;
+}
+.sumTile:hover { border-color: var(--ink-3); }
+.sumTile:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.sumTotal { cursor: default; background: var(--surface-2, var(--surface)); }
+.sumTotal:hover { border-color: var(--line); }
+.sumOn { border-color: var(--data); box-shadow: inset 0 0 0 1px var(--data); }
+.sumLabel { display: inline-flex; align-items: center; gap: 5px; font-size: 0.74rem; font-weight: 650; }
+.sumSub { font-size: 0.64rem; line-height: 1.35; color: var(--ink-3); }
+
+/* ══ Жагсаалт + задаргаа ══ */
+.stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } }
+/* Сонголтгүй үед жагсаалт бүтэн өргөнөөр */
+.stageFull { grid-template-columns: minmax(0, 1fr); }
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface);
+}
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+.tbl th, .tbl td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.tbl thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2, var(--surface));
+  font-size: 0.68rem; font-weight: 700; color: var(--ink-3); text-align: center;
+}
+.thName { text-align: left !important; min-width: 220px; }
+.thDim { width: 58px; }
+.thOn { color: var(--data) !important; }
+.thBtn { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+.thBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.cell { text-align: center; }
+.loadingRow { padding: 18px !important; text-align: center; color: var(--ink-3); }
+
+.groupRow { background: color-mix(in srgb, var(--data) 7%, var(--surface)); cursor: pointer; }
+.groupRow:hover { background: color-mix(in srgb, var(--data) 13%, var(--surface)); }
+.groupOpen th, .groupOpen td { border-bottom-color: var(--data); }
+.groupName { text-align: left; }
+.groupBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 0.78rem; font-weight: 700; color: var(--ink); text-align: left;
+}
+.groupBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.caret { color: var(--ink-3); width: 10px; }
+.groupCount {
+  font-size: 0.66rem; font-weight: 600; color: var(--ink-3);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 6px;
+}
+
+.workRow { cursor: pointer; }
+.workRow:hover { background: var(--surface-2, var(--surface)); }
+.workOn { background: color-mix(in srgb, var(--data) 12%, var(--surface)) !important; }
+.cancelled { opacity: 0.55; }
+.workName { max-width: 340px; }
+.workBtn {
+  display: grid; gap: 1px; width: 100%;
+  border: 0; background: none; padding: 0 0 0 16px; cursor: pointer;
+  font: inherit; text-align: left; color: var(--ink);
+}
+.workBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.wName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wPkg { font-size: 0.66rem; color: var(--ink-3); }
+
+/* ══ Задаргаа ══ */
+.detail {
+  position: sticky; top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+}
+@media (max-width: 1100px) { .detail { position: static; } }
+.note { margin: 0; font-size: 0.78rem; color: var(--ink-3); }
+.dHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.dTitleBox { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.dEyebrow { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.dTitle { font-size: 0.9rem; line-height: 1.3; color: var(--ink); }
+.dTotal { display: grid; justify-items: center; gap: 2px; font-size: 0.62rem; color: var(--ink-3); }
+.dClose {
+  flex: none; width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-3);
+  font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.dClose:hover { color: var(--ink); border-color: var(--ink-3); }
+.dClose:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+.meta {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px;
+  margin: 0 0 6px; padding: 8px 10px;
+  border-radius: 8px; background: var(--surface-2, var(--surface));
+}
+.meta div { display: grid; gap: 1px; min-width: 0; }
+.meta dt { font-size: 0.62rem; color: var(--ink-3); }
+.meta dd { margin: 0; font-size: 0.76rem; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
+.hint { margin: 0 0 10px; font-size: 0.64rem; line-height: 1.4; color: var(--ink-3); }
+
+.dims { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 520px) { .dims { grid-template-columns: 1fr; } }
+.dim {
+  display: grid; gap: 5px; width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: 8px;
+  background: var(--surface-2, var(--surface));
+  font: inherit; text-align: left; color: var(--ink); cursor: pointer;
+}
+.dim:hover { border-color: var(--ink-3); border-left-color: var(--h); }
+.dim:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.dimOn { box-shadow: inset 0 0 0 1px var(--data); }
+.dimHead { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; }
+.dimHead b { flex: 1; font-weight: 650; }
+.bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink-3) 18%, transparent); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--h); }
+.facts { font-size: 0.66rem; line-height: 1.35; color: var(--ink-3); }
+.measure { font-size: 0.64rem; line-height: 1.35; color: var(--ink-3); font-style: italic; }
+.dimPending { border-left-style: dashed; }
+.pendingNote { font-size: 0.68rem; line-height: 1.35; color: var(--ink-2); }
+.factList { display: grid; gap: 2px; margin: 2px 0 0; }
+.factList div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.68rem; }
+.factList dt { color: var(--ink-3); }
+.factList dd { margin: 0; font-weight: 650; color: var(--ink); text-align: right; }
+
+.kpiHead {
+  display: grid; gap: 3px;
+  margin: 6px 0 8px; padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem; font-weight: 700; color: var(--ink);
+}
+.kpiRule { font-size: 0.66rem; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
+
+/* Эх сурвалжийн тайлбар — холбогдох CEO үзүүлэлтгүй бүлэгт (ХАБЭА) */
+.srcBox {
+  display: grid; gap: 8px; justify-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+.srcBox p { margin: 0; font-size: 0.72rem; line-height: 1.45; color: var(--ink-2); }
+.srcGo {
+  border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px 10px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+}
+.srcGo:hover { border-color: var(--ink-3); }
+.srcGo:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+/* ══ Заавал шийдвэрлэх асуудал ══ */
+.issues {
+  margin: 0 0 12px; padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bad) 4%, var(--surface));
+}
+.issuesHead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+.issuesCount {
+  min-width: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--bad); color: #fff; font-size: 0.68rem; text-align: center;
+}
+.issuesNone { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
+.issueList { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.issue {
+  --h: var(--ink-3);
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line); border-left: 3px solid var(--h); border-radius: 8px;
+  background: var(--surface);
+  font: inherit; text-align: left; color: var(--ink); cursor: pointer;
+}
+.issue:hover { border-color: var(--ink-3); border-left-color: var(--h); }
+.issue:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.tone_bad { --h: var(--bad); }
+.tone_warn { --h: var(--warn); }
+.tone_info { --h: var(--ink-3); border-left-style: dashed; }
+.issueNo {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--h) 20%, transparent);
+  font-size: 0.66rem; font-weight: 700;
+}
+.issueBody { display: grid; gap: 1px; min-width: 0; }
+.issueMeta { font-size: 0.62rem; color: var(--ink-3); }
+.issueMeta b { color: var(--h); font-weight: 700; }
+.issueText { font-size: 0.74rem; line-height: 1.4; color: var(--ink); }
+
+/* ══ Багц ажлын төлөв (шүүлт) — нягт 4 карт ══ */
+.status {
+  margin-bottom: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.statusHead b { font-size: 0.84rem; color: var(--ink); }
+.statusHead span { font-size: 0.68rem; color: var(--ink-3); }
+.statusMini {
+  display: flex !important; flex: 1 1 160px; max-width: 360px; height: 8px; gap: 1px;
+  margin-left: auto; border-radius: 4px; overflow: hidden;
+}
+.statusMini i { flex-basis: 0; background: var(--h); transition: opacity 0.15s; }
+.segDim { opacity: 0.35; }
+
+.statusCards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 900px) { .statusCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stCard {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line); border-left: 4px solid var(--h); border-radius: 10px;
+  background: var(--surface);
+  font: inherit; text-align: left; color: var(--ink); cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.stCard:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--h); }
+.stCard:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.stCard:disabled { cursor: default; opacity: 0.5; }
+.stOn { background: color-mix(in srgb, var(--h) 14%, var(--surface)); box-shadow: 0 0 0 2px var(--h); }
+.stDot {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--h); color: var(--h); font-size: 0.66rem; font-weight: 800;
+}
+.stOn .stDot { background: var(--h); color: var(--surface); }
+.stBody { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.stName { font-size: 0.78rem; font-weight: 650; }
+.stRule { font-size: 0.62rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stNums { display: grid; justify-items: end; gap: 0; }
+.stNum { font-size: 1.35rem; line-height: 1.1; font-weight: 750; }
+.stPct { font-size: 0.66rem; color: var(--ink-3); }
+
+/* «Багц ажил» жагсаалтын «Төлөв» багана */
+.thStatus { min-width: 150px; width: 22%; text-align: left !important; }
+.statusCell { text-align: left; }
+.gBar { display: flex; height: 18px; min-width: 120px; gap: 1px; border-radius: 5px; overflow: hidden; }
+.gSeg {
+  flex-basis: 0; min-width: 16px;
+  border: 0; padding: 0; cursor: pointer;
+  background: var(--h); color: #fff;
+  font: inherit; font-size: 0.64rem; font-weight: 700;
+  transition: opacity 0.15s;
+}
+.gSeg:hover { filter: brightness(1.1); }
+.gSeg:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.gSegOn { box-shadow: inset 0 0 0 2px var(--ink); }
+.stPill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--h) 60%, transparent);
+  background: color-mix(in srgb, var(--h) 16%, transparent);
+  font-size: 0.66rem; font-weight: 600; color: var(--ink); white-space: nowrap;
+}
+
+/* Бүлгийн хавтан доторх тархалт */
+.dimBar { display: flex; width: 100%; height: 6px; gap: 1px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--ink-3) 12%, transparent); }
+.dimBar i { flex-basis: 0; background: var(--h); }
+.dimBar i.segPending { background: repeating-linear-gradient(90deg, var(--ink-3) 0 3px, transparent 3px 5px); }
+.sumProblem { font-size: 0.66rem; color: var(--ink-3); }
+.sumProblem b { color: var(--bad-ink, var(--bad)); }
+
+/* Идэвхтэй шүүлт */
+.filterBar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 0 0 8px; padding: 6px 10px;
+  border: 1px dashed var(--data); border-radius: 10px;
+  background: color-mix(in srgb, var(--data) 6%, var(--surface));
+  font-size: 0.72rem;
+}
+.filterLabel { font-weight: 700; color: var(--ink-2); }
+.filterChip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--h); background: color-mix(in srgb, var(--h) 12%, var(--surface));
+  color: var(--ink); font: inherit; font-size: 0.7rem; cursor: pointer;
+}
+.filterChip:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.filterCount { margin-left: auto; color: var(--ink-3); }
+.filterClear {
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 0.7rem; cursor: pointer;
+}
+.filterClear:hover { border-color: var(--ink-3); }

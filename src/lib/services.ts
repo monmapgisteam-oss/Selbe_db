@@ -31,22 +31,51 @@
  * ⚠️ ОРЧНЫ ХУВЬСАГЧ (env) — ArcGIS/UBHUB үйлчилгээний ҮНДСЭН хаягуудыг НЭГ дороос
  * тохируулна (`.env`). `NEXT_PUBLIC_*` нь build үед шингэдэг (статик export).
  *
- * ⚠️ Env өгөгдөөгүй бол доорх FALLBACK (одоогийн ажиллаж буй утга) хэрэглэгдэнэ —
- * гол ажиллагаа env-гүйгээр ч эвдрэхгүй. Бүх дэд үйлчилгээ (ET, GAZAR, IMAGERY г.м.)
- * эдгээр суурьнаас template-ээр гардаг тул зөвхөн энд солиход хангалттай.
+ * ⚠️ 2026-09-17: КОД ДОТОР ҮЙЛЧИЛГЭЭНИЙ ЛИНК/FALLBACK ОГТ БАЙХГҮЙ (хэрэглэгчийн
+ *    шийдвэр). Хаяг бүр ЗӨВХӨН орчны хувьсагчаас — deploy-д GitHub Variables
+ *    (`deploy.yml` env блок), локалд `.env` (репод ордоггүй). Хувьсагч дутуу бол
+ *    `req()` build/ачаалалтын үед ИЛ алдаа шиднэ — чимээгүй буруу хаяг руу явахгүй.
+ *    Бүх дэд үйлчилгээ (ET, IMAGERY, BIM г.м.) эдгээр суурьнаас template-ээр гардаг.
  */
 import { PLAN2D_LAYERS } from './plan2d';
 import type { Stage } from './hyanalt';
 import { t as tr } from '@/lib/i18nCore';
 
-const env = (v: string | undefined, fallback: string): string =>
-  v == null || v === '' ? fallback : v;
+/**
+ * ⚠️ `process.env.NEXT_PUBLIC_X`-ийг ЗААВАЛ статик нэрээр дамжуулна — Next.js статик
+ *    export-д зөвхөн ийм хандалтыг build үед шингээдэг; `process.env[name]` хоосон.
+ *    Хоосон/`undefined` → ил алдаа (GitHub Actions тохируулаагүй Variable-ыг хоосон мөрөөр өгдөг).
+ */
+const req = (name: string, v: string | undefined): string => {
+  const s = (v ?? "").trim().replace(/\/+$/, "");
+  if (!s) throw new Error(`[Сэлбэ] ${name} тохируулаагүй — GitHub → Settings → Variables (deploy) эсвэл .env (локал) дээр нэмнэ үү.`);
+  return s;
+};
 
-/** Үндсэн байгууллагын FeatureServer суурь (org: HJzgwvlNIXssnQar) */
-const HJ = env(
-  process.env.NEXT_PUBLIC_ARCGIS_HJ,
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
-);
+/** Үндсэн байгууллагын FeatureServer суурь (`…/arcgis/rest/services`) */
+export const HJ = req("NEXT_PUBLIC_ARCGIS_HJ", process.env.NEXT_PUBLIC_ARCGIS_HJ);
+
+/**
+ * ХАБЭА-ийн Survey123 ҮЙЛЧИЛГЭЭНИЙ НЭРС — орчны хувьсагчаас (2026-09-17, хэрэглэгч:
+ * «үйлчилгээ огт код дотор байх ёсгүй»). Survey123 маягтыг дахин нийтлэхэд нэр нь
+ * (`survey123_<GUID>`) солигддог тул GitHub Variables / `.env`-ээс өөрчилнө, код хөндөхгүй.
+ * Fallback БАЙХГҮЙ — хувьсагч дутуу бол `req()` алдаа шиднэ.
+ */
+/** Survey123 үйлчилгээний БҮТЭН хаяг: `…/FeatureServer` хүртэл. Хувьсагчид бүтэн URL
+    (`…/rest/services/<нэр>/FeatureServer`) эсвэл зөвхөн нэр өгсөн ч ажиллана. */
+const svcRoot = (name: string, v: string | undefined): string => {
+  const raw = req(name, v).replace(/\/FeatureServer$/i, "");
+  return raw.includes("://") ? raw : `${HJ}/${raw}`;
+};
+const HABEA_SVC = {
+  labor: svcRoot("NEXT_PUBLIC_HABEA_LABOR_SVC", process.env.NEXT_PUBLIC_HABEA_LABOR_SVC),
+  incident: svcRoot("NEXT_PUBLIC_HABEA_INCIDENT_SVC", process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC),
+  uzlegV11: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_V11_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC),
+  uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
+  /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
+      нийтлэгдсэн; `habea:uzZ` ба ХАБЭА-ийн захиалагчийн үзлэгийн самбар эндээс уншина. */
+  uzlegZahialagch: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC),
+} as const;
 
 /**
  * TEST_DATA — MUST org-ийн НЭГДСЭН орон зайн үйлчилгээ (2026-08-13).
@@ -73,14 +102,11 @@ const HJ = env(
  *    хаана ч лавлагддаггүй `po:*` тав). `toilet` → 115, `nogoon_analysis` →
  *    118, `Example_data` → 123 (`Exampledata_iot`) мөн ЭНД нэгдэв.
  */
-export const TD = `${env(
-  process.env.NEXT_PUBLIC_ARCGIS_GAZAR,
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services",
-  /* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
-     шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
-     талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
-     нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
-)}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+/* ⚠️ 2026-08-24: `test_data` → `data`. 118 давхаргыг НЭРЭЭР нь тулгаж
+   шалгасан: дугаар нэг ч шилжээгүй, дутуу давхарга алга, кодын шаарддаг
+   талбарууд бүрэн. Ялгаа нь зөвхөн «Барилга» ([108]) 364 → 368 болж
+   нэмэгдсэн ба барилгын блокийн БҮТЭН хувилбар [112] нэмэгдсэн. */
+export const TD = `${req("NEXT_PUBLIC_ARCGIS_GAZAR", process.env.NEXT_PUBLIC_ARCGIS_GAZAR)}/SELBE_ALL_DATA_last_0917/FeatureServer`;
 
 /** Бүх вектор давхаргын эх — НЭГ FeatureServer */
 export const ET = `${HJ}/Selbe_ET_20260721/FeatureServer`;
@@ -201,7 +227,9 @@ export const SOURCE_FS = {
    өгөгдөл огт уншигдахгүй (499 «Token Required») — зөвхөн UI-ийн бүтэц харах
    зориулалттай; өгөгдөлтэй хөгжүүлэлт нэвтрэлт асаалттай явна. */
 const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
-const AUTH_APP_ID = process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv";
+/* ⚠️ `AUTH_OFF=1` үед appId шаардахгүй (UI-ийн бүтэц харах горим); бусад үед `req()`. */
+const AUTH_APP_ID = AUTH_OFF ? (process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "").trim()
+  : req("NEXT_PUBLIC_AUTH_APP_ID", process.env.NEXT_PUBLIC_AUTH_APP_ID);
 if (!AUTH_OFF && !AUTH_APP_ID) {
   const msg = "NEXT_PUBLIC_AUTH_APP_ID хоосон байна. Нэвтрэлтийг САНААТАЙ унтраах бол "
     + "NEXT_PUBLIC_AUTH_OFF=1 гэж ил зарлана уу — эс бөгөөс бүх эрх, бүх "
@@ -234,8 +262,8 @@ export const AUTH = {
    * солилт CORS-д хаагддаг. `www.arcgis.com` аль ч origin-ыг зөвшөөрнө;
    * байгууллагаар хязгаарлах ажлыг `allowedOrgId` хийнэ.
    */
-  portalUrl: env(process.env.NEXT_PUBLIC_PORTAL_URL, "https://www.arcgis.com"),
-  allowedOrgId: env(process.env.NEXT_PUBLIC_ALLOWED_ORG_ID, "HJzgwvlNIXssnQar"),
+  portalUrl: req("NEXT_PUBLIC_PORTAL_URL", process.env.NEXT_PUBLIC_PORTAL_URL),
+  allowedOrgId: req("NEXT_PUBLIC_ALLOWED_ORG_ID", process.env.NEXT_PUBLIC_ALLOWED_ORG_ID),
 } as const;
 
 /** Эхлэх байрлал — төслийн талбайн төв */
@@ -454,7 +482,7 @@ export type LayerDef = {
    * Гүйцэтгэлийн 16 үе шат, Survey123-ийн холбоост хүснэгтүүд зэрэг нь
    * ерөнхий «тоо + хэмжээ + ангилал» загварт багтахгүй.
    */
-  detail?: "building" | "survey";
+  detail?: "building"; // ⚠️ 2026-09-17: `"survey"` (mon:survey) төслөөс бүрэн хасагдав
   note?: string;
 };
 
@@ -598,15 +626,15 @@ const M: Quantity = { field: "urt_m", unit: 'м' };
 const M2: Quantity = { field: "talbai_m2", unit: 'м²' };
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
+/* ⚠️ 2026-09-17: Талбайн хяналтын Survey123 (`selbe_site_monitoring`,
+   `survey123_e98bd…_results`) ТӨСЛӨӨС БҮРМӨСӨН ХАСАГДСАН — гүйцэтгэл бөглөлтийг
+   survey-ээр шийдэх гэсэн ТУРШИЛТ байсан, хэрэглэгчийн шийдвэр. Гүйцэтгэл нь
+   «Гүйцэтгэл бөглөх» хүснэгтээс л (`BUILDING` + `loadBlockProgress`). */
 
 /**
- * ⚠️ Талбайн тайлангийн Survey123 — ХУУЧИН үйлчилгээндээ үлдэнэ: маягт өөрөө
- * энэ рүү бичдэг тул нэгтгэсэн `data`-д зөөх боломжгүй.
- *
  * ⚠️ 2026-08-24: `BUILDING_FS` (`building_GOL_barigdaj_ehelsen`) ХАСАГДАВ —
  * барилгын блок нэгтгэсэн `data`/112 руу шилжсэн (`BUILDING`-ийг үз).
  */
-const SURVEY_FS = `${HJ}/survey123_e98bd4b642f84c9fb688f754de7cb83a_results/FeatureServer`;
 
 /* ══════════════════════ Газар чөлөөлөлт (тусдаа үйлчилгээ) ══════════════════════ */
 
@@ -1582,36 +1610,6 @@ export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swi
   { value: 'Том гулсууран тоглоом', color: "#22c55e", kind: "set" },
 ];
 
-/** Талбайн хяналт — Survey123: цэгийн давхарга + 5 холбоост хүснэгт */
-export const SURVEY = {
-  url: `${SURVEY_FS}/0`,
-  oid: "objectid",
-  tables: {
-    beltgel: `${SURVEY_FS}/1`,
-    shoroo: `${SURVEY_FS}/2`,
-    suuri: `${SURVEY_FS}/3`,
-    ram: `${SURVEY_FS}/4`,
-    asuudal: `${SURVEY_FS}/5`,
-  },
-  fields: {
-    date: "ognoo",
-    user: "hereglegch",
-    contractor: "guitsetgegch",
-    bagts: "bagts",
-    building: "barilga",
-    buildingType: "barilga_torol",
-    floors: "davhar_too",
-    pours: "tsutgalt_too",
-    workers: "hun_huch",
-    machines: "tehnik_too",
-    /** Нийт барилга угсралтын гүйцэтгэл (%) */
-    total: "b_niit",
-    shortfall: "dutuu",
-    note: "erunhii_tailbar",
-    created: "CreationDate",
-  },
-} as const;
-
 /* ══════════════════════ Дэд бүтцийн багцын каталог ══════════════════════ */
 
 /**
@@ -2187,9 +2185,8 @@ const SB_LAYERS: LayerDef[] = PLAN2D_LAYERS.map((l) => ({
     : {}),
 }));
 
-const IOT_BASE =
-  process.env.NEXT_PUBLIC_ARCGIS_IOT ??
-  "https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services";
+/** IoT мэдрэгчийн FeatureServer суурь (`…/arcgis/rest/services`) — `sensors.ts` мөн эндээс. */
+export const IOT_BASE = req("NEXT_PUBLIC_ARCGIS_IOT", process.env.NEXT_PUBLIC_ARCGIS_IOT);
 
 /**
  * IoT МЭДРЭГЧ — газрын зурагт харагдах цэгүүд.
@@ -2297,21 +2294,6 @@ export const LAYERS: LayerDef[] = [
        `Selbe_guitsetgel_consolidated`-ын амьд дүнгээр (`buildingProgressRenderer`)
        өөрөө тавьдаг хэвээр. */
   },
-  {
-    id: "mon:survey",
-    n: 0,
-    url: `${SURVEY_FS}/0`,
-    title: tr('Талбайн хяналтын тайлан'),
-    topic: "monitor",
-    geom: "point",
-    hue: "#0891b2",
-    marker: "circle",
-    size: 13,
-    noZone: true,
-    detail: "survey",
-    oid: "objectid",
-    note: tr('Survey123 мобайл аппаас'),
-  },
 
   /* ─────────── ХАБЭА — Цамхагт кран (тусдаа үйлчилгээ) ───────────
      ⚠️ URL inline: `HABEA` тогтмол ЭНЭ массиваас ДООР тодорхойлогддог тул TDZ-аас
@@ -2346,7 +2328,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:osol",
     n: 0,
-    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    url: `${HABEA_SVC.incident}/FeatureServer/0`,
     title: tr('Осол, зөрчил'),
     topic: "monitor",
     geom: "point",
@@ -2366,7 +2348,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:uzV11",
     n: 0,
-    url: `${HJ}/service_cbda4d63ef404e1189dc208280dd9a45/FeatureServer/0`,
+    url: `${HABEA_SVC.uzlegV11}/FeatureServer/0`,
     title: tr('Ажлын байрны үзлэг V1.1'),
     topic: "monitor",
     geom: "point",
@@ -2381,11 +2363,28 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:uzG",
     n: 0,
-    url: `${HJ}/service_92a6675c595e48118dcaa17e7dde5e78/FeatureServer/0`,
+    url: `${HABEA_SVC.uzlegG}/FeatureServer/0`,
     title: tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
     topic: "monitor",
     geom: "point",
     hue: "#7c3aed",
+    marker: "square",
+    size: 10,
+    noZone: true,
+    oid: "objectid",
+    auth: true,
+    note: tr('Survey123 мобайл аппаас'),
+  },
+  /* ⚠️ Захиалагчийн үзлэг — V1.1-ийн хажууд зэрэг харагдах тул ӨНГӨ нь
+     ногооноос (V1.1) тод ялгаатай цэнхэр. */
+  {
+    id: "habea:uzZ",
+    n: 0,
+    url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
+    title: tr('Захиалагчийн ажлын байрны үзлэг'),
+    topic: "monitor",
+    geom: "point",
+    hue: "#0284c7",
     marker: "square",
     size: 10,
     noZone: true,
@@ -2922,7 +2921,7 @@ export const LAYERS: LayerDef[] = [
  * агентын тулгалтаар (нэр · зориулалт · тоо · талбар) баталгаажсан зураглал.
  *
  * ⚠️ ЭНД БАЙХГҮЙ id-ууд ХУУЧИН үйлчилгээндээ үлдэнэ (нэгтгэсэн `data`-д
- * эквивалент алга): mon:building/mon:survey (AIL_TOO, GUITS_HV талбар [107]-д
+ * эквивалент алга): mon:building (AIL_TOO, GUITS_HV талбар [107]-д
  * дутуу), habea:osol + ХАБЭА-ийн хоёр Survey123.
  *
  * ⚠️ 2026-08-24: эквивалентгүй байсан `tree`, `sz:0`–`sz:3`, `et:26`,
@@ -3251,10 +3250,7 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
 
 /* ══════════════════════ Растр ба 3D ══════════════════════ */
 
-const UBHUB = env(
-  process.env.NEXT_PUBLIC_UBHUB_IMAGERY,
-  "https://imagery.ubhub.mn/imagery/rest/services/Hosted",
-);
+const UBHUB = req("NEXT_PUBLIC_UBHUB_IMAGERY", process.env.NEXT_PUBLIC_UBHUB_IMAGERY);
 
 /**
  * Агаарын зураг — НЭГ нэгтгэсэн ImageServer (`selbe_ortho_merged`). СУУРЬ тул
@@ -3289,10 +3285,9 @@ export const IMAGERY = {
  * SceneServer (`layers/0` → `IntegratedMesh`, `nodepages/0` binary stream) 443
  * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
-const UBHUB_SCENE = env(
-  process.env.NEXT_PUBLIC_UBHUB_SCENE,
-  "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted",
-);
+const UBHUB_SCENE = req("NEXT_PUBLIC_UBHUB_SCENE", process.env.NEXT_PUBLIC_UBHUB_SCENE);
+/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IRGED_ORTHO үүнээс. */
+const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
 
 /**
  * «Иргэдэд хүрэх үр өгөөж» харагдацын 2D СУУРЬ ЗУРАГ — ортофото MapServer.
@@ -3516,19 +3511,15 @@ LAYER_BY_ID[IRGED_BUILT_DEF.id] = IRGED_BUILT_DEF;
 export const IRGED_ROAD = {
   id: "irged:road",
   title: tr('Зам'),
-  url: env(
-    process.env.NEXT_PUBLIC_IRGED_ROAD,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted/Selbe_road/VectorTileServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE суурийн дэд үйлчилгээ. */
+  url: `${UBHUB_SCENE}/Selbe_road/VectorTileServer`,
 } as const;
 
 export const IRGED_ORTHO = {
   id: "irged:ortho",
   title: tr('Ортофото (Selbe_ortho)'),
-  url: env(
-    process.env.NEXT_PUBLIC_IRGED_ORTHO,
-    "https://arcgis.ubhub.mn/arcgis/rest/services/Selbe_ortho/MapServer",
-  ),
+  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE-тэй нэг сервер, `Hosted`-ын гадна. */
+  url: `${UBHUB_REST}/Selbe_ortho/MapServer`,
 } as const;
 
 /**
@@ -3651,10 +3642,7 @@ export const MESH_SWIPE = {
  * Гадаргуугийн өндөр — 3D-д ЗААВАЛ. Меш нь 1325–1440 м ортометрик өндөрт байх
  * бөгөөд хавтгай (0 м) гадаргуу дээр вектор давхаргууд түүний ~1350 м доор үлдэнэ.
  */
-export const ELEVATION_URL = env(
-  process.env.NEXT_PUBLIC_ELEVATION_URL,
-  "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
-);
+export const ELEVATION_URL = req("NEXT_PUBLIC_ELEVATION_URL", process.env.NEXT_PUBLIC_ELEVATION_URL);
 
 /**
  * УСАН САН — ЗӨВХӨН 3D/BIM горимд нэмэгдэх талбайн давхарга (6 полигон).
@@ -3691,7 +3679,7 @@ export const HABEA = {
      * `survey123_732c0391...` нь `CONT_0001 — Item does not exist or is
      * inaccessible` буцааж, ХАБЭА хуудсыг бүхэлдээ унагаж байсан.
      */
-    url: `${HJ}/survey123_60cf822671df4c3681cf8f77317bdb4f/FeatureServer/0`,
+    url: `${HABEA_SVC.labor}/FeatureServer/0`,
     /**
      * ЗӨВХӨН маягтын НИЙТ (roll-up) талбарууд. Шинэ маягт нь ажилтан/техникийг
      * ЗӨВХӨН гүйцэтгэгчийн дагавартай баганаар хөтөлдөг тул монгол/гадаад
@@ -3736,7 +3724,7 @@ export const HABEA = {
     ],
   },
   incident: {
-    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    url: `${HABEA_SVC.incident}/FeatureServer/0`,
     fields: {
       ognoo: "field_22", company: "field_5", bagts: "field_6", dugaar: "field_9",
       turul: "field_7", medeelel: "field_14", shaltgaanTurul: "field_11",
@@ -3818,11 +3806,24 @@ export const HABEA = {
   uzleg: {
     v11: {
       title: tr('Ажлын байрны үзлэг V1.1'),
-      url: `${HJ}/service_cbda4d63ef404e1189dc208280dd9a45/FeatureServer/0`,
+      url: `${HABEA_SVC.uzlegV11}/FeatureServer/0`,
     },
     guitsetgegch: {
       title: tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
-      url: `${HJ}/service_92a6675c595e48118dcaa17e7dde5e78/FeatureServer/0`,
+      url: `${HABEA_SVC.uzlegG}/FeatureServer/0`,
+    },
+    /**
+     * ЗАХИАЛАГЧИЙН АЖЛЫН БАЙРНЫ ҮЗЛЭГ (2026-09-17, хэрэглэгчийн хүсэлт).
+     * «Захиалагчийн ажлын байрны үзлэг» фокуст V1.1-тэй ЗЭРЭГЦЭЭ баруун талд.
+     *
+     * ⚠️ СХЕМ БАТЛАГДААГҮЙ: үйлчилгээ нь метадатад ч токен шаарддаг тул
+     * хөгжүүлэлтийн үед талбаруудыг нь шалгах боломжгүй байв. V1.1-тэй
+     * ИЖИЛ Survey123 маягт гэж үзэж `fields`-ийг хуваалцана. Талбар зөрвөл
+     * самбар «Бүртгэл алга» эсвэл код харуулна — ЧИМЭЭГҮЙ буруу тоо биш.
+     */
+    zahialagch: {
+      title: tr('Захиалагчийн ажлын байрны үзлэг'),
+      url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
     },
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
@@ -3833,6 +3834,14 @@ export const HABEA = {
       /** Үл нийцлийн зэрэг тус бүрийн ТОО — маягтын өөрийн нийлбэр талбарууд */
       major: 'cnt_major', minor: 'cnt_minor', obs: 'cnt_obs',
       conf: 'cnt_conf', na: 'cnt_na',
+      /**
+       * НИЙТ ОНОО — авсан ба боломжит (2026-09-17, амьд метадатаар батлав).
+       * ⚠️ ЗӨВХӨН V1.1-д бий; гүйцэтгэгчийн маягтад ОНООНЫ ТАЛБАР БАЙХГҮЙ (0/260)
+       * — уншихад `undefined` ирнэ, `habeaUzleg.norm` түүнийг `null` болгоно.
+       * ⚠️ `sc_all` (Double) нь масштаб нь тодорхойгүй тул ХЭРЭГЛЭХГҮЙ —
+       * долоо хоногийн оноог `Σ earned / Σ appl`-аар жигнэж бодно.
+       */
+      scEarned: 'sc_all_earned', scAppl: 'sc_all_appl',
     },
   },
 } as const;
@@ -3861,10 +3870,7 @@ export const laborCompanyFields = (sfx: string) => ({
  * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
  * хасагдаж, эдгээр нь оронд нь харагдана.
  */
-const BIM_ROOT = env(
-  process.env.NEXT_PUBLIC_BIM_ROOT,
-  "https://tiles.arcgis.com/tiles/HJzgwvlNIXssnQar/arcgis/rest/services",
-);
+const BIM_ROOT = req("NEXT_PUBLIC_BIM_ROOT", process.env.NEXT_PUBLIC_BIM_ROOT);
 
 export const BIM = {
   layers: Array.from({ length: 12 }, (_, i) => {
@@ -4306,11 +4312,13 @@ export const BASE_MAP_IDS: readonly string[] = [
 export const MONITOR_GROUP = {
   key: "monitor" as const,
   title: tr('Барилгын хяналт'),
-  desc: tr('Блокийн гүйцэтгэл, талбайн тайлан'),
+  desc: tr('Блокийн гүйцэтгэл'),
   icon: "target",
   hue: "#ea580c",
 };
-export const MONITOR_LAYER_IDS: string[] = ["mon:building", "mon:survey"];
+/* ⚠️ 2026-09-17: `mon:survey` (`selbe_site_monitoring` Survey123 тест) ХАСАГДАВ —
+   хэрэглэгч: «огт ашиглахгүй, гүйцэтгэл бөглөлтийг survey-ээр шийдэх гэж байсан тест». */
+export const MONITOR_LAYER_IDS: string[] = ["mon:building"];
 
 /** ХАБЭА-ийн давхаргууд — каталогид тусдаа бүлэг (харагдацын үндсэн давхаргууд) */
 export const HABEA_GROUP = {
@@ -4327,7 +4335,9 @@ export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:bu
  * ⚠️ `HABEA_LAYER_IDS`-ээс ТУСДАА: нэвтрэлт шаардлагатай тул каталогийн
  * тооллогод оруулахгүй, зөвхөн тухайн маягтын фокус нээлттэй үед харагдана.
  */
-export const HABEA_UZLEG_LAYER_ID = { v11: "habea:uzV11", guitsetgegch: "habea:uzG" } as const;
+export const HABEA_UZLEG_LAYER_ID = {
+  v11: "habea:uzV11", guitsetgegch: "habea:uzG", zahialagch: "habea:uzZ",
+} as const;
 
 /** Каталогт харуулах бүлгүүд — харагдацаас хамаарна */
 /**

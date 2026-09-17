@@ -31,6 +31,7 @@ _ws.json
 
 # AI релений нууц (LLM түлхүүр) — репод хэзээ ч орохгүй
 agent-proxy/.env*
+agent-proxy/host/logs/
 # Cloudflare Worker-ийн локал нууц — ХЭЗЭЭ Ч репод орохгүй
 agent-proxy/.dev.vars*
 # Wrangler-ийн локал кэш — build биш, түр файл

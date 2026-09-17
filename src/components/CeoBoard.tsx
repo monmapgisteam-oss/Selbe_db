@@ -52,7 +52,7 @@ import s from './ceoBoard.module.css';
 
 /* ══════════════ Ачаалалт ══════════════ */
 
-type Slot = Async<KpiResult>;
+export type Slot = Async<KpiResult>;
 const LOADING: Slot = { state: 'loading', data: null, error: null };
 
 /**
@@ -272,11 +272,17 @@ function NodeCard({
  * тоо нь дүнгээр бодогдсон тул эргүүлэн задлах боломжгүй. Тэр ялгааг дэлгэц
  * дээр ИЛ хэлнэ — эс бөгөөс «56.8 тэрбум нь энэ багцынх» гэж ХУДАЛ уншигдана.
  */
-function KpiDetail({
-  def, slot, pkg, onView, onRetry,
+export function KpiDetail({
+  def, slot, pkg, onView, onRetry, projectLabel = false,
 }: {
   def: CeoKpiDef; slot: Slot; pkg: string;
   onView: (k: ViewKey) => void; onRetry: () => void;
+  /**
+   * ⚠️ 2026-09-17 («Багц ажлын оноо»): гол тоо нь ТӨСЛИЙН НИЙТ гэдгийг тооны
+   *    ӨМНӨ бичнэ — эс бөгөөс «313,688,227,084 ₮» мэт тоо сонгосон багцынх
+   *    мэт уншигдаж, юу болох нь ойлгогдохгүй байв.
+   */
+  projectLabel?: boolean;
 }) {
   const lv = levelOf(slot);
   const raw = slot.state === 'ready' ? slot.data : null;
@@ -289,6 +295,7 @@ function KpiDetail({
         <span className={s.kTag}>{LEVEL_MARK[lv]} {levelLabel(lv)}</span>
         {d && (
           <span className={s.kValue}>
+            {projectLabel && <i>{tr('Төслийн нийт:')}</i>}
             <b className="num">{d.value}</b>
             {d.unit && <i>{d.unit}</i>}
           </span>

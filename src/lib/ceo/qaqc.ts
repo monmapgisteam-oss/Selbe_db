@@ -341,7 +341,12 @@ async function loadPkg(pkg: Pkg): Promise<QaqcLoaded> {
   return attachOrFlat({ key: pkg.key, label: pkg.label }, rows, sheet);
 }
 
-async function loadAll(): Promise<KpiResult> {
+/**
+ * ⚠️ 2026-09-17: уншигдсан багцууд тусдаа кэштэй — «Багц ажлын оноо»
+ *    (`scorecardLoad.ts`) багц бүрийн бөглөлтийг эндээс авна; 10 хүснэгтийг
+ *    хоёр дахин татахгүй.
+ */
+export const loadQaqcLoaded = cached(async (): Promise<{ ok: QaqcLoaded[]; failed: string[]; keys: Record<string, string> }> => {
   const run = limiter(QAQC_CONCURRENCY);
   /* ⚠️ QAQC хүснэгтгүй багц (`qaqcTableOf` → null) нь «уналт» БИШ — жагсаалтад орохгүй */
   const targets = PKGS.filter((p) => qaqcTableOf(p.key) != null);
@@ -353,6 +358,13 @@ async function loadAll(): Promise<KpiResult> {
   if (ok.length === 0) {
     throw new Error(tr('QAQC хүснэгт нэг ч уншигдсангүй ({0} багц)', failed.length));
   }
+  /* Хуудасны түлхүүр → багцын бүлэг («b1_9f» → «Багц 1») — оноог Cashflow-ийн багцтай холбоно */
+  const keys = Object.fromEntries(targets.map((p) => [p.key, p.group]));
+  return { ok, failed, keys };
+}, 5 * 60_000, ['BAGTS_SHEET']);
+
+async function loadAll(): Promise<KpiResult> {
+  const { ok, failed } = await loadQaqcLoaded();
   return computeQaqc(ok, failed);
 }
 

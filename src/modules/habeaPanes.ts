@@ -26,8 +26,10 @@ import { t as tr } from '@/lib/i18nCore';
  */
 const PANE = {
   // `.shell` — багана ба доод зурвасын өндөр
-  l: { css: '--col-l', axis: 'x', track: 0, min: 220, max: 560, sign: 1 },
-  r: { css: '--col-r', axis: 'x', track: 2, min: 240, max: 620, sign: -1 },
+  /* ⚠️ `l` ба `r` ХОЛБООТОЙ (`LINKED`) — хязгаар нь ИЖИЛ байх ёстой, эс бөгөөс
+     нэг нь хязгаартаа тулахад нөгөө нь цааш явж өргөн зөрнө. */
+  l: { css: '--col-l', axis: 'x', track: 0, min: 240, max: 560, sign: 1 },
+  r: { css: '--col-r', axis: 'x', track: 2, min: 240, max: 560, sign: -1 },
   fin: { css: '--row-fin', axis: 'y', track: 3, min: 120, max: 560, sign: -1 },
   // `.fin` — доод зурвасын дөрвөн картын хоорондох гурван зааг
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
@@ -39,6 +41,14 @@ const PANE = {
      хамаарахгүй тул хор хөнөөлгүй. */
 } as const;
 export type PaneKey = keyof typeof PANE;
+
+/**
+ * ХОЛБООТОЙ ХЭМЖЭЭ — нэгийг чирэхэд нөгөө нь ДАГАНА (2026-09-17, хэрэглэгчийн
+ * хүсэлт: «зүүн баруун баганын хэмжээг яг адилхан болго»). Хоёр маягт
+ * зэрэгцэх горимд зүүн (V1.1) ба баруун (захиалагч) ИЖИЛ чартуудтай тул
+ * өргөн зөрвөл ижил тоо өөр хэлбэртэй харагдаж харьцуулалт гажна.
+ */
+const LINKED: Partial<Record<PaneKey, PaneKey>> = { l: 'r', r: 'l' };
 
 const LS = 'selbe.habea.panes';
 const STEP = 12;
@@ -54,7 +64,14 @@ export function usePanes() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS);
-      if (raw) setSize(JSON.parse(raw) as Sizes);
+      if (raw) {
+        const s = JSON.parse(raw) as Sizes;
+        /* ⚠️ Холбоо нэмэгдэхээс ӨМНӨ хадгалсан зөрүүтэй өргөнийг нэг болгоно —
+           эс бөгөөс хуучин хэрэглэгчид багана тэгш бус хэвээр үлдэнэ. */
+        const v = s.l ?? s.r;
+        if (v != null) { s.l = v; s.r = v; }
+        setSize(s);
+      }
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны хэмжээгээр */
     }
@@ -90,8 +107,11 @@ export function usePanes() {
 
   const commit = useCallback((k: PaneKey, px: number | null) => {
     const next = { ...cur.current };
-    if (px == null) delete next[k];
-    else next[k] = px;
+    for (const key of [k, LINKED[k]]) {
+      if (!key) continue;
+      if (px == null) delete next[key];
+      else next[key] = px;
+    }
     setSize(next);
     save(next);
   }, [save]);
@@ -129,6 +149,9 @@ export function usePanes() {
         if (px === d.px) return;
         d.px = px;
         d.grid?.style.setProperty(p.css, `${px}px`);
+        /* Холбоотой багана ч ЧИРЭХ ЯВЦАД дагана — хуруу тавихад л биш */
+        const ln = LINKED[k];
+        if (ln) d.grid?.style.setProperty(PANE[ln].css, `${px}px`);
       },
       onPointerUp: (e: React.PointerEvent<HTMLElement>) => {
         const d = drag.current;

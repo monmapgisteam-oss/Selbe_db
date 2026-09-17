@@ -75,7 +75,7 @@ ArcGIS нэг хүсэлтэд ойролцоогоор **2,000 мөр** буц�
 
 ```
 HO_IPC · CASHFLOW_NEW · BAGTS_SHEET · BAGTS_NEGTGEL · BUILDING
-PARCEL_LEFT · SOURCE_FS · HABEA · HYANALT · ZOVSHOOROL · SURVEY
+PARCEL_LEFT · SOURCE_FS · HABEA · HYANALT · ZOVSHOOROL
 ```
 
 Ачаалагч бүр «би энэ хүснэгтээс уншина» гэж зарлана; бичих тал «би энэ

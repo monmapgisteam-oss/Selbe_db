@@ -11,8 +11,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from "./ags";
-
-const HJ = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services";
+import { HJ } from '@/lib/services';
 
 export type Pkg = {
   /** `bagts.trees.ts`-ийн түлхүүр — мөрийн модыг үүгээр олно */
