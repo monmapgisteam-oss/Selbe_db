@@ -600,6 +600,10 @@ const M: Quantity = { field: "urt_m", unit: 'м' };
 const M2: Quantity = { field: "talbai_m2", unit: 'м²' };
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
+/* ⚠️ 2026-09-17: Талбайн хяналтын Survey123 (`selbe_site_monitoring`,
+   `survey123_e98bd…_results`) ТӨСЛӨӨС БҮРМӨСӨН ХАСАГДСАН — гүйцэтгэл бөглөлтийг
+   survey-ээр шийдэх гэсэн ТУРШИЛТ байсан, хэрэглэгчийн шийдвэр. Гүйцэтгэл нь
+   «Гүйцэтгэл бөглөх» хүснэгтээс л (`BUILDING` + `loadBlockProgress`). */
 
 /**
  * ⚠️ 2026-08-24: `BUILDING_FS` (`building_GOL_barigdaj_ehelsen`) ХАСАГДАВ —
@@ -4142,7 +4146,7 @@ export const BASE_MAP_IDS: readonly string[] = [
 export const MONITOR_GROUP = {
   key: "monitor" as const,
   title: tr('Барилгын хяналт'),
-  desc: tr('Блокийн гүйцэтгэл, талбайн тайлан'),
+  desc: tr('Блокийн гүйцэтгэл'),
   icon: "target",
   hue: "#ea580c",
 };
