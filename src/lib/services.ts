@@ -2791,7 +2791,10 @@ export const LAYERS: LayerDef[] = [
   {
     id: "nogoon",
     n: 0,
-    url: `${HJ}/nogoon_baiguulamj/FeatureServer/0`,
+    /* ⚠️ 2026-09-17: `nogoon_baiguulamj` үйлчилгээ УСТГАГДСАН → ЯГ ижил өгөгдөл
+       `SELBE_ALL_DATA_last_0917`/118 (`nogoon_baiguulamj_analysis`, 807 объект,
+       `RefName_12` талбартай — анализ ч үүнийг уншдаг). */
+    url: `${TD}/118`,
     title: tr('Ногоон байгууламж'),
     topic: "plan",
     geom: "area",
@@ -2824,17 +2827,20 @@ export const LAYERS: LayerDef[] = [
    */
   {
     id: "tgl",
-    n: 18,
-    url: `${HJ}/huuhdiin_togloom/FeatureServer/18`,
+    n: 140,
+    /* ⚠️ 2026-09-17: `huuhdiin_togloom/18` (111 цэг, `type`-тэй) УСТГАГДСАН →
+       `SELBE_ALL_DATA_last_0917`/140 «Тоглоомын_талбай» (54 ТАЛБАЙ, CAD, `type`
+       алга). Тиймээс цэгийн SVG/3D дүрс (`toglRenderer`, `tgl3d`) ажиллахгүй —
+       MapCanvas тэдгээрийг `geom === 'point'` үед л хэрэглэнэ; одоо энгийн
+       талбайн давхарга. */
+    url: `${TD}/140`,
     title: tr('Хүүхдийн тоглоом'),
     topic: "plan",
-    geom: "point",
+    geom: "area",
     hue: "#f59e0b",
-    marker: "circle",
-    size: 8,
+    fill: 0.35,
+    width: 0.9,
     noZone: true,
-    facets: [{ field: "type", label: tr('Төрөл') }],
-    note: tr('Төрлөөр СВГ дүрстэй'),
   },
   /** Авто зам — `Бусад_мэдээлэл_20260724`/193 (кирилл нэрийг encode). Бусад бүлэгт. */
   {

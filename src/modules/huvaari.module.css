@@ -110,7 +110,14 @@
      зурвас 1,400 мөр × 30px = 42,000px доор үлдэж, хүрэх аргагүй болно. */
   overflow: auto;
   border-top: 1px solid var(--line);
+  /* ⚠️ Хэвтээ гүйлтийн зурвас ҮРГЭЛЖ ил, зузаан (2026-09-17): 8px-ийн бүдэг
+     зурвас олдохгүй байсан тул «зүүн баруун гүйлт ажиллахгүй» гэж уншигдаж байв. */
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--ink-3) transparent;
 }
+.gWrap::-webkit-scrollbar { height: 14px; width: 10px; }
+.gWrap::-webkit-scrollbar-thumb { background: var(--ink-3); border: 3px solid var(--surface); border-radius: 99px; }
+.gWrap::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
 /* ⚠️ Зүүн багана ХЭВТЭЭ гүйлтэд ОРОЛЦОХГҮЙ — нэр байрандаа үлдэнэ. */
 /* ⚠️ Зүүн багана хэвтээ гүйлтэд НААЛДАНА — хуанлийг баруун тийш гүйлгэхэд
    ажлын нэр байрандаа үлдэнэ, эс тэгвээс «энэ зурвас юуных вэ» алдагдана. */
@@ -440,6 +447,9 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  cursor: grab; /* чирж гүйлгэнэ (2026-09-17) */
+  user-select: none;
+  touch-action: pan-y;
   height: 30px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);

@@ -795,8 +795,12 @@ export function Huvaari({
     const to = Math.max(padded, from + 364 * DAY);
     return { from, to };
   }, [plan, now]);
-
-  const { from, to } = range;
+  /* ⚠️ ЧИРЭЛТИЙН ҮЕД хүрээг ТОГТООНО (2026-09-17): `range` нь ноорогтой `plan`-аас
+     бодогддог тул зурвасыг `lo`-оос өмнө татмагц `from` бүтэн сараар эрт болж,
+     чирэлтийн `anchor` (ИНДЕКС) нэг сараар зөрж муж сар сараар ухардаг байв. */
+  const rangeRef = useRef(range);
+  if (!drag) rangeRef.current = range;
+  const { from, to } = drag ? rangeRef.current : range;
   const px = ZOOM[zoom];
   const total = Math.round((to - from) / DAY) + 1;
   const W = Math.round(total * px);
@@ -1650,6 +1654,10 @@ export function Huvaari({
          *    шинэчилдэг тул `decidePlan`-ийн хамгаалалт хэтэрхий оройтоно:
          *    хоёр дахь батлагч хуваарийг бичсэний ДАРАА л татгалзах байлаа.
          */
+        /* ⚠️ ЭРХИЙГ ЭХ ХУУДСАНД БИЧИХЭЭС ӨМНӨ (2026-09-17): батлах зам нь `save()`
+           → `applyUpdates`-ыг `decidePlan`-ийн хүрээний шалгуураас ӨМНӨ ажиллуулдаг
+           тул эрхгүй хүн (товч нуугдсан ч консолоос) эх хуудсанд бичиж чадах байв. */
+        if (!canApprove) { setErr(tr('Энэ багцын хуваарийг батлах эрхгүй.')); return; }
         const fresh = await loadPending(pkg.key);
         if (!fresh || fresh.oid !== pending.oid) {
           setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
@@ -1778,7 +1786,8 @@ export function Huvaari({
        *    бичигдэх зам нээгдэнэ. Урьдчилан харах төлөвт үлдээж, «Харахыг
        *    болих»-оор л цэвэрлүүлнэ.
        */
-      setErr(tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
+      /* ⚠️ `save()` өөрөө тодорхой шалтгаан (staleN г.м.) бичсэн бол ДАРАХГҮЙ (2026-09-17) */
+      setErr((cur) => cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
       return;
     }
     setPreviewing(false);
@@ -2448,7 +2457,21 @@ export function Huvaari({
 
               <div className={h.gRight}>
                 <div className={h.gTrack} style={{ width: W }} ref={trackRef}>
-                  <div className={h.plHead}>
+                  {/* ⚠️ ЧИРЖ ГҮЙЛГЭХ (2026-09-17, хэрэглэгч: «зүүн баруун гүйлт ажиллахгүй»):
+                      сарын толгойн зурвас дээр чирвэл хуанли хэвтээ гүйнэ — гүйлтийн
+                      зурвас нарийн, харагдахгүй байсан. Ажлын мөр дээр чирэх нь
+                      урьдын адил зурвас үүсгэнэ/зөөнө. */}
+                  <div className={h.plHead}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      const el = scrollRef.current; if (!el) return;
+                      const x0 = e.clientX, s0 = el.scrollLeft;
+                      const t = e.currentTarget;
+                      t.setPointerCapture?.(e.pointerId);
+                      const mv = (ev: PointerEvent) => { el.scrollLeft = s0 - (ev.clientX - x0); };
+                      const up = () => { t.removeEventListener('pointermove', mv); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); };
+                      t.addEventListener('pointermove', mv); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up);
+                    }}>
                     {months.map((m) => (
                       <span key={m.at} className={h.plMonth} style={{ left: xOf(m.at) }}>{m.lab}</span>
                     ))}
@@ -3103,6 +3126,15 @@ function PlanModal({
 
   /** Уялдаа өөрчлөгдсөн эсэх — бичиглэлээр нь харьцуулна (дараалал ч утгатай) */
   const depsDirty = formatDeps(dl) !== formatDeps(r.deps);
+  /** Сарын задаргаа хөндөгдсөн үү — хадгалагдсан `months`-той харьцуулна */
+  const mvDirty = mv.size !== months.size || [...mv].some(([k, v]) => months.get(k) !== v);
+  /** Огноо хөндөгдсөн үү — энэ блокийн хадгалагдсан зурвастай харьцуулна */
+  const own = r.spans[blk];
+  const spanDirty = (ms1 ?? null) !== (own?.start ?? null) || (ms2 ?? null) !== (own?.end ?? null);
+  /* ⚠️ ЗӨВХӨН УЯЛДАА өөрчлөгдсөн (огноо, сар хөндөгдөөгүй) бол сарын нийлбэрийн
+     дүрэм хаахгүй (2026-09-17): обьёмтой ч задаргаагүй ажилд уялдаа тавихад
+     «Тавих» бүх сар бөглөхийг шаарддаг байв. Огноо/сар хөндсөн бол дүрэм хэвээр. */
+  const depsOnly = depsDirty && !spanDirty && !mvDirty;
 
   const apply = () => {
     /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа. */
@@ -3112,6 +3144,7 @@ function PlanModal({
       if (depsDirty) { onApply(null, dl, null); onClose(); }
       return;
     }
+    if (depsOnly) { onApply(null, dl, null); onClose(); return; }
     /* ⚠️ НИЙЛБЭР ТААРААГҮЙ бол хуваарийг ОРУУЛАХГҮЙ (хэрэглэгчийн дүрэм №3).
        Товч нь аль хэдийн хаалттай ч Enter/гар хандалтаар энд ирж болно. */
     if (!mvOk) return;
@@ -3223,7 +3256,10 @@ function PlanModal({
             <div className={h.mdDepsHead}>
               {tr('Сарын обьём')}
               <span className={h.mdDepsN}>
-                {tr('нийт')} {num(total)}
+                {/* ⚠️ 2 орны нарийвчлал (2026-09-17): обьём бутархай (900.35) байхад «900»
+                    гэж харагдаж, нийлбэр 900 «0 дутуу» гэсэн ойлгомжгүй шалтгаанаар
+                    «Тавих» хаагддаг байв. */}
+                {tr('нийт')} {num(total, 2)}
               </span>
             </div>
 
@@ -3267,14 +3303,14 @@ function PlanModal({
                 {/* ⚠️ НИЙЛБЭР ба ЗӨРҮҮ нь ҮРГЭЛЖ ил: хэрэглэгч «Тавих» дарж
                     чадахгүй болсныг ШАЛТГААНТАЙ нь хамт харах ёстой. */}
                 <p className={mvOk ? h.mdPar : h.mdWarn}>
-                  {tr('Нийлбэр')}: <b className="num">{num(mvSum)}</b>
+                  {tr('Нийлбэр')}: <b className="num">{num(mvSum, 2)}</b>
                   {mvOk ? (
                     <> · {tr('нийт обьёмтой тэнцэв')}</>
                   ) : (
                     <>
                       {' · '}
                       <b className={h.mdBad}>
-                        {mvDiff > 0 ? tr('{0}-аар илүү', num(mvDiff)) : tr('{0} дутуу', num(-mvDiff))}
+                        {mvDiff > 0 ? tr('{0}-аар илүү', num(mvDiff, 2)) : tr('{0} дутуу', num(-mvDiff, 2))}
                       </b>
                       {/* ⚠️ «ТЭНЦҮҮЛЭХ» ТОВЧ ХАСАГДСАН (2026-09-06): автомат
                           тараалт хийхгүй гэсэн шийдвэрийн дагуу. */}
@@ -3378,8 +3414,9 @@ function PlanModal({
             <button type="button" className={h.save} onClick={apply}
               disabled={r.group
                 ? !depsDirty
+                : depsOnly ? false
                 : ((ms1 == null || ms2 == null || bad) && !depsDirty) || !mvOk}
-              title={mvOk ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
+              title={mvOk || depsOnly ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
               {tr('Тавих')}
             </button>
           )}

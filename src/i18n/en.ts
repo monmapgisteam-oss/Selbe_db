@@ -1611,7 +1611,6 @@ const en: Record<string, string> = {
   "Төлөвлөлтийн талбайн хил": "Planning area boundary",
   "Төлөвлөсөн айл": "Planned households",
   "Төрийн үйлчилгээ": "Public services",
-  "Төрлөөр СВГ дүрстэй": "with SVG icons by type",
   "төрөл": "types",
   "Төрөл": "Type",
   "Төрөл тодорхойлоогүй": "Type not specified",
@@ -4391,7 +4390,8 @@ const en: Record<string, string> = {
   "Ижил утгатай талбар утгаараа, зөрүүтэй нь «— олон утга —» гэж гарна. Өөрчилсөн талбар л бүгдэд бичигдэнэ.": "Fields with one common value show it; differing ones show “— multiple values —”. Only changed fields are written to all.",
   "Сонгосон объектуудын утгыг уншиж байна…": "Reading the values of the selected objects…",
   "Өөрчилсөн талбар алга.": "No fields changed.",
-  "✓ Хадгалагдлаа — {0} объектын {1} талбар": "✓ Saved — {1} fields on {0} objects"
+  "✓ Хадгалагдлаа — {0} объектын {1} талбар": "✓ Saved — {1} fields on {0} objects",
+  "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in."
 };
 
 export default en;
