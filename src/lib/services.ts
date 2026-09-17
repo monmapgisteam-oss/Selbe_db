@@ -73,7 +73,7 @@ const HABEA_SVC = {
   uzlegV11: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_V11_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC),
   uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
   /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
-      нийтлэгдсэн, ОДООГООР портал уншдаггүй (0 мөр); харагдац нэмэгдэхэд эндээс авна. */
+      нийтлэгдсэн; `habea:uzZ` ба ХАБЭА-ийн захиалагчийн үзлэгийн самбар эндээс уншина. */
   uzlegZahialagch: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC),
 } as const;
 
@@ -2380,7 +2380,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:uzZ",
     n: 0,
-    url: `${HJ}/service_923029f4289647bd8a34aaf8e93ec9c8/FeatureServer/0`,
+    url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
     title: tr('Захиалагчийн ажлын байрны үзлэг'),
     topic: "monitor",
     geom: "point",
@@ -3706,7 +3706,7 @@ export const HABEA = {
      */
     zahialagch: {
       title: tr('Захиалагчийн ажлын байрны үзлэг'),
-      url: `${HJ}/service_923029f4289647bd8a34aaf8e93ec9c8/FeatureServer/0`,
+      url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
     },
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
