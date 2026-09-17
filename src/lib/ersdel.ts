@@ -41,9 +41,9 @@ import { t as tr } from '@/lib/i18nCore';
  */
 export const ERSDEL_FS = {
   url: process.env.NEXT_PUBLIC_ARCGIS_ERSDEL
-    /* ⚠️ 2026-09-17: MUST `Example_data` → `SELBE_ALL_DATA_0917`/123 (`Exampledata_iot`,
+    /* ⚠️ 2026-09-17: MUST `Example_data` → `SELBE_ALL_DATA_last_0917`/123 (`Exampledata_iot`,
        ижил 12 цэг · OBJECTID/GlobalID/Torol). */
-    ?? 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_0917/FeatureServer/123',
+    ?? 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer/123',
   /** Төрлийн талбар — «Усны харуул» / «Агаарын чанар» */
   typeField: 'Torol',
 } as const;

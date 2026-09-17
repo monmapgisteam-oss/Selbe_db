@@ -21,7 +21,7 @@
 import assert from 'node:assert/strict';
 
 const URL_ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
-  + '/SELBE_ALL_DATA_0917/FeatureServer/112/query';
+  + '/SELBE_ALL_DATA_last_0917/FeatureServer/112/query';
 
 const F = { bagts: 'BAGTS', contractor: 'BAR_COMP' };
 const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
@@ -99,7 +99,7 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
    ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
    агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
    315 мөр, [106] zoriulalt 12 мөр. */
-const ET = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_0917/FeatureServer';
+const ET = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/SELBE_ALL_DATA_last_0917/FeatureServer';
 const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
 
 const post = async (url, p) => {

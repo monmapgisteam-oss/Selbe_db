@@ -29,6 +29,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_LEFT, PARCEL_STATUS_HUES } from '@/lib/services';
 import { queryFeatures, queryGroup, count, sqlStr, type Row } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
+import { requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
 import { cached } from '@/lib/live';
 
@@ -194,6 +195,8 @@ export async function saveParcel(
   const d = diffParcel(before, patch);
   const n = Object.keys(d).length;
   if (n === 0) return 0;
+  /* ⚠️ Эрхийг lib-д (2026-09-17) — урьд нь зөвхөн `GazarEdit`-ийн товч. */
+  requireCap('gazar');
 
   await applyAll(PARCEL_LEFT.url, PARCEL_OID, {
     updates: [{ [PARCEL_OID]: before.oid, ...d }],

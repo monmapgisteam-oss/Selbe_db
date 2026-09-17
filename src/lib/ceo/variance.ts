@@ -31,10 +31,13 @@ import { cell, table, type Cell, type KpiResult, type Level } from './kpi';
  *    Бага ч гэсэн зөрүү илэрсэн бол «warn»: хяналт хэрэгтэй, гэхдээ яаралтай биш.
  */
 export function varianceLevel(
-  v: Pick<Variance, 'works' | 'totalMnt' | 'failedPkgs'>,
+  v: Pick<Variance, 'works' | 'totalMnt' | 'failedPkgs' | 'measurable'>,
   pkgCount: number,
 ): Level {
-  if (pkgCount > 0 && v.failedPkgs >= pkgCount) return 'unknown';
+  /* ⚠️ Блокгүй багц хэмжигдэхгүй тул `measurable` (байвал) нь `pkgCount`-аас
+     ЭРХЭМ — эс бөгөөс 10 хэмжигдэх багц бүгд унасан ч 18-д хүрэхгүй «good». */
+  const n = v.measurable ?? pkgCount;
+  if (n > 0 && v.failedPkgs >= n) return 'unknown';
   if (v.works === 0) return 'good';
   return v.totalMnt >= VAR_BAD_MNT ? 'bad' : 'warn';
 }

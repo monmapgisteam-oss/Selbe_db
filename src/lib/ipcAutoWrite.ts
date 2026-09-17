@@ -107,6 +107,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     const res = (j[plan.op === 'insert' ? 'addResults' : 'updateResults'] ?? []) as {
       success?: boolean; error?: { description?: string };
     }[];
+    /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17) — `submission.ts`,
+       `zovshoorol.deleteZov`-той ижил: нэг мөр илгээсэн тул яг нэг үр дүн ирнэ. */
+    if (res.length !== 1) return { ok: false, error: 'Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ' };
     const bad = res.find((r) => r.success === false);
     if (bad) return { ok: false, error: bad.error?.description || 'Бичих амжилтгүй' };
 

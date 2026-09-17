@@ -159,8 +159,14 @@ for (const pkg of PKGS) {
   const ref = r.rows.map((x) => `${x.no} ¦ ${x.work}`);
 
   // Хамгийн гүн бүлгийг олж, СҮҮЛИЙН удмынх нь ард шинэ мөр хийнэ
+  /* ⚠️ Блокгүй 8 багц 3 түвшинтэй (бүлэг ≤ 2) тул «3» олдохгүй бол ХАМГИЙН ГҮН
+     бүлгийг авна — үндэс рүү унавал шинэ мөр хуудасны төгсгөлд орж, «өмнөх
+     мөрийн гүн» дүрэм зориудаар унана (2026-09-17). */
   let g = r.rows.findIndex((x) => x.group && x.depth === 3);
-  if (g < 0) g = r.rows.findIndex((x) => x.group);
+  if (g < 0) {
+    const md = Math.max(-1, ...r.rows.filter((x) => x.group).map((x) => x.depth));
+    g = r.rows.findIndex((x) => x.group && x.depth === md);
+  }
   if (g < 0) continue;
   let end = g + 1;
   while (end < r.rows.length && r.rows[end].depth > r.rows[g].depth) end += 1;

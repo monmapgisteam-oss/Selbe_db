@@ -20,7 +20,7 @@ const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
    Блокийн бүртгэл нэгтгэсэн `data`/112-т — ижил 113 блок, `BAGTS`/`BLOK`
    талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
 const BLDG = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
-  + '/SELBE_ALL_DATA_0917/FeatureServer/112';
+  + '/SELBE_ALL_DATA_last_0917/FeatureServer/112';
 const MASTER = `${HJ}/Tusliin_guitsetgel_master/FeatureServer/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.

@@ -109,7 +109,10 @@ export function insertAdds(
   sc: Schema,
   nBld: number,
 ): SheetRow[] {
-  if (!adds.length || !sc || !nBld) return base;
+  /* ⚠️ `!nBld` шалгуур ХАСАГДСАН (2026-09-17): блокгүй 8 багцад `nBld = 0`
+     тул нэмсэн мөр чимээгүй алга болж, нийтлэгдэхгүй байв. Доорх массивууд
+     0 урттай үүсэхэд ямар ч асуудалгүй. */
+  if (!adds.length || !sc) return base;
   const out = base.slice();
   for (const a of adds) {
     /*
@@ -588,6 +591,12 @@ export function buildFrame(
     if (sc.f.ham) a[sc.f.ham] = r.ham;
     /* АЖЛЫН КОД — зөвхөн дутуу мөрд (дээрх ⚠️). */
     if (sc.f.des) a[sc.f.des] = r.des != null ? r.des : (nextDes += 1);
+    /*
+     * ⚠️ БЛОКГҮЙ БАГЦАД (nBld = 0) I/J/K/E нь блокийн баганагүй тул ҮРГЭЛЖ
+     *    null — ТЭР ЧИГЭЭР НЬ БИЧНЭ (2026-09-17-ны аудит). Амьд өгөгдөлд эдгээр
+     *    талбар импортоос 0 гэж дүүрсэн байдаг; 0-г хадгалбал `blockProgress`/
+     *    тайлан «0% хэмжигдсэн» гэж уншина (null ≠ 0). Хэмжээгүй = null.
+     */
     a[sc.f.plan] = c[i].I;
     a[sc.f.act] = c[i].J;
     // ⚠️ Зарим багцад «Төлөвлөгөө биелэлт» ба «Одоо байгаа» багана огт

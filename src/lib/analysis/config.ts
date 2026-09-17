@@ -13,11 +13,7 @@ import { t as tr } from '@/lib/i18nCore';
  * тэндээс авна — клиент рүү бүх объектыг татахгүй.
  */
 
-import {
-  ZONE_LAYER, BUILT_LAYER, PROJECT_AREA_HA,
-  LAYER_BY_ID, PLAN_LAYER_IDS, MONITOR_LAYER_IDS, MONITOR_GROUP, groupOf,
-  type LayerDef,
-} from '@/lib/services';
+import { ZONE_LAYER, BUILT_LAYER, PROJECT_AREA_HA, LAYER_BY_ID, PLAN_LAYER_IDS, MONITOR_LAYER_IDS, MONITOR_GROUP, groupOf, type LayerDef, INFRA_SYSTEMS } from '@/lib/services';
 
 /**
  * ⚠️ Төслийн нийт талбай (`PROJECT_AREA_HA`, 158 га) нь `lib/services.ts`-д
@@ -48,7 +44,16 @@ export const SRC = {
 } as const;
 
 /** Инженерийн шугам сүлжээ — «хүртээмж»-ийг эдгээр хүртэлх зайгаар хэмжинэ */
-export const ENGINEERING_IDS = ['et:18', 'et:23', 'et:17', 'et:16', 'et:10', 'et:7'];
+/*
+ * ⚠️ 2026-09-17 (2): ЕТ-ийн `et:18 23 17 16 10 7` давхаргууд үйлчилгээнээс
+ *    устгагдсан → инженерийн дэд бүтцийн (`Инженерийн_дэд_бүтэц__Сэлбэ_0916`)
+ *    дулаан · цэвэр ус · бохир усны ШУГАМАН давхаргууд бүгд. Цэг/талбай
+ *    (худаг, ДХТ) орохгүй — «хүртээмж» нь шугам хүртэлх зай.
+ */
+export const ENGINEERING_IDS: string[] = INFRA_SYSTEMS
+  .filter((x) => x.key === 'heat' || x.key === 'water' || x.key === 'sewer')
+  .flatMap((x) => x.ids)
+  .filter((id) => LAYER_BY_ID[id]?.geom === 'line');
 
 
 /* ══════════════════ Газрын зургийн давхарга ══════════════════ */

@@ -218,6 +218,13 @@ export default {
      * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр
      * локал хөгжүүлэлт (`server.mjs`, тохиргоогүй) хэвээр ажиллана.
      */
+    /* ⚠️ ArcGIS шалгалтаас ӨМНӨ IP-ээр хязгаарлана (2026-09-17): хүчингүй
+       токентой үер бүр `/community/self` руу тус тусдаа хүсэлт үүсгэдэг байв
+       (амжилтгүйг кэшлэдэггүй) — доорх нэрээр хязгаарлагч тэнд хүрдэггүй. */
+    const ip = request.headers.get('cf-connecting-ip') || origin || 'anon';
+    if (rateLimited(`pre:${ip}`)) {
+      return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
+    }
     let caller = origin || 'anon';
     if (env.ARCGIS_ORG_ID && !isBot) {
       const auth = await checkArcGIS(request.headers.get('x-arcgis-token'), env);
