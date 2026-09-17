@@ -215,8 +215,9 @@ const baseMap = () => Basemap.fromId('topo-vector');
 const ROAD_TILE_URL =
   /* ⚠️ 2026-09-17: ЗӨВХӨН ЭНЭ tile MUST дээр ҮЛДЭВ (хэрэглэгчийн шийдвэр). monmap-ын
      `selberoad_0917` нь 32648 (UTM)-ээр нийтлэгдсэн тул 3857 зурагт зурагдахгүй;
-     Web Mercator-оор дахин нийтлэгдмэгц энэ хаягийг солино. Бусад бүх өгөгдөл monmap. */
-  'https://vectortileservices-ap1.arcgis.com/ACqsMOmNLi5wIdIh/arcgis/rest/services/test_zam/VectorTileServer';
+     Web Mercator-оор дахин нийтлэгдмэгц хувьсагчийн утгыг солино. Бусад бүх өгөгдөл monmap.
+     Хаяг зөвхөн env (`NEXT_PUBLIC_ROAD_TILE_URL`) — код дотор линк байхгүй; хоосон бол «Бодит» зам гарахгүй. */
+  (process.env.NEXT_PUBLIC_ROAD_TILE_URL ?? '').trim().replace(/\/+$/, '');
 
 export function SuitMap({
   dim,
@@ -441,9 +442,10 @@ export function SuitMap({
       /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
          дээр, бусад контекстийн доор (машин канвас нь газрын зургаас ДЭЭР тул
          энэ давхарга машиныг бүрхэхгүй). */
-      const roadTileLayer = new VectorTileLayer({
+      /* ⚠️ Хаяг хоосон (env тохируулаагүй) бол давхарга ОГТ үүсгэхгүй — хоосон url-тай VectorTileLayer алдаа шиднэ. */
+      const roadTileLayer = ROAD_TILE_URL ? new VectorTileLayer({
         id: 'roadTile', url: ROAD_TILE_URL, visible: false, listMode: 'hide',
-      });
+      }) : null;
       roadTileRef.current = roadTileLayer;
 
       /**
@@ -460,7 +462,7 @@ export function SuitMap({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
         layers: [
-          imagery, roadTileLayer, zoneLayer, ...under,
+          imagery, ...(roadTileLayer ? [roadTileLayer] : []), zoneLayer, ...under,
           ...(greenLayer ? [greenLayer] : []),
           ...(buildingLayer ? [buildingLayer] : []),
           tranLayer, pickLayer, labelLayer,

@@ -21,7 +21,18 @@ import { register } from 'node:module';
  */
 import { readFileSync } from 'node:fs';
 
-const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/';
+/* ⚠️ 2026-09-17: код дотор үйлчилгээний fallback байхгүй тул `services.ts`-ийг импортлодог
+   БҮХ тест `.env` (+ `.env.development.local`)-ийн NEXT_PUBLIC_* -ийг шаардана — Node нь
+   `.env`-ийг өөрөө уншдаггүй тул энд ачаална (байгаа env-ийг дарахгүй). */
+for (const f of ['../.env', '../.env.development.local']) {
+  try {
+    for (const line of readFileSync(new URL(f, import.meta.url), 'utf8').split(/\r?\n/)) {
+      const m = /^\s*(NEXT_PUBLIC_[A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
+    }
+  } catch { /* файл алга — хэвийн */ }
+}
+const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ || '').replace(/arcgis\/rest\/services\/?$/, '');
 let liveTok = process.env.ARCGIS_ADMIN_TOKEN || '';
 if (!liveTok) {
   try {
@@ -43,7 +54,7 @@ if (liveTok) {
   const orig = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (url.startsWith(HJ)) {
+    if (HJ && url.startsWith(HJ)) {
       const liveTok = tokFor(url);
       const b = init?.body;
       if (b instanceof URLSearchParams) {

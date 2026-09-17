@@ -25,8 +25,8 @@
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
 import { t as tr } from "@/lib/i18nCore";
 import { tokenParam, tokenQs, authToken } from '@/lib/authToken';
-export const base =
-  "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
+import { HJ } from '@/lib/services';
+export const base = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
 
 // ArcGIS returns HTTP 200 even on failure, with {error:{message}}. Check it.
 export async function agsFetch(

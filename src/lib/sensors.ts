@@ -26,10 +26,8 @@
  */
 
 import { queryFeatures, queryCount } from '@/lib/query';
+import { IOT_BASE as IOT } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
-
-const IOT = process.env.NEXT_PUBLIC_ARCGIS_IOT
-  ?? 'https://services-ap1.arcgis.com/OgVoRiKUkHg9Iokz/arcgis/rest/services';
 
 /** Нэг хэмжигдэхүүн — давхарга дээрх нэг тоон талбар */
 export type Metric = {

@@ -28,10 +28,14 @@ const ITEM = process.argv[2] || "d790321542504a54afd006e277d7a137";
  * талбар нь (`Angilal`) ЕТ-ийн `BUS_LAST` (ET/28)-тай яг ижил тул renderer
  * шууд зохино.
  */
+/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
+const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
+if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+const HJ_LC = HJ.toLowerCase();
 const ALIAS = [
   [
-    "https://services.arcgis.com/hjzgwvlnixssnqar/arcgis/rest/services/busiin_medeelel_final/featureserver/0",
-    "https://services.arcgis.com/hjzgwvlnixssnqar/arcgis/rest/services/selbe_et_20260721/featureserver/28",
+    `${HJ_LC}/busiin_medeelel_final/featureserver/0`,
+    `${HJ_LC}/selbe_et_20260721/featureserver/28`,
   ],
 ];
 

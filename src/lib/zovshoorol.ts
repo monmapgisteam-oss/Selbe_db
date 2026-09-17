@@ -8,6 +8,7 @@
  */
 
 import { agsFetch } from '@/modules/sheet/ags';
+import { HJ } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
@@ -18,7 +19,7 @@ import { requireCap } from '@/lib/who';
  * бичвэл огт өөр хүснэгт уншина.
  */
 export const URL =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/bagts_ajliin_zovshoorliin_burtgel/FeatureServer/171';
+  `${HJ}/bagts_ajliin_zovshoorliin_burtgel/FeatureServer/171`;
 
 /** Талбарын нэрс — CSV-ийн толгойтой ЯГ ижил. */
 export const F = {

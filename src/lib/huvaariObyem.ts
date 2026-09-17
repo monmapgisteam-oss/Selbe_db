@@ -25,14 +25,14 @@
  * ⚠️ React импортлохгүй — `huvaariObyem.check.mjs` шууд Node дээр ачаална.
  */
 import { agsFetch } from '@/modules/sheet/ags';
+import { HJ } from '@/lib/services';
 import { DAY, type Span } from './plan';
 
 /**
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
  * ⚠️ Давхаргын дугаар нь `0` БИШ `193` (CSV-ээс нийтлэхэд ArcGIS өөрөө өгсөн).
  */
-export const HUVAARI_OBYEM =
-  'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/huvaari_20260906/FeatureServer/193';
+export const HUVAARI_OBYEM = `${HJ}/huvaari_20260906/FeatureServer/193`;
 
 /** Мөрийн төрөл — одоо зөвхөн төлөвлөгөө; хожим бодит гүйцэтгэл нэмэгдэж болно. */
 export const TURUL_PLAN = 'tolovlolt';

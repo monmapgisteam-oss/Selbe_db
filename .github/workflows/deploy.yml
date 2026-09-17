@@ -39,13 +39,12 @@ jobs:
           #    build-ийн үр дүнд JS багцад ил бичигдэнэ. Түлхүүр нь релены
           #    дотор л үлдэнэ.
           #
-          # ⚠️ Тохируулаагүй бол хоосон үлдэж, портал `localhost:8787` рүү
-          #    хандана — deploy хийсэн сайт дээр AI ажиллахгүй (бусад бүх
-          #    хэсэг хэвийн). Тиймээс энэ алхам deploy-г УНАГААХГҮЙ.
+          # ⚠️ Тохируулаагүй бол хоосон үлдэж, deploy хийсэн сайт дээр AI
+          #    ажиллахгүй (бусад бүх хэсэг хэвийн) — энэ нэг нь deploy-г УНАГААХГҮЙ.
           NEXT_PUBLIC_AGENT_API: ${{ vars.AGENT_API }}
-          # ⚠️ 2026-09-17: `.env` репогоос хасагдсан тул суурь хаягуудыг ч
-          #    Variables-аас дамжуулна (нэр нь кодынхтой ИЖИЛ). Тохируулаагүй бол
-          #    хоосон → код дотор ижил утгатай fallback ажиллана (services.ts `env()`).
+          # ⚠️ 2026-09-17: код дотор үйлчилгээний линк/fallback ОГТ БАЙХГҮЙ — доорх
+          #    бүх хувьсагч Variables-д ЗААВАЛ байна (нэр кодынхтой ИЖИЛ). Аль нэг нь
+          #    дутуу бол `services.ts req()` build-ийг ил алдаагаар унагана.
           NEXT_PUBLIC_AUTH_APP_ID: ${{ vars.NEXT_PUBLIC_AUTH_APP_ID }}
           NEXT_PUBLIC_PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
           NEXT_PUBLIC_ALLOWED_ORG_ID: ${{ vars.NEXT_PUBLIC_ALLOWED_ORG_ID }}
@@ -55,6 +54,14 @@ jobs:
           NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
           NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
+          NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
+          NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
+          # ХАБЭА Survey123 үйлчилгээний нэрс (маягт дахин нийтлэхэд нэр солигддог)
+          NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
+          NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
 
       # ⚠️ `enablement: true` — Pages УНТРААЛТТАЙ байвал workflow ӨӨРӨӨ асаана
       #    (дээрх `pages: write` эрхээр API дуудна). Ингэснээр Settings → Pages
