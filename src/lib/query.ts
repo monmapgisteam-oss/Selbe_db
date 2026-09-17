@@ -1,4 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -121,7 +122,9 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
     res = await fetch(full, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ f: 'json', ...params }),
+      /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). Дуудагч
+         өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
+      body: new URLSearchParams({ f: 'json', ...tokenParam(), ...params }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {

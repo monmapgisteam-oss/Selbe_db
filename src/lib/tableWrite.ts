@@ -11,6 +11,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
 import { requireCap } from './who';
 import type { CapKey } from './caps';
 
@@ -30,7 +31,7 @@ async function post(url: string, body: Record<string, string>): Promise<Record<s
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ ...body, f: 'json' }),
+    body: new URLSearchParams({ ...tokenParam(), ...body, f: 'json' }),
   });
   /* ⚠️ ArcGIS алдаатай ч HTTP 200 буцаадаг — биеийг ЗААВАЛ шалгана */
   const j = (await res.json()) as Record<string, unknown>;

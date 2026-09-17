@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import { tokenQs } from '@/lib/authToken';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -873,7 +874,7 @@ type FinTables = {
 /** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
 async function loadFields(url: string): Promise<FieldDef[]> {
   try {
-    const res = await fetch(`${url}?f=json`);
+    const res = await fetch(`${url}?f=json${tokenQs()}`);
     const j = await res.json();
     return Array.isArray(j?.fields)
       ? j.fields.map((x: {

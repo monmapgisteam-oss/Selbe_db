@@ -28,6 +28,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam, tokenQs } from '@/lib/authToken';
 import { LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
 import { queryFeatures, type Row } from '@/lib/query';
 import { requireCap } from '@/lib/who';
@@ -166,7 +167,7 @@ export async function loadLayerMeta(layerId: string): Promise<LayerMeta> {
   if (!L) throw new Error(tr('Давхарга танигдсангүй: {0}', layerId));
 
   const url = layerUrl(L);
-  const res = await fetch(`${url}?f=json`);
+  const res = await fetch(`${url}?f=json${tokenQs()}`);
   const j = (await res.json()) as {
     error?: { message?: string };
     fields?: RawField[];
@@ -243,6 +244,7 @@ export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknow
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       f: 'json',
+      ...tokenParam(),
       where: oidWhere(meta, oid),
       outFields: meta.oidField,
       returnGeometry: 'true',

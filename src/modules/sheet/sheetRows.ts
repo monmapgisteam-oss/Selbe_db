@@ -23,6 +23,7 @@
  * агшин ялгах түлхүүр БОЛОХГҮЙ.
  */
 import { PKGS, loadSchema, type Pkg } from './bagts.pkg';
+import { tokenParam } from '@/lib/authToken';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TASK_SHEET, bagtsKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
@@ -134,7 +135,7 @@ async function onePage(url: string, params: Record<string, string>) {
       const res = await fetch(`${url}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ f: 'json', ...params }),
+        body: new URLSearchParams({ f: 'json', ...tokenParam(), ...params }),
       });
       // ⚠️ HTTP алдаанд (429/503) бие нь JSON биш байж болно — эхлээд `res.ok`
       //    шалгахгүй бол `res.json()` тодорхойгүй SyntaxError шидэж будлиантана.

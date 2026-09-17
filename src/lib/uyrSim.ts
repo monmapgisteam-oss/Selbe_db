@@ -32,6 +32,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { tokenQs } from '@/lib/authToken';
 import { FLOOD_LEVELS, type LevelKey } from '@/lib/ersdel';
 import { floodDataFromBuffer, type FloodData, type FloodMeta } from '@/lib/uyr';
 import { fillSinks, flowAccum, streamMask } from '@/lib/uyrHydro';
@@ -235,7 +236,7 @@ async function loadRiverRings(): Promise<SimArea> {
       where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
       maxAllowableOffset: '2', f: 'json',
     });
-    const res = await fetch(`${layerUrl(def)}/query?${params}`, { cache: 'force-cache' });
+    const res = await fetch(`${layerUrl(def)}/query?${params}${tokenQs()}`, { cache: 'force-cache' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     /* ⚠️ ArcGIS алдаагаа HTTP 200-аар буцаана — биеийг ЗААВАЛ шалгана */

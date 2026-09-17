@@ -5,6 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
+import { registerIdentity } from '@/lib/authToken';
 import s from './auth.module.css';
 
 /**
@@ -147,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         oauthReady();
+        /* ⚠️ Бүх REST `fetch` энэ бүртгэлээр токеноо авна (`authToken.ts`). */
+        registerIdentity(esriId, sharingUrl());
 
         await esriId.checkSignInStatus(sharingUrl());
 

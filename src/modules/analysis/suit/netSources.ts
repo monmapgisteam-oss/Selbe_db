@@ -23,6 +23,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import {
   buildNetwork, markDuplicates, nodeByIntersection,
@@ -274,7 +275,7 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
       features?: SignalFeature[];
       exceededTransferLimit?: boolean;
       error?: { message?: string };
-    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}`).then((x) => x.json());
+    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}${tokenQs()}`).then((x) => x.json());
     if (page.error) throw new Error(page.error.message ?? tr('гэрлэн дохио query алдаа'));
     const got = page.features ?? [];
     feats.push(...got);

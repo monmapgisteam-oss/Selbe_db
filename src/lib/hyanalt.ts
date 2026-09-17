@@ -16,6 +16,7 @@
  */
 
 import { invalidate } from './dataBus';
+import { tokenParam, tokenQs } from '@/lib/authToken';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -177,7 +178,7 @@ let missingCache: string[] | null = null;
 export async function missingDirectorFields(): Promise<string[] | null> {
   if (missingCache) return missingCache;
   try {
-    const res = await fetch(`${HYANALT.url}?f=json`);
+    const res = await fetch(`${HYANALT.url}?f=json${tokenQs()}`);
     if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
     const j = (await res.json()) as {
       fields?: { name: string }[];
@@ -231,7 +232,7 @@ async function post(path: string, body: Record<string, string>): Promise<Record<
   const res = await fetch(HYANALT.url + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }).toString(),
+    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }).toString(),
   });
   if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
 

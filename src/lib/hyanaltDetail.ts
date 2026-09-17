@@ -22,6 +22,7 @@
  */
 
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { tokenParam } from '@/lib/authToken';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { computeAll, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
 import { overlaySubmission } from '@/modules/sheet/sheetFrame';
@@ -181,7 +182,7 @@ const post = async (url: string, body: Record<string, string>) => {
   const res = await fetch(`${url}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }).toString(),
+    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }).toString(),
   });
   const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
   // ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг

@@ -11,6 +11,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { MODE_SPLIT, busBand, type BusBand } from '@/lib/analysis/transport';
 import type { BuildingPt } from './buildings';
@@ -51,7 +52,7 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
       outSR: '3857', orderByFields: 'OBJECTID ASC',
       resultOffset: String(off), resultRecordCount: '2000', f: 'json',
     });
-    const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}`, { signal }).then((x) => x.json());
+    const r: QueryResp = await fetch(`${layerUrl(def)}/query?${q}${tokenQs()}`, { signal }).then((x) => x.json());
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
 
     const got = r.features ?? [];
