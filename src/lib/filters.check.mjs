@@ -20,6 +20,12 @@
  */
 import assert from 'node:assert/strict';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const URL_ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
   + '/SELBE_ALL_DATA_last_0917/FeatureServer/112/query';
 

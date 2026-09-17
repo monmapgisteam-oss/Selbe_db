@@ -25,6 +25,7 @@
  */
 
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
+import { tokenQs } from '@/lib/authToken';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
@@ -85,7 +86,7 @@ export async function loadRiver(): Promise<Polygon> {
     maxAllowableOffset: '2',
     f: 'json',
   });
-  const res = await fetch(`${RIVER_URL()}/query?${params}`, { cache: 'force-cache' });
+  const res = await fetch(`${RIVER_URL()}/query?${params}${tokenQs()}`, { cache: 'force-cache' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
   if (body.error) throw new Error(body.error.message ?? 'ArcGIS error');

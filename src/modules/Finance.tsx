@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import { tokenQs } from '@/lib/authToken';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -873,7 +874,7 @@ type FinTables = {
 /** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
 async function loadFields(url: string): Promise<FieldDef[]> {
   try {
-    const res = await fetch(`${url}?f=json`);
+    const res = await fetch(`${url}?f=json${tokenQs()}`);
     const j = await res.json();
     return Array.isArray(j?.fields)
       ? j.fields.map((x: {
@@ -1775,7 +1776,10 @@ function FullTable({
         /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
            (дээрх тайлбарыг үз). Эх өгөгдлийн мөр энд ХЭЗЭЭ Ч ирэхгүй. */
         deletes: monthDels,
-      }, { cap: 'finRow' });
+      /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
+         (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
+         «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг). */
+      }, { cap: newRows.length + monthAdds.length + monthDels.length > 0 ? 'finRow' : 'finEdit' });
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
       invalidate(dataKey);
@@ -4286,6 +4290,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
          байрлалд сууна. */
       <CashflowPlan
         key="plan"
+        canEdit={canEdit}
         works={d.cashflow}
         months={d.cfMonths}
         onSaved={onSaved}

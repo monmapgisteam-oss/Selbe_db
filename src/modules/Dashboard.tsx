@@ -1499,7 +1499,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
                   sec: 'scope',
                   key,
                   label: tr('Багц: {0}', r.label),
-                  where: `${BF.bagts} = '${sq(r.label)}'`,
+                  where: `${BF.bagts} = N'${sq(r.label)}'`,
                   only: ['mon:building'],
                   // ⚠️ `layers` ЗААВАЛ: `SECTION_LAYERS.scope` нь ХООСОН тул 01
                   //    нээхэд `mon:building` зурагт байхгүй — where+only дангаараа
@@ -2360,7 +2360,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
     if (!r) return;
     onFlt({
       sec: 'bagts', key, label: tr('Багц: {0}', r.label),
-      where: `${BF.bagts} = '${sq(r.label)}'`, only: ['mon:building'],
+      where: `${BF.bagts} = N'${sq(r.label)}'`, only: ['mon:building'],
     });
   };
   return (
@@ -2676,7 +2676,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                 /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
                    «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
                 label: tr('Төлөв: {0}', tr(label)),
-                where: `${PL.status} = '${sq(label)}'`,
+                where: `${PL.status} = N'${sq(label)}'`,
                 only: ['land:left'],
               })}
               items={heatBars([...ls.byStatus].sort((a, b) => b.n - a.n), (x) => ({
@@ -2754,7 +2754,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                     const eq =
                       label === 'Тодорхойгүй'
                         ? `(${PL.progress} IS NULL OR ${PL.progress} = '')`
-                        : `${PL.progress} LIKE '${sq(label)}%'`;
+                        : `${PL.progress} LIKE N'${sq(label)}%'`;
                     onFlt({
                       sec: 'land',
                       key: label,
@@ -2801,7 +2801,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                     key: `ha:${label}`,
                     /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
                     label: tr('Төлөв: {0}', tr(label)),
-                    where: `${PL.status} = '${sq(label)}'`,
+                    where: `${PL.status} = N'${sq(label)}'`,
                     only: ['land:left'],
                   })}
                   items={rows.map((x) => ({
@@ -4043,7 +4043,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
     if (!name || name.startsWith('#')) return;
     onFlt({
       sec: 'source', key: name, label: tr('Эх үүсвэр: {0}', name),
-      where: `${F.name} LIKE '${sq(name)}%'`, only: ['source:eh'],
+      where: `${F.name} LIKE N'${sq(name)}%'`, only: ['source:eh'],
     });
   };
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —

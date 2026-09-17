@@ -53,8 +53,10 @@ import { km, num } from '@/lib/format';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
+import { DedButetsBatch } from './DedButetsBatch';
 import {
-  applyAttrs, deleteRow, loadGeometry, loadLayerMeta, saveGeometry,
+  applyAttrs, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
+  saveGeometry,
 } from '@/lib/butetsEdit';
 
 
@@ -240,6 +242,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    *    болно. Горим асаалттай үед л товшилт маягт нээнэ.
    */
   const [editMode, setEditMode] = useState(false);
+  /* ⚠️ `dropTotalsLater` нь callback-ийн deps-гүй байх ёстой (засвар бүрийн
+     зам дээр дуудагддаг) тул горимыг ref-ээр уншина. */
+  const editModeRef = useRef(false);
+  editModeRef.current = editMode;
   /**
    * Маягт нээлттэй объект.
    *
@@ -278,6 +284,42 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const [drawToken, setDrawToken] = useState(0);
   /** Зурсан дүрсийг арилгах дохио */
   const [clearToken, setClearToken] = useState(0);
+
+  /* ── ОЛОН ОБЪЕКТ СОНГОЖ НЭГ ДОР ЗАСАХ (2026-09-16) ── */
+
+  /**
+   * «Олноор сонгох» горим — хэрэглэгчийн хүсэлт: «нэг мэдээллийн олон
+   * мөрийг select хийгээд нэг бөглөхөд бүгдэд нь бичигдэх, ArcGIS Pro-гийн
+   * Calculate Field шиг, гэхдээ илүү амар».
+   *
+   * ⚠️ ДАН МАЯГТТАЙ ЗЭРЭГ АЖИЛЛАХГҮЙ: асаалттай үед объект товших нь маягт
+   * НЭЭХГҮЙ, сонголтод нэмнэ/хасна. Хоёулаа зэрэг байвал нэг товшилт хоёр
+   * зүйл хийж, аль нь болсныг хэрэглэгч ялгахгүй.
+   */
+  const [multi, setMulti] = useState(false);
+  /**
+   * Сонголт — НЭГ давхаргын объектууд (хэрэглэгчийн сонголт: давхарга бүр
+   * өөр схемтэй тул нэг маягт нэг давхаргыг л зурна). `layerId` нь сонголт
+   * хоосон байхад ч байна: тэгш өнцөгтөөр сонгоход АЛЬ давхаргаас авахыг
+   * заана (самбарын жагсаалтаас солино; объект товшиход өөрөө дагана).
+   */
+  const [msel, setMsel] = useState<{ layerId: string; oids: number[] }>(
+    () => ({ layerId: DED_BUTETS_LAYER_IDS[0], oids: [] }),
+  );
+  /** Тэгш өнцөгт татаж байна — `onSketch` үүгээр «шинэ объект»-оос ялгана */
+  const [rectDraw, setRectDraw] = useState(false);
+  const [mselBusy, setMselBusy] = useState(false);
+  /**
+   * ХАДГАЛСНЫ МЭДЭГДЭЛ — олноор засах САМБАРТ (2026-09-16, хэрэглэгчийн хүсэлт
+   * «хадгалагдсан гэсэн мэдэгдэл харагддаг байя»).
+   *
+   * ⚠️ Маягтын ДОТОР БИШ САМБАРТ: хадгалсны дараа сонголт цэвэрлэгддэг тул
+   * маягт (`DedButetsBatch`) салдаг — түүний доторх мэдэгдэл тэр агшинд алга
+   * болно. Самбар нь `multi` үнэн байх хугацаанд амьд тул мэдэгдэл үлдэнэ.
+   *
+   * Дараагийн сонголт эхлэхэд арилна.
+   */
+  const [mselOk, setMselOk] = useState('');
 
   /* ── ХЭЛБЭР (vertex) ЗАСАХ ── */
 
@@ -324,6 +366,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     | { kind: 'add'; layerId: string; oid: number }
     | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown> }
     | { kind: 'geom'; layerId: string; oid: number; geometry: unknown }
+    /* Олон мөрийн засвар — мөр бүр ӨӨРИЙН хуучин утгатай (`DedButetsBatch`) */
+    | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown> }[] }
     | null
   >(null);
   const [undoBusy, setUndoBusy] = useState(false);
@@ -341,6 +385,34 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
      эхнийх нь хугацаа дуусахад ХОЁР ДАХЬ мэдэгдэл эрт арилна. */
   const toastTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  /**
+   * ⚠️ НИЙЛБЭРИЙН КЭШИЙГ ЗАСВАРЫН ГОРИМД ХОЙШЛУУЛНА (2026-09-16, гүйцэтгэл).
+   *
+   * `dropTotalsCache()` нь 74 давхаргын статистикийг ДАХИН татдаг —
+   * хэмжсэнээр 3.2 секунд, 12 слотын дараалал бүтэн дүүрнэ. Урьд нь энэ нь
+   * ЗАСВАР БҮРИЙН дараа (шинэ объект, хэлбэр, атрибут, буцаалт) ажилладаг
+   * байсан: 10 объект зурахад 740 дэмий хүсэлт болж, зурах/сонгох бүх
+   * үйлдэл тэр дарааллын ард хүлээдэг байв.
+   *
+   * ⚠️ ЯАГААД ХОЙШЛУУЛЖ БОЛОХ ВЭ: KPI самбар засварын горимд НУУГДДАГ
+   * (`{!editMode && …}`) тул тэр тоог тэр агшинд ХЭН Ч ХАРАХГҮЙ. Горимоос
+   * гармагц нэг удаа хаяна.
+   *
+   * ⚠️ ГАНЦ ТОХИОЛДОЛ: хэрэглэгч засварын горимд «Давхарга» каталогийг
+   * нээвэл тэнд тоо харагдана — тэр агшинд ШУУД цэвэрлэнэ (`flushTotals`),
+   * эс бөгөөс хуучин тоо ил худал болно (порталын «дутуу дүн гаргахгүй» дүрэм).
+   */
+  const totalsStale = useRef(false);
+  const dropTotalsLater = useCallback(() => {
+    if (editModeRef.current) { totalsStale.current = true; return; }
+    dropTotalsCache();
+  }, []);
+  const flushTotals = useCallback(() => {
+    if (!totalsStale.current) return;
+    totalsStale.current = false;
+    dropTotalsCache();
+  }, []);
 
   const toast = useCallback((msg: string) => {
     setSaved(msg);
@@ -371,6 +443,20 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * vertex-ийг зөөнө (`MapCanvas.clickSeq`-ийн ижил сургамж).
    */
   const geomSeq = useRef(0);
+
+  /**
+   * ХЭЛБЭР ЗАСАХАД БЭЛТГЭСЭН ГЕОМЕТР — маягт нээгдэх агшинд урьдчилж татна.
+   *
+   * ⚠️ 2026-09-16 (гүйцэтгэл): «Хэлбэр засах» дарахад геометрийн REST хүсэлт
+   * шинээр явж, бариул гарах хүртэл хүлээдэг байв. Хэрэглэгч маягтыг хэдэн
+   * секунд харж байдаг тул тэр хугацаанд татчихвал дарах агшин нь агшин
+   * зуурын болно. Нэг объектын геометр ~2–3 КБ тул атрибут л зассан ч
+   * үрэгдэл ялихгүй.
+   *
+   * ⚠️ Хадгалсны дараа ЗААВАЛ хүчингүй болгоно — хуучин хэлбэр рүү буцаах
+   * зам үүснэ.
+   */
+  const preGeom = useRef<{ key: string; p: Promise<unknown | null> } | null>(null);
 
   const { user, status: authStatus } = useAuth();
   const [capN, setCapN] = useState(0);
@@ -511,8 +597,65 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    *    ачаалагдсанаар хязгаарлагдах тул маягт нь мөрөө ӨӨРӨӨ бүтнээр татна
    *    (`butetsEdit.loadRow`).
    */
+  /**
+   * ОЛОН СОНГОЛТЫГ ЗУРАГТ ТОДРУУЛНА — `OID IN (…)`.
+   *
+   * ⚠️ `setHighlight`-ийн `where` нь давхаргын OID нэрээр — давхарга бүрт
+   * ижил байх албагүй тул бүртгэлээс уншина (`onMapPick`-ийн ижил дүрэм).
+   */
+  const showMsel = useCallback((layerId: string, oids: number[]) => {
+    /* Шинэ сонголт эхэлмэгц өмнөх хадгалалтын мэдэгдэл арилна (`mselOk`) */
+    setMselOk('');
+    const oidField = LAYER_BY_ID[layerId]?.oid ?? OID;
+    /* Дан засвартай ЯГ ИЖИЛ харагдац (хэрэглэгчийн хүсэлт): сонгосон нь
+       өөрийн өнгөөрөө, бусад нь бүдгэрнэ — нэмэлт гэрэлтүүлэггүй. */
+    setHighlight(oids.length ? `${oidField} IN (${oids.join(',')})` : null, layerId);
+  }, [setHighlight]);
+
+  /** Сонголтыг цэвэрлэнэ — давхаргаа хадгална */
+  const clearMsel = useCallback(() => {
+    setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+    setMselOk('');
+    setHighlight(null);
+  }, [setHighlight]);
+
   const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
     if (!editMode) return;
+    /**
+     * ОЛНООР СОНГОХ горим — товшилт нь маягт нээхгүй, сонголтод НЭМНЭ/ХАСНА.
+     *
+     * ⚠️ Хоосон газар товшихыг АЛГАСНА (сонголт цэвэрлэхгүй): олон объект
+     * товшиж явахад нэг удаа зөрж дарахад бүх сонголт алга болвол ажил
+     * дахин эхэлнэ. Цэвэрлэх нь самбарын товчоор.
+     *
+     * ⚠️ ӨӨР ДАВХАРГЫН объект — асууж байж шинэ сонголт эхэлнэ (нэг
+     * давхаргаар хязгаарлагдана, `msel`-ийн тайлбар).
+     */
+    if (multi) {
+      if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) return;
+      const oidField = LAYER_BY_ID[id]?.oid ?? OID;
+      const oid = Number(a[oidField]);
+      if (!Number.isFinite(oid)) return;
+      const o = Math.trunc(oid);
+      /**
+       * ⚠️ ӨӨР ДАВХАРГЫН объект — АСУУЛТГҮЙ шинэ сонголт эхэлнэ (Pro-гийн
+       * «шинэ товшилт = шинэ сонголт» зан). 2026-09-16-ны засвар: урьд нь
+       * `window.confirm` асуудаг байсан бөгөөд хөтөч «энэ хуудас дахин
+       * харилцах цонх гаргахыг хориглох» гэж хаасан үед `confirm` үргэлж
+       * `false` буцаан ӨӨР ДАВХАРГААС ЮУ Ч СОНГОГДОХГҮЙ болж байв (хэрэглэгч:
+       * «5.1 дулааны буцах дээр болж байна, бусад дээр болохгүй»). Хаясан
+       * сонголт нь бичигдээгүй түр төлөв тул алдагдах зүйл алга.
+       */
+      if (msel.oids.length && msel.layerId !== id) {
+        setMsel({ layerId: id, oids: [o] });
+        showMsel(id, [o]);
+        return;
+      }
+      const oids = msel.oids.includes(o) ? msel.oids.filter((x) => x !== o) : [...msel.oids, o];
+      setMsel({ layerId: id, oids });
+      showMsel(id, oids);
+      return;
+    }
     if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) {
       setPick(null); setHighlight(null); return;
     }
@@ -529,7 +672,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setAwaitDraw(false);
     setPick({ layerId: id, oid });
     setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
-  }, [editMode, askDropReshape, cancelReshape, setHighlight]);
+  }, [editMode, multi, msel, showMsel, askDropReshape, cancelReshape, setHighlight]);
 
   /**
    * САМБАРЫГ ХААХ — сонголт цэвэрлэгдэнэ.
@@ -579,8 +722,23 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setHighlight(null);
     void (async () => {
       try {
+        /**
+         * ⚠️ УРЬДЧИЛЖ ТАТСАН ГЕОМЕТРИЙГ ХЭРЭГЛЭНЭ (2026-09-16, гүйцэтгэл) —
+         * маягт нээгдэх зуур доорх эффект аль хэдийн татсан байна, тиймээс
+         * «Хэлбэр засах» дарахад бариулууд ШУУД гарна (урьд нь нэг бүтэн
+         * REST хүсэлт хүлээдэг байв).
+         *
+         * ⚠️ ЗУРГИЙН ГРАФИКААС АВАХГҮЙ — `hitTest`-ийн буцаадаг геометр нь
+         * тухайн масштабт ЕРӨНХИЙЛӨГДСӨН (generalized) байдаг тул түүнийг
+         * буцааж бичвэл объектын нарийвчлал ЧИМЭЭГҮЙ мууднa. Үргэлж
+         * үйлчилгээний бүтэн геометрийг авна.
+         */
+        const key = `${layerId}:${oid}`;
+        const pre = preGeom.current?.key === key ? preGeom.current.p : null;
         const meta = await loadLayerMeta(layerId);
-        const g = await loadGeometry(meta, oid);
+        /* Урьдчилсан татац `null` буцаавал (алдаа) жинхэнэ хүсэлтээр дахин
+           оролдож, алдааны мессежийг ил гаргана. */
+        const g = (pre ? await pre : null) ?? await loadGeometry(meta, oid);
         /* ⚠️ Хоцорсон хариу — шинэ сонголт аль хэдийн явж байна */
         if (seq !== geomSeq.current) return;
         if (!g) { toast(tr('Геометр олдсонгүй')); return; }
@@ -611,7 +769,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       const meta = await loadLayerMeta(layerId);
       await deleteRow(meta, oid);
       refreshLayer(layerId);
-      dropTotalsCache();
+      dropTotalsLater();
       /* ⚠️ Устгасны дараа сонголт ХООСОН — байхгүй мөрийн маягт нээлттэй
          үлдвэл дараагийн «Хадгалах» нь сервер дээр олдохгүй мөр рүү бичнэ. */
       setUndoable(null);
@@ -622,7 +780,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     } finally {
       setDelBusy(false);
     }
-  }, [pick, refreshLayer, toast, closeEdit]);
+  }, [pick, refreshLayer, toast, closeEdit, dropTotalsLater]);
 
   /**
    * ШИНЭ ХЭЛБЭРИЙГ БИЧНЭ.
@@ -640,7 +798,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       const meta = await loadLayerMeta(reshape.layerId);
       await saveGeometry(meta, reshape.oid, reshaped);
       refreshLayer(reshape.layerId);
-      dropTotalsCache();
+      dropTotalsLater();
+      /* Урьдчилсан геометр хуучирлаа — дараагийн засвар шинээр татна */
+      preGeom.current = null;
       /* ⚠️ Буцаах геометр нь ЗАСВАРААС ӨМНӨХ хуулбар (`reshape.geometry`) —
          үйлчилгээнээс дахин уншвал ШИНЭ хэлбэр л тэнд байна. */
       setUndoable({
@@ -659,7 +819,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     } finally {
       setGeomBusy(false);
     }
-  }, [reshape, reshaped, refreshLayer, toast]);
+  }, [reshape, reshaped, refreshLayer, toast, dropTotalsLater]);
 
   /**
    * СҮҮЛИЙН ҮЙЛДЛИЙГ БУЦААНА.
@@ -679,9 +839,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       const meta = await loadLayerMeta(undoable.layerId);
       if (undoable.kind === 'add') await deleteRow(meta, undoable.oid);
       else if (undoable.kind === 'attr') await applyAttrs(meta, undoable.oid, undoable.attrs);
+      else if (undoable.kind === 'batch') await revertRows(meta, undoable.rows);
       else await saveGeometry(meta, undoable.oid, undoable.geometry);
       refreshLayer(undoable.layerId);
-      dropTotalsCache();
+      dropTotalsLater();
+      /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
+      preGeom.current = null;
       setUndoable(null);
       toast(tr('Үйлдэл буцаагдлаа'));
     } catch (e) {
@@ -689,7 +852,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     } finally {
       setUndoBusy(false);
     }
-  }, [undoable, refreshLayer, toast]);
+  }, [undoable, refreshLayer, toast, dropTotalsLater]);
 
   /**
    * ТЭМПЛЭЙТ СОНГОГДОВ — зураалт ШУУД эхэлнэ (EB-ийн edit widget-ийн зан).
@@ -699,18 +862,34 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * гэсэн үг — энд ч ижил.
    */
   const pickTemplate = useCallback((id: string) => {
+    /**
+     * ⚠️ СХЕМИЙГ УРЬДЧИЛЖ ТАТНА (2026-09-16, гүйцэтгэл). Хэрэглэгч тэмплэйт
+     * дараад дүрсээ зурах хэдэн секундэд схем нь аль хэдийн ирсэн байна —
+     * зурж дуусмагц маягт ШУУД нээгдэнэ. Урьд нь энэ агшинд «Ачаалж байна…»
+     * гарч, давхаргын метадатаг хүлээдэг байв.
+     *
+     * ⚠️ `loadLayerMeta` нь модулийн кэштэй тул давхар хүсэлт явахгүй;
+     * алдааг залгина — маягт нээгдэхдээ дахин оролдож, алдааг ил гаргана.
+     */
+    void loadLayerMeta(id).catch(() => {});
     setAddTo(id);
     setTplOpen(false);
     setAwaitDraw(true);
     setPick(null);
+    /* Шинэ объект зурах нь олон сонголтыг орхино — нэг зэрэг хоёр горим байхгүй */
+    setMulti(false);
+    setRectDraw(false);
+    setMsel((m) => ({ layerId: m.layerId, oids: [] }));
     setHighlight(null);
     setDrawToken((x) => x + 1);
   }, [setHighlight]);
 
   /** Зурах хэрэгслийн төрөл — сонгосон давхаргаас */
   const drawKind = useMemo(
-    () => DRAW_OF[LAYER_BY_ID[addTo]?.geom ?? 'line'] ?? 'polyline',
-    [addTo],
+    /* ⚠️ Тэгш өнцөгт сонголт явж байхад зурах хэрэгсэл нь `rectangle` —
+       `drawToken` өсөх агшинд `MapCanvas` энэ утгыг уншина. */
+    () => (rectDraw ? 'rectangle' as const : DRAW_OF[LAYER_BY_ID[addTo]?.geom ?? 'line'] ?? 'polyline'),
+    [addTo, rectDraw],
   );
 
   /**
@@ -749,10 +928,44 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ⚠️ `null` нь «цэвэрлэв» гэсэн дохио (`clearToken`) — маягт нээхгүй.
    */
   const onSketch = useCallback((g: __esri.Geometry | null) => {
-    if (!g) return;
+    if (!g) { if (rectDraw) setRectDraw(false); return; } // ⚠️ Esc-ээр цуцалсан бол горимоос гарна (2026-09-17)
+    /**
+     * ТЭГШ ӨНЦӨГТӨӨР СОНГОХ — дүрс нь объект БИШ, сонголтын хил.
+     *
+     * ⚠️ Зурсан тэгш өнцөгтийг ШУУД арилгана (`clearToken`): үлдээвэл
+     * «шинэ объект зурчихав уу» гэсэн төөрөгдөл; сонголт нь тодруулгаар
+     * харагдана. Дотор нь орсныг ОДООГИЙН сонголт дээр НЭМНЭ (давхардалгүй)
+     * — Pro-гийн «Add to selection» зан; хасах бол цэвэрлээд дахин татна.
+     */
+    if (rectDraw) {
+      setRectDraw(false);
+      setClearToken((x) => x + 1);
+      /* ⚠️ ЗӨВХӨН самбарын жагсаалтад сонгосон давхаргаас (хэрэглэгчийн шийдвэр,
+         2026-09-16): бүх давхаргаас хайж «алийг нь?» гэж асуудаг хувилбарыг
+         туршаад хаясан — давхаргаа аль хэдийн сонгосон хүнд нэмэлт алхам болж,
+         73 давхаргын асуулга нь удаан байв. Давхаргаа эхлээд жагсаалтаас
+         (эсвэл объект товшиж) сонгоно. */
+      const layerId = msel.layerId;
+      setMselBusy(true);
+      loadLayerMeta(layerId)
+        .then((meta) => queryOidsIn(meta, g.toJSON() as unknown))
+        .then((found) => {
+          setMsel((m) => {
+            /* ⚠️ Функцээр — татаж байх зуур хэрэглэгч товшсон бол алдахгүй */
+            if (m.layerId !== layerId) return m;
+            const oids = [...new Set([...m.oids, ...found])];
+            showMsel(layerId, oids);
+            return { layerId, oids };
+          });
+          if (!found.length) toast(tr('Тэгш өнцөгт дотор энэ давхаргын объект олдсонгүй'));
+        })
+        .catch((e) => toast(String((e as Error).message || e)))
+        .finally(() => setMselBusy(false));
+      return;
+    }
     setAwaitDraw(false);
     setPick({ layerId: addTo, oid: null, geometry: g.toJSON() as unknown });
-  }, [addTo]);
+  }, [addTo, rectDraw, msel.layerId, showMsel, toast]);
 
   /**
    * ЗАСВАРЫН ГОРИМД ОРОХ — идэвхтэй тодруулга, сонголтыг цэвэрлэнэ.
@@ -779,9 +992,32 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setReshape(null);
     setReshaped(null);
     setUndoable(null);
+    /* Олон сонголт горимтойгоо хамт арилна — дараагийн нээлт цэвэр эхэлнэ */
+    setMulti(false);
+    setRectDraw(false);
+    setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+    setMselOk('');
     setHighlight(null);
     setClearToken((x) => x + 1);
-  }, [askDropReshape, setHighlight]);
+    /* ⚠️ Хойшлуулсан нийлбэрийг ЭНД нэг удаа хаяна (`dropTotalsLater`) */
+    flushTotals();
+  }, [askDropReshape, setHighlight, flushTotals]);
+
+  /**
+   * Сонгогдсон объектын геометрийг урьдчилж татна (`preGeom`-ийн тайлбар).
+   * ⚠️ ЗӨВХӨН БАЙГАА мөрөнд: шинэ объектын геометр сервер дээр байхгүй.
+   */
+  useEffect(() => {
+    if (!editMode || !pick || pick.oid == null) { preGeom.current = null; return; }
+    const { layerId } = pick;
+    const oid = pick.oid;
+    const key = `${layerId}:${oid}`;
+    if (preGeom.current?.key === key) return;
+    preGeom.current = {
+      key,
+      p: loadLayerMeta(layerId).then((m) => loadGeometry(m, oid)).catch(() => null),
+    };
+  }, [editMode, pick]);
 
   const noop = useCallback(() => {}, []);
 
@@ -873,7 +1109,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             dim={dim}
             setDim={setDim}
             layersOpen={layerOpen}
-            onLayers={() => setLayerOpen((v) => !v)}
+            /* ⚠️ Каталогт тоо ил гарна — хойшлуулсныг ЭНД шууд хаяна */
+            onLayers={() => { flushTotals(); setLayerOpen((v) => !v); }}
             opacityOpen={opOpen}
             onOpacity={() => setOpOpen((v) => !v)}
             zone={zone}
@@ -921,13 +1158,50 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   setTplOpen((v) => !v);
                   setAwaitDraw(false);
                   setPick(null);
+                  setMulti(false);
+                  setRectDraw(false);
+                  setMsel((m) => ({ layerId: m.layerId, oids: [] }));
                   setHighlight(null);
                 }}
               >
                 {tr('Шинэ объект')}
               </button>
+              {/*
+                * ОЛНООР СОНГОХ — нэг давхаргын олон объектыг сонгож нэг
+                * маягтаар бүгдэд нь бичнэ (2026-09-16, `DedButetsBatch`).
+                * ⚠️ Асаахад дан маягт, тэмплэйт, зураалт бүгд хаагдана —
+                * нэг товшилт нэг л зүйл хийх ёстой (`multi`-ийн тайлбар).
+                */}
+              <button
+                type="button"
+                className={`${d.editAdd} ${multi ? d.editAddOn : ''}`}
+                aria-pressed={multi}
+                onClick={() => {
+                  if (!askDropReshape()) return;
+                  cancelReshape();
+                  const next = !multi;
+                  setMulti(next);
+                  setTplOpen(false);
+                  setAwaitDraw(false);
+                  setPick(null);
+                  setRectDraw(false);
+                  setMselOk('');
+                  if (!next) setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+                  setHighlight(null);
+                  setClearToken((x) => x + 1);
+                }}
+                title={tr('Олон объект сонгож, нэг маягтаар бүгдэд нь ижил утга бичнэ')}
+              >
+                {tr('Олноор сонгох')}
+              </button>
               <span className={d.editHint}>
-                {awaitDraw
+                {multi
+                  ? (rectDraw
+                    ? tr('Зурагт тэгш өнцөгт татна уу.')
+                    : msel.oids.length
+                      ? tr('{0} объект сонгосон. Баруун самбарт бөглөнө.', num(msel.oids.length))
+                      : tr('Объектуудыг товшиж эсвэл тэгш өнцөгтөөр сонгоно.'))
+                  : awaitDraw
                   ? tr('Зурагт дүрсээ зурна уу. Дуусгахдаа хоёр товшино.')
                   : tplOpen
                     ? tr('Нэмэх давхаргаа сонгоно уу.')
@@ -948,7 +1222,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     ? tr('Сая нэмсэн объектыг устгана')
                     : undoable.kind === 'geom'
                       ? tr('Хэлбэрийг өмнөх байдалд нь сэргээнэ')
-                      : tr('Талбарын утгыг өмнөх байдалд нь сэргээнэ')}
+                      : undoable.kind === 'batch'
+                        ? tr('{0} объектын талбарыг өмнөх утгаар нь сэргээнэ', num(undoable.rows.length))
+                        : tr('Талбарын утгыг өмнөх байдалд нь сэргээнэ')}
                 >
                   {undoBusy ? tr('Буцааж байна…') : tr('Үйлдэл буцаах')}
                 </button>
@@ -1031,6 +1307,126 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   {tr('Болих')}
                 </button>
               </div>
+            </aside>
+          )}
+          {/*
+            * ОЛОН ОБЪЕКТ ЗАСАХ САМБАР — сонголтын удирдлага + нэг маягт.
+            *
+            * ⚠️ Давхаргын жагсаалт нь тэгш өнцөгтөөр сонгохын тулд: товшилтгүй
+            * эхлэхэд аль давхаргаас авахыг заана. Сонголт байхад давхарга
+            * солих нь сонголтоо хаяна — асууж байж солино.
+            */}
+          {editMode && multi && (
+            <aside className={d.pane}>
+              <div className={d.modalHead}>
+                <span className={d.modalTitle}>{tr('Олноор засах')}</span>
+                <span className={d.modalNo}>{tr('{0} ш', num(msel.oids.length))}</span>
+                <button type="button" className={d.close} aria-label={tr('Хаах')}
+                  onClick={() => {
+                    setMulti(false); setRectDraw(false);
+                    setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+                    setHighlight(null); setClearToken((x) => x + 1);
+                  }}>✕</button>
+              </div>
+              <div className={d.mselBox}>
+                <label className={d.f}>
+                  <span className={d.fLabel}>{tr('Давхарга')}</span>
+                  <select
+                    className={d.input}
+                    value={msel.layerId}
+                    disabled={mselBusy}
+                    /* ⚠️ Асуулгагүй солино — `window.confirm` хөтчид хаагдсан
+                       үед сонголт мөнхөд түгжигдэж байв (`onMapPick`-ийн тайлбар).
+                       Хаягдах сонголт нь бичигдээгүй түр төлөв. */
+                    onChange={(e) => {
+                      setMsel({ layerId: e.target.value, oids: [] });
+                      setMselOk('');
+                      setHighlight(null);
+                    }}
+                  >
+                    {SYSTEMS.map((sys) => (
+                      <optgroup key={sys.key} label={tr(sys.title)}>
+                        {sys.ids.map((id) => (
+                          <option key={id} value={id}>{tr(LAYER_BY_ID[id]?.title ?? id)}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <div className={d.mselRow}>
+                  <button
+                    type="button"
+                    className={`${d.btn} ${rectDraw ? d.editAddOn : ''}`}
+                    disabled={mselBusy}
+                    aria-pressed={rectDraw}
+                    onClick={() => {
+                      if (rectDraw) { setRectDraw(false); setClearToken((x) => x + 1); return; }
+                      setRectDraw(true);
+                      /* ⚠️ `drawKind` нь `rectDraw`-аас гардаг (memo) — токеныг
+                         ДАРААГИЙН рендерт өсгөж, `MapCanvas` шинэ төрлийг уншсан
+                         байхад зураалт эхлүүлнэ. */
+                      setTimeout(() => setDrawToken((x) => x + 1), 0);
+                    }}
+                    title={tr('Зурагт тэгш өнцөгт татаж, дотор нь орсон объектуудыг сонголтод нэмнэ')}
+                  >
+                    {rectDraw ? tr('Татахыг болих') : tr('Тэгш өнцөгтөөр сонгох')}
+                  </button>
+                  <button
+                    type="button"
+                    className={d.btn}
+                    disabled={mselBusy || !msel.oids.length}
+                    onClick={clearMsel}
+                  >
+                    {tr('Цэвэрлэх')}
+                  </button>
+                </div>
+                {/* ⚠️ Хадгалсны мэдэгдэл — сонголт цэвэрлэгдсэн ч ҮЛДЭНЭ
+                    (`mselOk`-ийн тайлбар). Дараагийн сонголт эхлэхэд арилна. */}
+                {mselOk && <div className={d.formOk} role="status">{mselOk}</div>}
+                <p className={d.fHint}>
+                  {mselBusy
+                    ? tr('Сонгож байна…')
+                    : msel.oids.length
+                      ? tr('{0} объект сонгосон. Товшиж нэмнэ/хасна.', num(msel.oids.length))
+                      : tr('Зураг дээр объект товшино, эсвэл тэгш өнцөгт татна.')}
+                </p>
+              </div>
+              {msel.oids.length > 0 && (
+                <DedButetsBatch
+                  layerId={msel.layerId}
+                  oids={msel.oids}
+                  canEdit={canEdit}
+                  onDone={(rows, fields, back) => {
+                    const id = msel.layerId;
+                    setUndoable(back ? { ...back, layerId: id } : null);
+                    /* ⚠️ Дан маягттай ИЖИЛ: давхарга дахин уншуулж, уртын
+                       нийлбэрийн кэшийг хаяна (`onDone`-ы тайлбар доор). */
+                    if (rows > 0) { refreshLayer(id); dropTotalsLater(); }
+                    toast(tr('{0} объектын {1} талбар хадгалагдлаа', num(rows), num(fields)));
+                    /**
+                     * ⚠️ ХАДГАЛСНЫ ДАРАА СОНГОЛТ ЦЭВЭРЛЭГДЭНЭ (2026-09-16).
+                     *
+                     * Хэрэглэгч: «эхний удаа асуудалгүй, 2 дахь удаагаа select
+                     * хийх гэхээр болохгүй». Шалтгаан нь: сонголт ба тодруулга
+                     * хадгалсны дараа ХЭВЭЭР үлддэг байсан тул дараагийн
+                     * товшилт нь ҮЛДСЭН объект дээр бууж `msel.oids.includes(o)`
+                     * салааны улмаас түүнийг сонголтоос ХАСдаг (нэг объект
+                     * сонгосон байсан бол тоо 0 болж маягт бүхэлдээ алга
+                     * болно) — «сонголт ажиллахгүй» гэж уншигдана. Тэгш өнцөгт
+                     * нь мөн ижил объектууд дээр багц нэгдэж (`Set`) ямар ч
+                     * өөрчлөлтгүй, мэдэгдэлгүй өнгөрдөг байв.
+                     *
+                     * Одоо хадгалсны дараа сонголт дуусна: дараагийн товшилт
+                     * ҮРГЭЛЖ ШИНЭ сонголт эхлүүлнэ (ArcGIS Pro-гийн ижил зан).
+                     */
+                    if (rows > 0) {
+                      setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+                      setHighlight(null);
+                      setMselOk(tr('✓ Хадгалагдлаа — {0} объектын {1} талбар', num(rows), num(fields)));
+                    }
+                  }}
+                />
+              )}
             </aside>
           )}
           {pick && (
@@ -1123,7 +1519,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                  * ⚠️ Уртын нийлбэрийн кэш нь тусдаа (`totals.ts`-ийн Map) —
                  * түүнийг хаяхгүй бол зүүн баганын км хуучин утгаараа үлдэнэ.
                  */
-                if (n > 0) { refreshLayer(id); dropTotalsCache(); }
+                if (n > 0) { refreshLayer(id); dropTotalsLater(); }
                 /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. Хоёрыг нэг
                    мессежээр хэлбэл «хадгалагдсангүй» гэж уншигдана. */
                 toast(created

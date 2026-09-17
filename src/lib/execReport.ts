@@ -110,7 +110,7 @@ export type ExecReport = {
  *    сүлжээний хүсэлт ҮҮСЭХГҮЙ; энд зөвхөн нэгтгэлийн үр дүнг хадгална.
  */
 export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
-  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA']);
+  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
   const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse] = await Promise.all([
@@ -287,21 +287,23 @@ export function execFacts(x: ExecReport): string {
   L.push(`Чөлөөлөгдөөгүй шалтгаан: ${x.gdash.land.reasons.map((r) => `${r.label} ${r.n}`).join('; ') || '—'}`);
   L.push(`ХАБ (сүүлийн бүртгэл ${x.gdash.hse?.date || '—'}): ${x.gdash.hse ? `ажиллаж буй хүн ${x.gdash.hse.workers}, техник ${x.gdash.hse.equipment}, хүн цаг ${x.gdash.hse.manHours}` : 'мэдээлэлгүй'}`);
   L.push(`Ажлын төрлөөр (төсөв / гэрээлсэн / гүйцэтгэл):`);
-  for (const t of x.gdash.byType) L.push(`- ${t.label}: ${num(t.cost)} / ${num(t.contract)} / ${t.perf == null ? '—' : pct(t.perf, 1)} (${t.n} ажил, ${t.contracted} гэрээлсэн)`);
+  /* ⚠️ Өгөгдлийн мөрийг ЦЭВЭРЛЭНЭ (2026-09-17): мөр таслах/`#` гарчиг нь загварт заавар болохоос */
+  const cl = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/^\s*#+\s*/, '').trim();
+  for (const t of x.gdash.byType) L.push(`- ${cl(t.label)}: ${num(t.cost)} / ${num(t.contract)} / ${t.perf == null ? '—' : pct(t.perf, 1)} (${t.n} ажил, ${t.contracted} гэрээлсэн)`);
   L.push(`## 05. Багцын гүйцэтгэл (орон сууцны барилга угсралт)`);
   L.push(`Блок: ${x.prog.blocks}; өрх: ${x.prog.households}; бөглөгдөөгүй блок: ${x.prog.noData}; сүүлийн хэмжилт: ${x.prog.asOf || '—'}`);
   L.push(`Бодит: ${x.prog.actual == null ? '—' : pct(x.prog.actual, 1)}; төлөвлөсөн: ${x.prog.planned == null ? '—' : pct(x.prog.planned, 1)}; зөрүү (төлөвлөгөө−бодит): ${x.prog.gap == null ? '—' : num(x.prog.gap, 1)}`);
-  for (const p of x.prog.packs) L.push(`- ${p.name}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${p.households} өрх)` : ''}`);
+  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${p.households} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
   L.push(`Гэрээний нийт: ${num(x.fin.planTotal)} ₮; олгосон: ${num(x.fin.given)} ₮ (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
-  for (const r of x.fin.rows) L.push(`- ${r.label}: гэрээ ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`);
+  for (const r of x.fin.rows) L.push(`- ${cl(r.label)}: гэрээ ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`);
   L.push(`## Зөвшөөрөл`);
   if (!x.zov) L.push(`Мэдээлэлгүй (үйлчилгээ холбогдоогүй).`);
   else {
     L.push(`Нийт ${x.zov.total}: зөвшөөрсөн ${x.zov.ok}, хүлээгдэж буй ${x.zov.wait}, зөвшөөрөөгүй ${x.zov.no}, танигдаагүй ${x.zov.unknown}`);
-    for (const g of x.zov.byBagts) L.push(`- ${g.bagts}: ${g.ok}/${g.total} зөвшөөрсөн, ${g.wait} хүлээгдэж, ${g.no} зөвшөөрөөгүй`);
-    for (const i of x.zov.issues.slice(0, 20)) L.push(`  · ${i.bagts} · ${i.shat}-р шат · ${i.ner} — ${i.tolov} (${i.baiguullaga || '—'})`);
+    for (const g of x.zov.byBagts) L.push(`- ${cl(g.bagts)}: ${g.ok}/${g.total} зөвшөөрсөн, ${g.wait} хүлээгдэж, ${g.no} зөвшөөрөөгүй`);
+    for (const i of x.zov.issues.slice(0, 20)) L.push(`  · ${cl(i.bagts)} · ${cl(i.shat)}-р шат · ${cl(i.ner)} — ${cl(i.tolov)} (${cl(i.baiguullaga) || '—'})`);
   }
   return L.join('\n');
 }

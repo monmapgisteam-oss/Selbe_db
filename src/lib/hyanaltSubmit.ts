@@ -25,6 +25,7 @@
  */
 
 import { BUILDING } from './services';
+import { tokenParam } from '@/lib/authToken';
 import { addRows, queryAll, F, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
@@ -60,6 +61,7 @@ async function companyOf(bagts: string): Promise<string> {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           f: 'json',
+          ...tokenParam(),
           where: '1=1',
           groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
           outStatistics: JSON.stringify([

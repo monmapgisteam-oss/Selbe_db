@@ -470,7 +470,7 @@ export async function saveQaqc(
     const bad = res.find((r) => r.success !== true);
     if (bad) {
       throw new Error(
-        `${bad.error?.description || 'QAQC хадгалалт амжилтгүй'} (${done} мөр хадгалагдсан)`,
+        tr('{0} ({1} мөр хадгалагдсан)', bad.error?.description || tr('QAQC хадгалалт амжилтгүй'), done),
       );
     }
     /* ⚠️ ХООСОН/ДУТУУ `updateResults` нь АЛДАА (2026-09-08): ArcGIS алдаагаа
@@ -481,7 +481,7 @@ export async function saveQaqc(
        алга болдог байв. */
     if (res.length !== chunk.length) {
       throw new Error(
-        `QAQC хадгалалт баталгаажсангүй: ${chunk.length} мөр илгээснээс ${res.length} мөрийн хариу ирлээ (${done} мөр хадгалагдсан). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй байж магадгүй.`,
+        tr('QAQC хадгалалт баталгаажсангүй: {0} мөр илгээснээс {1} мөрийн хариу ирлээ ({2} мөр хадгалагдсан). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй байж магадгүй.', chunk.length, res.length, done),
       );
     }
     done += res.length;

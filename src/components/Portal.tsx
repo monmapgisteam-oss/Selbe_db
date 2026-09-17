@@ -13,11 +13,11 @@ import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
 /**
- * ⚠️ `Dashboard` нь СТАТИК ХЭВЭЭР — тэр бол `DEFAULT_VIEW`. Динамик болговол
- * аппын хамгийн түгээмэл зам дээр нэмэлт сүлжээний эргэлт, нэмэлт спиннер
- * үүсгэх ба ямар ч байсан татагдана. Мөн `MapCanvas` (+ `@arcgis/core`) нь
- * түүний дамжсан хамаарал тул эхний ачаалалтад зайлшгүй орно — газрын зураг
- * бол анхдагч харагдацын гол агуулга.
+ * ⚠️ `Dashboard` СТАТИК импорт. Анх `DEFAULT_VIEW` байсан тул «нэмэлт спиннергүй
+ * байх» үүднээс статик болгосон; 2026-09-ээс `DEFAULT_VIEW = "gdash"`
+ * (`GeneralDash`, доор dynamic) болсон ч Dashboard-ыг статик үлдээв — `MapCanvas`
+ * (+ `@arcgis/core`) нь түүний дамжсан хамаарал бөгөөд бүх зурагтай харагдацад
+ * ямар ч байсан татагдана; Dashboard өөрөө жижиг тул chunk болгох ашиггүй.
  */
 import { Dashboard } from '@/modules/Dashboard';
 /* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
@@ -303,6 +303,10 @@ const clampView = (v: ViewKey, scope: 'all' | ViewKey[]): ViewKey =>
  * хадгална, эс бөгөөс `?v=iot&d=2d` гэсэн холбоос өөрөө 3D болж нээгдэнэ.
  */
 const initialDim = (): Dim => {
+  /* ⚠️ «Инженерийн дэд бүтэц» ҮРГЭЛЖ 2D-ээр нээгдэнэ (2026-09-16, хэрэглэгчийн
+     хүсэлт) — `?d=3d` URL ч дарж чадахгүй. Шугам, худгийн тор нь 3D мешэн дээр
+     барилгын дор дарагдаж уншигдахгүй; засах горим ч зөвхөн 2D-д ажилладаг. */
+  if (initialView() === 'dedButets') return '2d';
   const d = readParam('d');
   if (d === '3d' || d === 'bim' || d === '2d') return d;
   return initialView() === 'iot' ? '3d' : '2d';
@@ -449,6 +453,9 @@ function PortalContent(
      * явдаг тул хуваалцсан холбоосын горим ХЭВЭЭР үлдэнэ.
      */
     if (v === 'habea') setDim('2d');
+    /* ⚠️ «Инженерийн дэд бүтэц» мөн ЗААВАЛ 2D (2026-09-16) — `initialDim`-ийн
+       тайлбарыг үз. Харагдац солихдоо ч, анхны ачаалалтад ч ижил дүрэм. */
+    if (v === 'dedButets') setDim('2d');
   }, [clearFilter]);
 
   /* ── URL төлөв — хуваалцах холбоос, F5, Back ── */

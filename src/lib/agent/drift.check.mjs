@@ -19,6 +19,12 @@
 
 import { setTimeout as sleep } from 'node:timers/promises';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const FAIL = [];
 const WARN = [];
 const REQ_TIMEOUT = 20000;

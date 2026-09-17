@@ -107,7 +107,7 @@ export async function buildExecDoc(
   const f = x.fin;
   const z = x.zov;
 
-  const gapText = p.gap == null ? '—' : `${p.gap >= 0 ? '−' : '+'}${num(Math.abs(p.gap), 1)}`;
+  const gapText = p.gap == null ? '—' : `${p.gap > 0 ? '−' : p.gap < 0 ? '+' : ''}${num(Math.abs(p.gap), 1)}`;
   const buildPk = p.packs.filter((k) => k.kind === 'build');
 
   return {
@@ -158,7 +158,7 @@ export async function buildExecDoc(
 
       h2('2', tr('Ерөнхий үзүүлэлт (01. Ерөнхий дашбоард)')),
       kpiRow([
-        { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
+        { label: tr('Нийт төсөв'), value: money(g.budget) },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
         { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('6 шатны жигнэсэн хувь') },
       ]),
@@ -240,9 +240,9 @@ export async function buildExecDoc(
 
       h2('4', tr('Багцын санхүү (04)')),
       kpiRow([
-        { label: tr('Гэрээний нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
+        { label: tr('Гэрээний нийт дүн'), value: money(f.planTotal) },
         { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : pct(f.share, 1) },
-        { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain), sub: `${num(f.remain)} ₮` },
+        { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain) },
       ]),
       cap(tr('Багц тус бүрийн санхүүжилт — олгосон ба гэрээний дүн')),
       { table: { headerRows: 1, widths: ['*', 110, 110, 50], body: [

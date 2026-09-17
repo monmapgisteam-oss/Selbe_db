@@ -80,6 +80,7 @@ import {
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
 import { t as tr } from "@/lib/i18nCore";
+import { endOf } from "@/lib/plan";
 import st from "./sheet.module.css";
 
 // «Гүйцэтгэл шинэ» — багцуудын `*_final_publish` хуудас excel-ийнхээ бүх
@@ -1242,6 +1243,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     b: number;
     value: string;
     rect: DOMRect;
+    /** Үргэлжлэх хоног — календарын доод мөрөнд бичсэн тоо (2026-09-17) */
+    days: string;
   } | null>(null);
 
   // Засагдахгүй нүд дарахад «яагаад» гэдгийг хэлнэ. Дараагийн товшилт бүр
@@ -5245,6 +5248,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                 b: bi,
                                 value: pendDate[key] ?? dt(ms),
                                 rect: e.currentTarget.getBoundingClientRect(),
+                                days: "",
                               });
                             }}
                           >
@@ -5272,6 +5276,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             b: -1,
                             value: dt(asOf),
                             rect: e.currentTarget.getBoundingClientRect(),
+                            days: "",
                           });
                         }}
                       >
@@ -5363,9 +5368,34 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               if (ms != null) setAsOf(ms);
             } else {
               commitDate(pick.row, pick.b, pick.kind, v);
+              /* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ (2026-09-17): «Эхлэх» нүдэнд хоног бичсэн бол
+                 дуусах огноог хамт тавина — `endOf` хоёр тал орсон (`plan.ts`). */
+              const n = Math.floor(Number(pick.days));
+              const s0 = inputToMs(v);
+              if (pick.kind === "s" && n >= 1 && s0 != null) {
+                commitDate(pick.row, pick.b, "e", dt(endOf(s0, n)));
+              }
             }
             setPick(null);
           }}
+          days={pick.kind === "asOf" ? undefined : (() => {
+            /* Эхлэх ms — ноорог эсвэл хадгалагдсан утга */
+            const sKey = `${pick.row.oid}:${pick.b}:s`;
+            const sRaw = pick.kind === "s" ? pick.value : (pendDate[sKey] ?? dt(pick.row.start[pick.b] ?? null));
+            const s0 = inputToMs(sRaw);
+            const n = Math.floor(Number(pick.days));
+            return {
+              value: pick.days,
+              onChange: (v: string) => setPick((cur) => (cur ? { ...cur, days: v } : cur)),
+              canApply: n >= 1 && s0 != null,
+              onApply: () => {
+                if (!(n >= 1) || s0 == null) { say(tr("Эхлэх огноог эхлээд сонгоно")); return; }
+                if (pick.kind === "s") commitDate(pick.row, pick.b, "s", sRaw);
+                commitDate(pick.row, pick.b, "e", dt(endOf(s0, n)));
+                setPick(null);
+              },
+            };
+          })()}
         />
       )}
 

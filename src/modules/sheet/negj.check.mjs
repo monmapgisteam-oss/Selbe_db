@@ -18,6 +18,12 @@ import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg.ts';
 import { loadRows } from '@/modules/sheet/bagtsSheet.ts';
 import { negjOf } from '@/modules/sheet/negj.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /**
  * Салбарын бодит үнийн хүрээ (₮). Живэ өгөгдлөөс хэмжсэн:
  *   · шороо 2 мянга → шатны төмөр бетон 2.37 сая (хэвний ажил давамгайлдаг)

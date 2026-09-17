@@ -137,7 +137,7 @@ export function ExecReport() {
               <section className={r.section}>
                 <h2 className={r.h2}>{tr('1. Ерөнхий үзүүлэлт')} <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-3)' }}>· {tr('01. Ерөнхий дашбоард')}</span></h2>
                 <KpiRow items={[
-                  { label: tr('Нийт төсөв'), value: money(x.gdash.budget), sub: `${num(x.gdash.budget)} ₮` },
+                  { label: tr('Нийт төсөв'), value: money(x.gdash.budget) },
                   { label: tr('Нийт гэрээлсэн дүн'), value: money(x.gdash.contract), sub: x.gdash.budget > 0 ? tr('төсвийн {0}', pct((x.gdash.contract / x.gdash.budget) * 100, 1)) : undefined },
                   { label: tr('Төслийн гүйцэтгэл'), value: x.gdash.progress == null ? '—' : pct(x.gdash.progress, 1), sub: tr('6 шатны жигнэсэн хувь') },
                   { label: tr('Багц ажлын тоо'), value: num(x.gdash.packages), sub: tr('{0} төрөл', num(x.gdash.types)) },
@@ -226,7 +226,7 @@ export function ExecReport() {
                   <KpiRow items={[
                     { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
                     { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1) },
-                    { label: tr('Зөрүү'), value: x.prog.gap == null ? '—' : `${x.prog.gap >= 0 ? '−' : '+'}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= 5 ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
+                    { label: tr('Зөрүү'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= 5 ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
                   <Fig no="3">{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>

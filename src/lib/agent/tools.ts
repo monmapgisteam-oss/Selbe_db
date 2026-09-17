@@ -27,6 +27,7 @@ import {
   type Row,
   type Stat,
 } from '@/lib/query';
+import { tokenQs } from '@/lib/authToken';
 import { resolveSource, type AgentScope, type AgentSource } from './registry';
 import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
@@ -165,7 +166,7 @@ const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
 async function fieldsOf(url: string): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
   if (hit && Date.now() - hit.at < META_TTL) return hit.fields;
-  const res = await fetch(`${url}?f=json`);
+  const res = await fetch(`${url}?f=json${tokenQs()}`);
   if (!res.ok) throw new ArcGISError(`HTTP ${res.status}`, url);
   const body = (await res.json()) as ServiceMeta;
   if (body.error) throw new ArcGISError(body.error.message ?? tr('Мета уншигдсангүй'), url);

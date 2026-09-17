@@ -15,13 +15,18 @@
 import assert from 'node:assert/strict';
 import { loadBlockProgress } from './blockProgress.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 const HJ = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services';
 /* ⚠️ 2026-08-24: monmap-ын `building_GOL_barigdaj_ehelsen` УСТСАН (алдаа 499).
    Блокийн бүртгэл нэгтгэсэн `data`/112-т — ижил 113 блок, `BAGTS`/`BLOK`
    талбар хэвээр тул нийлүүлэх түлхүүр өөрчлөгдөөгүй. */
 const BLDG = 'https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services'
   + '/SELBE_ALL_DATA_last_0917/FeatureServer/112';
-const MASTER = `${HJ}/Tusliin_guitsetgel_master/FeatureServer/0`;
 
 // services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
 const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
@@ -77,7 +82,10 @@ const layerKeys = new Set(blds.map((b) => buildingKey(b.BAGTS, b.BLOK)));
  * улаан болно. Давхаргад 5/8 нэмэгдвэл (эсвэл нэр засагдвал) доорх мөр
  * ӨӨРӨӨ илүүдэж, «цэвэрлэ» гэж сануулна.
  */
-const KNOWN_ORPHAN = new Set(['БАГЦ2|5/8']);
+/* ⚠️ 2026-09-17: «БАГЦ1|29/3» — хуудсанд (Багц 1 · 12F) гүйцэтгэлтэй атлаа давхаргад
+   (/112, OBJECTID 99) `BAGTS = «Багц 2»` гэж бүртгэгдсэн — бусад 29/x бүгд Багц 1.
+   AGOL дээр BAGTS-ийг «Багц 1» болгоход энэ мөр өөрөө илүүдэж сануулна. */
+const KNOWN_ORPHAN = new Set(['БАГЦ2|5/8', 'БАГЦ1|29/3']);
 const orphan = [...prog.keys()].filter((k) => !layerKeys.has(k) && !KNOWN_ORPHAN.has(k));
 assert.equal(orphan.length, 0,
   `гүйцэтгэлтэй атлаа давхаргад БАЙХГҮЙ блок: ${orphan.join(', ')}`);
@@ -113,19 +121,9 @@ if (dups.length)
 assert.equal(newDups.length, 0,
   `ШИНЭ давхардсан БАГЦ|БЛОК түлхүүр: ${newDups.join(', ')} — эх давхаргын BLOK-ийг шалгана уу`);
 
-// 4. `Tusliin_guitsetgel_master`-т Б-ийн мөр БАЙХГҮЙ — задаргааг тэндээс авч болохгүй
-const noB = await q(MASTER, {
-  where: "Ажил LIKE 'Б%' AND Түвшин <= 2", outFields: 'Ажил', resultRecordCount: '5',
-});
-assert.equal(noB.length, 0, `master-т Б-ийн мөр гарч ирэв: ${JSON.stringify(noB)}`);
+/* 4. (2026-09-17) `Tusliin_guitsetgel_master` ҮЙЛЧИЛГЭЭ УСТГАГДСАН — код түүнийг хэзээ ч
+   уншдаггүй байсан (зөвхөн энэ шалгуур) тул алхмыг хасав. */
 
-// 5. master-ийн Багц ч мөн адил түлхүүрт буулна (самбарын задаргаа тэндээс).
-const mb = await q(MASTER, {
-  where: '1=1', outFields: 'Багц',
-  groupByFieldsForStatistics: 'Багц',
-  outStatistics: '[{"statisticType":"count","onStatisticField":"ObjectID","outStatisticFieldName":"n"}]',
-});
-const known = new Set(blds.map((b) => bagtsKey(b.BAGTS)));
-for (const r of mb) assert.ok(known.has(bagtsKey(r['Багц'])), `master багц танигдсангүй: ${r['Багц']}`);
+/* 5. (2026-09-17) master-ийн багцын тулгалт мөн хасагдав — ижил шалтгаан. */
 
-console.log(`ok · ${prog.size} барилгын Б. гүйцэтгэл, ${mb.length} master багц таарав`);
+console.log(`ok · ${prog.size} барилгын Б. гүйцэтгэл`);

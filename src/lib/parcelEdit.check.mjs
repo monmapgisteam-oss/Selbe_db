@@ -151,9 +151,9 @@ assert.deepEqual(validateParcel(patchOf({ owner: '', note: '', address: '' })), 
 assert.equal(parcelWhere(4), `${PARCEL_OID} = 4`);
 assert.equal(parcelWhere(4.9), `${PARCEL_OID} = 4`, 'бутархай OID таслагдана');
 /* ⚠️ Кадастрын дугаар нь ТЕКСТ талбар — хашилтад орох ёстой */
-assert.equal(parcelNoWhere('1461802715'), `${F.parcelNo} = '1461802715'`);
+assert.equal(parcelNoWhere('1461802715'), `${F.parcelNo} = N'1461802715'`);
 assert.equal(
-  parcelNoWhere("a'b"), `${F.parcelNo} = 'a''b'`,
+  parcelNoWhere("a'b"), `${F.parcelNo} = N'a''b'`,
   'нэг хашилт давхарлагдаж SQL тайрагдахаас хамгаална',
 );
 

@@ -16,6 +16,12 @@ import { PKGS, loadSchema } from './bagts.pkg.ts';
 import { loadRows, computeAll, childIndexes } from './bagtsSheet.ts';
 import { TREES } from './bagts.trees.ts';
 
+/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  process.exit(0);
+}
+
 /* ═══ 1. «БҮЛЭГ ЭСЭХ» ДҮРЭМ — сүлжээгүй, TREES дээр шууд ═══
    `loadRows` нь `gun`-аас уншихдаа бүлгийг тусдаа талбаргүйгээр, ДАРААГИЙН
    мөрийн гүнээс гаргадаг. Тэр дүрэм `TREES`-ийн тодорхой тэмдэглэгээтэй ЯГ

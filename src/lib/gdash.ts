@@ -1187,7 +1187,7 @@ export const loadBuildPkgs = cached<Map<string, string>>(async () => {
     if (v) m.set(bagtsKey(v), v);
   }
   return m;
-});
+}, undefined, ['BUILDING']);
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {
@@ -1232,7 +1232,7 @@ export const loadHseNow = cached<HseNow | null>(async () => {
     equipment: nOf(r[f.niitTehnik]),
     manHours: nOf(r[f.hunTsag]),
   };
-}, 5 * 60_000);
+}, 5 * 60_000, ['HABEA']); // ⚠️ ХАБ маягт бичихэд шууд шинэчлэгдэнэ (2026-09-17)
 
 /* ══════════════ ХУГАЦААНЫ НЭГДСЭН ЦУВАА ══════════════ */
 

@@ -24,6 +24,7 @@
 //    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
 import { t as tr } from "@/lib/i18nCore";
+import { tokenParam, tokenQs, authToken } from '@/lib/authToken';
 export const base =
   "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
 
@@ -36,7 +37,7 @@ export async function agsFetch(
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...params, f: "json" }),
+    body: new URLSearchParams({ ...tokenParam(), ...params, f: "json" }),
   });
   // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
   // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
@@ -256,7 +257,7 @@ export type AttachInfo = {
 };
 
 export async function listAttachments(oid: number): Promise<AttachInfo[]> {
-  const res = await fetch(`${base}/${oid}/attachments?f=json`);
+  const res = await fetch(`${base}/${oid}/attachments?f=json${tokenQs()}`);
   const j = await res.json();
   if (j.error) throw new Error(j.error.message || "ArcGIS error");
   return j.attachmentInfos || [];
@@ -267,6 +268,7 @@ export async function addAttachment(oid: number, file: File) {
   const fd = new FormData();
   fd.append("attachment", file);
   fd.append("f", "json");
+  { const tok = authToken(); if (tok) fd.append("token", tok); } // ⚠️ org-only (2026-09-17)
   const res = await fetch(`${base}/${oid}/addAttachment`, {
     method: "POST",
     body: fd,
@@ -286,4 +288,4 @@ export async function deleteAttachment(oid: number, id: number) {
 
 // Raw image bytes for <img src> (CORS is open).
 export const attachmentUrl = (oid: number, id: number) =>
-  `${base}/${oid}/attachments/${id}`;
+  `${base}/${oid}/attachments/${id}?${tokenQs().slice(1)}`;

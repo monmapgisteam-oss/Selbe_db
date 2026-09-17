@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, type Row } from '@/lib/query';
@@ -198,7 +199,7 @@ type Inc = {
 
 const normIncident = (r: Row): Inc => ({
   oid: nn(r['objectid']),
-  d: nn(r[I.ognoo]) || nn(r['CreationDate']),
+  d: nn(r[I.ognoo]), // ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17) — доорх ⚠️ дүрэм: огноогүй маягт хасагдана
   bagtsRaw: text(r[I.bagts], '—'),
   bagtsK: bagtsKey(r[I.bagts]),
   company: clean(r[I.company]),
@@ -575,7 +576,7 @@ const photoCache = new Map<number, Promise<Photo[]>>();
 const loadPhotos = (oid: number): Promise<Photo[]> => {
   let p = photoCache.get(oid);
   if (!p) {
-    p = fetch(`${HABEA.incident.url}/${oid}/attachments?f=json`)
+    p = fetch(`${HABEA.incident.url}/${oid}/attachments?f=json${tokenQs()}`)
       .then((r) => r.json())
       /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана. Урьд нь
          `{error:{…}}` ирэхэд `?? []` дамжиж «зураг алга» гэсэн ХУДАЛ хариу
@@ -632,7 +633,7 @@ function IncPhotos({ oid }: { oid: number }) {
   return (
     <div className={h.photos}>
       {q.data.map((p) => {
-        const src = `${HABEA.incident.url}/${oid}/attachments/${p.id}`;
+        const src = `${HABEA.incident.url}/${oid}/attachments/${p.id}?${tokenQs().slice(1)}`;
         return (
           <a key={p.id} href={src} target="_blank" rel="noreferrer" title={p.name}>
             {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй */}
@@ -658,7 +659,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
   const q = useAsync<{ src: string; cap: string; tip: string }[]>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
-        src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
+        src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}?${tokenQs().slice(1)}`,
         cap: `${date(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
       })),
@@ -717,7 +718,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
 function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
   if (id === 'habea:osol') {
     return ([
-      [tr('Огноо'), date((a[I.ognoo] ?? a['CreationDate']) as number)],
+      [tr('Огноо'), date(a[I.ognoo] as number)],
       [tr('Төрөл'), text(a[I.turul], '—')],
       [tr('Багц'), text(a[I.bagts], '—')],
       [tr('Компани'), clean(a[I.company])],

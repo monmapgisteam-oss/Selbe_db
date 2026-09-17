@@ -122,14 +122,10 @@ export function toPng(ops: Op[], scale = 1): string {
 /* ═══════════════ Туслах ═══════════════ */
 
 /** Тоймлосон мөнгө — инфографикт бүтэн 15 оронтой дүн багтахгүй */
-export const money = (v: number): string => {
-  if (!Number.isFinite(v) || v === 0) return '—';
-  const a = Math.abs(v);
-  if (a >= 1e12) return tr('{0} их наяд ₮', num(v / 1e12, 2));
-  if (a >= 1e9) return tr('{0} тэрбум ₮', num(v / 1e9, 1));
-  if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
-  return `${num(v)} ₮`;
-};
+/* ⚠️ МӨНГӨНИЙ ТОВЧЛОЛГҮЙ (2026-09-17, merge): «сая/тэрбум ₮» нь порталын дүрмээр
+   хориотой (`format.check.mjs`, хэрэглэгчийн шаардлага — дүнг бүтнээр). Инфографикт
+   ч бүтэн тоо: `1,234,567,890 ₮`. */
+export const money = (v: number): string => (!Number.isFinite(v) || v === 0 ? '—' : `${num(v)} ₮`);
 
 /** Мөр таслах — үгээр, ойролцоо өргөнөөр */
 export function wrap(text: string, maxChars: number): string[] {
@@ -307,7 +303,7 @@ export function buildInfographic(
   P.text(R, yr, tr('Багц тус бүр — олгосон / гэрээ'), { size: 12, fill: INK2 });
   yr += 10;
   for (const r of f.rows.slice(0, 10)) {
-    P.hbar(R, yr, colW, r.label, (r.pct ?? 0) / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 120, valW: 180 });
+    P.hbar(R, yr, colW, r.label, (r.pct ?? 0) / 100, r.pct == null ? money(r.given) : `${pct(r.pct, 1)} · ${money(r.given)}`, { hot: r.pct != null && r.pct >= 50, nameW: 110, valW: 200 });
     yr += 20;
   }
   y = Math.max(yl, yr) + 30;
@@ -383,7 +379,7 @@ export function buildInfographic(
   P.head(R, yr, colW, '01', tr('Ажлын төрлөөр — төсөв, гэрээ, гүйцэтгэл'));
   yr += 32;
   const top = g.byType[0]?.cost ?? 0;
-  const nameW = 200, valW = 170;
+  const nameW = 170, valW = 215;
   for (const t of g.byType.slice(0, 7)) {
     P.hbar(R, yr, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
     P.rect(R + nameW, yr, top ? ((colW - nameW - valW - 8) * t.contract) / top : 0, 14, DATA, 3);

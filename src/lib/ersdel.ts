@@ -31,6 +31,7 @@
  */
 
 import { queryFeatures } from '@/lib/query';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 
 /* ══════════════════════ Харуулын эх сурвалж ══════════════════════ */
@@ -92,7 +93,7 @@ export async function loadStations(): Promise<Station[]> {
     outSR: '4326',
     f: 'json',
   });
-  const res = await fetch(`${url}?${params}`, { cache: 'no-store' });
+  const res = await fetch(`${url}?${params}${tokenQs()}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
   if (body.error) throw new Error(body.error.message ?? 'ArcGIS error');

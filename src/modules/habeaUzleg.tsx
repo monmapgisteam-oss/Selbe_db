@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
@@ -62,7 +63,7 @@ function loadDomains(url: string): Promise<Domains> {
     type Meta = {
       fields?: { name?: string; domain?: { type?: string; codedValues?: { code?: unknown; name?: string }[] } | null }[];
     };
-    p = fetch(`${url}?f=json`)
+    p = fetch(`${url}?f=json${tokenQs()}`)
       .then((r) => r.json() as Promise<Meta>)
       .then((j) => {
         const out: Domains = {};

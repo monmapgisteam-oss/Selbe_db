@@ -18,6 +18,7 @@
  */
 
 import { t as tr } from './i18nCore';
+import { tokenParam } from '@/lib/authToken';
 import { BAGTS_NEGTGEL, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
@@ -29,7 +30,7 @@ async function post(url: string, body: Record<string, string>) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...body }),
+    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }),
   });
   const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
   if (j.error) throw new Error(j.error.message || 'ArcGIS алдаа');
@@ -126,7 +127,7 @@ async function summaryOf(bagts: string, sheetOid: number) {
      */
     if (heads.length !== 1) {
       throw new Error(
-        `${bagts}: мөрийн дугаар ${sheetOid} нь ${hits.map((h) => h.p.label).join(' ба ')} хуудсанд зэрэг таарч байна — аль нь болох нь тодорхойгүй`,
+        tr('{0}: мөрийн дугаар {1} нь {2} хуудсанд зэрэг таарч байна — аль нь болох нь тодорхойгүй', bagts, sheetOid, hits.map((h) => h.p.label).join(tr(' ба '))),
       );
     }
     one = heads[0];

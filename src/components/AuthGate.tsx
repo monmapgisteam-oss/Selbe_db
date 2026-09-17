@@ -5,6 +5,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
+import { registerIdentity } from '@/lib/authToken';
 import s from './auth.module.css';
 
 /**
@@ -147,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         ]);
         oauthReady();
+        /* ⚠️ Бүх REST `fetch` энэ бүртгэлээр токеноо авна (`authToken.ts`). */
+        registerIdentity(esriId, sharingUrl());
 
         await esriId.checkSignInStatus(sharingUrl());
 
@@ -289,6 +292,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            харуулна (2026-09-08). Хатуу үүрэгтэй хүнд remote хамаагүй. */
         setPermsRead(rok || !!roleForUser(user.username));
         const ok = hasAccess(user.username);
+        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
+           урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
+           `current=null` үлдэж F5 хүртэл бүх бичилт «эрхгүй» гэдэг байв. */
+        setCurrentUser(ok ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         setStatus((prev) => {
           if (prev === 'signed-in' && !ok) return 'denied';

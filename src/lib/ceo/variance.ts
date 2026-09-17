@@ -37,6 +37,8 @@ export function varianceLevel(
   /* ⚠️ Блокгүй багц хэмжигдэхгүй тул `measurable` (байвал) нь `pkgCount`-аас
      ЭРХЭМ — эс бөгөөс 10 хэмжигдэх багц бүгд унасан ч 18-д хүрэхгүй «good». */
   const n = v.measurable ?? pkgCount;
+  /* Хэмжигдэх багц огт байхгүй (бүгд блокгүй) — «зөрүүгүй» гэж хэлж болохгүй. */
+  if (n === 0 && v.measurable != null) return 'unknown';
   if (n > 0 && v.failedPkgs >= n) return 'unknown';
   if (v.works === 0) return 'good';
   return v.totalMnt >= VAR_BAD_MNT ? 'bad' : 'warn';

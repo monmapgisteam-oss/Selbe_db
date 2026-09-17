@@ -1,4 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -121,7 +122,9 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
     res = await fetch(full, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ f: 'json', ...params }),
+      /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). Дуудагч
+         өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
+      body: new URLSearchParams({ f: 'json', ...(url.includes('/HJzgwvlNIXssnQar/') ? tokenParam() : {}), ...params }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
@@ -407,8 +410,10 @@ export async function queryExtent(
   return { xmin: e.xmin, ymin: e.ymin, xmax: e.xmax, ymax: e.ymax, wkid };
 }
 
-/** SQL мөрийн утга — нэг хашилтыг хоёр болгож escape хийнэ */
-export const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
+/** SQL мөрийн утга — нэг хашилтыг хоёр болгож escape хийнэ.
+ *  ⚠️ `N'…'` угтвар (2026-09-17): кирилл утга угтваргүй бол ArcGIS 0 мөр буцаадаг
+ *     (`Gazar.tsx`-д баримтжуулсан). Латин утгад ч аюулгүй. */
+export const sqlStr = (v: string) => `N'${v.replace(/'/g, "''")}'`;
 
 /** ArcGIS-ийн хоосон утга: null, "" эсвэл зөвхөн зай (" ") */
 const isBlank = (v: unknown): boolean =>

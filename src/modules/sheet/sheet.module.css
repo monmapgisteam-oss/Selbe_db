@@ -436,6 +436,10 @@
   transition: background 0.12s;
 }
 .calBtn:hover { background: color-mix(in srgb, var(--hue) 14%, var(--surface)); }
+.calBtn:disabled { opacity: 0.45; cursor: default; }
+/* Үргэлжлэх хоног (2026-09-17) — эхлэх огноо + N → дуусах огноо автоматаар */
+.calDays { display: inline-flex; align-items: center; gap: 5px; font-size: 0.74rem; color: var(--ink-2); }
+.calDaysIn { width: 56px; padding: 2px 6px; font: inherit; font-size: 0.78rem; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); }
 
 /* ── Ачааллаж буй үеийн skeleton ── */
 .skeletonRow {
