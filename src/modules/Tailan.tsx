@@ -40,7 +40,9 @@ import {
   loadOverall, loadProgress, loadFinance, loadLand, loadHabeaSummary,
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
+import { ExecReport } from '@/modules/ExecReport';
 import r from './report.module.css';
+import e from './execReport.module.css';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
 const bn = (v: number) => num(v);
@@ -241,7 +243,42 @@ function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean 
   );
 }
 
+/**
+ * ХОЁР ГОРИМ (2026-09-17):
+ *   · «Дэлгэрэнгүй тайлан» — доорх 10 хэсэгтэй ерөнхий тайлан (хэвээр)
+ *   · «Удирдлагын тайлан» — `ExecReport`: 01 · 05 · 04 · Зөвшөөрөл дөрвөн
+ *     эхийн товч хувилбар, инфографик ба AI дүгнэлттэй
+ *
+ * ⚠️ Горимыг URL-д хадгалахгүй — тайлан нь «үүсгээд татах» нэг удаагийн
+ *    үйлдэл; сэлгэлт нь дахин ачаалалт үүсгэхгүй (хоёулаа кэштэй ачаалагч).
+ * ⚠️ Хоёр горим ТУСДАА компонент — ерөнхий тайлангийн 5 эх сурвалжийн
+ *    ачаалалт нь удирдлагын горимд ОГТ эхлэхгүй (hook нь mount үед л ажиллана).
+ */
 export function Tailan() {
+  const [mode, setMode] = useState<'full' | 'exec'>('exec');
+  const modes = (
+    <div className={r.toolbar} style={{ marginBottom: 10 }}>
+      <div className={e.modes} role="tablist" aria-label={tr('Тайлангийн горим')}>
+        <button type="button" role="tab" aria-selected={mode === 'exec'}
+          className={`${e.mode} ${mode === 'exec' ? e.modeOn : ''}`} onClick={() => setMode('exec')}>
+          {tr('Удирдлагын тайлан')}
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'full'}
+          className={`${e.mode} ${mode === 'full' ? e.modeOn : ''}`} onClick={() => setMode('full')}>
+          {tr('Дэлгэрэнгүй тайлан')}
+        </button>
+      </div>
+    </div>
+  );
+  return (
+    <div className={r.wrap}>
+      {modes}
+      {mode === 'exec' ? <ExecReport /> : <TailanFull />}
+    </div>
+  );
+}
+
+function TailanFull() {
   /** Огноо — ЗӨВХӨН клиент дээр (сервертэй зөрж hydration эвдэхээс сэргийлнэ). */
   const [date, setDate] = useState('');
   useEffect(() => {
@@ -323,7 +360,7 @@ export function Tailan() {
   ];
 
   return (
-    <div className={r.wrap}>
+    <>
       <div className={r.toolbar}>
         <div className={r.tools}>
           <button
@@ -1005,6 +1042,6 @@ export function Tailan() {
         )}
 
       </article>
-    </div>
+    </>
   );
 }

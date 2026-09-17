@@ -305,6 +305,54 @@ function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
 }
 
 /**
+ * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — «Багц бүрийн санхүүжилт» жагсаалт ба дээд KPI-тай
+ * ЯГ ИЖИЛ тооцоо, React-гүй ЦЭВЭР функц.
+ *
+ * ⚠️ 2026-09-17: «Удирдлагын тайлан» (`src/lib/execReport.ts`) энэ хуудасны
+ *    тоог ДАВТАЖ БОДОХГҮЙ — эндээс авна. Холбоос (`aliasFin`), түлхүүрийн
+ *    цуглуулга (`rowsByKey`), огноогүй актыг оруулсан олголт (`pkgGivenTotal`)
+ *    гурвуулаа нэг газар байх ёстой; өөр газар дахин бичвэл тайлан дэлгэцээс
+ *    зөрж, аль нь үнэн болох нь мэдэгдэхгүй болно.
+ * ⚠️ `d` нь ТҮҮХИЙ `loadFinData` үр дүн — холбоосыг энд ӨӨРӨӨ хийнэ.
+ */
+export function pkgFinRows(packs: Pack[], raw: FinData): {
+  rows: { key: string; label: string; plan: number; given: number; pct: number | null }[];
+  /** Төслийн нийт — `TsKpi`-тай ижил: гэрээний нийлбэр ба олгосон нийлбэр */
+  planTotal: number;
+  givenTotal: number;
+} {
+  const d = aliasFin(raw);
+  const C = CASHFLOW_NEW.fields;
+  const rowsByKey = new Map<string, FinData['contracts']>();
+  d.contracts.forEach((r) => {
+    const k2 = pkgKeyOf(r[C.pkg2]);
+    const k3 = pkgKeyOf(r[C.pkg]);
+    [...new Set([k2, k3])].forEach((k) => {
+      if (!k || k === '0') return;
+      const arr = rowsByKey.get(k) ?? [];
+      arr.push(r);
+      rowsByKey.set(k, arr);
+    });
+  });
+  const rows = packs
+    .map((p) => {
+      const list = rowsByKey.get(p.key);
+      if (!list) return null;
+      const plan = d.planTotal.get(p.key) ?? 0;
+      const given = pkgGivenTotal(list, d);
+      if (plan <= 0 && given <= 0) return null;
+      return { key: p.key, label: p.name, plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null)
+    .sort((a, b) => b.given - a.given);
+  let planTotal = 0;
+  d.planTotal.forEach((v) => { planTotal += v; });
+  let givenTotal = 0;
+  d.givenTotal.forEach((v) => { givenTotal += v; });
+  return { rows, planTotal, givenTotal };
+}
+
+/**
  * ⚠️ ЭНЭ МОДУЛЬ ЗӨВХӨН «БАГЦЫН САНХҮҮ»-Д.
  *
  * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): урьд нь ГАНЦ «Багцын хяналт» цонх гэрээ,
