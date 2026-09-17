@@ -38,6 +38,8 @@
 import { AUTH, ROLE_BY_USER } from './services';
 import { obyemScope } from './obyemAcl';
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
+import { currentUser } from './who';
 
 /** Илгээлтийн төлөв */
 export const OBYEM_STATUS = {
@@ -122,8 +124,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ.
  */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
+  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
   const r = await fetch(url, { method: 'POST', body });
+  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
   const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
   if (j.error) throw new Error(j.error.message || 'ArcGIS error');
   return j;
@@ -433,7 +437,11 @@ export async function submitObyem(args: {
   }
   /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
   if (AUTH.appId) {
-    const sc = obyemScope(args.author, 'editor');
+    /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос super-ийн
+       нэр дамжуулж алгасахаас (2026-09-17). Хөтөчид нэвтрээгүй бол хаана. */
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const sc = obyemScope(meNow ?? args.author, 'editor');
     if (sc !== null && !sc.includes(args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад обьём илгээх эрхгүй.') };
   }
@@ -528,7 +536,9 @@ export async function decideObyem(args: {
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
-    const sc = obyemScope(me, 'approver');
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const sc = obyemScope(meNow ?? me, 'approver');
     if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
   }

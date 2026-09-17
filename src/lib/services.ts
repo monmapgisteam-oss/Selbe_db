@@ -197,6 +197,9 @@ export const SOURCE_FS = {
  * тавина. Хоосон `appId` дангаараа хангалтгүй: production build дээр
  * тэрхүү тохиргоо ил алдаа болж, чимээгүй нээгдэхээс сэргийлнэ.
  */
+/* ⚠️ 2026-09-17: бүх үйлчилгээ Organization-only тул `AUTH_OFF=1` горимд ArcGIS
+   өгөгдөл огт уншигдахгүй (499 «Token Required») — зөвхөн UI-ийн бүтэц харах
+   зориулалттай; өгөгдөлтэй хөгжүүлэлт нэвтрэлт асаалттай явна. */
 const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
 const AUTH_APP_ID = process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "ZPJRqk1iiYcjYRLv";
 if (!AUTH_OFF && !AUTH_APP_ID) {
@@ -3729,7 +3732,8 @@ export const laborCompanyFields = (sfx: string) => ({
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
  *
  * ⚠️ Эдгээр нь `layerType: 'Building'` бөгөөд ЗӨВХӨН SceneView-д (3D) ачаална.
- * `tiles.arcgis.com` дээрх нийтийн tile тул нэвтрэлт шаардахгүй, ACAO `*`.
+ * `tiles.arcgis.com` дээрх tile — 2026-09-17-ноос орг Organization-only тул
+ * IdentityManager-ийн credential-аар (esriRequest → 499 → owningSystemUrl) ачаална.
  * Барилгын гадна фотограмметрийн меш (`SCENE`)-ээс ЯЛГААТАЙ: энэ нь зохион
  * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
  * хасагдаж, эдгээр нь оронд нь харагдана.

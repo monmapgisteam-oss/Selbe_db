@@ -188,7 +188,7 @@ function Spark({
       <line x1={cx} y1={0} x2={cx} y2={H} stroke="var(--ink-3)" strokeWidth={1}
         strokeDasharray="3,2" vectorEffect="non-scaling-stroke" />
       <circle cx={cx} cy={cy} r={3} fill={color} />
-      <title>{`${num(vals[at], 2)} ${unit} · дээд ${num(peak, 2)} ${unit}`}</title>
+      <title>{`${num(vals[at], 2)} ${unit} · ${tr('дээд')} ${num(peak, 2)} ${unit}`}</title>
     </svg>
   );
 }

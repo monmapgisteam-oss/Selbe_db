@@ -37,6 +37,8 @@ import {
   type MsDoc, type MsBody, type Reviewer, type Review, type Verdict, EMPTY_BODY,
 } from './chanarMs';
 import { isAuthorFor, reviewerRolesFor } from './chanarAcl';
+import { tokenParam, authToken } from '@/lib/authToken';
+import { currentUser } from './who';
 
 const TITLE = 'Selbe_Chanar_Barimt';
 const TABLE_NAME = 'chanar_barimt';
@@ -77,8 +79,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
 
 /** ⚠️ ArcGIS алдаагаа HTTP 200 + `{error}` биеэр буцаадаг — заавал шалгана */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
+  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
   const r = await fetch(url, { method: 'POST', body });
+  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
   const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
   if (j.error) throw new Error(j.error.message || 'ArcGIS error');
   return j;
@@ -227,11 +231,16 @@ export async function listAttachments(oid: number): Promise<Attachment[]> {
 export async function addAttachment(oid: number, file: File): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
+  const deny = await attachDeny(oid);
+  if (deny) return { ok: false, error: deny };
   try {
     const fd = new FormData();
     fd.append('f', 'json');
+    const tok = authToken();
+    if (tok) fd.append('token', tok); // ⚠️ org-only хүснэгт (2026-09-17)
     fd.append('attachment', file, file.name);
     const r = await fetch(`${url}/${Number(oid)}/addAttachment`, { method: 'POST', body: fd });
+    if (!r.ok) return { ok: false, error: `ArcGIS HTTP ${r.status}` };
     const j = (await r.json()) as { error?: { message?: string }; addAttachmentResult?: { success?: boolean } };
     if (j.error) return { ok: false, error: j.error.message || 'ArcGIS error' };
     return j.addAttachmentResult?.success ? { ok: true } : { ok: false, error: tr('Хавсралт хадгалагдсангүй.') };
@@ -243,6 +252,7 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
 export async function deleteAttachment(oid: number, id: number): Promise<boolean> {
   const url = await tableUrl(false);
   if (!url) return false;
+  if (await attachDeny(oid)) return false;
   try {
     const j = await req(`${url}/${Number(oid)}/deleteAttachments`, { attachmentIds: String(id) });
     const rs = (j.deleteAttachmentResults as { success?: boolean }[]) ?? [];
@@ -353,6 +363,27 @@ const HEAD = [
   F.oid, F.kind, F.docNo, F.org, F.bagts, F.seq, F.rev, F.title,
   F.status, F.author, F.sentAt, F.reviews, F.decidedAt,
 ].join(',');
+
+/** (bagts, seq)-д `rev`-ээс дээш эсвэл тэнцүү хувилбар аль хэдийн бий юу */
+async function newerExists(bagts: string, seq: number, rev: number): Promise<boolean> {
+  const rows = await query(`${F.bagts} = N'${bagts.replace(/'/g, "''")}' AND ${F.seq} = ${Number(seq)} AND ${F.rev} >= ${Number(rev)}`, F.oid);
+  return rows.length > 0;
+}
+
+/**
+ * ХАВСРАЛТ засах эрх — СЕРВЕРИЙН мөрөөр (2026-09-17): урьд нь зөвхөн UI (`canAct.edit`)
+ * тул батлагдсан баримтын хавсралтыг консолоос солих боломжтой байв. Зөвхөн
+ * ноорог/буцаагдсан төлөвт, зөвхөн зохиогч. `null` = зөвшөөрнө.
+ */
+async function attachDeny(oid: number): Promise<string | null> {
+  const cur = await query(`${F.oid} = ${Number(oid)}`, HEAD);
+  const doc = cur.length ? toDoc(cur[0]) : null;
+  if (!doc) return tr('Баримт олдсонгүй — устгагдсан байж магадгүй.');
+  if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) return tr('Зөвхөн ноорог эсвэл буцаагдсан баримтын хавсралтыг өөрчилнө.');
+  const me = currentUser();
+  if (typeof window !== 'undefined' && AUTH.appId && doc.author.trim().toLowerCase() !== me) return tr('Зөвхөн зохиогч хавсралт өөрчилнө.');
+  return null;
+}
 
 /** Тухайн төрлийн БҮХ баримт (бүх хувилбар) — `chanarMs.latest`-ээр нурааж болно */
 export async function loadDocs(kind: DocKind = 'MS'): Promise<MsDoc[]> {
@@ -474,6 +505,9 @@ export async function saveDraft(args: {
      */
     const kind = (s(cur[0][F.kind]) ?? 'MS') as DocKind;
     const rev = doc.rev + 1;
+    /* ⚠️ ХУУЧИН буцаагдсан мөрөөс дахин засварлахыг хориглоно (2026-09-17): түүхээс
+       rev N-ийг сонгоод засвал rev N+1 ДАВХАР үүсч, `latest()` нэгийг нь нуудаг байв. */
+    if (await newerExists(doc.bagts, doc.seq, rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
     const no = docNo(doc.bagts, doc.seq, rev, kind);
     if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
     const attrs: Attrs = {
@@ -525,6 +559,7 @@ export async function submitDoc(args: { oid: number; who: string }): Promise<Res
     }
     /* Дахин илгээлт — ШИНЭ мөр, шинэ дугаар (rev+1) */
     const kind = (s(cur[0][F.kind]) ?? 'MS') as DocKind;
+    if (await newerExists(doc.bagts, doc.seq, r.rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
     const no = docNo(doc.bagts, doc.seq, r.rev, kind);
     if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
     const attrs: Attrs = {

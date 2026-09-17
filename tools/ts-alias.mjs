@@ -48,7 +48,8 @@ if (liveTok) {
   };
 } else {
   try {
-    const j = await (await fetch(`${HJ}arcgis/rest/services/Bagts_1_9f/FeatureServer?f=json`)).json();
+    /* ⚠️ 4 сек-ийн хязгаар — firewall «drop» үед 80 тест × TCP timeout болохоос (2026-09-17). */
+    const j = await (await fetch(`${HJ}arcgis/rest/services/Bagts_1_9f/FeatureServer?f=json`, { signal: AbortSignal.timeout(4000) })).json();
     if (j?.error?.code === 499 || j?.error?.code === 498) process.env.SELBE_LIVE_SKIP = '1';
     /* ⚠️ Алгасалтыг hooks (`load`) хийнэ — файл дотор `process.exit()` дуудвал
        Windows дээр libuv assertion-оор унадаг (2026-09-17). */

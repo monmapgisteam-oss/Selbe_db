@@ -292,6 +292,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            харуулна (2026-09-08). Хатуу үүрэгтэй хүнд remote хамаагүй. */
         setPermsRead(rok || !!roleForUser(user.username));
         const ok = hasAccess(user.username);
+        /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
+           урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
+           `current=null` үлдэж F5 хүртэл бүх бичилт «эрхгүй» гэдэг байв. */
+        setCurrentUser(ok ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         setStatus((prev) => {
           if (prev === 'signed-in' && !ok) return 'denied';

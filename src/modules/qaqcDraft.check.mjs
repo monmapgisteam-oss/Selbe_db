@@ -127,7 +127,8 @@ console.log('✅ багц солиход ноорог үлдэнэ, байдал
    `dropped` ч 0 болж, цэвэрлэх салаа ноорогийг бүрмөсөн устгадаг байв —
    сүлжээний саат ч хангалттай. */
 assert.ok(
-  SRC.includes('if (!canEdit) return;'),
+  /* ⚠️ 2026-09-17: буцахаас ӨМНӨ `promptedPkgRef`-ийг тэглэж, эрх ирэхэд сэргээлт ДАХИН ажиллана */
+  SRC.includes("if (!canEdit) { promptedPkgRef.current = ''; return; }"),
   'эрх түр алдагдахад ноорог устгагдана — хамгаалалт алга',
 );
 console.log('✅ эрхгүй үед ноорог устахгүй');
@@ -139,7 +140,7 @@ console.log('✅ эрхгүй үед ноорог устахгүй');
    оролдох зам хаагдаж, зөвхөн хуудсыг бүтнээр дахин ачаалж (F5) байж сэргэнэ. */
 assert.ok(REMOTE.includes('export async function readQaqcDraft'), 'алдааг ялгадаг уншигч алга');
 assert.ok(REMOTE.includes('export type QaqcRemoteDraftRead'), 'уншилтын үр дүнгийн төрөл алга');
-const restore = between('const local = readDraft(pkg.key);', 'if (!pick) return;');
+const restore = between('const local = readDraft(dk(user?.username, pkg.key));', 'if (!pick) return;');
 assert.ok(restore.includes('readQaqcDraft(pkg.key)'), 'сэргээх зам алдааг ялгадаггүй');
 assert.ok(restore.includes('!rr.ok'), 'уншилтын алдаа шалгагдахгүй байна');
 assert.ok(

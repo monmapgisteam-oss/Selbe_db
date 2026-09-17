@@ -317,11 +317,27 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    */
   /* ⚠️ `day`-г ЭНД Ч буцаана (2026-09-17): урьд нь дахин оролдох замд
      `archivedDay` undefined болж IPC мөр (доорх `ipcAuto`) алгасагддаг байв.
-     Илгээсэн өдөр (`fillMs`) — архивласан бодит өдөр (залруулагдсан бол
-     тухайн өдөр) `approvedAt`-аас. */
+     Өдрийг АРХИВЫН ЖААЗНААС уншина (`fillDate`): илгээсэн өдөр (`fillMs`) нь
+     нийтлэхэд өнөөдөр рүү залруулагдаж болдог, `approvedAt` нь баталсан агшин —
+     аль нь ч жаазны өдөр биш. Уншиж чадахгүй бол `fillMs`-ээр нөөцлөнө. */
   if (staged.done || staged.payload.archiveOid != null) {
-    const ms = staged.payload.approvedAt ?? staged.payload.fillMs;
-    return { ok: true, archiveOid: staged.payload.archiveOid ?? 0, day: ms != null ? new Date(ms).toISOString().slice(0, 10) : undefined };
+    const aOid = staged.payload.archiveOid ?? 0;
+    let day: string | undefined = staged.payload.fillMs != null ? new Date(staged.payload.fillMs).toISOString().slice(0, 10) : undefined;
+    if (aOid > 0) {
+      try {
+        const [{ PKGS, loadSchema }, { agsFetch }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags')]);
+        const pkg = PKGS.find((p) => p.key === staged.payload.pkgKey);
+        if (pkg) {
+          const sc = await loadSchema(pkg);
+          if (sc.f.fillDate) {
+            const j = await agsFetch(`${pkg.url}/query`, { where: `${sc.f.oid} = ${aOid}`, outFields: sc.f.fillDate, returnGeometry: 'false' });
+            const v = j.features?.[0]?.attributes?.[sc.f.fillDate];
+            if (typeof v === 'number') day = new Date(v).toISOString().slice(0, 10);
+          }
+        }
+      } catch { /* нөөц `fillMs` хэвээр */ }
+    }
+    return { ok: true, archiveOid: aOid, day };
   }
 
   /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ

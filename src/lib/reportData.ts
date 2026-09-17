@@ -442,10 +442,12 @@ async function loadSocial(): Promise<ReportExtra['social']> {
   const rows = (await Promise.all(ids.map(async (id) => {
     const d = LAYER_BY_ID[id];
     if (!d) return null;
+    /* ⚠️ Унавал ШИДНЭ (2026-09-17): чимээгүй `null` бол §5 нийт дутуу суурин дээр
+       PDF-д гардаг байв — файлын «хэсэгчилсэн тайлан ГАРГАХГҮЙ» дүрэмтэй зөрчил. */
     try {
       const t = await layerTotals(d, '1=1');
       return { title: d.title, n: t.n, areaM2: d.qty?.unit === 'м²' ? (t.q ?? 0) : 0 };
-    } catch { return null; }
+    } catch (e) { throw new Error(tr('{0}: давхарга уншигдсангүй ({1})', d.title, String((e as Error)?.message ?? e))); }
   }))).filter((r): r is NonNullable<typeof r> => !!r);
 
   return {
@@ -738,9 +740,10 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       try {
         const t = await layerTotals(d, '1=1');
         return { unit: d.qty?.unit ?? '', ...t };
-      } catch {
-        // Нэг давхарга унасан ч бүлгийн бусад нь тоологдоно — тайлан хоосрохгүй
-        return null;
+      } catch (e) {
+        /* ⚠️ Унавал ШИДНЭ (2026-09-17): §8 дэд бүтцийн нийт дутуу суурин дээр чимээгүй
+           хэвлэгдэж байв — «хэсэгчилсэн тайлан ГАРГАХГҮЙ» дүрэм (доорх allSettled). */
+        throw new Error(tr('{0}: давхарга уншигдсангүй ({1})', d.title, String((e as Error)?.message ?? e)));
       }
     }));
     const ok = parts.filter((p): p is NonNullable<typeof p> => !!p);
@@ -794,8 +797,11 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
   ]);
 
   /* Хамгийн сүүлийн бүртгэл — маягт нэг мөрөөр «өнөөдрийн байдал»-ыг илэрхийлнэ */
-  const last = labor.slice().sort((a, b) => nn(b[L.ognoo]) - nn(a[L.ognoo]))[0];
-  const day = last ? labor.filter((r) => nn(r[L.ognoo]) === nn(last[L.ognoo])) : [];
+  /* ⚠️ НЭГ ӨДӨРТ ДАВХАР МӨР бий (228 өдрийн 3-т, `ceo/workforce.ts`) — тэр өдрийг
+     нийлүүлбэл ажилтан/техник 2× гарна (2026-09-17). Дэлгэц (`Habea.tsx`) ба
+     `workforce.ts` нэг мөр авдаг тул тайлан ч ХАМГИЙН СҮҮЛИЙН (OID их) нэгийг. */
+  const last = labor.slice().sort((a, b) => (nn(b[L.ognoo]) - nn(a[L.ognoo])) || (nn(b.OBJECTID) - nn(a.OBJECTID)))[0];
+  const day = last ? [last] : [];
   const at = (f: string) => day.reduce((a, r) => a + nn(r[f]), 0);
 
   const byCompany = HABEA.labor.companies.map((c) => {

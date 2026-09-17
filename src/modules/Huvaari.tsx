@@ -636,7 +636,10 @@ export function Huvaari({
 
   const now = useMemo(() => {
     const d = new Date();
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    /* ⚠️ ЛОКАЛ өдөр (2026-09-17): UTC-ээр авбал УБ-д 00:00–08:00 хооронд «өнөөдөр»
+       өчигдөр болж, хоцрогдлын төлөв ба өнөөдрийн шугам нэг хоног хоцордог байв.
+       Хуанлийн өдрүүд өөрсдөө UTC шөнө дундаар түлхүүрлэгддэг тул ижил хэлбэрээр. */
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   }, []);
   const cov = useMemo(() => coverageOf(plan), [plan]);
 
@@ -1529,6 +1532,21 @@ export function Huvaari({
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
     if (!dirtyN || busy) return;
+    /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17): батлах
+       үеийн `save` тэдгээрийг алгасдаг (`unbal`) тул ноорог үлдэж батлах гинж
+       «эх хуудсанд бичигдсэнгүй» гэж мөнхөд гацдаг байв. */
+    {
+      let bad = 0;
+      for (const r of plan) {
+        for (let b = 0; b < (sc?.bld.length ?? 0); b += 1) {
+          const blok = sc?.bld[b];
+          if (r.des == null || !blok) continue;
+          const months = obDraft.get(obKey(r.des, blok));
+          if (months && months.size && r.vol != null && r.vol > 0 && !balanced(months, r.vol)) bad += 1;
+        }
+      }
+      if (bad > 0) { setErr(tr('{0} ажлын сарын задаргаа обьёмтойгоо тэнцэхгүй байна — эхлээд тэнцүүлнэ үү.', bad)); return; }
+    }
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await submitPlan({
@@ -1552,7 +1570,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [dirtyN, busy, pkg, user, buildPayload, refreshFlow]);
+  }, [dirtyN, busy, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -2638,10 +2656,12 @@ export function Huvaari({
               if (row) {
                 const next = row.spans.slice();
                 next[u.blk] = u.span;
-                /* ⚠️ Сарын задаргааг ч буцаана — чирэлт нь түүнийг дагуулж
-                   тарааасан (`applyChanges`) тул үлдээвэл хуваарьгүй ажилд
-                   төлөвлөсөн обьём үлдэж, нийлбэрийн шалгуур зөрчилтэй болно. */
-                applyModal(u.oid, next, null, new Map());
+                /* ⚠️ Сарын задаргааг ХӨНДӨХГҮЙ (2026-09-17): урьд нь `new Map()` өгч
+                   ХАДГАЛАГДСАН задаргааг устгадаг байв — санамсаргүй чирээд X дарахад
+                   дараагийн `save` бүх сарын мөрийг `deletes`-т оруулна. `applyChanges`
+                   огноо өөрчлөгдсөн блокийг дахин тараадаг тул зурвас буцахад задаргаа
+                   ч дагаж буцна; `null` = ноорог хэвээр. */
+                applyModal(u.oid, next, null, null);
               }
             }
           }}
@@ -2880,6 +2900,8 @@ function HamCell({
 }) {
   const saved = r.deps.length ? formatDeps(r.deps) : '';
   const [txt, setTxt] = useState(saved);
+  /* Escape-ээр цуцалсан бол `onBlur`-ийн хадгалалтыг алгасах туг (2026-09-17) */
+  const cancelRef = useRef(false);
   const [edit, setEdit] = useState(false);
 
   /* ⚠️ Гаднаас өөрчлөгдвөл (popup, чирэлтийн гинж, ноорог сэргээх) оролтыг
@@ -2908,10 +2930,12 @@ function HamCell({
         title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5')}
         onChange={(e) => { setEdit(true); setTxt(e.target.value); }}
         onFocus={() => setEdit(true)}
-        onBlur={() => { setEdit(false); onText(r.oid, txt); }}
+        onBlur={() => { setEdit(false); if (!cancelRef.current) onText(r.oid, txt); cancelRef.current = false; }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.currentTarget.blur(); return; }
-          if (e.key === 'Escape') { setTxt(saved); setEdit(false); e.currentTarget.blur(); }
+          /* ⚠️ Escape = ЦУЦЛАХ: `blur()` синхрон тул `onBlur` хуучин `txt`-ээр хадгалдаг
+             байв (2026-09-17). Тугаар хаана. */
+          if (e.key === 'Escape') { cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); }
         }}
       />
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}

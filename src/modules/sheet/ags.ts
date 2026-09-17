@@ -24,7 +24,7 @@
 //    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
 import { t as tr } from "@/lib/i18nCore";
-import { tokenParam, tokenQs } from '@/lib/authToken';
+import { tokenParam, tokenQs, authToken } from '@/lib/authToken';
 export const base =
   "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_guitsetgel_consolidated/FeatureServer/0";
 
@@ -268,6 +268,7 @@ export async function addAttachment(oid: number, file: File) {
   const fd = new FormData();
   fd.append("attachment", file);
   fd.append("f", "json");
+  { const tok = authToken(); if (tok) fd.append("token", tok); } // ⚠️ org-only (2026-09-17)
   const res = await fetch(`${base}/${oid}/addAttachment`, {
     method: "POST",
     body: fd,

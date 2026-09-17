@@ -164,7 +164,8 @@ export function buildReportDoc(
       note(tr('Төслийн нийт гүйцэтгэл нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
 
       ...section('2', tr('Орон сууцны багцууд'),
-        tr('Орон сууцны барилгажилт долоон багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), d.bestBagts?.bagts ?? '—', pct(d.bestBagts?.pct ?? null, 2), d.worstBagts?.bagts ?? '—', pct(d.worstBagts?.pct ?? null, 2))),
+        /* ⚠️ Багцын ТОО өгөгдлөөс (дэлгэцтэй ижил, 2026-09-17) — урьд нь «долоон» хатуу. */
+        tr('Орон сууцны барилгажилт {7} багцад хуваагдан хэрэгжиж байна. Нийт {0} блокт {1} өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг {2} ₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь {3} ({4}), хамгийн бага нь {5} ({6}).', num(blocks), num(ail), bn(budget), tr(d.bestBagts?.bagts ?? '—'), pct(d.bestBagts?.pct ?? null, 2), tr(d.worstBagts?.bagts ?? '—'), pct(d.worstBagts?.pct ?? null, 2), num(sorted.length))),
       cap('2', tr('Багц тус бүрийн блок, өрх, төсөв ба гүйцэтгэл (төсөвт өртгөөр буурах эрэмбээр)')),
       { table: { headerRows: 1, widths: ['*', 36, 36, 100, 52], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Төсөв (төг)'), true), th(tr('Гүйцэтгэл'), true)],
@@ -180,7 +181,7 @@ export function buildReportDoc(
         tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн төсвийн {0}-ийг «{1}» багц эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), tr(d.heavyStage.label)) : '')),
       cap('3', tr('Багцын эзлэх жин ба бодит гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 44, 66, 66, 66], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө (алга)'), true)],
         ...overall.stages.map((s): TableCell[] => [
           td(tr(s.label)), td(num(s.rows), true), td(pct(s.weight, 2), true),
           td(pct(s.actual, 2), true), td(s.planned == null ? '—' : pct(s.planned, 1), true),
@@ -216,7 +217,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 60, 100], body: [
         [th(tr('Байгууламж')), th(tr('Тоо'), true), th(tr('Талбай (м²)'), true)],
         ...social.rows.map((s): TableCell[] => [
-          td(s.title), td(num(s.n), true), td(s.areaM2 > 0 ? num(s.areaM2) : '—', true),
+          td(tr(s.title)), td(num(s.n), true), td(s.areaM2 > 0 ? num(s.areaM2) : '—', true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(social.n), true, TOTAL), td(num(social.areaM2), true, TOTAL)],
       ] }, layout: tableLayout },
@@ -227,7 +228,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 60, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Гүйцэтгэл'), true)],
         ...progress.byBagts.map((b): TableCell[] => [
-          td(b.bagts), td(num(b.blocks), true), td(pct(b.pct, 2), true),
+          td(tr(b.bagts)), td(num(b.blocks), true), td(pct(b.pct, 2), true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(progress.blocks), true, TOTAL), td(pct(progress.overall, 2), true, TOTAL)],
       ] }, layout: tableLayout },
@@ -235,13 +236,13 @@ export function buildReportDoc(
       cap('6.2', tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 90], body: [
         [th(tr('Үе шат')), th(tr('Дундаж гүйцэтгэл'), true)],
-        ...progress.phases.map((p): TableCell[] => [td(`${p.no}. ${p.name}`), td(pct(p.pct, 2), true)]),
+        ...progress.phases.map((p): TableCell[] => [td(`${p.no}. ${tr(p.name)}`), td(pct(p.pct, 2), true)]),
       ] }, layout: tableLayout },
 
       cap('6.3', tr('Гүйцэтгэл хамгийн бага арван блок — анхаарал шаардсан ажлууд')),
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Багц')), th(tr('Блок')), th(tr('Гүйцэтгэл'), true)],
-        ...progress.slowest.map((b): TableCell[] => [td(b.bagts), td(b.block), td(pct(b.pct, 2), true)]),
+        ...progress.slowest.map((b): TableCell[] => [td(tr(b.bagts)), td(b.block), td(pct(b.pct, 2), true)]),
       ] }, layout: tableLayout },
       note(tr('Дундаж нь блок бүрийг тэнцүү жинтэйгээр тооцсон; 2-р хэсгийн багцын гүйцэтгэлтэй нэг эх сурвалжаас гарна.')),
 
@@ -268,7 +269,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээ'), true)],
         ...finance.byType.map((t): TableCell[] => [
-          td(t.type), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),
+          td(tr(t.type)), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),
         ]),
         /* ⚠️ НИЙТ нь ЭНЭ ХҮСНЭГТИЙН мөрүүдийн нийлбэр (`byTypeTotal`) —
            §1-ийн «нийт төсөв» БИШ (тэр нь Excel-ийн НИЙТ хамрах хүрээгээр).
@@ -283,7 +284,7 @@ export function buildReportDoc(
       { table: { headerRows: 1, widths: ['*', 44, 52, 62, 72], body: [
         [th(tr('Ажлын бүлэг')), th(tr('Дав.'), true), th(tr('Объект'), true), th(tr('Урт (м)'), true), th(tr('Талбай (м²)'), true)],
         ...infra.groups.map((g): TableCell[] => [
-          td(g.title), td(num(g.layers), true), td(num(g.n), true),
+          td(tr(g.title)), td(num(g.layers), true), td(num(g.n), true),
           td(g.len > 0 ? num(g.len) : '—', true), td(g.area > 0 ? num(g.area) : '—', true),
         ]),
         [td(tr('Нийт'), false, TOTAL), td(num(infra.totals.layers), true, TOTAL), td(num(infra.totals.n), true, TOTAL),

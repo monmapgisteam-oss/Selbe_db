@@ -199,7 +199,7 @@ type Inc = {
 
 const normIncident = (r: Row): Inc => ({
   oid: nn(r['objectid']),
-  d: nn(r[I.ognoo]) || nn(r['CreationDate']),
+  d: nn(r[I.ognoo]), // ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17) — доорх ⚠️ дүрэм: огноогүй маягт хасагдана
   bagtsRaw: text(r[I.bagts], '—'),
   bagtsK: bagtsKey(r[I.bagts]),
   company: clean(r[I.company]),
@@ -718,7 +718,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
 function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
   if (id === 'habea:osol') {
     return ([
-      [tr('Огноо'), date((a[I.ognoo] ?? a['CreationDate']) as number)],
+      [tr('Огноо'), date(a[I.ognoo] as number)],
       [tr('Төрөл'), text(a[I.turul], '—')],
       [tr('Багц'), text(a[I.bagts], '—')],
       [tr('Компани'), clean(a[I.company])],

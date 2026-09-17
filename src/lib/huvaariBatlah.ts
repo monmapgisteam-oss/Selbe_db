@@ -34,6 +34,8 @@
 import { AUTH, ROLE_BY_USER } from './services';
 import { huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
+import { tokenParam } from '@/lib/authToken';
+import { currentUser } from './who';
 
 /** Илгээлтийн төлөв */
 export const PLAN_STATUS = {
@@ -143,8 +145,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ (`permsRemote`-ийн сургамж).
  */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
+  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
   const r = await fetch(url, { method: 'POST', body });
+  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
   const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
   if (j.error) throw new Error(j.error.message || 'ArcGIS error');
   return j;
@@ -459,11 +463,16 @@ function sanitizeSpans(raw: object): PlanPayload['spans'] {
   const out: PlanPayload['spans'] = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(v)) continue;
-    const ok = v.filter((x) => (
-      x == null
-      || (typeof x === 'object'
-        && Number.isFinite((x as { start?: unknown }).start)
-        && Number.isFinite((x as { end?: unknown }).end))
+    /* ⚠️ `map` — `filter` БИШ (2026-09-17): эвдэрсэн элементийг хаявал хойших
+       блокуудын индекс нэгээр гулсаж, огноо өөр блокт бичигддэг байв. `null` = тэр
+       блокт зурвасгүй. `start > end` мөн эвдэрсэнд тооцно. */
+    const ok = v.map((x) => (
+      x != null
+      && typeof x === 'object'
+      && Number.isFinite((x as { start?: unknown }).start)
+      && Number.isFinite((x as { end?: unknown }).end)
+      && (x as { start: number }).start <= (x as { end: number }).end
+        ? x : null
     ));
     out[k] = ok as PlanPayload['spans'][string];
   }
@@ -517,7 +526,11 @@ export async function submitPlan(args: {
 }): Promise<{ ok: boolean; error?: string }> {
   /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
   if (AUTH.appId) {
-    const sc = huvaariScope(args.author, 'author');
+    /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос super-ийн
+       нэр дамжуулж алгасахаас (2026-09-17). Хөтөчид нэвтрээгүй бол хаана. */
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const sc = huvaariScope(meNow ?? args.author, 'author');
     if (sc !== null && !sc.includes(args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
   }
@@ -616,7 +629,9 @@ export async function decidePlan(args: {
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
-    const sc = huvaariScope(me, 'approver');
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const sc = huvaariScope(meNow ?? me, 'approver');
     if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
   }
