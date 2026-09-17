@@ -55,6 +55,12 @@ jobs:
           NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
           NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
+          # ХАБЭА Survey123 үйлчилгээний нэрс (маягт дахин нийтлэхэд нэр солигддог)
+          NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
+          NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
+          NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
 
       # ⚠️ `enablement: true` — Pages УНТРААЛТТАЙ байвал workflow ӨӨРӨӨ асаана
       #    (дээрх `pages: write` эрхээр API дуудна). Ингэснээр Settings → Pages

@@ -49,6 +49,22 @@ const HJ = env(
 );
 
 /**
+ * ХАБЭА-ийн Survey123 ҮЙЛЧИЛГЭЭНИЙ НЭРС — орчны хувьсагчаас (2026-09-17, хэрэглэгч:
+ * «үйлчилгээ огт код дотор байх ёсгүй»). Survey123 маягтыг дахин нийтлэхэд нэр нь
+ * (`survey123_<GUID>`) солигддог тул GitHub Variables / `.env`-ээс өөрчилнө, код хөндөхгүй.
+ * Fallback нь одоогийн нэрс — хувьсагчгүй ч ажиллана.
+ */
+const HABEA_SVC = {
+  labor: env(process.env.NEXT_PUBLIC_HABEA_LABOR_SVC, "survey123_60cf822671df4c3681cf8f77317bdb4f"),
+  incident: env(process.env.NEXT_PUBLIC_HABEA_INCIDENT_SVC, "survey123_a4e9f3801ea84fdd99133b139557ca81"),
+  uzlegV11: env(process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC, "service_cbda4d63ef404e1189dc208280dd9a45"),
+  uzlegG: env(process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC, "service_92a6675c595e48118dcaa17e7dde5e78"),
+  /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
+      нийтлэгдсэн, ОДООГООР портал уншдаггүй (0 мөр); харагдац нэмэгдэхэд эндээс авна. */
+  uzlegZahialagch: env(process.env.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC, "service_923029f4289647bd8a34aaf8e93ec9c8"),
+} as const;
+
+/**
  * TEST_DATA — MUST org-ийн НЭГДСЭН орон зайн үйлчилгээ (2026-08-13).
  * Орон зайн бүх давхарга (санхүүгийн хүснэгт, «Гүйцэтгэл бөглөх», Survey123,
  * 3D/растераас БУСАД) энэ 109 давхаргат НЭГ FeatureServer-ээс уншигдана.
@@ -2303,7 +2319,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:osol",
     n: 0,
-    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    url: `${HJ}/${HABEA_SVC.incident}/FeatureServer/0`,
     title: tr('Осол, зөрчил'),
     topic: "monitor",
     geom: "point",
@@ -2323,7 +2339,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:uzV11",
     n: 0,
-    url: `${HJ}/service_cbda4d63ef404e1189dc208280dd9a45/FeatureServer/0`,
+    url: `${HJ}/${HABEA_SVC.uzlegV11}/FeatureServer/0`,
     title: tr('Ажлын байрны үзлэг V1.1'),
     topic: "monitor",
     geom: "point",
@@ -2338,7 +2354,7 @@ export const LAYERS: LayerDef[] = [
   {
     id: "habea:uzG",
     n: 0,
-    url: `${HJ}/service_92a6675c595e48118dcaa17e7dde5e78/FeatureServer/0`,
+    url: `${HJ}/${HABEA_SVC.uzlegG}/FeatureServer/0`,
     title: tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
     topic: "monitor",
     geom: "point",
@@ -3531,7 +3547,7 @@ export const HABEA = {
      * `survey123_732c0391...` нь `CONT_0001 — Item does not exist or is
      * inaccessible` буцааж, ХАБЭА хуудсыг бүхэлдээ унагаж байсан.
      */
-    url: `${HJ}/survey123_60cf822671df4c3681cf8f77317bdb4f/FeatureServer/0`,
+    url: `${HJ}/${HABEA_SVC.labor}/FeatureServer/0`,
     /**
      * ЗӨВХӨН маягтын НИЙТ (roll-up) талбарууд. Шинэ маягт нь ажилтан/техникийг
      * ЗӨВХӨН гүйцэтгэгчийн дагавартай баганаар хөтөлдөг тул монгол/гадаад
@@ -3576,7 +3592,7 @@ export const HABEA = {
     ],
   },
   incident: {
-    url: `${HJ}/survey123_a4e9f3801ea84fdd99133b139557ca81/FeatureServer/0`,
+    url: `${HJ}/${HABEA_SVC.incident}/FeatureServer/0`,
     fields: {
       ognoo: "field_22", company: "field_5", bagts: "field_6", dugaar: "field_9",
       turul: "field_7", medeelel: "field_14", shaltgaanTurul: "field_11",
@@ -3658,11 +3674,11 @@ export const HABEA = {
   uzleg: {
     v11: {
       title: tr('Ажлын байрны үзлэг V1.1'),
-      url: `${HJ}/service_cbda4d63ef404e1189dc208280dd9a45/FeatureServer/0`,
+      url: `${HJ}/${HABEA_SVC.uzlegV11}/FeatureServer/0`,
     },
     guitsetgegch: {
       title: tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
-      url: `${HJ}/service_92a6675c595e48118dcaa17e7dde5e78/FeatureServer/0`,
+      url: `${HJ}/${HABEA_SVC.uzlegG}/FeatureServer/0`,
     },
     /** Хоёр маягтад ИЖИЛ талбарын нэрс */
     fields: {
