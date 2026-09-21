@@ -452,7 +452,10 @@ function groupBuildingPurposes(buildings: Feat[]): BuildingPurposeStat[] {
     b.count += 1;
     b.gfaM2 += n(a[BF.gfa]);
     // Бүлэгт нэг л «хүн» багана — орон сууцны бүлэгт оршин суугч, бусдад хүчин чадал
-    b.pop += n(a[BF.population]) + n(a[BF.capacity]);
+    // ⚠️ `aggregateBuildings`-тэй ИЖИЛ дүрэм (2026-09-21): урьд нь хоёр
+    //    баганыг НИЙЛҮҮЛДЭГ байсан тул хоёулаа бөглөгдсөн барилгад (орон
+    //    сууц + доод давхрын үйлчилгээ) хүн давхардан тоологдож байв.
+    b.pop += isResidential(raw) ? n(a[BF.population]) : n(a[BF.capacity]);
     if (raw) b.values.add(raw); else b.blank = true;
     agg.set(key, b);
   }

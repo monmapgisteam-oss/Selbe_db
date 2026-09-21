@@ -287,6 +287,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   async function syncCaps(user: string, roles: R[]): Promise<boolean> {
     try {
       const c = await import('./caps');
+      /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар) —
+         `caps.toggleCap`-тай ижил: `capsStored` нь шинэ browser-т `[]` тул
+         «одоогийн + үүргийн эрх» нь ArcGIS дээрх бүтэн жагсаалтыг дарж бичнэ.
+         `false` → `r.g=false` → хуваарилалт «унасан» гэж тэмдэглэгдэнэ. */
+      if (!c.capsRemoteReady()) return false;
       /* ⚠️ `capsStored` — тугтай `capsOf` биш (2026-09-21): remote унасан үед
          `[]`-ээс эхэлбэл админы бусад эрхийг арчина (caps.ts-ийн тайлбар). */
       const cur = c.capsStored(user);

@@ -185,6 +185,8 @@ export function DedButetsEdit({
   const [err, setErr] = useState<Record<string, string>>({});
   const [fail, setFail] = useState('');
   const dirty = useRef(false);
+  /** Амжилттай хадгалалтын тоолуур — маягт нээлттэй үлдвэл мөрийг дахин татна (2026-09-21) */
+  const [saved, setSaved] = useState(0);
 
   /**
    * ⚠️ СХЕМ БА МӨРИЙГ ЭНД ТАТНА. Газрын зургийн `onPick` нь давхаргын
@@ -227,7 +229,7 @@ export function DedButetsEdit({
       .catch((e) => alive && setFail(String((e as Error).message || e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
-  }, [layerId, oid]);
+  }, [layerId, oid, saved]);
 
   const set = (name: string, v: string) => {
     dirty.current = true;
@@ -276,7 +278,16 @@ export function DedButetsEdit({
          хуучирсан хуулбар болох ч энэ объект аль хэдийн салангид. */
       const back = revertAttrs(meta, before as Row, p);
       const n = await saveRow(meta, oid as number, before as Row, p);
+      /* ⚠️ 2026-09-21: эцэг `onDone`-д маягтыг хаадаг ч хэрэглэгч хадгалаагүй
+         хэлбэрийн засвараа хаяхаас татгалзвал (`DedButets.closeEdit` → `false`)
+         маягт НЭЭЛТТЭЙ үлдэнэ. Тэр үед `before` хуучирч (дараагийн хадгалалт
+         буруу diff бичнэ), `dirty` нь худал «хадгалаагүй» асуулт гаргана.
+         Тиймээс бичсэний дараа ноорог цэвэр гэж тэмдэглээд мөрийг дахин
+         татна (`saved` тоолуур ачаалах эффектийг сэргээнэ); маягт салсан бол
+         эдгээр setState нь хор хөнөөлгүй. */
+      dirty.current = false;
       onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back } : null);
+      setSaved((x) => x + 1);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
       setFail(String((x as Error).message || x));

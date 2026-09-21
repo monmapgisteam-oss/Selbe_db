@@ -129,11 +129,22 @@ const TIMEOUT_MS = 30_000;
  * ⚠️ Хоёр шалгуур: суурь хаягаар (`startsWith`) ЭСВЭЛ org-ийн сегментээр
  *    (`/HJzgw…/`) — services.arcgis.com-ын ижил org-ийн өөр хост (services1…)
  *    ч хамрагдана, хуучин зан төлөв хадгалагдана.
+ * ⚠️ ORG СЕГМЕНТ ЗӨВХӨН `*.arcgis.com` ХОСТОД (2026-09-21, аудитын засвар). Env
+ *    нь өөрийн серверийн `https://host/arcgis/rest/services` (org сегментгүй)
+ *    бол урьд нь `ORG_SEG='arcgis'` болж, `/arcgis/` агуулсан ЯМАР Ч гадны
+ *    хост руу (өөр байгууллагын ArcGIS Server) нэвтэрсэн хэрэглэгчийн токен
+ *    явдаг байв. Одоо сегментийн шалгуур env-ийн хост ба зорилтот хост ХОЁУЛАА
+ *    `*.arcgis.com` үед л; бусад хостод зөвхөн env-ийн бүтэн origin+path
+ *    угтвар (`startsWith`) таарна.
  */
 const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
-const ORG_SEG = ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '';
+const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
+const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`)
+  ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? ''
+  : '';
 const isOrgUrl = (url: string): boolean =>
-  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`)) || (!!ORG_SEG && url.includes(`/${ORG_SEG}/`));
+  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
+  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
 
 async function attemptRequest(url: string, params: Record<string, string>, attempt: number, netRetried = false): Promise<Body> {
   const full = `${url}/query`;

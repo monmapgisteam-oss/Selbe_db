@@ -551,6 +551,11 @@ export function SuitMap({
      * ⚠️ Барилгыг ТЭРГҮҮНД шалгана — тэр нь бүсийн будалтын ДЭЭР зурагддаг тул
      * нүдээр барилга дээр дарсан хүн бүс сонгогдвол гайхна. Барилга олдвол
      * бүсийн сонголтыг ХӨНДӨХГҮЙ (хоёр самбар зэрэг ажиллана).
+     *
+     * ⚠️ `onBldClick` БАЙХГҮЙ (симуляц горим, `Suitability.tsx` §bldPick) бол
+     * барилга олдсон ч `return` ХИЙХГҮЙ — урьд нь `onBldClick?.()` юу ч
+     * хийлгүй `return` болж, барилгын доорх бүс огт сонгогдохгүй байв
+     * (2026-09-21). Барилга сонгох хүлээн авагчгүй үед даралт бүс рүү очно.
      */
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
       const zoneLayer = zoneRef.current;
@@ -558,12 +563,13 @@ export function SuitMap({
       if (!include.length) return;
       view.hitTest(e, { include })
         .then((hit) => {
+          const onBld = cb.current.onBldClick;
           const bld = hit.results.find((r) => r.type === 'graphic' && r.graphic.layer === bldRef.current);
-          if (bld && bld.type === 'graphic') {
+          if (bld && bld.type === 'graphic' && onBld) {
             const oid = (bld.graphic.attributes as Record<string, unknown>)?.OBJECTID;
-            if (oid != null) { cb.current.onBldClick?.(Number(oid)); return; }
+            if (oid != null) { onBld(Number(oid)); return; }
           }
-          cb.current.onBldClick?.(null);
+          onBld?.(null);
 
           const g = hit.results.find(
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,

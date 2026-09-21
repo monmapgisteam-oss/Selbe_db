@@ -24,12 +24,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
-import { PARCEL_STATUS_HUES } from '@/lib/services';
+import { PARCEL_LEFT, PARCEL_STATUS_HUES } from '@/lib/services';
 import {
   STATUS_LIST, loadParcel, loadProgressValues, saveParcel, validateParcel,
   type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
+
+/** Төлөв ба явцын мэдээ НЭГ талбар уу (2026-09-21, `services.ts` `PARCEL_LEFT.fields`) */
+const SAME_FIELD = PARCEL_LEFT.fields.status === PARCEL_LEFT.fields.progress;
 
 const patchOf = (p: Parcel): ParcelPatch => ({
   owner: p.owner,
@@ -205,6 +208,11 @@ export function GazarEdit({
                 {err.status && <span className={g.fErr}>{err.status}</span>}
               </div>
 
+              {/* ⚠️ 2026-09-21: `status` ба `progress` НЭГ талбар (`явцы_1`) бол
+                  ЭНЭ хяналтыг харуулахгүй — «Төлөв» радио нь бүх 9 амьд утгыг
+                  агуулдаг (`STATUS_LIST`), хоёр хяналт нэг талбарт зэрэг бичвэл
+                  аль нь хадгалагдах нь хэрэглэгчид мэдэгдэхгүй (`diffParcel`). */}
+              {!SAME_FIELD && (
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Явцын мэдээ')}</span>
                 <select className={g.input} value={d.progress} disabled={!canEdit || busy}
@@ -216,6 +224,7 @@ export function GazarEdit({
                   {tr('Утгууд үйлчилгээнээс уншигдана — бичиглэл нь хэвээр хадгалагдана')}
                 </span>
               </label>
+              )}
 
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Хаяг')}</span>

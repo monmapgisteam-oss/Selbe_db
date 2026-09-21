@@ -22,7 +22,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
-import { hasCap, subscribeCaps } from '@/lib/caps';
+import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { qaqcScope, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS, PKGS, pkgFloors, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
@@ -281,9 +281,19 @@ export function Qaqc() {
    *    нь «өөр багцаа сонго» гэсэн ӨӨР үйлдэл шаардана. Нэг мессежээр
    *    хэлбэл эрхтэй хүн «эрх алга» гэж уншаад админ руу дэмий явна.
    */
+  /*
+   * ⚠️ ГУРАВ ДАХЬ ШАЛТГААН (2026-09-21, аудитын засвар): эрхийн хүснэгт энэ
+   *    сешнд УНШИГДААГҮЙ (`capsRemoteReady()` false — remote унасан, fail-closed
+   *    тул `hasCap` false). Тэр үед «эрх олгогдоогүй» гэвэл ХУДАЛ — хүн админ
+   *    руу дэмий явна; «түр хүлээ» гэж ялгана (`AuthGate` 15 сек тутам дахин
+   *    уншина). Нэвтрэлт унтраалттай орчинд `hasCap` үргэлж true тул энэ салаа
+   *    хүрэхгүй.
+   */
   const RO_CAP = hasCap(user?.username, 'qaqc')
     ? tr('«{0}» танд хуваарилагдаагүй тул зөвхөн харна. Хуваарилагдсан багцаа сонгоно уу.', pkg.group)
-    : tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсгээс олгоно.');
+    : !capsRemoteReady()
+      ? tr('Эрхийн мэдээлэл уншигдаагүй — түр хүлээнэ үү.')
+      : tr('Чанарын баримт бөглөхөд «QAQC» эрх шаардлагатай — «Хэрэглэгчдийн эрх удирдах → Чанарын (QAQC) эрх» хэсгээс олгоно.');
   const ro = (msg: string) => ({ title: msg, onClick: () => say(msg) });
 
   /* ── Баганын crosshair — React state БИШ, O(1) overlay (FillNew-тэй ижил) ── */

@@ -50,7 +50,19 @@ const mergeDrafts = (a, b) => {
   const now = Date.now();
   for (const [k, a] of del) {
     if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
-    if (k.startsWith('a:')) { adds.delete(Number(k.slice(2))); continue; }
+    /* 2026-09-21 (дахин аудит): `a:` — мөр байгаа ба нэмсэн агшин (`byAt`-ийн
+       `a:` түлхүүр) tombstone-оос өмнө (эсвэл байхгүй) бол мөр + нүдийг хасна. */
+    if (k.startsWith('a:')) {
+      const o = Number(k.slice(2));
+      if (!adds.has(o)) continue;
+      const added = byAt.get(k);
+      if (added != null && added > a) { del.delete(k); continue; }
+      adds.delete(o);
+      const pre = `${o}:`;
+      for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
+      byAt.delete(k);
+      continue;
+    }
     const wrote = byAt.get(k);
     if (wrote != null && wrote > a) { del.delete(k); continue; }
     cells.delete(k);
@@ -560,3 +572,118 @@ console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй
   assert.ok(FN.slice(fi, fi + 4200).includes("OWNER[r[HF.status]] === 'company'"), 'flow: өмнөх өдрийн буцаагдсан мөрийг сонгохгүй');
 }
 console.log('✅ эх кодын гэрээ (2026-09-21) — Ctrl+S түгжээ · flush буулгалт · dropAdd · эзэмшил ×4 · идэвхгүй шүүлт · flow');
+
+/* ══════════ 15. ДАХИН АУДИТ (2026-09-21) — `a:` tombstone болзолтой · хоосон ангилал буудаг · мөрийн нүд хамт хасагдана ══════════ */
+/**
+ * ⚠️ Өмнөх tombstone засварын цоорхойнууд:
+ *   #1 түр oid хуудас ачаалах бүрт −1-ээс эхэлдэг тул `a:-1` tombstone дараа
+ *      нэмсэн (мөн −1) ШИНЭ мөрийг 7 хоног чимээгүй устгадаг байв → одоо
+ *      мөрийн нэмсэн агшин (`byAt`-ийн `a:` түлхүүр) tombstone-оос ХОЖУУ бол
+ *      мөр ялна; эхлэл нь цагаас (`nextTmpOid`).
+ *   #2 `pickDraft` хоосон ангиллыг (`if (nCells) setPending`) тавьдаггүй тул
+ *      нөгөө талын буцаалт энэ талд буудаггүй байв → болзолгүй `set`.
+ *   #4 `a:` tombstone мөрийн `${oid}:*` нүд/огноо/эзэн/агшинг үлдээдэг байв.
+ */
+{
+  const T = Date.now() - 60_000;
+  /* #1 (а) Хассан агшнаас ӨМНӨ нэмсэн мөр (нэмсэн агшин бий) → хасагдана */
+  const oldRow = { t: T + 1000, cells: [['-7:0', '3']], adds: [{ oid: -7, no: '1', work: 'A' }], byAt: [['a:-7', T + 500], ['-7:0', T + 900]] };
+  const drop = { t: T + 2000, cells: [], del: [['a:-7', T + 1500]] };
+  const m1 = mergeDrafts(oldRow, drop);
+  assert.ok(!m1.adds || !m1.adds.some((a) => a.oid === -7), '#1: хассан агшнаас өмнө нэмсэн мөр сэргэж байна');
+  assert.ok(m1.del?.some(([k]) => k === 'a:-7'), '#1: tombstone хадгалагдах ёстой');
+
+  /* #1 (б) Хассан агшнаас ХОЖУУ нэмсэн (ижил дугаартай) шинэ мөр → ялна, tombstone хаягдана */
+  const newRow = { t: T + 3000, cells: [['-7:0', '9']], adds: [{ oid: -7, no: '2', work: 'B' }], byAt: [['a:-7', T + 2500], ['-7:0', T + 2600]] };
+  const m2 = mergeDrafts(drop, newRow);
+  assert.ok(m2.adds?.some((a) => a.oid === -7 && a.work === 'B'), '#1: хассаны дараа нэмсэн шинэ мөр tombstone-д устаж байна');
+  assert.equal(new Map(m2.cells).get('-7:0'), '9', '#1: шинэ мөрийн нүд алдагдав');
+  assert.ok(!m2.del || !m2.del.some(([k]) => k === 'a:-7'), '#1: давагдсан `a:` tombstone хаягдах ёстой');
+  /* Дарааллаас үл хамаарна */
+  assert.ok(mergeDrafts(newRow, drop).adds?.some((a) => a.oid === -7));
+
+  /* #1 (в) Нэмсэн агшин БАЙХГҮЙ (хуучин ноорог) → хасна (өмнөх зан) */
+  const noAt = { t: T + 1000, cells: [], adds: [{ oid: -8, no: '1', work: 'A' }] };
+  const drop8 = { t: T + 2000, cells: [], del: [['a:-8', T + 1500]] };
+  assert.ok(!mergeDrafts(noAt, drop8).adds, '#1: агшингүй мөр tombstone-оор хасагдах ёстой');
+
+  /* #1 (г) Мөр байхгүй бол tombstone хэвээр (хожуу ирэх хуучин хуулбарт) */
+  const empty = { t: T + 100, cells: [] };
+  assert.ok(mergeDrafts(empty, drop8).del?.some(([k]) => k === 'a:-8'), '#1: мөргүй үед tombstone алга болов');
+
+  /* #4 Хассан мөрийн нүд · огноо · эзэн · агшин ХАМТ хасагдана */
+  const rich = {
+    t: T + 1000,
+    cells: [['-9:0', '1'], ['-9:1', '2'], ['5:0', 'x']],
+    dates: [['-9:0:s', '2026-01-01']],
+    by: [['-9:0', 'a'], ['-9:1', 'a'], ['5:0', 'a']],
+    byAt: [['a:-9', T + 500], ['-9:0', T + 600], ['-9:1', T + 600], ['5:0', T + 600]],
+    adds: [{ oid: -9, no: '1', work: 'A' }],
+  };
+  const drop9 = { t: T + 2000, cells: [], del: [['a:-9', T + 1500]] };
+  const m4 = mergeDrafts(rich, drop9);
+  const c4 = new Map(m4.cells);
+  assert.ok(!c4.has('-9:0') && !c4.has('-9:1'), '#4: хассан мөрийн нүд үлдэж байна');
+  assert.equal(c4.get('5:0'), 'x', '#4: өөр мөрийн нүд хөндөгдөв');
+  assert.ok(!m4.dates || !new Map(m4.dates).has('-9:0:s'), '#4: хассан мөрийн огноо үлдэж байна');
+  assert.ok(!new Map(m4.by ?? []).has('-9:0'), '#4: хассан мөрийн эзэн үлдэж байна');
+  const ba4 = new Map(m4.byAt ?? []);
+  assert.ok(!ba4.has('-9:0') && !ba4.has('a:-9'), '#4: хассан мөрийн агшин үлдэж байна');
+  assert.equal(ba4.get('5:0'), T + 600);
+
+  /* #2 Нөгөө тал СҮҮЛЧИЙН нүдийг буцаасан → нийлбэр хоосон ирнэ; tombstone нь хадгалагдах ёстой */
+  const lastCell = { t: T + 1000, cells: [['3:0', '5']], by: [['3:0', 'a']], byAt: [['3:0', T + 1000]] };
+  const revoke = { t: T + 2000, cells: [], del: [['3:0', T + 1900]] };
+  const m5 = mergeDrafts(lastCell, revoke);
+  assert.equal(m5.cells.length, 0, '#2: буцаасан сүүлчийн нүд нийлбэрт үлдэж байна');
+  assert.ok(m5.del?.some(([k]) => k === '3:0'), '#2: хоосон нийлбэрт tombstone алга');
+}
+console.log('✅ дахин аудит — `a:` tombstone нэмсэн агшинтай харьцуулна · мөрийн нүд хамт хасагдана · хоосон нийлбэрт tombstone үлдэнэ');
+
+/* ── Эх кодын гэрээ (2026-09-21, дахин аудит) ── */
+{
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  /* #1 түр oid цагаас эхэлнэ, `nextTmpOid`-оор олгогдоно, tombstone-оос ч түлхэгдэнэ */
+  assert.ok(/let tmpOid = -\(Date\.now\(\) % 1e9\) \* 100 - 1;/.test(FN), '#1: tmpOid −1-ээс эхэлж байна (хуудас бүрт давтагдана)');
+  assert.ok(!FN.includes('tmpOid--,'), '#1: шууд `tmpOid--` үлдэж байна — `nextTmpOid()` хэрэглэ');
+  assert.ok(FN.includes('function pushTmpOidKeys('), '#1: tombstone-ийн `a:` oid-оос түлхэх функц алга');
+  assert.ok(FN.includes('pushTmpOidKeys(delRef.current.keys())'), '#1: pickDraft tombstone-оос тоолуур түлхэхгүй байна');
+  /* #1 нэмсэн агшин — addRow бичнэ, dropAdd арилгана, хадгалах эффект `a:` түлхүүрээр бичнэ */
+  const ai = FN.indexOf('const oid = nextTmpOid();');
+  assert.ok(ai > 0 && FN.slice(ai, ai + 500).includes('touchMine(`a:${oid}`)'), '#1: addRow нэмсэн агшинг тэмдэглэхгүй байна');
+  const di = FN.indexOf('const dropAdd = (oid: number) => {');
+  assert.ok(FN.slice(di, di + 1200).includes('mineAtRef.current.delete(`a:${oid}`)'), '#1: dropAdd нэмсэн агшинг үлдээж байна');
+  assert.ok(FN.includes('for (const a of adds) {\n      const k = `a:${a.oid}`;'), '#1: хадгалах эффект `a:` агшинг бичихгүй байна');
+  /* #2 pickDraft болзолгүй тавина; хоосон нийлбэр төлөвийг хоослоно; tombstone байвал алсыг цэвэрлэхгүй */
+  assert.ok(!/if \(restoredAdds\.length\) setAdds\(restoredAdds\);/.test(FN), '#2: setAdds болзолтой хэвээр');
+  assert.ok(!/if \(nCells\) setPending\(next\);/.test(FN), '#2: setPending болзолтой хэвээр');
+  assert.ok(!/if \(nDates\) setPendDate\(nextDates\);/.test(FN), '#2: setPendDate болзолтой хэвээр');
+  const ti = FN.indexOf('if (!total) {');
+  const tb = FN.slice(ti, ti + 2200);
+  assert.ok(tb.includes('setPending({});') && tb.includes('setAdds([]);'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
+  assert.ok(tb.includes('if (delRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
+  assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
+  assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),
+    '#2: pickDraft нийлбэрийн del-ийг delRef-д авахгүй байна');
+  /* #3 waitingOn өөрийн идэвхийг тооцно */
+  const wi = FN.indexOf('const waitingOn = useMemo(() => {');
+  assert.ok(FN.slice(wi, wi + 3000).includes('bump(meKey, Math.max(...mineAtRef.current.values()))'), '#3: өөрийн идэвх лавлагаанд ороогүй');
+  /* #5 хожуу давхарлалт унавал дахин оролдоно */
+  const li = FN.indexOf('const lateOverlayRef = useRef<number>(NaN);');
+  const lb = FN.slice(li, li + 3500);
+  assert.ok(lb.includes('setTimeout(() => setLateRetry((n) => n + 1), REMOTE_RETRY_MS)'), '#5: уншилт унавал дахин оролдохгүй');
+  assert.ok(lb.includes('lateOverlayRef.current = NaN;'), '#5: унасан ч «дууссан» тэмдэглэгээ үлдэж байна');
+  /* #7 ижил утга — pending-д байгаагүй бол tombstone үгүй */
+  assert.ok(FN.includes('const revert = useCallback((key: string, wasPending: boolean) => {'), '#7: revert алга');
+  assert.ok(FN.includes('if (sameVol) revert(key, key in pending);'), '#7: обьём');
+  assert.ok(FN.includes('if (samePct) revert(key, key in pending);'), '#7: хувь');
+  assert.ok(FN.includes('if (sameDate) revert(key, key in pendDate);'), '#7: огноо');
+  assert.ok(FN.includes('if (same) revert(x.key, x.key in pv);'), '#7: paste');
+  /* #8 буцаагдсан өмнөх өдөр мэдэгдэнэ */
+  assert.ok(FN.includes('const otherDaysReturned = useMemo(() => {'), '#8: otherDaysReturned алга');
+  assert.ok(FN.includes("tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.join(', '))"), '#8: мэдэгдэл алга');
+  /* Илгээлт tombstone-ийг тэглэнэ — эс бөгөөс хоосон зам ноорог цэвэрлэхгүй */
+  const pi = FN.indexOf('const nCells = Object.keys(pend2).length');
+  assert.ok(FN.slice(pi, pi + 700).includes('delRef.current = new Map();'), 'publish: delRef тэглэгдэхгүй — ноорог илгээсний дараа цэвэрлэгдэхгүй');
+}
+console.log('✅ эх кодын гэрээ (дахин аудит) — tmpOid · нэмсэн агшин · болзолгүй set · tombstone хадгалалт · waitingOn · хожуу давхарлалт · revert · буцаагдсан өдөр');

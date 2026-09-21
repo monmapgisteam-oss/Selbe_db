@@ -430,16 +430,14 @@ function TailanFull() {
                   ? rows.reduce((a, b) => a + (b.progress ?? 0) * b.blocks, 0) / blocks
                   : null;
                 const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
-                const d = buildFindings(x);
                 /* ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
-                   тайлангүй блок 0% гэж ордог, БҮХ блокоор хуваана). `d.bestBagts` /
-                   `d.worstBagts` нь `reportData.progress.byBagts` буюу ЗӨВХӨН тайлантай
-                   блокийн дундаж тул доорх хүснэгт (`b.progress`)-тэй өөр тоо, заримдаа
-                   өөр багц нэрлэдэг байв. Нэг хэсэгт нэг дүрэм — хүснэгтийнхийг хэрэглэнэ. */
-                const ranked = rows.filter((b) => b.progress != null)
-                  .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
-                const bestRow = ranked[0] ?? null;
-                const worstRow = ranked.length ? ranked[ranked.length - 1] : null;
+                   тайлангүй блок 0% гэж ордог, БҮХ блокоор хуваана). `rows`-ийг
+                   `buildFindings`-д дамжуулснаар `d.bestBagts`/`d.worstBagts` ба дүгнэлтийн
+                   өгүүлбэр (`reportData.bagtsExtremes`) дэлгэц · PDF хоёуланд НЭГ эх —
+                   урьд нь энд тусдаа эрэмбэлж, PDF `progress.byBagts` (зөвхөн тайлантай
+                   блокийн дундаж) уншдаг тул хоёр баримт өөр багц нэрлэдэг байв. */
+                const d = buildFindings(x, rows);
+                const bestRow = rows.find((b) => b.label === d.bestBagts?.bagts) ?? null;
 
                 return (
                   <>
@@ -549,9 +547,9 @@ function TailanFull() {
                         {/* ⚠️ Багцын ТОО нь өгөгдлөөс (`sorted.length`) — урьд
                             нь «долоон» гэж бичигдсэн байсан тул багц нэмэгдэх
                             эсвэл нэгдэхэд тайлан чимээгүй худал болно. */}
-                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(bestRow?.label ?? '')}
-                        ({pct(bestRow?.progress ?? null, 2)}{tr('), хамгийн бага нь')}
-                        {' '}{tr(worstRow?.label ?? '')} ({pct(worstRow?.progress ?? null, 2)}).
+                        {tr('Орон сууцны барилгажилт')} {num(sorted.length)} {tr('багцад хуваагдан хэрэгжиж байна. Нийт')} {num(blocks)} {tr('блокт')} {num(ail)} {tr('өрхийн орон сууц төлөвлөгдсөн бөгөөд төсөвт өртөг')} {bn(budget)} {tr('₮ байна. Багц хоорондын гүйцэтгэлийн зөрүү их байна: хамгийн өндөр нь')} {tr(d.bestBagts?.bagts ?? '—')}
+                        ({pct(d.bestBagts?.pct ?? null, 2)}{tr('), хамгийн бага нь')}
+                        {' '}{tr(d.worstBagts?.bagts ?? '—')} ({pct(d.worstBagts?.pct ?? null, 2)}).
                       </p>
                       {/* ⚠️ ТӨСӨВ (₮) ба ГҮЙЦЭТГЭЛ (%) нь өөр хэмжигдэхүүн тул
                           НЭГ зурагт давхарлахгүй — хоёр тэнхлэгтэй график нь
@@ -906,7 +904,8 @@ function TailanFull() {
                           үйлчилгээ бүрмөсөн хаягдсан. PDF-д мөн адил. */}
                       <Cap no="7.2">{tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>
-                        <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээ')}</th></tr></thead>
+                        {/* ⚠️ 2026-09-21: «Гэрээлсэн» — багана нь зөвхөн CONTRACTED мөрийн дүн (`reportData.byType`) */}
+                        <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээлсэн')}</th></tr></thead>
                         <tbody>
                           {x.finance.byType.map((t) => (
                             <tr key={t.type}>

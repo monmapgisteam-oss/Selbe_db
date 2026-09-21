@@ -194,6 +194,14 @@ export type FloodData = {
    * тэр жалга үерлэхээс өөр аргагүй.
    */
   accHa?: (i: number) => number;
+  /**
+   * ГОЛДРИЛ уу — тооцооны сувгийн сүлжээ (`uyrSim.ts` §streamMask ∪ шатаасан
+   * голын нүд). `true` = ус энд байх нь хэвийн.
+   * ⚠️ 2026-09-21: `terrain` жинхэнэ DSM болсноор «хоёр талдаа эрэгтэй» гэсэн
+   * геометрийн шалгуур (`uyrTailbar.ts`) 17 м нүдэнд голыг бараг танихаа
+   * больсон — суваг нь тооцоонд хэрэглэсэн ЭНЭ маскаас ирнэ.
+   */
+  channel?: (i: number) => boolean;
 };
 
 /**
@@ -337,6 +345,8 @@ export function floodDataFromBuffer(
     arrivalS?: Float32Array;
     /** Хураах талбай (га) — `FlowAccumulation` */
     accHa?: Float32Array;
+    /** Голдрилын маск (1 = суваг) — `streamMask` ∪ шатаасан гол (2026-09-21) */
+    channelMask?: Uint8Array;
   },
 ): FloodData {
   const W = meta.width;
@@ -740,10 +750,12 @@ export function floodDataFromBuffer(
   const arrivalMin = arr && arr.length >= P
     ? (i: number) => (arr[i] < 0 ? null : arr[i] / 60)
     : undefined;
+  const chm = extra?.channelMask;
+  const channel = chm && chm.length >= P ? (i: number) => chm[i] === 1 : undefined;
 
   return {
     meta, depth, u, v, speed, series, indexAt, frame, minuteAt,
-    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa,
+    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa, channel,
   };
 }
 

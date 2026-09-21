@@ -550,4 +550,57 @@ console.log('\naclParity.check: ok');
 }
 console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?? []` хориотой');
 
+/* ══════════ REMOTE-ГҮЙ СЕШНД БИЧИХ ЗАМ ч ХААЛТТАЙ (2026-09-21, аудитын засвар) ══════════ */
+/**
+ * ⚠️ Fail-closed засвар нь УНШИГЧ API-г хоосон болгосон ч БИЧИГЧ зам
+ *    (`toggleCap` · `syncCaps`) `capsStored` = localStorage-оос эхэлдэг. Шинэ
+ *    browser-т тэр нь `[]` тул remote уншигдаагүй атлаа бичилт бүтвэл
+ *    `[] ∪ {cap}` ArcGIS дээрх бүтэн жагсаалтыг дарна. Мөн UserAdmin нь уншихдаа
+ *    тугтай, бичихдээ туггүй функц холиход хуваарилалтын хүрээ ALL болж тэлдэг.
+ *    Дөрвөн газар ижил хаалт байх ЁСТОЙ — нэг нь арилвал бусад нь утгагүй.
+ */
+{
+  const caps = readCode('src/lib/caps.ts');
+  assert.match(caps, /export function toggleCap[\s\S]{0,300}if \(!remoteSynced\) return Promise\.resolve\(false\);/,
+    'caps.toggleCap: remote-гүй бол татгалзах ёстой — [] ∪ {cap} remote-ийг дарна');
+  const core = readCode('src/lib/scopedAcl.ts');
+  assert.match(core, /async function syncCaps[\s\S]{0,300}if \(!c\.capsRemoteReady\(\)\) return false;/,
+    'scopedAcl.syncCaps: remote-гүй бол татгалзах ёстой (caps.toggleCap-тай тэгш)');
+  const g = readCode('src/lib/guitsetgelAcl.ts');
+  assert.match(g, /export function regrantFlowAccess[\s\S]{0,200}if \(!remoteSynced\) return Promise\.resolve\(false\);/,
+    'guitsetgelAcl.regrantFlowAccess: remote-гүй бол чимээгүй true биш, false буцаах ёстой');
+  assert.match(g, /export function removeAssign\([\s\S]{0,200}if \(!u\) return \{ sync: Promise\.resolve\(false\) \};/,
+    'guitsetgelAcl.removeAssign: хоосон нэрийн хамгаалалт алга (scopedAcl-тэй тэгш)');
+
+  const ua = readCode('src/components/UserAdmin.tsx');
+  assert.ok(ua.includes('const capsLocked = !remoteReady() || !capsRemoteReady();'),
+    'UserAdmin: capsLocked туг алга — remote-гүй панел уншихдаа [] , бичихдээ кэш холино');
+  for (const fn of ['const flipScoped = (', 'const flipCap = (', 'const add = () =>']) {
+    const i = ua.indexOf(fn);
+    assert.ok(i > 0, `UserAdmin: ${fn} олдсонгүй`);
+    assert.ok(ua.slice(i, i + 1200).includes('if (capsLocked) { setAddErr(LOCK_MSG); return; }'),
+      `UserAdmin.${fn.trim()}: remote-гүй хаалт алга`);
+  }
+  assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
+    'UserAdmin: remote-гүй бол унтраалга кэшнээс (`capsStored`) харагдах ёстой');
+  assert.ok(ua.includes('capsLocked={capsLocked}'),
+    'UserAdmin → UserRow: capsLocked дамжихгүй байна — унтраалга disabled болохгүй');
+  assert.ok(/if \(r && !\(await regrantFlowAccess\(uname\)\)\) bad = true;/.test(ua),
+    'UserAdmin.saveAll: regrantFlowAccess-ийг stageOfUser-оор урьдчилж шүүж байна (remote-гүй бол алгасна)');
+  const ur = readCode('src/components/UserRow.tsx');
+  assert.ok(ur.includes('disabled={!!d.isNew || !!capsLocked}'),
+    'UserRow: нэмэлт эрхийн унтраалга capsLocked үед disabled биш');
+
+  /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
+  const ag = readCode('src/components/AuthGate.tsx');
+  assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000"),
+    'AuthGate: signed-in + remote-гүй үед 5 мин хүлээж байна — 15 сек байх ёстой');
+
+  /* query.isOrgUrl: org сегмент зөвхөн *.arcgis.com хостод */
+  const q = readCode('src/lib/query.ts');
+  assert.ok(q.includes('ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`)'),
+    'query.isOrgUrl: org сегментийн шалгуур хост шалгалтгүй — гадны хост руу токен явна');
+}
+console.log('✅ remote-гүй сешн — toggleCap · syncCaps · regrant · UserAdmin capsLocked · AuthGate 15с · isOrgUrl хост');
+
 console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps · r.ok×3 · cap orphan · ноорог үлдэх');

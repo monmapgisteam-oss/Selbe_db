@@ -50,6 +50,18 @@ try {
 } catch { /* файл алга */ }
 function fs2() { return readFileSync(new URL('../.env.development.local', import.meta.url), 'utf8'); }
 const tokFor = (url) => (liveTok2 && liveTok2Svc.some((n) => url.includes(`/services/${n}/`)) ? liveTok2 : liveTok);
+/* ⚠️ 2026-09-21: ТОКЕН БАЙСАН Ч нэг удаа тандана — API key-ийн хугацаа дуусвал (498 «Invalid
+   token») бүх амьд шалгуур «алдаа» гэж унадаг байв; одоо хүчингүй токеныг хаяж ⏭ алгасна
+   (сүлжээгүй/499-тэй ижил). Хүчинтэй бол урьдын адил залгана. */
+if (liveTok && HJ) {
+  try {
+    const j = await (await fetch(`${HJ}arcgis/rest/services/Bagts_1_9f/FeatureServer?f=json&token=${encodeURIComponent(liveTok)}`, { signal: AbortSignal.timeout(4000) })).json();
+    if (j?.error?.code === 498 || j?.error?.code === 499) {
+      console.warn(`⏭ ARCGIS_ADMIN_TOKEN хүчингүй (${j.error.code}) — амьд шалгуурууд алгасна; түлхүүрээ шинэчилнэ үү`);
+      liveTok = ''; process.env.SELBE_LIVE_SKIP = '1';
+    }
+  } catch { /* сүлжээгүй — доорх ердийн зам */ }
+}
 if (liveTok) {
   const orig = globalThis.fetch;
   globalThis.fetch = async (input, init) => {

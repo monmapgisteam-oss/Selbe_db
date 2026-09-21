@@ -999,10 +999,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const hazardRef = useRef(hazard);
   hazardRef.current = hazard;
 
-  /** Мужийн утга — үерт гүн (м), агаарт агууламж (µg/м³) */
+  /**
+   * Мужийн утга — үерт гүн (м), агаарт агууламж (µg/м³).
+   * ⚠️ Үерт шошго нь «Мужийн дээд гүн», «Усны гүн» БИШ (2026-09-21): мужийн
+   * утга нь мужийн ХАМГИЙН ГҮН цэгийнх тул хуурай цэгт дарахад ч «Усны гүн
+   * 2.3 м» гэж гардаг байв. Тухайн цэгийн гүн тусдаа мөрөөр (§band).
+   */
   const bandRow = useCallback((b: Band): { k: string; v: string } => (
     (resultRef.current?.hazard ?? hazardRef.current) === 'flood'
-      ? { k: tr('Усны гүн'), v: tr('{0} м', num(b.value, 2)) }
+      ? { k: tr('Мужийн дээд гүн'), v: tr('{0} м', num(b.value, 2)) }
       : { k: tr('PM2.5 агууламж'), v: tr('{0} µg/м³', num(b.value, 0)) }
   ), []);
 
@@ -1120,11 +1125,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     }
 
     if (p.kind === 'band') {
+      /**
+       * ⚠️ «Энэ цэгт» — дарсан нүдний ӨӨРИЙН дээд гүн (2026-09-21). Муж руу
+       * даралт ирдэг нь нүдний гүн `wetM`-ээс бага үед л (`Overlay` §босго)
+       * тул ихэвчлэн 0–4 см; байхгүй бол мөр гарахгүй (`null` ≠ 0).
+       */
+      const fdB = floodRef.current;
+      const isFloodB = (resultRef.current?.hazard ?? hazardRef.current) === 'flood';
+      const own = isFloodB && fdB?.maxDepth && p.idx != null ? fdB.maxDepth(p.idx) : null;
       setHazInfo({
         title: p.band.label,
         sub: tr('Аюулын муж'),
         rows: [
           bandRow(p.band),
+          ...(own != null
+            ? [{ k: tr('Энэ цэгт (дээд гүн)'), v: tr('{0} м', num(own, 2)) }]
+            : []),
           { k: tr('3D өндөр'), v: tr('{0} м', num(p.band.height, 1)) },
         ],
       });
@@ -1412,8 +1428,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                               <Trend
                                 unit={tr('м/с')}
                                 height={72}
+                                /* ⚠️ `getHours()` нь ХӨТЧИЙН бүсээр — UB-аас өөр бүсэд
+                                   24 цагийн шошго шилжинэ; `hhmmUB` (§flowHour-той
+                                   ижил) (2026-09-21). */
                                 points={wind!.hours.map((h) => ({
-                                  label: `${String(new Date(h.t).getHours()).padStart(2, '0')}:00`,
+                                  label: hhmmUB(h.t),
                                   value: h.speed,
                                 }))}
                               />

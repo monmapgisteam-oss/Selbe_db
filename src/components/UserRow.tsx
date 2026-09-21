@@ -38,6 +38,9 @@ export type UserRowProps = {
   capViews: ViewKey[];
   /** `caps` дэх эрхүүд (runtime) */
   caps: CapKey[];
+  /** ⚠️ Remote эрхийн хүснэгт уншигдаагүй — унтраалга хаалттай (2026-09-21) */
+  capsLocked?: boolean;
+  capsLockMsg?: string;
   selected: boolean;
   capErr: boolean;
   dirtyPerm: boolean;
@@ -62,7 +65,7 @@ export type UserRowProps = {
 
 export function UserRow(props: UserRowProps) {
   const {
-    u, rowKey: key, d, dirty, st, expanded, on, capViews, caps, selected,
+    u, rowKey: key, d, dirty, st, expanded, on, capViews, caps, capsLocked, capsLockMsg, selected,
     capErr, dirtyPerm, myName, allKeys, rolePresets, hasView, capLabel, capHint,
     onPick, onExpand, onRole, onFlipView, onAllViews, onFlipDocs, onFlipCap,
     onFlipRemove, onClear, onGoFlow,
@@ -253,8 +256,12 @@ export function UserRow(props: UserRowProps) {
                         role="switch"
                         aria-checked={caps.includes(c.key)}
                         aria-label={capLabel(c.key)}
-                        disabled={!!d.isNew}
-                        title={d.isNew ? tr('Эхлээд хадгална уу — нэмэлт эрх хадгалагдсан аккаунтад олгогдоно') : undefined}
+                        /* ⚠️ `capsLocked` — remote уншигдаагүй бол `[]∪{cap}` бичилт
+                           remote-ийг дарах тул хаалттай (2026-09-21, UserAdmin-ы тайлбар) */
+                        disabled={!!d.isNew || !!capsLocked}
+                        title={d.isNew
+                          ? tr('Эхлээд хадгална уу — нэмэлт эрх хадгалагдсан аккаунтад олгогдоно')
+                          : capsLocked ? capsLockMsg : undefined}
                         className={`${s.sw} ${caps.includes(c.key) ? s.swOn : ''}`}
                         onClick={() => onFlipCap(c.key)}
                       >

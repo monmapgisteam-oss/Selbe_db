@@ -195,7 +195,13 @@ export function PkgProg({ dim, setDim }: {
    */
   const [ovPick, setOvPick] = useState<{ key: string; oids: number[] } | null>(null);
   /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
-  useEffect(() => { setOvPick(null); }, [active]);
+  useEffect(() => { setOvPick(null); setCardSel(null); }, [active]);
+  /**
+   * ⚠️ 2026-09-21: багц СОНГООГҮЙ үеийн «Багц N — блокууд» картуудын
+   * сонголт — НЭГ л карт, нэг л мөр (`BlocksCard.sel`-ийн тайлбар).
+   * `oid` нь блокийн OID эсвэл давхцлын зурвасын түлхүүр (`'overlap'`).
+   */
+  const [cardSel, setCardSel] = useState<{ key: string; oid: string } | null>(null);
 
   /** Сонгогдсон багц — түүний давхаргууд зурагт нэмэгдэнэ */
   const ovPack = useMemo(
@@ -486,8 +492,15 @@ export function PkgProg({ dim, setDim }: {
         }
       }
       /* Багц сонгосон → тэр багц; чартаас багц сонгосон → түүнийх;
-         эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд */
-      w[BLOCK_LAYER] = active?.where ?? ovPack?.where ?? alertedWhere;
+         эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд.
+         ⚠️ 2026-09-21: `active?.where ?? …` гинж нь дэд бүтцийн багцын
+         `where: null`-ыг («давхарга бүхэлдээ») `alertedWhere` руу унагаадаг
+         байв — доорх zoom-ийн эффектийн 2026-08-21-ний засвартай ижил алдаа.
+         Багц сонгосон бол ТҮҮНИЙ where (null = шүүлтгүй); `alertedWhere` нь
+         зөвхөн багц сонгоогүй үед. `ovPack` нь `??`-ээр хэвээр: чартаас
+         сонгосон дэд бүтцийн багцын давхаргад блок ордоггүй тул блокийн
+         давхарга анхдагч (хоцрогдолтой) шүүлтээ хадгална. */
+      w[BLOCK_LAYER] = active ? active.where : (ovPack?.where ?? alertedWhere);
       /* ⚠️ Чартаас сонгосон багцын БУСАД давхарга (дэд бүтцийн шугам) —
          давхаргын БҮХ объект биш, зөвхөн тэр багцынхыг үлдээнэ. */
       if (ovPack) {
@@ -802,6 +815,10 @@ export function PkgProg({ dim, setDim }: {
                   return r && r !== 'error' ? r.oids : undefined;
                 })()}
                 onOverlapPick={(oids) => setOvPick(oids ? { key: p.key, oids } : null)}
+                /* ⚠️ 2026-09-21: 7 картын сонголт НЭГ төлөвт (`cardSel`) — зөвхөн
+                   сүүлд сонгосон карт «сонгогдсон» харагдана (`BlocksCard.sel`). */
+                sel={cardSel?.key === p.key ? cardSel.oid : null}
+                onSel={(v) => setCardSel(v ? { key: p.key, oid: v } : null)}
               />
             ))}
           </>
@@ -906,8 +923,12 @@ function TsKpi(
    * Гүйцэтгэлийн зөрүү нь БИЕТ vs ТӨЛӨВЛӨГӨӨ тул гүйцэтгэлийн талд; олгосон
    * санхүүжилт ба түүний хувь нь санхүүгийн талд.
    */
-  /** Хэмжигдээгүй утгын дэлгэц: алдаа = «—», эс бөгөөс ачаалж байна = «…» */
-  const none = failed ? '—' : '…';
+  /** Хэмжигдээгүй утгын дэлгэц: ачаалж байхад л «…», бусад үед (алдаа, эсвэл
+      бэлэн ч утга null — мэдээлэлгүй) «—».
+      ⚠️ 2026-09-21: урьд нь `failed ? '—' : '…'` тул хоёр хүсэлт амжилттай
+      ирсэн ч `actual`/`planned` null бол «…» мөнхөд «ачаалж байна» мэт харагдав. */
+  const loading = finQ.state === 'loading' || planQ.state === 'loading';
+  const none = loading && !failed ? '…' : '—';
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
       { v: t?.actual == null ? none : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },

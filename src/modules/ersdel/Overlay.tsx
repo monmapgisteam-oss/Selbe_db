@@ -301,7 +301,12 @@ export type Pick =
   /** Үерийн растерын НЭГ НҮД — гүн, хурд, чиглэл, цуваа нь `uyr.ts`-ээс */
   | { kind: 'flood'; idx: number }
   | { kind: 'damage'; layerId: string; oid: number | null; band: Band | null }
-  | { kind: 'band'; band: Band }
+  /**
+   * ⚠️ `idx` — дарсан цэгийн торны нүд (торны дотор бол). Мужийн утга нь
+   * мужийн ДЭЭД гүн тул «энэ цэгт» бодит дээд гүнийг (`maxDepth`) тусад нь
+   * үзүүлэхэд хэрэгтэй (2026-09-21).
+   */
+  | { kind: 'band'; band: Band; idx?: number }
   | null;
 
 export function Overlay({
@@ -1222,17 +1227,27 @@ export function Overlay({
          * давхаргын объект, `MapCanvas`-ийн даралт) ҮРГЭЛЖ дардаг байв —
          * загварын горимд барилга дараад атрибутыг нь харах боломжгүй.
          * Одоо БҮХ хугацааны дээд гүн (`maxDepth`, байхгүй бол одоогийн
-         * зүсмэл) > 0 үед л үерийн нүд; хуурай цэг → муж эсвэл `null`, тэгэхээр
-         * каталогийн объектын мэдээлэл гарна.
+         * зүсмэл) ≥ `wetM` үед л үерийн нүд; хуурай цэг → муж эсвэл `null`,
+         * тэгэхээр каталогийн объектын мэдээлэл гарна.
+         *
+         * ⚠️ БОСГО = `meta.wetM` (0.05 м), `> 0` БИШ (2026-09-21). Загварчлал
+         * 2 см-ээс (`drawM`) зурдаг тул энгэрийн 2–4 см хуудас урсгал олон
+         * нүдэнд байдаг — `> 0` босгоор тэдгээр «хуурай» барилга бүр үерийн
+         * нүд болж, `featInfo` дарагдсан хэвээр байв. Гурван босго ЗОРИУД өөр:
+         *   · 0.02 м `drawM`   — ЗУРАХ (энгэрийн урсац харагдана)
+         *   · 0.05 м `wetM`    — «усанд автсан» ТООЦОО, попапын «ус ирээгүй»
+         *                        мессеж, ЭНД даралтын үерийн нүд
+         *   · 0.15 м `floodFootprint` — хохирлын footprint (хөл нэвтэрч,
+         *                        машин хөдөлгөөнгүй болох гүн)
          */
         if (fIdx != null && fd) {
           const dMax = fd.maxDepth ? fd.maxDepth(fIdx) : fd.depth(floodSliceRef.current, fIdx);
-          if (dMax > 0) {
+          if (dMax >= fd.meta.wetM) {
             pickRef.current({ kind: 'flood', idx: fIdx });
             return;
           }
         }
-        pickRef.current(band ? { kind: 'band', band } : null);
+        pickRef.current(band ? { kind: 'band', band, idx: fIdx ?? undefined } : null);
       }).catch(() => {});
     });
     return () => h.remove();

@@ -12,7 +12,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
-  queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg,
+  queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg, sqlStr,
   type Aoi, type Row,
 } from '@/lib/query';
 import {
@@ -534,10 +534,22 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * полигоноор шүүгдсэн атал зураг бүх талбайг тодоор харуулна.
    */
   const aoiGeomRef = useRef<__esri.Geometry | null>(null);
+  /** «Цуцлах»-ын дараах `onSketch(null)`-д өмнөх AOI-г хадгалах туг (2026-09-21) */
+  const keepAoiRef = useRef(false);
 
   /** Sketch-ээс ирсэн геометр — бүдгэрүүлэлт ба REST шүүлтийг ЗЭРЭГ тохируулна */
   const onSketch = useCallback((geom: __esri.Geometry | null) => {
     setDrawing(false);
+    /* ⚠️ 2026-09-21: «Дахин тооцоолох → Цуцлах» — MapCanvas `clearToken`-д
+       `onSketch(null)` дууддаг тул урьд нь ЦУЦЛАХАД л тооцоолсон AOI/үр дүн
+       алга болдог байв (:564 «зөвхөн полигон зураагүй үед» гэсэн амлалт
+       зөрчигдөж). Одоо зөвхөн зурж буй ноорог хаягдана: өмнөх AOI ХЭВЭЭР,
+       бүдгэрүүлэлтийг (sketch давхарга цэвэрлэгдсэн тул) дахин тавина. */
+    if (!geom && keepAoiRef.current) {
+      keepAoiRef.current = false;
+      const prev = aoiGeomRef.current;
+      if (prev) { setHighlight(null, FILTER_IDS, prev); return; }
+    }
     setFlt(null); // полигон шүүлт тодруулгыг эзэмшинэ — чарт-шүүлтийг цэвэрлэнэ
     aoiGeomRef.current = geom;
     if (!geom) {
@@ -579,7 +591,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const startDraw = useCallback(() => {
     if (drawing) {
       setDrawing(false);
-      /* Зурж эхэлсэн хагас полигоныг зургаас арилгана */
+      /* Зурж эхэлсэн хагас полигоныг зургаас арилгана.
+         ⚠️ 2026-09-21: AOI байгаа бол түүнийг ХАДГАЛНА (`onSketch`-ийн туг) —
+         «Цуцлах» нь ноорогийг л хаяна, тооцоог «Цэвэрлэх» хаяна. */
+      keepAoiRef.current = aoiGeomRef.current != null;
       setClearToken((t) => t + 1);
       return;
     }
@@ -649,6 +664,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   );
 
   const clear = useCallback(() => {
+    keepAoiRef.current = false; // ⚠️ «Цэвэрлэх» нь AOI-г ЖИНХЭНЭ хаяна
     setClearToken((t) => t + 1);
     setDrawing(false);
     setAoi(null);
@@ -726,10 +742,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         //    түлхүүр нь арын зай арилгасан хувилбар тул `Tuluv = '<trim>'` нь зай-мэдрэг
         //    сан дээр таарахгүй байж болзошгүй. Тодорхойгүй = NULL/хоосон.
         const eq = [...s.raws].filter((x) => x.trim() !== '')
-          .map((x) => `${L.fields.status} = '${sq(x)}'`);
+          /* ⚠️ 2026-09-21: `sqlStr` (`N'…'` угтвар) — угтваргүй кирилл харьцуулалт
+             зарим үйлчилгээнд 0 мөр буцаадаг (дээрх :404 ба `query.ts` `sqlStr`). */
+          .map((x) => `${L.fields.status} = ${sqlStr(x)}`);
         const where = value === 'Тодорхойгүй'
           ? `(${L.fields.status} IS NULL OR ${L.fields.status} = '')`
-          : eq.length ? `(${eq.join(' OR ')})` : `${L.fields.status} = '${sq(value)}'`;
+          : eq.length ? `(${eq.join(' OR ')})` : `${L.fields.status} = ${sqlStr(value)}`;
         // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
         return {
           key: value,
@@ -761,7 +779,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       .sort((x, y) => y[1].n - x[1].n)
       .map(([label, v]) => {
         const eq = [...v.raws].filter((x) => x.trim() !== '')
-          .map((x) => `${L.fields.progress} = '${sq(x)}'`);
+          /* ⚠️ 2026-09-21: `N'…'` угтвар — төлөвийн шүүлттэй ижил шалтгаан. */
+          .map((x) => `${L.fields.progress} = ${sqlStr(x)}`);
         if (label === 'Тодорхойгүй') eq.push(`${L.fields.progress} IS NULL`, `${L.fields.progress} = ''`);
         return {
           key: label,

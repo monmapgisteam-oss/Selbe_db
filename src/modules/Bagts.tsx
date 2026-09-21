@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -636,6 +636,8 @@ export function BlocksCard({
   overlapN,
   overlapOids,
   onOverlapPick,
+  sel,
+  onSel,
 }: {
   p: Pack;
   title?: string;
@@ -674,11 +676,28 @@ export function BlocksCard({
    *    баталсан: `OBJECTID IN (1821,814,1361,…)` бүтэн жагсаалт явж байв).
    */
   onOverlapPick?: (oids: number[] | null) => void;
+  /**
+   * ⚠️ 2026-09-21: СОНГОЛТЫГ ЭЦЭГ ХӨТӨЛЖ БОЛНО (`sel`/`onSel`). Багц сонгоогүй
+   * үед 7 карт зэрэг байдаг бөгөөд карт бүр өөрийн `selOid`-той байсан тул
+   * нэг картын давхцал/блокийг сонгосны дараа нөгөө картынхыг сонгоход зураг
+   * дээрх тодруулга сүүлийнх рүү шилжсэн ч ӨМНӨХ карт «сонгогдсон» хэвээр
+   * харагддаг байв. Эцэг нэг л төлөв барина: `sel` нь энэ картынх бол утга,
+   * бусад картад `null`. Өгөөгүй бол (ганц карт — сонгосон багц) дотоод төлөв.
+   */
+  sel?: string | null;
+  onSel?: (v: string | null) => void;
 }) {
   const withData = p.blocks.filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
-  const [selOid, setSelOid] = useState<string | null>(null);
+  const [selInner, setSelInner] = useState<string | null>(null);
+  const selOid = sel !== undefined ? sel : selInner;
+  const onSelRef = useRef(onSel);
+  onSelRef.current = onSel;
+  const setSelOid = useCallback((v: string | null) => {
+    setSelInner(v);
+    onSelRef.current?.(v);
+  }, []);
   /**
    * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ (ViewPanel §LayerDashboard-ын загвар).
    * Блок тодруулсан хэвээр багц солиход/карт unmount болоход хуучин OID-той

@@ -69,6 +69,20 @@ const sameSpan = (a: Span | null | undefined, b: Span | null | undefined): boole
   (!a && !b) || (!!a && !!b && a.start === b.start && a.end === b.end)
 );
 
+/**
+ * Хоёр сарын задаргаа ижил үү — хоёулаа хоосон (эсвэл байхгүй) ч ИЖИЛ (2026-09-21).
+ * ⚠️ Ноорогийг серверийн задаргаатай тулгахад: ижил бол ноорогт үлдээх зүйлгүй —
+ *    бичих зүйл ч, «хадгалаагүй» тэмдэг ч байх ёсгүй.
+ */
+const sameMonths = (
+  a: ReadonlyMap<string, number> | null | undefined,
+  b: ReadonlyMap<string, number> | null | undefined,
+): boolean => {
+  const x = a ?? new Map<string, number>();
+  const y = b ?? new Map<string, number>();
+  return x.size === y.size && [...x].every(([k, v]) => y.get(k) === v);
+};
+
 /** «2026-05-04» → UTC шөнө дунд. Буруу бол `null`. */
 const dayToMs = (s: string): number | null => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
@@ -931,6 +945,21 @@ export function Huvaari({
         if (same) m.delete(plan[i].oid);
         else m.set(plan[i].oid, spans);
       }
+      /* ⚠️ БҮЛГИЙН МӨР ХҮҮХЭДГҮЙ ҮЛДЭХГҮЙ (2026-09-21). Бүлэг ноорогт ЗӨВХӨН
+         `rollUpGroups`-оор ордог (гараар чирэгдэхгүй, popup нь бүлэгт огноо
+         тавьдаггүй). Хүүхдээ буцаахад серверийн бүлгийн ӨӨРИЙН огноо
+         MIN/MAX-аас зөрдөг бол `rollUpGroups` `moved=false` болж дээрх
+         `same` салбарт хүрэхгүй — бүлэг ноорогт «хадгалаагүй 1» гэж үлддэг
+         байв. Навч хүүхэд нь нэг ч ноорогт үлдээгүй бүлгийг хасна. */
+      for (const [i] of ch) {
+        const g = plan[i];
+        if (!g.group || !m.has(g.oid)) continue;
+        let kid = false;
+        for (let k = i + 1; k < plan.length && plan[k].depth > g.depth; k += 1) {
+          if (!plan[k].group && m.has(plan[k].oid)) { kid = true; break; }
+        }
+        if (!kid) m.delete(g.oid);
+      }
       return m;
     });
     /**
@@ -958,15 +987,33 @@ export function Huvaari({
           const blok = sc?.bld[b];
           if (!blok) return;
           const key = obKey(r.des!, blok);
+          const srv = obPlan.get(r.des!)?.get(blok);
           /* Ноорог > хадгалагдсан — хамгийн шинийг суурь болгоно */
-          const cur = next.get(key) ?? obPlan.get(r.des!)?.get(blok) ?? new Map();
-          next.set(key, sp ? keepMonths(sp, cur) : new Map());
+          const cur = next.get(key) ?? srv ?? new Map<string, number>();
+          /* ⚠️ СЕРВЕРИЙН МУЖ РУУ БУЦСАН БОЛ ЧИРЭЛТИЙН ӨМНӨХ ЗАДАРГААГ СЭРГЭЭНЭ
+             (2026-09-21). Урьд нь чирээд буцаахад огнооны ноорог устдаг ч
+             (дээрх `same` салбар) `keepMonths`-оор ТАЙРАГДСАН задаргаа
+             obDraft-д үлдэж «хадгалаагүй 1» + тэнцээгүй нийлбэр гардаг байв.
+             Чирж буй мөр·блок бол `Drag.origMonths` (чирэлтээс өмнөх бүтэн
+             хуулбар) — гинжээр буцсан бусад мөрд `keepMonths` хэвээр. */
+          const back = sameSpan(sp, base[i]?.spans[b]);
+          const orig = drag && drag.oid === r.oid && b === blk ? drag.origMonths : null;
+          const val = sp
+            ? (back && orig ? new Map(orig) : keepMonths(sp, cur))
+            : new Map<string, number>();
+          /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ (эсвэл хоёулаа хоосон) задаргааг НООРОГТ
+             ҮЛДЭЭХГҮЙ (2026-09-21): задаргаагүй ажлыг чирэхэд
+             `keepMonths(sp, ∅) = ∅` obDraft-д орж, «Батлуулах» нь «задаргаа
+             тэнцэхгүй» гэж илгээх замыг ТҮГЖДЭГ байв. Бичих зүйлгүй бол
+             ноорог ч биш. */
+          if (sameMonths(val, srv)) next.delete(key);
+          else next.set(key, val);
           touched = true;
         });
       }
       return touched ? next : prev;
     });
-  }, [plan, base, n, sc, obPlan]);
+  }, [plan, base, n, sc, obPlan, drag, blk]);
 
   /**
    * Popup-ын «Тавих» — огноо ба/эсвэл уялдааг НЭГ алхамд.
@@ -1032,9 +1079,19 @@ export function Huvaari({
     const des = plan[at].des;
     const blok = sc?.bld[blkAt];
     if (months && des != null && blok) {
-      setObDraft((m) => new Map(m).set(obKey(des, blok), months));
+      const key = obKey(des, blok);
+      /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ задаргааг ноорогт ҮЛДЭЭХГҮЙ (2026-09-21): чирэлтийг
+         цуцлахад (`onClose` → `u.months`) задаргаагүй ажилд ХООСОН Map буцаж
+         ирдэг байсан нь obDraft-д үлдэж, «Батлуулах»-ыг «1 ажлын задаргаа
+         тэнцэхгүй» гэж түгждэг байв. Ижил бол хасна — бичих зүйлгүй. */
+      setObDraft((m) => {
+        const next = new Map(m);
+        if (sameMonths(months, obPlan.get(des)?.get(blok))) next.delete(key);
+        else next.set(key, months);
+        return next;
+      });
     }
-  }, [plan, byCode, n, busy, locked, ham, rows, applyChanges, sc, blk]);
+  }, [plan, byCode, n, busy, locked, ham, rows, applyChanges, sc, blk, obPlan]);
 
   /**
    * ХАМААРЛЫГ НҮДЭНД ШУУД БИЧИХ (2026-09-15, хэрэглэгчийн хүсэлт:
@@ -1621,13 +1678,16 @@ export function Huvaari({
        «эх хуудсанд бичигдсэнгүй» гэж мөнхөд гацдаг байв. */
     {
       let bad = 0;
+      /* ⚠️ Ажлын НЭРИЙГ нэрлэнэ (2026-09-21) — «1 ажлын…» гэсэн тоо л хараад
+         1,400 мөрөөс алийг нь нээхээ мэдэхгүй байв. */
+      const names = new Set<string>();
       for (const r of plan) {
         for (let b = 0; b < (sc?.bld.length ?? 0); b += 1) {
           const blok = sc?.bld[b];
           if (r.des == null || !blok) continue;
           const months = obDraft.get(obKey(r.des, blok));
           if (!months || r.vol == null || !(r.vol > 0)) continue;
-          if (months.size && !balanced(months, r.vol)) bad += 1;
+          if (months.size && !balanced(months, r.vol)) { bad += 1; names.add(`${r.no} ${r.work}`.trim()); }
           /* ⚠️ ХООСОН ЗАДАРГАА + ХУВААРЬТАЙ блок = 0 ≠ обьём (2026-09-21).
              Гинжээр (уялдаа, чирэлт) ажил БҮТЭН шинэ саруудад шилжвэл
              `keepMonths` бүх сарыг хаяж Map хоосон болдог; урьд нь `months.size
@@ -1635,11 +1695,24 @@ export function Huvaari({
              сарын мөрийг устгадаг байв — задаргаа ул мөргүй алга. Хоосон Map нь
              зөвхөн хуваарь ч ХООСОН (`clear`) үед л хүчинтэй «арилгах» санаа.
              Цонх автоматаар нээхгүй — гинж олон мөр хөндөж болно; алдаанд
-             тоог нэрлэнэ. */
-          else if (!months.size && r.spans[b]) bad += 1;
+             тоог нэрлэнэ.
+             ⚠️ ЗӨВХӨН СЕРВЕРТ ЗАДАРГАА БАЙСАН үед (2026-09-21): «buildEdits бүх
+             сарыг устгана» гэсэн үндэслэл серверт задаргаа БАЙХГҮЙ ажилд
+             хамаарахгүй — устгах зүйл алга. Задаргаагүй обьёмтой ажлыг чирээд
+             цонхыг X-ээр хаахад хоосон Map үлдэж, илгээх зам мөнхөд түгжигдэж
+             байв (одоо `applyChanges`/`applyModal` ийм ноорогийг хасдаг ч
+             хуучин ноорог/өөр замаар орсныг энд давхар хамгаална). */
+          else if (!months.size && r.spans[b] && (obPlan.get(r.des)?.get(blok)?.size ?? 0) > 0) {
+            bad += 1; names.add(`${r.no} ${r.work}`.trim());
+          }
         }
       }
-      if (bad > 0) { setErr(tr('{0} ажлын сарын задаргаа обьёмтойгоо тэнцэхгүй байна (хоосон задаргаа = 0) — тухайн ажлын цонхыг нээж сараар тэнцүүлнэ үү.', bad)); return; }
+      if (bad > 0) {
+        const list = [...names];
+        const shown = list.slice(0, 3).join(', ') + (list.length > 3 ? ` (+${num(list.length - 3)})` : '');
+        setErr(tr('{0} ажлын сарын задаргаа обьёмтойгоо тэнцэхгүй байна (хоосон задаргаа = 0): {1}. Тухайн ажлын цонхыг нээж сараар тэнцүүлнэ үү.', num(bad), shown));
+        return;
+      }
     }
     setBusy(true); setErr(''); setNote('');
     try {
@@ -1664,7 +1737,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [dirtyN, busy, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft]);
+  }, [dirtyN, busy, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -1698,29 +1771,54 @@ export function Huvaari({
    * ⚠️ `curRows` параметрээр — дуудагч (`decide`) серверээс дөнгөж татсан
    *    мөрийг өгнө; state-ийн `rows` энэ тикт хуучин хэвээр.
    */
+  /**
+   * ⚠️ `curPlan` параметрээр (2026-09-21) — сарын задаргааны тулгалт ч мөн
+   *    СЕРВЕРЭЭС дөнгөж татсан `loadPkgPlan`-тай; state-ийн `obPlan` энэ тикт
+   *    хуучин. Дуудагч өгөөгүй бол state-ийнх (татах зам).
+   */
   const applyPayloadToDraft = useCallback((
     p: PlanPayload,
     curRows: SheetRow[],
     strict = true,
+    curPlan: PkgPlan = obPlan,
   ): { ok: true; conflicts: number } | { ok: false; why: 'kind' | 'conflict'; conflicts: number } => {
     if (p.kind !== kind) return { ok: false, why: 'kind', conflicts: 0 };
-    const cur = new Map(toPlanRows(curRows, n, kind).map((r) => [r.oid, r]));
+    const curPlanRows = toPlanRows(curRows, n, kind);
+    const cur = new Map(curPlanRows.map((r) => [r.oid, r]));
     const curSheet = new Map(curRows.map((r) => [r.oid, r]));
     let conflicts = 0;
     const d: Draft = new Map();
+    /** Навч мөрийн ноорог — индексээр; бүлгүүдийг үүнээс дахин нэгтгэнэ */
+    const ch0 = new Map<number, (Span | null)[]>();
     for (const [k, arr] of Object.entries(p.spans)) {
       const oid = Number(k);
       const bs = p.base?.spans[k];
       const now = cur.get(oid);
-      d.set(oid, arr.map((s, b) => {
-        const v = s ? { start: s.start, end: s.end } : null;
-        if (!bs || !now) return v;
+      /* ⚠️ БҮЛГИЙН МӨРИЙГ ТУЛГАХГҮЙ (2026-09-21). Бүлэг нь `rollUpGroups`-оор
+         хүүхдүүдийнхээ MIN/MAX болж ноорогт (улмаар илгээлтэд) ордог тул өөр
+         илгээлт нэг бүлгийн ӨӨР хүүхдийг баталсан бол бүлгийн серверийн утга
+         зөрж, «зэрэгцээ өөрчлөлт» гэж ШААРДЛАГАГҮЙ зогсдог байв. Бүлгийг доор
+         серверийн ОДООГИЙН хүүхдээс дахин нэгтгэнэ; «N нүд» тоонд оруулахгүй. */
+      if (now?.group) continue;
+      const v = arr.map((s, b) => {
+        const v0 = s ? { start: s.start, end: s.end } : null;
+        if (!bs || !now) return v0;
         const b0 = bs[b] ?? null;
         /* Зохиогч хөндөөгүй → серверийн одоогийнх */
-        if (sameSpan(v, b0)) return now.spans[b] ?? null;
+        if (sameSpan(v0, b0)) return now.spans[b] ?? null;
         if (!sameSpan(b0, now.spans[b] ?? null)) conflicts += 1;
-        return v;
-      }));
+        return v0;
+      });
+      d.set(oid, v);
+      if (now) ch0.set(now.i, v);
+    }
+    /* Бүлгүүд — серверийн одоогийн мөр дээр хүүхдийн ноорогоос дахин нэгтгэнэ.
+       Хүүхэд нь серверийнхээс хөдлөөгүй бүлэг ноорогт орохгүй (бичигдэхгүй). */
+    if (ch0.size) {
+      for (const [i, spans] of rollUpGroups(curPlanRows, n, ch0)) {
+        const g = curPlanRows[i];
+        if (g?.group) d.set(g.oid, spans);
+      }
     }
     const hm = new Map<number, string>();
     for (const [k, v] of Object.entries(p.deps)) {
@@ -1737,10 +1835,9 @@ export function Huvaari({
       const bo = p.base?.obyem;
       if (bo && k in bo) {
         const cut = k.indexOf('|');
-        const now = obPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1)) ?? new Map<string, number>();
+        const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
         const was = new Map(Object.entries(bo[k]));
-        const same = now.size === was.size && [...now].every(([m, v]) => was.get(m) === v);
-        if (!same) conflicts += 1;
+        if (!sameMonths(now, was)) conflicts += 1;
       }
     }
     if (strict && conflicts) return { ok: false, why: 'conflict', conflicts };
@@ -1751,6 +1848,28 @@ export function Huvaari({
   /** Зэрэгцээ өөрчлөлтийн алдааны текст — preview ба decide хоёуланд нэг */
   const conflictMsg = (n0: number) => tr('{0} нүд илгээснээс хойш өөр замаар өөрчлөгдсөн байна (зэрэгцээ өөрчлөлт). Батлах боломжгүй — буцааж, зохиогч шинэ хуваарин дээр дахин илгээнэ.', num(n0));
 
+  /**
+   * СЕРВЕРИЙН ОДООГИЙН мөр ба сарын задаргааг татаж state-д тавина (2026-09-21).
+   *
+   * ⚠️ Урьдчилан харах · батлах · татах ГУРВУУЛАА үүгээр: илгээлтийг state-ийн
+   *    ХУУЧИРСАН `rows`/`obPlan`-той биш, дөнгөж татсантай тулгана. Урьд нь
+   *    зөвхөн батлах (урьдчилан ХАРААГҮЙ үед) шинээр татдаг байсан тул
+   *    `preview` → `decide` замд тулгалт бүхэлдээ АЛГАСАГДАЖ, харснаас
+   *    батлах хүртэлх завсрын зэрэгцээ өөрчлөлт чимээгүй дарагддаг байв.
+   * ⚠️ Задаргаа татагдахгүй бол state-ийнхаар үргэлжилнэ (мөр нь заавал).
+   */
+  const refetchServer = useCallback(async (): Promise<{ rows: SheetRow[]; plan: PkgPlan }> => {
+    const freshRows = sc ? (await loadRows(pkg, sc)).rows : rows;
+    if (sc) setRows(freshRows);
+    try {
+      const fp = await loadPkgPlan(pkg.key);
+      setObPlan(fp.plan); setObOids(fp.oids); setObDups(fp.dups);
+      return { rows: freshRows, plan: fp.plan };
+    } catch {
+      return { rows: freshRows, plan: obPlan };
+    }
+  }, [sc, pkg, rows, obPlan]);
+
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
   const preview = useCallback(async () => {
     if (!pending || busy) return;
@@ -1758,8 +1877,10 @@ export function Huvaari({
     try {
       const p = await loadPayload(pending.oid);
       if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      /* ⚠️ СЕРВЕРЭЭС ШИНЭЭР (2026-09-21) — `decide`-тэй нэг зам. */
+      const srv = await refetchServer();
       /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ буулгахгүй — батлагч өөр табаар харж байна. */
-      const ap = applyPayloadToDraft(p, rows);
+      const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan);
       if (!ap.ok) {
         setErr(ap.why === 'conflict'
           ? conflictMsg(ap.conflicts)
@@ -1777,7 +1898,7 @@ export function Huvaari({
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, busy, applyPayloadToDraft, rows]);
+  }, [pending, busy, applyPayloadToDraft, refetchServer]);
 
   /**
    * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч өөрийн хүлээгдэж буй илгээлтийг буцааж авна
@@ -1797,16 +1918,26 @@ export function Huvaari({
     setBusy(true); setErr(''); setNote('');
     try {
       const oid = pending.oid;
+      /* ⚠️ ДАРААЛАЛ (2026-09-21): ЭХЛЭЭД агуулгыг уншиж, төрлийг тулгана, ДАРАА
+         нь татна. Урьд нь эхлээд татаад дараа нь уншдаг байсан тул агуулга
+         уншигдахгүй эсвэл төрөл зөрвөл илгээлт ТАТАГДЧИХСАН атлаа ноорог хоосон
+         үлдэж — зохиогчийн ажил серверээс ч, дэлгэцээс ч алга болдог байв.
+         Одоо уншигдахгүй/зөрвөл ТАТАХГҮЙ, илгээлт хүлээгдсэн хэвээр. */
+      const p = await loadPayload(oid).catch(() => null);
+      if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй — татсангүй, дахин оролдоно уу.')); return; }
+      if (p.kind !== kind) {
+        setErr(p.kind === 'geree'
+          ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд татна уу.')
+          : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд татна уу.'));
+        return;
+      }
       const r = await withdrawPlan({ oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
-      const p = await loadPayload(oid).catch(() => null);
-      let restored = false;
-      let conflicts = 0;
-      if (p) {
-        const ap = applyPayloadToDraft(p, rows, false);
-        restored = ap.ok;
-        conflicts = ap.conflicts;
-      }
+      /* Серверийн одоогийн мөртэй тулгаж буулгана — зөрчлийн тоо бодит байна */
+      const srv = await refetchServer();
+      const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan);
+      const restored = ap.ok;
+      const conflicts = ap.conflicts;
       setPreviewing(false);
       setNote(restored
         ? (conflicts
@@ -1819,7 +1950,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [pending, busy, isOwnSubmission, user, rows, applyPayloadToDraft, refreshFlow]);
+  }, [pending, busy, isOwnSubmission, user, kind, applyPayloadToDraft, refetchServer, refreshFlow]);
 
   /** Урьдчилан харахыг болих — ноорог зүгээр л хаягдана */
   const clearPreview = useCallback(() => {
@@ -1877,21 +2008,28 @@ export function Huvaari({
         /* ⚠️ Урьдчилан харж байгаа бол агуулга аль хэдийн ноорогт байна —
            дахин татвал сүлжээний дэмий дуудлага, мөн батлагчийн харсан
            зурагтай зөрөх (хооронд нь илгээлт солигдвол) эрсдэлтэй. */
-        if (!previewing) {
+        /* ⚠️ 2026-09-21-нд ЭРГҮҮЛСЭН — урьдчилан харсан ч ДАХИН ТАТАЖ ТУЛГАНА.
+           Дээрх айдас (илгээлт солигдох) нь `fresh.oid !== pending.oid`-оор
+           аль хэдийн баригдсан. Харин `preview` нь ТЭР ҮЕИЙН мөртэй тулгасан
+           тул харснаас батлах хүртэлх завсарт өөр замаар орсон өөрчлөлт
+           (зэрэгцээ өөрчлөлт, зохиогч хөндөөгүй блокийн шинэ утга) тулгалтыг
+           бүхэлд нь АЛГАСДАГ байв — `previewing` нь тулгалтыг тойрох хаалга
+           болж байсан. Одоо хоёр зам нэг: сервер → тулгах → зөрвөл зогсох. */
+        {
           const p = await loadPayload(pending.oid);
           if (!p) {
             setErr(tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй.'));
             return;
           }
           /* ⚠️ СЕРВЕРИЙН ОДООГИЙН мөрөөр (2026-09-21): зэрэгцээ өөрчлөлтийг
-             state-ийн хуучирсан `rows`-той биш, дөнгөж татсантай тулгана. */
-          const freshRows = sc ? (await loadRows(pkg, sc)).rows : rows;
-          if (sc) setRows(freshRows);
+             state-ийн хуучирсан `rows`-той биш, дөнгөж татсантай тулгана.
+             Сарын задаргаа ч мөн адил (`refetchServer`). */
+          const srv = await refetchServer();
           /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ ЭНД ЗОГСОНО (2026-09-11-ний аудитын S1).
              Ноорогт буулгахгүй тул `save` нь буруу талбарт бичих зам
              бүрмөсөн хаагдана; илгээлт `pending` хэвээр үлдэнэ.
              ⚠️ ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТ ч мөн ЭНД зогсоно (2026-09-21). */
-          const ap = applyPayloadToDraft(p, freshRows);
+          const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan);
           if (!ap.ok) {
             setErr(ap.why === 'conflict'
               ? conflictMsg(ap.conflicts)
@@ -1927,7 +2065,7 @@ export function Huvaari({
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, busy, previewing, pkg, sc, rows, user, canApprove, applyPayloadToDraft, refreshFlow]);
+  }, [pending, busy, pkg, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow]);
 
   /**
    * БАТЛАХЫГ ГҮЙЦЭЭХ — агуулга ноорогт буусны ДАРААХ зурагдалт.
@@ -2470,7 +2608,10 @@ export function Huvaari({
             title={flowReady === false
               ? (flowWhy || tr('Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.'))
               : tr('Өөрчлөлтийг батлуулахаар илгээнэ — батлагдтал эх хуваарь хөдлөхгүй')}
-            onClick={() => setFlowBox('send')}
+            /* ⚠️ Цонх нээхэд `err` ЦЭВЭРЛЭНЭ (2026-09-21): FlowBox нь `err`-ийг
+               зурдаг тул өмнөх (өөр үйлдлийн) алдаа цонхны дотор «энэ илгээлтийн
+               алдаа» мэт гарч байв. */
+            onClick={() => { setErr(''); setFlowBox('send'); }}
           >
             {tr('Батлуулах')}{dirtyN ? ` (${dirtyN})` : ''}
           </button>
@@ -2499,7 +2640,8 @@ export function Huvaari({
             title={isOwnSubmission
               ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
               : undefined}
-            onClick={() => setFlowBox('decide')}>
+            /* ⚠️ Нээхэд `err` цэвэрлэнэ (2026-09-21) — «Батлуулах»-тай ижил шалтгаан. */
+            onClick={() => { setErr(''); setFlowBox('decide'); }}>
             {tr('Шийдвэрлэх')} ({num(pending.rowCount)})
           </button>
         )}

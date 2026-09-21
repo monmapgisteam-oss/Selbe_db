@@ -1026,8 +1026,12 @@ function KpiStrip({
      * (2,039.8 тэрбум) — урьд нь хоёр тоо зөрж, аль нь үнэн болох нь
      * ойлгомжгүй байв.
      */
+    /* ⚠️ 2026-09-21: `inTotal` ∧ CONTRACTED — «Нийт төсөв» (`k.budget`, `inTotal`)-тэй
+       НЭГ хүрээ; `live.loadBudget.contract`, `reportData.contractAmount`,
+       `execReport.csum` бүгд ижил шүүлт. Урьд нь энд `inTotal`-гүй тул гэрээлсэн
+       дүн нь төсвийн хүрээнээс гадуурх мөрийг ч агуулж, тайлан/дашбоард зөрдөг байв. */
     const csum = contracts
-      ? sel.reduce((s, r) => (r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0)
+      ? sel.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0)
       : 0;
     return kpisOf(sel, csum, landPct);
   }, [rows, period, contracts, landPct, xs]);

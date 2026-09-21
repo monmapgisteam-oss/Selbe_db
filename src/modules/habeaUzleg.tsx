@@ -69,7 +69,10 @@ function loadDomains(url: string): Promise<Domains> {
        байв. Одоо унавал кэшээс ХАСНА — дараагийн дуудалт дахин оролдоно;
        буцаах утга нь хэвээр хоосон толь (самбар унахгүй). Мөн `withSlot` —
        `query.ts`-ийн 6 слотын хязгаарлагчаар (бусад REST-тэй нэг дараалалд). */
-    p = withSlot(() => fetch(`${url}?f=json${tokenQs()}`).then((r) => r.json() as Promise<Meta & { error?: unknown }>))
+    /* ⚠️ 2026-09-21: timeout — `query.ts` `request()`-тэй ижил; эс бөгөөс
+       гацсан хүсэлт слотыг мөнхөд эзэлж, бусад REST дараалалд түгжигдэнэ. */
+    p = withSlot(() => fetch(`${url}?f=json${tokenQs()}`, { signal: AbortSignal.timeout(30_000) })
+      .then((r) => r.json() as Promise<Meta & { error?: unknown }>))
       .then((j) => {
         if (j.error) throw new Error('domain meta error');
         const out: Domains = {};

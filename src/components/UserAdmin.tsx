@@ -13,13 +13,17 @@ import {
   dirtyKeys,
   retryDirty,
   initRemote,
+  remoteReady,
   type UserPerm,
 } from '@/lib/permissions';
 import { permsTablePublic } from '@/lib/permsRemote';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow } from './UserRow';
-import { capsOf, capViewsOf, dirtyCapKeys, retryCapsDirty, setCaps, subscribeCaps, toggleCap, type CapKey } from '@/lib/caps';
+import {
+  capsOf, capsRemoteReady, capsStored, capViewsOf, dirtyCapKeys, retryCapsDirty, setCaps, subscribeCaps, toggleCap,
+  type CapKey,
+} from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { QaqcAcl } from '@/modules/QaqcAcl';
@@ -354,6 +358,27 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      арилна, харин dirty-set localStorage-д үлдэж retry хийгддэг. Тэмдэг нь
      retry-тэй ИЖИЛ эх сурвалжаас гарах ёстой, эс бөгөөс худал «амжилттай». */
   const dirtyRemote = new Set([...dirtyKeys(), ...dirtyCapKeys()]);
+  /*
+   * ⚠️ ЭРХИЙН ХҮСНЭГТ ЭНЭ СЕШНД НЭГ Ч УДАА УНШИГДААГҮЙ БОЛ ЭРХ/ХУВААРИЛАЛТЫН
+   *    ЗАСВАР ХААЛТТАЙ (2026-09-21, аудитын засвар). Fail-closed засвараас хойш
+   *    уншигч API (`capsOf` · `list*Assigns` · `stageOfUser`) remote-гүй бол
+   *    ХООСОН, харин бичигч (`capsStored` · `load()`) бодит кэш — панел
+   *    хоёуланг холиход:
+   *      · `flipScoped`: `listQaqcAssigns()` → [] тул «Багц 2» хуваарилагдсан
+   *        хүний унтраалга OFF харагдаж, асаахад `[ALL_BAGTS]` бичигдэн хүрээ
+   *        ЧИМЭЭГҮЙ бүх багц болж тэлнэ (тэндхийн ⚠️ дүрэм эвдэрнэ);
+   *      · `flipCap`: `capsOf` [] → «асаах» гэж ойлгож `toggleCap` → шинэ
+   *        browser-т `[cap]` нь remote-ийн бүтэн жагсаалтыг дардаг байв;
+   *      · `add()`: өнчин cap/хуваарилалтын шалгалт хоосон жагсаалтаас →
+   *        алгасна;
+   *      · «Сэргээх»: `stageOfUser` null → урсгалын эрх дахин олгогдохгүй.
+   *    Тиймээс `remoteReady() && capsRemoteReady()` хоёулаа true болтол
+   *    унтраалга/нэмэх/сэргээх/устгах бүгд хаалттай, харуулах жагсаалт нь
+   *    localStorage-ийн кэш (`capsStored`) гэж ИЛ тэмдэглэгдэнэ. Remote
+   *    сэргэмэгц (`AuthGate` 15 сек тутам · панел нээхэд) өөрөө нээгдэнэ.
+   */
+  const capsLocked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
   const retrySync = async () => {
     if (syncing) return;
     setSyncing(true);
@@ -464,6 +489,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const flipScoped = (
     u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar',
   ) => {
+    /* ⚠️ Remote уншигдаагүй — унтраалга disabled ч хамгаалалт давхар (2026-09-21) */
+    if (capsLocked) { setAddErr(LOCK_MSG); return; }
     /*
      * ⚠️ SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ (2026-09-07 · 08). `set*` нь super-д
      *    `{ok:false}` буцаадаг (тэдэнд `*Scope` угаас `null` = бүх багц) тул
@@ -597,6 +624,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     // ⚠️ Хадгалаагүй ШИНЭ аккаунтад бичихгүй — ноорог цуцлагдвал remote дээр
     //    өнчин `__cap__:` мөр үлдэж, тэр нэрийг дараа нэмэхэд эрх нь өөрөө асна.
     if (draftOf(u).isNew) return;
+    /* ⚠️ Remote уншигдаагүй — унтраалга disabled ч хамгаалалт давхар (2026-09-21) */
+    if (capsLocked) { setAddErr(LOCK_MSG); return; }
     const on = capsOf(u.username).includes(c);
     /* Багцаар хуваарилагддаг ГУРВАН эрх — нэг зам */
     if (c === 'qaqc') { flipScoped(u, c, on, 'qaqc'); return; }
@@ -657,6 +686,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    */
   const saveAll = async () => {
     if (saving || drafts.size === 0) return;
+    /*
+     * ⚠️ УСТГАХ / СЭРГЭЭХ нь эрх (`setCaps(u, [])`) ба хуваарилалтын мөрүүдийг
+     *    (`purge*`) хөнддөг тул remote уншигдаагүй бол ХААЛТТАЙ (2026-09-21):
+     *    өнчин мөр үлдэх, «Сэргээх» урсгалын эрхийг дахин олгож чадахгүй
+     *    (`regrantFlowAccess` false). Зөвхөн харагдац/үүргийн ноорог хэвээр —
+     *    тэр нь `permissions`-ийн өөрийн dirty-overlay-тай.
+     */
+    if (capsLocked && [...drafts.values()].some((d) => d.remove || d.clear)) {
+      setAddErr(LOCK_MSG);
+      return;
+    }
     const removing = [...drafts.values()].filter((d) => d.remove).length;
     if (removing > 0
       && !window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)))) return;
@@ -717,7 +757,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
            * `guitsetgel` байхгүй бол (tolovlolt) хуудасгүй үлдэнэ — томилгоо
            * хэвээр тул урсгалын эрхийг нь дахин дагуулна.
            */
-          if (r && stageOfUser(uname) && !(await regrantFlowAccess(uname))) bad = true;
+          /* ⚠️ `stageOfUser`-оор УРЬДЧИЛЖ шүүхгүй (2026-09-21): тэр нь тугтай тул
+             remote-гүй бол null → дуудлага алгасаж «амжилттай» гэдэг байв.
+             `regrantFlowAccess` өөрөө томилгоогүй бол true, remote-гүй бол false. */
+          if (r && !(await regrantFlowAccess(uname))) bad = true;
           if (r && !bad) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
@@ -795,6 +838,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       setAddErr(tr('«{0}» нь ArcGIS хэрэглэгчийн нэрийн бүтцэд тохирохгүй (латин үсэг/тоо, 3+ тэмдэгт).', n));
       return;
     }
+    /* ⚠️ Remote уншигдаагүй бол доорх ӨНЧИН мөрийн шалгалтууд хоосон жагсаалтаас
+       явж бүгд «цэвэр» гэдэг — нэмэхийг хаана (2026-09-21, аудитын засвар). */
+    if (capsLocked) { setAddErr(LOCK_MSG); return; }
     const key = n.toLowerCase();
     if (users.some((u) => u.username.toLowerCase() === key) || drafts.has(key)) {
       setAddErr(tr('«{0}» аль хэдийн жагсаалтад байна.', n));
@@ -1019,7 +1065,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <p className={s.subtitle}>
             {tr('Сэдэв бүрийг унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална.')}
           </p>
-          {!remoteOk && (
+          {/* ⚠️ ХОЁР ӨӨР ТӨЛӨВ (2026-09-21): энэ сешнд НЭГ Ч удаа уншигдаагүй бол
+              эрх/хуваарилалтын засвар хаалттай (`capsLocked`); өмнө уншигдаад
+              одоо унасан бол хуучин cache + dirty-overlay хэвээр ажиллана. */}
+          {capsLocked ? (
+            <div className={s.addErr} role="alert">
+              {tr('⚠️ Эрхийн хүснэгт уншигдсангүй — нэмэлт эрх, хуваарилалт, нэмэх/устгах/сэргээх засвар хаалттай, дахин ачаална уу. Нэмэлт эрхийн унтраалга энэ browser-ийн кэшнээс харагдаж байна.')}
+            </div>
+          ) : !remoteOk && (
             <div className={s.addErr} role="alert">
               {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ browser-ийн cache. Өөрчлөлт түр локалдоо хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
             </div>
@@ -1108,7 +1161,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 expanded={openRows.has(key)}
                 on={ALL_KEYS.filter((k) => hasView(d.views, k) || capViews.includes(k)).length}
                 capViews={capViews}
-                caps={capsOf(u.username)}
+                /* ⚠️ Remote-гүй бол `capsStored` (кэш) — `capsOf` [] тул бүх унтраалга
+                   OFF харагдаж, худал «эрхгүй» дүр зурна (2026-09-21) */
+                caps={capsLocked ? capsStored(u.username) : capsOf(u.username)}
+                capsLocked={capsLocked}
+                capsLockMsg={LOCK_MSG}
                 selected={sel.has(key)}
                 capErr={!!capErr.get(key)}
                 dirtyPerm={dirtyRemote.has(key)}

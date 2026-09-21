@@ -116,12 +116,21 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
    * ирэхгүй, `isLandWork` ҮРГЭЛЖ false, `scoreLand`-ын газар чөлөөлөлтийн салаа
    * ба `loadLandStatus().pct` хэзээ ч гардаггүй байв. Одоо газрын мөр оноонд
    * ОРНО (газар чөлөөлөлтийн явцаар), бондын хүү (7) хэвээр орохгүй.
+   * ⚠️ 2026-09-21 (дахин аудит): газрын мөр «Багц ажил» БИШ тул жагсаалт, тоолол
+   *    («Нийт 74 багц ажил»), `statusCounts`-д ОРОХГҮЙ — `WorkScore.isLandWork`
+   *    тэмдэгтэй, `CeoScorecard` хасна. Түүнд ЗӨВХӨН `land` (газар чөлөөлөлтийн
+   *    салаа) ба `perf` бодогдоно; `fin`·`permit`·`hse`·`qual`·`plan` = null.
    */
   const scored = cf.filter((r) => r.isWork || r.sec === FIN_XL_LAND_CODE);
   const works: BaseWork[] = scored.map((r) => {
     const key = pkgKeyOf(r.pkg2) || pkgKeyOf(r.pkg);
     const cancelled = CANCELLED_NOTE_RE.test(r.note);
     const isLandWork = r.sec === FIN_XL_LAND_CODE;
+    /* ⚠️ 2026-09-21: ГЭРЭЭТЭЙ = ЗӨВХӨН `note === CONTRACTED` (порталын нэг дүрэм).
+       `geree_dun` гэрээгүй мөрд ч бөглөгдсөн байдаг тул `contract > 0`-ийг гэрээ
+       гэж тооцохгүй; гэрээгүй мөрд `contract: null` → дэлгэцэд «гэрээгүй»,
+       `scoreFin` төсөвтэй харьцуулахгүй. */
+    const contracted = r.note === CONTRACTED;
     /* ⚠️ 2026-09-21: багцын ХУВААРИЙН ХОЦРОГДОЛ (блокийн биет хэмжилт) ЗӨВХӨН
        БАРИЛГА УГСРАЛТЫН мөрд (`sec === '2'`). Урьд нь нэг багцын түлхүүрт
        байгаа ТЭЗҮ, зураг төслийн мөрд ч угсралтын хоцрогдол хуулагдаж, зураг
@@ -137,25 +146,26 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       key,
       type: r.type,
       cost: r.cost,
-      contract: contract && contract > 0 ? contract : null,
+      contract: contracted && contract && contract > 0 ? contract : null,
       cancelled,
       isLandWork,
       perf: cancelled ? { score: null, facts: [] } : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
       /* ⚠️ Газрын мөр гэрээ байгуулах ажил БИШ — санхүүжилтийн «гэрээгүй» оноо
          хамаарахгүй (null, 0 биш); оноо нь `scoreLand`-ын газрын салаанд. */
       fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({
-        /* ⚠️ `scoreFin` дотроо `contract > 0`-ийг ч гэрээтэй гэж нэгтгэнэ (2026-09-21) */
-        contracted: r.note === CONTRACTED,
+        /* ⚠️ 2026-09-21: `scoreFin` ЗӨВХӨН `contracted`-оор шийднэ (`contract > 0` биш) */
+        contracted,
         start: r.start,
         now,
         cost: r.cost,
-        contract: contract && contract > 0 ? contract : null,
+        contract: contracted && contract && contract > 0 ? contract : null,
         paidPct: key ? paid.get(key) ?? null : null,
         actual,
       }),
-      /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ */
-      permit: cancelled || !key || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
-      hse: cancelled || !key || uzFailed ? { score: null, facts: [] } : scoreHse({
+      /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ.
+         ⚠️ 2026-09-21: газрын мөрд зөвшөөрөл/ХАБЭА оноо АВАХГҮЙ (багц ажил биш). */
+      permit: cancelled || isLandWork || !key || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
+      hse: cancelled || isLandWork || !key || uzFailed ? { score: null, facts: [] } : scoreHse({
         active: active.has(key), inspections: inspections.get(key) ?? [],
       }),
     };
@@ -272,12 +282,14 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
         overlap: ov == null ? 0 : ov < 0 ? null : ov,
         overlapFailed: ov != null && ov < 0,
       }),
-      plan: w.cancelled || !x.plan || !w.key ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
+      /* ⚠️ 2026-09-21: газрын мөрд ерөнхий төлөвлөгөө/чанарын оноо АВАХГҮЙ (багц ажил биш) */
+      plan: w.cancelled || w.isLandWork || !x.plan || !w.key ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
       permit: w.permit,
       hse: w.hse,
-      qual: w.cancelled || !x.qual || !w.key ? none : scoreQual({ qaqc: x.qual.get(w.key) ?? null }),
+      qual: w.cancelled || w.isLandWork || !x.qual || !w.key ? none : scoreQual({ qaqc: x.qual.get(w.key) ?? null }),
     };
-    const { perf: _p, fin: _f, hse: _h, permit: _z, isLandWork: _l, ...rest } = w;
+    /* ⚠️ `isLandWork` `WorkScore`-д ҮЛДЭНЭ — `CeoScorecard` жагсаалт/тоололоос хасахад хэрэгтэй */
+    const { perf: _p, fin: _f, hse: _h, permit: _z, ...rest } = w;
     return { ...rest, dims, total: totalOf(dims) };
   });
 }

@@ -32,7 +32,7 @@ import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadPlanCurve } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
-import { PROGRESS_LEVELS } from '@/lib/services';
+import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { loadFinData } from '@/modules/Finance';
@@ -114,18 +114,25 @@ export type ExecReport = {
      * нийлбэр (524.90) БИШ — диапазон мөрийн 5.97 тэрбум тэнд алдагддаг (`ipc.ts`).
      */
     given: number;
+    /**
+     * ⚠️ 2026-09-21: ГЭРЭЭЛСЭН багцын олголт (Σ `rows[contracted].given`) — `share` ба
+     * `remain`-ийн тоологч; хуваарь `planTotal` (CONTRACTED) тул нэг хүрээ.
+     */
+    givenContracted: number;
     /** Олгосон − Σ rows.given — багцад холбогдоогүй (диапазон) олголт, ₮ */
     givenUnassigned: number;
+    /** `givenContracted ÷ planTotal` — «олгосон дүн гэрээлсэн дүнд эзлэх хувь» */
     share: number | null;
+    /** `planTotal − givenContracted` */
     remain: number;
     rows: {
       key: string; label: string;
       /** Гэрээлсэн дүн (CONTRACTED мөр); гэрээгүй бол 0 */
       plan: number;
-      /** Гэрээ эсвэл төсөв (`PkgFin.plan`) — гэрээгүй багцын хэмжээг харуулахад */
+      /** Гэрээт багцад `PkgFin.plan`; ⚠️ гэрээгүй багцад ЗӨВХӨН төсөв (`ho_dun_geree`, 2026-09-21) */
       budget: number;
       given: number;
-      /** given ÷ plan; гэрээгүй (`plan = 0`) бол null */
+      /** given ÷ plan; гэрээгүй (`contracted = false`) бол null */
       pct: number | null;
       contracted: boolean;
     }[];
@@ -180,7 +187,12 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ──
      ⚠️ Хугацааны шүүлт ба чартын сонголтгүй (бүх мөр) — тайлан нь дашбоардын
         АНХДАГЧ (шүүлтгүй) төлөвийг хэвлэнэ. */
-  const csum = cf.reduce((s, r) => (r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
+  /* ⚠️ 2026-09-21: «ГЭРЭЭЛСЭН ДҮН»-ий НЭГ ХҮРЭЭ = `inTotal` ∧ `note === CONTRACTED`
+     (`live.loadBudget.contract`, `reportData.finance.contractAmount`, `GeneralDash.KpiStrip`
+     бүгд ижил). Урьд нь энд `inTotal`-гүй (бүх мөр) байсан тул §1-ийн «төсвийн X%»
+     (`contract ÷ budget`) тоологч нь хуваарийн (`inTotal`) ГАДНАХ мөрийг ч агуулж,
+     тайлан бусад дэлгэцээс өөр тоо хэвлэдэг байв. */
+  const csum = cf.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
   const k = kpisOf(cf, csum, land.pct);
   /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь блок-жигнэсэн биет хувь —
      `GeneralDash.catPct`-тай ижил дүрэм. */
@@ -213,13 +225,31 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ⚠️ 2026-09-21: төслийн нийт олголт = HO-ийн БҮХ мөр (`hoTotals`), багцын
      Map-ийн нийлбэр (`pf.givenTotal`) БИШ — `ExecReport.fin.given`-ийн ⚠️. */
   const finGiven = hoTotals(fin.pays).paid ?? 0;
+  /* ⚠️ 2026-09-21: ГЭРЭЭГҮЙ багцын «төсөв» = ЗӨВХӨН `ho_dun_geree` (`CfRow.cost`).
+     `PkgFin.plan` нь `geree_dun || ho_dun_geree` тул CONTRACTED биш мөрд ч
+     `geree_dun` бөглөгдсөн бол тэр нь «төсөв» нэрээр гарч, гэрээгүй гэж ангилсан
+     мөрөнд гэрээний дүн харагддаг байв. Түлхүүр `PkgFin.rowsByKey`-тэй ижил
+     (`pkgKeyOf(pkg2)`, `pkgKeyOf(pkg)` хоёулаа). `PkgFin.FIN_PKG_ALIAS`-аар
+     холбогдсон 3 түлхүүр (БАГЦ71→7, БАГЦ8/81→82) энд олдохгүй тул `r.plan`-д унана. */
+  const budgetByKey = new Map<string, number>();
+  for (const r of cf) {
+    for (const k of new Set([pkgKeyOf(r.pkg2), pkgKeyOf(r.pkg)])) {
+      if (k && k !== '0') budgetByKey.set(k, (budgetByKey.get(k) ?? 0) + r.cost);
+    }
+  }
   const finRows = pf.rows.map((r) => ({
     key: r.key, label: r.label,
-    plan: r.contract, budget: r.plan, given: r.given,
-    pct: r.contract > 0 ? (r.given / r.contract) * 100 : null,
+    plan: r.contract,
+    budget: r.contracted ? r.plan : budgetByKey.get(r.key) ?? r.plan,
+    given: r.given,
+    /* ⚠️ Гэрээгүй (CONTRACTED мөргүй) багцад хувь ЗОХИОХГҮЙ — `null` («—») */
+    pct: r.contracted && r.contract > 0 ? (r.given / r.contract) * 100 : null,
     contracted: r.contracted,
   }));
   const finAssigned = finRows.reduce((a, r) => a + r.given, 0);
+  /* ⚠️ 2026-09-21: `share`/`remain`-ийн тоологч = ГЭРЭЭЛСЭН багцын олголт — хуваарь
+     `csum` (CONTRACTED) тул нэг хүрээ. Урьд нь `finGiven` (бүх төлбөр) хуваагддаг байв. */
+  const finGivenContracted = finRows.reduce((a, r) => a + (r.contracted ? r.given : 0), 0);
 
   /* ── Зөвшөөрөл ── */
   let zov: ExecReport['zov'] = null;
@@ -270,9 +300,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     fin: {
       /* ⚠️ `csum` = §1-ийн `gdash.contract` — нэг тайланд «гэрээний нийт дүн» нэг л тоо */
       planTotal: csum, given: finGiven,
+      givenContracted: finGivenContracted,
       givenUnassigned: Math.max(0, finGiven - finAssigned),
-      share: csum > 0 ? (finGiven / csum) * 100 : null,
-      remain: Math.max(0, csum - finGiven),
+      share: csum > 0 ? (finGivenContracted / csum) * 100 : null,
+      remain: Math.max(0, csum - finGivenContracted),
       rows: finRows,
     },
     zov,

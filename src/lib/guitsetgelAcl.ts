@@ -312,6 +312,10 @@ export function setAssign(
  */
 export function removeAssign(user: string, stage: Stage, revoke = true): { sync: Promise<boolean> } {
   const u = user.trim().toLowerCase();
+  /* ⚠️ Хоосон нэр (2026-09-21, аудитын засвар): `scopedAcl.removeAssign`-тай ижил
+     хамгаалалт — урьд нь `''` түлхүүрээр `pushFlow('')` remote руу явж,
+     `revokeFlowAccess('')`-ийг ч дууддаг байв. */
+  if (!u) return { sync: Promise.resolve(false) };
   save(load().filter((a) => !(a.stage === stage && a.user === u)));
   const sync = enqueue(u, async () => {
     // Жагсаалтад байхгүй → flowRemove; хооронд нь дахин нэмэгдсэн бол upsert
@@ -494,6 +498,12 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
  */
 export function regrantFlowAccess(user: string): Promise<boolean> {
   const u = user.trim().toLowerCase();
+  /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар). `stageOfUser`
+     нь тугтай (`effective`) тул remote-гүй сешнд ЯМАГТ `null` — урьд нь тэр
+     үед `true` буцааж «Сэргээх» нь томилгоотой хүний урсгалын эрхийг ЧИМЭЭГҮЙ
+     алгасдаг байв (хүн хуудасгүй үлдэнэ, админд амжилттай гэж харагдана).
+     Одоо `false` — дуудагч (`UserAdmin.saveAll`) үүнийг унасан гэж тэмдэглэнэ. */
+  if (!remoteSynced) return Promise.resolve(false);
   const st = stageOfUser(u);
   return st ? grantFlowAccess(u, st) : Promise.resolve(true);
 }

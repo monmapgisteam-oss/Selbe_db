@@ -114,11 +114,19 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
    * ЯЛГАА нь ЧИГЛЭЛД: суваг нь НЭГ тэнхлэгээр эрэгтэй, НӨГӨӨГӨӨР нээлттэй
    * (ус тэр чигт үргэлжлэн урсана). Хонхор нь ХОЁУЛАНГААР нь хаалттай.
    * Тиймээс ОНЦГОЙ АЛЬ НЭГ (XOR) байх ёстой.
+   *
+   * ⚠️ 2026-09-21: `terrain` ЖИНХЭНЭ DSM болсон (шатаасан ёроол биш) тул
+   * 17 м нүдэнд 5–15 м өргөн Сэлбэ гол дундажлагдаж «0.6 м эрэг» бараг хэзээ
+   * ч гарахгүй — голын нүд бүр «хавтгай газар / урсгалын зам» гэж уншигдаж,
+   * «Голын суваг» шалтгаан огт гарахаа больсон. Тиймээс ТООЦООНД хэрэглэсэн
+   * голдрилын маск (`fd.channel` = `streamMask` ∪ шатаасан голын нүд,
+   * `uyrSim.ts`) байвал ТҮҮНИЙГ авна; геометрийн XOR шалгуур нь зөвхөн маскгүй
+   * (бэлэн файл, тест) датад ухрах зам.
    */
   const bank = (a: number, b: number) => a > z0 + 0.6 && b > z0 + 0.6;
   const bankX = bank(zAt(x - 2, y), zAt(x + 2, y));
   const bankY = bank(zAt(x, y - 2), zAt(x, y + 2));
-  const channel = reliefM > 0.6 && bankX !== bankY;
+  const channel = fd.channel ? fd.channel(idx) : reliefM > 0.6 && bankX !== bankY;
 
   const d = fd.depth(s, idx);
   const sp = fd.speed(s, idx);

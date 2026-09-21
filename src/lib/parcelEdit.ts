@@ -169,8 +169,20 @@ export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, u
     out[field] = now === '' ? null : now;
   };
   put(F.owner, before.owner, patch.owner);
-  put(F.status, before.status, patch.status);
-  put(F.progress, before.progress, patch.progress);
+  /* ⚠️ 2026-09-21: `F.status` ба `F.progress` НЭГ талбар (`явцы_1`, `services.ts`-д
+     санаатай). Хоёуланг нь `put` хийвэл сүүлийнх (progress) нь эхнийхээ
+     чимээгүй дардаг байв — маягтын «Төлөв»-ийг сольсон ч хуучин «Явцын мэдээ»
+     утга бичигдэх эрсдэлтэй. Нэг талбар бол ӨӨРЧЛӨГДСӨН нэгийг л бичнэ, хоёулаа
+     өөрчлөгдвөл `status` (маягтын үндсэн хяналт) давамгайлна. Талбар нь
+     ирээдүйд салвал хуучин зам хэвээр ажиллана. Амьд схемийг 2026-09-21-нд
+     шалгах гэсэн боловч токен хүчингүй (498) — статик тодорхойлолтоор. */
+  if (F.status === F.progress) {
+    if (before.status !== patch.status) put(F.status, before.status, patch.status);
+    else put(F.progress, before.progress, patch.progress);
+  } else {
+    put(F.status, before.status, patch.status);
+    put(F.progress, before.progress, patch.progress);
+  }
   put(F.address, before.address, patch.address);
   put(F.note, before.note, patch.note);
   return out;

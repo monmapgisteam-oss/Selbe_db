@@ -46,9 +46,14 @@ assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract:
 assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, 0, 'хугацаа өнгөрсөн, гэрээгүй');
 assert.equal(scoreFin({ contracted: false, start: now + DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, null, 'эхлээгүй, гэрээгүй — дүгнэхгүй');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 110, paidPct: null, actual: null }).score, 75, 'гэрээ 10% их → 50 ба 100-ийн дундаж');
-/* ⚠️ 2026-09-21: `geree_dun > 0` атлаа тайлбар нь «Гэрээлсэн дүн» биш мөр — ГЭРЭЭТЭЙ гэж тооцно */
-assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 100, paidPct: null, actual: null }).score, 100, 'гэрээний дүнтэй бол хугацаа өнгөрсөн ч «гэрээгүй» БИШ');
-assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 100, paidPct: null, actual: null }).facts[0].value, 'байгуулсан');
+/* ⚠️ 2026-09-21 (дахин аудит): ГЭРЭЭТЭЙ = ЗӨВХӨН `note === CONTRACTED`. `geree_dun > 0`
+   атлаа тайлбар нь «Гэрээлсэн дүн» биш мөр ГЭРЭЭГҮЙ — дүн нь төсөвтэй ч харьцуулагдахгүй. */
+{
+  const r = scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 120, paidPct: null, actual: null });
+  assert.equal(r.score, 0, 'geree_dun бөглөгдсөн ч тайлбар CONTRACTED биш → гэрээгүй, хугацаа өнгөрсөн');
+  assert.equal(r.facts[0].value, 'эхлэх хугацаа өнгөрсөн, гэрээгүй');
+  assert.equal(r.facts.length, 1, 'гэрээгүй мөрийн `contract`-ыг «Гэрээ ба төсвийн зөрүү»-д хэрэглэхгүй');
+}
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 35, actual: 10 }).score, 100, 'урьдчилгаа 25пп түрүүлсэн — хэвийн');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 10, actual: 50 }).score, (100 + 100 + 40) / 3, 'олголт 40пп хоцорсон');
 
@@ -110,7 +115,7 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
 /* ── Бүлэглэлт ── */
 {
   const mk = (oid, type, total, cost, cancelled = false) => ({
-    oid, name: `w${oid}`, pkgLabel: '', key: '', type, cost, contract: null, cancelled, total,
+    oid, name: `w${oid}`, pkgLabel: '', key: '', type, cost, contract: null, cancelled, isLandWork: false, total,
     dims: Object.fromEntries(DIMS.map((d) => [d, { score: total, facts: [] }])),
   });
   const g = groupByType([mk(1, 'A', 90, 10), mk(2, 'A', 30, 5), mk(3, 'A', null, 1), mk(4, 'B', 50, 100), mk(5, 'A', 0, 1, true)]);
@@ -165,7 +170,7 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
 
   const none = { score: null, facts: [] };
   const w = {
-    oid: 1, name: 'w', pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled: false, total: null,
+    oid: 1, name: 'w', pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled: false, isLandWork: false, total: null,
     dims: { perf, fin, land: none, plan: none, permit: none, hse, qual },
   };
   const r = workIssues(w);
@@ -183,7 +188,7 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
 {
   const none = { score: null, facts: [] };
   const mk = (oid, total, dims = {}, cancelled = false) => ({
-    oid, name: `w${oid}`, pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled, total,
+    oid, name: `w${oid}`, pkgLabel: '', key: '', type: 'A', cost: 1, contract: null, cancelled, isLandWork: false, total,
     dims: { perf: none, fin: none, land: none, plan: none, permit: none, hse: none, qual: none, ...dims },
   });
   const ws = [

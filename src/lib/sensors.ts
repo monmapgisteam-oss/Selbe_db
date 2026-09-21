@@ -354,7 +354,9 @@ export const SENSORS: SensorDef[] = [
           label: tr('Усны хоногийн хэрэглээ'),
           unit: tr('м³'),
           dp: 2,
-          note: tr('Хоног тус бүрийн хамгийн сүүлийн ба хамгийн эхний заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.'),
+          /* ⚠️ 2026-09-21: тодорхойлолт `dailyDiffPoints`-той нийцэв (өмнөх
+             хоногийн сүүлийн заалтаас) — хуучин «хоног доторх» бичвэр худал болсон. */
+          note: tr('Хоногийн сүүлийн заалт ба өмнөх хоногийн сүүлийн заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.'),
           /**
            * ⚠️ СТАНДАРТ БАЙХГҮЙ — хэрэглээний хэвийн хэмжээ нь холбогдсон
            * объектын тооноос хамаарна. Босгыг зориуд ОРХИВ: зохиомол тоо нь
@@ -520,23 +522,33 @@ function eta(latest: number | null, perHour: number, alert?: { value: number }):
   return h > 24 * 30 ? null : h;
 }
 
-/** Цуваанаас ХОНОГИЙН зөрүү (дээд − доод) — хуримтлагдсан тоолуурын хэрэглээ */
+/**
+ * Цуваанаас ХОНОГИЙН хэрэглээ — хуримтлагдсан тоолуурын зөрүү.
+ *
+ * ⚠️ 2026-09-21: хоногийн хэрэглээ = (энэ хоногийн СҮҮЛИЙН заалт) − (ӨМНӨХ
+ * хоногийн СҮҮЛИЙН заалт). Урьд нь хоног ДОТОРХ max − min байсан тул өмнөх
+ * хоногийн сүүлийн заалтаас энэ хоногийн эхний заалт хүртэлх хэрэглээ (шөнийн
+ * хэсэг) БҮРМӨСӨН алдагдаж, ганц заалттай хоног «0» гэж худал гардаг байв.
+ * Өмнөх заалтгүй (цувааны эхний) хоног ЦЭГГҮЙ — 0 биш, null ≠ 0 (`Reading.v`
+ * нь `number` тул null оруулахын оронд цэгийг орхино; график цоорхой үлдээнэ).
+ * Тоолуур буцаж тэглэгдсэн (сөрөг зөрүү) хоногийг мөн орхино — 0 гэж зурахгүй.
+ * ⚠️ Оролт нь хугацаагаар ӨСӨХ эрэмбэтэй байх ёстой (`loadOne` тэгж өгдөг).
+ */
 function dailyDiffPoints(points: Reading[]): Reading[] {
-  const byDay = new Map<string, { min: number; max: number; t: number }>();
+  const lastByDay = new Map<string, Reading>();
   for (const r of points) {
     const d = new Date(r.t);
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    const cur = byDay.get(key);
-    if (!cur) byDay.set(key, { min: r.v, max: r.v, t: r.t });
-    else {
-      cur.min = Math.min(cur.min, r.v);
-      cur.max = Math.max(cur.max, r.v);
-      cur.t = r.t; // хоногийн СҮҮЛИЙН мөч — цэг тэнд буух нь зөв
-    }
+    const cur = lastByDay.get(key);
+    if (!cur || r.t >= cur.t) lastByDay.set(key, r); // хоногийн СҮҮЛИЙН заалт
   }
-  return [...byDay.values()]
-    .map((x) => ({ t: x.t, v: Math.max(0, x.max - x.min) }))
-    .sort((a, b) => a.t - b.t);
+  const days = [...lastByDay.values()].sort((a, b) => a.t - b.t);
+  const out: Reading[] = [];
+  for (let i = 1; i < days.length; i++) {
+    const v = days[i].v - days[i - 1].v;
+    if (v >= 0) out.push({ t: days[i].t, v }); // цэг хоногийн сүүлийн мөчид буух нь зөв
+  }
+  return out;
 }
 
 /** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ */
@@ -611,12 +623,16 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       const out = [summarize(m, inRange, total || inRange.length, pts)];
       // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
       if (m.dailyDiff) {
-        const dp = dailyDiffPoints(inRange);
+        /* ⚠️ 2026-09-21: БҮТЭН цуваанаас бодоод дараа нь хүрээгээр огтолно —
+           хүрээний эхний хоног өмнөх хоногийн заалтаа (хүрээнээс гадуурх) олж
+           хэрэглээтэй гарна; `inRange`-ээс бодвол тэр хоног цэггүй үлдэнэ. */
+        const dpAll = dailyDiffPoints(pts);
+        const dp = dpAll.filter((x) => x.t >= from);
         out.push(summarize(
           { ...m.dailyDiff, field: m.field },
           dp,
           dp.length,
-          dailyDiffPoints(pts), // ⚠️ сүүлийн заалт хүрээнээс хамаарахгүй (2026-09-17)
+          dpAll, // ⚠️ сүүлийн заалт хүрээнээс хамаарахгүй (2026-09-17)
         ));
       }
       return out;

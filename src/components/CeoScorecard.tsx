@@ -241,7 +241,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const failedDims = ([['land', landQ], ['qual', qualQ], ['plan', planQ]] as [Dim, Async<unknown>][])
     .filter(([, q]) => q.state === 'error').map(([d]) => defs[d].title);
 
-  const works = useMemo<WorkScore[] | null>(() => {
+  const allWorks = useMemo<WorkScore[] | null>(() => {
     if (!baseReady) return null;
     const x: Extras = {
       land: landQ.state === 'ready' ? landQ.data : null,
@@ -250,9 +250,18 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     };
     return assemble(baseQ.data, x);
   }, [baseReady, baseQ, landQ, qualQ, planQ]);
+  /**
+   * ⚠️ 2026-09-21: ЖАГСААЛТ · ТООЛОЛ · ШҮҮЛТ = ЗӨВХӨН «багц ажил» (74). Газар
+   * чөлөөлөлтийн 4 мөр (`isLandWork`, 6-р хэсэг) «78 биш 74» дүрмээр багц ажил
+   * биш тул «Нийт N багц ажил», `statusCounts`, бүлгийн жагсаалтад ОРОХГҮЙ —
+   * урьд нь 78 гарч, санхүүжилтийн тоололд «Өгөгдөлгүй» 4 мөр нэмэгддэг байв.
+   * Төслийн нийт (`projectDims`) нь `allWorks` — газрын мөрийн `land` оноо
+   * (газар чөлөөлөлтийн явц) тэнд л хэрэглэгдэнэ.
+   */
+  const works = useMemo(() => (allWorks ? allWorks.filter((w) => !w.isLandWork) : null), [allWorks]);
 
   const groups = useMemo(() => (works ? groupByType(works) : []), [works]);
-  const project = useMemo(() => (works ? projectDims(works) : null), [works]);
+  const project = useMemo(() => (allWorks ? projectDims(allWorks) : null), [allWorks]);
 
   /**
    * ⚠️ 2026-09-17 (хэрэглэгч): ажлын төрлийн бүлгүүд АНХДАГЧААР ХУМИГДСАН —

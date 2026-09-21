@@ -54,7 +54,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
-import { Empty } from '@/components/ui';
+import { Empty, Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
 import { useAsync } from '@/lib/useAsync';
@@ -370,6 +370,9 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                ХЭРЭГЛЭХГҮЙ — тэр нь шинэ орон сууцанд орох өрх. «Өмнө» талын
                суурь нь ОДОО байгаа зуухтай орон сууц: гэр + гэр хорооллын
                байшин (`Irgeded_hureh_ur_uguuj`, амьд `groupBy`). */
+            /* ⚠️ 2026-09-21: алдааг «Тооцоолж байна…» гэж МӨНХӨД нуухгүй —
+               `Data` нэрлэсэн шалтгаан ба «Дахин оролдох» товч гаргана. */
+            if (qBuilt.state === 'error') return <Data q={qBuilt}>{() => null}</Data>;
             const hh = qBuilt.state === 'ready'
               ? qBuilt.data.reduce((t, x) => t + x.n, 0)
               : null;
@@ -407,6 +410,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                хэрэглэдэг тул хүн ам нь тэрхүү тоо × өрхийн дундаж хэмжээ.
                Орон сууцны нийт тоог өгвөл нэг нүхэнд 14 хүн ногдох бодит бус
                тоо гарна (6,627 × 3.6 ÷ 1,675). */
+            /* ⚠️ 2026-09-21: дээрхтэй ижил — алдаа + «Дахин оролдох». */
+            if (qToilet.state === 'error') return <Data q={qToilet}>{() => null}</Data>;
             const pits = qToilet.state === 'ready' ? qToilet.data : null;
             const l = pits == null ? null : latrineLoad(pits);
             if (!l) return <Empty label={tr('Тооцоолж байна…')} />;
@@ -508,23 +513,25 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               байх нь зөв (хэрэглэгчийн шийдвэр). Тоонууд АМЬД. */}
           <HeadKpi
             bagts={bagts}
+            /* ⚠️ 2026-09-21: алдаа = «—» (мэдээлэлгүй), «…» зөвхөн ачаалж байхад —
+               унасан хүсэлт «…» гэж мөнхөд хүлээж харагддаг байв. */
             extra={[
               {
                 v: qBuilt.state === 'ready'
                   ? num(qBuilt.data.find((x) => x.type === IRGED_BUILT.types.house)?.n ?? 0)
-                  : '…',
+                  : qBuilt.state === 'error' ? '—' : '…',
                 unit: tr('ш'),
                 label: tr('Байшин'),
               },
               {
                 v: qBuilt.state === 'ready'
                   ? num(qBuilt.data.find((x) => x.type === IRGED_BUILT.types.ger)?.n ?? 0)
-                  : '…',
+                  : qBuilt.state === 'error' ? '—' : '…',
                 unit: tr('ш'),
                 label: tr('Гэр'),
               },
               {
-                v: qToilet.state === 'ready' ? num(qToilet.data) : '…',
+                v: qToilet.state === 'ready' ? num(qToilet.data) : qToilet.state === 'error' ? '—' : '…',
                 unit: tr('ш'),
                 label: tr('Нүхэн жорлон'),
               },

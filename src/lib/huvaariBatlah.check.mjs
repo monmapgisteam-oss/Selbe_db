@@ -204,4 +204,35 @@ assert.ok(empty, 'хоосон spans нь эвдэрсэн гэж татгалз
 assert.deepEqual(empty.spans, {});
 console.log('✅ хоосон агуулга хүчинтэй');
 
+/* ── 7. ТАТАХ ДАРААЛАЛ — унш → төрөл тулга → тат → ноорог (2026-09-21) ──
+ * ⚠️ `Huvaari.withdraw` нь урьд нь ЭХЛЭЭД `withdrawPlan`, ДАРАА нь
+ *    `loadPayload` дууддаг байв: агуулга уншигдахгүй/төрөл зөрвөл илгээлт
+ *    ТАТАГДЧИХСАН атлаа ноорог хоосон — зохиогчийн ажил хоёр талаас алга.
+ *    React шаардах тул ЭХ КОДЫГ тулгана (`huvaariBatlah.view.check`-ийн хэв
+ *    маяг): тайлбаргүй эх дээр `loadPayload(` < `p.kind !== kind` <
+ *    `withdrawPlan(` гэсэн дараалал. */
+{
+  const fs = await import('node:fs');
+  const src = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const i = src.indexOf('const withdraw = useCallback');
+  assert.ok(i > 0, 'Huvaari: `withdraw` олдсонгүй');
+  const j = src.indexOf('const clearPreview', i);
+  assert.ok(j > i, 'Huvaari: `withdraw`-ийн төгсгөл (`clearPreview`) олдсонгүй');
+  const body = src.slice(i, j);
+  const iLoad = body.indexOf('loadPayload(');
+  const iKind = body.indexOf('p.kind !== kind');
+  const iWd = body.indexOf('withdrawPlan(');
+  const iApply = body.indexOf('applyPayloadToDraft(');
+  assert.ok(iLoad > 0 && iWd > 0 && iApply > 0, 'Huvaari.withdraw: loadPayload / withdrawPlan / applyPayloadToDraft алга');
+  assert.ok(iLoad < iWd, 'Huvaari.withdraw: агуулгыг уншихаас ӨМНӨ татаж байна — уншигдахгүй бол ажил алга болно');
+  assert.ok(iKind > iLoad && iKind < iWd, 'Huvaari.withdraw: төрлийн тулгалт татахаас ӨМНӨ биш');
+  assert.ok(iWd < iApply, 'Huvaari.withdraw: татахаас өмнө ноорогт буулгаж байна');
+  /* Уншигдахгүй бол татахгүй — `if (!p)` нь `withdrawPlan`-аас өмнө */
+  const iNoP = body.indexOf('if (!p)');
+  assert.ok(iNoP > iLoad && iNoP < iWd, 'Huvaari.withdraw: уншигдаагүй агуулгад татах зам хаагдаагүй');
+}
+console.log('✅ татах дараалал — унш → төрөл → тат → ноорог');
+
 console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал');

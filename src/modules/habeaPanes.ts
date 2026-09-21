@@ -30,7 +30,11 @@ const PANE = {
      нэг нь хязгаартаа тулахад нөгөө нь цааш явж өргөн зөрнө. */
   l: { css: '--col-l', axis: 'x', track: 0, min: 240, max: 560, sign: 1 },
   r: { css: '--col-r', axis: 'x', track: 2, min: 240, max: 560, sign: -1 },
-  fin: { css: '--row-fin', axis: 'y', track: 3, min: 120, max: 560, sign: -1 },
+  /* ⚠️ 2026-09-21: `track: 3` → `2`. `.shell`-ийн мөр 2026-09-17-нд 4 → 3 болсон
+     (`habea.module.css` `grid-template-rows: auto minmax(0,1fr) var(--row-fin)`)
+     тул `list[3]` undefined → хэмжилт `min` (120px) руу үсэрч, чирэх бүрд
+     доод зурвас 120px-ээс эхэлдэг байв. Индекс нь css-ийн мөрийн дараалал. */
+  fin: { css: '--row-fin', axis: 'y', track: 2, min: 120, max: 560, sign: -1 },
   // `.fin` — доод зурвасын дөрвөн картын хоорондох гурван зааг
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fin2: { css: '--fin-2', axis: 'x', track: 1, min: 150, max: 900, sign: 1 },

@@ -954,7 +954,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               /* ⚠️ «Байршил» карт ЗӨВХӨН urban/indicator горимд зурагддаг
                  (доор §location). Симуляц горимд барилга дарахад урьд нь
                  `setLocPick` + goTo(scale 3000) ажиллаж, зураг гэнэт ойртож,
-                 тодруулга картгүйгээр үлддэг байв (2026-09-21). */
+                 тодруулга картгүйгээр үлддэг байв (2026-09-21).
+                 `onBldClick` = undefined үед `SuitMap` барилгын даралтыг
+                 БҮС рүү дамжуулна — барилгын доорх бүс сонгогдоно. */
               bldPick={mode === 'urban' || mode === 'indicator' ? locPick : null}
               onBldClick={mode === 'urban' || mode === 'indicator' ? setLocPick : undefined}
               zoneFaint={locPublicOnly}

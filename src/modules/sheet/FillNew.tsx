@@ -200,14 +200,19 @@ type Draft = {
    *    харьцуулж «буцаалт нь бичилтээс хожуу юу» гэдгийг шийднэ.
    * ⚠️ Нийлүүлэхэд түлхүүр бүрд ХАМГИЙН ИХ агшин ялна. Сонголттой — хуучин
    *    ноорогт байхгүй; тэр үед идэвхгүй шүүлт хийгдэхгүй (одоогийн зан).
+   * ⚠️ `a:${oid}` түлхүүр = нэмэлт мөрийг НЭМСЭН агшин (2026-09-21-ний дахин
+   *    аудит) — `del`-ийн `a:` tombstone-той харьцуулахад хэрэгтэй.
    */
   byAt?: [string, number][];
   /**
    * TOMBSTONE — буцаасан нүд/огноо ба хассан нэмэлт мөр (`a:${oid}`) → хассан
    * агшин ms (2026-09-21). `mergeDrafts` нь del-ийн агшин нүдний `byAt`-аас
-   * хожуу (эсвэл `byAt` байхгүй) бол тэр нүдийг ХАСНА; `a:` бол мөрийг
-   * болзолгүй хасна (түр oid дахин олгогддоггүй). Урьд нь нийлүүлэлт зөвхөн
-   * нэмдэг тул буцаалт нөгөө талын хуулбараас эргэж сэргэдэг байв.
+   * хожуу (эсвэл `byAt` байхгүй) бол тэр нүдийг ХАСНА; `a:` бол мөр `adds`-д
+   * байгаа БӨГӨӨД нэмсэн агшин (`byAt`-ийн `a:` түлхүүр; байхгүй бол хасна)
+   * tombstone-оос ӨМНӨ бол мөрийг БҮХ нүдтэй нь хасна (2026-09-21-ний дахин
+   * аудит: урьд нь болзолгүй байсан нь дахин ачаалсан хуудасны шинэ мөрийг
+   * устгадаг байв). Урьд нь нийлүүлэлт зөвхөн нэмдэг тул буцаалт нөгөө талын
+   * хуулбараас эргэж сэргэдэг байв.
    */
   del?: [string, number][];
 };
@@ -229,7 +234,23 @@ type Draft = {
  * Түр ObjectID-ийн тоолуур. Сөрөг тул серверийн (эерэг) дугаартай мөргөлдөхгүй
  * бөгөөд `cellKey`, `collapsed`, React `key` бүгд хэвийн ажиллана.
  */
-let tmpOid = -1;
+/*
+ * ⚠️ ЭХЛЭЛ НЬ ЦАГААС (2026-09-21-ний дахин аудит). Урьд нь −1-ээс эхэлдэг тул
+ *    хуудас ачаалах бүрд ИЖИЛ дугаарууд дахин олгогддог байв: А −1 мөр нэмж
+ *    хасаад (`a:-1` tombstone) хуудсаа дахин нээж мөр нэмэхэд тэр нь ДАХИН −1
+ *    авч, tombstone нь шинэ мөрийг ЧИМЭЭГҮЙ устгадаг (7 хоног). Мөн хожуу
+ *    давхарлалтаас өмнө нэмсэн мөр илгээлтийн `adds`-тай мөргөлддөг байв.
+ *    Одоо эхлэл нь `-(мс % 1e9) * 100` (≈ −1e11, `Number.isSafeInteger`
+ *    хүрээнд) — ачаалалт бүр өөр цэгээс эхэлж, `pushTmpOid` нь харагдсан бүх
+ *    oid (ноорог · tombstone · илгээлт)-оос доош түлхэнэ. Давхцах боломж:
+ *    ижил мс-д хоёр ачаалалт × ижил тоолуур — практикт үгүй, tombstone нь
+ *    мөн «нэмсэн агшин < хассан агшин» нөхцөлтэй болсон (`mergeDrafts`).
+ */
+let tmpOid = -(Date.now() % 1e9) * 100 - 1;
+/** Дараагийн түр ObjectID — дуудагч бүр ЭНЭ функцээр авна (шууд `tmpOid--` биш). */
+function nextTmpOid(): number {
+  return tmpOid--;
+}
 
 /**
  * Түр ObjectID-ийн тоолуурыг сэргээсэн мөрүүдээс ЦААШ түлхэнэ.
@@ -246,6 +267,18 @@ let tmpOid = -1;
  */
 function pushTmpOid(adds: readonly NewRow[]): void {
   for (const a of adds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+}
+/**
+ * TOMBSTONE-ийн `a:${oid}` түлхүүрүүдээс ч тоолуурыг доош түлхэнэ (2026-09-21-ний
+ * дахин аудит): хассан мөр `adds`-д байхгүй тул `pushTmpOid` түүнийг мэддэггүй —
+ * дараагийн шинэ мөр тэр дугаарыг авбал tombstone түүнийг устгана.
+ */
+function pushTmpOidKeys(keys: Iterable<string>): void {
+  for (const k of keys) {
+    if (!k.startsWith('a:')) continue;
+    const o = Number(k.slice(2));
+    if (Number.isInteger(o) && o <= tmpOid) tmpOid = o - 1;
+  }
 }
 
 
@@ -293,6 +326,12 @@ const LOCAL_DRAFT_TTL_MS = 3 * 24 * 3600 * 1000;
 const REMOTE_DEBOUNCE_MS = 3_000;
 const REMOTE_CAP_MS = 3_000;
 const REMOTE_RETRY_MS = 3_000;
+/**
+ * TOMBSTONE-ийн амьдрах хугацаа — 7 хоног (2026-09-21). Локал ноорог 3 хоног
+ * амьдардаг тул түүнээс хуучин хуулбар нийлэх нь бараг үгүй; `mergeDrafts` ба
+ * хадгалах эффектийн «хоосон + del» зам хоёулаа ЭНЭ тогтмолоор хасна.
+ */
+const DEL_TTL_MS = 7 * 24 * 3600 * 1000;
 /**
  * Түүхий JSON → шалгагдсан `Draft`.
  *
@@ -419,8 +458,13 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   /*
    * ⚠️ TOMBSTONE (2026-09-21-ний аудит) — «ЗӨВХӨН НЭМДЭГ» дүрмийн ЦОРЫН ГАНЦ
    *    үл хамаарах зүйл. `del` нь хоёр талын нэгдэл (агшин нь их нь ялна):
-   *      · `a:${oid}` — хассан нэмэлт мөр: БОЛЗОЛГҮЙ хасна (түр oid дахин
-   *        олгогддоггүй тул «дахин нэмсэн» тохиолдол байхгүй);
+   *      · `a:${oid}` — хассан нэмэлт мөр: мөр `adds`-д БАЙГАА бөгөөд нэмсэн
+   *        агшин (`byAt`-ийн `a:` түлхүүр) tombstone-оос ӨМНӨ (эсвэл агшин
+   *        байхгүй) бол мөрийг ба түүний `${oid}:*` нүд/огноо/эзэн/агшинг
+   *        ХАМТ хасна (2026-09-21-ний дахин аудит: урьд нь болзолгүй хасаад
+   *        нүдийг нь үлдээдэг байв — түр oid хуудас ачаалах бүрт −1-ээс
+   *        эхэлдэг тул дараагийн шинэ мөр чимээгүй устдаг). Мөр байхгүй бол
+   *        tombstone 7 хоног хэвээр — хожуу ирэх хуучин хуулбарт хэрэгтэй;
    *      · нүд/огнооны түлхүүр — нүдний `byAt` (сүүлд бичсэн агшин) del-ийн
    *        агшнаас ХОЖУУ бол нүд ялна (дахин бичсэн), эс бөгөөс (эсвэл
    *        `byAt` байхгүй) хасна. Хасагдсан нүдний эзэн ба агшин ч арилна —
@@ -434,7 +478,18 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   const now = Date.now();
   for (const [k, a] of del) {
     if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
-    if (k.startsWith('a:')) { adds.delete(Number(k.slice(2))); continue; }
+    if (k.startsWith('a:')) {
+      const o = Number(k.slice(2));
+      if (!adds.has(o)) continue;
+      const added = byAt.get(k);
+      /* Хассаны ДАРАА нэмэгдсэн (ижил дугаартай) мөр — tombstone хуучирсан. */
+      if (added != null && added > a) { del.delete(k); continue; }
+      adds.delete(o);
+      const pre = `${o}:`;
+      for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
+      byAt.delete(k);
+      continue;
+    }
     const wrote = byAt.get(k);
     if (wrote != null && wrote > a) { del.delete(k); continue; }
     cells.delete(k);
@@ -931,6 +986,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     return [...days].sort();
   }, [hyRows, pkg.group, pkg.key, pkg.name, todayAjilTag]);
+  /**
+   * ӨӨР ӨДРИЙН БУЦААГДСАН урсгалууд — зөвхөн МЭДЭЭЛЭЛ (2026-09-21-ний дахин аудит).
+   *
+   * ⚠️ ЯАГААД: `flow` нь ӨНӨӨДРИЙН мөрийг эрхэмлэдэг тул өнөөдөр шинэ илгээлт
+   *    байвал өмнөх өдрийн БУЦААГДСАН мөр `flow` болохгүй; `otherDaysInReview`
+   *    нь гүйцэтгэгчийн гар дээрх (`company`) мөрийг санаатай алгасдаг. Тэгэхээр
+   *    тэр буцаалт ХААНА Ч харагдахгүй — хариугүй үлддэг байв. `flow`-той ижил
+   *    «нэг илгээлтийн сүүлийн тойрог» дүрмээр шүүнэ; `flow` өөрөө буцаагдсан
+   *    мөр бол түүнийг давхар хэлэхгүй (`backNote` аль хэдийн харуулна).
+   */
+  const otherDaysReturned = useMemo(() => {
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    const lastRound = new Map<number, (typeof hyRows)[number]>();
+    for (const r of hyRows) {
+      if (r[HF.bagts] !== pkg.group) continue;
+      const ajil = String(r[HF.ajil] ?? '');
+      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
+      const so = Number(r[HF.sheetOid]);
+      const k = Number.isInteger(so) && so > 0 ? so : -r.__oid;
+      const prev = lastRound.get(k);
+      if (!prev || r.__oid > prev.__oid) lastRound.set(k, r);
+    }
+    const days = new Set<string>();
+    for (const r of lastRound.values()) {
+      if (flow && r.__oid === flow.__oid) continue;
+      if (r[HF.status] === STATUS.transferred || OWNER[r[HF.status]] !== 'company') continue;
+      const m = /(\d{4}\.\d{2}\.\d{2})/.exec(String(r[HF.ajil] ?? ''));
+      if (m) days.add(m[1]);
+    }
+    return [...days].sort();
+  }, [hyRows, flow, pkg.group, pkg.key, pkg.name]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
@@ -1500,6 +1586,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     delRef.current.set(key, Date.now());
   }, []);
   /**
+   * ХАДГАЛАГДСАНТАЙ ИЖИЛ утга бичсэн (`sameVol`/`samePct`/`sameDate`/paste-ийн
+   * `same`) — 2026-09-21-ний дахин аудит.
+   *
+   * ⚠️ ЯАГААД ХОЁР ЗАМ: урьд нь ижил утга бичихэд ҮРГЭЛЖ tombstone тавьдаг байв.
+   *    Гэтэл нүд pending-д ОГТ БАЙГААГҮЙ (дэлгэцэд хадгалагдсан утга харагдаж
+   *    байсан) бол хэрэглэгч юуг ч буцаагаагүй — харин Б-гийн 3 секундын дотор
+   *    хараахан ирээгүй бичилт тэр нүдэнд байж болно; tombstone нь (агшин нь
+   *    Б-гийнхээс хожуу тул) `mergeDrafts`-аар Б-гийн нүдийг УСТГАДАГ байв.
+   *    · pending-д БАЙСАН → жинхэнэ буцаалт: `mineRef` + tombstone (хуучин зан);
+   *    · pending-д БАЙГААГҮЙ → нөгөө талын утгыг хөндөхгүй: tombstone ҮГҮЙ,
+   *      эзэмшил ч үгүй (өөрийн юу ч байхгүй), зөвхөн идэвхийн агшин
+   *      (`waitingOn`-ийн 3 хоногийн шүүлтэд «би идэвхтэй» гэж тоологдоно).
+   */
+  const revert = useCallback((key: string, wasPending: boolean) => {
+    if (wasPending) {
+      mineRef.current.add(key);
+      delRef.current.set(key, Date.now());
+    } else {
+      mineAtRef.current.set(key, Date.now());
+    }
+  }, []);
+  /**
    * СҮҮЛД НИЙЛҮҮЛСЭН алсын ноорогийн агшин — давхар нийлүүлэлтээс сэргийлнэ.
    * ⚠️ Өөрийн сая бичсэн хуулбар эргэж ирэхэд дахин суулгавал бичиж байгаа
    *    нүд дэмий дахин зурагдаж, курсор үсэрнэ.
@@ -1859,17 +1967,35 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     ? Number(flow[HF.sheetOid])
     : NaN;
   const lateOverlayRef = useRef<number>(NaN);
+  /** Хожуу давхарлалтын уншилт унасан/таслагдсан бол эффектийг ДАХИН асаах цохилт. */
+  const [lateRetry, setLateRetry] = useState(0);
   useEffect(() => {
     if (view || busy || staged || !sc || !rows.length) return;
     if (loadedPkgRef.current !== pkg.key) return;
     if (!Number.isInteger(returnedSheetOid) || returnedSheetOid <= 0) return;
     if (lateOverlayRef.current === returnedSheetOid) return;
+    /* ⚠️ Тэмдэглэгээг ЭХЛЭХЭД тавина (давхар уншилтаас хамгаална), харин
+       УНАСАН/ТАСЛАГДСАН бол буцааж тэглэнэ (2026-09-21-ний дахин аудит).
+       Урьд нь async-аас өмнө тавиад унасан ч үлдээдэг тул сүлжээ нэг удаа
+       тасрахад буцаагдсан илгээлт F5 хүртэл ХЭЗЭЭ Ч давхарлагддаггүй байв;
+       мөн хамаарал (rows.length г.м.) хөдлөхөд `alive=false` болж хариу
+       хаягддаг ч тэмдэглэгээ «дууссан» гэж үлддэг байв. Одоо унавал
+       `REMOTE_RETRY_MS`-ийн дараа, таслагдвал шууд `lateRetry`-ээр дахин. */
     lateOverlayRef.current = returnedSheetOid;
     let alive = true;
     void (async () => {
       const rr = await readSubmissionByOid(returnedSheetOid);
-      if (!alive || loadedPkgRef.current !== pkg.key) return;
-      if (!rr.ok) { setSubReadErr(rr.error); return; }
+      if (!alive || loadedPkgRef.current !== pkg.key) {
+        if (lateOverlayRef.current === returnedSheetOid) lateOverlayRef.current = NaN;
+        setLateRetry((n) => n + 1);
+        return;
+      }
+      if (!rr.ok) {
+        setSubReadErr(rr.error);
+        lateOverlayRef.current = NaN;
+        setTimeout(() => setLateRetry((n) => n + 1), REMOTE_RETRY_MS);
+        return;
+      }
       const sub = rr.sub;
       if (!sub || sub.done || sub.payload.pkgKey !== pkg.key) return;
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
@@ -1883,7 +2009,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [returnedSheetOid, busy, staged, sc, rows.length, pkg.key, view]);
+  }, [returnedSheetOid, busy, staged, sc, rows.length, pkg.key, view, lateRetry]);
 
   /*
    * ⚠️ ӨӨР БАГЦЫН ОГНООГООР НӨХӨХГҮЙ (2026-09-06, хэрэглэгчийн шууд заавар:
@@ -2487,6 +2613,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
     for (const [k, u] of byMap) bump(u, byAtMap.get(k));
     for (const [u, a] of doneBy) bump(u, a);
+    /* ⚠️ ӨӨРИЙН идэвх ч лавлагаанд ОРНО (2026-09-21-ний дахин аудит): `mineAtRef`
+       нь `byAtMap`-д зөвхөн нийлүүлэлтээр (алсаас буцаж) ордог тул ганцаараа
+       үргэлжлүүлж буй хүний хувьд «хамгийн сүүлийн идэвх» нь амралт авсан
+       нөгөө оролцогчийнх хэвээр байж, тэр хүн хэзээ ч 3 хоног хоцорсон гэж
+       тооцогдохгүй — түгжээ нээгддэггүй байв. `pending`/`pendDate` нь
+       хамааралд: ref өөрөө дахин бодолт өдөөдөггүй (`participants`-тай ижил). */
+    if (meKey && mineAtRef.current.size) bump(meKey, Math.max(...mineAtRef.current.values()));
     /* ⚠️ Лавлах агшин нь render-ийн цаг (`Date.now()` — render-д хориотой, детерминист
        биш) БИШ, ноорог дахь ХАМГИЙН СҮҮЛИЙН идэвх: «бусдаас 3 хоногоос илүү хоцорсон»
        гэсэн утга — ноорог өөрчлөгдөх бүрт (3 сек тутмын нийлүүлэлт) дахин бодогдоно. */
@@ -2495,7 +2628,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       .filter((u) => u !== meKey && !doneSet.has(u))
       .filter((u) => { const a = lastAct.get(u); return a == null || latest - a <= LOCAL_DRAFT_TTL_MS; })
       .sort();
-  }, [participants, doneBy, meKey, byMap, byAtMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, doneBy, meKey, byMap, byAtMap, pending, pendDate]);
   /**
    * ХҮН ТУС БҮРИЙН ИЛГЭЭГЭЭГҮЙ НҮДНИЙ ТОО (2026-09-10).
    *
@@ -2691,9 +2825,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return setErr(tr('«{0}» бүлгийн шууд доор ажил нэмэх боломжгүй: шатлал нь үйлчилгээнд хадгалагддаггүй тул нийтэлсний дараа энэ мөр доод дэд бүлгийн хүүхэд болж, мөнгөн дүн нь өөр салбарт наалдана. Дэд бүлгээ нээгээд түүн дотор нэмнэ үү.', parent.work || parent.no));
 
     setErr("");
+    const oid = nextTmpOid();
+    /* ⚠️ НЭМСЭН АГШИН (2026-09-21-ний дахин аудит) — `Draft.byAt`-д `a:${oid}`
+       түлхүүрээр очиж, `mergeDrafts` нь `a:` tombstone-той харьцуулна: хассан
+       агшнаас ХОЖУУ нэмэгдсэн мөрийг tombstone устгахгүй. */
+    touchMine(`a:${oid}`);
     setAdds((a) => [
       ...a,
-      { oid: tmpOid--, parentNo: parent.no, parentWork: parent.work, parentIdx, no, work, vol, unit },
+      { oid, parentNo: parent.no, parentWork: parent.work, parentIdx, no, work, vol, unit },
     ]);
     // ⚠️ Бүлэг ЭВХЭЭСТЭЙ бол шинэ мөр нуугдана — хэрэглэгч «нэмэгдээгүй» гэж
     //    бодож дахин дарах эрсдэлтэй. Тиймээс автоматаар дэлгэнэ.
@@ -2736,6 +2875,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       mineAtRef.current.delete(k);
       delRef.current.delete(k);
     }
+    /* 2026-09-21 (дахин аудит): нэмсэн агшин ч арилна — үлдвэл tombstone-оос
+       «хожуу» гэж тооцогдож мөр сэргэнэ. */
+    mineAtRef.current.delete(`a:${oid}`);
     tombstone(`a:${oid}`);
   };
   /**
@@ -2803,9 +2945,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       /* ⚠️ ЭЗЭМШЛИЙГ ХУВЬ ГОРИМД Ч ТЭМДЭГЛЭНЭ (2026-09-21-ний аудит): урьд нь
          зөвхөн обьёмын салбар `mineRef`-д бичдэг тул хувиар бөглөсөн хүн
          `participants`-д орохгүй, «Илгээх» түгжээ түүнийг хүлээдэггүй байв.
-         Буцаасан (`samePct`) бол tombstone — нийлүүлэлтээр сэргэхгүй. */
-      mineRef.current.add(key);
-      if (samePct) tombstone(key); else touchMine(key);
+         Буцаасан (`samePct`) бол tombstone — нийлүүлэлтээр сэргэхгүй.
+         2026-09-21 (дахин аудит): pending-д байгаагүй нүдэнд ижил утга бичих нь
+         буцаалт БИШ — `revert`-ийн тайлбар. */
+      if (samePct) revert(key, key in pending);
+      else { mineRef.current.add(key); touchMine(key); }
       return;
     }
 
@@ -2868,14 +3012,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       else n[key] = v;
       return n;
     });
-    /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`). */
-    if (sameVol) tombstone(key); else touchMine(key);
+    /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`).
+       Дахин аудит: pending-д байгаагүй нүдэнд ижил утга бичих нь буцаалт БИШ
+       (`revert`-ийн тайлбар) — нөгөө талын ирээгүй бичилтийг устгахгүй. */
     /* ⚠️ ЭЗЭМШЛИЙГ ЭНД ЧУХАМ ТЭМДЭГЛЭНЭ (2026-09-08). Энэ бол нүдийг ГАРААС
        нэг нэгээр засах ГОЛ зам; урьд нь зөвхөн олон нүдний (paste) зам дээр
        тэмдэглэгддэг байсан тул ганц нүд бөглөсөн хүн `by`-д ОГТ ОРОХГҮЙ,
        улмаар `participants` хоосон болж «Илгээх» түгжээ ХЭЗЭЭ Ч ажиллахгүй —
        хоёулаа зэрэг илгээж чаддаг байв (хэрэглэгчийн мэдээлсэн эвдрэл). */
-    mineRef.current.add(key);
+    if (sameVol) revert(key, key in pending);
+    else { mineRef.current.add(key); touchMine(key); }
   };
 
   // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
@@ -3149,32 +3295,67 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          архивын шинэ жааз үүсэхэд хуучин oid-тай үлдвэл `byOid`-д таарахгүй
          болж эзэмшил тасарна. Зөөсөн хувилбарыг `mineRef`-д БУЦААЖ бичнэ. */
       const moved = new Set<string>();
-      const movedAt = new Map<string, number>();
       for (const k0 of mineRef.current) {
         const k = fixKey(k0);
         const oid = Number(k.slice(0, k.indexOf(":")));
         if (byOid.has(oid)) {
           nextBy.set(k, meNow);
           moved.add(k);
-          const a0 = mineAtRef.current.get(k0);
-          if (a0 != null) movedAt.set(k, a0);
         }
       }
       mineRef.current = moved;
+    }
+    /* ⚠️ `mineAtRef` — `mineRef`-ээс ТУСДАА зөөнө (2026-09-21-ний дахин аудит):
+       (а) `a:${oid}` (нэмсэн агшин) түлхүүр нь `mineRef`-д байдаггүй — мөр
+       ноорогт хэвээр (`restoredAdds`) байвал үлдээнэ, tombstone-оор хасагдсан
+       бол хамт арилна; (б) `revert`-ийн «идэвх» агшин (pending-д байгаагүй
+       нүдэнд ижил утга) ч `mineRef`-гүй — `waitingOn`-ийн өөрийн идэвхэд
+       хэрэгтэй тул мөр байгаа л бол үлдээнэ. */
+    {
+      const addOids = new Set(restoredAdds.map((a) => a.oid));
+      const movedAt = new Map<string, number>();
+      for (const [k0, a0] of mineAtRef.current) {
+        if (k0.startsWith('a:')) { if (addOids.has(Number(k0.slice(2)))) movedAt.set(k0, a0); continue; }
+        const k = fixKey(k0);
+        const oid = Number(k.slice(0, k.indexOf(":")));
+        if (byOid.has(oid)) movedAt.set(k, a0);
+      }
       mineAtRef.current = movedAt;
     }
     setByMap(nextBy);
     /* ⚠️ Агшин ч `fixKey`-ээр зөөгдөнө (2026-09-21) — эс бөгөөс жааз солигдоход
        идэвхгүй шүүлт бүх оролцогчийг «агшингүй» гэж үзнэ (хүлээсээр). Өөрийн
-       нүдэнд `mineAtRef` давамгайлна — алсынх хоцорсон байж болно. */
+       нүдэнд `mineAtRef` давамгайлна — алсынх хоцорсон байж болно.
+       `a:${oid}` (нэмсэн агшин) нь мөр `restoredAdds`-д байвал дагана —
+       хадгалах эффект түүнийг `byAt`-д буцааж бичнэ (2026-09-21, дахин аудит). */
     const nextByAt = new Map<string, number>();
+    const addOidSet = new Set(restoredAdds.map((a) => a.oid));
     for (const [k0, a] of d.byAt ?? []) {
+      if (!Number.isFinite(a)) continue;
+      if (k0.startsWith('a:')) { if (addOidSet.has(Number(k0.slice(2)))) nextByAt.set(k0, a); continue; }
       const k = fixKey(k0);
       const oid = Number(k.slice(0, k.indexOf(":")));
-      if (byOid.has(oid) && nextBy.has(k) && Number.isFinite(a)) nextByAt.set(k, a);
+      if (byOid.has(oid) && nextBy.has(k)) nextByAt.set(k, a);
     }
-    for (const [k, a] of mineAtRef.current) if (nextBy.has(k) && (nextByAt.get(k) ?? 0) < a) nextByAt.set(k, a);
+    for (const [k, a] of mineAtRef.current) {
+      if (!(k.startsWith('a:') ? addOidSet.has(Number(k.slice(2))) : nextBy.has(k))) continue;
+      if ((nextByAt.get(k) ?? 0) < a) nextByAt.set(k, a);
+    }
     setByAtMap(nextByAt);
+    /* ⚠️ TOMBSTONE-ийг ч ТӨЛӨВТ авна (2026-09-21-ний дахин аудит): нийлбэрийн
+       `del` нь бусдын буцаалтыг ч агуулна. Өөрийн pending ХООСОН болоход
+       хадгалах эффект «tombstone бий юу» гэдгийг `delRef`-ээс шийднэ — байвал
+       алсыг ЦЭВЭРЛЭХГҮЙ, хоосон нүд + del-тэй ноорог бичнэ; эс бөгөөс өөрийн
+       хуучин хуулбар (эсвэл гуравдагч төхөөрөмж) буцаалтыг сэргээнэ. Нийлбэр
+       аль хэдийн «дахин бичигдсэн» tombstone-ийг хаясан тул `d.byAt`-аас хожуу
+       tombstone-ийг энд ч хасна. */
+    for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);
+    for (const [k, a] of delRef.current) {
+      const w = nextByAt.get(k);
+      if (w != null && w > a) delRef.current.delete(k);
+    }
+    /* Хассан мөрийн дугаарыг дахин олгохгүй — tombstone нь шинэ мөрийг устгана. */
+    pushTmpOidKeys(delRef.current.keys());
     const nextDone = (d.done ?? []).filter(
       (x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1]),
     ).map(([u, at]): [string, number] => [u.trim().toLowerCase(), at]);
@@ -3202,7 +3383,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * дэмий — тэр үед л цэвэрлэнэ. Алсын хуулбарыг ч ХАМТ цэвэрлэнэ, эс
        * бөгөөс зомби мөр үлдэж ачаалалт бүрд дахин шүүгдэнэ.
        */
+      /* ⚠️ ХООСОН НИЙЛБЭР ч ТӨЛӨВИЙГ ХООСЛОНО (2026-09-21-ний дахин аудит):
+         нөгөө тал миний сүүлчийн нүдийг буцаасан (tombstone) бол нийлбэр хоосон
+         ирнэ — урьд нь энд төлөв хөндөгдөхгүй буцдаг тул тэр нүд `pending`-д
+         үлдэж, дараагийн хадгалалтаар алсад СЭРГЭДЭГ байв. */
+      setAdds([]);
+      setPending({});
+      setPendDate({});
+      keepDraft.current = false;
       if (!dropped) {
+        /* ⚠️ TOMBSTONE БАЙВАЛ алсыг ЦЭВЭРЛЭХГҮЙ (2026-09-21, дахин аудит):
+           устгавал буцаалтын баримт алга болж, хожуу ирэх хуучин хуулбар
+           (өөр төхөөрөмжийн 3 хоногийн локал) нүдийг сэргээнэ. `delRef`-д
+           дээр нийлүүлсэн тул хадгалах эффект хоосон нүд + del-тэй ноорог бичнэ. */
+        if (delRef.current.size) return;
         clearDraftLS(pkg.key);
         void clearRemoteDraft(pkg.key);
         return;
@@ -3236,9 +3430,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * хэрэггүй бол «Ноорог устгах» товчоор нэг товшилтоор хаяна.
      */
     pushTmpOid(restoredAdds);
-    if (restoredAdds.length) setAdds(restoredAdds);
-    if (nCells) setPending(next);
-    if (nDates) setPendDate(nextDates);
+    /* ⚠️ ГУРВУУЛАНГ БОЛЗОЛГҮЙ тавина (2026-09-21-ний дахин аудит). Урьд нь
+       `if (nCells) setPending(next)` гэх мэт байсан тул нөгөө тал энэ ангиллын
+       СҮҮЛЧИЙН зүйлийг буцаасан/хассан (tombstone) бол ангилал хоосон ирж,
+       төлөв ХӨНДӨГДӨХГҮЙ — буцаагдсан нүд/мөр энд үлдэж, дараагийн хадгалалт
+       түүнийг алсад СЭРГЭЭДЭГ байв. Курсорын хамгаалалт хэвээр: татах мөчлөг
+       нүд нээлттэй үед `pickDraft`-ыг огт дуудахгүй (`editRef`). */
+    setAdds(restoredAdds);
+    setPending(next);
+    setPendDate(nextDates);
     if (draftAsOf != null) setAsOf(draftAsOf);
     /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
     keepDraft.current = false;
@@ -3343,6 +3543,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          `promptedPkgRef` тавигдсан ч ноорог хараахан буугаагүй, «хоосон» нь
          «нийтэлсэн» биш «хүлээж байна» гэсэн утгатай. */
       if (promptedPkgRef.current === pkg.key && !keepDraft.current && !restoring.current) {
+        /*
+         * ⚠️ TOMBSTONE БАЙВАЛ ЦЭВЭРЛЭХГҮЙ, ХООСОН + del-ТЭЙ НООРОГ БИЧНЭ
+         *    (2026-09-21-ний дахин аудит). Хэрэглэгч бүх нүдээ буцаасан (эсвэл
+         *    нөгөө тал буцаасан) бол `pending` хоосон боловч буцаалтын баримт
+         *    (`del`) алсад ҮЛДЭХ ёстой — цэвэрлэвэл өөр төхөөрөмжийн 3 хоногийн
+         *    локал хуулбар нүдийг сэргээнэ. 7 хоногоос хуучин tombstone-ийг
+         *    энд ч хасна (`mergeDrafts`-тай ижил хугацаа); бүгд хуучирсан бол
+         *    урьдын адил цэвэрлэнэ. «Илгээх» ба «Ноорог устгах» нь `delRef`-ийг
+         *    ӨМНӨ нь тэглэдэг тул тэр хоёр зам энд орохгүй — цэвэрлэгдэнэ.
+         */
+        const nowMs = Date.now();
+        const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
+        if (liveDel.length) {
+          delRef.current = new Map(liveDel);
+          const tomb: Draft = {
+            t: nowMs, cells: [], dates: [], adds: [], rowKeys: [],
+            done: doneRef.current, del: liveDel,
+          };
+          saveDraftLS(pkg.key, tomb);
+          remoteQueue.current = { pkg: pkg.key, draft: tomb };
+          setRemoteTick((n) => n + 1);
+          setSavedAt(null);
+          return;
+        }
         clearDraftLS(pkg.key);
         /* ⚠️ Нийтэлсэн/болиулсны дараа АЛСЫН хуулбар ч цэвэрлэгдэнэ — хэрэглэгч:
            «нийтлэгдэхэд тэр файл хоослогдоно». Эс бөгөөс өөр төхөөрөмж дээр
@@ -3414,7 +3638,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const a = mineRef.current.has(k) ? (mineAtRef.current.get(k) ?? at) : byAtRef.current.get(k);
       if (a != null) byAt.push([k, a]);
     }
-    const del: [string, number][] = [...delRef.current].filter(([k]) => !(k in pending) && !(k in pendDate));
+    /* ⚠️ НЭМСЭН МӨРИЙН АГШИН `a:${oid}` (2026-09-21-ний дахин аудит) — энэ сешнд
+       нэмсэн бол `mineAtRef` (`addRow`-ийн `touchMine`), нийлүүлэлтээр ирсэн бол
+       `byAtRef`; аль нь ч байхгүй (хуучин ноорог) бол ЭНЭ хадгалалтын агшинг
+       `mineAtRef`-д тогтоон бичнэ — дараагийн хадгалалт бүрд «одоо» гэж
+       шинэчилбэл tombstone-оос үргэлж хожуу болж мөр хэзээ ч устахгүй. */
+    for (const a of adds) {
+      const k = `a:${a.oid}`;
+      let t0 = mineAtRef.current.get(k) ?? byAtRef.current.get(k);
+      if (t0 == null) { t0 = at; mineAtRef.current.set(k, at); }
+      byAt.push([k, t0]);
+    }
+    /* 7 хоногоос хуучин tombstone-ийг бичихгүй (`DEL_TTL_MS`, `mergeDrafts`-тай ижил). */
+    const del: [string, number][] = [...delRef.current]
+      .filter(([k, a]) => !(k in pending) && !(k in pendDate) && at - a <= DEL_TTL_MS);
 
     const draft: Draft = {
       t: at,
@@ -3824,9 +4061,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ ОГНООНЫ ЗАСВАР Ч ЭЗЭМШИЛ (2026-09-21-ний аудит): урьд нь энд
        `mineRef` бичигддэггүй тул зөвхөн огноо засаж буй хүн `participants`-д
        орохгүй, «Илгээх» түгжээ түүнийг хүлээдэггүй байв. Хадгалах эффект
-       `pendDate`-ийн түлхүүрийг `by`-д мөн оруулдаг. */
-    mineRef.current.add(key);
-    if (sameDate) tombstone(key); else touchMine(key);
+       `pendDate`-ийн түлхүүрийг `by`-д мөн оруулдаг.
+       2026-09-21 (дахин аудит): pending-д байгаагүй огноог ижлээр бичих нь
+       буцаалт БИШ — `revert`-ийн тайлбар. */
+    if (sameDate) revert(key, key in pendDate);
+    else { mineRef.current.add(key); touchMine(key); }
   };
 
   /**
@@ -4300,6 +4539,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
       setSnapMs(next.snapshot ?? null);
       const nCells = Object.keys(pend2).length + Object.keys(pendDate2).length;
+      /* ⚠️ TOMBSTONE-ийг илгээлтийн ӨМНӨ тэглэнэ (2026-09-21-ний дахин аудит):
+         хадгалах эффектийн хоосон зам `delRef`-д tombstone байвал алсыг
+         цэвэрлэхийн оронд хоосон + del-тэй ноорог бичдэг болсон. Илгээлт нь
+         эрх бүхий эх тул буцаалтын баримт хэрэггүй — ноорог бүрэн цэвэрлэгдэнэ. */
+      delRef.current = new Map();
       setPending({});
       setPendDate({});
       /* ⚠️ Нэмсэн мөрүүд илгээлтийн payload-д орсон тул төлөвөөс ХАСНА — эс
@@ -4491,9 +4735,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            засах ЦОРЫН ГАНЦ зам. Нийлүүлэлтээр ирсэн бусдын нүд энд ордоггүй
            тул оролцогчийн жагсаалт зөв үлдэнэ. Хоосон болгосон (`same`) нүдийг
            ч тэмдэглэнэ — «би энэ нүдийг хөндсөн» гэдэг нь оролцоо мөн. */
-        mineRef.current.add(x.key);
-        /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`). */
-        if (same) tombstone(x.key); else touchMine(x.key);
+        /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`).
+           Дахин аудит: pending-д (`pv`) байгаагүй нүдэнд ижил утга бичих нь
+           буцаалт БИШ — `revert`-ийн тайлбар (Б-гийн ирээгүй бичилтийг хамгаална). */
+        if (same) revert(x.key, x.key in pv);
+        else { mineRef.current.add(x.key); touchMine(x.key); }
       }
       return n;
     });
@@ -5035,6 +5281,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       {!locked && otherDaysInReview.length > 0 && (
         <p className={st.lockNote}>
           {tr('Өмнөх өдрийн илгээлт хяналтад байна ({0}) — өнөөдрийн илгээлтэд саад болохгүй, тус тусдаа хянагдана.', otherDaysInReview.join(', '))}
+        </p>
+      )}
+      {/* 2026-09-21 (дахин аудит): өнөөдрийн мөр байхад өмнөх өдрийн буцаалт
+          `flow` болдоггүй тул тусад нь мэдэгдэнэ (`otherDaysReturned`). */}
+      {!locked && otherDaysReturned.length > 0 && (
+        <p className={st.backNote}>
+          {tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.join(', '))}
         </p>
       )}
       {!locked && returned && (

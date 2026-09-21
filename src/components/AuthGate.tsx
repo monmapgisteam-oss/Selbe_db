@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
-import { initRemote, hasAccess, roleOf } from '@/lib/permissions';
+import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
 import { registerIdentity } from '@/lib/authToken';
 import s from './auth.module.css';
@@ -312,15 +312,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * уншилт унавал панелаас нэмсэн хэрэглэгч «эрх олгогдоогүй» дэлгэцэнд
      * гацна — 5 минут хүлээх нь хэтэрхий урт, хэрэглэгч хуудсаа хааж админ
      * руу залгана. Сүлжээ сэргэмэгц 15 секундэд өөрөө нээгдэнэ. Нэвтэрсэн
-     * (`signed-in`) үед хуучин 5 минут хэвээр — тэнд яарах шалтгаангүй.
+     * (`signed-in`) үед remote уншигдсан бол 5 минут — тэнд яарах шалтгаангүй.
+     *
+     * ⚠️ `signed-in` ч REMOTE УНШИГДААГҮЙ бол 15 сек (2026-09-21, аудитын
+     *    засвар). Эрх нь fail-closed (`caps`·`guitsetgelAcl`·`scopedAcl` бүгд
+     *    remote-гүй бол хоосон) болсноос хойш хатуу жагсаалтын хэрэглэгч
+     *    (remote-гүй нэвтэрдэг) remote унасан бол 5 мин хүртэл БҮХ нэмэлт
+     *    эрхгүй суудаг байв — `caps.ts`-ийн толгойн «15 сек–5 мин» тайлбар
+     *    кодтой зөрж байлаа. Хугацааг оролдлого БҮРИЙН дараа дахин сонгоно
+     *    (`setTimeout` гинж): remote уншигдмагц 5 мин руу буцна.
      */
-    const period = status === 'denied' ? 15_000 : 5 * 60_000;
-    const iv = setInterval(() => { void check(); }, period);
+    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        void check().finally(() => { if (alive) schedule(); });
+      }, period());
+    };
+    schedule();
     const onVis = () => { if (document.visibilityState === 'visible') void check(); };
     document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
-      clearInterval(iv);
+      if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [status, user?.username]);

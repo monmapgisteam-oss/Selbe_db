@@ -141,7 +141,13 @@ const CONTEXT_LAYERS = [BUILT_LAYER.id];
  * ашигладаг тул каталогт ч харагдах ёстой). `catalogGroups('monitor')`-той
  * ижил дараалал.
  */
-const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS];
+/* ⚠️ 2026-09-21: «Ногоон байгууламж» мөр `nogoon` (`data`/118, 807 объект,
+   `RefName_12`-оор бүсээр шүүгддэг) эхээс тоологдоно. `PLAN_LAYER_IDS` нь
+   `GROUP_LAYERS.green`-ээс `sb:1` (`data`/35 — нэгтгэсэн ГАНЦ полигон, бүсгүй)
+   авчирдаг байсан тул каталогийн `nogoon` мөр `map.get('nogoon')` олдохгүй
+   «—» гэж, бүс сонгоход ч ногоон өөрчлөгдөхгүй байв (`services.ts`
+   `CATALOG_DUP_HIDDEN`-ийн тайлбар). `sb:1` энд ТАТАГДАХГҮЙ — каталогт мөргүй. */
+const CATALOG_IDS = [...MONITOR_LAYER_IDS, ...PLAN_LAYER_IDS.map((id) => (id === 'sb:1' ? 'nogoon' : id))];
 
 
 /* ◆ Pin тэмдэглэгээ 2026-08-13-нд УСТСАН — бэхлэгдсэн тоо үлдээгүй,

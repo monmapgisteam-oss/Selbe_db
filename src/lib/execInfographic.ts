@@ -243,7 +243,8 @@ export function buildInfographic(
     [tr('Нийт төсөв'), money(g.budget), tr('Excel-ийн нийт хамрах хүрээ')],
     [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined],
     [tr('Төслийн гүйцэтгэл'), g.progress == null ? '—' : pct(g.progress, 1), tr('6 шатны жигнэсэн хувь')],
-    [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээний {0}', pct(x.fin.share, 1))],
+    /* ⚠️ 2026-09-21: «гэрээлсэн» — §1-ийн «Нийт гэрээлсэн дүн»-тэй нэг нэр («гэрээний» биш) */
+    [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээлсэн дүнгийн {0}', pct(x.fin.share, 1))],
     [tr('Газар чөлөөлөлт'), g.landPct == null ? '—' : pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), num(x.prog.households))],
   ];

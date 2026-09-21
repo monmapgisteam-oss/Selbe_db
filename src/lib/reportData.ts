@@ -150,6 +150,17 @@ export type ReportExtra = {
     orderTotal: number;
     /** Гэрээлсэн дүн — ⚠️ зөвхөн `note === CONTRACTED` мөр, `inTotal` хүрээ (2026-09-21) */
     contractAmount: number;
+    /**
+     * ⚠️ 2026-09-21: ГЭРЭЭЛСЭН БАГЦАД олгосон төлбөр — `paid`-ийн ХЭСЭГ (₮).
+     * «Олгосон дүн гэрээлсэн дүнд эзлэх хувь» (`Findings.paidRate`)-ийн ТООЛОГЧ:
+     * хуваарь нь `contractAmount` (`inTotal` ∧ CONTRACTED) тул тоологч ч тэр
+     * багцуудын төлбөр л байх ёстой — урьд нь БҮХ төлбөр (диапазон мөр, гэрээгүй
+     * багцынх ч) хуваагддаг байв. Багцын түлхүүр: HO `bagts` → `pkgKeyOf`,
+     * Cashflow `pkg2`/`pkg` → `pkgKeyOf` (`Finance.givenTotal`-тай ижил холбоос).
+     */
+    paidContracted: number;
+    /** `paid − paidContracted` — гэрээлсэн багцад холбогдоогүй (диапазон мөр, гэрээгүй багц) төлбөр, ₮ */
+    paidOther: number;
     /** Газар чөлөөлөлт, буулгалт цэвэрлэгээ — НИЙТ дүнгээс ГАДУУР, ₮ */
     landBudget: number;
     sources: { label: string; value: number }[];
@@ -167,8 +178,9 @@ export type ReportExtra = {
      *    АЛДАА БИШ, ойлголтын өөрчлөлт.
      */
     paid: number;
+    /** ⚠️ `contract` = зөвхөн CONTRACTED мөрийн `geree_dun` (2026-09-21, §1-тэй нэг дүрэм) */
     byType: { type: string; n: number; budget: number; contract: number }[];
-    /** «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — БҮХ мөрөөр (задаргаатай нийцнэ) */
+    /** «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — БҮХ мөрөөр (задаргаатай нийцнэ); `contract` CONTRACTED шүүлттэй */
     byTypeTotal: { budget: number; contract: number };
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
     byBagts: Record<string, number>;
@@ -567,7 +579,9 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
        ⚠️ ГЭРЭЭНИЙ талбар (`tosov_niit` г.м.) ЭНД ТАТАХГҮЙ — тэдгээр нь
        мөр бүрд давтагддаг тул санамсаргүй SUM хийх боломжийг ОГТ
        үүсгэхгүйн тулд query-д ч оруулахгүй. */
-    queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount] }),
+    /* ⚠️ 2026-09-21: `bagts` нэмэгдсэн — ЗӨВХӨН гэрээлсэн багцын төлбөрийг ялгахад
+       (`paidContracted`); мөнгөн талбар нэмэгдээгүй хэвээр. */
+    queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
   ]);
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
@@ -650,6 +664,24 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     const n = hoAmount(r);
     return n == null ? a : a + n;
   }, 0);
+  /*
+   * ⚠️ 2026-09-21: ГЭРЭЭЛСЭН БАГЦЫН ТӨЛБӨР — `paidRate`-ийн тоологч. Хуваарь
+   *    (`contractAmount`) нь `inTotal` ∧ CONTRACTED мөрийн гэрээний дүн тул
+   *    тоологч ч ЯГ тэр мөрүүдийн багцад олгосон төлбөр байна. Түлхүүр нь
+   *    `Finance.planTotal`/`givenTotal`-тай ИЖИЛ (`pkgKeyOf`); мөрийн `pkg2` ба
+   *    `pkg` хоёулаа орно (`PkgFin.rowsByKey`-тэй ижил). Диапазон мөр (`''`)
+   *    ба гэрээгүй багцын төлбөр `paidOther`-т үлдэнэ — `paid` ХЭВЭЭР бүх мөр.
+   */
+  const contractedKeys = new Set<string>();
+  inTotal.filter((r) => str(r[F.amountNote]) === CONTRACTED).forEach((r) => {
+    [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])].forEach((k) => { if (k && k !== '0') contractedKeys.add(k); });
+  });
+  const paidContracted = ho.reduce((a, r) => {
+    const n = hoAmount(r);
+    if (n == null) return a;
+    const k = pkgKeyOf(r[HO_IPC.contractFields.pkg]);
+    return k && contractedKeys.has(k) ? a + n : a;
+  }, 0);
 
   /*
    * Төрлөөр — ЗӨВХӨН мастер мөрөөс (эс тэгвээс нэг гэрээ 14 удаа тоологдоно).
@@ -664,7 +696,10 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;
     e.budget += nn(r[F.budget]);
-    e.contract += nn(r[F.contractAmount]);
+    /* ⚠️ 2026-09-21: «Гэрээлсэн» багана — ЗӨВХӨН `note === CONTRACTED` мөр
+       (§1-ийн `contractAmount`-тай нэг дүрэм). `geree_dun` гэрээгүй мөрд ч
+       бөглөгдсөн байдаг тул шүүлтгүй бол баганын нийлбэр §1-ээс ~33 тэрбумаар их. */
+    if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.contractAmount]);
     typeMap.set(t, e);
   });
 
@@ -731,6 +766,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       .reduce((a, r) => a + nn(r[F.budget]), 0),
     sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     paid,
+    paidContracted,
+    paidOther: paid - paidContracted,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
       .sort((a, b) => b.budget - a.budget),
@@ -744,7 +781,13 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * хамгийн эргэлзээтэй байдал үүснэ. Хоёр өөр хамрах хүрээг НЭГ
      * хүснэгтэд хольж болохгүй — тайлбарыг тайлангийн 7-р хэсэгт бичнэ.
      */
-    byTypeTotal: { budget: sumAll(F.budget), contract: sumAll(F.contractAmount) },
+    /* ⚠️ 2026-09-21: `contract` — бүх мөр ∧ CONTRACTED (баганын нийлбэртэй таарна) */
+    byTypeTotal: {
+      budget: sumAll(F.budget),
+      contract: master
+        .filter((r) => str(r[F.amountNote]) === CONTRACTED)
+        .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
+    },
     byBagts,
   };
 }
@@ -966,7 +1009,36 @@ export type Findings = {
  * ⚠️ Дэлгэц (`Tailan.tsx`) ба PDF (`reportPdf.ts`) ХОЁУЛАА үүнийг дуудна —
  * тиймээс дүгнэлт хоёр баримтад ЯГ ижил гарна.
  */
-export function buildFindings(x: ReportExtra): Findings {
+/** Багцын хүснэгтийн мөр — `BagtsRow`-ийн хэрэгтэй хэсэг (Dashboard-оос импортлохгүй, цикл үүсгэхгүй) */
+export type BagtsLike = { key: string; label: string; progress: number | null };
+
+/**
+ * ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
+ * тайлангүй блок 0% гэж ордог, БҮХ блокоор хуваана). Урьд нь дэлгэц (`Tailan`)
+ * хүснэгтийн мөрөөс, PDF `progress.byBagts` (ЗӨВХӨН тайлантай блокийн дундаж)-аас
+ * авдаг тул хоёр баримт өөр тоо, заримдаа өөр багц нэрлэдэг байв. Одоо ХОЁУЛАА
+ * энд — нэг хэсэгт нэг дүрэм. `progress == null` (хэмжигдээгүй) багц эрэмбэд орохгүй.
+ */
+export function bagtsExtremes(rows: readonly BagtsLike[]): {
+  best: { bagts: string; pct: number } | null; worst: { bagts: string; pct: number } | null;
+} {
+  const ranked = rows
+    .filter((b): b is BagtsLike & { progress: number } => b.progress != null)
+    .sort((a, b) => b.progress - a.progress);
+  const best = ranked[0] ?? null;
+  const worst = ranked.length ? ranked[ranked.length - 1] : null;
+  return {
+    best: best ? { bagts: best.label, pct: best.progress } : null,
+    worst: worst ? { bagts: worst.label, pct: worst.progress } : null,
+  };
+}
+
+/**
+ * @param bagtsRows ⚠️ 2026-09-21: багцын хүснэгтийн мөрүүд — өгвөл `bestBagts`/
+ *   `worstBagts` ХҮСНЭГТИЙН дүрмээр (`bagtsExtremes`); дэлгэц ба PDF хоёулаа
+ *   дамжуулна. Өгөөгүй бол хуучин `progress.byBagts` (тайлантай блокийн дундаж).
+ */
+export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]): Findings {
   /*
    * БАРИЛГА УГСРАЛТ.
    *
@@ -989,8 +1061,9 @@ export function buildFindings(x: ReportExtra): Findings {
   const buildLag = null as number | null;
 
   const byBagts = x.progress.byBagts;
-  const bestBagts = byBagts[0] ?? null;
-  const worstBagts = byBagts.length ? byBagts[byBagts.length - 1] : null;
+  const ext = bagtsRows ? bagtsExtremes(bagtsRows) : null;
+  const bestBagts = ext ? ext.best : byBagts[0] ?? null;
+  const worstBagts = ext ? ext.worst : byBagts.length ? byBagts[byBagts.length - 1] : null;
   const stalled = x.progress.stalled;
 
   const landLeft = x.land.byStatus
@@ -1000,8 +1073,10 @@ export function buildFindings(x: ReportExtra): Findings {
 
   const contractRate = x.finance.orderTotal
     ? (x.finance.contractAmount / x.finance.orderTotal) * 100 : null;
+  /* ⚠️ 2026-09-21: тоологч = ГЭРЭЭЛСЭН багцын төлбөр (`paidContracted`), хуваарь =
+     гэрээлсэн дүн — нэг хүрээ. Урьд нь бүх төлбөр (`paid`) хуваагддаг байв. */
   const paidRate = x.finance.contractAmount
-    ? (x.finance.paid / x.finance.contractAmount) * 100 : null;
+    ? (x.finance.paidContracted / x.finance.contractAmount) * 100 : null;
 
   /* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ дээр тогтсон гурван дүгнэлт
      (оргил сар, сүүлийн гурван сарын эрчим) ХАСАГДСАН — хуучин
@@ -1055,7 +1130,11 @@ export function buildFindings(x: ReportExtra): Findings {
   }
 
   if (contractRate != null && paidRate != null) {
-    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээний дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(x.finance.contractAmount - x.finance.paid)));
+    /* ⚠️ 2026-09-21: үлдэгдэл = гэрээлсэн дүн − гэрээлсэн багцын төлбөр (хувьтай нэг хүрээ) */
+    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(x.finance.contractAmount - x.finance.paidContracted)));
+    if (x.finance.paidOther > 0) {
+      f.push(tr('Нийт олгосон {0} ₮-ийн {1} ₮ нь гэрээлсэн багцад холбогдоогүй (олон багц хамарсан эсвэл гэрээ баталгаажаагүй багцын) төлбөр тул дээрх хувь, үлдэгдэлд ороогүй.', num(x.finance.paid), num(x.finance.paidOther)));
+    }
   }
 
   if (x.habea.incidents > 0) {

@@ -12,7 +12,7 @@ import { BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { cached } from '@/lib/live';
 import { text } from '@/lib/format';
-
+
 
 /** Чартын нэг мөр: багц, түүний давхаргууд, давхцсан талбарын OID-ууд */
 export type PkgOverlap = {
@@ -101,11 +101,18 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
       const r = res[i];
       /* ⚠️ Нэг багцын огтлолцол унасныг «давхцалгүй» гэж бүү ойлго —
          `failed` тугаар тэмдэглээд дэлгэц дээр ил хэлнэ. */
+      /* ⚠️ 2026-09-21: ХЭСЭГЧИЛСЭН үр дүн ч «унасан». `overlapLeftParcels` нь
+         давхаргын нэг нь унасан ч `allSettled`-ээр амжилттай шийдэгдэж,
+         `failed: [layerId…]` жагсаалттай ХАГАС тоо буцаадаг. Түүнийг
+         `failed: false` гэж хаявал дэд бүтцийн олон давхаргатай багц дутуу
+         OID-той «баталгаатай» харагдаж, `useAsync`-ийн кэшинд сесс дуустал
+         үлдэнэ. Одоо `failed: true` — дэлгэц «тоологдсонгүй» гэж хэлж, дараагийн
+         ачаалалт дахин оролдоно (`overlapLeftParcels` өөрөө ч кэшлэхгүй). */
       return r.status === 'fulfilled'
-        ? { ...pk, oids: r.value.oids, failed: false }
+        ? { ...pk, oids: r.value.oids, failed: (r.value.failed?.length ?? 0) > 0 }
         : { ...pk, oids: [] as number[], failed: true };
     })
     .filter((x) => x.oids.length > 0 || x.failed)
     .sort((a, b) => b.oids.length - a.oids.length
       || a.name.localeCompare(b.name, 'mn', { numeric: true }));
-}
+}

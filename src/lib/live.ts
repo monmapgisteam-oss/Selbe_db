@@ -155,6 +155,9 @@ export const loadBudget = cached<Budget>(async () => {
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(inTotal, 'o');
+  /* ⚠️ 2026-09-21: ЭНЭ хүрээ (`inTotal` ∧ CONTRACTED) нь порталын ЦОРЫН ГАНЦ «гэрээлсэн
+     дүн»-ий дүрэм — `reportData.contractAmount`, `execReport.csum`,
+     `GeneralDash.KpiStrip.csum` бүгд ижил шүүлттэй; аль нэгийг өөрчилбөл бүгдийг. */
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
     .map((s, i) => ({ key: s.field as string, label: s.label as string, value: sumOf(inTotal, `s${i}`) }))

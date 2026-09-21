@@ -235,7 +235,14 @@ export function scoreFin(i: FinInput): DimScore {
      «гэрээгүй, хугацаа өнгөрсөн» гэж 0 оноо аваад доор нь «Гэрээний дүн: N»
      гэж зөрчилтэй гардаг байв. Тайлбар нь чөлөөт текст (`uncontracted.ts` §⚠️)
      тул дүн байгаа нь гэрээний илүү найдвартай нотолгоо. */
-  const contracted = i.contracted || (i.contract != null && i.contract > 0);
+  /* ⚠️ 2026-09-21 (ДАХИН АУДИТ, дээрхийг ХҮЧИНГҮЙ болгов): ГЭРЭЭТЭЙ = ЗӨВХӨН
+     `note === CONTRACTED`. `geree_dun` нь гэрээлэгдээгүй мөрд ч (~33 тэрбум)
+     бөглөгдсөн байдаг — энэ бол порталын бүх «гэрээлсэн дүн»-ий дүрэм
+     (`gdash.Kpi.contract`, `live.loadBudget`). `contract > 0`-ийг гэрээ гэж
+     тооцвол тэр 33 тэрбумын мөр «гэрээ байгуулсан» гэж 100 оноо авна.
+     Гэрээгүй мөрийн `contract` дүнг «Гэрээ ба төсвийн зөрүү»-д ч ХЭРЭГЛЭХГҮЙ —
+     `scorecardLoad` тийм мөрд `contract: null` дамжуулна (дэлгэцэд «гэрээгүй»). */
+  const contracted = i.contracted;
   if (contracted) {
     parts.push(100);
     facts.push(fact(tr('Гэрээ'), tr('байгуулсан')));
@@ -247,7 +254,7 @@ export function scoreFin(i: FinInput): DimScore {
   } else {
     facts.push(fact(tr('Гэрээ'), tr('хараахан байгуулаагүй')));
   }
-  if (i.contract != null && i.contract > 0 && i.cost > 0) {
+  if (contracted && i.contract != null && i.contract > 0 && i.cost > 0) {
     const over = ((i.contract - i.cost) / i.cost) * 100;
     const sc = clamp(100 - Math.max(0, over) * RULE.overBudgetPerPct);
     parts.push(sc);
@@ -489,9 +496,17 @@ export type WorkScore = {
   type: string;
   /** Урьдчилсан төсөвт өртөг, ₮ (Cashflow) */
   cost: number;
-  /** Гэрээний дүн, ₮ — гэрээгүй бол null */
+  /** Гэрээний дүн, ₮ — гэрээгүй (`note !== CONTRACTED`) бол null (2026-09-21) */
   contract: number | null;
   cancelled: boolean;
+  /**
+   * ⚠️ 2026-09-21: ГАЗАР ЧӨЛӨӨЛӨЛТИЙН МӨР (6-р хэсэг) — «Багц ажил» БИШ («78 биш 74»,
+   * 2026-09-10). Зөвхөн `land` бүлгийн газар чөлөөлөлтийн салаанд (`loadLandStatus`)
+   * оноотой; жагсаалт, `statusCounts`, «Нийт N багц ажил», шүүлтэд ОРОХГҮЙ —
+   * `CeoScorecard` тэдгээрийг `listed`-ээр хасна. Төслийн нийт (`projectDims`)-д
+   * газрын оноо нь хэвээр орно.
+   */
+  isLandWork: boolean;
   dims: Record<Dim, DimScore>;
   /** Бодогдсон бүлгүүдийн энгийн дундаж */
   total: number | null;

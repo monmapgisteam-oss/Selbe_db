@@ -698,18 +698,25 @@ function pickRows(id: string, a: Record<string, unknown>): [string, string][] {
       [tr('Арга хэмжээ'), text(a[I.argaHemjee], '—')],
     ] as [string, string][]).filter(([, v]) => v !== '—');
   }
+  /* ⚠️ 2026-09-21: null/хоосон хэмжээг «0 м» гэж БҮҮ зур (`nn` нь 0 буцаадаг) —
+     мэдээлэлгүй ба тэг хоёр өөр. Хэмжээгүй мөр ослын салбартай ижил
+     `.filter(v !== '—')`-ээр алга болно. */
+  const meters = (v: unknown): string => {
+    const x = v == null || v === '' ? NaN : Number(v);
+    return Number.isFinite(x) ? tr('{0} м', num(x)) : '—';
+  };
   const rows: [string, string][] = [
     [tr('Багц'), text(a[C.bagts], '—')],
     [tr('Блок'), text(a[C.blok], '—')],
     [tr('Төлөв'), text(a[C.tuluv], '—')],
-    [tr('Өндөр'), tr('{0} м', num(nn(a[C.undur])))],
+    [tr('Өндөр'), meters(a[C.undur])],
     /* ⚠️ Хоёр бичиглэл уншдаг байсан зам ХАСАГДЛАА (2026-09-04): эх
        үйлчилгээнд цэг [50] ба бүс [51] ХОЁУЛАА «суны» гэж бичдэг. Хоёр нэр нь
        зөвхөн test_data-гийн хуулбарын үлдэгдэл байв. */
-    [tr('Сумны урт'), tr('{0} м', num(nn(a[C.sunUrt])))],
+    [tr('Сумны урт'), meters(a[C.sunUrt])],
   ];
-  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), tr('{0} м', num(nn(a['BUFF_DIST'])))]);
-  return rows;
+  if (id === 'habea:buffer') rows.push([tr('Аюулгүйн радиус'), meters(a['BUFF_DIST'])]);
+  return rows.filter(([, v]) => v !== '—');
 }
 
 /**
@@ -1577,7 +1584,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       value: picked.id === 'habea:osol'
         ? text(picked.attrs[I.turul], `#${pickOsol}`)
         : pickUzOid
-          ? (pickUzRow ? `${date(pickUzRow.d)} · ${pickUzRow.site}` : `#${pickUzOid}`)
+          /* ⚠️ 2026-09-21: огноогүй үзлэг (`d: 0`) — «1970.01.01» биш «огноогүй» */
+          ? (pickUzRow ? `${incDate(pickUzRow.d)} · ${pickUzRow.site}` : `#${pickUzOid}`)
         /* ⚠️ Дугааргүй кран (21/50) — «—» биш `#OBJECTID` гэж нэрлэнэ */
         : text(picked.attrs[C.dugaar], '') || `#${pickCraneOid}`,
       clear: () => setPicked(null),

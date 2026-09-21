@@ -1338,7 +1338,12 @@ export async function simulateFlood(
   };
   /**
    * ⚠️ Газрын өндөр ба ХУРИМТЛАГДСАН гурван тор ХАМТ явна:
-   *   · `terrainZ` — 3D-д усны ГАДАРГУУ (`z + гүн`) бодоход (`uyrSurface.ts`)
+   *   · `bedZ` — 3D-д усны ГАДАРГУУ (`bedZ + гүн`) бодоход (`uyrSurface.ts`);
+   *     `terrainZ` — ЖИНХЭНЭ DSM, рельеф/налуу (`uyrTailbar.ts`). (2026-09-21:
+   *     урьд нь «terrainZ = усны гадаргуу» гэж бичсэн нь хуучирсан — гадаргуу
+   *     нь ёроолоос, ёроол нь `bedZ`.)
+   *   · `channelMask` — голдрил (`stream` = хуримтлал ≥ STREAM_HA ∪ шатаасан
+   *     голын нүд) — «Голын суваг» шалтгаан (`uyrTailbar.ts`)
    *   · `maxDepth` / `maxSpeed` — «хамгийн муу тохиолдол»-ын зураг
    *   · `arrivalS` — ус хэдэн минутад ирэх вэ (нүүлгэн шилжүүлэлтийн хугацаа)
    * Эдгээр нь зүсмэлээс ДАХИН бодогдохгүй: нүд бүрийн оргил өөр өөр агшинд
@@ -1352,7 +1357,10 @@ export async function simulateFlood(
   /* ⚠️ `terrainZ` = ЖИНХЭНЭ DSM (`zReal`), `bedZ` = шатааж дүүргэсэн тооцооны
      ёроол (`z`). Гүн `d` нь `bedZ`-ээс хэмжигддэг тул усны гадаргуу =
      `bedZ + d`, харин рельеф/налуу нь `terrainZ`-ээс (2026-09-21, дээрх §). */
+  /* ⚠️ `stream` нь Маннингийн барзгарт хэрэглэсэн ЯГ ТЭР маск (`riverCell`
+     нэгтгэсэн) — тайлбар нь тооцоотой ижил ангиллыг хэлнэ (2026-09-21). */
   return floodDataFromBuffer(meta, buf, {
     terrainZ: zReal, bedZ: z, maxDepth: maxD, maxSpeed: maxS, arrivalS: arrival, accHa,
+    channelMask: stream,
   });
 }

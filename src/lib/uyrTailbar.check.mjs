@@ -70,4 +70,13 @@ assert.ok(up[up.length - 1][1] > up[0][1], 'дээш зам буруу чигл�
 /* 6. Хуурай нүд дээр зам БАЙХГҮЙ */
 assert.equal(flowPath(fd, 0, 5 * W + 35, true).length, 0, 'хуурай нүдэнд зам гарав');
 
+/* 7. ТООЦООНЫ голдрилын маск (`fd.channel`) геометрээс ДАВАМГАЙЛНА (2026-09-21):
+   жинхэнэ DSM дээр 17 м нүдэнд гол «эрэггүй» харагддаг тул хавтгай, эрэггүй
+   нүд ч маскад байвал суваг; маскад байхгүй бол суваг хэлбэртэй ч суваг БИШ. */
+const flat = 30 * W + 5;
+const masked = whyFlood({ ...fd, channel: (i) => i === flat }, 0, flat);
+assert.equal(masked.channel, true, 'маскын голдрилыг суваг гэж танисангүй');
+const unmasked = whyFlood({ ...fd, channel: () => false }, 0, 20 * W + 20);
+assert.equal(unmasked.channel, false, 'маскгүй нүдийг геометрээр суваг болголоо');
+
 console.log('uyrTailbar.check ✔');

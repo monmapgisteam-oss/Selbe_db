@@ -27,7 +27,17 @@
  *    нэрээр олгосон эрх байхгүй — бүх эрх зөвхөн `__cap__:` мөрөөс) буцаана;
  *    remote ачаалагдмагц урьдын зан төлөв. Хэрэглэгчийг сүлжээний саатлаар
  *    ТҮГЖИХГҮЙ — нэвтрэлт `permissions.hasAccess` хэвээр, зөвхөн нэмэлт эрх
- *    нь remote сэргэтэл (15 сек–5 мин poll) хүлээнэ.
+ *    нь remote сэргэтэл хүлээнэ.
+ * ⚠️ POLL-ИЙН ДАВТАМЖ (2026-09-21, аудитын засвар): `AuthGate` нь remote
+ *    уншигдаагүй (`permissions.remoteReady()` false) л бол `signed-in` төлөвт ч
+ *    15 сек тутам дахин оролдоно — `denied`-тэй ИЖИЛ. Урьд нь тайлбар «15 сек–5
+ *    мин» гэж бичсэн ч 15 сек нь зөвхөн `denied`-д үйлчилдэг байсан тул хатуу
+ *    жагсаалтын хэрэглэгч remote унасан бол 5 мин хүртэл эрхгүй суудаг байв.
+ *    Remote уншигдмагц 5 мин руу буцна.
+ * ⚠️ БИЧИХ ЗАМ ч remote-гүй бол ХААЛТТАЙ (2026-09-21): `toggleCap` ба
+ *    `scopedAcl.syncCaps` нь `remoteSynced` false үед `false` буцаана — шинэ
+ *    browser-т localStorage хоосон, remote уншигдаагүй атлаа бичилт бүтвэл
+ *    `[] ∪ {cap}` нь ArcGIS дээрх бүтэн жагсаалтыг дарж бичих байв.
  */
 
 import { AUTH, type ViewKey } from './services';
@@ -444,6 +454,13 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
 
 /** Нэг эрхийг асаах/унтраах товчлол. */
 export function toggleCap(username: string, cap: CapKey, on: boolean): Promise<boolean> {
+  /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар). `capsStored`
+     нь localStorage-ийн кэш — шинэ browser эсвэл цэвэрлэсэн кэштэй сешнд `[]`.
+     Тэр үед «одоогийн + нэг» = `[cap]` бөгөөд `capUpsert` бүтвэл ArcGIS дээрх
+     БҮТЭН жагсаалт энэ ганц эрхээр солигдоно (`_syncRemoteCaps` remote = үнэн
+     гэдэг тул буцааж авах зам ч байхгүй). `UserAdmin` унтраалгаа урьдчилан
+     хаадаг; энэ нь lib-түвшний давхар хаалт. */
+  if (!remoteSynced) return Promise.resolve(false);
   /* ⚠️ `capsStored` — тугтай `capsOf` биш (2026-09-21, тэндхийн тайлбар) */
   const cur = capsStored(username);
   return setCaps(username, on ? [...new Set([...cur, cap])] : cur.filter((c) => c !== cap));

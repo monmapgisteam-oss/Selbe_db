@@ -85,7 +85,7 @@ import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate, type DataKey } from '@/lib/dataBus';
-import { hasCap, subscribeCaps } from '@/lib/caps';
+import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
 import f from './finance.module.css';
@@ -3829,6 +3829,15 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
         )}
         {/* ⚠️ Эрхгүй хэрэглэгчид товч ОГТ гарахгүй — унтраасан товч харуулбал
             «яагаад надад болохгүй байна вэ» гэсэн асуулт төрүүлнэ. */}
+        {/* ⚠️ ГЭХДЭЭ эрхийн хүснэгт энэ сешнд УНШИГДААГҮЙ (fail-closed → `canEdit`
+            false) бол товч алга болсон нь «эрхгүй» биш «түр» гэдгийг ГАНЦ
+            мөрөөр хэлнэ (2026-09-21, аудитын засвар) — эс бөгөөс эрхтэй хүн
+            админ руу дэмий явна. Нэвтрэлт унтраалттай орчинд `hasCap` true. */}
+        {!canEdit && !capsRemoteReady() && (
+          <span className={f.finClear} title={tr('Эрхийн мэдээлэл уншигдаагүй — түр хүлээнэ үү.')}>
+            {tr('Эрхийн мэдээлэл уншигдаагүй — түр хүлээнэ үү.')}
+          </span>
+        )}
         {canEdit && isFlat && (
           /*
            * ГЭРЭЭНИЙ БҮРТГЭЛИЙН ХЭРЭГСЛҮҮД — хоёр товч ҮРГЭЛЖ зэрэг харагдана.

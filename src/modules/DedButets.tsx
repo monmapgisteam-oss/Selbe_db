@@ -306,6 +306,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const [msel, setMsel] = useState<{ layerId: string; oids: number[] }>(
     () => ({ layerId: DED_BUTETS_LAYER_IDS[0], oids: [] }),
   );
+  /** Сүүлийн сонголт — async then() дотор updater-гүйгээр унших (2026-09-21) */
+  const mselRef = useRef(msel);
+  mselRef.current = msel;
   /** Тэгш өнцөгт татаж байна — `onSketch` үүгээр «шинэ объект»-оос ялгана */
   const [rectDraw, setRectDraw] = useState(false);
   const [mselBusy, setMselBusy] = useState(false);
@@ -692,8 +695,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * бол чирсэн ажил чимээгүй алга болно — энэ нь таб байхад гардаггүй байсан
    * шинэ зам (тэр үед хэлбэр засах нь тусдаа горим байв).
    */
-  const closeEdit = useCallback(() => {
-    if (!askDropReshape()) return;
+  /* ⚠️ 2026-09-21: `boolean` буцаана — хэрэглэгч «Cancel» дарж хаахаас
+     татгалзвал `false`; `onDone` үүгээр маягт НЭЭЛТТЭЙ үлдсэнийг мэднэ. */
+  const closeEdit = useCallback((): boolean => {
+    if (!askDropReshape()) return false;
     setReshape(null);
     setReshaped(null);
     setPick(null);
@@ -701,6 +706,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     /* ⚠️ Зурсан түр дүрсийг ЗААВАЛ арилгана — маягтыг хаасан ч зурагт үлдвэл
        «нэмэгдчихсэн юм болов уу» гэж уншигдана. */
     setClearToken((x) => x + 1);
+    return true;
   }, [askDropReshape, setHighlight]);
 
   /** Vertex чирэх бүрд — хадгалаагүй шинэ хэлбэрийг санана */
@@ -960,13 +966,16 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       loadLayerMeta(layerId)
         .then((meta) => queryOidsIn(meta, g.toJSON() as unknown))
         .then((found) => {
-          setMsel((m) => {
-            /* ⚠️ Функцээр — татаж байх зуур хэрэглэгч товшсон бол алдахгүй */
-            if (m.layerId !== layerId) return m;
-            const oids = [...new Set([...m.oids, ...found])];
-            showMsel(layerId, oids);
-            return { layerId, oids };
-          });
+          /* ⚠️ 2026-09-21: `setMsel`-ийн updater ДОТОР `showMsel` (→ `setHighlight`)
+             дуудаж болохгүй — React render дундуур өөр компонент шинэчилнэ
+             (`Gazar.tsx` §pickFlt-ийн дүрэм). Одоогийн сонголтыг `mselRef`-ээс
+             уншиж ГАДНА нь бодно; татаж байх зуур хэрэглэгч товшсон бол ref
+             хамгийн сүүлийн төлөвтэй тул алдахгүй. */
+          const m = mselRef.current;
+          if (m.layerId !== layerId) return;
+          const oids = [...new Set([...m.oids, ...found])];
+          setMsel({ layerId, oids });
+          showMsel(layerId, oids);
           if (!found.length) toast(tr('Тэгш өнцөгт дотор энэ давхаргын объект олдсонгүй'));
         })
         .catch((e) => toast(String((e as Error).message || e)))
@@ -1518,10 +1527,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               onDone={(n, back: UndoInfo | null) => {
                 const id = pick.layerId;
                 const created = pick.oid == null;
-                closeEdit();
+                /* ⚠️ 2026-09-21: хадгалаагүй хэлбэрийн засвартай үед `closeEdit`
+                   «Cancel»-аар зогсдог ч доорх алхмууд ЯВДАГ байв. Бичилт аль
+                   хэдийн ХИЙГДСЭН тул давхаргыг дахин уншуулах, мэдэгдэх нь
+                   хэвээр зөв; харин маягт нээлттэй үлдсэн тул түүний `before`-ыг
+                   `DedButetsEdit` өөрөө дахин татна (тэнд `saved` тоолуур). */
+                const closed = closeEdit();
                 /* ⚠️ Буцаалтыг МАЯГТ бэлддэг: хуучин утгууд зөвхөн түүний
-                   дотор амьдардаг бөгөөд хаагдмагц алга болно. */
-                setUndoable(back ? { ...back, layerId: id } : null);
+                   дотор амьдардаг бөгөөд хаагдмагц алга болно. Маягт нээлттэй
+                   үлдвэл (`!closed`) буцаалтыг өгөхгүй — маягт дахин уншигдаж
+                   «хуучин утга» нь шинэчлэгдэнэ, буцаалт нь дараагийн
+                   хадгалалтын `before`-той зөрөх байсан. */
+                setUndoable(closed && back ? { ...back, layerId: id } : null);
                 /**
                  * ⚠️ ДАВХАРГЫГ ДАХИН УНШУУЛНА. FeatureLayer нь татсан объектоо
                  * клиент дээрээ кэшлэдэг бөгөөд бичилт нь SDK-аар биш ШУУД
