@@ -13,6 +13,7 @@
  * ⚠️ React импортлохгүй — `finFilter.check.mjs` шууд Node дээр ачаална.
  */
 import { t as tr } from '@/lib/i18nCore';
+import { dayKey } from '@/lib/format';
 
 export type Row = Record<string, unknown>;
 export type FieldDef = { name: string; alias: string; type: string };
@@ -43,7 +44,10 @@ const yearOf = (v: unknown): string => {
   const n = Number(s);
   if (/^\d{11,}$/.test(s) && Number.isFinite(n)) {
     const d = new Date(n);
-    if (!Number.isNaN(d.getTime())) return String(d.getUTCFullYear());
+    /* ⚠️ ОРОН НУТГИЙН жил (`dayKey`) — `getUTCFullYear` БИШ (2026-09-21, `format.ts`-ийн
+       дүрэм): 1-р сарын 1-ний 00:00–07:59-ийн (+08) огноо UTC-гээр ӨМНӨХ ЖИЛ болж,
+       «Жил» шүүлт тэр мөрийг буруу жилд оруулдаг байв. */
+    if (!Number.isNaN(d.getTime())) return dayKey(n).slice(0, 4);
   }
   /* `YYYY-MM-DD`, `YYYY/MM/DD` эсвэл дан `YYYY` */
   const m = /^(\d{4})(?:[-/]|$)/.exec(s);

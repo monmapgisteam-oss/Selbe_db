@@ -199,7 +199,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     computeRaw(data.zones, greenCats, parking, scoreOn);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
-      return { ...z, urban: u.score, parts: u.parts, displayGeom: geomRef.current.get(z.id) ?? null };
+      /* ⚠️ `scored` — оноололд орсон эсэх, ГАНЦ эх сурвалж (2026-09-21):
+         `scoredRows`-ийн шүүлттэй ЯГ ижил дүрэм; `SuitMap` товшилт/hover-т
+         үүнийг уншина (идэвхжүүлсэн бүс сонгогдоно). */
+      return {
+        ...z,
+        urban: u.score,
+        parts: u.parts,
+        displayGeom: geomRef.current.get(z.id) ?? null,
+        scored: !z.excluded || scoreOn.has(z.type),
+      };
     });
   }, [data, projected, greenCats, parking, indicators, scoreOn]);
 
@@ -942,8 +951,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               roadTile={bareReal}
               bldWhere={bldWhere}
               bldFocus={bldFocus}
-              bldPick={locPick}
-              onBldClick={setLocPick}
+              /* ⚠️ «Байршил» карт ЗӨВХӨН urban/indicator горимд зурагддаг
+                 (доор §location). Симуляц горимд барилга дарахад урьд нь
+                 `setLocPick` + goTo(scale 3000) ажиллаж, зураг гэнэт ойртож,
+                 тодруулга картгүйгээр үлддэг байв (2026-09-21). */
+              bldPick={mode === 'urban' || mode === 'indicator' ? locPick : null}
+              onBldClick={mode === 'urban' || mode === 'indicator' ? setLocPick : undefined}
               zoneFaint={locPublicOnly}
             />
 
@@ -1023,9 +1036,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               )}
             </MapTools>
 
+            {/* ⚠️ `key={active.id}` ХАСАВ (2026-09-21): түлхүүр солигдоход
+                `SuitDetail` дахин mount болж, чирж зөөсөн байрлал буланд буцдаг
+                байв — тайлбарт «өөр бүс сонгоход зөөсөн байрлалдаа үлдэнэ»
+                гэсэнтэй зөрж байлаа. Карт дотоод төлөвгүй (зөвхөн DOM байрлал)
+                тул `r` солигдоход шинэ тоо шууд зурагдана; хаагаад дахин
+                нээхэд л (`active` null → объект) mount болж буланд буцна. */}
             {active && (
               <SuitDetail
-                key={active.id}
                 r={active}
                 indicators={indicators}
                 mode={mode}

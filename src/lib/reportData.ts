@@ -148,6 +148,7 @@ export type ReportExtra = {
     /** Нийт төсөв — Excel-ийн НИЙТ хамрах хүрээгээр (2,493,041,880,532 ₮) */
     budget: number;
     orderTotal: number;
+    /** Гэрээлсэн дүн — ⚠️ зөвхөн `note === CONTRACTED` мөр, `inTotal` хүрээ (2026-09-21) */
     contractAmount: number;
     /** Газар чөлөөлөлт, буулгалт цэвэрлэгээ — НИЙТ дүнгээс ГАДУУР, ₮ */
     landBudget: number;
@@ -297,13 +298,19 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
        ⚠️ 2026-09-06: мөрийн ТӨРЛИЙН шүүлт хэрэггүй болов — мөр БҮР нэг гэрээ. */
     queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
-      outFields: [F.pkg2, F.pkg, F.budget],
+      /* ⚠️ `FIN_XL_TOTAL_CODE_FIELD` (2026-09-21) — доорх `finXlInTotal` шүүлтэд хэрэгтэй */
+      outFields: [F.pkg2, F.pkg, F.budget, FIN_XL_TOTAL_CODE_FIELD],
     }),
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
   const budget = new Map<string, number>();
   cf.forEach((r) => {
+    /* ⚠️ 2026-09-21: ЗӨВХӨН `finXlInTotal` хүрээ (Excel-ийн НИЙТ мөр, 2,493 тэрбум).
+       Урьд нь БҮХ мөрийн төсөв (5·6·7-р хэсэг ч орсон, 3,167.6 тэрбум) байсан
+       тул `weightSum` («Төслийн төсвийн X%-ийг эзэлдэг», Tailan.tsx) худал бага
+       гардаг байв — хуваарь нь `loadFinance.budget`-тай ИЖИЛ хүрээ байх ёстой. */
+    if (!finXlInTotal(r)) return;
     // ⚠️ `pkg2` (CF007, НАВЧ) ЭХЭЛЖ: `pkg` (CF006) нь дээд багц тул
     //    «БАГЦ-16.1…16.7»-г НЭГ түлхүүрт нурааж, багцын жин холилдоно.
     // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт ДИАПАЗОН мөр хоосон түлхүүр
@@ -565,6 +572,9 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
   const master = rows;
+  /* ⚠️ Динамик (2026-09-21) — `gdash` нь `live.cached`-ыг импортолдог, энэ модуль
+     `live`-тэй нэг давхаргад тул статик импортоор цикл үүсгэхгүй байх нь дээр. */
+  const { CONTRACTED } = await import('@/lib/gdash');
 
   /**
    * ⚠️ ТӨСЛИЙН НИЙТ ДҮН = ЗӨВХӨН ХАМРАХ ХҮРЭЭНИЙ МӨР (2026-09-15-ны залруулга).
@@ -700,7 +710,17 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     rows: master.filter((r) => !FIN_XL_WORK_SKIP.includes(secOf(r))).length,
     budget: sum(F.budget),
     orderTotal: sum(F.orderTotal),
-    contractAmount: sum(F.contractAmount),
+    /**
+     * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН «Гэрээлсэн дүн» (`note === CONTRACTED`) мөрөөр
+     * (2026-09-21; `gdash.kpisOf`-ийн `contract`-тай ИЖИЛ дүрэм, 2026-09-08-ны
+     * хэрэглэгчийн шийдвэр). `geree_dun` нь гэрээлэгдээгүй мөрд ч бөглөгдсөн
+     * байдаг тул шүүлтгүй `sum()` ~33 тэрбумаар их гаргаж, `contractRate` /
+     * `paidRate` (`buildFindings`) хоёулаа тэр суурин дээр худал байв.
+     * ⚠️ `inTotal` хүрээ ХЭВЭЭР — `budget`/`orderTotal`-тай нэг хуваарьтай.
+     */
+    contractAmount: inTotal
+      .filter((r) => str(r[F.amountNote]) === CONTRACTED)
+      .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
     /**
      * ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ (6-р хэсэг) — НИЙТ дүнгээс
      * ГАДУУР тул тусад нь. Тайлангийн 4-р хэсэг үүнийг уншина: мөнгө

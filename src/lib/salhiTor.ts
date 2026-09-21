@@ -110,7 +110,10 @@ export type WindField = {
   v: Float32Array;
   /** Татсан огноо `YYYY-MM-DD` */
   date: string;
-  /** Кэшнээс ирсэн эсэх */
+  /**
+   * СҮЛЖЭЭ УНААД хуучирсан кэш өгсөн эсэх (сэрэмжлүүлэг).
+   * ⚠️ TTL доторх шинэ кэш нь `false` — хэвийн зам (2026-09-21).
+   */
   cached: boolean;
 };
 
@@ -303,13 +306,17 @@ function readCache(key: string): Cached | null {
 export async function loadWindField(date: string): Promise<WindField> {
   const key = keyOf(date);
   const hit = readCache(key);
+  /* ⚠️ TTL доторх кэш = ХЭВИЙН зам → `cached: false` (2026-09-21). Урьд нь
+     `true` байсан тул `Ersdel.tsx` торыг дахин нээх бүрд «Кэшнээс — сүлжээ
+     татагдсангүй» гэж ХУДАЛ бичдэг байв. `cached` нь зөвхөн доорх `catch`
+     (сүлжээ унаад хуучирсан кэш өгсөн) үед л `true`. */
   if (hit && Date.now() - hit.ts < TTL) {
     return {
       times: hit.times,
       u: Float32Array.from(hit.u),
       v: Float32Array.from(hit.v),
       date,
-      cached: true,
+      cached: false,
     };
   }
 

@@ -30,13 +30,43 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
+/* ⚠️ ГАРААР ТАРЬСАН localStorage (2026-09-21) — модуль импортлохоос ӨМНӨ:
+   `caps.ts` кэшээ ачаалахдаа уншдаг. Доорх 0-р шалгуур энэ мөрүүд remote
+   ачаалагдаагүй үед ХҮЧИНГҮЙ болохыг барина. */
+mem.set('selbe-caps-v1', JSON.stringify({ offline_hack: ['qaqc'] }));
+mem.set('selbe-qaqc-acl-v1', JSON.stringify([{ user: 'offline_hack', grants: [{ role: '', bagts: ['Багц 1'] }] }]));
+
 const {
   ALL_BAGTS, qaqcScope, _syncRemoteQaqc, setQaqcAssign, removeQaqcAssign,
   purgeQaqcAssign, listQaqcAssigns,
 } = await import('@/lib/qaqcAcl.ts');
 const ACL = await import('@/lib/guitsetgelAcl.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
+const CAPS = await import('@/lib/caps.ts');
+const WHO = await import('@/lib/who.ts');
+const { saveQaqc } = await import('@/lib/qaqc.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];
+
+/* ══════════ 0. REMOTE АЧААЛАГДААГҮЙ → localStorage ҮЛ ТООЦНО (2026-09-21) ══════════
+ * ⚠️ Хатуу жагсаалтын (remote-гүй нэвтэрдэг) хэрэглэгч `selbe-caps-v1` /
+ *    `selbe-qaqc-acl-v1`-д өөртөө эрх, багц бичээд сүлжээгээ хаагаад нэвтэрвэл
+ *    `requireCap`/`qaqcScope` давдаг байв. Одоо `_syncRemote*` нэг ч удаа
+ *    ажиллаагүй бол хатуу тохиргооны default (эрхгүй · багцгүй). */
+assert.deepEqual(CAPS.capsStored('offline_hack'), ['qaqc'], 'локал кэш өөрөө уншигдсан (бичих замд)');
+assert.equal(CAPS.hasCap('offline_hack', 'qaqc'), false, 'remote-гүй сешнд localStorage-ийн эрх ХҮЧИНГҮЙ');
+assert.equal(CAPS.capsRemoteReady(), false);
+assert.deepEqual(qaqcScope('offline_hack'), [], 'remote-гүй сешнд localStorage-ийн багц ХҮЧИНГҮЙ');
+assert.equal(listQaqcAssigns().length, 0, 'жагсаалт ч хоосон');
+WHO.setCurrentUser('offline_hack');
+assert.throws(() => WHO.requireCap('qaqc'), /эрхгүй/, 'requireCap локал эрхээр давж болохгүй');
+/* remote ачаалагдмагц — урьдын зан төлөв */
+CAPS._syncRemoteCaps([{ user: 'offline_hack', caps: ['qaqc'] }]);
+assert.equal(CAPS.hasCap('offline_hack', 'qaqc'), true, 'remote-оос ирсэн эрх хүчинтэй');
+assert.equal(CAPS.capsRemoteReady(), true);
+CAPS._syncRemoteCaps([]);
+assert.equal(CAPS.hasCap('offline_hack', 'qaqc'), false, 'remote = эцсийн үнэн');
+WHO.setCurrentUser(null);
+console.log('✅ remote-гүй сешнд localStorage-ийн эрх/багц үл тооцно');
 
 /* ── 1. Хуваарилагдаагүй → ЮУ Ч ХАРАХГҮЙ (fail-closed) ── */
 _syncRemoteQaqc([]);
@@ -189,4 +219,38 @@ setQaqcAssign('keep_x', cur.bagts, false);
 assert.deepEqual(qaqcScope('keep_x'), ['Багц 2'], 'дахин бичихэд хүрээ ТЭЛЭХГҮЙ');
 assert.notDeepEqual(qaqcScope('keep_x'), null, 'бүх багц болж ҮСЭРЧ БОЛОХГҮЙ');
 console.log('✅ унтраалга хүрээг тэлэхгүй');
-console.log('\nqaqcAcl: ok — fail-closed · super · remote=үнэн · УРСГАЛААС ТУСДАА · устгалт');
+
+/* ══════════ 12. saveQaqc — LIB-ТҮВШНИЙ ЭРХ + БАГЦЫН ХҮРЭЭ (2026-09-21) ══════════
+ * ⚠️ Урьд нь `saveQaqc` эрхээ зөвхөн `Qaqc.tsx`-ийн `canEdit`-д шалгадаг байв —
+ *    консолоос дуудсан хэн ч бичиж чадна. Одоо `assertQaqcWrite`: `requireCap('qaqc')`
+ *    + `qaqcScope` (Qaqc.tsx:233-240-ийн ЯГ ижил дүрэм). `updates: []` өгснөөр
+ *    сүлжээнд хүрэлгүй шалгуурыг тусгаарлана: эрхтэй бол `0` буцна.
+ * ⚠️ `window` shim байгаа тул `requireCap` ажиллана (Node-д алгасдаг салаа биш). */
+{
+  CAPS._syncRemoteCaps([]);
+  _syncRemoteQaqc([{ user: 'qa_w', bagts: ['Багц 2'] }, { user: 'qa_all', bagts: [ALL_BAGTS] }]);
+
+  WHO.setCurrentUser('nocap');
+  await assert.rejects(saveQaqc('b2_9f', []), /эрхгүй/, 'эрхгүй хүн: requireCap унах ёстой');
+
+  CAPS._syncRemoteCaps([{ user: 'qa_w', caps: ['qaqc'] }, { user: 'qa_all', caps: ['qaqc'] }]);
+  WHO.setCurrentUser('qa_w');
+  assert.equal(await saveQaqc('b2_9f', []), 0, 'эрхтэй · хуваарилагдсан багц → давна');
+  await assert.rejects(saveQaqc('b1_9f', []), /хуваарилагдаагүй/, 'эрхтэй · ӨӨР багц → хүрээгээр унана');
+  await assert.rejects(saveQaqc('baihgui_bagts', []), /хуваарилагдаагүй/, 'үл мэдэх багц → унана');
+
+  WHO.setCurrentUser('qa_all');
+  assert.equal(await saveQaqc('b1_9f', []), 0, '«бүх багц» = хязгааргүй (null ≠ [])');
+
+  /* super — хуваарилалтаас үл хамаарна, гэхдээ `qaqc` эрх нь ХЭВЭЭР шаардлагатай
+     (Qaqc.tsx-ийн `canEdit` эхлээд `hasCap`-ыг шалгадаг) */
+  WHO.setCurrentUser(superName);
+  await assert.rejects(saveQaqc('b1_9f', []), /эрхгүй/, 'super ч эрхгүй бол унана');
+  CAPS._syncRemoteCaps([{ user: superName, caps: ['qaqc'] }]);
+  assert.equal(await saveQaqc('b1_9f', []), 0, 'super + эрх → багц үл хамаарна');
+
+  WHO.setCurrentUser(null);
+  CAPS._syncRemoteCaps([]);
+}
+console.log('✅ saveQaqc — lib-түвшинд эрх + багцын хүрээ');
+console.log('\nqaqcAcl: ok — fail-closed · super · remote=үнэн · УРСГАЛААС ТУСДАА · устгалт · saveQaqc эрх');

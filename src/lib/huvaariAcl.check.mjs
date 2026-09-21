@@ -218,4 +218,35 @@ assert.equal(setHuvaariGrants('hooson', [{ role: 'author', bagts: [] }], false).
   'багцгүй grant хүлээн авагдав');
 console.log('✅ үүрэг бүрд ӨӨР багц — үржвэр арилсан, хоёр хэлбэр уншигдана');
 
-console.log('\nhuvaariAcl: ok — fail-closed · үүрэг↔хүрээ · super · УРСГАЛААС ТУСДАА · хасалт · grants');
+/* ══════════ ХАСААД ШУУД ДАХИН ХУВААРИЛАХ — ЭРХ БУЦААГДАХГҮЙ (2026-09-21) ══════════
+ * ⚠️ `scopedAcl.removeAssign` нь `syncCaps(u, [])`-ыг БОЛЗОЛГҮЙ дууддаг байв:
+ *    дараалалд хүлээх хооронд (өөр админ · `initRemote` · энэ хөтчийн дараагийн
+ *    `set`) дахин хуваарилагдсан хүний `plan`/`planApprove` эрхийг ХАСАЖ,
+ *    хуваарилагдсан атлаа хуудсаа нээж чадахгүй орхидог байв.
+ *    `guitsetgelAcl.removeAssign`-ийн `revoke && !stageOfUser(u)` дүрэмтэй тэнцэв. */
+{
+  const C = await import('@/lib/caps.ts');
+  C._syncRemoteCaps([{ user: 'readd', caps: ['plan', 'addRow'] }]);
+  _syncRemoteHuvaari([{ user: 'readd', roles: ['author'], bagts: ['Багц 1'] }]);
+  const rm = removeHuvaariAssign('readd'); // revoke = true, дараалалд
+  const re = setHuvaariAssign('readd', ['author'], ['Багц 2'], false); // хооронд нь дахин
+  assert.equal(re.ok, true);
+  await Promise.all([rm.granted, re.sync]);
+  assert.deepEqual(huvaariScope('readd', 'author'), ['Багц 2'], 'сүүлийн хуваарилалт ялна');
+  assert.ok(C.capsStored('readd').includes('plan'),
+    'хойшилсон хасалт дахин хуваарилагдсан хүний `plan` эрхийг АРЧИВ');
+  assert.ok(C.capsStored('readd').includes('addRow'), 'хамааралгүй эрх хөндөгдөхгүй');
+
+  /* Жинхэнэ хасалт (дахин хуваарилагдаагүй) — эрх урьдын адил буцна */
+  const rm2 = removeHuvaariAssign('readd');
+  await rm2.granted;
+  assert.equal(C.capsStored('readd').includes('plan'), false, 'жинхэнэ хасалт эрхээ буцаана');
+  assert.ok(C.capsStored('readd').includes('addRow'), 'бусад эрх хэвээр');
+
+  /* Хоосон нэр — remote руу явахгүй */
+  assert.equal(removeHuvaariAssign('   ').ok, false, 'хоосон нэрийг татгалзана');
+  C._syncRemoteCaps([]);
+}
+console.log('✅ хас→дахин хуваарил — эрх буцаагдахгүй · хоосон нэр татгалзана');
+
+console.log('\nhuvaariAcl: ok — fail-closed · үүрэг↔хүрээ · super · УРСГАЛААС ТУСДАА · хасалт · grants · хас→нэм');

@@ -24,7 +24,7 @@ import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
-import { loadExecReport, execFindings, askExecSummary } from '@/lib/execReport';
+import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo } from '@/lib/execReport';
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
@@ -89,18 +89,15 @@ export function ExecReport() {
    * ⚠️ `given === 0` нь «олголт хийгдээгүй»; `pct == null` нь «гэрээгүй тул
    * хувь бодогдохгүй» — ХОЁР ӨӨР утга, хольж болохгүй.
    */
-  const finZero = useMemo(
-    () => (x ? x.fin.rows.filter((f) => f.given === 0 && f.plan > 0) : []),
+  /* ⚠️ 2026-09-21: гурван ангилал (эхэлсэн · гэрээт-эхлээгүй · гэрээгүй) ба
+     хавсралтын дугаар ХОЁУЛАА `execReport.ts`-ээс — PDF-тэй НЭГ дүрэм. Урьд нь
+     энд «Эхлээгүй ажил» хавсралт СҮҮЛД, PDF-д ЭХЭНД дугаарлагдаж зөрдөг байв. */
+  const finSplit = useMemo(
+    () => (x ? execFinSplit(x) : { started: [], zero: [], none: [] }),
     [x],
   );
-  const finStarted = useMemo(
-    () => (x ? x.fin.rows.filter((f) => !(f.given === 0 && f.plan > 0)) : []),
-    [x],
-  );
-  const appendix = useMemo(
-    () => findings.filter((f) => !!f.items?.length).map((f) => ({ f, title: f.text })),
-    [findings],
-  );
+  const { started: finStarted, zero: finZero, none: finNone } = finSplit;
+  const appendix = useMemo(() => (x ? execAppendix(x, findings) : []), [x, findings]);
 
   const run = useCallback(async (what: 'pdf' | 'png' | 'ai') => {
     if (!x || busy) return;
@@ -202,7 +199,7 @@ export function ExecReport() {
                   return (
                     <>
                       <KpiRow items={kpis} />
-                      <Cap no="1">{tr('Үндсэн үзүүлэлт ба тайлбар')}</Cap>
+                      <Cap no="1.1">{tr('Үндсэн үзүүлэлт ба тайлбар')}</Cap>
                       <table className={r.table}>
                         <thead><tr>
                           <th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Утга')}</th><th>{tr('Тайлбар')}</th>
@@ -220,7 +217,7 @@ export function ExecReport() {
                     </>
                   );
                 })()}
-                <Fig no="1">{tr('Ажлын төрлөөр төсөвт өртөг')}</Fig>
+                <Fig no="1.1">{tr('Ажлын төрлөөр төсөвт өртөг')}</Fig>
                 <RankBars
                   title={tr('Ажлын төрөл бүрийн төсөв')}
                   fmt={money}
@@ -229,7 +226,7 @@ export function ExecReport() {
                     text: `${money(t.cost)}${t.perf == null ? '' : ` · ${pct(t.perf, 1)}`}`,
                   }))}
                 />
-                <Cap no="1.1">{tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')}</Cap>
+                <Cap no="1.2">{tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')}</Cap>
                 <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                   <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Гэрээт')}</th><th className={r.num}>{tr('Төсөв (₮)')}</th><th className={r.num}>{tr('Гэрээлсэн (₮)')}</th><th className={r.num}>{tr('Гүйц.')}</th></tr></thead>
                   <tbody>
@@ -278,7 +275,7 @@ export function ExecReport() {
                         value: money(s.amount),
                         sub: tr('{0} · {1} ажил', pct(srcTotal ? (s.amount / srcTotal) * 100 : 0, 1), num(s.n)),
                       }))} />
-                      <Cap no="1.4">{tr('Захирамжийн эх үүсвэр')}</Cap>
+                      <Cap no="1.3">{tr('Захирамжийн эх үүсвэр')}</Cap>
                       <table className={r.table}>
                         <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Гэрээт')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                         <tbody>
@@ -303,7 +300,7 @@ export function ExecReport() {
                 <div className={e.one}>
                   {/* ── Газар чөлөөлөлт — 01-ийн карт ── */}
                   <div>
-                    <Cap no="1.2">{tr('Газар чөлөөлөлтийн нэгж талбарын төлөв')}</Cap>
+                    <Cap no="1.4">{tr('Газар чөлөөлөлтийн нэгж талбарын төлөв')}</Cap>
                     <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                       <thead><tr><th>{tr('Төлөв')}</th><th className={r.num}>{tr('Талбар')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                       <tbody>
@@ -319,7 +316,7 @@ export function ExecReport() {
                     </table></div>
                     {x.gdash.land.reasons.length > 0 && (
                       <>
-                        <Fig no="1.1">{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
+                        <Fig no="1.3">{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
                         <RankBars
                           title={tr('Чөлөөгдөөгүй талбарын шалтгаан')}
                           items={x.gdash.land.reasons.map((rs, i) => ({ label: rs.label, value: rs.n, hot: i === 0 }))}
@@ -329,7 +326,7 @@ export function ExecReport() {
                   </div>
                   {/* ── ХАБ — 01-ийн карт ── */}
                   <div>
-                    <Cap no="1.3">{tr('ХАБ-ын талбайн хүн хүч')}{x.gdash.hse?.date ? ` · ${x.gdash.hse.date}` : ''}</Cap>
+                    <Cap no="1.5">{tr('ХАБ-ын талбайн хүн хүч')}{x.gdash.hse?.date ? ` · ${x.gdash.hse.date}` : ''}</Cap>
                     {x.gdash.hse ? (
                       <>
                         <KpiRow items={[
@@ -389,12 +386,14 @@ export function ExecReport() {
                 {/* ── 3. Багцын санхүү ── */}
                 <section id="exec-3" tabIndex={-1} className={r.section}>
                   <h2 className={r.h2}>{tr('3. Багцын санхүү')}</h2>
+                  {/* ⚠️ 2026-09-21: `planTotal` = 1-р хэсгийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ
+                      (зөвхөн «Гэрээлсэн дүн» мөр); `given` = HO-ийн бүх төлбөр (`execReport.fin` ⚠️). */}
                   <KpiRow items={[
-                    { label: tr('Гэрээний нийт дүн'), value: money(x.fin.planTotal) },
+                    { label: tr('Гэрээлсэн нийт дүн'), value: money(x.fin.planTotal), sub: tr('1-р хэсэгтэй ижил') },
                     { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : pct(x.fin.share, 1) },
                     { label: tr('Үлдэгдэл'), value: money(x.fin.remain) },
                   ]} />
-                  <Fig no="3">{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээний дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>
+                  <Fig no="3">{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээлсэн дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>
                   <RankBars
                     title={tr('Багц тус бүрийн санхүүжилтийн хувь')}
                     fmt={(v) => pct(v, 1)}
@@ -404,13 +403,15 @@ export function ExecReport() {
                       text: f.pct == null ? '—' : pct(f.pct, 1),
                     }))}
                   />
-                  <Cap no="3">{tr('Багц тус бүрийн санхүүжилт (олгосон ба гэрээний дүн)')}</Cap>
+                  <Cap no="3">{tr('Багц тус бүрийн санхүүжилт (олгосон ба гэрээлсэн дүн)')}</Cap>
                   <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
-                    <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Гэрээ (₮)')}</th><th className={r.num}>{tr('Олгосон (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
+                    <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Гэрээлсэн (₮)')}</th><th className={r.num}>{tr('Олгосон (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                     <tbody>
                       {finStarted.map((f) => (
                         <tr key={f.key}>
-                          <td>{f.label}</td><td className={r.num}>{f.plan > 0 ? num(f.plan) : '—'}</td><td className={r.num}>{num(f.given)}</td>
+                          {/* ⚠️ Гэрээгүй атлаа олголттой багц — ил тэмдэглэнэ (2026-09-21) */}
+                          <td className={f.contracted ? '' : e.warn}>{f.label}{f.contracted ? '' : ` (${tr('гэрээгүй')})`}</td>
+                          <td className={r.num}>{f.plan > 0 ? num(f.plan) : '—'}</td><td className={r.num}>{num(f.given)}</td>
                           <td className={`${r.num} ${f.pct != null && f.pct < 10 && f.plan > 0 ? e.warn : ''}`}>{f.pct == null ? '—' : pct(f.pct, 1)}</td>
                         </tr>
                       ))}
@@ -419,10 +420,20 @@ export function ExecReport() {
                           бүгдийг харуулна гэсэн дүрэм хэвээр. */}
                       {finZero.length > 0 && (
                         <tr>
-                          <td className={e.warn}>{tr('Эхлээгүй ажил ({0} багц)', num(finZero.length))}</td>
+                          <td className={e.warn}>{tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length))}</td>
                           <td className={`${r.num} ${e.warn}`}>{num(finZero.reduce((a, f) => a + f.plan, 0))}</td>
                           <td className={`${r.num} ${e.warn}`}>{num(0)}</td>
                           <td className={`${r.num} ${e.warn}`}>{pct(0, 1)}</td>
+                        </tr>
+                      )}
+                      {/* ⚠️ ГЭРЭЭ БАЙГУУЛААГҮЙ (зөвхөн төсөвтэй) багц — ТУСДАА мөр (2026-09-21):
+                          гэрээлсэн дүнд ОРОХГҮЙ, хувь бодогдохгүй; төсөв нь хавсралтад. */}
+                      {finNone.length > 0 && (
+                        <tr>
+                          <td className={e.warn}>{tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length))}</td>
+                          <td className={`${r.num} ${e.warn}`}>—</td>
+                          <td className={`${r.num} ${e.warn}`}>{num(0)}</td>
+                          <td className={`${r.num} ${e.warn}`}>—</td>
                         </tr>
                       )}
                       <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.fin.planTotal)}</td><td className={r.num}>{num(x.fin.given)}</td><td className={r.num}>{x.fin.share == null ? '—' : pct(x.fin.share, 1)}</td></tr>
@@ -431,6 +442,16 @@ export function ExecReport() {
                   {finZero.length > 0 && (
                     <p className={r.note}>
                       {tr('«Эхлээгүй ажил» гэдэг нь гэрээ байгуулагдсан боловч олголт хараахан хийгдээгүй багцууд; нэрсийг хавсралтаас үзнэ үү.')}
+                    </p>
+                  )}
+                  {finNone.length > 0 && (
+                    <p className={r.note}>
+                      {tr('«Гэрээ байгуулаагүй ажил» гэдэг нь зөвхөн төсөвт өртөгтэй, гэрээ хараахан байгуулагдаагүй багцууд; гэрээлсэн дүнд орохгүй, нэрс ба төсвийг хавсралтаас үзнэ үү.')}
+                    </p>
+                  )}
+                  {x.fin.givenUnassigned > 0 && (
+                    <p className={r.note}>
+                      {tr('Нийт олгосон дүнд аль нэг багцад холбогдоогүй (хэд хэдэн багц хамарсан) {0} ₮ олголт орсон тул багцуудын нийлбэрээс их байна.', num(x.fin.givenUnassigned))}
                     </p>
                   )}
                 </section>
@@ -447,7 +468,7 @@ export function ExecReport() {
                       { label: tr('Хүлээгдэж буй'), value: num(x.zov.wait) },
                       { label: tr('Зөвшөөрөөгүй'), value: num(x.zov.no), sub: x.zov.unknown ? tr('танигдаагүй {0}', num(x.zov.unknown)) : undefined },
                     ]} />
-                    <Cap no="4">{tr('Багц тус бүрийн зөвшөөрлийн төлөв')}</Cap>
+                    <Cap no="4.1">{tr('Багц тус бүрийн зөвшөөрлийн төлөв')}</Cap>
                     <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                       <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Нийт')}</th><th className={r.num}>{tr('Зөвшөөрсөн')}</th><th className={r.num}>{tr('Хүлээгдэж')}</th><th className={r.num}>{tr('Зөвшөөрөөгүй')}</th></tr></thead>
                       <tbody>
@@ -464,7 +485,7 @@ export function ExecReport() {
                     </table></div>
                     {x.zov.issues.length > 0 && (
                       <>
-                        <Cap no="5">{tr('Анхаарал шаардах зөвшөөрлүүд')}</Cap>
+                        <Cap no="4.2">{tr('Анхаарал шаардах зөвшөөрлүүд')}</Cap>
                         <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                           <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Шат')}</th><th>{tr('Зөвшөөрөл')}</th><th>{tr('Байгууллага')}</th><th>{tr('Төлөв')}</th></tr></thead>
                           <tbody>
@@ -507,9 +528,9 @@ export function ExecReport() {
                             <span className={e.findingText}>
                               {f.text}
                               {/* ⚠️ Нэрсийг ЭНД цувуулахгүй — хавсралт руу заана */}
-                              {!!f.items?.length && (
+                              {execAppendixNo(appendix, f) != null && (
                                 <span className={e.findingRef}>
-                                  {' '}{tr('Дэлгэрэнгүйг хавсралт {0}-аас үзнэ үү.', num(appendix.findIndex((a) => a.f === f) + 1))}
+                                  {' '}{tr('Дэлгэрэнгүйг хавсралт {0}-аас үзнэ үү.', num(execAppendixNo(appendix, f) ?? 0))}
                                 </span>
                               )}
                             </span>
@@ -528,25 +549,17 @@ export function ExecReport() {
                 * ⚠️ Мэдээлэл ХАСАГДААГҮЙ, ЗӨӨГДСӨН: нэр бүр хэвээр гарна
                 * (тайлан бүгдийг харуулна). Зөвхөн байрлал нь өөрчлөгдсөн.
                 */}
-              {(appendix.length > 0 || finZero.length > 0) && (
+              {appendix.length > 0 && (
                 <section id="exec-6" tabIndex={-1} className={r.section}>
                   <h2 className={r.h2}>{tr('Хавсралт')}</h2>
-                  {finZero.length > 0 && (
-                    <div>
+                  {/* ⚠️ Дараалал ба дугаар `execAppendix`-ээс — PDF-тэй ижил (2026-09-21) */}
+                  {appendix.map((a) => (
+                    <div key={`${a.kind}-${a.no}`}>
                       <p className={e.appHead}>
-                        {tr('Хавсралт {0}. {1}', num(appendix.length + 1), tr('Эхлээгүй ажлууд (олголт хийгдээгүй)'))}
-                        <span className={e.appN}>{tr('{0} мөр', num(finZero.length))}</span>
+                        {tr('Хавсралт {0}. {1}', num(a.no), a.title)}
+                        <span className={e.appN}>{tr('{0} мөр', num(a.items.length))}</span>
                       </p>
-                      <FindingItems items={finZero.map((f) => `${f.label} · ${num(f.plan)} ₮`)} />
-                    </div>
-                  )}
-                  {appendix.map((a, i) => (
-                    <div key={`${a.f.area}-${i}`}>
-                      <p className={e.appHead}>
-                        {tr('Хавсралт {0}. {1}', num(i + 1), a.title)}
-                        <span className={e.appN}>{tr('{0} мөр', num(a.f.items?.length ?? 0))}</span>
-                      </p>
-                      <FindingItems items={a.f.items ?? []} />
+                      <FindingItems items={a.items} />
                     </div>
                   ))}
                 </section>

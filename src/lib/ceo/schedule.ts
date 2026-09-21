@@ -72,8 +72,9 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
-import { num, text } from '@/lib/format';
+import { num, text, monthKey } from '@/lib/format';
 import { CASHFLOW_NEW, pkgKeyOf } from '@/lib/services';
+import { FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import type { PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
 import type { MonthPt } from '@/modules/Finance';
@@ -202,8 +203,14 @@ export function slipMonthsOf(
 /** Дохио → түвшин: улаан = яаралтай, шар = анхаарах, бусад нь хэвийн */
 const toneLevel = (t: LagTone): Level => (t === 'red' ? 'bad' : t === 'yellow' ? 'warn' : 'good');
 
-/** epoch ms → «YYYY-MM» (UTC) — `lagOf`-ийн `nowYm`-тэй ИЖИЛ дүрэм */
-export const ymOf = (ms: number): string => new Date(ms).toISOString().slice(0, 7);
+/**
+ * epoch ms → «YYYY-MM» ОРОН НУТГИЙН сар — `Finance.lagOf`-ийн `nowYm` (`monthKey()`)-тэй
+ * ЯГ ИЖИЛ дүрэм.
+ * ⚠️ 2026-09-21: урьд нь `toISOString().slice(0,7)` (UTC) байсан тул +08 бүсэд
+ *    сарын 1-ний 00:00–07:59-д ӨМНӨХ сар буцааж, `lagOf` (орон нутгийн сар)-той
+ *    зөрж «энэ сар хүртэл» шүүлт нэг сараар гулсдаг байв (`format.ts`-ийн ⚠️).
+ */
+export const ymOf = (ms: number): string => monthKey(ms);
 
 /**
  * `lagOf`-оор муруйг УНШИХ зохиомол цэг: `phys = 0` (хэмжилт, null биш —
@@ -261,7 +268,14 @@ export function curveViaLag(
  *    `pkgKeyOf(pkg2) || pkgKeyOf(pkg)`; `pkgKeyOf` (bagtsKey БИШ) — «БАГЦ 1-4»
  *    мэт диапазон мөр хоосон түлхүүртэй болж алгасагдана (эс тэгвээс
  *    «БАГЦ14» болж бодит Багц 14-ийн оронд тоологддог байв). Нэг багцад олон
- *    гэрээ (зураг төсөл + ажил) → ЭХНИЙ мөр л үлдэнэ.
+ *    гэрээ (зураг төсөл + ажил) → НЭГ мөр л үлдэнэ.
+ *
+ * ⚠️ `prefer` (2026-09-21): багцын ТӨЛӨӨЛӨГЧ мөрийг сонгох шалгуур — өгвөл
+ *    тэнцсэн мөр (барилга угсралтын мөр) эхэнд байсан ТЭЗҮ/зураг төслийн
+ *    мөрийг ОРЛОНО; тэнцэх мөргүй бол урьдын адил эхнийх. Хоцрогдол нь
+ *    багцын БЛОКИЙН хэмжилтээс гардаг тул угсралтын мөрд л хамаатай — нэр нь
+ *    зураг төслийн гэрээгээр гарвал уншигч «зураг төсөл хоцорчээ» гэж эндүүрнэ.
+ *    Тоо (`lag`) мөрөөс ХАМААРАХГҮЙ — `contractMonths` багцаар боддог.
  *
  * ⚠️ `monthsOf`/`lagOfFn`-ийг ГАДНААС авна (Finance.tsx динамик импорт) —
  *    тиймээс энэ функц Node дээр туршигдана. Мөрийн төрөл нь Finance-ийн
@@ -271,14 +285,21 @@ export function collectPkgLags<R extends Record<string, unknown>>(
   contracts: readonly R[],
   monthsOf: (r: R) => MonthPt[],
   lagOfFn: LagOfFn,
+  prefer?: (r: R) => boolean,
 ): PkgLag[] {
   const C = CASHFLOW_NEW.fields;
-  const seen = new Set<string>();
-  const out: PkgLag[] = [];
+  /** түлхүүр → төлөөлөгч мөр (`prefer` тэнцсэн нь давуу) */
+  const rep = new Map<string, { r: R; preferred: boolean }>();
   for (const r of contracts) {
     const key = pkgKeyOf(r[C.pkg2]) || pkgKeyOf(r[C.pkg]);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    if (!key) continue;
+    const preferred = prefer ? prefer(r) : false;
+    const cur = rep.get(key);
+    if (!cur) rep.set(key, { r, preferred });
+    else if (preferred && !cur.preferred) rep.set(key, { r, preferred });
+  }
+  const out: PkgLag[] = [];
+  for (const [key, { r }] of rep) {
     const months = monthsOf(r);
     out.push({
       key,
@@ -290,6 +311,16 @@ export function collectPkgLags<R extends Record<string, unknown>>(
   }
   return out;
 }
+
+/**
+ * БАРИЛГА УГСРАЛТЫН МӨР МӨН ҮҮ — Excel-ийн 1-р түвшний код «2» (`bagts_tuvshin1`).
+ * ⚠️ КОДООР, нэрээр БИШ (`finExcelLayout`-ийн дүрэм). Блокийн биет хэмжилт
+ *    (`phys`) нь ЭНЭ мөрийн ажлыг хэмждэг; «1» (ТЭЗҮ, зураг төсөл) мөрд тэр
+ *    хоцрогдол хамаарахгүй.
+ */
+export const FIN_XL_BUILD_CODE = '2';
+export const isBuildRow = (r: Record<string, unknown>): boolean =>
+  String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim() === FIN_XL_BUILD_CODE;
 
 /**
  * Багц бүрийн муруйн хэсгийг `lagOf`-оор уншиж угсарна (`curveViaLag`).
@@ -458,7 +489,8 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   /* ⚠️ `lagOf`-ыг `loadFinData` ДУУССАНЫ дараа — planCurveCache бөглөгдсөн */
   const finCurveMissing = F.lagOf(curveProbe(nowYm)) == null;
   const failed = finCurveMissing ? [SRC_FIN_CURVE()] : [];
-  const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf);
+  /* ⚠️ `isBuildRow` (2026-09-21) — багцын нэрийг угсралтын мөрөөс авна (§collectPkgLags) */
+  const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
 }, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC']);

@@ -657,6 +657,16 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       return;
     }
     if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) {
+      /* ⚠️ 2026-09-21: ХЭЛБЭР ЗАСАЖ БАЙХАД хоосон газар товшвол мөн асууна —
+         урьд нь `setPick(null)` шууд хийж самбар (хадгалах товч) алга болдог
+         атал `reshape` төлөв ба vertex бариулууд зураг дээр үлдэж, гарах
+         замгүй «гацдаг» байв. Хаяхгүй гэвэл сонголт ХЭВЭЭР. `reshape`
+         идэвхгүй бол `cancelReshape`-ийг дуудахгүй — `clearToken` дэмий
+         хөдөлж, шинэ объект зурах (`awaitDraw`) явцад sketch арилах эрсдэлтэй. */
+      if (reshape) {
+        if (!askDropReshape()) return;
+        cancelReshape();
+      }
       setPick(null); setHighlight(null); return;
     }
     /* ⚠️ Давхарга бүрийн OID нэр ижил байх албагүй — бүртгэлээс уншина */
@@ -672,7 +682,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setAwaitDraw(false);
     setPick({ layerId: id, oid });
     setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
-  }, [editMode, multi, msel, showMsel, askDropReshape, cancelReshape, setHighlight]);
+  }, [editMode, multi, msel, showMsel, reshape, askDropReshape, cancelReshape, setHighlight]);
 
   /**
    * САМБАРЫГ ХААХ — сонголт цэвэрлэгдэнэ.

@@ -428,6 +428,13 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                 const shown = active ? g.works.filter((w) => passFilter(w, filter)) : g.works;
                 /* ⚠️ Шүүлт идэвхтэй үед тэнцэх ажилгүй бүлэг НУУГДАНА */
                 if (active && shown.length === 0) return null;
+                /* ⚠️ 2026-09-21: бүлгийн «N» = `statusCounts`-тай НЭГ дүрэм — ХАСАГДСАН ажил
+                   ТООЛОГДОХГҮЙ. Урьд нь `g.works.length` хасагдсаныг ч тоолдог тул
+                   бүлгүүдийн нийлбэр дээрх «Нийт N багц ажил» (`statusCounts`-ийн
+                   нийлбэр)-тэй зөрдөг байв. Хасагдсан мөр жагсаалтад ХЭВЭЭР харагдана. */
+                const liveN = g.works.filter((w) => !w.cancelled).length;
+                const shownN = shown.filter((w) => !w.cancelled).length;
+                const cancelledN = g.works.length - liveN;
                 const isClosed = !open.has(g.type);
                 return (
                   <Fragment key={g.type}>
@@ -441,7 +448,10 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         >
                           <span className={s.caret} aria-hidden>{isClosed ? '▸' : '▾'}</span>
                           {g.type}
-                          <span className={s.groupCount}>{active ? `${num(shown.length)} / ${num(g.works.length)}` : num(g.works.length)}</span>
+                          <span
+                            className={s.groupCount}
+                            title={cancelledN ? tr('{0} хасагдсан ажил тоонд ороогүй', num(cancelledN)) : undefined}
+                          >{active ? `${num(shownN)} / ${num(liveN)}` : num(liveN)}</span>
                         </button>
                       </th>
                       <td className={s.statusCell}>

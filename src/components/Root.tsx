@@ -132,7 +132,11 @@ export default function Root() {
    */
   const openEntry = () => {
     if (allowed === 'all') { openAll(); return; }
-    if (!allowed.length) return;
+    /* ⚠️ ХАРАГДАЦГҮЙ ч нэвтрэх эрхтэй хүнд «Порталд орох» ЮУ Ч хийдэггүй байв
+       (2026-09-21) — урьд нь энд чимээгүй `return`. Одоо портал руу орж,
+       доорх `noAccess` дэлгэц «харагдац олгогдоогүй — админд хандана уу» гэж
+       нэртэй нь хэлнэ. */
+    if (!allowed.length) { openAll(); return; }
     // ⚠️ `roleOf` — override-ыг тооцно: панелаас нэмсэн инженер `guitsetgel`
     //    нүүртэйгээ орно (урьд нь хатуу жагсаалтаас л авдаг тул `plan`-д унадаг байв)
     const role = roleOf(user?.username);
@@ -276,6 +280,9 @@ export default function Root() {
    */
   const clamped = clamp(scope);
   const noAccess = Array.isArray(clamped) && !clamped.length;
+  /* ⚠️ Нэг ч харагдацгүй (админ бүгдийг унтраасан / шинэ бүртгэл) — «энэ хэсэг»
+     биш «ерөөсөө» гэсэн ӨӨР мессеж (2026-09-21, `openEntry`-ийн тайлбар). */
+  const noViews = Array.isArray(allowed) && !allowed.length;
 
   return (
     <>
@@ -305,7 +312,14 @@ export default function Root() {
             }}
           >
             <div style={{ display: 'grid', gap: 14, justifyItems: 'center' }}>
-              <p style={{ margin: 0 }}>{tr('Таны эрх энэ хэсгийг үзэхэд хүрэлцэхгүй байна.')}</p>
+              {noViews ? (
+                <>
+                  <p style={{ margin: 0 }}>{tr('Танд харагдац олгогдоогүй байна — админд хандана уу.')}</p>
+                  <p style={{ margin: 0, fontSize: '0.8rem' }}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                </>
+              ) : (
+                <p style={{ margin: 0 }}>{tr('Таны эрх энэ хэсгийг үзэхэд хүрэлцэхгүй байна.')}</p>
+              )}
               <button
                 type="button"
                 onClick={goHome}

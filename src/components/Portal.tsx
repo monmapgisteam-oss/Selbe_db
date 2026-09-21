@@ -282,7 +282,10 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
  */
 const initialView = (): ViewKey => {
   const v = readParam('v');
-  return v && VIEW_BY_KEY[v as ViewKey] ? (v as ViewKey) : DEFAULT_VIEW;
+  /* ⚠️ `Object.hasOwn` (2026-09-21) — `?v=constructor` / `__proto__` нь энгийн
+     индексжүүлэлтээр prototype-ийн гишүүнийг «олж» харагдац биш утга буцаагаад
+     Portal бүхэлдээ унадаг байв. `Root.scopeFromUrl`-тай ижил хамгаалалт. */
+  return v && Object.hasOwn(VIEW_BY_KEY, v) ? (v as ViewKey) : DEFAULT_VIEW;
 };
 
 /**

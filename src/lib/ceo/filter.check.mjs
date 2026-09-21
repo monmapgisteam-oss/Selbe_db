@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  ALL_PKG, filterResult, filterTable, isPkgSummary, pkgColOf, pkgOptions, rowInPkg,
+  ALL_PKG, filterResult, filterTable, isPkgSummary, pkgColOf, pkgOptions, rowInPkg, samePkg,
 } from './filter.ts';
 
 const cell = (v) => ({ v });
@@ -42,6 +42,30 @@ assert.equal(pkgColOf(noPkg), -1, 'багцгүй хүснэгтэд -1');
 assert.ok(rowInPkg(detail.rows[0], 0, 'Багц 4.1'), '«Багц 4-1» ба «Багц 4.1» НЭГ багц');
 assert.ok(rowInPkg(detail.rows[1], 0, 'БАГЦ-4-1'), 'том үсэг, зураас хамаарахгүй');
 assert.ok(!rowInPkg(detail.rows[2], 0, 'Багц 4.1'), 'өөр багц таарахгүй');
+
+/* ── 2а. ДИАПАЗОН ≠ БАГЦ 14 (2026-09-21) — `bagtsKey('Багц 1-4')` = «БАГЦ14» занга ── */
+{
+  const range = T('Хэтэрсэн ажлууд', ['Багц', 'Ажил'], [
+    [cell('Багц 1-4'), cell('ТЭЗҮ 1–4')],
+    [cell('Багц 14'), cell('Дулааны суваг')],
+  ]);
+  assert.ok(!rowInPkg(range.rows[0], 0, 'Багц 14'), 'диапазон мөр Багц 14-т ОРОХГҮЙ');
+  assert.ok(!rowInPkg(range.rows[1], 0, 'Багц 1-4'), 'Багц 14-ийн мөр диапазонд ОРОХГҮЙ');
+  assert.ok(rowInPkg(range.rows[0], 0, 'БАГЦ-1-4'), 'диапазон өөртэйгөө таарна (бичиглэл хамаарахгүй)');
+  assert.ok(samePkg('Багц 14', 'БАГЦ-14'));
+  assert.ok(!samePkg('Багц 1-4', 'Багц 14'));
+  assert.equal(filterTable(range, 'Багц 14').rows.length, 1, 'Багц 14 сонгоход зөвхөн өөрийн мөр');
+  assert.equal(filterTable(range, 'Багц 1-4').rows.length, 1, 'диапазон сонгоход зөвхөн диапазон мөр');
+  const rr = filterResult({
+    value: '—', unit: '', facts: [], level: 'unknown', tables: [], asOf: null, failedSources: [],
+    issues: [
+      { text: 'Багц 1-4 · ТЭЗҮ — 5 хоног хэтэрсэн', tone: 'bad' },
+      { text: 'Багц 14 · Дулааны суваг — 9 хоног хэтэрсэн', tone: 'bad' },
+    ],
+  }, 'Багц 14');
+  assert.equal(rr.issues.length, 1, 'анхааруулга ч диапазоныг Багц 14-т оруулахгүй');
+  assert.match(rr.issues[0].text, /Багц 14 ·/);
+}
 
 /* ── 3. Мөрөөр шүүх ── */
 {

@@ -40,8 +40,11 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     for (const k of Object.keys(DEFAULTS)) {
       const v = src[k];
       if (typeof v !== 'string') continue;
-      /* `330px` хэлбэрийг ЗААВАЛ шаардана — `%`, `calc()`, хог мөрийг хаяна */
-      const m = /^(d+(?:.d+)?)px$/.exec(v.trim());
+      /* `330px` хэлбэрийг ЗААВАЛ шаардана — `%`, `calc()`, хог мөрийг хаяна.
+         ⚠️ 2026-09-21: урьд нь `/^(d+(?:.d+)?)px$/` — `\d` биш `d` үсэг байсан
+         тул ямар ч хадгалсан өргөн таарахгүй, самбарын өргөн ХЭЗЭЭ Ч сэргэхгүй
+         байв. */
+      const m = /^(\d+(?:\.\d+)?)px$/.exec(v.trim());
       if (!m) continue;
       const n = Number(m[1]);
       if (!Number.isFinite(n) || n < PANEL_MIN || n > PANEL_MAX) continue;

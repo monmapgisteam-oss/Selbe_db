@@ -38,6 +38,7 @@ import { buildPacks } from '@/modules/Bagts';
 import { loadFinData } from '@/modules/Finance';
 import { aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
+import { hoTotals } from '@/lib/ipc';
 import { AGENT_API, arcgisToken } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -94,13 +95,40 @@ export type ExecReport = {
     /** Блокийн гүйцэтгэлийн түвшний тархалт */
     levels: { label: string; range: string; n: number; color: string }[];
   };
-  /** 04. Багцын санхүү */
+  /**
+   * 04. Багцын санхүү.
+   *
+   * ⚠️ 2026-09-21: «ГЭРЭЭНИЙ ДҮН» = ЗӨВХӨН «Гэрээлсэн дүн» (`note === CONTRACTED`)
+   * мөрийн `geree_dun`. Урьд нь `PkgFin.planTotal` (`geree_dun || ho_dun_geree`,
+   * БҮХ мөр) байсан тул §1-ийн `gdash.contract` (CONTRACTED)-той зөрж, гэрээгүй
+   * (зөвхөн төсөвтэй) багц «гэрээ байгуулагдсан боловч олголт хийгдээгүй» гэж
+   * худал уншигддаг байв. Одоо `planTotal` нь §1-ийн `gdash.contract`-тай ЯГ
+   * ИЖИЛ тоо; гэрээгүй багц `contracted: false` — тусдаа ангилал.
+   */
   fin: {
+    /** Гэрээлсэн нийт дүн — `gdash.contract`-тай ИЖИЛ (CONTRACTED мөр) */
     planTotal: number;
+    /**
+     * Олгосон санхүүжилт — HO төлбөрийн БҮХ мөрийн нийлбэр (`hoTotals().paid`,
+     * `reportData.finance.paid`-тай ИЖИЛ эх, 530.87 тэрбум). ⚠️ Багцын Map-ийн
+     * нийлбэр (524.90) БИШ — диапазон мөрийн 5.97 тэрбум тэнд алдагддаг (`ipc.ts`).
+     */
     given: number;
+    /** Олгосон − Σ rows.given — багцад холбогдоогүй (диапазон) олголт, ₮ */
+    givenUnassigned: number;
     share: number | null;
     remain: number;
-    rows: { key: string; label: string; plan: number; given: number; pct: number | null }[];
+    rows: {
+      key: string; label: string;
+      /** Гэрээлсэн дүн (CONTRACTED мөр); гэрээгүй бол 0 */
+      plan: number;
+      /** Гэрээ эсвэл төсөв (`PkgFin.plan`) — гэрээгүй багцын хэмжээг харуулахад */
+      budget: number;
+      given: number;
+      /** given ÷ plan; гэрээгүй (`plan = 0`) бол null */
+      pct: number | null;
+      contracted: boolean;
+    }[];
   };
   /** Зөвшөөрөл — үйлчилгээ холбогдоогүй бол `null` (мэдээлэлгүй ≠ 0) */
   zov: {
@@ -182,6 +210,16 @@ async function loadExecReportRaw(): Promise<ExecReport> {
 
   /* ── 04. Багцын санхүү — `PkgFin.pkgFinRows`-тэй ИЖИЛ ── */
   const pf = pkgFinRows(packs, fin);
+  /* ⚠️ 2026-09-21: төслийн нийт олголт = HO-ийн БҮХ мөр (`hoTotals`), багцын
+     Map-ийн нийлбэр (`pf.givenTotal`) БИШ — `ExecReport.fin.given`-ийн ⚠️. */
+  const finGiven = hoTotals(fin.pays).paid ?? 0;
+  const finRows = pf.rows.map((r) => ({
+    key: r.key, label: r.label,
+    plan: r.contract, budget: r.plan, given: r.given,
+    pct: r.contract > 0 ? (r.given / r.contract) * 100 : null,
+    contracted: r.contracted,
+  }));
+  const finAssigned = finRows.reduce((a, r) => a + r.given, 0);
 
   /* ── Зөвшөөрөл ── */
   let zov: ExecReport['zov'] = null;
@@ -230,10 +268,12 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       })),
     },
     fin: {
-      planTotal: pf.planTotal, given: pf.givenTotal,
-      share: pf.planTotal > 0 ? (pf.givenTotal / pf.planTotal) * 100 : null,
-      remain: Math.max(0, pf.planTotal - pf.givenTotal),
-      rows: pf.rows,
+      /* ⚠️ `csum` = §1-ийн `gdash.contract` — нэг тайланд «гэрээний нийт дүн» нэг л тоо */
+      planTotal: csum, given: finGiven,
+      givenUnassigned: Math.max(0, finGiven - finAssigned),
+      share: csum > 0 ? (finGiven / csum) * 100 : null,
+      remain: Math.max(0, csum - finGiven),
+      rows: finRows,
     },
     zov,
   };
@@ -405,6 +445,81 @@ export function execFindings(x: ExecReport): ExecFinding[] {
 }
 
 /**
+ * §3/§4 САНХҮҮЖИЛТИЙН БАГЦУУДЫН ГУРВАН АНГИЛАЛ (2026-09-21) — дэлгэц ба PDF
+ * ХОЁУЛАА эндээс: нэг дүрэм, хоёр хэлбэр.
+ *
+ *   · `started` — олголт эхэлсэн (гэрээт ч, гэрээгүй ч — олголттой бол харуулна)
+ *   · `zero`    — ГЭРЭЭТ боловч олголт огт хийгдээгүй («Эхлээгүй ажил»)
+ *   · `none`    — ГЭРЭЭ БАЙГУУЛААГҮЙ (зөвхөн төсөвтэй), олголтгүй
+ *
+ * ⚠️ Урьд нь `given === 0 && plan > 0` нь `plan = гэрээ || төсөв` тул гэрээгүй
+ *    багцыг «гэрээ байгуулагдсан боловч олголт хийгдээгүй» гэж тайлбарладаг
+ *    байв — гэрээгүй мөрийг гэрээт гэж уншуулна. `contracted` талбар нь
+ *    зөвхөн «Гэрээлсэн дүн» мөртэй багцад үнэн.
+ */
+export function execFinSplit(x: ExecReport): {
+  started: ExecReport['fin']['rows']; zero: ExecReport['fin']['rows']; none: ExecReport['fin']['rows'];
+} {
+  const rows = x.fin.rows;
+  return {
+    started: rows.filter((r) => r.given > 0),
+    zero: rows.filter((r) => r.given === 0 && r.contracted),
+    none: rows.filter((r) => r.given === 0 && !r.contracted),
+  };
+}
+
+/** Хавсралтын нэг бүлэг — дугаар нь ЭНД л бодогдоно */
+export type ExecAppendix = {
+  /** 1-ээс эхэлсэн дугаар — дүгнэлт дэх «хавсралт N» заалт ЯГ үүнийг хэлнэ */
+  no: number;
+  title: string;
+  kind: 'finZero' | 'finNone' | 'finding';
+  /** `kind === 'finding'` үед эх дүгнэлт */
+  finding?: ExecFinding;
+  /** Нэрсийн жагсаалт (дэлгэц/PDF шууд зурна) */
+  items: string[];
+};
+
+/**
+ * ХАВСРАЛТЫН ДУГААРЛАЛТ — ГАНЦ ЭХ (2026-09-21).
+ *
+ * ⚠️ Урьд нь PDF-ийн `findingBlocks` нь «Хавсралт {idx+1}» гэж дүгнэлтийн
+ *    индексээр, харин хавсралтын хэсэг нь «Эхлээгүй ажил» байвал түүнийг
+ *    «Хавсралт 1» болгож бусдыг +1 шилжүүлдэг байв — заалт ба гарчиг зөрдөг.
+ *    Дэлгэц (`ExecReport.tsx`) эсрэгээр «Эхлээгүй ажил»-ыг СҮҮЛД дугаарладаг
+ *    байсан тул дэлгэц ба PDF ч зөрдөг. Одоо дараалал ба дугаар энд л
+ *    тогтоно: (1) эхлээгүй гэрээт ажил, (2) гэрээ байгуулаагүй ажил,
+ *    (3…) нэрсийн жагсаалттай дүгнэлтүүд — дүгнэлтийнхтай ижил дараалал.
+ */
+export function execAppendix(x: ExecReport, findings: readonly ExecFinding[]): ExecAppendix[] {
+  const { zero, none } = execFinSplit(x);
+  const out: ExecAppendix[] = [];
+  if (zero.length) {
+    out.push({
+      no: out.length + 1, kind: 'finZero',
+      title: tr('Олголт эхлээгүй {0} гэрээт багц', num(zero.length)),
+      items: zero.map((r) => `${r.label} · ${num(r.plan)} ₮`),
+    });
+  }
+  if (none.length) {
+    out.push({
+      no: out.length + 1, kind: 'finNone',
+      title: tr('Гэрээ байгуулаагүй {0} багц (төсөвт өртгөөр)', num(none.length)),
+      items: none.map((r) => `${r.label} · ${num(r.budget)} ₮`),
+    });
+  }
+  for (const f of findings) {
+    if (!f.items?.length) continue;
+    out.push({ no: out.length + 1, kind: 'finding', title: f.text, finding: f, items: f.items });
+  }
+  return out;
+}
+
+/** Дүгнэлтийн хавсралтын дугаар; жагсаалтгүй дүгнэлтэд `null` */
+export const execAppendixNo = (app: readonly ExecAppendix[], f: ExecFinding): number | null =>
+  app.find((a) => a.finding === f)?.no ?? null;
+
+/**
  * ДҮГНЭЛТИЙГ ЭНГИЙН МӨР БОЛГОНО — PDF ба инфографикт.
  *
  * ⚠️ Тэр хоёр нь энгийн текстийн урсгал тул жагсаалтыг өгүүлбэрт нийлүүлнэ.
@@ -456,8 +571,13 @@ export function execFacts(x: ExecReport): string {
   for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${p.households} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
-  L.push(`Гэрээний нийт: ${num(x.fin.planTotal)} ₮; олгосон: ${num(x.fin.given)} ₮ (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
-  for (const r of x.fin.rows) L.push(`- ${cl(r.label)}: гэрээ ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`);
+  /* ⚠️ 2026-09-21: «гэрээлсэн нийт» = 01-ийн «Нийт гэрээлсэн дүн»-тэй ижил (CONTRACTED мөр) */
+  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${num(x.fin.given)} ₮ (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
+  for (const r of x.fin.rows) {
+    L.push(r.contracted
+      ? `- ${cl(r.label)}: гэрээлсэн ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`
+      : `- ${cl(r.label)}: ГЭРЭЭ БАЙГУУЛААГҮЙ (төсөв ${num(r.budget)} ₮), олгосон ${num(r.given)} ₮`);
+  }
   L.push(`## Зөвшөөрөл`);
   if (!x.zov) L.push(`Мэдээлэлгүй (үйлчилгээ холбогдоогүй).`);
   else {

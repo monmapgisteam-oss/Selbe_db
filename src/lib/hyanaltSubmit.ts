@@ -199,6 +199,11 @@ export function hasOpenLegacy(
  *                 хараахан архивт ороогүй; `hyanaltDetail`/`hyanaltStore`
  *                 үүгээр илгээлтийг олно.
  * @param sheet    ХУУДСЫН нэр («Багц 1 · 9 давхар») — доорх ⚠️.
+ *                 ⚠️ ЗААВАЛ `pkg.name` (орчуулагддаггүй эх нэр), `pkg.label`
+ *                 БИШ (2026-09-21): энэ утга `Ажлын_нэр`-д БИЧИГДЭЖ, `FillNew`
+ *                 нь `includes(pkg.name)`-ээр урсгалын мөрөө олдог тул англи
+ *                 UI-ийн орчуулсан `label` бичигдвэл мөр хэлээс хамаарч
+ *                 олдохгүй, 9F/12F ялгаа тасарна.
  * @returns бүртгэлийн дугаар, эсвэл алдааны мессеж
  */
 export async function submitForReview(

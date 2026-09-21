@@ -453,7 +453,11 @@ assert.ok(SRC.includes('readActiveSubmission('), 'бичихийн өмнөх у
 const subCalls = SRC.match(/submitForReview\([^)]*\)/g) ?? [];
 assert.ok(subCalls.length >= 2, 'submitForReview-ийн дуудалт олдсонгүй');
 for (const c of subCalls) {
-  assert.ok(c.includes('pkg.label'), `submitForReview-д хуудсын нэр алга: ${c}`);
+  /* ⚠️ 2026-09-21: `pkg.name` (орчуулагддаггүй эх нэр), `pkg.label` БИШ —
+     `label` нь `tr()`-ээр орчуулагддаг тул англи UI-д `Ажлын_нэр`-д өөр
+     текст бичигдэж, `flow`-ийн `includes(pkg.name)` тулгалт тасардаг байв. */
+  assert.ok(c.includes('pkg.name'), `submitForReview-д хуудсын нэр алга: ${c}`);
+  assert.ok(!c.includes('pkg.label'), `submitForReview-д орчуулагддаг label бичигдэж байна: ${c}`);
 }
 assert.ok(SRC.includes('ov.unmoved') || SRC.includes('unmovedWarn'), 'тулгагдаагүй нүд дэлгэцэд гарахгүй байна');
 assert.ok(/setUnmovedWarn\(/.test(SRC), 'unmoved анхааруулга төлөвт буудаггүй');

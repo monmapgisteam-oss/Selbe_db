@@ -90,6 +90,21 @@ const EVENT = 'selbe-guitsetgel-acl-change';
 
 let cache: Assign[] | null = null;
 
+/**
+ * Энэ сешнд remote томилгоо НЭГ Ч УДАА уншигдсан уу (2026-09-21).
+ * ⚠️ `false` бол УНШИХ API (`stageOfUser` · `bagtsFor` · `isViewOnly` ·
+ *    `listAssigns` · `assignsOf`) localStorage-ийн кэшийг ҮЛ ТООЦОЖ
+ *    «томилогдоогүй» гэж үзнэ → `resolveFlowStage` нь ХАТУУ ТОХИРГООНЫ default
+ *    (`ROLE_STAGE[role]`, `canReview: false`, багц `[]`) руу унана. Эс бөгөөс
+ *    хатуу жагсаалтын хэрэглэгч `selbe-guitsetgel-acl-v1`-д өөрийгөө
+ *    `director` шатанд «бүх багц» гэж бичээд сүлжээгээ хаагаад нэвтэрвэл
+ *    `canReview` давдаг байв. Бичих зам (`load()` шууд) хэвээр.
+ *    `permissions.remoteLoaded` · `caps.remoteSynced`-тэй ижил үндэслэл.
+ */
+let remoteSynced = false;
+/** Уншилтад ХҮЧИНТЭЙ жагсаалт — remote ачаалагдаагүй бол хоосон */
+const effective = (): Assign[] => (remoteSynced ? load() : []);
+
 function load(): Assign[] {
   if (cache) return cache;
   if (typeof window === 'undefined') return [];
@@ -161,14 +176,17 @@ export function _syncRemoteAssigns(
       ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
     });
   }
+  /* ⚠️ Энэ мөчөөс л уншилт кэшийг тооцно (2026-09-21) — remote = үнэн. */
+  remoteSynced = true;
   save([...byUser.values()]);
 }
 
-export const listAssigns = (): Assign[] => load();
+/* ⚠️ `effective` — remote ачаалагдаагүй бол хоосон (2026-09-21) */
+export const listAssigns = (): Assign[] => effective();
 
 /** Нэг шатны томилгоонууд — панелийн багана */
 export const assignsOf = (stage: Stage): Assign[] =>
-  load().filter((a) => a.stage === stage);
+  effective().filter((a) => a.stage === stage);
 
 /* ══════════════ Remote бичилтийн дараалал ба үр дүн ══════════════ */
 
@@ -483,7 +501,8 @@ export function regrantFlowAccess(user: string): Promise<boolean> {
 /** Аккаунт аль шатанд томилогдсон бэ (томилогдоогүй бол `null`) */
 export function stageOfUser(user?: string | null): Stage | null {
   if (!user) return null;
-  const a = load().find((x) => x.user === user.trim().toLowerCase());
+  /* ⚠️ `effective` — remote ачаалагдаагүй бол томилогдоогүй (2026-09-21) */
+  const a = effective().find((x) => x.user === user.trim().toLowerCase());
   return a?.stage ?? null;
 }
 
@@ -497,7 +516,9 @@ export function stageOfUser(user?: string | null): Stage | null {
  */
 export function isViewOnly(user?: string | null): boolean {
   if (!user) return false;
-  return load().find((x) => x.user === user.trim().toLowerCase())?.viewOnly === true;
+  /* ⚠️ `effective` (2026-09-21) — томилгоогүй = туггүй; эрх нэмэгдэхгүй, учир нь
+     `resolveFlowStage` тэр үед `stageOfUser` null → `canReview: false`. */
+  return effective().find((x) => x.user === user.trim().toLowerCase())?.viewOnly === true;
 }
 
 /**
@@ -531,7 +552,8 @@ export function bagtsFor(user: string | null | undefined, stage: Stage): string[
      `.trim()`-тэй — ганц энэ орхигдсон байв (CLAUDE.md-ийн баримтжуулсан
      «засвар нэгд нь л хүрсэн» хэв шинж). */
   const key = user.trim().toLowerCase();
-  const a = load().find((x) => x.stage === stage && x.user === key);
+  /* ⚠️ `effective` — remote ачаалагдаагүй бол нэг ч багц (2026-09-21) */
+  const a = effective().find((x) => x.stage === stage && x.user === key);
   if (!a) return [];
   if (a.bagts.includes(ALL_BAGTS)) return null;
   return a.bagts;

@@ -2489,11 +2489,24 @@ export const MapCanvas = memo(function MapCanvas({
        * тул энэ fallback нь ХЭВИЙН зам (дээрх тайлбарыг үз): бүс сонгосон
        * хэрэглэгч дарахад нуугдсан обьектын самбар нээгддэг байв.
        */
+      /**
+       * ⚠️ 2026-09-21: МАСШТАБЫН МУЖИЙГ мөн шалгана. `visible` нь зөвхөн
+       * каталогийн чагт — `minScale`/`maxScale`-аас гадуур давхарга зурагдаагүй
+       * атлаа (жиш. 1:20,000-аас хол ногоон, ойртоход алга болдог цэг) энд
+       * «ил» тоологдож, дэлгэцэнд БАЙХГҮЙ объектын самбар нээгддэг байв.
+       * ArcGIS дүрэм: 0 = хязгааргүй; `minScale` = хамгийн ХОЛ (scale ≤),
+       * `maxScale` = хамгийн ОЙР (scale ≥).
+       */
+      const sc = view.scale;
+      const inScale = (l: __esri.Layer) => {
+        const { minScale = 0, maxScale = 0 } = l as unknown as { minScale?: number; maxScale?: number };
+        return (!minScale || sc <= minScale) && (!maxScale || sc >= maxScale);
+      };
       const cand = (view.map?.layers.toArray() ?? [])
         .map((l) => ({ l, id: String(l.id) }))
         // ⚠️ PASSIVE-ийг pickHit-тэй АДИЛ хасна — эс бөгөөс үргэлж ил лавлагааны
         //    хил (khil1) fallback-аар байнга «сонгогдож» зарчим зөрчигдөнө.
-        .filter(({ l, id }) => l.visible && !PASSIVE.has(id) && LAYER_BY_ID[id])
+        .filter(({ l, id }) => l.visible && inScale(l) && !PASSIVE.has(id) && LAYER_BY_ID[id])
         // Дээд талынхыг ЭХЭЛЖ шалгана: цэг → шугам → талбай
         .sort((a, b) => drawOrder(String(b.id)) - drawOrder(String(a.id)));
       if (!cand.length) return null;
@@ -3533,7 +3546,12 @@ export const MapCanvas = memo(function MapCanvas({
       if (st.state === 'start' || st.aborted) return;
       /* ⚠️ `onReshape` өгөгдсөн бол ЗӨВХӨН тийш — дээрх пропын тайлбарыг үз */
       if (onReshapeRef.current) onReshapeRef.current(g);
-      else emit(g);
+      /* ⚠️ 2026-09-21: `emit` — ЗӨВХӨН `complete`. Урьд нь `active` (чирэлтийн
+         кадр бүр) ч дамждаг тул «Газар чөлөөлөлт»-ийн `onSketch` → `setAoi`
+         кадр бүрт 9 REST асуулга явуулдаг байв; дээрх «чирж ДУУСАХАД л
+         шинэчлэх» дүрэм зөвхөн тайлбарт байсан. `onReshape` нь vertex бүрийг
+         санах хямд state тул `active` хэвээр. */
+      else if (st.state === 'complete') emit(g);
     });
     const deleted = svm.on('delete', () => {
       layer.removeAll();
@@ -3943,6 +3961,8 @@ export const MapCanvas = memo(function MapCanvas({
     const elev = dim === '3d' ? ON_SCENE : ON_GROUND;
 
     map.layers.forEach((l) => {
+      /* `source:eh` шинээр ил болов — пульсийг where тавигдсаны ДАРАА (доор) эхлүүлнэ */
+      let pulseEh = false;
       if (l.id === IMAGERY_ID) { l.visible = ortho; return; }
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
@@ -4040,14 +4060,25 @@ export const MapCanvas = memo(function MapCanvas({
         const show = on.has(l.id) && dim !== 'bim';
         // ЗӨВХӨН Эх үүсвэр (`source:eh`) давхарга шинээр ил болоход анзаарагдам
         // пульс-анимаци эхэлнэ. Бусад давхаргад (барилга г.м.) анимаци байхгүй.
-        if (show && l.id === 'source:eh' && !prevVisRef.current.has(l.id)) pulseLayer(l);
+        /* ⚠️ 2026-09-21: ЭНД зөвхөн ТЭМДЭГЛЭНЭ, пульсийг доор `definitionExpression`
+           тавигдсаны ДАРАА эхлүүлнэ (доорх «ПУЛЬСИЙГ ЗААВАЛ ЭНД» дүрэм) — урьд нь
+           энд шууд дуудаж, хуучин/хоосон шүүлтээр хуулбар татдаг байв. */
+        pulseEh = show && l.id === 'source:eh' && !prevVisRef.current.has(l.id);
         l.visible = show;
         /**
          * ⚠️ Өндрийн горим — ЗӨВХӨН каталогийн давхаргад (`LAYER_BY_ID`).
          * 3D-д мешийн гадаргуу дээр, 2D-д газрын гадаргуу дээр. Меш, BIM, web
          * scene-ийн давхаргууд өөрсдийн горимтой тул тэдэнд ХҮРЭХГҮЙ.
+         *
+         * ⚠️ 2026-09-21: `infra:*` ба `iot:*`-д мөн ХҮРЭХГҮЙ. Тэдгээр нь
+         * ӨӨРИЙН эффекттэй (дээр): инженерийн шугам 3D-д ЗААВАЛ
+         * `on-the-ground` (2026-09-11 — `relative-to-scene`-д хар багана
+         * босдог), IoT мэдрэгч 3D-д `relative-to-scene` + `verticalOffset`.
+         * Урьд нь энэ мөр тэр хоёр шийдвэрийг горим солих бүрд чимээгүй
+         * дарж бичдэг байв.
          */
-        if (LAYER_BY_ID[String(l.id)]) {
+        const lid = String(l.id);
+        if (LAYER_BY_ID[lid] && !lid.startsWith('infra:') && !lid.startsWith('iot:')) {
           (l as FeatureLayer).elevationInfo = elev as never;
         }
       }
@@ -4134,6 +4165,8 @@ export const MapCanvas = memo(function MapCanvas({
           delete pulsedWhere.current[l.id];
         }
       }
+      /* ⚠️ 2026-09-21: `source:eh`-ийн пульс — шүүлт тавигдсаны ДАРАА (дээрх дүрэм) */
+      if (pulseEh) pulseLayer(l);
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;

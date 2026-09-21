@@ -292,7 +292,8 @@ const FILL_LIMIT_M = 0.5;
 /**
  * ГОЛЫН ГОЛДРИЛЫГ ГАДАРГААС ХЭР ГҮН ШАТААХ (м) — «stream burning».
  *
- * ⚠️ 2.5 м: өмнөх тооцооны модулийн (`uyrCalc.ts` §BURN_M) утгатай ИЖИЛ.
+ * ⚠️ 2.5 м: устгагдсан өмнөх тооцооны модулийн (`uyrCalc.ts` §BURN_M,
+ *    2026-09-21-нд хасав — хаанаас ч импортлогдохгүй байсан) утгатай ИЖИЛ.
  *    Тооцооны нүд 16.9 м тул голын ёроол 3×3 дундажлалд арчигдсан байдаг —
  *    энэ гүн нь голдрилыг ТАСРАЛТГҮЙ нам зам болгоход хангалттай, атлаа
  *    хөндийн хэлбэрийг гажуудуулахааргүй.
@@ -480,6 +481,18 @@ export async function simulateFlood(
   onProgress?: (p: SimProgress) => void,
   /** Хэрэглэгчийн зурсан талбай — байвал домэйн нь ЭНЭ (`SimArea` §тайлбар) */
   area?: SimArea | null,
+  /**
+   * ЦУЦЛАХ дохио (2026-09-21).
+   *
+   * ⚠️ Урьд нь цуцлах арга ОГТ байгаагүй: түвшин/талбай солиход `Ersdel.tsx`
+   * зөвхөн `alive=false`-ээр setState-ийг хаадаг ч ХУУЧИН давталт (~45,000
+   * нүд × хэдэн мянган алхам) цаашаа гүйсээр байв. Хоёр (гурав) сим зэрэг
+   * явж хөтөч хөлдөж, явцын мөр хоёр симийн хооронд «үсэрдэг» байв.
+   * Одоо амьсгал өгөх бүрд (`YIELD_EVERY`) дохиог шалгаж, цуцлагдсан бол
+   * `AbortError` нэртэй алдаагаар шууд гарна — дуудагч нь үүнийг алдаа гэж
+   * ҮЗҮҮЛЭХГҮЙ (`alive` хаалттай тул чимээгүй).
+   */
+  signal?: AbortSignal | null,
 ): Promise<FloodData> {
   const dsm = await loadDsm();
   /**
@@ -613,8 +626,9 @@ export async function simulateFlood(
    * хэрэглэгчийн «налуу дагахгүй, голын голдрилийг дагахгүй» гэсэн шүүмж.
    *
    * ⚠️ Энэ арга нь ArcGIS Hydrology-гийн стандарт «stream burning» бөгөөд
-   * төслийн өмнөх тооцооны модульд (`uyrCalc.ts` §BURN_M) байсан боловч
-   * шинэ шийдэлд зөөгдөөгүй үлдсэн — тэр алдагдлыг нөхөж байна.
+   * төслийн өмнөх тооцооны модульд (`uyrCalc.ts` §BURN_M — 2026-09-21-нд
+   * устгагдсан) байсан боловч шинэ шийдэлд зөөгдөөгүй үлдсэн — тэр
+   * алдагдлыг нөхөж байна.
    *
    * ⚠️ `fillSinks`-ЭЭС ӨМНӨ: шатаасны дараа дүүргэлт нь голын дагуух нам
    * замыг ТАСРАЛТГҮЙ болгоно. Дараа нь шатаавал дүүргэлт голыг дахин
@@ -623,6 +637,19 @@ export async function simulateFlood(
    * ⚠️ Гол нь дайрч өнгөрдөггүй талбайд ЮУ Ч ӨӨРЧЛӨГДӨХГҮЙ (огтлолцол 0).
    * Татагдаагүй бол шинжилгээ ЗОГСОХГҮЙ — шатаалтгүйгээр цааш явна.
    */
+  /**
+   * ⚠️ ЖИНХЭНЭ ГАДАРГУУГ ШАТААХААС ӨМНӨ ХУУЛНА (2026-09-21).
+   *
+   * Урьд нь `terrainZ`-д шатааж, дүүргэсэн `z` (тооцооны ЁРООЛ) очдог байв.
+   * Тэр нь ХОЁР газар худал уншигддаг байлаа:
+   *   · `uyrTailbar.whyFlood` — голын нүд бүр «орчноосоо 2.5 м нам»,
+   *     эргийн нүд бүр 15%+ налуутай гэж гардаг (шатаалтын ирмэг, рельеф биш);
+   *   · `uyrSurface.waterSurfaceAt` — усны гадаргуу `ёроол + гүн` нь голын
+   *     нүдэнд mesh-ээс 2.5 м ДООР орж, 3D-д гол огт харагдахгүй.
+   * Одоо `terrainZ` = DSM-ийн ЖИНХЭНЭ өндөр (`zReal`), `bedZ` = тооцооны
+   * ёроол — хоёулаа явна (`uyr.ts` §FloodData.bed).
+   */
+  const zReal = Float32Array.from(z);
   if (river) {
     const e0 = dsm.meta.extent;
     const cw = (e0.xmax - e0.xmin) / N;
@@ -1192,6 +1219,14 @@ export async function simulateFlood(
     }
 
     if (step % YIELD_EVERY === 0) {
+      /* ⚠️ ЦУЦЛАЛТ — амьсгал өгөх бүрд (2026-09-21). Дуудагч шинэ сим эхлүүлсэн
+         бол энэ давталт цаашаа гүйх утгагүй: CPU-г шинэ симтэй хуваалцаж
+         хоёуланг нь удаашруулна. */
+      if (signal?.aborted) {
+        const err = new Error('simulateFlood cancelled');
+        err.name = 'AbortError';
+        throw err;
+      }
       onProgress?.({ step, total: MAX_STEPS, minute: t / 60 });
       // Хөтөчид амьсгал өгнө — эс бөгөөс UI хөлддөг
       await new Promise((r) => setTimeout(r, 0));
@@ -1260,7 +1295,11 @@ export async function simulateFlood(
     ? Math.max(0.8, Math.min(6, Math.round(wetDepths[Math.floor(wetDepths.length * 0.95)] * 10) / 10))
     : 1.5;
 
-  /* Хугацааны тэмдэглэгээ — эхлэл нь «одоо», алхам нь тэнцүү */
+  /* Хугацааны тэмдэглэгээ — эхлэл нь «одоо», алхам нь тэнцүү.
+     ⚠️ `times[i]` нь зүсмэлийн ТӨГСГӨЛ (`snapAt = (i+1)/SLICES·totalS`):
+     0-р зүсмэл = симийн (SIM_MIN/SLICES)-р минут, 0-р минут БИШ. Минутыг
+     `uyr.ts` §minuteAt энэ дүрмээр (`simMin`-ээс) бодно — `times[0]`-ийг
+     тэг гэж авбал бүх шошго нэг алхмаар хоцорно (2026-09-21). */
   const t0 = Date.now();
   const stepMs = (totalS * 1000) / SLICES;
   const meta: FloodMeta = {
@@ -1310,7 +1349,10 @@ export async function simulateFlood(
   const accHa = new Float32Array(P);
   for (let i = 0; i < P; i++) accHa[i] = accCells[i] * cellHa;
 
+  /* ⚠️ `terrainZ` = ЖИНХЭНЭ DSM (`zReal`), `bedZ` = шатааж дүүргэсэн тооцооны
+     ёроол (`z`). Гүн `d` нь `bedZ`-ээс хэмжигддэг тул усны гадаргуу =
+     `bedZ + d`, харин рельеф/налуу нь `terrainZ`-ээс (2026-09-21, дээрх §). */
   return floodDataFromBuffer(meta, buf, {
-    terrainZ: z, maxDepth: maxD, maxSpeed: maxS, arrivalS: arrival, accHa,
+    terrainZ: zReal, bedZ: z, maxDepth: maxD, maxSpeed: maxS, arrivalS: arrival, accHa,
   });
 }

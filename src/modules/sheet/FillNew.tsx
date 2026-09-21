@@ -191,6 +191,25 @@ type Draft = {
    * бусдын «Илгээх» дахин түгжигдэнэ.
    */
   done?: [string, number][];
+  /**
+   * НҮД БҮРИЙГ СҮҮЛД ХӨНДСӨН АГШИН — `${oid}:${блок}[:s|e]` → ms (2026-09-21).
+   *
+   * ⚠️ ЯАГААД: `waitingOn`-ийн тайлбар «3 хоног идэвхгүйг хасна» гэдэг ч
+   *    ноорогт агшин хадгалагддаггүй тул хасах боломжгүй байв — амралт авсан
+   *    оролцогч бусдын «Илгээх»-ийг мөнхөд түгждэг. Мөн `del` (tombstone)-той
+   *    харьцуулж «буцаалт нь бичилтээс хожуу юу» гэдгийг шийднэ.
+   * ⚠️ Нийлүүлэхэд түлхүүр бүрд ХАМГИЙН ИХ агшин ялна. Сонголттой — хуучин
+   *    ноорогт байхгүй; тэр үед идэвхгүй шүүлт хийгдэхгүй (одоогийн зан).
+   */
+  byAt?: [string, number][];
+  /**
+   * TOMBSTONE — буцаасан нүд/огноо ба хассан нэмэлт мөр (`a:${oid}`) → хассан
+   * агшин ms (2026-09-21). `mergeDrafts` нь del-ийн агшин нүдний `byAt`-аас
+   * хожуу (эсвэл `byAt` байхгүй) бол тэр нүдийг ХАСНА; `a:` бол мөрийг
+   * болзолгүй хасна (түр oid дахин олгогддоггүй). Урьд нь нийлүүлэлт зөвхөн
+   * нэмдэг тул буцаалт нөгөө талын хуулбараас эргэж сэргэдэг байв.
+   */
+  del?: [string, number][];
 };
 /*
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан илгээгдээгүй мөр (`NewRow`) —
@@ -313,6 +332,9 @@ const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | null => {
        (fail-open): бөглөлт зогсох нь эрхийн алдаанаас ДОР үр дагавартай. */
     if (d.by != null && !Array.isArray(d.by)) d.by = undefined;
     if (d.done != null && !Array.isArray(d.done)) d.done = undefined;
+    /* 2026-09-21: агшин ба tombstone — эвдэрсэн бол мөн тэр хэсгийг л орхино. */
+    if (d.byAt != null && !Array.isArray(d.byAt)) d.byAt = undefined;
+    if (d.del != null && !Array.isArray(d.del)) d.del = undefined;
     /* ⚠️ `docs` нь хуучин ноорогийн үлдэгдэл — ЯМАР Ч хэлбэртэй байсан
        хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
     d.docs = undefined;
@@ -388,6 +410,38 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     }
     for (const [u, at] of fresh) done.set(u, at);
   }
+  /*
+   * ⚠️ `byAt` — түлхүүр бүрд ХАМГИЙН ИХ агшин (2026-09-21). Хоёр тал нэг
+   *    нүдийг хөндсөн бол сүүлд хөндсөн агшин л «идэвхтэй эсэх»-д хэрэгтэй.
+   */
+  const byAt = new Map<string, number>(older.byAt ?? []);
+  for (const [k, a] of newer.byAt ?? []) if ((byAt.get(k) ?? 0) < a) byAt.set(k, a);
+  /*
+   * ⚠️ TOMBSTONE (2026-09-21-ний аудит) — «ЗӨВХӨН НЭМДЭГ» дүрмийн ЦОРЫН ГАНЦ
+   *    үл хамаарах зүйл. `del` нь хоёр талын нэгдэл (агшин нь их нь ялна):
+   *      · `a:${oid}` — хассан нэмэлт мөр: БОЛЗОЛГҮЙ хасна (түр oid дахин
+   *        олгогддоггүй тул «дахин нэмсэн» тохиолдол байхгүй);
+   *      · нүд/огнооны түлхүүр — нүдний `byAt` (сүүлд бичсэн агшин) del-ийн
+   *        агшнаас ХОЖУУ бол нүд ялна (дахин бичсэн), эс бөгөөс (эсвэл
+   *        `byAt` байхгүй) хасна. Хасагдсан нүдний эзэн ба агшин ч арилна —
+   *        оролцогчийн жагсаалт сүнс нүдээр дүүрэхгүй.
+   *    Нүд нь del-ийг давсан (дахин бичигдсэн) бол тэр tombstone ХУУЧИРСАН —
+   *    хаяна; 7 хоногоос хуучин tombstone ч хаяна (локал ноорог 3 хоног
+   *    амьдардаг тул түүнээс хуучин хуулбар нийлэх нь бараг үгүй).
+   */
+  const del = new Map<string, number>(older.del ?? []);
+  for (const [k, a] of newer.del ?? []) if ((del.get(k) ?? 0) < a) del.set(k, a);
+  const now = Date.now();
+  for (const [k, a] of del) {
+    if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
+    if (k.startsWith('a:')) { adds.delete(Number(k.slice(2))); continue; }
+    const wrote = byAt.get(k);
+    if (wrote != null && wrote > a) { del.delete(k); continue; }
+    cells.delete(k);
+    dates.delete(k);
+    by.delete(k);
+    byAt.delete(k);
+  }
   return {
     t: newer.t,
     cells: [...cells],
@@ -397,6 +451,8 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     rowKeys: [...rowKeys],
     by: by.size ? [...by] : undefined,
     done: done.size ? [...done] : undefined,
+    byAt: byAt.size ? [...byAt] : undefined,
+    del: del.size ? [...del] : undefined,
   };
 };
 const readDraft = (pkgKey: string): Draft | null => {
@@ -791,11 +847,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    бичигдсэн мөрийг хасна.
      */
     const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    /* ⚠️ `pkg.name` (орчуулагддаггүй эх нэр), `pkg.label` БИШ (2026-09-21):
+       `Ажлын_нэр`-д монгол нэр бичигддэг тул англи UI дээр `label`-аар тулгавал
+       өөрийн мөр олдохгүй, нөгөө хуудсынх нь шүүгдэхгүй байв. */
     const mine = hyRows.filter((r) => {
       if (r[HF.bagts] !== pkg.group) return false;
       const ajil = String(r[HF.ajil] ?? '');
-      if (ajil.includes(pkg.label)) return true;
-      return !others.some((p) => ajil.includes(p.label));
+      if (ajil.includes(pkg.name)) return true;
+      return !others.some((p) => ajil.includes(p.name));
     });
     if (!mine.length) return null;
     /*
@@ -810,10 +869,38 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    тусад нь сонгоно; байхгүй бол `null` — өнөөдөр урсгал эхлээгүй.
      */
     const mineToday = mine.filter((r) => String(r[HF.ajil] ?? '').startsWith(todayAjilTag));
-    if (!mineToday.length) return null;
     // Хамгийн сүүлийн тойрог — OBJECTID хамгийн их нь
-    return mineToday.reduce((a, b) => (b.__oid > a.__oid ? b : a));
-  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
+    if (mineToday.length) return mineToday.reduce((a, b) => (b.__oid > a.__oid ? b : a));
+    /*
+     * ⚠️ ӨНӨӨДРИЙН МӨР БАЙХГҮЙ БОЛ — ӨМНӨХ ӨДРИЙН БУЦААГДСАН МӨР (2026-09-21).
+     *    Урьд нь энд шууд `null` буцдаг тул 09-04-нд буцаагдсан илгээлт
+     *    09-05-нд `flow = null` болж: «БУЦААСАН» баннер гарахгүй, ачаалах
+     *    замын `flowRef`-ээс уншдаг сэргээлт (`OWNER === 'company'` мөрийг
+     *    `Эх_мөрийн_дугаар`-аар давхарлах) ХЭЗЭЭ Ч ажиллахгүй, `publish` нь
+     *    буцаагдсан мөрийг update хийхийн оронд өнөөдрийн ШИНЭ мөр үүсгэдэг
+     *    байв. Одоо ЗӨВХӨН гүйцэтгэгчийн гар дээрх (`company`, `Шилжүүлсэн`
+     *    биш) хамгийн сүүлийн мөрийг өдөр үл хамааран сонгоно.
+     * ⚠️ Хянагчийн гар дээрх өөр өдрийн мөрийг ЭНД АВАХГҮЙ — тэр нь
+     *    `inReview`-ээр өнөөдрийн илгээлтийг хаах байсан (2026-09-07-ны
+     *    гомдол); тэдгээр нь `otherDaysInReview`-д мэдээлэл болж үлдэнэ.
+     */
+    /* ⚠️ НЭГ ИЛГЭЭЛТИЙН (ижил `Эх_мөрийн_дугаар`) зөвхөн ХАМГИЙН СҮҮЛИЙН
+       тойргийг харна: буцаагдсан мөр дахин илгээгдэхэд `submitForReview`
+       ergelt+1-тэй ШИНЭ мөр үүсгэдэг ба хуучин «буцаасан» мөр хэвээр үлддэг
+       тул түүнийг үл тоовол аль хэдийн хянагдаж буй илгээлт «буцаагдсан»
+       мэт харагдана. */
+    const lastRound = new Map<number, (typeof mine)[number]>();
+    for (const r of mine) {
+      const so = Number(r[HF.sheetOid]);
+      const k = Number.isInteger(so) && so > 0 ? so : -r.__oid;
+      const prev = lastRound.get(k);
+      if (!prev || r.__oid > prev.__oid) lastRound.set(k, r);
+    }
+    const backed = [...lastRound.values()]
+      .filter((r) => r[HF.status] !== STATUS.transferred && OWNER[r[HF.status]] === 'company');
+    if (!backed.length) return null;
+    return backed.reduce((a, b) => (b.__oid > a.__oid ? b : a));
+  }, [hyRows, pkg.group, pkg.key, pkg.name, todayAjilTag]);
   /**
    * ӨӨР ӨДРИЙН хянагдаж буй урсгалууд — ЗӨВХӨН МЭДЭЭЛЭЛ, ХОРИГ БИШ.
    *
@@ -830,7 +917,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     for (const r of hyRows) {
       if (r[HF.bagts] !== pkg.group) continue;
       const ajil = String(r[HF.ajil] ?? '');
-      if (!ajil.includes(pkg.label) && others.some((p) => ajil.includes(p.label))) continue;
+      /* ⚠️ `name` (эх нэр) — `label` орчуулагддаг (2026-09-21, `flow`-ийн ⚠️). */
+      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
       if (ajil.startsWith(todayAjilTag)) continue;
       if (r[HF.status] === STATUS.transferred) continue;
       /* Гүйцэтгэгчийн гар дээр буцаж ирсэн нь «хянагдаж байгаа» БИШ.
@@ -842,7 +930,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (m) days.add(m[1]);
     }
     return [...days].sort();
-  }, [hyRows, pkg.group, pkg.key, pkg.label, todayAjilTag]);
+  }, [hyRows, pkg.group, pkg.key, pkg.name, todayAjilTag]);
   const returned = flow ? OWNER[flow[HF.status]] === "company" : false;
   /** Урсгал ОДОО хэний гар дээр байна вэ (`null` = бүртгэлгүй) */
   const reviewStage = flow ? OWNER[flow[HF.status]] : null;
@@ -1066,8 +1154,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       done(tr('Энэ илгээлт хяналтад аль хэдийн бүртгэгдсэн байна'));
       return;
     }
-    /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг. */
-    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid, pkg.label);
+    /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг.
+       ⚠️ `pkg.name` (орчуулагддаггүй) — `label` бол хэл солиход `Ажлын_нэр`
+          өөр текстээр бичигдэж, `flow`-ийн тулгалт тасарна (2026-09-21). */
+    const rv = await submitForReview(pkg.group, stagedFillMs, stagedOid, pkg.name);
     setResending(false);
     if (rv.ok) { setSubmitFailed(false); reloadHy(); done(tr('Хяналтад илгээв ({0})', rv.id)); }
     else setErr(rv.error);
@@ -1382,6 +1472,34 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const mineRef = useRef<Set<string>>(new Set());
   /**
+   * ӨӨРИЙН НҮД БҮРИЙГ СҮҮЛД ХӨНДСӨН АГШИН (`key` → ms) — 2026-09-21.
+   * `Draft.byAt`-д бичигдэж, (а) `waitingOn`-ийн «3 хоног идэвхгүй» шүүлт,
+   * (б) `mergeDrafts`-ийн tombstone (`del`) харьцуулалт хоёуланд хэрэглэгдэнэ.
+   * ⚠️ `mineRef`-тэй ХАМТ цэвэрлэгдэнэ (багц солих · ноорог устгах · илгээх).
+   */
+  const mineAtRef = useRef<Map<string, number>>(new Map());
+  /**
+   * TOMBSTONE — ЭНЭ СЕШНД БУЦААСАН/ХАССАН зүйлс (`key` → хассан агшин ms),
+   * 2026-09-21-ний аудит. Түлхүүр нь нүд/огнооных (`${oid}:${b}[:s|e]`) эсвэл
+   * хассан нэмэлт мөрийнх (`a:${oid}`). `Draft.del`-д бичигдэж, `mergeDrafts`
+   * нөгөө талын ХУУЧИН хуулбараас тэр нүд/мөрийг СЭРГЭЭХГҮЙ болгоно — урьд нь
+   * нийлүүлэлт зөвхөн нэмдэг тул нүд буцаах, мөр хасах нь дараагийн тойрогт
+   * эргэж ирдэг байв.
+   * ⚠️ Нүдийг дахин бичихэд тэмдэглэгээ нь АРИЛНА (`touchMine`).
+   */
+  const delRef = useRef<Map<string, number>>(new Map());
+  /** Өөрийн нүдийг хөндсөнийг агшинтай нь тэмдэглэнэ; хуучин tombstone-ийг арилгана. */
+  /* ⚠️ `useCallback` — зөвхөн үйл явдлын дотор дуудагддаг тул render-д хамаагүй; react-compiler-ийн
+     «impure during render» шалгуур энгийн функцийг ялгадаггүй (2026-09-21). */
+  const touchMine = useCallback((key: string) => {
+    mineAtRef.current.set(key, Date.now());
+    delRef.current.delete(key);
+  }, []);
+  /** Нүд/огноог БУЦААСАН (pending-ээс хассан) — tombstone тавина. */
+  const tombstone = useCallback((key: string) => {
+    delRef.current.set(key, Date.now());
+  }, []);
+  /**
    * СҮҮЛД НИЙЛҮҮЛСЭН алсын ноорогийн агшин — давхар нийлүүлэлтээс сэргийлнэ.
    * ⚠️ Өөрийн сая бичсэн хуулбар эргэж ирэхэд дахин суулгавал бичиж байгаа
    *    нүд дэмий дахин зурагдаж, курсор үсэрнэ.
@@ -1421,6 +1539,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const byMapRef = useRef<Map<string, string>>(new Map());
   byMapRef.current = byMap;
+  /**
+   * Нүд бүрийг СҮҮЛД хөндсөн агшин (`${oid}:${блок}` → ms) — нийлүүлэлтээр
+   * ирсэн (`Draft.byAt`), 2026-09-21. `waitingOn`-ийн идэвхгүй шүүлтэд.
+   * ⚠️ `byMap`-тай ижил дүрэм: зөвхөн `pickDraft` тавина, ref нь хадгалах
+   *    эффектэд (хамаарлын жагсаалтад оруулахгүй — бичилт↔татах давталт).
+   */
+  const [byAtMap, setByAtMap] = useState<Map<string, number>>(new Map());
+  const byAtRef = useRef<Map<string, number>>(new Map());
+  byAtRef.current = byAtMap;
   /**
    * СҮҮЛД АЛСАД БИЧСЭН ноорогийн бүтэн текст — дэмий бичилтийг таслахад.
    * ⚠️ Багц солиход ЗААВАЛ тэглэгдэнэ, эс бөгөөс Багц 2-ын анхны бичилт
@@ -1500,6 +1627,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     doneRef.current = [];
     setDoneBy([]);
     setByMap(new Map());
+    /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
+    setByAtMap(new Map());
+    mineAtRef.current = new Map();
+    delRef.current = new Map();
     /* ⚠️ Нийлүүлэлтийн агшны тэмдэглэгээ ч БАГЦАД харьяалагдана (2026-09-08):
        Багц 1-ийн `t` нь Багц 2-ынхаас ИХ байвал шинэ багцын алсын ноорог
        «хуучин» гэж тооцогдож, татах мөчлөг түүнийг ХЭЗЭЭ Ч буулгахгүй —
@@ -1708,6 +1839,51 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setStagedOid(staged.oid);
     setStagedFillMs(staged.payload.fillMs);
   }, [staged, hyRows, hyLoading, hyErr, view]);
+
+  /**
+   * БУЦААГДСАН ИЛГЭЭЛТИЙН ХОЖУУ ДАВХАРЛАЛТ (2026-09-21).
+   *
+   * ⚠️ ЯАГААД: ачаалах эффект буцаагдсан илгээлтийг `flowRef`-ээс уншдаг ч
+   *    `flow` нь `useHyanaltRows`-оос ХОЖУУ ирдэг — хуудас анх нээгдэхэд
+   *    мөрүүд ачаалагдах агшинд `flowRef.current` ихэвчлэн `null` тул тэр
+   *    зам алгасагдаж, гүйцэтгэгч буцаагдсан илгээлтээ 0%-тэй хуудсаар
+   *    харна (багц солиод буцах хүртэл). Энэ эффект хяналтын мөр ирмэгц
+   *    НЭГ УДАА (`sheetOid` тутамд) тэр илгээлтийг уншиж давхарлана.
+   * ⚠️ Зөвхөн `staged == null` үед — өнөөдрийн идэвхтэй илгээлт байвал
+   *    ачаалах эффект аль хэдийн давхарласан. Хянагчийн харагдацад (`view`)
+   *    хамаарахгүй. Мөр ачаалагдаагүй/өөр багцынх бол хүлээнэ.
+   * ⚠️ `pending` хөндөгдөхгүй: overlay нь суурь мөрийн утга тул хэрэглэгчийн
+   *    энэ хооронд бичсэн нүд ногоон хэвээр дээр нь үлдэнэ.
+   */
+  const returnedSheetOid = flow && OWNER[flow[HF.status]] === 'company' && flow[HF.status] !== STATUS.transferred
+    ? Number(flow[HF.sheetOid])
+    : NaN;
+  const lateOverlayRef = useRef<number>(NaN);
+  useEffect(() => {
+    if (view || busy || staged || !sc || !rows.length) return;
+    if (loadedPkgRef.current !== pkg.key) return;
+    if (!Number.isInteger(returnedSheetOid) || returnedSheetOid <= 0) return;
+    if (lateOverlayRef.current === returnedSheetOid) return;
+    lateOverlayRef.current = returnedSheetOid;
+    let alive = true;
+    void (async () => {
+      const rr = await readSubmissionByOid(returnedSheetOid);
+      if (!alive || loadedPkgRef.current !== pkg.key) return;
+      if (!rr.ok) { setSubReadErr(rr.error); return; }
+      const sub = rr.sub;
+      if (!sub || sub.done || sub.payload.pkgKey !== pkg.key) return;
+      const ov = overlaySubmission(rows, sub.payload, sc, nBld);
+      setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
+      if (sub.payload.adds?.length) pushTmpOid(sub.payload.adds);
+      setStaged(sub);
+      setRows(ov.rows);
+      /* `null ≠ 0`: илгээлт огноог хөндөөгүй бол архивынх хэвээр. Хэрэглэгч энэ
+         хооронд огноог өөрөө сольсон бол (`asOf !== asOfOrig`) дарж бичихгүй. */
+      if (ov.asOf != null) { setAsOfOrig(ov.asOf); setAsOf((cur) => (cur === asOfOrig ? ov.asOf : cur)); }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnedSheetOid, busy, staged, sc, rows.length, pkg.key, view]);
 
   /*
    * ⚠️ ӨӨР БАГЦЫН ОГНООГООР НӨХӨХГҮЙ (2026-09-06, хэрэглэгчийн шууд заавар:
@@ -2296,8 +2472,30 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const waitingOn = useMemo(() => {
     const doneSet = new Set(doneBy.map(([u]) => u));
-    return [...participants].filter((u) => u !== meKey && !doneSet.has(u)).sort();
-  }, [participants, doneBy, meKey]);
+    /*
+     * ⚠️ ИДЭВХГҮЙ ШҮҮЛТ ОДОО ЖИНХЭНЭ АЖИЛЛАНА (2026-09-21-ний аудит). Дээрх
+     *    тайлбар «3 хоног идэвхгүйг хасна» гэдэг байсан ч ноорогт агшин
+     *    хадгалагддаггүй тул код хасдаггүй байв. Одоо `byAt` (нүд бүрийн сүүлд
+     *    хөндсөн агшин) ба `done`-ийн агшнаас хүн бүрийн СҮҮЛИЙН идэвхийг
+     *    гаргаж, `LOCAL_DRAFT_TTL_MS`-ээс хуучин бол хүлээхээ болино.
+     * ⚠️ Агшин ОГТ байхгүй (хуучин ноорог) оролцогчийг ХЭВЭЭР хүлээнэ — энэ нь
+     *    одоогийн зан; «мэдээлэлгүй» ≠ «идэвхгүй».
+     */
+    const lastAct = new Map<string, number>();
+    const bump = (u: string, a: number | undefined) => {
+      if (a != null && (lastAct.get(u) ?? 0) < a) lastAct.set(u, a);
+    };
+    for (const [k, u] of byMap) bump(u, byAtMap.get(k));
+    for (const [u, a] of doneBy) bump(u, a);
+    /* ⚠️ Лавлах агшин нь render-ийн цаг (`Date.now()` — render-д хориотой, детерминист
+       биш) БИШ, ноорог дахь ХАМГИЙН СҮҮЛИЙН идэвх: «бусдаас 3 хоногоос илүү хоцорсон»
+       гэсэн утга — ноорог өөрчлөгдөх бүрт (3 сек тутмын нийлүүлэлт) дахин бодогдоно. */
+    const latest = Math.max(0, ...lastAct.values());
+    return [...participants]
+      .filter((u) => u !== meKey && !doneSet.has(u))
+      .filter((u) => { const a = lastAct.get(u); return a == null || latest - a <= LOCAL_DRAFT_TTL_MS; })
+      .sort();
+  }, [participants, doneBy, meKey, byMap, byAtMap]);
   /**
    * ХҮН ТУС БҮРИЙН ИЛГЭЭГЭЭГҮЙ НҮДНИЙ ТОО (2026-09-10).
    *
@@ -2510,8 +2708,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     done(tr('«{0}» нэмэгдлээ — «Илгээх» дарж хяналтад илгээнэ.', work));
   };
 
-  /** Илгээхээс өмнө нэмсэн мөрийг буцаах */
-  const dropAdd = (oid: number) => setAdds((a) => a.filter((x) => x.oid !== oid));
+  /**
+   * Илгээхээс өмнө нэмсэн мөрийг буцаах.
+   *
+   * ⚠️ НҮДИЙГ НЬ ХАМТ ХАСНА (2026-09-21-ний аудит). Урьд нь зөвхөн `adds`-ыг
+   *    шүүдэг тул тэр мөрөнд бичсэн `${oid}:*` нүд/огноо `pending`/`pendDate`-д
+   *    ҮЛДЭЖ: `dirtyCount`-д тоологдож, payload-д орж (`moveKeys` сөрөг oid-г
+   *    өнгөрүүлдэг), батлах шатанд `overlaySubmission` тэр мөрийг олохгүй тул
+   *    `unmoved > 0` → багц бүхэлдээ гацдаг байв. `mineRef`/`mineAtRef` ч
+   *    цэвэрлэгдэнэ — сүнс нүд оролцогчийн тоонд орохгүй.
+   * ⚠️ TOMBSTONE `a:${oid}` — нийлүүлэлт нөгөө талын хуулбараас мөрийг
+   *    сэргээхгүй (`mergeDrafts`).
+   */
+  const dropAdd = (oid: number) => {
+    const pre = `${oid}:`;
+    const strip = (o: Record<string, string>) => {
+      const n: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o)) if (!k.startsWith(pre)) n[k] = v;
+      return n;
+    };
+    setAdds((a) => a.filter((x) => x.oid !== oid));
+    setPending(strip);
+    setPendDate(strip);
+    for (const k of [...mineRef.current]) {
+      if (!k.startsWith(pre)) continue;
+      mineRef.current.delete(k);
+      mineAtRef.current.delete(k);
+      delRef.current.delete(k);
+    }
+    tombstone(`a:${oid}`);
+  };
   /**
    * ЭНЭ СЕШНД нэмэгдсэн (хараахан ИЛГЭЭГЭЭГҮЙ) мөрүүдийн түр oid.
    *
@@ -2563,17 +2789,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         : r.act[b];
       const nv = t === "" ? "" : `%${Number(t)}`;
       setErr("");
+      /* Хадгалагдсантайгаа ТЭНЦҮҮ бол «нийтлээгүй» тэмдэглэгээг арилгана.
+         ⚠️ Хөвөгч цэгийн 1e-9 хүлцэл: 0.5 ↔ 0.4999999999 нь ижил утга. */
+      const samePct = t === ""
+        ? storedPct == null
+        : storedPct != null && Math.abs(Number(t) / 100 - storedPct) < 1e-9;
       setPending((pv) => {
         const n = { ...pv };
-        /* Хадгалагдсантайгаа ТЭНЦҮҮ бол «нийтлээгүй» тэмдэглэгээг арилгана.
-           ⚠️ Хөвөгч цэгийн 1e-9 хүлцэл: 0.5 ↔ 0.4999999999 нь ижил утга. */
-        const same = t === ""
-          ? storedPct == null
-          : storedPct != null && Math.abs(Number(t) / 100 - storedPct) < 1e-9;
-        if (same) delete n[key];
+        if (samePct) delete n[key];
         else n[key] = nv;
         return n;
       });
+      /* ⚠️ ЭЗЭМШЛИЙГ ХУВЬ ГОРИМД Ч ТЭМДЭГЛЭНЭ (2026-09-21-ний аудит): урьд нь
+         зөвхөн обьёмын салбар `mineRef`-д бичдэг тул хувиар бөглөсөн хүн
+         `participants`-д орохгүй, «Илгээх» түгжээ түүнийг хүлээдэггүй байв.
+         Буцаасан (`samePct`) бол tombstone — нийлүүлэлтээр сэргэхгүй. */
+      mineRef.current.add(key);
+      if (samePct) tombstone(key); else touchMine(key);
       return;
     }
 
@@ -2628,13 +2860,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     )
       return;
     setErr("");
+    // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
+    const sameVol = v === "" ? stored == null : Number(v) === stored;
     setPending((pv) => {
       const n = { ...pv };
-      // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
-      if (v === "" ? stored == null : Number(v) === stored) delete n[key];
+      if (sameVol) delete n[key];
       else n[key] = v;
       return n;
     });
+    /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`). */
+    if (sameVol) tombstone(key); else touchMine(key);
     /* ⚠️ ЭЗЭМШЛИЙГ ЭНД ЧУХАМ ТЭМДЭГЛЭНЭ (2026-09-08). Энэ бол нүдийг ГАРААС
        нэг нэгээр засах ГОЛ зам; урьд нь зөвхөн олон нүдний (paste) зам дээр
        тэмдэглэгддэг байсан тул ганц нүд бөглөсөн хүн `by`-д ОГТ ОРОХГҮЙ,
@@ -2914,14 +3149,32 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          архивын шинэ жааз үүсэхэд хуучин oid-тай үлдвэл `byOid`-д таарахгүй
          болж эзэмшил тасарна. Зөөсөн хувилбарыг `mineRef`-д БУЦААЖ бичнэ. */
       const moved = new Set<string>();
+      const movedAt = new Map<string, number>();
       for (const k0 of mineRef.current) {
         const k = fixKey(k0);
         const oid = Number(k.slice(0, k.indexOf(":")));
-        if (byOid.has(oid)) { nextBy.set(k, meNow); moved.add(k); }
+        if (byOid.has(oid)) {
+          nextBy.set(k, meNow);
+          moved.add(k);
+          const a0 = mineAtRef.current.get(k0);
+          if (a0 != null) movedAt.set(k, a0);
+        }
       }
       mineRef.current = moved;
+      mineAtRef.current = movedAt;
     }
     setByMap(nextBy);
+    /* ⚠️ Агшин ч `fixKey`-ээр зөөгдөнө (2026-09-21) — эс бөгөөс жааз солигдоход
+       идэвхгүй шүүлт бүх оролцогчийг «агшингүй» гэж үзнэ (хүлээсээр). Өөрийн
+       нүдэнд `mineAtRef` давамгайлна — алсынх хоцорсон байж болно. */
+    const nextByAt = new Map<string, number>();
+    for (const [k0, a] of d.byAt ?? []) {
+      const k = fixKey(k0);
+      const oid = Number(k.slice(0, k.indexOf(":")));
+      if (byOid.has(oid) && nextBy.has(k) && Number.isFinite(a)) nextByAt.set(k, a);
+    }
+    for (const [k, a] of mineAtRef.current) if (nextBy.has(k) && (nextByAt.get(k) ?? 0) < a) nextByAt.set(k, a);
+    setByAtMap(nextByAt);
     const nextDone = (d.done ?? []).filter(
       (x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1]),
     ).map(([u, at]): [string, number] => [u.trim().toLowerCase(), at]);
@@ -3048,6 +3301,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     doneRef.current = [];
     setDoneBy([]);
     setByMap(new Map());
+    /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
+    setByAtMap(new Map());
+    mineAtRef.current = new Map();
+    delRef.current = new Map();
     lastMergedRef.current = 0;
     lastBodyRef.current = '';
     clearDraftLS(pkg.key);
@@ -3098,6 +3355,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         doneRef.current = [];
         setDoneBy([]);
         setByMap(new Map());
+        /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
+        setByAtMap(new Map());
+        mineAtRef.current = new Map();
+        delRef.current = new Map();
         lastMergedRef.current = 0;
         lastBodyRef.current = '';
       }
@@ -3141,6 +3402,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     for (const [k, u] of byMapRef.current) if (k in pending || k in pendDate) byM.set(k, u);
     if (me) for (const k of mineRef.current) if (k in pending || k in pendDate) byM.set(k, me);
     const by: [string, string][] = [...byM];
+    /*
+     * ⚠️ АГШИН ба TOMBSTONE (2026-09-21). Өөрийн нүд → `mineAtRef` (байхгүй бол
+     *    энэ хадгалалтын агшин — зөөгдсөн түлхүүр г.м.), бусдынх → нийлүүлэлтээр
+     *    ирсэн `byAtRef`. `del` нь зөвхөн ОДОО pending-д БАЙХГҮЙ түлхүүрүүд —
+     *    дахин бичсэн нүдний tombstone аль хэдийн `touchMine`-аар арилсан ч
+     *    давхар хамгаална.
+     */
+    const byAt: [string, number][] = [];
+    for (const [k] of byM) {
+      const a = mineRef.current.has(k) ? (mineAtRef.current.get(k) ?? at) : byAtRef.current.get(k);
+      if (a != null) byAt.push([k, a]);
+    }
+    const del: [string, number][] = [...delRef.current].filter(([k]) => !(k in pending) && !(k in pendDate));
 
     const draft: Draft = {
       t: at,
@@ -3156,6 +3430,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          ⚠️ ХООСОН МАССИВ ч бичигдэнэ — `undefined` болговол «буцаасан» гэдэг
          мэдээлэл алдагдаж, тэмдэглэгээ нийлүүлэлтээр сэргэнэ. */
       done: doneRef.current,
+      byAt: byAt.length ? byAt : undefined,
+      del: del.length ? del : undefined,
     };
     saveDraftLS(pkg.key, draft);
     /* ⚠️ АЛСЫН ХУУЛБАРЫГ ЭНД ШУУД БИЧИХГҮЙ — нүд бүрийн товшилтод ArcGIS руу
@@ -3289,7 +3565,21 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            дахин зөвхөн өөрийн хэсгээ агуулж, нөгөө талын ажил локалд
            хэзээ ч харагдахгүй. Дэлгэц нь татах мөчлөгөөр шинэчлэгдэнэ. */
         saveDraftLS(q.pkg, outDraft);
-        if (outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
+        /*
+         * ⚠️ НӨГӨӨ ТАЛЫН НҮД ДЭЛГЭЦЭД БУУХ ЁСТОЙ (2026-09-21-ний аудит).
+         *    Урьд нь энд `lastMergedRef = outDraft.t` гэж ҮРГЭЛЖ тавьдаг байв.
+         *    Алсаас уншиж нийлүүлсэн (`remote != null`) тохиолдолд тэр нь
+         *    татах мөчлөгийн `at > lastMergedRef` шалгуурыг хаадаг тул
+         *    нийлүүлсэн нүднүүд ЛОКАЛ ба АЛСАД бичигдсэн ч `pending`/`byMap`-д
+         *    ХЭЗЭЭ Ч буудаггүй: нөгөө талын нүд шарлахгүй, оролцогчид
+         *    орохгүй, дараагийн `flush` тэднийг ЗӨВХӨН ӨӨРИЙН `pending`-ээс
+         *    угсарсан ноорогоор дарж бичдэг байв. Одоо алсаас нийлүүлсэн бол
+         *    тэмдэглэгээг ХӨДӨЛГӨХГҮЙ — дараагийн тойрог (3 сек) сая бичсэн
+         *    нийлбэрийг татаж `pickDraft`-аар (курсорын хамгаалалттай)
+         *    дэлгэцэд буулгана; зөвхөн ӨӨРИЙН бичилт бол урьдын адил
+         *    алгасуулна (дэмий татахгүй).
+         */
+        if (!remote && outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
         await saveRemoteDraft(q.pkg, outDraft.t, body).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (loadedPkgRef.current !== q.pkg) return;
@@ -3523,13 +3813,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const commitDate = (r: SheetRow, b: number, k: "s" | "e", raw: string) => {
     const key = `${r.oid}:${b}:${k}`;
     setEdit(null);
+    // Анхны утгадаа буцсан бол «нийтлээгүй» тэмдэглэгээг арилгана.
+    const sameDate = raw === origDay(r, b, k);
     setPendDate((p) => {
       const n = { ...p };
-      // Анхны утгадаа буцсан бол «нийтлээгүй» тэмдэглэгээг арилгана.
-      if (raw === origDay(r, b, k)) delete n[key];
+      if (sameDate) delete n[key];
       else n[key] = raw;
       return n;
     });
+    /* ⚠️ ОГНООНЫ ЗАСВАР Ч ЭЗЭМШИЛ (2026-09-21-ний аудит): урьд нь энд
+       `mineRef` бичигддэггүй тул зөвхөн огноо засаж буй хүн `participants`-д
+       орохгүй, «Илгээх» түгжээ түүнийг хүлээдэггүй байв. Хадгалах эффект
+       `pendDate`-ийн түлхүүрийг `by`-д мөн оруулдаг. */
+    mineRef.current.add(key);
+    if (sameDate) tombstone(key); else touchMine(key);
   };
 
   /**
@@ -3717,6 +4014,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return;
     }
     /*
+     * ⚠️ ОРОЛЦОГЧИЙН ТҮГЖЭЭГ ч ЭНД шалгана (2026-09-21-ний аудит). «Илгээх»
+     *    товч `canSubmitNow` худал үед ОГТ зурагддаггүй (оронд нь «Дуусгасан»)
+     *    ч Ctrl+S нь `publish`-ыг ШУУД дууддаг тул бусад оролцогч дуусгаагүй
+     *    байхад хагас бөглөсөн хуваалцсан ноорог илгээгддэг байв. Мессеж нь
+     *    товчны хажуугийн тайлбартай ижил.
+     */
+    if (!canSubmitNow) {
+      say(tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', ')));
+      return;
+    }
+    /*
      * ⚠️ ХЯНАЛТЫН ХОРИГ ХАСАГДСАН (2026-09-07, хэрэглэгчийн шууд заавар:
      *    «Times-ийн хязгаарлалт болиод хэдэн ч удаа илгээх боломжтой болго»).
      *
@@ -3879,6 +4187,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         && (!flow || flow[HF.status] !== STATUS.transferred)
         ? movePayload(staged.payload)
         : null;
+      /*
+       * ⚠️ ӨНЧИН СӨРӨГ OID-ИЙН НҮД ОРОХГҮЙ (2026-09-21-ний аудит). Түр (сөрөг)
+       *    oid-той нүд нь ЭНЭ payload-ийн `adds` эсвэл нэгтгэх суурийн
+       *    (`mergeBase`, өмнө илгээсэн) `adds`-д мөртэй байх ЁСТОЙ; эс бөгөөс
+       *    `moveKeys` сөрөгийг өнгөрүүлж, батлах шатанд `overlaySubmission`
+       *    мөрийг олохгүй → `unmoved > 0` → багц гацна. `dropAdd` одоо
+       *    нүдийг хамт хасдаг ч энэ нь СҮҮЛЧИЙН хамгаалалт (хуучин ноорог,
+       *    нийлүүлэлтээр ирсэн сүнс нүд).
+       */
+      const addOids = new Set<number>([...adds, ...(mergeBase?.adds ?? [])].map((a) => a.oid));
+      const notOrphan = (k: string) => {
+        const o = Number(k.slice(0, k.indexOf(":")));
+        return !(o < 0) || addOids.has(o);
+      };
+      const cellsOut = Object.entries(pend2).filter(([k]) => notOrphan(k));
+      const datesOut = Object.entries(pendDate2).filter(([k]) => notOrphan(k));
       const payload = mergeSubmission(mergeBase, {
         pkgKey: pkg.key,
         user: user?.username ?? "",
@@ -3889,8 +4213,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         /* ⚠️ `null ≠ 0`: өөрсдөө өөрчлөөгүй бол `null` — эс бөгөөс хуучин
            утгаараа дарж бүх мөрийн ТӨЛӨВЛӨГӨӨТ хувийг буцаана. */
         asOf: asOf !== asOfOrig ? asOf : null,
-        cells: Object.entries(pend2),
-        dates: Object.entries(pendDate2),
+        cells: cellsOut,
+        dates: datesOut,
         adds,
         rowKeys,
       });
@@ -3927,8 +4251,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    дараалалд давхардсан мөр үүснэ. Оронд нь ил анхааруулж, «Хяналтад
        *    илгээх» товчоор ЯГ ижил хосыг давтана.
        */
-      /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг. */
-      const rv = await submitForReview(pkg.group, fillMs, sv.oid, pkg.label);
+      /* ⚠️ Хуудсын нэр ЗААВАЛ — `flow`-ийн шүүлт түүгээр 9F/12F-ийг ялгадаг.
+       ⚠️ `pkg.name` (орчуулагддаггүй) — `label` бол хэл солиход `Ажлын_нэр`
+          өөр текстээр бичигдэж, `flow`-ийн тулгалт тасарна (2026-09-21). */
+      const rv = await submitForReview(pkg.group, fillMs, sv.oid, pkg.name);
       /* ⚠️ Амжилттай бүртгэгдсэн илгээлтийг ТЭМДЭГЛЭНЭ — «өнчин илгээлт»-ийн
          эффект хяналтын жагсаалт шинэчлэгдэх хүртэлх завсарт ХУДАЛ
          анхааруулга гаргахгүйн тулд (доорх `registeredRef`-ийн ⚠️). */
@@ -3998,7 +4324,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, canAddRow, noEdit, rows, adds, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -4166,6 +4492,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            тул оролцогчийн жагсаалт зөв үлдэнэ. Хоосон болгосон (`same`) нүдийг
            ч тэмдэглэнэ — «би энэ нүдийг хөндсөн» гэдэг нь оролцоо мөн. */
         mineRef.current.add(x.key);
+        /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`). */
+        if (same) tombstone(x.key); else touchMine(x.key);
       }
       return n;
     });

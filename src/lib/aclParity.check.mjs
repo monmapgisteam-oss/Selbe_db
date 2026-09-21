@@ -76,6 +76,33 @@ const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
   const ret = core.match(/return r\.ok\s*&&\s*r\.g;/g) ?? [];
   assert.equal(ret.length, 2,
     `scopedAcl: sync нь 'r.ok && r.g' буцаах ёстой (2 газар), олдсон: ${ret.length}`);
+
+  /* ⚠️ 2026-09-21: хасалтын revoke нь ГҮЙЦЭТГЭХ агшиндаа «дахин хуваарилагдсан
+     уу» гэж шалгана — `guitsetgelAcl.removeAssign`-ийн `revoke && !stageOfUser(u)`
+     дүрэмтэй тэгш. Болзолгүй `syncCaps(u, [])` буцаж ирвэл хойшилсон хасалт
+     шинэ хуваарилалтын эрхийг арчина (huvaariAcl.check-ийн runtime шалгуур). */
+  assert.match(core, /revoke\s*&&\s*!load\(\)\.some\(\(a\) => a\.user === u\)\s*\?\s*await syncCaps\(u,\s*\[\] as R\[\]\)/,
+    'scopedAcl.removeAssign: revoke нь дахин хуваарилагдсан эсэхийг шалгах ёстой');
+  assert.doesNotMatch(core, /const g = revoke \? await syncCaps\(u, \[\] as R\[\]\) : true;/,
+    'scopedAcl.removeAssign: болзолгүй syncCaps(u, []) эргэж ирэв');
+  const g = readCode('src/lib/guitsetgelAcl.ts');
+  assert.match(g, /revoke\s*&&\s*!stageOfUser\(u\)\s*\?\s*await revokeFlowAccess/,
+    'guitsetgelAcl.removeAssign: дахин томилогдсон хүний эрхийг буцаах ёсгүй');
+
+  /* ⚠️ 2026-09-21: remote ачаалагдаагүй сешнд localStorage-ийн хуваарилалт /
+     эрх ҮЛ ТООЦОГДОНО — гурван модульд ижил туг. Нэгд нь арилвал (сүлжээ
+     хаагаад локалд тарьсан эрх) тэр модульд өөрөө өөртөө эрх олгох зам нээгдэнэ. */
+  for (const [f, flag] of [
+    ['src/lib/scopedAcl.ts', 'let remoteSynced = false;'],
+    ['src/lib/guitsetgelAcl.ts', 'let remoteSynced = false;'],
+    ['src/lib/caps.ts', 'let remoteSynced = false;'],
+  ]) {
+    const src = readCode(f);
+    assert.ok(src.includes(flag), `${f}: «${flag}» алга — remote-гүй сешнд localStorage хүчинтэй болно`);
+    assert.ok(src.includes('remoteSynced = true;'), `${f}: sync нь тугийг асаахгүй байна`);
+  }
+  assert.match(readCode('src/lib/caps.ts'), /export function capsOf[\s\S]{0,200}if \(!remoteSynced\) return \[\];/,
+    'caps.capsOf: remote-гүй бол хоосон буцаах ёстой');
 }
 console.log('✅ scopedAcl — set ба remove ижил хатуу шалгуур (r.ok && r.g)');
 
@@ -441,7 +468,8 @@ console.log('\naclParity.check: ok');
     const i = s.indexOf('async function syncCaps');
     assert.ok(i > 0, 'scopedAcl: syncCaps олдсонгүй');
     const b = s.slice(i, i + 1600);
-    assert.ok(b.includes('c.capsOf(user)'),
+    /* ⚠️ 2026-09-21: `capsStored` (тугтай `capsOf` биш) — remote унасан үед ч хадгалсан эрхийг УНШИЖ арчихгүй. */
+    assert.ok(b.includes('c.capsStored(user)') || b.includes('c.capsOf(user)'),
       'scopedAcl: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана');
     assert.ok(!/toggleCap\(user,\s*'\w+',\s*roles\.includes/.test(b),
       'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');

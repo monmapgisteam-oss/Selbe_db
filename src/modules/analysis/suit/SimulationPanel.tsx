@@ -133,9 +133,18 @@ export function Simulation({
   const activeHere = !muted && shownKinds.includes(kind);
   const def = simDef(kind);
 
+  /**
+   * ⚠️ ЛЕГЕНД = ЗУРГИЙН НОРМЧИЛОЛТОЙ НЭГ МУЖ (2026-09-21).
+   *
+   * Урьд нь легендийн доод утга нь `ranked` (value > 0 шүүсэн)-ийн сүүлийнх,
+   * харин зураг (`Suitability.tsx` §colorOf → `simNorm(v, simRange(simRows))`)
+   * нь 0 утгатай бүсийг ч мужид оруулдаг тул `min = 0` болж, легендийн
+   * «хамгийн цайвар» өнгө зурган дээр өөр утгыг заадаг байв. Одоо ХОЁУЛАА
+   * `simRange(rows)` — ижил `rows` (`simRows`), ижил min/max.
+   */
+  const range = useMemo(() => simRange(rows, kind, popBasis), [rows, kind, popBasis]);
   const ranked = useMemo<Ranked[]>(() => {
     if (!def.ready) return [];
-    const range = simRange(rows, kind, popBasis);
     return rows
       .map((r) => {
         const m = simMetric(r, kind, popBasis);
@@ -143,7 +152,7 @@ export function Simulation({
       })
       .filter((x): x is Ranked => x.value != null && x.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [rows, kind, popBasis, def.ready]);
+  }, [rows, kind, popBasis, def.ready, range]);
 
   const cells = readout(kind, ranked, road);
 
@@ -273,11 +282,13 @@ export function Simulation({
               <b>{ranked.length} {tr('бүс')}</b>
             </div>
 
-            {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар */}
+            {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар.
+                ⚠️ Зургийн нормчилолтой ИЖИЛ муж (`range`, дээрх §), `ranked`-ийн
+                зах БИШ (2026-09-21). */}
             <div className={c.legend}>
-              <span className={c.legendEnd}>{nf0(ranked[ranked.length - 1].value)}</span>
+              <span className={c.legendEnd}>{nf0(range.min)}</span>
               <span className={c.legendBar} />
-              <span className={c.legendEnd}>{nf0(ranked[0].value)} {def.unit}</span>
+              <span className={c.legendEnd}>{nf0(range.max)} {def.unit}</span>
             </div>
 
           </>

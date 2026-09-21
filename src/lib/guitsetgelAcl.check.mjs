@@ -26,6 +26,13 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
+/* ⚠️ ГАРААР ТАРЬСАН томилгоо (2026-09-21) — импортлохоос ӨМНӨ localStorage-д.
+   Доорх 0-р шалгуур: remote нэг ч удаа уншигдаагүй сешнд энэ мөр ХҮЧИНГҮЙ. */
+mem.set('selbe-guitsetgel-acl-v1', JSON.stringify([
+  { user: 'offline_hack', stage: 'director', bagts: ['*'] },
+  { user: 'selbe_injener', stage: 'director', bagts: ['*'] },
+]));
+
 const {
   ALL_BAGTS, bagtsFor, bagtsScope, _syncRemoteAssigns, resolveFlowStage,
   setAssign, removeAssign, stageOfUser, listAssigns, isViewOnly, setViewOnly,
@@ -33,6 +40,28 @@ const {
 const P = await import('@/lib/permissions.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];
+
+/* ══════════ 0. REMOTE АЧААЛАГДААГҮЙ → localStorage ҮЛ ТООЦНО (2026-09-21) ══════════
+ * ⚠️ Хатуу жагсаалтын хэрэглэгч (`selbe_injener` — remote-гүй нэвтэрдэг)
+ *    өөрийгөө `director` шатанд «бүх багц» гэж бичээд сүлжээгээ хаагаад
+ *    нэвтэрвэл `canReview` давдаг байв. Одоо `_syncRemoteAssigns` ажиллаагүй
+ *    бол ХАТУУ ТОХИРГООНЫ default: үүргийн шат (`ROLE_STAGE`), шийдвэргүй,
+ *    багцгүй. */
+assert.equal(stageOfUser('offline_hack'), null, 'remote-гүй сешнд локал томилгоо ХҮЧИНГҮЙ');
+assert.deepEqual(bagtsFor('offline_hack', 'director'), []);
+assert.deepEqual(bagtsScope('selbe_injener'), []);
+assert.equal(listAssigns().length, 0, 'жагсаалт ч хоосон');
+{
+  const f = resolveFlowStage('selbe_injener', 'injener');
+  assert.equal(f.stage, 'engineer', 'хатуу үүргийн default шат');
+  assert.equal(f.canReview, false, 'локал «director» мөрөөр шийдвэрлэх эрх авч болохгүй');
+  assert.deepEqual(f.scope, []);
+}
+/* remote ачаалагдмагц — урьдын зан төлөв (remote = үнэн, локал мөр дарагдана) */
+_syncRemoteAssigns([{ user: 'selbe_injener', stage: 'engineer', bagts: ['Багц 1'] }]);
+assert.equal(stageOfUser('selbe_injener'), 'engineer');
+assert.equal(stageOfUser('offline_hack'), null, 'remote-д байхгүй локал мөр амилахгүй');
+console.log('✅ remote-гүй сешнд localStorage-ийн томилгоо үл тооцно');
 
 /* ── 1. Томилгоогүй → ЮУ Ч ХАРАХГҮЙ (fail-closed) ── */
 _syncRemoteAssigns([]);

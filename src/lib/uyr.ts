@@ -1,35 +1,31 @@
 'use client';
 
 /**
- * ҮЕРИЙН ЗАГВАРЧЛАЛ — ArcGIS Flood Simulation-ы ЦАГ ХУГАЦААНЫ цуваа.
+ * ҮЕРИЙН ЗАГВАРЧЛАЛ — хөтөч дээр бодогдсон (`uyrSim.ts`) ЦАГ ХУГАЦААНЫ цуваа:
+ * зүсмэл бүрийн гүн · урсгалын вектор, зураг (растер), нүд сонгох, цуваа.
  *
- * ⚠️ ЗАРЧИМ: Flood Simulation нь «нэг зураг» БИШ — ус тархах ЯВЦ. Тиймээс
- * зүсмэл бүрийн гүн ба урсгалын вектор хоёуланг нь хадгалж, хугацаагаар нь
- * гүйлгэж харуулна (NEMA ANALYSIS WEB / `nextjs_last`-ийн `FloodScene`-тэй
- * ижил зарчим).
+ * ⚠️ ЗАРЧИМ: үер нь «нэг зураг» БИШ — ус тархах ЯВЦ. Тиймээс зүсмэл бүрийн
+ * гүн ба урсгалын вектор хоёуланг нь хадгалж, хугацаагаар нь гүйлгэж харуулна.
  *
  * ⚠️ Урьд нь (2026-08-27-ны эхний хувилбар) 12 алхмын «хамгийн их гүн»-ийг л
  * авч статик полигон болгосон нь АЛДАА байв: усны давалгааны хөдөлгөөн,
  * урсгалын хурд, чиглэл бүгд алдагдаж, «загварчлал» нь ердөө нэг толбо болж
  * хувирсан.
  *
- * ⚠️ ЭНЭ НЬ АЮУЛЫН ТҮВШНЭЭС ТУСДАА. Түвшин 1/2/3 ба хохирлын тооцоо нь голын
- * ирмэгээс татсан БУФЕР зурвасаар явна (`ersdel.ts` §FLOOD_LEVELS) — тэр нь
- * давтагдах хугацааны (5/20/100 жил) хувилбар. Энэ загварчлал нь тэдгээрийн
- * ДООР урсаж, бодит усны тархалтыг харуулна.
+ * ⚠️ ЭХ СУРВАЛЖ (2026-09-21-нд тайлбар нийцүүлэв): ОБЕГ-ын (NEMA) ArcGIS Flood
+ * Simulation-ы CRF гаралт (`/uyr/selbe-flood.bin`, `tools/uyr-crf.py`)
+ * 2026-09-07-нд ХАЯГДСАН — муу DEM дээр тооцогдсон (хэрэглэгчийн шийдвэр).
+ * Одоо ганц эх сурвалж нь `uyrSim.ts`: төслийн 3D mesh-ээс гаргасан DSM
+ * (`/uyr/selbe-dsm.bin`) дээр инерцийн 2D шийдэл. Энэ файл түүний гаралтыг
+ * `floodDataFromBuffer`-ээр САВЛАЖ, зурдаг — өөрөө юу ч татахгүй.
  *
- * ФАЙЛУУД (`tools/uyr-crf.py` үүсгэнэ):
- *
- *   · `/uyr/selbe-flood.bin`         512×512 × 12 зүсмэл × 3 хувьсагч
- *                                    [зүсмэл][хувьсагч][пиксел]
- *                                    depth uint16 (мм) · u,v int16 (см/с)
- *                                    18.9 МБ (gzip 2.0 МБ)
- *   · `/uyr/selbe-flood.json`        мета + зүсмэл тус бүрийн үзүүлэлт
+ * ⚠️ ХОХИРЛЫН тооцоо ба аюулын муж нь одоо энэ загварчлалын БОДИТ мөрөөр
+ * бодогдоно (`Ersdel.tsx` §run, 2026-09-09); `ersdel.ts` §FLOOD_LEVELS-ийн
+ * `reach`/`depth` буфер нь зөвхөн загварчлал бэлэн биш үеийн ухралт.
  *
  * ⚠️ ТООН ҮЗҮҮЛЭЛТ (талбай, дээд гүн) нь мета доторх `stats`-аас уншигдана —
- * 512-ийн тороос ДАХИН бодож БОЛОХГҮЙ. Сийрэгжүүлэхэд MAX авдаг тул нэг
- * нойтон дэд нүд бүтэн блокийг нойтон болгож, талбай 1.6 дахин хэтэрдэг
- * (хэмжив: 144 га vs бодит 91 га). Мета доторх тоо нь ЭХ 4096 тороос.
+ * зурах тороос ДАХИН бодож БОЛОХГҮЙ: `uyrSim.ts` тэдгээрийг алхам бүрд
+ * хуримтлуулж бодсон (нэг зүсмэлээс гаргавал дутуу).
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -174,6 +170,17 @@ export type FloodData = {
    * `uyrSurface.ts`) заавал `if (!flood.terrain) return` гэж хамгаална.
    */
   terrain?: (i: number) => number;
+  /**
+   * ТООЦООНЫ ЁРООЛ (м) — голдрил шатааж, гүехэн хонхрыг дүүргэсэн гадаргуу
+   * (`uyrSim.ts` §RIVER_BURN_M, §FILL_LIMIT_M). Гүн `depth` нь ЭНЭ ёроолоос
+   * хэмжигддэг тул усны гадаргуугийн өндөр = `bed + depth`.
+   *
+   * ⚠️ 2026-09-21: урьд нь `terrain`-д энэ ёроол очдог байсан тул рельеф,
+   * налуу нь шатаалтын ирмэгийг «эрэг» гэж уншдаг байв. Одоо `terrain` нь
+   * ЖИНХЭНЭ DSM, харин ус зурах бүх код ёроолыг ЭНДЭЭС авна. Байхгүй бол
+   * `terrain`-ыг ёроол гэж үзнэ (`uyrSurface.ts`).
+   */
+  bed?: (i: number) => number;
   /** БҮХ хугацааны дээд гүн (м) — «хамгийн муу тохиолдол» */
   maxDepth?: (i: number) => number;
   /** БҮХ хугацааны дээд хурд (м/с) */
@@ -188,9 +195,6 @@ export type FloodData = {
    */
   accHa?: (i: number) => number;
 };
-
-const URL_BIN = '/uyr/selbe-flood.bin';
-const URL_META = '/uyr/selbe-flood.json';
 
 /**
  * ГҮНИЙ ӨНГӨНИЙ ШАТЛАЛ — цайвараас гүн хөх рүү.
@@ -305,22 +309,12 @@ export const flowDir = (u: number, v: number): string => {
 export const flowDeg = (u: number, v: number): number =>
   ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
 
-let cache: FloodData | null = null;
-let pending: Promise<FloodData> | null = null;
-
-/**
- * Загварчлалыг нэг удаа татаад кэшилнэ.
- *
- * ⚠️ 18.9 МБ — татахад хэдэн секунд болно. Тиймээс ЗӨВХӨН «Үер» хувилбар
- * сонгогдоход дуудагдана (`Ersdel.tsx`), хуудас нээгдэхэд БИШ.
- */
 /**
  * ТҮҮХИЙ БУФЕРЭЭС `FloodData` угсарна — layout `[зүсмэл][depth,u,v][пиксел]`.
  *
- * ⚠️ ХОЁР эх сурвалж энэ функцийг ХУВААЛЦАНА: вэб дээр 3D mesh-ийн DSM дээр
- * тооцсон загварчлал (`uyrSim.ts`) ба урьд бэлтгэсэн файл. Дүрслэл, нүд
- * сонгох, цуваа — БҮГД нэг код дээр ажиллах ёстой; эс бөгөөс эх сурвалж
- * солиход зурагдац чимээгүй зөрнө.
+ * ⚠️ Урьд нь ХОЁР эх сурвалж (вэб дээрх `uyrSim.ts` ба бэлэн CRF файл) энэ
+ * функцийг хуваалцдаг байв; 2026-09-21-ээс эх сурвалж ГАНЦ (`uyrSim.ts`).
+ * Дүрслэл, нүд сонгох, цуваа — бүгд энэ нэг код дээр ажиллана.
  */
 export function floodDataFromBuffer(
   meta: FloodMeta,
@@ -331,8 +325,10 @@ export function floodDataFromBuffer(
    * ашиглах бүх код нь `if (!…) return` гэж хамгаална.
    */
   extra?: {
-    /** Газрын өндөр (м) — 3D усны гадаргуу */
+    /** Газрын ЖИНХЭНЭ өндөр (м, DSM) — рельеф, налуу (`uyrTailbar.ts`) */
     terrainZ?: Float32Array;
+    /** Тооцооны ёроол (м) — шатааж дүүргэсэн; усны гадаргуу = `bedZ + гүн` */
+    bedZ?: Float32Array;
     /** Бүх хугацааны дээд гүн (м) */
     maxDepth?: Float32Array;
     /** Бүх хугацааны дээд хурд (м/с) */
@@ -677,8 +673,24 @@ export function floodDataFromBuffer(
     return cv;
   };
 
+  /**
+   * ЗҮСМЭЛИЙН МИНУТ — симийн эхнээс.
+   *
+   * ⚠️ 2026-09-21: урьд нь `times[s] − times[0]` байв. Гэвч `uyrSim.ts` нь
+   * `times[i]`-д зүсмэлийн ТӨГСГӨЛИЙГ бичдэг (`(i+1)·step`), тиймээс
+   * `times[0]` нь 0-р минут БИШ, харин `step`-р минут — бүх шошго нэг алхмаар
+   * (24 зүсмэлд 2.5 мин) хоцорч, «0 мин» дээр аль хэдийн 2.5 минутын ус
+   * харагддаг байв. Мөн попапын «N-р минут» ↔ «Ус ирэх хугацаа» (секундээр
+   * хуримтлагдсан `arrivalS`) хоёр зөрдөг байв.
+   *
+   * Одоо: `simMin` байвал `(s+1)·simMin/slices` (ЯГ `snapAt`-ын дүрэм);
+   * байхгүй бол `times`-ийн алхмыг нэмж ижил утга гаргана.
+   */
   const t0 = Date.parse(meta.times[0]);
-  const minuteAt = (s: number) => (Date.parse(meta.times[s]) - t0) / 60000;
+  const stepMin = SL > 1 ? (Date.parse(meta.times[1]) - t0) / 60000 : 0;
+  const minuteAt = (s: number) => (meta.simMin != null
+    ? ((s + 1) * meta.simMin) / SL
+    : (Date.parse(meta.times[s]) - t0) / 60000 + stepMin);
 
   const series = (i: number) => ({
     depth: Array.from({ length: SL }, (_, s) => depth(s, i)),
@@ -720,6 +732,7 @@ export function floodDataFromBuffer(
   const grid = (a?: Float32Array) =>
     (a && a.length >= P ? (i: number) => a[i] : undefined);
   const terrain = grid(extra?.terrainZ);
+  const bed = grid(extra?.bedZ);
   const accHa = grid(extra?.accHa);
   const maxDepth = grid(extra?.maxDepth);
   const maxSpeed = grid(extra?.maxSpeed);
@@ -730,30 +743,14 @@ export function floodDataFromBuffer(
 
   return {
     meta, depth, u, v, speed, series, indexAt, frame, minuteAt,
-    terrain, maxDepth, maxSpeed, arrivalMin, accHa,
+    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa,
   };
 }
 
-export async function loadFloodData(): Promise<FloodData> {
-  if (cache) return cache;
-  pending ??= (async () => {
-    const [meta, buf] = await Promise.all([
-      fetch(URL_META, { cache: 'force-cache' }).then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} — ${URL_META}`);
-        return r.json() as Promise<FloodMeta>;
-      }),
-      fetch(URL_BIN, { cache: 'force-cache' }).then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} — ${URL_BIN}`);
-        return r.arrayBuffer();
-      }),
-    ]);
-
-    cache = floodDataFromBuffer(meta, buf);
-    return cache;
-
-  })();
-  return pending;
-}
+/* ⚠️ `loadFloodData()` (бэлэн `/uyr/selbe-flood.bin` файлыг татах) 2026-09-21-нд
+   УСТГАГДАВ: ОБЕГ-ын CRF гаралт 2026-09-07-нд хаягдсанаас хойш хаанаас ч
+   дуудагдахгүй байсан. Үер одоо ЗӨВХӨН `uyrSim.ts`-ээр хөтөч дээр бодогдоно;
+   `floodDataFromBuffer` нь түүний гаралтыг савладаг ГАНЦ зам. */
 
 /** Гүнээр эрсдэлийн зэрэглэл — попап ба хүснэгтэд */
 export const depthRisk = (m: number): { label: string; color: string } =>

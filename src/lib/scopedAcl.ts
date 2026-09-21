@@ -161,6 +161,20 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   let cache: Assign<R>[] | null = null;
 
   /**
+   * Энэ сешнд remote хуваарилалт НЭГ Ч УДАА уншигдсан уу (2026-09-21).
+   * ⚠️ `false` бол УНШИХ API (`scope` · `hasRole` · `grantsOf` · `list`)
+   *    localStorage-ийн кэшийг ҮЛ ТООЦОЖ «хуваарилагдаагүй» ([]) буцаана —
+   *    хатуу тохиргоонд багцын хуваарилалт байхгүй тул default нь хоосон.
+   *    Эс бөгөөс хатуу жагсаалтын хэрэглэгч `selbe-*-acl-v1`-д өөртөө багц
+   *    бичээд сүлжээгээ хаагаад нэвтэрвэл хүрээ нь хүчинтэй байв. Бичих зам
+   *    (`load()` шууд) хэвээр — админы засвар remote руу урьдын адил явна.
+   *    `caps.remoteSynced` · `permissions.remoteLoaded`-тэй ижил үндэслэл.
+   */
+  let remoteSynced = false;
+  /** Уншилтад ХҮЧИНТЭЙ жагсаалт — remote ачаалагдаагүй бол хоосон */
+  const effective = (): Assign<R>[] => (remoteSynced ? load() : []);
+
+  /**
    * ⚠️ ХУУЧИН ХЭЛБЭРИЙГ УНШИНА (2026-09-09). `localStorage` дээр өмнөх
    *    хувилбарын `{roles[], bagts[]}` мөр үлдсэн байж болно — хөрвүүлэхгүй
    *    бол `grants` нь `undefined` болж БҮХ хуваарилалт чимээгүй алга болно.
@@ -273,7 +287,9 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   async function syncCaps(user: string, roles: R[]): Promise<boolean> {
     try {
       const c = await import('./caps');
-      const cur = c.capsOf(user);
+      /* ⚠️ `capsStored` — тугтай `capsOf` биш (2026-09-21): remote унасан үед
+         `[]`-ээс эхэлбэл админы бусад эрхийг арчина (caps.ts-ийн тайлбар). */
+      const cur = c.capsStored(user);
       const next = new Set(cur);
 
       if (hasRoles) {
@@ -298,7 +314,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /* ══════════════════════════ API ══════════════════════════ */
 
-  const list = (): Assign<R>[] => load();
+  /* ⚠️ `effective` — remote ачаалагдаагүй бол хоосон (2026-09-21) */
+  const list = (): Assign<R>[] => effective();
 
   /**
    * REMOTE-ООС ИРСЭН хуваарилалтыг cache-д буулгана — `initRemote` дуудна.
@@ -349,6 +366,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       if (!grants.length) continue;
       byUser.set(user, { user, grants });
     }
+    /* ⚠️ Энэ мөчөөс л уншилт кэшийг тооцно (2026-09-21) — remote = үнэн. */
+    remoteSynced = true;
     save([...byUser.values()]);
   };
 
@@ -436,6 +455,9 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    */
   const removeAssign = (user: string, revoke = true): AclWrite => {
     const u = user.trim().toLowerCase();
+    /* ⚠️ Хоосон нэр (2026-09-21): урьд нь `''` түлхүүрээр хоосон мөр устгах гэж
+       remote руу явж, `syncCaps('')`-ийг ч дууддаг байв. `setGrants`-тай тэгш. */
+    if (!u) return { ok: false, error: spec.msg.noUser };
     save(load().filter((a) => a.user !== u));
     const run = enqueue(u, async () => {
       const ok = await pushRow(u);
@@ -446,7 +468,17 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
        *    ХУДАЛ мэдээлдэг. Дараагийн `initRemote` тэр мөрийг эргүүлж татаж
        *    эрхийг СЭРГЭЭДЭГ тул хасагдсан хүн харагдацтайгаа үлддэг байлаа.
        */
-      const g = revoke ? await syncCaps(u, [] as R[]) : true;
+      /*
+       * ⚠️ ДАРААЛАЛД ХҮЛЭЭХ ХООРОНД ДАХИН ХУВААРИЛАГДСАН БОЛ ЭРХИЙГ БУЦААХГҮЙ
+       *    (2026-09-21) — `guitsetgelAcl.removeAssign`-ийн `revoke &&
+       *    !stageOfUser(u)` дүрэмтэй ижил. `enqueue` нь зөвхөн энэ хөтчийн
+       *    дуудлагуудыг цувуулдаг; хооронд нь өөр админ эсвэл `initRemote` →
+       *    `syncRemote` тэр хүнийг дахин хуваарилсан байж болно. Тэр үед
+       *    `syncCaps(u, [])` нь ҮҮРЭГТЭЙ системд (`none = true`) бүх үүргийн
+       *    эрхийг хасаж, шинээр хуваарилагдсан хүнийг эрхгүй орхидог байв.
+       *    Гүйцэтгэх агшиндаа жагсаалтыг ДАХИН уншина (`pushRow`-той ижил).
+       */
+      const g = revoke && !load().some((a) => a.user === u) ? await syncCaps(u, [] as R[]) : true;
       return { ok, g };
     });
     const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
@@ -481,7 +513,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const scope = (user: string | null | undefined, role?: R): string[] | null => {
     if (!user) return [];
     if (roleForUser(user) === 'super') return null;
-    const a = load().find((x) => x.user === user.trim().toLowerCase());
+    /* ⚠️ `effective` — remote ачаалагдаагүй бол хуваарилагдаагүй (2026-09-21) */
+    const a = effective().find((x) => x.user === user.trim().toLowerCase());
     if (!a) return [];
 
     /*
@@ -501,14 +534,16 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   /** Хуваарилалтыг ЯГ ХЭВЭЭР нь унших — панел засварлахад хэрэгтэй */
   const grantsOf = (user: string | null | undefined): Grant<R>[] | null => {
     if (!user) return null;
-    return load().find((x) => x.user === user.trim().toLowerCase())?.grants ?? null;
+    /* ⚠️ `effective` (2026-09-21) — `scope`-той ижил дүрэм */
+    return effective().find((x) => x.user === user.trim().toLowerCase())?.grants ?? null;
   };
 
   /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
   const hasRole = (user: string | null | undefined, role: R): boolean => {
     if (!user) return false;
     if (roleForUser(user) === 'super') return true;
-    const a = load().find((x) => x.user === user.trim().toLowerCase());
+    /* ⚠️ `effective` (2026-09-21) — `scope`-той ижил дүрэм */
+    const a = effective().find((x) => x.user === user.trim().toLowerCase());
     return a?.grants.some((g) => g.role === role) ?? false;
   };
 

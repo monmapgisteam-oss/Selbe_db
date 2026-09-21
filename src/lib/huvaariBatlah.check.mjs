@@ -28,13 +28,15 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-const { PLAN_STATUS, parsePayload, decidePlan } = await import('@/lib/huvaariBatlah.ts');
+const { PLAN_STATUS, parsePayload, decidePlan, withdrawPlan } = await import('@/lib/huvaariBatlah.ts');
 
 /* ── 1. Төлөвийн утгууд — өгөгдөл тул ОРЧУУЛАГДАХГҮЙ ── */
 assert.equal(PLAN_STATUS.pending, 'Хүлээгдэж буй');
 assert.equal(PLAN_STATUS.approved, 'Батлагдсан');
 assert.equal(PLAN_STATUS.returned, 'Буцаагдсан');
-assert.equal(new Set(Object.values(PLAN_STATUS)).size, 3, 'төлөв давхардав');
+/* ⚠️ 2026-09-21: зохиогч өөрөө татсан — `returned`-ээс ТУСДАА утга */
+assert.equal(PLAN_STATUS.withdrawn, 'Татсан');
+assert.equal(new Set(Object.values(PLAN_STATUS)).size, 4, 'төлөв давхардав');
 console.log('✅ төлөв');
 
 /* ── 2. АГУУЛГА ЗАДЛАХ ── */
@@ -79,6 +81,26 @@ assert.equal(odd.kind, 'plan', 'танихгүй kind нь `plan` руу уна�
    Тэр үед зөвхөн төлөвлөгөө байсан тул `plan` нь таамаг биш БАРИМТ. */
 assert.equal(only.kind, 'plan', '`kind`-гүй хуучин илгээлт нь `plan`');
 console.log('✅ хуваарийн төрөл — буцаж нийцтэй, fail-closed');
+
+/* ══════════════════════════════════════════════════════════════
+ * ИЛГЭЭХ ҮЕИЙН СУУРЬ (`base`) — 2026-09-21
+ * ══════════════════════════════════════════════════════════════
+ * ⚠️ Хуучин илгээлтэд БАЙХГҮЙ → `undefined` (бүх блок «зассан» гэж
+ *    үзнэ); байвал `spans` нь мөн адил цэвэрлэгдэнэ; эвдэрсэн бол хаягдана,
+ *    илгээлт өөрөө УНАХГҮЙ. */
+assert.equal(p.base, undefined, 'суурьгүй илгээлт нь `base: undefined`');
+const withBase = parsePayload(JSON.stringify({
+  spans: { 12: [{ start: 100, end: 200 }, null] },
+  base: { spans: { 12: [{ start: 50, end: 150 }, 'муу'] }, deps: { 12: null } },
+}));
+assert.ok(withBase.base, 'суурь задарсангүй');
+assert.deepEqual(withBase.base.spans['12'], [{ start: 50, end: 150 }, null], 'суурийн эвдэрсэн блок → null (индекс гулсахгүй)');
+assert.equal(withBase.base.deps['12'], null);
+assert.deepEqual(withBase.base.obyem, {}, 'дутуу obyem → хоосон');
+const badBase = parsePayload(JSON.stringify({ spans: { 3: [null] }, base: 'муу' }));
+assert.ok(badBase, 'эвдэрсэн суурьтай илгээлт унав');
+assert.equal(badBase.base, undefined, 'эвдэрсэн суурь хаягдана');
+console.log('✅ илгээх үеийн суурь — сонголттой, буцаж нийцтэй');
 
 /* ⚠️ ЭВДЭРСЭН бол `null` — таамаглахгүй */
 assert.equal(parsePayload(''), null, 'хоосон мөр');
@@ -139,6 +161,33 @@ const noTable = await decidePlan({
 assert.equal(noTable.ok, false);
 assert.match(noTable.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${noTable.error}`);
 console.log('✅ дүрэм → сүлжээ гэсэн дараалал');
+
+/* ── 5б. ИЛГЭЭЛТЭЭ ТАТАХ (2026-09-21) — дүрэм сүлжээнээс өмнө ──
+ * ⚠️ `window` shim байгаа тул `requireCap('plan')` ажиллана: эрхгүй бол шидэх
+ *    ёстой (консолоос дуудсан хэн ч татахгүй). Эрхтэй ч нэвтэрсэн нэрээс ӨӨР
+ *    нэрээр татахыг сүлжээнээс ӨМНӨ татгалзана; хүчинтэй бол хүснэгтгүйд ЗӨВ
+ *    шалтгаанаар унана. Зохиогчийн жинхэнэ шалгуур нь СЕРВЕРИЙН мөрөөр тул
+ *    энд (сүлжээгүй) шалгагдахгүй. */
+{
+  const CAPS = await import('@/lib/caps.ts');
+  const WHO = await import('@/lib/who.ts');
+  CAPS._syncRemoteCaps([]);
+  WHO.setCurrentUser('zohiogch_a');
+  await assert.rejects(withdrawPlan({ oid: 1, me: 'zohiogch_a' }), /эрхгүй/, 'эрхгүй хүн татаж чадав');
+  CAPS._syncRemoteCaps([{ user: 'zohiogch_a', caps: ['plan'] }]);
+  r = await withdrawPlan({ oid: 1, me: '   ' });
+  assert.equal(r.ok, false, 'нэргүй татах өнгөрөв');
+  assert.match(r.error, /тодорхойгүй/, `буруу шалтгаан: ${r.error}`);
+  r = await withdrawPlan({ oid: 1, me: 'batlagch_b' });
+  assert.equal(r.ok, false, 'өөр нэрээр татах өнгөрөв');
+  assert.match(r.error, /илгээсэн хүн өөрөө/, `буруу шалтгаан: ${r.error}`);
+  r = await withdrawPlan({ oid: 1, me: 'zohiogch_a' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${r.error}`);
+  CAPS._syncRemoteCaps([]);
+  WHO.setCurrentUser(null);
+}
+console.log('✅ илгээлтээ татах — эрх → нэр → сүлжээ');
 
 /* ── 6. ХООСОН `spans` нь ХҮЧИНТЭЙ агуулга ──
  * ⚠️ 2026-09-08-ны аудит: илгээснээс хойш эх хуваарь өөр замаар ижил утгад

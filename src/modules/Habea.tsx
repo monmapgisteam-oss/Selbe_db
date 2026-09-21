@@ -200,9 +200,16 @@ type Inc = {
   type: string; cause: string; info: string; reason: string; action: string;
 };
 
+/** Ослын огноо — 0 (маягтад огноо алга) бол «1970.01.01» биш «огноогүй» */
+const incDate = (d: number): string => (d > 0 ? date(d) : tr('огноогүй'));
+
 const normIncident = (r: Row): Inc => ({
   oid: nn(r['objectid']),
-  d: nn(r[I.ognoo]), // ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17) — доорх ⚠️ дүрэм: огноогүй маягт хасагдана
+  /* ⚠️ `CreationDate` нөөц ХАСАГДАВ (2026-09-17). Огноогүй маягт `d = 0`
+     үлдэнэ: огнооны сонголт идэвхтэй үед л ХАСАГДАНА (`incPass`-ийн ⚠️),
+     бусад үед тоологдоно. ⚠️ 2026-09-21: `date(0)` нь «1970.01.01» гэж
+     ХУДАЛ огноо зурдаг байсан тул огноог ЗӨВХӨН `incDate`-ээр харуулна. */
+  d: nn(r[I.ognoo]),
   bagtsRaw: text(r[I.bagts], '—'),
   bagtsK: habeaPkgKey(r[I.bagts]),
   company: clean(r[I.company]),
@@ -624,7 +631,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
     () =>
       loadPhotoBatches(list, (i, p) => ({
         src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}?${tokenQs().slice(1)}`,
-        cap: `${date(i.d)} · ${tr(i.bagtsRaw)}`,
+        cap: `${incDate(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
       })),
     [ids],
@@ -1243,13 +1250,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const mapVisible = useMemo(() => {
     const uzIds = [...(uzLayerId ? [uzLayerId] : []), ...(uzLayerId2 ? [uzLayerId2] : [])];
-    if (focus === 'inc') return visible.filter((id) => id === 'habea:osol');
+    /* ⚠️ 2026-09-21: ослын фокуст `habea:osol`-ыг ЗААВАЛ харуулна (үзлэгтэй
+       ижил дүрэм) — урьд нь каталогт унтраасан бол фокус ХООСОН зурагтай гардаг байв. */
+    if (focus === 'inc') return ['habea:osol'];
     if (uzlegKind) return uzIds;
     return visible;
   }, [visible, focus, uzlegKind, uzLayerId, uzLayerId2]);
 
   const layerWhere = useMemo(() => {
-    if (!incOn && !craneOn && !uzWhere) return undefined;
+    /* ⚠️ 2026-09-21: `uzWhere2` (захиалагчийн 2 дахь маягт) мөн нөхцөлд —
+       урьд нь зөвхөн тэр шүүлт идэвхтэй үед `undefined` буцаж, зураг шүүгдэхгүй байв. */
+    if (!incOn && !craneOn && !uzWhere && !uzWhere2) return undefined;
     // ⚠️ Хоосон жагсаалт = `1=0`: тухайн шүүлтэд юу ч тохирохгүй бол давхаргыг
     //    БҮТНЭЭР нь харуулах биш, ХООСЛОНО.
     const ids = fInc.map((x) => x.oid);
@@ -1304,7 +1315,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     }
     /* ⚠️ Алхам солиход ч дахин ажиллана: сарын цуваа өөр урттай тул
        өмнөх гүйлгэлтийн байрлал утгагүй болно. */
-  }, [byDay.length, techDay.length, ajiltanStep, tehnikStep, laborFocus]);
+    /* ⚠️ 2026-09-21: `laborOpen` мөн хамаарал — ослын/үзлэгийн фокусаас
+       буцахад доод зурвас ДАХИН mount болж (`{laborOpen && …}`) ref шинэ
+       элемент авдаг ч урт/алхам өөрчлөгдөөгүй тул эффект ажиллахгүй, цуваа
+       хамгийн ЭРТНИЙ өдрүүд рүү гүйлгэгдсэн харагддаг байв. */
+  }, [byDay.length, techDay.length, ajiltanStep, tehnikStep, laborFocus, laborOpen]);
 
   /**
    * Шүүлт солигдоход зураг тэр объектууд руу нисэнэ (irgediin-hurteemj).
@@ -2052,7 +2067,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 >
                   <i className={h.incDot} style={{ background: severityHue(x.type) }} />
                   <span className={h.incType}>{tr(x.type)}</span>
-                  <span className={h.incDate}>{date(x.d)}</span>
+                  <span className={h.incDate}>{incDate(x.d)}</span>
                 </button>
                 <div className={h.incSub}>{tr(x.bagtsRaw)} · {tr(x.company)}</div>
                 {on && (

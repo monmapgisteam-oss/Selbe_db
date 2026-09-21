@@ -27,6 +27,9 @@ export function requireCap(cap: CapKey): void {
   /* ⚠️ Зөвхөн ХӨТӨЧИД: хамгаалах зүйл нь хөтчийн сешн (консол). Node тест ба
      `tools/` скриптүүд админ токеноор явдаг тул энд хаахгүй. */
   if (typeof window === 'undefined') return;
+  /* ⚠️ `hasCap` → `capsOf` нь remote эрх ачаалагдаагүй сешнд localStorage-ийг
+     ҮЛ ТООЦНО (2026-09-21, caps.ts) — сүлжээ хаагаад локалд тарьсан эрхээр
+     энэ шалгуурыг давах боломжгүй. */
   if (hasCap(current, cap)) return;
   throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эрх авна уу.', cap));
 }

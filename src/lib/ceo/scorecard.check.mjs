@@ -46,6 +46,9 @@ assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract:
 assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, 0, 'хугацаа өнгөрсөн, гэрээгүй');
 assert.equal(scoreFin({ contracted: false, start: now + DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, null, 'эхлээгүй, гэрээгүй — дүгнэхгүй');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 110, paidPct: null, actual: null }).score, 75, 'гэрээ 10% их → 50 ба 100-ийн дундаж');
+/* ⚠️ 2026-09-21: `geree_dun > 0` атлаа тайлбар нь «Гэрээлсэн дүн» биш мөр — ГЭРЭЭТЭЙ гэж тооцно */
+assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 100, paidPct: null, actual: null }).score, 100, 'гэрээний дүнтэй бол хугацаа өнгөрсөн ч «гэрээгүй» БИШ');
+assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 100, paidPct: null, actual: null }).facts[0].value, 'байгуулсан');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 35, actual: 10 }).score, 100, 'урьдчилгаа 25пп түрүүлсэн — хэвийн');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 10, actual: 50 }).score, (100 + 100 + 40) / 3, 'олголт 40пп хоцорсон');
 

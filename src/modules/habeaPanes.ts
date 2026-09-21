@@ -122,6 +122,15 @@ export function usePanes() {
    */
   const grip = useCallback((k: PaneKey) => {
     const p = PANE[k];
+    /** Чирэлт дуусах/цуцлагдах — нэг л цэвэрлэгээ; хүрсэн px байвал хадгална */
+    const finish = (e: React.PointerEvent<HTMLElement>) => {
+      const d = drag.current;
+      if (!d) return;
+      drag.current = null;
+      delete e.currentTarget.dataset.drag;
+      if (d.px == null) return; // хөдөлгөөнгүй товшилт — өөрчлөлт алга
+      commit(k, d.px);
+    };
     return {
       role: 'separator' as const,
       'aria-orientation': (p.axis === 'y' ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical',
@@ -153,14 +162,12 @@ export function usePanes() {
         const ln = LINKED[k];
         if (ln) d.grid?.style.setProperty(PANE[ln].css, `${px}px`);
       },
-      onPointerUp: (e: React.PointerEvent<HTMLElement>) => {
-        const d = drag.current;
-        if (!d) return;
-        drag.current = null;
-        delete e.currentTarget.dataset.drag;
-        if (d.px == null) return; // хөдөлгөөнгүй товшилт — өөрчлөлт алга
-        commit(k, d.px);
-      },
+      onPointerUp: finish,
+      /* ⚠️ 2026-09-21: чирэлт ЦУЦЛАГДАХ (хөтөч жест таслах, alt-tab, capture
+         алдах) үед ч ижил цэвэрлэгээ — урьд нь `drag.current` ба `data-drag`
+         үлдэж, бариул «дарагдсан» хэвээр, дараагийн хөдөлгөөн чирэлт болдог байв. */
+      onPointerCancel: finish,
+      onLostPointerCapture: finish,
       // Гар хандалт: сум товчоор ±12px, Enter/Home нь анхны хэмжээ
       onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === 'Enter' || e.key === 'Home') {

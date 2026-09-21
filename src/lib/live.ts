@@ -26,7 +26,7 @@ import {
   CF_WORK_WHERE,
 } from '@/lib/services';
 import { dayKey } from '@/lib/format';
-import { FIN_XL_CHART_FIELDS, finXlChartCat } from '@/lib/finExcelLayout';
+import { FIN_XL_CHART_FIELDS, finXlChartCat, finXlInTotal } from '@/lib/finExcelLayout';
 import { sumBy, tally } from '@/lib/agg';
 import { register, type DataKey } from '@/lib/dataBus';
 
@@ -79,11 +79,11 @@ export function cached<T>(
 /* ══════════════ Төсөв — CASHFLOW_NEW (Cashflow_0909 /0) ══════════════ */
 
 export type Budget = {
-  /** Урьдчилсан төсөвт өртөг — ₮ */
+  /** Төсөвт өртөг, ₮ — ⚠️ ЗӨВХӨН `finXlInTotal` хүрээ (2,493 тэрбум), 78 мөрийн нийлбэр БИШ (2026-09-21) */
   total: number;
-  /** Захирамжийн нийт дүн — ₮ */
+  /** Захирамжийн нийт дүн, ₮ — `finXlInTotal` хүрээ */
   orderTotal: number;
-  /** Гэрээ байгуулах эрх олгосон дүн — ₮ */
+  /** Гэрээлсэн дүн, ₮ — ⚠️ `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` (2026-09-21) */
   contract: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
@@ -116,25 +116,48 @@ const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 export const loadBudget = cached<Budget>(async () => {
   const CF = CASHFLOW_NEW.fields;
-  const [r, g] = await Promise.all([
-    queryStats(CASHFLOW_NEW.url, [
+  /* ⚠️ `CONTRACTED`-ийг ДИНАМИКААР (2026-09-21): `gdash.ts` энэ файлын `cached`-ыг
+     импортолдог тул статик импорт нь цикл үүсгэж, ачаалах дарааллаас хамаарч
+     `loadGdashCf = cached(...)` TDZ-д унах эрсдэлтэй. */
+  const { CONTRACTED } = await import('@/lib/gdash');
+  /**
+   * ⚠️ 2026-09-21: ХОЁР ХҮСЭЛТ → НЭГ. Урьд нь `queryStats` нь 78 мөр БҮГДИЙГ
+   * шүүлтгүй нэмж «нийт төсөв 3,167.6 тэрбум» гаргадаг байв — Excel-д ч,
+   * дашбоардад ч БАЙХГҮЙ тоо (хэрэглэгчийн шийдвэр 2026-09-15: «яг төсөв нь
+   * 2,493,041,880,532 эндээс бодно»). Одоо нийлбэрүүд ЭНЭ бүлэглэлтээс
+   * клиент талд бодогдоно:
+   *   · `total` · `orderTotal` · `sources` — ЗӨВХӨН `finXlInTotal` мөр
+   *     (Excel-ийн НИЙТ томьёо: 5·6·7-р хэсэг ОРОХГҮЙ) — `reportData.loadFinance`
+   *     ба `gdash.kpisOf`-той ИЖИЛ хүрээ.
+   *   · `contract` — `finXlInTotal` ∧ `note === CONTRACTED` («Гэрээлсэн дүн»,
+   *     2026-09-08-ны дүрэм): `geree_dun` нь гэрээлэгдээгүй мөрд ч бөглөгдсөн
+   *     байдаг тул шүүлтгүй нийлбэл ~33 тэрбумаар их гардаг (`gdash.Kpi.contract`).
+   *     Хүрээг нь `total`-тай ижил авсан нь «гэрээ ÷ төсөв» хувийн тоологч
+   *     хуваарийнхаа ДОТОР байхын тулд.
+   * Бүлэглэлд `note` талбар нэмэгдсэн нь `tally`-д нөлөөгүй — тэр түлхүүрээрээ
+   * нийлүүлдэг.
+   */
+  /* ⚠️ ХОЁР ТҮВШНИЙ дөрвөн талбараар бүлэглэнэ: чартын ангилал нь ганц
+     талбар БИШ, `finXlChartCat`-аар хоёроос бодогддог. Дашбоардтай ИЖИЛ
+     ангилал гарах ёстой — эс бөгөөс хоёр карт өөр бүлэг харуулна. */
+  const g = await queryGroup(
+    CASHFLOW_NEW.url,
+    `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
+    [
       sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
+      count(CASHFLOW_NEW.oid, 'n'),
       ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
-    ], CF_WORK_WHERE),
-    // ⚠️ Хоёр задаргааг НЭГ groupBy-д — тусад нь асуувал хүсэлт илүү явна.
-    //    Огтлолцсон бүлгүүдийг `tally` талбар тус бүрээр нэгтгэнэ.
-    /* ⚠️ ХОЁР ТҮВШНИЙ дөрвөн талбараар бүлэглэнэ: чартын ангилал нь ганц
-       талбар БИШ, `finXlChartCat`-аар хоёроос бодогддог. Дашбоардтай ИЖИЛ
-       ангилал гарах ёстой — эс бөгөөс хоёр карт өөр бүлэг харуулна. */
-    queryGroup(CASHFLOW_NEW.url, `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2}`, [
-      sum(CF.budget, 'b'), count(CASHFLOW_NEW.oid, 'n'),
-    ], CF_WORK_WHERE),
-  ]);
+    ],
+    CF_WORK_WHERE,
+  );
 
-  const total = Number(r.b ?? 0);
-  const orderTotal = Number(r.o ?? 0);
+  const inTotal = g.filter(finXlInTotal);
+  const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
+  const total = sumOf(inTotal, 'b');
+  const orderTotal = sumOf(inTotal, 'o');
+  const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
-    .map((s, i) => ({ key: s.field as string, label: s.label as string, value: Number(r[`s${i}`] ?? 0) }))
+    .map((s, i) => ({ key: s.field as string, label: s.label as string, value: sumOf(inTotal, `s${i}`) }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
   // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
@@ -144,7 +167,7 @@ export const loadBudget = cached<Budget>(async () => {
   return {
     total,
     orderTotal,
-    contract: Number(r.c ?? 0),
+    contract,
     sources: named,
     // ⚠️ `n` = ГЭРЭЭНИЙ тоо — мөр бүр нэг гэрээ тул нийт 76.
     byType: tally(
@@ -158,7 +181,8 @@ export const loadBudget = cached<Budget>(async () => {
       tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
   };
-  // ⚠️ Хяналт: Σ byType.value === total байх ёстой.
+  // ⚠️ Хяналт (2026-09-21): Σ byType.value ≥ total — задаргаа БҮХ мөрөөр (5·6·7-р
+  //    хэсэг ч орно), `total` нь зөвхөн `finXlInTotal` хүрээ. Тэнцэхгүй нь ЗӨВ.
 }, undefined, ['CASHFLOW_NEW']);
 
 export type Headline = {
@@ -173,9 +197,9 @@ export type Headline = {
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
   population: number;
-  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — Cashflow_0909 (`Urdch_tusuwt_urtug`) */
+  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — `Budget.total` (⚠️ `finXlInTotal` хүрээ, 2026-09-21) */
   investTotal: number;
-  /** Гэрээгээр баталгаажсан дүн, ₮ — Cashflow_0909 (`Geree_erh_dun`) */
+  /** Гэрээлсэн дүн, ₮ — `Budget.contract` (⚠️ зөвхөн «Гэрээлсэн дүн» мөрөөр, 2026-09-21) */
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;

@@ -253,10 +253,26 @@ assert.deepEqual(got.map((p) => p.curveKey), ['БАГЦ4', 'БАГЦ4']);
 assert.equal(got[0].hasPhys, true);
 assert.equal(got[1].hasPhys, false);
 assert.equal(got[1].lag, null);
+/* ⚠️ 2026-09-21: `prefer` — угсралтын мөр эхэнд байсан зураг төслийн мөрийг ОРЛОНО,
+   тэнцэх мөргүй багцад эхнийх хэвээр; тоо (`lag`) мөрөөс хамаарахгүй. */
+{
+  const rows2 = [
+    { [C.pkg2]: 'Багц 4-1', bagts_tuvshin1: '1' },   /* ТЭЗҮ, зураг төсөл — эхэнд */
+    { [C.pkg2]: 'БАГЦ-4-1', bagts_tuvshin1: '2' },   /* барилга угсралт — төлөөлөгч болно */
+    { [C.pkg2]: 'Багц 4', bagts_tuvshin1: '1' },
+  ];
+  const g2 = collectPkgLags(rows2, months, () => null, (r) => r.bagts_tuvshin1 === '2');
+  assert.deepEqual(g2.map((p) => p.key), ['БАГЦ41', 'БАГЦ4'], 'дараалал ба дедуп хэвээр');
+  assert.equal(g2[0].label, 'БАГЦ-4-1', 'угсралтын мөрийн нэр');
+  assert.equal(g2[1].label, 'Багц 4', 'тэнцэх мөргүй бол эхнийх');
+}
 
-/* ── ymOf: lagOf-ийн nowYm-тэй ижил (UTC) ── */
-assert.equal(ymOf(Date.UTC(2026, 8, 6)), '2026-09');
-assert.equal(ymOf(Date.UTC(2026, 0, 31, 23, 59)), '2026-01');
+/* ── ymOf: lagOf-ийн nowYm-тэй ижил — ОРОН НУТГИЙН сар (2026-09-21, `monthKey`) ──
+   ⚠️ `Date.UTC` БИШ, орон нутгийн `new Date(y, m, d)`: машины бүсээс үл хамааран
+   «хэрэглэгчийн харсан сар» гарах ёстой. Сарын сүүлийн шөнө ч сараа алдахгүй. */
+assert.equal(ymOf(new Date(2026, 8, 6).getTime()), '2026-09');
+assert.equal(ymOf(new Date(2026, 0, 31, 23, 59).getTime()), '2026-01');
+assert.equal(ymOf(new Date(2026, 1, 1, 0, 30).getTime()), '2026-02', 'сарын 1-ний шөнө ӨМНӨХ сар болохгүй');
 
 /* ── finCurveMissing: бичилттэй багцын шалтгаан ялгарна, failedSources нэртэй ── */
 const r7 = computeSchedule(

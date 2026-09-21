@@ -80,7 +80,7 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
-import { mnt, num, text, cat, date, monthKey } from '@/lib/format';
+import { mnt, num, text, cat, date, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
@@ -1123,7 +1123,10 @@ const NUMERIC_TYPES = new Set([
 const dateOnlyText = (v: unknown): string => {
   if (typeof v === 'number') {
     const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+    /* ⚠️ `dayKey` (ОРОН НУТГИЙН огноо) — `toISOString().slice(0,10)` БИШ (2026-09-21,
+       `format.ts`-ийн дүрэм): UTC-гээр огтолбол +08 бүсэд 00:00–07:59-ийн
+       огноо ӨМНӨХ өдөр болж, хэрэглэгч бичсэнээсээ өөр өдөр хардаг байв. */
+    return Number.isNaN(d.getTime()) ? String(v) : dayKey(d.getTime());
   }
   const s = String(v).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(v);
@@ -1183,7 +1186,8 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
   if (type === 'esriFieldTypeDateOnly') return { text: dateOnlyText(v), num: true };
   if (type === 'esriFieldTypeDate') {
     const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
-    return { text: Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10), num: true };
+    /* ⚠️ `dayKey` — орон нутгийн өдөр (2026-09-21, `format.ts`-ийн ⚠️; UTC огтлол өдөр ухраадаг) */
+    return { text: Number.isNaN(d.getTime()) ? String(v) : dayKey(d.getTime()), num: true };
   }
   if (NUMERIC_TYPES.has(type)) {
     const x = Number(v);
@@ -1229,7 +1233,9 @@ function editText(v: unknown, type: string): string {
   if (type === 'esriFieldTypeDateOnly') return dateOnlyText(v);
   if (type === 'esriFieldTypeDate') {
     const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
-    return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+    /* ⚠️ `dayKey` — засварын нүдэнд ч ОРОН НУТГИЙН өдөр (2026-09-21): `fmtCell`-тэй
+       ижил өдөр харагдахгүй бол хэрэглэгч «өөр огноо» гэж эндүүрч дахин бичнэ. */
+    return Number.isNaN(d.getTime()) ? String(v) : dayKey(d.getTime());
   }
   return String(v);
 }

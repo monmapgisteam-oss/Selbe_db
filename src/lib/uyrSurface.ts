@@ -194,6 +194,31 @@ function traceRings(
 export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): WaterBand[] {
   const ter = fd.terrain;
   if (!ter) return [];
+  /**
+   * УСНЫ ГАДАРГУУГИЙН ӨНДӨР — МАТЕМАТИК (2026-09-21).
+   *
+   * Загварчлал нь голдрилыг `RIVER_BURN_M` (2.5 м) шатааж, гүехэн хонхрыг
+   * дүүргэсэн ЁРООЛ `bed` дээр ажилладаг; гүн `d` нь ТЭР ёроолоос хэмжигдэнэ.
+   * Тиймээс усны гадаргуугийн физик өндөр:
+   *
+   *     w = bed + d          (голын нүдэнд bed = zReal − burn → w = zReal + d − burn)
+   *
+   * ⚠️ Урьд нь `terrain` нь өөрөө шатаасан ёроол байсан тул `w = ter + d` ч
+   * ижил тоо гаргадаг байв — гэвч тэр `w` нь голын нүдэнд `d < burn` үед
+   * ЖИНХЭНЭ рельефээс (mesh-ийн гадаргуу) доогуур орж, 3D-д гол ОГТ
+   * харагддаггүй байлаа. Шатаалт нь 16.9 м-ийн дундажлалд арчигдсан голын
+   * ёроолыг НӨХӨХ хиймэл засвар болохоос mesh дээр байдаг зүйл БИШ.
+   *
+   * Тиймээс ЗУРАХДАА жинхэнэ гадаргуугаас доош оруулахгүй:
+   *
+   *     w_зурах = max(bed + d, zReal)
+   *
+   * · эрэг давсан ус (`d > burn`): `bed + d > zReal` → физик өндрөөрөө;
+   * · голдрил доторх ус (`d ≤ burn`): `zReal` түвшинд — гол «дүүрэн урсаж
+   *   байна» гэж харагдана, доор нь орж алга болохгүй, дээр нь 2.5 м хөвөхгүй.
+   * `bed` байхгүй бол (`terrain`-ыг ёроол гэж үзсэн тест/хуучин дата) `ter`.
+   */
+  const bed = fd.bed ?? ter;
   const W = fd.meta.width;
   const H = fd.meta.height;
   const P = W * H;
@@ -215,7 +240,8 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
   for (let i = 0; i < P; i++) {
     const d = w1 === 0 ? fd.depth(s0, i) : fd.depth(s0, i) * w0 + fd.depth(s1, i) * w1;
     if (d < minDepth) continue;
-    const w = ter(i) + d;
+    /* ⚠️ `max(bed + d, zReal)` — дээрх §математик (2026-09-21) */
+    const w = Math.max(bed(i) + d, ter(i));
     wet[i] = 1;
     wse[i] = w;
     dep[i] = d;

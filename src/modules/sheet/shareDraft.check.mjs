@@ -41,6 +41,23 @@ const mergeDrafts = (a, b) => {
     for (const [u, at] of done) if (!fresh.has(u) && newer.t >= at) done.delete(u);
     for (const [u, at] of fresh) done.set(u, at);
   }
+  /* 2026-09-21: `byAt` (түлхүүр бүрд max агшин) ба `del` (tombstone) —
+     FillNew.tsx-ийн дүрэмтэй ижил, доорх 11-р хэсэг ажиллуулж шалгана. */
+  const byAt = new Map(older.byAt ?? []);
+  for (const [k, a] of newer.byAt ?? []) if ((byAt.get(k) ?? 0) < a) byAt.set(k, a);
+  const del = new Map(older.del ?? []);
+  for (const [k, a] of newer.del ?? []) if ((del.get(k) ?? 0) < a) del.set(k, a);
+  const now = Date.now();
+  for (const [k, a] of del) {
+    if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
+    if (k.startsWith('a:')) { adds.delete(Number(k.slice(2))); continue; }
+    const wrote = byAt.get(k);
+    if (wrote != null && wrote > a) { del.delete(k); continue; }
+    cells.delete(k);
+    dates.delete(k);
+    by.delete(k);
+    byAt.delete(k);
+  }
   return {
     t: newer.t,
     cells: [...cells],
@@ -50,6 +67,8 @@ const mergeDrafts = (a, b) => {
     rowKeys: [...rowKeys],
     by: by.size ? [...by] : undefined,
     done: done.size ? [...done] : undefined,
+    byAt: byAt.size ? [...byAt] : undefined,
+    del: del.size ? [...del] : undefined,
   };
 };
 
@@ -464,3 +483,80 @@ console.log('✅ бусдын нүд — хүснэгт дээр ялгарна,
     'byCount: mineRef тооцоогүй — өөрийн тоо үргэлж 0 харагдана');
 }
 console.log('✅ оролцогч бүрийн илгээгээгүй нүдний тоо');
+
+/* ══════════ 11. TOMBSTONE ба АГШИН — буцаалт сэргэхгүй, идэвхгүйг хасна ══════════ */
+/**
+ * ⚠️ 2026-09-21-ний аудит. `mergeDrafts` нь ЗӨВХӨН НЭМДЭГ тул нүд буцаах /
+ * нэмэлт мөр хасах нь нөгөө талын хуучин хуулбараас дараагийн тойрогт эргэж
+ * СЭРГЭДЭГ байв. Одоо `del` (tombstone, агшинтай) ба `byAt` (нүд бүрийг сүүлд
+ * хөндсөн агшин) хоёроор шийднэ. Мөн `waitingOn`-ийн «3 хоног идэвхгүйг
+ * хасна» тайлбар урьд нь код БИШ байсан — одоо `byAt`/`done`-оор ажиллана.
+ */
+{
+  const T = Date.now() - 60_000; /* ⚠️ одоогийн агшинд ойр — 7 хоногийн tombstone хугацаа */
+  /* (а) Б-гийн хуучин хуулбарт нүд бий; А түүнийг ХОЖУУ буцаасан → нүд алга */
+  const remoteOld = { t: T + 1000, cells: [['10:0', '5']], by: [['10:0', 'b']], byAt: [['10:0', T + 1000]] };
+  const localDel = { t: T + 5000, cells: [], del: [['10:0', T + 4000]] };
+  const m = mergeDrafts(remoteOld, localDel);
+  assert.equal(new Map(m.cells).has('10:0'), false, 'буцаасан нүд нөгөө талын хуулбараас СЭРГЭЖ байна');
+  assert.ok(!m.by || !new Map(m.by).has('10:0'), 'устсан нүдний эзэн сүнс болж үлдэв');
+  assert.ok(m.del?.some(([k]) => k === '10:0'), 'tombstone нийлбэрт хадгалагдах ёстой (дараагийн хуучин хуулбарт)');
+  /* Аргументын дараалал хамаарахгүй */
+  assert.equal(new Map(mergeDrafts(localDel, remoteOld).cells).has('10:0'), false);
+
+  /* (б) Буцаасны ДАРАА нөгөө тал дахин бичсэн (byAt > del) → нүд ялна, tombstone хаягдана */
+  const rewritten = { t: T + 9000, cells: [['10:0', '7']], by: [['10:0', 'b']], byAt: [['10:0', T + 8000]] };
+  const m2 = mergeDrafts(localDel, rewritten);
+  assert.equal(new Map(m2.cells).get('10:0'), '7', 'буцаалтаас ХОЖУУ бичсэн нүд ялах ёстой');
+  assert.ok(!m2.del || !m2.del.some(([k]) => k === '10:0'), 'давагдсан tombstone хаягдах ёстой');
+
+  /* (в) Хассан нэмэлт мөр (`a:${oid}`) — болзолгүй хасагдана */
+  const withAdd = { t: T + 1000, cells: [['-3:0', '1']], adds: [{ oid: -3, no: '9', work: 'X' }] };
+  const dropped = { t: T + 2000, cells: [], del: [['a:-3', T + 2000], ['-3:0', T + 2000]] };
+  const m3 = mergeDrafts(withAdd, dropped);
+  assert.ok(!m3.adds || !m3.adds.some((a) => a.oid === -3), 'хассан нэмэлт мөр нийлүүлэлтээр сэргэж байна');
+  assert.equal(new Map(m3.cells).has('-3:0'), false, 'хассан мөрийн нүд үлдэж байна');
+
+  /* (г) `byAt` — түлхүүр бүрд ХАМГИЙН ИХ агшин */
+  const a1 = { t: T + 100, cells: [['1:0', 'x']], byAt: [['1:0', T + 100]] };
+  const a2 = { t: T + 200, cells: [['1:0', 'y']], byAt: [['1:0', T + 50]] };
+  assert.equal(new Map(mergeDrafts(a1, a2).byAt).get('1:0'), T + 100, 'byAt нь max биш');
+
+  /* (д) Хуучин ноорог (byAt/del байхгүй) — өмнөх зан хэвээр, юу ч хасагдахгүй */
+  const o1 = { t: T + 1, cells: [['1:0', 'a']] };
+  const o2 = { t: T + 2, cells: [['2:0', 'b']] };
+  const m5 = mergeDrafts(o1, o2);
+  assert.equal(m5.cells.length, 2);
+  assert.equal(m5.byAt, undefined);
+  assert.equal(m5.del, undefined);
+}
+console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй · хожуу бичсэн нь ялна · хуучин ноорог хэвээр');
+
+/* ── Эх кодын гэрээ (2026-09-21) ── */
+{
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  assert.ok(/byAt\?: \[string, number\]\[\];/.test(FN), 'Draft-д `byAt` алга');
+  assert.ok(/del\?: \[string, number\]\[\];/.test(FN), 'Draft-д `del` (tombstone) алга');
+  /* Ctrl+S оролцогчийн түгжээг тойрохгүй */
+  const pi = FN.indexOf('const publish = useCallback(async () => {');
+  const pb = FN.slice(pi, FN.indexOf('setBusy(true);', pi));
+  assert.ok(pb.includes('if (!canSubmitNow)'), 'publish: Ctrl+S оролцогчийн түгжээг тойрч байна');
+  /* flush: алсаас нийлүүлсэн бол lastMergedRef хөдлөхгүй — tick буулгана */
+  assert.ok(FN.includes('if (!remote && outDraft.t > lastMergedRef.current)'),
+    'flush: нийлүүлсэн нүд дэлгэцэд буухгүй (lastMergedRef үргэлж урагшилж байна)');
+  /* dropAdd нүдээ хамт хасна, tombstone тавина */
+  const di = FN.indexOf('const dropAdd = (oid: number) => {');
+  const db = FN.slice(di, di + 900);
+  assert.ok(db.includes('setPending(strip)') && db.includes('setPendDate(strip)'), 'dropAdd: мөрийн нүд pending-д үлдэж байна');
+  assert.ok(db.includes('tombstone(`a:${oid}`)'), 'dropAdd: tombstone алга');
+  /* Эзэмшил — обьём · хувь · paste · огноо ДӨРВҮҮЛЭЭ */
+  assert.ok(FN.split('mineRef.current.add(').length - 1 >= 4,
+    'эзэмшил бүртгэх зам 4-өөс цөөн (обьём · хувь · paste · огноо)');
+  /* waitingOn идэвхгүйг ХАСНА */
+  const wi = FN.indexOf('const waitingOn = useMemo(() => {');
+  assert.ok(FN.slice(wi, wi + 1800).includes('LOCAL_DRAFT_TTL_MS'), 'waitingOn: идэвхгүй шүүлт код биш, тайлбар хэвээр');
+  /* flow: өнөөдрийн мөргүй бол буцаагдсан (company) мөр */
+  const fi = FN.indexOf('const flow = useMemo(() => {');
+  assert.ok(FN.slice(fi, fi + 4200).includes("OWNER[r[HF.status]] === 'company'"), 'flow: өмнөх өдрийн буцаагдсан мөрийг сонгохгүй');
+}
+console.log('✅ эх кодын гэрээ (2026-09-21) — Ctrl+S түгжээ · flush буулгалт · dropAdd · эзэмшил ×4 · идэвхгүй шүүлт · flow');

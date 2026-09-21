@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
-import { queryFeatures, queryGroup, count, sum, type Row } from '@/lib/query';
+import { queryFeatures, queryGroup, count, sum, withSlot, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
@@ -63,9 +63,15 @@ function loadDomains(url: string): Promise<Domains> {
     type Meta = {
       fields?: { name?: string; domain?: { type?: string; codedValues?: { code?: unknown; name?: string }[] } | null }[];
     };
-    p = fetch(`${url}?f=json${tokenQs()}`)
-      .then((r) => r.json() as Promise<Meta>)
+    /* ⚠️ 2026-09-21: ArcGIS алдаа HTTP 200-аар `{error}` биетэй ирдэг тул
+       ЗААВАЛ шалгана; урьд нь `{}` болж СЕШНИЙ ТУРШ кэшлэгдэж (`domainCache`),
+       түр алдаа (токен хоцрох, 499) чартыг кодоор шошголсон хэвээр үлдээдэг
+       байв. Одоо унавал кэшээс ХАСНА — дараагийн дуудалт дахин оролдоно;
+       буцаах утга нь хэвээр хоосон толь (самбар унахгүй). Мөн `withSlot` —
+       `query.ts`-ийн 6 слотын хязгаарлагчаар (бусад REST-тэй нэг дараалалд). */
+    p = withSlot(() => fetch(`${url}?f=json${tokenQs()}`).then((r) => r.json() as Promise<Meta & { error?: unknown }>))
       .then((j) => {
+        if (j.error) throw new Error('domain meta error');
         const out: Domains = {};
         for (const f of j.fields ?? []) {
           const cv = f.domain?.type === 'codedValue' ? f.domain.codedValues : null;
@@ -74,7 +80,10 @@ function loadDomains(url: string): Promise<Domains> {
         }
         return out;
       })
-      .catch(() => ({} as Domains));
+      .catch(() => {
+        domainCache.delete(url);
+        return {} as Domains;
+      });
     domainCache.set(url, p);
   }
   return p;

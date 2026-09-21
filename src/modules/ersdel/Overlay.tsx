@@ -527,7 +527,21 @@ export function Overlay({
     const at = base ? view.map.layers.indexOf(base) + 1
       : ortho ? view.map.layers.indexOf(ortho) + 1 : 0;
     view.map.add(layer, at);
+    /* Эхний харагдац горимоос — `drawWFlow` дуудагдахаас өмнө ч зөв байна */
+    layer.visible = modeRef.current === 'depth';
+    /**
+     * ⚠️ `MapCanvas` (мөр ~3968) нь давхаргын шүүлт бүрд `ersdel:*` давхаргыг
+     * `visible = true` болгодог — каталогт ороогүй тул «өөрсдөө удирдана» гэж.
+     * Тэгэхээр хурд/аюулын горимд `drawWFlow` судлыг нуусан ч давхарга
+     * солих, бүс сонгох, 2D↔3D бүрд судал БУЦААД асаж, өнгөний утгыг дардаг
+     * байв. `MapCanvas`-ийг хөндөхгүй (2026-09-21): ЭНД `visible`-ийг ажиглаж,
+     * горим ≠ гүн үед хэн асаасан ч буцааж унтраана.
+     */
+    const vis = layer.watch('visible', (v: boolean) => {
+      if (v && modeRef.current !== 'depth') layer.visible = false;
+    });
     return () => {
+      vis.remove();
       if (view.map) view.map.remove(layer);
       layer.destroy();
       wflowLayerRef.current = null;
@@ -1199,10 +1213,24 @@ export function Overlay({
           }
         }
         /* Улаан объект, харуул хоёр ОЛДООГҮЙ бол: үерийн нүд → аюулын муж */
-        if (fIdx != null && fd && fd.depth(0, fIdx) >= 0) {
-          // ⚠️ Хуурай нүд ч мэдээлэлтэй («энд ус ирээгүй») тул шүүхгүй
-          pickRef.current({ kind: 'flood', idx: fIdx });
-          return;
+        /**
+         * ⚠️ ЗӨВХӨН УС ИРСЭН нүд «үерийн нүд» болно (2026-09-21).
+         *
+         * Урьд нь `fd.depth(0, fIdx) >= 0` — гүн хэзээ ч сөрөг биш тул
+         * торны ДОТОРХ ямар ч цэг үерийн нүд болж, `Ersdel.tsx`-ийн
+         * `hazInfo` («Энэ цэгт ус ирээгүй») нь `featInfo`-г (каталогийн
+         * давхаргын объект, `MapCanvas`-ийн даралт) ҮРГЭЛЖ дардаг байв —
+         * загварын горимд барилга дараад атрибутыг нь харах боломжгүй.
+         * Одоо БҮХ хугацааны дээд гүн (`maxDepth`, байхгүй бол одоогийн
+         * зүсмэл) > 0 үед л үерийн нүд; хуурай цэг → муж эсвэл `null`, тэгэхээр
+         * каталогийн объектын мэдээлэл гарна.
+         */
+        if (fIdx != null && fd) {
+          const dMax = fd.maxDepth ? fd.maxDepth(fIdx) : fd.depth(floodSliceRef.current, fIdx);
+          if (dMax > 0) {
+            pickRef.current({ kind: 'flood', idx: fIdx });
+            return;
+          }
         }
         pickRef.current(band ? { kind: 'band', band } : null);
       }).catch(() => {});

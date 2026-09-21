@@ -39,11 +39,11 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { roleForUser, type ViewKey } from '@/lib/services';
-import { num } from '@/lib/format';
+import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import {
-  decidePlan, loadAllPending, loadPayload, planTableState,
+  decidePlan, loadAllPending, loadPayload, planTableState, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /**
@@ -277,6 +277,30 @@ export function HuvaariBatlah({
     }
   }, [reason, busy, user, reload]);
 
+  /* ══════════════════════ ИЛГЭЭЛТЭЭ ТАТАХ (2026-09-21) ══════════════════════
+   * ⚠️ Зохиогчийн ӨӨРИЙН үйлдэл — «Өөрийн илгээсэн» хэсэгт л гарна. Эх
+   *    өгөгдөлд ЮУ Ч бичихгүй (`withdrawPlan` зөвхөн төлөв хөдөлгөнө) — энэ
+   *    хуудасны цөм инвариант хэвээр. Ноорог руу буулгах нь энд БОЛОМЖГҮЙ
+   *    (хуанли энд байхгүй) — «Хуваарь» хуудасны «Илгээлтээ татах» тэгдэг;
+   *    энд татсан бол зохиогч тэнд шинээр зохионо. */
+  const withdraw = useCallback(async (x: PlanSubmission) => {
+    if (busy) return;
+    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; агуулгыг «Хуваарь» хуудсанд дахин зохионо.'))) return;
+    setBusy(true); setErr(''); setNote('');
+    try {
+      const r = await withdrawPlan({ oid: x.oid, me: user?.username ?? '' });
+      if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
+      setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд засаад дахин илгээж болно.'));
+      setOpen(null);
+      /* ⚠️ Бүтэн дахин уншина (`reject`-тэй ижил шалтгаан). */
+      reload();
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }, [busy, user, reload]);
+
   /**
    * «Хуваарь» харагдац хаалттай бол батлах товч ОГТ гарахгүй.
    * ⚠️ Эрхийн загвар салбарлавал (`planApprove` нь ХОЁУЛАНГ нээдэг —
@@ -388,6 +412,7 @@ export function HuvaariBatlah({
                     detail={detail.get(x.oid)} busy={busy}
                     reason="" onReason={() => {}}
                     ownWhy={tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')}
+                    onWithdraw={() => void withdraw(x)}
                   />
                 ))}
               </div>
@@ -428,7 +453,7 @@ export function HuvaariBatlah({
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw,
 }: {
   sub: PlanSubmission;
   open: boolean;
@@ -441,6 +466,8 @@ function Row({
   onApprove?: () => void;
   /** Үйлдэл хаалттай байгаагийн ИЛ шалтгаан (өөрийн илгээлт, бүртгэлгүй багц) */
   ownWhy?: string;
+  /** Зохиогч өөрийн илгээлтээ татна (2026-09-21) — зөвхөн «Өөрийн» хэсэгт */
+  onWithdraw?: () => void;
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
   const p = detail?.k === 'ok' ? detail.p : null;
@@ -478,9 +505,15 @@ function Row({
           <span className={s.meta}>
             {sub.author}
             {' · '}
-            {/* ⚠️ `authorSent` нь `null` байж болно — `msToDay(null)` руу
-                дамжуулахгүй, «—» гэж бичнэ (null ≠ 0 дүрэм). */}
-            {sub.authorSent == null ? '—' : msToDay(sub.authorSent)}
+            {/* ⚠️ `authorSent` нь `null` байж болно — `dayKey(null)` руу
+                дамжуулахгүй, «—» гэж бичнэ (null ≠ 0 дүрэм).
+                ⚠️ `dayKey` (ОРОН НУТГИЙН), `msToDay` (UTC) БИШ (2026-09-21):
+                `authorSent = Date.now()` нь ЦАГТАЙ агшин тул UTC-ээр өдөр
+                болгоход УБ-д 00:00–08:00-д илгээснийг өчигдөр гэж харуулдаг
+                байв. Хадгалагдсан ms өөрчлөгдөхгүй — зөвхөн харуулалт.
+                Хуанлийн огноо (`fig.from/to`) нь UTC шөнө дундаар түлхүүрлэгдсэн
+                ЦАГГҮЙ өдөр тул тэнд `msToDay` зөв хэвээр. */}
+            {sub.authorSent == null ? '—' : dayKey(sub.authorSent)}
             {' · '}
             {tr('{0} мөр', num(sub.rowCount))}
           </span>
@@ -583,6 +616,17 @@ function Row({
                 onClick={onApprove}
               >
                 {tr('Хуваарь хуудсанд батлах')}
+              </button>
+            )}
+            {onWithdraw && (
+              <button
+                type="button"
+                className={`${s.btn} ${s.bad}`}
+                disabled={busy}
+                title={tr('Хүлээгдэж буй илгээлтээ буцааж авна — батлагч шийдвэрлэхээ болино')}
+                onClick={onWithdraw}
+              >
+                {tr('Илгээлтээ татах')}
               </button>
             )}
             {onReject && (

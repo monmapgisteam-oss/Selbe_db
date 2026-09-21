@@ -16,6 +16,18 @@
  *
  * ⚠️ FAIL-CLOSED: эх сурвалж унших боломжгүй, мөр эвдэрсэн, эсвэл түлхүүр
  * танигдахгүй бол эрх нь ОЛГОГДООГҮЙ гэж үзнэ.
+ *
+ * ⚠️ REMOTE АЧААЛАГДААГҮЙ БОЛ localStorage ҮЛ ТООЦНО (2026-09-21). Урьд нь
+ *    толгойн «FAIL-CLOSED» нь кодтой зөрж байв: `cache` нь ачаалахдаа
+ *    localStorage-оос дүүрдэг тул remote (`initRemote`) унасан ч тэр эрх
+ *    хүчинтэй хэвээр байлаа. Хатуу жагсаалтын (remote-гүй нэвтэрдэг)
+ *    хэрэглэгч `selbe-caps-v1`-д өөртөө эрх бичээд сүлжээгээ хаагаад нэвтэрвэл
+ *    `requireCap`/`hasCap` давдаг байв. Одоо `_syncRemoteCaps` нэг ч удаа
+ *    ажиллаагүй сешнд `capsOf` нь ХАТУУ ТОХИРГООНЫ default = ХООСОН (кодод
+ *    нэрээр олгосон эрх байхгүй — бүх эрх зөвхөн `__cap__:` мөрөөс) буцаана;
+ *    remote ачаалагдмагц урьдын зан төлөв. Хэрэглэгчийг сүлжээний саатлаар
+ *    ТҮГЖИХГҮЙ — нэвтрэлт `permissions.hasAccess` хэвээр, зөвхөн нэмэлт эрх
+ *    нь remote сэргэтэл (15 сек–5 мин poll) хүлээнэ.
  */
 
 import { AUTH, type ViewKey } from './services';
@@ -269,6 +281,16 @@ function load(): Store {
 
 let cache: Store = load();
 
+/**
+ * Энэ сешнд remote эрх (`__cap__:` мөрүүд) НЭГ Ч УДАА уншигдсан уу.
+ * ⚠️ `false` бол `capsOf` localStorage-ийн кэшийг ҮЛ ТООЦНО (толгойн тайлбар,
+ *    2026-09-21) — `permissions.remoteLoaded`-ийн ЯГ ижил үндэслэл. Тусдаа туг
+ *    (`remoteReady()` биш): `permissions.ts` энэ файлыг импортлодог тул буцааж
+ *    импортловол цикл үүснэ; утга нь ижил — `initRemote` амжилттай үед л
+ *    `_syncRemoteCaps` дуудагддаг.
+ */
+let remoteSynced = false;
+
 function save(s: Store) {
   if (typeof window === 'undefined') return;
   try {
@@ -348,8 +370,29 @@ async function retryDirtyCaps(): Promise<DirtyCaps> {
   return left;
 }
 
-/** Нэг хэрэглэгчийн олгогдсон эрхүүд. */
+/**
+ * Нэг хэрэглэгчийн олгогдсон эрхүүд.
+ * ⚠️ Remote ачаалагдаагүй бол ХООСОН (2026-09-21) — localStorage-д гараар
+ *    тарьсан эрх сүлжээгүй үед хүчингүй. Толгойн тайлбарыг үз.
+ */
 export function capsOf(username?: string | null): CapKey[] {
+  if (!username) return [];
+  if (!remoteSynced) return [];
+  return cache[username.toLowerCase()] ?? [];
+}
+
+/** Remote эрх энэ сешнд уншигдсан уу — UI-д «offline» тэмдэг харуулахад */
+export const capsRemoteReady = (): boolean => remoteSynced;
+
+/**
+ * ХАДГАЛАГДСАН жагсаалт — remote-ийн тугаас ҮЛ ХАМААРАН (зөвхөн БИЧИХ замд).
+ * ⚠️ `toggleCap` ба `scopedAcl.syncCaps` нь «одоогийн жагсаалт + нэг эрх» гэж
+ *    боддог. Тэдэнд `capsOf` (тугтай) өгвөл remote унасан үед `[]`-ээс эхэлж,
+ *    админы бичсэн dirty жагсаалт бусад эрхийг нь АРЧИЖ, дараагийн retry-д
+ *    ArcGIS руу тэр дутуу жагсаалт бичигдэнэ. Эрхийн ШАЛГУУРТ (`hasCap`)
+ *    хэрэглэхгүй.
+ */
+export function capsStored(username?: string | null): CapKey[] {
   if (!username) return [];
   return cache[username.toLowerCase()] ?? [];
 }
@@ -401,7 +444,8 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
 
 /** Нэг эрхийг асаах/унтраах товчлол. */
 export function toggleCap(username: string, cap: CapKey, on: boolean): Promise<boolean> {
-  const cur = capsOf(username);
+  /* ⚠️ `capsStored` — тугтай `capsOf` биш (2026-09-21, тэндхийн тайлбар) */
+  const cur = capsStored(username);
   return setCaps(username, on ? [...new Set([...cur, cap])] : cur.filter((c) => c !== cap));
 }
 
@@ -448,6 +492,8 @@ export function _syncRemoteCaps(rows: CapRow[], trusted = false): void {
     s[r.user.trim().toLowerCase()] = sane(r.caps);
   }
   cache = s;
+  /* ⚠️ Энэ мөчөөс л `capsOf` кэшийг тооцно (2026-09-21) — remote = үнэн. */
+  remoteSynced = true;
   save(s);
   notify();
 

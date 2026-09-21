@@ -40,9 +40,24 @@ export const pkgColOf = (t: DetailTable): number => t.cols.indexOf(tr('Багц'
  *    багц (`services.ts`-ийн баримтжуулсан дүрэм). Түүхий текстээр жишвэл
  *    хүснэгт чимээгүй хоосорно.
  */
-export const rowInPkg = (row: readonly Cell[], col: number, pkg: string): boolean => {
-  const v = row[col]?.v;
-  return bagtsKey(v) === bagtsKey(pkg);
+export const rowInPkg = (row: readonly Cell[], col: number, pkg: string): boolean =>
+  samePkg(row[col]?.v, pkg);
+
+/**
+ * ХОЁР БАГЦЫН НЭР НЭГ БАГЦ МӨН ҮҮ — ДИАПАЗОНЫГ ТООЦСОН (2026-09-21).
+ *
+ * ⚠️ `bagtsKey('Багц 1-4')` = «БАГЦ14» = БОДИТ «Багц 14»-ийн ЯГ түлхүүр
+ *    (`services.isPkgRange`-ийн баримтжуулсан занга). Урьд нь зөвхөн
+ *    `bagtsKey`-ээр жишдэг тул «Багц 1-4» (ТЭЗҮ 1–4 зураг төслийн мөр) сонгоход
+ *    Багц 14-ийн мөрүүд, эсрэгээр Багц 14 сонгоход диапазон мөр гардаг байв.
+ *    Дүрэм: диапазон = ЗӨВХӨН ӨӨРТЭЙГӨӨ л таарна (хоёулаа диапазон ба түлхүүр
+ *    ижил); нэг нь диапазон, нөгөө нь биш бол ХЭЗЭЭ Ч таарахгүй.
+ */
+export const samePkg = (a: unknown, b: unknown): boolean => {
+  const ra = isPkgRange(a);
+  const rb = isPkgRange(b);
+  if (ra !== rb) return false;
+  return bagtsKey(a) === bagtsKey(b);
 };
 
 /**
@@ -128,10 +143,10 @@ export function filterResult(r: KpiResult, pkg: string): KpiResult {
    * багцын нэрийг агуулна. Агуулаагүй бол ҮЛДЭЭНЭ — багцад хамаарахгүй
    * ерөнхий анхааруулга (жиш. «2 багцын хуудас уншигдсангүй») алга болох ёсгүй.
    */
-  const key = bagtsKey(pkg);
+  /* ⚠️ `samePkg` (2026-09-21) — диапазон багц («Багц 1-4») Багц 14-тэй андуурагдахгүй */
   const issues = r.issues.filter((i) => {
     const mentions = /Багц/i.test(i.text);
-    return !mentions || issueSegments(i.text).some((s) => bagtsKey(s) === key);
+    return !mentions || issueSegments(i.text).some((s) => samePkg(s, pkg));
   });
   return { ...r, tables, issues };
 }

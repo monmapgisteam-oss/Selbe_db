@@ -23,7 +23,10 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
-import { HJ } from '@/lib/services';
+import { AUTH, HJ, roleForUser } from '@/lib/services';
+import { currentUser, requireCap } from '@/lib/who';
+import { qaqcScope } from '@/lib/qaqcAcl';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 
 /** QAQC хүснэгтүүд байрлах үйлчилгээнүүд */
 export const QAQC_SERVICES = {
@@ -445,10 +448,40 @@ export const qaqcPayload = (updates: readonly Record<string, unknown>[]): string
  *    алдааны мессежид хэдэн мөр амжсаныг ХЭЛНЭ. Дуудагч мөрүүдээ дахин татах
  *    ёстой (эс бөгөөс дэлгэц ба өгөгдөл зөрнө).
  */
+/**
+ * LIB-ТҮВШНИЙ ЭРХИЙН ШАЛГУУР — `qaqc` эрх + БАГЦЫН ХҮРЭЭ (2026-09-21).
+ *
+ * ⚠️ Урьд нь `saveQaqc` эрхээ ЗӨВХӨН UI-д (`Qaqc.tsx`-ийн `canEdit`) шалгадаг
+ *    байв — консолоос дуудсан хэн ч ArcGIS руу бичиж чаддаг. `zovshoorol.saveZov`
+ *    · `parcelEdit.saveParcel` · `tableWrite.applyAll`-ийн (2026-09-17) ижил
+ *    загвар: `who.requireCap` + энд нэмээд `qaqcScope` — учир нь QAQC эрх нь
+ *    БАГЦААР хуваарилагддаг («Багц 2»-ын ажилтан «Багц 5»-ын актыг ХАРНА,
+ *    ЗАСАХГҮЙ). Дүрэм нь `Qaqc.tsx`-ийн `canEdit`-тэй ЯГ ижил:
+ *      · `null` = хязгааргүй (super, «бүх багц»); `[]` = нэг ч багц.
+ *      · Хатуу super ба нэвтрэлт унтраалттай (`AUTH.appId` хоосон) орчин —
+ *        хүрээ үл хамаарна (`caps.hasCap`-ийн ижил үндэслэл).
+ * ⚠️ Зөвхөн ХӨТӨЧИД (`requireCap`-тэй ижил): Node тест/tools админ токеноор.
+ * ⚠️ `updates` ХООСОН ч шалгана — эрхгүй дуудлага юу ч илгээхээс өмнө унана.
+ */
+export function assertQaqcWrite(pkgKey: string): void {
+  requireCap('qaqc');
+  if (typeof window === 'undefined' || !AUTH.appId) return;
+  const me = currentUser();
+  if (roleForUser(me) === 'super') return;
+  const sc = qaqcScope(me);
+  if (sc === null) return;
+  const group = PKGS.find((p) => p.key === pkgKey)?.group;
+  if (!group || !sc.includes(group)) {
+    throw new Error(tr('«{0}» багц танд хуваарилагдаагүй тул QAQC засвар хадгалагдахгүй.', group ?? pkgKey));
+  }
+}
+
 export async function saveQaqc(
   pkgKey: string,
   updates: Record<string, unknown>[],
 ): Promise<number> {
+  /* ⚠️ Эрх ЭХЛЭЭД (2026-09-21) — `updates` хоосон ч эрхгүй дуудлага унана */
+  assertQaqcWrite(pkgKey);
   if (!updates.length) return 0;
   const ref = qaqcTableOf(pkgKey);
   if (!ref) throw new Error('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.');

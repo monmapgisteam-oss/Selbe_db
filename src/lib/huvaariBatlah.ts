@@ -35,7 +35,7 @@ import { AUTH, ROLE_BY_USER } from './services';
 import { huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
 import { tokenParam } from '@/lib/authToken';
-import { currentUser } from './who';
+import { currentUser, requireCap } from './who';
 
 /** Илгээлтийн төлөв */
 export const PLAN_STATUS = {
@@ -43,6 +43,15 @@ export const PLAN_STATUS = {
   pending: 'Хүлээгдэж буй',
   approved: 'Батлагдсан',
   returned: 'Буцаагдсан',
+  /**
+   * ЗОХИОГЧ ӨӨРӨӨ ТАТСАН (2026-09-21). Урьд нь зохиогч илгээснээ буцаах
+   * замгүй байв: `decidePlan` нь зохиогч=батлагч буцаалтыг татгалздаг, UI-д
+   * товч ч байгаагүй — алдаатай илгээлт өөр батлагч буцаатал багцыг түгжинэ.
+   * ⚠️ `returned`-ээс ТУСДАА утга: буцаалт нь батлагчийн шийдвэр, татах нь
+   *    зохиогчийн. Нэгтгэвэл «хэн буцаасан» нь `batlagch` талбараас
+   *    таагдах болж, түүхийн тайлан зөрнө. Өгөгдөл тул ОРЧУУЛАГДАХГҮЙ.
+   */
+  withdrawn: 'Татсан',
 } as const;
 export type PlanStatus = (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS];
 
@@ -105,6 +114,25 @@ export type PlanPayload = {
   deps: Record<string, string>;
   /** `${ажлын код}|${блок}` → сар → обьём */
   obyem: Record<string, Record<string, number>>;
+  /**
+   * ИЛГЭЭХ ҮЕИЙН СУУРЬ — сервер дээр тэр агшинд ЮУ байсан (2026-09-21).
+   *
+   * ⚠️ ЯАГААД: `spans` нь мөрийн БҮХ блокийн (22) бүтэн агшин. Батлагч
+   *    `save` нь түүнийг ОДООГИЙН сервер мөртэй харьцуулж «өөрчлөгдсөн»
+   *    блокийг бичдэг тул илгээснээс хойш өөр илгээлтээр батлагдсан блок
+   *    (зохиогч хөндөөгүй) нь зохиогчийн хуучин утгаар ЧИМЭЭГҮЙ буцдаг байв.
+   *    Суурьтай бол: `spans[b] === base[b]` → зохиогч хөндөөгүй → серверийн
+   *    одоогийн утга үлдэнэ; `base[b] !== сервер` → зэрэгцээ өөрчлөлт →
+   *    батлагчид ил хэлнэ.
+   * ⚠️ СОНГОЛТТОЙ — 2026-09-21-ээс ӨМНӨХ илгээлтэд байхгүй; тэр үед бүх
+   *    блокийг «зохиогчийн зассан» гэж үзнэ (хуучин зан үйл, буцаж нийцтэй).
+   * ⚠️ `deps`-ийн `null` = тэр үед уялдаа хоосон байсан.
+   */
+  base?: {
+    spans: Record<string, ({ start: number; end: number } | null)[]>;
+    deps: Record<string, string | null>;
+    obyem: Record<string, Record<string, number>>;
+  };
 };
 
 const TITLE = 'Selbe_Huvaari_Batlah';
@@ -492,11 +520,22 @@ export function parsePayload(raw: string): PlanPayload | null {
      *    хуваарийг гэрээний талбарт БУРУУ бичихээс сэргийлнэ.
      */
     const kind: PlanPayloadKind = j.kind === 'geree' ? 'geree' : 'plan';
+    /* ⚠️ `base` (2026-09-21) — байхгүй/эвдэрсэн бол `undefined`: дуудагч
+       «бүх блок зассан» гэсэн хуучин зан үйл рүү унана, илгээлт унахгүй. */
+    const b = j.base && typeof j.base === 'object' ? j.base : null;
+    const base = b && b.spans && typeof b.spans === 'object'
+      ? {
+        spans: sanitizeSpans(b.spans),
+        deps: (b.deps && typeof b.deps === 'object' ? b.deps : {}) as NonNullable<PlanPayload['base']>['deps'],
+        obyem: (b.obyem && typeof b.obyem === 'object' ? b.obyem : {}) as NonNullable<PlanPayload['base']>['obyem'],
+      }
+      : undefined;
     return {
       kind,
       spans,
       deps: (j.deps && typeof j.deps === 'object' ? j.deps : {}) as PlanPayload['deps'],
       obyem: (j.obyem && typeof j.obyem === 'object' ? j.obyem : {}) as PlanPayload['obyem'],
+      ...(base ? { base } : {}),
     };
   } catch {
     return null;
@@ -663,6 +702,71 @@ export async function decidePlan(args: {
     [F.approver]: args.approver.toLowerCase(),
     [F.approverAt]: Date.now(),
     [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
+  };
+  try {
+    const j = await req(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: attrs }]),
+      rollbackOnFailure: 'true',
+    });
+    return editOk(j.updateResults)
+      ? { ok: true }
+      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч ӨӨРИЙН хүлээгдэж буй илгээлтийг буцааж авна
+ * (2026-09-21).
+ *
+ * ⚠️ ЯАГААД: `decidePlan` нь зохиогч=батлагч бүх шийдвэрийг татгалздаг
+ *    (зөв — өөрийгөө батлахгүй), гэвч түүний улмаас зохиогч алдаатай
+ *    илгээлтээ буцаах замгүй байв: өөр батлагч буцаатал багц `locked`.
+ * ⚠️ ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ — зөвхөн урсгалын мөр `withdrawn` болно.
+ * ⚠️ ЗӨВХӨН ЗОХИОГЧ: жинхэнэ дүрэм нь СЕРВЕРИЙН `F.author` — дуудагчийн
+ *    өгсөн нэрэнд найдахгүй (`decidePlan`-ийн 2026-09-15-ны сургамж).
+ *    Мөн `requireCap('plan')` — хуваарь илгээх эрхгүй хүн татаж ч чадахгүй.
+ * ⚠️ Зөвхөн `pending` мөрийг татна — шийдвэрлэгдсэнийг татах нь батлагчийн
+ *    шийдвэрийг дарах болно.
+ * ⚠️ `approver`-т ЮУ Ч бичихгүй, `approverAt`-д татсан агшныг: түүх
+ *    «хэзээ» гэдгийг мэднэ, «батлагч» багана нь зөвхөн батлагчийнх үлдэнэ.
+ */
+export async function withdrawPlan(args: {
+  oid: number;
+  /** Татаж буй хүн — нэвтэрсэн хэрэглэгч (`currentUser`) байх ёстой */
+  me: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decidePlan`-тай ижил шалтгаан (тест барина). */
+  requireCap('plan');
+  const me = args.me.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  if (typeof window !== 'undefined' && AUTH.appId) {
+    const meNow = currentUser();
+    if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    if (meNow !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
+  }
+  const url = await tableUrl(false);
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver}`);
+  if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
+  const curStatus = s(cur[0][F.status]);
+  if (curStatus !== PLAN_STATUS.pending) {
+    const by = s(cur[0][F.approver]);
+    return {
+      ok: false,
+      error: by
+        ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
+        : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
+    };
+  }
+  const attrs: Attrs = {
+    [F.oid]: args.oid,
+    [F.status]: PLAN_STATUS.withdrawn,
+    [F.approverAt]: Date.now(),
+    [F.reason]: null,
   };
   try {
     const j = await req(`${url}/applyEdits`, {

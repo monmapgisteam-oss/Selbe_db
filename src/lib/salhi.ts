@@ -55,7 +55,10 @@ export type Wind = {
   lon: number;
   /** Татсан мөч — кэшнээс ирсэн бол ХУУЧИН байж болно */
   asOf: number;
-  /** Кэшнээс ирсэн эсэх — UI-д «шинэ эсэх»-ийг ил гаргана */
+  /**
+   * СҮЛЖЭЭ УНААД хуучирсан кэш өгсөн эсэх — UI-д сэрэмжлүүлэг болно.
+   * ⚠️ TTL доторх (шинэ) кэш нь `false` — тэр нь хэвийн зам (2026-09-21).
+   */
   cached: boolean;
 };
 
@@ -153,17 +156,27 @@ async function fetchHours(lat: number, lon: number, date: string): Promise<WindH
 /**
  * Нэг цэгийн ӨНӨӨДРИЙН 24 цагийн салхи.
  *
- * Урсгал: кэш (2ц дотор) → сүлжээ → алдаа гарвал ХУУЧИРСАН кэш. Гуравдугаар
- * шат нь чухал: квот дүүрэхэд самбар хоосрохын оронд хуучин утгыг `cached`
- * тэмдэгтэйгээр үзүүлнэ.
+ * Урсгал: кэш (2ц дотор, `cached: false`) → сүлжээ → алдаа гарвал ХУУЧИРСАН
+ * кэш (`cached: true`). Гуравдугаар шат нь чухал: квот дүүрэхэд самбар
+ * хоосрохын оронд хуучин утгыг `cached` тэмдэгтэйгээр үзүүлнэ — тэмдэг нь
+ * ЗӨВХӨН энэ замд (2026-09-21).
  */
 export async function loadWind(lat: number, lon: number): Promise<Wind> {
   const date = ymd(new Date());
   const key = keyOf(lat, lon, date);
   const cached = readCache(key);
 
+  /**
+   * ⚠️ TTL ДОТОРХ кэш = ХЭВИЙН зам, `cached: false` (2026-09-21).
+   *
+   * Урьд нь энд `cached: true` буцаадаг байсан тул 2 цагийн дотор хуудсыг
+   * ДАХИН нээх бүрд `Ersdel.tsx` «Кэшнээс — сүлжээ татагдсангүй» гэж
+   * ХУДАЛ бичдэг байв — сүлжээ унаагүй, ердөө л квот хэмнэсэн. `cached`
+   * гэдэг тэмдэг нь «энэ утга ХУУЧИРСАН байж болно, сүлжээ УНАСАН» гэсэн
+   * СЭРЭМЖЛҮҮЛЭГ; түүнийг зөвхөн доорх `catch` дээр л өгнө.
+   */
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
-    return { hours: cached.hours, lat, lon, asOf: cached.ts, cached: true };
+    return { hours: cached.hours, lat, lon, asOf: cached.ts, cached: false };
   }
 
   try {

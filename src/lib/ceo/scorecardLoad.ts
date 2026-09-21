@@ -24,7 +24,8 @@ import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { CANCELLED_NOTE_RE } from './uncontracted';
-import { collectPkgLags } from './schedule';
+import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow } from './schedule';
+import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import { loadQaqcLoaded, summarizePkg } from './qaqc';
@@ -90,7 +91,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   const now = Date.now();
   /* 05-ын хуваарийн хоцрогдол — `loadScheduleKpi`-тай ЯГ ижил дуудлага */
   const lags = new Map(
-    collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf).map((p) => [p.key, p.lag]),
+    collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow).map((p) => [p.key, p.lag]),
   );
   /* 04-ийн олголт — `PkgFin` хуудастай ЯГ ижил (`pkgFinRows`) */
   const packs = buildPacks(bld.rows);
@@ -108,10 +109,25 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     (workforce?.detail.companies ?? []).map((c) => bagtsKey(c.bagts ?? '')).filter(Boolean),
   );
 
-  const works: BaseWork[] = cf.filter((r) => r.isWork).map((r) => {
+  /**
+   * ⚠️ ГАЗАР ЧӨЛӨӨЛӨЛТИЙН МӨР (6-р хэсэг, `FIN_XL_LAND_CODE`) ТУСАД НЬ (2026-09-21).
+   * `isWork` нь 6-р хэсгийг хасдаг («78 биш 74» — нөхөн олговор нь гүйцэтгэгчтэй
+   * байгуулах ажил биш) тул урьд нь `cf.filter(isWork)`-оос ГАЗРЫН мөр огт
+   * ирэхгүй, `isLandWork` ҮРГЭЛЖ false, `scoreLand`-ын газар чөлөөлөлтийн салаа
+   * ба `loadLandStatus().pct` хэзээ ч гардаггүй байв. Одоо газрын мөр оноонд
+   * ОРНО (газар чөлөөлөлтийн явцаар), бондын хүү (7) хэвээр орохгүй.
+   */
+  const scored = cf.filter((r) => r.isWork || r.sec === FIN_XL_LAND_CODE);
+  const works: BaseWork[] = scored.map((r) => {
     const key = pkgKeyOf(r.pkg2) || pkgKeyOf(r.pkg);
     const cancelled = CANCELLED_NOTE_RE.test(r.note);
-    const lag = key ? lags.get(key) ?? null : null;
+    const isLandWork = r.sec === FIN_XL_LAND_CODE;
+    /* ⚠️ 2026-09-21: багцын ХУВААРИЙН ХОЦРОГДОЛ (блокийн биет хэмжилт) ЗӨВХӨН
+       БАРИЛГА УГСРАЛТЫН мөрд (`sec === '2'`). Урьд нь нэг багцын түлхүүрт
+       байгаа ТЭЗҮ, зураг төслийн мөрд ч угсралтын хоцрогдол хуулагдаж, зураг
+       төслийн гэрээ «хуваариас 30 пп хоцорсон» гэж улаан гардаг байв. Бусад
+       мөр `lag = null` → `scorePerf` өөрийнх нь огноо/гүйцэтгэлээр (0 БИШ). */
+    const lag = key && r.sec === FIN_XL_BUILD_CODE ? lags.get(key) ?? null : null;
     const actual = lag ? lag.actual : r.progress;
     const contract = contracts.get(r.oid) ?? null;
     return {
@@ -123,9 +139,12 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       cost: r.cost,
       contract: contract && contract > 0 ? contract : null,
       cancelled,
-      isLandWork: r.sec === '6',
+      isLandWork,
       perf: cancelled ? { score: null, facts: [] } : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
-      fin: cancelled ? { score: null, facts: [] } : scoreFin({
+      /* ⚠️ Газрын мөр гэрээ байгуулах ажил БИШ — санхүүжилтийн «гэрээгүй» оноо
+         хамаарахгүй (null, 0 биш); оноо нь `scoreLand`-ын газрын салаанд. */
+      fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({
+        /* ⚠️ `scoreFin` дотроо `contract > 0`-ийг ч гэрээтэй гэж нэгтгэнэ (2026-09-21) */
         contracted: r.note === CONTRACTED,
         start: r.start,
         now,

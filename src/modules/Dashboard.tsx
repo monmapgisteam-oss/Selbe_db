@@ -861,7 +861,10 @@ function railStat(k: SecKey, d: DashData): {
       };
     }
     case 'finance': {
-      // АМЬД — cashflow_0813 /173: гэрээгээр баталгаажсан ÷ нийт төсөвт өртөг
+      // АМЬД — Cashflow_0909: гэрээлсэн ÷ нийт төсөвт өртөг
+      /* ⚠️ 2026-09-21: `Budget.total` одоо `finXlInTotal` хүрээ (2,493 тэрбум),
+         `Budget.contract` зөвхөн «Гэрээлсэн дүн» мөрөөр — `live.loadBudget`-ийн
+         ⚠️-г үз. Урьд нь 78 мөрийн шүүлтгүй нийлбэр (3,167.6) байв. */
       const bg = d.budget.state === 'ready' ? d.budget.data : null;
       const share = bg && bg.total ? (bg.contract / bg.total) * 100 : null;
       return {
@@ -1337,7 +1340,7 @@ export function HeadKpi({ bagts, extra }: {
    * болж, зурвасын доод ирмэг тасархай харагддаг байв. Мөн тэдгээр нь өөрсдөө
    * KPI биш ТАЙЛБАР — нүдний гол тоог сулруулж байлаа.
    */
-  const tiles: { v: string; unit?: string; label: string; lead?: true }[] = [
+  const tiles: { v: string; unit?: string; label: string; lead?: true; title?: string }[] = [
     { v: h == null ? '…' : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
     { v: ail == null ? '…' : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
     { v: h == null ? '…' : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
@@ -1347,19 +1350,31 @@ export function HeadKpi({ bagts, extra }: {
        байхгүй ГАНЦ элемент болж зурвасын тэгш байдлыг эвдэж байв. Хувийг тоо
        нь өөрөө хэлнэ. `lead` (дээд ирмэгийн акцент) хэвээр — тэр нь гол
        үзүүлэлтийг заана. */
+    /* ⚠️ 2026-09-21: ШОШГО «Төслийн нийт гүйцэтгэл» → «Биет гүйцэтгэл (багцаар)».
+       ТОО ӨӨРЧЛӨГДӨӨГҮЙ. Порталд «нийт гүйцэтгэл» гэсэн нэрээр ГУРВАН өөр
+       тодорхойлолт зэрэг явдаг байв: энд `pkgPhys` (TASK_SHEET-ийн сарын
+       цуваа, багцаар блок-жигнэсэн), Тайлан `overall.pct` (орон сууцны
+       багцын төсвийн жинтэй), удирдлагын тайлан `gdash.progress` (6 шатны
+       жигнэсэн). Нэг нэрээр гурван тоо гарахаар аль нь үнэн нь мэдэгдэхгүй тул
+       нэр бүр ЮУ болохоо хэлнэ; `title` нь тодорхойлолтыг өгнө. */
     {
       v: p.actual == null ? '…' : num(p.actual, 2), unit: '%',
-      label: tr('Төслийн нийт гүйцэтгэл'),
+      label: tr('Биет гүйцэтгэл (багцаар)'),
+      title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, блокийн тоогоор жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },
-    { v: h == null ? '…' : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв') },
+    {
+      v: h == null ? '…' : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв'),
+      /* ⚠️ 2026-09-21: `investTotal` = `finXlInTotal` хүрээ (Excel-ийн НИЙТ мөр, 2,493 тэрбум) */
+      title: tr('Орон сууцны хороолол ба ГИШС-ийн хүрээний төсөвт өртөг (Excel-ийн НИЙТ мөр); нийгмийн дэд бүтэц, газар чөлөөлөлт, бондын хүү ОРОХГҮЙ'),
+    },
     ...(extra ?? []),
   ];
 
   return (
     <div className={o.head}>
       {tiles.map((t) => (
-        <div key={t.label} className={`${o.tile} ${t.lead ? o.tileLead : ''}`}>
+        <div key={t.label} className={`${o.tile} ${t.lead ? o.tileLead : ''}`} title={t.title}>
           <span className={o.tileVal}>
             {/**
               * ⚠️ 2026-09-06: ФОНТЫГ ЗӨВХӨН УРТ УТГАД багасгана. Урьд нь
@@ -4455,6 +4470,9 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
     <>
       <Panel title={tr('Гол үзүүлэлт')}>
         <Stats cols={2}>
+          {/* ⚠️ 2026-09-21: `bg.total` = `finXlInTotal` хүрээ (2,493 тэрбум), `bg.contract` =
+              зөвхөн «Гэрээлсэн дүн» мөр — доорх хувь ба зурвас бүгд энэ хоёр дээр тулна.
+              Урьд нь 78 мөрийн шүүлтгүй нийлбэр (3,167.6) байсан тул хувь худал бага гардаг байв. */}
           <Stat accent color={HUE[0]} value={num(bg.total)} unit={tr('₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
           <Stat accent color={HUE[1]} value={num(bg.orderTotal)} unit={tr('₮')} label={tr('Захирамжийн нийт дүн')} />
           <Stat accent color={HUE[2]} value={num(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />

@@ -45,7 +45,23 @@ import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
 
-export type MapRow = Zone & { urban: number | null; displayGeom: Polygon | null };
+export type MapRow = Zone & {
+  urban: number | null;
+  displayGeom: Polygon | null;
+  /**
+   * ОНООЛОЛД ОРСОН эсэх — `!excluded || scoreOn.has(type)` (2026-09-21).
+   *
+   * ⚠️ Товшилт/hover нь урьд нь `excluded`-ийг л шалгадаг байсан тул
+   * «Бүсийн ангилал» картаас ИДЭВХЖҮҮЛСЭН (оноололд оруулсан) 17 бүс зурагт
+   * оноогоор будагдаж байгаа атлаа сонгогдохгүй, hover панель гарахгүй байв.
+   * Ганц эх сурвалж: `Suitability.tsx` §rows энэ тугийг бодож өгнө.
+   * Заагаагүй бол (`undefined`) хуучин дүрэм — `!excluded`.
+   */
+  scored?: boolean;
+};
+
+/** Бүс сонгогдох/hover-т орох эсэх — ганц дүрэм (`MapRow.scored` §тайлбар) */
+const isScored = (r: MapRow): boolean => r.scored ?? !r.excluded;
 
 /** Барилгын төлөвийн өнгө — каталогийн legend-тэй нэг эх сурвалж (`config.ts`) */
 const STATUS_COLORS = BUILDING_STATUS_COLORS;
@@ -553,9 +569,10 @@ export function SuitMap({
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,
           );
           const zid = g && g.type === 'graphic' ? (g.graphic.attributes as { zoneId: string }).zoneId : null;
-          // ⚠️ Хассан бүсийг сонгуулахгүй — дэлгэрэнгүй самбар хоосон гарахаас сэргийлнэ
+          // ⚠️ Оноололд ОРООГҮЙ бүсийг сонгуулахгүй — дэлгэрэнгүй самбар хоосон
+          //    гарахаас сэргийлнэ. Идэвхжүүлсэн (scoreOn) бүс СОНГОГДОНО (2026-09-21).
           const zr = zid ? cb.current.rows.find((x) => x.id === zid) : null;
-          cb.current.onSelect(zr && !zr.excluded ? zid : null);
+          cb.current.onSelect(zr && isScored(zr) ? zid : null);
         })
         .catch(() => {});
     });
@@ -606,8 +623,9 @@ export function SuitMap({
           } else if (zone && zone.type === 'graphic') {
             const id = (zone.graphic.attributes as { zoneId: string }).zoneId;
             const r = cb.current.rows.find((x) => x.id === id);
-            // ⚠️ Хассан бүс (ногоон/одоо байгаа барилга/дэд бүтэц) — hover панель харуулахгүй
-            if (r && !r.excluded) { key = `z${id}`; if (key !== lastKey) html = cb.current.zoneTip(r); }
+            // ⚠️ Оноололд ороогүй бүс (ногоон/одоо байгаа барилга/дэд бүтэц) — hover
+            //    панель харуулахгүй; идэвхжүүлсэн бүс ХАРУУЛНА (2026-09-21, `isScored`)
+            if (r && isScored(r)) { key = `z${id}`; if (key !== lastKey) html = cb.current.zoneTip(r); }
           }
 
           if (!key) {
@@ -697,7 +715,10 @@ export function SuitMap({
 
     const clear = () => {
       if (bimWidgetRef.current) {
-        view.ui.remove(bimWidgetRef.current);
+        /* ⚠️ `view`-ийн эффект (dim deps) энэ эффектээс ӨМНӨ зарлагдсан тул
+           салахад түүний cleanup `view.destroy()`-г түрүүлж дуудна — устгасан
+           view-ийн `ui.remove` алдаа шиддэг байв (2026-09-21). */
+        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -944,7 +965,10 @@ export function SuitMap({
 
     return () => {
       alive = false;
-      map.remove(layer);
+      /* ⚠️ Компонент бүрмөсөн салахад `map`-ыг устгах эффект (дээр, [] deps)
+         ЭНЭ эффектээс ӨМНӨ зарлагдсан тул түүний cleanup түрүүлж ажиллаж,
+         энд устгагдсан `map` дээр `remove` дуудагддаг байв (2026-09-21). */
+      if (!map.destroyed) map.remove(layer);
       layer.destroy();
       if (heatRef.current === layer) heatRef.current = null;
     };

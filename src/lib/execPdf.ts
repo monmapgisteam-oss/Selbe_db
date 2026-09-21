@@ -17,7 +17,10 @@
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
-import { execFindings, execFindingBrief, type ExecFinding, type ExecReport } from '@/lib/execReport';
+import {
+  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo,
+  type ExecFinding, type ExecReport, type ExecAppendix,
+} from '@/lib/execReport';
 import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
@@ -179,11 +182,13 @@ const sevColor = (s: ExecFinding['sev']) => (s === 'bad' ? RED : s === 'warn' ? 
  * ⚠️ Нэрсийн жагсаалт ЭНД БИШ, хавсралтад — 34 нэр дүгнэлтийн дунд орвол
  * гол санаа живнэ (2026-09-17, хэрэглэгчийн заавар).
  */
-function findingBlocks(list: ExecFinding[], withAdvice: boolean): Content[] {
-  const withItems = list.filter((f) => f.items?.length);
+/* ⚠️ 2026-09-21: хавсралтын дугаар `execAppendix`-ээс (ГАНЦ эх). Урьд нь энд
+   дүгнэлтийн индексээр «Хавсралт {idx+1}» гэж бодож, хавсралтын хэсэг нь
+   «Эхлээгүй ажил» байвал +1 шилжүүлдэг тул заалт ба гарчиг зөрдөг байв. */
+function findingBlocks(list: ExecFinding[], withAdvice: boolean, app: readonly ExecAppendix[]): Content[] {
   return list.flatMap((f): Content[] => {
-    const idx = withItems.indexOf(f);
-    const ref = idx >= 0 ? ` ${tr('Дэлгэрэнгүйг хавсралт {0}-аас үзнэ үү.', num(idx + 1))}` : '';
+    const no = execAppendixNo(app, f);
+    const ref = no != null ? ` ${tr('Дэлгэрэнгүйг хавсралт {0}-аас үзнэ үү.', num(no))}` : '';
     return [
       { text: T(f.area).toUpperCase(), style: 'chip', color: sevColor(f.sev) },
       { text: T(`${f.text}${ref}`), style: 'finding' },
@@ -206,14 +211,13 @@ export async function buildExecDoc(
   const z = x.zov;
 
   /**
-   * ЭХЛЭЭГҮЙ АЖИЛ — олголт огт хийгдээгүй багцууд.
-   * ⚠️ `given === 0` нь «олголт хийгдээгүй»; `pct == null` нь «гэрээгүй тул
-   * хувь бодогдохгүй» — ХОЁР ӨӨР утга, хольж болохгүй.
+   * ЭХЛЭЭГҮЙ / ГЭРЭЭГҮЙ / ЭХЭЛСЭН — `execFinSplit` (2026-09-21, дэлгэцтэй НЭГ дүрэм).
+   * ⚠️ `given === 0` нь «олголт хийгдээгүй»; `contracted === false` нь «гэрээ
+   * байгуулаагүй» — ХОЁР ӨӨР утга, хольж болохгүй (урьд нь хольдог байв).
    */
-  const finZero = f.rows.filter((r) => r.given === 0 && r.plan > 0);
-  const finStarted = f.rows.filter((r) => !(r.given === 0 && r.plan > 0));
-  /** Хавсралтад орох дүгнэлтүүд — дэлгэцтэй ИЖИЛ дараалал */
-  const appendix = findings.filter((a) => a.items?.length);
+  const { started: finStarted, zero: finZero, none: finNone } = execFinSplit(x);
+  /** Хавсралт — дугаар ба дараалал `execAppendix`-ээс (дэлгэцтэй ИЖИЛ) */
+  const appendix = execAppendix(x, findings);
   /** Захирамжийн эх үүсвэрүүдийн нийлбэр — хувийн СУУРЬ (нийт төсөв БИШ) */
   const srcSum = g.bySource.reduce((a, s) => a + s.amount, 0);
 
@@ -321,7 +325,9 @@ export async function buildExecDoc(
       {
         margin: [0, 48, 0, 0],
         columns: [
-          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт гүйцэтгэл'), style: 'coverKpiL' }] },
+          /* ⚠️ 2026-09-21: шошго «(6 шатаар)» — Тайлан ба Дашбоардын «нийт гүйцэтгэл»
+             ӨӨР тодорхойлолттой тул нэр нь ЮУ болохоо хэлнэ (тоо ӨӨРЧЛӨГДӨӨГҮЙ). */
+          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
           { stack: [{ text: T(money(g.budget)), style: 'coverKpiV' }, { text: tr('Нийт төсөв'), style: 'coverKpiL' }] },
         ],
         columnGap: 24,
@@ -355,7 +361,7 @@ export async function buildExecDoc(
             width: '*',
             stack: [
               { text: tr('Гол дүгнэлтүүд'), style: 'h3', margin: [0, 0, 0, 2] },
-              ...findingBlocks(findings, false),
+              ...findingBlocks(findings, false, appendix),
             ],
           },
           {
@@ -366,7 +372,7 @@ export async function buildExecDoc(
                 tr('Төслийн ерөнхий байдал'),
                 tr('Газар чөлөөлөлт ба талбайн бэлтгэл'),
                 tr('Орон сууцны багцуудын биет гүйцэтгэл'),
-                tr('Гэрээт багцуудын санхүүжилт'),
+                tr('Багцуудын санхүүжилт'), /* ⚠️ 2026-09-21: §4-ийн гарчигтай ижил */
                 tr('Зөвшөөрөл ба тусгай зөвшөөрлүүд'),
                 tr('Дүгнэлт ба зөвлөмж'),
               ].map((t, i): Content => ({
@@ -505,17 +511,24 @@ export async function buildExecDoc(
 
       /* ══════════ 4. САНХҮҮЖИЛТ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('4', tr('Гэрээт багцуудын санхүүжилт'),
-        tr('{0} гэрээт багц — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна', num(f.rows.length))),
-      lead(tr('Гэрээний нийт дүнгийн {0}-д санхүүжилт олгогдсон байна.{1}',
+      /* ⚠️ 2026-09-21: «гэрээт багц» гэж БҮХ мөрийг нэрлэхээ болив — `f.rows` нь
+         гэрээгүй (зөвхөн төсөвтэй) багцыг ч агуулна; гэрээт тоо = `contracted`. */
+      ...h2('4', tr('Багцуудын санхүүжилт'),
+        tr('{0} багц ({1} гэрээт) — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна',
+          num(f.rows.length), num(f.rows.filter((r) => r.contracted).length))),
+      lead(tr('Гэрээлсэн нийт дүнгийн {0}-д санхүүжилт олгогдсон байна.{1}{2}',
         f.share == null ? '—' : pct(f.share, 1),
         finZero.length
-          ? tr(' Доор санхүүжилт эхэлсэн {0} багцыг үзүүлэв; олголт огт хийгдээгүй {1} багцыг хавсралтад жагсаав.',
+          ? tr(' Доор санхүүжилт эхэлсэн {0} багцыг үзүүлэв; гэрээт боловч олголт огт хийгдээгүй {1} багцыг хавсралтад жагсаав.',
             num(finStarted.length), num(finZero.length))
+          : '',
+        finNone.length
+          ? tr(' Гэрээ байгуулаагүй {0} багц тусад нь хавсралтад.', num(finNone.length))
           : '')),
       kpiRow([
-        { label: tr('Гэрээний нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
-        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээний дүнгээс {0}', pct(f.share, 1)) },
+        /* ⚠️ `planTotal` = §1-ийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ тоо (CONTRACTED мөр) */
+        { label: tr('Гэрээлсэн нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
+        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн дүнгээс {0}', pct(f.share, 1)) },
         { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain), sub: tr('гэрээт боловч санхүүжилт хүлээгдэж буй') },
       ]),
       ...(finStarted.length ? [
@@ -526,21 +539,33 @@ export async function buildExecDoc(
         })), { nameW: 160, valW: 140 }),
       ] : []),
       { table: { headerRows: 1, widths: ['*', 100, 100, 46], body: [
-        [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true), th(tr('Хувь'), true)],
+        [th(tr('Багц')), th(tr('Гэрээлсэн (төг)'), true), th(tr('Олгосон (төг)'), true), th(tr('Хувь'), true)],
         ...finStarted.map((r): TableCell[] => [
-          td(r.label), td(r.plan > 0 ? num(r.plan) : '—', true), td(num(r.given), true),
+          /* ⚠️ Гэрээгүй атлаа олголттой багц — «гэрээгүй» гэж ил тэмдэглэнэ (2026-09-21) */
+          td(r.contracted ? r.label : `${r.label} (${tr('гэрээгүй')})`, false, r.contracted ? undefined : AMBER),
+          td(r.plan > 0 ? num(r.plan) : '—', true), td(num(r.given), true),
           td(r.pct == null ? '—' : pct(r.pct, 1), true, r.pct != null && r.pct < 10 && r.plan > 0 ? RED : undefined),
         ]),
-        /* ⚠️ ЭХЛЭЭГҮЙ АЖЛУУД НЭГ МӨРӨНД — нэрс нь хавсралтад (§тайлбар) */
+        /* ⚠️ ЭХЛЭЭГҮЙ ГЭРЭЭТ АЖЛУУД НЭГ МӨРӨНД — нэрс нь хавсралтад (§тайлбар) */
         ...(finZero.length ? [[
-          td(tr('Эхлээгүй ажил ({0} багц)', num(finZero.length)), false, RED),
+          td(tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length)), false, RED),
           td(num(finZero.reduce((a, r) => a + r.plan, 0)), true),
           td(num(0), true), td('0.0%', true, RED),
+        ] as TableCell[]] : []),
+        /* ⚠️ ГЭРЭЭ БАЙГУУЛААГҮЙ (зөвхөн төсөвтэй) багц — ТУСДАА мөр (2026-09-21):
+           гэрээлсэн багана «—», хувь бодогдохгүй; төсөвт өртөг нь хавсралтад. */
+        ...(finNone.length ? [[
+          td(tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length)), false, AMBER),
+          td('—', true), td(num(0), true), td('—', true),
         ] as TableCell[]] : []),
         [tdBold(tr('Нийт')), tdBold(num(f.planTotal), true), tdBold(num(f.given), true),
           tdBold(f.share == null ? '—' : pct(f.share, 1), true)],
       ] }, layout: tableLayout },
       ...(finZero.length ? [note(tr('«Эхлээгүй ажил» гэдэг нь гэрээ байгуулагдсан боловч олголт хараахан хийгдээгүй багцууд; нэрсийг хавсралтаас үзнэ үү.'))] : []),
+      ...(finNone.length ? [note(tr('«Гэрээ байгуулаагүй ажил» гэдэг нь зөвхөн төсөвт өртөгтэй, гэрээ хараахан байгуулагдаагүй багцууд; гэрээлсэн дүнд орохгүй, нэрс ба төсвийг хавсралтаас үзнэ үү.'))] : []),
+      /* ⚠️ Нийт олгосон нь мөрүүдийн нийлбэрээс ИХ байж болно — диапазон
+         («Багц-1-4» г.м.) мөрийн олголт аль ч багцад холбогдохгүй (2026-09-21) */
+      ...(f.givenUnassigned > 0 ? [note(tr('Нийт олгосон дүнд аль нэг багцад холбогдоогүй (хэд хэдэн багц хамарсан) {0} ₮ олголт орсон тул багцуудын нийлбэрээс их байна.', num(f.givenUnassigned)))] : []),
       note(tr('«Олгосон» нь урьдчилгаа ба гүйцэтгэлийн бүх төлбөрийн нийлбэр.')),
 
       /* ══════════ 5. ЗӨВШӨӨРӨЛ ══════════ */
@@ -580,23 +605,31 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'before' },
       ...h2('6', summary ? tr('AI дүгнэлт') : tr('Дүгнэлт ба зөвлөмж'),
         tr('Тайланд илэрсэн гол асуудал бүрт харгалзах үйл ажиллагааны зөвлөмж')),
-      ...(summary ? summaryBlocks(summary) : findingBlocks(findings, true)),
+      ...(summary ? summaryBlocks(summary) : findingBlocks(findings, true, appendix)),
 
-      /* ══════════ ХАВСРАЛТ ══════════ */
-      ...(appendix.length || finZero.length ? [
+      /* ══════════ ХАВСРАЛТ ══════════
+         ⚠️ 2026-09-21: дараалал ба дугаар `execAppendix`-ээс — дүгнэлт дэх
+         «хавсралт N» заалттай ЯГ таарна (урьд нь зөрдөг байв). */
+      ...(appendix.length ? [
         { text: tr('Хавсралт'), style: 'h1', pageBreak: 'before' } as Content,
-        ...(finZero.length ? [
-          { text: tr('Хавсралт {0}. {1}', num(1), tr('Олголт эхлээгүй {0} багц', num(finZero.length))), style: 'caption' } as Content,
-          { table: { headerRows: 1, widths: ['*', 110, 100], body: [
-            [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
-            ...finZero.map((r): TableCell[] => [td(r.label), td(num(r.plan), true), td(num(0), true)]),
-            [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((a, r) => a + r.plan, 0)), true), tdBold(num(0), true)],
-          ] }, layout: tableLayout } as Content,
-        ] : []),
-        ...appendix.flatMap((a, i): Content[] => [
-          { text: tr('Хавсралт {0}. {1}', num(i + 1 + (finZero.length ? 1 : 0)), a.text), style: 'caption' },
-          { ul: (a.items ?? []).map(T), style: 'findingItem' },
-        ]),
+        ...appendix.flatMap((a): Content[] => {
+          const head: Content = { text: tr('Хавсралт {0}. {1}', num(a.no), a.title), style: 'caption' };
+          if (a.kind === 'finZero') {
+            return [head, { table: { headerRows: 1, widths: ['*', 110, 100], body: [
+              [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
+              ...finZero.map((r): TableCell[] => [td(r.label), td(num(r.plan), true), td(num(0), true)]),
+              [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(num(0), true)],
+            ] }, layout: tableLayout }];
+          }
+          if (a.kind === 'finNone') {
+            return [head, { table: { headerRows: 1, widths: ['*', 130], body: [
+              [th(tr('Багц')), th(tr('Төсөвт өртөг (төг)'), true)],
+              ...finNone.map((r): TableCell[] => [td(r.label), td(num(r.budget), true)]),
+              [tdBold(tr('Нийт')), tdBold(num(finNone.reduce((s, r) => s + r.budget, 0)), true)],
+            ] }, layout: tableLayout }];
+          }
+          return [head, { ul: a.items.map(T), style: 'findingItem' }];
+        }),
       ] : []),
 
       note(tr('Эх сурвалж: Сэлбэ порталын Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл. Тайлан үүсгэсэн огнооны байдлаар.')),

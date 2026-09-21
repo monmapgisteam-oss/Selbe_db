@@ -37,7 +37,9 @@ for (let i = 0; i < P; i++) assert.ok(acc[i] >= 1, `хуримтлал 1-ээс 
 const top = acc[1 * N + 10];
 const bot = acc[(N - 2) * N + 10];
 assert.ok(bot > top * 3, `доошоо хуримтлагдсангүй: дээр ${top} доор ${bot}`);
-assert.ok(acc[bot] !== Infinity && Number.isFinite(bot), 'хуримтлал хязгааргүй');
+/* ⚠️ 2026-09-21: урьд нь `acc[bot]` гэж УТГЫГ индекс болгон уншдаг байв
+   (`acc[123.4]` = undefined → `!== Infinity` үргэлж үнэн, шалгуур ХООСОН). */
+assert.ok(Number.isFinite(top) && Number.isFinite(bot), 'хуримтлал хязгааргүй');
 
 /* ⚠️ ЖИН ХАДГАЛАГДАХ: хамгийн нам МӨРИЙН нийлбэр нь бүх нүдний тоонд хүрнэ
    (тэр мөр нь домэйны цорын ганц гарц). Алдагдвал MFD-ийн жин буруу. */

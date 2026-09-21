@@ -29,6 +29,18 @@ export type Pkg = {
    *    хуудас. Сонгогч тэр үед давхрын товчийг ОГТ харуулахгүй.
    */
   floors: 9 | 12 | null;
+  /**
+   * ХУУДСЫН ТОГТМОЛ НЭР — ОРЧУУЛАГДДАГГҮЙ монгол эх текст (2026-09-21).
+   *
+   * ⚠️ ЯАГААД `label`-аас ТУСДАА: `label` нь `tr()`-ээр орчуулагддаг тул англи
+   *    UI-д «Package 1 · 9 floors» болно. Урьд нь тэр `label` нь хяналтын
+   *    хүснэгтийн `Ажлын_нэр`-д БИЧИГДЭЖ (`hyanaltSubmit`), мөн `FillNew`-ийн
+   *    урсгалын мөр олох `includes(pkg.label)` тулгалтад хэрэглэгддэг байв —
+   *    хэл солиход монголоор бичсэн мөр англи хуудсанд олдохгүй, англиар
+   *    бичсэн нь монголд олдохгүй, 9F/12F ялгаа тасарч байлаа.
+   *    БИЧЛЭГ ба ТУЛГАЛТАД зөвхөн `name`, ДЭЛГЭЦЭД зөвхөн `label`.
+   */
+  name: string;
   label: string;
   url: string;
 };
@@ -38,16 +50,16 @@ export type Pkg = {
  * ЯГ таарна — зөрвөл мод буруу багцад наалдана.
  */
 export const PKGS: Pkg[] = [
-  { key: "b1_9f", group: 'Багц 1', floors: 9, label: tr('Багц 1 · 9 давхар'), url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
-  { key: "b1_12f", group: 'Багц 1', floors: 12, label: tr('Багц 1 · 12 давхар'), url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
-  { key: "b2_9f", group: 'Багц 2', floors: 9, label: tr('Багц 2 · 9 давхар'), url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
-  { key: "b2_12f", group: 'Багц 2', floors: 12, label: tr('Багц 2 · 12 давхар'), url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
-  { key: "b31_9f", group: 'Багц 3.1', floors: 9, label: tr('Багц 3.1 · 9 давхар'), url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
-  { key: "b32_9f", group: 'Багц 3.2', floors: 9, label: tr('Багц 3.2 · 9 давхар'), url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
-  { key: "b33_9f", group: 'Багц 3.3', floors: 9, label: tr('Багц 3.3 · 9 давхар'), url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
-  { key: "b41_9f", group: 'Багц 4-1', floors: 9, label: tr('Багц 4-1 · 9 давхар'), url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
-  { key: "b42_9f", group: 'Багц 4-2', floors: 9, label: tr('Багц 4-2 · 9 давхар'), url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
-  { key: "b42_12f", group: 'Багц 4-2', floors: 12, label: tr('Багц 4-2 · 12 давхар'), url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
+  { key: "b1_9f", group: 'Багц 1', floors: 9, name: 'Багц 1 · 9 давхар', label: tr('Багц 1 · 9 давхар'), url: `${HJ}/Bagts_1_9f/FeatureServer/0` },
+  { key: "b1_12f", group: 'Багц 1', floors: 12, name: 'Багц 1 · 12 давхар', label: tr('Багц 1 · 12 давхар'), url: `${HJ}/Bagts_1_12f/FeatureServer/0` },
+  { key: "b2_9f", group: 'Багц 2', floors: 9, name: 'Багц 2 · 9 давхар', label: tr('Багц 2 · 9 давхар'), url: `${HJ}/Bagts_2_9f/FeatureServer/0` },
+  { key: "b2_12f", group: 'Багц 2', floors: 12, name: 'Багц 2 · 12 давхар', label: tr('Багц 2 · 12 давхар'), url: `${HJ}/Bagts_2_12f/FeatureServer/0` },
+  { key: "b31_9f", group: 'Багц 3.1', floors: 9, name: 'Багц 3.1 · 9 давхар', label: tr('Багц 3.1 · 9 давхар'), url: `${HJ}/Bagts_3_1_9f/FeatureServer/0` },
+  { key: "b32_9f", group: 'Багц 3.2', floors: 9, name: 'Багц 3.2 · 9 давхар', label: tr('Багц 3.2 · 9 давхар'), url: `${HJ}/Bagts_3_2_9f/FeatureServer/0` },
+  { key: "b33_9f", group: 'Багц 3.3', floors: 9, name: 'Багц 3.3 · 9 давхар', label: tr('Багц 3.3 · 9 давхар'), url: `${HJ}/Bagts_3_3_9f/FeatureServer/0` },
+  { key: "b41_9f", group: 'Багц 4-1', floors: 9, name: 'Багц 4-1 · 9 давхар', label: tr('Багц 4-1 · 9 давхар'), url: `${HJ}/Bagts_4_1_9f/FeatureServer/0` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, name: 'Багц 4-2 · 9 давхар', label: tr('Багц 4-2 · 9 давхар'), url: `${HJ}/Bagts_4_2_9f/FeatureServer/0` },
+  { key: "b42_12f", group: 'Багц 4-2', floors: 12, name: 'Багц 4-2 · 12 давхар', label: tr('Багц 4-2 · 12 давхар'), url: `${HJ}/Bagts_4_2_12f/FeatureServer/0` },
 
   /*
    * ── НЭМЭЛТ БАГЦУУД (2026-09-16) ──────────────────────────────────────
@@ -69,14 +81,14 @@ export const PKGS: Pkg[] = [
    *
    * ⚠️ `floors: null` — давхраар салдаггүй тул сонгогчид давхрын товч гарахгүй.
    */
-  { key: "b51", group: 'Багц 5.1', floors: null, label: tr('Багц 5.1'), url: `${HJ}/Bagts_5_1/FeatureServer/0` },
-  { key: "b52", group: 'Багц 5.2', floors: null, label: tr('Багц 5.2'), url: `${HJ}/Bagts_5_2/FeatureServer/0` },
-  { key: "b53", group: 'Багц 5.3', floors: null, label: tr('Багц 5.3'), url: `${HJ}/Bagts_5_3/FeatureServer/0` },
-  { key: "b54", group: 'Багц 5.4', floors: null, label: tr('Багц 5.4'), url: `${HJ}/Bagts_5_4/FeatureServer/0` },
-  { key: "b61", group: 'Багц 6.1', floors: null, label: tr('Багц 6.1'), url: `${HJ}/Bagts_6_1/FeatureServer/0` },
-  { key: "b62", group: 'Багц 6.2', floors: null, label: tr('Багц 6.2'), url: `${HJ}/Bagts_6_2/FeatureServer/0` },
-  { key: "b64", group: 'Багц 6.4', floors: null, label: tr('Багц 6.4'), url: `${HJ}/Bagts_6_4/FeatureServer/0` },
-  { key: "b10", group: 'Багц 10', floors: null, label: tr('Багц 10'), url: `${HJ}/Bagts_10/FeatureServer/0` },
+  { key: "b51", group: 'Багц 5.1', floors: null, name: 'Багц 5.1', label: tr('Багц 5.1'), url: `${HJ}/Bagts_5_1/FeatureServer/0` },
+  { key: "b52", group: 'Багц 5.2', floors: null, name: 'Багц 5.2', label: tr('Багц 5.2'), url: `${HJ}/Bagts_5_2/FeatureServer/0` },
+  { key: "b53", group: 'Багц 5.3', floors: null, name: 'Багц 5.3', label: tr('Багц 5.3'), url: `${HJ}/Bagts_5_3/FeatureServer/0` },
+  { key: "b54", group: 'Багц 5.4', floors: null, name: 'Багц 5.4', label: tr('Багц 5.4'), url: `${HJ}/Bagts_5_4/FeatureServer/0` },
+  { key: "b61", group: 'Багц 6.1', floors: null, name: 'Багц 6.1', label: tr('Багц 6.1'), url: `${HJ}/Bagts_6_1/FeatureServer/0` },
+  { key: "b62", group: 'Багц 6.2', floors: null, name: 'Багц 6.2', label: tr('Багц 6.2'), url: `${HJ}/Bagts_6_2/FeatureServer/0` },
+  { key: "b64", group: 'Багц 6.4', floors: null, name: 'Багц 6.4', label: tr('Багц 6.4'), url: `${HJ}/Bagts_6_4/FeatureServer/0` },
+  { key: "b10", group: 'Багц 10', floors: null, name: 'Багц 10', label: tr('Багц 10'), url: `${HJ}/Bagts_10/FeatureServer/0` },
 ];
 
 /**

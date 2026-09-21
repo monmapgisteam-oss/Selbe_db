@@ -33,8 +33,17 @@ async function post(url: string, body: Record<string, string>): Promise<Record<s
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ ...tokenParam(), ...body, f: 'json' }),
   });
+  /* ⚠️ `res.ok` ба JSON парс (2026-09-21, `ags.agsFetch`-тэй ижил): proxy/CDN-ийн
+     499/502 HTML хариу «SyntaxError: Unexpected token <» болж улаан баннерт
+     гардаг байв — статустай, хүнд ойлгомжтой мессеж болгоно. */
+  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+  let j: Record<string, unknown>;
+  try {
+    j = (await res.json()) as Record<string, unknown>;
+  } catch {
+    throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
+  }
   /* ⚠️ ArcGIS алдаатай ч HTTP 200 буцаадаг — биеийг ЗААВАЛ шалгана */
-  const j = (await res.json()) as Record<string, unknown>;
   const e = j.error as { message?: string } | undefined;
   if (e) throw new Error(e.message || tr('ArcGIS алдаа'));
   return j;

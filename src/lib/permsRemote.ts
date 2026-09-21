@@ -294,7 +294,17 @@ async function createTable(token: string, user: string): Promise<string | null> 
   return `${serviceUrl}/0`;
 }
 
-/** Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх */
+/**
+ * Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх.
+ *
+ * ⚠️ `canCreate = true` нь ЗӨВХӨН `fetchAll` ← `permissions.initRemote`-ийн
+ *    нэвтрэх агшны хатуу super замаас ирнэ (2026-09-21). Бичих замууд
+ *    (`upsertByKey` · `removeByKey`) урьд нь бүгд `tableUrl(true)` дууддаг
+ *    байв — порталын search индекс түр хоцрох/алдаа гарах агшинд super-ийн
+ *    ямар ч бичилт ХОЁР ДАХЬ `Selbe_Permissions` үүсгэж, эрх/томилгоо хоёр
+ *    хүснэгтэд хуваагдах эрсдэлтэй байлаа. Одоо бичилт хүснэгт олдохгүй бол
+ *    `false` буцаана (dirty-set-д тэмдэглэгдэж дараа retry) — үүсгэхгүй.
+ */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   // ⚠️ Зөвхөн ОЛДСОН URL-ыг кэшлэнэ — null-ыг кэшлэвэл порталын search транзит
   //    алдаа/индексжилтийн хоцрогдолтой үед «олдсонгүй» сешн даяар тогтмолжиж,
@@ -559,7 +569,8 @@ const editOk = (r: { error?: unknown }[] | undefined): boolean =>
 /** Нэг түлхүүр (username)-д нэг мөр байлгаж upsert хийнэ; давхардлыг цэвэрлэнэ */
 async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>): Promise<boolean> {
   try {
-    const url = await tableUrl(true);
+    /* ⚠️ `false` — бичилт хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
+    const url = await tableUrl(false);
     if (!url) return false;
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);
@@ -582,7 +593,8 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
 /** Түлхүүрт таарах БҮХ мөрийг устгана (давхардал ч бас) */
 async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
-    const url = await tableUrl(true);
+    /* ⚠️ `false` — устгал хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
+    const url = await tableUrl(false);
     if (!url) return false;
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);

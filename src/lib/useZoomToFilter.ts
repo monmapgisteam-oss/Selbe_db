@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useMap } from '@/components/MapCanvas';
-import { ZONE_LAYER } from '@/lib/services';
+import { ZONE_LAYER, LAYER_BY_ID, zoneWhere } from '@/lib/services';
 
 /**
  * ШҮҮЛТИЙН ДАГУУ ГАЗРЫН ЗУРГИЙГ ТӨВЛӨРҮҮЛЭХ.
@@ -48,6 +48,21 @@ export function useZoomToFilter(
     prev.current = key;
 
     if (layerId && where) { zoomToWhere(layerId, where); return; }
+    /**
+     * ⚠️ 2026-09-21: `layerId` ГАНЦААРАА (where-гүй) — тэр давхарга руу.
+     * Урьд нь `layerId`-г зөвхөн `where`-тэй хамт тооцдог тул «Дэд бүтэц»-д
+     * багц сонгоход (`useZoomToFilter({ zone, layerId })`) төслийн БҮТЭН
+     * хүрээ рүү нисдэг байв — «Сонголт солигдоход зураг тэр давхарга руу
+     * нисэнэ» тайлбар худал болж байлаа. Бүс сонгосон бол давхаргын БҮС
+     * ДОТОРХ хэсэг рүү (`zoneWhere`); бүсгүй давхарга (`noZone`) бол бүтнээр.
+     */
+    if (layerId) {
+      const d = LAYER_BY_ID[layerId];
+      const zw = zone && d ? zoneWhere(d, zone) : null;
+      if (zw) zoomToWhere(layerId, zw);
+      else zoomToLayer(layerId);
+      return;
+    }
     if (zone) { zoomToZone(zone); return; }
     // Шүүлт цэвэрлэгдэв — төслийн бүтэн хүрээ рүү
     zoomToLayer(ZONE_LAYER.id);

@@ -115,6 +115,26 @@ export const isRateLimit = (msg: string) => /too many requests|rate limit/i.test
  */
 const TIMEOUT_MS = 30_000;
 
+/**
+ * БАЙГУУЛЛАГЫН ҮЙЛЧИЛГЭЭ мөн үү — токеныг ЗӨВХӨН тийш нь илгээнэ.
+ *
+ * ⚠️ 2026-09-21: урьд нь `url.includes('/HJzgwvlNIXssnQar/')` гэж org id ХАТУУ
+ *    бичигдсэн байв — `services.ts`-ийн 2026-09-17-ны «код дотор үйлчилгээний
+ *    хаяг ОГТ байхгүй» шийдвэртэй зөрчилдөж, org солиход токен явахаа больж
+ *    бүх асуулга 499 авна. `services.HJ`-тэй ИЖИЛ env-ээс уншина.
+ * ⚠️ `process.env.NEXT_PUBLIC_ARCGIS_HJ`-ийг ШУУД (статик нэрээр) — `services.ts`
+ *    импортлохгүй: тэр модуль хувьсагч дутуу бол ачаалахдаа шиддэг бөгөөд энэ
+ *    файлыг 40+ модуль импортлодог тул ачаалалтын гинжинд шинэ хатуу
+ *    хамаарал нэмэхгүй. Хоосон бол токен явахгүй (урьдын адил).
+ * ⚠️ Хоёр шалгуур: суурь хаягаар (`startsWith`) ЭСВЭЛ org-ийн сегментээр
+ *    (`/HJzgw…/`) — services.arcgis.com-ын ижил org-ийн өөр хост (services1…)
+ *    ч хамрагдана, хуучин зан төлөв хадгалагдана.
+ */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
+const ORG_SEG = ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '';
+const isOrgUrl = (url: string): boolean =>
+  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`)) || (!!ORG_SEG && url.includes(`/${ORG_SEG}/`));
+
 async function attemptRequest(url: string, params: Record<string, string>, attempt: number, netRetried = false): Promise<Body> {
   const full = `${url}/query`;
   let res: Response;
@@ -124,7 +144,7 @@ async function attemptRequest(url: string, params: Record<string, string>, attem
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). Дуудагч
          өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
-      body: new URLSearchParams({ f: 'json', ...(url.includes('/HJzgwvlNIXssnQar/') ? tokenParam() : {}), ...params }),
+      body: new URLSearchParams({ f: 'json', ...(isOrgUrl(url) ? tokenParam() : {}), ...params }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {

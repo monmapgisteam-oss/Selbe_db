@@ -229,7 +229,14 @@ export function scoreFin(i: FinInput): DimScore {
   const parts: number[] = [];
   const facts: Fact[] = [];
   const issues: DimIssue[] = [];
-  if (i.contracted) {
+  /* ⚠️ 2026-09-21: ГЭРЭЭТЭЙ = «Гэрээлсэн дүн» тайлбартай ЭСВЭЛ гэрээний дүнтэй
+     (`geree_dun > 0`). Урьд нь зөвхөн `contracted` (тайлбар) шалгадаг тул
+     `geree_dun` бөглөгдсөн атлаа тайлбар нь өөр («Магадлагдсан дүн» г.м.) мөр
+     «гэрээгүй, хугацаа өнгөрсөн» гэж 0 оноо аваад доор нь «Гэрээний дүн: N»
+     гэж зөрчилтэй гардаг байв. Тайлбар нь чөлөөт текст (`uncontracted.ts` §⚠️)
+     тул дүн байгаа нь гэрээний илүү найдвартай нотолгоо. */
+  const contracted = i.contracted || (i.contract != null && i.contract > 0);
+  if (contracted) {
     parts.push(100);
     facts.push(fact(tr('Гэрээ'), tr('байгуулсан')));
   } else if (i.start != null && i.start < i.now) {

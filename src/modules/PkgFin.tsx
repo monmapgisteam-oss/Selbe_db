@@ -27,6 +27,7 @@ import {
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
 import { cat, shade, date, mnt, num, pct, monthKey } from '@/lib/format';
+import { CONTRACTED } from '@/lib/gdash';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -316,13 +317,32 @@ function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
  * ⚠️ `d` нь ТҮҮХИЙ `loadFinData` үр дүн — холбоосыг энд ӨӨРӨӨ хийнэ.
  */
 export function pkgFinRows(packs: Pack[], raw: FinData): {
-  rows: { key: string; label: string; plan: number; given: number; pct: number | null }[];
+  rows: {
+    key: string; label: string; plan: number; given: number; pct: number | null;
+    /**
+     * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН `note === CONTRACTED` («Гэрээлсэн дүн») мөрийн
+     * `geree_dun` нийлбэр (2026-09-21). `plan` нь `geree_dun || ho_dun_geree`
+     * тул гэрээгүй багцад ч ТӨСВӨӨР бөглөгддөг — «гэрээ байгуулагдсан» гэж
+     * уншиж болохгүй. Удирдлагын тайлан (§3/§4) гэрээт ба гэрээгүй багцыг
+     * ЭНЭ хоёр талбараар ялгана.
+     */
+    contract: number;
+    contracted: boolean;
+  }[];
   /** Төслийн нийт — `TsKpi`-тай ижил: гэрээний нийлбэр ба олгосон нийлбэр */
   planTotal: number;
+  /**
+   * ⚠️ БАГЦЫН Map-ийн нийлбэр — ТӨСЛИЙН НИЙТ ОЛГОЛТ БИШ (`ipc.ts` §paidByPkg):
+   * диапазон мөр («Багц-1-4», «БАГЦ-10, 11, 13, 15» — 5.97 тэрбум) түлхүүргүй
+   * тул энд ОРОХГҮЙ. Төслийн нийтийг `hoTotals(d.pays).paid`-аас ав
+   * (удирдлагын тайлан 2026-09-21-нээс ингэж авдаг).
+   */
   givenTotal: number;
 } {
   const d = aliasFin(raw);
   const C = CASHFLOW_NEW.fields;
+  const isContracted = (r: FinData['contracts'][number]) =>
+    String(r[C.amountNote] ?? '').replace(/\s+/g, ' ').trim() === CONTRACTED;
   const rowsByKey = new Map<string, FinData['contracts']>();
   d.contracts.forEach((r) => {
     const k2 = pkgKeyOf(r[C.pkg2]);
@@ -341,7 +361,14 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       const plan = d.planTotal.get(p.key) ?? 0;
       const given = pkgGivenTotal(list, d);
       if (plan <= 0 && given <= 0) return null;
-      return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
+      /* ⚠️ 2026-09-21: гэрээт мөрүүд нь `list`-ээс — `aliasFin` нь мөрийн `bagts`-ийг
+         дарж бичсэн тул `rowsByKey` аль хэдийн холбоосын дараах түлхүүртэй. */
+      const contractedRows = list.filter(isContracted);
+      const contract = contractedRows.reduce((a, r) => a + (Number(r[C.contractAmount]) || 0), 0);
+      return {
+        key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null,
+        contract, contracted: contractedRows.length > 0,
+      };
     })
     .filter((x): x is NonNullable<typeof x> => x != null)
     .sort((a, b) => b.given - a.given);
@@ -1819,6 +1846,9 @@ function FinCard({
    *   · ЭНД (`FinData.planTotal` нийлбэр)        2,529,545,325,331 ₮
    *   · Дашбоардын KPI (`Headline.investTotal`)  2,493,041,880,532 ₮
    *   · ЗӨРҮҮ                                       36,503,444,799 ₮
+   * ⚠️ 2026-09-21: `Headline.investTotal` нь 2026-09-21 хүртэл БОДИТООР 3,167.6
+   *    тэрбум (78 мөрийн шүүлтгүй нийлбэр) гардаг байсныг `live.loadBudget`-д
+   *    `finXlInTotal` хүрээгээр засав — дээрх 2,493 одоо л үнэн болсон.
    *
    * ⚠️ ХОЁУЛАА ЗӨВ — өөр асуултад хариулдаг тул НЭГТГЭХГҮЙ, зөвхөн нэрийг
    * нь ялгана:

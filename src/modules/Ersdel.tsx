@@ -125,8 +125,8 @@ const ASSESS_IDS: string[] = [
 /**
  * ГҮНИЙ ӨНГӨ ХАНАХ ЦЭГ (м) — легендийн градиентийн БАРУУН зах.
  *
- * ⚠️ `uyr.ts`-ийн `SATURATE_M` ба `uyrCalc.ts`-ийн `frame()`-ийн 1.5-тай ЯГ
- * ижил байх ЁСТОЙ. Тэр хоёр модулийн аль нь ч түүнийг export хийдэггүй тул
+ * ⚠️ `uyr.ts`-ийн `SATURATE_M` (1.5)-тай ЯГ ижил байх ЁСТОЙ (`uyrCalc.ts`-ийн
+ * хуулбар 2026-09-21-нд устгагдсан). Тэр модуль түүнийг export хийдэггүй тул
  * энд давхардуулан бичив — тэндхийг өөрчилвөл ЭНИЙГ ч дагуулна.
  *
  * ⚠️ Легенд урьд нь төгсгөлийн шошгодоо `flood.meta.peakDepthM` (2.3 м) -ийг
@@ -213,6 +213,74 @@ function attrRows(attrs: Record<string, unknown>): { k: string; v: string }[] {
         ? num(v, Number.isInteger(v) ? 0 : 2)
         : text(v),
     }));
+}
+
+/**
+ * ӨРТСӨН ОБЪЕКТЫН БОДИТ ДЭЭД ГҮН (м) — түүний footprint дахь нүднүүдийн
+ * `maxDepth`-ийн хамгийн их (2026-09-21).
+ *
+ * ⚠️ Урьд нь попапын «Усны гүн» нь `flood.meta.peakDepthM` (БҮХ талбайн дээд
+ * гүн) байсан тул өртсөн 300 барилга бүр ижил «2.3 м» гэж гардаг байв —
+ * хэрэглэгч «энэ барилга 2.3 м усанд автсан» гэж уншина. Одоо объект бүр
+ * өөрийн footprint-ийн тоог авна.
+ *
+ * ⚠️ Геометр нь `fd.meta.wkid` (WM)-д байх ЁСТОЙ — асуулгад
+ * `outSpatialReference` өгнө. Полигон: хүрээний нүднүүдийг цагирагт багтах
+ * эсэхээр шүүнэ (even-odd); шугам: оройнуудын хооронд нүдний хагасаар
+ * дээжилнэ; цэг: нэг нүд. Нойтон нүд олдохгүй бол `null` (объект нь мужийн
+ * хилээр л хүрсэн) — дуудагч ухрах утгаа өөрөө шийднэ.
+ */
+function footprintDepth(fd: FloodData, geom: __esri.Geometry | null | undefined): number | null {
+  if (!geom || !fd.maxDepth) return null;
+  const md = fd.maxDepth;
+  let best = -1;
+  const take = (x: number, y: number) => {
+    const i = fd.indexAt(x, y);
+    if (i == null) return;
+    const v = md(i);
+    if (v > best) best = v;
+  };
+  const cell = fd.meta.cellM;
+  if (geom.type === 'point') {
+    const p = geom as __esri.Point;
+    take(p.x, p.y);
+  } else if (geom.type === 'polyline') {
+    for (const path of (geom as __esri.Polyline).paths) {
+      for (let k = 0; k < path.length; k++) {
+        const [x0, y0] = path[k];
+        take(x0, y0);
+        if (k + 1 >= path.length) continue;
+        const [x1, y1] = path[k + 1];
+        const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (cell / 2));
+        for (let j = 1; j < n; j++) take(x0 + ((x1 - x0) * j) / n, y0 + ((y1 - y0) * j) / n);
+      }
+    }
+  } else if (geom.type === 'polygon') {
+    const rings = (geom as __esri.Polygon).rings;
+    const ext = geom.extent;
+    if (!ext || !rings.length) return null;
+    const inside = (x: number, y: number) => {
+      let on = false;
+      for (const r of rings) {
+        for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+          const [xi, yi] = r[i];
+          const [xj, yj] = r[j];
+          if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) on = !on;
+        }
+      }
+      return on;
+    };
+    /* Нүдний хагасаар алхана — жижиг барилга ч дор хаяж нэг дээж авна */
+    const st = cell / 2;
+    for (let y = ext.ymin; y <= ext.ymax + st; y += st) {
+      for (let x = ext.xmin; x <= ext.xmax + st; x += st) {
+        if (inside(x, y)) take(x, y);
+      }
+    }
+    /* Оройнууд — хүрээний дээж алгассан нарийн объектод */
+    for (const r of rings) for (const [x, y] of r) take(x, y);
+  }
+  return best > 0 ? best : null;
 }
 
 /* ══════════════════════ Жижиг бүрэлдэхүүн ══════════════════════ */
@@ -309,7 +377,15 @@ const EMPTY_STATIONS: Station[] = [];
 
 export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const side = useSideResize('ersdel');
-  const { view, ortho, setOrtho } = useMap();
+  const { view, ortho, setOrtho, setHighlight } = useMap();
+
+  /**
+   * ⚠️ БУСАД ХАРАГДАЦЫН ТОДРУУЛГЫГ АРИЛГАНА (2026-09-21). `setHighlight` нь
+   * `MapProvider`-ын НИЙТИЙН төлөв: «Багц» дээр блок сонгоод энд шилжихэд
+   * тэр блок тодорсон хэвээр үлдэж, эрсдэлийн улаан объекттой нэг зурагт
+   * зэрэгцэн «энэ ч өртсөн» гэж уншигддаг байв. `Bagts.tsx:169`-тэй ижил дүрэм.
+   */
+  useEffect(() => { setHighlight(null); }, [setHighlight]);
 
   /**
    * ОРТОФОТО-г энэ харагдацад АСААНА (хэрэглэгчийн хүсэлт).
@@ -419,16 +495,21 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     /* ⚠️ Промисыг ref-д ХАДГАЛНА: «Шинжилгээ хийх» товч загварчлал дуусахаас
        ӨМНӨ дарагдвал хохирлыг буфер зурвасаар биш, БОДИТ үерээр бодохын тулд
        үүнийг хүлээнэ. */
+    /* ⚠️ ЦУЦЛАЛТ (2026-09-21): `alive=false` нь зөвхөн setState-ийг хаадаг
+       байсан тул түвшин/талбай хурдан солиход хуучин сим ЦААШАА гүйж, шинэтэй
+       CPU булаалдан хоёулаа удааширдаг байв. Одоо `AbortController`-оор
+       өмнөхийг ЗОГСООНО (`uyrSim.ts` §signal). */
+    const ac = new AbortController();
     const pr0 = simulateFlood(level, (pr) => {
       if (alive) setSimPct(Math.min(0.99, pr.step / pr.total));
-    }, area);
+    }, area, ac.signal);
     simPromise.current = pr0;
     pr0
       .then((d) => { if (alive) { setFlood(d); setSimPct(1); } })
       .catch((err: unknown) => {
         if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
       });
-    return () => { alive = false; };
+    return () => { alive = false; ac.abort(); };
   }, [wantFlood, level, area]);
 
   /* ══════════════════ ЗАГВАРЧЛАХ ТАЛБАЙ ЗУРАХ ══════════════════
@@ -730,8 +811,23 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
   /* ── Шинжилгээ ── */
 
+  /**
+   * ШИНЖИЛГЭЭНИЙ ДАРААЛЛЫН ДУГААР (2026-09-21).
+   *
+   * ⚠️ `run()` нь ХЭД ХЭДЭН `await`-тай (загварчлалын промис, `floodExtent`,
+   * `damageOf`-ийн REST асуулга). Урьд нь дараалал таних юм байгаагүй тул
+   * 1-р түвшний шинжилгээ явж байхад хэрэглэгч 3-р түвшин сонгоод дахин
+   * дарахад ХУУЧИН нислэгийн `setResult`/`setVisible`/`setPlaying` хожуу
+   * ирж, самбарт «3-р түвшин» гэж бичсэн атлаа 1-р түвшний хохирол,
+   * мөр гарч байв. Түвшин/аюул/горим солиход ба `clear()`-т дугаар өснө;
+   * `await` бүрийн дараа зөрвөл тэр нислэг чимээгүй ЗОГСОНО.
+   */
+  const runSeq = useRef(0);
+
   const run = useCallback(async () => {
     if (!view) return;
+    const seq = ++runSeq.current;
+    const stale = () => seq !== runSeq.current;
     setBusy(true);
     setRunErr(null);
     /** Хохирол загварчлалын мөрөөр бодогдов уу (эсвэл буферээр ухарсан уу) */
@@ -774,14 +870,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        * гарна.
        */
       let extent: Polygon | null = null;
+      /** Загварчлалын үр дүн — ⚠️ `flood` төлөв БИШ (доор §fd) */
+      let fd: FloodData | null = null;
       if (hazard === 'flood') {
-        const fd = flood ?? (await simPromise.current?.catch(() => null)) ?? null;
+        /* ⚠️ `fd`-г ЭНД ХАДГАЛНА (2026-09-21): урьд нь доор `flood?.meta.peakDepthM`
+           гэж ТӨЛӨВӨӨС уншдаг байсан ч загварчлал дөнгөж дууссан агшинд `flood`
+           нь энэ closure-т `null` хэвээр (setState хараахан рендерлээгүй) тул
+           мужийн утга буфер аргын `depth` руу чимээгүй ухардаг байв. */
+        fd = flood ?? (await simPromise.current?.catch(() => null)) ?? null;
+        if (stale()) return;
         const rings = fd ? floodFootprint(fd) : [];
         if (rings.length) {
           extent = new Polygon({ rings, spatialReference: { wkid: fd!.meta.wkid } });
           simFootprint = true;
         } else {
           extent = await floodExtent(level);
+          if (stale()) return;
         }
       } else {
         extent = airExtent(stations, level, windNow, pm25ByOid);
@@ -794,19 +898,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         bands = [{
           key: `flood-${level}`,
           label: tr('Загварчлалын үерийн мөр'),
-          value: flood?.meta.peakDepthM ?? FLOOD_LEVELS[level].depth,
+          value: fd?.meta.peakDepthM ?? FLOOD_LEVELS[level].depth,
           height: FLOOD_LEVELS[level].depth,
           hue: lv?.color ?? '#0284c7',
           geometry: extent,
         }];
       } else {
         bands = await floodBands(level);
+        if (stale()) return;
       }
       const { ids, src } = activeIds();
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
          хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
          хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
       const { rows, failed } = await damageOf(view, ids, extent, level, hazard);
+      /* ⚠️ Хамгийн урт хүлээлт — ЭНД зөрвөл доорх бүх setState хуучин түвшнийх */
+      if (stale()) return;
       setResult({
         hazard, level, bands, rows, simFootprint,
         layers: ids.length - failed.length,
@@ -839,10 +946,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         view.goTo(extent.extent.clone().expand(1.15), { animate: true, duration: 900 }).catch(() => {});
       }
     } catch (err) {
+      if (stale()) return;
       setRunErr(err instanceof Error ? err.message : String(err));
       setResult(null);
     } finally {
-      setBusy(false);
+      /* ⚠️ Хуучирсан нислэг ШИНЭ нислэгийн «ажиллаж байна» төлөвийг унтраахгүй */
+      if (!stale()) setBusy(false);
     }
     /* ⚠️ `windNow` нь deps-д — дараагийн ажиллуулалт ЗААВАЛ шинэ салхийг
        авах ёстой. Автоматаар дахин ажиллуулахгүй (хэрэглэгч «Шинжилгээ» дарна). */
@@ -865,12 +974,20 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const info = hazInfo ?? featInfo;
 
   const clear = useCallback(() => {
+    /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно — эс бөгөөс «Цэвэрлэх» дарсны
+       дараа хоцорсон хариу ирж, устгасан үр дүн буцаж гарна (2026-09-21) */
+    runSeq.current++;
+    setBusy(false);
     setResult(null);
     setRunErr(null);
     /* ⚠️ Мэдээллийн хайрцгийг ч хаана — эс бөгөөс устгасан үр дүнгийн мужийн
        гүн/агууламж зурган дээр үлдэж, «юу ч байхгүй атал тоо байна» болно. */
     setHazInfo(null);
     setFeatInfo(null);
+    /* ⚠️ УСНЫ ЗАМ ч арилна (2026-09-21): урьд нь зөвхөн хайрцгийн × дээр
+       тэглэгддэг байсан тул цэвэрлэсний дараа ч хуучин нүдний зам зурагт
+       үлддэг байв. */
+    setPath(null);
   }, []);
 
   const liveRef = useRef(live);
@@ -1016,23 +1133,49 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
     /* Өртсөн объект — эх давхаргаас БҮТЭН атрибутыг татна */
     const def = LAYER_BY_ID[p.layerId];
+    /**
+     * ⚠️ ҮЕРТ мужийн утгыг ЭХЛЭЭД БИЧИХГҮЙ (2026-09-21). `p.band.value` нь
+     * `meta.peakDepthM` — БҮХ талбайн дээд гүн — тул объект бүрд ижил «2.3 м»
+     * гарч байв. Объектын ӨӨРИЙН гүнийг геометр татсаны дараа `footprintDepth`
+     * -ээр бодно; агаарт (PM2.5) мужийн утга хэвээр.
+     */
+    const fdNow = floodRef.current;
+    const isFlood = (resultRef.current?.hazard ?? hazardRef.current) === 'flood';
     const head: Info = {
       title: def?.title ?? p.layerId,
       sub: tr('Өртсөн объект'),
       tone: 'var(--bad)',
-      rows: p.band ? [bandRow(p.band)] : [],
+      rows: p.band && !isFlood ? [bandRow(p.band)] : [],
     };
     setHazInfo(head);
     const fl = viewRef.current?.map?.findLayerById(p.layerId) as __esri.FeatureLayer | undefined;
     if (!fl || p.oid == null || typeof fl.queryFeatures !== 'function') return;
     try {
+      /* ⚠️ Геометрийг ҮЕРТ л татна (WM-д) — footprint-ийн гүнд хэрэгтэй */
+      const wantGeom = isFlood && !!fdNow?.maxDepth;
       const res = await fl.queryFeatures({
-        objectIds: [p.oid], outFields: ['*'], returnGeometry: false,
+        objectIds: [p.oid], outFields: ['*'], returnGeometry: wantGeom,
+        ...(wantGeom && fdNow ? { outSpatialReference: { wkid: fdNow.meta.wkid } } : {}),
       } as unknown as __esri.Query);
       /* ⚠️ Хоцорсон хариу — энэ хооронд өөр объект дарагдсан бол ХАЯНА */
       if (seq !== pickSeq.current) return;
-      const a = res.features[0]?.attributes as Record<string, unknown> | undefined;
-      if (a) setHazInfo({ ...head, rows: [...head.rows, ...attrRows(a)] });
+      const f = res.features[0];
+      const a = f?.attributes as Record<string, unknown> | undefined;
+      const depthRows: Info['rows'] = [];
+      if (isFlood) {
+        const own = wantGeom && fdNow ? footprintDepth(fdNow, f?.geometry) : null;
+        if (own != null) {
+          const risk = depthRisk(own);
+          depthRows.push({ k: tr('Усны гүн (объект дээр, дээд)'), v: tr('{0} м', num(own, 2)), tone: risk.color });
+        } else if (p.band) {
+          /* Footprint-д нойтон нүд олдсонгүй (мужийн хилээр л хүрсэн) — мужийн
+             дээд гүнийг ТИЙМ гэж ИЛ шошготой өгнө */
+          depthRows.push({ k: tr('Мужийн дээд гүн'), v: tr('{0} м', num(p.band.value, 2)) });
+        }
+      }
+      if (a || depthRows.length) {
+        setHazInfo({ ...head, rows: [...head.rows, ...depthRows, ...(a ? attrRows(a) : [])] });
+      }
     } catch {
       // Атрибут татагдаагүй ч мужийн мэдээлэл нь дэлгэцэд үлдэнэ
     }
@@ -1067,10 +1210,17 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     const p = prev.current;
     if (p.hazard !== hazard || p.level !== level || p.mode !== mode) {
       prev.current = { hazard, level, mode };
+      /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно (2026-09-21, §runSeq) —
+         хуучин түвшний хариу шинэ түвшний нэрээр гарахгүй */
+      runSeq.current++;
+      setBusy(false);
       setResult(null);
       setRunErr(null);
       setHazInfo(null);
       setFeatInfo(null);
+      /* ⚠️ Усны зам ХУУЧИН загварчлалын нүднийх — таб/түвшин солиход
+         арилна (2026-09-21) */
+      setPath(null);
     }
   }, [hazard, level, mode]);
 
