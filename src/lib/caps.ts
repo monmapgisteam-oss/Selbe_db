@@ -54,6 +54,7 @@ export type CapKey =
   | 'planApprove'
   | 'obyemEdit'
   | 'obyemApprove'
+  | 'ajilApprove'
   | 'gazar'
   | 'butets'
   | 'chanarAuthor'
@@ -152,6 +153,15 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    *    батлагч тохиолдлыг ТАТГАЛЗАНА (UI-д биш, домэйн функцэд).
    */
   { key: 'obyemApprove', icon: 'shield' },
+  /*
+   * ⚠️ НЭМЭЛТ АЖИЛ БАТЛАХ (2026-09-22). Зохиогчийн тал нь `addRow` —
+   *    ШИНЭ эрх зохиогоогүй, эс бөгөөс одоо мөр нэмж чаддаг бүх хүн
+   *    чимээгүй эрхээ алдана (`ajilAcl.ts`-ийн ⚠️).
+   * ⚠️ `addRow`-ТОЙ ХОСЛУУЛЖ БОЛОХГҮЙ: нэмэгч нь өөрийн нэмсэн
+   *    ажлыг батлах зам нээгдэнэ. `decideAjil` зохиогч=батлагчийг
+   *    ТАТГАЛЗдаг тул өгөгдөл хамгаалагдсан ч панелд ч анхааруулна.
+   */
+  { key: 'ajilApprove', icon: 'shield' },
   /**
    * ГАЗРЫН ТӨЛӨВ ЗАСАХ — «Газар чөлөөлөлт» дээр нэгж талбарын `Tuluv`,
    * `явцын_мэдээ`, эзэмшигч, тайлбарыг засах.
@@ -230,6 +240,10 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   /* ⚠️ Хоёулаа «Гүйцэтгэл» — багана нь «Гүйцэтгэл бөглөх» хуудсанд байна */
   obyemEdit: ['guitsetgel'],
   obyemApprove: ['guitsetgel'],
+  /* ⚠️ ХОЁР харагдац: батлах хуудас ӨӨРӨӨ (`ajilBatlah`) ба батлагдсан
+     мөр буудаг «Гүйцэтгэл бөглөх» (`guitsetgel`). Хоёрдугаарыг хасвал
+     батлагч баталчихаад үр дүнг нь харж чадахгүй. */
+  ajilApprove: ['ajilBatlah', 'guitsetgel'],
   gazar: ['gazar'],
   butets: ['dedButets'],
   /* ⚠️ Чанарын баримт (irgediin-hurteemj, 2026-09-16) — массив хэлбэрт

@@ -28,6 +28,8 @@ import fs from 'node:fs';
  *    (`docs/docs.invariant.check.mjs`-ийн 2026-09-16-ны ижил алдаа).
  */
 const readSrc = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n');
+/* ⚠️ 2026-09-22 merge: bagtsiin-medeelel салбар ижил засварыг `read` нэрээр хийсэн — alias. */
+const read = readSrc;
 /* ══════════ `mergeDrafts`-ийн ХУВИЛБАР (FillNew.tsx-ийн дүрэм) ══════════ */
 const mergeDrafts = (a, b) => {
   if (!a) return b;
@@ -210,7 +212,7 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
 
 /* ══════════ 6. ЭХ КОДЫН ГЭРЭЭ — салбарлалтыг барина ══════════ */
 {
-  const DR = fs.readFileSync('src/lib/draftRemote.ts', 'utf8');
+  const DR = read('src/lib/draftRemote.ts');
   /* Түлхүүр нь БАГЦ — хэрэглэгчийн нэр ОРОХГҮЙ */
   assert.ok(/const keyOf = \(pkgKey: string\) => pkgKey;/.test(DR),
     'draftRemote: `keyOf` нь зөвхөн багцаар түлхүүрлэх ёстой (хуваалцсан ноорог)');
@@ -327,7 +329,7 @@ console.log('\nshareDraft.check: ok');
  * Эдгээр нь бүгд ЗАН ТӨЛӨВИЙГ хөндөхгүй — зөвхөн дэмий ажлыг арилгана.
  */
 {
-  const DR = fs.readFileSync('src/lib/draftRemote.ts', 'utf8');
+  const DR = read('src/lib/draftRemote.ts');
   assert.ok(DR.includes('export async function readRemoteDraftAt'),
     'draftRemote: хямд `at` шалгалт алга — мөчлөг бүрд 80KB татна');
   const ai = DR.indexOf('export async function readRemoteDraftAt');
@@ -474,7 +476,7 @@ console.log('✅ татах мөчлөг — нүд нээлттэй ч ТАТН
     'FillNew: byOther класс нүдэнд тавигдахгүй байна');
   assert.ok(FN.includes("tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy"),
     'FillNew: эзний нэр title-д алга — өнгө ганцаараа ХЭН гэдгийг хэлэхгүй');
-  const CSS = fs.readFileSync('src/modules/sheet/sheet.module.css', 'utf8');
+  const CSS = read('src/modules/sheet/sheet.module.css');
   assert.ok(/td\.dirty\.byOther/.test(CSS),
     'sheet.module.css: .byOther дүрэм алга — класс тавигдаад л зурагдахгүй');
   /* ⚠️ `dirty`-гээс ТУСДАА биш, ХАМТ: илгээгээгүй гэдэг нь адилхан үлдэнэ,

@@ -68,6 +68,17 @@ import {
   decideObyem, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
   submitObyem, type ObyemSubmission,
 } from '@/lib/obyemBatlah';
+import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
+/*
+ * ⚠️ `decideAjil` ЭНД ИМПОРТЛОГДОХГҮЙ (2026-09-22, хэрэглэгчийн шийдвэр):
+ *    батлах нь ТУСДАА хуудсанд (`AjilBatlah.tsx`), бөглөх хуудсанд БИШ.
+ *    Энд зөвхөн ИЛГЭЭХ (нэмэгчийн) ба ТАТАХ (зохиогчийн) үйлдэл.
+ */
+import {
+  loadApproved as loadAjilApproved, loadPending as loadAjilPending,
+  loadPayload as loadAjilPayload, markApplied as markAjilApplied,
+  submitAjil, withdrawAjil, type AjilSubmission,
+} from '@/lib/ajilBatlah';
 import { negjOf } from "./negj";
 import { useAuth } from "@/components/AuthGate";
 import DatePicker from "./DatePicker";
@@ -848,6 +859,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /* Инженерийн обьёмын хуваарилалт ӨӨР хадгалалттай — тусад нь захиална */
   const [obN, setObN] = useState(0);
   useEffect(() => subscribeObyemAcl(() => setObN((n) => n + 1)), []);
+  /* ⚠️ Нэмэлт ажлын хуваарилалт ч мөн адил — эрх солиход товч дагана */
+  const [ajN, setAjN] = useState(0);
+  useEffect(() => subscribeAjilAcl(() => setAjN((n) => n + 1)), []);
   /**
    * БӨГЛӨХ БОЛОМЖТОЙ БАГЦУУД.
    *
@@ -1164,6 +1178,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return sc0 === null || sc0.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, obN, capN, pkg.group]);
+
+  /* ══════════ НЭМЭЛТ АЖИЛ (2026-09-22) ══════════
+   * ⚠️ ГҮЙЦЭТГЭЛЭЭС ба ОБЬЁМООС БҮРЭН ТУСДАА зам. Обьём нь БАЙГАА мөрийн
+   *    хэмжээг («хэр их»), энэ нь мөр ӨӨРӨӨ гэрээнд байх эсэхийг («юу»)
+   *    шийднэ. Зохиогчийн эрх нь БАЙГАА `addRow` — шинэ эрх зохиогоогүй
+   *    (`ajilAcl.ts`-ийн ⚠️).
+   */
+  const canAjilSend = useMemo(() => {
+    if (unrestricted) return true;
+    if (!hasCap(user?.username, 'addRow')) return false;
+    const sc0 = ajilScope(user?.username, 'editor');
+    return sc0 === null || sc0.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, unrestricted, ajN, capN, pkg.group]);
+
+  /* ⚠️ `canAjilApprove` ЭНД БАЙХГҮЙ: батлах товч `AjilBatlah.tsx`-д. */
+
+  /** Хүлээгдэж буй нэмэлт ажлын илгээлт */
+  const [ajSub, setAjSub] = useState<AjilSubmission | null>(null);
+  const [ajBusy, setAjBusy] = useState(false);
+  const [ajErr, setAjErr] = useState("");
+  const [ajNote, setAjNote] = useState("");
 
   /**
    * Инженерийн обьёмын НООРОГ — `oid` → бичсэн текст ("" = цэвэрлэх).
@@ -4208,6 +4244,161 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   useEffect(() => { void refreshObyem(); }, [refreshObyem]);
 
+  /**
+   * НЭМЭЛТ АЖЛЫН хүлээгдэж буй илгээлтийг татах.
+   * ⚠️ `pkgKeyRef` (БИШ `loadedPkgRef`) — `refreshObyem`-ийн ижил
+   *    шалтгаан: сүүлийнх нь мөр ачаалагдтал "" тул энэ жижиг query үргэлж
+   *    түрүүлж ирээд хаягдана.
+   */
+  const refreshAjil = useCallback(async () => {
+    const want = pkg.key;
+    try {
+      const sub = await loadAjilPending(want);
+      if (pkgKeyRef.current !== want) return;
+      setAjSub(sub);
+    } catch {
+      /* ⚠️ Уншиж чадсангүй ≠ илгээлт алга — хуучин төлөвийг ХЭВЭЭР үлдээнэ */
+    }
+  }, [pkg.key]);
+
+  useEffect(() => { void refreshAjil(); }, [refreshAjil]);
+
+  /**
+   * «Нэмэлт ажил батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй.
+   *
+   * ⚠️ «Илгээх»-ЭЭС ТУСДАА: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 4 шатат хяналтад
+   *    оруулна, энэ нь ШИНЭ АЖЛЫГ 2 шатат батлах урсгалд. Нэг товчинд
+   *    нийлүүлбэл «тоог зөвшөөрсөн» нь «ажлыг зөвшөөрсөн» гэж уншигдана.
+   * ⚠️ Илгээсний дараа мөрүүдийг `adds`-ээс ХАСНА: агуулга нь одоо
+   *    серверт хадгалагдсан тул локалд үлдээвэл ердийн нийтлэлээр
+   *    батлагдалгүй ОРООД явах эрсдэлтэй — яг үүнээс сэргийлж байгаа юм.
+   */
+  const sendAjil = useCallback(async () => {
+    if (!adds.length || ajBusy) return;
+    setAjBusy(true); setAjErr(""); setAjNote("");
+    try {
+      const r = await submitAjil({
+        pkgKey: pkg.key,
+        pkgGroup: pkg.group,
+        author: user?.username ?? '',
+        payload: { v: 1, pkgKey: pkg.key, adds },
+      });
+      if (!r.ok) { setAjErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      /* ⚠️ НҮДИЙГ НЬ ХАМТ ХАСНА (`dropAdd`-ийн 2026-09-21-ний ⚠️): зөвхөн
+         `adds`-ыг хоословол тэр мөрүүдэд бичсэн `${oid}:*` нүд/огноо
+         `pending`/`pendDate`-д ҮЛДЭЖ ГҮЙЦЭТГЭЛИЙН payload-д орно —
+         батлах шатанд `overlaySubmission` мөрийг олохгүй тул `unmoved > 0`
+         болж багц бүхэлдээ гацна. Tombstone тавихгүй: мөр нь БУЦААГДААГҮЙ,
+         батлагдахаар хүлээж байгаа (`decideAjilHere` буцааж тавина). */
+      const sentOids = new Set(adds.map((a) => a.oid));
+      const stripSent = (o: Record<string, string>) => {
+        const nx: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o)) {
+          const at = k.indexOf(':');
+          if (at > 0 && sentOids.has(Number(k.slice(0, at)))) continue;
+          nx[k] = v;
+        }
+        return nx;
+      };
+      setAdds([]);
+      setPending(stripSent);
+      setPendDate(stripSent);
+      for (const k of [...mineRef.current]) {
+        const at = k.indexOf(':');
+        if (at <= 0 || !sentOids.has(Number(k.slice(0, at)))) continue;
+        mineRef.current.delete(k);
+        mineAtRef.current.delete(k);
+        delRef.current.delete(k);
+      }
+      for (const o of sentOids) mineAtRef.current.delete(`a:${o}`);
+      setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
+      await refreshAjil();
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil]);
+
+  /**
+   * БАТЛАГДСАН МӨРИЙГ ХУУДСАНД БУУЛГАХ — хуудас нээгдэхэд НЭГ удаа.
+   *
+   * ⚠️ ЯАГААД ЭНД, БАТЛАХ ХУУДАСТ БИШ: `AjilBatlah.tsx` нь эх өгөгдөлд
+   *    ЮУ Ч бичихгүй (`HuvaariBatlah`-ийн цөм инвариант) бөгөөд `adds`
+   *    нь ЭНЭ компонентын React state тул гаднаас хүрэхгүй. Тиймээс
+   *    батлагдсаныг ЭНЭ тал нь ӨӨРӨӨ татна.
+   * ⚠️ БУУЛГАСНЫ ДАРАА `markApplied` — эс бөгөөс хуудас дахин нээх бүрд
+   *    ИЖИЛ мөрүүд дахин нэмэгдэнэ. Дараалал нь ЗААВАЛ ийм: эхлээд
+   *    `setAdds`, дараа нь тэмдэглэнэ. Эсрэгээр хийвэл тэмдэглэгээ
+   *    амжилттай болоод буулт унасан үед мөр БҮРМӨСӨН алга болно.
+   * ⚠️ `canAddRow` — мөр нэмэх эрхгүй хүнд буулгахгүй: тэр хүн `adds`-ыг
+   *    хадгалж ч чадахгүй (`pickDraft`-ийн `restoredAdds` мөн адил).
+   * ⚠️ ТҮР OID МӨРГӨЛДӨӨН: хуудсанд аль хэдийн нэмсэн мөр байвал
+   *    батлагдсан мөр түүнийг ДАРАХ ёсгүй — шинэ сул сөрөг дугаар
+   *    олгоно (`submission.mergeSubmission`-ийн дүрэм).
+   */
+  useEffect(() => {
+    if (!canAddRow) return;
+    const want = pkg.key;
+    let alive = true;
+    void (async () => {
+      try {
+        const subs = await loadAjilApproved(want);
+        if (!alive || !subs.length || pkgKeyRef.current !== want) return;
+        for (const sub of subs) {
+          const pl = await loadAjilPayload(sub.oid);
+          if (!alive || pkgKeyRef.current !== want) return;
+          if (!pl?.adds.length) continue;
+          setAdds((prev) => {
+            const used = new Set(prev.map((a) => a.oid));
+            let free = -1;
+            for (const o of used) if (o <= free) free = o - 1;
+            const fresh = pl.adds.map((a) => {
+              if (!used.has(a.oid)) { used.add(a.oid); return a; }
+              const oid = free;
+              free -= 1;
+              used.add(oid);
+              return { ...a, oid };
+            });
+            /* ⚠️ Түр oid-ийн тоолуурыг ТҮЛХНЭ — эс бөгөөс дараа нэмэх
+               мөр ижил сөрөг дугаар авч мөргөлдөнө (`pushTmpOid`). */
+            pushTmpOid(fresh);
+            return [...prev, ...fresh];
+          });
+          /* ⚠️ БУУЛГАСНЫ ДАРАА тэмдэглэнэ (дарааллын ⚠️-г үз) */
+          await markAjilApplied(sub.oid);
+          if (!alive) return;
+          setAjNote(tr('Батлагдсан нэмэлт ажил хуудсанд орлоо — нийтлэхэд бичигдэнэ.'));
+        }
+      } catch {
+        /* ⚠️ Чимээгүй: татаж чадаагүй нь «батлагдсан зүйл алга» гэсэн үг
+           БИШ. Дараагийн нээлтэд дахин оролдоно — `applied` болоогүй
+           тул мөр алдагдахгүй. */
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pkg.key, canAddRow]);
+  /** ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч өөрийнхөө алдаатай илгээлтийг буцааж авна */
+  const withdrawAjilHere = useCallback(async () => {
+    if (!ajSub || ajBusy) return;
+    setAjBusy(true); setAjErr(""); setAjNote("");
+    try {
+      const pl = await loadAjilPayload(ajSub.oid);
+      const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
+      if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
+      /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил
+         нь чимээгүй алга болно. */
+      if (pl?.adds.length) setAdds((prev) => [...prev, ...pl.adds.filter((a) => !prev.some((x) => x.oid === a.oid))]);
+      setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
+      await refreshAjil();
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [ajSub, ajBusy, user, refreshAjil]);
+
   /** Ноорогт өөрчлөгдсөн нүд — тоо ба payload-ын эх */
   const pvCells = useMemo(() => {
     const out: [number, number | null][] = [];
@@ -5179,6 +5370,50 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         )}
         {pvErr && <span className={st.error}>{pvErr}</span>}
         {pvNote && <span className={st.muted}>{pvNote}</span>}
+
+        {/* ══════ НЭМЭЛТ АЖИЛ — тусдаа урсгал (2026-09-22) ══════
+            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 4 шатат
+            хяналтад оруулдаг, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг
+            2 шатат батлах урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр
+            шийдвэр нэг батламжид уягдана. */}
+        {canAjilSend && !ajSub && adds.length > 0 && (
+          <button
+            className={st.publishBtn}
+            onClick={() => void sendAjil()}
+            disabled={ajBusy}
+            title={tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
+          >
+            {tr('Нэмэлт ажил батлуулах')} ({adds.length})
+          </button>
+        )}
+
+        {/* Хүлээгдэж буй илгээлт — БҮХ хүнд харагдана (ил тод байдал) */}
+        {ajSub && (
+          <span className={st.muted}>
+            {tr('Нэмэлт ажил батлуулахаар илгээгдсэн: {0} мөр · {1}', String(ajSub.rowCount), ajSub.author)}
+          </span>
+        )}
+
+        {/* ⚠️ БАТЛАХ/БУЦААХ ТОВЧ ЭНД БАЙХГҮЙ (2026-09-22, хэрэглэгчийн
+            шийдвэр): тэдгээр нь «Нэмэлт ажил батлах» ТУСДАА хуудсанд,
+            бүх багцын дараалал дээр. Бөглөх хуудас нь бөглөх зориулалттай —
+            батлагч энд багц бүрийг гараар нээж шалгах ёсгүй. */}
+
+        {/* ⚠️ ТАТАХ — ЗӨВХӨН ЗОХИОГЧИД. `decideAjil` нь зохиогч=батлагчийг
+            татгалздаг тул үүнгүйгээр зохиогч алдаатай илгээлтээ буцаах
+            замгүй болж, өөр батлагч шийдтэл багц түгжээтэй үлдэнэ. */}
+        {ajSub && user?.username?.toLowerCase() === ajSub.author && (
+          <button
+            className={st.layerBtn}
+            onClick={() => void withdrawAjilHere()}
+            disabled={ajBusy}
+            title={tr('Илгээлтээ буцааж авна — мөрүүд хуудсанд эргэж орно')}
+          >
+            {tr('Илгээлтээ татах')}
+          </button>
+        )}
+        {ajErr && <span className={st.error}>{ajErr}</span>}
+        {ajNote && <span className={st.muted}>{ajNote}</span>}
 
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
         {/* ⚠️ ХЭЗЭЭНИЙ ӨГӨГДӨЛ ХАРАГДАЖ БАЙГААГ хэлнэ — зөвхөн МЭДЭЭЛЭЛ.
