@@ -61,6 +61,7 @@ const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari)
 /* ⚠️ Батлах дараалал нь `loadAllPending`-ээр БҮХ багцын pending мөрийг татдаг
    тул зөвхөн нээгдэх үедээ (`Huvaari`-тай ижил шалтгаан). */
 const HuvaariBatlah = dynamic(() => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah), { ssr: false });
+const AjilBatlah = dynamic(() => import('@/modules/AjilBatlah').then((m) => m.AjilBatlah), { ssr: false });
 /* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
    багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
 const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
@@ -571,6 +572,7 @@ function PortalContent(
   const isDash = view === 'dashboard';
   const isHuvaari = view === 'huvaari';
   const isHuvaariBatlah = view === 'huvaariBatlah';
+  const isAjilBatlah = view === 'ajilBatlah';
   const isTailan = view === 'tailan';
   /**
    * «ХУВААРЬ БАТЛАХ» → «ХУВААРЬ» ДАМЖУУЛАЛТ — ЗӨВХӨН САНАХ ОЙД.
@@ -767,6 +769,13 @@ function PortalContent(
                         }}
                       />
                     )
+                    : isAjilBatlah
+                    /* ⚠️ `onApprove`-ГҮЙ (`HuvaariBatlah`-аас ЯЛГААТАЙ):
+                       батлах нь тэр хуудсандаа бүрэн дуусна — эх өгөгдөлд
+                       хүрдэггүй тул шилжих шаардлагагүй. Батлагдсан мөр нь
+                       «Гүйцэтгэл бөглөх» нээгдэхэд тэнд өөрөө буудаг
+                       (`FillNew`-ийн `loadApproved` эффект). */
+                    ? <AjilBatlah />
                     : isTailan
                       ? <Tailan />
                       : isGazar

@@ -91,6 +91,7 @@ const capLabelShort = (k: CapKey): string => {
   if (k === 'planApprove') return tr('Хуваарь батлах');
   if (k === 'obyemEdit') return tr('Обьём засах');
   if (k === 'obyemApprove') return tr('Обьём батлах');
+  if (k === 'ajilApprove') return tr('Нэмэлт ажил батлах');
   if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх');
   if (k === 'chanarReview') return tr('Чанарын баримт хянах');
   if (k === 'gazar') return tr('Газар');

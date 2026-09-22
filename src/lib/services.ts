@@ -4695,6 +4695,7 @@ export type ViewKey =
   | "analysis"
   | "huvaari"
   | "huvaariBatlah"
+  | "ajilBatlah"
   | "tailan"
   | "finance"
   | "habea"
@@ -4936,6 +4937,30 @@ export const VIEWS: {
     icon: "shield",
     /* «Хуваарь»-тай ижил өнгө — нэг сэдвийн хоёр хуудас */
     hue: "#0891b2",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * НЭМЭЛТ АЖИЛ БАТЛАХ — «Гүйцэтгэл бөглөх»-өөс ирсэн шинэ ажлын мөрүүд.
+   *
+   * ⚠️ `huvaariBatlah`-ИЙН ХОСЛОЛ, ӨӨР АСУУЛТ: тэр нь ОГНОО («хэзээ»),
+   *    энэ нь шинэ ажил гэрээнд ЕРӨӨС нэмэгдэх эсэх («юу»).
+   *
+   * ⚠️ ЯАГААД ТУСДАА ХУУДАС (2026-09-22, хэрэглэгчийн шийдвэр): батлах
+   *    товч «Гүйцэтгэл бөглөх» дээр байсан тул батлагч 18 багцыг гараар
+   *    нэг нэгээр нээж шалгах ёстой байв.
+   *
+   * ⚠️ Порталын зураг/каталоггүй, өөрийн бүтэцтэй → `standalone`.
+   */
+  {
+    key: "ajilBatlah",
+    title: tr('Нэмэлт ажил батлах'),
+    desc: tr('Батлахыг хүлээж буй шинэ ажлын мөрүүд — бүх багцаар'),
+    /* ⚠️ `CAPS.ajilApprove`-ийн дүрстэй ижил (caps.ts) — нэг л эрхийн хуудас */
+    icon: "shield",
+    /* «Гүйцэтгэл»-тэй ижил өнгө — нэг сэдвийн хоёр хуудас */
+    hue: "#7c3aed",
     layers: [],
     initial: [],
     standalone: true,
@@ -5222,7 +5247,7 @@ export const HOME_SECTIONS: {
    */
   { id: "review", title: tr('Тойм'), views: ["gdash", "schem", "dashboard", "tailan", "sysdoc"] },
   { id: "plan", title: tr('Төлөвлөлт'), views: ["plan", "analysis", "irged"] },
-  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "chanar"] },
+  { id: "build", title: tr('Хэрэгжилт'), views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar"] },
   { id: "money", title: tr('Санхүү'), views: ["pkgFin", "finance"] },
 ];
 

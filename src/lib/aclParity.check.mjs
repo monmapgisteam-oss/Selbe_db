@@ -216,14 +216,15 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
   assert.equal(silent.length, 0,
     `initRemote-д ЧИМЭЭГҮЙ catch ${silent.length} үлдсэн — ACL синк унасныг хэн ч мэдэхгүй`);
   const logged = body.match(/catch\s*\(e\)\s*\{[\s\S]*?console\.error/g) ?? [];
-  /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`) */
-  assert.equal(logged.length, 6,
-    `initRemote-ийн 6 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+  /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`);
+     2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`) */
+  assert.equal(logged.length, 7,
+    `initRemote-ийн 7 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');
 }
-console.log('✅ permissions.initRemote — 6 синк бүр console.error, caps нь trusted авна');
+console.log('✅ permissions.initRemote — 7 синк бүр console.error, caps нь trusted авна');
 
 /* ══════════ 5. permsRemote — НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР бүх угтварт ══════════ */
 /**
@@ -233,7 +234,7 @@ console.log('✅ permissions.initRemote — 6 синк бүр console.error, cap
  */
 {
   const src = readCode('src/lib/permsRemote.ts');
-  for (const m of ['flowBy', 'capsBy', 'qaqcBy', 'huvaariBy', 'obyemBy']) {
+  for (const m of ['flowBy', 'capsBy', 'qaqcBy', 'huvaariBy', 'obyemBy', 'ajilBy']) {
     assert.ok(new RegExp(`const ${m} = new Map<`).test(src),
       `permsRemote: ${m} нь Map байх ёстой — давхар мөрөөс хассан эрх сэргэнэ`);
   }
@@ -260,21 +261,21 @@ console.log('✅ permissions.initRemote — 6 синк бүр console.error, cap
      гэсэн хүн Багц 1-д Ч БАТЛАГЧ болж, `decidePlan`-ийн зохиогч=батлагч
      татгалзалтаар тэр багц ГАЦДАГ байлаа. Гурван салаа ижил уншина. */
   const grantsReads = (src.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
-  assert.equal(grantsReads, 3,
-    `fetchAll: grants уншилт ЯГ 3 байх ёстой (huvaari · obyem · chanar), олдсон: ${grantsReads}`);
+  assert.equal(grantsReads, 4,
+    `fetchAll: grants уншилт ЯГ 4 байх ёстой (huvaari · obyem · chanar · ajil), олдсон: ${grantsReads}`);
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
-  assert.equal(grantsWrites, 3,
-    `upsert: grants бичилт ЯГ 3 байх ёстой, олдсон: ${grantsWrites}`);
+  assert.equal(grantsWrites, 4,
+    `upsert: grants бичилт ЯГ 4 байх ёстой, олдсон: ${grantsWrites}`);
   /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
      салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
-  for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow']) {
+  for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow', 'AjilRow']) {
     const decl = src.slice(src.indexOf(`export type ${t} = {`), src.indexOf(`export type ${t} = {`) + 220);
     assert.match(decl, /grants\?: Grant\[\]/,
       `${t}: \`grants\` талбар ил зарлагдаагүй — cast-аар нуугдвал уншилт дахин орхигдоно`);
   }
 }
-console.log('✅ permsRemote — 5 угтвар Map · хуудаслалт · хайлт 100 · grants 3/3 тэгш хэм');
+console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · хайлт 100 · grants 4/4 тэгш хэм');
 
 /* ══════════ 6. UserAdmin.flipScoped — ГУРВАН ДЭД СИСТЕМД НЭГ ЗАМ ══════════ */
 /**

@@ -118,6 +118,21 @@ export type ObyemRow = {
 };
 
 /**
+ * НЭМЭЛТ АЖЛЫН хуваарилалтын нэг мөр — `__ajil__:` угтвартай.
+ *
+ * ⚠️ `ObyemRow`-той ижил бүтэц, ӨӨР асуулт: тэр нь БАЙГАА мөрийн обьёмыг,
+ * энэ нь шинэ мөр гэрээнд нэмэгдэх эсэхийг зохицуулна. Хоёр үүрэг:
+ * `editor` (мөр нэмэгч) · `approver` (батлагч).
+ */
+export type AjilRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
+  grants?: Grant[];
+};
+
+/**
  * ЧАНАРЫН БАРИМТЫН хуваарилалтын нэг мөр — `__chanar__:` угтвартай.
  * ⚠️ ДӨРВӨН үүрэг (author · tuh · chanar · habea) — `chanarAcl.ts`.
  */
@@ -143,6 +158,8 @@ const HUVAARI_PREFIX = '__huvaari__:';
 const OBYEM_PREFIX = '__obyem__:';
 /** Чанарын баримтын хуваарилалтын угтвар — QAQC-ийнхаас ялгана */
 const CHANAR_PREFIX = '__chanar__:';
+/** Нэмэлт ажлын хуваарилалтын угтвар — обьёмынхоос ялгана */
+const AJIL_PREFIX = '__ajil__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -369,7 +386,7 @@ export async function fetchAll(
   canCreate = false,
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
-  huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[];
+  huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -401,8 +418,26 @@ export async function fetchAll(
     const huvaariBy = new Map<string, HuvaariRow>();
     const obyemBy = new Map<string, ObyemRow>();
     const chanarBy = new Map<string, ChanarRow>();
+    const ajilBy = new Map<string, AjilRow>();
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Нэмэлт ажлын хуваарилалтын мөр ── */
+      if (a.username.startsWith(AJIL_PREFIX)) {
+        const user = a.username.slice(AJIL_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as ViewsJson;
+          if (user) {
+            ajilBy.set(user, {
+              user,
+              roles: Array.isArray(d.roles) ? d.roles : [],
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
+            });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
+        continue;
+      }
 
       /* ── Чанарын баримтын хуваарилалтын мөр ── */
       if (a.username.startsWith(CHANAR_PREFIX)) {
@@ -526,6 +561,7 @@ export async function fetchAll(
       huvaari: [...huvaariBy.values()],
       obyem: [...obyemBy.values()],
       chanar: [...chanarBy.values()],
+      ajil: [...ajilBy.values()],
     };
   } catch {
     return null;
@@ -754,6 +790,27 @@ export function chanarUpsert(
 /** Чанарын баримтын хуваарилалтыг арилгах */
 export function chanarRemove(user: string): Promise<boolean> {
   return removeByKey(CHANAR_PREFIX + user.toLowerCase());
+}
+
+/**
+ * Нэмэлт ажлын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
+ */
+export function ajilUpsert(
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
+): Promise<boolean> {
+  const key = AJIL_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
+    docs: 0,
+  });
+}
+
+/** Нэмэлт ажлын хуваарилалтыг арилгах */
+export function ajilRemove(user: string): Promise<boolean> {
+  return removeByKey(AJIL_PREFIX + user.toLowerCase());
 }
 
 /** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */

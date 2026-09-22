@@ -43,6 +43,10 @@ import {
   setObyemGrants, subscribeObyemAcl, type ObyemRole,
 } from '@/lib/obyemAcl';
 import {
+  ALL_BAGTS as AJIL_ALL_BAGTS, listAjilAssigns, purgeAjilAssign, removeAjilAssign,
+  setAjilGrants, subscribeAjilAcl, type AjilRole,
+} from '@/lib/ajilAcl';
+import {
   ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
   subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
@@ -82,6 +86,7 @@ const capLabel = (k: CapKey): string => {
   if (k === 'planApprove') return tr('Хуваарь батлах');
   if (k === 'obyemEdit') return tr('Инженерийн обьём засах');
   if (k === 'obyemApprove') return tr('Инженерийн обьём батлах');
+  if (k === 'ajilApprove') return tr('Нэмэлт ажил батлах');
   if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)');
   if (k === 'chanarReview') return tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА)');
   if (k === 'gazar') return tr('Газрын төлөв засах');
@@ -127,6 +132,9 @@ const capHint = (k: CapKey): string => {
   }
   if (k === 'obyemApprove') {
     return tr('Инженерийн илгээсэн төлөвлөсөн обьёмыг БАТЛАХ эсвэл буцаах. Батлагдсан үед л утга үндсэн өгөгдөлд бичигдэнэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн обьёмын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
+  }
+  if (k === 'ajilApprove') {
+    return tr('«Гүйцэтгэл бөглөх» хуудсанд нэмэгдсэн ШИНЭ ажлын мөрийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л мөр үндсэн өгөгдөлд үүснэ — хүртэл дашбоард, тайлан, тооцоонд ОГТ нөлөөлөхгүй. Гүйцэтгэлийн 4 шатат урсгалаас ТУСДАА: тэр нь тоог, энэ нь ажил гэрээнд байх эсэхийг шийднэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Нэмэлт ажлын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн нэмсэн ажлыг өөрөө батлах боломжгүй — «Мөр нэмэх»-тэй хамт олгосон ч.');
   }
   return '';
 };
@@ -327,6 +335,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeHuvaariAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeAjilAcl(() => setAclN((n) => n + 1)), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
@@ -487,7 +496,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * @param kind аль дэд систем
    */
   const flipScoped = (
-    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar',
+    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar' | 'ajil',
   ) => {
     /* ⚠️ Remote уншигдаагүй — унтраалга disabled ч хамгаалалт давхар (2026-09-21) */
     if (capsLocked) { setAddErr(LOCK_MSG); return; }
@@ -563,12 +572,19 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        *    бусад багц руу ТАРАХГҮЙ. Урьд нь тарах учир панел «болохгүй» гэж
        *    татгалздаг байсан, одоо админ хүссэнээ шууд хийнэ.
        */
-      const isHuvaari = kind === 'huvaari';
-      const role = isHuvaari
+      /*
+       * ⚠️ ГУРВАН ТӨРӨЛ, `kind`-ЭЭР ШУУД (2026-09-22). Урьд нь
+       *    `isHuvaari` гэсэн ХОЁРТ туг байсан тул `!isHuvaari` нь «обьём»
+       *    гэсэн чимээгүй таамаг болж, гурав дахь төрөл нэмэхэд нэмэлт
+       *    ажлын унтраалга ОБЬЁМЫН хуваарилалтыг дарах байв.
+       */
+      const role = kind === 'huvaari'
         ? (cap === 'plan' ? 'author' : 'approver')
         : (cap === 'obyemEdit' ? 'editor' : 'approver');
-      const ALL = isHuvaari ? HUVAARI_ALL_BAGTS : OBYEM_ALL_BAGTS;
-      const cur = (isHuvaari ? listHuvaariAssigns() : listObyemAssigns())
+      const ALL = kind === 'huvaari' ? HUVAARI_ALL_BAGTS
+        : kind === 'ajil' ? AJIL_ALL_BAGTS : OBYEM_ALL_BAGTS;
+      const cur = (kind === 'huvaari' ? listHuvaariAssigns()
+        : kind === 'ajil' ? listAjilAssigns() : listObyemAssigns())
         .find((a) => a.user === key);
       const grants = (cur?.grants ?? []).map((g) => ({ ...g }));
 
@@ -590,9 +606,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       }
 
       if (!next.length) {
-        r = isHuvaari ? removeHuvaariAssign(u.username) : removeObyemAssign(u.username);
-      } else if (isHuvaari) {
+        r = kind === 'huvaari' ? removeHuvaariAssign(u.username)
+          : kind === 'ajil' ? removeAjilAssign(u.username)
+          : removeObyemAssign(u.username);
+      } else if (kind === 'huvaari') {
         r = setHuvaariGrants(u.username, next as { role: PlanRole; bagts: string[] }[]);
+      } else if (kind === 'ajil') {
+        r = setAjilGrants(u.username, next as { role: AjilRole; bagts: string[] }[]);
       } else {
         r = setObyemGrants(u.username, next as { role: ObyemRole; bagts: string[] }[]);
       }
@@ -631,6 +651,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (c === 'qaqc') { flipScoped(u, c, on, 'qaqc'); return; }
     if (c === 'plan' || c === 'planApprove') { flipScoped(u, c, on, 'huvaari'); return; }
     if (c === 'obyemEdit' || c === 'obyemApprove') { flipScoped(u, c, on, 'obyem'); return; }
+    /* ⚠️ ЗӨВХӨН БАТЛАГЧ нь багцаар хуваарилагдана. Зохиогчийн тал нь
+       `addRow` бөгөөс тэр нь БҮХ багцад үйлчилдэг ЕРДИЙН эрх хэвээр —
+       түүнийг энд оруулбал одоогийн мөр нэмэгчид хуваарилалтгүй болж
+       ЧИМЭЭГҮЙ эрхээ алдана (`ajilAcl.ts`-ийн ⚠️). */
+    if (c === 'ajilApprove') { flipScoped(u, c, on, 'ajil'); return; }
     if (c === 'chanarAuthor' || c === 'chanarReview') { flipScoped(u, c, on, 'chanar'); return; }
     void toggleCap(u.username, c, !on).then((r) => {
       setCapErr((prev) => {
@@ -735,9 +760,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const obOk = await purgeObyemAssign(uname);
           /* ⚠️ Чанарын баримтын хуваарилалт нь ӨӨР мөр (`__chanar__:`) — тусад нь арилгана */
           const chOk = await purgeChanarAssign(uname);
+          /* ⚠️ Нэмэлт ажлын хуваарилалт нь ӨӨР мөр (`__ajil__:`) — тусад нь арилгана */
+          const ajOk = await purgeAjilAssign(uname);
           const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
@@ -749,6 +776,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             if (!(await purgeHuvaariAssign(uname))) bad = true;
             if (!(await purgeObyemAssign(uname))) bad = true;
             if (!(await purgeChanarAssign(uname))) bad = true;
+            if (!(await purgeAjilAssign(uname))) bad = true;
             if (!(await setCaps(uname, []))) bad = true;
           }
           const r = await clearOverride(uname);
@@ -867,6 +895,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       [listQaqcAssigns().some((a) => a.user === key), tr('Чанарын (QAQC) эрх')],
       [listHuvaariAssigns().some((a) => a.user === key), tr('Хуваарийн эрх')],
       [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
+      [listAjilAssigns().some((a) => a.user === key), tr('Нэмэлт ажлын эрх')],
     ];
     /*
      * ⚠️ НЭМЭЛТ ЭРХ (`__cap__:`) ч мөн ӨНЧИН ҮЛДЭНЭ (2026-09-08-ны хоёр дахь

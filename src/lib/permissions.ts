@@ -353,6 +353,16 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     console.error('[selbe] чанарын баримтын хуваарилалтын синк амжилтгүй:', e);
   }
 
+  // 9) Нэмэлт ажлын хуваарилалт (`__ajil__:`) → ajilAcl.ts
+  //    ⚠️ Обьёмынхоос ТУСДАА — тэр нь БАЙГАА мөрийн хэмжээ, энэ нь мөр
+  //       гэрээнд ЕРӨӨС нэмэгдэх эсэх.
+  try {
+    const aj = await import('./ajilAcl');
+    aj._syncRemoteAjil(remote.ajil ?? []);
+  } catch (e) {
+    console.error('[selbe] нэмэлт ажлын хуваарилалтын синк амжилтгүй:', e);
+  }
+
   notify();
   return true;
 }
