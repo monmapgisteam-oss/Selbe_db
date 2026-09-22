@@ -1371,6 +1371,25 @@
 /* Ногоон нүд бүр баталгааны тэмдэгтэй — өнгө ялгахад бэрх хүнд ч ойлгомжтой. */
 .xl td.chgOk .cellVol::after { content: " ✓"; color: var(--good); }
 
+/* ⚠️ ХЯНАГЧИЙН ТЭМДЭГ НЬ `dirty`-ГЭЭС ДАВАМГАЙЛНА (2026-09-22).
+   Буцаагдсан илгээлт нь `pending`-д давхарлагддаг тул тэр нүднүүд
+   ЗЭРЭГ `dirty` (ногоон = «илгээгээгүй ноорог») болдог. Хоёулаа
+   `box-shadow: inset` тул сонгодлын жин тэнцүү бол ФАЙЛЫН ДАРААЛАЛ
+   шийднэ — `dirty` нь 759-р мөрөнд, эдгээр нь доор тул аль хэдийн
+   ялдаг ч, `tr:hover` хослол (`.xl tbody tr:hover td.dirty`) нь НЭГ
+   класс илүү тул хулгана хүрэхэд ногоон буцаж ирдэг байв.
+   Ижил жинтэй хослол ил бичиж хаана. */
+.xl td.chg.dirty,
+.xl tbody tr:hover td.chg.dirty {
+  box-shadow: inset 0 0 0 2px var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+.xl td.chgOk.dirty,
+.xl tbody tr:hover td.chgOk.dirty {
+  box-shadow: inset 0 0 0 2px var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+}
+
 /* Жагсаалтаас үсэрч ирсэн нүд — богино анивчилт. Хаана зогссоноо
    хэрэглэгч нүдээрээ барьж авах цорын ганц зам. */
 .xl td.chgHit { animation: chgHit 1.8s ease-out 1; }
