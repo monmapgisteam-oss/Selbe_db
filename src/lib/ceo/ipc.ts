@@ -211,10 +211,22 @@ const payWho = (r: Row): string => (
  *    учир нь `registry.ts`-ийн бусад ачаалагчид ижил хэлбэртэй бөгөөд
  *    цаг хамаарсан дүрэм эргэж нэмэгдэх нь бүрэн боломжтой.
  */
-export function computeIpc(rows: readonly Row[], now: number): KpiResult {
+/**
+ * ⚠️ 2026-09-22 (өгөгдлийн аудит): картын «гэрээ» ба «гэрээнд эзлэх %» нь
+ *    урьд нь HO хүснэгтийн `gereet_tosov_niit` (2,005.7 тэрбум · 26.5%) байсан
+ *    бөгөөд порталын бусад бүх газрын Cashflow CONTRACTED (2,009.8 · 26.0%)-той
+ *    зөрдөг байв. Одоо `ref` = `reportData.finance` ({ contractAmount,
+ *    paidContracted }) — Тайлан · ExecReport-той НЭГ тодорхойлолт. HO-ийн
+ *    гэрээт дүн хүснэгтэд хэвээр, «HO хүснэгтээр» гэж ИЛ нэрлэгдэнэ.
+ *    `ref` байхгүй (тест, уналт) бол HO-ийн хувийг «HO хүснэгтээр» гэж ил бичнэ.
+ */
+export type IpcContractRef = { contract: number; paidContracted: number };
+
+export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRef | null = null): KpiResult {
   void now;
   const s = summarize(rows);
   const cs = groupHo(rows);
+  const refPct = ref && ref.contract > 0 ? (ref.paidContracted / ref.contract) * 100 : null;
 
   /* ── Хүснэгт 1: ГЭРЭЭНИЙ САНХҮҮЖИЛТ — гэрээнд эзлэх хувь БАГА нь ЭХЭНД
         (эрсдэлийн эрэмбэ), хувь хэмжигдээгүй нь СҮҮЛД.
@@ -230,7 +242,7 @@ export function computeIpc(rows: readonly Row[], now: number): KpiResult {
     tr('Гэрээний санхүүжилт'),
     [
       tr('Гэрээний код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Ажлын төрөл'),
-      tr('Төсөвт өртөг'), tr('Гэрээт төсөв'), tr('Олгосон'), tr('Гэрээнд эзлэх'),
+      tr('Төсөвт өртөг'), tr('Гэрээт төсөв (HO хүснэгтээр)'), tr('Олгосон'), tr('Гэрээнд эзлэх'),
     ],
     byPct.map((c): Cell[] => [
       cell(c.code || '—'), cell(c.pkg || '—'), cell(c.contractor || '—'),
@@ -323,8 +335,15 @@ export function computeIpc(rows: readonly Row[], now: number): KpiResult {
       tr('{0} гэрээ · {1} төлбөр', s.contracts, s.pays),
       tr('урьдчилгаа {0}', mnt(s.advance)),
       tr('гүйцэтгэл {0}', mnt(s.work)),
-      /* ⚠️ `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ — `paidPct` нь аль хэдийн 0–100 */
-      tr('гэрээнд эзлэх {0}', pct(s.paidPct)),
+      /* ⚠️ `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ — `paidPct`/`refPct` нь аль хэдийн 0–100 */
+      /* ⚠️ 2026-09-22: гэрээ = Cashflow CONTRACTED (бусад харагдацтай ижил);
+         HO-ийн өөрийн хувь зөвхөн `ref`-гүй үед, «HO хүснэгтээр» гэж ил. */
+      ...(ref
+        ? [
+          tr('гэрээлсэн дүн {0} (Cashflow)', mnt(ref.contract)),
+          tr('гэрээнд эзлэх {0}', pct(refPct)),
+        ]
+        : [tr('гэрээнд эзлэх {0} (HO хүснэгтээр)', pct(s.paidPct))]),
       tr('хэмнэлт {0}', mnt(s.saving)),
     ],
     level: ipcLevel(s),
@@ -344,6 +363,15 @@ export function computeIpc(rows: readonly Row[], now: number): KpiResult {
  *    сэргэнэ). `failedSources` нь тиймээс үргэлж хоосон.
  */
 export const loadIpcKpi = cached<KpiResult>(async () => {
-  const rows = await loadHoRows();
-  return computeIpc(rows, Date.now());
-}, IPC_TTL, ['HO_IPC']);
+  /* ⚠️ 2026-09-22: `reportData.loadFinance` унавал карт унахгүй — `ref: null`
+     (HO-ийн хувь «HO хүснэгтээр» гэж ил гарна). Динамик импорт: `reportData`
+     нь `live`-ийг импортолдог, энэ файл `live.cached`-ыг — цикл үүсгэхгүй. */
+  const [rows, fin] = await Promise.all([
+    loadHoRows(),
+    import('@/lib/reportData').then((m) => m.loadFinance()).catch(() => null),
+  ]);
+  const ref: IpcContractRef | null = fin
+    ? { contract: fin.contractAmount, paidContracted: fin.paidContracted }
+    : null;
+  return computeIpc(rows, Date.now(), ref);
+}, IPC_TTL, ['HO_IPC', 'CASHFLOW_NEW']);

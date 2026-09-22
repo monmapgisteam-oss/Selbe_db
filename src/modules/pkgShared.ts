@@ -38,6 +38,25 @@ export const catOf = (p: Pack): PackCat => {
  *    ХАСАГДСАН — `cashflow_0813`-ийн «САР» мөрүүд байхгүй болсон. Үлдсэн
  *    хоёр цуваа хоёулаа БОДИТ хэмжилт: IPC олголт ба биет гүйцэтгэл.
  */
+/**
+ * ТӨСЛИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `aggregateMonths`-ийн одоогийн сар хүртэлх
+ * СҮҮЛИЙН хэмжигдсэн сарын блок-жигнэсэн %.
+ *
+ * ⚠️ 2026-09-22 (өгөгдлийн аудит): Дашбоардын `pkgPhys` (багц бүрийн ӨӨРИЙН
+ *    сүүлийн сар, дараа нь жигнэх) ба PkgProg `TsKpi`/ExecReport (`aggregateMonths`
+ *    — НЭГ сүүлийн сар) хоёр өөр тоо гаргаж, Dashboard «05-тэй ижил» гэж
+ *    ХУДАЛ бичиж байв. Одоо дөрвүүлээ ЭНЭ туслахаас — нэг үзүүлэлт, нэг тоо.
+ *    Тайлагнаагүй бол `null` («мэдээлэлгүй», 0 биш).
+ */
+export function physNow(d: FinData, nowYm: string): number | null {
+  let actual: number | null = null;
+  for (const m of aggregateMonths(d)) {
+    if (m.label > nowYm) continue;
+    if (m.phys != null) actual = m.phys;
+  }
+  return actual;
+}
+
 export function aggregateMonths(d: FinData) {
   /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
      (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */

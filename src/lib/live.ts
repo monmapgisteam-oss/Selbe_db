@@ -35,7 +35,7 @@ import { register, type DataKey } from '@/lib/dataBus';
  * ⚠️ `BUILT_FIELDS.population` (`Total_population`) БИШ: тэр нь багтаамжийн
  * дээд тоо (68 мянга) бөгөөд тооцоонд ХОРИОТОЙ (TRANSPORT_ANALYSIS_HANDOFF).
  */
-const POPULATION_FIELD = 'Population';
+export const POPULATION_FIELD = 'Population'; // ⚠️ export (2026-09-22): Portal.SummaryBar бүсийн шүүлтэд ижил талбар
 
 /**
  * Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).

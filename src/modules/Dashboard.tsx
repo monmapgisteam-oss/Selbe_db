@@ -31,7 +31,7 @@ import {
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
 import { loadFinData, lagOf, type FinData } from '@/modules/Finance';
-import { aggregateMonths } from '@/modules/PkgProg';
+import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries,
   type BlockProgressMap, type BlockHistory,
@@ -955,22 +955,11 @@ function IndStrip({ d }: { d: DashData }) {
   const b = d.bagts.state === 'ready' ? d.bagts.data : null;
   const f = d.fin.state === 'ready' ? d.fin.data : null;
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
-  /** Төслийн биет гүйцэтгэл — бүх багцын сүүлийн утга, блокоор жигнэсэн */
-  let physW = 0; let physN = 0;
-  f?.phys.forEach((byMon, k) => {
-    let last: number | null = null;
-    let lastMon = '';
-    [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-      // ⚠️ 0% нь ХЭМЖИГДСЭН утга — алгасвал ажил эхлээгүй багц дунджаас хасагдана
-      if (m <= nowYm) { last = v; lastMon = m; }
-    });
-    if (last == null) return;
-    /* ⚠️ Жинг УТГА АВСАН сараас — мөр 776-ийн ⚠️-тэй ижил дүрэм */
-    const cntMap = f.physCnt.get(k);
-    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
-    physW += last * cnt; physN += cnt;
-  });
-  const overall = physN ? physW / physN : null;
+  /** Төслийн биет гүйцэтгэл — `physNow` (pkgShared.ts), PkgProg/ExecReport-той НЭГ тоо.
+   * ⚠️ 2026-09-22: урьд нь энд багц бүрийн ӨӨРИЙН сүүлийн сарыг жигнэдэг тусдаа
+   *    томьёо байсан (`pkgPhys`-тэй ижил) бөгөөд 05-ын `aggregateMonths` (НЭГ
+   *    сүүлийн сар)-аас зөрдөг байв. */
+  const overall = f ? physNow(f, nowYm) : null;
   const l = d.land.state === 'ready' ? d.land.data : null;
   const blocks = b ? sumBy(b, (x) => x.blocks) : null;
   /**
@@ -1009,7 +998,8 @@ function IndStrip({ d }: { d: DashData }) {
      * Тиймээс ЭНД `buildProgressOf` руу ХОЛБОХГҮЙ (тэр нь өөр асуултын
      * хариу); зөвхөн нэрийг нь ялгаж, хоёрыг ХАРЬЦУУЛАХГҮЙ болгов.
      */
-    { icon: 'chart', label: tr('Биет гүйцэтгэл (сарын тайлан)'), v: overall == null ? '…' : pct(overall, 1) },
+    /* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)» — HeadKpi-тэй нэг нэр, нэг тоо */
+    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall == null ? '…' : pct(overall, 1) },
     { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : '…' },
   ];
   return (
@@ -1331,7 +1321,8 @@ export function HeadKpi({ bagts, extra }: {
   const pq = useAsync(loadFinData, []);
   const h = hq.state === 'ready' ? hq.data : null;
   /* ⚠️ 2026-08-21: Төсөл_Гүйцэтгэл_ хасагдаж, эх нь TASK_SHEET болов */
-  const p = pkgPhys(pq.state === 'ready' ? pq.data : null, () => true);
+  /* ⚠️ 2026-09-22: `pkgPhys().actual` → `physNow` — 05 (PkgProg TsKpi)-тай ЯГ нэг тоо */
+  const p = { actual: pq.state === 'ready' ? physNow(pq.data, monthKey()) : null };
 
   /**
    * ⚠️ УТГА ба НЭГЖ нь ТУСДАА талбар — тоо том, нэгж жижиг.
@@ -1412,8 +1403,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
   const ail = b ? sumBy(b, (x) => x.ail) : null;
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;
-  // Нийт гүйцэтгэл — TASK_SHEET-ийн багц бүрийн биет %, блокоор жигнэсэн
-  const prog = pkgPhys(d.fin.state === 'ready' ? d.fin.data : null, () => true);
+  // Нийт гүйцэтгэл — `physNow` (2026-09-22): 05 · ExecReport · IndStrip · HeadKpi-тэй нэг тоо
+  const prog = { actual: d.fin.state === 'ready' ? physNow(d.fin.data, monthKey()) : null };
   /** Багцын тоо — барилгын 7 + газрын зургийн дэд бүтцийн багцууд (PKG_BY_BAGTS) */
   const packs = b
     ? new Set([...b.map((x) => x.key), ...Object.keys(PKG_BY_BAGTS)]).size
@@ -1435,13 +1426,18 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               ЯГ ижил тоо), `execData.buildProgressOf`-ийн албан ёсны
               тодорхойлолт БИШ — тэр нь бүх блокоор хуваадаг ӨӨР хэмжилт.
               Дэлгэрэнгүйг `IndStrip`-ийн ⚠️-ээс үз. */}
-          <Stat accent color={HUE[1]} value={prog == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Биет гүйцэтгэл (сарын тайлан)')} />
+          {/* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)», эх `physNow` — HeadKpi-тэй нэг */}
+          <Stat accent color={HUE[1]} value={prog.actual == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
           <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal)} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? '…' : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
-          <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? '…' : num(packs)} unit={tr('багц')} label={tr('Нийт багц')} />
+          {/* ⚠️ 2026-09-22: «Нийт багц» (зураг дээрх багц, 55) ба Ерөнхий дашбоардын
+              «Багц ажил (гэрээний мөр)» (74) ӨӨР ойлголт — нэрээр нь ил ялгав. */}
+          <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? '…' : num(packs)} unit={tr('багц')} label={tr('Багц (газрын зураг)')} />
           <Stat accent color={HUE[6 % HUE.length]} value={h == null ? '…' : num(h.population)} unit={tr('хүн')} label={tr('Хамрагдах хүн ам')} />
-          <Stat accent color={HUE[7 % HUE.length]} value={soc == null ? '…' : num(soc.totalN)} unit={tr('ш')} label={tr('Нийгмийн байгууламж')} />
+          {/* ⚠️ 2026-09-22: амьд давхаргын ШИНЭ байгууламж (10) — Irged-ийн илтгэлийн
+              «одоо 9 + шинэ 12 = 21»-ээс өөр ойлголт; нэрээр ялгав. */}
+          <Stat accent color={HUE[7 % HUE.length]} value={soc == null ? '…' : num(soc.totalN)} unit={tr('ш')} label={tr('Шинэ нийгмийн байгууламж (зурагт)')} />
           <Stat accent color={HUE[0]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit={tr('га')} label={tr('Ногоон байгууламж')} />
         </Stats>
       </Panel>
@@ -1779,13 +1775,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   const lag = months ? lagOf(months) : null;
   const planned: number | null = lag ? lag.planned : null;
-  let actual: number | null = null;
-  if (months) {
-    for (const m of months) {
-      if (m.label > nowYm) continue;
-      if (m.phys != null) actual = m.phys;
-    }
-  }
+  /* ⚠️ 2026-09-22: `physNow` — бусад картуудтай нэг туслах */
+  const actual: number | null = f ? physNow(f, nowYm) : null;
   const gap = planned != null && actual != null ? planned - actual : null;
 
   return (

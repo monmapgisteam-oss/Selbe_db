@@ -182,10 +182,15 @@ assert.equal(epochOf(null), null);
   const r = computeIpc(rows, NOW);
   assert.equal(r.value, '530 ₮');
   assert.equal(r.unit, 'олгосон санхүүжилт');
+  /* ⚠️ 2026-09-22: `ref` (Cashflow CONTRACTED) өгөөгүй тул HO-ийн хувь «HO
+     хүснэгтээр» гэж ИЛ нэрлэгдэнэ; `ref`-тэй үед Cashflow-гийн гэрээ ба хувь. */
   assert.deepEqual(r.facts, [
     '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314 ₮', 'гүйцэтгэл 216 ₮',
-    'гэрээнд эзлэх 588.9%', 'хэмнэлт 10 ₮',
+    'гэрээнд эзлэх 588.9% (HO хүснэгтээр)', 'хэмнэлт 10 ₮',
   ]);
+  const r2 = computeIpc(rows, NOW, { contract: 1000, paidContracted: 250 });
+  assert.deepEqual(r2.facts.slice(3, 5), ['гэрээлсэн дүн 1,000 ₮ (Cashflow)', 'гэрээнд эзлэх 25.0%'],
+    'ref өгвөл гэрээ ба хувь Cashflow CONTRACTED-оос');
   /* Урьдчилгаа мөрд `ipc_dugaar` null — «IPC-00» гэж БУРУУ дугаарлахгүй */
   assert.equal(r.issues.length, 0, 'бүх мөр эрүүл — анхааруулга алга');
 }

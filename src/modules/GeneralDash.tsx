@@ -20,7 +20,7 @@ import { loadLandStatus } from '@/lib/land';
    архив) → бөглөх хуудасны АМЬД бөглөлт болов — `pkgPct`-ийн тайлбарыг үз.
    `loadPkgProgress`/`latestPkgProgress` энэ модулиас ХАСАГДСАН; тэдгээр нь
    бусад самбарт (газрын зураг, PkgProg) хэвээр хэрэглэгдэнэ. */
-import { loadFillPkgProgress } from '@/lib/live';
+import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadNegtgelFull } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
@@ -46,6 +46,7 @@ import {
   HO_IPC, hoAmount,
   /* ⚠️ 2026-09-10: орон сууцны биет явцын жин ба сарын тэнхлэг — `housingMoneyByMonth` */
   bagtsKey, cfMonthAxis,
+  BUILT_STATUS,
 } from '@/lib/services';
 import { queryStats, count, sqlStr } from '@/lib/query';
 import { cat, mnt, num, pct, monthKey } from '@/lib/format';
@@ -1064,12 +1065,16 @@ function KpiStrip({
           * мөнгө нь захирамжийн олголттой (2.48 их наяд) эрс зөрдөг тул хүн
           * хоёрыг харьцуулаад аль нь ч үнэн биш гэж эргэлзэнэ.
           */}
+        {/* ⚠️ 2026-09-22: нэрээр ил ялгав — энэ нь Cashflow-гийн 6 шатны ӨРТГӨӨР
+            жигнэсэн хувь (`gdash.kpisOf`), Дашбоардын «Биет гүйцэтгэл (багцаар)»
+            (TASK_SHEET) БИШ; «Багц ажил» нь гэрээний МӨРИЙН тоо (74), Дашбоардын
+            «Багц (газрын зураг)» (55) биш. `Stat`-д title байхгүй тул нэрэнд. */}
         <Stat
           icon="chart"
           value={k.progress == null ? '—' : pct(k.progress)}
-          label={tr('Гүйцэтгэлийн хувь')}
+          label={tr('Гүйцэтгэлийн хувь (6 шатаар)')}
         />
-        <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажлын тоо')} />
+        <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажил (гэрээний мөр)')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
         <Stat icon="polygon" value={landPct == null ? '…' : pct(landPct)} label={tr('Газар чөлөөлөлт')} />
       </Stats>
@@ -2634,6 +2639,14 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
     async () => Number((await queryStats(BUILDING.url, [count(BUILDING.oid, 'n')], '1=1')).n ?? 0),
     [],
   );
+  /* ⚠️ 2026-09-22: «Нийт төлөвлөгдсөн барилга 368» нь ЕТ давхаргын (`et:24` =
+     `BUILT_LAYER`) БҮХ барилга — одоо байгаа + шинэ. `loadHeadline().byStatus`
+     (кэштэй, нэмэлт хүсэлтгүй) задаргааг нэрэнд ил бичнэ: «одоо N · шинэ M». */
+  const hq = useAsync(loadHeadline, []);
+  const byStatus = hq.state === 'ready' ? hq.data.byStatus : null;
+  const nOf = (label: string) => byStatus?.find((s) => s.label === label)?.n ?? 0;
+  const existing = byStatus ? nOf(BUILT_STATUS[0].value) : null;
+  const fresh = byStatus ? byStatus.reduce((a, s) => a + s.n, 0) - (existing ?? 0) : null;
 
   return (
     <Section title={tr('Ерөнхий төлөвлөгөө')}>
@@ -2672,7 +2685,9 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
               <Stats cols={2}>
                 <Stat
                   value={cnt('et:24') == null ? '—' : num(cnt('et:24')!)}
-                  label={tr('Нийт төлөвлөгдсөн барилга')}
+                  label={existing != null && fresh != null
+                    ? tr('Нийт барилга (одоо {0} · шинэ {1})', num(existing), num(fresh))
+                    : tr('Нийт барилга (ЕТ)')}
                   accent
                 />
                 <Stat

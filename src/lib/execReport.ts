@@ -36,9 +36,10 @@ import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { loadFinData } from '@/modules/Finance';
-import { aggregateMonths } from '@/modules/PkgProg';
+import { physNow } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
+import { loadFinance } from '@/lib/reportData';
 import { AGENT_API, arcgisToken } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -157,7 +158,7 @@ export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
@@ -169,17 +170,16 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadZov().catch(() => null),
     /* ⚠️ ХАБ мөн адил: маягт нь тусдаа survey тул унавал `null` (0 биш) */
     loadHseNow().catch(() => null),
+    /* ⚠️ 2026-09-22: «олгосон ÷ гэрээ» хувийн ТООЛОГЧ = `reportData.finance.paidContracted`
+       (Тайлантай НЭГ тодорхойлолт); кэштэй тул нэмэлт хүсэлт бараг үүсэхгүй. */
+    loadFinance(),
   ]);
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
   const packs = buildPacks(bld.rows);
-  const months = aggregateMonths(fin);
   const nowYm = monthKey();
-  let actual: number | null = null;
-  for (const m of months) {
-    if (m.label > nowYm) continue;
-    if (m.phys != null) actual = m.phys;
-  }
+  /* ⚠️ 2026-09-22: `physNow` — PkgProg `TsKpi` · Dashboard-тай НЭГ туслах (pkgShared.ts) */
+  const actual = physNow(fin, nowYm);
   let planned: number | null = null;
   for (const p of plan.months) if (p.label <= nowYm) planned = p.pct;
   const gap = planned != null && actual != null ? planned - actual : null;
@@ -249,7 +249,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   const finAssigned = finRows.reduce((a, r) => a + r.given, 0);
   /* ⚠️ 2026-09-21: `share`/`remain`-ийн тоологч = ГЭРЭЭЛСЭН багцын олголт — хуваарь
      `csum` (CONTRACTED) тул нэг хүрээ. Урьд нь `finGiven` (бүх төлбөр) хуваагддаг байв. */
-  const finGivenContracted = finRows.reduce((a, r) => a + (r.contracted ? r.given : 0), 0);
+  /* ⚠️ 2026-09-22 (өгөгдлийн аудит): багцын Map-ийн нийлбэр (~26.1%) БИШ —
+     `reportData.finance.paidContracted` (522.71 тэрбум, Тайлан 26.0%). Гурван
+     харагдац (CEO IPC · Тайлан · ExecReport) нэг тоологч, нэг хуваарь (CONTRACTED). */
+  const finGivenContracted = finance.paidContracted;
 
   /* ── Зөвшөөрөл ── */
   let zov: ExecReport['zov'] = null;

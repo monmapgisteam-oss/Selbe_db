@@ -78,11 +78,11 @@ import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
 import { usePlanTotals } from '@/lib/totals';
 import { queryStats, count, sum } from '@/lib/query';
-import { loadHeadline } from '@/lib/live';
+import { loadHeadline, loadHousing, POPULATION_FIELD } from '@/lib/live';
 import {
   DEFAULT_VIEW, VIEW_BY_KEY, layerUrl, oidOf, zoneWhere,
   PLAN_LAYER_IDS, CATALOG_LAYER_IDS, LAYER_BY_ID, groupOf,
-  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER, BUILT_FIELDS,
+  ZONE_LAYER, ZONE_FIELDS, BUILT_LAYER,
   PLAN_ALWAYS_ON_IDS,
   type ViewKey,
 } from '@/lib/services';
@@ -1006,15 +1006,22 @@ function SummaryBar({ zone }: { zone: string | null }) {
 
   const q = useAsync(async () => {
     const Z = ZONE_FIELDS;
-    const B = BUILT_FIELDS;
     const zoneQ = zone ? zoneWhere(ZONE_LAYER, zone) ?? '1=1' : '1=1';
     const builtQ = zone ? zoneWhere(BUILT_LAYER, zone) ?? '1=1' : '1=1';
-    const [zones, built, headline] = await Promise.all([
+    /* ⚠️ 2026-09-22 (өгөгдлийн аудит): «айл» ба «хүн ам» нь урьд нь /106 `URH_TOO`
+       (8,591) ба /108 `Total_population` (68,326 — `live.ts:35`-д ХОРИОТОЙ багтаамжийн
+       тоо) байсан бөгөөд бусад БҮХ харагдацын `loadHousing().ail` (/112 AIL_TOO) ·
+       `loadHeadline().population` (/108 `Population`)-той зөрдөг байв. Одоо бүс
+       СОНГООГҮЙ үед яг тэр хоёр эхээс; бүс сонгосон үед /108-ыг бүсээр шүүж
+       `Population` (`POPULATION_FIELD`) талбараар, айлыг /112-т бүсийн талбар
+       байхгүй тул /106 `URH_TOO`-оор (бүсийн төлөвлөлтийн өрх) авна. */
+    const [zones, built, headline, housing] = await Promise.all([
       queryStats(layerUrl(ZONE_LAYER), [
         count(oidOf(ZONE_LAYER), 'n'), sum(Z.landHa, 'ga'), sum(Z.households, 'ail'),
       ], zoneQ),
-      queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(B.population, 'pop')], builtQ),
+      queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(POPULATION_FIELD, 'pop')], builtQ),
       loadHeadline(),
+      loadHousing(),
     ]);
     return {
       zones: Number(zones.n ?? 0),
@@ -1025,9 +1032,9 @@ function SummaryBar({ zone }: { zone: string | null }) {
        * төслийн хэмжээг илэрхийлэхгүй.
        */
       ga: zone ? Number(zones.ga ?? 0) : headline.areaHa,
-      ail: Number(zones.ail ?? 0),
+      ail: zone ? Number(zones.ail ?? 0) : housing.ail,
       built: Number(built.n ?? 0),
-      pop: Number(built.pop ?? 0),
+      pop: zone ? Number(built.pop ?? 0) : headline.population,
     };
   }, [where]);
 

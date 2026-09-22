@@ -22,9 +22,9 @@ import {
   loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
+import { HUE, catOf, aggregateMonths, physNow, type PackCat } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
-export { aggregateMonths } from '@/modules/pkgShared';
+export { aggregateMonths, physNow } from '@/modules/pkgShared';
 import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
@@ -887,14 +887,10 @@ function TsKpi(
   const failed = finQ.state === 'error' || planQ.state === 'error';
   const t = useMemo(() => {
     if (!fin) return null;
-    const months = aggregateMonths(fin);
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     let planned: number | null = null;
-    let actual: number | null = null;
-    for (const m of months) {
-      if (m.label > nowYm) continue;
-      if (m.phys != null) actual = m.phys;
-    }
+    /* ⚠️ 2026-09-22: `physNow` — Dashboard/ExecReport-той НЭГ туслах (pkgShared.ts) */
+    const actual = physNow(fin, nowYm);
     /*
      * ТӨЛӨВЛӨГӨӨ — ХУВААРИАС, доорх графиктай ЯГ НЭГ эх сурвалж.
      * ⚠️ `aggregateMonths().cumPct` (cashflow) ХЭРЭГЛЭХГҮЙ: түүний хуваагч
