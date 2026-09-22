@@ -160,6 +160,15 @@
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
+  /*
+   * ⚠️ `align-self: flex-start` ЗААВАЛ (2026-09-22). Энгийн flex-элемент нь
+   *    `stretch`-ээр эцгийнхээ БҮТЭН өндрийг авдаг; тэр үед доторх
+   *    `.gSideHead` (`sticky; top: 0`) нь ЭНЭ элементийн дотор наалдах газар
+   *    олдоггүй тул толгой мөр гүйлттэй хамт дээш алга болно.
+   *    `flex-start` нь өндрийг агуулгаараа тогтоож, `sticky` толгой
+   *    `.gWrap`-ийн дээд ирмэгт наалдана.
+   */
+  align-self: flex-start;
 }
 .gSideHead {
   position: sticky;
