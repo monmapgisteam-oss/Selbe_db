@@ -702,6 +702,37 @@ export type SheetView = {
   onCell?: (row: number, block: string) => void;
 };
 
+/**
+ * ИЛГЭЭЛТИЙН НҮДНИЙ ТҮЛХҮҮРИЙГ ДЭЛГЭЦИЙН ИНДЕКС РҮҮ ХӨРВҮҮЛНЭ.
+ *
+ * ⚠️ ХОЁР ФОРМАТ ЗӨРНӨ (2026-09-22-ны гомдлын шалтгаан):
+ *      илгээлт  — ```<oid>:<блокийн ИНДЕКС>```   (`cellKey(r.oid, bi)`)
+ *      дэлгэц   — ```<мөрийн индекс>:<блокийн ШОШГО>``` (`view.changed`-тэй ижил)
+ *    ХОЁУЛАНГ нь хөрвүүлнэ. Урьд нь зөвхөн `oid`-ыг хөрвүүлж блокийн хэсгийг
+ *    хэвээр үлдээсэн тул түлхүүр ХЭЗЭЭ Ч таарахгүй, өнгө огт гардаггүй байв.
+ * ⚠️ `oid` нь агшин дамжихад ҮСРЭДЭГ тул индексийг урьдчилан таамаглаж болохгүй.
+ *
+ * ⚠️ ГАНЦ ЭХ СУРВАЛЖ: хоёр ачаалах зам (үндсэн эффект ба хожуу давхарлалт)
+ *    хоёулаа үүнийг дуудна. Тус тусад нь бичвэл нэгийг засахад нөгөө нь
+ *    чимээгүй хоцорно.
+ */
+function changedKeys(rows: SheetRow[], bld: string[], cells: [string, string][]): Set<string> {
+  const at = new Map<number, number>();
+  rows.forEach((r, i) => at.set(r.oid, i));
+  const out = new Set<string>();
+  for (const [k] of cells) {
+    const cut = k.indexOf(':');
+    if (cut <= 0) continue;
+    const i = at.get(Number(k.slice(0, cut)));
+    if (i == null) continue;
+    /* ⚠️ ХОЁР ХӨРВҮҮЛЭЛТ: `oid` → мөрийн индекс, блокийн ИНДЕКС → ШОШГО. */
+    const b = bld[Number(k.slice(cut + 1))];
+    if (b == null) continue;
+    out.add(`${i}:${b}`);
+  }
+  return out;
+}
+
 export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Засагдахгүй (хяналтын) горим уу — бүх бичих зам үүгээр хаагдана. */
   const locked = !!view;
@@ -1896,6 +1927,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            өмнөх илгээлтийн мөр (нэр, обьём, эцэг) БҮТНЭЭР дарагдаж, түүний
            `${oid}:${b}` нүднүүд ч шинэ мөрийн утгаар солигддог байв. */
         if (sub?.payload.adds?.length) pushTmpOid(sub.payload.adds);
+        /*
+         * ⚠️ БУЦААЛТЫН НҮДНИЙ ТЭМДЭГЛЭГЭЭ ЭНД Ч ЗААВАЛ (2026-09-22-ны засвар).
+         *    Урьд нь зөвхөн «хожуу давхарлалт»-ын эффектэд тавигддаг байсан
+         *    бөгөөд тэр нь `staged` БАЙХГҮЙ үед л ажилладаг: хуудсыг дахин
+         *    нээхэд илгээлт ЭНЭ замаар давхарлагдаж `staged` суудаг тул
+         *    тэмдэглэгээ ХООСОН үлдэж, өөрчилсөн нүд бүгд зүгээр л `dirty`
+         *    (ногоон) болж, зөвшөөрөгдсөн ↔ зөвшөөрөгдөөгүй нь ЯЛГАРАХГҮЙ
+         *    байв — яг тэр гомдол.
+         */
+        setBackChg(ov && sub ? changedKeys(ov.rows, schema.bld, sub.payload.cells) : new Set());
         setStaged(sub && !sub.done && sub.payload.pkgKey === pkg.key ? sub : null);
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
@@ -1966,6 +2007,50 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const returnedSheetOid = flow && OWNER[flow[HF.status]] === 'company' && flow[HF.status] !== STATUS.transferred
     ? Number(flow[HF.sheetOid])
     : NaN;
+  /*
+   * ══════ БУЦААГДСАН ИЛГЭЭЛТИЙН НҮДНИЙ ЯЛГАА (2026-09-22) ══════
+   *
+   * ⚠️ ЯАГААД (хэрэглэгчийн шаардлага): хянагч нүд БҮРЭЭР зөвшөөрдөг
+   *    (`Guitsetgel.toggleOk`) бөгөөд «зөвшөөрсөн 7/10» гэж тоологддог
+   *    атал тэр сонголт ЗӨВХӨН React state-д байсан тул буцаагдсан
+   *    гүйцэтгэгчид өөрчилсөн БҮХ нүд ИЖИЛ харагддаг байв — аль нь
+   *    зөвшөөрөгдсөн, аль нь засах шаардлагатайг ялгах ямар ч зам байгаагүй.
+   *
+   * ⚠️ ХОЁР ОЛОНЛОГ, ХОЁР ЭЗЭН: `backChg` (өөрчлөгдсөн нүд) нь АЧААЛАХ
+   *    эффектүүдэд тавигдана — тэд л `overlaySubmission`-ий `ov.rows`-ыг
+   *    мэднэ. `backOk` (зөвшөөрөгдсөн нь) нь ЭНЭ эффектэд, хяналтын мөрөөс.
+   *    ⚠️ ЭНД `backChg`-Г ТЭГЛЭХГҮЙ: `flow` нь `useHyanaltRows`-оос ХОЖУУ
+   *    ирдэг тул ачаалах эффектийн тавьсныг шууд арчиж, бүх өнгө алга
+   *    болдог байв (2026-09-22-ны гомдол).
+   *
+   * ⚠️ Түлхүүр: `backChg` нь тэр илгээлтэд ӨӨРЧЛӨГДСӨН нүд (улаан
+   *    хүрээ), `okKeys` нь тэдгээрээс ЗӨВШӨӨРӨГДСӨН нь (ногоон ✓).
+   *    Хоёулаа ижил ``${мөр}:${блок}`` түлхүүртэй — `hyanaltDetail.Change`
+   *    ба хянагчийн `okKeys`-тэй ИЖИЛ формат.
+   *
+   * ⚠️ ЗӨВХӨН БУЦААГДСАН үед: батлагдсан (`Шилжүүлсэн`) илгээлтэд
+   *    тэмдэглэгээ хэрэггүй — бүгд өнгөрсөн. Хянагчийн харагдацад (`view`)
+   *    мөн хамаарахгүй — тэнд өөрийн `view.changed`/`view.ok` ажиллана.
+   */
+  const [backOk, setBackOk] = useState<Set<string>>(new Set());
+  const [backChg, setBackChg] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    /* ⚠️ ЗӨВХӨН `backOk` — `backChg` нь ачаалах эффектүүдийнх (доорх ⚠️) */
+    if (view || !flow) { setBackOk(new Set()); return; }
+    /* Зөвхөн гүйцэтгэгчийн гар дээрх, батлагдаагүй мөр */
+    if (OWNER[flow[HF.status]] !== 'company' || flow[HF.status] === STATUS.transferred) {
+      setBackOk(new Set()); return;
+    }
+    /* ⚠️ Эвдэрсэн JSON → ХООСОН (fail-closed): «бүгд зөвшөөрөгдсөн» гэж
+       үзвэл гүйцэтгэгч засах ёстой нүдээ алдана. */
+    let ok: string[] = [];
+    try {
+      const raw = JSON.parse(String(flow[HF.okCells] ?? '[]')) as unknown;
+      if (Array.isArray(raw)) ok = raw.filter((x): x is string => typeof x === 'string');
+    } catch { /* эвдэрсэн — хоосон */ }
+    setBackOk(new Set(ok));
+  }, [view, flow]);
+
   const lateOverlayRef = useRef<number>(NaN);
   /** Хожуу давхарлалтын уншилт унасан/таслагдсан бол эффектийг ДАХИН асаах цохилт. */
   const [lateRetry, setLateRetry] = useState(0);
@@ -2001,6 +2086,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       if (sub.payload.adds?.length) pushTmpOid(sub.payload.adds);
+      setBackChg(changedKeys(ov.rows, sc.bld, sub.payload.cells));
       setStaged(sub);
       setRows(ov.rows);
       /* `null ≠ 0`: илгээлт огноог хөндөөгүй бол архивынх хэвээр. Хэрэглэгч энэ
@@ -5582,8 +5668,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                          нүд нээгддэг байсан шалтгаан. */
                       const cellOpen =
                         edit && edit.i === i && edit.b === bi && edit.col === "obyem";
-                      const changed = !!view?.changed?.has(`${i}:${b}`);
-                      const okd = !!view?.ok?.has(`${i}:${b}`);
+                      /*
+                       * ⚠️ ХОЁР ЭХ СУРВАЛЖ (2026-09-22): хянагчийн харагдацад
+                       *    `view.changed`/`view.ok`, ГҮЙЦЭТГЭГЧИЙН талд
+                       *    буцаагдсан илгээлтийн `backChg`/`backOk`.
+                       *    Хоёр горим хэзээ ч зэрэг идэвхтэй байхгүй
+                       *    (`view` байвал `backChg` хоосон) тул `||` аюулгүй.
+                       */
+                      const ck = `${i}:${b}`;
+                      const changed = !!view?.changed?.has(ck) || backChg.has(ck);
+                      const okd = !!view?.ok?.has(ck) || (backChg.has(ck) && backOk.has(ck));
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
                         if (locked) return changed && view?.onCell?.(i, b);

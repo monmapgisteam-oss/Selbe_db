@@ -131,6 +131,8 @@ export function toRow(a: Attrs): Row {
     [F.directorReason]: str(a[F.directorReason]),
     [F.directorReturned]: toIso(a[F.directorReturned]),
     [F.directorSent]: toIso(a[F.directorSent]),
+    /* ⚠️ Зөвшөөрсөн нүдний JSON — хоосон бол `''` (`hyanalt.F.okCells`) */
+    [F.okCells]: str(a[F.okCells]),
     [F.status]: str(a[F.status]) as Status,
   };
 }
@@ -585,6 +587,20 @@ export async function apply(a: {
   decision: Decision;
   /** ⚠️ Буцаах үед ХООСОН БАЙЖ БОЛОХГҮЙ */
   reason?: string;
+  /**
+   * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрүүд.
+   *
+   * ⚠️ БУЦААХ ҮЕД чухал: гүйцэтгэгч энэ жагсаалтаар нүдээ ялгана —
+   *    доторх нь НОГООН (зөвшөөрөгдсөн), гадна талынх нь УЛААН (засах
+   *    шаардлагатай). Урьд нь хадгалагддаггүй байсан тул буцаагдсан
+   *    гүйцэтгэгч аль нүдээ засахаа мэдэхгүй байв.
+   *
+   * ⚠️ ЗӨВШӨӨРӨХ үед ч бичигдэнэ — дараагийн шат «өмнөх хянагч юуг
+   *    зөвшөөрсөн бэ» гэдгийг харна.
+   * ⚠️ `undefined` бол талбарыг ОГТ ХӨНДӨХГҮЙ (хуучин утга хэвээр);
+   *    хоосон массив нь «нэг ч нүд зөвшөөрөөгүй» гэсэн ИЛ утга.
+   */
+  okCells?: string[];
   /** ArcGIS-д БИЧИГДЭХ дэлгэцийн нэр (өгөгдөл) */
   who: string;
   /**
@@ -607,6 +623,13 @@ export async function apply(a: {
 
   const t = Date.now();
   const attrs: Attrs = { [HYANALT.oid]: a.oid };
+  /*
+   * ⚠️ ЗӨВШӨӨРСӨН НҮДНИЙ ЖАГСААЛТ — шатнаас ҮЛ ХАМААРАН нэг талбарт.
+   *    Буцаагдсан гүйцэтгэгч «аль нүд ногоон, аль нь улаан» гэдгийг
+   *    ЗӨВХӨН эндээс мэднэ (`hyanalt.F.okCells`-ийн ⚠️).
+   * ⚠️ `undefined` бол хөндөхгүй — хуучин шатны зөвшөөрөл алдагдахгүй.
+   */
+  if (a.okCells) attrs[F.okCells] = JSON.stringify(a.okCells);
   /*
    * ⚠️ НЭГТГЭЛД ЗӨВХӨН ЭЦСИЙН БАТАЛГААНЫ ДАРАА бичнэ. Дунд шатанд бичвэл
    *    хараахан батлагдаагүй тоо албан ёсны бүртгэлд орж, дараа нь буцаагдвал
@@ -790,6 +813,12 @@ export async function recheck(
   me?: string,
   /** Шалгуурыг тойруулах — зөвхөн нэвтрэлтгүй/админы шат сонголт */
   bypass = false,
+  /**
+   * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `apply`-ийнхтай ИЖИЛ утга
+   * (`hyanalt.F.okCells`-ийн ⚠️). Дахин шалгалтад ч гүйцэтгэгч рүү
+   * буцаах бол «аль нүд ногоон» гэдгийг ЗААВАЛ дамжуулна.
+   */
+  okCells?: string[],
 ): Promise<Result> {
   let prev: Row | undefined;
   try { prev = await liveRow(oid); } catch (e) { return fail(e); }
@@ -883,6 +912,12 @@ export async function recheck(
   // ⚠️ Шалтгаангүй буцаалт нь хүлээн авагчийг юу засахаа мэдэхгүй болгоно
   if (!why) return { ok: false, error: 'Буцаах шалтгаанаа бичнэ үү' };
 
+  /*
+   * ⚠️ ЗӨВШӨӨРСӨН НҮДНИЙ ЖАГСААЛТ — `apply`-тай ИЖИЛ дүрэм. Энэ бол
+   *    гүйцэтгэгч рүү буцах зам тул нүдний ялгаа ХАМГИЙН чухал нь энд.
+   */
+  const okPatch: Attrs = okCells ? { [F.okCells]: JSON.stringify(okCells) } : {};
+
   const back: Attrs = by === 'engineer'
     ? {
       [HYANALT.oid]: oid,
@@ -891,6 +926,7 @@ export async function recheck(
       [F.engineerReason]: why,
       [F.engineerReturned]: t,
       [F.status]: STATUS.engineerReturned,
+      ...okPatch,
     }
     : {
       [HYANALT.oid]: oid,
@@ -899,6 +935,7 @@ export async function recheck(
       [F.managerReason]: why,
       [F.managerReturned]: t,
       [F.status]: STATUS.managerReturned,
+      ...okPatch,
     };
 
   try {

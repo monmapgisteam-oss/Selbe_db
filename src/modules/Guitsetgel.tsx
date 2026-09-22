@@ -758,6 +758,14 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       /* ⚠️ Нэвтрэлт унтраалттай (дев) эсвэл админ шатаа ил сонгосон үед л
          домэйн шалгуурыг тойруулна — эс бөгөөс тэр хоёр орчинд ажиллахгүй. */
       bypass,
+      /*
+       * ⚠️ ЗӨВШӨӨРСӨН НҮДНҮҮД (2026-09-22). Урьд нь `okKeys` нь ЗӨВХӨН
+       *    React state байсан тул хуудас хаагдмагц алга болж, буцаагдсан
+       *    гүйцэтгэгч аль нүдээ засахаа мэдэхгүй байв — бүх өөрчилсөн нүд
+       *    ижил харагдана. Одоо ArcGIS-д хадгалагдаж, гүйцэтгэгчийн талд
+       *    НОГООН (зөвшөөрсөн) ↔ УЛААН (зөвшөөрөөгүй) гэж ялгарна.
+       */
+      okCells: [...okKeys],
     }));
 
   const reviewing =
@@ -898,13 +906,13 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                   />
                   <div className={s.row}>
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, [...okKeys]))}>
                       {stage === 'manager'
                         ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
                         : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy, me, bypass))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy, me, bypass, [...okKeys]))}>
                       {stage === 'manager'
                         ? tr('Асуудал байна — инженерт буцаах')
                         : tr('Асуудал байна — компанид буцаах')}

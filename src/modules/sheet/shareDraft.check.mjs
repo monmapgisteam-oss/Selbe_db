@@ -18,6 +18,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+
+/**
+ * ЭХ КОДЫГ УНШИХ — CRLF → LF ЖИГДРҮҮЛНЭ.
+ *
+ * ⚠️ Доорх шалгуурууд олон мөрт хэсгийг ЯГ ТЕКСТЭЭР (`\n`-тэй) хайдаг.
+ *    Git эх файлыг LF-ээр хадгалдаг ч Windows дээр checkout хийхэд CRLF
+ *    болдог тул тэдгээр хайлт бүтэлгүйтэж, тест ХУДЛААР унадаг байв
+ *    (`docs/docs.invariant.check.mjs`-ийн 2026-09-16-ны ижил алдаа).
+ */
+const readSrc = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n');
 /* ══════════ `mergeDrafts`-ийн ХУВИЛБАР (FillNew.tsx-ийн дүрэм) ══════════ */
 const mergeDrafts = (a, b) => {
   if (!a) return b;
@@ -220,7 +230,7 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
    * Б 1 нүд бөглөхөд Б-гийнх алсыг бүхэлд нь дарж А-гийн 341 нүд УСТСАН.
    * Бичихээсээ өмнө уншиж нийлүүлэх нь энэ боломжийн БҮХ утга учир.
    */
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   /* Draft төрөлд хамтын төлөв */
   assert.ok(/by\?: \[string, string\]\[\];/.test(FN), 'Draft-д `by` (эзэмшил) алга');
   assert.ok(/done\?: \[string, number\]\[\];/.test(FN), 'Draft-д `done` (дуусгасан) алга');
@@ -253,7 +263,7 @@ console.log('✅ эх кодын гэрээ — түлхүүр · шилжүүл
 
 /* ══════════ 7. БИЧИХ ЗАМ НЬ НИЙЛҮҮЛДЭГ ЭСЭХ ══════════ */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   /* `flush` (3 сек тутмын алсын бичилт) — бичихээсээ ӨМНӨ уншина.
      ⚠️ Блокийн ХИЛИЙГ дараагийн тэмдэглэгээгээр олно, тэмдэгтийн тоогоор БИШ:
      гүйцэтгэлийн оновчлол нэмэгдэхэд тогтмол цонх хүрэлцэхгүй болж шалгуур
@@ -291,7 +301,7 @@ console.log('✅ бичих зам НИЙЛҮҮЛНЭ — flush ба toggleDone 
  * Түгжээ нь эзэмшлийн бүртгэлээс ХАМААРНА — хоёр зам ХОЁУЛАА бичих ёстой.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   const adds = FN.split('mineRef.current.add(').length - 1;
   assert.ok(adds >= 2,
     `FillNew: mineRef.current.add() ЯГ ${adds} газар — нэг нүдний (commit) ба олон нүдний (paste) ЗАМ ХОЁУЛАА тэмдэглэх ёстой`);
@@ -328,7 +338,7 @@ console.log('\nshareDraft.check: ok');
   assert.ok(DR.includes('const layerCache = new Map'),
     'draftRemote: давхаргын кэш алга — дуудлага бүрд шинэ FeatureLayer үүснэ');
 
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   /* Татах мөчлөг ба бичих зам ХОЁУЛАА хямд шалгалтаар эхэлнэ */
   const uses = FN.split('readRemoteDraftAt(').length - 1;
   assert.ok(uses >= 3,
@@ -360,7 +370,7 @@ console.log('✅ гүйцэтгэл — хямд at шалгалт · давха
  * ХОЁУЛАА тооцогдох ёстой.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   const pi = FN.indexOf('const participants = useMemo');
   assert.ok(pi > 0, 'FillNew: participants олдсонгүй');
   const pb = FN.slice(pi, FN.indexOf('const waitingOn', pi));
@@ -390,7 +400,7 @@ console.log('✅ оролцогч — byMap (нийлүүлсэн) БА mineRef 
  * ДҮРЭМ: `mineRef` нь ЭНЭ БАГЦЫН, ЭНЭ СЕШНИЙ бодит үнэн тул алсынхаас ДЭЭГҮҮР.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   const i = FN.indexOf('const nextBy = new Map<string, string>();');
   assert.ok(i > 0, 'FillNew: pickDraft-ийн nextBy олдсонгүй');
   const b = FN.slice(i, FN.indexOf('setByMap(nextBy);', i));
@@ -418,7 +428,7 @@ console.log('✅ өөрийн эзэмшил — нийлүүлэлтэд алг
  * Зөвхөн ДЭЛГЭЦЭД БУУЛГАХ нь хойшилно — тэр нь курсор үсрэхээс хамгаална.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   const ti = FN.indexOf('const tick = async () => {');
   assert.ok(ti > 0, 'FillNew: татах мөчлөгийн tick олдсонгүй');
   const tb = FN.slice(ti, FN.indexOf('timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);', ti + 900));
@@ -453,7 +463,7 @@ console.log('✅ татах мөчлөг — нүд нээлттэй ч ТАТН
  * (`byOther` класс) ба эзний нэр нь `title`-д бичигдэнэ.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   assert.ok(FN.includes('const cellBy = dirty ? byMap.get(key) : undefined;'),
     'FillNew: нүдний эзнийг byMap-аас уншихгүй байна — бусдын нүд ялгарахгүй');
   /* ⚠️ `meKey` шалгалт ЗААВАЛ: нэвтрэлт унтраалттай (хөгжүүлэлт) үед
@@ -485,7 +495,7 @@ console.log('✅ бусдын нүд — хүснэгт дээр ялгарна,
  *    `mineRef`-ээс нэмэх ёстой — эс бөгөөс өөрийн тоо ҮРГЭЛЖ 0 харагдана.
  */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   const i = FN.indexOf('const byCount = useMemo(');
   assert.ok(i > 0, 'FillNew: byCount алга — оролцогчийн нүдний тоо харагдахгүй');
   const b = FN.slice(i, i + 700);
@@ -546,7 +556,7 @@ console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй
 
 /* ── Эх кодын гэрээ (2026-09-21) ── */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   assert.ok(/byAt\?: \[string, number\]\[\];/.test(FN), 'Draft-д `byAt` алга');
   assert.ok(/del\?: \[string, number\]\[\];/.test(FN), 'Draft-д `del` (tombstone) алга');
   /* Ctrl+S оролцогчийн түгжээг тойрохгүй */
@@ -642,7 +652,7 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
 
 /* ── Эх кодын гэрээ (2026-09-21, дахин аудит) ── */
 {
-  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
   /* #1 түр oid цагаас эхэлнэ, `nextTmpOid`-оор олгогдоно, tombstone-оос ч түлхэгдэнэ */
   assert.ok(/let tmpOid = -\(Date\.now\(\) % 1e9\) \* 100 - 1;/.test(FN), '#1: tmpOid −1-ээс эхэлж байна (хуудас бүрт давтагдана)');
   assert.ok(!FN.includes('tmpOid--,'), '#1: шууд `tmpOid--` үлдэж байна — `nextTmpOid()` хэрэглэ');
