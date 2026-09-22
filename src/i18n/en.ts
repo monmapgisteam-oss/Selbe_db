@@ -4639,7 +4639,7 @@ const en: Record<string, string> = {
   "Нийт барилга (одоо {0} · шинэ {1})": "Total buildings (existing {0} · new {1})",
   "Нийт барилга (ЕТ)": "Total buildings (master plan)",
   "Нийгмийн үйлчилгээ (илтгэл: одоо {0} + шинэ {1})": "Social services (report: existing {0} + new {1})",
-  "{0} — багцын нийт обьёмын {1}%": "{0} — {1}% of package total volume"
+  "{0} — багцын нийт обьёмын {1}%": "{0} — {1}% of package total volume",
   "Нэмэлт ажил батлах": "Approve added work",
   "Нэмэлт ажлын эрх": "Added-work permissions",
   "Нэмсэн мөр алга.": "No added rows.",
