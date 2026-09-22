@@ -4638,7 +4638,8 @@ const en: Record<string, string> = {
   "Багц ажил (гэрээний мөр)": "Package works (contract rows)",
   "Нийт барилга (одоо {0} · шинэ {1})": "Total buildings (existing {0} · new {1})",
   "Нийт барилга (ЕТ)": "Total buildings (master plan)",
-  "Нийгмийн үйлчилгээ (илтгэл: одоо {0} + шинэ {1})": "Social services (report: existing {0} + new {1})"
+  "Нийгмийн үйлчилгээ (илтгэл: одоо {0} + шинэ {1})": "Social services (report: existing {0} + new {1})",
+  "{0} — багцын нийт обьёмын {1}%": "{0} — {1}% of package total volume"
 };
 
 export default en;

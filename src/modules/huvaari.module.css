@@ -484,9 +484,16 @@
   transform: translateX(2px);
 }
 .plDayBig { color: var(--ink-2); font-weight: 600; }
+/* ⚠️ ХОЁР МӨР НЭГ SPAN ДОТОР (2026-09-22): сарын шошгын ДОР тэр сард
+   төлөвлөсөн обьём нь багцын нийт обьёмын хэдэн хувь (бүхэл, % тэмдэггүй).
+   `.plHead`-ийн 30px өндөр нь `PL_ROW`-той уягдсан — виртуалчлалын offset
+   (`Huvaari.tsx`: `scrollTop - PL_ROW`) ба зүүн `gSideHead`-ийн хатуу
+   өндөр хоёр түүнээс хамаардаг тул ӨНДӨРЛӨХ БОЛОХГҮЙ. Иймд сар/хувь хоёрыг
+   `line-height` шахаж 0–17px дотор байрлуулж, хоногийн 18px-ийг хөндөөгүй. */
 .plMonth {
   position: absolute;
-  top: 2px;
+  top: 0;
+  line-height: 9px;
   padding-right: 8px;
   border-left: 1px solid var(--line);
   padding-left: 3px;
@@ -496,6 +503,16 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   transform: translateX(2px);
+}
+
+/* Сарын шошгын ДООРХ хувь. ⚠️ Сарын шошгоос СУЛ өнгө — гол шошго нь огноо. */
+.plMonPct {
+  display: block;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 8px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
 .plLanes { position: relative; user-select: none; touch-action: none; }
 .plLane {
