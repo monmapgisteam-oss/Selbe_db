@@ -59,6 +59,16 @@ export const AJIL_STATUS = {
    *    СЕРВЕРТ байна.
    */
   applied: 'Буулгасан',
+  /**
+   * БУЦААГДСАН БА зохиогчийн «Гүйцэтгэл бөглөх» хуудас мөрүүдийг `adds`-д
+   * аль хэдийн БУЦААЖ буулгасан (2026-09-23, аудитын #13).
+   *
+   * ⚠️ `returned`-ООС ЯЛГААТАЙ БАЙХ ЁСТОЙ — `applied` ↔ `approved`-ын ижил
+   *    шалтгаан: хуудас нээгдэх бүрд буцаагдсан илгээлтийг сэргээвэл ижил
+   *    мөр дахин дахин нэмэгдэнэ. Төлөв нь СЕРВЕРТ — өөр компьютер дээр ч
+   *    дахин буухгүй. Буцаах ШАЛТГААН (`reason`) мөрөнд хэвээр үлдэнэ.
+   */
+  restored: 'Сэргээсэн',
 } as const;
 export type AjilStatus = (typeof AJIL_STATUS)[keyof typeof AJIL_STATUS];
 
@@ -363,7 +373,12 @@ export async function loadAllPending(): Promise<AjilSubmission[]> {
   return rows.map(toSubmission).filter((x): x is AjilSubmission => x != null);
 }
 
-/** Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан · буцаагдсан · татсан) */
+/**
+ * Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан · буцаагдсан · татсан ·
+ * буулгасан · сэргээсэн).
+ * ⚠️ `FillNew` үүгээр зохиогчийн `returned` илгээлтийг олж мөрүүдийг нь
+ *    `adds`-д буцаана (2026-09-23) — `restored` болсныг дахин буулгахгүй.
+ */
 export async function loadHistory(pkgKey: string, limit = 20): Promise<AjilSubmission[]> {
   const esc = pkgKey.replace(/'/g, "''");
   const rows = await query(
@@ -428,6 +443,38 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
 }
 
 /**
+ * БУЦААГДСАНЫГ «СЭРГЭЭСЭН» гэж тэмдэглэх — зохиогчийн хуудас мөрүүдийг
+ * `adds`-д буцааж буулгасны ДАРАА (2026-09-23, аудитын #13).
+ *
+ * ⚠️ `markApplied`-тай ИЖИЛ дараалал: эхлээд `adds`, дараа нь тэмдэглэнэ —
+ *    эсрэгээр бол буулт унасан үед буцаагдсан мөр бүрмөсөн алга болно.
+ * ⚠️ ЗӨВХӨН `returned` → `restored`; аль хэдийн `restored` бол амжилт
+ *    (идемпотент — хоёр таб). Бусад төлөв бол хөндөхгүй.
+ */
+export async function markRestored(oid: number): Promise<{ ok: boolean; error?: string }> {
+  const url = await tableUrl();
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status}`);
+  if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  const st = s(cur[0][F.status]);
+  if (st === AJIL_STATUS.restored) return { ok: true };
+  if (st !== AJIL_STATUS.returned) {
+    return { ok: false, error: tr('Энэ илгээлт энэ хооронд өөрчлөгдлөө — хуудсаа шинэчилнэ үү.') };
+  }
+  try {
+    const j = await req(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.restored } }]),
+      rollbackOnFailure: 'true',
+    });
+    return editOk(j.updateResults)
+      ? { ok: true }
+      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
  * БАТЛАГДСАН/БУУЛГАСАН НЭМЭЛТ АЖЛЫН ТҮЛХҮҮРҮҮД — «эцгийн № ¦ эцгийн нэр ¦ № ¦ нэр».
  *
  * ⚠️ ЗОРИЛГО (2026-09-22, хэрэглэгч: «сүүлд нэмэгдсэн ажил батлагдсан ч улаан
@@ -435,12 +482,18 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
  *    ялгагдахаа болдог тул «нэмэлт» гэдгийг ЭНЭ хүснэгтээс сэргээнэ. Хуудас
  *    (FillNew) мөр бүрийн эцгийг дээшээ хайж ижил түлхүүр үүсгэж тулгана.
  * ⚠️ Уншихад эрх шаардахгүй — тэмдэглэгээ л. Хүснэгт алга/уншигдахгүй бол хоосон.
+ * ⚠️ `parentIdx`-ИЙГ Ч БУЦААНА (2026-09-23, аудитын #17): (эцгийн № + нэр) хос
+ *    давхарддаг — Багц 1-д «10 · БУСАД АЖИЛ» блок бүрт нэг. Зөвхөн нэрээр
+ *    тулгавал ӨӨР БЛОКИЙН ижил нэртэй мөр ч улаан болно. Хуудас (`FillNew`)
+ *    `sheetFrame.parentOf`-той ижил ОЙРХНЫ дүрмээр нэг л эцэг тааруулна.
  */
 export function addedKeyOf(parentNo: string, parentWork: string, no: string, work: string): string {
   return `${parentNo.trim()}¦${parentWork.trim()}¦${no.trim()}¦${work.trim()}`;
 }
-export async function loadAddedKeys(pkgKey: string): Promise<Set<string>> {
-  const out = new Set<string>();
+/** Нэг нэмэгдсэн мөрийн тэмдэглэгээ — түлхүүр + нэмсэн үеийн эцгийн байрлал */
+export type AddedKey = { key: string; parentIdx: number };
+export async function loadAddedKeys(pkgKey: string): Promise<AddedKey[]> {
+  const out: AddedKey[] = [];
   try {
     const esc = pkgKey.replace(/'/g, "''");
     const rows = await query(
@@ -449,7 +502,9 @@ export async function loadAddedKeys(pkgKey: string): Promise<Set<string>> {
     );
     for (const r of rows) {
       const p = parsePayload(s(r[F.payload]) ?? "");
-      for (const a of p?.adds ?? []) out.add(addedKeyOf(a.parentNo, a.parentWork, a.no, a.work));
+      for (const a of p?.adds ?? []) {
+        out.push({ key: addedKeyOf(a.parentNo, a.parentWork, a.no, a.work), parentIdx: a.parentIdx });
+      }
     }
   } catch { /* тэмдэглэгээ л — уншигдахгүй бол улаан гарахгүй, хуудас ажиллана */ }
   return out;

@@ -2361,7 +2361,6 @@ const en: Record<string, string> = {
   "№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.": "The No. must be a whole number (e.g. “12”) — a decimal number marks a group row, so the task would be left out of the task count.",
   "Обьём ба Нэгж өртөг нь тоон утга байх ёстой.": "Volume and unit cost must be numbers.",
   "Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч нийтэлсэн) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — нийтлэлийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж, сэргээгээд дахин Илгээнэ үү.": "The sheet was updated meanwhile (someone else published), so the edits could not be matched to the new rows — submission was stopped. The draft is still saved: reload the sheet, restore it and submit again.",
-  "«{0}» нэмэгдлээ — «Илгээх» дарж хяналтад илгээнэ.": "“{0}” added — press Submit to send it for review.",
   "Энэ бүлэгт шинэ ажлын мөр нэмэх": "Add a new task row to this group",
   "«{0}» бүлэгт ажил нэмэх": "Add a task to the “{0}” group",
   "«{0}» мөрийг хасах": "Remove the “{0}” row",
@@ -4679,7 +4678,12 @@ const en: Record<string, string> = {
   "дуусаад эхэлнэ (FS)": "starts after finish (FS)",
   "зэрэг эхэлнэ (SS)": "starts together (SS)",
   "Дарж засах / устгах": "Click to edit / remove",
-  "Обьём ба нэгж өртөг сонголттой — хоосон бол жин 0. Шинэ мөр бүлгийн эхэнд, улаанаар орно.": "Volume and unit price are optional — empty means weight 0. The new row goes first in its group, in red."
+  "«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. AGOL дээр багана нэмнэ үү.": "The «{0}» column is missing in the review service — the list of accepted cells was not saved, so the contractor cannot see which cells were accepted. Please add the column in AGOL.",
+  "Хамаарал холбогдсонгүй — хуанлийн мөр (зурвасын эгнээ) дээр тавина уу.": "Dependency not linked — drop on a calendar row (the bar's lane).",
+  "«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдсаны дараа «Илгээх»-д орно.": "«{0}» added — get it approved with the «Submit added work» button; once approved it will be included in «Submit».",
+  "Батлуулаагүй нэмэлт ажил {0} мөр байна — эхлээд «Нэмэлт ажил батлуулах» товчоор илгээж батлуулна, дараа нь «Илгээх».": "{0} added-work rows are not approved yet — first submit them with «Submit added work» for approval, then «Submit».",
+  "Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.": "Added work was returned ({0} rows, {1}): {2} — the rows are back on the sheet; edit and resubmit for approval.",
+  "Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.": "Volume and unit price are optional — if empty, no weight is computed (—) and other rows' weights do not change. The new row goes first in its group, in red."
 };
 
 export default en;

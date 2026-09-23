@@ -197,8 +197,14 @@ let missingCache: string[] | null = null;
  *    «Шилжүүлсэн» үлдэнэ — хэн батласан нь бүртгэлгүй. Тодорхойгүй үед товчийг
  *    ХААХ ёстой тул «мэдэхгүй»-г ил буцаана.
  */
-export async function missingDirectorFields(): Promise<string[] | null> {
-  if (missingCache) return missingCache;
+/**
+ * ҮЙЛЧИЛГЭЭНИЙ ТАЛБАРЫН НЭРС — `missingDirectorFields` ба `hasOkCellsField`
+ * хоёулаа ЭНЭ нэг уншилтаас (2026-09-23, аудитын #16). Амжилттай хариуг л
+ * кэшлэнэ; унавал `null` («мэдэхгүй»), кэшлэхгүй.
+ */
+let fieldsCache: Set<string> | null = null;
+async function serviceFieldNames(): Promise<Set<string> | null> {
+  if (fieldsCache) return fieldsCache;
   try {
     const res = await fetch(`${HYANALT.url}?f=json${tokenQs()}`);
     if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
@@ -217,7 +223,33 @@ export async function missingDirectorFields(): Promise<string[] | null> {
     if (j.error || !Array.isArray(j.fields)) {
       throw new HyanaltError(j.error?.message ?? 'Талбарын жагсаалт ирсэнгүй');
     }
-    const have = new Set(j.fields.map((x) => x.name));
+    fieldsCache = new Set(j.fields.map((x) => x.name));
+    return fieldsCache;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `Zovshoorson_nud` (`F.okCells`) талбар үйлчилгээнд БАЙНА УУ (2026-09-23,
+ * аудитын #16).
+ *   · `true`  — байна, бичиж болно;
+ *   · `false` — АЛГА: `applyEdits` танихгүй талбарыг чимээгүй алгасах (эсвэл
+ *               бүх мөрийг унагах) тул `hyanaltStore` тэр талбарыг БИЧИХГҮЙ,
+ *               ил анхааруулна;
+ *   · `null`  — шалгаж чадсангүй (сүлжээ) — `missingDirectorFields`-ийн
+ *               гурав дахь төлөвтэй ижил утга.
+ */
+export async function hasOkCellsField(): Promise<boolean | null> {
+  const have = await serviceFieldNames();
+  return have ? have.has(F.okCells) : null;
+}
+
+export async function missingDirectorFields(): Promise<string[] | null> {
+  if (missingCache) return missingCache;
+  try {
+    const have = await serviceFieldNames();
+    if (!have) throw new HyanaltError('Талбарын жагсаалт ирсэнгүй');
     missingCache = DIRECTOR_FIELDS.filter((x) => !have.has(x));
     return missingCache;
   } catch {

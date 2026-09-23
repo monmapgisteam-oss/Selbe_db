@@ -77,8 +77,9 @@ import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
 import {
   loadApproved as loadAjilApproved, loadPending as loadAjilPending,
   loadPayload as loadAjilPayload, markApplied as markAjilApplied,
-  loadAddedKeys as loadAjilAddedKeys, addedKeyOf,
-  submitAjil, withdrawAjil, type AjilSubmission,
+  loadHistory as loadAjilHistory, markRestored as markAjilRestored,
+  loadAddedKeys as loadAjilAddedKeys, addedKeyOf, AJIL_STATUS,
+  submitAjil, withdrawAjil, type AjilSubmission, type AddedKey,
 } from '@/lib/ajilBatlah';
 import { negjOf } from "./negj";
 import { useAuth } from "@/components/AuthGate";
@@ -152,8 +153,11 @@ type Draft = {
   /**
    * Ерөнхий менежерийн нэмсэн, хараахан нийтлэгдээгүй мөрүүд.
    * ⚠️ Хуучин ноорогт БАЙХГҮЙ тул заавал сонголттой — уншихдаа `?? []`.
+   * ⚠️ `AddRow` (2026-09-23): батлагдсан мөрийн `ajilOid` тэмдэг ноорогтоо
+   *    хамт хадгалагдана — `markApplied`-ийн дараа сервер тэр мөрийг дахин
+   *    өгөхгүй тул тэмдэг алдагдвал мөр «батлагдаагүй» болж мөчлөгт орно.
    */
-  adds?: NewRow[];
+  adds?: AddRow[];
   /**
    * МӨРИЙН ТАНИГЧ — `oid → "№ ¦ Ажлын нэр"` (2026-09-03-ны аудитын олдвор).
    *
@@ -241,6 +245,44 @@ type Draft = {
  * ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын нэр) хос нь
  * эх excel-ийн бүтэц тул хамаагүй тогтвортой.
  */
+
+/**
+ * ЭНЭ ХУУДАСНЫ нэмсэн мөр — `NewRow` + БАТЛАГДСАН тэмдэг (2026-09-23, аудитын
+ * #9/#10).
+ *
+ * ⚠️ `ajilOid` = нэмэлт ажлын батлах хүснэгтийн (`ajilBatlah`) илгээлтийн
+ *    ObjectID — мөр тэр илгээлтээр БАТЛАГДАЖ (`approved`) хуудсанд буусан.
+ *    `undefined` = хараахан батлуулаагүй (шинээр нэмсэн, буцаагдсанаас
+ *    сэргэсэн, татсан).
+ * ⚠️ ЯАГААД `NewRow`-д БИШ: тэр төрөл `submission.ts`-ийнх бөгөөд илгээлтийн
+ *    payload, `sheetFrame`, хянагчийн overlay гурвуулаа хуваалцдаг —
+ *    батлагдсан эсэх нь ЗӨВХӨН энэ хуудасны асуулт. Бүтцийн өргөтгөл тул
+ *    `NewRow` хүлээдэг газар бүрд шууд дамжина.
+ * ⚠️ Тэмдэгтэй мөр: «Нэмэлт ажил батлуулах»-д ДАХИН орохгүй, «×» хасах товч
+ *    ГАРАХГҮЙ, «Илгээх» (`publish`) зөвшөөрнө. Тэмдэггүй мөр байвал
+ *    `publish` ЗОГСОНО — тусдаа батлах урсгал тойрогдохгүй.
+ */
+type AddRow = NewRow & { ajilOid?: number };
+/** Батлуулаагүй (тэмдэггүй) мөрүүд — илгээх/хасах/тоолох бүгд ЭНЭ шүүлтээр */
+const unapprovedAdds = (list: readonly AddRow[]): AddRow[] => list.filter((a) => !a.ajilOid);
+/** Payload руу явахдаа тэмдгийг ХАСНА — `NewRow`-ийн цэвэр хэлбэр */
+const toNewRows = (list: readonly AddRow[]): NewRow[] =>
+  list.map(({ ajilOid: _mark, ...a }) => a);
+/**
+ * `next`-д БАЙХГҮЙ БАТЛАГДСАН мөрүүдийг `prev`-ээс ҮЛДЭЭНЭ (2026-09-23, #12).
+ *
+ * ⚠️ ЯАГААД: батлагдсан мөр `markApplied`-ийн дараа серверээс ДАХИН ирэхгүй —
+ *    ганц хуулбар нь энэ хуудасны `adds` (→ ноорог). Ноорог сэргээлт/нийлүүлэлт
+ *    (`pickDraft`) `setAdds`-ыг БҮХЭЛД нь солих тул хадгалах эффект алсад
+ *    бичихээс ӨМНӨ ирсэн хуучин ноорог тэднийг арчиж, мөр бүрмөсөн алга
+ *    болдог байв. Батлуулаагүй мөрд энэ хамаарахгүй — тэд tombstone дүрмээр
+ *    солигдоно.
+ */
+const keepApproved = (prev: readonly AddRow[], next: readonly AddRow[]): AddRow[] => {
+  const have = new Set(next.map((a) => a.oid));
+  const kept = prev.filter((a) => !!a.ajilOid && !have.has(a.oid));
+  return [...next, ...kept];
+};
 
 /**
  * Түр ObjectID-ийн тоолуур. Сөрөг тул серверийн (эерэг) дугаартай мөргөлдөхгүй
@@ -372,6 +414,9 @@ const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | null => {
         const o = Number(a?.oid);
         if (!Number.isInteger(o) || o >= 0 || seen.has(o)) return false;
         seen.add(o);
+        /* 2026-09-23 (#9/#10): батлагдсан тэмдэг — эерэг бүхэл тоо л хүчинтэй;
+           эвдэрсэн бол тэмдгийг л хаяна (мөр нь «батлуулаагүй» болно), мөрийг биш. */
+        if (a.ajilOid != null && (!Number.isInteger(a.ajilOid) || a.ajilOid <= 0)) delete a.ajilOid;
         return true;
       });
     }
@@ -728,19 +773,26 @@ export type SheetView = {
  *    хоёулаа үүнийг дуудна. Тус тусад нь бичвэл нэгийг засахад нөгөө нь
  *    чимээгүй хоцорно.
  */
+/*
+ * ⚠️ ТҮЛХҮҮР НЬ `${oid}:${шошго}`, ИНДЕКС БИШ (2026-09-23, аудитын #15). Урьд нь
+ *    `${i}:${шошго}` (`ov.rows`-ийн индекс) байсан ч хүснэгт `rowsAll` =
+ *    `ov.rows` + локал нэмсэн мөр (`insertAdds`) тул нэмсэн мөр орсон бүлгээс
+ *    доош индекс ГУЛСАЖ, улаан/ногоон тэмдэг ӨӨР мөрөнд буудаг байв. Мөрийн
+ *    oid нь `rowsAll`-д хэвээр тул түүгээр тулгана. Хянагчийн `view.changed`
+ *    (`Guitsetgel`) индексээрээ хэвээр — тэнд локал нэмэлт мөр байхгүй.
+ */
 function changedKeys(rows: SheetRow[], bld: string[], cells: [string, string][]): Set<string> {
-  const at = new Map<number, number>();
-  rows.forEach((r, i) => at.set(r.oid, i));
+  const have = new Set(rows.map((r) => r.oid));
   const out = new Set<string>();
   for (const [k] of cells) {
     const cut = k.indexOf(':');
     if (cut <= 0) continue;
-    const i = at.get(Number(k.slice(0, cut)));
-    if (i == null) continue;
-    /* ⚠️ ХОЁР ХӨРВҮҮЛЭЛТ: `oid` → мөрийн индекс, блокийн ИНДЕКС → ШОШГО. */
+    const oid = Number(k.slice(0, cut));
+    if (!have.has(oid)) continue;
+    /* ⚠️ Блокийн ИНДЕКС → ШОШГО (хянагчийн `okCells`-тэй ижил шошго). */
     const b = bld[Number(k.slice(cut + 1))];
     if (b == null) continue;
-    out.add(`${i}:${b}`);
+    out.add(`${oid}:${b}`);
   }
   return out;
 }
@@ -2085,8 +2137,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const raw = JSON.parse(String(flow[HF.okCells] ?? '[]')) as unknown;
       if (Array.isArray(raw)) ok = raw.filter((x): x is string => typeof x === 'string');
     } catch { /* эвдэрсэн — хоосон */ }
-    setBackOk(new Set(ok));
-  }, [view, flow]);
+    /* ⚠️ ИНДЕКС → OID (2026-09-23, #15): хянагч `${i}:${шошго}`-оор хадгалдаг
+       (`Guitsetgel.toggleOk`, `i` = overlay мөрийн индекс). Энд `rows` нь ЯГ
+       тэр overlay (`setRows(ov.rows)`) тул `rows[i].oid`-оор хөрвүүлж,
+       `backChg`/хүснэгттэй ижил `${oid}:${шошго}` түлхүүр болгоно — локал
+       нэмсэн мөрөөс индекс гулсахгүй. */
+    const byOid = new Set<string>();
+    for (const k of ok) {
+      const cut = k.indexOf(':');
+      if (cut <= 0) continue;
+      const r = rows[Number(k.slice(0, cut))];
+      if (r) byOid.add(`${r.oid}${k.slice(cut)}`);
+    }
+    setBackOk(byOid);
+  }, [view, flow, rows]);
 
   const lateOverlayRef = useRef<number>(NaN);
   /** Хожуу давхарлалтын уншилт унасан/таслагдсан бол эффектийг ДАХИН асаах цохилт. */
@@ -2187,7 +2251,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    авдаг тул нийтлэхийн өмнө дахин татсан хуудсанд тэр дугаар өөр байна.
    *    Оронд нь (№ + ажлын нэр) хосоор олж, олдохгүй бол индексээр нөхнө.
    */
-  const [adds, setAdds] = useState<NewRow[]>([]);
+  const [adds, setAdds] = useState<AddRow[]>([]);
+  /**
+   * ИРСЭН мөрүүдийг (батлагдсан · буцаагдсан · татсан) `adds`-д НИЙЛҮҮЛНЭ —
+   * солихгүй (2026-09-23, аудитын #12/#14).
+   *
+   * ⚠️ ТҮР OID МӨРГӨЛДӨӨН: хуудсанд аль хэдийн байгаа мөрийн дугаартай
+   *    таарвал ирсэн мөрд `nextTmpOid()`-оор ШИНЭ сул дугаар олгоно
+   *    (`submission.mergeSubmission`-ийн дүрэм) — байгаа мөрийг дарахгүй.
+   * ⚠️ Тоолуурыг ТҮЛХНЭ (`pushTmpOid`) — эс бөгөөс дараа нэмэх мөр ирсэн
+   *    мөртэй ижил сөрөг дугаар авна (урьд нь `withdrawAjilHere` үүнийг
+   *    хийдэггүй байв).
+   * ⚠️ Ижил oid + ижил агуулга аль хэдийн байвал (давхар дуудлага) АЛГАСНА.
+   */
+  const mergeIncomingAdds = (prev: AddRow[], incoming: readonly NewRow[], ajilOid?: number): AddRow[] => {
+    const used = new Set(prev.map((a) => a.oid));
+    const fresh: AddRow[] = [];
+    for (const a of incoming) {
+      const dup = prev.find((x) => x.oid === a.oid);
+      if (dup && dup.no === a.no && dup.work === a.work && dup.parentNo === a.parentNo && dup.parentWork === a.parentWork) continue;
+      const oid = used.has(a.oid) ? nextTmpOid() : a.oid;
+      used.add(oid);
+      fresh.push(ajilOid ? { ...a, oid, ajilOid } : { ...a, oid });
+    }
+    if (!fresh.length) return prev;
+    pushTmpOid(fresh);
+    return [...prev, ...fresh];
+  };
 
   /*
    * ⚠️ `afterGroup` ЭНДЭЭС ХАСАГДСАН (2026-09-04) — `sheetFrame.insertAdds`
@@ -2232,17 +2322,29 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ажлын батлах хүснэгтээс (`loadAddedKeys`) эцэг+№+нэрээр тулгана.
    * ⚠️ Бүх хэрэглэгчид (эрх шаардахгүй) — тэмдэглэгээ л; уншигдахгүй бол хоосон.
    */
-  const [addedKeys, setAddedKeys] = useState<Set<string>>(() => new Set());
+  const [addedKeys, setAddedKeys] = useState<AddedKey[]>([]);
   useEffect(() => {
     let alive = true;
-    setAddedKeys(new Set());
+    setAddedKeys([]);
     void loadAjilAddedKeys(pkg.key).then((k) => { if (alive) setAddedKeys(k); });
     return () => { alive = false; };
   }, [pkg.key]);
-  /** oid → «сүүлд нэмэгдсэн» (нэмэлт ажлын хүснэгтээр тулгасан) */
+  /**
+   * oid → «сүүлд нэмэгдсэн» (нэмэлт ажлын хүснэгтээр тулгасан).
+   *
+   * ⚠️ НЭР + ОЙРХНЫ ДҮРЭМ (2026-09-23, аудитын #17): (эцгийн № + нэр) хос
+   *    ДАВХАРДДАГ — Багц 1-д «10 · БУСАД АЖИЛ» блок бүрт нэг. Зөвхөн нэрээр
+   *    тулгавал ӨӨР БЛОКИЙН ижил нэртэй мөр ч улаан болдог байв. Одоо
+   *    `sheetFrame.parentOf`-той ИЖИЛ дүрэм: нэрээр таарах бүх нэрийдлээс
+   *    нэмсэн үеийн эцгийн байрлалд (`parentIdx`) ХАМГИЙН ОЙРХОНЫГ нэг л
+   *    удаа сонгоно (сонгогдсон нэрийдэл дараагийн тэмдэглэгээнд дахин
+   *    орохгүй).
+   */
   const addedOids = useMemo(() => {
     const out = new Set<number>();
-    if (!addedKeys.size) return out;
+    if (!addedKeys.length) return out;
+    /* түлхүүр → нэрийдлүүд (мөрийн oid, эцгийн индекс) */
+    const cands = new Map<string, { oid: number; p: number }[]>();
     for (let i = 0; i < rowsAll.length; i += 1) {
       const r = rowsAll[i];
       if (r.group) continue;
@@ -2250,7 +2352,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       let p = -1;
       for (let k = i - 1; k >= 0; k -= 1) if (rowsAll[k].depth < r.depth) { p = k; break; }
       if (p < 0) continue;
-      if (addedKeys.has(addedKeyOf(rowsAll[p].no, rowsAll[p].work, r.no, r.work))) out.add(r.oid);
+      const key = addedKeyOf(rowsAll[p].no, rowsAll[p].work, r.no, r.work);
+      const l = cands.get(key);
+      if (l) l.push({ oid: r.oid, p });
+      else cands.set(key, [{ oid: r.oid, p }]);
+    }
+    for (const e of addedKeys) {
+      const l = cands.get(e.key);
+      if (!l?.length) continue;
+      let best = 0;
+      for (let j = 1; j < l.length; j += 1) {
+        if (Math.abs(l[j].p - e.parentIdx) < Math.abs(l[best].p - e.parentIdx)) best = j;
+      }
+      out.add(l[best].oid);
+      l.splice(best, 1);
     }
     return out;
   }, [rowsAll, addedKeys]);
@@ -2969,7 +3084,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     });
     setAddFor(null);
     setAddForm({ no: "", work: "", vol: "", unit: "" });
-    done(tr('«{0}» нэмэгдлээ — «Илгээх» дарж хяналтад илгээнэ.', work));
+    /* ⚠️ 2026-09-23 (#9): хуучин зам («Илгээх») биш — шинэ мөр ЭХЛЭЭД тусдаа
+       урсгалаар батлагдана; батлагдтал «Илгээх» зогсоно. */
+    done(tr('«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдсаны дараа «Илгээх»-д орно.', work));
   };
 
   /**
@@ -3015,7 +3132,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    «систем ажиллахгүй байна» гэж үзнэ. Хасах товчийг зөвхөн ЭНД байгаа
    *    мөрд гаргана; илгээсэн мөрийг буцаах нь хянагчийн буцаалтаар шийдэгдэнэ.
    */
-  const localAddOids = useMemo(() => new Set(adds.map((a) => a.oid)), [adds]);
+  /* ⚠️ 2026-09-23 (#10): БАТЛАГДСАН (`ajilOid`) мөрд ч «×» ГАРАХГҮЙ — тэр мөр
+     гэрээний хамрах хүрээнд батлагдсан, серверээс дахин ирэхгүй (`applied`);
+     хасвал бүрмөсөн алга болно. Зөвхөн батлуулаагүй мөр хасагдана. */
+  const localAddOids = useMemo(() => new Set(unapprovedAdds(adds).map((a) => a.oid)), [adds]);
 
   /**
    * Нүдний засвар — блокийн ОБЬЁМ эсвэл мөрийн Обьём. Гүйцэтгэлийн хувь
@@ -3151,6 +3271,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   // ── Нооргийн сэргээлт — багц ачаалагдмагц НЭГ удаа санал болгоно ──
   const promptedPkgRef = useRef("");
+  /**
+   * НООРОГ СЭРГЭЭЛТ ДУУССАН багцын түлхүүр (2026-09-23, аудитын #12).
+   * ⚠️ Батлагдсан/буцаагдсан нэмэлт ажлыг буулгах эффект ЭНЭ түлхүүр
+   *    `pkg.key`-тэй тэнцэх үед л ажиллана — сэргээлтээс ӨМНӨ буулгавал
+   *    `pickDraft`-ийн `setAdds` тэднийг арчина (`markApplied` аль хэдийн
+   *    хийгдсэн тул сэргэх замгүй). Ref БИШ, state: эффект түүнээс хамаарч
+   *    дахин ажиллах ёстой.
+   */
+  const [draftReadyKey, setDraftReadyKey] = useState("");
   /** Сэргээх цонхонд харуулах ба хүлээгдэж буй ноорог (`null` = цонх хаалттай) */
   useEffect(() => {
     if (busy || !rows.length || !sc) return;
@@ -3272,9 +3401,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          Сэргээх зүйлгүй бол дараагийн хадгалах эффект хоосон слотыг цэвэрлэнэ —
          тэр нь ЗӨВ (устгах зүйл угаас байхгүй). */
       restoring.current = false;
-      if (!merged) return;
-      const src = local && remote ? 'both' : remote ? 'remote' : 'local';
-      pickDraft(merged, src);
+      if (merged) {
+        const src = local && remote ? 'both' : remote ? 'remote' : 'local';
+        pickDraft(merged, src);
+      }
+      /* ⚠️ Сэргээлт ДУУССАН — батлагдсан нэмэлт ажил одоо буух боломжтой (#12).
+         `pickDraft`-ийн ДАРАА: тэр нь синхрон `setAdds` хийдэг тул дараагийн
+         render-д буух эффект нь сэргээсэн `adds` дээр нийлүүлнэ. */
+      setDraftReadyKey(pkg.key);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3292,7 +3426,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        индекс зөвхөн `rows`-оос баригддаг байсан тул нэмсэн мөрийн нүд бүр
        «хуучирсан» гэж хаягдаж, мөр нь ХООСОН сэргэдэг байв — ноорог өөрөө
        хамгаалах ёстой өгөгдлөө устгана. */
-    const restoredAdds = canAddRow ? (d.adds ?? []) : [];
+    const restoredAdds: AddRow[] = canAddRow ? (d.adds ?? []) : [];
     const byOid = new Map<number, { group: boolean }>();
     for (const r of rows) byOid.set(r.oid, r);
     for (const a of restoredAdds) byOid.set(a.oid, { group: false });
@@ -3512,7 +3646,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          нөгөө тал миний сүүлчийн нүдийг буцаасан (tombstone) бол нийлбэр хоосон
          ирнэ — урьд нь энд төлөв хөндөгдөхгүй буцдаг тул тэр нүд `pending`-д
          үлдэж, дараагийн хадгалалтаар алсад СЭРГЭДЭГ байв. */
-      setAdds([]);
+      setAdds((prev) => keepApproved(prev, []));
       setPending({});
       setPendDate({});
       keepDraft.current = false;
@@ -3561,7 +3695,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        төлөв ХӨНДӨГДӨХГҮЙ — буцаагдсан нүд/мөр энд үлдэж, дараагийн хадгалалт
        түүнийг алсад СЭРГЭЭДЭГ байв. Курсорын хамгаалалт хэвээр: татах мөчлөг
        нүд нээлттэй үед `pickDraft`-ыг огт дуудахгүй (`editRef`). */
-    setAdds(restoredAdds);
+    /* ⚠️ БАТЛАГДСАН мөрийг ҮЛДЭЭНЭ (2026-09-23, #12): `keepApproved` — ноорогт
+       хараахан бичигдээгүй (`ajilOid`-той) мөрийг сольж арчихгүй. Бусад нь
+       болзолгүй солигдоно (tombstone дүрэм хэвээр). */
+    setAdds((prev) => keepApproved(prev, restoredAdds));
     setPending(next);
     setPendDate(nextDates);
     if (draftAsOf != null) setAsOf(draftAsOf);
@@ -3616,7 +3753,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     ))) return;
     setPending({});
     setPendDate({});
-    setAdds([]);
+    /* ⚠️ БАТЛАГДСАН мөр ҮЛДЭНЭ (2026-09-23, #12): «Ноорог устгах» нь илгээгээгүй
+       ЗАСВАРЫГ хаяна; батлагдсан нэмэлт ажил бол засвар биш, гэрээний хамрах
+       хүрээний шийдвэр — сервер дахин өгөхгүй (`applied`) тул энд хаявал
+       бүрмөсөн алга болно. Хадгалах эффект тэднийг дараагийн ноорогт бичнэ. */
+    setAdds((prev) => keepApproved(prev, []));
     setAddFor(null);
     setAsOf(asOfOrig);
     /* ⚠️ Хамтын төлөвийг ч ЗААВАЛ цэвэрлэнэ: үлдвэл устгагдсан нооргийн
@@ -4277,14 +4418,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    батлагдалгүй ОРООД явах эрсдэлтэй — яг үүнээс сэргийлж байгаа юм.
    */
   const sendAjil = useCallback(async () => {
-    if (!adds.length || ajBusy) return;
+    /* ⚠️ ЗӨВХӨН БАТЛУУЛААГҮЙ мөр (2026-09-23, #10): батлагдсан (`ajilOid`)
+       мөрийг дахин илгээвэл «батлагдсан → батлуулах → батлагдсан» мөчлөг
+       үүснэ. Тоо ч тэднийх л. */
+    const toSend = unapprovedAdds(adds);
+    if (!toSend.length || ajBusy) return;
     setAjBusy(true); setAjErr(""); setAjNote("");
     try {
       const r = await submitAjil({
         pkgKey: pkg.key,
         pkgGroup: pkg.group,
         author: user?.username ?? '',
-        payload: { v: 1, pkgKey: pkg.key, adds },
+        payload: { v: 1, pkgKey: pkg.key, adds: toNewRows(toSend) },
       });
       if (!r.ok) { setAjErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
       /* ⚠️ НҮДИЙГ НЬ ХАМТ ХАСНА (`dropAdd`-ийн 2026-09-21-ний ⚠️): зөвхөн
@@ -4293,7 +4438,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          батлах шатанд `overlaySubmission` мөрийг олохгүй тул `unmoved > 0`
          болж багц бүхэлдээ гацна. Tombstone тавихгүй: мөр нь БУЦААГДААГҮЙ,
          батлагдахаар хүлээж байгаа (`decideAjilHere` буцааж тавина). */
-      const sentOids = new Set(adds.map((a) => a.oid));
+      const sentOids = new Set(toSend.map((a) => a.oid));
       const stripSent = (o: Record<string, string>) => {
         const nx: Record<string, string> = {};
         for (const [k, v] of Object.entries(o)) {
@@ -4303,7 +4448,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         return nx;
       };
-      setAdds([]);
+      /* 2026-09-23 (#10): батлагдсан мөр `adds`-д ҮЛДЭНЭ — зөвхөн илгээснийг хасна */
+      setAdds((prev) => prev.filter((a) => !sentOids.has(a.oid)));
       setPending(stripSent);
       setPendDate(stripSent);
       for (const k of [...mineRef.current]) {
@@ -4338,40 +4484,61 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хадгалж ч чадахгүй (`pickDraft`-ийн `restoredAdds` мөн адил).
    * ⚠️ ТҮР OID МӨРГӨЛДӨӨН: хуудсанд аль хэдийн нэмсэн мөр байвал
    *    батлагдсан мөр түүнийг ДАРАХ ёсгүй — шинэ сул сөрөг дугаар
-   *    олгоно (`submission.mergeSubmission`-ийн дүрэм).
+   *    олгоно (`mergeIncomingAdds`, `submission.mergeSubmission`-ийн дүрэм).
+   * ⚠️ ЗӨВХӨН ЗОХИОГЧИД (2026-09-23, аудитын #11): урьд нь `addRow` эрхтэй
+   *    ДУРЫН хүний ноорогт буудаг байв — өөр менежерийн санал түүний
+   *    хуудсанд «өөрийнх» шиг гарч, `markApplied` ч тэр хүнээр хийгддэг тул
+   *    жинхэнэ зохиогч мөрөө хэзээ ч харахгүй. Одоо `sub.author === me`
+   *    (нэвтрэлт унтраалттай орчинд шүүлтгүй). Бусдад буулгахгүй,
+   *    `markApplied` ч хийхгүй — зохиогч нээхэд буух хэвээр.
+   * ⚠️ НООРОГ СЭРГЭЭЛТИЙН ДАРАА (2026-09-23, #12): урьд нь `pkg.key`-ээр
+   *    шууд ажилладаг тул `pickDraft`-ийн `setAdds` (бүтэн солилт) буусан
+   *    мөрийг арчиж, `markApplied` аль хэдийн хийгдсэн тул мөр БҮРМӨСӨН
+   *    алга болдог байв. Одоо `draftReadyKey === pkg.key` (сэргээлт
+   *    дууссан) үед л ажиллаж, `mergeIncomingAdds`-аар НИЙЛҮҮЛНЭ.
+   * ⚠️ БУЦААГДСАН илгээлт ч ЭНД (2026-09-23, #13): зохиогчийн `returned`
+   *    илгээлтийг `loadHistory`-оор олж, шалтгааныг баннераар харуулж,
+   *    мөрүүдийг `adds`-д (батлуулаагүй тэмдэггүй) буцаана — НЭГ удаа:
+   *    дараа нь `markRestored` (`returned` → `restored`), өөр компьютер
+   *    дээр дахин буухгүй.
    */
+  const [ajBack, setAjBack] = useState<{ n: number; by: string; reason: string } | null>(null);
+  useEffect(() => { setAjBack(null); }, [pkg.key]);
   useEffect(() => {
     if (!canAddRow) return;
+    if (draftReadyKey !== pkg.key) return;
     const want = pkg.key;
+    const me = user?.username?.trim().toLowerCase() ?? '';
+    const authOn = authStatus !== 'off';
     let alive = true;
     void (async () => {
       try {
         const subs = await loadAjilApproved(want);
-        if (!alive || !subs.length || pkgKeyRef.current !== want) return;
+        if (!alive || pkgKeyRef.current !== want) return;
         for (const sub of subs) {
+          if (authOn && sub.author !== me) continue;
           const pl = await loadAjilPayload(sub.oid);
           if (!alive || pkgKeyRef.current !== want) return;
           if (!pl?.adds.length) continue;
-          setAdds((prev) => {
-            const used = new Set(prev.map((a) => a.oid));
-            let free = -1;
-            for (const o of used) if (o <= free) free = o - 1;
-            const fresh = pl.adds.map((a) => {
-              if (!used.has(a.oid)) { used.add(a.oid); return a; }
-              const oid = free;
-              free -= 1;
-              used.add(oid);
-              return { ...a, oid };
-            });
-            /* ⚠️ Түр oid-ийн тоолуурыг ТҮЛХНЭ — эс бөгөөс дараа нэмэх
-               мөр ижил сөрөг дугаар авч мөргөлдөнө (`pushTmpOid`). */
-            pushTmpOid(fresh);
-            return [...prev, ...fresh];
-          });
+          setAdds((prev) => mergeIncomingAdds(prev, pl.adds, sub.oid));
           /* ⚠️ БУУЛГАСНЫ ДАРАА тэмдэглэнэ (дарааллын ⚠️-г үз) */
           await markAjilApplied(sub.oid);
           if (!alive) return;
           setAjNote(tr('Батлагдсан нэмэлт ажил хуудсанд орлоо — нийтлэхэд бичигдэнэ.'));
+        }
+        /* ── Буцаагдсан — зохиогчийн мөрүүд буцаж ирнэ (#13) ── */
+        const hist = await loadAjilHistory(want);
+        if (!alive || pkgKeyRef.current !== want) return;
+        for (const sub of hist) {
+          if (sub.status !== AJIL_STATUS.returned) continue;
+          if (authOn && sub.author !== me) continue;
+          const pl = await loadAjilPayload(sub.oid);
+          if (!alive || pkgKeyRef.current !== want) return;
+          if (pl?.adds.length) setAdds((prev) => mergeIncomingAdds(prev, pl.adds));
+          /* ⚠️ ДАРАА НЬ тэмдэглэнэ — буулт унавал `returned` хэвээр, дараагийн нээлтэд дахин */
+          await markAjilRestored(sub.oid);
+          if (!alive) return;
+          setAjBack({ n: pl?.adds.length ?? 0, by: sub.approver ?? '', reason: sub.reason ?? '' });
         }
       } catch {
         /* ⚠️ Чимээгүй: татаж чадаагүй нь «батлагдсан зүйл алга» гэсэн үг
@@ -4381,7 +4548,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.key, canAddRow]);
+  }, [pkg.key, canAddRow, draftReadyKey]);
   /** ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч өөрийнхөө алдаатай илгээлтийг буцааж авна */
   const withdrawAjilHere = useCallback(async () => {
     if (!ajSub || ajBusy) return;
@@ -4391,8 +4558,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
       if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил
-         нь чимээгүй алга болно. */
-      if (pl?.adds.length) setAdds((prev) => [...prev, ...pl.adds.filter((a) => !prev.some((x) => x.oid === a.oid))]);
+         нь чимээгүй алга болно.
+         ⚠️ 2026-09-23 (#14): `mergeIncomingAdds` — тоолуурыг түлхэж
+         (`pushTmpOid`), oid мөргөлдвөл шинэ сул дугаар; урьд нь түлхдэггүй
+         тул дараа нэмсэн мөр татсан мөртэй ижил сөрөг дугаар авдаг байв. */
+      if (pl?.adds.length) setAdds((prev) => mergeIncomingAdds(prev, pl.adds));
       setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
       await refreshAjil();
     } catch (e) {
@@ -4530,6 +4700,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      */
     if (!canAddRow && adds.length) {
       setErr(RO.noAddRow);
+      return;
+    }
+    /*
+     * ⚠️ БАТЛУУЛААГҮЙ НЭМЭЛТ АЖИЛ БАЙВАЛ ЗОГСОНО (2026-09-23, аудитын #9).
+     *    Урьд нь `adds` батлагдсан эсэхийг шалгалгүй payload-д орж 4 шатаар
+     *    нийтлэгддэг тул тусдаа батлах урсгал (`ajilBatlah`) бүхэлдээ
+     *    тойрогддог байв. ЗОГСООХ (payload-оос чимээгүй хасах БИШ): хасвал
+     *    тэр мөрд бичсэн нүд `notOrphan`-д унаж «алга болсон» мэт харагдана,
+     *    хэрэглэгч ч яагаад орохгүйг мэдэхгүй. Ил хэлээд зам заана.
+     */
+    const notYet = unapprovedAdds(adds);
+    if (notYet.length) {
+      setErr(tr('Батлуулаагүй нэмэлт ажил {0} мөр байна — эхлээд «Нэмэлт ажил батлуулах» товчоор илгээж батлуулна, дараа нь «Илгээх».', notYet.length));
       return;
     }
     /*
@@ -4734,7 +4917,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         asOf: asOf !== asOfOrig ? asOf : null,
         cells: cellsOut,
         dates: datesOut,
-        adds,
+        /* 2026-09-23: энд бүгд батлагдсан (дээрх шалгуур) — тэмдгийг хасаж цэвэр `NewRow` */
+        adds: toNewRows(adds),
         rowKeys,
       });
 
@@ -5379,15 +5563,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             хяналтад оруулдаг, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг
             2 шатат батлах урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр
             шийдвэр нэг батламжид уягдана. */}
-        {canAjilSend && !ajSub && adds.length > 0 && (
+        {/* ⚠️ 2026-09-23 (#10): ЗӨВХӨН батлуулаагүй мөр тоологдоно — батлагдсан
+            (`ajilOid`) мөр байхад товч дахин гарч мөчлөг үүсгэхгүй. */}
+        {canAjilSend && !ajSub && unapprovedAdds(adds).length > 0 && (
           <button
             className={st.publishBtn}
             onClick={() => void sendAjil()}
             disabled={ajBusy}
             title={tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
           >
-            {tr('Нэмэлт ажил батлуулах')} ({adds.length})
+            {tr('Нэмэлт ажил батлуулах')} ({unapprovedAdds(adds).length})
           </button>
+        )}
+
+        {/* ⚠️ БУЦААГДСАН — зохиогчид шалтгаантай нь (2026-09-23, #13). Мөрүүд
+            `adds`-д буцаж орсон (улаан, «×»-тэй); засаад дахин илгээнэ. */}
+        {ajBack && (
+          <span className={st.error} role="alert">
+            {tr('Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', String(ajBack.n), ajBack.by || '—', ajBack.reason || '—')}
+          </span>
         )}
 
         {/* Хүлээгдэж буй илгээлт — БҮХ хүнд харагдана (ил тод байдал) */}
@@ -5914,9 +6108,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                        *    Хоёр горим хэзээ ч зэрэг идэвхтэй байхгүй
                        *    (`view` байвал `backChg` хоосон) тул `||` аюулгүй.
                        */
+                      /* ⚠️ 2026-09-23 (#15): `backChg`/`backOk` нь `${oid}:${шошго}`
+                         (индекс биш — локал нэмсэн мөрөөс индекс гулсдаг);
+                         хянагчийн `view.changed`/`view.ok` индексээрээ хэвээр. */
                       const ck = `${i}:${b}`;
-                      const changed = !!view?.changed?.has(ck) || backChg.has(ck);
-                      const okd = !!view?.ok?.has(ck) || (backChg.has(ck) && backOk.has(ck));
+                      const bk = `${r.oid}:${b}`;
+                      const changed = !!view?.changed?.has(ck) || backChg.has(bk);
+                      const okd = !!view?.ok?.has(ck) || (backChg.has(bk) && backOk.has(bk));
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
                         if (locked) return changed && view?.onCell?.(i, b);
@@ -6243,7 +6441,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                           {/* ⚠️ Жин ба Мөнгөн дүн ЭНД БАЙХГҮЙ — Обьём×Нэгж өртгөөс
                               өөрөө бодогдож, дээд бүлгүүдийн жинг ч дахин тараана. */}
                           <span className={st.addHint}>
-                            {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин 0. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
+                            {/* ⚠️ 2026-09-23 (#19): «хоосон бол жин 0» ХУДАЛ байв — бодитоор
+                                `null` (`computeAll` бодохгүй, «—»), бусад мөрийн жин хөдлөхгүй. */}
+                            {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
                           </span>
                         </div>
                       </td>

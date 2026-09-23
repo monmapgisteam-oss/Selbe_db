@@ -80,6 +80,12 @@ export function insertAdds(
      0 урттай үүсэхэд ямар ч асуудалгүй. */
   if (!adds.length || !sc) return base;
   const out = base.slice();
+  /* ⚠️ ДАРААЛАЛ (2026-09-23, аудитын #18): нэг эцэгт олон мөр нэмэхэд бүгд
+     `p + 1`-д орвол дараалал УРВУУ гарна (сүүлд нэмсэн нь хамгийн дээр).
+     ЭНЭ дуудлагад оруулсан мөрийн oid → эцгийн oid-г санаж, дараагийн мөрийг
+     ӨМНӨ нь оруулсан ах дүүгийнхээ АРД тавина — `adds` массивын дараалал
+     (нэмсэн дараалал) хуудсан дээр хадгалагдана. */
+  const placed = new Map<number, number>();
   for (const a of adds) {
     /*
      * ЭЦЭГ БҮЛГИЙГ ОЛОХ — нэр БА байрлал ХОЁУЛАНГААР (`parentOf`, тайлбар
@@ -100,7 +106,10 @@ export function insertAdds(
        сэргээлт «өмнөх мөр нь бүлэг бол +1» гэсэн дүрэмтэй (2026-09-22) тул
        эхэнд тавьсан ч гүн зөв сэргэнэ. `siblingSlot`/`afterGroup` нь
        `firstSlot`-ийн нөөц (эцэг олдсон л бол ХЭЗЭЭ Ч хэрэглэгдэхгүй). */
-    const at = firstSlot(out, p);
+    let at = firstSlot(out, p);
+    /* Энэ дуудлагад ИЖИЛ эцэгт оруулсан мөрүүдийг алгасна (дээрх ⚠️). */
+    while (at < out.length && placed.get(out[at].oid) === parent.oid) at += 1;
+    placed.set(a.oid, parent.oid);
     out.splice(at, 0, {
       oid: a.oid,
       no: a.no,

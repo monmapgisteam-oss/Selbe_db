@@ -773,6 +773,10 @@ export function Huvaari({
    *    багтахгүй учир БҮХЭЛ хувь, % тэмдэггүй. Бүтэн утга `title`-д.
    */
   const monLab = useCallback((mk: string): { txt: string; tip: string } | null => {
+    /* ⚠️ (2026-09-23) ГЭРЭЭ табд ЗУРАХГҮЙ: `monPct` нь `plan`-ын (төлөвлөгөөний)
+       мужаар бодогддог тул гэрээний огнооны толгой дор тавибал хоёр эх холилдоно.
+       Сарын обьём нь зөвхөн төлөвлөгөөнд хамаарна (`PlanKind` тайлбар). */
+    if (kind !== 'plan') return null;
     if (!(monPct.tot > 0)) return null;
     const v = monPct.per.get(mk);
     if (v == null || !(v > 0)) return null;
@@ -781,7 +785,7 @@ export function Huvaari({
       txt: p < 0.5 ? '·' : String(Math.round(p)),
       tip: tr('{0} — багцын нийт обьёмын {1}%', mk, num(p, 1)),
     };
-  }, [monPct]);
+  }, [monPct, kind]);
 
   /**
    * Мөр шүүлтүүрт нийцэж байна уу.
@@ -1227,7 +1231,9 @@ export function Huvaari({
    *    `applyModal`-ын `hierRelated` шалгуур (гинжин эргэлт).
    */
   const startLink = (e: PEvt<HTMLElement>, r: PlanRow) => {
-    if (!canEdit || locked || busy) return;
+    /* ⚠️ (2026-09-23) Уялдаа ЗӨВХӨН төлөвлөгөөнд — гэрээ табд (`kind !== 'plan'`)
+       холбохгүй (дээрх `PlanKind` тайлбар: «гэрээ нь гинжээр хөдөлдөггүй»). */
+    if (!canEdit || locked || busy || kind !== 'plan') return;
     e.preventDefault();
     e.stopPropagation();
     if (r.des == null) {
@@ -1251,10 +1257,22 @@ export function Huvaari({
       setLink(null);
       if (ev.type === 'pointercancel') return;
       const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-row]') as HTMLElement | null;
-      const ti = el ? Number(el.dataset.row) : NaN;
-      if (!Number.isInteger(ti) || ti === r.i) return;
-      const t = plan[ti];
-      if (!t) return;
+      let ti = el ? Number(el.dataset.row) : NaN;
+      /* ⚠️ (2026-09-23) `elementFromPoint` нь сум (`depHit`), түр шугам, огнооны
+         толгой мэт `[data-row]`-гүй элемент дээр тусвал `null` болж чимээгүй
+         унадаг байв. Нөөц зам: мөрийн өндөр ТОГТМОЛ (`PL_ROW`) тул Y координатаас
+         `visible[k]`-г шууд олно — зурвасын эгнээний дотор л байхад хангалттай. */
+      if (!Number.isInteger(ti)) {
+        const b = lanes.getBoundingClientRect();
+        const x = ev.clientX - b.left;
+        const k = Math.floor((ev.clientY - b.top) / PL_ROW);
+        if (x >= 0 && x <= b.width && k >= 0 && k < visible.length) ti = visible[k].i;
+      }
+      /* ⚠️ (2026-09-23) Өөр дээрээ тавибал ЧИМЭЭГҮЙ (санамсаргүй суллалт);
+         мөр олдохгүй бол дохио — урьд нь юу ч болоогүй мэт байв. */
+      if (ti === r.i) return;
+      const t = Number.isInteger(ti) ? plan[ti] : undefined;
+      if (!t) { setErr(tr('Хамаарал холбогдсонгүй — хуанлийн мөр (зурвасын эгнээ) дээр тавина уу.')); return; }
       if (hierRelated(plan, ti, r.i)) { setErr(tr('Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.')); return; }
       /* ⚠️ Шууд тавихгүй — цонх нээж төрөл (дуусаад / зэрэг эхлэх) ба хоногийг
          асууна (2026-09-22, хэрэглэгч: «чирээд холбосны дараа … цонх гарах ёстой»).
@@ -3182,8 +3200,9 @@ export function Huvaari({
                                   onPointerDown={(e) => onDown(e, r, 'r')} />
                               )}
                               {/* ХОЛБОХ БАРИУЛ — баруун захын дугуй; чирээд нөгөө мөр дээр тавина (2026-09-22).
-                                  ⚠️ Бүлгийн зурваст ч бий — бүлэг урд ажил болж чадна (`effSpan`). */}
-                              {canEdit && !locked && (
+                                  ⚠️ Бүлгийн зурваст ч бий — бүлэг урд ажил болж чадна (`effSpan`).
+                                  ⚠️ (2026-09-23) ЗӨВХӨН төлөвлөгөө табд — гэрээ гинжээр хөдөлдөггүй. */}
+                              {canEdit && !locked && kind === 'plan' && (
                                 <span className={h.plLink}
                                   onPointerDown={(e) => startLink(e, r)}
                                   title={tr('Хамаарал холбох — чирээд дараагийн ажлын мөр дээр тавина (FS)')} />
@@ -3200,7 +3219,10 @@ export function Huvaari({
                         зөвхөн ХОЁУЛАА харагдаж буй мөрүүдийн хооронд зурагдана:
                         шүүлт/эвхэлтэд нуугдсан үзүүр рүү зурвал агаарт дүүжлэгдэнэ. */}
                     {(arrows.length > 0 || link) && (
-                      <svg className={h.depSvg} width={W} height={visible.length * PL_ROW} aria-hidden>
+                      /* ⚠️ (2026-09-23) `depSvgLink` — холбох чирэлтийн үед `depHit`-ийн
+                         pointer-events унтарна: эс бөгөөс сумны зурвас дээр суллахад
+                         `elementFromPoint` сумыг онож, мөр олдохгүй. */
+                      <svg className={`${h.depSvg} ${link ? h.depSvgLink : ''}`} width={W} height={visible.length * PL_ROW} aria-hidden>
                         <defs>
                           {[h.depArrN, h.depArrH, h.depArrB].map((c, k) => (
                             <marker key={c} id={`hvDepArr${k}`} viewBox="0 0 6 6" refX="5" refY="3"
@@ -3216,8 +3238,11 @@ export function Huvaari({
                                 устгаж чадахгүй байна»). SVG нь pointer-events: none (чирэлтэд саад
                                 болохгүй) тул ЗӨВХӨН энэ тунгалаг өргөн зурвас (`depHit`) дарагдана —
                                 нарийн шугамыг онох шаардлагагүй. Цонх нь ижил LinkModal, «Уялдаа
-                                устгах» товчтой. */}
-                            {canEdit && !locked && (
+                                устгах» товчтой.
+                                ⚠️ (2026-09-23) ЗӨВХӨН төлөвлөгөө табд (`kind === 'plan'`) — гэрээнд
+                                уялдаа засахгүй. Зурвас (`.plBar`) нь CSS-ээр SVG-ээс ДЭЭШ тул
+                                зурвасын дээрх даралт зурвасд очно; сум зөвхөн хоосон талбайд дарагдана. */}
+                            {canEdit && !locked && kind === 'plan' && (
                               <path d={a2.d} className={h.depHit}
                                 onClick={(e) => { e.stopPropagation(); setLinkAsk({ si: a2.si, ti: a2.ti }); }}>
                                 <title>{tr('Дарж засах / устгах')}</title>
@@ -4106,6 +4131,11 @@ function LinkModal({ src, dst, onClose, onApply, onRemove }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
+  /* ⚠️ (2026-09-23) `autoFocus` ажилладаггүй байв — `useFocusTrap` эхний фокус
+     авагч (`×`) руу фокуслодог. Энэ эффект урхийн ДАРАА (мөрийн дарааллаар)
+     ажиллаж, төрлийн сонгогч руу шилжүүлнэ. */
+  const selRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => { selRef.current?.focus(); }, []);
   const cur = dst.deps.find((d) => d.code === src.des);
   const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
   const [lag, setLag] = useState<number>(cur?.lag ?? 0);
@@ -4114,7 +4144,15 @@ function LinkModal({ src, dst, onClose, onApply, onRemove }: {
     <div className={h.mdBack} role="presentation" onClick={onClose}>
       <div ref={ref} className={h.md} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); if (e.key === 'Enter') onApply(type, lag); }}>
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { onClose(); return; }
+          if (e.key !== 'Enter') return;
+          /* ⚠️ (2026-09-23) Enter нь ЗӨВХӨН сонгогч/тоон талбар дээр «Тавих» —
+             товч дээр (Болих · × · Уялдаа устгах) байхад товчны өөрийн click
+             ажиллана, эс бөгөөс «Болих» дээр Enter дарахад уялдаа тавигддаг байв. */
+          const tag = (e.target as HTMLElement).tagName;
+          if (tag === 'SELECT' || tag === 'INPUT') { e.preventDefault(); onApply(type, lag); }
+        }}>
         <header className={h.mdHead}>
           <b className={h.mdWork}>{tr('Хамаарал холбох')}</b>
           <button type="button" className={h.mdX} onClick={onClose} aria-label={tr('Хаах')}>×</button>
@@ -4125,7 +4163,7 @@ function LinkModal({ src, dst, onClose, onApply, onRemove }: {
           <span>{tr('Хамаарагч:')} <b>{name(dst)}</b></span>
         </div>
         <div className={h.mdDepRow}>
-          <select className={h.select} value={type} autoFocus
+          <select className={h.select} value={type} ref={selRef}
             title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
             onChange={(e) => setType(e.target.value as DepType)}>
             <option value="FS">{tr('дуусаад эхэлнэ (FS)')}</option>

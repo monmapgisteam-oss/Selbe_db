@@ -155,7 +155,11 @@
 .gSide {
   position: sticky;
   left: 0;
-  z-index: 2;
+  /* ⚠️ z-index 4 (2026-09-23): урьд нь 2 байсан тул хэвтээ гүйлгэхэд `.plHead`
+     (3) сар/хоногийн толгой зүүн самбарын толгой ДЭЭГҮҮР, `.plLink` цэгүүд (2)
+     самбар дээгүүр цухуйдаг байв. Дараалал: plBar 1 < plLink 1 < plHead 3 <
+     gSide 4 < gSideHead 5 < mdBack 60. */
+  z-index: 4;
   flex: 0 0 clamp(710px, 58%, 900px);
   min-width: 0;
   border-right: 1px solid var(--line);
@@ -173,7 +177,8 @@
 .gSideHead {
   position: sticky;
   top: 0;
-  z-index: 3;
+  /* ⚠️ 5 (2026-09-23) — `.gSide` (4)-ээс дээш, `.mdBack` (60)-аас доош. */
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -480,7 +485,8 @@
   top: 0;
   /* ⚠️ z-index 3 (2026-09-22): зурвас/сум (`plLanes`, `depSvg`) нь DOM-д хойно тул
      1-ээр доош гүйлгэхэд толгойн дээгүүр зурагдаж, сар/хоног нуугддаг байв.
-     `.gSideHead`-тэй ижил түвшин. */
+     ⚠️ (2026-09-23) `.gSide` (4) / `.gSideHead` (5)-аас ДООШ хэвээр — хэвтээ
+     гүйлгэхэд зүүн самбарын толгой энэ толгойг халхална. */
   z-index: 3;
   cursor: grab; /* чирж гүйлгэнэ (2026-09-17) */
   user-select: none;
@@ -555,6 +561,10 @@
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: grab;
+  /* ⚠️ z-index 1 (2026-09-23): `.depSvg` (DOM-д хойно, z auto)-оос ДЭЭШ — сумны
+     дарагдах зурвас (`depHit`) зурвасын дээгүүр өнгөрөхөд зөөх/сунгах чирэлтийг
+     хаадаг байв. Одоо зурвас дээрх даралт зурвасд, сум зөвхөн хоосон талбайд. */
+  z-index: 1;
 }
 .plBar:active { cursor: grabbing; }
 
@@ -738,17 +748,20 @@
    тул гадагш цухуйна; hover-т тодорно, эс бөгөөс бүдэг — сумны үзүүртэй андуурахгүй. */
 .plLink {
   position: absolute;
-  right: -7px;
+  /* ⚠️ (2026-09-23) Зурвасын ГАДНА (`right: -13px`, 9px): урьд нь `-7px`/11px
+     байж баруун сунгах бариулыг (`.plGripR` 7px) хагас халхалдаг байв — одоо
+     давхцахгүй. z-index 1: `.plBar` (1) дотор; `.gSide` (4)-ээс доош. */
+  right: -13px;
   top: 50%;
-  width: 11px;
-  height: 11px;
-  margin-top: -6px;
+  width: 9px;
+  height: 9px;
+  margin-top: -5px;
   border-radius: 50%;
   background: var(--data);
   border: 2px solid var(--surface);
   opacity: 0.45;
   cursor: crosshair;
-  z-index: 2;
+  z-index: 1;
 }
 .plBar:hover .plLink, .plLink:hover { opacity: 1; }
 /* Холбох чирэлтийн үед тавьж болох мөрүүд — зөөлөн тодруулга */
@@ -756,8 +769,16 @@
 /* Түр шугам — тасархай, акцент өнгө */
 .depDraft { fill: none; stroke: var(--data); stroke-width: 1.8; stroke-dasharray: 5 4; }
 /* Сумны ДАРАГДАХ зурвас — тунгалаг, өргөн; SVG өөрөө pointer-events:none тул энэ л хүлээн авна */
-.depHit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; }
-.depHit:hover + *, .depHit:hover { stroke: color-mix(in srgb, var(--data) 18%, transparent); }
+/* ⚠️ (2026-09-23) 10 → 6px: FS-ийн босоо сегмент завсрын мөрүүдийн зурвас дээр
+   давхарлаж чирэлт/товшилтыг хаадаг байв. */
+.depHit { fill: none; stroke: transparent; stroke-width: 6; pointer-events: stroke; cursor: pointer; }
+.depHit:hover { stroke: color-mix(in srgb, var(--data) 18%, transparent); }
+/* ⚠️ (2026-09-23) Урьдын `.depHit:hover + *` ҮХМЭЛ байв — `depHit` нь `<g>`-ийн
+   СҮҮЛИЙН хүүхэд тул дараах элемент алга. Hover-ийг `<g>`-ээр дамжуулж эхний
+   (харагдах) шугамыг бүдүүрүүлнэ. */
+.depSvg g:hover > path:first-child { stroke-width: 2.2; }
+/* Холбох чирэлтийн үед сумны зурвас pointer-events авахгүй — суллалт мөр рүү очно */
+.depSvgLink .depHit { pointer-events: none; }
 
 /* ── Responsive — нарийн дэлгэцэд босоо өрөгдөнө ── */
 @media (max-width: 1180px) {

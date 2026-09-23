@@ -28,7 +28,8 @@ const between = (a, b, from = 0) => {
 };
 
 /* ── 1. Draft төрөлд бүх засварын төрөл байх ── */
-const typeBlock = between('type Draft = {', 'adds?: NewRow[];');
+/* ⚠️ 2026-09-23: `adds?: AddRow[]` — `NewRow` + батлагдсан тэмдэг (`ajilOid`). */
+const typeBlock = between('type Draft = {', 'adds?: AddRow[];');
 for (const f of ['cells:', 'dates?:', 'asOf?:']) {
   assert.ok(typeBlock.includes(f), `Draft-д «${f}» талбар алга`);
 }
@@ -61,7 +62,9 @@ console.log('✅ хоосон шалгалт — бүх төлөвөөр');
    ⚠️ АЮУЛГҮЙ БОЛГОСОН нь: сэргээсэн нүд бүр НОГООН (`dirty`) гарах ба
    хэрэгслийн мөрөнд тоологдоно; хэрэггүй бол «ноорог устгах» товч. */
 const restore = between('const pickDraft = useCallback', 'const from = source ===');
-for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)', 'setAdds(restoredAdds)']) {
+/* ⚠️ 2026-09-23 (#12): `setAdds((prev) => keepApproved(prev, restoredAdds))` — сэргээсэн
+   мөрүүд буух ба БАТЛАГДСАН (`ajilOid`) мөрийг арчихгүй. */
+for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)', 'setAdds((prev) => keepApproved(prev, restoredAdds))']) {
   assert.ok(restore.includes(setter), `шууд буулгалтад «${setter}» алга`);
 }
 /* Юу сэргэснийг ИЛ хэлнэ — чимээгүй бууж болохгүй */
@@ -82,7 +85,8 @@ console.log('✅ ноорог шууд буудаг — цонх асуухгү�
 const dropFn = between('const dropDraft = useCallback', 'Ноорог устгагдлаа');
 assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), 'ноорог устгахад локал хуулбар үлдэж байна');
 assert.ok(dropFn.includes('clearRemoteDraft(pkg.key)'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
-for (const st of ['setPending({})', 'setPendDate({})', 'setAdds([])']) {
+/* ⚠️ 2026-09-23 (#12): «Ноорог устгах» батлагдсан нэмэлт ажлыг үлдээнэ (`keepApproved`). */
+for (const st of ['setPending({})', 'setPendDate({})', 'setAdds((prev) => keepApproved(prev, []))']) {
   assert.ok(dropFn.includes(st), `ноорог устгахад «${st}» алга`);
 }
 assert.ok(

@@ -145,6 +145,23 @@ const rowKeys = old.map((r) => [r.oid, rowKeyOf(r)]);
   const orphan = { ...add, oid: -2, parentNo: '7', parentWork: 'БАЙХГҮЙ' };
   assert.equal(insertAdds(old, [orphan], sc, nBld).length, 7, 'эцэггүй add алгасагдав');
   assert.equal(insertAdds(old, [], sc, nBld), old, 'add-гүй бол суурь өөрөө');
+
+  /* ⚠️ 2026-09-23 (аудитын #18): нэг эцэгт ХОЁР мөр — оруулсан дарааллаараа
+     (эхнийх нь p+1, хоёр дахь нь түүний АРД), урвуу БИШ. */
+  const add2 = { ...add, oid: -3, no: '4', work: 'Бетон зуурмаг' };
+  const two = insertAdds(old, [add, add2], sc, nBld);
+  assert.equal(two.length, 9, 'хоёр мөр нэмэгдэв');
+  assert.equal(two[p + 1].oid, -1, 'эхний нэмсэн мөр эцгийн шууд дор');
+  assert.equal(two[p + 2].oid, -3, 'хоёр дахь нь ЭХНИЙХИЙН АРД (дараалал хадгалагдав)');
+  assert.equal(two[p + 2].depth, old[p].depth + 1, 'хоёр дахь мөрийн гүн ч эцэг + 1');
+  assert.equal(two[p + 3].oid, 103, 'хуучин хүүхдүүд хоёуланг нь дагаж доошилсон');
+  /* Өөр эцэгт нэмсэн мөр эхнийхийн байрлалыг хөндөхгүй */
+  const other = { ...add, oid: -4, parentNo: '2', parentWork: 'ЗООРЬ', parentIdx: 5, no: '9', work: 'Шинэ' };
+  const mixed = insertAdds(old, [add, other, add2], sc, nBld);
+  assert.equal(mixed[p + 1].oid, -1);
+  assert.equal(mixed[p + 2].oid, -3, 'завсар нь өөр эцгийн мөр орсон ч ижил эцгийн дараалал хэвээр');
+  const pz = mixed.findIndex((r) => r.group && r.work === 'ЗООРЬ');
+  assert.equal(mixed[pz + 1].oid, -4, 'нөгөө эцгийн мөр өөрийн эцгийн дор');
 }
 
 /* ═══ 4. overlaySubmission ═══ */

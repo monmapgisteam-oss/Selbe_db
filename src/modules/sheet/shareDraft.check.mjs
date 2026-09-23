@@ -672,7 +672,10 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(!/if \(nDates\) setPendDate\(nextDates\);/.test(FN), '#2: setPendDate болзолтой хэвээр');
   const ti = FN.indexOf('if (!total) {');
   const tb = FN.slice(ti, ti + 2200);
-  assert.ok(tb.includes('setPending({});') && tb.includes('setAdds([]);'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
+  /* ⚠️ 2026-09-23 (#12): `setAdds((prev) => keepApproved(prev, []))` — хоосон болгоно,
+     гэхдээ БАТЛАГДСАН (`ajilOid`) мөрийг үлдээнэ (сервер дахин өгөхгүй). */
+  assert.ok(tb.includes('setPending({});') && tb.includes('setAdds((prev) => keepApproved(prev, []));'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
+  assert.ok(FN.includes('setAdds((prev) => keepApproved(prev, restoredAdds));'), '#2: pickDraft батлагдсан мөрийг арчиж байна (2026-09-23, #12)');
   assert.ok(tb.includes('if (delRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
   assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
   assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),

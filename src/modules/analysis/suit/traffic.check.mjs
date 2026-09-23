@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 
-import {
+import { VEHICLE_TYPES,
   CAR_LEN, MIN_GAP_M, PATIENCE_S, SIGNAL_CYCLE_S, SIGNAL_PLANS, SIGNAL_SNAP_M, U_TURN_V, V_MAX,
   boundaryEntries, boundaryNodes, buildNetwork, carPose, clockText, compatPlan, compatStages,
   diurnalAt, makeSegment, markDuplicates, nodeByIntersection, outHeading, pickEdge, pickNext,
@@ -1177,7 +1177,10 @@ assert.ok(targetCars(0.5, 400) > 200 && targetCars(0.5, 400) < 210, 'эрэлт 
 
   const car = spawnCarAt(y, en1);
   assert.equal(car.e, 1, 'орцын ирмэг дээр төрөв');
-  assert.ok(y.edges[1].length - car.s < 5, 'үзүүрт нь ойрхон');
+  /* ⚠️ 2026-09-23: тээврийн төрөл САНАМСАРГҮЙ (автобус 12 м → inset 6.5) тул хатуу 5-аар
+     заримдаа унадаг байв (flaky). Хүлцэл = хамгийн урт төрлийн хагас + 0.5 м. */
+  const maxInset = Math.max(...VEHICLE_TYPES.map((t) => t.len)) / 2 + 0.5 + 1e-9;
+  assert.ok(y.edges[1].length - car.s <= maxInset, 'үзүүрт нь ойрхон');
   assert.equal(car.dir, -1, 'сүлжээ рүү чиглэсэн');
 
   // Чиглэлтэй сүлжээнд сумны эсрэг орц ХАСАГДАНА

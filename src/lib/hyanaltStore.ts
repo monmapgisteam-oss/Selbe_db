@@ -29,10 +29,37 @@
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from './i18nCore';
 import {
-  addRows, queryAll, updateRows,
+  addRows, hasOkCellsField, queryAll, updateRows,
   DECISION, F, HYANALT, STATUS,
   type Attrs, type Decision, type Row, type Status,
 } from './hyanalt';
+
+/**
+ * `Zovshoorson_nud` (`F.okCells`) ТАЛБАРТ БИЧИХ PATCH — талбар үйлчилгээнд
+ * БАЙВАЛ л (2026-09-23, аудитын #16).
+ *
+ * ⚠️ Урьд нь `apply` (632) ба `recheck` (919) шалгалгүй бичдэг байв: талбар
+ *    AGOL дээр нэмэгдээгүй үйлчилгээнд `applyEdits` танихгүй талбарыг
+ *    чимээгүй алгасах (эсвэл бүх шинэчлэлийг унагах) тул зөвшөөрсөн нүдний
+ *    жагсаалт хэнд ч мэдэгдэлгүй алга болдог байв.
+ *    · `false` (алга) → бичихгүй, `warn`-аар ИЛ хэлнэ (`Result.warn` — дэлгэцэд
+ *      шар мөр);
+ *    · `null` (мэдэхгүй — сүлжээ) → бичнэ: нэг удаагийн саатаар хянагчийн
+ *      зөвшөөрлийг хаяхаас танигдахгүй талбар руу бичих нь дор эрсдэлтэй.
+ *    Уншихад хамгаалалт хэрэггүй: `toRow` нь байхгүй талбарыг `''` гэж уншина.
+ */
+async function okCellsPatch(okCells: string[] | undefined): Promise<{ patch: Attrs; warn?: string }> {
+  if (!okCells) return { patch: {} };
+  const has = await hasOkCellsField();
+  if (has === false) {
+    console.warn(`[selbe] «${F.okCells}» талбар хяналтын үйлчилгээнд алга — зөвшөөрсөн нүд хадгалагдсангүй. AGOL дээр талбар нэмнэ үү.`);
+    return {
+      patch: {},
+      warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. AGOL дээр багана нэмнэ үү.', F.okCells),
+    };
+  }
+  return { patch: { [F.okCells]: JSON.stringify(okCells) } };
+}
 import {
   bagtsFor, isViewOnly, stageOfUser,
 } from './guitsetgelAcl';
@@ -628,8 +655,12 @@ export async function apply(a: {
    *    Буцаагдсан гүйцэтгэгч «аль нүд ногоон, аль нь улаан» гэдгийг
    *    ЗӨВХӨН эндээс мэднэ (`hyanalt.F.okCells`-ийн ⚠️).
    * ⚠️ `undefined` бол хөндөхгүй — хуучин шатны зөвшөөрөл алдагдахгүй.
+   * ⚠️ 2026-09-23 (#16): талбар үйлчилгээнд байхгүй бол БИЧИХГҮЙ, `okWarn`-аар
+   *    ил хэлнэ (`okCellsPatch`).
    */
-  if (a.okCells) attrs[F.okCells] = JSON.stringify(a.okCells);
+  const okp = await okCellsPatch(a.okCells);
+  Object.assign(attrs, okp.patch);
+  const okWarn = okp.warn;
   /*
    * ⚠️ НЭГТГЭЛД ЗӨВХӨН ЭЦСИЙН БАТАЛГААНЫ ДАРАА бичнэ. Дунд шатанд бичвэл
    *    хараахан батлагдаагүй тоо албан ёсны бүртгэлд орж, дараа нь буцаагдвал
@@ -777,7 +808,8 @@ export async function apply(a: {
       }
     }
     await refresh();
-    return { ok: true };
+    /* 2026-09-23 (#16): `Zovshoorson_nud` талбар алга байсан бол шар мөрөөр хэлнэ */
+    return okWarn ? { ok: true, warn: okWarn } : { ok: true };
   } catch (e) { return fail(e); }
 }
 
@@ -916,7 +948,9 @@ export async function recheck(
    * ⚠️ ЗӨВШӨӨРСӨН НҮДНИЙ ЖАГСААЛТ — `apply`-тай ИЖИЛ дүрэм. Энэ бол
    *    гүйцэтгэгч рүү буцах зам тул нүдний ялгаа ХАМГИЙН чухал нь энд.
    */
-  const okPatch: Attrs = okCells ? { [F.okCells]: JSON.stringify(okCells) } : {};
+  /* ⚠️ 2026-09-23 (#16): талбар байхгүй бол бичихгүй, `warn`-аар ил хэлнэ. */
+  const okp = await okCellsPatch(okCells);
+  const okPatch: Attrs = okp.patch;
 
   const back: Attrs = by === 'engineer'
     ? {
@@ -941,6 +975,6 @@ export async function recheck(
   try {
     await updateRows([back]);
     await refresh();
-    return { ok: true };
+    return okp.warn ? { ok: true, warn: okp.warn } : { ok: true };
   } catch (e) { return fail(e); }
 }
