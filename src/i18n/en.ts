@@ -3916,8 +3916,6 @@ const en: Record<string, string> = {
   "Бүх ажлын мөрийг дэлгэнэ": "Expand every task row",
   "Гэрээ эхлэх": "Contract start",
   "Гэрээ дуусах": "Contract end",
-  "Төлөвлөгөө эхлэх": "Plan start",
-  "Төлөвлөгөө дуусах": "Plan end",
   "Гэрээний эхлэх огноо": "Contract start date",
   "Гэрээний дуусах огноо": "Contract end date",
   "Төлөвлөгөөт эхлэх огноо": "Planned start date",
@@ -4683,7 +4681,21 @@ const en: Record<string, string> = {
   "«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдсаны дараа «Илгээх»-д орно.": "«{0}» added — get it approved with the «Submit added work» button; once approved it will be included in «Submit».",
   "Батлуулаагүй нэмэлт ажил {0} мөр байна — эхлээд «Нэмэлт ажил батлуулах» товчоор илгээж батлуулна, дараа нь «Илгээх».": "{0} added-work rows are not approved yet — first submit them with «Submit added work» for approval, then «Submit».",
   "Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.": "Added work was returned ({0} rows, {1}): {2} — the rows are back on the sheet; edit and resubmit for approval.",
-  "Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.": "Volume and unit price are optional — if empty, no weight is computed (—) and other rows' weights do not change. The new row goes first in its group, in red."
+  "Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.": "Volume and unit price are optional — if empty, no weight is computed (—) and other rows' weights do not change. The new row goes first in its group, in red.",
+  "Мөр бүрийн доод захын нарийн зурвас нь БОДИТ эхэлсэн → дууссан огноо (дуусаагүй бол өнөөдөр хүртэл, тасархай). Popup-аас бүртгэнэ; гинж, төлөвлөгөөнд нөлөөлөхгүй.": "The thin strip at the bottom of each row is the ACTUAL start → finish (dashed up to today if not finished). Recorded from the popup; does not affect the chain or the plan.",
+  "Төлөвлөгөөт эхлэх": "Planned start",
+  "Төлөвлөгөөт дуусах": "Planned finish",
+  "Бодит эхэлсэн": "Actual start",
+  "Бодит дууссан": "Actual finish",
+  "Хүн хүч": "Labor",
+  "Хүн": "People",
+  "Машин механизм": "Machinery",
+  "үргэлжилж байна": "in progress",
+  "Бодит эхэлсэн огноо": "Actual start date",
+  "Бодит дууссан огноо": "Actual finish date",
+  "Бодит дууссан нь эхэлснээс өмнө": "Actual finish is before actual start",
+  "Огноо · нөөцийн баганыг хураах": "Collapse date · resource columns",
+  "Огноо · нөөцийн баганыг нээх": "Expand date · resource columns",
 };
 
 export default en;

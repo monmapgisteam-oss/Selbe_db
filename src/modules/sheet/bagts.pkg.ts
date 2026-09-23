@@ -74,10 +74,18 @@ export const PKGS: Pkg[] = [
    *    массив болно. Хэрэглэгчид нь бүгд `.length` эсвэл индексээр ханддаг
    *    (хуваалт хийдэггүй) тул давталт зүгээр л ажиллахгүй — унахгүй.
    *
+   * ⚠️ 2026-09-23: ЗӨВХӨН «Хуваарь» модульд (`loadSchema(pkg, { synthetic:
+   *    true })`) мөрийн түвшний огнооны баганууд (`Төлөвлөгөөт_хуваарь__Эхлэх/
+   *    Дуусах` · `geree_*` · `bodit_*` · `Ажил_гүйцэтгэл`) СИНТЕТИК нэг блок
+   *    болж ордог — `Schema.synthetic`-ийн тайлбарыг үз. Бусад бүх уншигч
+   *    дээрх хоосон массивтай хэвээр.
+   *
    * ⚠️ `TREES`-д 2026-09-17-ноос ТҮЛХҮҮРТЭЙ (амьд өгөгдлөөс гаргасан мод —
    *    тайлбар нь `bagts.trees.ts`-д). Урьд нь түлхүүргүй тул `expect = 0`,
    *    бүх мөр гүн 0 болж, анхны нийтлэлд `gun=0` бүрмөсөн бичигдэх байв.
    *    `gun` багана AGOL дээр бий ч хоосон — нэг удаа нийтлэхэд дүүрнэ.
+   *    (2026-09-23: барилгын 10 багцад ч `gun` нэмэгдсэн, мөн хоосон —
+   *    ижил зам: нийтлэл дүүргэнэ.)
    *
    * ⚠️ `floors: null` — давхраар салдаггүй тул сонгогчид давхрын товч гарахгүй.
    */
@@ -147,6 +155,44 @@ export type Schema = {
    */
   gStart: (string | null)[];
   gEnd: (string | null)[];
+  /**
+   * БОДИТ огноо (`F<цуваа>_<блок>_bodit_ehleh` / `…_bodit_duusah`) —
+   * 2026-09-23-нд 10 барилгын багцад нэмэгдсэн (Date, nullable, `geree_*`-тэй
+   * ижил хэв).
+   *
+   * ⚠️ ГУРАВ ДАХЬ огноо: `start`/`end` = ТӨЛӨВЛӨГӨӨТ (хөдөлдөг), `gStart`/`gEnd`
+   *    = ГЭРЭЭНИЙ (лавлагаа), энэ = БОДИТ (хэзээ үнэхээр эхэлж/дууссан —
+   *    БҮРТГЭЛ). Бодит огноо нь гинж/уялдаа/`propagate`-д ОРОХГҮЙ: төлөвлөгөө
+   *    бол шийдвэр, бодит бол баримт — баримтаар төлөвлөгөөг хөдөлгөвөл
+   *    «хоцорсон эсэх» гэдгийг хэмжих суурь алдагдана.
+   * ⚠️ Блокгүй 8 багцад (`F<цуваа>_<блок>_` хэв алга) ХООСОН массив — бусад
+   *    блокийн массивтай ижил: `.length`/индексээр л хандана, унахгүй.
+   * ⚠️ Бодит эхэлсэн ч дуусаагүй ажил ХЭВИЙН — `aStart` бий, `aEnd` null.
+   */
+  aStart: (string | null)[];
+  aEnd: (string | null)[];
+  /**
+   * СИНТЕТИК НЭГ БЛОК (2026-09-23) — блокгүй 8 багцын МӨРИЙН түвшний огноог
+   * блокийн массивт «нэг блок» болгон ороосон эсэх.
+   *
+   * ⚠️ ЯАГААД: хэрэглэгч «бүх багцад гэрээ/төлөвлөгөөт/бодит огноо, хүн·техник
+   *    байх ёстой» гэсэн. Блокгүй багцад (5.x · 6.x · 10) `Төлөвлөгөөт_хуваарь__
+   *    Эхлэх/Дуусах`, `geree_ehleh/duusah`, `bodit_ehleh/duusah`, `Ажил_гүйцэтгэл`
+   *    МӨРИЙН багана бий ч `F<цуваа>_<блок>_` хэв алга тул «Хуваарь» модульд
+   *    огноо огт харагддаггүй байв.
+   * ⚠️ ЗӨВХӨН ОПТ-ИН: `loadSchema(pkg, { synthetic: true })` гэж ЗААСАН үед л
+   *    үүснэ (одоогоор зөвхөн `Huvaari.tsx`). Анхдагч `loadSchema(pkg)` нь
+   *    урьдын адил ХООСОН блокийн массив буцаана — FillNew (блокийн багана),
+   *    sheetRows (`mon:building` join · blockProgress · negtgel), planProgress
+   *    (блок-жинтэй нэгтгэл), hyanaltDetail/hyanaltStore (буулгах/архивлах),
+   *    execTriage, ipcAutoWrite, negtgelWrite, qaqc — эдгээрт синтетик блок
+   *    ОРОХГҮЙ, хуучин зан үйл хэвээр.
+   * ⚠️ `bld` = `SYNTHETIC_BLOCK` (орчуулагддаггүй тогтмол) — сарын задаргааны
+   *    хүснэгтэд блокийн түлхүүр болж бичигдэж болох тул тогтвортой байх ёстой.
+   * ⚠️ `obyem` = `[null]` — блокийн обьёмын багана байхгүй; мөрийн
+   *    `Инженерийн_төлөвлөсөн_обьём` (`f.plannedVol`) хөндөгдөхгүй.
+   */
+  synthetic: boolean;
 
   /** Мөрийн скаляр талбарууд. Байхгүй бол `null`. */
   f: {
@@ -210,6 +256,12 @@ export type Schema = {
      * хүртэл `loadRows` нь `TREES`-рүү нөөцлөн буцна.
      *
      * Багана огт үүсээгүй үйлчилгээнд `null`.
+     *
+     * ⚠️ 2026-09-23: 10 барилгын багцад ч `gun` (SmallInteger) НЭМЭГДСЭН —
+     *    одоо 18/18-д бий, утга нь ХООСОН. `hasGun` (`bagtsSheet`) нь бүх мөр
+     *    дүүрсэн үед л асдаг тул анхны нийтлэл (`sheetFrame`: `a[gun] =
+     *    depth`) хүртэл `TREES` нөөц зам хэвээр ажиллана; нийтлэсний дараа
+     *    мөр өөрийн гүнээ авч явна.
      */
     gun: string | null;
     /**
@@ -232,11 +284,33 @@ export type Schema = {
      * Багана байхгүй үйлчилгээнд `null` — уялдааны хэсэг зүгээр нуугдана.
      */
     ham: string | null;
+    /**
+     * ХҮН ХҮЧ (`hun_huch`) ба МАШИН МЕХАНИЗМ (`mashin_mehanizm`) — Integer,
+     * 2026-09-23-нд 18/18 бөглөх хуудсанд нэмэгдсэн. Ажил (навч) бүрийн
+     * нөөцийн тоо; «Хуваарь» модулиас засагдана, бүлгийн мөрд нийлбэр нь
+     * ЗӨВХӨН дэлгэц дээр бодогдоно (бичигдэхгүй).
+     * ⚠️ Латин нэртэй тул `norm()`-ийн кирилл хайлтад орохгүй — шууд нэрээр.
+     *    Багана байхгүй үйлчилгээнд `null` — багана нуугдана, бичихгүй.
+     */
+    hunHuch: string | null;
+    mashin: string | null;
     oid: string;
   };
 };
 
 export type FieldMeta = { name: string; type?: string };
+
+/**
+ * Синтетик блокийн шошго (2026-09-23). ⚠️ `tr()`-ээр ОРУУЛАХГҮЙ — `obKey(des,
+ * blok)` түлхүүрт орж сарын задаргааны хүснэгтэд бичигдэж болно; хэл солиход
+ * түлхүүр өөрчлөгдвөл задаргаа «алга» болно.
+ */
+export const SYNTHETIC_BLOCK = 'Ажил';
+
+export type ResolveOpts = {
+  /** Блок олдоогүй БӨГӨӨД мөрийн огнооны багана байвал синтетик нэг блок үүсгэх */
+  synthetic?: boolean;
+};
 
 /** Харьцуулахад бэлдэх: жижиг үсэг, доогуур зураас/зай хасах */
 const norm = (s: string) => s.toLowerCase().replace(/[\s_]+/g, "");
@@ -250,7 +324,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[\s_]+/g, "");
  * ХОЁУЛАА нэг хуудсанд бий — тиймээс блокийг «цуваа+дугаар» хосоор нь таньж,
  * зөвхөн цуваагаар нь БУСДЫГ нь дараад болохгүй.
  */
-export function resolveSchema(fields: FieldMeta[]): Schema {
+export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Schema {
   const names = fields.map((x) => x.name);
   const byNorm = new Map<string, string>();
   for (const n of names) byNorm.set(norm(n), n);
@@ -259,6 +333,26 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   const find = (test: (n: string, raw: string) => boolean): string | null => {
     for (const raw of names) if (test(norm(raw), raw)) return raw;
     return null;
+  };
+  /**
+   * ЗОРИЛТОТ нэрийг ЯГ (том/жижиг үсэг үл ялган) хайна (2026-09-23).
+   *
+   * ⚠️ 18 хуудас бүгд ИЖИЛ зорилтот нэртэй мөрийн багана авсан (`Обьём`,
+   *    `Нэгж_өртөг`, `Мөнгөн_дүн`, `Хувийн_жин`, `Хувийн_жин1`,
+   *    `Хувийн_жин__Одоо_байгаа`, `Төлөвлөгөөт_гүйцэтгэл`, `Бодит_гүйцэтгэл`,
+   *    `Төлөвлөгөө_биелэлт`, `Шинэчлэгдсэн_огноо` …), харин ХУУЧИН хувилбар
+   *    (`Обьём__Шинэ`, `Хувийн_жин_шинэ`, `Төлөвлөгөөт_гүйцтэгэл`, `Гүйцэтгэл`
+   *    …) устгагдаагүй ХЭВЭЭР зэрэгцэн байна. Шинэ багана СҮҮЛД нэмэгдсэн
+   *    тул `find`-ийн fuzzy дүрэм талбарын ДАРААЛЛААР хуучныг нь эхэлж
+   *    олно — утга хуучин баганаас уншигдаж, хуучин баганад бичигдэнэ.
+   *    Тиймээс хуучин fuzzy дүрмээс ӨМНӨ заавал зорилтот нэрээр яг хайна;
+   *    олдохгүй үед л (хуучин бүтэцтэй үйлчилгээ) fuzzy руу унана.
+   *    `norm()`-оор БИШ — `Хувийн_жин` ба `Хувийн_жин_` мэт зөвхөн доогуур
+   *    зураасаар ялгаатай нэрс нийлэхээс сэргийлнэ.
+   */
+  const exactCI = (target: string): string | null => {
+    const t = target.toLowerCase();
+    return names.find((n) => n.toLowerCase() === t) ?? null;
   };
 
   /* ── Блокийн талбарууд ── */
@@ -271,6 +365,9 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     /** ГЭРЭЭНИЙ огноо — латин нэртэй тул кирилл шүүлтүүрт баригдахгүй */
     gStart: string[];
     gEnd: string[];
+    /** БОДИТ огноо (2026-09-23) — мөн латин */
+    aStart: string[];
+    aEnd: string[];
   };
   const blocks = new Map<string, Slot>();
   const order: { key: string; s: number; n: number }[] = [];
@@ -280,7 +377,7 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     const key = `${m[1]}/${m[2]}`;
     let slot = blocks.get(key);
     if (!slot) {
-      slot = { act: [], plan: [], start: [], end: [], obyem: [], gStart: [], gEnd: [] };
+      slot = { act: [], plan: [], start: [], end: [], obyem: [], gStart: [], gEnd: [], aStart: [], aEnd: [] };
       blocks.set(key, slot);
       order.push({ key, s: Number(m[1]), n: Number(m[2]) });
     }
@@ -292,7 +389,12 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     //    шалгууруудад баригдахгүй, тиймээс тэднээс өмнө шалгав.
     /* ⚠️ ГЭРЭЭНИЙ огноо нь ЛАТИН тул кирилл шүүлтүүрүүдээс ӨМНӨ — эс
        бөгөөс аль нэгэнд нь баригдахгүй чимээгүй хаягдана (2026-09-11). */
-    if (/gereeehleh$/.test(tail)) slot.gStart.push(raw);
+    /* ⚠️ БОДИТ огноо (2026-09-23) мөн ЛАТИН — гэрээтэй зэрэгцүүлж кирилл
+       шүүлтүүрээс ӨМНӨ. `norm()` доогуур зураасыг хасдаг тул `bodit_ehleh`
+       → `boditehleh`. */
+    if (/boditehleh$/.test(tail)) slot.aStart.push(raw);
+    else if (/boditduusah$/.test(tail)) slot.aEnd.push(raw);
+    else if (/gereeehleh$/.test(tail)) slot.gStart.push(raw);
     else if (/gereeduusah$/.test(tail)) slot.gEnd.push(raw);
     else if (/obyem$/.test(tail)) slot.obyem.push(raw);
     else if (/дуусах$/.test(tail) || /дуусах\d+$/.test(tail)) slot.end.push(raw);
@@ -318,6 +420,8 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   const end: (string | null)[] = [];
   const gStart: (string | null)[] = [];
   const gEnd: (string | null)[] = [];
+  const aStart: (string | null)[] = [];
+  const aEnd: (string | null)[] = [];
   const obyem: (string | null)[] = [];
   for (const key of bld) {
     const s = blocks.get(key)!;
@@ -337,6 +441,48 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     }
     gStart.push(s.gStart[0] ?? null);
     gEnd.push(s.gEnd[0] ?? null);
+    /* Бодит огноо (2026-09-23) — талбар дутуу блокт `null`, бичихгүй. */
+    aStart.push(s.aStart[0] ?? null);
+    aEnd.push(s.aEnd[0] ?? null);
+  }
+
+  /* ── СИНТЕТИК НЭГ БЛОК (2026-09-23) — зөвхөн `opts.synthetic`, зөвхөн блокгүй ──
+   * ⚠️ Блокгүй 8 багцад мөрийн түвшний огнооны багана бий (амьд 2026-09-23):
+   *    `Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах` (төлөвлөгөөт), `geree_ehleh/duusah`
+   *    (гэрээ), `bodit_ehleh/duusah` (бодит), `Ажил_гүйцэтгэл` (бодит
+   *    гүйцэтгэл), `Төлөвлөгөөт_гүйцэтгэл`/`…1` (төлөвлөгөөт). Тэдгээрийг
+   *    «нэг блок» болгон ороовол «Хуваарь» модуль барилгын багцтай ИЖИЛ
+   *    ажиллана: чирэлт/popup/deps/бодит огноо бүгд `applyUpdates`-аар яг энэ
+   *    МӨРИЙН баганад бичигдэнэ (Huvaari нь `sc.start[b]` г.м. нэрээр бичдэг тул
+   *    тусгай зам хэрэггүй).
+   * ⚠️ Огнооны багана НЭГ Ч байхгүй бол синтетик үүсгэхгүй — хоосон блок нь
+   *    «Хуваарь»-д огноогүй мөр л үүсгэж, хадгалахад бичих газаргүй.
+   * ⚠️ Блоктой 10 багцад ХЭЗЭЭ Ч орохгүй (`bld.length === 0` нөхцөл). */
+  let synthetic = false;
+  if (opts.synthetic && bld.length === 0) {
+    const exact = (re: RegExp): string | null => names.find((n) => re.test(n)) ?? null;
+    /* ⚠️ Зорилтот нэр ЭХЛЭЭД, fuzzy дараа нь (2026-09-23, `exactCI`). */
+    const rStart = exactCI('Төлөвлөгөөт_хуваарь__Эхлэх') ?? find((n) => /^төлөвлөгөөтхуваарь.*эхлэх$/.test(n));
+    const rEnd = exactCI('Төлөвлөгөөт_хуваарь__Дуусах') ?? find((n) => /^төлөвлөгөөтхуваарь.*дуусах$/.test(n));
+    const rGS = exact(/^geree_ehleh$/i);
+    const rGE = exact(/^geree_duusah$/i);
+    const rAS = exact(/^bodit_ehleh$/i);
+    const rAE = exact(/^bodit_duusah$/i);
+    if (rStart || rEnd || rGS || rGE || rAS || rAE) {
+      synthetic = true;
+      bld.push(SYNTHETIC_BLOCK);
+      /* Гүйцэтгэл/төлөвлөгөө — мөрийн багана; байхгүй бол доорх `f`-ийн
+         нөөц нэр (уншихад `null`, Huvaari эдгээрийг БИЧДЭГГҮЙ). */
+      act.push(exactCI('Ажил_гүйцэтгэл') ?? find((n) => /^ажилгүйцэтгэл/.test(n)) ?? 'Ажил_гүйцэтгэл');
+      plan.push(exactCI('Төлөвлөгөөт_гүйцэтгэл') ?? find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n)) ?? 'Төлөвлөгөөт_гүйцэтгэл');
+      obyem.push(null);
+      start.push(rStart);
+      end.push(rEnd);
+      gStart.push(rGS);
+      gEnd.push(rGE);
+      aStart.push(rAS);
+      aEnd.push(rAE);
+    }
   }
 
   /* ── Скаляр талбарууд ── */
@@ -344,18 +490,24 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
   const weights = names.filter(
     (n) => norm(n).startsWith("хувийнжин") && !/одоо/.test(norm(n)),
   );
+  /* ⚠️ 2026-09-23: талбар бүрд ЗОРИЛТОТ нэрийг `exactCI`-аар ЭХЛЭЭД хайна,
+     олдохгүй бол л хуучин fuzzy дүрэм. Зорилтот ба хуучин хувилбар
+     (`Обьём` ба `Обьём__Шинэ` г.м.) зэрэг байхад ҮРГЭЛЖ зорилтот нь
+     уншигдаж/бичигдэнэ. Хуучин баганад `raw`-аар утга үлдэх нь зөв. */
+  const wC = exactCI('Хувийн_жин');
+  const wD = exactCI('Хувийн_жин1');
   const f: Schema["f"] = {
     no: byNorm.get("f") ?? "F_",
     work: byNorm.get("ажил") ?? 'Ажил',
-    wC: weights[0] ?? 'Хувийн_жин',
-    wD: weights[1] ?? weights[0] ?? 'Хувийн_жин1',
-    wE: find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
+    wC: wC ?? weights[0] ?? 'Хувийн_жин',
+    wD: wD ?? (wC ? weights.find((n) => n !== wC) ?? wC : weights[1] ?? weights[0]) ?? 'Хувийн_жин1',
+    wE: exactCI('Хувийн_жин__Одоо_байгаа') ?? find((n) => n.startsWith("хувийнжин") && /одоо/.test(n)),
     /*
      * ⚠️ `2`-оор төгссөнийг ХАСНА. «Объём_шинэ2» гэсэн багана 10 үйлчилгээний
      * АЛЬ НЬ Ч БАЙХГҮЙ (2026.08.21-нд шалгав) бөгөөд байх ч ёсгүй. Хэрэв
      * хэзээ нэгэн цагт нэмэгдвэл `vol`-д санамсаргүй наалдахаас сэргийлнэ.
      */
-    vol: find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'Обьём',
+    vol: exactCI('Обьём') ?? find((n) => /^об[ьъ]ём/.test(n) && !/2$/.test(n)) ?? 'Обьём',
     /*
      * ОБЬЁМЫН НИЙЛБЭР — мөрийн блок бүрийн хуримтлагдсан обьёмын нийлбэр.
      * ⚠️ Үйлчилгээнд 2026.08.21-нд нэмэгдсэн ба БҮГД ХООСОН байсан. Нийтлэх
@@ -363,7 +515,7 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
      * ⚠️ Нэр нь латинаар (`obyem_sum`) тул `norm()`-ийн кирилл хайлтад
      *    орохгүй — ШУУД нэрээр нь хайна.
      */
-    obyemSum: names.includes('obyem_sum') ? 'obyem_sum' : null,
+    obyemSum: exactCI('obyem_sum'),
     /*
      * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — 2026-09-07-нд 10/10 үйлчилгээнд нэмэгдсэн.
      *
@@ -377,21 +529,25 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
      *    энэ талбар түүнд ОГТ баригдахгүй — 2026-09-07-нд амьд 10 үйлчилгээн
      *    дээр шалгав (9 шүүлтүүр бүгд `false`).
      */
-    plannedVol: find((n) => /^инженерийнтөлөвлөсөноб[ьъ]ём/.test(n)) ?? null,
-    unit: find((n) => n.startsWith("нэгжөртөг")) ?? 'Нэгж_өртөг',
-    money: find((n) => n.startsWith("мөнгөндүн")) ?? 'Мөнгөн_дүн',
+    plannedVol: exactCI('Инженерийн_төлөвлөсөн_обьём') ?? find((n) => /^инженерийнтөлөвлөсөноб[ьъ]ём/.test(n)) ?? null,
+    unit: exactCI('Нэгж_өртөг') ?? find((n) => n.startsWith("нэгжөртөг")) ?? 'Нэгж_өртөг',
+    money: exactCI('Мөнгөн_дүн') ?? find((n) => n.startsWith("мөнгөндүн")) ?? 'Мөнгөн_дүн',
     // ⚠️ Гурван бичлэг: `Төлөвлөгөөт_гүйцэтгэл`, бичээсийн алдаатай
     //    `Төлөвлөгөөт_гүйцтэгэл` (Багц 2, 3.1), `…_гүйцэтгэлийн_хувь` (Багц 3.3, 4.x)
+    //    — 2026-09-23-оос зорилтот `Төлөвлөгөөт_гүйцэтгэл` 18/18-д бий, яг нэрээр эхэлж.
     plan:
+      exactCI('Төлөвлөгөөт_гүйцэтгэл') ??
       find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n)) ??
       'Төлөвлөгөөт_гүйцэтгэл',
     act:
+      exactCI('Бодит_гүйцэтгэл') ??
       find((n) => /^(бодитгүйцэтгэл|гүйцэтгэл)/.test(n)) ?? 'Бодит_гүйцэтгэл',
-    // ⚠️ Багц 4.1-д `Төлөвлөгөө_биеэлэлт` гэж бичигдсэн
-    ratio: find((n) => /^төлөвлөгөөбие/.test(n)),
+    // ⚠️ Багц 4.1-д `Төлөвлөгөө_биеэлэлт` гэж бичигдсэн — зорилтот `Төлөвлөгөө_биелэлт` эхэлж
+    ratio: exactCI('Төлөвлөгөө_биелэлт') ?? find((n) => /^төлөвлөгөөбие/.test(n)),
     // Толгойгүй үлдсэн бол AGOL `F<баганын дугаар>` гэж нэрлэдэг — огнооны
     // төрөлтэй, блокийн бус цорын ганц талбарыг нь шинэчлэгдсэн огноо гэж үзнэ.
     asOf:
+      exactCI('Шинэчлэгдсэн_огноо') ??
       find((n) => n.startsWith("шинэчлэгдсэн")) ??
       fields.find((x) => /^F\d+$/.test(x.name) && x.type === "esriFieldTypeDate")
         ?.name ??
@@ -403,23 +559,30 @@ export function resolveSchema(fields: FieldMeta[]): Schema {
     // ⚠️ `Des_dugaar` мөн латин нэртэй — шууд нэрээр, том/жижиг үсэг үл ялгана.
     des: names.find((n) => /^des_dugaar$/i.test(n)) ?? null,
     ham: names.find((n) => /^hamaaral$/i.test(n)) ?? null,
+    /* Хүн хүч · машин механизм (2026-09-23) — латин, шууд нэрээр. */
+    hunHuch: names.find((n) => /^hun_huch$/i.test(n)) ?? null,
+    mashin: names.find((n) => /^mashin_mehanizm$/i.test(n)) ?? null,
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 
-  return { bld, act, plan, obyem, start, end, gStart, gEnd, f };
+  return { bld, act, plan, obyem, start, end, gStart, gEnd, aStart, aEnd, synthetic, f };
 }
 
 /** Үйлчилгээний талбарын жагсаалтыг татаж бүдүүвч болгоно (кэштэй). */
+/* ⚠️ Кэшийн түлхүүр `opts`-оор ялгаатай (2026-09-23): синтетик ба энгийн
+   бүдүүвч хоёр өөр обьект — нэг түлхүүрт хийвэл Huvaari нээсний дараа FillNew
+   синтетик блоктой бүдүүвч аваад блокийн багана зурна. */
 const cache = new Map<string, Promise<Schema>>();
-export function loadSchema(pkg: Pkg): Promise<Schema> {
-  const hit = cache.get(pkg.key);
+export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
+  const ck = opts.synthetic ? `${pkg.key}|synthetic` : pkg.key;
+  const hit = cache.get(ck);
   if (hit) return hit;
   const p = agsFetch(pkg.url, {})
-    .then((j) => resolveSchema((j.fields ?? []) as FieldMeta[]))
+    .then((j) => resolveSchema((j.fields ?? []) as FieldMeta[], opts))
     .catch((e) => {
-      cache.delete(pkg.key);
+      cache.delete(ck);
       throw e;
     });
-  cache.set(pkg.key, p);
+  cache.set(ck, p);
   return p;
 }

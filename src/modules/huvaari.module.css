@@ -147,9 +147,8 @@
  *    420px)`-д тэдгээр нь ажлын нэрийг бараг тэглэж, хүснэгт уншигдахгүй
  *    болно.
  *
- * ⚠️ Дээд хязгаар нь 900px: түүнээс дээш бол нарийн дэлгэц дээр хуанлид
- *    зай үлдэхгүй. Доод нь 710px — код (66) + нэр (мин ~100) + огноо (312)
- *    + хоног (92) + хамаарал (110) + зай (~28) нийлбэр.
+ * ⚠️ Дээд хязгаар нь 1150px: түүнээс дээш бол нарийн дэлгэц дээр хуанлид
+ *    зай үлдэхгүй. Доод нь 990px — доорх тайлбарын нийлбэр (2026-09-23).
  * ⚠️ `30%` → `58%`: өргөн дэлгэцэд хуанли хэвээр давамгайлна.
  */
 .gSide {
@@ -160,7 +159,14 @@
      самбар дээгүүр цухуйдаг байв. Дараалал: plBar 1 < plLink 1 < plHead 3 <
      gSide 4 < gSideHead 5 < mdBack 60. */
   z-index: 4;
-  flex: 0 0 clamp(710px, 58%, 900px);
+  /* ⚠️ 2026-09-23 ЗАСВАР: 900px дээд хязгаар нь «Бодит эхэлсэн/дууссан» ба
+     «Хүн/Техник» 4 багана нэмэгдсэний дараа БАГТАХГҮЙ болж — тогтмол
+     нүднүүд (бүгд flex: none) 900-аас хальж, ажлын нэр 0px болж, догол мөр
+     (depth×12px) нүднүүдийг мөр бүрд өөр зайд түлхэж хүснэгт эвдэрч байв.
+     Одоо: код 60 + огноо 6×72 + хоног 2×40 + нөөц 2×44 + уялдаа 100 = 760,
+     зай 12×6 = 72, дүүргэлт 16, нэр ≥ 140 → 988px. Доод хязгаар нь ЯГ энэ
+     нийлбэрээс багагүй байх ёстой — эс тэгвээс дахин эвдэрнэ. */
+  flex: 0 0 clamp(990px, 58%, 1150px);
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -181,7 +187,7 @@
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px; /* ⚠️ `.row`-той ИЖИЛ — зөрвөл багана гулсана */
   padding: 0 8px;
   font-size: 10.5px;
   color: var(--ink-3);
@@ -196,7 +202,7 @@
  * ⚠️ `--date-w` (2026-09-15): дөрвөн огнооны багана. «2026-04-18» нь
  *    10 тэмдэгт, 11px tabular-nums дээр ~72px — 78px нь дүүргэлттэй.
  */
-.gSideHead, .row { --des-w: 66px; --ham-w: 110px; --date-w: 78px; --days-w: 46px; }
+.gSideHead, .row { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 140px; }
 .gHeadDes { flex: none; width: var(--des-w); padding-right: 8px; text-align: right; }
 .gHeadHam { flex: none; width: var(--ham-w); text-align: right; }
 /* ⚠️ Гарчиг нь ХОЁР МӨР болж эвхэгдэж болно («Төлөвлөгөө эхлэх») — тэр нь
@@ -216,7 +222,36 @@
   text-align: right;
   line-height: 1.15;
 }
-.gHeadWork { flex: 1; }
+/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ гарчиг (2026-09-23) — хоногийнхоос ч нарийн: 3–4 орон */
+.gSideHead, .row { --res-w: 44px; }
+.gHeadRes {
+  flex: none;
+  width: var(--res-w);
+  padding-right: 6px;
+  text-align: right;
+  line-height: 1.15;
+}
+/* ⚠️ «min-width» ЗААВАЛ (2026-09-23): flex: 1 нь зай дутвал 0 хүртэл агшдаг
+   тул нэрийн багана алга болдог байв. Толгой ба мөр (.rowTree) ИЖИЛ. */
+.gHeadWork { flex: 1; min-width: var(--work-min); display: flex; align-items: center; gap: 6px; }
+/* ХУРААХ ТОВЧ (2026-09-23) — нэрийн толгойн ард; хураасан үед 10 багана нуугдана */
+.colsBtn {
+  font: inherit;
+  flex: none;
+  padding: 0 4px;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.colsBtn:hover { color: var(--data); border-color: var(--data); }
+/* ⚠️ Хураахад ЯГ 1180px-ийн responsive дүрэмтэй ижил багануудыг нууна —
+   хоёр зам нэг үр дүн өгнө. Самбар 360–480px: код 60 + нэр ≥ 140 + уялдаа 100. */
+.gSideNarrow .gHeadDate, .gSideNarrow .gHeadDays, .gSideNarrow .gHeadRes,
+.gSideNarrow .rowDate, .gSideNarrow .rowDays, .gSideNarrow .rowRes { display: none; }
+.gSideNarrow { flex-basis: clamp(360px, 30%, 480px); }
 /* ⚠️ `align-self: flex-start` (2026-09-22) — `.gSide`-тэй ИЖИЛ шалтгаан: stretch-ээр
    эцгийн бүтэн өндрийг авбал доторх `.plHead` (sticky; top: 0) наалдах газраа
    олохгүй, он/сарын мөр гүйлттэй хамт дээш алга болно. Хэрэглэгч: «Header түгжих». */
@@ -274,7 +309,7 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px; /* ⚠️ `.gSideHead`-тэй ИЖИЛ */
   /* ⚠️ Зүүн дүүргэлт ТОГТМОЛ — шатлалын догол мөр нь `.rowTree`-д шилжсэн тул
      «Ажлын код» багана мөр бүрд нэг босоо шугамд эгнэнэ. Баруун нь толгойн
      (`.gSideHead`) 8px-тэй ИЖИЛ — зөрвөл сүүлийн багана гарчгаасаа гулсана. */
@@ -298,7 +333,11 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0;
+  /* ⚠️ «min-width: 0» → var(--work-min) (2026-09-23): 0 байхад зай дутвал
+     энэ нүд 0px болж, зүүн дүүргэлт (догол мөр, depth×12) л үлддэг тул
+     дараагийн бүх нүд мөр бүрд ӨӨР зайд шилжиж толгойтойгоо зөрж байв.
+     border-box тул догол мөр нь min-width ДОТОР — нүднүүд эгнээ алдахгүй. */
+  min-width: var(--work-min);
 }
 .row:hover { background: var(--surface-2); }
 .row:hover .rowWork { text-decoration: underline; text-underline-offset: 2px; }
@@ -306,6 +345,11 @@
 .rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
 /* Нийтлээгүй засвар — зүүн ирмэгийн зураас (өнгө нь «хадгалагдаагүй» гэсэн утга) */
 .rowDirty { box-shadow: inset 3px 0 0 var(--data); }
+/* ⚠️ ХУВААРЬТАЙ ажил НОГООН (2026-09-23, хэрэглэгч: «хуваарь хийсэн бол ажил
+   ногоордог болгох») — зөвхөн ажлын мөр (бүлэг биш: бүлгийн муж нь хүүхдийн
+   MIN/MAX тул нэг хүүхэд л төлөвлөгдсөн ч «бүгд бэлэн» мэт уншигдана).
+   Зөвхөн нэрийн өнгө — «хадгалаагүй» зураас, сонголтын дэвсгэр хэвээр. */
+.rowPlanned .rowWork { color: var(--good-ink); }
 
 .caret {
   font: inherit;
@@ -681,6 +725,37 @@
   border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
 }
 
+/*
+ * БОДИТ МУЖ (2026-09-23) — мөрийн ХАМГИЙН ДООД захад 3px нарийн зурвас:
+ * бодит эхэлсэн → дууссан. `plRef` (доод хагас, 9px)-ээс ДООР, түүнтэй
+ * давхцахгүй; өнгө нь `--data` (төлөвлөгөөт зурвасын саарал/ягаанаас ялгарна).
+ * ⚠️ `pointer-events: none` — чирэлт дээд зурваст; popup-аас л засагдана.
+ * ⚠️ Дуусаагүй (`plActOpen`) бол ТАСАРХАЙ — «үргэлжилж байна», төгсгөл нь
+ *    өнөөдөр гэдэг нь бүртгэл биш зураг гэдгийг хэлбэрээр нь ялгана.
+ */
+.plAct {
+  position: absolute;
+  bottom: 0;
+  height: 3px;
+  border-radius: 1px;
+  pointer-events: none;
+  background: var(--data);
+  z-index: 2;
+}
+.plActOpen {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--data) 0 4px,
+    transparent 4px 7px
+  );
+}
+.plActSwatch {
+  width: 16px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--data);
+}
+
 /* Тайлбарын мөр — судал нь юу болохыг нэрлэнэ */
 .plRefKey {
   display: inline-flex;
@@ -794,7 +869,8 @@
    * ажлын нэрээс чухал биш (огноог мөр дээр дарж дэлгэрэнгүйгээс харна).
    * Ингэснээр тогтмол хэсэг 66 + 110 = 176px болж, нэрэнд бодит зай үлдэнэ.
    */
-  .gHeadDate, .gHeadDays, .rowDate, .rowDays { display: none; }
+  /* ⚠️ Бодит огноо (`.rowDate`-д багтана) ба нөөцийн багана ч нуугдана (2026-09-23) */
+  .gHeadDate, .gHeadDays, .rowDate, .rowDays, .gHeadRes, .rowRes { display: none; }
   .gSide { flex-basis: clamp(260px, 46%, 420px); }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
@@ -1067,6 +1143,17 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
+  white-space: nowrap;
+}
+/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ нүд (2026-09-23) — `.rowDays`-тай ижил, өргөн `--res-w` */
+.rowRes {
+  flex: none;
+  width: var(--res-w);
+  padding-right: 6px;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
   white-space: nowrap;
 }
 .rowGroup .rowDays { color: var(--ink-2); font-weight: 600; }

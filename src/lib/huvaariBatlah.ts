@@ -132,7 +132,25 @@ export type PlanPayload = {
     spans: Record<string, ({ start: number; end: number } | null)[]>;
     deps: Record<string, string | null>;
     obyem: Record<string, Record<string, number>>;
+    /** Бодит огноо · нөөцийн суурь (2026-09-23) — `actual`/`res`-тэй ижил хэлбэр */
+    actual?: Record<string, { start: (number | null)[]; end: (number | null)[] }>;
+    res?: Record<string, { hun: number | null; mashin: number | null }>;
   };
+  /**
+   * БОДИТ ЭХЭЛСЭН/ДУУССАН огноо — `oid` → блок бүрийн { start[], end[] }
+   * (2026-09-23). `null` = тэр блокт бүртгэлгүй.
+   *
+   * ⚠️ ХОЁР ТУСДАА МАССИВ, `spans` шиг муж БИШ: эхэлсэн ч дуусаагүй нь
+   *    хэвийн төлөв. Уртууд блокийн тоотой тэнцүү.
+   * ⚠️ СОНГОЛТТОЙ — 2026-09-23-аас өмнөх илгээлтэд байхгүй; `parsePayload`
+   *    тэр үед `{}` өгнө (буцаж нийцтэй). Огнооны ноорогтой НЭГ илгээлтээр
+   *    явна — тусад нь батлуулбал батлагч хоёр удаа шийддэг.
+   * ⚠️ `kind`-ээс ХАМААРАХГҮЙ (гэрээ/төлөвлөгөө хоёулаа нэг бодит талбарт
+   *    бичнэ) — гэвч ноорог нь таб солиход бусадтай хамт цэвэрлэгдэнэ.
+   */
+  actual: Record<string, { start: (number | null)[]; end: (number | null)[] }>;
+  /** Хүн хүч · машин механизм — `oid` → { hun, mashin } (2026-09-23). Сонголттой, дээрхтэй ижил. */
+  res: Record<string, { hun: number | null; mashin: number | null }>;
 };
 
 const TITLE = 'Selbe_Huvaari_Batlah';
@@ -507,6 +525,40 @@ function sanitizeSpans(raw: object): PlanPayload['spans'] {
   return out;
 }
 
+/** Тоо эсвэл `null` — бусад бүхэн (мөр, NaN, undefined) `null` (fail-closed) */
+const numOrNull = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+
+/**
+ * `actual`-ыг ШАЛГАЖ ЦЭВЭРЛЭНЭ (2026-09-23) — `sanitizeSpans`-ын ижил ёс:
+ * мөр тус бүрээр fail-closed, эвдэрсэн элемент `null` (`map`, `filter` БИШ —
+ * индекс гулсвал огноо өөр блокт бичигдэнэ). `start`/`end` хоёул массив
+ * биш бол мөрийг хаяна.
+ */
+function sanitizeActual(raw: object): PlanPayload['actual'] {
+  const out: PlanPayload['actual'] = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const s = (v as { start?: unknown }).start;
+    const e = (v as { end?: unknown }).end;
+    if (!Array.isArray(s) || !Array.isArray(e)) continue;
+    out[k] = { start: s.map(numOrNull), end: e.map(numOrNull) };
+  }
+  return out;
+}
+
+/** `res` (хүн хүч · машин) — объект биш мөрийг хаяна, тоо биш утга `null`. */
+function sanitizeRes(raw: object): PlanPayload['res'] {
+  const out: PlanPayload['res'] = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    out[k] = {
+      hun: numOrNull((v as { hun?: unknown }).hun),
+      mashin: numOrNull((v as { mashin?: unknown }).mashin),
+    };
+  }
+  return out;
+}
+
 export function parsePayload(raw: string): PlanPayload | null {
   try {
     const j = JSON.parse(raw) as Partial<PlanPayload>;
@@ -528,6 +580,9 @@ export function parsePayload(raw: string): PlanPayload | null {
         spans: sanitizeSpans(b.spans),
         deps: (b.deps && typeof b.deps === 'object' ? b.deps : {}) as NonNullable<PlanPayload['base']>['deps'],
         obyem: (b.obyem && typeof b.obyem === 'object' ? b.obyem : {}) as NonNullable<PlanPayload['base']>['obyem'],
+        /* Бодит огноо · нөөцийн суурь (2026-09-23) — байвал л */
+        ...(b.actual && typeof b.actual === 'object' ? { actual: sanitizeActual(b.actual) } : {}),
+        ...(b.res && typeof b.res === 'object' ? { res: sanitizeRes(b.res) } : {}),
       }
       : undefined;
     return {
@@ -535,6 +590,9 @@ export function parsePayload(raw: string): PlanPayload | null {
       spans,
       deps: (j.deps && typeof j.deps === 'object' ? j.deps : {}) as PlanPayload['deps'],
       obyem: (j.obyem && typeof j.obyem === 'object' ? j.obyem : {}) as PlanPayload['obyem'],
+      /* ⚠️ БУЦАЖ НИЙЦТЭЙ (2026-09-23): хуучин илгээлтэд байхгүй → `{}` — унахгүй. */
+      actual: j.actual && typeof j.actual === 'object' ? sanitizeActual(j.actual) : {},
+      res: j.res && typeof j.res === 'object' ? sanitizeRes(j.res) : {},
       ...(base ? { base } : {}),
     };
   } catch {

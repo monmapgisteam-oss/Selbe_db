@@ -126,7 +126,46 @@ function toPlanRows(rows: SheetRow[], n: number, kind: PlanKind = 'plan'): PlanR
         : null
     )),
     act: r.act,
+    /* ⚠️ Бодит огноо · нөөц (2026-09-23) — `kind`-ээс ХАМААРАХГҮЙ: гэрээ ба
+       төлөвлөгөө хоёр таб нэг бодит талбарыг харуулна (баримт нэг л байна). */
+    aStart: r.aStart,
+    aEnd: r.aEnd,
+    hun: r.hun,
+    mashin: r.mashin,
   }));
+}
+
+/**
+ * БҮЛГИЙН БОДИТ ОГНОО ба НӨӨЦ — хүүхдүүдээс (2026-09-23).
+ * Бодит эхэлсэн = навчдын MIN, бодит дууссан = навчдын MAX (аль нэг навч
+ * дуусаагүй бол `null` — «бүлэг дууссан» гэж худал хэлэхгүй); хүн/техник =
+ * навчдын НИЙЛБЭР (нэг ч навч бөглөөгүй бол `null`, 0 БИШ).
+ * ⚠️ ЗӨВХӨН ДЭЛГЭЦ — бүлгийн мөрд бичигдэхгүй (`effRow` → popup/зүүн багана).
+ */
+function aggExtra(rows: readonly PlanRow[], i: number, n: number): {
+  aStart: (number | null)[]; aEnd: (number | null)[]; hun: number | null; mashin: number | null;
+} {
+  const g = rows[i];
+  const aStart: (number | null)[] = new Array(n).fill(null);
+  const aEnd: (number | null)[] = new Array(n).fill(null);
+  const open: boolean[] = new Array(n).fill(false);
+  let hun: number | null = null;
+  let mashin: number | null = null;
+  for (let k = i + 1; k < rows.length && rows[k].depth > g.depth; k += 1) {
+    const r = rows[k];
+    if (r.group) continue;
+    for (let b = 0; b < n; b += 1) {
+      const s = r.aStart?.[b] ?? null;
+      const e = r.aEnd?.[b] ?? null;
+      if (s != null && (aStart[b] == null || s < aStart[b]!)) aStart[b] = s;
+      if (s != null && e == null) open[b] = true;
+      if (e != null && (aEnd[b] == null || e > aEnd[b]!)) aEnd[b] = e;
+    }
+    if (r.hun != null) hun = (hun ?? 0) + r.hun;
+    if (r.mashin != null) mashin = (mashin ?? 0) + r.mashin;
+  }
+  for (let b = 0; b < n; b += 1) if (open[b]) aEnd[b] = null;
+  return { aStart, aEnd, hun, mashin };
 }
 
 /**
@@ -160,6 +199,15 @@ function spanOfRef(m: Map<number, PlanRow>, oid: number): Span | null {
 
 /** Нийтлээгүй засвар: `oid` → блок бүрийн шинэ хуваарь */
 type Draft = Map<number, (Span | null)[]>;
+/**
+ * БОДИТ ОГНООНЫ НООРОГ: `oid` → блок бүрийн { эхэлсэн[], дууссан[] } (2026-09-23).
+ * ⚠️ `Draft`-аас ТУСДАА: бодит огноо гинж/`rollUpGroups`/`propagate`-д орохгүй
+ *    тул нэг Map-д хийвэл тэр хөдөлгүүрүүд түүнийг ч хөдөлгөнө. Мөрийн БҮХ
+ *    блокийн массив (диффийг `save` хийнэ) — `Draft`-тай ижил хэлбэр.
+ */
+type ADraft = Map<number, { start: (number | null)[]; end: (number | null)[] }>;
+/** НӨӨЦИЙН НООРОГ: `oid` → { хүн хүч, машин механизм } (2026-09-23). Мөрийн скаляр. */
+type ResDraft = Map<number, { hun: number | null; mashin: number | null }>;
 
 /**
  * Хүснэгтийн мөрийн өндөр (px).
@@ -406,6 +454,19 @@ export function Huvaari({
   const [wide, setWide] = useState(() => {
     try { return localStorage.getItem('selbe-huvaari-wide') === '1'; } catch { return false; }
   });
+  /*
+   * ОГНОО · НӨӨЦИЙН БАГАНЫГ ХУРААХ (2026-09-23, хэрэглэгч: «энэ хэсгийг хурааж
+   * нээдэг байж болох уу»). Хураахад «Гэрээ эхлэх … Техник» 10 багана нуугдаж,
+   * зүүн самбар нарийсч хуанлид зай өгнө; код · нэр · хамаарал үлдэнэ.
+   * ⚠️ Анхдагч нь НЭЭЛТТЭЙ — хэрэглэгч багануудыг шаардаж нэмүүлсэн тул
+   *    анх удаа нээхэд нуугдсан байж болохгүй. Сешн хооронд санагдана.
+   */
+  const [cols, setCols] = useState(() => {
+    try { return localStorage.getItem('selbe-huvaari-cols') !== '0'; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('selbe-huvaari-cols', cols ? '1' : '0'); } catch { /* хаалттай орчин */ }
+  }, [cols]);
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-wide', wide ? '1' : '0'); } catch { /* хаалттай орчин */ }
   }, [wide]);
@@ -425,6 +486,13 @@ export function Huvaari({
    * Хадгалахад хоёулаа нэг `applyUpdates`-д нийлнэ.
    */
   const [ham, setHam] = useState<Map<number, string>>(new Map());
+  /**
+   * БОДИТ ОГНОО ба НӨӨЦИЙН ноорог (2026-09-23) — `draft`/`ham`-тай ЗЭРЭГЦЭЭ,
+   * тусдаа. Хадгалахад бүгд нэг `applyUpdates`-д, батлуулахад нэг payload-д
+   * нийлнэ (`actual`/`res`). Popup-аас л засагдана (зүүн багана зөвхөн харуулна).
+   */
+  const [aDraft, setADraft] = useState<ADraft>(new Map());
+  const [resDraft, setResDraft] = useState<ResDraft>(new Map());
   const [sel, setSel] = useState<number | null>(null);
 
   /* ══════ САРЫН ОБЬЁМ (тусдаа үйлчилгээ, `huvaariObyem.ts`) ══════ */
@@ -550,7 +618,7 @@ export function Huvaari({
    *    ноорогтой үед хөндөхгүй (`askSwitch`-ийн дүрэм).
    */
   useEffect(() => {
-    if (groupOpts.includes(pkg.group) || draft.size || ham.size || !groupOpts.length) return;
+    if (groupOpts.includes(pkg.group) || draft.size || ham.size || aDraft.size || resDraft.size || !groupOpts.length) return;
     const first = pkgFloors(groupOpts[0])[0];
     if (first) setPkg(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -560,6 +628,7 @@ export function Huvaari({
     let alive = true;
     setBusy(true); setErr(''); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
+    setADraft(new Map()); setResDraft(new Map());
     /* ⚠️ Түвшний товчийг ч тэглэнэ — багц бүр ӨӨР гүнтэй тул өмнөх багцын
        сонголт шинэ модонд утгагүй (эвхэлт нь дээр цэвэрлэгдсэн). */
     setLvl(0);
@@ -581,7 +650,13 @@ export function Huvaari({
     loadPkgPlan(pkg.key)
       .then((r) => { if (alive) { setObPlan(r.plan); setObOids(r.oids); setObDups(r.dups); } })
       .catch(() => { /* задаргаагүйгээр үргэлжилнэ */ });
-    loadSchema(pkg)
+    /* ⚠️ СИНТЕТИК БЛОК (2026-09-23): блокгүй 8 багцад (5.x · 6.x · 10) мөрийн
+       түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах` · `geree_*` · `bodit_*`)
+       нэг блок болж орно — хуваарь барилгын багцтай ИЖИЛ ажиллана, доорх
+       `save` нь `sc.start[b]`/`sc.gStart[b]`/`sc.aStart[b]` нэрээр бичдэг тул
+       мөрийн баганад шууд бичигдэнэ. ЗӨВХӨН ЭНД опт-ин — FillNew/дашбоард/
+       нэгтгэл `loadSchema(pkg)`-ээр хоосон блок хэвээр (`Schema.synthetic`). */
+    loadSchema(pkg, { synthetic: true })
       .then(async (schema) => {
         const r = await loadRows(pkg, schema);
         if (!alive) return;
@@ -612,6 +687,10 @@ export function Huvaari({
    */
   useEffect(() => {
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
+    /* ⚠️ Бодит огноо · нөөц (2026-09-23) нь `kind`-ээс хамаардаггүй ч ЦЭВЭРЛЭНЭ:
+       нэг илгээлт нэг `kind` авч явдаг тул таб солиход хагас ноорог үлдвэл
+       дараагийн илгээлт хоёр төрлийн хольц болно. `askSwitch` урьдчилан асуудаг. */
+    setADraft(new Map()); setResDraft(new Map());
     setSel(null); setModal(null); setNote(''); setErr('');
     setPreviewing(false); setApproving(null); setFlowBox(null);
     /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
@@ -623,6 +702,16 @@ export function Huvaari({
   }, [kind]);
 
   const n = sc?.bld.length ?? 0;
+  /**
+   * Бодит огноо · нөөцийн багана ХАРАГДАХ ЭСЭХ (2026-09-23) — талбар байгаа
+   * үйлчилгээнд л. Блокгүй 8 багцад `aStart` хоосон тул бодит огноо нуугдана;
+   * `hun_huch`/`mashin_mehanizm` 18/18-д бий ч схемээс шалгана (null = нуух).
+   * ⚠️ 2026-09-23: блокгүй багцад синтетик блок (`Schema.synthetic`) мөрийн
+   *    `bodit_ehleh/duusah`-ыг `aStart[0]`-д авчирдаг тул тэнд ч бодит огноо
+   *    харагдана (багана байвал).
+   */
+  const hasActual = !!sc && sc.aStart.some(Boolean);
+  const hasRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
 
   /** Ноорогийг эх мөрүүд дээр давхарлана — харагдац үргэлж ХАМГИЙН СҮҮЛИЙНХ */
   const base = useMemo(() => toPlanRows(rows, n, kind), [rows, n, kind]);
@@ -656,18 +745,25 @@ export function Huvaari({
     return m;
   }, [refBase]);
   const plan = useMemo(() => {
-    if (!draft.size && !ham.size) return base;
+    if (!draft.size && !ham.size && !aDraft.size && !resDraft.size) return base;
     return base.map((r) => {
       const s = draft.get(r.oid);
       const t = ham.get(r.oid);
-      if (s === undefined && t === undefined) return r;
+      const ad = aDraft.get(r.oid);
+      const rd = resDraft.get(r.oid);
+      if (s === undefined && t === undefined && ad === undefined && rd === undefined) return r;
       return {
         ...r,
         spans: s ?? r.spans,
         deps: t !== undefined ? parseDeps(t) : r.deps,
+        /* Бодит огноо · нөөцийн ноорог давхарлана (2026-09-23) */
+        aStart: ad ? ad.start : r.aStart,
+        aEnd: ad ? ad.end : r.aEnd,
+        hun: rd ? rd.hun : r.hun,
+        mashin: rd ? rd.mashin : r.mashin,
       };
     });
-  }, [base, draft, ham]);
+  }, [base, draft, ham, aDraft, resDraft]);
 
   /** Ажлын код → мөрийн индекс — уялдааны бодолт, сум, зөрчилд нэг эх сурвалж */
   const byCode = useMemo(() => codeIndex(plan), [plan]);
@@ -679,8 +775,8 @@ export function Huvaari({
    *    ганц тоо болгож харуулна.
    */
   const dirtyN = useMemo(
-    () => new Set([...draft.keys(), ...ham.keys()]).size + obDraft.size,
-    [draft, ham, obDraft],
+    () => new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()]).size + obDraft.size,
+    [draft, ham, aDraft, resDraft, obDraft],
   );
 
   const now = useMemo(() => {
@@ -1201,6 +1297,49 @@ export function Huvaari({
   }, [plan, byCode, n, busy, locked, ham, rows, applyChanges, sc, blk, obPlan]);
 
   /**
+   * POPUP-ЫН «Тавих» — БОДИТ ОГНОО (энэ блок) ба НӨӨЦ (мөр) (2026-09-23).
+   *
+   * ⚠️ `applyModal`-аас ТУСДАА: тэр нь `propagate` (гинж) ба `rollUpGroups`
+   *    (бүлэг) руу явдаг; бодит огноо/нөөц тэдгээрт ОРОХГҮЙ — зөвхөн ноорог.
+   * ⚠️ СЕРВЕРТЭЙ ИЖИЛ болвол ноорогоос ХАСНА (`applyChanges`-ийн 2026-09-21-ний
+   *    дүрэм) — эс бөгөөс буцаасан засвар «хадгалаагүй 1» гэж үлдэнэ.
+   * ⚠️ Бүлгийн мөрд ХЭЗЭЭ Ч бичихгүй (`aggExtra`-аар бодогддог); popup нь
+   *    бүлэгт талбарыг хаадаг ч энд давхар хаана.
+   */
+  const applyExtra = useCallback((
+    oid: number,
+    blkAt: number,
+    actual: { start: number | null; end: number | null } | null,
+    res: { hun: number | null; mashin: number | null } | null,
+  ) => {
+    if (busy || locked) return;
+    const orig = rows.find((r) => r.oid === oid);
+    if (!orig || orig.group) return;
+    if (actual && blkAt >= 0 && blkAt < n) {
+      setADraft((m) => {
+        const next = new Map(m);
+        const cur = next.get(oid);
+        const start = (cur ? cur.start : orig.aStart).slice();
+        const end = (cur ? cur.end : orig.aEnd).slice();
+        start[blkAt] = actual.start;
+        end[blkAt] = actual.end;
+        const same = start.every((v, b) => v === (orig.aStart[b] ?? null))
+          && end.every((v, b) => v === (orig.aEnd[b] ?? null));
+        if (same) next.delete(oid); else next.set(oid, { start, end });
+        return next;
+      });
+    }
+    if (res) {
+      setResDraft((m) => {
+        const next = new Map(m);
+        if ((res.hun ?? null) === (orig.hun ?? null) && (res.mashin ?? null) === (orig.mashin ?? null)) next.delete(oid);
+        else next.set(oid, { hun: res.hun, mashin: res.mashin });
+        return next;
+      });
+    }
+  }, [busy, locked, rows, n]);
+
+  /**
    * ХАМААРЛЫГ НҮДЭНД ШУУД БИЧИХ (2026-09-15, хэрэглэгчийн хүсэлт:
    * «11FS14 гэж шууд бичиж холбоос хийх боломжтой болгох»).
    *
@@ -1444,6 +1583,8 @@ export function Huvaari({
        зөвхөн эдгээр түлхүүрийг цэвэрлэнэ. */
     const tookD = [...draft.keys()];
     const tookH = [...ham.keys()];
+    const tookA = [...aDraft.keys()];
+    const tookR = [...resDraft.keys()];
     try {
       const byOid = new Map(rows.map((r) => [r.oid, r]));
       /**
@@ -1464,7 +1605,7 @@ export function Huvaari({
        *    алгасахын оронд ИЛ ТАТГАЛЗАНА — ноорог хэвээр үлдэж, `dirtyN`
        *    тэглэгдэхгүй тул илгээлт `approved` болохгүй.
        */
-      const staleN = [...new Set([...draft.keys(), ...ham.keys()])]
+      const staleN = [...new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()])]
         .filter((oid) => !byOid.has(oid)).length;
       if (staleN) {
         setErr(tr('{0} мөр энэ хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Хуваарь бичигдсэнгүй; хуудсаа сэргээгээд дахин илгээнэ үү.', num(staleN)));
@@ -1532,6 +1673,45 @@ export function Huvaari({
         }
       }
       /**
+       * БОДИТ ОГНООНЫ НООРОГ (2026-09-23) — огнооны бичилттэй нэг мөрөнд.
+       * ⚠️ ЗӨВХӨН ӨӨРЧЛӨГДСӨН БЛОКИЙГ — `draft`-ын ижил дүрэм; талбаргүй
+       *    блокийг алгасна (унахгүй). `kind`-ээс ХАМААРАХГҮЙ: бодит талбар
+       *    нэг л байна.
+       * ⚠️ Хагас бүртгэл (эхэлсэн, дуусаагүй) ХЭВИЙН — `null`-г ч бичнэ
+       *    (цэвэрлэх = «бүртгэлгүй» болгох), гэхдээ зөвхөн зөрсөн үед.
+       */
+      const upsert = (oid: number): Record<string, unknown> => {
+        const ex = upd.find((u) => u[sc.f.oid] === oid);
+        if (ex) return ex;
+        const a: Record<string, unknown> = { [sc.f.oid]: oid };
+        upd.push(a);
+        return a;
+      };
+      for (const [oid, ad] of aDraft) {
+        const orig = byOid.get(oid);
+        if (!orig) continue;
+        let changed = 0;
+        const a: Record<string, unknown> = {};
+        ad.start.forEach((ns, b) => {
+          const ne = ad.end[b] ?? null;
+          const os = orig.aStart[b] ?? null;
+          const oe = orig.aEnd[b] ?? null;
+          if (ns === os && ne === oe) return;
+          if (sc.aStart[b]) { a[sc.aStart[b]!] = ns; changed += 1; }
+          if (sc.aEnd[b]) { a[sc.aEnd[b]!] = ne; changed += 1; }
+        });
+        if (changed) Object.assign(upsert(oid), a);
+      }
+      /* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ — талбар байвал, зөрсөн үед л (2026-09-23) */
+      for (const [oid, rd] of resDraft) {
+        const orig = byOid.get(oid);
+        if (!orig) continue;
+        const a: Record<string, unknown> = {};
+        if (sc.f.hunHuch && (rd.hun ?? null) !== (orig.hun ?? null)) a[sc.f.hunHuch] = rd.hun;
+        if (sc.f.mashin && (rd.mashin ?? null) !== (orig.mashin ?? null)) a[sc.f.mashin] = rd.mashin;
+        if (Object.keys(a).length) Object.assign(upsert(oid), a);
+      }
+      /**
        * ⚠️ ЭРТ БУЦАЛТ нь ЗӨВХӨН огноо·уялдаа·ОБЬЁМ ГУРВУУЛАА хоосон үед
        *    (2026-09-08). Урьд нь зөвхөн `upd.length`-ыг шалгадаг байсан тул
        *    ЗӨВХӨН сарын обьёмоо зассан тохиолдолд («Тавих» дээр огноо
@@ -1545,6 +1725,8 @@ export function Huvaari({
       if (!upd.length && !obDraft.size) {
         setDraft((m0) => { const m = new Map(m0); for (const k of tookD) m.delete(k); return m; });
         setHam((m0) => { const m = new Map(m0); for (const k of tookH) m.delete(k); return m; });
+        setADraft((m0) => { const m = new Map(m0); for (const k of tookA) m.delete(k); return m; });
+        setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) m.delete(k); return m; });
         setNote(tr('Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.'));
         return;
       }
@@ -1659,6 +1841,8 @@ export function Huvaari({
       setRows(r.rows);
       setDraft((m0) => { const m = new Map(m0); for (const k of tookD) m.delete(k); return m; });
       setHam((m0) => { const m = new Map(m0); for (const k of tookH) m.delete(k); return m; });
+      setADraft((m0) => { const m = new Map(m0); for (const k of tookA) m.delete(k); return m; });
+      setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) m.delete(k); return m; });
       /* ⚠️ Обьёмын ноорогийг ЦЭВЭРЛЭЖ, задаргааг СЕРВЕРЭЭС дахин татна —
          бичилтийн дараа ObjectID шинээр үүссэн тул хуучин `obOids` хуучирсан.
          ⚠️ ТЭНЦЭЭГҮЙ задаргааг ҮЛДЭЭНЭ (2026-09-08): бичигдээгүй атлаа
@@ -1699,7 +1883,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [sc, draft, ham, obDraft, obPlan, obOids, obDups, base, dirtyN, busy, pkg, rows, kind]);
+  }, [sc, draft, ham, aDraft, resDraft, obDraft, obPlan, obOids, obDups, base, dirtyN, busy, pkg, rows, kind]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
    * ⚠️ Гүйцэтгэгч ЗОХИОНО → «Батлуулах» → батлагч БАТАЛНА → тэр үед л эх
@@ -1841,10 +2025,28 @@ export function Huvaari({
       const prev = obPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
       bObyem[k] = prev ? Object.fromEntries(prev) : {};
     }
+    /* Бодит огноо · нөөц + илгээх үеийн суурь (2026-09-23) — ижил зарчим */
+    const actual: PlanPayload['actual'] = {};
+    const bActual: NonNullable<NonNullable<PlanPayload['base']>['actual']> = {};
+    for (const [oid, ad] of aDraft) {
+      actual[String(oid)] = { start: ad.start.slice(), end: ad.end.slice() };
+      const r = rowByOid.get(oid);
+      if (r) bActual[String(oid)] = { start: r.aStart.slice(), end: r.aEnd.slice() };
+    }
+    const res: PlanPayload['res'] = {};
+    const bRes: NonNullable<NonNullable<PlanPayload['base']>['res']> = {};
+    for (const [oid, rd] of resDraft) {
+      res[String(oid)] = { hun: rd.hun, mashin: rd.mashin };
+      const r = rowByOid.get(oid);
+      if (r) bRes[String(oid)] = { hun: r.hun, mashin: r.mashin };
+    }
     /* ⚠️ `kind` нь ЗААВАЛ — батлагч нь ӨӨРИЙН табаар бичих талбарыг дур
        мэдэн шийдэхээс сэргийлнэ (2026-09-11-ний аудитын S1). */
-    return { kind, spans, deps, obyem, base: { spans: bSpans, deps: bDeps, obyem: bObyem } };
-  }, [draft, ham, obDraft, kind, base, rows, obPlan]);
+    return {
+      kind, spans, deps, obyem, actual, res,
+      base: { spans: bSpans, deps: bDeps, obyem: bObyem, actual: bActual, res: bRes },
+    };
+  }, [draft, ham, aDraft, resDraft, obDraft, kind, base, rows, obPlan]);
 
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
@@ -1905,6 +2107,7 @@ export function Huvaari({
          локалд үлдээвэл гүйцэтгэгч дахин илгээх, эсвэл батлагдсаны дараа
          хуучин ноорог дахин бичигдэх эрсдэлтэй. */
       setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
+      setADraft(new Map()); setResDraft(new Map());
       setFlowBox(null);
       setNote(tr('Хуваарь батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshFlow();
@@ -2016,8 +2219,44 @@ export function Huvaari({
         if (!sameMonths(now, was)) conflicts += 1;
       }
     }
+    /*
+     * БОДИТ ОГНОО · НӨӨЦ (2026-09-23) — `spans`-ын ижил суурь-тулгалт:
+     * зохиогч хөндөөгүй блок/талбар → серверийн одоогийнх; зохиогч зассан
+     * атлаа суурь ≠ сервер → зэрэгцээ өөрчлөлт. Хуучин илгээлтэд `{}`.
+     */
+    const ad: ADraft = new Map();
+    for (const [k, v] of Object.entries(p.actual)) {
+      const oid = Number(k);
+      const now = curSheet.get(oid);
+      const bs = p.base?.actual?.[k];
+      const pick = (arr: (number | null)[], baseArr: (number | null)[] | undefined, nowArr: (number | null)[] | undefined) =>
+        Array.from({ length: n }, (_, b) => {
+          const v0 = arr[b] ?? null;
+          if (!bs || !now || !baseArr || !nowArr) return v0;
+          const b0 = baseArr[b] ?? null;
+          const n0 = nowArr[b] ?? null;
+          if (v0 === b0) return n0;
+          if (b0 !== n0) conflicts += 1;
+          return v0;
+        });
+      ad.set(oid, { start: pick(v.start, bs?.start, now?.aStart), end: pick(v.end, bs?.end, now?.aEnd) });
+    }
+    const rd: ResDraft = new Map();
+    for (const [k, v] of Object.entries(p.res)) {
+      const oid = Number(k);
+      const now = curSheet.get(oid);
+      const bs = p.base?.res?.[k];
+      const pick = (v0: number | null, b0: number | null | undefined, n0: number | null | undefined) => {
+        if (!bs || !now) return v0;
+        if (v0 === (b0 ?? null)) return n0 ?? null;
+        if ((b0 ?? null) !== (n0 ?? null)) conflicts += 1;
+        return v0;
+      };
+      rd.set(oid, { hun: pick(v.hun, bs?.hun, now?.hun), mashin: pick(v.mashin, bs?.mashin, now?.mashin) });
+    }
     if (strict && conflicts) return { ok: false, why: 'conflict', conflicts };
     setDraft(d); setHam(hm); setObDraft(ob);
+    setADraft(ad); setResDraft(rd);
     return { ok: true, conflicts };
   }, [kind, n, obPlan]);
 
@@ -2131,6 +2370,7 @@ export function Huvaari({
   /** Урьдчилан харахыг болих — ноорог зүгээр л хаягдана */
   const clearPreview = useCallback(() => {
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
+    setADraft(new Map()); setResDraft(new Map());
     setPreviewing(false); setNote('');
   }, []);
 
@@ -2231,6 +2471,7 @@ export function Huvaari({
          агуулга дэлгэц дээр үлдвэл дараагийн «Хадгалах» түүнийг эх хуудсанд
          бичиж, БУЦААСАН хуваарь батлагдсан мэт болно. */
       setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
+      setADraft(new Map()); setResDraft(new Map());
       setPreviewing(false);
       setFlowBox(null);
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));
@@ -2425,8 +2666,9 @@ export function Huvaari({
    *    өөр тоо хэлнэ. Бичихгүй — бүлэгт огноо засах хаалттай.
    */
   const effRow = useCallback((r: PlanRow): PlanRow => (
-    r.group ? { ...r, spans: r.spans.map((_, b) => effSpan(plan, r.i, b)) } : r
-  ), [plan]);
+    /* ⚠️ Бодит огноо · нөөц ч хүүхдээс (2026-09-23, `aggExtra`) — бичигдэхгүй. */
+    r.group ? { ...r, spans: r.spans.map((_, b) => effSpan(plan, r.i, b)), ...aggExtra(plan, r.i, n) } : r
+  ), [plan, n]);
 
   const modalRow = useMemo(() => {
     if (modal == null) return null;
@@ -2729,6 +2971,14 @@ export function Huvaari({
                 {kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')}
               </span>
             )}
+            {/* Бодит мужийн тайлбар (2026-09-23) — талбартай багцад л */}
+            {hasActual && (
+              <span className={h.plRefKey}
+                title={tr('Мөр бүрийн доод захын нарийн зурвас нь БОДИТ эхэлсэн → дууссан огноо (дуусаагүй бол өнөөдөр хүртэл, тасархай). Popup-аас бүртгэнэ; гинж, төлөвлөгөөнд нөлөөлөхгүй.')}>
+                <span className={h.plActSwatch} />
+                {tr('Бодит')}
+              </span>
+            )}
 
             <div className={h.tlZoom}>
               {(['day', 'week', 'month'] as Zoom[]).map((z) => (
@@ -2761,7 +3011,7 @@ export function Huvaari({
              боломжгүй бол хэрэглэгч хуудсаа дахин ачаалахаас өөр аргагүй. */
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Хадгалаагүй бүх өөрчлөлтийг хаяна')}
-            onClick={() => { setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setNote(''); }}>
+            onClick={() => { setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote(''); }}>
             {tr('Цуцлах')} ({num(dirtyN)})
           </button>
         )}
@@ -2951,10 +3201,21 @@ export function Huvaari({
             <Empty label={tr('Мөр алга.')} />
           ) : (
             <div className={h.gWrap} ref={scrollRef} onScroll={onScroll}>
-              <div className={h.gSide}>
+              <div className={`${h.gSide} ${cols ? '' : h.gSideNarrow}`}>
                 <div className={h.gSideHead} style={{ height: PL_ROW }}>
                   <span className={h.gHeadDes}>{tr('Ажлын код')}</span>
-                  <span className={h.gHeadWork}>{tr('Ажил')}</span>
+                  <span className={h.gHeadWork}>
+                    {tr('Ажил')}
+                    {/* ⚠️ Хураах товч нь НЭРИЙН толгойд — нуугдах багануудын өмнө,
+                        тэдгээр нуугдсан ч товч байрандаа үлдэнэ (нуугдсан
+                        багана дотор байсан бол буцааж нээх аргагүй болно). */}
+                    <button type="button" className={h.colsBtn}
+                      onClick={() => setCols((v) => !v)}
+                      title={cols ? tr('Огноо · нөөцийн баганыг хураах') : tr('Огноо · нөөцийн баганыг нээх')}
+                      aria-expanded={cols}>
+                      {cols ? '◂' : '▸'}
+                    </button>
+                  </span>
                   {/*
                     * ДӨРВӨН ОГНООНЫ БАГАНА (2026-09-15, хэрэглэгчийн хүсэлт:
                     * «ажилбар бүрийн ард 4 багана нэмнэ — гэрээний эхлэх,
@@ -2976,9 +3237,23 @@ export function Huvaari({
                       Огнооны нүдэнд шигтгэвэл тэр нүд хоёр утга агуулж,
                       эрэмбэлэх · хуулах · нүдээр гүйлгэх бүгд хүндэрнэ. */}
                   <span className={h.gHeadDays}>{tr('Хоног')}</span>
-                  <span className={h.gHeadDate}>{tr('Төлөвлөгөө эхлэх')}</span>
-                  <span className={h.gHeadDate}>{tr('Төлөвлөгөө дуусах')}</span>
+                  {/* ⚠️ «Төлөвлөгөөт» (2026-09-23, хэрэглэгч) — хажууд «Бодит» багана
+                      нэмэгдсэн тул «Төлөвлөгөө эхлэх» гэвэл аль нь төлөвлөгөө, аль нь
+                      баримт болох нь бүрхэг. */}
+                  <span className={h.gHeadDate}>{tr('Төлөвлөгөөт эхлэх')}</span>
+                  <span className={h.gHeadDate}>{tr('Төлөвлөгөөт дуусах')}</span>
                   <span className={h.gHeadDays}>{tr('Хоног')}</span>
+                  {/*
+                    * БОДИТ ЭХЭЛСЭН / ДУУССАН (2026-09-23) — идэвхтэй блокийн (`blk`)
+                    * утга; popup-аас засагдана, энд зөвхөн харуулна (дээрх ⚠️-тэй
+                    * ижил: засварын нэг л зам). Бүлгийн мөрд хүүхдийн MIN/MAX.
+                    * ⚠️ Талбар байхгүй багцад багана ОГТ гарахгүй (`hasActual`).
+                    */}
+                  {hasActual && <span className={h.gHeadDate}>{tr('Бодит эхэлсэн')}</span>}
+                  {hasActual && <span className={h.gHeadDate}>{tr('Бодит дууссан')}</span>}
+                  {/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — мөрийн нөөц; бүлэгт нийлбэр. */}
+                  {hasRes && <span className={h.gHeadRes} title={tr('Хүн хүч')}>{tr('Хүн')}</span>}
+                  {hasRes && <span className={h.gHeadRes} title={tr('Машин механизм')}>{tr('Техник')}</span>}
                   {/* ⚠️ ЖИШЭЭГ ТОЛГОЙД (2026-09-15): нүдний `placeholder`-т
                       тавьбал 1,400 хоосон мөр бүгд «11FS14» гэж харагдаж,
                       бодит утга мэт уншигдана. Толгойд нэг удаа бичих нь
@@ -2991,15 +3266,25 @@ export function Huvaari({
                     мөрүүдийн өндрийг орлуулахгүй бол гүйлтийн урт агшиж, зүүн
                     жагсаалт ба баруун зурвас хоорондоо гулсана. */}
                 {winFrom > 0 && <div aria-hidden style={{ height: winFrom * PL_ROW }} />}
-                {slice.map(({ r }) => (
+                {slice.map(({ r }) => {
+                  /* Бүлгийн бодит огноо · нөөц хүүхдээс (2026-09-23, `aggExtra`) */
+                  const x = r.group ? effRow(r) : r;
+                  return (
                   <TaskRow
                     key={r.oid}
                     r={r}
                     on={sel === r.i}
                     /* ⚠️ УЯЛДААНЫ ноорог ч «хадгалаагүй» тэмдэг авна — эс
                        бөгөөс зөвхөн уялдаа нь өөрчлөгдсөн мөр цэвэр мэт
-                       харагдаж, юу хадгалагдахыг тоолж болохгүй байв. */
-                    dirty={draft.has(r.oid) || ham.has(r.oid)}
+                       харагдаж, юу хадгалагдахыг тоолж болохгүй байв.
+                       Бодит огноо · нөөцийн ноорог мөн адил (2026-09-23). */
+                    dirty={draft.has(r.oid) || ham.has(r.oid) || aDraft.has(r.oid) || resDraft.has(r.oid)}
+                    hasActual={hasActual}
+                    hasRes={hasRes}
+                    aStart={x.aStart?.[blk] ?? null}
+                    aEnd={x.aEnd?.[blk] ?? null}
+                    hun={x.hun ?? null}
+                    mashin={x.mashin ?? null}
                     collapsed={collapsed.has(r.oid)}
                     onToggle={() => {
                       /* ⚠️ ГАРААР эвхэхэд түвшний товч ТОДРОХГҮЙ болно
@@ -3024,7 +3309,8 @@ export function Huvaari({
                     canEdit={canEdit && !locked}
                     onHamText={applyHamText}
                   />
-                ))}
+                  );
+                })}
                 {winTo < visible.length && (
                   <div aria-hidden style={{ height: (visible.length - winTo) * PL_ROW }} />
                 )}
@@ -3123,6 +3409,29 @@ export function Huvaari({
                                 className={h.plRef}
                                 style={{ left: xOf(rsp.start), width: Math.max(6, spanDays(rsp) * px - 1) }}
                                 title={`${other}: ${msToDay(rsp.start)} → ${msToDay(rsp.end)} (${tr('{0} хоног', spanDays(rsp))})`}
+                              />
+                            );
+                          })()}
+                          {/*
+                            * БОДИТ МУЖ (2026-09-23) — мөрийн ХАМГИЙН ДООД захад 3px нарийн
+                            * зурвас: бодит эхэлсэн → бодит дууссан (дуусаагүй бол → өнөөдөр,
+                            * тасархай хэлбэрээр — «үргэлжилж байна»). `plRef`-ийн ижил ёс:
+                            * `pointer-events: none`, чирэгдэхгүй, засагдахгүй (popup-аас).
+                            * ⚠️ Төлөвлөгөөт зурвастай ЗЭРЭГЦЭНЭ — зөрүү нь хэвтээ шилжилтээр
+                            *    уншигдана. Бодит огноогүй бол ЮУ Ч зурахгүй (`null ≠ 0`).
+                            * ⚠️ Бүлгийн мөрд хүүхдийн MIN/MAX (`aggExtra`).
+                            */}
+                          {hasActual && (() => {
+                            const x = r.group ? effRow(r) : r;
+                            const as0 = x.aStart?.[blk] ?? null;
+                            if (as0 == null) return null;
+                            const ae0 = x.aEnd?.[blk] ?? null;
+                            const to2 = ae0 ?? Math.max(as0, now);
+                            return (
+                              <div
+                                className={`${h.plAct} ${ae0 == null ? h.plActOpen : ''}`}
+                                style={{ left: xOf(as0), width: Math.max(4, spanDays({ start: as0, end: to2 }) * px - 1) }}
+                                title={`${tr('Бодит')}: ${msToDay(as0)} → ${ae0 != null ? msToDay(ae0) : tr('үргэлжилж байна')}`}
                               />
                             );
                           })()}
@@ -3307,6 +3616,8 @@ export function Huvaari({
           onTakt={setTakt}
           cands={depCands}
           hasHam={!!sc.f.ham}
+          hasActual={hasActual}
+          hasRes={hasRes}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
           /*
            * ⚠️ ЦУЦЛАХАД ЧИРЭЛТ БУЦНА (2026-09-08). Цонх нь чирэлтийн ДАРАА
@@ -3332,11 +3643,13 @@ export function Huvaari({
               }
             }
           }}
-          onApply={(spans, deps, months) => {
+          onApply={(spans, deps, months, actual, res) => {
             /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
                эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */
             undoRef.current = null;
             applyModal(modalRow.oid, spans, deps, months);
+            /* Бодит огноо (энэ блок) · нөөц — гинжээс гадуур, ноорогт л (2026-09-23) */
+            applyExtra(modalRow.oid, blk, actual, res);
           }}
         />
       )}
@@ -3455,10 +3768,20 @@ function FlowBox({
 
 function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
+  hasActual, hasRes, aStart, aEnd, hun, mashin,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   collapsed: boolean;
   onToggle: () => void; onPick: () => void;
+  /**
+   * БОДИТ огноо (идэвхтэй блокийн) ба НӨӨЦ (2026-09-23) — зөвхөн харуулна,
+   * popup-аас засагдана (дээрх дөрвөн огнооны ⚠️-тэй ижил). Бүлгийн мөрд
+   * дуудагч `aggExtra`-аар бодож өгнө. `null` = бүртгэлгүй → «—».
+   * `hasActual`/`hasRes` худал бол багана ОГТ зурагдахгүй — толгойтой нийцнэ.
+   */
+  hasActual: boolean; hasRes: boolean;
+  aStart: number | null; aEnd: number | null;
+  hun: number | null; mashin: number | null;
   /**
    * ГЭРЭЭНИЙ ба ТӨЛӨВЛӨГӨӨНИЙ нийт муж — дөрвөн огнооны багана.
    *
@@ -3479,7 +3802,7 @@ function TaskRow({
      байв. Зүүн самбарт: код · нэр · хамаарал гурав л үлдэв. */
   return (
     <div
-      className={`${h.row} ${on ? h.rowOn : ''} ${r.group ? h.rowGroup : ''} ${dirty ? h.rowDirty : ''}`}
+      className={`${h.row} ${on ? h.rowOn : ''} ${r.group ? h.rowGroup : ''} ${dirty ? h.rowDirty : ''} ${tolov && !r.group ? h.rowPlanned : ''}`}
       style={{ height: PL_ROW }}
     >
       {/* ⚠️ АЖЛЫН КОД нь ДОГОЛ МӨРӨӨС ГАДНА — багана болох ёстой тул шатлалын
@@ -3539,6 +3862,28 @@ function TaskRow({
       <span className={h.rowDays} title={tolov ? tr('Төлөвлөгөөгөөр үргэлжлэх хоног') : undefined}>
         {tolov ? spanDays(tolov) : '—'}
       </span>
+      {/* БОДИТ ЭХЭЛСЭН · ДУУССАН (2026-09-23) — идэвхтэй блок; «—» = бүртгэлгүй */}
+      {hasActual && (
+        <span className={h.rowDate} title={aStart != null ? tr('Бодит эхэлсэн огноо') : undefined}>
+          {aStart != null ? msToDay(aStart) : '—'}
+        </span>
+      )}
+      {hasActual && (
+        <span className={h.rowDate} title={aEnd != null ? tr('Бодит дууссан огноо') : undefined}>
+          {aEnd != null ? msToDay(aEnd) : '—'}
+        </span>
+      )}
+      {/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — бүлэгт нийлбэр; `null` → «—», 0 БИШ */}
+      {hasRes && (
+        <span className={h.rowRes} title={hun != null ? tr('Хүн хүч') : undefined}>
+          {hun != null ? num(hun) : '—'}
+        </span>
+      )}
+      {hasRes && (
+        <span className={h.rowRes} title={mashin != null ? tr('Машин механизм') : undefined}>
+          {mashin != null ? num(mashin) : '—'}
+        </span>
+      )}
 
       {/* УЯЛДАА — MS Project-ийн Predecessors бичиглэлээр («18FS3,22SS»).
           Урт бол таслагдана — бүтнийг нь tooltip ба popup-д харна.
@@ -3637,7 +3982,7 @@ function HamCell({
  * талбар болгож оруулбал гурвуулаа зөрчилдөх боломжтой болно.
  */
 function PlanModal({
-  r, par, blocks, blk, takt, canEdit, onBlk, onTakt, cands, hasHam, months, onClose, onApply,
+  r, par, blocks, blk, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, hasRes, months, onClose, onApply,
 }: {
   r: PlanRow;
   /** Хамгийн ойрын дээд БҮЛЭГ — түүний муж нь хатуу хязгаар */
@@ -3652,14 +3997,23 @@ function PlanModal({
   cands: { code: number; label: string }[];
   /** Үйлчилгээнд `Hamaaral` талбар бий эсэх — үгүй бол уялдааны хэсэг нуугдана */
   hasHam: boolean;
+  /** Бодит огноо · нөөцийн талбар үйлчилгээнд бий эсэх (2026-09-23) — үгүй бол хэсэг нуугдана */
+  hasActual: boolean;
+  hasRes: boolean;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын задаргаа */
   months: Map<string, number>;
   onClose: () => void;
-  /** «Тавих»/«Арилгах» — огноо · уялдаа · сарын обьём НЭГ алхамд (null = хөндөхгүй) */
+  /**
+   * «Тавих»/«Арилгах» — огноо · уялдаа · сарын обьём · бодит огноо (энэ блок) ·
+   * нөөц НЭГ алхамд (null = хөндөхгүй).
+   * ⚠️ `actual`/`res` (2026-09-23) нь гинжээс ГАДУУР — дуудагч `applyExtra`-д өгнө.
+   */
   onApply: (
     spans: (Span | null)[] | null,
     deps: Dep[] | null,
     months: Map<string, number> | null,
+    actual: { start: number | null; end: number | null } | null,
+    res: { hun: number | null; mashin: number | null } | null,
   ) => void;
 }) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
@@ -3674,6 +4028,45 @@ function PlanModal({
   /** Уялдааны түр жагсаалт — «Тавих» дартал эх мөрөө хөндөхгүй */
   const [dl, setDl] = useState<Dep[]>(r.deps);
   useEffect(() => { setDl(r.deps); }, [r]);
+
+  /**
+   * БОДИТ ЭХЭЛСЭН / ДУУССАН (энэ блок) ба ХҮН ХҮЧ / МАШИН (мөр) — 2026-09-23.
+   * ⚠️ Төлөвлөгөөт огнооноос ТУСДАА төлөв: бүлгийн мужаар урьдчилан
+   *    бөглөхгүй, «мужаар нь авах» нөлөөлөхгүй, `all` (бүх блокт тараах)
+   *    хамаарахгүй — бодит нь бүртгэл, таамаглахгүй. Хоосон = `null`.
+   */
+  const [aa, setAa] = useState('');
+  const [az, setAz] = useState('');
+  useEffect(() => {
+    const s = r.aStart?.[blk] ?? null;
+    const e = r.aEnd?.[blk] ?? null;
+    setAa(s != null ? msToDay(s) : '');
+    setAz(e != null ? msToDay(e) : '');
+  }, [r, blk]);
+  const [hunTxt, setHunTxt] = useState('');
+  const [mashTxt, setMashTxt] = useState('');
+  useEffect(() => {
+    setHunTxt(r.hun != null ? String(r.hun) : '');
+    setMashTxt(r.mashin != null ? String(r.mashin) : '');
+  }, [r]);
+  const am1 = dayToMs(aa);
+  const am2 = dayToMs(az);
+  const aBad = am1 != null && am2 != null && am1 > am2;
+  const actDirty = (am1 ?? null) !== (r.aStart?.[blk] ?? null) || (am2 ?? null) !== (r.aEnd?.[blk] ?? null);
+  /* ⚠️ Хоосон → `null` (0 БИШ); сөрөг/тоо биш → `null` — Integer талбар */
+  const intOrNull = (s: string): number | null => {
+    const t = s.trim();
+    if (!t) return null;
+    const v = Math.floor(Number(t));
+    return Number.isFinite(v) && v >= 0 ? v : null;
+  };
+  const hunN = intOrNull(hunTxt);
+  const mashN = intOrNull(mashTxt);
+  const resDirty = hunN !== (r.hun ?? null) || mashN !== (r.mashin ?? null);
+  const extraDirty = (actDirty && !aBad) || resDirty;
+  /** Popup-аас `onApply`-д өгөх бодит огноо · нөөц — хөндөөгүй бол `null` */
+  const actArg = actDirty && !aBad ? { start: am1, end: am2 } : null;
+  const resArg = resDirty ? { hun: hunN, mashin: mashN } : null;
 
   /**
    * Блок эсвэл мөр солигдвол талбарууд дагаж шинэчлэгдэнэ.
@@ -3811,17 +4204,22 @@ function PlanModal({
   /* ⚠️ ЗӨВХӨН УЯЛДАА өөрчлөгдсөн (огноо, сар хөндөгдөөгүй) бол сарын нийлбэрийн
      дүрэм хаахгүй (2026-09-17): обьёмтой ч задаргаагүй ажилд уялдаа тавихад
      «Тавих» бүх сар бөглөхийг шаарддаг байв. Огноо/сар хөндсөн бол дүрэм хэвээр. */
-  const depsOnly = depsDirty && !spanDirty && !mvDirty;
+  /* ⚠️ Бодит огноо · нөөц ч «хөнгөн» өөрчлөлт (2026-09-23) — сарын дүрэм хаахгүй.
+     `all` (бүх блокт тараах) асаалттай бол ХӨНГӨН БИШ: муж хөндөгдөөгүй ч тараалт
+     хийгдэх ёстой (урьд нь энэ тохиолдол доод бүтэн замаар явдаг байсан). */
+  const depsOnly = (depsDirty || extraDirty) && !spanDirty && !mvDirty && !all;
 
   const apply = () => {
-    /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа. */
-    if (r.group) { if (depsDirty) onApply(null, dl, null); onClose(); return; }
+    /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа (бодит огноо · нөөц ч бүлэгт
+       хаалттай: `aggExtra`-аар бодогдоно). */
+    if (r.group) { if (depsDirty) onApply(null, dl, null, null, null); onClose(); return; }
     if (ms1 == null || ms2 == null || bad) {
-      /* Огноо буруу ч УЯЛДААГ нь дангаар нь тавьж болно — огноог хөндөхгүй */
-      if (depsDirty) { onApply(null, dl, null); onClose(); }
+      /* Огноо буруу ч УЯЛДАА · бодит огноо · нөөцийг дангаар нь тавьж болно —
+         төлөвлөгөөт огноог хөндөхгүй */
+      if (depsDirty || extraDirty) { onApply(null, depsDirty ? dl : null, null, actArg, resArg); onClose(); }
       return;
     }
-    if (depsOnly) { onApply(null, dl, null); onClose(); return; }
+    if (depsOnly) { onApply(null, depsDirty ? dl : null, null, actArg, resArg); onClose(); return; }
     /* ⚠️ НИЙЛБЭР ТААРААГҮЙ бол хуваарийг ОРУУЛАХГҮЙ (хэрэглэгчийн дүрэм №3).
        Товч нь аль хэдийн хаалттай ч Enter/гар хандалтаар энд ирж болно. */
     if (!mvOk) return;
@@ -3838,7 +4236,7 @@ function PlanModal({
     } else {
       next[blk] = { start: ms1, end: ms2 };
     }
-    onApply(next, depsDirty ? dl : null, total == null ? null : mv);
+    onApply(next, depsDirty ? dl : null, total == null ? null : mv, actArg, resArg);
     onClose();
   };
 
@@ -3849,8 +4247,10 @@ function PlanModal({
     /* ⚠️ Зөвхөн ОГНООГ арилгана — уялдаа нь хэвээр: хуваариа дахин тавихад
        гинж нь буцаад ажиллана. Уялдааг устгах бол жагсаалтаас ×-ээр.
        ⚠️ Сарын задаргаа ч цэвэрлэгдэнэ: хуваарьгүй ажилд төлөвлөсөн обьём
-       үлдвэл нийлбэрийн шалгуур мөнхөд зөрчилтэй болно. */
-    onApply(next, null, new Map());
+       үлдвэл нийлбэрийн шалгуур мөнхөд зөрчилтэй болно.
+       ⚠️ Бодит огноо · нөөц ХӨНДӨХГҮЙ (2026-09-23): төлөвлөгөөг арилгах нь
+       баримтыг устгах шалтгаан биш — талбарыг хоослоод «Тавих». */
+    onApply(next, null, new Map(), null, null);
     onClose();
   };
 
@@ -3917,6 +4317,45 @@ function PlanModal({
           </label>
           {bad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b></span>}
         </div>
+
+        {/* ── БОДИТ ОГНОО · НӨӨЦ (2026-09-23) ──
+            ⚠️ Төлөвлөгөөт огнооноос ТУСДАА мөр: бодит нь БҮРТГЭЛ — гинж, бүлгийн
+               муж, сарын задаргаанд нөлөөлөхгүй; хагас (эхэлсэн, дуусаагүй) хэвийн.
+            ⚠️ Бүлэгт ЗӨВХӨН харуулна (хүүхдийн MIN/MAX · нийлбэр) — засагдахгүй.
+            ⚠️ Талбаргүй үйлчилгээнд хэсэг ОГТ гарахгүй. */}
+        {(hasActual || hasRes) && (
+          <div className={h.mdDates}>
+            {hasActual && (
+              <label className={h.mdField}>
+                {tr('Бодит эхэлсэн')}
+                <input type="date" className={h.select} value={aa} disabled={!dEdit}
+                  onChange={(e) => setAa(e.target.value)} />
+              </label>
+            )}
+            {hasActual && (
+              <label className={h.mdField}>
+                {tr('Бодит дууссан')}
+                <input type="date" className={h.select} value={az} disabled={!dEdit}
+                  onChange={(e) => setAz(e.target.value)} />
+              </label>
+            )}
+            {hasRes && (
+              <label className={h.mdField}>
+                {tr('Хүн хүч')}
+                <input type="number" min={0} step={1} className={h.numIn} value={hunTxt} disabled={!dEdit}
+                  aria-label={tr('Хүн хүч')} onChange={(e) => setHunTxt(e.target.value)} />
+              </label>
+            )}
+            {hasRes && (
+              <label className={h.mdField}>
+                {tr('Машин механизм')}
+                <input type="number" min={0} step={1} className={h.numIn} value={mashTxt} disabled={!dEdit}
+                  aria-label={tr('Машин механизм')} onChange={(e) => setMashTxt(e.target.value)} />
+              </label>
+            )}
+            {aBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Бодит дууссан нь эхэлснээс өмнө')}</b></span>}
+          </div>
+        )}
 
 
         {r.group && (
@@ -4101,8 +4540,9 @@ function PlanModal({
             <button type="button" className={h.save} onClick={apply}
               disabled={r.group
                 ? !depsDirty
+                : aBad ? true
                 : depsOnly ? false
-                : ((ms1 == null || ms2 == null || bad) && !depsDirty) || !mvOk}
+                : ((ms1 == null || ms2 == null || bad) && !depsDirty && !extraDirty) || !mvOk}
               title={mvOk || depsOnly ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
               {tr('Тавих')}
             </button>

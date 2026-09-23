@@ -102,6 +102,37 @@ assert.ok(badBase, 'эвдэрсэн суурьтай илгээлт унав');
 assert.equal(badBase.base, undefined, 'эвдэрсэн суурь хаягдана');
 console.log('✅ илгээх үеийн суурь — сонголттой, буцаж нийцтэй');
 
+/* ══════════════════════════════════════════════════════════════
+ * БОДИТ ОГНОО (`actual`) · НӨӨЦ (`res`) — 2026-09-23
+ * ══════════════════════════════════════════════════════════════
+ * ⚠️ Хуучин илгээлтэд БАЙХГҮЙ → `{}` (унахгүй, «хөндөөгүй»). Байвал мөр
+ *    тус бүрээр fail-closed: `start`/`end` массив биш мөр ХАЯГДАНА, тоо биш
+ *    элемент `null` (индекс гулсахгүй — `map`, `filter` биш), `res`-ийн
+ *    тоо биш утга `null` (0 БИШ). Суурь (`base.actual`/`base.res`) мөн адил. */
+assert.deepEqual(p.actual, {}, 'actual-гүй хуучин илгээлт → {}');
+assert.deepEqual(p.res, {}, 'res-гүй хуучин илгээлт → {}');
+const ext = parsePayload(JSON.stringify({
+  spans: {},
+  actual: {
+    12: { start: [100, null, 'муу'], end: [null, 200, 300] },
+    13: { start: 'муу', end: [] },
+    14: null,
+  },
+  res: { 12: { hun: 5, mashin: null }, 13: { hun: '7', mashin: -1 }, 14: 3 },
+  base: { spans: {}, actual: { 12: { start: [50, null, null], end: [null, null, null] } }, res: { 12: { hun: 4, mashin: 1 } } },
+}));
+assert.ok(ext, 'бодит огноотой илгээлт задарсангүй');
+assert.deepEqual(ext.actual['12'], { start: [100, null, null], end: [null, 200, 300] }, 'тоо биш элемент → null, индекс хэвээр');
+assert.equal(ext.actual['13'], undefined, 'массив биш start → мөр хаягдана');
+assert.equal(ext.actual['14'], undefined, 'null мөр хаягдана');
+assert.deepEqual(ext.res['12'], { hun: 5, mashin: null });
+assert.deepEqual(ext.res['13'], { hun: null, mashin: -1 }, 'мөр утга → null (сөрөг тоо нь parse-д хэвээр, UI хаана)');
+assert.equal(ext.res['14'], undefined, 'объект биш → хаягдана');
+assert.deepEqual(ext.base.actual['12'], { start: [50, null, null], end: [null, null, null] }, 'суурийн actual задарлаа');
+assert.deepEqual(ext.base.res['12'], { hun: 4, mashin: 1 }, 'суурийн res задарлаа');
+assert.equal(withBase.base.actual, undefined, 'суурьт actual байхгүй → undefined (хуучин зан үйл)');
+console.log('✅ бодит огноо · нөөц — буцаж нийцтэй, fail-closed');
+
 /* ⚠️ ЭВДЭРСЭН бол `null` — таамаглахгүй */
 assert.equal(parsePayload(''), null, 'хоосон мөр');
 assert.equal(parsePayload('{ буруу'), null, 'JSON биш');

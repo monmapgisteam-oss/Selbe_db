@@ -37,6 +37,7 @@ import {
   moveKeys,
   overlaySubmission,
   rowKeyOf,
+  type Overlay,
 } from "./sheetFrame";
 import {
   /* ⚠️ `listActiveSubmissions` ЭНД ХЭРЭГЛЭГДЭХГҮЙ (2026-09-07): «өөр өдрийн
@@ -781,18 +782,35 @@ export type SheetView = {
  *    oid нь `rowsAll`-д хэвээр тул түүгээр тулгана. Хянагчийн `view.changed`
  *    (`Guitsetgel`) индексээрээ хэвээр — тэнд локал нэмэлт мөр байхгүй.
  */
-function changedKeys(rows: SheetRow[], bld: string[], cells: [string, string][]): Set<string> {
-  const have = new Set(rows.map((r) => r.oid));
+/*
+ * ⚠️ НООРОГ ↔ ҮНДСЭН ӨГӨГДЛИЙГ ЖИНХЭНЭЭСЭЭ ХАРЬЦУУЛНА (2026-09-23, хэрэглэгч:
+ *    «гүйцэтгэлийн draft болон үндсэн датаг харьцуулан шалгаад буцаагдсан
+ *    утгуудыг олж өнгөтэй болго»). Урьд нь илгээлтийн payload-д БАЙГАА нүд бүрийг
+ *    «өөрчлөгдсөн» гэж тэмдэглэдэг байв — гэтэл payload-д суурьтай ИЖИЛ утгатай
+ *    нүд (дахин бичсэн, эсвэл давхарлалтаар хуулагдсан) орж ирдэг тул хэрэглэгч
+ *    «юу ч өөрчлөөгүй» нүд улаан болж, жинхэнэ зөрүү нь дундаа алдагддаг байв.
+ *    Одоо хянагчийн харагдац (`hyanaltDetail`: `touched && from !== to`)-тай
+ *    ИЖИЛ дүрэм: суурь жаазны обьём ≠ илгээлтийн (давхарласан) обьём үед л.
+ *    Түлхүүр нь `overlaySubmission`-ийн `cellKeys` (шинэ oid, блокийн ИНДЕКС) —
+ *    payload-ын хуучин oid-г өөрөө хөрвүүлдэг тул агшин солигдсон ч зөв.
+ * ⚠️ `null ≠ 0`: суурь `null`, илгээлт `0` бол ӨӨРЧЛӨГДСӨН (цэвэрлэсэн/тэглэсэн
+ *    хоёр өөр). Хоёулаа `null` бол өөрчлөгдөөгүй.
+ */
+function changedKeys(base: SheetRow[], ov: Overlay, bld: string[]): Set<string> {
+  const baseBy = new Map(base.map((r) => [r.oid, r] as const));
+  const ovBy = new Map(ov.rows.map((r) => [r.oid, r] as const));
   const out = new Set<string>();
-  for (const [k] of cells) {
+  for (const k of ov.cellKeys) {
     const cut = k.indexOf(':');
     if (cut <= 0) continue;
     const oid = Number(k.slice(0, cut));
-    if (!have.has(oid)) continue;
-    /* ⚠️ Блокийн ИНДЕКС → ШОШГО (хянагчийн `okCells`-тэй ижил шошго). */
-    const b = bld[Number(k.slice(cut + 1))];
+    const bi = Number(k.slice(cut + 1));
+    const b = bld[bi];
     if (b == null) continue;
-    out.add(`${oid}:${b}`);
+    const to = ovBy.get(oid)?.obyem[bi] ?? null;
+    /* ⚠️ Шинэ (нэмсэн, oid < 0) мөрд суурь БАЙХГҮЙ — `null`; утгатай бол өөрчлөгдсөн. */
+    const from = baseBy.get(oid)?.obyem[bi] ?? null;
+    if (from !== to) out.add(`${oid}:${b}`);
   }
   return out;
 }
@@ -2025,7 +2043,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    (ногоон) болж, зөвшөөрөгдсөн ↔ зөвшөөрөгдөөгүй нь ЯЛГАРАХГҮЙ
          *    байв — яг тэр гомдол.
          */
-        setBackChg(ov && sub ? changedKeys(ov.rows, schema.bld, sub.payload.cells) : new Set());
+        setBackChg(ov && sub ? changedKeys(r.rows, ov, schema.bld) : new Set());
         setStaged(sub && !sub.done && sub.payload.pkgKey === pkg.key ? sub : null);
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
@@ -2187,7 +2205,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       if (sub.payload.adds?.length) pushTmpOid(sub.payload.adds);
-      setBackChg(changedKeys(ov.rows, sc.bld, sub.payload.cells));
+      setBackChg(changedKeys(rows, ov, sc.bld));
       setStaged(sub);
       setRows(ov.rows);
       /* `null ≠ 0`: илгээлт огноог хөндөөгүй бол архивынх хэвээр. Хэрэглэгч энэ
@@ -5879,9 +5897,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 {/* Обьём (бөглөгддөг) ба түүнээс бодогдсон хувь — ТУСДАА хоёр
                     бүлэг. Нэг нүдэнд хамт байрлуулж байсныг болив: аль тоо нь
                     бичигддэг, аль нь бодогддог нь ялгарахгүй байв. */}
-                <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
-                <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
-                <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
+                {/* ⚠️ БЛОКГҮЙ БАГЦАД (nBld = 0) ЭДГЭЭР БҮЛЭГ ГАРАХГҮЙ (2026-09-23, хэрэглэгч:
+                    «инженерийн шугам сүлжээнд угаас барилга байхгүй — "0 барилга" гэж бичих
+                    утгагүй»). Урьд нь colSpan=0 хоосон толгой «(0 барилга)» гэж зурагддаг байв. */}
+                {nBld > 0 && (
+                  <>
+                    <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
+                    <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
+                    <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>
+                  </>
+                )}
                 <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
                 {/* ⚠️ Inspection Test Plan-ийн 9 багана ЭНД БАЙХГҮЙ
                     (2026-09-03) — «Чанар (QAQC)» тусдаа харагдацад. */}

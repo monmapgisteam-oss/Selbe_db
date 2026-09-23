@@ -139,6 +139,12 @@ export function insertAdds(
          тул нийтлээгүй мөрд байх ёсгүй (2026-09-11). */
       gStart: new Array(nBld).fill(null),
       gEnd: new Array(nBld).fill(null),
+      /* ⚠️ Бодит огноо · хүн хүч · машин (2026-09-23) — шинэ мөрд `null`:
+         бүртгэл нь «Хуваарь»-аас нийтлэгдсэн мөрд л орно. */
+      aStart: new Array(nBld).fill(null),
+      aEnd: new Array(nBld).fill(null),
+      hun: null,
+      mashin: null,
       /* Үйлчилгээнд бичигдэх ЦОРЫН ГАНЦ талбарууд — үлдсэнийг нийтлэх
          үед `computeAll`-ийн үр дүнгээр бөглөнө. */
       raw: {
@@ -363,6 +369,10 @@ export function overlaySubmission(
        тэр замтай тул занга нээлттэй үлдээхгүй. */
     gStart: r.gStart.slice(),
     gEnd: r.gEnd.slice(),
+    /* ⚠️ Бодит огноо ч ХУУЛБАРЛАГДАНА (2026-09-23) — гэрээний огнооны ижил
+       aliasing ⚠️: массив хуваалцвал эх `rows` мутацлагдана. */
+    aStart: r.aStart.slice(),
+    aEnd: r.aEnd.slice(),
   }));
   const idx = new Map<number, number>();
   out.forEach((r, i) => idx.set(r.oid, i));
@@ -540,7 +550,19 @@ export function buildFrame(
        */
       if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
       if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
+      /*
+       * БОДИТ огноо (2026-09-23) — мөртэйгөө ХЭВЭЭР явна, бодогдохгүй.
+       * `raw`-д байгаа тул ихэнхдээ дамжчихдаг; ил бичих шалтгаан нь
+       * `Hamaaral`-тай ижил: шинэ мөрд `raw` дутуу тул талбар жаазанд
+       * ЗААВАЛ байх ёстой — эс бөгөөс «Хуваарь» тэр мөрөнд бодит огноо
+       * бичсэний дараа дараагийн жаазанд алга болно.
+       */
+      if (sc.aStart[b]) a[sc.aStart[b]!] = r.aStart[b];
+      if (sc.aEnd[b]) a[sc.aEnd[b]!] = r.aEnd[b];
     }
+    /* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — дээрх ⚠️-тэй ижил: хэвээр дамжина. */
+    if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
+    if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
     if (sc.f.obyemSum) a[sc.f.obyemSum] = c[i].obyemSum;
     /*
@@ -596,6 +618,8 @@ export function buildFrame(
      *
      * ⚠️ Багана байхгүй үйлчилгээнд бичихгүй — байхгүй талбар руу бичвэл
      * багц бүхэлдээ унана.
+     * ⚠️ 2026-09-23: `gun` одоо 18/18-д БИЙ (барилгын 10-д шинээр нэмэгдсэн,
+     *    хоосон) — энэ салбар бүх багцад ажиллаж, анхны нийтлэлээр дүүргэнэ.
      */
     if (sc.f.gun) a[sc.f.gun] = r.depth;
     /*

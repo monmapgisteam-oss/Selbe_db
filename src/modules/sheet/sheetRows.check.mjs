@@ -27,6 +27,13 @@ for (const p of pushes) {
 assert.ok(!/bagts:\s*pkg\.label/.test(SRC), 'bagts-д pkg.label орсон — PkgProg-д блок давхардана');
 console.log('✅ sheetRows.bagts = pkg.group (label биш)');
 
+/* ── 1б. Синтетик блок `mon:building` join-д ОРОХГҮЙ (2026-09-23) ──
+ * `sheetRows` нь `blockProgress`/`negtgel`/`PkgProg`-ийн эх — блокгүй багцын
+ * синтетик «Ажил» блок энд орвол `buildingKey('Багц 5.1','Ажил')` гэсэн хуурамч
+ * барилга үүснэ. Тиймээс энд `loadSchema(pkg)` ЗӨВХӨН опт-ингүй дуудагдана. */
+assert.ok(!/synthetic/.test(SRC), 'sheetRows нь loadSchema-г synthetic опт-интой дуудаж байна — mon:building join-д хуурамч блок орно');
+console.log('✅ sheetRows — синтетик блок ОРОХГҮЙ (loadSchema опт-ингүй)');
+
 /* ── 2. bagtsKey: label ба group нь ЯЛГААТАЙ түлхүүр ── */
 const { bagtsKey, buildingKey } = await import('@/lib/services.ts');
 const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
@@ -54,5 +61,49 @@ assert.equal(bagtsKey(b2[0].group), bagtsKey(b2[1].group), '9F/12F нэг баг
 assert.notEqual(buildingKey('Багц 2', '5/1'), buildingKey('Багц 2', '29/1'));
 assert.equal(buildingKey('Багц 2', '5/1'), buildingKey('Багц 2 ', ' 5/1 '), 'зай/хэлбэрээс үл хамаарах ёстой');
 console.log('✅ bagtsKey — group≠label · 9F/12F нэг group · блок ялгаатай');
+
+
+/* ── 3. resolveSchema: ЗОРИЛТОТ ба ХУУЧИН нэр зэрэг байвал ЗОРИЛТОТ (2026-09-23) ──
+ * ⚠️ 18 хуудас бүгд зорилтот нэртэй мөрийн багана авсан ч хуучин хувилбар
+ *    (`Обьём__Шинэ` …) ХЭВЭЭР үлдсэн. Шинэ багана талбарын жагсаалтын СҮҮЛД
+ *    байдаг тул fuzzy `find` хуучныг эхэлж олох эрсдэлтэй — энд хуучныг
+ *    санаатайгаар ЭХЭНД тавьж, сонголт зорилтот руу унахыг барина. */
+const { resolveSchema } = await import('@/modules/sheet/bagts.pkg.ts');
+const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
+const oldFirst = [
+  F('ObjectID', 'esriFieldTypeOID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+  F('Хувийн_жин_шинэ'), F('Хувийн_жин_шинэ1'), F('Хувийн_жин_одоо_байгаа'),
+  F('Обьём__Шинэ'), F('Нэгж_өртөг__Шинэ'), F('Мөнгөн_дүн__Шинэ'),
+  F('Төлөвлөгөөт_гүйцтэгэл'), F('Гүйцэтгэл'), F('Төлөвлөгөө_биеэлэлт'),
+  F('F5_1_гүйцэтгэл'), F('F5_1_төлөвлөгөөт'),
+  /* зорилтот — СҮҮЛД */
+  F('Хувийн_жин'), F('Хувийн_жин1'), F('Хувийн_жин__Одоо_байгаа'),
+  F('Обьём'), F('Нэгж_өртөг'), F('Мөнгөн_дүн'), F('Инженерийн_төлөвлөсөн_обьём'),
+  F('Төлөвлөгөөт_гүйцэтгэл'), F('Бодит_гүйцэтгэл'), F('Төлөвлөгөө_биелэлт'),
+  F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('obyem_sum'),
+];
+const sc3 = resolveSchema(oldFirst).f;
+assert.deepEqual(
+  { wC: sc3.wC, wD: sc3.wD, wE: sc3.wE, vol: sc3.vol, unit: sc3.unit, money: sc3.money, plan: sc3.plan, act: sc3.act, ratio: sc3.ratio, asOf: sc3.asOf, plannedVol: sc3.plannedVol, obyemSum: sc3.obyemSum },
+  { wC: 'Хувийн_жин', wD: 'Хувийн_жин1', wE: 'Хувийн_жин__Одоо_байгаа', vol: 'Обьём', unit: 'Нэгж_өртөг', money: 'Мөнгөн_дүн', plan: 'Төлөвлөгөөт_гүйцэтгэл', act: 'Бодит_гүйцэтгэл', ratio: 'Төлөвлөгөө_биелэлт', asOf: 'Шинэчлэгдсэн_огноо', plannedVol: 'Инженерийн_төлөвлөсөн_обьём', obyemSum: 'obyem_sum' },
+  'зорилтот ба хуучин зэрэг байхад зорилтот сонгогдох ёстой',
+);
+/* Зорилтот БАЙХГҮЙ (хуучин бүтэц) — fuzzy хэвээр ажиллана */
+const legacy = resolveSchema(oldFirst.slice(0, 14)).f;
+assert.equal(legacy.vol, 'Обьём__Шинэ');
+assert.equal(legacy.wC, 'Хувийн_жин_шинэ');
+assert.equal(legacy.wD, 'Хувийн_жин_шинэ1');
+assert.equal(legacy.wE, 'Хувийн_жин_одоо_байгаа');
+assert.equal(legacy.plan, 'Төлөвлөгөөт_гүйцтэгэл');
+assert.equal(legacy.act, 'Гүйцэтгэл');
+assert.equal(legacy.ratio, 'Төлөвлөгөө_биеэлэлт');
+/* Синтетик блок: мөрийн хуваарийн багана яг нэрээр */
+const syn3 = resolveSchema([...oldFirst.slice(0, 12), F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'), F('Ажил_гүйцэтгэл'), F('Төлөвлөгөөт_гүйцэтгэл')], { synthetic: true });
+assert.equal(syn3.start[0], 'Төлөвлөгөөт_хуваарь__Эхлэх');
+assert.equal(syn3.end[0], 'Төлөвлөгөөт_хуваарь__Дуусах');
+assert.equal(syn3.plan[0], 'Төлөвлөгөөт_гүйцэтгэл');
+console.log('✅ resolveSchema — зорилтот ба хуучин зэрэг байвал зорилтот; зорилтотгүй бол fuzzy');
+
+
 
 console.log('\nsheetRows.check: ok');

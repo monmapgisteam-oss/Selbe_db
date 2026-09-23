@@ -54,6 +54,10 @@ const mkRow = (o = {}) => ({
   end: [],
   gStart: [],
   gEnd: [],
+  aStart: [],
+  aEnd: [],
+  hun: null,
+  mashin: null,
   raw: {},
   ...o,
 });
@@ -155,5 +159,78 @@ console.log('✅ блоктой (n>0) — J·I·K томьёо ХЭВЭЭР, б�
   assert.notEqual(one[0].J, null, 'n=1 нь `null` руу унах ЁСГҮЙ — зөвхөн n=0');
 }
 console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `null`');
+
+/* ══════════ 4. СИНТЕТИК НЭГ БЛОК — `resolveSchema(fields, { synthetic })` (2026-09-23) ══════════
+ * ⚠️ Блокгүй 8 багцад мөрийн түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах`
+ *    · `geree_*` · `bodit_*`) «Хуваарь»-д харагдахын тулд ЗӨВХӨН опт-ин үед нэг
+ *    блок болж ордог. Гурван гэрээ: (а) анхдагч дуудалт ХЭВЭЭР хоосон;
+ *    (б) опт-ин үед нэрүүд яг мөрийн баганад буудаг (`applyUpdates`-ийн бичих
+ *    нэр); (в) блоктой багцад опт-ин ч ЮУ Ч өөрчлөхгүй. Хиймэл талбарын
+ *    жагсаалт — амьд `Bagts_5_1`-ийн 2026-09-23-ны бүтцээс. */
+{
+  const { resolveSchema, SYNTHETIC_BLOCK } = await import('./bagts.pkg.ts');
+  const F = (name, type) => ({ name, type });
+  const blokgui = [
+    F('ObjectID', 'esriFieldTypeOID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('Хувийн_жин', 'esriFieldTypeDouble'), F('Обьём', 'esriFieldTypeDouble'),
+    F('Нэгж_өртөг', 'esriFieldTypeDouble'), F('Мөнгөн_дүн', 'esriFieldTypeDouble'),
+    F('Төлөвлөгөөт_гүйцэтгэл', 'esriFieldTypeDouble'), F('Төлөвлөгөөт_гүйцэтгэл1', 'esriFieldTypeDouble'),
+    F('Ажил_гүйцэтгэл', 'esriFieldTypeDouble'),
+    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
+    F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
+    F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate'),
+    F('Инженерийн_төлөвлөсөн_обьём', 'esriFieldTypeDouble'),
+    F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
+    F('gun', 'esriFieldTypeSmallInteger'), F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'),
+    F('buglusun_ognoo', 'esriFieldTypeDate'), F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'),
+  ];
+
+  /* (а) анхдагч — ХООСОН хэвээр (FillNew · sheetRows · planProgress · hyanalt* зам) */
+  const plain = resolveSchema(blokgui);
+  assert.equal(plain.synthetic, false, 'анхдагч дуудалтад synthetic = false');
+  assert.equal(plain.bld.length, 0, 'анхдагч дуудалтад блок ХООСОН — FillNew блокийн багана зурах ёсгүй');
+  assert.equal(plain.start.length, 0);
+  assert.equal(plain.aStart.length, 0);
+  assert.equal(plain.f.plannedVol, 'Инженерийн_төлөвлөсөн_обьём');
+  assert.equal(plain.f.hunHuch, 'hun_huch');
+
+  /* (б) опт-ин — нэг блок, мөрийн баганын ЯГ нэр */
+  const syn = resolveSchema(blokgui, { synthetic: true });
+  assert.equal(syn.synthetic, true);
+  assert.deepEqual(syn.bld, [SYNTHETIC_BLOCK], 'синтетик блок ганц');
+  assert.deepEqual(syn.start, ['Төлөвлөгөөт_хуваарь__Эхлэх']);
+  assert.deepEqual(syn.end, ['Төлөвлөгөөт_хуваарь__Дуусах']);
+  assert.deepEqual(syn.gStart, ['geree_ehleh']);
+  assert.deepEqual(syn.gEnd, ['geree_duusah']);
+  assert.deepEqual(syn.aStart, ['bodit_ehleh']);
+  assert.deepEqual(syn.aEnd, ['bodit_duusah']);
+  assert.deepEqual(syn.act, ['Ажил_гүйцэтгэл'], 'бодит гүйцэтгэл — мөрийн НЭГ багана');
+  assert.deepEqual(syn.plan, ['Төлөвлөгөөт_гүйцэтгэл'], 'төлөвлөгөөт — `…1` биш эхнийх');
+  assert.deepEqual(syn.obyem, [null], 'блокийн обьёмын багана АЛГА — `null`');
+  assert.equal(syn.f.plannedVol, 'Инженерийн_төлөвлөсөн_обьём', 'мөрийн plannedVol хөндөгдөөгүй');
+  /* Огнооны багана нэг ч байхгүй бол синтетик үүсгэхгүй */
+  const noDates = resolveSchema(blokgui.filter((x) => x.type !== 'esriFieldTypeDate' || /ognoo|огноо/i.test(x.name)), { synthetic: true });
+  assert.equal(noDates.synthetic, false, 'огнооны баганагүй бол синтетик ҮГҮЙ');
+  assert.equal(noDates.bld.length, 0);
+
+  /* (в) блоктой багц — опт-ин ч ЮУ Ч өөрчлөхгүй */
+  const bloktoi = [
+    ...blokgui.filter((x) => !/^(geree|bodit)_|хуваарь/.test(x.name)),
+    F('F5_1_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_1_төлөвлөгөөт', 'esriFieldTypeDouble'),
+    F('F5_1_obyem', 'esriFieldTypeDouble'),
+    F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate'), F('F5_1_барилга_Дуусах', 'esriFieldTypeDate'),
+    F('F5_1_geree_ehleh', 'esriFieldTypeDate'), F('F5_1_geree_duusah', 'esriFieldTypeDate'),
+    F('F5_1_bodit_ehleh', 'esriFieldTypeDate'), F('F5_1_bodit_duusah', 'esriFieldTypeDate'),
+    F('F5_2_гүйцэтгэл', 'esriFieldTypeDouble'), F('F5_2_төлөвлөгөөт', 'esriFieldTypeDouble'),
+    F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
+  ];
+  const a = resolveSchema(bloktoi);
+  const b = resolveSchema(bloktoi, { synthetic: true });
+  assert.equal(b.synthetic, false, 'блоктой багцад synthetic хэзээ ч true биш');
+  assert.deepEqual(a, b, 'блоктой багцад опт-ин нь бүдүүвчийг ӨӨРЧЛӨХГҮЙ');
+  assert.deepEqual(a.bld, ['5/1', '5/2']);
+  assert.deepEqual(a.gStart, ['F5_1_geree_ehleh', null], 'мөрийн geree_ehleh блокт наалдахгүй');
+}
+console.log('✅ синтетик блок — анхдагч хоосон · опт-ин мөрийн нэрээр · блоктойд нөлөөгүй');
 
 console.log('\nblokgui.check: ok — блокгүй багц ажиллана, блоктой нь хөндөгдөөгүй');

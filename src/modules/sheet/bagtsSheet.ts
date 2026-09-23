@@ -77,6 +77,26 @@ export type SheetRow = {
    */
   gStart: (number | null)[];
   gEnd: (number | null)[];
+  /**
+   * БОДИТ огноо — блок бүрд, ms epoch (2026-09-23, `F…_bodit_ehleh` /
+   * `…_bodit_duusah`).
+   * ⚠️ ГУРАВ ДАХЬ огноо: төлөвлөгөөт (`start`/`end`) ба гэрээний
+   *    (`gStart`/`gEnd`)-ээс ТУСДАА — хэзээ ҮНЭХЭЭР эхэлж/дууссан нь.
+   *    ЗӨВХӨН БҮРТГЭЛ: ямар ч тооцоо (төлөвлөгөөт хувь, гинж, бүлгийн
+   *    MIN/MAX хадгалалт)-нд ОРОХГҮЙ. Эхэлсэн ч дуусаагүй = `aStart` бий,
+   *    `aEnd` null — хэвийн төлөв, «дутуу» биш.
+   * ⚠️ Блокгүй багцад хоосон массив; талбар байхгүй блокт `null`.
+   */
+  aStart: (number | null)[];
+  aEnd: (number | null)[];
+  /**
+   * ХҮН ХҮЧ · МАШИН МЕХАНИЗМ — мөрийн нөөцийн тоо (2026-09-23, Integer).
+   * ⚠️ `null` = бөглөөгүй, 0 БИШ. Бүлгийн мөрд хадгалагдсан утга байж болох
+   *    ч «Хуваарь» тэнд хүүхдүүдийн НИЙЛБЭРИЙГ харуулна, бичихгүй.
+   * ⚠️ Талбар байхгүй үйлчилгээнд `null`.
+   */
+  hun: number | null;
+  mashin: number | null;
   /* ⚠️ БАРИМТ БИЧГИЙН (Inspection Test Plan) талбарууд ЭНД БАЙХГҮЙ
      (2026-09-03). Тэдгээр багана `Bagts_*` үйлчилгээнд ОГТ БАЙГААГҮЙ тул
      энэ жагсаалт үргэлж `null`-аар дүүрдэг байв — хоосон зардал. Чанарын
@@ -585,6 +605,10 @@ export async function loadRows(
    * ⚠️ ШАЛГУУРЫГ БҮРЭН УСТГААГҮЙ гэдгийг анхаар: `gun` хоосон байгаа үед тэр
    * нь ХЭВЭЭР хүчинтэй. Эс бөгөөс эх excel-ийн бүтэц чимээгүй өөрчлөгдөхөд
    * бүлэг/ажил хольцолдож, гүйцэтгэл огт өөр мөрөнд наалдана.
+   *
+   * ⚠️ 2026-09-23: `gun` одоо 18/18 үйлчилгээнд БИЙ (барилгын 10-д шинээр,
+   *    SmallInteger) боловч ХООСОН — `every(!= null)` тул `hasGun = false`,
+   *    `TREES` зам хэвээр; анхны нийтлэл дүүргэсний дараа (1) руу шилжинэ.
    */
   const hasGun =
     !!sc.f.gun && feats2.length > 0 && feats2.every((f) => f.attributes[sc.f.gun!] != null);
@@ -774,6 +798,11 @@ export async function loadRows(
       end: sc.end.map((x) => (x ? num(a[x]) : null)),
       gStart: sc.gStart.map((x) => (x ? num(a[x]) : null)),
       gEnd: sc.gEnd.map((x) => (x ? num(a[x]) : null)),
+      /* Бодит огноо · хүн хүч · машин механизм (2026-09-23) — талбаргүй бол `null` */
+      aStart: sc.aStart.map((x) => (x ? num(a[x]) : null)),
+      aEnd: sc.aEnd.map((x) => (x ? num(a[x]) : null)),
+      hun: sc.f.hunHuch ? num(a[sc.f.hunHuch]) : null,
+      mashin: sc.f.mashin ? num(a[sc.f.mashin]) : null,
     });
   });
   return { rows, asOf, snapshot, frameLen: rows.length };

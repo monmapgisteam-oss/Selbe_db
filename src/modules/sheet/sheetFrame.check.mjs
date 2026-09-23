@@ -34,10 +34,13 @@ const sc = {
      тэдгээрийн aliasing/хуулбарлалтын регресс тестээр баригдахгүй. */
   gStart: ['g0', 'g1'],
   gEnd: ['h0', 'h1'],
+  /* Бодит огноо (2026-09-23) — мөн амьд схемтэй нийцүүлэв (aliasing тест доор) */
+  aStart: ['as0', 'as1'],
+  aEnd: ['ae0', 'ae1'],
   f: {
     no: 'no', work: 'work', wC: 'wC', wD: 'wD', wE: 'wE', vol: 'vol', obyemSum: 'osum',
     unit: 'unit', money: 'money', plan: 'plan', act: 'act', ratio: 'ratio', asOf: 'asof',
-    fillDate: 'fill', gun: 'gun', des: null, ham: null, oid: 'OBJECTID',
+    fillDate: 'fill', gun: 'gun', des: null, ham: null, hunHuch: 'hun_huch', mashin: 'mashin_mehanizm', oid: 'OBJECTID',
   },
 };
 const hasObyem = sc.obyem.map((f) => !!f);
@@ -50,6 +53,7 @@ const row = (oid, no, work, depth, group, extra = {}) => ({
   wC: null, wD: null, vol: null, unit: null, money: null,
   act: [null, null], obyem: [null, null], start: [null, null], end: [null, null],
   gStart: [null, null], gEnd: [null, null],
+  aStart: [null, null], aEnd: [null, null], hun: null, mashin: null,
   raw: { OBJECTID: oid, no, work },
   ...extra,
 });
@@ -195,7 +199,8 @@ const sub = (over = {}) => ({
   /* ⚠️ ALIASING (2026-09-11-ний аудит): хуулбар мөрийн ЗУРГААН массив бүгд
      эх мөрөөс ТУСДАА хаягтай байх ёстой. `gStart`/`gEnd` хоёр орхигдсон
      байсан — JSON харьцуулалт үүнийг барьдаггүй (утга ижил тул). */
-  for (const k of ['act', 'obyem', 'start', 'end', 'gStart', 'gEnd']) {
+  /* `aStart`/`aEnd` (2026-09-23) — ижил занга, ижил шалгуур */
+  for (const k of ['act', 'obyem', 'start', 'end', 'gStart', 'gEnd', 'aStart', 'aEnd']) {
     const src = fresh.find((r) => r.oid === 203);
     const cp = ov.rows.find((r) => r.oid === 203);
     assert.notEqual(cp[k], src[k], `${k}: хуулбар нь эх мөртэйгөө хаягаа хуваалцаж байна`);
@@ -292,6 +297,24 @@ const sub = (over = {}) => ({
   const i3 = ov.rows.findIndex((r) => r.oid === 203), i4 = ov.rows.findIndex((r) => r.oid === 204);
   assert.equal(fr[i3].o0, 12.5, 'навчийн обьём');
   assert.equal(fr[i3].a0, 0.125, 'хувь = обьём ÷ Обьём');
+  /* ⚠️ БОДИТ ОГНОО · ХҮН ХҮЧ · МАШИН (2026-09-23) — жаазанд талбар ЗААВАЛ:
+     байгаа мөрд утга хэвээр, ШИНЭ мөрд (`raw` дутуу) `null`-аар ил бичигдэнэ,
+     эс бөгөөс «Хуваарь» тэнд бичсэн бүртгэл дараагийн жаазанд алга болно. */
+  {
+    const src = ov.rows[i3];
+    src.aStart[0] = D('2026-09-01'); src.aEnd[1] = D('2026-10-02'); src.hun = 7; src.mashin = 2;
+    const fr3 = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
+    assert.equal(fr3[i3].as0, D('2026-09-01'), 'бодит эхэлсэн хэвээр дамжив');
+    assert.equal(fr3[i3].ae1, D('2026-10-02'), 'бодит дууссан хэвээр дамжив');
+    assert.equal(fr3[i3].hun_huch, 7, 'хүн хүч дамжив');
+    assert.equal(fr3[i3].mashin_mehanizm, 2, 'машин дамжив');
+    const iN = ov.rows.findIndex((r) => r.oid === -1);
+    for (const k of ['as0', 'ae0', 'as1', 'ae1', 'hun_huch', 'mashin_mehanizm']) {
+      assert.ok(k in fr3[iN], `шинэ мөрд ${k} талбар жаазанд алга`);
+      assert.equal(fr3[iN][k], null, `шинэ мөрд ${k} null биш`);
+    }
+    src.aStart[0] = null; src.aEnd[1] = null; src.hun = null; src.mashin = null;
+  }
   assert.equal(fr[i4].o0, null, '"" → null (0 биш)');
   assert.equal(fr[i4].osum, null, 'бүх блок хоосон → obyemSum null');
   const add = fr.find((a) => a.work === 'Арматур');
