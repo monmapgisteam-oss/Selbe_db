@@ -808,7 +808,14 @@ function railStat(k: SecKey, d: DashData): {
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
       // Амьд жигнэсэн дундаж — блокийн тоогоор жинлэсэн 7 багцын гүйцэтгэл.
-      const avg = b && bl ? b.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / bl : null;
+      /* ⚠️ 2026-09-23: ЗӨВХӨН `progress != null` багцаар жигнэнэ (`pkgPct`-тэй
+         ижил дүрэм). Урьд нь хуваарь БҮХ блок байсан тул тайлан ирээгүй багц
+         0% гэж орж, дундаж хиймлээр доошилдог байв — null ≠ 0. */
+      const known = b ? b.filter((x) => x.progress != null) : null;
+      const blKnown = known ? known.reduce((a, x) => a + x.blocks, 0) : 0;
+      const avg = known && blKnown
+        ? known.reduce((a, x) => a + (x.progress as number) * x.blocks, 0) / blKnown
+        : null;
       const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
         value: avg == null ? '…' : pct(avg, 1),
@@ -1777,7 +1784,6 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   const planned: number | null = lag ? lag.planned : null;
   /* ⚠️ 2026-09-22: `physNow` — бусад картуудтай нэг туслах */
   const actual: number | null = f ? physNow(f, nowYm) : null;
-  const gap = planned != null && actual != null ? planned - actual : null;
 
   return (
     <>
@@ -1788,8 +1794,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           <Stat
             accent
             color={HUE[2]}
-            value={gap == null ? '…' : `${gap >= 0 ? '−' : '+'}${Math.abs(gap).toFixed(1)}`}
-            unit="%"
+            value={planned != null && actual != null ? gapLabel(planned, actual) : '…'}
             label={tr('Гүйцэтгэлийн зөрүү')}
           />
           <Stat
@@ -1976,7 +1981,11 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           {(list) => {
             const rows = latestPkgProgress(list)
               .filter((x) => x.actual != null && x.planned != null)
-              .map((x) => ({ key: x.key, label: x.label, gap: (x.planned as number) - (x.actual as number) }))
+              .map((x) => ({
+                key: x.key, label: x.label,
+                planned: x.planned as number, actual: x.actual as number,
+                gap: (x.planned as number) - (x.actual as number),
+              }))
               .sort((a, b) => b.gap - a.gap);
             return rows.length ? (
               <Bars
@@ -1986,7 +1995,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                   label: tr(x.label),
                   /* Хэмжээс нь ХЭМЖЭЭ — урд явж буй багц (сөрөг зөрүү) 0 урттай */
                   value: Math.max(0, x.gap),
-                  display: `${x.gap >= 0 ? '−' : '+'}${Math.abs(x.gap).toFixed(1)}%`,
+                  display: gapLabel(x.planned, x.actual),
                 }))}
               />
             ) : <Empty label={tr('Бүртгэл хоосон байна.')} />;
@@ -2150,7 +2159,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                 /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
                    байж чадахгүй тул тэмдгийг `display` барина. */
                 value: Math.max(0, v.g / v.n),
-                display: `${v.g >= 0 ? '−' : '+'}${Math.abs(v.g / v.n).toFixed(1)}%`,
+                /* `v.g` нь аль хэдийн (төл. − бодит) нийлбэр тул бодитыг 0 дамжуулна */
+                display: gapLabel(v.g / v.n, 0),
               }));
             return pts.length >= 2
               ? <Series items={pts} height={120} unit="%" />
@@ -2328,6 +2338,20 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
   return { actual: n ? w / n : null, packs: rows.length, rows: rows.sort((a, b) => b.pct - a.pct) };
 }
 
+/**
+ * ЗӨРҮҮНИЙ ШОШГО — (төлөвлөсөн − бодит), нэгж хувь.
+ *
+ * ⚠️ 2026-09-23: урьд нь гурван газар тэмдгийн дүрэм зөрж байв («−» = хоцролт
+ *    нэг картад, «+» = өсөлт нөгөөд), тэг нь «−0.0%» гарч байв. Одоо тэмдэг
+ *    биш ҮГ: «хоцролт» / «түрүүлсэн»; тэг бол зүгээр «0.0%».
+ */
+const gapLabel = (planned: number, actual: number, d = 1): string => {
+  const g = planned - actual;
+  const s = num(Math.abs(g), d);
+  if (Number(Math.abs(g).toFixed(d)) === 0) return `${num(0, d)}%`;
+  return g > 0 ? tr('{0}% хоцролт', s) : tr('{0}% түрүүлсэн', s);
+};
+
 function heatBars<T>(
   rows: readonly T[],
   m: (r: T) => { key: string; label: string; value: number; display?: string },
@@ -2372,7 +2396,12 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
   const rows = q.data;
   const blocks = sumBy(rows, (x) => x.blocks);
   const ail = sumBy(rows, (x) => x.ail);
-  const avg = blocks ? sumBy(rows, (x) => (x.progress ?? 0) * x.blocks) / blocks : null;
+  /* ⚠️ 2026-09-23: `progress == null` (тайлан огт ирээгүй) багцыг хуваарьт
+     ОРУУЛАХГҮЙ — `pkgPct`-тэй ижил. Тайлагнасан багц ДОТРОО тайлангүй блок
+     0% хэвээр (`joinBagts`, доорх `note`). */
+  const known = rows.filter((x) => x.progress != null);
+  const blKnown = sumBy(known, (x) => x.blocks);
+  const avg = blKnown ? sumBy(known, (x) => (x.progress as number) * x.blocks) / blKnown : null;
   // Хамгийн сүүлийн бүртгэлийн огноо — `BlockProgress.date` нь `joinBagts`-д
   // ХАЯГДДАГ тул `prog`-оос шууд. Ингэснээр «энэ тоо ХЭЗЭЭНИЙ байдлаар» гэсэн
   // асуулт самбар дээрээ хариултаа авна.
@@ -2423,7 +2452,9 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
             label: r.label,
             value: r.progress ?? 0,
             display: pct(r.progress, 1),
-            color: heat(r.progress ?? 0, 100),
+            /* ⚠️ null → саарал (`NO_DATA`), 0% гэж будахгүй — дэд үе шатын
+               зурвастай ижил дүрэм. */
+            color: r.progress == null ? NO_DATA : heat(r.progress, 100),
           }))}
         />
       </Panel>
@@ -4705,8 +4736,10 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           {/* ⚠️ СУУРИЙН ТАЛБАЙ — «хэдэн барилга» гэсэн тоо нь БАРИЛГЫН ХЭМЖЭЭГ
               хэлдэггүй: 960 хүүхдийн сургууль ба 240 ортой цэцэрлэг хоёулаа
               «1 ш». Талбай нь тэр ялгааг гаргана. */}
+          {/* ⚠️ 2026-09-23: төлөвөөр салгана — урьд нь 0/алдаанд «…» мөнхөд
+              харагддаг байв. Ачаалж байгаа үед л «…», бусад үед «—». */}
           <Stat accent color={cat(6)}
-                value={socM2 > 0 ? num(socM2) : '…'}
+                value={d.socTotals.state === 'loading' ? '…' : socM2 > 0 ? num(socM2) : '—'}
                 unit={tr('м²')} label={tr('Барилгын суурийн талбай')} />
           <Stat accent color={cat(7)}
                 value={h?.population && soc ? num((sumBy(soc.rows, (r) => r.capacity ?? 0) / h.population) * 1000) : '…'}

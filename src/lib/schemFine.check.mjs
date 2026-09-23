@@ -1,5 +1,5 @@
 /**
- * НАРИЙВЧИЛСАН СХЕМИЙН ШАЛГУУР (24 карт).
+ * НАРИЙВЧИЛСАН СХЕМИЙН ШАЛГУУР (26 карт — хяналтын 6 шат + шилжүүлсэн).
  *
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/schemFine.check.mjs
  *
@@ -7,7 +7,7 @@
  *
  *  1. ИРМЭГ ЧИМЭЭГҮЙ АЛГА БОЛОХ. `from`/`to`-д үсэг алдвал SVG нь тэр замыг
  *     зүгээр л зурахгүй — алдаа гарахгүй, шалгаж байж л мэдэгдэнэ.
- *  2. ХОЁР КАРТ НЭГ НҮДЭНД. 24 карт гараар байрлуулсан тул `(col,row)`
+ *  2. ХОЁР КАРТ НЭГ НҮДЭНД. 26 карт гараар байрлуулсан тул `(col,row)`
  *     давхардвал нэг нь нөгөөгийнхөө доор БҮРЭН нуугдана.
  *  3. БУЦААЛТ АЛГАСАХ. Буцаалт нь ЯВСАН ЗАМААРАА, НЭГ АЛХМААР — «менежер
  *     буцаахад инженер алгасагдана» гэсэн худал зураг гарч болзошгүй.
@@ -75,7 +75,7 @@ for (const n of FINE_NODES) {
  * ⚠️ ХЯНАЛТЫН ГИНЖ БЭХЛЭГДСЭН. Дөрвөн шат нь ЯГ дараалсан `main` ирмэгтэй,
  * буцаалт нь НЭГ АЛХМААР ухардаг (`hyanalt.ts`-ийн баримтжуулсан дүрэм).
  */
-const CHAIN = ['hyCo', 'hyEng', 'hyMgr', 'hyDir'];
+const CHAIN = ['hyCo', 'hyEng', 'hyMgr', 'hyDir', 'hyHead', 'hyChief'];
 for (let i = 0; i + 1 < CHAIN.length; i += 1) {
   assert.ok(
     FINE_EDGES.some((e) => e.from === CHAIN[i] && e.to === CHAIN[i + 1] && e.kind === 'main'),
@@ -87,7 +87,7 @@ for (let i = 0; i + 1 < CHAIN.length; i += 1) {
   );
 }
 const backs = FINE_EDGES.filter((e) => e.kind === 'back');
-assert.equal(backs.length, 3, 'буцаалт ЯГ гурав — шат бүрээс нэг алхам ухарна');
+assert.equal(backs.length, 5, 'буцаалт ЯГ тав — шат бүрээс нэг алхам ухарна (6 шат)');
 for (const e of backs) {
   const a = CHAIN.indexOf(e.from); const b = CHAIN.indexOf(e.to);
   assert.ok(a >= 0 && b >= 0, `хяналтаас гадуур буцаалт: ${e.from} → ${e.to}`);

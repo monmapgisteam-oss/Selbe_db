@@ -45,7 +45,7 @@ export type FineId =
   | 'huv'
   | 'bar' | 'barOk' | 'barNo'
   | 'ers' | 'hab' | 'habInc'
-  | 'hyCo' | 'hyEng' | 'hyMgr' | 'hyDir' | 'hyDone'
+  | 'hyCo' | 'hyEng' | 'hyMgr' | 'hyDir' | 'hyHead' | 'hyChief' | 'hyDone'
   | 'finBudget' | 'finContract' | 'finPaid'
   | 'tailan';
 
@@ -162,7 +162,7 @@ export const FINE_NODES: readonly FineNode[] = [
     desc: tr('ХАБЭА-д бүртгэгдсэн осол ба аюулгүй байдлын зөрчлийн тоо'),
   },
 
-  /* ── ХЯНАЛТЫН 4 ШАТ — цорын ганц жинхэнэ төлөвийн машин ── */
+  /* ── ХЯНАЛТЫН 6 ШАТ — цорын ганц жинхэнэ төлөвийн машин; буцаалт НЭГ алхам ухарна ── */
   {
     id: 'hyCo', group: 'hyanalt', col: 6, row: 0, view: 'guitsetgel', icon: 'pen',
     title: tr('Гүйцэтгэгч компани'),
@@ -181,12 +181,23 @@ export const FINE_NODES: readonly FineNode[] = [
   {
     id: 'hyDir', group: 'hyanalt', col: 6, row: 3, view: 'guitsetgel', icon: 'pen',
     title: tr('Ерөнхий менежер'),
-    desc: tr('ЭЦСИЙН дөрөв дэх шат. Зөвшөөрсний дараа л ажил эх хүснэгтэд бүртгэгдэнэ'),
+    desc: tr('Дөрөв дэх шат — буцаавал багцын менежер рүү очно; дараа нь хэлтсийн, газрын дарга батална'),
+  },
+  /* ⚠️ 2026-09-23: 5 ба 6 дахь шат — хэлтсийн дарга, газрын дарга (ЭЦСИЙН) */
+  {
+    id: 'hyHead', group: 'hyanalt', col: 6, row: 4, view: 'guitsetgel', icon: 'pen',
+    title: tr('Хэлтсийн дарга'),
+    desc: tr('Тав дахь шат — буцаавал ерөнхий менежер рүү очно'),
+  },
+  {
+    id: 'hyChief', group: 'hyanalt', col: 6, row: 5, view: 'guitsetgel', icon: 'pen',
+    title: tr('Газрын дарга'),
+    desc: tr('ЭЦСИЙН зургаа дахь шат. Зөвшөөрсний дараа л ажил эх хүснэгтэд бүртгэгдэнэ'),
   },
   {
     id: 'hyDone', group: 'hyanalt', col: 7, row: 0, view: 'guitsetgel', icon: 'pen',
     title: tr('Шилжүүлсэн'),
-    desc: tr('Дөрвөн шатыг бүрэн давж баталгаажсан ажил — хяналтад хүлээгдэхээ больсон'),
+    desc: tr('Зургаан шатыг бүрэн давж баталгаажсан ажил — хяналтад хүлээгдэхээ больсон'),
   },
 
   /* ── Санхүү — ХЭМЖҮҮР, дараалал БИШ ── */
@@ -243,7 +254,9 @@ export const FINE_EDGES: readonly FineEdge[] = [
   { from: 'hyCo', to: 'hyEng', kind: 'main' },
   { from: 'hyEng', to: 'hyMgr', kind: 'main' },
   { from: 'hyMgr', to: 'hyDir', kind: 'main' },
-  { from: 'hyDir', to: 'hyDone', kind: 'main' },
+  { from: 'hyDir', to: 'hyHead', kind: 'main' },
+  { from: 'hyHead', to: 'hyChief', kind: 'main' },
+  { from: 'hyChief', to: 'hyDone', kind: 'main' },
   /**
    * ⚠️ БУЦААЛТ НЬ ЯВСАН ЗАМААРАА, НЭГ АЛХМААР (`hyanalt.ts`-ийн баримтжуулсан
    * дүрэм). Бүгдийг нь гүйцэтгэгч рүү шууд татвал «менежер буцаахад инженерийн
@@ -252,6 +265,8 @@ export const FINE_EDGES: readonly FineEdge[] = [
   { from: 'hyEng', to: 'hyCo', kind: 'back', label: tr('Буцаасан') },
   { from: 'hyMgr', to: 'hyEng', kind: 'back' },
   { from: 'hyDir', to: 'hyMgr', kind: 'back' },
+  { from: 'hyHead', to: 'hyDir', kind: 'back' },
+  { from: 'hyChief', to: 'hyHead', kind: 'back' },
 
   /* ── Санхүү — БҮГД `feed`. Кодод төлөвийн машин байхгүй тул `main` болговол
      «гэрээ байгуулмагц олголт автоматаар явна» гэж уншигдана. ── */

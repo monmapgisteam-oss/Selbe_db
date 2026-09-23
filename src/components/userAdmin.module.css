@@ -340,7 +340,8 @@
 }
 .uname { font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; }
 
-.presets { display: flex; align-items: center; gap: 6px; }
+/* ⚠️ `flex-wrap` — нарийн дэлгэцэд preset товчнууд мөрөөс халихгүй (2026-09-23) */
+.presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .preset {
   padding: 5px 11px;
   border-radius: 999px;

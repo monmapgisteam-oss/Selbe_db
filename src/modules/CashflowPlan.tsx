@@ -17,7 +17,7 @@
  * бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num } from '@/lib/format';
 import { applyAll } from '@/lib/tableWrite';
@@ -76,8 +76,21 @@ const fillOf = (sum: number | null): Fill => {
   return sum > 0 ? 'part' : 'none';
 };
 
+/**
+ * ГЭРЭЭНИЙ ДҮН — `ho_dun_geree`; байхгүй/0/NaN бол `null`.
+ *
+ * ⚠️ 2026-09-23: урьд нь `Number(...) || 0` тул гэрээний дүнгүй ажилд сар
+ *    бүрийн ₮ «0 ₮» гэж бодогдож, хадгалахад `amount = 0` БИЧИГДДЭГ байв —
+ *    «мэдээлэлгүй» нь «тэг» болж хувирдаг (null ≠ 0). Одоо `null` → дэлгэцэнд
+ *    «—», хадгалахад дүн `null`.
+ */
+const costOf = (r: Row | null | undefined): number | null => {
+  const v = Number(r?.ho_dun_geree);
+  return Number.isFinite(v) && v > 0 ? v : null;
+};
+
 export function CashflowPlan({
-  works, months, onSaved, canEdit = true,
+  works, months, onSaved, canEdit = true, onDirty,
 }: {
   /** `finEdit` эрх — үгүй бол нүд засагдахгүй, «Хадгалах» хаалттай (2026-09-17) */
   canEdit?: boolean;
@@ -86,6 +99,11 @@ export function CashflowPlan({
   /** Сарын мөрүүд (681) — `Cashflow_start IS NOT NULL` */
   months: Row[];
   onSaved: () => void;
+  /**
+   * Хадгалаагүй засвартай эсэхийг эцэг рүү мэдэгдэнэ (2026-09-23) — `Finance`
+   * таб солиход баталгаажуулалт асуухад хэрэглэнэ. Unmount-д `false`.
+   */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const oidField = CASHFLOW_NEW.oid;
   /** Засварласан хувь — `oid` → бичсэн текст */
@@ -165,9 +183,20 @@ export function CashflowPlan({
 
   const cur = sel == null ? null : sorted.find((r) => Number(r[CF_MONTH.id]) === sel) ?? null;
   const curMonths = sel == null ? [] : byWork.get(sel) ?? [];
-  const curCost = Number(cur?.ho_dun_geree) || 0;
+  const curCost = costOf(cur);
   const curSum = sel == null ? null : sumOf(sel);
   const dirty = Object.keys(pend).length;
+
+  /* ⚠️ Хадгалаагүй засвартай байхад таб хаахад хөтөч анхааруулна — `Finance`-ийн
+     IPC бөглөлттэй ижил зан (2026-09-23). Мөн эцэгт `onDirty` мэдэгдэнэ. */
+  useEffect(() => {
+    onDirty?.(dirty > 0);
+    if (!dirty) return undefined;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [dirty, onDirty]);
+  useEffect(() => () => onDirty?.(false), [onDirty]);
 
   const save = async () => {
     if (busy || !dirty) return;
@@ -176,27 +205,33 @@ export function CashflowPlan({
     setMsg(null);
     try {
       /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн */
-      const costById = new Map<number, number>();
-      for (const w of works) costById.set(Number(w[CF_MONTH.id]), Number(w.ho_dun_geree) || 0);
+      const costById = new Map<number, number | null>();
+      for (const w of works) costById.set(Number(w[CF_MONTH.id]), costOf(w));
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
 
+      /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */
+      let noCost = 0;
       const updates = Object.entries(pend).map(([k, v]) => {
         const oid = Number(k);
         const pct = nOf(v);
-        const cost = costById.get(Number(mById.get(oid)?.[CF_MONTH.id])) ?? 0;
+        const cost = costById.get(Number(mById.get(oid)?.[CF_MONTH.id])) ?? null;
+        if (pct != null && cost == null) noCost += 1;
         return {
           [oidField]: oid,
           [CF_MONTH.pct]: pct,
           /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй — «бөглөөгүй»
-             ба «энэ сард гүйцэтгэл байхгүй» хоёр ӨӨР мэдэгдэл. */
-          [CF_MONTH.amount]: pct == null ? null : (cost * pct) / 100,
+             ба «энэ сард гүйцэтгэл байхгүй» хоёр ӨӨР мэдэгдэл.
+             ⚠️ Гэрээний дүнгүй бол ч `null` — `0 ₮` гэж худал бичихгүй. */
+          [CF_MONTH.amount]: pct == null || cost == null ? null : (cost * pct) / 100,
         };
       });
       const { n } = await applyAll(CASHFLOW_NEW.url, oidField, { updates }, { cap: 'finEdit' });
       invalidate('CASHFLOW_NEW');
       setPend({});
-      setMsg(tr('{0} сар хадгалагдав', n));
+      setMsg(noCost
+        ? tr('{0} сар хадгалагдав · {1} сар гэрээний дүнгүй тул ₮ бичигдсэнгүй', n, noCost)
+        : tr('{0} сар хадгалагдав', n));
       onSaved();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -263,6 +298,9 @@ export function CashflowPlan({
                 {' · '}
                 {tr('{0} сар', curMonths.length)}
               </p>
+              {curCost == null && (
+                <p className={c.warn}>{tr('Гэрээний дүнгүй — ₮ бодогдохгүй')}</p>
+              )}
             </div>
 
             {curMonths.length === 0 ? (
@@ -299,7 +337,7 @@ export function CashflowPlan({
                             />
                           </td>
                           {/* ⚠️ Дүн нь ЗӨВХӨН харагдац — хадгалахдаа дахин бодогдоно */}
-                          <td className={c.r}>{pct == null ? '' : mnt((curCost * pct) / 100)}</td>
+                          <td className={c.r}>{pct == null ? '' : curCost == null ? '—' : mnt((curCost * pct) / 100)}</td>
                         </tr>
                       );
                     })}
@@ -309,7 +347,7 @@ export function CashflowPlan({
                       <td>{tr('НИЙТ')}</td>
                       <td className={c.r}>{curSum == null ? '—' : `${num(curSum, 2)}%`}</td>
                       <td className={c.r}>
-                        {curSum == null ? '' : mnt((curCost * curSum) / 100)}
+                        {curSum == null ? '' : curCost == null ? '—' : mnt((curCost * curSum) / 100)}
                       </td>
                     </tr>
                   </tfoot>

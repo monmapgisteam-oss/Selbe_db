@@ -30,6 +30,17 @@ import { TH } from '@/lib/schem';
 import { REVIEW_STALE_DAYS, reviewAgeLevel, type Level } from '@/lib/kpiLevels';
 import { num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
+
+/**
+ * Алдааны БОГИНО мөр — эхний мөр, ≤120 тэмдэгт (2026-09-23).
+ * ⚠️ ArcGIS-ийн урт stack/JSON-ыг дэлгэцэнд шидэхгүй; бүтнийг дуудагч
+ *    `console.warn`-д үлдээнэ.
+ */
+export function shortError(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e ?? '');
+  const first = m.split('\n')[0].trim();
+  return first.length > 120 ? `${first.slice(0, 117)}…` : first;
+}
 import {
   cell, table, worstOf, settled, daysBetween,
   type KpiResult, type KpiIssue, type DetailTable,
@@ -122,7 +133,8 @@ export type ReviewInput = {
 
 /** Буцаалтын нийт тоо — гурван шатны буцаалтын нийлбэр */
 const returnsOf = (p: Pending): number =>
-  p.work.engineerReturns + p.work.managerReturns + p.work.directorReturns;
+  p.work.engineerReturns + p.work.managerReturns + p.work.directorReturns
+  + p.work.headReturns + p.work.chiefReturns;
 
 /**
  * Цэвэр тооцоо — `KpiResult` угсарна.
@@ -138,7 +150,7 @@ export function computeReview(input: ReviewInput): KpiResult {
   /* ── А. Хүлээгдэл ── */
   const worstDays: number | null = pending == null ? null : (pending[0]?.days ?? 0);
   const stale = pending?.filter((p) => p.days > REVIEW_STALE_DAYS) ?? [];
-  const byStage = { company: 0, engineer: 0, manager: 0, director: 0 };
+  const byStage = { company: 0, engineer: 0, manager: 0, director: 0, head: 0, chief: 0 };
   for (const p of pending ?? []) byStage[p.work.owner] += 1;
 
   /* ── Б. Бөглөлт ── */
@@ -159,10 +171,10 @@ export function computeReview(input: ReviewInput): KpiResult {
     facts.push(tr('хүлээгдэж буй {0}', tr('{0} ажил', pending.length)));
     /* ⚠️ «Компани» шат нэмэгдсэн: инженер буцаасан ажил КОМПАНИД хүлээгдэж
        байдаг тул гурван шатны нийлбэр нийт хүлээгдэлтэй таарахгүй байсан. */
-    facts.push(tr(
-      'шатаар: компани {0} · инженер {1} · менежер {2} · ЕМ {3}',
-      byStage.company, byStage.engineer, byStage.manager, byStage.director,
-    ));
+    /* ⚠️ 2026-09-23: шатны нэр `STAGE_LABEL`-ээс (ганц эх) — «ЕМ · ХД · ГД»
+       товчлол уншигчид ойлгомжгүй байв. */
+    facts.push(tr('шатаар: {0}', (['company', 'engineer', 'manager', 'director', 'head', 'chief'] as const)
+      .map((s) => `${STAGE_LABEL[s]} ${byStage[s]}`).join(' · ')));
   }
   if (oldest) facts.push(tr('бөглөлт хамгийн хуучин {0} хоног ({1})', oldest.ageDays, oldest.pkg));
 

@@ -113,8 +113,9 @@ export type ExecReport = {
      * Олгосон санхүүжилт — HO төлбөрийн БҮХ мөрийн нийлбэр (`hoTotals().paid`,
      * `reportData.finance.paid`-тай ИЖИЛ эх, 530.87 тэрбум). ⚠️ Багцын Map-ийн
      * нийлбэр (524.90) БИШ — диапазон мөрийн 5.97 тэрбум тэнд алдагддаг (`ipc.ts`).
+     * ⚠️ `null` = мэдээлэлгүй («—»), 0 биш.
      */
-    given: number;
+    given: number | null;
     /**
      * ⚠️ 2026-09-21: ГЭРЭЭЛСЭН багцын олголт (Σ `rows[contracted].given`) — `share` ба
      * `remain`-ийн тоологч; хуваарь `planTotal` (CONTRACTED) тул нэг хүрээ.
@@ -224,7 +225,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   const pf = pkgFinRows(packs, fin);
   /* ⚠️ 2026-09-21: төслийн нийт олголт = HO-ийн БҮХ мөр (`hoTotals`), багцын
      Map-ийн нийлбэр (`pf.givenTotal`) БИШ — `ExecReport.fin.given`-ийн ⚠️. */
-  const finGiven = hoTotals(fin.pays).paid ?? 0;
+  /* ⚠️ 2026-09-23: `?? 0` ХАСАВ — `paid == null` нь «төлбөрийн мөргүй/татагдаагүй»,
+     0 ₮ биш; дэлгэцэнд «—» (`money`/`num`). */
+  const finGiven = hoTotals(fin.pays).paid;
   /* ⚠️ 2026-09-21: ГЭРЭЭГҮЙ багцын «төсөв» = ЗӨВХӨН `ho_dun_geree` (`CfRow.cost`).
      `PkgFin.plan` нь `geree_dun || ho_dun_geree` тул CONTRACTED биш мөрд ч
      `geree_dun` бөглөгдсөн бол тэр нь «төсөв» нэрээр гарч, гэрээгүй гэж ангилсан
@@ -304,7 +307,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       /* ⚠️ `csum` = §1-ийн `gdash.contract` — нэг тайланд «гэрээний нийт дүн» нэг л тоо */
       planTotal: csum, given: finGiven,
       givenContracted: finGivenContracted,
-      givenUnassigned: Math.max(0, finGiven - finAssigned),
+      givenUnassigned: finGiven == null ? 0 : Math.max(0, finGiven - finAssigned),
       share: csum > 0 ? (finGivenContracted / csum) * 100 : null,
       remain: Math.max(0, csum - finGivenContracted),
       rows: finRows,
@@ -641,24 +644,42 @@ const SYSTEM = `Чи «Сэлбэ ухаалаг хот» төслийн уди�
  *    бөгөөд загвар өөрөө давхарга шалгаж, тайлангийнхаас ӨӨР тоо олж
  *    ирэх эрсдэлтэй.
  */
+/** AI дүгнэлтийн дээд хүлээлт, мс — үүнээс хойш «Бодож байна…» мөнхөд гацахгүй */
+export const EXEC_AI_TIMEOUT_MS = 60_000;
+
 export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promise<string> {
   /* ⚠️ Токенгүй үед толгойг ОГТ нэмэхгүй (`agent/client.callRelay`-тай ижил) */
   const token = await arcgisToken();
-  const res = await fetch(`${AGENT_API}/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'x-arcgis-token': token } : {}),
-    },
-    body: JSON.stringify({
-      system: SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `Огноо: ${new Date().toISOString().slice(0, 10)}.\n\n${execFacts(x)}`,
-      }],
-    }),
-    signal,
-  });
+  /* ⚠️ 2026-09-23: хугацааны хязгаар — реле унжвал товч «Бодож байна…» дээр
+     мөнхөд үлддэг байв. Гаднаас өгсөн `signal`-тай хамт ажиллана. */
+  const ac = new AbortController();
+  const tm = setTimeout(() => ac.abort(), EXEC_AI_TIMEOUT_MS);
+  signal?.addEventListener('abort', () => ac.abort());
+  let res: Response;
+  try {
+    res = await fetch(`${AGENT_API}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'x-arcgis-token': token } : {}),
+      },
+      body: JSON.stringify({
+        system: SYSTEM,
+        messages: [{
+          role: 'user',
+          content: `Огноо: ${new Date().toISOString().slice(0, 10)}.\n\n${execFacts(x)}`,
+        }],
+      }),
+      signal: ac.signal,
+    });
+  } catch (e) {
+    if (ac.signal.aborted && !signal?.aborted) {
+      throw new Error(tr('AI дүгнэлт {0} секундэд ирсэнгүй. Дахин оролдоно уу.', EXEC_AI_TIMEOUT_MS / 1000));
+    }
+    throw e;
+  } finally {
+    clearTimeout(tm);
+  }
   const reply = (await res.json().catch(() => ({}))) as {
     content?: { type: string; text?: string }[]; error?: string; note?: string; stop_reason?: string;
   };

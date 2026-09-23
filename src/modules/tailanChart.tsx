@@ -212,6 +212,12 @@ export function TrendArea({
  * ХЭМЖҮҮР — нэг харьцаа, лавлах утгатай.
  * ⚠️ Нэг баганатай баганан график БИШ: цорын ганц тоог зурвасаар харуулна.
  */
+/**
+ * ХОЦРОГДЛЫН БОСГО — (төлөвлөсөн − бодит) нэгж хувь энэ ба түүнээс дээш бол
+ * «хоцрогдол». `Meter`-ийн өнгө ба `ExecReport`-ийн KPI шошго НЭГ босго.
+ */
+export const LATE_GAP = 5;
+
 export function Meter({
   value,
   plan,
@@ -224,8 +230,10 @@ export function Meter({
   label: string;
 }) {
   if (value == null || !Number.isFinite(value)) return null;
-  /* ⚠️ Хоцрогдлыг ӨНГӨӨР заана — статусын өнгө яг энэ зориулалттай. */
-  const late = plan != null && Number.isFinite(plan) && value < plan;
+  /* ⚠️ Хоцрогдлыг ӨНГӨӨР заана — статусын өнгө яг энэ зориулалттай.
+     ⚠️ 2026-09-23: босго `LATE_GAP` — урьд нь `value < plan` (0.1 ч хоцрол
+     шар) байсан тул KPI «хуваарийн дагуу» гэж бичихэд хэмжүүр шар болдог байв. */
+  const late = plan != null && Number.isFinite(plan) && plan - value >= LATE_GAP;
   return (
     <div className={c.meterBlock}>
       <div className={c.meterLegend}>

@@ -25,7 +25,8 @@ import {
   ALL_BAGTS, listQaqcAssigns, qaqcFailedUsers, removeQaqcAssign, setQaqcAssign, subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
 
@@ -64,7 +65,16 @@ export function QaqcAcl() {
   const taken = new Set(rows.map((a) => a.user));
   const free = accounts.filter((a) => !taken.has(a.toLowerCase()));
 
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
+   *    Remote уншигдаагүй үед `rows` нь `[]` тул нэмэх/багц солих бичилт
+   *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
+   */
+  const locked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+
   const push = () => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const r = setQaqcAssign(add, [ALL_BAGTS]);
     setErr(r.ok ? '' : (r.error ?? ''));
     void r.sync;
@@ -94,11 +104,12 @@ export function QaqcAcl() {
               className={s.aclInput}
               value={add}
               onChange={(e) => setAdd(e.target.value)}
+              disabled={locked}
             >
               <option value="">{tr('Аккаунт сонгох…')}</option>
               {free.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
-            <button type="button" className={s.aclBtn} onClick={push} disabled={!add.trim()}>
+            <button type="button" className={s.aclBtn} onClick={push} disabled={locked || !add.trim()}>
               {tr('Нэмэх')}
             </button>
           </div>
@@ -107,6 +118,7 @@ export function QaqcAcl() {
               {tr('Чөлөөтэй аккаунт алга — «Хэрэглэгчдийн эрх удирдах» хэсэгт шинээр нэмнэ үү.')}
             </div>
           )}
+          {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
           {err && <div className={s.aclErr}>{err}</div>}
           {orphanFail && (
             <div className={s.aclErr} role="alert">
@@ -127,7 +139,9 @@ export function QaqcAcl() {
                     type="button"
                     className={s.aclX}
                     title={tr('Хуваарилалтаас хасах')}
+                    disabled={locked}
                     onClick={() => {
+                      if (locked) { setErr(LOCK_MSG); return; }
                       /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false) —
                          эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. */
                       if (gone) { void removeQaqcAssign(r.user, false).sync; return; }
@@ -155,7 +169,11 @@ export function QaqcAcl() {
                       className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
                       /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
                          багц солих бүрд эрхийн мөр дахин бичих нь дэмий */
-                      onClick={() => { setErr(''); void setQaqcAssign(r.user, [ALL_BAGTS], false).sync; }}
+                      disabled={locked}
+                      onClick={() => {
+                        if (locked) { setErr(LOCK_MSG); return; }
+                        setErr(''); void setQaqcAssign(r.user, [ALL_BAGTS], false).sync;
+                      }}
                     >
                       {tr('Бүх багц')}
                     </button>
@@ -166,7 +184,9 @@ export function QaqcAcl() {
                           key={g}
                           type="button"
                           className={`${s.aclPkg} ${on ? s.aclPkgOn : ''}`}
+                          disabled={locked}
                           onClick={() => {
+                            if (locked) { setErr(LOCK_MSG); return; }
                             const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                             /*
                              * ⚠️ FAIL-CLOSED (урсгалын панелтай ижил дүрэм): сүүлийн

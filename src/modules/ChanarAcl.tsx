@@ -24,7 +24,8 @@ import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { ALL_BAGTS, type Grant } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
   CHANAR_ROLES, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
@@ -55,14 +56,25 @@ export function ChanarAcl() {
   const dirtyPerms = new Set(dirtyKeys());
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
+   *    Remote уншигдаагүй үед `rows` нь `[]` тул «Нэмэх» дарахад
+   *    `setChanarGrants` тэр хүний БҮХ мөрийг нэг багцаар дарж бичнэ.
+   */
+  const locked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
+  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина */
   const run = async (sync?: Promise<unknown>) => {
     if (!sync) return;
     setBusy(true);
-    try { await sync; } finally { setBusy(false); }
+    try {
+      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+    } finally { setBusy(false); }
   };
 
   const addTo = (group: string, role: ChanarRole, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const u = user.trim().toLowerCase();
     if (!u) return;
     const cur = rows.find((a) => a.user === u);
@@ -78,6 +90,7 @@ export function ChanarAcl() {
   };
 
   const removeFrom = (group: string, role: ChanarRole, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const cur = rows.find((a) => a.user === user);
     if (!cur) return;
     const mine = cur.grants.find((g) => g.role === role);
@@ -92,7 +105,9 @@ export function ChanarAcl() {
       .filter((g) => g.bagts.length > 0);
     if (!grants.length) {
       if (!window.confirm(tr('«{0}»-г чанарын баримтын хуваарилалтаас бүрэн хасах уу? «Чанарын баримт ирүүлэх» ба «Чанарын баримт хянах» эрх нь мөн буцаагдана.', user))) return;
-      void run(removeChanarAssign(user).sync);
+      const rr = removeChanarAssign(user);
+      setErr(rr.ok ? '' : (rr.error ?? ''));
+      void run(rr.sync);
       return;
     }
     const r = setChanarGrants(user, grants);
@@ -109,6 +124,7 @@ export function ChanarAcl() {
         {' '}
         {tr('⚠️ QAQC (ITP бөглөх) ба гүйцэтгэлийн урсгалын эрхээс ТУСДАА: энд үүрэг олгосон нь тэдгээрийг өгөхгүй.')}
       </p>
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
@@ -151,7 +167,7 @@ export function ChanarAcl() {
                     dirtyPerms={dirtyPerms}
                     onAdd={addTo}
                     onRemove={removeFrom}
-                    busy={busy}
+                    busy={busy || locked}
                   />
                 );
               })}

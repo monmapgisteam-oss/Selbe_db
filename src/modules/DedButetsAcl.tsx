@@ -17,7 +17,8 @@ import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { ALL_BAGTS, type Grant } from '@/lib/scopedAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
-import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
   butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
@@ -43,14 +44,27 @@ export function DedButetsAcl() {
   const dirtyPerms = new Set(dirtyKeys());
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `UserAdmin.flipScoped`-ийн `capsLocked`-той
+   *    ИЖИЛ. Remote уншигдаагүй үед `listButetsAssigns()` нь `[]` тул бүх
+   *    багц «Томилоогүй» харагдаж, «Нэмэх» дарахад `setButetsGrants` тэр
+   *    хүний бүх мөрийг ЗӨВХӨН энэ нэг багцаар ДАРЖ бичдэг байв (5 багцтай
+   *    хүн 1 багцтай болно).
+   */
+  const locked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
+  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина (2026-09-23) */
   const run = async (sync?: Promise<unknown>) => {
     if (!sync) return;
     setBusy(true);
-    try { await sync; } finally { setBusy(false); }
+    try {
+      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+    } finally { setBusy(false); }
   };
 
   const addTo = (pack: string, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const u = user.trim().toLowerCase();
     if (!u) return;
     const cur = rows.find((a) => a.user === u);
@@ -66,6 +80,7 @@ export function DedButetsAcl() {
   };
 
   const removeFrom = (pack: string, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const cur = rows.find((a) => a.user === user);
     if (!cur) return;
     const mine = cur.grants.find((g) => g.role === ROLE);
@@ -85,7 +100,10 @@ export function DedButetsAcl() {
       : mine.bagts.filter((b) => b !== pack);
     if (!left.length) {
       if (!window.confirm(tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user))) return;
-      void run(removeButetsAssign(user).sync);
+      /* ⚠️ `.ok`-г шалгана — баталгаажуулалтын алдаа чимээгүй алга болохгүй */
+      const rr = removeButetsAssign(user);
+      setErr(rr.ok ? '' : (rr.error ?? ''));
+      void run(rr.sync);
       return;
     }
     const r = setButetsGrants(user, [{ role: ROLE, bagts: left }]);
@@ -102,6 +120,7 @@ export function DedButetsAcl() {
         {' '}
         {tr('⚠️ Багц хуваарилаагүй бол «Инженерийн дэд бүтцийн засвар» эрхтэй ч нэг ч давхарга засахгүй. Зөвхөн super админ хязгааргүй.')}
       </p>
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
@@ -131,7 +150,7 @@ export function DedButetsAcl() {
                 dirtyPerms={dirtyPerms}
                 onAdd={addTo}
                 onRemove={removeFrom}
-                busy={busy}
+                busy={busy || locked}
               />
             </div>
           );

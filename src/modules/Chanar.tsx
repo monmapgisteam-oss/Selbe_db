@@ -479,8 +479,21 @@ export function Chanar() {
                       </tr>
                     </thead>
                     <tbody>
+                      {/* ⚠️ Гараар ч сонгогдоно (2026-09-23): `<tr onClick>` нь
+                          фокус авдаггүй тул Tab-аар хүрэх аргагүй байв. */}
                       {hist.map((h) => (
-                        <tr key={h.oid} className={h.oid === doc.oid ? s.histOn : ''} onClick={() => setSel(h.oid)} style={{ cursor: 'pointer' }}>
+                        <tr
+                          key={h.oid}
+                          className={h.oid === doc.oid ? s.histOn : ''}
+                          onClick={() => setSel(h.oid)}
+                          tabIndex={0}
+                          role="button"
+                          aria-pressed={h.oid === doc.oid}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(h.oid); }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
                           <td>{h.rev}</td>
                           <td>{h.docNo}</td>
                           <td><span className={`${s.tag} ${tagCls(h.status)}`}>{h.status}</span></td>

@@ -110,8 +110,9 @@ export type ReportExtra = {
   };
   /** Газар чөлөөлөлт — `land:left` давхарга */
   land: {
-    parcels: number;
-    areaM2: number;
+    /** ⚠️ `null` = давхарга/URL байхгүй, татагдаагүй — 0 биш (2026-09-23) */
+    parcels: number | null;
+    areaM2: number | null;
     /** Шийдвэрлэгдсэн нэгж талбарын эзлэх хувь, 0–100 */
     pct: number | null;
     byStatus: { label: string; n: number }[];
@@ -203,6 +204,8 @@ export type ReportExtra = {
     }[];
     incidents: number;
   };
+  /** Өгөгдөл ХЭЗЭЭ татагдсан (epoch мс) — 5 мин кэш тул толгойд харуулна (2026-09-23) */
+  fetchedAt: number;
 };
 
 /* ═══════════════ Туслах ═══════════════ */
@@ -410,7 +413,9 @@ export const loadLand = cached(loadLandRaw, 5 * 60_000, ['PARCEL_LEFT']);
 async function loadLandRaw(): Promise<ReportExtra['land']> {
   // ⚠️ `url` нь заавал биш (BuildingSceneLayer г.м. давхаргад байхгүй) — шалгана
   const d = LAYER_BY_ID['land:left'];
-  if (!d?.url) return { parcels: 0, areaM2: 0, pct: null, byStatus: [], byReason: [] };
+  /* ⚠️ 2026-09-23: давхарга/URL байхгүй бол `null` — «0 нэгж талбар» гэж
+     худал хэвлэхгүй (null ≠ 0); `Tailan` §4 «татагдсангүй» гэж бичнэ. */
+  if (!d?.url) return { parcels: null, areaM2: null, pct: null, byStatus: [], byReason: [] };
   /* Зөвхөн тоолдог 2 талбар (2026-08-21 гүйцэтгэлийн аудит): «*» нь 2,119
      парселийн БҮХ баганыг (эзний нэр, хаяг зэрэг хувийн мэдээллийг оролцуулаад)
      ~2-4МБ-аар татдаг байв — тайланд огт хэрэггүй.
@@ -971,6 +976,7 @@ async function loadReportExtraRaw(): Promise<ReportExtra> {
     finance: (f as PromiseFulfilledResult<Awaited<ReturnType<typeof loadFinance>>>).value,
     infra: (i as PromiseFulfilledResult<Awaited<ReturnType<typeof loadInfra>>>).value,
     habea: (h as PromiseFulfilledResult<Awaited<ReturnType<typeof loadHabeaSummary>>>).value,
+    fetchedAt: Date.now(),
   };
 }
 

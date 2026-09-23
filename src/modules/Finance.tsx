@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, Fragment, type MouseEvent, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment, type MouseEvent, type CSSProperties } from 'react';
 import { tokenQs } from '@/lib/authToken';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
@@ -865,33 +865,40 @@ type FinTables = {
   cashflow: Row[]; ipc: Row[];
   cfFields: FieldDef[]; ipcFields: FieldDef[];
   /**
+   * Баганын метадата татагдсангүй (2026-09-23). ⚠️ Урьд нь `loadFields` алдаанд
+   * `[]` буцааж, тэр хоосон жагсаалт 5 минут КЭШЛЭГДЭЖ хүснэгт баганагүй
+   * харагддаг байв — шалтгаан нь хаана ч гардаггүй. Одоо тэмдэглэгдэж,
+   * «Дахин оролдох» нь кэшийг хаяна.
+   */
+  fieldsError: boolean;
+  /**
    * САРЫН ЗАДАРГАА — `Cashflow_final`-ийн доторх нэмэлт мөрүүд.
    * ⚠️ `cashflow`-д ОРОХГҮЙ: гол хүснэгт нь 78 ажлын мөр л байна.
    */
   cfMonths: Row[];
 };
 
-/** Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр */
+/**
+ * Давхаргын талбарын метадата (`?f=json`) — alias нь хүний уншихуйц баганын нэр.
+ * ⚠️ Алдаанд ШИДНЭ (`[]` биш) — дуудагч `fieldsError`-оор тэмдэглэнэ.
+ */
 async function loadFields(url: string): Promise<FieldDef[]> {
-  try {
-    const res = await fetch(`${url}?f=json${tokenQs()}`);
-    const j = await res.json();
-    return Array.isArray(j?.fields)
-      ? j.fields.map((x: {
-        name: string; alias?: string; type: string;
-        domain?: { type?: string; codedValues?: { name?: string }[] };
-      }) => ({
-        name: x.name,
-        alias: x.alias || x.name,
-        type: x.type,
-        choices: x.domain?.type === 'codedValue'
-          ? (x.domain.codedValues ?? []).map((v) => String(v.name ?? '')).filter(Boolean)
-          : undefined,
-      }))
-      : [];
-  } catch {
-    return [];
-  }
+  const res = await fetch(`${url}?f=json${tokenQs()}`);
+  const j = await res.json();
+  /* ⚠️ ArcGIS алдаагаа HTTP 200-аар ирүүлдэг — биеийг шалгана */
+  if (j?.error) throw new Error(String(j.error.message ?? 'ArcGIS error'));
+  if (!Array.isArray(j?.fields)) throw new Error('fields missing');
+  return j.fields.map((x: {
+    name: string; alias?: string; type: string;
+    domain?: { type?: string; codedValues?: { name?: string }[] };
+  }) => ({
+    name: x.name,
+    alias: x.alias || x.name,
+    type: x.type,
+    choices: x.domain?.type === 'codedValue'
+      ? (x.domain.codedValues ?? []).map((v) => String(v.name ?? '')).filter(Boolean)
+      : undefined,
+  }));
 }
 
 /**
@@ -903,8 +910,10 @@ const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['HO_IPC', 'CASHFLO
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc, cfMonths] = await Promise.all([
-    loadFields(CASHFLOW_NEW.url),
-    loadFields(HO_IPC.url),
+    /* ⚠️ Метадата унасан ч бүртгэл нээгдэнэ — `null` → `fieldsError`, хоосон
+       жагсаалтыг «амжилт» гэж кэшлэхгүй. */
+    loadFields(CASHFLOW_NEW.url).catch((e) => { console.warn('[selbe] cf fields:', e); return null; }),
+    loadFields(HO_IPC.url).catch((e) => { console.warn('[selbe] ipc fields:', e); return null; }),
     loadCashflowNewRows(),
     loadHoRows(),
     /* ⚠️ Сарын задаргаа унасан ч бүртгэл нээгдэх ёстой — хоосон жагсаалтад
@@ -922,8 +931,9 @@ async function loadFinRegisterRaw(): Promise<FinTables> {
   return {
     cashflow: cashflow.filter((r) => !finXlRowHidden(r)),
     ipc,
-    cfFields,
-    ipcFields,
+    cfFields: cfFields ?? [],
+    ipcFields: ipcFields ?? [],
+    fieldsError: cfFields == null || ipcFields == null,
     cfMonths,
   };
 }
@@ -2633,7 +2643,8 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
   const kpiTile = (label: string, v: number | null) => (v == null ? null : (
     <div key={label} className={f.kpi}>
       <span className={f.kpiL}>{label}</span>
-      <span className={`${f.kpiV} num`}>{num(v)} <i>₮</i></span>
+      {/* ⚠️ `mnt` — портал даяар нэг мөнгөн формат (0 → «—») */}
+      <span className={`${f.kpiV} num`}>{mnt(v)}</span>
     </div>
   ));
 
@@ -4255,10 +4266,29 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * зэрэгцээ зам: нэг ажилдаа төвлөрсөн, өргөнөөр гүйлгэх шаардлагагүй.
    */
   const [tab, setTab] = useState<'cf' | 'ipc' | 'plan'>('cf');
+  /* ⚠️ 2026-09-23: «Cashflow хувиарлах» хадгалаагүй засвартай байхад таб солибол
+     компонент unmount болж засвар АЛГА БОЛДОГ байв — баталгаажуулалт асууна.
+     `ref` (state биш): dirty солигдох бүрд энэ хуудсыг дахин зурах хэрэггүй. */
+  const planDirty = useRef(false);
+  const onPlanDirty = useCallback((v: boolean) => { planDirty.current = v; }, []);
+  const switchTab = (t: 'cf' | 'ipc' | 'plan') => {
+    if (t === tab) return;
+    if (tab === 'plan' && planDirty.current
+      && !window.confirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+    setTab(t);
+  };
 
   return (
     <>
       <header className={f.pageHd}>
+        {d.fieldsError && (
+          <p role="status" style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--warn)' }}>
+            {tr('Баганын мэдээлэл ачаалагдсангүй')}{' '}
+            <button type="button" className={f.tab} onClick={() => invalidate('CASHFLOW_NEW', 'HO_IPC')}>
+              {tr('Дахин оролдох')}
+            </button>
+          </p>
+        )}
         {/*
           * ⚠️ Гарчиг хасагдсан тул табууд ЗҮҮН тийш үсэрдэг (`space-between`
           * ганц хүүхэдтэй үед эхэнд нь наана). `margin-left: auto` нь тэднийг
@@ -4271,7 +4301,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
             role="tab"
             aria-selected={tab === 'cf'}
             className={`${f.tab} ${tab === 'cf' ? f.tabOn : ''}`}
-            onClick={() => setTab('cf')}
+            onClick={() => switchTab('cf')}
           >
             {tr('Cashflow')}
           </button>
@@ -4280,7 +4310,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
             role="tab"
             aria-selected={tab === 'ipc'}
             className={`${f.tab} ${tab === 'ipc' ? f.tabOn : ''}`}
-            onClick={() => setTab('ipc')}
+            onClick={() => switchTab('ipc')}
           >
             {tr('IPC')}
           </button>
@@ -4289,7 +4319,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
             role="tab"
             aria-selected={tab === 'plan'}
             className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
-            onClick={() => setTab('plan')}
+            onClick={() => switchTab('plan')}
           >
             {tr('Cashflow хувиарлах')}
           </button>
@@ -4309,6 +4339,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         works={d.cashflow}
         months={d.cfMonths}
         onSaved={onSaved}
+        onDirty={onPlanDirty}
       />
       ) : tab === 'cf' ? (
       <FullTable

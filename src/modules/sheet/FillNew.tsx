@@ -25,7 +25,7 @@ import {
  * ⚠️ 2026-09-04 — `applyAdds` ЭНД БАЙХГҮЙ, БОЛОХГҮЙ. «Нийтлэх» нь одоо
  * ИЛГЭЭХ үйлдэл: үндсэн (`Bagts_*`) өгөгдөл рүү бичихгүй, зөвхөн завсрын
  * хадгалалтад (`Selbe_Guitsetgel_Draft` → `sub|<pkgKey>`) зөрүү (diff)
- * тавина. Архивт бичих ЦОРЫН ГАНЦ зам нь ерөнхий менежерийн батламж
+ * тавина. Архивт бичих ЦОРЫН ГАНЦ зам нь газрын даргын (6-р шат) батламж
  * (`hyanaltStore.apply`). Хэрэглэгчийн шаардлага: «бүх шалгалт дуусаж 4 шат
  * дамжсаны дараа л дата хүснэгт буюу үндсэн сервис рүү орно».
  * `draft.check.mjs` нь энэ файлд архивт бичих дуудалт байхыг ХОРИГЛОЖ шалгана
@@ -171,7 +171,7 @@ type Draft = {
    * гарт байдаг; ноорогийг сэргээх үед байхгүй тул танигчийг ноорогтоо хамт
    * хадгална.
    *
-   * ⚠️ 2026-09-04: шинэ жааз одоо ЗӨВХӨН ерөнхий менежер баталсан үед үүснэ
+   * ⚠️ 2026-09-04: шинэ жааз одоо ЗӨВХӨН газрын дарга (6-р шат) баталсан үед үүснэ
    * («Нийтлэх» нь архивт бичихээ болив) тул энэ хуучралт ХОВОРДСОН боловч
    * АРИЛААГҮЙ — батламж бүрд яг тэр зүйл болно.
    *
@@ -282,7 +282,12 @@ const toNewRows = (list: readonly AddRow[]): NewRow[] =>
 const keepApproved = (prev: readonly AddRow[], next: readonly AddRow[]): AddRow[] => {
   const have = new Set(next.map((a) => a.oid));
   const kept = prev.filter((a) => !!a.ajilOid && !have.has(a.oid));
-  return [...next, ...kept];
+  /* ⚠️ Ижил oid-тай ШИНЭ хуулбар `ajilOid`-гүй ирвэл (алсын ноорог — батлалтын
+     тэмдэг тэнд байхгүй) тэмдгийг ӨВЛҮҮЛНЭ (2026-09-23 аудит); эс бөгөөс
+     батлагдсан мөр дахин «батлуулаагүй» болно. */
+  const mark = new Map(prev.filter((a) => !!a.ajilOid).map((a) => [a.oid, a.ajilOid] as const));
+  const merged = next.map((a) => (!a.ajilOid && mark.has(a.oid) ? { ...a, ajilOid: mark.get(a.oid) } : a));
+  return [...merged, ...kept];
 };
 
 /**
@@ -810,7 +815,12 @@ function changedKeys(base: SheetRow[], ov: Overlay, bld: string[]): Set<string> 
     const to = ovBy.get(oid)?.obyem[bi] ?? null;
     /* ⚠️ Шинэ (нэмсэн, oid < 0) мөрд суурь БАЙХГҮЙ — `null`; утгатай бол өөрчлөгдсөн. */
     const from = baseBy.get(oid)?.obyem[bi] ?? null;
-    if (from !== to) out.add(`${oid}:${b}`);
+    /* ⚠️ ХУВИЙГ ч харьцуулна (2026-09-23 аудит): Обьёмгүй мөрд «%NN» засвар
+       `obyem`-ийг хөндөхгүй зөвхөн `act`-д суудаг тул буцаагдсан нүд
+       улаанаар тэмдэглэгдэхгүй байв. */
+    const toA = ovBy.get(oid)?.act[bi] ?? null;
+    const fromA = baseBy.get(oid)?.act[bi] ?? null;
+    if (from !== to || fromA !== toA) out.add(`${oid}:${b}`);
   }
   return out;
 }
@@ -1182,7 +1192,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *
    * ⚠️ Энэ нь «БАТЛАГДСАН» гэсэн үг — «ИЛГЭЭГДСЭН» гэсэн үг БИШ. Хоёрыг
    *    андуурсан нь өмнөх хоёр алдааны эх үндэс байсан.
-   * ⚠️ 2026-09-04: архивт жааз одоо ЗӨВХӨН ерөнхий менежерийн батламжаар
+   * ⚠️ 2026-09-04: архивт жааз одоо ЗӨВХӨН газрын даргын (6-р шат) батламжаар
    *    үүсдэг тул энэ нь «энэ багцын өмнөх мөчлөг өнөөдөр батлагдсан» гэсэн
    *    утгатай болов. ЯМАР Ч ТҮГЖЭЭНД хэрэглэгдэхгүй — илгээх хоригийн
    *    цорын ганц шалгуур нь `inReview`.
@@ -1232,7 +1242,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ ГҮЙЦЭТГЭЛЭЭС БҮРЭН ТУСДАА зам: өөрийн эрх (`obyemEdit`/`obyemApprove`),
    *    өөрийн ноорог (`pvPend`), өөрийн батлах хүснэгт (`obyemBatlah`).
    *    `pending` (гүйцэтгэлийн ноорог) руу ОГТ ХОЛИХГҮЙ — `publish` нь
-   *    түүнийг хардаггүй тул 4 шатат хяналтад бүртгэгдэхгүй.
+   *    түүнийг хардаггүй тул 6 шатат хяналтад бүртгэгдэхгүй.
    */
   const canObyemEdit = useMemo(() => {
     if (unrestricted) return true;
@@ -1830,6 +1840,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   useEffect(() => {
     let alive = true;
     loadedPkgRef.current = "";
+    /* ⚠️ СЭРГЭЭЛТИЙН ТЭМДЭГ ЦЭВЭРЛЭГДЭНЭ (2026-09-23 аудит). А→Б→А хурдан
+       солиход (Б-гийн мөр ачаалагдаж амжаагүй) `promptedPkgRef === 'A'`
+       хэвээр үлдэж, А-д сэргээлт ДАХИН явахгүй; хадгалах эффект хоосон
+       `pending`-ийг «нийтэлсэн» гэж үзээд бүх оролцогчийн ноорогийг (локал +
+       ArcGIS) устгадаг байв. Одоо багц бүрийн нээлтэд сэргээлт заавал явна. */
+    promptedPkgRef.current = "";
     /* ⚠️ Обьёмын илгээлтийн төлөв ӨМНӨХ багцынх — шууд цэвэрлэнэ (2026-09-17):
        шинэ багцын query унавал А-гийн баннер Б дээр үлдэх байв. */
     setPvSub(null);
@@ -2285,16 +2301,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const mergeIncomingAdds = (prev: AddRow[], incoming: readonly NewRow[], ajilOid?: number): AddRow[] => {
     const used = new Set(prev.map((a) => a.oid));
     const fresh: AddRow[] = [];
+    let out = prev;
     for (const a of incoming) {
       const dup = prev.find((x) => x.oid === a.oid);
-      if (dup && dup.no === a.no && dup.work === a.work && dup.parentNo === a.parentNo && dup.parentWork === a.parentWork) continue;
+      if (dup && dup.no === a.no && dup.work === a.work && dup.parentNo === a.parentNo && dup.parentWork === a.parentWork) {
+        /* ⚠️ ИЖИЛ мөр аль хэдийн байвал (өөр төхөөрөмжийн ноорогоос буцаж ирсэн
+           батлуулаагүй хуулбар) `ajilOid`-г НААНА (2026-09-23 аудит) — урьд нь
+           алгасдаг тул батлагдсан мөр «батлуулаагүй» хэвээр үлдэж, «Илгээх»
+           мөнхөд түгжигдэж, дахин илгээвэл давхар мөр үүсдэг байв. */
+        if (ajilOid && !dup.ajilOid) out = out.map((x) => (x.oid === a.oid ? { ...x, ajilOid } : x));
+        continue;
+      }
       const oid = used.has(a.oid) ? nextTmpOid() : a.oid;
       used.add(oid);
       fresh.push(ajilOid ? { ...a, oid, ajilOid } : { ...a, oid });
     }
-    if (!fresh.length) return prev;
+    if (!fresh.length) return out;
     pushTmpOid(fresh);
-    return [...prev, ...fresh];
+    return [...out, ...fresh];
   };
 
   /*
@@ -3765,10 +3789,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * товшилтоор нөгөө хүний хагас өдрийн ажил сэргээх аргагүй алга болно.
      */
     const others = [...participants].filter((u) => u !== meKey);
-    if (others.length && !window.confirm(tr(
-      'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна. Үргэлжлүүлэх үү?',
-      others.sort().join(', '),
-    ))) return;
+    /* ⚠️ ҮРГЭЛЖ баталгаажуулна (2026-09-23) — ганцаараа бөглөж байхад ч нэг
+       товшилтоор `dirtyCount` нүд сэргээх аргагүй арилдаг байв. */
+    const nCell = String(dirtyCount);
+    if (!window.confirm(others.length
+      ? tr(
+        'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна ({1} нүд). Үргэлжлүүлэх үү?',
+        others.sort().join(', '), nCell,
+      )
+      : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell))) return;
     setPending({});
     setPendDate({});
     /* ⚠️ БАТЛАГДСАН мөр ҮЛДЭНЭ (2026-09-23, #12): «Ноорог устгах» нь илгээгээгүй
@@ -3796,7 +3825,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     keepDraft.current = false;
     say(tr('Ноорог устгагдлаа — илгээгээгүй засварууд арилав.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.key, asOfOrig, participants, meKey]);
+  }, [pkg.key, asOfOrig, participants, meKey, dirtyCount]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -4066,7 +4095,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         /* Алсынхыг ХУУЧИН, өөрийнхийг ШИНЭ тал болгож нийлүүлнэ — нүд тус
            бүрээр шинэ агшинтай нь ялна (`mergeDrafts`). */
-        const outDraft = mergeDrafts(remote, q.draft) ?? q.draft;
+        const outDraft0 = mergeDrafts(remote, q.draft) ?? q.draft;
+        /* ⚠️ БАТЛАГДСАН мөр (`ajilOid`) нийлүүлэлтэд алга болохгүй (2026-09-23
+           аудит): өөр оролцогч тэр мөрийг × дарсан (tombstone шинэ) бол
+           `mergeDrafts` хасаж, `saveDraftLS` түүнийг локалд бичээд F5-д мөр
+           бүрмөсөн алга болдог байв (`keepApproved` зөвхөн React төлөвийг
+           хамгаалдаг). Батлагдсан мөр серверээс дахин ирэхгүй — ганц хуулбар. */
+        const approved = (q.draft.adds ?? []).filter((a) => !!(a as AddRow).ajilOid && !(outDraft0.adds ?? []).some((x) => x.oid === a.oid));
+        const outDraft: Draft = approved.length ? { ...outDraft0, adds: [...(outDraft0.adds ?? []), ...approved] } : outDraft0;
         const body = JSON.stringify(outDraft);
         if (body.length > REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
         /*
@@ -4357,12 +4393,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *
    * ⚠️ ЭНЭ ФУНКЦ ҮНДСЭН ӨГӨГДӨЛ РҮҮ БИЧИХГҮЙ. Урьд нь энд `computeAll`-оор
    *    бүтэн жааз угсарч `applyAdds`-аар `Bagts_*` архивт ШУУД нэмдэг байв —
-   *    хяналтын 4 шат нь тэр бичигдсэн өгөгдлийг ХОЙНООС нь баталдаг «ёсорхуу»
+   *    хяналтын 6 шат нь тэр бичигдсэн өгөгдлийг ХОЙНООС нь баталдаг «ёсорхуу»
    *    зам болно. Хэрэглэгчийн шаардлага: «ноорог ҮНДСЭН ДАТАНД хадгалагдаж
-   *    болохгүй; бүх шалгалт дуусаж 4 шат дамжсаны дараа л дата хүснэгт рүү
+   *    болохгүй; бүх шалгалт дуусаж 6 шат дамжсаны дараа л дата хүснэгт рүү
    *    орно». Одоо энд зөвхөн ЗӨРҮҮ (diff) нь завсрын хадгалалтад бичигдэж,
    *    хяналтын бүртгэл үүснэ. Архивт бичих цорын ганц зам —
-   *    `hyanaltStore.apply` (ерөнхий менежерийн батламж).
+   *    `hyanaltStore.apply` (газрын даргын батламж).
    */
   /* ══════════ ИНЖЕНЕРИЙН ОБЬЁМЫН УРСГАЛ ══════════ */
 
@@ -4428,7 +4464,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /**
    * «Нэмэлт ажил батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй.
    *
-   * ⚠️ «Илгээх»-ЭЭС ТУСДАА: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 4 шатат хяналтад
+   * ⚠️ «Илгээх»-ЭЭС ТУСДАА: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 6 шатат хяналтад
    *    оруулна, энэ нь ШИНЭ АЖЛЫГ 2 шатат батлах урсгалд. Нэг товчинд
    *    нийлүүлбэл «тоог зөвшөөрсөн» нь «ажлыг зөвшөөрсөн» гэж уншигдана.
    * ⚠️ Илгээсний дараа мөрүүдийг `adds`-ээс ХАСНА: агуулга нь одоо
@@ -4545,7 +4581,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           setAjNote(tr('Батлагдсан нэмэлт ажил хуудсанд орлоо — нийтлэхэд бичигдэнэ.'));
         }
         /* ── Буцаагдсан — зохиогчийн мөрүүд буцаж ирнэ (#13) ── */
-        const hist = await loadAjilHistory(want);
+        /* ⚠️ 500 (2026-09-23 аудит): анхдагч 20 нь сүүлийн шийдвэрүүд л — түүнээс
+           хуучин «буцаагдсан» илгээлт хэзээ ч сэргээгдэхгүй байв. */
+        const hist = await loadAjilHistory(want, 500);
         if (!alive || pkgKeyRef.current !== want) return;
         for (const sub of hist) {
           if (sub.status !== AJIL_STATUS.returned) continue;
@@ -4722,7 +4760,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     /*
      * ⚠️ БАТЛУУЛААГҮЙ НЭМЭЛТ АЖИЛ БАЙВАЛ ЗОГСОНО (2026-09-23, аудитын #9).
-     *    Урьд нь `adds` батлагдсан эсэхийг шалгалгүй payload-д орж 4 шатаар
+     *    Урьд нь `adds` батлагдсан эсэхийг шалгалгүй payload-д орж 6 шатаар
      *    нийтлэгддэг тул тусдаа батлах урсгал (`ajilBatlah`) бүхэлдээ
      *    тойрогддог байв. ЗОГСООХ (payload-оос чимээгүй хасах БИШ): хасвал
      *    тэр мөрд бичсэн нүд `notOrphan`-д унаж «алга болсон» мэт харагдана,
@@ -4755,7 +4793,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *
      *    Одоо аюулгүй байдал нь ХОРИГООР биш, ТҮЛХҮҮРЭЭР хангагдана: илгээлт
      *    нь `sub|<pkg>|<fillMs>` тул өдөр бүр ТУСДАА мөр, тусдаа хяналтын
-     *    мөр, тусдаа 4 шат. Өөр өдрийн хянагдаж буй агуулгыг энэ илгээлт
+     *    мөр, тусдаа 6 шат. Өөр өдрийн хянагдаж буй агуулгыг энэ илгээлт
      *    ХӨНДӨХ БОЛОМЖГҮЙ.
      *
      *    ⚠️ ЯГ ЭНЭ ӨДРИЙН илгээлт хянагдаж байхад дахин илгээх нь ТЭР мөрийг
@@ -5238,6 +5276,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (!hidden[k] && ok(rowsAll[k])) return { i: k, b, col };
     return null;
   };
+  /**
+   * ХАЖУУ ТИЙШ — нэг мөрөнд дараагийн бөглөгдөх блок (Tab). Мөрийн төгсгөлд
+   * дараагийн (Shift: өмнөх) мөрийн эхний (сүүлийн) блок руу ороолдоно.
+   */
+  const nextBlockEditable = (i: number, b: number, step: number) => {
+    let k = i;
+    let bb = b + step;
+    while (k >= 0 && k < rowsAll.length) {
+      if (!hidden[k]) {
+        for (; bb >= 0 && bb < nBld; bb += step)
+          if (volMode(rowsAll[k], bb)) return { i: k, b: bb, col: "obyem" as EditCol };
+      }
+      k += step;
+      bb = step > 0 ? 0 : nBld - 1;
+    }
+    return null;
+  };
 
   // ⚠️ Алдаа гарсан ч эрт `return` хийхгүй — эс тэгвэл багц сонгогч алга болж
   // хэрэглэгч өөр багц руу шилжих аргагүй үлдэнэ.
@@ -5478,11 +5533,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
              илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
              Мэдэгдэл нь доорх `lockNote`-оор гарна. */
           disabled={busy || noEdit || dirtyCount === 0}
-          title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд ерөнхий менежер баталсны дараа л орно (Ctrl+S)')}
+          title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд газрын дарга баталсны дараа л орно (Ctrl+S)')}
         >
           {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
               2026-09-04-нөөс энэ товч ҮНДСЭН ӨГӨГДӨЛД ОГТ БИЧИХГҮЙ — зөвхөн
-              илгээлт үүсгэж хяналтад оруулна; архивт ерөнхий менежер
+              илгээлт үүсгэж хяналтад оруулна; архивт газрын дарга (6-р шат)
               баталсны дараа л бичигдэнэ. «Нийтлэх» гэсэн нэр нь «тоо маань
               одоо албан ёсоор орлоо» гэж ойлгогдож, бөглөгч хяналтыг
               хүлээхгүй өнгөрөх төөрөгдөл үүсгэж байв. */}
@@ -5526,7 +5581,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         )}
 
         {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════
-            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙГ 4 шатат
+            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙГ 6 шатат
             хяналтад оруулдаг, энэ нь ТӨЛӨВЛӨСӨН ОБЬЁМЫГ 2 шатат батлах
             урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр шийдвэр нэг
             батламжид уягдана. */}
@@ -5577,7 +5632,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         {pvNote && <span className={st.muted}>{pvNote}</span>}
 
         {/* ══════ НЭМЭЛТ АЖИЛ — тусдаа урсгал (2026-09-22) ══════
-            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 4 шатат
+            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙН ТООГ 6 шатат
             хяналтад оруулдаг, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг
             2 шатат батлах урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр
             шийдвэр нэг батламжид уягдана. */}
@@ -5676,7 +5731,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             {dirtyCount > 0 && pkgPct.draft != null && (
               <b
                 className={st.pkgPctNew}
-                title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 4 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
+                title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 6 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
               >
                 {tr('батлагдаагүй')} {pct(pkgPct.draft, 2)}
                 <i className={st.pkgPctGap}>
@@ -5784,7 +5839,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           (`unmovedWarn`-ийн ⚠️ тайлбар). */}
       {unmovedWarn.length > 0 && (
         <p className={st.lockNote} role="alert">
-          {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс ерөнхий менежер батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
+          {tr('Илгээсэн зарим нүд шинэ мөрүүдэд тулгагдсангүй — эдгээрийг ДАХИН бөглөж илгээнэ үү, эс бөгөөс газрын дарга батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
         </p>
       )}
       {/*
@@ -6278,10 +6333,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                   if (e.key === "Enter" || e.key === "Tab") {
                                     e.preventDefault();
                                     commit(r, bi, e.currentTarget.value);
-                                    const t = nextEditable(i, bi, e.shiftKey ? -1 : 1, "obyem");
+                                    /* ⚠️ Enter = ДООШ (нэг блок дотор дараагийн мөр), Tab =
+                                       ХАЖУУ (нэг мөрөнд дараагийн блок) — хүснэгтийн хэвшил
+                                       (2026-09-23). Урьд нь хоёулаа доош гүйдэг байв. */
+                                    const dir = e.shiftKey ? -1 : 1;
+                                    const t = e.key === "Enter"
+                                      ? nextEditable(i, bi, dir, "obyem")
+                                      : nextBlockEditable(i, bi, dir);
                                     if (t) {
                                       const nr = rowsAll[t.i];
-                                      setVal(cellSeed(nr, bi));
+                                      setVal(cellSeed(nr, t.b));
                                       setEdit(t);
                                     }
                                   }

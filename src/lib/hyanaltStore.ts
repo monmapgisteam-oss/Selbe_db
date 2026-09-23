@@ -26,12 +26,14 @@
  * зөвшөөрлийн үед л бичигдэнэ. `applyAdds`-ыг өөр газраас БҮҮ дууд.
  */
 
+import { dayKey } from '@/lib/format';
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from './i18nCore';
 import {
   addRows, hasOkCellsField, queryAll, updateRows,
   DECISION, F, HYANALT, STATUS,
-  type Attrs, type Decision, type Row, type Status,
+  REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview,
+  type Attrs, type Decision, type ReviewStage, type Row, type Status,
 } from './hyanalt';
 
 /**
@@ -100,7 +102,7 @@ import {
  *    Хоёрыг андуурвал эрх гоожих эсвэл бүх хүн түгжигдэнэ.
  */
 function authz(
-  stage: 'engineer' | 'manager' | 'director',
+  stage: ReviewStage,
   me: string | undefined,
   bagts: string,
   bypass: boolean,
@@ -158,6 +160,16 @@ export function toRow(a: Attrs): Row {
     [F.directorReason]: str(a[F.directorReason]),
     [F.directorReturned]: toIso(a[F.directorReturned]),
     [F.directorSent]: toIso(a[F.directorSent]),
+    [F.head]: str(a[F.head]),
+    [F.headDecision]: str(a[F.headDecision]) as Decision | '',
+    [F.headReason]: str(a[F.headReason]),
+    [F.headReturned]: toIso(a[F.headReturned]),
+    [F.headSent]: toIso(a[F.headSent]),
+    [F.chief]: str(a[F.chief]),
+    [F.chiefDecision]: str(a[F.chiefDecision]) as Decision | '',
+    [F.chiefReason]: str(a[F.chiefReason]),
+    [F.chiefReturned]: toIso(a[F.chiefReturned]),
+    [F.chiefSent]: toIso(a[F.chiefSent]),
     /* ⚠️ Зөвшөөрсөн нүдний JSON — хоосон бол `''` (`hyanalt.F.okCells`) */
     [F.okCells]: str(a[F.okCells]),
     [F.status]: str(a[F.status]) as Status,
@@ -196,13 +208,9 @@ async function liveRow(oid: number): Promise<Row | undefined> {
  *    «Шилжүүлсэн» мөрд ерөнхий менежерийн давхар баталгаа (нэгтгэлд давхар
  *    бүртгэл) нэвтэрнэ. Дахин шалгалт `recheck`-ээр ШИНЭ мөр үүсгэнэ.
  */
-const REVIEW_STATUS = {
-  engineer: STATUS.engineerReview,
-  manager: STATUS.managerReview,
-  director: STATUS.directorReview,
-} as const;
+/* ⚠️ `REVIEW_STATUS` нь `hyanalt.ts`-д (2026-09-23) — 6 шатны нэг эх сурвалж. */
 
-const STALE = 'Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу';
+const STALE = tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
 
 export function useHyanaltRows(): {
   rows: Row[];
@@ -351,7 +359,9 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      аль нь ч жаазны өдөр биш. Уншиж чадахгүй бол `fillMs`-ээр нөөцлөнө. */
   if (staged.done || staged.payload.archiveOid != null) {
     const aOid = staged.payload.archiveOid ?? 0;
-    let day: string | undefined = staged.payload.fillMs != null ? new Date(staged.payload.fillMs).toISOString().slice(0, 10) : undefined;
+    /* ⚠️ `dayKey` (ЛОКАЛ өдөр) — `toISOString` нь UTC тул +08-д 00:00–07:59-ийн
+       илгээлт ӨМНӨХ өдөрт (сарын хил давбал өмнөх сард) архивлагдаж байв (2026-09-23 аудит). */
+    let day: string | undefined = staged.payload.fillMs != null ? dayKey(staged.payload.fillMs) : undefined;
     if (aOid > 0) {
       try {
         const [{ PKGS, loadSchema }, { agsFetch }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags')]);
@@ -610,7 +620,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
  */
 export async function apply(a: {
   oid: number;
-  stage: 'engineer' | 'manager' | 'director';
+  stage: ReviewStage;
   decision: Decision;
   /** ⚠️ Буцаах үед ХООСОН БАЙЖ БОЛОХГҮЙ */
   reason?: string;
@@ -646,7 +656,7 @@ export async function apply(a: {
   const returning = a.decision === DECISION.return;
   const reason = (a.reason ?? '').trim();
   // ⚠️ Шалтгаангүй буцаалт нь хяналтын бүртгэлийг утгагүй болгоно
-  if (returning && !reason) return { ok: false, error: 'Буцаах шалтгаанаа бичнэ үү' };
+  if (returning && !reason) return { ok: false, error: tr('Буцаах шалтгаанаа бичнэ үү') };
 
   const t = Date.now();
   const attrs: Attrs = { [HYANALT.oid]: a.oid };
@@ -668,41 +678,26 @@ export async function apply(a: {
    */
   let registerNow = false;
 
-  if (a.stage === 'engineer') {
-    attrs[F.engineer] = a.who;
-    attrs[F.engineerDecision] = a.decision;
-    if (returning) {
-      attrs[F.engineerReason] = reason;
-      attrs[F.engineerReturned] = t;
-      attrs[F.status] = STATUS.engineerReturned;
-    } else {
-      attrs[F.engineerSent] = t;
-      attrs[F.status] = STATUS.managerReview;
-    }
-  } else if (a.stage === 'manager') {
-    attrs[F.manager] = a.who;
-    attrs[F.managerDecision] = a.decision;
-    if (returning) {
-      attrs[F.managerReason] = reason;
-      attrs[F.managerReturned] = t;
-      // ⚠️ Компанид БИШ — инженер рүү буцна
-      attrs[F.status] = STATUS.managerReturned;
-    } else {
-      attrs[F.managerSent] = t;
-      // ⚠️ ШИЛЖҮҮЛСЭН БИШ — ерөнхий менежерийн хяналт үлдэж байна
-      attrs[F.status] = STATUS.directorReview;
-    }
+  /*
+   * ⚠️ ШАТ БҮРД if/else БИШ — `SF` хүснэгтээс (2026-09-23, 6 шат). Буцаалт нь
+   *    ЯВСАН ЗАМААРАА нэг алхам (`RETURNED_STATUS` → `OWNER`), зөвшөөрөл нь
+   *    ДАРААГИЙН хянах шат руу; сүүлийн шат (газрын дарга) л «Шилжүүлсэн»
+   *    болгож архив · нэгтгэлд бүртгэнэ (`registerNow`).
+   */
+  const sf = SF[a.stage];
+  attrs[sf.who] = a.who;
+  attrs[sf.decision] = a.decision;
+  if (returning) {
+    attrs[sf.reason] = reason;
+    attrs[sf.returned] = t;
+    attrs[F.status] = RETURNED_STATUS[a.stage];
   } else {
-    attrs[F.director] = a.who;
-    attrs[F.directorDecision] = a.decision;
-    if (returning) {
-      attrs[F.directorReason] = reason;
-      attrs[F.directorReturned] = t;
-      // ⚠️ Инженерт БИШ — багцын менежерт буцна (явсан замаараа)
-      attrs[F.status] = STATUS.directorReturned;
+    attrs[sf.sent] = t;
+    const nx = nextReview(a.stage);
+    if (nx) {
+      attrs[F.status] = REVIEW_STATUS[nx];
     } else {
-      attrs[F.directorSent] = t;
-      // ЭЦСИЙН БАТАЛГАА — дөрвөн шат бүгд өнгөрлөө
+      // ЭЦСИЙН БАТАЛГАА — зургаан шат бүгд өнгөрлөө
       attrs[F.status] = STATUS.transferred;
       registerNow = true;
     }
@@ -840,7 +835,7 @@ export async function recheck(
    * ⚠️ Хоёр газар давтагдана: менежер буцаахад ИНЖЕНЕР, ерөнхий менежер
    *    буцаахад БАГЦЫН МЕНЕЖЕР. Логик нь ижил, зөвхөн талбар ба шат өөр.
    */
-  by: 'engineer' | 'manager' = 'engineer',
+  by: Exclude<ReviewStage, 'chief'> = 'engineer',
   /** ЭРХИЙН ШАЛГУУРЫН хэрэглэгчийн нэр — `who` (дэлгэцийн нэр) БИШ */
   me?: string,
   /** Шалгуурыг тойруулах — зөвхөн нэвтрэлтгүй/админы шат сонголт */
@@ -854,10 +849,12 @@ export async function recheck(
 ): Promise<Result> {
   let prev: Row | undefined;
   try { prev = await liveRow(oid); } catch (e) { return fail(e); }
-  if (!prev) { emit(); return { ok: false, error: 'Бүртгэл олдсонгүй' }; }
+  if (!prev) { emit(); return { ok: false, error: tr('Бүртгэл олдсонгүй') }; }
   // ⚠️ Зөвхөн ДЭЭД шатнаас буцсан мөрийг дахин шалгана — хуучирсан дэлгэцээс
   //    давхар дахин шалгалт (давхар мөр) эсвэл өөр төлөвт бичихээс сэргийлнэ.
-  const want = by === 'engineer' ? STATUS.managerReturned : STATUS.directorReturned;
+  /* ⚠️ Дахин шалгагч нь ДАРААГИЙН шатны буцаалтыг л авна (2026-09-23, 6 шат) */
+  const upper = nextReview(by)!;
+  const want = RETURNED_STATUS[upper];
   if (prev[F.status] !== want) { emit(); return { ok: false, error: STALE }; }
   /* ⚠️ `apply`-тай ИЖИЛ шалгуур — дахин шалгалт нь мөрийг дээд шат руу
      дахин илгээдэг тул эрхийн ижил жинтэй (`hyanaltStore`-ийн authz). */
@@ -894,7 +891,7 @@ export async function recheck(
      * инженер↔менежер хооронд хэдэн удаа ярвал бүгд алга болно.
      */
     /* Дахин шалгасны дараа ажил ХААШАА явах вэ — нэг алхам урагш. */
-    const nextStatus = by === 'engineer' ? STATUS.managerReview : STATUS.directorReview;
+    const nextStatus = REVIEW_STATUS[upper];
     /* Инженерийн илгээсэн огноо — менежер дахин шалгахад ХЭВЭЭР үлдэнэ. */
     const engPrev = prev[F.engineerSent];
     const engSent = engPrev ? Date.parse(engPrev) : t;
@@ -917,18 +914,26 @@ export async function recheck(
        *    ХООСОН — шинэ хяналт тэднээс эхэлж байна. Хуучин зөвшөөрлийг
        *    үлдээвэл дараагийн шат «би аль хэдийн баталсан» гэж харагдана.
        */
-      [F.engineer]: by === 'engineer' ? who : prev[F.engineer],
-      [F.engineerDecision]: DECISION.approve,
-      [F.engineerReason]: '',
-      [F.engineerReturned]: null,
-      [F.engineerSent]: by === 'engineer' ? t : engSent,
-      [F.manager]: by === 'manager' ? who : '',
-      [F.managerDecision]: by === 'manager' ? DECISION.approve : '',
-      [F.managerReason]: '',
-      [F.managerReturned]: null,
-      [F.managerSent]: by === 'manager' ? t : null,
-      [F.director]: '', [F.directorDecision]: '', [F.directorReason]: '',
-      [F.directorReturned]: null, [F.directorSent]: null,
+      /* ⚠️ 2026-09-23 (6 шат): `by`-аас ДООД шатнууд — өмнөх мөрийн зөвшөөрөл
+         хэвээр (нэр · илгээсэн огноо), `by` өөрөө — одоо зөвшөөрөв, ДЭЭД
+         шатнууд — хоосон. Инженерийн илгээсэн огноо `engSent` дүрэм хэвээр. */
+      ...Object.fromEntries(REVIEW_STAGES.flatMap((s) => {
+        const f = SF[s];
+        const si = REVIEW_STAGES.indexOf(s);
+        const bi = REVIEW_STAGES.indexOf(by);
+        if (si < bi) {
+          const sentPrev = prev[f.sent as keyof Row] as string | null;
+          const sentMs = s === 'engineer' ? engSent : (sentPrev ? Date.parse(sentPrev) : null);
+          return [
+            [f.who, prev[f.who as keyof Row]], [f.decision, DECISION.approve], [f.reason, ''],
+            [f.returned, null], [f.sent, sentMs],
+          ];
+        }
+        if (si === bi) {
+          return [[f.who, who], [f.decision, DECISION.approve], [f.reason, ''], [f.returned, null], [f.sent, t]];
+        }
+        return [[f.who, ''], [f.decision, ''], [f.reason, ''], [f.returned, null], [f.sent, null]];
+      })),
       [F.status]: nextStatus,
     };
     try {
@@ -942,7 +947,7 @@ export async function recheck(
   //    хэрэггүй; компани засаад илгээхэд `resubmit` шинийг үүсгэнэ.
   const why = reason.trim();
   // ⚠️ Шалтгаангүй буцаалт нь хүлээн авагчийг юу засахаа мэдэхгүй болгоно
-  if (!why) return { ok: false, error: 'Буцаах шалтгаанаа бичнэ үү' };
+  if (!why) return { ok: false, error: tr('Буцаах шалтгаанаа бичнэ үү') };
 
   /*
    * ⚠️ ЗӨВШӨӨРСӨН НҮДНИЙ ЖАГСААЛТ — `apply`-тай ИЖИЛ дүрэм. Энэ бол
@@ -952,25 +957,17 @@ export async function recheck(
   const okp = await okCellsPatch(okCells);
   const okPatch: Attrs = okp.patch;
 
-  const back: Attrs = by === 'engineer'
-    ? {
-      [HYANALT.oid]: oid,
-      [F.engineer]: who,
-      [F.engineerDecision]: DECISION.return,
-      [F.engineerReason]: why,
-      [F.engineerReturned]: t,
-      [F.status]: STATUS.engineerReturned,
-      ...okPatch,
-    }
-    : {
-      [HYANALT.oid]: oid,
-      [F.manager]: who,
-      [F.managerDecision]: DECISION.return,
-      [F.managerReason]: why,
-      [F.managerReturned]: t,
-      [F.status]: STATUS.managerReturned,
-      ...okPatch,
-    };
+  /* ⚠️ Буцаалт нь `by` шатны ӨӨРИЙН буцаалт — нэг алхам доош (`OWNER`) */
+  const bf = SF[by];
+  const back: Attrs = {
+    [HYANALT.oid]: oid,
+    [bf.who]: who,
+    [bf.decision]: DECISION.return,
+    [bf.reason]: why,
+    [bf.returned]: t,
+    [F.status]: RETURNED_STATUS[by],
+    ...okPatch,
+  };
 
   try {
     await updateRows([back]);

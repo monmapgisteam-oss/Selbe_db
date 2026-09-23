@@ -425,12 +425,66 @@
   left: 10px;
   bottom: 10px;
   z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
   padding: 6px 12px;
   font-size: 11.5px;
   color: var(--ink);
   background: color-mix(in srgb, var(--good) 16%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
   border-radius: var(--r-sm);
+}
+/* ⚠️ АЛДАА — улаан, ӨӨРӨӨ арилахгүй (`DedButets.toast`-ийн тайлбар): ногоон
+   «хадгалагдлаа»-тай ижил харагдаж 4 секундэд алга болдог байв. */
+.savedErr {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+}
+.savedClose {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.savedClose:hover { color: var(--ink); }
+
+/* САМБАРЫН БАТАЛГААЖУУЛАЛТ — `window.confirm`-ийн оронд (`DedButets.confirmQ`).
+   Мэдэгдлийн дээр, зургийн зүүн доод буланд; «Тийм»/«Үгүй» хоёр товч. */
+.confirm {
+  position: absolute;
+  left: 10px;
+  bottom: 44px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100% - 20px));
+  padding: 8px 10px 8px 12px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+}
+.confirmMsg { flex: 1; min-width: 0; }
+
+/* «Дахин оролдох» — KPI-ийн явцын мөрөнд, текстийн хажууд жижиг холбоос */
+.kpiRetry {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 2px;
+  color: var(--hue);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* ── Маягтын цонх ── */
@@ -551,6 +605,22 @@
   padding: 12px 16px;
   border-top: 1px solid var(--line);
 }
+
+/* МАЯГТ ДОТОРХ АСУУЛТ — `window.confirm`-ийн оронд (`DedButetsEdit.askClose`,
+   `DedButetsBatch.ask`). Сэрэмжийн өнгө: алдаа биш, шийдвэр. */
+.askRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 10px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line));
+  border-radius: var(--r-sm);
+}
+.askMsg { flex: 1; min-width: 0; }
 .spacer { flex: 1; }
 
 .btn, .primary {

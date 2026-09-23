@@ -231,6 +231,12 @@ export function AjilBatlah() {
    */
   const approve = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
+    /* ⚠️ БАТАЛГААЖУУЛНА (2026-09-23): батлах нь эх хуудсанд шууд мөр нэмдэг,
+       буцаах товчгүй тул мөрийн тоог нэрлээд асууна. Товч нь агуулга
+       уншигдсан үед л идэвхтэй тул `detail` энд бэлэн. */
+    const d = detail.get(x.oid);
+    const n = d?.k === 'ok' ? d.p.adds.length : 0;
+    if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдсан мөрүүд «Гүйцэтгэл бөглөх» хуудсанд орно.', num(n)))) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await decideAjil({
@@ -253,7 +259,7 @@ export function AjilBatlah() {
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [busy, user, reload]);
+  }, [busy, user, reload, detail]);
 
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: AjilSubmission) => {

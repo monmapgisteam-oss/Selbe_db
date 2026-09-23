@@ -25,8 +25,11 @@ export type Work = {
   /** ⚠️ Шийдвэрийн баганаас тоолно — `Төлөв` явцын туршид өөрчлөгддөг */
   engineerReturns: number;
   managerReturns: number;
-  /** Ерөнхий менежерийн буцаалт — эцсийн шатанд гацсан ажлыг дээш нь гаргана */
+  /** Ерөнхий менежерийн (4-р шат) буцаалт — дээд шатанд гацсан ажлыг дээш нь гаргана */
   directorReturns: number;
+  /** Хэлтсийн · газрын даргын буцаалт (2026-09-23, 6 шат) */
+  headReturns: number;
+  chiefReturns: number;
 };
 
 /**
@@ -76,6 +79,8 @@ export function groupWorks(rows: Row[]): Work[] {
       engineerReturns: cycles.filter((r) => r[F.engineerDecision] === DECISION.return).length,
       managerReturns: cycles.filter((r) => r[F.managerDecision] === DECISION.return).length,
       directorReturns: cycles.filter((r) => r[F.directorDecision] === DECISION.return).length,
+      headReturns: cycles.filter((r) => r[F.headDecision] === DECISION.return).length,
+      chiefReturns: cycles.filter((r) => r[F.chiefDecision] === DECISION.return).length,
     });
   }
 
@@ -87,8 +92,8 @@ export function groupWorks(rows: Row[]): Work[] {
     const ac = a.status === STATUS.transferred ? 1 : 0;
     const bc = b.status === STATUS.transferred ? 1 : 0;
     if (ac !== bc) return ac - bc;
-    const ar = a.engineerReturns + a.managerReturns + a.directorReturns;
-    const br = b.engineerReturns + b.managerReturns + b.directorReturns;
+    const ar = a.engineerReturns + a.managerReturns + a.directorReturns + a.headReturns + a.chiefReturns;
+    const br = b.engineerReturns + b.managerReturns + b.directorReturns + b.headReturns + b.chiefReturns;
     if (ar !== br) return br - ar;
     return a.ajil.localeCompare(b.ajil, 'mn');
   });
@@ -119,6 +124,8 @@ export const STAGE_LABEL: Record<Stage, string> = {
   engineer: tr('Хяналтын инженер'),
   manager: tr('Багцын менежер'),
   director: tr('Ерөнхий менежер'),
+  head: tr('Хэлтсийн дарга'),
+  chief: tr('Газрын дарга'),
 };
 
 /**
@@ -141,6 +148,8 @@ const enteredAt = (r: Row): number | null => {
     t(r[F.engineerSent]), t(r[F.engineerReturned]),
     t(r[F.managerSent]), t(r[F.managerReturned]),
     t(r[F.directorSent]), t(r[F.directorReturned]),
+    t(r[F.headSent]), t(r[F.headReturned]),
+    t(r[F.chiefSent]), t(r[F.chiefReturned]),
   );
   return m > 0 ? m : null;
 };
@@ -150,7 +159,9 @@ const ownerName = (r: Row, s: Stage): string => {
   const v = s === 'company' ? r[F.company]
     : s === 'engineer' ? r[F.engineer]
       : s === 'manager' ? r[F.manager]
-        : r[F.director];
+        : s === 'director' ? r[F.director]
+          : s === 'head' ? r[F.head]
+            : r[F.chief];
   return String(v ?? '').trim();
 };
 

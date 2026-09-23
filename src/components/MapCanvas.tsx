@@ -2567,12 +2567,29 @@ export const MapCanvas = memo(function MapCanvas({
           // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
           if (seq !== clickSeq) return;
           const hit = pickHit(r);
-          if (hit) { pickRef.current?.(hit.attrs, hit.id); return; }
+          /**
+           * ⚠️ СОНГОЛТ АВАХ ХҮНГҮЙ бол (2026-09-23) товшилт нь hover-ийн
+           * атрибутын хайрцгийг (`MapTip`) ТЭР ЦЭГТ гаргана. Мэдрэгчтэй
+           * дэлгэцэд `pointer-move` байхгүй тул урьд нь атрибут уншигдах
+           * ямар ч зам байсангүй. Хоосон газар товшвол хайрцаг арилна.
+           * Дуудагч `onPick` өгсөн бол ХӨНДӨХГҮЙ — тэр өөрөө самбар нээнэ.
+           */
+          const tipOnly = !pickRef.current;
+          if (hit) {
+            if (tipOnly) setTip({ x: e.x, y: e.y, id: hit.id, attrs: hit.attrs, fields: hit.fields });
+            else pickRef.current?.(hit.attrs, hit.id);
+            return;
+          }
           if (view.destroyed || !e.mapPoint) { pickRef.current?.(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
-          if (!view.destroyed && seq === clickSeq) pickRef.current?.(q?.attrs ?? null, q?.id ?? null);
+          if (view.destroyed || seq !== clickSeq) return;
+          if (tipOnly) {
+            setTip(q ? { x: e.x, y: e.y, id: q.id, attrs: q.attrs, fields: null } : null);
+            return;
+          }
+          pickRef.current?.(q?.attrs ?? null, q?.id ?? null);
         })
         .catch(() => {/* view устгагдсан — сонголт өөрчлөгдөхгүй */});
     });

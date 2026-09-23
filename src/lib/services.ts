@@ -5293,7 +5293,9 @@ export type Role =
   | "guitsetgegch"
   | "injener"
   | "menejer"
-  | "eronhii";
+  | "eronhii"
+  | "heltsiin"
+  | "gazriin";
 
 /**
  * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
@@ -5312,6 +5314,9 @@ export const STAGE_ROLE: Record<Stage, Role> = {
   engineer: "injener",
   manager: "menejer",
   director: "eronhii",
+  /* ⚠️ 2026-09-23: 5 ба 6 дахь шат — хэлтсийн дарга, газрын дарга */
+  head: "heltsiin",
+  chief: "gazriin",
 };
 
 /** «Гүйцэтгэл» урсгалын үүрэг → урсгалын шат. Бусад үүрэгт `undefined`. */
@@ -5380,6 +5385,8 @@ export const ROLE_ACCESS: Record<
   injener: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   menejer: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   eronhii: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  heltsiin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  gazriin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
 };
 
 /** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */

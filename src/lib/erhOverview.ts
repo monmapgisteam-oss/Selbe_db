@@ -53,6 +53,15 @@ export type ErhSource = {
   obyem: ScopedRow[];
   /** Чанарын баримт — 4 үүрэг (author · tuh · chanar · habea), 2026-09-16 */
   chanar: ScopedRow[];
+  /**
+   * Нэмэлт ажил (editor · approver) ба дэд бүтцийн засвар (editor), 2026-09-23.
+   * ⚠️ СОНГОМОЛ — `erhOverview.check.mjs`-ийн хуучин `empty()` эх сурвалж
+   *    эдгээргүй тул байхгүйг `[]` гэж үзнэ.
+   * ⚠️ `butets`-ийн багц нь `BUTETS_PACKS` түлхүүр (25 багц) — `PKG_GROUPS` БИШ,
+   *    тиймээс багцын тоймд (`pkgErh`) ОРОХГҮЙ, зөвхөн хүний тоймд гарна.
+   */
+  ajil?: ScopedRow[];
+  butets?: ScopedRow[];
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -76,6 +85,9 @@ export type UserErh = {
   huvaari: RoleLine[];
   obyem: RoleLine[];
   chanar: RoleLine[];
+  ajil: RoleLine[];
+  /** Дэд бүтцийн засвар — багц нь `BUTETS_PACKS` түлхүүр */
+  butets: RoleLine[];
   caps: string[];
   views: { open: number; total: number };
   /** Ямар нэг эрх байгаа эсэх — «юу ч хийхгүй» аккаунтыг ялгана */
@@ -103,6 +115,8 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const huvaari = lines(src.huvaari);
   const obyem = lines(src.obyem);
   const chanar = lines(src.chanar);
+  const ajil = lines(src.ajil ?? []);
+  const butets = lines(src.butets ?? []);
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
 
@@ -113,9 +127,12 @@ export function userErh(src: ErhSource, user: string): UserErh {
     huvaari,
     obyem,
     chanar,
+    ajil,
+    butets,
     caps,
     views,
-    any: !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0 || caps.length > 0,
+    any: !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
+      || ajil.length > 0 || butets.length > 0 || caps.length > 0,
   };
 }
 
@@ -129,6 +146,8 @@ export type PkgErh = {
   huvaari: Record<string, string[]>;
   obyem: Record<string, string[]>;
   chanar: Record<string, string[]>;
+  /** Нэмэлт ажил — editor · approver (2026-09-23) */
+  ajil: Record<string, string[]>;
   /** Гацаа ба цоорхойн жагсаалт — `pkgIssues` бөглөнө */
   issues: PkgIssue[];
 };
@@ -179,8 +198,12 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
   const huvaari = byRole(src.huvaari);
   const obyem = byRole(src.obyem);
   const chanar = byRole(src.chanar);
+  const ajil = byRole(src.ajil ?? []);
 
-  return { bagts, flow, qaqc, huvaari, obyem, chanar, issues: pkgIssues(bagts, flow, huvaari, obyem, chanar) };
+  return {
+    bagts, flow, qaqc, huvaari, obyem, chanar, ajil,
+    issues: pkgIssues(bagts, flow, huvaari, obyem, chanar, ajil),
+  };
 }
 
 /**
@@ -196,6 +219,7 @@ function pkgIssues(
   huvaari: Record<string, string[]>,
   obyem: Record<string, string[]>,
   chanar: Record<string, string[]>,
+  ajil: Record<string, string[]> = {},
 ): PkgIssue[] {
   const out: PkgIssue[] = [];
 
@@ -233,7 +257,16 @@ function pkgIssues(
     out.push({ tone: 'bad', key: 'obyemSelfApprove', args: [bagts, oB.join(', ')] });
   }
 
-  /* ── Гүйцэтгэлийн урсгал — дөрвөн шат бүрэн байх ёстой ── */
+  /* ── Нэмэлт ажил — обьёмтой ИЖИЛ дүрэм (`ajilBatlah.decideAjil` зохиогч=батлагчийг татгалзана) ── */
+  const aA = ajil.editor ?? [];
+  const aB = ajil.approver ?? [];
+  if (aA.length && !aB.length) {
+    out.push({ tone: 'bad', key: 'ajilNoApprover', args: [bagts] });
+  } else if (aA.length && aB.length && aB.every((u) => aA.includes(u))) {
+    out.push({ tone: 'bad', key: 'ajilSelfApprove', args: [bagts, aB.join(', ')] });
+  }
+
+  /* ── Гүйцэтгэлийн урсгал — зургаан шат бүрэн байх ёстой ── */
   const gaps = STAGE_ORDER.filter((st) => flow[st].length === 0);
   if (gaps.length && gaps.length < STAGE_ORDER.length) {
     /* ⚠️ БҮГД хоосон бол тэр багцад урсгал хараахан эхлээгүй — анхааруулга

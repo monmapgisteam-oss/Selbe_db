@@ -178,6 +178,18 @@ export function totalsEpoch(): number {
   return totalsEpochN;
 }
 
+/**
+ * ДАХИН ТАТАХ — унасан давхаргын дүнг хэрэглэгч ӨӨРӨӨ дахин оролдуулна.
+ *
+ * ⚠️ `dropTotalsCache`-тай ижил механизм (эрин өсөж, захиалагчид сэрнэ):
+ * дутуу Map хэзээ ч кэшлэгддэггүй тул хаях кэш байхгүй ч эрин өсөхгүй бол
+ * `key` хэвээр үлдэж, `usePlanTotalsLive` дахин татахгүй. Нэр нь ЗОРИЛГЫГ
+ * ялгана: тэр нь «бичсэний дараа», энэ нь «унасны дараа».
+ */
+export function retryTotals(): void {
+  dropTotalsCache();
+}
+
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
@@ -257,6 +269,11 @@ export type LiveTotals = {
   /** БҮГД унасан — жинхэнэ алдаа (нэг нэгээр унах нь `map`-д дутуугаар илэрнэ) */
   error: Error | null;
   /**
+   * ХЭДЭН давхарга унасан — дуудагч «N давхарга татагдсангүй» гэж ил хэлж,
+   * `retryTotals`-оор дахин оролдуулна. Урьд нь зөвхөн console-д гардаг байв.
+   */
+  failed: number;
+  /**
    * `map`-ын зарим утга ХӨТЧИЙН КЭШЭЭС (өмнөх session) — амьд дүн хараахан
    * бүгд ирээгүй. Бүгд ирмэгц `false`. Дуудагч заавал хэрэглэх албагүй.
    */
@@ -271,17 +288,17 @@ export function usePlanTotalsLive(
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(",")}`;
   const [st, setSt] = useState<LiveTotals>(() => ({
-    map: new Map(), done: 0, total: ids.length, error: null, stale: false,
+    map: new Map(), done: 0, total: ids.length, error: null, failed: 0, stale: false,
   }));
 
   useEffect(() => {
     if (!enabled) {
-      setSt({ map: new Map(), done: 0, total: 0, error: null, stale: false });
+      setSt({ map: new Map(), done: 0, total: 0, error: null, failed: 0, stale: false });
       return undefined;
     }
     const hit = totalsCache.get(key);
     if (hit) {
-      setSt({ map: hit, done: hit.size, total: ids.length, error: null, stale: false });
+      setSt({ map: hit, done: hit.size, total: ids.length, error: null, failed: 0, stale: false });
       return undefined;
     }
     let alive = true;
@@ -299,7 +316,7 @@ export function usePlanTotalsLive(
     /* Дэлгэцэнд өгөх Map: кэш доор, амьд дүн дээр. Амьд дүн бүгд ирмэгц
        кэш хэрэггүй — зөвхөн амьд Map үлдэнэ. */
     const view = () => (seed ? new Map([...seed, ...map]) : new Map(map));
-    setSt({ map: view(), done: 0, total: ids.length, error: null, stale: !!seed });
+    setSt({ map: view(), done: 0, total: ids.length, error: null, failed: 0, stale: !!seed });
 
     /**
      * ⚠️ ХЭСЭГЧИЛСЭН ШИНЭЧЛЭЛ. Хүсэлт бүрд `setSt` дуудвал 74 рендер болно;
@@ -313,7 +330,7 @@ export function usePlanTotalsLive(
       if (!alive) return;
       /* ⚠️ Map-ыг ХУУЛЖ өгнө — React нь лавлагааны адилтгалаар шалгадаг тул
          нэг Map-ыг мутацлаад дамжуулбал дахин рендер ОГТ болохгүй. */
-      setSt({ map: view(), done, total: ids.length, error: null, stale: !!seed });
+      setSt({ map: view(), done, total: ids.length, error: null, failed, stale: !!seed });
     };
     const bump = () => { if (timer == null) timer = setTimeout(flush, 120); };
 
@@ -350,7 +367,11 @@ export function usePlanTotalsLive(
         map: new Map(map),
         done: ids.length,
         total: ids.length,
-        error: failed === ids.length ? (firstErr ?? new Error("no data")) : null,
+        /* ⚠️ Хоосон жагсаалт (`ids.length === 0`) нь алдаа БИШ (2026-09-23):
+           багц хуваарилагдаагүй аккаунтад `0 === 0` → «Тоо татагдсангүй: no
+           data» гэсэн худал алдаа гардаг байв. */
+        error: ids.length > 0 && failed === ids.length ? (firstErr ?? new Error("no data")) : null,
+        failed,
         stale: false,
       });
     })();

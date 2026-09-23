@@ -229,7 +229,7 @@ assert.equal(buildSchem(twoPkg, 'Багц 1').zovshoorol.health, 'bad');
 
 /* Төлөв бүр ЯГ нэг шатанд харьяалагдана */
 const all = Object.values(STATUS);
-assert.equal(all.length, 7, 'төлөвийн тоо өөрчлөгдсөн — схемийг дахин шалга');
+assert.equal(all.length, 11, 'төлөвийн тоо өөрчлөгдсөн — схемийг дахин шалга');
 for (const st of all) {
   assert.ok(STAGE_ORDER.includes(OWNER[st]), `${st}: эзэн нь мэдэгдэхгүй`);
 }
@@ -260,14 +260,14 @@ assert.equal(done.hyanalt.metrics[0].value, 0, 'дууссан ажил хүлэ
 assert.equal(done.hyanalt.health, 'good');
 
 const rail = stageRail({ ...EMPTY, review: [row(STATUS.engineerReview)] });
-assert.equal(rail.length, 4, 'зурвас дөрвөн шаттай');
+assert.equal(rail.length, 6, 'зурвас зургаан шаттай (2026-09-23)');
 assert.equal(rail.find((x) => x.stage === 'engineer').n, 1);
 
-/* «Шилжүүлсэн» нь аль ч шатны гар дээр биш — `OWNER` нь түүнийг `director` гэдэг */
+/* «Шилжүүлсэн» нь аль ч шатны гар дээр биш — `OWNER` нь түүнийг `chief` гэдэг */
 const railDone = stageRail({ ...EMPTY, review: [row(STATUS.transferred)] });
 assert.equal(
-  railDone.find((x) => x.stage === 'director').n, 0,
-  'дууссан ажил ерөнхий менежерийн гар дээр тоологдов',
+  railDone.find((x) => x.stage === 'chief').n, 0,
+  'дууссан ажил газрын даргын гар дээр тоологдов',
 );
 
 /**

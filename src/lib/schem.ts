@@ -12,7 +12,9 @@
  *
  * ⚠️ ХАМГИЙН ЧУХАЛ ДҮРЭМ — БАЙХГҮЙ ПРОЦЕССЫГ БАЙГАА МЭТ ЗУРАХГҮЙ.
  * Кодыг судалснаар: төсөлд ЖИНХЭНЭ төлөвийн машин ЕРДӨӨ НЭГ — гүйцэтгэлийн
- * дөрвөн шатны хяналт (`hyanalt.ts`: 7 төлөв, `OWNER`, `apply`/`recheck`).
+ * зургаан шатны хяналт (`hyanalt.ts`: компани → инженер → менежер → ерөнхий
+ * менежер → хэлтсийн дарга → газрын дарга, буцаалт НЭГ алхам ухарна;
+ * `OWNER`, `apply`/`recheck`).
  * Бусад нь:
  *   · Зөвшөөрөл — дараалал нь ӨГӨГДЛӨӨС (`shat` бүхэл тоо, багц бүрд өөр)
  *   · Газар чөлөөлөлт — шат БИШ, `Tuluv` талбарын АНГИЛАЛ
@@ -94,9 +96,9 @@ export type SchemEdge = {
 /* ══════════════════ Топологи ══════════════════ */
 
 /**
- * ⚠️ ГҮЙЦЭТГЭЛИЙН 4 ШАТ НЬ НЭГ ЗАНГИЛАА. Тэднийг дөрвөн тусдаа зангилаа
- * болговол схемийн 40%-ийг нэг дэд процесс эзэлж, «төслийн мөчлөг» гэдэг санаа
- * алдагдана. Оронд нь `hyanalt` зангилаа ДОТРОО дөрвөн цэгийн зурвас
+ * ⚠️ ГҮЙЦЭТГЭЛИЙН 6 ШАТ НЬ НЭГ ЗАНГИЛАА. Тэднийг зургаан тусдаа зангилаа
+ * болговол схемийн талыг нэг дэд процесс эзэлж, «төслийн мөчлөг» гэдэг санаа
+ * алдагдана. Оронд нь `hyanalt` зангилаа ДОТРОО зургаан цэгийн зурвас
  * харуулна (`Guitsetgel.tsx`-ийн `Track` загвар) — жинхэнэ төлөвийн машин ил
  * хэвээр, дэлгэрэнгүй нь тэр харагдацад.
  */
@@ -149,7 +151,7 @@ export const NODES: readonly SchemNode[] = [
   {
     id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
     title: tr('Гүйцэтгэлийн хяналт'),
-    desc: tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер'),
+    desc: tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга'),
   },
   {
     id: 'habea', col: 3, row: 2, view: 'habea', icon: 'flame',
@@ -551,8 +553,9 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
   /** ⚠️ «Шилжүүлсэн» = ДУУССАН ажил. Хүлээгдэж буйд тоологдохгүй тул тусад нь. */
   done: number;
 } {
-  const byStage = { company: 0, engineer: 0, manager: 0, director: 0 } as Record<Stage, number>;
-  const returnedByStage = { company: 0, engineer: 0, manager: 0, director: 0 } as Record<Stage, number>;
+  /* ⚠️ `STAGE_ORDER`-оос угсарна (2026-09-23) — шат нэмэгдэхэд энд хоцрохгүй */
+  const byStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
+  const returnedByStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
   let pending = 0;
   let returned = 0;
   let done = 0;
@@ -568,7 +571,9 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
     pending += 1;
     if (st === STATUS.engineerReturned
       || st === STATUS.managerReturned
-      || st === STATUS.directorReturned) {
+      || st === STATUS.directorReturned
+      || st === STATUS.headReturned
+      || st === STATUS.chiefReturned) {
       returned += 1;
       returnedByStage[owner] += 1;
     }
@@ -576,7 +581,7 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
   return { byStage, returnedByStage, pending, returned, done };
 }
 
-/** `hyanalt` зангилааны дотоод дөрвөн цэгийн зурвас — гадуур экспортлоно */
+/** `hyanalt` зангилааны дотоод зургаан цэгийн зурвас — гадуур экспортлоно */
 export function stageRail(src: SchemSources, pkg?: string | null): { stage: Stage; n: number }[] | null {
   if (!src.review) return null;
   const rows = pkg

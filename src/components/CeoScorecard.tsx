@@ -35,6 +35,7 @@ import {
   loadScoreBase, loadScoreLand, loadScoreQual, loadScorePlan, assemble, type Extras,
 } from '@/lib/ceo/scorecardLoad';
 import { KpiDetail, type Slot } from './CeoBoard';
+import { shortError } from '@/lib/ceo/review';
 import s from './ceoScorecard.module.css';
 
 /** Асуудлын зэргийн нэр — `tr()` render үед */
@@ -325,6 +326,10 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     [works],
   );
   const matched = useMemo(() => (works ?? []).filter((w) => passFilter(w, filter)).length, [works, filter]);
+  /* Бүтэн алдаа консолд; дэлгэцэнд богино мөр (`shortError`) */
+  useEffect(() => {
+    if (baseQ.state === 'error') console.warn('[selbe] CEO scorecard:', baseQ.error);
+  }, [baseQ]);
 
   if (baseQ.state === 'error') {
     return (
@@ -332,7 +337,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
         <p className={s.err}>
           {tr('Багц ажлын оноо татагдсангүй.')}{' '}
           <button type="button" className={s.retry} onClick={() => baseQ.retry?.()}>{tr('Дахин оролдох')}</button>
-          <span className={s.errMsg}> {baseQ.error.message}</span>
+          <span className={s.errMsg}> {shortError(baseQ.error)}</span>
         </p>
       </section>
     );
@@ -467,7 +472,8 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         <GroupStatusBar type={g.type} counts={statusCounts(g.works)} filter={filter} onCell={toggleCell} />
                       </td>
                       {DIMS.map((d) => <td key={d} className={s.cell}><Score v={g.dims[d]} pending={g.pending[d]} loading={loadingDims.has(d)} dim={d} /></td>)}
-                      <td className={s.cell}><Score v={g.total} /></td>
+                      {/* ⚠️ Хүнд хэмжээсүүд ирээгүй байхад НИЙТ оноог бэлэн мэт харуулахгүй */}
+                      <td className={s.cell}><Score v={g.total} loading={loadingDims.size > 0} /></td>
                     </tr>
                     {!isClosed && shown.map((w) => (
                       <tr
@@ -500,7 +506,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                             <Score v={w.dims[d].score} pending={w.dims[d].pending} loading={!w.cancelled && loadingDims.has(d)} dim={d} />
                           </td>
                         ))}
-                        <td className={s.cell}><Score v={w.total} /></td>
+                        <td className={s.cell}><Score v={w.total} loading={!w.cancelled && loadingDims.size > 0} /></td>
                       </tr>
                     ))}
                   </Fragment>

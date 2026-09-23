@@ -297,6 +297,19 @@ export function Home({
             зам ЗӨВХӨН дээрх «Нэвтрэх» (OAuth). */}
         {status === 'signed-in' || status === 'off' ? (
           <CeoScorecard onView={onEnterView} />
+        ) : status === 'checking' ? (
+          /* ⚠️ Шалгаж байхад «Нэвтрэх» товч харуулахгүй (2026-09-23): нэвтэрсэн
+             хэрэглэгч хуудсаа сэргээх бүрд товч анивчиж, дарвал давхар OAuth явдаг байв. */
+          <div className={s.boardGate} aria-busy="true">
+            <p>{tr('Шалгаж байна…')}</p>
+          </div>
+        ) : status === 'denied' ? (
+          /* ⚠️ Эрхгүй бүртгэл — ерөнхий «Нэвтрэх» товч нь дахин ижил бүртгэлээр
+             нэвтрүүлж давталт үүсгэдэг байв; шалтгааныг хэлж, өөр бүртгэл санал болгоно. */
+          <div className={s.boardGate} role="alert">
+            <p>{tr('Энэ бүртгэлд порталд хандах эрх олгогдоогүй байна — админд хандана уу.')}</p>
+            <button type="button" className={s.signBtn} onClick={signOut}>{tr('Өөр бүртгэлээр нэвтрэх')}</button>
+          </div>
         ) : (
           <div className={s.boardGate}>
             <p>{tr('Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.')}</p>

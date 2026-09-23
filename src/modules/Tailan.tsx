@@ -28,9 +28,10 @@ import { t as tr } from '@/lib/i18nCore';
 import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { num, pct } from '@/lib/format';
+import { num, pct, dateTime } from '@/lib/format';
+import { invalidate } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
-import { emailViaEml, emailViaMailto, downloadReportPdf } from '@/lib/emailReport';
+import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } from '@/lib/emailReport';
 import {
   useReportExtra, buildFindings, type ReportExtra,
   /* ⚠️ 2026-09-04: эдгээр нь ХҮЛЭЭЛТИЙН ЯВЦЫГ хэмжихэд л хэрэглэгдэнэ — тоог нь
@@ -282,11 +283,7 @@ export function Tailan() {
 function TailanFull() {
   /** Огноо — ЗӨВХӨН клиент дээр (сервертэй зөрж hydration эвдэхээс сэргийлнэ). */
   const [date, setDate] = useState('');
-  useEffect(() => {
-    setDate(new Date().toLocaleString('mn-MN', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    }));
-  }, []);
+  useEffect(() => { setDate(dateTime(Date.now())); }, []);
 
   const bagts = useBagtsTable();
   const ex = useReportExtra();
@@ -315,15 +312,19 @@ function TailanFull() {
    * тэдгээр машин дээр татсан .eml нь зөвхөн уншигдах хэлбэрээр нээгдэж, бичих
    * цонх гарахгүй — өөрөөр хэлбэл тайланг илгээх ямар ч арга үлддэггүй байлаа.
    */
+  /** Амжилтын мөр — товч дарсны дараа юу болсныг хэлнэ (2026-09-23) */
+  const [ok, setOk] = useState('');
   const run = useCallback(
-    async (fn: (r: BagtsRow[], d: string, x: ReportExtra) => Promise<void>, what: string) => {
+    async (fn: (r: BagtsRow[], d: string, x: ReportExtra) => Promise<void>, what: string, done: string) => {
       if (!rows || !extra || busy) return;
       /* ⚠️ Шинэ оролдлого эхлэхэд өмнөх алдааг цэвэрлэнэ — эс бөгөөс амжилттай
          болсон хойно ч хуучин улаан мэдэгдэл дэлгэц дээр үлдэнэ. */
       setFail('');
+      setOk('');
       setBusy(true);
       try {
-        await fn(rows, date || new Date().toLocaleString('mn-MN'), extra);
+        await fn(rows, date || dateTime(Date.now()), extra);
+        setOk(done);
       } catch (e) {
         console.error('[selbe] тайлан:', e);
         /* ⚠️ `alert()` БИШ: тэр нь UI-г блоклодог модаль бөгөөд порталын бусад
@@ -341,12 +342,30 @@ function TailanFull() {
     [rows, extra, busy, date],
   );
 
-  const send = useCallback(() => run(emailViaEml, tr('Тайлан')), [run]);
-  const sendWeb = useCallback(() => run(emailViaMailto, tr('Мэйл')), [run]);
-  const savePdf = useCallback(() => run(downloadReportPdf, 'PDF'), [run]);
+  const send = useCallback(
+    () => run(emailViaEml, tr('Тайлан'), tr('Selbe_tailan.eml татагдлаа — Outlook-оор нээнэ үү')),
+    [run],
+  );
+  /* ⚠️ `mailto:` нээгдсэн эсэхийг хөтөч хэлдэггүй — заавар үргэлж харагдана */
+  const sendWeb = useCallback(
+    () => run(emailViaMailto, tr('Мэйл'), tr('Мэйл нээгдээгүй бол Selbe_tailan.pdf-ийг гараар хавсаргана уу')),
+    [run],
+  );
+  const savePdf = useCallback(() => run(downloadReportPdf, 'PDF', tr('Selbe_tailan.pdf татагдлаа')), [run]);
 
   // ⚠️ PDF нь дэлгэцтэй ИЖИЛ байх ёстой тул БҮХ өгөгдөл ачаалагдтал илгээхгүй
   const ready = !!rows && !!extra;
+  /* ⚠️ Хүлээн авагчгүй бол мэйлийн хоёр зам хаалттай — `To:` хоосон мэйл үүсгэхгүй */
+  const hasTo = REPORT_RECIPIENTS.length > 0;
+  /**
+   * ШИНЭЧЛЭХ — тайлангийн 5 минутын кэшийг хаяна (2026-09-23). `loadReportExtra`
+   * ба `useBagtsTable`-ийн уншдаг хүснэгтүүдийн тагийг хүчингүй болгоход
+   * `useAsync` дахин татна.
+   */
+  const refresh = useCallback(
+    () => invalidate('BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL'),
+    [],
+  );
 
   /* ⚠️ Алдаа гарсан бол хүлээлтийн араг ясыг ХАРУУЛАХГҮЙ — `Data` нь нэрлэсэн
      алдаа ба «Дахин оролдох» товчийг гаргах ёстой. Эс бөгөөс унасан эх
@@ -367,7 +386,7 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={!ready || busy}
+            disabled={!ready || busy || !hasTo}
             onClick={send}
             title={tr('Outlook нээгдэж, мэйл бичигдсэн, PDF хавсаргагдсан, Send дарахад бэлэн (юу ч чирэх шаардлагагүй)')}
           >
@@ -379,7 +398,7 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={!ready || busy}
+            disabled={!ready || busy || !hasTo}
             onClick={sendWeb}
             title={tr('New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана')}
           >
@@ -397,12 +416,31 @@ function TailanFull() {
             <Icon name="chart" size={15} />
             {tr('PDF татах')}
           </button>
+          <button
+            type="button"
+            className={r.btn}
+            disabled={busy || waiting}
+            onClick={refresh}
+            title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}
+          >
+            <Icon name="chart" size={15} />
+            {tr('Шинэчлэх')}
+          </button>
         </div>
+        {/* Хүлээн авагч ба Outlook-ийн зөвлөмж — товчнуудын доор, үргэлж харагдана */}
+        <p className={r.sub} style={{ margin: '4px 0 0' }}>
+          {hasTo
+            ? tr('Хүлээн авагч: {0}', REPORT_RECIPIENTS.join(', '))
+            : tr('Хүлээн авагч тохируулаагүй (NEXT_PUBLIC_REPORT_RECIPIENTS)')}
+          {' · '}
+          {tr('Classic Outlook → «Outlook-оор илгээх»; New Outlook / вэб → «Шинэ Outlook / вэб»')}
+        </p>
         {/* ⚠️ Алдааг зурвасын ДОТОР, товчнуудын доор — хэрэглэгч дарсан товчныхоо
             хажууд шалтгааныг харна. `role="alert"` нь дэлгэц уншигчид ч хүргэнэ
             (`Data`-гийн алдааны блоктой ижил). Товчнууд идэвхтэй хэвээр тул
             «дахин оролдох» нь дахин дарахад хангагдана. */}
         {fail && <p className={r.fail} role="alert">{fail}</p>}
+        {ok && <p className={r.sub} role="status" style={{ margin: '4px 0 0' }}>{ok}</p>}
       </div>
 
       <article className={r.paper}>
@@ -410,6 +448,8 @@ function TailanFull() {
           <h1 className={r.title}>{tr('Сэлбэ 20 минутын хотын ерөнхий тайлан')}</h1>
           <p className={r.sub}>
             {tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт')}{date && <> {tr('· Огноо:')} {date}</>}
+            {/* ⚠️ Өгөгдөл ХЭЗЭЭ татагдсан — 5 мин кэш тул огноо ≠ өгөгдлийн агшин */}
+            {extra && <> {tr('· Өгөгдөл:')} {dateTime(extra.fetchedAt)}</>}
           </p>
         </header>
 
@@ -684,7 +724,8 @@ function TailanFull() {
                     <section id="full-4" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('4. Газар чөлөөлөлт')}</h2>
                       <p className={r.intro}>
-                        {tr('Төслийн талбайд нийт')} {num(x.land.parcels)} {tr('нэгж талбар (')}{num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь')}
+                        {/* ⚠️ `null` = давхарга татагдаагүй — 0 гэж бичихгүй */}
+                        {tr('Төслийн талбайд нийт')} {x.land.parcels == null ? tr('татагдсангүй') : num(x.land.parcels)} {tr('нэгж талбар (')}{x.land.areaM2 == null ? tr('татагдсангүй') : num(x.land.areaM2)} {tr('м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь')}
                         {' '}{x.land.pct != null ? pct(x.land.pct, 1) : '—'}. {tr('Шийдвэрлэгдээгүй нэгж талбарын тоо: {0}.', num(d.landLeft))}
                       </p>
                       {/* ⚠️ Нийт 2,117-гийн доторх хуваарилалт ч давхарласан зурвас
@@ -717,7 +758,7 @@ function TailanFull() {
                           ))}
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
-                            <td className={r.num}>{num(x.land.parcels)}</td>
+                            <td className={r.num}>{x.land.parcels == null ? tr('татагдсангүй') : num(x.land.parcels)}</td>
                             <td className={r.num}>100%</td>
                           </tr>
                         </tbody>

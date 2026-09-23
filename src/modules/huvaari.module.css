@@ -112,6 +112,37 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
+/* Дарахад хаагддаг тэмдэглэл — заагч нь үүнийг илэрхийлнэ (2026-09-23) */
+.noteDismiss { cursor: pointer; }
+/* Баннерын ХААХ × — баруун захад */
+.noteX {
+  font: inherit;
+  float: right;
+  margin: -2px 0 0 8px;
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.6;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.noteX:hover { opacity: 1; }
+/* Баннер доторх жижиг үйлдлийн товч (Шинэчлэх · Ноорогт буцаах) */
+.noteBtn {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.noteBtn:hover { border-color: var(--data); }
+.noteBtn:disabled { opacity: 0.45; cursor: default; }
 
 /* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн ажлын мод · баруун хуанли ── */
 
@@ -497,7 +528,9 @@
   border-left: 1.5px dashed var(--bad);
   z-index: 2;
 }
-.tlBarOn { outline: 1.5px solid var(--ink); outline-offset: 1px; z-index: 3; }
+/* ⚠️ z-index 2 (2026-09-23 аудит) — 3 байхад `.plHead` (3)-тай тэнцэж, босоо
+   гүйлгэхэд сонгосон зурвас наалдмал толгойн ДЭЭГҮҮР гардаг байв. */
+.tlBarOn { outline: 1.5px solid var(--ink); outline-offset: 1px; z-index: 2; }
 
 /* ⚠️ ГҮЙЦЭТГЭЛийн төлөв. «Хэмжигдээгүй» нь «эхлээгүй»-ээс ЗУРААСААР ялгарна —
    өнгө сохор хүнд ч ялгагдана, мөн «мэдэхгүй»-г «тэг» гэж уншуулахгүй. */
@@ -826,11 +859,13 @@
   /* ⚠️ (2026-09-23) Зурвасын ГАДНА (`right: -13px`, 9px): урьд нь `-7px`/11px
      байж баруун сунгах бариулыг (`.plGripR` 7px) хагас халхалдаг байв — одоо
      давхцахгүй. z-index 1: `.plBar` (1) дотор; `.gSide` (4)-ээс доош. */
-  right: -13px;
+  right: -16px;
   top: 50%;
-  width: 9px;
-  height: 9px;
-  margin-top: -5px;
+  /* ⚠️ (2026-09-23) 9 → 12px, дарах талбар 24px (`::before`), мөр hover-т 0.7:
+     урьд нь бүдэг жижиг цэг олдохгүй, чирж холбох боломж мэдэгддэггүй байв. */
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
   border-radius: 50%;
   background: var(--data);
   border: 2px solid var(--surface);
@@ -838,6 +873,8 @@
   cursor: crosshair;
   z-index: 1;
 }
+.plLink::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+.plLane:hover .plLink { opacity: 0.7; }
 .plBar:hover .plLink, .plLink:hover { opacity: 1; }
 /* Холбох чирэлтийн үед тавьж болох мөрүүд — зөөлөн тодруулга */
 .plLaneDrop:hover { background: color-mix(in srgb, var(--data) 18%, transparent); }
@@ -871,6 +908,8 @@
    */
   /* ⚠️ Бодит огноо (`.rowDate`-д багтана) ба нөөцийн багана ч нуугдана (2026-09-23) */
   .gHeadDate, .gHeadDays, .rowDate, .rowDays, .gHeadRes, .rowRes { display: none; }
+  /* ⚠️ Багана нуугдсан үед хураах товч ч нуугдана (2026-09-23) — юу ч хийдэггүй товч үлдэж байв */
+  .colsBtn { display: none; }
   .gSide { flex-basis: clamp(260px, 46%, 420px); }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }

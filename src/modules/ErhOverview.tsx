@@ -30,6 +30,9 @@ import { listQaqcAssigns, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { listObyemAssigns, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { listChanarAssigns, subscribeChanarAcl } from '@/lib/chanarAcl';
+import { listAjilAssigns, subscribeAjilAcl } from '@/lib/ajilAcl';
+import { listButetsAssigns, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { resolveAccess } from '@/lib/permissions';
 import { VIEWS } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
@@ -52,6 +55,12 @@ const issueText = (i: PkgIssue): string => {
   if (i.key === 'obyemSelfApprove') {
     return tr('{0}: {1} нь засварлагч БА батлагч хоёулаа — обьёмын засвар гацна.', i.args[0], i.args[1]);
   }
+  if (i.key === 'ajilNoApprover') {
+    return tr('{0}: нэмэлт ажлын батлагч томилоогүй — нэмсэн ажлын мөрийг хэн ч батлахгүй.', i.args[0]);
+  }
+  if (i.key === 'ajilSelfApprove') {
+    return tr('{0}: {1} нь мөр нэмэгч БА батлагч хоёулаа — нэмэлт ажил гацна.', i.args[0], i.args[1]);
+  }
   if (i.key === 'chanarNoReviewer') {
     return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — гурван хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн аргачлал хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
   }
@@ -62,8 +71,10 @@ const issueText = (i: PkgIssue): string => {
 };
 
 /** Үүргийн монгол нэр — дэд систем бүрд өөр */
-const roleLabel = (kind: 'huvaari' | 'obyem' | 'chanar', role: string): string => {
+type ScopedKind = 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets';
+const roleLabel = (kind: ScopedKind, role: string): string => {
   if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : tr('Батлагч');
+  if (kind === 'ajil') return role === 'editor' ? tr('Мөр нэмэгч') : tr('Батлагч');
   if (kind === 'chanar') {
     if (role === 'author') return tr('Гүйцэтгэгч');
     if (role === 'tuh') return tr('ТУХ');
@@ -110,6 +121,8 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
   useEffect(() => subscribeHuvaariAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeObyemAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => tick((n) => n + 1)), []);
+  useEffect(() => subscribeAjilAcl(() => tick((n) => n + 1)), []);
+  useEffect(() => subscribeButetsAcl(() => tick((n) => n + 1)), []);
 
   const [mode, setMode] = useState<'user' | 'pkg'>('pkg');
 
@@ -122,6 +135,8 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
     huvaari: listHuvaariAssigns(),
     obyem: listObyemAssigns(),
     chanar: listChanarAssigns(),
+    ajil: listAjilAssigns(),
+    butets: listButetsAssigns(),
     caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
       const a = resolveAccess(u);
@@ -201,6 +216,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
               <RoleBlock title={tr('Хуваарь')} kind="huvaari" map={p.huvaari} />
               <RoleBlock title={tr('Инженерийн обьём')} kind="obyem" map={p.obyem} />
               <RoleBlock title={tr('Чанарын баримт')} kind="chanar" map={p.chanar} />
+              <RoleBlock title={tr('Нэмэлт ажил')} kind="ajil" map={p.ajil} />
 
               <div className={s.aclRole}>
                 <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
@@ -236,6 +252,16 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
               <UserRoles title={tr('Хуваарь')} kind="huvaari" lines={u.huvaari} />
               <UserRoles title={tr('Инженерийн обьём')} kind="obyem" lines={u.obyem} />
               <UserRoles title={tr('Чанарын баримт')} kind="chanar" lines={u.chanar} />
+              <UserRoles title={tr('Нэмэлт ажил')} kind="ajil" lines={u.ajil} />
+              {/* ⚠️ Дэд бүтцийн багц нь түлхүүр (`p.key`) хэлбэрээр хадгалагддаг — нэрээр нь харуулна */}
+              <UserRoles
+                title={tr('Дэд бүтцийн засвар')}
+                kind="butets"
+                lines={u.butets.map((l) => ({
+                  ...l,
+                  bagts: l.bagts?.map((k) => BUTETS_PACKS.find((x) => x.key === k)?.name ?? k) ?? null,
+                }))}
+              />
 
               {u.qaqc !== null && (
                 <div className={s.aclRole}>
@@ -271,7 +297,9 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
         <button type="button" className={s.aclPkg} onClick={() => onGo('qaqc')}>{tr('Чанар')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('huvaari')}>{tr('Хуваарь')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('obyem')}>{tr('Обьём')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('chanar')}>{tr('Чанарын баримт')}</button>
+        <button type="button" className={s.aclPkg} onClick={() => onGo('chanar')}>{tr('Чанарын баримт')}</button>{' '}
+        <button type="button" className={s.aclPkg} onClick={() => onGo('ajil')}>{tr('Нэмэлт ажил')}</button>{' '}
+        <button type="button" className={s.aclPkg} onClick={() => onGo('butets')}>{tr('Дэд бүтэц')}</button>
       </p>
     </div>
   );
@@ -280,7 +308,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
 /** Багцын хөзөр дэх нэг дэд системийн үүргүүд */
 function RoleBlock({
   title, kind, map,
-}: { title: string; kind: 'huvaari' | 'obyem' | 'chanar'; map: Record<string, string[]> }) {
+}: { title: string; kind: ScopedKind; map: Record<string, string[]> }) {
   const roles = Object.keys(map);
   return (
     <div className={s.aclRole}>
@@ -299,7 +327,7 @@ function RoleBlock({
 /** Хүний хөзөр дэх нэг дэд системийн үүргүүд */
 function UserRoles({
   title, kind, lines,
-}: { title: string; kind: 'huvaari' | 'obyem' | 'chanar'; lines: RoleLine[] }) {
+}: { title: string; kind: ScopedKind; lines: RoleLine[] }) {
   if (!lines.length) return null;
   return (
     <div className={s.aclRole}>

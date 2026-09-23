@@ -39,7 +39,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import {
-  dropTotalsCache, usePlanTotals, usePlanTotalsLive,
+  dropTotalsCache, retryTotals, usePlanTotals, usePlanTotalsLive,
   type LiveTotals, type Totals,
 } from '@/lib/totals';
 import { PackLayers, Swatch } from '@/components/PackLayers';
@@ -189,23 +189,27 @@ const cntOf = (t: Map<string, Totals>, id: string) => t.get(id)?.n ?? 0;
  * ачаалж байх зуур «0.0 км» гэж гарч, хэрэглэгч түүнийг бодит дүн гэж
  * уншина (порталын `null ≠ 0` дүрэм).
  */
+/* ⚠️ ХООСОН жагсаалт → `null` (2026-09-23): багц хуваарилагдаагүй аккаунтад
+   `ids = []` бөгөөд `reduce`-ийн эхлэл 0 нь «0.0 км» гэсэн худал хэмжилт
+   гаргадаг байв. Харах давхаргагүй бол хэмжилт ч байхгүй — «—». */
 const sumOf = (t: LiveTotals, ids: string[]): number | null =>
-  ids.reduce<number | null>(
+  ids.length === 0 ? null : ids.reduce<number | null>(
     (a, id) => (a == null ? null : (t.map.has(id) ? a + lenOf(t.map, id) : null)),
     0,
   );
 
 /** Багцын тоон нийлбэр — `sumOf`-ийн ижил дүрмээр */
 const countOf = (t: LiveTotals, ids: string[]): number | null =>
-  ids.reduce<number | null>(
+  ids.length === 0 ? null : ids.reduce<number | null>(
     (a, id) => (a == null ? null : (t.map.has(id) ? a + cntOf(t.map, id) : null)),
     0,
   );
 
 /** Хүлээж буй утгын тэмдэг — тоо биш тул `num` форматаас ГАДУУР */
 const WAIT = "…";
-const kmOrWait = (m: number | null) => (m == null ? WAIT : km(m, 1));
-const cntOrWait = (n: number | null) => (n == null ? WAIT : num(n));
+/* ⚠️ Хоосон id жагсаалт нь хүлээлт БИШ — «—» (мэдээлэлгүй), «…» биш */
+const kmOrWait = (m: number | null, empty = false) => (empty ? '—' : m == null ? WAIT : km(m, 1));
+const cntOrWait = (n: number | null, empty = false) => (empty ? '—' : n == null ? WAIT : num(n));
 
 
 
@@ -259,6 +263,21 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     { layerId: string; oid: number | null; geometry?: unknown } | null
   >(null);
   const [saved, setSaved] = useState('');
+  /** Мэдэгдлийн төрөл — `err` нь улаан бөгөөд ӨӨРӨӨ арилахгүй (`toast`-ийн тайлбар) */
+  const [savedKind, setSavedKind] = useState<'ok' | 'err'>('ok');
+  /**
+   * САМБАРЫН ДОТООД БАТАЛГААЖУУЛАЛТ — `window.confirm`-ийн оронд.
+   *
+   * ⚠️ 2026-09-23: `window.confirm`-ийг хөтөч «энэ хуудас дахин харилцах цонх
+   * гаргахыг хориглох»-оор хаасан үед ҮРГЭЛЖ `false` буцаадаг тул засварын
+   * горимоос гарах, хэлбэрийн засвар хаях, устгах, буцаах бүгд ЧИМЭЭГҮЙ
+   * зогсдог байв (`onMapPick`-ийн 2026-09-16-ны ижил сургамж). Одоо асуулт
+   * зургийн доод буланд мөр болж гарна; «Тийм» дарахад `onYes` үргэлжлүүлнэ.
+   * ⚠️ `danger` — устгал шиг буцаагдахгүй үйлдэлд «Тийм» улаан.
+   */
+  const [confirmQ, setConfirmQ] = useState<
+    { msg: string; onYes: () => void; danger?: boolean } | null
+  >(null);
 
   /* ── ШИНЭЭР ЗУРЖ НЭМЭХ (ArcGIS Experience Builder-ийн editor хэв) ── */
 
@@ -419,10 +438,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     dropTotalsCache();
   }, []);
 
-  const toast = useCallback((msg: string) => {
+  /**
+   * ⚠️ `kind: 'err'` (2026-09-23) — алдаа УЛААН бөгөөд 4 секундэд арилахгүй:
+   * урьд нь бүх мэдэгдэл ногоон байсан тул «Хадгалагдлаа» ба серверийн алдаа
+   * хоёр ижил харагдаж, алдаа нь уншигдахаас өмнө алга болдог байв. Алдаа нь
+   * дараагийн мэдэгдэл, ✕ товч, эсвэл горимоос гарахад арилна.
+   */
+  const toast = useCallback((msg: string, kind: 'ok' | 'err' = 'ok') => {
     setSaved(msg);
+    setSavedKind(kind);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setSaved(''), 4000);
+    if (kind === 'ok') toastTimer.current = window.setTimeout(() => setSaved(''), 4000);
   }, []);
 
   /**
@@ -432,12 +458,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * шилжих, засварын горимоос гарах. Эдгээрийн аль нэг дээр асуухаа мартвал
    * чирсэн ажил ЧИМЭЭГҮЙ алга болно — vertex зөөх нь урт, нямбай ажил тул
    * дахин хийхэд хэдэн минут алдана.
+   *
+   * ⚠️ 2026-09-23: `run` — ҮРГЭЛЖЛҮҮЛЭХ ажил. Хаях зүйлгүй бол ШУУД ажиллаж
+   * `true` буцаана; байвал самбарын асуулт (`confirmQ`) гарч `false` буцаана,
+   * «Тийм» дарахад `run` тэр үед ажиллана. `window.confirm` шиг синхрон
+   * хариулт байхгүй тул дуудагч тал үргэлжлэлээ функцээр өгнө.
    */
-  const askDropReshape = useCallback(
-    () => reshaped == null
-      || window.confirm(tr('Хадгалаагүй хэлбэрийн засвар байна. Хаях уу?')),
-    [reshaped],
-  );
+  const askDropReshape = useCallback((run: () => void): boolean => {
+    if (reshaped == null) { run(); return true; }
+    setConfirmQ({ msg: tr('Хадгалаагүй хэлбэрийн засвар байна. Хаях уу?'), onYes: run });
+    return false;
+  }, [reshaped]);
 
   /**
    * ГЕОМЕТР ТАТАХ ДАРААЛЛЫН ТОКЕН.
@@ -527,6 +558,16 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const allow = useCallback((id: string) => !hidden || !hidden.has(id), [hidden]);
   /** Энэ аккаунтад ХАРАГДАХ инженерийн давхаргууд */
   const viewIds = useMemo(() => DED_BUTETS_LAYER_IDS.filter(allow), [allow]);
+  /**
+   * Багц ХУВААРИЛАГДААГҮЙ — харах хүрээ хоосон, эсвэл засах эрхтэй ч хүрээ
+   * `[]` (fail-closed). Баруун самбарт ил мэдэгдэл (`noScope`-ийн тайлбар доор).
+   */
+  const noScope = useMemo(
+    () => (hidden !== null && viewIds.length === 0)
+      || (authStatus !== 'off' && hasCap(user?.username, 'butets') && scope !== null && scope.length === 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hidden, viewIds, scope, user, authStatus, capN],
+  );
   /** Харагдах багцууд — нэг ч давхарга нь нээлттэй бол багц гарна */
   const viewPacks = useMemo(
     () => (hidden ? INFRA_PACKS.filter((x) => x.layerIds.some(allow)) : INFRA_PACKS),
@@ -561,9 +602,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * сүлжээ өнгөт дэвсгэр дотор булагдаж, «дэд бүтцийн зураг» гэхээсээ илүү
    * ерөнхий төлөвлөгөө шиг уншигддаг байв.
    *
-   * ⚠️ ХООСОН БИШ БАЙХ НЬ ЧУХАЛ: `MapCanvas` нь сонголт ХООСОН үед
-   * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг БҮГДИЙГ асаадаг (`bare: false`).
-   * Энэ жагсаалт 16 элементтэй тул тэр салаа хэзээ ч ажиллахгүй.
+   * ⚠️ ХООСОН БАЙЖ БОЛНО (2026-09-23): `MapCanvas` нь сонголт ХООСОН үед
+   * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг асаадаг анхдагч зантай (`bare:
+   * false`) — урьд нь «жагсаалт 16 элементтэй тул тэр салаа ажиллахгүй» гэж
+   * найдаж байсан ч «Бүх давхаргыг унтраах» ба багц хуваарилагдаагүй аккаунт
+   * (`viewIds = []`) хоёр дээр ажиллаж байв. Одоо `MapCanvas`-д `bare`
+   * дамжуулдаг тул хоосон сонголт = хоосон зураг.
    *
    * ⚠️ Гэрээний багц (`pkg:*`) АНХНААСАА УНТРААЛТТАЙ: тэдгээр нь ЕТ-ийн
    * шугамтай ижил трасс дээр давхарлагдан зурагддаг тул хоёулаа зэрэг асвал
@@ -716,7 +760,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     if (multi) {
       if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) return;
       /* ⚠️ Хуваарилагдаагүй багцын объект — сонголтод орохгүй (эрхийн хүрээ) */
-      if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй')); return; }
+      if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй'), 'err'); return; }
       const oidField = LAYER_BY_ID[id]?.oid ?? OID;
       const oid = Number(a[oidField]);
       if (!Number.isFinite(oid)) return;
@@ -748,13 +792,13 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
          идэвхгүй бол `cancelReshape`-ийг дуудахгүй — `clearToken` дэмий
          хөдөлж, шинэ объект зурах (`awaitDraw`) явцад sketch арилах эрсдэлтэй. */
       if (reshape) {
-        if (!askDropReshape()) return;
-        cancelReshape();
+        askDropReshape(() => { cancelReshape(); setPick(null); setHighlight(null); });
+        return;
       }
       setPick(null); setHighlight(null); return;
     }
     /* ⚠️ Хуваарилагдаагүй багцын объект — маягт нээхгүй (эрхийн хүрээ, 2026-09-23) */
-    if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй')); return; }
+    if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй'), 'err'); return; }
     /* ⚠️ Давхарга бүрийн OID нэр ижил байх албагүй — бүртгэлээс уншина */
     const oidField = LAYER_BY_ID[id]?.oid ?? OID;
     const oid = Number(a[oidField]);
@@ -762,12 +806,13 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
     /* ⚠️ Өөр объект руу шилжихээс ӨМНӨ хадгалаагүй vertex засварыг асууна —
        эс бөгөөс чирсэн ажил чимээгүй алга болно. */
-    if (!askDropReshape()) return;
-    cancelReshape();
-    setTplOpen(false);
-    setAwaitDraw(false);
-    setPick({ layerId: id, oid });
-    setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
+    askDropReshape(() => {
+      cancelReshape();
+      setTplOpen(false);
+      setAwaitDraw(false);
+      setPick({ layerId: id, oid });
+      setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
+    });
   }, [editMode, multi, msel, showMsel, reshape, askDropReshape, cancelReshape, setHighlight, canEditLayer, toast]);
 
   /**
@@ -780,8 +825,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   /* ⚠️ 2026-09-21: `boolean` буцаана — хэрэглэгч «Cancel» дарж хаахаас
      татгалзвал `false`; `onDone` үүгээр маягт НЭЭЛТТЭЙ үлдсэнийг мэднэ. */
-  const closeEdit = useCallback((): boolean => {
-    if (!askDropReshape()) return false;
+  const closeEdit = useCallback((): boolean => askDropReshape(() => {
     setReshape(null);
     setReshaped(null);
     setPick(null);
@@ -789,8 +833,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     /* ⚠️ Зурсан түр дүрсийг ЗААВАЛ арилгана — маягтыг хаасан ч зурагт үлдвэл
        «нэмэгдчихсэн юм болов уу» гэж уншигдана. */
     setClearToken((x) => x + 1);
-    return true;
-  }, [askDropReshape, setHighlight]);
+  }), [askDropReshape, setHighlight]);
 
   /** Vertex чирэх бүрд — хадгалаагүй шинэ хэлбэрийг санана */
   const onReshape = useCallback((g: __esri.Geometry | null) => {
@@ -840,11 +883,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         const g = (pre ? await pre : null) ?? await loadGeometry(meta, oid);
         /* ⚠️ Хоцорсон хариу — шинэ сонголт аль хэдийн явж байна */
         if (seq !== geomSeq.current) return;
-        if (!g) { toast(tr('Геометр олдсонгүй')); return; }
+        if (!g) { toast(tr('Геометр олдсонгүй'), 'err'); return; }
         setReshape({ layerId, oid, geometry: g });
         setReshapeToken((x) => x + 1);
       } catch (e) {
-        if (seq === geomSeq.current) toast(String((e as Error).message || e));
+        if (seq === geomSeq.current) toast(String((e as Error).message || e), 'err');
       }
     })();
   }, [pick, toast, setHighlight]);
@@ -859,26 +902,35 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * «Үйлдэл буцаах» товч гарч ирвэл буцаагдана гэсэн ХУДАЛ амлалт болно.
    * Оронд нь баталгаажуулалт дээр шууд хэлнэ.
    */
-  const removeFeature = useCallback(async () => {
+  const removeFeature = useCallback(() => {
     if (!pick || pick.oid == null) return;
     const { layerId, oid } = pick;
-    if (!window.confirm(tr('Энэ объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?'))) return;
-    setDelBusy(true);
-    try {
-      const meta = await loadLayerMeta(layerId);
-      await deleteRow(meta, oid);
-      refreshLayer(layerId);
-      dropTotalsLater();
-      /* ⚠️ Устгасны дараа сонголт ХООСОН — байхгүй мөрийн маягт нээлттэй
-         үлдвэл дараагийн «Хадгалах» нь сервер дээр олдохгүй мөр рүү бичнэ. */
-      setUndoable(null);
-      closeEdit();
-      toast(tr('Объект устгагдлаа'));
-    } catch (e) {
-      toast(String((e as Error).message || e));
-    } finally {
-      setDelBusy(false);
-    }
+    /* ⚠️ Самбарын асуулт (`confirmQ`) — `window.confirm` хөтчид хаагдсан үед
+       устгал чимээгүй зогсдог байв. Буцаагдахгүй тул `danger`. */
+    setConfirmQ({
+      msg: tr('Энэ объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?'),
+      danger: true,
+      onYes: () => {
+        void (async () => {
+          setDelBusy(true);
+          try {
+            const meta = await loadLayerMeta(layerId);
+            await deleteRow(meta, oid);
+            refreshLayer(layerId);
+            dropTotalsLater();
+            /* ⚠️ Устгасны дараа сонголт ХООСОН — байхгүй мөрийн маягт нээлттэй
+               үлдвэл дараагийн «Хадгалах» нь сервер дээр олдохгүй мөр рүү бичнэ. */
+            setUndoable(null);
+            closeEdit();
+            toast(tr('Объект устгагдлаа'));
+          } catch (e) {
+            toast(String((e as Error).message || e), 'err');
+          } finally {
+            setDelBusy(false);
+          }
+        })();
+      },
+    });
   }, [pick, refreshLayer, toast, closeEdit, dropTotalsLater]);
 
   /**
@@ -914,7 +966,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       setReshaped(null);
       setClearToken((x) => x + 1);
     } catch (e) {
-      toast(String((e as Error).message || e));
+      toast(String((e as Error).message || e), 'err');
     } finally {
       setGeomBusy(false);
     }
@@ -927,30 +979,39 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * хувилбарын түүх асаагүй тул бүрмөсөн алга болно. Тиймээс ЗААВАЛ
    * баталгаажуулалт асууна (`tableWrite`-ийн дүрэм).
    */
-  const undo = useCallback(async () => {
+  const undo = useCallback(() => {
     if (!undoable) return;
-    if (undoable.kind === 'add'
-      && !window.confirm(tr('Сая нэмсэн объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?'))) {
+    const u = undoable;
+    const run = async () => {
+      setUndoBusy(true);
+      try {
+        const meta = await loadLayerMeta(u.layerId);
+        if (u.kind === 'add') await deleteRow(meta, u.oid);
+        else if (u.kind === 'attr') await applyAttrs(meta, u.oid, u.attrs);
+        else if (u.kind === 'batch') await revertRows(meta, u.rows);
+        else await saveGeometry(meta, u.oid, u.geometry);
+        refreshLayer(u.layerId);
+        dropTotalsLater();
+        /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
+        preGeom.current = null;
+        setUndoable(null);
+        toast(tr('Үйлдэл буцаагдлаа'));
+      } catch (e) {
+        toast(String((e as Error).message || e), 'err');
+      } finally {
+        setUndoBusy(false);
+      }
+    };
+    /* ⚠️ Самбарын асуулт — `window.confirm` хаагдсан хөтчид буцаалт чимээгүй зогсдог байв */
+    if (u.kind === 'add') {
+      setConfirmQ({
+        msg: tr('Сая нэмсэн объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?'),
+        danger: true,
+        onYes: () => { void run(); },
+      });
       return;
     }
-    setUndoBusy(true);
-    try {
-      const meta = await loadLayerMeta(undoable.layerId);
-      if (undoable.kind === 'add') await deleteRow(meta, undoable.oid);
-      else if (undoable.kind === 'attr') await applyAttrs(meta, undoable.oid, undoable.attrs);
-      else if (undoable.kind === 'batch') await revertRows(meta, undoable.rows);
-      else await saveGeometry(meta, undoable.oid, undoable.geometry);
-      refreshLayer(undoable.layerId);
-      dropTotalsLater();
-      /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
-      preGeom.current = null;
-      setUndoable(null);
-      toast(tr('Үйлдэл буцаагдлаа'));
-    } catch (e) {
-      toast(String((e as Error).message || e));
-    } finally {
-      setUndoBusy(false);
-    }
+    void run();
   }, [undoable, refreshLayer, toast, dropTotalsLater]);
 
   /**
@@ -1063,7 +1124,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           showMsel(layerId, oids);
           if (!found.length) toast(tr('Тэгш өнцөгт дотор энэ давхаргын объект олдсонгүй'));
         })
-        .catch((e) => toast(String((e as Error).message || e)))
+        .catch((e) => toast(String((e as Error).message || e), 'err'))
         .finally(() => setMselBusy(false));
       return;
     }
@@ -1088,23 +1149,27 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
   const exitEdit = useCallback(() => {
     /* ⚠️ Чирсэн ажлыг хаяхаас өмнө асууна (`askDropReshape`-ийн тайлбар) */
-    if (!askDropReshape()) return;
-    setEditMode(false);
-    setTplOpen(false);
-    setAwaitDraw(false);
-    setPick(null);
-    setReshape(null);
-    setReshaped(null);
-    setUndoable(null);
-    /* Олон сонголт горимтойгоо хамт арилна — дараагийн нээлт цэвэр эхэлнэ */
-    setMulti(false);
-    setRectDraw(false);
-    setMsel((m) => ({ layerId: m.layerId, oids: [] }));
-    setMselOk('');
-    setHighlight(null);
-    setClearToken((x) => x + 1);
-    /* ⚠️ Хойшлуулсан нийлбэрийг ЭНД нэг удаа хаяна (`dropTotalsLater`) */
-    flushTotals();
+    askDropReshape(() => {
+      setEditMode(false);
+      setConfirmQ(null);
+      /* Алдааны мэдэгдэл горимтойгоо хамт арилна (`toast`-ийн тайлбар) */
+      setSaved('');
+      setTplOpen(false);
+      setAwaitDraw(false);
+      setPick(null);
+      setReshape(null);
+      setReshaped(null);
+      setUndoable(null);
+      /* Олон сонголт горимтойгоо хамт арилна — дараагийн нээлт цэвэр эхэлнэ */
+      setMulti(false);
+      setRectDraw(false);
+      setMsel((m) => ({ layerId: m.layerId, oids: [] }));
+      setMselOk('');
+      setHighlight(null);
+      setClearToken((x) => x + 1);
+      /* ⚠️ Хойшлуулсан нийлбэрийг ЭНД нэг удаа хаяна (`dropTotalsLater`) */
+      flushTotals();
+    });
   }, [askDropReshape, setHighlight, flushTotals]);
 
   /**
@@ -1122,8 +1187,6 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       p: loadLayerMeta(layerId).then((m) => loadGeometry(m, oid)).catch(() => null),
     };
   }, [editMode, pick]);
-
-  const noop = useCallback(() => {}, []);
 
   return (
     <div
@@ -1150,24 +1213,26 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             * давхарга ирээгүй бол `null` буцаана. Дутуугаар бичвэл тоо
             * нүдэн дээр өсөж, аль нь эцсийн утга болох нь мэдэгдэхгүй.
             */}
+          {/* ⚠️ Хоосон id жагсаалт (багц хуваарилагдаагүй) → «—», «0.0 км» биш
+              (`sumOf`-ийн тайлбар, 2026-09-23) */}
           <Stats cols={4}>
             <Stat
-              value={kmOrWait(sumOf(totals, netIds))}
+              value={kmOrWait(sumOf(totals, netIds), netIds.length === 0)}
               unit={tr('км')}
               label={tr('Инженерийн шугам — нийт')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, heatIds))}
+              value={kmOrWait(sumOf(totals, heatIds), heatIds.length === 0)}
               unit={tr('км')}
               label={tr('Үүнээс дулаан хангамж')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, pkgIds))}
+              value={kmOrWait(sumOf(totals, pkgIds), pkgIds.length === 0)}
               unit={tr('км')}
               label={tr('Гэрээний багцын шугам')}
             />
             <Stat
-              value={cntOrWait(countOf(totals, wellIds))}
+              value={cntOrWait(countOf(totals, wellIds), wellIds.length === 0)}
               unit={tr('ш')}
               label={tr('Бохирын худаг')}
             />
@@ -1182,6 +1247,22 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           {totals.error && (
             <p className={d.kpiWait} role="alert">
               {tr('Тоо татагдсангүй: {0}', totals.error.message)}
+              {' '}
+              <button type="button" className={d.kpiRetry} onClick={retryTotals}>
+                {tr('Дахин оролдох')}
+              </button>
+            </p>
+          )}
+          {/* ⚠️ ХЭСЭГЧИЛСЭН уналт (2026-09-23): зарим давхарга унавал тэдний
+              багцын үзүүлэлт «…» дээр мөнхөд гацдаг байсан бөгөөд шалтгаан нь
+              зөвхөн console-д. Одоо тоог ил хэлж, дахин татах товч өгнө. */}
+          {!totals.error && totals.failed > 0 && totals.done >= totals.total && (
+            <p className={d.kpiWait} role="alert">
+              {tr('{0} давхарга татагдсангүй', num(totals.failed))}
+              {' '}
+              <button type="button" className={d.kpiRetry} onClick={retryTotals}>
+                {tr('Дахин оролдох')}
+              </button>
             </p>
           )}
         </div>
@@ -1206,7 +1287,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             onReshape={onReshape}
             sketchUndoToken={sketchUndoToken}
             clearToken={clearToken}
-            onPick={editMode ? onMapPick : noop}
+            /* ⚠️ Засварын горимоос гадуур `undefined` (`noop` БИШ, 2026-09-23):
+               `MapCanvas` нь сонголт авах хүнгүй үед товшилтоор атрибутын
+               хайрцгийг (`MapTip`) тэр цэгт гаргана — hover-гүй мэдрэгчтэй
+               дэлгэцэд атрибут уншигдах цорын ганц зам. */
+            onPick={editMode ? onMapPick : undefined}
+            /* ⚠️ `bare` (2026-09-23): «Бүх давхаргыг унтраах» эсвэл багц
+               хуваарилагдаагүй аккаунт (`viewIds = []`) үед сонголт ХООСОН
+               болдог бөгөөд анхдагч зан нь тэр агшинд 14 суурь давхаргыг
+               (`BASE_MAP_IDS`) автоматаар асаадаг байв — «унтраасан» атал
+               зураг дүүрэн. `Ersdel`-ийн ижил шийдэл. */
+            bare
           />
 
           <MapTools
@@ -1236,6 +1327,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 {tr('Мэдээлэл засах')}
               </MapToolBtn>
             )}
+            {/* ⚠️ 3D-д ШАЛТГААНЫГ ИЛ хэлнэ (2026-09-23): идэвхгүй товчны tooltip
+                мэдрэгчтэй дэлгэцэд огт гардаггүй тул «яагаад дарагдахгүй
+                байна» гэсэн асуулт хариултгүй үлддэг байв. */}
+            {canEdit && dim !== '2d' && (
+              <span className={d.editHint}>{tr('Зөвхөн 2D-д')}</span>
+            )}
           </MapTools>
 
           {/*
@@ -1256,8 +1353,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${tplOpen ? d.editAddOn : ''}`}
                 aria-pressed={tplOpen}
-                onClick={() => {
-                  if (!askDropReshape()) return;
+                onClick={() => askDropReshape(() => {
                   cancelReshape();
                   setTplOpen((v) => !v);
                   setAwaitDraw(false);
@@ -1266,7 +1362,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   setRectDraw(false);
                   setMsel((m) => ({ layerId: m.layerId, oids: [] }));
                   setHighlight(null);
-                }}
+                })}
               >
                 {tr('Шинэ объект')}
               </button>
@@ -1280,8 +1376,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${multi ? d.editAddOn : ''}`}
                 aria-pressed={multi}
-                onClick={() => {
-                  if (!askDropReshape()) return;
+                onClick={() => askDropReshape(() => {
                   cancelReshape();
                   const next = !multi;
                   setMulti(next);
@@ -1293,7 +1388,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   if (!next) setMsel((m) => ({ layerId: m.layerId, oids: [] }));
                   setHighlight(null);
                   setClearToken((x) => x + 1);
-                }}
+                })}
                 title={tr('Олон объект сонгож, нэг маягтаар бүгдэд нь ижил утга бичнэ')}
               >
                 {tr('Олноор сонгох')}
@@ -1320,8 +1415,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 <button
                   type="button"
                   className={d.editUndo}
-                  onClick={() => { void undo(); }}
-                  disabled={undoBusy}
+                  onClick={undo}
+                  /* ⚠️ Буцаах үйлдлийн давхарга хүрээнээс гарсан бол хаалттай (2026-09-23) */
+                  disabled={undoBusy || !canEditLayer(undoable.layerId)}
                   title={undoable.kind === 'add'
                     ? tr('Сая нэмсэн объектыг устгана')
                     : undoable.kind === 'geom'
@@ -1583,7 +1679,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                       <button
                         type="button"
                         className={d.btn}
-                        onClick={() => { if (askDropReshape()) cancelReshape(); }}
+                        onClick={() => askDropReshape(cancelReshape)}
                         disabled={geomBusy}
                       >
                         {tr('Болих')}
@@ -1594,7 +1690,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                       type="button"
                       className={d.btn}
                       onClick={startReshape}
-                      disabled={!canEdit || geomBusy || delBusy}
+                      /* ⚠️ Давхаргын хүрээгээр (2026-09-23 аудит) — багц хасагдсан
+                         ч нээлттэй үлдсэн маягтаас хэлбэр/устгал явахгүй */
+                      disabled={!canEdit || !canEditLayer(pick.layerId) || geomBusy || delBusy}
                       title={tr('Цэгүүдийг чирж зөөнө. Шинэ цэг нэмэхдээ ирмэгийн дунд дарна.')}
                     >
                       {tr('Хэлбэр засах')}
@@ -1606,8 +1704,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   <button
                     type="button"
                     className={d.geomDel}
-                    onClick={() => { void removeFeature(); }}
-                    disabled={!canEdit || delBusy || geomBusy || reshape != null}
+                    onClick={removeFeature}
+                    disabled={!canEdit || !canEditLayer(pick.layerId) || delBusy || geomBusy || reshape != null}
                   >
                     {delBusy ? tr('Устгаж байна…') : tr('Устгах')}
                   </button>
@@ -1647,7 +1745,35 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             />
           )}
 
-          {saved && <p className={d.saved} role="status">{saved}</p>}
+          {/* ⚠️ Алдаа (`savedKind === 'err'`) улаан, ✕-ээр хаагдана — өөрөө арилахгүй */}
+          {saved && (
+            <p className={`${d.saved} ${savedKind === 'err' ? d.savedErr : ''}`}
+              role={savedKind === 'err' ? 'alert' : 'status'}>
+              {saved}
+              {savedKind === 'err' && (
+                <button type="button" className={d.savedClose} onClick={() => setSaved('')}
+                  aria-label={tr('Хаах')}>✕</button>
+              )}
+            </p>
+          )}
+
+          {/* САМБАРЫН БАТАЛГААЖУУЛАЛТ — `confirmQ`-ийн тайлбар. Мэдэгдлийн
+              дээр байрлана; «Тийм» үргэлжлүүлж, «Үгүй» юу ч хийхгүй. */}
+          {confirmQ && (
+            <div className={d.confirm} role="alertdialog" aria-live="assertive">
+              <span className={d.confirmMsg}>{confirmQ.msg}</span>
+              <button
+                type="button"
+                className={confirmQ.danger ? d.geomDel : d.primary}
+                onClick={() => { const q = confirmQ; setConfirmQ(null); q.onYes(); }}
+              >
+                {tr('Тийм')}
+              </button>
+              <button type="button" className={d.btn} onClick={() => setConfirmQ(null)}>
+                {tr('Үгүй')}
+              </button>
+            </div>
+          )}
 
           {layerOpen && (
             <div className={`${o.catPanel} ${d.catPanel}`}>
@@ -1672,7 +1798,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
           {opOpen && (
             <OpacityPanel
-              visible={visible}
+              /* ⚠️ `mapVisible` (2026-09-23) — зурагт БОДИТ зурагдаж буй давхаргууд.
+                 Урьд нь `visible` (каталогийн сонголт) өгдөг байсан тул багц
+                 сонгосон/засварын горимд зурагт байхгүй давхаргын гулсуур гарч,
+                 зурагт байгаа нь гардаггүй байв. */
+              visible={mapVisible}
               opacity={opacity}
               setOpacity={setOpacity}
               onClose={() => setOpOpen(false)}
@@ -1699,6 +1829,15 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       {!editMode && (
       <div className={d.right}>
             <>
+              {/* ⚠️ БАГЦ ХУВААРИЛАГДААГҮЙ аккаунт (2026-09-23): `hidden` нь бүх
+                  давхаргыг нуусан (`viewIds = []`), эсвэл `butets` эрхтэй ч
+                  `scope = []`. Урьд нь «0 багц» гэсэн хоосон жагсаалт, «0.0 км»
+                  гарч — эвдэрсэн юм шиг уншигддаг байв. Шалтгааныг ил хэлнэ. */}
+              {noScope && (
+                <Note>
+                  {tr('Танд багц хуваарилагдаагүй — админд хандана уу')}
+                </Note>
+              )}
               {/*
                 * ⚠️ «Гүйцэтгэл» харагдацын «Дэд бүтэц» бүлэгтэй ЯГ ИЖИЛ хэлбэр
                 * (`PkgProg.TsPackList`): нэг хураагддаг хэсэг, доор нь багц

@@ -19,10 +19,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Fig, KpiRow, RankBars, Meter } from '@/modules/tailanChart';
+import { Fig, KpiRow, RankBars, Meter, LATE_GAP } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { num, pct } from '@/lib/format';
+import { num, pct, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo } from '@/lib/execReport';
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
@@ -60,11 +60,7 @@ function FindingItems({ items }: { items: string[] }) {
 export function ExecReport() {
   /** Огноо — ЗӨВХӨН клиент дээр (`Tailan`-тай ижил: hydration зөрөхөөс сэргийлнэ) */
   const [date, setDate] = useState('');
-  useEffect(() => {
-    setDate(new Date().toLocaleString('mn-MN', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    }));
-  }, []);
+  useEffect(() => { setDate(dateTime(Date.now())); }, []);
   const q = useAsync(loadExecReport, []);
   const [busy, setBusy] = useState<'' | 'pdf' | 'png' | 'ai'>('');
   const [fail, setFail] = useState('');
@@ -78,6 +74,9 @@ export function ExecReport() {
   }, []);
 
   const x = q.state === 'ready' ? q.data : null;
+  /* ⚠️ Өгөгдөл шинэчлэгдвэл (кэш хаягдах, дахин татах) хуучин AI дүгнэлт
+     ХУУЧИН тоог тайлбарлаж үлддэг байв — цэвэрлэнэ (2026-09-23). */
+  useEffect(() => { setSummary(null); }, [x]);
   const findings = useMemo(() => (x ? execFindings(x) : []), [x]);
   /**
    * ХАВСРАЛТ — нэрсийн жагсаалттай дүгнэлтүүд (2026-09-17).
@@ -104,14 +103,18 @@ export function ExecReport() {
     setFail('');
     setBusy(what);
     try {
-      const d = date || new Date().toLocaleString('mn-MN');
+      const d = date || dateTime(Date.now());
       if (what === 'pdf') await downloadExecPdf(x, d, summary);
       else if (what === 'png') await downloadInfographic(x, d, summary);
       else setSummary(await askExecSummary(x));
     } catch (err) {
       console.error('[selbe] удирдлагын тайлан:', err);
       const label = what === 'pdf' ? 'PDF' : what === 'png' ? tr('Инфографик') : tr('AI дүгнэлт');
-      setFail(tr('{0} үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.', label));
+      /* ⚠️ AI-ийн алдаа (хугацаа хэтэрсэн, реле) нь өөрөө ойлгомжтой мөртэй — түүнийг л харуулна */
+      const msg = what === 'ai' && err instanceof Error && err.message ? err.message : '';
+      setFail(msg
+        ? tr('{0}: {1}', label, msg)
+        : tr('{0} үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.', label));
     } finally {
       setBusy('');
     }
@@ -136,6 +139,13 @@ export function ExecReport() {
             <Icon name="target" size={15} />
             {busy === 'ai' ? tr('Бодож байна…') : summary ? tr('AI дүгнэлт дахин үүсгэх') : tr('AI дүгнэлт үүсгэх')}
           </button>
+          {summary && (
+            <button type="button" className={r.btn} disabled={!!busy} onClick={() => setSummary(null)}
+              title={tr('AI дүгнэлтийг тайлангаас (PDF/PNG-ээс ч) хасна')}>
+              <Icon name="target" size={15} />
+              {tr('AI дүгнэлт арилгах')}
+            </button>
+          )}
         </div>
         {fail && <p className={r.fail} role="alert">{fail}</p>}
       </div>
@@ -145,7 +155,8 @@ export function ExecReport() {
             заавар): том үсэг, голлосон, арай жижиг фонт. `report.module.css`
             нь ерөнхий тайлантай ХУВААЛЦДАГ тул тэнд биш, энд дарж бичив. */}
         <header className={`${r.docHead} ${e.docHeadMid}`}>
-          <h1 className={`${r.title} ${e.titleUp}`}>{tr('Сэлбэ ухаалаг хотын удирдлагын тайлан')}</h1>
+          {/* ⚠️ Төслийн нэр мэйлийн гарчиг, ерөнхий тайлантай НЭГ: «Сэлбэ 20 минутын хот» */}
+          <h1 className={`${r.title} ${e.titleUp}`}>{tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}</h1>
           {date && <p className={`${r.sub} ${e.subMid}`}>{tr('Огноо:')} {date}</p>}
         </header>
 
@@ -361,7 +372,7 @@ export function ExecReport() {
                   <KpiRow items={[
                     { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
                     { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1) },
-                    { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= 5 ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
+                    { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
                   <Fig no="2">{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>

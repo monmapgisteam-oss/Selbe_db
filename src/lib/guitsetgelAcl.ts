@@ -35,6 +35,7 @@
  */
 
 import { STAGE_ORDER, type Stage } from './hyanalt';
+import { t as tr } from './i18nCore';
 import {
   ROLE_ACCESS, ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
 } from './services';
@@ -255,11 +256,11 @@ export function setAssign(
   user: string, stage: Stage, bagts: string[], grant = true,
 ): { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
-  if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
+  if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
   if (roleForUser(u) === 'super') {
-    return { ok: false, error: 'Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй' };
+    return { ok: false, error: tr('Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй') };
   }
-  if (!bagts.length) return { ok: false, error: 'Багц сонгоно уу' };
+  if (!bagts.length) return { ok: false, error: tr('Багц сонгоно уу') };
 
   const list = load();
   const exists = list.some((a) => a.stage === stage && a.user === u);
@@ -386,11 +387,11 @@ export function setViewOnly(
   user: string, viewOnly: boolean,
 ): { ok: boolean; error?: string; sync?: Promise<boolean> } {
   const u = user.trim().toLowerCase();
-  if (!u) return { ok: false, error: 'Аккаунтын нэрээ бичнэ үү' };
+  if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
   const list = load();
   const cur = list.find((a) => a.user === u);
   if (!cur) {
-    return { ok: false, error: 'Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана' };
+    return { ok: false, error: tr('Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана') };
   }
   save(list.map((a) => (a.user === u
     ? (viewOnly ? { ...a, viewOnly: true } : { user: a.user, stage: a.stage, bagts: a.bagts })

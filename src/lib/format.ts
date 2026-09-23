@@ -1,6 +1,28 @@
 /** Тоо, нэгжийн форматлагч — портал даяар нэг дүрэм. */
 
+import { getLocale } from '@/lib/i18nCore';
+
+/* ⚠️ ТОО үргэлж `en-US` (мянгатын таслал «1,234») — хэлээс үл хамааран нэг
+   хэлбэр; `format.check.mjs` үүнийг барьдаг. ОГНОО харин хэлээ дагана
+   (`dateLocale`). */
 const L = 'en-US';
+
+/**
+ * Огнооны BCP-47 хэл — i18n-ийн ОДООГИЙН хэлээс (2026-09-23).
+ * ⚠️ Урьд нь `'mn-MN'` гурван газар хатуу бичигдсэн тул англи горимд огноо
+ *    монголоор гардаг байв. Одоо нэг эх: энд.
+ */
+export const dateLocale = (): string => (getLocale() === 'en' ? 'en-US' : 'mn-MN');
+
+/** Огноо + цаг (YYYY-MM-DD HH:MM хэлбэр хэлээ дагана) — тайлангийн толгойд */
+export function dateTime(v: number | string | null | undefined): string {
+  if (v == null || v === '') return '—';
+  const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
+  if (Number.isNaN(dt.getTime())) return String(v);
+  return dt.toLocaleString(dateLocale(), {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
 
 export const num = (v: number | null | undefined, d = 0): string =>
   v == null || !Number.isFinite(v)
@@ -43,7 +65,7 @@ export function date(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
   const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString('mn-MN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dt.toLocaleDateString(dateLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 /**

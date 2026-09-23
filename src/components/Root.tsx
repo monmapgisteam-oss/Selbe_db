@@ -77,7 +77,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, status, user } = useAuth();
+  const { authorized, signIn, signOut, status, user } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -330,6 +330,21 @@ export default function Root() {
               >
                 {tr('Нүүр хуудас руу буцах')}
               </button>
+              {/* ⚠️ Өөр бүртгэлийн зам (2026-09-23, `AuthNotice`-тэй ижил): эрхгүй
+                  бүртгэлээр орсон хүн нүүр рүү буцаад мөн л ижил бүртгэлээр
+                  гацдаг байв — гарах товчгүй бол F5 ч тус болохгүй. */}
+              {status === 'signed-in' && (
+                <button
+                  type="button"
+                  onClick={signOut}
+                  style={{
+                    padding: '8px 18px', borderRadius: 8, border: '1px solid var(--line)',
+                    background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
+                  }}
+                >
+                  {tr('Өөр бүртгэлээр нэвтрэх')}
+                </button>
+              )}
             </div>
           </div>
         ) : (

@@ -23,7 +23,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   DECISION, F, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
-  type Row, type Stage, type Status,
+  REVIEW_STATUS, RETURNED_STATUS, nextReview,
+  type ReviewStage, type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
 import { useAuth } from '@/components/AuthGate';
 import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
@@ -35,7 +36,13 @@ import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetai
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import s from './guitsetgel.module.css';
 
-const STAGES: Stage[] = ['company', 'engineer', 'manager', 'director'];
+/* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат) — энд давхар жагсаавал зөрнө */
+const STAGES: Stage[] = STAGE_ORDER;
+
+/** Буцаасан төлөв → буцаасан ШАТ (компанид буцаасан = инженер) */
+const RETURNER: Partial<Record<Status, ReviewStage>> = Object.fromEntries(
+  (Object.keys(RETURNED_STATUS) as ReviewStage[]).map((s) => [RETURNED_STATUS[s], s]),
+);
 
 /*
  * ⚠️ ШАТНЫ НЭР ЭНД ТОДОРХОЙЛОГДОХГҮЙ — `lib/hyanaltGroup.ts`-д. Урьд нь
@@ -56,7 +63,53 @@ const STATUS_LABEL: Record<Status, string> = {
   [STATUS.managerReturned]: tr('Менежер буцаасан'),
   [STATUS.directorReview]: tr('Ерөнхий менежер хянаж байна'),
   [STATUS.directorReturned]: tr('Ерөнхий менежер буцаасан'),
+  [STATUS.headReview]: tr('Хэлтсийн дарга хянаж байна'),
+  [STATUS.headReturned]: tr('Хэлтсийн дарга буцаасан'),
+  [STATUS.chiefReview]: tr('Газрын дарга хянаж байна'),
+  [STATUS.chiefReturned]: tr('Газрын дарга буцаасан'),
   [STATUS.transferred]: tr('Шилжүүлсэн'),
+};
+
+/** Шатны ХЭНД илгээх үйл үг — зөвшөөрөх товч ба түүхийн мөрөнд */
+const APPROVE_LABEL: Record<ReviewStage, string> = {
+  engineer: tr('Зөвшөөрч багцын менежерт илгээх'),
+  manager: tr('Зөвшөөрч ерөнхий менежерт илгээх'),
+  director: tr('Зөвшөөрч хэлтсийн даргад илгээх'),
+  head: tr('Зөвшөөрч газрын даргад илгээх'),
+  chief: tr('Баталж архивт бүртгэх'),
+};
+const SENT_VERB: Record<ReviewStage, string> = {
+  engineer: tr('шалгаж менежерт илгээв'),
+  manager: tr('зөвшөөрч ерөнхий менежерт илгээв'),
+  director: tr('зөвшөөрч хэлтсийн даргад илгээв'),
+  head: tr('зөвшөөрч газрын даргад илгээв'),
+  chief: tr('баталж бүртгэв'),
+};
+const RETURN_VERB: Record<ReviewStage, string> = {
+  engineer: tr('компанид буцаав'),
+  manager: tr('инженерт буцаав'),
+  director: tr('багцын менежерт буцаав'),
+  head: tr('ерөнхий менежерт буцаав'),
+  chief: tr('хэлтсийн даргад буцаав'),
+};
+/** Дахин шалгагчийн товч · placeholder — «дээшээ» ба «доошоо» */
+const RECHECK_UP: Record<Exclude<ReviewStage, 'chief'>, string> = {
+  engineer: tr('Дахин шалгасан — асуудалгүй, менежерт илгээх'),
+  manager: tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх'),
+  director: tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'),
+  head: tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'),
+};
+const RECHECK_DOWN: Record<Exclude<ReviewStage, 'chief'>, string> = {
+  engineer: tr('Асуудал байна — компанид буцаах'),
+  manager: tr('Асуудал байна — инженерт буцаах'),
+  director: tr('Асуудал байна — багцын менежерт буцаах'),
+  head: tr('Асуудал байна — ерөнхий менежерт буцаах'),
+};
+const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
+  engineer: tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)'),
+  manager: tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
+  director: tr('Багцын менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
+  head: tr('Ерөнхий менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
 };
 
 const fmt = (iso: string | null) =>
@@ -73,10 +126,11 @@ const badgeClass = (st: Status, stage: Stage) => {
   // ⚠️ Компанид «Менежер буцаасан» улаанаар ч харагдах ёсгүй — тэр ажил
   //    хараахан компанид ирээгүй, инженер дээр байгаа.
   if (st === STATUS.managerReturned) return stage === 'company' ? s.bWait : s.bBack;
-  // ⚠️ Ерөнхий менежерийн буцаалт нь БАГЦЫН МЕНЕЖЕРТ очно — компани ч,
-  //    инженер ч үүнийг «буцсан» гэж харах ёсгүй: тэдний гар дээр ирээгүй.
-  if (st === STATUS.directorReturned)
-    return stage === 'manager' || stage === 'director' ? s.bBack : s.bWait;
+  // ⚠️ Дээд шатны буцаалт нь НЭГ АЛХАМ доош очно — зөвхөн буцаасан ба хүлээн
+  //    авсан шат «буцсан» гэж харна; бусдын гар дээр ирээгүй (2026-09-23, 6 шат).
+  const ret = RETURNER[st];
+  if (ret && st !== STATUS.engineerReturned)
+    return stage === OWNER[st] || stage === ret ? s.bBack : s.bWait;
   return st === STATUS.engineerReturned ? s.bBack : s.bWait;
 };
 
@@ -182,18 +236,16 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       });
     }
 
-    const dir = `${tr('Ерөнхий менежер')} ${r[F.director]}`.trim();
-    if (r[F.directorSent]) {
-      out.push({ who: dir, verb: tr('баталж бүртгэв'), at: r[F.directorSent], reason: '', kind: 'ok' });
-    }
-    if (r[F.directorReturned]) {
-      out.push({
-        who: dir,
-        verb: tr('багцын менежерт буцаав'),
-        at: r[F.directorReturned],
-        reason: r[F.directorReason],
-        kind: 'bad',
-      });
+    /* ⚠️ 4·5·6-р шат — нэг загвараар (2026-09-23) */
+    const upper: { st: ReviewStage; label: string; who: string; sent: string | null; ret: string | null; why: string }[] = [
+      { st: 'director', label: tr('Ерөнхий менежер'), who: r[F.director], sent: r[F.directorSent], ret: r[F.directorReturned], why: r[F.directorReason] },
+      { st: 'head', label: tr('Хэлтсийн дарга'), who: r[F.head], sent: r[F.headSent], ret: r[F.headReturned], why: r[F.headReason] },
+      { st: 'chief', label: tr('Газрын дарга'), who: r[F.chief], sent: r[F.chiefSent], ret: r[F.chiefReturned], why: r[F.chiefReason] },
+    ];
+    for (const u of upper) {
+      const nm = `${u.label} ${u.who}`.trim();
+      if (u.sent) out.push({ who: nm, verb: SENT_VERB[u.st], at: u.sent, reason: '', kind: 'ok' });
+      if (u.ret) out.push({ who: nm, verb: RETURN_VERB[u.st], at: u.ret, reason: u.why, kind: 'bad' });
     }
   }
 
@@ -215,7 +267,7 @@ function outcomeOf(r: Row, stage: Stage): { text: string; cls: string } {
     return { text: seesManager(stage) ? tr('Инженер буцаасан') : tr('Буцаасан'), cls: s.bBack };
   }
   if (!seesManager(stage)) return { text: tr('Хянагдаж байна'), cls: s.bWait };
-  const back = st === STATUS.managerReturned || st === STATUS.directorReturned;
+  const back = !!RETURNER[st];
   return { text: STATUS_LABEL[st] ?? st, cls: back ? s.bBack : s.bWait };
 }
 
@@ -332,6 +384,8 @@ function Submitted({
   const [data, setData] = useState<Submission | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(true);
+  /** «Дахин оролдох» тоолуур — уншилтын effect-ийг дахин асаана. */
+  const [tryN, setTryN] = useState(0);
   /**
    * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ хүсэлт — жагсаалтаас дарахад бөглөх хуудас
    * тэр мөр рүү гүйж, нүдийг богино анивчилтаар онцолно.
@@ -356,16 +410,28 @@ function Submitted({
        төлөвтэй ижил дүрэм. */
     onChanges?.(null);
     loadSubmission(bagts, sheetOid)
-      .then((d) => { if (alive) { setData(d); onChanges?.(d?.changes ?? []); } })
+      /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
+         «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
+      .then((d) => { if (alive) { setData(d); onChanges?.(d ? d.changes : null); } })
       .catch((e) => { if (alive) { setErr(String((e as Error)?.message ?? e)); onChanges?.(null); } })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
+    //    (ба «Дахин оролдох» тоолуур)
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bagts, sheetOid]);
+  }, [bagts, sheetOid, tryN]);
 
   if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
-  if (err) return <div className={s.subMuted}>{tr('Гүйцэтгэлийг татаж чадсангүй: {0}', err)}</div>;
+  /* ⚠️ Унасныг бүдэг биш УЛААНААР, дахин оролдох товчтой (2026-09-23) —
+     бүдэг мөр нь «хоосон» мэт харагдаж, хянагч дахин ачаалах замгүй байв. */
+  if (err) {
+    return (
+      <div className={s.error} role="alert">
+        {tr('Гүйцэтгэлийг татаж чадсангүй: {0}', err)}{' '}
+        <button type="button" className={s.btn} onClick={() => setTryN((n) => n + 1)}>{tr('Дахин оролдох')}</button>
+      </div>
+    );
+  }
   if (!data) return <div className={s.subMuted}>{tr('Холбогдох архивын агшин олдсонгүй.')}</div>;
 
   return (
@@ -626,6 +692,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
+  /** Хагас амжилтын анхааруулга — алдаанаас ТУСДАА (шар) */
+  const [warn, setWarn] = useState('');
   const [busy, setBusy] = useState(false);
 
   const cur = work.current;
@@ -665,7 +733,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   /** «Дахин шалгах» — тоолуур ахих бүрд эффект дахин ажиллана. */
   const [lackTry, setLackTry] = useState(0);
   useEffect(() => {
-    if (stage !== 'director') { setLack([]); return; }
+    /* ⚠️ 4·5·6-р шат — AGOL-д гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`) */
+    if (stage !== 'director' && stage !== 'head' && stage !== 'chief') { setLack([]); return; }
     let alive = true;
     setLack(null);
     /*
@@ -741,14 +810,18 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     setBusy(true);
     const r = await fn();
     setBusy(false);
-    setErr(r.ok ? (r.warn ?? '') : (r.error ?? tr('Алдаа гарлаа')));
+    /* ⚠️ Анхааруулга (`warn`) нь АЛДАА БИШ — тусдаа шар мөрөөр (2026-09-23);
+       урьд нь улаан `error` ангилалд орж «бүтсэнгүй» гэж уншигддаг байв. */
+    setErr(r.ok ? '' : (r.error ?? tr('Алдаа гарлаа')));
+    setWarn(r.ok ? (r.warn ?? '') : '');
     if (r.ok) setReason('');
   };
 
   const review = (decision: (typeof DECISION)[keyof typeof DECISION]) =>
     run(() => apply({
       oid: cur.__oid,
-      stage: stage === 'engineer' ? 'engineer' : stage === 'manager' ? 'manager' : 'director',
+      /* ⚠️ `mine` (owner === stage) ба `reviewing` тул энд компани байхгүй */
+      stage: stage as ReviewStage,
       decision,
       reason: decision === DECISION.return ? badText() : reason,
       who,
@@ -768,20 +841,16 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       okCells: [...okKeys],
     }));
 
-  const reviewing =
-    (stage === 'engineer' && st === STATUS.engineerReview) ||
-    (stage === 'manager' && st === STATUS.managerReview) ||
-    (stage === 'director' && st === STATUS.directorReview);
+  const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
 
   /**
    * ДЭЭД ШАТНААС БУЦСАНЫГ ДАХИН ШАЛГАХ — хоёр газарт давтагдана.
    * ⚠️ Буцаалт нэг алхам л ухардаг тул дахин шалгагч нь ДАМЖУУЛАГЧ БИШ:
    *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
    */
-  const rechecking =
-    (stage === 'engineer' && st === STATUS.managerReturned) ||
-    (stage === 'manager' && st === STATUS.directorReturned);
-  const reBy: 'engineer' | 'manager' = stage === 'manager' ? 'manager' : 'engineer';
+  const upperOfMe = stage !== 'company' ? nextReview(stage) : null;
+  const rechecking = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
+  const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
   return (
     <div className={s.item}>
@@ -805,7 +874,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                   <textarea
                     className={s.field}
                     rows={2}
-                    placeholder={tr('Буцаах бол шалтгаанаа бичнэ үү (зөвшөөрөхөд шаардлагагүй)')}
+                    /* ⚠️ Зөвшөөрөхөд энэ текст ХАЯГДАНА (`run` → `setReason('')`) —
+                       тиймээс «зөвхөн буцаахад» гэж шууд хэлнэ (2026-09-23). */
+                    placeholder={tr('Зөвхөн буцаахад бичнэ — буцаах шалтгаан (зөвшөөрөхөд хаягдана)')}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
@@ -840,16 +911,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                            *    өгөгдөлд (архив + нэгтгэл) орно. Хэрэглэгч
                            *    үүнийг МЭДЭЖ дарах ёстой.
                            */
-                          : stage === 'director'
+                          : stage === 'chief'
                             ? tr('Баталсны дараа гүйцэтгэл архивт бичигдэж, нэгтгэлд бүртгэгдэнэ — үүнээс өмнө үндсэн өгөгдөлд ОРООГҮЙ')
                             : undefined
                       }
                       onClick={() => review(DECISION.approve)}>
-                      {stage === 'engineer'
-                        ? tr('Зөвшөөрч багцын менежерт илгээх')
-                        : stage === 'manager'
-                          ? tr('Зөвшөөрч ерөнхий менежерт илгээх')
-                          : tr('Баталж архивт бүртгэх')}
+                      {APPROVE_LABEL[stage]}
                       {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     {/*
@@ -887,35 +954,38 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                 <>
                   <div className={s.reasonBox}>
                     <span className={s.reasonLabel}>
-                      {stage === 'manager' ? tr('Ерөнхий менежер буцаасан') : tr('Багцын менежер буцаасан')}:{' '}
+                      {upperOfMe ? STATUS_LABEL[RETURNED_STATUS[upperOfMe]] : ''}:{' '}
                     </span>
                     <span className={s.reasonText}>
-                      {stage === 'manager' ? cur[F.directorReason] : cur[F.managerReason]}
+                      {upperOfMe === 'manager' ? cur[F.managerReason]
+                        : upperOfMe === 'director' ? cur[F.directorReason]
+                          : upperOfMe === 'head' ? cur[F.headReason]
+                            : upperOfMe === 'chief' ? cur[F.chiefReason] : ''}
                     </span>
                   </div>
                   <textarea
                     className={s.field}
                     rows={2}
-                    placeholder={
-                      stage === 'manager'
-                        ? tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)')
-                        : tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)')
-                    }
+                    placeholder={RECHECK_HINT[reBy]}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className={s.row}>
+                    {/*
+                      * ⚠️ ДАХИН ШАЛГАЛТАД `okKeys` ДАМЖУУЛАХГҮЙ (2026-09-23). Нүд
+                      *    зөвхөн `reviewing` үед л тэмдэглэгддэг тул энд `okKeys`
+                      *    ҮРГЭЛЖ хоосон — `[]` өгвөл `Zovshoorson_nud="[]"` бичигдэж
+                      *    өмнөх тойрогт ногоон болсон нүд бүр компанид УЛААН болдог
+                      *    байв. `undefined` = өмнөх утгыг хэвээр үлдээнэ.
+                      *    Буцаах шалтгаан нь ердийн буцаалттай ижил `badText()`.
+                      */}
                     <button className={`${s.btn} ${s.ok}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, [...okKeys]))}>
-                      {stage === 'manager'
-                        ? tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх')
-                        : tr('Дахин шалгасан — асуудалгүй, менежерт илгээх')}
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined))}>
+                      {RECHECK_UP[reBy]}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', reason, who, reBy, me, bypass, [...okKeys]))}>
-                      {stage === 'manager'
-                        ? tr('Асуудал байна — инженерт буцаах')
-                        : tr('Асуудал байна — компанид буцаах')}
+                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, undefined))}>
+                      {RECHECK_DOWN[reBy]}
                     </button>
                   </div>
                 </>
@@ -943,7 +1013,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                 </>
               )}
 
-              {err && <div className={s.error}>{err}</div>}
+              {err && <div className={s.error} role="alert">{err}</div>}
+              {warn && <div className={s.warn} role="status">{warn}</div>}
             </div>
           )}
 
@@ -981,7 +1052,7 @@ type StatusOpt = { value: string; label: string; match: Status[] };
 const statusOptions = (stage: Stage): StatusOpt[] =>
   stage === 'company'
     ? [
-      { value: 'w', label: tr('Хянагдаж байна'), match: [STATUS.engineerReview, STATUS.managerReview, STATUS.managerReturned, STATUS.directorReview, STATUS.directorReturned] },
+      { value: 'w', label: tr('Хянагдаж байна'), match: Object.values(STATUS).filter((x) => x !== STATUS.engineerReturned && x !== STATUS.transferred) },
       { value: 'b', label: tr('Буцаасан'), match: [STATUS.engineerReturned] },
       { value: 'd', label: tr('Хүлээн авсан'), match: [STATUS.transferred] },
     ]
@@ -1015,7 +1086,10 @@ function Flow({
             disabled={!pick}
             onClick={() => pick?.(x)}
           >
-            <span className={s.flowName}>{STAGE_LABEL[x]}</span>
+            {/* ⚠️ Гүйцэтгэгчид дээд шатны нэр биш дугаар (`Track`-тай ижил) */}
+            <span className={s.flowName}>
+              {seesManager(stage) || i === 0 ? STAGE_LABEL[x] : tr('{0}-р шат', String(i + 1))}
+            </span>
             <span className={s.flowNum}>{counts[x]}</span>
           </button>
         </Fragment>
@@ -1152,7 +1226,7 @@ export function Guitsetgel() {
    *   1. `mine`      — буцаагдсан, ЗАСАХ шаардлагатай (дээд талд)
    *   2. `inReview`  — илгээгдсэн, ХЯНАГДАЖ байна (мөр бүр дээр `Track` нь
    *                    яг аль шатанд байгааг харуулна)
-   *   3. `done`      — дөрвөн шат өнгөрч ШИЛЖҮҮЛСЭН
+   *   3. `done`      — зургаан шат (инженер → … → газрын дарга) өнгөрч ШИЛЖҮҮЛСЭН
    *
    * ⚠️ Зөвхөн гүйцэтгэгчид хамаарна: хянагчийн хувьд «бусад» нь үнэхээр
    * бусдын ажил тул хуучин бүлэглэлт хэвээр.
@@ -1183,18 +1257,19 @@ export function Guitsetgel() {
       <header className={s.head}>
         <div>
           <div className={s.title}>{tr('Гүйцэтгэлийн хяналт')}</div>
-          <div className={s.sub}>{tr('гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер')}</div>
+          {/* ⚠️ Гүйцэтгэгчид дээд шатны НЭР харагдахгүй — `Track`-тай ижил
+              дугаарласан хэлхээ (2026-09-23). */}
+          <div className={s.sub}>
+            {seesManager(stage)
+              ? tr('гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга')
+              : tr('гүйцэтгэгч → 2-р шат → 3-р шат → 4-р шат → 5-р шат → 6-р шат')}
+          </div>
         </div>
         <span className={s.spacer} />
         {/* Хэн болох нь — үүргээс. Солих товч ЗӨВХӨН үүрэггүй (дев/super) үед. */}
         {fixed && <span className={s.roleBadge}>{STAGE_LABEL[fixed]}</span>}
         <Flow
-          counts={{
-            company: countFor('company'),
-            engineer: countFor('engineer'),
-            manager: countFor('manager'),
-            director: countFor('director'),
-          }}
+          counts={Object.fromEntries(STAGE_ORDER.map((x) => [x, countFor(x)])) as Record<Stage, number>}
           stage={stage}
           pick={flow.canPick ? (x) => { setPicked(x); setStatus(ALL); } : undefined}
         />

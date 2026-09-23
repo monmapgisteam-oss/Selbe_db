@@ -10,7 +10,7 @@
 // Огноог БҮХЭЛД НЬ UTC шөнө дундаар ажиллуулна — үйлчилгээний огноо тэгж
 // хадгалагддаг тул орон нутгийн цагаар бодвол өдөр нэгээр гулсана.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent } from "react";
 import { t as tr } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
@@ -75,18 +75,50 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
       if (e.key === "Escape") onClose();
     };
     // ⚠️ `capture: true` — хүснэгтийн доторх гүйлт нь `window`-д хүрдэггүй.
-    const scroll = () => onClose();
+    // ⚠️ Цонхны ДОТООД гүйлт (оны `select` жагсаалт г.м) хаахгүй (2026-09-23).
+    const scroll = (e: Event) => {
+      if (box.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    const resize = () => onClose();
     window.addEventListener("mousedown", down);
     window.addEventListener("keydown", key);
     window.addEventListener("scroll", scroll, true);
-    window.addEventListener("resize", scroll);
+    window.addEventListener("resize", resize);
     return () => {
       window.removeEventListener("mousedown", down);
       window.removeEventListener("keydown", key);
       window.removeEventListener("scroll", scroll, true);
-      window.removeEventListener("resize", scroll);
+      window.removeEventListener("resize", resize);
     };
   }, [onClose]);
+
+  /**
+   * ГАРААР ЯВАХ (2026-09-23): фокустай өдөр — нээхэд сонгосон (эсвэл өнөөдөр)
+   * өдөр дээр очно; ←→ ±1 хоног, ↑↓ ±7 хоног; сар хальвал харагдац дагана.
+   * ⚠️ Хулганагүй хэрэглэгч урьд нь 42 товчийг Tab-аар тойрдог байв.
+   */
+  const [focusMs, setFocusMs] = useState(base);
+  useEffect(() => {
+    if (!pos) return;
+    const el = box.current?.querySelector<HTMLButtonElement>(`button[data-ms="${focusMs}"]`);
+    el?.focus();
+  }, [pos, focusMs]);
+  const moveFocus = (delta: number) => {
+    const ms = focusMs + delta * DAY;
+    const d = new Date(ms);
+    setFocusMs(ms);
+    setView((v) => (v.y === d.getUTCFullYear() && v.m === d.getUTCMonth()
+      ? v
+      : { y: d.getUTCFullYear(), m: d.getUTCMonth() }));
+  };
+  const gridKey = (e: RKeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1
+      : e.key === "ArrowUp" ? -7 : e.key === "ArrowDown" ? 7 : 0;
+    if (!step) return;
+    e.preventDefault();
+    moveFocus(step);
+  };
 
   const first = Date.UTC(view.y, view.m, 1);
   // Даваагаар эхлүүлэх шилжилт: getUTCDay() 0 = Ням.
@@ -121,6 +153,8 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
   return (
     <div
       ref={box}
+      role="dialog"
+      aria-label={tr('Огноо сонгох')}
       className={st.cal}
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, visibility: pos ? "visible" : "hidden" }}
     >
@@ -160,7 +194,7 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
         <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')}>»</button>
       </div>
 
-      <div className={st.calGrid}>
+      <div className={st.calGrid} onKeyDown={gridKey}>
         {WD.map((w) => (
           <span key={w} className={st.calWd}>{w}</span>
         ))}
@@ -172,6 +206,10 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
           return (
             <button
               key={ms}
+              data-ms={ms}
+              tabIndex={ms === focusMs ? 0 : -1}
+              aria-pressed={sel}
+              onFocus={() => setFocusMs(ms)}
               className={
                 st.calDay +
                 (other ? ` ${st.calOther}` : "") +

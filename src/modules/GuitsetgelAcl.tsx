@@ -25,7 +25,8 @@ import {
   subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
 
@@ -52,6 +53,13 @@ export function GuitsetgelAcl() {
   const known = new Set(all.map((a) => a.toLowerCase()));
   /** Хасалт унасан (мөр нь аль ч баганад алга) — БҮХ баганад нэгэн адил хамаарна */
   const orphanFail = [...flowFailedUsers()].some((u) => !listAssigns().some((a) => a.user === u));
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
+   *    Remote уншигдаагүй үед томилгоо `[]` тул нэмэх/багц солих бичилт
+   *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
+   */
+  const locked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   return (
     <div className={s.aclWrap}>
@@ -68,6 +76,7 @@ export function GuitsetgelAcl() {
         *   үргэлж ижил хариу өгнө. Дөрвөн ижил улаан анхааруулга нь дөрвөн
         *   ӨӨР асуудал мэт харагдаж, админыг төөрөгдүүлдэг байлаа.
         */}
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
           {tr('⚠️ ArcGIS-т бичигдсэнгүй — томилгоо түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
@@ -76,7 +85,7 @@ export function GuitsetgelAcl() {
 
       <div className={s.aclGrid}>
         {STAGE_ORDER.map((st) => (
-          <Column key={st} stage={st} title={STAGE_LABEL[st]} accounts={accounts} known={known} />
+          <Column key={st} stage={st} title={STAGE_LABEL[st]} accounts={accounts} known={known} locked={locked} lockMsg={LOCK_MSG} />
         ))}
       </div>
     </div>
@@ -84,8 +93,12 @@ export function GuitsetgelAcl() {
 }
 
 function Column({
-  stage, title, accounts, known,
-}: { stage: Stage; title: string; accounts: string[]; known: Set<string> }) {
+  stage, title, accounts, known, locked, lockMsg,
+}: {
+  stage: Stage; title: string; accounts: string[]; known: Set<string>;
+  /** Remote уншигдаагүй — бүх бичилт хаалттай (эцэг тооцно) */
+  locked: boolean; lockMsg: string;
+}) {
   const rows = assignsOf(stage);
   const [add, setAdd] = useState('');
   const [err, setErr] = useState('');
@@ -104,6 +117,7 @@ function Column({
   const free = accounts.filter((a) => !taken.has(a.toLowerCase()));
 
   const push = () => {
+    if (locked) { setErr(lockMsg); return; }
     const r = setAssign(add, stage, [ALL_BAGTS]);
     setErr(r.ok ? '' : (r.error ?? ''));
     void r.sync;
@@ -123,11 +137,12 @@ function Column({
           className={s.aclInput}
           value={add}
           onChange={(e) => setAdd(e.target.value)}
+          disabled={locked}
         >
           <option value="">{tr('Аккаунт сонгох…')}</option>
           {free.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <button type="button" className={s.aclBtn} onClick={push} disabled={!add.trim()}>
+        <button type="button" className={s.aclBtn} onClick={push} disabled={locked || !add.trim()}>
           {tr('Нэмэх')}
         </button>
       </div>
@@ -153,7 +168,9 @@ function Column({
                 type="button"
                 className={s.aclX}
                 title={tr('Томилгооноос хасах')}
+                disabled={locked}
                 onClick={() => {
+                  if (locked) { setErr(lockMsg); return; }
                   /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false) —
                      эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. */
                   if (gone) { void removeAssign(r.user, stage, false).sync; return; }
@@ -192,7 +209,9 @@ function Column({
                 type="button"
                 className={`${s.aclPkg} ${r.viewOnly ? s.aclPkgOn : ''}`}
                 title={tr('Асаавал энэ хүн гүйцэтгэлийг ХАРНА, гэхдээ батлах/буцаах товч идэвхгүй байна.')}
+                disabled={locked}
                 onClick={() => {
+                  if (locked) { setErr(lockMsg); return; }
                   setErr('');
                   const res = setViewOnly(r.user, !r.viewOnly);
                   if (!res.ok) { setErr(res.error ?? ''); return; }
@@ -208,7 +227,11 @@ function Column({
                   className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
                   /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
                      багц солих бүрд эрхийн мөр дахин бичих нь дэмий */
-                  onClick={() => { setErr(''); void setAssign(r.user, stage, [ALL_BAGTS], false).sync; }}
+                  disabled={locked}
+                  onClick={() => {
+                    if (locked) { setErr(lockMsg); return; }
+                    setErr(''); void setAssign(r.user, stage, [ALL_BAGTS], false).sync;
+                  }}
                 >
                   {tr('Бүх багц')}
                 </button>
@@ -219,7 +242,9 @@ function Column({
                       key={g}
                       type="button"
                       className={`${s.aclPkg} ${on ? s.aclPkgOn : ''}`}
+                      disabled={locked}
                       onClick={() => {
+                        if (locked) { setErr(lockMsg); return; }
                         const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                         /*
                          * ⚠️ FAIL-CLOSED (2026-08-29): сүүлийн багцыг хасахад урьд нь

@@ -218,6 +218,14 @@ export function Zovshoorol() {
       <div className={s.wrap}>
         <div className={`${s.notice} ${s.bad}`}>
           {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй. Холболт эсвэл хандах эрхээ шалгана уу.')}
+          {/* ⚠️ Дахин татах зам (2026-09-23): урьд нь зөвхөн F5. `n` нь ачаалах
+              эффектийн хамаарал тул өсгөхөд л дахин татна. */}
+          <div className={s.actions}>
+            <span className={s.spacer} />
+            <button type="button" className={s.primary} onClick={() => setN((x) => x + 1)}>
+              {tr('Дахин оролдох')}
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -29,6 +29,8 @@ export function ViewRail({
   docsActive = false,
   onAdmin,
   adminActive = false,
+  userName,
+  onSignOut,
 }: {
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -62,6 +64,14 @@ export function ViewRail({
   adminActive?: boolean;
   /** ХУРААГДСАН босоо горим — зөвхөн дүрс үлдэнэ (нэр tooltip-д) */
   collapsed?: boolean;
+  /**
+   * Нэвтэрсэн хэрэглэгчийн нэр — «Систем» бүлэгт (2026-09-23). Порталын
+   * толгойд хэрэглэгчийн мөр байхгүй тул хэн нэвтэрсэн, яаж гарах нь
+   * зөвхөн нүүр хуудсанд харагддаг байв.
+   */
+  userName?: string;
+  /** «Гарах» — `AuthGate.signOut`; өгөөгүй бол (auth унтраалттай) мөр гарахгүй */
+  onSignOut?: () => void;
 }) {
   {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
       Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`.
@@ -148,9 +158,10 @@ export function ViewRail({
           ⚠️ Сав нь `.railFoot` — зураас, зайг нэг дор өгнө;
              хураагдсан горимд (`.railMin`) гарчиг нуугдаж зөвхөн дүрс
              үлдэнэ. */}
-      {!header && onAdmin && (
+      {!header && (onAdmin || onSignOut) && (
         <div className={s.railFoot}>
           <div className={s.railHead}>{tr('Систем')}</div>
+          {onAdmin && (
           <button
             type="button"
             aria-pressed={adminActive}
@@ -165,6 +176,25 @@ export function ViewRail({
               <span className={s.title}>{tr('Хэрэглэгчийн эрх тохируулах')}</span>
             </span>
           </button>
+          )}
+          {/* ХЭРЭГЛЭГЧ + ГАРАХ (2026-09-23) — нэг мөр: нэр нь тайлбар, дарвал гарна.
+              ⚠️ Хураагдсан горимд нэр нуугдаж дүрс үлдэнэ (tooltip-д нэр). */}
+          {onSignOut && (
+          <button
+            type="button"
+            aria-label={tr('Гарах')}
+            title={userName ? `${userName} · ${tr('Гарах')}` : tr('Гарах')}
+            className={`${s.item} ${s.railAction}`}
+            onClick={onSignOut}
+          >
+            <span className={s.no} aria-hidden />
+            <span className={s.icon}><Icon name="reset" /></span>
+            <span className={s.text}>
+              <span className={s.title}>{tr('Гарах')}</span>
+              {userName && <span className={s.desc}>{userName}</span>}
+            </span>
+          </button>
+          )}
         </div>
       )}
     </nav>

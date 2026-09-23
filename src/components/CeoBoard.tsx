@@ -47,6 +47,7 @@ import { edgePath, layoutOf, type Box } from '@/lib/schem';
 import { nodeDetail } from '@/lib/schemDetail';
 import { loadSchemSources } from '@/lib/schemData';
 import { num, pct, mnt, date } from '@/lib/format';
+import { shortError } from '@/lib/ceo/review';
 import type { ViewKey } from '@/lib/services';
 import s from './ceoBoard.module.css';
 
@@ -287,6 +288,10 @@ export function KpiDetail({
   const lv = levelOf(slot);
   const raw = slot.state === 'ready' ? slot.data : null;
   const d = raw && pkg ? filterResult(raw, pkg) : raw;
+  /* Бүтэн алдаа консолд; дэлгэцэнд богино мөр (`shortError`) */
+  useEffect(() => {
+    if (slot.state === 'error') console.warn('[selbe] CEO KPI:', def.key, slot.error);
+  }, [slot, def.key]);
   return (
     <section className={s.kpi} style={{ ['--h']: LEVEL_TONE[lv] } as CSSProperties}>
       <header className={s.kHead}>
@@ -327,7 +332,7 @@ export function KpiDetail({
         <p className={s.dNote}>
           {tr('Татагдсангүй.')}{' '}
           <button type="button" className={s.dRetry} onClick={onRetry}>{tr('Дахин оролдох')}</button>
-          <span className={s.dErr}> {slot.error.message}</span>
+          <span className={s.dErr}> {shortError(slot.error)}</span>
         </p>
       ) : !d ? (
         <p className={s.dNote}>{tr('Ачаалж байна…')}</p>

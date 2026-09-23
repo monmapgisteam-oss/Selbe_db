@@ -78,6 +78,22 @@ export const F = {
   directorSent: 'Ерөнхий_менежер_илгээсэн_огноо',
 
   /**
+   * ХЭЛТСИЙН ДАРГА — тав дахь шат, ГАЗРЫН ДАРГА — зургаа дахь, ЭЦСИЙН шат
+   * (2026-09-23, хэрэглэгч: «Хэлтсийн дарга · Газрын дарга 2 шат нэмнэ»,
+   * ерөнхий менежерийн ДАРАА). AGOL-д 10 талбар нэмэгдсэн (`UPPER_FIELDS`).
+   */
+  head: 'Хэлтсийн_дарга',
+  headDecision: 'Хэлтсийн_даргын_шийдвэр',
+  headReason: 'Хэлтсийн_дарга_буцаасан_шалтгаан',
+  headReturned: 'Хэлтсийн_дарга_буцаасан_огноо',
+  headSent: 'Хэлтсийн_дарга_илгээсэн_огноо',
+  chief: 'Газрын_дарга',
+  chiefDecision: 'Газрын_даргын_шийдвэр',
+  chiefReason: 'Газрын_дарга_буцаасан_шалтгаан',
+  chiefReturned: 'Газрын_дарга_буцаасан_огноо',
+  chiefSent: 'Газрын_дарга_илгээсэн_огноо',
+
+  /**
    * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрийн JSON массив.
    *
    * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ (2026-09-22, хэрэглэгчийн шаардлага): хянагч нүд
@@ -106,7 +122,11 @@ export const STATUS = {
   managerReturned: 'Менежер буцаасан',
   directorReview: 'Ерөнхий менежер хянаж байна',
   directorReturned: 'Ерөнхий менежер буцаасан',
-  /** ЭЦСИЙН төлөв — дөрвөн шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
+  headReview: 'Хэлтсийн дарга хянаж байна',
+  headReturned: 'Хэлтсийн дарга буцаасан',
+  chiefReview: 'Газрын дарга хянаж байна',
+  chiefReturned: 'Газрын дарга буцаасан',
+  /** ЭЦСИЙН төлөв — зургаан шат бүгд өнгөрсний ДАРАА л энд хүрнэ. */
   transferred: 'Шилжүүлсэн',
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
@@ -115,15 +135,65 @@ export const DECISION = { approve: 'Зөвшөөрсөн', return: 'Буцаас
 export type Decision = (typeof DECISION)[keyof typeof DECISION];
 
 /**
- * Шат — ДӨРӨВ. Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
+ * Шат — ЗУРГАА (2026-09-23). Буцаах нь ЯВСАН ЗАМААРАА, нэг алхмаар:
  *   гүйцэтгэгч → хяналтын инженер → багцын менежер → ерөнхий менежер
- * ⚠️ Ерөнхий менежер зөвшөөрсний ДАРАА л эх хүснэгтэд бүртгэгдсэнд тооцно
- *    (`Шилжүүлсэн`). Гурав дахь шатанд зогсоовол хяналт дутуу үлдэнэ.
+ *   → хэлтсийн дарга → газрын дарга
+ * ⚠️ Газрын дарга зөвшөөрсний ДАРАА л эх хүснэгтэд бүртгэгдсэнд тооцно
+ *    (`Шилжүүлсэн`). Завсрын шатанд зогсоовол хяналт дутуу үлдэнэ.
  */
-export type Stage = 'company' | 'engineer' | 'manager' | 'director';
+export type Stage = 'company' | 'engineer' | 'manager' | 'director' | 'head' | 'chief';
 
-/** Шатны ДАРААЛАЛ — нэг эх сурвалж. Буцах чиглэл нь энэ жагсаалтын урвуу. */
-export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'director'];
+/** Шатны ДАРААЛАЛ — нэг эх сурвалж. Буцах чиглэл нь энэ жагсаалтын урвуу.
+ *  ⚠️ 2026-09-23: ерөнхий менежерийн ДАРАА хэлтсийн дарга (`head`), газрын
+ *  дарга (`chief`) нэмэгдэв — нийт 6 шат; «Шилжүүлсэн» нь газрын даргынх. */
+export const STAGE_ORDER: Stage[] = ['company', 'engineer', 'manager', 'director', 'head', 'chief'];
+
+/** ХЯНАХ шатууд (компаниас бусад) — шийдвэрийн талбар · төлөв нь ЭНЭ хүснэгтээс. */
+export const REVIEW_STAGES = ['engineer', 'manager', 'director', 'head', 'chief'] as const;
+export type ReviewStage = (typeof REVIEW_STAGES)[number];
+
+/**
+ * ШАТ БҮРИЙН ТАВАН ТАЛБАР — нэр · шийдвэр · шалтгаан · буцаасан огноо ·
+ * илгээсэн огноо. `hyanaltStore.apply/recheck` шат бүрд if/else бичихийн
+ * оронд ЭНДЭЭС уншина: шинэ шат нэмэхэд зөвхөн энэ хүснэгт ба `OWNER`.
+ */
+export const SF: Record<ReviewStage, { who: string; decision: string; reason: string; returned: string; sent: string }> = {
+  engineer: { who: F.engineer, decision: F.engineerDecision, reason: F.engineerReason, returned: F.engineerReturned, sent: F.engineerSent },
+  manager: { who: F.manager, decision: F.managerDecision, reason: F.managerReason, returned: F.managerReturned, sent: F.managerSent },
+  director: { who: F.director, decision: F.directorDecision, reason: F.directorReason, returned: F.directorReturned, sent: F.directorSent },
+  head: { who: F.head, decision: F.headDecision, reason: F.headReason, returned: F.headReturned, sent: F.headSent },
+  chief: { who: F.chief, decision: F.chiefDecision, reason: F.chiefReason, returned: F.chiefReturned, sent: F.chiefSent },
+};
+
+/** Тухайн шат ХЯНАЖ БАЙГАА төлөв */
+export const REVIEW_STATUS: Record<ReviewStage, Status> = {
+  engineer: STATUS.engineerReview,
+  manager: STATUS.managerReview,
+  director: STATUS.directorReview,
+  head: STATUS.headReview,
+  chief: STATUS.chiefReview,
+};
+
+/** Тухайн шат БУЦААСАН төлөв (нэг алхам доош очно — `OWNER`) */
+export const RETURNED_STATUS: Record<ReviewStage, Status> = {
+  engineer: STATUS.engineerReturned,
+  manager: STATUS.managerReturned,
+  director: STATUS.directorReturned,
+  head: STATUS.headReturned,
+  chief: STATUS.chiefReturned,
+};
+
+/** Дараагийн хянах шат — сүүлийнхэд `null` («Шилжүүлсэн» руу) */
+export const nextReview = (s: ReviewStage): ReviewStage | null => {
+  const i = REVIEW_STAGES.indexOf(s);
+  return i >= 0 && i + 1 < REVIEW_STAGES.length ? REVIEW_STAGES[i + 1] : null;
+};
+
+/** Өмнөх хянах шат — эхнийхэд `null` (компани) */
+export const prevReview = (s: ReviewStage): ReviewStage | null => {
+  const i = REVIEW_STAGES.indexOf(s);
+  return i > 0 ? REVIEW_STAGES[i - 1] : null;
+};
 
 /**
  * Тухайн төлөвт ажил ХЭНИЙ гар дээр байна вэ.
@@ -137,7 +207,13 @@ export const OWNER: Record<Status, Stage> = {
   [STATUS.directorReview]: 'director',
   // ⚠️ Ерөнхий менежер буцаавал БАГЦЫН МЕНЕЖЕРТ — тэр дахин шалгана
   [STATUS.directorReturned]: 'manager',
-  [STATUS.transferred]: 'director',
+  [STATUS.headReview]: 'head',
+  // ⚠️ Хэлтсийн дарга буцаавал ЕРӨНХИЙ МЕНЕЖЕРТ (нэг алхам)
+  [STATUS.headReturned]: 'director',
+  [STATUS.chiefReview]: 'chief',
+  // ⚠️ Газрын дарга буцаавал ХЭЛТСИЙН ДАРГАД (нэг алхам)
+  [STATUS.chiefReturned]: 'head',
+  [STATUS.transferred]: 'chief',
 };
 
 export type Row = {
@@ -164,6 +240,16 @@ export type Row = {
   [F.directorReason]: string;
   [F.directorReturned]: string | null;
   [F.directorSent]: string | null;
+  [F.head]: string;
+  [F.headDecision]: Decision | '';
+  [F.headReason]: string;
+  [F.headReturned]: string | null;
+  [F.headSent]: string | null;
+  [F.chief]: string;
+  [F.chiefDecision]: Decision | '';
+  [F.chiefReason]: string;
+  [F.chiefReturned]: string | null;
+  [F.chiefSent]: string | null;
   [F.okCells]: string;
   [F.status]: Status;
 };
@@ -178,6 +264,10 @@ export type Row = {
  */
 export const DIRECTOR_FIELDS = [
   F.director, F.directorDecision, F.directorReason, F.directorReturned, F.directorSent,
+  /* ⚠️ 2026-09-23: хэлтсийн · газрын даргын 10 талбар ч ижил шалгуурт — дутуу
+     бол 4·5·6-р шатны шийдвэр чимээгүй алдагдана. */
+  F.head, F.headDecision, F.headReason, F.headReturned, F.headSent,
+  F.chief, F.chiefDecision, F.chiefReason, F.chiefReturned, F.chiefSent,
 ] as const;
 
 /** ⚠️ ЗӨВХӨН амжилттай уншсан үр дүн энд суух ёстой — алдааг кэшлэхгүй. */

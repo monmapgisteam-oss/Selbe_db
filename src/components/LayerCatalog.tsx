@@ -339,6 +339,14 @@ export const LayerCatalog = memo(function LayerCatalog({
           const loadingTotals = totals.state === 'loading';
           return (
             <>
+              {/* ⚠️ ХООСОН ХАЙЛТ (2026-09-23): нэг ч давхарга таарахгүй бол жагсаалт
+                  бүхэлдээ алга болж, «каталог эвдэрсэн» мэт уншигддаг байв.
+                  Хэв нь `catalog.module.css`-д биш — энэ нэг мөрөнд л хэрэгтэй. */}
+              {needle && shown.length === 0 && (
+                <p style={{ margin: 0, padding: '14px 16px', fontSize: 12, color: 'var(--ink-3)' }}>
+                  {tr('Олдсонгүй')}
+                </p>
+              )}
               {groups.map((g) => {
                 /* ⚠️ Хайлт идэвхтэй бол ЗӨВХӨН таарсан давхарга үлдэнэ; нэг ч
                    таарахгүй бүлэг бүхэлдээ ХАРАГДАХГҮЙ (хоосон гарчиг нь

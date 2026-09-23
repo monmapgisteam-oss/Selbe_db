@@ -31,7 +31,23 @@ import { t as tr } from '@/lib/i18nCore';
 import { tokenParam, tokenQs } from '@/lib/authToken';
 import { LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
 import { queryFeatures, type Row } from '@/lib/query';
-import { requireCap } from '@/lib/who';
+import { currentUser, requireCap } from '@/lib/who';
+import { canEditButetsLayer } from '@/lib/butetsAcl';
+
+/**
+ * ⚠️ LIB-ТҮВШНИЙ ХҮРЭЭ (2026-09-23 аудит): урьд нь зөвхөн `butets` ЭРХ
+ *    шалгагдаж, багцын хүрээ (`butetsAcl`) нь UI-ийн товчны `disabled`-д
+ *    л байв. Багц хасагдсаны дараа нээлттэй үлдсэн маягтаас «Устгах» /
+ *    «Хэлбэр засах» / «Үйлдэл буцаах» нь хүрээний ГАДНАХ давхаргад бичиж
+ *    чаддаг байв. Одоо бичих функц бүр давхаргаа хүрээгээр шалгана.
+ *    `requireCap`-тай ижил: Node (тест, tools) орчинд хаахгүй.
+ */
+function requireLayer(meta: LayerMeta): void {
+  requireCap('butets');
+  if (typeof window === 'undefined') return;
+  if (canEditButetsLayer(currentUser(), meta.layerId)) return;
+  throw new Error(tr('«{0}» давхарга таны багцын хүрээнд байхгүй — засах эрхгүй.', meta.title));
+}
 import { applyAll } from '@/lib/tableWrite';
 
 /* ══════════════════ Схем ══════════════════ */
@@ -275,7 +291,7 @@ export async function saveGeometry(
   oid: number,
   geometry: unknown,
 ): Promise<void> {
-  requireCap('butets'); // ⚠️ lib-түвшний эрх (2026-09-17)
+  requireLayer(meta); // ⚠️ lib-түвшний эрх + багцын хүрээ
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (geometry == null) throw new Error(tr('Геометр зураагүй байна'));
   await applyAll(meta.url, meta.oidField, {
@@ -407,7 +423,7 @@ export async function applyAttrs(
   oid: number,
   attrs: Record<string, unknown>,
 ): Promise<void> {
-  requireCap('butets');
+  requireLayer(meta);
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length) return;
   await applyAll(meta.url, meta.oidField, {
@@ -423,7 +439,7 @@ export async function applyAttrs(
  * ЗААВАЛ баталгаажуулалт асуух ёстой.
  */
 export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
-  requireCap('butets');
+  requireLayer(meta);
   await applyAll(meta.url, meta.oidField, { deletes: [Math.trunc(oid)] });
 }
 
@@ -446,7 +462,7 @@ export async function createRow(
   geometry: unknown,
   patch: Patch,
 ): Promise<number> {
-  requireCap('butets');
+  requireLayer(meta);
   if (!meta.canCreate) throw new Error(tr('Энэ давхарга шинэ объект нэмэхийг зөвшөөрөхгүй байна'));
   if (geometry == null) throw new Error(tr('Геометр зураагүй байна'));
 
@@ -483,7 +499,7 @@ export async function saveRow(
   const d = diffRow(meta, before, patch);
   const n = Object.keys(d).length;
   if (n === 0) return 0;
-  requireCap('butets');
+  requireLayer(meta);
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
 
   await applyAll(meta.url, meta.oidField, {
@@ -559,7 +575,7 @@ export async function saveRows(
   oids: number[],
   attrs: Record<string, unknown>,
 ): Promise<number[]> {
-  requireCap('butets'); // ⚠️ lib-түвшний эрх (merge 2026-09-17)
+  requireLayer(meta); // ⚠️ lib-түвшний эрх + багцын хүрээ
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length || !oids.length) return [];
   const done: number[] = [];
@@ -591,7 +607,7 @@ export async function revertRows(
   meta: LayerMeta,
   rows: { oid: number; attrs: Record<string, unknown> }[],
 ): Promise<void> {
-  requireCap('butets');
+  requireLayer(meta);
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   const live = rows.filter((r) => Object.keys(r.attrs).length);
   for (const part of chunks(live, BATCH)) {

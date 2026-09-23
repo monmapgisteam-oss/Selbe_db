@@ -31,6 +31,7 @@ import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
 import { ChanarAcl } from '@/modules/ChanarAcl';
 import { DedButetsAcl } from '@/modules/DedButetsAcl';
+import { AjilAcl } from '@/modules/AjilAcl';
 import {
   ALL_BAGTS as CHANAR_ALL_BAGTS, listChanarAssigns, purgeChanarAssign, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
@@ -139,7 +140,7 @@ const capHint = (k: CapKey): string => {
     return tr('Инженерийн илгээсэн төлөвлөсөн обьёмыг БАТЛАХ эсвэл буцаах. Батлагдсан үед л утга үндсэн өгөгдөлд бичигдэнэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн обьёмын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
   }
   if (k === 'ajilApprove') {
-    return tr('«Гүйцэтгэл бөглөх» хуудсанд нэмэгдсэн ШИНЭ ажлын мөрийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л мөр үндсэн өгөгдөлд үүснэ — хүртэл дашбоард, тайлан, тооцоонд ОГТ нөлөөлөхгүй. Гүйцэтгэлийн 4 шатат урсгалаас ТУСДАА: тэр нь тоог, энэ нь ажил гэрээнд байх эсэхийг шийднэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Нэмэлт ажлын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн нэмсэн ажлыг өөрөө батлах боломжгүй — «Мөр нэмэх»-тэй хамт олгосон ч.');
+    return tr('«Гүйцэтгэл бөглөх» хуудсанд нэмэгдсэн ШИНЭ ажлын мөрийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л мөр үндсэн өгөгдөлд үүснэ — хүртэл дашбоард, тайлан, тооцоонд ОГТ нөлөөлөхгүй. Гүйцэтгэлийн 6 шатат урсгалаас ТУСДАА: тэр нь тоог, энэ нь ажил гэрээнд байх эсэхийг шийднэ. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Нэмэлт ажлын эрх» хуудсыг ашиглана уу. ⚠️ Өөрийн нэмсэн ажлыг өөрөө батлах боломжгүй — «Мөр нэмэх»-тэй хамт олгосон ч.');
   }
   return '';
 };
@@ -212,7 +213,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    хоёр байнгын асуултад хариулах газар БАЙХГҮЙ байв — таван бүлгийг
    *    тус тусад нь нээж хайх ёстой байлаа.
    */
-  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'chanar' | 'butets'>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'butets'>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -231,7 +232,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [capErr, setCapErr] = useState<Map<string, boolean>>(new Map());
   const [saving, setSaving] = useState(false);
   /** Хамгийн сүүлийн хадгалалтын үр дүн — товчийн доор товч мэдэгдэл */
-  const [saved, setSaved] = useState<{ ok: number; fail: number; failed: string[] } | null>(null);
+  /** `msg` — ЭХНИЙ баригдсан алдааны текст (нэрсийн жагсаалтын хажууд харуулна) */
+  const [saved, setSaved] = useState<{ ok: number; fail: number; failed: string[]; msg?: string } | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -293,11 +295,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    хэрэглэгч «хаана байгаагаа» алдана — WCAG 2.4.3.
    */
   const saveRef = useRef<() => void>(() => {});
+  /* ⚠️ Escape нь `requestClose`-ийн СҮҮЛИЙН хувилбарыг дуудна (2026-09-23):
+     effect нь `[open, onClose]`-д л дахин ажилладаг тул closure доторх
+     `saving` хоцорч, «Хадгалж байна…» дундуур Esc дарахад ноорог арчигддаг байв. */
+  const closeRef = useRef<() => void>(() => {});
+  closeRef.current = requestClose;
   useEffect(() => {
     if (!open) return;
     const root = dialogRef.current;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { requestClose(); return; }
+      if (e.key === 'Escape') { closeRef.current(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveRef.current();
@@ -403,6 +410,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const left = leftPerms + leftCaps;
       setUsers(listUsers());
       setSaved(left === 0 ? null : saved);
+      /* ⚠️ Үлдсэн бол ил хэлнэ (2026-09-23) — урьд нь товч зүгээр л буцаж, админ юу болсныг мэддэггүй байв */
+      if (left > 0) setAddErr(tr('{0} өөрчлөлт дахин хүрсэнгүй — холболтоо шалгаад дахин синк дарна уу.', String(left)));
     } finally {
       setSyncing(false);
     }
@@ -705,10 +714,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setSel(new Set());
   };
   const bulkRemove = () => {
+    /* ⚠️ Өөрийгөө ба хатуу super-ийг алгасна — гэхдээ ЧИМЭЭГҮЙ биш (2026-09-23):
+       «N сонгосон» атал цөөн нь устгагдахад админ шалтгааныг мэдэх ёстой. */
+    const skipped = selRows
+      .filter((u) => u.username.toLowerCase() === myName || roleForUser(u.username) === 'super')
+      .map((u) => u.username);
     selRows
-      .filter((u) => u.username.toLowerCase() !== myName && roleForUser(u.username) !== 'super')
+      .filter((u) => !skipped.includes(u.username))
       .forEach((u) => { if (!draftOf(u).remove) flipRemove(u); });
     setSel(new Set());
+    if (skipped.length) setAddErr(tr('Алгассан (өөрийн эсвэл super аккаунт): {0}', skipped.join(', ')));
   };
 
   /**
@@ -751,6 +766,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     let ok = 0;
     let fail = 0;
     const failed: string[] = [];
+    /* ⚠️ Эхний алдааны текстийг үлдээнэ (2026-09-23) — урьд нь `catch {}` залгиж, зөвхөн нэрс харагддаг байв */
+    let firstErr = '';
 
     for (const [key, d] of snapshot) {
       const u = users.find((x) => x.username.toLowerCase() === key);
@@ -833,9 +850,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         /* ⚠️ НЭМЭЛТ ЭРХ энд БИЧИГДЭХГҮЙ — `flipCap` дарах агшинд шууд
            хадгалагддаг (`__cap__:` тусдаа мөр). */
         if (r) ok += 1; else { fail += 1; failed.push(uname); }
-      } catch {
+      } catch (e) {
         fail += 1;
         failed.push(uname);
+        if (!firstErr) firstErr = e instanceof Error ? e.message : String(e);
       }
     }
 
@@ -862,7 +880,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       return m;
     });
     setSaving(false);
-    setSaved({ ok, fail, failed });
+    setSaved({ ok, fail, failed, msg: firstErr || undefined });
   };
   saveRef.current = () => { void saveAll(); };
 
@@ -1034,6 +1052,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="frame" size={14} />
           {tr('Инженерийн обьёмын эрх')}
         </button>
+        {/* ⚠️ НЭМЭЛТ АЖИЛ нь «ажил гэрээнд байх эсэх» асуулт — обьём («хэр их»)
+            ба урсгалаас («тоо») тусдаа (`ajilAcl.ts`). */}
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'ajil' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'ajil'}
+          onClick={() => setPane('ajil')}
+        >
+          <Icon name="pen" size={14} />
+          {tr('Нэмэлт ажлын эрх')}
+        </button>
         <button
           type="button"
           className={`${s.sideItem} ${pane === 'chanar' ? s.sideItemOn : ''}`}
@@ -1095,6 +1124,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             </header>
             <ObyemAcl />
           </>
+        ) : pane === 'ajil' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Нэмэлт ажлын эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('«Гүйцэтгэл бөглөх» хуудсанд шинэ ажлын мөр нэмэх ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгал ба обьёмын эрхээс тусдаа.')}
+              </p>
+            </header>
+            <AjilAcl />
+          </>
         ) : pane === 'huvaari' ? (
           <>
             <header className={s.head}>
@@ -1120,7 +1159,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             <header className={s.head}>
               <h2 className={s.title}>{tr('Гүйцэтгэлийн урсгалын эрх')}</h2>
               <p className={s.subtitle}>
-                {tr('Дөрвөн шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
+                {tr('Зургаан шат бүрд аккаунт томилж, аль багцыг хариуцахыг зааж өгнө.')}
               </p>
             </header>
             <GuitsetgelAcl />
@@ -1274,7 +1313,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 <button
                   type="button"
                   className={s.reset}
-                  onClick={() => { void clearOverride(k).then(() => setUsers(listUsers())); }}
+                  /* ⚠️ Шууд бичилт — баталгаажуулж, үр дүнг шалгана (2026-09-23).
+                     Урьд нь `.then` үр дүнгээ хаяж, ArcGIS унасан ч «сэргэсэн» мэт харагддаг байв. */
+                  onClick={() => {
+                    if (!window.confirm(tr('«{0}» аккаунтыг сэргээх үү? Хатуу тохиргооны эрх нь буцна.', k))) return;
+                    void clearOverride(k).then((okRes) => {
+                      setUsers(listUsers());
+                      if (!okRes) setAddErr(tr('«{0}» сэргээгдсэнгүй — ArcGIS-т бичигдээгүй, дахин оролдоно уу.', k));
+                    });
+                  }}
                   title={tr('Аккаунтыг сэргээж хатуу тохиргооны эрхийг нь буцаана')}
                 >
                   {tr('Буцаах')}
@@ -1301,6 +1348,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 ? (saved.fail > 0
                   ? tr('{0} хадгалагдав · ArcGIS-т хүрсэнгүй: {1}', String(saved.ok),
                       saved.failed.slice(0, 3).join(', ') + (saved.failed.length > 3 ? (' +' + String(saved.failed.length - 3)) : ''))
+                    + (saved.msg ? ` — ${saved.msg}` : '')
                   : tr('{0} хэрэглэгчийн өөрчлөлт хадгалагдлаа', String(saved.ok)))
                 : tr('Бүх өөрчлөлт хадгалагдсан')}
           </span>
@@ -1320,7 +1368,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               type="button"
               className={s.cancelBtn}
               disabled={saving}
-              onClick={() => { setDrafts(new Map()); setSaved(null); }}
+              /* ⚠️ `requestClose`-той ИЖИЛ баталгаажуулалт (2026-09-23) — нэг товшилтоор бүх ноорог арчигдахгүй */
+              onClick={() => {
+                if (drafts.size > 0
+                  && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
+                setDrafts(new Map()); setSaved(null);
+              }}
             >
               {tr('Болих')}
             </button>

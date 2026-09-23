@@ -371,6 +371,20 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       if (!grants.length) continue;
       byUser.set(user, { user, grants });
     }
+    /*
+     * ⚠️ БИЧИГДЭЭГҮЙ (`failed`) хэрэглэгчийн ЛОКАЛ төлөв давамгайлна (2026-09-23
+     *    аудит). Урьд нь remote агшин кэшийг бүхэлд нь сольдог тул ArcGIS-д
+     *    бичигдэж амжаагүй хуваарилалт (сүлжээ унасан) дараагийн poll-д
+     *    (5 мин / таб руу буцахад) самбараас чимээгүй алга болж, «⚠️ бичигдсэнгүй»
+     *    туг нь мөргүй үлддэг байв. Локалд байвал локалынхыг, хассан бол хассаныг.
+     */
+    if (failed.size) {
+      const local = new Map(load().map((a) => [a.user, a] as const));
+      for (const u of failed) {
+        const loc = local.get(u);
+        if (loc) byUser.set(u, loc); else byUser.delete(u);
+      }
+    }
     /* ⚠️ Энэ мөчөөс л уншилт кэшийг тооцно (2026-09-21) — remote = үнэн. */
     remoteSynced = true;
     save([...byUser.values()]);

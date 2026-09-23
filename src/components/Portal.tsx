@@ -7,6 +7,7 @@ import {
 import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail } from '@/components/ViewRail';
+import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
@@ -383,6 +384,8 @@ function PortalContent(
   const [picked, setPicked] = useState<Record<string, unknown> | null>(null);
   const [pickedLayer, setPickedLayer] = useState<string | null>(null);
   const { theme, toggle } = useTheme();
+  /* Зүүн цэсний «Гарах» мөрөнд (`ViewRail.onSignOut`) */
+  const auth = useAuth();
   const { clear: clearFilter } = useFilter();
 
   /** ТЭЗҮ ба судалгааны баримт бичгийн глобал popup нээлттэй эсэх */
@@ -735,6 +738,10 @@ function PortalContent(
             docsActive={docsOpen}
             onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
             adminActive={adminOpen}
+            /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
+               зүйл байхгүй тул мөр гарахгүй. */
+            userName={auth.user?.fullName || auth.user?.username}
+            onSignOut={auth.status === 'signed-in' ? () => { void auth.signOut(); } : undefined}
           />
         </aside>
 

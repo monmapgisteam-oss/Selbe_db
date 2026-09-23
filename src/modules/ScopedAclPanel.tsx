@@ -34,7 +34,8 @@ import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from '@/lib/scopedAcl';
 import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { dirtyKeys, listUsers, subscribe } from '@/lib/permissions';
+import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
 
@@ -108,15 +109,26 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    *    ялж, эхний нэмэлт ЧИМЭЭГҮЙ алга болно.
    */
   const [busy, setBusy] = useState(false);
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `UserAdmin.capsLocked`-той
+   *    ИЖИЛ. Remote уншигдаагүй үед `spec.list()` нь `[]` тул бүх багц
+   *    «томилоогүй» харагдаж, «Нэмэх» дарахад `setGrants` тэр хүний БҮХ
+   *    мөрийг зөвхөн энэ нэг багцаар ДАРЖ бичнэ. Уншигдтал нэмэх/хасах хаалттай.
+   */
+  const locked = !remoteReady() || !capsRemoteReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
   /**
    * Бичилтийг хүлээж, явцад нь товчнуудыг түгжинэ.
    * ⚠️ `sync` нь СОНГОМОЛ (`Write.sync?`) — алсын бичилт огт эхлээгүй
    *    (баталгаажуулалт унасан) үед байхгүй. Тэр үед түгжих зүйлгүй.
+   * ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина.
    */
   const run = async (sync?: Promise<unknown>) => {
     if (!sync) return;
     setBusy(true);
-    try { await sync; } finally { setBusy(false); }
+    try {
+      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+    } finally { setBusy(false); }
   };
 
   /**
@@ -134,6 +146,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    *    жагсаалт руу буулгавал ХУМИГДАНА (бүх багц → зөвхөн энэ нэг).
    */
   const addTo = (group: string, role: R, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const u = user.trim().toLowerCase();
     if (!u) return;
     const cur = rows.find((a) => a.user === u);
@@ -161,6 +174,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    *    тодорхой жагсаалт биш. Тэр үүргийг БҮХЭЛД нь хасахыг баталгаажуулж асууна.
    */
   const removeFrom = (group: string, role: R, user: string) => {
+    if (locked) { setErr(LOCK_MSG); return; }
     const cur = rows.find((a) => a.user === user);
     if (!cur) return;
     const mine = cur.grants.find((g) => g.role === role);
@@ -180,7 +194,10 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
     /* Нэг ч grant үлдэхгүй бол мөрийг бүхэлд нь хасна — эрх нь мөн буцна */
     if (!grants.length) {
       if (!window.confirm(spec.confirmRemoveAll(user))) return;
-      void run(spec.remove(user).sync);
+      /* ⚠️ `.ok`-г шалгана (2026-09-23) — урьд нь баталгаажуулалтын алдаа чимээгүй алга болдог байв */
+      const rr = spec.remove(user);
+      setErr(rr.ok ? '' : (rr.error ?? ''));
+      void run(rr.sync);
       return;
     }
     const r = spec.setGrants(user, grants);
@@ -199,6 +216,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         {' '}
         {note3}
       </p>
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
       {err && <div className={s.aclErr} role="alert">{err}</div>}
       {orphanFail && (
         <div className={s.aclErr} role="alert">
@@ -219,7 +237,7 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
             dirtyPerms={dirtyPerms}
             onAdd={addTo}
             onRemove={removeFrom}
-            busy={busy}
+            busy={busy || locked}
           />
         ))}
       </div>

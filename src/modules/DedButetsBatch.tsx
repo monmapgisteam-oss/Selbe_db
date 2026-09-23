@@ -130,10 +130,20 @@ export function DedButetsBatch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layerId, oidKey]);
 
+  /**
+   * БИЧИХИЙН ӨМНӨХ АСУУЛТ — маягт дотор мөр («Тийм»/«Үгүй»).
+   *
+   * ⚠️ 2026-09-23: `window.confirm` хөтчид хаагдсан үед («энэ хуудас дахин
+   * харилцах цонх гаргахыг хориглох») үргэлж `false` буцаан ОЛНООР ХАДГАЛАХ
+   * ЧИМЭЭГҮЙ зогсдог байв. Асуултыг самбарт гаргана; талбар засвал арилна.
+   */
+  const [ask, setAsk] = useState(false);
+
   const set = (name: string, v: string) => {
     setP((x) => ({ ...x, [name]: v }));
     setErr((x) => ({ ...x, [name]: '' }));
     setFail('');
+    setAsk(false);
   };
 
   /** ӨӨРЧЛӨГДСӨН талбарууд — эхлэлээс өөр утгатай нь л бичигдэнэ */
@@ -144,7 +154,8 @@ export function DedButetsBatch({
       .filter((k) => (p[k] ?? '') !== (base[k] ?? ''));
   }, [meta, p, base]);
 
-  const submit = async () => {
+  /** Шалгуур давбал асуулт гарна; бичилт нь `write`-д («Тийм»-ээс) */
+  const submit = () => {
     if (!meta || !rows || !oids.length) return;
     if (!changed.length) { setFail(tr('Өөрчилсөн талбар алга.')); return; }
     /* Шалгуур — зөвхөн өөрчилсөн талбарт (`validateRow`-ийн дүрэм) */
@@ -153,7 +164,12 @@ export function DedButetsBatch({
     const e = validateRow({ ...meta, fields: meta.fields.filter((f) => changed.includes(f.name)) }, sub);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
+    setAsk(true);
+  };
 
+  const write = async () => {
+    if (!meta || !rows || !oids.length) return;
+    setAsk(false);
     const fieldOf = new Map(meta.fields.map((f) => [f.name, f]));
     const attrs: Record<string, unknown> = {};
     for (const k of changed) {
@@ -161,10 +177,6 @@ export function DedButetsBatch({
       /* ⚠️ Хоосон → `null` (`diffRow`-ийн дүрэм) — ижил утгыг хоослох зам */
       attrs[k] = v === '' ? null : fieldOf.get(k)?.kind === 'number' ? Number(v) : v;
     }
-    if (!window.confirm(tr(
-      '{0} объектын {1} талбарыг бичих үү? Бүх сонгосон объектод ижил утга орно.',
-      num(oids.length), num(changed.length),
-    ))) return;
 
     setBusy(true); setFail('');
     try {
@@ -242,12 +254,29 @@ export function DedButetsBatch({
         <div className={d.formErr} role="alert">{tr('Энэ давхарга засварыг зөвшөөрөхгүй байна')}</div>
       )}
       {fail && <div className={d.formErr} role="alert">{fail}</div>}
+      {/* Самбарын асуулт — `ask`-ийн тайлбар */}
+      {ask && (
+        <div className={d.askRow} role="alertdialog">
+          <span className={d.askMsg}>
+            {tr(
+              '{0} объектын {1} талбарыг бичих үү? Бүх сонгосон объектод ижил утга орно.',
+              num(oids.length), num(changed.length),
+            )}
+          </span>
+          <button type="button" className={d.primary} onClick={() => { void write(); }} disabled={busy}>
+            {tr('Тийм')}
+          </button>
+          <button type="button" className={d.btn} onClick={() => setAsk(false)} disabled={busy}>
+            {tr('Үгүй')}
+          </button>
+        </div>
+      )}
       <div className={d.actions}>
         <span className={d.spacer} />
         <button
           type="button"
           className={d.primary}
-          onClick={() => { void submit(); }}
+          onClick={submit}
           disabled={busy || load || !canEdit || !meta.canUpdate || !oids.length || !changed.length}
           title={!changed.length ? tr('Эхлээд өөрчлөх талбараа бөглөнө үү') : undefined}
         >

@@ -127,7 +127,7 @@ export function toPng(ops: Op[], scale = 1): string {
 /* ⚠️ МӨНГӨНИЙ ТОВЧЛОЛГҮЙ (2026-09-17, merge): «сая/тэрбум ₮» нь порталын дүрмээр
    хориотой (`format.check.mjs`, хэрэглэгчийн шаардлага — дүнг бүтнээр). Инфографикт
    ч бүтэн тоо: `1,234,567,890 ₮`. */
-export const money = (v: number): string => (!Number.isFinite(v) || v === 0 ? '—' : `${num(v)} ₮`);
+export const money = (v: number | null): string => (v == null || !Number.isFinite(v) || v === 0 ? '—' : `${num(v)} ₮`);
 
 /** Мөр таслах — үгээр, ойролцоо өргөнөөр */
 export function wrap(text: string, maxChars: number): string[] {
@@ -301,7 +301,7 @@ export function buildInfographic(
   yr += 10;
   P.hbar(R, yr, colW, tr('Гэрээ'), 1, money(f.planTotal), { color: DATA_SOFT, nameW: 100, valW: 140 });
   yr += 20;
-  P.hbar(R, yr, colW, tr('Олгосон'), f.planTotal > 0 ? f.given / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
+  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.given / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
   yr += 20;
   if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
   yr += 26;

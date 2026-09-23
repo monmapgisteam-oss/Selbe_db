@@ -17,7 +17,7 @@ import { Icon } from '@/components/Icon';
 import { t as tr } from '@/lib/i18nCore';
 import { roleForUser, VIEWS, type ViewKey, type Role } from '@/lib/services';
 import type { UserPerm } from '@/lib/permissions';
-import { CAPS, type CapKey } from '@/lib/caps';
+import { CAPS, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 import s from './userAdmin.module.css';
@@ -239,8 +239,13 @@ export function UserRow(props: UserRowProps) {
                       «Хуваарь батлах» нь батлах ДАРААЛАЛ ба «Хуваарь»
                       хуудас хоёуланг нээнэ, учир нь батлах үйлдэл
                       дараалалаас хуудас руу шилждэг. */}
+                  {/* ⚠️ Харагдацын жагсаалт `CAP_HOST_VIEW`-ээс ГАРНА (2026-09-23) —
+                      урьд нь гараар бичсэн 6 нэр байсан тул шинэ эрх нэмэгдэх бүрд хоцордог байв. */}
                   <div className={s.capNote}>
-                    {tr('Нэмэлт эрх олгоход түүний харагдац (Гүйцэтгэл · Зөвшөөрөл · Санхүүжилт · Хуваарь · Хуваарь батлах · Газар чөлөөлөлт) тухайн хүнд автоматаар нээгдэнэ.')}
+                    {tr('Нэмэлт эрх олгоход түүний харагдац ({0}) тухайн хүнд автоматаар нээгдэнэ.',
+                      [...new Set(Object.values(CAP_HOST_VIEW).flat())]
+                        .map((v) => VIEWS.find((x) => x.key === v)?.title ?? v)
+                        .join(' · '))}
                   </div>
                   {d.isNew && (
                     <div className={s.capNote}>{tr('Нэмэлт эрхийг эхлээд хадгалсны дараа олгоно.')}</div>

@@ -48,6 +48,10 @@ jobs:
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
           NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
           NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
+          NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
+          # ⚠️ Амьд өгөгдлийн 11 тест энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
+          #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
+          ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
           NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
           NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
           NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}

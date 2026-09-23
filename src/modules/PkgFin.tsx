@@ -26,7 +26,7 @@ import {
 /* ⚠️ 2026-09-09: `ipcCode`/`ipcNet`/`ipcDue`/`ipcPaid` ба `finCard.dedOrNull`
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
-import { cat, shade, date, mnt, num, pct, monthKey } from '@/lib/format';
+import { cat, shade, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 import { CONTRACTED } from '@/lib/gdash';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -1613,7 +1613,8 @@ function PkgFinList({
           key: r.key,
           label: r.label,
           value: r.pct ?? 0,
-          color: shade(HUE, i, rows.length),
+          /* ⚠️ `pct == null` (төлөвлөгөөгүй) → саарал, өнгөт зурвас биш (null ≠ 0) */
+          color: r.pct == null ? NO_DATA : shade(HUE, i, rows.length),
           // ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсон тул энэ мөр ~37
           //    тэмдэгт. `Bars` нь нэр/утгыг БҮТЭН өргөний хоёр захад тавьдаг тул
           //    багтана; `.barVal` нь мөр таслахгүй (`ui.module.css`).
@@ -1695,7 +1696,8 @@ function CatChart({
           key: r.c.key,
           label: `${r.c.name()} · ${num(r.n)}`,
           value: r.mean ?? 0,
-          color: shade(HUE, i, rows.length),
+          /* ⚠️ `mean == null` → саарал (`NO_DATA`), 0% зурвас биш */
+          color: r.mean == null ? NO_DATA : shade(HUE, i, rows.length),
           display: r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
         }))}
       />

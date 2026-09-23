@@ -233,7 +233,7 @@ const cyc = (ergelt, oid, over) => ({
   assert.equal(by('Хүлээгдэж буй').value, 1, 'хүлээгдэж буй ажлын тоо');
 
   const stage = d.tables.find((t) => t.title === 'Шатаар');
-  assert.equal(stage.rows.length, 4, 'шатны хүснэгт дөрвөн мөртэй');
+  assert.equal(stage.rows.length, 6, 'шатны хүснэгт зургаан мөртэй (2026-09-23)');
 
   const stuck = d.tables.find((t) => t.title === 'Буцаагдсан ажлууд');
   assert.ok(stuck, 'буцаагдсан ажлын хүснэгт алга');

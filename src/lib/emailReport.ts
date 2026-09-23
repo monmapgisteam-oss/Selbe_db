@@ -28,9 +28,8 @@ import type { ReportExtra } from './reportData';
  * явдаг. Одоо орчны хувьсагчаар тохирох тул код засахгүйгээр солино.
  *
  * ⚠️ Формат: таслалаар тусгаарласан жагсаалт
- * (`a@monmap.mn,b@monmap.mn`). Хоосон/тохируулаагүй бол доорх анхдагч
- * үлдэнэ — хүлээн авагчгүй үлдээвэл `To:` хоосон мэйл үүсэх тул тохиргоо
- * мартагдсан ч тайлан илгээх зам ажиллагаатай хэвээр байх нь чухал.
+ * (`a@monmap.mn,b@monmap.mn`). Хоосон/тохируулаагүй бол жагсаалт ХООСОН —
+ * `Tailan` илгээх товчнуудыг хааж, тохиргоо дутууг ил хэлнэ.
  *
  * ⚠️ `NEXT_PUBLIC_*` нь build үед клиент код руу шингэдэг тул ЗӨВХӨН нийтийн
  * ажлын хаяг бичнэ — нууц утга энд ХЭЗЭЭ Ч орохгүй.
@@ -41,7 +40,10 @@ import type { ReportExtra } from './reportData';
 export const REPORT_RECIPIENTS: string[] = (() => {
   const raw = process.env.NEXT_PUBLIC_REPORT_RECIPIENTS ?? '';
   const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
-  return list.length > 0 ? list : ['bilguuntugs@monmap.mn'];
+  /* ⚠️ 2026-09-23: анхдагч хаяг ХАСАГДСАН — хоосон бол `Tailan` илгээх
+     товчнуудыг хааж «Хүлээн авагч тохируулаагүй» гэж хэлнэ. Нэг хүний
+     туршилтын хаяг руу албан тайлан чимээгүй явахаас хоосон нь дээр. */
+  return list;
 })();
 const PDF_NAME = 'Selbe_tailan.pdf';
 

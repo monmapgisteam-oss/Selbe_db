@@ -420,8 +420,9 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
    * ⚠️ `groupWorks`-ээр НЭГ ажил = НЭГ мөр. Түүхий мөрөөр жагсаавал 8 ажил 30
    *    мөр болж, зангилааны тоотой зөрнө.
    */
+  /* ⚠️ 2026-09-23: 6 шат — хэлтсийн, газрын даргын буцаалт ч орно */
   const back = (w: (typeof works)[number]) => (
-    w.engineerReturns + w.managerReturns + w.directorReturns
+    w.engineerReturns + w.managerReturns + w.directorReturns + w.headReturns + w.chiefReturns
   );
   const stuck = works.filter((w) => back(w) > 0).sort((a, b) => back(b) - back(a));
   if (stuck.length) {
@@ -690,8 +691,8 @@ export function cardStat(
   const proj = (v: number | null): number | null => (pkg ? null : v);
   /* ⚠️ ХЯНАЛТЫН тоог ч БАГЦААР шүүнэ (2026-09-15-ны аудит). Урьд нь `pkg`
      огт хэрэглэгддэггүй байсан тул «Багц 4-1» сонгоход `zov*`/`bar*`/`gaz*`
-     картууд тэр багцын тоог, харин `hyCo`/`hyEng`/`hyMgr`/`hyDir`/`hyDone`
-     таван карт ТӨСЛИЙН НИЙТ тоог зэрэг харуулдаг байв — нэг дэлгэц дээр
+     картууд тэр багцын тоог, харин `hyCo`/`hyEng`/`hyMgr`/`hyDir`/`hyHead`/
+     `hyChief`/`hyDone` долоон карт ТӨСЛИЙН НИЙТ тоог зэрэг харуулдаг байв — нэг дэлгэц дээр
      хоёр өөр олонлог, `projectWide` тэмдэг ч байхгүй. `buildSchem`,
      `hyanaltPart` хоёул `samePkg`-ээр шүүдэг. */
   const rc = src.review ? reviewCounts(pickPkg(src.review, pkg, (r) => r[HF.bagts])) : null;
@@ -757,6 +758,10 @@ export function cardStat(
       return statOf(tr('Багцын менежер дээр'), rc ? rc.byStage.manager : null, 'count', known(rc ? rc.byStage.manager : null));
     case 'hyDir':
       return statOf(tr('Ерөнхий менежер дээр'), rc ? rc.byStage.director : null, 'count', known(rc ? rc.byStage.director : null));
+    case 'hyHead':
+      return statOf(tr('Хэлтсийн дарга дээр'), rc ? rc.byStage.head : null, 'count', known(rc ? rc.byStage.head : null));
+    case 'hyChief':
+      return statOf(tr('Газрын дарга дээр'), rc ? rc.byStage.chief : null, 'count', known(rc ? rc.byStage.chief : null));
     case 'hyDone':
       return statOf(tr('Шилжүүлсэн'), rc ? rc.done : null, 'count', known(rc ? rc.done : null));
     case 'finBudget':

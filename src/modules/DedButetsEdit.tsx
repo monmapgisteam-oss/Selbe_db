@@ -236,11 +236,21 @@ export function DedButetsEdit({
     setP((x) => (x ? { ...x, [name]: v } : x));
     setErr((x) => ({ ...x, [name]: '' }));
     setFail('');
+    setAskClose(false);
   };
+
+  /**
+   * ХААХЫН ӨМНӨХ АСУУЛТ — маягт дотор мөр («Тийм»/«Үгүй»).
+   *
+   * ⚠️ 2026-09-23: `window.confirm` хөтчид хаагдсан үед үргэлж `false`
+   * буцаан бөглөсөн маягт ХААГДАХГҮЙ гацдаг байв (`DedButets.confirmQ`-ийн
+   * ижил сургамж). Асуулт самбарт гарна; талбар засвал арилна.
+   */
+  const [askClose, setAskClose] = useState(false);
 
   const tryClose = useCallback(() => {
     if (busy) return;
-    if (dirty.current && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?'))) return;
+    if (dirty.current) { setAskClose(true); return; }
     onCancel();
   }, [busy, onCancel]);
 
@@ -393,6 +403,19 @@ export function DedButetsEdit({
                 тайлбарыг үз). Хадгалах товчнуудын ДЭЭР: тэдгээр нь өөр
                 объектод биш ЭНЭ мөрөнд үйлчилдэг тул маягтын үргэлжлэл. */}
             {extra}
+
+            {/* Самбарын асуулт — `askClose`-ийн тайлбар */}
+            {askClose && (
+              <div className={d.askRow} role="alertdialog">
+                <span className={d.askMsg}>{tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?')}</span>
+                <button type="button" className={d.primary} onClick={onCancel} disabled={busy}>
+                  {tr('Тийм')}
+                </button>
+                <button type="button" className={d.btn} onClick={() => setAskClose(false)} disabled={busy}>
+                  {tr('Үгүй')}
+                </button>
+              </div>
+            )}
 
             <div className={d.actions}>
               <span className={d.spacer} />
