@@ -698,7 +698,18 @@ export async function loadRows(
     }
     for (let i = 0; i < feats2.length; i += 1) {
       const j = map ? map[i] : i;
-      depthArr[i] = j >= 0 ? treeDepth(j) : i > 0 ? depthArr[i - 1] : 0;
+      /* ⚠️ ШИНЭ (зэрэгцүүлэгдээгүй, `-1`) МӨРИЙН ГҮН (2026-09-22): урьд нь ҮРГЭЛЖ
+         өмнөх мөрийнх байв (нэмсэн мөр ах дүүгийнхээ АРД ордог гэсэн таамаг).
+         Одоо шинэ мөр эцэг бүлгийнхээ ШУУД ДОР (эхэнд) ордог тул өмнөх мөр нь
+         зураглалд БҮЛЭГ (дараагийнх нь өөрөөс гүн) бол гүн = түүнийх + 1; эс
+         бөгөөс урьдын адил өмнөх мөрийнх (дараалсан хэд хэдэн шинэ мөр ч зөв). */
+      if (j >= 0) depthArr[i] = treeDepth(j);
+      else if (i === 0) depthArr[i] = 0;
+      else {
+        const pj = map ? map[i - 1] : i - 1;
+        const prevIsGroup = pj >= 0 && treeDepth(pj + 1) > treeDepth(pj);
+        depthArr[i] = prevIsGroup ? treeDepth(pj) + 1 : depthArr[i - 1];
+      }
     }
   }
 

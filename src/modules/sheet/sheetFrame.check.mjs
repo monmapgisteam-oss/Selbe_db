@@ -134,11 +134,13 @@ const rowKeys = old.map((r) => [r.oid, rowKeyOf(r)]);
   const out = insertAdds(old, [add], sc, nBld);
   assert.equal(old.length, 7, 'суурь массив уртсаагүй');
   assert.equal(out.length, 8, 'мөр нэмэгдэв');
-  assert.equal(out[5].oid, -1, 'ах дүү (Бетон)-ийн АРД орлоо — бүлгийн төгсгөлд');
-  assert.equal(out[5].depth, 3, 'гүн нь өмнөх мөрийнх');
-  assert.equal(out[5].group, false);
-  assert.deepEqual(out[5].raw, { no: '3', work: 'Арматур', vol: 4, unit: 25 }, 'raw зөвхөн 4 талбар');
-  assert.equal(out[5].wC, null, 'жин ОРООГҮЙ — computeAll бодно');
+  /* ⚠️ 2026-09-22: шинэ мөр эцгийнхээ ШУУД ДОР (эхэнд) — хэрэглэгчийн шаардлага. */
+  const p = old.findIndex((r) => r.group && r.no === '1.1' && r.work === 'Ухах');
+  assert.equal(out[p + 1].oid, -1, 'эцэг бүлгийн ШУУД ДОР (эхэнд) орлоо');
+  assert.equal(out[p + 1].depth, old[p].depth + 1, 'гүн = эцэг + 1');
+  assert.equal(out[p + 1].group, false);
+  assert.deepEqual(out[p + 1].raw, { no: '3', work: 'Арматур', vol: 4, unit: 25 }, 'raw зөвхөн 4 талбар');
+  assert.equal(out[p + 1].wC, null, 'жин ОРООГҮЙ — computeAll бодно');
 
   const orphan = { ...add, oid: -2, parentNo: '7', parentWork: 'БАЙХГҮЙ' };
   assert.equal(insertAdds(old, [orphan], sc, nBld).length, 7, 'эцэггүй add алгасагдав');
@@ -195,9 +197,11 @@ const sub = (over = {}) => ({
   assert.equal(byOid.get(204).end[1], D('2026-10-15'), 'дуусах огноо буув');
   assert.deepEqual([...ov.cellKeys].sort(), ['-1:0', '203:0', '204:0', '204:1', '206:0'], 'cellKeys шинэ oid-оор');
   assert.deepEqual([...ov.dateKeys].sort(), ['203:0:e', '203:0:s', '204:1:e'], 'dateKeys шинэ oid-оор');
-  assert.notEqual(ov.rows[3], fresh[3], 'мөр бүр шинэ объект');
-  assert.notEqual(ov.rows[3].obyem, fresh[3].obyem, 'obyem массив хуулбар');
-  assert.equal(ov.rows[3].raw, fresh[3].raw, 'raw хуваалцагдана (бичигдэхгүй)');
+  /* ⚠️ 2026-09-22: нэмсэн мөр эхэнд ордог тул байрлал гулсана — oid-оор олно. */
+  const ovR = ov.rows.find((r) => r.oid === 203), frR = fresh.find((r) => r.oid === 203);
+  assert.notEqual(ovR, frR, 'мөр бүр шинэ объект');
+  assert.notEqual(ovR.obyem, frR.obyem, 'obyem массив хуулбар');
+  assert.equal(ovR.raw, frR.raw, 'raw хуваалцагдана (бичигдэхгүй)');
 }
 
 /* ── 4б. Ижил жааз (rowKeys-ийн oid rows-д байна) — зөөлт хийгдэхгүй ── */
@@ -267,14 +271,16 @@ const sub = (over = {}) => ({
     assert.equal(fr[i].gun, r.depth, 'гүн мөр бүрд');
     assert.ok(!('o1' in fr[i]) || fr[i].o1 === undefined, 'талбаргүй блокт обьём БИЧИГДЭХГҮЙ');
   });
-  assert.equal(fr[3].o0, 12.5, 'навчийн обьём');
-  assert.equal(fr[3].a0, 0.125, 'хувь = обьём ÷ Обьём');
-  assert.equal(fr[4].o0, null, '"" → null (0 биш)');
-  assert.equal(fr[4].osum, null, 'бүх блок хоосон → obyemSum null');
+  /* ⚠️ 2026-09-22: нэмсэн мөр эхэнд ордог тул байрлал гулсана — oid-оор олно. */
+  const i3 = ov.rows.findIndex((r) => r.oid === 203), i4 = ov.rows.findIndex((r) => r.oid === 204);
+  assert.equal(fr[i3].o0, 12.5, 'навчийн обьём');
+  assert.equal(fr[i3].a0, 0.125, 'хувь = обьём ÷ Обьём');
+  assert.equal(fr[i4].o0, null, '"" → null (0 биш)');
+  assert.equal(fr[i4].osum, null, 'бүх блок хоосон → obyemSum null');
   const add = fr.find((a) => a.work === 'Арматур');
   assert.ok(add && add.fill === fillMs && add.gun === 3, 'нэмсэн мөр жаазанд бүрэн');
   assert.ok(add.wC != null, 'шинэ мөрд жин бодогдож бичигдэв');
-  assert.equal(fr[3].OBJECTID, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
+  assert.equal(fr[i3].OBJECTID, 203, 'raw талбарууд хуулбарт үлдэнэ (applyAdds серверийнхийг хасна)');
   // fillDate байхгүй → throw
   assert.throws(
     () => buildFrame(ov.rows, { ...sc, f: { ...sc.f, fillDate: null } }, nBld, asOf, hasObyem, fillMs),

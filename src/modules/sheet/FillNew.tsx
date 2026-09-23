@@ -77,6 +77,7 @@ import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
 import {
   loadApproved as loadAjilApproved, loadPending as loadAjilPending,
   loadPayload as loadAjilPayload, markApplied as markAjilApplied,
+  loadAddedKeys as loadAjilAddedKeys, addedKeyOf,
   submitAjil, withdrawAjil, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { negjOf } from "./negj";
@@ -2196,37 +2197,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    (жинхэнэ ах дүүгийн байрлал байгаа эсэх) урьдчилан шалгадаг.
    */
 
-  /**
-   * ШИНЭ МӨРИЙГ ОРУУЛАХ БАЙРЛАЛ — ЖИНХЭНЭ АХ ДҮҮГИЙНХЭЭ АРД.
-   *
-   * ⚠️ ГҮН НЬ ӨГӨГДӨЛД ХАДГАЛАГДДАГГҮЙ: `gun` багана 10/10 үйлчилгээнд алга
-   *    тул нийтлэхийн `if (sc.f.gun)` салбар хэзээ ч ажилладаггүй. Дараагийн
-   *    ачаалалтад `bagtsSheet.alignInsertions` нэмсэн мөрийг `-1` гэж таниад
-   *    гүнийг нь ӨМНӨХ МӨРИЙНХӨӨР авна (`depthArr[i-1]`). bagtsSheet.ts-ийн
-   *    тайлбар үүнийг «нэмсэн мөр ах дүүгийнхээ ард залгагдана» гэсэн таамаг
-   *    дээр үндэслэсэн.
-   *
-   * ⚠️ Урьд нь мөрийг бүлгийн БҮХ УДМЫН ард (`afterGroup`) тавьдаг байсан тул
-   *    өмнөх мөр нь ах дүү биш, хамгийн сүүлийн АЧ мөр байв. Үр дүнд нь
-   *    нийтэлсний ДАРАА шинэ ажил өөр (илүү гүн) дэд бүлгийн хүүхэд болж
-   *    хувирч, мөнгөн дүн ба хувийн жин нь өөр салбарт наалддаг байлаа —
-   *    нийтлэхийн өмнөх ба дараах тоо бүхэл салбартаа зөрнө.
-   *
-   * Тиймээс өмнөх мөр нь ЯГ `d+1` гүнтэй байх байрлалыг сонгоно: тэр нь
-   * УДАМГҮЙ шууд хүүхдийн ард. `null` = тийм байрлал алга (бүлэг хоосон,
-   * эсвэл шууд хүүхэд бүр өөрөө дэд бүлэг) — тэнд нэмсэн мөр өгөгдөлд
-   * амьд үлдэхгүй.
-   */
-  const siblingSlot = (list: SheetRow[], p: number): number | null => {
-    const d = list[p].depth;
-    let slot: number | null = null;
-    for (let i = p + 1; i < list.length && list[i].depth > d; i += 1) {
-      if (list[i].depth !== d + 1) continue;            // ач мөр — алгасна
-      const next = list[i + 1];
-      if (!next || next.depth <= d + 1) slot = i + 1;   // удамгүй ах дүү
-    }
-    return slot;
-  };
+  /* ⚠️ 2026-09-22: локал `siblingSlot` ХАСАГДАВ — шинэ мөр эцгийнхээ ШУУД ДОР ордог
+     (`sheetFrame.firstSlot`), нэмэхийг зөвшөөрөх байрлалын шалгуур хэрэггүй. */
 
   /**
    * Нэмсэн мөрүүдийг жагсаалтад ОРУУЛСАН хувилбар.
@@ -2252,6 +2224,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   /** Хуудасны БҮХ мөр — серверийнх + хараахан нийтлэгдээгүй нэмэлт. */
   const rowsAll = useMemo(() => withAdds(rows), [rows, withAdds]);
+
+  /**
+   * СҮҮЛД НЭМЭГДСЭН (батлагдаж нийтлэгдсэн) АЖЛЫН МӨРҮҮД — УЛААНААР ХЭВЭЭР
+   * (2026-09-22, хэрэглэгч: «шинэ ажил текст нь улаан байх … батлагдсан ч улаан»).
+   * Нийтлэгдсэн мөр серверийн oid-той тул `oid < 0` шалгуур хүрэхгүй — нэмэлт
+   * ажлын батлах хүснэгтээс (`loadAddedKeys`) эцэг+№+нэрээр тулгана.
+   * ⚠️ Бүх хэрэглэгчид (эрх шаардахгүй) — тэмдэглэгээ л; уншигдахгүй бол хоосон.
+   */
+  const [addedKeys, setAddedKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let alive = true;
+    setAddedKeys(new Set());
+    void loadAjilAddedKeys(pkg.key).then((k) => { if (alive) setAddedKeys(k); });
+    return () => { alive = false; };
+  }, [pkg.key]);
+  /** oid → «сүүлд нэмэгдсэн» (нэмэлт ажлын хүснэгтээр тулгасан) */
+  const addedOids = useMemo(() => {
+    const out = new Set<number>();
+    if (!addedKeys.size) return out;
+    for (let i = 0; i < rowsAll.length; i += 1) {
+      const r = rowsAll[i];
+      if (r.group) continue;
+      /* эцэг = дээшээ хайхад өөрөөс гүехэн ЭХНИЙ бүлэг */
+      let p = -1;
+      for (let k = i - 1; k >= 0; k -= 1) if (rowsAll[k].depth < r.depth) { p = k; break; }
+      if (p < 0) continue;
+      if (addedKeys.has(addedKeyOf(rowsAll[p].no, rowsAll[p].work, r.no, r.work))) out.add(r.oid);
+    }
+    return out;
+  }, [rowsAll, addedKeys]);
 
 
   /* ── ХУВААРИЙН САРЫН ЗАДАРГАА (`huvaari_obyem`) ──────────────────────
@@ -2943,8 +2945,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      *    наалдаж, дараагийн харьцуулалт бүр худал болно. Тэр алдагдлыг
      *    ЧИМЭЭГҮЙ үүсгэхээс нэмэхийг ЗОГСООЖ, хаана нэмэхийг хэлэх нь дээр.
      */
-    if (siblingSlot(rowsAll, parentIdx) == null)
-      return setErr(tr('«{0}» бүлгийн шууд доор ажил нэмэх боломжгүй: шатлал нь үйлчилгээнд хадгалагддаггүй тул нийтэлсний дараа энэ мөр доод дэд бүлгийн хүүхэд болж, мөнгөн дүн нь өөр салбарт наалдана. Дэд бүлгээ нээгээд түүн дотор нэмнэ үү.', parent.work || parent.no));
+    /* ⚠️ `siblingSlot` шалгуур ХАСАГДАВ (2026-09-22): шинэ мөр эцгийнхээ ШУУД ДОР
+       (эхэнд) ордог ба гүн нь `bagtsSheet`-д «өмнөх мөр бүлэг бол +1» дүрмээр
+       сэргээгддэг тул хоосон/дэд бүлэгтэй бүлэгт ч аюулгүй. */
 
     setErr("");
     const oid = nextTmpOid();
@@ -5744,7 +5747,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 const r = rowsAll[i];
                 const c = calc[i];
                 if (!c) return null;
-                const isNew = r.oid < 0;
+                /* ⚠️ Нийтлэгдээгүй (oid < 0) ЭСВЭЛ батлагдаж нийтлэгдсэн нэмэлт (addedOids) — хоёулаа улаан. */
+                const isNew = r.oid < 0 || addedOids.has(r.oid);
                 return (
                   <Fragment key={r.oid}>
                   <tr
@@ -6239,7 +6243,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                           {/* ⚠️ Жин ба Мөнгөн дүн ЭНД БАЙХГҮЙ — Обьём×Нэгж өртгөөс
                               өөрөө бодогдож, дээд бүлгүүдийн жинг ч дахин тараана. */}
                           <span className={st.addHint}>
-                            {tr('Хувийн жин ба Мөнгөн дүн автоматаар бодогдоно.')}
+                            {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин 0. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
                           </span>
                         </div>
                       </td>

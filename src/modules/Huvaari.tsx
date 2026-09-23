@@ -512,6 +512,18 @@ export function Huvaari({
   const [takt, setTakt] = useState(7);
   const [drag, setDrag] = useState<Drag | null>(null);
   /**
+   * ХАМААРЛЫГ ШУГАМААР ХОЛБОХ (2026-09-22, хэрэглэгч: «бар хооронд шугам чирж
+   * хамаарал шууд холбоно»). Зурвасын баруун захын бариулаас чирж эхлээд нөгөө
+   * АЖЛЫН мөр дээр тавихад тэр мөр энэ ажлаас FS (лаг 0) хамаардаг болно.
+   * ⚠️ Шалгуур (дугуй, өвөг/удам, түгжээ) — `applyModal`-д ганц газар; энд
+   *    зөвхөн зорилтыг олж дамжуулна. `i` = урд ажлын `plan` индекс, `x/y` =
+   *    `.plLanes`-ийн дотоод координат (түр шугамын үзүүр).
+   */
+  const [link, setLink] = useState<{ i: number; x: number; y: number } | null>(null);
+  const lanesRef = useRef<HTMLDivElement | null>(null);
+  /** Холбосны дараах цонх — төрөл (FS/SS) ба хоног асууна (2026-09-22, хэрэглэгч). `si` урд, `ti` хамаарагч. */
+  const [linkAsk, setLinkAsk] = useState<{ si: number; ti: number } | null>(null);
+  /**
    * ЧИРЭЛТИЙГ БУЦААХ мэдээлэл — popup-ыг ЦУЦЛАХАД сэргээнэ.
    *
    * ⚠️ `null` = цуцлахад буцаах зүйлгүй (мөрөөс товшиж нээсэн цонх). Чирэлтээр
@@ -1199,6 +1211,61 @@ export function Huvaari({
    * ⚠️ Хоосон болговол уялдааг ЦЭВЭРЛЭНЭ (`[]`) — `null` нь «бүү хөндөөрэй»
    *    гэсэн утгатай тул ялгах ёстой.
    */
+  /**
+   * ШУГАМААР ХОЛБОХ ЧИРЭЛТ — бариулаас эхлээд `window` дээр дуусна (2026-09-22).
+   *
+   * ⚠️ Pointer capture АВАХГҮЙ: зорилтыг `elementFromPoint`-оор олдог тул хулгана
+   *    доорх элемент нь ЖИНХЭНЭ мөр байх ёстой (capture авбал үргэлж бариул).
+   * ⚠️ Хамаарал нь ЗОРИЛТ мөрд бичигдэнэ (зорилт нь урд ажлаас хамаарна) — сумны
+   *    чиглэлтэй ижил: урд ажлын баруун зах → хамаарагчийн зүүн зах.
+   * ⚠️ Урд ажилд код (`des`) алга бол холбож болохгүй — уялдаа кодоор бичигддэг.
+   * ⚠️ БҮЛЭГ ↔ БҮЛЭГ, БҮЛЭГ ↔ АЖИЛ БҮГД ХОЛБОГДОНО (2026-09-22, хэрэглэгч:
+   *    «бүлэг хооронд уялдаа хийх боломжтой, бүгд өөр хоорондоо холбогдох
+   *    ёстой»). Хөдөлгүүр аль хэдийн дэмждэг: бүлэг урд ажил бол `effSpan`
+   *    (хүүхдийн MIN/MAX), бүлэг хамаарагч бол `propagate` дэд модыг бүхэлд нь
+   *    шилжүүлнэ. ЗӨВХӨН өвөг ↔ удам (өөрийн дотоод) холбоос хориотой хэвээр —
+   *    `applyModal`-ын `hierRelated` шалгуур (гинжин эргэлт).
+   */
+  const startLink = (e: PEvt<HTMLElement>, r: PlanRow) => {
+    if (!canEdit || locked || busy) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (r.des == null) {
+      setErr(tr('Энэ ажилд код алга — хамаарлын урд ажил болж чадахгүй.'));
+      return;
+    }
+    const lanes = lanesRef.current;
+    if (!lanes) return;
+    const pos = (ev: { clientX: number; clientY: number }) => {
+      const b = lanes.getBoundingClientRect();
+      return { x: ev.clientX - b.left, y: ev.clientY - b.top };
+    };
+    setSel(r.i);
+    setErr('');
+    setLink({ i: r.i, ...pos(e) });
+    const mv = (ev: PointerEvent) => setLink({ i: r.i, ...pos(ev) });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setLink(null);
+      if (ev.type === 'pointercancel') return;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-row]') as HTMLElement | null;
+      const ti = el ? Number(el.dataset.row) : NaN;
+      if (!Number.isInteger(ti) || ti === r.i) return;
+      const t = plan[ti];
+      if (!t) return;
+      if (hierRelated(plan, ti, r.i)) { setErr(tr('Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.')); return; }
+      /* ⚠️ Шууд тавихгүй — цонх нээж төрөл (дуусаад / зэрэг эхлэх) ба хоногийг
+         асууна (2026-09-22, хэрэглэгч: «чирээд холбосны дараа … цонх гарах ёстой»).
+         Аль хэдийн холбогдсон бол цонх нь тэр уялдааг ЗАСНА (давхардуулахгүй). */
+      setLinkAsk({ si: r.i, ti });
+    };
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
   const applyHamText = useCallback((oid: number, text: string) => {
     if (busy || locked || !canEdit) return;
     const cur = plan.find((x) => x.oid === oid);
@@ -2391,7 +2458,7 @@ export function Huvaari({
   /* ── УЯЛДААНЫ СУМУУД — идэвхтэй блок дээр, харагдаж буй мөрүүдийн хооронд ──
      ⚠️ Memo БИШ: `visible`, `sel`, `blk`, `xOf` дөрвүүл байнга хөдөлдөг тул
      кэш бараг онохгүй; тооцоо нь уялдаатай мөрийн тоогоор шугаман — хямд. */
-  const arrows: { d: string; cls: string; mk: string; key: string }[] = [];
+  const arrows: { d: string; cls: string; mk: string; key: string; si: number; ti: number }[] = [];
   {
     const visK = new Map<number, number>();
     visible.forEach((r, k) => visK.set(r.i, k));
@@ -2441,6 +2508,8 @@ export function Huvaari({
           cls: viol ? h.depBad : hot ? h.depHot : h.depLine,
           mk: `url(#hvDepArr${arrKind})`,
           key: `${r.oid}·${j}`,
+          si: pi,
+          ti: r.i,
         });
       });
     }
@@ -2979,6 +3048,7 @@ export function Huvaari({
                   </div>
 
                   <div className={h.plLanes}
+                    ref={lanesRef}
                     style={{ height: visible.length * PL_ROW }}
                     onPointerMove={onMove}
                     onPointerUp={onUp}
@@ -3007,8 +3077,9 @@ export function Huvaari({
                       const viol = !!(sp && need != null && sp.start < need);
                       return (
                         <div key={r.oid}
-                          className={`${h.plLane} ${k % 2 ? h.plLaneAlt : ''} ${sel === r.i ? h.plLaneOn : ''}`}
+                          className={`${h.plLane} ${k % 2 ? h.plLaneAlt : ''} ${sel === r.i ? h.plLaneOn : ''} ${link && !hierRelated(plan, r.i, link.i) ? h.plLaneDrop : ''}`}
                           style={{ top: k * PL_ROW, height: PL_ROW }}
+                          data-row={r.i}
                           onPointerDown={(e) => onDown(e, r, 'new')}
                         >
                           {/*
@@ -3110,6 +3181,13 @@ export function Huvaari({
                                 <span className={`${h.plGrip} ${h.plGripR}`}
                                   onPointerDown={(e) => onDown(e, r, 'r')} />
                               )}
+                              {/* ХОЛБОХ БАРИУЛ — баруун захын дугуй; чирээд нөгөө мөр дээр тавина (2026-09-22).
+                                  ⚠️ Бүлгийн зурваст ч бий — бүлэг урд ажил болж чадна (`effSpan`). */}
+                              {canEdit && !locked && (
+                                <span className={h.plLink}
+                                  onPointerDown={(e) => startLink(e, r)}
+                                  title={tr('Хамаарал холбох — чирээд дараагийн ажлын мөр дээр тавина (FS)')} />
+                              )}
                             </div>
                           )}
                         </div>
@@ -3121,7 +3199,7 @@ export function Huvaari({
                         none` — чирэлт, товшилтод огт саад болохгүй. Сум нь
                         зөвхөн ХОЁУЛАА харагдаж буй мөрүүдийн хооронд зурагдана:
                         шүүлт/эвхэлтэд нуугдсан үзүүр рүү зурвал агаарт дүүжлэгдэнэ. */}
-                    {arrows.length > 0 && (
+                    {(arrows.length > 0 || link) && (
                       <svg className={h.depSvg} width={W} height={visible.length * PL_ROW} aria-hidden>
                         <defs>
                           {[h.depArrN, h.depArrH, h.depArrB].map((c, k) => (
@@ -3132,8 +3210,30 @@ export function Huvaari({
                           ))}
                         </defs>
                         {arrows.map((a2) => (
-                          <path key={a2.key} d={a2.d} className={a2.cls} markerEnd={a2.mk} />
+                          <g key={a2.key}>
+                            <path d={a2.d} className={a2.cls} markerEnd={a2.mk} />
+                            {/* ⚠️ ХОЛБООС ДЭЭР ДАРЖ ЗАСАХ/УСТГАХ (2026-09-22, хэрэглэгч: «хамаарлыг
+                                устгаж чадахгүй байна»). SVG нь pointer-events: none (чирэлтэд саад
+                                болохгүй) тул ЗӨВХӨН энэ тунгалаг өргөн зурвас (`depHit`) дарагдана —
+                                нарийн шугамыг онох шаардлагагүй. Цонх нь ижил LinkModal, «Уялдаа
+                                устгах» товчтой. */}
+                            {canEdit && !locked && (
+                              <path d={a2.d} className={h.depHit}
+                                onClick={(e) => { e.stopPropagation(); setLinkAsk({ si: a2.si, ti: a2.ti }); }}>
+                                <title>{tr('Дарж засах / устгах')}</title>
+                              </path>
+                            )}
+                          </g>
                         ))}
+                        {/* ТҮР ШУГАМ — холбох чирэлтийн үед урд ажлын баруун захаас курсор хүртэл */}
+                        {link && (() => {
+                          const k = visible.findIndex((v) => v.i === link.i);
+                          const ps = k >= 0 ? effSpan(plan, link.i, blk) : null;
+                          if (!ps) return null;
+                          const sx = xOf(ps.end + DAY);
+                          const sy = k * PL_ROW + PL_ROW / 2;
+                          return <path d={`M ${sx} ${sy} L ${link.x} ${link.y}`} className={h.depDraft} markerEnd="url(#hvDepArr1)" />;
+                        })()}
                       </svg>
                     )}
                   </div>
@@ -3142,6 +3242,30 @@ export function Huvaari({
             </div>
           )}
         </Section>
+      )}
+
+      {linkAsk && plan[linkAsk.si] && plan[linkAsk.ti] && (
+        <LinkModal
+          src={plan[linkAsk.si]}
+          dst={plan[linkAsk.ti]}
+          onClose={() => setLinkAsk(null)}
+          onRemove={() => {
+            const s = plan[linkAsk.si];
+            const t = plan[linkAsk.ti];
+            setLinkAsk(null);
+            if (s.des == null) return;
+            /* ⚠️ Хоосон болвол `[]` — «цэвэрлэ» гэсэн утга (`null` = хөндөхгүй). */
+            applyModal(t.oid, null, t.deps.filter((d) => d.code !== s.des), null);
+          }}
+          onApply={(type, lag) => {
+            const s = plan[linkAsk.si];
+            const t = plan[linkAsk.ti];
+            setLinkAsk(null);
+            if (s.des == null) return;
+            /* Ижил урд ажлын хуучин уялдааг сольж бичнэ — нэг код нэг удаа. */
+            applyModal(t.oid, null, [...t.deps.filter((d) => d.code !== s.des), { code: s.des, type, lag }], null);
+          }}
+        />
       )}
 
       {modalRow && sc && (
@@ -3958,6 +4082,68 @@ function PlanModal({
               {tr('Тавих')}
             </button>
           )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ХОЛБОХ ЦОНХ — шугамаар чирж холбосны дараа гарна (2026-09-22, хэрэглэгч:
+ * «чирээд холбосны дараа эхлээд дуусах / зэрэг эхлэх болон хоног заах цонх
+ * гарах ёстой»). Зөвхөн ХОЁР сонголт: төрөл (FS — урд ажил дуусаад · SS —
+ * урд ажилтай зэрэг эхэлнэ) ба хоцролтын хоног (±365). «Тавих» → `applyModal`
+ * (дугуй/шатлалын шалгуур тэнд). Урд ажил аль хэдийн уялдаанд байвал утгыг
+ * нь урьдчилан дүүргэж ЗАСНА.
+ */
+function LinkModal({ src, dst, onClose, onApply, onRemove }: {
+  src: PlanRow;
+  dst: PlanRow;
+  onClose: () => void;
+  onApply: (type: DepType, lag: number) => void;
+  /** Байгаа уялдааг устгах — зөвхөн `cur` байвал товч гарна */
+  onRemove?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
+  const cur = dst.deps.find((d) => d.code === src.des);
+  const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
+  const [lag, setLag] = useState<number>(cur?.lag ?? 0);
+  const name = (r: PlanRow) => `${r.des ?? '—'} · ${r.work || r.no}`;
+  return (
+    <div className={h.mdBack} role="presentation" onClick={onClose}>
+      <div ref={ref} className={h.md} role="dialog" aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); if (e.key === 'Enter') onApply(type, lag); }}>
+        <header className={h.mdHead}>
+          <b className={h.mdWork}>{tr('Хамаарал холбох')}</b>
+          <button type="button" className={h.mdX} onClick={onClose} aria-label={tr('Хаах')}>×</button>
+        </header>
+        <div className={h.mdPar}>
+          <span>{tr('Урд ажил:')} <b>{name(src)}</b></span>
+          <br />
+          <span>{tr('Хамаарагч:')} <b>{name(dst)}</b></span>
+        </div>
+        <div className={h.mdDepRow}>
+          <select className={h.select} value={type} autoFocus
+            title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
+            onChange={(e) => setType(e.target.value as DepType)}>
+            <option value="FS">{tr('дуусаад эхэлнэ (FS)')}</option>
+            <option value="SS">{tr('зэрэг эхэлнэ (SS)')}</option>
+          </select>
+          <input type="number" className={h.numIn} value={lag} min={-365} max={365}
+            aria-label={tr('Хоцролт (хоног)')}
+            title={tr('Хоцролт: FS — дууссанаас, SS — эхэлснээс хойш хэд хоногийн дараа (сөрөг = давхцана)')}
+            onChange={(e) => setLag(Math.max(-365, Math.min(365, Number(e.target.value) || 0)))} />
+          <span className={h.mdDepD}>{tr('хоног')}</span>
+        </div>
+        <footer className={h.mdFoot}>
+          {cur && onRemove && (
+            <button type="button" className={h.discard} onClick={onRemove}>{tr('Уялдаа устгах')}</button>
+          )}
+          <span className={h.spacer} />
+          <button type="button" className={h.tlZoomB} onClick={onClose}>{tr('Болих')}</button>
+          <button type="button" className={h.save} onClick={() => onApply(type, lag)}>{tr('Тавих')}</button>
         </footer>
       </div>
     </div>

@@ -212,7 +212,10 @@
   line-height: 1.15;
 }
 .gHeadWork { flex: 1; }
-.gRight { flex: none; }
+/* ⚠️ `align-self: flex-start` (2026-09-22) — `.gSide`-тэй ИЖИЛ шалтгаан: stretch-ээр
+   эцгийн бүтэн өндрийг авбал доторх `.plHead` (sticky; top: 0) наалдах газраа
+   олохгүй, он/сарын мөр гүйлттэй хамт дээш алга болно. Хэрэглэгч: «Header түгжих». */
+.gRight { flex: none; align-self: flex-start; }
 .gTrack { position: relative; }
 
 /* ── Шүүлтийн таб ── */
@@ -475,7 +478,10 @@
 .plHead {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* ⚠️ z-index 3 (2026-09-22): зурвас/сум (`plLanes`, `depSvg`) нь DOM-д хойно тул
+     1-ээр доош гүйлгэхэд толгойн дээгүүр зурагдаж, сар/хоног нуугддаг байв.
+     `.gSideHead`-тэй ижил түвшин. */
+  z-index: 3;
   cursor: grab; /* чирж гүйлгэнэ (2026-09-17) */
   user-select: none;
   touch-action: pan-y;
@@ -726,6 +732,32 @@
   border-right: none;
   border-left: 1px solid color-mix(in srgb, var(--surface) 60%, transparent);
 }
+
+/* ── ХАМААРАЛ ШУГАМААР ХОЛБОХ (2026-09-22) ──
+   Зурвасын баруун захаас гадагш цухуйсан дугуй бариул. ⚠️ Зурвас `overflow`-гүй
+   тул гадагш цухуйна; hover-т тодорно, эс бөгөөс бүдэг — сумны үзүүртэй андуурахгүй. */
+.plLink {
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--data);
+  border: 2px solid var(--surface);
+  opacity: 0.45;
+  cursor: crosshair;
+  z-index: 2;
+}
+.plBar:hover .plLink, .plLink:hover { opacity: 1; }
+/* Холбох чирэлтийн үед тавьж болох мөрүүд — зөөлөн тодруулга */
+.plLaneDrop:hover { background: color-mix(in srgb, var(--data) 18%, transparent); }
+/* Түр шугам — тасархай, акцент өнгө */
+.depDraft { fill: none; stroke: var(--data); stroke-width: 1.8; stroke-dasharray: 5 4; }
+/* Сумны ДАРАГДАХ зурвас — тунгалаг, өргөн; SVG өөрөө pointer-events:none тул энэ л хүлээн авна */
+.depHit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; }
+.depHit:hover + *, .depHit:hover { stroke: color-mix(in srgb, var(--data) 18%, transparent); }
 
 /* ── Responsive — нарийн дэлгэцэд босоо өрөгдөнө ── */
 @media (max-width: 1180px) {

@@ -427,6 +427,34 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
   }
 }
 
+/**
+ * БАТЛАГДСАН/БУУЛГАСАН НЭМЭЛТ АЖЛЫН ТҮЛХҮҮРҮҮД — «эцгийн № ¦ эцгийн нэр ¦ № ¦ нэр».
+ *
+ * ⚠️ ЗОРИЛГО (2026-09-22, хэрэглэгч: «сүүлд нэмэгдсэн ажил батлагдсан ч улаан
+ *    өнгөтэй байна»): нийтлэгдсэн шинэ мөр серверийн ObjectID авч бусдаас
+ *    ялгагдахаа болдог тул «нэмэлт» гэдгийг ЭНЭ хүснэгтээс сэргээнэ. Хуудас
+ *    (FillNew) мөр бүрийн эцгийг дээшээ хайж ижил түлхүүр үүсгэж тулгана.
+ * ⚠️ Уншихад эрх шаардахгүй — тэмдэглэгээ л. Хүснэгт алга/уншигдахгүй бол хоосон.
+ */
+export function addedKeyOf(parentNo: string, parentWork: string, no: string, work: string): string {
+  return `${parentNo.trim()}¦${parentWork.trim()}¦${no.trim()}¦${work.trim()}`;
+}
+export async function loadAddedKeys(pkgKey: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const esc = pkgKey.replace(/'/g, "''");
+    const rows = await query(
+      `${F.pkgKey} = '${esc}' AND ${F.status} IN (N'${AJIL_STATUS.approved}', N'${AJIL_STATUS.applied}')`,
+      `${F.oid},${F.payload}`,
+    );
+    for (const r of rows) {
+      const p = parsePayload(s(r[F.payload]) ?? "");
+      for (const a of p?.adds ?? []) out.add(addedKeyOf(a.parentNo, a.parentWork, a.no, a.work));
+    }
+  } catch { /* тэмдэглэгээ л — уншигдахгүй бол улаан гарахгүй, хуудас ажиллана */ }
+  return out;
+}
+
 /** Нэг илгээлтийн АГУУЛГА — батлахад л хэрэгтэй тул тусад нь татна */
 export async function loadPayload(oid: number): Promise<AjilPayload | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.payload}`);

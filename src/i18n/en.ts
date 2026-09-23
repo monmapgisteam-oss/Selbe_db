@@ -2360,7 +2360,6 @@ const en: Record<string, string> = {
   "Ажлын нэрийг оруулна уу.": "Please enter the task name.",
   "№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.": "The No. must be a whole number (e.g. “12”) — a decimal number marks a group row, so the task would be left out of the task count.",
   "Обьём ба Нэгж өртөг нь тоон утга байх ёстой.": "Volume and unit cost must be numbers.",
-  "«{0}» бүлгийн шууд доор ажил нэмэх боломжгүй: шатлал нь үйлчилгээнд хадгалагддаггүй тул нийтэлсний дараа энэ мөр доод дэд бүлгийн хүүхэд болж, мөнгөн дүн нь өөр салбарт наалдана. Дэд бүлгээ нээгээд түүн дотор нэмнэ үү.": "A task cannot be added directly under the “{0}” group: the hierarchy is not stored in the service, so after publishing this row would become a child of the sub-group below it and its amount would attach to the wrong branch. Open the sub-group and add the task inside it.",
   "Хуудас хооронд нь шинэчлэгдсэн (өөр хэрэглэгч нийтэлсэн) тул засваруудыг шинэ мөрүүдэд тулгаж чадсангүй — нийтлэлийг зогсоов. Ноорог хадгалагдсан хэвээр байгаа тул хуудсыг дахин ачаалж, сэргээгээд дахин Илгээнэ үү.": "The sheet was updated meanwhile (someone else published), so the edits could not be matched to the new rows — submission was stopped. The draft is still saved: reload the sheet, restore it and submit again.",
   "«{0}» нэмэгдлээ — «Илгээх» дарж хяналтад илгээнэ.": "“{0}” added — press Submit to send it for review.",
   "Энэ бүлэгт шинэ ажлын мөр нэмэх": "Add a new task row to this group",
@@ -2368,7 +2367,6 @@ const en: Record<string, string> = {
   "«{0}» мөрийг хасах": "Remove the “{0}” row",
   "«{0}» дотор шинэ ажил": "New task inside “{0}”",
   "№": "No.",
-  "Хувийн жин ба Мөнгөн дүн автоматаар бодогдоно.": "Weight and amount are computed automatically.",
   "Энэ хэрэглэгч урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт»-ыг унтраавал ажлаа хянаж чадахгүй болно. Унтраах уу?": "This user is assigned to a workflow stage. Turning off “Execution review” will leave them unable to review their work. Turn it off?",
   "«{0}» нь ArcGIS хэрэглэгчийн нэрийн бүтцэд тохирохгүй (латин үсэг/тоо, 3+ тэмдэгт).": "“{0}” does not look like a valid ArcGIS username (Latin letters/digits, 3+ characters).",
   "⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ browser-ийн cache. Өөрчлөлт түр локалдоо хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.": "⚠️ Could not read the ArcGIS table — the list below is this browser’s cache. Changes are stored locally for now and will sync automatically once the connection recovers.",
@@ -4672,6 +4670,16 @@ const en: Record<string, string> = {
   "Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй. Буцаавал нэмэгч дахин илгээнэ.": "The submission content could not be read — approval is not possible. Return it and the author will resubmit.",
   "Батлагдсан мөрүүд «Гүйцэтгэл бөглөх» хуудсанд тэр багцыг нээхэд орж ирнэ.": "Approved rows appear on the \"Fill progress\" sheet when that package is opened.",
   "Батлагдсан нэмэлт ажил хуудсанд орлоо — нийтлэхэд бичигдэнэ.": "Approved added work is now on the sheet — it will be written when published.",
+  "Энэ ажилд код алга — хамаарлын урд ажил болж чадахгүй.": "This work has no code — it cannot be a predecessor.",
+  "Хамаарал холбох — чирээд дараагийн ажлын мөр дээр тавина (FS)": "Link a dependency — drag and drop onto the successor work row (FS)",
+  "Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.": "Cannot link to its own group or sub-work — this would create a chain loop.",
+  "Хамаарал холбох": "Link dependency",
+  "Урд ажил:": "Predecessor:",
+  "Хамаарагч:": "Successor:",
+  "дуусаад эхэлнэ (FS)": "starts after finish (FS)",
+  "зэрэг эхэлнэ (SS)": "starts together (SS)",
+  "Дарж засах / устгах": "Click to edit / remove",
+  "Обьём ба нэгж өртөг сонголттой — хоосон бол жин 0. Шинэ мөр бүлгийн эхэнд, улаанаар орно.": "Volume and unit price are optional — empty means weight 0. The new row goes first in its group, in red."
 };
 
 export default en;

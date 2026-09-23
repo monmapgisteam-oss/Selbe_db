@@ -1456,9 +1456,12 @@ tr:hover > td > .addBtn { opacity: 1; }
 }
 .dropBtn:hover { background: color-mix(in srgb, var(--bad) 28%, transparent); }
 
-/** Нийтлэгдээгүй ШИНЭ мөр — зүүн ирмэгийн зураас нь «энэ хадгалагдаагүй» гэдгийг хэлнэ */
-.newRow > td:first-child { box-shadow: inset 3px 0 0 var(--good-ink); }
-.newRow > td { background: color-mix(in srgb, var(--good) 8%, transparent); }
+/** ШИНЭ (нэмэлт) АЖЛЫН МӨР — УЛААН (2026-09-22, хэрэглэгч: «шинэ ажил текст нь улаан
+    байх; сүүлд нэмэгдсэн ажил батлагдсан ч улаан»). Нийтлэгдээгүй (oid < 0) ба
+    батлагдаж нийтлэгдсэн нэмэлт хоёулаа ижил — «энэ мөр анхны гэрээнд байгаагүй». */
+.newRow > td:first-child { box-shadow: inset 3px 0 0 var(--bad-ink); }
+.newRow > td { background: color-mix(in srgb, var(--bad) 6%, transparent); }
+.newRow > td.c-no, .newRow > td.c-ajil { color: var(--bad-ink); font-weight: 600; }
 
 /** Маягтын мөр — хүснэгтийн бүтэн өргөнийг эзэлнэ */
 .addRow > td { padding: 8px 10px; background: color-mix(in srgb, var(--hue) 6%, transparent); }
