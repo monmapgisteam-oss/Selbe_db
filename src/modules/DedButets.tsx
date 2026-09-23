@@ -51,7 +51,8 @@ import {
 import { buildPacks, type Pack } from './Bagts';
 import { km, num } from '@/lib/format';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-import { butetsScope, canEditButetsLayer, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { butetsScope, canEditButetsLayer, hasButetsRole, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { PACK_OF_LAYER } from '@/lib/butetsPacks';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
@@ -498,6 +499,45 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     () => DED_BUTETS_LAYER_IDS.filter((id) => canEditLayer(id)),
     [canEditLayer],
   );
+
+  /**
+   * ХАРАХ ХҮРЭЭ (2026-09-23, хэрэглэгч: «багц бүрд тусдаа аккаунт — тухайн
+   * аккаунт бусад багцыг ХАРЖ, засах боломжгүй»). Багц хуваарилагдсан
+   * аккаунтад зураг · каталог · багцын жагсаалт · KPI бүгд ЗӨВХӨН өөрийн
+   * багцын давхаргаар.
+   *
+   * ⚠️ ЗӨВХӨН БАГЦЫН АККАУНТ хязгаарлагдана (`hasButetsRole` БА `scope`
+   *    жагсаалт). `butetsScope` нь үүрэггүй хүнд ч `[]` буцаадаг тул
+   *    `hasButetsRole`-гүйгээр шалгавал ердийн үзэгч бүрд хуудас ХООСОН болно.
+   *    Super (`scope === null`) ба үзэгч урьдын адил бүгдийг харна.
+   * ⚠️ FAIL-CLOSED: ямар ч багцад хамаарахгүй давхарга (`PACK_OF_LAYER`-т
+   *    байхгүй) ч нуугдана — `canEditButetsLayer`-ийн «эзэнгүй давхарга»
+   *    дүрэмтэй ижил. Каталогийн БУСАД бүлэг (зам, барилга — `TOTAL_IDS`-д
+   *    байхгүй) контекст тул нуугдахгүй.
+   * ⚠️ `hidden === null` = хязгааргүй; `Set` = нуух давхаргууд.
+   */
+  const hidden = useMemo<Set<string> | null>(() => {
+    if (authStatus === 'off' || scope === null || !hasButetsRole(user?.username)) return null;
+    return new Set(TOTAL_IDS.filter((id) => {
+      const pk = PACK_OF_LAYER[id];
+      return !pk || !scope.includes(pk);
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authStatus, capN, scope]);
+  const allow = useCallback((id: string) => !hidden || !hidden.has(id), [hidden]);
+  /** Энэ аккаунтад ХАРАГДАХ инженерийн давхаргууд */
+  const viewIds = useMemo(() => DED_BUTETS_LAYER_IDS.filter(allow), [allow]);
+  /** Харагдах багцууд — нэг ч давхарга нь нээлттэй бол багц гарна */
+  const viewPacks = useMemo(
+    () => (hidden ? INFRA_PACKS.filter((x) => x.layerIds.some(allow)) : INFRA_PACKS),
+    [hidden, allow],
+  );
+  /* KPI-ийн id жагсаалтууд — мөн хүрээгээр (бусад багцын км нийлбэрт орохгүй) */
+  const totalIds = useMemo(() => TOTAL_IDS.filter(allow), [allow]);
+  const netIds = useMemo(() => NET_IDS.filter(allow), [allow]);
+  const heatIds = useMemo(() => SYSTEMS[0].ids.filter(allow), [allow]);
+  const pkgIds = useMemo(() => PKG_IDS.filter(allow), [allow]);
+  const wellIds = useMemo(() => WELL_IDS.filter(allow), [allow]);
   /**
    * ⚠️ АНХДАГЧ ДАВХАРГА ХҮРЭЭНД БАЙХ ЁСТОЙ (2026-09-23). `msel.layerId` ба `addTo`
    *    нь `DED_BUTETS_LAYER_IDS[0]`-оор эхэлдэг — тэр нь хуваарилагдаагүй багцынх
@@ -532,7 +572,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ⚠️ Контекст хэрэгтэй бол «Давхарга» каталогоос гараар нэмнэ — суурь нь
    * зөвхөн ЭХНИЙ байдлыг заана, хориглохгүй.
    */
-  const base = useMemo(() => [...DED_BUTETS_LAYER_IDS], []);
+  /* ⚠️ Суурь нь ХҮРЭЭГЭЭР (`viewIds`) — багцын аккаунтад бусад багц анхнаасаа асахгүй */
+  const base = useMemo(() => [...viewIds], [viewIds]);
 
   const [visible, setVisible] = useLayerPicks(base);
   const [layerSel, setLayerSel] = useState<string | null>(null);
@@ -562,12 +603,14 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * трасс дээр давхарладаг тул аль нь товшигдсоныг ялгах боломжгүй.
    */
   const mapVisible = useMemo(() => {
-    if (editMode) return DED_BUTETS_LAYER_IDS;
+    if (editMode) return viewIds;
     /* ⚠️ Сонгосон багцын давхаргууд ЗӨВХӨНӨӨРӨӨ — суурьтай ижил зарчим
-       (дээрх `base`-ийн тэмдэглэл). Контекст хэрэгтэй бол каталогоос. */
-    if (sel) return sel.ids;
-    return visible;
-  }, [editMode, sel, visible]);
+       (дээрх `base`-ийн тэмдэглэл). Контекст хэрэгтэй бол каталогоос.
+       ⚠️ `allow` шүүлт (2026-09-23): каталогийн хадгалсан сонголт эсвэл
+       багцын мөрөөр ч хүрээний гаднах давхарга зурагт гарахгүй. */
+    if (sel) return sel.ids.filter(allow);
+    return hidden ? visible.filter(allow) : visible;
+  }, [editMode, sel, visible, viewIds, allow, hidden]);
 
   /**
    * ЦЭГЭН ДАВХАРГУУДЫГ ЖИЖИГРҮҮЛНЭ (хэрэглэгчийн хүсэлт, 2026-09-02).
@@ -603,7 +646,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * `totals.ts`-ийн тайлбараас үз). Одоо багц бүр бэлэн болмогц өөрийн
    * тоогоо гаргана.
    */
-  const totals = usePlanTotalsLive(zone, true, TOTAL_IDS);
+  const totals = usePlanTotalsLive(zone, true, totalIds);
 
   /** Тайлбарт багтаагүй давхаргын тоо («+N») */
   const legendHidden = useMemo(
@@ -1109,22 +1152,22 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             */}
           <Stats cols={4}>
             <Stat
-              value={kmOrWait(sumOf(totals, NET_IDS))}
+              value={kmOrWait(sumOf(totals, netIds))}
               unit={tr('км')}
               label={tr('Инженерийн шугам — нийт')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, SYSTEMS[0].ids))}
+              value={kmOrWait(sumOf(totals, heatIds))}
               unit={tr('км')}
               label={tr('Үүнээс дулаан хангамж')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, PKG_IDS))}
+              value={kmOrWait(sumOf(totals, pkgIds))}
               unit={tr('км')}
               label={tr('Гэрээний багцын шугам')}
             />
             <Stat
-              value={cntOrWait(countOf(totals, WELL_IDS))}
+              value={cntOrWait(countOf(totals, wellIds))}
               unit={tr('ш')}
               label={tr('Бохирын худаг')}
             />
@@ -1613,6 +1656,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   гаргана (`services.ts` §catalogGroups). */}
               <LayerCatalog
                 view="dedButets"
+                /* ⚠️ Бусад багцын давхарга каталогт ч гарахгүй (2026-09-23) */
+                allow={hidden ? allow : undefined}
                 totals={catTotals}
                 visible={visible}
                 setVisible={setVisible}
@@ -1668,11 +1713,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 */}
               <Section
                 title={tr('Дэд бүтэц')}
-                note={tr('{0} багц · {1}', num(INFRA_PACKS.length), tr('зурагт харагдах давхарга'))}
+                note={tr('{0} багц · {1}', num(viewPacks.length), tr('зурагт харагдах давхарга'))}
                 collapsible
               >
                 <List>
-                  {INFRA_PACKS.map((x) => {
+                  {/* ⚠️ `viewPacks` — багцын аккаунтад зөвхөн өөрийн багц (2026-09-23) */}
+                  {viewPacks.map((x) => {
                     /**
                      * ⚠️ ЗАДРАХ нь СОНГОЛТТОЙ НЭГ л төлөв (2026-09-11,
                      * хэрэглэгчийн хүсэлт). `pickRow` нь ижил түлхүүрийг

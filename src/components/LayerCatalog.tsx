@@ -56,6 +56,7 @@ export const LayerCatalog = memo(function LayerCatalog({
   embedded = false,
   extra,
   forced,
+  allow,
 }: {
   /**
    * Аль харагдацын каталог вэ.
@@ -112,8 +113,19 @@ export const LayerCatalog = memo(function LayerCatalog({
    * ⚠️ Глобал `ALWAYS_ON_IDS` дээр НЭМЭГДЭНЭ, түүнийг орлохгүй.
    */
   forced?: readonly string[];
+  /**
+   * ДАВХАРГЫН ШҮҮЛТ (2026-09-23) — `false` буцаасан давхарга каталогт ОГТ
+   * гарахгүй, хоосон болсон бүлэг ч гарахгүй. «Инженерийн дэд бүтэц»-ийн
+   * багцын аккаунт бусад багцын давхаргыг харахгүй (`DedButets.hidden`).
+   * ⚠️ Өгөөгүй бол хуучнаараа — бүх харагдацад нөлөөгүй.
+   */
+  allow?: (id: string) => boolean;
 }) {
-  const groups = catalogGroups(view);
+  const groups = allow
+    ? catalogGroups(view)
+      .map((g) => ({ ...g, ids: g.ids.filter(allow) }))
+      .filter((g) => g.ids.length > 0)
+    : catalogGroups(view);
   /** Ортофото ил эсэх — газрын зурагтай нэг эх сурвалж (`MapProvider`) */
   const { ortho, setOrtho } = useMap();
 
