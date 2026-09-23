@@ -363,6 +363,15 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
     console.error('[selbe] нэмэлт ажлын хуваарилалтын синк амжилтгүй:', e);
   }
 
+  // 10) Дэд бүтцийн засварын хуваарилалт (`__butets__:`) → butetsAcl.ts
+  //     ⚠️ `butets` эрхийн ХҮРЭЭ — аль багцын давхаргыг засах вэ.
+  try {
+    const bt = await import('./butetsAcl');
+    bt._syncRemoteButets(remote.butets ?? []);
+  } catch (e) {
+    console.error('[selbe] дэд бүтцийн засварын хуваарилалтын синк амжилтгүй:', e);
+  }
+
   notify();
   return true;
 }

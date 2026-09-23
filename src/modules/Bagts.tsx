@@ -19,6 +19,7 @@ import {
 import { mnt, num, pct, shade, tint, NO_DATA } from '@/lib/format';
 import { readParam, writeParams } from '@/lib/urlState';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
+import { commonName } from '@/lib/butetsPacks';
 import o from './bagtsOv.module.css';
 
 /**
@@ -91,15 +92,7 @@ export type Pack = {
  * Тусгаарлагчийн үлдэгдлийг (` · `, ` — `) арилгана, эс бөгөөс нэр тасархай
  * зураасаар төгсөнө.
  */
-function commonName(titles: string[]): string {
-  let p = titles[0] ?? '';
-  for (const t of titles.slice(1)) {
-    let i = 0;
-    while (i < p.length && i < t.length && p[i] === t[i]) i += 1;
-    p = p.slice(0, i);
-  }
-  return p.replace(/[\s·—-]+$/u, '').trim() || titles[0] || '';
-}
+/* `commonName` нь `lib/butetsPacks.ts`-д — эрхийн панел ч хэрэглэдэг (2026-09-23) */
 
 /**
  * БАГЦУУДЫГ УГСРАХ — Bagts ба Tsogts (цогц хяналт) хоёулаа энэ ГАНЦ логикоор.

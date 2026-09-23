@@ -30,6 +30,7 @@ import { QaqcAcl } from '@/modules/QaqcAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
 import { ChanarAcl } from '@/modules/ChanarAcl';
+import { DedButetsAcl } from '@/modules/DedButetsAcl';
 import {
   ALL_BAGTS as CHANAR_ALL_BAGTS, listChanarAssigns, purgeChanarAssign, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
@@ -46,6 +47,10 @@ import {
   ALL_BAGTS as AJIL_ALL_BAGTS, listAjilAssigns, purgeAjilAssign, removeAjilAssign,
   setAjilGrants, subscribeAjilAcl, type AjilRole,
 } from '@/lib/ajilAcl';
+import {
+  ALL_BAGTS as BUTETS_ALL_BAGTS, listButetsAssigns, purgeButetsAssign, removeButetsAssign,
+  setButetsGrants, subscribeButetsAcl, type ButetsRole,
+} from '@/lib/butetsAcl';
 import {
   ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
   subscribeQaqcAcl,
@@ -90,7 +95,7 @@ const capLabel = (k: CapKey): string => {
   if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)');
   if (k === 'chanarReview') return tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА)');
   if (k === 'gazar') return tr('Газрын төлөв засах');
-  if (k === 'butets') return tr('Дэд бүтцийн атрибут засах');
+  if (k === 'butets') return tr('Инженерийн дэд бүтцийн засвар');
   return k;
 };
 const capHint = (k: CapKey): string => {
@@ -110,7 +115,7 @@ const capHint = (k: CapKey): string => {
     return tr('«Газар чөлөөлөлт» дээр нэгж талбарын төлөв, явцын мэдээ, эзэмшигч, тайлбарыг засах. Нэг талбарын төлөв солиход чөлөөлөлтийн хувь, давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.');
   }
   if (k === 'butets') {
-    return tr('«Дэд бүтэц» харагдац дээр инженерийн шугамын атрибутыг (урт, бүс, баримтын нэр, багц) засах. Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө.');
+    return tr('«Дэд бүтэц» харагдац дээр инженерийн шугамын атрибутыг (урт, бүс, баримтын нэр, багц) засах. Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн дэд бүтцийн засварын эрх» хуудсыг ашиглана уу.');
   }
   if (k === 'finRow') {
     return tr('Тэр хоёр хүснэгтэд шинэ мөр нэмэх, байгаа мөрийг устгах. ⚠️ Устгасан мөрийг порталаас буцаах арга БАЙХГҮЙ.');
@@ -207,7 +212,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    хоёр байнгын асуултад хариулах газар БАЙХГҮЙ байв — таван бүлгийг
    *    тус тусад нь нээж хайх ёстой байлаа.
    */
-  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'chanar'>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'chanar' | 'butets'>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -336,6 +341,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeObyemAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeAjilAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeButetsAcl(() => setAclN((n) => n + 1)), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
@@ -496,7 +502,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    * @param kind аль дэд систем
    */
   const flipScoped = (
-    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar' | 'ajil',
+    u: UserPerm, cap: CapKey, on: boolean, kind: 'qaqc' | 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets',
   ) => {
     /* ⚠️ Remote уншигдаагүй — унтраалга disabled ч хамгаалалт давхар (2026-09-21) */
     if (capsLocked) { setAddErr(LOCK_MSG); return; }
@@ -578,13 +584,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        *    гэсэн чимээгүй таамаг болж, гурав дахь төрөл нэмэхэд нэмэлт
        *    ажлын унтраалга ОБЬЁМЫН хуваарилалтыг дарах байв.
        */
+      /* ⚠️ Дэд бүтэц (2026-09-23) — ГАНЦ үүрэг `editor`, `butets` эрх. */
       const role = kind === 'huvaari'
         ? (cap === 'plan' ? 'author' : 'approver')
-        : (cap === 'obyemEdit' ? 'editor' : 'approver');
+        : kind === 'butets' ? 'editor'
+          : (cap === 'obyemEdit' ? 'editor' : 'approver');
       const ALL = kind === 'huvaari' ? HUVAARI_ALL_BAGTS
-        : kind === 'ajil' ? AJIL_ALL_BAGTS : OBYEM_ALL_BAGTS;
+        : kind === 'ajil' ? AJIL_ALL_BAGTS
+          : kind === 'butets' ? BUTETS_ALL_BAGTS : OBYEM_ALL_BAGTS;
       const cur = (kind === 'huvaari' ? listHuvaariAssigns()
-        : kind === 'ajil' ? listAjilAssigns() : listObyemAssigns())
+        : kind === 'ajil' ? listAjilAssigns()
+          : kind === 'butets' ? listButetsAssigns() : listObyemAssigns())
         .find((a) => a.user === key);
       const grants = (cur?.grants ?? []).map((g) => ({ ...g }));
 
@@ -608,11 +618,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       if (!next.length) {
         r = kind === 'huvaari' ? removeHuvaariAssign(u.username)
           : kind === 'ajil' ? removeAjilAssign(u.username)
+          : kind === 'butets' ? removeButetsAssign(u.username)
           : removeObyemAssign(u.username);
       } else if (kind === 'huvaari') {
         r = setHuvaariGrants(u.username, next as { role: PlanRole; bagts: string[] }[]);
       } else if (kind === 'ajil') {
         r = setAjilGrants(u.username, next as { role: AjilRole; bagts: string[] }[]);
+      } else if (kind === 'butets') {
+        r = setButetsGrants(u.username, next as { role: ButetsRole; bagts: string[] }[]);
       } else {
         r = setObyemGrants(u.username, next as { role: ObyemRole; bagts: string[] }[]);
       }
@@ -657,6 +670,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        ЧИМЭЭГҮЙ эрхээ алдана (`ajilAcl.ts`-ийн ⚠️). */
     if (c === 'ajilApprove') { flipScoped(u, c, on, 'ajil'); return; }
     if (c === 'chanarAuthor' || c === 'chanarReview') { flipScoped(u, c, on, 'chanar'); return; }
+    /* ⚠️ Дэд бүтцийн засвар ч багцаар (2026-09-23) — `butetsAcl.ts`. */
+    if (c === 'butets') { flipScoped(u, c, on, 'butets'); return; }
     void toggleCap(u.username, c, !on).then((r) => {
       setCapErr((prev) => {
         const m = new Map(prev);
@@ -762,9 +777,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const chOk = await purgeChanarAssign(uname);
           /* ⚠️ Нэмэлт ажлын хуваарилалт нь ӨӨР мөр (`__ajil__:`) — тусад нь арилгана */
           const ajOk = await purgeAjilAssign(uname);
+          /* ⚠️ Дэд бүтцийн засварын хуваарилалт нь ӨӨР мөр (`__butets__:`) — тусад нь арилгана */
+          const btOk = await purgeButetsAssign(uname);
           const capOk = await setCaps(uname, []);
           const r = await removeUser(uname);
-          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (r && flowOk && qaqcOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (d.clear) {
@@ -777,6 +794,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             if (!(await purgeObyemAssign(uname))) bad = true;
             if (!(await purgeChanarAssign(uname))) bad = true;
             if (!(await purgeAjilAssign(uname))) bad = true;
+            if (!(await purgeButetsAssign(uname))) bad = true;
             if (!(await setCaps(uname, []))) bad = true;
           }
           const r = await clearOverride(uname);
@@ -896,6 +914,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       [listHuvaariAssigns().some((a) => a.user === key), tr('Хуваарийн эрх')],
       [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
       [listAjilAssigns().some((a) => a.user === key), tr('Нэмэлт ажлын эрх')],
+      [listButetsAssigns().some((a) => a.user === key), tr('Инженерийн дэд бүтцийн засварын эрх')],
     ];
     /*
      * ⚠️ НЭМЭЛТ ЭРХ (`__cap__:`) ч мөн ӨНЧИН ҮЛДЭНЭ (2026-09-08-ны хоёр дахь
@@ -1024,6 +1043,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="shield" size={14} />
           {tr('Чанарын баримтын эрх')}
         </button>
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'butets' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'butets'}
+          onClick={() => setPane('butets')}
+        >
+          <Icon name="network" size={14} />
+          {tr('Инженерийн дэд бүтцийн засварын эрх')}
+        </button>
       </aside>
 
       <div className={s.main}>
@@ -1046,6 +1074,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               </p>
             </header>
             <ChanarAcl />
+          </>
+        ) : pane === 'butets' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Инженерийн дэд бүтцийн засварын эрх')}</h2>
+              <p className={s.subtitle}>
+                {tr('«Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтад багц хуваарилна. Багц хуваарилаагүй бол засах боломжгүй.')}
+              </p>
+            </header>
+            <DedButetsAcl />
           </>
         ) : pane === 'obyem' ? (
           <>

@@ -124,6 +124,18 @@ export type ObyemRow = {
  * энэ нь шинэ мөр гэрээнд нэмэгдэх эсэхийг зохицуулна. Хоёр үүрэг:
  * `editor` (мөр нэмэгч) · `approver` (батлагч).
  */
+/**
+ * ДЭД БҮТЦИЙН ЗАСВАРЫН хуваарилалтын нэг мөр — `__butets__:` угтвартай.
+ * ⚠️ `ObyemRow`-той ижил бүтэц, ганц үүрэг (`editor`); `bagts` нь `bagtsKey`
+ *    хэлбэрийн дэд бүтцийн багц («БАГЦ51»), Бөглөх хуудасны бүлэг БИШ.
+ */
+export type ButetsRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  grants?: Grant[];
+};
+
 export type AjilRow = {
   user: string;
   roles: string[];
@@ -160,6 +172,8 @@ const OBYEM_PREFIX = '__obyem__:';
 const CHANAR_PREFIX = '__chanar__:';
 /** Нэмэлт ажлын хуваарилалтын угтвар — обьёмынхоос ялгана */
 const AJIL_PREFIX = '__ajil__:';
+/** Дэд бүтцийн засварын багцын хуваарилалтын угтвар — нэмэлт ажлынхаас ялгана */
+const BUTETS_PREFIX = '__butets__:';
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -387,6 +401,7 @@ export async function fetchAll(
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
+  butets: ButetsRow[];
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -419,6 +434,7 @@ export async function fetchAll(
     const obyemBy = new Map<string, ObyemRow>();
     const chanarBy = new Map<string, ChanarRow>();
     const ajilBy = new Map<string, AjilRow>();
+    const butetsBy = new Map<string, ButetsRow>();
     for (const a of rows) {
       if (!a.username) continue;
 
@@ -429,6 +445,23 @@ export async function fetchAll(
           const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (user) {
             ajilBy.set(user, {
+              user,
+              roles: Array.isArray(d.roles) ? d.roles : [],
+              bagts: Array.isArray(d.bagts) ? d.bagts : [],
+              ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
+            });
+          }
+        } catch { /* эвдэрсэн мөр — алгасна (fail-closed) */ }
+        continue;
+      }
+
+      /* ── Дэд бүтцийн засварын хуваарилалтын мөр ── */
+      if (a.username.startsWith(BUTETS_PREFIX)) {
+        const user = a.username.slice(BUTETS_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as ViewsJson;
+          if (user) {
+            butetsBy.set(user, {
               user,
               roles: Array.isArray(d.roles) ? d.roles : [],
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
@@ -562,6 +595,7 @@ export async function fetchAll(
       obyem: [...obyemBy.values()],
       chanar: [...chanarBy.values()],
       ajil: [...ajilBy.values()],
+      butets: [...butetsBy.values()],
     };
   } catch {
     return null;
@@ -811,6 +845,27 @@ export function ajilUpsert(
 /** Нэмэлт ажлын хуваарилалтыг арилгах */
 export function ajilRemove(user: string): Promise<boolean> {
   return removeByKey(AJIL_PREFIX + user.toLowerCase());
+}
+
+/**
+ * Дэд бүтцийн засварын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр.
+ * ⚠️ `obyemUpsert`-тэй ижил: `grants` нь үнэн эх, `roles`/`bagts` нь нөөц.
+ */
+export function butetsUpsert(
+  user: string, roles: string[], bagts: string[], grants?: Grant[],
+): Promise<boolean> {
+  const key = BUTETS_PREFIX + user.toLowerCase();
+  return upsertByKey(key, {
+    username: key,
+    role: null,
+    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
+    docs: 0,
+  });
+}
+
+/** Дэд бүтцийн засварын хуваарилалтыг арилгах */
+export function butetsRemove(user: string): Promise<boolean> {
+  return removeByKey(BUTETS_PREFIX + user.toLowerCase());
 }
 
 /** Инженерийн төлөвлөсөн обьёмын хуваарилалтыг арилгах */

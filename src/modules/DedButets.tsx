@@ -51,6 +51,7 @@ import {
 import { buildPacks, type Pack } from './Bagts';
 import { km, num } from '@/lib/format';
 import { hasCap, subscribeCaps } from '@/lib/caps';
+import { butetsScope, canEditButetsLayer, subscribeButetsAcl } from '@/lib/butetsAcl';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
@@ -464,16 +465,51 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const { user, status: authStatus } = useAuth();
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  useEffect(() => subscribeButetsAcl(() => setCapN((x) => x + 1)), []);
   /**
    * ⚠️ ЗАСАХ ЭРХ ТУСДАА (`caps` → `butets`). Дэд бүтцийг ХАРАХ нь түүний
    *    хэмжээг СОЛИХ эрх биш: `urt_m` нэг тоо засахад каталогийн багана,
    *    энэ хуудасны км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ бүгд дагана.
+   *
+   * ⚠️ БАГЦААР ХЯЗГААРЛАГДАНА (2026-09-23, `butetsAcl.ts`). `butets` эрх нь
+   *    хуудсыг нээнэ, харин АЛЬ давхаргыг засахыг `butetsScope` заана:
+   *    `null` = бүгд (super), `[]` = нэг ч үгүй (fail-closed — эрхтэй ч
+   *    багц хуваарилаагүй бол товч огт гарахгүй). `canEditLayer` нь давхарга
+   *    бүрийн шалгуур — товшилт, тэмплэйт, олноор сонгох жагсаалт бүгд үүгээр.
    */
-  const canEdit = useMemo(
-    () => authStatus === 'off' || hasCap(user?.username, 'butets'),
+  const scope = useMemo(
+    () => (authStatus === 'off' ? null : butetsScope(user?.username)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, authStatus, capN],
   );
+  const canEdit = useMemo(
+    () => authStatus === 'off'
+      || (hasCap(user?.username, 'butets') && (scope === null || scope.length > 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, authStatus, capN, scope],
+  );
+  const canEditLayer = useCallback(
+    (id: string) => authStatus === 'off' || canEditButetsLayer(user?.username, id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, authStatus, capN],
+  );
+  /** Засаж болох давхаргууд — тэмплэйт ба олноор сонгох жагсаалтад */
+  const editableIds = useMemo(
+    () => DED_BUTETS_LAYER_IDS.filter((id) => canEditLayer(id)),
+    [canEditLayer],
+  );
+  /**
+   * ⚠️ АНХДАГЧ ДАВХАРГА ХҮРЭЭНД БАЙХ ЁСТОЙ (2026-09-23). `msel.layerId` ба `addTo`
+   *    нь `DED_BUTETS_LAYER_IDS[0]`-оор эхэлдэг — тэр нь хуваарилагдаагүй багцынх
+   *    бол тэгш өнцөгт сонголт ЭРХГҮЙ давхаргаас объект татах байв. Хүрээ
+   *    тодорхой болмогц эхний зөвшөөрөгдсөн давхарга руу шилжүүлнэ.
+   */
+  useEffect(() => {
+    if (!editableIds.length) return;
+    if (!editableIds.includes(msel.layerId)) setMsel({ layerId: editableIds[0], oids: [] });
+    if (!editableIds.includes(addTo)) setAddTo(editableIds[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editableIds]);
 
   /**
    * ЭНЭ ЦОНХНЫ СУУРЬ — ЗӨВХӨН ИНЖЕНЕРИЙН 16 ШУГАМ.
@@ -636,6 +672,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
      */
     if (multi) {
       if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) return;
+      /* ⚠️ Хуваарилагдаагүй багцын объект — сонголтод орохгүй (эрхийн хүрээ) */
+      if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй')); return; }
       const oidField = LAYER_BY_ID[id]?.oid ?? OID;
       const oid = Number(a[oidField]);
       if (!Number.isFinite(oid)) return;
@@ -672,6 +710,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       }
       setPick(null); setHighlight(null); return;
     }
+    /* ⚠️ Хуваарилагдаагүй багцын объект — маягт нээхгүй (эрхийн хүрээ, 2026-09-23) */
+    if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй')); return; }
     /* ⚠️ Давхарга бүрийн OID нэр ижил байх албагүй — бүртгэлээс уншина */
     const oidField = LAYER_BY_ID[id]?.oid ?? OID;
     const oid = Number(a[oidField]);
@@ -685,7 +725,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setAwaitDraw(false);
     setPick({ layerId: id, oid });
     setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
-  }, [editMode, multi, msel, showMsel, reshape, askDropReshape, cancelReshape, setHighlight]);
+  }, [editMode, multi, msel, showMsel, reshape, askDropReshape, cancelReshape, setHighlight, canEditLayer, toast]);
 
   /**
    * САМБАРЫГ ХААХ — сонголт цэвэрлэгдэнэ.
@@ -929,10 +969,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       ids: sys.ids.filter((id) => {
         const L = LAYER_BY_ID[id];
         if (!L) return false;
+        /* ⚠️ Эрхийн хүрээнээс гадуурх давхарга тэмплэйтэд гарахгүй (2026-09-23) */
+        if (!editableIds.includes(id)) return false;
         return !needle || tr(L.title).toLowerCase().includes(needle);
       }),
     })).filter((g) => g.ids.length > 0);
-  }, [tplQ]);
+  }, [tplQ, editableIds]);
 
   /**
    * ЗУРААЛТ ДУУСМАГЦ МАЯГТ НЭЭНЭ.
@@ -1363,13 +1405,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                       setHighlight(null);
                     }}
                   >
-                    {SYSTEMS.map((sys) => (
-                      <optgroup key={sys.key} label={tr(sys.title)}>
-                        {sys.ids.map((id) => (
-                          <option key={id} value={id}>{tr(LAYER_BY_ID[id]?.title ?? id)}</option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    {SYSTEMS.map((sys) => {
+                      const ids = sys.ids.filter((id) => editableIds.includes(id));
+                      if (!ids.length) return null;
+                      return (
+                        <optgroup key={sys.key} label={tr(sys.title)}>
+                          {ids.map((id) => (
+                            <option key={id} value={id}>{tr(LAYER_BY_ID[id]?.title ?? id)}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                 </label>
                 <div className={d.mselRow}>
@@ -1414,7 +1460,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 <DedButetsBatch
                   layerId={msel.layerId}
                   oids={msel.oids}
-                  canEdit={canEdit}
+                  canEdit={canEdit && canEditLayer(msel.layerId)}
                   onDone={(rows, fields, back) => {
                     const id = msel.layerId;
                     setUndoable(back ? { ...back, layerId: id } : null);
@@ -1453,7 +1499,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               layerId={pick.layerId}
               oid={pick.oid}
               geometry={pick.geometry}
-              canEdit={canEdit}
+              canEdit={canEdit && canEditLayer(pick.layerId)}
               docked
               onCancel={closeEdit}
               /**
