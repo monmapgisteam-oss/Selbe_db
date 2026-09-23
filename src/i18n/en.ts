@@ -3002,8 +3002,8 @@ const en: Record<string, string> = {
   "Үүнээс дулаан хангамж": "Of which heat supply",
   "Гэрээний багцын шугам": "Contract package lines",
   "Бохирын худаг": "Sewer manholes",
-  "Дэд бүтцийн атрибут засах": "Edit infrastructure attributes",
-  "«Дэд бүтэц» харагдац дээр инженерийн шугамын атрибутыг (урт, бүс, баримтын нэр, багц) засах. Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө.": "Edit engineering line attributes (length, zone, document name, package) on the Infrastructure view. The length field feeds the catalogue column, the kilometres on this view and the damage estimate in the Risk model, so changing one number changes all three.",
+  "Инженерийн дэд бүтцийн засвар": "Engineering infrastructure editing",
+  "«Дэд бүтэц» харагдац дээр инженерийн шугамын атрибутыг (урт, бүс, баримтын нэр, багц) засах. Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Инженерийн дэд бүтцийн засварын эрх» хуудсыг ашиглана уу.": "Edit engineering line attributes (length, zone, document name, package) on the Infrastructure view. The length field feeds the catalogue column, the kilometres on this view and the damage estimate in the Risk model, so changing one number changes all three. Enabling it here assigns ALL packages; to limit to specific packages use the «Engineering infrastructure editing permissions» page.",
   "Давхарга танигдсангүй: {0}": "Unknown layer: {0}",
   "Талбарын жагсаалт ирсэнгүй": "No field list returned",
   "Заавал бөглөнө": "Required",
@@ -4696,6 +4696,14 @@ const en: Record<string, string> = {
   "Бодит дууссан нь эхэлснээс өмнө": "Actual finish is before actual start",
   "Огноо · нөөцийн баганыг хураах": "Collapse date · resource columns",
   "Огноо · нөөцийн баганыг нээх": "Expand date · resource columns",
+  "Инженерийн дэд бүтцийн засварын эрх": "Engineering infrastructure editing permissions",
+  "«Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтад багц хуваарилна. Багц хуваарилаагүй бол засах боломжгүй.": "Assign packages to the accounts that edit attributes on the Engineering infrastructure page. Without an assigned package, editing is not possible.",
+  "Энэ багцыг засах эрхгүй": "No permission to edit this package",
+  "«{0}» нь БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Хуваарилалтыг нь БҮХЭЛД НЬ хасах уу?": "\"{0}\" is assigned to ALL packages, so it cannot be removed from a single one. Remove the assignment ENTIRELY?",
+  "«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.": "Remove \"{0}\" from infrastructure editing assignments entirely? The \"Edit infrastructure attributes\" permission is revoked as well.",
+  "Багц тус бүрд «Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтыг томилно. Нэг багцад хэдэн ч аккаунт байж болно.": "For each package, appoint the accounts that edit attributes on the Engineering infrastructure page. A package may have any number of accounts.",
+  "Засварлагч зөвхөн өөрт хуваарилагдсан багцын давхаргыг зурагт сонгож засна; засвар шууд ArcGIS-д бичигдэнэ (батлах шатгүй).": "An editor can select and edit only the layers of their assigned packages on the map; edits are written straight to ArcGIS (no approval step).",
+  "⚠️ Багц хуваарилаагүй бол «Инженерийн дэд бүтцийн засвар» эрхтэй ч нэг ч давхарга засахгүй. Зөвхөн super админ хязгааргүй.": "⚠️ Without an assigned package, even an account with \"Edit infrastructure attributes\" cannot edit any layer. Only super admins are unrestricted.",
 };
 
 export default en;

@@ -112,6 +112,7 @@ const ACL_FILES = [
   ['src/lib/obyemAcl.ts', 'obyem'],
   ['src/lib/qaqcAcl.ts', 'qaqc'],
   ['src/lib/chanarAcl.ts', 'chanar'],
+  ['src/lib/butetsAcl.ts', 'butets'],
 ];
 for (const [f, name] of ACL_FILES) {
   const src = readCode(f);
@@ -217,14 +218,15 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
     `initRemote-д ЧИМЭЭГҮЙ catch ${silent.length} үлдсэн — ACL синк унасныг хэн ч мэдэхгүй`);
   const logged = body.match(/catch\s*\(e\)\s*\{[\s\S]*?console\.error/g) ?? [];
   /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`);
-     2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`) */
-  assert.equal(logged.length, 7,
-    `initRemote-ийн 7 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+     2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`);
+     2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`) */
+  assert.equal(logged.length, 8,
+    `initRemote-ийн 8 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');
 }
-console.log('✅ permissions.initRemote — 7 синк бүр console.error, caps нь trusted авна');
+console.log('✅ permissions.initRemote — 8 синк бүр console.error, caps нь trusted авна');
 
 /* ══════════ 5. permsRemote — НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР бүх угтварт ══════════ */
 /**
@@ -234,7 +236,7 @@ console.log('✅ permissions.initRemote — 7 синк бүр console.error, cap
  */
 {
   const src = readCode('src/lib/permsRemote.ts');
-  for (const m of ['flowBy', 'capsBy', 'qaqcBy', 'huvaariBy', 'obyemBy', 'ajilBy']) {
+  for (const m of ['flowBy', 'capsBy', 'qaqcBy', 'huvaariBy', 'obyemBy', 'ajilBy', 'butetsBy']) {
     assert.ok(new RegExp(`const ${m} = new Map<`).test(src),
       `permsRemote: ${m} нь Map байх ёстой — давхар мөрөөс хассан эрх сэргэнэ`);
   }
@@ -261,12 +263,12 @@ console.log('✅ permissions.initRemote — 7 синк бүр console.error, cap
      гэсэн хүн Багц 1-д Ч БАТЛАГЧ болж, `decidePlan`-ийн зохиогч=батлагч
      татгалзалтаар тэр багц ГАЦДАГ байлаа. Гурван салаа ижил уншина. */
   const grantsReads = (src.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
-  assert.equal(grantsReads, 4,
-    `fetchAll: grants уншилт ЯГ 4 байх ёстой (huvaari · obyem · chanar · ajil), олдсон: ${grantsReads}`);
+  assert.equal(grantsReads, 5,
+    `fetchAll: grants уншилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsReads}`);
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
-  assert.equal(grantsWrites, 4,
-    `upsert: grants бичилт ЯГ 4 байх ёстой, олдсон: ${grantsWrites}`);
+  assert.equal(grantsWrites, 5,
+    `upsert: grants бичилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsWrites}`);
   /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
      салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
   for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow', 'AjilRow']) {
