@@ -4699,7 +4699,6 @@ const en: Record<string, string> = {
   "Инженерийн дэд бүтцийн засварын эрх": "Engineering infrastructure editing permissions",
   "«Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтад багц хуваарилна. Багц хуваарилаагүй бол засах боломжгүй.": "Assign packages to the accounts that edit attributes on the Engineering infrastructure page. Without an assigned package, editing is not possible.",
   "Энэ багцыг засах эрхгүй": "No permission to edit this package",
-  "«{0}» нь БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Хуваарилалтыг нь БҮХЭЛД НЬ хасах уу?": "\"{0}\" is assigned to ALL packages, so it cannot be removed from a single one. Remove the assignment ENTIRELY?",
   "«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.": "Remove \"{0}\" from infrastructure editing assignments entirely? The \"Edit infrastructure attributes\" permission is revoked as well.",
   "Багц тус бүрд «Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтыг томилно. Нэг багцад хэдэн ч аккаунт байж болно.": "For each package, appoint the accounts that edit attributes on the Engineering infrastructure page. A package may have any number of accounts.",
   "Засварлагч зөвхөн өөрт хуваарилагдсан багцын давхаргыг зурагт сонгож засна; засвар шууд ArcGIS-д бичигдэнэ (батлах шатгүй).": "An editor can select and edit only the layers of their assigned packages on the map; edits are written straight to ArcGIS (no approval step).",

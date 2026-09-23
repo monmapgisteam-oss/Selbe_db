@@ -70,11 +70,19 @@ export function DedButetsAcl() {
     if (!cur) return;
     const mine = cur.grants.find((g) => g.role === ROLE);
     if (!mine) return;
-    if (mine.bagts.includes(ALL_BAGTS)) {
-      if (!window.confirm(tr('«{0}» нь БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Хуваарилалтыг нь БҮХЭЛД НЬ хасах уу?', user))) return;
-    }
     setErr('');
-    const left = mine.bagts.includes(ALL_BAGTS) ? [] : mine.bagts.filter((b) => b !== pack);
+    /*
+     * ⚠️ «БҮХ БАГЦ» (`ALL_BAGTS`) хуваарилалтаас НЭГИЙГ хасахад (2026-09-23
+     *    ЗАСВАР): урьд нь «нэг багцаас салгах боломжгүй — бүхэлд нь хасах уу?»
+     *    гэж асуугаад БҮГДИЙГ нь хасдаг байв. «Хэрэглэгчид» самбарын
+     *    унтраалга (`UserAdmin.flipScoped`) эрхийг `[ALL]`-аар асаадаг тул
+     *    16 аккаунт бүгд 25 багцад гарч, нэгээс хасахад бүгдээс хасагдаж
+     *    байлаа (хэрэглэгчийн скриншот). Одоо: ALL → бусад 24 багцын ИЛ
+     *    жагсаалт болгож, зөвхөн энэ багцыг хасна.
+     */
+    const left = mine.bagts.includes(ALL_BAGTS)
+      ? BUTETS_PACKS.map((x) => x.key).filter((k) => k !== pack)
+      : mine.bagts.filter((b) => b !== pack);
     if (!left.length) {
       if (!window.confirm(tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user))) return;
       void run(removeButetsAssign(user).sync);
