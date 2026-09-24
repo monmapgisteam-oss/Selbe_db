@@ -105,6 +105,8 @@ let cache: Assign[] | null = null;
 let remoteSynced = false;
 /** Уншилтад ХҮЧИНТЭЙ жагсаалт — remote ачаалагдаагүй бол хоосон */
 const effective = (): Assign[] => (remoteSynced ? load() : []);
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const flowAclReady = (): boolean => remoteSynced;
 
 function load(): Assign[] {
   if (cache) return cache;

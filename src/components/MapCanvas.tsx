@@ -2570,7 +2570,15 @@ export const MapCanvas = memo(function MapCanvas({
           }).catch(() => [] as Record<string, unknown>[]),
         ));
         for (let k = 0; k < batch.length; k++) {
-          if (rows[k].length) return { attrs: rows[k][0] as Record<string, unknown>, id: batch[k].id };
+          if (rows[k].length) {
+            return {
+              attrs: rows[k][0] as Record<string, unknown>,
+              id: batch[k].id,
+              /* ⚠️ Талбарын тодорхойлолт (2026-09-24) — `pickHit`-тэй ижил, эс бөгөөс
+                 товшилтын хайрцаг зөвхөн «Урт» харуулна (`MapTip`-ийн атрибутын салаа). */
+              fields: (batch[k].l as FeatureLayer).fields ?? null,
+            };
+          }
         }
       }
       return null;
@@ -2612,7 +2620,7 @@ export const MapCanvas = memo(function MapCanvas({
           const q = await pickByQuery(e.mapPoint, tol);
           if (view.destroyed || seq !== clickSeq) return;
           if (tipOnly) {
-            setTip(q ? { x: e.x, y: e.y, id: q.id, attrs: q.attrs, fields: null } : null);
+            setTip(q ? { x: e.x, y: e.y, id: q.id, attrs: q.attrs, fields: q.fields } : null);
             return;
           }
           pickRef.current?.(q?.attrs ?? null, q?.id ?? null);

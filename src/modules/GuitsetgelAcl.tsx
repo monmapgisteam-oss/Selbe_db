@@ -21,7 +21,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  ALL_BAGTS, assignsOf, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
+  ALL_BAGTS, assignsOf, flowAclReady, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
   subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
@@ -58,7 +58,8 @@ export function GuitsetgelAcl() {
    *    Remote уншигдаагүй үед томилгоо `[]` тул нэмэх/багц солих бичилт
    *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
    */
-  const locked = !remoteReady() || !capsRemoteReady();
+  /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
+  const locked = !remoteReady() || !capsRemoteReady() || !flowAclReady();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   return (

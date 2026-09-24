@@ -82,6 +82,21 @@ const mergeDrafts = (a, b) => {
     by.delete(k);
     byAt.delete(k);
   }
+  /* 2026-09-24: `sent` — батлуулахаар илгээсэн мөр (oid → агшин); батлагдаагүй,
+     илгээснээс хойш дахин нэмэгдээгүй мөрийг нүдтэй нь хасна (FillNew-ийн дүрэм). */
+  const sent = new Map(older.sent ?? []);
+  for (const [o, a] of newer.sent ?? []) if ((sent.get(o) ?? 0) < a) sent.set(o, a);
+  for (const [o, a] of sent) {
+    if (now - a > 7 * 24 * 3600 * 1000) { sent.delete(o); continue; }
+    const row = adds.get(o);
+    if (!row || row.ajilOid) continue;
+    const added = byAt.get(`a:${o}`);
+    if (added != null && added > a) continue;
+    adds.delete(o);
+    const pre = `${o}:`;
+    for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
+    byAt.delete(`a:${o}`);
+  }
   return {
     t: newer.t,
     cells: [...cells],
@@ -93,6 +108,7 @@ const mergeDrafts = (a, b) => {
     done: done.size ? [...done] : undefined,
     byAt: byAt.size ? [...byAt] : undefined,
     del: del.size ? [...del] : undefined,
+    sent: sent.size ? [...sent] : undefined,
   };
 };
 
@@ -696,9 +712,44 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(FN.includes('if (same) revert(x.key, x.key in pv);'), '#7: paste');
   /* #8 буцаагдсан өмнөх өдөр мэдэгдэнэ */
   assert.ok(FN.includes('const otherDaysReturned = useMemo(() => {'), '#8: otherDaysReturned алга');
-  assert.ok(FN.includes("tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.join(', '))"), '#8: мэдэгдэл алга');
+  /* 2026-09-24: өдөр бүр `{day, soid}` — сонгож дахин илгээх товчтой */
+  assert.ok(FN.includes("tr('Өмнөх өдрийн илгээлт хяналтаас БУЦААГДСАН ({0}) — засвар шаардлагатай.', otherDaysReturned.map((x) => x.day).join(', '))"), '#8: мэдэгдэл алга');
+  assert.ok(FN.includes('const resumeReturned = useCallback(async (soid: number) => {'), '#8: буцаагдсан илгээлтийг сонгох зам алга (2026-09-24)');
   /* Илгээлт tombstone-ийг тэглэнэ — эс бөгөөс хоосон зам ноорог цэвэрлэхгүй */
   const pi = FN.indexOf('const nCells = Object.keys(pend2).length');
   assert.ok(FN.slice(pi, pi + 700).includes('delRef.current = new Map();'), 'publish: delRef тэглэгдэхгүй — ноорог илгээсний дараа цэвэрлэгдэхгүй');
 }
 console.log('✅ эх кодын гэрээ (дахин аудит) — tmpOid · нэмсэн агшин · болзолгүй set · tombstone хадгалалт · waitingOn · хожуу давхарлалт · revert · буцаагдсан өдөр');
+
+/* ══════════ 16. ИЛГЭЭСЭН НЭМЭЛТ МӨР (2026-09-24) — `sent` тэмдэг нийлүүлэлтээр сэргээхгүй ══════════ */
+/**
+ * ⚠️ `sendAjil` мөрийг `adds`-аас tombstone-гүй хасдаг байсан тул хоёр
+ *    оролцогчийн ноорогт дараагийн нийлүүлэлт нөгөө талын хуучин `adds`-ыг
+ *    буцаан нэгтгэж, илгээсэн мөр «батлуулаагүй» болж дахин гардаг байв.
+ */
+{
+  const T = Date.now() - 60_000;
+  const row = { oid: -5, no: '9.9', work: 'Шинэ', vol: 1, unit: 'м' };
+  /* нөгөө тал: мөр нэмсэн (агшин T+1000), нүд бичсэн */
+  const other = { t: T + 1000, cells: [['-5:0', '3']], adds: [row], byAt: [['a:-5', T + 1000], ['-5:0', T + 1000]] };
+  /* би: илгээсэн (T+2000) — adds хоосон, sent тэмдэгтэй */
+  const mine = { t: T + 2000, cells: [], sent: [[-5, T + 2000]] };
+  const m = mergeDrafts(other, mine);
+  assert.ok(!(m.adds ?? []).some((a) => a.oid === -5), 'илгээсэн мөр нийлүүлэлтээр сэргэж байна');
+  assert.ok(!m.cells.some(([k]) => k === '-5:0'), 'илгээсэн мөрийн нүд үлдэж байна');
+  assert.ok(m.sent?.some(([o]) => o === -5), 'sent тэмдэг нийлбэрт хадгалагдах ёстой');
+  /* илгээснээс ХОЙШ дахин нэмсэн (ижил oid) — мөр ялна */
+  const again = { t: T + 4000, cells: [], adds: [row], byAt: [['a:-5', T + 3000]] };
+  const m2 = mergeDrafts(mine, again);
+  assert.ok((m2.adds ?? []).some((a) => a.oid === -5), 'илгээснээс хойш нэмсэн мөр хасагдаж байна');
+  /* батлагдсан (ajilOid) мөр хөндөгдөхгүй */
+  const appr = { t: T + 1000, cells: [], adds: [{ ...row, ajilOid: 7 }], byAt: [['a:-5', T + 1000]] };
+  const m3 = mergeDrafts(appr, mine);
+  assert.ok((m3.adds ?? []).some((a) => a.oid === -5 && a.ajilOid === 7), 'батлагдсан мөр sent-ээр хасагдаж байна');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(/sent\?: \[number, number\]\[\];/.test(FN), 'Draft-д `sent` алга');
+  assert.ok(FN.includes('for (const o of sentOids) sentRef.current.set(o, sentAt);'), 'sendAjil sent тэмдэг тавихгүй байна');
+  assert.ok(FN.includes('for (const [o, a] of d.sent ?? []) if (Number.isFinite(a) && (sentRef.current.get(o) ?? 0) < a) sentRef.current.set(o, a);'), 'pickDraft sent-ийг sentRef-д авахгүй байна');
+}
+console.log('✅ sent — илгээсэн нэмэлт мөр нийлүүлэлтээр сэргэхгүй · хожуу нэмсэн нь ялна · батлагдсан хөндөгдөхгүй');
+

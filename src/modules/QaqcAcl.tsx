@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  ALL_BAGTS, listQaqcAssigns, qaqcFailedUsers, removeQaqcAssign, setQaqcAssign, subscribeQaqcAcl,
+  ALL_BAGTS, listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, setQaqcAssign, subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
@@ -70,7 +70,8 @@ export function QaqcAcl() {
    *    Remote уншигдаагүй үед `rows` нь `[]` тул нэмэх/багц солих бичилт
    *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
    */
-  const locked = !remoteReady() || !capsRemoteReady();
+  /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
+  const locked = !remoteReady() || !capsRemoteReady() || !qaqcAclReady();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   const push = () => {

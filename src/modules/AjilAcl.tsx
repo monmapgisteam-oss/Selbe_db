@@ -22,7 +22,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  ajilFailedUsers, listAjilAssigns, removeAjilAssign, setAjilGrants,
+  ajilAclReady, ajilFailedUsers, listAjilAssigns, removeAjilAssign, setAjilGrants,
   subscribeAjilAcl, type AjilRole,
 } from '@/lib/ajilAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
@@ -41,6 +41,7 @@ const SPEC: AclPanelSpec<AjilRole> = {
   subscribe: subscribeAjilAcl,
   setGrants: setAjilGrants,
   remove: (user) => removeAjilAssign(user),
+  ready: ajilAclReady,
 
   notes: () => [
     tr('Багц тус бүрд Мөр нэмэгч ба Батлагч аккаунтыг тусад нь томилно. Нэг багцад хэдэн ч аккаунт байж болно.'),

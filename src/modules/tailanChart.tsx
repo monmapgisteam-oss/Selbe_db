@@ -215,8 +215,11 @@ export function TrendArea({
 /**
  * ХОЦРОГДЛЫН БОСГО — (төлөвлөсөн − бодит) нэгж хувь энэ ба түүнээс дээш бол
  * «хоцрогдол». `Meter`-ийн өнгө ба `ExecReport`-ийн KPI шошго НЭГ босго.
+ * ⚠️ 2026-09-24: эх нь `@/lib/execReport` (дэлгэц · PDF · инфографик НЭГ тоо);
+ *    энд зөвхөн дахин экспорт — хуучин import-ууд эвдрэхгүй.
  */
-export const LATE_GAP = 5;
+import { LATE_GAP } from '@/lib/execReport';
+export { LATE_GAP };
 
 export function Meter({
   value,

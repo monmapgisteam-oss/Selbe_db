@@ -575,7 +575,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           ? grants
           : [...grants, { role, bagts: inherit.length ? inherit : [CHANAR_ALL_BAGTS] }];
       }
-      r = !next.length ? removeChanarAssign(u.username) : setChanarGrants(u.username, next);
+      /* ⚠️ `revoke=false` — эрхийг доор ЗӨВХӨН энэ унтраалгынхаар буцаана (2026-09-24) */
+      r = !next.length ? removeChanarAssign(u.username, false) : setChanarGrants(u.username, next);
     } else {
       /*
        * ⚠️ ХУВААРЬ ба ОБЬЁМ — ИЖИЛ ЛОГИК, ЗӨВХӨН НЭР ӨӨР (2026-09-09). Урьд нь
@@ -625,10 +626,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       }
 
       if (!next.length) {
-        r = kind === 'huvaari' ? removeHuvaariAssign(u.username)
-          : kind === 'ajil' ? removeAjilAssign(u.username)
-          : kind === 'butets' ? removeButetsAssign(u.username)
-          : removeObyemAssign(u.username);
+        /*
+         * ⚠️ `revoke=false` (2026-09-24). Урьд нь анхдагч `revoke=true` →
+         *    `syncCaps(u, [])` нь `none` горимд тэр системийн БҮХ үүргийн
+         *    эрхийг хасдаг байв: «Нэмэлт ажил батлах»-ыг унтраахад админы
+         *    гараар олгосон «Мөр нэмэх» (`addRow`) ч чимээгүй алга болно.
+         *    Одоо мөрийг л хасаад, ЗӨВХӨН энэ унтраалгын эрхийг доор буцаана.
+         */
+        r = kind === 'huvaari' ? removeHuvaariAssign(u.username, false)
+          : kind === 'ajil' ? removeAjilAssign(u.username, false)
+          : kind === 'butets' ? removeButetsAssign(u.username, false)
+          : removeObyemAssign(u.username, false);
       } else if (kind === 'huvaari') {
         r = setHuvaariGrants(u.username, next as { role: PlanRole; bagts: string[] }[]);
       } else if (kind === 'ajil') {
@@ -656,10 +664,26 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    эрхийн бичилт унасан ч унтраалга «асаалттай» харагдаж, дараагийн
      *    `initRemote` дээр чимээгүй унтардаг байв.
      */
+    /*
+     * ⚠️ УНТРААХАД ЭРХИЙГ ИЛ БУЦААНА (2026-09-24). `syncCaps` нь ҮЛДСЭН
+     *    үүргүүдээр л олгодог бөгөөд үүрэг хасагдахад тэр эрхийг ХӨНДДӨГГҮЙ
+     *    (lib-ийн санаатай дүрэм — гараар олгосныг устгахгүй). Тиймээс
+     *    «зохиогч» үлдээгээд «батлагч»-ийг унтраавал `planApprove` хэвээр
+     *    үлдэж, унтраалга буцаж асдаг байв. Хуваарилалт хоосорсон (дээрх
+     *    `revoke=false`) ба үүрэг үлдсэн — хоёуланд нь `r.sync` дууссаны
+     *    ДАРАА зөвхөн энэ унтраалгын эрхийг хасна. Үлдсэн үүргүүд энэ эрх
+     *    рүү заадаггүй: дөрвөн системд үүрэг бүр өөрийн эрхтэй, Чанарын
+     *    гурван хянагч нь `touched`-оор бүгд хамт хасагддаг. QAQC нь
+     *    `soleCap` — `remove` өөрөө буцаадаг тул энд орохгүй.
+     */
+    const revokeCap = on && kind !== 'qaqc';
     void Promise.all([
       r.sync ?? Promise.resolve(false),
       r.granted ?? Promise.resolve(true),
-    ]).then(([a, b]) => mark(a && b));
+    ]).then(async ([a, b]) => {
+      const c = revokeCap ? await toggleCap(u.username, cap, false) : true;
+      mark(a && b && c);
+    });
   };
 
   const flipCap = (u: UserPerm, c: CapKey) => {

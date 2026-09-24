@@ -638,6 +638,15 @@ export async function apply(a: {
    *    хоосон массив нь «нэг ч нүд зөвшөөрөөгүй» гэсэн ИЛ утга.
    */
   okCells?: string[];
+  /**
+   * ХЯНАГЧИЙН ХАРСАН илгээлтийн агшин (`payload.at`, 2026-09-24).
+   * ⚠️ Дунд шатны батламж илгээлтийн АГУУЛГАТАЙ холбогдоогүй байв: хянагч
+   *    уншсанаас хойш гүйцэтгэгч дахин илгээвэл (нэг `sub|` мөр update)
+   *    ХАРААГҮЙ агуулга батлагдана. Өгвөл одоогийн илгээлтийн `at` зөрөх үед
+   *    STALE-маягийн алдаагаар зогсоно; `undefined` = шалгахгүй (хуучин
+   *    архивын зам — илгээлт байхгүй).
+   */
+  subAt?: number;
   /** ArcGIS-д БИЧИГДЭХ дэлгэцийн нэр (өгөгдөл) */
   who: string;
   /**
@@ -720,6 +729,17 @@ export async function apply(a: {
     {
       const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true);
       if (deny) { emit(); return { ok: false, error: deny }; }
+    }
+    /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ (дээрх `subAt`-ийн ⚠️) — нэг хямд
+       уншилт; илгээлт олдохгүй/уншигдахгүй бол ХАДГАЛАХГҮЙ (fail-closed). */
+    if (a.subAt != null) {
+      const { readSubmissionByOid } = await import('./submission');
+      const sr = await readSubmissionByOid(Number(cur[F.sheetOid]));
+      if (!sr.ok) return { ok: false, error: sr.error };
+      if (!sr.sub || sr.sub.payload.at !== a.subAt) {
+        emit();
+        return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу') };
+      }
     }
     /*
      * ⚠️ АРХИВЛАЛТ нь хяналтын мөрийг засахаас ӨМНӨ (дизайны дүрэм 5d).

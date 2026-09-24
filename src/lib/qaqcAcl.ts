@@ -67,6 +67,8 @@ export const listQaqcAssigns = (): QaqcAssign[] =>
   acl.list().map((a) => ({ user: a.user, bagts: a.grants.flatMap((g) => g.bagts) }));
 export const qaqcFailedUsers = acl.failedUsers;
 export const subscribeQaqcAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const qaqcAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteQaqc = (rows: { user: string; bagts: string[] }[]): void =>

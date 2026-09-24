@@ -23,7 +23,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, setHuvaariGrants,
+  huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, setHuvaariGrants,
   subscribeHuvaariAcl, type PlanRole,
 } from '@/lib/huvaariAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
@@ -42,6 +42,7 @@ const SPEC: AclPanelSpec<PlanRole> = {
   subscribe: subscribeHuvaariAcl,
   setGrants: setHuvaariGrants,
   remove: (user) => removeHuvaariAssign(user),
+  ready: huvaariAclReady,
 
   notes: () => [
     tr('Багц тус бүрд Зохиогч ба Батлагч аккаунтыг тусад нь томилно. Нэг багцад хэдэн ч аккаунт байж болно.'),

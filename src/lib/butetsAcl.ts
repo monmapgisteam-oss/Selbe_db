@@ -55,6 +55,8 @@ const acl = makeAcl<ButetsRole>({
 export const listButetsAssigns = (): ButetsAssign[] => acl.list();
 export const butetsFailedUsers = acl.failedUsers;
 export const subscribeButetsAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const butetsAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteButets = (

@@ -346,6 +346,8 @@ const stamp = (iso: string | null) => {
 const qty = (v: number | null) =>
   v == null ? '—' : Number(v.toFixed(3)).toLocaleString('en-US');
 /** ⚠️ Хувь нь үйлчилгээнд 0–1 хооронд — 100-аар үржүүлж харуулна */
+const pcs = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? '—' : `${Number((v * 100).toFixed(1))}%`;
 
 /**
  * ⚠️ ХЯНАГЧ ЮУГ ЗӨВШӨӨРЧ БАЙГААГАА ХАРАХ ЁСТОЙ. Хяналтын бүртгэл нь зөвхөн
@@ -359,6 +361,7 @@ function Submitted({
   ok,
   onCell,
   onChanges,
+  onSubAt,
   onOkAll,
 }: {
   bagts: string;
@@ -369,6 +372,8 @@ function Submitted({
   onCell?: (row: number, block: string) => void;
   /** Өөрчлөлтийн жагсаалтыг эцэгт мэдэгдэнэ — «бүгд зөвшөөрөгдсөн үү» гэж бодоход. */
   onChanges?: (c: Change[] | null) => void;
+  /** Илгээлтийн агшин (`payload.at`) — эцэг `apply`-д `subAt` болгон дамжуулна (2026-09-24). */
+  onSubAt?: (at: number | undefined) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -409,10 +414,11 @@ function Submitted({
        ИДЭВХТЭЙ байв — хянагч агуулгыг харалгүй батлах зам. `lack`-ийн гурван
        төлөвтэй ижил дүрэм. */
     onChanges?.(null);
+    onSubAt?.(undefined);
     loadSubmission(bagts, sheetOid)
       /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
          «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
-      .then((d) => { if (alive) { setData(d); onChanges?.(d ? d.changes : null); } })
+      .then((d) => { if (alive) { setData(d); onChanges?.(d ? d.changes : null); onSubAt?.(d?.subAt); } })
       .catch((e) => { if (alive) { setErr(String((e as Error)?.message ?? e)); onChanges?.(null); } })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
@@ -582,7 +588,10 @@ function Submitted({
                     <span className={s.chBlk}>{c.block}</span>
                     <span className={s.chWork}>{c.work}</span>
                     <span className={s.chVal}>
-                      {c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b>
+                      {/* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол ХУВИЙГ харуулна (2026-09-24) */}
+                      {c.from === c.to && c.toPct !== undefined
+                        ? <>{c.fromPct == null ? '—' : pcs(c.fromPct)} → <b>{c.toPct == null ? '—' : pcs(c.toPct)}</b></>
+                        : <>{c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b></>}
                     </span>
                   </button>
                 ))}
@@ -711,6 +720,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   /* ⚠️ `null` = илгээлтийн агуулга хараахан татагдаагүй/унасан → батлах ХААЛТТАЙ
      (`lack`-тэй ижил гурван төлөв, 2026-09-06). */
   const [changes, setChanges] = useState<Change[] | null>(null);
+  /** Хянагчийн ХАРСАН илгээлтийн агшин — `apply`-ийн `subAt` (2026-09-24) */
+  const [subAt, setSubAt] = useState<number | undefined>(undefined);
   /**
    * Үйлчилгээнд 4-р шатны талбар байгаа эсэх.
    * ⚠️ Байхгүй үед «Батлах» дарвал ArcGIS алдаа буцааж, менежер баталсан
@@ -756,6 +767,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   }, [stage, lackTry]);
   /** Товчийг хаах уу — дутуу ЭСВЭЛ тодорхойгүй бол ХАА. */
   const lackBlocks = lack == null || lack.length > 0;
+  /**
+   * ДЭЭД ШАТНААС БУЦСАНЫГ ДАХИН ШАЛГАХ — хоёр газарт давтагдана.
+   * ⚠️ Буцаалт нэг алхам л ухардаг тул дахин шалгагч нь ДАМЖУУЛАГЧ БИШ:
+   *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
+   */
+  const upperOfMe = stage !== 'company' ? nextReview(stage) : null;
   const [okKeys, setOkKeys] = useState<Set<string>>(new Set());
   /*
    * ⚠️ ТОЙРОГ СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-15-ны аудит).
@@ -767,7 +784,23 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    * зөвшөөрнө» гэсэн үндсэн дүрмийн шууд зөрчил.
    */
   const curSheetOid = cur?.[F.sheetOid];
-  useEffect(() => { setOkKeys(new Set()); }, [curSheetOid]);
+  /*
+   * ⚠️ ДАХИН ШАЛГАЛТАД мөрийн `Zovshoorson_nud`-аас ЭХЛҮҮЛНЭ (2026-09-24):
+   *    урьд нь recheck горимд нүд тэмдэглэгддэггүй тул `badText()` БҮХ
+   *    өөрчлөлтийг «зөвшөөрөгдөөгүй» гэж жагсаадаг байв. Ердийн хяналтад
+   *    (`reviewing`) урьдын адил ХООСНООС — нүд бүрийг гараар зөвшөөрнө.
+   */
+  const curOkRaw = cur?.[F.okCells];
+  const recheckSeed = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
+  useEffect(() => {
+    if (!recheckSeed) { setOkKeys(new Set()); return; }
+    try {
+      const arr = JSON.parse(String(curOkRaw || '[]')) as unknown;
+      setOkKeys(new Set(Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string') : []));
+    } catch {
+      setOkKeys(new Set());
+    }
+  }, [curSheetOid, recheckSeed, curOkRaw]);
   const toggleOk = useCallback((row: number, block: string) => {
     setOkKeys((prev) => {
       const n = new Set(prev);
@@ -790,7 +823,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     if (!bad.length) return reason.trim();
     const list = bad
       .slice(0, 12)
-      .map((c) => `${c.block} · ${c.work} → ${c.to ?? "—"}`)
+      /* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол хувийг нэрлэнэ (2026-09-24) */
+      .map((c) => `${c.block} · ${c.work} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : (c.to ?? '—')}`)
       .join("; ");
     const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
     const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
@@ -839,17 +873,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
        *    НОГООН (зөвшөөрсөн) ↔ УЛААН (зөвшөөрөөгүй) гэж ялгарна.
        */
       okCells: [...okKeys],
+      /* ⚠️ Илгээлтийн агуулгын тулгалт (2026-09-24) — `hyanaltStore.apply`-ийн `subAt` */
+      subAt,
     }));
 
   const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
-
-  /**
-   * ДЭЭД ШАТНААС БУЦСАНЫГ ДАХИН ШАЛГАХ — хоёр газарт давтагдана.
-   * ⚠️ Буцаалт нэг алхам л ухардаг тул дахин шалгагч нь ДАМЖУУЛАГЧ БИШ:
-   *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
-   */
-  const upperOfMe = stage !== 'company' ? nextReview(stage) : null;
-  const rechecking = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
+  const rechecking = recheckSeed;
   const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
   return (
@@ -972,20 +1001,27 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                   />
                   <div className={s.row}>
                     {/*
-                      * ⚠️ ДАХИН ШАЛГАЛТАД `okKeys` ДАМЖУУЛАХГҮЙ (2026-09-23). Нүд
-                      *    зөвхөн `reviewing` үед л тэмдэглэгддэг тул энд `okKeys`
-                      *    ҮРГЭЛЖ хоосон — `[]` өгвөл `Zovshoorson_nud="[]"` бичигдэж
-                      *    өмнөх тойрогт ногоон болсон нүд бүр компанид УЛААН болдог
-                      *    байв. `undefined` = өмнөх утгыг хэвээр үлдээнэ.
+                      * ⚠️ ДАХИН ШАЛГАЛТЫН `okCells` (2026-09-23 → 2026-09-24). Урьд нь
+                      *    нүд зөвхөн `reviewing` үед тэмдэглэгддэг тул `okKeys` үргэлж
+                      *    хоосон байсан — `[]` өгвөл өмнөх тойргийн ногоон нүд бүр
+                      *    компанид улаан болдог тул `undefined` дамжуулдаг байв. Одоо
+                      *    recheck горимд ч нүд тэмдэглэгдэж, мөрийн `Zovshoorson_nud`-аас
+                      *    эхэлдэг тул ДООШ буцаахад тэмдэглэсэн олонлогийг бичнэ;
+                      *    ДЭЭШ илгээхэд `undefined` хэвээр (талбар хөндөгдөхгүй).
                       *    Буцаах шалтгаан нь ердийн буцаалттай ижил `badText()`.
+                      * ⚠️ `lackBlocks` ЭНД Ч (2026-09-24): захирал/газрын даргын дахин
+                      *    шалгалт `DIRECTOR_FIELDS`-д бичдэг — талбар дутуу бол
+                      *    `applyEdits` чимээгүй алгасна (буцаах товчны ⚠️-тэй ижил).
                       */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks}
                       onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined))}>
                       {RECHECK_UP[reBy]}
                     </button>
-                    <button className={`${s.btn} ${s.bad}`} disabled={busy}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, undefined))}>
+                    <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
+                      title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
+                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, [...okKeys]))}>
                       {RECHECK_DOWN[reBy]}
+                      {bad.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
                 </>
@@ -1022,9 +1058,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             bagts={work.bagts}
             sheetOid={cur[F.sheetOid]}
             sentAt={cur[F.companySent]}
-            ok={reviewing ? okKeys : undefined}
-            onCell={reviewing ? toggleOk : undefined}
+            /* ⚠️ Дахин шалгалтад ч нүд тэмдэглэнэ (2026-09-24, дээрх `recheckSeed`-ийн ⚠️) */
+            ok={reviewing || rechecking ? okKeys : undefined}
+            onCell={reviewing || rechecking ? toggleOk : undefined}
             onChanges={setChanges}
+            onSubAt={setSubAt}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
             onOkAll={isSuper && reviewing

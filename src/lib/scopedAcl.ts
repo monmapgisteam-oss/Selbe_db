@@ -148,6 +148,13 @@ export type Acl<R extends string> = {
   scope: (user: string | null | undefined, role?: R) => string[] | null;
   hasRole: (user: string | null | undefined, role: R) => boolean;
   subscribe: (fn: () => void) => () => void;
+  /**
+   * Энэ сешнд remote хуваарилалт уншигдсан уу (2026-09-24). Панелийн
+   * түгжээнд — `permissions.remoteReady` · `caps.capsRemoteReady`-тэй хамт
+   * ӨӨРИЙН тугаа шалгана; эс бөгөөс энэ ACL хараахан уншигдаагүй атлаа
+   * нөгөө хоёр бэлэн бол панел «нээлттэй» болж `[]` дээр дарж бичнэ.
+   */
+  ready: () => boolean;
 };
 
 export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
@@ -575,5 +582,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   return {
     list, syncRemote, failedUsers: () => [...failed],
     set, setGrants, grantsOf, remove: removeAssign, purge, scope, hasRole, subscribe,
+    ready: () => remoteSynced,
   };
 }

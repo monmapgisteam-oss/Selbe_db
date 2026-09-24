@@ -28,7 +28,7 @@ import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions'
 import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
-  CHANAR_ROLES, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
+  CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
 import s from './guitsetgel.module.css';
@@ -61,7 +61,8 @@ export function ChanarAcl() {
    *    Remote уншигдаагүй үед `rows` нь `[]` тул «Нэмэх» дарахад
    *    `setChanarGrants` тэр хүний БҮХ мөрийг нэг багцаар дарж бичнэ.
    */
-  const locked = !remoteReady() || !capsRemoteReady();
+  /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
+  const locked = !remoteReady() || !capsRemoteReady() || !chanarAclReady();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина */

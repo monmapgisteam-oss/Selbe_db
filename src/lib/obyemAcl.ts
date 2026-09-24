@@ -66,6 +66,8 @@ const acl = makeAcl<ObyemRole>({
 export const listObyemAssigns = (): ObyemAssign[] => acl.list();
 export const obyemFailedUsers = acl.failedUsers;
 export const subscribeObyemAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const obyemAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteObyem = (

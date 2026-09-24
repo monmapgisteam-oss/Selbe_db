@@ -29,7 +29,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { tokenParam, tokenQs } from '@/lib/authToken';
-import { LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
+import { AUTH, LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
 import { queryFeatures, type Row } from '@/lib/query';
 import { currentUser, requireCap } from '@/lib/who';
 import { canEditButetsLayer } from '@/lib/butetsAcl';
@@ -45,6 +45,10 @@ import { canEditButetsLayer } from '@/lib/butetsAcl';
 function requireLayer(meta: LayerMeta): void {
   requireCap('butets');
   if (typeof window === 'undefined') return;
+  /* ⚠️ Нэвтрэлт УНТРААЛТТАЙ (`AUTH_OFF=1`, `appId` хоосон) орчинд `currentUser()`
+     нь `null` → хүрээ `[]` → бүх бичилт шидэгддэг байв (2026-09-24).
+     `hasCap`-тай ижил: тэр горимд хаахгүй. */
+  if (!AUTH.appId) return;
   if (canEditButetsLayer(currentUser(), meta.layerId)) return;
   throw new Error(tr('«{0}» давхарга таны багцын хүрээнд байхгүй — засах эрхгүй.', meta.title));
 }

@@ -27,7 +27,7 @@
  *    good #16a34a · warn #ca8a04 · bad #dc2626).
  */
 
-import type { ExecReport } from '@/lib/execReport';
+import { LATE_GAP, type ExecReport } from '@/lib/execReport';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { PARCEL_CLEARED } from '@/lib/services';
@@ -267,7 +267,7 @@ export function buildInfographic(
   const p = x.prog;
   P.text(L, yl, tr('Орон сууцны барилга угсралт (төлөвлөгөө ба бодит)'), { size: 12, fill: INK2 });
   yl += 10;
-  const late = p.gap != null && p.gap >= 5;
+  const late = p.gap != null && p.gap >= LATE_GAP;
   P.hbar(L, yl, colW, tr('Төлөвлөгөө'), (p.planned ?? 0) / 100, p.planned == null ? '—' : pct(p.planned, 1), { color: DATA_SOFT, nameW: 100, valW: 80 });
   yl += 20;
   P.hbar(L, yl, colW, tr('Бодит'), (p.actual ?? 0) / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });

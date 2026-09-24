@@ -621,7 +621,11 @@ export function Huvaari({
    *    нээгдсэн үед л дүүрнэ; «Тавих», «Арилгах» хоёулаа үүнийг цэвэрлэнэ —
    *    тэдгээр нь ЗӨВШӨӨРӨГДСӨН өөрчлөлт тул буцаах ёсгүй.
    */
-  const undoRef = useRef<{ oid: number; blk: number; span: Span | null; months: Map<string, number> | null; snap: Map<number, Span | null> | null } | null>(null);
+  const undoRef = useRef<{
+    oid: number; blk: number; span: Span | null; months: Map<string, number> | null; snap: Map<number, Span | null> | null;
+    /** ЭНЭ чирэлтийн хөдөлгөсөн мөрүүд — зөвхөн тэднийг буцаана (2026-09-24) */
+    touched: Set<number> | null;
+  } | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const jumped = useRef(false);
@@ -641,7 +645,8 @@ export function Huvaari({
    *    ноорогтой үед хөндөхгүй (`askSwitch`-ийн дүрэм).
    */
   useEffect(() => {
-    if (groupOpts.includes(pkg.group) || draft.size || ham.size || aDraft.size || resDraft.size || !groupOpts.length) return;
+    /* ⚠️ `obDraft` ч ноорог (2026-09-24) — түүнгүйгээр сарын задаргаа л зассан үед асуулгүй солигдож байв */
+    if (groupOpts.includes(pkg.group) || draft.size || ham.size || aDraft.size || resDraft.size || obDraft.size || !groupOpts.length) return;
     const first = pkgFloors(groupOpts[0])[0];
     if (first) setPkg(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1504,6 +1509,43 @@ export function Huvaari({
   /* ── Чирэлт ── */
 
   /**
+   * ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөрүүд (oid) — цуцлахад ЗӨВХӨН эдгээрийг буцаана
+   * (2026-09-24). Урьд нь агшин (`snap`)-аас зөрсөн БҮХ мөрийг буцаадаг тул
+   * чирэлт/цонхны хооронд хамт ажиллагчийн алсаас нийлсэн нүд ч «цуцлагдаж»
+   * байв. `commit` бүрд `propagate`-ийн үр дүнгээс цуглуулна.
+   */
+  const dragTouched = useRef(new Set<number>());
+  /*
+   * ХУВААЛЦСАН НООРОГИЙН ЭРТ ЗАРЛАГДАХ ref-үүд (2026-09-24) — доорх блокоос
+   * ӨМНӨ тодорхойлогддог `sendForApproval` · `withdraw` · `clearPreview`
+   * тэдгээрт хүрэх ёстой. Утгыг блок дотор л бичнэ.
+   */
+  const hdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hdFlushRef = useRef<() => Promise<void>>(async () => {});
+  const hdClearRef = useRef<(key: string) => Promise<void>>(async () => {});
+  /**
+   * АЛСЫН `at`-ын СҮҮЛД ХАРСАН УТГА — нийлүүлсэн эсвэл өөрөө бичсэн.
+   * ⚠️ `>`-ээр ХАРЬЦУУЛАХГҮЙ (2026-09-24): `at` нь бичигчийн цаг тул цагийн
+   *    зөрүүтэй клиент бусдын бичилтийг «хуучин» гэж алгасаж дарж бичдэг
+   *    байв. Одоо `at0 !== hdLastSeenAt` бол ЯМАР Ч тохиолдолд дахин уншина;
+   *    өөрийн бичилтийн дараа бичсэн `t`-г тавина (сервер яг тэр утгыг
+   *    хадгалдаг) — өөр хэн нэг завсарт бичсэн бол утга зөрж, дахин уншина.
+   */
+  const hdLastSeenAt = useRef(0);
+  /**
+   * БИЧИЛТИЙН ҮЕ (generation) — цэвэрлэлт/түлхүүр солигдох бүрд +1 (2026-09-24).
+   * ⚠️ Явж буй `saveRemoteDraft` цэвэрлэлтийн ДАРАА буувал хаясан ноорог алсад
+   *    амилдаг байв; үе зөрсөн бол бууж ирмэгц дахин цэвэрлэнэ.
+   */
+  const hdGen = useRef(0);
+  /**
+   * ТҮГЖЭЭ ТАЙЛАГДАХ дараагийн удаад Map-уудыг ХООСЛОХГҮЙ (2026-09-24):
+   * `withdraw` нь илгээлтийг ноорогт буулгадаг — тэр агуулга «илгээхээс
+   * өмнөх хуучин нүд» биш, зохиогчийн буцааж авсан ажил.
+   */
+  const hdSkipUnlockOnce = useRef(false);
+
+  /**
    * Мужийг мөрд бичнэ. Дээд бүлэгт муж байвал хүүхдийг ТҮҮН РҮҮ ХАВЧУУЛНА —
    * «бүлгийн цонхны дотор» гэсэн дүрмийг чирэлтийн үедээ шууд сахина.
    */
@@ -1518,7 +1560,9 @@ export function Huvaari({
     next[blk] = span;
     /* ⚠️ ГИНЖ: чирсэн мөрөөс хамаарах бүх ажил (урагш ч, хойш ч) дагана.
        Хамаарал байхгүй бол `propagate` нь зөвхөн энэ мөрийг л буцаана. */
-    applyChanges(propagate(plan, n, new Map([[at, next]])));
+    const ch = propagate(plan, n, new Map([[at, next]]));
+    for (const i of ch.keys()) if (plan[i]) dragTouched.current.add(plan[i].oid);
+    applyChanges(ch);
   }, [plan, blk, n, applyChanges]);
 
   /**
@@ -1550,6 +1594,7 @@ export function Huvaari({
        задаргааг хумьдаг тул буцаахад зөвхөн энэ хуулбар л бүтэн сэргээнэ. */
     const blokName = sc?.bld[blk] ?? '';
     const origMonths = r.des != null && blokName ? new Map(obOf(r.des, blokName)) : null;
+    dragTouched.current = new Set([r.oid]);
     setDrag({
       oid: r.oid, mode, anchor: k, orig: r.spans[blk], origMonths,
       snap: new Map(plan.map((x) => [x.oid, x.spans[blk]] as const)),
@@ -1621,7 +1666,10 @@ export function Huvaari({
          *    хэрэглэгч блок сольж болох тул бүх мужийг сэргээвэл өөр блокт
          *    хийсэн ажил алга болно.
          */
-        undoRef.current = { oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, snap: drag.snap ?? null };
+        undoRef.current = {
+          oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, snap: drag.snap ?? null,
+          touched: new Set(dragTouched.current),
+        };
       }
     }
     setDrag(null);
@@ -2182,6 +2230,10 @@ export function Huvaari({
       setADraft(new Map()); setResDraft(new Map());
       setFlowBox(null); setFlowTxt('');
       setNote(tr('Хуваарь батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
+      /* ⚠️ ХУВААЛЦСАН НООРОГИЙГ ШУУД ЦЭВЭРЛЭНЭ (2026-09-24) — `refreshFlow`-оос
+         ӨМНӨ: тэр `pending`-ийг тавьмагц бичих боломж хаагдаж, дифф→flush
+         зам «цэвэрлэсэн» тэмдгийг хэзээ ч бичихгүй байв. */
+      await hdClearRef.current(hdKey(kind, pkg.key));
       await refreshFlow();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -2424,9 +2476,21 @@ export function Huvaari({
       }
       const r = await withdrawPlan({ oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
+      /* ⚠️ УРСГАЛЫГ ЭХЛЭЭД шинэчилнэ (2026-09-24): `pending` → null болоход
+         хуваалцсан ноорогийн «түгжээ тайлагдав» зам Map-уудыг хоосолдог тул
+         буулгасны ДАРАА дуудвал буцаасан агуулга тэр даруй арчигдаж байв.
+         Мөн энэ нэг удаад хоослохгүй (`hdSkipUnlockOnce`) — агуулга нь
+         зохиогчийн буцааж авсан ажил. */
+      hdSkipUnlockOnce.current = true;
+      await refreshFlow();
       /* Серверийн одоогийн мөртэй тулгаж буулгана — зөрчлийн тоо бодит байна */
       const srv = await refetchServer();
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan);
+      /* Буулгасан нүд «миний» болж (дифф мета тавина) алсад нэг удаа бичигдэнэ */
+      if (ap.ok) {
+        if (hdTimer.current) clearTimeout(hdTimer.current);
+        hdTimer.current = setTimeout(() => { hdTimer.current = null; void hdFlushRef.current(); }, 1500);
+      }
       const restored = ap.ok;
       const conflicts = ap.conflicts;
       setPreviewing(false);
@@ -2481,6 +2545,9 @@ export function Huvaari({
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map());
     setADraft(new Map()); setResDraft(new Map());
     setPreviewing(false); setNote('');
+    /* ⚠️ Хуваалцсан нооргийг ДАХИН сэргээнэ (2026-09-24): харалт Map-уудыг
+       дарсан тул алсад шинэ бичилт ирэх хүртэл ноорог харагдахгүй байв. */
+    hdReady.current = null; hdLastSeenAt.current = 0;
   }, []);
 
   /**
@@ -2797,26 +2864,31 @@ export function Huvaari({
    *    өөрийн бичилтийн дараа бичсэн `t`-г тавина (сервер яг тэр утгыг
    *    хадгалдаг) — өөр хэн нэг завсарт бичсэн бол утга зөрж, дахин уншина.
    */
-  const hdLastSeenAt = useRef(0);
   const hdLastSig = useRef('');
-  const hdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hdBusy = useRef(false);
   const hdAgain = useRef(false);
   const hdBaseAt = useRef(0);
   const hdPrevW = useRef(false);
-  const hdPrevLocked = useRef(locked);
+  /**
+   * ⚠️ `pending`-ЭЭР, `locked`-ООР БИШ (2026-09-24): `locked` нь батлах явцад
+   *    (`approving`) түр тайлагддаг тул «түгжээ тайлагдав» зам `save()` явж
+   *    байхад Map-уудыг хоослож, батлалт «эх хуудсанд бичигдсэнгүй» гэж унадаг байв.
+   */
+  const hdPending = pending != null;
+  const hdPrevPending = useRef(hdPending);
+  /** Сэргээлт/нийлүүлэлт хориотой — илгээлт хүлээгдэж, батлагдаж эсвэл урьдчилан харагдаж байхад */
+  const hdBlocked = hdPending || approving != null || previewing;
   /** Экспоненциал дахин оролдлого: 3 → 6 → 12 → … → 60 с; амжилт/шинэ дифф тэглэнэ */
   const hdBackoff = useRef(3000);
   const hdWritable = canEdit && status !== 'off' && !locked && !previewing && approving == null;
   const hdWritableRef = useRef(hdWritable);
   hdWritableRef.current = hdWritable;
   /** Уншиж нийлүүлж болох уу — засах эрхгүй ч харж болно; түгжээ/харалт/батлалтад үгүй */
-  const hdPollOk = !locked && !previewing && approving == null;
+  const hdPollOk = !hdBlocked;
   const hdPollOkRef = useRef(hdPollOk);
   hdPollOkRef.current = hdPollOk;
   const obStateRef = useRef(obState);
   obStateRef.current = obState;
-  const hdFlushRef = useRef<() => Promise<void>>(async () => {});
 
   const hdSchedule = useCallback((ms: number) => {
     if (hdTimer.current) clearTimeout(hdTimer.current);
@@ -2883,6 +2955,7 @@ export function Huvaari({
    */
   const hdClear = useCallback(async (key: string, extraKeys: Iterable<string> = []) => {
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
+    hdGen.current += 1;
     const now = Date.now();
     const del = new Map(hdDel.current);
     for (const k of hdPrev.current.keys()) del.set(k, now);
@@ -2945,7 +3018,18 @@ export function Huvaari({
       if (s === hdLastSig.current) return;
       if (body.length > REMOTE_MAX) { setHdSt({ st: 'big' }); return; }
       setHdSt({ st: 'saving' });
+      const gen = hdGen.current;
       const r = await saveRemoteDraft(key, local.t, body);
+      /* ⚠️ Бичилт явж байхад цэвэрлэсэн/түлхүүр солигдсон бол (2026-09-24) энэ
+         бичилт хаясан нооргийг амилуулсан — тэр даруй дахин цэвэрлэнэ. */
+      if (r.ok && gen !== hdGen.current) {
+        const t2 = Date.now();
+        const del = new Map<string, number>();
+        for (const k of local.entries.keys()) del.set(k, t2);
+        for (const [k, a] of local.del) del.set(k, a);
+        void saveRemoteDraft(key, t2, hdSerialize({ ...local, t: t2, entries: new Map(), del, cleared: t2 }));
+        return;
+      }
       if (!live()) return;
       if (r.ok) {
         hdLastSig.current = s;
@@ -2964,6 +3048,7 @@ export function Huvaari({
     }
   }, [hdLocal, hdApply, hdClear, hdSchedule, hdRetry]);
   hdFlushRef.current = hdFlush;
+  hdClearRef.current = hdClear;
 
   /**
    * СЭРГЭЭЛТ — багц/төрөл солигдоход (мөр · задаргаа ачаалагдаж, урсгал
@@ -2975,11 +3060,16 @@ export function Huvaari({
    */
   useEffect(() => {
     const key = hdKeyCur;
-    const wasLocked = hdPrevLocked.current;
-    hdPrevLocked.current = locked;
-    if (wasLocked && !locked && hdReady.current === key) {
-      hdReady.current = null;
-      setDraft(new Map()); setHam(new Map()); setADraft(new Map()); setResDraft(new Map()); setObDraft(new Map());
+    const wasPending = hdPrevPending.current;
+    hdPrevPending.current = hdPending;
+    if (wasPending && !hdPending && hdReady.current === key) {
+      if (hdSkipUnlockOnce.current) {
+        /* `withdraw` — буулгасан агуулгыг хадгална; мета-г дифф тавина */
+        hdSkipUnlockOnce.current = false;
+      } else {
+        hdReady.current = null;
+        setDraft(new Map()); setHam(new Map()); setADraft(new Map()); setResDraft(new Map()); setObDraft(new Map());
+      }
     }
     if (hdReady.current === key) return undefined;
     /* ⚠️ `null` (хуучин түлхүүр БИШ): b32→b33→b32 хурдан солиход хуучин утга
@@ -2987,9 +3077,12 @@ export function Huvaari({
     hdReady.current = null;
     hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map();
     hdLastSeenAt.current = 0; hdLastSig.current = ''; hdAgain.current = false; hdBackoff.current = 3000;
+    hdGen.current += 1;
+    hdSkipUnlockOnce.current = false;
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
     setHdSt({ st: 'idle' }); setHdUsers([]);
-    if (!sc || !rows.length || obState === 'loading' || flowReady === null || locked) return undefined;
+    /* ⚠️ Батлах явцад · урьдчилан харахад · илгээлт хүлээгдэж байхад ЭХЛЭХГҮЙ */
+    if (!sc || !rows.length || obState === 'loading' || flowReady === null || hdBlocked) return undefined;
     hdBaseAt.current = Date.now();
     let alive = true;
     void (async () => {
@@ -3004,17 +3097,17 @@ export function Huvaari({
           if (rr.draft) hdLastSeenAt.current = rr.draft.at;
         } else readErr = rr.error;
       }
-      /* Локал хуулбар — алс уншигдаагүй/байхгүй үед л; цэвэрлэлтээс хуучин бол ҮГҮЙ */
-      if (!remote || hdIsEmpty(remote)) {
-        try {
-          const l = hdParse(localStorage.getItem(hdLocalKey(key)));
-          const clearedAt = Math.max(remote?.cleared ?? 0, l?.cleared ?? 0);
-          if (l && !hdIsEmpty(l) && l.t >= clearedAt) {
-            remote = remote ? hdMerge(remote, l) : l;
-            fromLocal = true;
-          }
-        } catch { /* хаалттай орчин */ }
-      }
+      /* ⚠️ Локал хуулбарыг ҮРГЭЛЖ нийлүүлнэ (2026-09-24) — урьд нь зөвхөн алс
+         хоосон үед; алсад ямар нэг ноорог байхад оффлайн засвар алдагддаг байв.
+         Цэвэрлэлтээс (`cleared`) хуучин хуулбар ҮГҮЙ. */
+      try {
+        const l = hdParse(localStorage.getItem(hdLocalKey(key)));
+        const clearedAt = Math.max(remote?.cleared ?? 0, l?.cleared ?? 0);
+        if (l && !hdIsEmpty(l) && l.t >= clearedAt) {
+          remote = remote ? hdMerge(remote, l) : l;
+          fromLocal = true;
+        }
+      } catch { /* хаалттай орчин */ }
       /* Уншилтын завсарт хийсэн засвар — «би · одоо» гэж нийлнэ */
       const cells = mapsToCells(hdMapsRef.current, hdCtxRef.current);
       const now = Date.now();
@@ -3035,11 +3128,12 @@ export function Huvaari({
       if (fromLocal && readErr) parts.push(tr('алсын ноорог уншигдсангүй — энэ компьютерийн хуулбар'));
       if (parts.length) setNote(parts.join(' · '));
       /* Локалоос сэргэсэн эсвэл ижил болсон нүд арилгах бол алсыг шинэчилнэ */
-      if ((fromLocal || ap.dropped.length > ap.staleKeys.length) && hdWritableRef.current) hdSchedule(1500);
+      /* ⚠️ Уншилтын завсрын засвар (`localD`, ж: татсан илгээлт) ч алсад очих ёстой */
+      if ((fromLocal || localD || ap.dropped.length > ap.staleKeys.length) && hdWritableRef.current) hdSchedule(1500);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, locked, status]);
+  }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, hdBlocked, hdPending, status]);
 
   /**
    * ДИФФ — 5 Map өөрчлөгдөх бүрд мета/tombstone хөтөлж, 1.5 с дараа бичнэ.
@@ -3115,8 +3209,25 @@ export function Huvaari({
       }
     };
     const id = setInterval(() => { void tick(); }, 3000);
+    /* ⚠️ Таб хаагдахад урьдчилсан уншилт (`readRemoteDraftAt`) дуусдаггүй тул
+       (2026-09-24) ЭХЛЭЭД локал хуулбарыг синхрон бичиж, дараа нь алсад
+       уншилтгүйгээр ШУУД бичнэ — «best effort». */
     const flushNow = () => {
-      if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; void hdFlushRef.current(); }
+      if (!hdTimer.current) return;
+      clearTimeout(hdTimer.current); hdTimer.current = null;
+      const key = hdKeyRef.current;
+      if (hdReady.current !== key || !hdWritableRef.current) return;
+      const local = hdLocal();
+      if (hdIsEmpty(local)) { void hdFlushRef.current(); return; }
+      const body = hdSerialize(local);
+      try { localStorage.setItem(hdLocalKey(key), body); } catch { /* хаалттай орчин */ }
+      if (body.length > REMOTE_MAX || hdSig(local) === hdLastSig.current) return;
+      const gen = hdGen.current;
+      void saveRemoteDraft(key, local.t, body).then((r) => {
+        if (r.ok && gen === hdGen.current && key === hdKeyRef.current) {
+          hdLastSig.current = hdSig(local); hdLastSeenAt.current = local.t;
+        }
+      });
     };
     const vis = () => { if (document.hidden) flushNow(); else void tick(); };
     document.addEventListener('visibilitychange', vis);
@@ -4234,6 +4345,9 @@ export function Huvaari({
                *    (тархалтгүй) сэргээнэ — өмнөх төлөв аль хэдийн нийцтэй байсан.
                * ⚠️ Зөвхөн `u.blk` блок — цонх нээлттэй байхад блок сольсон бол
                *    нөгөө блокт хийсэн ажил хөндөгдөхгүй (2026-09-21).
+               * ⚠️ ЗӨВХӨН ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөр (`touched`, 2026-09-24):
+               *    хамт ажиллагчийн алсаас нийлсэн нүд агшнаас зөрдөг ч энэ
+               *    чирэлтийнх биш — буцаавал бусдын ажил цуцлагдана.
                */
               const ch = new Map<number, (Span | null)[]>();
               const put = (i: number, sp: Span | null) => {
@@ -4246,6 +4360,7 @@ export function Huvaari({
               if (u.snap) {
                 plan.forEach((x, i) => {
                   if (i === at) return;
+                  if (u.touched && !u.touched.has(x.oid)) return;
                   const sp = u.snap!.get(x.oid);
                   if (sp === undefined || sameSpan(x.spans[u.blk], sp)) return;
                   put(i, sp);
@@ -4675,12 +4790,15 @@ function PlanModal({
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef);
 
+  /* ⚠️ ТАЛБАР ТАВИХ ЭФФЕКТҮҮД `r.oid`/`blk`-ЭЭР (2026-09-24): хуваалцсан ноорогийн
+     3 с мөчлөг `setDraft(new Map)` хийхэд `r` объект дахин үүсч, бичиж байх
+     үед талбарууд тэглэгдэж байв. Мөр (oid) ба блок солигдоход л тавина. */
   const [a, setA] = useState('');
   const [z, setZ] = useState('');
   const [all, setAll] = useState(false);
   /** Уялдааны түр жагсаалт — «Тавих» дартал эх мөрөө хөндөхгүй */
   const [dl, setDl] = useState<Dep[]>(r.deps);
-  useEffect(() => { setDl(r.deps); }, [r]);
+  useEffect(() => { setDl(r.deps); }, [r.oid]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * БОДИТ ЭХЭЛСЭН / ДУУССАН (энэ блок) ба ХҮН ХҮЧ / МАШИН (мөр) — 2026-09-23.
@@ -4695,13 +4813,13 @@ function PlanModal({
     const e = r.aEnd?.[blk] ?? null;
     setAa(s != null ? msToDay(s) : '');
     setAz(e != null ? msToDay(e) : '');
-  }, [r, blk]);
+  }, [r.oid, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [hunTxt, setHunTxt] = useState('');
   const [mashTxt, setMashTxt] = useState('');
   useEffect(() => {
     setHunTxt(r.hun != null ? String(r.hun) : '');
     setMashTxt(r.mashin != null ? String(r.mashin) : '');
-  }, [r]);
+  }, [r.oid]);   // eslint-disable-line react-hooks/exhaustive-deps
   const am1 = dayToMs(aa);
   const am2 = dayToMs(az);
   const aBad = am1 != null && am2 != null && am1 > am2;
@@ -4746,7 +4864,7 @@ function PlanModal({
     const s = !own || stale ? p : own;
     setA(s ? msToDay(s.start) : '');
     setZ(s ? msToDay(s.end) : '');
-  }, [r, par, blk]);
+  }, [r.oid, par?.oid, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -4816,7 +4934,7 @@ function PlanModal({
    *    Одоо: эхлээд суурь тавигдаж, дараа нь тараалт ФУНКЦЭЭР (`setMv(cur =>`)
    *    тэр суурин дээр ажиллана.
    */
-  useEffect(() => { setMv(months); }, [r, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setMv(months); }, [r.oid, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
   /**
    * ЭНЭ МУЖИД ХАМААРАХ САРУУД — жагсаалтын эх сурвалж.
    * ⚠️ Утгыг АВТОМАТААР ТАРААХГҮЙ (2026-09-06, хэрэглэгчийн заавар): сар

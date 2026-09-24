@@ -818,7 +818,9 @@ function railStat(k: SecKey, d: DashData): {
         : null;
       const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
-        value: avg == null ? '…' : pct(avg, 1),
+        /* ⚠️ 2026-09-24: өгөгдөл бэлэн (`b != null`) ч нэг ч багц тайлагнаагүй бол
+           «…» мөнхөд үлддэг байв — тэр үед «—». */
+        value: b == null ? '…' : avg == null ? '—' : pct(avg, 1),
         note: ailSum == null ? '…' : tr('7 багц · {0} блок · {1} өрх', num(bl), num(ailSum)),
         pct: avg ?? undefined, tone: o.active,
       };
