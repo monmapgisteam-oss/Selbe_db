@@ -29,7 +29,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
-import { isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
+import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   canAct, EMPTY_BODY, history, latest, MS_STATUS, progress, REVIEWERS, VERDICT,
   type MsBody, type MsDoc, type MsStatus, type Reviewer,
@@ -96,7 +96,13 @@ export function Chanar() {
   const [rNote, setRNote] = useState('');
 
   const authorOk = isAuthorFor(me || null, pkg);
-  const myRoles = useMemo(() => reviewerRolesFor(me || null, pkg), [me, pkg]);
+  /* ⚠️ `useMemo` БИШ (2026-09-24): хамаарал нь `me`·`pkg` тул ACL remote-оос
+     ирэхэд (`subscribeChanarAcl` tick) хянагчийн үүрэг шинэчлэгдэхгүй, хөзөр
+     нээгдэхгүй байв. Тооцоо хямд — зурагдах бүрд шууд. */
+  const myRoles = reviewerRolesFor(me || null, pkg);
+  /* ⚠️ Панелуудтай ИЖИЛ түгжээний зурвас — ACL уншигдтал үүрэг `[]` */
+  const aclLocked = !chanarAclReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   const refresh = useCallback(async () => {
     setLoading(true); setErr('');
@@ -313,6 +319,7 @@ export function Chanar() {
         )}
       </div>
 
+      {aclLocked && <p className={s.err} role="alert">{LOCK_MSG}</p>}
       {err && <p className={s.err} role="alert">{err}</p>}
       {note && <p className={s.note}>{note}</p>}
       {table && !table.ok && <p className={s.err} role="alert">{tableMsg(table)}</p>}

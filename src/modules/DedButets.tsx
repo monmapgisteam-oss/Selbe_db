@@ -57,7 +57,7 @@ import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
 import {
-  applyAttrs, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
+  applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
   saveGeometry,
 } from '@/lib/butetsEdit';
 
@@ -176,8 +176,24 @@ const TOTAL_IDS = [...new Set([...NET_IDS, ...PKG_IDS])];
 
 /* ══════════════════ Туслах ══════════════════ */
 
-/** Давхаргын урт (м) — татагдаагүй/хэмжээгүй бол 0 */
-const lenOf = (t: Map<string, Totals>, id: string) => t.get(id)?.q ?? 0;
+/**
+ * ДАВХАРГЫН OID НЭР — товшилт, тодруулга, олон сонголтод.
+ *
+ * ⚠️ 2026-09-24: урьд нь `LAYER_BY_ID[id].oid ?? OID` (бүртгэл) байсан бол
+ *    бичилт (`butetsEdit`) нь серверийн `objectIdField`-ээр явдаг — зөрвөл
+ *    буруу мөр засагдана. Дараалал: (1) кэшлэгдсэн серверийн схем,
+ *    (2) товшсон атрибутын `objectid`/`fid` түлхүүр, (3) бүртгэл, (4) `OID`.
+ *    Синхрон — `useCallback` доторх товшилтод хүлээлт байхгүй; схем нь
+ *    `pickTemplate`/товшилтын урьдчилсан `loadLayerMeta`-аар кэшид ирнэ.
+ */
+const oidFieldOf = (id: string, a?: Record<string, unknown> | null): string =>
+  cachedOidField(id)
+  ?? (a ? Object.keys(a).find((k) => /^(objectid|fid)$/i.test(k)) : undefined)
+  ?? LAYER_BY_ID[id]?.oid
+  ?? OID;
+
+/** Давхаргын урт (м) — татагдаагүй/хэмжээгүй бол `null` (`Totals.q`-ийн дүрэм: null ≠ 0) */
+const lenOf = (t: Map<string, Totals>, id: string): number | null => t.get(id)?.q ?? null;
 
 /** Давхаргын тоо — татагдаагүй бол 0 */
 const cntOf = (t: Map<string, Totals>, id: string) => t.get(id)?.n ?? 0;
@@ -194,7 +210,12 @@ const cntOf = (t: Map<string, Totals>, id: string) => t.get(id)?.n ?? 0;
    гаргадаг байв. Харах давхаргагүй бол хэмжилт ч байхгүй — «—». */
 const sumOf = (t: LiveTotals, ids: string[]): number | null =>
   ids.length === 0 ? null : ids.reduce<number | null>(
-    (a, id) => (a == null ? null : (t.map.has(id) ? a + lenOf(t.map, id) : null)),
+    (a, id) => {
+      if (a == null) return null;
+      /* ⚠️ Гишүүн нь `null` (SUM мэдээлэлгүй) бол нийлбэр ч мэдээлэлгүй — 0 гэж нэмэхгүй */
+      const q = lenOf(t.map, id);
+      return q == null ? null : a + q;
+    },
     0,
   );
 
@@ -734,12 +755,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ОЛОН СОНГОЛТЫГ ЗУРАГТ ТОДРУУЛНА — `OID IN (…)`.
    *
    * ⚠️ `setHighlight`-ийн `where` нь давхаргын OID нэрээр — давхарга бүрт
-   * ижил байх албагүй тул бүртгэлээс уншина (`onMapPick`-ийн ижил дүрэм).
+   * ижил байх албагүй тул `oidFieldOf`-оос уншина (`onMapPick`-ийн ижил дүрэм).
    */
   const showMsel = useCallback((layerId: string, oids: number[]) => {
     /* Шинэ сонголт эхэлмэгц өмнөх хадгалалтын мэдэгдэл арилна (`mselOk`) */
     setMselOk('');
-    const oidField = LAYER_BY_ID[layerId]?.oid ?? OID;
+    const oidField = oidFieldOf(layerId);
     /* Дан засвартай ЯГ ИЖИЛ харагдац (хэрэглэгчийн хүсэлт): сонгосон нь
        өөрийн өнгөөрөө, бусад нь бүдгэрнэ — нэмэлт гэрэлтүүлэггүй. */
     setHighlight(oids.length ? `${oidField} IN (${oids.join(',')})` : null, layerId);
@@ -754,6 +775,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
   const onMapPick = useCallback((a: Record<string, unknown> | null, id: string | null) => {
     if (!editMode) return;
+    /* ⚠️ Сонголт солигдоход ХҮЛЭЭГДЭЖ БУЙ асуултыг хаяна (2026-09-24): устгах
+       асуулт нээлттэй байхад өөр объект товшоод «Тийм» дарвал ӨМНӨХ объект
+       устдаг байв (`onYes` нь хуучин `pick`-ийг хаасан). */
+    setConfirmQ(null);
     /**
      * ОЛНООР СОНГОХ горим — товшилт нь маягт нээхгүй, сонголтод НЭМНЭ/ХАСНА.
      *
@@ -768,8 +793,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       if (!a || !id || !DED_BUTETS_LAYER_IDS.includes(id)) return;
       /* ⚠️ Хуваарилагдаагүй багцын объект — сонголтод орохгүй (эрхийн хүрээ) */
       if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй'), 'err'); return; }
-      const oidField = LAYER_BY_ID[id]?.oid ?? OID;
-      const oid = Number(a[oidField]);
+      const oid = Number(a[oidFieldOf(id, a)]);
       if (!Number.isFinite(oid)) return;
       const o = Math.trunc(oid);
       /**
@@ -806,10 +830,13 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     }
     /* ⚠️ Хуваарилагдаагүй багцын объект — маягт нээхгүй (эрхийн хүрээ, 2026-09-23) */
     if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй'), 'err'); return; }
-    /* ⚠️ Давхарга бүрийн OID нэр ижил байх албагүй — бүртгэлээс уншина */
-    const oidField = LAYER_BY_ID[id]?.oid ?? OID;
+    /* ⚠️ Давхарга бүрийн OID нэр ижил байх албагүй — `oidFieldOf` (серверийн
+       схем → атрибутын түлхүүр → бүртгэл) */
+    const oidField = oidFieldOf(id, a);
     const oid = Number(a[oidField]);
     if (!Number.isFinite(oid)) { setPick(null); return; }
+    /* Схемийг урьдчилж татна — дараагийн товшилтод серверийн OID нэр бэлэн */
+    void loadLayerMeta(id).catch(() => {});
 
     /* ⚠️ Өөр объект руу шилжихээс ӨМНӨ хадгалаагүй vertex засварыг асууна —
        эс бөгөөс чирсэн ажил чимээгүй алга болно. */
@@ -833,6 +860,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   /* ⚠️ 2026-09-21: `boolean` буцаана — хэрэглэгч «Cancel» дарж хаахаас
      татгалзвал `false`; `onDone` үүгээр маягт НЭЭЛТТЭЙ үлдсэнийг мэднэ. */
   const closeEdit = useCallback((): boolean => askDropReshape(() => {
+    setConfirmQ(null); // ⚠️ хүлээгдэж буй устгах/буцаах асуулт сонголттойгоо хамт арилна
     setReshape(null);
     setReshaped(null);
     setPick(null);
@@ -915,7 +943,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     /* ⚠️ Самбарын асуулт (`confirmQ`) — `window.confirm` хөтчид хаагдсан үед
        устгал чимээгүй зогсдог байв. Буцаагдахгүй тул `danger`. */
     setConfirmQ({
-      msg: tr('Энэ объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?'),
+      /* ⚠️ Дугаарыг мэдээнд ЗААВАЛ — аль объект устахыг хэрэглэгч нүдээр батална */
+      msg: tr('№{0} объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?', String(Math.trunc(oid))),
       danger: true,
       onYes: () => {
         void (async () => {
@@ -1012,7 +1041,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     /* ⚠️ Самбарын асуулт — `window.confirm` хаагдсан хөтчид буцаалт чимээгүй зогсдог байв */
     if (u.kind === 'add') {
       setConfirmQ({
-        msg: tr('Сая нэмсэн объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?'),
+        msg: tr('Сая нэмсэн №{0} объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?', String(Math.trunc(u.oid))),
         danger: true,
         onYes: () => { void run(); },
       });
@@ -1039,6 +1068,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
      * алдааг залгина — маягт нээгдэхдээ дахин оролдож, алдааг ил гаргана.
      */
     void loadLayerMeta(id).catch(() => {});
+    setConfirmQ(null); // ⚠️ сонголт солигдоно — хүлээгдэж буй асуулт хуучирна
     setAddTo(id);
     setTplOpen(false);
     setAwaitDraw(true);
@@ -1193,6 +1223,22 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       key,
       p: loadLayerMeta(layerId).then((m) => loadGeometry(m, oid)).catch(() => null),
     };
+  }, [editMode, pick]);
+
+  /**
+   * СОНГОСОН ДАВХАРГА `Delete` дэмждэг эсэх — «Устгах» товчны `disabled`.
+   * ⚠️ Схем ирээгүй байхад `false` (хаалттай) — Delete-гүй үйлчилгээнд товч
+   *    нээлттэй гарч серверийн бүрхэг алдаагаар унадаг байв (2026-09-24).
+   */
+  const [canDel, setCanDel] = useState(false);
+  useEffect(() => {
+    if (!editMode || !pick || pick.oid == null) { setCanDel(false); return; }
+    let alive = true;
+    setCanDel(false);
+    loadLayerMeta(pick.layerId)
+      .then((m) => { if (alive) setCanDel(m.canDelete); })
+      .catch(() => { if (alive) setCanDel(false); });
+    return () => { alive = false; };
   }, [editMode, pick]);
 
   return (
@@ -1722,7 +1768,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     type="button"
                     className={d.geomDel}
                     onClick={removeFeature}
-                    disabled={!canEdit || !canEditLayer(pick.layerId) || delBusy || geomBusy || reshape != null}
+                    disabled={!canEdit || !canDel || !canEditLayer(pick.layerId) || delBusy || geomBusy || reshape != null}
+                    title={canDel ? undefined : tr('Энэ давхарга устгахыг зөвшөөрөхгүй байна')}
                   >
                     {delBusy ? tr('Устгаж байна…') : tr('Устгах')}
                   </button>

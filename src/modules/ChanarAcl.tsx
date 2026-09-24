@@ -31,6 +31,7 @@ import {
   CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
+import { removeRevokingRoles } from './ScopedAclPanel';
 import s from './guitsetgel.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
@@ -106,7 +107,9 @@ export function ChanarAcl() {
       .filter((g) => g.bagts.length > 0);
     if (!grants.length) {
       if (!window.confirm(tr('«{0}»-г чанарын баримтын хуваарилалтаас бүрэн хасах уу? «Чанарын баримт ирүүлэх» ба «Чанарын баримт хянах» эрх нь мөн буцаагдана.', user))) return;
-      const rr = removeChanarAssign(user);
+      /* ⚠️ `revoke=false` + зөвхөн хасагдсан үүргийн эрх (2026-09-24) — `removeRevokingRoles` */
+      const rr = removeRevokingRoles(user, listChanarAssigns, (u) => removeChanarAssign(u, false),
+        { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview' });
       setErr(rr.ok ? '' : (rr.error ?? ''));
       void run(rr.sync);
       return;

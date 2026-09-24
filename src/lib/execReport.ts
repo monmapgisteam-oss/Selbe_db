@@ -355,6 +355,14 @@ export type ExecFinding = {
 };
 
 /**
+ * ХОЦРОГДЛЫН БОСГО — (төлөвлөсөн − бодит) нэгж хувь энэ ба түүнээс дээш бол
+ * «хоцрогдол». ⚠️ Дэлгэц (`Meter`, ExecReport KPI) · PDF · инфографик ·
+ * `execFindings` ТАВУУЛАА ЭНЭ НЭГ тоог хэрэглэнэ — 2026-09-24-нд хатуу бичсэн
+ * 5-уудыг нэгтгэв.
+ */
+export const LATE_GAP = 5;
+
+/**
  * АНХААРАХ АСУУДЛУУД — амьд тооноос үүсэх бүтэцтэй мөрүүд.
  *
  * ⚠️ Эрэмбэ нь ЧУХЛААС бага руу: зөвшөөрөл ба санхүүжилтийн гацаа нь
@@ -447,7 +455,7 @@ export function execFindings(x: ExecReport): ExecFinding[] {
       items: stalled.map((p) => p.name),
     });
   }
-  if (x.prog.gap != null && x.prog.gap >= 5) {
+  if (x.prog.gap != null && x.prog.gap >= LATE_GAP) {
     out.push({
       sev: 'warn',
       area: A_PROG,
@@ -648,13 +656,6 @@ const SYSTEM = `Чи «Сэлбэ ухаалаг хот» төслийн уди�
 /** AI дүгнэлтийн дээд хүлээлт, мс — үүнээс хойш «Бодож байна…» мөнхөд гацахгүй */
 export const EXEC_AI_TIMEOUT_MS = 60_000;
 
-/**
- * ХОЦРОГДЛЫН БОСГО — (төлөвлөсөн − бодит) нэгж хувь энэ ба түүнээс дээш бол
- * «хоцрогдол». ⚠️ Дэлгэц (`Meter`, ExecReport KPI) · PDF · инфографик
- * ДӨРВҮҮЛЭЭ ЭНЭ НЭГ тоог хэрэглэнэ — 2026-09-24-нд хатуу бичсэн 5-уудыг нэгтгэв.
- */
-export const LATE_GAP = 5;
-
 export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promise<string> {
   /* ⚠️ Токенгүй үед толгойг ОГТ нэмэхгүй (`agent/client.callRelay`-тай ижил) */
   const token = await arcgisToken();
@@ -664,7 +665,10 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
   const tm = setTimeout(() => ac.abort(), EXEC_AI_TIMEOUT_MS);
   /* ⚠️ `{ once: true }` — сонсогч нэг удаа л хэрэгтэй; дуудагч (`ExecReport.tsx`)
      unmount-д `signal`-аа цуцалдаг. */
-  signal?.addEventListener('abort', () => ac.abort(), { once: true });
+  /* ⚠️ Аль хэдийн цуцлагдсан `signal`-д `abort` үйл явдал ДАХИН гардаггүй —
+     шууд цуцална, эс тэгвээс fetch хугацаа дуустал үргэлжилнэ. */
+  if (signal?.aborted) ac.abort();
+  else signal?.addEventListener('abort', () => ac.abort(), { once: true });
   let res: Response;
   try {
     res = await fetch(`${AGENT_API}/chat`, {

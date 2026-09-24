@@ -3211,6 +3211,8 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
       const q = tot?.get(id);
       if (!d || !q) continue;
       n += q.n;
+      /* ⚠️ `q.q === null` (SUM мэдээлэлгүй) — нийлбэрт 0 гэж оруулахгүй, алгасна */
+      if (q.q == null) continue;
       if (d.qty?.unit === 'м') len += q.q;
       else if (d.qty?.unit === 'км') len += q.q * 1000;
       else if (d.qty?.unit === 'м²') area += q.q;
@@ -3682,6 +3684,8 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
       const q = tot?.get(id);
       if (!d || !q) continue;
       n += q.n;
+      /* ⚠️ `q.q === null` (SUM мэдээлэлгүй) — нийлбэрт 0 гэж оруулахгүй, алгасна */
+      if (q.q == null) continue;
       if (d.qty?.unit === 'м') len += q.q;
       else if (d.qty?.unit === 'км') len += q.q * 1000;
     }

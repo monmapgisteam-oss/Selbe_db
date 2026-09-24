@@ -24,6 +24,7 @@ import {
   butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
   subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
+import { removeRevokingRoles } from './ScopedAclPanel';
 import s from './guitsetgel.module.css';
 
 const ROLE: ButetsRole = 'editor';
@@ -102,7 +103,9 @@ export function DedButetsAcl() {
     if (!left.length) {
       if (!window.confirm(tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user))) return;
       /* ⚠️ `.ok`-г шалгана — баталгаажуулалтын алдаа чимээгүй алга болохгүй */
-      const rr = removeButetsAssign(user);
+      /* ⚠️ `revoke=false` + зөвхөн хасагдсан үүргийн эрх (2026-09-24) — `removeRevokingRoles` */
+      const rr = removeRevokingRoles(user, listButetsAssigns, (u) => removeButetsAssign(u, false),
+        { editor: 'butets' });
       setErr(rr.ok ? '' : (rr.error ?? ''));
       void run(rr.sync);
       return;

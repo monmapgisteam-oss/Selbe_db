@@ -27,6 +27,7 @@ import {
   subscribeHuvaariAcl, type PlanRole,
 } from '@/lib/huvaariAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
+import { removeRevokingRoles } from './ScopedAclPanel';
 
 /**
  * ⚠️ Шошго ба зурвасыг ФУНКЦ болгож өгнө — модулийн түвшинд `tr()` дуудвал
@@ -41,7 +42,14 @@ const SPEC: AclPanelSpec<PlanRole> = {
   failedUsers: huvaariFailedUsers,
   subscribe: subscribeHuvaariAcl,
   setGrants: setHuvaariGrants,
-  remove: (user) => removeHuvaariAssign(user),
+  /*
+   * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
+   *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг
+   *    (админы гараар олгосон `addRow` г.м.) арчдаг байв. `UserAdmin.flipScoped`
+   *    ба `removeRevokingRoles`-той ижил дүрэм.
+   */
+  remove: (user) => removeRevokingRoles(user, listHuvaariAssigns, (u) => removeHuvaariAssign(u, false),
+    { author: 'plan', approver: 'planApprove' }),
   ready: huvaariAclReady,
 
   notes: () => [

@@ -3022,7 +3022,6 @@ const en: Record<string, string> = {
   "Хэлбэр": "Shape",
   "Цэгүүдийг чирж зөөнө. Шинэ цэг нэмэхдээ ирмэгийн дунд дарна.": "Drag the vertices to move them. Click the middle of an edge to add one.",
   "Хэлбэр хадгалах": "Save shape",
-  "Сая нэмсэн объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?": "This will DELETE the feature you just added. It cannot be recovered. Continue?",
   "Үйлдэл буцаагдлаа": "Action undone",
   "Зурсан сүүлийн алхмыг цуцлана": "Undo the last drawing step",
   "Алхам буцаах": "Undo step",
@@ -4048,7 +4047,6 @@ const en: Record<string, string> = {
   "Багц 8.2 · Цахилгаан дамжуулах агаарын шугам": "Package 8.2 · 110 kV overhead power line",
   "{0} объект": "{0} features",
   "Бөглөгдөөгүй: {0}": "Not filled: {0}",
-  "Энэ объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?": "This feature will be deleted permanently. This cannot be undone. Continue?",
   "Объект устгагдлаа": "Feature deleted",
   "Шинэ объект": "New feature",
   "Зурагт дүрсээ зурна уу. Дуусгахдаа хоёр товшино.": "Draw the shape on the map. Double-click to finish.",
@@ -4821,6 +4819,12 @@ const en: Record<string, string> = {
   "{0}-р блок алга": "Block {0} does not exist",
   "Сарын хүснэгтийн хүн хүч/машин талбарыг шалгаж чадсангүй — {0} ажил·блокийн сарын нөөц хадгалагдсангүй. Дахин оролдоно уу.": "Could not verify the workforce/machinery fields of the monthly table — monthly resources for {0} task·block(s) were not saved. Please try again.",
   "{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.": "Workforce/machinery for months outside the span were dropped for {0} task·block(s) — a month without volume has no row.",
+  "Энэ давхарга устгахыг зөвшөөрөхгүй байна": "This layer does not allow deleting features",
+  "Тоо биш утга: {0}. Зөвхөн тоо (жишээ нь 12.5) оруулна уу.": "Not a number: {0}. Enter numbers only (e.g. 12.5).",
+  "№{0} объектыг БҮРМӨСӨН устгана. Буцаах аргагүй. Үргэлжлүүлэх үү?": "Feature #{0} will be deleted permanently. This cannot be undone. Continue?",
+  "Сая нэмсэн №{0} объектыг УСТГАНА. Буцаах аргагүй. Үргэлжлүүлэх үү?": "This will DELETE the just-added feature #{0}. It cannot be recovered. Continue?",
+  "Админ — бүх багц, бүх шат": "Admin — all packages, all stages",
+  "зөвхөн харна": "view only",
 };
 
 export default en;

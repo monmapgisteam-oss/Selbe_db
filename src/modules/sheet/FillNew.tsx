@@ -1894,6 +1894,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
   useEffect(() => {
     let alive = true;
+    /* ⚠️ ХУУЧИН ТҮЛХҮҮРИЙГ ТЭГЛЭХЭЭС ӨМНӨ АВНА (2026-09-24-ний аудит): доорх
+       `flushRef` дуудлага `loadedPkgRef`-ийг шалгадаг тул урьд нь энд "" болгосны
+       ДАРАА дуудагдаж, `flush` уншилтын дараа буцаад бичдэггүй байв (үхмэл зам). */
+    const prevPkgKey = loadedPkgRef.current;
     loadedPkgRef.current = "";
     /* ⚠️ СЭРГЭЭЛТИЙН ТЭМДЭГ ЦЭВЭРЛЭГДЭНЭ (2026-09-23 аудит). А→Б→А хурдан
        солиход (Б-гийн мөр ачаалагдаж амжаагүй) `promptedPkgRef === 'A'`
@@ -1916,8 +1920,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        тэр нь алсад ХЭЗЭЭ Ч очихгүй. `flushRef` нь хуучин `pkg.key`-тэй
        хаалт хэвээр (энэ эффект түүнийг дахин үүсгэх эффектээс ӨМНӨ ажиллана)
        тул хуучин түлхүүрээр read-merge-write хийнэ; `loadedPkgRef` зөрөх тул
-       хариу нь шинэ багцын төлөвт буухгүй (fire-and-forget). */
-    if (remoteQueue.current && remoteQueue.current.pkg !== pkg.key) flushRef.current();
+       хариу нь шинэ багцын төлөвт буухгүй (fire-and-forget).
+       ⚠️ 2026-09-24: түлхүүрийг ИЛ дамжуулна (`prevPkgKey`) — `flush` тэр үед
+       `loadedPkgRef`-ийн зөрүүг «бичихгүй» биш «төлөв шинэчлэхгүй» гэж ойлгоно. */
+    if (remoteQueue.current && remoteQueue.current.pkg !== pkg.key) flushRef.current(prevPkgKey || remoteQueue.current.pkg);
     remoteQueue.current = null;
     keepDraft.current = false;
     /* ⚠️ АЛСЫН БАЙДАЛ ч БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07). Үлдээвэл
@@ -2222,16 +2228,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [backChg, setBackChg] = useState<Set<string>>(new Set());
   useEffect(() => {
     /* ⚠️ ЗӨВХӨН `backOk` — `backChg` нь ачаалах эффектүүдийнх (доорх ⚠️) */
-    if (view || !flow) { setBackOk(new Set()); return; }
+    /* ⚠️ ГАРААР СОНГОСОН буцаалт (`resumedOid`, 2026-09-24-ний аудит): `flow` нь
+       өнөөдрийн илгээлт байж болох тул ногоон нүдийг ТЭР ИЛГЭЭЛТИЙН (sheetOid
+       таарах) сүүлийн тойргийн мөрөөс авна — урьд нь `flow`-ийн `okCells` өөр
+       өдрийн илгээлтэд наалддаг байв. */
+    let src = flow;
+    if (resumedOid != null) {
+      src = null;
+      for (const r of hyRows) {
+        if (Number(r[HF.sheetOid]) !== resumedOid) continue;
+        if (!src || r.__oid > src.__oid) src = r;
+      }
+    }
+    if (view || !src) { setBackOk(new Set()); return; }
     /* Зөвхөн гүйцэтгэгчийн гар дээрх, батлагдаагүй мөр */
-    if (OWNER[flow[HF.status]] !== 'company' || flow[HF.status] === STATUS.transferred) {
+    if (OWNER[src[HF.status]] !== 'company' || src[HF.status] === STATUS.transferred) {
       setBackOk(new Set()); return;
     }
     /* ⚠️ Эвдэрсэн JSON → ХООСОН (fail-closed): «бүгд зөвшөөрөгдсөн» гэж
        үзвэл гүйцэтгэгч засах ёстой нүдээ алдана. */
     let ok: string[] = [];
     try {
-      const raw = JSON.parse(String(flow[HF.okCells] ?? '[]')) as unknown;
+      const raw = JSON.parse(String(src[HF.okCells] ?? '[]')) as unknown;
       if (Array.isArray(raw)) ok = raw.filter((x): x is string => typeof x === 'string');
     } catch { /* эвдэрсэн — хоосон */ }
     /* ⚠️ ИНДЕКС → OID (2026-09-23, #15): хянагч `${i}:${шошго}`-оор хадгалдаг
@@ -2247,7 +2265,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (r) byOid.add(`${r.oid}${k.slice(cut)}`);
     }
     setBackOk(byOid);
-  }, [view, flow, rows]);
+  }, [view, flow, rows, resumedOid, hyRows]);
 
   const lateOverlayRef = useRef<number>(NaN);
   /** Хожуу давхарлалтын уншилт унасан/таслагдсан бол эффектийг ДАХИН асаах цохилт. */
@@ -2360,12 +2378,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    мөртэй ижил сөрөг дугаар авна (урьд нь `withdrawAjilHere` үүнийг
    *    хийдэггүй байв).
    * ⚠️ Ижил oid + ижил агуулга аль хэдийн байвал (давхар дуудлага) АЛГАСНА.
+   * ⚠️ ИЛГЭЭСЭН ТЭМДЭГ АРИЛНА (2026-09-24-ний аудит): буцаагдсан/татсан мөр
+   *    `sentRef`-д үлдвэл дараагийн `mergeDrafts`-ийн `sent` дүрэм түүнийг
+   *    ДАХИН устгадаг байв. Тэмдгийг хасаад нэмсэн агшинг (`a:oid`) «одоо»
+   *    болгоно — алсын нооргоос `sent` буцаж ирсэн ч агшин нь хожуу тул мөр
+   *    үлдэнэ.
    */
   const mergeIncomingAdds = (prev: AddRow[], incoming: readonly NewRow[], ajilOid?: number): AddRow[] => {
     const used = new Set(prev.map((a) => a.oid));
     const fresh: AddRow[] = [];
     let out = prev;
     for (const a of incoming) {
+      sentRef.current.delete(a.oid);
+      touchMine(`a:${a.oid}`);
       const dup = prev.find((x) => x.oid === a.oid);
       if (dup && dup.no === a.no && dup.work === a.work && dup.parentNo === a.parentNo && dup.parentWork === a.parentWork) {
         /* ⚠️ ИЖИЛ мөр аль хэдийн байвал (өөр төхөөрөмжийн ноорогоос буцаж ирсэн
@@ -2377,6 +2402,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       }
       const oid = used.has(a.oid) ? nextTmpOid() : a.oid;
       used.add(oid);
+      if (oid !== a.oid) { sentRef.current.delete(oid); touchMine(`a:${oid}`); }
       fresh.push(ajilOid ? { ...a, oid, ajilOid } : { ...a, oid });
     }
     if (!fresh.length) return out;
@@ -4106,17 +4132,28 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * түүнийг дуудна. Доорх эффект `remoteTick` бүрд `flush`-ыг дахин үүсгэдэг
    * тул unmount-ийн эффект тэр хаалтыг шууд барьж чадахгүй.
    */
-  const flushRef = useRef<() => void>(() => {});
+  const flushRef = useRef<(pkgKey?: string) => void>(() => {});
   useEffect(() => {
     if (!remoteTick) return undefined;
-    const flush = () => {
+    /**
+     * @param pkgKey ⚠️ БАГЦ СОЛИХ үеийн ИЛ түлхүүр (2026-09-24-ний аудит):
+     *   өгөгдсөн бол `loadedPkgRef` аль хэдийн тэглэгдсэн/өөр байсан ч
+     *   ХУУЧИН багцын дараалалд буй ноорогийг read-merge-write хийнэ —
+     *   зөвхөн `setRemoteState`/ref-ийн шинэчлэл (шинэ багцад харьяалагдах)
+     *   алгасагдана. Урьд нь бичилт уншилтын дараа тасарч, сүүлийн ≤3 сек
+     *   засвар алсад хэзээ ч очдоггүй байв.
+     */
+    const flush = (pkgKey?: string) => {
       const q = remoteQueue.current;
       if (!q) return;
       /* ⚠️ ӨӨР БАГЦЫН ноорог бол ХАЯНА, бичихгүй: дараалалд үлдсэн хуучин
          багцын ноорогийг одоогийн багцын слотод бичих нь өгөгдөл СОЛИХ
          алдаа. Локалд аль хэдийн бүрэн хадгалагдсан тул алдагдал үүсэхгүй. */
-      if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
+      if (q.pkg !== (pkgKey ?? pkg.key)) { remoteQueue.current = null; return; }
       remoteQueue.current = null;
+      const allowStale = pkgKey != null;
+      /** Хариу ОДООГИЙН багцынх уу — төлөв/ref зөвхөн тэгвэл шинэчлэгдэнэ */
+      const live = () => loadedPkgRef.current === q.pkg;
       /* ⚠️ АМЖИЛТГҮЙГ ИЛ ХЭЛНЭ (2026-09-06). Урьд нь `void saveRemoteDraft(...)`
          гэж үр дүнг ХАЯДАГ байсан тул сүлжээгүй, токен дууссан, хүснэгт
          олдоогүй — аль ч тохиолдолд дэлгэц дээр «ноорог хадгалагдав» гэж
@@ -4156,20 +4193,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          * хувилбарын хурдтай ЯГ ТЭНЦҮҮ болно.
          */
         const at = await readRemoteDraftAt(q.pkg);
-        if (loadedPkgRef.current !== q.pkg) return;
+        if (!live() && !allowStale) return;
         if (at === undefined) {
           /* Уншиж чадсангүй — бичихгүй: алсын агуулга үл мэдэгдэх тул бичих нь
              бусдын ажлыг устгах эрсдэлтэй. Локал бүрэн бүтэн. */
+          if (!live()) return;
           setRemoteState({ kind: 'fail', why: tr('алсын ноорогийг шалгаж чадсангүй') });
           if (!remoteQueue.current) remoteQueue.current = q;
           setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
           return;
         }
         let remote: Draft | null = null;
-        if (at !== null && at > lastMergedRef.current) {
+        /* ⚠️ Багц солигдсон (`allowStale`) бол `lastMergedRef` шинэ багцынх —
+           найдахгүй, алсынхыг ЗААВАЛ уншиж нийлүүлнэ. */
+        if (at !== null && (allowStale || at > lastMergedRef.current)) {
           const rr = await readRemoteDraft(q.pkg);
-          if (loadedPkgRef.current !== q.pkg) return;
+          if (!live() && !allowStale) return;
           if (!rr.ok) {
+            if (!live()) return;
             setRemoteState({ kind: 'fail', why: rr.error });
             if (!remoteQueue.current) remoteQueue.current = q;
             setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
@@ -4188,7 +4229,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         const approved = (q.draft.adds ?? []).filter((a) => !!(a as AddRow).ajilOid && !(outDraft0.adds ?? []).some((x) => x.oid === a.oid));
         const outDraft: Draft = approved.length ? { ...outDraft0, adds: [...(outDraft0.adds ?? []), ...approved] } : outDraft0;
         const body = JSON.stringify(outDraft);
-        if (body.length > REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
+        if (body.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); return; }
         /*
          * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
          * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно
@@ -4198,7 +4239,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          * үзэж 80KB-ийг дэмий татна. Хоёр хүн ажиллаж байхад энэ нь хоорондоо
          * дэмий татах гинжин урвал үүсгэдэг. Агуулгаар нь тулгаж таслана.
          */
-        if (body === lastBodyRef.current) {
+        if (live() && body === lastBodyRef.current) {
           setRemoteState({ kind: 'ok', at: Date.now() });
           return;
         }
@@ -4220,10 +4261,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    дэлгэцэд буулгана; зөвхөн ӨӨРИЙН бичилт бол урьдын адил
          *    алгасуулна (дэмий татахгүй).
          */
-        if (!remote && outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
+        if (live() && !remote && outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
         await saveRemoteDraft(q.pkg, outDraft.t, body).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
-        if (loadedPkgRef.current !== q.pkg) return;
+        if (!live()) return;
         if (r.ok) {
           /* ⚠️ ЗӨВХӨН АМЖИЛТТАЙ бичилтийн дараа — унасан бичилтийг «бичигдсэн»
              гэж тэмдэглэвэл дараагийн оролдлого таслагдаж, ажил алсад
@@ -4268,11 +4309,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     document.addEventListener('visibilitychange', onHide);
     /* ⚠️ `pagehide` нь iOS Safari ба bfcache-д `visibilitychange`-ээс ИЛҮҮ
        найдвартай — таб хаагдах цорын ганц дохио байх тохиолдол бий. */
-    window.addEventListener('pagehide', flush);
+    /* (Event аргумент `pkgKey` болж орохгүй — хаалтаар дуудна) */
+    const onPageHide = () => flush();
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       clearTimeout(t); clearTimeout(cap);
       document.removeEventListener('visibilitychange', onHide);
-      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('pagehide', onPageHide);
     };
   }, [remoteTick, pkg.key]);
 
@@ -4820,7 +4863,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const resumeReturned = useCallback(async (soid: number) => {
     if (busy || !sc || view) return;
-    if (dirtyCount > 0) { say(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
+    /* ⚠️ БАТЛАГДСАН нэмэлт мөр (`ajilOid`) ЗОГСООХГҮЙ (2026-09-24-ний аудит):
+       тэдгээр нь автоматаар сэргээгддэг тул `dirtyCount`-оор шалгавал буцаалт
+       ХЭЗЭЭ Ч давхарлагдахгүй байв. Зөвхөн нүд/огноо/шинэчлэгдсэн огноо ба
+       батлуулаагүй нэмэлт мөр саад болно. */
+    const blocking = Object.keys(pending).length + Object.keys(pendDate).length
+      + adds.filter((a) => !a.ajilOid).length + (asOf !== asOfOrig ? 1 : 0);
+    if (blocking > 0) { say(tr('Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.')); return; }
     setBusy(true);
     try {
       const rr = await readSubmissionByOid(soid);
@@ -4848,7 +4897,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, sc, view, dirtyCount, pkg, nBld]);
+  }, [busy, sc, view, pending, pendDate, adds, asOf, asOfOrig, pkg, nBld]);
 
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.

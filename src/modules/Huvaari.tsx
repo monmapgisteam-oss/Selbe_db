@@ -61,9 +61,9 @@ import {
   readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
 } from '@/lib/draftRemote';
 import {
-  cellsToMaps, hdKey, hdLocalKey, isEmpty as hdIsEmpty, mapsToCells, merge as hdMerge,
+  cellsToMaps, hdKey, hdLocalKey, isEmpty as hdIsEmpty, kM, kN, mapsToCells, merge as hdMerge,
   parse as hdParse, sameVal, serialize as hdSerialize, sig as hdSig, users as hdUsersOf,
-  type HDApply, type HDCell, type HDCtx, type HDDraft, type HDEntries, type HDRowBase,
+  type HDApply, type HDCell, type HDCtx, type HDDraft, type HDEntries, type HDEntry, type HDRowBase,
 } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
 
@@ -272,12 +272,20 @@ const ST_CLASS: Record<Status, string> = {
   done: h.tlDone, run: h.tlRun, todo: h.tlTodo, late: h.tlLate, none: h.tlNone,
 };
 /* ⚠️ Утга бүр `tr()`-ээр. Энэ Record нь зөвхөн зураасны `title` дотор
-   `${ST_TEXT[st]}` гэж ордог тул орчуулгын ямар ч зам дайрдаггүй байсан —
+   `${stText(st)}` гэж ордог тул орчуулгын ямар ч зам дайрдаггүй байсан —
    `i18n-extract` ч статик `tr('…')` дуудлага олохгүй тул «ДУТУУ 0» гэж
    худал тайлагнаж, англи горимд ганц энэ tooltip монголоор үлддэг байв. */
-const ST_TEXT: Record<Status, string> = {
-  done: tr('дууссан'), run: tr('явж байгаа'), todo: tr('эхлээгүй'),
-  late: tr('хоцорсон'), none: tr('хэмжигдээгүй'),
+/* ⚠️ ФУНКЦ, модуль ачаалахад бодогдох Record БИШ (2026-09-24 аудит): `tr()`
+   модуль ачаалах агшинд дуудагдвал хэл солиход орчуулагдахгүй хэвээр үлддэг
+   байв — зурагдах бүрд дуудна. */
+const stText = (st: Status): string => {
+  switch (st) {
+    case 'done': return tr('дууссан');
+    case 'run': return tr('явж байгаа');
+    case 'todo': return tr('эхлээгүй');
+    case 'late': return tr('хоцорсон');
+    default: return tr('хэмжигдээгүй');
+  }
 };
 
 type DragMode = 'new' | 'move' | 'l' | 'r';
@@ -874,6 +882,12 @@ export function Huvaari({
     }
     return s.size;
   }, [draft, ham, aDraft, resDraft, obDraft, obResDraft, byCode, plan]);
+  /** Сарын обьём/нөөцийн ноорогтой ажлын КОДУУД — мөрийн «хадгалаагүй» тэмдэгт (2026-09-24 аудит) */
+  const obDirtyDes = useMemo(() => {
+    const s = new Set<number>();
+    for (const k of [...obDraft.keys(), ...obResDraft.keys()]) s.add(Number(k.slice(0, k.indexOf('|'))));
+    return s;
+  }, [obDraft, obResDraft]);
 
   const now = useMemo(() => {
     const d = new Date();
@@ -1980,6 +1994,9 @@ export function Huvaari({
       const unbalKeys = new Set<string>();
       /** Сарын нөөцийн талбар үйлчилгээнд АЛГА — бичигдээгүй (ажил·блок) (2026-09-24) */
       let resSkipped = 0;
+      /* ⚠️ Бичигдээгүй нөөцийн түлхүүрүүд (2026-09-24 аудит) — `unbalKeys`-тэй адил
+         ноорогт ҮЛДЭЭНЭ; урьд нь цэвэрлэгдэж, батлалт «бичигдлээ» гэж үргэлжилдэг байв. */
+      const resSkippedKeys = new Set<string>();
       /** Мужаас ГАДУУРХ (обьёмгүй) сарын нөөц хаягдсан (ажил·блок) (2026-09-24 аудит) */
       let resDropped = 0;
       /** Талбарын шалгалт 2 удаа ч бүтсэнгүй → нөөц бичигдэхгүй (2026-09-24 аудит) */
@@ -2035,7 +2052,15 @@ export function Huvaari({
             for (const [sar, v] of resCur) { if (months.has(sar)) t.set(sar, v); else drop += 1; }
             if (drop) { resDropped += 1; resCur = t; }
           }
-          if (resCur && (!fields.hun || !fields.mashin)) resSkipped += 1;
+          /* ⚠️ Талбар тус бүрээр (2026-09-24 аудит): байхгүй талбарт ноорог УТГАТАЙ
+             байвал л тоолно — хоосон талбарт анхааруулдаг байв. */
+          if (resCur) {
+            let need = false;
+            for (const v of resCur.values()) {
+              if ((!fields.hun && v.hun != null) || (!fields.mashin && v.mashin != null)) { need = true; break; }
+            }
+            if (need) { resSkipped += 1; resSkippedKeys.add(key); }
+          }
           const meta: WorkMeta = {
             bagts: pkg.key,
             bagtsNer: pkg.label,
@@ -2090,7 +2115,11 @@ export function Huvaari({
             const use = d && !unbalKeys.has(key) ? d : srv;
             if (d && use === d) written += 1;
             if (!use) continue;
-            const months = obDraft.get(key) ?? obPlan.get(des)?.get(blok);
+            /* ⚠️ Тэнцээгүй блок серверийн нөөцөөр тоологдох тул сар нь ч СЕРВЕРИЙН
+               задаргаагаар (2026-09-24 аудит) — нооргийн саруудаар шүүвэл зөрнө. */
+            const months = unbalKeys.has(key)
+              ? obPlan.get(des)?.get(blok)
+              : obDraft.get(key) ?? obPlan.get(des)?.get(blok);
             for (const [sar, v] of use) if (months?.has(sar)) all.set(`${blok}|${sar}`, v);
           }
           if (!written) continue;
@@ -2186,10 +2215,11 @@ export function Huvaari({
       } else {
         setObDraft(new Map());
       }
-      /* Сарын нөөцийн ноорог — тэнцээгүй (бичигдээгүй) блокийнхыг үлдээнэ (2026-09-24) */
+      /* Сарын нөөцийн ноорог — тэнцээгүй (бичигдээгүй) ба талбаргүй тул алгассан
+         блокийнхыг үлдээнэ (2026-09-24) — батлалт `dirtyN > 0`-д зогсоно. */
       setObResDraft((m0) => {
         const m = new Map<string, Map<string, MonthRes>>();
-        for (const [k, v] of m0) if (unbalKeys.has(k)) m.set(k, v);
+        for (const [k, v] of m0) if (unbalKeys.has(k) || resSkippedKeys.has(k)) m.set(k, v);
         return m;
       });
       try {
@@ -2205,22 +2235,26 @@ export function Huvaari({
         : obN
           ? tr('{0} ажлын хуваарь · {1} сарын обьём хадгалагдлаа', num(upd.length), num(obN))
           : tr('{0} ажлын хуваарь хадгалагдлаа', num(upd.length)));
-      if (lost) setErr(tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)));
+      /* ⚠️ Алдаануудыг НЭГТГЭЖ нэг удаа (2026-09-24 аудит) — дараалсан `setErr`-д
+         сүүлийнх л үлдэж, өмнөх (алдагдсан мөр, тэнцээгүй задаргаа) далдлагддаг байв. */
+      const errs: string[] = [];
+      if (lost) errs.push(tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)));
       /* ⚠️ Тэнцээгүй задаргааг ИЛ хэлнэ — эс бөгөөс «хадгалагдлаа» гэсэн
          мэдэгдэл нь бичигдээгүй обьёмыг далдална. */
       if (unbal) {
-        setErr(tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй тул хадгалагдсангүй — хуваарь шилжихэд мужаас гарсан сарууд хасагдсан байна. Тухайн ажлын цонхыг нээж дахин бөглөнө үү.', num(unbal)));
+        errs.push(tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй тул хадгалагдсангүй — хуваарь шилжихэд мужаас гарсан сарууд хасагдсан байна. Тухайн ажлын цонхыг нээж дахин бөглөнө үү.', num(unbal)));
       }
       /* ⚠️ Талбар байхгүй бол ЧИМЭЭГҮЙ алгасахгүй — админ AGOL дээр нэмнэ (2026-09-24) */
       if (resSkipped && rfUnknown) {
-        setErr(tr('Сарын хүснэгтийн хүн хүч/машин талбарыг шалгаж чадсангүй — {0} ажил·блокийн сарын нөөц хадгалагдсангүй. Дахин оролдоно уу.', num(resSkipped)));
+        errs.push(tr('Сарын хүснэгтийн хүн хүч/машин талбарыг шалгаж чадсангүй — {0} ажил·блокийн сарын нөөц хадгалагдсангүй. Дахин оролдоно уу.', num(resSkipped)));
       } else if (resSkipped) {
-        setErr(tr('{0} ажил·блокийн сарын хүн хүч/машин механизм хадгалагдсангүй — сарын хүснэгтэд «hun_huch»/«mashin_mehanizm» талбар алга. Админ AGOL дээр нэмнэ үү.', num(resSkipped)));
+        errs.push(tr('{0} ажил·блокийн сарын хүн хүч/машин механизм хадгалагдсангүй — сарын хүснэгтэд «hun_huch»/«mashin_mehanizm» талбар алга. Админ AGOL дээр нэмнэ үү.', num(resSkipped)));
       }
       /* ⚠️ Мужаас гадуурх сарын нөөц хаягдсаныг ил хэлнэ (2026-09-24 аудит) */
       if (resDropped) {
-        setErr(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.', num(resDropped)));
+        errs.push(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.', num(resDropped)));
       }
+      if (errs.length) setErr(errs.join(' · '));
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -2544,7 +2578,10 @@ export function Huvaari({
         const b0 = bs[b] ?? null;
         /* Зохиогч хөндөөгүй → серверийн одоогийнх */
         if (sameSpan(v0, b0)) return now.spans[b] ?? null;
-        if (!sameSpan(b0, now.spans[b] ?? null)) conflicts += 1;
+        /* ⚠️ Сервер аль хэдийн САНАЛТАЙ ИЖИЛ бол зөрчил БИШ (2026-09-24 аудит):
+           хагас бичилт (огноо бичигдээд задаргаа унасан) дараа нь мөнхөд
+           «зэрэгцээ өөрчлөлт» гэж зогсдог байв. Доорх бүх тулгалтад ижил. */
+        if (!sameSpan(b0, now.spans[b] ?? null) && !sameSpan(v0, now.spans[b] ?? null)) conflicts += 1;
         return v0;
       });
       d.set(oid, v);
@@ -2564,7 +2601,7 @@ export function Huvaari({
       const bd = p.base?.deps;
       if (bd && k in bd) {
         const now = curSheet.get(Number(k));
-        if (now && (now.ham ?? null) !== (bd[k] ?? null)) conflicts += 1;
+        if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== v) conflicts += 1;
       }
     }
     const ob = new Map<string, Map<string, number>>();
@@ -2575,7 +2612,7 @@ export function Huvaari({
         const cut = k.indexOf('|');
         const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
         const was = new Map(Object.entries(bo[k]));
-        if (!sameMonths(now, was)) conflicts += 1;
+        if (!sameMonths(now, was) && !sameMonths(now, ob.get(k))) conflicts += 1;
       }
     }
     /*
@@ -2595,7 +2632,7 @@ export function Huvaari({
           const b0 = baseArr[b] ?? null;
           const n0 = nowArr[b] ?? null;
           if (v0 === b0) return n0;
-          if (b0 !== n0) conflicts += 1;
+          if (b0 !== n0 && v0 !== n0) conflicts += 1;
           return v0;
         });
       ad.set(oid, { start: pick(v.start, bs?.start, now?.aStart), end: pick(v.end, bs?.end, now?.aEnd) });
@@ -2608,7 +2645,7 @@ export function Huvaari({
       const pick = (v0: number | null, b0: number | null | undefined, n0: number | null | undefined) => {
         if (!bs || !now) return v0;
         if (v0 === (b0 ?? null)) return n0 ?? null;
-        if ((b0 ?? null) !== (n0 ?? null)) conflicts += 1;
+        if ((b0 ?? null) !== (n0 ?? null) && v0 !== (n0 ?? null)) conflicts += 1;
         return v0;
       };
       rd.set(oid, { hun: pick(v.hun, bs?.hun, now?.hun), mashin: pick(v.mashin, bs?.mashin, now?.mashin) });
@@ -2622,7 +2659,7 @@ export function Huvaari({
         const cut = k.indexOf('|');
         const now = curRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
         const was = new Map(Object.entries(bo[k]).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }]));
-        if (!sameRes(now, was)) conflicts += 1;
+        if (!sameRes(now, was) && !sameRes(now, or.get(k))) conflicts += 1;
       }
     }
     if (strict && conflicts) return { ok: false, why: 'conflict', conflicts };
@@ -3106,6 +3143,14 @@ export function Huvaari({
   const hdDel = useRef(new Map<string, number>());
   /** Сүүлд тулгасан нүдүүд — диффийн суурь ба `hdLocal`-ийн эх */
   const hdPrev = useRef(new Map<string, HDCell>());
+  /**
+   * ХУУЧИРСАН (`staleKeys`) нүдүүд — Map-д ч, `hdPrev`-д ч ордоггүй атлаа алсад
+   * ҮЛДЭХ ёстой (2026-09-24 аудит): `hdLocal` зөвхөн `hdPrev`-ийг бичдэг,
+   * `saveRemoteDraft` мөрийг БҮХЛЭЭР нь солидог тул бусдын хуучирсан нүд
+   * энэ клиентийн бичилтээр алга болдог байв. Эх `at`/`user`-тайгаа хэвээр
+   * (хэзээ ч «миний» биш) буцааж нийлүүлнэ; `hdPrev` давамгайлна.
+   */
+  const hdStale = useRef(new Map<string, HDEntry>());
   /** Сэргээлт ДУУССАН түлхүүр — үүнээс өөр үед дифф ч, бичилт ч үгүй */
   const hdReady = useRef<string | null>(null);
   /**
@@ -3161,6 +3206,8 @@ export function Huvaari({
   const hdLocal = useCallback((): HDDraft => {
     const now = Date.now();
     const entries: HDEntries = new Map();
+    /* Хуучирсан нүд — эх мета-тайгаа; доорх `hdPrev` ижил түлхүүрт дарна */
+    for (const [k, e] of hdStale.current) entries.set(k, { val: e.val, bv: e.bv, at: e.at, user: e.user });
     for (const [k, c] of hdPrev.current) {
       let m = hdMeta.current.get(k);
       if (!m) { m = { at: now, user: meRef.current }; hdMeta.current.set(k, m); }
@@ -3191,6 +3238,9 @@ export function Huvaari({
     for (const k of dropped) if (!stale.has(k)) del.set(k, now);
     hdMeta.current = meta;
     hdDel.current = del;
+    const st = new Map<string, HDEntry>();
+    for (const k of stale) { const e = d.entries.get(k); if (e) st.set(k, e); }
+    hdStale.current = st;
     hdPrev.current = mapsToCells(ap.maps, hdCtxRef.current);
     setDraft(ap.maps.draft); setHam(ap.maps.ham); setADraft(ap.maps.aDraft);
     setResDraft(ap.maps.resDraft); setObDraft(ap.maps.obDraft); setObResDraft(ap.maps.obRes);
@@ -3213,7 +3263,7 @@ export function Huvaari({
     for (const k of hdPrev.current.keys()) del.set(k, now);
     for (const k of extraKeys) del.set(k, now);
     hdLastSig.current = '';
-    hdMeta.current = new Map(); hdDel.current = del; hdPrev.current = new Map();
+    hdMeta.current = new Map(); hdDel.current = del; hdPrev.current = new Map(); hdStale.current = new Map();
     const d: HDDraft = {
       t: now, kind: kindRef.current, pkg: pkgKeyRef.current, by: { user: meRef.current, at: now },
       entries: new Map(), del, base: { at: hdBaseAt.current, n: hdCtxRef.current.n }, cleared: now,
@@ -3327,7 +3377,7 @@ export function Huvaari({
     /* ⚠️ `null` (хуучин түлхүүр БИШ): b32→b33→b32 хурдан солиход хуучин утга
        «бэлэн» гэж уншигдаж сэргээлт алгасагддаг байв (2026-09-24). */
     hdReady.current = null;
-    hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map();
+    hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map(); hdStale.current = new Map();
     hdLastSeenAt.current = 0; hdLastSig.current = ''; hdAgain.current = false; hdBackoff.current = 3000;
     hdGen.current += 1;
     hdSkipUnlockOnce.current = false;
@@ -3447,8 +3497,13 @@ export function Huvaari({
       hdBusy.current = true;
       try {
         const at0 = await readRemoteDraftAt(key);
+        /* ⚠️ `await` бүрийн дараа ДАХИН шалгана (2026-09-24 аудит): уншилтын завсарт
+           батлалт/урьдчилан харалт эхэлсэн бол `hdApply` Map-уудыг дарж, харж
+           буй санал эсвэл бичигдэж буй ноорог солигддог байв. */
+        if (!hdPollOkRef.current) return;
         if (at0 === undefined || (at0 ?? 0) === hdLastSeenAt.current || key !== hdKeyRef.current) return;
         const rr = await readRemoteDraft(key);
+        if (!hdPollOkRef.current) return;
         if (key !== hdKeyRef.current || hdReady.current !== key || !rr.ok) return;
         const merged = hdMerge(rr.draft ? hdParse(rr.draft.payload) : null, hdLocal());
         hdLastSeenAt.current = at0 ?? 0;
@@ -4232,8 +4287,10 @@ export function Huvaari({
                     /* ⚠️ УЯЛДААНЫ ноорог ч «хадгалаагүй» тэмдэг авна — эс
                        бөгөөс зөвхөн уялдаа нь өөрчлөгдсөн мөр цэвэр мэт
                        харагдаж, юу хадгалагдахыг тоолж болохгүй байв.
-                       Бодит огноо · нөөцийн ноорог мөн адил (2026-09-23). */
-                    dirty={draft.has(r.oid) || ham.has(r.oid) || aDraft.has(r.oid) || resDraft.has(r.oid)}
+                       Бодит огноо · нөөцийн ноорог мөн адил (2026-09-23).
+                       Сарын обьём/нөөцийн ноорог (`des|блок`) ч мөн (2026-09-24 аудит). */
+                    dirty={draft.has(r.oid) || ham.has(r.oid) || aDraft.has(r.oid) || resDraft.has(r.oid)
+                      || (r.des != null && obDirtyDes.has(r.des))}
                     hasActual={hasActual}
                     hasRes={hasRes}
                     aStart={x.aStart?.[blk] ?? null}
@@ -4401,7 +4458,7 @@ export function Huvaari({
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
                               aria-label={`${r.work || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
-                              title={`${r.work}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${ST_TEXT[st]}`}
+                              title={`${r.work}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
                             >
                               {/* ⚠️ Бариул нь зөвхөн АЖЛЫН зурваст: бүлгийнх
                                   бодогдох тул сунгах утгагүй. */}
@@ -4667,11 +4724,22 @@ export function Huvaari({
                   if (u.touched && !u.touched.has(x.oid)) return;
                   keys.push(obKey(x.des, blok));
                 });
+                /* ⚠️ БУСДЫН нүдийг агшнаар ДАРАХГҮЙ (2026-09-24 аудит): цонх нээлттэй
+                   байхад мөчлөг (`hdApply`) бусдын m:/n: нүдийг нийлүүлсэн бол
+                   чирэлтээс өмнөх агшин түүнийг арчдаг байв. Мета-д өөр хэрэглэгч
+                   бичсэн нүдийг алгасна. */
+                const other = (hk: string) => {
+                  const mu = hdMeta.current.get(hk)?.user;
+                  return !!mu && mu !== meRef.current;
+                };
                 if (keys.length && u.obSnap) {
                   const snap = u.obSnap;
                   setObDraft((m) => {
                     const next = new Map(m);
-                    for (const k of keys) { const v = snap.get(k); if (v) next.set(k, v); else next.delete(k); }
+                    for (const k of keys) {
+                      if (other(kM(k))) continue;
+                      const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
+                    }
                     return next;
                   });
                 }
@@ -4679,7 +4747,10 @@ export function Huvaari({
                   const snap = u.obResSnap;
                   setObResDraft((m) => {
                     const next = new Map(m);
-                    for (const k of keys) { const v = snap.get(k); if (v) next.set(k, v); else next.delete(k); }
+                    for (const k of keys) {
+                      if (other(kN(k))) continue;
+                      const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
+                    }
                     return next;
                   });
                 }
@@ -5139,6 +5210,16 @@ function PlanModal({
   /** Уялдааны түр жагсаалт — «Тавих» дартал эх мөрөө хөндөхгүй */
   const [dl, setDl] = useState<Dep[]>(r.deps);
   useEffect(() => { setDl(r.deps); }, [r.oid]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /* ⚠️ Эх мөрийн уялдаа ЦОНХ НЭЭЛТТЭЙ байхад солигдвол (хуваалцсан нооргоос
+     ирсэн г.м.) хэрэглэгч хөндөөгүй л бол дагуулна (2026-09-24 аудит) —
+     урьд нь хуучин жагсаалт «Тавих»-аар буцаж бичигддэг байв. */
+  const depsTxt = formatDeps(r.deps);
+  const depsTxtPrev = useRef(depsTxt);
+  useEffect(() => {
+    if (depsTxtPrev.current === depsTxt) return;
+    if (formatDeps(dl) === depsTxtPrev.current) setDl(r.deps);
+    depsTxtPrev.current = depsTxt;
+  }, [depsTxt]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * БОДИТ ЭХЭЛСЭН / ДУУССАН (энэ блок) ба ХҮН ХҮЧ / МАШИН (мөр) — 2026-09-23.
@@ -5297,7 +5378,9 @@ function PlanModal({
       ⚠️ Тоо биш («abc») ч `null` (2026-09-24 аудит) — урьд нь 0 болж «тэг нөөц» гэж бичигддэг байв. */
   const setMrCell = (k: string, f: 'hun' | 'mashin', t: string) => {
     const s = t.trim();
-    const v = s === '' ? null : Number.isFinite(Number(s)) ? Math.max(0, Math.floor(Number(s))) : null;
+    /* ⚠️ Сөрөг тоо ч `null` (2026-09-24 аудит) — урьд нь 0 болж «тэг нөөц» бичигддэг байв. */
+    const nv = Number(s);
+    const v = s === '' || !Number.isFinite(nv) || nv < 0 ? null : Math.floor(nv);
     setMr((m) => {
       const out = new Map(m);
       const cur = out.get(k) ?? { hun: null, mashin: null };
@@ -5349,8 +5432,10 @@ function PlanModal({
   /* ⚠️ ОЛОН БЛОК сонгосон бол ХӨНГӨН БИШ (2026-09-24): муж хөндөгдөөгүй ч бусад
      сонгосон блокт хуулагдах ёстой. Сарын нөөц (`mrDirty`) ч бүтэн замаар. */
   const depsOnly = (depsDirty || extraDirty) && !spanDirty && !mvDirty && !mrDirty && selB.size === 1;
-  /** Сарын обьём + нөөц — «Тавих»-д өгөх багц; обьёмгүй мөрд обьём хөндөхгүй */
-  const obArg = { months: total == null ? null : mv, res: mr };
+  /** Сарын обьём + нөөц — «Тавих»-д өгөх багц; обьёмгүй мөрд обьём хөндөхгүй.
+      ⚠️ Нөөц хөндөгдөөгүй, хоосон бол `null` (2026-09-24 аудит) — урьд нь үргэлж
+         `mr` өгч, олон блокт тавихад бусад блокийн серверийн нөөц арчигддаг байв. */
+  const obArg = { months: total == null ? null : mv, res: mrDirty || mrHas ? mr : null };
   /* ⚠️ Алхам 0 → сар/нөөц/бодит огноо СОНГОСОН БҮХ блокт (мужууд ижил);
      алхам >0 → зөвхөн идэвхтэй блокт (бусдын муж шилжсэн тул сарууд зөрнө,
      `applyChanges` тэднийг `keepMonths`/`keepRes`-ээр өөрөө бэлтгэнэ). */

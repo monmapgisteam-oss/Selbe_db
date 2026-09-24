@@ -386,7 +386,10 @@ assert.ok(
   'алсын дараалал багцын тамгагүй байна',
 );
 assert.ok(
-  SRC.includes('if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }'),
+  /* 2026-09-24: багц солиход ХУУЧИН түлхүүрийг ил дамжуулдаг (`flushRef.current(prevPkgKey…)`) —
+     дараалалд буй ноорог тэр түлхүүртэй л бичигдэнэ, бусад нь урьдын адил хаягдана */
+  SRC.includes('if (q.pkg !== (pkgKey ?? pkg.key)) { remoteQueue.current = null; return; }')
+    && SRC.includes('flushRef.current(prevPkgKey || remoteQueue.current.pkg)'),
   'өөр багцын ноорог шалгагдалгүй бичигдэж байна',
 );
 const swBlock = between('loadedPkgRef.current = "";', 'setBusy(true);');

@@ -133,6 +133,37 @@ console.log('✅ ГАЦАА урьдчилж илэрнэ (батлагчгүй 
 }
 console.log('✅ урсгалын цоорхой — бүгд хоосон нь анхааруулга БИШ');
 
+/* ── 5b. `viewOnly` томилгоо — шатны эзэн БИШ, цоорхойд тоологдоно (2026-09-24) ── */
+{
+  const src = {
+    ...empty(),
+    users: ['a', 'v'],
+    flow: [
+      { user: 'a', stage: STAGE_ORDER[0], bagts: [G0] },
+      { user: 'v', stage: STAGE_ORDER[1], bagts: [G0], viewOnly: true },
+    ],
+  };
+  const p = pkgErh(src, G0);
+  assert.deepEqual(p.flow[STAGE_ORDER[1]], [], 'зөвхөн харагч шатны эзэн болж гарав');
+  const gap = p.issues.find((i) => i.key === 'flowGap');
+  assert.ok(gap, 'зөвхөн харагчтай шат цоорхой гэж тоологдсонгүй');
+  assert.equal(gap.args[1], String(STAGE_ORDER.length - 1));
+  assert.equal(userErh(src, 'v').flow.viewOnly, true);
+  assert.equal(userErh(src, 'a').flow.viewOnly, false);
+}
+console.log('✅ viewOnly — эзэн биш, хүний картад туг');
+
+/* ── 5c. Хатуу super — «эрх олгоогүй» БИШ (2026-09-24) ── */
+{
+  const src = { ...empty(), users: ['boss', 'hen_ch'], supers: ['BOSS'] };
+  const u = userErh(src, 'boss');
+  assert.equal(u.superUser, true);
+  assert.equal(u.any, true, 'super «эрх олгоогүй» гэж гарав');
+  assert.equal(userErh(src, 'hen_ch').superUser, false);
+  assert.equal(allUserErh(src)[0].user, 'boss', 'super эхэнд эрэмбэлэгдсэнгүй');
+}
+console.log('✅ super — админ гэж ялгагдана');
+
 /* ── 6. Багц ТУСГААРЛАГДСАН — нэг багцын томилгоо нөгөөд орохгүй ── */
 {
   const src = {

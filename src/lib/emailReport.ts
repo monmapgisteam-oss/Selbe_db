@@ -102,8 +102,9 @@ export function download(filename: string, blob: Blob): void {
 
 /** Мэйлийн богино гарчиг ба их бие */
 const subjectOf = (dateStr: string) => tr('Сэлбэ 20 минутын хотын ерөнхий тайлан ({0})', dateStr);
-const bodyText = tr('Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,');
-const bodyHtml = tr('<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>');
+/* ⚠️ Функц — модуль ачаалахад `tr()` дуудвал хэл сонгогдохоос ӨМНӨ орчуулагдана */
+const bodyText = () => tr('Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,');
+const bodyHtml = () => tr('<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>');
 
 /**
  * CLASSIC OUTLOOK — `.eml` (X-Unsent) татна. Нээхэд Outlook мэйл бичих цонх,
@@ -123,7 +124,7 @@ export async function emailViaEml(rows: BagtsRow[], dateStr: string, extra: Repo
     'Content-Type: text/html; charset=utf-8',
     'Content-Transfer-Encoding: base64',
     '',
-    wrap76(b64utf8(bodyHtml)),
+    wrap76(b64utf8(bodyHtml())),
     '',
     `--${bd}`,
     `Content-Type: application/pdf; name="${PDF_NAME}"`,
@@ -146,7 +147,7 @@ export async function emailViaMailto(rows: BagtsRow[], dateStr: string, extra: R
   download(PDF_NAME, new Blob([bytes], { type: 'application/pdf' }));
   const url = `mailto:${REPORT_RECIPIENTS.join(',')}`
     + `?subject=${encodeURIComponent(subjectOf(dateStr))}`
-    + tr('&body={0}', encodeURIComponent(tr('{0}\n\n(Татсан {1}-ийг энэ мэйлд чирж хавсаргана уу.)', bodyText, PDF_NAME)));
+    + tr('&body={0}', encodeURIComponent(tr('{0}\n\n(Татсан {1}-ийг энэ мэйлд чирж хавсаргана уу.)', bodyText(), PDF_NAME)));
   window.location.href = url;
 }
 

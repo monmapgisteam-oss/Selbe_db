@@ -576,8 +576,12 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
     'guitsetgelAcl.removeAssign: хоосон нэрийн хамгаалалт алга (scopedAcl-тэй тэгш)');
 
   const ua = readCode('src/components/UserAdmin.tsx');
-  assert.ok(ua.includes('const capsLocked = !remoteReady() || !capsRemoteReady();'),
+  /* ⚠️ 2026-09-24: долоон ACL-ийн өөрийн туг ч орно (flow · qaqc · huvaari · obyem · chanar · ajil · butets) */
+  assert.match(ua, /const capsLocked = !remoteReady\(\) \|\| !capsRemoteReady\(\) \|\| !flowAclReady\(\)[\s\S]{0,200}!butetsAclReady\(\);/,
     'UserAdmin: capsLocked туг алга — remote-гүй панел уншихдаа [] , бичихдээ кэш холино');
+  for (const r of ['qaqcAclReady', 'huvaariAclReady', 'obyemAclReady', 'chanarAclReady', 'ajilAclReady']) {
+    assert.ok(ua.includes('!' + r + '()'), 'UserAdmin.capsLocked: ' + r + ' туг дутуу');
+  }
   for (const fn of ['const flipScoped = (', 'const flipCap = (', 'const add = () =>']) {
     const i = ua.indexOf(fn);
     assert.ok(i > 0, `UserAdmin: ${fn} олдсонгүй`);

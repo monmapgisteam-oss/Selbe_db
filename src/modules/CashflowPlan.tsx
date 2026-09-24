@@ -30,11 +30,14 @@ type Row = Record<string, unknown>;
 
 const sOf = (v: unknown) => String(v ?? '').trim();
 const nOf = (v: unknown): number | null => {
-  const t = String(v ?? '').trim();
+  /* ⚠️ Аравтын таслал («12,5») зөвшөөрнө — Excel-ээс хуулсан утга */
+  const t = String(v ?? '').trim().replace(',', '.');
   if (t === '') return null;
   const x = Number(t);
   return Number.isFinite(x) ? x : null;
 };
+/** Хоосон биш атлаа тоо болохгүй оролт — хадгалахаас өмнө татгалзана */
+const badNum = (v: unknown) => String(v ?? '').trim() !== '' && nOf(v) == null;
 
 /**
  * ЗАДАРГААНЫ КОДООР ЭРЭМБЭЛЭХ — «4.2» нь «4.10»-аас ӨМНӨ.
@@ -209,6 +212,16 @@ export function CashflowPlan({
       for (const w of works) costById.set(Number(w[CF_MONTH.id]), costOf(w));
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
+
+      /* ⚠️ 2026-09-24: тоо биш оролт («abc») урьд нь `null` болж ЧИМЭЭГҮЙ
+         арилдаг байв — хадгалахгүй, саруудыг нэрлэж алдаа заана. */
+      const bad = Object.entries(pend)
+        .filter(([, v]) => badNum(v))
+        .map(([k]) => monthKey(mById.get(Number(k))?.[CF_MONTH.start]));
+      if (bad.length) {
+        setErr(tr('Тоо биш утга: {0}. Зөвхөн тоо (жишээ нь 12.5) оруулна уу.', bad.join(', ')));
+        return;
+      }
 
       /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */
       let noCost = 0;

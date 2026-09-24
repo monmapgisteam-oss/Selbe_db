@@ -69,7 +69,7 @@ export type Filled = {
 export type Change = {
   /** `rows` доторх мөрийн индекс */
   row: number;
-  /** Блокийн индекс (`blocks`-той ижил дараалалтай) */
+  /** Блокийн индекс (`blocks`-той ижил дараалалтай); обьёмгүй блок бол `-1` (2026-09-24) */
   col: number;
   no: string;
   work: string;
@@ -362,7 +362,30 @@ async function loadStaged(
     const pctFrom: (number | null)[] = [];
     const pctTo: (number | null)[] = [];
     for (let b = 0; b < nBld; b += 1) {
-      if (colOf[b] < 0) continue;
+      if (colOf[b] < 0) {
+        /* ⚠️ ОБЬЁМГҮЙ БЛОК (2026-09-24-ний аудит): `blocks`-д багана байхгүй ч
+           «%NN» засвар нь `act`-д суусан байдаг тул суурьтай нь жишээд
+           `changes`-д ОРУУЛНА — урьд нь `continue` хийж тэр өөрчлөлт хянагчид
+           огт харагдахгүй, «өөрчлөгдсөн нүд: 0» гэж батлагддаг байв.
+           `col: -1` (баганагүй), `block` нь шошго — зөвшөөрлийн түлхүүр
+           `${row}:${block}` хэвээр. */
+        if (!touched.has(`${r.oid}:${b}`)) continue;
+        const toA0 = r.act[b] ?? null;
+        const fromA0 = baseA ? (baseA[b] ?? null) : null;
+        if (fromA0 === toA0) continue;
+        changes.push({
+          row: i,
+          col: -1,
+          no: r.no,
+          work: r.work || '—',
+          block: sc.bld[b] ?? String(b + 1),
+          from: null,
+          to: null,
+          fromPct: fromA0,
+          toPct: toA0,
+        });
+        continue;
+      }
       const to = c[i].obyem[b];
       /* ⚠️ Шинэ мөрд (нэмсэн ажил) суурь БАЙХГҮЙ — `null` (0 БИШ). */
       const from = base ? base[b] : null;

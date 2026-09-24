@@ -137,8 +137,12 @@ function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
     else s.missing += 1;
   }
 
+  /* ⚠️ 2026-09-24: null ≠ 0 — нэг ч блок нь тайлагнаагүй багц `progress: null`
+     (урьд нь `sum / blocks` = 0 гарч, Dashboard/Tailan-ийн «зөвхөн мэдээлэлтэй
+     багцаар жигнэх» дүрэм хэзээ ч ажилладаггүй байв). Тайлагнасан блоктой багцад
+     хуваарь ХЭВЭЭР бүх блок (тайлангүй блок 0%) — `buildProgressOf`-ийн ⚠️. */
   return [...by.values()]
-    .map(({ sum, ...s }) => ({ ...s, progress: s.blocks ? sum / s.blocks : null }))
+    .map(({ sum, ...s }) => ({ ...s, progress: s.blocks - s.missing > 0 ? sum / s.blocks : null }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
 
@@ -182,8 +186,9 @@ export function buildProgressOf(rows: readonly BagtsRow[]): BuildProgress {
     missing += r.missing;
     if (r.progress != null) wsum += r.progress * r.blocks;
   }
+  /* ⚠️ Нэг ч блок тайлагнаагүй бол `null` (0% БИШ) — null ≠ 0 */
   return {
-    pct: blocks ? wsum / blocks : null,
+    pct: blocks - missing > 0 ? wsum / blocks : null,
     blocks,
     reported: blocks - missing,
     missing,

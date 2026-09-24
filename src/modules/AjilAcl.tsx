@@ -26,6 +26,7 @@ import {
   subscribeAjilAcl, type AjilRole,
 } from '@/lib/ajilAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
+import { removeRevokingRoles } from './ScopedAclPanel';
 
 /**
  * ⚠️ Шошго ба зурвасыг ФУНКЦ болгож өгнө — модулийн түвшинд `tr()` дуудвал
@@ -40,7 +41,14 @@ const SPEC: AclPanelSpec<AjilRole> = {
   failedUsers: ajilFailedUsers,
   subscribe: subscribeAjilAcl,
   setGrants: setAjilGrants,
-  remove: (user) => removeAjilAssign(user),
+  /*
+   * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
+   *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг
+   *    (админы гараар олгосон `addRow` г.м.) арчдаг байв. `UserAdmin.flipScoped`
+   *    ба `removeRevokingRoles`-той ижил дүрэм.
+   */
+  remove: (user) => removeRevokingRoles(user, listAjilAssigns, (u) => removeAjilAssign(u, false),
+    { editor: 'addRow', approver: 'ajilApprove' }),
   ready: ajilAclReady,
 
   notes: () => [

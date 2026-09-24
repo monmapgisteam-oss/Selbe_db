@@ -14,7 +14,14 @@ import { num, ha, km } from './format';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 
-export type Totals = { n: number; q: number };
+/**
+ * ⚠️ `q` нь `null` байж болно (2026-09-24): хэмжээний багана ХҮСЭЭГҮЙ (`d.qty`
+ *    байхгүй) эсвэл SUM нь `null` (мөр байгаа ч талбар бүгд хоосон) бол
+ *    `null` — «мэдээлэлгүй». Урьд нь `Number(null ?? 0)` = 0 болж «хэмжилт
+ *    тэг» гэж худал харагддаг байв (порталын `null ≠ 0` дүрэм). `n` нь
+ *    үргэлж тоо — COUNT хэзээ ч null биш.
+ */
+export type Totals = { n: number; q: number | null };
 
 /**
  * Давхаргад тохирох бүсийн шүүлт.
@@ -40,7 +47,8 @@ export const layerStats = (d: LayerDef) =>
  */
 export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
   const r = await queryStats(layerUrl(d), layerStats(d), where);
-  return { n: Number(r.n ?? 0), q: Number(r.q ?? 0) };
+  /* ⚠️ `q`: null хэвээр — 0 болгохгүй (`Totals`-ийн тайлбар) */
+  return { n: Number(r.n ?? 0), q: r.q == null ? null : Number(r.q) };
 }
 
 /**
@@ -48,8 +56,8 @@ export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
  * байсныг зассан (жишээ нь дугуйн замын бүс тус бүрийн 300–2000 м² талбай
  * «0.0 га» гэж гарч байв). 1 га-аас бага → м², 1 км-ээс богино → м.
  */
-export const qtyText = (d: LayerDef, q: number): string | null => {
-  if (!d.qty || q <= 0) return null;
+export const qtyText = (d: LayerDef, q: number | null): string | null => {
+  if (!d.qty || q == null || q <= 0) return null;
   if (d.qty.unit === 'км') return q < 1 ? tr('{0} м', num(q * 1000)) : tr('{0} км', num(q, 1));
   if (d.qty.unit === 'м') return q < 1000 ? tr('{0} м', num(q)) : tr('{0} км', km(q, 1));
   return q < 10_000 ? tr('{0} м²', num(q)) : tr('{0} га', ha(q, 1));
@@ -120,14 +128,16 @@ function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> 
   try {
     const raw = localStorage.getItem(persistKey(zone, ids));
     if (!raw) return null;
-    const rows = JSON.parse(raw) as [string, number, number][];
+    const rows = JSON.parse(raw) as [string, number, number | null][];
     if (!Array.isArray(rows)) return null;
     const want = new Set(ids);
     const map = new Map<string, Totals>();
     for (const r of rows) {
       if (!Array.isArray(r) || !want.has(r[0])) continue;
-      const n = Number(r[1]), q = Number(r[2]);
-      if (Number.isFinite(n) && Number.isFinite(q)) map.set(r[0], { n, q });
+      const n = Number(r[1]);
+      /* ⚠️ `q` null хэвээр сэргэнэ — 0 болгохгүй */
+      const q = r[2] == null ? null : Number(r[2]);
+      if (Number.isFinite(n) && (q == null || Number.isFinite(q))) map.set(r[0], { n, q });
     }
     return map.size ? map : null;
   } catch {

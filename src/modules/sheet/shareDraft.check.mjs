@@ -286,7 +286,8 @@ console.log('✅ эх кодын гэрээ — түлхүүр · шилжүүл
      ⚠️ Блокийн ХИЛИЙГ дараагийн тэмдэглэгээгээр олно, тэмдэгтийн тоогоор БИШ:
      гүйцэтгэлийн оновчлол нэмэгдэхэд тогтмол цонх хүрэлцэхгүй болж шалгуур
      ХУДЛАА уналаа (2026-09-08). */
-  const fi = FN.indexOf('const flush = () => {');
+  /* 2026-09-24: багц солиход хуучин түлхүүрийг ил авдаг — `flush(pkgKey?)` */
+  const fi = FN.indexOf('const flush = (pkgKey?: string) => {');
   assert.ok(fi > 0, 'FillNew: flush олдсонгүй');
   const fb = FN.slice(fi, FN.indexOf('flushRef.current = flush;', fi));
   assert.ok(fb.includes('await readRemoteDraft(q.pkg)'),
@@ -362,7 +363,8 @@ console.log('\nshareDraft.check: ok');
   assert.ok(uses >= 3,
     `FillNew: readRemoteDraftAt ${uses} газар — татах мөчлөг · flush · toggleDone ГУРВУУЛАА хэрэглэх ёстой`);
   /* Дэмий бичилт таслагдана, зөвхөн амжилттай бичилтэд тэмдэглэгдэнэ */
-  assert.ok(FN.includes('if (body === lastBodyRef.current)'),
+  /* 2026-09-24: багц солигдсон (`!live()`) бол `lastBodyRef` шинэ багцынх тул тулгахгүй */
+  assert.ok(FN.includes('if (live() && body === lastBodyRef.current)'),
     'FillNew: агуулга ижил байхад бичилт таслагдахгүй — нөгөө талд дэмий татах гинжин урвал');
   const okIdx = FN.indexOf('lastBodyRef.current = body;');
   assert.ok(okIdx > 0 && FN.slice(okIdx - 400, okIdx).includes('if (r.ok) {'),
@@ -582,7 +584,7 @@ console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй
   const pb = FN.slice(pi, FN.indexOf('setBusy(true);', pi));
   assert.ok(pb.includes('if (!canSubmitNow)'), 'publish: Ctrl+S оролцогчийн түгжээг тойрч байна');
   /* flush: алсаас нийлүүлсэн бол lastMergedRef хөдлөхгүй — tick буулгана */
-  assert.ok(FN.includes('if (!remote && outDraft.t > lastMergedRef.current)'),
+  assert.ok(FN.includes('if (live() && !remote && outDraft.t > lastMergedRef.current)'),
     'flush: нийлүүлсэн нүд дэлгэцэд буухгүй (lastMergedRef үргэлж урагшилж байна)');
   /* dropAdd нүдээ хамт хасна, tombstone тавина */
   const di = FN.indexOf('const dropAdd = (oid: number) => {');

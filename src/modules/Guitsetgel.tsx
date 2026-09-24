@@ -1014,12 +1014,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       *    `applyEdits` чимээгүй алгасна (буцаах товчны ⚠️-тэй ижил).
                       */}
                     <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks}
-                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
                       {RECHECK_UP[reBy]}
                     </button>
                     <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, [...okKeys]))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, [...okKeys], subAt))}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>

@@ -141,7 +141,9 @@ const GEOM_CHARTS = [
     short: tr('Талбай'),
     note: tr('га'),
     /** м² → га */
-    value: (d: LayerDef, t: Totals) => (d.qty ? t.q / 10_000 : 0),
+    /* ⚠️ `t.q` null (мэдээлэлгүй) → графикт 0 өндөр — `chartOf` тийм давхаргыг
+       `other` руу шилжүүлдэг тул энд хүрэхгүй */
+    value: (d: LayerDef, t: Totals) => (d.qty && t.q != null ? t.q / 10_000 : 0),
     display: (v: number, t: Totals) => tr('{0} га · {1}', num(v, 1), num(t.n)),
   },
   {
@@ -150,7 +152,7 @@ const GEOM_CHARTS = [
     short: tr('Урт'),
     note: tr('км'),
     /** «м» → км; «км» нэгжтэй давхарга шууд */
-    value: (d: LayerDef, t: Totals) => (!d.qty ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
+    value: (d: LayerDef, t: Totals) => (!d.qty || t.q == null ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
     display: (v: number, t: Totals) => tr('{0} км · {1}', num(v, 1), num(t.n)),
   },
   {
@@ -187,7 +189,7 @@ const GEOM_CHARTS = [
  */
 const chartOf = (d: LayerDef, t: Totals): 'area' | 'line' | 'point' | 'other' =>
   d.geom === 'point' ? 'point'
-    : d.qty && t.q > 0 ? d.geom
+    : d.qty && t.q != null && t.q > 0 ? d.geom
       : 'other';
 
 /**
@@ -205,7 +207,7 @@ function cardStats(ids: string[], map: ReadonlyMap<string, Totals>) {
     if (!d || !t) continue;
     n += t.n;
     if (d.geom === 'point') { pts += t.n; continue; }
-    if (!d.qty || t.q <= 0) continue;
+    if (!d.qty || t.q == null || t.q <= 0) continue;
     if (d.qty.unit === 'км') km += t.q;
     else if (d.qty.unit === 'м') km += t.q / 1_000;
     else ha += t.q / 10_000;
@@ -867,7 +869,7 @@ function LayerDashboard({
   const qty = t ? qtyText(d, t.q) : null;
 
   /** Нэг объектод ногдох дундаж хэмжээ (шугам → м, талбай → м²) */
-  const avgQty = t && d.qty && t.n > 0 ? t.q / t.n : null;
+  const avgQty = t && d.qty && t.q != null && t.n > 0 ? t.q / t.n : null;
 
   return (
     <div style={{ '--tone': 'var(--hue)' } as CSSProperties}>

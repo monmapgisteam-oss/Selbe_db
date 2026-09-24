@@ -35,9 +35,53 @@ import type { Grant } from '@/lib/scopedAcl';
 import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
-import { capsRemoteReady } from '@/lib/caps';
+import { capsRemoteReady, toggleCap, type CapKey } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import s from './guitsetgel.module.css';
+
+/**
+ * МӨРИЙГ БҮХЭЛД НЬ ХАСААД ЗӨВХӨН ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА (2026-09-24).
+ *
+ * ⚠️ `remove*Assign(user)`-ийн анхдагч `revoke=true` нь `syncCaps(u, [])` →
+ *    `none` горимд тэр системийн `roleCaps` БҮХ эрхийг хасдаг байв: нэмэлт
+ *    ажлын батлагчийг хасахад админы гараар олгосон «Мөр нэмэх» (`addRow`) ч
+ *    чимээгүй алга болно. `UserAdmin.flipScoped`-ийн 2026-09-24 дүрэмтэй
+ *    тэгшлэв: мөрийг `revoke=false`-оор хасаад, `sync` дууссаны ДАРАА зөвхөн
+ *    хасагдсан үүргүүдийн эрхийг буцаана.
+ * ⚠️ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА: дараалалд хүлээх хооронд дахин
+ *    хуваарилагдсан үүргийн эрхийг буцаахгүй; нэг эрх рүү заадаг ӨӨР үүрэг
+ *    үлдсэн бол (Чанарын гурван хянагч → `chanarReview`) мөн буцаахгүй.
+ * ⚠️ Таван панел (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц)
+ *    бүгд үүгээр явна — QAQC нь `soleCap`, өөрийн замаар хэвээр.
+ */
+export function removeRevokingRoles<R extends string>(
+  user: string,
+  list: () => Row<R>[],
+  remove: (u: string) => Write,
+  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
+): Write {
+  const u = user.trim().toLowerCase();
+  const rolesOf = () => new Set((list().find((a) => a.user === u)?.grants ?? []).map((g) => g.role));
+  const had = rolesOf();
+  const rr = remove(u);
+  if (!rr.ok || !rr.sync) return rr;
+  const sync = rr.sync.then(async (ok) => {
+    const cur = rolesOf();
+    const caps = new Set<CapKey>();
+    for (const r of had) {
+      const c = roleCaps[r];
+      if (c && !cur.has(r)) caps.add(c);
+    }
+    for (const r of cur) {
+      const c = roleCaps[r];
+      if (c) caps.delete(c);
+    }
+    let all = ok;
+    for (const c of caps) all = (await toggleCap(u, c, false)) && all;
+    return all;
+  });
+  return { ...rr, sync };
+}
 
 /** Бичилтийн үр дүн — `scopedAcl.AclWrite`-тай ижил хэлбэр */
 type Write = { ok: boolean; error?: string; sync?: Promise<boolean> };

@@ -23,18 +23,18 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { listUsers, subscribe } from '@/lib/permissions';
-import { capsOf, subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
-import { listAssigns, subscribeAcl } from '@/lib/guitsetgelAcl';
-import { listQaqcAssigns, subscribeQaqcAcl } from '@/lib/qaqcAcl';
-import { listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
-import { listObyemAssigns, subscribeObyemAcl } from '@/lib/obyemAcl';
-import { listChanarAssigns, subscribeChanarAcl } from '@/lib/chanarAcl';
-import { listAjilAssigns, subscribeAjilAcl } from '@/lib/ajilAcl';
-import { listButetsAssigns, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { listUsers, remoteReady, subscribe } from '@/lib/permissions';
+import { capsOf, capsRemoteReady, subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
+import { flowAclReady, listAssigns, subscribeAcl } from '@/lib/guitsetgelAcl';
+import { listQaqcAssigns, qaqcAclReady, subscribeQaqcAcl } from '@/lib/qaqcAcl';
+import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { listObyemAssigns, obyemAclReady, subscribeObyemAcl } from '@/lib/obyemAcl';
+import { chanarAclReady, listChanarAssigns, subscribeChanarAcl } from '@/lib/chanarAcl';
+import { ajilAclReady, listAjilAssigns, subscribeAjilAcl } from '@/lib/ajilAcl';
+import { butetsAclReady, listButetsAssigns, subscribeButetsAcl } from '@/lib/butetsAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { resolveAccess } from '@/lib/permissions';
-import { VIEWS } from '@/lib/services';
+import { roleForUser, VIEWS } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
   allPkgErh, allUserErh, type ErhSource, type PkgIssue, type RoleLine,
@@ -126,9 +126,21 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
 
   const [mode, setMode] = useState<'user' | 'pkg'>('pkg');
 
+  /*
+   * ⚠️ ТҮГЖЭЭ (2026-09-24) — панелуудтай ИЖИЛ туг. Аль нэг эх сурвалж энэ
+   *    сешнд уншигдаагүй бол `list*()` нь `[]` тул тойм «бүгд томилоогүй»,
+   *    «Цоорхой алга» гэсэн ХУДАЛ зураг харуулдаг байв. Уншигдтал ил хэлнэ.
+   */
+  const locked = !remoteReady() || !capsRemoteReady() || !flowAclReady()
+    || !qaqcAclReady() || !huvaariAclReady() || !obyemAclReady() || !chanarAclReady()
+    || !ajilAclReady() || !butetsAclReady();
+  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+
   const users = listUsers().map((u) => u.username);
   const src: ErhSource = {
     users,
+    /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
+    supers: users.filter((u) => roleForUser(u) === 'super'),
     flow: listAssigns(),
     /* Чанар нь үүрэггүй — grants нь ганц мөр, үүргийн нэр хоосон */
     qaqc: listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts })),
@@ -169,7 +181,9 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
           ))}
         </div>
       )}
-      {allIssues.length === 0 && (
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
+      {/* ⚠️ Уншигдаагүй үед «цоорхой алга» гэж худал тайтгаруулахгүй */}
+      {!locked && allIssues.length === 0 && (
         <div className={s.aclEmpty}>{tr('Цоорхой алга — багц бүр бүрэн томилогдсон.')}</div>
       )}
 
@@ -236,6 +250,10 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
                 <span className={s.aclCount}>{u.views.open}/{u.views.total}</span>
               </div>
 
+              {/* ⚠️ Хатуу super нь хуваарилалтгүй ч бүх эрхтэй — «эрх олгоогүй» БИШ (2026-09-24) */}
+              {u.superUser && (
+                <div className={s.aclName}>{tr('Админ — бүх багц, бүх шат')}</div>
+              )}
               {!u.any && (
                 <div className={s.aclEmpty}>{tr('Эрх олгоогүй — зөвхөн харагдац.')}</div>
               )}
@@ -245,6 +263,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
                   <div className={s.aclRoleHead}>{tr('Гүйцэтгэлийн урсгал')}</div>
                   <div className={s.aclName}>
                     {STAGE_LABEL[u.flow.stage]} · {bagtsText(u.flow.bagts)}
+                    {u.flow.viewOnly && <> · <em className={s.aclEmpty}>{tr('зөвхөн харна')}</em></>}
                   </div>
                 </div>
               )}

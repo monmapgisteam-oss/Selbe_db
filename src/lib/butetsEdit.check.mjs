@@ -41,6 +41,7 @@ const meta = {
   geom: 'esriGeometryPolyline',
   canUpdate: true,
   canCreate: true,
+  canDelete: true,
   draw: 'polyline',
   fields: [
     { name: 'DocName', alias: 'DocName', kind: 'text', length: 255, nullable: true, codes: null },
@@ -423,6 +424,8 @@ try {
 }
 assert.ok(del.url.endsWith('/applyEdits'));
 assert.equal(del.body.get('deletes'), '4242');
+/* Delete-гүй үйлчилгээ — сүлжээнд хүрэхгүй шидэгдэнэ */
+await assert.rejects(() => deleteRow({ ...meta, canDelete: false }, 4242), /устгахыг/);
 assert.equal(del.body.get('adds'), null);
 assert.equal(del.body.get('updates'), null);
 assert.equal(

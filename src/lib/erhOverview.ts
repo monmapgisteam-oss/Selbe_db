@@ -33,7 +33,8 @@ import { ALL_BAGTS } from './scopedAcl';
       Дуудагч нь бэлэн өгөгдлийг дамжуулна. */
 
 /** Гүйцэтгэлийн урсгалын томилгоо (`guitsetgelAcl.Assign`) */
-export type FlowRow = { user: string; stage: Stage; bagts: string[] };
+/** ⚠️ `viewOnly` (2026-09-24): томилогдсон ч зөвхөн харна — шатны эзэн БИШ */
+export type FlowRow = { user: string; stage: Stage; bagts: string[]; viewOnly?: boolean };
 /** Багцын хуваарилалт — үүрэгтэй (хуваарь · обьём) эсвэл үүрэггүй (чанар) */
 /**
  * ⚠️ ҮҮРЭГ БҮР ӨӨРИЙН БАГЦТАЙ (2026-09-09). Урьд нь `{roles[], bagts[]}`
@@ -62,6 +63,12 @@ export type ErhSource = {
    */
   ajil?: ScopedRow[];
   butets?: ScopedRow[];
+  /**
+   * Хатуу `super` аккаунтууд (2026-09-24). ⚠️ `roleForUser`-ыг ЭНД
+   *    импортлохгүй (дээрх шалтгаан) — дуудагч өгнө. СОНГОМОЛ: хуучин тест
+   *    эх сурвалж нь энэгүй.
+   */
+  supers?: string[];
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -79,8 +86,10 @@ export type RoleLine = {
 /** Нэг хүний БҮРЭН эрхийн зураг */
 export type UserErh = {
   user: string;
-  /** Урсгалын шат (`null` = томилогдоогүй) ба багцууд */
-  flow: { stage: Stage; bagts: string[] | null } | null;
+  /** Урсгалын шат (`null` = томилогдоогүй) ба багцууд; `viewOnly` = зөвхөн харна */
+  flow: { stage: Stage; bagts: string[] | null; viewOnly: boolean } | null;
+  /** Хатуу super — бүх багц, бүх шат; хуваарилалт түүнд үйлчилдэггүй */
+  superUser: boolean;
   qaqc: string[] | null;
   huvaari: RoleLine[];
   obyem: RoleLine[];
@@ -119,10 +128,12 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const butets = lines(src.butets ?? []);
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
+  const superUser = (src.supers ?? []).some((x) => norm(x) === k);
 
   return {
     user,
-    flow: f ? { stage: f.stage, bagts: bagtsOf(f.bagts) } : null,
+    flow: f ? { stage: f.stage, bagts: bagtsOf(f.bagts), viewOnly: f.viewOnly === true } : null,
+    superUser,
     qaqc: q ? bagtsOf(q.bagts) : null,
     huvaari,
     obyem,
@@ -131,7 +142,8 @@ export function userErh(src: ErhSource, user: string): UserErh {
     butets,
     caps,
     views,
-    any: !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
+    /* ⚠️ super нь бүх эрхтэй — «эрх олгоогүй» гэж харуулахгүй (2026-09-24) */
+    any: superUser || !!f || !!q || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
   };
 }
@@ -177,7 +189,9 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
   const flow = Object.fromEntries(
     STAGE_ORDER.map((st) => [
       st,
-      src.flow.filter((x) => x.stage === st && covers(x.bagts, bagts)).map((x) => x.user),
+      /* ⚠️ `viewOnly` томилгоо шатны эзэн БИШ (2026-09-24) — `canReview: false`
+         тул тэр шатанд илгээлт зогсоно; эзний жагсаалт ба `flowGap`-д оруулахгүй */
+      src.flow.filter((x) => x.stage === st && !x.viewOnly && covers(x.bagts, bagts)).map((x) => x.user),
     ]),
   ) as Record<Stage, string[]>;
 

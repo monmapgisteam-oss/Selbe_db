@@ -554,23 +554,25 @@ function sanitizeActual(raw: object): PlanPayload['actual'] {
   return out;
 }
 
-/** `res` (хүн хүч · машин) — объект биш мөрийг хаяна, тоо биш утга `null`. */
+/* ⚠️ Сарын/мөрийн нөөц БҮХЭЛ тоо (2026-09-24): мөрийн талбар Integer тул бутархай
+   илгээлт батлагдахад нийлбэр зөрдөг байв. */
+const intOrNull = (x: unknown): number | null => { const v = numOrNull(x); return v == null ? null : Math.floor(v); };
+
+/** `res` (хүн хүч · машин) — объект биш мөрийг хаяна, тоо биш утга `null`.
+    ⚠️ Мөрийн талбар Integer тул `intOrNull` (2026-09-24 аудит) — сарын нөөцтэй ижил. */
 function sanitizeRes(raw: object): PlanPayload['res'] {
   const out: PlanPayload['res'] = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!v || typeof v !== 'object') continue;
     out[k] = {
-      hun: numOrNull((v as { hun?: unknown }).hun),
-      mashin: numOrNull((v as { mashin?: unknown }).mashin),
+      hun: intOrNull((v as { hun?: unknown }).hun),
+      mashin: intOrNull((v as { mashin?: unknown }).mashin),
     };
   }
   return out;
 }
 
 /** `obres` (сарын нөөц, 2026-09-24) — түлхүүр → сар → {hun, mashin}; эвдэрсэн сар хаягдана */
-/* ⚠️ Сарын нөөц БҮХЭЛ тоо (2026-09-24): мөрийн талбар Integer тул бутархай
-   илгээлт батлагдахад нийлбэр зөрдөг байв. */
-const intOrNull = (x: unknown): number | null => { const v = numOrNull(x); return v == null ? null : Math.floor(v); };
 function sanitizeObRes(raw: object): NonNullable<PlanPayload['obres']> {
   const out: NonNullable<PlanPayload['obres']> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {

@@ -396,7 +396,8 @@ export async function buildExecDoc(
         money(g.budget),
         g.budget > 0 ? pct((g.contract / g.budget) * 100, 1) : '—',
         num(g.types),
-        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', topType.label.toLocaleLowerCase('mn-MN'), money(topType.cost)) : '')),
+        /* ⚠️ Шошгыг байгаагаар нь — `toLocaleLowerCase` нь товчлол (ИД, ХО…)-ыг эвддэг байв */
+        topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', topType.label, money(topType.cost)) : '')),
       cap(tr('Ажлын төрлөөр төсвийн хэмжээ')),
       barChart(g.byType.map((t) => ({ label: t.label, value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
       cap(tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')),

@@ -83,6 +83,12 @@ export type LayerMeta = {
   /** Үйлчилгээ `Create` дэмждэг эсэх — «шинээр нэмэх» товч үүнээс шалтгаална */
   canCreate: boolean;
   /**
+   * Үйлчилгээ `Delete` дэмждэг эсэх — «Устгах» товч ба `deleteRow` үүнээс.
+   * ⚠️ 2026-09-24: урьд нь шалгагдахгүй байсан тул Delete-гүй үйлчилгээнд
+   *    хүсэлт явж, серверийн бүрхэг алдаагаар унадаг байв.
+   */
+  canDelete: boolean;
+  /**
    * Зурах хэрэгслийн төрөл — `geometryType`-аас.
    * `null` бол энэ давхаргад шинэ объект зурах боломжгүй (танигдахгүй геометр).
    */
@@ -203,6 +209,10 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
 
   const url = layerUrl(L);
   const res = await fetch(`${url}?f=json${tokenQs()}`);
+  /* ⚠️ HTTP алдаа (proxy/CDN-ийн 502, 401 HTML) — JSON парс хийхээс ӨМНӨ
+     (`tableWrite`-ийн ижил дүрэм); эс бөгөөс «талбарын жагсаалт ирсэнгүй»
+     гэсэн төөрөгдүүлсэн мэдээ гардаг байв. */
+  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
   const j = (await res.json()) as {
     error?: { message?: string };
     fields?: RawField[];
@@ -233,6 +243,7 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
     geom: j.geometryType ?? '',
     canUpdate: /update/i.test(j.capabilities ?? ''),
     canCreate: /create/i.test(j.capabilities ?? ''),
+    canDelete: /delete/i.test(j.capabilities ?? ''),
     draw: drawOf(j.geometryType ?? ''),
     fields,
     readOnly,
@@ -240,6 +251,18 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
   metaCache.set(layerId, meta);
   return meta;
 }
+
+/**
+ * КЭШЛЭГДСЭН OID НЭР — синхрон, сүлжээгүй.
+ *
+ * ⚠️ 2026-09-24: зурагт товшсон объектын дугаарыг `LayerDef.oid` бүртгэлээс
+ *    уншдаг байсан бол бичилт нь серверийн `objectIdField`-ээр явдаг байв —
+ *    хоёр нэр зөрвөл (`FID` → `OBJECTID`) буруу мөр засагдана. Схем аль хэдийн
+ *    ирсэн бол ЭНЭ нэрийг эрхэмлэнэ; ирээгүй бол `null` — дуудагч атрибутын
+ *    түлхүүрээс, дараа нь бүртгэлээс хайна.
+ */
+export const cachedOidField = (layerId: string): string | null =>
+  metaCache.get(layerId)?.oidField ?? null;
 
 /* ══════════════════ Уншилт ══════════════════ */
 
@@ -286,6 +309,8 @@ export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknow
       outSR: '102100',
     }),
   });
+  /* ⚠️ HTTP алдааг JSON парсаас ӨМНӨ — `fetchLayerMeta`-ийн ижил дүрэм */
+  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
   const j = (await res.json()) as {
     error?: { message?: string };
     spatialReference?: Record<string, unknown>;
@@ -459,6 +484,7 @@ export async function applyAttrs(
  */
 export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
   requireLayer(meta);
+  if (!meta.canDelete) throw new Error(tr('Энэ давхарга устгахыг зөвшөөрөхгүй байна'));
   await applyAll(meta.url, meta.oidField, { deletes: [Math.trunc(oid)] });
 }
 

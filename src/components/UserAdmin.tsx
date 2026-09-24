@@ -33,31 +33,31 @@ import { ChanarAcl } from '@/modules/ChanarAcl';
 import { DedButetsAcl } from '@/modules/DedButetsAcl';
 import { AjilAcl } from '@/modules/AjilAcl';
 import {
-  ALL_BAGTS as CHANAR_ALL_BAGTS, listChanarAssigns, purgeChanarAssign, removeChanarAssign,
+  ALL_BAGTS as CHANAR_ALL_BAGTS, chanarAclReady, listChanarAssigns, purgeChanarAssign, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
 import {
-  ALL_BAGTS as HUVAARI_ALL_BAGTS, listHuvaariAssigns, purgeHuvaariAssign, removeHuvaariAssign,
+  ALL_BAGTS as HUVAARI_ALL_BAGTS, huvaariAclReady, listHuvaariAssigns, purgeHuvaariAssign, removeHuvaariAssign,
   setHuvaariGrants, subscribeHuvaariAcl, type PlanRole,
 } from '@/lib/huvaariAcl';
 import {
-  ALL_BAGTS as OBYEM_ALL_BAGTS, listObyemAssigns, purgeObyemAssign, removeObyemAssign,
+  ALL_BAGTS as OBYEM_ALL_BAGTS, listObyemAssigns, obyemAclReady, purgeObyemAssign, removeObyemAssign,
   setObyemGrants, subscribeObyemAcl, type ObyemRole,
 } from '@/lib/obyemAcl';
 import {
-  ALL_BAGTS as AJIL_ALL_BAGTS, listAjilAssigns, purgeAjilAssign, removeAjilAssign,
+  ALL_BAGTS as AJIL_ALL_BAGTS, ajilAclReady, listAjilAssigns, purgeAjilAssign, removeAjilAssign,
   setAjilGrants, subscribeAjilAcl, type AjilRole,
 } from '@/lib/ajilAcl';
 import {
-  ALL_BAGTS as BUTETS_ALL_BAGTS, listButetsAssigns, purgeButetsAssign, removeButetsAssign,
+  ALL_BAGTS as BUTETS_ALL_BAGTS, butetsAclReady, listButetsAssigns, purgeButetsAssign, removeButetsAssign,
   setButetsGrants, subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
 import {
-  ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, removeQaqcAssign, setQaqcAssign,
+  ALL_BAGTS as QAQC_ALL_BAGTS, listQaqcAssigns, purgeQaqcAssign, qaqcAclReady, removeQaqcAssign, setQaqcAssign,
   subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
 import {
-  purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
+  flowAclReady, purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
 import s from './userAdmin.module.css';
 
@@ -399,7 +399,18 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    localStorage-ийн кэш (`capsStored`) гэж ИЛ тэмдэглэгдэнэ. Remote
    *    сэргэмэгц (`AuthGate` 15 сек тутам · панел нээхэд) өөрөө нээгдэнэ.
    */
-  const capsLocked = !remoteReady() || !capsRemoteReady();
+  /*
+   * ⚠️ ДОЛООН ACL-ИЙН ӨӨРИЙН ТУГ Ч (2026-09-24). `remoteReady` ба
+   *    `capsRemoteReady` нь ЭРХИЙН хүснэгтийг л хэлдэг — багцын хуваарилалт
+   *    (`list*Assigns`) тус бүр ӨӨРИЙН `ready`-тэй бөгөөд тэр хүртэл `[]`.
+   *    Урьд нь нөгөө хоёр бэлэн болмогц унтраалга нээгдэж, `flipScoped` нь
+   *    `cur = undefined` гэж уншаад тэр хүний бүх багцыг `[ALL]`-аар дарж
+   *    бичдэг байв. Туг бүрийн `subscribe*` дээр `setAclN` дуудагддаг тул
+   *    бэлэн болмогц дахин зурагдаж өөрөө нээгдэнэ.
+   */
+  const capsLocked = !remoteReady() || !capsRemoteReady() || !flowAclReady()
+    || !qaqcAclReady() || !huvaariAclReady() || !obyemAclReady() || !chanarAclReady()
+    || !ajilAclReady() || !butetsAclReady();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
   const retrySync = async () => {
     if (syncing) return;
@@ -541,6 +552,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const key = u.username.trim().toLowerCase();
 
     let r: { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> };
+    /*
+     * ⚠️ УНТРААСАН ҮҮРЭГ ГҮЙЦЭТГЭХ АГШИНД Ч ХЭВЭЭР БАЙХГҮЙ ЭСЭХ (2026-09-24).
+     *    Доорх эрх буцаалт `r.sync`-ийн ДАРААХ тусдаа алхам тул OFF→ON хурдан
+     *    дарахад ON-ы `setGrants` (дараалалд) эрхийг олгосны дараа OFF-ын
+     *    `toggleCap(false)` ирж эрхийг арчдаг байв. Салаа бүр өөрийн үүргийг
+     *    жагсаалтаас ДАХИН уншиж, буцаж олгогдсон бол буцаалтыг алгасна.
+     */
+    let roleGone: () => boolean = () => true;
 
     if (kind === 'qaqc') {
       /*
@@ -565,6 +584,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       const grants = (cur?.grants ?? []).map((g) => ({ ...g })) as { role: ChanarRole; bagts: string[] }[];
       const isAuthor = cap === 'chanarAuthor';
       const touched: ChanarRole[] = isAuthor ? ['author'] : ['tuh', 'chanar', 'habea'];
+      roleGone = () => !(listChanarAssigns().find((a) => a.user === key)?.grants ?? [])
+        .some((g) => touched.includes(g.role as ChanarRole));
       let next: { role: ChanarRole; bagts: string[] }[];
       if (on) {
         next = grants.filter((g) => !touched.includes(g.role));
@@ -607,6 +628,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           : kind === 'butets' ? listButetsAssigns() : listObyemAssigns())
         .find((a) => a.user === key);
       const grants = (cur?.grants ?? []).map((g) => ({ ...g }));
+      roleGone = () => !((kind === 'huvaari' ? listHuvaariAssigns()
+        : kind === 'ajil' ? listAjilAssigns()
+          : kind === 'butets' ? listButetsAssigns() : listObyemAssigns())
+        .find((a) => a.user === key)?.grants ?? []).some((g) => g.role === role);
 
       let next: { role: string; bagts: string[] }[];
       if (on) {
@@ -681,7 +706,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       r.sync ?? Promise.resolve(false),
       r.granted ?? Promise.resolve(true),
     ]).then(async ([a, b]) => {
-      const c = revokeCap ? await toggleCap(u.username, cap, false) : true;
+      /* ⚠️ Хооронд дахин олгогдсон бол буцаахгүй (дээрх `roleGone`) */
+      const c = revokeCap && roleGone() ? await toggleCap(u.username, cap, false) : true;
       mark(a && b && c);
     });
   };
@@ -957,6 +983,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
       [listAjilAssigns().some((a) => a.user === key), tr('Нэмэлт ажлын эрх')],
       [listButetsAssigns().some((a) => a.user === key), tr('Инженерийн дэд бүтцийн засварын эрх')],
+      /* ⚠️ Чанарын баримт ч (2026-09-24) — урьд нь орхигдсон, өнчин `__chanar__:` мөр наалддаг байв */
+      [listChanarAssigns().some((a) => a.user === key), tr('Чанарын баримтын эрх')],
     ];
     /*
      * ⚠️ НЭМЭЛТ ЭРХ (`__cap__:`) ч мөн ӨНЧИН ҮЛДЭНЭ (2026-09-08-ны хоёр дахь

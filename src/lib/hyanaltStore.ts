@@ -866,6 +866,12 @@ export async function recheck(
    * буцаах бол «аль нүд ногоон» гэдгийг ЗААВАЛ дамжуулна.
    */
   okCells?: string[],
+  /**
+   * ХЯНАГЧИЙН ХАРСАН илгээлтийн агшин (`payload.at`) — `apply`-ийн `subAt`-тай
+   * ИЖИЛ тулгалт (2026-09-24-ний аудит): дахин шалгалтын хооронд компани
+   * илгээлтээ шинэчилсэн бол харагдаагүй агуулга дээш явахгүй (fail-closed).
+   */
+  subAt?: number,
 ): Promise<Result> {
   let prev: Row | undefined;
   try { prev = await liveRow(oid); } catch (e) { return fail(e); }
@@ -881,6 +887,16 @@ export async function recheck(
   {
     const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true);
     if (deny) { emit(); return { ok: false, error: deny }; }
+  }
+  /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ — `apply`-тай ИЖИЛ (дээрх `subAt`) */
+  if (subAt != null) {
+    const { readSubmissionByOid } = await import('./submission');
+    const sr = await readSubmissionByOid(Number(prev[F.sheetOid]));
+    if (!sr.ok) return { ok: false, error: sr.error };
+    if (!sr.sub || sr.sub.payload.at !== subAt) {
+      emit();
+      return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу') };
+    }
   }
 
   const t = Date.now();

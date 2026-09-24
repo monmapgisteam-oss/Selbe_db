@@ -94,6 +94,14 @@ const keep = readKeep();
 /* ⚠️ `keep` нь толинд байгаа эсэхээс үл хамааран «хэрэглэгдэж буй» — толинд
    байхгүй бол дутуу гэж тоолохгүй (динамик утга орчуулгагүй ч унадаггүй). */
 const used = (k) => keys.has(k) || keep.has(k);
+/* ⚠️ Толинд байхгүй keep-мөр — сануулга л (унагахгүй): орчуулгагүй ч ажилладаг,
+   гэхдээ ихэвчлэн эх текст өөрчлөгдсөний шинж. */
+const keepMissing = [...keep].filter((k) => !(k in dict));
+if (keepMissing.length && !argv.includes('--json')) {
+  console.warn('⚠️ i18n-keep.txt-ийн ' + keepMissing.length + ' мөр толинд байхгүй:');
+  keepMissing.slice(0, 15).forEach((k) => console.warn('   «' + k.slice(0, 70) + '»'));
+  if (keepMissing.length > 15) console.warn('   … бас ' + (keepMissing.length - 15));
+}
 
 const missing = [...keys.keys()].filter((k) => !(k in dict));
 const unused = Object.keys(dict).filter((k) => !used(k));

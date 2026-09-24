@@ -301,7 +301,9 @@ export function buildInfographic(
   yr += 10;
   P.hbar(R, yr, colW, tr('Гэрээ'), 1, money(f.planTotal), { color: DATA_SOFT, nameW: 100, valW: 140 });
   yr += 20;
-  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.given / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
+  /* ⚠️ Зурвасын харьцаа `givenContracted ÷ planTotal` — `f.share`-тай (текст) ИЖИЛ;
+     `given` нь багцад холбогдоогүй олголтыг ч агуулдаг тул зурвас текстээс зөрдөг байв. */
+  P.hbar(R, yr, colW, tr('Олгосон'), f.given != null && f.planTotal > 0 ? f.givenContracted / f.planTotal : 0, money(f.given), { color: DATA, nameW: 100, valW: 140 });
   yr += 20;
   if (f.share != null) P.text(R + colW, yr + 6, tr('{0} олгогдсон · үлдэгдэл {1}', pct(f.share, 1), money(f.remain)), { size: 11.5, weight: 600, fill: INK2, anchor: 'end' });
   yr += 26;
