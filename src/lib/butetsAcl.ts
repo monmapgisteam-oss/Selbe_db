@@ -29,6 +29,7 @@
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { butetsUpsert, butetsRemove } from './permsRemote';
 import { PACK_OF_LAYER } from './butetsPacks';
+import { AUTH } from './services';
 
 export { ALL_BAGTS };
 
@@ -91,6 +92,10 @@ export const hasButetsRole = (user: string | null | undefined): boolean =>
  *    хязгааргүй хүнд нээлттэй — «эзэнгүй» давхаргыг хэн ч засахгүй.
  */
 export const canEditButetsLayer = (user: string | null | undefined, layerId: string): boolean => {
+  /* ⚠️ НЭВТРЭЛТ УНТРААЛТТАЙ (2026-09-24): `hasCap` ба UI нь `AUTH.appId` хоосон үед
+     бүгдийг нээдэг атал энд хэрэглэгч `null` → хүрээ `[]` болж, lib-ийн
+     `requireLayer` хадгалалт бүрийг «эрхгүй» гэж ТАТГАЛЗДАГ байв. */
+  if (!AUTH.appId) return true;
   const sc = butetsScope(user);
   if (sc === null) return true;
   if (!sc.length) return false;

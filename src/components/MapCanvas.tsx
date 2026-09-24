@@ -925,6 +925,32 @@ const sourceLabels = () =>
  */
 const baseMap = () => Basemap.fromId('satellite');
 
+/**
+ * ХАРАГДАЦЫН СУУРЬ ЗУРАГ солих (2026-09-24). «Инженерийн дэд бүтэц» нь
+ * LIGHT GRAY CANVAS (`gray-vector`) суурьтай — нарийн сүлжээний шугам хиймэл
+ * дагуулын эрээн дэвсгэр дээр уншигдахгүй. Бусад нь хиймэл дагуул.
+ *
+ * ⚠️ Map нь харагдац хооронд ХУВААЛЦАГДДАГ (`mapCache`) тул дэд бүтцээс
+ *    гарахад буцааж тавихгүй бол бусад хуудас саарал суурьтай үлдэнэ.
+ * ⚠️ Id ижил бол хөндөхгүй — Map дахин зурах/тайл дахин татахаас сэргийлнэ.
+ */
+const basemapPage = new WeakMap<object, string>();
+
+export function applyViewBasemap(
+  v: AnyView | null, id: 'satellite' | 'gray-vector', page: string,
+): void {
+  const map = v?.map;
+  if (!map) return;
+  /* ⚠️ ЗӨВХӨН ХУУДАС СОЛИГДОХОД (2026-09-24). 2D↔3D солиход view дахин үүсдэг
+     тул `view` өөрчлөгдөхөд тавьбал хэрэглэгчийн «Суурь зураг» галерейгаас
+     сонгосон суурь нь хэмжээс солих бүрд чимээгүй дарагдах байв. */
+  if (basemapPage.get(map) === page) return;
+  basemapPage.set(map, page);
+  if (map.basemap?.id === id) return;
+  const bm = Basemap.fromId(id);
+  if (bm) map.basemap = bm;
+}
+
 /* ─────────────────── Давхарга үүсгэх ─────────────────── */
 
 export const IMAGERY_ID = 'imagery';

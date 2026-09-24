@@ -45,14 +45,14 @@ import {
 import { PackLayers, Swatch } from '@/components/PackLayers';
 import { List, ListItem, Note, Section, Stat, Stats } from '@/components/ui';
 import {
-  DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
+  CATALOG_LAYER_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
   PKG_FAMILY_BY_BAGTS,
 } from '@/lib/services';
 import { buildPacks, type Pack } from './Bagts';
 import { km, num } from '@/lib/format';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { butetsScope, canEditButetsLayer, hasButetsRole, subscribeButetsAcl } from '@/lib/butetsAcl';
-import { PACK_OF_LAYER } from '@/lib/butetsPacks';
+import { BUTETS_PACKS, PACK_OF_LAYER } from '@/lib/butetsPacks';
 import { useAuth } from '@/components/AuthGate';
 import { DedButetsEdit, type UndoInfo } from './DedButetsEdit';
 import { DedButetsBatch } from './DedButetsBatch';
@@ -681,7 +681,14 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const dotStyle = useMemo<Record<string, { size?: number }>>(() => ({}), []);
 
   /** Каталогийн багана — зөвхөн жагсаалт нээлттэй үед татна (Irged-тэй ижил) */
-  const catTotals = usePlanTotals(zone, layerOpen);
+  /* ⚠️ ХҮРЭЭГЭЭР (2026-09-24): багцын аккаунтад каталог нь бусад багцын мөрийг
+     нуудаг (`allow`) атал нийлбэр нь БҮХ ~127 давхаргаас татагддаг байв —
+     дэмий хүсэлт, мөн нуусан багцын тоо сүлжээгээр ил явна. */
+  const catIds = useMemo(
+    () => (hidden ? CATALOG_LAYER_IDS.filter(allow) : CATALOG_LAYER_IDS),
+    [hidden, allow],
+  );
+  const catTotals = usePlanTotals(zone, layerOpen, catIds);
 
   /** Хоёр баганын урт ба тоо — ЭНЭ цонхны 30 орчим давхаргаар */
   /**
@@ -1544,13 +1551,23 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                       setHighlight(null);
                     }}
                   >
-                    {SYSTEMS.map((sys) => {
-                      const ids = sys.ids.filter((id) => editableIds.includes(id));
+                    {/* ⚠️ БАГЦААР бүлэглэнэ (2026-09-24, хэрэглэгч: «дулаан, ариутгах
+                        татуурга гэж хуваахгүй, зөвхөн багцаар»). Гарчиг нь
+                        давхаргын нэрийн « · »-ийн өмнөх хэсэг («Багц 10»),
+                        мөр нь давхаргын ЯГ нэр (хэрэглэгч: «yag datanii neriig
+                        ashigla») — таслахгүй. */}
+                    {BUTETS_PACKS.map((p) => {
+                      const ids = p.layerIds.filter((id) => editableIds.includes(id));
                       if (!ids.length) return null;
+                      /* ⚠️ «Багц 6.1» нь цахилгаан ба холбоо ХОЁР багцад давхцана —
+                         тэр үед багцын бүтэн нэрийг («Багц 6.1 · Холбоо») авна. */
+                      const headOf = (x: typeof p) => (LAYER_BY_ID[x.layerIds[0]]?.title ?? x.name).split(' · ')[0];
+                      const short = headOf(p);
+                      const head = BUTETS_PACKS.some((q) => q !== p && headOf(q) === short) ? p.name : short;
                       return (
-                        <optgroup key={sys.key} label={tr(sys.title)}>
+                        <optgroup key={p.key} label={head}>
                           {ids.map((id) => (
-                            <option key={id} value={id}>{tr(LAYER_BY_ID[id]?.title ?? id)}</option>
+                            <option key={id} value={id}>{LAYER_BY_ID[id]?.title ?? id}</option>
                           ))}
                         </optgroup>
                       );

@@ -167,6 +167,13 @@ function toField(f: RawField): FieldDef | null {
  * гэж хуурамчаар хадгалагдана (`hyanalt.missingDirectorFields`-ийн сургамж).
  */
 const metaCache = new Map<string, LayerMeta>();
+/**
+ * ⚠️ ЯВЖ БУЙ хүсэлт (2026-09-24). Урьдчилан татах (`pickTemplate`, товшилт) ба
+ *    маягт нээгдэх хоёр ЗЭРЭГ дуудахад ижил давхаргын `?f=json` хоёр удаа явдаг
+ *    байв. Одоо хоёр дахь нь эхнийхийг хүлээнэ. Алдаа гарвал устгагдана —
+ *    `metaCache`-ийн «алдааг кэшлэхгүй» дүрэм хэвээр.
+ */
+const metaInflight = new Map<string, Promise<LayerMeta>>();
 
 /**
  * Давхаргын СХЕМИЙГ үйлчилгээнээс уншина.
@@ -178,6 +185,14 @@ const metaCache = new Map<string, LayerMeta>();
 export async function loadLayerMeta(layerId: string): Promise<LayerMeta> {
   const hit = metaCache.get(layerId);
   if (hit) return hit;
+  const run = metaInflight.get(layerId);
+  if (run) return run;
+  const p = fetchLayerMeta(layerId).finally(() => metaInflight.delete(layerId));
+  metaInflight.set(layerId, p);
+  return p;
+}
+
+async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
 
   const L: LayerDef | undefined = LAYER_BY_ID[layerId];
   if (!L) throw new Error(tr('Давхарга танигдсангүй: {0}', layerId));
@@ -536,11 +551,20 @@ const inWhere = (meta: LayerMeta, oids: number[]): string =>
 
 /** Олон мөрийг ТҮҮХИЙ утгаараа татна — буцаалтын «хуучин утга»-д */
 export async function loadRows(meta: LayerMeta, oids: number[]): Promise<Row[]> {
-  const rows: Row[] = [];
-  for (const part of chunks(oids, BATCH)) {
-    rows.push(...await queryFeatures(meta.url, { where: inWhere(meta, part) }));
-  }
-  return rows;
+  /* ⚠️ ЗЭРЭГ татна (2026-09-24) — уншилт тул дараалал хамаагүй; 1000 объект
+     сонгоход 5 хүсэлт дараалан хүлээдэг байв. 4-өөр хязгаарлаж серверийг
+     дарахгүй. Үр дүнгийн дараалал багцын дарааллаар хадгалагдана. */
+  const parts = chunks(oids, BATCH);
+  const out: Row[][] = new Array(parts.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < parts.length) {
+      const i = next++;
+      out[i] = await queryFeatures(meta.url, { where: inWhere(meta, parts[i]) });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, parts.length) }, worker));
+  return out.flat();
 }
 
 /**

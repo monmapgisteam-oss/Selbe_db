@@ -4,7 +4,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MapCanvas, MapProvider, useMap, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail } from '@/components/ViewRail';
 import { useAuth } from '@/components/AuthGate';
@@ -547,10 +547,16 @@ function PortalContent(
    * Харагдац дотроо гараар унтраасан/асаасан нь дараагийн солилт хүртэл үлдэнэ.
    * `Ersdel` өөрөө ч `setOrtho(true)` хийдэг — энэ дүрэмтэй нийцнэ.
    */
-  const { setOrtho } = useMap();
+  const { setOrtho, view: mapView } = useMap();
   useEffect(() => {
-    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan');
+    /* ⚠️ 2026-09-24: «Инженерийн дэд бүтэц» ч ортофотогүй нээгдэнэ — суурь нь
+       LIGHT GRAY CANVAS (доор), ортофото түүнийг бүрхэж шугам уншигдахгүй. */
+    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'dedButets');
   }, [view, setOrtho]);
+  /* Суурь зураг: дэд бүтэц — LIGHT GRAY CANVAS, бусад — хиймэл дагуул */
+  useEffect(() => {
+    applyViewBasemap(mapView, view === 'dedButets' ? 'gray-vector' : 'satellite', view);
+  }, [view, mapView]);
 
   /* ── Багануудын өргөн ── */
 
