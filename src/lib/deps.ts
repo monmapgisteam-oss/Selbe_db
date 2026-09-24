@@ -28,11 +28,32 @@
 import { DAY, spanDays, type PlanRow, type Span } from './plan';
 
 export type DepType = 'FS' | 'SS';
-export type Dep = { code: number; type: DepType; lag: number };
+/**
+ * ⚠️ `blk` — БЛОК ТУС БҮРИЙН уялдаа (2026-09-24, хэрэглэгчийн мэдээлсэн алдаа:
+ *    «нэг блокт холбосон хамаарал БҮХ блокт үйлчилж байна»). Уялдаа нь мөрийн
+ *    түвшний `Hamaaral` текстэд амьдардаг тул AGOL талбарыг хөндөлгүй
+ *    бичиглэлийг өргөтгөв: `11FS14@2` = ЗӨВХӨН 2-р блокт (хэрэглэгчид 1-ээс
+ *    тоолно, энд 0-ээс: `@2` → `blk: 1`). `@`-гүй = БҮХ блокт (хуучин зан).
+ *    Нэг код блок тус бүрд нэг удаа + блокгүй нэг удаа байж болно — ялгах
+ *    тэмдэг нь (`code`, `blk`) хос (`depId`/`sameDep`).
+ * ⚠️ Дугуй хамаарлын шалгалт (`reaches`/`downstreamCodes`/`hierRelated`) блокийг
+ *    ҮЛ ТООНО — аль ч блокт эргэлт байвал хориглоно (консерватив).
+ */
+export type Dep = { code: number; type: DepType; lag: number; blk?: number };
+
+/** Уялдааны ЯЛГАХ ТЭМДЭГ — (код, блок). Блокгүй = `'11@'` */
+export const depId = (d: Pick<Dep, 'code' | 'blk'>): string => `${d.code}@${d.blk ?? ''}`;
+/** Хоёр уялдаа нэг зүйлийг заана уу (код + блок) */
+export const sameDep = (a: Pick<Dep, 'code' | 'blk'>, b: Pick<Dep, 'code' | 'blk'>): boolean =>
+  a.code === b.code && (a.blk ?? null) === (b.blk ?? null);
+/** `b` блокт ҮЙЛЧЛЭХ уялдаанууд — блокгүй + яг энэ блокийнх */
+export const depsInBlock = (deps: readonly Dep[], b: number): Dep[] =>
+  deps.filter((d) => d.blk == null || d.blk === b);
 
 /* ══════════════════ Бичиглэл ══════════════════ */
 
-const TOKEN = /^(\d+)\s*(FS|SS)\s*(-?\d+)?$/;
+/* ⚠️ `@N` дагавар (2026-09-24): N нь 1-ээс эхэлсэн блокийн дугаар; `@0`/эвдэрсэн → токен бүхэлдээ алгасна */
+const TOKEN = /^(\d+)\s*(FS|SS)\s*(-?\d+)?\s*(?:@\s*(\d+))?$/;
 
 /**
  * «18FS3,22SS-5» → Dep[]. Эвдэрсэн токеныг АЛГАСНА, унагахгүй — талбарыг
@@ -44,14 +65,21 @@ export function parseDeps(text: string | null | undefined): Dep[] {
   for (const tok of String(text).split(',')) {
     const m = TOKEN.exec(tok.trim().toUpperCase());
     if (!m) continue;
-    out.push({ code: Number(m[1]), type: m[2] as DepType, lag: m[3] ? Number(m[3]) : 0 });
+    const dep: Dep = { code: Number(m[1]), type: m[2] as DepType, lag: m[3] ? Number(m[3]) : 0 };
+    if (m[4] != null) {
+      const bn = Number(m[4]);
+      /* ⚠️ `@0` утгагүй (1-ээс тоолно) — эвдэрсэн токен гэж алгасна, «бүх блок» болгохгүй */
+      if (!(bn >= 1)) continue;
+      dep.blk = bn - 1;
+    }
+    out.push(dep);
   }
   return out;
 }
 
 /** Dep[] → «18FS3,22SS-5». Хоосон бол `''` — хадгалахдаа `null` болгоно. */
 export function formatDeps(deps: Dep[]): string {
-  return deps.map((d) => `${d.code}${d.type}${d.lag ? d.lag : ''}`).join(',');
+  return deps.map((d) => `${d.code}${d.type}${d.lag ? d.lag : ''}${d.blk != null ? `@${d.blk + 1}` : ''}`).join(',');
 }
 
 /**
@@ -226,7 +254,8 @@ export function requiredStart(
   spansOf: (i: number) => (Span | null)[] = (k) => rows[k].spans,
 ): number | null {
   let req: number | null = null;
-  for (const d of rows[i].deps) {
+  /* ⚠️ ЗӨВХӨН энэ блокт үйлчлэх уялдаа (блокгүй + `blk === b`) — 2026-09-24 */
+  for (const d of depsInBlock(rows[i].deps, b)) {
     const pi = byCode.get(d.code);
     /* ⚠️ Өвөг/удам хамаатныг АЛГАСНА — гинжин эргэлтийн эсрэг (hierRelated) */
     if (pi == null || hierRelated(rows, i, pi)) continue;

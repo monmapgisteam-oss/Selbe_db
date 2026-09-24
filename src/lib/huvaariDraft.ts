@@ -70,17 +70,21 @@ export const kH = (oid: number) => `h:${oid}`;
 export const kA = (oid: number, blk: number) => `a:${oid}:${blk}`;
 export const kR = (oid: number) => `r:${oid}`;
 export const kM = (key: string) => `m:${key}`;
+/** Сарын НӨӨЦ (хүн хүч · машин) — `m:`-тэй зэрэгцээ, тусдаа нүд (2026-09-24) */
+export const kN = (key: string) => `n:${key}`;
 
 export type HDKeyParts =
   | { type: 's' | 'a'; oid: number; blk: number }
   | { type: 'h' | 'r'; oid: number }
-  | { type: 'm'; key: string };
+  | { type: 'm'; key: string }
+  | { type: 'n'; key: string };
 
 export function parseKey(k: string): HDKeyParts | null {
   const t = k[0];
   if (k[1] !== ':') return null;
   const rest = k.slice(2);
   if (t === 'm') return rest ? { type: 'm', key: rest } : null;
+  if (t === 'n') return rest ? { type: 'n', key: rest } : null;
   if (t === 'h' || t === 'r') {
     const oid = Number(rest);
     return Number.isInteger(oid) ? { type: t, oid } : null;
@@ -99,6 +103,8 @@ export function parseKey(k: string): HDKeyParts | null {
 export const sameVal = (a: unknown, b: unknown): boolean =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
+const numOrNull = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+
 /* ── Утгын хэвшил (val/bv) — төрөл бүрт КАНОН хэлбэр, эс бөгөөс тэнцэл гажна ── */
 /** Сарын задаргаа → түлхүүрээр эрэмбэлсэн хос жагсаалт */
 export const monthsVal = (m: ReadonlyMap<string, number> | null | undefined): [string, number][] =>
@@ -111,10 +117,33 @@ export const monthsOfVal = (v: unknown): Map<string, number> => {
   }
   return m;
 };
+/** Сарын нөөц → эрэмбэлсэн `[сар, хүн, машин]` (2026-09-24) — хоёулаа null сар орохгүй */
+export type HDMonthRes = { hun: number | null; mashin: number | null };
+export const resVal = (m: ReadonlyMap<string, HDMonthRes> | null | undefined): [string, number | null, number | null][] =>
+  m
+    ? [...m]
+      .filter(([, v]) => v && (v.hun != null || v.mashin != null))
+      .map(([k, v]) => [k, numOrNull(v.hun), numOrNull(v.mashin)] as [string, number | null, number | null])
+      .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+    : [];
+export const resOfVal = (v: unknown): Map<string, HDMonthRes> => {
+  const m = new Map<string, HDMonthRes>();
+  if (!Array.isArray(v)) return m;
+  for (const p of v) {
+    if (!Array.isArray(p) || typeof p[0] !== 'string') continue;
+    /* ⚠️ БҮХЭЛ тоо (2026-09-24) — мөрийн нийлбэр Integer талбарт очдог */
+    const hun0 = numOrNull(p[1]);
+    const mashin0 = numOrNull(p[2]);
+    const hun = hun0 == null ? null : Math.floor(hun0);
+    const mashin = mashin0 == null ? null : Math.floor(mashin0);
+    if (hun == null && mashin == null) continue;
+    m.set(p[0], { hun, mashin });
+  }
+  return m;
+};
 const spanVal = (s: HDSpan | undefined): HDSpan =>
   (s && Number.isFinite(s.start) && Number.isFinite(s.end) ? { start: s.start, end: s.end } : null);
 const hamVal = (s: string | null | undefined): string => s ?? '';
-const numOrNull = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
 
 /* ══════════════ Huvaari-ийн 5 Map ↔ нүдний жагсаалт ══════════════ */
 
@@ -132,6 +161,8 @@ export type HDCtx = {
   rows: ReadonlyMap<number, HDRowBase>;
   /** `${код}|${блок}` → серверийн сарын задаргаа */
   months: (key: string) => ReadonlyMap<string, number> | undefined;
+  /** `${код}|${блок}` → серверийн сарын НӨӨЦ (2026-09-24); `undefined` = мэдэгдэхгүй */
+  monthsRes: (key: string) => ReadonlyMap<string, HDMonthRes> | undefined;
 };
 export type HDMaps = {
   draft: Map<number, HDSpan[]>;
@@ -139,6 +170,8 @@ export type HDMaps = {
   aDraft: Map<number, { start: (number | null)[]; end: (number | null)[] }>;
   resDraft: Map<number, { hun: number | null; mashin: number | null }>;
   obDraft: Map<string, Map<string, number>>;
+  /** Сарын нөөцийн ноорог (2026-09-24) — `obDraft`-тай зэрэгцээ */
+  obRes: Map<string, Map<string, HDMonthRes>>;
 };
 export type HDCell = { val: unknown; bv: unknown };
 
@@ -190,6 +223,14 @@ export function mapsToCells(m: HDMaps, ctx: HDCtx): Map<string, HDCell> {
     const bv = monthsVal(srv);
     if (!sameVal(v, bv)) out.set(kM(key), { val: v, bv });
   }
+  /* Сарын нөөц — `m:`-ийн ижил дүрэм (2026-09-24) */
+  for (const [key, res] of m.obRes) {
+    const v = resVal(res);
+    const srv = ctx.monthsRes(key);
+    if (srv === undefined) { out.set(kN(key), { val: v, bv: undefined }); continue; }
+    const bv = resVal(srv);
+    if (!sameVal(v, bv)) out.set(kN(key), { val: v, bv });
+  }
   return out;
 }
 
@@ -224,7 +265,7 @@ export type HDApply = {
  */
 export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx: HDCtx): HDApply {
   const maps: HDMaps = {
-    draft: new Map(), ham: new Map(), aDraft: new Map(), resDraft: new Map(), obDraft: new Map(),
+    draft: new Map(), ham: new Map(), aDraft: new Map(), resDraft: new Map(), obDraft: new Map(), obRes: new Map(),
   };
   let applied = 0;
   let stale = 0;
@@ -247,6 +288,18 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
       }
       maps.obDraft.set(p.key, monthsOfVal(v));
       applied += 1; touched.add(k);
+      continue;
+    }
+    if (p.type === 'n') {
+      const srv = ctx.monthsRes(p.key);
+      const v = resVal(resOfVal(e.val));
+      if (srv !== undefined) {
+        const cur = resVal(srv);
+        if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+        if (sameVal(v, cur)) { dropped.push(k); continue; }
+      }
+      maps.obRes.set(p.key, resOfVal(v));
+      applied += 1; touched.add(`m:${p.key}`);
       continue;
     }
     const r = ctx.rows.get(p.oid);
@@ -297,6 +350,8 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
 type Wire = {
   v: number; t: number; kind: HDKind; pkg: string; by: { user: string; at: number };
   spans: unknown[]; ham: unknown[]; actual: unknown[]; res: unknown[]; months: unknown[];
+  /** Сарын нөөц (2026-09-24) — хуучин ноорогт байхгүй, `parse` тэсвэрлэнэ */
+  mres?: unknown[];
   del: unknown[]; base: { at: number; n: number };
   cleared?: number;
 };
@@ -308,6 +363,7 @@ export function serialize(d: HDDraft): string {
   const actual: unknown[] = [];
   const res: unknown[] = [];
   const months: unknown[] = [];
+  const mres: unknown[] = [];
   const bv = (e: HDEntry) => (e.bv === undefined ? [] : [e.bv]);
   /* ⚠️ ТҮЛХҮҮРЭЭР ЭРЭМБЭЛНЭ: `merge`-ийн Map дараалал а/б-ийн эрэмбээс хамаардаг
      тул ижил агуулга өөр мөр болж, `sig` зөрж, хоёр клиент ээлжлэн дахин
@@ -326,10 +382,12 @@ export function serialize(d: HDDraft): string {
       const v = Array.isArray(e.val) ? e.val : [];
       res.push([p.oid, v[0] ?? null, v[1] ?? null, e.at, e.user, ...bv(e)]);
     } else if (p.type === 'm') months.push([p.key, e.val ?? [], e.at, e.user, ...bv(e)]);
+    else if (p.type === 'n') mres.push([p.key, e.val ?? [], e.at, e.user, ...bv(e)]);
   }
   const w: Wire = {
     v: HD_VERSION, t: d.t, kind: d.kind, pkg: d.pkg, by: d.by,
     spans, ham, actual, res, months,
+    ...(mres.length ? { mres } : {}),
     del: [...d.del].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
     base: d.base,
     ...(d.cleared ? { cleared: d.cleared } : {}),
@@ -389,6 +447,10 @@ export function parse(s: string | null | undefined): HDDraft | null {
   for (const x of Array.isArray(w.months) ? w.months : []) {
     if (!Array.isArray(x) || typeof x[0] !== 'string' || !x[0]) continue;
     put(kM(x[0]), monthsVal(monthsOfVal(x[1])), x[2], x[3], x.slice(4));
+  }
+  for (const x of Array.isArray(w.mres) ? w.mres : []) {
+    if (!Array.isArray(x) || typeof x[0] !== 'string' || !x[0]) continue;
+    put(kN(x[0]), resVal(resOfVal(x[1])), x[2], x[3], x.slice(4));
   }
   const del = new Map<string, number>();
   for (const x of Array.isArray(w.del) ? w.del : []) {

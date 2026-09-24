@@ -113,6 +113,61 @@ export function keepMonths(
   }
   return out;
 }
+/* ══════════════════ САРЫН НӨӨЦ — хүн хүч · машин механизм ══════════════════ */
+
+/**
+ * НЭГ САРЫН НӨӨЦ (2026-09-24, хэрэглэгчийн шаардлага: «сар бүрд обьём · хүн
+ * хүч · машин механизм»). `null` = бөглөөгүй (0 БИШ).
+ *
+ * ⚠️ ОБЬЁМТОЙ ЗЭРЭГЦЭЭ, тусдаа Map — `PkgPlan`/`obDraft`-ын утгын хэлбэр
+ *    ХЭВЭЭР: `planPctFromMonths` (FillNew), `monPct` (Huvaari), `keepMonths`/
+ *    `balanced`/`sumMonths`, ноорогийн `m:` нүд, `PlanPayload.obyem` бүгд
+ *    өөрчлөгдөхгүй — хуучин ноорог/илгээлт шилжүүлэлтгүй ажиллана.
+ * ⚠️ Хүснэгтийн `hun_huch`/`mashin_mehanizm` талбар (Double) нь AGOL дээр
+ *    ХОЖИМ нэмэгддэг — байхгүйг тэсвэрлэнэ (`obyemResFields`).
+ */
+export type MonthRes = { hun: number | null; mashin: number | null };
+/** Багц → ажлын код → блок → сар → нөөц */
+export type PkgRes = Map<number, Map<string, Map<string, MonthRes>>>;
+
+/** Хоёр сарын нөөц ижил үү (`null` ≠ 0) */
+export const sameMonthRes = (a: MonthRes | undefined, b: MonthRes | undefined): boolean =>
+  (a?.hun ?? null) === (b?.hun ?? null) && (a?.mashin ?? null) === (b?.mashin ?? null);
+
+/**
+ * Хуваарь хөдөлсний дараах саруудын НӨӨЦИЙГ бэлтгэнэ — `keepMonths`-ийн адил:
+ * хэвээр үлдсэн сарын утга хадгалагдана, мужаас гарсан нь хасагдана, шинэ
+ * сар ХООСОН (Map-д байхгүй). Автомат тараалт БАЙХГҮЙ.
+ */
+export function keepRes(
+  s: Span,
+  prev: ReadonlyMap<string, MonthRes> = new Map(),
+): Map<string, MonthRes> {
+  const out = new Map<string, MonthRes>();
+  for (const k of monthsOf(s)) {
+    const v = prev.get(k);
+    if (v && (v.hun != null || v.mashin != null)) out.set(k, { hun: v.hun, mashin: v.mashin });
+  }
+  return out;
+}
+
+/**
+ * Саруудын нөөцийн НИЙЛБЭР — мөрийн `hun_huch`/`mashin_mehanizm` болно.
+ * ⚠️ Нэг ч сард утга байхгүй бол `null` (0 БИШ): «бөглөөгүй» ≠ «тэг».
+ * ⚠️ Утга бүрийг БҮХЭЛ болгож (`Math.floor`) нэмнэ (2026-09-24): мөрийн
+ *    `hun_huch`/`mashin_mehanizm` нь Integer талбар — бутархай нийлбэр
+ *    ArcGIS-д таслагдаж, дэлгэц дээрхээс зөрдөг байв.
+ */
+export function sumRes(m: ReadonlyMap<string, MonthRes>): MonthRes {
+  let hun: number | null = null;
+  let mashin: number | null = null;
+  for (const v of m.values()) {
+    if (v.hun != null) hun = (hun ?? 0) + Math.floor(v.hun);
+    if (v.mashin != null) mashin = (mashin ?? 0) + Math.floor(v.mashin);
+  }
+  return { hun, mashin };
+}
+
 /* ══════════════════ Нийлбэрийн шалгуур ══════════════════ */
 
 /** Сарын утгуудын нийлбэр */
@@ -190,6 +245,9 @@ export type ObyemRow = {
   obyem: number;
   negj: string;
   niit: number | null;
+  /** Сарын нөөц (2026-09-24) — талбар байхгүй/бөглөөгүй бол `null` */
+  hun: number | null;
+  mashin: number | null;
 };
 
 /**
@@ -251,6 +309,39 @@ export function toPkgPlan(
 }
 
 /**
+ * Түүхий `features` → сарын НӨӨЦ (2026-09-24). `toPkgPlan`-ын хажууд:
+ * ОБЬЁМТОЙ (хүчинтэй) мөрөөс л, хүн/машин ХОЁУЛАА `null` бол алгасна —
+ * талбаргүй үйлчилгээнд хоосон Map буцна, унахгүй.
+ */
+export function toPkgRes(
+  feats: readonly { attributes: Record<string, unknown> }[],
+): PkgRes {
+  const out: PkgRes = new Map();
+  const numOrNull = (x: unknown): number | null => {
+    if (x == null || x === '') return null;
+    const v = Number(x);
+    return Number.isFinite(v) ? v : null;
+  };
+  for (const f of feats) {
+    const a = f.attributes;
+    if (a.des_dugaar == null || a.obyem == null) continue;
+    const des = Number(a.des_dugaar);
+    const blok = String(a.blok ?? '').trim();
+    const sar = String(a.sar_txt ?? '').trim();
+    if (!Number.isInteger(des) || !blok || !monthStart(sar) || !Number.isFinite(Number(a.obyem))) continue;
+    const hun = numOrNull(a.hun_huch);
+    const mashin = numOrNull(a.mashin_mehanizm);
+    if (hun == null && mashin == null) continue;
+    let byBlok = out.get(des);
+    if (!byBlok) { byBlok = new Map(); out.set(des, byBlok); }
+    let byMonth = byBlok.get(blok);
+    if (!byMonth) { byMonth = new Map(); byBlok.set(blok, byMonth); }
+    byMonth.set(sar, { hun, mashin });
+  }
+  return out;
+}
+
+/**
  * `dkey → ObjectID` индекс, ДАВХАРДЛЫГ ялган.
  *
  * ⚠️ ДАВХАРДСАН `dkey` (2026-09-08). Сангийн түвшинд unique индекс БАЙХГҮЙ
@@ -304,14 +395,47 @@ export type PlanEdits = {
  * ⚠️ Утга нь ӨӨРЧЛӨГДӨӨГҮЙ мөрийг илгээхгүй — 22 блок × 32 сар бүрийг
  *    дарж бичвэл нэг зурвас чирэхэд 700 мөр дэмий шинэчлэгдэнэ.
  */
+/**
+ * Сарын НӨӨЦИЙН бичилт (2026-09-24) — `buildEdits`-ийн 6 дахь, СОНГОМОЛ аргумент.
+ * ⚠️ `fields` — үйлчилгээнд талбар БАЙГАА эсэх (`obyemResFields`): байхгүй
+ *    талбарыг `attrs`-д ОРУУЛАХГҮЙ — ArcGIS танихгүй талбарыг чимээгүй алгасах
+ *    эсвэл бүх мөрийг унагах тул дуудагч тал анхааруулна.
+ * ⚠️ ОБЬЁМГҮЙ сарын нөөц БИЧИГДЭХГҮЙ: мөр нь обьёмоор л үүсдэг (`months`) —
+ *    обьёмгүй сард мөр байхгүй тул нөөцийг наах газар алга. Энд ЧИМЭЭГҮЙ
+ *    хаягдана — дуудагч (`save`) `months`-оос гадуурх сарыг урьдчилан
+ *    хасаж, тоолж анхааруулна (2026-09-24).
+ */
+export type ResEdits = {
+  cur: ReadonlyMap<string, MonthRes>;
+  prev: ReadonlyMap<string, MonthRes>;
+  fields: { hun: boolean; mashin: boolean };
+};
+
 export function buildEdits(
   meta: WorkMeta,
   blok: string,
   months: ReadonlyMap<string, number>,
   prev: ReadonlyMap<string, number>,
   oids: ReadonlyMap<string, number>,
+  res?: ResEdits,
 ): PlanEdits {
   const out: PlanEdits = { adds: [], updates: [], deletes: [] };
+  const resAttrs = (sar: string): Record<string, unknown> => {
+    if (!res) return {};
+    const v = res.cur.get(sar);
+    const o: Record<string, unknown> = {};
+    if (res.fields.hun) o.hun_huch = v?.hun ?? null;
+    if (res.fields.mashin) o.mashin_mehanizm = v?.mashin ?? null;
+    return o;
+  };
+  /** Нөөц (бичигдэх талбаруудаар) өөрчлөгдсөн үү */
+  const resChanged = (sar: string): boolean => {
+    if (!res) return false;
+    const a = res.cur.get(sar);
+    const b = res.prev.get(sar);
+    return (res.fields.hun && (a?.hun ?? null) !== (b?.hun ?? null))
+      || (res.fields.mashin && (a?.mashin ?? null) !== (b?.mashin ?? null));
+  };
   const attrs = (sar: string, v: number) => ({
     dkey: dkeyOf(meta.bagts, meta.des, blok, sar),
     turul: TURUL_PLAN,
@@ -327,13 +451,14 @@ export function buildEdits(
     obyem: v,
     negj: meta.negj,
     niit_obyem: meta.niit,
+    ...resAttrs(sar),
   });
 
   for (const [sar, v] of months) {
     const key = dkeyOf(meta.bagts, meta.des, blok, sar);
     const oid = oids.get(key);
     if (oid == null) { out.adds.push({ attributes: attrs(sar, v) }); continue; }
-    if (prev.get(sar) === v) continue;                       // өөрчлөгдөөгүй
+    if (prev.get(sar) === v && !resChanged(sar)) continue;   // өөрчлөгдөөгүй (обьём ∧ нөөц)
     out.updates.push({ attributes: { OBJECTID: oid, ...attrs(sar, v) } });
   }
   for (const sar of prev.keys()) {
@@ -359,7 +484,29 @@ export function buildEdits(
 
 const FIELDS = [
   'OBJECTID', 'dkey', 'des_dugaar', 'blok', 'sar_txt', 'obyem', 'niit_obyem',
-].join(',');
+];
+
+/**
+ * САРЫН НӨӨЦИЙН ТАЛБАР үйлчилгээнд БАЙНА УУ (2026-09-24) — `hyanalt.ts`-ийн
+ * `serviceFieldNames` загвар: `?f=json`-ийг нэг удаа уншиж кэшилнэ.
+ *   · `true`/`false` — байна/алга;
+ *   · `null` — шалгаж чадсангүй (сүлжээ, 200-алдаа): дуудагч «мэдэхгүй».
+ * ⚠️ Зөвхөн АМЖИЛТТАЙ хариуг кэшилнэ — `null` кэшлэвэл түр саат сешн даяар
+ *    тогтмолжино (`draftRemote.tableUrl`-ийн ижил дүрэм).
+ */
+let resFieldsCache: { hun: boolean; mashin: boolean } | null = null;
+export async function obyemResFields(): Promise<{ hun: boolean | null; mashin: boolean | null }> {
+  if (resFieldsCache) return resFieldsCache;
+  try {
+    const j = await agsFetch(HUVAARI_OBYEM, {}) as { fields?: { name: string }[] };
+    if (!Array.isArray(j.fields)) return { hun: null, mashin: null };
+    const names = new Set(j.fields.map((x) => x.name));
+    resFieldsCache = { hun: names.has('hun_huch'), mashin: names.has('mashin_mehanizm') };
+    return resFieldsCache;
+  } catch {
+    return { hun: null, mashin: null };
+  }
+}
 
 /**
  * Багцын БҮХ төлөвлөгөөг татна.
@@ -369,14 +516,25 @@ const FIELDS = [
  * ⚠️ `sar_txt`-ээр (текст) шүүнэ, `sar`-аар (огноо) БИШ — огнооны талбарыг
  *    мөрийн литералтай харьцуулах нь цагийн бүсээр гулсдаг.
  */
+/**
+ * ⚠️ `res` (2026-09-24) — сарын нөөц, НЭМЭЛТ талбар: FillNew/planProgress/
+ *    hyanalt `.plan`-ыг л уншдаг хэвээр.
+ * ⚠️ `outFields`-д БАЙХГҮЙ талбар оруулбал query БҮХЭЛДЭЭ унадаг тул нөөцийн
+ *    талбарыг `obyemResFields`-ээр шалгаад л нэмнэ; шалгаж чадаагүй бол `*`
+ *    (бүх талбар — байгаа нь ирнэ, байхгүй нь unдаггүй).
+ */
 export async function loadPkgPlan(
   bagts: string,
-): Promise<{ plan: PkgPlan; oids: Map<string, number>; dups: number[] }> {
+): Promise<{ plan: PkgPlan; res: PkgRes; oids: Map<string, number>; dups: number[] }> {
+  const rf = await obyemResFields();
+  const outFields = rf.hun == null || rf.mashin == null
+    ? '*'
+    : [...FIELDS, ...(rf.hun ? ['hun_huch'] : []), ...(rf.mashin ? ['mashin_mehanizm'] : [])].join(',');
   const feats: { attributes: Record<string, unknown> }[] = [];
   for (let off = 0; ; off += 2000) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
       where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_PLAN}'`,
-      outFields: FIELDS,
+      outFields,
       orderByFields: 'OBJECTID ASC',
       resultOffset: String(off),
       resultRecordCount: '2000',
@@ -387,7 +545,7 @@ export async function loadPkgPlan(
     if (f.length < 2000) break;
   }
   const { oids, dups } = indexOids(feats);
-  return { plan: toPkgPlan(feats), oids, dups };
+  return { plan: toPkgPlan(feats), res: toPkgRes(feats), oids, dups };
 }
 
 /**

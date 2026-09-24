@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import {
   monthKey, monthStart, monthsOf, keepMonths, sumMonths, balanced,
   planPctFromMonths, dkeyOf, toPkgPlan, TURUL_PLAN, buildEdits, indexOids,
+  toPkgRes, keepRes, sumRes, sameMonthRes,
 } from './huvaariObyem.ts';
 
 const d = (iso) => Date.parse(`${iso}T00:00:00Z`);
@@ -181,3 +182,82 @@ console.log('huvaariObyem.check: ok — бичилтийн багц ✓');
 }
 
 console.log('huvaariObyem.check: ok — давхардсан dkey ✓');
+
+/* ── 9. САРЫН НӨӨЦ — хүн хүч · машин механизм (2026-09-24) ──
+   ⚠️ Обьёмтой зэрэгцээ, тусдаа Map; талбар байхгүй үйлчилгээг тэсвэрлэнэ. */
+{
+  const at = (o) => ({ attributes: o });
+  /* toPkgRes: талбартай/талбаргүй/хагас */
+  const res = toPkgRes([
+    at({ des_dugaar: 412, blok: '5/1', sar_txt: '2025-10', obyem: 420, hun_huch: 12, mashin_mehanizm: 2 }),
+    at({ des_dugaar: 412, blok: '5/1', sar_txt: '2025-11', obyem: 880, hun_huch: 8, mashin_mehanizm: null }),
+    at({ des_dugaar: 412, blok: '5/2', sar_txt: '2025-10', obyem: 420 }),                         // талбаргүй → алгасна
+    at({ des_dugaar: 412, blok: '5/2', sar_txt: '2025-11', obyem: 10, hun_huch: null, mashin_mehanizm: null }), // хоёулаа null → алгасна
+    at({ des_dugaar: 9, blok: '5/1', sar_txt: '2025-10', obyem: null, hun_huch: 5 }),             // обьёмгүй → алгасна
+  ]);
+  assert.equal(res.size, 1);
+  assert.deepEqual(res.get(412).get('5/1').get('2025-10'), { hun: 12, mashin: 2 });
+  assert.deepEqual(res.get(412).get('5/1').get('2025-11'), { hun: 8, mashin: null }, 'хагас нөөц хадгалагдана');
+  assert.equal(res.get(412).has('5/2'), false, 'талбаргүй/хоосон мөр орохгүй');
+  assert.deepEqual(toPkgRes([at({ des_dugaar: 1, blok: 'x', sar_txt: '2025-10', obyem: 1 })]).size, 0, 'талбаргүй үйлчилгээ → хоосон, унахгүй');
+
+  /* keepRes — keepMonths-ийн адил */
+  const prevR = new Map([['2025-10', { hun: 3, mashin: null }], ['2025-11', { hun: null, mashin: null }], ['2025-09', { hun: 1, mashin: 1 }]]);
+  const kept = keepRes(s1, prevR);
+  assert.deepEqual([...kept.keys()], ['2025-10'], 'мужид үлдсэн + утгатай сар л');
+  assert.equal(keepRes(s1).size, 0, 'автомат тараалт үгүй');
+
+  /* sumRes — null ≠ 0 */
+  assert.deepEqual(sumRes(new Map([['a', { hun: 3, mashin: null }], ['b', { hun: 4, mashin: 2 }]])), { hun: 7, mashin: 2 });
+  assert.deepEqual(sumRes(new Map()), { hun: null, mashin: null }, 'утгагүй бол null');
+  /* Бүхэл тоо (2026-09-24): Integer мөрийн талбар — утга бүр floor */
+  assert.deepEqual(sumRes(new Map([['a', { hun: 2.7, mashin: 1.2 }], ['b', { hun: 1.9, mashin: null }]])), { hun: 3, mashin: 1 }, 'бутархай → floor');
+  assert.ok(sameMonthRes({ hun: 1, mashin: null }, { hun: 1, mashin: null }));
+  assert.ok(!sameMonthRes({ hun: 0, mashin: null }, { hun: null, mashin: null }), '0 ≠ null');
+
+  /* buildEdits + res */
+  const meta = { bagts: 'b1_9f', bagtsNer: 'Багц 1', des: 412, ajilNo: '3.1', ajilNer: 'Суурь', negj: '', niit: 1300 };
+  const prev = new Map([['2025-10', 420], ['2025-11', 880]]);
+  const oids = new Map([
+    [dkeyOf('b1_9f', 412, '5/1', '2025-10'), 11],
+    [dkeyOf('b1_9f', 412, '5/1', '2025-11'), 12],
+  ]);
+  const fields = { hun: true, mashin: true };
+  /* Обьём ижил, зөвхөн 10-р сарын хүн өөрчлөгдсөн → 1 update */
+  const e1 = buildEdits(meta, '5/1', prev, prev, oids, {
+    cur: new Map([['2025-10', { hun: 15, mashin: 2 }]]),
+    prev: new Map([['2025-10', { hun: 12, mashin: 2 }]]),
+    fields,
+  });
+  assert.equal(e1.updates.length, 1, 'зөвхөн нөөц өөрчлөгдөхөд ч update');
+  assert.equal(e1.updates[0].attributes.OBJECTID, 11);
+  assert.equal(e1.updates[0].attributes.hun_huch, 15);
+  assert.equal(e1.updates[0].attributes.mashin_mehanizm, 2);
+  assert.equal(e1.updates[0].attributes.obyem, 420);
+  assert.equal(e1.adds.length + e1.deletes.length, 0);
+  /* Талбар байхгүй (`fields.hun=false`) — тэр талбар attrs-д ОРОХГҮЙ, өөрчлөлт ч тоологдохгүй */
+  const e2 = buildEdits(meta, '5/1', prev, prev, oids, {
+    cur: new Map([['2025-10', { hun: 15, mashin: 2 }]]),
+    prev: new Map([['2025-10', { hun: 12, mashin: 2 }]]),
+    fields: { hun: false, mashin: true },
+  });
+  assert.equal(e2.updates.length, 0, 'байхгүй талбарын өөрчлөлт бичигдэхгүй');
+  const e3 = buildEdits(meta, '5/1', new Map([['2025-10', 420], ['2025-11', 900]]), prev, oids, {
+    cur: new Map([['2025-11', { hun: 4, mashin: null }]]), prev: new Map(), fields: { hun: false, mashin: true },
+  });
+  assert.equal(e3.updates.length, 1);
+  assert.equal('hun_huch' in e3.updates[0].attributes, false, 'байхгүй талбар attrs-д алга');
+  assert.equal(e3.updates[0].attributes.mashin_mehanizm, null, 'байгаа талбар (null ч) бичигдэнэ');
+  /* Шинэ сар — нөөц нь adds-д хамт */
+  const e4 = buildEdits(meta, '5/1', new Map([...prev, ['2026-01', 5]]), prev, oids, {
+    cur: new Map([['2026-01', { hun: 2, mashin: 1 }]]), prev: new Map(), fields,
+  });
+  assert.equal(e4.adds.length, 1);
+  assert.equal(e4.adds[0].attributes.hun_huch, 2);
+  /* Хуучин 5-аргумент дуудлага ХЭВЭЭР — нөөцийн талбар attrs-д огт орохгүй */
+  const e5 = buildEdits(meta, '5/1', new Map([['2025-10', 421], ['2025-11', 880]]), prev, oids);
+  assert.equal(e5.updates.length, 1);
+  assert.equal('hun_huch' in e5.updates[0].attributes, false);
+}
+
+console.log('huvaariObyem.check: ok — сарын нөөц ✓');

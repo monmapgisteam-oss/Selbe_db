@@ -321,6 +321,11 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
   ['src/lib/zovshoorol.ts',
     '`oidFieldP` нь ЗӨВХӨН OID талбарын НЭРийг кэшилдэг (бүдүүвчийн метадата, '
     + 'мөр БИШ). Файл өөрөө `invalidate(\'ZOVSHOOROL\')` дууддаг (мөр 309·338).'],
+  ['src/lib/huvaariObyem.ts',
+    '`resFieldsCache` нь ЗӨВХӨН сарын хүснэгтийн ТАЛБАРЫН НЭРС (`hun_huch`/'
+    + '`mashin_mehanizm` байгаа эсэх — бүдүүвчийн метадата, мөр БИШ; 2026-09-24). '
+    + 'Мөрүүд нь `loadPkgPlan` бүрд дахин татагддаг, энд кэшлэгдэхгүй — '
+    + '`zovshoorol.ts`-ийн `oidFieldP`-тэй ИЖИЛ шалтгаан.'],
   ['src/lib/parcelOverlap.ts',
     '`srCache` нь орон зайн ЛАВЛАГААНЫ WKID (үйлчилгээний тогтмол метадата). '
     + 'Энэ файлын ӨГӨГДЛИЙН кэшүүд (`geomCache`/`resultCache`) нь мөр 148-д '

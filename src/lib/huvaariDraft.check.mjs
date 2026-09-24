@@ -14,7 +14,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  hdKey, kS, kH, kA, kR, kM, parseKey, mapsToCells, cellsToMaps,
+  hdKey, kS, kH, kA, kR, kM, kN, parseKey, mapsToCells, cellsToMaps, resOfVal,
   serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL,
 } from './huvaariDraft.ts';
 
@@ -33,6 +33,11 @@ assert.deepEqual(parseKey(kH(12)), { type: 'h', oid: 12 });
 assert.deepEqual(parseKey(kA(12, 0)), { type: 'a', oid: 12, blk: 0 });
 assert.deepEqual(parseKey(kR(12)), { type: 'r', oid: 12 });
 assert.deepEqual(parseKey(kM('5|9F')), { type: 'm', key: '5|9F' });
+/* Сарын нөөц бүхэл тоо (2026-09-24) — Integer мөрийн талбарт нийлдэг */
+assert.deepEqual([...resOfVal([['2026-01', 2.8, null], ['2026-02', null, 1.1], ['x', null, null]])],
+  [['2026-01', { hun: 2, mashin: null }], ['2026-02', { hun: null, mashin: 1 }]], 'resOfVal floor · хоосон сар хасагдана');
+assert.deepEqual(parseKey(kN('5|9F')), { type: 'n', key: '5|9F' });
+assert.equal(parseKey('n:'), null);
 assert.equal(parseKey('x:1'), null);
 assert.equal(parseKey('s:1'), null);
 console.log('✅ түлхүүр');
@@ -47,8 +52,10 @@ const rows = new Map([
 ]);
 const srvMonths = new Map([['5|9F', new Map([['2026-01', 10], ['2026-02', 5]])]]);
 /* ⚠️ `undefined` = сервер МЭДЭГДЭХГҮЙ (ачаалагдаагүй); задаргаагүй = ХООСОН Map */
-const ctx = { n: 2, rows, months: (k) => srvMonths.get(k) ?? new Map() };
-const empty = () => ({ draft: new Map(), ham: new Map(), aDraft: new Map(), resDraft: new Map(), obDraft: new Map() });
+/* Сарын нөөц (2026-09-24) — зэрэгцээ */
+const srvRes = new Map([['5|9F', new Map([['2026-01', { hun: 4, mashin: 1 }]])]]);
+const ctx = { n: 2, rows, months: (k) => srvMonths.get(k) ?? new Map(), monthsRes: (k) => srvRes.get(k) ?? new Map() };
+const empty = () => ({ draft: new Map(), ham: new Map(), aDraft: new Map(), resDraft: new Map(), obDraft: new Map(), obRes: new Map() });
 
 /* ── 2. Map → нүд → Map эргэх ── */
 {
@@ -61,8 +68,11 @@ const empty = () => ({ draft: new Map(), ham: new Map(), aDraft: new Map(), resD
   m.resDraft.set(11, { hun: 6, mashin: 1 });
   m.obDraft.set('5|9F', new Map([['2026-02', 5], ['2026-01', 15]]));
   m.obDraft.set('7|9F', new Map());             // серверт ч хоосон → нүдгүй
+  m.obRes.set('5|9F', new Map([['2026-02', { hun: 2, mashin: null }], ['2026-01', { hun: 4, mashin: 1 }]]));
+  m.obRes.set('7|9F', new Map([['2026-01', { hun: null, mashin: null }]]));   // утгагүй = серверийн хоосонтой ижил → нүдгүй
   const cells = mapsToCells(m, ctx);
-  assert.deepEqual([...cells.keys()].sort(), [kA(11, 1), kH(10), kM('5|9F'), kR(11), kS(10, 0)].sort());
+  assert.deepEqual([...cells.keys()].sort(), [kA(11, 1), kH(10), kM('5|9F'), kN('5|9F'), kR(11), kS(10, 0)].sort());
+  assert.deepEqual(cells.get(kN('5|9F')), { val: [['2026-01', 4, 1], ['2026-02', 2, null]], bv: [['2026-01', 4, 1]] }, 'нөөц эрэмбэлэгдсэн, null хэвээр');
   assert.deepEqual(cells.get(kS(10, 0)), { val: sp(2, 6), bv: sp(1, 5) });
   assert.deepEqual(cells.get(kM('5|9F')).val, [['2026-01', 15], ['2026-02', 5]], 'сар эрэмбэлэгдсэн');
 
@@ -84,13 +94,15 @@ const empty = () => ({ draft: new Map(), ham: new Map(), aDraft: new Map(), resD
   assert.notEqual(serialize(back), serialize({ ...d, t: 2000 }));
 
   const ap = cellsToMaps(back.entries, ctx);
-  assert.equal(ap.stale, 0); assert.equal(ap.applied, 5); assert.deepEqual(ap.dropped, []);
+  assert.equal(ap.stale, 0); assert.equal(ap.applied, 6); assert.deepEqual(ap.dropped, []);
+  assert.deepEqual([...ap.maps.obRes.get('5|9F')], [['2026-01', { hun: 4, mashin: 1 }], ['2026-02', { hun: 2, mashin: null }]]);
+  assert.ok(s.includes('"mres"'), 'wire-д mres');
   assert.deepEqual(ap.maps.draft.get(10), [sp(2, 6), null], 'муж серверийн массиваас угсарна');
   assert.equal(ap.maps.ham.get(10), '11SS0');
   assert.deepEqual(ap.maps.aDraft.get(11), { start: [2 * D, 4 * D], end: [null, null] });
   assert.deepEqual(ap.maps.resDraft.get(11), { hun: 6, mashin: 1 });
   assert.deepEqual([...ap.maps.obDraft.get('5|9F')], [['2026-01', 15], ['2026-02', 5]]);
-  assert.equal(ap.rows, 3, 'ялгаатай мөр: 10, 11, обьём 5|9F');
+  assert.equal(ap.rows, 3, 'ялгаатай мөр: 10, 11, обьём 5|9F (нөөц нь ижил мөр)');
   /* дахин нүд болгоход ижил */
   assert.deepEqual([...mapsToCells(ap.maps, ctx)].sort(), [...cells].sort());
   assert.deepEqual(users(back), ['a']);
@@ -181,6 +193,24 @@ console.log('✅ нийлүүлэлт');
   assert.deepEqual(ap.maps.draft.get(10), [sp(2, 6), null]);
   assert.equal(ap.maps.draft.has(11), false);
   assert.equal(ap.maps.ham.get(11), '1FS0');
+  /* Сарын нөөц: суурь ≠ сервер → хуучирсан; серверийнхтэй ижил → dropped; мэдэгдэхгүй → орно */
+  const rn = cellsToMaps(new Map([
+    [kN('5|9F'), cell([['2026-01', 9, 1]], 1, 'a', [['2026-01', 3, 1]])],   // суурь зөрсөн → stale
+    [kN('8|9F'), cell([], 1, 'a', [])],                                     // ижил (хоосон) → dropped
+    [kN('9|9F'), cell([['2026-03', 1, null]], 1, 'a', [])],                 // серверт хоосон, суурь хоосон → орно
+  ]), ctx);
+  assert.equal(rn.stale, 1); assert.equal(rn.applied, 1);
+  assert.deepEqual(rn.staleKeys, [kN('5|9F')]);
+  assert.deepEqual([...rn.maps.obRes.get('9|9F')], [['2026-03', { hun: 1, mashin: null }]]);
+  const rnUnk = cellsToMaps(new Map([[kN('5|9F'), cell([['2026-01', 9, 1]], 1, 'a', [['2026-01', 3, 1]])]]), { ...ctx, monthsRes: () => undefined });
+  assert.equal(rnUnk.applied, 1, 'сервер мэдэгдэхгүй → тулгахгүй');
+  /* Хуучин wire (`mres`-гүй) уншигдана */
+  const oldWire = parse(JSON.stringify({ v: 1, t: 5, kind: 'plan', pkg: 'b', by: { user: 'a', at: 5 }, spans: [], ham: [], actual: [], res: [], months: [['5|9F', [['2026-01', 1]], 4, 'u']], del: [], base: { at: 1, n: 2 } }));
+  assert.equal(oldWire.entries.size, 1);
+  assert.ok(oldWire.entries.has(kM('5|9F')));
+  const badRes = parse(JSON.stringify({ v: 1, t: 5, kind: 'plan', pkg: 'b', by: { user: 'a', at: 5 }, spans: [], ham: [], actual: [], res: [], months: [], mres: [['5|9F', 'x', 4, 'u'], [3, [], 4, 'u']], del: [], base: { at: 1, n: 2 } }));
+  assert.deepEqual(badRes.entries.get(kN('5|9F')).val, [], 'эвдэрсэн нөөц → хоосон');
+  assert.equal(badRes.entries.size, 1);
   /* `bv`-гүй нүд шууд орно */
   const ap2 = cellsToMaps(new Map([[kS(11, 1), { val: sp(9, 13), at: 1, user: 'a' }]]), ctx);
   assert.equal(ap2.applied, 1);

@@ -941,7 +941,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(520px, 100%);
+  /* ⚠️ 640px (2026-09-24): огнооны 2 багана + сарын 4 баганат сүлжээ багтана */
+  width: min(640px, 100%);
   /* ⚠️ 32 сар хүртэл задаргаа багтах тул цонх ДОТРОО гүйнэ (2026-09-06).
      Урьд нь өндөр нь хязгааргүй байсан тул жижиг дэлгэц дээр «Тавих»
      товч дэлгэцээс гарч, хэрэглэгч хадгалж чаддаггүй байв. */
@@ -1006,8 +1007,37 @@
 /* ⚠️ Анхааруулга нь АЛДАА БИШ — хадгалахыг хориглохгүй, зөвхөн юу болохыг
    урьдчилан хэлнэ. Тиймээс улаан биш шар. */
 .mdWarn { margin: 0; font-size: 11px; color: var(--warn); }
-.mdAll { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
-.mdAllChk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+/* ── БЛОКУУД — олноор сонгох чип (2026-09-24). Тод хүрээ = идэвхтэй (суурь) блок ── */
+.mdBlks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.mdChip {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  cursor: pointer;
+}
+.mdChip:hover { border-color: var(--data); }
+.mdChipOn { color: #fff; background: var(--data); border-color: var(--data); }
+.mdChipAct { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--data); }
+/* ── ОГНОО — «Төлөвлөгөөт» · «Бодит» хоёр багана (2026-09-24) ── */
+.mdCols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 16px; }
+.mdCol { display: flex; flex-direction: column; gap: 6px; }
+.mdColHead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+/* ── САРЫН СҮЛЖЭЭ — сар · обьём · хүн · машин (2026-09-24) ── */
+.mdMonthGrid {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 11.5px;
+}
+.mdMonthHead { font-size: 10.5px; font-weight: 600; color: var(--ink-3); position: sticky; top: 0; background: var(--surface); }
+.mdMonthTot { font-weight: 600; color: var(--ink); border-top: 1px solid var(--line); padding-top: 4px; }
 
 /* ── УЯЛДАА — popup доторх урьдчилагчдын жагсаалт ── */
 .mdDeps {
@@ -1051,14 +1081,7 @@
 }
 .mdDepX:hover { color: var(--bad-ink); border-color: var(--bad); }
 .mdFoot { display: flex; align-items: center; gap: 8px; }
-/* Сарын шошго — задаргааны мөрөнд, тогтмол өргөнтэй тул тоонууд эгнэнэ */
-.mdMonths {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 6px 12px;
-  max-height: 40vh;
-  overflow-y: auto;
-}
+/* Сарын шошго — сүлжээний мөрөнд, тогтмол өргөнтэй тул тоонууд эгнэнэ (`.mdMonths` 2026-09-24-нд `.mdMonthGrid` болов) */
 .mdMonth {
   flex: none;
   min-width: 58px;

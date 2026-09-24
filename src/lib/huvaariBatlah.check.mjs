@@ -56,6 +56,18 @@ const only = parsePayload(JSON.stringify({ spans: { 7: [null] } }));
 assert.ok(only, 'зөвхөн огноотой илгээлт задарсангүй');
 assert.deepEqual(only.deps, {});
 assert.deepEqual(only.obyem, {});
+/* Сарын нөөц (2026-09-24) — хуучин илгээлтэд байхгүй → {} ; байвал sanitize */
+assert.deepEqual(only.obres, {}, 'obres дутуу → хоосон');
+const withRes = parsePayload(JSON.stringify({
+  spans: {}, obres: { '5|9F': { '2026-01': { hun: 3, mashin: 'x' }, '2026-02': 7 }, '6|9F': 'bad' },
+  base: { spans: {}, obres: { '5|9F': { '2026-01': { hun: null, mashin: 1 } } } },
+}));
+assert.deepEqual(withRes.obres, { '5|9F': { '2026-01': { hun: 3, mashin: null } } }, 'эвдэрсэн сар/мөр хаягдана');
+/* Бүхэл тоо (2026-09-24): бутархай илгээлт floor-оор */
+const fracRes = parsePayload(JSON.stringify({ spans: {}, obres: { '5|9F': { '2026-01': { hun: 2.9, mashin: 1.5 } } } }));
+assert.deepEqual(fracRes.obres, { '5|9F': { '2026-01': { hun: 2, mashin: 1 } } }, 'сарын нөөц floor');
+assert.deepEqual(withRes.base.obres, { '5|9F': { '2026-01': { hun: null, mashin: 1 } } });
+assert.equal(parsePayload(JSON.stringify({ spans: {}, base: { spans: {} } })).base.obres, undefined, 'суурьд obres сонголттой');
 
 /* ══════════════════════════════════════════════════════════════
  * ХУВААРИЙН ТӨРӨЛ (`kind`) — 2026-09-11-ний аудитын S1

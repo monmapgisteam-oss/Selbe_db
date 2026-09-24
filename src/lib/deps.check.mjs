@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import {
   parseDeps, formatDeps, codeIndex, effSpan, requiredStart,
   reaches, downstreamCodes, hierRelated, propagate, residualDeps, rollUpGroups,
+  depId, sameDep, depsInBlock,
 } from '@/lib/deps.ts';
 import { DAY, spanDays } from '@/lib/plan.ts';
 
@@ -259,6 +260,55 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
 
   assert.equal(rollUpGroups(rows, 1, new Map()).size, 0, 'өөрчлөлтгүй бол юу ч бодохгүй');
   console.log('✅ бүлгийн муж ажлаасаа дагана (rollUpGroups)');
+}
+
+/* ── БЛОК ТУС БҮРИЙН УЯЛДАА — `@N` дагавар (2026-09-24) ── */
+{
+  /* Бичиглэл: @N нь 1-ээс тоологдож blk 0-ээс хадгалагдана; эргэх хөрвүүлэлт */
+  assert.deepEqual(parseDeps('11FS14@2'), [{ code: 11, type: 'FS', lag: 14, blk: 1 }]);
+  assert.deepEqual(parseDeps('11fs @ 1, 22SS-5@3, 7FS'), [
+    { code: 11, type: 'FS', lag: 0, blk: 0 },
+    { code: 22, type: 'SS', lag: -5, blk: 2 },
+    { code: 7, type: 'FS', lag: 0 },
+  ]);
+  assert.deepEqual(parseDeps('11FS@0'), [], '@0 утгагүй — токен алгасагдана, бүх блок болохгүй');
+  assert.deepEqual(parseDeps('11FS@x'), [], 'эвдэрсэн дагавар');
+  assert.equal(formatDeps(parseDeps('11FS14@2,22SS-5@3,7FS')), '11FS14@2,22SS-5@3,7FS', 'эргэх хөрвүүлэлт');
+  assert.equal(formatDeps([{ code: 5, type: 'FS', lag: 0, blk: 0 }]), '5FS@1');
+  assert.deepEqual(residualDeps('11FS@2,5FF2,xx'), ['5FF2', 'xx'], '@-тай токен танигдана, бусад нь хэвээр');
+
+  /* Ялгах тэмдэг (код, блок) — нэг код блок бүрд + блокгүй нэг удаа */
+  assert.equal(depId({ code: 11, blk: 1 }), '11@1');
+  assert.equal(depId({ code: 11 }), '11@');
+  assert.ok(sameDep({ code: 11, blk: 1 }, { code: 11, blk: 1 }));
+  assert.ok(!sameDep({ code: 11, blk: 1 }, { code: 11 }));
+  assert.ok(sameDep({ code: 11 }, { code: 11, blk: undefined }));
+  const list = parseDeps('11FS@1,11FS3@2,11SS');
+  const dedup = [...list.filter((d) => !sameDep(d, { code: 11, blk: 1 })), { code: 11, type: 'SS', lag: 2, blk: 1 }];
+  assert.equal(formatDeps(dedup), '11FS@1,11SS,11SS2@2', 'зөвхөн (11, blk 1 = @2) солигдоно');
+  assert.deepEqual(depsInBlock(list, 0).map(depId), ['11@0', '11@'], 'блок 0: өөрийнх + блокгүй');
+  assert.deepEqual(depsInBlock(list, 1).map(depId), ['11@1', '11@']);
+  assert.deepEqual(depsInBlock(list, 5).map(depId), ['11@']);
+
+  /* @1 уялдаа ЗӨВХӨН блок 0-д үйлчилнэ; блокгүй нь бүх блокт */
+  const rows = [
+    row(0, 1, [], [sp(10, 20), sp(30, 40)]),
+    row(1, 2, parseDeps('1FS@1'), [sp(0, 5), sp(0, 5)]),
+    row(2, 3, parseDeps('1FS'), [sp(0, 5), sp(0, 5)]),
+  ];
+  const bc = codeIndex(rows);
+  assert.equal(requiredStart(rows, bc, 1, 0), d(21), '@1 → блок 0-д шаардлага бий');
+  assert.equal(requiredStart(rows, bc, 1, 1), null, '@1 → блок 1-д шаардлага АЛГА');
+  assert.equal(requiredStart(rows, bc, 2, 0), d(21));
+  assert.equal(requiredStart(rows, bc, 2, 1), d(41), 'блокгүй → бүх блокт');
+  const ch = propagate(rows, 2, new Map([[0, [sp(12, 22), sp(32, 42)]]]));
+  assert.deepEqual(ch.get(1), [sp(23, 28), sp(0, 5)], '@1: зөвхөн блок 0 хөдөлнө');
+  assert.deepEqual(ch.get(2), [sp(23, 28), sp(43, 48)], 'блокгүй: хоёулаа хөдөлнө');
+  /* Дугуй хамаарлын шалгалт блокийг үл тоно — консерватив */
+  const cyc = [row(0, 1, parseDeps('2FS@2'), [sp(0, 1)]), row(1, 2, [], [sp(0, 1)])];
+  assert.ok(reaches(cyc, codeIndex(cyc), 2, 1), 'аль ч блокийн уялдаа эргэлтэд тоологдоно');
+  assert.ok(downstreamCodes(cyc, 2).has(1));
+  console.log('✅ блок тус бүрийн уялдаа — @N дагавар, (код, блок) ялгах тэмдэг, блокоор тархалт');
 }
 
 console.log('\ndeps.check: ok');

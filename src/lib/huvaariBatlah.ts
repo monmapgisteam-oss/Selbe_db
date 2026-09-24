@@ -115,6 +115,12 @@ export type PlanPayload = {
   /** `${ажлын код}|${блок}` → сар → обьём */
   obyem: Record<string, Record<string, number>>;
   /**
+   * САРЫН НӨӨЦ — `${код}|${блок}` → сар → { хүн хүч, машин } (2026-09-24).
+   * ⚠️ `obyem`-той ЗЭРЭГЦЭЭ, тусдаа: хуучин илгээлтэд БАЙХГҮЙ → `{}`.
+   *    Батлагчийн `save()` сарын нөөц байвал мөрийн hun/mashin-ийг нийлбэрээр бичнэ.
+   */
+  obres?: Record<string, Record<string, { hun: number | null; mashin: number | null }>>;
+  /**
    * ИЛГЭЭХ ҮЕИЙН СУУРЬ — сервер дээр тэр агшинд ЮУ байсан (2026-09-21).
    *
    * ⚠️ ЯАГААД: `spans` нь мөрийн БҮХ блокийн (22) бүтэн агшин. Батлагч
@@ -135,6 +141,8 @@ export type PlanPayload = {
     /** Бодит огноо · нөөцийн суурь (2026-09-23) — `actual`/`res`-тэй ижил хэлбэр */
     actual?: Record<string, { start: (number | null)[]; end: (number | null)[] }>;
     res?: Record<string, { hun: number | null; mashin: number | null }>;
+    /** Сарын нөөцийн суурь (2026-09-24) */
+    obres?: Record<string, Record<string, { hun: number | null; mashin: number | null }>>;
   };
   /**
    * БОДИТ ЭХЭЛСЭН/ДУУССАН огноо — `oid` → блок бүрийн { start[], end[] }
@@ -559,6 +567,24 @@ function sanitizeRes(raw: object): PlanPayload['res'] {
   return out;
 }
 
+/** `obres` (сарын нөөц, 2026-09-24) — түлхүүр → сар → {hun, mashin}; эвдэрсэн сар хаягдана */
+/* ⚠️ Сарын нөөц БҮХЭЛ тоо (2026-09-24): мөрийн талбар Integer тул бутархай
+   илгээлт батлагдахад нийлбэр зөрдөг байв. */
+const intOrNull = (x: unknown): number | null => { const v = numOrNull(x); return v == null ? null : Math.floor(v); };
+function sanitizeObRes(raw: object): NonNullable<PlanPayload['obres']> {
+  const out: NonNullable<PlanPayload['obres']> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const months: Record<string, { hun: number | null; mashin: number | null }> = {};
+    for (const [sar, x] of Object.entries(v as Record<string, unknown>)) {
+      if (!x || typeof x !== 'object') continue;
+      months[sar] = { hun: intOrNull((x as { hun?: unknown }).hun), mashin: intOrNull((x as { mashin?: unknown }).mashin) };
+    }
+    out[k] = months;
+  }
+  return out;
+}
+
 export function parsePayload(raw: string): PlanPayload | null {
   try {
     const j = JSON.parse(raw) as Partial<PlanPayload>;
@@ -583,6 +609,7 @@ export function parsePayload(raw: string): PlanPayload | null {
         /* Бодит огноо · нөөцийн суурь (2026-09-23) — байвал л */
         ...(b.actual && typeof b.actual === 'object' ? { actual: sanitizeActual(b.actual) } : {}),
         ...(b.res && typeof b.res === 'object' ? { res: sanitizeRes(b.res) } : {}),
+        ...(b.obres && typeof b.obres === 'object' ? { obres: sanitizeObRes(b.obres) } : {}),
       }
       : undefined;
     return {
@@ -593,6 +620,8 @@ export function parsePayload(raw: string): PlanPayload | null {
       /* ⚠️ БУЦАЖ НИЙЦТЭЙ (2026-09-23): хуучин илгээлтэд байхгүй → `{}` — унахгүй. */
       actual: j.actual && typeof j.actual === 'object' ? sanitizeActual(j.actual) : {},
       res: j.res && typeof j.res === 'object' ? sanitizeRes(j.res) : {},
+      /* Сарын нөөц (2026-09-24) — хуучин илгээлтэд байхгүй → `{}` */
+      obres: j.obres && typeof j.obres === 'object' ? sanitizeObRes(j.obres) : {},
       ...(base ? { base } : {}),
     };
   } catch {
