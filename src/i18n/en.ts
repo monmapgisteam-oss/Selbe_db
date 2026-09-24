@@ -2639,7 +2639,6 @@ const en: Record<string, string> = {
   "Алхам": "Step",
   "(нэргүй)": "(unnamed)",
   "Хадгалаагүй бүх өөрчлөлтийг хаяна": "Discards every unsaved change",
-  "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?": "{0} unsaved changes. Discard them and switch?",
   "Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.": "No changes found — the schedule is unchanged.",
   "{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?": "{0} — assigned to a workflow stage. Without “Progress review” they can no longer review their work. Continue?",
   "«{0}» нэрээр хуучин урсгалын томилгоо үлдсэн байна — «Гүйцэтгэлийн урсгалын эрх» хуудсанд ✕ дарж арилгаад дахин нэмнэ үү.": "A stale workflow assignment remains under “{0}” — remove it with ✕ on the “Progress workflow permissions” page, then add again.",
@@ -4767,7 +4766,6 @@ const en: Record<string, string> = {
   "Татсан илгээлтийн агуулга ноорог болж буцлаа; {0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгаад дахин илгээнэ үү.": "The withdrawn submission was restored to the draft; {0} cells were changed elsewhere in the meantime — review and resubmit.",
   "Татсан илгээлтийн агуулга ноорог болж буцлаа — засаад дахин илгээж болно.": "The withdrawn submission was restored to the draft — edit and resubmit.",
   "Агуулга ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).": "Content was not restored to the draft (kind mismatch or unreadable).",
-  "Хадгалаагүй {0} өөрчлөлтийг хаях уу?": "Discard {0} unsaved changes?",
   "Ноорогт буцаах": "Restore to draft",
   "баруун цэгээс чирж холбоно · сум дээр дарж засна": "drag from the right dot to link · click an arrow to edit",
   "Огноо · нөөцийн багана": "Date · resource columns",
@@ -4787,6 +4785,17 @@ const en: Record<string, string> = {
   "Хүлээн авагч тохируулаагүй (NEXT_PUBLIC_REPORT_RECIPIENTS)": "No recipients configured (NEXT_PUBLIC_REPORT_RECIPIENTS)",
   "Classic Outlook → «Outlook-оор илгээх»; New Outlook / вэб → «Шинэ Outlook / вэб»": "Classic Outlook → “Send via Outlook”; New Outlook / web → “New Outlook / web”",
   "· Өгөгдөл:": "· Data:",
+  "Ноорог сэргээв: {0} мөр": "Draft restored: {0} rows",
+  "{0} мөр хуучирсан тул хасав": "{0} rows dropped as outdated",
+  "алсын ноорог уншигдсангүй — энэ компьютерийн хуулбар": "remote draft could not be read — using this computer's copy",
+  "Ноорог хадгалж байна…": "Saving draft…",
+  "Ноорог хадгалагдсан {0}": "Draft saved {0}",
+  "ноорог хэт том — зөвхөн энэ компьютерт": "draft too large — kept on this computer only",
+  "Ноорог алсад хадгалагдсангүй — {0}": "Draft not saved remotely — {0}",
+  "ноорогт: {0}": "in draft: {0}",
+  "алсын ноорог цэвэрлэгдсэнгүй — {0}": "remote draft could not be cleared — {0}",
+  "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу? Хуваалцсан ноорог бүх оролцогчид устна.": "{0} unsaved changes. Discard them and switch? The shared draft will be deleted for all participants.",
+  "Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид устна.": "Discard {0} unsaved changes? The shared draft will be deleted for all participants.",
 };
 
 export default en;
