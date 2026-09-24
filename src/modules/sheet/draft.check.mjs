@@ -28,8 +28,13 @@ const between = (a, b, from = 0) => {
 };
 
 /* ── 1. Draft төрөлд бүх засварын төрөл байх ── */
-/* ⚠️ 2026-09-23: `adds?: AddRow[]` — `NewRow` + батлагдсан тэмдэг (`ajilOid`). */
-const typeBlock = between('type Draft = {', 'adds?: AddRow[];');
+/* ⚠️ 2026-09-24: `adds?: NewRow[]` — ХУУЧИН ноорогийн талбар, тэсвэртэй уншигдана
+   (`parseDraft`/`mergeDrafts`), гэвч энэ хуудас мөр нэмэхээ больсон (Хуваарь руу)
+   тул `AddRow`/`ajilOid` тэмдэг, `setAdds` энд БАЙХГҮЙ. */
+const typeBlock = between('type Draft = {', 'adds?: NewRow[];');
+for (const gone of ['type AddRow', 'setAdds(', 'restoredAdds', 'keepApproved(', 'let tmpOid', 'sentRef.', 'sendAjil(', 'const addRow', 'const dropAdd', 'insertAdds(', 'const canAddRow']) {
+  assert.ok(!SRC.includes(gone), `мөр нэмэх кодын үлдэгдэл «${gone}» хэвээр байна (2026-09-24: Хуваарь руу шилжсэн)`);
+}
 for (const f of ['cells:', 'dates?:', 'asOf?:']) {
   assert.ok(typeBlock.includes(f), `Draft-д «${f}» талбар алга`);
 }
@@ -37,19 +42,22 @@ console.log('✅ Draft төрөл — cells · dates · asOf · adds');
 
 /* ── 2. ХАДГАЛАХ талд дөрвүүлэн бичигдэх ── */
 const saveBlock = between('const draft: Draft = {', '};');
-for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['asOf:', 'asOf'], ['adds,', 'adds']]) {
+for (const [f, expr] of [['cells:', 'pending'], ['dates:', 'pendDate'], ['asOf:', 'asOf']]) {
   assert.ok(saveBlock.includes(f), `хадгалалтад «${f}» алга`);
   assert.ok(saveBlock.includes(expr), `хадгалалтад «${expr}» төлөв алга`);
 }
+/* 2026-09-24: `adds`/`sent` ноорогт ШИНЭЭР бичигдэхгүй */
+assert.ok(!saveBlock.includes('adds,') && !/\bsent:/.test(saveBlock), 'хадгалалтад adds/sent бичигдэж байна — энэ хуудас мөр нэмэхгүй');
 console.log('✅ хадгалалт — бүх төлөв ноорогт орно');
 
 /* ── 3. ХООСОН шалгалт дөрвүүлэнгээр ──
    ⚠️ Зөвхөн `pending`-ээр шалгавал огноо засаад гүйцэтгэлийн нүд
    хөндөөгүй хэрэглэгчийн ноорог хадгалагдахын оронд УСТАНА. */
 const emptyBlock = between('const asOfChanged = asOf !== asOfOrig;', 'const draft: Draft = {');
-for (const st of ['pending', 'pendDate', 'adds', 'asOfChanged']) {
+for (const st of ['pending', 'pendDate', 'asOfChanged']) {
   assert.ok(emptyBlock.includes(st), `хоосон шалгалтад «${st}» алга`);
 }
+assert.ok(!emptyBlock.includes('adds.length'), 'хоосон шалгалт adds-ыг тоолж байна (2026-09-24: хасагдсан)');
 console.log('✅ хоосон шалгалт — бүх төлөвөөр');
 
 /* ── 4. НООРОГ ШУУД БУУНА — цонх асуухгүй ──
@@ -62,9 +70,8 @@ console.log('✅ хоосон шалгалт — бүх төлөвөөр');
    ⚠️ АЮУЛГҮЙ БОЛГОСОН нь: сэргээсэн нүд бүр НОГООН (`dirty`) гарах ба
    хэрэгслийн мөрөнд тоологдоно; хэрэггүй бол «ноорог устгах» товч. */
 const restore = between('const pickDraft = useCallback', 'const from = source ===');
-/* ⚠️ 2026-09-23 (#12): `setAdds((prev) => keepApproved(prev, restoredAdds))` — сэргээсэн
-   мөрүүд буух ба БАТЛАГДСАН (`ajilOid`) мөрийг арчихгүй. */
-for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)', 'setAdds((prev) => keepApproved(prev, restoredAdds))']) {
+/* 2026-09-24: нэмсэн мөр сэргээгдэхгүй (`setAdds` байхгүй — дээрх шалгуур) */
+for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)']) {
   assert.ok(restore.includes(setter), `шууд буулгалтад «${setter}» алга`);
 }
 /* Юу сэргэснийг ИЛ хэлнэ — чимээгүй бууж болохгүй */
@@ -85,8 +92,7 @@ console.log('✅ ноорог шууд буудаг — цонх асуухгү�
 const dropFn = between('const dropDraft = useCallback', 'Ноорог устгагдлаа');
 assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), 'ноорог устгахад локал хуулбар үлдэж байна');
 assert.ok(dropFn.includes('clearRemoteDraft(pkg.key)'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
-/* ⚠️ 2026-09-23 (#12): «Ноорог устгах» батлагдсан нэмэлт ажлыг үлдээнэ (`keepApproved`). */
-for (const st of ['setPending({})', 'setPendDate({})', 'setAdds((prev) => keepApproved(prev, []))']) {
+for (const st of ['setPending({})', 'setPendDate({})']) {
   assert.ok(dropFn.includes(st), `ноорог устгахад «${st}» алга`);
 }
 assert.ok(
@@ -194,8 +200,8 @@ console.log('✅ mergeDrafts — нүд бүрд шинэ утга, нэг та�
 assert.ok(restore.includes('canPerf ? d.cells'), 'гүйцэтгэлийн нүд canPerf-гүй сэргээгдэж байна');
 assert.ok(restore.includes('canPerf ? (d.dates'), 'огноо canPerf-гүй сэргээгдэж байна');
 
-/* 2026-09-24: батлагдсан (`ajilOid`) мөр эрхээс үл хамааран сэргэнэ — батлуулаагүй нь canAddRow-оор */
-assert.ok(restore.includes('(!!a.ajilOid || canAddRow)'), 'нэмсэн мөр canAddRow-гүй сэргээгдэж байна');
+/* 2026-09-24: нэмсэн мөр (`d.adds`) энэ хуудсанд ОГТ сэргээгдэхгүй — мөр нэмэх Хуваарь руу шилжсэн */
+assert.ok(!restore.includes('d.adds'), 'ноорогийн adds сэргээгдэж байна (2026-09-24: Хуваарь руу шилжсэн)');
 console.log('✅ сэргээлт эрхээр хамгаалагдсан хэвээр');
 
 /* ── 6. Хуучин/эвдэрсэн ноорог БҮХЭЛДЭЭ хаягдахгүй ── */

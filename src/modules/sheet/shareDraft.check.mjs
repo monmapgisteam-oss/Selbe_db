@@ -586,11 +586,10 @@ console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй
   /* flush: алсаас нийлүүлсэн бол lastMergedRef хөдлөхгүй — tick буулгана */
   assert.ok(FN.includes('if (live() && !remote && outDraft.t > lastMergedRef.current)'),
     'flush: нийлүүлсэн нүд дэлгэцэд буухгүй (lastMergedRef үргэлж урагшилж байна)');
-  /* dropAdd нүдээ хамт хасна, tombstone тавина */
-  const di = FN.indexOf('const dropAdd = (oid: number) => {');
-  const db = FN.slice(di, di + 900);
-  assert.ok(db.includes('setPending(strip)') && db.includes('setPendDate(strip)'), 'dropAdd: мөрийн нүд pending-д үлдэж байна');
-  assert.ok(db.includes('tombstone(`a:${oid}`)'), 'dropAdd: tombstone алга');
+  /* 2026-09-24: мөр нэмэх/хасах (`addRow`/`dropAdd`) энд БАЙХГҮЙ — Хуваарь руу шилжсэн */
+  for (const gone of ['const dropAdd', 'const addRow', 'st.addBtn', 'st.dropBtn', 'st.addForm', 'localAddOids.has']) {
+    assert.ok(!FN.includes(gone), `FillNew: мөр нэмэх UI-ийн үлдэгдэл «${gone}» хэвээр байна`);
+  }
   /* Эзэмшил — обьём · хувь · paste · огноо ДӨРВҮҮЛЭЭ */
   assert.ok(FN.split('mineRef.current.add(').length - 1 >= 4,
     'эзэмшил бүртгэх зам 4-өөс цөөн (обьём · хувь · paste · огноо)');
@@ -601,7 +600,7 @@ console.log('✅ tombstone — буцаасан нүд/мөр сэргэхгүй
   const fi = FN.indexOf('const flow = useMemo(() => {');
   assert.ok(FN.slice(fi, fi + 4200).includes("OWNER[r[HF.status]] === 'company'"), 'flow: өмнөх өдрийн буцаагдсан мөрийг сонгохгүй');
 }
-console.log('✅ эх кодын гэрээ (2026-09-21) — Ctrl+S түгжээ · flush буулгалт · dropAdd · эзэмшил ×4 · идэвхгүй шүүлт · flow');
+console.log('✅ эх кодын гэрээ (2026-09-21) — Ctrl+S түгжээ · flush буулгалт · мөр нэмэх UI байхгүй · эзэмшил ×4 · идэвхгүй шүүлт · flow');
 
 /* ══════════ 15. ДАХИН АУДИТ (2026-09-21) — `a:` tombstone болзолтой · хоосон ангилал буудаг · мөрийн нүд хамт хасагдана ══════════ */
 /**
@@ -673,27 +672,20 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
 /* ── Эх кодын гэрээ (2026-09-21, дахин аудит) ── */
 {
   const FN = readSrc('src/modules/sheet/FillNew.tsx');
-  /* #1 түр oid цагаас эхэлнэ, `nextTmpOid`-оор олгогдоно, tombstone-оос ч түлхэгдэнэ */
-  assert.ok(/let tmpOid = -\(Date\.now\(\) % 1e9\) \* 100 - 1;/.test(FN), '#1: tmpOid −1-ээс эхэлж байна (хуудас бүрт давтагдана)');
-  assert.ok(!FN.includes('tmpOid--,'), '#1: шууд `tmpOid--` үлдэж байна — `nextTmpOid()` хэрэглэ');
-  assert.ok(FN.includes('function pushTmpOidKeys('), '#1: tombstone-ийн `a:` oid-оос түлхэх функц алга');
-  assert.ok(FN.includes('pushTmpOidKeys(delRef.current.keys())'), '#1: pickDraft tombstone-оос тоолуур түлхэхгүй байна');
-  /* #1 нэмсэн агшин — addRow бичнэ, dropAdd арилгана, хадгалах эффект `a:` түлхүүрээр бичнэ */
-  const ai = FN.indexOf('const oid = nextTmpOid();');
-  assert.ok(ai > 0 && FN.slice(ai, ai + 500).includes('touchMine(`a:${oid}`)'), '#1: addRow нэмсэн агшинг тэмдэглэхгүй байна');
-  const di = FN.indexOf('const dropAdd = (oid: number) => {');
-  assert.ok(FN.slice(di, di + 1200).includes('mineAtRef.current.delete(`a:${oid}`)'), '#1: dropAdd нэмсэн агшинг үлдээж байна');
-  assert.ok(FN.includes('for (const a of adds) {\n      const k = `a:${a.oid}`;'), '#1: хадгалах эффект `a:` агшинг бичихгүй байна');
+  /* #1 (2026-09-24-өөс): түр oid-ийн тоолуур, нэмсэн агшин `a:`, `adds` төлөв энэ хуудсанд
+     БАЙХГҮЙ — мөр нэмэх «Хуваарь» руу шилжсэн; `mergeDrafts` хуучин ноорогийн
+     `a:` tombstone/`sent` дүрмээ хэвээр хэрэглэнэ (дээрх нэгж шалгуурууд). */
+  for (const gone of ['let tmpOid', 'nextTmpOid()', 'pushTmpOid(', 'touchMine(`a:', 'for (const a of adds) {', 'restoredAdds', 'setAdds(', 'keepApproved(', 'mergeIncomingAdds(', 'withAdds(']) {
+    assert.ok(!FN.includes(gone), `#1: мөр нэмэх кодын үлдэгдэл «${gone}» хэвээр байна`);
+  }
+  /* pickDraft `a:` түлхүүрийг мөр сэргээхгүй тул хаяна */
+  assert.ok(FN.includes("if (k0.startsWith('a:')) continue;"), '#1: pickDraft хуучин `a:` агшинг хаяхгүй байна');
   /* #2 pickDraft болзолгүй тавина; хоосон нийлбэр төлөвийг хоослоно; tombstone байвал алсыг цэвэрлэхгүй */
-  assert.ok(!/if \(restoredAdds\.length\) setAdds\(restoredAdds\);/.test(FN), '#2: setAdds болзолтой хэвээр');
   assert.ok(!/if \(nCells\) setPending\(next\);/.test(FN), '#2: setPending болзолтой хэвээр');
   assert.ok(!/if \(nDates\) setPendDate\(nextDates\);/.test(FN), '#2: setPendDate болзолтой хэвээр');
   const ti = FN.indexOf('if (!total) {');
   const tb = FN.slice(ti, ti + 2200);
-  /* ⚠️ 2026-09-23 (#12): `setAdds((prev) => keepApproved(prev, []))` — хоосон болгоно,
-     гэхдээ БАТЛАГДСАН (`ajilOid`) мөрийг үлдээнэ (сервер дахин өгөхгүй). */
-  assert.ok(tb.includes('setPending({});') && tb.includes('setAdds((prev) => keepApproved(prev, []));'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
-  assert.ok(FN.includes('setAdds((prev) => keepApproved(prev, restoredAdds));'), '#2: pickDraft батлагдсан мөрийг арчиж байна (2026-09-23, #12)');
+  assert.ok(tb.includes('setPending({});') && tb.includes('setPendDate({});'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
   assert.ok(tb.includes('if (delRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
   assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
   assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),
@@ -721,7 +713,7 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   const pi = FN.indexOf('const nCells = Object.keys(pend2).length');
   assert.ok(FN.slice(pi, pi + 700).includes('delRef.current = new Map();'), 'publish: delRef тэглэгдэхгүй — ноорог илгээсний дараа цэвэрлэгдэхгүй');
 }
-console.log('✅ эх кодын гэрээ (дахин аудит) — tmpOid · нэмсэн агшин · болзолгүй set · tombstone хадгалалт · waitingOn · хожуу давхарлалт · revert · буцаагдсан өдөр');
+console.log('✅ эх кодын гэрээ (дахин аудит) — мөр нэмэх код байхгүй · болзолгүй set · tombstone хадгалалт · waitingOn · хожуу давхарлалт · revert · буцаагдсан өдөр');
 
 /* ══════════ 16. ИЛГЭЭСЭН НЭМЭЛТ МӨР (2026-09-24) — `sent` тэмдэг нийлүүлэлтээр сэргээхгүй ══════════ */
 /**
@@ -750,8 +742,16 @@ console.log('✅ эх кодын гэрээ (дахин аудит) — tmpOid �
   assert.ok((m3.adds ?? []).some((a) => a.oid === -5 && a.ajilOid === 7), 'батлагдсан мөр sent-ээр хасагдаж байна');
   const FN = readSrc('src/modules/sheet/FillNew.tsx');
   assert.ok(/sent\?: \[number, number\]\[\];/.test(FN), 'Draft-д `sent` алга');
-  assert.ok(FN.includes('for (const o of sentOids) sentRef.current.set(o, sentAt);'), 'sendAjil sent тэмдэг тавихгүй байна');
-  assert.ok(FN.includes('for (const [o, a] of d.sent ?? []) if (Number.isFinite(a) && (sentRef.current.get(o) ?? 0) < a) sentRef.current.set(o, a);'), 'pickDraft sent-ийг sentRef-д авахгүй байна');
+  /* 2026-09-24: илгээх (`sendAjil`/`sentRef`) энэ хуудсанд БАЙХГҮЙ — Хуваарь руу шилжсэн;
+     `Draft.sent`/`Draft.adds` хуучин ноорогийн талбар хэвээр (тэсвэртэй уншилт), payload `adds: []`. */
+  for (const gone of ['sentRef.', 'sendAjil(', 'submitAjil(', 'withdrawAjil(', 'refreshAjil(', 'const canAjilSend', 'subscribeAjilAcl(', 'ajilScope(', 'loadAjilPending(', 'setDraftReadyKey']) {
+    assert.ok(!FN.includes(gone), `FillNew: нэмэлт ажлын урсгалын үлдэгдэл «${gone}» хэвээр байна`);
+  }
+  assert.ok(/adds\?: NewRow\[\];/.test(FN), 'Draft-д `adds?: NewRow[]` алга (тэсвэртэй уншилт)');
+  assert.ok(FN.includes('adds: [],'), 'publish payload `adds: []` биш байна');
+  assert.ok(FN.includes('const addOids = new Set<number>((mergeBase?.adds ?? []).map((a) => a.oid));'), 'publish: өнчин сөрөг oid-ийн шалгуур зөвхөн mergeBase-ээс байх ёстой');
+  /* Батлагдсан нэмэлт мөрийн УЛААН тэмдэглэгээ хэвээр */
+  assert.ok(FN.includes('loadAjilAddedKeys(pkg.key)') && FN.includes('addedKeyOf(') && FN.includes('const isNew = r.oid < 0 || addedOids.has(r.oid);'), 'батлагдсан нэмэлт мөрийн улаан тэмдэглэгээ алга');
 }
 console.log('✅ sent — илгээсэн нэмэлт мөр нийлүүлэлтээр сэргэхгүй · хожуу нэмсэн нь ялна · батлагдсан хөндөгдөхгүй');
 

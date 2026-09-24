@@ -16,20 +16,20 @@
  *    мессеж бүгд түүнтэй ижил. Тэр хуудсыг өөрчилбөл энэ ч дагах ёстой.
  *
  * ═══════════════════════════════════════════════════════════════════════
- * ⚠️⚠️ ЭНЭ ХУУДАС ЭХ ӨГӨГДӨЛД ХЭЗЭЭ Ч БИЧИХГҮЙ ⚠️⚠️
+ * ⚠️⚠️ БАТЛАНГУУТ ҮНДСЭН ХҮСНЭГТЭД БИЧИГДЭНЭ (2026-09-24, хэрэглэгчийн шийдвэр) ⚠️⚠️
  *
- * БАТЛАХ нь `decideAjil`-ээр урсгалын мөрийн ТӨЛВИЙГ л хөдөлгөнө. Мөр нь
- * «Гүйцэтгэл бөглөх» хуудсанд орох ажил нь ТЭНД болно: тэр хуудас
- * нээгдэхдээ `loadApproved`-оор батлагдсаныг ӨӨРӨӨ татаж `adds`-д
- * буулгаад `markApplied`-аар тэмдэглэнэ.
+ * БАТЛАХ = `decideAjil` (урсгалын мөр `approved`) → `ajilApply.
+ * materializeAdds` (сүүлийн жааз + шинэ мөр → бүтэн жааз `applyAdds` →
+ * `applied`). Хоёр дахь алхам унавал мөр `approved` хэвээр үлдэж доорх
+ * «Батлагдсан · буулгаагүй» хэсэгт гарна — «Дахин буулгах» товч
+ * `materializeAdds`-ыг дахин дуудна (идемпотент: давхардлыг хаяна).
  *
- * ЯАГААД ИЙМ: `adds` нь `FillNew`-ийн React state бөгөөд гаднаас хүрэхгүй.
- * Мөн шинэ мөр архивт зөвхөн БҮТЭН жаазаар үүсдэг (`hyanaltStore` →
- * `applyAdds`) — ганц мөр нэмэх зам БАЙХГҮЙ. Энд бичихийг оролдвол тэр
- * бүх логикийг хуулбарлах шаардлагатай болж, хоёр зам сална.
- *
- * ЭНЭ НЬ `HuvaariBatlah`-ТАЙ ИЖИЛ АСИММЕТР: буцаах нь энд бүрэн
- * шийдэгдэнэ (эх өгөгдөлд хүрэхгүй), батлах нь нөгөө талд гүйцээгдэнэ.
+ * ⚠️ УРЬД НЬ (2026-09-22 … 09-24) энэ хуудас эх өгөгдөлд ОГТ бичдэггүй байв:
+ *    батлагдсан мөр зохиогчийн «Гүйцэтгэл бөглөх» хуудасны `adds` ноорогт
+ *    орж, гүйцэтгэлийн 6 шат батлагдтал хүлээдэг байлаа. Хэрэглэгч тэр
+ *    хүлээлтийг болиулж, мөр нэмэх УРСГАЛЫГ «Хуваарь» руу шилжүүлсэн.
+ *    `HuvaariBatlah`-ийн «батлах нь нөгөө талд гүйцээгдэнэ» асимметр ЭНД
+ *    ҮЙЛЧЛЭХЭЭ БОЛЬСОН — бичих ажил `ajilApply.ts`-д (тэндхийн ⚠️-г үз).
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -41,9 +41,10 @@ import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  ajilTableState, decideAjil, loadAllPending, loadPayload, withdrawAjil,
+  ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayload, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
+import { materializeAdds } from '@/lib/ajilApply';
 /**
  * ⚠️ `HuvaariBatlah` · `Guitsetgel` · `ErhOverview`-ТЭЙ ХУВААЛЦСАН CSS:
  *    батлах дарааллын зохиомж дөрвүүлэнгийнх ижил — нэг өөрчлөлт бүгдийг
@@ -67,7 +68,7 @@ type State =
   | { k: 'loading' }
   | { k: 'blocked'; why: string }
   | { k: 'error'; msg: string }
-  | { k: 'ready'; rows: AjilSubmission[] };
+  | { k: 'ready'; rows: AjilSubmission[]; /** батлагдсан ч буугаагүй (2026-09-24) */ approved: AjilSubmission[] };
 
 /** `payload` задарсан эсэх — мөр дэлгэхэд л татагдана */
 type Detail =
@@ -127,9 +128,11 @@ export function AjilBatlah() {
            тэмдэгт) энд ТАТАГДАХГҮЙ, зөвхөн мөр дэлгэхэд `loadPayload`-оор
            нэгийг. Projection-д нэмбэл хэдэн арван саналын агуулга зэрэг
            татагдаж хуудас гацна. */
-        const rows = await loadAllPending();
+        /* ⚠️ «Батлагдсан · буулгаагүй» (2026-09-24) — `materializeAdds` унасан
+           илгээлтүүд; хэвийн урсгалд хоосон. Хоёр query зэрэг. */
+        const [rows, approved] = await Promise.all([loadAllPending(), loadAllApproved()]);
         if (!alive) return;
-        setSt({ k: 'ready', rows });
+        setSt({ k: 'ready', rows, approved });
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
       }
@@ -165,6 +168,11 @@ export function AjilBatlah() {
   const mine = useMemo(
     () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
     [all, scope],
+  );
+  /** Батлагдсан ч буугаагүй — ХҮРЭЭГЭЭР шүүсэн; бүртгэлгүй багц нь `Pkg` алга тул буулгах боломжгүй */
+  const stuck = useMemo(
+    () => (st.k === 'ready' ? st.approved : []).filter((x) => (scope == null || scope.includes(x.pkgGroup)) && PKG_BY_KEY.has(x.pkgKey)),
+    [st, scope],
   );
   /** Хүрээнээс ГАДНА байгаа эсэх — хоосон төлвийг ялгахад л (ТООГ хэлэхгүй) */
   const outside = all.length > mine.length;
@@ -224,8 +232,11 @@ export function AjilBatlah() {
 
   /* ══════════════════════ БАТЛАХ ══════════════════════ */
   /**
-   * ⚠️ ЗӨВХӨН ТӨЛӨВ — эх өгөгдөлд ЮУ Ч бичихгүй (файлын толгойг үз).
-   *    Мөр нь «Гүйцэтгэл бөглөх» хуудас нээгдэхэд тэнд буулгагдана.
+   * ⚠️ ХОЁР АЛХАМ (2026-09-24): `decideAjil` (төлөв `approved`) → `materializeAdds`
+   *    (үндсэн хүснэгтэд бүтэн жааз, төлөв `applied`). Хоёр дахь нь унавал
+   *    мөр `approved` хэвээр — «Батлагдсан · буулгаагүй» хэсэгт гарч, «Дахин
+   *    буулгах»-аар дахин оролдоно. Батлалтыг буцаахгүй: шийдвэр гарсан,
+   *    зөвхөн бичилт хоцорсон.
    * ⚠️ Агуулга уншигдаагүй бол товч ХААЛТТАЙ (`Row`-д) — батлагч юу
    *    батлахаа хараагүй байж батлах ёсгүй.
    */
@@ -236,7 +247,7 @@ export function AjilBatlah() {
        уншигдсан үед л идэвхтэй тул `detail` энд бэлэн. */
     const d = detail.get(x.oid);
     const n = d?.k === 'ok' ? d.p.adds.length : 0;
-    if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдсан мөрүүд «Гүйцэтгэл бөглөх» хуудсанд орно.', num(n)))) return;
+    if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)))) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await decideAjil({
@@ -249,7 +260,11 @@ export function AjilBatlah() {
         author: x.author,
       });
       if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
-      setNote(tr('Батлагдлаа — мөрүүд «Гүйцэтгэл бөглөх» хуудсанд тэр багцыг нээхэд орж ирнэ.'));
+      /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`). */
+      const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
+      if (!alive.current) return;
+      if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
+      else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
       /* ⚠️ БҮТЭН ДАХИН УНШИНА, локал хасалт БИШ: өөр батлагч зуур шийдсэн
          байж болно. Локал мутациар дараалал хүснэгтээсээ чимээгүй зөрнө. */
@@ -260,6 +275,26 @@ export function AjilBatlah() {
       if (alive.current) setBusy(false);
     }
   }, [busy, user, reload, detail]);
+
+  /* ══════════════════════ ДАХИН БУУЛГАХ ══════════════════════
+   * ⚠️ Зөвхөн `approved` (батлагдсан ч буугаагүй) мөрд. `materializeAdds` нь
+   *    идемпотент — өмнөх оролдлого мөрийг бичээд тэмдэглэж амжаагүй бол
+   *    давхардлыг хаяж зөвхөн тэмдэглэнэ. */
+  const reapply = useCallback(async (x: AjilSubmission) => {
+    if (busy) return;
+    setBusy(true); setErr(''); setNote('');
+    try {
+      const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
+      if (!alive.current) return;
+      if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
+      else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
+      reload();
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }, [busy, reload]);
 
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: AjilSubmission) => {
@@ -293,17 +328,17 @@ export function AjilBatlah() {
    *    `decideAjil` нь зохиогч=батлагчийг татгалздаг тул үүнгүйгээр
    *    зохиогч алдаатай илгээлтээ буцаах замгүй болж, өөр батлагч
    *    шийдтэл багц түгжээтэй үлдэнэ.
-   * ⚠️ Мөрүүдийг «Гүйцэтгэл бөглөх» хуудас руу ЭНДЭЭС буулгах боломжгүй
-   *    (`adds` нь тэндхийн state) — зохиогч тэнд дахин нэмнэ. Тиймээс
-   *    баталгаажуулах цонхонд түүнийг ИЛ хэлнэ. */
+   * ⚠️ Мөрүүдийг «Хуваарь» хуудас руу ЭНДЭЭС буулгах боломжгүй (`adds` нь
+   *    тэндхийн state) — зохиогч тэнд «Илгээлтээ татах»-аар буцааж авах эсвэл
+   *    дахин нэмнэ. Тиймээс баталгаажуулах цонхонд түүнийг ИЛ хэлнэ. */
   const withdraw = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
-    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүдээ «Гүйцэтгэл бөглөх» хуудсанд дахин нэмнэ.'))) return;
+    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүдээ «Хуваарь» хуудсанд дахин нэмнэ.'))) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawAjil({ oid: x.oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
-      setNote(tr('Илгээлт татагдлаа — «Гүйцэтгэл бөглөх» хуудсанд дахин нэмж илгээнэ үү.'));
+      setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд дахин нэмж илгээнэ үү.'));
       setOpen(null);
       reload();
     } catch (e) {
@@ -319,7 +354,7 @@ export function AjilBatlah() {
       <div className={s.head}>
         <b className={s.title}>{tr('Нэмэлт ажил батлах')}</b>
         <span className={s.sub}>
-          {tr('«Гүйцэтгэл бөглөх» хуудаснаас ирсэн, батлахыг хүлээж буй шинэ ажлын мөрүүд')}
+          {tr('«Хуваарь» хуудаснаас ирсэн, батлахыг хүлээж буй шинэ ажлын мөрүүд — батлагдмагц үндсэн хүснэгтэд бичигдэнэ')}
         </span>
       </div>
 
@@ -385,7 +420,7 @@ export function AjilBatlah() {
                         ? tr('Таны багцуудад батлах нэмэлт ажил алга.')
                         : dirty
                           ? tr('Шүүлтэнд тохирох илгээлт алга.')
-                          : tr('Батлах нэмэлт ажил алга — «Гүйцэтгэл бөглөх» хуудаснаас илгээмэгц энд гарч ирнэ.')}
+                          : tr('Батлах нэмэлт ажил алга — «Хуваарь» хуудаснаас илгээмэгц энд гарч ирнэ.')}
                 </div>
               ) : todo.map((x) => (
                 <Row
@@ -398,6 +433,32 @@ export function AjilBatlah() {
                 />
               ))}
             </div>
+
+            {/* ⚠️ БАТЛАГДСАН · БУУЛГААГҮЙ (2026-09-24) — `materializeAdds` унасан
+                илгээлтүүд. Хэвийн урсгалд ХООСОН тул хэсэг нь зөвхөн байхад
+                гарна. Зохиогч=батлагч дүрэм ЭНД ҮЙЛЧЛЭХГҮЙ: шийдвэр аль
+                хэдийн гарсан, зөвхөн бичилт хоцорсон — хүрээндээ байгаа ямар
+                ч батлагч дахин буулгаж болно. */}
+            {stuck.length > 0 && (
+              <div className={s.list} style={{ marginTop: 18 }}>
+                <div className={s.groupHead}>
+                  <span>{tr('Батлагдсан · буулгаагүй')}</span>
+                  <span className={s.groupCount}>{num(stuck.length)}</span>
+                </div>
+                <div className={s.note} role="status">
+                  {tr('Эдгээр илгээлт батлагдсан боловч үндсэн хүснэгтэд бичигдээгүй (сүлжээ, зэрэгцээ батлалт). «Дахин буулгах» дарна уу — давхар мөр үүсэхгүй.')}
+                </div>
+                {stuck.map((x) => (
+                  <Row
+                    key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
+                    detail={detail.get(x.oid)} busy={busy}
+                    reason="" onReason={() => {}}
+                    badge={tr('Батлагдсан')}
+                    onReapply={() => void reapply(x)}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* ⚠️ ӨӨРИЙН ИЛГЭЭЛТ — ТУСДАА ХЭСЭГ, нийлүүлж хаагаагүй.
                 `decideAjil` нь өөрийгөө батлахыг ХОЁР давхаргад татгалздаг;
@@ -457,7 +518,7 @@ export function AjilBatlah() {
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, badge,
 }: {
   sub: AjilSubmission;
   open: boolean;
@@ -472,6 +533,10 @@ function Row({
   ownWhy?: string;
   /** Зохиогч өөрийн илгээлтээ татна — зөвхөн «Өөрийн» хэсэгт */
   onWithdraw?: () => void;
+  /** Батлагдсан ч буугаагүй мөрийг дахин буулгана (2026-09-24) — зөвхөн «Батлагдсан · буулгаагүй» хэсэгт */
+  onReapply?: () => void;
+  /** Төлвийн тэмдэг — анхдагч «Хүлээгдэж буй» */
+  badge?: string;
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
   const p = detail?.k === 'ok' ? detail.p : null;
@@ -500,7 +565,7 @@ function Row({
             {tr('{0} мөр', num(sub.rowCount))}
           </span>
         </span>
-        <span className={`${s.badge} ${s.bWait}`}>{tr('Хүлээгдэж буй')}</span>
+        <span className={`${s.badge} ${s.bWait}`}>{badge ?? tr('Хүлээгдэж буй')}</span>
       </button>
 
       {open && (
@@ -584,11 +649,22 @@ function Row({
                    батлахаа хараагүй байна. */
                 disabled={busy || detail?.k !== 'ok'}
                 title={p
-                  ? tr('Батлагдсан мөрүүд «Гүйцэтгэл бөглөх» хуудсанд тэр багцыг нээхэд орж ирнэ.')
+                  ? tr('Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ.')
                   : tr('Мөрийг дэлгэж агуулгыг харсны дараа батлана.')}
                 onClick={onApprove}
               >
                 {tr('Батлах')}
+              </button>
+            )}
+            {onReapply && (
+              <button
+                type="button"
+                className={`${s.btn} ${s.ok}`}
+                disabled={busy}
+                title={tr('Батлагдсан мөрүүдийг үндсэн хүснэгтэд дахин бичнэ — аль хэдийн байгаа мөр давхардахгүй')}
+                onClick={onReapply}
+              >
+                {tr('Дахин буулгах')}
               </button>
             )}
             {onWithdraw && (

@@ -26,7 +26,7 @@
  */
 
 import {
-  Fragment, type PointerEvent as PEvt, useCallback, useEffect, useMemo, useRef, useState,
+  Fragment, type PointerEvent as PEvt, type ReactNode, useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading } from '@/components/ui';
@@ -38,6 +38,14 @@ import {
   loadSchema, pkgFloors, PKG_GROUPS, PKGS, type Pkg, type Schema,
 } from '@/modules/sheet/bagts.pkg';
 import { applyUpdates, loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
+import {
+  AJIL_STATUS, loadApproved as loadAjilApproved, loadHistory as loadAjilHistory,
+  loadPayload as loadAjilPayload, loadPending as loadAjilPending, markRestored as markAjilRestored,
+  submitAjil, withdrawAjil, type AjilSubmission,
+} from '@/lib/ajilBatlah';
 import {
   DAY, coverageOf, endOf, spanDays, statusOf,
   type PlanRow, type Span, type Status,
@@ -131,6 +139,118 @@ const dayToMs = (s: string): number | null => {
  *    union бичвэл нэг нь өөрчлөгдөхөд нөгөө нь чимээгүй зөрнө.
  */
 type PlanKind = PlanPayloadKind;
+
+/* ══════════════════ НЭМЭЛТ АЖИЛ — түр ObjectID ба локал ноорог (2026-09-24) ══════════════════ */
+/**
+ * ⚠️ 2026-09-24 (хэрэглэгчийн шийдвэр): шинэ ажлын мөр НЭМЭХ нь «Гүйцэтгэл
+ *    бөглөх»-өөс ЭНД шилжив. Бүлгийн мөрөн дээрх «+» → маягт (№ · Ажлын нэр ·
+ *    Обьём · Нэгж өртөг) → `adds` → «Нэмэлт ажил батлуулах» (`submitAjil`) →
+ *    батлагч `AjilBatlah`-д батлангуут `ajilApply.materializeAdds` үндсэн
+ *    хүснэгтэд бүтэн жааз бичнэ → энэ хуудас `refetchServer`-ээр мөрийг
+ *    серверээс авна. Батлагдтал мөр нь энд УЛААНААР, хуваарь тавигдахгүй.
+ * ⚠️ `adds` нь ЗӨВХӨН энэ хөтчийн localStorage-д (`selbe-ajil-adds|<багц>`) —
+ *    хуваалцсан ноорог (hd*) ба хуваарийн илгээлт (`PlanPayload`)-д ОРОХГҮЙ:
+ *    тэд огноо/уялдааны тухай, энэ нь гэрээний хамрах хүрээний тухай (тусдаа
+ *    2 шатат урсгал, `ajilBatlah.ts`-ийн ⚠️). Нийлүүлбэл «огноо батлагдсан»
+ *    нь «шинэ ажил батлагдсан» гэж уншигдана.
+ * ⚠️ `tmpOid`/`nextTmpOid`/`pushTmpOid` нь FillNew-ийн 2026-09-21-ний
+ *    хувилбарын ХУУЛБАР (тэндхийнх хасагдсан): сөрөг, цагаас эхэлсэн тоолуур —
+ *    ачаалалт бүр өөр цэгээс эхэлж, сэргээсэн мөрөөс доош түлхэгдэнэ; серверийн
+ *    эерэг OID-тай хэзээ ч мөргөлдөхгүй (`ajilBatlah.parsePayload` сөрөг
+ *    бүхэл тоог шаарддаг).
+ */
+let tmpOid = -(Date.now() % 1e9) * 100 - 1;
+/** Дараагийн түр ObjectID — дуудагч бүр ЭНЭ функцээр (шууд `tmpOid--` биш) */
+function nextTmpOid(): number { return tmpOid--; }
+/** Тоолуурыг сэргээсэн/ирсэн мөрүүдээс ЦААШ түлхэнэ — эс бөгөөс дараа нэмсэн мөр ижил дугаар авна */
+function pushTmpOid(adds: readonly NewRow[]): void {
+  for (const a of adds) if (a.oid <= tmpOid) tmpOid = a.oid - 1;
+}
+const EMPTY_ADDS: NewRow[] = [];
+const ADDS_LS = (pkgKey: string) => `selbe-ajil-adds|${pkgKey}`;
+/**
+ * localStorage-оос сэргээх — `{ v: 1, adds }`. Эвдэрсэн БИЧЛЭГИЙГ л хаяна
+ * (FillNew.parseDraft-ийн дүрэм): түр oid САЛАНГИД СӨРӨГ БҮХЭЛ, нэрс мөр,
+ * `vol`/`unit` тоо эсвэл `null` (`null ≠ 0`).
+ */
+function readAdds(pkgKey: string): NewRow[] {
+  try {
+    const raw = localStorage.getItem(ADDS_LS(pkgKey));
+    if (!raw) return [];
+    const j = JSON.parse(raw) as { v?: number; adds?: unknown };
+    if (!j || j.v !== 1 || !Array.isArray(j.adds)) return [];
+    const seen = new Set<number>();
+    const out: NewRow[] = [];
+    const isStr = (v: unknown): v is string => typeof v === 'string';
+    const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    for (const a of j.adds as unknown[]) {
+      if (!a || typeof a !== 'object') continue;
+      const r = a as Record<string, unknown>;
+      const o = Number(r.oid);
+      if (!Number.isInteger(o) || o >= 0 || seen.has(o)) continue;
+      if (!isStr(r.no) || !isStr(r.work) || !isStr(r.parentNo) || !isStr(r.parentWork)) continue;
+      seen.add(o);
+      out.push({
+        oid: o, parentNo: r.parentNo, parentWork: r.parentWork,
+        parentIdx: Number.isInteger(r.parentIdx) ? (r.parentIdx as number) : -1,
+        no: r.no, work: r.work, vol: numOrNull(r.vol), unit: numOrNull(r.unit),
+      });
+    }
+    return out;
+  } catch { return []; }
+}
+function writeAdds(pkgKey: string, adds: readonly NewRow[]): void {
+  try {
+    if (!adds.length) localStorage.removeItem(ADDS_LS(pkgKey));
+    else localStorage.setItem(ADDS_LS(pkgKey), JSON.stringify({ v: 1, adds }));
+  } catch { /* хаалттай орчин */ }
+}
+/**
+ * Ирсэн мөрүүдийг (татсан · буцаагдсан) `adds`-д НИЙЛҮҮЛНЭ — FillNew-ийн
+ * `mergeIncomingAdds`-ийн хуулбар: ижил мөр байвал алгасна, oid мөргөлдвөл
+ * шинэ сул дугаар, тоолуурыг түлхэнэ.
+ */
+function mergeIncoming(prev: readonly NewRow[], incoming: readonly NewRow[]): NewRow[] {
+  const used = new Set(prev.map((a) => a.oid));
+  const fresh: NewRow[] = [];
+  for (const a of incoming) {
+    if (prev.some((x) => x.no === a.no && x.work === a.work && x.parentNo === a.parentNo && x.parentWork === a.parentWork)) continue;
+    const oid = used.has(a.oid) ? nextTmpOid() : a.oid;
+    used.add(oid);
+    fresh.push({ ...a, oid });
+  }
+  if (!fresh.length) return prev.slice();
+  pushTmpOid(fresh);
+  return [...prev, ...fresh];
+}
+/**
+ * ХУУЧИН OID → ШИНЭ OID зураглал — (№ ¦ нэр) түлхүүрээр, давхардсан түлхүүрт
+ * ДАРААЛЛААР (n дэх хуучин ↔ n дэх шинэ). Нэмэлт ажил батлагдахад архивт
+ * БҮТЭН ШИНЭ жааз орж бүх OID солигддог (2026-09-24 аудит #1) — хадгалаагүй
+ * ноорогийг хаяхгүйн тулд шинэ мөр рүү нь зөөнө (`hyanaltStore`-ийн
+ * `rowKeys`/`buildOidMap`-ийн ижил санаа). Олдохгүй мөр зураглалд ОРОХГҮЙ.
+ */
+function remapOids(oldRows: readonly SheetRow[], newRows: readonly SheetRow[]): Map<number, number> {
+  const key = (r: SheetRow) => `${r.no.trim()} ¦ ${r.work.trim()}`;
+  const byKey = new Map<string, number[]>();
+  for (const r of newRows) {
+    const k = key(r);
+    const l = byKey.get(k);
+    if (l) l.push(r.oid); else byKey.set(k, [r.oid]);
+  }
+  const used = new Map<string, number>();
+  const out = new Map<number, number>();
+  for (const r of oldRows) {
+    const k = key(r);
+    const l = byKey.get(k);
+    if (!l) continue;
+    const n = used.get(k) ?? 0;
+    if (n < l.length) { out.set(r.oid, l[n]); used.set(k, n + 1); }
+  }
+  return out;
+}
+type AddForm = { no: string; work: string; vol: string; unit: string };
+const EMPTY_FORM: AddForm = { no: '', work: '', vol: '', unit: '' };
 
 /** `SheetRow[]` → `PlanRow[]`. `i` нь ЭХ массивын индекс. */
 function toPlanRows(rows: SheetRow[], n: number, kind: PlanKind = 'plan'): PlanRow[] {
@@ -418,6 +538,25 @@ export function Huvaari({
   );
 
   /**
+   * МӨР НЭМЭХ ЭРХ (2026-09-24, FillNew-ээс шилжсэн) — `addRow` эрх + нэмэлт
+   * ажлын ЗАСВАРЛАГЧИЙН хүрээ (`ajilAcl`, `null` = хязгааргүй).
+   * ⚠️ Хуваарийн `canEdit`-ээс ТУСДАА: огноо тавих ба гэрээнд ажил нэмэх нь
+   *    өөр өөр хариуцлага. Админ (`super`) ч `addRow` эрхээ панелаас ил асаана
+   *    (FillNew-ийн 2026-09 дүрэм) — хүрээ л түүнд үл хамаарна.
+   */
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  const [ajN, setAjN] = useState(0);
+  useEffect(() => subscribeAjilAcl(() => setAjN((x) => x + 1)), []);
+  const canAddRow = useMemo(() => {
+    if (!hasCap(user?.username, 'addRow')) return false;
+    if (status === 'off' || roleForUser(user?.username) === 'super') return true;
+    const sc0 = ajilScope(user?.username, 'editor');
+    return sc0 === null || sc0.includes(pkg.group);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, status, capN, ajN, pkg.group]);
+
+  /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ — байвал хуваарь ТҮГЖИГДЭНЭ.
    * ⚠️ Хоёр санал зэрэг хүлээвэл батлагч алийг нь батлахаа мэдэхгүй, мөн
    *    хоёулаа батлагдвал сүүлийнх нь өмнөхийг чимээгүй дарна.
@@ -494,6 +633,40 @@ export function Huvaari({
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [busy, setBusy] = useState(false);
+
+  /* ── НЭМЭЛТ АЖИЛ (2026-09-24; модулийн `tmpOid`-ийн ⚠️) ── */
+  /**
+   * Нэмсэн мөр — БАГЦЫН ТҮЛХҮҮРТЭЙ ХАМТ хадгална.
+   * ⚠️ ЯАГААД: `[adds, pkg.key]`-д хадгалах эффект нь багц солигдох агшинд
+   *    ӨМНӨХ багцын мөрийг ШИНЭ багцын LS түлхүүрт бичих байсан (эффектүүд нэг
+   *    commit-д, төлөв хоцорно). Түлхүүр нь мөртэй хамт явбал тэр зөрүү үүсэхгүй.
+   */
+  const [addsSt, setAddsSt] = useState<{ key: string; list: NewRow[] }>({ key: '', list: [] });
+  const adds = addsSt.key === pkg.key ? addsSt.list : EMPTY_ADDS;
+  const setAdds = useCallback((fn: (prev: NewRow[]) => NewRow[]) => {
+    setAddsSt((st) => ({ key: pkg.key, list: fn(st.key === pkg.key ? st.list : []) }));
+  }, [pkg.key]);
+  useEffect(() => { if (addsSt.key === pkg.key) writeAdds(pkg.key, addsSt.list); }, [addsSt, pkg.key]);
+  /** Маягт нээлттэй байгаа БҮЛГИЙН oid */
+  const [addFor, setAddFor] = useState<number | null>(null);
+  const [addForm, setAddForm] = useState<AddForm>(EMPTY_FORM);
+  /** Хүлээгдэж буй нэмэлт ажлын илгээлт — БҮХ хүнд харагдана */
+  const [ajSub, setAjSub] = useState<AjilSubmission | null>(null);
+  const [ajBusy, setAjBusy] = useState(false);
+  const [ajErr, setAjErr] = useState('');
+  const [ajNote, setAjNote] = useState('');
+  /** Буцаагдсан — зохиогчид шалтгаантай нь */
+  const [ajBack, setAjBack] = useState<{ n: number; by: string; reason: string } | null>(null);
+  /** Батлагдсан ч үндсэн хүснэгтэд буугаагүй илгээлтийн тоо (буулгалт унасан) */
+  const [ajStuck, setAjStuck] = useState(0);
+  /**
+   * Батлагдаж хуудсанд орсон ч ХАДГАЛААГҮЙ ноорогтой тул автоматаар
+   * шинэчлээгүй — «Шинэчлэх» товч хүлээж байна (2026-09-24 аудит #1).
+   */
+  const [ajApplied, setAjApplied] = useState(false);
+  /** `adds`-ын одоогийн утга — async урсгалд синхрон уншихад (LS-д шууд бичих) */
+  const addsStRef = useRef(addsSt);
+  useEffect(() => { addsStRef.current = addsSt; }, [addsSt]);
   /**
    * БҮТЭН ДЭЛГЭЦ — ЗӨВХӨН хуваарийн хүснэгт (2026-09-17, хэрэглэгч: «Гүйцэтгэл
    * бөглөх»-ийнхтэй адил). `FillNew`-ийн `wide`-тай ИЖИЛ загвар: хөтчийн
@@ -732,6 +905,12 @@ export function Huvaari({
        болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
     setBlk(0); jumped.current = false;
+    /* Нэмэлт ажил (2026-09-24): маягт хаана, баннер тэглэнэ, локал ноорогийг сэргээнэ */
+    setAddFor(null); setAddForm(EMPTY_FORM);
+    setAjSub(null); setAjErr(''); setAjNote(''); setAjBack(null); setAjStuck(0); setAjApplied(false);
+    const restored = readAdds(pkg.key);
+    pushTmpOid(restored);
+    setAddsSt({ key: pkg.key, list: restored });
     /* ⚠️ Сарын обьёмыг ТУСАД НЬ татна: тэр үйлчилгээ унасан ч хуваарийн
        хуудас нээгдэх ЁСТОЙ. Алдааг `setErr` рүү хийхгүй — улаан баннер нь
        огноо төлөвлөхөд саад болно; задаргаа нь зүгээр л хоосон харагдана. */
@@ -801,8 +980,17 @@ export function Huvaari({
   const hasActual = !!sc && sc.aStart.some(Boolean);
   const hasRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
 
+  /**
+   * ХУУДАСНЫ БҮХ МӨР — серверийнх + хараахан батлагдаагүй нэмэлт (2026-09-24).
+   * ⚠️ ЗӨВХӨН `base`/`refBase` (харагдац) үүнээс; `rows` нь `save`/`byOid`/
+   *    `hdCtx`/`refetchServer`-ийн эх ХЭВЭЭР — нэмсэн мөр сөрөг oid-тай тул
+   *    ноорог/илгээлтэд орж болохгүй (`onDown` · `TaskRow` · холбоос суллах
+   *    гурвуулаа `oid < 0`-г хаана). `insertAdds` нь `sheetFrame`-ийн ЦОРЫН
+   *    ГАНЦ хэрэгжилт — батлахад `ajilApply` ЯГ үүгээр оруулна, байрлал ижил.
+   */
+  const rowsAll = useMemo(() => (sc ? insertAdds(rows, adds, sc, n) : rows), [rows, adds, sc, n]);
   /** Ноорогийг эх мөрүүд дээр давхарлана — харагдац үргэлж ХАМГИЙН СҮҮЛИЙНХ */
-  const base = useMemo(() => toPlanRows(rows, n, kind), [rows, n, kind]);
+  const base = useMemo(() => toPlanRows(rowsAll, n, kind), [rowsAll, n, kind]);
 
   /**
    * ЛАВЛАГААНЫ хуваарь — НӨГӨӨ төрлийн огноо (2026-09-11, хэрэглэгчийн хүсэлт:
@@ -824,8 +1012,8 @@ export function Huvaari({
    *    хуудасны ГОЛ зорилго.
    */
   const refBase = useMemo(
-    () => toPlanRows(rows, n, kind === 'geree' ? 'plan' : 'geree'),
-    [rows, n, kind],
+    () => toPlanRows(rowsAll, n, kind === 'geree' ? 'plan' : 'geree'),
+    [rowsAll, n, kind],
   );
   const refByOid = useMemo(() => {
     const m = new Map<number, PlanRow>();
@@ -862,6 +1050,9 @@ export function Huvaari({
    *    шууд нийлэхгүй; хоёрын НИЙЛБЭРийг «хадгалах зүйл байна уу» гэсэн
    *    ганц тоо болгож харуулна.
    */
+  /* ⚠️ `dirtyN`-ийг async урсгалд (`refreshAjil`) ref-ээр уншина — deps-д
+     оруулбал чирэлт бүрд урсгал дахин татагдана. */
+  const dirtyNRef = useRef(0);
   const dirtyN = useMemo(
     () => new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()]).size
       + new Set([...obDraft.keys(), ...obResDraft.keys()]).size,
@@ -883,6 +1074,7 @@ export function Huvaari({
     return s.size;
   }, [draft, ham, aDraft, resDraft, obDraft, obResDraft, byCode, plan]);
   /** Сарын обьём/нөөцийн ноорогтой ажлын КОДУУД — мөрийн «хадгалаагүй» тэмдэгт (2026-09-24 аудит) */
+  useEffect(() => { dirtyNRef.current = dirtyN; }, [dirtyN]);
   const obDirtyDes = useMemo(() => {
     const s = new Set<number>();
     for (const k of [...obDraft.keys(), ...obResDraft.keys()]) s.add(Number(k.slice(0, k.indexOf('|'))));
@@ -1422,7 +1614,8 @@ export function Huvaari({
       } else {
         /* ⚠️ Танигдаагүй токеныг (гараар зассан «5FF2» г.м.) хэвээр угтуулж
            залгана — харагдахгүй ч ХАДГАЛАЛТАД УСТАХГҮЙ (review-ийн олдвор). */
-        const keep = residualDeps(ham.get(oid) ?? rows[at]?.ham ?? null);
+        /* ⚠️ `rowsAll` (2026-09-24): `at` нь `plan`-ы индекс = `rowsAll`-ынх, `rows`-ынх БИШ */
+        const keep = residualDeps(ham.get(oid) ?? rowsAll[at]?.ham ?? null);
         const text = [...keep, formatDeps(deps2)].filter(Boolean).join(',');
         setHam((m) => new Map(m).set(oid, text));
       }
@@ -1470,7 +1663,7 @@ export function Huvaari({
         }
       }
     }
-  }, [plan, byCode, n, busy, locked, ham, rows, applyChanges, sc, blk, obPlan, obRes]);
+  }, [plan, byCode, n, busy, locked, ham, rowsAll, applyChanges, sc, blk, obPlan, obRes]);
 
   /**
    * POPUP-ЫН «Тавих» — БОДИТ ОГНОО (энэ блок) ба НӨӨЦ (мөр) (2026-09-23).
@@ -1589,6 +1782,8 @@ export function Huvaari({
       if (ti === r.i) return;
       const t = Number.isInteger(ti) ? plan[ti] : undefined;
       if (!t) { setErr(tr('Хамаарал холбогдсонгүй — хуанлийн мөр (зурвасын эгнээ) дээр тавина уу.')); return; }
+      /* ⚠️ Батлагдаагүй нэмэлт мөр (2026-09-24) — кодгүй, серверт байхгүй; уялдаа тавихгүй */
+      if (t.oid < 0) { setErr(tr('Энэ мөр батлагдаагүй нэмэлт ажил — батлагдсаны дараа уялдаа тавина.')); return; }
       if (hierRelated(plan, ti, r.i)) { setErr(tr('Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.')); return; }
       /* ⚠️ ДУГУЙ ХАМААРЛЫГ ЭНД (2026-09-23): урьд нь зөвхөн `applyModal`-д
          шалгагддаг тул хэрэглэгч цонхонд төрөл/хоногоо бөглөж «Тавих» дарсны
@@ -1718,6 +1913,10 @@ export function Huvaari({
     /* ⚠️ БҮЛГИЙН МУЖ ГАРААР ЗАСАГДАХГҮЙ (2026-09-06, хэрэглэгч: «бүлгийн
        range өөрчлөх боломжгүй, ажлын range-ээс хамаарч автоматаар»).
        Мөрийг СОНГОНО — чирэлт эхлэхгүй. */
+    /* ⚠️ Батлагдаагүй НЭМЭЛТ мөр (сөрөг oid, 2026-09-24) ЗАСАГДАХГҮЙ — ноорогт
+       сөрөг oid орвол `save` серверээс мөрийг олохгүй. Батлагдсаны дараа
+       серверийн oid-тай ирж ердийн мөр болно. */
+    if (r.oid < 0) return;
     if (r.group) { setSel(r.i); return; }
     e.preventDefault();
     e.stopPropagation();
@@ -2726,6 +2925,229 @@ export function Huvaari({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, busy, applyPayloadToDraft, refetchServer]);
+
+  /* ══════════════════ НЭМЭЛТ АЖИЛ — урсгал (2026-09-24) ══════════════════ */
+  const ajSeq = useRef(0);
+  /* ⚠️ `refetchServer` нь `rows`-оос хамаардаг тул шууд deps-д оруулбал мөр
+     солигдох бүрд урсгал дахин татагдана — ref-ээр уншина. */
+  const refetchRef = useRef(refetchServer);
+  useEffect(() => { refetchRef.current = refetchServer; }, [refetchServer]);
+  /**
+   * Хүлээгдэж буй илгээлт · буцаагдсан · батлагдсан-буугаагүй төлөв.
+   *
+   * ⚠️ Хоцорсон хариуг `ajSeq` + `pkgKeyRef`-ээр хаяна (`refreshFlow`-ийн дүрэм).
+   * ⚠️ Буцаагдсан (`returned`) илгээлтийг ЗӨВХӨН ЗОХИОГЧ нь (нэвтрэлттэй үед)
+   *    `adds`-д буцааж, ДАРАА нь `markRestored` — буулт унавал `returned`
+   *    хэвээр, дараагийн нээлтэд дахин; өөр компьютер дээр давхар буухгүй
+   *    (FillNew-ийн 2026-09-23 #13 дүрэм). `loadHistory(…, 500)`: анхдагч 20 нь
+   *    сүүлийн шийдвэрүүд л — хуучин буцаалт хэзээ ч сэргэхгүй байв.
+   * ⚠️ Хүлээгдэж байсан илгээлт (`prevOid`) АЛГА БОЛОХОД түүхээс төлвийг нь
+   *    харна: `applied` → `refetchServer` (мөр серверээс гарч ирнэ, улаан
+   *    тэмдэг «Гүйцэтгэл бөглөх»-д `loadAddedKeys`-ээр хэвээр); `returned` →
+   *    дээрх зам; `approved` (буугаагүй) → `ajStuck` мэдэгдэл.
+   */
+  const refreshAjil = useCallback(async (prevOid: number | null) => {
+    const want = pkg.key;
+    const my = ++ajSeq.current;
+    const live = () => my === ajSeq.current && pkgKeyRef.current === want;
+    const me = (user?.username ?? '').trim().toLowerCase();
+    const authOn = status !== 'off';
+    try {
+      const sub = await loadAjilPending(want);
+      if (!live()) return;
+      setAjSub(sub);
+      const lookBack = prevOid != null && sub?.oid !== prevOid;
+      const stuck = await loadAjilApproved(want);
+      if (!live()) return;
+      setAjStuck(stuck.length);
+      const hist = await loadAjilHistory(want, 500);
+      if (!live()) return;
+      let applied = false;
+      for (const h0 of hist) {
+        if (lookBack && h0.oid === prevOid && h0.status === AJIL_STATUS.applied) applied = true;
+        if (h0.status !== AJIL_STATUS.returned) continue;
+        if (authOn && h0.author !== me) continue;
+        /* ⚠️ Мөр нэмэх эрхгүй хүнд буулгахгүй — тэр `adds`-аа илгээж ч чадахгүй */
+        if (!canAddRow) continue;
+        const pl = await loadAjilPayload(h0.oid);
+        if (!live()) return;
+        if (pl?.adds.length) {
+          /* ⚠️ LS-д СИНХРОН бичнэ, ДАРАА нь тэмдэглэнэ (2026-09-24 аудит #5): React
+             төлөвөөр дамжуулбал `markRestored` амжаад хуудас хаагдах/багц солигдоход
+             мөрүүд LS-д хүрэлгүй БҮРМӨСӨН алга болдог байв. */
+          const cur = addsStRef.current;
+          const merged = mergeIncoming(cur.key === want ? cur.list : [], pl.adds);
+          writeAdds(want, merged);
+          setAddsSt({ key: want, list: merged });
+          addsStRef.current = { key: want, list: merged };
+        }
+        if (!live()) return;
+        await markAjilRestored(h0.oid);
+        if (!live()) return;
+        setAjBack({ n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: h0.reason ?? '' });
+      }
+      if (applied) {
+        /*
+         * ⚠️ ШИНЭ ЖААЗ = БҮХ OID ШИНЭ (2026-09-24 аудит #1). Ноорог (`draft` ·
+         *    `ham` · `aDraft` · `resDraft`) хуучин oid-оор түлхүүрлэгдсэн тул
+         *    шууд `refetchServer` хийвэл засвар «алга болж», `save` `staleN`-д
+         *    унаж, хамгийн муу нь хуваалцсан ноорогийн дифф хуучин oid-той нүд
+         *    бүрийг tombstone болгож БҮХ оролцогчийн ноорог устдаг байв.
+         *    · Хадгалаагүй ноорог БАЙВАЛ автоматаар шинэчлэхгүй — `ajApplied`
+         *      мэдэгдэл + «Шинэчлэх» товч (`refreshAfterApplied`: ноорогийг
+         *      (№ ¦ нэр)-ээр шинэ oid руу зөөгөөд татна).
+         *    · Ноороггүй бол `hdReady = null` тавьж ТАТНА: дифф `hdReady === key`
+         *      биш үед ажиллахгүй тул tombstone гарахгүй; сэргээлтийн зам алсын
+         *      ноорогийг дахин уншиж шинэ мөрөнд тулгана (хуучин oid-той нүд
+         *      «хуучирсан» гэж хасагдана — өмнөх мэдэгдэж буй байдал, устгал биш).
+         */
+        if (dirtyNRef.current > 0) {
+          setAjApplied(true);
+        } else {
+          hdReady.current = null; hdLastSeenAt.current = 0;
+          await refetchRef.current();
+          if (!live()) return;
+          setAjNote(tr('Нэмэлт ажил батлагдаж хуудсанд орлоо — мөрүүд серверээс шинэчлэгдэв.'));
+        }
+      }
+    } catch {
+      /* ⚠️ Уншиж чадсангүй ≠ илгээлт алга — хуучин төлөвийг ХЭВЭЭР үлдээнэ */
+    }
+  }, [pkg.key, user, status, canAddRow]);
+  /**
+   * «ШИНЭЧЛЭХ» — батлагдсан нэмэлт ажлын шинэ жаазыг татахдаа хадгалаагүй
+   * ноорогийг ШИНЭ oid руу зөөнө (`remapOids`, № ¦ нэр). `obDraft`/`obResDraft`
+   * нь `des|блок`-оор түлхүүрлэгддэг (код жаазаар солигддоггүй) тул хөндөхгүй.
+   * Зөөгдөөгүй мөрийн ноорог хаягдана — тоог нь хэлнэ.
+   */
+  const refreshAfterApplied = useCallback(async () => {
+    if (busy) return;
+    setBusy(true); setErr('');
+    try {
+      const oldRows = rows;
+      hdReady.current = null; hdLastSeenAt.current = 0;
+      const srv = await refetchRef.current();
+      const map = remapOids(oldRows, srv.rows);
+      let lost = 0;
+      const mv = <V,>(m: Map<number, V>): Map<number, V> => {
+        const o = new Map<number, V>();
+        for (const [k, v] of m) {
+          const nk = map.get(k);
+          if (nk == null) { lost += 1; continue; }
+          o.set(nk, v);
+        }
+        return o;
+      };
+      setDraft(mv); setHam(mv); setADraft(mv); setResDraft(mv);
+      setAjApplied(false);
+      setAjNote(lost
+        ? tr('Хуудас шинэчлэгдлээ — {0} мөрийн хадгалаагүй ноорог шинэ мөрөнд олдсонгүй тул хаягдав.', num(lost))
+        : tr('Хуудас шинэчлэгдлээ — хадгалаагүй ноорог шинэ мөрүүд рүү зөөгдөв.'));
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, rows]);
+  useEffect(() => { void refreshAjil(null); }, [refreshAjil]);
+  /* ⚠️ Хүлээгдэж байхад 30 сек тутам — шийдвэр гарахад зохиогчийн нээлттэй
+     хуудас өөрөө мэдэж мөрийг серверээс татна (`applied`). */
+  useEffect(() => {
+    if (!ajSub) return;
+    const oid = ajSub.oid;
+    const t = window.setInterval(() => { void refreshAjil(oid); }, 30_000);
+    return () => window.clearInterval(t);
+  }, [ajSub, refreshAjil]);
+
+  /**
+   * «Нэмэлт ажил батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй.
+   * ⚠️ Хуваарийн «Батлуулах»-аас ТУСДАА: тэр нь ОГНООГ хуваарийн батлах
+   *    урсгалд, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг 2 шатат урсгалд.
+   * ⚠️ Илгээсний дараа `adds` + LS ЦЭВЭРЛЭНЭ: агуулга серверт хадгалагдсан;
+   *    локалд үлдвэл дахин илгээгдэж давхар мөр үүснэ. Буцаагдвал/татвал
+   *    `refreshAjil`/`withdrawAjilHere` буцааж авчирна.
+   */
+  const sendAjil = useCallback(async () => {
+    if (!adds.length || ajBusy) return;
+    setAjBusy(true); setAjErr(''); setAjNote('');
+    try {
+      const r = await submitAjil({
+        pkgKey: pkg.key, pkgGroup: pkg.group, author: user?.username ?? '',
+        payload: { v: 1, pkgKey: pkg.key, adds },
+      });
+      if (!r.ok) { setAjErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      setAdds(() => []);
+      setAddFor(null);
+      setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
+      await refreshAjil(null);
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [adds, ajBusy, pkg.key, pkg.group, user, setAdds, refreshAjil]);
+
+  /** ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч алдаатай илгээлтээ буцааж авна; мөрүүд `adds` руу */
+  const withdrawAjilHere = useCallback(async () => {
+    if (!ajSub || ajBusy) return;
+    if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'))) return;
+    setAjBusy(true); setAjErr(''); setAjNote('');
+    try {
+      const pl = await loadAjilPayload(ajSub.oid);
+      const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
+      if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
+      /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
+      if (pl?.adds.length) setAdds((prev) => mergeIncoming(prev, pl.adds));
+      setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
+      await refreshAjil(null);
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [ajSub, ajBusy, user, setAdds, refreshAjil]);
+
+  /**
+   * БҮЛЭГТ ШИНЭ АЖИЛ НЭМЭХ — шалгалт FillNew-ийн 2026-09 хувилбартай ҮГЧЛЭН ижил.
+   * ⚠️ № нь БҮХЭЛ ТОО: `ags.levelFromNo` бутархай № («3.2»)-г «бүлэг» гэж
+   *    уншдаг тул навч ажил тоололд орохгүй үлдэнэ.
+   * ⚠️ `parentIdx` нь `rowsAll` дахь индекс (`PlanRow.i`) — `insertAdds.parentOf`
+   *    нэр давхардсан эцгүүдээс байрлалаар ойрхныг сонгоно.
+   */
+  const addRow = useCallback((parent: PlanRow) => {
+    const no = addForm.no.trim();
+    const work = addForm.work.trim();
+    const nn = (v: string) => {
+      const t = v.trim().replace(',', '.');
+      return t === '' ? null : Number.isFinite(Number(t)) ? Number(t) : NaN;
+    };
+    const vol = nn(addForm.vol);
+    const unit = nn(addForm.unit);
+    if (!work) { setAjErr(tr('Ажлын нэрийг оруулна уу.')); return; }
+    if (!/^\d+$/.test(no)) {
+      setAjErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
+      return;
+    }
+    if (Number.isNaN(vol) || Number.isNaN(unit)) { setAjErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.')); return; }
+    setAjErr('');
+    const oid = nextTmpOid();
+    /* ⚠️ `parentIdx` нь СЕРВЕРИЙН `rows` дахь индекс (2026-09-24 аудит #7) —
+       `parent.i` нь `rowsAll`-ынх (локал нэмэлт мөр орсон) тул батлахад
+       `insertAdds.parentOf` серверийн мөрөнд буруу байрлалтай тулгах байв. */
+    const parentIdx = rows.findIndex((r) => r.oid === parent.oid);
+    setAdds((a) => [...a, { oid, parentNo: parent.no, parentWork: parent.work, parentIdx, no, work, vol, unit }]);
+    /* Бүлэг ЭВХЭЭСТЭЙ бол шинэ мөр нуугдана — автоматаар дэлгэнэ */
+    setCollapsed((st) => {
+      if (!st.has(parent.oid)) return st;
+      const m = new Set(st);
+      m.delete(parent.oid);
+      return m;
+    });
+    setAddFor(null); setAddForm(EMPTY_FORM);
+    setAjNote(tr('«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдмагц үндсэн хүснэгтэд бичигдэнэ.', work));
+  }, [addForm, setAdds, rows]);
+  /** Батлуулаагүй мөрийг хасах — зөвхөн локал (`adds` + LS) */
+  const dropAdd = useCallback((oid: number) => setAdds((a) => a.filter((x) => x.oid !== oid)), [setAdds]);
 
   /**
    * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч өөрийн хүлээгдэж буй илгээлтийг буцааж авна
@@ -4007,6 +4429,17 @@ export function Huvaari({
             {tr('Илгээлтээ татах')}
           </button>
         )}
+        {/* ⚠️ НЭМЭЛТ АЖИЛ БАТЛУУЛАХ (2026-09-24) — хуваарийн «Батлуулах»-аас ТУСДАА
+            товч: тэр нь огноог, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг 2 шатат
+            урсгалд. Хүлээгдэж буй илгээлт байхад (`ajSub`) гарахгүй — `submitAjil`
+            хоёр дахийг татгалзана. */}
+        {canAddRow && !ajSub && adds.length > 0 && (
+          <button type="button" className={h.save} disabled={ajBusy}
+            title={tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
+            onClick={() => void sendAjil()}>
+            {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
+          </button>
+        )}
         {canEdit && !pending && (
           <button
             type="button"
@@ -4101,6 +4534,54 @@ export function Huvaari({
         <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setNote('')}>
           {note}
           <button type="button" className={h.noteX} onClick={() => setNote('')} aria-label={tr('Хаах')}>×</button>
+        </p>
+      )}
+      {/* ── НЭМЭЛТ АЖЛЫН баннерууд (2026-09-24) — хуваарийн урсгалынхаас тусдаа ── */}
+      {ajErr && (
+        <p className={h.err} role="alert">
+          {ajErr}
+          <button type="button" className={h.noteX} onClick={() => setAjErr('')} aria-label={tr('Хаах')}>×</button>
+        </p>
+      )}
+      {ajNote && (
+        <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setAjNote('')}>
+          {ajNote}
+          <button type="button" className={h.noteX} onClick={() => setAjNote('')} aria-label={tr('Хаах')}>×</button>
+        </p>
+      )}
+      {/* Хүлээгдэж буй илгээлт — БҮХ хүнд (ил тод); «татах» ЗӨВХӨН зохиогчид
+          (`decideAjil` зохиогч=батлагчийг татгалздаг тул үүнгүйгээр багц түгжинэ) */}
+      {ajSub && (
+        <p className={h.note} role="status">
+          {tr('Нэмэлт ажил батлуулахаар илгээгдсэн: {0} мөр · {1}', String(ajSub.rowCount), ajSub.author)}
+          {(status === 'off' || (user?.username ?? '').trim().toLowerCase() === ajSub.author) && (
+            <button type="button" className={h.noteBtn} disabled={ajBusy}
+              title={tr('Илгээлтээ буцааж авна — мөрүүд хуудсанд эргэж орно')}
+              onClick={() => void withdrawAjilHere()}>
+              {tr('Илгээлтээ татах')}
+            </button>
+          )}
+        </p>
+      )}
+      {ajBack && (
+        <p className={h.err} role="alert">
+          {tr('Нэмэлт ажил буцаагдсан ({0} мөр, {1}): {2} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', String(ajBack.n), ajBack.by || '—', ajBack.reason || '—')}
+          <button type="button" className={h.noteX} onClick={() => setAjBack(null)} aria-label={tr('Хаах')}>×</button>
+        </p>
+      )}
+      {ajApplied && (
+        <p className={h.note} role="status">
+          {tr('Нэмэлт ажил батлагдлаа — хадгалаагүй өөрчлөлтөө хадгалаад/илгээгээд хуудсыг шинэчилнэ үү.')}
+          <button type="button" className={h.noteBtn} disabled={busy}
+            title={tr('Хуудсыг серверээс татна; хадгалаагүй ноорог шинэ мөрүүд рүү (№ · нэрээр) зөөгдөнө')}
+            onClick={() => void refreshAfterApplied()}>
+            {tr('Шинэчлэх')}
+          </button>
+        </p>
+      )}
+      {ajStuck > 0 && (
+        <p className={h.note} role="status">
+          {tr('Батлагдсан нэмэлт ажлын {0} илгээлт үндсэн хүснэгтэд хараахан буугаагүй — батлагч «Нэмэлт ажил батлах» хуудаснаас «Дахин буулгах» дарна.', num(ajStuck))}
         </p>
       )}
       {!canEdit && !canApprove && (
@@ -4324,7 +4805,18 @@ export function Huvaari({
                        `applyHamText` дотор `locked` шалгагдана. */
                     canEdit={canEdit && !locked}
                     onHamText={applyHamText}
-                  />
+                    /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
+                    added={r.oid < 0}
+                    onAdd={r.group && canAddRow && !locked
+                      ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setAddForm(EMPTY_FORM); setAjErr(''); }
+                      : undefined}
+                    onDrop={r.oid < 0 ? () => dropAdd(r.oid) : undefined}
+                  >
+                    {addFor === r.oid && (
+                      <AddBox parent={r} form={addForm} onForm={setAddForm}
+                        onOk={() => addRow(r)} onCancel={() => setAddFor(null)} />
+                    )}
+                  </TaskRow>
                   );
                 })}
                 {winTo < visible.length && (
@@ -4911,11 +5403,23 @@ function FlowBox({
 
 function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
-  hasActual, hasRes, aStart, aEnd, hun, mashin,
+  hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, children,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   collapsed: boolean;
   onToggle: () => void; onPick: () => void;
+  /**
+   * НЭМЭЛТ АЖИЛ (2026-09-24). `added` — батлагдаагүй шинэ мөр (сөрөг oid):
+   * улаан, popup нээгдэхгүй, уялдаа засагдахгүй, «×»-ээр хасагдана (`onDrop`).
+   * `onAdd` — бүлгийн мөрөнд «+» (эрхтэй, түгжээгүй үед л дамжуулна).
+   * `children` — бүлгийн доор нээгдэх маягт (`AddBox`), мөрийн дотор
+   *   абсолют байрлалтай тул мөрийн ӨНДӨР (`PL_ROW`) хөдлөхгүй — зүүн жагсаалт
+   *   ба баруун зурвас эгнээгээ алдахгүй.
+   */
+  added?: boolean;
+  onAdd?: () => void;
+  onDrop?: () => void;
+  children?: ReactNode;
   /**
    * БОДИТ огноо (идэвхтэй блокийн) ба НӨӨЦ (2026-09-23) — зөвхөн харуулна,
    * popup-аас засагдана (дээрх дөрвөн огнооны ⚠️-тэй ижил). Бүлгийн мөрд
@@ -4945,7 +5449,7 @@ function TaskRow({
      байв. Зүүн самбарт: код · нэр · хамаарал гурав л үлдэв. */
   return (
     <div
-      className={`${h.row} ${on ? h.rowOn : ''} ${r.group ? h.rowGroup : ''} ${dirty ? h.rowDirty : ''} ${tolov && !r.group ? h.rowPlanned : ''}`}
+      className={`${h.row} ${on ? h.rowOn : ''} ${r.group ? h.rowGroup : ''} ${dirty ? h.rowDirty : ''} ${tolov && !r.group ? h.rowPlanned : ''} ${added ? h.rowAdded : ''}`}
       style={{ height: PL_ROW }}
     >
       {/* ⚠️ АЖЛЫН КОД нь ДОГОЛ МӨРӨӨС ГАДНА — багана болох ёстой тул шатлалын
@@ -4964,13 +5468,40 @@ function TaskRow({
           </button>
         ) : <span className={h.caretGap} />}
 
+        {/* БҮЛЭГТ АЖИЛ НЭМЭХ «+» (2026-09-24) — caret-ийн хажууд */}
+        {r.group && onAdd && (
+          <button type="button" className={h.addBtn}
+            title={tr('Энэ бүлэгт шинэ ажлын мөр нэмэх')}
+            aria-label={tr('«{0}» бүлэгт ажил нэмэх', r.work)}
+            onClick={(e) => { e.stopPropagation(); onAdd(); }}>
+            +
+          </button>
+        )}
+
         {/* ⚠️ Нэр дээр дарахад POPUP ХУАНЛИ нээгдэнэ — огноог тоогоор нарийн
-            оруулах ХОЁР ДАХЬ зам (чирэлт нь түргэн, харьцангуй зам). */}
-        <button type="button" className={h.rowMain} onClick={onPick}
-          title={`${r.work}\n${tr('Хуанлиар оруулах')}`}>
-          <span className={h.rowNo}>{r.no}</span>
-          <span className={h.rowWork}>{r.work}</span>
-        </button>
+            оруулах ХОЁР ДАХЬ зам (чирэлт нь түргэн, харьцангуй зам).
+            ⚠️ Батлагдаагүй нэмэлт мөрд popup ГАРАХГҮЙ — хуваарь нь батлагдсаны
+            дараа серверийн мөрөнд тавигдана. */}
+        {added ? (
+          <span className={h.rowMain} title={tr('Батлагдаагүй шинэ ажил — батлагдсаны дараа хуваарь тавина')}>
+            <span className={h.rowNo}>{r.no}</span>
+            <span className={h.rowWork}>{r.work}</span>
+          </span>
+        ) : (
+          <button type="button" className={h.rowMain} onClick={onPick}
+            title={`${r.work}\n${tr('Хуанлиар оруулах')}`}>
+            <span className={h.rowNo}>{r.no}</span>
+            <span className={h.rowWork}>{r.work}</span>
+          </button>
+        )}
+        {added && onDrop && (
+          <button type="button" className={h.dropBtn}
+            title={tr('Илгээгээгүй шинэ мөрийг хасах')}
+            aria-label={tr('«{0}» мөрийг хасах', r.work)}
+            onClick={(e) => { e.stopPropagation(); onDrop(); }}>
+            ×
+          </button>
+        )}
       </div>
 
       {/*
@@ -5033,7 +5564,52 @@ function TaskRow({
           ⚠️ ТОВЧ (2026-09-03, хэрэглэгч): нүдэн дээр дарахад мөн л popup
           нээгдэж уялдааг нь тохируулна. Хоосон нүд агаар мэт харагдах тул
           мөр дээр хулгана очиход «+» гарч дарагдахыг нь сануулна (CSS). */}
-      <HamCell r={r} canEdit={canEdit} onText={onHamText} onPick={onPick} />
+      <HamCell r={r} canEdit={canEdit && !added} onText={onHamText} onPick={onPick} />
+      {children}
+    </div>
+  );
+}
+
+/* ══════════════════ ШИНЭ АЖЛЫН МАЯГТ (2026-09-24) ══════════════════ */
+
+/**
+ * Бүлгийн доор нээгдэх маягт — № · Ажлын нэр · Обьём · Нэгж өртөг (FillNew-ийн
+ * 2026-09 маягтын хуулбар). ⚠️ Жин ба Мөнгөн дүн ЭНД БАЙХГҮЙ — Обьём×Нэгж
+ * өртгөөс батлагдсаны дараа `computeAll` өөрөө бодно.
+ * ⚠️ `role="dialog"`: `wide`-ийн Esc сонсогч диалог нээлттэй үед бүтэн дэлгэцийг
+ *    хаадаггүй — Esc энд маягтыг л хаана.
+ */
+function AddBox({ parent, form, onForm, onOk, onCancel }: {
+  parent: PlanRow;
+  form: AddForm;
+  onForm: (f: AddForm) => void;
+  onOk: () => void;
+  onCancel: () => void;
+}) {
+  const first = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { first.current?.focus(); }, []);
+  const key = (e: { key: string; preventDefault: () => void }) => {
+    if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+  };
+  const field = (k: keyof AddForm, cls: string, label: string, decimal = false, ref?: typeof first) => (
+    <input ref={ref} className={cls} value={form[k]} placeholder={label} aria-label={label}
+      inputMode={decimal ? 'decimal' : undefined}
+      onChange={(e) => onForm({ ...form, [k]: e.target.value })} onKeyDown={key} />
+  );
+  return (
+    <div className={h.addPop} role="dialog" aria-label={tr('«{0}» дотор шинэ ажил', parent.work)}
+      onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <span className={h.addTitle}>{tr('«{0}» дотор шинэ ажил', parent.work)}</span>
+      {field('no', h.addNo, tr('№'), false, first)}
+      {field('work', h.addWork, tr('Ажлын нэр'))}
+      {field('vol', h.addNum, tr('Обьём'), true)}
+      {field('unit', h.addNum, tr('Нэгж өртөг'), true)}
+      <button type="button" className={h.addOk} onClick={onOk}>{tr('Нэмэх')}</button>
+      <button type="button" className={h.addNo2} onClick={onCancel}>{tr('Болих')}</button>
+      <span className={h.addHint}>
+        {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
+      </span>
     </div>
   );
 }

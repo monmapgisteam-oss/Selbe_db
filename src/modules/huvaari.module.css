@@ -1293,3 +1293,102 @@
 
 /* Хуваалцсан ноорогийн төлөв — алдаа/хэт том үед анхааруулах өнгө (2026-09-23) */
 .hdWarn { color: var(--bad-ink); }
+
+/* ══════════════════ НЭМЭЛТ АЖИЛ (2026-09-24) ══════════════════
+   FillNew-ийн `.addBtn` / `.dropBtn` / `.newRow` / `.addForm`-ийн загвар — мөр
+   нэмэх урсгал «Гүйцэтгэл бөглөх»-өөс энд шилжсэн. Улаан = «энэ мөр анхны
+   гэрээнд байгаагүй» (хэрэглэгч, 2026-09-22). */
+/* ⚠️ Маягт (`.addPop`) мөрийн ДОТОР абсолют байрлалтай — мөрийн өндөр (PL_ROW)
+   хөдлөхгүй, зүүн жагсаалт ба баруун зурвас эгнээгээ алдахгүй. */
+.row { position: relative; }
+.rowAdded { background: color-mix(in srgb, var(--bad) 6%, transparent); box-shadow: inset 3px 0 0 var(--bad-ink); }
+.rowAdded .rowNo, .rowAdded .rowWork { color: var(--bad-ink); font-weight: 600; }
+.rowAdded .rowMain { cursor: default; }
+.row:hover .rowAdded .rowWork, .rowAdded:hover .rowWork { text-decoration: none; }
+.addBtn {
+  font: inherit;
+  flex: none;
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink-3);
+  background: color-mix(in srgb, var(--data) 12%, transparent);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+.row:hover .addBtn { opacity: 1; }
+.addBtn:hover { color: var(--data); background: color-mix(in srgb, var(--data) 24%, transparent); }
+.dropBtn {
+  font: inherit;
+  flex: none;
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--bad-ink);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  cursor: pointer;
+}
+.dropBtn:hover { background: color-mix(in srgb, var(--bad) 28%, transparent); }
+/* z-index 4: мөрүүдийн (auto) дээр, наалдсан толгойн (.gSideHead 5) доор */
+.addPop {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  right: 8px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  cursor: default;
+}
+.addTitle { font-weight: 700; color: var(--ink-2); }
+.addPop input {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.addPop input:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.addNo { width: 64px; }
+.addWork { flex: 1 1 220px; min-width: 160px; }
+.addNum { width: 100px; }
+.addOk {
+  font: inherit;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--good-ink);
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.addOk:hover { filter: brightness(1.06); }
+.addNo2 {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.addHint { flex-basis: 100%; color: var(--ink-3); font-size: 11px; }
