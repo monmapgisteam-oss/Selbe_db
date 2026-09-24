@@ -326,7 +326,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl();
   if (!url) return [];
   const out: Attrs[] = [];
-  for (let off = 0; ; off += 1000) {
+  for (let off = 0; ; ) {
     const j = await req(`${url}/query`, {
       where,
       outFields,
@@ -339,7 +339,12 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
     });
     const fs = (j.features as { attributes: Attrs }[]) ?? [];
     out.push(...fs.map((f) => f.attributes));
-    if (fs.length < 1000) break;
+    /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, `fs.length < 1000`-ААР БИШ
+       (2026-09-24): үйлчилгээний `maxRecordCount` 1000-аас бага байж болно —
+       тэр үед эхний хуудас цөөн мөр буцаад давталт зогсож, үлдсэн илгээлт
+       чимээгүй алга болдог байв (`hyanalt.ts`-ийн 2026-09-15-ны ижил дүрэм). */
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    off += fs.length;
   }
   return out;
 }

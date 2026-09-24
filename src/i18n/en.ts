@@ -4796,6 +4796,11 @@ const en: Record<string, string> = {
   "алсын ноорог цэвэрлэгдсэнгүй — {0}": "remote draft could not be cleared — {0}",
   "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу? Хуваалцсан ноорог бүх оролцогчид устна.": "{0} unsaved changes. Discard them and switch? The shared draft will be deleted for all participants.",
   "Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид устна.": "Discard {0} unsaved changes? The shared draft will be deleted for all participants.",
+  "Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу": "Submission content has changed — reload and review again",
+  "Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.": "First submit or discard your unsent edits.",
+  "Буцаагдсан илгээлт олдсонгүй — хуудсыг дахин ачаална уу.": "Returned submission not found — reload the page.",
+  "{0}-ны буцаагдсан илгээлт давхарлагдлаа — засаад «Илгээх» дарна.": "Returned submission of {0} loaded — edit, then press “Submit”.",
+  "{0}: энэ илгээлтийг засаж дахин илгээх": "{0}: edit and resubmit this submission",
 };
 
 export default en;

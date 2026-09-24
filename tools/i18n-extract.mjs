@@ -9,6 +9,10 @@
  * ⚠️ Түлхүүр нь МОНГОЛ ЭХ ТЕКСТ өөрөө. Тиймээс кодын монгол текстийг засвал
  * толины түлхүүр хоцорч, тэр мөр англи дээр орчуулагдахаа болино (унахгүй —
  * монголоор харагдана). Энэ хэрэгсэл яг тэр хоцрогсдыг олно.
+ *
+ * ⚠️ 2026-09-24: ДИНАМИК дуудалт (`tr(b.label)`, `tr(i.tolov)` …) AST-д
+ *    олдохгүй тул тэдгээрийн утгыг `tools/i18n-keep.txt`-д бүртгэнэ — тайлан
+ *    ба `--prune` хоёулаа тэр жагсаалтыг «хэрэглэгдэж буй» гэж тооцно.
  */
 import ts from 'typescript';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -17,7 +21,15 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const DICT_FILE = join(ROOT, 'i18n', 'en.ts');
+const KEEP_FILE = join(ROOT, '..', 'tools', 'i18n-keep.txt');
 const argv = process.argv.slice(2);
+
+/** Динамик `tr(x)`-ийн утгуудын хадгалах жагсаалт — мөр бүр нэг түлхүүр, `#` тайлбар */
+export function readKeep() {
+  let src = '';
+  try { src = readFileSync(KEEP_FILE, 'utf8'); } catch { return new Set(); }
+  return new Set(src.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
+}
 
 function walk(d, acc = []) {
   for (const e of readdirSync(d)) {
@@ -78,14 +90,18 @@ export function readDict() {
 
 const keys = collectKeys();
 const dict = readDict();
+const keep = readKeep();
+/* ⚠️ `keep` нь толинд байгаа эсэхээс үл хамааран «хэрэглэгдэж буй» — толинд
+   байхгүй бол дутуу гэж тоолохгүй (динамик утга орчуулгагүй ч унадаггүй). */
+const used = (k) => keys.has(k) || keep.has(k);
 
 const missing = [...keys.keys()].filter((k) => !(k in dict));
-const unused = Object.keys(dict).filter((k) => !keys.has(k));
+const unused = Object.keys(dict).filter((k) => !used(k));
 
 if (argv.includes('--json')) {
   console.log(JSON.stringify(missing, null, 1));
 } else if (argv.includes('--prune')) {
-  const kept = Object.fromEntries(Object.entries(dict).filter(([k]) => keys.has(k)));
+  const kept = Object.fromEntries(Object.entries(dict).filter(([k]) => used(k)));
   const head = readFileSync(DICT_FILE, 'utf8').split('const en:')[0];
   writeFileSync(DICT_FILE,
     head + 'const en: Record<string, string> = ' + JSON.stringify(kept, null, 2) + ';\n\nexport default en;\n', 'utf8');

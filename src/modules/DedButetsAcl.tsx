@@ -21,7 +21,7 @@ import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions'
 import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
-  butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
+  butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
   subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
 import s from './guitsetgel.module.css';
@@ -51,7 +51,8 @@ export function DedButetsAcl() {
    *    хүний бүх мөрийг ЗӨВХӨН энэ нэг багцаар ДАРЖ бичдэг байв (5 багцтай
    *    хүн 1 багцтай болно).
    */
-  const locked = !remoteReady() || !capsRemoteReady();
+  /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
+  const locked = !remoteReady() || !capsRemoteReady() || !butetsAclReady();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина (2026-09-23) */

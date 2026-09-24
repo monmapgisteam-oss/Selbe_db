@@ -22,7 +22,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  listObyemAssigns, obyemFailedUsers, removeObyemAssign, setObyemGrants,
+  listObyemAssigns, obyemAclReady, obyemFailedUsers, removeObyemAssign, setObyemGrants,
   subscribeObyemAcl, type ObyemRole,
 } from '@/lib/obyemAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
@@ -41,6 +41,7 @@ const SPEC: AclPanelSpec<ObyemRole> = {
   subscribe: subscribeObyemAcl,
   setGrants: setObyemGrants,
   remove: (user) => removeObyemAssign(user),
+  ready: obyemAclReady,
 
   notes: () => [
     tr('Багц тус бүрд Засварлагч ба Батлагч аккаунтыг тусад нь томилно. Нэг багцад хэдэн ч аккаунт байж болно.'),

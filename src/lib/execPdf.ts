@@ -18,7 +18,7 @@ import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import {
-  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo,
+  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP,
   type ExecFinding, type ExecReport, type ExecAppendix,
 } from '@/lib/execReport';
 import { TOLOV } from '@/lib/zovshoorol';
@@ -488,7 +488,7 @@ export async function buildExecDoc(
       kpiRow([
         { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
         { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: tr('хуваариас') },
-        { label: tr('Зөрүү'), value: tr('{0} н.х', gapText), sub: p.gap == null ? undefined : p.gap >= 5 ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
+        { label: tr('Зөрүү'), value: tr('{0} н.х', gapText), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
       ]),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
       barChart(buildPk.map((k) => ({ label: k.name, value: k.progress ?? 0, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70 }),

@@ -76,6 +76,13 @@ export type Change = {
   block: string;
   from: number | null;
   to: number | null;
+  /**
+   * ХУВИЙН өөрчлөлт (0–1 бутархай) — Обьёмгүй мөрд «%NN» засвар `obyem`-ийг
+   * хөндөхгүй зөвхөн `act`-д суудаг (2026-09-24, FillNew `changedKeys`-тэй
+   * ижил дүрэм). `from === to` бол харуулах тал ЭДГЭЭРИЙГ үзүүлнэ.
+   */
+  fromPct?: number | null;
+  toPct?: number | null;
 };
 
 /**
@@ -306,6 +313,11 @@ async function loadStaged(
   /* Overlay-аас ӨМНӨХ утга — «юунаас юу болсон» гэдгийг зөвхөн үүгээр мэдэнэ. */
   const baseObyem = new Map<number, (number | null)[]>();
   for (const r of loaded.rows) baseObyem.set(r.oid, r.obyem);
+  /* ⚠️ ХУВИЙН суурь ч (2026-09-24): Обьёмгүй мөрийн «%NN» засвар зөвхөн
+     `act`-д суудаг тул `obyem` ганцаараа жишвэл тэр өөрчлөлт хянагчид
+     ОГТ харагдахгүй байв (FillNew `changedKeys`-ийн ⚠️). */
+  const baseAct = new Map<number, (number | null)[]>();
+  for (const r of loaded.rows) baseAct.set(r.oid, r.act);
   /* Илгээлт БУУСАН нүднүүд — `${oid}:${b}` */
   const touched = new Set(ov.cellKeys);
 
@@ -341,19 +353,29 @@ async function loadStaged(
   const changes: Change[] = [];
   const filled: Filled[] = ov.rows.map((r, i) => {
     const base = baseObyem.get(r.oid);
+    const baseA = baseAct.get(r.oid);
     const cells: (number | null)[] = [];
     const acts: (number | null)[] = [];
     const before: (number | null)[] = [];
     const changed: boolean[] = [];
+    /* Хувийн «юунаас юу» — `blocks`-ийн индексээр (`obyem` өөрчлөгдөөгүй нүдэнд харуулна) */
+    const pctFrom: (number | null)[] = [];
+    const pctTo: (number | null)[] = [];
     for (let b = 0; b < nBld; b += 1) {
       if (colOf[b] < 0) continue;
       const to = c[i].obyem[b];
       /* ⚠️ Шинэ мөрд (нэмсэн ажил) суурь БАЙХГҮЙ — `null` (0 БИШ). */
       const from = base ? base[b] : null;
+      /* ⚠️ ТҮҮХИЙ `act` (илгээлтийн мөр ↔ суурь мөр) — `computeAll`-ийн
+         бодсон утга БИШ: тэр нь обьёмоос дахин бодогддог тул ижил. */
+      const toA = r.act[b] ?? null;
+      const fromA = baseA ? (baseA[b] ?? null) : null;
       cells.push(to);
       acts.push(c[i].act[b]);
       before.push(from);
-      changed.push(touched.has(`${r.oid}:${b}`) && from !== to);
+      pctFrom.push(fromA);
+      pctTo.push(toA);
+      changed.push(touched.has(`${r.oid}:${b}`) && (from !== to || fromA !== toA));
     }
     changed.forEach((yes, k) => {
       if (!yes) return;
@@ -365,6 +387,8 @@ async function loadStaged(
         block: blocks[k] ?? String(k + 1),
         from: before[k],
         to: cells[k],
+        fromPct: pctFrom[k],
+        toPct: pctTo[k],
       });
     });
     return {

@@ -62,6 +62,8 @@ export type AclPanelSpec<R extends string> = {
   list: () => Row<R>[];
   failedUsers: () => string[];
   subscribe: (fn: () => void) => () => void;
+  /** Энэ ACL-ийн remote уншигдсан уу — түгжээнд (2026-09-24) */
+  ready: () => boolean;
   /** Бичилт */
   setGrants: (user: string, grants: Grant<R>[]) => Write;
   remove: (user: string) => Write;
@@ -115,7 +117,9 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    *    «томилоогүй» харагдаж, «Нэмэх» дарахад `setGrants` тэр хүний БҮХ
    *    мөрийг зөвхөн энэ нэг багцаар ДАРЖ бичнэ. Уншигдтал нэмэх/хасах хаалттай.
    */
-  const locked = !remoteReady() || !capsRemoteReady();
+  /* ⚠️ ӨӨРИЙН ACL-ийн тугийг ч шалгана (2026-09-24) — `spec.list()` энэ туг
+     хүртэл `[]` тул нөгөө хоёр бэлэн ч энэ нь хоцорвол дарж бичнэ. */
+  const locked = !remoteReady() || !capsRemoteReady() || !spec.ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
   /**
    * Бичилтийг хүлээж, явцад нь товчнуудыг түгжинэ.

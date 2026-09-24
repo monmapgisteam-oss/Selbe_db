@@ -74,6 +74,8 @@ const acl = makeAcl<ChanarRole>({
 export const listChanarAssigns = (): ChanarAssign[] => acl.list();
 export const chanarFailedUsers = acl.failedUsers;
 export const subscribeChanarAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const chanarAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteChanar = (

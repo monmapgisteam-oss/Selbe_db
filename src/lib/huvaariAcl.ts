@@ -56,6 +56,8 @@ const acl = makeAcl<PlanRole>({
 export const listHuvaariAssigns = (): HuvaariAssign[] => acl.list();
 export const huvaariFailedUsers = acl.failedUsers;
 export const subscribeHuvaariAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const huvaariAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteHuvaari = (

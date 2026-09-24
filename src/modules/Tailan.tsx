@@ -466,8 +466,14 @@ function TailanFull() {
                 const budgetOf = (k: string) => x.finance.byBagts[k] ?? 0;
                 const budget = rows.reduce((a, b) => a + budgetOf(b.key), 0);
                 const sorted = [...rows].sort((a, b) => budgetOf(b.key) - budgetOf(a.key));
-                const bagtsAvg = blocks
-                  ? rows.reduce((a, b) => a + (b.progress ?? 0) * b.blocks, 0) / blocks
+                /* ⚠️ 2026-09-24: «Нийт» дундаж — ЗӨВХӨН `progress != null` багцаар жигнэнэ
+                   (`Dashboard` 'bagts' карттай ижил дүрэм). Урьд нь тайлан ирээгүй багц
+                   0% гэж орж, БҮХ блокоор хуваагддаг байв — null ≠ 0. Мэдэгдэх багц
+                   байхгүй бол `null` → «—». */
+                const knownRows = rows.filter((b) => b.progress != null);
+                const knownBlocks = knownRows.reduce((a, b) => a + b.blocks, 0);
+                const bagtsAvg = knownBlocks
+                  ? knownRows.reduce((a, b) => a + (b.progress as number) * b.blocks, 0) / knownBlocks
                   : null;
                 const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
                 /* ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
@@ -759,7 +765,8 @@ function TailanFull() {
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{x.land.parcels == null ? tr('татагдсангүй') : num(x.land.parcels)}</td>
-                            <td className={r.num}>100%</td>
+                            {/* ⚠️ Нийт татагдаагүй бол «100%» худал — «—» */}
+                            <td className={r.num}>{x.land.parcels == null ? '—' : '100%'}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>

@@ -55,7 +55,8 @@ jobs:
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
           NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
           NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
-          # ⚠️ Тайлангийн хүлээн авагчид (таслалаар) — байхгүй бол кодын анхдагч хаяг
+          # ⚠️ Тайлангийн хүлээн авагчид (таслалаар) — ЗААВАЛ; байхгүй бол кодод
+          #    анхдагч хаяг БАЙХГҮЙ тул тайлангийн имэйл товчнууд идэвхгүй болно
           NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
           NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
           # ХАБЭА Survey123 үйлчилгээний нэрс (маягт дахин нийтлэхэд нэр солигддог)

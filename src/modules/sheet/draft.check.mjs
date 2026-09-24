@@ -152,7 +152,7 @@ console.log('✅ таб хаах/refresh — хадгалагдаж амжааг
   assert.ok(load.includes('!rr.sub.done'), 'батлагдсан (done) илгээлт давхарлагдах эрсдэл');
   /* (б) publish нь буцаагдсан илгээлтийг ӨӨРИЙНХ НЬ өдрөөр update хийнэ —
      өнөөдрийн шинэ мөр үүсгэвэл буцаагдсан мөр мөнхөд нээлттэй үлдэнэ */
-  const pub = between("const fillMs = staged && !staged.done && flow", 'const actR = await readActiveSubmission(pkg.key, fillMs);');
+  const pub = between("const fillMs = staged && !staged.done", 'const actR = await readActiveSubmission(pkg.key, fillMs);');
   assert.ok(pub.includes("OWNER[flow[HF.status]] === 'company'"), 'publish буцаагдсан төлөвийг ялгахгүй');
   assert.ok(pub.includes('staged.payload.fillMs'), 'publish буцаагдсан илгээлтийг өөрийнх нь өдрөөр бичихгүй');
   assert.ok(pub.includes(': todayFillMs'), 'ердийн зам todayFillMs хэвээр байх ёстой');
@@ -194,7 +194,8 @@ console.log('✅ mergeDrafts — нүд бүрд шинэ утга, нэг та�
 assert.ok(restore.includes('canPerf ? d.cells'), 'гүйцэтгэлийн нүд canPerf-гүй сэргээгдэж байна');
 assert.ok(restore.includes('canPerf ? (d.dates'), 'огноо canPerf-гүй сэргээгдэж байна');
 
-assert.ok(restore.includes('canAddRow ?'), 'нэмсэн мөр canAddRow-гүй сэргээгдэж байна');
+/* 2026-09-24: батлагдсан (`ajilOid`) мөр эрхээс үл хамааран сэргэнэ — батлуулаагүй нь canAddRow-оор */
+assert.ok(restore.includes('(!!a.ajilOid || canAddRow)'), 'нэмсэн мөр canAddRow-гүй сэргээгдэж байна');
 console.log('✅ сэргээлт эрхээр хамгаалагдсан хэвээр');
 
 /* ── 6. Хуучин/эвдэрсэн ноорог БҮХЭЛДЭЭ хаягдахгүй ── */

@@ -24,7 +24,7 @@
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, monthKey, sentenceCase } from '@/lib/format';
+import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, CONTRACTED,
 } from '@/lib/gdash';
@@ -609,7 +609,8 @@ export function execFacts(x: ExecReport): string {
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
   /* ⚠️ 2026-09-21: «гэрээлсэн нийт» = 01-ийн «Нийт гэрээлсэн дүн»-тэй ижил (CONTRACTED мөр) */
-  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${num(x.fin.given)} ₮ (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
+  /* ⚠️ `given == null` = мэдээлэлгүй (0 ₮ БИШ) — дээрх мөрүүдтэй ижил үг */
+  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
   for (const r of x.fin.rows) {
     L.push(r.contracted
       ? `- ${cl(r.label)}: гэрээлсэн ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`
@@ -647,6 +648,13 @@ const SYSTEM = `Чи «Сэлбэ ухаалаг хот» төслийн уди�
 /** AI дүгнэлтийн дээд хүлээлт, мс — үүнээс хойш «Бодож байна…» мөнхөд гацахгүй */
 export const EXEC_AI_TIMEOUT_MS = 60_000;
 
+/**
+ * ХОЦРОГДЛЫН БОСГО — (төлөвлөсөн − бодит) нэгж хувь энэ ба түүнээс дээш бол
+ * «хоцрогдол». ⚠️ Дэлгэц (`Meter`, ExecReport KPI) · PDF · инфографик
+ * ДӨРВҮҮЛЭЭ ЭНЭ НЭГ тоог хэрэглэнэ — 2026-09-24-нд хатуу бичсэн 5-уудыг нэгтгэв.
+ */
+export const LATE_GAP = 5;
+
 export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promise<string> {
   /* ⚠️ Токенгүй үед толгойг ОГТ нэмэхгүй (`agent/client.callRelay`-тай ижил) */
   const token = await arcgisToken();
@@ -654,7 +662,9 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
      мөнхөд үлддэг байв. Гаднаас өгсөн `signal`-тай хамт ажиллана. */
   const ac = new AbortController();
   const tm = setTimeout(() => ac.abort(), EXEC_AI_TIMEOUT_MS);
-  signal?.addEventListener('abort', () => ac.abort());
+  /* ⚠️ `{ once: true }` — сонсогч нэг удаа л хэрэгтэй; дуудагч (`ExecReport.tsx`)
+     unmount-д `signal`-аа цуцалдаг. */
+  signal?.addEventListener('abort', () => ac.abort(), { once: true });
   let res: Response;
   try {
     res = await fetch(`${AGENT_API}/chat`, {
@@ -667,7 +677,8 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
         system: SYSTEM,
         messages: [{
           role: 'user',
-          content: `Огноо: ${new Date().toISOString().slice(0, 10)}.\n\n${execFacts(x)}`,
+          /* ⚠️ Орон нутгийн өдөр (`dayKey`) — UTC `toISOString` нь орой 4 цагаас хойш өмнөх өдөр гаргадаг */
+          content: `Огноо: ${dayKey(Date.now())}.\n\n${execFacts(x)}`,
         }],
       }),
       signal: ac.signal,

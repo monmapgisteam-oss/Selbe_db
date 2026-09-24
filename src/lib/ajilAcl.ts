@@ -66,6 +66,8 @@ const acl = makeAcl<AjilRole>({
 export const listAjilAssigns = (): AjilAssign[] => acl.list();
 export const ajilFailedUsers = acl.failedUsers;
 export const subscribeAjilAcl = acl.subscribe;
+/** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
+export const ajilAclReady = acl.ready;
 
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteAjil = (
