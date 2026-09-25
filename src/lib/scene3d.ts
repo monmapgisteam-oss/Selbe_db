@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { HJ } from '@/lib/services';
+import { HJ, LAYER_BY_ID, layerUrl } from '@/lib/services';
 /**
  * SCENE3D — Web Scene 'selbe_3D_ 0804' (572442952bcd47d3a2adf68199f62d24)-ээс
  * АВТОМАТААР хуулсан 3D давхаргууд + тэдгээрийн ЯГ scene-ийн renderer (style).
@@ -322,10 +322,24 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
     }
   },
   {
+    /*
+     * ⚠️ БАРИЛГА — 2D-ТЭЙ ИЖИЛ ГАНЦ ФАЙЛ (2026-09-25, хэрэглэгчийн шийдвэр).
+     *
+     * Урьд нь `selbe_3D__0804_WFL1/4` байв — 2D-ийн барилгын (`sb:4` →
+     * `SELBE_ALL_DATA_last_0917/108`) shapefile хуулбар (талбарын нэр нь
+     * тасарсан). Хоёр файл тусдаа засагдаж САЛСАН: 368 ↔ 355, хуучин 12 BIM-ийн
+     * доорх 12 барилгыг `/4`-оос УСТГАСАН байсан тул хуучин BIM хасагдахад тэр
+     * газрууд BIM горимд ХООСОН, шинэ BIM нь 29 барилгатай ДАВХЦАЖ байв.
+     *
+     * Одоо 2D-ийн файлыг ШУУД уншина — барилга нэмж/засахад НЭГ газар. BIM
+     * загварын доорх барилгыг ӨГӨГДЛӨӨС устгахгүй, `MapCanvas` КОДООР нууна
+     * (`bimCovered`), тиймээс BIM солигдоход автоматаар дагана.
+     * ⚠️ `/4` одоо ПОРТАЛД ХЭРЭГЛЭГДЭХГҮЙ (AGOL дээр л үлдэнэ).
+     */
     "id": "scene3d:4",
     "title": tr('Барилга'),
     "group": null,
-    "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/4`,
+    "url": layerUrl(LAYER_BY_ID['sb:4']),
     "opacity": 1,
     "elevationInfo": {
       "mode": "onTheGround"
@@ -337,8 +351,14 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       "type": "simple",
       "visualVariables": [
         {
+          /*
+           * ⚠️ ӨНДӨР = ДАВХАР × 3.5 м. `/108`-д `Ondor_m` талбар БАЙХГҮЙ.
+           *    `/4`-ийн `Ondor_m` нь яг `давхар × 3.5`-ыг (тэгш рүү
+           *    бөөрөнхийлсөн) агуулдаг байсныг 355 мөрөөр батлав: 1→4 · 2→7 ·
+           *    9→32 · 12→42 · 16→56 м. Зөрүү хамгийн ихдээ 0.5 м.
+           */
           "type": "sizeInfo",
-          "field": "Ondor_m",
+          "valueExpression": "$feature['Давхрын_тоо_max'] * 3.5",
           "valueUnit": "meters"
         }
       ],

@@ -47,7 +47,6 @@ jobs:
           NEXT_PUBLIC_UBHUB_IMAGERY: ${{ vars.NEXT_PUBLIC_UBHUB_IMAGERY }}
           NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
-          NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
           NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
           NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
           # ⚠️ Амьд өгөгдлийн 11 тест энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА

@@ -699,7 +699,6 @@ const en: Record<string, string> = {
   "Барилгын блок": "Building blocks",
   "Барилгын блок (гүйцэтгэл)": "Building blocks (progress)",
   "Барилгын давхарга каталогт алга: {0}": "The building layer is not in the catalogue: {0}",
-  "Барилгын загвар 71_{0}": "Building model 71_{0}",
   "Барилгын загвар ачаалагдсангүй (": "The building model could not be loaded (",
   "барилгын компани": "construction company",
   "Барилгын компани": "Construction company",
@@ -4926,6 +4925,7 @@ const en: Record<string, string> = {
   "Синк хэсэгчлэн хийгдсэнгүй — {0} мөр нэг дор 20-оос илүү нэгжээр өөрчлөгдөх байсан тул алгасав (бусад {1} мөр бичигдсэн).": "Sync partially skipped — {0} rows would jump by more than 20 points at once and were skipped ({1} other rows written).",
   "Бичиж байна…": "Writing…",
   "Системийн утгаар шинэчлэх": "Update with system values",
+  "Багц {0} · FID {1}": "Package {0} · FID {1}",
 };
 
 export default en;
