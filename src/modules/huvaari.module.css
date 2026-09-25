@@ -386,6 +386,17 @@
 .rowOk { box-shadow: inset 3px 0 0 var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
 .rowBad .rowDes { color: var(--bad-ink); font-weight: 700; }
 .rowOk .rowDes { color: var(--good-ink); font-weight: 700; }
+/* ⚠️ СОНГОЛТ ХАРАГДАНА (2026-09-25 аудит #6): `.rowBad/.rowOk` нь `.rowOn`-ы ДАРАА
+   тул дэвсгэрийг нь дарж, тэмдэглэсэн мөрд сонгосон мөр огт ялгарахгүй байв.
+   Тэмдгийн өнгийг хадгалж, сонголтын өнгийг давхарлан, баруун ирмэгт зураас нэмнэ. */
+.rowOn.rowBad {
+  background: color-mix(in srgb, var(--data) 14%, color-mix(in srgb, var(--bad) 9%, transparent));
+  box-shadow: inset 3px 0 0 var(--bad), inset -3px 0 0 var(--data);
+}
+.rowOn.rowOk {
+  background: color-mix(in srgb, var(--data) 14%, color-mix(in srgb, var(--good) 12%, transparent));
+  box-shadow: inset 3px 0 0 var(--good), inset -3px 0 0 var(--data);
+}
 /* Кодын нүд ТОВЧ болно (зөвхөн батлагчид) — харагдах байдал нь `.rowDes`-тэй ижил */
 .rowMark {
   font: inherit;

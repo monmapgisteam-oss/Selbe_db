@@ -61,7 +61,7 @@ import {
 } from '@/lib/huvaariObyem';
 import {
   decidePlan, loadHistory, loadPayload, loadPending, planTableState, PLAN_STATUS,
-  submitPlan, withdrawPlan, type PlanPayloadKind,
+  setPlanNavBusy, submitPlan, withdrawPlan, type PlanPayloadKind,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -496,8 +496,11 @@ export type HuvaariReview = {
   kind: PlanKind;
   /** Шийдвэргүй хаах */
   onClose: () => void;
-  /** Шийдвэр (батлах/буцаах) хадгалагдсаны дараа — дараалал дахин уншина */
-  onDone: (msg: string) => void;
+  /**
+   * Шийдвэр (батлах/буцаах) хадгалагдсаны дараа — дараалал дахин уншина.
+   * ⚠️ `isErr` (2026-09-25 аудит #5) — алдааг алдаа болж харуулна, мэдээ болж биш.
+   */
+  onDone: (r: { msg: string; isErr: boolean }) => void;
 };
 
 export function Huvaari({
@@ -682,6 +685,12 @@ export function Huvaari({
   const previewingRef = useRef(previewing);
   useEffect(() => { previewingRef.current = previewing; }, [previewing]);
   /**
+   * ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТӨӨР урьдчилан харалт УНАСАН илгээлтийн `oid` (2026-09-25 аудит #1).
+   * ⚠️ Тэр үед `previewing` худал хэвээр тул хяналтын «Буцаах» ч хаалттай болж
+   *    илгээлт мөнхөд гацдаг байв — ийм илгээлтийг БУЦААХ ёстой (`conflictMsg`).
+   */
+  const [previewBad, setPreviewBad] = useState<number | null>(null);
+  /**
    * БАТЛАГЧИЙН ЗӨВШӨӨРСӨН мөр (хяналтын горим) — `Guitsetgel.okKeys`-ийн загвар.
    * ⚠️ Бүгд ногоон болтол «Батлах» ХААЛТТАЙ (гүйцэтгэлийн дүрэм); буцаахад
    *    энэ жагсаалт хадгалагдаж гүйцэтгэгчид улаан/ногоон болж харагдана.
@@ -692,7 +701,10 @@ export function Huvaari({
    * `oid` = тэр илгээлт; `ok` = батлагчийн зөвшөөрсөн мөрүүд. Бусад өөрчлөгдсөн
    * мөр улаан (засах ёстой). Дахин илгээх, багц/төрөл солиход арилна.
    */
-  const [backMarks, setBackMarks] = useState<{ oid: number; ok: Set<number> } | null>(null);
+  /* ⚠️ `pay` — БУЦААГДСАН САНАЛЫН агуулга (2026-09-25 аудит #3): тэмдгийг зөвхөн
+     саналд байсан мөрд, утга нь саналтайгаа ИЖИЛ хэвээр байхад л тавина.
+     Гүйцэтгэгч засмагц (эсвэл шинэ мөр хөндмөгц) мөр саармаг болно. */
+  const [backMarks, setBackMarks] = useState<{ oid: number; ok: Set<number>; pay: PlanPayload } | null>(null);
 
   /**
    * ЗАСВАР ТҮГЖИГДСЭН ҮҮ — хүлээгдэж буй илгээлт байхад ГАРААР засахгүй.
@@ -1121,7 +1133,13 @@ export function Huvaari({
    *    гурвуулаа `oid < 0`-г хаана). `insertAdds` нь `sheetFrame`-ийн ЦОРЫН
    *    ГАНЦ хэрэгжилт — батлахад `ajilApply` ЯГ үүгээр оруулна, байрлал ижил.
    */
-  const rowsAll = useMemo(() => (sc ? insertAdds(rows, adds, sc, n) : rows), [rows, adds, sc, n]);
+  /* ⚠️ ХЯНАЛТЫН ГОРИМД (`review`) НЭМЭЛТ МӨР ОРУУЛАХГҮЙ (2026-09-25 аудит #7):
+     `adds` нь БАТЛАГЧИЙН ӨӨРИЙН хөтчийн localStorage — зохиогчийн саналд хамааралгүй
+     мөр хяналтын хуанлид гарч, мөрийн индекс/гүйлгэлтийг хөдөлгөдөг байв. */
+  const rowsAll = useMemo(
+    () => (sc && !isReview ? insertAdds(rows, adds, sc, n) : rows),
+    [rows, adds, sc, n, isReview],
+  );
   /** Ноорогийг эх мөрүүд дээр давхарлана — харагдац үргэлж ХАМГИЙН СҮҮЛИЙНХ */
   const base = useMemo(() => toPlanRows(rowsAll, n, kind), [rowsAll, n, kind]);
 
@@ -1217,23 +1235,54 @@ export function Huvaari({
      ба НАВЧГҮЙ блокийн өөрийн муж (`applyPayloadToDraft`-ийн `gOwn`) нь хүүхдээс
      бодогддоггүй, санал өөрөө агуулдаг — хасвал зөвшөөрөлгүйгээр батлагдана.
      Хүүхдээс бодогдсон (`rollUpGroups`) бүлгийн муж л хасагдана. */
+  /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ / ХАРАГДАХ ЯЛГААГҮЙ МӨР ОРОХГҮЙ (2026-09-25 аудит #8):
+     `applyPayloadToDraft` нь зохиогч хөндөөгүй блокт серверийн ОДООГИЙН утгыг
+     ноорогт тавьдаг, хуваалцсан ноорог ч серверт хүрсэн утгыг агуулж болно —
+     тэр мөрүүд «өөрчлөгдсөн» гэж тоологдож, батлагч ЯЛГААГҮЙ мөрийг хайж
+     ногоон болгох шаардлагатай болдог байв. Одоо мөр бүрийг суурьтай (`base`)
+     тал бүрээр нь тулгана: огноо · уялдаа · бодит огноо (багана байвал) · нөөц
+     (багана байвал) · сарын обьём/нөөц. Ялгаагүй мөр тэмдэггүй (саармаг). */
   const reviewOids = useMemo(() => {
     const out: number[] = [];
+    const arrDiff = (a: readonly (number | null)[] | undefined, b: readonly (number | null)[] | undefined) =>
+      Array.from({ length: n }, (_, k) => k).some((k) => (a?.[k] ?? null) !== (b?.[k] ?? null));
     for (const o of dirtyOids) {
       const i = plan.findIndex((r) => r.oid === o);
       if (i < 0) continue;
       const r = plan[i];
-      if (!r.group) { out.push(o); continue; }
-      if (ham.has(o)) { out.push(o); continue; }
-      const d = draft.get(o);
       const b0 = base[i];
-      if (d && b0 && d.some((sp, b) => !hasDatedLeaf(plan, i, b, (k) => plan[k].spans)
+      if (!b0) continue;
+      const depsDiff = ham.has(o) && formatDeps(r.deps) !== formatDeps(b0.deps);
+      if (!r.group) {
+        const spDiff = r.spans.some((sp, b) => !sameSpan(sp, b0.spans[b]));
+        const aDiff = hasActual && aDraft.has(o) && (arrDiff(r.aStart, b0.aStart) || arrDiff(r.aEnd, b0.aEnd));
+        const rDiff = hasRes && resDraft.has(o) && ((r.hun ?? null) !== (b0.hun ?? null) || (r.mashin ?? null) !== (b0.mashin ?? null));
+        let obDiff = false;
+        if (r.des != null) {
+          const pre = `${r.des}|`;
+          for (const [k, m] of obDraft) {
+            if (k.startsWith(pre) && !sameMonths(m, obPlan.get(r.des)?.get(k.slice(pre.length)))) { obDiff = true; break; }
+          }
+          if (!obDiff) {
+            for (const [k, m] of obResDraft) {
+              if (k.startsWith(pre) && !sameRes(m, obRes.get(r.des)?.get(k.slice(pre.length)))) { obDiff = true; break; }
+            }
+          }
+        }
+        if (spDiff || depsDiff || aDiff || rDiff || obDiff) out.push(o);
+        continue;
+      }
+      if (depsDiff) { out.push(o); continue; }
+      const d = draft.get(o);
+      if (d && d.some((sp, b) => !hasDatedLeaf(plan, i, b, (k) => plan[k].spans)
         && !sameSpan(sp, b0.spans[b]))) out.push(o);
     }
     return out;
-  }, [dirtyOids, plan, base, ham, draft]);
-  /* ⚠️ Ноорог хоосорвол (хуваалцсан ноорог цэвэрлэсэн г.м.) буцаасан тэмдэглэгээ ч арилна */
-  useEffect(() => { if (!dirtyN && backMarks) setBackMarks(null); }, [dirtyN, backMarks]);
+  }, [dirtyOids, plan, base, ham, draft, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, hasActual, hasRes, n]);
+  /* ⚠️ 2026-09-25 аудит #2: буцаасан тэмдэглэгээг ноорог хоосроход АРЧИХГҮЙ —
+     `lastDecision`-оос дахин үүсдэг (`backMarks`-ийн эффект); ноороггүй үед
+     `backOn` худал тул харагдахгүй. Урьд нь энд арчдаг байсан тул «Цуцлах»/
+     дахин ачаалсны дараа тэмдэг мөнхөд алга болдог байв. */
   const reviewOk = reviewOids.filter((o) => okRows.has(o)).length;
   const allOk = reviewOids.length > 0 && reviewOk === reviewOids.length;
   /** Сарын обьём/нөөцийн ноорогтой ажлын КОДУУД — мөрийн «хадгалаагүй» тэмдэгт (2026-09-24 аудит) */
@@ -3165,7 +3214,7 @@ export function Huvaari({
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
   const preview = useCallback(async () => {
     if (!pending || busy) return;
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setPreviewBad(null);
     try {
       const p = await loadPayload(pending.oid);
       if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
@@ -3174,6 +3223,7 @@ export function Huvaari({
       /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ буулгахгүй — батлагч өөр табаар харж байна. */
       const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan, srv.res);
       if (!ap.ok) {
+        if (ap.why === 'conflict') setPreviewBad(pending.oid);
         setErr(ap.why === 'conflict'
           ? conflictMsg(ap.conflicts)
           : p.kind === 'geree'
@@ -3548,10 +3598,12 @@ export function Huvaari({
       const srv = await refetchServer();
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan, srv.res);
       setPreviewing(false);
-      /* Батлагчийн тэмдэглэгээ — зөвхөн тэмдэглэсэн (талбартай) буцаалтад */
-      setBackMarks(back && ap.ok && lastDecision.okRows
-        ? { oid: lastDecision.oid, ok: new Set(lastDecision.okRows) }
-        : null);
+      /* Батлагчийн тэмдэглэгээ — зөвхөн тэмдэглэсэн (талбартай) буцаалтад.
+         ⚠️ Эффект ч (`lastDecision`-оос) ижлийг тавина — энд шууд тавих нь
+         дахин татахгүйн тулд л (2026-09-25 аудит #2). */
+      if (back && ap.ok && lastDecision.okRows) {
+        setBackMarks({ oid: lastDecision.oid, ok: new Set(lastDecision.okRows), pay: p });
+      }
       if (back && ap.ok) {
         setNote((lastDecision.okRows
           ? tr('Буцаагдсан санал ноорог болж буцлаа — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
@@ -3712,6 +3764,18 @@ export function Huvaari({
     if (approving == null || busy) return;
     if (!savedRef.current) {
       /*
+       * ⚠️ ШИНЭЭР БУУЛГАСАН САНАЛЫГ ДАХИН ТУЛГАНА (2026-09-25 аудит #8). `decide(true)`
+       *    нь серверээс дахин татаж ноорогт буулгадаг — хооронд нь серверт орсон
+       *    өөрчлөлтөөр хяналтын мөрийн жагсаалт (`reviewOids`) өөрчлөгдөж, батлагчийн
+       *    ХАРААГҮЙ мөр ногоонгүйгээр батлагдах байв. Энэ зурагдалт шинэ ноорогтой.
+       */
+      if (review && reviewOids.some((o) => !okRows.has(o))) {
+        setApproving(null);
+        setPreviewing(true);
+        setErr(tr('Санал хооронд нь дахин буулгахад өөрчлөгдсөн мөр нэмэгдсэн — шинэ улаан мөрүүдийг шалгаж ногоон болгоод дахин батална уу.'));
+        return;
+      }
+      /*
        * ⚠️ БИЧИХ ЗҮЙЛГҮЙ ИЛГЭЭЛТ — БАТЛАГДСАН гэж хаана (2026-09-08-ны аудит).
        *
        * Урьд нь энд ЗҮГЭЭР Л ГАРДАГ байсан: `save` дуудагдахгүй, `decidePlan`
@@ -3827,6 +3891,8 @@ export function Huvaari({
    *    үед уншигддаг тул өмнө нь бол TDZ (`Cannot access before initialization`).
    */
   const reviewStarted = useRef(false);
+  /** Эхлэлийн эффект «аль хэдийн шийдвэрлэгдсэн» алдаа тавьсан (#5) — `onDone`-ийг алгасна */
+  const reviewStartErr = useRef(false);
   useEffect(() => {
     if (!review || reviewStarted.current) return;
     if (pkg.key !== review.pkgKey || flowReady === null || busy || !sc || !rows.length || obState === 'loading') return;
@@ -3837,6 +3903,11 @@ export function Huvaari({
       return;
     }
     if (pending?.oid !== review.oid) {
+      /* ⚠️ Доорх «шийдвэр хадгалагдсан» эффект ИЖИЛ commit-д `lastDecision`-ийг
+         (өөр хүний шийдвэр) хараад цонхыг ХООСОН мессежтэй хаадаг байв —
+         `err` дараагийн зурагдалтад л `noteRef`-д ордог (2026-09-25 аудит #5).
+         Цонх нээлттэй үлдэж алдаагаа харуулна; «Хаах»-аар гарна. */
+      reviewStartErr.current = true;
       setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
       return;
     }
@@ -3844,6 +3915,9 @@ export function Huvaari({
   }, [review, pkg.key, flowReady, flowWhy, busy, sc, rows.length, obState, pending, preview]);
   /** Хяналтын ИЛГЭЭЛТ ЯГ ЭНЭ ҮҮ — өөр/шинэ илгээлт дээр шийдвэр гаргуулахгүй */
   const reviewLive = !!review && pending?.oid === review.oid && previewing;
+  /* ⚠️ ЗӨРЧЛӨӨР УНАСАН хяналт (2026-09-25 аудит #1) — зөвхөн «Буцаах» нээлттэй,
+     тэмдэглэгээгүй (`okRows` undefined): мөр харагдаагүй тул «зөвшөөрсөн» гэх зүйлгүй. */
+  const reviewConflict = !!review && pending?.oid === review.oid && !previewing && previewBad === review.oid;
 
   /**
    * ШИЙДВЭР ХАДГАЛАГДСАН — дараалал руу буцна.
@@ -3854,14 +3928,17 @@ export function Huvaari({
   /* ⚠️ АЛДААГ ч дамжуулна (2026-09-25 аудит): өөр батлагч зуур шийдсэн үед
      `decidePlan` алдаа өгч, `lastDecision` нь энэ илгээлт болж цонх хаагдана —
      зөвхөн `note` дамжуулбал тэр алдаа ор мөргүй алга болно. */
-  const noteRef = useRef(note);
-  noteRef.current = err || note;
+  /* ⚠️ АЛДАА/МЭДЭЭГ ЯЛГАЖ дамжуулна (2026-09-25 аудит #5) — дараалал алдааг
+     `note` (ногоон) болгож харуулдаг байв. */
+  const noteRef = useRef<{ msg: string; isErr: boolean }>({ msg: '', isErr: false });
+  noteRef.current = err ? { msg: err, isErr: true } : { msg: note, isErr: false };
   const reviewDoneRef = useRef(review?.onDone);
   reviewDoneRef.current = review?.onDone;
   const reviewOid = review?.oid;
   useEffect(() => {
     if (reviewOid == null || !lastDecision || lastDecision.oid !== reviewOid) return;
     if (lastDecision.status === PLAN_STATUS.pending) return;
+    if (reviewStartErr.current) return;
     reviewDoneRef.current?.(noteRef.current);
   }, [reviewOid, lastDecision]);
 
@@ -3873,14 +3950,16 @@ export function Huvaari({
   const rejectReview = (txt: string) => {
     if (!txt.trim()) { setErr(tr('Буцаах шалтгааныг бичнэ үү.')); return; }
     const byOid = new Map(plan.map((r) => [r.oid, r]));
-    const bad = reviewOids.filter((o) => !okRows.has(o))
+    const bad = !reviewLive ? [] : reviewOids.filter((o) => !okRows.has(o))
       .map((o) => byOid.get(o)).filter((r): r is PlanRow => !!r);
     const list = bad.slice(0, 12).map((r) => `${r.no} ${r.work}`.trim()).join('; ')
       + (bad.length > 12 ? ` … (+${bad.length - 12})` : '');
     const why = bad.length
       ? `${txt.trim()}\n${tr('Зөвшөөрөгдөөгүй {0} мөр: {1}', num(bad.length), list)}`
       : txt.trim();
-    void decide(false, why.slice(0, 2000), reviewOids.filter((o) => okRows.has(o)));
+    /* ⚠️ Зөрчлөөр унасан үед (`reviewConflict`) тэмдэглэгээ ИЛГЭЭХГҮЙ — `[]` бол
+       гүйцэтгэгчид бүх мөр «зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана. */
+    void decide(false, why.slice(0, 2000), reviewLive ? reviewOids.filter((o) => okRows.has(o)) : undefined);
   };
   /**
    * ДАРААГИЙН ЗӨВШӨӨРӨӨГҮЙ МӨР (2026-09-25 аудит, UX): ~1,400 мөрийн виртуал
@@ -3938,10 +4017,126 @@ export function Huvaari({
   };
   /** Мөрийн тэмдэг: хяналтад — батлагчийн сонголт; гүйцэтгэгчид — буцаасан шийдвэр */
   const reviewSet = useMemo(() => new Set(reviewOids), [reviewOids]);
+
+  /*
+   * ⚠️ БУЦААСАН ТЭМДЭГЛЭГЭЭГ `lastDecision`-ООС ҮҮСГЭНЭ (2026-09-25 аудит #2).
+   *    Урьд нь зөвхөн «Ноорогт буцааж засах» дарсан агшинд санах ойд тавьдаг тул
+   *    хуудас дахин ачаалах, хамт ажиллагч өөр компьютерээс (хуваалцсан ноорог)
+   *    нээхэд улаан/ногоон тэмдэг огт харагддаггүй байв. Одоо сүүлийн шийдвэр
+   *    «буцаасан» бөгөөд тэмдэглэгээтэй (`okRows != null`) бол саналыг нэг удаа
+   *    татаж хадгална; харагдах эсэхийг `backOn` шийднэ (ноорогтой үед л).
+   * ⚠️ `refreshFlow` нь `lastDecision`-ийг түр `null` болгодог тул энд АРЧИХГҮЙ —
+   *    ижил илгээлт/төрөлд дахин татахгүй (`backRef`).
+   */
+  const backRef = useRef(backMarks);
+  backRef.current = backMarks;
+  useEffect(() => {
+    const d = lastDecision;
+    if (review || !d || d.status !== PLAN_STATUS.returned || !d.okRows) return undefined;
+    const cur = backRef.current;
+    if (cur && cur.oid === d.oid && cur.pay.kind === kind) return undefined;
+    let dead = false;
+    const ok = new Set(d.okRows);
+    void loadPayload(d.oid).then((p) => {
+      if (dead || !p || p.kind !== kind) return;
+      setBackMarks({ oid: d.oid, ok, pay: p });
+    }).catch(() => { /* тэмдэглэгээ нэмэлт — уншигдахгүй бол тэмдэггүй */ });
+    return () => { dead = true; };
+  }, [review, lastDecision, kind]);
+  /** Буцаасан тэмдэг ИДЭВХТЭЙ юу — яг тэр шийдвэр сүүлийнх, ноорог байгаа */
+  const backOn = !review && !!backMarks && dirtyN > 0 && lastDecision?.oid === backMarks.oid;
+  /*
+   * ⚠️ ТЭМДЭГ ЗӨВХӨН САНАЛД БАЙСАН, УТГА НЬ ХЭВЭЭР МӨРД (2026-09-25 аудит #3).
+   *    Урьд нь гүйцэтгэгчийн ОДООГИЙН ноорогтой тулгадаг тул засаж эхэлсэн
+   *    улаан мөр улаан хэвээр, саналд огт байгаагүй ШИНЭ засвар «зөвшөөрөөгүй»
+   *    улаан болж харагддаг байв. Одоо: мөр саналд байх + утга нь саналынхтай
+   *    ИЖИЛ (зохиогч хөндөөгүй блок/талбар — `base`-тэй ижил — тооцохгүй) бол
+   *    л тэмдэглэнэ; өөрчлөгдмөгц саармаг.
+   */
+  const backMarkMap = useMemo(() => {
+    const out = new Map<number, 'ok' | 'bad'>();
+    if (!backOn || !backMarks) return out;
+    const p = backMarks.pay;
+    const pb = p.base;
+    const idx = new Map(plan.map((r, i) => [r.oid, i]));
+    const oids = new Set<number>();
+    for (const k of [...Object.keys(p.spans), ...Object.keys(p.deps), ...Object.keys(p.actual), ...Object.keys(p.res)]) {
+      oids.add(Number(k));
+    }
+    for (const k of [...Object.keys(p.obyem), ...Object.keys(p.obres ?? {})]) {
+      const code = Number(k.slice(0, k.indexOf('|')));
+      const i = Number.isFinite(code) ? byCode.get(code) : undefined;
+      if (i != null && plan[i]) oids.add(plan[i].oid);
+    }
+    const resMap = (o: Record<string, { hun: number | null; mashin: number | null }> | undefined) =>
+      new Map(Object.entries(o ?? {}).map(([s0, v]) => [s0, { hun: v.hun, mashin: v.mashin }]));
+    const samePay = (r: PlanRow, i: number): boolean => {
+      const k = String(r.oid);
+      const arr = p.spans[k];
+      if (arr) {
+        const bs = pb?.spans[k];
+        for (let b = 0; b < n; b++) {
+          const s0 = arr[b];
+          const v0 = s0 ? { start: s0.start, end: s0.end } : null;
+          if (bs && sameSpan(v0, bs[b] ?? null)) continue;
+          /* Бүлгийн хүүхдээс бодогдох блок — зохиогчийн утга биш */
+          if (r.group && hasDatedLeaf(plan, i, b, (kk) => plan[kk].spans)) continue;
+          if (!sameSpan(v0, r.spans[b] ?? null)) return false;
+        }
+      }
+      if (k in p.deps) {
+        const was = pb?.deps && k in pb.deps ? pb.deps[k] : undefined;
+        if (!(was !== undefined && (was ?? '') === p.deps[k])
+          && formatDeps(parseDeps(p.deps[k])) !== formatDeps(r.deps)) return false;
+      }
+      const ac = p.actual[k];
+      if (ac) {
+        const bs = pb?.actual?.[k];
+        for (let b = 0; b < n; b++) {
+          const s0 = ac.start[b] ?? null;
+          const e0 = ac.end[b] ?? null;
+          if (!(bs && s0 === (bs.start[b] ?? null)) && s0 !== (r.aStart?.[b] ?? null)) return false;
+          if (!(bs && e0 === (bs.end[b] ?? null)) && e0 !== (r.aEnd?.[b] ?? null)) return false;
+        }
+      }
+      const rs = p.res[k];
+      if (rs) {
+        const bs = pb?.res?.[k];
+        if (!(bs && rs.hun === (bs.hun ?? null)) && rs.hun !== (r.hun ?? null)) return false;
+        if (!(bs && rs.mashin === (bs.mashin ?? null)) && rs.mashin !== (r.mashin ?? null)) return false;
+      }
+      if (r.des != null) {
+        const pre = `${r.des}|`;
+        for (const [key, months] of Object.entries(p.obyem)) {
+          if (!key.startsWith(pre)) continue;
+          const want = new Map(Object.entries(months));
+          if (pb?.obyem && key in pb.obyem && sameMonths(want, new Map(Object.entries(pb.obyem[key])))) continue;
+          const now = obDraft.get(key) ?? obPlan.get(r.des)?.get(key.slice(pre.length));
+          if (!sameMonths(now, want)) return false;
+        }
+        for (const [key, months] of Object.entries(p.obres ?? {})) {
+          if (!key.startsWith(pre)) continue;
+          const want = resMap(months);
+          if (pb?.obres && key in pb.obres && sameRes(want, resMap(pb.obres[key]))) continue;
+          const now = obResDraft.get(key) ?? obRes.get(r.des)?.get(key.slice(pre.length));
+          if (!sameRes(now, want)) return false;
+        }
+      }
+      return true;
+    };
+    for (const o of oids) {
+      if (!reviewSet.has(o)) continue;
+      const i = idx.get(o);
+      if (i == null) continue;
+      if (!samePay(plan[i], i)) continue;
+      out.set(o, backMarks.ok.has(o) ? 'ok' : 'bad');
+    }
+    return out;
+  }, [backOn, backMarks, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes]);
   const markOf = (r: PlanRow): 'ok' | 'bad' | undefined => {
     if (!reviewSet.has(r.oid)) return undefined;
     if (review) return okRows.has(r.oid) ? 'ok' : 'bad';
-    if (backMarks) return backMarks.ok.has(r.oid) ? 'ok' : 'bad';
+    if (backOn) return backMarkMap.get(r.oid);
     return undefined;
   };
 
@@ -3961,6 +4156,26 @@ export function Huvaari({
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirtyN, previewing]);
+  /*
+   * ⚠️ ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ (2026-09-25 аудит #4): батлах явцад (`approving`)
+   *    эсвэл бичилт/шийдвэр явж байхад (`busy`) өөр харагдац руу шилжих, таб
+   *    хаах нь гинжийг `save`-ийн ДАРАА, `decidePlan`-ийн ӨМНӨ тасалж болно.
+   *    `Portal.setView` нь `planNavBusy()`-г асууж баталгаажуулна; таб хаахад
+   *    хөтчийн анхааруулга. Дээрх «урьдчилан харалтад анхааруулахгүй» дүрэмтэй
+   *    зөрчилдөхгүй — энэ нь зөвхөн гинж ЯВЖ БАЙХ хооронд.
+   */
+  const [navId] = useState(() => Symbol('huvaari'));
+  const chainBusy = approving != null || busy;
+  useEffect(() => {
+    if (!chainBusy) return undefined;
+    setPlanNavBusy(navId, true);
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      setPlanNavBusy(navId, false);
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [chainBusy, navId]);
 
   /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23) ══════════════ */
   /**
@@ -4930,7 +5145,9 @@ export function Huvaari({
               if (dirtyN > 3 && !window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид устна.', num(dirtyN)))) return;
               setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
               /* ⚠️ Буцаасан тэмдэглэгээ ноорогтой хамт (2026-09-25 аудит) — үлдвэл дараагийн
-                 ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана. */
+                 ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана.
+                 2026-09-25 #2/#3: шинэ засвар одоо саармаг (`backMarkMap`); «Ноорогт
+                 буцааж засах» эсвэл дахин ачаалалт тэмдгийг дахин тавина. */
               setBackMarks(null);
             }}>
             {tr('Цуцлах')} ({num(dirtyN)})
@@ -5072,7 +5289,7 @@ export function Huvaari({
             <button type="button" className={h.discard}
               /* ⚠️ ЯГ ЭНЭ илгээлт, урьдчилан харсны ДАРАА л (2026-09-25 аудит): урьд нь
                  зуур солигдсон ШИНЭ илгээлтийг хараагүй байж буцааж, `okRows=[]` бичдэг байв. */
-              disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission}
+              disabled={busy || approving != null || !(reviewLive || reviewConflict) || !canApprove || isOwnSubmission}
               onClick={() => { setErr(''); setFlowBox('reject'); }}>
               {tr('Буцаах')}
             </button>
@@ -5213,7 +5430,7 @@ export function Huvaari({
           )}
         </p>
       )}
-      {backMarks && !review && (
+      {backOn && (
         <p className={h.note} role="status">
           {tr('Улаан тэмдэгтэй мөрийг батлагч зөвшөөрөөгүй — засаад дахин илгээнэ үү. Ногоон нь зөвшөөрөгдсөн.')}
         </p>
@@ -5509,7 +5726,7 @@ export function Huvaari({
                        *    давхар зурвас «огноо өөрчлөгдсөн» мэт андуурагдана.
                        * ⚠️ Хуучин огноогүй бол зурахгүй (`null ≠ 0`) — шинэ муж л харагдана.
                        */
-                      const oldSp = (review || backMarks) && !r.group && reviewSet.has(r.oid)
+                      const oldSp = (review || backOn) && !r.group && reviewSet.has(r.oid)
                         ? base[r.i]?.spans[blk] ?? null : null;
                       const showOld = !!(oldSp && !showRef && (!sp || oldSp.start !== sp.start || oldSp.end !== sp.end));
                       const half = showRef || showOld;

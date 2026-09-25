@@ -4960,6 +4960,8 @@ const en: Record<string, string> = {
   "{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.": "{0} cells changed by another path in the meantime — please check them.",
   "Дараагийн зөвшөөрөөгүй мөр рүү гүйлгэнэ (өөрчлөгдсөн блокийг нь сонгоно)": "Scroll to the next unapproved row (selects the changed block)",
   "Дараагийн ✕": "Next ✕",
+  "Санал хооронд нь дахин буулгахад өөрчлөгдсөн мөр нэмэгдсэн — шинэ улаан мөрүүдийг шалгаж ногоон болгоод дахин батална уу.": "Re-applying the submission added changed rows — check the new red rows, mark them green and approve again.",
+  "Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?": "The schedule is being saved/approved — leaving now may interrupt it. Leave anyway?",
 };
 
 export default en;

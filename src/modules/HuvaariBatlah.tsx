@@ -345,7 +345,13 @@ export function HuvaariBatlah({
             ...review,
             onClose: () => setReview(null),
             /* ⚠️ Шийдвэрийн дараа БҮТЭН дахин уншина (`reject`-ийн дүрэм) */
-            onDone: (msg) => { setReview(null); if (msg) setNote(msg); reload(); },
+            /* ⚠️ Алдааг `err`-ээр (2026-09-25 аудит #5) — урьд нь «Шийдвэр
+               хадгалагдсангүй» г.м. алдаа ногоон мэдээ болж харагддаг байв. */
+            onDone: ({ msg, isErr }) => {
+              setReview(null);
+              if (msg) { if (isErr) setErr(msg); else setNote(msg); }
+              reload();
+            },
           }}
         />
       )}

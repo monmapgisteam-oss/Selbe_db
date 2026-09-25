@@ -180,3 +180,23 @@
 .flightBtn:hover { color: var(--ink); }
 .flightBtn:active { transform: scale(0.95); }
 .flightOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+/*
+ * ⚠️ НИСЛЭГИЙН ЗУРВАС × ТУНГАЛАГИЙН ХАВТАН (2026-09-25).
+ *    Каталог нээлттэй үед тунгалагийн хавтан зургийн ДООД хэсэгт (bottom 16px,
+ *    зүүн 222–522px) шилждэг (`opacity.module.css` §КАТАЛОГТОЙ ЗЭРЭГ). Нислэгийн
+ *    зурвас доод ГОЛД (≈W/2 ± 85px, 28–64px) тул ≈1190px-ээс нарийн зурагт хоёр
+ *    давхцаж, «Нислэг 1/2» дарагдахгүй болж байв.
+ * ⚠️ Зурвасыг ХӨДӨЛГӨХГҮЙ, хавтанг зурвасын ДЭЭР (bottom 72px) өргөнө — хэвтээ
+ *    байрлал нь зургийн өргөнөөс хамаардаг ч босоо зай нь хамаардаггүй тул
+ *    бүх өргөнд ажилладаг ганц шийдэл (container query нь `.wrap`-ийн
+ *    хэмжээсийн хязгаарлалт шаардана).
+ * ⚠️ Нөхцөл нь `opacity.module.css`-ийн гурван сонгогчийг ЯГ давтана + зурагт
+ *    нислэгийн зурвас БАЙГАА (зөвхөн 3D). Өвөрмөц чанар 0,3,0 > тэндхийн 0,2,0.
+ *    `top: auto` — нөхцөл зөрвөл хавтан top/bottom хоёрын хооронд сунахгүй.
+ */
+*:has(.flightBar) *:has(> :global(.mapCatalog)) ~ :global(.mapOpacity),
+*:has(.flightBar) *:has(> :global(.mapCatalog)) > :global(.mapOpacity),
+*:has(.flightBar) *:has(> * > :global(.mapCatalog)) > :global(.mapOpacity) {
+  top: auto;
+  bottom: 72px;
+}

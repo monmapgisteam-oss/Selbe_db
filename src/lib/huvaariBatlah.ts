@@ -56,6 +56,24 @@ export const PLAN_STATUS = {
 export type PlanStatus = (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS];
 
 /**
+ * БАТЛАХ/ХАДГАЛАХ ГИНЖ ЯВЖ БУЙ эсэх — `Portal` харагдац солихоос өмнө асууна
+ * (2026-09-25 аудит #4).
+ * ⚠️ ЯАГААД: батлах гинж (`save` → `applyUpdates` → `decidePlan`) нь `Huvaari`
+ *    бүрэлдэхүүний эффектэд явдаг. Харагдац солиход бүрэлдэхүүн салж, эх хуудсанд
+ *    бичсэний ДАРАА, `decidePlan`-ээс ӨМНӨ тасарвал хуваарь батлагдалгүй хөдөлж,
+ *    илгээлт `pending` хэвээр үлддэг байв.
+ * ⚠️ ЭНД (хөнгөн lib) — `Huvaari` нь `dynamic` ачаалалттай тул `Portal` түүнийг
+ *    шууд импортлохгүй. Бүрэлдэхүүн бүр өөрийн `symbol`-оор тэмдэглэнэ.
+ */
+const navBusy = new Set<symbol>();
+export function setPlanNavBusy(id: symbol, on: boolean): void {
+  if (on) navBusy.add(id); else navBusy.delete(id);
+}
+export function planNavBusy(): boolean {
+  return navBusy.size > 0;
+}
+
+/**
  * НЭГ ИЛГЭЭЛТ — нэг багцын хуваарийн санал.
  *
  * ⚠️ `payload` нь `Huvaari`-ийн ГУРВАН ноорогийг агуулна (огноо · уялдаа ·
@@ -441,7 +459,7 @@ function toSubmission(a: Attrs): PlanSubmission | null {
     note: s(a[F.note]),
     rowCount: Number(a[F.rowCount]) || 0,
     payload: String(a[F.payload] ?? ''),
-    okRows: parseOkRows(a[F.okRows]),
+    okRows: parseOkRows(okRowsAttr(a)),
   };
 }
 
@@ -477,9 +495,27 @@ export function parseOkRows(v: unknown): number[] | null {
 /* ⚠️ ЗӨВХӨН «БАЙГАА»-г кэшлэнэ (2026-09-25 аудит): «алга» гэснийг кэшлэвэл админ
    AGOL дээр талбар нэмсний ДАРАА ч сешн даяар «алга» гэж үргэлжилнэ. */
 let okRowsLenCache = 0;
+/**
+ * ⚠️ «АЛГА» ХАРИУГ БОГИНО ХУГАЦААНД кэшлэнэ (2026-09-25 аудит #9): урьд нь огт
+ *    кэшлэдэггүй тул талбаргүй хүснэгтэд `loadPending`/`loadHistory`/`decidePlan`
+ *    бүр layer-ийн мэдээллийг ДАХИН татдаг байв (дуудлага бүр +1 хүсэлт).
+ *    60 секунд — админ AGOL дээр талбар нэмсний дараа сешн даяар «алга» гэж
+ *    гацахгүй. ⚠️ Зөвхөн АМЖИЛТТАЙ хариу (талбарын жагсаалт ирсэн) кэшлэгдэнэ;
+ *    сүлжээний алдаа кэшлэгдэхгүй.
+ */
+const OK_ROWS_MISS_TTL = 60_000;
+let okRowsMissAt = 0;
+/**
+ * Талбарын ЖИНХЭНЭ нэр (том/жижиг үсэг AGOL-ийнхоор) — `outFields`, бичилт,
+ * уншилт гурвуулаа үүгээр (2026-09-25 аудит #9). ⚠️ ArcGIS attributes-ийн
+ * түлхүүр нь схемийн нэрийн ЯГ бичлэгээр ирдэг тул `a[F.okRows]` нь
+ * `Zovshoorson_Mor` г.м. нэртэй талбарыг уншихгүй байв.
+ */
+let okRowsName: string = F.okRows;
 /** Талбарын урт (тэмдэгт); `0` = талбар алга/уншигдсангүй */
 async function okRowsFieldLen(): Promise<number> {
   if (okRowsLenCache > 0) return okRowsLenCache;
+  if (okRowsMissAt && Date.now() - okRowsMissAt < OK_ROWS_MISS_TTL) return 0;
   const url = await tableUrl(false);
   if (!url) return 0;
   try {
@@ -488,11 +524,20 @@ async function okRowsFieldLen(): Promise<number> {
     const f = fields.find((x) => (x.name ?? '').toLowerCase() === F.okRows);
     /* урт заагаагүй бол AGOL-ийн анхдагч 256 гэж үзнэ */
     const len = f ? (Number(f.length) > 0 ? Number(f.length) : 256) : 0;
-    if (len > 0) okRowsLenCache = len;
+    if (len > 0) { okRowsLenCache = len; okRowsName = f?.name ?? F.okRows; okRowsMissAt = 0; }
+    /* ⚠️ Талбарын жагсаалт ИРСЭН үед л «алга»-г кэшлэнэ — хоосон/буруу хариу биш */
+    else if (fields.length) okRowsMissAt = Date.now();
     return len;
   } catch {
     return 0;
   }
+}
+/** Мөрийн attributes-аас `zovshoorson_mor`-ыг нэрийн том/жижиг үсэг үл харгалзан уншина */
+function okRowsAttr(a: Attrs): unknown {
+  if (okRowsName in a) return a[okRowsName];
+  if (F.okRows in a) return a[F.okRows];
+  const k = Object.keys(a).find((x) => x.toLowerCase() === F.okRows);
+  return k ? a[k] : undefined;
 }
 export async function okRowsField(): Promise<boolean> {
   return (await okRowsFieldLen()) > 0;
@@ -527,7 +572,7 @@ const HEAD_FIELDS = [
 ].join(',');
 /** Толгой + зөвшөөрсөн мөр (талбар БАЙГАА үед л — `okRowsField`-ийн ⚠️) */
 const headFields = async (): Promise<string> =>
-  ((await okRowsField()) ? `${HEAD_FIELDS},${F.okRows}` : HEAD_FIELDS);
+  ((await okRowsField()) ? `${HEAD_FIELDS},${okRowsName}` : HEAD_FIELDS);
 
 /**
  * Багцын СҮҮЛИЙН илгээлт — хуудас нээхэд «хүлээгдэж буй юу» гэдгийг мэднэ.
@@ -884,7 +929,7 @@ export async function decidePlan(args: {
     /* ⚠️ УРТ ХЭТЭРВЭЛ БИЧИХГҮЙ (2026-09-25 аудит): AGOL-ийн анхдагч 256 тэмдэгттэй
        талбарт ~35-аас олон мөр багтахгүй — хэтэрсэн утга `applyEdits`-ийг бүхэлд нь
        унагаж, батлагч БУЦААЖ ЧАДАХГҮЙ болно. Шийдвэр чухал, тэмдэглэгээ нэмэлт. */
-    if (len > 0 && js.length <= len) attrs[F.okRows] = js;
+    if (len > 0 && js.length <= len) attrs[okRowsName] = js;
     else if (len > 0) warn = tr('«{0}» талбар богино ({1} тэмдэгт) — зөвшөөрсөн мөрийн тэмдэглэгээ багтсангүй (шийдвэр хадгалагдсан). AGOL дээр талбарын уртыг 65536 болгоно уу.', F.okRows, String(len));
     else warn = tr('Батлах хүснэгтэд «{0}» талбар алга — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан). AGOL дээр String (урт 65536) талбар нэмнэ үү.', F.okRows);
   }

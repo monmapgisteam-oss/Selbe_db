@@ -89,6 +89,7 @@ import {
   type ViewKey,
 } from '@/lib/services';
 import { readParam, writeParams } from '@/lib/urlState';
+import { planNavBusy } from '@/lib/huvaariBatlah';
 import { num } from '@/lib/format';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
@@ -422,7 +423,13 @@ function PortalContent(
   // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
   const totals = usePlanTotals(zone, !standalone, catalogIds);
 
+  /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
+     (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
+  const viewNowRef = useRef(view);
+  viewNowRef.current = view;
   const setView = useCallback((v: ViewKey) => {
+    if (v !== viewNowRef.current && planNavBusy()
+      && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);

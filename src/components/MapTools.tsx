@@ -141,11 +141,23 @@ export function MapTools({
    *    { top: … }` дарж бичих дүрмээс (generalDash) ДАВАМГАЙЛАХ ёстой.
    *    `dock` зохиомж (зүүн хавтасны толгой) нь зургийн дээд ирмэгт наалддаг
    *    тул хамаарахгүй.
+   * ⚠️ 2026-09-25: тогтмол 205px БИШ, `min(205px, 40%)` — намхан зурагт
+   *    (≈280px-ээс доош) 205px нь бариул ба зурвасыг зургийн ДООД ирмэгээс
+   *    гаргаж, `calc(100% − 279px)` нь сөрөг өндөр өгч зурвас алга болдог
+   *    байв. Намхан зурагт Esri-ийн луужинг хэсэгчлэн дарах нь товчнууд
+   *    бүрэн алга болсноос дээр. `maxHeight` нь доод талдаа 96px-ээс багасахгүй.
    */
   const lift = !dock && dim !== '2d';
-  const TOP_3D = 205;
-  const barStyle = lift ? { top: TOP_3D, maxHeight: `calc(100% - ${TOP_3D + 74}px)` } : undefined;
+  const TOP_3D = 'min(205px, 40%)';
+  const barStyle = lift
+    ? { top: TOP_3D, maxHeight: `max(96px, calc(100% - ${TOP_3D} - 74px))` }
+    : undefined;
   const topStyle = lift ? { top: TOP_3D } : undefined;
+  /* Бүсийн хавтан — зурвастай ижил `top`, өндөр нь зургийн доод ирмэгт багтана
+     (`.zonePanel`-ийн `calc(100% − 130px)` нь 96px-ийн `top`-д тооцоологдсон). */
+  const zoneStyle = lift
+    ? { top: TOP_3D, maxHeight: `max(120px, calc(100% - ${TOP_3D} - 20px))` }
+    : undefined;
 
   return (
     <>
@@ -258,7 +270,7 @@ export function MapTools({
     {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
         байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
     {setZone && zoneShown && (
-      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`} style={topStyle}>
+      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`} style={zoneStyle}>
         <header className={s.zoneHead}>
           <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
           <button

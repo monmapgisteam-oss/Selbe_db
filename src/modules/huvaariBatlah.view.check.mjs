@@ -279,22 +279,31 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
   /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
-  assert.ok(/setBackMarks\(back && ap\.ok && lastDecision\.okRows/.test(H),
+  assert.ok(/if \(back && ap\.ok && lastDecision\.okRows\) \{\s*setBackMarks\(/.test(H),
     'Huvaari: буцаагдсан саналын улаан/ногоон тэмдэглэгээ тавигдахгүй');
+  /* 2026-09-25 #2: тэмдэг `lastDecision`-оос (дахин ачаалалт/хамт ажиллагч) үүснэ */
+  assert.ok(/loadPayload\(d\.oid\)[\s\S]{0,160}setBackMarks\(\{ oid: d\.oid/.test(H),
+    'Huvaari: буцаасан тэмдэглэгээ зөвхөн санах ойд — дахин ачаалахад алга болно');
+  /* 2026-09-25 #3: тэмдэг саналын утгатай ИЖИЛ мөрд л */
+  assert.ok(/if \(backOn\) return backMarkMap\.get\(r\.oid\)/.test(H) && /if \(!samePay\(plan\[i\], i\)\) continue;/.test(H),
+    'Huvaari: буцаасан тэмдэг гүйцэтгэгчийн одоогийн ноорогтой тулгагдаж байна (саналтай биш)');
   /* Хяналтын эффект preview-ийн ДАРАА (deps нь зурагдалтад уншигдана → TDZ) */
   assert.ok(H.indexOf('const reviewStarted') > H.indexOf('const preview = useCallback'),
     'Huvaari: хяналтын эффект `preview`-ээс ӨМНӨ — TDZ-ээр хуудас унана');
 
   const L = readCode('src/lib/huvaariBatlah.ts');
   /* Байхгүй талбарыг outFields-д нэрлэвэл БҮХ query унана */
-  assert.ok(/okRowsField\(\)\)\s*\?\s*`\$\{HEAD_FIELDS\},\$\{F\.okRows\}`/.test(L),
+  assert.ok(/okRowsField\(\)\)\s*\?\s*`\$\{HEAD_FIELDS\},\$\{okRowsName\}`/.test(L),
     'huvaariBatlah: `zovshoorson_mor` талбарыг байгаа эсэхийг шалгалгүй уншиж байна');
   /* Талбаргүй ЭСВЭЛ богино талбарт бичвэл `applyEdits` бүхэлдээ унаж буцааж чадахгүй */
-  assert.ok(/if \(len > 0 && js\.length <= len\) attrs\[F\.okRows\]/.test(L),
+  assert.ok(/if \(len > 0 && js\.length <= len\) attrs\[okRowsName\]/.test(L),
     'huvaariBatlah: `zovshoorson_mor`-г талбар/уртыг шалгалгүй бичиж байна — шийдвэр унана');
   /* «Алга»-г кэшлэвэл талбар нэмсний дараа ч сешн даяар алга гэж үргэлжилнэ */
-  assert.ok(/if \(len > 0\) okRowsLenCache = len;/.test(L),
+  assert.ok(/if \(len > 0\) \{ okRowsLenCache = len;/.test(L),
     'huvaariBatlah: талбар «алга» гэсэн хариуг кэшилж байна');
+  /* 2026-09-25 #9: «алга»-г зөвхөн богино TTL-ээр; нэрийг том/жижиг үл харгалзан уншина */
+  assert.ok(/Date\.now\(\) - okRowsMissAt < OK_ROWS_MISS_TTL/.test(L) && /okRows: parseOkRows\(okRowsAttr\(a\)\)/.test(L),
+    'huvaariBatlah: «талбар алга» TTL-гүй эсвэл okRows нэрийн том/жижгээр уншигдахгүй');
   /* Батлах явцад Esc хаахгүй — хагас батлалт */
   assert.ok(/escBlockRef\.current = busy \|\| approving != null/.test(H),
     'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
