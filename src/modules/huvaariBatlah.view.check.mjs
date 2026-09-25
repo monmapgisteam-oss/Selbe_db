@@ -240,3 +240,67 @@ console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
     'Huvaari: `pending` тулгалгүйгээр цонх нээж байна — товч дарсан атлаа юу ч болохгүй');
 }
 console.log('✅ батлах шилжилт — санах ойгоор, setView-ээр, pending тулгасны дараа');
+
+/* ══════════ 11. БҮТЭН ДЭЛГЭЦИЙН ХЯНАЛТ (2026-09-25) ══════════ */
+/**
+ * Хэрэглэгч: «илгээсний дараа батлах хэсэг тухайн багцын хуваарийг бүхэлд нь,
+ * Хуваарь хэсэгт харж байгаа шиг харж батална; гүйцэтгэлтэй адил алийг нь
+ * зөвшөөрсөн, алийг нь зөвшөөрөөгүйг гүйцэтгэгч харна».
+ *
+ * ⚠️ Гурван зүйлийг механикаар барина:
+ *   (1) Дараалал ӨӨРИЙН Gantt бичээгүй — `Huvaari`-г `review` горимоор ДАХИН
+ *       ашиглана (батлах гинж ганцхан газар — §2-ийн цөм инвариант хэвээр).
+ *   (2) «Батлах» нь БҮХ өөрчлөгдсөн мөр ногоон болтол хаалттай (`allOk`) —
+ *       эс бөгөөс мөр тус бүрийн хяналт утгагүй.
+ *   (3) Буцаахад зөвшөөрсөн мөрүүд `okRows`-оор ХАДГАЛАГДАНА — эс бөгөөс
+ *       гүйцэтгэгч улаан/ногоон харахгүй.
+ */
+{
+  const V = readCode(VIEW);
+  assert.ok(/<Huvaari[\s\S]{0,80}review=/.test(V),
+    'HuvaariBatlah: `<Huvaari review>` алга — хуваарь бүтэн дэлгэцээр харагдахгүй');
+  assert.ok(!V.includes('plLanes') && !V.includes('propagate('),
+    'HuvaariBatlah: өөрийн Gantt бичигдсэн — `Huvaari`-г дахин ашиглах ёстой');
+
+  const H = readCode('src/modules/Huvaari.tsx');
+  assert.ok(/review\?:\s*HuvaariReview/.test(H), 'Huvaari: `review` prop алга');
+  /* Засвар хаалттай: canEdit нь review-д худал */
+  assert.ok(/const canEdit = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H),
+    'Huvaari: хяналтын горимд засвар хаагдаагүй (`canEdit`)');
+  /* Батлах товч allOk-оор хаалттай */
+  const b0 = H.indexOf('{review && (');
+  const bar = b0 > 0 ? H.slice(b0, H.indexOf('</header>', b0)) : '';
+  assert.ok(/!allOk/.test(bar) && /decide\(true/.test(bar),
+    'Huvaari: хяналтын «Батлах» нь бүх мөр ногоон болохыг шаардахгүй байна');
+  assert.ok(/isOwnSubmission/.test(bar), 'Huvaari: хяналтад өөрийн илгээлтийн хамгаалалт алга');
+  /* Буцаахад okRows дамжина */
+  assert.ok(/decidePlan\(\{[\s\S]{0,260}okRows:\s*okList/.test(H),
+    'Huvaari: буцаахад зөвшөөрсөн мөр `decidePlan`-д дамжихгүй');
+  assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
+    'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
+  /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
+  assert.ok(/setBackMarks\(back && ap\.ok && lastDecision\.okRows/.test(H),
+    'Huvaari: буцаагдсан саналын улаан/ногоон тэмдэглэгээ тавигдахгүй');
+  /* Хяналтын эффект preview-ийн ДАРАА (deps нь зурагдалтад уншигдана → TDZ) */
+  assert.ok(H.indexOf('const reviewStarted') > H.indexOf('const preview = useCallback'),
+    'Huvaari: хяналтын эффект `preview`-ээс ӨМНӨ — TDZ-ээр хуудас унана');
+
+  const L = readCode('src/lib/huvaariBatlah.ts');
+  /* Байхгүй талбарыг outFields-д нэрлэвэл БҮХ query унана */
+  assert.ok(/okRowsField\(\)\)\s*\?\s*`\$\{HEAD_FIELDS\},\$\{F\.okRows\}`/.test(L),
+    'huvaariBatlah: `zovshoorson_mor` талбарыг байгаа эсэхийг шалгалгүй уншиж байна');
+  /* Талбаргүй ЭСВЭЛ богино талбарт бичвэл `applyEdits` бүхэлдээ унаж буцааж чадахгүй */
+  assert.ok(/if \(len > 0 && js\.length <= len\) attrs\[F\.okRows\]/.test(L),
+    'huvaariBatlah: `zovshoorson_mor`-г талбар/уртыг шалгалгүй бичиж байна — шийдвэр унана');
+  /* «Алга»-г кэшлэвэл талбар нэмсний дараа ч сешн даяар алга гэж үргэлжилнэ */
+  assert.ok(/if \(len > 0\) okRowsLenCache = len;/.test(L),
+    'huvaariBatlah: талбар «алга» гэсэн хариуг кэшилж байна');
+  /* Батлах явцад Esc хаахгүй — хагас батлалт */
+  assert.ok(/escBlockRef\.current = busy \|\| approving != null/.test(H),
+    'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
+  /* flowReady нь pending-тэй НЭГ зурагдалтад — «аль хэдийн шийдвэрлэгдсэн» худал алдаа */
+  const rf = H.slice(H.indexOf('const refreshFlow = useCallback'), H.indexOf('useEffect(() => { void refreshFlow(); }'));
+  assert.ok(rf.indexOf('setFlowReady(true)') > rf.indexOf('await loadPending'),
+    'Huvaari: `flowReady=true` нь `loadPending`-ээс ӨМНӨ — хяналт хүлээгдэж буйг шийдвэрлэгдсэн гэж андуурна');
+}
+console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахин ашиглана · бүгд ногоон · okRows хадгална');

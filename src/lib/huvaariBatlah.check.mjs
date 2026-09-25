@@ -28,7 +28,7 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-const { PLAN_STATUS, parsePayload, decidePlan, withdrawPlan } = await import('@/lib/huvaariBatlah.ts');
+const { PLAN_STATUS, parsePayload, parseOkRows, decidePlan, withdrawPlan } = await import('@/lib/huvaariBatlah.ts');
 
 /* ── 1. Төлөвийн утгууд — өгөгдөл тул ОРЧУУЛАГДАХГҮЙ ── */
 assert.equal(PLAN_STATUS.pending, 'Хүлээгдэж буй');
@@ -277,5 +277,25 @@ console.log('✅ хоосон агуулга хүчинтэй');
   assert.ok(iNoP > iLoad && iNoP < iWd, 'Huvaari.withdraw: уншигдаагүй агуулгад татах зам хаагдаагүй');
 }
 console.log('✅ татах дараалал — унш → төрөл → тат → ноорог');
+
+/* ══════════ ЗӨВШӨӨРСӨН МӨР (2026-09-25) — гүйцэтгэлийн okCells загвар ══════════ */
+/**
+ * ⚠️ `null` ≠ `[]`: `null` = тэмдэглээгүй (талбаргүй/хуучин буцаалт) → гүйцэтгэгчид
+ *    улаан/ногоон ОГТ харагдахгүй; `[]` = юу ч зөвшөөрөөгүй → бүх мөр улаан.
+ *    Хольвол хуучин буцаалтын бүх мөр ХУДЛАА улаан болно.
+ * ⚠️ FAIL-CLOSED: эвдэрсэн жагсаалтын ХАГАСЫГ хэрэглэвэл зарим мөр худлаа ногоон.
+ */
+{
+  assert.equal(parseOkRows(null), null, 'null → тэмдэглээгүй');
+  assert.equal(parseOkRows(''), null, 'хоосон мөр → тэмдэглээгүй');
+  assert.deepEqual(parseOkRows('[]'), [], '[] → юу ч зөвшөөрөөгүй (null БИШ)');
+  assert.deepEqual(parseOkRows('[12,40]'), [12, 40]);
+  assert.deepEqual(parseOkRows('["12","40"]'), [12, 40], 'тоон мөр хүлээн авна');
+  assert.equal(parseOkRows('[12,"x"]'), null, 'нэг эвдэрсэн элемент → бүхэлд нь null');
+  assert.equal(parseOkRows('[1.5]'), null, 'бутархай oid → null');
+  assert.equal(parseOkRows('{ буруу'), null, 'JSON биш → null');
+  assert.equal(parseOkRows('{"a":1}'), null, 'массив биш → null');
+}
+console.log('✅ зөвшөөрсөн мөр — null ≠ [] · fail-closed');
 
 console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал');

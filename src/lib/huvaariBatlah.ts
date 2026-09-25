@@ -83,6 +83,17 @@ export type PlanSubmission = {
   rowCount: number;
   /** Хадгалагдсан ноорог — задлахад `parsePayload` */
   payload: string;
+  /**
+   * БАТЛАГЧИЙН ЗӨВШӨӨРСӨН МӨРҮҮД — мөрийн `oid` (2026-09-25, хэрэглэгч:
+   * «гүйцэтгэлтэй адил алийг нь зөвшөөрсөн, алийг нь зөвшөөрөөгүйг гүйцэтгэгч харна»).
+   *
+   * ⚠️ `hyanalt.okCells`-ийн ЗАГВАР: зөвхөн ЗӨВШӨӨРСӨН мөрийг хадгална —
+   *    «өөрчлөгдсөн боловч энд ороогүй» нь улаан (засах ёстой) гэсэн үг.
+   * ⚠️ `null` ≠ `[]`: `null` = талбар хүснэгтэд БАЙХГҮЙ эсвэл тэмдэглээгүй
+   *    (хуучин буцаалт) → гүйцэтгэгчид улаан/ногоон ОГТ харуулахгүй;
+   *    `[]` = бүгдийг зөвшөөрөөгүй → өөрчлөгдсөн бүх мөр улаан.
+   */
+  okRows: number[] | null;
 };
 
 /**
@@ -178,6 +189,13 @@ export const F = {
   note: 'tailbar',
   rowCount: 'mor_too',
   payload: 'aguulga',
+  /**
+   * Зөвшөөрсөн мөрийн `oid`-ийн JSON массив (2026-09-25) — `PlanSubmission.okRows`.
+   * ⚠️ 2026-09-25-ноос ӨМНӨ үүссэн хүснэгтэд БАЙХГҮЙ — код үүсгэхгүй (хүснэгтийн
+   *    бүтцийг зөвхөн хэрэглэгч AGOL дээр өөрчилнө). Байгаа эсэхийг
+   *    `okRowsField()` шалгана; байхгүй бол бичихгүй, уншихгүй, ил анхааруулна.
+   */
+  okRows: 'zovshoorson_mor',
 } as const;
 
 /* ══════════════════════ ArcGIS давхарга ══════════════════════ */
@@ -319,6 +337,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
         { name: F.note, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
         { name: F.rowCount, type: 'esriFieldTypeInteger', nullable: true, editable: true },
         { name: F.payload, type: 'esriFieldTypeString', length: 1048576, nullable: true, editable: true },
+        { name: F.okRows, type: 'esriFieldTypeString', length: 65536, nullable: true, editable: true },
       ],
     }],
   };
@@ -422,7 +441,61 @@ function toSubmission(a: Attrs): PlanSubmission | null {
     note: s(a[F.note]),
     rowCount: Number(a[F.rowCount]) || 0,
     payload: String(a[F.payload] ?? ''),
+    okRows: parseOkRows(a[F.okRows]),
   };
+}
+
+/**
+ * Зөвшөөрсөн мөрийн жагсаалтыг задлах.
+ * ⚠️ FAIL-CLOSED: эвдэрсэн/танигдахгүй бол `null` — «тэмдэглээгүй» гэж үзнэ,
+ *    хагас задарсан жагсаалтаар зарим мөрийг ХУДЛАА ногоон болгохгүй.
+ */
+export function parseOkRows(v: unknown): number[] | null {
+  if (v == null || String(v).trim() === '') return null;
+  try {
+    const j = JSON.parse(String(v)) as unknown;
+    if (!Array.isArray(j)) return null;
+    const out: number[] = [];
+    for (const x of j) {
+      const n = Number(x);
+      if (!Number.isInteger(n)) return null;
+      out.push(n);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `zovshoorson_mor` талбар хүснэгтэд БАЙГАА ЭСЭХ (2026-09-25).
+ * ⚠️ Зөвхөн АМЖИЛТТАЙ хариуг кэшлэнэ — сүлжээний түр алдаа «талбар алга»
+ *    болж сешн даяар тогтмолжихоос сэргийлнэ (`tableUrl`-ийн ижил дүрэм).
+ * ⚠️ Байхгүй талбарыг `outFields`-д нэрлэвэл ArcGIS БҮХ query-г алдаатай
+ *    буцаадаг — тиймээс толгойн талбарын жагсаалт ҮҮНЭЭС хамаарна.
+ */
+/* ⚠️ ЗӨВХӨН «БАЙГАА»-г кэшлэнэ (2026-09-25 аудит): «алга» гэснийг кэшлэвэл админ
+   AGOL дээр талбар нэмсний ДАРАА ч сешн даяар «алга» гэж үргэлжилнэ. */
+let okRowsLenCache = 0;
+/** Талбарын урт (тэмдэгт); `0` = талбар алга/уншигдсангүй */
+async function okRowsFieldLen(): Promise<number> {
+  if (okRowsLenCache > 0) return okRowsLenCache;
+  const url = await tableUrl(false);
+  if (!url) return 0;
+  try {
+    const j = await req(url, {});
+    const fields = (j.fields as { name?: string; length?: number }[] | undefined) ?? [];
+    const f = fields.find((x) => (x.name ?? '').toLowerCase() === F.okRows);
+    /* урт заагаагүй бол AGOL-ийн анхдагч 256 гэж үзнэ */
+    const len = f ? (Number(f.length) > 0 ? Number(f.length) : 256) : 0;
+    if (len > 0) okRowsLenCache = len;
+    return len;
+  } catch {
+    return 0;
+  }
+}
+export async function okRowsField(): Promise<boolean> {
+  return (await okRowsFieldLen()) > 0;
 }
 
 async function query(where: string, outFields: string): Promise<Attrs[]> {
@@ -452,6 +525,9 @@ const HEAD_FIELDS = [
   F.oid, F.pkgKey, F.pkgGroup, F.status, F.author, F.authorSent,
   F.approver, F.approverAt, F.reason, F.note, F.rowCount,
 ].join(',');
+/** Толгой + зөвшөөрсөн мөр (талбар БАЙГАА үед л — `okRowsField`-ийн ⚠️) */
+const headFields = async (): Promise<string> =>
+  ((await okRowsField()) ? `${HEAD_FIELDS},${F.okRows}` : HEAD_FIELDS);
 
 /**
  * Багцын СҮҮЛИЙН илгээлт — хуудас нээхэд «хүлээгдэж буй юу» гэдгийг мэднэ.
@@ -482,7 +558,9 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<PlanSubmi
   const esc = pkgKey.replace(/'/g, "''");
   const rows = await query(
     `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${PLAN_STATUS.pending}'`,
-    HEAD_FIELDS,
+    /* ⚠️ Түүхэнд л зөвшөөрсөн мөр хэрэгтэй (буцаагдсаныг гүйцэтгэгч харна) —
+       хүлээгдэж буй жагсаалт хөнгөн хэвээр (`HEAD_FIELDS`). */
+    await headFields(),
   );
   const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
   return list.slice(-limit).reverse();
@@ -716,7 +794,14 @@ export async function decidePlan(args: {
    */
   author?: string;
   reason?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Батлагчийн ЗӨВШӨӨРСӨН мөрүүд (2026-09-25) — `PlanSubmission.okRows`.
+   * ⚠️ `undefined` = тэмдэглээгүй (талбарт ХҮРЭХГҮЙ). Талбар хүснэгтэд байхгүй
+   *    бол шийдвэр ХАДГАЛАГДАНА, гэвч `warn`-аар ил хэлнэ — гүйцэтгэгч
+   *    улаан/ногоон тэмдэглэгээг харахгүй.
+   */
+  okRows?: number[];
+}): Promise<{ ok: boolean; error?: string; warn?: string }> {
   /*
    * ⚠️ ДҮРМҮҮДИЙГ СҮЛЖЭЭНЭЭС ӨМНӨ шалгана. `tableUrl`-ийн ДАРАА байрлуулбал
    *    ArcGIS уншигдахгүй орчинд «хүснэгт олдсонгүй» гэсэн буруу шалтгаан
@@ -792,13 +877,24 @@ export async function decidePlan(args: {
     [F.approverAt]: Date.now(),
     [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
   };
+  let warn: string | undefined;
+  if (args.okRows) {
+    const js = JSON.stringify(args.okRows.filter((x) => Number.isInteger(x)));
+    const len = await okRowsFieldLen();
+    /* ⚠️ УРТ ХЭТЭРВЭЛ БИЧИХГҮЙ (2026-09-25 аудит): AGOL-ийн анхдагч 256 тэмдэгттэй
+       талбарт ~35-аас олон мөр багтахгүй — хэтэрсэн утга `applyEdits`-ийг бүхэлд нь
+       унагаж, батлагч БУЦААЖ ЧАДАХГҮЙ болно. Шийдвэр чухал, тэмдэглэгээ нэмэлт. */
+    if (len > 0 && js.length <= len) attrs[F.okRows] = js;
+    else if (len > 0) warn = tr('«{0}» талбар богино ({1} тэмдэгт) — зөвшөөрсөн мөрийн тэмдэглэгээ багтсангүй (шийдвэр хадгалагдсан). AGOL дээр талбарын уртыг 65536 болгоно уу.', F.okRows, String(len));
+    else warn = tr('Батлах хүснэгтэд «{0}» талбар алга — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан). AGOL дээр String (урт 65536) талбар нэмнэ үү.', F.okRows);
+  }
   try {
     const j = await req(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
     return editOk(j.updateResults)
-      ? { ok: true }
+      ? { ok: true, warn }
       : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };

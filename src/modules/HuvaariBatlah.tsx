@@ -17,8 +17,11 @@
  * ═══════════════════════════════════════════════════════════════════════
  * ⚠️⚠️ ЭНЭ ХУУДАС ЭХ ӨГӨГДӨЛД ХЭЗЭЭ Ч БИЧИХГҮЙ ⚠️⚠️
  *
- * БАТЛАХ нь энд БИШ — товч дарахад тэр багцаар «Хуваарь» хуудас нээгдэж,
- * шийдвэрлэх цонх өөрөө гарна (`onApprove` → `Portal.planJump`).
+ * БАТЛАХ нь энд БИШ — товч дарахад тэр багцын хуваарь ЭНЭ хуудсан дээр бүтэн
+ * дэлгэцээр нээгдэнэ (`<Huvaari review>`, 2026-09-25; урьд нь «Хуваарь» хуудас
+ * руу шилждэг байв — `Portal.planJump`). Батлагч өөрчлөгдсөн мөр бүрийг
+ * зөвшөөрч (ногоон) батална; буцаахад зөвшөөрсөн мөрүүд хадгалагдаж
+ * гүйцэтгэгчид улаан/ногоон болж харагдана. Батлах гинж `Huvaari`-ийнх хэвээр.
  *
  * ЯАГААД: батлах нь `Huvaari.tsx`-д ГУРВАН шаттай гинж —
  *   `setApproving(oid)` → `useEffect` → `save()` → `applyUpdates()` →
@@ -42,6 +45,7 @@ import { roleForUser, type ViewKey } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
+import { Huvaari } from '@/modules/Huvaari';
 import {
   decidePlan, loadAllPending, loadPayload, planTableState, withdrawPlan,
   type PlanPayload, type PlanSubmission,
@@ -80,9 +84,15 @@ type Detail =
   | { k: 'ok'; p: PlanPayload };
 
 export function HuvaariBatlah({
-  onApprove, navScope = 'all',
+  onApprove: _onApprove, navScope: _navScope = 'all',
 }: {
-  /** Батлахаар «Хуваарь» хуудас руу шилжүүлнэ (`Portal` хэрэгжүүлнэ) */
+  /**
+   * ⚠️ 2026-09-25-НООС ХЭРЭГЛЭГДЭХГҮЙ (хэрэглэгч: «батлах хэсэг тухайн багцын
+   *    хуваарийг бүхэлд нь, Хуваарь хэсэгт харж байгаа шиг харж батална»).
+   *    Батлах нь одоо ЭНЭ хуудсан дээр бүтэн дэлгэцийн `<Huvaari review>`-ээр —
+   *    «Хуваарь» хуудас руу шилжихгүй. `Portal`-ын `planJump` зам нь хэвээр
+   *    (өөр газраас дуудагдаж болно), зөвхөн энд ашиглагдахаа болив.
+   */
   onApprove?: (pkgKey: string, oid: number) => void;
   /**
    * Хэрэглэгчийн харж болох харагдацууд — `huvaari` дотор байх шаардлагатай.
@@ -110,6 +120,14 @@ export function HuvaariBatlah({
 
   const [q, setQ] = useState('');
   const [grp, setGrp] = useState(ALL);
+  /**
+   * БҮТЭН ДЭЛГЭЦИЙН ХЯНАЛТ (2026-09-25) — сонгосон илгээлтийн багцыг «Хуваарь»
+   * хэсэгтэй ЯГ ижил харагдацаар (`Huvaari`-ийн `review` горим) харуулна.
+   * ⚠️ `kind` нь дэлгэсэн мөрийн `payload`-аас — агуулга уншигдаагүй бол нээхгүй.
+   * ⚠️ Батлах гинж `Huvaari` дотор хэвээр (энэ файл `applyUpdates`/`approve: true`
+   *    агуулахгүй — `huvaariBatlah.view.check.mjs`-ийн цөм инвариант).
+   */
+  const [review, setReview] = useState<{ pkgKey: string; oid: number; kind: PlanPayload['kind'] } | null>(null);
 
   const me = (user?.username ?? '').trim().toLowerCase();
   const isSuper = roleForUser(user?.username) === 'super';
@@ -311,11 +329,26 @@ export function HuvaariBatlah({
    * ⚠️ Эрхийн загвар салбарлавал (`planApprove` нь ХОЁУЛАНГ нээдэг —
    *    `caps.ts` `CAP_HOST_VIEW`) энэ товч үхсэн байх ёсгүй.
    */
-  const canJump = !!onApprove && (navScope === 'all' || navScope.includes('huvaari'));
+  const openReview = (x: PlanSubmission) => {
+    const d = detail.get(x.oid);
+    if (d?.k !== 'ok') return;
+    setErr(''); setNote('');
+    setReview({ pkgKey: x.pkgKey, oid: x.oid, kind: d.p.kind });
+  };
 
   /* ══════════════════════ ЗУРАГДАЛТ ══════════════════════ */
   return (
     <div className={s.wrap}>
+      {review && (
+        <Huvaari
+          review={{
+            ...review,
+            onClose: () => setReview(null),
+            /* ⚠️ Шийдвэрийн дараа БҮТЭН дахин уншина (`reject`-ийн дүрэм) */
+            onDone: (msg) => { setReview(null); if (msg) setNote(msg); reload(); },
+          }}
+        />
+      )}
       <div className={s.head}>
         <b className={s.title}>{tr('Хуваарь батлах')}</b>
         <span className={s.sub}>
@@ -395,7 +428,7 @@ export function HuvaariBatlah({
                   reason={reason.get(x.oid) ?? ''}
                   onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                   onReject={() => void reject(x)}
-                  onApprove={canJump ? () => onApprove?.(x.pkgKey, x.oid) : undefined}
+                  onApprove={PKG_BY_KEY.has(x.pkgKey) ? () => openReview(x) : undefined}
                 />
               ))}
             </div>
@@ -614,17 +647,17 @@ function Row({
                 /* ⚠️ Агуулга уншигдаагүй бол БАТЛАХГҮЙ — батлагч юу
                    батлахаа хараагүй байна. */
                 disabled={busy || detail?.k !== 'ok'}
-                /* ⚠️ Шошго нь «Хуваарь хуудсанд батлах» — зүгээр «Батлах»
-                   гэвэл нэг товшилтоор батлагдана гэж ойлгогдоно. Тэнд
-                   «урьдчилан хараагүй» сануулга САНААТАЙ бөгөөд үлдэнэ. */
+                /* ⚠️ Шошго нь «Хуваарийг харж батлах» — зүгээр «Батлах» гэвэл нэг
+                   товшилтоор батлагдана гэж ойлгогдоно. Бүтэн дэлгэцэд мөр бүрийг
+                   зөвшөөрсний дараа л батлах товч идэвхжинэ (2026-09-25). */
                 title={p
                   ? (p.kind === 'geree'
-                      ? tr('«Хуваарь» хуудас «Гэрээ» таб дээр нээгдэж, шийдвэрлэх цонх гарна.')
-                      : tr('«Хуваарь» хуудас «Төлөвлөгөө» таб дээр нээгдэж, шийдвэрлэх цонх гарна.'))
+                      ? tr('Багцын ГЭРЭЭНИЙ хуваарь бүтэн дэлгэцээр нээгдэнэ — өөрчлөгдсөн мөр бүрийг зөвшөөрч батална.')
+                      : tr('Багцын ТӨЛӨВЛӨГӨӨНИЙ хуваарь бүтэн дэлгэцээр нээгдэнэ — өөрчлөгдсөн мөр бүрийг зөвшөөрч батална.'))
                   : tr('Мөрийг дэлгэж агуулгыг харсны дараа батлана.')}
                 onClick={onApprove}
               >
-                {tr('Хуваарь хуудсанд батлах')}
+                {tr('Хуваарийг харж батлах')}
               </button>
             )}
             {onWithdraw && (
