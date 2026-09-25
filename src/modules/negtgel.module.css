@@ -11,6 +11,10 @@
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  /* ⚠️ 2026-09-25: «Гүйцэтгэл» хуудасны `.fill` нь дотор зайгүй (бөглөх хуудас
+     ирмэг хүртэл дэлгэгддэг) — энд зай өгөхгүй бол гарчиг, хүснэгт хоёр
+     талын ирмэгт наалдаж тасардаг байв («2 тал руу хэт сунасан»). */
+  padding: 12px 20px 16px;
 }
 
 .bar {
@@ -65,49 +69,81 @@
   background: var(--surface);
 }
 
+/*
+ * ⚠️⚠️ 2026-09-25: ЭХ EXCEL-ИЙН ХАРАГДАЦ («Төсөл төлөвлөгөө биелэлт» хуудас) —
+ * толгой саарал (#D9D9D9), «Гүйцэтгэлийн хувь» ногоон (#92D050), мөрийн
+ * дүүргэлт нь Excel-ийн өнгөөр (`TusulNegtgel.toneOf`-ийн тайлбарыг үз).
+ * ⚠️ Өнгөт мөрүүдэд бичвэрийн өнгийг ИЛ тогтооно — харанхуй горимд ч цайвар
+ * дэвсгэр дээр бараан бичиг байх ёстой.
+ */
 .tbl {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
-  font-size: 0.78rem;
+  /* ⚠️ Хүснэгт хавтангаа ДҮҮРГЭНЭ — баруун талд хоосон цагаан зай үлдэхгүй */
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.76rem;
 }
 .tbl th {
   position: sticky;
   top: 0;
-  z-index: 2;
-  padding: 7px 10px;
-  /* Excel-ийн «Blue, Accent 1, Darker 50%» — санхүүжилтийн толгойтой нэг өнгө */
-  background: #203864;
-  color: #fff;
-  font-size: 0.68rem;
+  z-index: 3;
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
+  padding: 6px 6px;
+  background: #dbe5ef; /* ⚠️ 2026-09-25: цайвар горимд СААРАЛ БИШ — бүдэг хөх (хэрэглэгчийн заавар) */
+  color: #1b2b3a;
+  font-size: 0.75rem; /* ⚠️ 2026-09-25: толгой томорсон — хэрэглэгчийн заавар */
   font-weight: 700;
-  letter-spacing: 0.02em;
   line-height: 1.25;
   text-align: center;
+  vertical-align: middle;
   white-space: normal;
-  border-right: 1px solid rgba(255, 255, 255, 0.22);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  border-right: 1px solid rgba(0, 0, 0, 0.22);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
 }
-.thCode { width: 84px; }
-.thName { min-width: 320px; text-align: left !important; }
-.thNum { width: 120px; }
+/* ⚠️ «Гүйцэтгэлийн хувь»-ийн ногоон толгой ХАСАГДСАН (2026-09-25, хэрэглэгчийн заавар) */
 
 .tbl td {
-  padding: 5px 10px;
+  padding: 4px 6px;
+  background: var(--surface);
   color: var(--ink-2);
   border-right: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line);
 }
-.tbl tr:hover td { background: color-mix(in srgb, var(--data) 6%, transparent); }
+.tbl tbody tr:hover td { filter: brightness(0.96); }
+
+/*
+ * ЦАРЦСАН БАГАНА — Excel-ийн freeze. Аль багана хүртэл царцаахыг хэрэглэгч
+ * сонгоно (2026-09-25); өргөн ба `left` нь JSX-ээс инлайнаар (чирж өргөсгөх,
+ * нуух бүрд дахин бодогдоно).
+ */
+.fz { position: sticky; z-index: 1; }
+.tbl th.fz { z-index: 4; }
+.fzEdge { box-shadow: 2px 0 0 rgba(0, 0, 0, 0.2); }
+
+/* Өргөсгөх бариул — толгойн баруун ирмэг */
+.rsz {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+}
+.rsz:hover { background: color-mix(in srgb, var(--data) 45%, transparent); }
+
 
 .code {
-  width: 84px;
-  color: var(--ink-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .name {
-  /* Догол нь JSX-ээс инлайнаар (гүнээс хамаарна) — энд зөвхөн мурийлт */
   white-space: normal;
   word-break: break-word;
 }
@@ -115,28 +151,45 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  font-size: 0.7rem; /* ⚠️ 2026-09-25: тоо жижиг — хэрэглэгчийн заавар */
 }
 
+/* Бүлгийг НЭР дээр нь дарж нээх/хаах — «+/−» тэмдэг хасагдсан (2026-09-25) */
+.nameTog { cursor: pointer; user-select: none; }
+
 /*
- * ДЭЭД ТҮВШНИЙ МӨР — «ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ», «ТЭЗҮ», «Газар чөлөөлөлт» г.м.
- * ⚠️ Мод нь дөрвөн гүнтэй тул зөвхөн доголоор ялгавал 3-4 дэх түвшин ялгагдахаа
- * болино. Дээд хоёрыг зузаан бичиж, цайвар дэвсгэрээр тусгаарлана.
+ * ── Мөрийн өнгө ──
+ * ⚠️ 2026-09-25 (хэрэглэгчийн заавар: «light дээр тод цэнхэр өнгийг болиулаад
+ * бүдэг цэнхэрээр харуул»): ЦАЙВАР горимд Excel-ийн тод хөхийн оронд БҮДЭГ
+ * хөх — шатлал нь ижил (үе шат хамгийн бараан, навч цагаан). Excel-ийн
+ * жинхэнэ өнгө нь зөвхөн ХАРАНХУЙ горимд.
  */
-.rowTop td {
-  background: color-mix(in srgb, var(--data) 9%, transparent);
-  color: var(--ink);
-  font-weight: 700;
+.stage td { background: #d3dfeb; color: #16324f; font-weight: 700; }
+.l2 td { background: #e2eaf3; color: #1b2b3a; font-weight: 700; }
+.prep td { background: #ebf1f7; color: #1b2b3a; font-weight: 600; }
+.work td { background: #cfdae6; color: #16324f; font-weight: 700; }
+.workSub td { background: #e8ecf0; color: #1b2b3a; font-weight: 600; }
+.grp td { background: #f0f4f8; color: #1b2b3a; font-weight: 600; }
+
+/* ⚠️ ХАРАНХУЙ горим (2026-09-25, «dark болохгүй байна»): Excel-ийн тод өнгө
+   харанхуй дэвсгэр дээр хурц гэрэлтэж байсан тул бараан хөхийн шатлал.
+   Толгой ч саарал биш — харанхуй. */
+:global([data-theme='dark']) .tbl th {
+  background: #122236;
+  color: #dbe4ee;
+  border-right-color: rgba(255, 255, 255, 0.1);
+  border-bottom-color: rgba(255, 255, 255, 0.16);
 }
+:global([data-theme='dark']) .stage td { background: #1f3b5c; color: #eef4fb; }
+:global([data-theme='dark']) .l2 td { background: #1e2935; color: #dbe4ee; } /* ⚠️ 2026-09-25: толгойтой өнгөө солилцов — хэрэглэгчийн заавар */
+:global([data-theme='dark']) .prep td { background: #172b42; color: #dde6ef; }
+:global([data-theme='dark']) .work td { background: #1c3551; color: #eef4fb; }
+:global([data-theme='dark']) .workSub td { background: #222b35; color: #dde3ea; }
+:global([data-theme='dark']) .grp td { background: #16273a; color: #dde6ef; }
+
 
 /* Хэмжилтгүй нүд — 0 гэж БҮҮ ойлгуул */
 .empty { color: var(--ink-3); opacity: 0.6; }
-
-/*
- * АВТОМАТААР БОДОГДСОН УТГА.
- * ⚠️ Үйлчилгээнд БИЧИГДЭЭГҮЙ тоо — хадгалагдсанаас ялгаатай харагдах ЁСТОЙ.
- */
-.auto { background: color-mix(in srgb, var(--good) 12%, transparent); }
-
 
 /*
  * ТАЙЛБАРЫН МӨР — тоо хаанаас гарсныг ил хэлнэ.
@@ -149,3 +202,6 @@
   font-size: 0.74rem;
   line-height: 1.4;
 }
+
+/* Толгой дарж баганыг сонгоно (Санхүүжилттэй ижил) */
+.thSel { cursor: pointer; user-select: none; }

@@ -1106,7 +1106,19 @@ export type Kpi = {
  * төслийн бодит явцыг хоёр дахин үнэлнэ. Хэмжигдээгүй (багц нь нэгтгэлд
  * олдоогүй) ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ.
  */
-export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | null = null): Kpi {
+export function kpisOf(
+  rows: CfRow[],
+  contractSum: number,
+  landPct: number | null = null,
+  /**
+   * ⚠️ 2026-09-25: `Negtgel_guitsetgel`-ийн ТӨСЛИЙН НИЙТ гүйцэтгэл
+   * (`negtgel.negtgelProjectPct`). Өгөгдвөл 6 шатны бодолтыг ДАРНА — нэгтгэл
+   * хүснэгт бол албан ёсны тоо. ⚠️ Шүүлттэй (хугацаа/чарт) үед дуудагч
+   * `null` өгнө: нэгтгэл нь гэрээний мөрөөр задрахгүй тул шүүсэн хэсгийн
+   * хувийг зөвхөн 6 шатны бодолт л хэлж чадна.
+   */
+  wbsPct: number | null = null,
+): Kpi {
   let budget = 0;
   /* ⚠️ `wTop` (жинлэсэн дунджийн хүртвэр) ХАСАГДСАН (2026-09-16): гүйцэтгэлийн
      хувь нь `stagePct` буюу ӨӨР эхээс ирдэг болсон (2026-09-08) тул бодогдоод
@@ -1144,7 +1156,8 @@ export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | nul
    * ⚠️ Тэр талбар нь ХЭВЭЭР хэрэгтэй: «Гэрээлсэн байдал, бодит гүйцэтгэл»
    *    чарт ба хүснэгт түүнийг ШУУД уншдаг.
    */
-  const stagePct = stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
+  const stagePct = wbsPct
+    ?? stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
 
   return {
     budget,

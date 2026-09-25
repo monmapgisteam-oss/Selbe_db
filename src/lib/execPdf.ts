@@ -327,7 +327,7 @@ export async function buildExecDoc(
         columns: [
           /* ⚠️ 2026-09-21: шошго «(6 шатаар)» — Тайлан ба Дашбоардын «нийт гүйцэтгэл»
              ӨӨР тодорхойлолттой тул нэр нь ЮУ болохоо хэлнэ (тоо ӨӨРЧЛӨГДӨӨГҮЙ). */
-          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
+          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт гүйцэтгэл'), style: 'coverKpiL' }] },
           { stack: [{ text: T(money(g.budget)), style: 'coverKpiV' }, { text: tr('Нийт төсөв'), style: 'coverKpiL' }] },
         ],
         columnGap: 24,
@@ -347,7 +347,7 @@ export async function buildExecDoc(
       kpiRow([
         { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
-        { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('6 шатны жигнэсэн хувь') },
+        { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('Нэгтгэл гүйцэтгэлээр') },
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },

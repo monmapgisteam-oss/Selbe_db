@@ -157,3 +157,80 @@ const tezuLeaves = [3, 6, 7].reduce((a, o) => a + (g(o).inProject ?? 0), 0);
 assert.ok(Math.abs(tezuLeaves - 5) < 1e-9, 'навчны жин = хэсгийн жин (5%)');
 
 console.log('negtgel.check: ok — мод · жигнэлт · давхар тоолол · жин 100 · SUMPRODUCT');
+
+/* ══════════ АВТОМАТ БОДОЛТ (`negtgelAuto.ts`, 2026-09-25) ══════════
+ *   7. ДАВХАРДСАН БҮЛЭГ КОД: «5.2.3» дөрвөн мөрд — эхнийх нь бүлэг, бусад нь
+ *      түүний дэд хэсэг. «3» (хүүхэдгүй) давхардал тусдаа хэвээр.
+ *   8. БАГЦЫН ДУГААР: «БАГЦ 1- 4» ≠ «БАГЦ-14» (цэг/зураас хадгална).
+ *   9. ЭЦЭГ = SUMPRODUCT(жин, хүүхэд) — Σw-д ХУВААХГҮЙ (эх Excel-ийн дүрэм).
+ *  10. ЭХ СУРВАЛЖГҮЙ навч хадгалсан утгаа АЛДАХГҮЙ; жин хэзээ ч бичигдэхгүй.
+ */
+const A = await import('./negtgelAuto.ts');
+
+assert.deepEqual(
+  A.nestDupGroups(['3', '3', '5', '5.2', '5.2.3', '5.2.3.1', '5.2.3', '5.2.3.2', '5.2.4']),
+  [1, 1, 1, 2, 3, 4, 4, 5, 3],
+  'бүлэг кодын давхардал эхнийхийн доор; «3» тусдаа',
+);
+assert.deepEqual(
+  A.nestDupGroups(['5.2.3', '5.2.3.1', '5.2.3', '5.2.3.1']),
+  [3, 4, 4, 5],
+  'шилжсэн дэд модны давхардсан код ДАХИН шилжихгүй',
+);
+
+assert.equal(A.pkgNo('БАГЦ 1- 4'), '1-4');
+assert.equal(A.pkgNo('БАГЦ-14'), '14');
+assert.equal(A.pkgNo('БАГЦ - 19.1'), '19.1');
+assert.equal(A.pkgNo('Багц-5.1'), '5.1');
+assert.equal(A.pkgNo('БАГЦ -9'), '9');
+assert.equal(A.pkgNo('БАГЦ-6.1, 6.2 Нэмэлт ажил'), A.pkgNo('БАГЦ-6.1, 6.2'));
+
+const raw0 = (o) => ({
+  oid: o.oid, code: o.code, name: o.name, bagts: o.bagts ?? '', depth: 0, w: o.w ?? null, p: o.p ?? null,
+  act: o.act ?? null, planG: o.planG ?? null, planGch: null, planGu: null, perfG: null, perfGch: null, perfGu: null,
+});
+const tree = [
+  raw0({ oid: 1, code: '4', name: 'Сонгон шалгаруулалт', p: 0.01, act: 0.5, planG: 1 }),
+  raw0({ oid: 2, code: '4.1', name: 'Х', w: 0.6, act: 0.2, planG: 1 }),
+  raw0({ oid: 3, code: '4.1.1', name: 'А', bagts: 'БАГЦ-16.1', w: 0.5, act: 0, planG: 1 }),
+  raw0({ oid: 4, code: '4.1.2', name: 'Б', bagts: 'БАГЦ-99', w: 0.5, act: 0.4, planG: 0 }),
+  raw0({ oid: 5, code: '4.2', name: 'Ц', bagts: 'Багц-7', w: 0.5, act: 0 }),
+  raw0({ oid: 6, code: '6', name: 'Төслийг хүлээлгэн өгөх', p: 0.01, act: 0 }),
+  raw0({ oid: 7, code: '6.1', name: 'Улсын комисс', w: 1, act: 0.3 }),
+];
+const dd = A.nestDupGroups(tree.map((r) => r.code));
+tree.forEach((r, i) => { r.depth = dd[i]; });
+const cfw = (no, tender, budget = 1) => ({ no, sec1: 'БАРИЛГА УГСРАЛТ', sec2: '', name: '', budget, tezu: null, design: null, permit: null, tender, build: null });
+const src = {
+  cf: [cfw('16.1', 100), cfw('7.1', 100, 3), cfw('7.2', 0, 1),
+    /* ⚠️ ЗУРАГ ТӨСЛИЙН гэрээ — барилгын мөрд ОРОХГҮЙ */
+    { ...cfw('16.1', 0), sec1: 'ТЭЗҮ, ЗУРАГ ТӨСӨЛ' }],
+  land: 90, housing: new Map(), housingPlan: new Map(),
+};
+const out = A.computeNegAuto(tree, src);
+const by = (oid) => out.find((r) => r.oid === oid);
+assert.equal(by(3).act, 1, 'Cashflow-оос 100% (зураг төслийн гэрээ оролцохгүй)');
+assert.equal(by(3).auto, true);
+assert.equal(by(4).act, 0.4, 'эх сурвалжгүй багц — хадгалсан утга');
+assert.equal(by(4).auto, false);
+assert.equal(by(5).act, 0.75, '«Багц-7» = 7.1 + 7.2 өртгөөр жигнэсэн');
+assert.equal(by(2).act, 0.7, 'эцэг = 0.5×1 + 0.5×0.4');
+assert.equal(by(1).act, 0.795, 'SUMPRODUCT, Σw = 1.1-д хуваахгүй');
+assert.equal(by(7).act, 0.3, 'хүлээлгэн өгөх — хадгалсан утга');
+assert.equal(by(2).planG, 0.5, 'төлөвлөгөө ч SUMPRODUCT (эцгийн хадгалсан 1 дарагдана)');
+assert.equal(by(2).perfG, 1.4, 'биелэлт = гүйцэтгэл ÷ төлөвлөгөө');
+assert.equal(by(4).perfG, 0, 'төлөвлөгөө 0 бол биелэлт 0');
+assert.ok(Math.abs(A.projectTotal(out) - (0.01 * 0.795 + 0.01 * 0.3)) < 1e-12);
+
+/* 11. Жингийн нийлбэр 1-ээс ИХ бүлэг — эх Excel «Нийслэл төсөв»-ийг нийлбэрт оруулдаггүй */
+assert.deepEqual(A.rollKids([0, 1, 2, 3], [0.8069, 0.037, 0.1561, 0.074]), [0, 1, 2], '5.2: 5.2.4 гадуур');
+assert.deepEqual(A.rollKids([0, 1], [0.5, 0.5]), [0, 1], 'ердийн бүлэг бүтнээрээ');
+
+const ups = A.negDiff(tree, out);
+for (const u of ups) {
+  assert.ok(!('HESEGT_EZLEH' in u) && !('TOSOLD_EZLEH_HUVI' in u), 'жин бичигдэхгүй');
+  assert.ok(Object.values(u).every((v) => v !== null), 'null-оор дарахгүй');
+}
+assert.ok(!ups.some((u) => u.OBJECTID === 4 && 'GUITSETGELIIN_HUVI' in u), 'өөрчлөгдөөгүй утга бичигдэхгүй');
+
+console.log('negtgelAuto: ok — давхардсан бүлэг · багцын дугаар · SUMPRODUCT · хадгалсан утга · жин бичихгүй');

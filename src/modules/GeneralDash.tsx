@@ -21,7 +21,7 @@ import { loadLandStatus } from '@/lib/land';
    `loadPkgProgress`/`latestPkgProgress` энэ модулиас ХАСАГДСАН; тэдгээр нь
    бусад самбарт (газрын зураг, PkgProg) хэвээр хэрэглэгдэнэ. */
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
-import { loadNegtgelFull } from '@/lib/negtgel';
+import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
 /* ⚠️ Модулиас модуль руу импорт: «Багцын гүйцэтгэл» хуудасны ЯГ ТЭР
    тооцоог давтахгүй, ТҮҮНИЙГ дуудна (`Dashboard.tsx` ч ижлээр). */
 import { loadFinData } from '@/modules/Finance';
@@ -1004,6 +1004,10 @@ function KpiStrip({
 }) {
   const land = useAsync(loadLandStatus, []);
   const landPct = land.state === 'ready' ? land.data.pct : null;
+  /* ⚠️ 2026-09-25: «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт хувь — шүүлтгүй үед
+     индикатор ҮҮНИЙГ харуулна (`kpisOf`-ийн `wbsPct`-ийг үз) */
+  const wbsQ = useAsync(loadNegtgelPct, []);
+  const wbsPct = wbsQ.state === 'ready' ? wbsQ.data : null;
 
   /*
    * ⚠️ `landPct` нь ХАМААРАЛД ЗААВАЛ: «Гүйцэтгэлийн хувь» индикатор одоо
@@ -1034,8 +1038,9 @@ function KpiStrip({
     const csum = contracts
       ? sel.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0)
       : 0;
-    return kpisOf(sel, csum, landPct);
-  }, [rows, period, contracts, landPct, xs]);
+    const whole = !periodActive(period) && xs == null;
+    return kpisOf(sel, csum, landPct, whole ? wbsPct : null);
+  }, [rows, period, contracts, landPct, xs, wbsPct]);
 
   return (
     <div className={g.kpis}>
@@ -1072,7 +1077,7 @@ function KpiStrip({
         <Stat
           icon="chart"
           value={k.progress == null ? '—' : pct(k.progress)}
-          label={tr('Гүйцэтгэлийн хувь (6 шатаар)')}
+          label={tr('Гүйцэтгэлийн хувь')}
         />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажил (гэрээний мөр)')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
@@ -1444,11 +1449,15 @@ const BAR_HUE = cat(0);
  */
 const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true }[] = [
   { label: tr('ТЭЗҮ, зураг төсөл'), wbs: ['2'] },
-  { label: tr('Сонгон шалгаруулалт'), wbs: ['5'] },
+  /* ⚠️ 2026-09-25: кодууд `Negtgel_guitsetgel`-ийн модоор ШИНЭЧЛЭГДЭВ —
+     «Сонгон шалгаруулалт» нь 5 → 4, «Барилга угсралт» нь 6 → 5 болсон. */
+  { label: tr('Сонгон шалгаруулалт'), wbs: ['4'] },
+  /* ⚠️ «3» ХОЁР мөрд (Газар чөлөөлөлт · Зөвшөөрөл) — `byCode` ЭХНИЙХИЙГ авна */
   { label: tr('Газар чөлөөлөлт'), wbs: ['3'] },
-  /* ⚠️ 6.4.2 — БАРИЛГА УГСРАЛТ хэсгийн доторх гадна инженерийн шугам сүлжээ.
-     1.2/2.2 нь түүний ЗУРАГ ТӨСӨЛ (92.5%) тул огт өөр зүйл. */
-  { label: tr('Гадна инженерийн шугам сүлжээ'), wbs: ['6.4.2'] },
+  /* ⚠️ 5.2.3 — БАРИЛГА УГСРАЛТ хэсгийн доторх ИНЖЕНЕРИЙН ДЭД БҮТЭЦ (хуучин
+     модны 6.4.2). Код нь дөрвөн мөрд давхардсан — ЭХНИЙХ нь нэгтгэл мөр.
+     1.2/2.2 нь түүний ЗУРАГ ТӨСӨЛ тул огт өөр зүйл. */
+  { label: tr('Гадна инженерийн шугам сүлжээ'), wbs: ['5.2.3'] },
   /* ⚠️ Модонд харгалзах зангилаа БАЙХГҮЙ — гэрээний 3-р түвшнээс */
   { label: tr('Гадна цахилгаан хангамж'), lvl3: 'Гадна цахилгаан холбоо, дохиолол' },
   /* ⚠️ WBS `6.2.1`-ЭЭС ХАСАГДСАН (2026-09-10): тэр нь гэрээний бүртгэлийн
@@ -1509,8 +1518,7 @@ function FinCharts({
    *
    * ⚠️ Cashflow-гийн чартуудаас ТУСДАА хэмжүүр: тэдгээр нь МӨНГӨӨР
    * (гэрээ, захирамж) хэмждэг бол энэ нь ажлын задаргааны (WBS) ШАТУУДЫГ
-   * тогтоосон жингээр (ТЭЗҮ 5 · зураг төсөл 10 · газар 3 · зөвшөөрөл 1 ·
-   * сонгон шалгаруулалт 1 · барилга угсралт 79 · улсын комисс 1) хэмжинэ.
+   * `Negtgel_guitsetgel`-д БИЧИГДСЭН жин ба гүйцэтгэлээр хэмжинэ (2026-09-25).
    * ⚠️ Хугацааны ба чартын шүүлтэд ОРОХГҮЙ: WBS нь гэрээний мөрөөс биш
    * ТӨСЛИЙН бүтцээс гардаг тул хэсэгчилж шүүх нь утгагүй.
    */
@@ -1518,7 +1526,10 @@ function FinCharts({
   const wbs = useAsync(loadNegtgelFull, []);
   const wbsBars = useMemo(() => {
     if (wbs.state !== 'ready') return [];
-    const byCode = new Map(wbs.data.rows.map((r) => [r.code.trim(), r]));
+    /* ⚠️ ДАВХАРДСАН кодод ЭХНИЙ мөр (`new Map(entries)` нь СҮҮЛИЙХИЙГ үлдээдэг
+       тул «3» нь «Зөвшөөрөл», «5.2.3» нь сүүлийн дэд мөр болно) */
+    const byCode = new Map<string, (typeof wbs.data.rows)[number]>();
+    for (const r of wbs.data.rows) if (!byCode.has(r.code.trim())) byCode.set(r.code.trim(), r);
     /** Гэрээний 3-р түвшний бүлгийн өртгөөр жигнэсэн гүйцэтгэл */
     const lvl3Pct = (name: string): number | null => {
       let base = 0;

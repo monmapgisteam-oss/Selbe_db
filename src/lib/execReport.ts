@@ -30,6 +30,7 @@ import {
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
+import { loadNegtgelPct } from '@/lib/negtgel';
 import { loadPlanCurve } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
@@ -49,7 +50,7 @@ export type ExecReport = {
   gdash: {
     budget: number;
     contract: number;
-    /** Зургаан шатны жигнэсэн гүйцэтгэл, 0–100; хэмжигдээгүй бол null */
+    /** Төслийн нийт гүйцэтгэл (`Negtgel_guitsetgel`, унавал 6 шатны бодолт), 0–100; хэмжигдээгүй бол null */
     progress: number | null;
     packages: number;
     types: number;
@@ -159,7 +160,7 @@ export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbsPct] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
@@ -174,6 +175,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     /* ⚠️ 2026-09-22: «олгосон ÷ гэрээ» хувийн ТООЛОГЧ = `reportData.finance.paidContracted`
        (Тайлантай НЭГ тодорхойлолт); кэштэй тул нэмэлт хүсэлт бараг үүсэхгүй. */
     loadFinance(),
+    /* ⚠️ 2026-09-25: «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт хувь — дашбоардын
+       индикатортой НЭГ тоо (`GeneralDash.KpiStrip`). Унавал 6 шатны бодолт. */
+    loadNegtgelPct().catch(() => null),
   ]);
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
@@ -194,7 +198,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      (`contract ÷ budget`) тоологч нь хуваарийн (`inTotal`) ГАДНАХ мөрийг ч агуулж,
      тайлан бусад дэлгэцээс өөр тоо хэвлэдэг байв. */
   const csum = cf.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
-  const k = kpisOf(cf, csum, land.pct);
+  const k = kpisOf(cf, csum, land.pct, wbsPct);
   /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь блок-жигнэсэн биет хувь —
      `GeneralDash.catPct`-тай ижил дүрэм. */
   const catPct = new Map<string, number>();
@@ -600,7 +604,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`## 01. Ерөнхий дашбоард`);
   L.push(`Нийт төсөв: ${num(x.gdash.budget)} ₮`);
   L.push(`Нийт гэрээлсэн дүн: ${num(x.gdash.contract)} ₮`);
-  L.push(`Гүйцэтгэлийн хувь (6 шатны жигнэсэн): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
+  L.push(`Гүйцэтгэлийн хувь (нэгтгэл гүйцэтгэлээр): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
   L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);
