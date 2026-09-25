@@ -142,10 +142,15 @@
   position: absolute;
   top: var(--tools-top, 96px);
   /* Хураах бариулын баруун талаас (бариул 19 + өргөн … +20) */
-  left: calc(var(--tools-w, 176px) + 46px);
+  /* ⚠️ 2026-09-25: НАРИЙН зураг — `left` нь 222px байхад `max-width: 100% − 212px`
+     нь баруун ирмэгээс 10px ХАЛИЖ, ≤430px зурагт хавтан бараг 0 өргөнтэй
+     болдог байв. Каталогийн (`mapTools` §а) ижил clamp: зүүн зай нь нарийн
+     зурагт багасч, өргөн нь баруун 15px-д багтана. */
+  --pl: clamp(15px, calc(100% - 255px), calc(var(--tools-w, 176px) + 46px));
+  left: var(--pl);
   z-index: 8;
   width: 320px;
-  max-width: calc(100% - 212px);
+  max-width: calc(100% - var(--pl) - 15px);
   max-height: calc(100% - 130px);
   display: flex;
   flex-direction: column;

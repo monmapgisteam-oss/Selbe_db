@@ -32,7 +32,7 @@ import {
   type ViewKey,
 } from './services';
 import { capViewsOf } from './caps';
-import { roleAccess } from './roleTypes';
+import { _typesMark, roleAccess } from './roleTypes';
 import { currentUser } from './who';
 import { _beginRemoteFetch } from './scopedAcl';
 
@@ -421,6 +421,8 @@ export async function initRemote(canCreate: boolean, trusted: boolean = canCreat
 
 async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<boolean> {
   const { fetchAll } = await import('./permsRemote');
+  /* ⚠️ 2026-09-25: загварын тэмдэг — хүсэлтээс ХОЙШ хадгалсан загварыг энэ snapshot дарахгүй (`roleTypes._typesMark`) */
+  const typesMark = _typesMark();
   const remote = await fetchAll(canCreate);
   if (!remote) return false; // ArcGIS алга — cache хэвээр
 
@@ -524,10 +526,11 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
   }
 
   // 11) Эрхийн төрлийн загвар (`__type__:`) → roleTypes.ts (2026-09-25)
-  //     ⚠️ Харагдац/нүүр цонх нь үүнээс (`roleAccess`) — синк унавал анхдагч загвар.
+  //     ⚠️ Харагдац/нүүр цонх нь үүнээс (`roleAccess`) — синк унавал сүүлийн кэш,
+  //        кэшгүй бол `ROLE_ACCESS`-ийн нарийн нөөц (2026-09-25, fail-closed).
   try {
     const rt = await import('./roleTypes');
-    rt._syncRemoteTypes(remote.types ?? []);
+    rt._syncRemoteTypes(remote.types ?? [], typesMark);
   } catch (e) {
     console.error('[selbe] эрхийн төрлийн загварын синк амжилтгүй:', e);
   }

@@ -11,16 +11,42 @@
  * ⚠️ Токенгүй ажиллана: мөр нэмэх/устгах нь энэ үйлчилгээнд нээлттэй
  *    (талбарын БҮТЭЦ өөрчлөх нь л admin токен шаарддаг).
  *
- * Ажиллуулах:
- *     node tools/negtgel-seed.mjs           # мөр нэмнэ
- *     node tools/negtgel-seed.mjs --wipe    # БҮГДИЙГ устгаад дахин үүсгэнэ
- *     node tools/negtgel-seed.mjs --clear   # ЗӨВХӨН устгана
+ * Ажиллуулах (давхаргын URL-ийг ЗААВАЛ ил өгнө):
+ *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…/FeatureServer/169>           # мөр нэмнэ
+ *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --wipe    # БҮГДИЙГ устгаад дахин үүсгэнэ
+ *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --clear   # ЗӨВХӨН устгана
+ *   Production орг (NEXT_PUBLIC_ARCGIS_HJ / _GAZAR) руу бол `--i-know-this-is-production` нэм.
+ *
+ * ⚠️ 2026-09-25: PRODUCTION ХАМГААЛАЛТ. Урьд энэ скрипт `.env`-ийн HJ-ээс prod
+ *    `selbe_bagts_guitsetgel_negtgel`-ийг өөрөө олж, loader admin токеныг
+ *    чимээгүй залгадаг байсан тул нэг `--wipe` бодит нэгтгэлийг бүхэлд нь
+ *    устгах боломжтой байв. Одоо: (1) зорилтот URL-ийг `--target`-аар ИЛ өгөхгүй
+ *    бол ажиллахгүй; (2) тэр нь prod орг дээр (эсвэл env алга тул тодорхойлох
+ *    боломжгүй) бол `--i-know-this-is-production` тугийг шаардана;
+ *    (3) loader токен залгахаа больсон (зөвхөн `*.check.mjs`).
  */
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const URL_ = `${HJ}/selbe_bagts_guitsetgel_negtgel/FeatureServer/169`;
+const PROD_FLAG = '--i-know-this-is-production';
+const argv = process.argv.slice(2);
+const argTarget = (() => {
+  const i = argv.findIndex((a) => a === '--target' || a.startsWith('--target='));
+  if (i < 0) return '';
+  return (argv[i].includes('=') ? argv[i].slice(argv[i].indexOf('=') + 1) : argv[i + 1] ?? '').trim();
+})();
+if (!/^https?:\/\/\S+\/FeatureServer\/\d+$/i.test(argTarget.replace(/\/+$/, ''))) {
+  console.error('⛔ Зорилтот давхаргыг ил өг: --target=https://…/FeatureServer/<дугаар>');
+  process.exit(1);
+}
+const URL_ = argTarget.replace(/\/+$/, '');
+/* Prod оргийн үндэс (`…/<orgId>/`) — HJ ба GAZAR. Env алга бол prod гэж ҮЗНЭ. */
+const prodRoots = [process.env.NEXT_PUBLIC_ARCGIS_HJ, process.env.NEXT_PUBLIC_ARCGIS_GAZAR]
+  .map((u) => (u ?? '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/i, '').replace(/\/*$/, '/').toLowerCase())
+  .filter((r) => r !== '/');
+const isProd = !prodRoots.length || prodRoots.some((r) => URL_.toLowerCase().startsWith(r));
+if (isProd && !argv.includes(PROD_FLAG)) {
+  console.error(`⛔ Зорилт production орг дээр байна (эсвэл env алга тул тодорхойгүй). Итгэлтэй бол ${PROD_FLAG} нэм.`);
+  process.exit(1);
+}
 
 const F = {
   date: 'burtgesen_ognoo',
@@ -109,7 +135,7 @@ async function seed() {
   console.log(`Нэмэв: ${adds.length} мөр (${PKGS.length} багц × ${MONTHS.length} сар)`);
 }
 
-const args = process.argv.slice(2);
+const args = argv;
 (async () => {
   if (args.includes('--wipe') || args.includes('--clear')) await clear();
   if (!args.includes('--clear')) await seed();

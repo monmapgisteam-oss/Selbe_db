@@ -38,7 +38,8 @@ import {
 } from './chanarMs';
 import { isAuthorFor, reviewerRolesFor } from './chanarAcl';
 import { tokenParam, authToken } from '@/lib/authToken';
-import { currentUser } from './who';
+import { currentUser, requireCap } from './who';
+import type { CapKey } from './caps';
 
 const TITLE = 'Selbe_Chanar_Barimt';
 const TABLE_NAME = 'chanar_barimt';
@@ -376,6 +377,8 @@ async function newerExists(bagts: string, seq: number, rev: number): Promise<boo
  * ноорог/буцаагдсан төлөвт, зөвхөн зохиогч. `null` = зөвшөөрнө.
  */
 async function attachDeny(oid: number): Promise<string | null> {
+  /* ⚠️ 2026-09-25: хавсралт ч зохиогчийн бичилт — `actor`-ийн ижил эрх. */
+  try { requireCap('chanarAuthor'); } catch (e) { return String((e as Error).message || e); }
   const cur = await query(`${F.oid} = ${Number(oid)}`, HEAD);
   const doc = cur.length ? toDoc(cur[0]) : null;
   if (!doc) return tr('Баримт олдсонгүй — устгагдсан байж магадгүй.');
@@ -410,6 +413,32 @@ const editOk = (res: unknown): boolean => {
 
 type Result = { ok: true; oid: number } | { ok: false; error: string };
 
+/**
+ * ⚠️ 2026-09-25: БИЧИГЧИЙГ СЕШНД УЯХ. Урьд нь `author`/`who`-г дуудагчаас
+ *    хүлээн авдаг байсан тул консолоос `reviewDoc({ who: 'бусдын нэр' })`
+ *    дуудаж ХУУРАМЧ хяналт/зохиогч бичих боломжтой байв. Одоо нэвтрэлт асаалттай
+ *    хөтөчид (`attachDeny`-ийн ижил `AUTH.appId` хамгаалалт) дамжуулсан нэр нь
+ *    `currentUser()`-тэй ЯГ ТААРАХ ёстой; эрх (`requireCap`) мөн энд шалгагдана.
+ *    Node тест/`tools/` скрипт (window байхгүй) ба нэвтрэлт унтраалттай дев
+ *    орчинд дамжуулсан нэрээр хэвээр ажиллана.
+ */
+function actor(passed: string, cap: CapKey): { who: string } | { ok: false; error: string } {
+  const who = String(passed ?? '').trim().toLowerCase();
+  try {
+    requireCap(cap);
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+  if (typeof window !== 'undefined' && AUTH.appId) {
+    const me = currentUser();
+    if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    if (who !== me) return { ok: false, error: tr('Өөр хэрэглэгчийн нэрээр бичих боломжгүй.') };
+    return { who: me };
+  }
+  if (!who) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  return { who };
+}
+
 /* ══════════════════════ Бичих ══════════════════════ */
 
 /**
@@ -420,13 +449,15 @@ export async function createDraft(args: {
   kind?: DocKind; bagts: string; title: string; author: string; body: MsBody;
 }): Promise<Result> {
   const kind = args.kind ?? 'MS';
+  const act = actor(args.author, 'chanarAuthor');
+  if (!('who' in act)) return act;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй — админд хандана уу.') };
   const org = orgCode(args.bagts);
   if (!org) return { ok: false, error: tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', args.bagts) };
   /* ⚠️ ЭРХИЙГ ЭНД Ч ШАЛГАНА (2026-09-16 аудит): урьд нь зөвхөн UI (`canAct`)
      шалгадаг байв — консолоос дуудсан хэн ч мөр үүсгэж чаддаг байлаа. */
-  if (!isAuthorFor(args.author, args.bagts)) return { ok: false, error: tr('Энэ багцад аргачлал ирүүлэх эрхгүй.') };
+  if (!isAuthorFor(act.who, args.bagts)) return { ok: false, error: tr('Энэ багцад аргачлал ирүүлэх эрхгүй.') };
   const existing = await loadDocs(kind);
   const seq = nextSeq(existing, args.bagts);
   const no = docNo(args.bagts, seq, 0, kind);
@@ -440,7 +471,7 @@ export async function createDraft(args: {
     [F.rev]: 0,
     [F.title]: args.title.trim(),
     [F.status]: MS_STATUS.draft,
-    [F.author]: args.author.trim().toLowerCase(),
+    [F.author]: act.who,
     [F.reviews]: JSON.stringify(emptyReviews()),
     [F.body]: JSON.stringify(args.body),
   };
@@ -450,24 +481,33 @@ export async function createDraft(args: {
     });
     const r = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
     if (!(r?.success && r.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    /* ⚠️ ДУГААРЫН ДАВХАРДАЛ (2026-09-16 аудит): `nextSeq` клиентэд бодогддог,
-       ArcGIS-д unique хязгаар ҮГҮЙ. Хоёр зохиогч нэг багцад зэрэг үүсгэвэл ижил
-       `seq` → `latest()` нэгийг нь ЖАГСААЛТААС НУУДАГ. Бичсэний ДАРАА тулгаж,
-       ХОЖУУ (их OBJECTID) нь дараагийн дугаарт шилжинэ — эхнийх хөндөгдөхгүй. */
-    const after = await loadDocs(kind);
-    const twins = after.filter((d) => d.bagts === args.bagts && d.seq === seq && d.rev === 0);
-    if (twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== r.objectId) {
-      const seq2 = nextSeq(after, args.bagts);
-      const no2 = docNo(args.bagts, seq2, 0, kind);
-      if (no2) {
-        const j2 = await req(`${url}/applyEdits`, {
-          updates: JSON.stringify([{ attributes: { [F.oid]: r.objectId, [F.seq]: seq2, [F.docNo]: no2 } }]),
-          rollbackOnFailure: 'true',
-        });
-        if (!editOk(j2.updateResults)) return { ok: false, error: tr('Давхардсан дугаарыг засаж чадсангүй — дахин оролдоно уу.') };
+    const oid = r.objectId;
+    /* ⚠️ 2026-09-25: МӨР ҮҮССЭН БОЛ АМЖИЛТ. Доорх давхардлын засвар алдвал урьд нь
+       `ok:false` буцааж, хэрэглэгч «Үүсгэх»-ийг дахин дарахад ХОЁР ДАХЬ мөр
+       үүсдэг байв. Одоо дугаар засалт нь хамгийн сайн оролдлого — алдвал
+       консолд анхааруулаад үүссэн мөрийг буцаана. */
+    try {
+      /* ⚠️ ДУГААРЫН ДАВХАРДАЛ (2026-09-16 аудит): `nextSeq` клиентэд бодогддог,
+         ArcGIS-д unique хязгаар ҮГҮЙ. Хоёр зохиогч нэг багцад зэрэг үүсгэвэл ижил
+         `seq` → `latest()` нэгийг нь ЖАГСААЛТААС НУУДАГ. Бичсэний ДАРАА тулгаж,
+         ХОЖУУ (их OBJECTID) нь дараагийн дугаарт шилжинэ — эхнийх хөндөгдөхгүй. */
+      const after = await loadDocs(kind);
+      const twins = after.filter((d) => d.bagts === args.bagts && d.seq === seq && d.rev === 0);
+      if (twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== oid) {
+        const seq2 = nextSeq(after, args.bagts);
+        const no2 = docNo(args.bagts, seq2, 0, kind);
+        if (no2) {
+          const j2 = await req(`${url}/applyEdits`, {
+            updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.seq]: seq2, [F.docNo]: no2 } }]),
+            rollbackOnFailure: 'true',
+          });
+          if (!editOk(j2.updateResults)) console.warn('[selbe] chanar: давхардсан дугаарыг засаж чадсангүй', oid);
+        }
       }
+    } catch (e) {
+      console.warn('[selbe] chanar: дугаарын тулгалт алдлаа', oid, e);
     }
-    return { ok: true, oid: r.objectId };
+    return { ok: true, oid };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -480,13 +520,17 @@ export async function createDraft(args: {
 export async function saveDraft(args: {
   oid: number; who: string; title: string; body: MsBody;
 }): Promise<Result> {
+  const act = actor(args.who, 'chanarAuthor');
+  if (!('who' in act)) return act;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
   if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
   const doc = toDoc(cur[0]);
   if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
-  if (doc.author.trim().toLowerCase() !== args.who.trim().toLowerCase()) return { ok: false, error: tr('Зөвхөн зохиогч засна.') };
+  if (doc.author.trim().toLowerCase() !== act.who) return { ok: false, error: tr('Зөвхөн зохиогч засна.') };
+  /* ⚠️ 2026-09-25: багцын эрх хасагдсан зохиогч хуучин ноорогоо засаж/ирүүлэхгүй. */
+  if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад аргачлал ирүүлэх эрхгүй.') };
   if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) {
     return { ok: false, error: tr('Хянагдаж буй эсвэл батлагдсан баримтыг засах боломжгүй.') };
   }
@@ -541,13 +585,16 @@ export async function saveDraft(args: {
  *    хуучин мөрийн `returned` төлөв хэвээр тул `latest()` шинийг л харуулна.
  */
 export async function submitDoc(args: { oid: number; who: string }): Promise<Result> {
+  const act = actor(args.who, 'chanarAuthor');
+  if (!('who' in act)) return act;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
   if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
   const doc = toDoc(cur[0]);
   if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
-  const r = submitPure(doc, { who: args.who });
+  if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад аргачлал ирүүлэх эрхгүй.') };
+  const r = submitPure(doc, { who: act.who });
   if (!r.ok) return r;
 
   try {
@@ -609,7 +656,9 @@ export async function reviewDoc(args: {
 }): Promise<Result> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
-  const me = args.who.trim().toLowerCase();
+  const act = actor(args.who, 'chanarReview');
+  if (!('who' in act)) return act;
+  const me = act.who;
   /*
    * ⚠️ ЗЭРЭГЦЭЭ ХЯНАГЧДЫН RACE (2026-09-16 аудит). `hyanalt` JSON нь НЭГ талбар
    *    бөгөөд ArcGIS-д «зөвхөн өөрчлөгдсөн бол бич» (CAS) байхгүй: ТУХ ба Чанар
@@ -629,10 +678,10 @@ export async function reviewDoc(args: {
     if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
     /* ⚠️ ҮҮРГИЙГ ЭНД Ч ШАЛГАНА — `canAct`-ийн «консолоос дуудсан ч энэ л барина»
        гэсэн амлалт ACL-ийн хувьд UI-д л үнэн байв. */
-    if (!reviewerRolesFor(args.who, doc.bagts).includes(args.as)) {
+    if (!reviewerRolesFor(me, doc.bagts).includes(args.as)) {
       return { ok: false, error: tr('Энэ багцад «{0}» үүргээр хянах эрхгүй.', args.as) };
     }
-    const r = reviewPure(doc, { as: args.as, who: args.who, verdict: args.verdict, note: args.note });
+    const r = reviewPure(doc, { as: args.as, who: me, verdict: args.verdict, note: args.note });
     if (!r.ok) return r;
     const decided = r.status === MS_STATUS.approved || r.status === MS_STATUS.returned;
     try {

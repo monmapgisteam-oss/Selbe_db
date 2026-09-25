@@ -348,6 +348,14 @@ const qty = (v: number | null) =>
 /** ⚠️ Хувь нь үйлчилгээнд 0–1 хооронд — 100-аар үржүүлж харуулна */
 const pcs = (v: number | null) =>
   v == null || !Number.isFinite(v) ? '—' : `${Number((v * 100).toFixed(1))}%`;
+/**
+ * ЭНЭ УДААГИЙН НЭМЭЛТИЙН ЖИЖИГ ТЭМДЭГ — « (+15)» / « (−5)» (2026-09-25).
+ * ⚠️ `null`/0 бол юу ч зурахгүй: «мэдээлэлгүй» нүдэнд «+0» гэж бичвэл худал.
+ */
+const incTag = (d: number | null | undefined, f: (v: number | null) => string) =>
+  d == null || !Number.isFinite(d) || Math.abs(d) < 1e-12
+    ? null
+    : <small style={{ opacity: 0.75, marginLeft: 4 }}>({d > 0 ? '+' : '−'}{f(Math.abs(d))})</small>;
 
 /**
  * ⚠️ ХЯНАГЧ ЮУГ ЗӨВШӨӨРЧ БАЙГААГАА ХАРАХ ЁСТОЙ. Хяналтын бүртгэл нь зөвхөн
@@ -609,9 +617,11 @@ function Submitted({
                     <span className={s.chWork}>{c.work}</span>
                     <span className={s.chVal}>
                       {/* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол ХУВИЙГ харуулна (2026-09-24) */}
+                      {/* ⚠️ 2026-09-25: НЭМЭЛТ («+15») нь нийтийн ард — «өмнөх → нийт (+энэ удаа)».
+                          Бөглөгч одоо ӨМНӨХӨӨС ХОЙШ хийснээ бичдэг тул хянагч тэр тоог шууд харна. */}
                       {c.from === c.to && c.toPct !== undefined
-                        ? <>{c.fromPct == null ? '—' : pcs(c.fromPct)} → <b>{c.toPct == null ? '—' : pcs(c.toPct)}</b></>
-                        : <>{c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b></>}
+                        ? <>{c.fromPct == null ? '—' : pcs(c.fromPct)} → <b>{c.toPct == null ? '—' : pcs(c.toPct)}</b>{incTag(c.incPct, pcs)}</>
+                        : <>{c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b>{incTag(c.inc, qty)}</>}
                     </span>
                   </button>
                 ))}

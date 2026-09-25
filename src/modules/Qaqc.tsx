@@ -323,7 +323,17 @@ export function Qaqc() {
   const loadedPkgRef = useRef('');
   const promptedPkgRef = useRef('');
 
+  /**
+   * ⚠️ ХУУЧИРСАН ХАРИУНААС ХАМГААЛАХ ДАРААЛАЛ (2026-09-25-ны аудит, HIGH):
+   *    A багцын удаан ачаалалт B руу шилжсэний ДАРАА ирвэл A-гийн мөрүүд B-ийн
+   *    дэлгэц дээр суугаад `loadedPkgRef = A` болж, хадгалахад B-ийн засвар
+   *    A-гийн OBJECTID-ууд руу бичигдэх боломжтой байв. Зөвхөн хамгийн сүүлийн
+   *    дуудлагын хариу төлөвт буна.
+   */
+  const loadSeq = useRef(0);
   const load = useCallback(async (key: string) => {
+    const seq = ++loadSeq.current;
+    const live = () => seq === loadSeq.current;
     setBusy(true);
     setErr('');
     setRows([]);
@@ -331,6 +341,7 @@ export function Qaqc() {
     loadedPkgRef.current = '';
     try {
       const qRows = await loadQaqcRows(key);
+      if (!live()) return;
       /**
        * ШАТЛАЛЫГ бөглөх хуудаснаас холбоно — ЗӨВХӨН харагдацад.
        *
@@ -349,13 +360,14 @@ export function Qaqc() {
       } catch {
         withTree = null;
       }
+      if (!live()) return;
       setRows(withTree ?? qRows);
       setFlat(withTree == null);
       loadedPkgRef.current = key;
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      if (live()) setErr(String((e as Error).message || e));
     } finally {
-      setBusy(false);
+      if (live()) setBusy(false);
     }
   }, []);
 
@@ -380,6 +392,9 @@ export function Qaqc() {
        ЛОКАЛ ба АЛСАД ХОЁУЛАНГ нь УСТГАДАГ байв. Багц солих цонх нь эсрэгээр
        «Ноорог үлдэх» гэж амладаг тул тэр заалт ХУДАЛ байлаа. */
     promptedPkgRef.current = '';
+    /* ⚠️ 2026-09-25: сэргээлт/алсын баталгаа нь БАГЦАД харьяалагдана */
+    restoreDoneRef.current = '';
+    remoteVerifiedRef.current = '';
     void load(pkg.key);
   }, [pkg.key, load]);
 
@@ -573,6 +588,19 @@ export function Qaqc() {
   const lastRemoteRef = useRef(0);
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   const [remoteTick, setRemoteTick] = useState(0);
+  /** Явж буй алсын бичилт — устгахаас өмнө хүлээнэ (flush-ийн ⚠️) */
+  const remoteInflight = useRef<Promise<unknown> | null>(null);
+  /** Алсын ноорогийг АМЖИЛТТАЙ уншсан багц — зөвхөн тэр үед алс руу бичнэ/устгана */
+  const remoteVerifiedRef = useRef('');
+  /** Ноорог сэргээлт ДУУССАН багц — хадгалах эффектийн устгах салааны нөхцөл */
+  const restoreDoneRef = useRef('');
+  /** Алсын уншилтыг дахин оролдуулах тоолуур (сэргээх эффектийн deps) */
+  const [restoreTry, setRestoreTry] = useState(0);
+  /** Явж буй алсын бичилт дуусахыг хүлээнэ — алдааг үл тоох */
+  const awaitRemoteInflight = useCallback(async () => {
+    const p = remoteInflight.current;
+    if (p) { try { await p; } catch { /* үл тоох */ } }
+  }, []);
 
   /**
    * АЛСЫН ЭЭЛЖИЙГ ЗЭВСЭГГҮЙ БОЛГОНО — ноорог БАЙХГҮЙ болсны дараа дуудна.
@@ -606,9 +634,11 @@ export function Qaqc() {
       /* ⚠️ Ноорог нь ачаалахдаа ШУУД буудаг тул «дараа шийднэ» гэсэн төлөв
          БАЙХГҮЙ: төлөв хоосон болсон нь «хэрэглэгч бүгдийг арилгасан»
          гэсэн үг — тэр үед ноорог ч устана (2026-09-06). */
-      if (promptedPkgRef.current === pkg.key) {
+      /* ⚠️ `restoreDoneRef` (2026-09-25): сэргээлт дуусаагүй байхад устгавал
+         уншигдаж амжаагүй ноорог алга болно; алсыг зөвхөн уншиж чадсан бол. */
+      if (restoreDoneRef.current === pkg.key) {
         clearDraftLS(dk(user?.username, pkg.key));
-        void clearQaqcDraft(pkg.key);
+        if (remoteVerifiedRef.current === pkg.key) void clearQaqcDraft(pkg.key);
       }
       setSavedAt(null);
       return;
@@ -628,7 +658,7 @@ export function Qaqc() {
        сүлжээ дүүрч бөглөлт удаашрана. Доорх завсарлагатай эффект илгээнэ. */
     remoteQueue.current = { pkg: pkg.key, draft };
     setRemoteTick((n) => n + 1);
-  }, [pend, pkg.key, rows]);
+  }, [pend, pkg.key, rows, user?.username]);
 
   /*
    * ── АЛСЫН ХУУЛБАР (2026-09-07-нд `FillNew`-тэй ТЭНЦҮҮЛЭВ) ──
@@ -652,17 +682,36 @@ export function Qaqc() {
          багцын ноорогийг одоогийн багцын слотод бичих нь өгөгдөл СОЛИХ
          алдаа. Локалд аль хэдийн бүрэн хадгалагдсан тул алдагдал үүсэхгүй. */
       if (q.pkg !== pkg.key) { remoteQueue.current = null; return; }
+      /* ⚠️ АЛСЫГ УНШИЖ ЧАДААГҮЙ бол БИЧИХГҮЙ (2026-09-25-ны аудит) — тэнд
+         өөр компьютерийн ноорог байж болох тул дарвал алга болно. Уншилтыг
+         дахин оролдуулна (`restoreTry`); амжилттай бол нийлүүлээд бичнэ. */
+      if (remoteVerifiedRef.current !== q.pkg) {
+        /* Уншилт явж байгаа бол (тэмдэг тавигдсан) зүгээр хүлээнэ — дараалал үлдэнэ */
+        if (promptedPkgRef.current === q.pkg) return;
+        setRemoteState({ kind: 'fail' });
+        /* Дахин уншилтыг минутад нэгээс олон оролдохгүй (оффлайн үед toast-ын шуурга) */
+        if (Date.now() - lastRemoteRef.current >= 60_000) {
+          lastRemoteRef.current = Date.now();
+          setRestoreTry((n) => n + 1);
+        }
+        return;
+      }
       /* ⚠️ Дараалал ЦЭВЭРЛЭГДЭНЭ — эс бөгөөс нэг ноорог дахин дахин
          илгээгдэж, устгасны дараа ч ArcGIS-д буцаж амилна (зомби). */
       remoteQueue.current = null;
       const payload = JSON.stringify(q.draft);
       if (payload.length > QAQC_REMOTE_MAX) { setRemoteState({ kind: 'big' }); return; }
       lastRemoteRef.current = Date.now();
-      void saveQaqcDraft(q.pkg, q.draft.t, payload).then((ok) => {
+      /* ⚠️ ЯВЖ БУЙ БИЧИЛТИЙГ ХАДГАЛНА (2026-09-25-ны аудит): «Хадгалах»/«Ноорог
+         устгах» нь алсыг устгахаасаа ӨМНӨ үүнийг хүлээнэ — эс бөгөөс устгалын
+         ДАРАА буусан хуучин ноорог дараагийн сешнд буцаж сэргэнэ. */
+      const inflight = saveQaqcDraft(q.pkg, q.draft.t, payload).then((ok) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (loadedPkgRef.current !== q.pkg) return;
         setRemoteState(ok ? { kind: 'ok', at: Date.now() } : { kind: 'fail' });
       });
+      remoteInflight.current = inflight;
+      void inflight.finally(() => { if (remoteInflight.current === inflight) remoteInflight.current = null; });
     };
     const t = setTimeout(flush, 12_000);
     const since = Date.now() - lastRemoteRef.current;
@@ -685,11 +734,19 @@ export function Qaqc() {
   useEffect(() => {
     if (loadedPkgRef.current !== pkg.key || !rows.length) return;
     if (promptedPkgRef.current === pkg.key) return;
-    promptedPkgRef.current = pkg.key;
+    const key = pkg.key;
+    promptedPkgRef.current = key;
     let alive = true;
+    /* ⚠️ ДУУССАН ЭСЭХ (2026-09-25-ны аудит): урьд нь уншилт дуусахаас өмнө
+       deps (`canEdit` · `rows` · `show`) өөрчлөгдвөл шинэ ажиллагаа
+       `promptedPkgRef`-ийг тавьсан хэвээр харж ШУУД буцаж, хуучин нь `!alive`
+       дээр тэмдгийг хоослох ч дахин ажиллуулах юм үгүй — сэргээлт МӨНХӨД
+       алгасагддаг байв. Одоо cleanup (дараагийн ажиллагааны ӨМНӨ ажилладаг)
+       дуусаагүй бол тэмдгийг хоослоно. */
+    let finished = false;
 
-    (async () => {
-      const local = readDraft(dk(user?.username, pkg.key));
+    const run = async () => {
+      const local = readDraft(dk(user?.username, key));
       /* ⚠️ ЛОКАЛ ба АЛСЫН хоёрыг АГШНААР харьцуулж ШИНИЙГ нь сонгоно —
          хуучныг тавибал өөр машин дээрх шинэ ажил чимээгүй дарагдана. */
       /*
@@ -699,9 +756,14 @@ export function Qaqc() {
        * Унавал ИЛ хэлж, `promptedPkgRef`-ийг хоослон дахин оролдох замыг
        * нээнэ.
        */
-      const rr = await readQaqcDraft(pkg.key);
-      /* ⚠️ Багц солигдсон бол сэргээх тэмдгийг буцаана (`FillNew`-тэй ижил, 2026-09-17) */
-      if (!alive) { if (promptedPkgRef.current === pkg.key) promptedPkgRef.current = ''; return; }
+      const rr = await readQaqcDraft(key);
+      /* ⚠️ Багц солигдсон/deps өөрчлөгдсөн бол тэмдгийг cleanup аль хэдийн хоосолсон (дээрх `finished`) */
+      if (!alive) return;
+      /* ⚠️ АЛСЫН БИЧИЛТИЙН ЗӨВШӨӨРӨЛ (2026-09-25-ны аудит): алсын ноорогийг
+         АМЖИЛТТАЙ уншсаны дараа л алс руу бичих/устгахыг зөвшөөрнө. Урьд нь
+         уншилт унасан ч локал ноорог буугаад завсарлагатай эффект түүнийг
+         алсад бичиж, өөр компьютерийн (уншиж чадаагүй) ноорогийг ДАРДАГ байв. */
+      if (rr.ok) remoteVerifiedRef.current = key;
       if (!rr.ok) {
         promptedPkgRef.current = '';
         show('warn', tr(
@@ -761,9 +823,13 @@ export function Qaqc() {
          `promptedPkgRef` тавигдчихсан тул caps хожуу ирэхэд сэргээлт дахин
          ажиллахгүй, нэг нүд бичмэгц ноорог бүхэлдээ дарагддаг байв. */
       if (!canEdit) { promptedPkgRef.current = ''; return; }
+      /* ⚠️ Сэргээлт ДУУССАН — хадгалах эффектийн «бүгдийг арилгасан → ноорог
+         устгах» салаа ЗӨВХӨН үүний дараа идэвхжинэ (2026-09-25). */
+      restoreDoneRef.current = key;
       if (!count && !dropped) {
-        clearDraftLS(dk(user?.username, pkg.key));
-        void clearQaqcDraft(pkg.key);
+        clearDraftLS(dk(user?.username, key));
+        /* ⚠️ Алсыг уншиж чадаагүй бол УСТГАХГҮЙ — тэнд юу байгааг мэдэхгүй */
+        if (rr.ok) void clearQaqcDraft(key);
         return;
       }
       /**
@@ -786,10 +852,14 @@ export function Qaqc() {
       } else if (count) {
         show('ok', tr('Хадгалаагүй {0} нүдийг ноорогоос сэргээв. «Хадгалах» дарж үйлчилгээнд бичнэ.', count));
       }
-    })();
+    };
+    void run().finally(() => { finished = true; });
 
-    return () => { alive = false; };
-  }, [rows, pkg.key, canEdit, show]);
+    return () => {
+      alive = false;
+      if (!finished && promptedPkgRef.current === key) promptedPkgRef.current = '';
+    };
+  }, [rows, pkg.key, canEdit, show, user?.username, restoreTry]);
 
   /**
    * ОЛОН НҮДЭНД БУУЛГАХ — Excel-ээс хуулсан блокийг нэг дор бичнэ.
@@ -856,10 +926,12 @@ export function Qaqc() {
     setPend({});
     setEditCell(null);
     clearDraftLS(dk(user?.username, pkg.key));
-    void clearQaqcDraft(pkg.key);
     clearRemoteQueue();
+    /* ⚠️ Явж буй алсын бичилтийг хүлээгээд устгана (flush-ийн ⚠️, 2026-09-25) */
+    const key = pkg.key;
+    void awaitRemoteInflight().then(() => clearQaqcDraft(key));
     show('ok', tr('Ноорог устгав.'));
-  }, [dirtyCount, pkg.key, show, clearRemoteQueue]);
+  }, [dirtyCount, pkg.key, show, clearRemoteQueue, user?.username, awaitRemoteInflight]);
 
   /* ══════════════ ХАДГАЛАХ ══════════════ */
   const save = useCallback(async () => {
@@ -887,20 +959,29 @@ export function Qaqc() {
       /* ⚠️ Эхлээд дараалал, дараа нь алсыг ХҮЛЭЭЖ устгана (2026-09-17) — үгүй бол
          устгалын дараа буусан «зомби» ноорог дараагийн сешнд нүдийг хуучин утгаар дарна. */
       clearRemoteQueue();
-      await clearQaqcDraft(pkg.key);
+      /* ⚠️ Явж буй алсын бичилтийг ХҮЛЭЭНЭ (2026-09-25-ны аудит) — устгалын
+         дараа буувал хадгалсан ажил «хадгалаагүй ноорог» болж буцаж ирнэ. */
+      await awaitRemoteInflight();
+      /* ⚠️ Алсыг уншиж чадаагүй бол УСТГАХГҮЙ — энэ машин тэнд бичээгүй
+         (flush хаалттай) тул тэнд зөвхөн ӨӨР компьютерийн хадгалаагүй ажил бий. */
+      if (remoteVerifiedRef.current === pkg.key) await clearQaqcDraft(pkg.key);
       /* ⚠️ Хадгалсны дараа ЗААВАЛ дахин татна: хооронд нь өөр хүн бөглөсөн
          байж болно. Дэлгэц ба өгөгдөл зөрвөл дараагийн засвар хуучин суурин
          дээр явна. */
       await load(pkg.key);
       done(tr('{0} мөр хадгалагдлаа.', n));
     } catch (e) {
-      setErr(String((e as Error).message || e));
-      /* ⚠️ Хагас бичигдсэн байж болзошгүй тул дэлгэцийг СЕРВЕРЭЭС сэргээнэ. */
-      void load(pkg.key);
+      /* ⚠️ Хагас бичигдсэн байж болзошгүй тул дэлгэцийг СЕРВЕРЭЭС сэргээнэ.
+         ⚠️ ЭХЛЭЭД ачаална, ДАРАА нь алдааг тавина (2026-09-25-ны аудит, HIGH):
+         `load` эхэндээ `setErr('')` дууддаг тул урьд нь алдаа тэр дор нь
+         арчигдаж, хадгалалт унасныг хэрэглэгч огт харахгүй байв. */
+      const msg = String((e as Error).message || e);
+      await load(pkg.key);
+      setErr(msg);
     } finally {
       setBusy(false);
     }
-  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP, clearRemoteQueue]);
+  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP, clearRemoteQueue, user?.username, awaitRemoteInflight]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
   /* ⚠️ НЭЭЛТТЭЙ НҮДИЙГ ЭХЛЭЭД COMMIT (2026-09-25 аудит): нүдний текст зөвхөн

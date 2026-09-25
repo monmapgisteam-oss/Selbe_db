@@ -6,50 +6,17 @@
  * хооронд буруу хөрвүүлбэл дашбоардын БҮХ санхүүгийн тоо чимээгүй гажина —
  * дэлгэц дээр алдаа гарахгүй, зөвхөн дүн буруу болно.
  *
- * ⚠️ Логик нь `Finance.tsx`-ийн `editText`/`parseCell`-ийн ХУУЛБАР (node нь TSX
- * уншихгүй) — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
+ * ⚠️ 2026-09-25: логик нь `src/lib/finEdit.ts`-д (Finance.tsx түүнийг импортолно) —
+ * энэ тест ТҮҮНИЙГ шууд шалгана.
  */
 import assert from 'node:assert/strict';
+/* ⚠️ 2026-09-25: ХУУЛБАР БИШ — эх модулийг ШУУД импортолно (`src/lib/finEdit.ts`,
+   импортгүй тул цэвэр `node`-ийн төрөл хасалтаар ачаалагдана). Урьд нь энд
+   `editText`/`parseCell`-ийн гар хуулбар байсан тул эх код өөрчлөгдөхөд (`DateOnly`
+   салаа, орон нутгийн өдөр) тест хуучин дүрмийг «ногоон» гэж баталсаар байв. */
+import { editText, parseCell, SERVER_RO, NUMERIC_TYPES } from '../lib/finEdit.ts';
 
-const NUMERIC_TYPES = new Set([
-  'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
-  'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
-]);
-
-function editText(v, type) {
-  if (v == null) return '';
-  if (type === 'esriFieldTypeDate') {
-    const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
-    return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
-  }
-  return String(v);
-}
-
-function parseCell(s, type, label) {
-  const v = s.trim();
-  if (v === '') return null;
-  /* ⚠️ 2026-09-08: ЭРГЭЛТИЙН шалгалт — `Finance.parseCell`-ийн хуулбар.
-     `new Date('2026-02-30T00:00:00Z')` нь NaN БИШ, 2026-03-02 болж ГҮЙНЭ. */
-  if (type === 'esriFieldTypeDate') {
-    if (v.length === 10) {
-      const d = new Date(`${v}T00:00:00Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
-        throw new Error(`«${label}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: ${v}`);
-      return d.getTime();
-    }
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) throw new Error(`«${label}» — огноо буруу: ${v}`);
-    return d.getTime();
-  }
-  if (NUMERIC_TYPES.has(type)) {
-    const x = Number(v.replace(/[\s, ]/g, ''));
-    if (!Number.isFinite(x)) throw new Error(`«${label}» — тоо буруу: ${v}`);
-    return x;
-  }
-  return v;
-}
-
-const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+assert.ok(NUMERIC_TYPES.has('esriFieldTypeDouble'), 'тоон төрлийн жагсаалт');
 
 let ok = 0;
 const check = (label, cond) => { assert.ok(cond, '✗ ' + label); ok += 1; console.log('  ✓ ' + label); };
@@ -91,9 +58,19 @@ check('«27.05.2026» (цэгтэй бичиглэл) → алдаа', true);
 
 console.log('\n4. ОГНОО — хоёр тал тэгш эргэнэ');
 const ms = Date.UTC(2026, 4, 27);
-check('epoch → YYYY-MM-DD', editText(ms, T) === '2026-05-27');
+/* ⚠️ `editText` нь ОРОН НУТГИЙН өдөр (`format.dayKey`-ийн дүрэм) — өдрийн дунд цаг
+   ямар ч бүсэд тухайн өдөр хэвээр */
+check('epoch → YYYY-MM-DD (орон нутгийн өдөр)', editText(new Date(2026, 4, 27, 12).getTime(), T) === '2026-05-27');
 check('YYYY-MM-DD → epoch', parseCell('2026-05-27', T, 'x') === ms);
-check('эргэлт тогтвортой', parseCell(editText(ms, T), T, 'x') === ms);
+check('текст → epoch → текст эргэлт', editText(new Date(2026, 4, 27, 12).getTime(), T) === '2026-05-27'
+  && parseCell('2026-05-27', T, 'x') === ms);
+const DO = 'esriFieldTypeDateOnly';
+check('DateOnly: мөр хэвээр буцна', parseCell('2026-05-27', DO, 'x') === '2026-05-27');
+check('DateOnly: editText мөр', editText('2026-05-27', DO) === '2026-05-27');
+assert.throws(() => parseCell('27.05.2026', DO, 'Огноо'), /огноо/);
+check('DateOnly: «27.05.2026» → алдаа', true);
+assert.throws(() => parseCell('2026-02-30', DO, 'Огноо'), /огноо/);
+check('DateOnly: 2026-02-30 → алдаа', true);
 
 console.log('\n5. ТЕКСТ — гажуудахгүй');
 check('текст хэвээр', parseCell('БАГЦ-3.1', S, 'x') === 'БАГЦ-3.1');

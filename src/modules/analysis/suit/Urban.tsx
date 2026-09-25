@@ -289,14 +289,20 @@ export function Parking({
   parking: ParkingOpt;
   setParking: (p: ParkingOpt) => void;
 }) {
-  const supply = rows.reduce((a, r) => a + r.parkingSupply, 0);
-  const need = rows.reduce((a, r) => a + (r.parkingNeed ?? 0), 0);
-  const il = rows.reduce((a, r) => a + r.etIl, 0);
-  const dald = rows.reduce((a, r) => a + r.etDald, 0);
-  const gap = supply - need;
-  const withNeed = rows.filter((r) => r.parkingGap != null);
+  /* ⚠️ 2026-09-25: Нийлүүлэлт ба хэрэгцээг НЭГ олонлогоос — хэрэгцээ нь
+     тодорхойгүй (`parkingNeed == null`) бүсийг хоёуланд нь хасна. Урьд нь
+     нийлүүлэлт БҮХ бүсээс, хэрэгцээ нь null-ыг 0 гэж тоолж бодогддог тул
+     хангалт хэт өндөр, «Илүүдэл» худал гардаг байв (null ≠ 0). */
+  const withNeed = rows.filter((r) => r.parkingNeed != null);
+  const supply = withNeed.reduce((a, r) => a + r.parkingSupply, 0);
+  const need: number | null = withNeed.length
+    ? withNeed.reduce((a, r) => a + (r.parkingNeed as number), 0)
+    : null;
+  const il = withNeed.reduce((a, r) => a + r.etIl, 0);
+  const dald = withNeed.reduce((a, r) => a + r.etDald, 0);
+  const gap: number | null = need == null ? null : supply - need;
   const short = withNeed.filter((r) => (r.parkingGap ?? 0) < 0).length;
-  const pct = need > 0 ? (supply / need) * 100 : null;
+  const pct = need != null && need > 0 ? (supply / need) * 100 : null;
 
   const hh = rows.reduce((a, r) => a + r.households, 0);
   const pop = rows.reduce((a, r) => a + r.population, 0);
@@ -373,8 +379,8 @@ export function Parking({
       <div className={s.finSummary}>
         <div><span>{tr('Ил болон далд зогсоол')}</span><b>{nf(il)} / {nf(dald)}</b></div>
         <div>
-          <span>{gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал')}</span>
-          <b>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</b>
+          <span>{gap == null || gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал')}</span>
+          <b>{gap == null ? '—' : <>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</>}</b>
         </div>
         {/* ⚠️ «N / M» биш ЦЭВЭР ТОО: хуваарь нь хоёр нүдэнд давхардаж, «23/23»
             гэдгийг «23 бүсийн 23» гэхээсээ бутархай мэт уншиж болзошгүй байв. */}
@@ -700,7 +706,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 600 }}>{within(v).length}</div>
-              <div style={{ fontSize: 9.5, opacity: 0.75 }}>{v} м</div>
+              <div style={{ fontSize: 9.5, opacity: 0.75 }}>{tr('{0} м', v)}</div>
             </button>
           );
         })}
@@ -737,7 +743,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
             <div className={s.econRowTop}>
               <i style={{ background: groupColor(x.p.group) }} />
               <span className="nm">{x.p.purpose || tr('Тодорхойгүй')}</span>
-              <b>{Math.round(x.d)} м</b>
+              <b>{tr('{0} м', Math.round(x.d))}</b>
             </div>
             <div className={s.econMeta}>
               {x.p.zone ?? '—'}

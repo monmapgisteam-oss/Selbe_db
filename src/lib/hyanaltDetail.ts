@@ -83,7 +83,19 @@ export type Change = {
    */
   fromPct?: number | null;
   toPct?: number | null;
+  /**
+   * ЭНЭ УДААГИЙН НЭМЭЛТ (2026-09-25, нэмэлтийн горим — `SubmissionPayload.mode`):
+   * обьём бол `to − (from ?? 0)`, хувь бол `toPct − (fromPct ?? 0)`. Хянагч
+   * «40 → 55» гэсэн нийттэй ХАМТ «+15»-ыг харна. Шинэ нийт нь `null` бол `null`.
+   * ⚠️ Хуучин (НИЙТ) payload-д ч бодогдоно — тэр үед зөрүү (сөрөг ч байж болно).
+   */
+  inc?: number | null;
+  incPct?: number | null;
 };
+
+/** `to − (from ?? 0)`; шинэ утга `null` бол `null` (`null ≠ 0` — «мэдээлэлгүй»). */
+const deltaOf = (from: number | null | undefined, to: number | null | undefined): number | null =>
+  to == null ? null : to - (from ?? 0);
 
 /**
  * ХУВААРИЙН ОГНООНЫ ЗАСВАР — хянагчид ХАРАГДАХ ёстой өөрчлөлт.
@@ -193,7 +205,7 @@ const post = async (url: string, body: Record<string, string>) => {
   });
   const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
   // ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг
-  if (j.error) throw new Error(j.error.message || 'Асуулга амжилтгүй');
+  if (j.error) throw new Error(j.error.message || tr('Асуулга амжилтгүй'));
   return j;
 };
 
@@ -383,6 +395,7 @@ async function loadStaged(
           to: null,
           fromPct: fromA0,
           toPct: toA0,
+          incPct: deltaOf(fromA0, toA0),
         });
         continue;
       }
@@ -412,6 +425,8 @@ async function loadStaged(
         to: cells[k],
         fromPct: pctFrom[k],
         toPct: pctTo[k],
+        inc: deltaOf(before[k], cells[k]),
+        incPct: deltaOf(pctFrom[k], pctTo[k]),
       });
     });
     return {

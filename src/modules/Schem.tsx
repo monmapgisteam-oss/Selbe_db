@@ -756,6 +756,13 @@ export function Schem({
               {src.failed.length > 0 && (
                 <p className={c.warnBar} role="status">
                   {tr('{0} эх сурвалж татагдсангүй — тэдгээрийн тоо «—» байна.', src.failed.join(', '))}
+                  {/* ⚠️ 2026-09-25: хэсэгчилсэн үр дүн кэшлэгдэхгүй тул дахин оролдох нь бодитоор дахин татна. */}
+                  {q.retry && (
+                    <>
+                      {' '}
+                      <button type="button" className={c.goBtn} onClick={q.retry}>{tr('Дахин оролдох')}</button>
+                    </>
+                  )}
                 </p>
               )}
               {/**

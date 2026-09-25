@@ -17,6 +17,7 @@ import {
   type AnalysisData, type BuildingPurposeStat,
 } from '@/lib/analysis/data';
 import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues } from '@/lib/services';
+import { sqlStr } from '@/lib/query';
 import {
   urbanScore, scoreColor, scoreLabel, passesNorm,
 } from '@/lib/analysis/score';
@@ -311,7 +312,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       if (!values.length) {
         if (!otherOn) parts.push(`${BF.purpose} IS NOT NULL`);
       } else {
-        const list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(',');
+        /* ⚠️ 2026-09-25: `sqlStr` (N'…') — кирилл утгыг N угтваргүй бол ArcGIS/SQL
+           Server тэнцүүлэхгүй байж болно (CLAUDE.md-ийн ArcGIS занга). */
+        const list = values.map(sqlStr).join(',');
         const not = `${BF.purpose} NOT IN (${list})`;
         parts.push(otherOn ? `(${BF.purpose} IS NULL OR ${not})` : not);
       }
@@ -326,7 +329,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const keep = rows.filter((r) => !catOff.has(r.type)).map((r) => r.id);
       if (!keep.length) return '1=0';
       const vals = [...new Set(keep.flatMap((id) => zoneRefValues(id)))];
-      parts.push(`${ZONE_FIELD} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')})`);
+      parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
     }
 
     /**
@@ -338,7 +341,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     if (locPublicOnly) {
       if (!publicZoneIds.length) return '1=0';
       const vals = [...new Set(publicZoneIds.flatMap((id) => zoneRefValues(id)))];
-      parts.push(`${ZONE_FIELD} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')})`);
+      parts.push(`${ZONE_FIELD} IN (${vals.map(sqlStr).join(',')})`);
       if (LOCATION_EXCLUDE_OIDS.size) {
         parts.push(`OBJECTID NOT IN (${[...LOCATION_EXCLUDE_OIDS].join(',')})`);
       }
@@ -477,7 +480,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
     //    тээвэр-идэвх) — бусад горимд хэрэггүй траффик үүсгэхгүй.
     //    `loadNetworkCached` нь сүлжээ бүрийг НЭГ УДАА кэшлэнэ.
-    if (!needNet || roadNet || !rows.length) return;
+    /* ⚠️ 2026-09-25: `roadErr` байвал дахин татахгүй — урьд нь алдааны дараа
+       `rows` солигдох бүрд чимээгүй дахин оролддог байв. Дахин оролдлого нь
+       ЗӨВХӨН «Дахин оролдох» товчоор (`retryTransport` → roadErr = null). */
+    if (!needNet || roadNet || roadErr || !rows.length) return;
     let alive = true;
     // ⚠️ Гэрлэн дохио (дүрмийн + OSM) `loadNetworkCached` дотор аль хэдийн
     //    тавигдсан ирнэ; энд зөвхөн бүсийн эрэлтийн жинг (`baseLoad`) ононо.
@@ -492,7 +498,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => { alive = false; };
-  }, [needNet, roadNet, rows, netLoad]);
+  }, [needNet, roadNet, roadErr, rows, netLoad]);
 
   /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
   const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
@@ -509,6 +515,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       });
     return () => { alive = false; };
   }, [needBuildings, tData, tErr]);
+
+  /** ⚠️ 2026-09-25: Тээврийн самбарын «Дахин оролдох» — хоёр алдааг цэвэрлэхэд
+      дээрх хоёр эффект дахин ажиллана (кэш нь алдаан дээр өөрөө цэвэрлэгддэг). */
+  const retryTransport = useCallback(() => { setTErr(null); setRoadErr(null); }, []);
 
   /**
    * Тээврийн БҮХ тооцоо — барилга, зам, автобус гурав нэг дор.
@@ -868,7 +878,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 active={tActive}
                 ctx={tCtx}
                 loading={tActive && !tCtx}
-                error={tErr}
+                /* ⚠️ 2026-09-25: замын сүлжээний алдааг ч — урьд нь зөвхөн `tErr`
+                   тул сүлжээ унахад самбар «ачаалж байна…» дээр үүрд үлддэг байв. */
+                error={tErr ?? roadErr}
+                onRetry={retryTransport}
               />
             )}
 
@@ -1359,7 +1372,7 @@ function BuildingCatFilter({ cats, off, setOff }: {
               : on && visible.length === 1 ? tr('Дарвал шүүлт цэвэрлэгдэнэ')
                 : on ? tr('Дарвал «{0}»-ийг шүүлтээс хасна', c.label)
                   : tr('Дарвал «{0}»-ийг шүүлтэд нэмнэ', c.label))
-              + tr('{0} барилга · {1} м²{2}', nf(c.count), nf(c.gfaM2), c.values.length ? `\n${c.values.join(' · ')}` : '')}
+              + tr('{0} барилга · {1} м²{2}', nf(c.count), nf(c.gfaM2), c.values.length ? `\n${[...new Set(c.values.map((v) => v.trim()).filter(Boolean))].join(' · ')}` : '')}
             onClick={() => pick(c.key)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',

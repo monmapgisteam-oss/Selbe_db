@@ -26,10 +26,14 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const URL_ = `${HJ}/SELBE_ALL_DATA_last_0917/FeatureServer/112/query`;
+/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
+   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
+   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай — урьд HJ-ээр залгаж байсан тул GAZAR-ийг
+   env-ээр дарахад тест портал хэрэглэдгээс ӨӨР хост шалгадаг байв. */
+const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
+if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+const TD_SVC = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+const URL_ = `${TD_SVC}/112/query`;
 
 const F = { bagts: 'BAGTS', contractor: 'BAR_COMP' };
 const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
@@ -107,7 +111,7 @@ assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${o
    ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
    агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
    315 мөр, [106] zoriulalt 12 мөр. */
-const ET = `${HJ}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+const ET = TD_SVC;
 const FACETS = [[108, 'zoriulalt'], [108, 'Bar_comp'], [106, 'zoriulalt']];
 
 const post = async (url, p) => {

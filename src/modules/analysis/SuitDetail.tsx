@@ -192,7 +192,11 @@ export function SuitDetail({
   const box = useRef<HTMLDivElement>(null);
   /** Хаагаад дахин нээхэд буланд буцаах — нээгдэх агшинд л байрлалыг тэглэнэ */
   useEffect(() => {
-    if (box.current) { box.current.style.left = '14px'; box.current.style.top = '14px'; }
+    /* ⚠️ 2026-09-25: inline `left: 14px` ХАСАВ — CSS-ийн `.detail { left: 200px }`
+       (2026-08-23-ны ⚠️: хэрэгслийн зурвасыг дарахгүй) шийдвэрийг дарж, карт
+       MapTools-ийг бүрэн бүрхдэг байв. Inline утгыг цэвэрлэж CSS-ийн байрлалд
+       буцаана (чирсэн байрлал нь inline-аар тавигддаг). */
+    if (box.current) { box.current.style.left = ''; box.current.style.top = ''; }
   }, []);
 
   const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {

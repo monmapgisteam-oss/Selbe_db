@@ -98,6 +98,9 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   const [edges, setEdges] = useState<number[]>([]);
   /** Толгойн өндөр — бариул зөвхөн түүгээр сунана (мөрийн доогуур биш). */
   const [headH, setHeadH] = useState(0);
+  /** ⚠️ 2026-09-25: бариул бүрийн баганын нэр — дэлгэц уншигчид `GRIP_ARIA` л
+      давтагдаж, аль баганын бариул болохыг ялгах аргагүй байв. */
+  const [labels, setLabels] = useState<string[]>([]);
 
   // ⚠️ localStorage-ийг ЭФФЕКТЭД уншина — эхний зурагт серверийнхтэй ижил
   // байхгүй бол hydration зөрнө.
@@ -133,10 +136,15 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     if (!wrap || !ths?.length) return;
     const base = wrap.getBoundingClientRect().left;
     const next: number[] = [];
+    const names: string[] = [];
     ths.forEach((th) => {
       const r = th.getBoundingClientRect();
       next.push(Math.round(r.right - base));
+      names.push((th.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60));
     });
+    setLabels((p) =>
+      p.length === names.length && p.every((v, i) => v === names[i]) ? p : names,
+    );
     setEdges((p) =>
       p.length === next.length && p.every((v, i) => v === next[i]) ? p : next,
     );
@@ -252,14 +260,20 @@ export function ResizableTable({ storeKey, className, children }: Props) {
 
   const bump = (i: number, delta: number) => {
     const wrap = wrapRef.current;
-    const th = wrap?.querySelectorAll<HTMLTableCellElement>(
-      'thead tr:last-child > th',
-    )[i];
+    const ths = wrap?.querySelectorAll<HTMLTableCellElement>('thead tr:last-child > th');
+    const th = ths?.[i];
     const base =
       cur.current[i] ?? (th ? Math.round(th.getBoundingClientRect().width) : MIN_W);
-    const next = { ...cur.current, [i]: Math.max(MIN_W, base + delta) };
+    const next: Widths = { ...cur.current, [i]: Math.max(MIN_W, base + delta) };
+    /* ⚠️ 2026-09-25: БУСАД БАГАНЫГ ТОГТООНО (`finish`-ийн ижил). Урьд нь зөвхөн
+       энэ баганыг бичдэг тул эхний товчлуураар хүснэгт `fixed` байрлалд шилжиж,
+       өргөнгүй бусад багана тэгш хуваагдан бүх хүснэгт үсэрдэг байв. */
+    ths?.forEach((cell, k) => {
+      if (next[k] == null) next[k] = Math.round(cell.getBoundingClientRect().width);
+    });
     setW(next);
     save(next);
+    measure();
   };
 
   const style = Object.fromEntries(
@@ -301,7 +315,7 @@ export function ResizableTable({ storeKey, className, children }: Props) {
             className={st.grip}
             style={{ left: x, height: headH }}
             title={GRIP_TITLE}
-            aria-label={GRIP_ARIA}
+            aria-label={labels[i] ? `${GRIP_ARIA}: ${labels[i]}` : `${GRIP_ARIA} ${i + 1}`}
             role="separator"
             aria-orientation="vertical"
             onPointerDown={onDown(i)}

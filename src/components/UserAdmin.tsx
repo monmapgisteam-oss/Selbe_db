@@ -53,6 +53,7 @@ import { orphanCaps, userErh } from '@/lib/erhOverview';
 import { UserCard } from './UserCard';
 import { ErhTypes } from '@/modules/ErhTypes';
 import { TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
+import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
 
 /** Toggle хийж болох бүх харагдац */
@@ -360,6 +361,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeButetsAcl(() => setAclN((n) => n + 1)), []);
   /* ⚠️ `aclOps` бичилт эхлэх/дуусахад — өнчин тэмдгийн түр нуулт шинэчлэгдэнэ (2026-09-25) */
   useEffect(() => subscribeAclPending(() => setAclN((n) => n + 1)), []);
+  /* ⚠️ 2026-09-25: «Төрлөөр тохируулах»-ын хэрэглэгчийн түгжээ — карт хаагдаж/нээгдэнэ */
+  useEffect(() => subscribeTypeLock(() => setAclN((n) => n + 1)), []);
+  /* ⚠️ 2026-09-25: ноорогтой хэрэглэгчдийг бөөнөөр хэрэгжүүлэлтэд мэдэгдэнэ — тэднийг
+     алгасна (`roleTypeApply.setTypeDraftUsers`); эс бөгөөс дараагийн «Хадгалах»
+     ХУУЧИН ноорогоор загварын харагдацыг дарна. */
+  useEffect(() => { setTypeDraftUsers(drafts.keys()); }, [drafts]);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);

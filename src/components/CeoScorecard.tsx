@@ -251,6 +251,11 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     };
     return assemble(baseQ.data, x);
   }, [baseReady, baseQ, landQ, qualQ, planQ]);
+  const partFailed = [
+    ...(baseQ.data?.failed ?? []),
+    ...(qualQ.state === 'ready' ? qualQ.data.failed : []),
+    ...(landQ.state === 'ready' && landQ.data.failed ? [tr('Газрын давхцал (хэсэгчлэн)')] : []),
+  ];
   /**
    * ⚠️ 2026-09-21: ЖАГСААЛТ · ТООЛОЛ · ШҮҮЛТ = ЗӨВХӨН «багц ажил» (74). Газар
    * чөлөөлөлтийн 4 мөр (`isLandWork`, 6-р хэсэг) «78 биш 74» дүрмээр багц ажил
@@ -386,9 +391,10 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
           </button>
         ))}
       </div>
-      {(baseQ.data?.failed.length || failedDims.length) ? (
+      {/* ⚠️ 2026-09-25: хэсэгчилсэн уналтыг ч ил — QAQC хуудас ба газрын давхцал (`scorecardLoad`-ийн `failed`) */}
+      {(partFailed.length || failedDims.length) ? (
         <p className={s.warnLine}>
-          {tr('Татагдсангүй: {0}', [...(baseQ.data?.failed ?? []), ...failedDims].join(', '))}
+          {tr('Татагдсангүй: {0}', [...partFailed, ...failedDims].join(', '))}
         </p>
       ) : null}
 

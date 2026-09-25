@@ -32,6 +32,7 @@
 import { makeAcl, ALL_BAGTS } from './scopedAcl';
 import { qaqcUpsert, qaqcRemove } from './permsRemote';
 import { QAQC_CAP } from './aclRoleCaps';
+import { t as tr } from './i18nCore';
 
 export { ALL_BAGTS };
 
@@ -53,10 +54,12 @@ const acl = makeAcl<never>({
      хуучин хэлбэрийн `bagts` нь мэдээлэл алдахгүй, задлах шаардлагагүй. */
   push: (user, _roles, bagts) => qaqcUpsert(user, bagts),
   remove: qaqcRemove,
+  /* ⚠️ GETTER (2026-09-25): `tr()`-ийг модуль ачаалах агшинд БИШ, мессеж
+     уншигдах агшинд дуудна — хэл солиход англи хувилбар зөв гарна. */
   msg: {
-    noUser: 'Аккаунтын нэрээ бичнэ үү',
-    superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',
-    noBagts: 'Багц сонгоно уу',
+    get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
+    get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
+    get noBagts() { return tr('Багц сонгоно уу'); },
   },
 });
 

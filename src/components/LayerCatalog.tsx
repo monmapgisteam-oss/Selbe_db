@@ -3,7 +3,7 @@
 import {
   memo, useState,
   type CSSProperties, type Dispatch, type SetStateAction, type ReactNode,
-  type PointerEvent as ReactPointerEvent,
+  type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { Icon } from './Icon';
 import { t as tr } from '@/lib/i18nCore';
@@ -52,6 +52,7 @@ export const LayerCatalog = memo(function LayerCatalog({
   resizing = false,
   onResizeStart,
   onResizeReset,
+  onResizeKey,
   zone,
   embedded = false,
   extra,
@@ -90,6 +91,10 @@ export const LayerCatalog = memo(function LayerCatalog({
    */
   onResizeStart?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onResizeReset?: () => void;
+  /** ⚠️ 2026-09-25: гараар (сум/Home/End) өргөн тохируулах — `Portal.useColumnResize` */
+  /* ⚠️ Одоогийн өргөнийг (aria-valuenow) ЗОРИУДААР дамжуулахгүй — чирэлтийн
+     pointermove бүрд өөрчлөгдөж `memo`-г эвдэнэ (дээрх ⚠️). */
+  onResizeKey?: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
   zone: string | null;
   /**
    * Порталын grid-ийн `cat` баганын оронд ХӨВӨГЧ панелийн дотор зурагдах уу.
@@ -231,8 +236,10 @@ export const LayerCatalog = memo(function LayerCatalog({
           role="separator"
           aria-orientation="vertical"
           aria-label={tr('Жагсаалтын өргөн')}
+          tabIndex={onResizeKey ? 0 : undefined}
           onPointerDown={onResizeStart}
           onDoubleClick={onResizeReset}
+          onKeyDown={onResizeKey}
           title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
         />
       )}

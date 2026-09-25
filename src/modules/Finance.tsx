@@ -51,9 +51,10 @@ import { loadBlockHistory } from '@/lib/blockProgress';
  *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
-import { loadPlanCurve, type PlanCurve } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, type PlanCurve } from '@/lib/planProgress';
+import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 import {
-  CASHFLOW_NEW, HO_IPC, TASK_SHEET, bagtsKey, blockKey, pkgKeyOf, cfMonthAxis, hoAmount,
+  CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
   CF_WORK_WHERE, CF_MONTH_WHERE,
 } from '@/lib/services';
 /* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
@@ -62,6 +63,9 @@ import {
    хөөрөгдөнө. Гэрээний тоог ЗӨВХӨН `groupHo`/`hoTotals`-оос ав. */
 import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
+import {
+  NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, parseCell as parseCellRaw, type ParseMsg,
+} from '@/lib/finEdit';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
   FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD, FIN_XL_CODE,
@@ -197,6 +201,12 @@ export type MonthPt = {
    */
   phys: number | null;
   /**
+   * `phys`-ийн ХЭМЖИЛТИЙН огноо «YYYY-MM-DD» (`FinData.physAt`).
+   * ⚠️ Байхгүй (`undefined`/`null`) бол `lagOf` сарын ЭЦСЭЭР бодно —
+   *    `ceo/schedule.lagPoint` сорил яг тэр хуучин зан төлөвт тулгуурладаг.
+   */
+  physAt?: string | null;
+  /**
    * БАГЦЫН ТҮЛХҮҮР — `phys` аль багцаас гарсан бэ (`bagtsKey`/`pkgKeyOf`).
    *
    * ⚠️ ЗӨВХӨН `lagOf`-д (2026-09-04): хоцрогдлыг бодохдоо ЯГ ТЭР багцын
@@ -260,6 +270,13 @@ export type FinData = {
   phys: PhysMap;
   physCnt: PhysMap;
   /**
+   * Багц → сар → тэр цэгийн ХЭМЖИЛТИЙН огноо «YYYY-MM-DD» (2026-09-25).
+   * ⚠️ `lagOf` төлөвлөгөөг сарын эцсээр БИШ, энэ өдрөөр завсарлана — эс
+   *    бөгөөс сарын 5-нд хэмжсэн гүйцэтгэлийг 30-ны төлөвлөгөөтэй жишиж
+   *    хиймэл «хоцрогдол» гарна (`negtgelAuto.housingPlanOf`-ийн дүрэм).
+   */
+  physAt: PhysAtMap;
+  /**
    * ТӨЛБӨРИЙН МӨРҮҮД (45) — `HO_IPC` түүхий мөр, OID дарааллаар.
    *
    * ⚠️ `given` нь тэдгээрийг сар бүрийн НИЙЛБЭР болгож хураадаг тул төлбөр
@@ -297,9 +314,21 @@ export function ComboChart({
   lagMonth,
   lagLvl,
   hidePhys = false,
+  contract = null,
 }: {
   items: MonthPt[];
   height?: number;
+  /**
+   * ГЭРЭЭНИЙ НИЙТ ДҮН, ₮ — биет % -ийг ₮ тэнхлэгт буулгах суурь.
+   *
+   * ⚠️ 2026-09-25: урьд нь биет % × `yMax` (ӨССӨН ОЛГОЛТЫН дээд) гэж
+   *    зурагддаг байв — 30% биет нь «олгосон мөнгөний 30%» өндөрт гарч, ₮
+   *    тэнхлэгийн тоотой ямар ч холбоогүй, олголт өсөх бүрд биет муруй
+   *    ХӨДӨЛДӨГ байлаа. Одоо: гэрээний дүн өгвөл биет ₮ = % × гэрээ (олголттой
+   *    нэг ₮ тэнхлэгт шууд жишигдэнэ); өгөөгүй бол биет нь ӨӨРИЙН 0–100%
+   *    тэнхлэгтэй (баруун талд %-ийн шошго).
+   */
+  contract?: number | null;
   /** Хоцрогдол хэмжсэн сар — тэр сарын БИЕТ багана анивчина */
   lagMonth?: string;
   lagLvl?: 'red' | 'yellow' | null;
@@ -329,13 +358,19 @@ export function ComboChart({
    */
   let gsum = 0;
   const cums = items.map((it) => { gsum += it.given; return gsum; });
-  const yMax = Math.max(1, ...cums);
+  /** Биет нь ӨӨРИЙН %-ийн тэнхлэгтэй эсэх — `contract`-ийн ⚠️ */
+  const ownAxis = !(contract != null && Number.isFinite(contract) && contract > 0);
+  const physVal = (p: number | null): number | null => (
+    p == null || ownAxis ? null : (Math.max(0, Math.min(100, p)) / 100) * (contract as number)
+  );
+  const yMax = Math.max(1, ...cums, ...(hidePhys ? [] : items.map((it) => physVal(it.phys) ?? 0)));
   const rows = items.map((it, i) => ({
     label: it.label,
     financing: cums[i], // өссөн олгосон санхүүжилт ₮
-    // ⚠️ Дата алга (null) бол 0 өндөртэй цэг зурвал «биет гүйцэтгэл тэг»
-    //    гэсэн ХУДАЛ уншилт өгнө — доорх `lastPhys` нь ийм саруудыг алгасна.
-    physical: ((it.phys ?? 0) / 100) * yMax, // биет гүйцэтгэлийн үнэ цэнэ ₮
+    /* ⚠️ Дата алга (null) бол 0 өндөртэй цэг зурвал «биет гүйцэтгэл тэг»
+       гэсэн ХУДАЛ уншилт өгнө. 2026-09-25: `?? 0` ХАСАГДСАН — урьд нь null
+       сар 0 өндөрт буулгагдаж, муруй дундаа тэг рүү унадаг байв; одоо цоорхой. */
+    physical: physVal(it.phys), // биет гүйцэтгэлийн үнэ цэнэ ₮ (өөр тэнхлэгтэй бол null)
     physPct: it.phys, // шошго/тултипт харуулах биет % (null = хэмжигдээгүй)
     givenCum: cums[i],
     it,
@@ -378,7 +413,8 @@ export function ComboChart({
      нь ~105px. Тогтмол 128 нь өөр төслийн дүнгийн урттай тааруулагдаагүй
      байсан: богино дүнд хоосон зай, урт дүнд тайралт үүсгэнэ. */
   const padL = Math.round(textW(num(yMax)) + 16);
-  const padR = 30;  // баруун — сүүлийн шошгыг багтаах зай
+  /* баруун — сүүлийн шошгыг багтаах зай; биет өөрийн тэнхлэгтэй бол «100%» шошго */
+  const padR = ownAxis && !hidePhys ? 40 : 30;
   const padT = 26;
   const padB = 30;  // доор — ЗӨВХӨН он сар (хувиуд tooltip руу шилжсэн)
 
@@ -386,13 +422,32 @@ export function ComboChart({
   const plotH = H - padT - padB;
   const xFor = (i: number) => padL + (N <= 1 ? plotW / 2 : (i / (N - 1)) * plotW);
   const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(yMax, v)) / yMax) * plotH;
+  /** Биет цэгийн Y — ₮ тэнхлэгт (гэрээтэй) эсвэл өөрийн 0–100% тэнхлэгт */
+  const yPhys = (r: { physical: number | null; physPct: number | null }) => (
+    ownAxis
+      ? padT + (1 - Math.max(0, Math.min(100, r.physPct ?? 0)) / 100) * plotH
+      : yFor(r.physical ?? 0)
+  );
 
   /* Сүүлийн УТГАТАЙ цэгүүд — тэдгээр дээр л шошго, том цэг үлдэнэ */
   const lastGiven = rows.reduce((a, r, i) => (r.givenCum > 0 ? i : a), -1);
 
   /* Цэгүүдийг нэг л удаа бодно — зам, шошго бүгд эндээс */
   const givenPts = rows.slice(0, lastGiven + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.givenCum) }));
-  const physPts = rows.slice(0, lastPhys + 1).map((r, i) => ({ x: xFor(i), y: yFor(r.physical) }));
+  /*
+   * ⚠️ 2026-09-25: БИЕТ муруй ХЭСЭГЧИЛЖ зурагдана — хэмжигдээгүй (null) сар
+   *    ЦООРХОЙ үлдэнэ (null ≠ 0). Урьд нь бүх сар нэг замд орж, null сар 0
+   *    өндөрт буугаад муруй дундаа тэг рүү унадаг байв.
+   */
+  const physSegs: { x: number; y: number; i: number }[][] = [];
+  {
+    let cur: { x: number; y: number; i: number }[] = [];
+    rows.slice(0, lastPhys + 1).forEach((r, i) => {
+      if (r.physPct == null) { if (cur.length) physSegs.push(cur); cur = []; return; }
+      cur.push({ x: xFor(i), y: yPhys(r), i });
+    });
+    if (cur.length) physSegs.push(cur);
+  }
 
   /* ⚠️ ЗӨРҮҮГИЙН ТАЛБАЙ (төлөвлөгөө ↔ олголт) 2026-09-06-нд ХАСАГДСАН —
      төлөвлөгөөний муруй байхгүй болсон тул будах зай ч байхгүй. */
@@ -461,6 +516,13 @@ export function ComboChart({
               <text x={padL - 8} y={gy + 3} className={f.sAxisY} textAnchor="end">
                 {t === 0 ? '0' : num(t * yMax)}
               </text>
+              {/* ⚠️ 2026-09-25: биет ӨӨРИЙН тэнхлэгтэй үед (гэрээний дүнгүй) баруун
+                  талд %-ийн шошго — ₮ шошгоор биет муруйг уншуулахгүй. */}
+              {ownAxis && !hidePhys && (
+                <text x={W - padR + 6} y={gy + 3} className={f.sAxisY} textAnchor="start" style={{ fill: PHYS }}>
+                  {Math.round(t * 100)}%
+                </text>
+              )}
             </g>
           );
         })}
@@ -479,7 +541,7 @@ export function ComboChart({
               />
               {rows[li].physPct != null && (
                 <circle
-                  cx={cx} cy={yFor(rows[li].physical)} r={5} fill={color}
+                  cx={cx} cy={yPhys(rows[li])} r={5} fill={color}
                   className={lagLvl === 'red' ? f.barBlinkRed : f.barBlinkYellow}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -492,9 +554,12 @@ export function ComboChart({
         {givenPts.length > 1 && (
           <path d={smoothPath(givenPts)} className={f.actLine} style={{ stroke: ACT }} vectorEffect="non-scaling-stroke" />
         )}
-        {physPts.length > 1 && (
-          <path d={smoothPath(physPts)} className={f.physLine} style={{ stroke: PHYS }} vectorEffect="non-scaling-stroke" />
-        )}
+        {physSegs.map((seg) => (seg.length > 1 ? (
+          <path key={`ps-${seg[0].i}`} d={smoothPath(seg)} className={f.physLine} style={{ stroke: PHYS }} vectorEffect="non-scaling-stroke" />
+        ) : (
+          /* Ганцаарчилсан хэмжилт (хоёр талдаа цоорхой) — шугамгүй тул цэгээр */
+          <circle key={`ps-${seg[0].i}`} cx={seg[0].x} cy={seg[0].y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+        )))}
 
         {/* ── ЦЭГ БҮР ДЭЭР УТГА ──
             ⚠️ Зөвхөн эцсийн утга үзүүлэх нь БУРУУ байв: 12 сарын урт графикийг
@@ -519,7 +584,7 @@ export function ComboChart({
           // ⚠️ `== null` (`<= 0` БИШ): 0% нь бодит хэмжилт тул шошготой байна
           if (i > lastPhys || r.physPct == null || !physLbl.has(i)) return null;
           const x = xFor(i);
-          const y = yFor(r.physical);
+          const y = yPhys(r);
           return (
             <g key={`ph-${i}`}>
               <circle cx={x} cy={y} r={3} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
@@ -538,7 +603,7 @@ export function ComboChart({
               <circle cx={xFor(hi)} cy={yFor(rows[hi].givenCum)} r={4} className={f.sDot} style={{ fill: ACT }} vectorEffect="non-scaling-stroke" />
             )}
             {hi <= lastPhys && rows[hi].physPct != null && (
-              <circle cx={xFor(hi)} cy={yFor(rows[hi].physical)} r={4} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
+              <circle cx={xFor(hi)} cy={yPhys(rows[hi])} r={4} className={f.sDot} style={{ fill: PHYS }} vectorEffect="non-scaling-stroke" />
             )}
           </g>
         )}
@@ -661,7 +726,6 @@ const loadCfMonthRows = cached(
 let planCurveCache: PlanCurve | null = null;
 
 async function loadFinDataRaw(): Promise<FinData> {
-  const S = TASK_SHEET.fields;
     const [contracts, ipc, hist] = await Promise.all([
       loadCashflowNewRows(),
       loadHoRows(),
@@ -685,7 +749,10 @@ async function loadFinDataRaw(): Promise<FinData> {
        *    болохоос БИШ, буруу (мөнгөн нэгжтэй) тоо гарахгүй. Алдааг залгих
        *    нь ЗОРИУДЫНХ — санхүүгийн бүх дата хуваарийн улмаас унах ёсгүй.
        */
-      loadPlanCurve()
+      /* ⚠️ 2026-09-25: КЭШТЭЙ (`loadPlanCurveCached`) — PkgProg · negtgel ·
+         execReport-той НЭГ хуулбар; урьд нь энд КЭШГҮЙ дуудагдаж, багцын
+         гүйцэтгэл нээхэд 10 хуудас ХОЁР удаа бүтнээр уншигддаг байв. */
+      loadPlanCurveCached()
         .then((pc) => { planCurveCache = pc; })
         .catch(() => { planCurveCache = null; }),
     ]);
@@ -760,81 +827,28 @@ async function loadFinDataRaw(): Promise<FinData> {
          ганцаараа бөгөөд 40/45 бөглөгдсөн тул цуваа САЙЖИРНА (хуучин 30/59). */
       const raw = ym(r[HP.payDate]);
       if (!raw) return; // огноогүй — цувааны гадна (дээрх ⚠️)
-      const mon = raw < first ? first : raw > last ? last : raw;
+      /* ⚠️ 2026-09-25: тэнхлэгээс ГАДУУРХ огноо (2025-10-оос өмнө / ирээдүй)
+         сарын цуваанд ОРОХГҮЙ — урьд нь ирмэгийн сар руу clamp хийгдэж,
+         эхний/сүүлийн сард хуурамч оргил үүсгэдэг байв. Нийт дүн
+         (`givenTotal`) дээр аль хэдийн бүрэн тоологдсон. */
+      if (raw < first || raw > last) return;
+      const mon = raw;
       const byMon = given.get(k) ?? new Map<string, number>();
       byMon.set(mon, (byMon.get(mon) ?? 0) + amt);
       given.set(k, byMon);
     });
 
-    // Биет гүйцэтгэл → багц бүрд: сар → % (блокуудын дундаж, сарын эцсийн байдлаар).
-    // Append-лог тул блок бүрийн тухайн сараас өмнөх ХАМГИЙН СҮҮЛИЙН бичилтийг авна.
+    /*
+     * Биет гүйцэтгэл → багц бүрд: сар → % (0–100).
+     * ⚠️ 2026-09-25: бүтээлт `@/lib/finPhys.buildPhys`-д шилжсэн — ТОГТМОЛ
+     *    хуваагч, давтсан (carry-forward) цэггүй, хэмжилтийн огноо (`physAt`).
+     *    Дүрмүүдийг тэр файлын толгойноос үз; `phys.check.mjs` түүнийг шууд
+     *    импортолж шалгана (хуулбар БИШ).
+     */
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
-    const phys: PhysMap = new Map();
-    const physCnt: PhysMap = new Map(); // багц·сар → блокийн тоо (жин)
-    {
-      // багц → блок → [огноо, гүйцэтгэл][] (огноогоор эрэмбэлсэн)
-      const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
-      /*
-       * `BlockHistory` нь `${БАГЦ}|${блок}` түлхүүртэй Map — доорх логик УРТ
-       * мөр хүлээдэг тул задалж өгнө. Гүйцэтгэл нь 0–100 хувиар ирдэг ч энэ
-       * тооцоолол 0–1 бутархайг хүлээдэг тул 100-д хуваана.
-       */
-      const sheet = [...hist].flatMap(([key, pts]) => {
-        const [bg, bl] = key.split('|');
-        return pts.map((pt) => ({
-          [S.bagts]: bg,
-          [S.block]: bl,
-          [S.date]: pt.date,
-          [S.progress]: pt.pct == null ? null : pt.pct / 100,
-        }) as Row);
-      });
-      sheet.forEach((r) => {
-        const k = bagtsKey(r[S.bagts]);
-        const d = String(r[S.date] ?? '').slice(0, 10);
-        /**
-         * ⚠️ `blockKey` (2026-08-24 аудит) — түүхий нэрээр бүлэглэхэд «5/1
-         * барилга» ба «5/1 блок» ХОЁР өөр блок болж, хуучирсан 12-р сарын
-         * өндөр утга давхар тоологдон Багц 4.1-ийн биет % 29.8 гарч байв
-         * (blockProgress-ийн зөв дундаж 21.6) — нэг мөрөнд хоёр өөр тоо.
-         */
-        const b = blockKey(r[S.block]);
-        if (!k || !d || !b) return;
-        const blocks = byPkg.get(k) ?? new Map<string, { d: string; g: number | null }[]>();
-        const arr = blocks.get(b) ?? [];
-        // null = нүд цэвэрлэгдсэн/бөглөгдөөгүй — 0 гэж тоолбол дундаж худал буурна
-        arr.push({ d, g: r[S.progress] == null ? null : n(r[S.progress]) });
-        blocks.set(b, arr);
-        byPkg.set(k, blocks);
-      });
-      byPkg.forEach((blocks, k) => {
-        const byMon = new Map<string, number>();
-        const cntMon = new Map<string, number>();
-        axis.forEach((label) => {
-          if (label > nowYm) return; // ирээдүйн сард биет дата байхгүй
-          let sum = 0;
-          let cnt = 0;
-          blocks.forEach((arr) => {
-            // тухайн сарын эцсээс өмнөх сүүлийн бичилт
-            let best: { d: string; g: number | null } | null = null;
-            arr.forEach((e) => {
-              if (e.d.slice(0, 7) <= label && (!best || e.d > best.d)) best = e;
-            });
-            // Сүүлийн бичилт нь null бол блок «мэдээлэлгүй» — дунджид ОРУУЛАХГҮЙ
-            // (blockProgress.compute-ийн дүрэмтэй ижил: 0% гэж будвал худал мэдээлэл)
-            const g = (best as { d: string; g: number | null } | null)?.g;
-            if (g != null) {
-              sum += g;
-              cnt++;
-            }
-          });
-          if (cnt > 0) { byMon.set(label, (sum / cnt) * 100); cntMon.set(label, cnt); }
-        });
-        phys.set(k, byMon);
-        physCnt.set(k, cntMon);
-      });
-    }
+    const { phys, physCnt, physAt } = buildPhys(hist, axis, nowYm);
     return {
-      contracts, planTotal, given, givenTotal, phys, physCnt,
+      contracts, planTotal, given, givenTotal, phys, physCnt, physAt,
       pays: ipc,
       /* ⚠️ ГЭРЭЭНИЙ ТҮВШИН — энд НЭГ УДАА хурааж бүх дуудагчид өгнө.
          Дуудагч тал өөрөө мөрөөр нийлүүлбэл давхардана. */
@@ -982,6 +996,7 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
   const k3 = pkgKeyOf(r[C.pkg]);
   const byMon = given.get(k2) ?? given.get(k3);
   const ph = phys.get(k2) ?? phys.get(k3);
+  const at = fin.physAt?.get(k2) ?? fin.physAt?.get(k3);
   /*
    * ⚠️ ХОЦРОГДЛЫН ТӨЛӨВЛӨГӨӨГ БОДОХ БАГЦЫН ТҮЛХҮҮР (2026-09-04) — `phys` ЯМАР
    *    багцаас гарсан, ЯГ ТЭР багцынх. `lagOf` нь `planned − actual` бодох
@@ -997,6 +1012,7 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
     label,
     given: byMon?.get(label) ?? 0,
     phys: ph?.get(label) ?? null,
+    physAt: at?.get(label) ?? null,
     pkg,
   }));
 }
@@ -1045,18 +1061,20 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
   const key = months.find((m) => m.pkg)?.pkg;
   const series = key ? pc.byBagts.get(key) : pc.months;
   if (!series?.length) return null;
-  /* Төлөвлөгөө: ХЭМЖИЛТ ХИЙГДСЭН тэр сарын байдлаар — цаг хугацаагаар тэнцүү
-     харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй). */
-  let planned = 0;
-  let found = false;
-  for (const p of series) {
-    if (p.label > months[mi].label) break;
-    planned = p.pct;
-    found = true;
-  }
+  /* Төлөвлөгөө: ХЭМЖИЛТ ХИЙГДСЭН тэр ӨДРИЙН байдлаар — цаг хугацаагаар тэнцүү
+     харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй).
+     ⚠️ 2026-09-25: урьд нь хэмжилтийн САРЫН ЭЦСИЙН төлөвлөгөө (сарын 5-нд
+     хэмжсэнийг 30-ны төлөвлөгөөтэй) жишдэг байв; одоо `physAt` өдрөөр
+     завсарлана (`planProgress.planPctAt` = `negtgelAuto.housingPlanOf`-ийн
+     дүрэм). `physAt` байхгүй бол сарын эцэс — хуучин зан төлөв. */
+  const m = months[mi];
+  const at = m.physAt && /^\d{4}-\d{2}-\d{2}$/.test(m.physAt) && m.physAt.slice(0, 7) === m.label
+    ? m.physAt
+    : `${m.label}-31`;
+  const planned = planPctAt(series, at);
   /* ⚠️ `planned <= 0` → `null` нь ХУУЧИН гэрээ (дуудагчид `lag &&`-ээр шалгадаг):
      хуваарь тэр сард хараахан эхлээгүй бол «хоцрогдол» гэж ярих утгагүй. */
-  if (!found || planned <= 0) return null;
+  if (planned == null || planned <= 0) return null;
   const actual = months[mi].phys ?? 0;
   return { month: months[mi].label, planned, actual, gap: planned - actual };
 }
@@ -1077,14 +1095,8 @@ export const lagLevel = (gap: number): 'red' | 'yellow' | null =>
    болж, юу ч олохгүй.
    ═══════════════════════════════════════════════════════════ */
 
-/**
- * ЗАСАХ БОЛОМЖГҮЙ талбарууд — серверийн удирддаг багана.
- *
- * ⚠️ `tableWrite.ts` эдгээрийг илгээхийн өмнө ч шүүдэг (давхар хамгаалалт).
- * Энд шүүх нь UI-д зориулагдсан: засаж болохгүй нүдэнд оролт харуулбал
- * хэрэглэгч бичээд, дараа нь чимээгүй алга болоход гайхна.
- */
-const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator|editdate|editor)/i;
+/* ⚠️ 2026-09-25: `SERVER_RO` · `NUMERIC_TYPES` · `dateOnlyText` · `editText` ·
+   `parseCell` → `@/lib/finEdit` (тест тэр модулийг ШУУД шалгана — хуулбар БИШ). */
 
 /**
  * EDITOR TRACKING — «хэн, хэзээ зассан».
@@ -1109,37 +1121,6 @@ const editStamp = (r: Row): EditStamp => {
   const ms = Number(r[ET_FIELDS.editDate]);
   if (!Number.isFinite(ms) || ms <= 0) return null;
   return { who: String(r[ET_FIELDS.editor] ?? '').trim(), ms };
-};
-
-const NUMERIC_TYPES = new Set([
-  'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
-  'esriFieldTypeSmallInteger', 'esriFieldTypeBigInteger', 'esriFieldTypeOID',
-]);
-
-/**
- * ОГНООНЫ ТАЛБАР — `DateOnly`-г ЗААВАЛ хамруулна.
- *
- * ⚠️ 2026-09-01: `cashflow_0813/173` ба `ipc_0813/172`-ийн огнооны 14 талбар
- * (CF020, CF021, CF022, CF030 · IPC09, IPC10, IPC12, IPC14, IPC16, IPC24,
- * IPC25, IPC26, IPC28, IPC30) БҮГД `esriFieldTypeDateOnly` — `esriFieldTypeDate`
- * төрөлтэй талбар хоёуланд НЭГ Ч БАЙХГҮЙ. Урьд нь энд зөвхөн
- * `esriFieldTypeDate`-г шалгадаг байсан тул огнооны нүд ТЕКСТИЙН салаа руу
- * унаж, «27.05.2026» эсвэл «2026-13-45» мэт оролт шалгалтгүйгээр серверт
- * илгээгддэг байв — `parseCell`-ийн «буруу огноог ЧИМЭЭГҮЙ хөрвүүлэхгүй»
- * баталгаа бодит огнооны багананд ХЭЗЭЭ Ч биелдэггүй байсан.
- *
- * `DateOnly` нь epoch БИШ, `YYYY-MM-DD` МӨР — задлахгүйгээр нэг хэвэнд оруулна.
- */
-const dateOnlyText = (v: unknown): string => {
-  if (typeof v === 'number') {
-    const d = new Date(v);
-    /* ⚠️ `dayKey` (ОРОН НУТГИЙН огноо) — `toISOString().slice(0,10)` БИШ (2026-09-21,
-       `format.ts`-ийн дүрэм): UTC-гээр огтолбол +08 бүсэд 00:00–07:59-ийн
-       огноо ӨМНӨХ өдөр болж, хэрэглэгч бичсэнээсээ өөр өдөр хардаг байв. */
-    return Number.isNaN(d.getTime()) ? String(v) : dayKey(d.getTime());
-  }
-  const s = String(v).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(v);
 };
 
 /** Нүдний утгыг талбарын ТӨРЛӨӨР нь форматлана — үйлчилгээ дэх утгыг гажуудуулахгүй */
@@ -1232,77 +1213,33 @@ const cellStr = (v: unknown, t: string, n = ''): string => fmtCell(v, t, n).text
 const isNumericType = (t: string): boolean => NUMERIC_TYPES.has(t);
 
 /**
- * Нүдийг ЗАСАХ талбарт тавих түүхий текст.
- *
- * ⚠️ `fmtCell`-ийн гаралтыг ХЭРЭГЛЭХГҮЙ: тэр нь мянгатын таслал нэмдэг
- * («62,791,703,684») тул засварт оруулбал хадгалахад тоо болж хөрвөхгүй.
- * Огноог `YYYY-MM-DD` болгоно — оруулахад ч мөн тэр хэлбэрийг хүлээнэ.
+ * Засварын алдааны текст — `finEdit.parseCell`-д ОРЧУУЛСАН хувилбараар.
+ * ⚠️ `tr()` литерал ЭНД үлдэнэ: i18n-extract нь `tr('…')`-г л цуглуулдаг,
+ *    `finEdit.ts` нь импортгүй байх ёстой (тестийн ⚠️).
  */
-function editText(v: unknown, type: string): string {
-  if (v == null) return '';
-  if (type === 'esriFieldTypeDateOnly') return dateOnlyText(v);
-  if (type === 'esriFieldTypeDate') {
-    const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
-    /* ⚠️ `dayKey` — засварын нүдэнд ч ОРОН НУТГИЙН өдөр (2026-09-21): `fmtCell`-тэй
-       ижил өдөр харагдахгүй бол хэрэглэгч «өөр огноо» гэж эндүүрч дахин бичнэ. */
-    return Number.isNaN(d.getTime()) ? String(v) : dayKey(d.getTime());
-  }
-  return String(v);
-}
+const PARSE_MSG: ParseMsg = {
+  dateFmt: (l, v) => tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', l, v),
+  dateBad: (l, v) => tr('«{0}» — огноо буруу: {1}', l, v),
+  numBad: (l, v) => tr('«{0}» — тоо буруу: {1}', l, v),
+};
+const parseCell = (s: string, type: string, label: string): unknown => parseCellRaw(s, type, label, PARSE_MSG);
 
 /**
- * Засварласан текстийг үйлчилгээ хүлээж авах ТӨРӨЛ рүү хөрвүүлнэ.
- *
- * ⚠️ Хоосон нүд нь `null` — хоосон мөр (`''`) БИШ. Тоон талбарт `''` илгээвэл
- * ArcGIS 0 болгож хадгалдаг: «бөглөөгүй» ба «тэг» хоёр ЗААВАЛ ялгаатай байх
- * ёстой, эс бөгөөс дашбоардын дундаж чимээгүй гажина.
- *
- * ⚠️ Буруу тоо/огноог ЧИМЭЭГҮЙ 0 болгохгүй — `Error` шиднэ, дуудагч тал
- * тухайн нүдийг тодруулж хэрэглэгчид буцаана.
+ * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
+ * тооцогддог ч `useMemo`-гийн хамаарал нь ИШЛЭЛЭЭР жишдэг. Рендер бүрт `[]`
+ * шинээр үүсгэвэл доторх санамжууд дэмий дахин тооцогдоно.
+ * ⚠️ 2026-09-25: МОДУЛИЙН хүрээнд зөөв — бүрэлдэхүүн дотор байхдаа рендер
+ * бүрд ШИНЭ массив болж, дээрх зорилгоо биелүүлдэггүй байв.
  */
-function parseCell(s: string, type: string, label: string): unknown {
-  const v = s.trim();
-  if (v === '') return null;
-  /* ⚠️ `DateOnly` — epoch БИШ, `YYYY-MM-DD` МӨР буцаана. Хэлбэрийг хатуу
-     шалгана: «27.05.2026» (Монголд түгээмэл) эсвэл «2026-13-45» нь `new Date`-д
-     чимээгүй хөрвөх/NaN болох тул серверт ирээд шалтгаангүй мэт багц уналт
-     үүсгэдэг байв. */
-  if (type === 'esriFieldTypeDateOnly') {
-    const d = new Date(`${v}T00:00:00Z`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
-      throw new Error(tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', label, v));
-    return v;
-  }
-  /* ⚠️ 2026-09-08 (аудит): `esriFieldTypeDate`-д ЭРГЭЛТИЙН шалгалт НЭМЭВ.
-     `new Date('2026-02-30T00:00:00Z')` нь NaN БИШ — 2026-03-02 болж ГҮЙНЭ
-     (`2026-06-31` → 2026-07-01). Хуучин код тэр гүйлтийг чимээгүй хүлээж,
-     «N мөр хадгалагдав» гэж ногоон мэдэгдэл гаргадаг байсан тул хэрэглэгч
-     бичсэн огноогоо хадгалсан гэж итгэх атал үйлчилгээнд ӨӨР огноо суудаг байв.
-     Дээрх мөр 1023-ын «esriFieldTypeDate талбар НЭГ Ч БАЙХГҮЙ» гэсэн таамаг нь
-     хуучин `cashflow_0813`-ынх — шинэ `Cashflow_0909`-т Ehleh_ognoo ·
-     Duusah_ognoo · Zahiramj_ognoo ГУРВУУЛАА `esriFieldTypeDate` тул энэ салаа
-     одоо АМЬД. Хажуугийн `DateOnly` салаатай ЯГ НЭГ дүрэм.
-     ⚠️ Цаг-минуттай БҮТЭН огноо (ISO datetime) хэвээр зөвшөөрөгдөнө — тэр
-     хэлбэрийг `YYYY-MM-DD` эргэлтээр шалгах боломжгүй. */
-  if (type === 'esriFieldTypeDate') {
-    if (v.length === 10) {
-      const d = new Date(`${v}T00:00:00Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v)
-        throw new Error(tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', label, v));
-      return d.getTime();
-    }
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) throw new Error(tr('«{0}» — огноо буруу: {1}', label, v));
-    return d.getTime();
-  }
-  if (NUMERIC_TYPES.has(type)) {
-    /* Хэрэглэгч хуулж тавихад мянгатын таслал/зай дагалдаж болно */
-    const x = Number(v.replace(/[\s,\u00a0]/g, ''));
-    if (!Number.isFinite(x)) throw new Error(tr('«{0}» — тоо буруу: {1}', label, v));
-    return x;
-  }
-  return v;
-}
+const EMPTY_HIDE: string[] = [];
+
+/**
+ * ТООЦООЛОГДДОГ талбар — засварын горимд ч УНШИХ ЛУУГ.
+ * ⚠️ 2026-09-25: `Cashflow_dun` = `Cashflow_huwi` × эцгийн `ho_dun_geree`
+ *    (`publish` бодно). Гараар засуулбал дараагийн хувь/ХО засварт чимээгүй
+ *    дарагдаж, тэр хооронд хувьтайгаа зөрсөн дүн хадгалагдана.
+ */
+const CALC_RO = new Set<string>(['Cashflow_dun']);
 
 /**
  * Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар.
@@ -1485,10 +1422,13 @@ function FullTable({
    * ⚠️ Түлхүүр нь ЭЦГИЙНХЭЭ түлхүүрийг агуулна: өөр хоёр хэсэгт ижил нэртэй
    * төрөл гарвал нэгийг нь эвхэхэд нөгөө нь ч хумигдах байсан.
    */
+  /* ⚠️ 2026-09-25: `.trim()` — `chainOf` (зурвасын түлхүүр) тайрдаг тул энд
+     тайрахгүй бол сүүлдээ зайтай утгын түвшний товч өөр түлхүүр эвхэж, зурвас
+     хумигдахгүй байв. Хоёр газар ЯГ нэг түлхүүр бүтэх ёстой. */
   const xlKeys = (r: Record<string, unknown>): string[] => {
-    const a = String(r[FIN_XL_SECTION] ?? '');
-    const b = String(r[FIN_XL_GROUP_FIELD] ?? '');
-    const c = String(r[FIN_XL_GROUP3_FIELD] ?? '');
+    const a = String(r[FIN_XL_SECTION] ?? '').trim();
+    const b = String(r[FIN_XL_GROUP_FIELD] ?? '').trim();
+    const c = String(r[FIN_XL_GROUP3_FIELD] ?? '').trim();
     const ks = [`s:${a}`];
     if (b !== '') ks.push(`g:${a}|${b}`);
     if (b !== '' && c !== '') ks.push(`h:${a}|${b}|${c}`);
@@ -1784,22 +1724,58 @@ function FullTable({
          * Хоёуланг нь гараар бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
          */
         const monthByOid = new Map(months.map((r) => [Number(r[oidField]), r]));
-        for (const [oid, a] of upd) {
-          if (!('Cashflow_huwi' in a)) continue;
-          const mr = monthByOid.get(oid);
-          const parent = rows.find((r) => Number(r.Cashflow_ID) === Number(mr?.Cashflow_ID));
+        /* ⚠️ 2026-09-25: гараар оруулсан `Cashflow_dun` ХЭЗЭЭ Ч илгээгдэхгүй
+           (`CALC_RO`) — доор хувь × ХО дүнгээр л бичигдэнэ. */
+        for (const [k, a] of upd) {
+          delete a.Cashflow_dun;
+          if (Object.keys(a).length <= 1) upd.delete(k); // зөвхөн OID үлдсэн
+        }
+        /** Эцгийн ХО дүн — энэ нийтлэлд засагдсан бол ШИНЭ утга */
+        const costOf = (parent: Row | undefined): number | null => {
+          if (!parent) return null;
+          const pa = upd.get(Number(parent[oidField]));
+          const raw = pa && 'ho_dun_geree' in pa ? pa.ho_dun_geree : parent.ho_dun_geree;
           /* ⚠️ 2026-09-25: эцгийн ХО дүн хоосон/0 бол `Number(null)` = 0 болж
              `Cashflow_dun = 0 ₮` БИЧИГДДЭГ байв — «мэдээлэлгүй» нь «хэмжсэн тэг»
              болж S-муруйд орно (null ≠ 0). «Cashflow хувиарлах» табын
              `CashflowPlan.costOf`-той ИЖИЛ дүрэм: төгсгөлгүй эсвэл ≤0 бол `null`. */
-          const costN = Number(parent?.ho_dun_geree);
-          const cost = parent?.ho_dun_geree != null && Number.isFinite(costN) && costN > 0 ? costN : null;
-          const pct = Number(a.Cashflow_huwi);
-          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
-          a.Cashflow_dun = a.Cashflow_huwi == null || String(a.Cashflow_huwi).trim() === ''
-            || !Number.isFinite(pct) || cost == null
+          const costN = Number(raw);
+          return raw != null && raw !== '' && Number.isFinite(costN) && costN > 0 ? costN : null;
+        };
+        /** Хувь (засвартай бол түүнийг) × ХО дүн. Хувь хоосон бол `null`, 0 БИШ */
+        const dunOf = (huwi: unknown, cost: number | null): number | null => {
+          const pct = Number(huwi);
+          return huwi == null || String(huwi).trim() === '' || !Number.isFinite(pct) || cost == null
             ? null
             : (cost * pct) / 100;
+        };
+        for (const [oid, a] of upd) {
+          if (!('Cashflow_huwi' in a)) continue;
+          const mr = monthByOid.get(oid);
+          const parent = rows.find((r) => Number(r.Cashflow_ID) === Number(mr?.Cashflow_ID));
+          /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
+          a.Cashflow_dun = dunOf(a.Cashflow_huwi, costOf(parent));
+        }
+        /* ⚠️ 2026-09-25: ЭЦГИЙН ХО ДҮН өөрчлөгдвөл түүний БҮХ сарын дүнг дахин
+           бодно — урьд нь зөвхөн хувь засагдсан сар л шинэчлэгдэж, бусад сар
+           ХУУЧИН ХО дүнгээр бодсон ₮-тэй үлдэн S-муруй гэрээний дүнтэй зөрдөг байв. */
+        for (const [oid, a] of upd) {
+          if (!('ho_dun_geree' in a)) continue;
+          const parent = rowByOid.get(oid);
+          const id = Number(parent?.Cashflow_ID);
+          if (!Number.isFinite(id)) continue;
+          const cost = costOf(parent);
+          for (const mr of monthBy.get(id) ?? []) {
+            const moid = Number(mr[oidField]);
+            if (!Number.isFinite(moid)) continue;
+            const ma = upd.get(moid) ?? { [oidField]: moid };
+            if ('Cashflow_huwi' in ma) continue; // дээрх давталт аль хэдийн бодсон
+            const next = dunOf(mr.Cashflow_huwi, cost);
+            const prev = mr.Cashflow_dun == null ? null : Number(mr.Cashflow_dun);
+            if (next === prev) continue; // өөрчлөгдөөгүй — дэмий бичихгүй
+            ma.Cashflow_dun = next;
+            upd.set(moid, ma);
+          }
         }
       }
       const { n } = await applyAll(url, oidField, {
@@ -1911,14 +1887,7 @@ function FullTable({
    * агуулдаг цорын ганц урт талбар бөгөөд урьд нь нүд бүр дээр дарж дэлгэх
    * шаардлагатай байв (хэрэглэгчийн шүүмж).
    */
-  /**
- * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
- * тооцогддог ч `useMemo`-гийн хамаарал нь ИШЛЭЛЭЭР жишдэг. Рендер бүрт `[]`
- * шинээр үүсгэвэл доторх санамжууд дэмий дахин тооцогдоно.
- */
-const EMPTY_HIDE: string[] = [];
-
-const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
+  const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
   const colNames = useMemo(() => allCols.map((c) => c.name), [allCols]);
   /**
    * АНХДАГЧААР НУУГДАХ багана — ЗӨВХӨН гэрээний бүртгэлд.
@@ -2030,8 +1999,10 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
     const out = [FZ_DEF[0]];
     for (let i = 0; i < sc.frozen; i += 1) out.push(out[i] + wOf(cols[i]?.name ?? '', i));
     return out;
+    /* ⚠️ 2026-09-25: `xlView` — `FZ_DEF[0]` (гутлын өргөн 0 ↔ 46) засварын
+       горимоор солигддог; хамааралгүй байхад царцсан багана давхцдаг байв. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colStyle, cols, sc.frozen]);
+  }, [colStyle, cols, sc.frozen, xlView]);
 
   /* ══════════ ШҮҮЛТ ══════════ */
 
@@ -2384,7 +2355,9 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
    * (#203864). Тэр ялгаа нь мөнгөний эх үүсвэрийн блокийг нэг харцаар
    * тусгаарладаг тул хадгалагдана.
    */
-  const xlTone = (top0: string) => (top0 === tr('Захирамжийн дүн') ? f.xlHdr2 : f.xlHdr1);
+  /* ⚠️ 2026-09-25: `finExcelLayout`-ийн бүлгийн нэр нь «Захирамжийн МЭДЭЭЛЭЛ» —
+     урьд «Захирамжийн дүн»-тэй жишдэг тул цэнхэр өнгө ХЭЗЭЭ Ч тавигддаггүй байв. */
+  const xlTone = (top0: string) => (top0 === tr('Захирамжийн мэдээлэл') ? f.xlHdr2 : f.xlHdr1);
 
   /** Зурвас БҮХЭЛДЭЭ царцсан бүсэд байна уу — тийм бол өөрөө ч наалдана */
   const bandFz = (b: Band) => sc.frozen > 0 && b.from + b.span <= sc.frozen;
@@ -2453,7 +2426,7 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
     cSpan?: number,
   ) => {
     const key = `${oid}:${c.name}`;
-    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
+    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
       /*
        * ⚠️ ЗАССАН НҮД НОГООН. `pend`-д байгаа эсэхээр л шийднэ: `onChange` нь
@@ -2595,7 +2568,7 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
   /** Паспорт/дэлгэрэнгүйн нэг утга — унших эсвэл засах. `xCell`-тэй ИЖИЛ дүрэм. */
   const passVal = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
     const key = `${oid}:${c.name}`;
-    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name)) {
+    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
       const put = (v: string) => setPend((p) => {
         const nx = { ...p };
@@ -3692,7 +3665,9 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
                 болж, гарчиг ба дүн хоёулаа гулсдаг байв. */}
             <tr className={f.sTotal}>
               {amtIx < 0 ? (
-                <td colSpan={ipcMainCols.length}>{tr('НИЙТ ОЛГОСОН')}</td>
+                /* ⚠️ 2026-09-25: `1 +` — мөр бүрийн эхэнд дэлгэх товчны нүд бий
+                   (дээрх салааны `1 + amtIx`-тэй ижил); урьд нэг баганаар дутдаг байв. */
+                <td colSpan={1 + ipcMainCols.length}>{tr('НИЙТ ОЛГОСОН')}</td>
               ) : (
                 <>
                   <td colSpan={1 + amtIx}>{tr('НИЙТ ОЛГОСОН')}</td>
@@ -3794,7 +3769,7 @@ const DEF_WRAP = useMemo(() => ['ajil_uilchilgee'], []);
         {edit && canRow && <td className={f.rowBtnCell} />}
         {cols.map((c) => {
           const key = `${oid}:${c.name}`;
-          const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name);
+          const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name);
           if (editable) {
             const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
             return (

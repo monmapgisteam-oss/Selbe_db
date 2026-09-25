@@ -395,6 +395,43 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
 }
 
 /**
+ * ТӨЛӨВЛӨГӨӨТ ХУВЬ — ТОДОРХОЙ ӨДРИЙН байдлаар (цэвэр функц).
+ *
+ * ⚠️ 2026-09-25: хоцрогдол (`Finance.lagOf`, `PkgProg`) нь хэмжилтийн САРЫН
+ *    ЭЦСИЙН цэгийг авдаг байсан тул сарын 5-нд хэмжсэн гүйцэтгэлийг 30-ны
+ *    төлөвлөгөөтэй жишиж хиймэл «хоцрогдол» гаргадаг байв. Одоо өмнөх сарын
+ *    эцэс → тухайн сарын эцсийн хооронд `at` өдрөөр шугаман завсарлана —
+ *    `negtgelAuto.housingPlanOf`-тэй ЯГ ижил дүрэм:
+ *      · өмнөх сарын цэг байхгүй = хуваарь ЭНЭ сард эхэлсэн → эхлэл 0;
+ *      · тухайн сарын цэг байхгүй (муж өнгөрсөн) → хамгийн сүүлийн өнгөрсөн цэг;
+ *      · бүх цэг ирээдүйд → `null` (төлөвлөгөөгүй ≠ 0).
+ * @param at «YYYY-MM-DD»; өдөр нь сарын уртаас их бол сарын эцэс (`-31` зөвшөөрнө)
+ */
+export function planPctAt(
+  series: ReadonlyArray<{ label: string; pct: number }>,
+  at: string,
+): number | null {
+  const y = Number(at.slice(0, 4));
+  const mo = Number(at.slice(5, 7));
+  const day = Number(at.slice(8, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) return null;
+  const cur = at.slice(0, 7);
+  const prev = mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`;
+  const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const frac = Number.isFinite(day) ? Math.max(0, Math.min(1, day / days)) : 1;
+  let p1: number | null = null;
+  let p0: number | null = null;
+  let past: { label: string; pct: number } | null = null;
+  for (const pt of series) {
+    if (pt.label === cur) p1 = pt.pct;
+    else if (pt.label === prev) p0 = pt.pct;
+    if (pt.label < cur && (!past || pt.label > past.label)) past = pt;
+  }
+  if (p1 != null) return (p0 ?? 0) + (p1 - (p0 ?? 0)) * frac;
+  return past ? past.pct : null;
+}
+
+/**
  * КЭШТЭЙ МУРУЙ (5 мин) — «Нэгтгэл гүйцэтгэл»-ийн дэлгэц ба удирдлагын тайлан
  * НЭГ хуулбарыг хуваалцана (2026-09-25).
  *

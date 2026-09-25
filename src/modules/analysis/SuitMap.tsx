@@ -369,6 +369,14 @@ export function SuitMap({
    */
   const baseOpacityRef = useRef<Record<string, number>>({});
   const [ready, setReady] = useState(false);
+  /**
+   * ⚠️ 2026-09-25: `view.when()`-ийн уналт — урьд нь `.catch(() => {})`-ээр
+   * залгиж, зураг ямар ч мэдээлэлгүй хоосон үлддэг байв. Порталын `MapCanvas`-ийн
+   * `initError`/`initToken`-той ижил загвар: алдааг ил хэлж, WebGL биш бол
+   * «Дахин оролдох» нь view-г дахин үүсгэнэ.
+   */
+  const [initErr, setInitErr] = useState<{ name?: string } | null>(null);
+  const [initToken, setInitToken] = useState(0);
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
   const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick });
@@ -488,6 +496,7 @@ export function SuitMap({
 
     const map = mapRef.current;
     setReady(false);
+    setInitErr(null);
 
     const view: MapView | SceneView = is3D(dim)
       ? new SceneView({
@@ -535,7 +544,10 @@ export function SuitMap({
     orthoRow.append(orthoChk, document.createTextNode(tr('Ортофото')));
     const galleryDiv = document.createElement('div');
     bmPanel.append(orthoRow, galleryDiv);
-    new BasemapGallery({ view: anyView, container: galleryDiv });
+    /* ⚠️ 2026-09-25: Галерей нь Expand-ийн content DOM-д суудаг тул
+       `view.destroy()` устгадаггүй — 2D↔3D солих бүрд нэг нь үлддэг байв.
+       Cleanup-д гараар устгана (MapCanvas-тай ижил). */
+    const gallery = new BasemapGallery({ view: anyView, container: galleryDiv });
     view.ui.add(new Expand({
       view: anyView,
       content: bmPanel,
@@ -543,7 +555,13 @@ export function SuitMap({
       expandTooltip: tr('Суурь зураг'),
     }), 'top-right');
 
-    view.when(() => { if (!view.destroyed) setReady(true); }).catch(() => {});
+    view.when(() => { if (!view.destroyed) setReady(true); }).catch((e: unknown) => {
+      // Харагдац солиход cleanup view-г устгахад reject хийж болно — жинхэнэ алдаа биш
+      if (view.destroyed) return;
+      console.error('[selbe] шинжилгээний газрын зураг үүсгэж чадсангүй:', e);
+      const er = e as { name?: unknown } | null;
+      setInitErr({ name: typeof er?.name === 'string' ? er.name : undefined });
+    });
 
     /**
      * Дарж БАРИЛГА эсвэл БҮС сонгох.
@@ -648,14 +666,19 @@ export function SuitMap({
     });
 
     const leave = view.on('pointer-leave', () => {
+      /* ⚠️ 2026-09-25: token-ийг ахиулна — эс бөгөөс гарахаас өмнө эхэлсэн
+         hitTest хожуу ирж, курсор зурагт байхгүй үед панелийг буцааж нээдэг байв. */
+      token += 1;
       if (tipEl.current) tipEl.current.hidden = true;
       lastKey = null;
+      if (!view.destroyed && view.container) view.container.style.cursor = '';
     });
 
     return () => {
       click.remove();
       move.remove();
       leave.remove();
+      if (!gallery.destroyed) gallery.destroy();
       /**
        * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
        * 2D↔3D солиход Map хэвээр үлдэх ёстой тул холбоог эхлээд тасална — эс
@@ -666,7 +689,8 @@ export function SuitMap({
       view.destroy();
       viewRef.current = null;
     };
-  }, [dim]);
+    // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
+  }, [dim, initToken]);
 
   /** Map-ыг компонент бүрмөсөн салахад л устгана */
   useEffect(() => () => {
@@ -1073,6 +1097,45 @@ export function SuitMap({
         <TrafficOverlay viewRef={viewRef} ready={ready} {...traffic} />
       )}
       <div ref={tipEl} className={s.mapTip} hidden />
+      {!ready && initErr && (
+        <div
+          role="alert"
+          style={{
+            position: 'absolute', inset: 0, zIndex: 10, display: 'grid', placeItems: 'center',
+            padding: 16, background: 'color-mix(in srgb, var(--surface) 70%, transparent)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 330, padding: '11px 13px',
+              fontSize: 12, lineHeight: 1.5, color: 'var(--ink-2)', background: 'var(--surface)',
+              border: '1px solid color-mix(in srgb, var(--bad) 45%, var(--line))', borderRadius: 8,
+            }}
+          >
+            <b style={{ color: 'var(--ink)' }}>{tr('Газрын зураг үүсгэж чадсангүй')}</b>
+            <span>
+              {initErr.name?.startsWith('webgl:')
+                ? tr('Хөтчийн график (WebGL) идэвхгүй байна — тоног төхөөрөмжийн хурдасгуурыг асаах эсвэл өөр хөтөч ашиглана уу.')
+                : tr('Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.')}
+            </span>
+            {initErr.name && <code style={{ opacity: 0.75, fontSize: 11 }}>{initErr.name}</code>}
+            {/* WebGL-ийн уналтад дахин үүсгэх нь ижил уналт өгнө (MapCanvas-ийн ⚠️) */}
+            {!initErr.name?.startsWith('webgl:') && (
+              <button
+                type="button"
+                onClick={() => setInitToken((t) => t + 1)}
+                style={{
+                  alignSelf: 'flex-start', padding: '5px 12px', cursor: 'pointer',
+                  font: 'inherit', fontWeight: 600, color: 'var(--ink)',
+                  background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 6,
+                }}
+              >
+                {tr('Дахин оролдох')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

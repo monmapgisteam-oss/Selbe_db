@@ -321,10 +321,11 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   const gp = A.planNegSync(gTree, gCalc);
   assert.equal(gp.totalBlocked, false);
   assert.deepEqual([...new Set(gp.blocked.map((b) => b.oid))].sort(), [11, 12], '0 → 100% мөр ба эцэг нь хамгаалалтад');
-  /* ⚠️ 14 — эцгийн төлөвлөгөө SUMPRODUCT-аар 0 болно (гүйцэтгэл нь өөрчлөгдөөгүй) */
-  assert.deepEqual(gp.ups.map((u) => u[OID]), [13, 14], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
+  /* ⚠️ 2026-09-25: 14 — хүүхэд (15)-ийн төлөвлөгөө БҮГД хоосон тул эцгийн
+     төлөвлөгөө `null` (0 БИШ) — бичигдэхгүй. Урьд нь SUMPRODUCT-аар 0 бичигддэг байв. */
+  assert.deepEqual(gp.ups.map((u) => u[OID]), [13], 'хамгаалалтад ороогүй мөрүүд л бичигдэнэ');
   assert.equal(gp.ups[0][ACT], 0.2);
-  assert.ok(!(ACT in gp.ups[1]));
+  assert.equal(gCalc[3].planG, null, 'бүх хүүхэд хоосон → эцэг null (0 БИШ)');
   assert.ok(A.planNegSync(gTree, gCalc, true).ups.some((u) => u[OID] === 12), 'force — бүгд');
 
   /* 16 — нийтийн хамгаалалт */
@@ -350,15 +351,29 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.equal(writes, 0);
   const st = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(st.kind, 'guard', 'super — хамгаалалтын төлөв ил');
-  assert.equal(st.n, 2);
-  assert.equal(writes, 2, 'super — зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
+  /* ⚠️ 2026-09-25: 2 → 1 — 14-ийн төлөвлөгөө (бүх хүүхэд хоосон) бичигдэхээ болив */
+  assert.equal(st.n, 1);
+  assert.equal(writes, 1, 'super — зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ');
   const again = await A.syncNegtgel({}, io('saruul_monmap'));
   assert.equal(again, st, '10 минутын дотор дахин бичихгүй — сүүлийн төлөв');
-  assert.equal(writes, 2);
+  assert.equal(writes, 1);
   const forced = await A.syncNegtgel({ force: true }, io('saruul_monmap'));
   assert.equal(forced.kind, 'ok', 'баталгаажуулсан бичилт');
-  assert.ok(writes > 2);
+  assert.ok(writes > 1);
   A._resetNegSync();
+
+  /* 18 — (2026-09-25) `force` явж буй энгийн синкийн үр дүнд залгигдахгүй */
+  {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const slow = { ...io('saruul_monmap'), load: async () => { await gate; return { stored: gTree, src: gSrc }; } };
+    const plain = A.syncNegtgel({}, slow);
+    const f2 = A.syncNegtgel({ force: true }, io('saruul_monmap'));
+    release();
+    assert.equal((await plain).kind, 'guard', 'энгийн синк — хамгаалалт');
+    assert.equal((await f2).kind, 'ok', 'force нь дараа нь ӨӨРӨӨ ажиллана');
+    A._resetNegSync();
+  }
 
   console.log('negtgel 2026-09-25: ok — биелэлт null · нийт null · орон сууцны уналт · төлөвлөгөөний завсар · хамгаалалт · эрх');
 }

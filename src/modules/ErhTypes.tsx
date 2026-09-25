@@ -13,6 +13,9 @@
  *    «Хэрэгжүүлэх»-ээр — админ хэзээ тарахаа өөрөө шийднэ.
  * ⚠️ «Хэрэгжүүлэх» нь хадгалаагүй өөрчлөлттэй баганад хаалттай — хуучин
  *    загварыг тарааж, админы харж буйгаас өөр зүйл бичихгүйн тулд.
+ * ⚠️ 2026-09-25: бөөнөөр хэрэгжүүлэлтийн төлөв МОДУЛЬД (`roleTypeApply.applyTypeBulk`)
+ *    — таб солиход (unmount) давталт тасрахгүй, буцаж ороход явц нь харагдаж,
+ *    хоёр дахь давталт эхлэхгүй.
  */
 
 import { useEffect, useState } from 'react';
@@ -24,7 +27,7 @@ import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, typeLabel, typesReady,
   type TypeTpl,
 } from '@/lib/roleTypes';
-import { applyType, currentPkgs, pkgsFromName } from '@/lib/roleTypeApply';
+import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
 import ua from '@/components/userAdmin.module.css';
 import s from './erhTypes.module.css';
 
@@ -39,13 +42,16 @@ export function ErhTypes() {
     const f = () => setTick((n) => n + 1);
     const a = subscribeTypes(f);
     const b = subscribe(f);
-    return () => { a(); b(); };
+    const c = subscribeBulk(f);
+    return () => { a(); b(); c(); };
   }, []);
 
   const [drafts, setDrafts] = useState<Drafts>({});
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const bulk = bulkStatus();
+  const busy = saving || !!bulk?.running;
 
   const groups = settingGroups();
   const allIds = groups.flatMap((g) => g.rows.map((r) => r.id));
@@ -69,41 +75,45 @@ export function ErhTypes() {
 
   const save = async () => {
     if (!canSave || !dirtyRoles.length) return;
-    setBusy(true); setErr(''); setMsg('');
-    const failed: string[] = [];
-    for (const r of dirtyRoles) {
-      if (!(await saveTpl(r, cur(r)))) failed.push(typeLabel(r));
+    setSaving(true); setErr(''); setMsg('');
+    /* ⚠️ 2026-09-25: try/finally — бичилт шидвэл товч үүрд хаалттай үлдэхгүй */
+    try {
+      const failed: Role[] = [];
+      for (const r of dirtyRoles) {
+        if (!(await saveTpl(r, cur(r)))) failed.push(r);
+      }
+      setDrafts((d) => {
+        const n = { ...d };
+        for (const r of dirtyRoles) if (!failed.includes(r)) delete n[r];
+        return n;
+      });
+      if (failed.length) setErr(tr('ArcGIS-т хадгалагдсангүй: {0}', failed.map(typeLabel).join(', ')));
+      else setMsg(tr('Хадгалагдлаа. Хэрэглэгчдэд тараахын тулд баганын «Хэрэгжүүлэх»-ийг дарна уу.'));
+    } finally {
+      setSaving(false);
     }
-    setDrafts((d) => {
-      const n = { ...d };
-      for (const r of dirtyRoles) if (!failed.includes(typeLabel(r))) delete n[r];
-      return n;
-    });
-    setBusy(false);
-    if (failed.length) setErr(tr('ArcGIS-т хадгалагдсангүй: {0}', failed.join(', ')));
-    else setMsg(tr('Хадгалагдлаа. Хэрэглэгчдэд тараахын тулд баганын «Хэрэгжүүлэх»-ийг дарна уу.'));
   };
 
   const applyAll = async (r: Role) => {
     if (busy) return;
     if (!allAclReady()) { setErr(lockMsg()); return; }
+    if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
     if (!window.confirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Загварт чеклээгүй хуваарилалт, эрх нь хасагдана.', typeLabel(r), String(users.length)))) return;
-    setBusy(true); setErr(''); setMsg('');
-    const errs: string[] = [];
-    let done = 0;
-    for (const u of users) {
-      const pk = currentPkgs(u);
-      const res = await applyType(u, r, pk.length ? pk : pkgsFromName(u));
-      if (res.ok) done += 1;
-      else errs.push(`${u}: ${res.errors.join('; ')}`);
-      setMsg(tr('Хэрэгжүүлж байна… {0}/{1}', String(done + errs.length), String(users.length)));
-    }
-    setBusy(false);
-    setMsg(tr('{0}/{1} хэрэглэгчид хэрэгжлээ.', String(done), String(users.length)));
-    if (errs.length) setErr(errs.join('\n'));
+    setErr(''); setMsg('');
+    if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
   };
+
+  /* Бөөнөөр хэрэгжүүлэлтийн явц/үр дүн — модулийн төлөвөөс */
+  const bulkDone = bulk ? bulk.ok + bulk.errors.length + bulk.skipped.length : 0;
+  const bulkMsg = !bulk ? '' : bulk.running
+    ? tr('«{0}»: хэрэгжүүлж байна… {1}/{2}', typeLabel(bulk.role), String(bulkDone), String(bulk.total))
+    : tr('«{0}»: {1}/{2} хэрэглэгчид хэрэгжлээ.', typeLabel(bulk.role), String(bulk.ok), String(bulk.total));
+  const bulkErr = !bulk ? '' : [
+    ...(bulk.skipped.length ? [tr('Хадгалаагүй ноорогтой тул алгассан: {0}', bulk.skipped.join(', '))] : []),
+    ...bulk.errors,
+  ].join('\n');
 
   if (!typesReady()) {
     return <div className={ua.capNote}>{tr('Эрхийн хүснэгт уншигдаж байна… Уншигдсаны дараа төрлийн загвар засах боломжтой.')}</div>;
@@ -127,10 +137,12 @@ export function ErhTypes() {
                     {typeLabel(r)}
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
+                        aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
                         onClick={() => put(r, { ...cur(r), on: allIds.filter((id) => allowed(r, id)) })}>
                         {tr('бүгд')}
                       </button>
                       <button type="button" className={s.mini} disabled={busy}
+                        aria-label={`${tr('арилгах')} — ${typeLabel(r)}`}
                         onClick={() => put(r, { ...cur(r), on: [] })}>
                         {tr('арилгах')}
                       </button>
@@ -140,6 +152,7 @@ export function ErhTypes() {
                         type="button"
                         className={s.mini}
                         disabled={busy || !n || isDirty(r)}
+                        aria-label={`${tr('Хэрэгжүүлэх ({0})', String(n))} — ${typeLabel(r)}`}
                         title={isDirty(r) ? tr('Эхлээд хадгална уу') : tr('Энэ төрлийн бүх хэрэглэгчид загварыг дахин хэрэгжүүлнэ')}
                         onClick={() => { void applyAll(r); }}
                       >
@@ -158,7 +171,7 @@ export function ErhTypes() {
               {TYPE_ORDER.map((r) => (
                 <td key={r}>
                   <select id={`tt-home-${r}`} className={s.sel} value={cur(r).home} disabled={busy}
-                    aria-label={tr('Нэвтрэхэд нээгдэх цонх')}
+                    aria-label={`${tr('Нэвтрэхэд нээгдэх цонх')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), home: e.target.value as ViewKey })}>
                     {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}</option>)}
                   </select>
@@ -173,7 +186,7 @@ export function ErhTypes() {
               {TYPE_ORDER.map((r) => (
                 <td key={r}>
                   <select id={`tt-scope-${r}`} className={s.sel} value={cur(r).scope} disabled={busy || r === 'super'}
-                    aria-label={tr('Багцын хамрах хүрээ')}
+                    aria-label={`${tr('Багцын хамрах хүрээ')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), scope: e.target.value === 'all' ? 'all' : 'own' })}>
                     <option value="own">{tr('Өөрийн багц')}</option>
                     <option value="all">{tr('Бүх багц')}</option>
@@ -198,8 +211,10 @@ export function ErhTypes() {
         )}
         {!remoteReady() && <span className={s.err}>{lockMsg()}</span>}
         {msg && <span className={s.ok}>{msg}</span>}
+        {bulkMsg && <span className={s.ok} role="status">{bulkMsg}</span>}
       </div>
       {err && <div className={s.err} role="alert">{err}</div>}
+      {bulkErr && <div className={s.err} role="alert">{bulkErr}</div>}
     </>
   );
 }
@@ -231,7 +246,7 @@ function Group({
                 className={s.cb}
                 checked={cur(r).on.includes(row.id)}
                 disabled={busy || !allowed(r, row.id)}
-                aria-label={`${row.label} — ${r}`}
+                aria-label={`${row.label} — ${typeLabel(r)}`}
                 onChange={(e) => flip(r, row.id, e.target.checked)}
               />
             </td>

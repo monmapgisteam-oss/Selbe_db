@@ -30,6 +30,11 @@
  * дээр ачаална. БҮХ экспорт ЦЭВЭР функц. Хадгалалт нь `chanarStore.ts`-д.
  */
 
+/* ⚠️ 2026-09-25: татгалзлын зурвас хэрэглэгчид шууд харагддаг тул `tr()`.
+   `i18nCore` нь React-гүй, 'use client'-гүй — Node тест хэвээр ачаална;
+   mn дээр түлхүүрээ буцаадаг тул тестийн монгол `match` хөндөгдөхгүй. */
+import { t as tr } from '@/lib/i18nCore';
+
 /* ════════════════════════ ХЯНАГЧ ════════════════════════ */
 
 /**
@@ -291,21 +296,21 @@ export function review(
   args: { as: Reviewer; who: string; verdict: Verdict; note?: string; now?: number },
 ): { ok: true; reviews: Record<Reviewer, Review | null>; status: MsStatus } | Reject {
   const me = args.who.trim().toLowerCase();
-  if (!me) return { ok: false, error: 'Хянагчийн нэр хоосон' };
-  if (!isReviewer(args.as)) return { ok: false, error: 'Хянагчийн үүрэг танигдсангүй' };
+  if (!me) return { ok: false, error: tr('Хянагчийн нэр хоосон') };
+  if (!isReviewer(args.as)) return { ok: false, error: tr('Хянагчийн үүрэг танигдсангүй') };
   /* ⚠️ Гадны утга (2026-09-16 аудит): `VERDICT`-ээс өөр мөр нүд дүүргэж `resolve`
      аль ч талд тооцохгүй, дараагийн уншилтад хаягддаг байв — бичилт явсан хэвээр. */
   if (args.verdict !== VERDICT.approve && args.verdict !== VERDICT.return) {
-    return { ok: false, error: 'Шийдвэрийн утга танигдсангүй' };
+    return { ok: false, error: tr('Шийдвэрийн утга танигдсангүй') };
   }
   if (doc.status !== MS_STATUS.review) {
-    return { ok: false, error: 'Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй' };
+    return { ok: false, error: tr('Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй') };
   }
   if (doc.author.trim().toLowerCase() === me) {
-    return { ok: false, error: 'Зохиогч өөрийн аргачлалыг хянах боломжгүй' };
+    return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   }
   if (doc.reviews[args.as]) {
-    return { ok: false, error: 'Энэ үүргээр шийдвэр аль хэдийн өгөгдсөн' };
+    return { ok: false, error: tr('Энэ үүргээр шийдвэр аль хэдийн өгөгдсөн') };
   }
   /*
    * ⚠️ НЭГ ХҮН ЗӨВХӨН НЭГ ҮҮРГЭЭР (2026-09-16-ны аудит) — дүрэм 3-ын
@@ -319,12 +324,12 @@ export function review(
   if (already) {
     return {
       ok: false,
-      error: 'Та энэ баримтад аль хэдийн шийдвэр өгсөн — нэг хүн зөвхөн НЭГ үүргээр хянана',
+      error: tr('Та энэ баримтад аль хэдийн шийдвэр өгсөн — нэг хүн зөвхөн НЭГ үүргээр хянана'),
     };
   }
   const note = args.note?.trim() || null;
   if (args.verdict === VERDICT.return && !note) {
-    return { ok: false, error: 'Татгалзах шалтгаанаа бичнэ үү' };
+    return { ok: false, error: tr('Татгалзах шалтгаанаа бичнэ үү') };
   }
   const reviews = { ...doc.reviews, [args.as]: { who: me, at: args.now ?? Date.now(), verdict: args.verdict, note } };
   return { ok: true, reviews, status: resolve(reviews) };
@@ -343,12 +348,12 @@ export function submit(
   args: { who: string; now?: number },
 ): { ok: true; rev: number; status: MsStatus; sentAt: number; reviews: Record<Reviewer, Review | null> } | Reject {
   const me = args.who.trim().toLowerCase();
-  if (!me) return { ok: false, error: 'Илгээгчийн нэр хоосон' };
+  if (!me) return { ok: false, error: tr('Илгээгчийн нэр хоосон') };
   if (doc.author.trim().toLowerCase() !== me) {
-    return { ok: false, error: 'Зөвхөн зохиогч илгээх боломжтой' };
+    return { ok: false, error: tr('Зөвхөн зохиогч илгээх боломжтой') };
   }
   if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) {
-    return { ok: false, error: 'Зөвхөн ноорог эсвэл буцаагдсан баримтыг илгээнэ' };
+    return { ok: false, error: tr('Зөвхөн ноорог эсвэл буцаагдсан баримтыг илгээнэ') };
   }
   const rev = doc.status === MS_STATUS.returned ? doc.rev + 1 : doc.rev;
   return { ok: true, rev, status: MS_STATUS.review, sentAt: args.now ?? Date.now(), reviews: emptyReviews() };

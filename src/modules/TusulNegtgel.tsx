@@ -446,25 +446,37 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
     /* ⚠️ 2026-09-25: жинтэй үе шатны гүйцэтгэл хэмжигдээгүй бол НИЙТ гүйцэтгэл
        ХООСОН (`negtgelProjectPct`-тэй ижил, null ≠ 0) — 0 гэж нэмбэл доошилно */
     let actNull = false;
+    /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨНД мөн адил дүрэм — жинтэй үе шатны төлөвлөгөө
+       хоосон бол тэр баганын нийт ХООСОН. Урьд нь `?? 0` тул «0.00%» гарч,
+       биелэлт нь «0 бол 0» дүрмээр 0% болдог байв (null ≠ 0). */
+    const planNull = { planG: false, planGch: false, planGu: false };
     rows.forEach((r) => {
       if (r.depth !== 1) return;
       const c = calc.get(r.oid);
       if (!c || c.inProject == null) return;
-      const w = c.inProject / 100;
-      t.p += c.inProject;
-      t.planG += w * (c.planPct ?? 0);
-      t.planGch += w * (c.planGch ?? 0);
-      t.planGu += w * (c.planGuits ?? 0);
+      const ip = c.inProject;
+      const w = ip / 100;
+      const add = (k: keyof typeof planNull, v: number | null | undefined) => {
+        if (v == null) { if (ip > 0) planNull[k] = true; } else t[k] += w * v;
+      };
+      t.p += ip;
+      add('planG', c.planPct);
+      add('planGch', c.planGch);
+      add('planGu', c.planGuits);
       if (c.actPct == null) { if (c.inProject > 0) actNull = true; } else t.act += w * c.actPct;
     });
     const act = actNull ? null : t.act;
-    const perf = (plan: number) => (act == null ? null : plan ? (act / plan) * 100 : 0);
+    const planG = planNull.planG ? null : t.planG;
+    const planGch = planNull.planGch ? null : t.planGch;
+    const planGu = planNull.planGu ? null : t.planGu;
+    const perf = (plan: number | null) => (act == null || plan == null ? null : plan ? (act / plan) * 100 : 0);
     return {
       ...t,
+      planG, planGch, planGu,
       act,
-      perfG: perf(t.planG),
-      perfGch: perf(t.planGch),
-      perfGu: perf(t.planGu),
+      perfG: perf(planG),
+      perfGch: perf(planGch),
+      perfGu: perf(planGu),
     };
   }, [rows, calc]);
 
@@ -490,9 +502,9 @@ function Tree({ rows, calc }: { rows: NegtgelRow[]; calc: Map<number, NegtgelCal
   const sumW = (cs: typeof lead) => (cs.length ? `calc(${cs.map((c) => WV(c.key)).join(' + ')})` : '0px');
   const total: Partial<Record<ColKey, string>> = {
     inProject: fmtPct(head.p, 0),
-    planG: fmtPct(head.planG, 2),
-    planGch: fmtPct(head.planGch, 2),
-    planGu: fmtPct(head.planGu, 2),
+    planG: p(head.planG, 2),
+    planGch: p(head.planGch, 2),
+    planGu: p(head.planGu, 2),
     act: p(head.act, 2),
     perfG: p(head.perfG, 2),
     perfGch: p(head.perfGch, 2),

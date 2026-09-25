@@ -79,7 +79,7 @@ async function req(url: string, params: Record<string, string>): Promise<Record<
   const body = new URLSearchParams({ f: 'json', ...params });
   const r = await fetch(url, { method: 'POST', body });
   const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
+  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
   return j;
 }
 

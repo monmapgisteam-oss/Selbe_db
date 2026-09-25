@@ -67,7 +67,14 @@ export type BlockProgress = {
 /** `${БАГЦ}|${блок}` → гүйцэтгэл. (`MapCanvas`-д ArcGIS-ийн `Map`-ыг дарсан тул alias.) */
 export type BlockProgressMap = Map<string, BlockProgress>;
 
-function compute(rows: Record<string, unknown>[]): BlockProgressMap {
+/**
+ * @param ov 3.1-ийн cashflow солилт (`cashflowOverride`). ⚠️ 2026-09-25: солилт
+ *   ЭНД хийгдэнэ — урьд нь `compute`-ийн ДАРАА зөвхөн БАЙГАА түлхүүрүүдэд
+ *   хэрэглэгддэг байсан тул «Б.» нүд нь хоосон (`null`) блокууд Map-д орохгүй
+ *   үлдэж, багцын нэг хэсэг cashflow-ийн хувийг авч, үлдсэн нь «мэдээлэлгүй»
+ *   болдог байв. Одоо тухайн багцын «Б.» мөртэй БҮХ блок солигдоно.
+ */
+function compute(rows: Record<string, unknown>[], ov: { key: string; pct: number } | null = null): BlockProgressMap {
   /** барилга → (№ → сүүлийн мөр) */
   const win = new Map<string, Map<string, { pct: number | null; name: string; date: string }>>();
   for (const r of rows) {
@@ -95,11 +102,13 @@ function compute(rows: Record<string, unknown>[]): BlockProgressMap {
   const out: BlockProgressMap = new Map();
   for (const [k, cells] of win) {
     const total = cells.get(TASK_SHEET.constructionNo);
+    const owned = ov != null && ownsKey(ov, k);
     // ⚠️ Нийт гүйцэтгэл бөглөгдөөгүй барилгыг ОРУУЛАХГҮЙ — зурагт «мэдээлэлгүй»
     //    саарлаар үлдэх ёстой, 0% гэж будвал «эхлээгүй» гэсэн ХУДАЛ мэдээлэл өгнө.
-    if (!total || total.pct == null) continue;
+    //    (Солигдох 3.1-ийн блок нь үл хамаарна — утга нь cashflow-оос.)
+    if (!total || (total.pct == null && !owned)) continue;
     out.set(k, {
-      overall: total.pct,
+      overall: owned ? (ov as { pct: number }).pct : (total.pct as number),
       date: total.date,
       phases: TASK_SHEET.subPhaseNos.map((no) => ({
         no,
@@ -332,8 +341,8 @@ const ownsKey = (ov: { key: string }, k: string) => k.startsWith(ov.key + '|');
 /** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
 export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
   async () => {
-    const [m, ov] = await Promise.all([loadRows().then(compute), cashflowOverride()]);
-    if (ov) for (const [k, v] of m) if (ownsKey(ov, k)) m.set(k, { ...v, overall: ov.pct });
+    const [rows, ov] = await Promise.all([loadRows(), cashflowOverride()]);
+    const m = compute(rows, ov);
     saveCache(m);
     return m;
   },
@@ -349,9 +358,8 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
  *    дэлгэцийн memo-г ХӨНДӨХГҮЙ (дашбоард анивчихгүй).
  */
 export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
-  const [m, ov] = await Promise.all([fetchConstruction().then(compute), cashflowOverride(true)]);
-  if (ov) for (const [k, v] of m) if (ownsKey(ov, k)) m.set(k, { ...v, overall: ov.pct });
-  return m;
+  const [rows, ov] = await Promise.all([fetchConstruction(), cashflowOverride(true)]);
+  return compute(rows, ov);
 }
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */

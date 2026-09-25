@@ -30,7 +30,21 @@ import { SOURCE_NAME, type SchemSources } from '@/lib/schem';
  */
 const NAME = SOURCE_NAME;
 
-export const loadSchemSources = cached<SchemSources>(async () => {
+/**
+ * ⚠️ 2026-09-25 аудит: ХЭСЭГЧИЛСЭН ҮР ДҮН КЭШЛЭГДЭХГҮЙ. Урьд нь нэг эх сурвалж
+ *    түр унахад тэр дутуу схем 5 минут кэшэд үлдэж, «Дахин оролдох» ч мөн
+ *    хадгалсан хагасаа буцаадаг байв. Одоо хэсэгчилсэн үед reject (`cached`
+ *    хадгалахгүй) → доорх `loadSchemSources` үр дүнг нь буцаана; дараагийн
+ *    дуудлага (эсвэл «Дахин оролдох») шинээр татна. Амжилттай эх сурвалжууд
+ *    өөрсдийн `cached` ачаалагчтай тул дахин оролдох нь хямд.
+ */
+class SchemPartial extends Error {
+  constructor(readonly result: SchemSources) {
+    super(tr('{0} эх сурвалж татагдсангүй', result.failed.join(', ')));
+  }
+}
+
+const schemSourcesFull = cached<SchemSources>(async () => {
   const [h, c, o, p, f, hb, z, r, b] = await Promise.allSettled([
     loadHeadline(),
     loadClearance(),
@@ -80,5 +94,16 @@ export const loadSchemSources = cached<SchemSources>(async () => {
   if (failed.length === 9) {
     throw new Error(tr('Өгөгдөл татагдсангүй — сүлжээгээ шалгана уу'));
   }
+  if (failed.length) throw new SchemPartial(src);
   return src;
 }, 5 * 60_000, ['CASHFLOW_NEW', 'PARCEL_LEFT', 'BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HABEA', 'HO_IPC', 'HYANALT', 'ZOVSHOOROL']);
+
+/** Схемийн эх сурвалжууд. Хэсэгчилсэн үед `failed` дүүрэн, кэшлэгдэхгүй. */
+export async function loadSchemSources(): Promise<SchemSources> {
+  try {
+    return await schemSourcesFull();
+  } catch (e) {
+    if (e instanceof SchemPartial) return e.result;
+    throw e;
+  }
+}

@@ -37,8 +37,14 @@ $org = Read-EnvLocal 'ARCGIS_ORG_ID'
 if (-not $origin -or $origin -notmatch 'smart\.selbecity\.mn') {
   Write-Warning '.env.local-д ALLOW_ORIGIN=https://smart.selbecity.mn,... алга — нийтэд гарсан портал 403 авна.'
 }
+# ⚠️ 2026-09-25: ORG_ID-гүй бол тунелийг БҮРТГЭХГҮЙ (доор) — урьд зөвхөн анхааруулаад
+#    бүртгэдэг байсан тул хаягийг олсон хэн ч энэ PC-ийн Claude бүртгэлийг зарцуулж болж байв.
 if (-not $org) {
-  Write-Warning '.env.local-д ARCGIS_ORG_ID алга — тунелийн хаягийг олсон ХЭН Ч энэ PC-ийн Claude бүртгэлийг зарцуулна.'
+  Write-Warning '.env.local-д ARCGIS_ORG_ID алга — Cloudflare тунель БҮРТГЭГДЭХГҮЙ (реле зөвхөн локал).'
+}
+$proxy = Read-EnvLocal 'TRUSTED_PROXY'
+if ($org -and $proxy -ne 'cloudflare') {
+  Write-Warning '.env.local-д TRUSTED_PROXY=cloudflare алга — тунелийн бүх хэрэглэгч нэг IP-ийн хурдны хязгаар хуваалцана.'
 }
 
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -61,6 +67,12 @@ if (-not $cf) {
   Write-Warning 'cloudflared олдсонгүй — `winget install --id Cloudflare.cloudflared` суулгаад дахин ажиллуулна уу.'
 } elseif (-not $token) {
   Write-Warning '.env.local-д CF_TUNNEL_TOKEN алга — Cloudflare Zero Trust → Networks → Tunnels-ээс авна.'
+} elseif (-not $org) {
+  # Өмнөх суулгалтаас үлдсэн тунелийн ажлыг мөн арилгана — fail-closed.
+  if (Get-ScheduledTask -TaskName 'SelbeAgentTunnel' -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName 'SelbeAgentTunnel' -Confirm:$false
+    Write-Warning 'Хуучин SelbeAgentTunnel ажлыг устгав (ARCGIS_ORG_ID алга).'
+  }
 } else {
   $tunnelAction = New-ScheduledTaskAction -Execute $cf -Argument "tunnel --no-autoupdate run --token $token"
   Register-ScheduledTask -TaskName 'SelbeAgentTunnel' -Action $tunnelAction -Trigger $trigger `

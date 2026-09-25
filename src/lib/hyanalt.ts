@@ -311,7 +311,7 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
      * сүлжээний алдааг зөв барьдаг ч 200-алдаа тэр хамгаалалтыг тойрдог.
      */
     if (j.error || !Array.isArray(j.fields)) {
-      throw new HyanaltError(j.error?.message ?? 'Талбарын жагсаалт ирсэнгүй');
+      throw new HyanaltError(j.error?.message ?? tr('Талбарын жагсаалт ирсэнгүй'));
     }
     fieldsCache = new Set(j.fields.map((x) => x.name));
     return fieldsCache;
@@ -339,7 +339,7 @@ export async function missingDirectorFields(): Promise<string[] | null> {
   if (missingCache) return missingCache;
   try {
     const have = await serviceFieldNames();
-    if (!have) throw new HyanaltError('Талбарын жагсаалт ирсэнгүй');
+    if (!have) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
     missingCache = DIRECTOR_FIELDS.filter((x) => !have.has(x));
     return missingCache;
   } catch {
@@ -388,7 +388,7 @@ async function post(path: string, body: Record<string, string>): Promise<Record<
    */
   if (j.error) {
     const d = j.error.details?.length ? ` · ${j.error.details.join('; ')}` : '';
-    throw new HyanaltError((j.error.message ?? 'Тодорхойгүй алдаа') + d);
+    throw new HyanaltError((j.error.message ?? tr('Тодорхойгүй алдаа')) + d);
   }
   return j as Record<string, unknown>;
 }

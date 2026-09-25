@@ -63,7 +63,7 @@ type QueryResp = {
   error?: { message?: string };
 };
 
-const pageQuery = (offset: number) => new URLSearchParams({
+const pageQuery = (offset: number, count = PAGE) => new URLSearchParams({
   where: '1=1',
   geometry: JSON.stringify({ ...AREA_UTM, spatialReference: { wkid: AREA_WKID } }),
   geometryType: 'esriGeometryEnvelope',
@@ -88,7 +88,7 @@ const pageQuery = (offset: number) => new URLSearchParams({
    */
   orderByFields: 'OBJECTID ASC',
   resultOffset: String(offset),
-  resultRecordCount: String(PAGE),
+  resultRecordCount: String(count),
   f: 'json',
 });
 
@@ -119,14 +119,26 @@ const slotFetch = <T extends { error?: { message?: string } }>(url: string, sign
   });
 
 export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
-  const fetchPage = async (offset: number): Promise<Pt[][]> => {
-    const r = await slotFetch<QueryResp>(`${url}/query?${pageQuery(offset)}`, signal);
-    if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
+  /**
+   * ⚠️ 2026-09-25: Нэг «хуудас» = [start, end) муж. Үйлчилгээний
+   * `maxRecordCount` 2000-аас бага бол нэг хүсэлт мужийг бүрэн өгөхгүй
+   * (`exceededTransferLimit`) — урьд нь үлдсэнийг нь чимээгүй алддаг байв.
+   * Одоо БОДИТ ирсэн тоогоор (`got`) ахиж, муж дуустал үргэлжлүүлнэ.
+   */
+  const fetchPage = async (start: number, end: number): Promise<Pt[][]> => {
     const out: Pt[][] = [];
-    for (const f of r.features ?? []) {
-      for (const path of f.geometry?.paths ?? []) {
-        if (path.length >= 2) out.push(path as Pt[]);
+    let off = start;
+    for (let guard = 0; off < end && guard < 50; guard++) {
+      const r = await slotFetch<QueryResp>(`${url}/query?${pageQuery(off, end - off)}`, signal);
+      if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
+      const got = r.features?.length ?? 0;
+      for (const f of r.features ?? []) {
+        for (const path of f.geometry?.paths ?? []) {
+          if (path.length >= 2) out.push(path as Pt[]);
+        }
       }
+      off += got;
+      if (!got || !r.exceededTransferLimit) break;
     }
     return out;
   };
@@ -161,7 +173,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
   }
   const pages = Math.ceil(total / PAGE);
   const chunks = await Promise.all(
-    Array.from({ length: pages }, (_, i) => fetchPage(i * PAGE)),
+    Array.from({ length: pages }, (_, i) => fetchPage(i * PAGE, Math.min((i + 1) * PAGE, total))),
   );
   return chunks.flat();
 }

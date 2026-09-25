@@ -393,10 +393,17 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
 
   if (mode === 'busAccess') {
     const resPop = buildings.reduce((a, b) => a + (b.cat === 'residential' ? b.population : 0), 0);
-    const pct = (v: number) => (resPop > 0 ? Math.round((v / resPop) * 100) : 0);
+    /* ⚠️ 2026-09-25: оршин суугчгүй (resPop 0) үед `null` — «0%» нь «хэн ч
+       хүртээмжгүй» гэж худал уншигдана (null ≠ 0). */
+    const pct = (v: number): number | null => (resPop > 0 ? Math.round((v / resPop) * 100) : null);
     const good = pct(bus.popByBand.good);
     return [
-      { k: tr('≤{0} м доторх', BUS_GOOD_M), v: `${good}%`, color: good > 70 ? 'var(--good-ink)' : good > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)' },
+      {
+        k: tr('≤{0} м доторх', BUS_GOOD_M),
+        v: good == null ? '—' : `${good}%`,
+        color: good == null ? undefined
+          : good > 70 ? 'var(--good-ink)' : good > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
+      },
       { k: tr('>{0} м (дутмаг)', BUS_OK_M), v: nf0(bus.popUnserved), unit: tr('хүн') },
       { k: tr('Ачаалалтай буудал'), v: nf0(bus.maxStopDemand), unit: tr('зорчигч/ц') },
     ];

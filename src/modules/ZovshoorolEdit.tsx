@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusTrap } from '@/lib/useFocusTrap';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { buildPacks } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
@@ -37,6 +37,15 @@ const fromInput = (v: string): number | null => {
 
 const TOLOV_LIST: Exclude<Tolov, 'unknown'>[] = [TOLOV.wait, TOLOV.ok, TOLOV.no];
 
+/* ⚠️ 2026-09-25: төлөв нь ArcGIS-ийн ӨГӨГДӨЛ — товчинд `tr()`-ийн статик
+   түлхүүрээр харуулна (`Zovshoorol.TOLOV_TEXT`-ийн ижил шалтгаан; тэр файл энэ
+   файлыг импортолдог тул эргэх импорт үүсгэхгүйн тулд энд давтав). */
+const TOLOV_LABEL: Record<Exclude<Tolov, 'unknown'>, () => string> = {
+  [TOLOV.wait]: () => tr('Хүлээгдэж буй'),
+  [TOLOV.ok]: () => tr('Зөвшөөрсөн'),
+  [TOLOV.no]: () => tr('Зөвшөөрөөгүй'),
+};
+
 export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   init: ZovDraft;
   all: Zov[];
@@ -44,6 +53,12 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   onCancel: () => void;
 }) {
   const [d, setD] = useState<ZovDraft>(init);
+  /* ⚠️ 2026-09-25 аудит: МАЯГТ НЭЭГДЭХ ҮЕИЙН АГШИН — `saveZov`-ийн ялгааны суурь.
+     Урьд нь суурь өгөхгүй тул `saveZov` ШИНЭ мөрийг уншиж жишдэг байв: маягт
+     нээгдсэний дараа өөр хүний зассан талбар «ялгаа» болж, маягтын ХУУЧИН утгаар
+     чимээгүй дарагдана. Одоо зөвхөн ЭНЭ хэрэглэгчийн өөрчилсөн талбар бичигдэнэ. */
+  const [before] = useState<Zov | null>(() =>
+    (init.oid ? all.find((r) => r.oid === init.oid) ?? null : null));
   /**
    * ⚠️ ХӨНДӨГДСӨН ЭСЭХ — санамсаргүй хаалтаас хамгаална. Гадуур дарах,
    * Esc дарах нь маягтыг ХААДАГ тул урт тайлбар бичсэн хүн нэг товшилтоор
@@ -151,7 +166,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setBusy(true);
     setFail('');
     try {
-      await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() });
+      await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() }, before);
       onDone();
     } catch (x) {
       setFail(String((x as Error).message || x));
@@ -197,11 +212,26 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     </label>
   );
 
+  /* ⚠️ 2026-09-25: ТӨЛӨВ `<label>` ДОТОР БИШ — label доторх товчийн аль ч хэсэгт
+     (эсвэл шошгон дээр) дарахад хөтөч label-ийн ЭХНИЙ товчийг (`Хүлээгдэж буй`)
+     идэвхжүүлж, сонголт чимээгүй «хүлээгдэж буй» руу үсэрдэг байв. */
+  const tolovIdx = Math.max(0, TOLOV_LIST.indexOf(d.tolov));
+  const tolovKey = (e: ReactKeyboardEvent) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+      : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = TOLOV_LIST[(tolovIdx + step + TOLOV_LIST.length) % TOLOV_LIST.length];
+    set('tolov', next);
+    const grp = e.currentTarget as HTMLElement;
+    requestAnimationFrame(() => grp.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
+  };
+
   return (
-    <div className={s.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
+    <div className={s.backdrop} role="dialog" aria-modal="true" aria-labelledby="zov-edit-title" onClick={tryClose}>
       <div ref={mdRef} className={s.modal + ' ' + s.modalWide} onClick={(e) => e.stopPropagation()}>
         <div className={s.modalHead}>
-          <span className={s.modalTitle}>
+          <span id="zov-edit-title" className={s.modalTitle}>
             {editing ? tr('Зөвшөөрөл засах') : tr('Зөвшөөрөл нэмэх')}
           </span>
           <button type="button" className={s.close} onClick={tryClose} disabled={busy} aria-label={tr('Хаах')}>✕</button>
@@ -248,20 +278,25 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           ))}
 
           <div className={s.grid2}>
-            {field('tolov', tr('Төлөв'), (
-              <div className={s.radios}>
+            <div className={s.f}>
+              <span id="zov-edit-tolov" className={s.fLabel}>{tr('Төлөв')}</span>
+              <div className={s.radios} role="radiogroup" aria-labelledby="zov-edit-tolov" onKeyDown={tolovKey}>
                 {TOLOV_LIST.map((t) => (
                   <button
                     key={t}
                     type="button"
+                    role="radio"
+                    aria-checked={d.tolov === t}
+                    tabIndex={t === TOLOV_LIST[tolovIdx] ? 0 : -1}
                     className={s.radio + ' ' + (d.tolov === t ? s.radioOn : '')}
                     onClick={() => set('tolov', t)}
                   >
-                    {t}
+                    {TOLOV_LABEL[t]()}
                   </button>
                 ))}
               </div>
-            ))}
+              {err.tolov ? <span className={s.fErr}>{err.tolov}</span> : null}
+            </div>
             {field('ognoo', tr('Шийдвэрлэсэн огноо'), (
               <input
                 className={s.input}

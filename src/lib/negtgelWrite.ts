@@ -35,7 +35,7 @@ async function post(url: string, body: Record<string, string>) {
     body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }),
   });
   const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS алдаа');
+  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
   return j;
 }
 
@@ -310,7 +310,7 @@ export async function registerApproved(
 ): Promise<NegtgelResult> {
   try {
     const s = await summaryOf(bagts, sheetOid, pkgKey);
-    if (!s) return { ok: false, error: 'Бөглөх хуудаснаас агшин олдсонгүй' };
+    if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };
 
     const nameSql = bagts.replace(/'/g, "''");
 
@@ -329,8 +329,14 @@ export async function registerApproved(
      *    буурах нь (засвар, дахин хэмжилт) ховор бөгөөд тийм үед хүн өөрөө
      *    нэгтгэлд бичих ёстой — чимээгүй нурааж БОЛОХГҮЙ.
      */
+    /* ⚠️ 2026-09-25: «СҮҮЛИЙН УТГА» нь ЭНЭ агшин (`s.at`) БА ӨНӨӨДРИЙН эцсээс
+       хойшгүй мөрөөс. Урьд нь огнооны хязгааргүй `DESC` байсан тул нэгтгэлд
+       УРЬДЧИЛАН суулгасан ирээдүйн огноотой (төлөвлөгөөний) мөр «сүүлийн» болж,
+       бодит өсөлттэй батлалтыг «хэт зөрүүтэй» гэж татгалздаг байв. */
+    const now = new Date();
+    const todayCut = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
     const prev = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-      where: `${F.bagts} = N'${nameSql}'`,
+      where: `${F.bagts} = N'${nameSql}' AND ${F.date} <= ${ts(Math.min(s.at, todayCut))}`,
       outFields: `${F.date},${F.progress}`,
       returnGeometry: 'false',
       orderByFields: `${F.date} DESC`,
@@ -406,7 +412,7 @@ export async function registerApproved(
       })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
       const ur = upd.updateResults?.[0];
       if (!ur || ur.success !== true)
-        throw new Error(ur?.error?.description ?? 'Нэгтгэлийн мөр шинэчлэгдсэнгүй');
+        throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
       invalidate('BAGTS_NEGTGEL');
       return { ok: true };
     }
@@ -434,7 +440,7 @@ export async function registerApproved(
      */
     const r = res.addResults?.[0];
     if (!r || r.success !== true) {
-      throw new Error(r?.error?.description ?? 'Нэгтгэлд мөр нэмэгдсэнгүй');
+      throw new Error(r?.error?.description ?? tr('Нэгтгэлд мөр нэмэгдсэнгүй'));
     }
     /* ⚠️ Нэгтгэлд шинэ мөр орсон тул `loadPkgProgress` хуучирлаа: 02/04
        дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ. */

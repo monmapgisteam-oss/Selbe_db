@@ -4,7 +4,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 type Theme = 'light' | 'dark';
 
-const Ctx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'light', toggle: () => {} });
+// ⚠️ 2026-09-25: Provider-гүй анхдагч ч DARK — порталын анхдагч сэдэв (`THEME_INIT`).
+const Ctx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} });
 
 /**
  * localStorage түлхүүр — ⚠️ `themeKey.ts`-ээс (client-гүй модуль). Урьд нь ЭНД
@@ -14,6 +15,12 @@ const Ctx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'light'
  */
 import { THEME_KEY } from './themeKey';
 export { THEME_KEY };
+
+/** FOUC скриптийн тавьсан сэдэв — сервер/тестэд DARK (`THEME_INIT`-ийн анхдагч). */
+function domTheme(): Theme {
+  if (typeof document === 'undefined') return 'dark';
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   /**
@@ -61,11 +68,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch { /* хувийн горим — сонголт санагдахгүй */ }
   }, [theme]);
 
+  /* ⚠️ 2026-09-25 аудит: УНШААГҮЙ ҮЕИЙН НӨӨЦ = DOM-ийн бодит сэдэв. Урьд нь
+     `'light'` тул FOUC скрипт `dark` тавьсан хуудсанд эхний зурагт context
+     «light» гэж хэлж, график/газрын зураг цайвар өнгөөр зурагдаад анивчдаг,
+     анхны товшилт ч `light → dark` (өөрчлөлтгүй) болдог байв. `documentElement`
+     -ийн `data-theme` (скриптийн тавьсан), эс бөгөөс DARK анхдагч. */
+  const shown: Theme = theme ?? domTheme();
   return (
     <Ctx.Provider
       value={{
-        theme: theme ?? 'light',
-        toggle: () => setTheme((t) => ((t ?? 'light') === 'light' ? 'dark' : 'light')),
+        theme: shown,
+        toggle: () => setTheme((t) => ((t ?? domTheme()) === 'light' ? 'dark' : 'light')),
       }}
     >
       {children}

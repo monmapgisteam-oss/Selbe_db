@@ -16,7 +16,7 @@
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, cellPct, computeAll, dayToMs, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, incCell, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -305,6 +305,8 @@ export type Overlay = {
  *    cells → `obyem[b]` нь `cellObyem`-ийн ДҮРМЭЭР ("" → null; тоо биш →
  *    хэвээр; сөрөг → 0); dates → `start/end[b]` нь `dayToMs`-ийн дүрмээр
  *    ("" → null).
+ *    ⚠️ 2026-09-25: `sub.mode === "inc"` бол cells нь НЭМЭЛТ — `incCell`-ээр
+ *    суурь дээр НЭМНЭ (тэг/хоосон нэмэлт нүдийг хөндөхгүй).
  * 4) `cellKeys`/`dateKeys` = мөрөнд буусан түлхүүрүүд; `asOf = sub.asOf ?? null`.
  *
  * ⚠️ `null ≠ 0` — утгагүй нүд `null` хэвээр; `cellObyem` дүрмээс өөр юу ч
@@ -406,6 +408,20 @@ export function overlaySubmission(
     }
     const r = out[i];
     const key = withOid(k, at, r.oid);
+    /* ⚠️ НЭМЭЛТИЙН ИЛГЭЭЛТ (2026-09-25, `bagtsSheet.CellMode`-ийн ⚠️): утга нь
+       СУУРЬ (энэ `rows` — архивлахад СҮҮЛИЙН жааз) дээр НЭМЭГДЭНЭ. Нэмэлт нь
+       нэмэгддэг тул хэдэн өдрийн илгээлт ямар ч дарааллаар батлагдсан ч нийлбэр
+       зөв. Тэг/хоосон нэмэлт нүдийг ХӨНДӨХГҮЙ, `cellKeys`-д ч оруулахгүй
+       (өөрчлөгдөөгүй нүдийг «өөрчлөгдсөн» гэж будахгүй). Туггүй payload нь
+       ХУУЧИН (орлуулах) дүрмээрээ доор. */
+    if (sub.mode === "inc") {
+      const res = incCell(r, b, v, !!sc.obyem[b]);
+      if (!res) continue;
+      r.obyem[b] = res.obyem;
+      r.act[b] = res.act;
+      cellKeys.push(key);
+      continue;
+    }
     // `cellObyem`-ийн ДҮРЭМ ЯГ өөрөө — нэг мөрийн засвар мэт дамжуулна.
     r.obyem[b] = cellObyem(r, b, { [key]: v });
     /* ⚠️ ХУВЬ БАГАНАД ч БУУЛГАНА (2026-09-08). Урьд нь энд ЗӨВХӨН `obyem`
@@ -451,6 +467,83 @@ export function overlaySubmission(
     unmoved: unmovedKeys.length,
     unmovedKeys,
   };
+}
+
+/**
+ * ИЛГЭЭЛТИЙН СУУРЬ ЖААЗНААС ХОЙШ АРХИВТ ӨӨРЧЛӨГДСӨН НҮДНҮҮД — илгээлтийн
+ * ЭХ түлхүүрээр (`${oid}:${b}` · `${oid}:${b}:s|e`).
+ *
+ * ⚠️ ЯАГААД (2026-09-25-ны аудит, HIGH): өдөр бүр тусдаа `sub|` мөртэй тул
+ *    Даваа ба Мягмарын илгээлт хоёулаа ижил суурь (Ням) дээр бичигдэж, зэрэг
+ *    хянагдана. Мягмар ЭХЭЛЖ батлагдвал архивын сүүлийн жааз Мягмарын
+ *    ХУРИМТЛАГДСАН тоотой болно; дараа нь Даваа батлагдахад `overlaySubmission`
+ *    Даваагийн (бага) утгыг сүүлийн жаазан дээр дарж бичиж хуримтлалыг
+ *    ЧИМЭЭГҮЙ БУЦААДАГ байв. Энэ функц «суурь → сүүлийн» хооронд өөрчлөгдсөн
+ *    нүдийг олж, дуудагч (`hyanaltStore.archiveSubmission`) тэднийг ХЭРЭГЛЭХГҮЙ.
+ *
+ * ⚠️ ЦЭВЭР ФУНКЦ. Түлхүүрийг мөрөнд `overlaySubmission`-тэй ИЖИЛ дүрмээр
+ *    буулгана (`buildOidMap` зөвхөн `rowKeys`-ийн oid тэр жаазанд байхгүй үед).
+ *    Сөрөг (нэмсэн) мөр, аль нэг жаазанд олдохгүй түлхүүрийг ШАЛГАХГҮЙ —
+ *    тэдгээрийг `overlaySubmission`-ийн `unmoved`/`alias` өөрөө барина.
+ * ⚠️ `null ≠ 0`: утга null↔тоо болсон нь ч өөрчлөлт.
+ */
+export function staleSubmissionKeys(
+  baseRows: SheetRow[],
+  latestRows: SheetRow[],
+  sub: Pick<SubmissionPayload, "cells" | "dates" | "rowKeys"> & { mode?: SubmissionPayload["mode"] },
+  nBld: number,
+): string[] {
+  /* ⚠️ НЭМЭЛТИЙН ИЛГЭЭЛТИЙН НҮДИЙГ ШАЛГАХГҮЙ (2026-09-25): нэмэлт нь СҮҮЛИЙН
+     жааз дээр НЭМЭГДЭХ тул хожуу өдрийн батлалт аль хэдийн орсон ч хуримтлал
+     буурахгүй — алгасвал тэр өдрийн ахиц АЛГА болно. Огноо нь нэмэлт биш
+     (ҮНЭМЛЭХҮЙ утга) тул доорх `dates` шалгалт ХЭВЭЭР. */
+  const incCells = sub.mode === "inc";
+  const rowKeys = sub.rowKeys ?? [];
+  const locate = (rows: SheetRow[]) => {
+    const oids = new Set(rows.map((r) => r.oid));
+    const need = rowKeys.some(([o]) => o >= 0 && !oids.has(o));
+    const map = need ? buildOidMap(rowKeys, rows) : new Map<number, number>();
+    const byOid = new Map<number, SheetRow>();
+    rows.forEach((r) => byOid.set(r.oid, r));
+    return (oid: number): SheetRow | undefined => {
+      if (!map.size) return byOid.get(oid);
+      const to = map.get(oid);
+      return to == null ? undefined : byOid.get(to);
+    };
+  };
+  const inBase = locate(baseRows);
+  const inLatest = locate(latestRows);
+  const same = (a: number | null | undefined, b: number | null | undefined) =>
+    a == null || b == null ? (a == null) === (b == null) : Math.abs(a - b) <= 1e-9;
+  const out: string[] = [];
+  const pair = (k: string): [SheetRow, SheetRow, string[]] | null => {
+    const at = k.indexOf(":");
+    if (at < 0) return null;
+    const oid = Number(k.slice(0, at));
+    if (!Number.isFinite(oid) || oid < 0) return null;
+    const rest = k.slice(at + 1).split(":");
+    const b = Number(rest[0]);
+    if (!Number.isInteger(b) || b < 0 || b >= nBld) return null;
+    const x = inBase(oid);
+    const y = inLatest(oid);
+    return x && y ? [x, y, rest] : null;
+  };
+  for (const [k] of incCells ? [] : sub.cells ?? []) {
+    const p = pair(k);
+    if (!p) continue;
+    const [x, y, rest] = p;
+    const b = Number(rest[0]);
+    if (!same(x.obyem[b], y.obyem[b]) || !same(x.act[b], y.act[b])) out.push(k);
+  }
+  for (const [k] of sub.dates ?? []) {
+    const p = pair(k);
+    if (!p) continue;
+    const [x, y, rest] = p;
+    const b = Number(rest[0]);
+    const se = rest[1];
+    if (se === "s" ? !same(x.start[b], y.start[b]) : se === "e" ? !same(x.end[b], y.end[b]) : false) out.push(k);
+  }
+  return out;
 }
 
 /**

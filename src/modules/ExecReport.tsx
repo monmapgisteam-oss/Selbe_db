@@ -307,7 +307,9 @@ export function ExecReport() {
                       <KpiRow cols={2} items={x.gdash.bySource.map((s) => ({
                         label: tr(s.label),
                         value: money(s.amount),
-                        sub: tr('{0} · {1} ажил', pct(srcTotal ? (s.amount / srcTotal) * 100 : 0, 1), num(s.n)),
+                        /* ⚠️ 2026-09-25: захирамжийн нийт 0 бол хувь бодогдохгүй — «0.0%» БИШ «—»
+                           (хүснэгтийн мөр ба PDF-тэй ижил). */
+                        sub: tr('{0} · {1} ажил', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
                       }))} />
                       <Cap no="1.3">{tr('Захирамжийн эх үүсвэр')}</Cap>
                       <table className={r.table}>
@@ -340,7 +342,8 @@ export function ExecReport() {
                       <tbody>
                         {x.gdash.land.byStatus.map((b) => (
                           <tr key={b.label}>
-                            <td className={b.label === PARCEL_CLEARED ? '' : e.warn}>{b.label}</td>
+                            {/* ⚠️ 2026-09-25: төлөв/шалтгааны шошго нь өгөгдлийн монгол утга — `tr()` (эх үүсвэртэй адил) */}
+                            <td className={b.label === PARCEL_CLEARED ? '' : e.warn}>{tr(b.label)}</td>
                             <td className={r.num}>{num(b.n)}</td>
                             <td className={r.num}>{x.gdash.land.total ? pct((b.n / x.gdash.land.total) * 100, 1) : '—'}</td>
                           </tr>
@@ -353,7 +356,7 @@ export function ExecReport() {
                         <Fig no="1.3">{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
                         <RankBars
                           title={tr('Чөлөөгдөөгүй талбарын шалтгаан')}
-                          items={x.gdash.land.reasons.map((rs, i) => ({ label: rs.label, value: rs.n, hot: i === 0 }))}
+                          items={x.gdash.land.reasons.map((rs, i) => ({ label: tr(rs.label), value: rs.n, hot: i === 0 }))}
                         />
                       </>
                     )}

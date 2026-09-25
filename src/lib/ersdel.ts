@@ -277,7 +277,7 @@ const WATER_METRICS = [
     warn: 0.5, bad: 1.2,
   },
   {
-    key: 'ec', label: tr('Эрдэсжилт'), unit: 'µS/см', dp: 0,
+    key: 'ec', label: tr('Эрдэсжилт'), unit: tr('µS/см'), dp: 0,
     note: tr('Цахилгаан дамжуулах чанар — уусмал давсны хэмжээг илэрхийлнэ.'),
     warn: 600, bad: 900,
   },
@@ -295,22 +295,23 @@ const WATER_METRICS = [
  */
 const AIR_METRICS = [
   {
-    key: 'pm25', label: 'PM2.5', unit: 'µg/м³', dp: 1,
+    /* ⚠️ 2026-09-25: кирилл «м» агуулсан нэгжүүд tr()-ээр (англи горимд m) */
+    key: 'pm25', label: 'PM2.5', unit: tr('µg/м³'), dp: 1,
     note: tr('2.5 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 50 µg/м³.'),
     warn: 50, bad: 100,
   },
   {
-    key: 'pm10', label: 'PM10', unit: 'µg/м³', dp: 0,
+    key: 'pm10', label: 'PM10', unit: tr('µg/м³'), dp: 0,
     note: tr('10 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 100 µg/м³.'),
     warn: 100, bad: 200,
   },
   {
-    key: 'so2', label: 'SO₂', unit: 'µg/м³', dp: 1,
+    key: 'so2', label: 'SO₂', unit: tr('µg/м³'), dp: 1,
     note: tr('Хүхэрлэг хий — нүүрсний шаталтын шинж. MNS 4585:2016 — 50 µg/м³.'),
     warn: 50, bad: 100,
   },
   {
-    key: 'no2', label: 'NO₂', unit: 'µg/м³', dp: 1,
+    key: 'no2', label: 'NO₂', unit: tr('µg/м³'), dp: 1,
     note: tr('Азотын давхар исэл — тээврийн шинж. MNS 4585:2016 — 40 µg/м³.'),
     warn: 40, bad: 85,
   },

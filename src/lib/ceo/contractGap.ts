@@ -8,8 +8,13 @@
  * ⚠️ ЗӨРҮҮНИЙ ТЭМДЭГ: `diff = гэрээ − төсөв`. ЭЕРЭГ = гэрээ төсвөөс ДАВСАН
  *    (асуудал), СӨРӨГ = хэмнэлт. Урвуулбал улаан/ногоон солигдоно.
  *
- * ⚠️ ГЭРЭЭГҮЙ мөр (`Geree_erh_dun` null/0/'') нь «гэрээ хараахан
- *    байгуулагдаагүй» — зөрүү нь `null`, 0 БИШ. Амьд өгөгдөлд (2026-09-06)
+ * ⚠️ ГЭРЭЭГҮЙ мөр нь «гэрээ хараахан байгуулагдаагүй» — зөрүү нь `null`, 0 БИШ.
+ *    ⚠️ 2026-09-25: ГЭРЭЭТЭЙ = ЗӨВХӨН `ho_dungiin_tailbar === CONTRACTED`
+ *    (порталын НЭГ дүрэм — `gdash`, `scorecardLoad`, ExecReport). Урьд нь
+ *    `geree_dun` бөглөгдсөн эсэхээр ялгадаг тул гэрээлэгдээгүй (магадласан г.м.)
+ *    мөр «гэрээ» болж, картын «гэрээлсэн» нийт бусад дэлгэцээс зөрдөг байв.
+ *    CONTRACTED боловч дүнгүй мөр жагсаалтад ОРНО (гэрээ `null`, зөрүү `null`),
+ *    нийлбэрт орохгүй. Амьд өгөгдөлд (2026-09-06)
  *    76 мөрийн 43 нь ийм: тэднийг 0 зөрүүтэй гэж тоолбол «43 гэрээ яг
  *    төсөвтөө таарсан» гэсэн худал дүр гарна.
  *
@@ -33,6 +38,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { mnt } from '@/lib/format';
 import { CASHFLOW_NEW, CF_WORK_WHERE } from '@/lib/services';
+import { CONTRACTED } from '@/lib/gdash';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /**
@@ -66,7 +72,7 @@ export type ContractGapRow = {
   contractDate: string;
   /** Урьдчилсан төсөвт өртөг, ₮ — null = бөглөөгүй/0 */
   budget: number | null;
-  /** Гэрээ байгуулах эрх олгосон дүн, ₮ — null = гэрээгүй */
+  /** Гэрээний дүн (`geree_dun`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
   contract: number | null;
   /** гэрээ − төсөв, ₮ — аль нэг нь null бол null */
   diff: number | null;
@@ -124,10 +130,11 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
   for (const r of raw) {
     const budget = money(r[F.budget]);
     const contract = money(r[F.contractAmount]);
-    /* ⚠️ Гэрээгүй мөрийн төсөв ЭНД ХАЯГДАНА — `budgetTotal`-д орохгүй (толгойн ⚠️) */
-    if (contract == null) { noContract += 1; continue; }
+    /* ⚠️ Гэрээгүй мөрийн төсөв ЭНД ХАЯГДАНА — `budgetTotal`-д орохгүй (толгойн ⚠️).
+       ⚠️ 2026-09-25: гэрээтэй эсэх нь `note === CONTRACTED`-ээр (дүнгээр БИШ). */
+    if (str(r[F.amountNote]) !== CONTRACTED) { noContract += 1; continue; }
     if (budget == null) noBudget += 1;
-    const diff = budget == null ? null : contract - budget;
+    const diff = budget == null || contract == null ? null : contract - budget;
     rows.push({
       work: str(r[F.detail]) || str(r[F.project]),
       pkg: str(r[F.pkg2]) || str(r[F.pkg]),
@@ -156,9 +163,10 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     rows,
     over: { count: overDiffs.length, sum: sumOrNull(overDiffs) },
     under: { count: underDiffs.length, sum: sumOrNull(underDiffs) },
-    contractTotal: sumOrNull(rows.map((r) => r.contract as number)),
-    /* Зөвхөн гэрээтэй мөр (`rows`) — `contractTotal`-тай нэг популяци */
-    budgetTotal: sumOrNull(rows.flatMap((r) => (r.budget != null ? [r.budget] : []))),
+    contractTotal: sumOrNull(rows.flatMap((r) => (r.contract != null ? [r.contract] : []))),
+    /* Зөвхөн гэрээтэй, ДҮНТЭЙ мөр — `contractTotal`-тай нэг популяци (дүнгүй
+       CONTRACTED мөрийн төсөв орвол тааруулалт эвдэрнэ) */
+    budgetTotal: sumOrNull(rows.flatMap((r) => (r.budget != null && r.contract != null ? [r.budget] : []))),
     noContract,
     noBudget,
     total: raw.length,

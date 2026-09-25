@@ -30,6 +30,7 @@ export function TransportPanel({
   ctx,
   loading,
   error,
+  onRetry,
 }: {
   mode: TMode;
   /** Дүрслэл сонгох — эцэг нь энэ самбарыг ИДЭВХТЭЙ болгоно (газрын зураг солигдоно) */
@@ -40,6 +41,8 @@ export function TransportPanel({
   ctx: TransportCtx | null;
   loading: boolean;
   error: string | null;
+  /** ⚠️ 2026-09-25: алдааны дараа дахин татах — өгөөгүй бол товч гарахгүй */
+  onRetry?: () => void;
 }) {
   const def = tModeDef(mode);
 
@@ -74,7 +77,24 @@ export function TransportPanel({
             {tr('Дэлгэрэнгүй харах бол дээрх дүрслэлийг сонгоно уу.')}
           </p>
         ) : error ? (
-          <p className={c.err}>{tr('Тээврийн өгөгдөл ачаалж чадсангүй:')} {error}</p>
+          <p className={c.err}>
+            {tr('Тээврийн өгөгдөл ачаалж чадсангүй:')} {error}
+            {onRetry && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  style={{
+                    border: 0, padding: 0, background: 'none', color: 'inherit',
+                    font: 'inherit', fontWeight: 600, textDecoration: 'underline', cursor: 'pointer',
+                  }}
+                >
+                  {tr('Дахин оролдох')}
+                </button>
+              </>
+            )}
+          </p>
         ) : loading || !ctx ? (
           <p className={c.loading}>
             {tr('Барилга ба замын өгөгдөл ачаалж байна')}
@@ -155,7 +175,7 @@ function Legend({ mode, min, max, unit }: { mode: TMode; min: number; max: numbe
           <span className={c.legendEnd}>{BUS_OK_M} {tr('м+')}</span>
         </div>
         <p className={c.desc} style={{ marginTop: -2 }}>
-          {tr('Дунд цэг =')} <b>{BUS_GOOD_M} м</b> {tr('(БНБД-ийн сайн хүртээмжийн босго). Ажиглагдсан хамгийн хол нь')} <b>{nf0(max)} м</b>.
+          {tr('Дунд цэг =')} <b>{tr('{0} м', BUS_GOOD_M)}</b> {tr('(БНБД-ийн сайн хүртээмжийн босго). Ажиглагдсан хамгийн хол нь')} <b>{tr('{0} м', nf0(max))}</b>.
         </p>
       </>
     );

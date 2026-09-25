@@ -96,6 +96,20 @@ export type SocPlannedRow = {
   layerIds: string[];
 };
 
+/**
+ * ⚠️ 2026-09-25 аудит: `failed` — ТАТАГДААГҮЙ давхаргын id. Урьд нь зөвхөн
+ *    `console.warn` тул дутуу нийлбэр дэлгэцэд «зөв» мэт харагдаж, тэр нь
+ *    сешн дуустал КЭШЛЭГДДЭГ байв. Дуудагч `failed.length`-ээр ил хэлнэ.
+ */
+export type SocPlanned = { rows: SocPlannedRow[]; failed: string[] };
+
+/** Хэсэгчилсэн үр дүн — `cached`-д reject болж очно (кэшлэгдэхгүй), дуудагчид буцна. */
+class SocPartial extends Error {
+  constructor(readonly result: SocPlanned) {
+    super(tr('Нийгмийн {0} давхарга татагдсангүй', result.failed.length));
+  }
+}
+
 const S = IRGED_SOC.fields;
 
 /**
@@ -120,7 +134,7 @@ const S = IRGED_SOC.fields;
  * биш: унасныг `console.warn`-д бичнэ, эс бөгөөс дээрх шиг дутуу нийлбэр
  * дэлгэц дээр «зөв» мэт харагдана.
  */
-export const loadSocPlanned = cached<SocPlannedRow[]>(async () => {
+const socPlannedFull = cached<SocPlanned>(async () => {
   const ids = PKG_BY_FAMILY.soc ?? [];
   const settled = await Promise.allSettled(
     ids.map(async (id) => {
@@ -132,11 +146,17 @@ export const loadSocPlanned = cached<SocPlannedRow[]>(async () => {
   );
 
   const by = new Map<string, SocPlannedRow>();
+  const failed: string[] = [];
   settled.forEach((s, k) => {
     if (s.status === 'rejected') {
       console.warn(`[selbe] нийгмийн давхарга татагдсангүй: ${ids[k]} — ${s.reason}`);
+      failed.push(ids[k]);
     }
   });
+  /* ⚠️ БҮГД унасан бол үр дүн БИШ — хоосон жагсаалт «төлөвлөсөн барилга алга» гэж уншигдана. */
+  if (ids.length > 0 && failed.length === ids.length) {
+    throw new Error(tr('Нийгмийн {0} давхарга бүгд татагдсангүй', failed.length));
+  }
   for (const s of settled) {
     if (s.status !== 'fulfilled') continue;
     for (const { id, r } of s.value) {
@@ -162,7 +182,20 @@ export const loadSocPlanned = cached<SocPlannedRow[]>(async () => {
   }
   /* Чадалтай нь дээр, дараа нь барилгын тоогоор — «хамгийн их хүн хамрах» нь
      эхэнд байх нь энэ харагдацын гол асуулт. */
-  return [...by.values()].sort(
+  const rows = [...by.values()].sort(
     (a, b) => (b.capacity ?? -1) - (a.capacity ?? -1) || b.n - a.n,
   );
+  /* ⚠️ Хэсэгчилсэн бол reject → `cached` хадгалахгүй, дараагийн дуудлага дахин оролдоно. */
+  if (failed.length) throw new SocPartial({ rows, failed });
+  return { rows, failed };
 });
+
+/** Төлөвлөсөн нийгмийн барилга. Хэсэгчилсэн үед `failed` дүүрэн, кэшлэгдэхгүй. */
+export async function loadSocPlanned(): Promise<SocPlanned> {
+  try {
+    return await socPlannedFull();
+  } catch (e) {
+    if (e instanceof SocPartial) return e.result;
+    throw e;
+  }
+}

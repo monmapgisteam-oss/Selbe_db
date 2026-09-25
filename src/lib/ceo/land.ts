@@ -186,17 +186,24 @@ export function computeLand(input: LandInput): KpiResult {
     ? (m2 == null ? null : m2 / 10_000)
     : clearance ? clearance.remainingHa : null;
   const reasons = parcels ? byReason(parcels) : [];
-  const overlapTotal: number | null = overlaps ? overlaps.total : null;
+  /* ⚠️ 2026-09-25: ХАГАС уналттай огтлолцол (`overlaps.failed > 0`) дээр `total`
+     нь ДООД ХЯЗГААР. 0 бол «давхцал алга» гэж хэлж БОЛОХГҮЙ — урьд нь ногоон «0»
+     гардаг байв. Тэгвэл `null` (мэдэхгүй); >0 бол «≥ N» (түвшин «муу» хэвээр). */
+  const ovPartial = !!overlaps?.failed;
+  const overlapTotal: number | null = overlaps && !(ovPartial && overlaps.total === 0) ? overlaps.total : null;
 
   // ── Түвшин ──
-  const level = worstOf([pctLevel(clearedPct), overlapLevel(overlapTotal)]);
+  const lv = worstOf([pctLevel(clearedPct), overlapLevel(overlapTotal)]);
+  /* Давхцал мэдэгдэхгүй үед бусад эх «сайн» байсан ч НОГООН БИШ */
+  const level = ovPartial && overlapTotal == null && lv === 'good' ? 'unknown' : lv;
 
   // ── Баримт — ЗӨВХӨН тоотой хэсэг ──
   const facts: string[] = [];
   if (clearedPct != null) facts.push(tr('Чөлөөлсөн {0}', pct(clearedPct, 1)));
   // «{0} га» + «{0} үлдсэн» — хоёулаа толинд байгаа, давхар `tr` нь орчуулагдана
   if (remainingHa != null) facts.push(tr('{0} үлдсэн', tr('{0} га', num(remainingHa, 1))));
-  if (overlapTotal != null) facts.push(tr('{0} давхцсан талбар', num(overlapTotal)));
+  if (overlapTotal != null) facts.push(`${ovPartial ? '≥ ' : ''}${tr('{0} давхцсан талбар', num(overlapTotal))}`);
+  else if (ovPartial) facts.push(tr('Давхцал бүрэн тоологдсонгүй'));
   const top = reasons[0];
   if (top) facts.push(`${top.reason} ${num(top.n)}`);
 

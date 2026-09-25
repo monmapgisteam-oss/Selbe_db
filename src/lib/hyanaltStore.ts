@@ -290,7 +290,9 @@ type Archived =
   /* ⚠️ `pkgKey` (2026-09-25 аудит) — зөвхөн илгээлттэй (`sub|`/`done|`) замд.
      `registerApproved`-д дамжуулж хоёр хуудастай багцын OID-оор хуудас
      таах алхмыг алгасна; legacy замд `undefined` (хуучин таамаглал). */
-  | { ok: true; archiveOid: number; day?: string; pkgKey?: string }
+  /* ⚠️ `warn` (2026-09-25) — архивлалт бүтсэн ч хэрэглэгчид ИЛ хэлэх зүйл
+     (алгассан нүд · хаалтын үеийн дахин илгээлт); `apply` шар мөр болгоно. */
+  | { ok: true; archiveOid: number; day?: string; pkgKey?: string; warn?: string }
   | { ok: false; error: string };
 
 /**
@@ -325,6 +327,17 @@ type Archived =
  *    зассан ЯГ тэр алдаа. Жаазны өдрийг бичсэн агшинд нь хадгална.
  */
 const ARCHIVED = new Map<string, { oid: number; day: string }>();
+
+/**
+ * IPC-ийн `skip` үр дүн АМЖИЛТ БИШ эсэх.
+ * ⚠️ 2026-09-25: `syncIpcFromFill` нь алгасалтыг `{ok:true, op:'skip', why}`-аар
+ *    буцаадаг. Зөвхөн `no-data` (тухайн өдөр обьём/үнэ огт байхгүй) нь хүлээн
+ *    зөвшөөрөгдөх алгасалт; `no-pkg` · `no-code` · `bad-day` нь тохиргооны
+ *    алдаа тул «бүртгэл хүлээгдэж буй» тэмдгийг үлдээж дахин оролдуулна.
+ */
+function ipcSkipIsFailure(r: { ok: true; op: string; why?: string }): boolean {
+  return r.op === 'skip' && r.why !== 'no-data';
+}
 
 /**
  * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — ерөнхий менежер БАТЛАХАД л дуудагдана
@@ -379,6 +392,20 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      нийтлэхэд өнөөдөр рүү залруулагдаж болдог, `approvedAt` нь баталсан агшин —
      аль нь ч жаазны өдөр биш. Уншиж чадахгүй бол `fillMs`-ээр нөөцлөнө. */
   if (staged.done || staged.payload.archiveOid != null) {
+    /* ⚠️ БАГЦЫН ТААРЦ ЭНД Ч ШАЛГАНА (2026-09-25 аудит): доорх `sub|` замын
+       шалгуурын ЯГ ижил шалтгаан — `Эх_мөрийн_дугаар` нь хоёр үйлчилгээний
+       OBJECTID-г нэг талбарт хадгалдаг тул өөр багцын `done|` мөртэй давхцаж,
+       тэр багцын `pkgKey`/огноогоор нэгтгэл · IPC бүртгэгдэх байв. */
+    {
+      const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+      const dp = PKGS.find((p) => p.key === staged.payload.pkgKey);
+      if (!dp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', staged.payload.pkgKey) };
+      if (dp.group !== cur[F.bagts])
+        return {
+          ok: false,
+          error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', dp.group, cur[F.bagts]),
+        };
+    }
     const aOid = staged.payload.archiveOid ?? 0;
     /* ⚠️ `dayKey` (ЛОКАЛ өдөр) — `toISOString` нь UTC тул +08-д 00:00–07:59-ийн
        илгээлт ӨМНӨХ өдөрт (сарын хил давбал өмнөх сард) архивлагдаж байв (2026-09-23 аудит). */
@@ -410,7 +437,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
        нээлттэй хэвээр буюу өмнөх `closeSubmission` хоёулаа унасан гэсэн үг —
        хаалт нь idempotency-ийн ЦОРЫН ГАНЦ байнгын тэмдэг (`done|`). Унавал
        батлалтыг зогсоохгүй (доорх үндсэн замын дүрэмтэй ижил). */
-    const cl = await closeSubmission(staged.oid, seen.oid, Date.now(), true);
+    const cl = await closeSubmission(staged.oid, seen.oid, Date.now(), true, staged.at);
     if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй (дахин оролдлого):', cl.error);
     return { ok: true, archiveOid: seen.oid, day: seen.day, pkgKey: staged.payload.pkgKey };
   }
@@ -432,7 +459,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
   ]);
@@ -445,7 +472,75 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    батлагдсан бол түүний тоог дарж бичихгүй.
    */
   const loaded = await loadRows(pkg, sc);
-  const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
+  /*
+   * ⚠️ ДАРААЛАЛ АЛДАГДСАН БАТЛАЛТ ХУРИМТЛАЛЫГ БУЦААХГҮЙ (2026-09-25-ны аудит,
+   *    HIGH). Өдөр бүр тусдаа `sub|` мөртэй тул Даваа, Мягмарын илгээлт хоёулаа
+   *    ижил суурь дээр бичигдэж зэрэг хянагдана. Мягмар ЭХЭЛЖ батлагдсаны дараа
+   *    Даваа батлагдвал Даваагийн (бага, ХУУЧИН хуримтлал) утга Мягмарын
+   *    жаазан дээр дарж бичигдэж гүйцэтгэл ЧИМЭЭГҮЙ буурдаг байв.
+   * ⚠️ СОНГОСОН ШИЙДЭЛ — «суурийнхаас хойш өөрчлөгдсөн нүдийг АЛГАСАЖ ил
+   *    мэдэгдэх», «хуучин өдрийг бүхэлд нь татгалзах» БИШ: татгалзвал тэр
+   *    өдрийн илгээлт МӨНХӨД гацна (дахин илгээхэд ч өдрийн түлхүүр нь
+   *    хуучин хэвээр), харин хожуу өдрийн хуримтлагдсан утга нь хуучин өдрийн
+   *    ахицыг аль хэдийн агуулдаг тул түүнийг үлдээх нь утгын хувьд зөв.
+   *    Зөрчилгүй нүднүүд хэвийн буна; алгассан нүдийг `warn`-аар нэрлэнэ.
+   * ⚠️ ЗӨВХӨН архивт ИЛГЭЭЛТИЙН ӨДРӨӨС ХОЖУУ өдрийн жааз байвал шалгана:
+   *    дараалсан батлалтад (Даваа → Мягмар) Мягмарын утга ЗӨВ дарах ёстой.
+   *    Ижил өдрийн (эсвэл ӨНӨӨДӨР рүү залруулсан) жааз өдрөөрөө ялгагдахгүй тул
+   *    энэ хамгаалалтын гадна — хуучин зан төлөв хэвээр.
+   * ⚠️ Суурь (`payload.base`) байхгүй бол харьцуулах боломжгүй → ЗОГСОНО
+   *    (буцаах эрсдэлтэй бичихээс ил алдаа дээр).
+   */
+  /** Нүдний түлхүүрүүд → «№ ¦ Ажил · блок · эхлэх/дуусах» (эхний 10) — алдаа/анхааруулгад */
+  const label = new Map(pl.rowKeys ?? []);
+  const nameKeys = (keys: string[]): string => {
+    const names = keys.slice(0, 10).map((k) => {
+      const parts = k.split(':');
+      const oid = Number(parts[0]);
+      const b = Number(parts[1]);
+      const blk = Number.isInteger(b) && sc.bld[b] ? sc.bld[b] : '—';
+      const se = parts[2] === 's' ? tr('эхлэх') : parts[2] === 'e' ? tr('дуусах') : '';
+      return `${label.get(oid) ?? `#${oid}`} · ${blk}${se ? ` · ${se}` : ''}`;
+    });
+    const more = keys.length > names.length ? ` … +${keys.length - names.length}` : '';
+    return names.join('; ') + more;
+  };
+  const lastDay0 = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
+  let skipped: string[] = [];
+  let plEff = pl;
+  /*
+   * ⚠️ НЭМЭЛТИЙН ИЛГЭЭЛТ (2026-09-25, `SubmissionPayload.mode`): нүд нь СҮҮЛИЙН
+   *    жааз дээр НЭМЭГДДЭГ тул дараалал алдагдсан батлалт хуримтлалыг буцаадаггүй
+   *    — Даваа (+10) ба Мягмар (+5) ямар ч дарааллаар батлагдсан ч 40 → 55.
+   *    Тиймээс нүдийг `staleSubmissionKeys`-ээр АЛГАСАХГҮЙ (тэр функц inc үед
+   *    нүдийг өөрөө орхино); огноо нь ҮНЭМЛЭХҮЙ хэвээр тул огноотой бол л шалгана.
+   *    Туггүй (хуучин, НИЙТ) payload нь доорх хамгаалалтаараа ХЭВЭЭР.
+   */
+  const incPl = pl.mode === 'inc';
+  const needStale = !incPl || (pl.dates ?? []).length > 0;
+  if (needStale && lastDay0 && lastDay0 > msToDay(pl.fillMs) && loaded.snapshot !== pl.base) {
+    if (pl.base == null)
+      return {
+        ok: false,
+        error: tr('Архивт {0}-ны жааз аль хэдийн байгаа тул {1}-ны илгээлтийг суурьгүйгээр бичвэл хуримтлал буурна. Архивт юу ч бичсэнгүй — гүйцэтгэгчээр дахин илгээүүлнэ үү.', lastDay0, msToDay(pl.fillMs)),
+      };
+    let baseRows: Awaited<ReturnType<typeof loadRows>>['rows'];
+    try {
+      baseRows = (await loadRows(pkg, sc, msToDay(pl.base))).rows;
+    } catch (e) {
+      return { ok: false, error: tr('Илгээлтийн суурь жаазыг уншиж чадсангүй — архивт юу ч бичсэнгүй: {0}', String((e as Error)?.message ?? e)) };
+    }
+    skipped = staleSubmissionKeys(baseRows, loaded.rows, pl, nBld);
+    if (skipped.length) {
+      const drop = new Set(skipped);
+      plEff = {
+        ...pl,
+        cells: (pl.cells ?? []).filter(([k]) => !drop.has(k)),
+        dates: (pl.dates ?? []).filter(([k]) => !drop.has(k)),
+      };
+    }
+  }
+  const ov = overlaySubmission(loaded.rows, plEff, sc, nBld);
   /*
    * ⚠️ Тулгагдаагүй нүд байвал ЗОГСОНО (дүрэм 5b). Хагас буусан diff-ийг
    *    архивт бичвэл гүйцэтгэгчийн бичсэн тоо ЧИМЭЭГҮЙ алга болж, батлагдсан
@@ -459,19 +554,9 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      *    Түлхүүрийн oid нь ШИНЭ жаазанд байхгүй (тиймдээ л тулгагдаагүй) тул
      *    нэрийг илгээлтийн ӨӨРИЙНХ нь `rowKeys` толиос авна.
      */
-    const label = new Map(pl.rowKeys ?? []);
-    const names = ov.unmovedKeys.slice(0, 10).map((k) => {
-      const parts = k.split(':');
-      const oid = Number(parts[0]);
-      const b = Number(parts[1]);
-      const blk = Number.isInteger(b) && sc.bld[b] ? sc.bld[b] : '—';
-      const se = parts[2] === 's' ? tr('эхлэх') : parts[2] === 'e' ? tr('дуусах') : '';
-      return `${label.get(oid) ?? `#${oid}`} · ${blk}${se ? ` · ${se}` : ''}`;
-    });
-    const more = ov.unmovedKeys.length > names.length ? ` … +${ov.unmovedKeys.length - names.length}` : '';
     return {
       ok: false,
-      error: tr('{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү. Тулгагдаагүй: {1}', String(ov.unmoved), names.join('; ') + more),
+      error: tr('{0} нүдийг шинэ мөрүүдэд тулгаж чадсангүй — архивт бичсэнгүй. Гүйцэтгэгчээр дахин илгээүүлнэ үү. Тулгагдаагүй: {1}', String(ov.unmoved), nameKeys(ov.unmovedKeys)),
     };
   }
   /*
@@ -580,8 +665,10 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
     const again = await readSubmissionByOid(subOid);
     if (!again.ok) return { ok: false, error: again.error };
     if (!again.sub) return { ok: false, error: tr('Илгээлт энэ хооронд устгагдлаа — архивт юу ч бичсэнгүй') };
+    /* ⚠️ `pkgKey` ЭНД Ч (2026-09-25): урьд нь орхигдсон тул нэгтгэл хуудас
+       таах legacy зам руу унаж, `markRegistered` огт дуудагддаггүй байв. */
     if (again.sub.done || again.sub.payload.archiveOid != null)
-      return { ok: true, archiveOid: again.sub.payload.archiveOid ?? 0, day: msToDay(fillMs) };
+      return { ok: true, archiveOid: again.sub.payload.archiveOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key };
     if (again.sub.at !== staged.at)
       return { ok: false, error: tr('Илгээлт энэ хооронд өөрчлөгдлөө — дахин нээж баталгаажуулна уу') };
   }
@@ -591,6 +678,11 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   try {
     const r = await applyAdds(pkg, frame, written);
     firstOid = r.firstOid;
+    /* ⚠️ БИЧИГДСЭН ТОО = ЖААЗНЫ УРТ (2026-09-25-ны аудит): дутуу жааз
+       архивт үлдвэл дараагийн ачаалалт багцын хуудсыг хаана — доорх
+       `catch` хагас жаазыг буцааж устгана. */
+    if (r.added !== frame.length)
+      throw new Error(tr('Архивт {0} мөр бичигдэх ёстой, {1} бичигдлээ', frame.length, r.added));
   } catch (e) {
     /*
      * ⚠️ ХАГАС ЖААЗЫГ БУЦААНА. `rollbackOnFailure` нь зөвхөн нэг 500-мөрийн
@@ -635,11 +727,52 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   /* ⚠️ `regPending` (2026-09-25 аудит) — нэгтгэл/IPC баталгаажтал `done|`
      payload-д «бүртгэл хүлээгдэж буй» тэмдэг үлдэнэ (`apply` → `markRegistered`,
      таб хаагдвал `retryPendingRegistrations`). */
-  let cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true);
-  if (!cl.ok) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true);
+  /* ⚠️ COMPARE-AND-SET `at` (2026-09-25-ны аудит, HIGH): жааз бичих хооронд
+     гүйцэтгэгч ДАХИН илгээвэл (нэг `sub|` мөр update) шинэ агуулга архивт
+     ОРООГҮЙ атлаа `done|` болж хөлдөж ул мөргүй алга болдог байв. Одоо
+     `closeSubmission` мөрийн `at` зөрвөл хаахгүй (`changed`): илгээлт нээлттэй
+     үлдэж шинэ агуулга дараагийн батлалтаар орно (утга нь хуримтлагдсан тул
+     дахин давхарлахад аюулгүй). Дахин оролдохгүй — зөрсөн `at` засрахгүй.
+     ⚠️ 2026-09-25: «дахин давхарлахад аюулгүй» нь ЗӨВХӨН хуучин (НИЙТ) payload-д
+     үнэн — нэмэлтийн горимд доор архивласан хэсгийг ХАСНА. */
+  const warns: string[] = [];
+  let cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true, staged.at);
+  if (!cl.ok && !cl.changed) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true, staged.at);
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
+  /*
+   * ⚠️ НЭМЭЛТИЙН ГОРИМД ДАВХАРДАЛ (2026-09-25, `residualAfterArchive`-ийн ⚠️):
+   *    дахин илгээсэн мөр нь архивласан нэмэлтийг ӨӨРТӨӨ АГУУЛДАГ тул тэр
+   *    чигээр нь дахин батлавал 40 → 55 → 70 болно. Архивласан хэсгийг хасаж,
+   *    зөвхөн ШИНЭ нэмэлтийг нээлттэй үлдээнэ (`at`-аар тулгаж бичнэ). Хасаж
+   *    чадаагүй бол ИЛ анхааруулна — дахин батлахаас өмнө хүн шалгах ёстой.
+   */
+  /* ⚠️ Хаалт унасан (агуулга өөрчлөгдөөгүй) бол нээлттэй `sub|` мөрийг ДАХИН
+     архивлавал нэмэлт давхар орно (хуучин горимд alias барьдаг байв) — ил хэлнэ. */
+  if (!cl.ok && !cl.changed && incPl)
+    warns.push(tr('Архивт бичигдсэн боловч илгээлтийг хааж чадсангүй ({0}) — энэ илгээлтийг ДАХИН БАТЛАХГҮЙ байна уу: нэмэлт давхар орно.', cl.error ?? ''));
+  if (cl.changed && incPl) {
+    const { saveSubmission, residualAfterArchive } = await import('./submission');
+    const cur2 = await readSubmissionByOid(staged.oid);
+    let why = '';
+    if (!cur2.ok) why = cur2.error;
+    else if (!cur2.sub || cur2.sub.done) why = '';
+    else {
+      const rest = residualAfterArchive(cur2.sub.payload, pl);
+      if (!rest) why = tr('түлхүүр тулгагдсангүй');
+      else {
+        const sv = await saveSubmission(rest.pkgKey, { ...rest, at: Date.now() }, { at: cur2.sub.at });
+        if (!sv.ok) why = sv.error;
+      }
+    }
+    warns.push(why
+      ? tr('Батлах явцад гүйцэтгэгч дахин илгээсэн — өмнөх агуулга архивт орлоо, гэвч шинэ илгээлтээс архивлагдсан нэмэлтийг хасч чадсангүй ({0}). ДАХИН БАТЛАХААС ӨМНӨ шалгана уу — нэмэлт давхар орох эрсдэлтэй.', why)
+      : tr('Батлах явцад гүйцэтгэгч дахин илгээсэн — өмнөх агуулга архивт орлоо; архивлагдсан нэмэлтийг шинэ илгээлтээс хасч, зөвхөн шинэ нэмэлт хянагдахаар үлдлээ.'));
+  } else if (cl.changed)
+    warns.push(tr('Батлах явцад гүйцэтгэгч дахин илгээсэн — өмнөх агуулга архивт орлоо, шинэ агуулга илгээлтэд нээлттэй үлдлээ. Гүйцэтгэгчээр дахин илгээүүлж хянуулна уу.'));
+  if (skipped.length)
+    warns.push(tr('Архивт илүү хожуу өдрийн жааз аль хэдийн байсан тул {0} нүдийг алгасав (хуримтлал буурахаас сэргийлэв): {1}', String(skipped.length), nameKeys(skipped)));
 
-  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key };
+  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key, ...(warns.length ? { warn: warns.join(' · ') } : {}) };
 }
 
 /**
@@ -784,12 +917,15 @@ export async function apply(a: {
     let archivedDay: string | undefined;
     /** ⚠️ Архивласан багцын түлхүүр — legacy замд `undefined` (`Archived`-ийн ⚠️) */
     let archivedPkg: string | undefined;
+    /** ⚠️ Архивлалтын анхааруулга (алгассан нүд · хаалтын CAS) — доор `warns`-д */
+    let archWarn = '';
     if (registerNow) {
       const ar = await archiveSubmission(cur);
       if (!ar.ok) return { ok: false, error: ar.error };
       archiveOid = ar.archiveOid;
       archivedDay = ar.day;
       archivedPkg = ar.pkgKey;
+      if (ar.warn) archWarn = ar.warn;
       /* ⚠️ Архивласны ДАРАА мөрийн төлөвийг ДАХИН ШАЛГАХГҮЙ (2026-09-17-ны
          аудит): «буцаах» ба «батлах» зэрэг дарагдсан үед жааз архивт
          бичигдчихсэн байхад STALE-ээр зогсвол өнчин жааз үлдэж, нэгтгэл/IPC
@@ -821,6 +957,7 @@ export async function apply(a: {
     }
     /** Хагас амжилтын анхааруулгууд — нэгтгэл · IPC · `Zovshoorson_nud` */
     const warns: string[] = [];
+    if (archWarn) warns.push(archWarn);
     if (registerNow) {
       /*
        * ⚠️ БҮРТГЭЛ УНАВАЛ БАТАЛГАА УНАХГҮЙ. Хяналтын шийдвэр аль хэдийн
@@ -882,6 +1019,13 @@ export async function apply(a: {
           if (!ipc.ok) {
             console.warn('[selbe] IPC мөр үүсгэж чадсангүй:', ipc.error);
             ipcErr = String(ipc.error ?? '');
+          } else if (ipcSkipIsFailure(ipc)) {
+            /* ⚠️ 2026-09-25: `skip` нь `ok:true`-гаар ирдэг ч `no-data`-гаас бусад
+               шалтгаан (`no-pkg` · `no-code` · `bad-day`) нь IPC мөр ҮҮСЭЭГҮЙ
+               тохиргооны алдаа — амжилт гэж үзвэл `markRegistered` тэмдгийг
+               арилгаж, тэр сарын IPC мөнхөд дутуу үлдэнэ. */
+            console.warn('[selbe] IPC мөр алгасагдлаа:', ipc.why);
+            ipcErr = tr('IPC алгасагдлаа: {0}', String(ipc.why ?? ''));
           }
         } catch (e) {
           console.warn('[selbe] IPC мөр үүсгэх алдаа:', e);
@@ -961,7 +1105,9 @@ export async function retryPendingRegistrations(
         if (ar.day) {
           const { syncIpcFromFill } = await import('./ipcAutoWrite');
           const ipc = await syncIpcFromFill(cur[F.bagts], ar.day);
-          ipcOk = ipc.ok;
+          /* ⚠️ 2026-09-25: `no-data`-гаас бусад `skip` нь амжилт БИШ (`ipcSkipIsFailure`) */
+          ipcOk = ipc.ok && !ipcSkipIsFailure(ipc);
+          if (ipc.ok && !ipcOk) console.warn('[selbe] IPC нөхөлт алгасагдлаа:', ipc.why);
           if (!ipc.ok) console.warn('[selbe] IPC нөхөж чадсангүй:', ipc.error);
         }
         if (!r.ok) console.warn('[selbe] нэгтгэлд нөхөж бүртгэж чадсангүй:', r.error);

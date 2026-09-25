@@ -401,23 +401,35 @@ export const loadWeekScores = cached(async (): Promise<WeekScores> => {
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const w = prevWeek();
   const where = `${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)}`;
+  const groupBy = `${U.site},${U.company}`;
   const parts = await Promise.all(SCORE_URLS.map((url) => Promise.all([
     queryGroup(
       url,
-      `${U.site},${U.company}`,
-      /* ⚠️ Үл нийцлийг ОНООТОЙ НЭГ хүсэлтээр — долоо хоногийн хил, хоёр маягт,
-         талбайн нэгтгэл нь «Үл нийцэл — багцаар» чартад ЯГ ижил байх ёстой. */
-      [
-        sum(U.scEarned, 'e'), sum(U.scAppl, 'a'), count('objectid', 'n'),
-        sum(U.major, 'mj'), sum(U.minor, 'mn'),
-      ],
+      groupBy,
+      /* ⚠️ Үл нийцлийг ОНООТОЙ НЭГ хил (`where`)-ээр — долоо хоногийн хил, хоёр
+         маягт, талбайн нэгтгэл нь «Үл нийцэл — багцаар» чартад ЯГ ижил байх ёстой. */
+      [count('objectid', 'n'), sum(U.major, 'mj'), sum(U.minor, 'mn')],
       where,
+    ),
+    /* ⚠️ 2026-09-25: ОНОО нь «авсан оноо» БӨГЛӨГДСӨН мөрөөс л — урьд нь нэг
+       хүсэлтэд `SUM(earned)` хоосныг 0 гэж, `SUM(applicable)` нь тэр мөрийг
+       бүтнээр нь тоолж, долоо хоногийн оноог ХУДАЛ бууруулдаг байв (null ≠ 0;
+       `byWeek`-ийн ижил дүрэм). Ижил долоо хоногийн хил + `IS NOT NULL`. */
+    queryGroup(
+      url,
+      groupBy,
+      [sum(U.scEarned, 'e'), sum(U.scAppl, 'a')],
+      `(${where}) AND ${U.scEarned} IS NOT NULL`,
     ),
     loadDomains(url),
   ])));
   const rows: ScoreRow[] = [];
-  for (const [grp, dom] of parts) {
+  for (const [grp, scoreGrp, dom] of parts) {
+    const keyOf = (r: Record<string, unknown>) =>
+      `${r[U.site] == null ? '' : String(r[U.site])}|${r[U.company] == null ? '' : String(r[U.company])}`;
+    const scoreBy = new Map(scoreGrp.map((r) => [keyOf(r), r]));
     for (const r of grp) {
+      const sc = scoreBy.get(keyOf(r));
       const site = r[U.site] == null ? '' : String(r[U.site]);
       const coCode = r[U.company] == null ? '' : String(r[U.company]);
       const siteName = clean(dom[U.site]?.get(site) ?? site);
@@ -427,8 +439,8 @@ export const loadWeekScores = cached(async (): Promise<WeekScores> => {
         coSfx: CO_SFX[coCode] ?? '',
         coCode,
         coLabel: coCode === 'other' ? tr('Бусад') : clean(dom[U.company]?.get(coCode) ?? coCode),
-        e: Number(r.e ?? 0),
-        a: Number(r.a ?? 0),
+        e: Number(sc?.e ?? 0),
+        a: Number(sc?.a ?? 0),
         n: Number(r.n ?? 0),
         nc: Number(r.mj ?? 0) + Number(r.mn ?? 0),
       });
@@ -635,22 +647,33 @@ export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
   return rows.map((r) => norm(r, dom));
 }
 
+/** Тогтмол лавлагаа — рендер бүрд шинэ объект үүсгэж deps-ийг хөдөлгөхгүй */
+const UZ_IDLE: State = { state: 'idle' };
+const UZ_LOADING: State = { state: 'loading' };
+
 export function useUzleg(kind: UzlegKind | null): State {
-  const [st, setSt] = useState<State>({ state: 'idle' });
+  /* ⚠️ 2026-09-25: төлөвт `kind`-ийг хадгална — маягт солигдсон ЭХНИЙ рендерт
+     (эффект `loading` тавихаас өмнө) ӨМНӨХ маягтын мөрүүд шинэ маягтын нэрээр
+     нэг агшин зурагдаж, газрын зургийн шүүлт буруу давхаргад IN-жагсаалт
+     тавьдаг байв. Төлөвийн `kind` зөрвөл «ачаалж байна» гэж үзнэ. */
+  const [st, setSt] = useState<{ kind: UzlegKind | null; st: State }>({ kind: null, st: { state: 'idle' } });
 
   useEffect(() => {
-    if (!kind) { setSt({ state: 'idle' }); return undefined; }
+    if (!kind) { setSt({ kind: null, st: { state: 'idle' } }); return undefined; }
     let alive = true;
-    setSt({ state: 'loading' });
+    setSt({ kind, st: { state: 'loading' } });
     Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)])
-      .then(([rows, dom]) => { if (alive) setSt({ state: 'ready', rows: rows.map((r) => norm(r, dom)) }); })
+      .then(([rows, dom]) => {
+        if (alive) setSt({ kind, st: { state: 'ready', rows: rows.map((r) => norm(r, dom)) } });
+      })
       .catch((e: unknown) => {
-        if (alive) setSt({ state: 'error', message: e instanceof Error ? e.message : String(e) });
+        if (alive) setSt({ kind, st: { state: 'error', message: e instanceof Error ? e.message : String(e) } });
       });
     return () => { alive = false; };
   }, [kind]);
 
-  return st;
+  if (!kind) return UZ_IDLE;
+  return st.kind === kind ? st.st : UZ_LOADING;
 }
 
 /* ═════════════════ Нэгтгэл ═════════════════ */
@@ -677,7 +700,9 @@ function byWeek(rows: UzlegRow[]) {
     if (!r.week) continue;
     const cur = m.get(r.week) ?? { n: 0, e: 0, a: 0, d0: Infinity };
     cur.n += 1;
-    if (r.scA != null && r.scA > 0) { cur.a += r.scA; cur.e += r.scE ?? 0; }
+    /* ⚠️ 2026-09-25: «авсан оноо» хоосон мөрийг ОНООНООС хасна — урьд нь
+       `scE ?? 0` тул боломжит нь нэмэгдэж, авсан нь 0 болж оноо худал унадаг байв. */
+    if (r.scA != null && r.scA > 0 && r.scE != null) { cur.a += r.scA; cur.e += r.scE; }
     if (r.d > 0 && r.d < cur.d0) cur.d0 = r.d;
     m.set(r.week, cur);
   }

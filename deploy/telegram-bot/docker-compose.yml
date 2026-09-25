@@ -16,7 +16,16 @@ services:
     image: selbe-telegram-bot
     container_name: selbe-telegram-bot
     restart: unless-stopped
+    # ⚠️ 2026-09-25: ботын нууц + үйлчилгээний БҮХ NEXT_PUBLIC_* хаяг энэ `.env`-ээр
+    #    орно (`.env.example`-д жагсаав). Репогийн `.env` image-д ОРДОГГҮЙ тул эндээс
+    #    дамжуулахгүй бол `services.ts req()` алдаа шидэж бот асахгүй.
+    #    ⚠️ Үндсэн `.env`-ийг давхар env_file болгож БОЛОХГҮЙ — түүний appId нэвтрэлтийг
+    #    асааж, хоосон мөрүүд нь нэг нэгнээ дарна.
     env_file: .env
+    # Нэвтрэлтгүй горимыг env_file-аас үл хамааран баталгаажуулна (environment нь дарна).
+    environment:
+      NEXT_PUBLIC_AUTH_APP_ID: ""
+      NEXT_PUBLIC_AUTH_OFF: "1"
     volumes:
       # Зөвшөөрсөн хэрэглэгчийн жагсаалт энд үлдэнэ (redeploy хийхэд ч устахгүй)
       - bot-data:/data

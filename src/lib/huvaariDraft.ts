@@ -250,6 +250,12 @@ export type HDApply = {
    *    Tombstone зөвхөн «серверийнхтэй ижил болсон» (`dropped − staleKeys`).
    */
   staleKeys: string[];
+  /**
+   * `staleKeys`-ийн `bv` ЗӨРСӨН хэсэг (мөр байгаа ч сервер бичигчийн суурийг өөрчилсөн).
+   * ⚠️ 2026-09-25: «Мөр алга» (шинэ жааз) нүдийг бусдын нүд бол tombstone хийхгүй —
+   *    хуучин жаазтай клиентэд хүчинтэй хэвээр; дуудагч үүгээр ялгана.
+   */
+  bvKeys: string[];
   /** Хөндөгдсөн ялгаатай мөр (oid эсвэл обьёмын түлхүүр) */
   rows: number;
 };
@@ -271,6 +277,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
   let stale = 0;
   const dropped: string[] = [];
   const staleKeys: string[] = [];
+  const bvKeys: string[] = [];
   const touched = new Set<string>();
   for (const [k, e] of entries) {
     const p = parseKey(k);
@@ -283,7 +290,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
          бүх сарын нүд «хуучирсан» гэж хасагддаг байв. */
       if (srv !== undefined) {
         const cur = monthsVal(srv);
-        if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+        if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
         if (sameVal(v, cur)) { dropped.push(k); continue; }
       }
       maps.obDraft.set(p.key, monthsOfVal(v));
@@ -295,7 +302,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
       const v = resVal(resOfVal(e.val));
       if (srv !== undefined) {
         const cur = resVal(srv);
-        if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+        if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
         if (sameVal(v, cur)) { dropped.push(k); continue; }
       }
       maps.obRes.set(p.key, resOfVal(v));
@@ -307,7 +314,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     if (p.type === 's') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = spanVal(r.spans[p.blk]);
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const v = spanVal(e.val as HDSpan);
       if (sameVal(v, cur)) { dropped.push(k); continue; }
       let arr = maps.draft.get(p.oid);
@@ -317,7 +324,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     } else if (p.type === 'a') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = [numOrNull(r.aStart[p.blk]), numOrNull(r.aEnd[p.blk])];
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const raw = Array.isArray(e.val) ? e.val : [];
       const v = [numOrNull(raw[0]), numOrNull(raw[1])];
       if (sameVal(v, cur)) { dropped.push(k); continue; }
@@ -327,14 +334,14 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
       applied += 1; touched.add(String(p.oid));
     } else if (p.type === 'h') {
       const cur = hamVal(r.ham);
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const v = typeof e.val === 'string' ? e.val : '';
       if (v === cur) { dropped.push(k); continue; }
       maps.ham.set(p.oid, v);
       applied += 1; touched.add(String(p.oid));
     } else {
       const cur = [numOrNull(r.hun), numOrNull(r.mashin)];
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
+      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const raw = Array.isArray(e.val) ? e.val : [];
       const v = [numOrNull(raw[0]), numOrNull(raw[1])];
       if (sameVal(v, cur)) { dropped.push(k); continue; }
@@ -342,7 +349,7 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
       applied += 1; touched.add(String(p.oid));
     }
   }
-  return { maps, applied, stale, dropped, staleKeys, rows: touched.size };
+  return { maps, applied, stale, dropped, staleKeys, bvKeys, rows: touched.size };
 }
 
 /* ══════════════ Сериалчлал ══════════════ */

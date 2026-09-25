@@ -140,8 +140,8 @@ console.log('✅ эрхгүй үед ноорог устахгүй');
    оролдох зам хаагдаж, зөвхөн хуудсыг бүтнээр дахин ачаалж (F5) байж сэргэнэ. */
 assert.ok(REMOTE.includes('export async function readQaqcDraft'), 'алдааг ялгадаг уншигч алга');
 assert.ok(REMOTE.includes('export type QaqcRemoteDraftRead'), 'уншилтын үр дүнгийн төрөл алга');
-const restore = between('const local = readDraft(dk(user?.username, pkg.key));', 'if (!pick) return;');
-assert.ok(restore.includes('readQaqcDraft(pkg.key)'), 'сэргээх зам алдааг ялгадаггүй');
+const restore = between('const local = readDraft(dk(user?.username, key));', 'if (!pick) return;');
+assert.ok(restore.includes('readQaqcDraft(key)'), 'сэргээх зам алдааг ялгадаггүй');
 assert.ok(restore.includes('!rr.ok'), 'уншилтын алдаа шалгагдахгүй байна');
 assert.ok(
   restore.includes("promptedPkgRef.current = ''"),

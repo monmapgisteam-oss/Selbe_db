@@ -110,7 +110,7 @@ const TAGGUI_ZOVSHOOROGDSON = new Map([
   ['src/lib/irged.ts:loadGerBuilt',
     'Гэр хорооллын одоогийн барилга (Irgeded_hureh_ur_uguuj/0) — зайнаас '
     + 'тандан судалгаагаар үүссэн СУУРЬ давхарга, порталд засах зам байхгүй.'],
-  ['src/lib/irged.ts:loadSocPlanned',
+  ['src/lib/irged.ts:socPlannedFull',
     'Төлөвлөсөн нийгмийн барилгын хүчин чадал (Багц 19–21) — `loadSocial`-тай '
     + 'ЯГ ижил шалтгаан: каталогийн давхаргууд, портал тэдгээрт бичдэггүй.'],
   /* ── CEO самбар (2026-09-06) ── */

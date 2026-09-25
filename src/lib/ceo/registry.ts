@@ -41,7 +41,7 @@ import { loadQaqcKpi } from './qaqc';
 import { loadSafetyKpi } from './safety';
 import { loadWorkforceKpi } from './workforce';
 import { loadSuitabilityKpi } from './suitability';
-import { loadIotKpi } from './iot';
+import { loadIotKpiSafe } from './iot';
 
 export type CeoKpiDef = {
   key: string;
@@ -77,7 +77,7 @@ export const CEO_KPIS: CeoKpiDef[] = [
   { key: 'schedule', title: tr('Хуваарийн хоцрогдол'), icon: 'calendar', view: 'pkgProg', load: loadScheduleKpi },
   { key: 'variance', title: tr('Обьёмын зөрүү'), icon: 'chart', view: 'guitsetgel', load: loadVarianceKpi, heavy: true },
   { key: 'qaqc', title: tr('Чанарын хяналт (QAQC)'), icon: 'target', view: 'qaqc', load: loadQaqcKpi, heavy: true },
-  { key: 'iot', title: tr('IoT — босго хэтрэлт'), icon: 'radio', view: 'iot', load: loadIotKpi },
+  { key: 'iot', title: tr('IoT — босго хэтрэлт'), icon: 'radio', view: 'iot', load: loadIotKpiSafe }, /* ⚠️ 2026-09-25: уналт кэшлэгдэхгүй хувилбар (iot.ts) */
   { key: 'workforce', title: tr('Хүн · техник'), icon: 'users', view: 'habea', load: loadWorkforceKpi },
   { key: 'safety', title: tr('ХАБЭА — осол, зөрчил'), icon: 'shield', view: 'habea', load: loadSafetyKpi },
   { key: 'review', title: tr('Хяналтын хоцролт'), icon: 'reset', view: 'guitsetgel', load: loadReviewKpi },

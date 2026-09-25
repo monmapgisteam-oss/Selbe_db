@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode,
 } from 'react';
 import Map from '@arcgis/core/Map';
@@ -63,7 +63,7 @@ import { getAuth } from '@/lib/draftRemote';
 import { loadBlockProgress, cachedBlockProgress, type BlockProgressMap } from '@/lib/blockProgress';
 import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
-import { num, pct, date, text } from '@/lib/format';
+import { num, pct, date, text, dateLocale } from '@/lib/format';
 import s from './map.module.css';
 
 /**
@@ -2143,7 +2143,10 @@ export const MapCanvas = memo(function MapCanvas({
     orthoRow.append(orthoChk, document.createTextNode(tr('Ортофото')));
     const galleryDiv = document.createElement('div');
     bmPanel.append(orthoRow, galleryDiv);
-    new BasemapGallery({
+    /* ⚠️ 2026-09-25: Галерей нь Expand-ийн `content` доторх DOM-д суусан тул
+       `view.destroy()` түүнийг устгадаггүй — 2D↔3D солих бүрд нэг галерей
+       (view-ийн watch-тай) санах ойд үлддэг байв. Cleanup-д гараар устгана. */
+    const gallery = new BasemapGallery({
       view,
       container: galleryDiv,
       // ⚠️ Тодорхой заасан эх сурвалж — portal нэвтрэлтээс ҮЛ ХАМААРАН
@@ -2202,6 +2205,10 @@ export const MapCanvas = memo(function MapCanvas({
       + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '
       + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     fsBtn.addEventListener('click', () => toggleFsRef.current());
+    // ⚠️ 2026-09-25: role=button + tabindex=0 боловч гараар идэвхжүүлэх боломжгүй байв
+    fsBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFsRef.current(); }
+    });
     view.ui.add(fsBtn, 'top-right');
 
     /**
@@ -2749,6 +2756,7 @@ export const MapCanvas = memo(function MapCanvas({
       move.remove();
       leave.remove();
       fadeHandle.remove();
+      if (!gallery.destroyed) gallery.destroy();
       /* Ортофото харьцуулалт — view-тэй хамт дуусна (2D↔3D солиход ч).
          ⚠️ Давхаргыг мөн НУУНА: Map нь кэшлэгддэг тул ил үлдвэл 3D-д хуучин
          ортофото газарт наалдаж, мешийн дээр гарч ирнэ. */
@@ -3541,11 +3549,12 @@ export const MapCanvas = memo(function MapCanvas({
      * байж өдөр/сар андуурагдахаар байв.
      * ⚠️ `timeZone:'UTC'`-г ЗААВАЛ хадгална: энэ нь нарны гэрэлтүүлгийн UTC
      * агшин тул хаявал Монголд +8 цагаар шилжиж нарны цаг буруу харагдана.
+     * ⚠️ 2026-09-25: Хатуу 'mn-MN' биш `dateLocale()` — англи горимд en-US.
      */
     const fmtSlideDate = (d?: Date) => {
       try {
         return d
-          ? d.toLocaleString('mn-MN', {
+          ? d.toLocaleString(dateLocale(), {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
           })
@@ -3553,9 +3562,16 @@ export const MapCanvas = memo(function MapCanvas({
       } catch { return ''; }
     };
     const addSlideRow = (slide: Slide) => {
+      /* ⚠️ 2026-09-25: Мөр нь div + click байсан тул гараар слайд руу шилжих
+         боломжгүй байв. `<button>` дотор `<button>` (×) хууль бус тул мөрийг
+         role=button + tabindex + Enter/Space болгоно. */
       const row = mk('div', 'display:flex;align-items:center;gap:9px;padding:7px;border:1px solid var(--line);'
         + 'border-radius:8px;background:var(--surface-2);cursor:pointer');
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
       const img = mk('img', 'width:60px;height:40px;object-fit:cover;border-radius:5px;flex:none') as HTMLImageElement;
+      // Гарчиг хажууд нь бичигдсэн тул зураг нь чимэглэл — хоосон alt
+      img.alt = '';
       const thumb = (slide as unknown as { thumbnail?: { url?: string } }).thumbnail;
       if (thumb?.url) img.src = thumb.url;
       const info = mk('div', 'flex:1;min-width:0;display:flex;flex-direction:column;gap:1px');
@@ -3569,7 +3585,15 @@ export const MapCanvas = memo(function MapCanvas({
         + 'background:transparent;color:var(--ink-3);cursor:pointer;font-size:1.15rem;line-height:1', '×') as HTMLButtonElement;
       del.title = tr('Устгах');
       row.append(img, info, del);
+      row.setAttribute('aria-label', slide.title?.text || tr('Слайд'));
       row.addEventListener('click', () => { void slide.applyTo(sv, { speedFactor: 0.6 }); });
+      row.addEventListener('keydown', (e) => {
+        if (e.target !== row) return;          // × товч дээрх Enter-ийг бүү барь
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          void slide.applyTo(sv, { speedFactor: 0.6 });
+        }
+      });
       del.addEventListener('click', (e) => {
         e.stopPropagation();
         const i = slides.indexOf(slide);
@@ -3895,9 +3919,14 @@ export const MapCanvas = memo(function MapCanvas({
     const pfield = d.paint?.field;
     const pvals = d.paint?.values ?? {};
 
+    /* ⚠️ 2026-09-25: `source:pulse` давхаргыг бүх пульс ХУВААЛЦДАГ — `removeAll()`
+       нь нэг давхаргын пульс дуусахад (эсвэл restartPulse-д) өөр давхаргын
+       (жишээ нь эх үүсвэр) хуулбарыг ч устгадаг байв. Зөвхөн ӨӨРИЙН графикийг. */
+    let own: Graphic[] = [];
     const finish = () => {
       fadingRef.current.delete(id);
-      pulse.removeAll();
+      if (own.length) pulse.removeMany(own);
+      own = [];
     };
 
     /**
@@ -3958,6 +3987,7 @@ export const MapCanvas = memo(function MapCanvas({
           pulse.add(g);
           return g;
         });
+        own = graphics;
 
         const PERIOD = 1400;        // нэг мөчлөг (мс)
         const GROW = 0.35;          // 1×…1.35× томроод буцна
@@ -4074,8 +4104,13 @@ export const MapCanvas = memo(function MapCanvas({
                «Layer not loaded» гэж унадаг бөгөөд алдааг нь бид чимээгүй
                залгидаг тул буфер огт үүсэхгүй байв. */
             await fl.load();
+            /* ⚠️ 2026-09-25: Давхаргын `definitionExpression`-ийг (бүс /
+               `layerWhere` / тогтмол `where`) ДАГАНА — урьд нь '1=1' тул бүс
+               сонгосон ч бүх хотын байгууламжийн тойрог зурагддаг байв.
+               `await load()`-ийн дараа уншина: доорх бүсийн эффект энэ коммит
+               дотор синхроноор аль хэдийн тавьсан байна. */
             const res = await fl.queryFeatures({
-              where: '1=1',
+              where: (fl.definitionExpression as string | null) || '1=1',
               returnGeometry: true,
               outFields: [fl.objectIdField],
             });
@@ -4158,7 +4193,8 @@ export const MapCanvas = memo(function MapCanvas({
     })();
 
     return () => { alive = false; };
-  }, [ready, visibleKey, dim]);
+    // ⚠️ 2026-09-25: zone/layerWhere — шүүлт солигдоход буферийг дахин бодно
+  }, [ready, visibleKey, dim, zone, layerWhere]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
@@ -4806,8 +4842,30 @@ function TipBox({
   x: number; y: number; hue: string; title: string;
   rows: { k: string; v: string }[];
 }) {
+  /* ⚠️ 2026-09-25: Нарийн зураг (утас) дээр курсорын баруун/доод талд 300px
+     tooltip багтахгүй — дэлгэцээс халиж тасардаг байв. Хэмжээгээ хэмжээд
+     багтахгүй тал руу ЭРГҮҮЛНЭ; аль ч тал багтахгүй бол зургийн ирмэгт
+     шахна. `transform`-ыг React удирддаггүй тул DOM-д шууд тавина (render
+     бүрд дахин төлөв үүсгэхгүй). CSS-ийн анхдагч `translate(14px,14px)`. */
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const p = el?.offsetParent as HTMLElement | null;
+    if (!el || !p) return;
+    const G = 14;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const pw = p.clientWidth;
+    const ph = p.clientHeight;
+    const off = (at: number, size: number, room: number) =>
+      at + G + size <= room ? G
+        : at - G - size >= 0 ? -G - size
+          : Math.max(-at, room - size - at);
+    el.style.transform = `translate(${off(x, w, pw)}px, ${off(y, h, ph)}px)`;
+  });
   return (
     <div
+      ref={ref}
       className={s.tip}
       style={{ left: x, top: y, '--tone': hue } as CSSProperties}
       aria-hidden

@@ -24,10 +24,12 @@ if (process.env.SELBE_LIVE_SKIP) {
  *     et:5  «Замын тэнхлэг»    → data/104
  *     et:2  «Автобусны буудал» → data/87
  */
-/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ийн NEXT_PUBLIC_ARCGIS_HJ (loader ачаална). */
-const HJ = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').replace(/\/+$/, '');
-if (!HJ) throw new Error('NEXT_PUBLIC_ARCGIS_HJ алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
-const TD = `${HJ}/SELBE_ALL_DATA_last_0917/FeatureServer`;
+/* ⚠️ 2026-09-17: линк код дотор байхгүй — `.env`-ээс (loader ачаална).
+   ⚠️ 2026-09-25: `SELBE_ALL_DATA_last_0917` нь `services.ts`-ийн `TD` шиг
+   NEXT_PUBLIC_ARCGIS_GAZAR суурьтай (урьд HJ-ээр залгаж байв). */
+const GAZAR = (process.env.NEXT_PUBLIC_ARCGIS_GAZAR ?? '').replace(/\/+$/, '');
+if (!GAZAR) throw new Error('NEXT_PUBLIC_ARCGIS_GAZAR алга — `--import ./tools/ts-alias.mjs`-ээр ажиллуул (.env)');
+const TD = `${GAZAR}/SELBE_ALL_DATA_last_0917/FeatureServer`;
 const URL = `${TD}/108`;
 /** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
 const ROAD_URL = `${TD}/104`;

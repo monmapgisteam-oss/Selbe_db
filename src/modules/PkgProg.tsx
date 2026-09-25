@@ -25,7 +25,7 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, physNow, type PackCat } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
-import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
  * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
@@ -41,7 +41,15 @@ import { loadPlanCurve, type PlanPoint, type PlanCurve } from '@/lib/planProgres
  *    `null` = задаргаа ороогүй; 0 БИШ. Нэгж холилдсон нийлбэр тул зөвхөн
  *    ХАРУУЛНА, тооцоонд ОРОХГҮЙ (`planProgress.PlanPoint.vol`-ийн ⚠️).
  */
-type ProgPt = { label: string; plan: number; act: number | null; vol: number | null };
+type ProgPt = {
+  label: string; plan: number; act: number | null; vol: number | null;
+  /**
+   * ХЭМЖИЛТИЙН ӨДРИЙН төлөвлөгөө (2026-09-25) — `act`-ын огноогоор завсарласан
+   * (`planPctAt`). `plan` нь САРЫН ЭЦСИЙН цэг тул сарын эхэнд хэмжсэн
+   * гүйцэтгэлтэй жишихэд хиймэл «хоцрогдол» гарна. `null` = хэмжилтгүй сар.
+   */
+  planM?: number | null;
+};
 import {
   BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
   zoneWhere, parcelOidsWhere } from '@/lib/services';
@@ -331,7 +339,10 @@ export function PkgProg({ dim, setDim }: {
    *    төгсгөлд ҮРГЭЛЖ 100% болж, дэлгэцэд «2026-09-д төсөл дуусна» гэж
    *    ГАРЧ БАЙВ. Төсөл бодитоор 2027-12 хүртэл үргэлжилдэг.
    */
-  const planQ = useAsync(loadPlanCurve, []);
+  /* ⚠️ 2026-09-25: КЭШТЭЙ хувилбар — Finance (`loadFinData` доторх
+     `planCurveCache`) · negtgel · execReport-той НЭГ хуулбар. Урьд нь энэ
+     хуудас нээгдэхэд 10 бөглөх хуудас ХОЁР удаа бүтнээр уншигддаг байв. */
+  const planQ = useAsync(loadPlanCurveCached, []);
 
   /**
    * Графикийн мөрүүд: тэнхлэг ба ТӨЛӨВЛӨГӨӨ нь ХУВААРИАС, БОДИТ гүйцэтгэл нь
@@ -357,14 +368,20 @@ export function PkgProg({ dim, setDim }: {
       ? pc.byBagts.get(active.key)
       : pc.months;
     if (!series?.length) return null;
-    const phys = new Map((base ?? []).map((m) => [m.label, m.phys]));
-    return series.map((p) => ({
-      label: p.label,
-      plan: p.pct,
-      vol: p.vol,
-      /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
-      act: phys.get(p.label) ?? null,
-    }));
+    const phys = new Map((base ?? []).map((m) => [m.label, m]));
+    return series.map((p) => {
+      const m = phys.get(p.label);
+      const act = m?.phys ?? null;
+      return {
+        label: p.label,
+        plan: p.pct,
+        vol: p.vol,
+        /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
+        act,
+        /* ⚠️ 2026-09-25: хэмжилтийн ӨДРӨӨР завсарласан төлөвлөгөө (`ProgPt.planM`) */
+        planM: act == null ? null : planPctAt(series, m?.physAt ?? `${p.label}-31`),
+      };
+    });
   }, [active, finMap, finQ, planQ]);
 
 
@@ -856,6 +873,7 @@ export function PkgProg({ dim, setDim }: {
       <div className={ts.prog}>
         <ProgChart
           months={progMonths}
+          planFailed={planQ.state === 'error' ? -1 : planQ.state === 'ready' ? planQ.data.failed.length : 0}
           title={active ? tr('{0} — гүйцэтгэлийн явц', tr(active.name)) : tr('Төсөл нийт — гүйцэтгэлийн явц')}
         />
       </div>
@@ -896,6 +914,8 @@ function TsKpi(
 ) {
   const fin = finQ.state === 'ready' ? finQ.data : null;
   const plan: PlanPoint[] | null = planQ.state === 'ready' ? planQ.data.months : null;
+  /** Уншигдаагүй бөглөх хуудсууд — төслийн муруй ХООСОН (`PlanCurve.failed`) */
+  const planFailed = planQ.state === 'ready' ? planQ.data.failed.length : 0;
   /** Хэмжилт БОЛОМЖГҮЙ (алдаа) — «…» биш «—». */
   const failed = finQ.state === 'error' || planQ.state === 'error';
   const t = useMemo(() => {
@@ -909,7 +929,14 @@ function TsKpi(
      * ⚠️ `aggregateMonths().cumPct` (cashflow) ХЭРЭГЛЭХГҮЙ: түүний хуваагч
      *    нь 12 сарын цонхны нийлбэр тул цонх дуусахад үргэлж 100% болдог.
      */
-    for (const p of plan ?? []) if (p.label <= nowYm) planned = p.pct;
+    /* ⚠️ 2026-09-25: ХЭМЖИЛТИЙН ӨДРИЙН төлөвлөгөө — урьд нь ЭНЭ сарын эцсийн
+       цэгийг (`p.label <= nowYm`) хэдэн сарын өмнөх хэмжилттэй жишиж хиймэл
+       «хоцрогдол» гаргадаг байв. `Finance.lagOf` ба `execReport`-той НЭГ дүрэм
+       (`planPctAt` = `negtgelAuto.housingPlanOf`). Хэмжилтгүй бол энэ сарын эцэс (хуучин зан). */
+    let lastM: { label: string; physAt?: string | null } | null = null;
+    for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
+    const at = lastM ? (lastM.physAt ?? `${lastM.label}-31`) : `${nowYm}-31`;
+    if (plan?.length) planned = planPctAt(plan, at);
     const gap = planned != null && actual != null ? planned - actual : null;
     /* ⚠️ 2026-09-06: НИЙТ ТӨЛӨВЛӨГӨӨ = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр
        (`FinData.planTotal`). Урьд нь «өмнөх онд шилжүүлсэн + 12 сарын
@@ -917,8 +944,10 @@ function TsKpi(
        хуваарь хоёул `cashflow_0813`-тайгаа хамт хаягдсан. */
     let planTotal = 0;
     fin.planTotal.forEach((v) => { planTotal += v; });
+    /* ⚠️ 2026-09-25: `givenTotal` — сарын цуваа огноогүй/тэнхлэгээс гадуурх
+       төлбөрийг ОРУУЛДАГГҮЙ (Finance-ийн ⚠️); нийт дүн нь PkgFin-тэй ижил. */
     let given = 0;
-    fin.given.forEach((byMon) => byMon.forEach((v) => { given += v; }));
+    fin.givenTotal.forEach((v) => { given += v; });
     return {
       planned, actual, gap, given,
       share: planTotal > 0 ? (given / planTotal) * 100 : null,
@@ -953,6 +982,13 @@ function TsKpi(
     finQ.state === 'error' ? finQ : planQ.state === 'error' ? planQ : null;
   return (
     <>
+      {/* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — урьд нь нэг хуудас уншигдаагүй
+          үед төслийн төлөвлөгөө чимээгүй «—» болж, шалтгаан хаана ч гардаггүй байв. */}
+      {!errQ && planFailed > 0 && (
+        <div className={o.tile} style={{ '--tone': 'var(--warn)' } as CSSProperties}>
+          <span className={o.tileLabel}>{tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)}</span>
+        </div>
+      )}
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
@@ -1130,8 +1166,12 @@ function CatChart({ packs }: { packs: Pack[] }) {
      *    баганад нийлүүлдэг байв — хоёр өөр хэмжигдэхүүний дундаж нь юуг ч
      *    хэмждэггүй тоо.
      */
+    /* ⚠️ 2026-09-25: БЛОКООР ЖИГНЭНЭ — урьд нь багц бүрийн дунджийн ДУНДАЖ
+       (4 блоктой багц 22 блоктойтой ижил жинтэй) байсан тул KPI/Dashboard-ийн
+       блок-жигнэсэн тооноос зөрдөг байв. Мэдээлэлгүй блок (`null`) ОРОХГҮЙ. */
     for (const p of list) {
-      if (p.kind === 'build' && p.progress != null) pcts.push(p.progress);
+      if (p.kind !== 'build') continue;
+      for (const b of p.blocks) if (b.progress != null) pcts.push(b.progress);
     }
     const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
     return { c, n: list.length, mean };
@@ -1251,7 +1291,16 @@ function LevelsCard({
  * мэт харагдана. Мөн «0%» нь «эхлээгүй» ба «0.4% хийгдсэн» хоёрыг
  * ялгахгүй болгоно.
  */
-function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }) {
+function ProgChart({ months, title, planFailed = 0 }: {
+  months: ProgPt[] | null;
+  title: string;
+  /**
+   * Уншигдаагүй бөглөх хуудасны тоо (`PlanCurve.failed`); `-1` = муруй бүхэлдээ
+   * уншигдсангүй. ⚠️ 2026-09-25: урьд нь хоёулаа «Гүйцэтгэлийн дата алга» гэж
+   * харагдаж, «дата байхгүй» ба «уншиж чадсангүй» ялгагддаггүй байв.
+   */
+  planFailed?: number;
+}) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   /**
@@ -1265,7 +1314,16 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
   const W = useChartWidth(wrapRef, 1200);
 
   if (!months || !months.length) {
-    return <Section title={title}><Empty label={tr('Гүйцэтгэлийн дата алга.')} /></Section>;
+    return (
+      <Section title={title}>
+        <Empty label={planFailed !== 0
+          ? (planFailed > 0
+            ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)
+            : tr('Төлөвлөгөөт муруй уншигдсангүй'))
+          : tr('Гүйцэтгэлийн дата алга.')}
+        />
+      </Section>
+    );
   }
 
   const rows = months;
@@ -1280,7 +1338,9 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
   const lastAct = measured.length ? measured[measured.length - 1] : -1;
   const cur = lastAct >= 0 ? rows[lastAct] : null;
   const curAct = cur?.act ?? null;
-  const curGap = curAct == null ? null : cur!.plan - curAct;
+  /* ⚠️ 2026-09-25: хэмжилтийн ӨДРИЙН төлөвлөгөөтэй (`planM`) — KPI хавтан ба
+     `lagOf`-той нэг тоо; сарын эцсийн цэг нь хиймэл хоцрогдол өгдөг байв. */
+  const curGap = curAct == null ? null : (cur!.planM ?? cur!.plan) - curAct;
   const behind = (curGap ?? 0) > 0;
 
   const N = rows.length;
@@ -1314,7 +1374,10 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
       + ' Z'
     : '';
 
-  const pt = hi != null ? rows[hi] : null;
+  /* ⚠️ 2026-09-25: ХУУЧИРСАН `hi` — багц солиход `months` богиносож, өмнөх
+     hover-ийн индекс мужаас гарч `rows[hi].plan` дээр УНАДАГ байв. */
+  const hv = hi != null && hi >= 0 && hi < N ? hi : null;
+  const pt = hv != null ? rows[hv] : null;
   const anchor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
   /*
@@ -1485,12 +1548,12 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
           )}
 
           {/* Hover — босоо шугам + цуваа бүрийн цэг */}
-          {hi != null && (
+          {hv != null && (
             <g>
-              <line x1={xFor(hi)} x2={xFor(hi)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
-              <circle cx={xFor(hi)} cy={yFor(rows[hi].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
-              {rows[hi].act != null && (
-                <circle cx={xFor(hi)} cy={yFor(rows[hi].act as number)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
+              <line x1={xFor(hv)} x2={xFor(hv)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
+              <circle cx={xFor(hv)} cy={yFor(rows[hv].plan)} r={4} className={ts.progDot} style={{ fill: cat(2) }} />
+              {rows[hv].act != null && (
+                <circle cx={xFor(hv)} cy={yFor(rows[hv].act as number)} r={4} className={ts.progDot} style={{ fill: cat(1) }} />
               )}
             </g>
           )}
@@ -1507,8 +1570,8 @@ function ProgChart({ months, title }: { months: ProgPt[] | null; title: string }
           <div
             className={ts.progTip}
             style={{
-              left: `${(hi! / Math.max(1, N - 1)) * 100}%`,
-              transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})`,
+              left: `${(hv! / Math.max(1, N - 1)) * 100}%`,
+              transform: `translateX(${hv! < N / 2 ? '10px' : 'calc(-100% - 10px)'})`,
             }}
           >
             <p className={`num ${ts.progTipHd}`}>{pt.label}</p>

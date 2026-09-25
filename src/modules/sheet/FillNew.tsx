@@ -7,7 +7,10 @@ import {
   applyUpdates,
   computeAll,
   editPct,
+  fmtInc,
+  incCell,
   isPctEdit,
+  parseInc,
   loadRows,
   msToDay,
   parentIndexes,
@@ -134,6 +137,16 @@ const cls = (names: string) =>
  */
 type Draft = {
   t: number;
+  /**
+   * НҮДНИЙ УТГЫН ДҮРЭМ (2026-09-25, `bagtsSheet.CellMode`-ийн ⚠️). Шинэ ноорог
+   * ҮРГЭЛЖ `'inc'` — `cells` нь ӨМНӨХ бөглөлтөөс хойшх НЭМЭЛТ.
+   * ⚠️ Туггүй (хуучин) ноорог нь НИЙТ утгатай: `parseDraft`/`mergeDrafts` түүний
+   *    нүд бүрд `=` угтвар тавьж («НИЙТ-ийг ийм болго») `'inc'` ноорогт
+   *    ялгагдахуйц оруулна; `pickDraft` тэдгээрийг ОДООГИЙН суурьтай жишиж
+   *    нэмэлт болгоно (`abs − суурь`). Ингэснээр 55 гэсэн хуучин НИЙТ «+55»
+   *    болж 40 + 55 = 95 гэж ДАВХАРДАХГҮЙ.
+   */
+  mode?: 'inc';
   /** Гүйцэтгэлийн нүд — `${oid}:${блокийн индекс}` */
   cells: [string, string][];
   /** Хуваарийн огноо — `${oid}:${блокийн индекс}:s|e` */
@@ -345,6 +358,17 @@ const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | null => {
        хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
     d.docs = undefined;
     if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
+    /* ⚠️ ГОРИМЫН ТУГГҮЙ = ХУУЧИН (НИЙТ) НООРОГ (2026-09-25, `Draft.mode`-ийн ⚠️).
+       Нүд бүрийг `=`-ээр тэмдэглэж `'inc'` болгоно — дараагийн бүх зам (нийлүүлэлт,
+       `pickDraft`) нэг горимтой ажиллана; `pickDraft` «=55»-ыг ОДООГИЙН суурьтай
+       жишиж нэмэлт болгоно. ТААМАГЛАЖ «55»-ыг нэмэлт гэж уншвал 40 + 55 = 95. */
+    if (d.mode !== 'inc') {
+      d.cells = d.cells.map((c): [string, string] =>
+        Array.isArray(c) && typeof c[1] === 'string' && !c[1].startsWith('=')
+          ? [String(c[0]), '=' + c[1]]
+          : c);
+      d.mode = 'inc';
+    }
     return d;
   } catch {
     return null;
@@ -371,6 +395,22 @@ const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | null => {
 const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   if (!a) return b;
   if (!b) return a;
+  /*
+   * ⚠️ ГОРИМ ЧИМЭЭГҮЙ ХОЛИГДОХГҮЙ (2026-09-25, `Draft.mode`-ийн ⚠️). Нэг тал
+   *    нэмэлтийн (`'inc'`), нөгөө нь туггүй (НИЙТ) бол НИЙТ талын нүд бүрд `=`
+   *    угтвар тавьж ялгана — «15» (нэмэлт) ба «=55» (нийтийг 55 болго) нэг
+   *    массивт ч хоёр өөр утгаараа уншигдана (`pickDraft` хөрвүүлнэ). Хоёулаа
+   *    туггүй бол хуучин дүрмээрээ (горимгүй) нийлнэ. `parseDraft` аль хэдийн
+   *    тэмдэглэдэг тул энэ нь давхар хамгаалалт.
+   */
+  if ((a.mode === 'inc') !== (b.mode === 'inc')) {
+    const leg = a.mode === 'inc' ? b : a;
+    const marked = new Map<string, string>();
+    for (const [k, v] of leg.cells) marked.set(k, String(v).startsWith('=') ? String(v) : '=' + String(v));
+    /* (TS тэмдэглэгээгүй — `draft.check` 4d энэ функцийг JS болгож ажиллуулдаг) */
+    if (leg === a) a = { ...leg, mode: 'inc', cells: [...marked] };
+    else b = { ...leg, mode: 'inc', cells: [...marked] };
+  }
   const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
   /*
    * ⚠️ НҮД БҮРИЙГ ӨӨРИЙН АГШНААР (`byAt`) ШИЙДНЭ (2026-09-25-ны аудит).
@@ -513,6 +553,8 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   }
   return {
     t: newer.t,
+    /* ⚠️ Горим (2026-09-25) — дээрх тэмдэглэлийн дараа хоёр тал ИЖИЛ горимтой */
+    mode: newer.mode === 'inc' ? 'inc' : undefined,
     cells: [...cells],
     dates: dates.size ? [...dates] : undefined,
     adds: adds.size ? [...adds.values()] : undefined,
@@ -532,6 +574,11 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     del: del.size ? [...del] : undefined,
     sent: sent.size ? [...sent] : undefined,
   };
+};
+/** ӨНӨӨДРИЙН бөглөх өдөр — `Date.UTC(локал он, сар, өдөр)` (`todayFillMs`-ийн ⚠️). */
+const nowFillMs = () => {
+  const n = new Date();
+  return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
 };
 const readDraft = (pkgKey: string): Draft | null => {
   try {
@@ -669,13 +716,18 @@ const RO = {
   noPerf: tr('Гүйцэтгэлийн обьём ба огноог зөвхөн энэ багцад томилогдсон гүйцэтгэгч бөглөнө — та зөвхөн мөр нэмэх эрхийнхээ хүрээнд засна.'),
   /* ⚠️ Засвар ХААЛТТАЙ үед: эрхийн бус, САНААТАЙ үйлдлийн хаалт. */
   notEditing: tr('Засвар хаалттай — дээрх «Бөглөх» товчийг дарж нээнэ үү.'),
+  /* ⚠️ 2026-09-25: илгээлт (эсвэл ачаалалт) явж байхад засвар хаалттай —
+     `publish`-ийн төгсгөлийн `setPending({})` завсарт бичсэн нүдийг чимээгүй арчдаг байв. */
+  busy: tr('Илгээлт эсвэл ачаалалт явж байна — дуусахыг хүлээгээд дахин засна уу.'),
 } as const;
 
 /*
  * ── ГҮЙЦЭТГЭЛ ОБЬЁМООР (2026-08-20, хэрэглэгчийн шийдвэр) ───────────────────
  * Урьд нь блокийн нүдэнд ХУВЬ бичдэг байсныг болив. Одоо:
  *   · нүдэнд НИЙТ хуримтлагдсан обьёмыг бичнэ,
- *   · тэр утга үйлчилгээний *_obyem талбарт ШУУД бичигдэнэ,
+ *     ⚠️ 2026-09-25: ӨӨРЧЛӨГДСӨН — нүдэнд ӨМНӨХ бөглөлтөөс хойшх НЭМЭЛТ бичнэ,
+ *     НИЙТ нь (архив + нэмэлт) автоматаар бодогдоно (`commit`-ийн ⚠️);
+ *   · тэр (НИЙТ) утга үйлчилгээний *_obyem талбарт бичигдэнэ,
  *   · хувь нь «хуримтлал ÷ мөрийн Обьём»-оор бодогдож хуучин талбартаа
  *     хэвээр бичигдэнэ (дашбоард, тайлан бүгд хөндөгдөхгүй).
  *
@@ -961,10 +1013,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ `today` (`msToDay`) нь ХАРАГДАЦЫН мөр — энэ нь ТҮЛХҮҮРИЙН тоо. Хоёрыг
    *    андуурч болохгүй.
    */
-  const [todayFillMs] = useState(() => {
-    const n = new Date();
-    return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
-  });
+  /* ⚠️ ӨДӨР СОЛИГДОХЫГ ТАНИНА (2026-09-25-ны аудит). Урьд нь `useState` нэг
+     удаа бодогдож ХӨЛДДӨГ байв: шөнө дунд өнгөрсөн нээлттэй таб өчигдрийн
+     түлхүүрээр (`sub|<pkg>|<өчигдөр>`) илгээж, өчигдрийн хянагдаж буй мөрийг
+     дарж/нийлүүлж, архивт өчигдрийн `buglusun_ognoo`-оор оруулдаг байв. Одоо
+     `nowFillMs()`-ээр дахин бодож (доорх эффект ба `publish`), зөрвөл төлөвийг
+     шинэчилнэ — ачаалах эффект (`todayFillMs`-ээс хамаарна) хуудсыг ШИНЭ
+     өдрөөр дахин ачаалж, ноорог локал/алсаас сэргэнэ. «НЭГ Л УДАА» дүрэм
+     хэвээр: хоёр зам ХОЁУЛАА энэ төлөвөөс уншина. */
+  const [todayFillMs, setTodayFillMs] = useState(nowFillMs);
   /**
    * ЭНЭ ӨДРИЙН хяналтын мөрийг ЯЛГАХ шошго — `hyanaltSubmit.dayLabel`-тэй
    * ИЖИЛ хэлбэр (`YYYY.MM.DD`).
@@ -1640,6 +1697,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Нүдийг дахин бичихэд тэмдэглэгээ нь АРИЛНА (`touchMine`).
    */
   const delRef = useRef<Map<string, number>>(new Map());
+  /**
+   * «ШИНЭЧЛЭГДСЭН ОГНОО»-НЫ БУЦААЛТЫН TOMBSTONE (2026-09-25-ны аудит).
+   * `true` = энэ сешнд `asOf` ноорогт ӨӨРЧЛӨГДСӨН утгаар бичигдсэн — тиймээс
+   * анхны утгандаа буцахад ноорог `asOf: undefined` БИШ `asOf: null` (ИЛ
+   * буцаалт) бичнэ. Урьд нь `undefined` = «хуучин талынхыг үлдээ»
+   * (`mergeDrafts`) тул буцаалт алсад ХЭЗЭЭ Ч хүрэхгүй: алсын/бусад төхөөрөмжийн
+   * X огноо дараагийн нийлүүлэлтээр сэргэдэг байв. `pickDraft` нь `null`-ыг
+   * «анхны утга руу буцаа» гэж уншина. Багц солиход тэглэгдэнэ.
+   */
+  const asOfRevRef = useRef(false);
+  /**
+   * ЭНЭ СЕШНД ноорог ХООСОН БИШ байсан эсэх (2026-09-25-ны аудит). Хадгалах
+   * эффектийн «хоосон → алсыг устга» зам ЗӨВХӨН хоосон биш → хоосон шилжилтэд
+   * ажиллана. Урьд нь `pending` хоосон үед эффект ДАХИН ажиллах бүрд (жиш. `rows`
+   * шинэчлэгдэх) `clearRemoteDraft` дуудагдаж, хараахан татаж амжаагүй бусад
+   * оролцогчийн алсын ноорогийг арчдаг байв.
+   */
+  const draftLiveRef = useRef(false);
   /** Өөрийн нүдийг хөндсөнийг агшинтай нь тэмдэглэнэ; хуучин tombstone-ийг арилгана. */
   /* ⚠️ `useCallback` — зөвхөн үйл явдлын дотор дуудагддаг тул render-д хамаагүй; react-compiler-ийн
      «impure during render» шалгуур энгийн функцийг ялгадаггүй (2026-09-21). */
@@ -1824,6 +1899,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setByAtMap(new Map());
     mineAtRef.current = new Map();
     delRef.current = new Map();
+    /* 2026-09-25: огнооны буцаалт ба «ноорог амьд» туг ч БАГЦЫН/ачааллын төлөв */
+    asOfRevRef.current = false;
+    draftLiveRef.current = false;
     /* ⚠️ Нийлүүлэлтийн агшны тэмдэглэгээ ч БАГЦАД харьяалагдана (2026-09-08):
        Багц 1-ийн `t` нь Багц 2-ынхаас ИХ байвал шинэ багцын алсын ноорог
        «хуучин» гэж тооцогдож, татах мөчлөг түүнийг ХЭЗЭЭ Ч буулгахгүй —
@@ -1979,6 +2057,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    байв — яг тэр гомдол.
          */
         setBackChg(ov && sub ? changedKeys(r.rows, ov, schema.bld) : new Set());
+        setOvBase(ov ? new Map(r.rows.map((x) => [x.oid, x] as const)) : new Map());
         setStaged(sub && !sub.done && sub.payload.pkgKey === pkg.key ? sub : null);
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
@@ -2076,6 +2155,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [backOk, setBackOk] = useState<Set<string>>(new Set());
   const [backChg, setBackChg] = useState<Set<string>>(new Set());
+  /**
+   * ДАВХАРЛАЛТЫН СУУРЬ МӨРҮҮД (oid → архивын мөр) — өөрчлөгдсөн нүдний `title`-д
+   * «өмнөх: X · энэ удаа: Y · нийт: Z» бичихэд (2026-09-25, нэмэлтийн горим).
+   * ⚠️ `backChg`-тэй ХАМТ тавигдана (ачаалах эффект · хожуу давхарлалт ·
+   *    `resumeReturned`); суурьгүй бол `title` хуучин хэвээр.
+   */
+  const [ovBase, setOvBase] = useState<Map<number, SheetRow>>(new Map());
   useEffect(() => {
     /* ⚠️ ЗӨВХӨН `backOk` — `backChg` нь ачаалах эффектүүдийнх (доорх ⚠️) */
     /* ⚠️ ГАРААР СОНГОСОН буцаалт (`resumedOid`, 2026-09-24-ний аудит): `flow` нь
@@ -2152,6 +2238,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(rows, ov, sc.bld));
+      setOvBase(new Map(rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
       setRows(ov.rows);
       /* `null ≠ 0`: илгээлт огноог хөндөөгүй бол архивынх хэвээр. Хэрэглэгч энэ
@@ -2322,7 +2409,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хэзээ ч ороогүй — өмнө нь ч `computeAll` дуудагддаг байсан.
    */
   const calc = useMemo(
-    () => computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct),
+    /* ⚠️ `"inc"` (2026-09-25): `pending` нь НЭМЭЛТ — нүдэнд суурь + нэмэлт харагдана */
+    () => computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, "inc"),
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct],
   );
 
@@ -2805,6 +2893,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const toggleDone = useCallback(async () => {
     if (!meKey) return;
+    /* ⚠️ БАГЦЫН ХАМГААЛАЛТ (2026-09-25-ны аудит): доорх хоёр `await`-ийн завсарт
+       багц солигдвол А-гийн нийлүүлсэн `done` жагсаалт Б-гийн `doneRef`/`doneBy`-д
+       бууж, Б-гийн «Илгээх» түгжээ худал түгжигдэх/нээгдэх байв. Бичилт нь
+       ТҮЛХҮҮРЭЭРЭЭ (`want`) А руу хэвээр явна — зөвхөн ТӨЛӨВТ буулгахгүй. */
+    const want = pkg.key;
     const next: [string, number][] = iAmDone
       ? doneRef.current.filter(([u]) => u !== meKey)
       : [...doneRef.current.filter(([u]) => u !== meKey), [meKey, Date.now()]];
@@ -2816,23 +2909,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        «буцаасан» гэсэн ИЛ мэдэгдэл, `undefined` нь «хуучин ноорог, юу ч
        хэлэхгүй». Ялгахгүй бол `mergeDrafts` буцаалтыг үл тоож, тэмдэглэгээ
        дараагийн нийлүүлэлтээр СЭРГЭНЭ (`mergeDrafts`-ийн тайлбар). */
-    const cur = readDraft(pkg.key);
+    const cur = readDraft(want);
     const d: Draft = cur
       ? { ...cur, t: Date.now(), done: next }
-      : { t: Date.now(), cells: [], done: next };
-    saveDraftLS(pkg.key, d);
+      : { t: Date.now(), mode: 'inc', cells: [], done: next };
+    saveDraftLS(want, d);
     /* ⚠️ READ-MERGE-WRITE (2026-09-08) — `flush`-тэй ИЖИЛ шалтгаан: ноорог
        хуваалцагдсан тул шууд бичвэл нөгөө оролцогчийн нүднүүдийг УСТГАНА.
        Уншилт унавал алсад бичихгүй (локал хэвээр) — бусдын ажлыг устгахаас
        «миний тэмдэглэгээ хойшлох» нь хамаагүй хямд.
        ⚠️ Хямд `at` шалгалтаар бүтэн уншилтыг алгасна (гүйцэтгэл) — алс
        өөрчлөгдөөгүй бол нийлүүлэх зүйл байхгүй. */
-    const at0 = await readRemoteDraftAt(pkg.key);
+    const at0 = await readRemoteDraftAt(want);
     /* ⚠️ `!==` ба өсөх хувилбар — `flush`-ийн ⚠️ (2026-09-25-ны аудит). */
     const rr: RemoteDraftRead = at0 === undefined
       ? { ok: false, error: tr('алсын ноорогийг шалгаж чадсангүй') }
       : at0 !== null && at0 !== lastMergedRef.current
-        ? await readRemoteDraft(pkg.key)
+        ? await readRemoteDraft(want)
         : { ok: true, draft: null };
     /* ⚠️ Өөрийн хуулбарыг алсынхаас ЗААВАЛ шинэ болгож нийлүүлнэ — алсын `t`
        (өөр клиентийн цаг) урд байвал тэр тал «шинэ» болж, энэ товчны `done`
@@ -2841,9 +2934,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const merged = rr.ok
       ? (mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew)
       : null;
-    if (merged) { saveDraftLS(pkg.key, merged); doneRef.current = merged.done ?? []; setDoneBy(merged.done ?? []); }
+    if (merged) {
+      saveDraftLS(want, merged);
+      /* ⚠️ Багц солигдсон бол ТӨЛӨВТ буулгахгүй (дээрх ⚠️) */
+      if (pkgKeyRef.current === want) { doneRef.current = merged.done ?? []; setDoneBy(merged.done ?? []); }
+    }
     const r = merged
-      ? await saveRemoteDraft(pkg.key, merged.t, JSON.stringify(merged))
+      ? await saveRemoteDraft(want, merged.t, JSON.stringify(merged))
       : { ok: false as const, error: rr.ok ? '' : rr.error };
     if (!r.ok) {
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
@@ -2902,27 +2999,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * байж болно (`"%50"`). Хөрвүүлэлгүй тавибал «50» гэсэн тоо обьём горимд
    * 50 м³ гэж уншигдана.
    */
+  /*
+   * ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ (`bagtsSheet.CellMode`-ийн ⚠️): оролт нь
+   *    ЭНЭ УДААГИЙН НЭМЭЛТ-ийг л авна. Засваргүй нүд ХООСОН нээгдэнэ (өмнөх
+   *    нийт нь `placeholder`-т «өмнөх: 40»); `pending`-д нэмэлт байвал ТЭР
+   *    нэмэлтийг (нийтийг биш) ОДООГИЙН горимын нэгжээр тавина — засаж болно.
+   *    Хуучин «хадгалагдсан нийтийг урьдчилан тавих» зан ХАСАГДСАН: тэгвэл
+   *    хэрэглэгч 40-ийг 55 болгож бичээд 40 + 55 = 95 болно.
+   */
   const cellSeed = (r: SheetRow, b: number): string => {
-    const raw = pending[cellKey(r.oid, b)];
-    /* ⚠️ ЦЭВЭРЛЭСЭН нүдийг ХООСОН нээнэ (2026-09-08): доорх хөрвүүлэлт нь
-       `""`-ийг хадгалагдсан утга руу унагаадаг тул хэрэглэгч цэвэрлээд
-       дахин нээхэд хуучин тоо буцаж ирж, «цэвэрлэгдээгүй» мэт харагдана. */
-    if (raw != null && raw.trim() === "") return "";
-    const pct = editPct(raw);
+    const d = parseInc(pending[cellKey(r.oid, b)]);
+    if (!d) return "";
+    const vol = r.vol != null && r.vol > 0 ? r.vol : null;
     if (fillMode === "pct") {
-      if (pct != null) return String(Math.round(pct * 1e6) / 1e4);
-      /* Обьёмоор бичсэн эсвэл хадгалагдсан — хувь руу хөрвүүлнэ */
-      const ob = raw != null && !isPctEdit(raw)
-        ? (raw.trim() === "" ? null : Number(raw))
-        : r.obyem[b];
-      const p2 = ob != null && r.vol != null && r.vol > 0 ? ob / r.vol : r.act[b];
-      return p2 == null ? "" : String(Math.round(p2 * 1e6) / 1e4);
+      /* Обьёмын нэмэлтийг хувь руу — мөрийн Обьёмгүй бол илэрхийлэх аргагүй */
+      if (d.n !== 0 && vol == null) return "";
+      const p = d.p + (d.n !== 0 ? d.n / (vol as number) : 0);
+      return String(Math.round(p * 1e6) / 1e4);
     }
-    if (pct != null) {
-      /* Хувиар бичсэнийг обьём руу — мөрийн Обьёмгүй бол хоосон (бодох аргагүй) */
-      return r.vol != null && r.vol > 0 ? qtyRaw(pct * r.vol) : "";
-    }
-    return raw ?? qtyRaw(r.obyem[b]);
+    /* Хувийн нэмэлтийг обьём руу — мөрийн Обьёмгүй бол хоосон (бодох аргагүй) */
+    if (d.p !== 0 && vol == null) return "";
+    return qtyRaw(d.n + (d.p !== 0 ? d.p * (vol as number) : 0));
+  };
+  /** Оролтын `placeholder` — ӨМНӨХ нийт (одоогийн горимын нэгжээр). `null` бол «—» (0 БИШ). */
+  const prevHint = (r: SheetRow, b: number): string => {
+    const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null ? r.obyem[b]! / r.vol : r.act[b];
+    const v = fillMode === "pct" ? (storedPct == null ? "" : pc(storedPct, 1)) : qty(r.obyem[b]);
+    return tr('өмнөх: {0}', v || '—');
   };
 
 
@@ -2972,98 +3075,79 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      * ⚠️ Обьёмын шалгалтууд (буурсан уу · мөрийн Обьёмоос хэтэрсэн үү) энд
      * ХАМААРАХГҮЙ: хувь нь өөрөө 100-аас давж болно (эх өгөгдөлд бий) бөгөөд
      * буурах нь засвар байж болно. Оронд нь ганц зүйлийг л барина — сөрөг. */
-    if (fillMode === "pct") {
-      if (t !== "" && Number(t) < 0) {
-        /* ⚠️ Хөвөгч мэдэгдэл — дээрх ⚠️ (нүдний алдаа хаана ч харагдана) */
-        warn(tr('{0} · {1}: хувь сөрөг байж болохгүй.', sc?.bld[b] ?? "", r.work));
-        return false;
-      }
-      const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null
-        ? r.obyem[b]! / r.vol
-        : r.act[b];
-      const nv = t === "" ? "" : `%${Number(t)}`;
+    /* ══ НЭМЭЛТИЙН ГОРИМ (2026-09-25, хэрэглэгчийн шийдвэр) ══════════════
+     * Бичсэн тоо = ӨМНӨХ бөглөлтөөс хойш хийсэн обьём (хувь горимд — хувь).
+     * `pending`-д НЭМЭЛТ хадгалагдана (`"15"` · `"%10"`); нүдэнд суурь + нэмэлт
+     * харагдана (`computeAll(…, "inc")`), батлахад архивын СҮҮЛИЙН утга дээр
+     * нэмэгдэнэ. Урьд нь (2026-08-20 — 2026-09-25) энд «НИЙТ хуримтлал»
+     * бичигддэг байв; тэр шийдвэрийг хэрэглэгч 2026-09-25-нд БУЦААВ.
+     *
+     * ⚠️ `""` ба `0` = ЭНЭ НҮДНИЙ ЗАСВАРЫГ БУЦААХ (өөрчлөлтгүй), «цэвэрлэх» БИШ.
+     *    Нийтийг `null` болгох зам энэ горимд байхгүй — буруу бүртгэлийг СӨРӨГ
+     *    нэмэлтээр (залруулга) засна; нийт нь 0-ээс доош орохгүй (`incCell`).
+     * ⚠️ Хувийн засвар мөн `"%N"` угтвартай хэвээр (`bagtsSheet.parseInc`) —
+     *    доод сувгууд (ноорог, илгээлт, overlay) мөр зөөсөөр.
+     */
+    const isPct = fillMode === "pct";
+    const incN = t === "" ? 0 : Number(t);
+    if (incN === 0) {
+      /* Засвараа буцаасан — «нийтлээгүй» тэмдэглэгээ арилна. `revert`-ийн дүрэм:
+         pending-д байгаагүй нүдэнд буцаалт нь tombstone биш (2026-09-21). */
       setErr("");
-      /* Хадгалагдсантайгаа ТЭНЦҮҮ бол «нийтлээгүй» тэмдэглэгээг арилгана.
-         ⚠️ Хөвөгч цэгийн 1e-9 хүлцэл: 0.5 ↔ 0.4999999999 нь ижил утга. */
-      const samePct = t === ""
-        ? storedPct == null
-        : storedPct != null && Math.abs(Number(t) / 100 - storedPct) < 1e-9;
       setPending((pv) => {
+        if (!(key in pv)) return pv;
         const n = { ...pv };
-        if (samePct) delete n[key];
-        else n[key] = nv;
+        delete n[key];
         return n;
       });
-      /* ⚠️ ЭЗЭМШЛИЙГ ХУВЬ ГОРИМД Ч ТЭМДЭГЛЭНЭ (2026-09-21-ний аудит): урьд нь
-         зөвхөн обьёмын салбар `mineRef`-д бичдэг тул хувиар бөглөсөн хүн
-         `participants`-д орохгүй, «Илгээх» түгжээ түүнийг хүлээдэггүй байв.
-         Буцаасан (`samePct`) бол tombstone — нийлүүлэлтээр сэргэхгүй.
-         2026-09-21 (дахин аудит): pending-д байгаагүй нүдэнд ижил утга бичих нь
-         буцаалт БИШ — `revert`-ийн тайлбар. */
-      if (samePct) revert(key, key in pending);
-      else { mineRef.current.add(key); touchMine(key); }
+      revert(key, key in pending);
       return true;
     }
-
-
-    /* ── ОБЬЁМ — гараар бичсэн ШУУД утга ────────────────────────────────
-     * ⚠️ Хэрэглэгч нүдэнд «одоо болтол хийсэн НИЙТ хэмжээ»-гээ бичнэ.
-     *    Нэмэлт (Δ) байдлаар авдаг байсныг болив: нүдэнд харагдаж буй тоо
-     *    ба бичиж буй тоо хоёр өөр утгатай байх нь эндүүрэл төрүүлдэг.
-     */
-    /* ⚠️ СӨРӨГ ТОО — доорх `Math.max(0, …)` түүнийг ЧИМЭЭГҮЙ 0 болгодог тул
-       хэрэглэгч «−5» бичээд «0 бичигдлээ» гэдгийг мэдэхгүй үлддэг байв
-       (2026-09-03-ны аудит). Хуучин Δ (нэмэлт) горимын үлдэц; одоо нүдэнд
-       НИЙТ хуримтлал бичдэг тул сөрөг утга утгагүй — ил хэлж, хаяна. */
-    if (t !== "" && Number(t) < 0) {
-      /* ⚠️ Хөвөгч мэдэгдэл — дээрх ⚠️ (нүдний алдаа хаана ч харагдана) */
-      warn(tr('{0} · {1}: обьём сөрөг байж болохгүй — нийт хуримтлагдсан хэмжээг бичнэ үү.', sc?.bld[b] ?? "", r.work));
-      return false;
-    }
-    const stored = r.obyem[b];
-    const v = t === "" ? "" : String(Math.max(0, Number(t)));
+    const nv = isPct ? `%${incN}` : String(incN);
+    const res = incCell(r, b, nv, !!sc?.obyem[b]);
     const vol = r.vol;
+    const storedPct = vol != null && vol > 0 && r.obyem[b] != null ? r.obyem[b]! / vol : r.act[b];
+    /** Өмнөх ба шинэ НИЙТ — одоогийн горимын нэгжээр (баталгаажуулалтад) */
+    const before = isPct ? storedPct : r.obyem[b];
+    const after = isPct ? (res ? res.act : storedPct) : (res ? res.obyem : r.obyem[b]);
+    const fmt = (x: number | null) => (isPct ? pc(x, 1) : qty(x));
+    /* ⚠️ СӨРӨГ НЭМЭЛТ = ЗАЛРУУЛГА — ЗӨВШӨӨРНӨ, гэхдээ ИЛ АСУУНА (2026-09-25).
+       Урьд нь (НИЙТ горимд) сөрөг утгыг хаадаг байв; одоо «−5» нь «өмнөхөөс 5-аар
+       бага» гэсэн үнэн утгатай. 0-ээс доош нийт 0-ээр хаагдах нь асуултад харагдана. */
     if (
-      v !== "" &&
-      stored != null &&
-      Number(v) < stored &&
+      incN < 0 &&
       !window.confirm(
         tr(
           '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн — {3} болж БУУРНА.\nБуруу бичсэнээ засаж байна уу?',
           sc?.bld[b] ?? "",
           r.work,
-          qty(stored),
-          qty(Number(v)),
+          fmt(before ?? 0),
+          fmt(after ?? 0),
         ),
       )
     )
       return false;
     if (
-      v !== "" &&
+      !isPct &&
+      incN > 0 &&
+      after != null &&
       vol != null &&
       vol > 0 &&
-      Number(v) > vol &&
+      after > vol &&
       !window.confirm(
         tr(
           '{0} · {1}:\n{2} нь мөрийн Обьём {3}-оос ХЭТЭРЧ байна ({4}).\nҮргэлжлүүлэх үү?',
           sc?.bld[b] ?? "",
           r.work,
-          qty(Number(v)),
+          qty(after),
           qty(vol),
-          pc(Number(v) / vol, 1),
+          pc(after / vol, 1),
         ),
       )
     )
       return false;
     setErr("");
-    // Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
-    const sameVol = v === "" ? stored == null : Number(v) === stored;
-    setPending((pv) => {
-      const n = { ...pv };
-      if (sameVol) delete n[key];
-      else n[key] = v;
-      return n;
-    });
+    setPending((pv) => ({ ...pv, [key]: nv }));
     /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`).
        Дахин аудит: pending-д байгаагүй нүдэнд ижил утга бичих нь буцаалт БИШ
        (`revert`-ийн тайлбар) — нөгөө талын ирээгүй бичилтийг устгахгүй. */
@@ -3072,8 +3156,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        тэмдэглэгддэг байсан тул ганц нүд бөглөсөн хүн `by`-д ОГТ ОРОХГҮЙ,
        улмаар `participants` хоосон болж «Илгээх» түгжээ ХЭЗЭЭ Ч ажиллахгүй —
        хоёулаа зэрэг илгээж чаддаг байв (хэрэглэгчийн мэдээлсэн эвдрэл). */
-    if (sameVol) revert(key, key in pending);
-    else { mineRef.current.add(key); touchMine(key); }
+    mineRef.current.add(key);
+    touchMine(key);
     return true;
   };
 
@@ -3302,45 +3386,48 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          харагдана. Хувь горим нь мөрийн `Обьём`гүй ажлуудыг (Багц 3.1·9F-д
          29.5%) бөглөх ЦОРЫН ГАНЦ зам тул тэр ажил бүхэлдээ алдагддаг.
          Шалгуур нь `bagtsSheet`-ийн ЖИНХЭНЭ дүрэмтэй нэг байх ёстой. */
-      const okVal = isPctEdit(v)
-        ? editPct(v) != null
-        : v.trim() === "" || Number.isFinite(Number(v));
-      /* ⚠️ ГОРИМООР ШҮҮХГҮЙ хувийн бичлэгийг: `volMode` нь ОДООГИЙН `fillMode`-
-         оос хамаардаг тул хувиар бөглөсөн ноорогийг обьём горимд нээхэд дахин
-         хаяна. Хувийн бичлэг нь `sc.act[b]`-д (107/107 блокт бий) суудаг тул
-         обьёмын багана шаардахгүй — зөвхөн бүлэг биш байхыг шалгана. */
-      const stale =
-        !r ||
-        !Number.isInteger(b) ||
-        b < 0 ||
-        b >= nBld ||
-        r.group ||
-        !okVal ||
-        (!isPctEdit(v) && !volMode(r, b));
-      if (stale) {
+      /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ (`Draft.mode`-ийн ⚠️). Утга хоёр янз:
+           · `"15"` · `"%10"` — НЭМЭЛТ (шинэ ноорог), шууд сэргээнэ;
+           · `"=55"` · `"=%50"` — ХУУЧИН ноорогийн НИЙТ (`parseDraft` тэмдэглэсэн):
+             ОДООГИЙН суурьтай жишиж НЭМЭЛТ болгоно (`55 − 40 = +15`). Нийт нь
+             суурийн хооронд өөрчлөгдсөн байсан ч хэрэглэгчийн бичсэн НИЙТ хадгалагдана.
+             ⚠️ `"="` (хуучин «цэвэрлэх») нэмэлтээр илэрхийлэгдэхгүй — хаяна (`dropped`).
+         ⚠️ ХУВИЙН бичлэгийг ГОРИМООР ШҮҮХГҮЙ хэвээр (2026-09-08): хувь нь `sc.act[b]`-д
+            суудаг тул обьёмын багана шаардахгүй; обьёмын нэмэлт л `volMode` шаардана. */
+      let incV: string | null = null;
+      if (r && Number.isInteger(b) && b >= 0 && b < nBld && !r.group) {
+        const rr0 = r as SheetRow;
+        if (v.startsWith("=")) {
+          const abs = v.slice(1).trim();
+          const hasF = !!sc.obyem[b];
+          const vol0 = rr0.vol != null && rr0.vol > 0 ? rr0.vol : null;
+          if (isPctEdit(abs)) {
+            const p = editPct(abs);
+            if (p != null) {
+              incV = hasF && vol0 != null
+                ? fmtInc({ n: p * vol0 - (rr0.obyem[b] ?? 0), p: 0 })
+                : fmtInc({ n: 0, p: p - (rr0.act[b] ?? 0) });
+            }
+          } else if (abs !== "" && Number.isFinite(Number(abs)) && volMode(rr0, b)) {
+            incV = fmtInc({ n: Math.max(0, Number(abs)) - (rr0.obyem[b] ?? 0), p: 0 });
+          }
+        } else if (v.trim() === "") {
+          incV = "";
+        } else {
+          const dd = parseInc(v);
+          if (dd && (dd.n === 0 || volMode(rr0, b))) incV = fmtInc(dd);
+        }
+      }
+      if (incV == null) {
         dropped++;
         continue;
       }
-      /* ⚠️ ХАДГАЛАГДСАНТАЙ ИЖИЛ утгыг СЭРГЭЭХГҮЙ (2026-09-25-ны аудит). Дээрх
-         «аль хэдийн ижил утгатай бол — хаяна» гэсэн тайлбар урьд нь КОД БИШ
-         байв: өөр төхөөрөмжөөс илгээсний дараа энэ компьютерийн хуучин локал
-         ноорог (эсвэл оролцогчийн дэлгэцийн хуулбар) илгээгдсэн нүдийг ногоон
-         «илгээгээгүй» болгож буцаан авчирдаг байв. Шалгуур нь `commit`-ийн
-         `sameVol`/`samePct`-тэй ИЖИЛ (хувь — 1e-9 хүлцэл). Хоосон (`""`) бичлэг
-         нь зөвхөн обьём ч хувь ч хадгалагдаагүй үед л «ижил» — эс бөгөөс
-         цэвэрлэх засвар байж болно. `dropped`-д ТООЛОГДОХГҮЙ (хуучирсан биш). */
-      const row = r as SheetRow;
-      const storedPct = row.vol != null && row.vol > 0 && row.obyem[b] != null
-        ? row.obyem[b]! / row.vol
-        : row.act[b];
-      const pctV = editPct(v);
-      const same = isPctEdit(v)
-        ? pctV != null && storedPct != null && Math.abs(pctV - storedPct) < 1e-9
-        : v.trim() === ""
-          ? row.obyem[b] == null && row.act[b] == null
-          : Number(v) === row.obyem[b];
-      if (same) { sameN++; continue; }
-      next[key] = v;
+      /* ⚠️ ТЭГ НЭМЭЛТ = өөрчлөлтгүй (хуучин «хадгалагдсантай ижил») — сэргээхгүй,
+         `dropped`-д ТООЛОГДОХГҮЙ. Илгээгдсэн нүд буцаж ирэхээс хамгаалах гол
+         зам нь одоо `del` (tombstone, `mergeDrafts`): нэмэлтийн утга тэнцүү
+         байх нь «аль хэдийн илгээгдсэн» гэсэн баримт БИШ. */
+      if (incV === "") { sameN++; continue; }
+      next[key] = incV;
     }
 
     /* ── ОГНОО (`${oid}:${блок}:s|e`) ──
@@ -3455,6 +3542,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
     /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
     const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
+    /* ⚠️ `null` = ИЛ БУЦААЛТ (2026-09-25-ны аудит, `asOfRevRef`-ийн ⚠️): өөр
+       оролцогч/төхөөрөмж огноог анхны утгандаа буцаасан — энд үлдсэн X-ийг
+       анхных руу буцаана, эс бөгөөс дараагийн хадгалалт X-ийг алсад сэргээнэ. */
+    if (d.asOf === null) setAsOf(asOfOrig);
 
     const nCells = Object.keys(next).length;
     const nDates = Object.keys(nextDates).length;
@@ -3600,6 +3691,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        тэмдэглэгээг ил буцаана. Устгах нүд байхгүй (зөвхөн огноо) бол урьдын адил. */
     const nowMs = Date.now();
     const tombKeys = [...Object.keys(pending), ...Object.keys(pendDate)];
+    /* ⚠️ ОГНООНЫ ӨӨРЧЛӨЛТ ч ИЛ БУЦААЛТААР (2026-09-25-ны аудит, `asOfRevRef`-ийн
+       ⚠️): алсыг устгах нь бусад төхөөрөмжийн X огноог сэргээх зам үлдээнэ. */
+    if (asOf !== asOfOrig) asOfRevRef.current = true;
     setPending({});
     setPendDate({});
     setAsOf(asOfOrig);
@@ -3616,9 +3710,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     delRef.current = new Map(tombKeys.map((k): [string, number] => [k, nowMs]));
     lastMergedRef.current = 0;
     lastBodyRef.current = '';
-    if (tombKeys.length) {
+    if (tombKeys.length || asOfRevRef.current) {
       const tomb: Draft = {
-        t: nowMs, cells: [], dates: [], rowKeys: [],
+        t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
+        asOf: asOfRevRef.current ? null : undefined,
         done: [], del: [...delRef.current],
       };
       saveDraftLS(pkg.key, tomb);
@@ -3631,7 +3726,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     keepDraft.current = false;
     say(tr('Ноорог устгагдлаа — илгээгээгүй засварууд арилав.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.key, asOfOrig, participants, meKey, dirtyCount, pending, pendDate]);
+  }, [pkg.key, asOf, asOfOrig, participants, meKey, dirtyCount, pending, pendDate]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -3674,10 +3769,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          */
         const nowMs = Date.now();
         const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
-        if (liveDel.length) {
+        /* ⚠️ ОГНООНЫ БУЦААЛТ ч TOMBSTONE (2026-09-25-ны аудит, `asOfRevRef`-ийн ⚠️):
+           `asOf` өөрчлөгдөж бичигдээд анхны утгандаа буцсан бол алсыг УСТГАХГҮЙ —
+           `asOf: null` (ил буцаалт)-тай хоосон ноорог бичнэ, эс бөгөөс бусад
+           төхөөрөмжийн хуулбар X огноог сэргээнэ. */
+        if (liveDel.length || asOfRevRef.current) {
           delRef.current = new Map(liveDel);
           const tomb: Draft = {
-            t: nowMs, cells: [], dates: [], rowKeys: [],
+            t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
+            asOf: asOfRevRef.current ? null : undefined,
             done: doneRef.current, del: liveDel,
           };
           saveDraftLS(pkg.key, tomb);
@@ -3686,6 +3786,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           setSavedAt(null);
           return;
         }
+        /* ⚠️ ЗӨВХӨН ХООСОН БИШ → ХООСОН ШИЛЖИЛТЭД (2026-09-25-ны аудит,
+           `draftLiveRef`-ийн ⚠️). Энэ сешнд ноорог хоосон биш байгаагүй бол эффект
+           дахин ажилласан (`rows` г.м.) л гэсэн үг — алсад БУСДЫН (хараахан татаж
+           амжаагүй) ноорог байж болох тул устгахгүй, хамтын төлөвийг ч хөндөхгүй. */
+        if (!draftLiveRef.current) {
+          setSavedAt(null);
+          return;
+        }
+        draftLiveRef.current = false;
         clearDraftLS(pkg.key);
         /* ⚠️ Нийтэлсэн/болиулсны дараа АЛСЫН хуулбар ч цэвэрлэгдэнэ — хэрэглэгч:
            «нийтлэгдэхэд тэр файл хоослогдоно». Эс бөгөөс өөр төхөөрөмж дээр
@@ -3710,6 +3819,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     const at = Date.now();
     setSavedAt(at);
+    /* 2026-09-25: хоосон биш ноорог — `draftLiveRef`/`asOfRevRef`-ийн ⚠️ */
+    draftLiveRef.current = true;
+    if (asOfChanged) asOfRevRef.current = true;
     /* ⚠️ Хоосон биш ноорог бичигдэж байна — «хуучирсан нүдтэй ноорог»-ийн хамгаалалт
        (`pickDraft`-ийн `keepDraft = true`, 2026-09-25) цаашид утгагүй: локал хуулбар
        одоо энэ төлөвөөр солигдоно. Үлдээвэл дараа нь бүх нүдээ буцаахад (хоосон
@@ -3768,9 +3880,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
     const draft: Draft = {
       t: at,
+      /* ⚠️ `pending` нь НЭМЭЛТ (2026-09-25) — туг ЗААВАЛ, эс бөгөөс НИЙТ гэж уншигдана */
+      mode: 'inc',
       cells: Object.entries(pending),
       dates: Object.entries(pendDate),
-      asOf: asOfChanged ? asOf : undefined,
+      /* ⚠️ Анхны утгандаа БУЦСАН бол `null` (ил буцаалт) — `asOfRevRef`-ийн ⚠️
+         (2026-09-25). `undefined` = огноо хөндөгдөөгүй. */
+      asOf: asOfChanged ? asOf : asOfRevRef.current ? null : undefined,
       /* ⚠️ `adds`/`sent` БИЧИГДЭХГҮЙ (2026-09-24) — энэ хуудас мөр нэмэхгүй;
          хуучин ноорогийнх `mergeDrafts`-аар л дамжина. */
       rowKeys,
@@ -4320,6 +4436,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         author: user?.username ?? '',
         payload,
       });
+      /* ⚠️ БАГЦЫН ХАМГААЛАЛТ (2026-09-25-ны аудит, `refreshObyem`-ийн ⚠️): илгээх
+         хооронд багц солигдсон бол доорх `setPvPend({})` Б-гийн ШИНЭ обьёмын
+         ноорогийг (ноорогт хадгалагддаггүй — сэргээх аргагүй) арчиж, А-гийн
+         мэдэгдэл/алдаа Б дээр гарах байв. А-гийн ноорог багц солиход аль хэдийн
+         цэвэрлэгдсэн тул энд хийх зүйлгүй. */
+      if (pkgKeyRef.current !== payload.pkgKey) return;
       if (!r.ok) { setPvErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
       /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
          локалд үлдээвэл дахин илгээх эсвэл батлагдсаны дараа хуучин
@@ -4328,7 +4450,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setPvNote(tr('Инженерийн обьём батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshObyem();
     } catch (e) {
-      setPvErr(String((e as Error).message || e));
+      if (pkgKeyRef.current === pkg.key) setPvErr(String((e as Error).message || e));
     } finally {
       setPvBusy(false);
     }
@@ -4343,7 +4465,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    хэвээр үлдэнэ (`huvaariBatlah`-ийн ижил дүрэм).
    */
   const decideObyemHere = useCallback(async (approve: boolean, reason?: string) => {
-    if (!pvSub || pvBusy || !sc) return;
+    /* ⚠️ `locked` — хяналтын харагдацаас шийдвэр гаргахгүй (товчны ⚠️, 2026-09-25) */
+    if (!pvSub || pvBusy || !sc || locked) return;
     setPvBusy(true); setPvErr(""); setPvNote("");
     /** Сүүлийн жаазад тулгагдаагүй тул бичигдээгүй нүдний тоо (доорх ⚠️) */
     let pvSkipped = 0;
@@ -4421,7 +4544,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setPvBusy(false);
     }
-  }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem]);
+  }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem, locked]);
 
   useEffect(() => { setResumedOid(null); }, [pkg.key]);
   /**
@@ -4446,6 +4569,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(base.rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(base.rows, ov, sc.bld));
+      setOvBase(new Map(base.rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
       setResumedOid(sub.oid);
       setRows(ov.rows);
@@ -4463,6 +4587,33 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, sc, view, pending, pendDate, asOf, asOfOrig, pkg, nBld]);
+
+  /**
+   * ӨДӨР СОЛИГДОХЫГ ТАНИХ (2026-09-25-ны аудит, `todayFillMs`-ийн ⚠️).
+   * Минут тутам ба таб харагдах болоход шалгаж, өдөр солигдсон бол
+   * `todayFillMs`-ийг шинэчилнэ → ачаалах эффект хуудсыг шинэ өдрөөр дахин
+   * ачаална (ноорог локал/алсаас сэргэнэ).
+   * ⚠️ Нүд/календар НЭЭЛТТЭЙ, ажил явж байгаа (`busy`) эсвэл алсын бичилт
+   *    дараалалд байвал ХОЙШЛУУЛНА — дахин ачаалалт `setEdit(null)`-ээр бичиж
+   *    буй утгыг хаяна, дараалал (`remoteQueue`) тэглэгдэнэ. Дараагийн шалгалтаар.
+   * ⚠️ Хянагчийн харагдацад (`view`) хамаарахгүй — тэр нь тодорхой илгээлтийг
+   *    заасан, өнөөдрийн түлхүүрээр ачаалдаггүй.
+   */
+  useEffect(() => {
+    if (view) return undefined;
+    const check = () => {
+      const d = nowFillMs();
+      if (d === todayFillMs) return;
+      if (busy || editRef.current || pickRef.current || remoteQueue.current) return;
+      setTodayFillMs(d);
+      say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачааллаа.', msToDay(d)));
+    };
+    const id = setInterval(check, 60_000);
+    const onVis = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, todayFillMs, view]);
 
   const publish = useCallback(async () => {
     // ⚠️ busy — Ctrl+S auto-repeat үед олон зэрэгцээ бичилт явахаас сэргийлнэ.
@@ -4499,6 +4650,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      */
     if (!canSubmitNow) {
       say(tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', ')));
+      return;
+    }
+    /* ⚠️ ӨДӨР СОЛИГДСОН эсэхийг ИЛГЭЭХ АГШИНД шалгана (2026-09-25-ны аудит,
+       `todayFillMs`-ийн ⚠️). Зөрвөл илгээхгүй: `staged`/дэлгэц нь өчигдрийн
+       түлхүүрээр ачаалагдсан тул өнөөдрийн мөрийг «өөр хэрэглэгч илгээсэн» гэж
+       андуурах эсвэл өчигдрийн мөрт нийлүүлнэ. Төлөвийг шинэчилж хуудсыг шинэ
+       өдрөөр дахин ачаална — ноорог локал/алсаас сэргэнэ. */
+    const dNow = nowFillMs();
+    if (dNow !== todayFillMs) {
+      setTodayFillMs(dNow);
+      say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачаалагдаж байна. Ноорог сэргээгдсэний дараа «Илгээх»-ийг дахин дарна уу.', msToDay(dNow)));
       return;
     }
     /*
@@ -4718,9 +4880,42 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         const o = Number(k.slice(0, k.indexOf(":")));
         return !(o < 0) || addOids.has(o);
       };
-      const cellsOut = Object.entries(pend2).filter(([k]) => notOrphan(k));
+      /*
+       * ⚠️ ХУУЧИН (НИЙТ) ИЛГЭЭЛТ ДЭЭР НЭГТГЭХ (2026-09-25, шилжилтийн өдөр л).
+       *    Энэ өдрийн идэвхтэй илгээлт өөрчлөлтөөс ӨМНӨ (туггүй — НИЙТ утгатай)
+       *    хадгалагдсан бол горимыг ХОЛИХГҮЙ (`mergeSubmission` throw хийнэ): шинэ
+       *    НЭМЭЛТИЙГ дэлгэцийн суурь (энэ хуудасны `rows` = архив + тэр илгээлт)
+       *    дээр нэмж НИЙТ болгоод хуучин горимоор нь илгээнэ — хэрэглэгчийн харсан
+       *    тоо яг тэр хэвээр батлагдана. Дараагийн өдрөөс илгээлт бүр `'inc'`.
+       */
+      const legacyBase = !!mergeBase && mergeBase.mode !== 'inc';
+      let cellSrc = pend2;
+      if (legacyBase) {
+        const pageBy = new Map(rows.map((r) => [r.oid, r] as const));
+        const absPend: Record<string, string> = {};
+        for (const [k, v] of Object.entries(pending)) {
+          const at = k.indexOf(':');
+          const r0 = at > 0 ? pageBy.get(Number(k.slice(0, at))) : undefined;
+          const b0 = Number(k.slice(at + 1));
+          if (!r0) throw new Error(stale);
+          const hasF = !!sc.obyem[b0];
+          const res = incCell(r0, b0, v, hasF);
+          const d0 = parseInc(v);
+          if (!res || !d0) continue;
+          const vol0 = r0.vol != null && r0.vol > 0 ? r0.vol : null;
+          absPend[k] = hasF && (d0.p === 0 || vol0 != null) && res.obyem != null
+            ? String(res.obyem)
+            : `%${parseFloat(((res.act ?? 0) * 100).toPrecision(12))}`;
+        }
+        const ma = moveKeys(oidMap, absPend);
+        if (ma.unmoved.length) throw new Error(stale);
+        cellSrc = ma.out;
+      }
+      const cellsOut = Object.entries(cellSrc).filter(([k]) => notOrphan(k));
       const datesOut = Object.entries(pendDate2).filter(([k]) => notOrphan(k));
       const payload = mergeSubmission(mergeBase, {
+        /* ⚠️ НЭМЭЛТИЙН туг (2026-09-25) — хуучин суурь дээр нэгтгэхэд л туггүй (дээрх ⚠️) */
+        ...(legacyBase ? {} : { mode: 'inc' as const }),
         pkgKey: pkg.key,
         user: user?.username ?? "",
         at: Date.now(),
@@ -4799,6 +4994,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    цэвэрлэлтийн замтай ижил зорилго).
        */
       keepDraft.current = false;
+      /* ⚠️ БҮТНЭЭР нь цэвэрлэж болно, учир нь `busy` үед засварын БҮХ зам
+         (нүд нээх · буулгах · календар) ХААЛТТАЙ (`RO.busy`, 2026-09-25-ны аудит) —
+         урьд нь илгээлтийн `await`-уудын завсарт бичсэн нүд энд чимээгүй арилдаг байв. */
       setPending({});
       setPendDate({});
       mineRef.current = new Set();
@@ -4872,9 +5070,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            ⚠️ 2026-09-25: уншилт УНАВАЛ `staged`-ыг `null` болгохгүй — дөнгөж
            хадгалсан `savedSub` хэвээр (эс бөгөөс дараагийн «Илгээх» өөрийн
            илгээлтийг «өөр хэрэглэгч» гэж зогсооно). */
-        const act2r = await readActiveSubmission(pkg.key, fillMs);
+        /* ⚠️ ӨНӨӨДРИЙН ТҮЛХҮҮРЭЭР (`todayFillMs`), `fillMs`-ЭЭР БИШ (2026-09-25-ны
+           аудит). Өмнөх өдрийн БУЦААГДСАН илгээлтийг үргэлжлүүлж илгээсэн бол
+           `fillMs` = тэр өдөр — урьд нь дахин ачаалалт тэр мөрийг `staged` болгож
+           дэлгэцэнд давхарладаг байв: `resumedOid` тэглэгдсэн тул дараагийн
+           «Илгээх» өнөөдрийн түлхүүрээр явж, `mergeBase` (өдөр зөрсөн) хоосон,
+           өнөөдрийн мөрийг «өөр хэрэглэгч илгээсэн» гэж зогсоох эсвэл НЭГТГЭЛГҮЙ
+           дарж бичих эрсдэлтэй байв. Ачаалах эффекттэй ижил: өнөөдрийн илгээлт.
+           Уншилт унавал `savedSub`-ийг зөвхөн ӨНӨӨДРИЙНХ бол үлдээнэ. */
+        const act2r = await readActiveSubmission(pkg.key, todayFillMs);
         setSubReadErr(act2r.ok ? null : act2r.error);
-        const act2 = act2r.ok ? (act2r.sub && !act2r.sub.done ? act2r.sub : null) : savedSub;
+        const act2 = act2r.ok
+          ? (act2r.sub && !act2r.sub.done ? act2r.sub : null)
+          : (fillMs === todayFillMs ? savedSub : null);
         const ov2 = act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
         /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
            багц гацах тул хэрэглэгч ОДОО мэдэх ёстой (дээрх ⚠️). */
@@ -4999,6 +5207,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       warn(locked ? RO.viewOnly : RO.noPerf);
       return true;
     }
+    /* ⚠️ «БӨГЛӨХ» ХААЛТ ба ИЛГЭЭЛТ ЯВЖ БАЙХ ҮЕ (2026-09-25-ны аудит): нүд нээх
+       (`open`) нь `!editing`-ийг хаадаг атлаа буулгалт түүнийг ТОЙРЧ, «Бөглөх»
+       дараагүй хүний Ctrl+V шууд `pending`-д бичигддэг байв. `busy` — илгээлтийн
+       төгсгөлийн `setPending({})` завсарт бичсэн нүдийг арчина (`RO.busy`). */
+    if (busy) { warn(RO.busy); return true; }
+    if (!editing) { warn(RO.notEditing); return true; }
     const grid = parseGrid(text);
     /* Нэг нүдний энгийн буулгалт бол ердийн замаар нь явуулна */
     if (grid.length === 1 && grid[0].length === 1) {
@@ -5028,21 +5242,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        обьём ч, хувь ч байж болно — аль болохыг ХУУДАСНЫ горим шийднэ,
        тоог нь таамаглахгүй. Хувь горимд утга бүрд `%` угтвар тавина
        (`bagtsSheet`-ийн дүрэм); харьцуулах «хадгалагдсан» нь мөн хувь. */
+    /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ (`commit`-ийн ⚠️): буулгасан утга бүр ЭНЭ
+       УДААГИЙН нэмэлт. `after` = суурь + нэмэлт (`incCell`) — «хэтэрсэн» асуултад. */
     const isPct = fillMode === "pct";
     const hits = raw.map((x) => {
       const r = rowsAll[x.row];
-      const storedPct = r.vol != null && r.vol > 0 && r.obyem[x.b] != null
-        ? r.obyem[x.b]! / r.vol
-        : r.act[x.b];
+      const v = isPct ? `%${Number(x.v)}` : x.v;
+      const res = incCell(r, x.b, v, !!sc.obyem[x.b]);
       return {
         key: cellKey(r.oid, x.b),
-        /** `pending`-д бичигдэх ТҮҮХИЙ мөр (горимын дүрмээр) */
-        v: isPct ? `%${Number(x.v)}` : x.v,
-        /** Шалгалт/харьцуулалтад хэрэглэх ТОО (горимын нэгжээр) */
+        /** `pending`-д бичигдэх ТҮҮХИЙ мөр (горимын дүрмээр) — НЭМЭЛТ */
+        v,
+        /** Нэмэлтийн ТОО (горимын нэгжээр); 0 = өөрчлөлтгүй */
         n: isPct ? Number(x.v) / 100 : Number(x.v),
         r,
         b: x.b,
-        stored: isPct ? storedPct : r.obyem[x.b],
+        /** Шинэ НИЙТ (горимын нэгжээр) */
+        after: isPct ? (res ? res.act : null) : (res ? res.obyem : null),
       };
     });
 
@@ -5054,11 +5270,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
 
     /* ── НЭГ УДААГИЙН БАТАЛГААЖУУЛАЛТ ── */
-    const down = hits.filter((x) => x.stored != null && x.n < (x.stored as number));
-    /* ⚠️ Хувь горимд «мөрийн Обьёмоос хэтэрсэн» гэдэг нь «100%-иас их» гэсэн үг */
+    /* ⚠️ Нэмэлт сөрөг байж чадахгүй (`planPaste` няцаадаг) тул «БУУРНА» асуулт
+       энэ замд үргэлж хоосон — хэлбэрийг нь хэвээр үлдээв (2026-09-25). */
+    const down: typeof hits = [];
+    /* ⚠️ Хувь горимд «мөрийн Обьёмоос хэтэрсэн» гэдэг нь «100%-иас их» гэсэн үг;
+       2026-09-25: харьцуулах нь шинэ НИЙТ (суурь + нэмэлт), нэмэлт өөрөө биш. */
     const over = isPct
-      ? hits.filter((x) => x.n > 1)
-      : hits.filter((x) => x.r.vol != null && (x.r.vol as number) > 0 && x.n > (x.r.vol as number));
+      ? hits.filter((x) => x.after != null && x.after > 1)
+      : hits.filter((x) => x.after != null && x.r.vol != null && (x.r.vol as number) > 0 && x.after > (x.r.vol as number));
     if (down.length || over.length) {
       const parts: string[] = [];
       if (down.length) parts.push(tr("{0} нүдэнд утга БУУРНА", String(down.length)));
@@ -5074,10 +5293,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPending((pv) => {
       const n = { ...pv };
       for (const x of hits) {
-        /* Хадгалагдсантайгаа тэнцүү бол «нийтлээгүй» тэмдэглэгээг арилгана.
-           ⚠️ Хувь горимд хөвөгч цэгийн хүлцэлтэй (0.5 ↔ 0.4999999999). */
-        const same = x.stored != null
-          && (isPct ? Math.abs(x.n - (x.stored as number)) < 1e-9 : x.n === x.stored);
+        /* Тэг нэмэлт = өөрчлөлтгүй → «нийтлээгүй» тэмдэглэгээг арилгана (2026-09-25). */
+        const same = x.n === 0;
         if (same) delete n[x.key];
         else n[x.key] = x.v;
         /* ⚠️ ЭЗЭМШЛИЙГ ЭНД тэмдэглэнэ (2026-09-08): энэ бол нүдийг ГАРААС
@@ -5432,8 +5649,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           </span>
         )}
 
-        {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд */}
-        {pvSub && canObyemApprove && (
+        {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд.
+            ⚠️ ХЯНАЛТЫН ХАРАГДАЦАД (`locked`) ХАРАГДАХГҮЙ (2026-09-25-ны аудит):
+            тэр харагдац «зөвхөн харах» гэж зарлагдсан (`RO.viewOnly`) атлаа
+            эндээс үндсэн өгөгдөлд (`applyUpdates`) бичих зам нээлттэй байв.
+            `decideObyemHere` ч мөн шалгана. */}
+        {pvSub && canObyemApprove && !locked && (
           <>
             <button
               className={st.publishBtn}
@@ -5927,6 +6148,36 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                        *    «бусдынх» болж шарлахаас сэргийлж түүнийг шаардана.
                        */
                       const cellBy = dirty ? byMap.get(key) : undefined;
+                      /*
+                       * ⚠️ ЭНЭ УДААГИЙН НЭМЭЛТ ба «өмнөх · энэ удаа · нийт» (2026-09-25).
+                       *    Илгээгээгүй нүдэнд суурь = энэ мөр (`r`), нэмэлт = `pending`;
+                       *    буцаагдсан/хянагдаж буй өөрчлөгдсөн нүдэнд суурь = давхарлалтын
+                       *    өмнөх архив (`ovBase`), нэмэлт = нийт − суурь. Нэгж нь горимын.
+                       */
+                      const volR = r.vol != null && r.vol > 0 ? r.vol : null;
+                      const pctOf = (x: SheetRow) =>
+                        volR != null && x.obyem[bi] != null ? x.obyem[bi]! / volR : x.act[bi];
+                      const incD = dirty ? parseInc(pending[key]) : null;
+                      /** Нэмэлт (горимын нэгжээр); илэрхийлэх аргагүй бол `null` */
+                      const incAmt = incD
+                        ? fillMode === "pct"
+                          ? (incD.n !== 0 && volR == null ? null : incD.p + (incD.n !== 0 ? incD.n / (volR as number) : 0))
+                          : (incD.p !== 0 && volR == null ? null : incD.n + (incD.p !== 0 ? incD.p * (volR as number) : 0))
+                        : null;
+                      const fmtU = (x: number | null) => (fillMode === "pct" ? pc(x, 1) : qty(x));
+                      const signed = (x: number) => `${x < 0 ? "−" : "+"}${fmtU(Math.abs(x))}`;
+                      const baseRow = !dirty ? ovBase.get(r.oid) : undefined;
+                      const totNow = fillMode === "pct" ? c.act[bi] : c.obyem[bi];
+                      const prevV = dirty
+                        ? (fillMode === "pct" ? pctOf(r) : r.obyem[bi])
+                        : baseRow
+                          ? (fillMode === "pct" ? pctOf(baseRow) : baseRow.obyem[bi])
+                          : null;
+                      const incLine = dirty && incAmt != null
+                        ? tr('өмнөх: {0} · энэ удаа: {1} · нийт: {2}', fmtU(prevV) || '—', signed(incAmt), fmtU(totNow) || '—')
+                        : !dirty && baseRow && totNow != null
+                          ? tr('өмнөх: {0} · энэ удаа: {1} · нийт: {2}', fmtU(prevV) || '—', signed(totNow - (prevV ?? 0)), fmtU(totNow))
+                          : '';
                       const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
                       /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
@@ -5965,6 +6216,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                            (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
                            САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
                         if (!editing) return say(RO.notEditing);
+                        /* ⚠️ Илгээлт явж байхад нүд нээхгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
+                        if (busy) return say(RO.busy);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
                            хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
@@ -6036,6 +6289,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
                                гэдгийг л хэлнэ, ХЭН гэдгийг энэ мөр хэлнэ. */
                             (byOther ? tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy ?? '') + '\n' : '') +
+                            /* ⚠️ 2026-09-25: нэмэлтийн мөр — илгээгээгүй ба өөрчлөгдсөн нүдэнд */
+                            (incLine && (dirty || changed) ? incLine + '\n' : '') +
                             (changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
@@ -6067,11 +6322,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                  * дэлгэцээс гүйлгэгдэн алга болж, ганц зам нь
                                  * `title`-ийг хулганаар хүлээх байв.
                                  */
-                                placeholder: fillMode === "pct"
-                                  ? tr('хувь')
-                                  : r.vol != null && r.vol > 0
-                                    ? tr('{0}-аас', qty(r.vol))
-                                    : tr('обьём'),
+                                /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ: оролт ХООСОН нээгдэж
+                                   ӨМНӨХ нийт нь энд харагдана («өмнөх: 40») — бичих тоо
+                                   нь түүн дээр НЭМЭГДЭНЭ. Мөрийн «Обьём» нь `title`-д. */
+                                placeholder: prevHint(r, bi),
+                                title: tr('Өмнөх бөглөлтөөс хойш хийсэн хэмжээгээ бичнэ — нийт нь автоматаар нэмэгдэнэ. Залруулахдаа сөрөг тоо бичнэ.'),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
@@ -6119,6 +6374,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                   харагдаж, бөглөх ёстой нүд нүднээс мултарна. */}
                               {fillMode === "obyem" && c.obyem[bi] != null && negjOf(r.work) && (
                                 <span className={st.negj}>{negjOf(r.work)}</span>
+                              )}
+                              {/* ⚠️ ЭНЭ УДААГИЙН НЭМЭЛТ — жижиг «+15» (2026-09-25). Нүдний
+                                  том тоо нь НИЙТ (суурь + нэмэлт); нэмэлт нь ил харагдахгүй
+                                  бол хэрэглэгч «55» нь өөрийн бичсэн тоо уу гэж эргэлзэнэ. */}
+                              {incAmt != null && incAmt !== 0 && (
+                                <small style={{ marginLeft: 3, fontSize: "0.72em", opacity: 0.8, fontWeight: 600 }}>
+                                  {signed(incAmt)}
+                                </small>
                               )}
                             </span>
                           )}
@@ -6195,6 +6458,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                             onClick={(e) => {
                               if (!editable)
                                 return say(src === "agg" ? RO.groupDate : RO.noDateField);
+                              if (busy) return say(RO.busy);
                               setPick({
                                 kind: k,
                                 row: r,
@@ -6223,6 +6487,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                         onClick={(e) => {
                           if (noPerf) return;
                           if (i !== 0) return say(RO.asOfRow);
+                          if (busy) return say(RO.busy);
                           setPick({
                             kind: "asOf",
                             row: r,
@@ -6263,6 +6528,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           anchor={pick.rect}
           onClose={() => setPick(null)}
           onPick={(v) => {
+            /* ⚠️ Илгээлт явж байхад бичихгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
+            if (busy) { say(RO.busy); return; }
             if (pick.kind === "asOf") {
               // ⚠️ Хоосон болговол calc=[] болж бүх мөр алга болно — тиймээс
               //    задлагдсан үед л солино.
@@ -6291,6 +6558,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               onChange: (v: string) => setPick((cur) => (cur ? { ...cur, days: v } : cur)),
               canApply: n >= 1 && s0 != null,
               onApply: () => {
+                if (busy) { say(RO.busy); return; }
                 if (!(n >= 1) || s0 == null) { say(tr("Эхлэх огноог эхлээд сонгоно")); return; }
                 if (pick.kind === "s") commitDate(pick.row, pick.b, "s", sRaw);
                 commitDate(pick.row, pick.b, "e", dt(endOf(s0, n)));

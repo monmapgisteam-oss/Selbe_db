@@ -192,6 +192,18 @@ console.log('✅ буцаагдсан илгээлт — өдөр солигдс
   assert.equal(mergeDrafts(null, R), R, 'нэг тал null бол нөгөөг шууд буцаах ёстой');
   assert.equal(mergeDrafts(L, null), L, 'нэг тал null бол нөгөөг шууд буцаах ёстой');
   assert.equal(mergeDrafts(null, null), null);
+  /* ⚠️ 2026-09-25 — ГОРИМ ХОЛИХГҮЙ: туггүй (НИЙТ) + `'inc'` (НЭМЭЛТ) ноорог нийлэхэд
+     НИЙТ талын нүд `=` угтвартай болж ялгагдана (`pickDraft` суурьтай жишиж хөрвүүлнэ);
+     «10» гэсэн хуучин НИЙТ нэмэлт «+10» гэж уншигдвал 40 + 10 = 50 гэж давхардана. */
+  const I = { t: 300, mode: 'inc', cells: [['2:0', '5'], ['4:0', '7']] };
+  const mi = mergeDrafts(L, I);
+  assert.equal(mi.mode, 'inc', 'холимог нийлбэр inc биш');
+  const mc = new Map(mi.cells);
+  assert.equal(mc.get('1:0'), '=10', 'хуучин НИЙТ нүд тэмдэглэгдээгүй');
+  assert.equal(mc.get('2:0'), '5', 'шинэ (inc) тал ялахгүй байна');
+  assert.equal(mc.get('4:0'), '7');
+  assert.equal(new Map(mergeDrafts(I, L).cells).get('1:0'), '=10', 'аргументын дараалал горимд нөлөөлж байна');
+  assert.equal(mergeDrafts(L, R).mode, undefined, 'хуучин + хуучин — горимгүй хэвээр');
 }
 console.log('✅ mergeDrafts — нүд бүрд шинэ утга, нэг талын нүд хэвээр');
 

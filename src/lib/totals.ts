@@ -80,7 +80,9 @@ export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
  * «0.0 га» гэж гарч байв). 1 га-аас бага → м², 1 км-ээс богино → м.
  */
 export const qtyText = (d: LayerDef, q: number | null): string | null => {
-  if (!d.qty || q == null || q <= 0) return null;
+  /* ⚠️ 2026-09-25: БОДИТ 0 нь «0 м» гэж харагдана (null ≠ 0) — урьд нь `q <= 0`
+     тул хэмжсэн тэг «—» (мэдээлэлгүй) болж уншигддаг байв. Сөрөг/NaN л хоосон. */
+  if (!d.qty || q == null || !Number.isFinite(q) || q < 0) return null;
   if (d.qty.unit === 'км') return q < 1 ? tr('{0} м', num(q * 1000)) : tr('{0} км', num(q, 1));
   if (d.qty.unit === 'м') return q < 1000 ? tr('{0} м', num(q)) : tr('{0} км', km(q, 1));
   return q < 10_000 ? tr('{0} м²', num(q)) : tr('{0} га', ha(q, 1));

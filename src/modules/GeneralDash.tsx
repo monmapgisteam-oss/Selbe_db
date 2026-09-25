@@ -349,6 +349,20 @@ export function GeneralDash({
     [cfPlanInScope, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
   );
   /**
+   * ⚠️ 2026-09-25: ШҮҮЛТЭЭР ХООСОРСОН уу, ҮНЭХЭЭР бөглөгдөөгүй юу — ЯЛГАНА.
+   * `cashflowCurve` нь хугацааны шүүлтэд сар үлдэхгүй бол `[]` буцаадаг тул
+   * урьд нь сонгосон жилд мөр байхгүй үед ч «Сарын хуваарилалт бөглөгдөөгүй —
+   * Cashflow хувиарлах хэсгээс оруулна уу» гэсэн ХУДАЛ заавар гардаг байв.
+   * Шүүлтгүйгээр дахин бодож, муруй тэнд байвал «сонгосон хугацаанд алга».
+   */
+  const cfFilteredOut = useMemo(
+    () => cfCurve.length === 0 && periodActive(period) && cashflowCurve(
+      cfPlanInScope, cfTotal, 'year', NO_PERIOD, ipcByMonth,
+      housingMoneyByMonth, ipcUndated,
+    ).length > 0,
+    [cfCurve, cfPlanInScope, cfTotal, period, ipcByMonth, housingMoneyByMonth, ipcUndated],
+  );
+  /**
    * S-МУРУЙН ХААЛГА — ДӨРВӨН ЭХИЙГ НЭГ `Async` болгоно (2026-09-11).
    *
    * ⚠️ ЯАГААД. Урьд нь `<Data q={cfPlan}>` гэж ЗӨВХӨН сарын хуваарилалтыг
@@ -642,6 +656,7 @@ export function GeneralDash({
               /* ⚠️ Чартын сонголт — индикатор ч ТҮҮГЭЭР нарийсна */
               xs={xs}
               contracts={contracts.state === 'ready' ? contracts.data : null}
+              contractsErr={contracts.state === 'error'}
             />
           )}
         </Data>
@@ -789,7 +804,9 @@ export function GeneralDash({
             {() => (cfCurve.length === 0 ? (
               /* ⚠️ ТЭГ БАГАНА ЗУРАХГҮЙ — «мөнгө гарахгүй» гэсэн ХУДАЛ уншилт
                  болно. Хоосон бол шалтгаан ба зам нь хэлэгдэнэ. */
-              <Empty
+              cfFilteredOut
+                ? <Empty label={tr('Сонгосон хугацаанд cashflow-ийн мөр алга')} />
+                : <Empty
                 label={tr('Сарын хуваарилалт бөглөгдөөгүй')}
                 hint={tr('«Санхүүжилт → Cashflow хувиарлах» хэсгээс ажил бүрийн сарын хувийг оруулна уу.')}
               />
@@ -822,8 +839,13 @@ export function GeneralDash({
               beforeType.current = null;
               return;
             }
-            if (beforeType.current == null) beforeType.current = visible;
-            setVisible((v) => [...new Set([...v, ...ids])]);
+            /* ⚠️ 2026-09-25: СУУРЬ + ids — өмнөх төрлийн давхаргыг СОЛИНО.
+               Урьд нь `null`→ids хоёр дуудлага нэг товшилтод явж, `visible`
+               нь хуучин (өмнөх төрлийн давхаргатай) closure байсан тул тэр нь
+               сэргээх цэг болж хадгалагдан, өмнөх төрөл ил үлддэг байв. */
+            const base = beforeType.current ?? visible;
+            beforeType.current = base;
+            setVisible([...new Set([...base, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
         />
@@ -838,8 +860,11 @@ export function GeneralDash({
               beforePkg.current = null;
               return;
             }
-            if (beforePkg.current == null) beforePkg.current = visible;
-            setVisible((v) => [...new Set([...v, ...ids])]);
+            /* ⚠️ 2026-09-25: СУУРЬ + ids — багц солиход өмнөх багцын давхаргыг
+               СОЛИНО (урьд нь нэмэгдэж хуримтлагддаг байв). */
+            const base = beforePkg.current ?? visible;
+            beforePkg.current = base;
+            setVisible([...new Set([...base, ...ids])]);
             if (ids[0]) map.zoomToLayer(ids[0]);
           }}
         />
@@ -994,11 +1019,13 @@ function PeriodBar({
 /* ══════════════════════ ЗУРГИЙН ДЭЭРХ ИНДИКАТОР ══════════════════════ */
 
 function KpiStrip({
-  rows, period, contracts, xs,
+  rows, period, contracts, contractsErr, xs,
 }: {
   rows: CfRow[];
   period: Period;
   contracts: Map<number, number> | null;
+  /** ⚠️ 2026-09-25: гэрээний дүн УНАСАН — «…» (ачаалж байна) биш «—» харуулна */
+  contractsErr: boolean;
   /** Чартын хөндлөн сонголт — `null` бол шүүлтгүй */
   xs: { dim: XDim; key: string } | null;
 }) {
@@ -1060,7 +1087,9 @@ function KpiStrip({
             байв — үнэндээ энэ зурвас дарагддаггүй, сонголтгүй. Ялгаа
             хэрэгтэй бол дараалал нь өөрөө хангалттай: нийт төсөв эхэнд. */}
         <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
-        <Stat icon="file" value={contracts ? mntShort(k.contract) : '…'} label={tr('Нийт гэрээлсэн дүн')} />
+        {/* ⚠️ 2026-09-25: алдаа ≠ ачаалалт — унасан бол «—», эс бөгөөс «…»
+            үүрд эргэлдэж «удахгүй ирнэ» гэж худал хэлдэг байв. */}
+        <Stat icon="file" value={contracts ? mntShort(k.contract) : contractsErr ? '—' : '…'} label={tr('Нийт гэрээлсэн дүн')} />
         {/*
           * ⚠️ МӨНГӨН ДҮН ТҮР ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар:
           * «851.0 тэрбум ₮ — үүнийг IPC-ээс авна, одоохондоо hide хий»).
@@ -1087,7 +1116,7 @@ function KpiStrip({
         />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажил (гэрээний мөр)')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
-        <Stat icon="polygon" value={landPct == null ? '…' : pct(landPct)} label={tr('Газар чөлөөлөлт')} />
+        <Stat icon="polygon" value={land.state === 'loading' ? '…' : landPct == null ? '—' : pct(landPct)} label={tr('Газар чөлөөлөлт')} />
       </Stats>
     </div>
   );
@@ -1868,17 +1897,21 @@ function Timeline({
     );
     /* ⚠️ `sub` нь ОНГҮЙ эрэмбэлнэ — «бүх жилийн 6-р сарыг зэрэгцүүлэх» гэсэн
        асуултад хариулна. Он-оор эрэмбэлэх нь `label` баганад бий. */
-    /* ⚠️ `null` (хэмжигдээгүй) нь эрэмбэд ХАМГИЙН ДООР — `-1` гэж жиших нь
-       0%-иас ялгаж, «хэмжилтгүй үе» доод талд бөөгнөрнө. */
+    /* ⚠️ `null` (хэмжигдээгүй) нь эрэмбэд ХАМГИЙН ДООР — 0%-иас ялгаж,
+       «хэмжилтгүй үе» доод талд бөөгнөрнө (`numCmp`). */
+    /* ⚠️ 2026-09-25: `null`-ыг ЧИГЛЭЛЭЭС ҮЛ ХАМААРАН сүүлд — урьд нь `-1`-ийг
+       `sort.d`-ээр үржүүлдэг байсан тул өсөхөөр эрэмбэлэхэд хэмжигдээгүй
+       үе ДЭЭД талд бөөгнөрдөг байв. Хасалтад `null` орвол NaN — эрэмбэ эвдэрнэ. */
+    const numCmp = (x: number | null, y: number | null) => (
+      x == null ? (y == null ? 0 : 1) : y == null ? -1 : (x - y) * sort.d
+    );
     const sorted = [...all].sort((a, b) => (
       sort.c === 'label' ? a.key.localeCompare(b.key) * sort.d
         : sort.c === 'sub' ? subOf(a).localeCompare(subOf(b)) * sort.d
-          : sort.c === 'ipc' ? ((a.ipcPct ?? -1) - (b.ipcPct ?? -1)) * sort.d
+          : sort.c === 'ipc' ? numCmp(a.ipcPct, b.ipcPct)
               /* ⚠️ `pct` ч `null` байж болно (төлөвлөгөө бөглөгдөөгүй сар) —
-                 `ipcPct`-ТЭЙ ЯГ ИЖИЛ дүрмээр `-1`: хэмжигдээгүй үе 0%-иас
-                 ялгарч доод талд бөөгнөрнө. Хасалтад `null` орвол NaN гарч
-                 эрэмбэ бүхэлдээ санамсаргүй болно. */
-              : ((a.pct ?? -1) - (b.pct ?? -1)) * sort.d
+                 `ipcPct`-ТЭЙ ЯГ ИЖИЛ дүрмээр. */
+              : numCmp(a.pct, b.pct)
     ));
     const head = (
       c: 'label' | 'sub' | 'pct' | 'ipc',
@@ -2256,7 +2289,7 @@ function useOverlapBySubPkg(enabled: boolean) {
       ] as const),
     ).then((res) => {
       if (!alive) return;
-      if (res.every((r) => r.status === 'rejected')) { setOut('error'); return; }
+      if (res.length > 0 && res.every((r) => r.status === 'rejected')) { setOut('error'); return; }
       const m = new Map<string, number[]>();
       for (const r of res) if (r.status === 'fulfilled' && r.value[1].length > 0) m.set(r.value[0], r.value[1]);
       setOut(m);
@@ -2264,7 +2297,9 @@ function useOverlapBySubPkg(enabled: boolean) {
     return () => { alive = false; };
   }, [enabled, subs]);
 
-  return { subs, out };
+  /* ⚠️ 2026-09-25: дэд багцын жагсаалт УНАСАН бол `out` хэзээ ч бөглөгдөхгүй —
+     «Давхцлыг тооцож байна…» үүрд эргэлддэг байв. Алдааг шууд дамжуулна. */
+  return { subs, out: subs.state === 'error' ? ('error' as const) : out };
 }
 
 /**
@@ -2460,9 +2495,12 @@ function LandCard({
     }
     const r = rows.find((x) => x.key === key);
     if (!r) return;
-    /* ⚠️ Өмнөх сонголтыг ЭХЛЭЭД буцаана — эс бөгөөс хоёр төрлийн давхарга
-       зэрэг асаж, аль нь алины давхцал болох нь мэдэгдэхгүй. */
-    if (pick != null) onShowLayers(null);
+    /* ⚠️ Өмнөх сонголтыг СОЛИНО — эс бөгөөс хоёр төрлийн давхарга зэрэг
+       асаж, аль нь алины давхцал болох нь мэдэгдэхгүй.
+       ⚠️ 2026-09-25: `onShowLayers(null)`-ийг ЭНД ДУУДАХГҮЙ — эцэг нь сэргээх
+       цэгээ (суурь) хадгалж, шинэ давхаргыг түүн дээр тавьдаг. Нэг товшилтод
+       null→ids хоёр дуудвал хуучин closure-ийн `visible` сэргээх цэг болж,
+       өмнөх төрөл буцаж гарч ирдэг байв. */
     setPick(key);
     onShowLayers(r.layerIds);
   };

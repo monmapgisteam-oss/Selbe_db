@@ -471,15 +471,19 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
  * ⚠️ Хүрээ '7d' — '24h' биш (файлын толгойн тайлбар): 24ц хүрээнд «хуучирсан»
  *    хэзээ ч гарахгүй.
  */
+/* ⚠️ 2026-09-25: БҮХЭЛДЭЭ УНАСАН үр дүнг КЭШЛЭХГҮЙ. Урьд нь `catch` дотор
+   unknown карт БУЦААДАГ (амжилттай амлалт) тул `cached` түүнийг 5 минут
+   барьж, сүлжээ сэргэсэн ч самбар «мэдэхгүй» хэвээр байв. Одоо дотоод
+   ачаалагч ШИДНЭ (`cached` унасан амлалтыг хаядаг), unknown картыг гадна
+   талын `loadIotKpiSafe` (registry-ийн дуудагч) зурна. */
 export const loadIotKpi = cached<KpiResult>(async () => {
   const now = Date.now();
-  let sensors: SensorLive[];
-  try {
-    sensors = await loadSensors('7d');
-  } catch {
-    return buildIotKpi(computeIot([], now), [tr('IoT мэдрэгч')]);
-  }
+  const sensors: SensorLive[] = await loadSensors('7d');
   const summary = computeIot(sensors, now);
   const failed = sensors.filter((sn) => sn.error).map((sn) => sn.label);
   return buildIotKpi(summary, failed);
 }, 5 * 60_000, []);
+
+/** Самбарын ачаалагч — бүхэлдээ унавал шидэхгүй, unknown карт (кэшлэгдэхгүй) */
+export const loadIotKpiSafe = (): Promise<KpiResult> =>
+  loadIotKpi().catch(() => buildIotKpi(computeIot([], Date.now()), [tr('IoT мэдрэгч')]));

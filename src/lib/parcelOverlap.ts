@@ -90,6 +90,27 @@ function parcelSR(): Promise<number> {
 
 type Geoms = { rings: number[][][]; paths: number[][][]; points: number[][] };
 
+/* ⚠️ 2026-09-25: хуудаслалтын `orderByFields`-д давхаргын ЖИНХЭНЭ OID талбар
+   хэрэгтэй (`objectid`/`FID` байж болно — `ceo/workforce.ts`-ийн сургамж).
+   Метадата унавал `OBJECTID` — буруу нэр бол сервер алдаа буцааж давхарга
+   `failed`-д орно (чимээгүй дутуу үр дүн биш). */
+const oidCache = new Map<string, Promise<string>>();
+function oidFieldOf(url: string): Promise<string> {
+  let p = oidCache.get(url);
+  if (!p) {
+    p = fetch(`${url}?f=json${tokenQs()}`)
+      .then((r) => r.json())
+      .then((m: { objectIdField?: string; fields?: { name: string; type: string }[] }) =>
+        m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID')
+      .catch(() => 'OBJECTID');
+    oidCache.set(url, p);
+  }
+  return p;
+}
+
+/** Нэг давхаргаас татах хуудасны дээд тоо — хамгаалалт (хязгааргүй давталтаас) */
+const MAX_PAGES = 200;
+
 /**
  * Нэг давхаргын геометрийг татаж, төрлөөр нь хуримтлуулна.
  *
@@ -110,24 +131,43 @@ function layerGeoms(src: Src, wkid: number): Promise<Geoms> {
   const key = `${src.layerId}|${where}|${wkid}`;
   let p = geomCache.get(key);
   if (!p) {
-    p = post(d.url as string, {
-      where,
-      returnGeometry: 'true',
-      outFields: '',
-      outSR: String(wkid),
-      maxAllowableOffset: '1',
-    }).then((j) => {
+    /* ⚠️ 2026-09-25 аудит: ХУУДАСЛАЛТ. Урьд нь нэг асуулга л явдаг тул
+       `maxRecordCount`-оос (1000/2000) их объекттой давхаргын үлдсэн хэсэг
+       ЧИМЭЭГҮЙ тасарч, тэр хэсэгтэй давхцах нэгж талбар «саадгүй» гэж гардаг
+       байв. `orderByFields` ЗААВАЛ (CLAUDE.md: эрэмбэгүй offset давхардал/алдагдал
+       үүсгэнэ). Хуудас хоосон атлаа `exceededTransferLimit` бол — хуудаслалт
+       дэмжигдэхгүй — ДУТУУ үр дүн буцаахгүй, шидэж давхаргыг `failed`-д оруулна. */
+    const url = d.url as string;
+    p = (async () => {
+      const oidF = await oidFieldOf(url);
       const out: Geoms = { rings: [], paths: [], points: [] };
       type G = { rings?: number[][][]; paths?: number[][][]; x?: number; y?: number };
-      for (const f of (j.features ?? []) as { geometry?: G }[]) {
-        const g = f.geometry;
-        if (!g) continue;
-        if (g.rings) out.rings.push(...g.rings);
-        else if (g.paths) out.paths.push(...g.paths);
-        else if (typeof g.x === 'number' && typeof g.y === 'number') out.points.push([g.x, g.y]);
+      let off = 0;
+      for (let page = 0; ; page += 1) {
+        if (page >= MAX_PAGES) throw new Error(tr('ArcGIS: {0} давхаргын хуудаслалт хэт урт', src.layerId));
+        const j = await post(url, {
+          where,
+          returnGeometry: 'true',
+          outFields: oidF,
+          outSR: String(wkid),
+          maxAllowableOffset: '1',
+          orderByFields: `${oidF} ASC`,
+          resultOffset: String(off),
+        });
+        const fs = (j.features ?? []) as { geometry?: G }[];
+        for (const f of fs) {
+          const g = f.geometry;
+          if (!g) continue;
+          if (g.rings) out.rings.push(...g.rings);
+          else if (g.paths) out.paths.push(...g.paths);
+          else if (typeof g.x === 'number' && typeof g.y === 'number') out.points.push([g.x, g.y]);
+        }
+        if (!j.exceededTransferLimit) break;
+        if (!fs.length) throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', src.layerId));
+        off += fs.length;
       }
       return out;
-    });
+    })();
     p.catch(() => geomCache.delete(key));
     geomCache.set(key, p);
   }
@@ -248,6 +288,11 @@ async function overlapUncached(sources: Src[]): Promise<Overlap> {
   //    угтваргүй кирилл харьцуулалт ХООСОН буцаадаг.
   const leftWhere = parcelLeftWhere();
   const res = await Promise.all(shapes.map(([t, geom]) => ask(t, geom, leftWhere)));
+  /* ⚠️ 2026-09-25: ID-ийн асуулга ч хязгаарт хүрвэл ДУТУУ жагсаалт буцна —
+     «саад цөөн» гэсэн худал тоо өгөхийн оронд алдаа (кэшлэгдэхгүй). */
+  if (res.some((r) => r?.exceededTransferLimit)) {
+    throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
+  }
 
   const left = new Set<number>();
   for (const r of res) for (const id of (r.objectIds ?? []) as number[]) left.add(id);

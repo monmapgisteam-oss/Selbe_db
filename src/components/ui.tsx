@@ -375,7 +375,14 @@ export function Tabs({
   };
 
   return (
-    <div className={`${s.tabs} ${plain ? s.tabsPlain : ''}`} role="tablist" onKeyDown={nav}>
+    /* ⚠️ 2026-09-25: `plain` нь ↑/↓ сумаар явдаг тул `aria-orientation`-оор зарлана —
+       эс бөгөөс уншигч «←/→» гэж зөвлөж, тэр нь ажиллахгүй. */
+    <div
+      className={`${s.tabs} ${plain ? s.tabsPlain : ''}`}
+      role="tablist"
+      aria-orientation={plain ? 'vertical' : 'horizontal'}
+      onKeyDown={nav}
+    >
       {items.map((t) => {
         const on = t.key === value;
         return (
@@ -948,11 +955,13 @@ export function Donut({
     });
     return (
       <div className={s.donutLead}>
+        {/* ⚠️ 2026-09-25 аудит: шүүлттэй (`onSelect`) үед `role="img"` БИШ — img нь
+            хүүхдүүдийг хүртээмжийн модноос нууж, доорх шошгон товчууд уншигдахгүй. */}
         <svg
           width={vbW}
           height={vbH}
           viewBox={`${-PAD} ${-PADY} ${vbW} ${vbH}`}
-          role="img"
+          role={onSelect ? 'group' : 'img'}
           aria-label={ariaSummary}
         >
           {/* envhub: гадна захын 1px чиглүүлэгч тойрог (бүтэн band биш) */}
@@ -983,6 +992,12 @@ export function Donut({
             // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
             const boxX = right ? lx + GUTTER : -PAD + 2;
             const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;
+            const tb = tip.bind({
+              label: sl.label,
+              value: tipValue(sl),
+              color: sl.color,
+              hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
+            });
             return (
               <g
                 key={sl.key}
@@ -1000,19 +1015,37 @@ export function Donut({
                 />
                 <circle cx={lx} cy={ey} r={1.6} style={{ fill: sl.color }} />
                 <foreignObject x={boxX} y={ey - 30} width={LW} height={60}>
-                  <div
-                    className={s.donutLeadBox}
-                    style={{ textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined }}
-                    {...tip.bind({
-                      label: sl.label,
-                      value: tipValue(sl),
-                      color: sl.color,
-                      hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
-                    })}
-                  >
-                    <span className={s.donutLeadName}>{tr(sl.label)}</span>{' '}
-                    <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
-                  </div>
+                  {onSelect ? (
+                    /* ⚠️ 2026-09-25 аудит: шошго нь ТОВЧ — урьд нь зөвхөн `<g onClick>`
+                       тул гараар (Tab/Enter) шүүх аргагүй байв. `onClick` БАЙХГҮЙ:
+                       товшилт/Enter нь дээрх `<g>`-ийн onClick руу хөөрч НЭГ л удаа
+                       сонгоно (давхар дуудвал сонголт буцаж унтарна). */
+                    <button
+                      type="button"
+                      className={s.donutLeadBox}
+                      aria-pressed={sel.includes(sl.key)}
+                      {...tb}
+                      onFocus={(e) => { tb.onFocus(e); setHov(sl.key); }}
+                      onBlur={() => { tb.onBlur(); setHov((h) => (h === sl.key ? null : h)); }}
+                      style={{
+                        textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined,
+                        display: 'block', width: '100%', background: 'none', border: 0, padding: 0,
+                        font: 'inherit', color: 'inherit', cursor: 'pointer',
+                      }}
+                    >
+                      <span className={s.donutLeadName}>{tr(sl.label)}</span>{' '}
+                      <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
+                    </button>
+                  ) : (
+                    <div
+                      className={s.donutLeadBox}
+                      style={{ textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined }}
+                      {...tb}
+                    >
+                      <span className={s.donutLeadName}>{tr(sl.label)}</span>{' '}
+                      <b className={s.donutLeadPct} style={{ color: sl.color }}>{pct}</b>
+                    </div>
+                  )}
                 </foreignObject>
               </g>
             );

@@ -65,6 +65,19 @@ const tagCls = (st: MsStatus): string => {
   return s.tagDraft;
 };
 
+/* ⚠️ 2026-09-25: ТӨЛӨВ/ШИЙДВЭР НЬ ӨГӨГДӨЛ (`chanarMs` — орчуулахгүй, хадгалагдсан
+   утга) тул ДЭЛГЭЦЭД л `tr()`-ээр харуулна. Урьд нь түүхий мөр гарч англи
+   хувилбарт монголоор үлддэг байв. Түлхүүр нь i18n-extract-д уншигдах шууд мөр. */
+const STATUS_LABEL: Record<MsStatus, () => string> = {
+  [MS_STATUS.draft]: () => tr('Ноорог'),
+  [MS_STATUS.review]: () => tr('Хянагдаж байна'),
+  [MS_STATUS.returned]: () => tr('Буцаагдсан'),
+  [MS_STATUS.approved]: () => tr('Батлагдсан'),
+};
+const statusLabel = (st: MsStatus): string => STATUS_LABEL[st]?.() ?? st;
+const verdictLabel = (v: string): string =>
+  v === VERDICT.approve ? tr('Зөвшөөрсөн') : v === VERDICT.return ? tr('Татгалзсан') : v;
+
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 
 /** Хавсралт + аль хувилбарын мөрөнд байгаа нь (№6 аудит, 2026-09-16) */
@@ -120,12 +133,19 @@ export function Chanar() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const inPkg = useMemo(() => docs.filter((d) => d.bagts === pkg), [docs, pkg]);
+  /* ⚠️ 2026-09-25: НООРОГ ЗӨВХӨН ЗОХИОГЧИД (эсвэл super) — `chanarMs.MS_STATUS`-ийн
+     «draft — хэнд ч харагдахгүй» дүрэм. Урьд нь бусад гүйцэтгэгч, хянагч ирүүлээгүй
+     ноорогийг жагсаалт/түүхээс уншдаг байв. Буцаагдсаны дараах rev+1 ноорог
+     нуугдахад бусдад өмнөх (буцаагдсан) хувилбар `latest()` болж үлдэнэ. */
+  const meLc = me.trim().toLowerCase();
+  const inPkg = useMemo(() => docs.filter((d) =>
+    d.bagts === pkg && (d.status !== MS_STATUS.draft || isSuper || (!!meLc && d.author === meLc)),
+  ), [docs, pkg, isSuper, meLc]);
   const heads = useMemo(() => latest(inPkg)
     .filter((d) => filter === 'all' || d.status === filter)
     .sort((a, b) => b.seq - a.seq), [inPkg, filter]);
 
-  const doc = useMemo(() => docs.find((d) => d.oid === sel) ?? null, [docs, sel]);
+  const doc = useMemo(() => inPkg.find((d) => d.oid === sel) ?? null, [inPkg, sel]);
   const hist = useMemo(() => (doc ? history(inPkg, doc.bagts, doc.seq) : []), [inPkg, doc]);
 
   /* Сонгоход бие ба хавсралтыг татна */
@@ -270,6 +290,10 @@ export function Chanar() {
       }
       if (errs.length) setErr(errs.join(' · '));
       await reloadAtts();
+    } catch (e) {
+      /* ⚠️ 2026-09-25: `attachDeny`/`reloadAtts`-ийн сүлжээний алдаа урьд нь
+         барьцгүй promise болж, хэрэглэгч юу ч хараагүй байв. */
+      setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
@@ -280,6 +304,8 @@ export function Chanar() {
     try {
       if (!(await deleteAttachment(a.parentOid, a.id))) setErr(tr('Хавсралт устгагдсангүй.'));
       await reloadAtts();
+    } catch (e) {
+      setErr(String((e as Error).message || e));
     } finally {
       setBusy(false);
     }
@@ -305,7 +331,7 @@ export function Chanar() {
           {tr('Төлөв')}
           <select className={s.select} value={filter} onChange={(e) => setFilter(e.target.value as 'all' | MsStatus)}>
             <option value="all">{tr('Бүгд')}</option>
-            {Object.values(MS_STATUS).map((v) => <option key={v} value={v}>{v}</option>)}
+            {Object.values(MS_STATUS).map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}
           </select>
         </label>
         <span className={s.field}>
@@ -349,7 +375,7 @@ export function Chanar() {
                 <span className={s.cardNo}>{d.docNo}</span>
                 <span className={s.cardTitle}>{d.title || tr('(нэргүй)')}</span>
                 <span className={s.cardMeta}>
-                  <span className={`${s.tag} ${tagCls(d.status)}`}>{d.status}</span>
+                  <span className={`${s.tag} ${tagCls(d.status)}`}>{statusLabel(d.status)}</span>
                   {d.status === MS_STATUS.review && <span>{p.done}/{p.total}</span>}
                   <span>{tr('Хувилбар')} {d.rev}</span>
                   <span>{d.author}</span>
@@ -379,7 +405,7 @@ export function Chanar() {
             <>
               <div className={s.docHead}>
                 <span className={s.docNo}>{doc.docNo}</span>
-                <span className={`${s.tag} ${tagCls(doc.status)}`}>{doc.status}</span>
+                <span className={`${s.tag} ${tagCls(doc.status)}`}>{statusLabel(doc.status)}</span>
                 <span className={s.docTitle}>{doc.title}</span>
               </div>
               <dl className={s.meta}>
@@ -426,13 +452,16 @@ export function Chanar() {
                         </span>
                       )}
                       {attEdit && a.parentOid === doc.oid && (
-                        <button type="button" className={s.btn} disabled={busy} onClick={() => void removeAtt(a)}>✕</button>
+                        <button
+                          type="button" className={s.btn} disabled={busy} onClick={() => void removeAtt(a)}
+                          aria-label={tr('«{0}» хавсралтыг устгах', a.name)} title={tr('«{0}» хавсралтыг устгах', a.name)}
+                        >✕</button>
                       )}
                     </div>
                   ))}
                   {attEdit && (
                     <label className={s.field}>
-                      <input type="file" multiple disabled={busy} onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
+                      <input type="file" multiple disabled={busy} aria-label={tr('Хавсралт нэмэх')} onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
                     </label>
                   )}
                 </div>
@@ -449,7 +478,7 @@ export function Chanar() {
                         <span className={s.revWho}>{chanarRoleLabel(r)}</span>
                         {v ? (
                           <>
-                            <span className={`${s.tag} ${v.verdict === VERDICT.approve ? s.tagApproved : s.tagReturned}`}>{v.verdict}</span>
+                            <span className={`${s.tag} ${v.verdict === VERDICT.approve ? s.tagApproved : s.tagReturned}`}>{verdictLabel(v.verdict)}</span>
                             <span>{v.who} · {ymd(v.at)}</span>
                             {v.note && <span className={s.revNote}>{v.note}</span>}
                           </>
@@ -476,6 +505,7 @@ export function Chanar() {
                   <textarea
                     className={s.textarea}
                     placeholder={tr('Санал, шаардлага — татгалзахад ЗААВАЛ')}
+                    aria-label={tr('Хянагчийн санал')}
                     value={rNote}
                     onChange={(e) => setRNote(e.target.value)}
                     disabled={busy}
@@ -511,7 +541,7 @@ export function Chanar() {
                         >
                           <td>{h.rev}</td>
                           <td>{h.docNo}</td>
-                          <td><span className={`${s.tag} ${tagCls(h.status)}`}>{h.status}</span></td>
+                          <td><span className={`${s.tag} ${tagCls(h.status)}`}>{statusLabel(h.status)}</span></td>
                           <td>{ymd(h.sentAt)}</td>
                           <td>{ymd(h.decidedAt)}</td>
                           <td>{REVIEWERS.map((r) => h.reviews[r]?.note).filter(Boolean).join(' · ')}</td>
@@ -549,6 +579,7 @@ function Form({
         <input
           className={`${s.input} ${s.grow}`}
           placeholder={tr('Аргачлалын нэр — жишээ: Төмөр бетон суурийн ажил')}
+          aria-label={tr('Аргачлалын нэр')}
           value={title}
           onChange={(e) => onTitle(e.target.value)}
           disabled={busy}
@@ -560,6 +591,7 @@ function Form({
           <textarea
             className={s.textarea}
             placeholder={sec.hint()}
+            aria-label={sec.label()}
             value={body[sec.k]}
             onChange={(e) => onBody({ ...body, [sec.k]: e.target.value })}
             disabled={busy}

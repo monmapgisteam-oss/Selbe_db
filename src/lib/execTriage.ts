@@ -96,7 +96,7 @@ let varCache: Promise<Variance> | null = null;
 register(() => { varCache = null; }, ['BAGTS_SHEET']);
 export function loadVariance(): Promise<Variance> {
   if (varCache) return varCache;
-  varCache = (async () => {
+  const p: Promise<Variance> = (async () => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
       const sc = await loadSchema(pkg);
       /* Блокгүй багц — обьёмын багана алга, хэмжигдэхгүй (`null`). */
@@ -139,8 +139,16 @@ export function loadVariance(): Promise<Variance> {
       failedPkgs: results.length - ok.length,
       measurable: measured + (results.length - ok.length),
     };
-  })().catch((e) => { varCache = null; throw e; });
-  return varCache;
+  })().then((v) => {
+    /* ⚠️ 2026-09-25: ХЭСЭГЧЛЭН УНАСАН үр дүнг КЭШЛЭХГҮЙ — нэг багц түр
+       унахад дутуу тоо сесс дуустал (эсвэл дараагийн `BAGTS_SHEET` бичилт
+       хүртэл) хадгалагдаж, дахин нээхэд ч сэргэхгүй байв. Үр дүнг буцаана,
+       дараагийн дуудалт дахин уншина (`Overlaps.failed`-ийн дүрэмтэй ижил). */
+    if (v.failedPkgs > 0 && varCache === p) varCache = null;
+    return v;
+  }, (e) => { if (varCache === p) varCache = null; throw e; });
+  varCache = p;
+  return p;
 }
 
 /**

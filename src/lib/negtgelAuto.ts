@@ -503,8 +503,13 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     const use = rollKids(kids[i], w);
     for (const k of kids[i]) if (!use.includes(k)) out[k].outside = true;
     for (const f of SUM) {
-      /* ⚠️ Хоосон нүд 0 — Excel-ийн SUMPRODUCT-тэй ижил */
-      o[f] = r6(use.reduce((a, k) => a + (out[k].w ?? 0) * (out[k][f] ?? 0), 0));
+      /* ⚠️ Хоосон нүд 0 — Excel-ийн SUMPRODUCT-тэй ижил.
+         ⚠️ 2026-09-25: гэхдээ БҮХ хүүхэд хоосон бол эцэг `null` (0 БИШ) — урьд нь
+         огт хэмжигдээгүй бүлэг «0%» болж хүснэгт рүү БИЧИГДДЭГ байв (null ≠ 0;
+         `negDiff` null-ыг бичихгүй тул хадгалсан утга үлдэнэ). */
+      o[f] = use.some((k) => out[k][f] != null)
+        ? r6(use.reduce((a, k) => a + (out[k].w ?? 0) * (out[k][f] ?? 0), 0))
+        : null;
     }
     o.auto = kids[i].some((k) => out[k].auto);
     o.how = tr('Доод мөрүүдээс (жингээр)');
@@ -695,7 +700,14 @@ export const negSyncState = (): NegSyncState | null => lastState;
  */
 export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}): Promise<NegSyncState> {
   if (!canSyncNegtgel((io.user ?? currentUser)())) return Promise.resolve({ kind: 'off' });
-  if (syncing) return syncing;
+  /* ⚠️ 2026-09-25: `force` (super-ийн баталгаажуулалт) явж буй ЭНГИЙН синкийн
+     үр дүнд ЗАЛГИГДАХГҮЙ — урьд нь тэр `guard` үр дүнг буцааж, «Системийн
+     утгаар шинэчлэх» товч юу ч бичилгүй өнгөрдөг байв. Дуустал хүлээгээд
+     хүчээр дахин ажиллуулна. */
+  if (syncing) {
+    if (!opts.force) return syncing;
+    return syncing.catch(() => null).then(() => syncNegtgel(opts, io));
+  }
   if (!opts.force && lastState && Date.now() - lastSync < SYNC_GAP) return Promise.resolve(lastState);
   lastSync = Date.now();
   const mine = (async (): Promise<NegSyncState> => {

@@ -63,6 +63,9 @@
 
 import { getAuth, tableUrl, layer, sqlStr } from './draftRemote';
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ Нэмэлтийн мөрийн ГАНЦ дүрэм `bagtsSheet`-д (2026-09-25) — энд давтаж бичвэл
+   нэгтгэл ба overlay хоёр өөрөөр уншиж эхэлнэ. Цэвэр функцууд л. */
+import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
 
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан батлагдаагүй мөр.
@@ -95,7 +98,22 @@ export type NewRow = {
  * харуулах, батлахад жааз бүтээх — гурвуулаа нэг хэлбэрээс уншина.
  */
 export type SubmissionPayload = {
-  v: 1;
+  /**
+   * Хэлбэрийн хувилбар. `2` = НЭМЭЛТИЙН (`mode: 'inc'`) илгээлт (2026-09-25).
+   * ⚠️ ЗОРИУД ӨСГӨВ: хуучин кодтой (шинэчлээгүй таб) хөтөч `v !== 1`-ийг
+   *    `parseSubmission`-д ТАТГАЛЗАЖ «агуулга задарсангүй» гэж ЗОГСДОГ
+   *    (fail-closed, `readRow`). `v: 1` үлдээвэл тэр таб нэмэлтийг НИЙТ гэж
+   *    уншиж архивт 40 → 15 болгож бичих байсан.
+   */
+  v: 1 | 2;
+  /**
+   * НҮДНИЙ УТГЫН ДҮРЭМ (2026-09-25, `bagtsSheet.CellMode`-ийн ⚠️).
+   *   · `'inc'` — `cells` нь ӨМНӨХ бөглөлтөөс хойшх НЭМЭЛТ; батлахад СҮҮЛИЙН
+   *     архивын утга дээр НЭМЭГДЭНЭ.
+   *   · байхгүй — ХУУЧИН (2026-09-25-аас өмнөх) илгээлт: `cells` нь НИЙТ утга,
+   *     архивын утгыг ОРЛОНО. ⚠️ Туггүй бүхнийг ингэж уншина (давхар нэмэхгүй).
+   */
+  mode?: 'inc';
   /** PKGS түлхүүр */
   pkgKey: string;
   /** Илгээсэн (компанийн) хэрэглэгч, жижиг үсгээр */
@@ -248,7 +266,11 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
   try {
     const d = JSON.parse(raw) as Record<string, unknown> | null;
     if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
-    if (d.v !== 1) return null;
+    /* ⚠️ `v: 2` ЗААВАЛ `mode: 'inc'`-тэй (2026-09-25): горим нь тоог хэрхэн
+       уншихыг шийддэг тул тодорхойгүй бол ТААМАГЛАХГҮЙ — хаяна. */
+    const inc = d.mode === 'inc';
+    if (d.v !== 1 && d.v !== 2) return null;
+    if (d.v === 2 && !inc) return null;
     if (!isStr(d.pkgKey) || !d.pkgKey) return null;
     if (!Array.isArray(d.cells)) return null;
     if (!isFin(d.at) || !isFillMs(d.fillMs)) return null;
@@ -282,7 +304,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     }
 
     const out: SubmissionPayload = {
-      v: 1,
+      v: inc ? 2 : 1,
+      ...(inc ? { mode: 'inc' as const } : {}),
       pkgKey: d.pkgKey,
       user: isStr(d.user) ? d.user.toLowerCase() : '',
       at: d.at,
@@ -311,7 +334,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
  * ШИНЭ diff нь зөвхөн тэр нэг нүд — хуучин 40 нүдийг дарвал хянагч
  * «40 нүд алга болов» гэж харна, батлахад ч архивт ордоггүй.
  *
- * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна; adds — oid-оор, шинэ нь
+ * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна (⚠️ 2026-09-25: `mode: 'inc'`
+ * үед cells нь НИЙЛБЭР — `sumInc`; горим зөрвөл throw); adds — oid-оор, шинэ нь
  * дарна (хуучин байрлал хэвээр — эцэг/дүү дараалал хадгалагдана), ГЭХДЭЭ ижил
  * oid дээр ӨӨР мөр ирвэл дарахгүй, шинэ сул oid авна (доорх ⚠️); rowKeys —
  * oid-оор нэгтгэж ХУУДАСНЫ ДАРААЛЛААР (oid өсөхөөр) буцаана (`byPageOrder`);
@@ -325,6 +349,15 @@ export function mergeSubmission(
   prev: SubmissionPayload | null,
   next: Omit<SubmissionPayload, 'v'>,
 ): SubmissionPayload {
+  /*
+   * ⚠️ ГОРИМ ХОЛИХГҮЙ (2026-09-25, `SubmissionPayload.mode`-ийн ⚠️). Хуучин
+   *    (НИЙТ) payload дээр НЭМЭЛТ нэгтгэвэл «55» ба «15» нэг массивт ялгагдахгүй
+   *    орж, батлахад аль нэг нь буруу уншигдана. Дуудагч (`FillNew.publish`)
+   *    нэгтгэхээс ӨМНӨ нэг горимд хөрвүүлэх ёстой — энд ЧИМЭЭГҮЙ таамаглахгүй.
+   */
+  const inc = next.mode === 'inc';
+  if (prev && (prev.mode === 'inc') !== inc)
+    throw new Error(tr('Илгээлтийн горим зөрсөн (нэмэлт ↔ нийт) — нэгтгэсэнгүй. Хуудсыг дахин ачаална уу.'));
   const adds = new Map<number, NewRow>();
   for (const a of prev?.adds ?? []) adds.set(a.oid, a);
 
@@ -376,13 +409,27 @@ export function mergeSubmission(
   };
 
   const cells = new Map<string, string>(prev?.cells ?? []);
-  for (const [k, v] of next.cells) cells.set(fixKey(k), v);
+  /*
+   * ⚠️ НЭМЭЛТИЙН ГОРИМД НИЙЛҮҮЛНЭ, ДАРАХГҮЙ (2026-09-25). Дахин илгээхэд
+   *    `FillNew`-ийн дэлгэц нь архив + ӨМНӨХ илгээлтийн давхарлалт тул шинэ
+   *    нэмэлт нь тэр давхарласан нийтээс хойшхи хэсэг — өдрийн нийт нэмэлт =
+   *    өмнөх + шинэ. Дарвал өглөөний «+15» алга болно. Тэг болсон нүдийг хаяна.
+   */
+  for (const [k0, v] of next.cells) {
+    const k = fixKey(k0);
+    if (!inc) { cells.set(k, v); continue; }
+    const s = cells.has(k) ? sumInc(cells.get(k), v) : v;
+    const d = parseInc(s);
+    if (!d || (d.n === 0 && d.p === 0)) cells.delete(k);
+    else cells.set(k, s);
+  }
   const dates = new Map<string, string>(prev?.dates ?? []);
   for (const [k, v] of next.dates) dates.set(fixKey(k), v);
   const rowKeys = new Map<number, string>(prev?.rowKeys ?? []);
   for (const [o, k] of next.rowKeys) rowKeys.set(remap.get(o) ?? o, k);
   return {
-    v: 1,
+    v: inc ? 2 : 1,
+    ...(inc ? { mode: 'inc' as const } : {}),
     pkgKey: next.pkgKey,
     /* ⚠️ Жижиг үсгээр — `parseSubmission`-тэй ижил инвариант, дуудагчид найдахгүй */
     user: next.user.toLowerCase(),
@@ -397,6 +444,67 @@ export function mergeSubmission(
        (`byPageOrder`-ийн ⚠️). Map нь хуучны дарааллыг хадгалж шинийг төгсгөлд залгадаг. */
     rowKeys: byPageOrder(rowKeys),
   };
+}
+
+/**
+ * АРХИВЛАГДСАН ХЭСГИЙГ ИДЭВХТЭЙ ИЛГЭЭЛТЭЭС ХАСНА — нэмэлтийн горимд л (2026-09-25).
+ *
+ * ⚠️ ЯАГААД (давхардлаас сэргийлэх): батлах явцад гүйцэтгэгч ДАХИН илгээвэл
+ *    `mergeSubmission` нь архивлаж буй агуулгыг (`archived`) шинэ нэмэлттэй
+ *    НИЙЛҮҮЛСЭН мөр (`cur`) болгоно; `closeSubmission` `at` зөрсөн тул хаахгүй
+ *    (`changed`). Хуучин (НИЙТ) горимд тэр мөрийг дахин батлах нь аюулгүй байсан
+ *    (дахин ОРЛУУЛНА), харин нэмэлтийн горимд `archived`-ийн нэмэлт ХОЁР ДАХЬ
+ *    удаагаа нэмэгдэнэ. Тиймээс үлдэгдэл = `cur − archived` (нүд бүрээр).
+ *
+ * Түлхүүр: эхлээд ижил `${oid}:${b}`; олдохгүй бол (дахин илгээлт шинэ жааз
+ * руу зөөгдсөн) хоёр payload-ын `rowKeys` шошгоор ДАРААЛЛААР хослуулна
+ * (`sheetFrame.buildOidMap`-ийн дүрэм). Хослох аргагүй түлхүүр үлдвэл `null` —
+ * дуудагч ил анхааруулна (таамаглаж хасвал буруу нүднээс хасна).
+ * ⚠️ `dates` нь ҮНЭМЛЭХҮЙ утга (дахин буулгах нь идемпотент) — хэвээр.
+ * ⚠️ Хоёулаа `mode: 'inc'` биш бол `null` (хуучин горимд хасах шаардлагагүй).
+ * Оролтыг ӨӨРЧЛӨХГҮЙ.
+ */
+export function residualAfterArchive(
+  cur: SubmissionPayload,
+  archived: SubmissionPayload,
+): SubmissionPayload | null {
+  if (cur.mode !== 'inc' || archived.mode !== 'inc') return null;
+  const cells = new Map<string, string>(cur.cells);
+  /* Шошго → oid-ууд (хуудасны дарааллаар) — давхардсан шошгыг дарааллаар хослуулна */
+  const byLabel = (keys: [number, string][]) => {
+    const m = new Map<string, number[]>();
+    for (const [o, l] of byPageOrder(keys)) {
+      const a = m.get(l);
+      if (a) a.push(o); else m.set(l, [o]);
+    }
+    return m;
+  };
+  const aLab = byLabel(archived.rowKeys ?? []);
+  const cLab = byLabel(cur.rowKeys ?? []);
+  const aLabelOf = new Map<number, [string, number]>();
+  for (const [l, os] of aLab) os.forEach((o, i) => aLabelOf.set(o, [l, i]));
+  const curOids = new Set<number>((cur.rowKeys ?? []).map(([o]) => o));
+  for (const [k, v] of archived.cells) {
+    const at = k.indexOf(':');
+    if (at <= 0) return null;
+    const oid = Number(k.slice(0, at));
+    let key = k;
+    /* ⚠️ Ижил жааз (`cur.rowKeys`-д тэр oid бий) эсвэл түр (сөрөг) oid → ижил
+       түлхүүр. Эс бөгөөс шошгоор зөөнө; зөөж чадахгүй бол ЗОГСОНО. */
+    if (oid >= 0 && !curOids.has(oid) && !cells.has(k)) {
+      const hit = aLabelOf.get(oid);
+      const to = hit ? cLab.get(hit[0])?.[hit[1]] : undefined;
+      if (to == null) return null;
+      key = `${to}${k.slice(at)}`;
+    }
+    /* ⚠️ `cur`-д түлхүүр БАЙХГҮЙ = нийлбэр нь 0 болж хаягдсан (`mergeSubmission`)
+       → үлдэгдэл нь `0 − архивласан` (сөрөг залруулга), 0 БИШ. */
+    const s = sumInc(cells.get(key), negInc(v));
+    const d = parseInc(s);
+    if (!d || (d.n === 0 && d.p === 0)) cells.delete(key);
+    else cells.set(key, s);
+  }
+  return { ...cur, cells: [...cells].map(([k, v]): [string, string] => [k, v]) };
 }
 
 /* ───────────────────────── ArcGIS — хүснэгттэй харьцах ───────────────────────── */
@@ -570,9 +678,13 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
     const fl = await layer(u.url);
     /* ⚠️ `pkg` талбараар шүүнэ — түүнд ЗӨВХӨН `pkgKey` бичигддэг (өдөр
        ОРООГҮЙ) тул `dkey LIKE` хэрэггүй; `dkey`-ээр угтварыг дахин тулгаж
-       ноорогийн (`<user>|<pkg>`) мөрүүдийг хасна. */
+       ноорогийн (`<user>|<pkg>`) мөрүүдийг хасна.
+       ⚠️ `dkey LIKE 'sub|%'` СЕРВЕР ДЭЭР (2026-09-25-ны аудит): урьд нь зөвхөн
+       `pkg`-ээр шүүдэг тул тухайн багцын БҮХ `done|` мөрийн (тус бүр ~80KB
+       payload) түүхийг татаад клиент дээр хаядаг байв. Доорх угтварын
+       шалгуур хамгаалалт болж үлдэнэ. */
     const res = await fl.queryFeatures({
-      where: `pkg = ${sqlStr(pkgKey)}`,
+      where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)}`,
       outFields: OUT_FIELDS,
       returnGeometry: false,
       orderByFields: ['OBJECTID DESC'],
@@ -684,7 +796,9 @@ export async function saveSubmission(
        руу орно — дуудагчийн алдааг ил зогсооно. */
     return { ok: false, error: tr('Багцын түлхүүр зөрсөн: {0} ≠ {1}', payload.pkgKey, pkgKey) };
   }
-  const raw = JSON.stringify({ ...payload, v: 1 });
+  /* ⚠️ Хувилбар нь ГОРИМООС (2026-09-25, `SubmissionPayload.v`-ийн ⚠️) — дуудагчийн
+     `v`-д итгэхгүй: нэмэлтийг `v: 1`-ээр бичвэл хуучин таб түүнийг НИЙТ гэж уншина. */
+  const raw = JSON.stringify(payload.mode === 'inc' ? { ...payload, v: 2, mode: 'inc' } : { ...payload, v: 1 });
   if (raw.length > SUBMISSION_MAX) {
     /*
      * ⚠️ ЗААВАР ҮНЭН БАЙХ ЁСТОЙ (2026-09-04-ний аудит). Урьд нь «хэсэгчлэн
@@ -793,7 +907,16 @@ export async function closeSubmission(
   approvedAt: number,
   /** `true` → payload-д `regPending` тавина (`SubmissionPayload.regPending`-ийн ⚠️) */
   regPending?: boolean,
-): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * АРХИВЛАСАН АГУУЛГЫН `at` (compare-and-set, 2026-09-25-ны аудит, HIGH).
+   * ⚠️ Жааз бичих хооронд гүйцэтгэгч дахин илгээвэл (ижил `sub|` мөр update)
+   *    урьд нь ШИНЭ агуулга архивт ОРООГҮЙ атлаа `done|` болж хөлддөг байв.
+   *    Өгвөл мөрийн `at` зөрөх үед ХААХГҮЙ — `{ok:false, changed:true}`.
+   * ⚠️ Атом биш (унших → бичих хооронд мс-ийн цонх үлдэнэ) — ArcGIS-д CAS байхгүй.
+   *    `undefined` = шалгахгүй (хуучин зан төлөв).
+   */
+  expectAt?: number,
+): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
     const url = await tableUrl(false);
@@ -811,6 +934,12 @@ export async function closeSubmission(
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
     const payload = parseSubmission(String(a.payload ?? ''));
     if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    if (expectAt !== undefined) {
+      /* `readRow`-ийн дүрэм: мөрийн `at` талбар, байхгүй бол payload-ынх */
+      const curAt = isFin(a.at) ? Number(a.at) : payload.at;
+      if (curAt !== expectAt)
+        return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
+    }
     /*
      * ⚠️ dkey-ЭЭС ТАСЛАХДАА ӨДРИЙГ ХАЯНА (2026-09-07): шинэ хэлбэр нь
      *    `sub|<pkg>|<fillMs>` тул зүгээр таславал `pkgKey` нь

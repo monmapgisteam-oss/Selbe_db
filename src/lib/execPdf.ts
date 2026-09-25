@@ -129,11 +129,14 @@ function kpiRow(items: { label: string; value: string; sub?: string }[]): Conten
    ОГТ зурахгүй. Урьд нь дуудагч `?? 0` өгч `Math.max(1, …)`-ээр 1pt зурвас
    гардаг тул мэдээлэлгүй багц бодит 0%-тай ЯГ адилхан харагдаж байв (null ≠ 0;
    дэлгэцийн RankBars null-д зурвас зурдаггүй). */
+/* ⚠️ 2026-09-25: `max` өгвөл тэнхлэг ТОГТМОЛ (хувийн чартад 100) — урьд нь
+   хамгийн их утгад харьцуулдаг тул 12% ахисан багц бүтэн зурвастай гарч
+   «дууссан» мэт харагддаг байв. Утга нь [0, max]-д хавчигдана. */
 function barChart(
   rows: { label: string; value: number | null; text: string }[],
-  o: { nameW?: number; valW?: number; color?: string } = {},
+  o: { nameW?: number; valW?: number; color?: string; max?: number } = {},
 ): Content {
-  const top = Math.max(1, ...rows.map((r) => r.value ?? 0));
+  const top = o.max ?? Math.max(1, ...rows.map((r) => r.value ?? 0));
   const nameW = o.nameW ?? 150;
   const valW = o.valW ?? 120;
   const trackW = 515 - nameW - valW - 16;
@@ -147,7 +150,7 @@ function barChart(
           canvas: [
             { type: 'rect', x: 0, y: 2, w: trackW, h: 9, r: 2, color: SURF },
             ...(r.value == null ? [] : [
-              { type: 'rect' as const, x: 0, y: 2, w: Math.max(1, (trackW * r.value) / top), h: 9, r: 2, color: o.color ?? BLUE },
+              { type: 'rect' as const, x: 0, y: 2, w: Math.max(1, (trackW * Math.min(Math.max(r.value, 0), top)) / top), h: 9, r: 2, color: o.color ?? BLUE },
             ]),
           ],
         },
@@ -323,7 +326,9 @@ export async function buildExecDoc(
         columns: [
           { stack: [{ text: T(dateStr), style: 'coverFactV' }, { text: tr('Тайлан үүсгэсэн огноо').toUpperCase(), style: 'coverFactL' }] },
           { stack: [{ text: tr('{0} ажлын багц', num(g.packages)), style: 'coverFactV' }, { text: tr('{0} төрөл', num(g.types)).toUpperCase(), style: 'coverFactL' }] },
-          { stack: [{ text: tr('6 үе шат'), style: 'coverFactV' }, { text: tr('Жигнэсэн гүйцэтгэлийн хэмжилт').toUpperCase(), style: 'coverFactL' }] },
+          /* ⚠️ 2026-09-25: хэмжилтийн эх `progressSrc`-ээр — нэгтгэлээс уншсан бол
+             «6 үе шат» гэж бичих нь худал (KPI-ийн шошготой ижил дүрэм). */
+          { stack: [{ text: g.progressSrc === 'negtgel' ? tr('Нэгтгэл гүйцэтгэл') : tr('6 үе шат'), style: 'coverFactV' }, { text: tr('Жигнэсэн гүйцэтгэлийн хэмжилт').toUpperCase(), style: 'coverFactL' }] },
         ],
         columnGap: 18,
       },
@@ -425,15 +430,17 @@ export async function buildExecDoc(
 
       ...(g.bySource.length ? [
         { text: tr('Захирамжийн эх үүсвэр'), style: 'caption', pageBreak: 'before' } as Content,
+        /* ⚠️ 2026-09-25: эх үүсвэр/төлөв/шалтгааны шошго нь өгөгдлийн монгол
+           утга — дэлгэцтэй адил `tr()`-ээр (англи PDF-д монголоор үлддэг байв). */
         barChart(g.bySource.map((s) => ({
-          label: s.label,
+          label: tr(s.label),
           value: s.amount,
           text: `${srcSum ? pct((s.amount / srcSum) * 100, 1) : '—'} · ${num(s.amount)} ₮`,
         })), { nameW: 150, valW: 150 }),
         { table: { headerRows: 1, widths: ['*', 40, 100, 110, 46], body: [
           [th(tr('Эх үүсвэр')), th(tr('Ажил'), true), th(tr('Гэрээт дүн (төг)'), true), th(tr('Захирамжийн дүн (төг)'), true), th(tr('Хувь'), true)],
           ...g.bySource.map((s): TableCell[] => [
-            td(s.label), td(num(s.n), true), td(num(s.contracted), true), td(num(s.amount), true),
+            td(tr(s.label)), td(num(s.n), true), td(num(s.contracted), true), td(num(s.amount), true),
             td(srcSum ? pct((s.amount / srcSum) * 100, 1) : '—', true),
           ]),
           [tdBold(tr('Нийт')), tdBold(num(g.bySource.reduce((a, s) => a + s.n, 0)), true),
@@ -451,13 +458,13 @@ export async function buildExecDoc(
         g.landPct == null ? '—' : pct(g.landPct, 1), num(g.land.cleared), num(g.land.total),
         topReason && g.land.remaining
           ? tr(' Үлдсэн {0} нэгж талбарын гол саад нь «{1}» төлөвт байгаа {2} талбар (үлдэгдлийн {3}).',
-            num(g.land.remaining), topReason.label, num(topReason.n), pct((topReason.n / g.land.remaining) * 100, 1))
+            num(g.land.remaining), tr(topReason.label), num(topReason.n), pct((topReason.n / g.land.remaining) * 100, 1))
           : '')),
       cap(tr('Нэгж талбарын төлөвийн бүтэц')),
       { table: { headerRows: 1, widths: ['*', 70, 90, 80], body: [
         [th(tr('Төлөв')), th(tr('Талбар (нэгж)'), true), th(tr('Талбай (м²)'), true), th(tr('Нийт дүнд эзлэх хувь'), true)],
         ...g.land.byStatus.map((b): TableCell[] => [
-          td(b.label, false, b.label === PARCEL_CLEARED ? undefined : RED),
+          td(tr(b.label), false, b.label === PARCEL_CLEARED ? undefined : RED),
           td(num(b.n), true), td(num(b.areaM2), true),
           td(g.land.total ? pct((b.n / g.land.total) * 100, 1) : '—', true),
         ]),
@@ -467,7 +474,7 @@ export async function buildExecDoc(
       ...(g.land.reasons.length ? [
         cap(tr('Чөлөөлөгдөөгүй {0} нэгж талбарын шалтгаан', num(g.land.remaining))),
         barChart(g.land.reasons.map((r) => ({
-          label: r.label,
+          label: tr(r.label),
           value: r.n,
           text: `${num(r.n)} (${g.land.remaining ? pct((r.n / g.land.remaining) * 100, 1) : '—'})`,
         })), { nameW: 200, valW: 90, color: RED }),
@@ -490,7 +497,9 @@ export async function buildExecDoc(
         p.actual == null ? '—' : pct(p.actual, 1),
         p.planned == null ? '—' : pct(p.planned, 1),
         gapText,
-        bestPk && worstPk
+        /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
+           «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
+        bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
           ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
             bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
           : '')),
@@ -500,7 +509,7 @@ export async function buildExecDoc(
         { label: tr('Зөрүү'), value: tr('{0} н.х', gapText), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
       ]),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
-      barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70 }),
+      barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
         ...buildPk.map((k): TableCell[] => [
@@ -587,7 +596,10 @@ export async function buildExecDoc(
         kpiRow([
           { label: tr('Зөвшөөрсөн'), value: `${num(z.ok)} / ${num(z.total)}`, sub: tr('нийт зөвшөөрлөөс') },
           { label: tr('Хүлээгдэж буй'), value: num(z.wait), sub: tr('хариу хүлээгдэж байна') },
-          { label: tr('Зөвшөөрөөгүй'), value: num(z.no), sub: z.no > 0 ? tr('ажил эхлэхэд шууд саад') : undefined },
+          /* ⚠️ 2026-09-25: хүснэгтийн «Зөвшөөрөөгүй» багана = no + unknown; KPI нь
+             зөвхөн `no` тул танигдаагүй төлөвтэйг тусад нь дэд мөрөнд хэлнэ —
+             эс тэгвээс KPI ба «Нийт» мөр хоёр өөр тоо харуулж, зөрүү тайлбаргүй. */
+          { label: tr('Зөвшөөрөөгүй'), value: num(z.no), sub: z.unknown > 0 ? tr('+ {0} танигдаагүй төлөвтэй', num(z.unknown)) : z.no > 0 ? tr('ажил эхлэхэд шууд саад') : undefined },
         ]),
         cap(tr('Багц тус бүрийн зөвшөөрлийн төлөв')),
         { table: { headerRows: 1, widths: ['*', 55, 75, 75, 75], body: [

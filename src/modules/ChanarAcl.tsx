@@ -188,6 +188,7 @@ function RoleBlock({
             type="button"
             className={s.aclX}
             title={tr('Энэ багцаас хасах')}
+            aria-label={`${tr('Энэ багцаас хасах')}: ${u}`}
             disabled={busy}
             onClick={() => onRemove(group, role, u)}
           >

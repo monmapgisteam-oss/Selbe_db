@@ -933,6 +933,127 @@ export const cellObyem = (
   // Сөрөг обьём утгагүй — бичсэн ч 0-оор хаана.
   return Number.isFinite(Number(t)) ? Math.max(0, Number(t)) : r.obyem[b];
 };
+
+/* ══════════════ НЭМЭЛТИЙН (increment) ГОРИМ — 2026-09-25 ══════════════
+ *
+ * ⚠️ 2026-09-25: ХЭРЭГЛЭГЧИЙН ШИЙДВЭР (баталгаажсан): «Гүйцэтгэл» бөглөх
+ *    хуудсанд нүд бүрд бичих тоо нь ӨМНӨХ БӨГЛӨЛТӨӨС ХОЙШ хийсэн обьём;
+ *    хадгалагдах/харагдах үр дүн нь бүх бөглөлтийн НИЙЛБЭР. Архивт өнөөдөр
+ *    байгаа утга нь одоогийн НИЙТ гэж тооцогдоно (өгөгдлийг ШИЛЖҮҮЛЭХГҮЙ).
+ *    Жишээ: нүдэнд 40 · бичсэн 15 → 55 («+15»), батлахад архивт 55.
+ *
+ *    `"abs"` — ХУУЧИН дүрэм (`cellObyem`/`cellPct`): бичсэн тоо нь НИЙТ-ийг
+ *              ОРЛОНО. Зөвхөн горимын туггүй (2026-09-25-аас өмнөх) ноорог ба
+ *              илгээлтийг уншихад л хэрэглэгдэнэ.
+ *    `"inc"` — ШИНЭ дүрэм (`incCell`): бичсэн тоо нь НИЙТ дээр НЭМЭГДЭНЭ.
+ *
+ * ⚠️ ГОРИМЫГ ТААМАГЛАХГҮЙ: утгын мөр нь хоёр горимд ИЖИЛ харагддаг ("15")
+ *    тул горим нь ЗӨВХӨН ноорог/илгээлтийн ИЛ тугаас (`Draft.mode`,
+ *    `SubmissionPayload.mode`) ирнэ. Туггүй бол `"abs"` — давхар нэмэгдэхээс
+ *    (40 + 55 = 95) сэргийлэх цорын ганц баталгаа.
+ */
+export type CellMode = "abs" | "inc";
+
+/**
+ * НЭМЭЛТИЙН МӨР → `{ n: обьёмын нэмэлт, p: хувийн нэмэлт (0–1) }`.
+ *
+ * Хэлбэр: зайгаар тусгаарласан бүрэлдэхүүн — `"15"` · `"%10"` · `"15 %10"`
+ * (сүүлийнх нь зөвхөн `sumInc`-ийн НИЙЛБЭР: мөрийн `Обьём`гүй ажилд обьём ба
+ * хувь хоёр ТУСДАА багана тул нэг нүдэнд хоёулаа хуримтлагдаж болно).
+ * ⚠️ СӨРӨГ нэмэлт ЗӨВШӨӨРӨГДӨНӨ (залруулга) — нийт нь `incCell`-д ≥ 0-оор хаагдана.
+ * ⚠️ Хоосон (`""`) ба тоо биш бүрэлдэхүүн → `null` («засвар алга», 0 БИШ).
+ */
+export function parseInc(v: string | undefined): { n: number; p: number } | null {
+  if (typeof v !== "string") return null;
+  const toks = v.trim().split(/\s+/).filter(Boolean);
+  if (!toks.length) return null;
+  let n = 0;
+  let p = 0;
+  for (const t of toks) {
+    if (t.startsWith(PCT)) {
+      const s = t.slice(PCT.length);
+      const x = Number(s);
+      if (s === "" || !Number.isFinite(x)) return null;
+      p += x / 100;
+    } else {
+      const x = Number(t);
+      if (!Number.isFinite(x)) return null;
+      n += x;
+    }
+  }
+  return { n, p };
+}
+
+/** Хөвөгч цэгийн чимээг (0.1 + 0.2) арилгаж мөр болгоно — 12 ач холбогдолтой орон. */
+const numStr = (x: number): string => String(parseFloat(x.toPrecision(12)));
+
+/** `{n, p}` → нэмэлтийн мөр (`parseInc`-ийн урвуу). Хоёулаа 0 бол `""`. */
+export function fmtInc(d: { n: number; p: number }): string {
+  const parts: string[] = [];
+  if (d.n !== 0) parts.push(numStr(d.n));
+  if (d.p !== 0) parts.push(`${PCT}${numStr(d.p * 100)}`);
+  return parts.join(" ");
+}
+
+/**
+ * ХОЁР НЭМЭЛТИЙГ НЭГТГЭНЭ (`mergeSubmission` — нэг өдрийн дахин илгээлт).
+ * ⚠️ Нэмэлтүүд НЭМЭГДДЭГ тул нийлбэр нь дарааллаас хамаарахгүй. Аль нэг нь
+ *    задрахгүй бол нөгөөг нь буцаана (хог утга нийлбэрийг эвдэхгүй).
+ */
+export function sumInc(a: string | undefined, b: string | undefined): string {
+  const x = parseInc(a);
+  const y = parseInc(b);
+  if (!x) return y ? fmtInc(y) : (b ?? "");
+  if (!y) return fmtInc(x);
+  return fmtInc({ n: x.n + y.n, p: x.p + y.p });
+}
+
+/** Нэмэлтийн эсрэг тэмдэгт — архивлагдсан хэсгийг хасахад (`residualAfterArchive`). */
+export function negInc(a: string | undefined): string {
+  const x = parseInc(a);
+  return x ? fmtInc({ n: -x.n, p: -x.p }) : "";
+}
+
+/**
+ * НЭМЭЛТИЙН ГОРИМЫН НЭГ НҮД — суурь (`r.obyem[b]`/`r.act[b]`) дээр нэмэлтийг
+ * нэмсэн ҮР ДҮН. `null` = өөрчлөлт алга (засваргүй, `""`, тэг, хог утга).
+ *
+ *   · обьёмын нэмэлт `n` → `obyem = max(0, (суурь ?? 0) + n)`;
+ *   · хувийн нэмэлт `p` — мөрийн `Обьём` БА обьёмын талбар байвал обьём руу
+ *     (`p × Обьём`) хөрвүүлж нэмнэ; эс бөгөөс ХУВЬ дээр нэмнэ
+ *     (`act = max(0, (хувь ?? 0) + p)`) — хуучин `%N` замын ижил нөөц;
+ *   · `act` нь `computeAll`-ийн дүрмээр: обьёмоос бодогдох боломжтой бол
+ *     `obyem ÷ Обьём`, эс бөгөөс хуучин хувь (эсвэл дээрх хувийн нэмэлт).
+ *
+ * ⚠️ `null → 0` СУУРЬ: хэрэглэгчийн шийдвэр «архив дахь утга = одоогийн нийт»;
+ *    хоосон нүдийн нийт нь 0. Мөрийн `Обьём`тэй боловч `obyem`-гүй (зөвхөн
+ *    хувиар бүртгэгдсэн) хуучин нүдэнд хувийг обьём руу БУЦААЖ БОДОХГҮЙ
+ *    (дээрх ⚠️ «Обьёмыг хувиас нь БУЦААЖ БОДОХГҮЙ») — нийт нь 0-ээс эхэлнэ.
+ * ⚠️ НИЙТ ≥ 0: сөрөг нэмэлт (залруулга) нийтийг 0-ээс доош оруулахгүй.
+ * ⚠️ ЦЭВЭРЛЭХ (`null` болгох) зам энэ горимд БАЙХГҮЙ — `""` нь «засвараа
+ *    буцаах». Бүртгэлийг тэглэх бол сөрөг нэмэлтээр 0 болгоно.
+ */
+export function incCell(
+  r: SheetRow,
+  b: number,
+  e: string | undefined,
+  hasField: boolean,
+): { obyem: number | null; act: number | null } | null {
+  const d = parseInc(e);
+  if (!d || (d.n === 0 && d.p === 0)) return null;
+  const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+  const volPath = hasField && vol != null;
+  let ob = r.obyem[b];
+  const add = d.n + (volPath ? d.p * (vol as number) : 0);
+  if (add !== 0) ob = Math.max(0, (r.obyem[b] ?? 0) + add);
+  const pRest = volPath ? 0 : d.p;
+  const act = pRest !== 0
+    ? Math.max(0, (r.act[b] ?? 0) + pRest)
+    : volPath && ob != null
+      ? ob / (vol as number)
+      : r.act[b];
+  return { obyem: ob, act };
+}
 /** Нийтлээгүй засвар байвал түүнийг, эс бөгөөс хадгалагдсаныг. `""` = арилгах. */
 const pickDate = (edit: string | undefined, stored: number | null) =>
   edit === undefined ? stored : dayToMs(edit);
@@ -1253,6 +1374,12 @@ export function computeAll(
    *    «задаргаагүй» ажлыг 0 гэж уншвал бүхэл багц худал хоцорсон харагдана.
    */
   planPct?: (row: SheetRow, b: number) => number | null | undefined,
+  /**
+   * `edits`-ийн утгын ДҮРЭМ (2026-09-25, `CellMode`-ийн ⚠️). `FillNew`-ийн
+   * `pending` нь `"inc"` (нэмэлт); анхдагч `"abs"` нь хуучин (орлуулах) дүрэм —
+   * `edits`-гүй бусад дуудагчид огт нөлөөгүй.
+   */
+  cellMode: CellMode = "abs",
 ): Calc[] {
   /** Задаргаа байвал түүгээр, эс бөгөөс огноогоор шугаман интерполяци */
   const planOf = (i: number, b: number, s: number | null, e: number | null) =>
@@ -1441,6 +1568,21 @@ export function computeAll(
         //    засагддаггүй (эх хүснэгтэд оруулна). Тиймээс шууд уншина.
         const rVol = r.vol;
         const hasField = hasObyem[b] === true;
+
+        /* ⚠️ НЭМЭЛТИЙН ГОРИМ (2026-09-25) — `incCell` нь обьём ба хувийг ХАМТ
+           буцаана (нэг дүрэм, `overlaySubmission`-тай ижил). Засваргүй нүд
+           (`null`) доорх хуучин замаар — хадгалагдсан утга хэвээр. */
+        if (cellMode === "inc") {
+          const res = incCell(r, b, edits[`${r.oid}:${b}`], hasField);
+          const cumI = hasField ? (res ? res.obyem : r.obyem[b]) : null;
+          obyem[b] = cumI;
+          act[b] = res
+            ? res.act
+            : cumI != null && rVol != null && rVol > 0 ? cumI / rVol : r.act[b];
+          actOver[b] = act[b] != null && act[b]! > 1;
+          actAgg[b] = clamp1(act[b]);
+          continue;
+        }
 
         // 1) ОБЬЁМ — зөвхөн гараар бичигдсэн нь. Бодогдохгүй, таамаглахгүй.
         const cum = hasField ? cellObyem(r, b, edits) : null;
@@ -1646,6 +1788,12 @@ export async function applyAdds(
       }
       const bad = res.find((r) => r.success === false);
       if (bad) throw new Error(bad.error?.description || tr('Нэмэх амжилтгүй'));
+      /* ⚠️ ХАРИУНЫ ТООГ ТУЛГАНА (2026-09-25-ны аудит): ArcGIS алдаагаа HTTP
+         200-аар, эсвэл ДУТУУ/хоосон `addResults`-аар буцааж болно — урьд нь
+         `bad` олдохгүй бол амжилт гэж үзэж, архивт ДУТУУ жааз бичигдсэн атлаа
+         `ok` буцдаг байв. Мөр бүр дугаартай ирэх ёстой. */
+      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number"))
+        throw new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number").length));
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
@@ -1737,14 +1885,14 @@ export async function applyUpdates(
         updates: JSON.stringify(chunk.map((attributes) => ({ attributes }))),
         rollbackOnFailure: "true",
       });
-      const bad = (j.updateResults || []).find(
-        (r: { success?: boolean }) => r.success === false,
-      );
+      const ups = (j.updateResults || []) as { success?: boolean; error?: { description?: string } }[];
+      const bad = ups.find((r) => r.success === false);
       if (bad)
-        throw new Error(
-          (bad as { error?: { description?: string } }).error?.description ||
-            tr('Шинэчлэх амжилтгүй'),
-        );
+        throw new Error(bad.error?.description || tr('Шинэчлэх амжилтгүй'));
+      /* ⚠️ ХАРИУНЫ ТООГ ТУЛГАНА (2026-09-25-ны аудит) — `applyAdds`-ийн ижил
+         ⚠️: хоосон/дутуу `updateResults` нь «хадгалагдлаа» гэж худал мэдээлдэг байв. */
+      if (ups.length !== chunk.length)
+        throw new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length));
       written += chunk.length;
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд

@@ -29,6 +29,7 @@ import { FIN_XL_LAND_CODE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import { loadQaqcLoaded, summarizePkg } from './qaqc';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
   DIMS, scorePerf, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
   type Dim, type DimScore, type WorkScore, type PlanInput, type Inspection,
@@ -74,6 +75,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   if (!uzCo) failed.push(tr('Гүйцэтгэгчийн ажлын байрны үзлэг'));
   const uzFailed = !uzV11 && !uzCo;
   if (!zovRows) failed.push(tr('Зөвшөөрөл'));
+  /* ⚠️ 2026-09-25: хүн хүчний бүртгэл унавал «идэвхтэй талбар» ялгагдахгүй —
+     үзлэггүй багц бүр «оноогүй» болно. Урьд нь чимээгүй `null` байсан тул
+     «Татагдсангүй» мөрөнд ч гардаггүй байв. */
+  if (!workforce) failed.push(tr('ХАБЭА хүн хүчний бүртгэл'));
   /* Зөвшөөрөл — багц бүрийн төлөвийн тоо */
   const zovByKey = new Map<string, NonNullable<Parameters<typeof scorePermit>[0]['counts']>>();
   if (zovRows) {
@@ -186,24 +191,57 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
 
 /* ══════════════ Хүнд бүлгүүд ══════════════ */
 
-export type LandExtra = { landPct: number | null; overlaps: Map<string, number> };
+export type LandExtra = {
+  landPct: number | null;
+  overlaps: Map<string, number>;
+  /** ⚠️ 2026-09-25: аль нэг багцын огтлолцол татагдаагүй — дэлгэц «Татагдсангүй»-д нэмж болно */
+  failed: boolean;
+};
 
 /** Газар чөлөөлөлт — багц бүрийн давхцсан чөлөөлөгдөөгүй нэгж талбар */
 export const loadScoreLand = cached(async (): Promise<LandExtra> => {
   const [status, overlaps] = await Promise.all([loadLandStatus(), loadPkgOverlaps()]);
-  const m = new Map<string, number>();
+  /* ⚠️ 2026-09-25: ДАРААЛЛААС ХАМААРАХГҮЙ ба ДАВХАРДАЛГҮЙ. Урьд нь `-1`-ийг
+     шууд Map-д бичдэг тул унасан мөрийн ДАРАА амжилттай мөр ирвэл `-1 + n`
+     болж «мэдэхгүй» алга болдог; нэг түлхүүрт хэд хэдэн мөр (барилга + дэд
+     бүтэц) ижил нэгж талбартай давхцвал давхар тоологддог байв. Одоо түлхүүр
+     бүрд OID-ийн Set, унасан түлхүүр тусдаа — унасан бол `-1` (мэдэхгүй). */
+  const ids = new Map<string, Set<number>>();
+  const bad = new Set<string>();
   for (const o of overlaps) {
-    /* ⚠️ Татагдаагүй огтлолцол = -1 (мэдэхгүй), 0 биш */
-    m.set(o.key, o.failed ? -1 : (m.get(o.key) ?? 0) + o.oids.length);
+    if (o.failed) { bad.add(o.key); continue; }
+    const s = ids.get(o.key) ?? new Set<number>();
+    for (const id of o.oids) s.add(id);
+    ids.set(o.key, s);
   }
-  return { landPct: status.pct, overlaps: m };
+  const m = new Map<string, number>();
+  for (const [k, s] of ids) m.set(k, s.size);
+  for (const k of bad) m.set(k, -1);
+  return { landPct: status.pct, overlaps: m, failed: bad.size > 0 };
 }, 5 * 60_000, ['PARCEL_LEFT']);
 
-/** Чанар — багцын бүлэг бүрийн QAQC бөглөлтийн нийлбэр */
-export const loadScoreQual = cached(async (): Promise<Map<string, { total: number; empty: number; partial: number }>> => {
-  const { ok, keys } = await loadQaqcLoaded();
+export type QualExtra = Map<string, { total: number; empty: number; partial: number }> & {
+  /** ⚠️ 2026-09-25: уншигдаагүй хуудсууд (`Pkg.label`) — дэлгэц «Татагдсангүй»-д нэмж болно */
+  failed: string[];
+};
+
+/**
+ * Чанар — багцын бүлэг бүрийн QAQC бөглөлтийн нийлбэр.
+ * ⚠️ 2026-09-25: (1) `flat` (мод холбогдоогүй) хуудас НИЙЛБЭРТ ОРОХГҮЙ —
+ *    `computeQaqc`-ийн `counted` дүрэмтэй ижил; бүлгийн мөрүүд навчтай
+ *    холилдож тоо хөөрөгддөг байв. (2) Хуудас нь УНШИГДААГҮЙ бүлэг Map-д
+ *    ОРОХГҮЙ (оноо «мэдэхгүй») — урьд нь үлдсэн хуудсаар ХАГАС нийлбэр гарч
+ *    бүрэн мэт оноо авдаг байв; уналт `failed`-ээр ил.
+ */
+export const loadScoreQual = cached(async (): Promise<QualExtra> => {
+  const { ok, failed, keys } = await loadQaqcLoaded();
+  const failedGroups = new Set(failed.map((label) => {
+    const p = PKGS.find((x) => x.label === label);
+    return bagtsKey(p ? keys[p.key] ?? p.group : label);
+  }));
   const m = new Map<string, { total: number; empty: number; partial: number }>();
   for (const l of ok) {
+    if (l.flat) continue;
     const s = summarizePkg(l.pkg, l.rows, l.flat);
     const k = bagtsKey(keys[l.pkg.key] ?? l.pkg.label);
     const a = m.get(k) ?? { total: 0, empty: 0, partial: 0 };
@@ -212,7 +250,8 @@ export const loadScoreQual = cached(async (): Promise<Map<string, { total: numbe
     a.partial += s.partial;
     m.set(k, a);
   }
-  return m;
+  for (const k of failedGroups) m.delete(k);
+  return Object.assign(m, { failed: [...failed] });
 }, 5 * 60_000, ['BAGTS_SHEET']);
 
 /**

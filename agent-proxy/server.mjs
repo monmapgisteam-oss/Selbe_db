@@ -56,6 +56,40 @@ if (BACKEND === "claude-code") {
  *    эс бөгөөс хаягийг олсон хэн ч энэ PC-ийн Claude бүртгэлийг зарцуулна.
  */
 const ARCGIS_ORG_ID = process.env.ARCGIS_ORG_ID?.trim() || "";
+
+/**
+ * ИТГЭМЖЛЭГДСЭН ПРОКСИ (2026-09-25) — `TRUSTED_PROXY=cloudflare|tailscale`.
+ * ⚠️ `cf-connecting-ip` / `x-forwarded-for`-ыг ЗӨВХӨН энэ тохируулсан үед уншина.
+ *    Урьд толгойг ямагт итгэдэг байсан тул хүсэлт бүрд санамсаргүй IP бичээд
+ *    хурдны хязгаарыг бүрмөсөн тойрох боломжтой байв.
+ * ⚠️ Прокси тохируулсан (= нийтэд гарсан) атал `ARCGIS_ORG_ID` алга бол реле
+ *    АСАХГҮЙ — урьд зөвхөн анхааруулга хэвлээд нээлттэй (fail-open) үйлчилдэг байв.
+ */
+const TRUSTED_PROXY = (process.env.TRUSTED_PROXY || "").trim().toLowerCase();
+if (TRUSTED_PROXY && !["cloudflare", "tailscale"].includes(TRUSTED_PROXY)) {
+  console.error(`[agent-proxy] ⛔ TRUSTED_PROXY="${TRUSTED_PROXY}" танигдаагүй (cloudflare | tailscale).`);
+  process.exit(1);
+}
+if (TRUSTED_PROXY && !ARCGIS_ORG_ID) {
+  console.error("[agent-proxy] ⛔ TRUSTED_PROXY тохируулсан (нийтийн тунель) атал ARCGIS_ORG_ID алга — реле асахгүй.");
+  process.exit(1);
+}
+/** Прокси дамжсан хүсэлт мөн эсэх — тохиргооноос ҮЛ ХАМААРАН толгойгоор таньна. */
+const viaProxy = (req) =>
+  Boolean(req.headers["cf-connecting-ip"] || req.headers["cf-ray"] || req.headers["x-forwarded-for"]);
+/** Хурдны хязгаарын IP — толгойг зөвхөн итгэмжлэгдсэн прокси тохируулсан үед. */
+const clientIp = (req) => {
+  const peer = req.socket.remoteAddress || "anon";
+  if (TRUSTED_PROXY === "cloudflare") {
+    return String(req.headers["cf-connecting-ip"] || "").trim() || peer;
+  }
+  if (TRUSTED_PROXY === "tailscale") {
+    /* ⚠️ Хамгийн БАРУУН утга — прокси өөрөө нэмсэн; зүүн талынхыг клиент бичиж болно. */
+    const xff = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+    return xff[xff.length - 1] || peer;
+  }
+  return peer;
+};
 const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").replace(/\/+$/, "");
 const verified = new Map();
 async function checkArcGIS(token) {
@@ -236,6 +270,14 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /* ⚠️ 2026-09-25: FAIL-CLOSED — тунелээр (прокси толгойтой) ирсэн хүсэлтийг
+     `ARCGIS_ORG_ID`-гүй бол үйлчлэхгүй. `TRUSTED_PROXY` тохируулаагүй ч
+     cloudflared/Funnel эдгээр толгойг нэмдэг тул энд барина. */
+  if (!ARCGIS_ORG_ID && viaProxy(req)) {
+    json(res, 403, { error: "Реле нийтэд гаргахаар тохируулагдаагүй байна", retryable: false });
+    return;
+  }
+
   /* Эрүүл мэндийн шалгалт — реле асаалттай эсэхийг эндээс мэднэ.
      ⚠️ Дотоод тохиргоог (model/effort) ЗАДЛАХГҮЙ — `worker.mjs`-ийн ижил
         дүрэм: хаягийг олсон хэн ч тохиргоог тандах ёсгүй. */
@@ -269,11 +311,9 @@ const server = createServer(async (req, res) => {
      Одоо эхлээд IP-ээр (Cloudflare Tunnel `cf-connecting-ip` дамжуулна), дараа
      нь ArcGIS хэрэглэгчээр. */
   /* ⚠️ Tailscale Funnel нь `x-forwarded-for`-оор дамжуулна — эс бөгөөс бүх
-     хэрэглэгч 127.0.0.1 болж нэг хязгаар хуваалцана. */
-  const ip =
-    req.headers["cf-connecting-ip"] ||
-    String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-    req.socket.remoteAddress || "anon";
+     хэрэглэгч 127.0.0.1 болж нэг хязгаар хуваалцана.
+     ⚠️ 2026-09-25: толгойг зөвхөн `TRUSTED_PROXY` тохируулсан үед итгэнэ (`clientIp`). */
+  const ip = clientIp(req);
   if (rateLimited(`pre:${ip}`)) {
     json(res, 429, { error: "Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
     return;
@@ -410,11 +450,14 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   if (BACKEND === "claude-code") {
     console.log(`[agent-proxy] хөдөлгүүр=claude-code  ${claudeBin() ?? "⚠️ claude олдсонгүй (CLAUDE_BIN тохируул)"}`);
-    if (!ARCGIS_ORG_ID) console.warn("[agent-proxy] ⚠️ ARCGIS_ORG_ID тохируулаагүй — нийтэд (tunnel) гаргах бол ЗААВАЛ тохируулна.");
+    if (!ARCGIS_ORG_ID) console.warn("[agent-proxy] ⚠️ ARCGIS_ORG_ID тохируулаагүй — тунелээр ирсэн хүсэлтийг 403-аар татгалзана (зөвхөн локал).");
   } else if (!process.env.ANTHROPIC_API_KEY) {
     console.warn(
       "[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.",
     );
+  }
+  if (ARCGIS_ORG_ID && !TRUSTED_PROXY) {
+    console.warn("[agent-proxy] ⚠️ TRUSTED_PROXY тохируулаагүй — тунелийн хэрэглэгчид IP-ийн хурдны хязгаарыг нэг түлхүүрээр хуваалцана.");
   }
   console.log(
     `[agent-proxy] http://localhost:${PORT}  хөдөлгүүр=${BACKEND}  загвар=${MODEL}  effort=${EFFORT}`,

@@ -494,8 +494,11 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
     const curRole = roleOf(user);
     const cur = resolveBaseAccess(user);
     const pureFlow = curRole == null || FLOW_ROLES.has(curRole);
+    /* ⚠️ 2026-09-25: загварт урсгал/«Гүйцэтгэл» чеклээгүй ч ШАТАНД томилогдсон хүнд
+       хуудас нь ЗААВАЛ нээгдэнэ — эс бөгөөс шаттай атлаа ажиллах газаргүй үлдэнэ */
+    const tplViews = roleAccess(role).views;
     const views: ViewKey[] | 'all' = pureFlow
-      ? roleAccess(role).views
+      ? (tplViews === 'all' ? 'all' : [...new Set<ViewKey>([...tplViews, 'guitsetgel'])])
       : cur?.views === 'all'
         ? 'all'
         : [...new Set<ViewKey>([...(cur?.views ?? []), 'guitsetgel'])];

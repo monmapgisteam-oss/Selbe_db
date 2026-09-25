@@ -38,7 +38,8 @@ import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { loadFinData } from '@/modules/Finance';
-import { physNow } from '@/modules/PkgProg';
+import { physNow, aggregateMonths } from '@/modules/PkgProg';
+import { housingPlanOf } from '@/lib/negtgelAuto';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
@@ -76,7 +77,8 @@ export type ExecReport = {
      * ХАБ — 01-ийн «ХАБ» карттай ИЖИЛ (`loadHseNow`): СҮҮЛИЙН бөглөгдсөн
      * бүртгэлийн агшин; `null` = бүртгэл алга (0 БИШ).
      */
-    hse: { date: string; workers: number; equipment: number; manHours: number } | null;
+    /* ⚠️ 2026-09-25: тоо бүр `null` байж болно (`loadHseNow` — бөглөгдөөгүй нүд ≠ 0) */
+    hse: { date: string; workers: number | null; equipment: number | null; manHours: number | null } | null;
     /** Ажлын төрөл бүрийн төсөв · гэрээлсэн · гүйцэтгэл (өртгөөр буурах) */
     byType: { label: string; cost: number; contract: number; perf: number | null; n: number; contracted: number }[];
     /**
@@ -97,7 +99,7 @@ export type ExecReport = {
     asOf: string;
     /** Орон сууцны биет гүйцэтгэл — блокоор жигнэсэн, одоогийн сар хүртэлх сүүлийн хэмжилт */
     actual: number | null;
-    /** Хуваарийн төлөвлөгөө — одоогийн сар хүртэлх сүүлийн цэг */
+    /** Хуваарийн төлөвлөгөө — `actual`-ийн хэмжилтийн огноонд завсарласан (2026-09-25) */
     planned: number | null;
     /** төлөвлөгөө − бодит; эерэг = хоцрогдол */
     gap: number | null;
@@ -194,8 +196,25 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   const nowYm = monthKey();
   /* ⚠️ 2026-09-22: `physNow` — PkgProg `TsKpi` · Dashboard-тай НЭГ туслах (pkgShared.ts) */
   const actual = physNow(fin, nowYm);
-  let planned: number | null = null;
-  for (const p of plan.months) if (p.label <= nowYm) planned = p.pct;
+  /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨГ ХЭМЖИЛТИЙН ОГНООНД ЗАВСАРЛАНА (`housingPlanOf`-ийн
+     дүрэм). Урьд нь ЭНЭ сарын цэг (сарын СҮҮЛИЙН өдрийн төлөвлөгөө)-ийг өмнөх
+     сарын (эсвэл сарын эхний) хэмжилттэй харьцуулж, хуваарийн дагуу явж буй
+     төслийг «хоцорч байна» гэж худал дүгнэдэг байв. Хэмжилтийн огноо: хэмжигдсэн
+     сар дотор блокийн сүүлийн бөглөлт (`bld.asOf`) байвал тэр өдөр; энэ сар бол
+     өнөөдөр; өмнөх сар бол тэр сарын эцэс. */
+  let measYm: string | null = null;
+  for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) measYm = m.label;
+  const measDate = (() => {
+    if (!measYm) return new Date();
+    if (/^\d{4}-\d{2}-\d{2}/.test(bld.asOf) && bld.asOf.slice(0, 7) === measYm) {
+      const [yy, mm, dd] = bld.asOf.slice(0, 10).split('-').map(Number);
+      return new Date(yy, mm - 1, dd);
+    }
+    if (measYm === nowYm) return new Date();
+    const [yy, mm] = measYm.split('-').map(Number);
+    return new Date(yy, mm, 0); /* сарын сүүлийн өдөр */
+  })();
+  const planned: number | null = housingPlanOf(new Map([['all', plan.months]]), measDate).get('all') ?? null;
   const gap = planned != null && actual != null ? planned - actual : null;
 
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ──
@@ -321,7 +340,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       planTotal: csum, given: finGiven,
       givenContracted: finGivenContracted,
       givenUnassigned: finGiven == null ? 0 : Math.max(0, finGiven - finAssigned),
-      share: csum > 0 ? (finGivenContracted / csum) * 100 : null,
+      /* ⚠️ 2026-09-25: олголт уншигдаагүй (`finGiven == null`) бол `paidContracted`
+         нь 0 ирдэг — «0.0% олгогдсон» гэж ХУДАЛ бичихгүй, хувь бодогдохгүй (null ≠ 0). */
+      share: csum > 0 && finGiven != null ? (finGivenContracted / csum) * 100 : null,
       remain: Math.max(0, csum - finGivenContracted),
       rows: finRows,
     },
@@ -619,7 +640,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
   L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);
   L.push(`Чөлөөлөгдөөгүй шалтгаан: ${x.gdash.land.reasons.map((r) => `${r.label} ${r.n}`).join('; ') || '—'}`);
-  L.push(`ХАБ (сүүлийн бүртгэл ${x.gdash.hse?.date || '—'}): ${x.gdash.hse ? `ажиллаж буй хүн ${x.gdash.hse.workers}, техник ${x.gdash.hse.equipment}, хүн цаг ${x.gdash.hse.manHours}` : 'мэдээлэлгүй'}`);
+  L.push(`ХАБ (сүүлийн бүртгэл ${x.gdash.hse?.date || '—'}): ${x.gdash.hse ? `ажиллаж буй хүн ${x.gdash.hse.workers ?? '—'}, техник ${x.gdash.hse.equipment ?? '—'}, хүн цаг ${x.gdash.hse.manHours ?? '—'}` : 'мэдээлэлгүй'}`);
   L.push(`Ажлын төрлөөр (төсөв / гэрээлсэн / гүйцэтгэл):`);
   /* ⚠️ Өгөгдлийн мөрийг ЦЭВЭРЛЭНЭ (2026-09-17): мөр таслах/`#` гарчиг нь загварт заавар болохоос */
   const cl = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/^\s*#+\s*/, '').trim();

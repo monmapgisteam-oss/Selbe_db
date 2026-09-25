@@ -184,6 +184,9 @@ console.log('✅ нийлүүлэлт');
   assert.deepEqual(ap.dropped.sort(), [kS(11, 1), kH(10), kS(99, 0), kS(10, 5), kM('5|9F'), kM('9|9F'), 'bogus'].sort());
   /* ⚠️ Хуучирсан нүд `staleKeys`-д ТУСДАА — дуудагч тэдэнд tombstone тавихгүй (бусдын нүдийг устгахгүй) */
   assert.deepEqual(ap.staleKeys.sort(), [kS(11, 1), kS(99, 0), kS(10, 5), kM('9|9F')].sort());
+  /* ⚠️ 2026-09-25 аудит: `bv` ЗӨРСӨН хэсэг тусдаа — «мөр алга»/блок гадуурх нь ОРОХГҮЙ
+     (бусдын шинэ жаазын нүдэд tombstone тавихгүй) */
+  assert.deepEqual(ap.bvKeys.sort(), [kS(11, 1), kM('9|9F')].sort());
   /* Сервер МЭДЭГДЭХГҮЙ (задаргаа ачаалагдаагүй) → сарын нүд тулгагдахгүй, ХАЯГДАХГҮЙ */
   const unk = cellsToMaps(new Map([[kM('9|9F'), cell([['2026-03', 2]], 1, 'a', [['2026-03', 1]])]]), { ...ctx, months: () => undefined });
   assert.equal(unk.applied, 1); assert.equal(unk.stale, 0);

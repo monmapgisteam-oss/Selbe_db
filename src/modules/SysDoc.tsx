@@ -242,7 +242,7 @@ function Diagram({ src }: { src: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={s.diagram}>
-      <button type="button" className={s.diagramHead} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className={s.diagramHead} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span aria-hidden>{open ? '▾' : '▸'}</span>
         {tr('Диаграм')}
         <span className={s.diagramHint}>{tr('бүтцийн тайлбар')}</span>

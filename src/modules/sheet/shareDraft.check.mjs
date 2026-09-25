@@ -339,8 +339,9 @@ console.log('✅ эх кодын гэрээ — түлхүүр · шилжүүл
   /* `toggleDone` — мөн адил */
   const ti = FN.indexOf('const toggleDone = useCallback');
   assert.ok(ti > 0, 'FillNew: toggleDone олдсонгүй');
-  const tb = FN.slice(ti, ti + 3200);
-  assert.ok(tb.includes('readRemoteDraft(pkg.key)'),
+  /* 2026-09-25: түлхүүрийг `want`-д барина (багцын хамгаалалт) — цонх нь callback-ийн төгсгөл хүртэл */
+  const tb = FN.slice(ti, FN.indexOf('}, [meKey, iAmDone', ti));
+  assert.ok(tb.includes('readRemoteDraft(want)') && tb.includes('const want = pkg.key'),
     'toggleDone: бичихээсээ өмнө уншихгүй — «Дуусгасан» дархад бусдын нүд устана');
   /* Багц солиход нийлүүлэлтийн агшин тэглэгдэнэ */
   const ri2 = FN.indexOf('setPvPend({});');
@@ -738,8 +739,10 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(lb.includes('lateOverlayRef.current = NaN;'), '#5: унасан ч «дууссан» тэмдэглэгээ үлдэж байна');
   /* #7 ижил утга — pending-д байгаагүй бол tombstone үгүй */
   assert.ok(FN.includes('const revert = useCallback((key: string, wasPending: boolean) => {'), '#7: revert алга');
-  assert.ok(FN.includes('if (sameVol) revert(key, key in pending);'), '#7: обьём');
-  assert.ok(FN.includes('if (samePct) revert(key, key in pending);'), '#7: хувь');
+  /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ: обьём/хувь нэг зам (`incN === 0` → буцаалт) */
+  const ci = FN.indexOf('const commit = (r: SheetRow, b: number, raw: string): boolean => {');
+  const cb = FN.slice(ci, ci + 6000);
+  assert.ok(cb.includes('if (incN === 0) {') && cb.includes('revert(key, key in pending);'), '#7: обьём/хувь (нэмэлт 0 = буцаалт)');
   assert.ok(FN.includes('if (sameDate) revert(key, key in pendDate);'), '#7: огноо');
   assert.ok(FN.includes('if (same) revert(x.key, x.key in pv);'), '#7: paste');
   /* #8 буцаагдсан өмнөх өдөр мэдэгдэнэ */

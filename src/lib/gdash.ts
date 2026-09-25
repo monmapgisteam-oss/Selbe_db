@@ -225,6 +225,12 @@ const nOf = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
 };
+/** ⚠️ 2026-09-25: `null`/хоосон → `null` (0 БИШ) — `Number(null)` нь 0 болдог тул тусад нь шалгана */
+const nnOf = (v: unknown): number | null => {
+  if (v == null || String(v).trim() === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
 const sOf = (v: unknown): string => String(v ?? '').trim();
 /** Хувь — ТЕКСТЭЭС тоо руу; хоосон бол `null` (0 БИШ) */
 const pOf = (v: unknown): number | null => {
@@ -1235,9 +1241,11 @@ export const loadContractSum = cached<Map<number, number>>(async () => {
 export type HseNow = {
   /** Хамгийн сүүлд бөглөсөн огноо, `YYYY-MM-DD` */
   date: string;
-  workers: number;
-  equipment: number;
-  manHours: number;
+  /* ⚠️ 2026-09-25: `null` = нүд ХООСОН (бөглөөгүй) — 0 БИШ. Урьд нь `nOf` нь
+     хоосныг 0 болгож «0 хүн ажиллаж байна» гэсэн худал индикатор гаргадаг байв. */
+  workers: number | null;
+  equipment: number | null;
+  manHours: number | null;
 };
 
 /**
@@ -1263,9 +1271,9 @@ export const loadHseNow = cached<HseNow | null>(async () => {
        бүртгэгдсэн маягтыг ӨМНӨХ өдрөөр харуулдаг байв (2026-09-15). Энэ
        огноо нь дээрх ⚠️-ийн «тоо нь хэдийнх вэ» гэсэн зорилготой. */
     date: Number.isFinite(ms) ? dayKey(ms) : '',
-    workers: nOf(r[f.niitAjiltan]),
-    equipment: nOf(r[f.niitTehnik]),
-    manHours: nOf(r[f.hunTsag]),
+    workers: nnOf(r[f.niitAjiltan]),
+    equipment: nnOf(r[f.niitTehnik]),
+    manHours: nnOf(r[f.hunTsag]),
   };
 }, 5 * 60_000, ['HABEA']); // ⚠️ ХАБ маягт бичихэд шууд шинэчлэгдэнэ (2026-09-17)
 

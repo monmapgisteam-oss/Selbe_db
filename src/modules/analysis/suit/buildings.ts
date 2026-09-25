@@ -111,10 +111,17 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
   const out: BuildingPt[] = [];
   // ⚠️ 363 барилга нэг хуудсанд багтдаг ч давхарга өсөж болно — `exceededTransferLimit`
   //    дуустал үргэлжлүүлнэ (хязгааргүй давталтаас хамгаалж 20 хуудсаар таслав).
+  /* ⚠️ 2026-09-25: Дараагийн хуудасны `offset` нь БОДИТ ирсэн мөрийн тоогоор
+     (`got`) ахина — урьд нь `page * PAGE` байсан тул үйлчилгээний
+     `maxRecordCount` 2000-аас бага (жиш. 1000) бол 1000–1999 мөрүүд чимээгүй
+     алгасагддаг байв. Хоосон хуудас ирвэл зогсоно (хязгааргүй давталтаас). */
+  let offset = 0;
   for (let page = 0; page < 20; page++) {
-    const r: QueryResp = await fetch(`${url}/query?${pageQuery(page * PAGE)}${tokenQs()}`, { signal })
+    const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}${tokenQs()}`, { signal })
       .then((x) => x.json());
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
+    const got = r.features?.length ?? 0;
+    offset += got;
 
     for (const f of r.features ?? []) {
       const c = f.centroid;
@@ -140,7 +147,7 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
         block: a[F.block] == null ? null : num(a[F.block]),
       });
     }
-    if (!r.exceededTransferLimit) break;
+    if (!r.exceededTransferLimit || got === 0) break;
   }
   return out;
 }

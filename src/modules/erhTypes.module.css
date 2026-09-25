@@ -75,3 +75,5 @@
 
 /* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг */
 .typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* ⚠️ 2026-09-25: картын багцын чип хоёр бүлэг (бөглөх хуудас · дэд бүтэц) — бүлгийн гарчиг */
+.pkgKind { color: var(--ink-3); font-size: 0.7rem; font-weight: 600; margin: 8px 0 4px; }

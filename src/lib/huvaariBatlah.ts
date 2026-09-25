@@ -883,7 +883,7 @@ export async function decidePlan(args: {
    *    нэр чимээгүй дарагдана. Мөр нь ганц тул `applyEdits` алдаа өгөхгүй —
    *    ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
@@ -915,6 +915,12 @@ export async function decidePlan(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
+  /* ⚠️ 2026-09-25 аудит: ӨӨР батлагч түгжсэн (эх хуудсанд бичиж буй) бол шийдвэр
+     гаргахгүй — хоёр дахь батлагчийн буцаалт/батлалт эхнийхийн бичилтийг дарна. */
+  const holder = claimHolder(cur[0]);
+  if (holder && holder !== me) {
+    return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder) };
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: args.approve ? PLAN_STATUS.approved : PLAN_STATUS.returned,
@@ -944,6 +950,108 @@ export async function decidePlan(args: {
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
+}
+
+/**
+ * БАТЛАХ ТҮГЖЭЭ (claim) — 2026-09-25 аудит.
+ *
+ * ⚠️ ЯАГААД: батлах гинж нь ЭХЛЭЭД эх хуудсанд бичээд (`save`), ДАРАА нь төлөвийг
+ *    `approved` болгодог. Завсарт нь зохиогч татах эсвэл хоёр дахь батлагч
+ *    буцаах/батлах боломжтой байсан тул «татсан»/«буцаагдсан» санал эх хуудсанд
+ *    бичигдэж, хоёр батлагч ижил хуваарийг давхар бичдэг байв.
+ * ⚠️ ХЭЛБЭР: ШИНЭ ТӨЛӨВ НЭМЭЭГҮЙ — `pending` хэвээр, `approver` = түгжигч,
+ *    `approverAt` = түгжсэн агшин. Шинэ төлөв нэмбэл `loadPending`/`loadHistory`/
+ *    дараалал/`submitPlan`-ийн «хүлээгдэж буй» шүүлт бүгд зөрнө. `pending` мөрийн
+ *    `approver`-ийг өөр хаана ч уншдаггүй.
+ * ⚠️ ХУГАЦААТАЙ (`CLAIM_TTL`): хөтөч батлах явцад хаагдвал түгжээ мөнхөд үлдэхгүй.
+ * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ — бичсэний дараа дахин уншиж өөрийнх эсэхийг
+ *    шалгана (`claimPlan`). Зэрэг хоёр түгжилтийн завсар маш богино болно, тэг биш.
+ */
+const CLAIM_TTL = 10 * 60_000;
+/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null` */
+function claimHolder(a: Attrs, now = Date.now()): string | null {
+  if (s(a[F.status]) !== PLAN_STATUS.pending) return null;
+  const who = s(a[F.approver])?.toLowerCase() ?? null;
+  const at = Number(a[F.approverAt]);
+  if (!who || !Number.isFinite(at) || at <= 0) return null;
+  return now - at < CLAIM_TTL ? who : null;
+}
+
+/**
+ * БАТЛАХААР ТҮГЖИХ — эх хуудсанд бичихээс ӨМНӨ (`Huvaari.decide`).
+ * `decidePlan`-ийн дүрмүүд (өөрийгөө биш · хүрээ · `pending`) + өөр хүний
+ * хүчинтэй түгжээ байхгүй. Амжилттай бол `decidePlan` нь ЭНЭ батлагчид л
+ * зөвшөөрөгдөнө, `withdrawPlan` татгалзана.
+ */
+export async function claimPlan(args: { oid: number; approver: string; author?: string }): Promise<{ ok: boolean; error?: string }> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const claimed = (args.author ?? '').trim().toLowerCase();
+  if (claimed && me === claimed) {
+    return { ok: false, error: tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
+  }
+  const url = await tableUrl(false);
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  const fields = `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`;
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, fields);
+  if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  if (AUTH.appId) {
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const sc = huvaariScope(meNow ?? me, 'approver');
+    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+      return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
+  }
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (author && me === author) {
+    return { ok: false, error: tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
+  }
+  if (s(cur[0][F.status]) !== PLAN_STATUS.pending) {
+    return { ok: false, error: tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.') };
+  }
+  const holder = claimHolder(cur[0]);
+  if (holder && holder !== me) {
+    return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder) };
+  }
+  const at = Date.now();
+  try {
+    const j = await req(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: me, [F.approverAt]: at } }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+  /* ⚠️ Дахин уншиж БАТАЛГААЖУУЛНА: зэрэг түгжсэн хоёр дахь батлагч (эсвэл завсарт
+     татсан зохиогч) бичсэн бол бидний түгжээ хүчингүй — эх хуудсанд бичихгүй. */
+  const back = await query(`${F.oid} = ${Number(args.oid)}`, fields);
+  const ok = back.length > 0
+    && s(back[0][F.status]) === PLAN_STATUS.pending
+    && (s(back[0][F.approver])?.toLowerCase() ?? '') === me
+    /* Огнооны талбар секундээр тайрагдаж болзошгүй — 1 с-ийн хүлцэл */
+    && Math.abs(Number(back[0][F.approverAt]) - at) < 1000;
+  if (!ok) return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
+  return { ok: true };
+}
+
+/**
+ * ТҮГЖЭЭГ ТАЙЛАХ — бичилт унасан/тасарсан үед (`Huvaari`). Зөвхөн ӨӨРИЙН,
+ * `pending` хэвээр мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
+ */
+export async function releasePlanClaim(args: { oid: number; approver: string }): Promise<void> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return;
+  try {
+    const url = await tableUrl(false);
+    if (!url) return;
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt}`);
+    if (!cur.length || claimHolder(cur[0]) !== me) return;
+    await req(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: null, [F.approverAt]: null } }]),
+      rollbackOnFailure: 'true',
+    });
+  } catch { /* CLAIM_TTL-ээр тайлагдана */ }
 }
 
 /**
@@ -978,7 +1086,7 @@ export async function withdrawPlan(args: {
   }
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
@@ -992,9 +1100,18 @@ export async function withdrawPlan(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
+  /* ⚠️ 2026-09-25 аудит: батлагч түгжсэн (эх хуудсанд бичиж буй) үед ТАТАХГҮЙ —
+     урьд нь татсны дараа ч батлагчийн бичилт эх хуудсанд орж, «татсан» санал
+     хуваарьт суудаг байв. */
+  const holder = claimHolder(cur[0]);
+  if (holder) {
+    return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.', holder) };
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: PLAN_STATUS.withdrawn,
+    /* Түгжээний үлдэгдэл (хугацаа нь өнгөрсөн) «батлагч» баганад үлдэхгүй */
+    [F.approver]: null,
     [F.approverAt]: Date.now(),
     [F.reason]: null,
   };

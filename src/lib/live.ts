@@ -559,7 +559,9 @@ async function cashflowPkgPctRaw(): Promise<Map<string, number>> {
      хуримтлуулна. */
   const acc = new Map<string, number[]>();
   for (const r of rows) {
-    const raw = String(r[F.pkg2] ?? r[F.pkg] ?? '').trim();
+    /* ⚠️ 2026-09-25: `??` БИШ `||` — `pkg2` ХООСОН МӨР ('') байхад `??` нь
+       `pkg` руу унадаггүй тул 3.1-ийн мөр алгасагдаж override алга болдог байв. */
+    const raw = String(r[F.pkg2] ?? '').trim() || String(r[F.pkg] ?? '').trim();
     if (!raw) continue;
     const key = bagtsKey(raw);
     if (!key) continue;

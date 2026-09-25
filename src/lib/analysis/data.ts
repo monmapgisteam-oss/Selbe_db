@@ -456,7 +456,13 @@ function groupBuildingPurposes(buildings: Feat[]): BuildingPurposeStat[] {
     //    баганыг НИЙЛҮҮЛДЭГ байсан тул хоёулаа бөглөгдсөн барилгад (орон
     //    сууц + доод давхрын үйлчилгээ) хүн давхардан тоологдож байв.
     b.pop += isResidential(raw) ? n(a[BF.population]) : n(a[BF.capacity]);
-    if (raw) b.values.add(raw); else b.blank = true;
+    /* ⚠️ 2026-09-25: SQL `NOT IN`-д ТАЙРААГҮЙ эх утгыг хадгална — `trim()`
+       хийсэн утга нь сүүлдээ зайтай бичлэгтэй тэнцэхгүй тул тэр барилга
+       бүлгийг унтраасан ч зурагт үлдэж байв. Хоосон ('' / зай) ч мөн адил:
+       NULL биш тул `IS NULL`-д орохгүй, жагсаалтаар л хасагдана. */
+    const orig = a[BF.purpose] == null ? null : String(a[BF.purpose]);
+    if (orig != null) b.values.add(orig);
+    if (!raw) b.blank = true;
     agg.set(key, b);
   }
 

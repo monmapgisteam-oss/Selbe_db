@@ -19,7 +19,7 @@
  *      payload ижил хүснэгтэд байдаг — `v !== 1` бол илгээлт БИШ.
  */
 import assert from 'node:assert/strict';
-import { parseSubmission, mergeSubmission, saveSubmission, subKey, SUBMISSION_MAX } from './submission.ts';
+import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -62,7 +62,8 @@ assert.equal(SUBMISSION_MAX, 80_000);
 
 /* ── 2. `v` буруу → null (ноорогийн payload ижил хүснэгтэд байдаг!) ── */
 {
-  assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: 2 })), null, 'v:2 задарч болохгүй');
+  /* ⚠️ 2026-09-25: `v: 2` нь ЗӨВХӨН `mode: 'inc'`-тэй хүчинтэй — туггүй бол горим тодорхойгүй */
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: 2 })), null, 'v:2 (горимгүй) задарч болохгүй');
   assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: '1' })), null, "v:'1' задарч болохгүй");
   const noV = valid(); delete noV.v;
   assert.equal(parseSubmission(JSON.stringify(noV)), null, 'v байхгүй бол null');
@@ -456,6 +457,46 @@ const nextOf = (over = {}) => {
   assert.equal(c.get('13:0'), '7');
   assert.equal(m.fillMs, day);
   assert.equal(m.at, 2000, '`at` нь СҮҮЛИЙН илгээлтийнх байх ёстой (expect тулгалт үүгээр явдаг)');
+}
+
+/* ── 2026-09-25. НЭМЭЛТИЙН ГОРИМ (`mode: 'inc'`, `v: 2`) ── */
+{
+  const incP = (cells, extra = {}) => ({ ...valid(), v: 2, mode: 'inc', adds: [], cells, dates: [], ...extra });
+  /* задлал: туг хадгалагдана; туггүй нь хуучин (НИЙТ) хэвээр */
+  const p = parseSubmission(JSON.stringify(incP([['12:0', '15']])));
+  assert.ok(p && p.mode === 'inc' && p.v === 2, 'inc payload задарсангүй');
+  const leg = parseSubmission(JSON.stringify(valid()));
+  assert.equal(leg.mode, undefined, 'туггүй payload = хуучин (НИЙТ)');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: 1, mode: 'abs' })).mode, undefined, 'танихгүй туг = хуучин');
+
+  /* нэгтгэл: нэг өдрийн дахин илгээлт НЭМЭЛТҮҮДИЙГ нийлүүлнэ (дарахгүй) */
+  const next = (cells) => ({ ...incP(cells), at: 2000 });
+  const m = mergeSubmission(p, next([['12:0', '5'], ['13:0', '%10']]));
+  assert.equal(m.mode, 'inc');
+  assert.equal(m.v, 2);
+  assert.deepEqual(new Map(m.cells).get('12:0'), '20', 'өглөө +15, үдээс хойш +5 → +20');
+  assert.deepEqual(new Map(m.cells).get('13:0'), '%10');
+  const z = mergeSubmission(p, next([['12:0', '-15']]));
+  assert.equal(new Map(z.cells).has('12:0'), false, 'тэг болсон нэмэлт хаягдана');
+
+  /* горим холихгүй — хуучин (НИЙТ) дээр нэмэлт нэгтгэвэл ил алдаа */
+  assert.throws(() => mergeSubmission(leg, next([['12:0', '5']])), /горим/, 'abs + inc чимээгүй холилдлоо');
+  assert.throws(() => mergeSubmission(p, { ...valid(), cells: [['12:0', '5']] }), /горим/, 'inc + abs чимээгүй холилдлоо');
+  /* хуучин + хуучин — хуучин дүрмээрээ (шинэ нь дарна) */
+  assert.equal(new Map(mergeSubmission(leg, { ...valid(), at: 2000, cells: [['12:0', '9']] }).cells).get('12:0'), '9');
+
+  /* ДАВХАРДАЛГҮЙ АРХИВЛАЛТ: батлах явцад дахин илгээсэн мөрөөс архивласан хэсгийг хасна */
+  const archived = incP([['12:0', '15'], ['14:0', '3']], { rowKeys: [[12, '1 ¦ Хашаа'], [14, '2 ¦ Хана']] });
+  const cur = mergeSubmission(archived, { ...next([['12:0', '5'], ['13:0', '2'], ['14:0', '-3']]), rowKeys: [[13, '3 ¦ Дээвэр']] });
+  const rest = residualAfterArchive(cur, archived);
+  assert.deepEqual(new Map(rest.cells), new Map([['12:0', '5'], ['13:0', '2'], ['14:0', '-3']]),
+    'үлдэгдэл = ЗӨВХӨН шинэ нэмэлт (архивласан +15 дахин орохгүй; 14:0-ийн −3 залруулга хадгалагдана)');
+  /* шинэ жааз руу зөөгдсөн дахин илгээлт — шошгоор хослуулна */
+  const moved = { ...cur, cells: [['512:0', '20'], ['513:0', '2']], rowKeys: [[512, '1 ¦ Хашаа'], [513, '3 ¦ Дээвэр'], [514, '2 ¦ Хана']] };
+  assert.deepEqual(new Map(residualAfterArchive(moved, archived).cells), new Map([['512:0', '5'], ['513:0', '2'], ['514:0', '-3']]));
+  /* хослох аргагүй бол `null` (таамаглаж хасахгүй) */
+  assert.equal(residualAfterArchive({ ...cur, rowKeys: [[900, 'өөр']] , cells: [['900:0', '1']] }, archived), null);
+  assert.equal(residualAfterArchive(leg, archived), null, 'хуучин горимд хасахгүй');
 }
 
 console.log('submission.check ✓');

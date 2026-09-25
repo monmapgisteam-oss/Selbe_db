@@ -494,11 +494,18 @@ export async function damageOf(
  * алгасагдаж нийлбэрт 0 нэмдэг байсан тул «эрсдэлгүй» гэсэн ХУДАЛ
  * баталгаа гардаг байв.
  */
-): Promise<{ rows: DamageRow[]; failed: string[] }> {
+): Promise<{ rows: DamageRow[]; failed: string[]; analyzed: number }> {
   const sev = SEVERITY[level];
   const rows: DamageRow[] = [];
   /** Татагдаагүй давхаргын гарчиг — «эрсдэлгүй» ба «мэдээлэлгүй»-г ялгана */
   const failed: string[] = [];
+  /**
+   * ⚠️ 2026-09-25: БОДИТООР асуулга амжилттай болсон давхаргын тоо. Урьд нь
+   * дуудагч `ids.length - failed.length` гэж боддог байсан тул АЛГАССАН
+   * давхарга (бүртгэлгүй, үерийн эх `FLOOD_SKIP_IDS`, зурагт байхгүй) ч
+   * «шинжлэв» гэж тоологддог байв.
+   */
+  let analyzed = 0;
 
   for (const id of layerIds) {
     const def = LAYER_BY_ID[id];
@@ -531,6 +538,7 @@ export async function damageOf(
         fl.queryFeatures(q),
         fl.queryFeatureCount(q).catch(() => -1),
       ]);
+      analyzed += 1;
       const countFailed = total < 0;
       const n = countFailed ? res.features.length : total;
       if (!n) continue;
@@ -619,5 +627,5 @@ export async function damageOf(
       continue;
     }
   }
-  return { rows: rows.sort((a, b) => b.cost - a.cost || b.n - a.n), failed };
+  return { rows: rows.sort((a, b) => b.cost - a.cost || b.n - a.n), failed, analyzed };
 }

@@ -5,10 +5,32 @@
  * ⚠️ Ажлын нэр бүр «ЖИШЭЭ —» гэж эхэлдэг тул цэвэрлэлт нь ЯГ эдгээрийг л
  *    олно — бодит бүртгэлд хүрэхгүй.
  *
- *   үүсгэх :  node --experimental-transform-types --import ./tools/ts-alias.mjs tools/hyanalt-demo.mjs
- *   устгах :  node --experimental-transform-types --import ./tools/ts-alias.mjs tools/hyanalt-demo.mjs --clean
+ *   үүсгэх :  node --experimental-transform-types --import ./tools/ts-alias.mjs tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production
+ *   устгах :  … tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production --clean
+ *
+ * ⚠️ 2026-09-25: PRODUCTION ХАМГААЛАЛТ. `HYANALT.url` нь `.env`-ийн HJ-ээс
+ *    гардаг ганц prod хүснэгт (өөр орчин алга), урьд нь loader admin токеныг
+ *    чимээгүй залгадаг байв. Одоо `--target` (ЯГ `HYANALT.url`-тэй тэнцүү —
+ *    скрипт бичих хаягаа өөрчилж чадахгүй тул таарахгүй бол татгалзана) БА
+ *    `--i-know-this-is-production` хоёулаа байхгүй бол юу ч бичихгүй.
+ *    Loader токен залгахаа больсон (зөвхөн `*.check.mjs`).
  */
 import { addRows, queryAll, HYANALT, F, STATUS, DECISION } from '@/lib/hyanalt';
+
+{
+  const argv = process.argv.slice(2);
+  const i = argv.findIndex((a) => a === '--target' || a.startsWith('--target='));
+  const target = i < 0 ? '' : (argv[i].includes('=') ? argv[i].slice(argv[i].indexOf('=') + 1) : argv[i + 1] ?? '').trim();
+  const norm = (u) => String(u).replace(/\/+$/, '').toLowerCase();
+  if (!target || norm(target) !== norm(HYANALT.url)) {
+    console.error(`⛔ Зорилтыг ил өг: --target=${HYANALT.url}  (скрипт ЗӨВХӨН энэ хаяг руу бичнэ)`);
+    process.exit(1);
+  }
+  if (!argv.includes('--i-know-this-is-production')) {
+    console.error('⛔ Энэ бол production хүснэгт. Итгэлтэй бол --i-know-this-is-production нэм.');
+    process.exit(1);
+  }
+}
 
 const D = (s) => Date.parse(s);
 const MARK = 'ЖИШЭЭ — ';

@@ -8,10 +8,11 @@
       "port": 8123
     },
     {
-      "name": "selbe-8200",
+      "name": "selbe-claude-8199",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["next", "dev", "-p", "8200"],
-      "port": 8200
+      "runtimeArgs": ["next", "dev", "-p", "8199"],
+      "env": { "NEXT_DIST_DIR": ".next-claude-dev" },
+      "port": 8199
     }
   ]
 }

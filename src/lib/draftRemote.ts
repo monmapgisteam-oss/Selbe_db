@@ -269,13 +269,19 @@ export type RemoteDraft = { at: number; payload: string };
  * Буцаана: `at` (мс) · `null` = мөр байхгүй · `undefined` = уншиж чадсангүй
  * (сүлжээ/эрх). Гуравыг ЯЛГАХ нь чухал — «байхгүй» гэж андуурвал дуудагч
  * бусдын ажлыг дарж бичнэ.
+ *
+ * ⚠️ 2026-09-25: НЭВТРЭЭГҮЙ ба ХҮСНЭГТ ҮҮСЭЭГҮЙ нь `null` (`undefined` БИШ) —
+ *    `readRemoteDraft`-ийн «алдаа биш, ноорог зөвхөн локалд» дүрэмтэй ИЖИЛ.
+ *    Урьд нь `undefined` буцааж хоёр хос зөрдөг байв: «Дуусгасан» товч ба
+ *    `flush` «алсын ноорогийг шалгаж чадсангүй» гэсэн ХУДАЛ сүлжээний алдаа
+ *    харуулж, хүснэгтийг анх үүсгэх бичилт (`tableUrl(true)`) хэзээ ч явдаггүй.
  */
 export async function readRemoteDraftAt(pkgKey: string): Promise<number | null | undefined> {
   try {
     const auth = await getAuth();
-    if (!auth) return undefined;
+    if (!auth) return null;
     const url = await tableUrl(false);
-    if (!url) return undefined;
+    if (!url) return null;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,

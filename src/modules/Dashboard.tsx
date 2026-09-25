@@ -323,6 +323,12 @@ type DashData = {
    * геометрийн хэмжээ (`Shape__Area`, м²).
    */
   socTotals: Async<Map<string, Totals>>;
+  /**
+   * ⚠️ 2026-09-25: БҮСИЙН ШҮҮЛТ — `*Totals` нь бүсээр шүүгддэг, харин `bagts`
+   * (өрх/блок) нь төслийн НИЙТ. Хоёрыг хуваасан харьцааг (м/өрх г.м.) бүс
+   * сонгогдсон үед ХАРУУЛАХГҮЙ — хуваарь, хуваагч өөр хүрээтэй.
+   */
+  zone: string | null;
 };
 
 /* ══════════════════ Газрын зургийн НЭГДСЭН чарт-шүүлт ══════════════════ */
@@ -380,6 +386,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     netTotals: usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS),
     powTotals: usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS),
     socTotals: usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS),
+    zone,
   };
   const { setHighlight } = useMap();
 
@@ -668,7 +675,7 @@ function Detail({ k, d, flt, onFlt }: {
     case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg });
     case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, flt, onFlt });
     case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
-    case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, flt, onFlt });
+    case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, zone: d.zone, flt, onFlt });
     case 'power': return PowerDetail({ sources: d.sources, prog: d.prog, powTotals: d.powTotals, flt, onFlt });
     case 'source': return SourceDetail({ sources: d.sources, d, flt, onFlt });
     case 'finance': return FinanceDetail({ budget: d.budget, flt, onFlt });
@@ -784,7 +791,11 @@ function railStat(k: SecKey, d: DashData): {
     });
     return n ? w / n : null;
   };
-  const overall = pkgPct(() => true);
+  /* ⚠️ 2026-09-25: «02» зурвас нь `physNow` — IndStrip · 05 · ExecReport-той
+     НЭГ тоо. Урьд нь `pkgPct` (багц бүрийн ӨӨРИЙН сүүлийн сар) байсан тул
+     дэлгэрэнгүй хэсгийн тооноос зөрдөг байв. `pkgPct` нь зөвхөн сүлжээ/
+     цахилгааны бүлгийн дэд дүнд үлдэнэ. */
+  const overall = f ? physNow(f, nowYm) : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? b.reduce((a, x) => a + x.ail, 0) : null;
 
@@ -801,7 +812,8 @@ function railStat(k: SecKey, d: DashData): {
       /* ⚠️ 2026-08-21: эх нь Төсөл_Гүйцэтгэл БИШ, TASK_SHEET («Гүйцэтгэл
          бөглөх»-ийн нэгтгэл) — багц бүрийн биет %, блокоор жигнэсэн. */
       return {
-        value: overall == null ? '…' : pct(overall, 2),
+        /* ⚠️ 2026-09-25: ачаалагдсан ч утгагүй бол «—» (мөнхийн «…» биш) */
+        value: overall != null ? pct(overall, 2) : d.fin.state === 'loading' ? '…' : '—',
         note: f == null ? '…' : tr('{0} багц тайлагнасан', num(f.phys.size)),
         pct: overall ?? undefined, tone: o.active,
       };
@@ -1791,23 +1803,27 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   const planned: number | null = lag ? lag.planned : null;
   /* ⚠️ 2026-09-22: `physNow` — бусад картуудтай нэг туслах */
   const actual: number | null = f ? physNow(f, nowYm) : null;
+  /* ⚠️ 2026-09-25: «…» ЗӨВХӨН ачаалж байхад. Ачаалагдсан ч утгагүй (эсвэл
+     унасан) бол «—» — урьд нь `null` бүр «…» болж мөнхөд эргэлддэг байв. */
+  const wait = fin.state === 'loading';
+  const dash = (v: number | null, s: (x: number) => string) => (v != null ? s(v) : wait ? '…' : '—');
 
   return (
     <>
       <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0909 · HO_guitsetgel · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={actual == null ? '…' : num(actual, 2)} unit="%" label={tr('Биет гүйцэтгэл')} />
-          <Stat accent color={HUE[1]} value={planned == null ? '…' : num(planned, 1)} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
+          <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, 2))} unit="%" label={tr('Биет гүйцэтгэл')} />
+          <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, 1))} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
           <Stat
             accent
             color={HUE[2]}
-            value={planned != null && actual != null ? gapLabel(planned, actual) : '…'}
+            value={planned != null && actual != null ? gapLabel(planned, actual) : wait ? '…' : '—'}
             label={tr('Гүйцэтгэлийн зөрүү')}
           />
           <Stat
             accent
             color={HUE[3]}
-            value={f == null ? '…' : num([...f.phys.keys()].length)}
+            value={f != null ? num([...f.phys.keys()].length) : wait ? '…' : '—'}
             unit={tr('багц')}
             label={tr('Тайлагнасан багц')}
           />
@@ -1953,27 +1969,39 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       <Panel title={tr('Төлөвлөгөө vs бодит — сараар')} note={srcNote(tr('багцын дундаж %'), SRC_NEGTGEL)}>
         <Data q={pkgProg} loading={tr('Татаж байна…')}>
           {(list) => {
-            /** сар → бодит/төлөвлөгөөт утгуудын нийлбэр ба тоо */
-            const m = new Map<string, { a: number; an: number; p: number; pn: number }>();
+            /*
+             * ⚠️ 2026-09-25: сар бүрд БАГЦ БҮРИЙН СҮҮЛИЙН мөр → ТОГТВОРТОЙ олонлог.
+             * Урьд нь сарын БҮХ мөрийг дундажладаг байсан тул нэг сард олон
+             * бүртгэл хийсэн багц олон дахин жигнэгдэж, бодит ба төлөвлөгөө
+             * хоёр ӨӨР багцын олонлогоос дундажлагддаг байв (харьцуулалт хуурамч).
+             * Одоо: хоёулаа бөглөгдсөн багцуудаар (S) бодит/төлөвлөгөөг ИЖИЛ
+             * олонлогоор; S хоосон бол бодит нь бодит бүхий багцуудаар ганцаараа.
+             */
+            const last = new Map<string, Map<string, PkgProgressRow>>();
             for (const r of list) {
               const ym = r.date.slice(0, 7);
               if (!ym) continue;
-              const cur = m.get(ym) ?? { a: 0, an: 0, p: 0, pn: 0 };
-              if (r.actual != null) { cur.a += r.actual; cur.an += 1; }
-              if (r.planned != null) { cur.p += r.planned; cur.pn += 1; }
-              m.set(ym, cur);
+              const byPkg = last.get(ym) ?? new Map<string, PkgProgressRow>();
+              const prev = byPkg.get(r.key);
+              if (!prev || r.date >= prev.date) byPkg.set(r.key, r);
+              last.set(ym, byPkg);
             }
-            const pts = [...m.entries()]
-              .filter(([, v]) => v.an > 0)
+            const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+            const pts = [...last.entries()]
               .sort((x, y) => x[0].localeCompare(y[0]))
-              .map(([ym, v]) => ({
-                key: ym,
-                label: ym.slice(2),
-                value: v.a / v.an,
-                display: v.pn
-                  ? tr('{0} / төл. {1}', pct(v.a / v.an, 1), pct(v.p / v.pn, 1))
-                  : pct(v.a / v.an, 1),
-              }));
+              .flatMap(([ym, byPkg]) => {
+                const rs = [...byPkg.values()];
+                const both = rs.filter((r) => r.actual != null && r.planned != null);
+                const act = rs.filter((r) => r.actual != null);
+                if (act.length === 0) return [];
+                if (both.length) {
+                  const a = avg(both.map((r) => r.actual as number));
+                  const p = avg(both.map((r) => r.planned as number));
+                  return [{ key: ym, label: ym.slice(2), value: a, display: tr('{0} / төл. {1}', pct(a, 1), pct(p, 1)) }];
+                }
+                const a = avg(act.map((r) => r.actual as number));
+                return [{ key: ym, label: ym.slice(2), value: a, display: pct(a, 1) }];
+              });
             return pts.length >= 2
               ? <Series items={pts} height={120} unit="%" line />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
@@ -2126,14 +2154,27 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             let planTotal = 0;
             f?.planTotal.forEach((v) => { planTotal += v; });
             if (!planTotal || ms.length < 2) return <Empty label={tr('Олголтын бүртгэл алга')} />;
+            /* ⚠️ 2026-09-25: ОГНООГҮЙ олголтыг СҮҮЛИЙН цэгт нэмнэ. `given` цуваа
+               нь огноогүй төлбөрийг хасдаг (`FinData.givenTotal`-ийг үз) тул
+               урьд нь хуримтлал нийт олгосноос дутуу төгсдөг байв. Дунд цэгт
+               оруулахгүй — хэзээ олгосон нь үл мэдэгдэх. */
+            let givenAll = 0;
+            f?.givenTotal.forEach((v) => { givenAll += v; });
+            /* ⚠️ Огноотойг `f.given`-ээс ШУУД — `months` нь тэнхлэгийн цонхоор
+               тасардаг тул түүгээр хасвал цонхны гаднах олголт «огноогүй» болно. */
+            let dated = 0;
+            f?.given.forEach((byMon) => byMon.forEach((v) => { dated += v; }));
+            const undated = Math.max(0, givenAll - dated);
             let cum = 0;
-            const pts = ms.map((m) => {
+            const pts = ms.map((m, i) => {
               cum += m.given;
+              const tail = i === ms.length - 1 && undated > 0.5;
+              const v = ((tail ? cum + undated : cum) / planTotal) * 100;
               return {
                 key: m.label,
                 label: m.label.slice(2),
-                value: (cum / planTotal) * 100,
-                display: pct((cum / planTotal) * 100, 1),
+                value: v,
+                display: tail ? tr('{0} · огноогүй олголт багтсан', pct(v, 1)) : pct(v, 1),
               };
             });
             return <Series items={pts} height={120} unit="%" line />;
@@ -2610,9 +2651,11 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
                   key: x.key,
                   label: tr(x.label),
                   value: x.volume ?? 0,
+                  /* ⚠️ 2026-09-25: бодит `null` = «мэдээлэлгүй», «0 / N» БИШ —
+                     урьд нь бөглөөгүй багц «0 хийсэн» мэт уншигддаг байв. */
                   display: x.volumePlan == null
-                    ? num(x.volume ?? 0)
-                    : tr('{0} / {1}', num(x.volume ?? 0), num(x.volumePlan)),
+                    ? (x.volume == null ? tr('мэдээлэлгүй') : num(x.volume))
+                    : tr('{0} / {1}', x.volume == null ? tr('мэдээлэлгүй') : num(x.volume), num(x.volumePlan)),
                 }))}
               />
             );
@@ -3163,6 +3206,14 @@ function LandDetail({ parcels, land, flt, onFlt }: {
  * ⚠️ Төрөл нь ил бичигдсэн (`as const` БИШ): `bagts` нь `BagtsRow.key: string`-тэй
  * `includes()`-ээр жишигддэг тул литерал нарийсалт нь дуудагчийг эвдэнэ.
  */
+/**
+ * ⚠️ 2026-09-25: `SOURCE_FS.consumers`-ийн ТОГТМОЛ `key` (b31) → `BagtsRow.key`
+ * («БАГЦ31»). `c.label` нь tr()-ээр орчуулагддаг тул `bagtsKey(c.label)` EN-д
+ * «PACKAGE31» болж өрхтэй таарахгүй, карт хоосордог байв ([[NET_SERVES]]-тэй
+ * ижил алдаа). Зөвхөн багцын (b+цифр) түлхүүрт хэрэглэнэ.
+ */
+const consumerBagtsKey = (k: string) => `БАГЦ${k.slice(1)}`;
+
 const NET_SERVES: readonly { key: string; label: string; bagts: readonly string[] }[] = [
   { key: 'БАГЦ51', label: tr('Багц 5.1 · Багц 1'), bagts: ['БАГЦ1'] },
   { key: 'БАГЦ52', label: tr('Багц 5.2 · Багц 2'), bagts: ['БАГЦ2'] },
@@ -3187,10 +3238,12 @@ const NET_SERVES: readonly { key: string; label: string; bagts: readonly string[
  * багц дээр БҮГД бөглөгдсөн — Багц 5.3 24.6 км, Багц 5.4 15.2 км гэх мэт.
  * Энэ бол уг хэсгийн цорын ганц БҮРЭН эх сурвалж.
  */
-function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
+function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
   bagts: Async<BagtsRow[]>;
   sources: Async<Row[]>;
   netTotals: Async<Map<string, Totals>>;
+  /** ⚠️ 2026-09-25: бүс сонгогдвол урт/өрхийн харьцааг нууна (`DashData.zone`) */
+  zone: string | null;
 } & FltProps) {
   const sel = flt?.sec === 'network' ? flt.key : null;
   const pick = (key: string) => {
@@ -3317,6 +3370,8 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
       <Panel title={tr('Нэг өрхөд ногдох шугамын урт')} note={tr('м / өрх')}>
         <Data q={netTotals} loading={tr('Татаж байна…')}>
           {() => {
+            /* ⚠️ 2026-09-25: урт нь бүсээр шүүгдсэн, өрх нь төслийн нийт — харьцаа худал */
+            if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
             const rows2 = bagts.state === 'ready' ? bagts.data : null;
             if (!rows2) return <Empty label={tr('Орон сууцны багцын өрхийн тоо алга.')} />;
             const list = NET_SERVES
@@ -3601,6 +3656,8 @@ function NetworkDetail({ bagts, sources, netTotals, flt, onFlt }: {
       <Panel title={tr('Нэг блокт ногдох шугамын урт')} note={tr('м / блок')}>
         <Data q={netTotals} loading={tr('Татаж байна…')}>
           {() => {
+            /* ⚠️ 2026-09-25: урт нь бүсээр шүүгдсэн, блок нь төслийн нийт — харьцаа худал */
+            if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
             const rows2 = bagts.state === 'ready' ? bagts.data : null;
             if (!rows2) return <Empty label={tr('Орон сууцны багцын өрхийн тоо алга.')} />;
             const list = NET_SERVES
@@ -3816,8 +3873,8 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                   .map((r) => ({ src: shortSrc(srcStr(r[F.name])), mw: srcNum(r[c.field]) }))
                   .filter((x) => x.mw > 0);
                 return {
-                  key: bagtsKey(c.label),
-                  trunk: (c.label.match(/\d/) ?? ['0'])[0],   // «Багц 3.2» → «3»
+                  key: consumerBagtsKey(c.key),
+                  trunk: c.key.charAt(1),   // b32 → «3» (⚠️ 2026-09-25: орчуулгаас хамааралгүй)
                   label: c.label,
                   mw: sumBy(per, (x) => x.mw),
                   per,
@@ -4067,13 +4124,14 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
               .map((r) => ({
                 key: srcStr(r[F.name]),
                 label: shortSrc(srcStr(r[F.name])),
-                cap: srcNum(r[F.total]),
+                /* ⚠️ 2026-09-25: зарласан чадал хоосон бол `null` → «—» (0 МВт БИШ) */
+                cap: srcNumN(r[F.total]),
                 load: sumBy(SOURCE_FS.consumers, (c) => srcNum(r[c.field])),
               }))
-              .filter((x) => x.cap > 0 || x.load > 0)
+              .filter((x) => (x.cap ?? 0) > 0 || x.load > 0)
               .sort((a2, b2) => b2.load - a2.load);
             if (!list.length) return <Empty label={tr('Бүртгэл алга.')} />;
-            const top = Math.max(...list.map((x) => Math.max(x.cap, x.load)));
+            const top = Math.max(...list.map((x) => Math.max(x.cap ?? 0, x.load)));
             return (
               <Bars
                 inline
@@ -4095,10 +4153,16 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
 
 /* ══════════════════ 07 · Эх үүсвэр ══════════════════ */
 
-const srcNum = (v: unknown) => {
+/**
+ * ⚠️ 2026-09-25: ХООСОН нүд → `null` («мэдээлэлгүй»), 0 БИШ. Нэг байгууламжийн
+ * утгыг ДАНГААР харуулах газар (зүсмэг, багана, станцын чадал) үүнийг ашиглана.
+ */
+const srcNumN = (v: unknown): number | null => {
   const n = parseFloat(String(v ?? '').replace(/[^\d.]/g, ''));
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : null;
 };
+/** НИЙЛБЭРТ — хоосон нүд нийлбэрт юу ч нэмэхгүй (0) */
+const srcNum = (v: unknown) => srcNumN(v) ?? 0;
 const srcStr = (v: unknown) => String(v ?? '').replace(/​/g, '').trim();
 
 function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: DashData } & FltProps) {
@@ -4213,6 +4277,15 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
           .map((c) => ({ ...c, value: facs.reduce((a, f) => a + srcNum(f[c.field]), 0) }))
           .filter((c) => c.value > 0);
         const maxCon = maxOf(cons.map((c) => c.value));
+        /*
+         * ⚠️ 2026-09-25: НЭГ ЧАРТ — НЭГ ХЭМЖҮҮР. Урьд нь байгууламж бүрд
+         * `share || total` гэж сонгодог байсан тул нэг зүсмэгт % ба МВт холилдож
+         * (жиш. 45 ба 30 МВт), хувь нь утгагүй болдог байв. Одоо төрлийн АЛЬ НЭГ
+         * байгууламжид хувь байвал бүгд хувиар, эс бөгөөс бүгд чадлаар; хоосон
+         * нүд нь `null` — зүсмэгээс хасагдаж, баганад «мэдээлэлгүй».
+         */
+        const metric = facs.some((f) => srcNumN(f[F.share]) != null) ? F.share : F.total;
+        const valOf = (f: Row) => srcNumN(f[metric]);
         return (
           <Panel key={type} title={type}>
             {facs.length <= 3 ? (
@@ -4227,10 +4300,10 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                 items={facs.map((f, i) => ({
                   key: srcStr(f[F.name]) || `#${i}`,
                   label: srcStr(f[F.name]),
-                  value: srcNum(f[F.share]) || srcNum(f[F.total]),
-                  display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                  value: valOf(f),
+                  display: srcStr(f[metric]),
                   color: shade(ACCENT, i, facs.length),
-                }))}
+                })).filter((x): x is typeof x & { value: number } => x.value != null)}
               />
             ) : (
               <Bars
@@ -4240,8 +4313,8 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                 items={heatBars(facs, (f) => ({
                   key: srcStr(f[F.name]) || tr('Нэргүй'),
                   label: srcStr(f[F.name]),
-                  value: srcNum(f[F.share]) || srcNum(f[F.total]),
-                  display: srcStr(f[F.share]) || srcStr(f[F.total]),
+                  value: valOf(f) ?? 0,
+                  display: valOf(f) == null ? tr('мэдээлэлгүй') : srcStr(f[metric]),
                 }))}
               />
             )}
@@ -4344,7 +4417,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
               // ⚠️ 2026-09-08: түлхүүрээр шүүнэ — `label` нь EN-д орчуулагдана (дээрх тайлбарыг үз)
               .filter((c) => /^b\d/.test(c.key))
               .map((c) => {
-                const key = bagtsKey(c.label);
+                const key = consumerBagtsKey(c.key);
                 const ail = sumBy(bag.filter((x) => x.key === key), (x) => x.ail);
                 return { key, label: c.label, ail, heat: heatOf(c.field), pow: powOf(c.field) };
               })
@@ -4386,20 +4459,22 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
               (c) => sumBy(facs, (r) => srcNum(r[c.field])),
             );
             const mine = sumBy(facs, (r) => srcNum(r[field]));
-            return tot > 0 ? (mine / tot) * 100 : 0;
+            /* ⚠️ 2026-09-25: тухайн төрөлд хуваарилалт ОГТ алга бол `null`
+               («мэдээлэлгүй», «—»), 0% БИШ — null ≠ 0. */
+            return tot > 0 ? (mine / tot) * 100 : null;
           };
           const list = SOURCE_FS.consumers
             // ⚠️ 2026-09-08: түлхүүрээр шүүнэ — `label` нь EN-д орчуулагдана
             .filter((c) => /^b\d/.test(c.key))
             .map((c) => ({
-              key: bagtsKey(c.label),
+              key: consumerBagtsKey(c.key),
               label: c.label,
               heat: shareOf('Дулаан', c.field),
               pow: shareOf('Цахилгаан', c.field),
               wat: shareOf('Ус', c.field),
             }))
-            .filter((x) => x.heat > 0 || x.pow > 0 || x.wat > 0)
-            .sort((a2, b2) => b2.heat - a2.heat);
+            .filter((x) => (x.heat ?? 0) > 0 || (x.pow ?? 0) > 0 || (x.wat ?? 0) > 0)
+            .sort((a2, b2) => (b2.heat ?? -1) - (a2.heat ?? -1));
           if (!list.length) return <Empty label={tr('Хуваарилсан чадлын өгөгдөл алга.')} />;
           return (
             <Bars
@@ -4407,7 +4482,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
               items={heatBars(list, (x) => ({
                 key: x.key,
                 label: x.label,
-                value: x.heat,
+                value: x.heat ?? 0,
                 display: tr('дул. {0} · цах. {1} · ус {2}', pct(x.heat, 1), pct(x.pow, 1), pct(x.wat, 1)),
               }))}
             />
@@ -4705,18 +4780,29 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
    * ХОЁР ангилалд бөглөгдөөгүй. Суурийн талбай нь эсрэгээрээ 11 барилга дээр
    * БҮГД бий — тиймээс хоёулаа хэрэгтэй, аль нэг нь нөгөөгөө орлохгүй.
    */
-  const socPacks = SOC_PACK_IDS.map((id) => {
-    const def = LAYER_BY_ID[id];
-    const q = d.socTotals.state === 'ready' ? d.socTotals.data.get(id) : null;
+  /**
+   * ⚠️ 2026-09-25: НИЙГМИЙН ДАВХАРГУУД — `SOC_PACK_IDS`-ээс ШУУД (тогтмол).
+   * Төсвийн картууд багцын түлхүүрийг үүнээс авна: урьд нь `socPacks`
+   * (`socTotals` ачаалагдаж, `n > 0` шүүлт давсан) -аас авдаг байсан тул
+   * тоолол ирээгүй/унасан эсвэл БҮС сонгогдож барилга 0 болоход «Нийгмийн
+   * багцын төсөв бүртгэгдээгүй» гэсэн ХУДАЛ хоосон, эсвэл нарийссан дүн гардаг байв.
+   */
+  const socLayers = SOC_PACK_IDS.map((id) => ({
+    id,
+    key: bagtsKey(LAYER_BY_ID[id]?.note),
+    label: LAYER_BY_ID[id]?.title ?? id,
+  }));
+  const socPacks = socLayers.map((l) => {
+    const q = d.socTotals.state === 'ready' ? d.socTotals.data.get(l.id) : null;
     return {
-      id,
-      key: bagtsKey(def?.note),
-      label: def?.title ?? id,
+      ...l,
       n: q?.n ?? 0,
-      m2: q?.q ?? 0,
+      /* ⚠️ 2026-09-25: талбайн SUM мэдээлэлгүй бол `null` (0 м² БИШ) */
+      m2: q?.q ?? null,
     };
   }).filter((x) => x.n > 0);
-  const socM2 = socPacks.reduce((a2, x) => a2 + x.m2, 0);
+  const socM2Known = socPacks.filter((x) => x.m2 != null);
+  const socM2 = socM2Known.length ? socM2Known.reduce((a2, x) => a2 + (x.m2 as number), 0) : null;
 
   /**
    * Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ.
@@ -4753,7 +4839,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           {/* ⚠️ 2026-09-23: төлөвөөр салгана — урьд нь 0/алдаанд «…» мөнхөд
               харагддаг байв. Ачаалж байгаа үед л «…», бусад үед «—». */}
           <Stat accent color={cat(6)}
-                value={d.socTotals.state === 'loading' ? '…' : socM2 > 0 ? num(socM2) : '—'}
+                value={d.socTotals.state === 'loading' ? '…' : socM2 != null && socM2 > 0 ? num(socM2) : '—'}
                 unit={tr('м²')} label={tr('Барилгын суурийн талбай')} />
           <Stat accent color={cat(7)}
                 value={h?.population && soc ? num((sumBy(soc.rows, (r) => r.capacity ?? 0) / h.population) * 1000) : '…'}
@@ -4847,7 +4933,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       <Panel title={tr('Барилгын суурийн талбай — багцаар')} note={tr('м²')}>
         <Data q={d.socTotals} loading={tr('Татаж байна…')}>
           {() => {
-            const rows2 = [...socPacks].sort((a2, b2) => b2.m2 - a2.m2);
+            const rows2 = [...socPacks].sort((a2, b2) => (b2.m2 ?? -1) - (a2.m2 ?? -1));
             if (!rows2.length) return <Empty label={tr('Барилгын давхарга алга.')} />;
             return (
               <Bars
@@ -4865,7 +4951,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                 items={heatBars(rows2, (x) => ({
                   key: x.id,
                   label: x.label,
-                  value: x.m2,
+                  value: x.m2 ?? 0,
+                  /* ⚠️ `num(null)` → «—» (мэдээлэлгүй), 0 м² биш */
                   display: x.n > 1
                     ? tr('{0} м² · {1} барилга', num(x.m2), num(x.n))
                     : tr('{0} м²', num(x.m2)),
@@ -4896,8 +4983,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             }));
             const rows2 = socPacks
               .map((x) => ({ ...x, cap: capOf.get(x.label) ?? 0 }))
-              .filter((x) => x.cap > 0 && x.m2 > 0)
-              .map((x) => ({ ...x, per: x.m2 / x.cap }))
+              .filter((x) => x.cap > 0 && x.m2 != null && x.m2 > 0)
+              .map((x) => ({ ...x, m2: x.m2 as number, per: (x.m2 as number) / x.cap }))
               .sort((a2, b2) => b2.per - a2.per);
             if (!rows2.length) return <Empty label={tr('Хүчин чадал бүртгэгдээгүй.')} />;
             return (
@@ -4932,8 +5019,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               if (x.capacity != null && x.capacity > 0) capOf.set(x.title, x.capacity);
             }));
             /** Багцын түлхүүр → нийгмийн давхаргууд */
-            const byKey = new Map<string, typeof socPacks>();
-            socPacks.forEach((p) => {
+            const byKey = new Map<string, typeof socLayers>();
+            socLayers.forEach((p) => {
               const arr = byKey.get(p.key) ?? [];
               arr.push(p);
               byKey.set(p.key, arr);
@@ -5024,7 +5111,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       <Panel title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('НИЙТ ба нийгмийн дэд бүтцийн төсөвт өртөгөөс')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg2) => {
-            const socKeys = new Set(socPacks.map((p) => p.key));
+            const socKeys = new Set(socLayers.map((p) => p.key));
             const socSum = sumBy(
               bg2.byPkg.filter((b) => socKeys.has(bagtsKey(b.label))),
               (b) => b.value,

@@ -120,6 +120,8 @@
 .none { background: var(--bad); }
 .part { background: var(--warn); }
 .done { background: var(--good); }
+/* ⚠️ 2026-09-25: нийлбэр 100%-иас их — дутуугаас (шар) ялгаж улаанаар */
+.over { background: var(--bad); }
 
 /* ───────── Баруун: сарын оролт ───────── */
 .main {
@@ -182,6 +184,7 @@
 .tbl tfoot tr.done td { color: var(--good); }
 .tbl tfoot tr.part td { color: var(--warn); }
 .tbl tfoot tr.none td { color: var(--ink-3); }
+.tbl tfoot tr.over td { color: var(--bad); }
 
 .warn { margin: 8px 0 0; font-size: 11px; color: var(--warn); max-width: 520px; }
 

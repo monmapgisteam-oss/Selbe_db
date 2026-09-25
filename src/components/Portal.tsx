@@ -3,6 +3,7 @@
 import {
   useCallback, useEffect, useMemo, useRef, useState,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
@@ -175,18 +176,50 @@ function useColumnResize(
       widthRef.current = w;
       setWidth(w);
     };
+    /* ⚠️ 2026-09-25: `lostpointercapture` — барилт өөр шалтгаанаар (элемент
+       DOM-оос салах, хөтөч барилтыг булаах) алдагдвал `pointerup` ирэхгүй тул
+       body-ийн `resizing` класс ба чирэлтийн төлөв гацаж үлддэг байв.
+       `done` туг — up + lost хоёулаа ирэхэд хоёр удаа ажиллахгүй. */
+    let done = false;
     const up = () => {
+      if (done) return;
+      done = true;
       setDragging(false);
       document.body.classList.remove(cls);
-      grip.releasePointerCapture(e.pointerId);
+      if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
+      grip.removeEventListener('lostpointercapture', up);
       save(widthRef.current);
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
     grip.addEventListener('pointercancel', up);
+    grip.addEventListener('lostpointercapture', up);
+  }, [min, max, dir, axis, storageKey]);
+
+  /**
+   * ⚠️ 2026-09-25: ГАРААР өргөн тохируулах — бариул нь зөвхөн хулганаар
+   * ажилладаг байв. Сум (x тэнхлэгт ←/→, y-д ↑/↓) нь бариулыг ДЭЛГЭЦ дээр
+   * тэр зүгт хөдөлгөнө (чирэлттэй ижил `dir` томьёо); Shift — 4 дахин том
+   * алхам; Home/End — хязгаар.
+   */
+  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 64 : 16;
+    const fwd = axis === 'y' ? 'ArrowDown' : 'ArrowRight';
+    const back = axis === 'y' ? 'ArrowUp' : 'ArrowLeft';
+    let w: number;
+    if (e.key === fwd) w = widthRef.current + dir * step;
+    else if (e.key === back) w = widthRef.current - dir * step;
+    else if (e.key === 'Home') w = min;
+    else if (e.key === 'End') w = max;
+    else return;
+    e.preventDefault();
+    w = Math.min(max, Math.max(min, w));
+    widthRef.current = w;
+    setWidth(w);
+    try { localStorage.setItem(storageKey, String(w)); } catch { /* private mode */ }
   }, [min, max, dir, axis, storageKey]);
 
   /** Давхар товшиход анхны өргөнд буцаана */
@@ -196,7 +229,7 @@ function useColumnResize(
     try { localStorage.setItem(storageKey, String(initial)); } catch { /* private mode */ }
   }, [initial, storageKey]);
 
-  return { width, dragging, onPointerDown, onDoubleClick };
+  return { width, dragging, onPointerDown, onDoubleClick, onKeyDown };
 }
 
 /**
@@ -273,7 +306,11 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
         animation: 'selbeSpin .9s linear infinite',
       }} />
       <div style={{ fontSize: 15, fontWeight: 500, letterSpacing: 0.3 }}>{tr('Дашбоард ачаалж байна…')}</div>
-      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>{tr('Сэлбэ 20 минутын хот · Digital Twin Platform')}</div>
+      {/* ⚠️ 2026-09-25: «20 минутын хот» → «Ухаалаг хот» — Home/Landing-ийн брэндтэй
+          НЭГ нэр (2026-08-24-ний хэрэглэгчийн шийдвэр, тэдгээрийн ⚠️-г үз). */}
+      <div style={{ fontSize: 12.5, color: '#8aa0bd' }}>
+        {tr('Сэлбэ')} {tr('Ухаалаг хот')} · Digital Twin Platform
+      </div>
     </div>
   );
 }
@@ -427,9 +464,11 @@ function PortalContent(
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
   viewNowRef.current = view;
-  const setView = useCallback((v: ViewKey) => {
+  /* ⚠️ 2026-09-25: `boolean` буцаана — татгалзсан эсэхийг popstate мэдэх ёстой
+     (доорх `onPop`-ийн ⚠️). */
+  const setView = useCallback((v: ViewKey): boolean => {
     if (v !== viewNowRef.current && planNavBusy()
-      && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return;
+      && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -470,6 +509,7 @@ function PortalContent(
     /* ⚠️ «Инженерийн дэд бүтэц» мөн ЗААВАЛ 2D (2026-09-16) — `initialDim`-ийн
        тайлбарыг үз. Харагдац солихдоо ч, анхны ачаалалтад ч ижил дүрэм. */
     if (v === 'dedButets') setDim('2d');
+    return true;
   }, [clearFilter]);
 
   /* ── URL төлөв — хуваалцах холбоос, F5, Back ── */
@@ -498,6 +538,10 @@ function PortalContent(
     try { localStorage.setItem('selbe-last-view', view); } catch { /* хаалттай орчин */ }
   }, [view, zone, layer, dim]);
 
+  /** Одоогийн URL төлөв — Back татгалзагдахад URL-ыг буцааж бичихэд (onPop) */
+  const urlNowRef = useRef({ view, zone, layer, dim });
+  urlNowRef.current = { view, zone, layer, dim };
+
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
   useEffect(() => {
     const onPop = () => {
@@ -505,8 +549,22 @@ function PortalContent(
       // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
       //    (push хийвэл доорх guard-тай гогцоо үүснэ)
       const next = clampView(initialView(), navScope);
+      /* ⚠️ 2026-09-25: Хэрэглэгч «Гарах уу?»-д ҮГҮЙ гэвэл харагдац хэвээр ч
+         урьд нь доорх бүс/давхарга/горимыг ӨМНӨХ бичлэгээс тавьж, URL нь өөр
+         харагдацыг заасан хэвээр үлддэг байв (төлөв ≠ URL, F5 → буруу
+         харагдац). Татгалзвал юуг ч хөндөхгүй, одоогийн төлөвийг URL-д
+         PUSH-ээр буцааж бичнэ — Back-ийн өмнөх бичлэг түүхэнд хэвээр. */
+      if (!setView(next)) {
+        const cur = urlNowRef.current;
+        writeParams({
+          v: cur.view === DEFAULT_VIEW ? null : cur.view,
+          z: cur.zone,
+          l: cur.layer,
+          d: cur.dim === '2d' ? null : cur.dim,
+        }, { push: true });
+        return;
+      }
       if (next !== initialView()) lastViewRef.current = next;
-      setView(next);
       setZone(readParam('z'));
       setLayer(initialLayer());
       setDim(initialDim());
@@ -900,6 +958,7 @@ function PortalContent(
                     resizing={catSize.dragging}
                     onResizeStart={catSize.onPointerDown}
                     onResizeReset={catSize.onDoubleClick}
+                    onResizeKey={catSize.onKeyDown}
                     zone={zone}
                   />
                 </div>
@@ -914,8 +973,13 @@ function PortalContent(
                 role="separator"
                 aria-orientation="vertical"
                 aria-label={tr('Самбарын өргөн')}
+                tabIndex={0}
+                aria-valuenow={panelSize.width}
+                aria-valuemin={PANEL_MIN}
+                aria-valuemax={PANEL_MAX}
                 onPointerDown={panelSize.onPointerDown}
                 onDoubleClick={panelSize.onDoubleClick}
+                onKeyDown={panelSize.onKeyDown}
                 title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
               />
 
@@ -1052,6 +1116,13 @@ function SummaryBar({ zone }: { zone: string | null }) {
       loadHeadline(),
       loadHousing(),
     ]);
+    /* ⚠️ 2026-09-25: SUM нь мөргүй/бүх утга хоосон үед `null` буцаадаг —
+       `Number(x ?? 0)` нь «мэдээлэлгүй»-г «0 га / 0 хүн» гэж худал харуулдаг
+       байв (null ≠ 0). COUNT нь үргэлж тоо тул `?? 0` хэвээр. */
+    const orNull = (v: unknown): number | null => {
+      const n = v == null ? NaN : Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     return {
       zones: Number(zones.n ?? 0),
       /**
@@ -1060,10 +1131,10 @@ function SummaryBar({ zone }: { zone: string | null }) {
        * бүсийн нийлбэр (~131 га) нь зөвхөн бүсчилсэн газрыг хамардаг тул
        * төслийн хэмжээг илэрхийлэхгүй.
        */
-      ga: zone ? Number(zones.ga ?? 0) : headline.areaHa,
-      ail: zone ? Number(zones.ail ?? 0) : housing.ail,
+      ga: zone ? orNull(zones.ga) : headline.areaHa,
+      ail: zone ? orNull(zones.ail) : housing.ail,
       built: Number(built.n ?? 0),
-      pop: zone ? Number(built.pop ?? 0) : headline.population,
+      pop: zone ? orNull(built.pop) : headline.population,
     };
   }, [where]);
 

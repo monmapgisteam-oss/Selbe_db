@@ -82,7 +82,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 
     /* ⚠️ НЭГ Ч ХУУДАС УНШИГДААГҮЙ бол «гүйцэтгэл 0» ГЭЖ БҮҮ БИЧ — энэ нь
        сүлжээний/бүдүүвчийн асуудал байж болно. Алдаа буцаана. */
-    if (!read) return { ok: false, error: 'Бөглөх хуудаснаас агшин уншигдсангүй' };
+    if (!read) return { ok: false, error: tr('Бөглөх хуудаснаас агшин уншигдсангүй') };
     /*
      * ⚠️ БАГЦЫН ХУУДАС ДУТУУ бол ч БИЧИХГҮЙ (2026-09-15-ны аудит). Урьд нь
      *    `read >= 1` хангалттай гэж үздэг байсан тул хоёр хуудастай багцын
@@ -109,7 +109,19 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        бүлэгт очно (2026-09-10-ний бодит алдаа). */
     const code = contractCodeOf(rows, pkgKeyOf(bagts));
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
-    if (plan.op === 'skip') return { ok: true, op: 'skip', why: plan.why };
+    /* ⚠️ 2026-09-25: ЗӨВХӨН `no-data` (хэмжилтгүй бөглөлт — хэвийн) нь амжилт.
+       Бусад шалтгаан (гэрээний код олдоогүй, багц/огноо танигдаагүй) нь IPC мөр
+       ҮҮСЭЭГҮЙ гэсэн үг — урьд нь `ok: true` буцааж, дуудагч «бүртгэгдсэн» гэж
+       тэмдэглэдэг тул мөр нь хэзээ ч нөхөгдөхгүй, алдаа ч харагддаггүй байв. */
+    if (plan.op === 'skip') {
+      if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why };
+      const error = plan.why === 'no-code'
+        ? tr('IPC мөр бичсэнгүй: {0} багцын гэрээний код HO хүснэгтэд олдсонгүй', bagts)
+        : plan.why === 'no-pkg'
+          ? tr('IPC мөр бичсэнгүй: багцын түлхүүр танигдсангүй: {0}', bagts)
+          : tr('Огноо танигдсангүй: {0}', day);
+      return { ok: false, error };
+    }
 
     /* ── 4. Бичих ──
        ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — мөр БҮРИЙН үр дүнг шалгана. */

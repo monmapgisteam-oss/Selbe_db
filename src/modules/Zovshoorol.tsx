@@ -63,14 +63,18 @@ function Chip({ z, onPick }: { z: Zov; onPick: (z: Zov) => void }) {
     : z.tolov === TOLOV.no ? s.no
       : z.tolov === TOLOV.wait ? s.wait
         : s.unknown;
+  /* ⚠️ 2026-09-25: төлөв зөвхөн тэмдгээр (✓ ⏳ !) илэрдэг байсан тул дэлгэц
+     уншигч «шалгах тэмдэг» л уншдаг байв — нэр, төлөв, огноог шууд нэрлэнэ. */
   return (
     <button
       type="button"
       className={`${s.chip} ${cls}`}
       onClick={() => onPick(z)}
       title={tr('Дэлгэрэнгүй харах')}
+      aria-label={[z.ner, TOLOV_TEXT[z.tolov], z.ognoo != null ? dt(z.ognoo) : ''].filter(Boolean).join(' · ')}
+      aria-haspopup="dialog"
     >
-      <span className={s.chipIcon}>{ICON[z.tolov] ?? '?'}</span>
+      <span className={s.chipIcon} aria-hidden>{ICON[z.tolov] ?? '?'}</span>
       <span className={s.chipName}>{z.ner}</span>
       {z.ognoo != null && <span className={s.chipDate}>{dt(z.ognoo)}</span>}
     </button>

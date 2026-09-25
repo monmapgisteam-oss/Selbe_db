@@ -9,10 +9,15 @@
   top: 96px;
   /* ⚠️ 2026-09-25: 200px → бариулын БАРУУН талаас (`mapTools`-ийн `--tools-w`);
      200px дээр хураах бариул (195–215) хавтангийн зүүн ирмэгийг дардаг байв. */
-  left: calc(var(--tools-w, 176px) + 46px);
+  /* ⚠️ 2026-09-25: НАРИЙН зураг — `left` нь 222px байхад `max-width: 100% − 212px`
+     нь баруун ирмэгээс 10px ХАЛИЖ, ≤430px зурагт хавтан бараг 0 өргөнтэй
+     болдог байв. Каталогийн (`mapTools` §а) ижил clamp: зүүн зай нь нарийн
+     зурагт багасч, өргөн нь баруун 15px-д багтана. */
+  --pl: clamp(15px, calc(100% - 255px), calc(var(--tools-w, 176px) + 46px));
+  left: var(--pl);
   z-index: 7;
   width: 300px;
-  max-width: calc(100% - 212px);
+  max-width: calc(100% - var(--pl) - 15px);
   max-height: min(60vh, 520px);
   display: flex;
   flex-direction: column;

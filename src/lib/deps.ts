@@ -64,18 +64,29 @@ export function parseDeps(text: string | null | undefined): Dep[] {
   if (!text) return [];
   const out: Dep[] = [];
   for (const tok of String(text).split(',')) {
-    const m = TOKEN.exec(tok.trim().toUpperCase());
-    if (!m) continue;
-    const dep: Dep = { code: Number(m[1]), type: m[2] as DepType, lag: m[3] ? Number(m[3]) : 0 };
-    if (m[4] != null) {
-      const bn = Number(m[4]);
-      /* ⚠️ `@0` утгагүй (1-ээс тоолно) — эвдэрсэн токен гэж алгасна, «бүх блок» болгохгүй */
-      if (!(bn >= 1)) continue;
-      dep.blk = bn - 1;
-    }
-    out.push(dep);
+    const dep = tokenDep(tok);
+    if (dep) out.push(dep);
   }
   return out;
+}
+
+/**
+ * Нэг токен → Dep, танигдахгүй бол `null`.
+ * ⚠️ `parseDeps` ба `residualDeps` НЭГ дүрмээр (2026-09-25 аудит): урьд нь
+ *    `@0` нь `TOKEN`-д таарч `residualDeps`-ээс хасагддаг атлаа `parseDeps`
+ *    алгасдаг байсан тул хадгалахад ул мөргүй устдаг байв.
+ */
+function tokenDep(tok: string): Dep | null {
+  const m = TOKEN.exec(tok.trim().toUpperCase());
+  if (!m) return null;
+  const dep: Dep = { code: Number(m[1]), type: m[2] as DepType, lag: m[3] ? Number(m[3]) : 0 };
+  if (m[4] != null) {
+    const bn = Number(m[4]);
+    /* ⚠️ `@0` утгагүй (1-ээс тоолно) — эвдэрсэн токен гэж алгасна, «бүх блок» болгохгүй */
+    if (!(bn >= 1)) return null;
+    dep.blk = bn - 1;
+  }
+  return dep;
 }
 
 /** Dep[] → «18FS3,22SS-5». Хоосон бол `''` — хадгалахдаа `null` болгоно. */
@@ -95,7 +106,7 @@ export function residualDeps(text: string | null | undefined): string[] {
   return String(text)
     .split(',')
     .map((t) => t.trim())
-    .filter((t) => t && !TOKEN.test(t.toUpperCase()));
+    .filter((t) => t && !tokenDep(t));
 }
 
 /* ══════════════════ Модны туслахууд ══════════════════ */
@@ -405,6 +416,25 @@ export function propagate(
   const out = new Map<number, (Span | null)[]>(overrides);
   const spansOf = (i: number) => out.get(i) ?? rows[i].spans;
   const byCode = codeIndex(rows);
+  /*
+   * ⚠️ ГАРААР ТАВЬСАН ОГНОО ДАВАМГАЙЛНА (2026-09-25 аудит). `overrides`-д орсон мөрийн
+   *    ЭХ мужаас ЗӨРСӨН блок нь хэрэглэгчийн шууд оруулсан огноо — `recalc`
+   *    (уялдаа сая өөрчлөгдсөн мөр) түүнийг урьдчилагчаас дахин бодож буцааж
+   *    «наадаг» байв (popup-д огноо + уялдааг зэрэг засахад огноо алга). Тэр
+   *    блокийг бодохгүй; зөрчил үүсвэл дэлгэц зөөлөн тэмдэглэнэ (модулийн зарчим).
+   *    Хөндөөгүй блок (ижил муж) хуучнаараа уялдаагаар бодогдоно.
+   */
+  const pinned = new Map<number, Set<number>>();
+  for (const [i, sp] of overrides) {
+    const r0 = rows[i]?.spans ?? [];
+    const set = new Set<number>();
+    for (let b = 0; b < nBlocks; b++) {
+      const a = sp[b] ?? null;
+      const o = r0[b] ?? null;
+      if ((a?.start ?? null) !== (o?.start ?? null) || (a?.end ?? null) !== (o?.end ?? null)) set.add(b);
+    }
+    if (set.size) pinned.set(i, set);
+  }
 
   /* урьдчилагч-код → хамаарагч мөрүүд */
   const dependents = new Map<number, number[]>();
@@ -447,6 +477,7 @@ export function propagate(
       const sub: number[] = [i];
       for (let k = i + 1; k < rows.length && rows[k].depth > d0; k++) sub.push(k);
       for (let b = 0; b < nBlocks; b++) {
+        if (pinned.get(i)?.has(b)) continue;
         const req = requiredStart(rows, byCode, i, b, spansOf);
         if (req == null) continue;
         const eff = effSpan(rows, i, b, spansOf);
@@ -465,6 +496,7 @@ export function propagate(
       return changed;
     }
     for (let b = 0; b < nBlocks; b++) {
+      if (pinned.get(i)?.has(b)) continue;
       const req = requiredStart(rows, byCode, i, b, spansOf);
       if (req == null) continue;
       const own = spansOf(i)[b];

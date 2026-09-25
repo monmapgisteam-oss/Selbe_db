@@ -722,7 +722,10 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
       // Зөвхөн ЭНЭ блокийн багана татагдана — уншигч нь `block`-оор outFields-ээ
       // нарийсгадаг тул хүсэлт багц бүхэлдээ татахаас хамаагүй хөнгөн.
       bagts ? cachedSheetRows({ group: bagts, block: blok }) : Promise.resolve([]),
-      loadBlockProgress().catch(() => null),
+      /* ⚠️ 2026-09-25 аудит: `.catch(() => null)` БАЙХГҮЙ — ачаалалт унахад `cell`
+         нь null болж блок «бөглөөгүй» гэж ХУДАЛ харагддаг байв. Одоо алдаа
+         `useAsync`-ийн error төлөвт (дахин оролдох товчтой) очно. */
+      loadBlockProgress(),
       loadBlockHistory(),
     ]);
     const key = buildingKey(bagts, blok);

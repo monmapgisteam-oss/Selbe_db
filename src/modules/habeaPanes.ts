@@ -179,7 +179,11 @@ export function usePanes() {
           if (cur.current[k] != null) commit(k, null);
           return;
         }
-        const [less, more] = p.axis === 'y' ? ['ArrowDown', 'ArrowUp'] : ['ArrowLeft', 'ArrowRight'];
+        /* ⚠️ 2026-09-25: сум нь БАРИУЛЫГ дэлгэц дээр тэр зүгт хөдөлгөнө — чирэлтийн
+           томьёотой ИЖИЛ (`(now − start) × sign`, доош = +). Урьд нь y тэнхлэгт
+           ↑/↓ урвуу байсан тул `sign −1` (доод хавтан) дээр ↑ дарахад бариул
+           доошилж, хулганын чирэлтийн эсрэг ажилладаг байв. */
+        const [less, more] = p.axis === 'y' ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
         const d = e.key === less ? -STEP : e.key === more ? STEP : 0;
         if (!d) return;
         e.preventDefault();

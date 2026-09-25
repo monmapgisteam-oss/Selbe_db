@@ -241,11 +241,11 @@ async function fieldsOf(url: string): Promise<Set<string>> {
  */
 export async function loadQaqcRows(pkgKey: string): Promise<QaqcRow[]> {
   const ref = qaqcTableOf(pkgKey);
-  if (!ref) throw new Error('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.');
+  if (!ref) throw new Error(tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.'));
   const url = qaqcUrl(ref);
   const have = await fieldsOf(url);
   const want = [OID, ...INFO_FIELDS, ...QAQC_COLS.map((c) => c.name)].filter((f) => have.has(f));
-  if (!want.includes(OID)) throw new Error('QAQC хүснэгтэд ObjectID талбар алга.');
+  if (!want.includes(OID)) throw new Error(tr('QAQC хүснэгтэд ObjectID талбар алга.'));
 
   const feats: Feat[] = [];
   /*
@@ -484,7 +484,7 @@ export async function saveQaqc(
   assertQaqcWrite(pkgKey);
   if (!updates.length) return 0;
   const ref = qaqcTableOf(pkgKey);
-  if (!ref) throw new Error('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.');
+  if (!ref) throw new Error(tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.'));
   const url = `${qaqcUrl(ref)}/applyEdits`;
   let done = 0;
   for (let i = 0; i < updates.length; i += 500) {

@@ -573,13 +573,22 @@ const loadPhotos = (oid: number): Promise<Photo[]> => {
  * rate limit-д өртөж бүх ханыг унагадаг байв (query.ts-ийн limiter энд үйлчлэхгүй).
  */
 async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Promise<T[]> {
+  /* ⚠️ 2026-09-25: `allSettled` — урьд нь `Promise.all` тул НЭГ бүртгэлийн
+     хавсралт унахад бусад бүх зураг хаягдаж хана бүхэлдээ алдаа болдог байв.
+     Унасныг алгасна; БҮГД унасан үед л алдаа шиднэ (дахин оролдох гарц). */
   const out: T[] = [];
+  let failed = 0;
+  let firstErr: unknown = null;
   for (let i = 0; i < list.length; i += 4) {
-    const chunk = await Promise.all(
+    const chunk = await Promise.allSettled(
       list.slice(i, i + 4).map((inc) => loadPhotos(inc.oid).then((ph) => ph.map((p) => of(inc, p)))),
     );
-    out.push(...chunk.flat());
+    for (const r of chunk) {
+      if (r.status === 'fulfilled') out.push(...r.value);
+      else { failed += 1; firstErr ??= r.reason; }
+    }
   }
+  if (list.length && failed === list.length) throw firstErr;
   return out;
 }
 
@@ -1223,23 +1232,28 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Шүүлт идэвхгүй бол `null` — давхарга бүтнээрээ. Идэвхтэй боловч юу ч
    * тохирохгүй бол `1=0` — давхаргыг ХООСЛОНО, бүтнээр нь үлдээхгүй.
    */
+  /* ⚠️ 2026-09-25: цэгийн сонголт (`pickUzOid`) нь АЛЬ маягтынх вэ гэдгийг
+     `pickUzZ` заана (`uzF`/`uzF2`-ийн дүрэм). Урьд нь хоёр шүүлт хоёулаа
+     `pickUzOid`-ыг «идэвхтэй» гэж үзэж, нэг маягтын цэг дарахад нөгөө
+     маягтын давхарга ч IN-жагсаалтаар шүүгдэж, зураг буруу муж руу
+     ойртдог байв. */
   const uzWhere = useMemo(() => {
     if (!uzLayerId) return null;
-    const on = pkgs.length || cos.length || pickUzOid
+    const on = pkgs.length || cos.length || (pickUzOid && !pickUzZ)
       || Object.values(uzSel).some((v) => v.length);
     if (!on || uzF.state !== 'ready') return null;
     const ids = uzF.rows.filter((x) => uzPass(x, uzSel)).map((x) => x.oid).filter((o) => o > 0);
     return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
-  }, [uzLayerId, pkgs.length, cos.length, pickUzOid, uzSel, uzF]);
+  }, [uzLayerId, pkgs.length, cos.length, pickUzOid, pickUzZ, uzSel, uzF]);
   /** Захиалагчийн маягтын давхаргын шүүлт — `uzWhere`-тэй ижил дүрэм */
   const uzWhere2 = useMemo(() => {
     if (!uzLayerId2) return null;
-    const on = pkgs.length || cos.length || pickUzOid
+    const on = pkgs.length || cos.length || (pickUzOid && pickUzZ)
       || Object.values(uzSel).some((v) => v.length);
     if (!on || uzF2.state !== 'ready') return null;
     const ids = uzF2.rows.filter((x) => uzPass(x, uzSel)).map((x) => x.oid).filter((o) => o > 0);
     return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
-  }, [uzLayerId2, pkgs.length, cos.length, pickUzOid, uzSel, uzF2]);
+  }, [uzLayerId2, pkgs.length, cos.length, pickUzOid, pickUzZ, uzSel, uzF2]);
 
   /** Газрын зурагт харагдах давхаргууд — каталогийн сонголт + фокусын үзлэг */
   /**
@@ -1711,10 +1725,15 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * байв) — `weekScoreOf` нь (талбай × компани) нүдээр шүүнэ.
           * ⚠️ Оноо бүртгэгдээгүй бол «—» (`null`), 0% БИШ.
           */}
+        {/* ⚠️ 2026-09-25: АЛДАА ≠ ХООСОН — урьд нь ачаалж буй, унасан, оноо
+            бүртгэгдээгүй гурвуулаа «—» байсан тул үйлчилгээ унахад «оноо алга»
+            гэж уншигддаг байв. Ачаалалт «…», алдаа нь доод мөрөнд ил. */}
         {kpiTile(
-          weekScores.state !== 'ready'
-            ? '—'
-            : ((v) => (v == null ? '—' : pct(v, 0)))(weekScoreOf(weekScores.data.rows, pkgs, cos).pct),
+          weekScores.state === 'loading'
+            ? '…'
+            : weekScores.state !== 'ready'
+              ? '—'
+              : ((v) => (v == null ? '—' : pct(v, 0)))(weekScoreOf(weekScores.data.rows, pkgs, cos).pct),
           /* ⚠️ ДЭЭД мөр = эх сурвалж, ДООД мөр = хугацаа (2026-09-17, хэрэглэгчийн
              хүсэлт). V1.1 бол ЗАХИАЛАГЧИЙН маягт — гүйцэтгэгчийнхөөс ялгах нь
              чухал, учир нь гүйцэтгэгчийн маягтад оноо огт бүртгэгддэггүй. */
@@ -1722,7 +1741,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           weekScores.state === 'ready'
             ? tr('{0}-р долоо хоногийн дундаж оноо', num(weekScores.data.no))
-            : tr('Долоо хоногийн дундаж оноо'),
+            : weekScores.state === 'error'
+              ? `${tr('Долоо хоногийн дундаж оноо')} — ${tr('татагдсангүй')}`
+              : tr('Долоо хоногийн дундаж оноо'),
           weekScores.state === 'ready'
             ? ((v) => (v == null ? null : v / 100))(weekScoreOf(weekScores.data.rows, pkgs, cos).pct)
             : null,
@@ -1758,7 +1779,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {(focus === null || laborFocus) && (<>
         <Section
           title={tr("Монгол, гадаад")}
-          note={tr("{0} ажилтан", num(mixSum.mongol + mixSum.gadaad))}
+          /* ⚠️ 2026-09-25: «хүн-өдөр» — `mixSum` нь ӨДӨР БҮРИЙН бүртгэлийн НИЙЛБЭР
+             (`mixTotals`) тул «ажилтан» гэвэл 12 өдрийн 300 хүнийг 3,600 ажилтан
+             гэж уншуулна. */
+          note={tr("{0} хүн-өдөр", num(mixSum.mongol + mixSum.gadaad))}
           fill
         >
           {mixSlices.length
@@ -1768,7 +1792,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 stack
                 size={132}
                 center={num(mixSum.mongol + mixSum.gadaad)}
-                centerLabel={tr("ажилтан")}
+                centerLabel={tr("хүн-өдөр")}
               />
             )
             : <Empty label={tr("Задаргаа бүртгэгдээгүй")} />}

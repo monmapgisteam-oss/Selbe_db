@@ -19,7 +19,9 @@
 import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
+  staleSubmissionKeys,
 } from './sheetFrame.ts';
+import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
 
 const nBld = 2;
 /** Хиймэл бүдүүвч — 2 блок; 2-р блокт обьёмын талбар АЛГА (Багц 4-2·9F-ийн хэлбэр). */
@@ -400,6 +402,79 @@ const sub = (over = {}) => ({
   assert.throws(() => assertFrameLength(1472, 1471, 'Багц 3.1 · 9 давхар'), /1471/, 'урт жааз ч зогсоно');
   /* ⚠️ Зураглалгүй үйлчилгээнд шалгахгүй — байхгүй лавлахаар нийтлэл хаахгүй */
   assert.doesNotThrow(() => assertFrameLength(1470, 0, 'зураглалгүй'));
+}
+
+/* ═══ 9. НЭМЭЛТИЙН ГОРИМ (2026-09-25) — «40 + 15 = 55», давхардахгүй ═══ */
+{
+  /* 9a. Нэмэлтийн мөрийн дүрэм */
+  assert.deepEqual(parseInc('15'), { n: 15, p: 0 });
+  assert.deepEqual(parseInc('%10'), { n: 0, p: 0.1 });
+  assert.deepEqual(parseInc('15 %10'), { n: 15, p: 0.1 }, 'нийлбэр хэлбэр');
+  assert.deepEqual(parseInc('-5'), { n: -5, p: 0 }, 'сөрөг нэмэлт = залруулга');
+  assert.equal(parseInc(''), null, 'хоосон = засвар алга');
+  assert.equal(parseInc('%'), null);
+  assert.equal(parseInc('abc'), null);
+  assert.equal(fmtInc({ n: 0.1 + 0.2, p: 0 }), '0.3', 'хөвөгч цэгийн чимээ арилна');
+  assert.equal(sumInc('15', '5'), '20');
+  assert.equal(sumInc('15', '%10'), '15 %10', 'обьём ба хувь тусдаа хуримтлагдана');
+  assert.equal(sumInc('%10', '%-10'), '', 'тэг нийлбэр');
+
+  /* 9b. Нэг нүд — суурь дээр нэмнэ */
+  const r = row(1, '1', 'A', 3, false, { vol: 100, obyem: [40, null], act: [0.4, 0.3] });
+  assert.deepEqual(incCell(r, 0, '15', true), { obyem: 55, act: 0.55 }, 'хэрэглэгчийн жишээ: 40 + 15 = 55');
+  assert.deepEqual(incCell(r, 0, '%10', true), { obyem: 50, act: 0.5 }, '%N = Обьёмын N%');
+  assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0 }, 'нийт 0-ээс доош орохгүй');
+  assert.equal(incCell(r, 0, '', true), null, '"" = өөрчлөлтгүй (цэвэрлэх БИШ)');
+  assert.equal(incCell(r, 0, '0', true), null, 'тэг нэмэлт = өөрчлөлтгүй');
+  assert.deepEqual(incCell(row(2, '2', 'B', 3, false), 0, '15', true), { obyem: 15, act: null }, 'null суурь → 0-ээс');
+  const noVol = row(3, '3', 'C', 3, false, { act: [0.3, null] });
+  assert.deepEqual(incCell(noVol, 0, '%10', true), { obyem: null, act: 0.4 }, 'Обьёмгүй мөрд хувь дээр нэмнэ');
+  assert.ok(Math.abs(incCell(r, 1, '%10', false).act - 0.4) < 1e-12, 'талбаргүй блокт хувь дээр нэмнэ');
+
+  /* 9c. computeAll — FillNew-ийн `pending` (inc) ба хуучин (abs) */
+  const baseRows = mkRows(200); // 203: vol 100, obyem [5, 3]
+  const ci = computeAll(baseRows, nBld, null, { '203:0': '15' }, {}, hasObyem, undefined, 'inc');
+  assert.equal(ci[3].obyem[0], 20, 'inc: 5 + 15');
+  assert.ok(Math.abs(ci[3].act[0] - 0.2) < 1e-12);
+  const ca = computeAll(baseRows, nBld, null, { '203:0': '15' }, {}, hasObyem);
+  assert.equal(ca[3].obyem[0], 15, 'анхдагч (abs) хуучин дүрмээр ОРЛОНО');
+
+  /* 9d. ХУУЧИН (туггүй) payload ӨӨРЧЛӨГДӨӨГҮЙ — НИЙТ-ийг орлоно, нэмэхгүй */
+  const legacy = overlaySubmission(fresh, sub({ cells: [['103:0', '12.5']] }), sc, nBld);
+  assert.equal(legacy.rows.find((x) => x.oid === 203).obyem[0], 12.5, 'хуучин payload: 12.5 (5 + 12.5 БИШ)');
+
+  /* 9e. НЭМЭЛТИЙН payload — суурь дээр нэмнэ; тэг/хоосныг хөндөхгүй */
+  const inc = (cells, extra = {}) => sub({ v: 2, mode: 'inc', rowKeys: [], cells, ...extra });
+  const ov = overlaySubmission(fresh, inc([['203:0', '12.5'], ['204:0', ''], ['206:0', '0']]), sc, nBld);
+  const r203 = ov.rows.find((x) => x.oid === 203);
+  assert.equal(r203.obyem[0], 17.5, 'inc payload: 5 + 12.5');
+  assert.ok(Math.abs(r203.act[0] - 0.175) < 1e-12, 'хувь нь нийтээс');
+  assert.equal(ov.rows.find((x) => x.oid === 204).obyem[0], 8, '"" нэмэлт хөндөхгүй');
+  assert.deepEqual(ov.cellKeys, ['203:0'], 'зөвхөн бодит өөрчлөлт cellKeys-д');
+  assert.equal(fresh.find((x) => x.oid === 203).obyem[0], 5, 'суурь mutate болоогүй');
+
+  /* 9f. Дараалал алдагдсан батлалт — нийлбэр ИЖИЛ (40 → 55) */
+  const b40 = [row(10, '1', 'A', 0, false, { vol: 100, obyem: [40, null] })];
+  const mon = inc([['10:0', '10']]);
+  const tue = inc([['10:0', '5']]);
+  const monFirst = overlaySubmission(overlaySubmission(b40, mon, sc, nBld).rows, tue, sc, nBld).rows[0].obyem[0];
+  const tueFirst = overlaySubmission(overlaySubmission(b40, tue, sc, nBld).rows, mon, sc, nBld).rows[0].obyem[0];
+  assert.equal(monFirst, 55);
+  assert.equal(tueFirst, 55, 'Мягмар эхэлж батлагдсан ч Даваагийн +10 алдагдахгүй');
+
+  /* 9g. `staleSubmissionKeys` — inc payload-ын НҮДИЙГ алгасахгүй, огноог шалгасаар */
+  const later = [row(10, '1', 'A', 0, false, { vol: 100, obyem: [45, null], start: [D('2026-09-02'), null] })];
+  const monD = inc([['10:0', '10']], { dates: [['10:0:s', '2026-09-01']] });
+  assert.deepEqual(staleSubmissionKeys(b40, later, monD, nBld), ['10:0:s'], 'inc: зөвхөн огноо');
+  assert.deepEqual(staleSubmissionKeys(b40, later, { ...monD, mode: undefined }, nBld), ['10:0', '10:0:s'], 'хуучин: нүд ч алгасагдана');
+
+  /* 9h. Нэг payload-ыг ХОЁР удаа давхарлавал хоёр нэмэгдэнэ — тиймээс архивлалт
+     idempotent байх ёстой (`hyanaltStore`: `done|` · `ARCHIVED` · `residualAfterArchive`).
+     Хуучин payload давтахад өөрчлөгдөхгүй (ОРЛУУЛДАГ) гэдгийг энд баримтжуулна. */
+  const once = overlaySubmission(b40, mon, sc, nBld).rows;
+  assert.equal(overlaySubmission(once, mon, sc, nBld).rows[0].obyem[0], 60, 'inc давтвал 40 + 10 + 10');
+  const legOnce = overlaySubmission(b40, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows;
+  assert.equal(overlaySubmission(legOnce, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows[0].obyem[0], 50, 'abs давтахад 50 хэвээр');
 }
 
 console.log('sheetFrame.check: OK');

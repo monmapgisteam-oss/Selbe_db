@@ -203,8 +203,14 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
       note(tr('Эзлэх жингийн нийлбэр {0} — гүйцэтгэл хараахан бүртгэгдээгүй багц байгаа тул нийт дүнг жингийн нийлбэрт харьцуулан тооцов. Багцын түвшинд төлөвлөгөөт хувь одоогоор байхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
 
+      /* ⚠️ 2026-09-25: `land.parcels == null` = кадастр УНШИГДААГҮЙ (`reportData`
+         давхаргын url алга). Урьд нь «нийт — нэгж талбар … шийдвэрлэгдээгүй: 0»,
+         Нийт мөрөнд «— · 100%» гэж бичиж, мэдээлэлгүйг «бүгд шийдвэрлэгдсэн» мэт
+         харуулдаг байв (null ≠ 0). */
       ...section('4', tr('Газар чөлөөлөлт'),
-        tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь {2}. Шийдвэрлэгдээгүй нэгж талбарын тоо: {3}.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
+        land.parcels == null
+          ? tr('Газар чөлөөлөлтийн нэгж талбарын мэдээлэл уншигдаагүй тул энэ хэсэг мэдээлэлгүй.')
+          : tr('Төслийн талбайд нийт {0} нэгж талбар ({1} м²) бүртгэгдсэн бөгөөд шийдвэрлэгдсэн нь {2}. Шийдвэрлэгдээгүй нэгж талбарын тоо: {3}.', num(land.parcels), num(land.areaM2), land.pct != null ? pct(land.pct, 1) : '—', num(d.landLeft))),
       cap('4.1', tr('Нэгж талбарын төлөв')),
       { table: { headerRows: 1, widths: ['*', 90, 80], body: [
         [th(tr('Төлөв')), th(tr('Нэгж талбар'), true), th(tr('Эзлэх хувь'), true)],
@@ -212,7 +218,7 @@ export function buildReportDoc(
           td(tr(s.label)), td(num(s.n), true),
           td(land.parcels ? pct((s.n / land.parcels) * 100, 1) : '—', true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(num(land.parcels), true, TOTAL), td('100%', true, TOTAL)],
+        [td(tr('Нийт'), false, TOTAL), td(num(land.parcels), true, TOTAL), td(land.parcels ? '100%' : '—', true, TOTAL)],
       ] }, layout: tableLayout },
 
       ...(land.byReason.length ? [

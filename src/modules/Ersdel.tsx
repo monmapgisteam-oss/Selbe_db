@@ -75,6 +75,7 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import { floodFootprint } from '@/lib/uyrSurface';
 import Polygon from '@arcgis/core/geometry/Polygon';
+import Graphic from '@arcgis/core/Graphic';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -523,6 +524,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    */
   const areaLayerRef = useRef<GraphicsLayer | null>(null);
   const svmRef = useRef<SketchViewModel | null>(null);
+  /** Одоогийн талбай + түүний проекц — view дахин үүсэхэд полигоныг сэргээнэ */
+  const areaRef = useRef(area);
+  areaRef.current = area;
+  const areaWkidRef = useRef<number>(3857);
   useEffect(() => {
     if (!view || view.destroyed || !view.map) return;
     /* ⚠️ Угтвар `ersdel:` — `MapCanvas`-ийн харагдалтын шүүлт зөвхөн үүнийг
@@ -545,11 +550,30 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       } as unknown as SketchViewModel['polygonSymbol'],
       defaultCreateOptions: { hasZ: false },
     });
+    /* ⚠️ 2026-09-25: 2D↔3D солиход view (мөн энэ давхарга) ШИНЭЭР үүсдэг тул
+       зурсан полигон зурагнаас алга болж, харин `area` төлөв (загварчлал)
+       хэвээр үлддэг байв — хил харагдахгүй ус. Төлөвөөс полигоныг сэргээнэ. */
+    const cur = areaRef.current;
+    if (cur?.length) {
+      gl.add(new Graphic({
+        geometry: new Polygon({ rings: cur, spatialReference: { wkid: areaWkidRef.current } }),
+        symbol: svm.polygonSymbol,
+      }));
+    }
     svm.on('create', (ev) => {
+      /* ⚠️ 2026-09-25: Esc/цуцлалт (`cancel`) — урьд нь үл тоогдож `drawing`
+         үнэн хэвээр гацаж, товч «зурж байна» төлөвт үлддэг байв. Өмнөх
+         полигон (дахин зурахаас өмнөх) хэвээр — `drawArea` түүнийг устгахаа
+         больсон. */
+      if (ev.state === 'cancel') { setDrawing(false); return; }
       if (ev.state !== 'complete') return;
       setDrawing(false);
       const g = ev.graphic?.geometry as __esri.Polygon | undefined;
       if (!g?.rings?.length) return;
+      /* Шинэ полигон БЭЛЭН болсон тул л өмнөхийг арилгана */
+      const old = gl.graphics.filter((x) => x !== ev.graphic).toArray();
+      if (old.length) gl.removeMany(old);
+      areaWkidRef.current = g.spatialReference?.wkid ?? 3857;
       /* ⚠️ ЗӨВХӨН x, y — `hasZ` асаалттай бол гурав дахь утга орж ирэх ба
          цэгэн доторх шалгалт (`inRings`) хоёр хэмжээст ажилладаг. */
       setArea(g.rings.map((r) => r.map((p) => [p[0], p[1]])));
@@ -569,6 +593,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     areaLayerRef.current = gl;
     svmRef.current = svm;
     return () => {
+      /* ⚠️ 2026-09-25: зурж байхад view солигдвол `create` үйл явдал ирэхгүй —
+         `drawing` гацахаас сэргийлнэ */
+      setDrawing(false);
       svm.destroy();
       if (view.map) view.map.remove(gl);
       gl.destroy();
@@ -580,7 +607,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const drawArea = useCallback(() => {
     const svm = svmRef.current;
     if (!svm) return;
-    areaLayerRef.current?.removeAll();
+    /* ⚠️ 2026-09-25: өмнөх полигоныг ЭНД устгахгүй — дахин зурахыг цуцалбал
+       (Esc) талбай зурагнаас алга болж, `area` төлөв хэвээр үлддэг байв.
+       Шинэ полигон `create: complete` үед л өмнөхийг сольно. */
     setDrawing(true);
     svm.create('polygon');
   }, []);
@@ -877,7 +906,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
            гэж ТӨЛӨВӨӨС уншдаг байсан ч загварчлал дөнгөж дууссан агшинд `flood`
            нь энэ closure-т `null` хэвээр (setState хараахан рендерлээгүй) тул
            мужийн утга буфер аргын `depth` руу чимээгүй ухардаг байв. */
-        fd = flood ?? (await simPromise.current?.catch(() => null)) ?? null;
+        /* ⚠️ 2026-09-25: `floodRef` — `flood` төлөв `run`-ий deps-д байхгүй тул
+           closure нь ӨМНӨХ түвшин/талбайн загварчлалыг барьж, 3-р түвшинд 1-р
+           түвшний усаар хохирол бодогдож болдог байв. Ref нь үргэлж сүүлийн
+           рендерийнх (түвшин солигдоход эффект `setFlood(null)` хийнэ). */
+        fd = floodRef.current ?? (await simPromise.current?.catch(() => null)) ?? null;
         if (stale()) return;
         const rings = fd ? floodFootprint(fd) : [];
         if (rings.length) {
@@ -911,12 +944,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
          хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
          хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
-      const { rows, failed } = await damageOf(view, ids, extent, level, hazard);
+      const { rows, failed, analyzed } = await damageOf(view, ids, extent, level, hazard);
       /* ⚠️ Хамгийн урт хүлээлт — ЭНД зөрвөл доорх бүх setState хуучин түвшнийх */
       if (stale()) return;
       setResult({
         hazard, level, bands, rows, simFootprint,
-        layers: ids.length - failed.length,
+        /* ⚠️ 2026-09-25: алгассан давхаргыг тоолохгүй — `damageOf`-ийн `analyzed` */
+        layers: analyzed,
         failed,
         src,
       });
@@ -1086,7 +1120,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
            */
           {
             k: tr('Аюулын зэрэглэл'),
-            v: `${HAZARD_CLASS(d * sp).label} · ${num(d * sp, 2)} м²/с`,
+            v: `${HAZARD_CLASS(d * sp).label} · ${tr('{0} м²/с', num(d * sp, 2))}`,
             tone: HAZARD_CLASS(d * sp).color,
           },
           /* ⚠️ Хуримтлагдсан утгууд — ЗҮСМЭЛЭЭС хамаарахгүй, БҮХ хугацаанаас */
@@ -1221,11 +1255,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * түвшин» дараад зурагт 1-р түвшний улаан үлдэж, хэрэглэгч шинэ хариу
    * харлаа гэж эндүүрнэ.
    */
-  const prev = useRef({ hazard, level, mode });
+  /* ⚠️ 2026-09-25: ЗАГВАРЧЛАХ ТАЛБАЙ (`area`) солигдоход ч — урьд нь шинэ
+     полигон зурсны дараа хуучин талбайн хохирол/муж хэвээр үлдэж, шинэ
+     талбайн үр дүн мэт уншигдаж байв. */
+  const prev = useRef({ hazard, level, mode, area });
   useEffect(() => {
     const p = prev.current;
-    if (p.hazard !== hazard || p.level !== level || p.mode !== mode) {
-      prev.current = { hazard, level, mode };
+    if (p.hazard !== hazard || p.level !== level || p.mode !== mode || p.area !== area) {
+      prev.current = { hazard, level, mode, area };
       /* ⚠️ Явж буй шинжилгээг хүчингүй болгоно (2026-09-21, §runSeq) —
          хуучин түвшний хариу шинэ түвшний нэрээр гарахгүй */
       runSeq.current++;
@@ -1238,7 +1275,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
          арилна (2026-09-21) */
       setPath(null);
     }
-  }, [hazard, level, mode]);
+  }, [hazard, level, mode, area]);
 
   /* ── Хохирлын нэгтгэл ── */
   const sum = useMemo(() => {
@@ -1596,7 +1633,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 ) : (
                   <>
                     <Stats cols={3}>
-                      <Stat value={num(AIR_LEVELS[level].pm25)} unit="µg/м³" label="PM2.5" />
+                      <Stat value={num(AIR_LEVELS[level].pm25)} unit={tr('µg/м³')} label="PM2.5" />
                       <Stat value={num(AIR_LEVELS[level].aqi)} unit="" label={tr('АЧИ')} />
                       <Stat value={num(AIR_LEVELS[level].inversion)} unit={tr('м')} label={tr('Инверси')} />
                       <Stat value={num(AIR_LEVELS[level].wind, 1)} unit={tr('м/с')} label={tr('Хувилбарын салхи')} />
@@ -1794,7 +1831,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                             </span>
                           </div>
                           <Spark vals={flood.meta.hydroQ} at={slice}
-                            color="var(--data)" unit="м³/с" />
+                            color="var(--data)" unit={tr('м³/с')} />
                         </div>
                       )}
 
@@ -1895,7 +1932,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           setZone={setZone}
         >
           {mode === 'model' && (
-            <MapToolBtn icon="target" onClick={run} disabled={busy || !view}>
+            /* ⚠️ 2026-09-25: самбарын «Шинжилгээ хийх»-тэй ИЖИЛ нөхцөл — харуул
+               ачаалагдаагүй үед агаарын муж хоосон гарч «муж байгуулж чадсангүй» болно */
+            <MapToolBtn icon="target" onClick={run} disabled={busy || !view || q.state !== 'ready'}>
               {busy ? tr('Тооцоолж байна…') : tr('Шинжилгээ')}
             </MapToolBtn>
           )}

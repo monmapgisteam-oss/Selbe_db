@@ -31,7 +31,12 @@ RUN mkdir -p /data
 
 # ⚠️ Browser-гүй тул ArcGIS нэвтрэлтийг УНТРААНА — реле рүү `AGENT_BOT_SECRET`-ээр
 #    батална. Ингэснээр `@arcgis/core`-ийн IdentityManager импорт огт хийгдэхгүй.
+# ⚠️ 2026-09-25: appId-г хоослох ДАНГААРАА хангалтгүй — `services.ts` нь хоосон appId-д
+#    `NEXT_PUBLIC_AUTH_OFF=1`-гүй бол алдаа шидэж бот асахгүй байв. Мөн репогийн `.env`
+#    image-д ОРДОГГҮЙ тул үйлчилгээний бүх NEXT_PUBLIC_* хаягийг compose-ийн `env_file`
+#    (`.env.example`-ийг үз) дамжуулна — дутуу бол `services.ts req()` ил алдаа шиднэ.
 ENV NEXT_PUBLIC_AUTH_APP_ID=""
+ENV NEXT_PUBLIC_AUTH_OFF="1"
 
 # Уян хатан унтралт (long-poll гогцоо SIGINT-д цэвэр зогсоно)
 STOPSIGNAL SIGINT

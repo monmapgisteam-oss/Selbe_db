@@ -43,6 +43,7 @@ import { useAclRunner } from '@/modules/useAclRunner';
 import { draftFlowMsg, newAccountMsg, removeMarkedMsg, roleLabel, sysTitle } from '@/modules/erhLabels';
 import { UserRights } from './UserRights';
 import { UserTypeSection } from './UserTypeSection';
+import { typeApplyBusy } from '@/lib/roleTypeApply';
 import { roleOf } from '@/lib/permissions';
 import { UserHeadActions, UserHeadBadges, rightsProps, type UserRowProps } from './UserRow';
 import s from './userAdmin.module.css';
@@ -72,7 +73,9 @@ export function UserCard({ p, focus, hasDraft, onBack }: UserCardProps) {
   const ready = allAclReady();
   /** Шууд бичих хэсгүүд хаалттай эсэх (толгойн ⚠️) */
   const blocked = !!d.isNew || !!d.remove;
-  const off = blocked || !ready || busy;
+  /* ⚠️ 2026-09-25: «Төрлөөр тохируулах» (карт эсвэл бөөнөөр) энэ хүнд явагдаж байхад
+     гар засвар хаалттай — алхмууд холилдоно (`roleTypeApply`-ийн түгжээ; эцэг нь захиална) */
+  const off = blocked || !ready || busy || typeApplyBusy(key);
   const exec = (op: AclOp) => { void run(op); };
 
   const blockNote = d.isNew

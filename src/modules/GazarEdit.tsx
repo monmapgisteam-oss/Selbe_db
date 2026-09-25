@@ -162,10 +162,10 @@ export function GazarEdit({
   };
 
   return (
-    <div className={g.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
+    <div className={g.backdrop} role="dialog" aria-modal="true" aria-labelledby="gazar-edit-title" onClick={tryClose}>
       <div ref={mdRef} className={g.modal} onClick={(e) => e.stopPropagation()}>
         <div className={g.modalHead}>
-          <span className={g.modalTitle}>{tr('Нэгж талбарын төлөв')}</span>
+          <span id="gazar-edit-title" className={g.modalTitle}>{tr('Нэгж талбарын төлөв')}</span>
           {before && <span className={g.modalNo}>{before.parcelNo || `#${before.oid}`}</span>}
           <button type="button" className={g.close} onClick={tryClose}
             disabled={busy} aria-label={tr('Хаах')}>✕</button>

@@ -454,8 +454,10 @@ export async function fetchAll(
         const role = a.username.slice(TYPE_PREFIX.length).toLowerCase();
         try {
           const d = JSON.parse(a.views || '{}') as unknown;
-          if (d && typeof d === 'object') typesBy.set(role, { role, tpl: d });
-        } catch { /* эвдэрсэн мөр — алгасна, анхдагч загвар үйлчилнэ */ }
+          /* ⚠️ 2026-09-25: эвдэрсэн мөр → `tpl: null` — `roleTypes` нарийн нөөц (`ROLE_ACCESS`)
+             өгнө; урьд нь алгасдаг байсан тул ӨРГӨН анхдагч загвар (`DEFAULT_TPL`) үйлчилж байв */
+          typesBy.set(role, { role, tpl: d && typeof d === 'object' ? d : null });
+        } catch { typesBy.set(role, { role, tpl: null }); }
         continue;
       }
 

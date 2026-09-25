@@ -65,7 +65,7 @@ const monthKey = (ms: unknown): string => {
 };
 
 /** Бөглөлтийн төлөв — өнгө ба шошго нь эндээс */
-type Fill = 'none' | 'part' | 'done';
+type Fill = 'none' | 'part' | 'done' | 'over';
 
 /**
  * ⚠️ ГУРВАН төлөв, хоёр биш. Даалгаварт «бөглөсөн ногоон, бөглөөгүй улаан»
@@ -76,8 +76,18 @@ const fillOf = (sum: number | null): Fill => {
   if (sum == null) return 'none';
   /* ⚠️ Хөвөгч таслалын алдааг тэвчинэ — 33.33×3 нь 99.99 гардаг */
   if (Math.abs(sum - 100) < 0.01) return 'done';
-  return sum > 0 ? 'part' : 'none';
+  /* ⚠️ 2026-09-25: 100%-иас ИЛҮҮ нь «дутуу» БИШ — тусдаа төлөв. Урьд нь 130%
+     бөглөсөн ажил шар «дутуу» гэж харагдаж, хэрэглэгч улам нэмэх гэж оролддог байв.
+     ⚠️ ИЛ БИЧСЭН 0 нь «хоосон» БИШ (null ≠ 0): `sum` нь зөвхөн бөглөсөн сартай
+     үед тоо байна (`sumOf`) — 0% гэж бичсэн ажил «бөглөсөн боловч 100% биш». */
+  if (sum > 100) return 'over';
+  return 'part';
 };
+/**
+ * Төлвийн CSS класс. ⚠️ `.over` класс `cfplan.module.css`-д хараахан
+ * байхгүй бол шар (`.part`) өнгөөр — төлөв нь шошго/анхааруулгаараа ялгарна.
+ */
+const fillCls = (st: Fill): string => (st === 'over' ? (c.over || c.part) : c[st]);
 
 /**
  * ГЭРЭЭНИЙ ДҮН — `ho_dun_geree`; байхгүй/0/NaN бол `null`.
@@ -260,7 +270,7 @@ export function CashflowPlan({
     const title = s == null
       ? tr('Бөглөөгүй')
       : tr('Нийт {0}%', num(s, 2));
-    return <i className={`${c.dot} ${c[st]}`} title={title} aria-label={title} />;
+    return <i className={`${c.dot} ${fillCls(st)}`} title={title} aria-label={title} />;
   };
 
   return (
@@ -350,7 +360,20 @@ export function CashflowPlan({
                               inputMode="decimal"
                               readOnly={!canEdit}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
-                              onChange={(e) => { if (canEdit) setPend((p) => ({ ...p, [oid]: e.target.value })); }}
+                              onChange={(e) => {
+                                if (!canEdit) return;
+                                const v = e.target.value;
+                                /* ⚠️ 2026-09-25: анхны утга руугаа БУЦВАЛ засвар биш — `pend`-ээс
+                                   хасна. Урьд нь үлдэж, «Хадгалах (N)» ба таб солих баталгаа
+                                   өөрчлөлтгүй ажилд ч гардаг байв (Finance-ийн `onEdit`-тэй ижил). */
+                                const orig = r[CF_MONTH.pct] == null ? '' : String(r[CF_MONTH.pct]);
+                                setPend((p) => {
+                                  const nx = { ...p };
+                                  if (v === orig) delete nx[oid];
+                                  else nx[oid] = v;
+                                  return nx;
+                                });
+                              }}
                             />
                           </td>
                           {/* ⚠️ Дүн нь ЗӨВХӨН харагдац — хадгалахдаа дахин бодогдоно */}
@@ -360,7 +383,7 @@ export function CashflowPlan({
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className={c[fillOf(curSum)]}>
+                    <tr className={fillCls(fillOf(curSum))}>
                       <td>{tr('НИЙТ')}</td>
                       <td className={c.r}>{curSum == null ? '—' : `${num(curSum, 2)}%`}</td>
                       <td className={c.r}>
@@ -374,6 +397,11 @@ export function CashflowPlan({
                 {curSum != null && fillOf(curSum) === 'part' && (
                   <p className={c.warn}>
                     {tr('⚠ Нийлбэр 100% биш ({0}%) — үлдэгдэл нь S-муруйд орохгүй.', num(curSum, 2))}
+                  </p>
+                )}
+                {curSum != null && fillOf(curSum) === 'over' && (
+                  <p className={c.warn}>
+                    {tr('⚠ Нийлбэр 100%-иас их ({0}%) — S-муруй гэрээний дүнгээс давна.', num(curSum, 2))}
                   </p>
                 )}
               </>
@@ -401,7 +429,15 @@ export function CashflowPlan({
               title={tr('Энэ ажлын бүх сарын хувийг хоослоно')}
               onClick={() => setPend((p) => {
                 const nx = { ...p };
-                for (const r of curMonths) nx[Number(r[oidField])] = '';
+                /* ⚠️ 2026-09-25: АЛЬ ХЭДИЙН хоосон сарыг «засвар» гэж тэмдэглэхгүй —
+                   урьд нь бүгдийг `''` болгож, өөрчлөгдөөгүй сарууд ч «Хадгалах (N)»-д
+                   тоологдож, илгээгддэг байв. */
+                for (const r of curMonths) {
+                  const oid = Number(r[oidField]);
+                  const orig = r[CF_MONTH.pct] == null ? '' : String(r[CF_MONTH.pct]);
+                  if (orig === '') delete nx[oid];
+                  else nx[oid] = '';
+                }
                 return nx;
               })}
             >

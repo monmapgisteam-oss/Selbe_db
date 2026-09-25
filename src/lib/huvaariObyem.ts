@@ -25,6 +25,7 @@
  * ⚠️ React импортлохгүй — `huvaariObyem.check.mjs` шууд Node дээр ачаална.
  */
 import { agsFetch } from '@/modules/sheet/ags';
+import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
 import { DAY, type Span } from './plan';
 
@@ -531,7 +532,7 @@ export async function loadPkgPlan(
     ? '*'
     : [...FIELDS, ...(rf.hun ? ['hun_huch'] : []), ...(rf.mashin ? ['mashin_mehanizm'] : [])].join(',');
   const feats: { attributes: Record<string, unknown> }[] = [];
-  for (let off = 0; ; off += 2000) {
+  for (let off = 0; ; ) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
       where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_PLAN}'`,
       outFields,
@@ -542,7 +543,12 @@ export async function loadPkgPlan(
     });
     const f = (j.features ?? []) as { attributes: Record<string, unknown> }[];
     feats.push(...f);
-    if (f.length < 2000) break;
+    /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, `f.length < 2000`-ААР БИШ (2026-09-25
+       аудит): үйлчилгээний `maxRecordCount` 2000-аас бага бол эхний хуудас цөөн мөр
+       буцааж давталт зогсож, үлдсэн сарын задаргаа чимээгүй алга болдог байв
+       (`ajilBatlah`-ийн 2026-09-24-ний ижил дүрэм). Оффсет нь ИРСЭН мөрийн тоогоор. */
+    if (!f.length || (!j.exceededTransferLimit && f.length < 2000)) break;
+    off += f.length;
   }
   const { oids, dups } = indexOids(feats);
   return { plan: toPkgPlan(feats), res: toPkgRes(feats), oids, dups };
@@ -572,8 +578,9 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       const bad = res.find((r) => r.success === false);
       if (bad) {
         throw new Error(
-          `${bad.error?.description || 'Хуваарийн обьём хадгалагдсангүй'}`
-          + ` (${a} нэмсэн · ${u} шинэчилсэн · ${dl} устгасан)`,
+          /* ⚠️ tr() (2026-09-25 аудит) — англи хувилбарт монгол текст гарч байв */
+          `${bad.error?.description || tr('Хуваарийн обьём хадгалагдсангүй')}`
+          + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
         );
       }
       if (k === 'addResults') a += res.length;

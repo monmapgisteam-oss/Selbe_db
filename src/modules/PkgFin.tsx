@@ -140,6 +140,7 @@ function mergePkgMonths(
   const given = new Map<string, number>();    // сар → олгосон ₮
   const physSum = new Map<string, number>();  // сар → phys-ийн нийлбэр
   const physN = new Map<string, number>();    // сар → phys эх сурвалжийн тоо
+  const physAt = new Map<string, string>();   // сар → хэмжилтийн хамгийн сүүлийн огноо
   const seenGiven = new Set<string>();
   const seenPhys = new Set<string>();
   rows.forEach((r) => {
@@ -156,6 +157,7 @@ function mergePkgMonths(
       if (physNew && m.phys != null) {
         physSum.set(m.label, (physSum.get(m.label) ?? 0) + m.phys);
         physN.set(m.label, (physN.get(m.label) ?? 0) + 1);
+        if (m.physAt && m.physAt > (physAt.get(m.label) ?? '')) physAt.set(m.label, m.physAt);
       }
     }
   });
@@ -189,6 +191,8 @@ function mergePkgMonths(
       label,
       given: given.get(label) ?? 0,
       phys: n > 0 ? (physSum.get(label) ?? 0) / n : null,
+      /* ⚠️ 2026-09-25: `lagOf` төлөвлөгөөг хэмжилтийн ӨДРӨӨР завсарлана */
+      physAt: n > 0 ? (physAt.get(label) ?? null) : null,
       // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
       pkg: physKey,
     };
@@ -265,14 +269,15 @@ function aliasFin(d: FinData): FinData {
     m.forEach((v, k) => { const t = tgt(k); out.set(t, (out.get(t) ?? 0) + v); });
     return out;
   };
-  const mergeMon = (m: Map<string, Map<string, number>>, sum: boolean) => {
-    const out = new Map<string, Map<string, number>>();
+  const mergeMon = <T,>(m: Map<string, Map<string, T>>, add: ((a: T, b: T) => T) | null) => {
+    const out = new Map<string, Map<string, T>>();
     m.forEach((mon, k) => {
       const t = tgt(k);
       const cur = out.get(t);
       if (!cur) { out.set(t, new Map(mon)); return; }
       mon.forEach((v, ym) => {
-        if (sum) cur.set(ym, (cur.get(ym) ?? 0) + v);
+        const was = cur.get(ym);
+        if (add && was !== undefined) cur.set(ym, add(was, v));
         else if (!cur.has(ym)) cur.set(ym, v);
       });
     });
@@ -288,9 +293,11 @@ function aliasFin(d: FinData): FinData {
     pays: d.pays.map((r) => reRow(r, HC.pkg)),
     planTotal: mergeNum(d.planTotal),
     givenTotal: mergeNum(d.givenTotal),
-    given: mergeMon(d.given, true),
-    phys: mergeMon(d.phys, false),
-    physCnt: mergeMon(d.physCnt, false),
+    given: mergeMon(d.given, (a, b) => a + b),
+    phys: mergeMon(d.phys, null),
+    physCnt: mergeMon(d.physCnt, null),
+    /* ⚠️ 2026-09-25: хэмжилтийн огноо — `phys`-тэй ИЖИЛ дүрэм (эхнийх үлдэнэ) */
+    physAt: mergeMon(d.physAt, null),
   };
 }
 
@@ -796,6 +803,13 @@ export function PkgFin({ dim, setDim }: {
 
   const loading = q.state === 'loading';
   const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
+  /*
+   * ⚠️ 2026-09-25: САНХҮҮГИЙН ачаалал УНАСНЫГ «ачаалж байна»-аас ЯЛГАНА. Урьд
+   *    нь `finQ` алдаатай үед KPI/карт/жагсаалт «…», «Ачаалж байна…» дээр
+   *    мөнхөд үлдэж, `PkgPays` нь «Төлбөр бүртгэгдээгүй» гэж ХУДАЛ хэлдэг байв
+   *    (уншигдаагүй ≠ бүртгэлгүй).
+   */
+  const finErr: Async<unknown> | null = finQ.state === 'error' ? finQ : null;
 
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
@@ -813,7 +827,9 @@ export function PkgFin({ dim, setDim }: {
           (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : active ? (
+        {errQ ? null : loading ? <Empty label={tr('Ачаалж байна…')} /> : finErr ? (
+          <Empty label={tr('Санхүүгийн өгөгдөл уншигдсангүй')} />
+        ) : active ? (
           /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
              гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} fin={activeFin} />
@@ -856,6 +872,7 @@ export function PkgFin({ dim, setDim }: {
                 note={c.key === 'infra' ? tr('давхарга · олгосон / гэрээ') : tr('олгосон / гэрээ')}
                 givenMap={givenMap}
                 planMap={planMap}
+                finFailed={finErr != null}
                 /* ⚠️ Alert-тай багц нь ДЭЭД бүлэгт гарсан тул эндээс хасагдана —
                    эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
                 packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
@@ -947,6 +964,14 @@ export function PkgFin({ dim, setDim }: {
       <div className={ts.r}>
         {errQ ? (
           <Data q={errQ}>{() => null}</Data>
+        ) : finErr ? (
+          /* ⚠️ 2026-09-25: санхүү уншигдаагүй — карт бүр «ачаалж байна»/«бүртгэлгүй»
+             гэж худал хэлэхийн оронд НЭГ алдааны мэдэгдэл (дахин оролдох товчтой).
+             Дэд бүтцийн хөрөнгө оруулалтын карт санхүүгээс хамааралгүй тул үлдэнэ. */
+          <>
+            {active?.kind === 'infra' && <InvestCard p={active} />}
+            <Data q={finErr}>{() => null}</Data>
+          </>
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
@@ -1088,10 +1113,16 @@ const pkgNum = (name: string): [number, number] => {
 };
 
 function TsPackList({
-  title, note, packs, sel, onSel, finMap, planMap, givenMap, mode = 'fin',
+  title, note, packs, sel, onSel, finMap, planMap, givenMap, mode = 'fin', finFailed = false,
 }: {
   title: string;
   note: string;
+  /**
+   * Санхүүгийн өгөгдөл УНАСАН (2026-09-25). `planMap` нь `null` үед мөр бүр
+   * «санхүү бүртгэлгүй» гэж ХУДАЛ бичигддэг байв — ачаалж буй бол «…»,
+   * унасан бол «санхүү уншигдсангүй».
+   */
+  finFailed?: boolean;
   /**
    * МӨРИЙН АГУУЛГА.
    *   `fin`    — олгосон ₮ / гэрээ ₮ ба хувь (анхдагч).
@@ -1176,9 +1207,11 @@ function TsPackList({
               title={tr(p.name)}
               sub={layers
                 ? (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))
-                : plan > 0 || given > 0
-                  ? tr('{0} / {1}', mnt(given), mnt(plan))
-                  : tr('санхүү бүртгэлгүй')}
+                : !planMap
+                  ? (finFailed ? tr('санхүү уншигдсангүй') : '…')
+                  : plan > 0 || given > 0
+                    ? tr('{0} / {1}', mnt(given), mnt(plan))
+                    : tr('санхүү бүртгэлгүй')}
               value={
                 /* ⚠️ `flexWrap` — самбар хамгийн нарийн (180px) үедээ ч тэмдэг
                    картаас хальж гарахгүй: хувь дээрээ, тэмдэг доороо буна. */
@@ -1188,7 +1221,7 @@ function TsPackList({
                 }}>
                   {/* ⚠️ Давхаргын горимд ч хувь ХАРАГДАНА (2026-09-15, хэрэглэгч:
                       «ард байгаа хувийг оруул») — олгосон ÷ гэрээ. */}
-                  {execPct == null ? '—' : pct(execPct, 1)}
+                  {!planMap ? '—' : execPct == null ? '—' : pct(execPct, 1)}
                   {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
                       ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
                       байсан бөгөөд тэр өгөгдөл шинэ cashflow-д байхгүй.
@@ -1436,6 +1469,8 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
   }, [finQ, p.key]);
 
   if (finQ.state === 'loading') return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Ачаалж байна…')} /></Section>;
+  /* ⚠️ 2026-09-25: алдаа нь «бүртгэлгүй» БИШ — уншигдаагүй */
+  if (finQ.state === 'error') return <Section title={tr('Олгосон төлбөр')}><Data q={finQ}>{() => null}</Data></Section>;
   if (!acts || !acts.length) return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Төлбөр бүртгэгдээгүй')} /></Section>;
 
   /* ⚠️ `hoAmount` нь `number | null` — «дүн бүртгэгдээгүй» төлбөр нь 0 БИШ,
@@ -1828,7 +1863,10 @@ function FinCard({
   const plannedPct: number | null = lag ? lag.planned : null;
   const actualPct: number | null = lag ? lag.actual : null;
   // Санхүүжилтийн зөрүү — төлөвлөсөн − олгосон (₮). Эерэг = олгоогүй үлдэгдэл.
-  const finGap = total - givenTotal;
+  /* ⚠️ 2026-09-25: 0-оор ТАСЛАНА — `TsKpi.remain` ба `PkgFinCard`-тай НЭГ дүрэм;
+     урьд нь хэт олгосон багцад «Олгогдоогүй үлдэгдэл» СӨРӨГ гарч, нөгөө
+     хоёр хавтан 0 гэж харуулдаг байв. */
+  const finGap = Math.max(0, total - givenTotal);
   // IPC-ийн санхүүжилтийн гүйцэтгэл — олгосон ÷ төлөвлөсөн (%)
   const givenShare = total > 0 ? (givenTotal / total) * 100 : null;
   // Гүйцэтгэлийн зөрүү — төлөвлөгөөт − бодит (%). Эерэг = хоцрогдол.
@@ -1934,7 +1972,9 @@ function FinCard({
                       */}
                     {givenShare != null && (
                       <small style={{ display: 'block', fontSize: '0.72em', opacity: 0.7, fontWeight: 600 }}>
-                        {givenShare.toFixed(0)}%
+                        {/* ⚠️ 2026-09-25: `pct(…, 1)` — жагсаалт/карт/KPI бүгд 1 оронтой;
+                            `toFixed(0)` нь нэг багцыг хоёр өөр тоогоор харуулдаг байв */}
+                        {pct(givenShare, 1)}
                       </small>
                     )}
                   </>
@@ -1979,6 +2019,8 @@ function FinCard({
             lagMonth={finOnly ? undefined : lag?.month}
             lagLvl={finOnly ? null : lvl}
             hidePhys={finOnly}
+            /* ⚠️ 2026-09-25: биет %-ийг ГЭРЭЭНИЙ дүнд буулгана (`ComboChart.contract`-ийн ⚠️) */
+            contract={total > 0 ? total : null}
           />
         </>
       ) : null}

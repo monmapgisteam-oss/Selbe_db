@@ -17,6 +17,9 @@
  *     мөрөөс (гэрээгүй 43-ыг оруулаад) бол ~1.5 их наяд хуурамч «хэмнэлт».
  *     Хоёулаа ЗӨВХӨН гэрээтэй мөрөөс; contract − budget = Σover + Σunder
  *     (+ төсөвгүй гэрээний Σ дүн).
+ *  8. (2026-09-25) ГЭРЭЭТЭЙ = `note === CONTRACTED` — `geree_dun` бөглөгдсөн
+ *     ГЭРЭЭГҮЙ мөр «гэрээ» болохгүй; CONTRACTED боловч дүнгүй мөр жагсаалтад
+ *     орно, нийлбэрт орохгүй.
  */
 
 import assert from 'node:assert/strict';
@@ -24,6 +27,7 @@ import {
   CONTRACT_OVER_BAD_MNT, buildContractGapKpi, computeContractGap, contractOverLevel,
 } from './contractGap.ts';
 import { CASHFLOW_NEW } from '../services.ts';
+import { CONTRACTED } from '../gdash.ts';
 
 const F = CASHFLOW_NEW.fields;
 const row = (o) => ({
@@ -33,6 +37,9 @@ const row = (o) => ({
   [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
   [F.budget]: o.b ?? null, [F.contractAmount]: o.c ?? null,
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
+  /* ⚠️ 2026-09-25: анхдагч нь дүнтэй мөр = CONTRACTED (хуучин шалгалтууд хэвээр);
+     `note`-ыг ил өгч дүрмийг шалгана (8-р хэсэг) */
+  [F.amountNote]: o.note !== undefined ? o.note : (o.c ? CONTRACTED : null),
 });
 
 /* ══════ 1. Гэрээгүй / төсөвгүй мөр ══════ */
@@ -149,6 +156,22 @@ const row = (o) => ({
   assert.equal(k.tables[0].rows.length, 301, '300 + «… бас N мөр»');
   assert.ok(String(k.tables[0].rows[300][0].v).includes('10'), 'тасалсан тоо ил');
   assert.equal(k.issues.length, 310, 'анхааруулга таслагдахгүй');
+}
+
+/* ══════ 5. Гэрээтэй = note === CONTRACTED (2026-09-25) ══════ */
+{
+  const g = computeContractGap([
+    row({ work: 'магадласан', b: 100, c: 900, note: 'Магадласан дүн' }),  // дүнтэй ч ГЭРЭЭГҮЙ
+    row({ work: 'дүнгүй гэрээ', b: 300, c: null, note: CONTRACTED }),      // гэрээтэй, дүн бөглөөгүй
+    row({ work: 'жинхэнэ', b: 1000, c: 1200 }),
+  ]);
+  assert.equal(g.noContract, 1, 'geree_dun бөглөгдсөн ч CONTRACTED биш → гэрээгүй');
+  assert.deepEqual(g.rows.map((r) => r.work), ['жинхэнэ', 'дүнгүй гэрээ']);
+  assert.equal(g.rows[1].contract, null);
+  assert.equal(g.rows[1].diff, null, 'дүнгүй → зөрүү null');
+  assert.equal(g.contractTotal, 1200, 'магадласан 900 орохгүй');
+  assert.equal(g.budgetTotal, 1000, 'дүнгүй гэрээний төсөв нийлбэрт орохгүй (нэг популяци)');
+  assert.equal(g.over.sum, 200);
 }
 
 console.log('✅ contractGap.check: бүх шалгалт давлаа');
