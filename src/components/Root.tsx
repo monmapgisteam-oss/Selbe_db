@@ -11,11 +11,11 @@ import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
 import { resolveAccess, roleOf, subscribe } from '@/lib/permissions';
+import { roleAccess } from '@/lib/roleTypes';
 import {
   ALL_MODE_HIDE,
   DEFAULT_VIEW,
   HOME_SECTIONS,
-  ROLE_ACCESS,
   VIEWS,
   VIEW_BY_KEY,
   roleForUser,
@@ -140,7 +140,7 @@ export default function Root() {
     // ⚠️ `roleOf` — override-ыг тооцно: панелаас нэмсэн инженер `guitsetgel`
     //    нүүртэйгээ орно (урьд нь хатуу жагсаалтаас л авдаг тул `plan`-д унадаг байв)
     const role = roleOf(user?.username);
-    const home = role ? ROLE_ACCESS[role]?.home : undefined;
+    const home = role ? roleAccess(role).home : undefined;
     openView(home && allowed.includes(home) ? home : allowed[0]);
   };
 

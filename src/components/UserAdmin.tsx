@@ -51,17 +51,22 @@ import { aclPendingFor, allAclReady, liveErhSource, subscribeAclPending } from '
 import { isDerivedCap } from '@/lib/aclRoleCaps';
 import { orphanCaps, userErh } from '@/lib/erhOverview';
 import { UserCard } from './UserCard';
+import { ErhTypes } from '@/modules/ErhTypes';
+import { TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import s from './userAdmin.module.css';
 
 /** Toggle хийж болох бүх харагдац */
 const ALL_KEYS: ViewKey[] = VIEWS.map((v) => v.key);
 
-/** Үүргийн preset товчнууд */
-const ROLE_PRESETS: { key: Role; label: string }[] = [
-  { key: 'super', label: tr('Супер') },
-  { key: 'beginner', label: tr('Энгийн') },
-  { key: 'tolovlolt', label: tr('Төлөвлөлт') },
-];
+/**
+ * Үүргийн preset товчнууд — «Эрхийн төрөл»-ийн 10 төрөл (2026-09-25).
+ * ⚠️ Урьд нь Супер · Энгийн · Төлөвлөлт гурав байв (хэрэглэгчийн шийдвэрээр
+ *    солигдсон). Preset нь ЗӨВХӨН харагдац/үүргийг ноорогт тавина; хуваарилалт
+ *    ба эрхийг бүгдийг нь картын «Төрлөөр тохируулах» бичнэ.
+ * ⚠️ Функц — текстийг зурагдах агшинд (`capLabel`-ийн ⚠️).
+ */
+const rolePresets = (): { key: Role; label: string }[] =>
+  TYPE_ORDER.map((r) => ({ key: r, label: typeLabel(r) }));
 
 const hasView = (views: ViewKey[] | 'all', k: ViewKey) => views === 'all' || views.includes(k);
 
@@ -206,7 +211,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    хоёр байнгын асуултад хариулах газар БАЙХГҮЙ байв — таван бүлгийг
    *    тус тусад нь нээж хайх ёстой байлаа.
    */
-  const [pane, setPane] = useState<'ovw' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'butets'>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'types' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'butets'>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -493,7 +498,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
   /** @param confirmed бөөнөөр засахад нэг удаа асуусан бол дахин асуухгүй */
   const applyRole = (u: UserPerm, role: Role, confirmed = false) => {
-    const a = ROLE_ACCESS[role];
+    const a = roleAccess(role);
     const d = draftOf(u);
     const drop = dropsGuits(u, d.views, a.views);
     if (drop && !confirmed && !confirmDropGuits()) return;
@@ -600,7 +605,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const selRows = allRows.filter((u) => sel.has(u.username.toLowerCase()));
   const bulkRole = (role: Role) => {
     // Томилогдсон хүмүүсийн «Гүйцэтгэлийн хяналт» хасагдах бол НЭГ удаа асууна
-    const hit = selRows.filter((u) => dropsGuits(u, draftOf(u).views, ROLE_ACCESS[role].views));
+    const hit = selRows.filter((u) => dropsGuits(u, draftOf(u).views, roleAccess(role).views));
     if (hit.length && !window.confirm(tr('{0} — урсгалын шатанд томилогдсон. «Гүйцэтгэлийн хяналт» нь хасагдвал ажлаа хянаж чадахгүй болно. Үргэлжлүүлэх үү?', hit.map((u) => u.username).join(', ')))) return;
     selRows.forEach((u) => applyRole(u, role, true));
     setSel(new Set());
@@ -896,7 +901,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       dirtyPerm: dirtyRemote.has(key),
       myName,
       allKeys: ALL_KEYS,
-      rolePresets: ROLE_PRESETS,
+      rolePresets: rolePresets(),
       hasView,
       capLabel,
       capHint,
@@ -985,6 +990,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         >
           <Icon name="users" size={14} />
           {tr('Хэрэглэгчдийн эрх удирдах')}
+        </button>
+        {/* ⚠️ 2026-09-25: 10 төрөл × бүх тохиргоо — хэрэглэгчийн картын «Төрлөөр тохируулах» эндээс уншина */}
+        <button
+          type="button"
+          className={`${s.sideItem} ${pane === 'types' ? s.sideItemOn : ''}`}
+          aria-current={pane === 'types'}
+          onClick={() => setPane('types')}
+        >
+          <Icon name="layers" size={14} />
+          {tr('Эрхийн төрөл')}
         </button>
         {/*
           * ⚠️ ТУСДАА БҮЛЭГ, нэг жагсаалтад ХОЛИОГҮЙ. Дээрх нь «ямар
@@ -1138,6 +1153,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             </header>
             <QaqcAcl />
           </>
+        ) : pane === 'types' ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{tr('Эрхийн төрөл')}</h2>
+              <p className={s.subtitle}>
+                {tr('Төрөл бүрд юу харах, юу засахыг чеклээд хадгална. Хэрэглэгчийн картад төрөл ба багц сонгож «Төрлөөр тохируулах» дарахад бүгд нэг дор бичигдэнэ.')}
+              </p>
+            </header>
+            <ErhTypes />
+          </>
         ) : pane === 'guits' ? (
           <>
             <header className={s.head}>
@@ -1227,7 +1252,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           {sel.size > 0 && (
             <div className={s.bulkBar}>
               <span className={s.bulkInfo}>{tr('{0} сонгосон', String(sel.size))}</span>
-              {ROLE_PRESETS.map((r) => (
+              {rolePresets().map((r) => (
                 <button key={r.key} type="button" className={s.preset} onClick={() => bulkRole(r.key)}>
                   {r.label}
                 </button>

@@ -25,7 +25,6 @@
  */
 
 import {
-  ROLE_ACCESS,
   ROLE_BY_USER,
   VIEWS,
   roleForUser,
@@ -33,6 +32,7 @@ import {
   type ViewKey,
 } from './services';
 import { capViewsOf } from './caps';
+import { roleAccess } from './roleTypes';
 import { currentUser } from './who';
 import { _beginRemoteFetch } from './scopedAcl';
 
@@ -523,6 +523,15 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
     console.error('[selbe] дэд бүтцийн засварын хуваарилалтын синк амжилтгүй:', e);
   }
 
+  // 11) Эрхийн төрлийн загвар (`__type__:`) → roleTypes.ts (2026-09-25)
+  //     ⚠️ Харагдац/нүүр цонх нь үүнээс (`roleAccess`) — синк унавал анхдагч загвар.
+  try {
+    const rt = await import('./roleTypes');
+    rt._syncRemoteTypes(remote.types ?? []);
+  } catch (e) {
+    console.error('[selbe] эрхийн төрлийн загварын синк амжилтгүй:', e);
+  }
+
   notify();
   return true;
 }
@@ -534,7 +543,7 @@ export const remoteReady = (): boolean => remoteLoaded;
 function baseline(username: string): Access | null {
   const role = roleForUser(username);
   if (!role) return null;
-  const a = ROLE_ACCESS[role];
+  const a = roleAccess(role);
   return { views: a.views, docs: a.docs };
 }
 
@@ -626,7 +635,7 @@ export function listUsers(): UserPerm[] {
 
   // 1) Хатуу тохиргооны хэрэглэгчид
   for (const [uname, role] of Object.entries(ROLE_BY_USER)) {
-    const a = ROLE_ACCESS[role];
+    const a = roleAccess(role);
     rows.set(uname.toLowerCase(), {
       username: uname,
       role,

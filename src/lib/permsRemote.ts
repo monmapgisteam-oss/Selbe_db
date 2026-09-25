@@ -174,6 +174,15 @@ const CHANAR_PREFIX = '__chanar__:';
 const AJIL_PREFIX = '__ajil__:';
 /** Дэд бүтцийн засварын багцын хуваарилалтын угтвар — нэмэлт ажлынхаас ялгана */
 const BUTETS_PREFIX = '__butets__:';
+/**
+ * ЭРХИЙН ТӨРЛИЙН ЗАГВАРЫН угтвар (2026-09-25) — `__type__:injener` г.м.
+ * ⚠️ Хэрэглэгчийн мөр БИШ: загвар нь өөрөө эрх олгохгүй, админ «Төрлөөр
+ *    тохируулах» дарахад л хуваарилалт болж бичигдэнэ (`roleTypeApply.ts`).
+ */
+const TYPE_PREFIX = '__type__:';
+
+/** Эрхийн төрлийн нэг загвар — `tpl` нь задлаагүй JSON (`roleTypes.cleanTpl` шүүнэ) */
+export type TypeRow = { role: string; tpl: unknown };
 
 let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
 
@@ -401,7 +410,7 @@ export async function fetchAll(
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[]; qaqc: QaqcRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
-  butets: ButetsRow[];
+  butets: ButetsRow[]; types: TypeRow[];
 } | null> {
   try {
     const url = await tableUrl(canCreate);
@@ -435,8 +444,20 @@ export async function fetchAll(
     const chanarBy = new Map<string, ChanarRow>();
     const ajilBy = new Map<string, AjilRow>();
     const butetsBy = new Map<string, ButetsRow>();
+    /* ⚠️ Эрхийн төрлийн загвар — НЭГ ТӨРӨЛ = НЭГ МӨР, их OID ялна */
+    const typesBy = new Map<string, TypeRow>();
     for (const a of rows) {
       if (!a.username) continue;
+
+      /* ── Эрхийн төрлийн загварын мөр (2026-09-25) ── */
+      if (a.username.startsWith(TYPE_PREFIX)) {
+        const role = a.username.slice(TYPE_PREFIX.length).toLowerCase();
+        try {
+          const d = JSON.parse(a.views || '{}') as unknown;
+          if (d && typeof d === 'object') typesBy.set(role, { role, tpl: d });
+        } catch { /* эвдэрсэн мөр — алгасна, анхдагч загвар үйлчилнэ */ }
+        continue;
+      }
 
       /* ── Нэмэлт ажлын хуваарилалтын мөр ── */
       if (a.username.startsWith(AJIL_PREFIX)) {
@@ -596,6 +617,7 @@ export async function fetchAll(
       chanar: [...chanarBy.values()],
       ajil: [...ajilBy.values()],
       butets: [...butetsBy.values()],
+      types: [...typesBy.values()],
     };
   } catch {
     return null;
@@ -751,6 +773,12 @@ export function qaqcUpsert(user: string, bagts: string[]): Promise<boolean> {
 }
 
 /** Чанарын багцын хуваарилалтыг арилгах */
+/** Эрхийн төрлийн загварыг бичих — нэг төрөл нэг мөр */
+export function typeUpsert(role: string, tpl: unknown): Promise<boolean> {
+  const key = TYPE_PREFIX + role.toLowerCase();
+  return upsertByKey(key, { username: key, role: null, views: JSON.stringify(tpl), docs: 0 });
+}
+
 export function qaqcRemove(user: string): Promise<boolean> {
   return removeByKey(QAQC_PREFIX + user.toLowerCase());
 }

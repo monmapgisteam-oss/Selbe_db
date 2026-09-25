@@ -37,9 +37,11 @@
 import { STAGE_ORDER, type Stage } from './hyanalt';
 import { t as tr } from './i18nCore';
 import {
-  ROLE_ACCESS, ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
+  ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
 } from './services';
 import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
+/* ⚠️ 2026-09-25: харагдац нь эрхийн төрлийн загвараас — `ROLE_ACCESS` нь зөвхөн нөөц */
+import { roleAccess } from './roleTypes';
 
 /**
  * ⚠️ ШАТ → ҮҮРЭГ хүснэгт нь `services.ts`-д (`STAGE_ROLE`) — урьд нь энд давхар
@@ -493,11 +495,11 @@ async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
     const cur = resolveBaseAccess(user);
     const pureFlow = curRole == null || FLOW_ROLES.has(curRole);
     const views: ViewKey[] | 'all' = pureFlow
-      ? ROLE_ACCESS[role].views
+      ? roleAccess(role).views
       : cur?.views === 'all'
         ? 'all'
         : [...new Set<ViewKey>([...(cur?.views ?? []), 'guitsetgel'])];
-    const docs = pureFlow ? ROLE_ACCESS[role].docs : (cur?.docs ?? ROLE_ACCESS[role].docs);
+    const docs = pureFlow ? roleAccess(role).docs : (cur?.docs ?? roleAccess(role).docs);
     // Урсгалын бус үүрэгтэй хүний ҮНДСЭН үүргийг нь хадгална (супер хэвээр)
     const keepRole = pureFlow ? role : curRole;
     return setUser(user, { views, docs }, keepRole);
@@ -549,12 +551,12 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
    *    байдал. Урсгалын үүрэг (олголтоор өгөгдсөн) суурь БОЛОХГҮЙ.
    */
   const keepBase: Role | null = base ?? (curRole && !FLOW_ROLES.has(curRole) ? curRole : null);
-  const baseViews = keepBase ? ROLE_ACCESS[keepBase].views : null;
+  const baseViews = keepBase ? roleAccess(keepBase).views : null;
   const keepGuits = baseViews === 'all' || (Array.isArray(baseViews) && baseViews.includes('guitsetgel'));
   const views = cur.views === 'all' || keepGuits ? cur.views : cur.views.filter((v) => v !== 'guitsetgel');
   const role = curRole === STAGE_ROLE[stage] ? null : curRole;
   if (base) {
-    const b = ROLE_ACCESS[base];
+    const b = roleAccess(base);
     if (role === base && cur.docs === b.docs && viewsEqual(views, b.views)) {
       return await clearOverride(user);
     }

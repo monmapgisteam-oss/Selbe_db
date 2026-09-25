@@ -219,9 +219,10 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
   const logged = body.match(/catch\s*\(e\)\s*\{[\s\S]*?console\.error/g) ?? [];
   /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`);
      2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`);
-     2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`) */
-  assert.equal(logged.length, 8,
-    `initRemote-ийн 8 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
+     2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`);
+     2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`) */
+  assert.equal(logged.length, 9,
+    `initRemote-ийн 9 ACL синк бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
     'initRemote: _syncRemoteCaps-д trusted дамжуулаагүй');

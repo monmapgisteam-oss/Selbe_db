@@ -42,6 +42,8 @@ import {
 import { useAclRunner } from '@/modules/useAclRunner';
 import { draftFlowMsg, newAccountMsg, removeMarkedMsg, roleLabel, sysTitle } from '@/modules/erhLabels';
 import { UserRights } from './UserRights';
+import { UserTypeSection } from './UserTypeSection';
+import { roleOf } from '@/lib/permissions';
 import { UserHeadActions, UserHeadBadges, rightsProps, type UserRowProps } from './UserRow';
 import s from './userAdmin.module.css';
 
@@ -94,6 +96,11 @@ export function UserCard({ p, focus, hasDraft, onBack }: UserCardProps) {
       {!ready && <div className={s.capErr} role="alert">{lockMsg()}</div>}
       {err && <div className={s.capErr} role="alert">{err}</div>}
       {blockNote && <div className={s.capNote}>{blockNote}</div>}
+
+      {/* ── 1б. Эрхийн төрөл — загвараар нэг дор (2026-09-25) ── */}
+      {!d.remove && (
+        <UserTypeSection key={key} user={key} role={roleOf(key)} disabled={off || hasDraft} hardSuper={p.superUser} />
+      )}
 
       {/* ── 2. Харагдац · ТЭЗҮ-БОНУ · нэмэлт эрх ── */}
       {!d.remove && (

@@ -5402,7 +5402,11 @@ export type Role =
   | "menejer"
   | "eronhii"
   | "heltsiin"
-  | "gazriin";
+  | "gazriin"
+  /* ⚠️ 2026-09-25: урсгалын БУС гурван төрөл — «Эрхийн төрөл» (`roleTypes.ts`) */
+  | "taniltsah"
+  | "chanar"
+  | "gazar";
 
 /**
  * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
@@ -5494,6 +5498,13 @@ export const ROLE_ACCESS: Record<
   eronhii: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   heltsiin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   gazriin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
+  /*
+   * ⚠️ 2026-09-25: «Эрхийн төрөл»-ийн гурван шинэ төрөл. Энэ нь ЗӨВХӨН нөөц —
+   *    бодит харагдац нь админы тохируулсан загвараас (`roleTypes.roleAccess`).
+   */
+  taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
+  chanar: { views: ["qaqc", "chanar"], docs: false, home: "chanar" },
+  gazar: { views: ["gazar"], docs: false, home: "gazar" },
 };
 
 /** ArcGIS нэрээр үүрэг олох — олдохгүй бол `null` (нэвтрэх эрхгүй) */

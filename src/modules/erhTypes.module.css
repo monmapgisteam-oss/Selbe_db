@@ -1,0 +1,77 @@
+/* ЭРХИЙН ТӨРӨЛ — 10 төрөл × тохиргооны хүснэгт (`ErhTypes.tsx`) */
+.wrap {
+  max-width: 100%;
+  overflow: auto;
+  max-height: calc(100vh - 290px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tbl { border-collapse: separate; border-spacing: 0; font-size: 0.78rem; min-width: 100%; }
+.tbl th, .tbl td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: center; vertical-align: middle; }
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.74rem;
+  min-width: 104px;
+}
+.headNo { display: block; color: var(--ink-3); font-weight: 500; font-size: 0.68rem; }
+.headBtns { display: flex; gap: 4px; justify-content: center; margin-top: 4px; flex-wrap: wrap; }
+.mini {
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--hue, #0d9488);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 4px);
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.mini:disabled { opacity: 0.45; cursor: default; }
+.corner { position: sticky; top: 0; left: 0; z-index: 4; background: var(--surface-2); text-align: left; min-width: 280px; }
+.lbl {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+  text-align: left !important;
+  min-width: 280px;
+  max-width: 360px;
+}
+.lblText { font-weight: 600; color: var(--ink); }
+.lblHint { display: block; color: var(--ink-3); font-size: 0.7rem; font-weight: 400; }
+.sec td {
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.secLbl { position: sticky; left: 0; }
+.dirty { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); }
+.cb { width: 17px; height: 17px; cursor: pointer; accent-color: var(--hue, #0d9488); }
+.cb:disabled { cursor: default; }
+.sel {
+  font: inherit;
+  font-size: 0.72rem;
+  max-width: 110px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 4px);
+  padding: 2px 4px;
+}
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.info { color: var(--ink-3); font-size: 0.78rem; }
+.err { color: var(--bad-ink); font-size: 0.78rem; white-space: pre-line; }
+.ok { color: var(--ink-2); font-size: 0.78rem; }
+
+/* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг */
+.typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

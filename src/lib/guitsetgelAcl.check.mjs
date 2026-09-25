@@ -39,6 +39,8 @@ const {
 } = await import('@/lib/guitsetgelAcl.ts');
 const P = await import('@/lib/permissions.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
+/* ⚠️ 2026-09-25: урсгалын үүргийн харагдац нь эрхийн төрлийн загвараас (`roleTypes.roleAccess`) */
+const { roleAccess } = await import('@/lib/roleTypes.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];
 
 /* ══════════ 0. REMOTE АЧААЛАГДААГҮЙ → localStorage ҮЛ ТООЦНО (2026-09-21) ══════════
@@ -198,7 +200,7 @@ w = setAssign('comp_a', 'manager', ['Багц 2']);
 await Promise.all([rm.sync, w.sync]);
 assert.equal(stageOfUser('comp_a'), 'manager');
 assert.equal(P.roleOf('comp_a'), 'menejer', 'хойшилсон revoke шинэ grant-ыг дарахгүй');
-assert.deepEqual(P.resolveBaseAccess('comp_a').views, ['guitsetgel']);
+assert.deepEqual(P.resolveBaseAccess('comp_a').views, roleAccess('menejer').views);
 console.log('✅ хас→нэм дараалал');
 
 /* ══════════════════════════════════════════════════════════════════════
