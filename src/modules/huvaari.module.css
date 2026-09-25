@@ -376,6 +376,26 @@
 .rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
 /* Нийтлээгүй засвар — зүүн ирмэгийн зураас (өнгө нь «хадгалагдаагүй» гэсэн утга) */
 .rowDirty { box-shadow: inset 3px 0 0 var(--data); }
+/*
+ * БАТЛАГЧИЙН ЗӨВШӨӨРӨЛ (2026-09-25) — `sheet.module.css`-ийн `.chg` / `.chgOk`
+ * загвар: улаан = зөвшөөрөөгүй (засах ёстой), ногоон = зөвшөөрсөн.
+ * ⚠️ Хүрээ/дэвсгэр л — мөрийн ӨНДӨР хөдлөхгүй (`PL_ROW`-ийн ⚠️). `.rowDirty`-ийн
+ *    зүүн зураасыг ДАРНА: хяналтад «хадгалаагүй» гэдэг утгагүй, шийдвэр чухал.
+ */
+.rowBad { box-shadow: inset 3px 0 0 var(--bad); background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.rowOk { box-shadow: inset 3px 0 0 var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.rowBad .rowDes { color: var(--bad-ink); font-weight: 700; }
+.rowOk .rowDes { color: var(--good-ink); font-weight: 700; }
+/* Кодын нүд ТОВЧ болно (зөвхөн батлагчид) — харагдах байдал нь `.rowDes`-тэй ижил */
+.rowMark {
+  font: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rowMark:hover { text-decoration: underline; }
+.rowMark:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
 /* ⚠️ ХУВААРЬТАЙ ажил НОГООН (2026-09-23, хэрэглэгч: «хуваарь хийсэн бол ажил
    ногоордог болгох») — зөвхөн ажлын мөр (бүлэг биш: бүлгийн муж нь хүүхдийн
    MIN/MAX тул нэг хүүхэд л төлөвлөгдсөн ч «бүгд бэлэн» мэт уншигдана).
@@ -1392,3 +1412,17 @@
   cursor: pointer;
 }
 .addHint { flex-basis: 100%; color: var(--ink-3); font-size: 11px; }
+
+/* ХУУЧИН (серверийн) муж — хяналтад «юу байсан». `plRef`-ээс ялгарах улаавтар
+   зураас; hover-т огноо харагдана (`pointer-events` нээлттэй, чирэлт хаалттай горимд л). */
+.plOld {
+  pointer-events: auto;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--bad) 38%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+}
+/* Хяналтын тоолуур — бүгд зөвшөөрөгдсөн үед ногоон */
+.revAllOk { color: var(--good-ink); font-weight: 700; }
