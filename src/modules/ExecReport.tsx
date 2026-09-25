@@ -28,6 +28,7 @@ import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendi
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
+import { progressSub } from '@/lib/gdash';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
@@ -204,8 +205,11 @@ export function ExecReport() {
                     {
                       label: tr('Төслийн гүйцэтгэл'),
                       value: x.gdash.progress == null ? '—' : pct(x.gdash.progress, 1),
-                      sub: tr('6 шатны жигнэсэн хувь'),
-                      desc: tr('Зураг төслөөс улсын комисс хүртэлх зургаан үе шатыг жингээр нь нэгтгэсэн хувь.'),
+                      /* ⚠️ 2026-09-25: эхээр (`progressSrc`) — 6 шатны нөөц тоог «нэгтгэлээр» гэж хэлэхгүй */
+                      sub: progressSub(x.gdash.progressSrc),
+                      desc: x.gdash.progressSrc === 'negtgel'
+                        ? tr('Нэгтгэл гүйцэтгэлийн хүснэгтэд ТЭЗҮ-гээс төсөл хүлээлгэн өгөх хүртэлх үе шатыг төсөлд эзлэх хувиар нь нэгтгэсэн дүн.')
+                        : tr('Нэгтгэл гүйцэтгэл уншигдаагүй тул Cashflow-ийн 6 шатны гүйцэтгэлийг тогтоосон жингээр нэгтгэсэн нөөц дүн.'),
                     },
                     {
                       label: tr('Багц ажлын тоо'),

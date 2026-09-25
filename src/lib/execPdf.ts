@@ -24,6 +24,7 @@ import {
 import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
+import { progressSub } from '@/lib/gdash';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 
 /* ══════════════════════ Өнгөний палитр ══════════════════════
@@ -331,9 +332,10 @@ export async function buildExecDoc(
       {
         margin: [0, 48, 0, 0],
         columns: [
-          /* ⚠️ 2026-09-21: шошго «(6 шатаар)» — Тайлан ба Дашбоардын «нийт гүйцэтгэл»
-             ӨӨР тодорхойлолттой тул нэр нь ЮУ болохоо хэлнэ (тоо ӨӨРЧЛӨГДӨӨГҮЙ). */
-          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
+          /* ⚠️ 2026-09-25: тоо нь «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт; нэгтгэл
+             уншигдаагүй бол 6 шатны нөөц бодолт — шошго нь `progressSrc`-ээр
+             ялгарна (урьдын «(6 шатаар)» тайлбар хуучирсан). */
+          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: g.progressSrc === 'negtgel' ? tr('Төслийн нийт гүйцэтгэл') : tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
           { stack: [{ text: T(money(g.budget)), style: 'coverKpiV' }, { text: tr('Нийт төсөв'), style: 'coverKpiL' }] },
         ],
         columnGap: 24,
@@ -353,7 +355,7 @@ export async function buildExecDoc(
       kpiRow([
         { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
-        { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('6 шатны жигнэсэн хувь') },
+        { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: progressSub(g.progressSrc) },
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },

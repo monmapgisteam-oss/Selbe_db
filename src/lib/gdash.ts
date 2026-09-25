@@ -1069,8 +1069,16 @@ export type Kpi = {
    * үйлчилдэг тул энд хийвэл хоёр шүүлт хоёр газар тарах байсан.
    */
   contract: number;
-  /** Гүйцэтгэлийн хувь — өртгөөр ЖИГНЭСЭН дундаж */
+  /** Гүйцэтгэлийн хувь — нэгтгэл гүйцэтгэл эсвэл 6 шатны өртгөөр ЖИГНЭСЭН дундаж (`progressSrc`) */
   progress: number | null;
+  /**
+   * `progress` ХААНААС ирсэн бэ (2026-09-25).
+   * ⚠️ Хоёр ӨӨР хэмжүүр НЭГ шошготой гарч байв: шүүлтгүй үед «Нэгтгэл
+   *    гүйцэтгэл»-ийн төслийн нийт, шүүлттэй/нэгтгэл унасан үед 6 шатны
+   *    бодолт. Дэлгэц · PDF · PNG · AI баримт бүгд `progressLabel`/
+   *    `progressSub`-аар ЭНЭ утгад тохирсон нэр гаргана.
+   */
+  progressSrc: ProgressSrc;
   /**
    * Тэр хувь НИЙТ төсвийн хэдэн хувийг хамарсан бэ (0–100).
    *
@@ -1100,13 +1108,38 @@ export type Kpi = {
   types: number;
 };
 
+/** Гүйцэтгэлийн хувийн эх — `Kpi.progressSrc` */
+export type ProgressSrc = 'negtgel' | 'stage';
+
+/** Индикаторын шошго — эхэд тохирсон (⚠️ 6 шатны бодолтыг нэгтгэлийн нэрээр гаргахгүй) */
+export const progressLabel = (src: ProgressSrc): string => (src === 'negtgel'
+  ? tr('Гүйцэтгэлийн хувь')
+  : tr('Гүйцэтгэлийн хувь (6 шатаар)'));
+
+/** Тайлангийн дэд тайлбар — эхэд тохирсон */
+export const progressSub = (src: ProgressSrc): string => (src === 'negtgel'
+  ? tr('Нэгтгэл гүйцэтгэлээр')
+  : tr('6 шатны жигнэсэн хувь'));
+
 /**
  * ⚠️ Гүйцэтгэлийн хувь нь ЭНГИЙН ДУНДАЖ БИШ, ӨРТГӨӨР ЖИГНЭСЭН: 500 тэрбумын
  * ажил 30%-тай, 1 тэрбумынх 100%-тай байхад энгийн дундаж 65% гэж хэлэх бөгөөд
  * төслийн бодит явцыг хоёр дахин үнэлнэ. Хэмжигдээгүй (багц нь нэгтгэлд
  * олдоогүй) ажил хуваарьт ч, хүртвэрт ч ОРОХГҮЙ.
  */
-export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | null = null): Kpi {
+export function kpisOf(
+  rows: CfRow[],
+  contractSum: number,
+  landPct: number | null = null,
+  /**
+   * ⚠️ 2026-09-25: `Negtgel_guitsetgel`-ийн ТӨСЛИЙН НИЙТ гүйцэтгэл
+   * (`negtgel.negtgelProjectPct`). Өгөгдвөл 6 шатны бодолтыг ДАРНА — нэгтгэл
+   * хүснэгт бол албан ёсны тоо. ⚠️ Шүүлттэй (хугацаа/чарт) үед дуудагч
+   * `null` өгнө: нэгтгэл нь гэрээний мөрөөр задрахгүй тул шүүсэн хэсгийн
+   * хувийг зөвхөн 6 шатны бодолт л хэлж чадна.
+   */
+  wbsPct: number | null = null,
+): Kpi {
   let budget = 0;
   /* ⚠️ `wTop` (жинлэсэн дунджийн хүртвэр) ХАСАГДСАН (2026-09-16): гүйцэтгэлийн
      хувь нь `stagePct` буюу ӨӨР эхээс ирдэг болсон (2026-09-08) тул бодогдоод
@@ -1144,12 +1177,14 @@ export function kpisOf(rows: CfRow[], contractSum: number, landPct: number | nul
    * ⚠️ Тэр талбар нь ХЭВЭЭР хэрэгтэй: «Гэрээлсэн байдал, бодит гүйцэтгэл»
    *    чарт ба хүснэгт түүнийг ШУУД уншдаг.
    */
-  const stagePct = stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
+  const stagePct = wbsPct
+    ?? stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
 
   return {
     budget,
     contract: contractSum,
     progress: stagePct,
+    progressSrc: wbsPct != null ? 'negtgel' : 'stage',
     /* ⚠️ Мөнгө нь ХУВЬТАЙГАА ЗААВАЛ таарна: `Σ өртөг × хувь` — эс бөгөөс
        индикатор дээр хоёр тоо зөрчилдөнө. */
     progressAmount: stagePct == null ? 0 : (budget * stagePct) / 100,

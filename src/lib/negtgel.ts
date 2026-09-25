@@ -1,6 +1,13 @@
 /**
  * ТӨСЛИЙН НЭГТГЭЛ ГҮЙЦЭТГЭЛ — ажлын задаргааны (WBS) мод ба түүний бөглөлт.
  *
+ * ⚠️⚠️ 2026-09-25: ЭХ СОЛИГДОВ — `Negtgel_guitsetgel/0` (352 мөр, утгууд
+ * БӨГЛӨГДСӨН). Порталд ОДОО ЗӨВХӨН УНШИНА (`loadNegtgelFull`).
+ * Доорх Cashflow-оос бодох зам (`computeNegtgel`,
+ * `loadCfStages`, `stageProjectPct`) нь хуучин хоосон `Tusul_guitsetgel`-ийн
+ * орлуулга байсан; тест ба шүүлттэй индикатор (`gdash.kpisOf`) хэрэглэсээр
+ * байгаа тул хэвээр үлдэв.
+ *
  * ⚠️ Эх нь `Tusul_guitsetgel/0` (`TUSUL_NEGTGEL`): 198 мөрийн МОД бөгөөд бүтэц
  * нь бэлэн, тоон утга нь БҮГД ХООСОН. Хэрэглэгчийн заавар (2026-09-08):
  * «мэдээллийг нь бөглөөрэй — жишээ нь газар чөлөөлөлтийг Газар чөлөөлөлт
@@ -24,6 +31,8 @@ import {
   CF_WORK_WHERE,
 } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
+import { register } from '@/lib/dataBus';
+import type { NegSyncState } from '@/lib/negtgelAuto';
 
 const F = TUSUL_NEGTGEL.fields;
 const CF = CASHFLOW_NEW.fields;
@@ -38,6 +47,8 @@ export type NegtgelRow = {
   name: string;
   /** Кодын цэгээр тодорхойлогдох ГҮН (0 = төслийн нийт мөр) */
   depth: number;
+  /** Багцын дугаар («Багц-1») — зөвхөн шинэ эхэд, навч мөрд */
+  bagts?: string;
 };
 
 /**
@@ -299,12 +310,31 @@ export type NegtgelCalc = {
    * эх сурвалж гарсан ч ХАМГААЛАЛТТАЙ бодох ёстой.
    */
   perf: number | null;
+  /**
+   * ТӨЛӨВЛӨГӨӨ ба БИЕЛЭЛТИЙН ГУРВАН ХУВИЛБАР (шинэ эх, 2026-09-25).
+   * `planPct`/`perf` нь «гэрээгээр» хувилбар; эдгээр нь үлдсэн хоёр.
+   * ⚠️ Хуучин (бодолтын) замд үргэлж `null`.
+   */
+  planGch?: number | null;
+  planGuits?: number | null;
+  perfGch?: number | null;
+  perfGuits?: number | null;
+  /** Навч нь СИСТЕМЭЭС бодогдсон (эсвэл доод мөрүүд нь) — `negtgelAuto` */
+  auto?: boolean;
+  /** Эцгийнхээ нийлбэрт ОРОХГҮЙ мөр (Нийслэл төсөв) — `negtgelAuto.rollKids` */
+  outside?: boolean;
+  /** Урьдчилсан төсөвт өртөг, ₮ (эх хүснэгтийнх) */
+  budget?: number | null;
   /** Яаж бодогдсоныг хүнд ойлгуулах тайлбар */
   how: string;
 };
 
 /**
  * МОДНЫ БҮХ МӨРИЙГ БОДНО.
+ *
+ * ⚠️ 2026-09-25: харагдацууд ҮҮНИЙГ ДУУДАХГҮЙ — одоо ЗӨВХӨН тест
+ *    (`negtgel.check.mjs`) ба хуучин нөөц зам (`loadNegtgelComputed`).
+ *    Амьд бодолт нь `negtgelAuto.computeNegAuto` (`loadNegtgelFull`).
  *
  * @param landPct «Газар чөлөөлөлт» мөрд хэрэглэх ГАЗРЫН МОДУЛИЙН хувь. Гэрээний
  *   `Gazar_chuluulult` талбар ч ойролцоо утга өгдөг ч хэрэглэгч «Газар
@@ -466,8 +496,12 @@ export function computeNegtgel(
   return out;
 }
 
-/** Мод + гэрээ + газрын явцыг зэрэг татаж, бодоод буцаана */
-export async function loadNegtgelFull(): Promise<{
+/**
+ * ХУУЧИН ЗАМ — мод + гэрээ + газрын явцыг зэрэг татаж, БОДНО.
+ * ⚠️ 2026-09-25-наас хойш харагдацууд үүнийг ДУУДАХГҮЙ (`loadNegtgelFull`).
+ * Хуучин хоосон модтой ажиллах шаардлага гарвал л хэрэглэнэ.
+ */
+export async function loadNegtgelComputed(): Promise<{
   rows: NegtgelRow[];
   calc: Map<number, NegtgelCalc>;
 }> {
@@ -478,6 +512,137 @@ export async function loadNegtgelFull(): Promise<{
     loadLandPct().catch(() => null),
   ]);
   return { rows, calc: computeNegtgel(rows, cf, landPct) };
+}
+
+/** Нэгтгэл гүйцэтгэл — харагдацад */
+export type NegtgelFull = {
+  rows: NegtgelRow[];
+  calc: Map<number, NegtgelCalc>;
+  /** `true` = системээс БОДСОН; `false` = эх унасан тул хүснэгтийн хадгалсан утга */
+  live: boolean;
+  /**
+   * Хүснэгт рүү бичих синкийн үр дүн (2026-09-25) — таб «синк хийгдсэнгүй»
+   * мэдэгдлийг эндээс харуулна. `null` = эх унасан тул синк оролдоогүй.
+   * ⚠️ Хэзээ ч reject хийхгүй (`syncNegtgel` алдааг `error` төлөв болгоно).
+   */
+  sync: Promise<NegSyncState> | null;
+};
+
+/**
+ * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — СИСТЕМЭЭС БОДОЖ харуулна, хүснэгтийг ч шинэчилнэ
+ * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
+ *
+ * ⚠️ ДЭЛГЭЦ нь БОДСОН утгыг харуулна — хүснэгт рүү бичих эрхгүй хэрэглэгч ч
+ * одоогийн байдлыг харна. Бичилт (`syncNegtgel`) нь ард нь явна — ЗӨВХӨН
+ * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
+ * ⚠️ Эх сурвалж (Cashflow, бөглөх хуудас, газар) УНАВАЛ хүснэгтийн хадгалсан
+ * утгыг харуулна — хоосон дэлгэц/0% биш.
+ * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
+ */
+async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
+  const A = await import('@/lib/negtgelAuto');
+  const stored = await A.loadNegRaw();
+  let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
+  let sync: Promise<NegSyncState> | null = null;
+  try {
+    const src = await A.loadNegSources();
+    calcRows = A.computeNegAuto(stored, src);
+    /* ⚠️ Дэлгэцийн `calcRows`-ийг ДАМЖУУЛАХГҮЙ — синк өөрөө шинээр уншина */
+    sync = A.syncNegtgel();
+  } catch (e) {
+    console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
+  }
+  const use = calcRows ?? stored.map((r) => ({
+    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэлийн хүснэгтээс (Negtgel_guitsetgel)'),
+  }));
+  const pc = (v: number | null) => (v == null ? null : v * 100);
+  const rows: NegtgelRow[] = [];
+  const calc = new Map<number, NegtgelCalc>();
+  for (const r of use) {
+    rows.push({ oid: r.oid, code: r.code, name: r.name, depth: r.depth, ...(r.bagts ? { bagts: r.bagts } : {}) });
+    const inProject = pc(r.p);
+    const actPct = pc(r.act);
+    calc.set(r.oid, {
+      n: actPct == null ? 0 : 1,
+      inSection: pc(r.w),
+      inProject,
+      planPct: pc(r.planG),
+      actPct,
+      share: inProject != null && actPct != null ? (inProject * actPct) / 100 : null,
+      perf: pc(r.perfG),
+      planGch: pc(r.planGch),
+      planGuits: pc(r.planGu),
+      perfGch: pc(r.perfGch),
+      perfGuits: pc(r.perfGu),
+      auto: r.auto,
+      outside: 'outside' in r ? r.outside : undefined,
+      budget: r.budget,
+      how: r.how,
+    });
+  }
+  return { rows, calc, live: calcRows != null, sync };
+}
+
+/*
+ * ⚠️ КЭШ (5 мин) + эх хүснэгт бүрийн засварт хүчингүй болно: дашбоард,
+ * тайлан, нэгтгэлийн таб гурвуулаа нэг тооцоог хуваалцана — тус бүр 10
+ * бөглөх хуудас дахин уншихгүй.
+ */
+let fullP: Promise<NegtgelFull> | null = null;
+let fullAt = 0;
+register(() => { fullP = null; }, ['CASHFLOW_NEW', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT']);
+
+/** ⚠️ «Системийн утгаар шинэчлэх» бичилтийн дараа — хүснэгтийг дахин уншуулна */
+export function dropNegtgelFull(): void {
+  fullP = null;
+}
+
+export function loadNegtgelFull(): Promise<NegtgelFull> {
+  if (!fullP || Date.now() - fullAt > 5 * 60_000) {
+    fullAt = Date.now();
+    const mine = loadNegtgelFullRaw();
+    fullP = mine;
+    mine.catch(() => { if (fullP === mine) fullP = null; });
+  }
+  return fullP;
+}
+
+/**
+ * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ = Σ (1-р түвшний төсөлд эзлэх × гүйцэтгэл) ÷ 100.
+ *
+ * ⚠️ ЗӨВХӨН 1-р түвшин: доод мөрүүд нь эцгийнхээ задаргаа тул хамт нэмбэл
+ * ажил бүр хоёр дахин тоологдоно.
+ * ⚠️ Жингийн нийлбэр (амьдаар 2026-09-25: 100%) нь 0 бол `null` — «0%» гэж
+ * хэлэхгүй.
+ * ⚠️ 2026-09-25: жинтэй (> 0) 1-р түвшний мөрийн гүйцэтгэл `null` бол нийт нь
+ *    `null` (null ≠ 0) — урьд нь тэр мөр чимээгүй 0 гэж тоологдож нийт
+ *    доошилдог байв. Дуудагч «—» эсвэл 6 шатны нөөц бодолтыг (`progressSrc`)
+ *    харуулна.
+ */
+export function negtgelProjectPct(
+  rows: NegtgelRow[],
+  calc: Map<number, NegtgelCalc>,
+): number | null {
+  let w = 0;
+  let sum = 0;
+  for (const r of rows) {
+    if (r.depth !== 1) continue;
+    const c = calc.get(r.oid);
+    if (!c || c.inProject == null) continue;
+    if (c.actPct == null) {
+      if (c.inProject > 0) return null;
+      continue;
+    }
+    w += c.inProject;
+    sum += (c.inProject * c.actPct) / 100;
+  }
+  return w > 0 ? sum : null;
+}
+
+/** Төслийн нийт гүйцэтгэл — шууд ачаалж бодно (индикаторуудад) */
+export async function loadNegtgelPct(): Promise<number | null> {
+  const { rows, calc } = await loadNegtgelFull();
+  return negtgelProjectPct(rows, calc);
 }
 
 /* ═══════════════ ТӨСЛИЙН НЭГДСЭН ГҮЙЦЭТГЭЛ ═══════════════ */

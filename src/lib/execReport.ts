@@ -27,10 +27,12 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, CONTRACTED,
+  type ProgressSrc,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
-import { loadPlanCurve } from '@/lib/planProgress';
+import { loadNegtgelPct } from '@/lib/negtgel';
+import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
@@ -49,8 +51,15 @@ export type ExecReport = {
   gdash: {
     budget: number;
     contract: number;
-    /** Зургаан шатны жигнэсэн гүйцэтгэл, 0–100; хэмжигдээгүй бол null */
+    /** Төслийн нийт гүйцэтгэл (`Negtgel_guitsetgel`, унавал 6 шатны бодолт), 0–100; хэмжигдээгүй бол null */
     progress: number | null;
+    /**
+     * `progress`-ийн эх (2026-09-25) — дэлгэц · PDF · PNG · AI баримт шошгоо
+     * ҮҮНЭЭС авна (`gdash.progressLabel`/`progressSub`).
+     * ⚠️ Тайлан 5 минут кэшлэгддэг тул нэгтгэл унасан үеийн 6 шатны нөөц тоо
+     *    «нэгтгэл гүйцэтгэлээр» гэсэн нэрээр хадгалагдахгүй — эх нь хамт явна.
+     */
+    progressSrc: ProgressSrc;
     packages: number;
     types: number;
     landPct: number | null;
@@ -159,14 +168,14 @@ export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbsPct] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
     loadFillPkgProgress(),
     loadBuildings(),
     loadFinData(),
-    loadPlanCurve(),
+    loadPlanCurveCached(),
     /* ⚠️ Зөвшөөрөл унавал тайлан бүхэлдээ унахгүй — `null` = мэдээлэлгүй */
     loadZov().catch(() => null),
     /* ⚠️ ХАБ мөн адил: маягт нь тусдаа survey тул унавал `null` (0 биш) */
@@ -174,6 +183,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     /* ⚠️ 2026-09-22: «олгосон ÷ гэрээ» хувийн ТООЛОГЧ = `reportData.finance.paidContracted`
        (Тайлантай НЭГ тодорхойлолт); кэштэй тул нэмэлт хүсэлт бараг үүсэхгүй. */
     loadFinance(),
+    /* ⚠️ 2026-09-25: «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт хувь — дашбоардын
+       индикатортой НЭГ тоо (`GeneralDash.KpiStrip`). Унавал (эсвэл 1-р
+       түвшний мөр хэмжигдээгүй бол) 6 шатны бодолт, `progressSrc: 'stage'`. */
+    loadNegtgelPct().catch(() => null),
   ]);
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
@@ -194,7 +207,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      (`contract ÷ budget`) тоологч нь хуваарийн (`inTotal`) ГАДНАХ мөрийг ч агуулж,
      тайлан бусад дэлгэцээс өөр тоо хэвлэдэг байв. */
   const csum = cf.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
-  const k = kpisOf(cf, csum, land.pct);
+  const k = kpisOf(cf, csum, land.pct, wbsPct);
   /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь блок-жигнэсэн биет хувь —
      `GeneralDash.catPct`-тай ижил дүрэм. */
   const catPct = new Map<string, number>();
@@ -280,7 +293,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   const withData = bld.rows.filter((b) => b.progress != null);
   return {
     gdash: {
-      budget: k.budget, contract: k.contract, progress: k.progress,
+      budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
       packages: k.packages, types: k.types, landPct: land.pct,
       land: {
         total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
@@ -600,7 +613,8 @@ export function execFacts(x: ExecReport): string {
   L.push(`## 01. Ерөнхий дашбоард`);
   L.push(`Нийт төсөв: ${num(x.gdash.budget)} ₮`);
   L.push(`Нийт гэрээлсэн дүн: ${num(x.gdash.contract)} ₮`);
-  L.push(`Гүйцэтгэлийн хувь (6 шатны жигнэсэн): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
+  /* ⚠️ 2026-09-25: эх нь `progressSrc`-ээр — 6 шатны нөөц тоог «нэгтгэлээр» гэж AI-д хэлэхгүй */
+  L.push(`Гүйцэтгэлийн хувь (${x.gdash.progressSrc === 'negtgel' ? 'нэгтгэл гүйцэтгэлээр' : '6 шатаар — нэгтгэл гүйцэтгэл уншигдаагүй'}): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
   L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);

@@ -318,10 +318,10 @@ const loadRows = memo(fetchConstruction, ['BAGTS_SHEET']);
  * ⚠️ Cashflow уншигдахгүй бол (сүлжээ, эрх) солилт ХИЙГДЭХГҮЙ, бөглөлтийн
  *    утга хэвээр — блокийн гүйцэтгэл үүнээс болж унах ЁСГҮЙ.
  */
-async function cashflowOverride(): Promise<{ key: string; pct: number } | null> {
+async function cashflowOverride(fresh = false): Promise<{ key: string; pct: number } | null> {
   try {
-    const { loadCashflowPkgPct, FILL_FROM_CASHFLOW } = await import('./live');
-    const v = (await loadCashflowPkgPct()).get(FILL_FROM_CASHFLOW);
+    const { loadCashflowPkgPct, loadCashflowPkgPctFresh, FILL_FROM_CASHFLOW } = await import('./live');
+    const v = (await (fresh ? loadCashflowPkgPctFresh() : loadCashflowPkgPct())).get(FILL_FROM_CASHFLOW);
     return v == null ? null : { key: FILL_FROM_CASHFLOW, pct: v };
   } catch {
     return null;
@@ -339,6 +339,20 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
   },
   ['BAGTS_SHEET', 'CASHFLOW_NEW'],
 );
+
+/**
+ * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
+ *
+ * ⚠️ 2026-09-25: `memo` нь TTL-гүй — өөр хэрэглэгчийн бөглөлт ЭНЭ табын кэшийг
+ *    хүчингүй болгодоггүй. Хуучин кэшээр бодсон утгыг хүснэгт рүү бичвэл
+ *    шинэ табын зөв утгыг дарна. Тиймээс түүхий мөрийг ДАХИН татаж бодно;
+ *    дэлгэцийн memo-г ХӨНДӨХГҮЙ (дашбоард анивчихгүй).
+ */
+export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
+  const [m, ov] = await Promise.all([fetchConstruction().then(compute), cashflowOverride(true)]);
+  if (ov) for (const [k, v] of m) if (ownsKey(ov, k)) m.set(k, { ...v, overall: ov.pct });
+  return m;
+}
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
 export const loadBlockHistory: () => Promise<BlockHistory> = memo(

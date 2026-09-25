@@ -65,6 +65,7 @@ import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve } from '@/modules/sheet/bagtsSheet';
 import { bagtsKey, isConstructionNo } from './services';
 import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
+import { register } from './dataBus';
 
 /** Нэг сарын цэг */
 export type PlanPoint = {
@@ -391,4 +392,31 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   });
 
   return { months, bySheet, byBagts, from, to, failed: failedKeys };
+}
+
+/**
+ * КЭШТЭЙ МУРУЙ (5 мин) — «Нэгтгэл гүйцэтгэл»-ийн дэлгэц ба удирдлагын тайлан
+ * НЭГ хуулбарыг хуваалцана (2026-09-25).
+ *
+ * ⚠️ Урьд нь `negtgelAuto.loadNegSources` ба `execReport` тус бүр
+ *    `loadPlanCurve`-ийг КЭШГҮЙ дууддаг тул нэг нээлтэд 10 хуудсыг хоёр
+ *    дахин бүтнээр уншдаг байв.
+ * ⚠️ Бөглөх хуудасны бичилтээр (`BAGTS_SHEET`) шууд хаягдана — `negtgel.ts`
+ *    -ийн `loadNegtgelFull` кэштэй ИЖИЛ түлхүүр, ижил 5 минут.
+ * ⚠️ Хүснэгт рүү БИЧИХ зам (`syncNegtgel`) үүнийг ХЭРЭГЛЭХГҮЙ — шууд
+ *    `loadPlanCurve` (шинэ уншилт).
+ */
+let curveP: Promise<PlanCurve> | null = null;
+let curveAt = 0;
+register(() => { curveP = null; }, ['BAGTS_SHEET']);
+
+export function loadPlanCurveCached(): Promise<PlanCurve> {
+  if (!curveP || Date.now() - curveAt > 5 * 60_000) {
+    curveAt = Date.now();
+    const mine = loadPlanCurve();
+    curveP = mine;
+    /* ⚠️ Уналт нь ЗӨВХӨН өөрөө идэвхтэй байхад л кэшийг цэвэрлэнэ (`live.cached`-ийн ⚠️) */
+    mine.catch(() => { if (curveP === mine) curveP = null; });
+  }
+  return curveP;
 }

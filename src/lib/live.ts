@@ -480,13 +480,13 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
  *    `loadBlockProgress` эх сурвалжийн түвшинд солидог (`cashflowOverride`).
  *    Энд дахин солих ХЭРЭГГҮЙ.
  */
-export const loadFillPkgProgress = cached<Map<string, number>>(async () => {
-  const [{ loadBlockProgress }, { BUILDING, bagtsKey, buildingKey }] = await Promise.all([
+async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> {
+  const [{ loadBlockProgress, loadBlockProgressFresh }, { BUILDING, bagtsKey, buildingKey }] = await Promise.all([
     import('@/lib/blockProgress'),
     import('@/lib/services'),
   ]);
   const [prog, bld] = await Promise.all([
-    loadBlockProgress(),
+    fresh ? loadBlockProgressFresh() : loadBlockProgress(),
     queryFeatures(BUILDING.url, {
       outFields: [BUILDING.fields.bagts, BUILDING.fields.block],
       limit: 500,
@@ -508,9 +508,22 @@ export const loadFillPkgProgress = cached<Map<string, number>>(async () => {
   const out = new Map<string, number>();
   for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
   return out;
+}
+
 /* ⚠️ `CASHFLOW_NEW` нэмэгдэв (2026-09-17): дотор нь `loadBlockProgress` Багц 3.1-ийг
    Cashflow-оос дардаг тул санхүүжилтийн засвар энэ кэшийг ч хуучруулна. */
-}, undefined, ['BAGTS_SHEET', 'BUILDING', 'CASHFLOW_NEW']);
+export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProgressRaw(false),
+  undefined, ['BAGTS_SHEET', 'BUILDING', 'CASHFLOW_NEW']);
+
+/**
+ * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
+ *
+ * ⚠️ 2026-09-25: `loadFillPkgProgress` нь TTL-гүй, зөвхөн ЭНЭ ТАБЫН бичилтээр
+ *    хүчингүй болдог. Өглөө нээгдсэн таб бусдын оройн бөглөлтийг ХАРАХГҮЙ тул
+ *    түүний хуучин тоо `Negtgel_guitsetgel`-ийн шинэ утгыг дарж бичдэг байв.
+ *    Бичихээс өмнө эндээс (мөн `loadBlockProgressFresh`) шинээр уншина.
+ */
+export const loadFillPkgProgressFresh = (): Promise<Map<string, number>> => fillPkgProgressRaw(true);
 
 /**
  * БАГЦ 3.1-ИЙН ГҮЙЦЭТГЭЛ — САНХҮҮЖИЛТИЙН БҮРТГЭЛЭЭС (2026-09-10,
@@ -531,7 +544,7 @@ export const loadFillPkgProgress = cached<Map<string, number>>(async () => {
  */
 export const FILL_FROM_CASHFLOW = 'БАГЦ31';
 
-export const loadCashflowPkgPct = cached<Map<string, number>>(async () => {
+async function cashflowPkgPctRaw(): Promise<Map<string, number>> {
   const { CASHFLOW_NEW, CF_WORK_WHERE, bagtsKey } = await import('@/lib/services');
   const F = CASHFLOW_NEW.fields;
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
@@ -559,7 +572,12 @@ export const loadCashflowPkgPct = cached<Map<string, number>>(async () => {
   const out = new Map<string, number>();
   for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
   return out;
-}, undefined, ['CASHFLOW_NEW']);
+}
+
+export const loadCashflowPkgPct = cached<Map<string, number>>(cashflowPkgPctRaw, undefined, ['CASHFLOW_NEW']);
+
+/** ⚠️ КЭШГҮЙ — зөвхөн бичих зам (`loadFillPkgProgressFresh`-ийн ⚠️) */
+export const loadCashflowPkgPctFresh = cashflowPkgPctRaw;
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 

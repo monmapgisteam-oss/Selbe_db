@@ -1263,6 +1263,13 @@ export function Guitsetgel() {
    * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
    */
   const [tab, setTab] = useState<'fill' | 'sent' | 'negtgel'>('sent');
+  /** «Нэгтгэл гүйцэтгэл» таб — зөвхөн super (доорх табын тайлбарыг үз) */
+  const isSuperRole = role === 'super';
+  /* ⚠️ 2026-09-25: эрх буурсан (эрх дахин ачаалагдсан, хэрэглэгч солигдсон)
+     үед «negtgel» таб дээр үлдвэл товч нь алга ч хуудас нь хоосон/зөрүүтэй
+     горимд гацна — «Илгээсэн ажил» руу буцаана. Рендерийн үеийн засвар
+     (React-ийн «adjusting state» загвар) — эффект + setState-ийн анивчилтгүй. */
+  if (!isSuperRole && tab === 'negtgel') setTab('sent');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
@@ -1409,22 +1416,27 @@ export function Guitsetgel() {
         {/*
           * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — төслийн ажлын задаргааны (WBS) мод.
           *
-          * ⚠️ Бөглөх эрхээс ҮЛ ХАМААРНА: энэ нь бөглөх хуудас БИШ, төслийн
-          * нэгдсэн явцын харагдац. Гүйцэтгэгч ч, хянагч ч ижил тоог харна.
+          * ⚠️ 2026-09-25: ЗӨВХӨН «super» үүрэгтэй хүнд (хэрэглэгчийн заавар:
+          * «Хэрэглэгчдийн эрх удирдах дотроос super гэсэн эрхтэй хүнд л
+          * харагдана, өөр тохиолдолд харагдахгүй»). `role` нь панелийн
+          * томилгоог тооцсон ГАНЦ эх (`permissions.roleOf` → `useAuth`).
+          * ⚠️ Нэвтрэлт унтраалттай (дев) үед ч харагдахгүй — «өөр тохиолдол».
           */}
-        <button
-          type="button"
-          className={`${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`}
-          onClick={() => setTab('negtgel')}
-        >
-          {tr('Нэгтгэл гүйцэтгэл')}
-        </button>
+        {isSuperRole && (
+          <button
+            type="button"
+            className={`${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`}
+            onClick={() => setTab('negtgel')}
+          >
+            {tr('Нэгтгэл гүйцэтгэл')}
+          </button>
+        )}
         {/* ⚠️ «Эрх тохируулах» ЭНДЭЭС ХАСАГДСАН — Админ портал дотор
             тусдаа бүлэг болов. Ажлын хуудсанд тохиргооны товч байвал
             хянагч санамсаргүй дараад хуваарилалт өөрчилнө. */}
       </div>
 
-      {tab === 'negtgel' ? (
+      {tab === 'negtgel' && isSuperRole ? (
         <div className={s.fill}>
           <TusulNegtgel />
         </div>
