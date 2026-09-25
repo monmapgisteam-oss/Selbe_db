@@ -129,6 +129,24 @@ export function MapTools({
    */
   const zoneShown = zoneOpen && !layersOpen && !opacityOpen && barOn;
 
+  /**
+   * 3D/BIM-д ЗУРВАСЫГ ДООШ ТАТНА (2026-09-25, хэрэглэгчийн зураг: «товчнууд
+   * маш их давхацсан»).
+   *
+   * ⚠️ SceneView зүүн дээд буланд zoom (+/−)-ийн ДООР чиглэл солих (2 товч) ба
+   *    луужин нэмдэг: 15 + 64 + 10 + 64 + 10 + 32 ≈ 195px. Зурвас 96px-ээс
+   *    эхэлдэг тул тэр хоёрыг бүрэн дарж, 3D-д эргүүлэх/луужин ашиглах
+   *    боломжгүй болж байв. 2D-д зөвхөн zoom (≈79px) тул хэвээр.
+   * ⚠️ INLINE `top` — харагдацын өөрийн `.shell :global(.mapToolsBar)
+   *    { top: … }` дарж бичих дүрмээс (generalDash) ДАВАМГАЙЛАХ ёстой.
+   *    `dock` зохиомж (зүүн хавтасны толгой) нь зургийн дээд ирмэгт наалддаг
+   *    тул хамаарахгүй.
+   */
+  const lift = !dock && dim !== '2d';
+  const TOP_3D = 205;
+  const barStyle = lift ? { top: TOP_3D, maxHeight: `calc(100% - ${TOP_3D + 74}px)` } : undefined;
+  const topStyle = lift ? { top: TOP_3D } : undefined;
+
   return (
     <>
     {/* ⚠️ `mapTools*` — ГЛОБАЛ нэрс (`statCard`, `secTitle`-тэй ижил зарчим).
@@ -152,13 +170,14 @@ export function MapTools({
       ].filter(Boolean).join(' ')}
       title={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
       aria-label={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      style={topStyle}
       onClick={() => setBarOn((v) => !v)}
     >
       {barOn ? '◂' : '▸'}
     </button>
 
     {barOn && (
-    <div className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`}>
+    <div className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`} style={barStyle}>
       {onLayers && (
         <button
           type="button"
@@ -239,7 +258,7 @@ export function MapTools({
     {/* ⚠️ Хавтан нь `.tools`-ЫН ГАДНА — тэр нь `overflow-y: auto` тул дотор нь
         байрлуулбал бүсийн жагсаалт гүйлгэх хайрцагт таслагдана. */}
     {setZone && zoneShown && (
-      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`}>
+      <div className={`${s.zonePanel} ${dock ? s.zoneDock : ''}`} style={topStyle}>
         <header className={s.zoneHead}>
           <span className={s.zoneTitle}>{tr('Бүсээр шүүх')}</span>
           <button
