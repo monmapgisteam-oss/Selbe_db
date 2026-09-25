@@ -48,7 +48,8 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
   HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
-  ORTHO_SWIPE, MESH_SWIPE, IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
+  ORTHO_SWIPE, MESH_VERSIONS, DEFAULT_MESH_VER, MESH_CMP_PREFIX, type MeshVer,
+  IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, PARCEL_LEFT, buildingKey,
   MAP_HUE_OVERRIDES, SOURCE_FS, BASE_MAP_IDS, TOGLOOM_TYPES, srcLineWidth,
@@ -967,6 +968,25 @@ export function applyViewBasemap(
 
 export const IMAGERY_ID = 'imagery';
 
+/** `localStorage` түлхүүр — 3D мешийн сонгосон хувилбар */
+const MESH_VER_KEY = 'selbe-mesh-ver';
+
+/**
+ * НИСЛЭГИЙН ТОВЧНУУД — зургийн доод голд, дарааллаар (Нислэг 1 → Нислэг 2).
+ * ⚠️ Toggle БИШ, ТУСДАА хоёр товч (хэрэглэгчийн заавар, 2026-09-25): аль
+ *    нислэгийг харж байгаа нь товчны идэвхтэй төлвөөс шууд уншигдана.
+ * ⚠️ Шошгыг рендерт ҮСГЭН `tr('…')`-ээр бичнэ — i18n гаргагч динамик
+ *    `tr(x)`-ыг шалгадаггүй.
+ */
+const FLIGHTS: MeshVer[] = ['old', 'new'];
+
+/**
+ * Хоёр хувилбарын (шинэ · хуучин) БҮХ меш id — байнгын `scene:<key>` ба
+ * харьцуулалтын `mesh:cmp:<key>`. PASSIVE ба NO_HIGHLIGHT хоёулаа хэрэглэнэ.
+ */
+const MESH_VER_IDS = Object.values(MESH_VERSIONS).flatMap((v) =>
+  v.layers.flatMap((l) => [`scene:${l.key}`, `${MESH_CMP_PREFIX}${l.key}`]));
+
 /** Дарж сонгогдохгүй давхаргууд (popup, hit-test, тайлбарт орохгүй) */
 const PASSIVE = new Set<string>([
   'sketch',
@@ -981,8 +1001,8 @@ const PASSIVE = new Set<string>([
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
-  // Харьцуулалтын шинэ меш — зөвхөн харах, дарж сонгогдохгүй
-  MESH_SWIPE.id,
+  // Меш хувилбарууд ба харьцуулалтын меш — зөвхөн харах, дарж сонгогдохгүй
+  ...MESH_VER_IDS,
   // Лавлагааны хилүүд — дарж сонгогдохгүй, доорх объектыг халхлахгүй.
   ...REFERENCE_IDS,
 ]);
@@ -1011,7 +1031,7 @@ const NO_HIGHLIGHT = new Set<string>([
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
-  MESH_SWIPE.id,
+  ...MESH_VER_IDS,
   ...REFERENCE_IDS,
 ]);
 
@@ -1959,6 +1979,32 @@ export const MapCanvas = memo(function MapCanvas({
   const mesh3dOffRef = useRef<(() => void) | null>(null);
 
   /**
+   * 3D МЕШИЙН ХУВИЛБАР — «Шинэ» (2026-09-17) эсвэл «Хуучин» (Сэлбэ 1, 2).
+   *
+   * ⚠️ 2026-09-25 (хэрэглэгчийн шийдвэр): анхдагч нь ШИНЭ. Сонголтыг
+   *    `localStorage`-д хадгална — хувь хүний тохиргоо, бусдад нөлөөлөхгүй.
+   *    Хандалт нь хаалттай орчинд (private горим) шидэж болох тул try/catch.
+   * ⚠️ `scene` prop өгсөн харагдац (Иргэд) ӨӨРИЙН меш багцтай — сонгогч
+   *    тэнд гарахгүй, энэ төлөв нөлөөлөхгүй.
+   * ⚠️ Солих нь view-г ДАХИН ҮҮСГЭХГҮЙ: `sceneKey` өөрчлөгдөж, меш нэмэх/хасах
+   *    эффект л ажиллана (view-ийн deps нь `[dim, stylesReady, initToken]`).
+   */
+  const [meshVer, setMeshVer] = useState<MeshVer>(() => {
+    try {
+      const v = typeof window === 'undefined' ? null : window.localStorage.getItem(MESH_VER_KEY);
+      return v === 'old' || v === 'new' ? v : DEFAULT_MESH_VER;
+    } catch {
+      return DEFAULT_MESH_VER;
+    }
+  });
+  const meshVerRef = useRef(meshVer);
+  meshVerRef.current = meshVer;
+  const pickMeshVer = useCallback((v: MeshVer) => {
+    setMeshVer(v);
+    try { window.localStorage.setItem(MESH_VER_KEY, v); } catch { /* хадгалахгүй ч ажиллана */ }
+  }, []);
+
+  /**
    * БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-08-18) — зурган дээрх товч дарахад
    * апп бүхэлдээ browser-ийн бүтэн дэлгэцэд орж, зураг viewport-ыг дүүргэнэ
    * (`.fs` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
@@ -1989,8 +2035,8 @@ export const MapCanvas = memo(function MapCanvas({
   const visibleKey = visible.join(',');
   const alwaysOnKey = (alwaysOn ?? []).join(',');
 
-  /** Энэ харагдацын 3D меш багц — заагаагүй бол аппын үндсэн `SCENE` */
-  const sceneList = scene ?? SCENE.layers;
+  /** Энэ харагдацын 3D меш багц — заагаагүй бол сонгосон хувилбар (`meshVer`) */
+  const sceneList = scene ?? MESH_VERSIONS[meshVer].layers;
   const sceneKey = sceneList.map((m) => m.key).join(',');
 
 
@@ -2268,12 +2314,13 @@ export const MapCanvas = memo(function MapCanvas({
      */
     if (dim === '3d') {
       const sv = view as __esri.SceneView;
+
       const swBtn3 = document.createElement('div');
       swBtn3.className = 'esri-widget--button esri-widget';
       swBtn3.setAttribute('role', 'button');
       swBtn3.setAttribute('tabindex', '0');
       swBtn3.setAttribute('aria-pressed', 'false');
-      swBtn3.title = tr('Меш харьцуулах — зүүн: шинэ, баруун: хуучин');
+      swBtn3.title = tr('Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн');
       swBtn3.innerHTML =
         '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
         + '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" '
@@ -2344,7 +2391,9 @@ export const MapCanvas = memo(function MapCanvas({
       type MeshLayer = __esri.IntegratedMeshLayer;
       const oldMeshes = () => map.layers.toArray()
         .filter((l) => String(l.id).startsWith('scene:')) as MeshLayer[];
-      const newMesh = () => map.findLayerById(MESH_SWIPE.id) as MeshLayer | null;
+      /** Харьцуулалтын (НӨГӨӨ хувилбарын) мешүүд — хуучин хувилбарт ХОЁР меш */
+      const cmpMeshes = () => map.layers.toArray()
+        .filter((l) => String(l.id).startsWith(MESH_CMP_PREFIX)) as MeshLayer[];
 
       /**
        * ⚠️ ЧИРЭХ ҮЕД МЕШИЙГ КАДР БҮРТ КЛИП ХИЙХГҮЙ.
@@ -2357,14 +2406,14 @@ export const MapCanvas = memo(function MapCanvas({
       let timer: ReturnType<typeof setTimeout> | null = null;
       let lastFrac = -1;
       const applyClip = () => {
-        const nm = newMesh();
-        if (!nm) return;
+        const cm = cmpMeshes();
+        if (!cm.length) return;
         // Өмнөхөөсөө бараг хөдлөөгүй бол дэмий клип хийхгүй
         if (Math.abs(frac - lastFrac) < 0.004) return;
         const r = ringsAt(Math.round((sv.width || 0) * frac));
         if (!r) return;
         lastFrac = frac;
-        nm.modifications = clipTo(r.left, r.sr);
+        for (const l of cm) l.modifications = clipTo(r.left, r.sr);
         for (const l of oldMeshes()) l.modifications = clipTo(r.right, r.sr);
       };
       const applySoon = () => {
@@ -2388,21 +2437,27 @@ export const MapCanvas = memo(function MapCanvas({
         divider?.remove();
         divider = null;
         for (const l of oldMeshes()) l.modifications = null;
-        const nm = newMesh();
-        if (nm) { map.remove(nm); nm.destroy(); }
+        for (const l of cmpMeshes()) { map.remove(l); l.destroy(); }
         swBtn3.style.color = '';
         swBtn3.setAttribute('aria-pressed', 'false');
         mesh3dOffRef.current = null;
       };
 
       const startMesh = () => {
-        // Шинэ меш — ортофотогийн дараа, хуучин мешүүдтэй нэг түвшинд
-        map.add(new IntegratedMeshLayer({
-          id: MESH_SWIPE.id,
-          url: MESH_SWIPE.url,
-          title: MESH_SWIPE.title,
-          visible: true,
-        }), 1);
+        /**
+         * НӨГӨӨ хувилбарыг нэмнэ — ортофотогийн дараа, одоогийн мештэй нэг түвшинд.
+         * ⚠️ Өөрийн меш багцтай харагдац (`scene` prop, Иргэд) нь урьдын адил
+         *    ШИНЭ мештэй харьцуулна — тэнд хувилбар сонгогч байхгүй.
+         */
+        const cmpVer: MeshVer = scene ? 'new' : (meshVerRef.current === 'new' ? 'old' : 'new');
+        for (const m of MESH_VERSIONS[cmpVer].layers) {
+          map.add(new IntegratedMeshLayer({
+            id: `${MESH_CMP_PREFIX}${m.key}`,
+            url: m.url,
+            title: m.title,
+            visible: true,
+          }), 1);
+        }
 
         divider = document.createElement('div');
         divider.style.cssText =
@@ -2442,7 +2497,7 @@ export const MapCanvas = memo(function MapCanvas({
         /* Камер хөдлөхөд олон өнцөгт хуучирна — зогсмогц дахин бодно */
         camWatch = reactiveUtils.watch(() => sv.stationary, (st) => { if (st) applyNow(); });
         /* Меш ачаалагдсаны дараа л клип суудаг тул давхарга бэлэн болоход дахин */
-        newMesh()?.when?.(() => applyNow()).catch(() => {});
+        for (const l of cmpMeshes()) l.when?.(() => applyNow()).catch(() => {});
         applyNow();
 
         swBtn3.style.color = 'var(--hue, #0d9488)';
@@ -4061,7 +4116,7 @@ export const MapCanvas = memo(function MapCanvas({
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
       // Ортофото/меш харьцуулалт — ЗӨВХӨН «Харьцуулах» товч удирдана (каталогт үл хамаарна)
-      if (l.id === ORTHO_SWIPE.id || l.id === MESH_SWIPE.id) return;
+      if (l.id === ORTHO_SWIPE.id || l.id.startsWith(MESH_CMP_PREFIX)) return;
       // Хамрах хүрээний буфер — өөрийн эффект удирдана (каталогт үл хамаарна)
       if (l.id === 'irged:reach') return;
       if (l.id === 'sketch') { l.visible = true; return; }
@@ -4442,6 +4497,30 @@ export const MapCanvas = memo(function MapCanvas({
           <span>
             <code>tiles.arcgis.com</code> {tr('дээрх BuildingSceneLayer-т хандаж чадсангүй. Үйлчилгээ нийтэд ил байгаа эсэхийг шалгана уу.')}
           </span>
+        </div>
+      )}
+
+      {/* НИСЛЭГ СОНГОХ — зөвхөн 3D, өөрийн меш багцгүй (`scene` prop-гүй) харагдацад.
+          ⚠️ Солихын ӨМНӨ «Меш харьцуулах»-ыг унтраана: идэвхтэй клип нь өмнөх
+          нислэгийн давхаргад тавигдсан тул үлдээвэл таслагдсан меш үлдэнэ. */}
+      {dim === '3d' && !scene && ready && (
+        <div className={s.flightBar} role="group" aria-label={tr('3D мешийн нислэг')}>
+          {FLIGHTS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={meshVer === f}
+              className={`${s.flightBtn} ${meshVer === f ? s.flightOn : ''}`}
+              title={MESH_VERSIONS[f].title}
+              onClick={() => {
+                if (meshVer === f) return;
+                mesh3dOffRef.current?.();
+                pickMeshVer(f);
+              }}
+            >
+              {f === 'old' ? tr('Нислэг 1') : tr('Нислэг 2')}
+            </button>
+          ))}
         </div>
       )}
 

@@ -4384,11 +4384,9 @@ const en: Record<string, string> = {
   "{0}-р долоо хоногийн ноцтой ба бага зэргийн үл нийцэл": "Week {0} major and minor non-conformities",
   "ноцтой ба бага зэргийн үл нийцэл": "major and minor non-conformities",
   "Харьцуулах — зүүн: хуучин зураг + одоогийн барилга, баруун: шинэ зураг + баригдаж буй блок": "Compare — left: old imagery + existing buildings, right: new imagery + blocks under construction",
-  "Меш харьцуулах — зүүн: шинэ, баруун: хуучин": "Mesh comparison — left: new, right: old",
   "Ортофото — хуучин (Selbe_ortho)": "Orthophoto — old (Selbe_ortho)",
   "Цэцэрлэг · 300 м": "Kindergarten · 300 m",
   "Сургууль · 500 м": "School · 500 m",
-  "Бодит загвар — шинэ (2026-09-17)": "Reality model — new (2026-09-17)",
   "Гэрийн зуухны утаа": "Ger stove smoke",
   "PM2.5 · тн/жил · тооцоолол": "PM2.5 · t/year · estimate",
   "гэр, байшин": "gers and houses",
@@ -4901,6 +4899,13 @@ const en: Record<string, string> = {
   "Улаан нүд — ажил гацна (дээрх «Анхаарах»). Саарал нэр — зөвхөн харна, шатны эзэн биш.": "Red cell — work will stall (see «Attention» above). Grey name — view only, not a stage owner.",
   "Админ {0} — бүх багцад (хуваарилалт үйлчлэхгүй).": "Admins {0} — in all packages (allocation does not apply).",
   "Засвар бүгд нэг бичих давхаргаар — матриц, хэрэглэгчийн карт, бүлгийн хуудас ижил дүрмээр бичиж, ижил асуулт асууна. Хуваарилалт шууд хадгалагдана.": "All edits go through one write layer — the matrix, user card and group pages write with the same rules and ask the same questions. Allocations are saved immediately.",
+  "Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн": "Compare meshes — left: the other version, right: current",
+  "3D мешийн нислэг": "3D mesh flight",
+  "Нислэг 1": "Flight 1",
+  "Нислэг 2": "Flight 2",
+  "Нислэг 1 (Сэлбэ 1, 2)": "Flight 1 (Selbe 1, 2)",
+  "Нислэг 2 (2026-09-17)": "Flight 2 (2026-09-17)",
+  "Бодит загвар — нислэг 2 (2026-09-17)": "Reality mesh — flight 2 (2026-09-17)"
 };
 
 export default en;
