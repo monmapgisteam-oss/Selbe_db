@@ -22,17 +22,18 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  listObyemAssigns, obyemAclReady, obyemFailedUsers, removeObyemAssign, setObyemGrants,
-  subscribeObyemAcl, type ObyemRole,
+  listObyemAssigns, obyemAclReady, obyemFailedUsers, subscribeObyemAcl, type ObyemRole,
 } from '@/lib/obyemAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
-import { removeRevokingRoles } from './ScopedAclPanel';
 
 /**
  * ⚠️ Шошго ба зурвасыг ФУНКЦ болгож өгнө — модулийн түвшинд `tr()` дуудвал
  *    хэл солиход шинэчлэгдэхгүй (зурагдах агшинд дуудагдах ёстой).
  */
 const SPEC: AclPanelSpec<ObyemRole> = {
+  /* ⚠️ Бичилт `aclOps.SCOPED_SYS.obyem`-ээр — `setGrants` · `remove` · `roleCaps` ·
+     `confirmRemoveAll` нь тэнд НЭГ газар (2026-09-25, `ScopedAclPanel`-ийн ⚠️) */
+  sys: 'obyem',
   roles: ['editor', 'approver'],
   roleLabel: (r) => (r === 'editor' ? tr('Засварлагч') : tr('Батлагч')),
   emptyLabel: (r) => (r === 'editor' ? tr('Засварлагч томилоогүй') : tr('Батлагч томилоогүй')),
@@ -40,17 +41,6 @@ const SPEC: AclPanelSpec<ObyemRole> = {
   list: listObyemAssigns,
   failedUsers: obyemFailedUsers,
   subscribe: subscribeObyemAcl,
-  setGrants: setObyemGrants,
-  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
-  roleCaps: { editor: 'obyemEdit', approver: 'obyemApprove' },
-  /*
-   * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
-   *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг
-   *    (админы гараар олгосон `addRow` г.м.) арчдаг байв. `UserAdmin.flipScoped`
-   *    ба `removeRevokingRoles`-той ижил дүрэм.
-   */
-  remove: (user) => removeRevokingRoles(user, listObyemAssigns, (u) => removeObyemAssign(u, false),
-    { editor: 'obyemEdit', approver: 'obyemApprove' }),
   ready: obyemAclReady,
 
   notes: () => [
@@ -58,8 +48,6 @@ const SPEC: AclPanelSpec<ObyemRole> = {
     tr('Засварлагч «Гүйцэтгэл бөглөх» хуудасны «Инженерийн төлөвлөсөн обьём» баганыг засаж батлуулахаар илгээнэ; батлагч зөвшөөрсний дараа л утга үндсэн өгөгдөлд бичигдэнэ.'),
     tr('⚠️ Гүйцэтгэлийн урсгал ба хуваарийн эрхээс ТУСДАА: обьёмын үүрэг олгосон нь гүйцэтгэл зөвшөөрөх, хуваарь засах эрх өгөхгүй.'),
   ],
-  confirmRemoveAll: (user) =>
-    tr('«{0}»-г инженерийн обьёмын хуваарилалтаас бүрэн хасах уу? «Инженерийн обьём засах» ба «Инженерийн обьём батлах» эрх нь мөн буцаагдана.', user),
   stuckMsg: () =>
     tr('⚠️ Батлагч нь засварлагчтай ижил хүн — өөрийн илгээснийг өөрөө батлах боломжгүй тул энэ багцын обьёмын засвар гацна. Өөр батлагч нэмнэ үү.'),
   noApproverMsg: () =>

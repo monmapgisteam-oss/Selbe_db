@@ -35,101 +35,19 @@ import type { Grant } from '@/lib/scopedAcl';
 import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
-import { capsRemoteReady, toggleCap, type CapKey } from '@/lib/caps';
+import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
+import type { ScopedSys } from '@/lib/aclRoleCaps';
+import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { useAclRunner } from './useAclRunner';
 import s from './guitsetgel.module.css';
 
-/**
- * МӨРИЙГ БҮХЭЛД НЬ ХАСААД ЗӨВХӨН ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА (2026-09-24).
- *
- * ⚠️ `remove*Assign(user)`-ийн анхдагч `revoke=true` нь `syncCaps(u, [])` →
- *    `none` горимд тэр системийн `roleCaps` БҮХ эрхийг хасдаг байв: нэмэлт
- *    ажлын батлагчийг хасахад админы гараар олгосон «Мөр нэмэх» (`addRow`) ч
- *    чимээгүй алга болно. `UserAdmin.flipScoped`-ийн 2026-09-24 дүрэмтэй
- *    тэгшлэв: мөрийг `revoke=false`-оор хасаад, `sync` дууссаны ДАРАА зөвхөн
- *    хасагдсан үүргүүдийн эрхийг буцаана.
- * ⚠️ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА: дараалалд хүлээх хооронд дахин
- *    хуваарилагдсан үүргийн эрхийг буцаахгүй; нэг эрх рүү заадаг ӨӨР үүрэг
- *    үлдсэн бол (Чанарын гурван хянагч → `chanarReview`) мөн буцаахгүй.
- * ⚠️ Таван панел (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц)
- *    бүгд үүгээр явна — QAQC нь `soleCap`, өөрийн замаар хэвээр.
+/*
+ * ⚠️ БИЧИХ ЛОГИК `aclOps.ts`-Д ШИЛЖСЭН (2026-09-25). `removeRevokingRoles` ·
+ *    `setGrantsRevokingRoles` · нэмэх/хасах дүрэм (ALL хамгаалалт, багцгүй grant
+ *    унах, `revoke=false`) урьд нь ЭНД байв; одоо хэрэглэгчийн карт ба матриц ч
+ *    ИЖИЛ op-оор бичдэг тул нэг газар. Энэ панел нь зөвхөн харуулж, op дуудна.
  */
-export function removeRevokingRoles<R extends string>(
-  user: string,
-  list: () => Row<R>[],
-  remove: (u: string) => Write,
-  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
-): Write {
-  const u = user.trim().toLowerCase();
-  const rolesOf = rolesOfUser(list, u);
-  const had = rolesOf();
-  return revokeGoneRoles(u, had, rolesOf, remove(u), roleCaps);
-}
-
-/**
- * ҮҮРГИЙН ЗАРИМЫГ ХАСААД (бусад grant ҮЛДЭНЭ) ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА
- * (2026-09-25, аудитын засвар).
- *
- * ⚠️ `removeRevokingRoles`-ийн ХОС. Урьд нь хэсэгчилсэн хасалт `setGrants`
- *    руу шууд явдаг байсан бөгөөд түүний `syncCaps` нь зөвхөн ОЛГОДОГ (lib-ийн
- *    санаатай дүрэм — гараар олгосныг устгахгүй). Тиймээс «Багц 1 · Зохиогч,
- *    Багц 5 · Батлагч» хүний батлагчийг ✕ дарахад `planApprove` ҮЛДЭЖ,
- *    «Хуваарь батлах» асаалттай, `huvaariBatlah` харагдац нээлттэй хэвээр
- *    байв. `UserAdmin.flipScoped`-ийн 2026-09-24 дүрэмтэй тэгшлэв.
- * ⚠️ Үүрэг нь БАГЦ ЦӨӨРӨӨД үлдсэн бол эрх ХЭВЭЭР — зөвхөн үүрэг бүхэлдээ
- *    алга болсон үед л буцаана (`revokeGoneRoles`-ийн дахин уншилт).
- */
-export function setGrantsRevokingRoles<R extends string>(
-  user: string,
-  grants: Grant<R>[],
-  list: () => Row<R>[],
-  setGrants: (u: string, grants: Grant<R>[]) => Write,
-  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
-): Write {
-  const u = user.trim().toLowerCase();
-  const rolesOf = rolesOfUser(list, u);
-  const had = rolesOf();
-  return revokeGoneRoles(u, had, rolesOf, setGrants(u, grants), roleCaps);
-}
-
-/** Тухайн хэрэглэгчийн ОДООГИЙН үүргүүд — дуудах агшинд жагсаалтаас уншина */
-const rolesOfUser = <R extends string>(list: () => Row<R>[], u: string) =>
-  (): Set<string> => new Set((list().find((a) => a.user === u)?.grants ?? []).map((g) => g.role));
-
-/**
- * `sync` дууссаны ДАРАА `had`-д байсан, одоо алга болсон үүргүүдийн эрхийг
- * буцаана — хоёр замын (бүтэн · хэсэгчилсэн хасалт) НИЙТЛЭГ логик.
- * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын гурван хянагч →
- *    `chanarReview`) тэр эрхийг буцаахгүй.
- */
-function revokeGoneRoles(
-  u: string,
-  had: Set<string>,
-  rolesOf: () => Set<string>,
-  rr: Write,
-  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
-): Write {
-  if (!rr.ok || !rr.sync) return rr;
-  const sync = rr.sync.then(async (ok) => {
-    const cur = rolesOf();
-    const caps = new Set<CapKey>();
-    for (const r of had) {
-      const c = roleCaps[r];
-      if (c && !cur.has(r)) caps.add(c);
-    }
-    for (const r of cur) {
-      const c = roleCaps[r];
-      if (c) caps.delete(c);
-    }
-    let all = ok;
-    for (const c of caps) all = (await toggleCap(u, c, false)) && all;
-    return all;
-  });
-  return { ...rr, sync };
-}
-
-/** Бичилтийн үр дүн — `scopedAcl.AclWrite`-тай ижил хэлбэр */
-type Write = { ok: boolean; error?: string; sync?: Promise<boolean> };
 
 /** Хуваарилалтын мөр — үүрэг бүр өөрийн багцтай */
 type Row<R extends string> = { user: string; grants: Grant<R>[] };
@@ -141,6 +59,13 @@ type Row<R extends string> = { user: string; grants: Grant<R>[] };
  *    хэл солиход шинэчлэгдэхгүй (зурагдах агшинд дуудагдах ёстой).
  */
 export type AclPanelSpec<R extends string> = {
+  /**
+   * Аль систем — бичилт `aclOps.SCOPED_SYS[sys]`-ээр явна (2026-09-25).
+   * ⚠️ `setGrants` · `remove` · `roleCaps` · `confirmRemoveAll` талбарууд
+   *    ХАСАГДСАН: тэдгээр нь `aclOps`/`aclRoleCaps`-д НЭГ газар — панел бүр
+   *    өөрийн хуулбартай байхад нэгийг солиход бусад нь хоцордог байв.
+   */
+  sys: ScopedSys;
   /** Хоёр үүрэг — ЭХНИЙХ нь зохиогч/засварлагч, ХОЁРДАХЬ нь батлагч */
   roles: readonly [R, R];
   /** Үүргийн шошго */
@@ -153,20 +78,8 @@ export type AclPanelSpec<R extends string> = {
   subscribe: (fn: () => void) => () => void;
   /** Энэ ACL-ийн remote уншигдсан уу — түгжээнд (2026-09-24) */
   ready: () => boolean;
-  /** Бичилт */
-  setGrants: (user: string, grants: Grant<R>[]) => Write;
-  remove: (user: string) => Write;
-  /**
-   * ҮҮРЭГ → ЭРХ (2026-09-25) — ХЭСЭГЧИЛСЭН хасалтад (бусад grant үлдэх)
-   * хасагдсан үүргийн эрхийг буцаахад (`setGrantsRevokingRoles`).
-   * ⚠️ СОНГОМОЛ: өгөөгүй панел урьдын адил зөвхөн `setGrants` — эрх ҮЛДЭНЭ.
-   *    `remove`-д өгдөг ижил зураглалыг энд өгнө.
-   */
-  roleCaps?: Readonly<Partial<Record<R, CapKey>>>;
   /** Панелийн тайлбар — 3 догол мөр */
   notes: () => [string, string, string];
-  /** Мөрийг БҮХЭЛД нь хасахыг баталгаажуулах асуулт */
-  confirmRemoveAll: (user: string) => string;
   /** Зохиогч=батлагч давхцлын анхааруулга */
   stuckMsg: () => string;
   /** Батлагч огт томилоогүйн анхааруулга */
@@ -198,15 +111,6 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    */
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   const dirtyPerms = new Set(dirtyKeys());
-  const [err, setErr] = useState('');
-  /*
-   * ⚠️ БИЧИЛТ ЯВЖ БАЙХАД дахин дарахаас хамгаална (2026-09-15-ны
-   *    хэрэглээний аудит). Урьд нь `void r.sync` гэж хүлээлгүй орхидог тул
-   *    сүлжээ удаан үед хоёр удаа дарвал хоёр `setGrants` зэрэгцэн явж,
-   *    хоёр дахь нь ХУУЧИН `rows`-оос `grants`-ыг уншина — сүүлийнх нь
-   *    ялж, эхний нэмэлт ЧИМЭЭГҮЙ алга болно.
-   */
-  const [busy, setBusy] = useState(false);
   /*
    * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `UserAdmin.capsLocked`-той
    *    ИЖИЛ. Remote уншигдаагүй үед `spec.list()` нь `[]` тул бүх багц
@@ -215,99 +119,34 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
    */
   /* ⚠️ ӨӨРИЙН ACL-ийн тугийг ч шалгана (2026-09-24) — `spec.list()` энэ туг
      хүртэл `[]` тул нөгөө хоёр бэлэн ч энэ нь хоцорвол дарж бичнэ. */
-  const locked = !remoteReady() || !capsRemoteReady() || !spec.ready();
+  const ready = () => remoteReady() && capsRemoteReady() && spec.ready();
+  const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
-  /**
-   * Бичилтийг хүлээж, явцад нь товчнуудыг түгжинэ.
-   * ⚠️ `sync` нь СОНГОМОЛ (`Write.sync?`) — алсын бичилт огт эхлээгүй
-   *    (баталгаажуулалт унасан) үед байхгүй. Тэр үед түгжих зүйлгүй.
-   * ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина.
+  /*
+   * ⚠️ БИЧИЛТ ЯВЖ БАЙХАД дахин дарахаас хамгаална (2026-09-15-ны
+   *    хэрэглээний аудит) — `useAclRunner`-ийн `busy`. Хоёр `setGrants`
+   *    зэрэгцэн явбал хоёр дахь нь ХУУЧИН мөрөөс уншиж эхний нэмэлт алга болно.
+   * ⚠️ `false` буцвал ArcGIS бичилт унасан — `runOp` зурвас тавина.
    */
-  const run = async (sync?: Promise<unknown>) => {
-    if (!sync) return;
-    setBusy(true);
-    try {
-      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
-    } finally { setBusy(false); }
-  };
+  const { busy, err, setErr, run } = useAclRunner(ready);
 
   /**
    * БАГЦАД ААКАУНТ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
-   *
-   * ⚠️ ТАВАН ХАМГААЛАЛТ УСТСАН (2026-09-09). Урьд нь хадгалалт нь
-   *    `{roles[], bagts[]}` буюу үүрэг × багцын ҮРЖВЭР байсан тул «Багц A ·
-   *    Зохиогч»-той хүнийг «Багц B · Батлагч» болгож нэмэхэд тэр нь Багц A-д
-   *    ч БАТЛАГЧ болж, багц гацдаг байв. Тиймээс панел ийм үйлдлийг ЗОГСООЖ
-   *    «эхлээд хасаад дахин томилно уу» гэж заадаг байсан — админ хүссэн
-   *    зүйлээ хийж чаддаггүй байлаа. Одоо grant тус бүр ӨӨРИЙН багцтай тул
-   *    тэр хослол ЯГ илэрхийлэгдэнэ: шалгах юу ч үлдсэнгүй.
-   *
-   * ⚠️ «Бүх багц»-тай grant-д ДАХИН нэмэхгүй: хүрээ нь аль хэдийн бүрэн тул
-   *    жагсаалт руу буулгавал ХУМИГДАНА (бүх багц → зөвхөн энэ нэг).
+   * ⚠️ Дүрэм (ALL хамгаалалт, grant тус бүр) нь `aclOps.addPkgOp`-д.
    */
   const addTo = (group: string, role: R, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const u = user.trim().toLowerCase();
-    if (!u) return;
-    const cur = rows.find((a) => a.user === u);
-    const grants = cur ? cur.grants.map((g) => ({ ...g })) : [];
-    const mine = grants.find((g) => g.role === role);
-    if (!mine) grants.push({ role, bagts: [group] });
-    else if (!mine.bagts.includes(ALL_BAGTS) && !mine.bagts.includes(group)) {
-      mine.bagts = [...mine.bagts, group];
-    }
-    const r = spec.setGrants(u, grants);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(addPkgOp(spec.sys, user, role, group));
   };
 
   /**
    * БАГЦААС ААКАУНТ ХАСАХ — тэр ҮҮРГИЙН grant-аас энэ багцыг л хасна.
-   *
-   * ⚠️ НӨГӨӨ ҮҮРЭГТ ХҮРЭХГҮЙ (2026-09-09). Урьд нь энэ багцад нөгөө үүрэг нь
-   *    байвал ТАТГАЛЗДАГ байв (хадгалалт үүргийг багцаар салгадаггүй байсан):
-   *    админ зөвхөн зохиогчийг хасахыг хүссэн атлаа «мөрийг бүхэлд нь хасаад
-   *    дахин томилно уу» гэсэн заавар авдаг байлаа. Одоо grant тус тусдаа тул
-   *    зөвхөн заасныг нь хасна.
-   *
-   * ⚠️ «Бүх багц»-тай grant-ыг нэг багцаас САЛГАЖ хасах боломжгүй — хүрээ нь
-   *    тодорхой жагсаалт биш. Тэр үүргийг БҮХЭЛД нь хасахыг баталгаажуулж асууна.
+   * ⚠️ «Бүх багц»-тай бол бүхэлд нь хасахыг асууна; сүүлийн grant бол мөр
+   *    бүхэлдээ (`revoke=false` + алга болсон үүргийн эрх) — `aclOps.removePkgOp`.
    */
   const removeFrom = (group: string, role: R, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const cur = rows.find((a) => a.user === user);
-    if (!cur) return;
-    const mine = cur.grants.find((g) => g.role === role);
-    if (!mine) return;
-
-    if (mine.bagts.includes(ALL_BAGTS)) {
-      if (!window.confirm(tr('«{0}» нь энэ үүргээр БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Энэ үүргийг нь БҮХЭЛД НЬ хасах уу?', user))) return;
-    }
-    setErr('');
-
-    /* Энэ багцыг хасаад — багцгүй үлдсэн grant өөрөө унана */
-    const left = mine.bagts.includes(ALL_BAGTS) ? [] : mine.bagts.filter((b) => b !== group);
-    const grants = cur.grants
-      .map((g) => (g.role === role ? { ...g, bagts: left } : g))
-      .filter((g) => g.bagts.length > 0);
-
-    /* Нэг ч grant үлдэхгүй бол мөрийг бүхэлд нь хасна — эрх нь мөн буцна */
-    if (!grants.length) {
-      if (!window.confirm(spec.confirmRemoveAll(user))) return;
-      /* ⚠️ `.ok`-г шалгана (2026-09-23) — урьд нь баталгаажуулалтын алдаа чимээгүй алга болдог байв */
-      const rr = spec.remove(user);
-      setErr(rr.ok ? '' : (rr.error ?? ''));
-      void run(rr.sync);
-      return;
-    }
-    /* ⚠️ Үүрэг бүхэлдээ хасагдсан бол түүний эрхийг ч буцаана (2026-09-25) —
-       `setGrants`-ийн `syncCaps` зөвхөн олгодог (`setGrantsRevokingRoles`). */
-    const r = spec.roleCaps
-      ? setGrantsRevokingRoles(user, grants, spec.list, spec.setGrants,
-        spec.roleCaps as Readonly<Partial<Record<string, CapKey>>>)
-      : spec.setGrants(user, grants);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(removePkgOp(spec.sys, user, role, group));
   };
 
   const [note1, note2, note3] = spec.notes();

@@ -15,16 +15,16 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { ALL_BAGTS, type Grant } from '@/lib/scopedAcl';
+import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
-  butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
-  subscribeButetsAcl, type ButetsRole,
+  butetsAclReady, butetsFailedUsers, listButetsAssigns, subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
-import { removeRevokingRoles } from './ScopedAclPanel';
+import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { useAclRunner } from './useAclRunner';
 import s from './guitsetgel.module.css';
 
 const ROLE: ButetsRole = 'editor';
@@ -43,76 +43,34 @@ export function DedButetsAcl() {
   const failed = new Set(butetsFailedUsers());
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   const dirtyPerms = new Set(dirtyKeys());
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
   /*
-   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `UserAdmin.flipScoped`-ийн `capsLocked`-той
-   *    ИЖИЛ. Remote уншигдаагүй үед `listButetsAssigns()` нь `[]` тул бүх
-   *    багц «Томилоогүй» харагдаж, «Нэмэх» дарахад `setButetsGrants` тэр
-   *    хүний бүх мөрийг ЗӨВХӨН энэ нэг багцаар ДАРЖ бичдэг байв (5 багцтай
-   *    хүн 1 багцтай болно).
+   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `UserAdmin.capsLocked`-той ИЖИЛ. Remote
+   *    уншигдаагүй үед `listButetsAssigns()` нь `[]` тул бүх багц «Томилоогүй»
+   *    харагдаж, «Нэмэх» дарахад `setButetsGrants` тэр хүний бүх мөрийг ЗӨВХӨН
+   *    энэ нэг багцаар ДАРЖ бичдэг байв (5 багцтай хүн 1 багцтай болно).
    */
   /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
-  const locked = !remoteReady() || !capsRemoteReady() || !butetsAclReady();
+  const ready = () => remoteReady() && capsRemoteReady() && butetsAclReady();
+  const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
-
-  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина (2026-09-23) */
-  const run = async (sync?: Promise<unknown>) => {
-    if (!sync) return;
-    setBusy(true);
-    try {
-      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
-    } finally { setBusy(false); }
-  };
+  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — `runOp` зурвас тавина (2026-09-23) */
+  const { busy, err, setErr, run } = useAclRunner(ready);
 
   const addTo = (pack: string, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const u = user.trim().toLowerCase();
-    if (!u) return;
-    const cur = rows.find((a) => a.user === u);
-    const grants: Grant<ButetsRole>[] = cur ? cur.grants.map((g) => ({ ...g })) : [];
-    const mine = grants.find((g) => g.role === ROLE);
-    if (!mine) grants.push({ role: ROLE, bagts: [pack] });
-    else if (!mine.bagts.includes(ALL_BAGTS) && !mine.bagts.includes(pack)) {
-      mine.bagts = [...mine.bagts, pack];
-    }
-    const r = setButetsGrants(u, grants);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(addPkgOp('butets', user, ROLE, pack));
   };
 
+  /*
+   * ⚠️ «БҮХ БАГЦ» (`ALL_BAGTS`) хуваарилалтаас НЭГИЙГ хасахад (2026-09-23
+   *    ЗАСВАР): ALL → бусад багцын ИЛ жагсаалт болж, зөвхөн энэ багц хасагдана
+   *    (асуухгүй). Урьд нь «Хэрэглэгчид» самбарын унтраалга `[ALL]`-аар асаадаг
+   *    тул 16 аккаунт бүгд 25 багцад гарч, нэгээс хасахад бүгдээс хасагддаг
+   *    байлаа. Дүрэм нь `aclOps.removePkgOp`-ийн `butets` салаанд (2026-09-25).
+   */
   const removeFrom = (pack: string, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const cur = rows.find((a) => a.user === user);
-    if (!cur) return;
-    const mine = cur.grants.find((g) => g.role === ROLE);
-    if (!mine) return;
-    setErr('');
-    /*
-     * ⚠️ «БҮХ БАГЦ» (`ALL_BAGTS`) хуваарилалтаас НЭГИЙГ хасахад (2026-09-23
-     *    ЗАСВАР): урьд нь «нэг багцаас салгах боломжгүй — бүхэлд нь хасах уу?»
-     *    гэж асуугаад БҮГДИЙГ нь хасдаг байв. «Хэрэглэгчид» самбарын
-     *    унтраалга (`UserAdmin.flipScoped`) эрхийг `[ALL]`-аар асаадаг тул
-     *    16 аккаунт бүгд 25 багцад гарч, нэгээс хасахад бүгдээс хасагдаж
-     *    байлаа (хэрэглэгчийн скриншот). Одоо: ALL → бусад 24 багцын ИЛ
-     *    жагсаалт болгож, зөвхөн энэ багцыг хасна.
-     */
-    const left = mine.bagts.includes(ALL_BAGTS)
-      ? BUTETS_PACKS.map((x) => x.key).filter((k) => k !== pack)
-      : mine.bagts.filter((b) => b !== pack);
-    if (!left.length) {
-      if (!window.confirm(tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user))) return;
-      /* ⚠️ `.ok`-г шалгана — баталгаажуулалтын алдаа чимээгүй алга болохгүй */
-      /* ⚠️ `revoke=false` + зөвхөн хасагдсан үүргийн эрх (2026-09-24) — `removeRevokingRoles` */
-      const rr = removeRevokingRoles(user, listButetsAssigns, (u) => removeButetsAssign(u, false),
-        { editor: 'butets' });
-      setErr(rr.ok ? '' : (rr.error ?? ''));
-      void run(rr.sync);
-      return;
-    }
-    const r = setButetsGrants(user, [{ role: ROLE, bagts: left }]);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(removePkgOp('butets', user, ROLE, pack));
   };
 
   return (

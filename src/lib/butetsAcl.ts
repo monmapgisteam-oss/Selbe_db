@@ -28,6 +28,7 @@
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { butetsUpsert, butetsRemove } from './permsRemote';
+import { ROLE_CAPS } from './aclRoleCaps';
 import { PACK_OF_LAYER } from './butetsPacks';
 import { AUTH } from './services';
 
@@ -41,7 +42,8 @@ export type ButetsAssign = Assign<ButetsRole>;
 const acl = makeAcl<ButetsRole>({
   storeKey: 'selbe-butets-acl-v1',
   event: 'selbe-butets-acl-change',
-  roleCaps: { editor: 'butets' },
+  /* ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25) */
+  roleCaps: ROLE_CAPS.butets,
   push: (user, roles, bagts, grants) => butetsUpsert(user, roles, bagts, grants),
   remove: butetsRemove,
   msg: {

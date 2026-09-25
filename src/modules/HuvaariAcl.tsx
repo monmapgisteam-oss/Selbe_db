@@ -23,17 +23,18 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, setHuvaariGrants,
-  subscribeHuvaariAcl, type PlanRole,
+  huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, subscribeHuvaariAcl, type PlanRole,
 } from '@/lib/huvaariAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
-import { removeRevokingRoles } from './ScopedAclPanel';
 
 /**
  * ⚠️ Шошго ба зурвасыг ФУНКЦ болгож өгнө — модулийн түвшинд `tr()` дуудвал
  *    хэл солиход шинэчлэгдэхгүй (зурагдах агшинд дуудагдах ёстой).
  */
 const SPEC: AclPanelSpec<PlanRole> = {
+  /* ⚠️ Бичилт `aclOps.SCOPED_SYS.huvaari`-ээр — `setGrants` · `remove` · `roleCaps` ·
+     `confirmRemoveAll` нь тэнд НЭГ газар (2026-09-25, `ScopedAclPanel`-ийн ⚠️) */
+  sys: 'huvaari',
   roles: ['author', 'approver'],
   roleLabel: (r) => (r === 'author' ? tr('Зохиогч') : tr('Батлагч')),
   emptyLabel: (r) => (r === 'author' ? tr('Зохиогч томилоогүй') : tr('Батлагч томилоогүй')),
@@ -41,17 +42,6 @@ const SPEC: AclPanelSpec<PlanRole> = {
   list: listHuvaariAssigns,
   failedUsers: huvaariFailedUsers,
   subscribe: subscribeHuvaariAcl,
-  setGrants: setHuvaariGrants,
-  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
-  roleCaps: { author: 'plan', approver: 'planApprove' },
-  /*
-   * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
-   *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг
-   *    (админы гараар олгосон `addRow` г.м.) арчдаг байв. `UserAdmin.flipScoped`
-   *    ба `removeRevokingRoles`-той ижил дүрэм.
-   */
-  remove: (user) => removeRevokingRoles(user, listHuvaariAssigns, (u) => removeHuvaariAssign(u, false),
-    { author: 'plan', approver: 'planApprove' }),
   ready: huvaariAclReady,
 
   notes: () => [
@@ -59,8 +49,6 @@ const SPEC: AclPanelSpec<PlanRole> = {
     tr('Хуваарилалт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Үүрэг олгоход харгалзах эрх ба «Хуваарь» харагдац автоматаар нээгдэж, хасахад буцаагдана.'),
     tr('⚠️ Гүйцэтгэлийн урсгалаас ТУСДАА: хуваарийн үүрэг олгосон нь гүйцэтгэл зөвшөөрөх эрх өгөхгүй.'),
   ],
-  confirmRemoveAll: (user) =>
-    tr('«{0}»-г хуваарийн хуваарилалтаас бүрэн хасах уу? «Хуваарь төлөвлөх» ба «Хуваарь батлах» эрх нь мөн буцаагдана.', user),
   stuckMsg: () =>
     tr('⚠️ Батлагч нь зохиогчтой ижил хүн — өөрийн илгээснийг өөрөө батлах боломжгүй тул энэ багцын хуваарь гацна. Өөр батлагч нэмнэ үү.'),
   noApproverMsg: () =>

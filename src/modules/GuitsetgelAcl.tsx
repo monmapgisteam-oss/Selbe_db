@@ -14,6 +14,11 @@
  * ⚠️ ЭНЭ ТОМИЛГОО = ШАТ БА БАГЦЫН ГАНЦ ЭХ СУРВАЛЖ (2026-08-29,
  * `resolveFlowStage`). Хэрэглэгчийн үүрэг (Энгийн/Төлөвлөлт) ямар ч байсан
  * энд томилогдсон шат нь хяналтын хуудсанд үйлчилнэ.
+ *
+ * ⚠️ БИЧИЛТ `aclOps`-ООР (2026-09-25) — хэрэглэгчийн карт ба матрицтай ИЖИЛ
+ *    дүрэм, ИЖИЛ асуулт (`flowStageOp` · `flowAllOp` · `flowChipOp` ·
+ *    `flowViewOnlyOp` · `flowDropOp`). Сүүлийн багцыг дарвал урьд нь «хасахгүй»
+ *    гэж зогсоодог байв; одоо ✕-ийн зам (асууж, томилгоо ба эрхийг буцаана).
  */
 
 import { useEffect, useState } from 'react';
@@ -21,9 +26,10 @@ import { t as tr } from '@/lib/i18nCore';
 import { STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  ALL_BAGTS, assignsOf, flowAclReady, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
-  subscribeAcl,
+  ALL_BAGTS, assignsOf, flowAclReady, flowFailedUsers, listAssigns, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
+import { flowAllOp, flowChipOp, flowDropOp, flowStageOp, flowViewOnlyOp } from '@/lib/aclOps';
+import { useAclRunner } from './useAclRunner';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
@@ -59,7 +65,8 @@ export function GuitsetgelAcl() {
    *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
    */
   /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
-  const locked = !remoteReady() || !capsRemoteReady() || !flowAclReady();
+  const ready = () => remoteReady() && capsRemoteReady() && flowAclReady();
+  const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
   return (
@@ -86,7 +93,7 @@ export function GuitsetgelAcl() {
 
       <div className={s.aclGrid}>
         {STAGE_ORDER.map((st) => (
-          <Column key={st} stage={st} title={STAGE_LABEL[st]} accounts={accounts} known={known} locked={locked} lockMsg={LOCK_MSG} />
+          <Column key={st} stage={st} title={STAGE_LABEL[st]} accounts={accounts} known={known} locked={locked} ready={ready} lockMsg={LOCK_MSG} />
         ))}
       </div>
     </div>
@@ -94,15 +101,17 @@ export function GuitsetgelAcl() {
 }
 
 function Column({
-  stage, title, accounts, known, locked, lockMsg,
+  stage, title, accounts, known, locked, ready, lockMsg,
 }: {
   stage: Stage; title: string; accounts: string[]; known: Set<string>;
   /** Remote уншигдаагүй — бүх бичилт хаалттай (эцэг тооцно) */
-  locked: boolean; lockMsg: string;
+  locked: boolean; ready: () => boolean; lockMsg: string;
 }) {
   const rows = assignsOf(stage);
   const [add, setAdd] = useState('');
-  const [err, setErr] = useState('');
+  /* ⚠️ Эцгийн 3 тугтай түгжээ (`ready`) — `runOp` дарах агшинд дахин шалгана */
+  const { busy, err, setErr, run } = useAclRunner(ready);
+  const off = locked || busy;
   /**
    * Remote бичилт нь унасан хэрэглэгчид — `guitsetgelAcl` модуль хадгалж, өөрчлөгдөхөд
    * `subscribeAcl`-аар мэдэгдэнэ. Урьд нь баганад НЭГ boolean байсан тул өөр мөрийн
@@ -117,12 +126,11 @@ function Column({
   const taken = new Set(listAssigns().map((a) => a.user));
   const free = accounts.filter((a) => !taken.has(a.toLowerCase()));
 
+  /* Шинэ томилгоо → «бүх багц», эрх олгоно (`flowStageOp`: мөргүй бол `setAssign(u, stage, [ALL])`) */
   const push = () => {
     if (locked) { setErr(lockMsg); return; }
-    const r = setAssign(add, stage, [ALL_BAGTS]);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void r.sync;
-    if (r.ok) setAdd('');
+    const u = add;
+    void run(flowStageOp(u, stage)).then((ok) => { if (ok) setAdd(''); });
   };
 
   return (
@@ -138,12 +146,12 @@ function Column({
           className={s.aclInput}
           value={add}
           onChange={(e) => setAdd(e.target.value)}
-          disabled={locked}
+          disabled={off}
         >
           <option value="">{tr('Аккаунт сонгох…')}</option>
           {free.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <button type="button" className={s.aclBtn} onClick={push} disabled={locked || !add.trim()}>
+        <button type="button" className={s.aclBtn} onClick={push} disabled={off || !add.trim()}>
           {tr('Нэмэх')}
         </button>
       </div>
@@ -169,16 +177,14 @@ function Column({
                 type="button"
                 className={s.aclX}
                 title={tr('Томилгооноос хасах')}
-                disabled={locked}
+                disabled={off}
                 onClick={() => {
                   if (locked) { setErr(lockMsg); return; }
-                  /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false) —
-                     эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. */
-                  if (gone) { void removeAssign(r.user, stage, false).sync; return; }
-                  /* ⚠️ Хасах нь олгосон эрхийг ч буцаадаг болсон (2026-08-27) —
-                     юу болохыг ил хэлж баталгаажуулна. */
-                  if (!window.confirm(tr('«{0}»-г {1} шатнаас хасах уу? Олгогдсон үүрэг ба «Гүйцэтгэлийн хяналт» харагдац нь мөн буцаагдана.', r.user, title))) return;
-                  void removeAssign(r.user, stage).sync;
+                  /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false, асуухгүй) —
+                     эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй.
+                     ⚠️ Хасах нь олгосон эрхийг ч буцаадаг болсон (2026-08-27) —
+                     юу болохыг ил хэлж баталгаажуулна. Дүрэм `flowDropOp`-д. */
+                  void run(flowDropOp(r.user));
                 }}
               >
                 ✕
@@ -210,13 +216,10 @@ function Column({
                 type="button"
                 className={`${s.aclPkg} ${r.viewOnly ? s.aclPkgOn : ''}`}
                 title={tr('Асаавал энэ хүн гүйцэтгэлийг ХАРНА, гэхдээ батлах/буцаах товч идэвхгүй байна.')}
-                disabled={locked}
+                disabled={off}
                 onClick={() => {
                   if (locked) { setErr(lockMsg); return; }
-                  setErr('');
-                  const res = setViewOnly(r.user, !r.viewOnly);
-                  if (!res.ok) { setErr(res.error ?? ''); return; }
-                  void res.sync;
+                  void run(flowViewOnlyOp(r.user, !r.viewOnly));
                 }}
               >
                 {r.viewOnly ? tr('◉ Зөвхөн харна') : tr('○ Зөвхөн харна')}
@@ -228,10 +231,10 @@ function Column({
                   className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
                   /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
                      багц солих бүрд эрхийн мөр дахин бичих нь дэмий */
-                  disabled={locked}
+                  disabled={off}
                   onClick={() => {
                     if (locked) { setErr(lockMsg); return; }
-                    setErr(''); void setAssign(r.user, stage, [ALL_BAGTS], false).sync;
+                    void run(flowAllOp(r.user));
                   }}
                 >
                   {tr('Бүх багц')}
@@ -243,22 +246,16 @@ function Column({
                       key={g}
                       type="button"
                       className={`${s.aclPkg} ${on ? s.aclPkgOn : ''}`}
-                      disabled={locked}
+                      disabled={off}
                       onClick={() => {
                         if (locked) { setErr(lockMsg); return; }
-                        const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                         /*
                          * ⚠️ FAIL-CLOSED (2026-08-29): сүүлийн багцыг хасахад урьд нь
                          * «бүх багц» руу БУЦДАГ байв — хязгаарлах гэсэн даралт хүрээг
                          * бүх багц руу тэлдэг. Одоо «Бүх багц» товч л тэр зам.
+                         * 2026-09-25-аас сүүлийн багц → ✕-ийн зам (`aclOps.flowChipOp`).
                          */
-                        if (on && cur.length === 1) {
-                          setErr(tr('Сүүлийн багцыг хасахгүй — бүх багц олгох бол «Бүх багц», томилгооноос хасах бол ✕ дарна уу.'));
-                          return;
-                        }
-                        setErr('');
-                        const next = on ? cur.filter((x) => x !== g) : [...cur, g];
-                        void setAssign(r.user, stage, next, false).sync;
+                        void run(flowChipOp(r.user, g));
                       }}
                     >
                       {g}

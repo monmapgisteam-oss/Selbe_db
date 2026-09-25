@@ -28,6 +28,7 @@
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { chanarUpsert, chanarRemove } from './permsRemote';
+import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
 
@@ -54,13 +55,9 @@ const acl = makeAcl<ChanarRole>({
    *    аль хянагч гэдгийг эрх биш ЭНЭ хуваарилалт заана. Гурван тусдаа эрх
    *    үүсгэвэл `caps.ts`-д ижил утгатай гурван мөр нэмэгдэж, харин
    *    «хэн ТУХ вэ» гэдгийг тэндээс ялгах боломжгүй хэвээр үлдэнэ.
+   * ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25).
    */
-  roleCaps: {
-    author: 'chanarAuthor',
-    tuh: 'chanarReview',
-    chanar: 'chanarReview',
-    habea: 'chanarReview',
-  },
+  roleCaps: ROLE_CAPS.chanar,
   push: (user, roles, bagts, grants) => chanarUpsert(user, roles, bagts, grants),
   remove: chanarRemove,
   msg: {

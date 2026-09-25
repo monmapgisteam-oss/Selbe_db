@@ -279,69 +279,43 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
 }
 console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · хайлт 100 · grants 4/4 тэгш хэм');
 
-/* ══════════ 6. UserAdmin.flipScoped — ГУРВАН ДЭД СИСТЕМД НЭГ ЗАМ ══════════ */
+/* ══════════ 6. UserAdmin — ХУВААРИЛАЛТЫГ ӨӨРӨӨ БИЧИХГҮЙ (2026-09-25) ══════════ */
 /**
- * ⚠️ 2026-09-09: `qaqc` · `plan` · `obyem` гурван БАРАГ ИЖИЛ салааг
- * `flipScoped` болгож нэгтгэв. Урьд нь тэдгээрийн ялгаанаас ГУРВАН удаа
- * дараалан алдаа гарсан: super-ийн шалгалт (09-07), `r.ok` (09-08),
- * `.trim()` (09-09). Одоо шалгуур нь тэр НЭГ замыг барина.
+ * ⚠️ 2026-09-09-нд `qaqc` · `plan` · `obyem` гурван салааг `flipScoped` болгож
+ * нэгтгэсэн байв (super · `r.ok` · `.trim()` алдаанууд). 2026-09-25-нд
+ * `flipScoped` БҮХЭЛДЭЭ УСТСАН (баталсан төлөвлөгөө): тэр унтраалга нь
+ * хуваарилалтын ХОЁР ДАХЬ эх сурвалж болж `[ALL]`-аар хүрээг тэлдэг байв.
+ * Одоо хуваарилалт зөвхөн `aclOps`-оор (карт · матриц · панел) — энэ шалгуур
+ * `UserAdmin` дахин `set*Grants` дуудаж эхлэхийг барина. `aclOps`-ийн дүрэм
+ * (§8) нь super · `r.ok` · `.trim()`-ийг тэнд НЭГ газар барина.
  */
 {
   const src = readCode('src/components/UserAdmin.tsx');
-  const i = src.indexOf('const flipScoped =');
-  assert.ok(i > 0, 'UserAdmin: `flipScoped` олдсонгүй — гурван салаа буцаж салсан уу?');
-  const body = src.slice(i, src.indexOf('const flipRemove =') > i
-    ? src.indexOf('const flipRemove =') : i + 9000);
-
-  /* (а) super-ийн шалгалт НЭГ удаа — гурван салаад давхардахгүй */
-  const supers = body.match(/roleForUser\(u\.username\) === 'super'/g) ?? [];
-  assert.equal(supers.length, 1,
-    `flipScoped: super шалгалт ЯГ 1 удаа байх ёстой (нэгтгэсэн зам), олдсон: ${supers.length}`);
-
-  /* (б) super салаа `toggleCap`-ийн үр дүнг барина — .then алга бол алдаа нуугдана */
-  const bare = body.match(/void toggleCap\([^)]*\);\s*$/gm) ?? [];
-  assert.equal(bare.length, 0,
-    `flipScoped: .then-гүй toggleCap ${bare.length} үлдсэн — бичилтийн уналт нуугдана`);
-
-  /* (в) sync БА granted хоёуланг хүлээнэ */
-  const both = body.match(/Promise\.all\(\[\s*[\s\S]{0,80}?r\.sync[\s\S]{0,120}?r\.granted/g) ?? [];
-  assert.equal(both.length, 1,
-    `flipScoped: sync+granted-ийг ЯГ 1 удаа хүлээх ёстой, олдсон: ${both.length}`);
-
-  /* (г) ⚠️ `.trim()` — 2026-09-09-нд илэрсэн алдаа. Гурван салааны ЗӨВХӨН
-     нэгэнд байсан тул нэрэнд зай орсон хэрэглэгчийн хүрээ бүх багц руу
-     чимээгүй тэлдэг байв. Нэгтгэсний дараа НЭГ газар. */
-  assert.match(body, /const key = u\.username\.trim\(\)\.toLowerCase\(\);/,
-    'flipScoped: хуваарилалтыг `.trim().toLowerCase()`-ээр хайх ёстой — '
-    + 'бичих тал тэгдэг тул таарахгүй бол хүрээ чимээгүй тэлнэ');
-  assert.doesNotMatch(body, /\.find\(\(a\) => a\.user === u\.username\.toLowerCase\(\)\)/,
-    'flipScoped: trim()-гүй хайлт эргэж ирэв');
-
-  /* (д) ⚠️ ХӨНДЛӨН ҮРЖВЭР БҮТЦЭЭР ШИЙДЭГДСЭН — 2026-09-09.
-     Урьд нь хадгалалт `{roles[], bagts[]}` буюу үүрэг × багцын ҮРЖВЭР байсан
-     тул тодорхой багцтай хүнд ХОЁР ДАХЬ үүрэг нэмбэл тэр нь БҮХ багцад нь
-     тарж, зохиогч=батлагч давхцал үүсгэн багцыг ГАЦААДАГ байв. Түүнээс
-     сэргийлэх хамгаалалт панел бүрд бичигдсэн байсан бөгөөд тэдгээр нь бүгд
-     «болохгүй» гэж хэлдэг — админ хүссэн томилгоогоо хийж чаддаггүй байлаа.
-     Одоо `grants[]`: үүрэг бүр ӨӨРИЙН багцтай тул тарах ЗАМ БАЙХГҮЙ.
-     Тиймээс энэ шалгуур нь хамгаалалт биш, БҮТЦИЙГ барина. */
-  assert.doesNotMatch(body, /\broles\.includes\(role\)/,
-    'flipScoped: хуучин roles[] үржвэрийн логик эргэж ирэв — grants ашиглах ёстой');
-  assert.match(body, /\.grants\b/,
-    'flipScoped: хуваарилалтыг grants-аар уншиж байх ёстой');
-
-  /* (е) ⚠️ АСААХАД ХҮРЭЭГ ТЭЛЭХГҮЙ. Шинэ үүрэг нэмэхэд болзолгүй
-     `[ALL_BAGTS]` бичвэл тодорхой багцтай хүний хүрээ ЧИМЭЭГҮЙ бүх багц
-     болно — fail-closed зарчигтай зөрчилдөнө. Одоо байгаа багцаас өвлүүлнэ. */
-  assert.match(body, /inherit\.length \? inherit : \[ALL\]/,
-    'flipScoped: шинэ үүргийн хүрээг одоо байгаа багцаас өвлүүлэх ёстой — '
-    + 'болзолгүй ALL_BAGTS нь хүрээг чимээгүй тэлнэ');
-
-  /* (ё) ⚠️ УНТРААХАД ЗӨВХӨН ТЭР ҮҮРГИЙГ хасна — бусад grant хэвээр үлдэнэ */
-  assert.match(body, /grants\.filter\(\(g\) => g\.role !== role\)/,
-    'flipScoped: унтраахад зөвхөн тэр үүргийн grant хасагдах ёстой');
+  assert.ok(!src.includes('const flipScoped'),
+    'UserAdmin: `flipScoped` буцаж ирэв — хуваарилалтыг унтраалгаас бичих ёсгүй (aclOps-оор)');
+  for (const fn of ['setHuvaariGrants', 'setObyemGrants', 'setAjilGrants', 'setChanarGrants',
+    'setButetsGrants', 'setQaqcAssign']) {
+    assert.ok(!src.includes(fn),
+      `UserAdmin: «${fn}» буцаж ирэв — хуваарилалтын бичилт зөвхөн aclOps-оор`);
+  }
+  /* (а) super-т эрх ШУУД — `setGrants` super-ийг татгалздаг (2026-09-07 · 08) */
+  const i = src.indexOf('const flipCap = (');
+  assert.ok(i > 0, 'UserAdmin: flipCap олдсонгүй');
+  const body = src.slice(i, src.indexOf('const dropOrphan = ('));
+  assert.equal((body.match(/roleForUser\(u\.username\) === 'super'/g) ?? []).length, 1,
+    'flipCap: super шалгалт ЯГ 1 удаа байх ёстой');
+  assert.equal((body.match(/void toggleCap\([^)]*\);\s*$/gm) ?? []).length, 0,
+    'flipCap: .then-гүй toggleCap — бичилтийн уналт нуугдана');
+  /* (б) гаргалгаатай эрх super-ээс бусдад ҮЗҮҮЛЭЛТ — унтраалгаас бичихгүй */
+  assert.match(body, /if \(isDerivedCap\(c\)\) return;/,
+    'flipCap: гаргалгаатай эрх super-ээс бусдад унтраалгаар бичигдэж байна');
+  /* (в) өнчин эрхийг ИЛ хасах — баталгаажуулалттай, үр дүнг барина */
+  const d = src.slice(src.indexOf('const dropOrphan = ('), src.indexOf('const flipRemove = ('));
+  assert.ok(d.includes('window.confirm(msg)'), 'dropOrphan: баталгаажуулалтгүй');
+  assert.ok(d.includes('toggleCap(u.username, c, false).then(markCap(u))'),
+    'dropOrphan: toggleCap(false)-ийн үр дүнг барих ёстой');
 }
-console.log('✅ UserAdmin.flipScoped — нэг зам · trim · grants (үржвэр бүтцээр хаагдсан)');
+console.log('✅ UserAdmin — flipScoped устсан · set*Grants алга · super шууд · өнчин эрх ИЛ');
 
 /* ══════════ 7. add() — ДӨРВҮҮЛЭН ACL-ийн өнчин мөрийг шалгана ══════════ */
 {
@@ -369,64 +343,103 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
  * хэрэггүй — шалгуур нь БҮТЦИЙГ барина.
  *
  * ⚠️ 2026-09-10: `HuvaariAcl` ба `ObyemAcl` хоёрын ЛОГИК нь
- * `ScopedAclPanel.tsx`-д нэгдсэн. Тиймээс шалгуур нь тэр НЭГ файлыг тулгана;
- * хоёр бүрхүүл нь НИМГЭН (зөвхөн тохиргоо) хэвээр эсэхийг тусад нь барина.
+ * `ScopedAclPanel.tsx`-д нэгдсэн.
+ * ⚠️ 2026-09-25: бичих дүрэм `aclOps.ts`-д шилжсэн (`addPkgOp` · `removePkgOp`) —
+ * хэрэглэгчийн карт ба матриц ч ИЖИЛ op-оор бичдэг. Тиймээс шалгуур нь тэр
+ * НЭГ файлыг тулгана; панелууд (`ScopedAclPanel` · `ChanarAcl` · `DedButetsAcl`)
+ * НИМГЭН хэвээр эсэхийг тусад нь барина.
  */
 {
-  const f = 'src/modules/ScopedAclPanel.tsx';
+  const f = 'src/lib/aclOps.ts';
   const src = readCode(f);
-  const i = src.indexOf('const addTo =');
-  assert.ok(i > 0, `${f}: addTo олдсонгүй`);
-  const body = src.slice(i, src.indexOf('const removeFrom ='));
+  const i = src.indexOf('export function addPkgOp(');
+  assert.ok(i > 0, `${f}: addPkgOp олдсонгүй`);
+  const body = src.slice(i, src.indexOf('export function removePkgOp('));
 
   /* (а) Хуучин үржвэрийн логик буцаж ирээгүй */
   assert.doesNotMatch(body, /cur\?\.roles|cur\.roles/,
-    `${f}: addTo нь хуучин \`roles[]\` уншиж байна — grants ашиглах ёстой`);
+    `${f}: addPkgOp нь хуучин \`roles[]\` уншиж байна — grants ашиглах ёстой`);
   assert.match(body, /\.grants\b/,
-    `${f}: addTo нь grants-аар ажиллах ёстой`);
+    `${f}: addPkgOp нь grants-аар ажиллах ёстой`);
 
   /* (б) ЗӨВХӨН тухайн үүргийн grant хөндөгдөнө — бусад нь хэвээр */
   assert.match(body, /grants\.find\(\(g\) => g\.role === role\)/,
-    `${f}: addTo нь ТУХАЙН үүргийн grant-ыг олж хөндөх ёстой`);
+    `${f}: addPkgOp нь ТУХАЙН үүргийн grant-ыг олж хөндөх ёстой`);
 
   /* (в) ⚠️ ХҮРЭЭ ТЭЛЭХГҮЙ: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ нь
-     бүх багцаас ганц багц руу ХУМИГДАНА — тиймээс шалгаж алгасана. */
+     бүх багцаас ганц багц руу ХУМИГДАНА — тиймээс шалгаж алгасна. */
   assert.match(body, /!mine\.bagts\.includes\(ALL_BAGTS\)/,
     `${f}: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ хумигдана — шалгах ёстой`);
+  assert.match(body, /\.trim\(\)\.toLowerCase\(\)/,
+    `${f}: addPkgOp нь нэрийг trim().toLowerCase() хийх ёстой`);
 
-  /* (г) removeFrom нь ALL_BAGTS-тай хүнийг ХАСАЖ чадна — эс бөгөөс гацна */
-  const rm = src.slice(src.indexOf('const removeFrom ='), src.indexOf('const [note1'));
+  /* (г) removePkgOp нь ALL_BAGTS-тай хүнийг ХАСАЖ чадна — эс бөгөөс гацна */
+  const rm = src.slice(src.indexOf('export function removePkgOp('), src.indexOf('export function setRoleAllOp('));
   assert.match(rm, /mine\.bagts\.includes\(ALL_BAGTS\)/,
-    `${f}: removeFrom-д ALL_BAGTS салаа алга`);
-  assert.match(rm, /window\.confirm/,
+    `${f}: removePkgOp-д ALL_BAGTS салаа алга`);
+  assert.match(rm, /confirm\.push\(allRoleMsg\(u\)\)/,
     `${f}: ALL_BAGTS-тай грантыг бүхэлд нь хасахыг баталгаажуулах ёстой`);
-  assert.match(rm, /spec\.remove\(user\)/,
-    `${f}: сүүлчийн grant хасагдахад мөрийг бүхэлд нь хасах зам алга`);
+  /* ⚠️ Дэд бүтэц: ALL → бусад багц (DedButetsAcl-ийн 2026-09-23 дүрэм) */
+  assert.match(rm, /sys === 'butets'\) left = spec\.universe\(\)\.filter\(\(k\) => k !== pkg\)/,
+    `${f}: дэд бүтцийн ALL → бусад багц салаа алга`);
+  assert.match(rm, /removeRevokingRoles\(u, spec\.list, spec\.removeNoRevoke, spec\.roleCaps\)/,
+    `${f}: сүүлчийн grant хасагдахад мөрийг бүхэлд нь (revoke=false) хасах зам алга`);
+  assert.match(rm, /setGrantsRevokingRoles\(u, grants,/,
+    `${f}: хэсэгчилсэн хасалт хасагдсан үүргийн эрхийг буцаах ёстой`);
 
-  /* (д) ⚠️ БАГЦГҮЙ ҮЛДСЭН GRANT ӨӨРӨӨ УНАНА — хоосон \`bagts\` бүхий grant
+  /* (д) ⚠️ БАГЦГҮЙ ҮЛДСЭН GRANT ӨӨРӨӨ УНАНА — хоосон `bagts` бүхий grant
      хадгалагдвал тэр хүн «хуваарилагдсан ч нэг ч багцгүй» гэсэн утгагүй
-     төлөвт орно (цөм нь түүнийг хаядаг ч панел бичих ёсгүй). */
+     төлөвт орно (цөм нь түүнийг хаядаг ч op бичих ёсгүй). */
   assert.match(rm, /filter\(\(g\) => g\.bagts\.length > 0\)/,
     `${f}: багцгүй үлдсэн grant хасагдах ёстой`);
+
+  /* (е) ⚠️ revoke=false — таван системийн `removeNoRevoke` бүр `, false)` дамжуулна */
+  const noRev = src.match(/removeNoRevoke: \(u\) => remove\w+Assign\(u, false\)/g) ?? [];
+  assert.equal(noRev.length, 5,
+    `${f}: таван системийн removeNoRevoke бүр revoke=false байх ёстой, олдсон: ${noRev.length}`);
+
+  /* (ё) `runOp` — `r.ok` шалгалт ЯГ НЭГ, await-ын ӨМНӨ; түгжээ дарах агшинд */
+  const ro = src.slice(src.indexOf('export async function runOp('));
+  assert.equal((ro.match(/if \(!r\.ok\)/g) ?? []).length, 1,
+    `${f}: runOp-д r.ok шалгалт ЯГ 1 байх ёстой`);
+  assert.ok(ro.indexOf('if (!r.ok)') < ro.indexOf('await '),
+    `${f}: runOp нь r.ok-ыг await-ын ӨМНӨ шалгах ёстой`);
+  assert.ok(ro.includes('if (!ready()) { setErr(lockMsg()); return false; }'),
+    `${f}: runOp-д түгжээний шалгалт алга`);
 }
 
-/* ⚠️ ХОЁР БҮРХҮҮЛ НИМГЭН ХЭВЭЭР — логик буцаж хуулагдвал давхардал сэргэнэ */
-for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx']) {
+/* ⚠️ ГУРВАН БҮРХҮҮЛ НИМГЭН ХЭВЭЭР — логик буцаж хуулагдвал давхардал сэргэнэ */
+for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx']) {
   const src = readCode(f);
   assert.match(src, /ScopedAclPanel/,
     `${f}: нэгдсэн панелийг ашиглахаа больжээ — давхардал сэргэв`);
-  for (const banned of ['const addTo =', 'const removeFrom =', 'function PkgCol', 'function RoleBlock']) {
+  for (const banned of ['const addTo =', 'const removeFrom =', 'function PkgCol', 'function RoleBlock',
+    'removeRevokingRoles', 'setGrants:', 'roleCaps:']) {
     assert.ok(!src.includes(banned),
-      `${f}: «${banned}» буцаж ирэв — логик нь ScopedAclPanel.tsx-д байх ёстой`);
+      `${f}: «${banned}» буцаж ирэв — логик нь aclOps.ts / ScopedAclPanel.tsx-д байх ёстой`);
   }
   /* Тохиргоо нь БҮРЭН байх ёстой — дутуу талбар нь ажиллах үед л илэрнэ */
-  for (const key of ['roles:', 'roleLabel:', 'emptyLabel:', 'list:', 'failedUsers:',
-    'subscribe:', 'setGrants:', 'remove:', 'notes:', 'confirmRemoveAll:',
-    'stuckMsg:', 'noApproverMsg:']) {
+  for (const key of ['sys:', 'roles:', 'roleLabel:', 'emptyLabel:', 'list:', 'failedUsers:',
+    'subscribe:', 'ready:', 'notes:', 'stuckMsg:', 'noApproverMsg:']) {
     assert.ok(src.includes(key), `${f}: тохиргооны «${key}» талбар дутуу`);
   }
 }
-console.log('✅ ScopedAclPanel — grant тус бүр тусад нь · хоёр бүрхүүл нимгэн');
+
+/* ⚠️ Панелууд op-оор бичнэ — шууд set*Grants / remove*Assign дуудахгүй (2026-09-25) */
+for (const [f, sys] of [
+  ['src/modules/ScopedAclPanel.tsx', 'spec.sys'],
+  ['src/modules/ChanarAcl.tsx', "'chanar'"],
+  ['src/modules/DedButetsAcl.tsx', "'butets'"],
+]) {
+  const src = readCode(f);
+  const add = src.slice(src.indexOf('const addTo ='), src.indexOf('const removeFrom ='));
+  const rm = src.slice(src.indexOf('const removeFrom ='), src.indexOf('const removeFrom =') + 400);
+  assert.ok(add.includes(`addPkgOp(${sys}`), `${f}: addTo нь aclOps.addPkgOp-оор бичих ёстой`);
+  assert.ok(rm.includes(`removePkgOp(${sys}`), `${f}: removeFrom нь aclOps.removePkgOp-оор бичих ёстой`);
+  assert.doesNotMatch(src, /set(Huvaari|Obyem|Ajil|Chanar|Butets)Grants\(|remove(Huvaari|Obyem|Ajil|Chanar|Butets)Assign\(/,
+    `${f}: шууд бичилт буцаж ирэв — aclOps-оор явах ёстой`);
+}
+console.log('✅ aclOps — grant тус бүр тусад нь · ALL хамгаалалт · revoke=false · панелууд нимгэн');
 
 /* ══════════ 9. GuitsetgelAcl — orphanFail НЭГ УДАА ══════════ */
 {
@@ -484,11 +497,12 @@ console.log('\naclParity.check: ok');
       'scopedAcl: syncCaps нь эрхийг ЗӨВХӨН бүх үүрэг арилах үед хасах ёстой');
   }
 
-  /* (в) UserAdmin — `r.ok` шалгалт.
-     ⚠️ 2026-09-09: гурван салаа `flipScoped` болж нэгдсэн тул НЭГ удаа. */
+  /* (в) `r.ok` шалгалт.
+     ⚠️ 2026-09-09: гурван салаа `flipScoped` болж нэгдсэн тул НЭГ удаа.
+     ⚠️ 2026-09-25: `flipScoped` устаж бичилт `aclOps.runOp`-д шилжсэн — тэнд НЭГ удаа. */
   const ua = readCode('src/components/UserAdmin.tsx');
-  assert.equal((ua.match(/if \(!r\.ok\) \{ mark\(false\); return; \}/g) ?? []).length, 1,
-    'UserAdmin.flipScoped: `r.ok` шалгалт байх ёстой — эс бөгөөс `{ok:false}` үед '
+  assert.equal((readCode('src/lib/aclOps.ts').match(/if \(!r\.ok\)/g) ?? []).length, 1,
+    'aclOps.runOp: `r.ok` шалгалт ЯГ 1 байх ёстой — эс бөгөөс `{ok:false}` үед '
     + '`Promise.all` нь false өгч ТӨӨРӨГДҮҮЛСЭН «ArcGIS-т бичигдсэнгүй» алдаа гарна');
   /* Хоосон багц нь ALL руу унана (`??` нь `[]`-г NULL гэж үзэхгүй) */
   assert.ok(!/cur\?\.bagts \?\? \[(HUVAARI|OBYEM)_ALL_BAGTS\]/.test(ua),
@@ -576,13 +590,27 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
     'guitsetgelAcl.removeAssign: хоосон нэрийн хамгаалалт алга (scopedAcl-тэй тэгш)');
 
   const ua = readCode('src/components/UserAdmin.tsx');
-  /* ⚠️ 2026-09-24: долоон ACL-ийн өөрийн туг ч орно (flow · qaqc · huvaari · obyem · chanar · ajil · butets) */
-  assert.match(ua, /const capsLocked = !remoteReady\(\) \|\| !capsRemoteReady\(\) \|\| !flowAclReady\(\)[\s\S]{0,200}!butetsAclReady\(\);/,
-    'UserAdmin: capsLocked туг алга — remote-гүй панел уншихдаа [] , бичихдээ кэш холино');
-  for (const r of ['qaqcAclReady', 'huvaariAclReady', 'obyemAclReady', 'chanarAclReady', 'ajilAclReady']) {
-    assert.ok(ua.includes('!' + r + '()'), 'UserAdmin.capsLocked: ' + r + ' туг дутуу');
+  /* ⚠️ 2026-09-24: долоон ACL-ийн өөрийн туг ч орно (flow · qaqc · huvaari · obyem · chanar · ajil · butets).
+     ⚠️ 2026-09-25: илэрхийлэл `aclOps.allAclReady`-д НЭГ газар — есөн туг бүгд тэнд. */
+  const ops = readCode('src/lib/aclOps.ts');
+  const ar = ops.slice(ops.indexOf('export const allAclReady'), ops.indexOf('export const lockMsg'));
+  for (const r of ['remoteReady', 'capsRemoteReady', 'flowAclReady', 'qaqcAclReady', 'huvaariAclReady',
+    'obyemAclReady', 'chanarAclReady', 'ajilAclReady', 'butetsAclReady']) {
+    assert.ok(ar.includes(r + '()'), 'aclOps.allAclReady: ' + r + ' туг дутуу');
   }
-  for (const fn of ['const flipScoped = (', 'const flipCap = (', 'const add = () =>']) {
+  assert.ok(ua.includes('const capsLocked = !allAclReady();'),
+    'UserAdmin: capsLocked нь allAclReady()-аас гарах ёстой — remote-гүй панел уншихдаа [], бичихдээ кэш холино');
+  assert.ok(readCode('src/modules/ErhOverview.tsx').includes('const locked = !allAclReady();'),
+    'ErhOverview: түгжээ allAclReady()-аас гарах ёстой');
+  assert.ok(readCode('src/components/UserCard.tsx').includes('const ready = allAclReady();'),
+    'UserCard: түгжээ allAclReady()-аас гарах ёстой');
+  /* Матриц — `useAclRunner()` анхдагч түгжээ = allAclReady (runOp дарах агшинд шалгана) */
+  assert.ok(readCode('src/modules/ErhMatrix.tsx').includes('useAclRunner();'),
+    'ErhMatrix: бичилт useAclRunner()-оор (allAclReady түгжээтэй) явах ёстой');
+  assert.ok(readCode('src/modules/useAclRunner.ts').includes('ready: () => boolean = allAclReady'),
+    'useAclRunner: анхдагч түгжээ allAclReady биш');
+  assert.ok(ops.includes('ready: () => boolean = allAclReady'), 'aclOps.runOp: анхдагч түгжээ allAclReady биш');
+  for (const fn of ['const flipCap = (', 'const dropOrphan = (', 'const add = () =>']) {
     const i = ua.indexOf(fn);
     assert.ok(i > 0, `UserAdmin: ${fn} олдсонгүй`);
     assert.ok(ua.slice(i, i + 1200).includes('if (capsLocked) { setAddErr(LOCK_MSG); return; }'),
@@ -590,13 +618,14 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   }
   assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
     'UserAdmin: remote-гүй бол унтраалга кэшнээс (`capsStored`) харагдах ёстой');
-  assert.ok(ua.includes('capsLocked={capsLocked}'),
+  assert.ok(/\n\s+capsLocked,\s/.test(ua),
     'UserAdmin → UserRow: capsLocked дамжихгүй байна — унтраалга disabled болохгүй');
   assert.ok(/if \(r && !\(await regrantFlowAccess\(uname\)\)\) bad = true;/.test(ua),
     'UserAdmin.saveAll: regrantFlowAccess-ийг stageOfUser-оор урьдчилж шүүж байна (remote-гүй бол алгасна)');
-  const ur = readCode('src/components/UserRow.tsx');
+  /* ⚠️ 2026-09-25: унтраалга `UserRights.tsx`-д шилжсэн (мөр ба карт хуваалцана) */
+  const ur = readCode('src/components/UserRights.tsx');
   assert.ok(ur.includes('disabled={!!d.isNew || !!capsLocked}'),
-    'UserRow: нэмэлт эрхийн унтраалга capsLocked үед disabled биш');
+    'UserRights: нэмэлт эрхийн унтраалга capsLocked үед disabled биш');
 
   /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
   const ag = readCode('src/components/AuthGate.tsx');
@@ -611,3 +640,200 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
 console.log('✅ remote-гүй сешн — toggleCap · syncCaps · regrant · UserAdmin capsLocked · AuthGate 15с · isOrgUrl хост');
 
 console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps · r.ok×3 · cap orphan · ноорог үлдэх');
+
+/* ══════════ ҮҮРЭГ → ЭРХИЙН ГАНЦ ХҮСНЭГТ (2026-09-25) ══════════ */
+/**
+ * ⚠️ «Хуваарь зохиогч → `plan`» зураглал урьд нь НАЙМ газар давтагдсан байв
+ *    (таван `*Acl.ts`, гурван панел, ChanarAcl-ийн хоёр inline, DedButetsAcl,
+ *    flipScoped). Одоо `aclRoleCaps.ROLE_CAPS` — бусад нь ТҮҮНИЙГ заана.
+ */
+{
+  for (const [f, key] of [
+    ['src/lib/huvaariAcl.ts', 'ROLE_CAPS.huvaari'],
+    ['src/lib/obyemAcl.ts', 'ROLE_CAPS.obyem'],
+    ['src/lib/ajilAcl.ts', 'ROLE_CAPS.ajil'],
+    ['src/lib/chanarAcl.ts', 'ROLE_CAPS.chanar'],
+    ['src/lib/butetsAcl.ts', 'ROLE_CAPS.butets'],
+  ]) {
+    const src = readCode(f);
+    assert.ok(src.includes(`roleCaps: ${key},`), `${f}: roleCaps нь ${key} байх ёстой — гар хуулбар буцаж ирэв`);
+  }
+  assert.ok(readCode('src/lib/qaqcAcl.ts').includes('soleCap: QAQC_CAP,'), 'qaqcAcl: soleCap нь QAQC_CAP байх ёстой');
+  /* Панелуудад inline зураглал үлдээгүй */
+  for (const f of ['src/modules/ChanarAcl.tsx', 'src/modules/DedButetsAcl.tsx', 'src/modules/ScopedAclPanel.tsx',
+    'src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx', 'src/components/UserAdmin.tsx']) {
+    const src = readCode(f);
+    assert.doesNotMatch(src, /(author|editor|approver|tuh|habea): '(plan|planApprove|obyemEdit|obyemApprove|addRow|ajilApprove|chanarAuthor|chanarReview|butets)'/,
+      `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
+  }
+
+  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 4 */
+  const { ROLE_CAPS, PLAIN_CAPS, QAQC_CAP, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
+  const capsSrc = readCode('src/lib/caps.ts');
+  const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
+    .matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  const derived = new Set([QAQC_CAP, ...Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))]);
+  assert.equal(PLAIN_CAPS.length, 4, `энгийн эрх ЯГ 4 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+  for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
+  assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
+    'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
+  assert.equal(derived.size, 10, `гаргалгаатай эрх 10 байх ёстой, олдсон: ${derived.size}`);
+  for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
+}
+console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 4 = CAPS');
+
+/* ══════════ 13. aclOps — ЗАН ТӨЛӨВИЙН ШАЛГУУР (2026-09-25, хянагчийн олдвор) ══════════ */
+/**
+ * ⚠️ Дээрх §8 нь эх кодын ХЭВ ШИНЖИЙГ тулгадаг; энэ хэсэг op-уудыг ЖИНХЭНЭЭР
+ *    ажиллуулж ҮР ДҮНГ шалгана: жагсаалтыг `_syncRemote*`-ээр бөглөж, op-ыг
+ *    бүтээж, `confirm` ба `run()`-ийн дараах локал төлөвийг харна.
+ * ⚠️ Сүлжээгүй: `fetch` нь шууд унана — remote бичилт `false` өгч, локал
+ *    төлөв (op-ын гол гэрээ) хэвээр шалгагдана.
+ */
+{
+  const mem = new Map();
+  globalThis.window = globalThis;
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
+  globalThis.dispatchEvent = () => true;
+  globalThis.fetch = async () => { throw new Error('offline (aclParity)'); };
+
+  const OPS = await import('@/lib/aclOps.ts');
+  const QA = await import('@/lib/qaqcAcl.ts');
+  const FL = await import('@/lib/guitsetgelAcl.ts');
+  const HV = await import('@/lib/huvaariAcl.ts');
+  const BT = await import('@/lib/butetsAcl.ts');
+  const CAPS = await import('@/lib/caps.ts');
+  const { ROLE_BY_USER } = await import('@/lib/services.ts');
+  const { BUTETS_PACKS } = await import('@/lib/butetsPacks.ts');
+  const { PKG_GROUPS } = await import('@/modules/sheet/bagts.pkg.ts');
+  const { STAGE_ORDER } = await import('@/lib/hyanalt.ts');
+  const [G0, G1] = PKG_GROUPS;
+  /* Порталд БАЙГАА (хатуу, super биш) аккаунт — `isKnown` үнэн, асуулт асуугдана */
+  /* ⚠️ Хэрэглэгч бүр ТУСДАА: offline бичилт `failed`-д орж, дараагийн `_syncRemote*` тэр хүний
+     ЛОКАЛ төлөвийг давамгайлуулдаг (`scopedAcl.syncRemote`-ийн ⚠️) — нэг нэрийг дахин бөглөж болохгүй. */
+  const K = Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase());
+  assert.ok(K.length >= 6, 'хатуу жагсаалтад 6+ энгийн аккаунт хэрэгтэй');
+  const settle = async (w) => { await w.sync; await w.granted; };
+
+  /* ── QAQC: шинэ мөр grant=true · багц солих grant=false ── */
+  CAPS._syncRemoteCaps([]);
+  QA._syncRemoteQaqc([]);
+  const add1 = OPS.qaqcAddOp('q_new', G0);
+  assert.ok(add1 && !add1.confirm, 'qaqcAddOp: шинэ мөр асуулгагүй');
+  const w1 = add1.run();
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_new').bagts, [G0]);
+  await settle(w1);
+  assert.ok(CAPS.capsStored('q_new').includes('qaqc'), 'qaqcAddOp: ШИНЭ мөрөнд эрх олгох ёстой (grant=true)');
+
+  CAPS._syncRemoteCaps([]);
+  const w2 = OPS.qaqcAddOp('q_new', G1).run();
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_new').bagts, [G0, G1]);
+  await settle(w2);
+  assert.ok(!CAPS.capsStored('q_new').includes('qaqc'), 'qaqcAddOp: багц солиход эрх дахин бичих ёсгүй (grant=false)');
+  assert.equal(OPS.qaqcAddOp('q_new', G1), null, 'qaqcAddOp: аль хэдийн байгаа багц → null');
+
+  /* qaqcAllOp: шинэ → grant=true; байгаа → grant=false */
+  const w3 = OPS.qaqcAllOp('q_all').run();
+  await settle(w3);
+  assert.ok(CAPS.capsStored('q_all').includes('qaqc'), 'qaqcAllOp: шинэ мөрөнд эрх олгох ёстой');
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, ['*']);
+  assert.equal(OPS.qaqcAllOp('q_all'), null, 'qaqcAllOp: аль хэдийн бүх багц → null');
+
+  /* qaqcChipOp: «Бүх багц»-аас чип → НАРИЙСНА; сүүлийн багц → ✕-ийн зам */
+  await settle(OPS.qaqcChipOp('q_all', G1).run());
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, [G1], 'qaqcChipOp: ALL → [g] нарийсах ёстой');
+  QA._syncRemoteQaqc([{ user: K[0], bagts: [G0] }]);
+  const last = OPS.qaqcChipOp(K[0], G0);
+  assert.equal(last.confirm?.length, 1, 'qaqcChipOp: сүүлийн багц → асуух ёстой (✕-ийн зам)');
+  const wl = last.run();
+  assert.equal(QA.listQaqcAssigns().some((a) => a.user === K[0]), false, 'qaqcChipOp: сүүлийн багц → мөр хасагдах ёстой');
+  /* ⚠️ Дараалал дуустал хүлээнэ — эс бөгөөс дараагийн `_syncRemote*` локалыг давамгайлуулна */
+  await settle(wl);
+
+  /* qaqcRemoveOp: ALL → хоёр асуулт (нэг багцаас салгахгүй + хасах); устгагдсан аккаунт → асуулгагүй */
+  QA._syncRemoteQaqc([{ user: K[1], bagts: ['*'] }, { user: 'gone_x', bagts: [G0] }]);
+  assert.equal(OPS.qaqcRemoveOp(K[1], G0).confirm?.length, 2, 'qaqcRemoveOp: ALL → 2 асуулт');
+  assert.equal(OPS.qaqcRemoveOp('gone_x', G0).confirm, undefined, 'qaqcRemoveOp: устгагдсан аккаунт → асуулгагүй (revoke=false)');
+
+  /* ── Урсгал: шат шилжүүлэх асууна, багц ба viewOnly арилна ── */
+  const [S0, S1] = STAGE_ORDER;
+  FL._syncRemoteAssigns([
+    { user: K[2], stage: S0, bagts: [G0, G1], viewOnly: true },
+    { user: K[3], stage: S0, bagts: [G0] },
+    { user: K[4], stage: S0, bagts: [G0] },
+    { user: K[5], stage: S0, bagts: ['*'] },
+  ]);
+  const mv = OPS.flowAddOp(K[2], S1, G1);
+  assert.equal(mv.confirm?.length, 1, 'flowAddOp: өөр шат руу → асуух ёстой');
+  const wm = mv.run();
+  const moved = FL.listAssigns().find((a) => a.user === K[2]);
+  assert.equal(moved.stage, S1);
+  assert.deepEqual(moved.bagts, [G1], 'flowAddOp: хуучин багцууд арилах ёстой');
+  assert.notEqual(moved.viewOnly, true, 'flowAddOp: «Зөвхөн харна» арилах ёстой');
+  assert.equal(OPS.flowStageOp(K[2], S0).confirm?.length, 1, 'flowStageOp: шилжүүлэх → асуух ёстой');
+  assert.equal(OPS.flowStageOp(K[2], S1), null, 'flowStageOp: ижил шат → null');
+  await settle(wm);
+
+  /* Сүүлийн багц → ✕-ийн зам (асууж, `removeAssign` revoke-той) */
+  const fl = OPS.flowChipOp(K[3], G0);
+  assert.equal(fl.confirm?.length, 1, 'flowChipOp: сүүлийн багц → асуух ёстой');
+  const wf = fl.run();
+  assert.equal(FL.listAssigns().some((a) => a.user === K[3]), false, 'flowChipOp: сүүлийн багц → томилгоо хасагдах ёстой');
+  await settle(wf);
+  assert.equal(OPS.flowRemoveOp(K[4], G0).confirm?.length, 1, 'flowRemoveOp: сүүлийн багц → асуух ёстой');
+  assert.equal(OPS.flowRemoveOp(K[5], G0).confirm?.length, 2, 'flowRemoveOp: ALL → 2 асуулт');
+  assert.ok(OPS.flowViewOnlyOp(K[5], true), 'flowViewOnlyOp: асаах op');
+  assert.equal(OPS.flowViewOnlyOp(K[5], false), null, 'flowViewOnlyOp: өөрчлөлтгүй → null');
+  const ops = readCode('src/lib/aclOps.ts');
+  const drop = ops.slice(ops.indexOf('export function flowDropOp('), ops.indexOf('export function flowStageOp('));
+  assert.ok(drop.includes('asWrite(removeAssign(u, cur.stage))'), 'flowDropOp: мэдэгдэх аккаунтад revoke=true байх ёстой');
+  assert.ok(drop.includes('asWrite(removeAssign(u, cur.stage, false))'), 'flowDropOp: устгагдсан аккаунтад revoke=false байх ёстой');
+
+  /* ── addPkgOp / removePkgOp — «Бүх багц» ── */
+  HV._syncRemoteHuvaari([{ user: 'h_all', grants: [{ role: 'author', bagts: ['*'] }, { role: 'approver', bagts: [G0] }] }]);
+  assert.equal(OPS.addPkgOp('huvaari', 'h_all', 'author', G1), null, 'addPkgOp: ALL-д нэмбэл хумигдана → null');
+  const hr = OPS.removePkgOp('huvaari', 'h_all', 'author', G1);
+  assert.equal(hr.confirm?.length, 1, 'removePkgOp: ALL → үүргийг бүхэлд нь хасахыг асууна');
+  hr.run();
+  assert.deepEqual(HV.listHuvaariAssigns().find((a) => a.user === 'h_all').grants.map((g) => g.role), ['approver'],
+    'removePkgOp: зөвхөн тэр үүрэг хасагдах ёстой');
+  const hr2 = OPS.removePkgOp('huvaari', 'h_all', 'approver', G0);
+  assert.equal(hr2.confirm?.length, 1, 'removePkgOp: сүүлийн grant → мөрийг бүхэлд нь хасахыг асууна');
+  hr2.run();
+  assert.equal(HV.listHuvaariAssigns().some((a) => a.user === 'h_all'), false);
+  const hadd = OPS.addPkgOp('huvaari', 'h_new', 'approver', G1);
+  hadd.run();
+  assert.deepEqual(HV.listHuvaariAssigns().find((a) => a.user === 'h_new').grants, [{ role: 'approver', bagts: [G1] }]);
+
+  /* Дэд бүтэц: ALL → бусад багц, асуулгагүй */
+  const P = BUTETS_PACKS.map((p) => p.key);
+  BT._syncRemoteButets([{ user: 'b_all', grants: [{ role: 'editor', bagts: ['*'] }] }]);
+  const br = OPS.removePkgOp('butets', 'b_all', 'editor', P[0]);
+  assert.equal(br.confirm?.length ?? 0, 0, 'removePkgOp(butets): ALL → асуулгагүй');
+  br.run();
+  assert.deepEqual(BT.listButetsAssigns().find((a) => a.user === 'b_all').grants[0].bagts, P.slice(1),
+    'removePkgOp(butets): ALL → бусад багцын ИЛ жагсаалт');
+
+  /* Явагдаж буй бичилтийн тэмдэг — `runOp` дуусахад арилна */
+  globalThis.confirm = () => true;
+  const pr = OPS.runOp(OPS.qaqcAddOp('p_user', G0), () => {}, () => true);
+  assert.equal(OPS.aclPendingFor('p_user'), true, 'aclPendingFor: бичилтийн үед үнэн');
+  await pr;
+  assert.equal(OPS.aclPendingFor('p_user'), false, 'aclPendingFor: дууссаны дараа худал');
+}
+/* ⚠️ QAQC ба урсгалын панел ч op-оор бичнэ (2026-09-25) — карт ба матрицтай ИЖИЛ асуулт */
+{
+  const g = readCode('src/modules/GuitsetgelAcl.tsx');
+  assert.doesNotMatch(g, /\b(setAssign|removeAssign|setViewOnly)\(/, 'GuitsetgelAcl: шууд бичилт буцаж ирэв — aclOps.flow*Op-оор');
+  for (const op of ['flowStageOp(', 'flowAllOp(', 'flowChipOp(', 'flowDropOp(', 'flowViewOnlyOp(']) assert.ok(g.includes(op), 'GuitsetgelAcl: ' + op + ' алга');
+  const q = readCode('src/modules/QaqcAcl.tsx');
+  assert.doesNotMatch(q, /\b(setQaqcAssign|removeQaqcAssign)\(/, 'QaqcAcl: шууд бичилт буцаж ирэв — aclOps.qaqc*Op-оор');
+  for (const op of ['qaqcAllOp(', 'qaqcChipOp(', 'qaqcDropOp(']) assert.ok(q.includes(op), 'QaqcAcl: ' + op + ' алга');
+}
+console.log('✅ aclOps зан төлөв — QAQC grant · шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');

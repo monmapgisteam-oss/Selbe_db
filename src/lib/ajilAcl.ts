@@ -38,6 +38,7 @@
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { ajilUpsert, ajilRemove } from './permsRemote';
+import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
 
@@ -51,8 +52,9 @@ const acl = makeAcl<AjilRole>({
   storeKey: 'selbe-ajil-acl-v1',
   event: 'selbe-ajil-acl-change',
   /* ⚠️ ҮҮРЭГ → ЭРХ. `editor` нь БАЙГАА `addRow` эрхийг дахин ашиглана
-     (шинэ эрх зохиовол одоогийн мөр нэмэгчид эрхээ алдана — файлын ⚠️). */
-  roleCaps: { editor: 'addRow', approver: 'ajilApprove' },
+     (шинэ эрх зохиовол одоогийн мөр нэмэгчид эрхээ алдана — файлын ⚠️).
+     ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25). */
+  roleCaps: ROLE_CAPS.ajil,
   push: (user, roles, bagts, grants) => ajilUpsert(user, roles, bagts, grants),
   remove: ajilRemove,
   msg: {

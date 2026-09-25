@@ -17,13 +17,20 @@
  *
  * ⚠️ Багц ХУВААРИЛАХ нь `qaqc` ЭРХИЙГ автоматаар олгоно, хасах нь буцаана —
  * хоёрыг тусад нь тохируулах шаардлагагүй (`qaqcAcl.setQaqcAssign`).
+ *
+ * ⚠️ БИЧИЛТ `aclOps`-ООР (2026-09-25) — хэрэглэгчийн карт ба матрицтай ИЖИЛ
+ *    дүрэм, ИЖИЛ асуулт (`qaqcAllOp` · `qaqcChipOp` · `qaqcDropOp`). Сүүлийн
+ *    багцыг дарвал урьд нь «хасахгүй» гэж зогсоодог байв; одоо ✕-ийн зам
+ *    (асууж, хуваарилалтаас хасна) — «бүх багц» руу БУЦАХГҮЙ (fail-closed хэвээр).
  */
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  ALL_BAGTS, listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, setQaqcAssign, subscribeQaqcAcl,
+  ALL_BAGTS, listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
+import { qaqcAllOp, qaqcChipOp, qaqcDropOp } from '@/lib/aclOps';
+import { useAclRunner } from './useAclRunner';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
@@ -52,7 +59,6 @@ export function QaqcAcl() {
 
   const rows = listQaqcAssigns();
   const [add, setAdd] = useState('');
-  const [err, setErr] = useState('');
 
   /** Remote бичилт нь унасан хэрэглэгчид — мөр бүрд тэмдэг */
   const failed = new Set(qaqcFailedUsers());
@@ -71,15 +77,18 @@ export function QaqcAcl() {
    *    remote-ийн бодит мөрийг дарж бичнэ. Уншигдтал бүх бичилт хаалттай.
    */
   /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
-  const locked = !remoteReady() || !capsRemoteReady() || !qaqcAclReady();
+  const ready = () => remoteReady() && capsRemoteReady() && qaqcAclReady();
+  const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+  /* ⚠️ Өөрийн 3 тугтай түгжээ хэвээр; `busy` нь давхар товшилтыг барина */
+  const { busy, err, setErr, run } = useAclRunner(ready);
+  const off = locked || busy;
 
+  /* Шинэ мөр → «бүх багц», эрх олгоно (`qaqcAllOp`: мөргүй бол grant=true) */
   const push = () => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const r = setQaqcAssign(add, [ALL_BAGTS]);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void r.sync;
-    if (r.ok) setAdd('');
+    const u = add;
+    void run(qaqcAllOp(u)).then((ok) => { if (ok) setAdd(''); });
   };
 
   return (
@@ -105,12 +114,12 @@ export function QaqcAcl() {
               className={s.aclInput}
               value={add}
               onChange={(e) => setAdd(e.target.value)}
-              disabled={locked}
+              disabled={off}
             >
               <option value="">{tr('Аккаунт сонгох…')}</option>
               {free.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
-            <button type="button" className={s.aclBtn} onClick={push} disabled={locked || !add.trim()}>
+            <button type="button" className={s.aclBtn} onClick={push} disabled={off || !add.trim()}>
               {tr('Нэмэх')}
             </button>
           </div>
@@ -140,14 +149,12 @@ export function QaqcAcl() {
                     type="button"
                     className={s.aclX}
                     title={tr('Хуваарилалтаас хасах')}
-                    disabled={locked}
+                    disabled={off}
                     onClick={() => {
                       if (locked) { setErr(LOCK_MSG); return; }
-                      /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false) —
-                         эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. */
-                      if (gone) { void removeQaqcAssign(r.user, false).sync; return; }
-                      if (!window.confirm(tr('«{0}»-г чанарын хуваарилалтаас хасах уу? «QAQC — Inspection Test Plan» эрх ба «Чанар (QAQC)» харагдац нь мөн буцаагдана.', r.user))) return;
-                      void removeQaqcAssign(r.user).sync;
+                      /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false, асуухгүй) —
+                         эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. Дүрэм `qaqcDropOp`-д. */
+                      void run(qaqcDropOp(r.user));
                     }}
                   >
                     ✕
@@ -169,11 +176,11 @@ export function QaqcAcl() {
                       type="button"
                       className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
                       /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
-                         багц солих бүрд эрхийн мөр дахин бичих нь дэмий */
-                      disabled={locked}
+                         багц солих бүрд эрхийн мөр дахин бичих нь дэмий (`qaqcAllOp`) */
+                      disabled={off}
                       onClick={() => {
                         if (locked) { setErr(LOCK_MSG); return; }
-                        setErr(''); void setQaqcAssign(r.user, [ALL_BAGTS], false).sync;
+                        void run(qaqcAllOp(r.user));
                       }}
                     >
                       {tr('Бүх багц')}
@@ -185,22 +192,16 @@ export function QaqcAcl() {
                           key={g}
                           type="button"
                           className={`${s.aclPkg} ${on ? s.aclPkgOn : ''}`}
-                          disabled={locked}
+                          disabled={off}
                           onClick={() => {
                             if (locked) { setErr(LOCK_MSG); return; }
-                            const cur = r.bagts.filter((x) => x !== ALL_BAGTS);
                             /*
                              * ⚠️ FAIL-CLOSED (урсгалын панелтай ижил дүрэм): сүүлийн
                              * багцыг хасахад «бүх багц» руу БУЦААХГҮЙ — хязгаарлах
-                             * гэсэн даралт хүрээг тэлэх ёсгүй.
+                             * гэсэн даралт хүрээг тэлэх ёсгүй. 2026-09-25-аас ✕-ийн
+                             * зам (асууж хасна) — `aclOps.qaqcChipOp`.
                              */
-                            if (on && cur.length === 1) {
-                              setErr(tr('Сүүлийн багцыг хасахгүй — бүх багц олгох бол «Бүх багц», хуваарилалтаас хасах бол ✕ дарна уу.'));
-                              return;
-                            }
-                            setErr('');
-                            const next = on ? cur.filter((x) => x !== g) : [...cur, g];
-                            void setQaqcAssign(r.user, next, false).sync;
+                            void run(qaqcChipOp(r.user, g));
                           }}
                         >
                           {g}

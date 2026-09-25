@@ -22,16 +22,16 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { ALL_BAGTS, type Grant } from '@/lib/scopedAcl';
+import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import {
-  CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
-  setChanarGrants, subscribeChanarAcl, type ChanarRole,
+  CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
-import { removeRevokingRoles, setGrantsRevokingRoles } from './ScopedAclPanel';
+import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { useAclRunner } from './useAclRunner';
 import s from './guitsetgel.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
@@ -55,70 +55,31 @@ export function ChanarAcl() {
   const failed = new Set(chanarFailedUsers());
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   const dirtyPerms = new Set(dirtyKeys());
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
   /*
    * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
    *    Remote уншигдаагүй үед `rows` нь `[]` тул «Нэмэх» дарахад
    *    `setChanarGrants` тэр хүний БҮХ мөрийг нэг багцаар дарж бичнэ.
    */
   /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
-  const locked = !remoteReady() || !capsRemoteReady() || !chanarAclReady();
+  const ready = () => remoteReady() && capsRemoteReady() && chanarAclReady();
+  const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — `runOp` зурвас тавина; давхар товшилтыг `busy` барина */
+  const { busy, err, setErr, run } = useAclRunner(ready);
 
-  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — чимээгүй орхихгүй, зурвас тавина */
-  const run = async (sync?: Promise<unknown>) => {
-    if (!sync) return;
-    setBusy(true);
-    try {
-      if ((await sync) === false) setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
-    } finally { setBusy(false); }
-  };
-
+  /*
+   * ⚠️ БИЧИХ ДҮРЭМ `aclOps`-Д (2026-09-25) — ALL хамгаалалт, багцгүй grant унах,
+   *    `revoke=false` + зөвхөн хасагдсан үүргийн эрх (Чанарын гурван хянагч нэг
+   *    `chanarReview` хуваалцдаг тул үлдсэн хянагч байвал буцаахгүй).
+   */
   const addTo = (group: string, role: ChanarRole, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const u = user.trim().toLowerCase();
-    if (!u) return;
-    const cur = rows.find((a) => a.user === u);
-    const grants: Grant<ChanarRole>[] = cur ? cur.grants.map((g) => ({ ...g })) : [];
-    const mine = grants.find((g) => g.role === role);
-    if (!mine) grants.push({ role, bagts: [group] });
-    else if (!mine.bagts.includes(ALL_BAGTS) && !mine.bagts.includes(group)) {
-      mine.bagts = [...mine.bagts, group];
-    }
-    const r = setChanarGrants(u, grants);
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(addPkgOp('chanar', user, role, group));
   };
 
   const removeFrom = (group: string, role: ChanarRole, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const cur = rows.find((a) => a.user === user);
-    if (!cur) return;
-    const mine = cur.grants.find((g) => g.role === role);
-    if (!mine) return;
-    if (mine.bagts.includes(ALL_BAGTS)) {
-      if (!window.confirm(tr('«{0}» нь энэ үүргээр БҮХ багцад хуваарилагдсан тул нэг багцаас нь салгаж хасах боломжгүй. Энэ үүргийг нь БҮХЭЛД НЬ хасах уу?', user))) return;
-    }
-    setErr('');
-    const left = mine.bagts.includes(ALL_BAGTS) ? [] : mine.bagts.filter((b) => b !== group);
-    const grants = cur.grants
-      .map((g) => (g.role === role ? { ...g, bagts: left } : g))
-      .filter((g) => g.bagts.length > 0);
-    if (!grants.length) {
-      if (!window.confirm(tr('«{0}»-г чанарын баримтын хуваарилалтаас бүрэн хасах уу? «Чанарын баримт ирүүлэх» ба «Чанарын баримт хянах» эрх нь мөн буцаагдана.', user))) return;
-      /* ⚠️ `revoke=false` + зөвхөн хасагдсан үүргийн эрх (2026-09-24) — `removeRevokingRoles` */
-      const rr = removeRevokingRoles(user, listChanarAssigns, (u) => removeChanarAssign(u, false),
-        { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview' });
-      setErr(rr.ok ? '' : (rr.error ?? ''));
-      void run(rr.sync);
-      return;
-    }
-    /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
-    const r = setGrantsRevokingRoles(user, grants, listChanarAssigns, setChanarGrants,
-      { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview' });
-    setErr(r.ok ? '' : (r.error ?? ''));
-    void run(r.sync);
+    void run(removePkgOp('chanar', user, role, group));
   };
 
   return (

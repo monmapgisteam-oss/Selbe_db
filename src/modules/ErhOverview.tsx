@@ -11,9 +11,12 @@
  *     нь хайх ёстой (5 удаа).
  *   · «Багц 3.1-ийг хэн хариуцаж байна?» — мөн адил.
  *
- * ⚠️ ЗӨВХӨН ХАРУУЛНА, ЗАСАХГҮЙ. Засвар нь харгалзах бүлэгтээ хэвээр —
- * хоёр газраас нэг зүйлийг засвал аль нь үнэн болох нь бүрхэг болно.
- * Мөрийн ✏️ товч нь тухайн бүлэг рүү ШИЛЖҮҮЛНЭ.
+ * ⚠️ 2026-09-25: «ЗӨВХӨН ХАРУУЛНА» дүрэм ӨӨРЧЛӨГДСӨН (баталсан төлөвлөгөө).
+ *    «Багцаар» хөзрүүдийн оронд засварлах боломжтой БАГЦ × СИСТЕМИЙН МАТРИЦ
+ *    (`ErhMatrix`), «Хүнээр» хөзөр дарвал ХЭРЭГЛЭГЧИЙН КАРТ нээгдэнэ.
+ *    «Хоёр газраас засвал аль нь үнэн болох нь бүрхэг» гэсэн хуучин айдас
+ *    нь бичих ДҮРЭМ хоёр байснаас үүдэлтэй байв — одоо матриц, карт, бүлгийн
+ *    панел бүгд НЭГ давхаргаар (`aclOps`) бичдэг тул дүрэм нэг.
  *
  * ⚠️ ГАЦААГ УРЬДЧИЛЖ ХЭЛНЭ. Одоо систем нь гацахыг ХҮЛЭЭДЭГ: батлагч
  * томилоогүй багц илгээлт ирэх хүртэл чимээгүй, зохиогч=батлагч болсон багц
@@ -23,94 +26,32 @@
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { listUsers, remoteReady, subscribe } from '@/lib/permissions';
-import { capsOf, capsRemoteReady, subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
-import { flowAclReady, listAssigns, subscribeAcl } from '@/lib/guitsetgelAcl';
-import { listQaqcAssigns, qaqcAclReady, subscribeQaqcAcl } from '@/lib/qaqcAcl';
-import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
-import { listObyemAssigns, obyemAclReady, subscribeObyemAcl } from '@/lib/obyemAcl';
-import { chanarAclReady, listChanarAssigns, subscribeChanarAcl } from '@/lib/chanarAcl';
-import { ajilAclReady, listAjilAssigns, subscribeAjilAcl } from '@/lib/ajilAcl';
-import { butetsAclReady, listButetsAssigns, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { subscribe } from '@/lib/permissions';
+import { subscribeCaps, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
+import { subscribeAcl } from '@/lib/guitsetgelAcl';
+import { subscribeQaqcAcl } from '@/lib/qaqcAcl';
+import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { subscribeObyemAcl } from '@/lib/obyemAcl';
+import { subscribeChanarAcl } from '@/lib/chanarAcl';
+import { subscribeAjilAcl } from '@/lib/ajilAcl';
+import { subscribeButetsAcl } from '@/lib/butetsAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
-import { resolveAccess } from '@/lib/permissions';
-import { roleForUser, VIEWS } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
-import {
-  allPkgErh, allUserErh, type ErhSource, type PkgIssue, type RoleLine,
-} from '@/lib/erhOverview';
+import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
+import { allPkgErh, allUserErh, type RoleLine } from '@/lib/erhOverview';
+import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
+import { ErhMatrix } from './ErhMatrix';
 import s from './guitsetgel.module.css';
 
-/** Цоорхойн мессеж — `⚠️` тайлбарын дагуу тайлбарлана */
-const issueText = (i: PkgIssue): string => {
-  if (i.key === 'huvaariNoApprover') {
-    return tr('{0}: хуваарийн батлагч томилоогүй — илгээсэн хуваарийг хэн ч батлахгүй.', i.args[0]);
-  }
-  if (i.key === 'huvaariSelfApprove') {
-    return tr('{0}: {1} нь зохиогч БА батлагч хоёулаа — өөрийн илгээснийг өөрөө батлах боломжгүй тул хуваарь гацна.', i.args[0], i.args[1]);
-  }
-  if (i.key === 'obyemNoApprover') {
-    return tr('{0}: обьёмын батлагч томилоогүй — илгээсэн засварыг хэн ч батлахгүй.', i.args[0]);
-  }
-  if (i.key === 'obyemSelfApprove') {
-    return tr('{0}: {1} нь засварлагч БА батлагч хоёулаа — обьёмын засвар гацна.', i.args[0], i.args[1]);
-  }
-  if (i.key === 'ajilNoApprover') {
-    return tr('{0}: нэмэлт ажлын батлагч томилоогүй — нэмсэн ажлын мөрийг хэн ч батлахгүй.', i.args[0]);
-  }
-  if (i.key === 'ajilSelfApprove') {
-    return tr('{0}: {1} нь мөр нэмэгч БА батлагч хоёулаа — нэмэлт ажил гацна.', i.args[0], i.args[1]);
-  }
-  if (i.key === 'chanarNoReviewer') {
-    return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — гурван хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн аргачлал хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
-  }
-  if (i.key === 'flowGap') {
-    return tr('{0}: гүйцэтгэлийн урсгалын {1} шат томилогдоогүй — илгээлт тэр шатанд зогсоно.', i.args[0], i.args[1]);
-  }
-  return i.key;
-};
-
-/** Үүргийн монгол нэр — дэд систем бүрд өөр */
-type ScopedKind = 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets';
-const roleLabel = (kind: ScopedKind, role: string): string => {
-  if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : tr('Батлагч');
-  if (kind === 'ajil') return role === 'editor' ? tr('Мөр нэмэгч') : tr('Батлагч');
-  if (kind === 'chanar') {
-    if (role === 'author') return tr('Гүйцэтгэгч');
-    if (role === 'tuh') return tr('ТУХ');
-    if (role === 'chanar') return tr('Чанар');
-    if (role === 'habea') return tr('ХАБЭА');
-    return role;
-  }
-  return role === 'editor' ? tr('Засварлагч') : tr('Батлагч');
-};
-/** «tuh, habea» → «ТУХ, ХАБЭА» */
-const chanarRoleNames = (list: string): string =>
-  list.split(',').map((r) => roleLabel('chanar', r.trim())).join(', ');
-
-/** Багцын жагсаалт — `null` = бүх багц */
-const bagtsText = (b: string[] | null): string =>
-  (b === null ? tr('бүх багц') : b.join(' · '));
-
-const capLabelShort = (k: CapKey): string => {
-  if (k === 'addRow') return tr('Мөр нэмэх');
-  if (k === 'qaqc') return tr('QAQC');
-  if (k === 'zovshoorol') return tr('Зөвшөөрөл');
-  if (k === 'finEdit') return tr('Санхүү — утга');
-  if (k === 'finRow') return tr('Санхүү — мөр');
-  if (k === 'plan') return tr('Хуваарь зохиох');
-  if (k === 'planApprove') return tr('Хуваарь батлах');
-  if (k === 'obyemEdit') return tr('Обьём засах');
-  if (k === 'obyemApprove') return tr('Обьём батлах');
-  if (k === 'ajilApprove') return tr('Нэмэлт ажил батлах');
-  if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх');
-  if (k === 'chanarReview') return tr('Чанарын баримт хянах');
-  if (k === 'gazar') return tr('Газар');
-  if (k === 'butets') return tr('Дэд бүтэц');
-  return k;
-};
-
-export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
+export function ErhOverview({
+  onGo, onOpenUser, drafts,
+}: {
+  onGo: (pane: string) => void;
+  /** `UserAdmin`-ы хадгалаагүй ноорог — матриц картын хамгаалалтыг мөрдөнө (2026-09-25) */
+  drafts: ReadonlyMap<string, { remove?: boolean; isNew?: boolean }>;
+  /** Хүний хөзөр дарахад хэрэглэгчийн карт нээнэ (2026-09-25) */
+  onOpenUser: (user: string) => void;
+}) {
   const [, tick] = useState(0);
   /* ⚠️ ТАВАН эх сурвалж бүрд захиална — аль нэгэнд нь захиалахгүй бол
      тэр бүлгийн засвар тоймд хүрэхгүй, админ хуучин зургийг харна. */
@@ -124,39 +65,19 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
   useEffect(() => subscribeAjilAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeButetsAcl(() => tick((n) => n + 1)), []);
 
-  const [mode, setMode] = useState<'user' | 'pkg'>('pkg');
+  /* ⚠️ Матриц АНХДАГЧ (2026-09-25) — «Багцаар» хөзрийн горимыг орлоно */
+  const [mode, setMode] = useState<'matrix' | 'user'>('matrix');
 
   /*
    * ⚠️ ТҮГЖЭЭ (2026-09-24) — панелуудтай ИЖИЛ туг. Аль нэг эх сурвалж энэ
    *    сешнд уншигдаагүй бол `list*()` нь `[]` тул тойм «бүгд томилоогүй»,
    *    «Цоорхой алга» гэсэн ХУДАЛ зураг харуулдаг байв. Уншигдтал ил хэлнэ.
+   * ⚠️ 2026-09-25: илэрхийлэл `aclOps.allAclReady`-д НЭГ газар.
    */
-  const locked = !remoteReady() || !capsRemoteReady() || !flowAclReady()
-    || !qaqcAclReady() || !huvaariAclReady() || !obyemAclReady() || !chanarAclReady()
-    || !ajilAclReady() || !butetsAclReady();
-  const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
+  const locked = !allAclReady();
+  const LOCK_MSG = lockMsg();
 
-  const users = listUsers().map((u) => u.username);
-  const src: ErhSource = {
-    users,
-    /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
-    supers: users.filter((u) => roleForUser(u) === 'super'),
-    flow: listAssigns(),
-    /* Чанар нь үүрэггүй — grants нь ганц мөр, үүргийн нэр хоосон */
-    qaqc: listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts })),
-    huvaari: listHuvaariAssigns(),
-    obyem: listObyemAssigns(),
-    chanar: listChanarAssigns(),
-    ajil: listAjilAssigns(),
-    butets: listButetsAssigns(),
-    caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
-    views: Object.fromEntries(users.map((u) => {
-      const a = resolveAccess(u);
-      const open = a ? (a.views === 'all' ? VIEWS.length : a.views.length) : 0;
-      return [u.toLowerCase(), { open, total: VIEWS.length }];
-    })),
-  };
-
+  const src = liveErhSource();
   const pkgs = allPkgErh(src);
   const people = allUserErh(src);
   const allIssues = pkgs.flatMap((p) => p.issues);
@@ -164,7 +85,7 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
   return (
     <div className={s.aclWrap}>
       <p className={s.aclNote}>
-        {tr('Эрхийг ЗӨВХӨН харуулна — засвар нь харгалзах бүлэгтээ. Хоёр газраас нэг зүйлийг засвал аль нь үнэн болох нь бүрхэг болно.')}
+        {tr('Засвар бүгд нэг бичих давхаргаар — матриц, хэрэглэгчийн карт, бүлгийн хуудас ижил дүрмээр бичиж, ижил асуулт асууна. Хуваарилалт шууд хадгалагдана.')}
       </p>
 
       {/* ⚠️ ЦООРХОЙ ЭХЭНД: админ хуудас нээмэгц ажил гацах эрсдэлийг харна */}
@@ -190,8 +111,8 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
       <div className={s.aclAdd}>
         <button
           type="button"
-          className={`${s.aclPkg} ${mode === 'pkg' ? s.aclPkgOn : ''}`}
-          onClick={() => setMode('pkg')}
+          className={`${s.aclPkg} ${mode === 'matrix' ? s.aclPkgOn : ''}`}
+          onClick={() => setMode('matrix')}
         >
           {tr('Багцаар')}
         </button>
@@ -204,47 +125,20 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
         </button>
       </div>
 
-      {mode === 'pkg' ? (
-        <div className={s.aclGrid}>
-          {pkgs.map((p) => (
-            <div key={p.bagts} className={s.aclCol}>
-              <div className={s.aclHead}>
-                <span>{p.bagts}</span>
-                {p.issues.length > 0 && <span className={s.aclCount}>⚠️ {p.issues.length}</span>}
-              </div>
-
-              <div className={s.aclRole}>
-                <div className={s.aclRoleHead}>{tr('Гүйцэтгэлийн урсгал')}</div>
-                {Object.entries(p.flow).map(([st, who]) => (
-                  <div key={st} className={s.aclUser}>
-                    <span className={s.aclEmpty} style={{ minWidth: 132 }}>
-                      {STAGE_LABEL[st as keyof typeof STAGE_LABEL]}
-                    </span>
-                    <span className={s.aclName}>
-                      {who.length ? who.join(', ') : <em className={s.aclErr}>{tr('томилоогүй')}</em>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <RoleBlock title={tr('Хуваарь')} kind="huvaari" map={p.huvaari} />
-              <RoleBlock title={tr('Инженерийн обьём')} kind="obyem" map={p.obyem} />
-              <RoleBlock title={tr('Чанарын баримт')} kind="chanar" map={p.chanar} />
-              <RoleBlock title={tr('Нэмэлт ажил')} kind="ajil" map={p.ajil} />
-
-              <div className={s.aclRole}>
-                <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
-                <div className={s.aclName}>
-                  {p.qaqc.length ? p.qaqc.join(', ') : <em className={s.aclEmpty}>{tr('томилоогүй')}</em>}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+      {mode === 'matrix' ? (
+        <ErhMatrix src={src} locked={locked} drafts={drafts} />
       ) : (
         <div className={s.aclGrid}>
           {people.map((u) => (
-            <div key={u.user} className={s.aclCol}>
+            <div
+              key={u.user}
+              className={`${s.aclCol} ${s.mxCard}`}
+              role="button"
+              tabIndex={0}
+              title={tr('Хэрэглэгчийн карт — бүх эрх, хуваарилалт нэг дор')}
+              onClick={() => onOpenUser(u.user)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenUser(u.user); } }}
+            >
               <div className={s.aclHead}>
                 <span>{u.user}</span>
                 <span className={s.aclCount}>{u.views.open}/{u.views.total}</span>
@@ -282,7 +176,9 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
                 }))}
               />
 
-              {u.qaqc !== null && (
+              {/* ⚠️ `qaqcAssigned` (2026-09-25): `qaqc === null` нь «бүх багц»-ийг ч
+                  илэрхийлдэг тул урьд нь бүх багцтай QAQC хүн энд харагддаггүй байв */}
+              {u.qaqcAssigned && (
                 <div className={s.aclRole}>
                   <div className={s.aclRoleHead}>{tr('Чанар (QAQC)')}</div>
                   <div className={s.aclName}>{bagtsText(u.qaqc)}</div>
@@ -320,25 +216,6 @@ export function ErhOverview({ onGo }: { onGo: (pane: string) => void }) {
         <button type="button" className={s.aclPkg} onClick={() => onGo('ajil')}>{tr('Нэмэлт ажил')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('butets')}>{tr('Дэд бүтэц')}</button>
       </p>
-    </div>
-  );
-}
-
-/** Багцын хөзөр дэх нэг дэд системийн үүргүүд */
-function RoleBlock({
-  title, kind, map,
-}: { title: string; kind: ScopedKind; map: Record<string, string[]> }) {
-  const roles = Object.keys(map);
-  return (
-    <div className={s.aclRole}>
-      <div className={s.aclRoleHead}>{title}</div>
-      {roles.length === 0 && <div className={s.aclEmpty}>{tr('томилоогүй')}</div>}
-      {roles.map((r) => (
-        <div key={r} className={s.aclUser}>
-          <span className={s.aclEmpty} style={{ minWidth: 96 }}>{roleLabel(kind, r)}</span>
-          <span className={s.aclName}>{map[r].join(', ')}</span>
-        </div>
-      ))}
     </div>
   );
 }

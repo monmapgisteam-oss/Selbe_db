@@ -29,6 +29,7 @@
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { huvaariUpsert, huvaariRemove } from './permsRemote';
+import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
 
@@ -41,8 +42,9 @@ export type HuvaariAssign = Assign<PlanRole>;
 const acl = makeAcl<PlanRole>({
   storeKey: 'selbe-huvaari-acl-v1',
   event: 'selbe-huvaari-acl-change',
-  /* ⚠️ ҮҮРЭГ → ЭРХ. `CAP_HOST_VIEW`-ээр хоёулаа «Хуваарь» харагдацыг нээнэ. */
-  roleCaps: { author: 'plan', approver: 'planApprove' },
+  /* ⚠️ ҮҮРЭГ → ЭРХ. `CAP_HOST_VIEW`-ээр хоёулаа «Хуваарь» харагдацыг нээнэ.
+     ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25). */
+  roleCaps: ROLE_CAPS.huvaari,
   push: (user, roles, bagts, grants) => huvaariUpsert(user, roles, bagts, grants),
   remove: huvaariRemove,
   msg: {

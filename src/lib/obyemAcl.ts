@@ -39,6 +39,7 @@
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { obyemUpsert, obyemRemove } from './permsRemote';
+import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
 
@@ -51,8 +52,9 @@ export type ObyemAssign = Assign<ObyemRole>;
 const acl = makeAcl<ObyemRole>({
   storeKey: 'selbe-obyem-acl-v1',
   event: 'selbe-obyem-acl-change',
-  /* ⚠️ ҮҮРЭГ → ЭРХ. Хоёулаа «Гүйцэтгэл» харагдацыг нээнэ (`CAP_HOST_VIEW`). */
-  roleCaps: { editor: 'obyemEdit', approver: 'obyemApprove' },
+  /* ⚠️ ҮҮРЭГ → ЭРХ. Хоёулаа «Гүйцэтгэл» харагдацыг нээнэ (`CAP_HOST_VIEW`).
+     ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25). */
+  roleCaps: ROLE_CAPS.obyem,
   push: (user, roles, bagts, grants) => obyemUpsert(user, roles, bagts, grants),
   remove: obyemRemove,
   msg: {

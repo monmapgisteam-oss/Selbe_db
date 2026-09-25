@@ -22,17 +22,18 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import {
-  ajilAclReady, ajilFailedUsers, listAjilAssigns, removeAjilAssign, setAjilGrants,
-  subscribeAjilAcl, type AjilRole,
+  ajilAclReady, ajilFailedUsers, listAjilAssigns, subscribeAjilAcl, type AjilRole,
 } from '@/lib/ajilAcl';
 import { ScopedAclPanel, type AclPanelSpec } from './ScopedAclPanel';
-import { removeRevokingRoles } from './ScopedAclPanel';
 
 /**
  * ⚠️ Шошго ба зурвасыг ФУНКЦ болгож өгнө — модулийн түвшинд `tr()` дуудвал
  *    хэл солиход шинэчлэгдэхгүй (зурагдах агшинд дуудагдах ёстой).
  */
 const SPEC: AclPanelSpec<AjilRole> = {
+  /* ⚠️ Бичилт `aclOps.SCOPED_SYS.ajil`-ээр — `setGrants` · `remove` · `roleCaps` ·
+     `confirmRemoveAll` нь тэнд НЭГ газар (2026-09-25, `ScopedAclPanel`-ийн ⚠️) */
+  sys: 'ajil',
   roles: ['editor', 'approver'],
   roleLabel: (r) => (r === 'editor' ? tr('Мөр нэмэгч') : tr('Батлагч')),
   emptyLabel: (r) => (r === 'editor' ? tr('Мөр нэмэгч томилоогүй') : tr('Батлагч томилоогүй')),
@@ -40,18 +41,6 @@ const SPEC: AclPanelSpec<AjilRole> = {
   list: listAjilAssigns,
   failedUsers: ajilFailedUsers,
   subscribe: subscribeAjilAcl,
-  setGrants: setAjilGrants,
-  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles`.
-     Зөвхөн мөр нэмэгчийг хасахад `addRow` буцаагдаж Guitsetgel-ийн бөглөх таб хаагдана. */
-  roleCaps: { editor: 'addRow', approver: 'ajilApprove' },
-  /*
-   * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
-   *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг
-   *    (админы гараар олгосон `addRow` г.м.) арчдаг байв. `UserAdmin.flipScoped`
-   *    ба `removeRevokingRoles`-той ижил дүрэм.
-   */
-  remove: (user) => removeRevokingRoles(user, listAjilAssigns, (u) => removeAjilAssign(u, false),
-    { editor: 'addRow', approver: 'ajilApprove' }),
   ready: ajilAclReady,
 
   notes: () => [
@@ -59,8 +48,6 @@ const SPEC: AclPanelSpec<AjilRole> = {
     tr('Мөр нэмэгч «Гүйцэтгэл бөглөх» хуудсанд шинэ ажлын мөр нэмж батлуулахаар илгээнэ; батлагч зөвшөөрсний дараа л мөр үндсэн өгөгдөлд үүснэ.'),
     tr('⚠️ Гүйцэтгэлийн урсгалаас ТУСДАА: тэр нь тоог, энэ нь ажил гэрээнд байх эсэхийг шийднэ. Мөр нэмэгчийн үүрэг нь «Мөр нэмэх» эрхийг дагуулна.'),
   ],
-  confirmRemoveAll: (user) =>
-    tr('«{0}»-г нэмэлт ажлын хуваарилалтаас бүрэн хасах уу? «Мөр нэмэх» ба «Нэмэлт ажил батлах» эрх нь мөн буцаагдана.', user),
   stuckMsg: () =>
     tr('⚠️ Батлагч нь мөр нэмэгчтэй ижил хүн — өөрийн нэмсэн ажлыг өөрөө батлах боломжгүй тул энэ багцын нэмэлт ажил гацна. Өөр батлагч нэмнэ үү.'),
   noApproverMsg: () =>

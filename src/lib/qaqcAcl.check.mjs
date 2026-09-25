@@ -198,8 +198,10 @@ assert.equal(typeof (await rv.sync), 'boolean', '`sync` boolean буцаана')
 console.log('✅ хасалтын эрх буцаалт ил гарна');
 
 /* ── 10. SUPER-Т ХУВААРИЛАЛТ ҮЙЛЧЛЭХГҮЙ — ХОЁР ЗАМД ЧЬ ──
-   `UserAdmin.flipCap` нь энэ няцаалтыг барьж, super-т эрхийг ХУУЧИН замаар
-   (`toggleCap`) олгодог болов. Хэрэв хэн нэгэн `setQaqcAssign`-ийн super
+   `UserAdmin.flipCap` нь энэ няцаалтыг барьж, super-т эрхийг ШУУД
+   (`toggleCap`) олгодог. ⚠️ 2026-09-25: super-ээс бусдад QAQC унтраалга
+   ҮЗҮҮЛЭЛТ болсон (хуваарилалт `aclOps`-оор) — super-ийн шууд зам нь цорын
+   ганц унтраалга хэвээр. Хэрэв хэн нэгэн `setQaqcAssign`-ийн super
    хамгаалалтыг авбал тэр салаа утгагүй болно — тиймээс энд бэхэлнэ. */
 const sSet = setQaqcAssign(superName, ['Багц 1']);
 assert.equal(sSet.ok, false, 'super-т хуваарилалт бичигдэхгүй');
@@ -207,10 +209,12 @@ assert.equal(sSet.sync, undefined, '`sync` БАЙХГҮЙ — дуудагч `r.
 assert.equal(qaqcScope(superName), null, 'super-т хүрээ хязгааргүй хэвээр');
 console.log('✅ super — хуваарилалтаас үл хамаарна');
 
-/* ── 11. БАЙГАА ХУВААРИЛАЛТЫГ ХАДГАЛАХ (UserAdmin-ы унтраалгын гэрээ) ──
-   `UserAdmin.flipCap` нь унтраалга асаахад `listQaqcAssigns()`-ээс одоогийн
-   багцыг уншиж ХЭВЭЭР үлдээдэг. Тэр уншилтын эх сурвалж ажиллаж байгааг
-   баталгаажуулна — эс бөгөөс хүрээ чимээгүй `[*]` болж ТЭЛНЭ. */
+/* ── 11. БАЙГАА ХУВААРИЛАЛТЫГ ХАДГАЛАХ (багц солих бичилтийн гэрээ) ──
+   ⚠️ 2026-09-25: урьд нь `UserAdmin.flipCap` унтраалга асаахад одоогийн багцыг
+   уншиж дахин бичдэг байв; тэр зам УСТСАН. Одоо `aclOps.qaqcAddOp` ·
+   `qaqcChipOp` нь `listQaqcAssigns()`-ээс одоогийн багцыг уншиж `grant=false`-оор
+   дахин бичнэ. Тэр уншилтын эх сурвалж ажиллаж байгааг баталгаажуулна — эс
+   бөгөөс хүрээ чимээгүй `[*]` болж ТЭЛНЭ. */
 _syncRemoteQaqc([]);
 setQaqcAssign('keep_x', ['Багц 2'], false);
 const cur = listQaqcAssigns().find((a) => a.user === 'keep_x');

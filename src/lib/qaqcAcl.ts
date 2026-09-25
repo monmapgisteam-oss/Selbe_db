@@ -31,6 +31,7 @@
 
 import { makeAcl, ALL_BAGTS } from './scopedAcl';
 import { qaqcUpsert, qaqcRemove } from './permsRemote';
+import { QAQC_CAP } from './aclRoleCaps';
 
 export { ALL_BAGTS };
 
@@ -46,7 +47,8 @@ const acl = makeAcl<never>({
   storeKey: 'selbe-qaqc-acl-v1',
   event: 'selbe-qaqc-acl-change',
   roleCaps: {} as Record<never, never>,
-  soleCap: 'qaqc',
+  /* ⚠️ `aclRoleCaps.QAQC_CAP` — ганц эх сурвалж (2026-09-25) */
+  soleCap: QAQC_CAP,
   /* ⚠️ Чанар нь ҮҮРЭГГҮЙ систем — `grants` нь үргэлж ганц мөр тул
      хуучин хэлбэрийн `bagts` нь мэдээлэл алдахгүй, задлах шаардлагагүй. */
   push: (user, _roles, bagts) => qaqcUpsert(user, bagts),
