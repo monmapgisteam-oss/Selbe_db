@@ -3893,24 +3893,71 @@ export const laborCompanyFields = (sfx: string) => ({
 /**
  * BIM — барилгын мэдээллийн загвар (BuildingSceneLayer).
  *
- * ⚠️ Эдгээр нь `layerType: 'Building'` бөгөөд ЗӨВХӨН SceneView-д (3D) ачаална.
- * `tiles.arcgis.com` дээрх tile — 2026-09-17-ноос орг Organization-only тул
- * IdentityManager-ийн credential-аар (esriRequest → 499 → owningSystemUrl) ачаална.
- * Барилгын гадна фотограмметрийн меш (`SCENE`)-ээс ЯЛГААТАЙ: энэ нь зохион
- * бүтээсэн загвар (давхар, хана, инженерийн систем) тул BIM горимд меш нь
- * хасагдаж, эдгээр нь оронд нь харагдана.
+ * ⚠️ 2026-09-25: ХУУЧИН 12 ЗАГВАР (`tiles.arcgis.com` · `71_1…71_12`,
+ *    `NEXT_PUBLIC_BIM_ROOT`) БҮРМӨСӨН ХАСАГДСАН — хэрэглэгчийн шийдвэр.
+ *    Одоо UBHUB Enterprise порталын `Hosted/Багц_<N>_FID<…>` SceneServer-ууд.
+ *    Хост нь `UBHUB_SCENE`-тэй ИЖИЛ тул шинэ env хувьсагч ХЭРЭГГҮЙ.
+ *
+ * ⚠️ `layerType: 'Building'` — ЗӨВХӨН SceneView-д (3D, `dim === 'bim'`).
+ *    Фотограмметрийн меш (`SCENE`)-ээс ЯЛГААТАЙ: зохион бүтээсэн загвар
+ *    (давхар, хана, инженерийн систем) тул BIM горимд меш хасагдаж эдгээр
+ *    оронд нь харагдана.
+ *
+ * ⚠️ ЗӨВХӨН НЭРГҮЙ НЭЭЛТТЭЙ 32 үйлчилгээ энд байна (2026-09-25-нд нэг бүрчлэн
+ *    шалгав). UBHUB нь ТУСДАА Enterprise портал — AGOL-ийн токен тэнд
+ *    хүчингүй (498), тиймээс хаалттай үйлчилгээг нэмбэл BIM горимд орох бүрд
+ *    UBHUB-ийн нэвтрэх цонх гарч, манай хэрэглэгчид түүнд аккаунтгүй.
+ *    ХААЛТТАЙ тул ОРУУЛААГҮЙ (UBHUB дээр «Everyone»-д хуваалцвал нэмнэ):
+ *      · Багц 1   — FID49 · 50_51 · 52 · 53_54 · 56 · 57 · 58_59 · 60
+ *      · Багц 3.1 — FID24…FID34 (11)
+ *      · Багц 2   — 20 item (URL нь нэргүй хандалтад ч 403)
+ *
+ * ⚠️ Нэрлэлт: `Багц_<багц>_FID<n>[_<n>]_<айл>_<single|double>` — `double`
+ *    нь ХОЁР FID-тэй (хос блок) нэг загвар.
  */
-const BIM_ROOT = req("NEXT_PUBLIC_BIM_ROOT", process.env.NEXT_PUBLIC_BIM_ROOT);
+const BIM_SERVICES: { pkg: string; names: string[] }[] = [
+  {
+    pkg: '1',
+    names: [
+      'Багц_1_FID55_117_single', 'Багц_1_FID61_117_single', 'Багц_1_FID62_63_71_double',
+      'Багц_1_FID64_117_single', 'Багц_1_FID65_117_single', 'Багц_1_FID66_67_71_double',
+      'Багц_1_FID112_117_single',
+    ],
+  },
+  {
+    pkg: '3.2',
+    names: [
+      'Багц_3_2_FID0_71_single', 'Багц_3_2_FID6_71_single', 'Багц_3_2_FID7_71_single',
+      'Багц_3_2_FID8_9_71_double', 'Багц_3_2_FID17_71_single', 'Багц_3_2_FID18_71_single',
+      'Багц_3_2_FID19_71_single', 'Багц_3_2_FID20_71_single', 'Багц_3_2_FID21_71_single',
+      'Багц_3_2_FID22_71_single', 'Багц_3_2_FID23_71_single',
+    ],
+  },
+  {
+    pkg: '3.3',
+    names: [
+      'Багц_3_3_FID10_71_single', 'Багц_3_3_FID11_71_single', 'Багц_3_3_FID12_71_single',
+      'Багц_3_3_FID13_71_single', 'Багц_3_3_FID14_71_single', 'Багц_3_3_FID15_71_single',
+      'Багц_3_3_FID16_71_single', 'Багц_3_3_FID35_71_single', 'Багц_3_3_FID36_71_single',
+      'Багц_3_3_FID37_71_single', 'Багц_3_3_FID38_71_single', 'Багц_3_3_FID39_71_single',
+      'Багц_3_3_FID40_71_single', 'Багц_3_3_FID41_71_single',
+    ],
+  },
+];
+
+/** `Багц_1_FID62_63_71_double` → `62 · 63` */
+const bimFids = (name: string): string =>
+  (name.match(/_FID([\d_]+?)_\d+_(?:single|double)$/)?.[1] ?? name).split('_').join(' · ');
 
 export const BIM = {
-  layers: Array.from({ length: 12 }, (_, i) => {
-    const n = i + 1;
-    return {
-      key: `bim:71_${n}`,
-      title: tr('Барилгын загвар 71_{0}', n),
-      url: `${BIM_ROOT}/71_${n}/SceneServer`,
-    };
-  }),
+  layers: BIM_SERVICES.flatMap(({ pkg, names }) =>
+    names.map((name) => ({
+      key: `bim:${name}`,
+      title: tr('Багц {0} · FID {1}', pkg, bimFids(name)),
+      /* ⚠️ Кирилл нэр — URL-д ЗААВАЛ кодлоно */
+      url: `${UBHUB_SCENE}/${encodeURIComponent(name)}/SceneServer`,
+    })),
+  ),
 } as const;
 
 /* ══════════════════════ Давхаргын багц ══════════════════════ */

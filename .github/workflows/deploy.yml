@@ -53,7 +53,6 @@ jobs:
           NEXT_PUBLIC_UBHUB_IMAGERY: ${{ vars.NEXT_PUBLIC_UBHUB_IMAGERY }}
           NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
           NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
-          NEXT_PUBLIC_BIM_ROOT: ${{ vars.NEXT_PUBLIC_BIM_ROOT }}
           NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
           # ⚠️ Тайлангийн хүлээн авагчид (таслалаар) — ЗААВАЛ; байхгүй бол кодод
           #    анхдагч хаяг БАЙХГҮЙ тул тайлангийн имэйл товчнууд идэвхгүй болно

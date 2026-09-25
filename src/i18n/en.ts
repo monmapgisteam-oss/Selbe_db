@@ -699,7 +699,6 @@ const en: Record<string, string> = {
   "Барилгын блок": "Building blocks",
   "Барилгын блок (гүйцэтгэл)": "Building blocks (progress)",
   "Барилгын давхарга каталогт алга: {0}": "The building layer is not in the catalogue: {0}",
-  "Барилгын загвар 71_{0}": "Building model 71_{0}",
   "Барилгын загвар ачаалагдсангүй (": "The building model could not be loaded (",
   "барилгын компани": "construction company",
   "Барилгын компани": "Construction company",
@@ -4901,6 +4900,7 @@ const en: Record<string, string> = {
   "Улаан нүд — ажил гацна (дээрх «Анхаарах»). Саарал нэр — зөвхөн харна, шатны эзэн биш.": "Red cell — work will stall (see «Attention» above). Grey name — view only, not a stage owner.",
   "Админ {0} — бүх багцад (хуваарилалт үйлчлэхгүй).": "Admins {0} — in all packages (allocation does not apply).",
   "Засвар бүгд нэг бичих давхаргаар — матриц, хэрэглэгчийн карт, бүлгийн хуудас ижил дүрмээр бичиж, ижил асуулт асууна. Хуваарилалт шууд хадгалагдана.": "All edits go through one write layer — the matrix, user card and group pages write with the same rules and ask the same questions. Allocations are saved immediately.",
+  "Багц {0} · FID {1}": "Package {0} · FID {1}",
 };
 
 export default en;

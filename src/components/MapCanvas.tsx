@@ -20,6 +20,7 @@ import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
+import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import ViewshedAnalysis from '@arcgis/core/analysis/ViewshedAnalysis';
 import AreaMeasurementAnalysis from '@arcgis/core/analysis/AreaMeasurementAnalysis';
@@ -74,6 +75,9 @@ import s from './map.module.css';
  * ачаалахад л байна.
  */
 export type Dim = '2d' | '3d' | 'bim';
+
+/** BIM загварын хүрээнд барилгын ХЭДЭН ХУВЬ орвол нуух вэ (0–1) — `MapCanvas`-ийн BIM эффект */
+const BIM_COVER = 0.5;
 type AnyView = MapView | SceneView;
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
@@ -2912,6 +2916,67 @@ export const MapCanvas = memo(function MapCanvas({
 
     // ⚠️ dep нь `sceneKey` (мөр) — `sceneList` массив рендер бүрт шинэ лавлагаатай.
   }, [dim, ready, sceneKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * BIM ЗАГВАРЫН ДООРХ БАРИЛГЫГ НУУНА (2026-09-25).
+   *
+   * ⚠️ ЯАГААД: BIM горимын барилга (`scene3d:4`) нь одоо 2D-ийн ГАНЦ файлаас
+   *    (`scene3d.ts`-ийн ⚠️) — BIM загвар байгаа газрын барилга ТЭНД БАЙСААР.
+   *    Нуухгүй бол Extrude барилга BIM загварын дотор/дээгүүр давхцана.
+   *    Урьд нь үүнийг ӨГӨГДӨЛ дээр (тусдаа хуулбараас устгаж) шийддэг байсан
+   *    тул BIM солигдоход хуучин газрууд ХООСОН, шинэ газрууд ДАВХАР болж
+   *    байв. Одоо КОДООР — BIM жагсаалт солигдоход өөрөө дагана.
+   *
+   * ⚠️ ДҮРЭМ: барилгын ХҮРЭЭНИЙ ТАЛААС ИХ нь (`BIM_COVER`) BIM загварын
+   *    хүрээнд (`fullExtent`) орвол нууна. 2026-09-25-нд 32 загвар бүрээр
+   *    амьд өгөгдлөөр тулгав: загварын ЖИНХЭНЭ барилга үргэлж 100% багтдаг,
+   *    хажуугийн туслах барилга (блок 69, 1 давхар) ердөө 6–26%.
+   *    ⚠️ ТӨВ ЦЭГЭЭР БИШ: олон хэсэгтэй полигоны төв нь хэсгийнхээ гадна
+   *    унаж, 32-ын 7-д барилга НУУГДАЛГҮЙ давхцал үлдэж байв.
+   *    ⚠️ «Огтлолцвол» БИШ: тэгш өнцөгт хүрээний буланд хүрсэн ХӨРШ ч алга болно.
+   *
+   * ⚠️ Уншигдаагүй BIM (сүлжээ, эрх) → тэр газрын барилгыг НУУХГҮЙ: загвар
+   *    харагдахгүй байхад барилгыг нуувал газар ХООСОН үлдэнэ.
+   * ⚠️ `scene3d:*` нь бүсийн шүүлтийн `definitionExpression` бичигчид ХҮРДЭГГҮЙ
+   *    (харагдалтын эффектэд эрт `return`) тул энд тавих нь зөрчилгүй.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || dim !== 'bim') return;
+    const bld = map.findLayerById('scene3d:4');
+    if (!(bld instanceof FeatureLayer)) return;
+    let alive = true;
+    void (async () => {
+      const bims = BIM.layers
+        .map((b) => map.findLayerById(b.key))
+        .filter((l): l is BuildingSceneLayer => l instanceof BuildingSceneLayer);
+      const exts = (await Promise.allSettled(bims.map(async (l) => { await l.load(); return l.fullExtent; })))
+        .flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []))
+        .map((e) => (e.spatialReference?.isWebMercator ? webMercatorUtils.webMercatorToGeographic(e) as typeof e : e))
+        .filter((e) => e.spatialReference?.isWGS84);
+      if (!alive || !exts.length) return;
+      await bld.load();
+      const oid = bld.objectIdField;
+      const fs2 = await bld.queryFeatures({
+        where: '1=1', outFields: [oid], returnGeometry: true, outSpatialReference: { wkid: 4326 },
+      });
+      if (!alive) return;
+      const hide: number[] = [];
+      for (const ft of fs2.features) {
+        const b = (ft.geometry as Polygon | null)?.extent;
+        const own = b ? b.width * b.height : 0;
+        if (!b || own <= 0) continue;
+        const covered = exts.some((e) => {
+          const w = Math.min(b.xmax, e.xmax) - Math.max(b.xmin, e.xmin);
+          const h = Math.min(b.ymax, e.ymax) - Math.max(b.ymin, e.ymin);
+          return w > 0 && h > 0 && (w * h) / own > BIM_COVER;
+        });
+        if (covered) hide.push(Number(ft.attributes[oid]));
+      }
+      bld.definitionExpression = (hide.length ? `${oid} NOT IN (${hide.join(',')})` : null) as unknown as string;
+    })().catch((e) => console.warn('[selbe] BIM-ийн доорх барилгыг нууж чадсангүй:', e));
+    return () => { alive = false; };
+  }, [dim, ready, sceneKey]);
 
   /**
    * IoT МЭДРЭГЧ — 3D-д газраас дээш өргөгдсөн радар тэмдэг, 2D-д энгийн цэг.
