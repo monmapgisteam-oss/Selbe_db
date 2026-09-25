@@ -25,6 +25,43 @@ type Bubble = { role: 'user' | 'bot'; text: string };
 const WIDE_KEY = 'selbe-agent-wide';
 
 /**
+ * Дахин илгээх түүхийн дээд хэмжээ (2026-09-25).
+ * ⚠️ Реле (`agent-proxy/server.mjs`) биеийг 2 MB (`MAX_BODY`)-аар хязгаарладаг.
+ *    Урт сешнд түүх тэр хэмжээнээс хэтэрч 413 буцдаг бөгөөд ⟲ дарах хүртэл
+ *    асуулт бүр унадаг байв. 1.5 MB нь ОДООГИЙН эргэлтийн tool_result-д зай
+ *    үлдээнэ.
+ */
+const MAX_HISTORY_MSGS = 30;
+const MAX_HISTORY_BYTES = 1_500_000;
+
+/**
+ * Түүхийг БАЙРАНД нь (in-place) огтолно — `tools/telegram-bot.mjs`-ийн
+ * `trimCut`-тай ижил дүрэм: зөвхөн хэрэглэгчийн АСУУЛТ (role 'user', string
+ * content) эхэлдэг цэгээс тасална.
+ * ⚠️ Дурын цэгээс тасалбал tool_result нь өөрийн tool_use-гүй үлдэж Anthropic
+ *    400 буцаана.
+ * ⚠️ Массивын ЗААЛТ хэвээр үлдэнэ (`splice`) — `send()` доторх `h`/`base`
+ *    буцаалт түүнд тулгуурладаг.
+ * Аль ч цэгээс тасалсан ч хязгаарт багтахгүй бол түүхийг бүхэлд нь цэвэрлэнэ.
+ */
+function trimHistory(h: ApiMessage[]): void {
+  const enc = new TextEncoder();
+  const sizes = h.map((m) => enc.encode(JSON.stringify(m)).length);
+  let total = sizes.reduce((a, b) => a + b, 0);
+  if (h.length <= MAX_HISTORY_MSGS && total <= MAX_HISTORY_BYTES) return;
+  for (let i = 0; i < h.length; i++) {
+    const m = h[i];
+    if (i > 0 && m.role === 'user' && typeof m.content === 'string'
+      && h.length - i <= MAX_HISTORY_MSGS && total <= MAX_HISTORY_BYTES) {
+      h.splice(0, i);
+      return;
+    }
+    total -= sizes[i];
+  }
+  h.length = 0;
+}
+
+/**
  * Эхлэхэд санал болгох асуултууд — хэрэглэгч юу асуухаа мэдэхгүй байх нь түгээмэл.
  * ⚠️ Агентын ЧАДВАРЫГ төлөөлүүлж сонгосон: нэгтгэл, ангиллын задаргаа, бүсийн
  * бүрэн тойм, санхүү — дөрөв нь дөрвөн өөр зам ажиллуулна.
@@ -139,6 +176,9 @@ export function AgentChat({
       //    .length = base` гэвэл хоосон массивыг сийрэг (sparse) болгож, дараагийн
       //    хүсэлтэд `[null,null,…]` илгээгдэн Anthropic 400 буцаана.
       const h = history.current;
+      // ⚠️ `base`-аас ӨМНӨ огтолно — алдаатай үед зөвхөн энэ эргэлтийн мөрүүд
+      //    хасагдана, огтлолт буцаагдахгүй (энэ нь зориуд).
+      trimHistory(h);
       const base = h.length;
 
       try {

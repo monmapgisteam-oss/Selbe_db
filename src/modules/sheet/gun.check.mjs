@@ -16,11 +16,15 @@ import { PKGS, loadSchema } from './bagts.pkg.ts';
 import { loadRows, computeAll, childIndexes } from './bagtsSheet.ts';
 import { TREES } from './bagts.trees.ts';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
-if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
-  process.exit(0);
-}
+/* ⚠️ Org-only үйлчилгээ, токенгүй → АМЬД хэсгүүд (2–4) алгасна (`tools/ts-alias.mjs`, 2026-09-17).
+   ⚠️ 2026-09-25: 1-р хэсэг СҮЛЖЭЭГҮЙ тул алгасалтад ОРОХГҮЙ. Урьд нь файлын эхэн дэх
+   гаралт (ба loader-ийн бүтэн файлын stub) түүнийг хамт алгасдаг байсан тул токенгүй/
+   хугацаа дууссан токентой CI дээр эвдэрсэн TREES `npm test`-ийг давдаг байв. Тиймээс:
+     · тэмдгийн нэрийг ЗАЛГАЖ бичнэ — `ts-alias-hooks.mjs` эх кодод тэр нэр ШУУД
+       бичигдсэн `.check.mjs`-ийг бүхэлд нь stub болгодог (1-р хэсэг ч ажиллахгүй);
+     · `process.exit()` ДУУДАХГҮЙ (Windows-д libuv assertion) — амьд хэсгүүд `if` дотор. */
+const LIVE_SKIP_ENV = ['SELBE', 'LIVE', 'SKIP'].join('_');
+const liveSkip = !!process.env[LIVE_SKIP_ENV];
 
 /* ═══ 1. «БҮЛЭГ ЭСЭХ» ДҮРЭМ — сүлжээгүй, TREES дээр шууд ═══
    `loadRows` нь `gun`-аас уншихдаа бүлгийг тусдаа талбаргүйгээр, ДАРААГИЙН
@@ -39,162 +43,166 @@ for (const [key, t] of Object.entries(TREES)) {
 }
 console.log(`✅ «бүлэг эсэх» дүрэм ${checked} мөр дээр TREES-тэй таарлаа`);
 
-/* ═══ 2. Багц бүр — `gun` багана ба модны таарц ═══ */
-let withGun = 0;
-for (const pkg of PKGS) {
-  const sc = await loadSchema(pkg).catch(() => null);
-  if (!sc) { console.log(`${pkg.key.padEnd(9)} ⚠ схем уншигдсангүй`); continue; }
+if (liveSkip) {
+  console.log('⏭ амьд шалгуур (2–4) алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+} else {
+  /* ═══ 2. Багц бүр — `gun` багана ба модны таарц ═══ */
+  let withGun = 0;
+  for (const pkg of PKGS) {
+    const sc = await loadSchema(pkg).catch(() => null);
+    if (!sc) { console.log(`${pkg.key.padEnd(9)} ⚠ схем уншигдсангүй`); continue; }
 
-  if (!sc.f.gun) {
-    /* ⚠️ Багана хараахан нэмэгдээгүй нь АЛДАА БИШ: `tools/bagts-gun.mjs`
-       ажиллах хүртэл код `TREES`-ээ хэвийн хэрэглэсээр байна. Зөвхөн мэдээлнэ —
-       эс бөгөөс байршуулалтын завсарт CI улаан болно. */
-    console.log(`${pkg.key.padEnd(9)} — «gun» багана алга (TREES-ээр ажиллана)`);
-    continue;
-  }
-
-  const { rows } = await loadRows(pkg, sc);
-  const tree = TREES[pkg.key] ?? '';
-  const filled = rows.length > 0 && rows.every((r) => Number.isFinite(r.depth));
-  if (!filled) { console.log(`${pkg.key.padEnd(9)} — «gun» хоосон (нийтлэгдээгүй)`); continue; }
-
-  // Мөрийн тоо TREES-тэй тэнцүү үед л тулгах утгатай (мөр нэмэгдсэн бол зөрнө).
-  if (rows.length === tree.length) {
-    for (let i = 0; i < rows.length; i++) {
-      const ch = tree[i];
-      const wantGroup = ch >= 'A' && ch <= 'E';
-      const wantDepth = wantGroup ? ch.charCodeAt(0) - 65 : Number(ch);
-      assert.equal(rows[i].depth, wantDepth, `${pkg.key} мөр ${i}: гүн ${rows[i].depth} ≠ ${wantDepth}`);
-      assert.equal(rows[i].group, wantGroup, `${pkg.key} мөр ${i}: бүлэг ${rows[i].group} ≠ ${wantGroup}`);
+    if (!sc.f.gun) {
+      /* ⚠️ Багана хараахан нэмэгдээгүй нь АЛДАА БИШ: `tools/bagts-gun.mjs`
+         ажиллах хүртэл код `TREES`-ээ хэвийн хэрэглэсээр байна. Зөвхөн мэдээлнэ —
+         эс бөгөөс байршуулалтын завсарт CI улаан болно. */
+      console.log(`${pkg.key.padEnd(9)} — «gun» багана алга (TREES-ээр ажиллана)`);
+      continue;
     }
-    console.log(`${pkg.key.padEnd(9)} ✅ «gun» мод TREES-тэй ЯГ таарав (${rows.length} мөр)`);
-  } else {
-    console.log(`${pkg.key.padEnd(9)} ✅ «gun» ажиллаж байна · ${rows.length} мөр (TREES ${tree.length} — мөр нэмэгдсэн)`);
+
+    const { rows } = await loadRows(pkg, sc);
+    const tree = TREES[pkg.key] ?? '';
+    const filled = rows.length > 0 && rows.every((r) => Number.isFinite(r.depth));
+    if (!filled) { console.log(`${pkg.key.padEnd(9)} — «gun» хоосон (нийтлэгдээгүй)`); continue; }
+
+    // Мөрийн тоо TREES-тэй тэнцүү үед л тулгах утгатай (мөр нэмэгдсэн бол зөрнө).
+    if (rows.length === tree.length) {
+      for (let i = 0; i < rows.length; i++) {
+        const ch = tree[i];
+        const wantGroup = ch >= 'A' && ch <= 'E';
+        const wantDepth = wantGroup ? ch.charCodeAt(0) - 65 : Number(ch);
+        assert.equal(rows[i].depth, wantDepth, `${pkg.key} мөр ${i}: гүн ${rows[i].depth} ≠ ${wantDepth}`);
+        assert.equal(rows[i].group, wantGroup, `${pkg.key} мөр ${i}: бүлэг ${rows[i].group} ≠ ${wantGroup}`);
+      }
+      console.log(`${pkg.key.padEnd(9)} ✅ «gun» мод TREES-тэй ЯГ таарав (${rows.length} мөр)`);
+    } else {
+      console.log(`${pkg.key.padEnd(9)} ✅ «gun» ажиллаж байна · ${rows.length} мөр (TREES ${tree.length} — мөр нэмэгдсэн)`);
+    }
+    withGun += 1;
   }
-  withGun += 1;
-}
 
-/* ═══ 3. МӨР НЭМЭХ — жин ба мөнгөн дүн ДАХИН бодогдох ёстой ═══
-   Эх өгөгдлийг ӨӨРЧЛӨХГҮЙ: зөвхөн санах ойд мөр залгаад `computeAll`-ийг
-   дахин ажиллуулна. */
-const probe = PKGS[0];
-const sc0 = await loadSchema(probe);
-const { rows: base, asOf } = await loadRows(probe, sc0);
-assert.ok(base.length > 0, `${probe.key}: мөр уншигдсангүй`);
-const nBld = sc0.bld.length;
+  /* ═══ 3. МӨР НЭМЭХ — жин ба мөнгөн дүн ДАХИН бодогдох ёстой ═══
+     Эх өгөгдлийг ӨӨРЧЛӨХГҮЙ: зөвхөн санах ойд мөр залгаад `computeAll`-ийг
+     дахин ажиллуулна. */
+  const probe = PKGS[0];
+  const sc0 = await loadSchema(probe);
+  const { rows: base, asOf } = await loadRows(probe, sc0);
+  assert.ok(base.length > 0, `${probe.key}: мөр уншигдсангүй`);
+  const nBld = sc0.bld.length;
 
-const before = computeAll(base, nBld, asOf ?? Date.now());
+  const before = computeAll(base, nBld, asOf ?? Date.now());
 
-/* ⚠️ МӨНГӨТЭЙ бүлгийг сонгоно. Мөнгөн дүнгүй бүлэгт шинэ мөр нэмэхэд түүний
-   жин автоматаар 100% болох тул «жин ДАХИН тарав уу» гэсэн гол шалгуур
-   утгагүй өнгөрнө — сул шалгуур нь шалгуургүйтэй адил. */
-const kids0 = childIndexes(base);
-const gi = base.findIndex((r, i) =>
-  r.group && (before[i].H ?? 0) > 0
-  && kids0[i].length > 1 && kids0[i].some((k) => !base[k].group));
-assert.ok(gi >= 0, `${probe.key}: мөнгөн дүнтэй, олон дэд мөртэй бүлэг олдсонгүй`);
-const VOL = 7, UNIT = 1_000_000;   // 7,000,000₮ — дүнд мэдэгдэхүйц
+  /* ⚠️ МӨНГӨТЭЙ бүлгийг сонгоно. Мөнгөн дүнгүй бүлэгт шинэ мөр нэмэхэд түүний
+     жин автоматаар 100% болох тул «жин ДАХИН тарав уу» гэсэн гол шалгуур
+     утгагүй өнгөрнө — сул шалгуур нь шалгуургүйтэй адил. */
+  const kids0 = childIndexes(base);
+  const gi = base.findIndex((r, i) =>
+    r.group && (before[i].H ?? 0) > 0
+    && kids0[i].length > 1 && kids0[i].some((k) => !base[k].group));
+  assert.ok(gi >= 0, `${probe.key}: мөнгөн дүнтэй, олон дэд мөртэй бүлэг олдсонгүй`);
+  const VOL = 7, UNIT = 1_000_000;   // 7,000,000₮ — дүнд мэдэгдэхүйц
 
-// Бүлгийн сүүлийн удмын дараа
-let at = gi + 1;
-while (at < base.length && base[at].depth > base[gi].depth) at += 1;
-const added = base.slice();
-added.splice(at, 0, {
-  oid: -1, no: '999', work: 'ШАЛГУУРЫН ТҮР МӨР', depth: base[gi].depth + 1, group: false,
-  wC: null, wD: null, vol: VOL, unit: UNIT, money: null,
-  act: new Array(nBld).fill(null), obyem: new Array(nBld).fill(null),
-  start: new Array(nBld).fill(null), end: new Array(nBld).fill(null),
-  raw: {},
-});
-const after = computeAll(added, nBld, asOf ?? Date.now());
+  // Бүлгийн сүүлийн удмын дараа
+  let at = gi + 1;
+  while (at < base.length && base[at].depth > base[gi].depth) at += 1;
+  const added = base.slice();
+  added.splice(at, 0, {
+    oid: -1, no: '999', work: 'ШАЛГУУРЫН ТҮР МӨР', depth: base[gi].depth + 1, group: false,
+    wC: null, wD: null, vol: VOL, unit: UNIT, money: null,
+    act: new Array(nBld).fill(null), obyem: new Array(nBld).fill(null),
+    start: new Array(nBld).fill(null), end: new Array(nBld).fill(null),
+    raw: {},
+  });
+  const after = computeAll(added, nBld, asOf ?? Date.now());
 
-// 3a. Мөнгөн дүн нь ЯГ vol×unit-аар өссөн эсэх
-const dH = (after[gi].H ?? 0) - (before[gi].H ?? 0);
-assert.ok(Math.abs(dH - VOL * UNIT) < 1,
-  `бүлгийн Мөнгөн дүн ${dH} нэмэгдэв, ${VOL * UNIT} байх ёстой — нэмсэн мөр тооцоонд ОРООГҮЙ`);
+  // 3a. Мөнгөн дүн нь ЯГ vol×unit-аар өссөн эсэх
+  const dH = (after[gi].H ?? 0) - (before[gi].H ?? 0);
+  assert.ok(Math.abs(dH - VOL * UNIT) < 1,
+    `бүлгийн Мөнгөн дүн ${dH} нэмэгдэв, ${VOL * UNIT} байх ёстой — нэмсэн мөр тооцоонд ОРООГҮЙ`);
 
-// 3b. Шинэ мөр өөрийн хувийн жинтэй болсон эсэх
-const nw = after[at];
-assert.ok(nw.C != null && nw.C > 0 && nw.C <= 1, `шинэ мөрийн хувийн жин буруу: ${nw.C}`);
+  // 3b. Шинэ мөр өөрийн хувийн жинтэй болсон эсэх
+  const nw = after[at];
+  assert.ok(nw.C != null && nw.C > 0 && nw.C <= 1, `шинэ мөрийн хувийн жин буруу: ${nw.C}`);
 
-// 3c. Бүлгийн дэд мөрүүдийн жингийн нийлбэр 1 хэвээр (жин ДАХИН тарсан эсэх)
-const kids1 = childIndexes(added);
-const sum = kids1[gi].reduce((s, k) => s + (after[k].C ?? 0), 0);
-assert.ok(Math.abs(sum - 1) < 1e-6,
-  `бүлгийн дэд жингийн нийлбэр ${sum} — 1 байх ёстой (жин дахин тараагдаагүй)`);
+  // 3c. Бүлгийн дэд мөрүүдийн жингийн нийлбэр 1 хэвээр (жин ДАХИН тарсан эсэх)
+  const kids1 = childIndexes(added);
+  const sum = kids1[gi].reduce((s, k) => s + (after[k].C ?? 0), 0);
+  assert.ok(Math.abs(sum - 1) < 1e-6,
+    `бүлгийн дэд жингийн нийлбэр ${sum} — 1 байх ёстой (жин дахин тараагдаагүй)`);
 
-// 3d. Хуучин дэд мөрийн жин БУУРСАН эсэх — шинэ мөр орж ирснээр дахин тарна
-const firstOld = kids1[gi].find((k) => k !== at);
-assert.ok(firstOld != null, 'харьцуулах хуучин дэд мөр алга');
-const oldIdx0 = kids0[gi].find((k) => k === firstOld || k === firstOld - 1);
-if (oldIdx0 != null && (before[oldIdx0].C ?? 0) > 0)
-  assert.ok((after[firstOld].C ?? 0) < (before[oldIdx0].C ?? 0),
-    `хуучин дэд мөрийн жин ${before[oldIdx0].C} → ${after[firstOld].C} — буурах ёстой`);
+  // 3d. Хуучин дэд мөрийн жин БУУРСАН эсэх — шинэ мөр орж ирснээр дахин тарна
+  const firstOld = kids1[gi].find((k) => k !== at);
+  assert.ok(firstOld != null, 'харьцуулах хуучин дэд мөр алга');
+  const oldIdx0 = kids0[gi].find((k) => k === firstOld || k === firstOld - 1);
+  if (oldIdx0 != null && (before[oldIdx0].C ?? 0) > 0)
+    assert.ok((after[firstOld].C ?? 0) < (before[oldIdx0].C ?? 0),
+      `хуучин дэд мөрийн жин ${before[oldIdx0].C} → ${after[firstOld].C} — буурах ёстой`);
 
-const label = (base[gi].no ? base[gi].no + ' ' : '') + base[gi].work;
-console.log(`✅ мөр нэмэхэд дүн дахин бодогдов · ${probe.key} «${label.slice(0, 30)}»`
-  + ` · Мөнгөн дүн +${(dH / 1e6).toFixed(1)}сая · шинэ мөрийн жин ${(nw.C * 100).toFixed(2)}%`);
+  const label = (base[gi].no ? base[gi].no + ' ' : '') + base[gi].work;
+  console.log(`✅ мөр нэмэхэд дүн дахин бодогдов · ${probe.key} «${label.slice(0, 30)}»`
+    + ` · Мөнгөн дүн +${(dH / 1e6).toFixed(1)}сая · шинэ мөрийн жин ${(nw.C * 100).toFixed(2)}%`);
 
 
-/* ═══ 4. МӨР НЭМЭХ ЗЭРЭГЦҮҮЛЭЛТ — багана нэмэхгүйгээр ═══
-   Шатлалыг үйлчилгээнд хадгалахын оронд шинэ мөрийг СУУРЬ АГШИНТАЙ тулгаж
-   таьдаг. Энэ хэсэг тэр зэрэгцүүлэлтийг багц бүр дээр живээр батална:
-     · хуучин мөр бүрийн гүн ХЭВЭЭР үлдэх (нэг ч мөр гулсаагүй),
-     · шинэ мөр нь ах дүүтэйгээ ижил гүнд, эцэг бүлгээсээ яг нэг доор.
-   Зөрвөл гүйцэтгэл огт өөр мөрөнд наалдана — алдаа нь ЧИМЭЭГҮЙ. */
-const align = (cur, ref) => {
-  const map = new Array(cur.length).fill(-1);
-  let j = 0;
-  for (let i = 0; i < cur.length; i += 1) {
-    if (j < ref.length && cur[i] === ref[j]) { map[i] = j; j += 1; }
-  }
-  return j === ref.length ? map : null;
-};
-
-let aligned = 0;
-for (const pkg of PKGS) {
-  const sc = await loadSchema(pkg).catch(() => null);
-  if (!sc) continue;
-  const r = await loadRows(pkg, sc).catch(() => null);
-  if (!r) continue;
-  const t = TREES[pkg.key] ?? '';
-  const dep = (i) => {
-    const c = t[i] ?? '0';
-    return c >= 'A' && c <= 'E' ? c.charCodeAt(0) - 65 : Number(c);
+  /* ═══ 4. МӨР НЭМЭХ ЗЭРЭГЦҮҮЛЭЛТ — багана нэмэхгүйгээр ═══
+     Шатлалыг үйлчилгээнд хадгалахын оронд шинэ мөрийг СУУРЬ АГШИНТАЙ тулгаж
+     таьдаг. Энэ хэсэг тэр зэрэгцүүлэлтийг багц бүр дээр живээр батална:
+       · хуучин мөр бүрийн гүн ХЭВЭЭР үлдэх (нэг ч мөр гулсаагүй),
+       · шинэ мөр нь ах дүүтэйгээ ижил гүнд, эцэг бүлгээсээ яг нэг доор.
+     Зөрвөл гүйцэтгэл огт өөр мөрөнд наалдана — алдаа нь ЧИМЭЭГҮЙ. */
+  const align = (cur, ref) => {
+    const map = new Array(cur.length).fill(-1);
+    let j = 0;
+    for (let i = 0; i < cur.length; i += 1) {
+      if (j < ref.length && cur[i] === ref[j]) { map[i] = j; j += 1; }
+    }
+    return j === ref.length ? map : null;
   };
-  const ref = r.rows.map((x) => `${x.no} ¦ ${x.work}`);
 
-  // Хамгийн гүн бүлгийг олж, СҮҮЛИЙН удмынх нь ард шинэ мөр хийнэ
-  /* ⚠️ Блокгүй 8 багц 3 түвшинтэй (бүлэг ≤ 2) тул «3» олдохгүй бол ХАМГИЙН ГҮН
-     бүлгийг авна — үндэс рүү унавал шинэ мөр хуудасны төгсгөлд орж, «өмнөх
-     мөрийн гүн» дүрэм зориудаар унана (2026-09-17). */
-  let g = r.rows.findIndex((x) => x.group && x.depth === 3);
-  if (g < 0) {
-    const md = Math.max(-1, ...r.rows.filter((x) => x.group).map((x) => x.depth));
-    g = r.rows.findIndex((x) => x.group && x.depth === md);
-  }
-  if (g < 0) continue;
-  let end = g + 1;
-  while (end < r.rows.length && r.rows[end].depth > r.rows[g].depth) end += 1;
-  const cur = ref.slice();
-  cur.splice(end, 0, '999 ¦ ШИНЭ ТУРШИЛТЫН АЖИЛ');
+  let aligned = 0;
+  for (const pkg of PKGS) {
+    const sc = await loadSchema(pkg).catch(() => null);
+    if (!sc) continue;
+    const r = await loadRows(pkg, sc).catch(() => null);
+    if (!r) continue;
+    const t = TREES[pkg.key] ?? '';
+    const dep = (i) => {
+      const c = t[i] ?? '0';
+      return c >= 'A' && c <= 'E' ? c.charCodeAt(0) - 65 : Number(c);
+    };
+    const ref = r.rows.map((x) => `${x.no} ¦ ${x.work}`);
 
-  const map = align(cur, ref);
-  assert.ok(map, `${pkg.key}: мөр нэмэхэд зэрэгцүүлэлт бүтсэнгүй`);
-  const d = new Array(cur.length).fill(0);
-  for (let i = 0; i < cur.length; i += 1) {
-    d[i] = map[i] >= 0 ? dep(map[i]) : (i > 0 ? d[i - 1] : 0);
-  }
-  for (let i = 0; i < cur.length; i += 1) {
-    if (map[i] >= 0) {
-      assert.equal(d[i], r.rows[map[i]].depth, `${pkg.key} i=${i}: хуучин мөрийн гүн гулсав`);
+    // Хамгийн гүн бүлгийг олж, СҮҮЛИЙН удмынх нь ард шинэ мөр хийнэ
+    /* ⚠️ Блокгүй 8 багц 3 түвшинтэй (бүлэг ≤ 2) тул «3» олдохгүй бол ХАМГИЙН ГҮН
+       бүлгийг авна — үндэс рүү унавал шинэ мөр хуудасны төгсгөлд орж, «өмнөх
+       мөрийн гүн» дүрэм зориудаар унана (2026-09-17). */
+    let g = r.rows.findIndex((x) => x.group && x.depth === 3);
+    if (g < 0) {
+      const md = Math.max(-1, ...r.rows.filter((x) => x.group).map((x) => x.depth));
+      g = r.rows.findIndex((x) => x.group && x.depth === md);
     }
-  }
-  const ni = map.indexOf(-1);
-  assert.equal(d[ni], r.rows[g].depth + 1, `${pkg.key}: шинэ мөрийн гүн эцгээсээ нэг доор биш`);
-  assert.equal(d[ni], d[ni - 1], `${pkg.key}: шинэ мөр ах дүүгээсээ өөр гүнд`);
-  aligned += 1;
-}
-console.log(`✅ мөр нэмэх зэрэгцүүлэлт ${aligned}/${PKGS.length} багцад зөв (багана нэмээгүй)`);
+    if (g < 0) continue;
+    let end = g + 1;
+    while (end < r.rows.length && r.rows[end].depth > r.rows[g].depth) end += 1;
+    const cur = ref.slice();
+    cur.splice(end, 0, '999 ¦ ШИНЭ ТУРШИЛТЫН АЖИЛ');
 
-console.log(`\ngun.check: ok · «gun» багана ${withGun}/${PKGS.length} багцад`);
+    const map = align(cur, ref);
+    assert.ok(map, `${pkg.key}: мөр нэмэхэд зэрэгцүүлэлт бүтсэнгүй`);
+    const d = new Array(cur.length).fill(0);
+    for (let i = 0; i < cur.length; i += 1) {
+      d[i] = map[i] >= 0 ? dep(map[i]) : (i > 0 ? d[i - 1] : 0);
+    }
+    for (let i = 0; i < cur.length; i += 1) {
+      if (map[i] >= 0) {
+        assert.equal(d[i], r.rows[map[i]].depth, `${pkg.key} i=${i}: хуучин мөрийн гүн гулсав`);
+      }
+    }
+    const ni = map.indexOf(-1);
+    assert.equal(d[ni], r.rows[g].depth + 1, `${pkg.key}: шинэ мөрийн гүн эцгээсээ нэг доор биш`);
+    assert.equal(d[ni], d[ni - 1], `${pkg.key}: шинэ мөр ах дүүгээсээ өөр гүнд`);
+    aligned += 1;
+  }
+  console.log(`✅ мөр нэмэх зэрэгцүүлэлт ${aligned}/${PKGS.length} багцад зөв (багана нэмээгүй)`);
+
+  console.log(`\ngun.check: ok · «gun» багана ${withGun}/${PKGS.length} багцад`);
+}

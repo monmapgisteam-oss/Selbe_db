@@ -74,13 +74,19 @@ export function ExecReport() {
   }, []);
 
   const x = q.state === 'ready' ? q.data : null;
-  /* ⚠️ Өгөгдөл шинэчлэгдвэл (кэш хаягдах, дахин татах) хуучин AI дүгнэлт
-     ХУУЧИН тоог тайлбарлаж үлддэг байв — цэвэрлэнэ (2026-09-23). */
-  useEffect(() => { setSummary(null); }, [x]);
   /* ⚠️ 2026-09-24: AI хүсэлтийн AbortController — unmount-д цуцална, эс тэгвээс
      хариу ирэхэд хаагдсан компонентын state-ийг бичих байв. */
   const aiAc = useRef<AbortController | null>(null);
   useEffect(() => () => aiAc.current?.abort(), []);
+  /* ⚠️ Өгөгдөл шинэчлэгдвэл (кэш хаягдах, дахин татах) хуучин AI дүгнэлт
+     ХУУЧИН тоог тайлбарлаж үлддэг байв — цэвэрлэнэ (2026-09-23).
+     ⚠️ 2026-09-25: ЯВЖ БУЙ AI хүсэлтийг мөн ЦУЦЛАНА. Урьд нь зөвхөн `summary`-г
+     цэвэрлэдэг тул хуучин тооноос бичигдсэн хариу ДАРАА нь ирж тавигдаад, шинэ
+     хүснэгттэй PDF/PNG-д хуучин тоог иш татсан дүгнэлт болж орж байв. */
+  /* ⚠️ 2026-09-25: цуцласны дараа ref-ийг ЦЭВЭРЛЭНЭ — дууссан хүсэлтийн controller-ийг
+     abort() хийвэл `signal.aborted` true болж үлдээд, дараагийн PDF/PNG алдааг
+     catch чимээгүй залгидаг байв. */
+  useEffect(() => { aiAc.current?.abort(); aiAc.current = null; setSummary(null); }, [x]);
   const findings = useMemo(() => (x ? execFindings(x) : []), [x]);
   /**
    * ХАВСРАЛТ — нэрсийн жагсаалттай дүгнэлтүүд (2026-09-17).
@@ -106,18 +112,21 @@ export function ExecReport() {
     if (!x || busy) return;
     setFail('');
     setBusy(what);
+    /* ⚠️ 2026-09-25: цуцлалтыг ЭНЭ дуудлагын өөрийн controller-оор шалгана — `aiAc.current`
+       нь өөр (дууссан/цуцлагдсан) хүсэлтийнх байж болох тул pdf/png алдааг залгихгүй. */
+    let ac: AbortController | null = null;
     try {
       const d = date || dateTime(Date.now());
       if (what === 'pdf') await downloadExecPdf(x, d, summary);
       else if (what === 'png') await downloadInfographic(x, d, summary);
       else {
-        const ac = new AbortController();
+        ac = new AbortController();
         aiAc.current = ac;
         const s = await askExecSummary(x, ac.signal);
         if (!ac.signal.aborted) setSummary(s);
       }
     } catch (err) {
-      if (aiAc.current?.signal.aborted) return;
+      if (ac?.signal.aborted) return;
       console.error('[selbe] удирдлагын тайлан:', err);
       const label = what === 'pdf' ? 'PDF' : what === 'png' ? tr('Инфографик') : tr('AI дүгнэлт');
       /* ⚠️ AI-ийн алдаа (хугацаа хэтэрсэн, реле) нь өөрөө ойлгомжтой мөртэй — түүнийг л харуулна */

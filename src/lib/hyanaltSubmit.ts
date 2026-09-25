@@ -26,7 +26,7 @@
 
 import { BUILDING } from './services';
 import { tokenParam } from '@/lib/authToken';
-import { addRows, queryAll, F, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
+import { addRows, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -129,6 +129,16 @@ const dayLabel = (ms: number) => {
  *       ховор тохиолдолд өчигдрийн `sub|` мөр хөлдөөгүй үлдэж, маргааш нь
  *       ЯГ ТЭР OBJECTID дахин ашиглагдвал өчигдрийн хянагдаж буй мөр
  *       өнөөдрийн ажлыг «бүртгэгдсэн» гэж дарах байлаа.
+ *    5. ⚠️ ЗӨВХӨН АЖЛЫН ОДООГИЙН (сүүлийн) ТОЙРОГ шалгагдана (2026-09-25-ны
+ *       аудит, HIGH). `recheck('ok')` нь ХУУЧИН мөрийг САНААТАЙ засдаггүй
+ *       («Менежер буцаасан» хэвээр, OWNER = инженер) бөгөөд шинэ тойрог
+ *       нэмдэг. Урьд нь энд ижил `sheetOid`-той БҮХ мөрийг шалгадаг байсан
+ *       тул тэр хуучин A мөр үүрд «хянагчийн гар дээр» мэт таарч байв:
+ *       одоогийн B тойрог «Инженер буцаасан» болоход гүйцэтгэгчийн засвар
+ *       `reused: true` гэж A-д шингэж, ШИНЭ тойрог ҮҮСЭХГҮЙ — B компанид
+ *       үлдэж, засварыг хэн ч харахгүй, ажил мөнхөд гацна. Одоо ажил бүрийн
+ *       (`багц|ажил|компани`) одоогийн мөрийг `groupWorks`-тэй ИЖИЛ эрэмбээр
+ *       (`Хэддэх_удаа`, дараа нь OBJECTID) сонгоод ЗӨВХӨН түүнийг шалгана.
  */
 export function openReviewRow(
   rows: readonly Attrs[],
@@ -136,14 +146,47 @@ export function openReviewRow(
   dayTag: string,
 ): Attrs | null {
   if (sheetOid == null || sheetOid <= 0) return null;
-  return rows.find((r) => {
-    if (Number(r[F.sheetOid]) !== sheetOid) return false;
+  const cur = currentRows(rows, sheetOid, (r) => String(r[F.ajil] ?? '').startsWith(dayTag));
+  return cur.find((r) => {
     const st = String(r[F.status] ?? '') as Status;
     if (st === STATUS.transferred) return false;
     /* Гүйцэтгэгчийн гар дээр (буцаагдсан) бол ЖИНХЭНЭ дахин илгээлт — шинэ тойрог */
     if (OWNER[st] === 'company') return false;
-    return String(r[F.ajil] ?? '').startsWith(dayTag);
+    return true;
   }) ?? null;
+}
+
+/** Ажлын түлхүүр — `hyanaltGroup.workKey`-тэй ЯГ ИЖИЛ (`багц|ажил|компани`). */
+const workKeyOf = (r: Attrs) =>
+  `${String(r[F.bagts] ?? '')}|${String(r[F.ajil] ?? '')}|${String(r[F.company] ?? '')}`;
+
+/** `hyanaltStore.toRow`-ын `num`-тэй ижил — тоо биш бол 0. */
+const num0 = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+/**
+ * ЭНЭ ИЛГЭЭЛТИЙН (`sheetOid`) АЖИЛ БҮРИЙН ОДООГИЙН МӨР.
+ *
+ * ⚠️ `groupWorks`-ийн `current`-тай ИЖИЛ дүрэм: `Хэддэх_удаа` их нь, тэнцвэл
+ *    OBJECTID их нь, тэр ч тэнцвэл жагсаалтын СҮҮЛИЙНХ (`queryAll` нь
+ *    OBJECTID ASC, `groupWorks`-ийн эрэмбэ тогтвортой). Хоёр тал өөр мөрийг
+ *    «одоогийн» гэвэл хянагчийн харж буй төлөв ба илгээлтийн шийдвэр зөрнө.
+ */
+function currentRows(
+  rows: readonly Attrs[],
+  sheetOid: number,
+  pred: (r: Attrs) => boolean,
+): Attrs[] {
+  const best = new Map<string, Attrs>();
+  for (const r of rows) {
+    if (Number(r[F.sheetOid]) !== sheetOid || !pred(r)) continue;
+    const k = workKeyOf(r);
+    const b = best.get(k);
+    if (!b) { best.set(k, r); continue; }
+    const de = num0(r[F.ergelt]) - num0(b[F.ergelt]);
+    const doid = num0(r[HYANALT.oid]) - num0(b[HYANALT.oid]);
+    if (de > 0 || (de === 0 && doid >= 0)) best.set(k, r);
+  }
+  return [...best.values()];
 }
 
 /** Өдрийн шошго — `Ажлын_нэр`-ийн угтвар («Гүйцэтгэл · 2026.09.07») */
@@ -169,6 +212,12 @@ export const dayTagOf = (fillMs: number) => `Гүйцэтгэл · ${dayLabel(fi
  *    sheetOid`) нээлттэй мөрөөс өвлөнө — өөр илгээлтийн нээлттэй мөр байгаа
  *    нь энэ илгээлтээс шошго хасах шалтгаан БИШ. Ингэснээр тухайн илгээлтийн
  *    ӨӨРИЙНХ нь түүх (ergelt тоолуур, буцаалтын түүх) тасрахгүй хэвээр үлдэнэ.
+ *
+ * ⚠️ ЗӨВХӨН ОДООГИЙН ТОЙРОГ (2026-09-25-ны аудит) — `openReviewRow`-ийн 5-р
+ *    дүрэмтэй ижил: `recheck('ok')`-оор дарагдсан хуучин мөр «Шилжүүлсэн»
+ *    болдоггүй тул ажил аль хэдийн ДУУССАН (одоогийн мөр нь «Шилжүүлсэн»)
+ *    байхад ч хуучин нэрийг үүрд өвлүүлж, шинэ шошготой хэлбэрт шилжихгүй
+ *    байлаа.
  */
 export function hasOpenLegacy(
   rows: readonly Attrs[],
@@ -178,14 +227,14 @@ export function hasOpenLegacy(
   sheetOid: number | null,
 ): boolean {
   if (sheetOid == null || sheetOid <= 0) return false;
-  return rows.some(
+  return currentRows(
+    rows,
+    sheetOid,
     (r) =>
-      Number(r[F.sheetOid]) === sheetOid &&
       String(r[F.bagts] ?? '') === bagts &&
       String(r[F.company] ?? '') === company &&
-      String(r[F.ajil] ?? '') === legacyAjil &&
-      String(r[F.status] ?? '') !== STATUS.transferred,
-  );
+      String(r[F.ajil] ?? '') === legacyAjil,
+  ).some((r) => String(r[F.status] ?? '') !== STATUS.transferred);
 }
 
 /**

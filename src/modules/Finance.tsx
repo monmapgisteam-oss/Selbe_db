@@ -1323,7 +1323,7 @@ function parseCell(s: string, type: string, label: string): unknown {
  */
 function FullTable({
   title, subtitle, rows, fields, url, oidField, dataKey, facets, months = [],
-  canEdit, canRow, onSaved,
+  canEdit, canRow, onSaved, onDirty,
 }: {
   title: string;
   subtitle: string;
@@ -1351,6 +1351,11 @@ function FullTable({
   canRow: boolean;
   /** Амжилттай нийтэлсний дараа — эцэг талд дахин татуулна */
   onSaved: () => void;
+  /**
+   * Нийтлээгүй засвар/шинэ мөртэй эсэхийг эцэгт мэдэгдэнэ (2026-09-25) —
+   * `FinTablesView` таб солиход баталгаажуулалт асуухад хэрэглэнэ. Unmount-д `false`.
+   */
+  onDirty?: (dirty: boolean) => void;
 }) {
   /** Засварын горим асаалттай эсэх — эрхтэй хүнд л товч гарна */
   const [edit, setEdit] = useState(false);
@@ -1635,11 +1640,16 @@ function FullTable({
      бөглөх»-тэй ижил зан. Гараар хийсэн 200 нүдний ажил алдагдах нь эргэж
      нөхөгдөшгүй. */
   useEffect(() => {
+    /* ⚠️ 2026-09-25: таб солиход (`cf` → `ipc`/`plan`) энэ бүрэлдэхүүн unmount
+       болж засвар ЧИМЭЭГҮЙ алга болдог байв — beforeunload хуудас доторх таб
+       солилтод ажилладаггүй. Эцэгт мэдэгдэж, тэнд баталгаа асуулгана. */
+    onDirty?.(dirty > 0);
     if (!dirty) return;
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener('beforeunload', h);
     return () => window.removeEventListener('beforeunload', h);
-  }, [dirty]);
+  }, [dirty, onDirty]);
+  useEffect(() => () => onDirty?.(false), [onDirty]);
 
   /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
      нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
@@ -1778,10 +1788,16 @@ function FullTable({
           if (!('Cashflow_huwi' in a)) continue;
           const mr = monthByOid.get(oid);
           const parent = rows.find((r) => Number(r.Cashflow_ID) === Number(mr?.Cashflow_ID));
-          const cost = Number(parent?.ho_dun_geree);
+          /* ⚠️ 2026-09-25: эцгийн ХО дүн хоосон/0 бол `Number(null)` = 0 болж
+             `Cashflow_dun = 0 ₮` БИЧИГДДЭГ байв — «мэдээлэлгүй» нь «хэмжсэн тэг»
+             болж S-муруйд орно (null ≠ 0). «Cashflow хувиарлах» табын
+             `CashflowPlan.costOf`-той ИЖИЛ дүрэм: төгсгөлгүй эсвэл ≤0 бол `null`. */
+          const costN = Number(parent?.ho_dun_geree);
+          const cost = parent?.ho_dun_geree != null && Number.isFinite(costN) && costN > 0 ? costN : null;
           const pct = Number(a.Cashflow_huwi);
           /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
-          a.Cashflow_dun = a.Cashflow_huwi == null || !Number.isFinite(pct) || !Number.isFinite(cost)
+          a.Cashflow_dun = a.Cashflow_huwi == null || String(a.Cashflow_huwi).trim() === ''
+            || !Number.isFinite(pct) || cost == null
             ? null
             : (cost * pct) / 100;
         }
@@ -4271,10 +4287,16 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
      `ref` (state биш): dirty солигдох бүрд энэ хуудсыг дахин зурах хэрэггүй. */
   const planDirty = useRef(false);
   const onPlanDirty = useCallback((v: boolean) => { planDirty.current = v; }, []);
+  /* ⚠️ 2026-09-25: «Cashflow» (гэрээний бүртгэл) табын `FullTable` ч мөн адил
+     өөрийн `pend`/`adds`-тэй — таб солиход засвар нь чимээгүй алга болдог байв. */
+  const cfDirty = useRef(false);
+  const onCfDirty = useCallback((v: boolean) => { cfDirty.current = v; }, []);
   const switchTab = (t: 'cf' | 'ipc' | 'plan') => {
     if (t === tab) return;
     if (tab === 'plan' && planDirty.current
       && !window.confirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
+    if (tab === 'cf' && cfDirty.current
+      && !window.confirm(tr('Гэрээний бүртгэлд нийтлээгүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'))) return;
     setTab(t);
   };
 
@@ -4356,6 +4378,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         canEdit={canEdit}
         canRow={canRow}
         onSaved={onSaved}
+        onDirty={onCfDirty}
       />
       ) : (
       /* ⚠️ `groupHo` нь 45 мөрийг 22 гэрээ болгож ДЕДУП хийнэ — энд
@@ -4397,7 +4420,17 @@ export function IpcRawTableUnused({
         facets={FIN_FACETS.HO_IPC}
         canEdit={canEdit}
         canRow={canRow}
-        onSaved={onSaved}
+        /* ⚠️ `dun` засагдмагц AUTO мөрийн `guits_zoruu`-г ДАХИН БОДНО (2026-09-25
+           аудит): урьд нь зөвхөн дараагийн батлалтад (`syncIpcFromFill`)
+           шинэчлэгддэг тул засварын дараа зөрүү хуучирч үлддэг байв. Аргументгүй
+           дуудлага нь бүх гэрээний AUTO мөрийг шинэчилж HO_IPC-г өөрөө хүчингүй болгоно. */
+        onSaved={() => {
+          void import('@/lib/ipcAutoWrite')
+            .then((m) => m.refreshAutoZoruu())
+            .then((r) => { if (!r.ok) console.warn('[selbe] IPC зөрүү:', r.error); })
+            .catch((e) => console.warn('[selbe] IPC зөрүү:', e));
+          onSaved();
+        }}
       />
   );
 }

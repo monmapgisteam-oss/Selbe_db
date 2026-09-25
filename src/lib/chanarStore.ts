@@ -382,6 +382,11 @@ async function attachDeny(oid: number): Promise<string | null> {
   if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) return tr('Зөвхөн ноорог эсвэл буцаагдсан баримтын хавсралтыг өөрчилнө.');
   const me = currentUser();
   if (typeof window !== 'undefined' && AUTH.appId && doc.author.trim().toLowerCase() !== me) return tr('Зөвхөн зохиогч хавсралт өөрчилнө.');
+  /* ⚠️ ХУУЧИН ХУВИЛБАР ХААЛТТАЙ (2026-09-25 аудит): `Chanar.tsx` хавсралтыг
+     БҮХ хувилбараас цуглуулж харуулдаг тул rev0 (буцаагдсан) дээрх гэрчилгээг
+     rev1 батлагдсаны ДАРАА солих боломжтой байв — батлагдсан баримтын нотолгоо
+     чимээгүй өөрчлөгдөнө. Шинэ хувилбар байвал зөвхөн сүүлийнх нь засагдана. */
+  if (await newerExists(doc.bagts, doc.seq, doc.rev + 1)) return tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.');
   return null;
 }
 
@@ -580,6 +585,17 @@ export async function submitDoc(args: { oid: number; who: string }): Promise<Res
   }
 }
 
+/** Зэрэгцээ бичигч манай слотыг дарсан эсэхийг шалгах хүлээлт (мс) */
+const REVIEW_SETTLE_MS = 1500;
+
+/** Серверийн мөрөнд `as` слотод МАНАЙ шийдвэр байгаа эсэх */
+async function mineSurvives(oid: number, as: Reviewer, me: string): Promise<boolean> {
+  const after = await query(`${F.oid} = ${Number(oid)}`, HEAD);
+  const fresh = after.length ? toDoc(after[0]) : null;
+  const mine = fresh?.reviews[as];
+  return !!mine && mine.who === me;
+}
+
 /**
  * ХЯНАГЧИЙН ШИЙДВЭР — 3 · 4а · 4б алхам. Дүрмүүд `chanarMs.review`-д.
  *
@@ -634,10 +650,16 @@ export async function reviewDoc(args: {
       return { ok: false, error: String((e as Error).message || e) };
     }
     /* Бичсэний дараа тулгах */
-    const after = await query(`${F.oid} = ${Number(args.oid)}`, HEAD);
-    const fresh = after.length ? toDoc(after[0]) : null;
-    const mine = fresh?.reviews[args.as];
-    if (mine && mine.who === me) return { ok: true, oid: args.oid };
+    if (await mineSurvives(args.oid, args.as, me)) {
+      /* ⚠️ ТОГТОХ ХҮЛЭЭЛТ (2026-09-25 аудит): шууд тулгалт хангалтгүй — манайхаас
+         ӨМНӨ `{}` уншсан удаан бичигч манай тулгалт давсны ДАРАА бичиж, манай
+         шийдвэрийг арилгадаг байв (бид «хадгалагдлаа» гэж хэлчихсэн). CAS
+         байхгүй тул богино хүлээлтийн дараа ДАХИН тулгана; арилсан бол дахин
+         нийлүүлж бичнэ (`reviewPure` нөгөөгийн слотыг шинэ мөрөөс авна). Цонх
+         бүрэн хаагдахгүй — зөвхөн `REVIEW_SETTLE_MS`-ээс удаан сүлжээнд үлдэнэ. */
+      await new Promise((res) => setTimeout(res, REVIEW_SETTLE_MS));
+      if (await mineSurvives(args.oid, args.as, me)) return { ok: true, oid: args.oid };
+    }
     last = { ok: false, error: tr('Өөр хянагч зэрэг бичсэн тул шийдвэр дахин хадгалагдаж чадсангүй — дахин оролдоно уу.') };
   }
   return last;

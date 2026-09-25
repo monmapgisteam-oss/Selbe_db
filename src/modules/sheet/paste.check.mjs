@@ -129,4 +129,22 @@ console.log('✅ нүдний утга — Excel-ийн бичиглэлүүд, 
   console.log('✅ том буулгалт хязгаарлагдаж, хаягдсаныг тоолов');
 }
 
+/* ── Хашилт ба мянгатын таслал (2026-09-25 аудит) ── */
+{
+  // Excel олон мөрт нүдийг `"…"`-д хашдаг — доторх шилжилт мөр ҮҮСГЭХГҮЙ
+  assert.deepEqual(parseGrid('1\t"Суурь\nцутгалт"\t3\n4\t5\t6'), [['1', 'Суурь\nцутгалт', '3'], ['4', '5', '6']]);
+  assert.deepEqual(parseGrid('"a""b"'), [['a"b']]);
+  // Хаагдаагүй хашилт — түүхий текстээр, дараагийн мөрийг залгихгүй
+  assert.deepEqual(parseGrid('"abc\t2\n3'), [['"abc', '2'], ['3']]);
+  // ⚠️ «1,250» — 1250 уу, 1.25 уу тодорхойгүй → null (таамаглахгүй)
+  assert.equal(normCell('1,250'), null);
+  assert.equal(normCell('-1,250'), null);
+  assert.equal(normCell('1,234,567'), '1234567');
+  assert.equal(normCell('1,234.5'), '1234.5');
+  assert.equal(normCell('1.234,5'), '1234.5');
+  assert.equal(normCell('0,125'), '0.125');
+  assert.equal(normCell('1234,567'), '1234.567');
+  assert.equal(normCell('1,2.5'), null);
+  console.log('✅ хашилт · мянгатын таслалын тодорхойгүй хэлбэр');
+}
 console.log('\npaste.check: ok');

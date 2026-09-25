@@ -24,12 +24,33 @@ import { useAsync, type Async } from './useAsync';
 export type Totals = { n: number; q: number | null };
 
 /**
+ * ДАВХАРГЫН ТОГТМОЛ ШҮҮЛТ (`d.where`) + дуудагчийн шүүлт — AND-аар.
+ *
+ * ⚠️ 2026-09-25: урьд нь тоо/хэмжээ ба ангиллын (facet) хүсэлт зөвхөн бүсийн
+ *    шүүлт (эсвэл `1=1`)-ийг явуулж `d.where`-ийг ГЭЭДЭГ байв — зураг
+ *    (`MapCanvas`) түүнийг хэрэглэдэг тул каталогийн тоо зурагтай зөрж байлаа:
+ *    `iot:waste_sensor` зурагт 1 мэдрэгч (`device_id IS NULL`) атал каталогт
+ *    15,084 (телеметрийн мөр бүр), `src:heat/water/power` гурвуулаа нэгтгэсэн
+ *    эх үүсвэрийн 7 объект (дулааных үнэндээ 3).
+ * ⚠️ ИДЕМПОТЕНТ: `whereFor`-ийн үр дүнг `layerTotals`-д дахин өгөхөд тогтмол
+ *    шүүлт ХОЁР ДАХЬ удаагаа залгагдахгүй (урд нь аль хэдийн байгааг танина).
+ */
+export const withLayerWhere = (d: LayerDef, where: string | null | undefined): string => {
+  const w = where && where.trim() && where.trim() !== '1=1' ? where : null;
+  if (!d.where) return w ?? '1=1';
+  const fixed = `(${d.where})`;
+  if (!w) return fixed;
+  if (w === fixed || w.startsWith(`${fixed} AND `)) return w;
+  return `${fixed} AND (${w})`;
+};
+
+/**
  * Давхаргад тохирох бүсийн шүүлт.
  * ⚠️ Талбарын нэр ба утга давхаргаас хамаарна: бүсийн давхарга өөрөө `RefName_1`
  * («Багц -1») гэж бичдэг бол бусад нь `ZONE_ID` («Багц-1»). `zoneWhere` хөрвүүлнэ.
  */
 export const whereFor = (d: LayerDef, zone: string | null) =>
-  (zone ? zoneWhere(d, zone) : null) ?? '1=1';
+  withLayerWhere(d, zone ? zoneWhere(d, zone) : null);
 
 /** Давхаргын статистикийн хүсэлт — тоо ба (байвал) хэмжээ */
 export const layerStats = (d: LayerDef) =>
@@ -46,7 +67,9 @@ export const layerStats = (d: LayerDef) =>
  * явдаг байсан бөгөөд одоо бүлэглэлгүй, ганц мөр буцаана.
  */
 export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
-  const r = await queryStats(layerUrl(d), layerStats(d), where);
+  /* ⚠️ `d.where`-ийг ЭНД ч залгана (2026-09-25) — `Bagts`/`reportData` нь
+     `'1=1'`-ийг шууд өгдөг тул `whereFor`-оор дамжихгүй (`withLayerWhere`). */
+  const r = await queryStats(layerUrl(d), layerStats(d), withLayerWhere(d, where));
   /* ⚠️ `q`: null хэвээр — 0 болгохгүй (`Totals`-ийн тайлбар) */
   return { n: Number(r.n ?? 0), q: r.q == null ? null : Number(r.q) };
 }

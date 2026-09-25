@@ -438,7 +438,22 @@ export default function Pivot() {
   };
 
   // True hierarchy level (1..5) from the № code, or null before the re-import.
-  const rowLevel = (r: Row) => levelFromNo(r.no, r.weight);
+  /* ⚠️ ГАНЦ НАВЧ (2026-09-25 аудит, `sheetRows`-ийн 2-р алхамтай ижил санаа):
+     жин-1 бүхэл № нь хүүхэдгүй бол навч (5) — `levelFromNo`-д ДАРААГИЙН
+     мөрийн контекст (`nextDeeper`) өгнө. Араас нь бодно: дараагийн мөрийн
+     ШИЙДСЭН түвшин 4/5 бол гүн (= бүлэг); дараагийн мөр №-гүй бол контекстгүй
+     (хуучин дүрэм); сүүлийн мөр хүүхэдгүй. `gun`/`TREES` энд байхгүй тул
+     «C3C» (ард нь бутархай жинтэй ангилал) хуучин хэвээр 3 гэж уншигдана. */
+  const levels = useMemo(() => {
+    const m = new Map<Row, number | null>();
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const nx = i + 1 < rows.length ? m.get(rows[i + 1]) ?? null : undefined;
+      const deeper = nx === undefined ? false : nx == null ? undefined : nx > 3;
+      m.set(rows[i], levelFromNo(rows[i].no, rows[i].weight, deeper));
+    }
+    return m;
+  }, [rows]);
+  const rowLevel = (r: Row) => (levels.has(r) ? levels.get(r) ?? null : levelFromNo(r.no, r.weight));
 
   // Header = not a leaf task. With № present, leaves are level 5. Before the
   // re-import, fall back to the Түвшин heuristic (only a rough header/leaf split

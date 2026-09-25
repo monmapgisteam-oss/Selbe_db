@@ -22,7 +22,7 @@
 import assert from 'node:assert/strict';
 import {
   NODES, EDGES, NODE_BY_ID, GEO, TH,
-  layout, edgePath, topoOrder, buildSchem, stageRail, fin, grade, ageDays,
+  layout, edgePath, topoOrder, buildSchem, stageRail, fin, grade, ageDays, PROJECT_WIDE,
 } from './schem.ts';
 import { VIEWS } from './services.ts';
 import { STATUS, OWNER, STAGE_ORDER, F as HF } from './hyanalt.ts';
@@ -338,5 +338,12 @@ const partial = buildSchem({
   ...EMPTY, overall: { pct: 80, weightSum: 42, rows: 10 },
 });
 assert.ok(partial.barilga.note, 'дутуу хамралтад тэмдэглэл ЗААВАЛ гарна');
+
+/* ── PROJECT_WIDE ≡ buildSchem-ийн `projectWide: true` (2026-09-25) ──
+   Олонлог ба литерал салбарлавал «Дэлгэрэнгүй» самбар багцын тоог төслийн
+   нийт гэж (эсвэл эсрэгээр) уншуулна. */
+for (const [id, st] of Object.entries(buildSchem(EMPTY))) {
+  assert.equal(!!st.projectWide, PROJECT_WIDE.has(id), `PROJECT_WIDE ↔ buildSchem зөрүү: ${id}`);
+}
 
 console.log('schem.check: ok — топологи ✓ байрлал ✓ мэдээлэлгүй≠тэг ✓ NaN ✓ хяналт ✓ босго ✓');

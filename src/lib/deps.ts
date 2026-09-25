@@ -37,7 +37,8 @@ export type DepType = 'FS' | 'SS';
  *    Нэг код блок тус бүрд нэг удаа + блокгүй нэг удаа байж болно — ялгах
  *    тэмдэг нь (`code`, `blk`) хос (`depId`/`sameDep`).
  * ⚠️ Дугуй хамаарлын шалгалт (`reaches`/`downstreamCodes`/`hierRelated`) блокийг
- *    ҮЛ ТООНО — аль ч блокт эргэлт байвал хориглоно (консерватив).
+ *    ҮЛ ТООНО — аль ч блокт эргэлт байвал хориглоно (консерватив). Бүлгийн
+ *    гишүүнчлэлээр дамжих эргэлтийг ч барина (2026-09-25, `affectedCodes`).
  */
 export type Dep = { code: number; type: DepType; lag: number; blk?: number };
 
@@ -276,11 +277,45 @@ export function requiredStart(
  */
 export function reaches(
   rows: PlanRow[],
-  _byCode: Map<number, number>,
+  byCode: Map<number, number>,
   fromCode: number,
   toCode: number,
 ): boolean {
   if (fromCode === toCode) return true;
+  return affectedCodes(rows, byCode, fromCode, toCode) === true;
+}
+
+/**
+ * `code`-оос ДАМ хамаардаг бүх ажлын код (өөрийг нь ОРУУЛААД) — урьдчилагчийн
+ * нэр дэвшигчдээс хасахад: эдгээрийн аль нэгийг сонговол дугуй хамаарал үүснэ.
+ * ⚠️ Бүлгийн гишүүнчлэлийг ч тооцно (2026-09-25) — `affectedCodes`-ийн ⚠️.
+ */
+export function downstreamCodes(rows: PlanRow[], code: number): Set<number> {
+  const out = affectedCodes(rows, codeIndex(rows), code);
+  return out === true ? new Set<number>([code]) : out;
+}
+
+/**
+ * `fromCode` мөр хөдлөхөд ҮР ДҮНТЭЙ МУЖ нь өөрчлөгдөж болох бүх код
+ * (өөрийг нь оруулаад). `target` өгвөл түүнд хүрмэгц `true`.
+ *
+ * ⚠️ БҮЛГИЙН ГИШҮҮНЧЛЭЛ (2026-09-25 аудит): урьд нь зөвхөн уялдааны ирмэгийг
+ *    дагадаг байв. Гэвч бүлгийн `effSpan` нь хүүхдүүдээсээ бодогддог тул
+ *    «T нь G-ээс хамаарна» + «G-ийн хүүхэд L нь T-ээс хамаарна» гэсэн эргэлт
+ *    (T → L → G → T) `reaches`-ийг ч, `hierRelated`-ийг ч давж, `propagate`
+ *    мөр бүрийг 20 удаа түлхэж огноог ирээдүй рүү «гүйлгэдэг» байв. Одоо
+ *    `propagate`-ийн ЯГ ижил дүрмээр алхана:
+ *      · хөдөлсөн мөрийн ӨВӨГ БҮЛГҮҮДИЙН муж өөрчлөгдөнө (`enqueue`-ийн адил);
+ *      · БҮЛЭГ хамаарагч хөдөлбөл ДЭД МОД нь бүхэлдээ шилжинэ (`recompute`).
+ * ⚠️ Консерватив: бүлгийн муж ЗААВАЛ өөрчлөгдөнө гэж үзнэ (хүүхэд нь MIN/MAX
+ *    биш байж болох ч) — блокийг үл тоодог ижил зарчим (дээрх `Dep`-ийн ⚠️).
+ */
+function affectedCodes(
+  rows: PlanRow[],
+  byCode: Map<number, number>,
+  fromCode: number,
+  target?: number,
+): Set<number> | true {
   /* урьдчилагч-код → түүнээс хамаарах мөрүүд */
   const dependents = new Map<number, number[]>();
   rows.forEach((r, i) => {
@@ -289,45 +324,53 @@ export function reaches(
       dependents.get(d.code)!.push(i);
     }
   });
-  const seen = new Set<number>([fromCode]);
-  const q = [fromCode];
+  /** Өвөг бүлгүүд — `propagate.enqueue`-ийн ижил хайлт (ойроос холруу) */
+  const ancCache = new Map<number, number[]>();
+  const ancestors = (i: number): number[] => {
+    let a = ancCache.get(i);
+    if (a) return a;
+    a = [];
+    for (let k = i - 1, d = rows[i].depth; k >= 0 && d > 0; k--) {
+      if (rows[k].depth < d && rows[k].group) { a.push(k); d = rows[k].depth; }
+    }
+    ancCache.set(i, a);
+    return a;
+  };
+  const codes = new Set<number>([fromCode]);
+  const q: number[] = [fromCode];
+  /** Код муж нь өөрчлөгдөх жагсаалтад — зорилтод хүрвэл `true` */
+  const touch = (c: number | null): boolean => {
+    if (c == null || codes.has(c)) return false;
+    codes.add(c);
+    q.push(c);
+    return c === target;
+  };
+  const moved = new Set<number>();
+  /** Мөр хөдлөв — өөрийн код + өвөг бүлгүүдийн код */
+  const move = (i: number): boolean => {
+    if (moved.has(i)) return false;
+    moved.add(i);
+    if (touch(rows[i].des)) return true;
+    for (const a of ancestors(i)) if (touch(rows[a].des)) return true;
+    return false;
+  };
+  /** Хамаарагч мөр шилжив — БҮЛЭГ бол дэд мод нь бүхэлдээ (`recompute`-ийн `sub`) */
+  const shift = (j: number): boolean => {
+    if (moved.has(j)) return false;
+    if (move(j)) return true;
+    if (!rows[j].group) return false;
+    const d0 = rows[j].depth;
+    for (let k = j + 1; k < rows.length && rows[k].depth > d0; k++) if (move(k)) return true;
+    return false;
+  };
+  /* Эхлэл: уялдаа нь өөрчлөгдөж буй мөр өөрөө шилжинэ (бүлэг бол дэд модтой нь) */
+  const si = byCode.get(fromCode);
+  if (si != null && shift(si)) return true;
   while (q.length) {
     const c = q.pop()!;
-    for (const i of dependents.get(c) ?? []) {
-      const rc = rows[i].des;
-      if (rc == null || seen.has(rc)) continue;
-      if (rc === toCode) return true;
-      seen.add(rc);
-      q.push(rc);
-    }
+    for (const j of dependents.get(c) ?? []) if (shift(j)) return true;
   }
-  return false;
-}
-
-/**
- * `code`-оос ДАМ хамаардаг бүх ажлын код (өөрийг нь ОРУУЛААД) — урьдчилагчийн
- * нэр дэвшигчдээс хасахад: эдгээрийн аль нэгийг сонговол дугуй хамаарал үүснэ.
- */
-export function downstreamCodes(rows: PlanRow[], code: number): Set<number> {
-  const dependents = new Map<number, number[]>();
-  rows.forEach((r, i) => {
-    for (const d of r.deps) {
-      if (!dependents.has(d.code)) dependents.set(d.code, []);
-      dependents.get(d.code)!.push(i);
-    }
-  });
-  const out = new Set<number>([code]);
-  const q = [code];
-  while (q.length) {
-    const c = q.pop()!;
-    for (const i of dependents.get(c) ?? []) {
-      const rc = rows[i].des;
-      if (rc == null || out.has(rc)) continue;
-      out.add(rc);
-      q.push(rc);
-    }
-  }
-  return out;
+  return codes;
 }
 
 /* ══════════════════ Гинжин бодолт ══════════════════ */

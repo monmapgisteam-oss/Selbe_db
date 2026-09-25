@@ -155,7 +155,8 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     return () => ro.disconnect();
   }, [measure, children]);
 
-  const drag = useRef<{ i: number; x: number; w: number; px?: number } | null>(null);
+  /** `snap` — `onDown`-д ТҮР тогтоосон баганын индексүүд (хөдөлгөөнгүй бол буцаана). */
+  const drag = useRef<{ i: number; x: number; w: number; px?: number; snap: number[] } | null>(null);
 
   const onDown = (i: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -165,7 +166,8 @@ export function ResizableTable({ storeKey, className, children }: Props) {
       'thead tr:last-child > th',
     )[i];
     const w0 = th ? th.getBoundingClientRect().width : MIN_W;
-    drag.current = { i, x: e.clientX, w: w0 };
+    const snap: number[] = [];
+    drag.current = { i, x: e.clientX, w: w0, snap };
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.dataset.drag = '1';
     document.body.classList.add(st.dragging);
@@ -176,11 +178,13 @@ export function ResizableTable({ storeKey, className, children }: Props) {
       wrap
         .querySelectorAll<HTMLTableCellElement>('thead tr:last-child > th')
         .forEach((cell, k) => {
-          if (cur.current[k] == null)
+          if (cur.current[k] == null) {
             wrap.style.setProperty(
               `--cw-${k + 1}`,
               `${Math.round(cell.getBoundingClientRect().width)}px`,
             );
+            snap.push(k);
+          }
         });
     }
   };
@@ -200,7 +204,21 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     drag.current = null;
     delete e.currentTarget.dataset.drag;
     document.body.classList.remove(st.dragging);
-    if (d.px == null) return; // хөдөлгөөнгүй товшилт — өөрчлөлт алга
+    /**
+     * Хөдөлгөөнгүй товшилт — өөрчлөлт алга.
+     *
+     * ⚠️ 2026-09-25: `onDown`-ий ТҮР тогтоолтыг БУЦААНА. Урьд нь энд шууд
+     *    буцдаг тул бүх баганын `--cw-k` нь React-ийн мэдэлгүй inline утга болж
+     *    үлдэж, `<col>`-оор хүснэгтийг хадгалаагүй өргөнд нь хөлдөөдөг байв
+     *    (давхар товшилтын `reset` ч эхлээд ийм товшилт хоёр үүсгэнэ).
+     */
+    if (d.px == null) {
+      const wrap = wrapRef.current;
+      d.snap.forEach((k) => {
+        if (cur.current[k] == null) wrap?.style.removeProperty(`--cw-${k + 1}`);
+      });
+      return;
+    }
     // Чирэх мөчид тогтоосон бусад баганын өргөнийг ч хамт хадгална.
     const wrap = wrapRef.current;
     const next: Widths = { ...cur.current, [d.i]: d.px };
@@ -218,7 +236,15 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   /** Бүх баганыг анхны өргөнд нь буцаана (бариул дээр давхар товшилт). */
   const reset = () => {
     const wrap = wrapRef.current;
-    for (let k = 1; k <= 24; k++) wrap?.style.removeProperty(`--cw-${k}`);
+    /* ⚠️ 2026-09-25: `k <= 24` тогтмол БАЙСАН — хүснэгт 256 багана хүрдэг
+       (доорх `<col>`-ийн ⚠️) тул 25-аас хойших багана хуучин өргөндөө
+       хөлдөж үлддэг байв. Бүрхүүл дээрх БҮХ `--cw-*`-ийг арилгана
+       (хуулбар дээр гүйнэ — `removeProperty` жагсаалтыг өөрчилдөг). */
+    if (wrap) {
+      for (const p of Array.from(wrap.style)) {
+        if (p.startsWith('--cw-')) wrap.style.removeProperty(p);
+      }
+    }
     setW({});
     save({});
     measure();

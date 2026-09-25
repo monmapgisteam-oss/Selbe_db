@@ -89,7 +89,10 @@ async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    num: '10',
+    /* ⚠️ 100, 10 БИШ (2026-09-25): ижил нэртэй 10+ item үүсгэхэд жинхэнэ хүснэгт
+       цонхноос түлхэгдэж `ownerMismatch` асдаг байв (`permsRemote`/`chanarStore`-ийн
+       2026-09-08/09-11-ний засвартай ижил). */
+    num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
@@ -228,11 +231,26 @@ const keyOf = (pkgKey: string) => pkgKey;
 /**
  * ХУУЧИН түлхүүрийн загвар (`хэрэглэгч|багц`) — ЗӨВХӨН шилжүүлэлтэд.
  * ⚠️ Багцын түлхүүрт `|` ОРДОГГҮЙ (`bagts.pkg.ts`-ийн `key` нь `b32`,
- *    `b33_9f` маягийн латин таних тэмдэг) тул `LIKE '%|<багц>'` нь зөвхөн
- *    хуучин мөрийг олно — шинэ (`dkey = <багц>`) мөр үүнд таарахгүй.
+ *    `b33_9f` маягийн латин таних тэмдэг) тул `LIKE '%|<багц>'` нь шинэ
+ *    (`dkey = <багц>`) мөрд таарахгүй.
  */
 const legacyLike = (pkgKey: string) => `%|${pkgKey}`;
 export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
+/**
+ * Хуучин НООРОГИЙН мөрийн шүүлт — `readLegacyDrafts` ба `clearLegacyDrafts`
+ * ХОЁУЛАА ЭНИЙГ хэрэглэнэ.
+ *
+ * ⚠️ ИЛГЭЭЛТИЙН МӨРИЙГ ХАСНА (2026-09-25-ны аудит): энэ хүснэгтэд
+ *    `submission.ts`-ийн мөрүүд ч амьдардаг бөгөөд 2026-09-07-оос ӨМНӨХ
+ *    идэвхтэй илгээлтийн түлхүүр `sub|<багц>` нь `LIKE '%|<багц>'`-т ТААРДАГ
+ *    байв. Анхны амжилттай алсын хадгалалтын дараа `clearLegacyDrafts` тэр
+ *    хянагдаж буй илгээлтийг УСТГАЖ, `readSubmissionByOid` `{ok, sub:null}`
+ *    буцааж, батлалт legacy замаар явж илгээсэн нүднүүд архивт ОРДОГГҮЙ.
+ *    `done|` угтвар одоогийн хэлбэрээрээ (`done|<багц>|<oid>`) таарахгүй ч
+ *    ирээдүйн хэлбэрийн өөрчлөлтөөс хамгаалж мөн хасна.
+ */
+const legacyWhere = (pkgKey: string) =>
+  `dkey LIKE ${sqlStr(legacyLike(pkgKey))} AND dkey NOT LIKE 'sub|%' AND dkey NOT LIKE 'done|%'`;
 
 export type RemoteDraft = { at: number; payload: string };
 
@@ -291,7 +309,7 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
     if (!url) return [];
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `dkey LIKE ${sqlStr(legacyLike(pkgKey))}`,
+      where: legacyWhere(pkgKey),
       outFields: ['OBJECTID', 'at', 'payload', 'dkey', 'usr'],
       returnGeometry: false,
       orderByFields: ['OBJECTID ASC'],
@@ -320,7 +338,7 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
     if (!url) return false;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
-      where: `dkey LIKE ${sqlStr(legacyLike(pkgKey))}`,
+      where: legacyWhere(pkgKey),
       outFields: ['OBJECTID'], returnGeometry: false, orderByFields: ['OBJECTID ASC'],
     });
     const oids = res.features

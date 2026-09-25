@@ -1375,7 +1375,14 @@ export function computeAll(
         let sp = 0,
           sa = 0,
           cnt = 0;
+        /* ⚠️ `null ≠ 0` (2026-09-25 аудит): блокийн ДОРХ хүүхдүүдийн НЭГ Ч нүд
+           хэмжигдээгүй бол бүлгийн гүйцэтгэл `null` (0 БИШ) — урьд нь бөглөөгүй
+           блокийн «Б.»/Б1..Б5 нүд 0 болж архивлагдаж, газрын зурагт «0%»
+           (саарал биш) харагдаж, `meanOf` дунджийг доош татдаг байв. J/E-д
+           нөлөөгүй: `avg()` null-ыг аль хэдийн 0 гэж үздэг. */
+        let anyAct = false;
         for (const k of kids[i]) {
+          if (out[k].actAgg[b] != null) anyAct = true;
           const w = den > 0 ? (D[k] ?? 0) : 1;
           sp += w * (out[k].plan[b] ?? 0);
           /* ⚠️ 2026-09-04: урьд нь `out[k].act[b]` (түүхий) байсан. Багц 2·12F
@@ -1386,7 +1393,7 @@ export function computeAll(
           cnt += w;
         }
         plan[b] = cnt > 0 ? sp / cnt : null;
-        act[b] = cnt > 0 ? sa / cnt : null;
+        act[b] = cnt > 0 && anyAct ? sa / cnt : null;
         /* Дэд мөрүүд нь аль хэдийн ≤1 тул дундаж нь ч ≤1 — гэхдээ шинэ зам
            нэмэгдэхэд чимээгүй давахаас сэргийлж дахин таслав. */
         actAgg[b] = clamp1(act[b]);

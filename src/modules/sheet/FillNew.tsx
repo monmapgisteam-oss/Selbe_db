@@ -66,7 +66,7 @@ import { hasCap, subscribeCaps } from "@/lib/caps";
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
 import {
   decideObyem, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
-  submitObyem, type ObyemSubmission,
+  submitObyem, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 /*
  * ⚠️ НЭМЭЛТ АЖИЛ ЭНД НЭМЭГДЭХГҮЙ (2026-09-24, хэрэглэгчийн шийдвэр): бүлэгт «+»
@@ -83,7 +83,7 @@ import DatePicker from "./DatePicker";
 import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
-import { parseGrid, planPaste } from "./paste";
+import { isAmbiguousComma, normCell, parseGrid, planPaste } from "./paste";
 import {
   clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX,
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
@@ -372,10 +372,36 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   if (!a) return b;
   if (!b) return a;
   const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
+  /*
+   * ⚠️ НҮД БҮРИЙГ ӨӨРИЙН АГШНААР (`byAt`) ШИЙДНЭ (2026-09-25-ны аудит).
+   *    Урьд нь бүх түлхүүрийг НООРОГИЙН `t`-ээр шийддэг байв: шинэ ноорогт
+   *    ХӨНДӨӨГҮЙ хуучин хуулбар (жиш. А-гийн дэлгэц дээрх Б-гийн өмнөх X=5)
+   *    байхад Б-гийн ХОЖУУ засвар (X=8) А-гийн дараагийн бичилтэд чимээгүй
+   *    X=5 болж буцдаг байв — «уралдааны цонхонд бичсэн нүд л» гэсэн баримтжуулсан
+   *    алдагдлаас ИХ. Одоо хоёр талд `byAt` БАЙВАЛ сүүлд хөндсөн нь ялна (тэнцвэл
+   *    шинэ тал); аль нэг талд агшин БАЙХГҮЙ (хуучин ноорог) бол урьдын адил
+   *    ноорогийн `t` — шинэ тал ялна.
+   * ⚠️ TS төрлийн тэмдэглэгээ/функцийн параметр бичихгүй — `draft.check` 4d энэ
+   *    функцийг JS болгож ажиллуулдаг (зөвхөн `new Map<…>` хасагддаг).
+   */
+  const atOld = new Map<string, number>(older.byAt ?? []);
+  const atNew = new Map<string, number>(newer.byAt ?? []);
+  /** Хуучин тал ХОЖУУ хөндсөн тул ялсан түлхүүрүүд (нүд ба огноо) */
+  const keepOld = new Map<string, boolean>();
   const cells = new Map<string, string>(older.cells);
-  for (const [k, v] of newer.cells) cells.set(k, v);
+  for (const [k, v] of newer.cells) {
+    const o = atOld.get(k);
+    const w = atNew.get(k);
+    if (cells.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
+    cells.set(k, v);
+  }
   const dates = new Map<string, string>(older.dates ?? []);
-  for (const [k, v] of newer.dates ?? []) dates.set(k, v);
+  for (const [k, v] of newer.dates ?? []) {
+    const o = atOld.get(k);
+    const w = atNew.get(k);
+    if (dates.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
+    dates.set(k, v);
+  }
   const adds = new Map<number, NewRow>();
   for (const x of older.adds ?? []) adds.set(x.oid, x);
   for (const x of newer.adds ?? []) adds.set(x.oid, x);
@@ -383,9 +409,10 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   for (const [o, k] of newer.rowKeys ?? []) rowKeys.set(o, k);
   /* ⚠️ `by` — нүдтэй ИЖИЛ дүрэм: нүдний утга шинэ талынх бол эзэн нь ч
      шинэ талынх. Хоёрыг тусад нь нийлүүлбэл «утга нь А-гийнх, эзэн нь Б»
-     гэсэн зөрүү үүсч, оролцогчийн жагсаалт худал болно. */
+     гэсэн зөрүү үүсч, оролцогчийн жагсаалт худал болно. 2026-09-25: хуучин
+     тал ялсан (`keepOld`) нүдэнд эзэн нь ч хуучин талынх (байхгүй бол шинийх). */
   const by = new Map<string, string>(older.by ?? []);
-  for (const [k, u] of newer.by ?? []) by.set(k, u);
+  for (const [k, u] of newer.by ?? []) if (!keepOld.has(k) || !by.has(k)) by.set(k, u);
   /*
    * ⚠️ `done` — ХҮН ТУС БҮРЭЭР, СҮҮЛИЙН тэмдэглэгээ ялна (2026-09-08).
    *
@@ -490,9 +517,17 @@ const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     dates: dates.size ? [...dates] : undefined,
     adds: adds.size ? [...adds.values()] : undefined,
     asOf: newer.asOf !== undefined ? newer.asOf : older.asOf,
-    rowKeys: [...rowKeys],
+    /* ⚠️ ХУУДАСНЫ ДАРААЛЛААР (oid өсөхөөр, 2026-09-25 аудит): Map-ийн оруулсан
+       дараалал нь хуучин талынх + шинэ талын нэмэлт тул нийлүүлсний дараа
+       `pickDraft`-ийн `oidFix` (`cand.shift()`) давхардсан шошготой мөрүүдийг
+       буруу дарааллаар оноодог байв. */
+    rowKeys: [...rowKeys].sort((x, y) => x[0] - y[0]),
     by: by.size ? [...by] : undefined,
-    done: done.size ? [...done] : undefined,
+    /* ⚠️ ХООСОН `[]`-ИЙГ ХАДГАЛНА (2026-09-25-ны аудит): аль нэг тал `done`-той
+       (`[]` ч гэсэн) бол массив буцаана. Урьд нь `done.size ? … : undefined`
+       нь «Дахин засах»-ын ИЛ буцаалтыг (`[]`) «хуучин ноорог» (`undefined`)
+       болгож, нөгөө талын хуучин «дуусгасан» тэмдэглэгээ СЭРГЭДЭГ байв. */
+    done: newer.done != null || older.done != null ? [...done] : undefined,
     byAt: byAt.size ? [...byAt] : undefined,
     del: del.size ? [...del] : undefined,
     sent: sent.size ? [...sent] : undefined,
@@ -1124,8 +1159,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /*
    * ⚠️ Өнөөдрийн огноог зурагдах бүрд БИШ, НЭГ л удаа авна — эс бөгөөс
    *    зурагдалт цэвэр биш болж, шөнө дундаас хойш зөрчил үүснэ.
+   * ⚠️ ЛОКАЛ ӨДӨР — `todayFillMs`-ээс (2026-09-25-ны аудит). Урьд нь
+   *    `msToDay(Date.now())` (UTC) байсан тул Улаанбаатарт 08:00-аас өмнө
+   *    «Хуваарийн дагуу» шүүлт, «Өнөөдөр (…)» бичвэр, `publishedToday` бүгд
+   *    ӨЧИГДРӨӨР ажилладаг байв. `todayFillMs` = `Date.UTC(локал он, сар, өдөр)`
+   *    тул `msToDay` нь яг локал өдрийг өгнө; `snapDay` (архивын `buglusun_ognoo`
+   *    = илгээлтийн `fillMs`) ч мөн ийм хэлбэртэй.
    */
-  const [today] = useState(() => msToDay(Date.now()));
+  const today = useMemo(() => msToDay(todayFillMs), [todayFillMs]);
   /**
    * Өнөөдөр архивт жааз үүссэн үү — ЗӨВХӨН дэлгэцийн мэдээлэл.
    *
@@ -2787,13 +2828,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        ⚠️ Хямд `at` шалгалтаар бүтэн уншилтыг алгасна (гүйцэтгэл) — алс
        өөрчлөгдөөгүй бол нийлүүлэх зүйл байхгүй. */
     const at0 = await readRemoteDraftAt(pkg.key);
+    /* ⚠️ `!==` ба өсөх хувилбар — `flush`-ийн ⚠️ (2026-09-25-ны аудит). */
     const rr: RemoteDraftRead = at0 === undefined
       ? { ok: false, error: tr('алсын ноорогийг шалгаж чадсангүй') }
-      : at0 !== null && at0 > lastMergedRef.current
+      : at0 !== null && at0 !== lastMergedRef.current
         ? await readRemoteDraft(pkg.key)
         : { ok: true, draft: null };
+    /* ⚠️ Өөрийн хуулбарыг алсынхаас ЗААВАЛ шинэ болгож нийлүүлнэ — алсын `t`
+       (өөр клиентийн цаг) урд байвал тэр тал «шинэ» болж, энэ товчны `done`
+       өөрчлөлт нийлүүлэлтэд ялагдах байсан. */
+    const dNew: Draft = { ...d, t: Math.max(d.t, at0 != null ? at0 + 1 : 0) };
     const merged = rr.ok
-      ? (mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, d) ?? d)
+      ? (mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew)
       : null;
     if (merged) { saveDraftLS(pkg.key, merged); doneRef.current = merged.done ?? []; setDoneBy(merged.done ?? []); }
     const r = merged
@@ -2895,10 +2941,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *  урьд нь буруу/сөрөг/татгалзсан (confirm) утга дээр ч дараагийн нүд рүү гүйдэг байв. */
   const commit = (r: SheetRow, b: number, raw: string): boolean => {
     const key = cellKey(r.oid, b);
-    const t = raw.trim().replace(",", ".").replace(/^\+/, "").replace(/\s*%$/, "");
+    /* ⚠️ БУУЛГАЛТТАЙ НЭГ ДҮРЭМ — `paste.normCell` (2026-09-25-ны аудит). Урьд нь
+       энд эхний таслалыг ҮРГЭЛЖ аравтын цэг болгодог тул «1,250» (en-US
+       мянгат) нь 1.25 болж 1000 дахин БАГА бичигддэг байв. Одоо `1,234.5` ·
+       `1 234` зөв уншигдаж, `1,250` шиг ТОДОРХОЙГҮЙ бичлэгийг ил асууна.
+       `null` = тоо биш (эсвэл тодорхойгүй); хоосон бол `""` (цэвэрлэх). */
+    const t0 = raw.trim() === "" ? "" : normCell(raw);
     setEdit(null);
     if (r.group) return false;
-    if (t !== "" && !Number.isFinite(Number(t))) {
+    if (t0 === null && isAmbiguousComma(raw)) {
+      warn(tr('{0} · {1}: «{2}» — таслал мянгатын эсвэл аравтын тэмдэг болох нь тодорхойгүй. 1250 эсвэл 1.25 гэж бичнэ үү.', sc?.bld[b] ?? "", r.work, raw.trim()));
+      return false;
+    }
+    const t = t0 ?? "";
+    if (t0 === null) {
       /* ⚠️ Чимээгүй хаявал хэрэглэгч «бичигдлээ» гэж андуурдаг — мэдэгдэнэ.
          ⚠️ `warn` (хөвөгч), `setErr` БИШ (2026-09-15-ны хэрэглээний аудит):
             `setErr` нь хүснэгтийн ДЭЭР, гүйлтийн талбайгаас ГАДНА зурагддаг
@@ -3037,6 +3093,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        илгээлт нь архивт биш, нэгтгэгддэг `sub|` мөрөнд очдог тул хоёр дахь
        бүтэн жааз үүсэх аюул алга. `noEdit` нь одоо ЗӨВХӨН `locked`. */
     if (noEdit) return;
+    /* ⚠️ ГҮЙЦЭТГЭЛ БӨГЛӨХ ЭРХГҮЙ бол СЭРГЭЭХГҮЙ, ТЭМДЭГЛЭХГҮЙ (2026-09-25-ны
+       аудит, HIGH). Урьд нь эрхгүй хүн (жиш. Багц 2-ын хяналтын инженер, эсвэл
+       `guitsetgelAcl` хараахан sync хийгдээгүй — `effective()` = []) хуудсыг
+       нээхэд `pickDraft` бүх нүдийг алгасаж `total = 0 · dropped = 0` гэж
+       дүгнээд ХУВААЛЦСАН ноорогийг (локал + ArcGIS) устгадаг, татах мөчлөг
+       нь гүйцэтгэгчийн бичилт бүрийн дараа ДАВТАН устгадаг байв. Ноорог нь
+       энэ хүнд огт хамаагүй (илгээх ч эрхгүй) тул ХӨНДӨХГҮЙ; `promptedPkgRef`
+       тавигдахгүй тул хадгалах эффектийн «хоосон → устга» зам ч нээгдэхгүй.
+       Эрх ирэхэд (`canPerf` хамааралд) сэргээлт энгийнээр явна. */
+    if (!canPerf) return;
     if (promptedPkgRef.current === pkg.key) return;
     // Сэргээх шат өнгөрснийг ноорог байсан эсэхээс үл хамааран тэмдэглэнэ.
     promptedPkgRef.current = pkg.key;
@@ -3074,9 +3140,15 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            буцаана, эс бөгөөс дараагийн багцын хадгалах эффект мөнхөд
            хаалттай үлдэнэ. `promptedPkgRef`-ийг ч буцаана: энэ багц руу
            эргэж ирэхэд сэргээлт ДАХИН явах ёстой — ноорог хараахан
-           буугаагүй. */
+           буугаагүй.
+           ⚠️ ЭФФЕКТИЙГ ДАХИН АСААНА (2026-09-25-ны аудит): хамаарал (`rows`,
+           `asOfOrig` — хожуу давхарлалт г.м.) хөдөлсөн бол эффект аль хэдийн
+           дахин ажиллаад `promptedPkgRef === pkg.key` дээр буцсан — хоослоод л
+           орхивол юу ч түүнийг дахин асаахгүй, локал ноорог ХЭЗЭЭ Ч буухгүй,
+           дараагийн засвар түүнийг дарж бичнэ. Багц солигдсон бол
+           `promptedPkgRef` аль хэдийн "" тул энэ салаа ажиллахгүй. */
         restoring.current = false;
-        if (promptedPkgRef.current === pkg.key) promptedPkgRef.current = '';
+        if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
         return;
       }
       if (!rr.ok) {
@@ -3136,7 +3208,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         if (migrated) legacyPendingRef.current = pkg.key;
       }
-      if (!alive) { restoring.current = false; return; }
+      /* ⚠️ Дээрх тасалдалтай ИЖИЛ — дахин оролдох замыг нээнэ (2026-09-25) */
+      if (!alive) {
+        restoring.current = false;
+        if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
+        return;
+      }
       const merged = mergeDrafts(mergeDrafts(local, remote), migrated);
       /* ⚠️ Сэргээлт ЭНД дууслаа — буусан ч бай, сэргээх зүйл байгаагүй ч бай.
          Тугийг `pickDraft`-аас ӨМНӨ тайлна: тэр нь `setPending` хийж, дараагийн
@@ -3151,7 +3228,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, rows, sc, nBld, pkg.key, asOfOrig, noEdit, remoteRetry]);
+  }, [busy, rows, sc, nBld, pkg.key, canPerf, asOfOrig, noEdit, remoteRetry]);
 
   /**
    * Сонгосон ноорогийг ШҮҮЖ, сэргээх цонхонд бэлдэнэ.
@@ -3159,11 +3236,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    харагдах тоо ба бодитоор буух өгөгдөл хоёр өөр зам явж болохгүй.
    */
   const pickDraft = useCallback((d: Draft, source: 'local' | 'remote' | 'both') => {
-    if (!sc) return;
+    /* ⚠️ ЭРХГҮЙ бол ЮУ Ч ХӨНДӨХГҮЙ (2026-09-25-ны аудит, HIGH) — сэргээх
+       эффектийн `canPerf` ⚠️. Урьд нь доорх `canPerf ? … : []` нь бүх нүдийг
+       алгасаад «хоосон ноорог» гэж дүгнэж хуваалцсан ноорогийг УСТГАДАГ байв. */
+    if (!sc || !canPerf) return;
     /* ⚠️ Ноорогийн `adds` СЭРГЭЭГДЭХГҮЙ (2026-09-24) — мөр нэмэх «Хуваарь» руу
        шилжсэн, батлагдсан мөр серверээс ирнэ. Хуучин ноорогт үлдсэн сөрөг
        oid-той нүд `byOid`-д таарахгүй тул «хуучирсан» (`dropped`) гэж тоологдоно. */
-    const byOid = new Map<number, { group: boolean }>();
+    const byOid = new Map<number, SheetRow>();
     for (const r of rows) byOid.set(r.oid, r);
 
     /**
@@ -3204,6 +3284,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
     const next: Record<string, string> = {};
     let dropped = 0;
+    /** Хадгалагдсантайгаа ИЖИЛ тул сэргээгээгүй нүд/огноо (хуучирсан БИШ) */
+    let sameN = 0;
     // ⚠️ Гүйцэтгэлийн нүдийг зөвхөн бөглөх эрхтэй хүнд сэргээнэ (`canPerf`)
     for (const [key0, v] of (canPerf ? d.cells : [])) {
       const key = fixKey(key0);
@@ -3239,6 +3321,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         dropped++;
         continue;
       }
+      /* ⚠️ ХАДГАЛАГДСАНТАЙ ИЖИЛ утгыг СЭРГЭЭХГҮЙ (2026-09-25-ны аудит). Дээрх
+         «аль хэдийн ижил утгатай бол — хаяна» гэсэн тайлбар урьд нь КОД БИШ
+         байв: өөр төхөөрөмжөөс илгээсний дараа энэ компьютерийн хуучин локал
+         ноорог (эсвэл оролцогчийн дэлгэцийн хуулбар) илгээгдсэн нүдийг ногоон
+         «илгээгээгүй» болгож буцаан авчирдаг байв. Шалгуур нь `commit`-ийн
+         `sameVol`/`samePct`-тэй ИЖИЛ (хувь — 1e-9 хүлцэл). Хоосон (`""`) бичлэг
+         нь зөвхөн обьём ч хувь ч хадгалагдаагүй үед л «ижил» — эс бөгөөс
+         цэвэрлэх засвар байж болно. `dropped`-д ТООЛОГДОХГҮЙ (хуучирсан биш). */
+      const row = r as SheetRow;
+      const storedPct = row.vol != null && row.vol > 0 && row.obyem[b] != null
+        ? row.obyem[b]! / row.vol
+        : row.act[b];
+      const pctV = editPct(v);
+      const same = isPctEdit(v)
+        ? pctV != null && storedPct != null && Math.abs(pctV - storedPct) < 1e-9
+        : v.trim() === ""
+          ? row.obyem[b] == null && row.act[b] == null
+          : Number(v) === row.obyem[b];
+      if (same) { sameN++; continue; }
       next[key] = v;
     }
 
@@ -3253,6 +3354,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const r2 = byOid.get(Number(oidS));
       const fld = k === "s" ? sc.start[b] : k === "e" ? sc.end[b] : null;
       if (!r2 || !Number.isInteger(b) || b < 0 || b >= nBld || !fld) { dropped++; continue; }
+      /* ⚠️ Хадгалагдсантай ИЖИЛ огноо сэргээхгүй — дээрх нүдний ⚠️, `commitDate`-ийн `sameDate` */
+      if (v === dt(k === "s" ? r2.start[b] : r2.end[b])) { sameN++; continue; }
       nextDates[key] = v;
     }
 
@@ -3383,10 +3486,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            (өөр төхөөрөмжийн 3 хоногийн локал) нүдийг сэргээнэ. `delRef`-д
            дээр нийлүүлсэн тул хадгалах эффект хоосон нүд + del-тэй ноорог бичнэ. */
         if (delRef.current.size) return;
+        /* ⚠️ ЗӨВХӨН ноорог ҮНЭХЭЭР хоосон бол ЭНД устгана (2026-09-25-ны аудит):
+           хадгалагдсантай ижил (`sameN`) нүд байвал ноорог хоосон биш — шийдвэрийг
+           хадгалах эффектийн ердийн «хоосон төлөв» замд үлдээнэ. */
+        if (sameN || d.cells.length || (d.dates ?? []).length) return;
         clearDraftLS(pkg.key);
         void clearRemoteDraft(pkg.key);
         return;
       }
+      /* ⚠️ ХУУЧИРСАН НҮДТЭЙ НООРОГИЙГ АВТОМАТААР УСТГАХГҮЙ (2026-09-25-ны аудит):
+         `pending` хоосон болсноор хадгалах эффектийн «хоосон → устга» зам
+         ноорогийг (локал + ArcGIS, бусдын нүдтэй нь) ЧИМЭЭГҮЙ арчдаг байв —
+         дээрх «ЧИМЭЭГҮЙ УСТГАХГҮЙ» ⚠️-ийн шууд зөрчил. `keepDraft` нь тэр замыг
+         хаана; хэрэглэгч «Ноорог устгах» эсвэл шинэ засвараар шийднэ. */
+      keepDraft.current = true;
       /* ⚠️ Сэргээх зүйл алга АТЛАА хуучирсан нүд байна — ЧИМЭЭГҮЙ өнгөрөхгүй,
          харин цонх нээхгүй (2026-09-06): зөвхөн мэдэгдэнэ. */
       say(tr('Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).', dropped));
@@ -3477,6 +3590,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         others.sort().join(', '), nCell,
       )
       : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell))) return;
+    /* ⚠️ УСТГАСАН НҮД БҮРД TOMBSTONE (2026-09-25-ны аудит). Урьд нь алсын мөрийг
+       шууд устгаж `delRef`-ийг тэглэдэг тул бусад оролцогч/төхөөрөмжид «устгасан»
+       гэсэн баримт хүрэхгүй: Б-гийн дэлгэц дээрх `pending` дараагийн засвараар
+       (алсад мөр алга тул) БҮТНЭЭРЭЭ буцаж бичигдэж, устгасан нүд А дээр дахин
+       гарч ирдэг байв. Одоо түлхүүр бүрд ОДООГИЙН агшны tombstone-той хоосон
+       ноорог бичнэ (read-merge-write) — `mergeDrafts` нь үүнээс ӨМНӨ хөндсөн
+       нүдийг хаа ч хасна, ХОЖУУ бичсэнийг үлдээнэ. `done: []` — бүх «дуусгасан»
+       тэмдэглэгээг ил буцаана. Устгах нүд байхгүй (зөвхөн огноо) бол урьдын адил. */
+    const nowMs = Date.now();
+    const tombKeys = [...Object.keys(pending), ...Object.keys(pendDate)];
     setPending({});
     setPendDate({});
     setAsOf(asOfOrig);
@@ -3490,15 +3613,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
     setByAtMap(new Map());
     mineAtRef.current = new Map();
-    delRef.current = new Map();
+    delRef.current = new Map(tombKeys.map((k): [string, number] => [k, nowMs]));
     lastMergedRef.current = 0;
     lastBodyRef.current = '';
-    clearDraftLS(pkg.key);
-    void clearRemoteDraft(pkg.key);
+    if (tombKeys.length) {
+      const tomb: Draft = {
+        t: nowMs, cells: [], dates: [], rowKeys: [],
+        done: [], del: [...delRef.current],
+      };
+      saveDraftLS(pkg.key, tomb);
+      remoteQueue.current = { pkg: pkg.key, draft: tomb };
+      setRemoteTick((n) => n + 1);
+    } else {
+      clearDraftLS(pkg.key);
+      void clearRemoteDraft(pkg.key);
+    }
     keepDraft.current = false;
     say(tr('Ноорог устгагдлаа — илгээгээгүй засварууд арилав.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.key, asOfOrig, participants, meKey, dirtyCount]);
+  }, [pkg.key, asOfOrig, participants, meKey, dirtyCount, pending, pendDate]);
 
   // Ноорог хадгалах — pending өөрчлөгдөх бүрд. Хоосон болоход (нийтэлсэн /
   // болиулсан) устгана, гэхдээ зөвхөн сэргээх шат ӨНГӨРСӨН багцынхыг: багц
@@ -3533,8 +3666,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    (`del`) алсад ҮЛДЭХ ёстой — цэвэрлэвэл өөр төхөөрөмжийн 3 хоногийн
          *    локал хуулбар нүдийг сэргээнэ. 7 хоногоос хуучин tombstone-ийг
          *    энд ч хасна (`mergeDrafts`-тай ижил хугацаа); бүгд хуучирсан бол
-         *    урьдын адил цэвэрлэнэ. «Илгээх» ба «Ноорог устгах» нь `delRef`-ийг
-         *    ӨМНӨ нь тэглэдэг тул тэр хоёр зам энд орохгүй — цэвэрлэгдэнэ.
+         *    урьдын адил цэвэрлэнэ.
+         * ⚠️ 2026-09-25-ны аудитаас «Илгээх» ба «Ноорог устгах» ч `delRef`-д
+         *    ИЛГЭЭСЭН/УСТГАСАН түлхүүр бүрийн tombstone тавьдаг тул ЭНЭ замаар
+         *    хоосон + del-тэй ноорог бичигдэнэ (өмнө нь алсыг устгадаг байсан ч
+         *    бусад төхөөрөмж/оролцогчийн хуучин хуулбар тэр нүдийг сэргээдэг байв).
          */
         const nowMs = Date.now();
         const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
@@ -3574,6 +3710,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
     const at = Date.now();
     setSavedAt(at);
+    /* ⚠️ Хоосон биш ноорог бичигдэж байна — «хуучирсан нүдтэй ноорог»-ийн хамгаалалт
+       (`pickDraft`-ийн `keepDraft = true`, 2026-09-25) цаашид утгагүй: локал хуулбар
+       одоо энэ төлөвөөр солигдоно. Үлдээвэл дараа нь бүх нүдээ буцаахад (хоосон
+       төлөв) tombstone/цэвэрлэгээ хийгдэхгүй, буцаасан нүд локалаас сэргэнэ. */
+    keepDraft.current = false;
     /* ⚠️ Ноорогт хамрагдсан мөр БҮРИЙН танигчийг хамт хадгална — агшин
        солигдоход (өөр хүн нийтлэхэд) түлхүүрүүдийг шинэ ObjectID руу зөөх
        ЦОРЫН ГАНЦ зам. Зөвхөн хэрэгтэй мөрийг л бичнэ: 1,400 мөрийн бүтэн
@@ -3755,8 +3896,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         let remote: Draft | null = null;
         /* ⚠️ Багц солигдсон (`allowStale`) бол `lastMergedRef` шинэ багцынх —
-           найдахгүй, алсынхыг ЗААВАЛ уншиж нийлүүлнэ. */
-        if (at !== null && (allowStale || at > lastMergedRef.current)) {
+           найдахгүй, алсынхыг ЗААВАЛ уншиж нийлүүлнэ.
+           ⚠️ ТЭНЦҮҮ БИШ (`!==`), `>` БИШ (2026-09-25-ны аудит): алсын хувилбар
+           нь бусад клиентийн цагаар бичигддэг тул БАГА болж ч болно (мөр дахин
+           үүссэн, цаг хоцорсон бичигч) — тэр үед `>` уншилтыг алгасаж, бусдын
+           нүдийг дарж бичдэг байв. Сүүлд ӨӨРӨӨ тусгасан хувилбараас ӨӨР л бол уншина. */
+        if (at !== null && (allowStale || at !== lastMergedRef.current)) {
           const rr = await readRemoteDraft(q.pkg);
           if (!live() && !allowStale) return;
           if (!rr.ok) {
@@ -3770,9 +3915,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         }
         /* Алсынхыг ХУУЧИН, өөрийнхийг ШИНЭ тал болгож нийлүүлнэ — нүд тус
            бүрээр шинэ агшинтай нь ялна (`mergeDrafts`). */
-        const outDraft = mergeDrafts(remote, q.draft) ?? q.draft;
-        const body = JSON.stringify(outDraft);
-        if (body.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); return; }
+        const merged0 = mergeDrafts(remote, q.draft) ?? q.draft;
+        /* `body` — хувилбарын дугааргүй агуулга: дэмий бичилт таслахад (доор) */
+        const body = JSON.stringify(merged0);
+        /*
+         * ⚠️ ХУВИЛБАР ҮРГЭЛЖ ӨСНӨ (2026-09-25-ны аудит): `t = max(одоо, алсын at + 1)`.
+         *    Урьд нь `t = max(remote.t, local.t)` (клиентийн цаг) тул бусдын нүдийг
+         *    нийлүүлсэн бичилт ИЖИЛ (цаг зөрвөл БАГА) хувилбартай гарч, нөгөө талын
+         *    `at > lastMergedRef` шалгуур түүнийг ХЭЗЭЭ Ч татахгүй — дараагийн
+         *    бичилт нь зөвхөн өөрийн агуулгаар дарж, нийлүүлсэн нүд алга болдог байв.
+         */
+        const outDraft: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at != null ? at + 1 : 0) };
+        const outBody = JSON.stringify(outDraft);
+        if (outBody.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); return; }
         /*
          * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
          * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно
@@ -3805,7 +3960,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    алгасуулна (дэмий татахгүй).
          */
         if (live() && !remote && outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
-        await saveRemoteDraft(q.pkg, outDraft.t, body).then((r) => {
+        await saveRemoteDraft(q.pkg, outDraft.t, outBody).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (!live()) return;
         if (r.ok) {
@@ -3905,7 +4060,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * бөглөсөн ажлыг устгахгүй — зөвхөн нэмнэ, эсвэл шинэ утгаар дарна.
    */
   useEffect(() => {
-    if (busy || noEdit || !sc || !rows.length) return;
+    /* ⚠️ `!canPerf` — сэргээх эффектийн ⚠️ (2026-09-25): эрхгүй хүнд ноорог буухгүй
+       тул татах шаардлагагүй; `pickDraft` ч эрхгүй үед юу ч хийхгүй. */
+    if (busy || noEdit || !canPerf || !sc || !rows.length) return;
     if (loadedPkgRef.current !== pkg.key) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -3947,7 +4104,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (!alive) return;
       /* `undefined` = уншиж чадсангүй · `null` = мөр алга · тоо = агшин.
          Хоёуланд нь татах зүйлгүй; дараагийн тойрогт дахин үзнэ. */
-      if (typeof at === 'number' && at > lastMergedRef.current) {
+      /* ⚠️ ТЭНЦҮҮ БИШ бол татна (2026-09-25-ны аудит — `flush`-ийн ⚠️): алсын
+         хувилбар БУУРСАН (мөр дахин үүссэн / цаг хоцорсон бичигч) бол харьцуулах
+         цэгийг тэглэнэ — эс бөгөөс доорх `remote.t > lastMergedRef` түүнийг
+         мөнхөд «хуучин» гэж алгасна. */
+      if (typeof at === 'number' && at !== lastMergedRef.current) {
+        if (at < lastMergedRef.current) lastMergedRef.current = 0;
         const rr = await readRemoteDraft(pkg.key);
         if (!alive) return;
         if (rr.ok && rr.draft) {
@@ -3978,7 +4140,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     };
     timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [busy, noEdit, sc, rows.length, pkg.key]);
+  }, [busy, noEdit, canPerf, sc, rows.length, pkg.key]);
 
   /**
    * ТАБ ХААХ / REFRESH — ноорог ХАДГАЛАГДАЖ АМЖААГҮЙ үед хөтөч зогсооно.
@@ -4140,11 +4302,23 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (!pvCells.length || pvBusy) return;
     setPvBusy(true); setPvErr(""); setPvNote("");
     try {
+      /* ⚠️ МӨРИЙН ТАНИГЧ ХАМТ ЯВНА (2026-09-25-ны аудит): payload нь мөрийг
+         ЗӨВХӨН oid-оор заадаг тул илгээснээс хойш архивт шинэ жааз орвол
+         батлагч тэр oid-ийг хуучин (архивласан) мөрөнд бичдэг, эсвэл «мөр
+         олдсонгүй» гэж мөнхөд гацдаг байв. `rowKeys` (хуудасны дарааллаар) нь
+         `decideObyemHere`-д шинэ жааз руу зөөх ганц зам. */
+      const pvOids = new Set(pvCells.map(([o]) => o));
+      const payload: ObyemPayload & { rowKeys: [number, string][] } = {
+        v: 1,
+        pkgKey: pkg.key,
+        cells: pvCells,
+        rowKeys: rows.filter((r) => pvOids.has(r.oid)).map((r): [number, string] => [r.oid, rowKeyOf(r)]),
+      };
       const r = await submitObyem({
         pkgKey: pkg.key,
         pkgGroup: pkg.group,
         author: user?.username ?? '',
-        payload: { v: 1, pkgKey: pkg.key, cells: pvCells },
+        payload,
       });
       if (!r.ok) { setPvErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
       /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
@@ -4158,7 +4332,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setPvBusy(false);
     }
-  }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem]);
+  }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem, rows]);
 
   /**
    * ШИЙДВЭР — батлах эсвэл буцаах.
@@ -4171,6 +4345,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const decideObyemHere = useCallback(async (approve: boolean, reason?: string) => {
     if (!pvSub || pvBusy || !sc) return;
     setPvBusy(true); setPvErr(""); setPvNote("");
+    /** Сүүлийн жаазад тулгагдаагүй тул бичигдээгүй нүдний тоо (доорх ⚠️) */
+    let pvSkipped = 0;
     try {
       if (approve) {
         const fld = sc.f.plannedVol;
@@ -4182,16 +4358,50 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (!pl) { setPvErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
         /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
            oid шилжсэн бол тэр мөрийг АЛГАСНА — буруу мөрөнд бичихээс
-           бүрэн алгасах нь дээр. */
-        const live = new Set(rows.map((r) => r.oid));
-        const upd = pl.cells
-          .filter(([oid]) => live.has(oid))
-          .map(([oid, v]) => ({ [sc.f.oid]: oid, [fld]: v }));
+           бүрэн алгасах нь дээр.
+           ⚠️ АРХИВЫН СҮҮЛИЙН ЖААЗАД (2026-09-25-ны аудит): урьд нь батлагчийн
+           ОДОО харж буй `rows`-оор шүүж бичдэг байв — хуудас нь хуучин (F0)
+           жаазан дээр байвал `applyUpdates` АРХИВЛАСАН мөрөнд бичиж, шинэ жааз
+           (F1) утгагүй үлдэх атлаа «үндсэн өгөгдөлд бичигдлээ» гэж мэдэгддэг;
+           дахин ачаалсан батлагч «мөрүүд олдсонгүй»-д мөнхөд гацдаг байв. Одоо
+           сүүлийн жаазыг ТАТАЖ, oid нь тэнд байхгүй бол (№ ¦ Ажил)-аар зөөнө:
+             · илгээлтийн oid бүгд ЭНЭ хуудсанд байвал — хуудасны БҮТЭН мөрийн
+               жагсаалтаар (`publish`-ийн `oidMap`-тай ижил, давхардсан шошго ч
+               дарааллаараа яг таарна);
+             · эс бөгөөс payload-ын `rowKeys`-ээр — СИЙРЭГ жагсаалт тул шинэ
+               жаазад ДАВХАРДСАН шошготой мөрийг ЗӨӨХГҮЙ (буруу мөрөнд бичихээс
+               алгасах нь дээр — дээрх ⚠️).
+           Зөөгдөөгүй нүдийг тоолж ил хэлнэ. */
+        const base = await loadRows(pkg, sc);
+        const freshOids = new Set(base.rows.map((r) => r.oid));
+        const pageOids = new Set(rows.map((r) => r.oid));
+        let map = new Map<number, number>();
+        if (pl.cells.some(([oid]) => !freshOids.has(oid))) {
+          if (pl.cells.every(([oid]) => pageOids.has(oid))) {
+            map = buildOidMap(rows.filter((r) => r.oid >= 0).map((r): [number, string] => [r.oid, rowKeyOf(r)]), base.rows);
+          } else {
+            const rk0 = (pl as { rowKeys?: unknown }).rowKeys;
+            const rk = Array.isArray(rk0)
+              ? rk0.filter((e): e is [number, string] => Array.isArray(e) && Number.isInteger(e[0]) && typeof e[1] === 'string')
+              : [];
+            const cnt = new Map<string, number>();
+            for (const r of base.rows) cnt.set(rowKeyOf(r), (cnt.get(rowKeyOf(r)) ?? 0) + 1);
+            map = buildOidMap(rk.filter(([, k]) => cnt.get(k) === 1), base.rows);
+          }
+        }
+        let skippedN = 0;
+        const upd: Record<string, unknown>[] = [];
+        for (const [oid, v] of pl.cells) {
+          const to = freshOids.has(oid) ? oid : map.get(oid);
+          if (to == null || !freshOids.has(to)) { skippedN++; continue; }
+          upd.push({ [sc.f.oid]: to, [fld]: v });
+        }
         if (!upd.length) {
           setPvErr(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
           return;
         }
         await applyUpdates(pkg, upd);
+        pvSkipped = skippedN;
       }
       const r = await decideObyem({
         oid: pvSub.oid,
@@ -4203,6 +4413,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (!r.ok) { setPvErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
+          + (pvSkipped ? ' ' + tr('{0} мөр архивын сүүлийн жаазад тулгагдаагүй тул бичигдсэнгүй.', pvSkipped) : '')
         : tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
       await refreshObyem();
     } catch (e) {
@@ -4289,6 +4500,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (!canSubmitNow) {
       say(tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', ')));
       return;
+    }
+    /*
+     * ⚠️ ИЛГЭЭХ НҮДНИЙ «СҮҮЛД ХӨНДСӨН» АГШИН — ЭНД, payload бүрдэхээс ӨМНӨ
+     *    барина (2026-09-25-ны давтан аудит). Доорх tombstone-ийг `pubAt`
+     *    (илгээлт ДУУССАН агшин)-аар тамгалбал: А-гийн `pending` дахь Б-гийн
+     *    X=5 (татсан агшин P) → Б X=8 болгосон (T, P < T < pubAt — «Дуусгасан»
+     *    дарсны дараа засах эсвэл хоёр дахь төхөөрөмж) → А X=5 илгээнэ →
+     *    `mergeDrafts` Б-гийн T < pubAt тул X=8-ыг ЧИМЭЭГҮЙ хасдаг байв (илгээгээгүй,
+     *    ноорогт ч үгүй). Одоо tombstone = ИЛГЭЭСЭН утгын өөрийн агшин: өөрийн
+     *    нүд → `mineAtRef`, бусдынх → `byAtRef` (хоёулаа байвал их нь); тэрнээс
+     *    ХОЖУУ хөндсөн нүд `mergeDrafts`-д ялна. Агшингүй нүдэнд л `pubAt`.
+     *    `mineAtRef` нь ref тул `await`-аас өмнө ХУУЛНА.
+     */
+    const sentAt = new Map<string, number>();
+    for (const k of [...Object.keys(pending), ...Object.keys(pendDate)]) {
+      const m = mineRef.current.has(k) ? mineAtRef.current.get(k) : undefined;
+      const o = byAtRef.current.get(k);
+      const a = m != null && o != null ? Math.max(m, o) : (m ?? o);
+      if (a != null) sentAt.set(k, a);
     }
     /*
      * ⚠️ ХЯНАЛТЫН ХОРИГ ХАСАГДСАН (2026-09-07, хэрэглэгчийн шууд заавар:
@@ -4403,17 +4633,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        * НЭГТГЭХ гэж буй хуучин илгээлтийн `cells`/`dates`/`rowKeys` ч
        * хуучирна. Зөөхгүй бол нэг payload дотор ХОЁР үеийн ObjectID холилдож,
        * батлах шатанд тал нь «тулгагдсангүй» болж бүхэл илгээлт зогсоно.
+       *
+       * ⚠️ ЗӨӨХ ЭСЭХИЙГ PAYLOAD-ЫН ӨӨРИЙН oid-ООР шийднэ (2026-09-25-ны аудит,
+       *    HIGH). Урьд нь ЗӨВХӨН `oidMap` (хуудасны `rows` → `freshRows`)-оор
+       *    зөөдөг байв: илгээлт ӨМНӨХ жааз (F0) дээр хадгалагдаад хуудас F1
+       *    дээр нээгдсэн бол (ачаалах overlay нь зөвхөн ДЭЛГЭЦЭД зөөдөг)
+       *    `rows` = `freshRows` тул `oidMap` хоосон, payload F0-ийн oid-тойгоо
+       *    F1-ийн шинэ түлхүүртэй НЭГТГЭГДЭЖ, батлах шатанд буруу мөрөнд буух
+       *    эсвэл `unmoved > 0`-оор багцыг мөнхөд гацаадаг байв. Одоо:
+       *      · rowKeys-ийн oid бүгд `freshRows`-д бий → зөөхгүй;
+       *      · бүгд хуудасны `rows`-д бий (хуудас нээснээс хойш жааз солигдсон)
+       *        → `oidMap` (бүтэн хуудсаар, яг таарна);
+       *      · эс бөгөөс (хуучин жааз) → `buildOidMap(p.rowKeys, freshRows)` —
+       *        `overlaySubmission`-ий `needMap`-тай ИЖИЛ дүрэм, тиймээс дэлгэцэд
+       *        харагдсан мөрүүдэд л бууна.
+       *    Зөөгдөөгүй түлхүүр үлдвэл урьдын адил ЗОГСООНО.
        */
+      const freshOidSet = new Set(freshRows.map((r) => r.oid));
+      const pageOidSet = new Set(rows.map((r) => r.oid));
       const movePayload = (p: SubmissionPayload): SubmissionPayload => {
-        if (!oidMap.size) return p;
-        const c = moveKeys(oidMap, Object.fromEntries(p.cells));
-        const d = moveKeys(oidMap, Object.fromEntries(p.dates));
-        if (c.unmoved.length || d.unmoved.length) throw new Error(stale);
+        const rk = p.rowKeys ?? [];
+        if (!rk.some(([oid]) => oid >= 0 && !freshOidSet.has(oid))) return p;
+        const onPage = oidMap.size > 0 && rk.every(([oid]) => oid < 0 || pageOidSet.has(oid));
+        const map = onPage ? oidMap : buildOidMap(rk, freshRows);
+        const c = moveKeys(map, Object.fromEntries(p.cells));
+        const d = moveKeys(map, Object.fromEntries(p.dates));
+        if (!map.size || c.unmoved.length || d.unmoved.length) throw new Error(stale);
         return {
           ...p,
           cells: Object.entries(c.out),
           dates: Object.entries(d.out),
-          rowKeys: p.rowKeys.map(([oid, label]): [number, string] => [oidMap.get(oid) ?? oid, label]),
+          rowKeys: rk.map(([oid, label]): [number, string] => [map.get(oid) ?? oid, label]),
         };
       };
 
@@ -4508,6 +4758,72 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const expectAt = staged && staged.payload.fillMs === fillMs ? { at: staged.at } : null;
       const sv = await saveSubmission(pkg.key, payload, expectAt);
       if (!sv.ok) throw new Error(sv.error);
+      const nCells = Object.keys(pend2).length + Object.keys(pendDate2).length;
+      /* ⚠️ TOMBSTONE — ИЛГЭЭСЭН түлхүүр бүрд (2026-09-25-ны аудит, доорх ⚠️) */
+      /* ⚠️ Агшин = `sentAt` (дээрх ⚠️), `pubAt` нь зөвхөн агшингүй нүдэнд.
+         Зөөгдсөн түлхүүр нь ЗӨӨХӨӨС ӨМНӨХ түлхүүрийнхээ агшныг авна. */
+      const pubAt = Date.now();
+      delRef.current = new Map();
+      for (const k of [...Object.keys(pending), ...Object.keys(pendDate)]) {
+        const a = sentAt.get(k) ?? pubAt;
+        delRef.current.set(k, a);
+        const c = k.indexOf(':');
+        const to = c > 0 ? oidMap.get(Number(k.slice(0, c))) : undefined;
+        if (to != null) delRef.current.set(`${to}${k.slice(c)}`, a);
+      }
+      for (const k of [...Object.keys(pend2), ...Object.keys(pendDate2)]) {
+        if (!delRef.current.has(k)) delRef.current.set(k, pubAt);
+      }
+      /*
+       * ⚠️ ИЛГЭЭЛТ ХАДГАЛАГДЛАА — ТӨЛӨВИЙГ ЭНД, ДАРААГИЙН `await`-ААС ӨМНӨ
+       *    ТУСГАНА (2026-09-25-ны аудит). Урьд нь `staged`/`pending` нь дэлгэцийн
+       *    дахин ачаалалтын (`loadRows` → `readActiveSubmission`) ДАРАА л
+       *    шинэчлэгддэг байв: тэр хооронд сүлжээ тасрахад `catch` руу орж `staged`
+       *    хуучин `at`-тай үлдэж, дахин «Илгээх» дарахад ӨӨРИЙН илгээлтийг «өөр
+       *    хэрэглэгч илгээсэн» гэж зогсоодог (зөвхөн F5 аварна), илгээсэн нүд
+       *    ногоон хэвээр үлддэг байв.
+       *
+       * ⚠️ TOMBSTONE (2026-09-25-ны аудит — 2026-09-21-ний «ноорог бүрэн
+       *    цэвэрлэгдэнэ» шийдвэрийг ӨӨРЧЛӨВ). Алсын мөрийг устгах нь ЗӨВХӨН энэ
+       *    хөтчийг цэвэрлэдэг: өөр төхөөрөмжийн 3 хоногийн локал ноорог ба бусад
+       *    оролцогчийн дэлгэцийн `pending` илгээгдсэн нүднүүдийг ногоон
+       *    «илгээгээгүй» болгож буцаан авчирч, дараагийн засвараар алсад дахин
+       *    бичдэг байв (дахин илгээвэл бууралт). Одоо илгээсэн түлхүүр бүрд
+       *    ИЛГЭЭСЭН УТГЫН агшны (`sentAt`) tombstone тавьж, хадгалах эффект хоосон + del-тэй
+       *    ноорог бичнэ — `mergeDrafts` тэр агшнаас ӨМНӨ хөндсөн хуулбарыг хаа ч
+       *    хасна, ХОЖУУ бичсэн (шинэ засвар) нүдийг үлдээнэ. Хуучин (`oidMap`-аар
+       *    зөөгдөхөөс өмнөх) ба шинэ түлхүүр ХОЁУЛАА — бусад хуулбар аль нэгийг нь
+       *    агуулна. Tombstone 7 хоногт (`DEL_TTL_MS`) хуучирч, ноорог цэвэрлэгдэнэ.
+       * ⚠️ Хамтын төлөв (эзэмшил · «дуусгасан») ч тэглэгдэнэ — `done: []` нь
+       *    бусдын тэмдэглэгээг нийлүүлэлтээр ИЛ буцаана (хадгалах эффектийн
+       *    цэвэрлэлтийн замтай ижил зорилго).
+       */
+      keepDraft.current = false;
+      setPending({});
+      setPendDate({});
+      mineRef.current = new Set();
+      mineAtRef.current = new Map();
+      doneRef.current = [];
+      setDoneBy([]);
+      setByMap(new Map());
+      setByAtMap(new Map());
+      /* Огнооны өөрчлөлт илгээлтэд суусан — `dirtyCount`-д дахин тоологдохгүй */
+      setAsOfOrig(asOf);
+      /* ⚠️ Нэгтгэх суурь = ДӨНГӨЖ хадгалсан мөр (`saveSubmission` нь `at: payload.at` бичдэг) */
+      const savedSub: StagedSubmission = { oid: sv.oid, at: payload.at, done: false, payload };
+      setStaged(savedSub);
+      /* ⚠️ Илгээсэн тоо дэлгэцээс түр ч АЛГА БОЛОХГҮЙ: `pending` цэвэрлэгдсэн тул
+         дөнгөж хадгалсан payload-ыг суурь жааз (`freshRows`) дээр шууд давхарлана;
+         доорх дахин ачаалалт амжилттай бол серверийн хувилбараар солигдоно. */
+      const ovNow = overlaySubmission(freshRows, payload, sc, nBld);
+      setRows(ovNow.rows);
+      /* ⚠️ ГАРААР СОНГОСОН буцаалт ДУУСЛАА (2026-09-25-ны аудит): урьд нь
+         `resumedOid` зөвхөн багц солиход тэглэгддэг тул дараагийн «Илгээх» ч
+         буцаагдсан илгээлтийн өдрөөр (`fillMs`) явж, өнөөдрийн нүд хянагдаж буй
+         тэр илгээлтэд нийлж, архивт хуучин `buglusun_ognoo`-оор орж байв. */
+      setResumedOid(null);
+      setStagedOid(sv.oid);
+      setStagedFillMs(fillMs);
 
       /*
        * ── ХЯНАЛТАД АВТОМАТААР ОРУУЛНА ──────────────────────────────────
@@ -4529,50 +4845,60 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          анхааруулга гаргахгүйн тулд (доорх `registeredRef`-ийн ⚠️). */
       if (rv.ok) registeredRef.current.add(sv.oid);
       setSubmitFailed(!rv.ok);
-      setStagedOid(sv.oid);
-      setStagedFillMs(fillMs);
       /* Хяналтын жагсаалтыг шинэчилнэ — `hyanalt.addRows` нь `hyanaltStore`-ын
          кэшийг мэддэггүй тул үүнгүйгээр «хяналтад байна» мэдэгдэл гарахгүй. */
       if (rv.ok) reloadHy();
+      /* ⚠️ БУЦААЛТЫН УЛААН ТЭМДЭГЛЭГЭЭ (`backChg`) ДУУСЛАА (2026-09-25-ны аудит):
+         илгээлт дахин хянагч руу явсан тул «ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү»
+         гэсэн улаан хүрээ утгагүй; `backOk` нь өөрийн эффектээр тэглэгддэг
+         байхад энэ нь үлддэг байв. Бүртгэл унасан (урсгал буцаагдсан хэвээр)
+         бол хэвээр үлдээнэ. */
+      if (rv.ok) setBackChg(new Set());
 
       /* ── ДЭЛГЭЦИЙГ ДАХИН БҮТЭЭНЭ ──
          ⚠️ Илгээсэн тоо дэлгэцээс АЛГА БОЛОХ ЁСГҮЙ: архивт юу ч бичигдээгүй
          тул суурь жаазыг дахин татаад ДЭЭР нь илгээлтээ давхарлана. Эс
-         бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө. */
-      const next = await loadRows(pkg, sc);
-      /* ⚠️ ӨНӨӨДРИЙН түлхүүрээр — дээрх ачаалах эффекттэй ижил үндэслэл.
-         ⚠️ Алдааг мөн ЯЛГАНА: илгээсний дараа уншилт унавал overlay
-         хийгдэхгүй, дэлгэц 0% болж «дөнгөж илгээсэн ажил алга» гэсэн хамгийн
-         айдас төрүүлэм дүр зураг гарна. Уншилт унасныг ил хэлж, суурь
-         жаазыг хэвээр үлдээнэ. */
-      const act2r = await readActiveSubmission(pkg.key, fillMs);
-      const act2 = act2r.ok ? act2r.sub : null;
-      setSubReadErr(act2r.ok ? null : act2r.error);
-      const use2 = !!act2 && !act2.done;
-      const ov2 = use2 && act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
-      /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
-         багц гацах тул хэрэглэгч ОДОО мэдэх ёстой (дээрх ⚠️). */
-      setUnmovedWarn(ov2 && ov2.unmoved > 0 && act2
-        ? describeUnmoved(ov2.unmovedKeys, act2.payload.rowKeys, sc.bld)
-        : []);
-      setStaged(use2 ? act2 : null);
-      setRows(ov2 ? ov2.rows : next.rows);
-      /* ⚠️ `null ≠ 0` — илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол архивынх. */
-      const asOfNext = ov2?.asOf ?? next.asOf ?? asOf;
-      setAsOf(asOfNext);
-      /* ⚠️ `asOfOrig`-ыг МӨН ононо: огнооны өөрчлөлт одоо илгээлтэд суусан
-         тул `dirtyCount`-д дахин тоологдох ёсгүй. */
-      setAsOfOrig(asOfNext);
-      setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
-      setSnapMs(next.snapshot ?? null);
-      const nCells = Object.keys(pend2).length + Object.keys(pendDate2).length;
-      /* ⚠️ TOMBSTONE-ийг илгээлтийн ӨМНӨ тэглэнэ (2026-09-21-ний дахин аудит):
-         хадгалах эффектийн хоосон зам `delRef`-д tombstone байвал алсыг
-         цэвэрлэхийн оронд хоосон + del-тэй ноорог бичдэг болсон. Илгээлт нь
-         эрх бүхий эх тул буцаалтын баримт хэрэггүй — ноорог бүрэн цэвэрлэгдэнэ. */
-      delRef.current = new Map();
-      setPending({});
-      setPendDate({});
+         бөгөөс гүйцэтгэгч ажлаа алдсан гэж бодож дахин бөглөнө.
+         ⚠️ ТУСДАА try (2026-09-25-ны аудит): илгээлт аль хэдийн хадгалагдсан тул
+         энд унавал «илгээгдсэнгүй» гэж харуулахгүй — дэлгэц дээрх ЛОКАЛ
+         давхарлалт (`ovNow`) хэвээр үлдэж, уншилт унасныг `subReadErr`-ээр ил хэлнэ. */
+      try {
+        const next = await loadRows(pkg, sc);
+        /* ⚠️ ӨНӨӨДРИЙН түлхүүрээр — дээрх ачаалах эффекттэй ижил үндэслэл.
+           ⚠️ Алдааг мөн ЯЛГАНА: илгээсний дараа уншилт унавал overlay
+           хийгдэхгүй, дэлгэц 0% болж «дөнгөж илгээсэн ажил алга» гэсэн хамгийн
+           айдас төрүүлэм дүр зураг гарна. Уншилт унасныг ил хэлж, суурь
+           жаазыг хэвээр үлдээнэ.
+           ⚠️ 2026-09-25: уншилт УНАВАЛ `staged`-ыг `null` болгохгүй — дөнгөж
+           хадгалсан `savedSub` хэвээр (эс бөгөөс дараагийн «Илгээх» өөрийн
+           илгээлтийг «өөр хэрэглэгч» гэж зогсооно). */
+        const act2r = await readActiveSubmission(pkg.key, fillMs);
+        setSubReadErr(act2r.ok ? null : act2r.error);
+        const act2 = act2r.ok ? (act2r.sub && !act2r.sub.done ? act2r.sub : null) : savedSub;
+        const ov2 = act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
+        /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
+           багц гацах тул хэрэглэгч ОДОО мэдэх ёстой (дээрх ⚠️). */
+        setUnmovedWarn(ov2 && ov2.unmoved > 0 && act2
+          ? describeUnmoved(ov2.unmovedKeys, act2.payload.rowKeys, sc.bld)
+          : []);
+        setStaged(act2);
+        setRows(ov2 ? ov2.rows : next.rows);
+        /* ⚠️ `null ≠ 0` — илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол архивынх. */
+        const asOfNext = ov2?.asOf ?? next.asOf ?? asOf;
+        setAsOf(asOfNext);
+        /* ⚠️ `asOfOrig`-ыг МӨН ононо: огнооны өөрчлөлт одоо илгээлтэд суусан
+           тул `dirtyCount`-д дахин тоологдох ёсгүй. */
+        setAsOfOrig(asOfNext);
+        setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
+        setSnapMs(next.snapshot ?? null);
+      } catch (e2) {
+        /* Дэлгэц аль хэдийн `ovNow` — зөвхөн анхааруулга ба огноо */
+        setUnmovedWarn(ovNow.unmoved > 0 ? describeUnmoved(ovNow.unmovedKeys, payload.rowKeys, sc.bld) : []);
+        const asOfF = ovNow.asOf ?? fresh0.asOf ?? asOf;
+        setAsOf(asOfF);
+        setAsOfOrig(asOfF);
+        setSubReadErr(String((e2 as Error).message || e2));
+      }
       /* ⚠️ ЭНЭ ӨДРИЙН илгээлт хянагчийн гар дээр байхад дахин илгээсэн бол
          ИЛ ХЭЛНЭ (2026-09-07): хориг хасагдсан тул хэрэглэгч мэдэлгүй
          хянагчийн харж буй агуулгыг сольж болно. Шинэ ТОЙРОГ үүсээгүй —

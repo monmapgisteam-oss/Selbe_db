@@ -41,6 +41,8 @@ const SPEC: AclPanelSpec<ObyemRole> = {
   failedUsers: obyemFailedUsers,
   subscribe: subscribeObyemAcl,
   setGrants: setObyemGrants,
+  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
+  roleCaps: { editor: 'obyemEdit', approver: 'obyemApprove' },
   /*
    * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
    *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг

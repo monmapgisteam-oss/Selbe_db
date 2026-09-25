@@ -34,7 +34,7 @@ import { num, pct, mnt } from '@/lib/format';
 import type { ViewKey } from '@/lib/services';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  NODES, NODE_BY_ID, EDGES, GEO, buildSchem, edgePath, layoutOf, stageRail, topoOrder,
+  NODES, NODE_BY_ID, EDGES, GEO, PROJECT_WIDE, buildSchem, edgePath, layoutOf, stageRail, topoOrder,
   type Box, type EdgeKind, type Geo, type Health, type Metric, type SchemId,
   type SchemSources, type SchemState,
 } from '@/lib/schem';
@@ -90,7 +90,10 @@ function show(m: Metric): string {
        дахин жижигрэнэ. */
     case 'ha': return `${num(m.value, 1)} ${tr('га')}`;
     case 'day': return tr('{0} хоног', num(m.value));
-    default: return num(m.value);
+    /* ⚠️ 2026-09-25: БУТАРХАЙ тоог 2 оронтой — «1000 ажилтанд ногдох осол» нь
+       `count` төрөлтэй бөгөөд 1 осол / 2,500 ажилтан = 0.4-ийг `num(v)` «0» гэж
+       бүхэлчилж, осол БАЙХГҮЙ мэт уншуулдаг байв. Бүхэл тоо хэвээр 0 оронтой. */
+    default: return num(m.value, Number.isInteger(m.value) ? 0 : 2);
   }
 }
 
@@ -144,9 +147,16 @@ const CARD_ALERTS = 2;
 const CARD_ALERTS_COARSE = 1;
 
 function Node({
-  card, st, alerts, stat, box, rail, fine, allowed, selected, onOpen,
+  card, st, alerts, stat, box, rail, fine, wide, allowed, selected, onOpen,
 }: {
   card: Card;
+  /**
+   * Энэ картын тоо ТӨСЛИЙН НИЙТ (багцаар задардаггүй) эсэх.
+   * ⚠️ 2026-09-25: `st.projectWide` зөвхөн ерөнхий схемд байдаг — нарийн схемд
+   *    `st` нь `null` тул багц сонгосон ч «Чөлөөлсөн талбар» зэрэг төслийн тоо
+   *    тэмдэггүй, багцынх мэт харагддаг байв (`PROJECT_WIDE`).
+   */
+  wide: boolean;
   /**
    * ЭНЭ картад хамаарах анхааруулгууд (`alertsByCard`).
    * ⚠️ Хоосон массив нь «асуудалгүй», `null` БИШ — тиймээс шошго огт гарахгүй.
@@ -203,7 +213,8 @@ function Node({
   /* ⚠️ Товч бичээст (tooltip) БҮГД орно — картад хоёр л мөр багтана */
   const tip = [
     card.desc,
-    ...(stat ? [`${stat.label}: ${show(stat)}`] : []),
+    ...(stat ? [`${stat.label}: ${show(stat)}${stat.why ? ` (${stat.why})` : ''}`] : []),
+    ...(wide ? [tr('төслийн нийт')] : []),
     ...alerts.map((a) => `⚠ ${a.text}`),
     tr('Дарж дэлгэрэнгүйг харна'),
   ].join('\n');
@@ -216,7 +227,7 @@ function Node({
         fine ? c.fineNode : '',
         border,
         alarm,
-        st?.projectWide ? c.wide : '',
+        wide ? c.wide : '',
         stacked ? c.stackNode : '',
         selected ? c.sel : '',
       ].filter(Boolean).join(' ')}
@@ -333,10 +344,10 @@ function Node({
 
       {/* ⚠️ ПРОЦЕССЫН КАРТАД ЗӨВХӨН «эрхгүй» шошго. Төлвийн өнгө нь тоогүйгээр
           утгагүй — өнгө ганцаараа юу ч хэлэхгүй гэдэг нь энэ репогийн дүрэм. */}
-      {(st || (!allowed && card.view)) && (
+      {(st || wide || (!allowed && card.view)) && (
       <span className={c.tags}>
         {st && <span className={`${c.tag} ${HEALTH_TAG[st.health]}`}>{healthText(st.health)}</span>}
-        {st?.projectWide && <span className={c.tag}>{tr('төслийн нийт')}</span>}
+        {wide && <span className={c.tag}>{tr('төслийн нийт')}</span>}
         {!allowed && card.view && <span className={c.tag}>{tr('эрхгүй')}</span>}
       </span>
       )}
@@ -358,6 +369,10 @@ function Panel({
 }) {
   const n = NODE_BY_ID[id];
   const d = useMemo(() => nodeDetail(src, id, pkg || null), [src, id, pkg]);
+  /* ⚠️ 2026-09-25: багцаар задардаггүй зангилаа (`PROJECT_WIDE`) багц сонгосон ч
+     ТӨСЛИЙН тоо харуулдаг (`nodeDetail`) — гарчигт багцын нэр бичвэл «Багц 3.2»
+     дор төслийн 2,088 талбарын чөлөөлөлтийг тэр багцынх мэт уншуулна. */
+  const wide = PROJECT_WIDE.has(id);
 
   return (
     <aside className={c.panel} role="complementary" aria-label={n.title}>
@@ -370,7 +385,10 @@ function Panel({
       </div>
 
       <p className={c.panelDesc}>{n.desc}</p>
-      <p className={c.panelScope}>{pkg || tr('Төслийн нийт')}</p>
+      <p className={c.panelScope}>
+        {!pkg ? tr('Төслийн нийт')
+          : wide ? `${tr('Төслийн нийт')} · ${tr('багцаар задардаггүй')}` : pkg}
+      </p>
 
       {/**
         * ⚠️ ЭХ СУРВАЛЖИЙН ТӨЛӨВ — «—» гэсэн тоо ЯАГААД хоосон байгааг хэлнэ.
@@ -462,7 +480,7 @@ function Panel({
 type Wire = { from: string; to: string; kind: EdgeKind; label?: string };
 
 function Diagram({
-  cards, state, alerts, stats, edges, geo, rail, fine, allowed, openCard, onOpen,
+  cards, state, alerts, stats, edges, geo, rail, fine, pkgOn, allowed, openCard, onOpen,
 }: {
   /** ⚠️ ТОПОЛОГИЙН дараалалтай — DOM-ийн дараалал = Tab-ийн дараалал */
   cards: Card[];
@@ -476,6 +494,8 @@ function Diagram({
   geo: Geo;
   rail: { stage: string; n: number }[] | null;
   fine: boolean;
+  /** Багц сонгогдсон эсэх — нарийн картын «төслийн нийт» тэмдэг зөвхөн тэр үед */
+  pkgOn: boolean;
   allowed: (v: ViewKey | null) => boolean;
   /** Сонгогдсон КАРТЫН id — самбар нээсэн карт */
   openCard: string | null;
@@ -527,14 +547,21 @@ function Diagram({
     [edges, byId],
   );
 
-  const nodeOf = (card: Card, box: Box | null) => (
-    <Node key={card.id} card={card} st={state ? state[card.id] ?? null : null}
-      alerts={alerts.get(card.id) ?? []} stat={stats.get(card.id) ?? null}
-      box={box} fine={fine}
-      /* ⚠️ Зурвас зөвхөн ЕРӨНХИЙ горимын хяналтын карт дээр */
-      rail={!fine && card.id === 'hyanalt' ? rail : null}
-      allowed={allowed(card.view)} selected={openCard === card.id} onOpen={onOpen} />
-  );
+  const nodeOf = (card: Card, box: Box | null) => {
+    const st = state ? state[card.id] ?? null : null;
+    /* ⚠️ Ерөнхийд `st.projectWide` (урьдынх шиг үргэлж). Нарийнд ЗӨВХӨН багц
+       сонгосон үед — тэмдэг нь «энэ тоо тэр багцынх биш» гэдгийг л хэлэх ёстой;
+       нягт зурагт 8 картад үргэлж нэмбэл дэмий мөр болно. */
+    const wide = st ? !!st.projectWide : pkgOn && PROJECT_WIDE.has(card.group);
+    return (
+      <Node key={card.id} card={card} st={st}
+        alerts={alerts.get(card.id) ?? []} stat={stats.get(card.id) ?? null}
+        box={box} fine={fine} wide={wide}
+        /* ⚠️ Зурвас зөвхөн ЕРӨНХИЙ горимын хяналтын карт дээр */
+        rail={!fine && card.id === 'hyanalt' ? rail : null}
+        allowed={allowed(card.view)} selected={openCard === card.id} onOpen={onOpen} />
+    );
+  };
 
   if (stacked) {
     return (
@@ -750,7 +777,7 @@ export function Schem({
                   stats={stats}
                   edges={fine ? FINE_EDGES : EDGES}
                   geo={fine ? GEO_FINE : GEO}
-                  rail={rail} fine={fine} allowed={allowed}
+                  rail={rail} fine={fine} pkgOn={!!pkg} allowed={allowed}
                   openCard={pick?.card ?? null} onOpen={toggle} />
                 {pick && (
                   <Panel id={pick.group} src={src} pkg={pkg}

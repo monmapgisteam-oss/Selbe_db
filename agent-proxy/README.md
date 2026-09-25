@@ -49,6 +49,7 @@ npm start
 | `AGENT_EFFORT` | `low` | `low` / `medium` / `high` — хурд ↔ гүн бодолт |
 | `PORT` | `8787` | Релений порт |
 | `ALLOW_ORIGIN` | `http://localhost:8123,…` | Зөвшөөрөх эх (таслалаар) |
+| `BOT_SECRET` | — | Telegram ботын нууц. `ARCGIS_ORG_ID`-тай үед бот ArcGIS токенгүй тул `x-bot-secret` таарвал нэвтрэлтийн шалгалтыг алгасна (worker-тэй ижил). Ботод ИЖИЛ утгыг үндсэн `.env.local`-д `AGENT_BOT_SECRET`-ээр. |
 
 Порталын талд `NEXT_PUBLIC_AGENT_API` (үндсэн `.env`) нь релений хаягийг заана.
 
@@ -110,6 +111,9 @@ Production-д зориулсан зан:
    CF_TUNNEL_TOKEN=<1-р алхмын токен>
    ```
    ⚠️ `ANTHROPIC_API_KEY`-г энд БҮҮ бич (claude-code горим түлхүүрийг үл тоодог ч андуурал үүсгэнэ).
+   ⚠️ Telegram бот ашиглавал `BOT_SECRET=<урт санамсаргүй утга>`-г энд нэмж,
+   ИЖИЛ утгыг репогийн үндсэн `.env.local`-д `AGENT_BOT_SECRET`-ээр тавина —
+   эс бөгөөс `ARCGIS_ORG_ID`-тай реле ботын бүх асуултад 401 буцаана.
 3. **Суулгах (нэг удаа):**
    `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
    → нэвтрэх бүрд реле ба тунель автоматаар асна, унавал дахин асна,

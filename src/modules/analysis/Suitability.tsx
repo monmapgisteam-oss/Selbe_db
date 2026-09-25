@@ -196,7 +196,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ── Тооцоо ── */
   const rows = useMemo<Row[]>(() => {
     if (!data || !projected) return [];
-    computeRaw(data.zones, greenCats, parking, scoreOn);
+    /* ⚠️ Засагдсан `indicators`-ыг дамжуулна (2026-09-25 аудит) — эс бөгөөс
+       `ASSUME_MET` тогтмол 100-г ашигласаар норм засварыг үл тоодог байв. */
+    computeRaw(data.zones, greenCats, parking, scoreOn, indicators);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
       /* ⚠️ `scored` — оноололд орсон эсэх, ГАНЦ эх сурвалж (2026-09-21):
@@ -378,7 +380,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     if (mode !== 'simulation') return 0;
     const vals = simRows
       .map((r) => simMetric(r, simKind, popBasis).value)
-      .filter((v): v is number => v != null && v > 0);
+      /* ⚠️ Тээвэрт 0 м (буудлын дэргэд) = ХАМГИЙН САЙН утга — хасахгүй
+         (2026-09-25 аудит, `SimulationPanel`-ийн засвартай ижил). */
+      .filter((v): v is number => v != null && Number.isFinite(v) && (simKind === 'transit' ? v >= 0 : v > 0));
     return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
   }, [simRows, simKind, popBasis, mode]);
 
@@ -738,7 +742,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), tr('{0} м²', nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0)))), dt(tr('Давхар'), Number(a['Давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.Urhiin_too ?? 0) ? nf(Number(a.Urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.Parking ?? 0) ? nf(Number(a.Parking)) : null), dt(tr('Бүс'), esc(a.ZONE_ID ?? '—')));
   }, []);
 
-  const active = rows.find((r) => r.id === selected) ?? null;
+  /* ⚠️ Сонгосон бүс оноололоос гарсан (`scored` false — «Бүсийн ангилал»-аас
+     унтраасан) эсвэл `catOff`-оор нуугдсан бол сонголтыг ХҮЧИНГҮЙ гэж үзнэ
+     (2026-09-25 аудит): урьд нь SuitDetail нээлттэй үлдэж бүх үзүүлэлтийг
+     «өгөгдөлгүй», Хангалтыг «—» гэж харуулсаар хуучин зогсоолын дутагдлыг
+     үзүүлдэг байв. Төлөвөөс ГАРГАЖ авна (effect-ээр арилгахгүй). */
+  const selRow = rows.find((r) => r.id === selected) ?? null;
+  const active = selRow && selRow.scored && !catOff.has(selRow.type) ? selRow : null;
+  const selectedLive = active ? selected : null;
 
   /**
    * «Симуляц» — ХОЁР самбар, ТООЦООЛЛЫН НЭГЖЭЭР нь хуваагдана:
@@ -915,7 +926,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 rows={rankRows}
                 mode={mode}
                 ind={ind}
-                selected={selected}
+                selected={selectedLive}
                 onSelect={setSelected}
               />
             </Card>
@@ -929,7 +940,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               rows={rows}
               colorOf={colorOf}
               shown={shown}
-              selected={selected}
+              selected={selectedLive}
               onSelect={setSelected}
               layerOn={layerOn}
               opacity={opacity}

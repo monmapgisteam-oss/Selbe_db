@@ -63,6 +63,12 @@ export type ObyemPayload = {
   v: 1;
   pkgKey: string;
   cells: [number, number | null][];
+  /**
+   * Мөрийн танигч `[oid, «№ ¦ Ажил»]` (хуудасны дарааллаар) — илгээснээс
+   * хойш архивт шинэ жааз орвол батлагч oid-ийг шинэ мөр рүү ЗӨӨХ ганц зам.
+   * ⚠️ Заавал биш: хуучин илгээлтэд байхгүй.
+   */
+  rowKeys?: [number, string][];
 };
 
 /** НЭГ ИЛГЭЭЛТ — нэг багцын обьёмын засварын багц */
@@ -406,7 +412,19 @@ export function parsePayload(raw: string): ObyemPayload | null {
       if (v !== null && !(typeof v === 'number' && Number.isFinite(v))) return null;
       cells.push([oid as number, v as number | null]);
     }
-    return { v: 1, pkgKey: String(j.pkgKey ?? ''), cells };
+    /* ⚠️ `rowKeys`-ийг ХАДГАЛНА (2026-09-25 аудит): урьд нь энд хаягдаж,
+       шинэ жааз руу дахин ачаалсан батлагч «мөрүүд олдсонгүй»-д гацдаг байв.
+       `cells`-ээс ялгаатай нь буруу элементийг ХАЯЖ, агуулгыг татгалзахгүй —
+       танигч нь зөвхөн зөөх туслах, дутвал тэр нүд алгасагдаж ил тоологдоно. */
+    const rowKeys: [number, string][] = [];
+    if (Array.isArray(j.rowKeys)) {
+      for (const e of j.rowKeys as unknown[]) {
+        if (Array.isArray(e) && e.length === 2 && Number.isInteger(e[0]) && typeof e[1] === 'string') {
+          rowKeys.push([e[0] as number, e[1]]);
+        }
+      }
+    }
+    return { v: 1, pkgKey: String(j.pkgKey ?? ''), cells, rowKeys };
   } catch {
     return null;
   }

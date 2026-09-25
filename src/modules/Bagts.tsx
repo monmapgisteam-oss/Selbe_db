@@ -201,8 +201,11 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
           ),
         ];
+    /* ⚠️ ХАГАС үр дүн (`failed` хоосон биш) = «тоолж чадсангүй» (2026-09-25 аудит,
+       PkgProg · pkgSaad-тай ижил): татагдаагүй давхаргатай тоо нь бүрэн тоо мэт
+       харагдаж саадыг дутуу хэлдэг байв. */
     overlapLeftParcels(srcs)
-      .then((r) => alive && setOverlap(r))
+      .then((r) => alive && setOverlap(r.failed?.length ? 'error' : r))
       .catch(() => alive && setOverlap('error'));
     return () => {
       alive = false;

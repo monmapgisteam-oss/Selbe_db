@@ -24,7 +24,7 @@
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { tokenParam } from '@/lib/authToken';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { computeAll, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { computeAll, firstFrame, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
 import { overlaySubmission } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
@@ -563,11 +563,11 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
       let filled: Filled[] = [];
       let filledCount = 0;
       const changes: Change[] = [];
+      /** Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`-ийн ⚠️) */
+      let sameDay = false;
       const sum = sc.f.obyemSum;
       if (sum) {
         const w2 = where;
-        const c2 = (await post(p.url, { where: `${where} AND ${sum} > 0`, returnCountOnly: 'true' })) as { count?: number };
-        filledCount = c2.count ?? 0;
         {
           const obs = sc.obyem.filter(Boolean) as string[];
           /*
@@ -577,7 +577,8 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            *    өөр болж, хоёулаа өөр зүйл ярина.
            */
           const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
-          const cols = [sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
+          /* ⚠️ OBJECTID ЗААВАЛ (2026-09-25) — жаазыг `sheetOid`-оор олоход (доор) */
+          const cols = [sc.f.oid, sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
             sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, ...obs, ...acts]
             .filter(Boolean) as string[];
           /*
@@ -630,7 +631,26 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            *    ЦОРЫН ГАНЦ эх сурвалж — бөглөх хуудас ч мөн түүгээр таслана.
            */
           const expect = nExpect;
-          const feats2 = lastFrame(feats, sc.f.no, expect);
+          /*
+           * ⚠️ ЭНЭ ИЛГЭЭЛТИЙН ЖААЗ — ӨДРИЙН СҮҮЛИЙН ЖААЗ БИШ (2026-09-25-ны
+           *    аудит). Нэг хуудсыг нэг өдөр ХОЁР удаа батлавал хоёр жааз хоёулаа
+           *    ижил `buglusun_ognoo`-той. Урьд нь `lastFrame` тэр өдрийн СҮҮЛИЙН
+           *    жаазыг авдаг байсан тул ЭХНИЙ (Шилжүүлсэн) ажлыг нээхэд хоёр дахь
+           *    батлалтын тоо, «өөрчлөгдсөн» улаан нүд өмнөх ӨДӨРТЭЙ жишигдэн
+           *    харагдаж, буруу илгээлтэд наалддаг байв.
+           *    `sheetOid` нь жаазны ЭХНИЙ мөр (`applyAdds`-ийн `firstOid` /
+           *    хуучин нийтлэлийн эхний мөр) тул тэндээс эхэлсэн ЭХНИЙ бүтэн жааз
+           *    нь яг энэ илгээлт; түүнээс ӨМНӨХ ижил өдрийн жааз нь жишилтийн суурь.
+           *    Мөр олдохгүй бол (OID ирээгүй г.м.) хуучин дүрэм (`lastFrame`).
+           */
+          const si = feats.findIndex((x) => Number(x.attributes[sc.f.oid]) === sheetOid);
+          const feats2 = si >= 0 ? firstFrame(feats.slice(si), sc.f.no, expect) : lastFrame(feats, sc.f.no, expect);
+          const samePrev0 = si > 0 ? lastFrame(feats.slice(0, si), sc.f.no, expect) : [];
+          /* ⚠️ Зөвхөн БҮТЭН жааз суурь болно — унасан нийтлэлийн үлдэгдэл (богино)
+             бол байрлалаар жишихэд зохиомол «өөрчлөлт» гарна; тэр үед өмнөх өдөр. */
+          const samePrev = expect <= 0 || samePrev0.length >= expect ? samePrev0 : [];
+          /* Мөрийн тоо ч ЭНЭ жаазных — өдрийн бүх жаазны нийлбэр биш */
+          if (si >= 0) nRows = feats2.length;
           const q = { features: feats2 };
           /*
            * ӨМНӨХ АГШНЫ ижил мөрүүд — `№`-ээр индекслэнэ.
@@ -638,7 +658,13 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            * тул дугаар нь өөр байна. `№` нь багц дотроо тогтвортой.
            */
           const before = new Map<string, Record<string, unknown>>();
-          if (prevAt != null) {
+          if (samePrev.length) {
+            /* ⚠️ Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз — өмнөх өдрийнх БИШ (дээрх ⚠️).
+               Аль хэдийн татагдсан тул `fill < at` асуулгын алдаа энд хамаагүй. */
+            sameDay = true;
+            prevFailed = false;
+            samePrev.forEach((x, i) => before.set(String(i), x.attributes));
+          } else if (prevAt != null) {
             const prevFeats: { attributes: Record<string, unknown> }[] = [];
             try {
               for (let off = 0; ; ) {
@@ -713,6 +739,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
                 to: cells[k],
               });
             });
+            if ((num(a[sum]) ?? 0) > 0) filledCount += 1;
             return {
               cells,
               acts: acts.map((n) => num(a[n])),
@@ -744,7 +771,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
         blocks: sc.bld.filter((_, i) => sc.obyem[i]),
         // ⚠️ Хуудаслалт унасан бол prevAt олдсон ч ЖИШИГДЭЭГҮЙ — true гэвэл
         //    UI «улаан хүрээ — өөрчлөгдсөн» гэсэн худал тайлбар үзүүлнэ.
-        compared: prevAt != null && !prevFailed,
+        compared: (prevAt != null || sameDay) && !prevFailed,
         prevError: prevFailed,
         rows: nRows,
         filled,

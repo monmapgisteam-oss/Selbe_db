@@ -167,8 +167,13 @@ export function PkgProg({ dim, setDim }: {
             pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
           ),
         ];
+    /* ⚠️ ХАГАС ҮР ДҮН = АЛДАА (2026-09-25 аудит): `overlapLeftParcels` нь зарим
+       давхарга унавал (429 г.м.) `failed: [...]`-тай ДУТУУ тоо буцаадаг — урьд нь
+       бүрэн тоо мэт (12 нь 20-ын оронд, эсвэл ногоон 0) харагддаг байв.
+       `pkgSaad`-ийн ижил дүрэм; кэш хагас хариуг хадгалдаггүй тул дахин ачаалахад
+       дахин оролдоно. */
     overlapLeftParcels(srcs)
-      .then((r) => alive && setOverlap(r))
+      .then((r) => alive && setOverlap(r.failed?.length ? 'error' : r))
       .catch(() => alive && setOverlap('error'));
     return () => {
       alive = false;
@@ -241,7 +246,8 @@ export function PkgProg({ dim, setDim }: {
       /* ⚠️ Унасныг АЛГАСАХГҮЙ — түлхүүр нь Map-д огт орохгүй бол картын толгой
          «тоолж байна…» гэж МӨНХӨД хүлээлгэдэг байв; `'error'` = ил хэлнэ. */
       rs.forEach((r, i) => {
-        if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
+        /* ⚠️ `failed` (хагас) = 'error' — дутуу тоог бүрэн мэт харуулахгүй (2026-09-25) */
+        if (r.status === 'fulfilled') m.set(r.value[0], r.value[1].failed?.length ? 'error' : r.value[1]);
         else m.set(builds[i].key, 'error');
       });
       setOvByPack(m);
@@ -264,7 +270,11 @@ export function PkgProg({ dim, setDim }: {
         .filter((p) => catOf(p) === c.key)
         .flatMap((p) => p.layerIds.map((id) => ({ layerId: id, where: p.where })));
       if (!srcs.length) return [c.key, 0] as const;
-      return [c.key, (await overlapLeftParcels(srcs)).oids.length] as const;
+      const r = await overlapLeftParcels(srcs);
+      /* ⚠️ Хагас үр дүн (`failed`) → 'error' (2026-09-25): дэд бүтцийн цөөн давхарга
+         унахад «асуудал 0» ногоон худал гардаг байв. */
+      if (r.failed?.length) throw new Error('partial overlap');
+      return [c.key, r.oids.length] as const;
     })).then((rs) => {
       if (!alive) return;
       const m = new Map<PackCat, number | 'error'>();
@@ -337,8 +347,11 @@ export function PkgProg({ dim, setDim }: {
     const pc = planQ.state === 'ready' ? planQ.data : null;
     /* ⚠️ Хуваарь ирээгүй бол ГРАФИК ЗУРАХГҮЙ — cashflow руу буцаж унах зам
        2026-09-06-нд хаагдсан (тэр үйлчилгээ байхгүй). Хоосон график нь
-       буруу муруйгаас ДЭЭР. */
-    if (!pc || !pc.months.length) return null;
+       буруу муруйгаас ДЭЭР.
+       ⚠️ `pc.months` хоосон эсэхийг ЭНД шалгахгүй (2026-09-25 аудит): өөр хуудас
+       унаснаас төслийн нийт хоосон байхад бүрэн ачаалсан багцын `byBagts`
+       муруй алга болдог байв — хоосон цувааг доорх `series` шалгалт барина. */
+    if (!pc) return null;
     /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт */
     const series = active && active.key !== '__all'
       ? pc.byBagts.get(active.key)

@@ -215,9 +215,13 @@ export function AjilBatlah() {
   const toggle = useCallback((oid: number) => {
     setOpen((cur) => (cur === oid ? null : oid));
     /* ⚠️ Кэштэй бол ДАХИН ТАТАХГҮЙ: хумиж дэлгэх нь хүнд хүсэлт давтах
-       шалтгаан биш. */
+       шалтгаан биш.
+       ⚠️ `fail`-ийг КЭШЛЭХГҮЙ (2026-09-25 аудит): түр сүлжээний алдаа
+       мөнхөд кэшлэгдэж, хуудас refresh хийтэл «Батлах» хаалттай үлддэг байв
+       (`reload` нь `detail`-ийг цэвэрлэдэггүй) — дахин дарахад дахин татна. */
     setDetail((m) => {
-      if (m.has(oid)) return m;
+      const cur = m.get(oid);
+      if (cur && cur.k !== 'fail') return m;
       const next = new Map(m);
       next.set(oid, { k: 'loading' });
       void (async () => {
@@ -249,6 +253,11 @@ export function AjilBatlah() {
     const n = d?.k === 'ok' ? d.p.adds.length : 0;
     if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)))) return;
     setBusy(true); setErr(''); setNote('');
+    /* ⚠️ Шийдвэр СЕРВЕРТ гарсан эсэх — `catch`-д дараалал дахин уншихад
+       (2026-09-25 аудит): шийдвэрийн дараа юу ч шидсэн мөр `approved` болсон
+       тул «Шийдвэрлэх»-д хуучирсан хэвээр үлдэж, дахин «Батлах» нь «аль хэдийн
+       шийдвэрлэсэн» гэж гацдаг байв. */
+    let decided = false;
     try {
       const r = await decideAjil({
         oid: x.oid,
@@ -260,6 +269,7 @@ export function AjilBatlah() {
         author: x.author,
       });
       if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      decided = true;
       /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`). */
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
@@ -270,7 +280,13 @@ export function AjilBatlah() {
          байж болно. Локал мутациар дараалал хүснэгтээсээ чимээгүй зөрнө. */
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      if (!alive.current) return;
+      const msg = String((e as Error).message || e);
+      if (decided) {
+        setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', msg));
+        setOpen(null);
+        reload();
+      } else setErr(msg);
     } finally {
       if (alive.current) setBusy(false);
     }

@@ -19,7 +19,7 @@
  * хатуу super-ийг (сонгогч, бүх багц) ялгана.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   DECISION, F, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
@@ -31,7 +31,7 @@ import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, recheck, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, recheck, retryPendingRegistrations, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import s from './guitsetgel.module.css';
@@ -363,10 +363,19 @@ function Submitted({
   onChanges,
   onSubAt,
   onOkAll,
+  reloadKey = 0,
 }: {
   bagts: string;
   sheetOid: number;
   sentAt: string | null;
+  /**
+   * ЭЦГЭЭС ДАХИН АЧААЛУУЛАХ тоолуур (2026-09-25-ны аудит).
+   * ⚠️ Нэг `sub|` мөр дээр гүйцэтгэгч дахин илгээхэд `bagts`·`sheetOid`
+   *    өөрчлөгддөггүй тул энэ компонент хуучин агуулгаа барьсаар байв;
+   *    `apply`/`recheck` «агуулга өөрчлөгдсөн» гэж зогсоход эцэг үүнийг
+   *    ахиулж ШИНЭ агуулгыг татуулна.
+   */
+  reloadKey?: number;
   /** Зөвшөөрсөн нүднүүд — эцэг (`Item`) эзэмшинэ: товч түүнд байна. */
   ok?: Set<string>;
   onCell?: (row: number, block: string) => void;
@@ -418,14 +427,18 @@ function Submitted({
     loadSubmission(bagts, sheetOid)
       /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
          «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
-      .then((d) => { if (alive) { setData(d); onChanges?.(d ? d.changes : null); onSubAt?.(d?.subAt); } })
+      /* ⚠️ `prevError` үед `null` (2026-09-25-ны аудит): өмнөх агшин
+         уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
+         (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
+         харалгүй идэвхтэй болдог байв. */
+      .then((d) => { if (alive) { setData(d); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); } })
       .catch((e) => { if (alive) { setErr(String((e as Error)?.message ?? e)); onChanges?.(null); } })
       .finally(() => { if (alive) setBusy(false); });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур)
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bagts, sheetOid, tryN]);
+  }, [bagts, sheetOid, tryN, reloadKey]);
 
   if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
   /* ⚠️ Унасныг бүдэг биш УЛААНААР, дахин оролдох товчтой (2026-09-23) —
@@ -480,7 +493,8 @@ function Submitted({
             {' · '}
             {tr('Обьём бөглөсөн ажил: {0}', String(data.filledCount))}
             {' · '}
-            {tr('өөрчлөгдсөн нүд: {0}', String(data.changes.length))}
+            {/* ⚠️ Жишиж чадаагүй бол «0» БИШ «—» (null ≠ 0) */}
+            {tr('өөрчлөгдсөн нүд: {0}', data.prevError ? '—' : String(data.changes.length))}
             {ok && data.changes.length > 0 && (
               <>
                 {' · '}
@@ -525,6 +539,12 @@ function Submitted({
             * ⚠️ Зөвшөөрлийн ГАРЦ болгохгүй (`allOk`-д ордоггүй): огнооны нүд
             *   дээр дарж ногоон болгох зам байхгүй тул түгжвэл багц гацна.
             */}
+          {data.prevError && (
+            <div className={s.error} role="alert">
+              {tr('Өмнөх агшныг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
+              <button type="button" className={s.btn} onClick={() => setTryN((n) => n + 1)}>{tr('Дахин оролдох')}</button>
+            </div>
+          )}
           {data.asOfChanged && (
             <div className={s.subWarn}>
               {tr('«Шинэчлэгдсэн огноо» өөрчлөгдсөн — батлахад БҮХ мөрийн төлөвлөгөөт гүйцэтгэл дахин бодогдоно.')}
@@ -801,6 +821,27 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       setOkKeys(new Set());
     }
   }, [curSheetOid, recheckSeed, curOkRaw]);
+  /*
+   * ⚠️ АГУУЛГА СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-25-ны аудит).
+   *    Гүйцэтгэгч ИЖИЛ `sub|` мөр дээр дахин илгээхэд (`reused`) `sheetOid`,
+   *    төлөв, `Zovshoorson_nud` гурав өөрчлөгддөггүй тул дээрх effect
+   *    ажилладаггүй: хуучин агуулгад тавьсан ногоон тэмдэг ШИНЭ утгатай
+   *    нүдэн дээр үлдэж, `allOk` үнэн болон ХАРААГҮЙ утга батлагддаг байв.
+   *    Ачаалагдсан `subAt` (`payload.at`) ӨӨР утга болоход тэглэнэ.
+   * ⚠️ `undefined`-ыг алгасна: `Submitted` дахин нээгдэх бүрд эхлээд
+   *    `undefined` илгээдэг — хураагаад дэлгэхэд тэмдэглэгээ арилах ёсгүй.
+   * ⚠️ Дахин шалгалтад ч ХООСНООС (мөрийн `Zovshoorson_nud` биш): тэр нь
+   *    ХУУЧИН агуулгын зөвшөөрөл.
+   */
+  const seenAt = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (subAt == null) return;
+    const was = seenAt.current;
+    seenAt.current = subAt;
+    if (was != null && was !== subAt) setOkKeys(new Set());
+  }, [subAt]);
+  /** `Submitted`-ийг дахин ачаалуулах тоолуур — «агуулга өөрчлөгдсөн» үед */
+  const [subReload, setSubReload] = useState(0);
   const toggleOk = useCallback((row: number, block: string) => {
     setOkKeys((prev) => {
       const n = new Set(prev);
@@ -839,11 +880,13 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    * ч мэддэггүй байв. `ok: true` тул шийдвэрийг буцаахгүй — гагцхүү
    * анхааруулгыг ил гаргана.
    */
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string }>) => {
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string; contentChanged?: true }>) => {
     if (busy) return;
     setBusy(true);
     const r = await fn();
     setBusy(false);
+    /* ⚠️ Агуулга өөрчлөгдсөн бол ШИНЭЭР татна (дээрх `reloadKey`-ийн ⚠️) */
+    if (r.contentChanged) setSubReload((n) => n + 1);
     /* ⚠️ Анхааруулга (`warn`) нь АЛДАА БИШ — тусдаа шар мөрөөр (2026-09-23);
        урьд нь улаан `error` ангилалд орж «бүтсэнгүй» гэж уншигддаг байв. */
     setErr(r.ok ? '' : (r.error ?? tr('Алдаа гарлаа')));
@@ -1013,10 +1056,22 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       *    шалгалт `DIRECTOR_FIELDS`-д бичдэг — талбар дутуу бол
                       *    `applyEdits` чимээгүй алгасна (буцаах товчны ⚠️-тэй ижил).
                       */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks}
+                    {/*
+                      * ⚠️ ДЭЭШ ИЛГЭЭХ нь АГУУЛГА ТАТАГДААГҮЙ БОЛ ХААЛТТАЙ (2026-09-25-ны аудит):
+                      *    `changes == null` үед `subAt` ч `undefined` тул `recheck`
+                      *    агуулгын тулгалтыг АЛГАСАЖ, хэн ч хараагүй агуулга дээш
+                      *    явдаг байв (`hyanaltStore.recheck`-ийн fail-closed зорилгын
+                      *    эсрэг). Батлах товчны `changes == null` дүрэмтэй ижил.
+                      */}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null}
+                      title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : undefined}
                       onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
                       {RECHECK_UP[reBy]}
                     </button>
+                    {/* ⚠️ ДООШ БУЦААХ нь `changes == null`-ээр ХААГДАХГҮЙ — ердийн
+                        «Буцаах» товчтой ижил: агуулга олдохгүй (хуучин мөр, архивын
+                        агшин алга) үед ч ажлыг гүйцэтгэгч рүү буцаах зам үлдэнэ;
+                        доошоо явах нь хараагүй агуулгыг БАТЛАХГҮЙ. */}
                     <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
                       onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, [...okKeys], subAt))}>
@@ -1063,6 +1118,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             onCell={reviewing || rechecking ? toggleOk : undefined}
             onChanges={setChanges}
             onSubAt={setSubAt}
+            reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */
             onOkAll={isSuper && reviewing
@@ -1213,6 +1269,20 @@ export function Guitsetgel() {
   const [status, setStatus] = useState(ALL);
 
   const { rows, loading, error, reload } = useHyanaltRows();
+  /* ⚠️ ХҮЛЭЭГДЭЖ БУЙ БҮРТГЭЛИЙГ НӨХНӨ (2026-09-25 аудит): эцсийн батлалтын
+     дараа таб хаагдаж нэгтгэл/IPC бичигдээгүй үлдсэн өдрүүдийг эцсийн шатны
+     хянагч (эсвэл админ) хуудас нээхэд дахин ажиллуулна — бусдад эрх нь
+     хүрэхгүй тул дуудахгүй. Сешнд илгээлт бүрийг нэг л удаа оролдоно. */
+  const sweepBypass = authStatus === 'off' || flow.canPick;
+  useEffect(() => {
+    if (loading || !canReview) return;
+    if (stage !== 'chief' && !sweepBypass) return;
+    let alive = true;
+    void retryPendingRegistrations(user?.username, sweepBypass).then((r) => {
+      if (alive && r.done > 0) reload();
+    });
+    return () => { alive = false; };
+  }, [loading, canReview, stage, sweepBypass, user?.username, reload]);
   /**
    * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас (`flow.scope`).
    *

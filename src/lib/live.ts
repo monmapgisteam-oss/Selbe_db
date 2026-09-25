@@ -18,7 +18,7 @@
  *   · ногоон      — test_data [35] Shape__Area
  */
 
-import { queryFeatures, queryStats, queryGroup, count, sum, type Row } from '@/lib/query';
+import { queryFeatures, queryStats, queryGroup, count, sum, isRateLimit, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
   BOUNDARY, BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, CASHFLOW_NEW,
@@ -601,6 +601,12 @@ const SOCIAL_GROUPS: { key: string; label: string; ids: string[] }[] = [
   { key: 'gov', label: tr('Төрийн үйлчилгээ'), ids: ['pkg:243'] },
 ];
 
+/**
+ * Түр зуурын алдааны мөр — `query.ts`-ийн `attemptRequest`-ийн гаргадаг
+ * `HTTP 503` г.м. статус ба хугацаа хэтэрсэн мэдэгдэл (MN/EN хоёр хэлээр).
+ */
+const TRANSIENT_ERR = /^HTTP \d{3}$|хугацаа хэтэрлээ|timed out|failed to fetch|network/i;
+
 export const loadSocial = cached<SocialLive>(async () => {
   const rows = await Promise.all(
     SOCIAL_GROUPS.map(async (g) => {
@@ -612,7 +618,16 @@ export const loadSocial = cached<SocialLive>(async () => {
           const s = await queryStats(layerUrl(d), [
             count(oidOf(d), 'n'),
             sum('Huchin_chadal', 'cap'),
-          ]).catch(async () => {
+          ]).catch(async (e: unknown) => {
+            /* ⚠️ 2026-09-25: ТҮР ЗУУРЫН алдааг «талбаргүй» гэж БҮҮ ойлго. Урьд нь
+               ЯМАР Ч алдаа (rate-limit-ийн дахин оролдлого дууссан, timeout,
+               HTTP 5xx, сүлжээ) энэ салаанд орж `cap: null` болж, TTL-гүй
+               кэшэд сесс дуустал үлддэг байв — талбар байгаа атал сургуулийн
+               хүчин чадал «—». Түр алдааг ДАМЖУУЛНА: `cached()` унасан амлалтыг
+               хадгалдаггүй тул дараагийн дуудлага дахин оролдоно. Зөвхөн
+               ArcGIS-ийн ХҮСЭЛТИЙН алдаа (талбар байхгүй г.м.) үлдсэн тоо руу унана. */
+            const msg = e instanceof Error ? e.message : String(e);
+            if (e instanceof TypeError || isRateLimit(msg) || TRANSIENT_ERR.test(msg)) throw e;
             // Huchin_chadal байхгүй давхаргад зөвхөн тоог авна
             const c = await queryStats(layerUrl(d), [count(oidOf(d), 'n')]);
             return { ...c, cap: null } as Row;

@@ -5,6 +5,7 @@
  *   node tools/i18n-extract.mjs           → дутуу/илүүдэл түлхүүрийн тайлан
  *   node tools/i18n-extract.mjs --json    → дутуу түлхүүрүүдийг JSON-оор
  *   node tools/i18n-extract.mjs --prune   → en.ts-ээс ХЭРЭГГҮЙ түлхүүр цэвэрлэнэ
+ *   node tools/i18n-extract.mjs --dynamic → ДИНАМИК `tr(x)` дуудалтын байршлыг жагсаана
  *
  * ⚠️ Түлхүүр нь МОНГОЛ ЭХ ТЕКСТ өөрөө. Тиймээс кодын монгол текстийг засвал
  * толины түлхүүр хоцорч, тэр мөр англи дээр орчуулагдахаа болино (унахгүй —
@@ -40,9 +41,40 @@ function walk(d, acc = []) {
   return acc;
 }
 
+/**
+ * Тогтмол мөрийг ЭВХЭНЭ: шууд литерал, хаалттай литерал, литералуудын '+' холбоос.
+ * хувьсагч/функц бол `null` — динамик дуудалт.
+ *
+ * ⚠️ 2026-09-25: урьд нь ЗӨВХӨН шууд литерал танигддаг байсан тул урт мөрийг
+ * `tr('… ' + '…')` гэж хуваасан түлхүүр ОГТ цуглардаггүй — en.ts-д байхгүй
+ * атал «ДУТУУ 0» гэж хэвлэж, англи горимд тэр мөр монголоороо үлддэг байв
+ * (`IpcTable.tsx`-ийн тэмдэглэл). JS нь `+`-ийг зүүнээс баруун тийш
+ * холбодог тул мод нь зүүн тийш гүнзгийрнэ — рекурс хангалттай.
+ */
+function foldString(n) {
+  if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+  if (ts.isParenthesizedExpression(n)) return foldString(n.expression);
+  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const l = foldString(n.left);
+    if (l == null) return null;
+    const r = foldString(n.right);
+    return r == null ? null : l + r;
+  }
+  return null;
+}
+
+/**
+ * ДИНАМИК `tr(x)` дуудалтын байршил — AST утгыг нь мэдэхгүй тул дутуу/илүүдэл
+ * тайланд ОРОХГҮЙ. ⚠️ Тэдгээрийн утга `i18n-keep.txt` + `en.ts`, эсвэл
+ * `enData.ts`-д бүртгэгдсэн байх ёстой — эс бөгөөс англи горимд монголоор
+ * үлдэнэ. «ДУТУУ 0» нь тэднийг ХАМРАХГҮЙ гэдгийг тайланд ил бичнэ.
+ */
+export const dynamicCalls = [];
+
 /** Кодод бодитоор дуудагдаж буй бүх түлхүүр → хаана хэрэглэгдэж буй */
 export function collectKeys() {
   const keys = new Map();
+  dynamicCalls.length = 0;
   for (const f of walk(ROOT)) {
     const src = readFileSync(f, 'utf8');
     if (!src.includes('tr(')) continue;
@@ -53,10 +85,13 @@ export function collectKeys() {
     const visit = (node) => {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'tr') {
         const a = node.arguments[0];
-        if (a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))) {
-          const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-          if (!keys.has(a.text)) keys.set(a.text, []);
-          keys.get(a.text).push(rel + ':' + (line + 1));
+        const k = a ? foldString(a) : null;
+        const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
+        if (k != null) {
+          if (!keys.has(k)) keys.set(k, []);
+          keys.get(k).push(rel + ':' + (line + 1));
+        } else if (a) {
+          dynamicCalls.push(rel + ':' + (line + 1) + '  tr(' + a.getText(sf).slice(0, 60) + ')');
         }
       }
       ts.forEachChild(node, visit);
@@ -108,6 +143,9 @@ const unused = Object.keys(dict).filter((k) => !used(k));
 
 if (argv.includes('--json')) {
   console.log(JSON.stringify(missing, null, 1));
+} else if (argv.includes('--dynamic')) {
+  dynamicCalls.forEach((d) => console.log(d));
+  console.log('\nДинамик tr(x) дуудалт: ' + dynamicCalls.length);
 } else if (argv.includes('--prune')) {
   const kept = Object.fromEntries(Object.entries(dict).filter(([k]) => used(k)));
   const head = readFileSync(DICT_FILE, 'utf8').split('const en:')[0];
@@ -119,6 +157,10 @@ if (argv.includes('--json')) {
   console.log('Толинд орчуулагдсан:          ' + (keys.size - missing.length));
   console.log('ДУТУУ (англиар гарахгүй):     ' + missing.length);
   console.log('Толины ИЛҮҮДЭЛ (хоцорсон):    ' + unused.length);
+  /* ⚠️ Унагахгүй — утга нь ажиллах үед л мэдэгдэнэ. Гэхдээ «ДУТУУ 0» нь эдгээрийг
+     хамраагүйг ил хэлнэ (`--dynamic` жагсаана). */
+  console.log('Динамик tr(x) (шалгагдаагүй): ' + dynamicCalls.length
+    + ' — утгыг i18n-keep.txt + en.ts / enData.ts-д бүртгэнэ (--dynamic)');
   if (unused.length) {
     console.log('\n⚠️ Хоцорсон түлхүүрүүд — эх текст нь өөрчлөгдсөн байж магадгүй:');
     unused.slice(0, 15).forEach((k) => console.log('   «' + k.slice(0, 70) + '»'));

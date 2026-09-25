@@ -154,8 +154,37 @@ const nameOf = (f) =>
 
 /* ── Ярианы төлөв ── */
 
+/**
+ * ⚠️ `${chatId}:${userId}` → `{ scopeKey, history }` (2026-09-25, аудит №6).
+ *    Урьд нь зөвхөн chatId-аар түлхүүрлэдэг байсан ч эрх (`scopeOf`) нь
+ *    userId-аар тооцогддог тул бүлгийн чатад админы (санхүүгийн) хэрэгслийн
+ *    үр дүн түүхэнд үлдэж, санхүүгийн эрхгүй гишүүний асуултад дахин
+ *    дамжигддаг байв. Эрх өөрчлөгдвөл (scopeKey зөрвөл) түүхийг шинээр эхлүүлнэ.
+ */
 const chats = new Map();
 const MAX_HISTORY = 20;
+
+/** Бүлгийн чат бүрд «зөвхөн хувийн чат» сануулгыг НЭГ л удаа */
+const groupWarned = new Set();
+
+/**
+ * Түүхийг огтлох индекс — ЗӨВХӨН асуултын (user + текст) заагаар.
+ *
+ * ⚠️ Дурын индексээр огтолбол эхний мөр нь `tool_use`-гүй `tool_result`
+ *    болж, Messages API дараагийн бүх хүсэлтэд 400 буцааж чат `/new` хүртэл
+ *    гацдаг байв. Цонх (сүүлийн `max`) дотор асуултын заагаас эхэлнэ; тийм
+ *    зааг байхгүй бол (нэг асуулт `max`-аас урт) хамгийн сүүлийн асуултаас.
+ */
+function trimCut(history, max) {
+  let last = 0;
+  for (let i = 0; i < history.length; i++) {
+    const m = history[i];
+    if (m.role !== 'user' || typeof m.content !== 'string') continue;
+    if (i >= history.length - max) return i;
+    last = i;
+  }
+  return last;
+}
 
 /**
  * ⚠️ Нэг хүн олон удаа бичихэд админ руу дахин дахин мэдэгдэхгүй.
@@ -275,6 +304,17 @@ async function handle(msg) {
   const text = (msg.text ?? '').trim();
   if (!chatId || !text) return;
 
+  /* ⚠️ ЗӨВХӨН ХУВИЙН ЧАТ (2026-09-25, аудит №6): бүлэгт хариулт БҮХ гишүүнд
+     (цагаан жагсаалтад ороогүйд ч) харагдаж, асуусан хүний эрхээр татсан
+     өгөгдөл бусдад задардаг. Хандалтын хүсэлт ч бүлэгт үүсгэхгүй. */
+  if (msg.chat?.type !== 'private') {
+    if (!groupWarned.has(chatId)) {
+      groupWarned.add(chatId);
+      await reply(chatId, 'Энэ бот зөвхөн хувийн чатаар ажиллана — надад шууд бичнэ үү.').catch(() => {});
+    }
+    return;
+  }
+
   // ⚠️ ЭРХИЙН ШАЛГАЛТ — бусад бүх зүйлээс ӨМНӨ
   const scope = scopeOf(userId);
   if (!scope) {
@@ -286,8 +326,9 @@ async function handle(msg) {
     await reply(chatId, HELP);
     return;
   }
+  const chatKey = `${chatId}:${userId}`;
   if (text === '/new') {
-    chats.delete(chatId);
+    chats.delete(chatKey);
     await reply(chatId, 'Яриа шинэчлэгдлээ. Асуултаа бичнэ үү.');
     return;
   }
@@ -310,8 +351,16 @@ async function handle(msg) {
     return;
   }
 
-  const history = chats.get(chatId) ?? [];
-  chats.set(chatId, history);
+  const scopeKey = JSON.stringify(scope);
+  let chat = chats.get(chatKey);
+  if (!chat || chat.scopeKey !== scopeKey) {
+    chat = { scopeKey, history: [] };
+    chats.set(chatKey, chat);
+  }
+  const history = chat.history;
+  /* ⚠️ ask() түүхийг ЯВЦ ДУНД өөрчилнө (асуулт, tool_use, tool_result) —
+     алдаа гарвал ЯГ энэ урт руу буцаана (AgentChat-ийн ижил дүрэм). */
+  const base = history.length;
 
   // «бичиж байна…» — хариулт 10+ секунд болдог тул хэрэглэгч хүлээж байгаагаа мэднэ
   const typing = setInterval(() => {
@@ -327,11 +376,14 @@ async function handle(msg) {
   } catch (e) {
     // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хариулт хүлээсээр үлдэхгүй
     console.error(`[bot] алдаа: ${e?.message ?? e}`);
+    /* ⚠️ Урьд нь зөвхөн сүүлийн 'user' мөрүүдийг хасдаг байсан тул дүүжин
+       assistant `tool_use` үлдэж, дараагийн асуулт бүр 400-аар унадаг байв.
+       Буцаалт нь reply()-ээс ӨМНӨ — Telegram унасан ч түүх эвдрэхгүй. */
+    history.length = base;
     await reply(chatId, `Алдаа гарлаа: ${e?.message ?? e}`);
-    while (history.length && history[history.length - 1].role === 'user') history.pop();
   } finally {
     clearInterval(typing);
-    if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+    if (history.length > MAX_HISTORY) history.splice(0, trimCut(history, MAX_HISTORY));
   }
 }
 

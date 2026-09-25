@@ -105,6 +105,11 @@ const enData: Record<string, string> = {
   "үнийн дүн зөвшөөрөөгүй": "price not agreed",
   "маргаантай": "disputed",
   "дүйцүүлсэн": "compensated in kind",
+  /* Эх үүсвэрийн давхаргын гарчиг — `services.ts`-ийн `tr(type)` (төрөл бүрд
+     тусдаа давхарга) ДИНАМИКААР дамждаг тул extractor харахгүй (2026-09-25). */
+  "Дулааны эх үүсвэр": "Heat source",
+  "Усан хангамжийн эх үүсвэр": "Water supply source",
+  "Цахилгааны эх үүсвэр": "Power source",
 };
 
 export default enData;

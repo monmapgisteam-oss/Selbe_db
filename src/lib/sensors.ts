@@ -533,6 +533,11 @@ function eta(latest: number | null, perHour: number, alert?: { value: number }):
  * нь `number` тул null оруулахын оронд цэгийг орхино; график цоорхой үлдээнэ).
  * Тоолуур буцаж тэглэгдсэн (сөрөг зөрүү) хоногийг мөн орхино — 0 гэж зурахгүй.
  * ⚠️ Оролт нь хугацаагаар ӨСӨХ эрэмбэтэй байх ёстой (`loadOne` тэгж өгдөг).
+ * ⚠️ ЗӨВХӨН ДАРААЛСАН ХОНОГ (2026-09-25 аудит): заалтгүй хоногийн (декодер
+ * алгассан г.м.) дараах хоногт урьд нь ХОЁР+ хоногийн хэрэглээ нэг цэгт
+ * нийлж, «хоногийн хэрэглээ» нь хоёр дахин өсөж алдагдал мэт харагддаг байв.
+ * Өмнөх заалт нь ӨЧИГДРИЙНХ (локал хуанли) биш бол цэггүй — хуваарилах
+ * үндэслэлгүй тул null ≠ 0 дүрмээр цоорхой үлдээнэ.
  */
 function dailyDiffPoints(points: Reading[]): Reading[] {
   const lastByDay = new Map<string, Reading>();
@@ -543,8 +548,18 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
     if (!cur || r.t >= cur.t) lastByDay.set(key, r); // хоногийн СҮҮЛИЙН заалт
   }
   const days = [...lastByDay.values()].sort((a, b) => a.t - b.t);
+  /* Локал хоногийн эхлэл — `new Date(y, m, d + 1)` нь сар/жил дамжихыг зөв бодно */
+  const nextDayStart = (ms: number) => {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+  };
+  const dayStart = (ms: number) => {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
   const out: Reading[] = [];
   for (let i = 1; i < days.length; i++) {
+    if (dayStart(days[i].t) !== nextDayStart(days[i - 1].t)) continue; // цоорхой хоног
     const v = days[i].v - days[i - 1].v;
     if (v >= 0) out.push({ t: days[i].t, v }); // цэг хоногийн сүүлийн мөчид буух нь зөв
   }

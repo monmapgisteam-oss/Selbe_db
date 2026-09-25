@@ -79,6 +79,19 @@ async function checkArcGIS(token) {
   return { ok: true, username: data.username };
 }
 
+/**
+ * BROWSER-ГҮЙ ҮЙЛЧЛҮҮЛЭГЧ (Telegram бот) — `worker.mjs`-ийн ИЖИЛ дүрэм
+ * (2026-09-25, аудит №6).
+ * ⚠️ Бот нь ArcGIS хэрэглэгч БИШ тул `x-arcgis-token` байхгүй. Урьд нь энд
+ *    энэ салбар байгаагүй тул `ARCGIS_ORG_ID`-тай хост реле дээр ботын бүх
+ *    асуулт 401 «Нэвтрэлтийн мэдээлэл алга» болдог байв (`/health` нэвтрэлтгүй
+ *    тул бот асахдаа үүнийг илрүүлдэггүй). `BOT_SECRET` тохируулсан бөгөөд
+ *    `x-bot-secret` таарвал ArcGIS шалгалтыг алгасна; ботын хандалтыг ботын
+ *    ӨӨРИЙН цагаан жагсаалт барина. Ботод ижил утгыг `AGENT_BOT_SECRET`-ээр.
+ *    Тохируулаагүй бол зан төлөв огт өөрчлөгдөхгүй.
+ */
+const BOT_SECRET = process.env.BOT_SECRET?.trim() || "";
+
 const PORT = Number(process.env.PORT || 8787);
 
 /**
@@ -143,16 +156,39 @@ const json = (res, code, body) => {
   res.end(JSON.stringify(body));
 };
 
-/** Хүсэлтийн биеийг цуглуулна — хэмжээнээс хэтэрвэл тасална */
+/**
+ * Хүсэлтийн биеийг цуглуулна — хэмжээнээс хэтэрвэл 413.
+ *
+ * ⚠️ 2026-09-25 (аудит №6): урьд нь хэтэрмэгц `req.destroy()` хийдэг байсан
+ *    тул доорх алдааны хариу ҮХСЭН socket руу бичигдэж, хөтөч зөвхөн «Failed
+ *    to fetch» хардаг байв (урт яриа 2 МБ давахад дараагийн асуулт бүр).
+ *    Одоо цуглуулахаа зогсоож үлдсэнийг ХАЯЖ уншина — socket амьд тул 413
+ *    хүрнэ. Зөвхөн хэт их (MAX_BODY×4) үед л тасална.
+ */
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    const tooBig = () =>
+      Object.assign(new Error("Хүсэлтийн бие хэт том — яриа хэт урт болсон тул ⟲ дарж шинээр эхлүүлнэ үү."), { status: 413 });
+    /* Зарласан хэмжээгээр (content-length, БАЙТ) шууд — үлдсэнийг Node хариу
+       илгээсний дараа өөрөө хаяж уншина (keep-alive). */
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_BODY) {
+      reject(tooBig());
+      return;
+    }
     let size = 0;
+    let over = false;
     const chunks = [];
     req.on("data", (c) => {
       size += c.length;
+      if (over) {
+        if (size > MAX_BODY * 4) req.destroy();
+        return;
+      }
       if (size > MAX_BODY) {
-        reject(new Error("Хүсэлтийн бие хэт том"));
-        req.destroy();
+        over = true;
+        chunks.length = 0;
+        reject(tooBig());
         return;
       }
       chunks.push(c);
@@ -243,8 +279,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  const isBot = Boolean(BOT_SECRET) && req.headers["x-bot-secret"] === BOT_SECRET;
   let caller = `ip:${ip}`;
-  if (ARCGIS_ORG_ID) {
+  if (isBot) {
+    /* ⚠️ Тогтмол түлхүүр — ботын бүх хэрэглэгч нэг хязгаар хуваалцана (worker-тэй ижил) */
+    caller = "bot";
+  } else if (ARCGIS_ORG_ID) {
     const auth = await checkArcGIS(req.headers["x-arcgis-token"]);
     if (!auth.ok) {
       json(res, 401, { error: auth.reason, retryable: false });
@@ -261,6 +301,10 @@ const server = createServer(async (req, res) => {
   try {
     payload = JSON.parse(await readBody(req));
   } catch (e) {
+    if (e?.status === 413) {
+      json(res, 413, { error: e.message, retryable: false });
+      return;
+    }
     json(res, 400, { error: `Биеийг уншиж чадсангүй: ${e.message}` });
     return;
   }

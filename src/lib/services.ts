@@ -490,8 +490,18 @@ export type LayerDef = {
 export const OID = "OBJECTID";
 /** Давхарга БҮР энэ талбартай — бүсийн нэгдсэн шүүлт үүн дээр тогтоно */
 export const ZONE_FIELD = "ZONE_ID";
-/** Бүсийн мэдээлэл бөглөгдөөгүй объектын утга (хоосон биш, ийм ТЕКСТ) */
-export const ZONE_NONE = tr(' Бүсийн мэдээлэл байхгүй ');
+/**
+ * Бүсийн мэдээлэл бөглөгдөөгүй объектын утга (хоосон биш, ийм ТЕКСТ).
+ *
+ * ⚠️ ТҮҮХИЙ ӨГӨГДЛИЙН УТГА — `tr()`-ГҮЙ (2026-09-25). Урьд нь `tr()`-ээр
+ *    орчуулагддаг байсан тул англи горимд « No zone data » болж, `ZONE_ID`
+ *    атрибуттай (Dashboard · GeneralDash · ViewPanel · MapCanvas) харьцуулалт
+ *    бүгд худал гарч: энэ утгатай объект товшиход `setZone('Бүсийн мэдээлэл
+ *    байхгүй')` болж бүх тоо 0, зураг хоосон болдог байв. Харьцуулалт үргэлж
+ *    ТҮҮХИЙ утгаар; дэлгэцэд гаргах нэрийг дуудагч тал өөрөө `tr()`-ээр өгнө
+ *    (жишээ нь ViewPanel-ийн «Бүсэд хамаарахгүй»).
+ */
+export const ZONE_NONE = ' Бүсийн мэдээлэл байхгүй ';
 
 /* ══════════════════════ ЭХ ВЕБ ЗУРГИЙН ПАЛИТР ══════════════════════ */
 
@@ -3255,9 +3265,16 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
   const ids = String(id).split(",").map((s) => s.trim()).filter(Boolean);
   if (!ids.length) return null;
   const field = l.zoneField ?? ZONE_FIELD;
+  /* ⚠️ `ZONE_ID` давхаргад ХУУЧИН + ШИНЭ кодын НЭГДЭЛ (2026-09-25). Барилгын
+     давхарга (`et:24`/`sb:4` → SELBE_ALL_DATA/108) одоо ШИНЭ кодтой («D-8.1»,
+     «D-8.2», «B-2») тул зөвхөн хуучин руу хөрвүүлбэл (`D-8.1` → `'D-8'`) тэр
+     гурван бүсийн 34 барилга 0 болж, зураг ч хоосон гардаг байв. Хуучин кодтой
+     давхаргад (dugui:line г.м.) шинэ код огт байхгүй тул нэгдэл аюулгүй. */
   const vals = [
     ...new Set(
-      ids.flatMap((z) => (l.zoneField ? zoneRefValues(z) : zoneLegacyValues(z))),
+      ids.flatMap((z) => (l.zoneField
+        ? zoneRefValues(z)
+        : [...zoneLegacyValues(z), ...zoneRefValues(z)])),
     ),
   ];
   return `${field} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
@@ -4068,8 +4085,8 @@ export const LAYER_GROUPS: {
    */
   {
     key: "iot",
-    title: "IoT мэдрэгч",
-    desc: "Хогийн сав, ус, гэрэлтүүлэг, темп, хөрс",
+    title: tr('IoT мэдрэгч'),
+    desc: tr('Хогийн сав, ус, гэрэлтүүлэг, темп, хөрс'),
     icon: "radio",
     hue: "#0891b2",
   },
@@ -4232,10 +4249,17 @@ export const PLAN_LAYER_IDS: string[] = (() => {
     // ⚠️ Тодорхойлолтгүй id-г ЭНД хаяхгүй — тэр нь өөр (жагсаалтын бүрэн
     //    байдлын) шалгуур бөгөөд хэрэглэгчид нь өөрсдөө `LAYER_BY_ID`-аар
     //    шүүдэг. Зөвхөн URL-ын давхардлыг л арилгана.
-    const u = LAYER_BY_ID[id]?.url;
+    /* ⚠️ Түлхүүр нь `url|where` (2026-09-25): `src:heat/water/power` гурав ИЖИЛ
+       `SOURCE_FS.url`-тай, зөвхөн тогтмол `where`-ээр ялгардаг. URL-аар л
+       шүүхэд water/power хоёр жагсаалтаас унаж, «Ерөнхий төлөвлөгөө»-нд
+       давхарга ганцаарчлаад буцаахад (`visible = PLAN_LAYER_IDS`) зурагнаас
+       алга болдог байв. Ижил url + ижил where нь л жинхэнэ давхардал. */
+    const L = LAYER_BY_ID[id];
+    const u = L?.url;
     if (!u) return true;
-    if (seen.has(u)) return false;
-    seen.add(u);
+    const k = `${u}|${L.where ?? ''}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
     return true;
   });
 })();

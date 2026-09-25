@@ -50,8 +50,11 @@ export async function agsFetch(
     throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
   }
   if (json.error)
-    throw new Error(
-      json.error.message || json.error.details?.[0] || "ArcGIS error",
+    /* ⚠️ `code`-ыг ХАДГАЛНА (2026-09-25): дуудагч түр (429/5xx) ба тогтвортой
+       (498/499/403) алдааг ялгаж дахин оролдоно (`sheetRows.schemaOf`). */
+    throw Object.assign(
+      new Error(json.error.message || json.error.details?.[0] || "ArcGIS error"),
+      { code: json.error.code },
     );
   return json;
 }
@@ -90,9 +93,15 @@ export const qesc = (v: string) => v.replace(/'/g, "''");
 // headers carry weight 1 (or blank), leaves a fraction. Verified against the
 // 71-9F sheet: 2 phases + 5 sub-phases + 11 categories + 14 groups + 132 leaves,
 // and its only int-weight-1 row is a genuine category.
-// ponytail: a lone leaf whose weight is exactly 1 would read as a category; if
-// that ever appears, carry an explicit header flag from the import instead.
-export function levelFromNo(no: unknown, weight: unknown): number | null {
+// ⚠️ ГАНЦ НАВЧ (2026-09-25-ны аудит): бүлгийнхээ цорын ганц хүүхэд болох навч
+//    нь жин = 1 тул ангилал (3) шиг уншигддаг — TREES-д барилгын хуудас бүрд
+//    1–6 ширхэг БАЙГАА (урьд нь «ийм зүйл гарвал» гэж тэмдэглэсэн байв).
+//    Жин ганцаараа ялгаж чадахгүй тул дуудагч ДАРААГИЙН мөрийн контекстыг
+//    `nextDeeper`-ээр өгнө: `false` (дараагийн мөр гүн БИШ → хүүхэдгүй) бол
+//    жин-1 бүхэл № нь навч (5). `undefined`/`null` (контекстгүй дуудагч —
+//    `Pivot`) бол хуучин дүрэм. Жингүй бүхэл № ҮРГЭЛЖ 3 — А.-ийн 8 жингүй мөр
+//    навчийн тоололд орох ёсгүй (`monitor.check`).
+export function levelFromNo(no: unknown, weight: unknown, nextDeeper?: boolean | null): number | null {
   const s = String(no ?? "").trim();
   if (!s) return null;
   if (/^[A-Za-zА-Яа-яӨөҮү]\./.test(s)) return 1;
@@ -100,7 +109,9 @@ export function levelFromNo(no: unknown, weight: unknown): number | null {
   if (/^\d+\.\d+/.test(s)) return 4;
   if (/^\d+$/.test(s)) {
     const w = weight == null || weight === "" ? null : Number(weight);
-    return w == null || Math.abs(w - 1) < 1e-6 ? 3 : 5;
+    if (w == null) return 3;
+    if (Math.abs(w - 1) < 1e-6) return nextDeeper === false ? 5 : 3;
+    return 5;
   }
   return null;
 }

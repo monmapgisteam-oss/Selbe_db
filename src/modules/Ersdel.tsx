@@ -1355,7 +1355,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <span className={e.panelNote}>{tr('{0} харуул', num(air.length))}</span>
               </header>
               <div className={e.panelBody}>
-                {air.length === 0 ? <Empty label={tr('Агаарын харуул алга')} /> : (() => {
+                {/* ⚠️ Усны самбартай ИЖИЛ төлөв (2026-09-25 аудит): урьд нь уншиж байх
+                    ба алдааны үед ч «Агаарын харуул алга» гэж худал сөрөг хариу өгдөг байв. */}
+                {q.state === 'loading' ? <Loading label={tr('Харуул уншиж байна…')} />
+                  : q.state === 'error' ? <Empty label={tr('Харуулын давхарга татагдсангүй')} onRetry={q.retry} />
+                  : air.length === 0 ? <Empty label={tr('Агаарын харуул алга')} /> : (() => {
                   /* ⚠️ ХАРУУЛ БАЙГААД ЗААЛТГҮЙ байж БОЛНО — `maxOf` тэр үед
                      `null` буцаана. `0` болгон бөглөвөл `AQI_BAND(0)` нь
                      «Сайн» (ногоон) өгч, «мэдээлэл алга» нь «агаар цэвэр»

@@ -28,6 +28,7 @@ import {
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
 import { cat, shade, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 import { CONTRACTED } from '@/lib/gdash';
+import { hoTotals } from '@/lib/ipc';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -1033,13 +1034,21 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
        (тэдгээрийн нэг нь 9.4 тэрбум ₮) сарын цуваанд ОРДОГГҮЙ (null ≠ 0,
        сүүлийн сар руу шахвал хуурамч оргил гарна) ч БАГЦЫН/KPI-ийн нийт
        дүнд ЗААВАЛ ордог. */
-    let given = 0;
-    fin.givenTotal.forEach((v) => { given += v; });
+    let givenPkg = 0;
+    fin.givenTotal.forEach((v) => { givenPkg += v; });
+    /* ⚠️ 2026-09-25: ХАРУУЛАХ «олгосон санхүүжилт» = HO-ийн БҮХ мөр
+       (`hoTotals().paid`, 530.87 тэрбум) — удирдлагын тайлан/Тайлантай ИЖИЛ
+       (`execReport.finGiven`). Урьд нь багцын Map-ийн нийлбэр (524.90) гарч,
+       диапазон мөрийн 5.97 тэрбум тайлбаргүй зөрдөг байв.
+       ⚠️ `share`/`remain`-ийн тоологч нь БАГЦЫН хүрээ (`givenPkg`) ХЭВЭЭР —
+       хуваарь `planTotal` ч диапазон мөрийг агуулдаггүй тул нэг хүрээ
+       (`execReport.fin.givenContracted`-ийн зарчим). `null` = мэдээлэлгүй. */
+    const given = hoTotals(fin.pays).paid;
     return {
       planned, actual, gap, given,
-      share: planTotal > 0 ? (given / planTotal) * 100 : null,
+      share: planTotal > 0 ? (givenPkg / planTotal) * 100 : null,
       /** Төлөвлөгөөт нийтээс олгогдоогүй үлдэгдэл ₮ */
-      remain: Math.max(0, planTotal - given),
+      remain: Math.max(0, planTotal - givenPkg),
     };
   }, [fin]);
   /**
@@ -1763,6 +1772,10 @@ function FinCard({
    * шахвал хуурамч оргил гарна).
    */
   let givenTotal = 0;
+  /* ⚠️ 2026-09-25: KPI мөрөнд ХАРАГДАХ олголт. Багц сонгосон бол `givenTotal`;
+     сонголтгүй (төсөл) бол HO-ийн БҮХ мөр (`hoTotals().paid`) — `TsKpi`-ийн ⚠️-г
+     үз. `finGap`/`givenShare` нь `givenTotal` (багцын хүрээ) хэвээр. */
+  let givenShown: number | null = 0;
   if (d) {
     if (p) {
       /* ⚠️ 2026-09-04 (аудит, HIGH): `find` → `filter`. Хуучин код нь багцын
@@ -1790,10 +1803,12 @@ function FinCard({
            хоёр гэрээ нэг түлхүүрт унавал НЭГ УДАА л тоологдоно. */
         givenTotal = pkgGivenTotal(rows, d);
       }
+      givenShown = givenTotal;
     } else {
       months = aggregateMonths(d);
       d.planTotal.forEach((v) => { total += v; });
       d.givenTotal.forEach((v) => { givenTotal += v; });
+      givenShown = hoTotals(d.pays).paid;
     }
   }
   const lag = months ? lagOf(months) : null;
@@ -1910,7 +1925,7 @@ function FinCard({
               {
                 v: (
                   <>
-                    {mnt(givenTotal)}
+                    {mnt(givenShown)}
                     {/**
                       * ⚠️ 2026-08-20: Хувийг ТУСДАА МӨРӨНД. Урьд нь утгын хажууд
                       * мөрлөж байсан бөгөөд `.finKpiVal` нь `nowrap` тул

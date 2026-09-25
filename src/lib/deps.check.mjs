@@ -311,4 +311,25 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   console.log('✅ блок тус бүрийн уялдаа — @N дагавар, (код, блок) ялгах тэмдэг, блокоор тархалт');
 }
 
+/* ── Бүлгийн гишүүнчлэлээр дамжих дугуй хамаарал (2026-09-25 аудит) ──
+   Хүүхэд нь T-ээс хамаардаг бүлэг G: T хөдлөхөд хүүхэд → бүлгийн MIN/MAX
+   хөдөлнө. «G → T» уялдаа тавибал дугуй — `reaches`/`downstreamCodes` барих ёстой. */
+{
+  const rows = [
+    row(0, 10, [], [sp(0, 5)], { group: true, depth: 0 }),
+    row(1, 11, parseDeps('20FS'), [sp(6, 9)], { depth: 1 }),
+    row(2, 20, [], [sp(0, 5)], { depth: 0 }),
+  ];
+  assert.equal(reaches(rows, codeIndex(rows), 20, 10), true, 'T → хүүхэд L → эцэг бүлэг G');
+  assert.ok(downstreamCodes(rows, 20).has(10), 'бүлэг нь T-ийн доод урсгалд');
+  /* Эсрэг чиглэл: бүлэг хөдлөхөд хүүхэд нь хөдөлж, хүүхдээс хамаарагч ч хөдөлнө */
+  const rows2 = [
+    row(0, 40, parseDeps('60FS'), [sp(10, 15)], { group: true, depth: 0 }),
+    row(1, 41, [], [sp(10, 15)], { depth: 1 }),
+    row(2, 60, parseDeps('41FS'), [sp(16, 20)], { depth: 0 }),
+  ];
+  assert.equal(reaches(rows2, codeIndex(rows2), 40, 60), true, 'G2 → хүүхэд M → P');
+  console.log('✅ бүлгийн гишүүнчлэлээр дамжих дугуй хамаарал баригдана');
+}
+
 console.log('\ndeps.check: ok');

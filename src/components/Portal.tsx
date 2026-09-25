@@ -819,7 +819,7 @@ function PortalContent(
                                      функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
                                   ? <Schem setView={setView} navScope={navScope} />
                                 : isSysDoc
-                                  ? <SysDoc setView={setView} />
+                                  ? <SysDoc setView={setView} navScope={navScope} />
                                   : <Suitability dim={dim} setDim={setDim} />}
             </ErrorBoundary>
           </div>

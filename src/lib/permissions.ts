@@ -18,6 +18,10 @@
  * dirty мөрүүдийг ЭХЛЭЭД дахин бичиж үзнэ (retry) — бүтвэл цэвэрлэнэ, унавал
  * локал утгыг нь remote snapshot дээр давхарлан үлдээнэ. UserAdmin-ы
  * «ArcGIS-т хадгалагдсангүй» тэмдэг энэ dirty-set-ээс уншдаг тул ҮНЭН.
+ * ⚠️ 2026-09-25: автомат retry/overlay нь ЗӨВХӨН энэ runtime-д үүссэн мөрт
+ * (`mine`). Өмнөх сешний / гараар тарьсан мөрийг «Дахин синк» → ИЛ
+ * баталгаажуулалтаар л бичнэ — хуваалцсан компьютер дээр super-ийн токеноор
+ * чимээгүй эрх олгох замыг хаав.
  */
 
 import {
@@ -29,6 +33,8 @@ import {
   type ViewKey,
 } from './services';
 import { capViewsOf } from './caps';
+import { currentUser } from './who';
+import { _beginRemoteFetch } from './scopedAcl';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
@@ -69,10 +75,56 @@ type Store = Record<string, Entry>;
 
 /**
  * ArcGIS-д хүрч ЧАДААГҮЙ локал өөрчлөлтүүд: түлхүүр → зорьсон мөр
- * (`null` = мөрийг устгах гэсэн). localStorage-д хадгалагдана — refresh
- * даваад ч retry хийгдэнэ.
+ * (`e`, `null` = мөрийг устгах гэсэн) + бичсэн хүн (`by`). localStorage-д
+ * хадгалагдана — refresh даваад ч «Дахин синк»-ээр retry хийгдэнэ.
+ *
+ * ⚠️ `by` (2026-09-25, аудитын засвар) — БИЧСЭН хэрэглэгч. Урьд нь мөр нь
+ *    хэн бичсэнийг огт тэмдэглэдэггүй, browser-ийн БҮХ аккаунтад хуваалцсан
+ *    тул super нэвтрэхэд `initRemote(trusted)` бүгдийг super-ийн токеноор
+ *    ЧИМЭЭГҮЙ бичдэг байв (доорх `mine`-ийн тайлбар). `by` нь localStorage-оос
+ *    уншигддаг тул ХУУРАМЧ байж болно — зөвхөн «Дахин синк»-ийн баталгаажуулах
+ *    асуултад ЛАВЛАГАА болгон харуулна, итгэлийн шалгуур БИШ.
+ * ⚠️ Хуучин хэлбэрийн (`Entry | null` шууд) мөр `by: ''` гэж уншигдана.
  */
-type DirtyMap = Record<string, Entry | null>;
+type DirtyItem = { by: string; e: Entry | null };
+type DirtyMap = Record<string, DirtyItem>;
+
+/**
+ * ЭНЭ СЕШНД (JS runtime) бичилт нь унаж dirty-д орсон түлхүүрүүд → зорьсон
+ * утгын JSON.
+ *
+ * ⚠️ АВТОМАТ RETRY/OVERLAY-ИЙН ГАНЦ ИТГЭЛИЙН ЭХ СУРВАЛЖ (2026-09-25, аудитын
+ *    засвар). Dirty-set нь localStorage-д байдаг тул хуваалцсан компьютер дээр
+ *    энгийн хэрэглэгч `selbe-perms-dirty-v1`-д `{me: {views:'all', role:
+ *    'eronhii'}}` (эсвэл `selbe-caps-dirty-v1`-д `finRow`) тарьж орхиход
+ *    дараа нь нэвтэрсэн хатуу super-ийн `initRemote(true)` тэр мөрийг super-ийн
+ *    токеноор АСУУЛГҮЙ бичдэг байв — өөрөө өөртөө эрх олгох зам. `by` талбарыг
+ *    ч хуурамчаар бичиж болно (super-ийн нэр кодонд ил), тиймээс санах ойд
+ *    л үлддэг энэ Map-ыг шалгуур болгоно: зөвхөн ЭНЭ runtime-д ЭНЭ хэрэглэгчийн
+ *    дуудлагаар (`setUser`/`removeUser`/`clearOverride`) үүссэн, утга нь
+ *    ӨӨРЧЛӨГДӨӨГҮЙ мөрийг автоматаар дахин илгээж, snapshot дээр давхарлана.
+ *    Бусад (өмнөх сешн, өөр таб, өөр аккаунт, гараар тарьсан) мөрийг ЗӨВХӨН
+ *    `UserAdmin`-ы «Дахин синк» → ИЛ баталгаажуулалтаар бичнэ.
+ */
+const mine = new Map<string, string>();
+const ser = (e: Entry | null): string => JSON.stringify(e);
+
+/**
+ * НЭГ ТҮЛХҮҮРИЙН remote бичилтүүд ДАРААЛНА (2026-09-25, аудитын засвар).
+ * ⚠️ Урьд нь `setUser` ба `retryDirtyOnce` нэг түлхүүрт зэрэг бичиж болдог
+ *    байв: retry-ийн гогцоо эхэндээ авсан ХУУЧИН утгыг, админы дөнгөж
+ *    амжилттай хадгалсан шинэ утгын ДАРАА бичиж засварыг нь дардаг байлаа.
+ *    `scopedAcl.enqueue`-тэй ижил загвар.
+ */
+const chain = new Map<string, Promise<unknown>>();
+function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chain.get(key) ?? Promise.resolve();
+  const p = prev.then(fn, fn);
+  const tail = p.then(() => undefined, () => undefined);
+  chain.set(key, tail);
+  void tail.then(() => { if (chain.get(key) === tail) chain.delete(key); });
+  return p;
+}
 
 /** ЗӨВ харагдацын түлхүүрүүд — бүртгэлээс автоматаар */
 const VALID_VIEWS = new Set<string>(VIEWS.map((v) => v.key));
@@ -166,8 +218,17 @@ function saveLocal(s: Store): void {
 function loadDirty(): DirtyMap {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = JSON.parse(localStorage.getItem(DIRTY_KEY) || '{}') as DirtyMap;
-    return raw && typeof raw === 'object' ? raw : {};
+    const raw = JSON.parse(localStorage.getItem(DIRTY_KEY) || '{}') as Record<string, unknown>;
+    if (!raw || typeof raw !== 'object') return {};
+    const out: DirtyMap = {};
+    for (const [k, v] of Object.entries(raw)) {
+      /* ⚠️ Хуучин хэлбэр (`Entry | null` шууд) — бичсэн хүн тодорхойгүй */
+      const item = v && typeof v === 'object' && 'e' in v && 'by' in v
+        ? (v as DirtyItem)
+        : { by: '', e: (v ?? null) as Entry | null };
+      out[k] = { by: typeof item.by === 'string' ? item.by : '', e: item.e ?? null };
+    }
+    return out;
   } catch {
     return {};
   }
@@ -188,10 +249,13 @@ function saveDirty(d: DirtyMap): void {
 function trackWrite(key: string, intended: Entry | null, ok: boolean): void {
   const d = loadDirty();
   if (ok) {
+    mine.delete(key);
     if (!(key in d)) return;
     delete d[key];
   } else {
-    d[key] = intended;
+    /* ⚠️ Бичсэн хүн + ЭНЭ runtime-ийн тэмдэг (`mine`) — автомат retry-ийн шалгуур */
+    d[key] = { by: currentUser() ?? '', e: intended };
+    mine.set(key, ser(intended));
   }
   saveDirty(d);
   notify();
@@ -200,6 +264,16 @@ function trackWrite(key: string, intended: Entry | null, ok: boolean): void {
 /** ArcGIS-т хүрээгүй өөрчлөлттэй түлхүүрүүд — UserAdmin-ы тэмдэгт */
 export function dirtyKeys(): string[] {
   return Object.keys(loadDirty());
+}
+
+/**
+ * ЭНЭ СЕШНД ҮҮСЭЭГҮЙ dirty мөрүүд (2026-09-25) — «Дахин синк» бичихээс өмнө
+ * ИЛ баталгаажуулахад. `by` нь localStorage-оос — баталгаагүй лавлагаа.
+ */
+export function foreignDirty(): { key: string; by: string }[] {
+  return Object.entries(loadDirty())
+    .filter(([k, v]) => mine.get(k) !== ser(v.e))
+    .map(([key, v]) => ({ key, by: v.by }));
 }
 
 function notify(): void {
@@ -221,34 +295,91 @@ const isHardSuper = (username: string): boolean => roleForUser(username) === 'su
 
 /**
  * DIRTY мөрүүдийг remote руу ДАХИН бичиж үзнэ.
- * Буцаана: амжилтгүй ҮЛДСЭН dirty map (дараа нь overlay хийхэд).
+ * Буцаана: энэ удаад АМЖИЛТТАЙ бичигдсэн түлхүүр → утга (cache-д тусгахад).
+ *
+ * @param onlyMine `true` бол ЗӨВХӨН энэ runtime-д үүссэн, өөрчлөгдөөгүй мөр
+ *   (`mine`-ийн тайлбар) — автомат зам (`initRemote`). `false` — бүгд, зөвхөн
+ *   админы ИЛ «Дахин синк»-ээс.
+ *
+ * ⚠️ ТҮЛХҮҮР БҮРИЙГ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА (2026-09-25, аудитын засвар).
+ *    Урьд нь map-ыг эхэнд нь авч, гогцооны төгсгөлд `saveDirty(left)`-ээр
+ *    БҮХЭЛД нь дардаг байв: (а) гогцооны явцад `trackWrite`-ийн нэмсэн шинэ
+ *    түлхүүр арчигдаж, тэмдэг нь алга болоод дахин оролдогдохгүй; (б) явцад нь
+ *    амжилттай хадгалсан түлхүүрийн ХУУЧИН утгыг дараа нь бичиж админы засварыг
+ *    дардаг. Одоо: түлхүүр бүр `serial`-аар бусад бичилттэй дараалж, тэр
+ *    агшны dirty-г уншина (алга/өөр утга бол алгасна), бичсэний дараа утга нь
+ *    ХЭВЭЭР бол л арилгана.
  */
-async function retryDirtyOnce(): Promise<DirtyMap> {
-  const d = loadDirty();
-  const keys = Object.keys(d);
-  if (!keys.length) return {};
-  const m = await import('./permsRemote');
-  const left: DirtyMap = {};
-  for (const key of keys) {
-    const intended = d[key];
-    try {
-      const ok = intended === null
-        ? await m.remove(key)
-        : await m.upsert({ username: key, role: intended.role, views: intended.views, docs: intended.docs, removed: intended.removed });
-      if (!ok) left[key] = intended;
-    } catch {
-      left[key] = intended;
-    }
+async function retryDirtyOnce(onlyMine: boolean): Promise<Record<string, Entry | null>> {
+  const done: Record<string, Entry | null> = {};
+  const keys = Object.keys(loadDirty());
+  if (!keys.length) return done;
+  let m: typeof import('./permsRemote');
+  try {
+    m = await import('./permsRemote');
+  } catch {
+    return done; // модуль ачаалагдсангүй — бүгд dirty хэвээр
   }
-  saveDirty(left);
-  return left;
+  for (const key of keys) {
+    await serial(key, async () => {
+      const item = loadDirty()[key];
+      if (!item) return; // хооронд нь амжилттай хадгалагдсан
+      const want = ser(item.e);
+      if (onlyMine && mine.get(key) !== want) return;
+      const e = item.e;
+      let ok = false;
+      try {
+        ok = e === null
+          ? await m.remove(key)
+          : await m.upsert({ username: key, role: e.role, views: e.views, docs: e.docs, removed: e.removed });
+      } catch {
+        ok = false;
+      }
+      if (!ok) return;
+      const now = loadDirty();
+      if (now[key] && ser(now[key].e) === want) {
+        delete now[key];
+        saveDirty(now);
+      }
+      if (mine.get(key) === want) mine.delete(key);
+      done[key] = e;
+    });
+  }
+  return done;
 }
 
-/** Гараар «дахин синк» — UserAdmin-ы товчноос. Үлдсэн dirty тоог буцаана. */
-export async function retryDirty(): Promise<number> {
-  const left = await retryDirtyOnce();
+/** Remote руу бичигдсэн утгуудыг cache дээр тусгана (дараалалд бичилт хүлээж буйг алгасна) */
+function applyDone(s: Store, done: Record<string, Entry | null>): void {
+  for (const [k, e] of Object.entries(done)) {
+    if (chain.has(k)) continue; // шинэ бичилт хүлээгдэж байна — локал утга нь илүү шинэ
+    if (e === null) delete s[k];
+    else s[k] = sanitizeEntry(e);
+  }
+}
+
+/** ЭНЭ runtime-д үүссэн, одоо ч dirty мөрүүд — snapshot дээр давхарлана */
+function mineDirty(): Record<string, Entry | null> {
+  const out: Record<string, Entry | null> = {};
+  for (const [k, v] of Object.entries(loadDirty())) {
+    if (mine.get(k) === ser(v.e)) out[k] = v.e;
+  }
+  return out;
+}
+
+/**
+ * Гараар «дахин синк» — UserAdmin-ы товчноос. Үлдсэн dirty тоог буцаана.
+ * @param onlyMine `true` — админ өмнөх сешний мөрийг бичихийг ЗӨВШӨӨРӨӨГҮЙ үед
+ */
+export async function retryDirty(onlyMine = false): Promise<number> {
+  const done = await retryDirtyOnce(onlyMine);
+  if (Object.keys(done).length) {
+    const s = { ...loadStore() };
+    applyDone(s, done);
+    cache = s;
+    saveLocal(s);
+  }
   notify();
-  return Object.keys(left).length;
+  return Object.keys(loadDirty()).length;
 }
 
 /**
@@ -272,24 +403,44 @@ export async function retryDirty(): Promise<number> {
  *   алдагдахгүй), зөвхөн давхарлахгүй, дахин илгээхгүй.
  *   `canCreate`-ээс ТУСДАА параметр: 5 минутын poll-д `canCreate=true` өгвөл
  *   транзит хайлтын алдаанд давхар хүснэгт үүсгэх эрсдэлтэй.
+ *   ⚠️ 2026-09-25: итгэмжлэгдсэн сешн ч ЗӨВХӨН өөрийн runtime-д үүссэн dirty
+ *   мөрийг автоматаар илгээнэ (`mine`-ийн тайлбар) — localStorage-д тарьсан
+ *   мөрийг super-ийн токеноор чимээгүй бичихгүй.
  */
 export async function initRemote(canCreate: boolean, trusted: boolean = canCreate): Promise<boolean> {
+  /* ⚠️ Агшны хүсэлт ЭХЭЛСЭН мөчийг тэмдэглэнэ (2026-09-25) — ACL/caps-ийн
+     `syncRemote` энэ мөчөөс ХОЙШ локалд бичигдсэн хэрэглэгчийн төлөвийг хуучин
+     snapshot-оор дарахгүй (`scopedAcl._beginRemoteFetch`). */
+  const fetched = _beginRemoteFetch();
+  try {
+    return await initRemoteInner(canCreate, trusted);
+  } finally {
+    fetched();
+  }
+}
+
+async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<boolean> {
   const { fetchAll } = await import('./permsRemote');
   const remote = await fetchAll(canCreate);
   if (!remote) return false; // ArcGIS алга — cache хэвээр
 
   // 1) Унасан локал бичилтүүдийг эхлээд дахин тулгана — «локал үүрд ялна»
   //    биш, retry-then-clear: өөр админы засварыг мөнхөд дарахгүй.
-  const stillDirty: DirtyMap = trusted ? await retryDirtyOnce() : {};
+  //    ⚠️ ЗӨВХӨН энэ runtime-ийнх (`onlyMine`, 2026-09-25).
+  const done = trusted ? await retryDirtyOnce(true) : {};
 
-  // 2) Remote snapshot + үлдсэн dirty давхарга
+  // 2) Remote snapshot + дөнгөж бичигдсэн + үлдсэн (энэ runtime-ийн) dirty давхарга
   const s: Store = {};
   for (const [k, r] of Object.entries(remote.perms)) {
     s[k] = sanitizeEntry({ views: r.views, docs: r.docs, role: r.role, ...(r.removed ? { removed: true } : {}) });
   }
-  for (const [k, intended] of Object.entries(stillDirty)) {
-    if (intended === null) delete s[k];
-    else s[k] = sanitizeEntry(intended);
+  /* ⚠️ Retry нь snapshot-ын ДАРАА бичсэн тул тэр утгууд snapshot-од байхгүй */
+  applyDone(s, done);
+  if (trusted) {
+    for (const [k, intended] of Object.entries(mineDirty())) {
+      if (intended === null) delete s[k];
+      else s[k] = sanitizeEntry(intended);
+    }
   }
   cache = s;
   remoteLoaded = true;
@@ -526,10 +677,11 @@ export function removeUser(username: string): Promise<boolean> {
     const store = { ...loadStore() };
     store[key] = entry;
     saveStore(store);
-    return import('./permsRemote')
+    /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
+    return serial(key, () => import('./permsRemote')
       .then((m) => m.upsert({ username, role: null, views: [], docs: false, removed: true }))
       .catch(() => false)
-      .then((ok) => { trackWrite(key, entry, ok); return ok; });
+      .then((ok) => { trackWrite(key, entry, ok); return ok; }));
   }
   return clearOverride(username);
 }
@@ -546,10 +698,11 @@ export function setUser(username: string, access: Access, role: Role | null = nu
   const store = { ...loadStore() };
   store[key] = entry;
   saveStore(store);
-  return import('./permsRemote')
+  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
+  return serial(key, () => import('./permsRemote')
     .then((m) => m.upsert({ username, role, views: entry.views, docs: entry.docs }))
     .catch(() => false)
-    .then((ok) => { trackWrite(key, entry, ok); return ok; });
+    .then((ok) => { trackWrite(key, entry, ok); return ok; }));
 }
 
 /** Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил. */
@@ -558,10 +711,11 @@ export function clearOverride(username: string): Promise<boolean> {
   const store = { ...loadStore() };
   delete store[key];
   saveStore(store);
-  return import('./permsRemote')
+  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
+  return serial(key, () => import('./permsRemote')
     .then((m) => m.remove(username))
     .catch(() => false)
-    .then((ok) => { trackWrite(key, null, ok); return ok; });
+    .then((ok) => { trackWrite(key, null, ok); return ok; }));
 }
 
 /** localStorage/өөр таб дахь өөрчлөлтөд захиалах — цэвэрлэх функц буцаана */

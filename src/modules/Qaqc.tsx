@@ -903,10 +903,29 @@ export function Qaqc() {
   }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP, clearRemoteQueue]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
+  /* ⚠️ НЭЭЛТТЭЙ НҮДИЙГ ЭХЛЭЭД COMMIT (2026-09-25 аудит): нүдний текст зөвхөн
+     blur/Enter/Tab-аар `pend`-д ордог тул нүднээс гаралгүй Ctrl+S дарахад
+     бичиж буй утга хадгалагдалгүй «N мөр хадгалагдлаа» гэж гарч, дахин
+     ачаалалт оролтыг устгадаг байв. Одоо оролтыг blur хийж (`onBlur` → `commit`),
+     `pend` шинэчлэгдсэний ДАРААХ render-ийн `save`-ийг доорх эффект дуудна. */
+  const saveAfterCommit = useRef(false);
+  useEffect(() => {
+    if (!saveAfterCommit.current) return;
+    saveAfterCommit.current = false;
+    void save();
+  }, [save]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
       e.preventDefault();
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement && tbodyRef.current?.contains(el)) {
+        /* `commit` нь `setPend`-ийг ҮРГЭЛЖ шинэ объектоор дууддаг тул `save`
+           шинэчлэгдэж, дээрх эффект заавал ажиллана. */
+        saveAfterCommit.current = true;
+        el.blur();
+        return;
+      }
       void save();
     };
     window.addEventListener('keydown', h);

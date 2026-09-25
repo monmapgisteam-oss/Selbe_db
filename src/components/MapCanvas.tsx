@@ -926,6 +926,18 @@ const sourceLabels = () =>
 const baseMap = () => Basemap.fromId('satellite');
 
 /**
+ * КОДЫН `svm.cancel()` — `flag` асаалттай үед дуудна (`selfCancelRef`-ийн тайлбар).
+ * ⚠️ Модулийн түвшинд: бүрэлдэхүүн дотор байвал эффект бүрийн deps-д орох ёстой
+ *    болж, рендер бүрд шинэ функц үүснэ.
+ */
+function quietCancel(svm: SketchViewModel | null | undefined, flag: { current: boolean }): void {
+  if (!svm) return;
+  flag.current = true;
+  try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+  finally { flag.current = false; }
+}
+
+/**
  * ХАРАГДАЦЫН СУУРЬ ЗУРАГ солих (2026-09-24). «Инженерийн дэд бүтэц» нь
  * LIGHT GRAY CANVAS (`gray-vector`) суурьтай — нарийн сүлжээний шугам хиймэл
  * дагуулын эрээн дэвсгэр дээр уншигдахгүй. Бусад нь хиймэл дагуул.
@@ -1533,6 +1545,7 @@ export const MapCanvas = memo(function MapCanvas({
   onPick,
   sketch = false,
   onSketch,
+  onSketchCancel,
   drawToken = 0,
   drawKind = 'polygon',
   reshapeGeometry,
@@ -1639,6 +1652,21 @@ export const MapCanvas = memo(function MapCanvas({
   sketch?: boolean;
   /** Полигон зурж дуусахад/өөрчлөхөд геометрийг, устгахад `null`-ийг дамжуулна */
   onSketch?: (geometry: __esri.Geometry | null) => void;
+  /**
+   * ХЭРЭГЛЭГЧ ЗУРААЛТЫГ ЦУЦЛАВ (Esc) — `create` үйл явдлын `state: 'cancel'`.
+   *
+   * ⚠️ 2026-09-25: урьд нь `create` нь зөвхөн `complete`-ийг дамжуулдаг тул Esc
+   *    дарахад дуудагч МЭДЭХГҮЙ байв — «Инженерийн дэд бүтэц»-ийн тэгш өнцөгт
+   *    сонголт («Татахыг болих») ба шинэ объектын хүлээлтийн самбар (`awaitDraw`)
+   *    зураалтгүй атал нээлттэй гацдаг байлаа.
+   * ⚠️ `onSketch(null)`-ЭЭС ТУСДАА: «Газар чөлөөлөлт»-ийн `onSketch(null)` нь
+   *    тооцоолсон AOI-г ХАЯДАГ (зөвхөн «Цуцлах»-д хадгалах туг бий) — Esc-ийг
+   *    тийш илгээвэл дахин зурах гэж байгаад Esc дарахад өмнөх тооцоо алга
+   *    болно. Өгөөгүй бол юу ч хийхгүй (хуучин зан).
+   * ⚠️ ӨӨРСДИЙН `svm.cancel()` (шинэ зураалт эхлүүлэх, vertex засвар, «Цэвэрлэх»)
+   *    энд ИРЭХГҮЙ — `quietCancel`-ийн туг.
+   */
+  onSketchCancel?: () => void;
   /** Утга нэмэгдэхэд полигон зурж эхэлнэ (гадны «Полигон зурах» товч) */
   drawToken?: number;
   /**
@@ -1719,6 +1747,14 @@ export const MapCanvas = memo(function MapCanvas({
   pickRef.current = onPick;
   const onSketchRef = useRef(onSketch);
   onSketchRef.current = onSketch;
+  const onSketchCancelRef = useRef(onSketchCancel);
+  onSketchCancelRef.current = onSketchCancel;
+  /**
+   * ӨӨРСДИЙН цуцлалтын туг — `svm.cancel()` нь `create`-ийн `cancel` үйл явдлыг
+   * СИНХРОН гаргадаг (`OperationHandle.cancel → complete → emit`), тиймээс
+   * дуудлагын турш асаалттай туг нь хэрэглэгчийн Esc-ийг кодын цуцлалтаас ялгана.
+   */
+  const selfCancelRef = useRef(false);
   const onReshapeRef = useRef(onReshape);
   onReshapeRef.current = onReshape;
   const reshapeGeomRef = useRef(reshapeGeometry);
@@ -3564,6 +3600,12 @@ export const MapCanvas = memo(function MapCanvas({
     const emit = (g: __esri.Geometry | null) => onSketchRef.current?.(g);
 
     const created = svm.on('create', (e) => {
+      /* ⚠️ Esc-ээр цуцалсныг дуудагчид мэдэгдэнэ (`onSketchCancel`-ийн тайлбар);
+         өөрсдийн `quietCancel` энд хүрэхгүй. */
+      if (e.state === 'cancel') {
+        if (!selfCancelRef.current) onSketchCancelRef.current?.();
+        return;
+      }
       if (e.state !== 'complete') return;
       // Зөвхөн СҮҮЛИЙН полигоныг үлдээнэ — өмнөхийг арилгана
       const keep = e.graphic;
@@ -3624,7 +3666,7 @@ export const MapCanvas = memo(function MapCanvas({
     if (!drawToken) return;
     const svm = sketchVMRef.current;
     if (!svm) return;
-    try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+    quietCancel(svm, selfCancelRef);
     svm.create(drawKindRef.current);
   }, [drawToken]);
 
@@ -3647,7 +3689,7 @@ export const MapCanvas = memo(function MapCanvas({
     if (!svm || !map || !g) return;
     const gl = map.findLayerById('sketch') as GraphicsLayer | null;
     if (!gl) return;
-    try { svm.cancel(); } catch { /* идэвхтэй зураалт байхгүй */ }
+    quietCancel(svm, selfCancelRef);
     gl.removeAll();
     /* Геометрийн төрлийг талбараас нь таана — `toJSON()` нь `type` бичдэггүй */
     const kind = 'paths' in g ? 'polyline' : 'rings' in g ? 'polygon' : 'point';
@@ -3676,7 +3718,7 @@ export const MapCanvas = memo(function MapCanvas({
   /** Гадны «Цэвэрлэх» товч — зурсан полигоныг арилгаж, шүүлтийг цуцлана */
   useEffect(() => {
     if (!clearToken) return;
-    try { sketchVMRef.current?.cancel(); } catch { /* идэвхгүй */ }
+    quietCancel(sketchVMRef.current, selfCancelRef);
     const gl = mapRef.current?.findLayerById('sketch') as GraphicsLayer | null;
     gl?.removeAll();
     onSketchRef.current?.(null);

@@ -223,6 +223,8 @@ function OverlapBars({
  */
 type ZoneLeft = {
   key: string; label: string; where: string; oids: number[];
+  /** Огтлолцол унасан эсвэл ХАГАС (`Overlap.failed`) — тоо БҮРЭН БИШ */
+  failed?: boolean;
 };
 
 /**
@@ -275,11 +277,15 @@ function useZoneLeft() {
           label: z.canon,
           where: z.where,
           oids: r.status === 'fulfilled' ? r.value.oids : [],
+          /* ⚠️ Унасан/хагас огтлолцлыг «үлдсэн талбаргүй» бүсээс ЯЛГАНА (2026-09-25
+             аудит): урьд нь `[]` болгоод доорх шүүлтээр хаядаг тул тоологдоогүй
+             бүс «чөлөөлөгдөөгүй талбар алга» гэж уншигддаг байв. */
+          failed: r.status !== 'fulfilled' || (r.value.failed?.length ?? 0) > 0,
         };
       })
       /* ⚠️ Үлдсэн талбаргүй бүс ОГТ гарахгүй — «0» зурвас мэдээлэл өгөхгүй
-         атлаа жагсаалтыг л уртасгана. */
-      .filter((x) => x.oids.length > 0)
+         атлаа жагсаалтыг л уртасгана. Татагдаагүй бүс ҮЛДЭНЭ («татагдсангүй»). */
+      .filter((x) => x.oids.length > 0 || x.failed)
       .sort((a, b) => b.oids.length - a.oids.length);
   }, []);
 }
@@ -886,17 +892,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                         key: z.key,
                         label: tr(z.label),
                         value: z.oids.length,
-                        display: tr('{0} талбар', num(z.oids.length)),
+                        /* ⚠️ Татагдаагүй бүс «0 талбар» гэж БИЧИГДЭХГҮЙ — `OverlapBars`-ийн ижил дүрэм */
+                        display: z.failed ? tr('татагдсангүй') : tr('{0} талбар', num(z.oids.length)),
                         /* ⚠️ Бүх багана НЭГ өнгө (cyan, 2026-09-15 хэрэглэгчийн
                            заавар): ангиллын өнгө нь бүсийн ДАВХАРГЫН палитр
                            бөгөөд энэ чарт нь тэр биш, ҮЛДСЭН ТАЛБАРЫН тоог
-                           хэмждэг. */
-                        color: 'var(--data)',
+                           хэмждэг. Татагдаагүй нь л шар. */
+                        color: z.failed ? 'var(--warn)' : 'var(--data)',
                       }))}
                       selected={flt?.grp === 'zoneCat' ? flt.key : null}
                       onSelect={(k) => {
                         const z = zoneQ.data.find((x) => x.key === k);
-                        if (!z) return;
+                        /* ⚠️ Татагдаагүй бүсээр шүүхгүй — дутуу/хоосон OID-оор (`FID IN ()`
+                           буруу SQL) давхарга эвдэрнэ эсвэл хагас дүр зураг өгнө. */
+                        if (!z || z.failed) return;
                         pickFlt({
                           grp: 'zoneCat', key: k, label: tr('Бүс: {0}', tr(z.label)),
                           where: parcelOidsWhere(z.oids),

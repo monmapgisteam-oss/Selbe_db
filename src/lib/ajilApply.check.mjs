@@ -12,7 +12,7 @@
  *      хуучин өдрөөр бичвэл жааз булагдана.
  */
 import assert from 'node:assert/strict';
-import { addPresent, dedupeAdds, fillMsFor, dayStartUtc, parentIdxOf, todayLocalMs } from './ajilApply.ts';
+import { addPresent, dedupeAdds, fillMsFor, dayStartUtc, parentIdxOf, sameFrame, todayLocalMs } from './ajilApply.ts';
 
 const row = (no, work, group, depth) => ({ no, work, group, depth });
 const add = (parentNo, parentWork, no, work, oid = -1, parentIdx = 0) => ({
@@ -55,7 +55,27 @@ const d = dedupeAdds(rows, [
 assert.deepEqual(d.fresh.map((a) => a.oid), [-2, -4, -5], 'зөвхөн шинэ мөр үлдэнэ, дараалал хадгалагдана');
 assert.deepEqual(d.dropped.map((a) => a.oid), [-1, -3], 'байгаа ба давхар мөр хаягдана');
 assert.deepEqual(dedupeAdds(rows, []).fresh, [], 'хоосон — хоосон');
+/* ⚠️ 2026-09-25: ижил нэртэй ХОЁР эцгийн (3 ба 5) дор тус тусад нэмсэн ижил
+   «2 · Хашаа» — давхардал БИШ, хоёулаа шинэ (түлхүүрт эцгийн БАЙРЛАЛ орно). */
+const rows2 = rows.map((r, i) => (i === 6 ? row('2', 'Хаалга', false, 1) : r));
+assert.deepEqual(
+  dedupeAdds(rows2, [
+    add('10', 'БУСАД АЖИЛ', '2', 'Хашаа', -6, 3),
+    add('10', 'БУСАД АЖИЛ', '2', 'Хашаа', -7, 5),
+  ]).fresh.map((a) => a.oid),
+  [-6, -7],
+  'өөр эцгийн (3 · 5) дорх ижил нэрт мөр хоёулаа шинэ',
+);
 console.log('✅ давхардал хасах');
+
+/* ── 1b. sameFrame — мөр бүрийн OID + түүхий атрибут (2026-09-25) ── */
+const fr = (raw2) => ({
+  asOf: 100, snapshot: 200,
+  rows: [{ oid: 1, raw: { a: 1, b: 'x' } }, { oid: 2, raw: { a: 2, b: raw2 } }],
+});
+assert.equal(sameFrame(fr('y'), fr('y')), true, 'ижил жааз — true');
+assert.equal(sameFrame(fr('y'), fr('z')), false, 'нэг түүхий атрибут зөрвөл — false (Хуваарийн applyUpdates)');
+console.log('✅ жааз тулгах');
 
 /* ── 2. Өдөр — ЛОКАЛ өдөр, ямар ч цагийн бүсэд ── */
 const T = new Date(2026, 8, 24, 13, 45).getTime();   // локал 2026-09-24 13:45

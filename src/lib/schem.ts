@@ -412,6 +412,20 @@ export type SchemState = {
 export type SchemLive = Record<SchemId, SchemState>;
 
 /**
+ * БАГЦААР ЗАДАРДАГГҮЙ зангилаа — `buildSchem`-ийн `projectWide: true`, `nodeDetail`-ийн
+ * pkg-г үл тоодог `PART`-тай ЯГ ИЖИЛ олонлог. Нэгийг өөрчилбөл бусдыг нь ч.
+ *
+ * ⚠️ 2026-09-25: «Дэлгэрэнгүй» схем `buildSchem`-ийг дууддаггүй (карт дээр амьд
+ * метрик гарахгүй) тул `st.projectWide` байхгүй — «Багц 3.2» сонгоод «Газар
+ * чөлөөлөлт»-ийг нээхэд самбарын гарчиг «Багц 3.2» гэж бичиж, ТӨСЛИЙН 2,088
+ * талбарын тоог тэр багцынх мэт уншуулдаг байв. Самбар ба нарийн карт энэ
+ * олонлогоор «төслийн нийт» гэж тэмдэглэнэ.
+ */
+export const PROJECT_WIDE: ReadonlySet<SchemId> = new Set<SchemId>([
+  'tolovlolt', 'gazar', 'habea', 'ersdel', 'tailan',
+]);
+
+/**
  * Багцын мөрөөс схемд хэрэгтэй хэсэг.
  *
  * ⚠️ `loadBagtsRows` (`execData.ts`) нь эдгээрээс ГАДНА `origin`, `keys` г.м.
@@ -690,8 +704,11 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     health: grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
     metrics: [
       { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct' },
+      /* ⚠️ 2026-09-25: «Блок» БИШ «Тайлагнасан блок» — `progress.blocks` нь зөвхөн
+         нийт гүйцэтгэл нь тайлагнагдсан блокийн тоо (`blockProgress.ts` тайлангүйг
+         хасдаг). «Блок» гэж бичихэд нийт блок мэт уншигдаж, тайлангүй блок нуугддаг байв. */
       {
-        label: tr('Блок'),
+        label: tr('Тайлагнасан блок'),
         value: bagtsRow ? null : fin(src.progress?.blocks),
         kind: 'count',
       },
@@ -779,10 +796,28 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   return { tolovlolt, zovshoorol: zovState, gazar, huvaari, barilga, hyanalt, habea, ersdel, sankhuu, tailan };
 }
 
-/** «YYYY-MM-DD» → өнөөдрөөс хойших хоног. Танигдахгүй бол `null`. */
+/**
+ * «YYYY-MM-DD» → өнөөдрөөс хойших хоног. Танигдахгүй бол `null`.
+ *
+ * ⚠️ 2026-09-25: ОРОН НУТГИЙН өдрөөр (`dayKey`-тэй ижил). Урьд нь
+ * `Date.parse('…T00:00:00Z')` — хуудасны локал огноог UTC шөнө дунд гэж уншдаг
+ * тул УБ-д (+8) 00:00–07:59 хооронд нас НЭГ хоногоор дутуу гарч, 14 хоногийн
+ * `warn` / 30 хоногийн `bad` босго нэг өдөр хоцорч асдаг байв. Одоо хоёр
+ * талыг локал шөнө дунд болгож өдрийн зөрүүг бүхэлчилнэ (`round` — DST-ийн
+ * 23/25 цагийн өдөрт тасрахгүй).
+ */
 export function ageDays(date: string | undefined, now: number = Date.now()): number | null {
   if (!date) return null;
-  const ms = Date.parse(`${date}T00:00:00Z`);
-  if (!Number.isFinite(ms)) return null;
-  return Math.max(0, Math.floor((now - ms) / 86_400_000));
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const day = new Date(y, mo, d);
+  /* ⚠️ «2026-02-31» шиг огноог `Date` дараа сар руу шилжүүлдэг — хүчингүй гэж үзнэ */
+  if (day.getFullYear() !== y || day.getMonth() !== mo || day.getDate() !== d) return null;
+  const n = new Date(now);
+  if (!Number.isFinite(n.getTime())) return null;
+  const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  return Math.max(0, Math.round((today.getTime() - day.getTime()) / 86_400_000));
 }

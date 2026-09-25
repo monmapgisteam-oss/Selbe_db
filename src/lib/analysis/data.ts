@@ -31,7 +31,7 @@ import {
   WKID, SRC, ENGINEERING_IDS, SOCIAL_FACILITIES, GREEN_CATEGORIES,
   BF, isResidential, EXCLUDED_ZONE_TYPES,
   BUILDING_PURPOSES, BUILDING_PURPOSE_OTHER, buildingPurposeKey, ASSUME_MET,
-  type ParkingOpt,
+  type ParkingOpt, type Indicator,
 } from './config';
 
 type Attrs = Record<string, unknown>;
@@ -657,8 +657,27 @@ export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
 }
 
 /**
+ * `ASSUME_MET` үзүүлэлтийн «норм хангасан» утга — ОДООГИЙН (засагдсан) нормоос.
+ *
+ * ⚠️ 2026-09-25 аудит: урьд нь тогтмол 100 (% / м) бичдэг тул «Жин» картаас
+ * инженерийн «Нормын дээд»-ийг 80 м болговол БҮХ бүсийн таамаг 100 м нь
+ * зөрчил болж («✗ Инженер 100 м»), бодит зай огт ашиглагдаагүй атлаа оноо
+ * ~39 болж унадаг байв. Норм нь хязгаар тул утгыг ТЭР хязгаарт тавина —
+ * `higher` → `target`, `lower` → `best`, `band` → `optMin`. Норм өгөөгүй
+ * дуудагч (`indicators` байхгүй) хуучин тогтмол утгаа авна.
+ */
+function assumedValue(id: string, fallback: number, indicators?: readonly Indicator[]): number {
+  const ind = indicators?.find((i) => i.id === id);
+  if (!ind) return fallback;
+  const v = ind.mode === 'higher' ? ind.target : ind.mode === 'lower' ? ind.best : ind.optMin;
+  return v != null && Number.isFinite(v) ? v : fallback;
+}
+
+/**
  * Сонгосон ногоон ангилал / зогсоолын аргаас хамаарч ТҮҮХИЙ үзүүлэлтийг дахин бодно.
- * (Жин өөрчлөгдөхөд энэ дахин ажиллах шаардлагагүй — зөвхөн оноолт л дахин бодогдоно.)
+ * (Жин өөрчлөгдөхөд энэ дахин ажиллах шаардлагагүй — зөвхөн оноолт л дахин бодогдоно.
+ *  ⚠️ Харин НОРМЫН босго өөрчлөгдвөл `indicators`-ийг өгч дахин дуудна — `ASSUME_MET`
+ *  утга түүнээс хамаарна, `assumedValue`-г үз.)
  */
 export function computeRaw(
   zones: Zone[],
@@ -666,6 +685,8 @@ export function computeRaw(
   parking: ParkingOpt,
   // «Бүсийн ангилал» картаас гараар идэвхжүүлсэн (хасагдсан) ангиллууд — оноолд оруулна
   scoreTypes?: Set<string>,
+  // Одоогийн (засагдсан) үзүүлэлтүүд — `ASSUME_MET`-ийн утгыг нормд уяна
+  indicators?: readonly Indicator[],
 ) {
   for (const z of zones) {
     /**
@@ -685,7 +706,15 @@ export function computeRaw(
 
     // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
     // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
-    if (z.excluded && !scoreTypes?.has(z.type)) { z.raw = {}; z.rawActual = {}; continue; }
+    /* ⚠️ Зогсоолын талбаруудыг ч ЦЭВЭРЛЭНЭ (2026-09-25 аудит): урьд нь өмнөх
+       ажиллалтын `parkingNeed`/`parkingGap` үлдэж, оноололоос гарсан бүсийн
+       дэлгэрэнгүйд бүх үзүүлэлт «өгөгдөлгүй» атлаа хуучин «Хэрэгцээ N»,
+       «дутагдал M зогсоол» харагддаг байв. Анхны утгатай ижил (`loadZones`). */
+    if (z.excluded && !scoreTypes?.has(z.type)) {
+      z.raw = {}; z.rawActual = {};
+      z.parkingSupply = 0; z.parkingNeed = null; z.parkingGap = null;
+      continue;
+    }
 
     z.parkingSupply = z.etNiit;
     z.parkingNeed = parkingNeedOf(z, parking);
@@ -740,7 +769,7 @@ export function computeRaw(
     const assumed = Object.entries(ASSUME_MET);
     if (assumed.length) {
       z.raw = { ...z.raw };
-      for (const [id, v] of assumed) z.raw[id] = v;
+      for (const [id, v] of assumed) z.raw[id] = assumedValue(id, v, indicators);
     }
   }
 }

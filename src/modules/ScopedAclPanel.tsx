@@ -61,9 +61,54 @@ export function removeRevokingRoles<R extends string>(
   roleCaps: Readonly<Partial<Record<string, CapKey>>>,
 ): Write {
   const u = user.trim().toLowerCase();
-  const rolesOf = () => new Set((list().find((a) => a.user === u)?.grants ?? []).map((g) => g.role));
+  const rolesOf = rolesOfUser(list, u);
   const had = rolesOf();
-  const rr = remove(u);
+  return revokeGoneRoles(u, had, rolesOf, remove(u), roleCaps);
+}
+
+/**
+ * ҮҮРГИЙН ЗАРИМЫГ ХАСААД (бусад grant ҮЛДЭНЭ) ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА
+ * (2026-09-25, аудитын засвар).
+ *
+ * ⚠️ `removeRevokingRoles`-ийн ХОС. Урьд нь хэсэгчилсэн хасалт `setGrants`
+ *    руу шууд явдаг байсан бөгөөд түүний `syncCaps` нь зөвхөн ОЛГОДОГ (lib-ийн
+ *    санаатай дүрэм — гараар олгосныг устгахгүй). Тиймээс «Багц 1 · Зохиогч,
+ *    Багц 5 · Батлагч» хүний батлагчийг ✕ дарахад `planApprove` ҮЛДЭЖ,
+ *    «Хуваарь батлах» асаалттай, `huvaariBatlah` харагдац нээлттэй хэвээр
+ *    байв. `UserAdmin.flipScoped`-ийн 2026-09-24 дүрэмтэй тэгшлэв.
+ * ⚠️ Үүрэг нь БАГЦ ЦӨӨРӨӨД үлдсэн бол эрх ХЭВЭЭР — зөвхөн үүрэг бүхэлдээ
+ *    алга болсон үед л буцаана (`revokeGoneRoles`-ийн дахин уншилт).
+ */
+export function setGrantsRevokingRoles<R extends string>(
+  user: string,
+  grants: Grant<R>[],
+  list: () => Row<R>[],
+  setGrants: (u: string, grants: Grant<R>[]) => Write,
+  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
+): Write {
+  const u = user.trim().toLowerCase();
+  const rolesOf = rolesOfUser(list, u);
+  const had = rolesOf();
+  return revokeGoneRoles(u, had, rolesOf, setGrants(u, grants), roleCaps);
+}
+
+/** Тухайн хэрэглэгчийн ОДООГИЙН үүргүүд — дуудах агшинд жагсаалтаас уншина */
+const rolesOfUser = <R extends string>(list: () => Row<R>[], u: string) =>
+  (): Set<string> => new Set((list().find((a) => a.user === u)?.grants ?? []).map((g) => g.role));
+
+/**
+ * `sync` дууссаны ДАРАА `had`-д байсан, одоо алга болсон үүргүүдийн эрхийг
+ * буцаана — хоёр замын (бүтэн · хэсэгчилсэн хасалт) НИЙТЛЭГ логик.
+ * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын гурван хянагч →
+ *    `chanarReview`) тэр эрхийг буцаахгүй.
+ */
+function revokeGoneRoles(
+  u: string,
+  had: Set<string>,
+  rolesOf: () => Set<string>,
+  rr: Write,
+  roleCaps: Readonly<Partial<Record<string, CapKey>>>,
+): Write {
   if (!rr.ok || !rr.sync) return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
@@ -111,6 +156,13 @@ export type AclPanelSpec<R extends string> = {
   /** Бичилт */
   setGrants: (user: string, grants: Grant<R>[]) => Write;
   remove: (user: string) => Write;
+  /**
+   * ҮҮРЭГ → ЭРХ (2026-09-25) — ХЭСЭГЧИЛСЭН хасалтад (бусад grant үлдэх)
+   * хасагдсан үүргийн эрхийг буцаахад (`setGrantsRevokingRoles`).
+   * ⚠️ СОНГОМОЛ: өгөөгүй панел урьдын адил зөвхөн `setGrants` — эрх ҮЛДЭНЭ.
+   *    `remove`-д өгдөг ижил зураглалыг энд өгнө.
+   */
+  roleCaps?: Readonly<Partial<Record<R, CapKey>>>;
   /** Панелийн тайлбар — 3 догол мөр */
   notes: () => [string, string, string];
   /** Мөрийг БҮХЭЛД нь хасахыг баталгаажуулах асуулт */
@@ -248,7 +300,12 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
       void run(rr.sync);
       return;
     }
-    const r = spec.setGrants(user, grants);
+    /* ⚠️ Үүрэг бүхэлдээ хасагдсан бол түүний эрхийг ч буцаана (2026-09-25) —
+       `setGrants`-ийн `syncCaps` зөвхөн олгодог (`setGrantsRevokingRoles`). */
+    const r = spec.roleCaps
+      ? setGrantsRevokingRoles(user, grants, spec.list, spec.setGrants,
+        spec.roleCaps as Readonly<Partial<Record<string, CapKey>>>)
+      : spec.setGrants(user, grants);
     setErr(r.ok ? '' : (r.error ?? ''));
     void run(r.sync);
   };
@@ -324,9 +381,15 @@ function PkgCol<R extends string>({
    * ⚠️ ГАЦААНЫ АНХААРУУЛГА: зохиогч нь бий атлаа батлагч нь ЗӨВХӨН тэр өөрөө
    *    бол илгээсэн зүйлийг нь хэн ч батлах боломжгүй болно (батлах логик
    *    өөрийгөө батлахыг татгалздаг). Багц бүхэлдээ гацна.
+   * ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, аудитын засвар): урьд нь «зохиогч биш
+   *    батлагч алга» (`usable.length === 0`) гэж шалгадаг байсан тул A, B
+   *    хоёулаа зохиогч БА батлагч үед худал анхааруулга гардаг байв — A-гийнхыг
+   *    B, B-гийнхыг A батална. Батлах логик ЗӨВХӨН тухайн илгээлтийн зохиогчийг
+   *    татгалздаг тул гацаа = ЯМАР НЭГ зохиогчид өөрөөс нь өөр батлагч алга
+   *    (`erhOverview.noOther`-той ижил дүрэм).
    */
-  const usable = approvers.filter((u) => !authors.includes(u));
-  const stuck = authors.length > 0 && approvers.length > 0 && usable.length === 0;
+  const stuck = approvers.length > 0
+    && authors.some((a) => !approvers.some((b) => b !== a));
 
   return (
     <div className={s.aclCol}>

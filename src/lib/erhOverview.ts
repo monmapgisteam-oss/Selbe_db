@@ -221,6 +221,19 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
 }
 
 /**
+ * ӨӨРӨӨС НЬ ӨӨР БАТЛАГЧГҮЙ ЗОХИОГЧ БАЙНА УУ (2026-09-25, аудитын засвар).
+ *
+ * ⚠️ `decidePlan` · `decideObyem` · `decideAjil` · `chanarMs.review` нь ЗӨВХӨН
+ *    тухайн илгээлтийн зохиогч = батлагч тохиолдлыг татгалздаг. Тиймээс гацаа
+ *    нь «бүх батлагч зохиогч мөн» биш, «ЯМАР НЭГ зохиогчид өөрөөс нь өөр
+ *    батлагч алга». A, B хоёулаа хоёр үүрэгтэй бол бие биенийхээ илгээлтийг
+ *    батална; урьдын дүрэм үүнийг худал «гацаа» гэж, админ хүчинтэй
+ *    батлагчийг хасахад хүргэж болох байв.
+ */
+const noOther = (authors: string[], approvers: string[]): boolean =>
+  authors.some((a) => !approvers.some((b) => b !== a));
+
+/**
  * Багцын ЦООРХОЙГ илрүүлнэ.
  *
  * ⚠️ ЗӨВХӨН БОДИТ саадыг хэлнэ. «Чанарын ажилтан алга» гэдэг нь ажил
@@ -244,8 +257,13 @@ function pkgIssues(
        `chanarMs.review` зохиогч=хянагчийг татгалздаг тул зохиогч л
        томилогдсон үүрэг нь «томилоогүй»-тэй адил. Нэг ч үүрэг дутвал
        `resolve` хэзээ ч «Батлагдсан» өгөхгүй → багцын аргачлал МӨНХӨД хүлээнэ. */
+    /* ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, аудитын засвар). Урьд нь «тухайн үүргийн
+       бүх хянагч зохиогч мөн» бол дутуу гэдэг байв — A, B хоёулаа зохиогч
+       БА ТУХ бол A-гийнхыг B, B-гийнхыг A хянана, гацаагүй. `review` нь
+       ЗӨВХӨН тэр баримтын зохиогч=хянагчийг татгалздаг тул дутуу гэдэг нь:
+       ЯМАР НЭГ зохиогчид өөрөөс нь ӨӨР хянагч тэр үүрэгт байхгүй. */
     const missing = ['tuh', 'chanar', 'habea']
-      .filter((r) => !(chanar[r] ?? []).some((u) => !cA.includes(u)));
+      .filter((r) => noOther(cA, chanar[r] ?? []));
     if (missing.length) {
       out.push({ tone: 'bad', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')] });
     }
@@ -256,9 +274,11 @@ function pkgIssues(
   const hB = huvaari.approver ?? [];
   if (hA.length && !hB.length) {
     out.push({ tone: 'bad', key: 'huvaariNoApprover', args: [bagts] });
-  } else if (hA.length && hB.length && hB.every((u) => hA.includes(u))) {
+  } else if (hA.length && hB.length && noOther(hA, hB)) {
     /* ⚠️ Зохиогч=батлагч: `decidePlan` өөрийгөө батлахыг ТАТГАЛЗДАГ тул
-       илгээсэн хуваарийг хэн ч батлах боломжгүй — багц бүхэлдээ гацна. */
+       өөр батлагчгүй зохиогчийн илгээсэн хуваарийг хэн ч батлахгүй — гацна.
+       ⚠️ `hB.every(u => hA.includes(u))` БИШ (2026-09-25): A, B хоёулаа
+       зохиогч БА батлагч бол бие биенийхээ хуваарийг батална — худал «гацаа». */
     out.push({ tone: 'bad', key: 'huvaariSelfApprove', args: [bagts, hB.join(', ')] });
   }
 
@@ -267,7 +287,7 @@ function pkgIssues(
   const oB = obyem.approver ?? [];
   if (oA.length && !oB.length) {
     out.push({ tone: 'bad', key: 'obyemNoApprover', args: [bagts] });
-  } else if (oA.length && oB.length && oB.every((u) => oA.includes(u))) {
+  } else if (oA.length && oB.length && noOther(oA, oB)) {
     out.push({ tone: 'bad', key: 'obyemSelfApprove', args: [bagts, oB.join(', ')] });
   }
 
@@ -276,7 +296,7 @@ function pkgIssues(
   const aB = ajil.approver ?? [];
   if (aA.length && !aB.length) {
     out.push({ tone: 'bad', key: 'ajilNoApprover', args: [bagts] });
-  } else if (aA.length && aB.length && aB.every((u) => aA.includes(u))) {
+  } else if (aA.length && aB.length && noOther(aA, aB)) {
     out.push({ tone: 'bad', key: 'ajilSelfApprove', args: [bagts, aB.join(', ')] });
   }
 

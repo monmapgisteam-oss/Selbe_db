@@ -98,8 +98,14 @@ export function buildReportDoc(
   const blocks = rows.reduce((a, x) => a + x.blocks, 0);
   const ail = rows.reduce((a, x) => a + x.ail, 0);
   const budget = rows.reduce((a, x) => a + budgetOf(x.key), 0);
-  const bagtsAvg = blocks
-    ? rows.reduce((a, x) => a + (x.progress ?? 0) * x.blocks, 0) / blocks
+  /* ⚠️ 2026-09-25: «Нийт» дундаж — ЗӨВХӨН `progress != null` багцаар жигнэнэ
+     (`Tailan.tsx`-ийн 2026-09-24-ний дүрэмтэй ЯГ ижил). Урьд нь тайлан ирээгүй
+     багц 0% гэж орж БҮХ блокоор хуваагддаг тул имэйлийн PDF дэлгэцээс зөрдөг
+     байв (30.00% ↔ 24.69%) — null ≠ 0. Мэдэгдэх багц байхгүй бол `null` → «—». */
+  const knownRows = rows.filter((x) => x.progress != null);
+  const knownBlocks = knownRows.reduce((a, x) => a + x.blocks, 0);
+  const bagtsAvg = knownBlocks
+    ? knownRows.reduce((a, x) => a + (x.progress as number) * x.blocks, 0) / knownBlocks
     : null;
   const srcTotal = finance.sources.reduce((a, s) => a + s.value, 0);
 

@@ -124,11 +124,15 @@ function kpiRow(items: { label: string; value: string; sub?: string }[]): Conten
  * ⚠️ pdfmake-д чарт байхгүй тул хүснэгт + `canvas`-аар зурна. Зурвасын
  * өргөн нь хамгийн их утгад харьцуулагдана.
  */
+/* ⚠️ 2026-09-25: `value: null` = ХЭМЖИГДЭЭГҮЙ — зөвхөн зам (track) зурна, дүүргэлт
+   ОГТ зурахгүй. Урьд нь дуудагч `?? 0` өгч `Math.max(1, …)`-ээр 1pt зурвас
+   гардаг тул мэдээлэлгүй багц бодит 0%-тай ЯГ адилхан харагдаж байв (null ≠ 0;
+   дэлгэцийн RankBars null-д зурвас зурдаггүй). */
 function barChart(
-  rows: { label: string; value: number; text: string }[],
+  rows: { label: string; value: number | null; text: string }[],
   o: { nameW?: number; valW?: number; color?: string } = {},
 ): Content {
-  const top = Math.max(1, ...rows.map((r) => r.value));
+  const top = Math.max(1, ...rows.map((r) => r.value ?? 0));
   const nameW = o.nameW ?? 150;
   const valW = o.valW ?? 120;
   const trackW = 515 - nameW - valW - 16;
@@ -141,7 +145,9 @@ function barChart(
         {
           canvas: [
             { type: 'rect', x: 0, y: 2, w: trackW, h: 9, r: 2, color: SURF },
-            { type: 'rect', x: 0, y: 2, w: Math.max(1, (trackW * r.value) / top), h: 9, r: 2, color: o.color ?? BLUE },
+            ...(r.value == null ? [] : [
+              { type: 'rect' as const, x: 0, y: 2, w: Math.max(1, (trackW * r.value) / top), h: 9, r: 2, color: o.color ?? BLUE },
+            ]),
           ],
         },
         { text: T(r.text), style: 'barVal', alignment: 'right' },
@@ -492,7 +498,7 @@ export async function buildExecDoc(
         { label: tr('Зөрүү'), value: tr('{0} н.х', gapText), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') },
       ]),
       cap(tr('Багц тус бүрийн биет гүйцэтгэл')),
-      barChart(buildPk.map((k) => ({ label: k.name, value: k.progress ?? 0, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70 }),
+      barChart(buildPk.map((k) => ({ label: k.name, value: k.progress, text: k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1) })), { nameW: 110, valW: 70 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
         ...buildPk.map((k): TableCell[] => [

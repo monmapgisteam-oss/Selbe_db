@@ -281,7 +281,8 @@ async function fetchParcels(): Promise<LandParcel[]> {
 /**
  * ⚠️ `['PARCEL_LEFT']` — талбарын засвар (`parcelEdit`) `invalidate('PARCEL_LEFT')`
  *    дуудахад энэ кэш хаягдана. `loadOverlaps` нь өөрийн модулийн кэштэй
- *    (execTriage) — тэр нь зөвхөн хуудас дахин ачаалахад шинэчлэгдэнэ.
+ *    (execTriage) — тэр нь `BUILDING`/`PARCEL_LEFT`-ийн invalidate-аар
+ *    хаягдаж, алдаатай (`failed > 0`) үр дүнг ХЭЗЭЭ Ч кэшлэхгүй (2026-09-25).
  */
 export const loadLandKpi = cached<KpiResult>(async () => {
   const [c, p, o] = await Promise.allSettled([loadClearance(), fetchParcels(), loadOverlaps()]);
@@ -289,6 +290,10 @@ export const loadLandKpi = cached<KpiResult>(async () => {
   if (c.status === 'rejected') failed.push(SOURCE.clearance());
   if (p.status === 'rejected') failed.push(SOURCE.parcels());
   if (o.status === 'rejected') failed.push(SOURCE.overlaps());
+  /* ⚠️ ХАГАС давхцал (2026-09-25 аудит): зарим багцын давхаргын асуулга унасан
+     бол тоо нь ДООД ХЯЗГААР — эх сурвалжийг «дутуу» гэж тэмдэглэнэ (түвшин нь
+     `total > 0` тул «муу» хэвээр). */
+  else if (o.value.failed) failed.push(SOURCE.overlaps());
   return computeLand({
     clearance: c.status === 'fulfilled' ? c.value : null,
     parcels: p.status === 'fulfilled' ? p.value : null,

@@ -329,7 +329,12 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
 
   p.metrics.push(
     { label: tr('Гүйцэтгэл'), value: row ? fin(row.progress) : fin(src.overall?.pct), kind: 'pct' },
-    { label: tr('Блок'), value: row ? row.blocks : fin(src.progress?.blocks), kind: 'count' },
+    /* ⚠️ 2026-09-25: багц сонгоогүй үед ч НИЙТ блок (`BagtsLite.blocks`-ийн
+       нийлбэр). Урьд нь `progress.blocks` байсан — тэр нь нийт гүйцэтгэл нь
+       ТАЙЛАГНАГДСАН блокийн тоо (`blockProgress.ts` тайлангүйг хасдаг) тул
+       «Блок» шошготой зөрж, багц сонгоход нийт, сонгоогүй үед тайлагнасан гэсэн
+       хоёр өөр олонлог нэг мөрөнд гардаг байв. */
+    { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
     { label: tr('Тайлангүй блок'), value: row ? row.missing : sum((b) => b.missing), kind: 'count' },
     { label: tr('Айлын тоо'), value: row ? row.ail : sum((b) => b.ail), kind: 'count' },
     { label: tr('Төсвийн жингийн хамралт'), value: weightSum, kind: 'pct' },
@@ -485,7 +490,10 @@ function ersdelPart(src: SchemSources): Part {
   const blocks = fin(src.progress?.blocks);
   p.metrics.push(
     { label: tr('Зогссон блок'), value: stalled, kind: 'count' },
-    { label: tr('Нийт блок'), value: blocks, kind: 'count' },
+    /* ⚠️ 2026-09-25: «Нийт блок» БИШ — `progress.blocks` нь зөвхөн нийт гүйцэтгэл нь
+       тайлагнагдсан блок (`blockProgress.ts`), `stalled` ч тэдгээрээс тоологдоно.
+       Тиймээс харьцаа нь «тайлагнасан блокийн хэдэн хувь зогссон бэ». */
+    { label: tr('Тайлагнасан блок'), value: blocks, kind: 'count' },
     {
       label: tr('Зогссоны эзлэх хувь'),
       value: stalled != null && blocks != null && blocks > 0 ? (stalled / blocks) * 100 : null,
@@ -651,7 +659,11 @@ export function nodeDetail(
  *
  * ⚠️ `null` ≠ 0 хэвээр: тооцоологдоогүй бол «—» ба `none` (саарал) төлөв.
  */
-export type CardStat = { label: string; value: number | null; kind: MetricKind; tone: Health };
+export type CardStat = {
+  label: string; value: number | null; kind: MetricKind; tone: Health;
+  /** `value` яагаад «—» вэ (ж: «Олголт багцаар задардаггүй») — картын tooltip-д гарна */
+  why?: string;
+};
 
 /** Тоо байвал `good`, эс бөгөөс `none` — «мэдээлэлгүй»-г «хэвийн» гэж уншуулахгүй */
 const known = (v: number | null): Health => (v == null ? 'none' : 'good');
@@ -729,8 +741,14 @@ export function cardStat(
       return statOf(tr('Гүйцэтгэл'), v, 'pct', grade(v, TH.barilgaPct.good, TH.barilgaPct.warn));
     }
     case 'barOk': {
-      /* Тайлагнасан = нийт блок − тайлангүй */
-      const blocks = row ? row.blocks : proj(fin(src.progress?.blocks));
+      /* Тайлагнасан = нийт блок − тайлангүй.
+         ⚠️ 2026-09-25: багц сонгоогүй үед НИЙТ нь `Σ BagtsLite.blocks` —
+         `progress.blocks` БИШ. Тэр нь АЛЬ ХЭДИЙН тайлагнасан блокийн тоо
+         (`blockProgress.ts` тайлангүйг хасдаг) тул түүнээс тайлангүйг ДАХИН
+         хасахад 113 блок · 60 тайлагнасан үед «Тайлагнасан блок 7» гарч,
+         тайлангүй нь олон бол СӨРӨГ тоо ногоон өнгөтэй гардаг байв. `sum` нь
+         багц сонгосон атал мөр олдоогүй үед «—» (дээрх дүрэм). */
+      const blocks = row ? row.blocks : sum((b) => b.blocks);
       const missing = row ? row.missing : sum((b) => b.missing);
       const v = blocks != null && missing != null ? blocks - missing : null;
       return statOf(tr('Тайлагнасан блок'), v, 'count', known(v));
@@ -764,16 +782,33 @@ export function cardStat(
       return statOf(tr('Газрын дарга дээр'), rc ? rc.byStage.chief : null, 'count', known(rc ? rc.byStage.chief : null));
     case 'hyDone':
       return statOf(tr('Шилжүүлсэн'), rc ? rc.done : null, 'count', known(rc ? rc.done : null));
-    case 'finBudget':
-      return statOf(tr('Төсөвт өртөг'), fin(fi?.budget), 'mnt', known(fin(fi?.budget)));
-    case 'finContract':
-      return statOf(tr('Гэрээний дүн'), fin(fi?.contractAmount), 'mnt', known(fin(fi?.contractAmount)));
+    /* ⚠️ 2026-09-25: САНХҮҮГИЙН КАРТ БАГЦААР — `sankhuuPart`/`buildSchem`-тэй
+       ИЖИЛ дүрэм. Урьд нь үргэлж төслийн дүн (`fi.budget`) харуулдаг тул «Багц
+       4-1» сонгоход самбар багцын төсвийг, карт 2.49 их наяд ₮ төслийн төсвийг
+       зэрэг заадаг байв, «төслийн нийт» тэмдэг ч байхгүй. Төсөв нь `byBagts`-аар
+       задарна; гэрээ ба олголт задардаггүй тул багц сонгосон үед «—» (`why`-тай)
+       — төслийн тоог багцынх мэт харуулахгүй. Багц сонгосон атал мөр олдоогүй
+       бол мөн «—» (`sum`-ийн дүрэм). */
+    case 'finBudget': {
+      const v = pkg ? (row && fi ? fin(fi.byBagts[row.key]) : null) : fin(fi?.budget);
+      return statOf(tr('Төсөвт өртөг'), v, 'mnt', known(v));
+    }
+    case 'finContract': {
+      const v = pkg ? null : fin(fi?.contractAmount);
+      return {
+        ...statOf(tr('Гэрээний дүн'), v, 'mnt', known(v)),
+        ...(pkg ? { why: tr('Гэрээ багцаар задардаггүй') } : {}),
+      };
+    }
     case 'finPaid': {
-      const paid = fin(fi?.paid);
-      const budget = fin(fi?.budget);
+      const paid = pkg ? null : fin(fi?.paid);
+      const budget = pkg ? null : fin(fi?.budget);
       /* ⚠️ Олголтыг ТӨСӨВТЭЙГӨӨ харьцуулж дүгнэнэ — дан тоо ганцаараа сайн ч муу ч биш */
       const share = paid != null && budget != null && budget > 0 ? (paid / budget) * 100 : null;
-      return statOf(tr('Олгосон'), paid, 'mnt', grade(share, TH.paidPct.good, TH.paidPct.warn));
+      return {
+        ...statOf(tr('Олгосон'), paid, 'mnt', grade(share, TH.paidPct.good, TH.paidPct.warn)),
+        ...(pkg ? { why: tr('Олголт багцаар задардаггүй') } : {}),
+      };
     }
     case 'tailan': {
       const age = ageDays(src.progress?.date);

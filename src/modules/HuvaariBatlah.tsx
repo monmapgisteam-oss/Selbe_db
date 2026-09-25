@@ -229,9 +229,13 @@ export function HuvaariBatlah({
   const toggle = useCallback((oid: number) => {
     setOpen((cur) => (cur === oid ? null : oid));
     /* ⚠️ Кэштэй бол ДАХИН ТАТАХГҮЙ: хумиж дэлгэх нь 80KB-ийн хүсэлт
-       давтах шалтгаан биш. */
+       давтах шалтгаан биш.
+       ⚠️ `fail`-ийг КЭШЛЭХГҮЙ (2026-09-25 аудит, AjilBatlah-тай ижил): түр
+       сүлжээний алдаа мөнхөд кэшлэгдэж, хуудас refresh хийтэл «Батлах»
+       хаалттай үлддэг байв — дахин дарахад дахин татна. */
     setDetail((m) => {
-      if (m.has(oid)) return m;
+      const cur = m.get(oid);
+      if (cur && cur.k !== 'fail') return m;
       const next = new Map(m);
       next.set(oid, { k: 'loading' });
       void (async () => {

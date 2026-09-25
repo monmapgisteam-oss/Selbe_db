@@ -150,7 +150,12 @@ export function Simulation({
         const m = simMetric(r, kind, popBasis);
         return { r, value: m.value, text: m.text, t: simNorm(m.value, range) };
       })
-      .filter((x): x is Ranked => x.value != null && x.value > 0)
+      /* ⚠️ ТЭЭВЭРТ 0 = ХАМГИЙН САЙН (2026-09-25 аудит): буудал бүсийн ДОТОР бол
+         `geometryEngine.distance` 0 буцаадаг — урьд нь `> 0` шүүлт хамгийн сайн
+         үйлчлэгдсэн бүсүүдийг «Дундаж зай», «500 м дотор %», бүсийн тооноос
+         хасдаг байв (зураг `simRange` 0-ийг оруулж бүгдийг будна). `> 0` нь
+         зөвхөн нягтшил/ачааллын «утга алга»-г л шүүнэ. */
+      .filter((x): x is Ranked => x.value != null && Number.isFinite(x.value) && (kind === 'transit' ? x.value >= 0 : x.value > 0))
       .sort((a, b) => b.value - a.value);
   }, [rows, kind, popBasis, def.ready, range]);
 

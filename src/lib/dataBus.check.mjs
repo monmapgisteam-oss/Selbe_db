@@ -10,6 +10,7 @@
  * тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 /* ── dataBus.ts-ийн хуулбар ── */
 const SLOTS = [];
@@ -29,7 +30,11 @@ const invalidate = (...keys) => {
 const dataVersion = () => version;
 const subscribeData = (fn) => { subs.add(fn); return () => subs.delete(fn); };
 
-/* ── live.ts-ийн cached() хуулбар ── */
+/* ── live.ts-ийн cached() хуулбар ──
+   ⚠️ 2026-09-25: `if (p === mine)` хаалттай хувилбар (live.ts 2026-09-08). Урьд нь
+   хуулбар нь `p`-г шалгалтгүй тэглэдэг ХУУЧИН логик байсан тул тэр уралдааны
+   хамгаалалтыг огт шалгадаггүй байв. Доорх §0 нь live.ts-ийн ЭХ кодыг уншиж
+   хаалт байгааг тулгана — хуулбар ба эх хоёр салбал ЭНД унана. */
 function cached(fn, ttlMs, reads = []) {
   let p = null;
   let at = 0;
@@ -37,8 +42,9 @@ function cached(fn, ttlMs, reads = []) {
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
       at = Date.now();
-      p = fn();
-      p.catch(() => { p = null; });
+      const mine = fn();
+      p = mine;
+      mine.catch(() => { if (p === mine) p = null; });
     }
     return p;
   };
@@ -50,6 +56,20 @@ const check = (label, cond) => {
   ok += 1;
   console.log('  ✓ ' + label);
 };
+
+console.log('\n0. Хуулбар ↔ live.ts — уралдааны хаалт эх кодод байна');
+{
+  /* ⚠️ Файлын байршлаас (cwd биш) — `npm test` ба гараар ажиллуулах хоёуланд */
+  const live = readFileSync(new URL('./live.ts', import.meta.url), 'utf8');
+  const at = live.indexOf('export function cached');
+  check('live.ts-д cached() олдлоо', at >= 0);
+  const next = live.indexOf('\nexport ', at + 1);
+  const body = live.slice(at, next < 0 ? undefined : next);
+  check('унасан амлалт ЗӨВХӨН өөрөө идэвхтэй үед кэш цэвэрлэнэ (p === mine)',
+    /const\s+mine\s*=\s*fn\(\)/.test(body)
+    && /p\s*=\s*mine\b/.test(body)
+    && /if\s*\(\s*p\s*===\s*mine\s*\)\s*p\s*=\s*null/.test(body));
+}
 
 console.log('\n1. Тагтай кэш — зөв хүснэгтэд хариулна');
 let nFin = 0;
@@ -100,5 +120,25 @@ const loadBad = cached(async () => { nBad += 1; throw new Error('сүлжээ');
 await loadBad().catch(() => {});
 await loadBad().catch(() => {});
 check('алдааны дараа ДАХИН оролдов', nBad === 2);
+
+console.log('\n6. Удаан унасан хүсэлт — invalidate-ийн дараах ШИНЭ кэшийг устгахгүй');
+{
+  let n = 0;
+  let failOld;
+  const load = cached(() => {
+    n += 1;
+    if (n === 1) return new Promise((_, rej) => { failOld = rej; });
+    return Promise.resolve('шинэ');
+  }, undefined, ['BAGTS_SHEET']);
+  const old = load();
+  old.catch(() => {});
+  invalidate('BAGTS_SHEET');
+  const fresh = await load();
+  check('invalidate-ийн дараа шинэ хүсэлт амжилттай', fresh === 'шинэ' && n === 2);
+  failOld(new Error('хуучин хүсэлт унав'));
+  await old.catch(() => {});
+  await load();
+  check('хуучин хүсэлт унасан ч шинэ кэш хэвээр (дахин татаагүй)', n === 2);
+}
 
 console.log('\n✅ Автобусын ' + ok + ' шалгуур давлаа');

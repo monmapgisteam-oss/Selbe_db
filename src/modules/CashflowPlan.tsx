@@ -341,12 +341,16 @@ export function CashflowPlan({
                         <tr key={oid} className={pct == null ? c.rowNone : c.rowDone}>
                           <td>{monthKey(r[CF_MONTH.start])}</td>
                           <td className={c.r}>
+                            {/* ⚠️ 2026-09-25: `finEdit`-гүй хүнд `readOnly` — урьд нь зөвхөн
+                                «Хадгалах» хаалттай байж, нүд засагдан `pend` өсөж, хэзээ ч
+                                хадгалж чадахгүй засварт beforeunload/таб солих баталгаа гардаг байв. */}
                             <input
                               className={c.inp}
                               value={raw}
                               inputMode="decimal"
+                              readOnly={!canEdit}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
-                              onChange={(e) => setPend((p) => ({ ...p, [oid]: e.target.value }))}
+                              onChange={(e) => { if (canEdit) setPend((p) => ({ ...p, [oid]: e.target.value })); }}
                             />
                           </td>
                           {/* ⚠️ Дүн нь ЗӨВХӨН харагдац — хадгалахдаа дахин бодогдоно */}
@@ -389,7 +393,7 @@ export function CashflowPlan({
             * ⚠️ `null` бичнэ, 0 БИШ: «бөглөөгүй» ба «энэ сард гүйцэтгэл
             * байхгүй» хоёр ӨӨР мэдэгдэл.
             */}
-          {cur != null && curMonths.length > 0 && (
+          {canEdit && cur != null && curMonths.length > 0 && (
             <button
               type="button"
               className={c.clear}

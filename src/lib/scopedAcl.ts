@@ -34,6 +34,55 @@ import type { CapKey } from './caps';
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
 export const ALL_BAGTS = '*';
 
+/* ══════════ Remote агшин ба локал бичилтийн дараалал (2026-09-25) ══════════ */
+
+/**
+ * ХУУЧИН SNAPSHOT ЛОКАЛ БИЧИЛТИЙГ ДАРАХААС ХАМГААЛАХ ГЛОБАЛ ТООЛУУР.
+ *
+ * ⚠️ ЯАГААД (2026-09-25, аудитын засвар). `syncRemote` (ба `caps._syncRemoteCaps`)
+ *    нь remote snapshot-оор кэшийг БҮХЭЛД нь сольдог; зөвхөн `failed`
+ *    хэрэглэгчийг давхарладаг байв. Таб руу буцахад `check()` → `fetchAll`
+ *    эхэлж, админ тэр агшинд «Нэмэх» дарвал applyEdits-ээс ӨМНӨ авсан
+ *    snapshot ирж шинэ хуваарилалтыг самбараас арчина (remote-д бий атлаа);
+ *    дараагийн «Нэмэх» нь тэр ХУУЧИН мөрөөс `grants`-ыг бүтээж `pushRow`-оор
+ *    remote-ийг дарж, эхний нэмэлт бүрмөсөн алдагдана.
+ *
+ * ЗАГВАР: локал бичилт бүр (дараалалд орох ба дуусах агшинд) `seq`-ийг
+ *    ахиулж, хэрэглэгчийн сүүлийн утгыг хадгална. `initRemote` хүсэлт
+ *    эхлэхдээ тэр агшны `seq`-ийг тэмдэглэнэ. Snapshot-ыг буулгахад
+ *    хэрэглэгчийн сүүлийн бичилт тэмдгээс ХОЙШ бол snapshot тэр бичилтийг
+ *    агуулаагүй байж болох тул ЛОКАЛ төлөв давамгайлна; дараагийн poll
+ *    (тэмдэг бичилтээс хойш) remote-оор засна.
+ * ⚠️ Зэрэг хэд хэдэн хүсэлт (poll + UserAdmin нээх) — ХАМГИЙН ЭРТНИЙ
+ *    тэмдгийг авна (консерватив: локал илүү удаан үлдэнэ, алдагдахгүй).
+ * ⚠️ Тэмдэггүй (тест шууд `syncRemote` дуудах) бол энэ шалгуур идэвхгүй —
+ *    урьдын зан төлөв (`failed` + дараалалд байгаа хэрэглэгч л давхарлана).
+ */
+let seq = 0;
+const outstanding: number[] = [];
+
+/** `initRemote` хүсэлт эхлэхэд дуудна — дуусахад буцаасан функцийг дуудна */
+export function _beginRemoteFetch(): () => void {
+  const mark = seq;
+  outstanding.push(mark);
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    const i = outstanding.indexOf(mark);
+    if (i >= 0) outstanding.splice(i, 1);
+  };
+}
+
+/** Локал бичилтийн агшин — дараалалд орох ба дуусахад */
+export const _touchSeq = (): number => ++seq;
+
+/** Энэ агшин (`t`) явагдаж буй snapshot хүсэлтээс ХОЙШ уу — тийм бол snapshot хуучирсан байж болно */
+export function _newerThanSnapshot(t: number | undefined): boolean {
+  if (t == null || !outstanding.length) return false;
+  return t > Math.min(...outstanding);
+}
+
 /** Нэг аккаунтын хуваарилалт. `roles` нь үүрэггүй систем (Чанар)-д хоосон. */
 /**
  * НЭГ ҮҮРЭГ + ТҮҮНИЙ БАГЦУУД — хуваарилалтын БҮТЭЦ НЭГЖ (2026-09-09).
@@ -247,13 +296,21 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /** Нэг хэрэглэгчийн remote үйлдлүүд ДАРААЛНА — remove/add/багц уралдахгүй */
   const chain = new Map<string, Promise<unknown>>();
+  /** Хэрэглэгч бүрийн СҮҮЛИЙН локал бичилтийн агшин (`_touchSeq`) — `syncRemote`-д */
+  const touched = new Map<string, number>();
 
   function enqueue<T>(u: string, fn: () => Promise<T>): Promise<T> {
+    /* ⚠️ Дараалалд орох БА дуусах агшинд тэмдэглэнэ (2026-09-25) — файлын
+       толгойн «Remote агшин» тайлбар. */
+    touched.set(u, _touchSeq());
     const prev = chain.get(u) ?? Promise.resolve();
     const p = prev.then(fn, fn);
     const tail = p.then(() => undefined, () => undefined);
     chain.set(u, tail);
-    void tail.then(() => { if (chain.get(u) === tail) chain.delete(u); });
+    void tail.then(() => {
+      touched.set(u, _touchSeq());
+      if (chain.get(u) === tail) chain.delete(u);
+    });
     return p;
   }
 
@@ -385,9 +442,19 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
      *    (5 мин / таб руу буцахад) самбараас чимээгүй алга болж, «⚠️ бичигдсэнгүй»
      *    туг нь мөргүй үлддэг байв. Локалд байвал локалынхыг, хассан бол хассаныг.
      */
-    if (failed.size) {
+    /*
+     * ⚠️ ДАРААЛАЛД БАЙГАА ба SNAPSHOT-ЫН ДАРАА БИЧИГДСЭН хэрэглэгч ч мөн
+     *    (2026-09-25, аудитын засвар) — `failed`-тэй ижил: snapshot нь тэр
+     *    бичилтээс ӨМНӨ авагдсан байж болох тул локал нь илүү шинэ. Эс бөгөөс
+     *    самбараас шинэ хуваарилалт алга болж, дараагийн нэмэлт хуучин мөрөөс
+     *    бүтээгдээд remote-ийг дардаг байв (файлын толгойн «Remote агшин»).
+     */
+    const keep = new Set<string>(failed);
+    for (const u of chain.keys()) keep.add(u);
+    for (const [u, t] of touched) if (_newerThanSnapshot(t)) keep.add(u);
+    if (keep.size) {
       const local = new Map(load().map((a) => [a.user, a] as const));
-      for (const u of failed) {
+      for (const u of keep) {
         const loc = local.get(u);
         if (loc) byUser.set(u, loc); else byUser.delete(u);
       }

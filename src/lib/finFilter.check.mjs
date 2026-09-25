@@ -103,6 +103,13 @@ assert.equal(match(rows[2], f({ col: { ho_dun_geree: '0' } })), false, 'null н�
 assert.equal(match(rows[3], f({ col: { ho_dun_geree: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
 assert.equal(match(rows[0], f({ col: { ho_dun_geree: '>1e9' } })), true);
 assert.equal(match(rows[1], f({ col: { ho_dun_geree: '>1e9' } })), false);
+/* ⚠️ 2026-09-25: ХАРЬЦУУЛАЛТЫН зам ч хоосон нүдийг 0 гэж үзэхгүй (`Number(null)` = 0) */
+assert.equal(match(rows[2], f({ col: { ho_dun_geree: '=0' } })), false, 'null нь =0-д таарахгүй');
+assert.equal(match(rows[2], f({ col: { ho_dun_geree: '<=0' } })), false, 'null нь <=0-д таарахгүй');
+assert.equal(match(rows[2], f({ col: { ho_dun_geree: '<1,000,000,000' } })), false, 'null нь <1e9-д таарахгүй');
+assert.equal(match(rows[2], f({ col: { ho_dun_geree: '0..5e9' } })), false, 'null нь мужид таарахгүй');
+assert.equal(match({ ...rows[2], ho_dun_geree: '' }, f({ col: { ho_dun_geree: '=0' } })), false, "'' нь =0-д таарахгүй");
+assert.equal(match(rows[3], f({ col: { ho_dun_geree: '0..5e9' } })), true, 'бодит 0 мужид таарна');
 
 /* ── 6. Багана бүрийн шүүлт нь ХОСЛОНО (БА) ── */
 assert.equal(match(rows[0], f({ col: { ajil_tuvshin2: 'ГЭРЭЭ', guitsetgegch: 'МКС' } })), true);

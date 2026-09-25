@@ -99,7 +99,9 @@ async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    num: '10',
+    /* ⚠️ 100 (2026-09-25 аудит, `draftRemote`/`permsRemote`-тэй ижил): 10-т
+       ижил гарчигтай бусдын item олон байвал жинхэнэ хүснэгт гадна үлддэг. */
+    num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);

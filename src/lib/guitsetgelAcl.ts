@@ -39,6 +39,7 @@ import { t as tr } from './i18nCore';
 import {
   ROLE_ACCESS, ROLE_STAGE, STAGE_ROLE, roleForUser, type Role, type ViewKey,
 } from './services';
+import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 
 /**
  * ⚠️ ШАТ → ҮҮРЭГ хүснэгт нь `services.ts`-д (`STAGE_ROLE`) — урьд нь энд давхар
@@ -179,6 +180,25 @@ export function _syncRemoteAssigns(
       ...(r.viewOnly === true ? { viewOnly: true as const } : {}),
     });
   }
+  /*
+   * ⚠️ ЛОКАЛ ТӨЛӨВ ДАВАМГАЙЛАХ ХЭРЭГЛЭГЧИД (2026-09-25 аудит, `scopedAcl.syncRemote`-
+   *    тэй ижил загвар): (а) remote бичилт нь унасан (`failed`), (б) бичилт нь
+   *    дараалалд/явж буй (`chain`), (в) сүүлийн локал бичилт нь snapshot хүсэлтээс
+   *    ХОЙШ (`_newerThanSnapshot`). Урьд нь snapshot кэшийг бүхэлд нь сольдог тул
+   *    «Нэмэх» дарсан агшинд ирсэн хуучин snapshot шинэ томилгоог самбараас арчиж,
+   *    дараагийн засвар түүнийг remote-оос ч дарж устгадаг байв. Локалд байвал
+   *    локалынхыг, хассан бол хассаныг авна; дараагийн poll remote-оор засна.
+   */
+  const keep = new Set<string>(failed);
+  for (const u of chain.keys()) keep.add(u);
+  for (const [u, t] of touched) if (_newerThanSnapshot(t)) keep.add(u);
+  if (keep.size) {
+    const local = new Map(load().map((a) => [a.user, a] as const));
+    for (const u of keep) {
+      const loc = local.get(u);
+      if (loc) byUser.set(u, loc); else byUser.delete(u);
+    }
+  }
   /* ⚠️ Энэ мөчөөс л уншилт кэшийг тооцно (2026-09-21) — remote = үнэн. */
   remoteSynced = true;
   save([...byUser.values()]);
@@ -214,13 +234,21 @@ export const flowFailedUsers = (): string[] => [...failed];
 
 /** Нэг хэрэглэгчийн remote үйлдлүүд ДАРААЛНА — remove/add/chip уралдахгүй */
 const chain = new Map<string, Promise<unknown>>();
+/** Хэрэглэгч бүрийн СҮҮЛИЙН локал бичилтийн агшин (`_touchSeq`) — `_syncRemoteAssigns`-д */
+const touched = new Map<string, number>();
 
 function enqueue<T>(u: string, fn: () => Promise<T>): Promise<T> {
+  /* ⚠️ Дараалалд орох БА дуусах агшинд тэмдэглэнэ (2026-09-25) —
+     `scopedAcl`-ийн «Remote агшин» тайлбар. */
+  touched.set(u, _touchSeq());
   const prev = chain.get(u) ?? Promise.resolve();
   const p = prev.then(fn, fn);
   const tail = p.then(() => undefined, () => undefined);
   chain.set(u, tail);
-  void tail.then(() => { if (chain.get(u) === tail) chain.delete(u); });
+  void tail.then(() => {
+    touched.set(u, _touchSeq());
+    if (chain.get(u) === tail) chain.delete(u);
+  });
   return p;
 }
 
@@ -283,6 +311,23 @@ export function setAssign(
    * (`enqueue`) явна — өмнөх хасалтын revoke-той уралдахгүй.
    */
   const run = enqueue(u, async () => {
+    /*
+     * ⚠️ УСТГАГДСАН (tombstone) АККАУНТЫГ ТОМИЛОХГҮЙ (2026-09-25-ны аудит).
+     *    Панелийн сонголт (`add`) нь өөр админ тэр аккаунтыг устгасны ДАРАА ч
+     *    хадгалагдсан байж болно: «Нэмэх» дарахад `grantFlowAccess` нь
+     *    `setUser`-ээр tombstone-ыг ЖИРИЙН override-оор дарж, устгагдсан хүн
+     *    дахин нэвтэрдэг байв. `revokeFlowAccess` tombstone-ыг аль хэдийн
+     *    шалгадаг — grant тал ч ижил. Локал томилгоог буцааж, remote дээр
+     *    үлдсэн байж болох өнчин мөрийг ч (`pushFlow` → `flowRemove`) цэвэрлэнэ.
+     * ⚠️ Динамик import (доорх `grantFlowAccess`-ийн ⚠️) тул шалгуур энд,
+     *    `setAssign`-ийн синхрон хэсэгт БИШ. Зөвхөн `grant` үед: багц солих
+     *    (`grant=false`) зам `permissions`-д бичдэггүй тул tombstone-д хүрэхгүй.
+     */
+    if (grant && (await isTombstoned(u))) {
+      save(load().filter((a) => a.user !== u));
+      await pushFlow(u);
+      return { ok: false, g: false };
+    }
     const ok = await pushFlow(u);
     const g = grant ? await grantFlowAccess(u, stage) : true;
     return { ok, g };
@@ -427,8 +472,21 @@ const viewsEqual = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
  * ⚠️ Динамик import — гогцоо болон серверийн зурагдалтад `localStorage`
  *    хөндөхөөс сэргийлнэ.
  */
+/** Аккаунт УСТГАГДСАН (tombstone) эсэх — `permissions.listRemoved` (хатуу super орохгүй). */
+async function isTombstoned(user: string): Promise<boolean> {
+  try {
+    const { listRemoved } = await import('./permissions');
+    return listRemoved().includes(user.trim().toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 async function grantFlowAccess(user: string, stage: Stage): Promise<boolean> {
   try {
+    /* ⚠️ TOMBSTONE-ЫГ ДАРЖ БИЧИХГҮЙ (2026-09-25) — `setAssign`-ийн ⚠️;
+       `revokeFlowAccess`-ийн tombstone шалгууртай тэгш хэм. */
+    if (await isTombstoned(user)) return false;
     const { resolveBaseAccess, roleOf, setUser } = await import('./permissions');
     const role = STAGE_ROLE[stage];
     const curRole = roleOf(user);
@@ -481,7 +539,17 @@ async function revokeFlowAccess(user: string, stage: Stage): Promise<boolean> {
     return await clearOverride(user);
   }
   const curRole = roleOf(user);
-  const baseViews = base ? ROLE_ACCESS[base].views : null;
+  /*
+   * ⚠️ ХАТУУ СУУРЬГҮЙ (панелаас нэмсэн) ХҮНД override-ын урсгалын БУС үүргийн
+   *    preset-ийг суурь болгоно (2026-09-25-ны аудит). Урьд нь зөвхөн хатуу
+   *    `roleForUser`-оос авдаг байсан тул «Энгийн» (beginner) preset-тэй, угаас
+   *    `guitsetgel` харагдацтай аккаунтыг ✕-ээр хасахад тэр харагдац нь
+   *    ХАСАГДАЖ, томилгооноос өмнө байсан хуудсаа алддаг байв. `grantFlowAccess`
+   *    нь урсгалын бус үүргийг ХЭВЭЭР үлдээдэг тул тэр үүрэг = олголтоос өмнөх
+   *    байдал. Урсгалын үүрэг (олголтоор өгөгдсөн) суурь БОЛОХГҮЙ.
+   */
+  const keepBase: Role | null = base ?? (curRole && !FLOW_ROLES.has(curRole) ? curRole : null);
+  const baseViews = keepBase ? ROLE_ACCESS[keepBase].views : null;
   const keepGuits = baseViews === 'all' || (Array.isArray(baseViews) && baseViews.includes('guitsetgel'));
   const views = cur.views === 'all' || keepGuits ? cur.views : cur.views.filter((v) => v !== 'guitsetgel');
   const role = curRole === STAGE_ROLE[stage] ? null : curRole;
@@ -654,7 +722,21 @@ export function resolveFlowStage(
 export function subscribeAcl(fn: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) { cache = null; fn(); }
+    if (e.key !== KEY) return;
+    /*
+     * ⚠️ REMOTE УНШИГДСАНЫ ДАРАА localStorage-ИЙГ КЭШ РҮҮ ТАТАХГҮЙ (2026-09-25-ны
+     *    аудит). Урьд нь `cache = null` хийдэг байсан тул `effective()` дараагийн
+     *    уншилтад ТҮҮХИЙ localStorage-д итгэдэг байв: хэрэглэгч А табад
+     *    `selbe-guitsetgel-acl-v1`-д өөрийгөө `chief` · «бүх багц» гэж бичихэд Б
+     *    таб түүнийг ачаалж, `authz` давж дурын багцыг шилжүүлж/архивлаж чаддаг
+     *    байлаа — 2026-09-21-ний «remote = үнэн» дүрмийг тойрсон зам. Өөр табын
+     *    ЖИНХЭНЭ өөрчлөлт remote-д бичигддэг тул дараагийн `initRemote`
+     *    (нэвтрэх · 5 мин · visibilitychange) авчирна.
+     * ⚠️ Remote-оос ӨМНӨ уншилт аль хэдийн `[]` (`effective`) тул тэр үед кэшийг
+     *    сэргээх нь зөвхөн бичих замд (`load()`) нөлөөлнө — урьдын адил.
+     */
+    if (!remoteSynced) cache = null;
+    fn();
   };
   window.addEventListener(EVENT, fn);
   window.addEventListener('storage', onStorage);

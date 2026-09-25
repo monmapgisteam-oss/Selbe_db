@@ -153,6 +153,37 @@ assert.equal(openReviewRow([], 500, TAG), null);
   /* sheetOid байхгүй / 0 — хамгаалалт */
   assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, null), false);
   assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, 0), false);
+
+  /* ⚠️ 2026-09-25: одоогийн тойрог ШИЛЖҮҮЛСЭН бол дарагдсан хуучин мөрөөс өвлөхгүй */
+  assert.equal(
+    hasOpenLegacy([
+      { ...legacy(500, STATUS.managerReturned), OBJECTID: 10, [F.ergelt]: 1 },
+      { ...legacy(500, STATUS.transferred), OBJECTID: 11, [F.ergelt]: 2 },
+    ], BAGTS, COMP, TAG, 500), false,
+    'recheck-ээр дарагдсан хуучин мөр ажлыг «нээлттэй» гэж харуулах ёсгүй',
+  );
+}
+
+/* ── 11. ⚠️ ЗӨВХӨН ОДООГИЙН ТОЙРОГ (2026-09-25, HIGH) ──
+ *
+ * `recheck('ok')` хуучин A мөрийг «Менежер буцаасан» хэвээр үлдээж шинэ B
+ * тойрог нэмдэг. B компанид буцсаны дараах засвар A-д `reused` гэж шингэвэл
+ * шинэ тойрог үүсэхгүй, ажил мөнхөд гацна.
+ */
+{
+  const cyc = (oid, ergelt, st, id) => ({ ...row(500, st, TAG, id), OBJECTID: oid, [F.ergelt]: ergelt });
+  assert.equal(
+    openReviewRow([
+      cyc(10, 1, STATUS.managerReturned, 'G-000020'),
+      cyc(11, 2, STATUS.engineerReturned, 'G-000021'),
+    ], 500, TAG), null,
+    'одоогийн B компанид буцсан — дарагдсан A таарч ШИНЭ тойргийг хаах ёсгүй',
+  );
+  const hit = openReviewRow([
+    cyc(10, 1, STATUS.managerReturned, 'G-000020'),
+    cyc(11, 2, STATUS.managerReview, 'G-000021'),
+  ], 500, TAG);
+  assert.equal(hit?.[F.id], 'G-000021', 'хянагчийн гар дээрх ОДООГИЙН тойргийг л буцаана');
 }
 
 console.log('hyanaltSubmit.check.mjs — БҮГД ТЭНЦЛЭЭ');

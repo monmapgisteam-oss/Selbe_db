@@ -2276,8 +2276,11 @@ function PkgWorkList({
     return rows
       .filter((r) => r.isWork)
       .map((r) => {
-        const key = r.pkg2 ? bagtsKey(r.pkg2) : '';
-        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: PKG_BY_BAGTS[key] ?? [] };
+        /* ⚠️ 2026-09-25: `pkgKeyOf` — `bagtsKey` БИШ (`xsPick`-тэй ижил). `bagtsKey('БАГЦ 1-4')`
+           = `БАГЦ14` нь БОДИТ Багц 14-ийн давхаргад наалдаж, ТЭЗҮ-ийн ажил дарахад
+           «Дулаан хангамжийн нэвтрэх суваг» асдаг байв. Диапазон → `''` → бүдэг. */
+        const key = pkgKeyOf(r.pkg2);
+        return { oid: r.oid, pkg: r.pkg, name: r.name, ids: (key && PKG_BY_BAGTS[key]) || [] };
       })
       .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.name.localeCompare(b.name));
   }, [rows]);

@@ -134,6 +134,10 @@ export function Chanar() {
        `setSel(null); setEdit(true)` дуудахад энэ салбар шинэ маягтыг гарч
        ирмэгц ХААДАГ байв — зөвхөн юу ч сонгоогүй үед л ажиллаж байлаа.
        Сонголт цэвэрлэх газрууд (багц солих) маягтаа өөрсдөө хаана. */
+    /* ⚠️ Хянагчийн тайлбар баримт бүрд ТУСДАА (2026-09-25 аудит): урьд нь
+       өмнөх баримтын татгалзсан шалтгаан шинэ сонгосон баримтад албан ёсны
+       тайлбар болж илгээгддэг байв. */
+    setRNote('');
     if (sel == null) { setBody(null); return; }
     let live = true;
     setBody(null); setEdit(false);
@@ -168,6 +172,10 @@ export function Chanar() {
   }, [attIds]);
 
   const act = doc ? canAct(doc, me || null, myRoles) : { edit: false, submit: false, review: [] as Reviewer[] };
+  /* ⚠️ Хавсралтыг зөвхөн СҮҮЛИЙН хувилбар дээр засна (2026-09-25 аудит): хуучин
+     буцаагдсан хувилбарын хавсралт шинэ (батлагдсан) хувилбарт харагддаг тул
+     түүнийг солих нь батлагдсан нотолгоог өөрчилнө. Сервер ч `attachDeny`-д барина. */
+  const attEdit = act.edit && !!doc && !hist.some((h) => h.rev > doc.rev);
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
     if (busy) return;
@@ -417,12 +425,12 @@ export function Chanar() {
                           R{hist.find((h) => h.oid === a.parentOid)?.rev ?? '?'}
                         </span>
                       )}
-                      {act.edit && a.parentOid === doc.oid && (
+                      {attEdit && a.parentOid === doc.oid && (
                         <button type="button" className={s.btn} disabled={busy} onClick={() => void removeAtt(a)}>✕</button>
                       )}
                     </div>
                   ))}
-                  {act.edit && (
+                  {attEdit && (
                     <label className={s.field}>
                       <input type="file" multiple disabled={busy} onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
                     </label>

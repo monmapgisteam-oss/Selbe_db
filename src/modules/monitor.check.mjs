@@ -167,13 +167,17 @@ assert.ok(ringGap > -1e-9 && ringGap < 0.05,
   `муруйн төгсгөл (${daily.at(-1).overall}) цагирагаас (${ring}) зөрж байна`);
 assert.equal(monthly.at(-1).overall, daily.at(-1).overall, 'сарын төгсгөл өдрийнхөөс зөрсөн');
 
-// Сарын цуваад ЦООРХОЙ байхгүй
-const nextMonth = (m) => {
-  const [y, mo] = m.split('-').map(Number);
-  return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
-};
-for (let i = 1; i < monthly.length; i++) {
-  assert.equal(monthly[i].label, nextMonth(monthly[i - 1].label), 'сарын цуваад цоорхой үүссэн');
+/* ⚠️ Сарын цуваа ДАРААЛСАН сар БИШ (2026-09-25 аудит): `progressSeries` тайлангүй
+   (шинэ агшингүй) сарыг ЗОРИУДААР алгасдаг (`snap === prevSnap → continue`) —
+   урьд нь энд «сар бүр дараалсан» гэж шаардаж, нэг сар нийтлэлгүй өнгөрөхөд
+   зөв ажиллаж буй кодыг унагадаг байв. Шалгах зүйл: шошго ХАТУУ өсөх, цэг бүр
+   ШИНЭ агшинтай, агшин нь тухайн сардаа. */
+for (let i = 0; i < monthly.length; i++) {
+  const pt = monthly[i];
+  assert.ok(pt.date.startsWith(pt.label + '-'), `сарын цэгийн агшин (${pt.date}) ${pt.label} сард биш`);
+  if (i === 0) continue;
+  assert.ok(pt.label > monthly[i - 1].label, `сарын шошго өсөхгүй: ${monthly[i - 1].label} → ${pt.label}`);
+  assert.ok(pt.date > monthly[i - 1].date, `сарын цэг шинэ агшингүй: ${monthly[i - 1].date} → ${pt.date}`);
 }
 
 console.log(

@@ -86,7 +86,11 @@ const PKG_BY_KEY: Record<string, string> = Object.fromEntries(
   PKGS.map((p) => [bagtsKey(p.group), p.group]),
 );
 
-/** «YYYY-MM-DD» → epoch ms (UTC шөнө дунд, `schem.ageDays`-тай ижил). Танигдахгүй бол null. */
+/**
+ * «YYYY-MM-DD» → epoch ms (UTC шөнө дунд). Танигдахгүй бол null.
+ * ⚠️ 2026-09-25: `schem.ageDays` одоо ЛОКАЛ өдрөөр бодно — энэ функц UTC хэвээр
+ *    (`review.check` тогтмол UTC утгыг шалгадаг); тэдгээр ИЖИЛ БИШ болсон.
+ */
 export function dayMs(d: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
   const ms = Date.parse(`${d}T00:00:00Z`);

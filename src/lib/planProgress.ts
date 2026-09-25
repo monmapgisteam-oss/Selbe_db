@@ -93,6 +93,24 @@ export type PlanCurve = {
   /** Хуваарийн муж (ms) — тэнхлэгийг эндээс тогтооно */
   from: number | null;
   to: number | null;
+  /**
+   * УНШИГДААГҮЙ хуудсууд (`Pkg.key`) — бүдүүвч эсвэл мөр нь (дахин
+   * оролдлогын дараа ч) татагдаагүй.
+   *
+   * ⚠️ 2026-09-25-ны аудит: урьд нь уналт бүр `.catch(() => null)`-оор ЧИМЭЭГҮЙ
+   *    хасагддаг байв — b1_12f-ийн түр зуурын «Too many requests» нь түүний
+   *    22 блокийг Багц 1 ба төслийн дунджаас хасаж, төлөвлөгөөт хувь 41% → 47%
+   *    болж шилжсэн муруй сешн турш кэшлэгдэн (Finance `planCurveCache`,
+   *    execReport) хоцрогдол · KPI бүгд түүгээр бодогддог байлаа.
+   * ⚠️ Тиймээс ДУТУУ нэгтгэл ГАРГАХГҮЙ: хуудас нь унасан багцын `byBagts`
+   *    муруй, мөн төслийн `months` ХООСОН — буруу муруйгаас хоосон нь дээр
+   *    (Finance/PkgProg «муруйгүй» төлөвөө аль хэдийн зохицуулдаг). Бүрэн
+   *    уншигдсан хуудас/багцын `byBagts` муруй хэвээр.
+   * ⚠️ 2026-09-25: `PkgProg.progMonths` нь `months` хоосон бол багц сонгосон
+   *    ч `byBagts`-ийг харалгүй `null` буцаадаг — тэнд бүрэн багцын муруй ч
+   *    түр алга болно (буруу тоо гарахгүй, зөвхөн UX).
+   */
+  failed: string[];
 };
 
 /**
@@ -137,12 +155,36 @@ type Sheet = {
  */
 export async function loadPlanCurve(): Promise<PlanCurve> {
   const sheets: Sheet[] = [];
+  /** Уншигдаагүй хуудсууд — `PlanCurve.failed`-ийн ⚠️ */
+  const failed: { key: string; group: string }[] = [];
+  /* ⚠️ НЭГ УДАА ДАХИН оролдоно — түр зуурын саатал (429 г.м.) нь бүхэл
+     багц/төслийн муруйг хоослохгүйн тулд. */
+  const retry = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch {
+      await new Promise((res) => setTimeout(res, 800));
+      return fn();
+    }
+  };
 
   await Promise.all(PKGS.map(async (pkg) => {
-    const sc = await loadSchema(pkg).catch(() => null);
-    if (!sc) return;
-    const r = await loadRows(pkg, sc).catch(() => null);
-    if (!r || !r.rows.length) return;
+    let sc: Awaited<ReturnType<typeof loadSchema>>;
+    let r: Awaited<ReturnType<typeof loadRows>>;
+    try {
+      sc = await retry(() => loadSchema(pkg));
+      /* ⚠️ БЛОКГҮЙ хуудас (5.x · 6.x · 10) муруйд ОРОЛЦДОГГҮЙ — муж нь блокийн
+         огнооноос (`sc.bld`) тул доорх `from == null`-оор ҮРГЭЛЖ хасагддаг.
+         Мөрийг нь дэмий татахгүй, түүний уналт муруйг «дутуу» болгохгүй. */
+      if (!sc.bld.length) return;
+      const s = sc;
+      r = await retry(() => loadRows(pkg, s));
+    } catch (e) {
+      failed.push({ key: pkg.key, group: bagtsKey(pkg.group) });
+      console.warn(`[selbe] төлөвлөгөөт муруй: ${pkg.key} уншигдсангүй — багц/төслийн муруй гаргахгүй`, e);
+      return;
+    }
+    if (!r.rows.length) return;
 
     /*
      * ⚠️ БҮЛГИЙН ОГНОО ЦЭВЭРЛЭГДЭНЭ — толгойн ⚠️-г үз. Хуулбар мөр:
@@ -210,9 +252,12 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
     });
   }));
 
+  const failedKeys = failed.map((x) => x.key);
   if (!sheets.length) {
-    return { months: [], bySheet: new Map(), byBagts: new Map(), from: null, to: null };
+    return { months: [], bySheet: new Map(), byBagts: new Map(), from: null, to: null, failed: failedKeys };
   }
+  /** Хуудас нь унасан багцууд — тэдний нэгтгэсэн муруй ГАРАХГҮЙ */
+  const failedGroups = new Set(failed.map((x) => x.group));
 
   const from = Math.min(...sheets.map((x) => x.from));
   const to = Math.max(...sheets.map((x) => x.to));
@@ -315,6 +360,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
 
   const byBagts = new Map<string, PlanPoint[]>();
   for (const [g, arr] of gAcc) {
+    /* ⚠️ Нэг хуудас нь уншигдаагүй багц — дутуу дундаж ГАРГАХГҮЙ (`failed`-ийн ⚠️) */
+    if (failedGroups.has(g)) continue;
     const rg = gRange.get(g);
     const pts: PlanPoint[] = [];
     axis.forEach((a, i) => {
@@ -331,7 +378,9 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   }
 
   const months: PlanPoint[] = [];
+  /* ⚠️ Аль нэг хуудас уншигдаагүй бол төслийн муруй ХООСОН (`failed`-ийн ⚠️) */
   axis.forEach((a, i) => {
+    if (failed.length) return;
     if (tAcc[i].n > 0) {
       months.push({
         label: a.label,
@@ -341,5 +390,5 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
     }
   });
 
-  return { months, bySheet, byBagts, from, to };
+  return { months, bySheet, byBagts, from, to, failed: failedKeys };
 }

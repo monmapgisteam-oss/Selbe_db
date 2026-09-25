@@ -50,7 +50,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { scoreLevel, type Level } from '@/lib/kpiLevels';
 import { cached } from '@/lib/live';
-import { INDICATORS, DENSITY_BY_TYPE, ASSUME_MET, PARKING, type Indicator } from '@/lib/analysis/config';
+import { INDICATORS, DENSITY_BY_TYPE, ASSUME_MET, PARKING, ACTIVATABLE_ZONE_TYPES, type Indicator } from '@/lib/analysis/config';
 import { normFor, passesNorm, normGap, normText, urbanScore } from '@/lib/analysis/score';
 import type { Zone } from '@/lib/analysis/data';
 import { cell, table, worstOf, type KpiResult, type KpiIssue, type DetailTable } from './kpi';
@@ -128,10 +128,17 @@ export const judgedIndicators = (indicators: readonly Indicator[] = INDICATORS):
 export function computeSuitability(
   zones: readonly SuitZoneInput[],
   indicators: readonly Indicator[] = INDICATORS,
+  /** Оноололд ОРУУЛАХ хасагдсан ангиллууд — анхдагч нь хуудасны анхдагч сонголт */
+  scoreTypes: ReadonlySet<string> = ACTIVATABLE_ZONE_TYPES,
 ): SuitComputed {
   /* ⚠️ ХАСАГДСАН бүс (`excluded` — ногоон байгууламж, одоо байгаа барилга)
-     зөрчилд тоологдохгүй: оноололд ч ордоггүй (execData-ийн адил). */
-  const live = zones.filter((z) => !z.excluded);
+     зөрчилд тоологдохгүй: оноололд ч ордоггүй (execData-ийн адил).
+     ⚠️ 2026-09-25: ҮЛ ХАМААРАХ нь `scoreTypes` (идэвхжүүлж болох ангилал —
+     нийгмийн дэд бүтцийн бүс, газар чөлөөлөлт дутуу). «Тохиромжтой байдал»
+     хуудас тэдгээрийг АНХДАГЧААР оноолдог (`Suitability.tsx` `scoreOn`,
+     хэрэглэгчийн шийдвэр 2026-08-12) тул урьд нь CEO карт 17 бүсийг хасаж,
+     бүсийн тоо, дундаж оноо хуудаснаас зөрдөг байв. */
+  const live = zones.filter((z) => !z.excluded || scoreTypes.has(z.type));
   const judged = judgedIndicators(indicators);
   const failsByZone = new Map<string, number>();
   const allFails: SuitFail[] = [];
@@ -308,7 +315,10 @@ export function buildSuitabilityKpi(c: SuitComputed): KpiResult {
 export const loadSuitabilityKpi = cached(async (): Promise<KpiResult> => {
   const { loadAnalysisCached, computeRaw, defaultGreenCats } = await import('@/lib/analysis/data');
   const data = await loadAnalysisCached();
-  /* execData-ийн адил анхдагч ногоон ангилал + зогсоолын арга — `raw`/`rawActual`-ыг бөглөнө */
-  computeRaw(data.zones, defaultGreenCats(), PARKING);
+  /* execData-ийн адил анхдагч ногоон ангилал + зогсоолын арга — `raw`/`rawActual`-ыг бөглөнө.
+     ⚠️ 2026-09-25: `scoreTypes` = хуудасны АНХДАГЧ (`ACTIVATABLE_ZONE_TYPES`) —
+     түүнгүй бол тэдгээр бүсийн `raw` хоосорч, `computeSuitability` оруулсан ч
+     утгагүй болно. */
+  computeRaw(data.zones, defaultGreenCats(), PARKING, new Set(ACTIVATABLE_ZONE_TYPES));
   return buildSuitabilityKpi(computeSuitability(data.zones));
 }, undefined, []);

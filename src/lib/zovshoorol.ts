@@ -342,6 +342,11 @@ export function diffZov(before: Zov, d: ZovDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const next = zovAttrs(d);
   const prev = zovAttrs({ ...before, tolov: before.tolov === 'unknown' ? d.tolov : before.tolov });
+  /* ⚠️ ТАНИГДААГҮЙ ТӨЛӨВ ЗААВАЛ БИЧИГДЭНЭ (2026-09-25 аудит): урьд нь `prev`-ийн
+     төлөвийг `d.tolov`-оор орлуулдаг тул ялгаа хэзээ ч гардаггүй — «зөвшөөрсөн»
+     (буруу бичлэг) мөрийг маягтаас засаж чадахгүй, чип «танигдаагүй» хэвээр
+     үлддэг байв. Серверийн утга танигдаагүй = маягтын сонголтоос ялгаатай. */
+  if (before.tolov === 'unknown') prev[F.tolov] = null;
   /* ⚠️ `null` ба `''`-ийг ИЖИЛ гэж үзнэ (`diffParcel`-ийн дүрэм). */
   const norm = (v: unknown): unknown => (v == null || v === '' ? null : v);
   for (const k of Object.keys(next)) {

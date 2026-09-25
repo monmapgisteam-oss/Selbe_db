@@ -848,7 +848,10 @@ function railStat(k: SecKey, d: DashData): {
       const nw = { actual: pkgPct((k) => isNetworkPack(k)) };
       const n = infraPackList(isNetworkPack).length;
       return {
-        value: nw.actual == null ? '…' : pct(nw.actual, 1),
+        /* ⚠️ 2026-09-25: сүлжээ/цахилгааны багц бөглөх хүснэгтэд ихэвчлэн
+           БАЙХГҮЙ тул `pkgPct` нь `f` бэлэн болсны дараа ч `null` — урьд нь
+           «…» (ачаалж байна) МӨНХӨД үлддэг байв. Бэлэн бол «—». */
+        value: f == null ? '…' : nw.actual == null ? '—' : pct(nw.actual, 1),
         note: tr('{0} багц зурагт · гадна дулаан, ус', num(n)),
         pct: nw.actual ?? undefined, tone: o.active,
       };
@@ -859,7 +862,8 @@ function railStat(k: SecKey, d: DashData): {
       const pw = { actual: pkgPct((k) => isPowerPack(k)) };
       const n = infraPackList(isPowerPack).length;
       return {
-        value: pw.actual == null ? '…' : pct(pw.actual, 1),
+        /* ⚠️ 2026-09-25: `network`-ийн ⚠️-г үз — бэлэн ч утгагүй бол «—» */
+        value: f == null ? '…' : pw.actual == null ? '—' : pct(pw.actual, 1),
         note: tr('{0} багц зурагт · гадна цахилгаан', num(n)),
         pct: pw.actual ?? undefined, tone: o.active,
       };
@@ -3837,11 +3841,14 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                   onSelect={(key) => {
                     const trunk = raw.find((x) => x.key === key)?.trunk;
                     // Багц 3.1/3.2/3.3 → БАГЦ-6.3 (гурвуулаа ГАНЦ трасс)
-                    const bag = tr('БАГЦ6{0}', trunk);
+                    /* ⚠️ 2026-09-25: түлхүүрийг tr()-ГҮЙ бүтээнэ — en.ts нь «PKG6{0}» гэж
+                       орчуулдаг тул EN горимд `PKG_BY_BAGTS['PKG63']` хоосон, `selected`-ийн
+                       `БАГЦ6${trunk}`-тэй ч таарахгүй байв. tr() нь ЗӨВХӨН чипийн шошгонд. */
+                    const bag = `БАГЦ6${trunk}`;
                     const ids = PKG_BY_BAGTS[bag] ?? [];
                     // ⚠️ `flt.key` нь БАГЦЫН код — эс бөгөөс 4-р картын `selected`
                     //    тааралдахгүй, зураг шүүгдсэн ч тэр мөр тодрохгүй.
-                    if (ids.length) onFlt({ sec: 'power', key: bag, label: tr('Багц: {0}', bag), layers: ids });
+                    if (ids.length) onFlt({ sec: 'power', key: bag, label: tr('Багц: {0}', tr('БАГЦ6{0}', trunk)), layers: ids });
                   }}
                 />
               </>
@@ -5004,9 +5011,16 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           дэд бүтцийн харагдац дээр яг тэр харьцаа хэрэгтэй: иргэдэд хамгийн
           ойр байгууламжууд төсвийн ямар хэсгийг эзэлж байна вэ.
 
-          ⚠️ Суурь нь `budget.total` (CF018, төсөвт өртөг; ГЭРЭЭ мөрүүдийн нийлбэр) —
-          08-ын «Санхүүжилтийн шат» картын суурьтай ЯГ ИЖИЛ. */}
-      <Panel title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('нийт төсөвт өртөгөөс')}>
+          ⚠️ 2026-09-25: СУУРЬ = `budget.total` + нийгмийн багцын нийлбэр.
+          2026-09-21-нээс `budget.total` нь `finXlInTotal` хүрээ (Excel-ийн НИЙТ,
+          1+2-р хэсэг, 2,493 тэрбум) болсон бөгөөд 5-р хэсэг (НИЙГМИЙН ДЭД БҮТЭЦ)
+          ТҮҮНД ОРДОГГҮЙ. Харин `socSum` нь `byPkg`-ээс (БҮХ мөр) ирдэг тул урьд
+          нь хүртвэр хуваарийнхаа ГАДНА байж, «бусад ажил = total − socSum» нь
+          НИЙТ-д хэзээ ч ороогүй мөнгийг хасдаг байв. Одоо хоёр зүсмэл ТУСДАА:
+          нийгэм ба НИЙТ (бүтнээрээ), хувь нь тэдгээрийн нийлбэрээс.
+          ⚠️ Таамаг: нийгмийн багцууд 5-р хэсэгт л бий (`finExcelLayout`-ийн
+          FIN_XL_TOTAL_SKIP тайлбар) — 1·2-р хэсэгт тэдгээрийн мөр гарвал давхардана. */}
+      <Panel title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('НИЙТ ба нийгмийн дэд бүтцийн төсөвт өртөгөөс')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg2) => {
             const socKeys = new Set(socPacks.map((p) => p.key));
@@ -5015,23 +5029,24 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               (b) => b.value,
             );
             if (!bg2.total || !socSum) return <Empty label={tr('Нийгмийн багцын төсөв бүртгэгдээгүй.')} />;
+            const base = bg2.total + socSum;
             const list = [
               { key: 'soc', label: tr('Нийгмийн дэд бүтэц'), v: socSum },
-              { key: 'rest', label: tr('Төслийн бусад ажил'), v: Math.max(0, bg2.total - socSum) },
+              { key: 'rest', label: tr('НИЙТ (Орон сууцны хороолол+ГИШС)'), v: bg2.total },
             ].filter((x) => x.v > 0);
             return (
               <Donut
                 size={140}
                 width={22}
                 leaders
-                center={pct((socSum / bg2.total) * 100, 1)}
+                center={pct((socSum / base) * 100, 1)}
                 centerLabel={tr('нийгэм')}
                 items={list.map((x, i) => ({
                   key: x.key,
                   label: x.label,
                   value: x.v,
                   color: shade(ACCENT, i, list.length),
-                  display: tr('{0} · {1}', tug(x.v), pct((x.v / bg2.total) * 100, 1)),
+                  display: tr('{0} · {1}', tug(x.v), pct((x.v / base) * 100, 1)),
                 }))}
               />
             );

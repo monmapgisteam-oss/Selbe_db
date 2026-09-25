@@ -22,6 +22,7 @@ import { queryFeatures } from './query';
 import { register } from './dataBus';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
+import { t as tr } from './i18nCore';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 
@@ -113,7 +114,13 @@ export function loadVariance(): Promise<Variance> {
         // Зөвхөн НАВЧ ажил — бүлгийн мөр нь нэгтгэл тул давхар тоологдоно
         if (r.group || r.vol == null || r.vol <= 0 || r.unit == null || r.unit <= 0) continue;
         const sum = r.obyem.reduce<number>((a, v) => a + (v ?? 0), 0);
-        if (sum <= r.vol) continue;
+        /* ⚠️ 2026-09-25: ХӨВӨГЧ ТАСЛАЛЫН ЗӨВШӨӨРӨЛ. Блокуудын нийлбэр хөвөгч
+           таслалаар бодогддог тул яг төлөвлөгөөгөөр бөглөсөн ажил (Обьём 3.3,
+           3 блок × 1.1 → 3.3000000000000003) «хэтэрсэн» гэж тоологдож, CEO
+           карт «1 ажил хэтэрсэн» гэж ХУДАЛ шар түвшин өгдөг байв. Харьцангуй
+           1e-9 зөрүүгээс бага бол тэнцүү гэж үзнэ (бодит хэтрэлт хэзээ ч ийм
+           жижиг байдаггүй). */
+        if (sum - r.vol <= Math.max(1e-9, Math.abs(r.vol) * 1e-9)) continue;
         out.push({
           pkg: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol, sum,
           unit: r.unit, mnt: (sum - r.vol) * r.unit,
@@ -152,6 +159,13 @@ export type Overlaps = {
   total: number;
   /** Багц тус бүрээр — талбартай нь л, буурах эрэмбээр */
   byPkg: PkgOverlap[];
+  /**
+   * ТАТАГДААГҮЙ огтлолцлын ажлын тоо (бүхэлдээ унасан ажил + давхарга нь
+   * хэсэгчлэн унасан ажил). Байхгүй бол бүрэн тоологдсон.
+   * ⚠️ 2026-09-25: байгаа бол `total` нь ДООД ХЯЗГААР (дутуу тоо) — дуудагч
+   *    «бүрэн тоо» гэж уншиж болохгүй. Ийм үр дүн КЭШЛЭГДЭХГҮЙ.
+   */
+  failed?: number;
 };
 
 /**
@@ -188,7 +202,7 @@ let ovCache: Promise<Overlaps> | null = null;
 register(() => { ovCache = null; }, ['BUILDING', 'PARCEL_LEFT']);
 export function loadOverlaps(): Promise<Overlaps> {
   if (ovCache) return ovCache;
-  ovCache = (async () => {
+  const run: Promise<Overlaps> = (async () => {
     // ── Барилгын блокуудыг багцаар нь бүлэглэнэ ──
     const rows = await queryFeatures(BUILDING.url, {
       outFields: [BUILDING.oid, BUILDING.fields.bagts],
@@ -226,13 +240,19 @@ export function loadOverlaps(): Promise<Overlaps> {
     //    БҮХ эх сурвалжийг дахин нэгтгэсэн ТУСДАА аварга ажлаар (~20 chunk
     //    асуулга) боддог байсан бол огтлолцлуудын нэгдэл = нэгдлийн огтлолцол
     //    тул багцуудын үр дүнг клиент талд Set-ээр нэгтгэхэд ХАНГАЛТТАЙ.
-    const settled = await Promise.allSettled(jobs.map(async (j) => ({
-      name: j.name,
-      oids: (await overlapLeftParcels(j.srcs)).oids,
-    })));
+    /* ⚠️ 2026-09-25: `failed`-ийг ХАДГАЛНА — урьд нь зөвхөн `oids` авч, унасан
+       ажлыг `allSettled`-ээр ЧИМЭЭГҮЙ хаядаг байв. PARCEL_LEFT унахад БҮХ ажил
+       унаж `total: 0` АМЖИЛТТАЙ шийдэгдэж, CEO газрын карт ногоон «0 давхцсан
+       талбар» гэж харуулдаг байлаа (`parcelOverlap.ts`-ийн файлын толгойд
+       хориглосон «саадгүй» гэсэн ХУДАЛ дүгнэлт). */
+    const settled = await Promise.allSettled(jobs.map(async (j) => {
+      const r = await overlapLeftParcels(j.srcs);
+      return { name: j.name, oids: r.oids, partial: (r.failed?.length ?? 0) > 0 };
+    }));
     const okJobs = settled
-      .filter((x): x is PromiseFulfilledResult<{ name: string; oids: number[] }> => x.status === 'fulfilled')
+      .filter((x): x is PromiseFulfilledResult<{ name: string; oids: number[]; partial: boolean }> => x.status === 'fulfilled')
       .map((x) => x.value);
+    let failed = (settled.length - okJobs.length) + okJobs.filter((j) => j.partial).length;
     const byPkg = okJobs
       .map(({ name, oids }) => ({ name, parcels: oids.length }))
       .filter((p) => p.parcels > 0)
@@ -241,12 +261,31 @@ export function loadOverlaps(): Promise<Overlaps> {
     for (const j of okJobs) for (const id of j.oids) union.add(id);
     // Багцын нэргүй блокуудын давхцал нэгдлээс гарчихгүй байхын тулд бүх
     // блокийн НЭГ ажлыг нэмнэ (нэрлэгдсэн блокуудын үр дүн үүний дэд олонлог)
+    /* ⚠️ 2026-09-25: уналтыг `[]` болгож ЗАЛГИХГҮЙ — тоологдоогүй ажил гэж тэмдэглэнэ. */
     const allBld = await overlapLeftParcels([{ layerId: 'mon:building', where: null }])
-      .catch(() => ({ oids: [] as number[] }));
-    for (const id of allBld.oids) union.add(id);
-    return { total: union.size, byPkg };
-  })().catch((e) => { ovCache = null; throw e; });
-  return ovCache;
+      .catch(() => null);
+    if (!allBld || allBld.failed?.length) failed += 1;
+    for (const id of allBld?.oids ?? []) union.add(id);
+    /* ⚠️ 2026-09-25: уналттай үед ОЛДСОН давхцал 0 бол «0» гэж хэлэх үндэсгүй
+       (null ≠ 0) — бүх ажил унасан ч, хэсэгчлэн унасан ч хамаагүй: «0» нь
+       `overlapLevel`-ээр ногоон «Хэвийн» болж хувирдаг. Тиймээс АЛДАА болгоно —
+       дуудагч (`ceo/land.loadLandKpi`) эх сурвалжийг «татагдсангүй» гэж
+       харуулж, түвшин «мэдэхгүй» болно. Давхцал олдсон (>0) бол улаан түвшин
+       зөв хэвээр тул `failed` тоотой нь (дутуу тоо гэдгийг заан) буцаана. */
+    if (failed > 0 && union.size === 0) throw new Error(tr('Давхцал тооцогдсонгүй'));
+    return failed > 0 ? { total: union.size, byPkg, failed } : { total: union.size, byPkg };
+  })();
+  ovCache = run;
+  /* ⚠️ 2026-09-25: ХЭСЭГЧИЛСЭН үр дүнг КЭШЛЭХГҮЙ (`parcelOverlap.ts`-ийн
+     `resultCache`-ийн дүрэмтэй ижил). Урьд нь `.catch` нь ЗӨВХӨН reject-ийг
+     хасдаг байсан тул нэг давхарга унасан дутуу тоо сесс дуустал «баталгаатай»
+     мэт үлдэж, дахин оролдох ч боломжгүй байв. Өөрөө идэвхтэй кэш байхад л
+     цэвэрлэнэ (`live.cached`-ийн 2026-09-08-ны дүрэм). */
+  run.then(
+    (r) => { if (r.failed && ovCache === run) ovCache = null; },
+    () => { if (ovCache === run) ovCache = null; },
+  );
+  return run;
 }
 
 /**

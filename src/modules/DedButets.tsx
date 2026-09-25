@@ -192,8 +192,36 @@ const oidFieldOf = (id: string, a?: Record<string, unknown> | null): string =>
   ?? LAYER_BY_ID[id]?.oid
   ?? OID;
 
-/** Давхаргын урт (м) — татагдаагүй/хэмжээгүй бол `null` (`Totals.q`-ийн дүрэм: null ≠ 0) */
-const lenOf = (t: Map<string, Totals>, id: string): number | null => t.get(id)?.q ?? null;
+/**
+ * УРТААР ХЭМЖИГДЭХ ШУГАМ давхаргууд — км-ийн KPI-д ЗӨВХӨН эдгээр орно.
+ *
+ * ⚠️ 2026-09-25: урьд нь `sumOf` нь жагсаалтын БҮХ id-г нэмдэг байв. Цэгэн
+ *    давхарга (`infra:53/55/57/59` ХТП/РП — `qtyField: null`) хэмжээгүй тул
+ *    `q: null` буцааж нийлбэрийг бүхэлд нь `null` болгож «Инженерийн шугам —
+ *    нийт» ба «Гэрээний багцын шугам» мөнхөд «…» дээр гацдаг байсан; талбай
+ *    давхаргын м² (ДХТ, дулааны худаг, Багц 18-ын эх үүсвэр) нь «Үүнээс
+ *    дулаан хангамж»-ийн МЕТР дээр нэмэгдэж км болон гардаг байв.
+ * ⚠️ Хэмжээгүй давхаргыг «мэдэгдэхгүй» гэж тооцохгүй — ЖАГСААЛТААС хасна:
+ *    тэдгээр нь уртад хамаарах хэмжилт огт биш.
+ */
+const isLenLayer = (id: string): boolean => {
+  const L = LAYER_BY_ID[id];
+  return L?.geom === 'line' && (L.qty?.unit === 'м' || L.qty?.unit === 'км');
+};
+
+/**
+ * Давхаргын урт (м) — татагдаагүй/хэмжээгүй бол `null` (`Totals.q`-ийн дүрэм: null ≠ 0).
+ * ⚠️ `км` нэгжтэй давхаргыг МЕТР болгоно — `km()` нь метр хүлээдэг.
+ * ⚠️ ОБЪЕКТГҮЙ давхарга (`n === 0`) — SUM нь `null` ирдэг ч «мэдээлэлгүй» БИШ:
+ *    объект байхгүй бол урт нь жинхэнэ 0 (хэмжилт). Эс бөгөөс хоосон ганц
+ *    давхарга бүх км KPI-г «…» дээр гацаана.
+ */
+const lenOf = (t: Map<string, Totals>, id: string): number | null => {
+  const r = t.get(id);
+  if (!r) return null;
+  if (r.q == null) return r.n === 0 ? 0 : null;
+  return LAYER_BY_ID[id]?.qty?.unit === 'км' ? r.q * 1000 : r.q;
+};
 
 /** Давхаргын тоо — татагдаагүй бол 0 */
 const cntOf = (t: Map<string, Totals>, id: string) => t.get(id)?.n ?? 0;
@@ -229,7 +257,11 @@ const countOf = (t: LiveTotals, ids: string[]): number | null =>
 /** Хүлээж буй утгын тэмдэг — тоо биш тул `num` форматаас ГАДУУР */
 const WAIT = "…";
 /* ⚠️ Хоосон id жагсаалт нь хүлээлт БИШ — «—» (мэдээлэлгүй), «…» биш */
-const kmOrWait = (m: number | null, empty = false) => (empty ? '—' : m == null ? WAIT : km(m, 1));
+/* ⚠️ `settled` (2026-09-25) — бүх давхарга ирсэн (эсвэл унасан) хойно `null` нь
+   хүлээлт БИШ, «мэдээлэлгүй» («—»). Урьд нь `…` мөнхөд үлдэж, явцын мөр
+   алга болсон тул гацсан уу, ачаалж байна уу гэдэг нь ялгагдахгүй байв. */
+const kmOrWait = (m: number | null, empty = false, settled = false) =>
+  (empty ? '—' : m == null ? (settled ? '—' : WAIT) : km(m, 1));
 const cntOrWait = (n: number | null, empty = false) => (empty ? '—' : n == null ? WAIT : num(n));
 
 
@@ -492,6 +524,41 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   }, [reshaped]);
 
   /**
+   * МАЯГТЫН ХАДГАЛААГҮЙ ТӨЛӨВ — `DedButetsEdit`-ийн талбарт бичсэн эсэх.
+   *
+   * ⚠️ 2026-09-25: маягтын `dirty` нь түүний ДОТООД ref тул эцэг тал харахгүй
+   *    байсан — зураг дээр хоосон газар/өөр объект товших, «Хаах», «Шинэ
+   *    объект», «Олноор сонгох» бүгд бөглөсөн талбар ба ЗУРСАН дүрсийг
+   *    асуултгүй хаядаг байв. Маягтын бүх оролт (`FieldInput`) DOM-ын
+   *    `input`/`select`-ийн `onChange`-оор явдаг тул боосон элементийн
+   *    `onChange` (React-д bubble хийдэг) үүнийг найдвартай барина.
+   * ⚠️ Объект солигдох (`pickKey`) бүрд ба амжилттай хадгалсны дараа тэглэнэ —
+   *    маягт өөрийн `dirty`-г яг тэр агшинд тэглэдэг.
+   */
+  const formDirty = useRef(false);
+  const pickRef = useRef(pick);
+  pickRef.current = pick;
+  const pickKey = pick ? `${pick.layerId}:${pick.oid ?? 'new'}` : '';
+  useEffect(() => { formDirty.current = false; }, [pickKey]);
+
+  /**
+   * ХАДГАЛААГҮЙ МАЯГТ/ДҮРС + VERTEX ЗАСВАРЫГ ХАЯХЫГ АСУУНА (2026-09-25).
+   *
+   * ⚠️ `askDropReshape`-ийн ӨРГӨТГӨЛ — маягтыг ГАДНААС хаадаг замуудад
+   *    (зургийн товшилт, горимын товч, «Хаах»). ШИНЭ объект (`oid == null`)
+   *    нь талбар бөглөөгүй ч ЗУРСАН геометртэй тул үргэлж асууна.
+   * ⚠️ `closeEdit`-д ХЭРЭГЛЭХГҮЙ: тэр нь маягтын өөрийн «Хаах» (маягт өөрөө
+   *    `dirty`-гээ асуудаг — давхар асуулт болно) ба хадгалсны дараах хаалт.
+   */
+  const askDropUnsaved = useCallback((run: () => void): boolean => {
+    const pk = pickRef.current;
+    const formLost = pk != null && (pk.oid == null || formDirty.current);
+    if (!formLost) return askDropReshape(run);
+    setConfirmQ({ msg: tr('Хадгалаагүй маягт эсвэл зурсан дүрс байна. Хаях уу?'), onYes: run });
+    return false;
+  }, [askDropReshape]);
+
+  /**
    * ГЕОМЕТР ТАТАХ ДАРААЛЛЫН ТОКЕН.
    *
    * ⚠️ Хоёр объект дараалан дарахад хоёр `loadGeometry` зэрэг явна. Сүлжээний
@@ -596,9 +663,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   );
   /* KPI-ийн id жагсаалтууд — мөн хүрээгээр (бусад багцын км нийлбэрт орохгүй) */
   const totalIds = useMemo(() => TOTAL_IDS.filter(allow), [allow]);
-  const netIds = useMemo(() => NET_IDS.filter(allow), [allow]);
-  const heatIds = useMemo(() => SYSTEMS[0].ids.filter(allow), [allow]);
-  const pkgIds = useMemo(() => PKG_IDS.filter(allow), [allow]);
+  /* ⚠️ км-ийн гурван KPI — ЗӨВХӨН урттай шугам давхарга (`isLenLayer`-ийн тайлбар) */
+  const netIds = useMemo(() => NET_IDS.filter((id) => isLenLayer(id) && allow(id)), [allow]);
+  const heatIds = useMemo(() => SYSTEMS[0].ids.filter((id) => isLenLayer(id) && allow(id)), [allow]);
+  const pkgIds = useMemo(() => PKG_IDS.filter((id) => isLenLayer(id) && allow(id)), [allow]);
   const wellIds = useMemo(() => WELL_IDS.filter(allow), [allow]);
   /**
    * ⚠️ АНХДАГЧ ДАВХАРГА ХҮРЭЭНД БАЙХ ЁСТОЙ (2026-09-23). `msel.layerId` ба `addTo`
@@ -822,11 +890,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
          замгүй «гацдаг» байв. Хаяхгүй гэвэл сонголт ХЭВЭЭР. `reshape`
          идэвхгүй бол `cancelReshape`-ийг дуудахгүй — `clearToken` дэмий
          хөдөлж, шинэ объект зурах (`awaitDraw`) явцад sketch арилах эрсдэлтэй. */
-      if (reshape) {
-        askDropReshape(() => { cancelReshape(); setPick(null); setHighlight(null); });
-        return;
-      }
-      setPick(null); setHighlight(null); return;
+      /* ⚠️ 2026-09-25: бөглөсөн маягт / зурсан шинэ дүрсийг ч асууна
+         (`askDropUnsaved`). ШИНЭ объектын маягт хаагдвал зурсан улбар шар
+         дүрсийг ЗААВАЛ арилгана (`clearToken`) — үлдвэл «нэмэгдчихсэн» мэт
+         харагддаг байв. `pick` нь зураалт ДУУССАНЫ дараа л тавигддаг тул
+         `awaitDraw` явцын sketch-ийг энэ нь хөндөхгүй. */
+      const pk = pickRef.current;
+      askDropUnsaved(() => {
+        if (reshape) cancelReshape();
+        else if (pk && pk.oid == null) setClearToken((x) => x + 1);
+        setPick(null); setHighlight(null);
+      });
+      return;
     }
     /* ⚠️ Хуваарилагдаагүй багцын объект — маягт нээхгүй (эрхийн хүрээ, 2026-09-23) */
     if (!canEditLayer(id)) { toast(tr('Энэ багцыг засах эрхгүй'), 'err'); return; }
@@ -839,15 +914,20 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     void loadLayerMeta(id).catch(() => {});
 
     /* ⚠️ Өөр объект руу шилжихээс ӨМНӨ хадгалаагүй vertex засварыг асууна —
-       эс бөгөөс чирсэн ажил чимээгүй алга болно. */
-    askDropReshape(() => {
+       эс бөгөөс чирсэн ажил чимээгүй алга болно.
+       ⚠️ 2026-09-25: бөглөсөн маягт / зурсан шинэ дүрсийг ч (`askDropUnsaved`).
+       ЯГ ТЭР объектыг дахин товшвол маягт солигдохгүй (`layerId`/`oid` ижил —
+       маягт дахин ачаалагдахгүй) тул зөвхөн vertex-ийг асууна. */
+    const cur = pickRef.current;
+    const same = cur != null && cur.layerId === id && cur.oid === oid;
+    (same ? askDropReshape : askDropUnsaved)(() => {
       cancelReshape();
       setTplOpen(false);
       setAwaitDraw(false);
       setPick({ layerId: id, oid });
       setHighlight(`${oidField} = ${Math.trunc(oid)}`, id);
     });
-  }, [editMode, multi, msel, showMsel, reshape, askDropReshape, cancelReshape, setHighlight, canEditLayer, toast]);
+  }, [editMode, multi, msel, showMsel, reshape, askDropReshape, askDropUnsaved, cancelReshape, setHighlight, canEditLayer, toast]);
 
   /**
    * САМБАРЫГ ХААХ — сонголт цэвэрлэгдэнэ.
@@ -1127,7 +1207,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * ⚠️ `null` нь «цэвэрлэв» гэсэн дохио (`clearToken`) — маягт нээхгүй.
    */
   const onSketch = useCallback((g: __esri.Geometry | null) => {
-    if (!g) { if (rectDraw) setRectDraw(false); return; } // ⚠️ Esc-ээр цуцалсан бол горимоос гарна (2026-09-17)
+    /* ⚠️ `null` нь ЗӨВХӨН «цэвэрлэв» (`clearToken`). Esc-ийн цуцлалт энд ИРДЭГГҮЙ
+       байсан (2026-09-17-ны тайлбар худал байв) — одоо `onSketchCancel`-оор. */
+    if (!g) { if (rectDraw) setRectDraw(false); return; }
     /**
      * ТЭГШ ӨНЦӨГТӨӨР СОНГОХ — дүрс нь объект БИШ, сонголтын хил.
      *
@@ -1170,6 +1252,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   }, [addTo, rectDraw, msel.layerId, showMsel, toast]);
 
   /**
+   * ЗУРААЛТЫГ Esc-ЭЭР ЦУЦЛАВ (2026-09-25, `MapCanvas.onSketchCancel`).
+   *
+   * ⚠️ Урьд нь Esc-ийн дараа тэгш өнцөгт сонголт «Татахыг болих» хэвээр, шинэ
+   *    объектын хүлээлтийн самбар (`awaitDraw`) зураалтгүй атал нээлттэй гацдаг
+   *    байв — дараагийн товшилт нь зөвхөн горимыг унтраадаг байлаа.
+   */
+  const onSketchCancel = useCallback(() => {
+    setRectDraw(false);
+    setAwaitDraw(false);
+  }, []);
+
+  /**
    * ЗАСВАРЫН ГОРИМД ОРОХ — идэвхтэй тодруулга, сонголтыг цэвэрлэнэ.
    *
    * ⚠️ Тодруулга үлдвэл `featureEffect` нь бусад объектыг бүдгэрүүлж, тэдгээр
@@ -1185,8 +1279,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   }, [setHighlight]);
 
   const exitEdit = useCallback(() => {
-    /* ⚠️ Чирсэн ажлыг хаяхаас өмнө асууна (`askDropReshape`-ийн тайлбар) */
-    askDropReshape(() => {
+    /* ⚠️ Чирсэн ажил, бөглөсөн маягт, зурсан шинэ дүрсийг хаяхаас өмнө асууна
+       (`askDropUnsaved`-ийн тайлбар, 2026-09-25) */
+    askDropUnsaved(() => {
       setEditMode(false);
       setConfirmQ(null);
       /* Алдааны мэдэгдэл горимтойгоо хамт арилна (`toast`-ийн тайлбар) */
@@ -1207,7 +1302,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       /* ⚠️ Хойшлуулсан нийлбэрийг ЭНД нэг удаа хаяна (`dropTotalsLater`) */
       flushTotals();
     });
-  }, [askDropReshape, setHighlight, flushTotals]);
+  }, [askDropUnsaved, setHighlight, flushTotals]);
 
   /**
    * Сонгогдсон объектын геометрийг урьдчилж татна (`preGeom`-ийн тайлбар).
@@ -1270,17 +1365,17 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               (`sumOf`-ийн тайлбар, 2026-09-23) */}
           <Stats cols={4}>
             <Stat
-              value={kmOrWait(sumOf(totals, netIds), netIds.length === 0)}
+              value={kmOrWait(sumOf(totals, netIds), netIds.length === 0, totals.done >= totals.total)}
               unit={tr('км')}
               label={tr('Инженерийн шугам — нийт')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, heatIds), heatIds.length === 0)}
+              value={kmOrWait(sumOf(totals, heatIds), heatIds.length === 0, totals.done >= totals.total)}
               unit={tr('км')}
               label={tr('Үүнээс дулаан хангамж')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, pkgIds), pkgIds.length === 0)}
+              value={kmOrWait(sumOf(totals, pkgIds), pkgIds.length === 0, totals.done >= totals.total)}
               unit={tr('км')}
               label={tr('Гэрээний багцын шугам')}
             />
@@ -1333,6 +1428,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                үзэгч санамсаргүй дүрс зурж, «энэ юу вэ» гэсэн асуулт төрнө. */
             sketch={editMode}
             onSketch={onSketch}
+            onSketchCancel={onSketchCancel}
             drawToken={drawToken}
             drawKind={drawKind}
             reshapeGeometry={reshape?.geometry}
@@ -1406,7 +1502,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${tplOpen ? d.editAddOn : ''}`}
                 aria-pressed={tplOpen}
-                onClick={() => askDropReshape(() => {
+                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25) */
+                onClick={() => askDropUnsaved(() => {
                   cancelReshape();
                   setTplOpen((v) => !v);
                   setAwaitDraw(false);
@@ -1429,7 +1526,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${multi ? d.editAddOn : ''}`}
                 aria-pressed={multi}
-                onClick={() => askDropReshape(() => {
+                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25) */
+                onClick={() => askDropUnsaved(() => {
                   cancelReshape();
                   const next = !multi;
                   setMulti(next);
@@ -1660,9 +1758,26 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               </div>
               {msel.oids.length > 0 && (
                 <DedButetsBatch
+                  /* ⚠️ `key` = давхарга (2026-09-25): өөр давхаргын объект товшиход
+                     маягт ШИНЭЭР эхэлнэ. Урьд нь нэг инстанц үлдэж, өмнөх давхаргад
+                     бичсэн утга ижил нэртэй талбараар шинэ давхаргад «өөрчилсөн»
+                     болж орж ирээд (хуучин `base`-тай жишигдэн) бичигдэх эрсдэлтэй
+                     байв. Нэг давхарга дотор объект нэмж/хасахад бичсэн нь хэвээр. */
+                  key={msel.layerId}
                   layerId={msel.layerId}
                   oids={msel.oids}
                   canEdit={canEdit && canEditLayer(msel.layerId)}
+                  /* ⚠️ ХЭСЭГЧИЛСЭН бичилт (2026-09-25): эхний багцууд сервер дээр
+                     БИЧИГДСЭН ч дараагийнх унасан. Урьд нь `onDone` дуудагдахгүй тул
+                     бичигдсэн мөрүүдэд давхарга дахин уншигдахгүй (зураг хуучин
+                     өнгөөр), нийлбэрийн кэш хаягдахгүй, «Үйлдэл буцаах» ч байхгүй
+                     байв. Сонголт ба маягт ХЭВЭЭР — «Хадгалах»-аар үлдсэнийг бичнэ. */
+                  onPartial={(back) => {
+                    const id = msel.layerId;
+                    setUndoable(back ? { ...back, layerId: id } : null);
+                    refreshLayer(id);
+                    dropTotalsLater();
+                  }}
                   onDone={(rows, fields, back) => {
                     const id = msel.layerId;
                     setUndoable(back ? { ...back, layerId: id } : null);
@@ -1696,7 +1811,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               )}
             </aside>
           )}
+          {/* ⚠️ `display: contents` боодол (2026-09-25) — зөвхөн маягтын `onChange`-ийг
+              барина (`formDirty`-ийн тайлбар); хайрцаг үүсгэхгүй тул самбарын
+              `position: absolute` нь `mapBox`-оос хэвээр хэмжигдэнэ. */}
           {pick && (
+            <div style={{ display: 'contents' }} onChange={() => { formDirty.current = true; }}>
             <DedButetsEdit
               layerId={pick.layerId}
               oid={pick.oid}
@@ -1776,6 +1895,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 </div>
               )}
               onDone={(n, back: UndoInfo | null) => {
+                /* ⚠️ Бичигдсэн — маягт өөрийн `dirty`-г тэглэдэг, энд ч мөн */
+                formDirty.current = false;
                 const id = pick.layerId;
                 const created = pick.oid == null;
                 /* ⚠️ 2026-09-21: хадгалаагүй хэлбэрийн засвартай үед `closeEdit`
@@ -1807,6 +1928,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     : tr('Өөрчлөлт байсангүй'));
               }}
             />
+            </div>
           )}
 
           {/* ⚠️ Алдаа (`savedKind === 'err'`) улаан, ✕-ээр хаагдана — өөрөө арилахгүй */}

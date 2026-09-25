@@ -159,7 +159,14 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
         now,
         cost: r.cost,
         contract: contracted && contract && contract > 0 ? contract : null,
-        paidPct: key ? paid.get(key) ?? null : null,
+        /* ⚠️ 2026-09-25: ОЛГОЛТ vs БИЕТ — ЗӨВХӨН ИЖИЛ ХҮРЭЭТЭЙ үед. `paid` нь
+           БАГЦЫН нийт олголт ÷ багцын нийт гэрээ (`pkgFinRows`); `lag`-гүй мөрийн
+           `actual` нь тухайн ГЭРЭЭНИЙ өөрийн явц. Урьд нь хоёрыг харьцуулж, 100%
+           дууссан ТЭЗҮ/зураг төслийн гэрээ (багц 20% олгогдсон) «олголт 80 нэгж
+           хувиар хоцорсон» гэж 0 оноо, улаан асуудал авдаг байв. Одоо багцын
+           түвшний биет хэмжилт (`lag` — барилга угсралтын мөр) байгаа үед л
+           харьцуулна; бусад мөрд энэ хэсэг оноонд ОРОХГҮЙ (null, 0 биш). */
+        paidPct: key && lag ? paid.get(key) ?? null : null,
         actual,
       }),
       /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ.
@@ -172,7 +179,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   });
 
   return { works, footprints: packs.map((p) => p.key), failed };
-}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA']);
+  /* ⚠️ 2026-09-25: `ZOVSHOOROL` нэмэв — зөвшөөрлийн оноо `loadZov()`-оос. Тэр
+     нь зөвхөн ӨӨРИЙН кэшээ хаядаг тул энэ суурь 5 мин хүртэл хуучин
+     зөвшөөрлийн төлөв барьдаг байв (ачаалагчийн уншдаг бүх тагийг нэгтгэх дүрэм). */
+}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA', 'ZOVSHOOROL']);
 
 /* ══════════════ Хүнд бүлгүүд ══════════════ */
 
@@ -219,11 +229,16 @@ export const loadScorePlan = cached(async (): Promise<Map<string, PlanInput>> =>
     import('@arcgis/core/rest/query'),
   ]);
   const data = await loadAnalysisCached();
-  computeRaw(data.zones, defaultGreenCats(), cfg.PARKING);
+  /* ⚠️ 2026-09-25: «Тохиромжтой байдал» хуудасны АНХДАГЧ оноололтой ижил —
+     идэвхжүүлж болох хасагдсан ангиллууд (`ACTIVATABLE_ZONE_TYPES`: нийгмийн
+     дэд бүтцийн бүс, газар чөлөөлөлт дутуу) оноололд ОРНО (`Suitability.tsx`
+     `scoreOn`-ийн анхны утга). Урьд нь `scoreTypes`-гүй дуудаж тэдгээрийг
+     хасдаг тул хуудас ба оноо өөр бүсийн олонлогоос бодогдож байв. */
+  computeRaw(data.zones, defaultGreenCats(), cfg.PARKING, new Set(cfg.ACTIVATABLE_ZONE_TYPES));
   const judged = cfg.INDICATORS.filter((ind) => !ind.ref && ind.weight > 0 && ind.id !== 'engineering');
 
   const zones = data.zones
-    .filter((z) => !z.excluded && z.geometry)
+    .filter((z) => (!z.excluded || cfg.ACTIVATABLE_ZONE_TYPES.has(z.type)) && z.geometry)
     .map((z) => ({
       id: z.id,
       rings: (z.geometry?.rings ?? []) as number[][][],

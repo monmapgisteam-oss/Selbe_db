@@ -41,6 +41,9 @@ const SPEC: AclPanelSpec<AjilRole> = {
   failedUsers: ajilFailedUsers,
   subscribe: subscribeAjilAcl,
   setGrants: setAjilGrants,
+  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles`.
+     Зөвхөн мөр нэмэгчийг хасахад `addRow` буцаагдаж Guitsetgel-ийн бөглөх таб хаагдана. */
+  roleCaps: { editor: 'addRow', approver: 'ajilApprove' },
   /*
    * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
    *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг

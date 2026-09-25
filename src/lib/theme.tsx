@@ -27,16 +27,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
    */
   const [theme, setTheme] = useState<Theme | null>(null);
 
-  // Эхлэхдээ: хадгалсан сонголт → байхгүй бол системийн тохиргоо
+  /**
+   * Эхлэхдээ: хадгалсан сонголт → байхгүй/хүчингүй бол DARK.
+   *
+   * ⚠️ 2026-09-25: layout.tsx-ийн `THEME_INIT`-тэй ЯГ ИЖИЛ дүрэм
+   *    (`saved === 'light' ? 'light' : 'dark'`). Урьд нь энд хадгалалтгүй үед
+   *    СИСТЕМИЙН тохиргоог (`matchMedia`) дагаж, хадгалсан утгыг ШАЛГАЛТГҮЙ
+   *    тавьдаг байв: цайвар ОС-той анхны зочинд скрипт dark тавьсны дараа энэ
+   *    эффект light болгож (анивчилт), localStorage-д бичдэг тул DARK анхдагч
+   *    хэзээ ч ирдэггүй; хуучирсан 'auto' нь `data-theme='auto'` болж `:root`-ийн
+   *    цайвар токен руу унаж, буцаж хадгалагддаг байлаа.
+   */
   useEffect(() => {
     /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
        эффект дотор шидсэн алдаа БҮХ аппыг унагана — өнгөний сонголт
        санагдахгүй нь ердөө тав тухын асуудал. */
-    let saved: Theme | null = null;
+    let saved: string | null = null;
     try {
-      saved = localStorage.getItem(THEME_KEY) as Theme | null;
-    } catch { /* хувийн горим — системийн тохиргоог дагана */ }
-    setTheme(saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+      saved = localStorage.getItem(THEME_KEY);
+    } catch { /* хувийн горим — DARK анхдагч */ }
+    setTheme(saved === 'light' ? 'light' : 'dark');
   }, []);
 
   // Уншиж дуустал DOM-д хүрэхгүй — inline скриптийн тавьсан утга хэвээр үлдэнэ

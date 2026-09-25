@@ -830,7 +830,9 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
           <>
             <Section tone="primary" title={tr('{0} — нийт гүйцэтгэл', b.blok)} note={d.version}>
               <Col gap="sm">
-                <Ring value={d.overall ?? 0} color={HUE} size={104} width={11} label={tr('угсралт')} />
+                {/* ⚠️ `null` ШУУД (2026-09-25 аудит) — `?? 0` нь бөглөгдөөгүйг «0%» цагираг
+                    болгож null ≠ 0 дүрмийг зөрчиж байв; `Ring` өөрөө «—» зурна. */}
+                <Ring value={d.overall} color={HUE} size={104} width={11} label={tr('угсралт')} />
                 <Note>
                   {d.overall == null
                     ? tr('Барилга угсралтын ажлын гүйцэтгэл хараахан бөглөгдөөгүй.')

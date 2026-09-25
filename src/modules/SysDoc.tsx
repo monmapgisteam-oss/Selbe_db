@@ -261,8 +261,25 @@ function Diagram({ src }: { src: string }) {
  */
 const SCHEM_ID = '__schem__';
 
-export default function SysDoc({ setView }: { setView?: (v: ViewKey) => void }) {
+export default function SysDoc({ setView, navScope = 'all' }: {
+  setView?: (v: ViewKey) => void;
+  /** Хэрэглэгчийн эрхэд байгаа харагдацууд; `'all'` бол хязгааргүй (`Schem`-тэй ижил) */
+  navScope?: 'all' | ViewKey[];
+}) {
   const [id, setId] = useState(SCHEM_ID);
+  /**
+   * ⚠️ 2026-09-25: ЭРХИЙН ХҮРЭЭНЭЭС ГАДУУРХ харагдац руу ШИЛЖИХГҮЙ. Урьд нь
+   * «Харагдац нээх» нь `setView`-г шууд дууддаг тул ['habea','sysDoc'] эрхтэй
+   * хэрэглэгч «Санхүү» картаас дарахад Finance нэг commit-ийн турш зурагдаж
+   * өгөгдлөө татаж эхлээд, Portal-ын хамгаалалт `navScope[0]` (habea) руу
+   * шидэж, баримтын хуудаснаас ГАРГАДАГ байв. `Schem`-ийн `allowed`-тай ижил дүрэм.
+   */
+  const go = useMemo(
+    () => (setView
+      ? (v: ViewKey) => { if (navScope === 'all' || navScope.includes(v)) setView(v); }
+      : undefined),
+    [setView, navScope],
+  );
   const doc = useMemo(() => SYS_DOCS.find((d) => d.id === id) ?? SYS_DOCS[0], [id]);
 
   /**
@@ -302,7 +319,7 @@ export default function SysDoc({ setView }: { setView?: (v: ViewKey) => void }) 
 
       <article className={`${s.main} ${id === SCHEM_ID ? s.mainSchem : ''}`}>
         {id === SCHEM_ID
-          ? <SysSchemView setView={setView} onDoc={jump} />
+          ? <SysSchemView setView={go} onDoc={jump} canOpen={(v) => navScope === 'all' || navScope.includes(v)} />
           : <Body src={doc.body} onJump={jump} />}
       </article>
     </div>

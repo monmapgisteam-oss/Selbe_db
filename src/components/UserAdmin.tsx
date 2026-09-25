@@ -11,6 +11,7 @@ import {
   clearOverride,
   subscribe,
   dirtyKeys,
+  foreignDirty,
   retryDirty,
   initRemote,
   remoteReady,
@@ -21,7 +22,8 @@ import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow } from './UserRow';
 import {
-  capsOf, capsRemoteReady, capsStored, capViewsOf, dirtyCapKeys, retryCapsDirty, setCaps, subscribeCaps, toggleCap,
+  capsOf, capsRemoteReady, capsStored, capViewsOf, dirtyCapKeys, foreignCapsDirty, retryCapsDirty, setCaps,
+  subscribeCaps, toggleCap,
   type CapKey,
 } from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
@@ -101,7 +103,8 @@ const capLabel = (k: CapKey): string => {
 };
 const capHint = (k: CapKey): string => {
   if (k === 'addRow') {
-    return tr('«Гүйцэтгэл бөглөх» хуудсанд бүлэг дотор шинэ ажлын мөр нэмэх. Хуудасны бүтэц өөрчлөгдөж, жин ба мөнгөн дүн бүхэлдээ дахин бодогдоно.');
+    /* ⚠️ 2026-09-25: мөр нэмэх нь «Хуваарь»-д, батлуулж, багцаар (`ajilAcl` editor) */
+    return tr('«Хуваарь» хуудсанд бүлгийн мөрөнд шинэ ажил нэмж, батлуулахаар илгээх. Батлагдсаны дараа л мөр үндсэн өгөгдөлд үүсч, жин ба мөнгөн дүн дахин бодогдоно. Энд асаахад БҮХ багц хуваарилагдана; тодорхой багц зааж өгөх бол «Нэмэлт ажлын эрх» хуудсыг ашиглана уу.');
   }
   if (k === 'qaqc') {
     return tr('«Чанар (QAQC)» харагдац дээр Inspection Test Plan-ийг (М-акт, FIC, MA, MIR) бөглөх. Энд асаахад БҮХ багц хуваарилагдана — тодорхой багц зааж өгөх бол «Чанарын (QAQC) эрх» хуудсыг ашиглана уу. Гүйцэтгэлийн урсгалаас тусдаа: гүйцэтгэл зөвшөөрөх эрх дагалдахгүй.');
@@ -416,8 +419,25 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (syncing) return;
     setSyncing(true);
     try {
+      /*
+       * ⚠️ ӨМНӨХ СЕШНИЙ / ГАРААР ТАРЬСАН МӨРИЙГ ИЛ АСУУНА (2026-09-25, аудитын
+       *    засвар). Dirty-set нь localStorage-д, browser-ийн бүх аккаунтад
+       *    хуваалцсан тул энэ сешнд үүсээгүй мөрийг (`foreign*`) ТАНЫ токеноор
+       *    бичихээс өмнө нэрсийг харуулж зөвшөөрөл авна. Хаалтанд — бичсэн хүн
+       *    (localStorage-оос, баталгаагүй). Татгалзвал ЗӨВХӨН энэ сешнийхийг.
+       */
+      const foreign = new Map<string, string>();
+      for (const f of [...foreignDirty(), ...foreignCapsDirty()]) {
+        if (!foreign.has(f.key) || !foreign.get(f.key)) foreign.set(f.key, f.by);
+      }
+      const onlyMine = foreign.size > 0 && !window.confirm(tr(
+        'Энэ browser-т өмнөх сешнээс үлдсэн, ArcGIS-т хадгалагдаагүй эрхийн өөрчлөлт байна: {0}. Эдгээрийг ТАНЫ эрхээр ArcGIS руу бичих үү? (Хаалтанд — бичсэн хүн; энэ browser-ийн хадгалалтаас уншсан тул баталгаагүй.) «Цуцлах» дарвал зөвхөн энэ сешний өөрчлөлтийг илгээнэ.',
+        [...foreign].map(([k, by]) => `${k} (${by || '—'})`).join(', '),
+      ));
       /* Эрхийн (caps) dirty-г ч хамт дахин илгээнэ — нэг товч, хоёр dirty-set */
-      const [leftPerms, leftCaps] = await Promise.all([retryDirty(), retryCapsDirty()]);
+      const [leftPerms, leftCaps] = onlyMine
+        ? await Promise.all([retryDirty(true), retryCapsDirty(true)])
+        : await Promise.all([retryDirty(), retryCapsDirty()]);
       const left = leftPerms + leftCaps;
       setUsers(listUsers());
       setSaved(left === 0 ? null : saved);
@@ -616,10 +636,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        *    ажлын унтраалга ОБЬЁМЫН хуваарилалтыг дарах байв.
        */
       /* ⚠️ Дэд бүтэц (2026-09-23) — ГАНЦ үүрэг `editor`, `butets` эрх. */
+      /* ⚠️ Нэмэлт ажил (2026-09-25): `addRow` → `editor`, `ajilApprove` → `approver`
+         (`ajilAcl.roleCaps`). Урьд нь `ajil` зөвхөн батлагчаар орж ирдэг байсан
+         тул энд `obyemEdit`-ийн шалгалт руу унаж `approver` гэж уншигддаг байв. */
       const role = kind === 'huvaari'
         ? (cap === 'plan' ? 'author' : 'approver')
         : kind === 'butets' ? 'editor'
-          : (cap === 'obyemEdit' ? 'editor' : 'approver');
+          : kind === 'ajil' ? (cap === 'addRow' ? 'editor' : 'approver')
+            : (cap === 'obyemEdit' ? 'editor' : 'approver');
       const ALL = kind === 'huvaari' ? HUVAARI_ALL_BAGTS
         : kind === 'ajil' ? AJIL_ALL_BAGTS
           : kind === 'butets' ? BUTETS_ALL_BAGTS : OBYEM_ALL_BAGTS;
@@ -723,11 +747,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (c === 'qaqc') { flipScoped(u, c, on, 'qaqc'); return; }
     if (c === 'plan' || c === 'planApprove') { flipScoped(u, c, on, 'huvaari'); return; }
     if (c === 'obyemEdit' || c === 'obyemApprove') { flipScoped(u, c, on, 'obyem'); return; }
-    /* ⚠️ ЗӨВХӨН БАТЛАГЧ нь багцаар хуваарилагдана. Зохиогчийн тал нь
-       `addRow` бөгөөс тэр нь БҮХ багцад үйлчилдэг ЕРДИЙН эрх хэвээр —
-       түүнийг энд оруулбал одоогийн мөр нэмэгчид хуваарилалтгүй болж
-       ЧИМЭЭГҮЙ эрхээ алдана (`ajilAcl.ts`-ийн ⚠️). */
-    if (c === 'ajilApprove') { flipScoped(u, c, on, 'ajil'); return; }
+    /* ⚠️ `addRow` Ч БАГЦААР (2026-09-25, аудитын засвар). Урьд нь «`addRow` нь
+       БҮХ багцад үйлчилдэг ЕРДИЙН эрх» гэж зөвхөн батлагчийг энд оруулдаг
+       байв — тэр таамаг хүчингүй болсон: мөр нэмэх нь одоо `Huvaari.canAddRow`
+       ба `ajilBatlah.submitAjil`-д `ajilScope(user, 'editor')`-ийг шаарддаг,
+       хуваарилалтгүй бол fail-closed `[]`. Тиймээс энд эрхийг л асаавал
+       унтраалга ON атлаа «+» хаана ч гарахгүй, админ эрх олгосон гэж
+       андуурна. Одоо `editor` үүргийг (нөгөө үүргийн багцыг өвлөж, эс бөгөөс
+       бүх багц) олгож, `addRow` нь `syncCaps`-аар дагана; унтраахад үүрэг
+       ба эрх хоёулаа буцна. Super-т хүрээ үйлчлэхгүй — `flipScoped` эрхийг л
+       шууд солино. */
+    if (c === 'addRow' || c === 'ajilApprove') { flipScoped(u, c, on, 'ajil'); return; }
     if (c === 'chanarAuthor' || c === 'chanarReview') { flipScoped(u, c, on, 'chanar'); return; }
     /* ⚠️ Дэд бүтцийн засвар ч багцаар (2026-09-23) — `butetsAcl.ts`. */
     if (c === 'butets') { flipScoped(u, c, on, 'butets'); return; }

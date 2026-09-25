@@ -153,10 +153,87 @@ export function autoInsert(a: AutoIpc): Record<string, unknown> {
     [P.payDate]: a.day,
     [LINK_FIELDS.obyem]: a.obyem,
     [LINK_FIELDS.une]: a.une,
-    /* ⚠️ Зөрүү нь `dun − une`; `dun` хоосон тул ОДООГООР `null`.
-       Санхүүгийн газар `dun` бичихэд `ipcLink` дахин бодож шинэчилнэ. */
+    /* ⚠️ Зөрүү нь `олгосон ХУРИМТЛАЛ − une` (`autoZoruu`); энэ мөрийн `dun`
+       хоосон тул ОДООГООР `null`.
+       ⚠️ 2026-09-25: урьд нь «`dun` бичихэд `ipcLink` дахин бодно» гэсэн
+       ХУДАЛ амлалт байв — `linkContract`/`linkUpdates`-ийг production-д хэн ч
+       дууддаггүй. Одоо дахин бодох нь `ipcAutoWrite.refreshAutoZoruu`: тухайн
+       багцын дараагийн батлалт бүрд (`syncIpcFromFill`) гэрээний БҮХ AUTO
+       мөрийн зөрүүг шинэчилнэ; `dun` засагдмагц шууд бодуулах бол дуудагч
+       (санхүүгийн засвар) мөн тэр функцийг дуудна. */
     [LINK_FIELDS.zoruu]: null,
   };
+}
+
+/** Мөрийн гэрээний код (`geree_kod`) — `ipc.groupHo`-гийн бүлэглэлтэй ИЖИЛ түлхүүр */
+const codeOf = (r: Row): string => String(r[C.code] ?? '').trim();
+
+/**
+ * Төлбөрийн огноо → эрэмбийн ms. `DateOnly` (`YYYY-MM-DD` мөр) ба epoch тоо
+ * хоёуланг таньна; танихгүй бол ∞ (хамгийн АРД).
+ */
+const payMs = (v: unknown): number => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : Number.POSITIVE_INFINITY;
+  const d = v == null ? null : dayOf(String(v));
+  const t = d ? Date.parse(d) : NaN;
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * ГЭРЭЭНИЙ ГҮЙЦЭТГЭЛИЙН ТӨЛБӨРИЙН ХУРИМТЛАЛ — `cur` мөрийг ОРУУЛААД.
+ *
+ * ⚠️ `ipcLink.linkContract`-ийн `cum`-тай ЯГ ИЖИЛ ДҮРЭМ (2026-09-25): нэг
+ *    гэрээ (`geree_kod`) · зөвхөн «Гүйцэтгэл» төрлийн мөр · IPC ДУГААРААР
+ *    эрэмбэлж (дугааргүй нь АРД), тэнцвэл гүйлгээний огноогоор · `dun`-гүй
+ *    мөр хуримтлалд нэмэгдэхгүй. Урьдчилгаа ОРОХГҮЙ — тэр нь ажлын төлбөр биш.
+ * ⚠️ `cur` өөрөө (AUTO мөр) төрлөөс ҮЛ ХАМААРАН орно — `autoInsert` түүнийг
+ *    үргэлж «Гүйцэтгэл» гэж бичдэг.
+ * ⚠️ Түлхүүр нь МӨРИЙН ЛАВЛАГАА (`===`) — дугаар/ID давхардсан ч зөв.
+ * ⚠️ `ipcLink.ts`-ийг ЭНД ДУУДАХГҮЙ: тэр нь агшин (`snaps`) шаарддаг бөгөөд
+ *    AUTO мөрийн `une` аль хэдийн агшнаас бодогдсон.
+ */
+export function cumPaidThrough(rows: readonly Row[], cur: Row): number | null {
+  const code = codeOf(cur);
+  const work = rows.filter((r) =>
+    r === cur || (r[P.kind] === HO_IPC.kinds.work && codeOf(r) === code));
+  if (!work.includes(cur)) work.push(cur);
+  const ord = (r: Row): number => {
+    const n = num(r[P.ipcNo]);
+    return n == null ? Number.POSITIVE_INFINITY : n;
+  };
+  /* ⚠️ Хасахгүй ЖИШНЭ — `∞ − ∞ = NaN` нь эрэмбийг эвдэнэ (`linkContract`-тэй ижил) */
+  const sorted = work.slice().sort((a, b) => {
+    const oa = ord(a);
+    const ob = ord(b);
+    if (oa !== ob) return oa < ob ? -1 : 1;
+    const da = payMs(a[P.payDate]);
+    const db = payMs(b[P.payDate]);
+    if (da !== db) return da < db ? -1 : 1;
+    return 0;
+  });
+  let acc: number | null = null;
+  for (const r of sorted) {
+    const v = num(r[P.amount]);
+    if (v != null) acc = (acc ?? 0) + v;
+    if (r === cur) return acc;
+  }
+  return null;
+}
+
+/**
+ * AUTO МӨРИЙН ЗӨРҮҮ = олгосон ХУРИМТЛАЛ (энэ мөр хүртэл) − `une`.
+ *
+ * ⚠️ 2026-09-25-ны аудит: урьд нь `dun − une` байв — энэ мөрийн НЭГ удаагийн
+ *    (нэмэгдэл) төлбөрөөс ХУРИМТЛАГДСАН `guits_une`-г хасдаг тул Багц 3.3-ын
+ *    IPC-5 (6.32 тэрбум) дээр −28.46 тэрбум «дутуу олгосон» гэж гардаг байв;
+ *    зөв нь 34.78 − 34.78 = 0 (`ipcLink.ts`-ийн толгойн ⚠️ ХУРИМТЛАЛ дүрэм).
+ * ⚠️ ЭНЭ мөрийн `dun` хоосон бол `null` — «хараахан төлөгдөөгүй», 0 БИШ
+ *    (өмнөх IPC-үүд төлөгдсөн байсан ч энэ актын зөрүү хэмжигдэхгүй).
+ */
+export function autoZoruu(rows: readonly Row[], cur: Row, une: number | null): number | null {
+  if (une == null || num(cur[P.amount]) == null) return null;
+  const paid = cumPaidThrough(rows, cur);
+  return paid == null ? null : paid - une;
 }
 
 /**
@@ -168,14 +245,20 @@ export function autoInsert(a: AutoIpc): Record<string, unknown> {
  * ⚠️ ЗӨРҮҮГ ЭНД бодно: `dun` аль хэдийн бичигдсэн бол (санхүүгийн газар
  * төлбөрөө хийсэн) шинэ обьёмтой тулгаж зөрүү гаргана. `dun` хоосон бол
  * зөрүү `null` — «хараахан төлөгдөөгүй», `0` БИШ.
+ *
+ * ⚠️ `rows` — HO-гийн БҮХ мөр (гэрээний хуримтлалд, `autoZoruu`). Өгөөгүй
+ *    бол зөвхөн `cur` өөрөө (өмнөх IPC-гүй гэрээ) гэж үзнэ.
  */
-export function autoUpdate(cur: Row, a: AutoIpc): Record<string, unknown> {
-  const dun = num(cur[P.amount]);
+export function autoUpdate(
+  cur: Row,
+  a: AutoIpc,
+  rows: readonly Row[] = [cur],
+): Record<string, unknown> {
   return {
     [HO_IPC.oid]: num(cur[HO_IPC.oid]),
     [LINK_FIELDS.obyem]: a.obyem,
     [LINK_FIELDS.une]: a.une,
-    [LINK_FIELDS.zoruu]: dun == null || a.une == null ? null : dun - a.une,
+    [LINK_FIELDS.zoruu]: autoZoruu(rows, cur, a.une),
   };
 }
 
@@ -202,6 +285,6 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
 
   const cur = findAutoRow(rows, key, a.day);
   return cur
-    ? { op: 'update', attrs: autoUpdate(cur, a) }
+    ? { op: 'update', attrs: autoUpdate(cur, a, rows) }
     : { op: 'insert', attrs: autoInsert(a) };
 }

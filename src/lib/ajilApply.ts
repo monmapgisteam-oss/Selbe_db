@@ -95,13 +95,20 @@ export function addPresent(rows: readonly RowLike[], a: NewRow): boolean {
 /**
  * Давхардлыг хасна: аль хэдийн байгаа мөрийг `dropped`, үлдсэнийг `fresh`.
  * ⚠️ Нэг илгээлт ДОТОР ижил мөр хоёр удаа байвал хоёр дахийг нь ч хаяна.
+ * ⚠️ «Ижил» = ИЖИЛ ЭЦЭГ (`parentIdxOf`-оор шийдсэн БАЙРЛАЛ) + № + нэр
+ *    (2026-09-25 аудит). Урьд нь түлхүүр нь эцгийн (№ + нэр) л байсан тул
+ *    Багц 1-ийн блок бүрийн «10 · БУСАД АЖИЛ» дор тус тусад нэмсэн «5 · Хашаа»
+ *    НЭГ мөр болж нийлж, хоёр дахь блокийнх нь чимээгүй хаягддаг байв —
+ *    `addPresent`-ийн (дээрх ⚠️) дүрэмтэй зөрчилтэй. Эцэг олдоогүй (`-1`) мөр
+ *    (№ + нэрээр) хэвээр нэгтгэгдэнэ — тэр нь `insertAdds`-д ямар ч байсан унана.
  */
 export function dedupeAdds(rows: readonly RowLike[], adds: readonly NewRow[]): { fresh: NewRow[]; dropped: NewRow[] } {
   const fresh: NewRow[] = [];
   const dropped: NewRow[] = [];
   const seen = new Set<string>();
   for (const a of adds) {
-    const key = `${a.parentNo.trim()}¦${a.parentWork.trim()}¦${a.no.trim()}¦${a.work.trim()}`;
+    const p = parentIdxOf(rows, a);
+    const key = `${p}¦${a.parentNo.trim()}¦${a.parentWork.trim()}¦${a.no.trim()}¦${a.work.trim()}`;
     if (seen.has(key) || addPresent(rows, a)) { dropped.push(a); continue; }
     seen.add(key);
     fresh.push(a);
@@ -144,6 +151,35 @@ export function fillMsFor(nowMs: number, snapshot: number | null | undefined): n
   return last > today ? last : today;
 }
 
+/** Жааз тулгахад хэрэгтэй ХАМГИЙН БАГА хэлбэр (`loadRows`-ийн үр дүнгийн дэд олонлог) */
+export type FrameLike = {
+  rows: readonly { oid: number; raw?: Record<string, unknown> }[];
+  asOf: number | null;
+  snapshot: number | null;
+};
+
+/**
+ * Хоёр ачаалалт ЯГ ИЖИЛ жааз уу — мөр бүрийн OID ба ТҮҮХИЙ атрибут (`raw`)-аар.
+ *
+ * ⚠️ ЯАГААД MAX OID ХАНГАЛТГҮЙ (2026-09-25 аудит): «Хуваарь»-ийн хадгалалт
+ *    (огноо · Hamaaral · бодит огноо · хүн хүч/машин) нь БАЙГАА жааз руу
+ *    `applyUpdates`-аар бичдэг — шинэ OID үүсгэхгүй. Ачаалсны дараа тийм бичилт
+ *    орвол MAX OID өөрчлөгдөхгүй атлаа манай шинэ жааз ХУУЧИН мөрүүдээс
+ *    угсрагдаж хамгийн сүүлийн жааз болно — тэр огноонууд чимээгүй алга болно.
+ *    Тиймээс бичихийн өмнө ДАХИН ачаалж `raw`-ийг бүтнээр нь тулгана
+ *    (`EditDate` байвал түүгээр ч, байхгүй бол талбар бүрээр илэрнэ).
+ */
+export function sameFrame(a: FrameLike, b: FrameLike): boolean {
+  if (a.asOf !== b.asOf || a.snapshot !== b.snapshot || a.rows.length !== b.rows.length) return false;
+  for (let i = 0; i < a.rows.length; i += 1) {
+    const x = a.rows[i];
+    const y = b.rows[i];
+    if (x.oid !== y.oid) return false;
+    if (JSON.stringify(x.raw ?? null) !== JSON.stringify(y.raw ?? null)) return false;
+  }
+  return true;
+}
+
 /* ══════════════════ СҮЛЖЭЭТЭЙ ХЭСЭГ ══════════════════ */
 
 export type ApplyResult =
@@ -161,9 +197,24 @@ export type ApplyResult =
  *               (зөрвөл татгалзана); жинхэнэ эх нь сервер.
  */
 export async function materializeAdds(args: { pkgKey?: string; ajilOid: number }): Promise<ApplyResult> {
-  /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-ийн ижил шалтгаан. */
+  /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-ийн ижил шалтгаан. Эрхгүй бол
+     ШИДНЭ (доорх `try`-ийн гадна) — энэ нь сүлжээний алдаа биш. */
   requireCap('ajilApprove');
+  /* ⚠️ ШИДЭХГҮЙ, `{ok:false}` БУЦААНА (2026-09-25 аудит): `loadHead` ·
+     `loadPayload` · `loadSchema` · `loadRows` · динамик импорт нь сүлжээний
+     алдаанд ШИДДЭГ байв — `decideAjil` амжилттай (төлөв `approved`) болсны
+     дараа шидэхэд `AjilBatlah` дараалал дахин уншаагүй, «Батлагдсан ·
+     буулгаагүй» хэсэг гарахгүй, «Батлах» дахин дарахад «аль хэдийн
+     шийдвэрлэсэн» гэж гацдаг байлаа. Дуудагч бүр `ok`-оор салбарлана. */
+  try {
+    return await materializeInner(args);
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
 
+/** `materializeAdds`-ийн бие — эрхийн шалгалтын ДАРАА л дуудагдана. */
+async function materializeInner(args: { pkgKey?: string; ajilOid: number }): Promise<ApplyResult> {
   const head = await loadHead(args.ajilOid);
   if (!head) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   if (args.pkgKey && args.pkgKey !== head.pkgKey)
@@ -268,8 +319,19 @@ export async function materializeAdds(args: { pkgKey?: string; ajilOid: number }
   }
 
   /* A.8 — уралдаа: ачаалснаас хойш үйлчилгээний MAX OID өссөн бол (шинэ жааз
-     орсон — өөр батлалт, гүйцэтгэлийн батлалт) бичихгүй */
+     орсон — өөр батлалт, гүйцэтгэлийн батлалт) бичихгүй.
+     ⚠️ A.8а (2026-09-25 аудит): MAX OID нь БАЙГАА жааз руу `applyUpdates`-аар
+     орсон бичилтийг («Хуваарь»-ийн хадгалалт/батлалт) ХАРДАГГҮЙ — сүүлийн
+     жаазыг ДАХИН ачаалж `sameFrame`-ээр тулгана; зөрвөл юу ч бичихгүй (дахин
+     оролдоход шинэ утгуудаар угсарна). Дахин ачаалалтыг MAX OID-оос ӨМНӨ —
+     хямд шалгалт бичилтэд хамгийн ойр. Цонх үлдэнэ (серверт транзакц
+     байхгүй): дахин ачаалалтын ЭХНИЙ хуудас татагдсанаас `applyAdds` бичих
+     хүртэл — үлдсэн хуудсууд + MAX OID хүсэлтийн хугацаа (хэдэн зуун мс-ээс
+     хэдэн секунд). Энэ хугацаанд аль хэдийн татагдсан мөрийг засвал барихгүй. */
   try {
+    const now = await loadRows(pkg, sc);
+    if (!sameFrame(loaded, now))
+      return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
     const mx = await maxOidOf();
     if (mx > maxOid0)
       return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };

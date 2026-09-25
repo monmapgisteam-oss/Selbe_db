@@ -117,6 +117,23 @@ const sameRes = (
   });
 };
 
+/**
+ * `gi` бүлгийн доор `b` блокт огноотой НАВЧ байна уу (2026-09-25 аудит).
+ * ⚠️ Байхгүй бол бүлгийн үр дүнтэй муж нь ӨӨРИЙНХ (`effSpan`) — тэр блок дахь
+ *    ноорог нь `rollUpGroups`-ын дагавар БИШ, `propagate`-ийн шилжүүлсэн
+ *    бүлгийн ӨӨРИЙН муж тул хасаж/алгасаж болохгүй.
+ */
+function hasDatedLeaf(
+  rows: readonly PlanRow[], gi: number, b: number,
+  spansOf: (k: number) => readonly (Span | null)[],
+): boolean {
+  const d0 = rows[gi].depth;
+  for (let k = gi + 1; k < rows.length && rows[k].depth > d0; k++) {
+    if (!rows[k].group && spansOf(k)[b]) return true;
+  }
+  return false;
+}
+
 /** «2026-05-04» → UTC шөнө дунд. Буруу бол `null`. */
 const dayToMs = (s: string): number | null => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
@@ -209,12 +226,15 @@ function writeAdds(pkgKey: string, adds: readonly NewRow[]): void {
  * Ирсэн мөрүүдийг (татсан · буцаагдсан) `adds`-д НИЙЛҮҮЛНЭ — FillNew-ийн
  * `mergeIncomingAdds`-ийн хуулбар: ижил мөр байвал алгасна, oid мөргөлдвөл
  * шинэ сул дугаар, тоолуурыг түлхэнэ.
+ * ⚠️ `parentIdx`-ийг ч харьцуулна (2026-09-25 аудит): блок бүрд ижил нэртэй
+ * эцэг бүлэг («10 · БУСАД АЖИЛ») байхад өөр бүлгийн доорх ижил №·нэртэй
+ * хоёр мөрийн нэг нь татах/буцаахад чимээгүй алга болдог байв.
  */
 function mergeIncoming(prev: readonly NewRow[], incoming: readonly NewRow[]): NewRow[] {
   const used = new Set(prev.map((a) => a.oid));
   const fresh: NewRow[] = [];
   for (const a of incoming) {
-    if (prev.some((x) => x.no === a.no && x.work === a.work && x.parentNo === a.parentNo && x.parentWork === a.parentWork)) continue;
+    if (prev.some((x) => x.no === a.no && x.work === a.work && x.parentNo === a.parentNo && x.parentWork === a.parentWork && x.parentIdx === a.parentIdx)) continue;
     const oid = used.has(a.oid) ? nextTmpOid() : a.oid;
     used.add(oid);
     fresh.push({ ...a, oid });
@@ -230,23 +250,44 @@ function mergeIncoming(prev: readonly NewRow[], incoming: readonly NewRow[]): Ne
  * ноорогийг хаяхгүйн тулд шинэ мөр рүү нь зөөнө (`hyanaltStore`-ийн
  * `rowKeys`/`buildOidMap`-ийн ижил санаа). Олдохгүй мөр зураглалд ОРОХГҮЙ.
  */
+/*
+ * ⚠️ ТҮЛХҮҮР = ӨВӨГ БҮЛГҮҮДИЙН ЗАМ + (№ ¦ нэр) (2026-09-25 аудит). Урьд нь зөвхөн
+ *    (№ ¦ нэр) тул Bagts_1_9f-ийн ~60% давхардсан түлхүүрт А блокийн бүлэгт
+ *    шинээр батлагдсан «3 · Хашаа» Б блокийн ижил нэртэй мөрийн ӨМНӨ орж, Б-гийн
+ *    хадгалаагүй ноорог А-гийн шинэ мөр рүү зөөгддөг байв.
+ * ⚠️ ИЖИЛ ЗАМ дотор шинэ мөр нэмэгдсэн бол (`insertAdds` бүлгийн ЭХЭНД оруулдаг)
+ *    илүүдлийг ЭХНЭЭС нь алгасна — хуучин мөрүүд СҮҮЛИЙН хэсэгтэйгээ хосолно.
+ */
 function remapOids(oldRows: readonly SheetRow[], newRows: readonly SheetRow[]): Map<number, number> {
-  const key = (r: SheetRow) => `${r.no.trim()} ¦ ${r.work.trim()}`;
+  const keysOf = (rs: readonly SheetRow[]): string[] => {
+    const stack: { d: number; k: string }[] = [];
+    return rs.map((r) => {
+      while (stack.length && stack[stack.length - 1].d >= r.depth) stack.pop();
+      const own = `${r.no.trim()} ¦ ${r.work.trim()}`;
+      const k = [...stack.map((s) => s.k), own].join(' › ');
+      if (r.group) stack.push({ d: r.depth, k: own });
+      return k;
+    });
+  };
+  const oldK = keysOf(oldRows);
+  const newK = keysOf(newRows);
   const byKey = new Map<string, number[]>();
-  for (const r of newRows) {
-    const k = key(r);
-    const l = byKey.get(k);
-    if (l) l.push(r.oid); else byKey.set(k, [r.oid]);
-  }
+  newRows.forEach((r, i) => {
+    const l = byKey.get(newK[i]);
+    if (l) l.push(r.oid); else byKey.set(newK[i], [r.oid]);
+  });
+  const oldCnt = new Map<string, number>();
+  for (const k of oldK) oldCnt.set(k, (oldCnt.get(k) ?? 0) + 1);
   const used = new Map<string, number>();
   const out = new Map<number, number>();
-  for (const r of oldRows) {
-    const k = key(r);
+  oldRows.forEach((r, i) => {
+    const k = oldK[i];
     const l = byKey.get(k);
-    if (!l) continue;
+    if (!l) return;
+    const skip = Math.max(0, l.length - (oldCnt.get(k) ?? 0));
     const n = used.get(k) ?? 0;
-    if (n < l.length) { out.set(r.oid, l[n]); used.set(k, n + 1); }
-  }
+    if (skip + n < l.length) { out.set(r.oid, l[skip + n]); used.set(k, n + 1); }
+  });
   return out;
 }
 type AddForm = { no: string; work: string; vol: string; unit: string };
@@ -604,6 +645,9 @@ export function Huvaari({
    *    ойд. Батлахгүйгээр хуудсаа сэргээвэл ул мөргүй арилна.
    */
   const [previewing, setPreviewing] = useState(false);
+  /** `previewing`-ийн одоогийн утга — async урсгалд уншихад (2026-09-25) */
+  const previewingRef = useRef(previewing);
+  useEffect(() => { previewingRef.current = previewing; }, [previewing]);
 
   /**
    * ЗАСВАР ТҮГЖИГДСЭН ҮҮ — хүлээгдэж буй илгээлт байхад ГАРААР засахгүй.
@@ -664,6 +708,14 @@ export function Huvaari({
    * шинэчлээгүй — «Шинэчлэх» товч хүлээж байна (2026-09-24 аудит #1).
    */
   const [ajApplied, setAjApplied] = useState(false);
+  /**
+   * АЖИГЛАЖ БУЙ илгээлт — хүлээгдэхээ больсон ч «Буулгасан» болоогүй (2026-09-25 аудит).
+   * ⚠️ `refreshAjil` илгээлт `pending`-ээс гармагц `ajSub`-ийг `null` болгодог тул
+   *    `materializeAdds` 500-аар багцалж бичих хэдэн секундийн завсарт санал асуулга
+   *    таарвал 30 с-ийн мөчлөг ЗОГСОЖ, «хараахан буугаагүй» мэдэгдэл мөнхөд үлдэж,
+   *    шинэ мөрүүд хэзээ ч татагдахгүй байв. `approved` хэвээр байхад үргэлжлүүлнэ.
+   */
+  const [ajTrack, setAjTrack] = useState<number | null>(null);
   /** `adds`-ын одоогийн утга — async урсгалд синхрон уншихад (LS-д шууд бичих) */
   const addsStRef = useRef(addsSt);
   useEffect(() => { addsStRef.current = addsSt; }, [addsSt]);
@@ -715,6 +767,8 @@ export function Huvaari({
    */
   const [aDraft, setADraft] = useState<ADraft>(new Map());
   const [resDraft, setResDraft] = useState<ResDraft>(new Map());
+  /* ⚠️ Сонгосон мөрийн OID (2026-09-25 аудит) — `PlanRow.i` БИШ: нэмэлт мөр орох/гарах,
+     шинэ жааз татагдахад индекс шилжиж өөр мөр тодордог байв. */
   const [sel, setSel] = useState<number | null>(null);
 
   /* ══════ САРЫН ОБЬЁМ (тусдаа үйлчилгээ, `huvaariObyem.ts`) ══════ */
@@ -773,7 +827,11 @@ export function Huvaari({
    *    огноог ЗАСАХ хуудас тул хаалттай эхлэх нь ажлыг нэмэгдүүлнэ.
    */
   const [lvl, setLvl] = useState(0);
-  /** Popup хуанли нээгдсэн мөр (`PlanRow.i`) */
+  /**
+   * Popup хуанли нээгдсэн мөрийн OID.
+   * ⚠️ 2026-09-25 аудит: урьд нь `PlanRow.i` (индекс) байсан тул 30 с-ийн мөчлөг
+   *    батлагдсан нэмэлт мөрийг оруулахад индекс шилжиж, «Тавих» ӨӨР ажилд бичдэг байв.
+   */
   const [modal, setModal] = useState<number | null>(null);
 
   /**
@@ -787,6 +845,9 @@ export function Huvaari({
    * БҮЛГЭЭР ШҮҮХ — сонгосон бүлэг ба ДОТОРХ бүх ажлыг л үлдээнэ.
    * ⚠️ Утга нь `PlanRow.i` (эх массивын индекс), `oid` БИШ: ижил нэртэй
    *    бүлэг олон байж болох ба индекс нь модны байрлалыг ч заана.
+   * ⚠️ 2026-09-25-нд ЭРГҮҮЛСЭН — утга нь бүлгийн OID. OID ч мөр бүрд давтагдашгүй
+   *    (ижил нэртэй бүлгийг ялгана), харин индекс нь нэмэлт мөр бүлгийн эхэнд
+   *    орох/хасагдахад шилжиж, багц солиход ч үлдэж ӨӨР салбарыг шүүдэг байв.
    */
   const [fGrp, setFGrp] = useState<'all' | number>('all');
 
@@ -839,7 +900,11 @@ export function Huvaari({
    *    бүх блок (блокгүй бичиглэл). Чирж холбоход ИДЭВХТЭЙ блок (синтетик ганц
    *    блоктой багцад `null` — `@` гарахгүй); сум дээр дарахад тэр сумны уялдааных.
    */
-  const [linkAsk, setLinkAsk] = useState<{ si: number; ti: number; dblk: number | null } | null>(null);
+  /* ⚠️ `so`/`to` — урд · хамаарагч мөрийн OID (2026-09-25 аудит, индекс шилжихээс) */
+  const [linkAsk, setLinkAsk] = useState<{ so: number; to: number; dblk: number | null } | null>(null);
+  /** Popup/холбох цонх нээлттэй эсэх — async урсгалд (`refreshAjil`, 2026-09-25) */
+  const uiOpenRef = useRef(false);
+  useEffect(() => { uiOpenRef.current = modal != null || linkAsk != null; }, [modal, linkAsk]);
   /**
    * ЧИРЭЛТИЙГ БУЦААХ мэдээлэл — popup-ыг ЦУЦЛАХАД сэргээнэ.
    *
@@ -887,6 +952,8 @@ export function Huvaari({
     let alive = true;
     setBusy(true); setErr(''); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
+    /* ⚠️ Бүлгийн шүүлт · холбох цонх ч багцынх (2026-09-25 аудит) */
+    setFGrp('all'); setLinkAsk(null);
     setADraft(new Map()); setResDraft(new Map());
     /* ⚠️ Түвшний товчийг ч тэглэнэ — багц бүр ӨӨР гүнтэй тул өмнөх багцын
        сонголт шинэ модонд утгагүй (эвхэлт нь дээр цэвэрлэгдсэн). */
@@ -908,6 +975,7 @@ export function Huvaari({
     /* Нэмэлт ажил (2026-09-24): маягт хаана, баннер тэглэнэ, локал ноорогийг сэргээнэ */
     setAddFor(null); setAddForm(EMPTY_FORM);
     setAjSub(null); setAjErr(''); setAjNote(''); setAjBack(null); setAjStuck(0); setAjApplied(false);
+    setAjTrack(null);
     const restored = readAdds(pkg.key);
     pushTmpOid(restored);
     setAddsSt({ key: pkg.key, list: restored });
@@ -1209,7 +1277,7 @@ export function Huvaari({
   /** Бүлгийн сонголт — модны дарааллаар, гүнээр нь догол мөртэй */
   const groups = useMemo(
     () => plan.filter((r) => r.group).map((r) => ({
-      i: r.i,
+      oid: r.oid,
       label: `${'  '.repeat(r.depth)}${r.no} ${r.work}`.trimEnd(),
     })),
     [plan],
@@ -1222,7 +1290,7 @@ export function Huvaari({
    */
   const scoped = useMemo(() => {
     if (fGrp === 'all') return plan;
-    const at = plan.findIndex((r) => r.i === fGrp);
+    const at = plan.findIndex((r) => r.oid === fGrp);
     if (at < 0) return plan;
     const out = [plan[at]];
     for (let k = at + 1; k < plan.length; k++) {
@@ -1395,7 +1463,7 @@ export function Huvaari({
    * цонхонд хүчээр багтаана.
    */
   const selVis = useMemo(
-    () => (sel == null ? -1 : visible.findIndex((r) => r.i === sel)),
+    () => (sel == null ? -1 : visible.findIndex((r) => r.oid === sel)),
     [visible, sel],
   );
   const winFrom = selVis >= 0 ? Math.min(win.from, selVis) : win.from;
@@ -1447,6 +1515,9 @@ export function Huvaari({
     setDraft((d) => {
       const m = new Map(d);
       for (const [i, spans] of ch) {
+        /* ⚠️ Батлагдаагүй НЭМЭЛТ мөр (сөрөг oid) ноорогт ОРОХГҮЙ (2026-09-25 аудит) —
+           `save` серверээс олохгүй тул илгээлт батлахад `staleN`-д мөнхөд гацна. */
+        if (plan[i].oid < 0) continue;
         /* ⚠️ СЕРВЕРИЙН УТГАТАЙ ИЖИЛ бол ноорогт ОРУУЛАХГҮЙ, байсан бол ХАСНА
            (2026-09-21): урьд нь 1px гулссан товшилт (`onMove` d=0) мөрийг ижил
            утгаар ноорогт оруулж «хадгалаагүй 1» гэж худал тэмдэглэдэг байв;
@@ -1470,7 +1541,20 @@ export function Huvaari({
         for (let k = i + 1; k < plan.length && plan[k].depth > g.depth; k += 1) {
           if (!plan[k].group && m.has(plan[k].oid)) { kid = true; break; }
         }
-        if (!kid) m.delete(g.oid);
+        if (kid) continue;
+        /* ⚠️ ӨӨРИЙН МУЖ НЬ ШИЛЖСЭН БҮЛЭГ ҮЛДЭНЭ (2026-09-25 аудит). Бүлэг ноорогт
+           `rollUpGroups`-оос ГАДНА `propagate`-оор ч ордог: уялдаатай бүлгийн тухайн
+           блокт огноотой навч байхгүй бол `effSpan` нь ӨӨРИЙН мужийг ашигладаг тул
+           гинж ТЭР мужийг шилжүүлнэ. Урьд нь энд хасагдаж, хамаарагчид нь шинэ
+           огноогоор хөдөлсөн атлаа бүлэг өөрөө хуучиндаа үлддэг байв. Навчгүй
+           блокт серверээс зөрсөн утга = өөрийн шилжилт → үлдээнэ; навчтай блокийн
+           зөрүү нь дээрх нэгтгэлийн дагавар тул хэвээр хасна. Навч нь ноорогт
+           байхгүй (`kid` худал) тул тэдний утга = `base`. */
+        const gs = m.get(g.oid)!;
+        const bs = base[i]?.spans ?? [];
+        const ownShift = gs.some((sp, b) => !sameSpan(sp, bs[b])
+          && !hasDatedLeaf(plan, i, b, (k) => base[k]?.spans ?? []));
+        if (!ownShift) m.delete(g.oid);
       }
       return m;
     });
@@ -1583,6 +1667,10 @@ export function Huvaari({
     /* ⚠️ `locked` — popup-ийн товчнууд аль хэдийн идэвхгүй ч ЭНЭ нь огноо
        өөрчлөгдөх ЦОРЫН ГАНЦ юүлүүр тул түгжээг энд ч барина. */
     if (busy || locked) return;
+    /* ⚠️ Батлагдаагүй НЭМЭЛТ мөр (сөрөг oid, 2026-09-25 аудит) — огноо · уялдаа
+       ТАВИХГҮЙ: ноорогт орвол «Батлуулах» түүнийг илгээж, батлахад `save`
+       мөрийг олохгүй (`staleN`) тул илгээлт хэзээ ч батлагдахгүй. */
+    if (oid < 0) return;
     const at = plan.findIndex((x) => x.oid === oid);
     if (at < 0) return;
     let deps2 = deps;
@@ -1603,7 +1691,18 @@ export function Huvaari({
          бүлэг (hierRelated) — сүүлийнх нь гинжин эргэлт үүсгэдэг байсныг
          2026-09-03-ны review илрүүлсэн. Чимээгүй хасахгүй, бүхэлд нь няцаана. */
       const me = plan[at].des;
-      const badDep = deps2.some((d) => {
+      /* ⚠️ Зөвхөн ШИНЭ уялдааг шалгана (2026-09-25 review): `reaches` нь бүлгийн
+         гишүүнчлэлээр консерватив (`affectedCodes`-ийн ⚠️) тул хуучин, аль
+         хэдийн хадгалагдсан уялдаа ч «дугуй» гэж унаж, тэр мөрийн уялдааг
+         ХАСАХ/өөрчлөх засвар бүр няцаагддаг байв. Байгаа уялдааг үлдээх/хасах нь
+         шинэ эргэлт үүсгэхгүй. Төрөл/хоцрогдол солих нь ирмэгийг өөрчлөхгүй тул
+         зөвхөн КОДООР тулгана.
+         ⚠️ Блокийг (@N) харгалзахгүй (2026-09-25): `reaches`/`hierRelated` нь
+         блок үл тоодог тул X@1-ийг X@2 болгож зөөхөд шинэ эргэлт үүсэхгүй —
+         (код, блок)-оор тулгавал хуучин уялдааг блокийг нь солиход л няцаадаг
+         байв. */
+      const had = new Set(plan[at].deps.map((d) => d.code));
+      const badDep = deps2.filter((d) => !had.has(d.code)).some((d) => {
         const pi = byCode.get(d.code);
         if (pi != null && hierRelated(plan, at, pi)) return true;
         return me != null && reaches(plan, byCode, me, d.code);
@@ -1755,7 +1854,7 @@ export function Huvaari({
       const b = lanes.getBoundingClientRect();
       return { x: ev.clientX - b.left, y: ev.clientY - b.top };
     };
-    setSel(r.i);
+    setSel(r.oid);
     setErr('');
     setLink({ i: r.i, ...pos(e) });
     const mv = (ev: PointerEvent) => setLink({ i: r.i, ...pos(ev) });
@@ -1798,7 +1897,7 @@ export function Huvaari({
          Аль хэдийн холбогдсон бол цонх нь тэр уялдааг ЗАСНА (давхардуулахгүй). */
       /* ⚠️ БЛОК ТУС БҮРИЙН уялдаа (2026-09-24): чирж холбосон хамаарал зөвхөн
          ИДЭВХТЭЙ блокт (`@N`). Синтетик ганц блоктой багцад блокгүй — `@` гарахгүй. */
-      setLinkAsk({ si: r.i, ti, dblk: sc?.synthetic || n === 1 ? null : blk });
+      setLinkAsk({ so: r.oid, to: t.oid, dblk: sc?.synthetic || n === 1 ? null : blk });
     };
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
@@ -1917,7 +2016,7 @@ export function Huvaari({
        сөрөг oid орвол `save` серверээс мөрийг олохгүй. Батлагдсаны дараа
        серверийн oid-тай ирж ердийн мөр болно. */
     if (r.oid < 0) return;
-    if (r.group) { setSel(r.i); return; }
+    if (r.group) { setSel(r.oid); return; }
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -1935,7 +2034,7 @@ export function Huvaari({
       snap: new Map(plan.map((x) => [x.oid, x.spans[blk]] as const)),
       obSnap: new Map(obDraft), obResSnap: new Map(obResDraft),
     });
-    setSel(r.i);
+    setSel(r.oid);
   };
 
   const onMove = (e: PEvt<HTMLElement>) => {
@@ -1987,7 +2086,7 @@ export function Huvaari({
     if (drag && (moved.current || blank)) {
       const r = plan.find((x) => x.oid === drag.oid);
       if (r) {
-        setModal(r.i);
+        setModal(r.oid);
         /*
          * ⚠️ ЧИРЭЛТЭЭС ӨМНӨХ БАЙДЛЫГ ХАДГАЛНА — цонхыг ЦУЦЛАХАД буцаана
          * (2026-09-08, хэрэглэгчийн мэдээлсэн алдаа: «X дарж цуцлахад
@@ -2029,8 +2128,11 @@ export function Huvaari({
 
   /* ── Хадгалах ── */
 
-  const save = useCallback(async () => {
-    if (!sc || !dirtyN || busy) return;
+  /* ⚠️ БУЦААХ УТГА (2026-09-25 аудит): `true` = бичих алхам дууслаа (ноорог
+     цэвэрлэгдсэн/тэнцээгүйг үлдээсэн), `false` = ЭХЛЭЭГҮЙ эсвэл УНАСАН (ноорог
+     бүтнээрээ үлдэв). Батлах эффект `busy`-ийн хөдөлгөөнөөс биш, үүнээс мэднэ. */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!sc || !dirtyN || busy) return false;
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ Ноорогоо ОДОО барьж авна: async явцад орсон (онолын хувьд —
        оролтууд busy-д хаалттай ч) шинэ засварыг төгсгөлд нь УСТГАХГҮЙН тулд
@@ -2063,7 +2165,7 @@ export function Huvaari({
         .filter((oid) => !byOid.has(oid)).length;
       if (staleN) {
         setErr(tr('{0} мөр энэ хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Хуваарь бичигдсэнгүй; хуудсаа сэргээгээд дахин илгээнэ үү.', num(staleN)));
-        return;
+        return false;
       }
       const upd: Record<string, unknown>[] = [];
       for (const [oid, spans] of draft) {
@@ -2336,7 +2438,7 @@ export function Huvaari({
         setADraft((m0) => { const m = new Map(m0); for (const k of tookA) m.delete(k); return m; });
         setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) m.delete(k); return m; });
         setNote(tr('Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.'));
-        return;
+        return true;
       }
       /*
        * ⚠️ АГШИН СОЛИГДСОН ЭСЭХ (2026-08-29). «Гүйцэтгэл бөглөх» нийтлэх бүрд
@@ -2454,8 +2556,10 @@ export function Huvaari({
         errs.push(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.', num(resDropped)));
       }
       if (errs.length) setErr(errs.join(' · '));
+      return true;
     } catch (e) {
       setErr(String((e as Error).message || e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -2483,6 +2587,8 @@ export function Huvaari({
    *    багцын давхар дуудлагыг ч барина) тул ганц механизм үлдээв.
    */
   const flowSeq = useRef(0);
+  /** Сүүлд ачаалсан хүлээгдэж буй илгээлт (багцын түлхүүртэй) — алга болсныг илрүүлэхэд (2026-09-25) */
+  const flowPendRef = useRef<{ key: string; oid: number | null }>({ key: '', oid: null });
   /* ⚠️ ОДООГИЙН багц (2026-09-21): батлах гинжний сүүлийн алхам ХУУЧИН
      closure-ийн `refreshFlow`-ыг дууддаг тул багц солигдсоны ДАРАА ч дугаар
      нь хамгийн сүүлийнх болж, өмнөх багцын pending шинэ багцад наалддаг байв.
@@ -2490,7 +2596,9 @@ export function Huvaari({
   const pkgKeyRef = useRef(pkg.key);
   pkgKeyRef.current = pkg.key;
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
-  const refreshFlow = useCallback(async () => {
+  /* ⚠️ `noRefetch` — дуудагч мөрийг дөнгөж серверээс татсан/татах бол (батлах гинж,
+     татах) давхар ачаалахгүй (2026-09-25). */
+  const refreshFlow = useCallback(async (opt?: { noRefetch?: boolean }) => {
     const my = ++flowSeq.current;
     const key = pkg.key;
     const live = () => my === flowSeq.current && key === pkgKeyRef.current;
@@ -2512,6 +2620,27 @@ export function Huvaari({
       const p = ready ? await loadPending(pkg.key) : null;
       if (!live()) return;
       setPending(p);
+      /*
+       * ⚠️ ХҮЛЭЭГДЭЖ БАЙСАН ИЛГЭЭЛТ АЛГА БОЛОВ (2026-09-25 аудит) — өөр хүн
+       *    шийдсэн/татсан. Урьд нь зөвхөн урсгалын төлөв шинэчлэгддэг байв:
+       *    (1) батлагчийн УРЬДЧИЛАН ХАРСАН агуулга «хадгалаагүй N» болж үлдэж,
+       *    «Батлуулах» идэвхжин БУЦААГДСАН саналыг өөрийн нэрээр дахин илгээх
+       *    боломжтой байв — харалтыг цэвэрлэнэ; (2) зохиогчийн хуудсанд
+       *    «батлагдсан» гарсан атлаа хуанли хуучин огноотой үлддэг байв —
+       *    серверээс мөр · задаргааг дахин татна.
+       */
+      if (ready) {
+        const was = flowPendRef.current;
+        flowPendRef.current = { key, oid: p?.oid ?? null };
+        if (was.key === key && was.oid != null && was.oid !== (p?.oid ?? null)) {
+          if (previewingRef.current) {
+            setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
+            setADraft(new Map()); setResDraft(new Map());
+            setPreviewing(false);
+          }
+          if (!opt?.noRefetch) void refetchRef.current().catch(() => { /* дараагийн ачаалалтаар */ });
+        }
+      }
       /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
          хоёуланг зэрэг харуулбал аль нь одоогийн байдал болох нь ойлгомжгүй. */
       const last = ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null;
@@ -2635,7 +2764,8 @@ export function Huvaari({
 
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
-    if (!dirtyN || busy) return;
+    /* ⚠️ Урьдчилан харж байхад ИЛГЭЭХГҮЙ (2026-09-25 аудит) — ноорог нь бусдын санал */
+    if (!dirtyN || busy || previewing) return;
     /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17): батлах
        үеийн `save` тэдгээрийг алгасдаг (`unbal`) тул ноорог үлдэж батлах гинж
        «эх хуудсанд бичигдсэнгүй» гэж мөнхөд гацдаг байв. */
@@ -2707,7 +2837,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [dirtyN, dirtyRows, busy, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan]);
+  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -2761,6 +2891,8 @@ export function Huvaari({
     const d: Draft = new Map();
     /** Навч мөрийн ноорог — индексээр; бүлгүүдийг үүнээс дахин нэгтгэнэ */
     const ch0 = new Map<number, (Span | null)[]>();
+    /** Илгээлтэд орсон БҮЛГИЙН мөрүүд — навчгүй блокийн өөрийн мужийг доор авна */
+    const gOwn: string[] = [];
     for (const [k, arr] of Object.entries(p.spans)) {
       const oid = Number(k);
       const bs = p.base?.spans[k];
@@ -2770,7 +2902,7 @@ export function Huvaari({
          илгээлт нэг бүлгийн ӨӨР хүүхдийг баталсан бол бүлгийн серверийн утга
          зөрж, «зэрэгцээ өөрчлөлт» гэж ШААРДЛАГАГҮЙ зогсдог байв. Бүлгийг доор
          серверийн ОДООГИЙН хүүхдээс дахин нэгтгэнэ; «N нүд» тоонд оруулахгүй. */
-      if (now?.group) continue;
+      if (now?.group) { gOwn.push(k); continue; }
       const v = arr.map((s, b) => {
         const v0 = s ? { start: s.start, end: s.end } : null;
         if (!bs || !now) return v0;
@@ -2793,6 +2925,38 @@ export function Huvaari({
         const g = curPlanRows[i];
         if (g?.group) d.set(g.oid, spans);
       }
+    }
+    /*
+     * ⚠️ БҮЛГИЙН ӨӨРИЙН МУЖ (2026-09-25 аудит). Дээрх «тулгахгүй» дүрэм нь
+     *    НЭГТГЭЛИЙН дагаварт л хамаарна. Огноотой навчгүй блокт бүлгийн муж нь
+     *    ӨӨРИЙНХ (`effSpan`) бөгөөд уялдаатай бүлгийг `propagate` ТЭР мужаар
+     *    шилжүүлдэг — алгасвал батлахад хамаарагчид нь бичигдэж, бүлэг өөрөө
+     *    бичигдэхгүй байв. Тэр блокуудыг навчийн ижил суурь-тулгалтаар авна.
+     */
+    for (const k of gOwn) {
+      const oid = Number(k);
+      const now = cur.get(oid);
+      const arr = p.spans[k];
+      if (!now || !arr) continue;
+      const bs = p.base?.spans[k];
+      const next = (d.get(oid) ?? now.spans).slice();
+      let own = false;
+      arr.forEach((s, b) => {
+        if (b >= n) return;
+        if (hasDatedLeaf(curPlanRows, now.i, b, (kk) => ch0.get(kk) ?? curPlanRows[kk].spans)) return;
+        const v0 = s ? { start: s.start, end: s.end } : null;
+        const nb = now.spans[b] ?? null;
+        if (bs) {
+          const b0 = bs[b] ?? null;
+          /* Зохиогч хөндөөгүй → серверийн одоогийнх */
+          if (sameSpan(v0, b0)) return;
+          if (!sameSpan(b0, nb) && !sameSpan(v0, nb)) conflicts += 1;
+        }
+        if (sameSpan(v0, nb)) return;
+        next[b] = v0;
+        own = true;
+      });
+      if (own) d.set(oid, next);
     }
     const hm = new Map<number, string>();
     for (const [k, v] of Object.entries(p.deps)) {
@@ -2963,8 +3127,11 @@ export function Huvaari({
       const hist = await loadAjilHistory(want, 500);
       if (!live()) return;
       let applied = false;
+      /** Батлагдсан ч хараахан буугаагүй — мөчлөгийг үргэлжлүүлнэ (`ajTrack`) */
+      let midway = false;
       for (const h0 of hist) {
         if (lookBack && h0.oid === prevOid && h0.status === AJIL_STATUS.applied) applied = true;
+        if (lookBack && h0.oid === prevOid && h0.status === AJIL_STATUS.approved) midway = true;
         if (h0.status !== AJIL_STATUS.returned) continue;
         if (authOn && h0.author !== me) continue;
         /* ⚠️ Мөр нэмэх эрхгүй хүнд буулгахгүй — тэр `adds`-аа илгээж ч чадахгүй */
@@ -2986,6 +3153,12 @@ export function Huvaari({
         if (!live()) return;
         setAjBack({ n: pl?.adds.length ?? 0, by: h0.approver ?? '', reason: h0.reason ?? '' });
       }
+      if (!live()) return;
+      /* ⚠️ Зөвхөн ДАГАЖ БУЙ илгээлтийг шийдсэн үед цэвэрлэнэ (2026-09-25 review):
+         урьд нь `refreshAjil(null)` (илгээх · татах · effect) бүр `ajTrack`-ийг
+         арилгаж, батлагдсан-буугаагүй илгээлтийн `applied`-ийг хэзээ ч барихгүй
+         болгодог байв. */
+      setAjTrack((t) => (midway ? prevOid : prevOid != null && t === prevOid ? null : t));
       if (applied) {
         /*
          * ⚠️ ШИНЭ ЖААЗ = БҮХ OID ШИНЭ (2026-09-24 аудит #1). Ноорог (`draft` ·
@@ -3001,7 +3174,9 @@ export function Huvaari({
          *      ноорогийг дахин уншиж шинэ мөрөнд тулгана (хуучин oid-той нүд
          *      «хуучирсан» гэж хасагдана — өмнөх мэдэгдэж буй байдал, устгал биш).
          */
-        if (dirtyNRef.current > 0) {
+        /* ⚠️ Popup/холбох цонх НЭЭЛТТЭЙ бол ч хойшлуулна (2026-09-25 аудит) — шинэ
+           жаазад бүх oid солигдох тул цонх хаагдаж бичсэн утга алдагдана. */
+        if (dirtyNRef.current > 0 || uiOpenRef.current) {
           setAjApplied(true);
         } else {
           hdReady.current = null; hdLastSeenAt.current = 0;
@@ -3028,17 +3203,29 @@ export function Huvaari({
       hdReady.current = null; hdLastSeenAt.current = 0;
       const srv = await refetchRef.current();
       const map = remapOids(oldRows, srv.rows);
-      let lost = 0;
-      const mv = <V,>(m: Map<number, V>): Map<number, V> => {
+      /* ⚠️ СИНХРОН БОДНО (2026-09-25 аудит): урьд нь `lost`-ыг функц-шинэчлэгч
+         дотор тоолж, дараалалд оруулсны ДАРАА шууд уншдаг байв — React тэдгээрийг
+         хожим ажиллуулдаг тул тоо 0 хэвээр, ноорог хаягдсан атлаа «зөөгдөв» гэж
+         мэдэгддэг байлаа. Одоогийн Map-уудыг (`hdMapsRef`) шууд хөрвүүлнэ; тоо нь
+         давхардалгүй МӨР (oid). */
+      const lostOids = new Set<number>();
+      const mv = <V,>(m: ReadonlyMap<number, V>): Map<number, V> => {
         const o = new Map<number, V>();
         for (const [k, v] of m) {
           const nk = map.get(k);
-          if (nk == null) { lost += 1; continue; }
+          if (nk == null) { lostOids.add(k); continue; }
           o.set(nk, v);
         }
         return o;
       };
-      setDraft(mv); setHam(mv); setADraft(mv); setResDraft(mv);
+      const cur = hdMapsRef.current;
+      setDraft(mv(cur.draft)); setHam(mv(cur.ham)); setADraft(mv(cur.aDraft)); setResDraft(mv(cur.resDraft));
+      const lost = lostOids.size;
+      /* ⚠️ Сонголт · бүлгийн шүүлт oid-оор (2026-09-25) — шинэ oid руу зөөнө; нээлттэй
+         цонхыг хаана (буцаах мэдээлэл нь хуучин oid-той). */
+      setSel((o) => (o == null ? null : map.get(o) ?? null));
+      setFGrp((g) => (g === 'all' ? g : map.get(g) ?? 'all'));
+      setModal(null); setLinkAsk(null); undoRef.current = null;
       setAjApplied(false);
       setAjNote(lost
         ? tr('Хуудас шинэчлэгдлээ — {0} мөрийн хадгалаагүй ноорог шинэ мөрөнд олдсонгүй тул хаягдав.', num(lost))
@@ -3052,12 +3239,13 @@ export function Huvaari({
   useEffect(() => { void refreshAjil(null); }, [refreshAjil]);
   /* ⚠️ Хүлээгдэж байхад 30 сек тутам — шийдвэр гарахад зохиогчийн нээлттэй
      хуудас өөрөө мэдэж мөрийг серверээс татна (`applied`). */
+  /* ⚠️ `ajTrack` (2026-09-25 аудит) — батлагдсан ч буугаагүй илгээлтийг ч дагана */
   useEffect(() => {
-    if (!ajSub) return;
-    const oid = ajSub.oid;
+    const oid = ajSub?.oid ?? ajTrack;
+    if (oid == null) return;
     const t = window.setInterval(() => { void refreshAjil(oid); }, 30_000);
     return () => window.clearInterval(t);
-  }, [ajSub, refreshAjil]);
+  }, [ajSub, ajTrack, refreshAjil]);
 
   /**
    * «Нэмэлт ажил батлуулах» — үндсэн өгөгдөлд ЮУ Ч бичихгүй.
@@ -3069,14 +3257,23 @@ export function Huvaari({
    */
   const sendAjil = useCallback(async () => {
     if (!adds.length || ajBusy) return;
+    /* ⚠️ БАГЦЫГ ОДОО барина (2026-09-25 аудит): `setAdds` нь дарсан агшны `pkg.key`-ийг
+       барьдаг тул хүсэлт явж байхад багц солиход Б-гийн мөрүүд харагдахаа больж,
+       А-гийн LS илгээсэн мөрөө хадгалсаар буцаж ирдэг байв. Одоо А-г (`want`) шууд
+       LS-д бичиж, төлөвийг ЗӨВХӨН тэр багцынх хэвээр бол шинэчилнэ. Зөвхөн
+       ИЛГЭЭСЭН мөрүүдийг хасна — завсарт нэмсэн нь үлдэнэ. */
+    const want = pkg.key;
+    const sent = new Set(adds.map((a) => a.oid));
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const r = await submitAjil({
-        pkgKey: pkg.key, pkgGroup: pkg.group, author: user?.username ?? '',
-        payload: { v: 1, pkgKey: pkg.key, adds },
+        pkgKey: want, pkgGroup: pkg.group, author: user?.username ?? '',
+        payload: { v: 1, pkgKey: want, adds },
       });
       if (!r.ok) { setAjErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
-      setAdds(() => []);
+      const st = addsStRef.current;
+      writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
+      setAddsSt((s) => (s.key === want ? { key: want, list: s.list.filter((a) => !sent.has(a.oid)) } : s));
       setAddFor(null);
       setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshAjil(null);
@@ -3085,19 +3282,30 @@ export function Huvaari({
     } finally {
       setAjBusy(false);
     }
-  }, [adds, ajBusy, pkg.key, pkg.group, user, setAdds, refreshAjil]);
+  }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil]);
 
   /** ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч алдаатай илгээлтээ буцааж авна; мөрүүд `adds` руу */
   const withdrawAjilHere = useCallback(async () => {
     if (!ajSub || ajBusy) return;
     if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'))) return;
+    /* ⚠️ Багцыг ОДОО барина (2026-09-25 аудит) — `sendAjil`-ийн ижил шалтгаан */
+    const want = pkg.key;
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const pl = await loadAjilPayload(ajSub.oid);
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
       if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
-      if (pl?.adds.length) setAdds((prev) => mergeIncoming(prev, pl.adds));
+      /* ⚠️ LS-д СИНХРОН (`refreshAjil`-ийн #5 дүрэм) — багц солигдсон ч А-д хадгалагдана */
+      if (pl?.adds.length) {
+        const st = addsStRef.current;
+        const merged = mergeIncoming(st.key === want ? st.list : readAdds(want), pl.adds);
+        writeAdds(want, merged);
+        if (st.key === want) {
+          setAddsSt((s) => (s.key === want ? { key: want, list: merged } : s));
+          addsStRef.current = { key: want, list: merged };
+        }
+      }
       setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
       await refreshAjil(null);
     } catch (e) {
@@ -3105,7 +3313,7 @@ export function Huvaari({
     } finally {
       setAjBusy(false);
     }
-  }, [ajSub, ajBusy, user, setAdds, refreshAjil]);
+  }, [ajSub, ajBusy, user, pkg.key, refreshAjil]);
 
   /**
    * БҮЛЭГТ ШИНЭ АЖИЛ НЭМЭХ — шалгалт FillNew-ийн 2026-09 хувилбартай ҮГЧЛЭН ижил.
@@ -3188,7 +3396,7 @@ export function Huvaari({
          Мөн энэ нэг удаад хоослохгүй (`hdSkipUnlockOnce`) — агуулга нь
          зохиогчийн буцааж авсан ажил. */
       hdSkipUnlockOnce.current = true;
-      await refreshFlow();
+      await refreshFlow({ noRefetch: true });
       /* Серверийн одоогийн мөртэй тулгаж буулгана — зөрчлийн тоо бодит байна */
       const srv = await refetchServer();
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan, srv.res);
@@ -3357,7 +3565,7 @@ export function Huvaari({
       setPreviewing(false);
       setFlowBox(null); setFlowTxt('');
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));
-      await refreshFlow();
+      await refreshFlow({ noRefetch: true });
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -3410,7 +3618,7 @@ export function Huvaari({
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
               : '');
             if (!r.ok) setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
-            await refreshFlow();
+            await refreshFlow({ noRefetch: true });
           } finally {
             setBusy(false);
           }
@@ -3418,7 +3626,24 @@ export function Huvaari({
         return;
       }
       savedRef.current = true;
-      void save();
+      /*
+       * ⚠️ УНАЛТЫГ `save`-ИЙН БУЦААХ УТГААР (2026-09-25 аудит). Урьд нь энэ эффект
+       *    `busy` хөдлөхөд дахин ажиллана гэж найддаг байв. Гэтэл `staleN` зам
+       *    `setBusy(true)` → `false`-ийг НЭГ синхрон тикт хийдэг тул React нэгтгэж
+       *    `busy` өөрчлөгдөөгүй мэт болно: эффект дахин ажиллахгүй, `approving` ба
+       *    `savedRef` гацаж, `locked` тайлагдана. Дараа нь «Харахыг болих»/«Цуцлах»
+       *    дарахад `dirtyN` 0 болж энэ эффект `savedRef = true`-гээр `decidePlan`
+       *    руу орж, ЮУ Ч бичигдээгүй илгээлтийг «батлагдсан» болгодог байв.
+       *    Одоо унавал доорх «БИЧИЛТ УНАСАН» салаатай ИЖИЛ төлөвт шууд оруулна;
+       *    эффект өөрөө тэр салаанд түрүүлж орсон бол (`savedRef` худал) алгасна.
+       */
+      void save().then((ok) => {
+        if (ok || !savedRef.current) return;
+        savedRef.current = false;
+        setApproving(null);
+        setPreviewing(true);
+        setErr((cur) => cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
+      });
       return;
     }
     savedRef.current = false;
@@ -3460,7 +3685,7 @@ export function Huvaari({
         } else {
           setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
         }
-        await refreshFlow();
+        await refreshFlow({ noRefetch: true });
       } finally {
         setBusy(false);
       }
@@ -3587,6 +3812,15 @@ export function Huvaari({
   const hdBusy = useRef(false);
   const hdAgain = useRef(false);
   const hdBaseAt = useRef(0);
+  /**
+   * МӨР · ЗАДАРГАА СЕРВЕРЭЭС ИРСЭН АГШИН (2026-09-25 аудит) — хуучирсан нүдийг
+   * устгаж болох эсэхийг шийднэ (`hdApply`). `hdBaseAt` нь сэргээлт эхэлсэн
+   * агшин тул түгжээ тайлагдсаны дараах сэргээлтэд мөр нь үүнээс хуучин байж болно.
+   */
+  const hdRowsAt = useRef(0);
+  const hdObAt = useRef(0);
+  useEffect(() => { hdRowsAt.current = rows.length ? Date.now() : 0; }, [rows]);
+  useEffect(() => { hdObAt.current = obState === 'ok' ? Date.now() : 0; }, [obPlan, obRes, obState]);
   const hdPrevW = useRef(false);
   /**
    * ⚠️ `pending`-ЭЭР, `locked`-ООР БИШ (2026-09-24): `locked` нь батлах явцад
@@ -3658,17 +3892,39 @@ export function Huvaari({
     for (const [k, e] of d.entries) if (!dropped.has(k)) meta.set(k, { at: e.at, user: e.user });
     const del = new Map(d.del);
     for (const k of dropped) if (!stale.has(k)) del.set(k, now);
+    /*
+     * ⚠️ МАШ ХУУЧИН «ХУУЧИРСАН» НҮДИЙГ УСТГАНА (2026-09-25 аудит). Дээрх дүрэм
+     *    (хуучирсныг мөрөө шинэчилсэн клиент шийднэ) хэрэгжих зам БАЙГААГҮЙ: мөр нь
+     *    шинэ клиент ч түүнийг `hdStale`-д хадгалж `hdLocal`-аар дахин бичдэг тул
+     *    FillNew нийтлэл (бүх OID солигдоно) бүрийн дараа нүд мөнхөд амилж, «ноорогт:
+     *    …» сүнс зохиогч харуулж, ачаалал `REMOTE_MAX` руу өсдөг байв.
+     *    ШИЙДЭХ ЭРХ = ЭНЭ клиентийн суурь нүднээс ШИНЭ: нүд нь манай мөр (`s/h/a/r`)
+     *    эсвэл задаргаа (`m/n`) серверээс ирэхээс `MARGIN`-аас өмнө бичигдсэн бол
+     *    бичигчийн суурь манайхаас хуучин нь гарцаагүй → tombstone. Шинэ нүд (манай
+     *    суурь хуучин байж болох) хэвээр — 2026-09-24-ний хамгаалалт хадгалагдана.
+     *    Цагийн зөрүүнд `MARGIN` (10 мин). Бичих эрхгүй бол хөндөхгүй.
+     */
+    const MARGIN = 10 * 60_000;
+    let tomb = 0;
+    const st = new Map<string, HDEntry>();
+    for (const k of stale) {
+      const e = d.entries.get(k);
+      if (!e) continue;
+      const fresh = k[0] === 'm' || k[0] === 'n' ? hdObAt.current : hdRowsAt.current;
+      if (hdWritableRef.current && fresh > 0 && e.at < fresh - MARGIN) { del.set(k, now); tomb += 1; continue; }
+      st.set(k, e);
+    }
     hdMeta.current = meta;
     hdDel.current = del;
-    const st = new Map<string, HDEntry>();
-    for (const k of stale) { const e = d.entries.get(k); if (e) st.set(k, e); }
     hdStale.current = st;
     hdPrev.current = mapsToCells(ap.maps, hdCtxRef.current);
     setDraft(ap.maps.draft); setHam(ap.maps.ham); setADraft(ap.maps.aDraft);
     setResDraft(ap.maps.resDraft); setObDraft(ap.maps.obDraft); setObResDraft(ap.maps.obRes);
     setHdUsers(hdUsersOf(d).filter((u) => u !== meRef.current));
+    /* Устгасан хуучирсан нүдийг алсад хүргэнэ — дуудагчийн товлолтоос үл хамааран */
+    if (tomb) hdSchedule(1500);
     return ap;
-  }, []);
+  }, [hdSchedule]);
 
   /**
    * ЦЭВЭРЛЭЛТ — илгээсэн · цуцалсан · хоосорсон. Мөрийг УСТГАХГҮЙ: хоосон
@@ -4051,9 +4307,16 @@ export function Huvaari({
     r.group ? { ...r, spans: r.spans.map((_, b) => effSpan(plan, r.i, b)), ...aggExtra(plan, r.i, n) } : r
   ), [plan, n]);
 
+  /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */
+  const linkRows = useMemo(() => {
+    if (!linkAsk) return null;
+    const s = plan.find((x) => x.oid === linkAsk.so);
+    const t = plan.find((x) => x.oid === linkAsk.to);
+    return s && t ? { s, t } : null;
+  }, [linkAsk, plan]);
   const modalRow = useMemo(() => {
     if (modal == null) return null;
-    const r = plan.find((x) => x.i === modal);
+    const r = plan.find((x) => x.oid === modal);
     return r ? effRow(r) : null;
   }, [modal, plan, effRow]);
   /**
@@ -4141,7 +4404,7 @@ export function Huvaari({
            чадвар). Зөрчлийг ХОРИГЛОХГҮЙ, зөвхөн улаанаар тэмдэглэнэ. */
         const need = dep.type === 'FS' ? ps.end + (1 + dep.lag) * DAY : ps.start + dep.lag * DAY;
         const viol = ts.start < need;
-        const hot = sel === r.i || sel === pi;
+        const hot = sel === r.oid || sel === plan[pi]?.oid;
         /* ⚠️ Хошууны marker нь шугамын `stroke`-оос өнгө АВДАГГҮЙ (SVG-ийн
            marker нь referencing path-аас currentColor өвлөдөггүй) тул ангилал
            бүрд ТУСДАА marker хэрэглэнэ. */
@@ -4257,7 +4520,7 @@ export function Huvaari({
             <select className={`${h.sel} ${h.selWide}`} value={String(fGrp)} aria-label={tr('Бүлэг')}
               onChange={(e) => setFGrp(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
               <option value="all">{tr('Бүлэг: бүгд')}</option>
-              {groups.map((g) => <option key={g.i} value={g.i}>{g.label}</option>)}
+              {groups.map((g) => <option key={g.oid} value={g.oid}>{g.label}</option>)}
             </select>
 
             <select className={h.sel} value={fYear} aria-label={tr('Эхлэх жил')}
@@ -4764,7 +5027,7 @@ export function Huvaari({
                   <TaskRow
                     key={r.oid}
                     r={r}
-                    on={sel === r.i}
+                    on={sel === r.oid}
                     /* ⚠️ УЯЛДААНЫ ноорог ч «хадгалаагүй» тэмдэг авна — эс
                        бөгөөс зөвхөн уялдаа нь өөрчлөгдсөн мөр цэвэр мэт
                        харагдаж, юу хадгалагдахыг тоолж болохгүй байв.
@@ -4790,7 +5053,7 @@ export function Huvaari({
                         return m;
                       });
                     }}
-                    onPick={() => { setSel(r.i); setModal(r.i); }}
+                    onPick={() => { setSel(r.oid); setModal(r.oid); }}
                     /* ⚠️ ХОЁР ТӨРЛИЙН огноог зэрэг өгнө. `r` нь ИДЭВХТЭЙ
                        табынх, `refByOid` нь НӨГӨӨ табынх — аль нь гэрээ, аль
                        нь төлөвлөгөө болохыг `kind`-ээр шийднэ. */
@@ -4890,7 +5153,7 @@ export function Huvaari({
                       const viol = !!(sp && need != null && sp.start < need);
                       return (
                         <div key={r.oid}
-                          className={`${h.plLane} ${k % 2 ? h.plLaneAlt : ''} ${sel === r.i ? h.plLaneOn : ''} ${link && !hierRelated(plan, r.i, link.i) ? h.plLaneDrop : ''}`}
+                          className={`${h.plLane} ${k % 2 ? h.plLaneAlt : ''} ${sel === r.oid ? h.plLaneOn : ''} ${link && !hierRelated(plan, r.i, link.i) ? h.plLaneDrop : ''}`}
                           style={{ top: k * PL_ROW, height: PL_ROW }}
                           data-row={r.i}
                           onPointerDown={(e) => onDown(e, r, 'new')}
@@ -4946,7 +5209,7 @@ export function Huvaari({
                           })()}
                           {sp && (
                             <div
-                              className={`${h.plBar} ${showRef ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.i ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
+                              className={`${h.plBar} ${showRef ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
                               aria-label={`${r.work || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
@@ -5062,7 +5325,7 @@ export function Huvaari({
                                 зурвасын дээрх даралт зурвасд очно; сум зөвхөн хоосон талбайд дарагдана. */}
                             {canEdit && !locked && kind === 'plan' && (
                               <path d={a2.d} className={h.depHit}
-                                onClick={(e) => { e.stopPropagation(); setLinkAsk({ si: a2.si, ti: a2.ti, dblk: a2.dblk }); }}>
+                                onClick={(e) => { e.stopPropagation(); setLinkAsk({ so: plan[a2.si].oid, to: plan[a2.ti].oid, dblk: a2.dblk }); }}>
                                 <title>{tr('Дарж засах / устгах')}</title>
                               </path>
                             )}
@@ -5087,16 +5350,15 @@ export function Huvaari({
         </Section>
       )}
 
-      {linkAsk && plan[linkAsk.si] && plan[linkAsk.ti] && (
+      {linkAsk && linkRows && (
         <LinkModal
-          src={plan[linkAsk.si]}
-          dst={plan[linkAsk.ti]}
+          src={linkRows.s}
+          dst={linkRows.t}
           blk={linkAsk.dblk}
           blocks={sc?.bld ?? []}
           onClose={() => setLinkAsk(null)}
           onRemove={() => {
-            const s = plan[linkAsk.si];
-            const t = plan[linkAsk.ti];
+            const { s, t } = linkRows;
             setLinkAsk(null);
             if (s.des == null) return;
             /* ⚠️ Ялгах тэмдэг (код, блок) — 2026-09-24: ижил кодын өөр блокийн уялдаа хэвээр.
@@ -5105,8 +5367,7 @@ export function Huvaari({
             applyModal(t.oid, null, t.deps.filter((d) => !sameDep(d, id)), null);
           }}
           onApply={(type, lag) => {
-            const s = plan[linkAsk.si];
-            const t = plan[linkAsk.ti];
+            const { s, t } = linkRows;
             setLinkAsk(null);
             if (s.des == null) return;
             /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа. */
@@ -5564,7 +5825,9 @@ function TaskRow({
           ⚠️ ТОВЧ (2026-09-03, хэрэглэгч): нүдэн дээр дарахад мөн л popup
           нээгдэж уялдааг нь тохируулна. Хоосон нүд агаар мэт харагдах тул
           мөр дээр хулгана очиход «+» гарч дарагдахыг нь сануулна (CSS). */}
-      <HamCell r={r} canEdit={canEdit && !added} onText={onHamText} onPick={onPick} />
+      {/* ⚠️ Нэмэлт мөрд `onPick` ДАМЖУУЛАХГҮЙ (2026-09-25 аудит) — нэрийн товч хаалттай
+          атлаа уялдааны нүдээр popup нээгдэж, сөрөг oid ноорогт ордог байв. */}
+      <HamCell r={r} canEdit={canEdit && !added} onText={onHamText} onPick={added ? undefined : onPick} />
       {children}
     </div>
   );
@@ -5638,7 +5901,8 @@ function HamCell({
   r: PlanRow;
   canEdit: boolean;
   onText: (oid: number, text: string) => void;
-  onPick: () => void;
+  /** `undefined` = popup нээгдэхгүй (батлагдаагүй нэмэлт мөр) */
+  onPick?: () => void;
 }) {
   const saved = r.deps.length ? formatDeps(r.deps) : '';
   const [txt, setTxt] = useState(saved);
@@ -5651,6 +5915,11 @@ function HamCell({
   useEffect(() => { if (!edit) setTxt(saved); }, [saved, edit]);
 
   if (!canEdit) {
+    /* ⚠️ Popup-гүй мөр (2026-09-25 аудит) — товч БИШ; хоосон нүдэнд CSS-ийн «+»
+       сануулга гарахгүйн тулд хоосон зай бичнэ. */
+    if (!onPick) {
+      return <span className={h.rowHam} style={{ cursor: 'default' }}>{saved || '\u00a0'}</span>;
+    }
     /* ⚠️ Эрхгүй бол УНШИХ горим — товч хэвээр (popup нь зөвхөн харуулна) */
     return (
       <button type="button" className={h.rowHam} onClick={onPick}
@@ -5682,8 +5951,10 @@ function HamCell({
         }}
       />
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}
-      <button type="button" className={h.hamMore} onClick={onPick}
-        title={tr('Жагсаалтаас сонгох')}>…</button>
+      {onPick && (
+        <button type="button" className={h.hamMore} onClick={onPick}
+          title={tr('Жагсаалтаас сонгох')}>…</button>
+      )}
     </span>
   );
 }
@@ -5932,7 +6203,14 @@ function PlanModal({
   );
   /* Мужаас ГАРСАН сарын утгыг хасна — эс бөгөөс нийлбэр хаанаас ч
      гараагүй тоогоор давна. */
+  /* ⚠️ МУЖ ХООСОН бол ТАЙРАХГҮЙ (2026-09-25 аудит). Эхний зурагдалтад `a`/`z`
+     нь '' (урьдчилан бөглөх эффект ДАРАА нь тавина) тул `mKeys = []` бөгөөд энэ
+     эффект нэг flush-д `setMv(months)`-ийн ард ажиллаж хадгалагдсан БҮХ сарыг
+     «мужаас гадуур» гэж арчдаг байв — цонх нээх бүрд сарын обьём/нөөц хоосорч,
+     «Тавих» дарахад сарын хүн/машин устдаг байлаа. Огноо түр хоосон (засаж буй)
+     үед ч сарын утга хадгалагдана; хүчинтэй муж тавигдмагц энэ эффект тайрна. */
   useEffect(() => {
+    if (!mKeys.length) return;
     setMv((cur) => {
       let extra = false;
       for (const k of cur.keys()) if (!mKeys.includes(k)) { extra = true; break; }
@@ -6007,7 +6285,17 @@ function PlanModal({
      хийгдэх ёстой (урьд нь энэ тохиолдол доод бүтэн замаар явдаг байсан). */
   /* ⚠️ ОЛОН БЛОК сонгосон бол ХӨНГӨН БИШ (2026-09-24): муж хөндөгдөөгүй ч бусад
      сонгосон блокт хуулагдах ёстой. Сарын нөөц (`mrDirty`) ч бүтэн замаар. */
-  const depsOnly = (depsDirty || extraDirty) && !spanDirty && !mvDirty && !mrDirty && selB.size === 1;
+  /* ⚠️ УРЬДЧИЛАН БӨГЛӨСӨН МУЖ (2026-09-25 аудит): хуваарьгүй (эсвэл мужаас гадуур
+     хуучирсан) ажилд талбарууд бүлгийн мужаар бөглөгддөг тул `spanDirty` үргэлж
+     үнэн — обьёмтой ч задаргаагүй ажилд ганц уялдаа тавихад «Тавих» бүх сарыг
+     бөглөхийг шаардаж, дээрх 2026-09-17-ны дүрэм ажилладаггүй байв. Хэрэглэгч
+     бөглөсөн мужийг хөндөөгүй БӨГӨӨД сарын нийлбэр таараагүй (өөрөөр хуваарь
+     тавих боломжгүй) бол «хөнгөн» замаар зөвхөн уялдаа/бодит огноог тавина.
+     Обьёмгүй мөрд (`mvOk`) хуучин зан хэвээр — муж нь хуваарь болж тавигдана. */
+  const pStale = !!(own && pspan && (own.end < pspan.start || own.start > pspan.end));
+  const prefilled = !!pspan && (!own || pStale) && ms1 === pspan.start && ms2 === pspan.end;
+  const depsOnly = (depsDirty || extraDirty) && (!spanDirty || (prefilled && !mvOk))
+    && !mvDirty && !mrDirty && selB.size === 1;
   /** Сарын обьём + нөөц — «Тавих»-д өгөх багц; обьёмгүй мөрд обьём хөндөхгүй.
       ⚠️ Нөөц хөндөгдөөгүй, хоосон бол `null` (2026-09-24 аудит) — урьд нь үргэлж
          `mr` өгч, олон блокт тавихад бусад блокийн серверийн нөөц арчигддаг байв. */
@@ -6422,8 +6710,11 @@ function PlanModal({
                 ? !depsDirty
                 : aBad ? true
                 : depsOnly ? false
-                : ((ms1 == null || ms2 == null || bad) && !depsDirty && !extraDirty) || !mvOk}
-              title={mvOk || depsOnly ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
+                /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
+                   сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
+                : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
+                : !mvOk}
+              title={mvOk || depsOnly || ms1 == null || ms2 == null || bad ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
               {tr('Тавих')}
             </button>
           )}

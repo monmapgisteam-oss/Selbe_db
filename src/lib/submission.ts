@@ -119,10 +119,41 @@ export type SubmissionPayload = {
   /** Батлагдсаны дараа: архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID */
   archiveOid?: number;
   approvedAt?: number;
+  /**
+   * «БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ» — архивт буусан боловч нэгтгэл (`registerApproved`)
+   * ба IPC (`syncIpcFromFill`) хараахан баталгаажаагүй (2026-09-25 аудит).
+   * ⚠️ `closeSubmission` `done|` болгохдоо `true` тавьж, хоёулаа амжилттай
+   *    болсны дараа `markRegistered` арилгана. Таб энэ хооронд хаагдвал
+   *    `hyanaltStore.retryPendingRegistrations` дахин ажиллуулна — урьд нь тэр
+   *    өдөр нэгтгэл/IPC-гүй МӨНХӨД үлддэг байв.
+   */
+  regPending?: boolean;
 };
 
 /** Хүснэгтээс уншсан илгээлт — мөрийн дугаар ба төлөвтэй */
 export type StagedSubmission = { oid: number; at: number; done: boolean; payload: SubmissionPayload };
+
+/**
+ * `rowKeys`-ийг ХУУДАСНЫ ДАРААЛЛААР (oid ӨСӨХӨӨР) эрэмбэлнэ — шинэ массив.
+ *
+ * ⚠️ ЯАГААД (2026-09-25-ны аудит, HIGH): `sheetFrame.buildOidMap` нь давхардсан
+ *    «№ ¦ Ажил» шошготой мөрүүдийн нэрийдлийг `shift()`-ээр ДАРААЛАН олгодог
+ *    бөгөөд `rowKeys` хуудасны дарааллаар ирнэ гэдэгт тулгуурладаг. Урьд нь
+ *    `mergeSubmission` хуучин payload-ын дарааллыг хадгалж шинэ түлхүүрийг
+ *    ТӨГСГӨЛД залгадаг байв: өглөө 2-р «10 · БУСАД АЖИЛ» (oid 5000), үдээс
+ *    хойш 1-р нь (oid 1200) засагдвал `[[5000,L],[1200,L]]` болж, батлахаас
+ *    өмнө шинэ жааз орвол хоёр мөрийн блокийн утга СОЛИГДОЖ `unmoved = 0`-оор
+ *    архивт бичигддэг байлаа.
+ * ⚠️ oid өсөх = хуудасны дараалал: жааз бүхэлдээ хуудасны дарааллаар нэмэгддэг
+ *    ба `loadRows` ч `OBJECTID ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
+ *    нь `movePayload`-оор одоогийн жаазанд зөөгддөг тул нэг payload-ын rowKeys
+ *    НЭГ жаазных. Сөрөг (түр) oid байвал эерэгүүдийн ДАРАА — эерэгийн
+ *    харьцангуй дарааллыг хөндөхгүй.
+ */
+const byPageOrder = (keys: Iterable<[number, string]>): [number, string][] =>
+  [...keys]
+    .map(([o, k]): [number, string] => [o, k])
+    .sort((a, b) => (a[0] < 0 ? 1 : 0) - (b[0] < 0 ? 1 : 0) || a[0] - b[0]);
 
 /**
  * ХАДГАЛАХ ДЭЭД ХЭМЖЭЭ (тэмдэгт) — `draftRemote.REMOTE_MAX`-тай ижил үндэслэл:
@@ -225,8 +256,10 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     const cells = (d.cells as unknown[]).filter(isPair).map(([k, v]): [string, string] => [k, v]);
     const dates = (Array.isArray(d.dates) ? (d.dates as unknown[]) : [])
       .filter(isPair).map(([k, v]): [string, string] => [k, v]);
-    const rowKeys = (Array.isArray(d.rowKeys) ? (d.rowKeys as unknown[]) : [])
-      .filter(isRowKey).map(([o, k]): [number, string] => [o, k]);
+    /* ⚠️ Хуудасны дарааллаар (`byPageOrder`) — өмнө нь буруу дараалалтай
+       нэгтгэгдэж хадгалагдсан payload-ыг ч унших агшинд засна. */
+    const rowKeys = byPageOrder((Array.isArray(d.rowKeys) ? (d.rowKeys as unknown[]) : [])
+      .filter(isRowKey));
 
     const seen = new Set<number>();
     const adds: NewRow[] = [];
@@ -263,6 +296,7 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     };
     if (Number.isInteger(d.archiveOid) && (d.archiveOid as number) > 0) out.archiveOid = d.archiveOid as number;
     if (isFin(d.approvedAt)) out.approvedAt = d.approvedAt;
+    if (d.regPending === true) out.regPending = true;
     return out;
   } catch {
     return null;
@@ -280,7 +314,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
  * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна; adds — oid-оор, шинэ нь
  * дарна (хуучин байрлал хэвээр — эцэг/дүү дараалал хадгалагдана), ГЭХДЭЭ ижил
  * oid дээр ӨӨР мөр ирвэл дарахгүй, шинэ сул oid авна (доорх ⚠️); rowKeys —
- * oid-оор нэгтгэнэ; asOf — шинэ ?? хуучин ?? null; base — мөн адил (мэдээлэл);
+ * oid-оор нэгтгэж ХУУДАСНЫ ДАРААЛЛААР (oid өсөхөөр) буцаана (`byPageOrder`);
+ * asOf — шинэ ?? хуучин ?? null; base — мөн адил (мэдээлэл);
  * pkgKey/user/at/fillMs — шинэ. `archiveOid`/`approvedAt` ОРОХГҮЙ: нэгтгэсэн
  * илгээлт нь идэвхтэй (батлагдаагүй) — хаах үед `closeSubmission` нэмнэ.
  *
@@ -358,7 +393,9 @@ export function mergeSubmission(
     cells: [...cells].map(([k, v]): [string, string] => [k, v]),
     dates: [...dates].map(([k, v]): [string, string] => [k, v]),
     adds: [...adds.values()].map((a) => ({ ...a })),
-    rowKeys: [...rowKeys].map(([o, k]): [number, string] => [o, k]),
+    /* ⚠️ Хуудасны дарааллаар — `buildOidMap`-ийн `shift()` дараалалд тулгуурладаг
+       (`byPageOrder`-ийн ⚠️). Map нь хуучны дарааллыг хадгалж шинийг төгсгөлд залгадаг. */
+    rowKeys: byPageOrder(rowKeys),
   };
 }
 
@@ -754,6 +791,8 @@ export async function closeSubmission(
   oid: number,
   archiveOid: number,
   approvedAt: number,
+  /** `true` → payload-д `regPending` тавина (`SubmissionPayload.regPending`-ийн ⚠️) */
+  regPending?: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
@@ -783,6 +822,7 @@ export async function closeSubmission(
      */
     const pkgKey = payload.pkgKey || dkey.slice(SUB_PREFIX.length).split('|')[0];
     const next: SubmissionPayload = { ...payload, archiveOid, approvedAt };
+    if (regPending) next.regPending = true;
     const edit = {
       updateFeatures: [{
         attributes: { OBJECTID: oid, dkey: doneKey(pkgKey, oid), payload: JSON.stringify(next) },
@@ -809,5 +849,78 @@ export async function closeSubmission(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** `applyEdits`-ийн шинэчлэлийн үр дүн — хоосон хариу ч алдаа (`closeSubmission`-ий ⚠️) */
+const updOk = (r: { updateFeatureResults?: { error?: unknown; objectId?: unknown }[] }): string | null => {
+  const ups = r.updateFeatureResults ?? [];
+  if (!ups.length) return tr('Серверээс хариу ирсэнгүй.');
+  const bad = ups.find((x) => x.error != null || typeof x.objectId !== 'number');
+  return bad ? errMsg(bad.error) || tr('Бичигдсэнгүй.') : null;
+};
+
+/**
+ * «БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ» ТЭМДГИЙГ АРИЛГАНА — нэгтгэл ба IPC хоёулаа
+ * амжилттай болсны дараа (`SubmissionPayload.regPending`-ийн ⚠️).
+ *
+ * ⚠️ IDEMPOTENT: мөр `done|` биш, эсвэл тэмдэггүй бол `ok:true` — юу ч бичихгүй.
+ * ⚠️ ArcGIS алдаа HTTP 200-аар ирдэг тул үр дүнгийн мөрийг шалгана (`updOk`).
+ */
+export async function markRegistered(sheetOid: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!Number.isInteger(sheetOid) || sheetOid <= 0) return { ok: true };
+  try {
+    const url = await tableUrl(false);
+    if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
+    const fl = await layer(url);
+    const res = await fl.queryFeatures({
+      where: `OBJECTID = ${sheetOid}`,
+      outFields: OUT_FIELDS,
+      returnGeometry: false,
+    });
+    const a = res.features[0]?.attributes as RowAttrs | undefined;
+    if (!a || !String(a.dkey ?? '').startsWith(DONE_PREFIX)) return { ok: true };
+    const payload = parseSubmission(String(a.payload ?? ''));
+    if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', sheetOid) };
+    if (payload.regPending !== true) return { ok: true };
+    const next: SubmissionPayload = { ...payload };
+    delete next.regPending;
+    const r = await fl.applyEdits({
+      updateFeatures: [{ attributes: { OBJECTID: sheetOid, payload: JSON.stringify(next) } }],
+    } as Parameters<typeof fl.applyEdits>[0]);
+    const err = updOk(r);
+    return err ? { ok: false, error: err } : { ok: true };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/**
+ * БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ `done|` илгээлтүүд — `retryPendingRegistrations`-д.
+ *
+ * ⚠️ Бүх `done|` мөрийн 80KB-ийн payload-ыг татахгүйн тул серверт `LIKE`-аар
+ *    шүүнэ (`JSON.stringify` нь яг `"regPending":true` бичдэг), дараа нь
+ *    задлаад ДАХИН тулгана. `orderByFields` — хуудаслалтын дүрэм.
+ * ⚠️ Чимээгүй: алдаа → хоосон (дахин оролдлого нь зөвхөн нөхөх зам).
+ */
+export async function listRegPending(): Promise<StagedSubmission[]> {
+  try {
+    const u = await readUrl();
+    if (!u.ok || !u.url) return [];
+    const fl = await layer(u.url);
+    const res = await fl.queryFeatures({
+      where: `dkey LIKE 'done|%' AND payload LIKE '%"regPending":true%'`,
+      outFields: OUT_FIELDS,
+      returnGeometry: false,
+      orderByFields: ['OBJECTID ASC'],
+    });
+    const out: StagedSubmission[] = [];
+    for (const f of res.features) {
+      const r = readRow(f.attributes as RowAttrs | undefined);
+      if (r.ok && r.sub && r.sub.done && r.sub.payload.regPending === true) out.push(r.sub);
+    }
+    return out;
+  } catch {
+    return [];
   }
 }

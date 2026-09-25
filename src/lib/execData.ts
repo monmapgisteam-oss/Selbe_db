@@ -16,7 +16,7 @@ import { cached } from './live';
 import { queryFeatures, type Row } from './query';
 import { BUILDING, bagtsKey, buildingKey } from './services';
 import {
-  INDICATORS, SCORE_LEVELS, levelOf, PARKING, ASSUME_MET, DENSITY_BY_TYPE,
+  INDICATORS, SCORE_LEVELS, levelOf, PARKING, ASSUME_MET, DENSITY_BY_TYPE, ACTIVATABLE_ZONE_TYPES,
 } from './analysis/config';
 import { loadAnalysisCached, computeRaw, defaultGreenCats } from './analysis/data';
 import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/score';
@@ -266,7 +266,10 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
   return useAsync(async () => {
     if (!enabled) return new Promise<SuitSummary>(() => {});
     const data = await loadAnalysisCached(onProgress);
-    computeRaw(data.zones, defaultGreenCats(), PARKING);
+    /* ⚠️ `scoreTypes` = Тохиромжийн хуудасны АНХДАГЧ (`ACTIVATABLE_ZONE_TYPES`,
+       2026-09-25 аудит) — CEO KPI (`ceo/suitability`) ба scorecard-тай ижил.
+       Урьд нь өгөөгүй тул тэдгээр 17 бүс энд хасагдаж, хуудастай зөрдөг байв. */
+    computeRaw(data.zones, defaultGreenCats(), PARKING, new Set(ACTIVATABLE_ZONE_TYPES));
     const blends = data.zones.map((z) => urbanScore(z.raw, INDICATORS, z.type).score);
     const valid = blends.filter((x): x is number => x != null);
     /*
@@ -287,7 +290,7 @@ export function useSuitability(enabled: boolean, onProgress?: (m: string, p: num
      * ⚠️ ХАСАГДСАН бүсийг (`excluded` — ногоон байгууламж, одоо байгаа
      * барилга) тоолохгүй: тэдгээр нь оноололд ч ордоггүй.
      */
-    const live = data.zones.filter((z) => !z.excluded);
+    const live = data.zones.filter((z) => !z.excluded || ACTIVATABLE_ZONE_TYPES.has(z.type));
     const byIndicator: IndicatorFail[] = INDICATORS
       .filter((ind) => !ind.ref && ind.weight > 0 && ind.id !== 'engineering')
       .map((ind) => {

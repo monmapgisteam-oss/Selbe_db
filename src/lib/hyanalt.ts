@@ -463,6 +463,20 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
       tr('{0} мөр хадгалагдсангүй: {1}', bad.length, bad[0].error?.description ?? tr('тодорхойгүй')),
     );
   }
+  /*
+   * ⚠️ ДУТУУ/ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-25-ны аудит) —
+   *    `submission.ts`, `ipcAutoWrite.ts`-тэй ижил дүрэм. HTTP 200
+   *    `{addResults: []}` ирэхэд `bad` хоосон тул урьд нь амжилттай буцдаг
+   *    байв: `submitForReview` «Хяналтад илгээв» гэсэн атлаа хяналтын мөр
+   *    ҮҮСЭЭГҮЙ (инженерт хэзээ ч очихгүй), `apply`-д мөр «Шилжүүлсэн»
+   *    болоогүй атлаа нэгтгэл/IPC бичигддэг байлаа. Илгээсэн мөр бүрд ЯГ
+   *    нэг үр дүн ирэх ёстой.
+   */
+  if (results.length !== rows.length) {
+    throw new HyanaltError(
+      tr('{0} мөр хадгалагдсангүй: {1}', Math.abs(rows.length - results.length), tr('серверээс үр дүн дутуу ирлээ')),
+    );
+  }
   return results;
 };
 

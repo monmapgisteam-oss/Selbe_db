@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { Fragment, isValidElement, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import type { Async } from '@/lib/useAsync';
 import { Icon } from './Icon';
@@ -35,11 +35,20 @@ const fin = (v: number) => (Number.isFinite(v) ? v : 0);
  * гэсэн 6 огноо багтахгүй давхарлана, 800px өргөнтэй IoT-ийн том чартад 6 нь
  * хэт цөөн. Иймд ТООГ бус, ЗАЙГ шалгуур болгоно.
  */
-function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
-  const ref = useRef<T>(null);
+function useWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
   const [w, setW] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
+  const roRef = useRef<ResizeObserver | null>(null);
+  /**
+   * ⚠️ 2026-09-25: `useRef` + `useEffect(…, [])` БАЙСАН. Эффект нь ЗӨВХӨН
+   *    mount-д нэг удаа ажилладаг тул анхны зурагт элемент байгаагүй бол
+   *    (жиш. `Trend` эхлээд `<Empty>` буцаасан — BuildingPanel-ийн
+   *    ProgressTrend-д нэг сарын багц сонгоход) ажиглагч ХЭЗЭЭ Ч холбогдохгүй,
+   *    өргөн 0 хэвээр үлдэж тэнхлэгт зөвхөн хоёр ирмэгийн шошго гардаг байв.
+   *    Callback ref нь элемент ГАРЧ ИРЭХ бүрд (null → el) дуудагдана.
+   */
+  const ref = useCallback((el: T | null) => {
+    roRef.current?.disconnect();
+    roRef.current = null;
     if (!el) return;
     // ⚠️ Эхний утгыг ШУУД тавина: ResizeObserver-ийн эхний дуудлага дараагийн
     //    frame-д ирдэг тул «хэмжээгүй» (хамгийн цөөн шошготой) хувилбар нэг
@@ -47,9 +56,24 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
     setW(el.getBoundingClientRect().width);
     const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
   return [ref, w];
+}
+
+/**
+ * ReactNode → энгийн текст (aria-label, tooltip-д).
+ *
+ * ⚠️ 2026-09-25: `tr()`-ийн орлуулга `String(v)` хийдэг тул JSX утга
+ *    «[object Object]» болж дэлгэц уншигчид тэгж уншигддаг байв
+ *    (SuitDetail-ийн `center={<span>…га</span>}`).
+ */
+function nodeText(n: ReactNode): string {
+  if (n == null || typeof n === 'boolean') return '';
+  if (typeof n === 'string' || typeof n === 'number' || typeof n === 'bigint') return String(n);
+  if (Array.isArray(n)) return n.map((c: ReactNode) => nodeText(c)).join('');
+  if (isValidElement(n)) return nodeText((n.props as { children?: ReactNode }).children);
+  return '';
 }
 
 /* ── Хулганы тайлбар (tooltip) ─────────────────────────────────────────────
@@ -832,8 +856,35 @@ export function Donut({
    * туслах технологид ЯМАР Ч утга дамжуулдаггүй байв (зөвхөн `<path>` бүрийн
    * `<title>` — тэр нь найдвартай уншигддаггүй).
    */
+  /* ⚠️ JSX `center`-ийг ТЕКСТ болгоно (`nodeText`) — `String()` нь «[object Object]». */
+  const centerText = center == null ? String(total) : nodeText(center) || String(total);
+  const pctText = (frac: number) => `${frac > 0 && frac < 0.005 ? '<1' : (frac * 100).toFixed(0)}%`;
+  /**
+   * Зүсмэгийн tooltip-ийн утга.
+   *
+   * ⚠️ 2026-09-25: урьд нь ҮРГЭЛЖ түүхий `value` («20162536361 · 12%») —
+   *    дуудагчийн форматласан `display` (`mnt`, «{0} км · …») үл тоогддог байв.
+   *    `display` нь өөрөө хувь агуулсан бол («12.3% · …», «34% · 5 талбар»)
+   *    хувийг ДАВХАР залгахгүй.
+   */
+  const tipValue = (sl: { value: number; frac: number; display?: ReactNode }) => {
+    const d = sl.display == null ? '' : nodeText(sl.display);
+    if (!d) return `${sl.value} · ${pctText(sl.frac)}`;
+    return d.includes('%') ? d : `${d} · ${pctText(sl.frac)}`;
+  };
+  /**
+   * Хулгана дээрх зүсмэгийн ГОЛЫН утга.
+   *
+   * ⚠️ 2026-09-25: `display`-ийн ЭХНИЙ хэсэг (« · »-ээс өмнөх) — нүх нарийн тул
+   *    «12.3 км · 4 багц · 56 ш» бүтнээрээ багтахгүй; эхний хэсэг нь дуудагч
+   *    бүрд гол утга (₮, км, ш, оноо). `display` байхгүй бол түүхий утга.
+   */
+  const hovText = (sl: { value: number; display?: ReactNode }) => {
+    const d = sl.display == null ? '' : nodeText(sl.display);
+    return d ? d.split(' · ')[0] : String(sl.value);
+  };
   const ariaSummary =
-    tr('Дугуй диаграм. Нийт {0}{1}. ', center ?? total, centerLabel ? ` ${centerLabel}` : '') +
+    tr('Дугуй диаграм. Нийт {0}{1}. ', centerText, centerLabel ? ` ${centerLabel}` : '') +
     slices
       .slice(0, 3)
       .map((sl) => `${tr(sl.label)} ${(sl.frac * 100).toFixed(0)}%`)
@@ -917,7 +968,7 @@ export function Donut({
                 {...hoverProps(sl.key)}
                 {...tip.bind({
                   label: sl.label,
-                  value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
+                  value: tipValue(sl),
                   color: sl.color,
                   hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                 })}
@@ -925,7 +976,7 @@ export function Donut({
             ))}
           </g>
           {/* Голын утга */}
-          <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{String(center ?? total)}</text>
+          <text x={cx} y={cy - 1} textAnchor="middle" className={s.donutLeadCtr}>{centerText}</text>
           {centerLabel && <text x={cx} y={cy + 12} textAnchor="middle" className={s.donutLeadCtrLbl}>{centerLabel}</text>}
           {/* Зураас + гадна БҮТЭН шошго (foreignObject — HTML мөр даруулна) */}
           {laid.map(({ sl, sx, sy, ex, ey, right, lx }) => {
@@ -954,7 +1005,7 @@ export function Donut({
                     style={{ textAlign: right ? 'left' : 'right', fontWeight: isEmph(sl.key) ? 600 : undefined }}
                     {...tip.bind({
                       label: sl.label,
-                      value: `${sl.value} · ${pct}`,
+                      value: tipValue(sl),
                       color: sl.color,
                       hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                     })}
@@ -1002,7 +1053,7 @@ export function Donut({
                 {...hoverProps(sl.key)}
                 {...tip.bind({
                   label: sl.label,
-                  value: `${sl.value} · ${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`,
+                  value: tipValue(sl),
                   color: sl.color,
                   hint: onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined,
                 })}
@@ -1018,9 +1069,10 @@ export function Donut({
         <div className={s.donutCenter}>
           {(() => {
             const h = hovOn ? slices.find((x) => x.key === hovOn) : null;
+            const hv = h ? hovText(h) : '';
             return h ? (
               <>
-                <span className={`${s.donutValue} ${String(h.value).length >= 10 ? s.donutValueLong : ''} num`}>{h.value}</span>
+                <span className={`${s.donutValue} ${hv.length >= 10 ? s.donutValueLong : ''} num`}>{hv}</span>
                 <span className={s.donutLabel} title={tr(h.label)}>{tr(h.label)}</span>
               </>
             ) : (
@@ -1300,9 +1352,13 @@ export function Series({
           // ⚠️ Баганын хамгийн бага өндөр 1.5%: утга 0 байсан ч багана нь БАЙГАА
           //    гэдэг нь харагдах ёстой — эс бөгөөс өгөгдөлгүйтэй андуурагдана.
           const barH = `${Math.max(1.5, (fin(it.value) / max) * 100)}%`;
+          /* ⚠️ 2026-09-25: нэгжийг `display` өөрөө агуулаагүй үед л залгана —
+             «61.1% / төл. 70.0% %», «5 багц багц» гэж давхардаж байв. Habea-ийн
+             `display: num(v)` (нэгжгүй) нь «25 ажилтан» хэвээр. */
+          const disp = String(it.display ?? it.value);
           const tipData = {
             label: it.label,
-            value: String(it.display ?? it.value) + (unit ? ` ${unit}` : ''),
+            value: unit && !disp.includes(unit) ? `${disp} ${unit}` : disp,
             color,
             hint: onSelect ? tr('Дарж шүүнэ') : undefined,
           };
@@ -1637,13 +1693,24 @@ export function Trend({
   const peak = Math.max(...meas, alert ? alert.value : 0, 0);
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
   /**
+   * ⚠️ СӨРӨГ утгын ЁРООЛ (2026-09-25). Урьд нь тэнхлэг ҮРГЭЛЖ 0-ээс эхэлдэг
+   * байсан тул −15°C (IoT «Гадна орчны температур», 28°C босготой) нь y≈142%
+   * болж, муруй/цэг/бичиг нь тэнхлэгийн шошгоны доор эсвэл `.trendScroll`-ийн
+   * `overflow-y: hidden`-д бүрмөсөн тайрагддаг байв — уншилтын мөр «−15.0°C»
+   * гэж хэлсээр. Ёроол нь сөрөг утгатай үед л БҮТЭН аравт руу доошилно;
+   * бүгд ≥ 0 бол хуучин зан (0) хэвээр.
+   */
+  const low = Math.min(...meas, alert ? alert.value : 0, 0);
+  const bot = low < 0 ? Math.floor(low / 10) * 10 : 0;
+  /**
    * ⚠️ Утга бичих үед хамгийн өндөр цэг нь y≈0%-д буудаг тул түүний дээрх
    * бичиг талбайгаас гарч, дээрх уншилтын мөртэй давхарладаг. 1.18 дахин
    * сунгасан тэнхлэг нь оргилыг ~15%-д буулгаж, бичигт зай гаргана.
+   * (Сунгалт нь МУЖИЙН өргөнөөр — `bot = 0` үед яг `top * 1.18`.)
    */
-  const axisTop = showValues ? top * 1.18 : top;
+  const axisTop = showValues ? top + (top - bot) * 0.18 : top;
   const x = (i: number) => (i / (points.length - 1)) * 100;
-  const y = (v: number) => 100 - (fin(v) / axisTop) * 100;
+  const y = (v: number) => 100 - ((fin(v) - bot) / (axisTop - bot)) * 100;
 
   /*
    * ⚠️ ТАСРАЛТГҮЙ ХЭСГҮҮД (2026-09-15-ны хэрэглээний аудит). Хэмжигдээгүй
@@ -1671,7 +1738,10 @@ export function Trend({
   /* Зөөлөн горимд `polyline`-ы оронд `path` — хэсэг тус бүрд */
   const runPath = (run: { i: number; v: number }[]) =>
     monotonePath(run.map((r) => ({ x: x(r.i), y: y(r.v) })));
-  /** Талбайн дүүргэлт — ЗӨВХӨН хэмжигдсэн хэсгийн доор */
+  /** Талбайн дүүргэлт — ЗӨВХӨН хэмжигдсэн хэсгийн доор.
+   *  ⚠️ Суурь нь зурагдах талбайн ЁРООЛ (100 = `bot`), 0-ийн шугам БИШ —
+   *  сөрөг утгатай үед ч дүүргэлт талбайн дотор үлдэж, градиент (0→100)
+   *  түүнтэй таарна. */
   const runArea = (run: { i: number; v: number }[]) =>
     `${runPts(run)} ${x(run[run.length - 1].i)},100 ${x(run[0].i)},100`;
 

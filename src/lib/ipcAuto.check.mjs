@@ -219,4 +219,31 @@ const P = HO_IPC.payFields;
   assert.equal(planAuto([], { ...base, day: '', obyem: 1, une: 1 }).why, 'bad-day');
 }
 
+/* ══ 8. ⚠️ ЗӨРҮҮ = ХУРИМТЛАЛ − une (2026-09-25-ны аудит, Багц 3.3 IPC-5) ══
+   Урьд нь `dun − une` (6.32 − 34.77 = −28.45 тэрбум) гардаг байв. Гараар
+   оруулсан 4 ажлын IPC + AUTO мөрийн `dun` = 34.77 тэрбум → зөрүү ≈ 0.
+   Урьдчилгаа ба ӨӨР гэрээний мөр хуримтлалд ОРОХГҮЙ. */
+{
+  const bn = 1e9;
+  const code = 'Багц-3.3';
+  const work = (no, dun) => ({
+    [P.id]: `ХО-00${no}`, [C.pkg]: code, [C.code]: code,
+    [P.kind]: HO_IPC.kinds.work, [P.ipcNo]: no, [P.amount]: dun * bn,
+  });
+  const rows = [
+    work(1, 6.85), work(2, 10.02), work(3, 5.71), work(4, 5.87),
+    { [P.id]: 'ХО-0099', [C.pkg]: code, [C.code]: code, [P.kind]: HO_IPC.kinds.advance, [P.amount]: 3 * bn },
+    { [P.id]: 'ХО-0100', [C.pkg]: 'Багц-4.1', [C.code]: 'Багц-4.1', [P.kind]: HO_IPC.kinds.work, [P.ipcNo]: 1, [P.amount]: 9 * bn },
+    {
+      [HO_IPC.oid]: 501, [P.id]: autoId('БАГЦ33', '2026-09-09'), [C.pkg]: code, [C.code]: code,
+      [P.kind]: HO_IPC.kinds.work, [P.amount]: 6.32 * bn,
+    },
+  ];
+  const p = planAuto(rows, { pkg: code, code, day: '2026-09-09', obyem: 1, une: 34.77 * bn });
+  assert.equal(p.op, 'update');
+  const z = p.attrs[LINK_FIELDS.zoruu];
+  assert.ok(typeof z === 'number' && Math.abs(z) < 1e3,
+    `⚠️ зөрүү ≈ 0 байх ёстой (хуримтлал − une), гарсан: ${z}`);
+}
+
 console.log('ipcAuto.check ✓');

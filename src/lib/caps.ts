@@ -42,6 +42,7 @@
 
 import { AUTH, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
+import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
 export type CapKey =
@@ -284,7 +285,61 @@ type Store = Record<string, CapKey[]>;
  * загвараар: dirty тэмдэглэнэ → `initRemote` бүрд retry → унасныг snapshot дээр
  * давхарлана.
  */
-type DirtyCaps = Record<string, CapKey[]>;
+/*
+ * ⚠️ `by` — бичсэн хэрэглэгч (2026-09-25, аудитын засвар). `permissions.ts`-ийн
+ *    `DirtyItem`-тэй ИЖИЛ үндэслэл: зөвхөн «Дахин синк»-ийн баталгаажуулах
+ *    асуултад лавлагаа, итгэлийн шалгуур нь санах ойн `mineCaps`. Хуучин
+ *    хэлбэрийн (массив шууд) мөр `by: ''` гэж уншигдана.
+ */
+type DirtyCaps = Record<string, { by: string; caps: CapKey[] }>;
+
+/**
+ * ЭНЭ runtime-д бичилт нь унаж dirty-д орсон түлхүүр → жагсаалтын JSON.
+ * ⚠️ АВТОМАТ retry/overlay ЗӨВХӨН эдгээрт (2026-09-25) — `permissions.mine`-ийн
+ *    тайлбар: localStorage-д `{"me":["finRow",…]}` тарьсныг дараа нэвтэрсэн
+ *    super-ийн `initRemote(true)` АСУУЛГҮЙ бичдэг байв.
+ */
+const mineCaps = new Map<string, string>();
+const serCaps = (c: CapKey[]): string => JSON.stringify(c);
+
+/**
+ * НЭГ ХЭРЭГЛЭГЧИЙН `__cap__:` БИЧИЛТҮҮД ДАРААЛНА (2026-09-25, аудитын засвар).
+ * ⚠️ Урьд нь `setCaps` бүр бүтэн жагсаалтыг ЗЭРЭГЦЭЭ илгээдэг байв:
+ *    «Зөвшөөрөл засах» → «Санхүү — утга» хурдан дарахад [zovshoorol] ба
+ *    [zovshoorol, finEdit] хоёр зэрэг явж, сервер эхнийхийг СҮҮЛД буулгавал
+ *    (эсвэл хоёулаа мөр нэмж эхнийх нь их OID авбал) remote дээр [zovshoorol]
+ *    үлддэг — хоёулаа `true` буцаасан тул dirty цэвэрлэгдэж, алдаа ч гарахгүй,
+ *    дараагийн `initRemote` finEdit-ийг чимээгүй унтраадаг байлаа. Одоо
+ *    дуудлагын ДАРААЛЛААР бичигдэнэ; жагсаалт нь дуудах агшны кэшээс (өмнөх
+ *    дуудлагын синхрон шинэчлэлийг агуулсан) бүтдэг тул сүүлийнх нь ялна.
+ *    `scopedAcl.enqueue` · `permissions.serial`-тай ижил загвар; retry ч энэ
+ *    дараалалд орно.
+ */
+const capQueue = new Map<string, Promise<unknown>>();
+/** Хэрэглэгч бүрийн сүүлийн локал бичилтийн агшин — `_syncRemoteCaps`-д (`scopedAcl`-ийн толгой) */
+const capTouched = new Map<string, number>();
+
+function enqueueCap<T>(u: string, fn: () => Promise<T>): Promise<T> {
+  capTouched.set(u, _touchSeq());
+  const prev = capQueue.get(u) ?? Promise.resolve();
+  const p = prev.then(fn, fn);
+  const tail = p.then(() => undefined, () => undefined);
+  capQueue.set(u, tail);
+  void tail.then(() => {
+    capTouched.set(u, _touchSeq());
+    if (capQueue.get(u) === tail) capQueue.delete(u);
+  });
+  return p;
+}
+
+/** Одоо нэвтэрсэн хэрэглэгч — dirty мөрийн `by`. ⚠️ Динамик: `who.ts` энэ файлыг импортлодог. */
+async function authorName(): Promise<string> {
+  try {
+    return (await import('./who')).currentUser() ?? '';
+  } catch {
+    return '';
+  }
+}
 
 /** Танигдахгүй түлхүүрийг хаяна — хуучин/эвдэрсэн мөр эрх нээхгүй. */
 const sane = (v: unknown): CapKey[] =>
@@ -333,7 +388,12 @@ function loadDirty(): DirtyCaps {
     const raw = JSON.parse(window.localStorage.getItem(DIRTY_KEY) || '{}') as Record<string, unknown>;
     if (!raw || typeof raw !== 'object') return {};
     const out: DirtyCaps = {};
-    for (const [k, v] of Object.entries(raw)) out[k.toLowerCase()] = sane(v);
+    for (const [k, v] of Object.entries(raw)) {
+      /* ⚠️ Хуучин хэлбэр (массив шууд) — бичсэн хүн тодорхойгүй */
+      if (Array.isArray(v)) { out[k.toLowerCase()] = { by: '', caps: sane(v) }; continue; }
+      const o = (v ?? {}) as { by?: unknown; caps?: unknown };
+      out[k.toLowerCase()] = { by: typeof o.by === 'string' ? o.by : '', caps: sane(o.caps) };
+    }
     return out;
   } catch {
     return {};
@@ -349,14 +409,22 @@ function saveDirty(d: DirtyCaps): void {
   } catch { /* хувийн горим / квот дүүрсэн */ }
 }
 
-/** Бичилтийн үр дүнг dirty-set-д тусгана (ok → цэвэрлэ, унав → тэмдэглэ) */
-function trackWrite(key: string, intended: CapKey[], ok: boolean): void {
+/**
+ * Бичилтийн үр дүнг dirty-set-д тусгана (ok → цэвэрлэ, унав → тэмдэглэ).
+ * ⚠️ Async: бичсэн хүнийг (`who`) динамикаар авна. Уншилт→бичилт нь `await`-ын
+ *    ДАРАА нэг дор явна — хооронд нь өөр бичилт орохгүй.
+ */
+async function trackWrite(key: string, intended: CapKey[], ok: boolean): Promise<void> {
+  const by = ok ? '' : await authorName();
   const d = loadDirty();
   if (ok) {
+    mineCaps.delete(key);
     if (!(key in d)) return;
     delete d[key];
   } else {
-    d[key] = intended;
+    /* ⚠️ Бичсэн хүн + ЭНЭ runtime-ийн тэмдэг (`mineCaps`) — автомат retry-ийн шалгуур */
+    d[key] = { by, caps: intended };
+    mineCaps.set(key, serCaps(intended));
   }
   saveDirty(d);
   notify();
@@ -367,31 +435,68 @@ export function dirtyCapKeys(): string[] {
   return Object.keys(loadDirty());
 }
 
+/** ЭНЭ СЕШНД ҮҮСЭЭГҮЙ dirty эрхүүд (2026-09-25) — «Дахин синк»-ийн баталгаажуулалтад */
+export function foreignCapsDirty(): { key: string; by: string }[] {
+  return Object.entries(loadDirty())
+    .filter(([k, v]) => mineCaps.get(k) !== serCaps(v.caps))
+    .map(([key, v]) => ({ key, by: v.by }));
+}
+
 /**
  * DIRTY эрхүүдийг remote руу ДАХИН бичиж үзнэ (`_syncRemoteCaps` дуудна).
- * Буцаана: амжилтгүй ҮЛДСЭН dirty map — snapshot дээр давхарлахад.
+ * Буцаана: энэ удаад АМЖИЛТТАЙ бичигдсэн түлхүүр → жагсаалт (кэшид тусгахад).
+ *
+ * @param onlyMine `true` — ЗӨВХӨН энэ runtime-ийн, өөрчлөгдөөгүй мөр (автомат
+ *   зам). `false` — бүгд, зөвхөн админы ИЛ «Дахин синк»-ээс.
+ *
+ * ⚠️ ТҮЛХҮҮР БҮРИЙГ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА (2026-09-25, аудитын засвар) —
+ *    `permissions.retryDirtyOnce`-ийн ижил алдаа: эхэнд авсан map-ыг төгсгөлд
+ *    `saveDirty(left)`-ээр дарахад явцын дунд нэмэгдсэн түлхүүр арчигдаж, явцын
+ *    дунд амжилттай хадгалагдсан хэрэглэгчийн ХУУЧИН жагсаалт дараа нь бичигддэг
+ *    байв. Одоо `enqueueCap`-аар `setCaps`-тай дараалж, утга нь ХЭВЭЭР бол л
+ *    арилгана.
  */
-async function retryDirtyCaps(): Promise<DirtyCaps> {
-  const d = loadDirty();
-  const keys = Object.keys(d);
-  if (!keys.length) return {};
-  const left: DirtyCaps = {};
+async function retryDirtyCaps(onlyMine: boolean): Promise<Record<string, CapKey[]>> {
+  const done: Record<string, CapKey[]> = {};
+  const keys = Object.keys(loadDirty());
+  if (!keys.length) return done;
+  let m: typeof import('./permsRemote');
   try {
-    const m = await import('./permsRemote');
-    for (const key of keys) {
-      const intended = d[key];
-      try {
-        const ok = intended.length ? await m.capUpsert(key, intended) : await m.capRemove(key);
-        if (!ok) left[key] = intended;
-      } catch {
-        left[key] = intended;
-      }
-    }
+    m = await import('./permsRemote');
   } catch {
-    return d; // модуль ачаалагдсангүй — бүгд dirty хэвээр
+    return done; // модуль ачаалагдсангүй — бүгд dirty хэвээр
   }
-  saveDirty(left);
-  return left;
+  for (const key of keys) {
+    await enqueueCap(key, async () => {
+      const item = loadDirty()[key];
+      if (!item) return; // хооронд нь амжилттай хадгалагдсан
+      const want = serCaps(item.caps);
+      if (onlyMine && mineCaps.get(key) !== want) return;
+      let ok = false;
+      try {
+        ok = item.caps.length ? await m.capUpsert(key, item.caps) : await m.capRemove(key);
+      } catch {
+        ok = false;
+      }
+      if (!ok) return;
+      const now = loadDirty();
+      if (now[key] && serCaps(now[key].caps) === want) {
+        delete now[key];
+        saveDirty(now);
+      }
+      if (mineCaps.get(key) === want) mineCaps.delete(key);
+      done[key] = item.caps;
+    });
+  }
+  return done;
+}
+
+/** Remote руу бичигдсэн жагсаалтуудыг кэш дээр тусгана — дараалалд бичилт хүлээж буйг алгасна */
+function applyDone(s: Store, done: Record<string, CapKey[]>): void {
+  for (const [k, c] of Object.entries(done)) {
+    if (capQueue.has(k)) continue; // шинэ бичилт хүлээгдэж байна — локал нь илүү шинэ
+    if (c.length) s[k] = c; else delete s[k];
+  }
 }
 
 /**
@@ -453,17 +558,20 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
   if (next.length === 0) delete cache[u];
   save(cache);
   notify();
-  let ok = false;
-  try {
-    const r = await import('./permsRemote');
-    ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
-  } catch {
-    ok = false;
-  }
-  /* ⚠️ Үр дүнг ЗААВАЛ тэмдэглэнэ — эс бөгөөс унасан бичилт дараагийн
-     `_syncRemoteCaps`-д чимээгүй буцна (2026-09-08). */
-  trackWrite(u, next, ok);
-  return ok;
+  /* ⚠️ Хэрэглэгч бүрээр ДАРААЛНА (2026-09-25) — `capQueue`-ийн тайлбар */
+  return enqueueCap(u, async () => {
+    let ok = false;
+    try {
+      const r = await import('./permsRemote');
+      ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
+    } catch {
+      ok = false;
+    }
+    /* ⚠️ Үр дүнг ЗААВАЛ тэмдэглэнэ — эс бөгөөс унасан бичилт дараагийн
+       `_syncRemoteCaps`-д чимээгүй буцна (2026-09-08). */
+    await trackWrite(u, next, ok);
+    return ok;
+  });
 }
 
 /** Нэг эрхийг асаах/унтраах товчлол. */
@@ -490,10 +598,17 @@ export function subscribeCaps(fn: () => void): () => void {
  * Гараар «дахин синк» — UserAdmin-ы товчноос (`permissions.retryDirty`-ийн хос).
  * Үлдсэн dirty тоог буцаана.
  */
-export async function retryCapsDirty(): Promise<number> {
-  const left = await retryDirtyCaps();
+export async function retryCapsDirty(onlyMine = false): Promise<number> {
+  /* ⚠️ `onlyMine` — админ өмнөх сешний мөрийг бичихийг зөвшөөрөөгүй үед (2026-09-25) */
+  const done = await retryDirtyCaps(onlyMine);
+  if (Object.keys(done).length) {
+    const merged: Store = { ...cache };
+    applyDone(merged, done);
+    cache = merged;
+    save(merged);
+  }
   notify();
-  return Object.keys(left).length;
+  return Object.keys(loadDirty()).length;
 }
 
 /**
@@ -522,6 +637,19 @@ export function _syncRemoteCaps(rows: CapRow[], trusted = false): void {
        мөрөнд санамсаргүй зай орвол `capsOf` хэзээ ч таарахгүй. */
     s[r.user.trim().toLowerCase()] = sane(r.caps);
   }
+  /*
+   * ⚠️ ДАРААЛАЛД БАЙГАА ба SNAPSHOT-ЫН ДАРАА БИЧИГДСЭН хэрэглэгчийн ЛОКАЛ
+   *    жагсаалт давамгайлна (2026-09-25, аудитын засвар) — `scopedAcl.syncRemote`-
+   *    ийн ижил дүрэм. Snapshot нь `capUpsert`-ээс ӨМНӨ авагдсан бол кэшээс шинэ
+   *    эрх алга болж, дараагийн `toggleCap` тэр ХУУЧИН суурь дээр бүтэн
+   *    жагсаалтыг бүтээж remote-ийг дардаг байв.
+   */
+  const keep = new Set<string>(capQueue.keys());
+  for (const [u, t] of capTouched) if (_newerThanSnapshot(t)) keep.add(u);
+  for (const u of keep) {
+    const loc = cache[u];
+    if (loc && loc.length) s[u] = loc; else delete s[u];
+  }
   cache = s;
   /* ⚠️ Энэ мөчөөс л `capsOf` кэшийг тооцно (2026-09-21) — remote = үнэн. */
   remoteSynced = true;
@@ -536,12 +664,15 @@ export function _syncRemoteCaps(rows: CapRow[], trusted = false): void {
    * алхам 1–2-ын ижил загвар. Async тул notify() дахин дуудагдана.
    */
   if (!trusted) return;
-  void retryDirtyCaps().then((left) => {
-    const keys = Object.keys(left);
-    if (!keys.length) return;
+  /* ⚠️ ЗӨВХӨН энэ runtime-ийн dirty (`onlyMine`, 2026-09-25) — `mineCaps`-ийн тайлбар */
+  void retryDirtyCaps(true).then((done) => {
     const merged: Store = { ...cache };
-    for (const k of keys) {
-      if (left[k].length) merged[k] = left[k];
+    /* Retry нь snapshot-ын ДАРАА бичсэн тул тэр утгууд snapshot-од байхгүй */
+    applyDone(merged, done);
+    /* Үлдсэн (унасан) энэ runtime-ийн засварыг давхарлана */
+    for (const [k, v] of Object.entries(loadDirty())) {
+      if (mineCaps.get(k) !== serCaps(v.caps) || capQueue.has(k)) continue;
+      if (v.caps.length) merged[k] = v.caps;
       else delete merged[k];
     }
     cache = merged;

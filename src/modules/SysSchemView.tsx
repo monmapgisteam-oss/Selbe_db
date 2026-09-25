@@ -33,9 +33,17 @@ const BY_ID = Object.fromEntries(SYS_NODES.map((n) => [n.id, n])) as Record<SysI
 export function SysSchemView({
   setView,
   onDoc,
+  canOpen,
 }: {
   /** Харагдац руу шилжих — самбарын ИЛ товчоор */
   setView?: (v: ViewKey) => void;
+  /**
+   * Харагдац хэрэглэгчийн эрхэд байгаа эсэх (2026-09-25) — өгөөгүй бол бүгд
+   * нээлттэй. ⚠️ `false` бол «Харагдац нээх» ИДЭВХГҮЙ, шалтгаанаа хэлнэ —
+   * урьд нь товч харагдсаар байгаад дарахад юу ч болдоггүй байв
+   * (`Schem.tsx`-ийн самбартай ижил дүрэм).
+   */
+  canOpen?: (v: ViewKey) => boolean;
   /** Баримтын бүлэг нээх */
   onDoc?: (id: string) => void;
 }) {
@@ -159,11 +167,16 @@ export function SysSchemView({
           </div>
           <p className={s.panelDesc}>{node.desc}</p>
           <div className={s.panelActs}>
-            {node.view && setView && (
-              <button type="button" className={s.act} onClick={() => setView(node.view as ViewKey)}>
-                {tr('Харагдац нээх')}
-              </button>
-            )}
+            {node.view && setView && (() => {
+              const ok = !canOpen || canOpen(node.view as ViewKey);
+              return (
+                <button type="button" className={s.act} disabled={!ok}
+                  title={ok ? undefined : tr('Энэ харагдац танд нээлттэй биш')}
+                  onClick={() => { if (ok) setView(node.view as ViewKey); }}>
+                  {ok ? tr('Харагдац нээх') : tr('Энэ харагдац танд нээлттэй биш')}
+                </button>
+              );
+            })()}
             {node.doc && onDoc && (
               <button type="button" className={s.actGhost} onClick={() => onDoc(node.doc as string)}>
                 {tr('Дэлгэрэнгүй унших')}

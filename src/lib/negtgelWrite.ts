@@ -15,6 +15,8 @@
  * ⚠️ ХУВИЙГ ЭНД ДАХИН БОДОХГҮЙ. Бөглөх хуудасны «Б.» мөр нь дэд үе шатуудаа
  * ЖИНГЭЭР нь аль хэдийн нэгтгэсэн байдаг — түүнийг шууд авна. Энд өөрсдөө
  * дундажлавал жин алдагдаж, дэлгэц дээрх тоо хоорондоо зөрнө.
+ * ⚠️ 2026-09-25: ХОЁР ХУУДАСТАЙ багцад (9F + 12F) хуудсуудын «Б.» мөрийг
+ * БЛОКИЙН ТООГООР нийлүүлнэ — дэлгэрэнгүйг `summaryOf`-ийн ⚠️-ээс.
  */
 
 import { t as tr } from './i18nCore';
@@ -63,23 +65,86 @@ const ts = (ms: number) =>
 
 type Pkg = (typeof PKGS)[number];
 type Schema = NonNullable<Awaited<ReturnType<typeof loadSchema>>>;
-/** Нэг `sheetOid`-д таарсан хуудас — `fill` нь тухайн хуудасны огнооны багана */
-type Hit = { p: Pkg; sc: Schema; at: number; fill: string };
+/**
+ * Нэг `sheetOid`-д таарсан хуудас — `fill` нь тухайн хуудасны огнооны багана,
+ * `no` нь тэр мөрийн «№» (жаазны эхлэлийг танихад).
+ */
+type Hit = { p: Pkg; sc: Schema; at: number; fill: string; no: string };
 
 /**
  * Хэд хэдэн хуудас нэг `sheetOid`-д таарвал ЖИНХЭНЭ эхийг ялгана.
  *
  * ⚠️ `sheetOid` нь нийтлэлийн архивын жаазанд бичигдсэн ХАМГИЙН ЭХНИЙ мөрийн
- *    дугаар (`FillNew` → `submitForReview`). Зөв хуудсанд түүнээс ӨМНӨ ижил
- *    огноотой мөр БАЙХГҮЙ; санамсаргүй таарсан хуудсанд тэр дугаар жаазны дунд
- *    буудаг тул өмнөх мөрүүд байна.
+ *    дугаар (`FillNew` → `submitForReview`). Зөв хуудсанд тэр мөр нь ЖААЗНЫ
+ *    ЭХЛЭЛ; санамсаргүй таарсан хуудсанд тэр дугаар жаазны ДУНД буудаг.
+ *
+ * ⚠️ 2026-09-25-ны аудит: урьд нь «түүнээс ӨМНӨ ижил огноотой мөр БАЙХГҮЙ»
+ *    гэж шалгадаг байв. Гэвч `archiveSubmission` нь `lastDay >= fillMs` үед
+ *    жаазыг ӨНӨӨДРӨӨР огнолдог тул нэг өдөрт ОЛОН жааз байх нь хэвийн: хоёр
+ *    хуудастай багцын (1 · 2 · 4-2) тэр өдрийн ХОЁР ДАХЬ батлалт хоёр хуудсанд
+ *    хоёуланд нь `false` авч, «аль нь болох нь тодорхойгүй» гэж 3 оролдлогоор
+ *    унаж, нэгтгэл өглөөний тоондоо хөлддөг байв.
+ *    ОДОО: жаазны эхлэлийг `bagtsSheet.lastFrame`-ийн ЯГ ИЖИЛ дүрмээр таньна —
+ *    тэр өдрийн ЭХНИЙ мөрийн «№» (жааз бүрийн толгой) ба `sheetOid` мөрийн «№»
+ *    ТААРВАЛ жаазны эхлэл. Толгойн «№» хоосон бол хуучин дүрэм (эхний мөр нь
+ *    өөрөө `sheetOid`).
  */
 async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
   const q = (await post(`${h.p.url}/query`, {
-    where: `${h.fill} = ${ts(h.at)} AND OBJECTID < ${sheetOid}`,
-    returnCountOnly: 'true',
-  })) as { count?: number };
-  return (q.count ?? 0) === 0;
+    where: `${h.fill} = ${ts(h.at)}`,
+    outFields: `${h.sc.f.oid},${h.sc.f.no}`,
+    returnGeometry: 'false',
+    orderByFields: `${h.sc.f.oid} ASC`,
+    resultRecordCount: '1',
+  })) as { features?: { attributes: Record<string, unknown> }[] };
+  const first = q.features?.[0]?.attributes;
+  if (!first) return false;
+  if (num(first[h.sc.f.oid]) === sheetOid) return true;
+  const headNo = String(first[h.sc.f.no] ?? '').trim();
+  return headNo !== '' && headNo === h.no;
+}
+
+/** «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1) */
+type BRow = { act: number | null; plan: number | null; volume: number | null; volumePlan: number | null };
+
+/**
+ * Нэг хуудасны «Б.» мөр — `dateWhere`-д таарах ХАМГИЙН СҮҮЛИЙН жаазнаас.
+ *
+ * ⚠️ ХАЙЛТ НЬ ЯГ ТЭНЦҮҮ БАЙЖ БОЛОХГҮЙ (2026-09-04-ний аудит): урьд нь
+ *    `${sc.f.no} = N'Б.'` байсан бөгөөд бодит өгөгдөлд тэр нүд 8 багцад
+ *    «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ», Багц 2·12F ба Багц 3.2·9F-д «Б» (ЦЭГГҮЙ)
+ *    гэж бичигдсэн тул 10/10 багцад 0 мөр таарч байв. Үр дүнд `summaryOf`
+ *    `null` буцааж, `registerApproved` «Бөглөх хуудаснаас агшин олдсонгүй»
+ *    гэж унаад `hyanaltStore` түүнийг зөвхөн `console.warn` хийдэг — дөрвөн
+ *    шат бүрэн дамжсан гүйцэтгэл нэгтгэлд ХЭЗЭЭ Ч ордоггүй, хэрэглэгчид ч
+ *    алдаа харагддаггүй байлаа. Предикат нь одоо `services.constructionWhere`
+ *    — «Б1»…«Б5» дэд үе шатыг ОРУУЛАХГҮЙ цорын ганц дүрэм.
+ *
+ * ⚠️ ЭРЭМБЭЛЭЛТГҮЙ `resultRecordCount:'1'` мөн БОЛОХГҮЙ: нэг `fillDate`-д
+ *    олон жааз байж болно (амьд: Багц 1·9F-ийн 2026-08-29-нд ЯГ ижил ms-тэй
+ *    16 жааз) бөгөөд сервер OBJECTID ӨСӨХӨӨР эхнийхийг өгдөг тул нэгтгэлд
+ *    ХАМГИЙН ХУУЧИН жаазны тоо бичигдэнэ. `bagtsSheet.lastFrame` нь эсрэгээр
+ *    СҮҮЛИЙН жаазыг авдаг — хоёр тоо зөрөхгүйн тулд энд огноо, OBJECTID
+ *    хоёуланг БУУРАХААР эрэмбэлж, сүүлийн жаазны мөрийг авна.
+ */
+async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
+  const cols = [sc.f.no, sc.f.act, sc.f.plan, sc.f.vol, sc.f.obyemSum]
+    .filter(Boolean) as string[];
+  const q = (await post(`${p.url}/query`, {
+    where: `${dateWhere} AND ${constructionWhere(sc.f.no)}`,
+    outFields: [...new Set(cols)].join(','),
+    returnGeometry: 'false',
+    orderByFields: `${fill} DESC,${sc.f.oid} DESC`,
+    resultRecordCount: '1',
+  })) as { features?: { attributes: Record<string, unknown> }[] };
+  const a = q.features?.[0]?.attributes;
+  if (!a) return null;
+  return {
+    act: num(a[sc.f.act]),
+    plan: num(a[sc.f.plan]),
+    volume: sc.f.obyemSum ? num(a[sc.f.obyemSum]) : null,
+    volumePlan: num(a[sc.f.vol]),
+  };
 }
 
 /**
@@ -87,8 +152,11 @@ async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
  *
  * @param bagts    «Багц 4-1» — хяналтын бүртгэл дэх нэр
  * @param sheetOid Архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID (агшныг үүгээр олно)
+ * @param pkgKey   Архивласан ХУУДАСНЫ түлхүүр («b1_12f») — мэдэгдэж байвал
+ *                 OBJECTID-гаар хуудас ТААМАГЛАХГҮЙ (`registerApproved`-ийн ⚠️)
  */
-async function summaryOf(bagts: string, sheetOid: number) {
+async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
+  const group = PKGS.filter((x) => x.group === bagts);
   /*
    * Нэг багцад 9F ба 12F хоёр хуудас байж болно — эх мөр аль нь болохыг олно.
    *
@@ -101,18 +169,19 @@ async function summaryOf(bagts: string, sheetOid: number) {
    *    олон таарвал санамсаргүй нэгийг СОНГОХГҮЙ.
    */
   const hits: Hit[] = [];
-  for (const p of PKGS.filter((x) => x.group === bagts)) {
+  for (const p of group.filter((x) => !pkgKey || x.key === pkgKey)) {
     const sc = await loadSchema(p).catch(() => null);
     if (!sc?.f.fillDate) continue;
 
     const head = (await post(`${p.url}/query`, {
       where: `OBJECTID = ${sheetOid}`,
-      outFields: sc.f.fillDate,
+      outFields: [sc.f.fillDate, sc.f.no].join(','),
       returnGeometry: 'false',
     })) as { features?: { attributes: Record<string, unknown> }[] };
-    const at = head.features?.[0]?.attributes?.[sc.f.fillDate];
+    const ha = head.features?.[0]?.attributes;
+    const at = ha?.[sc.f.fillDate];
     if (typeof at !== 'number') continue;      // энэ хуудсанд тэр мөр алга
-    hits.push({ p, sc, at, fill: sc.f.fillDate });
+    hits.push({ p, sc, at, fill: sc.f.fillDate, no: String(ha?.[sc.f.no] ?? '').trim() });
   }
   if (!hits.length) return null;
 
@@ -133,55 +202,84 @@ async function summaryOf(bagts: string, sheetOid: number) {
     one = heads[0];
   }
 
-  {
-    const { p, sc, at } = one;
-    /*
-     * «Б.» мөр = БАРИЛГА УГСРАЛТЫН АЖИЛ — багцын нэгдсэн гүйцэтгэл. Эх excel
-     * өөрөө дэд үе шатуудыг жингээр нэгтгэсэн байдаг тул ЭНЭ мөрийг шууд авна.
-     *
-     * ⚠️ ХАЙЛТ НЬ ЯГ ТЭНЦҮҮ БАЙЖ БОЛОХГҮЙ (2026-09-04-ний аудит): урьд нь
-     *    `${sc.f.no} = N'Б.'` байсан бөгөөд бодит өгөгдөлд тэр нүд 8 багцад
-     *    «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ», Багц 2·12F ба Багц 3.2·9F-д «Б» (ЦЭГГҮЙ)
-     *    гэж бичигдсэн тул 10/10 багцад 0 мөр таарч байв. Үр дүнд `summaryOf`
-     *    `null` буцааж, `registerApproved` «Бөглөх хуудаснаас агшин олдсонгүй»
-     *    гэж унаад `hyanaltStore` түүнийг зөвхөн `console.warn` хийдэг — дөрвөн
-     *    шат бүрэн дамжсан гүйцэтгэл нэгтгэлд ХЭЗЭЭ Ч ордоггүй, хэрэглэгчид ч
-     *    алдаа харагддаггүй байлаа. Предикат нь одоо `services.constructionWhere`
-     *    — «Б1»…«Б5» дэд үе шатыг ОРУУЛАХГҮЙ цорын ганц дүрэм.
-     *
-     * ⚠️ ЭРЭМБЭЛЭЛТГҮЙ `resultRecordCount:'1'` мөн БОЛОХГҮЙ: нэг `fillDate`-д
-     *    олон жааз байж болно (амьд: Багц 1·9F-ийн 2026-08-29-нд ЯГ ижил ms-тэй
-     *    16 жааз) бөгөөд сервер OBJECTID ӨСӨХӨӨР эхнийхийг өгдөг тул нэгтгэлд
-     *    ХАМГИЙН ХУУЧИН жаазны тоо бичигдэнэ. `bagtsSheet.lastFrame` нь эсрэгээр
-     *    СҮҮЛИЙН жаазыг авдаг — хоёр тоо зөрөхгүйн тулд энд OBJECTID БУУРАХААР
-     *    эрэмбэлж, сүүлийн жаазны мөрийг авна.
-     */
-    const cols = [sc.f.no, sc.f.act, sc.f.plan, sc.f.vol, sc.f.obyemSum]
-      .filter(Boolean) as string[];
-    const q = (await post(`${p.url}/query`, {
-      where: `${sc.f.fillDate} = ${ts(at)} AND ${constructionWhere(sc.f.no)}`,
-      outFields: [...new Set(cols)].join(','),
-      returnGeometry: 'false',
-      orderByFields: `${sc.f.oid} DESC`,
-      resultRecordCount: '1',
-    })) as { features?: { attributes: Record<string, unknown> }[] };
-    const a = q.features?.[0]?.attributes;
-    if (!a) return null;
+  /*
+   * «Б.» мөр = БАРИЛГА УГСРАЛТЫН АЖИЛ — багцын нэгдсэн гүйцэтгэл. Эх excel
+   * өөрөө дэд үе шатуудыг жингээр нэгтгэсэн байдаг тул ЭНЭ мөрийг шууд авна
+   * (хайлт ба эрэмбийн ⚠️ — `bRowOf`).
+   */
+  const at = one.at;
+  const own = await bRowOf(one.p, one.sc, one.fill, `${one.fill} = ${ts(at)}`);
+  if (!own) return null;
 
-    /*
-     * ⚠️ ОБЬЁМ нь багцын түвшинд ХОЛИМОГ НЭГЖТЭЙ (м³ бетон + м² хана + ш цонх).
-     *    Нийлбэр нь физик утгагүй ч хэрэглэгчийн шийдвэрээр бүртгэгдэнэ —
-     *    харьцуулахдаа ЗӨВХӨН өөртэйгөө (төлөвлөгөөт vs бодит) харьцуулна.
-     */
-    return {
-      at,
-      /* ⚠️ 0–1 → 0–100 (`toPct`) — нэгтгэлийн багана ХУВЬ хүлээдэг */
-      progress: toPct(num(a[sc.f.act])),
-      planned: toPct(num(a[sc.f.plan])),
-      volume: sc.f.obyemSum ? num(a[sc.f.obyemSum]) : null,
-      volumePlan: num(a[sc.f.vol]),
-    };
+  /*
+   * ⚠️ ХОЁР ХУУДАСТАЙ БАГЦ (1 · 2 · 4-2) — БАГЦЫН дүн нь ХОЁР хуудаснаас
+   *    (2026-09-25-ны аудит). Нэгтгэлийн мөрийн түлхүүр нь «багц · огноо»
+   *    атлаа урьд нь ЗӨВХӨН батлагдсан хуудасны «Б.» мөрийг бичдэг байв: 9F
+   *    (30%) ба 12F (5%)-ийг нэг өдөр батлахад мөр 30 → 5 болж дарагдаж,
+   *    дараагийн өдөр нь 12F-ийн 5 нь `last = 30`-тай жишигдэн «хэт зөрүүтэй»
+   *    гэж ХУДЛАА татгалзагддаг, цуваа хуудас хооронд савладаг байлаа.
+   *
+   * ДҮРЭМ: бусад хуудас бүрийн ТЭР ӨДӨР БУЮУ ӨМНӨХ хамгийн сүүлийн жаазны
+   *    «Б.» мөрийг авч БЛОКИЙН ТООГООР жигнэнэ. Энэ нь «ХУВИЙГ ДАХИН
+   *    БОДОХГҮЙ» (толгойн ⚠️) дүрмийг зөрчихгүй: «Б.» мөрийн гүйцэтгэл нь
+   *    өөрөө блокуудын ДУНДАЖ (`computeAll`-ийн J, хоосон = 0) тул блокоор
+   *    жигнэсэн дундаж нь хоёр хуудасны БҮХ блокийн дундажтай ЯГ тэнцүү —
+   *    ижил томьёог багц руу өргөтгөсөн нь (`planProgress`-ийн хуудас
+   *    хоорондын жин ч мөн блокийн тоо).
+   * ⚠️ «Б.» мөрийн гүйцэтгэл ХЭМЖИГДЭЭГҮЙ (`null`) эсвэл хэзээ ч нийтлэгдээгүй
+   *    хуудас ОРОХГҮЙ (`null ≠ 0`) — тэр нь 0% биш, мэдээлэлгүй.
+   * ⚠️ Бусад хуудсыг уншиж ЧАДАХГҮЙ бол АЛДАА шидэнэ (`registerApproved`
+   *    дахин оролдоно): чимээгүй алгасвал яг энэ дарагдах алдаа буцаж ирнэ.
+   * ⚠️ Төлөвлөгөөт хувь нь ИЖИЛ хуудсуудаар: аль нэгэнд нь `null` бол `null`
+   *    — өөр блокийн олонлогоор бодсон төлөвлөгөөг гүйцэтгэлтэй жишвэл
+   *    хоцрогдол худал гарна.
+   */
+  const parts: { n: number; r: BRow }[] = [{ n: one.sc.bld.length, r: own }];
+  if (own.act != null) {
+    for (const p of group) {
+      if (p.key === one.p.key) continue;
+      const sc = await loadSchema(p);
+      if (!sc.f.fillDate) continue;              // архивын талбаргүй — хэзээ ч нийтлэгдээгүй
+      const r = await bRowOf(p, sc, sc.f.fillDate, `${sc.f.fillDate} <= ${ts(at)}`);
+      if (r && r.act != null) parts.push({ n: sc.bld.length, r });
+    }
   }
+  const w = (n: number) => (n > 0 ? n : 1);
+  const mean = (pick: (r: BRow) => number | null): number | null => {
+    if (parts.length === 1) return pick(own);
+    let s = 0;
+    let d = 0;
+    for (const x of parts) {
+      const v = pick(x.r);
+      if (v == null) return null;
+      s += v * w(x.n);
+      d += w(x.n);
+    }
+    return d > 0 ? s / d : null;
+  };
+  /*
+   * ⚠️ ОБЬЁМ нь багцын түвшинд ХОЛИМОГ НЭГЖТЭЙ (м³ бетон + м² хана + ш цонх).
+   *    Нийлбэр нь физик утгагүй ч хэрэглэгчийн шийдвэрээр бүртгэгдэнэ —
+   *    харьцуулахдаа ЗӨВХӨН өөртэйгөө (төлөвлөгөөт vs бодит) харьцуулна.
+   *    Хоёр хуудастай багцад хуудсуудын НИЙЛБЭР; бүгд хоосон бол `null`.
+   */
+  const sum = (pick: (r: BRow) => number | null): number | null => {
+    let s: number | null = null;
+    for (const x of parts) {
+      const v = pick(x.r);
+      if (v != null) s = (s ?? 0) + v;
+    }
+    return s;
+  };
+
+  return {
+    at,
+    /* ⚠️ 0–1 → 0–100 (`toPct`) — нэгтгэлийн багана ХУВЬ хүлээдэг */
+    progress: toPct(own.act == null ? null : mean((r) => r.act)),
+    planned: toPct(mean((r) => r.plan)),
+    volume: sum((r) => r.volume),
+    volumePlan: sum((r) => r.volumePlan),
+  };
 }
 
 export type NegtgelResult = { ok: true } | { ok: false; error: string };
@@ -200,13 +298,18 @@ export type NegtgelResult = { ok: true } | { ok: false; error: string };
  *    дугаарыг архиваас хайж олохгүй, «Бөглөх хуудаснаас агшин олдсонгүй» гэж
  *    чимээгүй унана. `hyanaltStore.archiveSubmission` нь `applyAdds`-ийн
  *    буцаасан `firstOid`-ыг (legacy мөрд хуучин `sheetOid`-ыг) өгнө.
+ * @param pkgKey ⚠️ СОНГОЛТТОЙ (2026-09-25): архивласан хуудасны `Pkg.key`.
+ *    Өгвөл хуудсыг OBJECTID-гаар ТААМАГЛАХГҮЙ — хоёр хуудасны OID муж
+ *    давхцсан багцад (1 · 2 · 4-2) `frameHead`-ийн ялгалт огт хэрэггүй болно.
+ *    Өгөөгүй бол (хуучин дуудагч) урьдын адил `frameHead`-ээр ялгана.
  */
 export async function registerApproved(
   bagts: string,
   sheetOid: number,
+  pkgKey?: string,
 ): Promise<NegtgelResult> {
   try {
-    const s = await summaryOf(bagts, sheetOid);
+    const s = await summaryOf(bagts, sheetOid, pkgKey);
     if (!s) return { ok: false, error: 'Бөглөх хуудаснаас агшин олдсонгүй' };
 
     const nameSql = bagts.replace(/'/g, "''");

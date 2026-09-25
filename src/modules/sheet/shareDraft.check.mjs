@@ -35,17 +35,33 @@ const mergeDrafts = (a, b) => {
   if (!a) return b;
   if (!b) return a;
   const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
+  /* 2026-09-25: нүд бүрийг ӨӨРИЙН агшнаар (`byAt`) — хоёр талд агшин байж,
+     хуучин талынх их бол хуучин утга ялна (`keepOld`), эс бөгөөс шинэ тал
+     (FillNew.tsx-ийн дүрэм). */
+  const atOld = new Map(older.byAt ?? []);
+  const atNew = new Map(newer.byAt ?? []);
+  const keepOld = new Map();
   const cells = new Map(older.cells);
-  for (const [k, v] of newer.cells) cells.set(k, v);
+  for (const [k, v] of newer.cells) {
+    const o = atOld.get(k);
+    const w = atNew.get(k);
+    if (cells.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
+    cells.set(k, v);
+  }
   const dates = new Map(older.dates ?? []);
-  for (const [k, v] of newer.dates ?? []) dates.set(k, v);
+  for (const [k, v] of newer.dates ?? []) {
+    const o = atOld.get(k);
+    const w = atNew.get(k);
+    if (dates.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
+    dates.set(k, v);
+  }
   const adds = new Map();
   for (const x of older.adds ?? []) adds.set(x.oid, x);
   for (const x of newer.adds ?? []) adds.set(x.oid, x);
   const rowKeys = new Map(older.rowKeys ?? []);
   for (const [o, k] of newer.rowKeys ?? []) rowKeys.set(o, k);
   const by = new Map(older.by ?? []);
-  for (const [k, u] of newer.by ?? []) by.set(k, u);
+  for (const [k, u] of newer.by ?? []) if (!keepOld.has(k) || !by.has(k)) by.set(k, u);
   const done = new Map();
   for (const [u, at] of older.done ?? []) done.set(u, at);
   if (newer.done != null) {
@@ -103,9 +119,9 @@ const mergeDrafts = (a, b) => {
     dates: dates.size ? [...dates] : undefined,
     adds: adds.size ? [...adds.values()] : undefined,
     asOf: newer.asOf !== undefined ? newer.asOf : older.asOf,
-    rowKeys: [...rowKeys],
+    rowKeys: [...rowKeys].sort((x, y) => x[0] - y[0]),
     by: by.size ? [...by] : undefined,
-    done: done.size ? [...done] : undefined,
+    done: newer.done != null || older.done != null ? [...done] : undefined,
     byAt: byAt.size ? [...byAt] : undefined,
     del: del.size ? [...del] : undefined,
     sent: sent.size ? [...sent] : undefined,
@@ -225,6 +241,28 @@ console.log('✅ оролцогчийн ТОО хамаарахгүй — 1 · 2
     'хуучин хуулбар нийлэхэд ШИНЭ «дуусгасан» тэмдэглэгээ арчигдах ёсгүй');
 }
 console.log('✅ «Дахин засах» — буцаалт сэргэхгүй · хуучин хуулбар шинийг арчихгүй');
+
+/* ══════════ 5b. НҮДНИЙ АГШИН (`byAt`) · ХООСОН `done` · rowKeys-ийн дараалал (2026-09-25) ══════════ */
+{
+  /* А-гийн ШИНЭ ноорогт Б-гийн өмнөх X=5 (byAt 50) хөндөгдөөгүй хуулбар байна;
+     Б-гийн алсын хуулбарт ХОЖУУ засвар X=8 (byAt 100). Ноорог нь шинэ ч нүд
+     нь хуучирсан тул 8 ялах ёстой, эзэн нь ч Б. */
+  const remote = { t: 1000, cells: [['10:0', '8']], by: [['10:0', 'b']], byAt: [['10:0', 100]] };
+  const local = { t: 2000, cells: [['10:0', '5']], by: [['10:0', 'b0']], byAt: [['10:0', 50]] };
+  for (const m of [mergeDrafts(remote, local), mergeDrafts(local, remote)]) {
+    assert.equal(new Map(m.cells).get('10:0'), '8', 'хожуу хөндсөн нүд (byAt) ялах ёстой');
+    assert.equal(new Map(m.by).get('10:0'), 'b', 'эзэн нь ялсан утгыг дагана');
+  }
+  /* Хоосон `done` (ИЛ буцаалт) нийлүүлэлтийн дараа `[]` хэвээр — `undefined` болохгүй */
+  const before = { t: 1000, cells: [], done: [['a', 900]] };
+  const after = { t: 2000, cells: [], done: [] };
+  assert.deepEqual(mergeDrafts(before, after).done, [], 'ИЛ буцаалт `[]` хэвээр үлдэх ёстой');
+  /* rowKeys — oid өсөхөөр (хуудасны дараалал) */
+  const r1 = { t: 1000, cells: [], rowKeys: [[30, 'x'], [10, 'x']] };
+  const r2 = { t: 2000, cells: [], rowKeys: [[20, 'x']] };
+  assert.deepEqual(mergeDrafts(r1, r2).rowKeys.map(([o]) => o), [10, 20, 30]);
+}
+console.log('✅ нүдний агшин ялна · хоосон done хадгалагдана · rowKeys хуудасны дарааллаар');
 
 /* ══════════ 6. ЭХ КОДЫН ГЭРЭЭ — салбарлалтыг барина ══════════ */
 {

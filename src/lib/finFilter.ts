@@ -233,6 +233,10 @@ function cellMatches(raw: unknown, shown: string, needle: string, numeric: boole
   if (numeric) {
     const t = numTest(s);
     if (t) {
+      /* ⚠️ 2026-09-25: хоосон нүд (`null`/`''`) нь «дүнгүй», 0 БИШ — `Number(null)` = 0
+         тул урьд нь `=0`, `<1e9`, `0..5e9` зэрэг илэрхийлэлд хоосон мөр таардаг байв
+         (null ≠ 0). */
+      if (raw == null || String(raw).trim() === '') return false;
       const x = Number(raw);
       return Number.isFinite(x) && t(x);
     }

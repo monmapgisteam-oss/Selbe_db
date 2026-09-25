@@ -25,6 +25,10 @@ jobs:
       - run: npm run typecheck
       # ESLint (Next core-web-vitals + TS) — warning зөвшөөрнө, error унагана
       - run: npm run lint
+      # ⚠️ 2026-09-25: i18n шалгуур (CLAUDE.md-ийн заавал давах 4 шалгалтын нэг).
+      #    Урьд нь CI-д байгаагүй тул `tr('…')`-ийн эх текст засагдаж en.ts-ийн
+      #    түлхүүр хоцорсон PR ногоон давж, англи горимд чимээгүй монголоор гардаг байв.
+      - run: npm run i18n:check
       # ⚠️ `test:agent`/`test:drift` (agent-proxy реле асаадаг) нь `npm test`-д
       #    БИШ, `test:live`-д байдаг — энэ workflow тэдгээрийг ажиллуулдаггүй тул
       #    agent-proxy-ийн тусдаа `npm ci` ХЭРЭГГҮЙ (2026-09-24-нд хасав).

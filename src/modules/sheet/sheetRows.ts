@@ -22,10 +22,11 @@
  * `Шинэчлэгдсэн_огноо` нь зөвхөн 1-р мөрд бичигддэг excel-ийн лавлах нүд —
  * агшин ялгах түлхүүр БОЛОХГҮЙ.
  */
-import { PKGS, loadSchema, type Pkg } from './bagts.pkg';
+import { PKGS, loadSchema, type Pkg, type Schema } from './bagts.pkg';
 import { tokenParam } from '@/lib/authToken';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
+import { TREES } from './bagts.trees';
 import { TASK_SHEET, bagtsKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
 import { withSlot, isRateLimit } from '@/lib/query';
 
@@ -161,6 +162,51 @@ async function onePage(url: string, params: Record<string, string>) {
 }
 
 /**
+ * Дахин оролдвол арилж болох (ТҮР) алдаа мөн үү — rate-limit, HTTP 429/5xx,
+ * биеийн `{error:{code:5xx}}`, сүлжээний тасалдал (`fetch`-ийн TypeError),
+ * JSON биш (proxy/CDN-ийн HTML) хариу.
+ */
+const isTransient = (e: unknown): boolean => {
+  if (e instanceof TypeError) return true;
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === 'number' && (code === 429 || code >= 500)) return true;
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  return isRateLimit(msg) || /ArcGIS HTTP (429|5\d\d)/.test(msg) || /JSON/.test(msg);
+};
+
+/**
+ * Хуудасны СХЕМ — хязгаарлагчийн ДОТОР, түр алдаанд ДАХИН ОРОЛДОНО (`onePage`-тэй ижил).
+ *
+ * ⚠️ ЯАГААД (2026-09-25-ны аудит): урьд нь `loadSchema(pkg).catch(() => null)`
+ *    нь ЯМАР Ч алдааг «архивын багана алга» гэж үзэж багцыг ЧИМЭЭГҮЙ алгасдаг
+ *    байв. `loadSchema`-ийн `agsFetch` нь `withSlot`-ын гадна, дахин
+ *    оролдлогогүй тул дашбоардын хүйтэн ачаалалтад (~120 хүсэлт) нэг
+ *    «Too many requests» тэр багцыг бүхэлд нь хасч, `blockProgress`-ийн memo ба
+ *    `saveCache` (localStorage, 7 хоног) ДУТУУ зураглалыг хадгалдаг байлаа —
+ *    блокууд саарал «мэдээлэлгүй», `BuildingPanel` «хүснэгтэд бүртгэгдээгүй».
+ *
+ * Дүрэм:
+ *   · ТҮР алдаа (`isTransient`) → хүлээгээд дахин; RETRIES-ийн дараа ч унавал
+ *     ШИДНЭ — дуудагчийн memo/кэш дутуу үр дүнг хадгалахгүй (алдааг кэшлэдэггүй),
+ *     дараагийн ачаалалт дахин оролдоно;
+ *   · ТОГТВОРТОЙ алдаа (эрхгүй, токен, үйлчилгээ алга) → `null`, өмнөх шигээ
+ *     алгасна: тэр хэрэглэгчид ҮРГЭЛЖ ижил хариу тул нэг хаалттай хуудас
+ *     БҮХ дашбоардыг унагах ёсгүй.
+ */
+async function schemaOf(pkg: Pkg): Promise<Schema | null> {
+  const RETRIES = 4;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await withSlot(() => loadSchema(pkg));
+    } catch (e) {
+      if (!isTransient(e)) return null;
+      if (attempt >= RETRIES) throw e;
+    }
+    await sleep(400 * 2 ** attempt + Math.random() * 200);
+  }
+}
+
+/**
  * Нэг хуудсыг БҮРЭН татна (2000 мөрийн хязгаарыг хуудаслаж давна).
  *
  * ⚠️ `orderByFields` нь гоо сайхны зүйл БИШ: `resultOffset`-той хуудаслалт
@@ -216,7 +262,9 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
   const out: SheetRow[] = [];
 
   await Promise.all(wanted.map(async (pkg) => {
-    const sc = await loadSchema(pkg).catch(() => null);
+    /* ⚠️ `schemaOf` — түр алдаанд дахин оролдож, эцэст нь ШИДНЭ; зөвхөн
+       тогтвортой алдаа `null` (доорх ⚠️). */
+    const sc = await schemaOf(pkg);
     // Архивын багана үүсээгүй хуудсыг алгасна — агшин ялгах түлхүүргүй тул
     // түүх байгуулах боломжгүй (одоогийн утгыг ч огноогүйгээр хэрэглэхгүй).
     if (!sc?.f.fillDate) return;
@@ -254,15 +302,24 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
         + ` AND ${sc.f.fillDate} IS NOT NULL`
       : `${sc.f.fillDate} IS NOT NULL`;
 
+    /* ⚠️ `gun` (мөрийн гүн) — ганц навчийг ангиллаас ялгахад (доорх 2-р алхам).
+       `constructionOnly` үед бүхэл № мөр татагддаггүй тул хэрэггүй. */
+    const gunF = !constructionOnly && sc.f.gun ? sc.f.gun : null;
     const rows = await fetchPage(
       pkg.url,
       where,
-      [sc.f.no, sc.f.work, sc.f.wC, sc.f.fillDate, sc.f.oid, ...actCols, ...dateCols],
+      [sc.f.no, sc.f.work, sc.f.wC, sc.f.fillDate, sc.f.oid, ...actCols, ...dateCols, ...(gunF ? [gunF] : [])],
       `${sc.f.oid} ASC`,
     );
 
     /* ── ӨРГӨН → УРТ ── */
-    let snap = 0;
+    /* 1-р алхам: хуулбарын дугаар ба нормчилсон № — хуудасны дарааллаар. */
+    type Rec = {
+      a: Record<string, unknown>; date: string; rawNo: string; no: string;
+      snap: number; weight: number | null; gun: number | null; level: number | null;
+    };
+    const recs: Rec[] = [];
+    let snapN = 0;
     let firstNo: string | null = null;
     for (const a of rows) {
       const ms = a[sc.f.fillDate];
@@ -280,16 +337,73 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
       /* ⚠️ Хуулбарын зааг нь ШҮҮЛТЭЭС ӨМНӨ бодогдоно: `maxLevel`-ээр хаясан
          мөр ч жаазны нэг хэсэг тул алгасвал хуулбарын дугаар алдагдана. */
       if (firstNo == null) firstNo = rawNo;
-      else if (rawNo === firstNo) snap += 1;
+      else if (rawNo === firstNo) snapN += 1;
 
-      const weight = nOrNull(a[sc.f.wC]);
-      /* ⚠️ Түвшнийг НОРМЧИЛСОН №-ээс бодно: `levelFromNo` нь үе шатыг таниа
-       *    гэхэд үсгийн ард ЦЭГ шаарддаг (`^[үсэг]\.`) тул цэггүй «Б»/«А» нь
-       *    `null` буцааж, тэр багцуудад ТҮВШИН-1 мөр ОЛДОХГҮЙ болдог байв —
-       *    `BuildingPanel`-ийн үе шатын стамп хоосорч, «ажлын төлөв» самбар
-       *    бүхэлдээ 0 ажилтай харагддаг байлаа. Нормчлол нь дэд үе шат
-       *    («Б1»…«Б5» → түвшин 2) ба навч мөрийг хөндөхгүй. */
-      const level = levelFromNo(no, weight);
+      recs.push({
+        a, date, rawNo, no, snap: snapN,
+        weight: nOrNull(a[sc.f.wC]),
+        gun: gunF ? nOrNull(a[gunF]) : null,
+        level: null,
+      });
+    }
+
+    /*
+     * 2-р алхам: ТҮВШИН — АРААС НЬ (дараагийн мөрийн ШИЙДСЭН түвшин хэрэгтэй).
+     *
+     * ⚠️ Түвшнийг НОРМЧИЛСОН №-ээс бодно: `levelFromNo` нь үе шатыг таниа
+     *    гэхэд үсгийн ард ЦЭГ шаарддаг (`^[үсэг]\.`) тул цэггүй «Б»/«А» нь
+     *    `null` буцааж, тэр багцуудад ТҮВШИН-1 мөр ОЛДОХГҮЙ болдог байв —
+     *    `BuildingPanel`-ийн үе шатын стамп хоосорч, «ажлын төлөв» самбар
+     *    бүхэлдээ 0 ажилтай харагддаг байлаа. Нормчлол нь дэд үе шат
+     *    («Б1»…«Б5» → түвшин 2) ба навч мөрийг хөндөхгүй.
+     *
+     * ⚠️ ГАНЦ НАВЧ (2026-09-25-ны аудит): бүлгийнхээ ЦОРЫН ГАНЦ хүүхэд болох
+     *    навч нь `Хувийн_жин = 1` тул жингээр «ангилал (3)» гэж уншигддаг байв
+     *    (TREES-д барилгын хуудас бүрд 1–6 ширхэг, бүгд «C3B»/«C3C» хэлбэр).
+     *    `useTaskPerf` тэднийг навчийн тоололд оруулахгүй, хэсгийн толгой болгож,
+     *    `useBagtsWorks` ажлын төрөл гэж жагсаадаг байлаа. «Бүлэг эсэх» дүрэм
+     *    (`gun.check` 1-р хэсэг) — ДАРААГИЙН мөр ГҮН бол бүлэг. Гүн нь
+     *    `bagtsSheet.loadRows`-тэй ИЖИЛ эрэмбээр: (1) хуулбарын БҮХ мөрд `gun`
+     *    бөглөгдсөн бол түүгээр; (2) хуулбарын урт `TREES`-тэй тэнцвэл
+     *    байрлалаар; (3) эс бөгөөс дараагийн мөрийн шийдсэн түвшнээр (4/5 =
+     *    хүүхэд). Зөвхөн «бүхэл № + жин 1» мөрд нөлөөлнө (`levelFromNo`-ийн
+     *    `nextDeeper`); жингүй (А.-ийн 8 мөр) хэвээр 3.
+     * ⚠️ (3) нь «C3B»-г зөв ялгах ч «C3C»-г ялгаж ЧАДАХГҮЙ — ангиллууд бутархай
+     *    жинтэй тул дараагийн ангилал нь навч (5) шиг уншигдана. 2026-09-25-нд
+     *    барилгын хуудсуудын архивт `gun` ХООСОН (амьдаар шалгав) тул (2) нь гол зам.
+     */
+    const tree = TREES[pkg.key] ?? '';
+    const depth: (number | null)[] = new Array(recs.length).fill(null);
+    for (let s0 = 0; s0 < recs.length; ) {
+      let s1 = s0 + 1;
+      while (s1 < recs.length && recs[s1].snap === recs[s0].snap) s1 += 1;
+      const seg = recs.slice(s0, s1);
+      if (gunF && seg.every((r) => r.gun != null)) {
+        seg.forEach((r, j) => { depth[s0 + j] = r.gun; });
+      } else if (tree.length === seg.length) {
+        for (let j = 0; j < seg.length; j += 1) {
+          const ch = tree[j];
+          depth[s0 + j] = ch >= 'A' && ch <= 'E' ? ch.charCodeAt(0) - 65 : Number(ch);
+        }
+      }
+      s0 = s1;
+    }
+    for (let k = recs.length - 1; k >= 0; k -= 1) {
+      const r = recs[k];
+      const nx = k + 1 < recs.length && recs[k + 1].snap === r.snap ? recs[k + 1] : null;
+      const d0 = depth[k];
+      const d1 = nx ? depth[k + 1] : null;
+      const deeper = nx == null
+        ? false
+        : d0 != null && d1 != null
+          ? d1 > d0
+          : (nx.level ?? 0) > 3;
+      /* `constructionOnly` үед дараагийн татсан мөр жинхэнэ дараагийн мөр БИШ */
+      r.level = levelFromNo(r.no, r.weight, constructionOnly ? undefined : deeper);
+    }
+
+    /* 3-р алхам: мөр бүрийг блокоор задална. */
+    for (const { a, date, rawNo, no, snap, weight, level } of recs) {
       if (maxLevel != null && (level == null || level > maxLevel)) continue;
 
       const work = String(a[sc.f.work] ?? '').trim() || rawNo;

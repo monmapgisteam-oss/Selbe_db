@@ -267,6 +267,13 @@ export type Result = {
    * нэгтгэл/дашбоардад орохгүй үлдсэнийг ХЭН Ч мэддэггүй байв.
    */
   warn?: string;
+  /**
+   * ⚠️ `subAt` тулгалтаар ЗОГССОН — илгээлтийн агуулга хянагч уншсанаас хойш
+   *    шинэчлэгдсэн (2026-09-25-ны аудит). Дуудагч (`Guitsetgel.Item`) үүгээр
+   *    агуулгыг ДАХИН АЧААЛНА: урьд нь зөвхөн алдааны бичвэр гардаг байсан тул
+   *    хянагч хуучин агуулга, хуучин ногоон тэмдэглэгээтэйгээ үлддэг байв.
+   */
+  contentChanged?: true;
 };
 
 const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.message ?? e) });
@@ -280,7 +287,10 @@ const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.m
  * (idempotent) замд `undefined` — тэнд дахин бичих зүйлгүй.
  */
 type Archived =
-  | { ok: true; archiveOid: number; day?: string }
+  /* ⚠️ `pkgKey` (2026-09-25 аудит) — зөвхөн илгээлттэй (`sub|`/`done|`) замд.
+     `registerApproved`-д дамжуулж хоёр хуудастай багцын OID-оор хуудас
+     таах алхмыг алгасна; legacy замд `undefined` (хуучин таамаглал). */
+  | { ok: true; archiveOid: number; day?: string; pkgKey?: string }
   | { ok: false; error: string };
 
 /**
@@ -308,8 +318,13 @@ type Archived =
  *    батлахад `{ok:true}` буцаж, ШИНЭ нүднүүд архивт ОГТ бичигдэлгүй хяналтын
  *    мөр «Шилжүүлсэн» болдог байв — хаана ч алдаа гарахгүй. `staged.at` нь
  *    илгээлт бүрд шинэчлэгддэг тул агуулгын хувилбарын үүрэг гүйцэтгэнэ.
+ *
+ * ⚠️ УТГА НЬ `{ oid, day }` (2026-09-25-ны аудит): урьд нь зөвхөн архивын oid
+ *    хадгалдаг байсан тул энэ замаар дахин оролдоход `day` undefined буцаж
+ *    IPC мөр ЧИМЭЭГҮЙ алгасагддаг байв — доорх `done|` замд 2026-09-17-нд
+ *    зассан ЯГ тэр алдаа. Жаазны өдрийг бичсэн агшинд нь хадгална.
  */
-const ARCHIVED = new Map<string, number>();
+const ARCHIVED = new Map<string, { oid: number; day: string }>();
 
 /**
  * ИЛГЭЭЛТИЙГ АРХИВТ БУУЛГАНА — ерөнхий менежер БАТЛАХАД л дуудагдана
@@ -382,7 +397,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
         }
       } catch { /* нөөц `fillMs` хэвээр */ }
     }
-    return { ok: true, archiveOid: aOid, day };
+    return { ok: true, archiveOid: aOid, day, pkgKey: staged.payload.pkgKey };
   }
 
   /* ⚠️ Энэ сешнд ЯГ ЭНЭ АГУУЛГА аль хэдийн архивлагдсан бол ДАХИН БИЧИХГҮЙ
@@ -390,7 +405,15 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      тул шинэ илгээлт ЖИНХЭНЭЭР архивлагдана. */
   const seenKey = `${subOid}:${staged.at}`;
   const seen = ARCHIVED.get(seenKey);
-  if (seen != null) return { ok: true, archiveOid: seen };
+  if (seen != null) {
+    /* ⚠️ ХААЛТЫГ ДАХИН ОРОЛДОНО (2026-09-25): энэ салбарт хүрсэн нь `sub|` мөр
+       нээлттэй хэвээр буюу өмнөх `closeSubmission` хоёулаа унасан гэсэн үг —
+       хаалт нь idempotency-ийн ЦОРЫН ГАНЦ байнгын тэмдэг (`done|`). Унавал
+       батлалтыг зогсоохгүй (доорх үндсэн замын дүрэмтэй ижил). */
+    const cl = await closeSubmission(staged.oid, seen.oid, Date.now(), true);
+    if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй (дахин оролдлого):', cl.error);
+    return { ok: true, archiveOid: seen.oid, day: seen.day, pkgKey: staged.payload.pkgKey };
+  }
 
   const pl = staged.payload;
   const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
@@ -600,7 +623,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    доорх алхмуудын аль нэг унаад менежер дахин дарвал ДАВХАР жааз
    *    бичигдэхгүй.
    */
-  ARCHIVED.set(seenKey, firstOid ?? 0);
+  ARCHIVED.set(seenKey, { oid: firstOid ?? 0, day: msToDay(fillMs) });
   /*
    * ⚠️ Илгээлтийг ХААХ алхам унавал батлалт УНАХГҮЙ — жааз аль хэдийн архивт
    *    бичигдсэн. Нээлттэй үлдсэн `sub|` мөр дараагийн ачаалалтад давхарлагдах
@@ -609,11 +632,14 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    тэмдэг (`done|`) тул түр зуурын сүлжээний саатал нь дараагийн сешнд
    *    давхар жааз үүсгэх эрсдэл болдог.
    */
-  let cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
-  if (!cl.ok) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now());
+  /* ⚠️ `regPending` (2026-09-25 аудит) — нэгтгэл/IPC баталгаажтал `done|`
+     payload-д «бүртгэл хүлээгдэж буй» тэмдэг үлдэнэ (`apply` → `markRegistered`,
+     таб хаагдвал `retryPendingRegistrations`). */
+  let cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true);
+  if (!cl.ok) cl = await closeSubmission(staged.oid, firstOid ?? 0, Date.now(), true);
   if (!cl.ok) console.warn('[selbe] илгээлтийг хааж чадсангүй:', cl.error);
 
-  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs) };
+  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key };
 }
 
 /**
@@ -744,7 +770,7 @@ export async function apply(a: {
       if (!sr.ok) return { ok: false, error: sr.error };
       if (!sr.sub || sr.sub.payload.at !== a.subAt) {
         emit();
-        return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу') };
+        return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
       }
     }
     /*
@@ -756,11 +782,14 @@ export async function apply(a: {
     let archiveOid = cur[F.sheetOid];
     /** ⚠️ Архивласан агшны огноо — IPC мөр үүсгэхэд (доор) */
     let archivedDay: string | undefined;
+    /** ⚠️ Архивласан багцын түлхүүр — legacy замд `undefined` (`Archived`-ийн ⚠️) */
+    let archivedPkg: string | undefined;
     if (registerNow) {
       const ar = await archiveSubmission(cur);
       if (!ar.ok) return { ok: false, error: ar.error };
       archiveOid = ar.archiveOid;
       archivedDay = ar.day;
+      archivedPkg = ar.pkgKey;
       /* ⚠️ Архивласны ДАРАА мөрийн төлөвийг ДАХИН ШАЛГАХГҮЙ (2026-09-17-ны
          аудит): «буцаах» ба «батлах» зэрэг дарагдсан үед жааз архивт
          бичигдчихсэн байхад STALE-ээр зогсвол өнчин жааз үлдэж, нэгтгэл/IPC
@@ -769,7 +798,29 @@ export async function apply(a: {
          `archiveSubmission` `done|`-оор idempotent тул хоёр дахь жааз үүсэхгүй. */
     }
 
-    await updateRows([attrs]);
+    try {
+      await updateRows([attrs]);
+    } catch (e) {
+      /*
+       * ⚠️ ХАРИУ АЛДАГДСАН Ч СЕРВЕР ДЭЭР СУУСАН БАЙЖ БОЛНО (2026-09-25-ны
+       *    аудит). `applyEdits` серверт бичигдээд HTTP хариу нь тасарвал энд
+       *    алдаа гарч доорх нэгтгэл/IPC ОГТ ажиллахгүй; дахин дарахад
+       *    `liveRow` «Шилжүүлсэн»-ийг хараад STALE буцаах тул тэр батлагдсан
+       *    өдөр нэгтгэл/IPC-гүй МӨНХӨД үлддэг байв. Эцсийн батлалтад мөрийг
+       *    ДАХИН уншаад «Шилжүүлсэн» болсон бол бичилт суусан гэж үзэж
+       *    үргэлжлүүлнэ (`registerApproved`, `syncIpcFromFill` хоёулаа
+       *    idempotent). Уншиж чадахгүй эсвэл суугаагүй бол анхны алдааг шиднэ.
+       * ⚠️ Таб энэ хооронд ХААГДВАЛ: `done|` payload-ын `regPending` тэмдэг
+       *    үлдэж, `retryPendingRegistrations` дараа нь нэгтгэл/IPC-г нөхнө
+       *    (2026-09-25).
+       */
+      if (!registerNow) throw e;
+      let landed = false;
+      try { landed = (await liveRow(a.oid))?.[F.status] === STATUS.transferred; } catch { landed = false; }
+      if (!landed) throw e;
+    }
+    /** Хагас амжилтын анхааруулгууд — нэгтгэл · IPC · `Zovshoorson_nud` */
+    const warns: string[] = [];
     if (registerNow) {
       /*
        * ⚠️ БҮРТГЭЛ УНАВАЛ БАТАЛГАА УНАХГҮЙ. Хяналтын шийдвэр аль хэдийн
@@ -785,20 +836,21 @@ export async function apply(a: {
          батлагдсан гүйцэтгэлийг нэгтгэлээс МӨНХӨД хасах ёсгүй. Гурван
          оролдлого, өсөх завсартай. `registerApproved` нь давхардлаас
          өөрөө хамгаалдаг (багц·огноогоор шалгана) тул давтахад аюулгүй. */
-      let r = await registerApproved(cur[F.bagts], archiveOid);
+      let r = await registerApproved(cur[F.bagts], archiveOid, archivedPkg);
       for (let i = 0; i < 2 && !r.ok; i += 1) {
         await new Promise((res) => setTimeout(res, 800 * (i + 1)));
-        r = await registerApproved(cur[F.bagts], archiveOid);
+        r = await registerApproved(cur[F.bagts], archiveOid, archivedPkg);
       }
       if (!r.ok) {
         console.warn('[selbe] нэгтгэлд бүртгэж чадсангүй:', r.error);
         /* ⚠️ Дуудагчид ИЛ буцаана — дэлгэц дээр шар мөр болж гарна.
-           Батлалт ӨӨРӨӨ бүтсэн тул `ok: true` хэвээр. */
-        await refresh();
-        return {
-          ok: true,
-          warn: tr('Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.', r.error ?? ''),
-        };
+           Батлалт ӨӨРӨӨ бүтсэн тул `ok: true` хэвээр.
+           ⚠️ ЭНД БУЦАХГҮЙ (2026-09-25-ны аудит): урьд нь энд `return` хийдэг
+           байсан тул IPC мөр (доор) ОГТ бичигдэхгүй, анхааруулга нь зөвхөн
+           нэгтгэлийг нэрлэдэг байв — мөр «Шилжүүлсэн» болсон тул дахин батлах
+           зам ч хаалттай, тэр сарын IPC мөнхөд дутуу. IPC нь нэгтгэлээс
+           ХАМААРАЛГҮЙ тул үргэлжлүүлж, хоёр үр дүнг нэг `warn`-д нийлүүлнэ. */
+        warns.push(tr('Батлагдаж архивт бичигдлээ, гэхдээ нэгтгэлийн хүснэгтэд бүртгэгдсэнгүй ({0}). Дашбоардын багцын муруйд энэ өдөр харагдахгүй — админд мэдэгдэнэ үү.', r.error ?? ''));
       }
 
       /*
@@ -818,20 +870,120 @@ export async function apply(a: {
        * ⚠️ `archivedDay` нь `archiveSubmission`-аас — тэр нь `fillMs`-ийг
        * өөрөө залруулдаг тул гаднаас таамаглавал IPC өөр сард бичигдэнэ.
        */
+      /** IPC мөр бичигдсэн эсэх — `markRegistered`-ийн нөхцөл (доор) */
+      let ipcOk = false;
       if (archivedDay) {
+        /* ⚠️ IPC-ийн алдааг ч ИЛ хэлнэ (2026-09-25) — урьд нь зөвхөн
+           `console.warn` байсан тул тэр сарын IPC дутуу үлдсэнийг хэн ч мэдэхгүй. */
+        let ipcErr = '';
         try {
           const { syncIpcFromFill } = await import('./ipcAutoWrite');
           const ipc = await syncIpcFromFill(cur[F.bagts], archivedDay);
-          if (!ipc.ok) console.warn('[selbe] IPC мөр үүсгэж чадсангүй:', ipc.error);
+          if (!ipc.ok) {
+            console.warn('[selbe] IPC мөр үүсгэж чадсангүй:', ipc.error);
+            ipcErr = String(ipc.error ?? '');
+          }
         } catch (e) {
           console.warn('[selbe] IPC мөр үүсгэх алдаа:', e);
+          ipcErr = String((e as Error)?.message ?? e);
+        }
+        if (ipcErr) {
+          warns.push(tr('Батлагдаж архивт бичигдлээ, гэхдээ гүйцэтгэлээс IPC мөр үүсгэж чадсангүй ({0}). Тухайн сарын IPC-г админд мэдэгдэж шалгуулна уу.', ipcErr));
+        }
+        ipcOk = !ipcErr;
+      }
+      /*
+       * ⚠️ «БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ» ТЭМДГИЙГ АРИЛГАНА (2026-09-25 аудит) — зөвхөн
+       *    нэгтгэл БА IPC хоёулаа бүтсэн бол. Аль нэг нь унавал тэмдэг үлдэж
+       *    `retryPendingRegistrations` дараа нь дахин ажиллуулна. `archivedPkg`
+       *    байхгүй (legacy — `Эх_мөрийн_дугаар` нь АРХИВЫН oid) бол дуудахгүй:
+       *    тэр дугаар илгээлтийн хүснэгтийн өөр мөртэй санамсаргүй давхцаж болно.
+       *    Унавал зөвхөн анхааруулга — батлалт бүтсэн.
+       */
+      if (r.ok && ipcOk && archivedPkg) {
+        try {
+          const { markRegistered } = await import('./submission');
+          const mk = await markRegistered(Number(cur[F.sheetOid]));
+          if (!mk.ok) console.warn('[selbe] «бүртгэл хүлээгдэж буй» тэмдгийг арилгаж чадсангүй:', mk.error);
+        } catch (e) {
+          console.warn('[selbe] «бүртгэл хүлээгдэж буй» тэмдгийг арилгаж чадсангүй:', e);
         }
       }
     }
     await refresh();
     /* 2026-09-23 (#16): `Zovshoorson_nud` талбар алга байсан бол шар мөрөөр хэлнэ */
-    return okWarn ? { ok: true, warn: okWarn } : { ok: true };
+    if (okWarn) warns.push(okWarn);
+    return warns.length ? { ok: true, warn: warns.join(' · ') } : { ok: true };
   } catch (e) { return fail(e); }
+}
+
+/** Сешнд нэг л удаа оролдсон илгээлтүүд — давтан дуудлагад дахин ажиллуулахгүй */
+const SWEPT = new Set<number>();
+let sweeping = false;
+
+/**
+ * БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ БАТЛАЛТУУДЫГ НӨХНӨ (2026-09-25 аудит).
+ *
+ * ⚠️ ЯАГААД: эцсийн батлалтад `updateRows` → `registerApproved` →
+ *    `syncIpcFromFill` дараалан явдаг; таб энэ хооронд хаагдвал мөр
+ *    «Шилжүүлсэн» болсон тул дахин батлах зам хаалттай, тэр өдөр нэгтгэл/IPC-гүй
+ *    МӨНХӨД үлддэг байв. `done|` payload-ын `regPending` тэмдэг үүнийг барина.
+ * ⚠️ ЗӨВХӨН «Шилжүүлсэн» мөр, ЗӨВХӨН эцсийн шатны эрхтэй хүн (`authz`) —
+ *    бусдын бичилт эрхгүйгээр унах байсан. `archiveSubmission` нь `done|`
+ *    замаар ЮУ Ч бичихгүй (idempotent), `registerApproved` (багц·огноо) ба
+ *    `syncIpcFromFill` (багц·сар) хоёулаа idempotent.
+ * ⚠️ Алдаа нь чимээгүй (`console.warn`) — энэ нь нөхөх зам, хуудсыг унагахгүй.
+ */
+export async function retryPendingRegistrations(
+  me: string | undefined,
+  bypass: boolean,
+): Promise<{ done: number; failed: number }> {
+  const out = { done: 0, failed: 0 };
+  if (sweeping) return out;
+  sweeping = true;
+  try {
+    const { listRegPending, markRegistered } = await import('./submission');
+    const pend = (await listRegPending()).filter((p) => !SWEPT.has(p.oid));
+    if (!pend.length) return out;
+    if (!loaded) await refresh();
+    const final = REVIEW_STAGES[REVIEW_STAGES.length - 1];
+    for (const sub of pend) {
+      const cur = ROWS.find((r) => Number(r[F.sheetOid]) === sub.oid && r[F.status] === STATUS.transferred);
+      if (!cur) continue;
+      if (authz(final, me, String(cur[F.bagts] ?? ''), bypass)) continue;
+      SWEPT.add(sub.oid);
+      try {
+        const ar = await archiveSubmission(cur);
+        if (!ar.ok || !ar.pkgKey || !(ar.archiveOid > 0)) { out.failed += 1; continue; }
+        const { registerApproved } = await import('./negtgelWrite');
+        const r = await registerApproved(cur[F.bagts], ar.archiveOid, ar.pkgKey);
+        let ipcOk = false;
+        if (ar.day) {
+          const { syncIpcFromFill } = await import('./ipcAutoWrite');
+          const ipc = await syncIpcFromFill(cur[F.bagts], ar.day);
+          ipcOk = ipc.ok;
+          if (!ipc.ok) console.warn('[selbe] IPC нөхөж чадсангүй:', ipc.error);
+        }
+        if (!r.ok) console.warn('[selbe] нэгтгэлд нөхөж бүртгэж чадсангүй:', r.error);
+        if (r.ok && ipcOk) {
+          const mk = await markRegistered(sub.oid);
+          if (mk.ok) out.done += 1;
+          else { out.failed += 1; console.warn('[selbe] «бүртгэл хүлээгдэж буй» тэмдэг арилсангүй:', mk.error); }
+        } else {
+          out.failed += 1;
+        }
+      } catch (e) {
+        out.failed += 1;
+        console.warn('[selbe] хүлээгдэж буй бүртгэлийг нөхөх алдаа:', e);
+      }
+    }
+    return out;
+  } catch (e) {
+    console.warn('[selbe] хүлээгдэж буй бүртгэлийн жагсаалт:', e);
+    return out;
+  } finally {
+    sweeping = false;
+  }
 }
 
 /*
@@ -901,7 +1053,7 @@ export async function recheck(
     if (!sr.ok) return { ok: false, error: sr.error };
     if (!sr.sub || sr.sub.payload.at !== subAt) {
       emit();
-      return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу') };
+      return { ok: false, error: tr('Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу'), contentChanged: true };
     }
   }
 

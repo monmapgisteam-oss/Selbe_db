@@ -10,7 +10,7 @@
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
-import { cached } from '@/lib/live';
+import { register } from '@/lib/dataBus';
 import { text } from '@/lib/format';
 
 
@@ -44,7 +44,29 @@ const BLOCK_LAYER = 'mon:building';
  * ⚠️ Дэд бүтцийн багц нь давхаргын бүртгэлээс (`PKG_BY_BAGTS`) шууд гарна —
  *    сүлжээний хүсэлт огт шаардлагагүй.
  */
-export const loadPkgOverlaps = cached<PkgOverlap[]>(loadPkgOverlapsRaw, undefined, ['PARCEL_LEFT']);
+/*
+ * ⚠️ 2026-09-25: `cached()`-ЭЭС ГАРААР БИЧСЭН кэш рүү шилжив. `cached()` нь
+ * ЗӨВХӨН reject-ийг хаядаг тул `failed: true` мөртэй (нэг багцын огтлолцол
+ * rate-limit/timeout-оор унасан) АМЖИЛТТАЙ үр дүн TTL-гүй кэшэд сесс дуустал
+ * үлдэж, доорх «дараагийн ачаалалт дахин оролдоно» гэсэн амлалт биелдэггүй
+ * байв — Газар ба Ерөнхий дашбоард хоёулаа «татагдсангүй» зурвасаа барина.
+ * Одоо `overlapLeftParcels`-ийн `resultCache`-ийн дүрмээр: уналттай үр дүнг
+ * шийдэгдмэгц кэшнээс ХАСНА (явж байх үед зэрэг дуудагчид нэг амлалт
+ * хуваалцсан хэвээр). `PARCEL_LEFT` таг хэвээр (`register`).
+ */
+let ovCache: Promise<PkgOverlap[]> | null = null;
+register(() => { ovCache = null; }, ['PARCEL_LEFT']);
+export function loadPkgOverlaps(): Promise<PkgOverlap[]> {
+  if (ovCache) return ovCache;
+  const run = loadPkgOverlapsRaw();
+  ovCache = run;
+  /* ⚠️ Өөрөө идэвхтэй кэш байхад л цэвэрлэнэ (`live.cached`-ийн 2026-09-08-ны дүрэм) */
+  run.then(
+    (r) => { if (ovCache === run && r.some((x) => x.failed)) ovCache = null; },
+    () => { if (ovCache === run) ovCache = null; },
+  );
+  return run;
+}
 
 /**
  * ⚠️ КЭШЛЭГДСЭН (2026-08-31, гүйцэтгэлийн засвар). Энэ функц 55 багц бүрд

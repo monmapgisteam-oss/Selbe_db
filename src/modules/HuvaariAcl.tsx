@@ -42,6 +42,8 @@ const SPEC: AclPanelSpec<PlanRole> = {
   failedUsers: huvaariFailedUsers,
   subscribe: subscribeHuvaariAcl,
   setGrants: setHuvaariGrants,
+  /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
+  roleCaps: { author: 'plan', approver: 'planApprove' },
   /*
    * ⚠️ `revoke=false` + зөвхөн ХАСАГДСАН үүргийн эрх (2026-09-24). Анхдагч
    *    `revoke=true` нь `syncCaps(u, [])` → энэ системийн БҮХ үүргийн эрхийг

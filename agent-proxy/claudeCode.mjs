@@ -26,9 +26,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 
 /** Нэг хүсэлтийн дээд хугацаа — агентын нэг эргэлт ихэвчлэн 5–30с */
@@ -255,13 +256,76 @@ export async function callClaudeCode(opts) {
 /** Ачааллын агшин — `/health` ба лог */
 export const stats = () => ({ running, queued: waiters.length, cached: cache.size });
 
+/**
+ * `.cmd` ШИМИЙГ SHELL-ГҮЙГЭЭР АЖИЛЛУУЛНА (2026-09-25, аудит №6).
+ *
+ * ⚠️ Урьд нь `shell: bin.endsWith(".cmd")` байв. `shell: true` үед Node
+ *    аргументуудыг зайгаар л залгаж ОГТ хашилтанд оруулдаггүй тул
+ *    `--tools ""` ба `--setting-sources ""`-ийн ХООСОН утга алга болж
+ *    (`--tools` нь «--setting-sources»-ийг утгаа болгон авна), толгой хэсгийн
+ *    АЮУЛГҮЙ БАЙДЛЫН хаалт (хэрэгсэлгүй, тохиргоогүй) чимээгүй унадаг байв —
+ *    хүсэлт бүрд PC-ийн hooks, CLAUDE.md, тохиргоо ачаалагдана. Хэрэглэгчийн
+ *    нэрэнд зай байвал bin / `--system-prompt-file`-ийн зам хуваагдаж бүх
+ *    хүсэлт унадаг байв.
+ * ⚠️ Одоо: npm-ийн `claude.cmd` шимээс ЖИНХЭНЭ зорилтыг (cli.js эсвэл .exe)
+ *    уншиж ШУУД ажиллуулна (Node аргумент бүрийг өөрөө зөв хашилтална).
+ *    Шимийг таньж чадахгүй бол `cmd.exe /d /s /c`-ээр, аргумент БҮРИЙГ
+ *    хашилтанд (хоосныг `""`) оруулж ажиллуулна.
+ */
+const launchCache = new Map();
+function resolveLaunch(bin) {
+  if (process.platform !== "win32" || !/\.(cmd|bat)$/i.test(bin)) return { file: bin, pre: [], viaCmd: false };
+  const hit = launchCache.get(bin);
+  if (hit && existsSync(hit.file) && hit.pre.every((p) => existsSync(p))) return hit;
+  let launch = { file: bin, pre: [], viaCmd: true };
+  try {
+    /* npm cmd-shim: `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js" %*`
+       (хуучин хувилбарт `%~dp0`) — `%*`-ийн ӨМНӨХ хашилттай зам нь зорилт. */
+    const src = readFileSync(bin, "utf8");
+    const rel = [...src.matchAll(/"%~?dp0%?\\?([^"%]+)"\s*%\*/gi)].at(-1)?.[1];
+    const target = rel ? join(dirname(bin), rel) : null;
+    if (target && existsSync(target)) {
+      if (/\.exe$/i.test(target)) launch = { file: target, pre: [], viaCmd: false };
+      else if (/\.[cm]?js$/i.test(target)) {
+        /* Шим нь хажуудаа node.exe байвал түүнийг, үгүй бол релейн өөрийн node-ыг */
+        const localNode = join(dirname(bin), "node.exe");
+        launch = { file: existsSync(localNode) ? localNode : process.execPath, pre: [target], viaCmd: false };
+      }
+    }
+  } catch {
+    /* Уншигдахгүй шим — доорх cmd.exe (бүх аргумент хашилттай) замаар */
+  }
+  launchCache.set(bin, launch);
+  return launch;
+}
+
+/** cmd.exe-д нэг аргумент — ХООСОН утга `""` болж заавал хүрнэ */
+const cmdQuote = (a) => `"${String(a).replace(/"/g, '""')}"`;
+
+/**
+ * ⚠️ Хугацаа хэтрэхэд процессын МОДЫГ бүхэлд нь алана: cmd.exe-ээр
+ *    ажилласан үед `child.kill()` нь зөвхөн cmd.exe-г алж, доторх claude
+ *    үргэлжлэн ажиллаж MAX_PARALLEL-ийн гадна бүртгэлийн хязгаар зарцуулдаг.
+ */
+function killTree(child) {
+  if (process.platform === "win32" && child.pid) {
+    const k = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+    k.on("error", () => child.kill());
+    return;
+  }
+  child.kill();
+}
+
 async function callRaw({ system, messages, tools, model, effort, bin }) {
   await acquire();
   /* ⚠️ Хүсэлт бүрд ТУСДАА хоосон хавтас — CLAUDE.md, .claude/ тохиргоо олдохгүй,
      зэрэг хүсэлтүүд бие биеийнхээ файлыг хөндөхгүй. */
   const dir = join(tmpdir(), "selbe-agent-cc", randomUUID());
-  mkdirSync(dir, { recursive: true });
   try {
+    /* ⚠️ mkdir нь try ДОТОР (2026-09-25): `acquire()` слот авсан тул энд
+       шидсэн алдаа (ENOSPC/EACCES) `finally`-ийн `release()`-ийг алгасаж,
+       3 удаа унахад реле бүрмөсөн «завгүй» болдог байв. */
+    mkdirSync(dir, { recursive: true });
     const sysText = (system || "") + (tools?.length ? TOOL_PROTOCOL(tools) : "");
     /* ⚠️ Системийн заавар ФАЙЛААР — давхаргын бүртгэл олон мянган тэмдэгт тул
        Windows-ийн командын мөрийн хязгаарыг (32K) давна. */
@@ -280,19 +344,26 @@ async function callRaw({ system, messages, tools, model, effort, bin }) {
       ...(effort && !/haiku/i.test(model) ? ["--effort", effort] : []),
     ];
 
+    const launch = resolveLaunch(bin);
     const stdout = await new Promise((resolve, reject) => {
-      const child = spawn(bin, args, {
+      const common = {
         cwd: dir,
         windowsHide: true,
         /* ⚠️ API түлхүүр орчинд байвал `claude` ТҮҮНИЙГ ашиглана — энэ горимын
            утга нь PC-ийн НЭВТЭРСЭН бүртгэл тул түлхүүрийг зориуд авч хаяна. */
         env: childEnv(),
-        shell: bin.endsWith(".cmd"),
-      });
+      };
+      /* ⚠️ `shell: true` ХЭРЭГЛЭХГҮЙ — дээрх `resolveLaunch`-ийн тайлбарыг үз */
+      const child = launch.viaCmd
+        ? spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `"${[bin, ...args].map(cmdQuote).join(" ")}"`], {
+            ...common,
+            windowsVerbatimArguments: true,
+          })
+        : spawn(launch.file, [...launch.pre, ...args], common);
       let out = "";
       let err = "";
       const timer = setTimeout(() => {
-        child.kill();
+        killTree(child);
         reject(new ClaudeCodeError(`Claude Code ${Math.round(TIMEOUT_MS / 1000)} секундэд хариу өгсөнгүй`, { status: 504, retryable: true }));
       }, TIMEOUT_MS);
       child.stdout.on("data", (d) => { out += d; });
@@ -326,7 +397,17 @@ async function callRaw({ system, messages, tools, model, effort, bin }) {
     const parsed = parseReply(String(j.result ?? ""));
     return { ...parsed, usage: j.usage };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
-    release();
+    /* ⚠️ Цэвэрлэгээ `release()`-ийг ХЭЗЭЭ Ч алгасахгүй (2026-09-25): хугацаа
+       хэтрэхэд `killTree` асинхрон тул Windows дээр claude `cwd=dir`-ээ барьсаар
+       байх үед `rmSync` EPERM шидэж, `release()` ажиллахгүй, клиент 504-ийн
+       оронд 500 авч, 3 удаа болоход реле бүрмөсөн «завгүй» болдог байв.
+       Синхрон `maxRetries` event loop-ийг хаах тул дахин оролдлогыг асинхроноор. */
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }).catch(() => {});
+    } finally {
+      release();
+    }
   }
 }

@@ -31,7 +31,7 @@ import {
   CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign,
   setChanarGrants, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
-import { removeRevokingRoles } from './ScopedAclPanel';
+import { removeRevokingRoles, setGrantsRevokingRoles } from './ScopedAclPanel';
 import s from './guitsetgel.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
@@ -114,7 +114,9 @@ export function ChanarAcl() {
       void run(rr.sync);
       return;
     }
-    const r = setChanarGrants(user, grants);
+    /* ⚠️ Хэсэгчилсэн хасалтад ч хасагдсан үүргийн эрхийг буцаана (2026-09-25) — `setGrantsRevokingRoles` */
+    const r = setGrantsRevokingRoles(user, grants, listChanarAssigns, setChanarGrants,
+      { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview' });
     setErr(r.ok ? '' : (r.error ?? ''));
     void run(r.sync);
   };
@@ -146,9 +148,13 @@ export function ChanarAcl() {
           const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, usersOf(r)])) as Record<ChanarRole, string[]>;
           const authors = by.author;
           const total = CHANAR_ROLES.reduce((n, r) => n + by[r].length, 0);
-          /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх */
+          /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх.
+             ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, `erhOverview.noOther` ба ScopedAclPanel
+             `stuck`-тай ижил): аль нэг зохиогчид ӨӨРӨӨС НЬ өөр хянагч байхгүй бол
+             л дутуу. Урьд нь А ба Б хоёулаа зохиогч + хянагч үед бие биеэ хянаж
+             чадах атал «дутуу» гэж худал анхааруулдаг байв. */
           const missing = (['tuh', 'chanar', 'habea'] as const)
-            .filter((r) => authors.length > 0 && by[r].filter((u) => !authors.includes(u)).length === 0);
+            .filter((r) => authors.length > 0 && authors.some((a) => !by[r].some((u) => u !== a)));
 
           return (
             <div key={group} className={s.aclCol}>
