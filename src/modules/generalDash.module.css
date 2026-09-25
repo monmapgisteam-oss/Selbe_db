@@ -309,10 +309,15 @@
  */
 /* ⚠️ 2026-09-15: зүүн хавтасны зохиомж нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д
    үлдсэн тул энэ харагдац ХУУЧИН байрлалдаа буцав. */
+/* ⚠️ 2026-09-25: `left: 0` → `222px`. Зүүн ирмэгээс эхлэхэд товчны зурвас
+   (`.mapToolsBar`, z 9) ба бариул нь каталогийн толгой, хайлтын талбарыг
+   ДАРЖ байв (хэрэглэгчийн зураг: «товчнууд маш их давхацсан»). Бусад найман
+   харагдацын `catPanel`-тай ижил — зурвасны БАРУУН талд (15 + 132 бар + 4 →
+   бариул 151–171 → 178). */
 .catPanel {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: min(360px, 80%);
+  inset: 0 auto 0 178px;
+  width: min(360px, calc(100% - 186px));
   z-index: 6;
   overflow: auto;
   background: var(--surface);
@@ -452,7 +457,10 @@
  * гуравны нэгийг эзэлж байв. Сонгогч нь `.shell` дотор — бусад найман
  * харагдацын зураг анхдагч хэмжээтэй хэвээр.
  */
-.shell :global(.mapToolsBar) { width: 132px; gap: 2px; top: 88px; }
+/* ⚠️ Өргөн/өндрийг ХУВЬСАГЧААР — бар, хураах бариул, бүсийн хавтан бүгд
+   ижил утгаас тооцогдоно (`mapTools.module.css`). */
+.shell { --tools-w: 132px; --tools-top: 88px; }
+.shell :global(.mapToolsBar) { gap: 2px; }
 .shell :global(.mapToolsBtn) { padding: 4px 8px; font-size: 11px; gap: 6px; }
 .shell :global(.mapToolsBtn) svg { width: 13px; height: 13px; }
 .shell :global(.mapDims) { padding: 2px; gap: 1px; }

@@ -43,7 +43,7 @@ export function OpacityPanel({
   const touched = ids.some((id) => opacity[id] != null && opacity[id] !== 1);
 
   return (
-    <aside className={`${s.panel} ${dock ? s.dock : ''}`} aria-label={tr('Давхаргын тунгалаг')}>
+    <aside className={`${s.panel} ${dock ? s.dock : ''} mapOpacity`} aria-label={tr('Давхаргын тунгалаг')}>
       <header className={s.head}>
         <span className={s.title}>{tr('Тунгалаг')}</span>
         {touched && (

@@ -142,3 +142,41 @@
   inset: 0;
   z-index: 2500;
 }
+
+/* ══════ 3D НИСЛЭГ СОНГОХ — зургийн ДООД ГОЛД (2026-09-25) ══════
+   ⚠️ `mapTools.module.css`-ийн 2D/3D/BIM сегменттэй (`.dimsBar`/`.dimBtn`) ИЖИЛ
+   загвар — нэг зурган дээрх хоёр сегмент нэг гэр бүл шиг харагдах ёстой.
+   ⚠️ `bottom: 28px` — Esri-ийн attribution мөрийг (доод ирмэг) халхлахгүй. */
+.flightBar {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+}
+.flightBtn {
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s, transform 0.1s, box-shadow 0.16s;
+}
+.flightBtn:hover { color: var(--ink); }
+.flightBtn:active { transform: scale(0.95); }
+.flightOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }

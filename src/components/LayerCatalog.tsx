@@ -223,7 +223,7 @@ export const LayerCatalog = memo(function LayerCatalog({
   ]).size;
 
   return (
-    <aside className={`${s.drawer} ${embedded ? s.embedded : ''}`} aria-label={tr('Давхаргын жагсаалт')}>
+    <aside className={`${s.drawer} ${embedded ? s.embedded : ''} mapCatalog`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* Өргөн тохируулах бариул — баганын БАРУУН ирмэг дээр (зураг руу харсан) */}
       {onResizeStart && (
         <div

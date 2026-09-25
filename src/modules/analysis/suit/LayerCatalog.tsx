@@ -81,7 +81,7 @@ export function SuitLayerCatalog({
     });
 
   return (
-    <aside className={`${c.drawer} ${c.embedded}`} aria-label={tr('Давхаргын жагсаалт')}>
+    <aside className={`${c.drawer} ${c.embedded} mapCatalog`} aria-label={tr('Давхаргын жагсаалт')}>
       {/* ⚠️ Урьд нь энд '--hue': '#4fd1c5' гэж дардаг байв — одоо глобал --hue
           нь var(--data) тул хоёр горимд өөрөө тохирно (override хэрэггүй). */}
       <header className={c.head}>

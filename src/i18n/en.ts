@@ -4380,11 +4380,9 @@ const en: Record<string, string> = {
   "{0}-р долоо хоногийн ноцтой ба бага зэргийн үл нийцэл": "Week {0} major and minor non-conformities",
   "ноцтой ба бага зэргийн үл нийцэл": "major and minor non-conformities",
   "Харьцуулах — зүүн: хуучин зураг + одоогийн барилга, баруун: шинэ зураг + баригдаж буй блок": "Compare — left: old imagery + existing buildings, right: new imagery + blocks under construction",
-  "Меш харьцуулах — зүүн: шинэ, баруун: хуучин": "Mesh comparison — left: new, right: old",
   "Ортофото — хуучин (Selbe_ortho)": "Orthophoto — old (Selbe_ortho)",
   "Цэцэрлэг · 300 м": "Kindergarten · 300 m",
   "Сургууль · 500 м": "School · 500 m",
-  "Бодит загвар — шинэ (2026-09-17)": "Reality model — new (2026-09-17)",
   "Гэрийн зуухны утаа": "Ger stove smoke",
   "PM2.5 · тн/жил · тооцоолол": "PM2.5 · t/year · estimate",
   "гэр, байшин": "gers and houses",
@@ -4926,6 +4924,13 @@ const en: Record<string, string> = {
   "Бичиж байна…": "Writing…",
   "Системийн утгаар шинэчлэх": "Update with system values",
   "Багц {0} · FID {1}": "Package {0} · FID {1}",
+  "Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн": "Compare meshes — left: the other version, right: current",
+  "3D мешийн нислэг": "3D mesh flight",
+  "Нислэг 1": "Flight 1",
+  "Нислэг 2": "Flight 2",
+  "Нислэг 1 (Сэлбэ 1, 2)": "Flight 1 (Selbe 1, 2)",
+  "Нислэг 2 (2026-09-17)": "Flight 2 (2026-09-17)",
+  "Бодит загвар — нислэг 2 (2026-09-17)": "Reality mesh — flight 2 (2026-09-17)",
 };
 
 export default en;
