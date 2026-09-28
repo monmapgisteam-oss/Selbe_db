@@ -32,6 +32,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Section, Empty, Loading } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
 import { num } from '@/lib/format';
 import {
@@ -603,6 +604,10 @@ export function Huvaari({
     [user, status, hvN, pkg.group, review],
   );
 
+  /** «Улсын комисс» автомат нэмэлтийн хаалга — ачаалалтын эффект ref-ээр уншина (дээрх ⚠️) */
+  const komissGateRef = useRef<() => boolean>(() => false);
+  komissGateRef.current = () => canEdit && status !== 'off' && kind === 'plan';
+
   /**
    * БАТЛАХ ЭРХ — `plan`-аас ТУСДАА (2026-09-07).
    * ⚠️ Зохиогч өөрийгөө батлахаас хамгаалах ганц шалгуур нь UI БИШ,
@@ -1075,6 +1080,27 @@ export function Huvaari({
         if (!alive) return;
         setSc(schema);
         setRows(r.rows);
+        /*
+         * «УЛСЫН КОМИСС» АВТОМАТ (2026-09-28, хэрэглэгчийн сонголт): төлөвлөгөөт
+         * хуваарийг төлөвлөх эрхтэй хүн нээхэд багцын төгсгөлд тэр мөр байхгүй
+         * бол `ensureKomissRow` НЭГ УДАА нэмж (шинэ жааз), дараа нь мөрүүдийг
+         * дахин татна. ⚠️ Алдаа нь улаан баннер БИШ — хуваарь нээгдэх ёстой;
+         * зөвхөн тэмдэглэл. ⚠️ Эрхийг ref-ээр уншина — эффектийн deps `[pkg]`
+         * хэвээр (эрх ирэх бүрд дахин ачаалахгүй; lib түвшинд давхар шалгана).
+         */
+        if (!review && komissGateRef.current() && !findKomissRow(r.rows)) {
+          const res = await ensureKomissRow(pkg.key);
+          if (!alive) return;
+          if (res.ok && res.added) {
+            const r2 = await loadRows(pkg, schema);
+            if (!alive) return;
+            setRows(r2.rows);
+            setNote(tr('«Улсын комисс» ажилбар багцын төгсгөлд нэмэгдлээ.'));
+          } else if (!res.ok) {
+            console.error('[selbe] улсын комиссын мөр нэмэгдсэнгүй:', res.error);
+            setNote(tr('«Улсын комисс» ажилбар нэмэгдсэнгүй: {0}', res.error));
+          }
+        }
       })
       .catch((e) => alive && setErr(String((e as Error).message || e)))
       .finally(() => alive && setBusy(false));

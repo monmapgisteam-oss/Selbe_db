@@ -71,6 +71,57 @@ const parentOf = (list: SheetRow[], a: NewRow): number => {
  * ХУУДАС ДАХЬ БҮХ хувийн жинг дахин бодно. Тиймээс хэрэглэгч нэмэнгүүт
  * үр дүнгээ шууд харна.
  */
+/**
+ * ҮНДСЭН ТҮВШНИЙ НАВЧ МӨРИЙГ ТӨГСГӨЛД ЗАЛГАНА — «Улсын комисс» (2026-09-28).
+ *
+ * ⚠️ `insertAdds`-аас ЯЛГААТАЙ: эцэг хайхгүй, БҮЛГИЙН ДОТОР биш, хуудасны
+ *    ХАМГИЙН СҮҮЛД, гүн 0. Шалтгаан: улсын комисс нь «Б. Барилга угсралт»-ын
+ *    хүүхэд биш — түүний ДАРАА болдог тусдаа үе шат. Бүлэг дотор тавибал
+ *    «Б.»-ийн дуусах огноо сунаж (`rollUpGroups`), «Б.»-ээс хамаарал
+ *    тавих боломжгүй болно (`deps.hierRelated` өвөг–удмыг үл тоодог).
+ * ⚠️ ЖИН 0 ил бичнэ: үндсэн түвшний навчны C нь `wC ?? 1` (`computeAll`)
+ *    тул хоосон орхивол 1 болж `buildFrame` түүнийг бичих байв. Обьём/нэгж
+ *    өртөг `null` — мөнгөн дүнгүй, багцын хувьд (зөвхөн «Б.») нөлөөгүй.
+ * ⚠️ Дараагийн ачаалалтад гүн нь `gun` баганаас сэргэнэ — `buildFrame`
+ *    бүх мөрд `gun` бичдэг тул энэ мөр depth 0 хэвээр үлдэнэ.
+ */
+export function appendRootLeaf(
+  base: SheetRow[],
+  row: { oid: number; no: string; work: string; ham?: string | null },
+  sc: Schema,
+  nBld: number,
+): SheetRow[] {
+  const raw: Record<string, unknown> = { [sc.f.no]: row.no, [sc.f.work]: row.work, [sc.f.vol]: null, [sc.f.unit]: null };
+  if (sc.f.wC) raw[sc.f.wC] = 0;
+  if (sc.f.wD) raw[sc.f.wD] = 0;
+  return [...base, {
+    oid: row.oid,
+    no: row.no,
+    des: null,
+    ham: row.ham ?? null,
+    work: row.work,
+    depth: 0,
+    group: false,
+    wC: 0,
+    wD: 0,
+    vol: null,
+    plannedVol: null,
+    unit: null,
+    money: null,
+    act: new Array(nBld).fill(null),
+    obyem: new Array(nBld).fill(null),
+    start: new Array(nBld).fill(null),
+    end: new Array(nBld).fill(null),
+    gStart: new Array(nBld).fill(null),
+    gEnd: new Array(nBld).fill(null),
+    aStart: new Array(nBld).fill(null),
+    aEnd: new Array(nBld).fill(null),
+    hun: null,
+    mashin: null,
+    raw,
+  }];
+}
+
 export function insertAdds(
   base: SheetRow[],
   adds: NewRow[],

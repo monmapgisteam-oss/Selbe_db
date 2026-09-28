@@ -5784,6 +5784,10 @@ const en: Record<string, string> = {
   "Багц тус бүрд Гүйцэтгэгч ба таван хянагч (ТУХ · Чанар · ХАБЭА · ТУГ · Чанарын хяналтын инженер) аккаунтыг тусад нь томилно. Нэг үүрэгт хэдэн ч аккаунт байж болно.": "For each package, assign the Contractor and five reviewer accounts (TUH · Quality · HSE · PMO · Quality inspection engineer) separately. Any number of accounts may hold one role.",
   "MS · QMP · PRC: ТУХ · Чанар · ХАБЭА зэрэгцээ; MA: Чанарын хяналтын инженер → Чанар → ТУГ дараалсан; MIR/FIC: ТУХ, дараа нь Чанар; NCR: ТУХ эсвэл Чанар нээж, гүйцэтгэгчийн залруулгыг ТУХ · Чанар · ТУГ дүгнэнэ. Бүгд зөвшөөрвөл батлагдана, нэг нь татгалзвал буцаагдана.": "MS · QMP · PRC: TUH · Quality · HSE in parallel; MA: Quality inspection engineer → Quality → PMO in sequence; MIR/FIC: TUH, then Quality; NCR: opened by TUH or Quality, the contractor's correction is judged by TUH · Quality · PMO. Approved when all approve, returned if one rejects.",
   "ЧХ инженер": "QD engineer",
+  "Энэ багцын хуваарийг төлөвлөх эрхгүй.": "No right to plan this package's schedule.",
+  "Бичсэний дараа «Улсын комисс» мөр хуудсанд олдсонгүй — дахин оролдоно уу.": "The “State commission” row was not found in the sheet after writing — please try again.",
+  "«Улсын комисс» ажилбар багцын төгсгөлд нэмэгдлээ.": "The “State commission” task was added at the end of the package.",
+  "«Улсын комисс» ажилбар нэмэгдсэнгүй: {0}": "The “State commission” task could not be added: {0}",
 };
 
 export default en;
