@@ -42,7 +42,56 @@ const MAX_TURNS = 6;
  */
 /* ⚠️ 2026-09-17: fallback (localhost) ХАСАГДАВ — хаяг зөвхөн env-ээс (Variables `AGENT_API` / `.env`).
    Хоосон бол `relayAlive()` false → AI товч идэвхгүй, бусад хэсэг хэвийн. */
-export const AGENT_API = (process.env.NEXT_PUBLIC_AGENT_API ?? '').trim().replace(/\/+$/, '');
+/* ⚠️ 2026-09-28: НӨӨЦ ХОСТ — `AGENT_API` таслалаар хэд хэдэн хаяг авна
+   (`https://pc1….ts.net,https://pc2….ts.net`). Tailscale Funnel нь машин бүрд ТУСДАА
+   хаяг өгдөг бөгөөд хооронд нь өөрөө шилжүүлдэггүй тул нэг хост унтарвал
+   дараагийнх руу үйлчлүүлэгч тал шилжинэ (`relayFetch`, `relayAlive`). */
+export const AGENT_APIS: readonly string[] = (process.env.NEXT_PUBLIC_AGENT_API ?? '')
+  .split(',')
+  .map((u) => u.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+/** Дэлгэц/логт харуулах — бүх хаяг */
+export const AGENT_API = AGENT_APIS.join(', ');
+
+/** Сүүлд амжилттай хариулсан хостын индекс — дараагийн хүсэлт эндээс эхэлнэ */
+let active = 0;
+
+/**
+ * Хост «унтарсан» гэж үзэх хариу: тунель/прокси хост руу хүрч чадаагүй (502/504,
+ * Cloudflare 530), эсвэл реле Claude Code-оос гарсан (503).
+ * ⚠️ 429 (хурдны хязгаар) ОРОХГҮЙ — өөр хост руу шилжвэл хэрэглэгч бүрийн
+ *    хязгаар хост тоогоор үржинэ.
+ */
+const FAILOVER_STATUS = new Set([502, 503, 504, 530]);
+
+/** `/health` шалгалтын дээд хүлээлт — унтарсан хост хариугүй унжиж болно */
+const HEALTH_TIMEOUT_MS = 8_000;
+
+/**
+ * Реле рүү хүсэлт — хост унтарсан бол жагсаалтын дараагийнх руу шилжинэ.
+ *
+ * ⚠️ Хэрэглэгч цуцалсан (`signal.aborted`) бол ШИЛЖИХГҮЙ, шууд шидэнэ.
+ * ⚠️ Сүүлийн хостын хариуг статусаас үл хамааран буцаана — алдааны мессежийг
+ *    дуудагч өөрөө задална.
+ */
+export async function relayFetch(path: string, init: RequestInit): Promise<Response> {
+  const n = Math.max(AGENT_APIS.length, 1);
+  let lastErr: unknown;
+  for (let k = 0; k < n; k++) {
+    const i = (active + k) % n;
+    const last = k === n - 1;
+    try {
+      const res = await fetch(`${AGENT_APIS[i] ?? ''}${path}`, init);
+      if (!last && FAILOVER_STATUS.has(res.status)) continue;
+      active = i;
+      return res;
+    } catch (e) {
+      if (init.signal?.aborted) throw e;
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
 
 /**
  * Browser-ГҮЙ үйлчлүүлэгчийн (Telegram бот) реле-баталгаа.
@@ -104,7 +153,7 @@ async function callRelay(
   signal?: AbortSignal,
 ): Promise<RelayReply> {
   const token = await arcgisToken();
-  const res = await fetch(`${AGENT_API}/chat`, {
+  const res = await relayFetch('/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -130,15 +179,33 @@ async function callRelay(
   return reply;
 }
 
-/** Реле асаалттай эсэх — UI үүнээс хамааран товчоо идэвхгүй болгоно */
+/**
+ * Реле асаалттай эсэх — UI үүнээс хамааран товчоо идэвхгүй болгоно.
+ *
+ * ⚠️ Жагсаалтын ЭХНИЙ хостоос эхэлнэ — үндсэн хост буцаж асвал түүн рүү эргэнэ.
+ *    Амьд хостыг `active` болгож, дараагийн `/chat` шууд тийш явна.
+ */
 export async function relayAlive(signal?: AbortSignal): Promise<boolean> {
-  try {
-    if (!AGENT_API) return false;
-    const res = await fetch(`${AGENT_API}/health`, { signal });
-    return res.ok;
-  } catch {
-    return false;
+  for (let i = 0; i < AGENT_APIS.length; i++) {
+    if (signal?.aborted) return false;
+    const ac = new AbortController();
+    const stop = () => ac.abort();
+    const tm = setTimeout(stop, HEALTH_TIMEOUT_MS);
+    signal?.addEventListener('abort', stop, { once: true });
+    try {
+      const res = await fetch(`${AGENT_APIS[i]}/health`, { signal: ac.signal });
+      if (res.ok) {
+        active = i;
+        return true;
+      }
+    } catch {
+      // Дараагийн хост
+    } finally {
+      clearTimeout(tm);
+      signal?.removeEventListener('abort', stop);
+    }
   }
+  return false;
 }
 
 const textOf = (blocks: ContentBlock[]): string =>

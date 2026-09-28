@@ -43,7 +43,7 @@ import { housingPlanOf } from '@/lib/negtgelAuto';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
-import { AGENT_API, arcgisToken } from '@/lib/agent/client';
+import { arcgisToken, relayFetch } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
 
@@ -706,7 +706,7 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
   else signal?.addEventListener('abort', () => ac.abort(), { once: true });
   let res: Response;
   try {
-    res = await fetch(`${AGENT_API}/chat`, {
+    res = await relayFetch('/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

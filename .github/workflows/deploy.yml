@@ -34,6 +34,8 @@ jobs:
           # ⚠️ AI релений хаяг. Repo → Settings → Secrets and variables → Actions
           #    → Variables таб дээр `AGENT_API` нэрээр нэмнэ (ЖИШЭЭ:
           #    https://selbe-agent.<нэр>.workers.dev).
+          #    Нөөц хост: таслалаар хэд хэдэн хаяг — эхнийх нь үндсэн, унтарвал
+          #    дараагийнх руу шилжинэ (`src/lib/agent/client.ts` → `relayFetch`).
           #
           # ⚠️ Secret БИШ, Variable: энэ бол зүгээр нэг нийтийн URL бөгөөд
           #    build-ийн үр дүнд JS багцад ил бичигдэнэ. Түлхүүр нь релены

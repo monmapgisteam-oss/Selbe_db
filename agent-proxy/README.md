@@ -124,6 +124,19 @@ Production-д зориулсан зан:
 
 Устгах: `agent-proxy\host\uninstall.ps1`.
 
+### Нөөц хост — хоёр дахь PC (Tailscale Funnel)
+
+1. Хоёр дахь PC дээр: Tailscale суулгаж ИЖИЛ tailnet-д нэвтэрнэ, `claude` → `/login`.
+2. `agent-proxy/.env.local` — үндсэн PC-тэй ИЖИЛ `ALLOW_ORIGIN`, `ARCGIS_ORG_ID`,
+   `BOT_SECRET`; мөн `TRUSTED_PROXY=tailscale`.
+3. `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
+   → реле + `tailscale funnel --bg 8787`.
+4. GitHub Variable `AGENT_API` = `https://pc1.<tailnet>.ts.net,https://pc2.<tailnet>.ts.net`
+   (эхнийх нь үндсэн) → main руу deploy.
+
+Портал эхний хостын `/health`-ыг шалгаж, хариугүй бол дараагийнх руу шилжинэ;
+`/chat` сүлжээний алдаа эсвэл 502/503/504/530 авбал мөн шилжинэ.
+
 ⚠️ PC унтарвал / сүлжээ тасарвал AI ажиллахгүй (портал өөрөө ажилласаар,
 товч идэвхгүй болно). Хэрэглээ нь энэ PC-ийн Claude бүртгэлийн хязгаараас явна.
 
