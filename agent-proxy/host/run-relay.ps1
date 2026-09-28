@@ -14,7 +14,18 @@ New-Item -ItemType Directory -Force $logs | Out-Null
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { throw 'node олдсонгүй — Node.js суулгана уу.' }
 
+# ⚠️ 2026-09-28: ПОРТ БАНД БОЛ АСААХГҮЙ. Ажил нь ачаалахад (S4U, session 0) ба
+#    нэвтрэхэд гэсэн ХОЁР триггертэй, мөн засварын үед гараар асаасан реле
+#    үлдсэн байж болно. Тэр үед энэ давталт `EADDRINUSE`-аар 5 секунд тутам
+#    мөнхөд унаж, лог дүүргэдэг байв. Одоо аль хэдийн үйлчилж буй реле байвал
+#    зүгээр хүлээж, тэр нь унасан хойно өөрөө эзэлнэ (өөрийгөө эмчилдэг).
+function Test-RelayUp {
+  try { return (Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8787/health' -TimeoutSec 3).StatusCode -in 200, 503 }
+  catch { return $false }
+}
+
 while ($true) {
+  if (Test-RelayUp) { Start-Sleep -Seconds 15; continue }
   Get-ChildItem $logs -Filter 'relay-*.log' |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } |
     Remove-Item -Force -ErrorAction SilentlyContinue

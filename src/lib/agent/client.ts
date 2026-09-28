@@ -73,8 +73,14 @@ const HEALTH_TIMEOUT_MS = 8_000;
  * ⚠️ Хэрэглэгч цуцалсан (`signal.aborted`) бол ШИЛЖИХГҮЙ, шууд шидэнэ.
  * ⚠️ Сүүлийн хостын хариуг статусаас үл хамааран буцаана — алдааны мессежийг
  *    дуудагч өөрөө задална.
+ * ⚠️ ХАЯГГҮЙ бол ЭНД зогсоно. Урьд нь хоосон жагсаалт нь `fetch('/chat')` болж
+ *    ХАРЬЦАНГУЙ хаяг руу (статик сайт өөрөө) явж, 404/405-ын JSON биш хариуг
+ *    «AI алдаа» гэж задалдаг байв — шалтгаан нь тохиргоо гэдэг нь харагдахгүй.
+ *    `relayAlive()` товчийг аль хэдийн хаадаг тул энэ нь зөвхөн гүн хамгаалалт
+ *    (`askExecSummary` зэрэг товчгүй зам).
  */
 export async function relayFetch(path: string, init: RequestInit): Promise<Response> {
+  if (!AGENT_APIS.length) throw new Error(tr('AI үйлчилгээний хаяг тохируулагдаагүй байна.'));
   const n = Math.max(AGENT_APIS.length, 1);
   let lastErr: unknown;
   for (let k = 0; k < n; k++) {

@@ -5788,6 +5788,7 @@ const en: Record<string, string> = {
   "Бичсэний дараа «Улсын комисс» мөр хуудсанд олдсонгүй — дахин оролдоно уу.": "The “State commission” row was not found in the sheet after writing — please try again.",
   "«Улсын комисс» ажилбар багцын төгсгөлд нэмэгдлээ.": "The “State commission” task was added at the end of the package.",
   "«Улсын комисс» ажилбар нэмэгдсэнгүй: {0}": "The “State commission” task could not be added: {0}",
+  "AI үйлчилгээний хаяг тохируулагдаагүй байна.": "The AI service address is not configured.",
 };
 
 export default en;

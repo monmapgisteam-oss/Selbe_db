@@ -706,6 +706,7 @@ export async function askExecSummary(x: ExecReport, signal?: AbortSignal): Promi
   else signal?.addEventListener('abort', () => ac.abort(), { once: true });
   let res: Response;
   try {
+    /* ⚠️ 2026-09-28: `relayFetch` — олон реле (нөөц хост) дундаас амьдыг сонгоно */
     res = await relayFetch('/chat', {
       method: 'POST',
       headers: {

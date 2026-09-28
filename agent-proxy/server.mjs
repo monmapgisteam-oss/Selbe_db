@@ -40,13 +40,29 @@ const BACKEND =
  *    харагдаад дарахад унадаг байдлаас сэргийлнэ.
  */
 let ready = { ok: BACKEND !== "claude-code", reason: "шалгаж байна" };
+/* ⚠️ 2026-09-28: ДАСАН ЗОХИЦСОН давтамж — урьд ямагт 10 минут байв. Реле нь PC
+   АЧААЛАХАД (нэвтрэхийг хүлээлгүй) асдаг болсон тул эхний шалгалт сүлжээ/
+   Tailscale бэлэн болоогүй үед явж уналаа гэхэд дараагийнх нь 10 минутын дараа
+   болно — тэр хугацаанд `/health` нь 503 буцааж портал дээр AI товч
+   идэвхгүй үлддэг байв. Одоо бэлэн БИШ үед 30 секунд тутам, бэлэн болсны
+   дараа 10 минут тутам шалгана. */
 if (BACKEND === "claude-code") {
+  const READY_MS = 10 * 60 * 1000;
+  const RETRY_MS = 30 * 1000;
+  let timer = null;
   const check = async () => {
+    const was = ready.ok;
     ready = await selfTest();
-    console.log(`[agent-proxy] Claude Code бэлэн: ${ready.ok ? "тийм" : `ҮГҮЙ — ${ready.reason}`}`);
+    /* ⚠️ Зөвхөн ТӨЛӨВ СОЛИГДОХОД хэвлэнэ — эс бөгөөс бэлэн бус PC-ийн лог
+       30 секунд тутмын ижил мөрөөр дүүрнэ. */
+    if (was !== ready.ok || timer === null) {
+      console.log(`[agent-proxy] Claude Code бэлэн: ${ready.ok ? "тийм" : `ҮГҮЙ — ${ready.reason}`}`);
+    }
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(check, ready.ok ? READY_MS : RETRY_MS);
+    timer.unref();
   };
   check();
-  setInterval(check, 10 * 60 * 1000).unref();
 }
 
 /**

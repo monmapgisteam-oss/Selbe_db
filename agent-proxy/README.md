@@ -82,7 +82,8 @@ npm run start:claude-code
 | `CLAUDE_MAX_QUEUE` | `12` | Дараалалд хүлээх дээд тоо — хэтэрвэл «завгүй» (429) |
 | `CLAUDE_CACHE_TTL_MS` | `600000` | ЯГ ижил хүсэлтийн хариуг хадгалах хугацаа |
 | `ARCGIS_ORG_ID` | — | **Нийтэд гаргах бол заавал** — зөвхөн танай ArcGIS байгууллагын нэвтэрсэн хэрэглэгч |
-| `CF_TUNNEL_TOKEN` | — | Cloudflare Tunnel-ийн токен (`host/install.ps1` уншина) |
+| `TRUSTED_PROXY` | — | `tailscale` эсвэл `cloudflare` — тунелийн төрөл; хэрэглэгчийн IP-г прокси толгойгоос авна. Тохируулсан атал `ARCGIS_ORG_ID` алга бол реле АСАХГҮЙ |
+| `CF_TUNNEL_TOKEN` | — | Cloudflare Tunnel-ийн токен (`TRUSTED_PROXY=cloudflare` үед `host/install.ps1` уншина) |
 
 Production-д зориулсан зан:
 
@@ -114,31 +115,82 @@ Production-д зориулсан зан:
    ⚠️ Telegram бот ашиглавал `BOT_SECRET=<урт санамсаргүй утга>`-г энд нэмж,
    ИЖИЛ утгыг репогийн үндсэн `.env.local`-д `AGENT_BOT_SECRET`-ээр тавина —
    эс бөгөөс `ARCGIS_ORG_ID`-тай реле ботын бүх асуултад 401 буцаана.
-3. **Суулгах (нэг удаа):**
+3. **Суулгах (нэг удаа) — АДМИН эрхээр:**
    `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
-   → нэвтрэх бүрд реле ба тунель автоматаар асна, унавал дахин асна,
-   цахилгаанд залгаатай үед PC унтахгүй. Лог: `agent-proxy\host\logs\`.
+   → PC асмагц (нэвтрэхийг хүлээхгүй) реле ба тунель автоматаар асна, унавал
+   дахин асна, цахилгаанд залгаатай үед PC унтахгүй. Лог: `agent-proxy\host\logs\`.
+
+   ⚠️ **Админ эрхгүй бол** ажил нь `LogonType S4U`-аар бүртгэгдэж ЧАДАХГҮЙ —
+   скрипт анхааруулаад хуучин зан руу (зөвхөн НЭВТРЭХЭД асна) буцна. Тэр
+   тохиолдолд цахилгаан тасраад PC дахин асахад хэн ч нэвтрэх хүртэл AI
+   ажиллахгүй. Анхааруулга гарвал PowerShell-ийг «Run as administrator»-оор
+   нээж дахин ажиллуул.
+   ⚠️ S4U ажлыг **админгүй хэрэглэгч ГАРААР асааж чадахгүй** —
+   `Start-ScheduledTask` нь «амжилттай» гэж хэлээд юу ч хийхгүй. Энэ нь хэвийн:
+   ачаалах ба нэвтрэх триггерийг Task Scheduler үйлчилгээ өөрөө ажиллуулдаг.
+   Засварын дараа даруй асаах бол админ консолоос асаана.
 4. **Портал:** GitHub → Settings → Secrets and variables → Actions → Variables →
    `AGENT_API` = `https://ai.selbecity.mn` → main руу deploy (утга build-д шингэнэ).
 5. **Шалгах:** `curl https://ai.selbecity.mn/health` → `{"ok":true}`.
 
 Устгах: `agent-proxy\host\uninstall.ps1`.
 
-### Нөөц хост — хоёр дахь PC (Tailscale Funnel)
-
-1. Хоёр дахь PC дээр: Tailscale суулгаж ИЖИЛ tailnet-д нэвтэрнэ, `claude` → `/login`.
-2. `agent-proxy/.env.local` — үндсэн PC-тэй ИЖИЛ `ALLOW_ORIGIN`, `ARCGIS_ORG_ID`,
-   `BOT_SECRET`; мөн `TRUSTED_PROXY=tailscale`.
-3. `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
-   → реле + `tailscale funnel --bg 8787`.
-4. GitHub Variable `AGENT_API` = `https://pc1.<tailnet>.ts.net,https://pc2.<tailnet>.ts.net`
-   (эхнийх нь үндсэн) → main руу deploy.
-
-Портал эхний хостын `/health`-ыг шалгаж, хариугүй бол дараагийнх руу шилжинэ;
-`/chat` сүлжээний алдаа эсвэл 502/503/504/530 авбал мөн шилжинэ.
-
 ⚠️ PC унтарвал / сүлжээ тасарвал AI ажиллахгүй (портал өөрөө ажилласаар,
 товч идэвхгүй болно). Хэрэглээ нь энэ PC-ийн Claude бүртгэлийн хязгаараас явна.
+→ Үүнээс хамгаалах нь дараагийн хэсэг (нөөц хост).
+
+### Tailscale Funnel-ээр (Cloudflare-ийн оронд) — одоогийн үндсэн зам
+
+Cloudflare-ийн 1-р алхмын оронд: Tailscale суулгаад нэвтэрсэн байна
+(admin console → Access controls-д `funnel` nodeAttr, DNS → HTTPS Certificates
+идэвхтэй). `.env.local`-д `CF_TUNNEL_TOKEN`-ийн оронд:
+
+```
+TRUSTED_PROXY=tailscale
+```
+
+`install.ps1` нь `tailscale funnel --bg 8787` ажиллуулна — тохиргоо tailscaled
+үйлчилгээнд хадгалагдах тул тусдаа ажил хэрэггүй, дахин ачаалахад өөрөө асна.
+Хаяг: `https://<машин>.<tailnet>.ts.net` (скрипт хэвлэнэ) → GitHub Variable
+`AGENT_API`. Шалгах: `tailscale funnel status`.
+
+### Нөөц хост — үндсэн PC унтарсан ч AI ажиллах (2026-09-28)
+
+Funnel-ийн хаяг **машин бүрд өөр** тул нэг хаягийг хоёр PC хуваалцаж болохгүй.
+Оронд нь портал **хэд хэдэн реле хаяг** мэддэг болсон
+(`src/lib/agent/client.ts` → `relayFetch` · `relayAlive`): `AGENT_API`-г
+таслалаар задалж, хүсэлтийг жагсаалтын дарааллаар явуулна. Хост унтарсан бол
+(сүлжээний алдаа · 502 · 503 · 504 · 530) дараагийнх руу ӨӨРӨӨ шилжиж,
+амжилттай хостыг «одоогийн» гэж тэмдэглэнэ — дараагийн хүсэлт шууд тийш явна.
+`relayAlive` (AI товчийг идэвхжүүлэх шалгалт) нь ҮРГЭЛЖ ЭХНИЙ хостоос эхэлдэг
+тул үндсэн PC буцаж асвал өөрөө түүн рүү эргэнэ (хост бүрд 8 секундын хязгаар).
+401/403/429-д шилжихгүй — тэр реле амьд (429-д шилжвэл хурдны хязгаар хостын
+тоогоор үржинэ).
+
+Хоёр дахь PC дээр:
+
+1. Репог clone, Node суулгасан, Claude Code нэвтэрсэн (`claude` → `/login`),
+   Tailscale ижил tailnet-д нэвтэрсэн.
+2. `agent-proxy/.env.local` — үндсэн PC-тэй ИЖИЛ утгууд:
+   ```
+   ALLOW_ORIGIN=https://smart.selbecity.mn,http://localhost:8123
+   ARCGIS_ORG_ID=<ижил orgId>
+   TRUSTED_PROXY=tailscale
+   ```
+   (`BOT_SECRET` хэрэглэдэг бол мөн ижил.)
+3. `cd agent-proxy && npm ci`, дараа нь
+   `powershell -ExecutionPolicy Bypass -File agent-proxy\host\install.ps1`
+   → скрипт `✓ Tailscale Funnel: https://<машин>.tailae6be6.ts.net` хэвлэнэ.
+4. GitHub → Variables → `AGENT_API`-г таслалаар:
+   ```
+   https://monmap.tailae6be6.ts.net,https://desktop-ct6o6rh.tailae6be6.ts.net
+   ```
+   Эхнийх = үндсэн (амьд байвал ямагт түүнийг). main руу deploy.
+5. Шалгах: үндсэн PC-ийн релег зогсоогоод порталын AI товч идэвхтэй хэвээр
+   байх ёстой (үндсэн хостын хариуг 8 секунд хүлээгээд нөөц рүү шилжинэ).
+
+⚠️ Хоёр хост хоёулаа тус тусын Claude бүртгэлийн хязгаараас зарцуулна.
+⚠️ Ганц хаягтай `AGENT_API` өмнөхтэй ЯГ ижил ажиллана — шалгалт нэмэгдэхгүй.
 
 ## Тест
 
