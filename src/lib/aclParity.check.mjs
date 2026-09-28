@@ -664,7 +664,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   for (const f of ['src/modules/ChanarAcl.tsx', 'src/modules/DedButetsAcl.tsx', 'src/modules/ScopedAclPanel.tsx',
     'src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx', 'src/components/UserAdmin.tsx']) {
     const src = readCode(f);
-    assert.doesNotMatch(src, /(author|editor|approver|tuh|habea): '(plan|planApprove|obyemEdit|obyemApprove|addRow|ajilApprove|chanarAuthor|chanarReview|butets)'/,
+    assert.doesNotMatch(src, /(author|editor|approver|tuh|habea|tug|cheng): '(plan|planApprove|obyemEdit|obyemApprove|addRow|ajilApprove|chanarAuthor|chanarReview|butets)'/,
       `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
   }
 

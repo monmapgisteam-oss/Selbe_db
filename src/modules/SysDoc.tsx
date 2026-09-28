@@ -1,327 +1,264 @@
 'use client';
 
 /**
- * СИСТЕМИЙН БАРИМТ — порталын өөрийн гарын авлага.
+ * СИСТЕМИЙН БАРИМТ — ӨГӨГДЛИЙН КАТАЛОГ.
  *
- * ⚠️ «Үйл ажиллагааны схем» (`Schem.tsx`)-ТЭЙ АНДУУРАХГҮЙ. Тэр нь БАРИЛГЫН
- * ТӨСЛИЙН урсгалыг зурдаг; энэ нь ПРОГРАМ хэрхэн ажилладгийг тайлбарлана.
+ * ⚠️ 2026-09-25 (хэрэглэгчийн хүсэлт): урьдын markdown баримт (`sysDocs.ts`) ба
+ *    схем (`SysSchemView`)-ийн ОРОНД порталын БҮХ эх сурвалжийг давхарга/хүснэгт
+ *    тус бүрээр жагсаана: зориулалт, ШИНЭЧЛЭГДЭХ ШАТЛАЛ (хэн бөглөж, хэн
+ *    батлаад, хаашаа урсдаг), уншдаг харагдац, засах эрх, хаалттай эсэх.
+ *    Өгөгдөл нь `lib/dataCatalog.ts`-д — энд зөвхөн харуулна. Хуучин файлууд
+ *    устгагдаагүй (`docs:build` ба `docs.invariant.check.mjs` хэвээр).
  *
- * ⚠️ СҮЛЖЭЭНД ОГТ ХАНДАХГҮЙ. Агуулга нь `sysDocs.ts`-д бүтээх үед шингэдэг
- * (`npm run docs:build`). Эх сурвалж нь `docs/` хэвээр — тэнд засаж, дахин
- * бүтээнэ. GitHub дээр ч, порталд ч ИЖИЛ агуулга.
+ * ⚠️ СҮЛЖЭЭНД ОГТ ХАНДАХГҮЙ — каталог нь кодын регистрээс бүтээх үед гарна.
  *
- * ⚠️ MARKDOWN-ЫГ ӨӨРСДӨӨ ЗУРНА. `react-markdown` нь ~100 КБ нэмнэ; энэ
- * баримтын хэрэглэдэг бүтэц (гарчиг, хүснэгт, жагсаалт, ишлэл, код, mermaid)
- * хязгаарлагдмал тул `AgentMarkdown`-ийн зарчмыг дагав.
- *
- * ⚠️ MERMAID БЛОКИЙГ ЗУРАХГҮЙ — сан нэмэхгүй. Оронд нь «диаграм» гэсэн
- * эвхэгддэг хайрцагт ЭХ бичвэрийг харуулна: GitHub дээр зурагдсан хэвээр,
- * порталд нэмэлт 300 КБ ачаалахгүй.
+ * ⚠️ ШАТЛАЛЫН АЛХАМ ДАРАХАД ТЭР МӨР РҮҮ ҮСЭРНЭ. Зорилтот мөр одоогийн
+ *    шүүлтэд нуугдсан бол шүүлтийг ЦЭВЭРЛЭЖ байж үсэрнэ — эс бөгөөс дархад
+ *    «юу ч болсонгүй» мэт харагдана.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { SYS_DOCS } from '@/lib/sysDocs';
-import { SysSchemView } from './SysSchemView';
-import type { ViewKey } from '@/lib/services';
+import { VIEW_BY_KEY, type ViewKey } from '@/lib/services';
+import {
+  dataCatalog, CAT_GROUPS, kindLabel, searchText, shortRef,
+  type CatEntry, type CatGroup, type StepPart,
+} from '@/lib/dataCatalog';
 import s from './sysDoc.module.css';
 
-/* ─────────── Мөрийн доторх тэмдэглэгээ ─────────── */
+type Jump = (id: string) => void;
 
-/**
- * `**тод**` · `` `код` `` · `[текст](холбоос)`
- *
- * ⚠️ Дотоод холбоосыг ТОВЧ болгоно: `.md` файл руу заасан холбоос нь порталд
- * URL биш, ӨӨР БҮЛЭГ рүү шилжих үйлдэл. `onJump` нь түүнийг хүлээж авна.
- */
-function inline(text: string, key: string, onJump: (id: string) => void): ReactNode[] {
-  const out: ReactNode[] = [];
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g);
-  parts.forEach((p, i) => {
-    if (!p) return;
-    const k = `${key}-${i}`;
-    if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
-      out.push(<strong key={k}>{p.slice(2, -2)}</strong>);
-      return;
-    }
-    if (p.startsWith('`') && p.endsWith('`') && p.length > 2) {
-      out.push(<code key={k}>{p.slice(1, -1)}</code>);
-      return;
-    }
-    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(p);
-    if (link) {
-      const [, label, href] = link;
-      const id = docIdOf(href);
-      if (id) {
-        out.push(
-          <button key={k} type="button" className={s.jump} onClick={() => onJump(id)}>
-            {inline(label, `${k}l`, onJump)}
-          </button>,
-        );
-      } else if (/^https?:/.test(href)) {
-        out.push(<a key={k} href={href} target="_blank" rel="noreferrer">{inline(label, `${k}l`, onJump)}</a>);
-      } else {
-        /* Кодын файл руу заасан холбоос — порталаас нээх боломжгүй тул
-           зөвхөн нэрийг үлдээнэ (⚠️ холбоос мэт харагдвал дарж үзээд юу ч
-           болохгүй нь эвгүй). */
-        /* ⚠️ Шошго ихэвчлэн `` `CLAUDE.md` `` хэлбэртэй — хашилтыг хасна, эс бөгөөс
-           `<code>` дотор давхар хашилт харагдана (9 газар, 2026-09-16 аудит). */
-        out.push(<code key={k}>{label.replace(/^`|`$/g, '')}</code>);
-      }
-      return;
-    }
-    out.push(<span key={k}>{p}</span>);
-  });
-  return out;
-}
-
-/** `02-ogogdliin-esurvalj.md#хэсэг` → `02-ogogdliin-esurvalj`; бусад бол `null` */
-function docIdOf(href: string): string | null {
-  const path = href.split('#')[0];
-  if (!path.endsWith('.md')) return null;
-  const base = path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
-  if (base === 'SYSTEM') return 'index';
-  return SYS_DOCS.some((d) => d.id === base) ? base : null;
-}
-
-/* ─────────── Мөрийн төрөл таних ─────────── */
-
-const isRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
-const isSep = (l: string) => /^\s*\|[\s|:-]+\|\s*$/.test(l);
-const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-const isBullet = (l: string) => /^\s*[-·]\s+/.test(l);
-const isNum = (l: string) => /^\s*\d+[.)]\s+/.test(l);
-
-/* ─────────── Нэг баримтыг зурах ─────────── */
-
-function Body({ src, onJump }: { src: string; onJump: (id: string) => void }) {
-  const lines = src.split('\n');
-  const out: ReactNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (!line.trim()) { i += 1; continue; }
-
-    /* ── Хуваах зураас ── */
-    if (/^---+\s*$/.test(line)) { out.push(<hr key={`hr${i}`} />); i += 1; continue; }
-
-    /* ── Хашлагатай блок (mermaid ба бусад) ── */
-    if (/^\s*```/.test(line)) {
-      const lang = line.replace(/^\s*```/, '').trim();
-      i += 1;
-      const buf: string[] = [];
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
-      if (i < lines.length) i += 1;
-      out.push(
-        lang === 'mermaid'
-          ? <Diagram key={`d${i}`} src={buf.join('\n')} />
-          : <pre key={`p${i}`} className={s.code}>{buf.join('\n')}</pre>,
-      );
-      continue;
-    }
-
-    /* ── Ишлэл (⚠️ анхааруулга ихэвчлэн энд) ── */
-    if (/^\s*>\s?/.test(line)) {
-      const buf: string[] = [];
-      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
-        buf.push(lines[i++].replace(/^\s*>\s?/, ''));
-      }
-      /* ⚠️ Мөр бүр тусдаа `<p>` БИШ (2026-09-16 аудит): олон мөрт `**тод**`
-         хагасаараа тасарч `**` ил гардаг, `> - …` нь жагсаалт биш бичиг мэт
-         зурагддаг байв. Хоосон `>` мөр л догол салгана; `- ` мөр жагсаалт болно. */
-      const blocks: { kind: 'p' | 'ul'; lines: string[] }[] = [];
-      for (const b of buf) {
-        const last = blocks[blocks.length - 1];
-        if (!b.trim()) { if (last && last.lines.length) blocks.push({ kind: 'p', lines: [] }); continue; }
-        if (isBullet(b)) {
-          const li = b.replace(/^\s*[-·]\s+/, '');
-          if (last?.kind === 'ul') last.lines.push(li); else blocks.push({ kind: 'ul', lines: [li] });
-          continue;
-        }
-        if (last?.kind === 'p') last.lines.push(b.trim()); else blocks.push({ kind: 'p', lines: [b.trim()] });
-      }
-      out.push(
-        <blockquote key={`q${i}`} className={s.quote}>
-          {blocks.filter((x) => x.lines.length).map((x, n) => (
-            x.kind === 'ul'
-              ? <ul key={n} className={s.list}>{x.lines.map((li, m) => <li key={m}>{inline(li, `q${i}${n}${m}`, onJump)}</li>)}</ul>
-              : <p key={n}>{inline(x.lines.join(' '), `q${i}${n}`, onJump)}</p>
-          ))}
-        </blockquote>,
-      );
-      continue;
-    }
-
-    /* ── Гарчиг ── */
-    const h = /^(#{1,4})\s+(.*)$/.exec(line);
-    if (h) {
-      const lvl = h[1].length;
-      /* ⚠️ `{#anchor}` тэмдэглэгээг ХАСНА — эс бөгөөс гарчигт ил гарна. */
-      const txt = h[2].replace(/\s*\{#[\w-]+\}\s*$/, '');
-      const Tag = (`h${Math.min(lvl + 1, 5)}`) as 'h2' | 'h3' | 'h4' | 'h5';
-      out.push(<Tag key={`h${i}`} className={s[`h${lvl}`]}>{inline(txt, `ht${i}`, onJump)}</Tag>);
-      i += 1;
-      continue;
-    }
-
-    /* ── Хүснэгт ── */
-    if (isRow(line)) {
-      const rows: string[] = [];
-      while (i < lines.length && isRow(lines[i])) rows.push(lines[i++]);
-      const body = rows.filter((r) => !isSep(r));
-      if (body.length) {
-        const [head, ...rest] = body;
-        out.push(
-          /* ⚠️ Нарийн дэлгэцэд өргөн хүснэгт хальдаг тул ХӨНДЛӨН гүйлгэнэ. */
-          <div key={`t${i}`} className={s.tableWrap}>
-            <table className={s.table}>
-              <thead>
-                <tr>{cells(head).map((c, n) => <th key={n}>{inline(c, `th${i}${n}`, onJump)}</th>)}</tr>
-              </thead>
-              <tbody>
-                {rest.map((r, ri) => (
-                  <tr key={ri}>
-                    {cells(r).map((c, n) => <td key={n}>{inline(c, `td${i}${ri}${n}`, onJump)}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>,
-        );
-      }
-      continue;
-    }
-
-    /* ── Жагсаалт ── */
-    if (isBullet(line) || isNum(line)) {
-      const numbered = isNum(line);
-      const items: string[] = [];
-      while (i < lines.length && (numbered ? isNum(lines[i]) : isBullet(lines[i]))) {
-        let item = lines[i++].replace(/^\s*(?:[-·]|\d+[.)])\s+/, '');
-        /* ⚠️ ҮРГЭЛЖЛЭЛ МӨР (2+ зайтай догол, 2026-09-16 аудит): урьд нь тусдаа
-           `<p>` болж жагсаалтыг ТАСАЛЖ, дараагийн `-` мөр шинэ жагсаалт эхлүүлдэг
-           байв — 14 газар. Одоо өмнөх зүйлдээ нийлнэ. */
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !isBullet(lines[i]) && !isNum(lines[i])) {
-          item += ' ' + lines[i++].trim();
-        }
-        items.push(item);
-      }
-      const List = numbered ? 'ol' : 'ul';
-      out.push(
-        <List key={`l${i}`} className={s.list}>
-          {items.map((it, n) => <li key={n}>{inline(it, `li${i}${n}`, onJump)}</li>)}
-        </List>,
-      );
-      continue;
-    }
-
-    /* ── Догол мөр — дараалсан мөрүүдийг нэгтгэнэ ── */
-    const buf: string[] = [];
-    while (
-      i < lines.length && lines[i].trim()
-      && !isRow(lines[i]) && !isBullet(lines[i]) && !isNum(lines[i])
-      && !/^(#{1,4})\s/.test(lines[i]) && !/^\s*```/.test(lines[i])
-      && !/^\s*>\s?/.test(lines[i]) && !/^---+\s*$/.test(lines[i])
-    ) buf.push(lines[i++]);
-    out.push(<p key={`p${i}`}>{inline(buf.join(' '), `pt${i}`, onJump)}</p>);
-  }
-
-  return <>{out}</>;
-}
-
-/**
- * ДИАГРАМ — эх бичвэрийг эвхэгддэг хайрцагт.
- *
- * ⚠️ Зурах САН НЭМЭХГҮЙ (2026-09-16): mermaid нь ~300 КБ бөгөөд энэ баримт
- * нь порталын гол ажиллагаа БИШ. GitHub дээр диаграм зурагдсан хэвээр байх
- * тул мэдээлэл алдагдахгүй. Шаардлага гарвал энд сан холбоно.
- */
-function Diagram({ src }: { src: string }) {
-  const [open, setOpen] = useState(false);
+/** Шатлалын нэг хэсэг — өөр мөр рүү заасан бол товч */
+function Part({ p, onJump, nameOf }: { p: StepPart; onJump: Jump; nameOf: (id: string) => string }) {
+  if (!p.ref) return <span>{p.label}</span>;
   return (
-    <div className={s.diagram}>
-      <button type="button" className={s.diagramHead} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span aria-hidden>{open ? '▾' : '▸'}</span>
-        {tr('Диаграм')}
-        <span className={s.diagramHint}>{tr('бүтцийн тайлбар')}</span>
-      </button>
-      {open && <pre className={s.code}>{src}</pre>}
-    </div>
+    <button
+      type="button"
+      className={s.stepLink}
+      onClick={() => onJump(p.ref!)}
+      title={tr('«{0}» мөр рүү очих', nameOf(p.ref))}
+    >
+      {p.label}
+    </button>
   );
 }
 
-/* ─────────── Харагдац ─────────── */
+function Entry({ e, domId, on, onJump, nameOf, go, canOpen }: {
+  e: CatEntry;
+  domId: string;
+  on: boolean;
+  onJump: Jump;
+  nameOf: (id: string) => string;
+  go?: (v: ViewKey) => void;
+  canOpen: (v: ViewKey) => boolean;
+}) {
+  const chain = e.chain();
+  const editors = e.editors();
+  const rows = e.rows?.() ?? [];
+  const note = e.note?.();
+  return (
+    <li id={domId} tabIndex={-1} className={`${s.item} ${on ? s.hl : ''} ${e.closed ? s.itemClosed : ''}`} aria-labelledby={`${domId}-n`}>
+      <div className={s.head}>
+        <h3 id={`${domId}-n`} className={s.name}>{e.name}</h3>
+        <span className={s.kind}>{kindLabel(e.kind)}</span>
+        {e.closed && <span className={s.closed}>{tr('хаалттай (499)')}</span>}
+      </div>
+      <div className={s.refLine}>
+        <code className={s.mono}>{shortRef(e)}</code>
+        {e.env && <code className={`${s.mono} ${s.dim}`} title={tr('Орчны хувьсагчаас')}>{e.env}</code>}
+      </div>
 
-/**
- * ⚠️ СХЕМ нь ЭХНИЙ бөгөөд АНХДАГЧ таб (2026-09-16, хэрэглэгчийн шаардлага:
- * «бүгдийг багтаасан нэг схем»). Бичвэрийн бүлгүүд түүний ДАРАА — схем нь
- * бүхнийг нэг харцаар хэлж, бүлгүүд нь дэлгэрэнгүйг тайлбарлана.
- */
-const SCHEM_ID = '__schem__';
+      <p className={s.purpose}>{e.purpose()}</p>
+
+      <ol className={s.chain} aria-label={tr('Шинэчлэлийн шатлал')}>
+        {chain.map((st, i) => (
+          <li key={i} className={s.stepLi}>
+            {i > 0 && <span className={s.arrow} aria-hidden>→</span>}
+            <span className={`${s.step} ${st.ref || st.with?.some((w) => w.ref) ? s.stepHasRef : ''}`}>
+              <Part p={st} onJump={onJump} nameOf={nameOf} />
+              {st.with?.map((w, k) => (
+                <span key={k} className={s.with}>
+                  <span className={s.dot} aria-hidden>·</span>
+                  <Part p={w} onJump={onJump} nameOf={nameOf} />
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <dl className={s.meta}>
+        <div className={s.metaRow}>
+          <dt>{tr('Уншдаг харагдац')}</dt>
+          <dd className={s.chips}>
+            {e.allMaps && <span className={s.chip}>{tr('Бүх газрын зураг')}</span>}
+            {e.views.map((v) => (
+              go && canOpen(v)
+                ? <button key={v} type="button" className={`${s.chip} ${s.chipBtn}`} onClick={() => go(v)}>{VIEW_BY_KEY[v]?.title ?? v}</button>
+                : <span key={v} className={s.chip}>{VIEW_BY_KEY[v]?.title ?? v}</span>
+            ))}
+            {!e.allMaps && !e.views.length && <span className={`${s.chip} ${s.dim}`}>{tr('Харагдац шууд уншдаггүй')}</span>}
+          </dd>
+        </div>
+        <div className={s.metaRow}>
+          <dt>{tr('Засах эрх')}</dt>
+          <dd className={s.chips}>
+            {editors.length
+              ? editors.map((x, k) => (
+                <span key={k} className={s.chip}>
+                  {x.cap && <code className={s.mono}>{x.cap}</code>}
+                  {x.text}
+                </span>
+              ))
+              : <span className={`${s.chip} ${s.dim}`}>{tr('Порталаас засахгүй (зөвхөн унших)')}</span>}
+          </dd>
+        </div>
+        {rows.length > 0 && (
+          <div className={s.metaRow}>
+            <dt>{tr('Мөрийн төрөл')}</dt>
+            <dd>
+              <ul className={s.rows}>
+                {rows.map((r) => (
+                  <li key={r.key}><code className={s.mono}>{r.key}</code> {r.text}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        )}
+        {e.aliases.length > 0 && (
+          <div className={s.metaRow}>
+            <dt>{tr('Порталын id')}</dt>
+            <dd className={s.chips}>
+              {e.aliases.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
+            </dd>
+          </div>
+        )}
+        {e.styleSrc.length > 0 && (
+          <div className={s.metaRow}>
+            <dt>{tr('Загварын түлхүүр')}</dt>
+            <dd className={s.chips}>
+              {e.styleSrc.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
+            </dd>
+          </div>
+        )}
+      </dl>
+      {note && <p className={s.note}>{note}</p>}
+    </li>
+  );
+}
 
 export default function SysDoc({ setView, navScope = 'all' }: {
   setView?: (v: ViewKey) => void;
   /** Хэрэглэгчийн эрхэд байгаа харагдацууд; `'all'` бол хязгааргүй (`Schem`-тэй ижил) */
   navScope?: 'all' | ViewKey[];
 }) {
-  const [id, setId] = useState(SCHEM_ID);
   /**
-   * ⚠️ 2026-09-25: ЭРХИЙН ХҮРЭЭНЭЭС ГАДУУРХ харагдац руу ШИЛЖИХГҮЙ. Урьд нь
-   * «Харагдац нээх» нь `setView`-г шууд дууддаг тул ['habea','sysDoc'] эрхтэй
-   * хэрэглэгч «Санхүү» картаас дарахад Finance нэг commit-ийн турш зурагдаж
-   * өгөгдлөө татаж эхлээд, Portal-ын хамгаалалт `navScope[0]` (habea) руу
-   * шидэж, баримтын хуудаснаас ГАРГАДАГ байв. `Schem`-ийн `allowed`-тай ижил дүрэм.
+   * ⚠️ 2026-09-25: ЭРХИЙН ХҮРЭЭНЭЭС ГАДУУРХ харагдац руу ШИЛЖИХГҮЙ — Portal-ын
+   * хамгаалалт `navScope[0]` руу шидэж энэ хуудаснаас ГАРГАДАГ. Хүрээнээс
+   * гадуурх харагдац нь товч биш, энгийн шошго болж зурагдана.
    */
-  const go = useMemo(
-    () => (setView
-      ? (v: ViewKey) => { if (navScope === 'all' || navScope.includes(v)) setView(v); }
-      : undefined),
-    [setView, navScope],
+  const canOpen = useMemo(
+    () => (v: ViewKey) => navScope === 'all' || navScope.includes(v),
+    [navScope],
   );
-  const doc = useMemo(() => SYS_DOCS.find((d) => d.id === id) ?? SYS_DOCS[0], [id]);
+  const go = useMemo(
+    () => (setView ? (v: ViewKey) => { if (canOpen(v)) setView(v); } : undefined),
+    [setView, canOpen],
+  );
 
-  /**
-   * ⚠️ Бүлэг солиход ДЭЭШ гүйнэ. Эс бөгөөс урт бүлгийн дундаас өөр бүлэг рүү
-   * үсрэхэд шинэ баримтын ДУНДУУР нээгдэж, хэрэглэгч «юу ч болсонгүй» гэж
-   * бодно.
-   */
-  const jump = (next: string) => {
-    setId(next);
-    document.querySelector(`.${s.main}`)?.scrollTo({ top: 0 });
+  const all = useMemo(() => dataCatalog(), []);
+  const hay = useMemo(() => new Map(all.map((e) => [e.id, searchText(e)])), [all]);
+  /* ⚠️ DOM id нь индексээр — BIM-ийн кирилл нэрийг id болгох шаардлагагүй */
+  const domOf = useMemo(() => new Map(all.map((e, i) => [e.id, `cat-${i}`])), [all]);
+  const nameOf = useMemo(() => {
+    const m = new Map(all.map((e) => [e.id, e.name]));
+    return (id: string) => m.get(id) ?? id;
+  }, [all]);
+  const counts = useMemo(() => {
+    const c = {} as Record<CatGroup, number>;
+    for (const e of all) c[e.group] = (c[e.group] ?? 0) + 1;
+    return c;
+  }, [all]);
+
+  const [q, setQ] = useState('');
+  const [grp, setGrp] = useState<CatGroup | 'all'>('all');
+  const [hl, setHl] = useState<string | null>(null);
+
+  const shown = useMemo(() => {
+    const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return all.filter((e) => (grp === 'all' || e.group === grp)
+      && terms.every((t) => (hay.get(e.id) ?? '').includes(t)));
+  }, [all, hay, q, grp]);
+
+  const jump: Jump = (id) => {
+    if (!domOf.has(id)) return;
+    if (!shown.some((e) => e.id === id)) { setQ(''); setGrp('all'); }
+    setHl(id);
   };
+
+  /* Үсэрсэн мөрийг төвд аваачиж, фокуслаад, түр тодруулна */
+  useEffect(() => {
+    if (!hl) return;
+    const el = document.getElementById(domOf.get(hl) ?? '');
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.focus({ preventScroll: true });
+    const t = window.setTimeout(() => setHl(null), 2400);
+    return () => window.clearTimeout(t);
+  }, [hl, domOf]);
 
   return (
     <div className={s.wrap}>
-      <nav className={s.side} aria-label={tr('Бүлгүүд')}>
-        <div className={s.sideHead}>{tr('Системийн баримт')}</div>
-        <button
-          type="button"
-          className={`${s.sideItem} ${s.sideSchem} ${id === SCHEM_ID ? s.sideOn : ''}`}
-          aria-current={id === SCHEM_ID ? 'page' : undefined}
-          onClick={() => jump(SCHEM_ID)}
-        >
-          {tr('Схем')}
-        </button>
-        {SYS_DOCS.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            className={`${s.sideItem} ${d.id === id ? s.sideOn : ''}`}
-            aria-current={d.id === id ? 'page' : undefined}
-            onClick={() => jump(d.id)}
-          >
-            {d.id === 'index' ? tr('Эхлэл') : d.title.replace(/^\d+\s*·\s*/, '')}
+      <header className={s.top}>
+        <div className={s.titleRow}>
+          <h2 className={s.title}>{tr('Өгөгдлийн каталог')}</h2>
+          <span className={s.count} aria-live="polite">{tr('{0} / {1} эх сурвалж', shown.length, all.length)}</span>
+        </div>
+        <p className={s.lead}>{tr('Порталын уншдаг, бичдэг давхарга/хүснэгт бүр — зориулалт, шинэчлэгдэх шатлал, хэн засах эрхтэй.')}</p>
+        <input
+          type="search"
+          className={s.search}
+          value={q}
+          onChange={(ev) => setQ(ev.target.value)}
+          placeholder={tr('Нэр, үйлчилгээ, id-аар хайх…')}
+          aria-label={tr('Каталогоос хайх')}
+        />
+        <div className={s.filters} role="group" aria-label={tr('Бүлгээр шүүх')}>
+          <button type="button" className={`${s.filter} ${grp === 'all' ? s.filterOn : ''}`} aria-pressed={grp === 'all'} onClick={() => setGrp('all')}>
+            {tr('Бүгд')} <span className={s.n}>{all.length}</span>
           </button>
-        ))}
-      </nav>
+          {CAT_GROUPS.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              className={`${s.filter} ${grp === g.key ? s.filterOn : ''}`}
+              aria-pressed={grp === g.key}
+              onClick={() => setGrp(g.key)}
+              disabled={!counts[g.key]}
+            >
+              {g.label()} <span className={s.n}>{counts[g.key] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      </header>
 
-      <article className={`${s.main} ${id === SCHEM_ID ? s.mainSchem : ''}`}>
-        {id === SCHEM_ID
-          ? <SysSchemView setView={go} onDoc={jump} canOpen={(v) => navScope === 'all' || navScope.includes(v)} />
-          : <Body src={doc.body} onJump={jump} />}
-      </article>
+      {shown.length
+        ? (
+          <ul className={s.list}>
+            {shown.map((e) => (
+              <Entry
+                key={e.id}
+                e={e}
+                domId={domOf.get(e.id)!}
+                on={hl === e.id}
+                onJump={jump}
+                nameOf={nameOf}
+                go={go}
+                canOpen={canOpen}
+              />
+            ))}
+          </ul>
+        )
+        : <p className={s.empty}>{tr('Тохирох эх сурвалж олдсонгүй')}</p>}
     </div>
   );
 }

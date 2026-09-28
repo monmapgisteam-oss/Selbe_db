@@ -9,7 +9,7 @@
  *      Эдгээр нь одоо ЗӨВХӨН ажил зогссоны дараа мэдэгддэг.
  *   3. Бүх шат хоосон нь АНХААРУУЛГА БИШ — тэр багцад урсгал эхлээгүй.
  *   4. Том/жижиг үсэг, зайг тэсвэрлэнэ (`trim().toLowerCase()`).
- *   5. Матриц (2026-09-25): 17 багана, issue бүр өөрийн багана, viewOnly эзэн
+ *   5. Матриц (2026-09-25): 19 багана (2026-09-28: + ТУГ, + ЧХ инженер), issue бүр өөрийн багана, viewOnly эзэн
  *      биш, өнчин эрх (super-т үгүй), эрхийн эх сурвалж (ALL → null).
  */
 import assert from 'node:assert/strict';
@@ -217,34 +217,40 @@ console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
   const only = { ...empty(), chanar: [{ user: 'g', grants: [{ role: 'author', bagts: [G0] }] }] };
   const i1 = pkgErh(only, G0).issues.find((i) => i.key === 'chanarNoReviewer');
   assert.ok(i1, 'зохиогч бий, хянагчгүй → гацаа');
-  assert.equal(i1.args[1], 'tuh, chanar, habea');
+  assert.equal(i1.args[1], 'tuh, chanar, habea, tug, cheng', '2026-09-28: tug · cheng ч дутуу гэж тоологдоно (MA)');
   const self = { ...empty(), chanar: [{ user: 'g', grants: [
-    { role: 'author', bagts: [G0] }, { role: 'tuh', bagts: [G0] }, { role: 'chanar', bagts: [G0] }, { role: 'habea', bagts: [G0] },
+    { role: 'author', bagts: [G0] }, { role: 'tuh', bagts: [G0] }, { role: 'chanar', bagts: [G0] }, { role: 'habea', bagts: [G0] }, { role: 'tug', bagts: [G0] }, { role: 'cheng', bagts: [G0] },
   ] }] };
-  assert.equal(pkgErh(self, G0).issues.find((i) => i.key === 'chanarNoReviewer').args[1], 'tuh, chanar, habea',
+  assert.equal(pkgErh(self, G0).issues.find((i) => i.key === 'chanarNoReviewer').args[1], 'tuh, chanar, habea, tug, cheng',
     'зохиогч=хянагч нь томилоогүйтэй адил');
   const full = { ...empty(), chanar: [
     { user: 'g', grants: [{ role: 'author', bagts: [G0] }] },
     { user: 't', grants: [{ role: 'tuh', bagts: ['*'] }, { role: 'habea', bagts: [G0] }] },
-    { user: 'q', grants: [{ role: 'chanar', bagts: [G0] }] },
+    { user: 'q', grants: [{ role: 'chanar', bagts: [G0] }, { role: 'tug', bagts: [G0] }, { role: 'cheng', bagts: [G0] }] },
   ] };
   assert.ok(!pkgErh(full, G0).issues.some((i) => i.key === 'chanarNoReviewer'), 'бүрэн томилогдсон → гацаагүй');
+  const noTug = { ...full, chanar: full.chanar.map((r) => ({ ...r, grants: r.grants.filter((g) => g.role !== 'tug') })) };
+  assert.equal(pkgErh(noTug, G0).issues.find((i) => i.key === 'chanarNoReviewer')?.args[1], 'tug', '⚠️ ТУГ дутуу → MA батлагдахгүй');
+  const noCheng = { ...full, chanar: full.chanar.map((r) => ({ ...r, grants: r.grants.filter((g) => g.role !== 'cheng') })) };
+  assert.equal(pkgErh(noCheng, G0).issues.find((i) => i.key === 'chanarNoReviewer')?.args[1], 'cheng', '⚠️ ЧХ инженер дутуу → MA эхлэхгүй (2-р үе шат)');
   assert.deepEqual(pkgErh(full, G0).chanar.tuh, ['t']);
   assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
   const u = userErh(full, 't');
   assert.equal(u.chanar.length, 2); assert.equal(u.chanar[0].bagts, null, '* → null'); assert.equal(u.any, true);
 }
-console.log('✅ чанарын баримт — 3 хянагч, зохиогч≠хянагч');
+console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar · habea · tug · cheng), зохиогч≠хянагч');
 
 /* ══════════════════ 9. МАТРИЦ ба ГАРГАЛГААТАЙ ЭРХ (2026-09-25) ══════════════════ */
 {
-  /* 17 багана: урсгал 6 · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 4 · QAQC 1 */
-  assert.equal(MATRIX_COLS.length, 17, 'матриц 17 баганатай байх ёстой');
+  /* 19 багана: урсгал 6 · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 · QAQC 1 */
+  assert.equal(MATRIX_COLS.length, 19, 'матриц 19 баганатай байх ёстой');
+  assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:tug'), '2026-09-28: ТУГ багана');
+  assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:cheng'), '2026-09-28: ЧХ инженер багана');
   assert.equal(MATRIX_COLS.filter((c) => c.sys === 'flow').length, STAGE_ORDER.length);
-  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 17, 'баганын id давхцав');
+  assert.equal(new Set(MATRIX_COLS.map((c) => c.id)).size, 19, 'баганын id давхцав');
   assert.equal(pkgMatrix(empty()).length, PKG_GROUPS.length, 'мөр = PKG_GROUPS');
 }
-console.log('✅ матриц — 17 багана, багц бүр мөр');
+console.log('✅ матриц — 19 багана, багц бүр мөр');
 
 /* ── 9a. Issue бүр ӨӨРИЙН баганыг улаан болгоно ── */
 {
@@ -267,6 +273,8 @@ console.log('✅ матриц — 17 багана, багц бүр мөр');
   assert.equal(tone(ch, 'chanar:tuh'), null, 'томилогдсон хянагч хэвийн');
   assert.equal(tone(ch, 'chanar:chanar'), 'bad', 'дутуу хянагч улаан');
   assert.equal(tone(ch, 'chanar:habea'), 'bad');
+  assert.equal(tone(ch, 'chanar:tug'), 'bad', 'ТУГ дутуу → улаан');
+  assert.equal(tone(ch, 'chanar:cheng'), 'bad', 'ЧХ инженер дутуу → улаан');
   assert.equal(tone(ch, 'chanar:author'), null);
 
   /* Issue бүр `cols`-тай — баганагүй issue матрицад харагдахгүй */

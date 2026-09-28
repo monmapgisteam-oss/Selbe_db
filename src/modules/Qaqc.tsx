@@ -48,12 +48,31 @@ import {
   QAQC_REMOTE_MAX,
   saveQaqcDraft,
 } from '@/lib/qaqcDraftRemote';
+import { loadDocs } from '@/lib/chanarStore';
+import { MS_STATUS, latest, type DocKind } from '@/lib/chanarMs';
 import st from '@/modules/sheet/sheet.module.css';
 
 /** ⚠️ `FillNew`-тэй ИЖИЛ хэрэгсэл — нэг хүснэгтийн загвар хуваалцана. */
 const cls = (names: string) =>
   names.split(/\s+/).filter(Boolean).map((n) => st[n] || n).join(' ');
 
+/* ══════════════════ ЧАНАРЫН БАРИМТЫН ХОЛБООС ══════════════════
+ * ⚠️ 2026-09-28: MA · MIR · FIC дугаарын нүд засахад тухайн багцын
+ *    БАТЛАГДСАН чанарын баримтын дугаараас сонгуулна (`<datalist>`).
+ *    Чөлөөт текст хэвээр зөвшөөрнө — QAQC хүснэгт нь excel-ийн хуулбар,
+ *    порталаас гадуур батлагдсан баримт ч бичигдэнэ. Жагсаалт нь зөвхөн
+ *    ТИЙМ нүдийг АНХ нээхэд татагдана (хуудсыг хэзээ ч хаахгүй), багц ба
+ *    төрөл тус бүрд нэг удаа кэшлэнэ. Наалт (`pasteBlock`) энэ замд ОРОХГҮЙ.
+ */
+/** `QAQC_COLS[].name` → чанарын баримтын төрөл (зөвхөн дугаарын баганууд) */
+const DOC_KIND_OF: Readonly<Record<string, DocKind>> = {
+  MA_dugaar: 'MA', MIR_dugaar: 'MIR', FIC_dugaar: 'FIC',
+};
+const docKindAt = (di: number): DocKind | null => DOC_KIND_OF[QAQC_COLS[di]?.name ?? ''] ?? null;
+/** Батлагдсан баримт — дугаар ба нэр (жагсаалтад энэ хоёр л хэрэгтэй) */
+type ApprovedDoc = { no: string; title: string };
+const apKey = (group: string, kind: DocKind) => `${kind}|${group}`;
+const normNo = (v: string) => v.trim().toUpperCase();
 /* ══════════════════════════ НООРОГ ══════════════════════════
  * ⚠️ Бөглөх хуудасны ноорогтой ИЖИЛ зарчим: localStorage нь ҮНДСЭН зам,
  *    ArcGIS дээрх хуулбар нь зөвхөн «өөр төхөөрөмж рүү шилжих» асуудлыг
@@ -552,17 +571,65 @@ export function Qaqc() {
   const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
   const winTo = editVis >= 0 ? Math.max(win.to, editVis + 1) : win.to;
 
+  /* ══════════════ БАТЛАГДСАН ЧАНАРЫН БАРИМТ (толгойн ⚠️) ══════════════ */
+  /** `${kind}|${багц}` → батлагдсан баримтууд; түлхүүр байхгүй = татаагүй */
+  const [approved, setApproved] = useState<Record<string, ApprovedDoc[]>>({});
+  /** Татаж буй түлхүүрүүд — давхар хүсэлт гаргахгүй */
+  const apLoading = useRef<Set<string>>(new Set());
+  const ensureApproved = useCallback((kind: DocKind, group: string) => {
+    const k = apKey(group, kind);
+    if (k in approved || apLoading.current.has(k)) return;
+    apLoading.current.add(k);
+    /* ⚠️ Бүх хувилбараас ЗӨВХӨН сүүлийнх нь (`latest`), тэр нь approved
+       байвал. Уншилт унавал кэшлэхгүй — дараагийн нээлтэд дахин оролдоно. */
+    loadDocs(kind)
+      .then((docs) => {
+        const list = latest(docs)
+          .filter((d) => d.bagts === group && d.status === MS_STATUS.approved)
+          .map((d) => ({ no: d.docNo, title: d.title }))
+          .sort((a, b) => a.no.localeCompare(b.no, 'mn', { numeric: true }));
+        setApproved((p) => ({ ...p, [k]: list }));
+      })
+      .catch(() => { /* хуудсыг хаахгүй — жагсаалтгүйгээр чөлөөт текст хэвээр */ })
+      .finally(() => { apLoading.current.delete(k); });
+  }, [approved]);
+  /* Дугаарын нүд АНХ нээгдэхэд л татна */
+  useEffect(() => {
+    if (!editCell) return;
+    const kind = docKindAt(Number(editCell.split(':')[1]));
+    if (kind) ensureApproved(kind, pkg.group);
+  }, [editCell, pkg.group, ensureApproved]);
+  /** Дугаар → баримт (энэ багц, тухайн төрөл); татаагүй бол `null` */
+  const approvedHit = (di: number, v: string): ApprovedDoc | null => {
+    const kind = docKindAt(di);
+    if (!kind || !v) return null;
+    const n = normNo(v);
+    return approved[apKey(pkg.group, kind)]?.find((d) => normNo(d.no) === n) ?? null;
+  };
+
   /* ══════════════ ЗАСВАР ══════════════ */
   const commit = (oid: number, di: number, raw: string) => {
     const v = raw.trim();
-    const cur = rows.find((r) => r.oid === oid)?.docs[di] ?? '';
+    const row = rows.find((r) => r.oid === oid);
+    const cur = row?.docs[di] ?? '';
     const key = `${oid}:${di}`;
+    /* ⚠️ 2026-09-28: дугаар нь батлагдсан баримттай таарч, хажуугийн `*_ner`
+       нүд (дараагийн багана) ХООСОН бол нэрийг нь автоматаар бөглөнө — зөвхөн
+       хадгалаагүй засварт, хэрэглэгч дараа нь өөрчилж болно. Бөглөгдсөн нэрийг
+       ДАРАХГҮЙ. */
+    const hit = approvedHit(di, v);
+    const nameDi = hit && QAQC_COLS[di + 1]?.name.endsWith('_ner') ? di + 1 : -1;
+    const nameKey = `${oid}:${nameDi}`;
     setPend((p) => {
       const n = { ...p };
       /* ⚠️ Хадгалагдсантай ИЖИЛ болж буцвал жагсаалтаас ХАСНА — эс бөгөөс
          «Хадгалах» товч огт өөрчлөлтгүй байхад идэвхжинэ. */
       if (v === cur) delete n[key];
       else n[key] = v;
+      if (hit && nameDi >= 0) {
+        const curName = nameKey in p ? p[nameKey] : (row?.docs[nameDi] ?? '');
+        if (!curName.trim() && hit.title.trim()) n[nameKey] = hit.title.trim();
+      }
       return n;
     });
   };
@@ -1360,6 +1427,8 @@ export function Qaqc() {
                                   maxLength={4000}
                                   className={st.cellInputLine}
                                   defaultValue={val}
+                                  /* ⚠️ Дугаарын нүд — батлагдсан баримтын жагсаалт (толгойн ⚠️) */
+                                  list={docKindAt(di) ? `qaqc-dl-${docKindAt(di)}` : undefined}
                                   onBlur={(e) => {
                                     commit(r.oid, di, e.target.value);
                                     setEditCell(null);
@@ -1382,7 +1451,18 @@ export function Qaqc() {
                                   }}
                                 />
                               ) : (
-                                <span className={st.docText}>{val}</span>
+                                <span className={st.docText}>
+                                  {val}
+                                  {/* ⚠️ Зөвхөн ХАРУУЛАХ — батлагдсан баримттай таарсан дугаар */}
+                                  {approvedHit(di, val) && (
+                                    <small
+                                      style={{ marginLeft: 4, fontSize: '0.75em', color: '#15803d', whiteSpace: 'nowrap' }}
+                                      title={tr('Чанарын баримт: {0}', approvedHit(di, val)?.title ?? '')}
+                                    >
+                                      {tr('✓ батлагдсан')}
+                                    </small>
+                                  )}
+                                </span>
                               )}
                             </td>
                           );
@@ -1401,6 +1481,15 @@ export function Qaqc() {
           </div>
         </div>
       )}
+
+      {/* БАТЛАГДСАН ЧАНАРЫН БАРИМТЫН ЖАГСААЛТ — дугаарын нүдний `list` (толгойн ⚠️) */}
+      {(Object.values(DOC_KIND_OF) as DocKind[]).map((kind) => (
+        <datalist key={kind} id={`qaqc-dl-${kind}`}>
+          {(approved[apKey(pkg.group, kind)] ?? []).map((d) => (
+            <option key={d.no} value={d.no}>{d.title}</option>
+          ))}
+        </datalist>
+      ))}
 
       {/* ХӨВӨГЧ МЭДЭГДЭЛ — засагдахгүй шалтгаан ба үр дүн (FillNew-тэй ижил) */}
       {notice && (

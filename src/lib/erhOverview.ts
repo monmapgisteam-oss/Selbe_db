@@ -55,7 +55,7 @@ export type ErhSource = {
   qaqc: { user: string; bagts: string[] }[];
   huvaari: ScopedRow[];
   obyem: ScopedRow[];
-  /** Чанарын баримт — 4 үүрэг (author · tuh · chanar · habea), 2026-09-16 */
+  /** Чанарын баримт — 6 үүрэг (author · tuh · chanar · habea · tug · cheng), 2026-09-28 */
   chanar: ScopedRow[];
   /**
    * Нэмэлт ажил (editor · approver) ба дэд бүтцийн засвар (editor), 2026-09-23.
@@ -276,7 +276,7 @@ function pkgIssues(
 ): PkgIssue[] {
   const out: PkgIssue[] = [];
 
-  /* ── Чанарын баримт — ГУРВАН хянагч БҮГД зөвшөөрөх ёстой ── */
+  /* ── Чанарын баримт — тухайн төрлийн хянагч БҮГД зөвшөөрөх ёстой ── */
   const cA = chanar.author ?? [];
   if (cA.length) {
     /* ⚠️ Зохиогчоос ӨӨР хүн тухайн хянагчийн үүрэгт байх ёстой —
@@ -288,7 +288,9 @@ function pkgIssues(
        БА ТУХ бол A-гийнхыг B, B-гийнхыг A хянана, гацаагүй. `review` нь
        ЗӨВХӨН тэр баримтын зохиогч=хянагчийг татгалздаг тул дутуу гэдэг нь:
        ЯМАР НЭГ зохиогчид өөрөөс нь ӨӨР хянагч тэр үүрэгт байхгүй. */
-    const missing = ['tuh', 'chanar', 'habea']
+    /* ⚠️ 2026-09-28: `tug` ч орно — MA (cheng → chanar → tug) ТУГ-гүй бол хэзээ ч батлагдахгүй;
+       `cheng` (ЧХ хяналтын инженер) ч MA-ийн эхний шат. */
+    const missing = ['tuh', 'chanar', 'habea', 'tug', 'cheng']
       .filter((r) => noOther(cA, chanar[r] ?? []));
     if (missing.length) {
       out.push({ tone: 'bad', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
@@ -356,8 +358,8 @@ export type MatrixSys = 'flow' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'qaqc
 export type MatrixCol = { id: string; sys: MatrixSys; role: string };
 
 /**
- * АРВАН ДОЛООН БАГАНА: урсгал ×6 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
- * Чанарын баримт ×4 · QAQC ×1.
+ * АРВАН ЕСӨН БАГАНА: урсгал ×6 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
+ * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер) · QAQC ×1.
  * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` (25), `PKG_GROUPS` биш;
  *    тусдаа хүснэгтэд (`butetsRows`).
  * ⚠️ Шошго ЭНД БИШ — `tr()` зурагдах агшинд (React талд).
@@ -431,7 +433,7 @@ const linesOf = (u: UserErh, sys: (typeof SCOPED_SYSTEMS)[number]): RoleLine[] =
  *   · `null` — бүх багц (`ALL_BAGTS`)
  *   · `[]`   — хуваарилалтгүй (энгийн эрх, эсвэл өнчин)
  *   · `[…]`  — заасан багцууд
- * ⚠️ Чанарын `chanarReview` — гурван хянагчийн АЛЬ Ч нь эх сурвалж болно.
+ * ⚠️ Чанарын `chanarReview` — таван хянагчийн АЛЬ Ч нь эх сурвалж болно.
  */
 export function capBacking(u: UserErh, cap: CapKey): string[] | null {
   const sys = capSystem(cap);

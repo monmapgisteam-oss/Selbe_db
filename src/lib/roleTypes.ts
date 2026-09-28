@@ -67,6 +67,8 @@ export const SCOPED_SETTING: Readonly<Record<string, { sys: ScopedSys; role: str
   'chanar:tuh': { sys: 'chanar', role: 'tuh' },
   'chanar:chanar': { sys: 'chanar', role: 'chanar' },
   'chanar:habea': { sys: 'chanar', role: 'habea' },
+  'chanar:tug': { sys: 'chanar', role: 'tug' },
+  'chanar:cheng': { sys: 'chanar', role: 'cheng' },
   'cap:butets': { sys: 'butets', role: 'editor' },
 };
 
@@ -83,7 +85,7 @@ export const SUPER_CAP: Readonly<Record<string, CapKey>> = {
   'cap:plan': 'plan', 'cap:planApprove': 'planApprove',
   'cap:obyemEdit': 'obyemEdit', 'cap:obyemApprove': 'obyemApprove',
   'cap:addRow': 'addRow', 'cap:ajilApprove': 'ajilApprove',
-  'chanar:author': 'chanarAuthor', 'chanar:tuh': 'chanarReview', 'chanar:chanar': 'chanarReview', 'chanar:habea': 'chanarReview',
+  'chanar:author': 'chanarAuthor', 'chanar:tuh': 'chanarReview', 'chanar:chanar': 'chanarReview', 'chanar:habea': 'chanarReview', 'chanar:tug': 'chanarReview', 'chanar:cheng': 'chanarReview',
   'cap:qaqc': 'qaqc', 'cap:butets': 'butets',
   'cap:zovshoorol': 'zovshoorol', 'cap:finEdit': 'finEdit', 'cap:finRow': 'finRow', 'cap:gazar': 'gazar',
 };
@@ -136,6 +138,8 @@ export function settingGroups(): SettingGroup[] {
         { id: 'chanar:tuh', label: tr('Хянах — ТУХ') },
         { id: 'chanar:chanar', label: tr('Хянах — Чанар') },
         { id: 'chanar:habea', label: tr('Хянах — ХАБЭА') },
+        { id: 'chanar:cheng', label: tr('Хянах — Чанарын хяналтын инженер'), hint: tr('Материал баталгаажуулалт (MA) — эхний шат «Боловсруулсан»') },
+        { id: 'chanar:tug', label: tr('Хянах — ТУГ'), hint: tr('Материал баталгаажуулалт (MA) — сүүлийн шат «Танилцсан»; үл тохирол (NCR)') },
       ],
     },
     { title: tr('QAQC'), rows: [{ id: 'cap:qaqc', label: tr('QAQC — Inspection Test Plan бөглөх') }] },
@@ -175,9 +179,11 @@ export type TypeTpl = {
 
 const V = (...k: string[]) => k.map((x) => `view:${x}`);
 const ALL_VIEWS = VIEWS.map((v) => `view:${v.key}`);
+/* ⚠️ 2026-09-28: `chanar:tug` — ТУГ (удирдлага) MA-ийн хянагч; удирдлагын
+   гурван төрөл + super-т анхдагчаар чеклэгдсэн. */
 const LEADER = [
   ...ALL_VIEWS, 'docs', 'flow:act', 'flow:viewOnly',
-  'cap:planApprove', 'cap:obyemApprove', 'cap:ajilApprove', 'cap:zovshoorol',
+  'cap:planApprove', 'cap:obyemApprove', 'cap:ajilApprove', 'cap:zovshoorol', 'chanar:tug',
 ];
 
 /**
@@ -210,7 +216,7 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   },
   chanar: {
     on: [...V('qaqc', 'chanar', 'gdash', 'plan', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
-      'cap:qaqc', 'chanar:chanar', 'chanar:tuh', 'chanar:author', 'chanar:habea'],
+      'cap:qaqc', 'chanar:chanar', 'chanar:tuh', 'chanar:author', 'chanar:habea', 'chanar:cheng'],
     home: 'chanar', scope: 'all',
   },
   gazar: {

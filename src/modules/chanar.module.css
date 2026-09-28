@@ -166,3 +166,166 @@
 .att { display: flex; gap: 8px; align-items: center; }
 .attSize { color: var(--ink-2); font-size: 11px; }
 .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ── 2026-09-28: төрлийн таб · хүснэгт · тэмдэг · хэвлэх ── */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; flex: none; }
+.tab {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: var(--surface);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.tabOn { border-bottom-color: var(--hue); font-weight: 700; }
+.tabK { font-family: ui-monospace, monospace; font-size: 10px; color: var(--ink-2); }
+.tabN {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+}
+.inpSearch { min-width: 160px; }
+.inpFull { width: 100%; min-width: 0; }
+.cellInp { width: 100%; min-width: 80px; }
+
+/* A / AN / R өнгөт тэмдэг */
+.vb {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--line);
+}
+.vbA { color: var(--good-ink); border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.vbAN { color: var(--warn-ink); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.vbR { color: var(--bad-ink); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.btnWarn { background: var(--warn); border-color: transparent; color: #fff; }
+
+/* Маягтын хүснэгт */
+.tblWrap { overflow: auto; max-width: 100%; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th, .tbl td { text-align: left; padding: 4px 6px; border: 1px solid var(--line); vertical-align: top; }
+.tbl th { color: var(--ink-2); font-weight: 600; font-size: 11px; background: color-mix(in srgb, var(--ink-2) 6%, transparent); }
+.tblSec td { font-weight: 700; font-size: 11px; background: color-mix(in srgb, var(--hue) 8%, transparent); }
+
+/* OK / N/A / X тэмдэг */
+.ck {
+  display: inline-block;
+  min-width: 34px;
+  text-align: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--line);
+}
+.ckBtn { font: inherit; font-size: 11px; font-weight: 700; background: var(--surface); cursor: pointer; }
+.ckOk { color: var(--good-ink); border-color: var(--good); }
+.ckNa { color: var(--ink-2); }
+.ckX { color: var(--bad-ink); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+
+.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; cursor: pointer; }
+.chkRow { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; }
+.chkGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 12px; }
+.secSub { font-size: 11px; font-weight: 600; color: var(--ink-2); margin-top: 4px; }
+.steps { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.45; }
+.metaEdit {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+}
+.repBox { padding: 6px 8px; border-left: 3px solid var(--hue); font-size: 12px; }
+
+/* Гарын үсгийн хүснэгт — зөвхөн хэвлэхэд */
+.printOnly { display: none; }
+.sig { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.sig th, .sig td { border: 1px solid #000; padding: 10px 6px; text-align: left; height: 34px; }
+
+@media (max-width: 600px) {
+  .input { min-width: 0; width: 100%; }
+  .head { padding: 8px; }
+  .meta { grid-template-columns: 1fr; }
+}
+
+
+/* ── 2026-09-28 (2-р үе шат): хураангуй мөр · материалын дэлгэгдэх мөр · түгжээ · REP хэвлэл ── */
+.summary {
+  display: flex;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.srOnly {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.btnSm { padding: 1px 6px; font-size: 11px; line-height: 1.2; }
+.cellPair { display: grid; gap: 2px; min-width: 120px; }
+.matTbl th:nth-child(2), .matTbl td:nth-child(2) { min-width: 140px; }
+.matDetailRow td { background: color-mix(in srgb, var(--ink-2) 4%, transparent); }
+.matDetailHidden { display: none; }
+.matDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 12px;
+}
+.matFld { display: grid; gap: 2px; font-size: 12px; }
+.matLbl { font-size: 11px; color: var(--ink-2); }
+/* Түгжигдсэн материал — өмнөх хувилбарт A/AN, дахин хянагдахгүй */
+.rowLocked td { color: var(--ink-2); background: color-mix(in srgb, var(--ink-2) 8%, transparent); }
+.warnText {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warn-ink);
+  padding: 6px 8px;
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.repPrint { page-break-before: always; }
+
+@media (max-width: 600px) {
+  .summary { padding: 6px 8px; }
+  .tab { padding: 6px 8px; }
+  .reviews { grid-template-columns: 1fr; }
+  .revActs .btn { flex: 1; }
+  .matDetails { grid-template-columns: 1fr; }
+}
+
+/* ⚠️ Хэвлэх — зөвхөн баруун хэсэг (баримт), товч/жагсаалт/таб нуугдана,
+   гарын үсгийн хүснэгт хоосон мөртэй гарна (практикийн маягт цаасан дээр). */
+@media print {
+  .tabs, .head, .summary, .list, .acts, .revActs, .metaEdit, .err, .note, .btn, .textarea { display: none !important; }
+  .matDetailHidden { display: table-row; }
+  .srOnly { position: static; width: auto; height: auto; margin: 0; clip: auto; }
+  .frame { min-height: 0; }
+  .split { display: block; }
+  .doc { border: 0; padding: 0; overflow: visible; }
+  .printOnly { display: block; page-break-inside: avoid; }
+  .tbl th, .tbl td, .hist th, .hist td { border: 1px solid #000; }
+  .ck, .vb, .tag { border-color: #000; }
+  .att a { text-decoration: none; color: #000; }
+}

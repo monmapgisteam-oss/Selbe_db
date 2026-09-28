@@ -16,9 +16,14 @@
  */
 import assert from 'node:assert/strict';
 import {
-  REVIEWERS, MS_STATUS, VERDICT, ORG_CODE,
-  pkgCode, orgCode, docNo, parseDocNo, nextSeq,
+  REVIEWERS, ALL_REVIEWERS, REVIEWERS_OF, KINDS, MS_STATUS, VERDICT, ORG_CODE,
+  pkgCode, orgCode, docNo, parseDocNo, nextSeq, repNo, nextRepNo, repFrom,
   emptyReviews, resolve, progress, review, submit, canAct, history, latest,
+  submitCorrection, reopen, ncrClosure, statusLabel, verdictCode, verdictLabel, kindLabel,
+  parseBodyOf, parseMeta, emptyBodyOf, inspResult, delayDays, EMPTY_NCR, EMPTY_INSP, EMPTY_MA, EMPTY_META,
+  repSeqFor, requiredReviewers, newRevision, nextRevisionBody, applyRepToMaterials, bounce, ackRep, closeAn, closeNcr,
+  isAnOpen, activeSameTitle, ncrClosureStatusLabel, repVerdictText, reviewerLabel, MA_CHECKLIST, maCheckLabel,
+  ncrSeverityLabel, ncrTypeLabel, ncrProposedLabel, parseCommon, NCR_PREFIX,
 } from './chanarMs.ts';
 
 const T = 1_700_000_000_000;
@@ -36,6 +41,39 @@ const base = () => ({
   assert.equal(MS_STATUS.approved, 'Батлагдсан');
   assert.equal(new Set(Object.values(MS_STATUS)).size, 4, 'төлөв давхардав');
   assert.deepEqual([...REVIEWERS], ['tuh', 'chanar', 'habea']);
+  assert.deepEqual([...ALL_REVIEWERS], ['tuh', 'chanar', 'habea', 'tug', 'cheng'], '2026-09-28: tug · cheng нэмэгдсэн');
+  assert.deepEqual([...KINDS], ['MS', 'MA', 'MIR', 'FIC', 'NCR', 'QMP', 'PRC'], '2026-09-28: QMP · PRC');
+  assert.deepEqual(REVIEWERS_OF.MS, REVIEWERS);
+  assert.deepEqual(REVIEWERS_OF.QMP, REVIEWERS); assert.deepEqual(REVIEWERS_OF.PRC, REVIEWERS);
+  assert.deepEqual([...REVIEWERS_OF.MA], ['cheng', 'chanar', 'tug'], 'MA: ЧХ инженер → Чанар → ТУГ, tuh/habea ОРОХГҮЙ');
+  assert.deepEqual([...REVIEWERS_OF.MIR], ['tuh', 'chanar']);
+  assert.deepEqual([...REVIEWERS_OF.FIC], ['tuh', 'chanar']);
+  assert.deepEqual([...REVIEWERS_OF.NCR], ['tuh', 'chanar', 'tug'], 'NCR: ТМ (tug) 3 дахь хянагч');
+  assert.deepEqual(emptyReviews(), { tuh: null, chanar: null, habea: null, tug: null, cheng: null });
+  assert.equal(kindLabel('QMP'), 'Чанарын удирдлагын төлөвлөгөө'); assert.equal(kindLabel('PRC'), 'Процедур');
+  assert.match(reviewerLabel('cheng'), /хяналтын инженер/);
+  /* NCR шошго — ижил утга, өөр нэр */
+  assert.equal(statusLabel('NCR', MS_STATUS.review), 'Гүйцэтгэгчид илгээсэн');
+  assert.equal(statusLabel('NCR', MS_STATUS.returned), 'Нэмэлт арга хэмжээ шаардлагатай', '2026-09-28: бүртгэлийн 3-р статус');
+  assert.equal(ncrClosureStatusLabel(MS_STATUS.review, 1), 'Дахин нээсэн');
+  assert.equal(ncrClosureStatusLabel(MS_STATUS.approved, 1), 'Хаагдсан');
+  assert.equal(statusLabel('NCR', MS_STATUS.approved), 'Хаагдсан');
+  assert.equal(statusLabel('MS', MS_STATUS.approved), 'Батлагдсан');
+  assert.equal(kindLabel('MA'), 'Материал');
+  /* Шийдвэр 3 утга */
+  assert.equal(VERDICT.note, 'Санал бүхий зөвшөөрсөн');
+  assert.equal(verdictCode(VERDICT.approve), 'A'); assert.equal(verdictCode(VERDICT.note), 'AN'); assert.equal(verdictCode(VERDICT.return), 'R');
+  assert.equal(verdictLabel('AN', 'NCR'), 'Зөвшөөрлийн үндсэн дээр');
+  assert.equal(verdictLabel('A', 'NCR'), 'Зөвшөөрсөн');
+  assert.equal(verdictLabel(VERDICT.note), 'Тайлбартай батлав (AN)', '2026-09-28: маягтын үгээр');
+  assert.equal(verdictLabel('A', 'MA'), 'Батлав (A)'); assert.equal(verdictLabel('R'), 'Татгалзсан (R)');
+  assert.match(repVerdictText('AN'), /Approved as noted/);
+  /* NCR шошго — маягтын үгээр (E1) */
+  assert.equal(ncrSeverityLabel('minor'), 'Жижиг'); assert.equal(ncrSeverityLabel('major'), 'Том');
+  assert.equal(ncrTypeLabel('logistics'), 'Тээврийн логистикийн'); assert.equal(ncrTypeLabel('postDelivery'), 'Нийлүүлэлтийн дараах');
+  assert.equal(ncrProposedLabel('scrap'), 'Ашиглахгүй байх, устгах'); assert.equal(ncrProposedLabel('redo'), 'Дахин шинээр хийх');
+  /* MA бүрдэл 11 (B2) */
+  assert.equal(MA_CHECKLIST.length, 11); assert.match(maCheckLabel('labTest'), /Lab test result/);
 }
 
 /* ══ 2. ДУГААР — жишээ материалын хэвтэй ЯГ таарна ══ */
@@ -58,6 +96,14 @@ const base = () => ({
   assert.equal(docNo('Багц 4-1', 1, 0), 'MONCON-SLB-MS-P0401-0001-00');
   /* Бусад төрөл ижил хэвээр */
   assert.equal(docNo('Багц 2', 1, 0, 'MA'), 'SCSEBC-SLB-MA-P0200-0001-00');
+  assert.equal(docNo('Багц 2', 3, 1, 'QMP'), 'SCSEBC-SLB-QMP-P0200-0003-01');
+  /* ⚠️ 2026-09-28: NCR — төслийн хэмжээний нэг дараалал, багц/rev ҮГҮЙ */
+  assert.equal(docNo('Багц 2', 22, 0, 'NCR'), 'STMCC-STMC-NCR-0022');
+  assert.equal(docNo('хог', 22, 0, 'NCR'), `${NCR_PREFIX}-0022`, 'NCR-д багцын код шаардахгүй');
+  assert.deepEqual(parseDocNo('STMCC-STMC-NCR-0022'), { org: 'STMCC', kind: 'NCR', pkg: '', seq: 22, rev: 0, rep: false });
+  assert.deepEqual(parseDocNo('MONCON-SLB-NCR-P0401-0001-00'), { org: 'MONCON', kind: 'NCR', pkg: 'P0401', seq: 1, rev: 0, rep: false }, 'хуучин багц тутмын NCR хэв ч танигдана');
+  assert.equal(parseDocNo('STMCC-STMC-NCR-22'), null);
+  assert.equal(nextSeq([{ bagts: 'Багц 1', seq: 3 }, { bagts: 'Багц 2', seq: 7 }], null), 8, 'bagts=null → төслийн хэмжээнд');
   /* Хязгаар */
   assert.equal(docNo('Багц 1', 0, 0), null, 'seq 0 байхгүй');
   assert.equal(docNo('Багц 1', 1, 100), null, 'rev 99-өөс хэтрэхгүй');
@@ -71,10 +117,41 @@ const base = () => ({
 
   /* Задлах — урвуу */
   const p = parseDocNo('MSC-SLB-MS-P0302-0011-01');
-  assert.deepEqual(p, { org: 'MSC', kind: 'MS', pkg: 'P0302', seq: 11, rev: 1 });
+  assert.deepEqual(p, { org: 'MSC', kind: 'MS', pkg: 'P0302', seq: 11, rev: 1, rep: false });
   assert.equal(parseDocNo('MONCON-SLB-MA-0001-00'), null, '⚠️ багцгүй хэв ТАНИГДАХГҮЙ');
   assert.equal(parseDocNo('MSC-SLB-МА-Р0302-0003-00'), null, '⚠️ кирилл ТАНИГДАХГҮЙ');
-  assert.equal(parseDocNo('SLB-REP-MA-P0100-0015-00'), null, 'хариуны хэв энд биш');
+  /* 2026-09-28: REP хэв танигдана */
+  assert.deepEqual(parseDocNo('SLB-REP-MA-P0100-0015-00'), { org: null, kind: 'MA', pkg: 'P0100', seq: 15, rev: 0, rep: true });
+  assert.equal(repNo('MA', 'Багц 1', 15, 0), 'SLB-REP-MA-P0100-0015-00');
+  assert.equal(repNo('NCR', 'Багц 4-1', 3, 0), 'SLB-REP-NCR-P0401-0003-00');
+  assert.equal(repNo('MA', 'хог', 1, 0), null);
+  assert.equal(parseDocNo('SLB-REP-МА-P0100-0015-00'), null, 'кирилл REP танигдахгүй');
+}
+
+/* ══ 2b. REP дараалал — ТӨСЛИЙН ХЭМЖЭЭНД, kind тус бүр ══ */
+{
+  const docs = [
+    { kind: 'MA', rep: { no: 'SLB-REP-MA-P0100-0003-00', at: T, verdict: 'A' } },
+    { kind: 'MA', rep: { no: 'SLB-REP-MA-P0302-0007-01', at: T, verdict: 'R' } },
+    { kind: 'MA', rep: null },
+    { kind: 'MS', rep: { no: 'SLB-REP-MS-P0100-0020-00', at: T, verdict: 'A' } },
+    { kind: 'MA', rep: { no: 'хог', at: T, verdict: 'A' } },
+  ];
+  assert.equal(nextRepNo(docs, 'MA'), 8, '⚠️ багц харгалзахгүй — өөр багцын 0007 → 8');
+  assert.equal(nextRepNo(docs, 'MS'), 21);
+  assert.equal(nextRepNo(docs, 'NCR'), 1, 'хоосон → 1');
+  assert.equal(nextRepNo([], 'MA'), 1);
+  /* ⚠️ 2026-09-28: lineage — ижил (kind,bagts,seq) өмнөх хариу байвал NNNN өвлөж RR+1 */
+  const lin = [
+    { kind: 'MA', bagts: 'Багц 1', seq: 5, rev: 0, rep: { no: 'SLB-REP-MA-P0100-0003-00', at: T, verdict: 'R' } },
+    { kind: 'MA', bagts: 'Багц 1', seq: 5, rev: 1, rep: { no: 'SLB-REP-MA-P0100-0003-01', at: T, verdict: 'AN' } },
+    { kind: 'MA', bagts: 'Багц 3.2', seq: 5, rev: 0, rep: { no: 'SLB-REP-MA-P0302-0007-00', at: T, verdict: 'A' } },
+    { kind: 'MA', bagts: 'Багц 1', seq: 6, rev: 0, rep: null },
+  ];
+  assert.deepEqual(repSeqFor(lin, 'MA', 'Багц 1', 5), { n: 3, rr: 2 }, 'гурав дахь хариу — 0003-02');
+  assert.deepEqual(repSeqFor(lin, 'MA', 'Багц 1', 6), { n: 8, rr: 0 }, 'шинэ lineage — max+1, RR=00');
+  assert.deepEqual(repSeqFor(lin, 'MA', 'Багц 3.2', 5), { n: 7, rr: 1 });
+  assert.equal(repNo('MA', 'Багц 1', 3, 2), 'SLB-REP-MA-P0100-0003-02');
 }
 
 /* ══ 3. nextSeq ══ */
@@ -161,7 +238,228 @@ const base = () => ({
 
   /* Хоосон нэр, танигдахгүй үүрэг */
   assert.equal(review(base(), { as: 'tuh', who: '  ', verdict: VERDICT.approve }).ok, false);
-  assert.equal(review(base(), { as: 'tug', who: 'a', verdict: VERDICT.approve }).ok, false, '⚠️ ТУГ хянагч биш');
+  assert.equal(review(base(), { as: 'tug', who: 'a', verdict: VERDICT.approve }).ok, false, '⚠️ ТУГ MS-ийн хянагч биш');
+  assert.equal(review(base(), { as: 'zoo', who: 'a', verdict: VERDICT.approve }).ok, false, 'танигдахгүй үүрэг');
+
+  /* ══ AN — санал бүхий зөвшөөрөл (2026-09-28) ══ */
+  const anNoNote = review(base(), { as: 'chanar', who: 'c', verdict: VERDICT.note });
+  assert.equal(anNoNote.ok, false, '⚠️ AN-д санал ЗААВАЛ');
+  assert.match(anNoNote.error, /санал/i);
+  const an = review(base(), { as: 'chanar', who: 'c', verdict: VERDICT.note, note: 'Гагнуурын зургийг нэмнэ үү' });
+  assert.ok(an.ok); assert.equal(an.status, MS_STATUS.review);
+  const R2 = (verdict, who = 'x', note = null) => ({ who, at: T, verdict, note });
+  assert.equal(resolve({ ...emptyReviews(), tuh: R2(VERDICT.approve), chanar: R2(VERDICT.note, 'c', 's'), habea: R2(VERDICT.approve) }),
+    MS_STATUS.approved, '⚠️ AN нь зөвшөөрөл — 3/3 батлагдана');
+  assert.equal(resolve({ ...emptyReviews(), tuh: R2(VERDICT.note, 'a', 's'), chanar: R2(VERDICT.return, 'c', 's'), habea: null }),
+    MS_STATUS.returned, 'R давамгайлна');
+  /* Хариуны нэгтгэл */
+  const rep = repFrom({ ...emptyReviews(), tuh: R2(VERDICT.approve), chanar: R2(VERDICT.note, 'c', 'Санал 1'), habea: R2(VERDICT.note, 'h', 'Санал 2') }, 'MS');
+  assert.equal(rep.verdict, 'AN'); assert.equal(rep.anText, 'Санал 1\nСанал 2'); assert.equal(rep.rReasons, undefined);
+  const repR = repFrom({ ...emptyReviews(), tuh: R2(VERDICT.return, 't', 'Буруу'), chanar: null, habea: null }, 'MS');
+  assert.equal(repR.verdict, 'R'); assert.deepEqual(repR.rReasons, ['Буруу']);
+  /* Хуучин 2 утгатай мөр */
+  assert.equal(resolve({ tuh: R2('Зөвшөөрсөн'), chanar: R2('Зөвшөөрсөн'), habea: R2('Зөвшөөрсөн') }), MS_STATUS.approved, 'legacy: tug түлхүүргүй JSON');
+  assert.equal(resolve({ tuh: R2('Татгалзсан', 't', 'x'), chanar: null, habea: null }), MS_STATUS.returned);
+  assert.deepEqual(progress({ tuh: R2('Зөвшөөрсөн'), chanar: null, habea: null }), { done: 1, total: 3 });
+}
+
+/* ══ 5b. MA — cheng → chanar → tug ДАРААЛСАН, tuh/habea ОРОХГҮЙ (2026-09-28 2-р үе шат) ══ */
+{
+  const ma = { kind: 'MA', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
+  assert.equal(review(ma, { as: 'tuh', who: 't', verdict: VERDICT.approve }).ok, false, '⚠️ MA-д ТУХ хянахгүй');
+  assert.equal(review(ma, { as: 'habea', who: 'h', verdict: VERDICT.approve }).ok, false, '⚠️ MA-д ХАБЭА хянахгүй');
+  const early = review(ma, { as: 'tug', who: 'tug_user', verdict: VERDICT.approve });
+  assert.equal(early.ok, false, '⚠️ ТУГ cheng-ийн өмнө → татгалзана'); assert.match(early.error, /хяналтын инженер/);
+  assert.equal(review(ma, { as: 'chanar', who: 'ch', verdict: VERDICT.approve }).ok, false, 'chanar ч cheng-ийн өмнө үгүй');
+  assert.deepEqual(canAct(ma, 'x', ['tuh', 'chanar', 'habea', 'tug', 'cheng']).review, ['cheng'], 'товч зөвхөн cheng');
+  assert.equal(canAct(ma, 'x', ['tuh']).clientChecks, false, 'MA-д захиалагчийн багана үгүй');
+  const anNo = review(ma, { as: 'cheng', who: 'eng', verdict: VERDICT.approve, perMaterial: { 0: 'A', 1: 'AN' } });
+  assert.equal(anNo.ok, false, 'материал AN → шийдвэр AN → санал заавал'); assert.match(anNo.error, /санал/i);
+  const r1 = review(ma, { as: 'cheng', who: 'eng', verdict: VERDICT.approve, perMaterial: { 0: 'A', 1: 'AN' }, note: 'Гэрчилгээ нэмнэ', now: T });
+  assert.ok(r1.ok, r1.error); assert.equal(r1.status, MS_STATUS.review, '1/3');
+  assert.equal(verdictCode(r1.reviews.cheng.verdict), 'AN', '⚠️ материалын AN → хянагчийн шийдвэр AN болж өснө');
+  const noNote = review(ma, { as: 'cheng', who: 'eng', verdict: VERDICT.approve, perMaterial: { 0: 'R' } });
+  assert.equal(noNote.ok, false, 'материал R → шийдвэр R → шалтгаан заавал'); assert.match(noNote.error, /шалтгаан/);
+  const d2 = { ...ma, reviews: r1.reviews };
+  assert.deepEqual(canAct(d2, 'x', ['chanar', 'tug']).review, ['chanar'], 'дараагийнх нь chanar');
+  const r2 = review(d2, { as: 'chanar', who: 'ch', verdict: VERDICT.note, note: 's', perMaterial: { 1: 'R' }, now: T + 1 });
+  assert.ok(r2.ok); assert.equal(r2.status, MS_STATUS.returned, 'chanar-ын материал R → R → буцаагдсан');
+  const rep = repFrom(r2.reviews, 'MA');
+  assert.equal(rep.verdict, 'R');
+  assert.deepEqual(rep.perMaterial, { 0: 'A', 1: 'R' }, 'материал бүрд R > AN > A');
+  assert.equal(rep.preparedBy, 'eng', 'боловсруулсан = эхний шийдвэр (cheng)');
+  assert.equal(rep.anText, 'Гэрчилгээ нэмнэ', 'R-ээс бусад санал anText-д'); assert.deepEqual(rep.rReasons, ['s']);
+  /* Зөв зам: 3/3 */
+  const a2 = review(d2, { as: 'chanar', who: 'ch', verdict: VERDICT.approve, now: T + 1, note: 'Сайн' });
+  assert.ok(a2.ok); assert.equal(a2.status, MS_STATUS.review, '2/3');
+  assert.deepEqual(progress(a2.reviews, 'MA'), { done: 2, total: 3 });
+  const a3 = review({ ...ma, reviews: a2.reviews }, { as: 'tug', who: 'tm', verdict: VERDICT.approve, now: T + 2 });
+  assert.ok(a3.ok); assert.equal(a3.status, MS_STATUS.approved, 'cheng → chanar → tug → батлагдсан');
+  const rep3 = repFrom(a3.reviews, 'MA');
+  assert.equal(rep3.verdict, 'AN'); assert.equal(rep3.anText, 'Гэрчилгээ нэмнэ\nСайн', 'A шийдвэрийн санал ч хариунд харагдана');
+  /* ⚠️ ХУУЧИН MA мөр (cheng-гүй эхэлсэн, өнөөдрийн өгөгдөл): chanar шийдсэн бол cheng алгасагдана */
+  const legacy = { ...ma, reviews: { ...emptyReviews(), chanar: { who: 'ch', at: T, verdict: VERDICT.approve, note: null } } };
+  assert.deepEqual([...requiredReviewers(legacy.reviews, 'MA')], ['chanar', 'tug']);
+  assert.equal(resolve(legacy.reviews, 'MA'), MS_STATUS.review);
+  assert.deepEqual(progress(legacy.reviews, 'MA'), { done: 1, total: 2 });
+  assert.deepEqual(canAct(legacy, 'x', ['cheng', 'tug']).review, ['tug'], 'хуучин мөрд cheng товч гарахгүй, tug шууд');
+  const lt = review(legacy, { as: 'tug', who: 'tm', verdict: VERDICT.approve });
+  assert.ok(lt.ok, lt.error); assert.equal(lt.status, MS_STATUS.approved, 'хуучин мөр 2/2 → батлагдсан');
+  assert.equal(resolve({ ...emptyReviews(), chanar: { who: 'ch', at: T, verdict: VERDICT.approve, note: null }, tug: { who: 'tm', at: T, verdict: VERDICT.approve, note: null } }, 'MA'), MS_STATUS.approved, 'legacy JSON (cheng түлхүүргүй)');
+}
+
+/* ══ 5c. MIR/FIC — ДАРААЛСАН: tuh эхлээд, дараа нь chanar ══ */
+{
+  for (const kind of ['MIR', 'FIC']) {
+    const d = { kind, status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
+    const early = review(d, { as: 'chanar', who: 'ch', verdict: VERDICT.approve });
+    assert.equal(early.ok, false, `⚠️ ${kind}: chanar tuh-ийн өмнө → татгалзана`);
+    assert.match(early.error, /ТУХ/);
+    assert.deepEqual(canAct(d, 'ch', ['tuh', 'chanar']).review, ['tuh'], 'товч ч зөвхөн tuh');
+    assert.equal(canAct(d, 'ch', ['tuh']).clientChecks, true, 'tuh захиалагчийн баганыг бөглөнө');
+    assert.equal(canAct(d, 'ch', ['chanar']).clientChecks, false);
+    const t = review(d, { as: 'tuh', who: 't', verdict: VERDICT.approve });
+    assert.ok(t.ok); assert.equal(t.status, MS_STATUS.review);
+    const d2 = { ...d, reviews: t.reviews };
+    assert.equal(canAct(d2, 't', ['tuh']).clientChecks, false, 'tuh шийдсэний дараа багана хаагдана');
+    assert.deepEqual(canAct(d2, 'ch', ['tuh', 'chanar']).review, ['chanar']);
+    const c = review(d2, { as: 'chanar', who: 'ch', verdict: VERDICT.approve });
+    assert.ok(c.ok); assert.equal(c.status, MS_STATUS.approved, 'tuh → chanar → батлагдсан');
+    assert.equal(review(d, { as: 'habea', who: 'h', verdict: VERDICT.approve }).ok, false, 'habea орохгүй');
+    assert.equal(review(d, { as: 'tug', who: 'h', verdict: VERDICT.approve }).ok, false, 'tug орохгүй');
+  }
+  /* Үзлэгийн дүн — бодогдоно */
+  const it = (contractor, client) => ({ no: 1, text: '', section: null, contractor, client, comment: '' });
+  assert.equal(inspResult([]), 'pending');
+  assert.equal(inspResult([it('OK', 'OK'), it('OK', 'NA')]), 'pass');
+  assert.equal(inspResult([it('OK', 'OK'), it('OK', null)]), 'pending');
+  assert.equal(inspResult([it('OK', 'OK'), it('X', 'OK')]), 'fail');
+  assert.equal(inspResult([it('OK', 'X')]), 'fail');
+  /* 2026-09-28: захиалагчийн багана хоосон ч tuh A/AN эсвэл approved → тэнцсэн; X давамгайлна */
+  assert.equal(inspResult([it('OK', null)], { tuhVerdict: 'A' }), 'pass');
+  assert.equal(inspResult([it('OK', null)], { tuhVerdict: VERDICT.note }), 'pass');
+  assert.equal(inspResult([it('OK', null)], { tuhVerdict: 'R' }), 'pending');
+  assert.equal(inspResult([], { approved: true }), 'pass');
+  assert.equal(inspResult([it('X', null)], { approved: true }), 'fail');
+}
+
+/* ══ 5d. NCR — захиалагч нээнэ, гүйцэтгэгч залруулна, tuh+chanar дүгнэнэ ══ */
+{
+  const opener = 'tuh_user';
+  const ncr0 = { kind: 'NCR', status: MS_STATUS.draft, rev: 0, author: opener, reviews: emptyReviews() };
+  /* submit: зөвхөн нээгч, rev ҮГҮЙ */
+  assert.equal(submit(ncr0, { who: 'contractor' }).ok, false, 'гүйцэтгэгч илгээхгүй');
+  const s0 = submit(ncr0, { who: opener, now: T });
+  assert.ok(s0.ok); assert.equal(s0.rev, 0); assert.equal(s0.status, MS_STATUS.review);
+  assert.equal(submit({ ...ncr0, status: MS_STATUS.returned }, { who: opener }).ok, false, 'NCR буцаагдсаныг нээгч дахин илгээхгүй — гүйцэтгэгчийн ээлж');
+  /* review: correction-гүй → татгалзана */
+  const ncr1 = { ...ncr0, status: MS_STATUS.review, correctionAt: null };
+  const noCorr = review(ncr1, { as: 'chanar', who: 'ch', verdict: VERDICT.approve });
+  assert.equal(noCorr.ok, false, '⚠️ залруулгын тайлангүй дүгнэлт ҮГҮЙ');
+  assert.match(noCorr.error, /залруулг/);
+  assert.deepEqual(canAct(ncr1, 'ch', ['chanar']).review, [], 'товч ч гарахгүй');
+  assert.equal(canAct(ncr1, 'con', [], { contractor: true }).correction, true, 'гүйцэтгэгчид залруулгын товч');
+  assert.equal(canAct(ncr1, 'con', []).correction, false, 'гүйцэтгэгч биш → үгүй');
+  /* correction */
+  const bad = submitCorrection(ncr1, EMPTY_NCR, { who: 'con', correction: { text: '  ', completedAt: null, steps: [] } });
+  assert.equal(bad.ok, false, 'хоосон тайлбар');
+  assert.equal(submitCorrection({ kind: 'MS', status: MS_STATUS.review }, EMPTY_NCR, { who: 'con', correction: { text: 'x', completedAt: null, steps: [] } }).ok, false, 'зөвхөн NCR');
+  assert.equal(submitCorrection({ ...ncr1, status: MS_STATUS.draft }, EMPTY_NCR, { who: 'con', correction: { text: 'x', completedAt: null, steps: [] } }).ok, false, 'ноорогт үгүй');
+  const c1 = submitCorrection(ncr1, EMPTY_NCR, { who: 'con', correction: { text: 'Дахин цутгав', completedAt: T, steps: [' а ', '', 'б'] }, now: T + 1 });
+  assert.ok(c1.ok, c1.error);
+  assert.equal(c1.body.correctionAt, T + 1); assert.equal(c1.body.correction.text, 'Дахин цутгав');
+  assert.deepEqual(c1.body.correction.steps, ['а', 'б']);
+  assert.equal(c1.status, MS_STATUS.review); assert.deepEqual(c1.reviews, emptyReviews());
+  /* Rejected → returned */
+  const ncr2 = { ...ncr1, correctionAt: c1.body.correctionAt };
+  assert.equal(review(ncr2, { as: 'habea', who: 'h', verdict: VERDICT.approve }).ok, false, 'habea NCR-д орохгүй');
+  assert.equal(review(ncr2, { as: 'cheng', who: 'h', verdict: VERDICT.approve }).ok, false, 'cheng NCR-д орохгүй');
+  const rj = review(ncr2, { as: 'tuh', who: opener, verdict: VERDICT.return, note: 'Хангалтгүй' });
+  assert.ok(rj.ok, '⚠️ NCR: нээгч өөрөө дүгнэж болно (хянаж буй зүйл нь гүйцэтгэгчийн залруулга)');
+  assert.equal(rj.status, MS_STATUS.returned, 'Rejected → Дахин засах');
+  assert.equal(statusLabel('NCR', rj.status), 'Нэмэлт арга хэмжээ шаардлагатай');
+  /* returned → correction дахин (rev үгүй) → review */
+  const c2 = submitCorrection({ ...ncr2, status: rj.status }, c1.body, { who: 'con', correction: { text: 'Дахин', completedAt: T, steps: [] }, now: T + 2 });
+  assert.ok(c2.ok); assert.equal(c2.status, MS_STATUS.review);
+  assert.equal(canAct({ ...ncr2, status: rj.status }, 'con', [], { contractor: true }).correction, true, 'буцаагдсанд ч залруулгын товч');
+  /* Accepted + Concession → approved (хаагдсан) */
+  const ncr3 = { ...ncr2, status: c2.status, reviews: c2.reviews, correctionAt: c2.body.correctionAt };
+  const a1 = review(ncr3, { as: 'tuh', who: opener, verdict: VERDICT.approve });
+  assert.ok(a1.ok); assert.equal(a1.status, MS_STATUS.review, '1/3');
+  const a2x = review({ ...ncr3, reviews: a1.reviews }, { as: 'chanar', who: 'ch', verdict: VERDICT.note, note: 'Зөвшөөрлийн үндсэн дээр' });
+  assert.ok(a2x.ok); assert.equal(a2x.status, MS_STATUS.review, '2/3 — ТМ (tug) хүлээнэ (2026-09-28)');
+  const a2 = review({ ...ncr3, reviews: a2x.reviews }, { as: 'tug', who: 'tm', verdict: VERDICT.approve });
+  assert.ok(a2.ok); assert.equal(a2.status, MS_STATUS.approved, 'Concession → хаагдсан');
+  assert.equal(repFrom(a2.reviews, 'NCR').verdict, 'AN');
+  const closed = ncrClosure(c2.body, 'CH', T + 5);
+  assert.deepEqual(closed.closure, {
+    completedAt: T, verifiedBy: 'ch', verifiedAt: T + 5, docType: null, action: null, result: null,
+    closedByContractor: [], archive: { original: false, server: false, backup: false },
+  });
+  /* Гүйцэтгэгч «Хаасан» (2026-09-28) */
+  const ncrDone = { kind: 'NCR', status: MS_STATUS.approved, author: opener, reviews: emptyReviews() };
+  assert.equal(closeNcr(ncrDone, c2.body, { who: 'con', closedByContractor: [{ name: 'Бат', position: 'БУ менежер', date: T }] }).ok, false, 'захиалагч баталгаажуулаагүй (closure null) → үгүй');
+  assert.equal(closeNcr(ncrDone, closed, { who: 'con', closedByContractor: [{ name: ' ', position: '', date: null }] }).ok, false, 'хаагчийн нэр заавал');
+  const cn = closeNcr(ncrDone, closed, { who: 'con', closedByContractor: [{ name: 'Бат', position: 'БУ менежер', date: T }, { name: 'Дорж', position: 'ЧИ', date: null }, { name: 'илүү', position: '', date: null }], docType: 'report', action: 'repair', result: 'ok', archive: { server: true } });
+  assert.ok(cn.ok, cn.error);
+  assert.equal(cn.body.closure.closedByContractor.length, 2, 'дээд тал нь 2 мөр');
+  assert.equal(cn.body.closure.docType, 'report'); assert.equal(cn.body.closure.result, 'ok');
+  assert.deepEqual(cn.body.closure.archive, { original: false, server: true, backup: false });
+  assert.equal(cn.body.closure.verifiedBy, 'ch', 'захиалагчийн баталгаажуулалт хэвээр');
+  assert.equal(canAct(ncrDone, 'con', [], { contractor: true }).closeNcr, true);
+  assert.equal(canAct(ncrDone, 'con', [], { contractor: true, ncrClosed: true }).closeNcr, false);
+  const rt = parseBodyOf('NCR', JSON.stringify(cn.body));
+  assert.deepEqual(rt.closure, cn.body.closure, 'хаалт JSON-оор бүрэн эргэнэ');
+  assert.equal(rt.initialVerdict, 'R', 'анхны дүгнэлт анхдагч Rejected');
+  /* reopen */
+  const ncr4 = { ...ncr3, status: a2.status, reviews: a2.reviews };
+  assert.equal(canAct(ncr4, 'ch', ['chanar']).reopen, true);
+  assert.equal(canAct(ncr4, 'h', ['habea']).reopen, false);
+  assert.equal(reopen({ kind: 'NCR', status: MS_STATUS.review }, closed).ok, false, 'зөвхөн хаагдсаныг');
+  const ro = reopen(ncr4, closed);
+  assert.ok(ro.ok); assert.equal(ro.status, MS_STATUS.review); assert.equal(ro.body.reopened, 1);
+  assert.equal(ro.body.correctionAt, null, 'дахин нээхэд залруулга дахин шаардана'); assert.equal(ro.body.closure, null);
+  assert.deepEqual(ro.reviews, emptyReviews());
+  /* NCR canAct: нээгч ноорогт засна, review-д үгүй */
+  assert.equal(canAct(ncr0, opener, ['tuh']).edit, true);
+  assert.equal(canAct({ ...ncr0, status: MS_STATUS.returned }, opener, ['tuh']).edit, false, 'буцаагдсан NCR нээгч засахгүй');
+}
+
+/* ══ 5e. Бие — хуучин/эвдэрсэн JSON-д тэсвэртэй ══ */
+{
+  assert.deepEqual(parseBodyOf('MA', 'хог'), EMPTY_MA);
+  assert.deepEqual(parseBodyOf('MIR', '{}'), EMPTY_INSP);
+  assert.deepEqual(parseBodyOf('NCR', null), EMPTY_NCR);
+  const ms = parseBodyOf('MS', JSON.stringify({ general: 'g', scope: 1 }));
+  assert.equal(ms.general, 'g'); assert.equal(ms.scope, ''); assert.deepEqual(ms.meta, EMPTY_META);
+  assert.deepEqual(ms.revHistory, []); assert.deepEqual(ms.bounces, []); assert.equal(ms.revNote, '');
+  const ma = parseBodyOf('MA', JSON.stringify({ materials: [{ name: 'Арматур', origin: 'foreign' }, 'хог'], checklist: { labTest: true, zoo: true }, drawingsMatch: 'тийм', meta: { owner: 'ADMIN', preparedAt: T, workType: 'w02' } }));
+  assert.equal(ma.materials.length, 2); assert.equal(ma.materials[0].origin, 'foreign'); assert.equal(ma.materials[1].name, '');
+  assert.equal(ma.checklist.labTest, true); assert.equal(ma.checklist.sample, false); assert.equal(ma.drawingsMatch, null);
+  assert.equal(ma.meta.owner, 'admin'); assert.equal(ma.meta.workType, 'w02');
+  assert.deepEqual(ma.meta.owners, ['admin'], '⚠️ хуучин `owner` мөр → owners[]');
+  assert.equal(ma.materials[0].locked, false); assert.equal(ma.materials[0].verdict, null); assert.equal(ma.materials[0].meets, null);
+  const m2 = parseBodyOf('MA', JSON.stringify({ meta: { owners: ['A', 'b', 'c'], owner: 'b', pageCount: 12, discipline: ['Civil', 5] }, materials: [{ name: 'x', verdict: 'AN', locked: true, meets: true, arrivedAt: T }], signatures: { prepared: { name: 'Бат' } }, submittalType: 'ma', refs: ['MSC-SLB-MS-P0302-0001-00'] }));
+  assert.deepEqual(m2.meta.owners, ['a', 'b'], 'owners 2 хүртэл, жижиг үсгээр'); assert.equal(m2.meta.owner, 'a'); assert.equal(m2.meta.pageCount, 12); assert.deepEqual(m2.meta.discipline, ['Civil']);
+  assert.equal(m2.materials[0].verdict, 'AN'); assert.equal(m2.materials[0].locked, true); assert.equal(m2.materials[0].meets, true); assert.equal(m2.materials[0].arrivedAt, T);
+  assert.equal(m2.signatures.prepared.name, 'Бат'); assert.equal(m2.signatures.approved.name, ''); assert.equal(m2.submittalType, 'ma'); assert.equal(m2.refs.length, 1);
+  const insp2 = parseBodyOf('MIR', JSON.stringify({ header: { building: 'B1', location: 'хуучин' }, template: 'mir62', attachments: { cubes: true, survey: 1 } }));
+  assert.equal(insp2.header.materialName, ''); assert.equal(insp2.header.location, 'хуучин', 'хуучин талбар уншигдана'); assert.equal(insp2.template, 'mir62');
+  assert.equal(insp2.attachments.cubes, true); assert.equal(insp2.attachments.survey, false); assert.equal(insp2.attachments.labTest, false);
+  assert.deepEqual(parseCommon('{"revHistory":[{"rev":1,"at":' + T + ',"reason":"r","by":"A"},{"rev":"x"}],"bounces":[{"at":' + T + ',"by":"c","reason":"format","note":"n"},{"reason":"zoo"}]}'),
+    { revNote: '', revHistory: [{ rev: 1, at: T, reason: 'r', by: 'a' }], bounces: [{ at: T, by: 'c', reason: 'format', note: 'n' }] });
+  assert.ok('general' in emptyBodyOf('QMP') && 'meta' in emptyBodyOf('PRC'), 'QMP/PRC — MS бие');
+  const insp = parseBodyOf('FIC', JSON.stringify({ items: [{ text: 'a', contractor: 'OK', client: 'zoo' }, { no: 5, text: 'b', client: 'X' }] }));
+  assert.equal(insp.items[0].no, 1); assert.equal(insp.items[0].client, null); assert.equal(insp.items[1].no, 5); assert.equal(insp.items[1].client, 'X');
+  const ncr = parseBodyOf('NCR', JSON.stringify({ severity: 'major', types: ['design', 'zoo'], proposed: ['redo'], correctionAt: T, closure: { verifiedAt: T, verifiedBy: 'x' }, reopened: 2 }));
+  assert.equal(ncr.severity, 'major'); assert.deepEqual(ncr.types, ['design']); assert.equal(ncr.correctionAt, T); assert.equal(ncr.closure.verifiedBy, 'x'); assert.equal(ncr.reopened, 2);
+  assert.equal(parseMeta('{"meta":{"category":"Арматур"}}').category, 'Арматур');
+  assert.equal(parseMeta('хог').category, '');
+  assert.equal(emptyBodyOf('NCR').reopened, 0);
+  assert.ok('general' in emptyBodyOf('MS') && 'meta' in emptyBodyOf('MS'));
+  assert.equal(delayDays({ sentAt: T, decidedAt: T + 3 * 86_400_000 }), 3);
+  assert.equal(delayDays({ sentAt: null, decidedAt: null }), null);
+  assert.equal(delayDays({ sentAt: T, decidedAt: null }, T + 86_400_000 * 1.5), 1);
 }
 
 /* ══ 6. submit — ⚠️ №8 ══ */
@@ -176,7 +474,10 @@ const base = () => ({
 
   /* ⚠️ №8 — буцаагдсанаас дахин: rev+1, хянагчид ЦЭВЭР */
   const d1 = { status: MS_STATUS.returned, rev: 0, author: 'selbe_guitsetgegch' };
-  const s1 = submit(d1, { who: 'selbe_guitsetgegch', now: T });
+  const s1n = submit(d1, { who: 'selbe_guitsetgegch', now: T });
+  assert.equal(s1n.ok, false, '⚠️ 2026-09-28: rev>0 илгээлтэд хувилбарын шалтгаан ЗААВАЛ'); assert.match(s1n.error, /шалтгаан/);
+  assert.equal(submit({ ...d0, rev: 2 }, { who: 'selbe_guitsetgegch' }).ok, false, 'rev 2 ноорог ч шалтгаангүй илгээхгүй');
+  const s1 = submit(d1, { who: 'selbe_guitsetgegch', now: T, revNote: 'Нийлүүлэгч сольсон' });
   assert.ok(s1.ok);
   assert.equal(s1.rev, 1, '⚠️ буцаагдаад дахин → rev+1');
   assert.deepEqual(s1.reviews, emptyReviews(), '⚠️ өмнөх зөвшөөрлүүд ХҮЧИНГҮЙ — гурвуулаа дахин');
@@ -194,10 +495,11 @@ const base = () => ({
 {
   const d = base();
   const me = 'selbe_guitsetgegch';
+  const none = { correction: false, reopen: false, clientChecks: false, bounce: false, ack: false, closeAn: false, newRevision: false, closeNcr: false };
   /* Зохиогч: review төлөвт засахгүй, илгээхгүй, хянахгүй */
-  assert.deepEqual(canAct(d, me, ['tuh']), { edit: false, submit: false, review: [] });
+  assert.deepEqual(canAct(d, me, ['tuh']), { edit: false, submit: false, review: [], ...none });
   /* Зохиогч ноорогт: засна, илгээнэ */
-  assert.deepEqual(canAct({ ...d, status: MS_STATUS.draft }, me, []), { edit: true, submit: true, review: [] });
+  assert.deepEqual(canAct({ ...d, status: MS_STATUS.draft }, me, []), { edit: true, submit: true, review: [], ...none });
   /* Хянагч: зөвхөн өгөөгүй үүргээр */
   const half = { ...d, reviews: { ...emptyReviews(), tuh: { who: 'x', at: T, verdict: VERDICT.approve, note: null } } };
   assert.deepEqual(canAct(half, 'rev', ['tuh', 'chanar']).review, ['chanar'], 'tuh өгсөн → зөвхөн chanar үлдэнэ');
@@ -207,19 +509,24 @@ const base = () => ({
   /* Хянагч бус: хоосон */
   assert.deepEqual(canAct(d, 'rev', []).review, []);
   /* Нэвтрээгүй */
-  assert.deepEqual(canAct(d, null, ['tuh']), { edit: false, submit: false, review: [] });
+  assert.deepEqual(canAct(d, null, ['tuh']), { edit: false, submit: false, review: [], ...none });
+  /* MS-д tug товч гарахгүй */
+  assert.deepEqual(canAct(d, 'rev', ['tug', 'habea']).review, ['habea']);
 }
 
 /* ══ 8. history · latest ══ */
 {
-  const mk = (bagts, seq, rev, status = MS_STATUS.approved) => ({
-    oid: seq * 10 + rev, docNo: '', org: '', bagts, seq, rev, title: '', status,
-    author: 'a', sentAt: T, reviews: emptyReviews(), decidedAt: null,
+  const mk = (bagts, seq, rev, status = MS_STATUS.approved, kind = 'MS') => ({
+    oid: seq * 10 + rev, kind, docNo: '', org: '', bagts, seq, rev, title: '', status,
+    author: 'a', sentAt: T, reviews: emptyReviews(), decidedAt: null, rep: null,
   });
   const docs = [
     mk('Багц 1', 1, 1), mk('Багц 1', 1, 0), mk('Багц 1', 1, 2),
     mk('Багц 1', 2, 0), mk('Багц 2', 1, 0),
   ];
+  /* Өөр төрлийн ижил (bagts, seq) — тусдаа баримт */
+  assert.equal(latest([...docs, mk('Багц 1', 1, 0, MS_STATUS.draft, 'MA')]).length, 4, 'kind тусдаа');
+  assert.equal(history([...docs, mk('Багц 1', 1, 0, MS_STATUS.draft, 'MA')], 'Багц 1', 1, 'MS').length, 3);
   const h = history(docs, 'Багц 1', 1);
   assert.deepEqual(h.map((d) => d.rev), [0, 1, 2], 'rev өсөхөөр');
   assert.equal(history(docs, 'Багц 1', 9).length, 0);
@@ -286,5 +593,97 @@ console.log('✅ нэг хүн НЭГ үүрэг — үүргийн слот Б�
   if (miss.length) console.warn(`⚠️ ORG_CODE-д ${miss.length} багц ДУТУУ — тэдгээрт аргачлал үүсэх боломжгүй: ${miss.join(' · ')}`);
   else console.log('✅ ORG_CODE бүх багцыг хамарсан');
 }
+
+/* ══════════ 2-Р ҮЕ ШАТ (2026-09-28): AN нээлттэй · шинэ хувилбар · түгжээ · буцаалт · хүлээн авалт ══════════ */
+{
+  const rv = (verdict, who = 'x', note = null) => ({ who, at: T, verdict, note });
+  const repAN = { no: 'SLB-REP-MA-P0100-0003-00', at: T, verdict: 'AN', anText: 'нөхцөл', perMaterial: { 0: 'AN', 1: 'A' } };
+  const doc = { kind: 'MA', status: MS_STATUS.approved, author: 'g', reviews: { ...emptyReviews(), cheng: rv(VERDICT.approve, 'e'), chanar: rv(VERDICT.note, 'c', 'нөхцөл'), tug: rv(VERDICT.approve, 't') }, rep: repAN };
+  /* AN нээлттэй */
+  assert.equal(isAnOpen(doc), true); assert.equal(isAnOpen({ ...doc, rep: { ...repAN, verdict: 'A' } }), false);
+  assert.equal(canAct(doc, 'c', ['chanar']).closeAn, true, 'хянагчид AN хаах товч');
+  assert.equal(canAct(doc, 'g', []).closeAn, false);
+  assert.equal(closeAn(doc, { as: 'chanar', who: 'c', no: 'SLB-REP-MA-P0100-0003-01' }).ok, true);
+  assert.equal(closeAn(doc, { as: 'tuh', who: 'c', no: 'x' }).ok, false, 'MA-д tuh үгүй');
+  assert.equal(closeAn({ ...doc, rep: { ...repAN, verdict: 'A' } }, { as: 'chanar', who: 'c', no: 'x' }).ok, false, 'AN биш → хаах зүйл үгүй');
+  assert.equal(closeAn({ ...doc, status: MS_STATUS.review }, { as: 'chanar', who: 'c', no: 'x' }).ok, false);
+  const ca = closeAn(doc, { as: 'chanar', who: 'C', note: 'биелсэн', now: T + 9, no: 'SLB-REP-MA-P0100-0003-01' });
+  assert.ok(ca.ok);
+  assert.equal(ca.rep.verdict, 'A'); assert.equal(ca.rep.no, 'SLB-REP-MA-P0100-0003-01'); assert.equal(ca.rep.anClosedBy, 'c'); assert.equal(ca.rep.anClosedAt, T + 9);
+  assert.deepEqual(ca.rep.perMaterial, { 0: 'A', 1: 'A' }, 'AN материал → A'); assert.equal(ca.rep.anText, 'нөхцөл\nбиелсэн');
+  /* Хүлээн авах */
+  assert.equal(canAct(doc, 'g', []).ack, true, 'зохиогчид хүлээн авах товч');
+  assert.equal(canAct({ ...doc, rep: { ...repAN, receivedAt: T } }, 'g', []).ack, false);
+  assert.equal(ackRep(doc, { who: 'other' }).ok, false);
+  assert.equal(ackRep({ ...doc, rep: null }, { who: 'g' }).ok, false);
+  const ak = ackRep(doc, { who: 'G', now: T + 3 });
+  assert.ok(ak.ok); assert.equal(ak.rep.receivedAt, T + 3); assert.equal(ak.rep.receivedBy, 'g'); assert.equal(ak.rep.verdict, 'AN');
+  assert.equal(ackRep({ ...doc, rep: ak.rep }, { who: 'g' }).ok, false, 'хоёр дахь удаа үгүй');
+  /* Шинэ хувилбар — approved-оос ч, шалтгаан заавал */
+  assert.equal(canAct(doc, 'g', []).newRevision, true); assert.equal(canAct(doc, 'c', ['chanar']).newRevision, false);
+  assert.equal(canAct({ ...doc, status: MS_STATUS.review }, 'g', []).newRevision, false);
+  assert.equal(newRevision({ ...doc, rev: 0 }, { who: 'g', reason: '  ' }).ok, false, 'шалтгаан заавал');
+  assert.equal(newRevision({ ...doc, rev: 0, status: MS_STATUS.review }, { who: 'g', reason: 'x' }).ok, false);
+  assert.equal(newRevision({ ...doc, rev: 0 }, { who: 'c', reason: 'x' }).ok, false, 'зөвхөн зохиогч');
+  assert.equal(newRevision({ kind: 'NCR', status: MS_STATUS.approved, rev: 0, author: 'g' }, { who: 'g', reason: 'x' }).ok, false, 'NCR-д үгүй');
+  const nr = newRevision({ ...doc, rev: 0 }, { who: 'g', reason: 'Нийлүүлэгч нэмсэн' });
+  assert.ok(nr.ok); assert.equal(nr.rev, 1); assert.equal(nr.status, MS_STATUS.draft); assert.deepEqual(nr.reviews, emptyReviews());
+  const nr2 = newRevision({ ...doc, rev: 1, status: MS_STATUS.returned }, { who: 'g', reason: 'Засав' });
+  assert.ok(nr2.ok); assert.equal(nr2.rev, 2);
+  /* Дараагийн хувилбарын бие — MA түгжээ + түүх */
+  const body = { ...EMPTY_MA, materials: [{ ...EMPTY_MA.materials[0], name: 'a' }, { name: 'b' }, { name: 'c' }].map((m, i) => ({ ...parseBodyOf('MA', '{}').materials[0] ?? {}, name: m.name, verdict: null, locked: false })) };
+  const applied = applyRepToMaterials(body, { verdict: 'R', perMaterial: { 0: 'A', 1: 'AN' } });
+  assert.deepEqual(applied.materials.map((m) => m.verdict), ['A', 'AN', 'R'], 'perMaterial-д байхгүй → баримтын шийдвэр');
+  const locked = { ...applied, materials: applied.materials.map((m, i) => (i === 0 ? { ...m, locked: true } : m)) };
+  assert.deepEqual(applyRepToMaterials(locked, { verdict: 'A' }).materials.map((m) => m.verdict), ['A', 'A', 'A']);
+  assert.equal(applyRepToMaterials({ ...locked, materials: [{ ...locked.materials[0], verdict: 'AN' }] }, { verdict: 'R' }).materials[0].verdict, 'AN', 'түгжигдсэн материал хөндөгдөхгүй');
+  const nb = nextRevisionBody('MA', applied, { rev: 1, reason: ' Засав ', by: 'G', now: T });
+  assert.deepEqual(nb.materials.map((m) => [m.verdict, m.locked]), [['A', true], ['AN', true], [null, false]], '⚠️ A/AN түгжигдэнэ, R дахин хянагдана');
+  assert.equal(nb.revNote, 'Засав'); assert.deepEqual(nb.revHistory, [{ rev: 1, at: T, reason: 'Засав', by: 'g' }]);
+  assert.equal(applied.materials[0].locked, false, 'оролт өөрчлөгдөөгүй (цэвэр)');
+  const nb2 = nextRevisionBody('MA', nb, { rev: 2, reason: 'Дахин', by: 'g', now: T + 1 });
+  assert.equal(nb2.revHistory.length, 2); assert.equal(nb2.revHistory[1].rev, 2);
+  const nbMs = nextRevisionBody('MS', { ...EMPTY_BODY_LIKE(), meta: EMPTY_META }, { rev: 1, reason: 'r', by: 'g', now: T });
+  assert.equal(nbMs.revHistory.length, 1); assert.equal(nbMs.general, '');
+  /* Түгжигдсэн материал хянагдахгүй: review perMaterial-аас хаягдана, repFrom-д өмнөх шийдвэр орно */
+  const rev1 = { kind: 'MA', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
+  const rr = review(rev1, { as: 'cheng', who: 'e', verdict: VERDICT.approve, perMaterial: { 0: 'R', 1: 'A', 2: 'A' }, materials: nb.materials });
+  assert.ok(rr.ok, rr.error); assert.deepEqual(rr.reviews.cheng.perMaterial, { 2: 'A' }, '⚠️ түгжигдсэн 0·1 хаягдана — R ч өсгөхгүй');
+  assert.equal(verdictCode(rr.reviews.cheng.verdict), 'A');
+  const rf = repFrom(rr.reviews, 'MA', nb.materials);
+  assert.deepEqual(rf.perMaterial, { 0: 'A', 1: 'AN', 2: 'A' }, 'хариунд түгжигдсэн материалын өмнөх шийдвэр орно');
+  /* AN хугацаа */
+  const an = review(rev1, { as: 'cheng', who: 'e', verdict: VERDICT.note, note: 'n', anDeadline: T + 100 });
+  assert.equal(an.reviews.cheng.anDeadline, T + 100); assert.equal(repFrom(an.reviews, 'MA').anDeadline, T + 100);
+  assert.equal(review(rev1, { as: 'cheng', who: 'e', verdict: VERDICT.approve, anDeadline: T }).reviews.cheng.anDeadline, undefined, 'A-д хугацаа үгүй');
+  /* Хянахгүй буцаах */
+  assert.equal(canAct(rev1, 'c', ['chanar']).bounce, true); assert.equal(canAct(rev1, 'c', ['cheng']).bounce, true);
+  assert.equal(canAct(rev1, 't', ['tug']).bounce, false, 'ТУГ буцаахгүй'); assert.equal(canAct(rev1, 'g', ['chanar']).bounce, false, 'зохиогч үгүй');
+  assert.equal(canAct({ kind: 'MS', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() }, 'c', ['cheng']).bounce, false, 'MS-д cheng хянагч биш');
+  assert.equal(canAct({ kind: 'NCR', status: MS_STATUS.review, author: 'g', reviews: emptyReviews(), correctionAt: T }, 'c', ['chanar']).bounce, false, 'NCR үгүй');
+  assert.equal(bounce(rev1, { as: 'tug', who: 'c', reason: 'format' }).ok, false);
+  assert.equal(bounce(rev1, { as: 'chanar', who: 'g', reason: 'format' }).ok, false, 'зохиогч');
+  assert.equal(bounce(rev1, { as: 'chanar', who: 'c', reason: 'zoo' }).ok, false);
+  assert.equal(bounce({ ...rev1, status: MS_STATUS.approved }, { as: 'chanar', who: 'c', reason: 'format' }).ok, false);
+  const b = bounce({ ...rev1, reviews: rr.reviews }, { as: 'chanar', who: 'C', reason: 'incomplete', note: 'Бүрдэл дутуу', now: T });
+  assert.ok(b.ok); assert.equal(b.status, MS_STATUS.returned); assert.deepEqual(b.reviews, emptyReviews(), 'хянагчид цэвэр'); 
+  assert.deepEqual(b.bounce, { at: T, by: 'c', reason: 'incomplete', note: 'Бүрдэл дутуу' });
+  assert.equal(bounce(rev1, { as: 'chanar', who: 'c', reason: 'format' }).bounce.note, '');
+  /* QMP / PRC — MS-ийн урсгал */
+  const q = { kind: 'QMP', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
+  assert.equal(review(q, { as: 'tug', who: 't', verdict: VERDICT.approve }).ok, false);
+  let qr = review(q, { as: 'tuh', who: 't', verdict: VERDICT.approve }); assert.ok(qr.ok);
+  qr = review({ ...q, reviews: qr.reviews }, { as: 'chanar', who: 'c', verdict: VERDICT.approve }); assert.ok(qr.ok);
+  qr = review({ ...q, reviews: qr.reviews }, { as: 'habea', who: 'h', verdict: VERDICT.approve }); assert.equal(qr.status, MS_STATUS.approved);
+  assert.deepEqual(canAct({ ...q, kind: 'PRC' }, 'x', ['tuh', 'tug']).review, ['tuh']);
+  /* Ижил нэртэй идэвхтэй MA */
+  const mk = (seq, rev, status, extra = {}) => ({ oid: seq * 10 + rev, kind: 'MA', docNo: '', org: '', bagts: 'Багц 1', seq, rev, title: 'Арматур ', status, author: 'g', sentAt: T, reviews: emptyReviews(), decidedAt: null, rep: null, ...extra });
+  const docs = [mk(1, 0, MS_STATUS.review), mk(2, 0, MS_STATUS.approved, { rep: { no: 'x', at: T, verdict: 'A' } }), mk(3, 0, MS_STATUS.approved, { rep: repAN }), mk(4, 0, MS_STATUS.returned), mk(4, 1, MS_STATUS.draft), mk(5, 0, MS_STATUS.review, { kind: 'MS' })];
+  assert.deepEqual(activeSameTitle(docs, 'MA', 'Багц 1', ' арматур').map((d) => d.seq).sort(), [1, 3, 4], 'review · AN нээлттэй · ноорог (сүүлийн хувилбар); хаагдсан A, MS орохгүй');
+  assert.deepEqual(activeSameTitle(docs, 'MA', 'Багц 1', 'арматур', 1).map((d) => d.seq).sort(), [3, 4], 'өөрийн seq хасагдана');
+  assert.deepEqual(activeSameTitle(docs, 'MA', 'Багц 1', ''), []);
+}
+function EMPTY_BODY_LIKE() { return { general: '', scope: '', materials: '', sequence: '', quality: '', safety: '' }; }
+console.log('✅ 2-р үе шат — AN нээлттэй · closeAn · newRevision · түгжээ · bounce · ackRep · QMP/PRC · legacy');
 
 console.log('chanarMs.check ✓');

@@ -60,3 +60,6 @@ iot-watch-state.json
 # Caveman skill-үүд (npx skills add) — гуравдагч этгээдийн skill, репод орохгүй
 .agents/
 skills-lock.json
+
+# Чанарын баримтын жишээ материал (гарын үсэг, гэрчилгээтэй PDF) — репод оруулахгүй (2026-09-28)
+docs/chanar/

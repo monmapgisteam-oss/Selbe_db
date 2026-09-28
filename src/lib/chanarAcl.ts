@@ -33,16 +33,20 @@ import { ROLE_CAPS } from './aclRoleCaps';
 export { ALL_BAGTS };
 
 /**
- * ДӨРВӨН ҮҮРЭГ — зураглалын эгнээнүүд.
+ * ЗУРГААН ҮҮРЭГ — зураглалын эгнээнүүд + ТУГ + ЧХ инженер.
  *   author — Гүйцэтгэгч (аргачлал боловсруулж ирүүлнэ)
  *   tuh    — ТУХ-ийн инженер / менежер
  *   chanar — Чанарын хэлтэс
- *   habea  — ХАБЭА-н инженер
- * ⚠️ `tuh` · `chanar` · `habea` нь `chanarMs.Reviewer`-тэй ЯГ ИЖИЛ нэр —
+ *   habea  — ХАБЭА-н инженер (зөвхөн MS)
+ *   tug    — ТУГ, төслийн удирдлагын газар (MA · NCR; 2026-09-28)
+ *   cheng  — Чанарын хэлтсийн хяналтын инженер (MA-ийн эхний шат; 2026-09-28 2-р үе шат)
+ * ⚠️ `tuh` · `chanar` · `habea` · `tug` · `cheng` нь `chanarMs.Reviewer`-тэй ЯГ ИЖИЛ нэр —
  *    хоёр газар зөрвөл хянагч товчоо олохгүй.
+ * ⚠️ Төрөл бүрд АЛЬ үүрэг хянадгийг `chanarMs.REVIEWERS_OF` заана — ACL нь
+ *    зөвхөн «энэ хүн энэ багцад энэ үүрэгтэй» гэдгийг мэднэ.
  */
-export type ChanarRole = 'author' | 'tuh' | 'chanar' | 'habea';
-export const CHANAR_ROLES: readonly ChanarRole[] = ['author', 'tuh', 'chanar', 'habea'];
+export type ChanarRole = 'author' | 'tuh' | 'chanar' | 'habea' | 'tug' | 'cheng';
+export const CHANAR_ROLES: readonly ChanarRole[] = ['author', 'tuh', 'chanar', 'habea', 'tug', 'cheng'];
 
 export type ChanarAssign = Assign<ChanarRole>;
 
@@ -50,8 +54,8 @@ const acl = makeAcl<ChanarRole>({
   storeKey: 'selbe-chanar-acl-v1',
   event: 'selbe-chanar-acl-change',
   /*
-   * ⚠️ ҮҮРЭГ → ЭРХ. Дөрвүүлээ «Чанарын баримт» харагдацыг нээнэ
-   *    (`CAP_HOST_VIEW`). Хянагч гурав НЭГ эрх (`chanarReview`) хуваалцана —
+   * ⚠️ ҮҮРЭГ → ЭРХ. Тавуулаа «Чанарын баримт» харагдацыг нээнэ
+   *    (`CAP_HOST_VIEW`). Хянагч дөрөв НЭГ эрх (`chanarReview`) хуваалцана —
    *    аль хянагч гэдгийг эрх биш ЭНЭ хуваарилалт заана. Гурван тусдаа эрх
    *    үүсгэвэл `caps.ts`-д ижил утгатай гурван мөр нэмэгдэж, харин
    *    «хэн ТУХ вэ» гэдгийг тэндээс ялгах боломжгүй хэвээр үлдэнэ.
@@ -107,14 +111,18 @@ export const hasChanarRole = acl.hasRole;
 /**
  * Тухайн БАГЦАД хэрэглэгч ЯМАР ХЯНАГЧ вэ — `chanarMs.canAct`-д өгөх жагсаалт.
  * ⚠️ `author`-ыг ОРУУЛАХГҮЙ: тэр нь хянагч биш.
- * ⚠️ `null` (хязгааргүй: super, дев) бол ГУРВУУЛАА — админ аль ч үүргээр
+ * ⚠️ `null` (хязгааргүй: super, дев) бол ТАВУУЛАА — админ аль ч үүргээр
  *    хянаж чадна, гэхдээ `review()` зохиогч=хянагчийг мөн л татгалзана.
+ * ⚠️ Төрөлд хамаагүй үүрэг ч буцаагдана (MS-д `tug`) — `chanarMs.canAct`
+ *    `REVIEWERS_OF[kind]`-аар шүүнэ.
  */
+export type ChanarReviewer = Exclude<ChanarRole, 'author'>;
+export const CHANAR_REVIEWERS: readonly ChanarReviewer[] = ['tuh', 'chanar', 'habea', 'tug', 'cheng'];
 export function reviewerRolesFor(
   user: string | null | undefined, bagts: string,
-): ('tuh' | 'chanar' | 'habea')[] {
-  const out: ('tuh' | 'chanar' | 'habea')[] = [];
-  for (const r of ['tuh', 'chanar', 'habea'] as const) {
+): ChanarReviewer[] {
+  const out: ChanarReviewer[] = [];
+  for (const r of CHANAR_REVIEWERS) {
     const sc = acl.scope(user, r);
     if (sc === null || sc.includes(bagts)) out.push(r);
   }

@@ -28,6 +28,8 @@ export const roleLabel = (kind: ScopedKind, role: string): string => {
     if (role === 'tuh') return tr('ТУХ');
     if (role === 'chanar') return tr('Чанар');
     if (role === 'habea') return tr('ХАБЭА');
+    if (role === 'tug') return tr('ТУГ');
+    if (role === 'cheng') return tr('ЧХ инженер');
     return role;
   }
   return role === 'editor' ? tr('Засварлагч') : tr('Батлагч');
@@ -98,7 +100,7 @@ export const issueText = (i: PkgIssue): string => {
     return tr('{0}: {1} нь мөр нэмэгч БА батлагч хоёулаа — нэмэлт ажил гацна.', i.args[0], i.args[1]);
   }
   if (i.key === 'chanarNoReviewer') {
-    return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — гурван хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн аргачлал хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
+    return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — тухайн төрлийн хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн баримт хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
   }
   if (i.key === 'flowGap') {
     return tr('{0}: гүйцэтгэлийн урсгалын {1} шат томилогдоогүй — илгээлт тэр шатанд зогсоно.', i.args[0], i.args[1]);

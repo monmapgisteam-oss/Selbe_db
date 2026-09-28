@@ -22,14 +22,16 @@ import type { CapKey } from './caps';
 
 /**
  * Багцаар хуваарилагддаг таван систем — үүрэг → эрх.
- * ⚠️ Чанарын гурван хянагч НЭГ эрх (`chanarReview`) хуваалцана — `caps.ts`-ийн ⚠️.
+ * ⚠️ Чанарын таван хянагч НЭГ эрх (`chanarReview`) хуваалцана — `caps.ts`-ийн ⚠️.
  * ⚠️ `ajil.editor` нь БАЙГАА `addRow` эрх (`ajilAcl.ts`-ийн ⚠️).
  */
 export const ROLE_CAPS = {
   huvaari: { author: 'plan', approver: 'planApprove' },
   obyem: { editor: 'obyemEdit', approver: 'obyemApprove' },
   ajil: { editor: 'addRow', approver: 'ajilApprove' },
-  chanar: { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview' },
+  /* ⚠️ 2026-09-28: `tug` (ТУГ) — MA/NCR хянагч; `cheng` — ЧХ хяналтын инженер, MA-ийн
+     эхний шат (2-р үе шат). Тавуулаа ижил `chanarReview`. */
+  chanar: { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview', tug: 'chanarReview', cheng: 'chanarReview' },
   butets: { editor: 'butets' },
 } as const satisfies Record<string, Readonly<Record<string, CapKey>>>;
 
