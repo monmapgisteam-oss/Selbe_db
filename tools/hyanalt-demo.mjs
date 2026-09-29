@@ -44,7 +44,13 @@ if (process.argv.includes('--clean')) {
     body: new URLSearchParams({ f: 'json', deletes: oids.join(',') }).toString(),
   });
   const j = await r.json();
-  console.log('Устгав:', (j.deleteResults ?? []).filter((x) => x.success).length, 'мөр');
+  /* ⚠️ 2026-09-25 (аудит 8): ArcGIS алдаа 200-аар `{ error }` биетэй ирдэг (CLAUDE.md) —
+     урьд «Устгав: 0 мөр» гэж чимээгүй өнгөрдөг байв; мөр бүрийн `success:false` ч мөн. */
+  if (j.error) { console.error('⛔ ArcGIS алдаа:', j.error.message ?? JSON.stringify(j.error)); process.exit(1); }
+  const res = j.deleteResults ?? [];
+  const bad = res.filter((x) => !x.success);
+  console.log('Устгав:', res.length - bad.length, '/', oids.length, 'мөр');
+  if (bad.length) { console.error('⛔ Устгагдаагүй:', bad.map((x) => `${x.objectId}: ${x.error?.description ?? '?'}`).join('; ')); process.exit(1); }
   process.exit(0);
 }
 

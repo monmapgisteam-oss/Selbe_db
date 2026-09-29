@@ -48,7 +48,7 @@ import {
   QAQC_REMOTE_MAX,
   saveQaqcDraft,
 } from '@/lib/qaqcDraftRemote';
-import { loadDocs } from '@/lib/chanarStore';
+import { loadAllDocs } from '@/lib/chanarStore';
 import { MS_STATUS, latest, type DocKind } from '@/lib/chanarMs';
 import st from '@/modules/sheet/sheet.module.css';
 
@@ -60,18 +60,19 @@ const cls = (names: string) =>
  * ⚠️ 2026-09-28: MA · MIR · FIC дугаарын нүд засахад тухайн багцын
  *    БАТЛАГДСАН чанарын баримтын дугаараас сонгуулна (`<datalist>`).
  *    Чөлөөт текст хэвээр зөвшөөрнө — QAQC хүснэгт нь excel-ийн хуулбар,
- *    порталаас гадуур батлагдсан баримт ч бичигдэнэ. Жагсаалт нь зөвхөн
- *    ТИЙМ нүдийг АНХ нээхэд татагдана (хуудсыг хэзээ ч хаахгүй), багц ба
- *    төрөл тус бүрд нэг удаа кэшлэнэ. Наалт (`pasteBlock`) энэ замд ОРОХГҮЙ.
+ *    порталаас гадуур батлагдсан баримт ч бичигдэнэ. Наалт (`pasteBlock`) энэ замд ОРОХГҮЙ.
+ * ⚠️ 2026-09-25: жагсаалт харагдац НЭЭГДЭХЭД нэг удаа (`loadAllDocs`, бүх багц ·
+ *    3 төрөл) татагдана — өмнө нь зөвхөн нүд АНХ засахад татдаг тул зөвхөн
+ *    ХАРДАГ хэрэглэгч «✓ батлагдсан» тэмдгийг хэзээ ч хардаггүй, багц солиход
+ *    дахин татдаг байв. Унавал кэшлэхгүй — нүд нээхэд дахин оролдоно.
  */
 /** `QAQC_COLS[].name` → чанарын баримтын төрөл (зөвхөн дугаарын баганууд) */
 const DOC_KIND_OF: Readonly<Record<string, DocKind>> = {
   MA_dugaar: 'MA', MIR_dugaar: 'MIR', FIC_dugaar: 'FIC',
 };
 const docKindAt = (di: number): DocKind | null => DOC_KIND_OF[QAQC_COLS[di]?.name ?? ''] ?? null;
-/** Батлагдсан баримт — дугаар ба нэр (жагсаалтад энэ хоёр л хэрэгтэй) */
-type ApprovedDoc = { no: string; title: string };
-const apKey = (group: string, kind: DocKind) => `${kind}|${group}`;
+/** Батлагдсан баримт — төрөл · багц · дугаар · нэр */
+type ApprovedDoc = { kind: DocKind; bagts: string; no: string; title: string };
 const normNo = (v: string) => v.trim().toUpperCase();
 /* ══════════════════════════ НООРОГ ══════════════════════════
  * ⚠️ Бөглөх хуудасны ноорогтой ИЖИЛ зарчим: localStorage нь ҮНДСЭН зам,
@@ -572,39 +573,36 @@ export function Qaqc() {
   const winTo = editVis >= 0 ? Math.max(win.to, editVis + 1) : win.to;
 
   /* ══════════════ БАТЛАГДСАН ЧАНАРЫН БАРИМТ (толгойн ⚠️) ══════════════ */
-  /** `${kind}|${багц}` → батлагдсан баримтууд; түлхүүр байхгүй = татаагүй */
-  const [approved, setApproved] = useState<Record<string, ApprovedDoc[]>>({});
-  /** Татаж буй түлхүүрүүд — давхар хүсэлт гаргахгүй */
-  const apLoading = useRef<Set<string>>(new Set());
-  const ensureApproved = useCallback((kind: DocKind, group: string) => {
-    const k = apKey(group, kind);
-    if (k in approved || apLoading.current.has(k)) return;
-    apLoading.current.add(k);
-    /* ⚠️ Бүх хувилбараас ЗӨВХӨН сүүлийнх нь (`latest`), тэр нь approved
-       байвал. Уншилт унавал кэшлэхгүй — дараагийн нээлтэд дахин оролдоно. */
-    loadDocs(kind)
+  /** Бүх багцын батлагдсан MA · MIR · FIC (сүүлийн хувилбар); `null` = татаагүй */
+  const [approved, setApproved] = useState<ApprovedDoc[] | null>(null);
+  const apLoading = useRef(false);
+  const ensureApproved = useCallback(() => {
+    if (approved || apLoading.current) return;
+    apLoading.current = true;
+    /* ⚠️ Бүх хувилбараас ЗӨВХӨН сүүлийнх нь (`latest`), тэр нь approved байвал. */
+    const kinds = new Set<DocKind>(Object.values(DOC_KIND_OF));
+    loadAllDocs()
       .then((docs) => {
-        const list = latest(docs)
-          .filter((d) => d.bagts === group && d.status === MS_STATUS.approved)
-          .map((d) => ({ no: d.docNo, title: d.title }))
+        const list = latest(docs.filter((d) => kinds.has(d.kind)))
+          .filter((d) => d.status === MS_STATUS.approved)
+          .map((d) => ({ kind: d.kind, bagts: d.bagts, no: d.docNo, title: d.title }))
           .sort((a, b) => a.no.localeCompare(b.no, 'mn', { numeric: true }));
-        setApproved((p) => ({ ...p, [k]: list }));
+        setApproved(list);
       })
       .catch(() => { /* хуудсыг хаахгүй — жагсаалтгүйгээр чөлөөт текст хэвээр */ })
-      .finally(() => { apLoading.current.delete(k); });
+      .finally(() => { apLoading.current = false; });
   }, [approved]);
-  /* Дугаарын нүд АНХ нээгдэхэд л татна */
+  /* Харагдац нээгдэхэд нэг удаа; унасан бол дугаарын нүд нээхэд дахин */
+  useEffect(() => { ensureApproved(); }, [ensureApproved]);
   useEffect(() => {
-    if (!editCell) return;
-    const kind = docKindAt(Number(editCell.split(':')[1]));
-    if (kind) ensureApproved(kind, pkg.group);
-  }, [editCell, pkg.group, ensureApproved]);
+    if (editCell && docKindAt(Number(editCell.split(':')[1]))) ensureApproved();
+  }, [editCell, ensureApproved]);
   /** Дугаар → баримт (энэ багц, тухайн төрөл); татаагүй бол `null` */
   const approvedHit = (di: number, v: string): ApprovedDoc | null => {
     const kind = docKindAt(di);
-    if (!kind || !v) return null;
+    if (!kind || !v || !approved) return null;
     const n = normNo(v);
-    return approved[apKey(pkg.group, kind)]?.find((d) => normNo(d.no) === n) ?? null;
+    return approved.find((d) => d.kind === kind && d.bagts === pkg.group && normNo(d.no) === n) ?? null;
   };
 
   /* ══════════════ ЗАСВАР ══════════════ */
@@ -1398,6 +1396,7 @@ export function Qaqc() {
                           const ekey = `${i}:${di}`;
                           const editing = editCell === ekey;
                           const val = key in pend ? pend[key] : (r.docs[di] ?? '');
+                          const hit = editing ? null : approvedHit(di, val);
                           return (
                             <td
                               key={dc.name}
@@ -1454,10 +1453,10 @@ export function Qaqc() {
                                 <span className={st.docText}>
                                   {val}
                                   {/* ⚠️ Зөвхөн ХАРУУЛАХ — батлагдсан баримттай таарсан дугаар */}
-                                  {approvedHit(di, val) && (
+                                  {hit && (
                                     <small
-                                      style={{ marginLeft: 4, fontSize: '0.75em', color: '#15803d', whiteSpace: 'nowrap' }}
-                                      title={tr('Чанарын баримт: {0}', approvedHit(di, val)?.title ?? '')}
+                                      style={{ marginLeft: 4, fontSize: '0.75em', color: 'var(--good-ink)', whiteSpace: 'nowrap' }}
+                                      title={tr('Чанарын баримт: {0}', hit.title)}
                                     >
                                       {tr('✓ батлагдсан')}
                                     </small>
@@ -1485,7 +1484,7 @@ export function Qaqc() {
       {/* БАТЛАГДСАН ЧАНАРЫН БАРИМТЫН ЖАГСААЛТ — дугаарын нүдний `list` (толгойн ⚠️) */}
       {(Object.values(DOC_KIND_OF) as DocKind[]).map((kind) => (
         <datalist key={kind} id={`qaqc-dl-${kind}`}>
-          {(approved[apKey(pkg.group, kind)] ?? []).map((d) => (
+          {(approved ?? []).filter((d) => d.kind === kind && d.bagts === pkg.group).map((d) => (
             <option key={d.no} value={d.no}>{d.title}</option>
           ))}
         </datalist>

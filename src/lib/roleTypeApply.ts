@@ -98,7 +98,13 @@ export function pkgsFromName(user: string): PkgSel {
   };
 }
 
-/** Хүний систем БҮРИЙН одоогийн багц (хадгалсан утгаараа) — «бүх багц» орохгүй */
+/**
+ * Хүний систем БҮРИЙН одоогийн багц (хадгалсан утгаараа) — «бүх багц» орохгүй.
+ * ⚠️ 2026-09-25: `ALL_BAGTS` («*») ЭНД ЧИМЭЭГҮЙ хасагдана — тэр систем нь
+ *    `sel` (төрлийн нэгдэл / нэрнээс) рүү унаж, «бүх багц» байсан хүрээ
+ *    сонгосон цөөн багц болж НАРИЙСНА. `applyInner` үүнийг `allBagtsSystems`-ээр
+ *    таньж `warnings`-д ил хэлнэ (бөөнөөр хэрэгжүүлэлт · карт хоёулаа).
+ */
 export function currentPkgs(user: string): PerSys {
   const u = user.trim().toLowerCase();
   const out: PerSys = {};
@@ -110,6 +116,19 @@ export function currentPkgs(user: string): PerSys {
   put('qaqc', listQaqcAssigns().find((a) => a.user === u)?.bagts);
   for (const sys of SCOPED_SYSTEMS) {
     put(sys, (SCOPED_SYS[sys].list().find((a) => a.user === u)?.grants ?? []).flatMap((g) => g.bagts));
+  }
+  return out;
+}
+
+/** «Бүх багц» (`ALL_BAGTS`) хуваарилалттай системүүд — `currentPkgs` тэднийг хасдаг (⚠️ дээр) */
+export function allBagtsSystems(user: string): SysId[] {
+  const u = user.trim().toLowerCase();
+  const out: SysId[] = [];
+  if (listAssigns().find((a) => a.user === u)?.bagts.includes(ALL_BAGTS)) out.push('flow');
+  if (listQaqcAssigns().find((a) => a.user === u)?.bagts.includes(ALL_BAGTS)) out.push('qaqc');
+  for (const sys of SCOPED_SYSTEMS) {
+    const gs = SCOPED_SYS[sys].list().find((a) => a.user === u)?.grants ?? [];
+    if (gs.some((g) => g.bagts.includes(ALL_BAGTS))) out.push(sys);
   }
   return out;
 }
@@ -168,7 +187,12 @@ export function setTypeDraftUsers(keys: Iterable<string>): void {
 
 /* ══════════════════════ Хэрэгжүүлэлт ══════════════════════ */
 
-export type ApplyResult = { ok: boolean; errors: string[] };
+export type ApplyResult = {
+  ok: boolean;
+  errors: string[];
+  /** ⚠️ 2026-09-25: бичигдсэн ч анхаарах зүйл — «бүх багц» хүрээ нарийссан г.м. (`ok` хэвээр) */
+  warnings?: string[];
+};
 
 const sameSet = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((x) => b.includes(x));
@@ -197,6 +221,9 @@ function backedCaps(u: string): Set<CapKey> {
  * @param sel төрөл бүрийн сонгосон багц (картын чип). Загварын хүрээ «Бүх багц» бол үл хэрэгсэнэ.
  * @param perSys систем бүрийн багц — байвал тэр системд `sel`-ийг ДАРНА
  *   (бөөнөөр дахин хэрэгжүүлэхэд хүн бүрийн одоогийн хүрээ хадгалагдана).
+ *   ⚠️ 2026-09-25: КАРТ ч мөн (`UserTypeSection`) — хэрэглэгч чип хөндөөгүй бол
+ *   `currentPkgs` дамжуулна; урьд нь `{}` тул төрлийн НЭГДЭЛ (`currentSel`) бүх
+ *   системд тарж, нэг системийн багц нөгөөд ӨРГӨСДӨГ байв (бөөнөөрхөөс өөр үр дүн).
  */
 export async function applyType(user: string, role: Role, sel: PkgSel, perSys: PerSys = {}): Promise<ApplyResult> {
   const u = user.trim().toLowerCase();
@@ -233,6 +260,7 @@ export async function applyType(user: string, role: Role, sel: PkgSel, perSys: P
 
 async function applyInner(u: string, role: Role, sel: PkgSel, perSys: PerSys): Promise<ApplyResult> {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const tpl = tplOf(role);
   const on = new Set(tpl.on);
   const all = tpl.scope === 'all';
@@ -274,6 +302,13 @@ async function applyInner(u: string, role: Role, sel: PkgSel, perSys: PerSys): P
     ...(wantQaqc ? ['qaqc' as const] : []),
     ...SCOPED_SYSTEMS.filter((sys) => wantGrants[sys].length > 0),
   ];
+  /* ⚠️ 2026-09-25: «бүх багц» байсан систем сонгосон багцаар нарийсах бол ИЛ хэлнэ
+     (`currentPkgs` «*»-ийг хасдаг) — бичилт явна, гэхдээ чимээгүй биш. */
+  if (!all) {
+    for (const sys of allBagtsSystems(u)) {
+      if (needed.includes(sys)) warnings.push(tr('{0}: «бүх багц» хуваарилалт сонгосон багцаар нарийсав', sysTitle(sys)));
+    }
+  }
   const uncovered = needed.filter((sys) => !scopeOf(sys).length);
   if (uncovered.length) {
     if (!sel.sheet.length && !sel.butets.length) {
@@ -355,7 +390,7 @@ async function applyInner(u: string, role: Role, sel: PkgSel, perSys: PerSys): P
     }
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, errors, warnings };
 }
 
 /* ══════════════════════ Бөөнөөр (2026-09-25) ══════════════════════ */
@@ -393,7 +428,11 @@ export async function applyTypeBulk(role: Role, users: string[]): Promise<boolea
       const u = raw.trim().toLowerCase();
       if (draftUsers.has(u)) { set({ ...st, skipped: [...st.skipped, u] }); continue; }
       const res = await applyType(u, role, defaultSel(u), currentPkgs(u));
-      set(res.ok ? { ...st, ok: st.ok + 1 } : { ...st, errors: [...st.errors, `${u}: ${res.errors.join('; ')}`] });
+      /* ⚠️ 2026-09-25: анхааруулга (нарийссан хүрээ) `errors`-т ил гарна — тоо нь `ok`-д хэвээр */
+      const warn = res.warnings?.length ? [`${u}: ${res.warnings.join('; ')}`] : [];
+      set(res.ok
+        ? { ...st, ok: st.ok + 1, errors: [...st.errors, ...warn] }
+        : { ...st, errors: [...st.errors, `${u}: ${res.errors.join('; ')}`, ...warn] });
     }
   } catch (e) {
     set({ ...st, errors: [...st.errors, String(e)] });

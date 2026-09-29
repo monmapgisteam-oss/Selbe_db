@@ -74,6 +74,10 @@ const SIG_ROWS: { k: keyof MaBody['signatures']; label: () => string }[] = [
   { k: 'approved', label: () => tr('Баталсан') },
 ];
 
+/** Материалын мөрийн локал ID-ийн тоолуур (модулийн түвшинд — render дотор ref уншихгүй) */
+let UID = 0;
+const newUid = (): string => `m${++UID}`;
+
 const vbCls = (c: VerdictCode): string => (c === 'A' ? s.vbA : c === 'AN' ? s.vbAN : s.vbR);
 
 export function MaForm({
@@ -108,9 +112,24 @@ export function MaForm({
     setMeta({ owners: uniq, owner: uniq[0] ?? null });
   };
 
-  /* Дэлгэгдсэн мөрүүд — харах/засах хоёуланд; хэвлэхэд CSS бүгдийг нээнэ */
-  const [open, setOpen] = useState<Set<number>>(new Set());
-  const toggle = (i: number) => setOpen((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  /* Дэлгэгдсэн мөрүүд — харах/засах хоёуланд; хэвлэхэд CSS бүгдийг нээнэ.
+     ⚠️ 2026-09-25: түлхүүр нь ИНДЕКС биш — мөр хасахад дараагийн мөр «дэлгэгдсэн»
+     болж байв. `uids` нь материал бүрийн тогтвортой локал ID (биед хадгалагдахгүй);
+     хасахад хамт хасна, гаднаас урт өөрчлөгдвөл сунгаж/тайрна. */
+  const [uidState, setUids] = useState<string[]>(() => body.materials.map(newUid));
+  let uids = uidState;
+  if (uids.length !== body.materials.length) {
+    /* Гаднаас урт өөрчлөгдсөн (structuredClone, хуучин мөр) — render дотор нэг удаа тааруулна */
+    uids = uids.length > body.materials.length ? uids.slice(0, body.materials.length)
+      : [...uids, ...body.materials.slice(uids.length).map(newUid)];
+    setUids(uids);
+  }
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (u: string) => setOpen((prev) => { const n = new Set(prev); if (n.has(u)) n.delete(u); else n.add(u); return n; });
+  const removeMat = (i: number) => {
+    setUids(uids.filter((_, k) => k !== i));
+    onChange({ ...body, materials: body.materials.filter((_, k) => k !== i) });
+  };
 
   const cell = (i: number, k: keyof MaMaterial, label: string) => {
     const mat = body.materials[i];
@@ -184,10 +203,11 @@ export function MaForm({
                 <tr><td colSpan={nCols} className={s.secEmpty}>{tr('материал нэмээгүй')}</td></tr>
               )}
               {body.materials.map((mat, i) => {
-                const isOpen = open.has(i);
+                const uid = uids[i];
+                const isOpen = open.has(uid);
                 const v = matVerdict(i);
                 return (
-                  <MatRows key={i} open={isOpen} colSpan={nCols} locked={mat.locked}
+                  <MatRows key={uid} open={isOpen} colSpan={nCols} locked={mat.locked}
                     details={(
                       <div className={s.matDetails}>
                         {DETAIL_TEXT.map((d) => (
@@ -269,12 +289,12 @@ export function MaForm({
                     )}
                     <td>
                       <button type="button" className={`${s.btn} ${s.btnSm}`} aria-expanded={isOpen} aria-label={tr('{0}-р материалын дэлгэрэнгүй', i + 1)}
-                        onClick={() => toggle(i)}>{isOpen ? '▾' : '▸'}</button>
+                        onClick={() => toggle(uid)}>{isOpen ? '▾' : '▸'}</button>
                     </td>
                     {m.edit && (
                       <td>
                         {!mat.locked && (
-                          <RowBtn m={m} label={tr('Мөр хасах')} onClick={() => onChange({ ...body, materials: body.materials.filter((_, k) => k !== i) })} />
+                          <RowBtn m={m} label={tr('Мөр хасах')} onClick={() => removeMat(i)} />
                         )}
                       </td>
                     )}
@@ -285,8 +305,10 @@ export function MaForm({
           </table>
         </div>
         <RowBtn m={m} label={tr('+ Материал нэмэх')} onClick={() => {
+          const u = newUid();
+          setUids([...uids, u]);
           onChange({ ...body, materials: [...body.materials, { ...EMPTY_MATERIAL }] });
-          setOpen((prev) => new Set(prev).add(body.materials.length));
+          setOpen((prev) => new Set(prev).add(u));
         }} />
       </Sec>
 

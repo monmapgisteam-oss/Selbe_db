@@ -19,8 +19,17 @@ if (-not $node) { throw 'node олдсонгүй — Node.js суулгана у
 #    үлдсэн байж болно. Тэр үед энэ давталт `EADDRINUSE`-аар 5 секунд тутам
 #    мөнхөд унаж, лог дүүргэдэг байв. Одоо аль хэдийн үйлчилж буй реле байвал
 #    зүгээр хүлээж, тэр нь унасан хойно өөрөө эзэлнэ (өөрийгөө эмчилдэг).
+# ⚠️ 2026-09-25 (аудит 8): PS 5.1-ийн Invoke-WebRequest нь 503-д WebException ШИДДЭГ —
+#    урьд `catch { $false }` тул реле бэлтгэж байх (`ready.ok=false` → 503) хэдэн
+#    секундэд «унтарсан» гэж үзэж дахин асаах гэж EADDRINUSE-ээр унаж, лог
+#    дүүргэдэг байв. Хариу ирсэн (200/503) = реле амьд; зөвхөн холбогдохгүй бол $false.
 function Test-RelayUp {
   try { return (Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8787/health' -TimeoutSec 3).StatusCode -in 200, 503 }
+  catch [System.Net.WebException] {
+    $resp = $_.Exception.Response
+    if ($resp -and ([int]$resp.StatusCode) -in 200, 503) { return $true }
+    return $false
+  }
   catch { return $false }
 }
 

@@ -71,7 +71,7 @@ import {
 } from '@/lib/draftRemote';
 import {
   cellsToMaps, hdKey, hdLocalKey, isEmpty as hdIsEmpty, kM, kN, mapsToCells, merge as hdMerge,
-  parse as hdParse, sameVal, serialize as hdSerialize, sig as hdSig, users as hdUsersOf,
+  parse as hdParse, remapDraft as hdRemapDraft, sameVal, serialize as hdSerialize, sig as hdSig, users as hdUsersOf,
   type HDApply, type HDCell, type HDCtx, type HDDraft, type HDEntries, type HDEntry, type HDRowBase,
 } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
@@ -604,10 +604,6 @@ export function Huvaari({
     [user, status, hvN, pkg.group, review],
   );
 
-  /** «Улсын комисс» автомат нэмэлтийн хаалга — ачаалалтын эффект ref-ээр уншина (дээрх ⚠️) */
-  const komissGateRef = useRef<() => boolean>(() => false);
-  komissGateRef.current = () => canEdit && status !== 'off' && kind === 'plan';
-
   /**
    * БАТЛАХ ЭРХ — `plan`-аас ТУСДАА (2026-09-07).
    * ⚠️ Зохиогч өөрийгөө батлахаас хамгаалах ганц шалгуур нь UI БИШ,
@@ -688,6 +684,22 @@ export function Huvaari({
    *    ойд. Батлахгүйгээр хуудсаа сэргээвэл ул мөргүй арилна.
    */
   const [previewing, setPreviewing] = useState(false);
+
+  /**
+   * «Улсын комисс» автомат нэмэлтийн хаалга — ачаалалтын эффект ref-ээр уншина (`canEdit`-ийн ⚠️).
+   * ⚠️ 2026-09-25 аудит: ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ (`pending`) · батлагдаж · урьдчилан харагдаж
+   *    байхад БИЧИХГҮЙ — шинэ жааз нь батлалтын жаазыг булж, батлалт `sameFrame`-ээр
+   *    унана. Багц солиход `pending` асинхрон ирдэг тул энэ нь зөвхөн МЭДЭГДЭЖ БУЙ
+   *    төлөвийн хаалт; сервер талын `sameFrame`/MAX OID шалгалт үлдсэнийг барина.
+   */
+  const komissGateRef = useRef<() => boolean>(() => false);
+  komissGateRef.current = () => canEdit && status !== 'off' && kind === 'plan' && pending == null && approving == null && !previewing;
+  /**
+   * «Улсын комисс» ШИНЭ ЖААЗ бичигдсэний дараа хуваалцсан ноорогийг (hd) ШИНЭ oid руу
+   * зөөх зураглал (`remapOids`, хадгалахтай ижил дүрэм) — сэргээх эффект нэг удаа
+   * хэрэглээд тэглэнэ. `pkg` — өөр багцад хэрэглэхгүй. (2026-09-25 аудит)
+   */
+  const hdRemapRef = useRef<{ pkg: string; map: Map<number, number> } | null>(null);
   /** `previewing`-ийн одоогийн утга — async урсгалд уншихад (2026-09-25) */
   const previewingRef = useRef(previewing);
   useEffect(() => { previewingRef.current = previewing; }, [previewing]);
@@ -832,6 +844,8 @@ export function Huvaari({
   }, [isWide, isReview]);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
+  /** «Улсын комисс» автомат нэмэлтийн мэдэгдэл — `note`-оос ТУСДАА: ноорог сэргээх эффект `note`-ыг дардаг (2026-09-25 аудит) */
+  const [komissNote, setKomissNote] = useState('');
 
   const [draft, setDraft] = useState<Draft>(new Map());
   /**
@@ -1074,12 +1088,12 @@ export function Huvaari({
        `save` нь `sc.start[b]`/`sc.gStart[b]`/`sc.aStart[b]` нэрээр бичдэг тул
        мөрийн баганад шууд бичигдэнэ. ЗӨВХӨН ЭНД опт-ин — FillNew/дашбоард/
        нэгтгэл `loadSchema(pkg)`-ээр хоосон блок хэвээр (`Schema.synthetic`). */
+    setKomissNote('');
+    hdRemapRef.current = null;
     loadSchema(pkg, { synthetic: true })
       .then(async (schema) => {
-        const r = await loadRows(pkg, schema);
+        let r = await loadRows(pkg, schema);
         if (!alive) return;
-        setSc(schema);
-        setRows(r.rows);
         /*
          * «УЛСЫН КОМИСС» АВТОМАТ (2026-09-28, хэрэглэгчийн сонголт): төлөвлөгөөт
          * хуваарийг төлөвлөх эрхтэй хүн нээхэд багцын төгсгөлд тэр мөр байхгүй
@@ -1087,6 +1101,14 @@ export function Huvaari({
          * дахин татна. ⚠️ Алдаа нь улаан баннер БИШ — хуваарь нээгдэх ёстой;
          * зөвхөн тэмдэглэл. ⚠️ Эрхийг ref-ээр уншина — эффектийн deps `[pkg]`
          * хэвээр (эрх ирэх бүрд дахин ачаалахгүй; lib түвшинд давхар шалгана).
+         *
+         * ⚠️ 2026-09-25 аудит: `setRows` ГАНЦ УДАА — ensure-ийн ӨМНӨ биш, ДАРАА.
+         *    Урьд нь хуучин мөрүүд эхлээд тавигдаж, хуваалцсан ноорогийн сэргээх
+         *    эффект тэдгээр дээр ажиллаад, дараа нь шинэ жааз (`r2`, бүх OID шинэ)
+         *    ирэхэд бүх нүд «мөр алга» болж ноорог өнчирдөг байв. Одоо шинэ жааз
+         *    бичигдсэн бол хуучин→шинэ oid зураглалыг (`remapOids`, хадгалахтай ижил
+         *    дүрэм) `hdRemapRef`-д тавьж, сэргээх эффект нооргийг зөөж хэрэглэнэ.
+         *    `busy` бичилт дуустал үлдэнэ — мөр хоосон харагдахаас дээр.
          */
         if (!review && komissGateRef.current() && !findKomissRow(r.rows)) {
           const res = await ensureKomissRow(pkg.key);
@@ -1094,13 +1116,16 @@ export function Huvaari({
           if (res.ok && res.added) {
             const r2 = await loadRows(pkg, schema);
             if (!alive) return;
-            setRows(r2.rows);
-            setNote(tr('«Улсын комисс» ажилбар багцын төгсгөлд нэмэгдлээ.'));
+            hdRemapRef.current = { pkg: pkg.key, map: remapOids(r.rows, r2.rows) };
+            r = r2;
+            setKomissNote(tr('«Улсын комисс» ажилбар багцын төгсгөлд нэмэгдлээ.'));
           } else if (!res.ok) {
             console.error('[selbe] улсын комиссын мөр нэмэгдсэнгүй:', res.error);
-            setNote(tr('«Улсын комисс» ажилбар нэмэгдсэнгүй: {0}', res.error));
+            setKomissNote(tr('«Улсын комисс» ажилбар нэмэгдсэнгүй: {0}', res.error));
           }
         }
+        setSc(schema);
+        setRows(r.rows);
       })
       .catch((e) => alive && setErr(String((e as Error).message || e)))
       .finally(() => alive && setBusy(false));
@@ -1130,7 +1155,7 @@ export function Huvaari({
        нэг илгээлт нэг `kind` авч явдаг тул таб солиход хагас ноорог үлдвэл
        дараагийн илгээлт хоёр төрлийн хольц болно. `askSwitch` урьдчилан асуудаг. */
     setADraft(new Map()); setResDraft(new Map());
-    setSel(null); setModal(null); setNote(''); setErr('');
+    setSel(null); setModal(null); setNote(''); setKomissNote(''); setErr('');
     setPreviewing(false); setApproving(null); setFlowBox(null); setFlowTxt('');
     setOkRows(new Set()); setBackMarks(null);
     /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
@@ -4732,7 +4757,14 @@ export function Huvaari({
         entries: new Map([...cells].map(([k, c]) => [k, { ...c, at: now, user: meRef.current }])),
         del: new Map(), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
       } : null;
-      const merged = hdMerge(remote, localD);
+      let merged = hdMerge(remote, localD);
+      /* ⚠️ «Улсын комисс» шинэ жааз (2026-09-25 аудит, `hdRemapRef`-ийн ⚠️): алс/локал
+         ноорог хуучин oid-тай тул мөрд тулгахаас ӨМНӨ шинэ oid руу зөөнө; нэг удаа. */
+      const rm = hdRemapRef.current;
+      if (rm && rm.pkg === pkgKeyRef.current) {
+        hdRemapRef.current = null;
+        if (merged) merged = hdRemapDraft(merged, rm.map);
+      }
       hdReady.current = key;
       hdPrevW.current = hdWritableRef.current;
       if (readErr && !fromLocal) setHdSt({ st: 'err', err: readErr });
@@ -5495,6 +5527,12 @@ export function Huvaari({
         <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setNote('')}>
           {note}
           <button type="button" className={h.noteX} onClick={() => setNote('')} aria-label={tr('Хаах')}>×</button>
+        </p>
+      )}
+      {komissNote && (
+        <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setKomissNote('')}>
+          {komissNote}
+          <button type="button" className={h.noteX} onClick={() => setKomissNote('')} aria-label={tr('Хаах')}>×</button>
         </p>
       )}
       {/* ── НЭМЭЛТ АЖЛЫН баннерууд (2026-09-24) — хуваарийн урсгалынхаас тусдаа ── */}

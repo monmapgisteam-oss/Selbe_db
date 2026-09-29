@@ -228,8 +228,9 @@ function UserRoles({
   return (
     <div className={s.aclRole}>
       <div className={s.aclRoleHead}>{title}</div>
-      {lines.map((l) => (
-        <div key={l.role} className={s.aclUser}>
+      {/* ⚠️ 2026-09-25: `role` ДАВХАРДАЖ болно (хуучин мөр нэг үүрэгт хоёр grant) — индекс нэмнэ */}
+      {lines.map((l, i) => (
+        <div key={`${l.role}|${i}`} className={s.aclUser}>
           <span className={s.aclEmpty} style={{ minWidth: 96 }}>{roleLabel(kind, l.role)}</span>
           <span className={s.aclName}>{bagtsText(l.bagts)}</span>
         </div>

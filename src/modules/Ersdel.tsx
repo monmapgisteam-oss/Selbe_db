@@ -95,6 +95,17 @@ import e from './ersdel.module.css';
 const INITIAL_IDS: string[] = [];
 
 /**
+ * Хоёр талбайн цагираг ЯГ ижил үү (2026-09-25, аудит 8) — `SketchViewModel`-ийн
+ * `update … complete` нь өөрчлөлтгүй товшилтод ч ирдэг; ижил бол `area`-г солихгүй
+ * (эффект нь объектын ижилтэйгээр үр дүнг арилгадаг).
+ */
+const sameRings = (a: SimArea, b: SimArea): boolean =>
+  a.length === b.length && a.every((ring, i) => {
+    const r2 = b[i];
+    return ring.length === r2.length && ring.every((p, j) => p[0] === r2[j][0] && p[1] === r2[j][1]);
+  });
+
+/**
  * ҮНЭЛГЭЭНИЙ ҮНДСЭН БАГЦ — зурагт НЭГ Ч давхарга асаагаагүй үед шинжилгээ юуг
  * тоолох вэ.
  *
@@ -443,6 +454,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * ЗАГВАРЧЛАХ ТАЛБАЙ — хэрэглэгчийн зурсан полигон (WM цагирагууд).
    * ⚠️ `null` бол өндрийн торны БҮХ талбай (3.6 × 3.6 км).
    */
+  /* ⚠️ 2026-09-25: ЗӨВХӨН объектын ижилтэй эффект (`prev.area !== area`) тул ижил
+     цагираг = ижил объект байх ёстой (`sameRings` — `svm.on('update')`). */
   const [area, setArea] = useState<SimArea | null>(null);
   const [drawing, setDrawing] = useState(false);
   /**
@@ -588,7 +601,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* Зурсны дараа чирж засварлавал домэйныг дагуулна */
       if (ev.state !== 'complete') return;
       const g = ev.graphics[0]?.geometry as __esri.Polygon | undefined;
-      if (g?.rings?.length) setArea(g.rings.map((r) => r.map((p) => [p[0], p[1]])));
+      if (!g?.rings?.length) return;
+      const next: SimArea = g.rings.map((r) => r.map((p) => [p[0], p[1]]));
+      /* ⚠️ 2026-09-25 (аудит 8): `update … complete` нь полигон дээр ЗҮГЭЭР ДАРААД
+         (сонгоод) гарахад ч ирдэг — цагираг өөрчлөгдөөгүй атлаа шинэ массив өгвөл
+         доорх `area` эффект үр дүнг арилгаж, хэрэглэгч бодсон загварчлалаа алддаг
+         байв. Ижил бол хуучин объектоо хадгална (эффект хөдлөхгүй). */
+      setArea((prev) => (prev && sameRings(prev, next) ? prev : next));
     });
     areaLayerRef.current = gl;
     svmRef.current = svm;

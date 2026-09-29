@@ -293,7 +293,11 @@ function pkgIssues(
     const missing = ['tuh', 'chanar', 'habea', 'tug', 'cheng']
       .filter((r) => noOther(cA, chanar[r] ?? []));
     if (missing.length) {
-      out.push({ tone: 'bad', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
+      /* ⚠️ 2026-09-25 (аудит 8): `warn`, `bad` БИШ — 5 үүрэг БҮГД нэг төрөлд хэрэггүй
+         (`chanarMs.REVIEWERS_OF`: habea зөвхөн MS-төрөлд, tug — MA · NCR, cheng — MA).
+         Нэг үүрэг дутуу бол ТЭР төрлийн баримт л хүлээнэ, бусад нь явна — толгойн
+         дүрмээр «дутуу ч ажиллана» = `warn`. Матрицад шар. */
+      out.push({ tone: 'warn', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
     }
   }
 

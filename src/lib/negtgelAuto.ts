@@ -186,8 +186,18 @@ export type NegSources = {
   land: number | null;
   /** Орон сууцны багцын биет гүйцэтгэл — `bagtsKey` → 0–100 */
   housing: Map<string, number>;
-  /** Орон сууцны багцын ТӨЛӨВЛӨГӨӨТ хувь (хуваариар, ӨНӨӨДРИЙН байдлаар) — `bagtsKey` → 0–100 */
+  /**
+   * Орон сууцны багцын ТӨЛӨВЛӨГӨӨТ хувь (хуваариар) — `bagtsKey` → 0–100.
+   * ⚠️ 2026-09-25: багц бүрийн ХЭМЖИЛТИЙН ӨДРИЙН байдлаар (`housingAt`), өнөөдрийнх БИШ
+   *    (`housingPlanOf`-ийн ⚠️) — `act`-тай цаг хугацаагаар тэнцүү харьцуулалт.
+   */
   housingPlan: Map<string, number>;
+  /**
+   * Орон сууцны багцын ХЭМЖИЛТИЙН ОГНОО — `bagtsKey` → «YYYY-MM-DD» (блокуудын
+   * «Б.» мөрийн хамгийн сүүлийн бөглөлт, `blockProgress.date`). Сонголттой —
+   * зөвхөн `housingPlan`-ийг бодоход хэрэглэгдсэн; тест/хуучин дуудагч өгөхгүй.
+   */
+  housingAt?: Map<string, string>;
   /**
    * БЛОКТОЙ (барилгын) бөглөх хуудастай багцууд — `bagtsKey`.
    * ⚠️ 2026-09-25: эдгээрийн хэмжилт/хуваарь дутуу бол Cashflow руу УНАХГҮЙ
@@ -252,28 +262,44 @@ export async function loadCfWork(): Promise<CfWork[]> {
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /**
- * ОРОН СУУЦНЫ ТӨЛӨВЛӨГӨӨТ ХУВЬ — ӨНӨӨДРИЙН байдлаар (цэвэр функц, тест).
+ * ОРОН СУУЦНЫ ТӨЛӨВЛӨГӨӨТ ХУВЬ — багц бүрийн ХЭМЖИЛТИЙН ӨДРИЙН байдлаар
+ * (цэвэр функц, тест).
  *
  * ⚠️ 2026-09-25: урьд нь ЭНЭ сарын цэг (сарын СҮҮЛИЙН өдрийн утга)-ийг шууд
  *    авдаг тул сарын 1-нд л гэхэд бүтэн сарын төлөвлөгөө «хүлээгдэж» биелэлт
- *    хиймлээр доошилдог байв. Одоо өмнөх сарын эцэс → энэ сарын эцсийн хооронд
- *    өнөөдрийн ЛОКАЛ өдрөөр (`getDate`, `dayKey`-тэй ижил) шугаман завсарлана.
+ *    хиймлээр доошилдог байв. Одоо өмнөх сарын эцэс → тухайн сарын эцсийн
+ *    хооронд ЛОКАЛ өдрөөр (`getDate`, `dayKey`-тэй ижил) шугаман завсарлана —
+ *    `planProgress.planPctAt`-тай ЯГ ижил дүрэм.
+ * ⚠️ 2026-09-25 (аудит 8): ХЭМЖИЛТИЙН ӨДӨР, ӨНӨӨДӨР БИШ. `act` нь блокуудын
+ *    СҮҮЛИЙН бөглөлт (хэдэн долоо хоногийн өмнөх байж болно) атлаа төлөвлөгөө
+ *    нь ӨНӨӨДРИЙНХ байсан тул хуваарийн дагуу явж буй багц «хоцорч байна» гэж
+ *    худал уншигддаг байв. Одоо `atOf` (багц → «YYYY-MM-DD», `NegSources.housingAt`)
+ *    байвал тэр өдрөөр — Finance.lagOf · PkgProg · execReport-той НЭГ дүрэм;
+ *    огноогүй багцад л `now`.
  * ⚠️ Өмнөх сарын цэг байхгүй = хуваарь ЭНЭ сард эхэлсэн → эхлэл 0.
- * ⚠️ Энэ сарын цэг байхгүй бол (муж өнгөрсөн) хамгийн сүүлийн өнгөрсөн цэг;
+ * ⚠️ Тухайн сарын цэг байхгүй бол (муж өнгөрсөн) хамгийн сүүлийн өнгөрсөн цэг;
  *    бүх цэг ирээдүйд бол багц Map-д ОРОХГҮЙ (төлөвлөгөөгүй ≠ 0).
  */
 export function housingPlanOf(
   byBagts: Map<string, Array<{ label: string; pct: number }>>,
   now: Date,
+  atOf?: ReadonlyMap<string, string>,
 ): Map<string, number> {
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const cur = `${y}-${pad2(m + 1)}`;
-  const pd = new Date(y, m, 0);
-  const prev = `${pd.getFullYear()}-${pad2(pd.getMonth() + 1)}`;
-  const frac = now.getDate() / new Date(y, m + 1, 0).getDate();
+  /** «YYYY-MM-DD» → локал огноо; эвдэрсэн бол `null` (→ `now`) */
+  const parse = (d: string | undefined): Date | null => {
+    if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return null;
+    const x = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
+    return Number.isNaN(x.getTime()) ? null : x;
+  };
   const out = new Map<string, number>();
   for (const [k, pts] of byBagts) {
+    const at = parse(atOf?.get(k)) ?? now;
+    const y = at.getFullYear();
+    const m = at.getMonth();
+    const cur = `${y}-${pad2(m + 1)}`;
+    const pd = new Date(y, m, 0);
+    const prev = `${pd.getFullYear()}-${pad2(pd.getMonth() + 1)}`;
+    const frac = at.getDate() / new Date(y, m + 1, 0).getDate();
     let p1: number | null = null;
     let p0: number | null = null;
     let past: { label: string; pct: number } | null = null;
@@ -295,10 +321,11 @@ export function housingPlanOf(
  *   тоо шинэ утгыг дарж бичдэг байв. Дэлгэц нь кэштэйгээ хэвээр (`false`).
  */
 export async function loadNegSources(fresh = false): Promise<NegSources> {
-  const [{ loadLandPct }, L, P, { PKGS }] = await Promise.all([
+  const [{ loadLandPct }, L, P, B, { PKGS }] = await Promise.all([
     import('@/lib/negtgel'),
     import('@/lib/live'),
     import('@/lib/planProgress'),
+    import('@/lib/blockProgress'),
     import('@/modules/sheet/bagts.pkg'),
   ]);
   /* ⚠️ Аль нэг эх уначихвал БҮХЭЛДЭЭ унана (catch-гүй) — хагас эхээр бодож
@@ -306,15 +333,31 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
      тоонуудтай холилдсон «нийт» гарна. Дуудагч хадгалсан утгаа харуулна.
      ⚠️ Муруй нь дэлгэцэнд КЭШТЭЙ (`loadPlanCurveCached`, 2026-09-25) —
      дашбоард ба удирдлагын тайлан нэг хуулбарыг хуваалцана. */
-  const [cf, land, housing, curve] = await Promise.all([
+  const [cf, land, housing, curve, blocks] = await Promise.all([
     loadCfWork(),
     loadLandPct(),
     fresh ? L.loadFillPkgProgressFresh() : L.loadFillPkgProgress(),
     fresh ? P.loadPlanCurve() : P.loadPlanCurveCached(),
+    /* ⚠️ 2026-09-25: `housing`-тай НЭГ кэш (`fillPkgProgressRaw` дотор ижил дуудлага) —
+       нэмэлт хүсэлт үүсэхгүй; зөвхөн блок бүрийн огноо хэрэгтэй. */
+    fresh ? B.loadBlockProgressFresh() : B.loadBlockProgress(),
   ]);
   /* ⚠️ Барилгын (давхартай) хуудас = блоктой багц; 5.x · 6.x · 10 нь блокгүй */
   const housingPkgs = new Set(PKGS.filter((p) => p.floors != null).map((p) => bagtsKey(p.group)));
-  return { cf, land, housing, housingPlan: housingPlanOf(curve.byBagts, new Date()), housingPkgs };
+  /* Багц → блокуудын хамгийн СҮҮЛИЙН бөглөлтийн огноо (`finPhys.buildPhys`-ийн `physAt`-тай ижил дүрэм).
+     Түлхүүр `${bagtsKey}|${blockKey}` (`services.buildingKey`). */
+  const housingAt = new Map<string, string>();
+  for (const [key, cell] of blocks) {
+    const k = key.slice(0, key.indexOf('|'));
+    const d = String(cell.date ?? '').slice(0, 10);
+    if (!k || !/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (d > (housingAt.get(k) ?? '')) housingAt.set(k, d);
+  }
+  return {
+    cf, land, housing,
+    housingPlan: housingPlanOf(curve.byBagts, new Date(), housingAt),
+    housingPkgs, housingAt,
+  };
 }
 
 /* ═══════════════ ТООЦОО ═══════════════ */
@@ -419,6 +462,7 @@ function leafValue(
         const act = src.housing.get(k) ?? null;
         const plan = src.housingPlan.get(k) ?? null;
         if (act != null || plan != null) {
+          /* ⚠️ 2026-09-25: `plan` нь тэр багцын ХЭМЖИЛТИЙН ӨДРИЙН төлөвлөгөө (`housingAt`) */
           return { act, planGu: plan, how: tr('Багцын гүйцэтгэл — блокуудын биет хувь; төлөвлөгөө Хуваариас') };
         }
         /* ⚠️ 2026-09-25: БЛОКТОЙ багц боловч хэмжилт/хуваарь нь ирээгүй (хуудас
@@ -724,6 +768,11 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
     } catch (e) {
       console.warn('[negtgel] автомат шинэчлэл бичигдсэнгүй', e);
       st = { kind: 'error', at: Date.now(), reason: e instanceof Error ? e.message : String(e) };
+      /* ⚠️ 2026-09-25: УНАЛТ 10 минут КЭШЛЭГДЭХГҮЙ — `lastSync` уншилтаас ӨМНӨ
+         тавигддаг тул түр 429/сүлжээний алдаа дараагийн 10 минутын бүх дуудлагад
+         `error` төлөв буцааж, хүснэгт шинэчлэгдэхгүй байв. Тэглэснээр дараагийн
+         кэш хоосрох мөчид дахин оролдоно. */
+      lastSync = 0;
     }
     lastState = st;
     return st;

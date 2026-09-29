@@ -12,9 +12,13 @@
  * (`queryCount` ×3), «ДАРАА» талд бүхэлдээ `brief.ts`-ийн ХАТУУ мөрүүд байв.
  * Үйлчилгээнүүдийг хэмжихэд гурван бүлэг өгөгдөл ОГТ ХАРАГДАХГҮЙ байсныг
  * илрүүлэв:
- *   1. Гэр хорооллын барилгын ТАЛБАЙ (м², дундаж ул мөр)
- *   2. Нийгмийн барилгын АМЬД ХҮЧИН ЧАДАЛ (`Huchin_chadal`, нийт талбай)
- * Хоёулаа энд ачаалагдаж, чарт болж гарна.
+ *   1. Гэр хорооллын барилгын ТАЛБАЙ (м², дундаж ул мөр) — энд ачаалагдаж,
+ *      чарт болж гарна (`loadGerBuilt`).
+ *   2. Нийгмийн барилгын АМЬД ХҮЧИН ЧАДАЛ (`Huchin_chadal`, нийт талбай) —
+ *      ⚠️ 2026-09-25 (аудит 8): ачаалагч (`loadSocPlanned`) ХАСАГДАВ. Түүний
+ *      карт `Irged.tsx`-ээс 2026-09-06-нд устсанаас хойш дуудагчгүй үхсэн код
+ *      байсан; «Дараа» талын нийгмийн мөр `brief.SOCIAL`-ийн хатуу утгаар.
+ *      Хэрэгтэй болбол `git` түүхээс (`socPlannedFull`, `IRGED_SOC`) сэргээнэ.
  *
  * ⚠️ ГУРАВ ДАХЬ нь — нүхэн жорлонгийн эрсдэлийн загвар (`PLI_zone` ·
  * `Toilet_zon` · `Ground_wat` · `UB_Flood_r`) — мөн энд байсныг ХАСАВ:
@@ -27,14 +31,9 @@
  * порталаас бичигддэггүй тул `dataBus`-аар хүчингүй болох шалтгаангүй.
  */
 
-import { count, queryFeatures, queryGroup, sum, type Row } from '@/lib/query';
+import { count, queryGroup, sum, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
-import { t as tr } from '@/lib/i18nCore';
-import {
-  IRGED_BUILT, IRGED_SOC,
-  LAYER_BY_ID, PKG_BY_FAMILY,
-  layerUrl,
-} from '@/lib/services';
+import { IRGED_BUILT, LAYER_BY_ID } from '@/lib/services';
 
 /* ══════════════════ Гэр хорооллын барилга ══════════════════ */
 
@@ -78,124 +77,3 @@ export const loadGerBuilt = cached<GerBuiltRow[]>(async () => {
     .filter((x) => x.type !== '')
     .sort((a, b) => b.n - a.n);
 });
-
-/* ══════════════════ Төлөвлөсөн нийгмийн байгууламж ══════════════════ */
-
-export type SocPlannedRow = {
-  /** Зориулалтын АМЬД утга — бүлгийн түлхүүр ба SQL шүүлт */
-  purpose: string;
-  /** Тухайн зориулалтын барилгын тоо */
-  n: number;
-  /** Нийт хүчин чадал — `null` бол чадал бүртгэгдээгүй (0 БИШ) */
-  capacity: number | null;
-  /** Барилгын нийт талбай, м² */
-  floorArea: number;
-  /** Хамгийн их давхар */
-  floors: number | null;
-  /** Тухайн бүлгийн давхаргын id-ууд — газрын зурагт шүүхэд */
-  layerIds: string[];
-};
-
-/**
- * ⚠️ 2026-09-25 аудит: `failed` — ТАТАГДААГҮЙ давхаргын id. Урьд нь зөвхөн
- *    `console.warn` тул дутуу нийлбэр дэлгэцэд «зөв» мэт харагдаж, тэр нь
- *    сешн дуустал КЭШЛЭГДДЭГ байв. Дуудагч `failed.length`-ээр ил хэлнэ.
- */
-export type SocPlanned = { rows: SocPlannedRow[]; failed: string[] };
-
-/** Хэсэгчилсэн үр дүн — `cached`-д reject болж очно (кэшлэгдэхгүй), дуудагчид буцна. */
-class SocPartial extends Error {
-  constructor(readonly result: SocPlanned) {
-    super(tr('Нийгмийн {0} давхарга татагдсангүй', result.failed.length));
-  }
-}
-
-const S = IRGED_SOC.fields;
-
-/**
- * Нийгмийн 10 давхаргаас атрибут татаж зориулалтаар нэгтгэнэ.
- *
- * ⚠️ ДАВХАРГА БҮР 1–2 объекттой тул `outStatistics` хийх утгагүй — мөрүүдийг
- * шууд татаад клиент талд нэгтгэнэ (10 хөнгөн хүсэлт, геометргүй).
- *
- * ⚠️ ЗОРИУЛАЛТААР бүлэглэнэ, давхаргаар БИШ: «Багц 20.1…20.5» тав нь бүгд
- * «Цэцэрлэгийн барилга» бөгөөд хэрэглэгчид тав тусад нь биш НЭГ мөр болж
- * харагдах нь зөв (`brief.ts`-ийн ӨМНӨ/ДАРАА мөртэй зэрэгцүүлэхэд ч ижил грейн).
- *
- * ⚠️ `outFields: ['*']` — НЭРЛЭСЭН талбарын жагсаалт БОЛОХГҮЙ. Давхаргуудын
- * схем ЖИГД БИШ: `data`/[0] дээр `Давхрын_тоо_max` байхгүй (`_min` байна) бөгөөд
- * ArcGIS байхгүй талбар нэрлэхэд БҮХ асуулгыг татгалздаг — тэр давхарга
- * бүхэлдээ унаж, цэцэрлэгийн чадал 1,200-ын оронд 960 болж байв
- * (`IRGED_SOC.floorFields`-ийн тайлбарыг үз). Мөр бүр 1–2 ширхэг, геометргүй
- * тул `*` нь ямар ч нэмэлт өртөггүй бөгөөд схемийн хазайлтад дархлаатай.
- *
- * ⚠️ `Promise.allSettled` — нэг давхарга унавал (шинэ багц нэмэгдэх үед
- * түр тохиолддог) БҮХ карт унахгүй, үлдсэн нь хэвийн гарна. Гэхдээ ЧИМЭЭГҮЙ
- * биш: унасныг `console.warn`-д бичнэ, эс бөгөөс дээрх шиг дутуу нийлбэр
- * дэлгэц дээр «зөв» мэт харагдана.
- */
-const socPlannedFull = cached<SocPlanned>(async () => {
-  const ids = PKG_BY_FAMILY.soc ?? [];
-  const settled = await Promise.allSettled(
-    ids.map(async (id) => {
-      const L = LAYER_BY_ID[id];
-      if (!L) return [];
-      const rows = await queryFeatures(layerUrl(L), { outFields: ['*'] });
-      return rows.map((r) => ({ id, r }));
-    }),
-  );
-
-  const by = new Map<string, SocPlannedRow>();
-  const failed: string[] = [];
-  settled.forEach((s, k) => {
-    if (s.status === 'rejected') {
-      console.warn(`[selbe] нийгмийн давхарга татагдсангүй: ${ids[k]} — ${s.reason}`);
-      failed.push(ids[k]);
-    }
-  });
-  /* ⚠️ БҮГД унасан бол үр дүн БИШ — хоосон жагсаалт «төлөвлөсөн барилга алга» гэж уншигдана. */
-  if (ids.length > 0 && failed.length === ids.length) {
-    throw new Error(tr('Нийгмийн {0} давхарга бүгд татагдсангүй', failed.length));
-  }
-  for (const s of settled) {
-    if (s.status !== 'fulfilled') continue;
-    for (const { id, r } of s.value) {
-      const purpose = String(r[S.purpose] ?? '').trim() || tr('Тодорхойгүй');
-      const cur = by.get(purpose) ?? {
-        purpose, n: 0, capacity: null, floorArea: 0, floors: null, layerIds: [],
-      };
-      cur.n += 1;
-      const cap = r[S.capacity];
-      // ⚠️ `null` чадлыг 0 гэж НЭМЭХГҮЙ — бүлэг бүхэлдээ чадалгүй бол `null` үлдэнэ
-      if (cap != null && Number.isFinite(Number(cap))) {
-        cur.capacity = (cur.capacity ?? 0) + Number(cap);
-      }
-      cur.floorArea += Number(r[S.floorArea] ?? 0);
-      /* ⚠️ Давхрын талбарын нэр давхарга бүрд ижил БИШ — олдсон эхнийхийг
-         авна (`IRGED_SOC.floorFields`). Аль нь ч байхгүй бол `null` үлдэнэ. */
-      const fName = IRGED_SOC.floorFields.find((f) => r[f] != null);
-      const fl = fName == null ? NaN : Number(r[fName]);
-      if (Number.isFinite(fl)) cur.floors = Math.max(cur.floors ?? 0, fl);
-      if (!cur.layerIds.includes(id)) cur.layerIds.push(id);
-      by.set(purpose, cur);
-    }
-  }
-  /* Чадалтай нь дээр, дараа нь барилгын тоогоор — «хамгийн их хүн хамрах» нь
-     эхэнд байх нь энэ харагдацын гол асуулт. */
-  const rows = [...by.values()].sort(
-    (a, b) => (b.capacity ?? -1) - (a.capacity ?? -1) || b.n - a.n,
-  );
-  /* ⚠️ Хэсэгчилсэн бол reject → `cached` хадгалахгүй, дараагийн дуудлага дахин оролдоно. */
-  if (failed.length) throw new SocPartial({ rows, failed });
-  return { rows, failed };
-});
-
-/** Төлөвлөсөн нийгмийн барилга. Хэсэгчилсэн үед `failed` дүүрэн, кэшлэгдэхгүй. */
-export async function loadSocPlanned(): Promise<SocPlanned> {
-  try {
-    return await socPlannedFull();
-  } catch (e) {
-    if (e instanceof SocPartial) return e.result;
-    throw e;
-  }
-}

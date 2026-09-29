@@ -40,6 +40,7 @@ import {
   type MsDoc, type MsBody, type Reviewer, type Review, type Reviews, type Rep, type Verdict, type VerdictCode,
   type DocKind, type AnyBody, type NcrCorrection, type InspBody, type InspCheck, type Meta, type Bounce, type BounceReason,
   type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult, type NcrProposed, EMPTY_BODY,
+  type MaBody, type NcrBody, EMPTY_COMMON, DISCIPLINES, isInspCheck,
 } from './chanarMs';
 import { isAuthorFor, reviewerRolesFor } from './chanarAcl';
 import { tokenParam, authToken } from '@/lib/authToken';
@@ -292,8 +293,12 @@ export function parseReviews(raw: unknown): Reviews {
     const j = JSON.parse(String(raw ?? '{}')) as Record<string, Partial<Review>>;
     if (!j || typeof j !== 'object') return out;
     /* ⚠️ 2026-09-28: дөрвөн үүрэг (tug нэмэгдсэн), гурван шийдвэр (AN нэмэгдсэн);
-       хуучин JSON-д tug байхгүй → null, хуучин 2 утга хэвээр уншигдана. */
+       хуучин 2 утга хэвээр уншигдана.
+       ⚠️ 2026-09-25: ТҮЛХҮҮР ОГТ БАЙХГҮЙ (хуучин мөр, тэр үүрэг урсгалд ороогүй үед
+       илгээгдсэн) → `undefined`; байгаа ч шийдвэргүй → `null`. `requiredReviewers`
+       дараалсан төрөлд `undefined`-ийг шаардахгүй (шийдвэргүй хуучин MA cheng хүлээхгүй). */
     for (const r of ALL_REVIEWERS) {
+      if (!Object.hasOwn(j, r)) { out[r] = undefined; continue; }
       const v = j[r];
       if (!v || typeof v !== 'object') continue;
       const who = s(v.who)?.toLowerCase();
@@ -354,9 +359,20 @@ export function parseBounce(raw: unknown): Bounce | null {
   } catch { return null; }
 }
 
+/** `hyanalt` баганын урт — `createTable`-ийн `str(F.reviews, 8000)`-той ижил */
+const HYANALT_MAX = 8000;
+
 /** `hyanalt` баганы JSON — хянагчид + хариу + буцаалтын тэмдэг нэг дор */
-const reviewsJson = (reviews: Reviews, rep: Rep | null, bounce: Bounce | null = null): string =>
-  JSON.stringify({ ...reviews, ...(rep ? { rep } : {}), ...(bounce ? { bounce } : {}) });
+const reviewsJson = (reviews: Reviews, rep: Rep | null, bounce: Bounce | null = null): string => {
+  const json = JSON.stringify({ ...reviews, ...(rep ? { rep } : {}), ...(bounce ? { bounce } : {}) });
+  if (json.length <= HYANALT_MAX || !rep) return json;
+  /* ⚠️ 2026-09-25: `hyanalt` 8000 тэмдэгт — `chanarMs.NOTE_MAX`/`REP_NOTE_MAX` хязгаараар
+     хэвийн үед багтана; сүүлийн хамгаалалт: хариун дахь саналын ХУВИЛБАРЫГ (anText ·
+     rReasons — бүтэн текст `reviews[r].note`-д хэвээр) хаяж, бичилтийг унагахгүй. */
+  const { anText: _a, rReasons: _r, ...slim } = rep;
+  void _a; void _r;
+  return JSON.stringify({ ...reviews, rep: slim, ...(bounce ? { bounce } : {}) });
+};
 
 function toDoc(a: Attrs): MsDoc | null {
   const oid = Number(a[F.oid]);
@@ -428,9 +444,17 @@ const HEAD = [
   F.status, F.author, F.sentAt, F.reviews, F.decidedAt,
 ].join(',');
 
-/** (bagts, seq)-д `rev`-ээс дээш эсвэл тэнцүү хувилбар аль хэдийн бий юу */
-async function newerExists(bagts: string, seq: number, rev: number): Promise<boolean> {
-  const rows = await query(`${F.bagts} = N'${bagts.replace(/'/g, "''")}' AND ${F.seq} = ${Number(seq)} AND ${F.rev} >= ${Number(rev)}`, F.oid);
+/**
+ * (kind, bagts, seq)-д `rev`-ээс дээш эсвэл тэнцүү хувилбар аль хэдийн бий юу.
+ * ⚠️ 2026-09-25: ТӨРЛӨӨР шүүнэ — урьд нь `kind`-гүй тул нэг багцын MS-0003 rev1
+ *    байхад MA-0003-ийн буцаагдсанаас засварлах/дахин илгээх/хавсралт солих
+ *    бүгд «шинэ хувилбар бий» гэж хаагддаг байв (`seq` төрөл тутамд тусдаа тоологддог).
+ */
+async function newerExists(kind: DocKind, bagts: string, seq: number, rev: number): Promise<boolean> {
+  const rows = await query(
+    `${F.kind} = '${kind}' AND ${F.bagts} = N'${bagts.replace(/'/g, "''")}' AND ${F.seq} = ${Number(seq)} AND ${F.rev} >= ${Number(rev)}`,
+    F.oid,
+  );
   return rows.length > 0;
 }
 
@@ -468,7 +492,7 @@ async function attachDeny(oid: number): Promise<string | null> {
      БҮХ хувилбараас цуглуулж харуулдаг тул rev0 (буцаагдсан) дээрх гэрчилгээг
      rev1 батлагдсаны ДАРАА солих боломжтой байв — батлагдсан баримтын нотолгоо
      чимээгүй өөрчлөгдөнө. Шинэ хувилбар байвал зөвхөн сүүлийнх нь засагдана. */
-  if (await newerExists(doc.bagts, doc.seq, doc.rev + 1)) return tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.');
+  if (await newerExists(doc.kind, doc.bagts, doc.seq, doc.rev + 1)) return tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.');
   return null;
 }
 
@@ -514,16 +538,65 @@ export async function loadMeta(oid: number): Promise<Meta | null> {
 const authorCap = (kind: DocKind): CapKey => (kind === 'NCR' ? 'chanarReview' : 'chanarAuthor');
 
 /**
- * Зохиогчийн БАГЦЫН эрх — NCR: тухайн багцад tuh эсвэл chanar хянагч;
- * бусад: гүйцэтгэгч (`isAuthorFor`). `null` = зөвшөөрнө, мөр = алдаа.
+ * Зохиогчийн БАГЦЫН эрх — NCR: тухайн багцад NCR-ийн хянагч (`REVIEWERS_OF.NCR`:
+ * tuh · chanar · tug); бусад: гүйцэтгэгч (`isAuthorFor`). `null` = зөвшөөрнө, мөр = алдаа.
+ * ⚠️ 2026-09-25: tug (ТМ) нэмэгдсэн — `Chanar.tsx` (`ncrOpener`) ба `reopenDoc`
+ *    `REVIEWERS_OF.NCR`-оор зөвшөөрдөг атал энд tuh|chanar л байсан тул ТМ-д
+ *    «+ Шинэ үл тохирол» товч гарч, хадгалахад татгалздаг байв. Нэг эх сурвалж.
  */
+const NCR_OPEN_DENY = () => tr('Энэ багцад үл тохирол нээх эрхгүй — ТУХ, Чанарын хянагч эсвэл ТУГ л нээнэ.');
 function authorDeny(kind: DocKind, who: string, bagts: string): string | null {
   if (kind === 'NCR') {
     const roles = reviewerRolesFor(who, bagts);
-    return roles.includes('tuh') || roles.includes('chanar') ? null
-      : tr('Энэ багцад үл тохирол нээх эрхгүй — ТУХ эсвэл Чанарын хянагч л нээнэ.');
+    return REVIEWERS_OF.NCR.some((r) => roles.includes(r)) ? null : NCR_OPEN_DENY();
   }
   return isAuthorFor(who, bagts) ? null : tr('Энэ багцад аргачлал ирүүлэх эрхгүй.');
+}
+
+/**
+ * ⚠️ 2026-09-25: КЛИЕНТИЙН БИЕЭС СЕРВЕРИЙН ЭЗЭМШИЛТЭЙ ТАЛБАРЫГ ХУУЛНА. Урьд нь
+ *    `createDraft`/`saveDraft` дамжуулсан биеийг шууд бичдэг тул консолоос
+ *    MA материалыг `locked: true, verdict: 'A'` (дахин хянагдахгүй), NCR-д
+ *    `correctionAt`/`closure`/`reopened`, `revHistory`/`bounces`-ийг дурын
+ *    утгаар бичих боломжтой байв. Одоо:
+ *      · `revHistory` · `bounces` — ЗӨВХӨН серверийн мөрөөс (append-only, шинэ мөрд хоосон)
+ *      · MA `materials[i].locked/verdict` — серверийн ТҮГЖИГДСЭН материалаас (индекс,
+ *        эс бол нэрээр тулгана — зохиогч түгжигдээгүй мөр хасахад индекс шилждэг);
+ *        бусад нь `locked:false, verdict:null`
+ *      · NCR `correction` · `correctionAt` · `closure` · `reopened` — серверээс
+ *        (`initialVerdict`/`initialReviewedBy` нээгчийн маягтын талбар хэвээр)
+ *    `server` = null бол шинэ мөр (createDraft).
+ */
+function ownClientBody(kind: DocKind, client: AnyBody, server: AnyBody | null): AnyBody {
+  const sc = server ? parseCommon(server) : structuredClone(EMPTY_COMMON);
+  const passed = client as Partial<typeof sc>;
+  const out: AnyBody = {
+    ...client,
+    revHistory: sc.revHistory,
+    bounces: sc.bounces,
+    revNote: passed.revNote ?? sc.revNote,
+  } as AnyBody;
+  if (kind === 'MA') {
+    const cm = (out as MaBody).materials ?? [];
+    const sm = server ? (server as MaBody).materials ?? [] : [];
+    const used = new Set<number>();
+    (out as MaBody).materials = cm.map((m, i) => {
+      let j = sm[i]?.locked && !used.has(i) && sm[i].name.trim() === m.name.trim() ? i : -1;
+      if (j < 0) j = sm.findIndex((x, k) => x.locked && !used.has(k) && x.name.trim() === m.name.trim());
+      if (j < 0) return { ...m, locked: false, verdict: null };
+      used.add(j);
+      return { ...m, locked: true, verdict: sm[j].verdict };
+    });
+  }
+  if (kind === 'NCR') {
+    const sn = server ? (server as NcrBody) : null;
+    const n = out as NcrBody;
+    n.correction = sn?.correction ?? { text: '', completedAt: null, steps: [] };
+    n.correctionAt = sn?.correctionAt ?? null;
+    n.closure = sn?.closure ?? null;
+    n.reopened = sn?.reopened ?? 0;
+  }
+  return out;
 }
 
 const editOk = (res: unknown): boolean => {
@@ -585,7 +658,7 @@ export async function createDraft(args: {
   if (deny) return { ok: false, error: deny };
   /* Боловсруулсан огноо — анхдагч үүсгэсэн өдөр */
   const meta = normalizeMeta((args.body as { meta?: unknown }).meta);
-  const body: AnyBody = { ...args.body, meta: { ...meta, preparedAt: meta.preparedAt ?? Date.now() } };
+  const body: AnyBody = { ...ownClientBody(kind, args.body, null), meta: { ...meta, preparedAt: meta.preparedAt ?? Date.now() } };
   const existing = await loadDocs(kind);
   const seqScope = kind === 'NCR' ? null : args.bagts;
   const seq = nextSeq(existing, seqScope);
@@ -671,16 +744,10 @@ export async function saveDraft(args: {
   if (!editable) {
     return { ok: false, error: tr('Хянагдаж буй эсвэл батлагдсан баримтыг засах боломжгүй.') };
   }
-  /* ⚠️ 2026-09-28: `revHistory` · `bounces` СЕРВЕРИЙН мөрөөс хадгална — UI бие
-     эдгээрийг дамжуулаагүй бол алдагдахгүй (дамжуулсан бол дамжуулсан нь). */
-  const serverCommon = parseCommon(cur[0][F.body]);
-  const passed = args.body as Partial<typeof serverCommon>;
-  const body: AnyBody = {
-    ...args.body,
-    revHistory: passed.revHistory ?? serverCommon.revHistory,
-    bounces: passed.bounces ?? serverCommon.bounces,
-    revNote: passed.revNote ?? serverCommon.revNote,
-  } as AnyBody;
+  /* ⚠️ 2026-09-28: `revHistory` · `bounces` СЕРВЕРИЙН мөрөөс хадгална.
+     ⚠️ 2026-09-25: дамжуулсан ч ХАЯГДАНА (append-only) — MA түгжээ, NCR-ийн серверийн
+     талбарууд мөн (`ownClientBody`). */
+  const body = ownClientBody(doc.kind, args.body, parseBodyOf(doc.kind, cur[0][F.body]));
   try {
     if (doc.status === MS_STATUS.draft) {
       /* Ноорог — ижил мөрийг шинэчилнэ */
@@ -703,7 +770,7 @@ export async function saveDraft(args: {
     const rev = doc.rev + 1;
     /* ⚠️ ХУУЧИН буцаагдсан мөрөөс дахин засварлахыг хориглоно (2026-09-17): түүхээс
        rev N-ийг сонгоод засвал rev N+1 ДАВХАР үүсч, `latest()` нэгийг нь нуудаг байв. */
-    if (await newerExists(doc.bagts, doc.seq, rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
+    if (await newerExists(doc.kind, doc.bagts, doc.seq, rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
     const no = docNo(doc.bagts, doc.seq, rev, kind);
     if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
     /* ⚠️ 2026-09-28: rev+1 ноорогт хувилбарын шалтгаан ЗААВАЛ; MA-д A/AN материал түгжигдэнэ */
@@ -762,7 +829,11 @@ export async function submitDoc(args: {
     if (r.rev === doc.rev && r.rev > 0 && (args.revNote?.trim() || !common.revHistory.some((h) => h.rev === r.rev))) {
       const cb = parseBodyOf(doc.kind, bodyJson);
       const has = common.revHistory.some((h) => h.rev === r.rev);
-      const nb = has ? { ...cb, revNote } : nextRevisionBody(doc.kind, cb, { rev: r.rev, reason: revNote, by: act.who });
+      /* ⚠️ 2026-09-25: түүхийн мөр аль хэдийн байвал ШАЛТГААНЫГ нь ч шинэчилнэ — урьд нь
+         зөвхөн `revNote` солигдож, «Өөрчлөлтийн түүх» хуучин шалтгаанаа харуулдаг байв. */
+      const nb = has
+        ? { ...cb, revNote, revHistory: common.revHistory.map((h) => (h.rev === r.rev ? { ...h, reason: revNote } : h)) }
+        : nextRevisionBody(doc.kind, cb, { rev: r.rev, reason: revNote, by: act.who });
       bodyJson = JSON.stringify(nb);
     }
     if (r.rev === doc.rev) {
@@ -778,7 +849,7 @@ export async function submitDoc(args: {
     }
     /* Дахин илгээлт — ШИНЭ мөр, шинэ дугаар (rev+1); бие `nextRevisionBody` (MA түгжээ, түүх) */
     const kind = doc.kind;
-    if (await newerExists(doc.bagts, doc.seq, r.rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
+    if (await newerExists(doc.kind, doc.bagts, doc.seq, r.rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
     const no = docNo(doc.bagts, doc.seq, r.rev, kind);
     if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
     const nextBody = nextRevisionBody(kind, parseBodyOf(kind, cur[0][F.body]), { rev: r.rev, reason: revNote, by: act.who });
@@ -973,7 +1044,13 @@ export async function saveClientChecks(args: {
   if (!reviewerRolesFor(act.who, doc.bagts).includes('tuh')) return { ok: false, error: tr('Захиалагчийн баганыг зөвхөн ТУХ-ийн хяналтын инженер бөглөнө.') };
   if (doc.author.trim().toLowerCase() === act.who) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   if (doc.reviews.tuh) return { ok: false, error: tr('ТУХ шийдвэр өгсний дараа багана өөрчлөгдөхгүй.') };
-  const body: InspBody = normalizeInsp(safeJson(cur[0][F.body]));
+  /* ⚠️ 2026-09-25: утгыг ШАЛГАНА — урьд нь дурын мөр `client`-д бичигдэж, дараагийн
+     уншилтад (`normalizeInsp`) чимээгүй null болдог байв. */
+  if (!Array.isArray(args.client) || args.client.some((c) => c !== null && !isInspCheck(c))) {
+    return { ok: false, error: tr('Захиалагчийн баганын утга танигдсангүй (OK · NA · X)') };
+  }
+  const body: InspBody = normalizeInsp(safeJson(cur[0][F.body]), doc.kind);
+  if (args.client.length > body.items.length) return { ok: false, error: tr('Захиалагчийн багана мөрийн тооноос олон.') };
   const items = body.items.map((it, i) => ({ ...it, client: i < args.client.length ? args.client[i] : it.client }));
   try {
     const j = await req(`${url}/applyEdits`, {
@@ -1033,7 +1110,7 @@ export async function reopenDoc(args: { oid: number; who: string }): Promise<Res
   const doc = toDoc(cur[0]);
   if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
   const roles = reviewerRolesFor(act.who, doc.bagts);
-  if (!REVIEWERS_OF.NCR.some((r) => roles.includes(r))) return { ok: false, error: tr('Энэ багцад үл тохирол нээх эрхгүй — ТУХ эсвэл Чанарын хянагч л нээнэ.') };
+  if (!REVIEWERS_OF.NCR.some((r) => roles.includes(r))) return { ok: false, error: NCR_OPEN_DENY() };
   const body = normalizeNcr(safeJson(cur[0][F.body]));
   const r = reopenPure(doc, body);
   if (!r.ok) return r;
@@ -1104,6 +1181,9 @@ export async function ackRepDoc(args: { oid: number; who: string }): Promise<Res
   const { url, doc } = ld;
   const act = actor(args.who, authorCap(doc.kind));
   if (!('who' in act)) return act;
+  /* ⚠️ 2026-09-25: багцын эрх хасагдсан зохиогч хариу хүлээн авахгүй — `saveDraft`-ийн ижил */
+  const deny = authorDeny(doc.kind, act.who, doc.bagts);
+  if (deny) return { ok: false, error: deny };
   const r = ackPure(doc, { who: act.who });
   if (!r.ok) return r;
   return update(url, { [F.oid]: args.oid, [F.reviews]: reviewsJson(doc.reviews, r.rep, doc.bounce ?? null) });
@@ -1144,7 +1224,7 @@ export async function newRevisionDoc(args: { oid: number; who: string; reason: s
   if (deny) return { ok: false, error: deny };
   const r = newRevisionPure(doc, { who: act.who, reason: args.reason });
   if (!r.ok) return r;
-  if (await newerExists(doc.bagts, doc.seq, r.rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
+  if (await newerExists(doc.kind, doc.bagts, doc.seq, r.rev)) return { ok: false, error: tr('Энэ баримтын шинэ хувилбар аль хэдийн бий — жагсаалтаас сүүлийн хувилбарыг нээнэ үү.') };
   const no = docNo(doc.bagts, doc.seq, r.rev, doc.kind);
   if (!no) return { ok: false, error: tr('Баримтын дугаар үүсгэж чадсангүй.') };
   const nextBody = nextRevisionBody(doc.kind, parseBodyOf(doc.kind, row[F.body]), { rev: r.rev, reason: r.reason, by: act.who });
@@ -1203,7 +1283,40 @@ export async function saveMeta(args: {
   const doc = toDoc(cur[0]);
   if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
   if (!reviewerRolesFor(act.who, doc.bagts).length) return { ok: false, error: tr('Энэ багцад хянагчийн эрхгүй.') };
-  const raw = safeJson(cur[0][F.body]);
+  /* ⚠️ 2026-09-25: ТАЛБАРУУДЫГ ШАЛГАНА — урьд нь `Object.assign(meta, args.meta)` дурын
+     утгыг (pageCount: -1 / 'abc', preparedAt: мөр, note: объект) шууд бичдэг байв;
+     дараагийн `normalizeMeta` чимээгүй хаядаг тул хэрэглэгч «хадгалагдлаа» гэж хардаг. */
+  const m = args.meta ?? {};
+  const patch: Partial<Meta> = {};
+  if (m.pageCount !== undefined) {
+    if (m.pageCount !== null && !(Number.isInteger(m.pageCount) && m.pageCount >= 0)) return { ok: false, error: tr('Хуудасны тоо 0-ээс багагүй бүхэл тоо байна.') };
+    patch.pageCount = m.pageCount || null;
+  }
+  if (m.preparedAt !== undefined) {
+    if (m.preparedAt !== null && !(Number.isFinite(m.preparedAt) && m.preparedAt > 0)) return { ok: false, error: tr('Боловсруулсан огноо буруу.') };
+    patch.preparedAt = m.preparedAt;
+  }
+  for (const k of ['projectTitle', 'contractNo', 'note'] as const) {
+    if (m[k] === undefined) continue;
+    if (typeof m[k] !== 'string') return { ok: false, error: tr('«{0}» талбар текст байх ёстой.', k) };
+    patch[k] = m[k];
+  }
+  if (m.workType !== undefined) {
+    if (m.workType !== null && typeof m.workType !== 'string') return { ok: false, error: tr('«{0}» талбар текст байх ёстой.', 'workType') };
+    patch.workType = m.workType?.trim() || null;
+  }
+  if (m.discipline !== undefined) {
+    if (!Array.isArray(m.discipline) || m.discipline.some((d) => !(DISCIPLINES as readonly string[]).includes(d))) return { ok: false, error: tr('Мэргэжлийн чиглэл танигдсангүй.') };
+    patch.discipline = [...new Set(m.discipline)];
+  }
+  if (args.category !== undefined && typeof args.category !== 'string') return { ok: false, error: tr('«{0}» талбар текст байх ёстой.', 'category') };
+  /* ⚠️ 2026-09-25: биеийг БИЧИХИЙН ӨМНӨХӨН дахин уншина — эрхийн шалгалт, баталгаажуулалтын
+     хооронд зохиогч/хянагч биеийг (материал, залруулга) өөрчилсөн бол хуучин `base`
+     дээр `meta` наагаад тэр өөрчлөлтийг дардаг байв. Зөвхөн `meta` түлхүүр солигдоно;
+     `hyanalt` (хянагчид) энэ бичилтэд ОГТ ОРОХГҮЙ. */
+  const fresh = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.body}`);
+  if (!fresh.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
+  const raw = safeJson(fresh[0][F.body]);
   const base = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const meta = normalizeMeta(base.meta);
   if (args.owners !== undefined) {
@@ -1215,10 +1328,10 @@ export async function saveMeta(args: {
     meta.owners = o ? [o, ...meta.owners.filter((x) => x !== o)].slice(0, 2) : meta.owners.slice(1);
   }
   if (args.category !== undefined) meta.category = args.category;
-  if (args.meta) Object.assign(meta, args.meta);
+  Object.assign(meta, patch);
   try {
     const j = await req(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...base, meta }) } }]),
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...base, meta: normalizeMeta(meta) }) } }]),
       rollbackOnFailure: 'true',
     });
     return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };

@@ -159,7 +159,15 @@ if ($proxy -eq 'tailscale') {
     Write-Warning 'Хуучин SelbeAgentTunnel ажлыг устгав (ARCGIS_ORG_ID алга).'
   }
 } else {
-  $tunnelAction = New-ScheduledTaskAction -Execute $cf -Argument "tunnel --no-autoupdate run --token $token"
+  # ⚠️ 2026-09-25 (аудит 8): токеныг ажлын АРГУМЕНТАД БИЧИХГҮЙ — Task Scheduler-ийн
+  #    аргумент нь `Get-ScheduledTask`/`schtasks /query`-ээр тэр PC-ийн ХЭН Ч уншдаг
+  #    нууцгүй талбар. cloudflared нь `TUNNEL_TOKEN` орчны хувьсагчийг дэмждэг тул
+  #    ажил нь powershell-ээр .env.local-оос уншиж орчинд тавиад cloudflared-ийг
+  #    дуудна; токен файлаас (ACL-тай) л уншигдана. `$here`/`$cf` замуудыг зөвхөн
+  #    аргументаар өгнө (тэдгээр нууц биш).
+  $tunnelCmd = "`$env:TUNNEL_TOKEN = ((Get-Content -LiteralPath '$root\.env.local' -Encoding utf8 | Where-Object { `$_ -match '^\s*CF_TUNNEL_TOKEN\s*=' } | Select-Object -First 1) -replace '^\s*CF_TUNNEL_TOKEN\s*=\s*', '').Trim().Trim([char]34); if (-not `$env:TUNNEL_TOKEN) { exit 1 }; & '$cf' tunnel --no-autoupdate run"
+  $tunnelAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$tunnelCmd`""
   Register-Relay 'SelbeAgentTunnel' $tunnelAction
 }
 

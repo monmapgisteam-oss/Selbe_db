@@ -126,10 +126,14 @@ const pkgSrcKey = (
  *    түүнд сарын мөр ОГТ байхгүй тул нийлбэрт огт нөлөөлөхгүй. `phys` нь
  *    бүх эх сурвалжид хэмжилтгүй сард `null` ХЭВЭЭР үлдэнэ (0 гэж зурахгүй).
  *
- * ⚠️ Олон эх сурвалжийн `phys`-ийг ЭНГИЙН дунджаар авна (блокоор ЖИГНЭХГҮЙ).
- *    Одоогийн өгөгдөлд олон гэрээт багц бүр НЭГ л phys эх сурвалжтай тул
- *    дундаж хэрэгждэггүй; үндсэн түлхүүр (БАГЦ-3 г.м.) багцын жагсаалтад
- *    орох хувилбарт `aggregateMonths`-ийн адил `physCnt`-ээр жигнэх хэрэгтэй.
+ * ⚠️ 2026-09-25 (аудит 8): олон эх сурвалжийн `phys` — `aggregateMonths`-тай
+ *    ИЖИЛ дүрэм: эх бүрийн СҮҮЛИЙН мэдэгдэж буй утга (as-of) БЛОКИЙН ТООГООР
+ *    (`FinData.physCnt`) жигнэгдэнэ; цэг нь аль нэг эх тэр сард ШИНЭЭР
+ *    тайлагнасан үед л гарна. Урьд нь тухайн сард цэгтэй эхүүдийн ЭНГИЙН
+ *    дундаж байсан — `buildPhys` сийрэг болсноос хойш нэг жижиг эх л
+ *    тайлагнасан сард бүхэл багцын хувь тэр эхийнх болж ҮСЭРНЭ (одоогийн
+ *    өгөгдөлд олон гэрээт багц бүр нэг эхтэй тул далд, гэхдээ БАГЦ-3 мэт
+ *    үндсэн түлхүүр жагсаалтад орох мөчид ил болно).
  */
 function mergePkgMonths(
   rows: FinData['contracts'],
@@ -138,9 +142,8 @@ function mergePkgMonths(
   if (!rows.length) return null;
   if (rows.length === 1) return contractMonths(rows[0], d);
   const given = new Map<string, number>();    // сар → олгосон ₮
-  const physSum = new Map<string, number>();  // сар → phys-ийн нийлбэр
-  const physN = new Map<string, number>();    // сар → phys эх сурвалжийн тоо
-  const physAt = new Map<string, string>();   // сар → хэмжилтийн хамгийн сүүлийн огноо
+  /** phys эх бүр: сар → { утга, хэмжилтийн огноо } (зөвхөн шинэ бичилттэй сар) */
+  const physSrc: { pts: Map<string, { v: number; at: string | null }>; w: number }[] = [];
   const seenGiven = new Set<string>();
   const seenPhys = new Set<string>();
   rows.forEach((r) => {
@@ -151,15 +154,16 @@ function mergePkgMonths(
     const physK = pkgSrcKey(r, d.phys);
     const physNew = physK != null && !seenPhys.has(physK);
     if (physNew) seenPhys.add(physK);
+    /* Жин = тэр эхийн блокийн тоо (`physCnt`-ийн хамгийн их утга — `aggregateMonths`-тай ижил) */
+    let w = 1;
+    if (physNew) d.physCnt.get(physK as string)?.forEach((v) => { if (v > w) w = v; });
+    const pts = new Map<string, { v: number; at: string | null }>();
     for (const m of ms) {
       if (!given.has(m.label)) given.set(m.label, 0);
       if (givenNew) given.set(m.label, (given.get(m.label) ?? 0) + m.given);
-      if (physNew && m.phys != null) {
-        physSum.set(m.label, (physSum.get(m.label) ?? 0) + m.phys);
-        physN.set(m.label, (physN.get(m.label) ?? 0) + 1);
-        if (m.physAt && m.physAt > (physAt.get(m.label) ?? '')) physAt.set(m.label, m.physAt);
-      }
+      if (physNew && m.phys != null) pts.set(m.label, { v: m.phys, at: m.physAt ?? null });
     }
+    if (physNew && pts.size) physSrc.push({ pts, w });
   });
   /*
    * ⚠️ 2026-09-04 (аудит): `MonthPt.pkg`-ийг НЭГТГЭСЭН цуваанд ЗААВАЛ
@@ -185,14 +189,29 @@ function mergePkgMonths(
 
   /* «YYYY-MM» тул үсгэн эрэмбэ = цаг хугацааны эрэмбэ */
   const labels = [...given.keys()].sort();
+  /** эх бүрийн сүүлийн мэдэгдэж буй утга (as-of) — тэнхлэгийн дарааллаар урагш */
+  const last = new Map<number, { v: number; at: string | null }>();
   return labels.map((label) => {
-    const n = physN.get(label) ?? 0;
+    let fresh = false;
+    let sum = 0;
+    let wsum = 0;
+    let at = '';
+    physSrc.forEach((x, i) => {
+      const pt = x.pts.get(label);
+      if (pt) { last.set(i, pt); fresh = true; }
+      const cur = last.get(i);
+      if (!cur) return; // хараахан тайлагнаагүй эх — дунджид орохгүй
+      sum += cur.v * x.w;
+      wsum += x.w;
+      if (cur.at && cur.at > at) at = cur.at;
+    });
     return {
       label,
       given: given.get(label) ?? 0,
-      phys: n > 0 ? (physSum.get(label) ?? 0) / n : null,
+      /* ⚠️ Аль нэг эх шинээр тайлагнасан сард л цэг — бусад сар `null` (0 биш) */
+      phys: fresh && wsum > 0 ? sum / wsum : null,
       /* ⚠️ 2026-09-25: `lagOf` төлөвлөгөөг хэмжилтийн ӨДРӨӨР завсарлана */
-      physAt: n > 0 ? (physAt.get(label) ?? null) : null,
+      physAt: fresh && at ? at : null,
       // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
       pkg: physKey,
     };

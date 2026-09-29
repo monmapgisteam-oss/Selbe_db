@@ -2029,8 +2029,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            жагсаалтаас) ирдэг дугаар тул буруу заасан бол өөр багцын зөрүү энэ
            хуудасны мөрүүд дээр буух эрсдэлтэй — ObjectID нь санамсаргүй
            таарвал ХУДАЛ тоо гарна. */
+        /* ⚠️ `residual` (2026-09-25 аудит): батлах явцад дахин илгээсний ҮЛДЭГДЭЛ нэмэлт
+           (`hyanaltStore.archiveSubmission` → `residualAfterArchive`) — архивт ОРООГҮЙ атлаа
+           урсгал нь «Шилжүүлсэн» тул урьд нь давхарлагдахгүй, дараагийн илгээлтэд дарагдаж
+           алга болдог байв. Тэр тугтай мөрийг урсгалаас үл хамааран давхарлана. */
         const useSub = !!sub && !sub.done && sub.payload.pkgKey === pkg.key
-          && (!!view?.subOid || !f || f[HF.status] !== STATUS.transferred);
+          && (!!view?.subOid || !f || f[HF.status] !== STATUS.transferred || sub.payload.residual === true);
         const ov = useSub && sub ? overlaySubmission(r.rows, sub.payload, schema, nb) : null;
         /* ⚠️ ТУЛГАГДААГҮЙ НҮД БАЙВАЛ ИЛ ХЭЛНЭ (дээрх `unmovedWarn`-ийн ⚠️) —
            чимээгүй орхивол гүйцэтгэгч ажлаа алдсанаа мэдэхгүй, зөвхөн ерөнхий
@@ -3123,6 +3127,26 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           r.work,
           fmt(before ?? 0),
           fmt(after ?? 0),
+        ),
+      )
+    )
+      return false;
+    /* ⚠️ 2026-09-25 аудит: ЭЕРЭГ нэмэлт ч БУУРУУЛЖ болно — хувиар бүртгэгдсэн ХУУЧИН
+       нүдэнд (act бий, obyem null, мөр обьёмтой) `incCell` обьёмыг 0-ээс эхлүүлдэг
+       (санаатай: «хувиас обьём БУЦААЖ БОДОХГҮЙ») тул 50% → +10% = 10%. Чимээгүй
+       бичвэл гүйцэтгэл ул мөргүй унана — ил асууна. */
+    if (
+      incN > 0 &&
+      after != null &&
+      before != null &&
+      after < before &&
+      !window.confirm(
+        tr(
+          '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн (хувиар) — нэмэлт бичихэд обьём 0-ээс эхэлж {3} болж БУУРНА.\nҮргэлжлүүлэх үү?',
+          sc?.bld[b] ?? "",
+          r.work,
+          fmt(before),
+          fmt(after),
         ),
       )
     )
@@ -4862,9 +4886,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          `staged`-ыг тавих зэрэг тохиолдолд ӨӨР ӨДРИЙН нүднүүд өнөөдрийн
          payload-д хуулагдаж, батлагдахад архивт ХОЁР УДАА тоологдоно. Өдөр
          зөрвөл нэгтгэхгүй — тэр илгээлт ӨӨРИЙН мөрөөрөө үлдэнэ. */
+      /* ⚠️ `residual` мөр (2026-09-25 аудит) — архивт ороогүй үлдэгдэл тул «Шилжүүлсэн»
+         урсгалын дор ч НЭГТГЭНЭ (ачаалах эффектийн `useSub`-тай ижил дүрэм). */
       const mergeBase = staged
         && staged.payload.fillMs === fillMs
-        && (!flow || flow[HF.status] !== STATUS.transferred)
+        && (!flow || flow[HF.status] !== STATUS.transferred || staged.payload.residual === true)
         ? movePayload(staged.payload)
         : null;
       /*
@@ -5080,8 +5106,13 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
            Уншилт унавал `savedSub`-ийг зөвхөн ӨНӨӨДРИЙНХ бол үлдээнэ. */
         const act2r = await readActiveSubmission(pkg.key, todayFillMs);
         setSubReadErr(act2r.ok ? null : act2r.error);
+        /* ⚠️ 2026-09-25 аудит: ӨМНӨХ ӨДРИЙН (буцаагдсан) илгээлтийг дахин илгээсэн бол
+           өнөөдрийн түлхүүрээр мөр ОЛДОХГҮЙ тул дөнгөж илгээсэн агуулга дэлгэцээс алга
+           болдог байв. Өнөөдрийн идэвхтэй илгээлт байхгүй л бол `savedSub`-ийг давхарлана —
+           дараагийн «Илгээх» өнөөдрийн түлхүүрээр явж (`mergeBase` өдөр зөрсөн → хоосон,
+           `expectAt` null) тэр мөрийг хөндөхгүй. Өнөөдрийнх байвал урьдын адил тэр нь. */
         const act2 = act2r.ok
-          ? (act2r.sub && !act2r.sub.done ? act2r.sub : null)
+          ? (act2r.sub && !act2r.sub.done ? act2r.sub : (fillMs !== todayFillMs ? savedSub : null))
           : (fillMs === todayFillMs ? savedSub : null);
         const ov2 = act2 ? overlaySubmission(next.rows, act2.payload, sc, nBld) : null;
         /* ⚠️ Илгээсний ДАРАА ч шалгана: тулгагдаагүй нүд үлдвэл батлах шатанд
@@ -5259,6 +5290,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         b: x.b,
         /** Шинэ НИЙТ (горимын нэгжээр) */
         after: isPct ? (res ? res.act : null) : (res ? res.obyem : null),
+        /** Өмнөх НИЙТ (горимын нэгжээр) — `commit`-тэй ижил томъёо (2026-09-25) */
+        before: isPct
+          ? (r.vol != null && r.vol > 0 && r.obyem[x.b] != null ? r.obyem[x.b]! / r.vol : r.act[x.b])
+          : r.obyem[x.b],
       };
     });
 
@@ -5270,9 +5305,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
 
     /* ── НЭГ УДААГИЙН БАТАЛГААЖУУЛАЛТ ── */
-    /* ⚠️ Нэмэлт сөрөг байж чадахгүй (`planPaste` няцаадаг) тул «БУУРНА» асуулт
-       энэ замд үргэлж хоосон — хэлбэрийг нь хэвээр үлдээв (2026-09-25). */
-    const down: typeof hits = [];
+    /* ⚠️ Нэмэлт сөрөг байж чадахгүй (`planPaste` няцаадаг) ч «БУУРНА» асуулт
+       ХООСОН БИШ (2026-09-25 аудит): хувиар бүртгэгдсэн ХУУЧИН нүдэнд (act бий,
+       obyem null, мөр обьёмтой) `incCell` обьёмыг 0-ээс эхлүүлдэг тул 50% → 10%
+       болж буурдаг — `commit`-ийн ганц нүдний асуулттай ижил дүрэм. */
+    const down = hits.filter((x) => x.after != null && x.before != null && x.after < x.before);
     /* ⚠️ Хувь горимд «мөрийн Обьёмоос хэтэрсэн» гэдэг нь «100%-иас их» гэсэн үг;
        2026-09-25: харьцуулах нь шинэ НИЙТ (суурь + нэмэлт), нэмэлт өөрөө биш. */
     const over = isPct
@@ -5290,7 +5327,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
 
     setErr("");
-    setPending((pv) => {
+    /* ⚠️ 2026-09-25: ГАЖ НӨЛӨӨ (revert · mineRef · touchMine) setState-ийн шинэчлэгч
+       ДОТОР БАЙХГҮЙ — React (StrictMode/дахин зурагдалт) шинэчлэгчийг хоёр удаа
+       дуудаж болох тул tombstone/агшин давхар тавигддаг байв. `pending` нь энэ
+       функцийн хүрээнд шинэ (`busy` үед буулгалт хаалттай тул завсрын бичилт үгүй). */
+    {
+      const pv = pending;
       const n = { ...pv };
       for (const x of hits) {
         /* Тэг нэмэлт = өөрчлөлтгүй → «нийтлээгүй» тэмдэглэгээг арилгана (2026-09-25). */
@@ -5307,8 +5349,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (same) revert(x.key, x.key in pv);
         else { mineRef.current.add(x.key); touchMine(x.key); }
       }
-      return n;
-    });
+      setPending(n);
+    }
     setEdit(null);
     done(bad || skipped
       ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped + bad))

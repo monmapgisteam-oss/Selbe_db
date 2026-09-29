@@ -875,7 +875,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     const list = bad
       .slice(0, 12)
       /* ⚠️ Обьём өөрчлөгдөөгүй (хувиар бөглөсөн) бол хувийг нэрлэнэ (2026-09-24) */
-      .map((c) => `${c.block} · ${c.work} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : (c.to ?? '—')}`)
+      /* ⚠️ 2026-09-25: обьёмыг `qty`-ээр (мянгатын тусгаарлагч, 3 орон) — түүхий тоо `1234.56789` буцаалтын шалтгаанд ордог байв */
+      .map((c) => `${c.block} · ${c.work} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : qty(c.to)}`)
       .join("; ");
     const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
     const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));

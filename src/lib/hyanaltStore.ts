@@ -292,7 +292,10 @@ type Archived =
      таах алхмыг алгасна; legacy замд `undefined` (хуучин таамаглал). */
   /* ⚠️ `warn` (2026-09-25) — архивлалт бүтсэн ч хэрэглэгчид ИЛ хэлэх зүйл
      (алгассан нүд · хаалтын үеийн дахин илгээлт); `apply` шар мөр болгоно. */
-  | { ok: true; archiveOid: number; day?: string; pkgKey?: string; warn?: string }
+  /* ⚠️ `reopen` (2026-09-25 аудит) — нэмэлтийн горимд батлах явцад дахин илгээсний
+     ҮЛДЭГДЭЛ (`residual`) `sub|` мөрөнд үлдсэн: `apply` хяналтын мөрийг «Шилжүүлсэн»
+     болгосны ДАРАА `submitForReview`-ээр шинэ тойрог нээж, тэр +N хянагдана. */
+  | { ok: true; archiveOid: number; day?: string; pkgKey?: string; warn?: string; reopen?: { fillMs: number; sheetOid: number; sheet: string } }
   | { ok: false; error: string };
 
 /**
@@ -327,6 +330,43 @@ type Archived =
  *    зассан ЯГ тэр алдаа. Жаазны өдрийг бичсэн агшинд нь хадгална.
  */
 const ARCHIVED = new Map<string, { oid: number; day: string }>();
+/*
+ * ⚠️ 2026-09-25 аудит: СЕШН ХООРОНД Ч ХАДГАЛНА (localStorage). `closeSubmission`
+ *    хоёр удаа унасан (сүлжээ) илгээлтийг менежер таб/хөтчөө дахин нээгээд
+ *    батлавал санах ойн Map хоосон тул ижил `staged.at`-тай агуулга ХОЁР ДАХЬ
+ *    жааз болж бичигддэг байв. Түлхүүр = `${subOid}:${at}` — агуулга солигдвол
+ *    хамгаалалт зориудаар тайлагдана. Сүүлийн 300 бичлэг; хаалттай орчинд чимээгүй.
+ */
+const ARCHIVED_LS = 'selbe-archived-subs';
+function archivedGet(key: string): { oid: number; day: string } | undefined {
+  const m = ARCHIVED.get(key);
+  if (m) return m;
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(ARCHIVED_LS) : null;
+    if (!raw) return undefined;
+    const o = JSON.parse(raw) as Record<string, { oid?: unknown; day?: unknown }>;
+    const v = o && typeof o === 'object' ? o[key] : undefined;
+    if (v && Number.isInteger(v.oid) && typeof v.day === 'string') {
+      const hit = { oid: v.oid as number, day: v.day };
+      ARCHIVED.set(key, hit);
+      return hit;
+    }
+  } catch { /* хаалттай орчин / эвдэрсэн JSON */ }
+  return undefined;
+}
+function archivedSet(key: string, v: { oid: number; day: string }): void {
+  ARCHIVED.set(key, v);
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const raw = localStorage.getItem(ARCHIVED_LS);
+    const o = (raw ? JSON.parse(raw) : {}) as Record<string, { oid: number; day: string }>;
+    const next = o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+    next[key] = v;
+    const keys = Object.keys(next);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete next[k];
+    localStorage.setItem(ARCHIVED_LS, JSON.stringify(next));
+  } catch { /* хаалттай орчин */ }
+}
 
 /**
  * IPC-ийн `skip` үр дүн АМЖИЛТ БИШ эсэх.
@@ -431,7 +471,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      (дээрх `ARCHIVED`-ийн ⚠️). Агуулга шинэчлэгдсэн бол түлхүүр өөрчлөгдөх
      тул шинэ илгээлт ЖИНХЭНЭЭР архивлагдана. */
   const seenKey = `${subOid}:${staged.at}`;
-  const seen = ARCHIVED.get(seenKey);
+  const seen = archivedGet(seenKey);
   if (seen != null) {
     /* ⚠️ ХААЛТЫГ ДАХИН ОРОЛДОНО (2026-09-25): энэ салбарт хүрсэн нь `sub|` мөр
        нээлттэй хэвээр буюу өмнөх `closeSubmission` хоёулаа унасан гэсэн үг —
@@ -459,13 +499,36 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys }, { sameFrame }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
+    import('./ajilApply'),
+    import('@/modules/sheet/ags'),
   ]);
   const sc = await loadSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
+  /*
+   * ⚠️ УРАЛДААНЫ ХЭМЖҮҮР — `ajilApply.materializeAdds` A.8/A.8а-тай ИЖИЛ (2026-09-25
+   *    аудит). Урьд нь энд ямар ч шалгалт байгаагүй: ачаалснаас хойш өөр жааз орсон
+   *    («Улсын комисс» автомат мөр, нэмэлт ажлын буулгалт, зэрэгцээ батлалт) эсвэл
+   *    байгаа жааз руу «Хуваарь» хадгалагдсан бол манай жааз ХУУЧИН мөрүүдээс
+   *    угсрагдаж тэдгээрийг булдаг байв. MAX OID-ийг ачаалахаас ӨМНӨ авна.
+   */
+  const maxOidOf = async (): Promise<number> => {
+    const j = await agsFetch(`${pkg.url}/query`, {
+      where: '1=1',
+      outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: sc.f.oid, outStatisticFieldName: 'mx' }]),
+      returnGeometry: 'false',
+    });
+    const mx = Number(j?.features?.[0]?.attributes?.mx);
+    if (!Number.isFinite(mx)) throw new Error(tr('OBJECTID-ийн дээд утга уншигдсангүй'));
+    return mx;
+  };
+  let maxOid0: number;
+  try { maxOid0 = await maxOidOf(); } catch (e) {
+    return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
+  }
   /*
    * ⚠️ СҮҮЛИЙН жаазыг татна (өдөр зааж ӨГӨХГҮЙ). Илгээлт нь diff тул суурь нь
    *    БАТЛАХ агшны хамгийн сүүлийн архив байх ёстой: хооронд нь өөр илгээлт
@@ -672,6 +735,17 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
     if (again.sub.at !== staged.at)
       return { ok: false, error: tr('Илгээлт энэ хооронд өөрчлөгдлөө — дахин нээж баталгаажуулна уу') };
   }
+  /* ⚠️ A.8/A.8а — жааз ба MAX OID-ийн уралдаа (дээрх `maxOidOf`-ийн ⚠️, 2026-09-25 аудит).
+     Шалгаж ЧАДААГҮЙ нь «уралдаагүй» гэсэн үг биш — бичихгүй. Менежер дахин дарна. */
+  try {
+    const now2 = await loadRows(pkg, sc);
+    if (!sameFrame(loaded, now2))
+      return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
+    if ((await maxOidOf()) > maxOid0)
+      return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
+  } catch (e) {
+    return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
+  }
   let firstOid: number | null = null;
   /* ⚠️ БИЧИГДСЭН МӨРИЙН ДУГААР — унасан үед буцааж устгахад ЗААВАЛ хэрэгтэй. */
   const written: number[] = [];
@@ -715,7 +789,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    доорх алхмуудын аль нэг унаад менежер дахин дарвал ДАВХАР жааз
    *    бичигдэхгүй.
    */
-  ARCHIVED.set(seenKey, { oid: firstOid ?? 0, day: msToDay(fillMs) });
+  archivedSet(seenKey, { oid: firstOid ?? 0, day: msToDay(fillMs) });
   /*
    * ⚠️ Илгээлтийг ХААХ алхам унавал батлалт УНАХГҮЙ — жааз аль хэдийн архивт
    *    бичигдсэн. Нээлттэй үлдсэн `sub|` мөр дараагийн ачаалалтад давхарлагдах
@@ -750,6 +824,8 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
      архивлавал нэмэлт давхар орно (хуучин горимд alias барьдаг байв) — ил хэлнэ. */
   if (!cl.ok && !cl.changed && incPl)
     warns.push(tr('Архивт бичигдсэн боловч илгээлтийг хааж чадсангүй ({0}) — энэ илгээлтийг ДАХИН БАТЛАХГҮЙ байна уу: нэмэлт давхар орно.', cl.error ?? ''));
+  /** Үлдэгдэл `sub|` мөр үлдсэн бол — `apply` шинэ тойрог нээнэ (`Archived.reopen`-ийн ⚠️) */
+  let reopen: { fillMs: number; sheetOid: number; sheet: string } | undefined;
   if (cl.changed && incPl) {
     const { saveSubmission, residualAfterArchive } = await import('./submission');
     const cur2 = await readSubmissionByOid(staged.oid);
@@ -760,8 +836,12 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       const rest = residualAfterArchive(cur2.sub.payload, pl);
       if (!rest) why = tr('түлхүүр тулгагдсангүй');
       else {
-        const sv = await saveSubmission(rest.pkgKey, { ...rest, at: Date.now() }, { at: cur2.sub.at });
+        /* ⚠️ `residual: true` (2026-09-25 аудит) — энэ мөрийн агуулга архивт ОРООГҮЙ гэдгийг
+           FillNew (давхарлах/нэгтгэх) ба доорх шинэ тойрог мэднэ; урьд нь урсгал
+           «Шилжүүлсэн» тул мөр харагдахгүй, дараагийн илгээлтэд дарагдаж алга болдог байв. */
+        const sv = await saveSubmission(rest.pkgKey, { ...rest, at: Date.now(), residual: true }, { at: cur2.sub.at });
         if (!sv.ok) why = sv.error;
+        else reopen = { fillMs: rest.fillMs, sheetOid: staged.oid, sheet: pkg.name };
       }
     }
     warns.push(why
@@ -772,7 +852,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
   if (skipped.length)
     warns.push(tr('Архивт илүү хожуу өдрийн жааз аль хэдийн байсан тул {0} нүдийг алгасав (хуримтлал буурахаас сэргийлэв): {1}', String(skipped.length), nameKeys(skipped)));
 
-  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key, ...(warns.length ? { warn: warns.join(' · ') } : {}) };
+  return { ok: true, archiveOid: firstOid ?? 0, day: msToDay(fillMs), pkgKey: pkg.key, ...(warns.length ? { warn: warns.join(' · ') } : {}), ...(reopen ? { reopen } : {}) };
 }
 
 /**
@@ -919,6 +999,8 @@ export async function apply(a: {
     let archivedPkg: string | undefined;
     /** ⚠️ Архивлалтын анхааруулга (алгассан нүд · хаалтын CAS) — доор `warns`-д */
     let archWarn = '';
+    /** ⚠️ Үлдэгдэл нэмэлтийн шинэ тойрог — мөр «Шилжүүлсэн» болсны ДАРАА (`Archived.reopen`) */
+    let reopen: { fillMs: number; sheetOid: number; sheet: string } | undefined;
     if (registerNow) {
       const ar = await archiveSubmission(cur);
       if (!ar.ok) return { ok: false, error: ar.error };
@@ -926,6 +1008,7 @@ export async function apply(a: {
       archivedDay = ar.day;
       archivedPkg = ar.pkgKey;
       if (ar.warn) archWarn = ar.warn;
+      reopen = ar.reopen;
       /* ⚠️ Архивласны ДАРАА мөрийн төлөвийг ДАХИН ШАЛГАХГҮЙ (2026-09-17-ны
          аудит): «буцаах» ба «батлах» зэрэг дарагдсан үед жааз архивт
          бичигдчихсэн байхад STALE-ээр зогсвол өнчин жааз үлдэж, нэгтгэл/IPC
@@ -958,6 +1041,23 @@ export async function apply(a: {
     /** Хагас амжилтын анхааруулгууд — нэгтгэл · IPC · `Zovshoorson_nud` */
     const warns: string[] = [];
     if (archWarn) warns.push(archWarn);
+    /*
+     * ⚠️ ҮЛДЭГДЭЛ НЭМЭЛТИЙН ШИНЭ ТОЙРОГ (2026-09-25 аудит). Мөр «Шилжүүлсэн» болсны
+     *    ДАРАА л — `openReviewRow` тэр `sheetOid`-ийн нээлттэй мөрийг олохгүй тул
+     *    ergelt+1 шинэ мөр үүсгэнэ; урьд нь `residual` мөр хяналтын мөргүй өнчирч,
+     *    хэн ч батлахгүй, FillNew ч харуулахгүй байв. Унавал батлалт унахгүй — ил хэлнэ
+     *    (гүйцэтгэгч дахин илгээхэд `submitForReview` өөрөө тойрог нээнэ).
+     */
+    if (reopen) {
+      try {
+        const { submitForReview } = await import('./hyanaltSubmit');
+        const rv = await submitForReview(String(cur[F.bagts] ?? ''), reopen.fillMs, reopen.sheetOid, reopen.sheet);
+        if (rv.ok) warns.push(tr('Үлдэгдэл нэмэлт шинэ хяналтын тойрогт орлоо ({0}).', rv.id));
+        else warns.push(tr('Үлдэгдэл нэмэлтэд шинэ хяналтын тойрог нээгдсэнгүй ({0}) — гүйцэтгэгчээр дахин илгээүүлнэ үү.', rv.error));
+      } catch (e) {
+        warns.push(tr('Үлдэгдэл нэмэлтэд шинэ хяналтын тойрог нээгдсэнгүй ({0}) — гүйцэтгэгчээр дахин илгээүүлнэ үү.', String((e as Error)?.message ?? e)));
+      }
+    }
     if (registerNow) {
       /*
        * ⚠️ БҮРТГЭЛ УНАВАЛ БАТАЛГАА УНАХГҮЙ. Хяналтын шийдвэр аль хэдийн

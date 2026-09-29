@@ -497,6 +497,12 @@ const nextOf = (over = {}) => {
   /* хослох аргагүй бол `null` (таамаглаж хасахгүй) */
   assert.equal(residualAfterArchive({ ...cur, rowKeys: [[900, 'өөр']] , cells: [['900:0', '1']] }, archived), null);
   assert.equal(residualAfterArchive(leg, archived), null, 'хуучин горимд хасахгүй');
+
+  /* `residual` туг (2026-09-25 аудит): задлалд хадгалагдана, нэгтгэлд ДАМЖИХГҮЙ, бусад утга хаягдана */
+  const rs = parseSubmission(JSON.stringify({ ...incP([['12:0', '5']]), residual: true }));
+  assert.equal(rs.residual, true, 'residual туг задлалд алга болов');
+  assert.equal(parseSubmission(JSON.stringify({ ...incP([['12:0', '5']]), residual: 'yes' })).residual, undefined, 'зөвхөн `true`');
+  assert.equal(mergeSubmission(rs, next([['12:0', '1']])).residual, undefined, 'нэгтгэлд дамжихгүй (шинэ илгээлт өөрөө тойрог нээнэ)');
 }
 
 console.log('submission.check ✓');

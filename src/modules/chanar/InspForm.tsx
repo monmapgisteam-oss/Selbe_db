@@ -41,7 +41,7 @@ function CheckBtn({ v, on, onClick, label }: { v: InspCheck | null; on: boolean;
 }
 
 export function InspForm({
-  m, kind, body, onChange, clientEdit, client, onClient, maDocs, isNew, onTemplate, tuhVerdict, approved,
+  m, kind, body, onChange, clientEdit, client, onClient, maDocs, onTemplate, tuhVerdict, approved,
 }: {
   m: Mode; kind: InspKind; body: InspBody; onChange: (b: InspBody) => void;
   /** ТУХ хянагч захиалагчийн баганыг бөглөж байна */
@@ -50,8 +50,6 @@ export function InspForm({
   onClient?: (v: (InspCheck | null)[]) => void;
   /** MIR: тухайн багцын батлагдсан MA баримтууд — `maRef` сонголт */
   maDocs?: readonly MsDoc[];
-  /** Шинэ баримт — загвар сонгох */
-  isNew?: boolean;
   /** Загвар сонгоход нэрийг нь дуудагчид (анхдагч `title`) */
   onTemplate?: (title: string) => void;
   /** Дүнд: ТУХ-ийн шийдвэр · баримт батлагдсан эсэх (`inspResult`) */
@@ -63,10 +61,16 @@ export function InspForm({
   const setItem = (i: number, p: Partial<InspItem>) =>
     onChange({ ...body, items: body.items.map((x, k) => (k === i ? { ...x, ...p } : x)) });
   const tpls = inspTemplates(kind);
-  const tpl = inspTemplateOf(kind, body.template);
+  /* ⚠️ 2026-09-25: загвар СОНГООГҮЙ (`template=''`) бол `inspTemplateOf`-ийн эхний
+     загварын хавсралт/тоо хэмжээг ЗУРАХГҮЙ — засахад хоосон, харахад зөвхөн
+     бөглөгдсөн утга (хуучин мөр). */
+  const tpl = body.template ? inspTemplateOf(kind, body.template) : null;
   const applyTpl = (key: string) => {
     const t = tpls.find((x) => x.key === key);
     if (!t) return;
+    /* ⚠️ 2026-09-25: бөглөсөн мөр байвал асууна — загвар солих нь мөрүүдийг дарна */
+    const filled = body.items.some((it) => it.text.trim() || it.contractor || it.comment.trim());
+    if (filled && !window.confirm(tr('Загвар солиход бөглөсөн мөрүүд загварынхаар солигдоно. Үргэлжлүүлэх үү?'))) return;
     /* Загвар солиход мөрүүд + хавсралтын олонлог шинэчлэгдэнэ (загварт байхгүй хавсралт унтарна) */
     const attachments = Object.fromEntries(INSP_ATTACH_KEYS.map((k) => [k, t.attachments.includes(k) ? body.attachments[k] : false])) as InspBody['attachments'];
     onChange({ ...body, template: t.key, items: structuredClone(t.items), attachments });
@@ -76,11 +80,13 @@ export function InspForm({
   const items = clientEdit && client ? body.items.map((it, i) => ({ ...it, client: client[i] ?? null })) : body.items;
   const res = inspResult(items, { tuhVerdict: tuhVerdict ?? null, approved: !!approved });
   const att = body.attachments;
-  const attKeys = tpl.attachments;
+  const attKeys = tpl ? tpl.attachments : (m.edit ? [] : INSP_ATTACH_KEYS.filter((k) => att[k]));
+  const hasQuantity = tpl ? tpl.hasQuantity : (!m.edit && !!body.quantity.trim());
 
   return (
     <>
-      {m.edit && isNew && (
+      {/* ⚠️ 2026-09-25: загвар НООРГИЙН засварт ч солигдоно (зөвхөн шинэд биш) — бөглөсөн мөртэй бол баталгаажуулна */}
+      {m.edit && (
         <dl className={s.meta}>
           <div>
             <dt>{tr('Загвар')}</dt>
@@ -94,7 +100,7 @@ export function InspForm({
         </dl>
       )}
       <dl className={s.meta}>
-        {!isNew && body.template && <div><dt>{tr('Загвар')}</dt><dd>{tpl.title}</dd></div>}
+        {!m.edit && tpl && <div><dt>{tr('Загвар')}</dt><dd>{tpl.title}</dd></div>}
         <Inp m={m} label={tr('Барилгын дугаар')} value={body.header.building} onChange={(v) => onChange({ ...body, header: { ...body.header, building: v } })} />
         {kind === 'MIR' && (
           <Inp m={m} label={tr('Материалын нэр')} value={body.header.materialName} onChange={(v) => onChange({ ...body, header: { ...body.header, materialName: v } })} />
@@ -174,16 +180,17 @@ export function InspForm({
         })} />
       </Sec>
 
-      {tpl.hasQuantity && (
+      {hasQuantity && (
         <Sec title={tr('2. Гүйцэтгэл — тоо хэмжээ')}>
           <Txt m={m} label={tr('Тоо хэмжээ')} value={body.quantity} onChange={(v) => onChange({ ...body, quantity: v })} />
         </Sec>
       )}
-      <Sec title={tpl.hasQuantity ? tr('3. Нэмэлт тайлбар, залруулах арга хэмжээ') : tr('2. Нэмэлт тайлбар, залруулах арга хэмжээ')}>
+      <Sec title={hasQuantity ? tr('3. Нэмэлт тайлбар, залруулах арга хэмжээ') : tr('2. Нэмэлт тайлбар, залруулах арга хэмжээ')}>
         <Txt m={m} label={tr('Нэмэлт тайлбар')} value={body.remarks} onChange={(v) => onChange({ ...body, remarks: v })} />
       </Sec>
       <Sec title={tr('Хавсралт')}>
         <div className={s.chkRow}>
+          {attKeys.length === 0 && <span className={s.secEmpty}>{m.edit ? tr('загвар сонгоход хавсралтын жагсаалт гарна') : '—'}</span>}
           {attKeys.map((k) => (
             <Chk key={k} m={m} label={inspAttachLabel(k)} value={att[k]} onChange={(v) => onChange({ ...body, attachments: { ...att, [k]: v } })} />
           ))}

@@ -17,6 +17,17 @@ const DEFAULTS = { '--left-w': '330px', '--right-w': '330px' } as const;
 const MAP_MIN = 240;
 /** Хоёр чирэх зураасны өргөн (CSS `.shell`-ийн `5px`) */
 const GUTTERS = 10;
+/**
+ * ⚠️ 2026-09-25 (аудит 8): НЭГ БАГАНЫН горим (`suitability.module.css`-ийн
+ * `@media (max-width: 1180px)` — `grid-template-columns: 1fr`, самбарууд босоо).
+ * Тэнд `--left-w`/`--right-w` баганын өргөн БИШ тул `maxFor` (цонх − нөгөө самбар −
+ * зураг) утаснаас 220px гаргаж inline бичдэг байв; ширээний өргөнд буцахад тэр
+ * 220px нь хадгалсан өргөнийг дарж, самбар нарийн үлддэг. Энэ горимд шахахгүй.
+ * ⚠️ CSS-ийн босготой ЯГ ИЖИЛ байх ёстой — тэнд өөрчилбөл энд ч.
+ */
+const SINGLE_COL_MQ = '(max-width: 1180px)';
+const singleCol = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(SINGLE_COL_MQ).matches;
 
 const widthOf = (host: HTMLElement, cssVar: string): number =>
   parseFloat(host.style.getPropertyValue(cssVar) || getComputedStyle(host).getPropertyValue(cssVar))
@@ -46,7 +57,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
   useEffect(() => {
     const fit = () => {
       const host = shell.current;
-      if (!host) return;
+      if (!host || singleCol()) return; // ⚠️ нэг баганад өргөн утгагүй — шахахгүй
       for (const k of Object.keys(DEFAULTS)) {
         if (k === '--right-w' && !hasRightRef.current) continue;
         const mx = maxFor(host, k, hasRightRef.current);
@@ -87,8 +98,8 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
       if (!m) continue;
       const n = Number(m[1]);
       if (!Number.isFinite(n) || n < PANEL_MIN || n > PANEL_MAX) continue;
-      // ⚠️ 2026-09-25: одоогийн цонхонд багтахаар шахна (`maxFor`)
-      const mx = maxFor(shell.current, k, hasRightRef.current);
+      // ⚠️ 2026-09-25: одоогийн цонхонд багтахаар шахна (`maxFor`); нэг баганад шахахгүй (`SINGLE_COL_MQ`)
+      const mx = singleCol() ? n : maxFor(shell.current, k, hasRightRef.current);
       shell.current.style.setProperty(k, `${Math.round(Math.min(n, mx))}px`);
     }
   }, []);

@@ -189,7 +189,9 @@ export default {
      *    хүлээж авах цорын ганц нүх болно.
      */
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      if (rateLimited(`health:${origin || 'anon'}`)) {
+      /* ⚠️ 2026-09-25 (аудит 8): түлхүүр нь IP (`cf-connecting-ip`), origin биш — доорх
+         `pre:` хязгаартай нэг дүрэм; origin зохиосон хэн ч тойрдог байв. */
+      if (rateLimited(`health:${request.headers.get('cf-connecting-ip') || origin || 'anon'}`)) {
         return json(429, { error: 'Хэт олон хүсэлт' }, cors);
       }
       return json(200, { ok: true }, cors);

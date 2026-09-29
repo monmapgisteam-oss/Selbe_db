@@ -153,6 +153,12 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     setHeadH((p) => (p === h ? p : h));
   }, []);
 
+  /* ⚠️ 2026-09-25 (аудит 8): баганын өргөн (`w`) солигдсоны ДАРАА хэмжинэ — урьд нь
+     `bump`/`finish`/`reset` нь `setW`-ийн дараа шууд `measure()` дууддаг тул DOM
+     хараахан шинэ `--cw-*`-ээр зурагдаагүй, бариулын байрлал НЭГ алхам хоцордог
+     байв (гарын товчлуураар өргөсгөхөд ил). Layout effect нь commit-ийн дараа. */
+  useLayoutEffect(() => { measure(); }, [measure, w]);
+
   // Агуулга/өргөн өөрчлөгдөхөд ирмэгүүд шилжинэ — ажиглаж дагана.
   useLayoutEffect(() => {
     measure();
@@ -238,7 +244,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
       });
     setW(next);
     save(next);
-    measure();
   };
 
   /** Бүх баганыг анхны өргөнд нь буцаана (бариул дээр давхар товшилт). */
@@ -255,7 +260,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     }
     setW({});
     save({});
-    measure();
   };
 
   const bump = (i: number, delta: number) => {
@@ -273,7 +277,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     });
     setW(next);
     save(next);
-    measure();
   };
 
   const style = Object.fromEntries(

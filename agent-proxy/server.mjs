@@ -298,7 +298,10 @@ const server = createServer(async (req, res) => {
      ⚠️ Дотоод тохиргоог (model/effort) ЗАДЛАХГҮЙ — `worker.mjs`-ийн ижил
         дүрэм: хаягийг олсон хэн ч тохиргоог тандах ёсгүй. */
   if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-    if (rateLimited(`health:${origin || "anon"}`)) {
+    /* ⚠️ 2026-09-25 (аудит 8): түлхүүр нь IP (`clientIp`), origin БИШ — origin-гүй
+       (curl/бот) бүх хүсэлт нэг «anon» саванд орж бие биенээ хаадаг, харин
+       origin-оо зохиосон хэн ч хязгаарыг тойрдог байв. `/chat`-тай нэг дүрэм. */
+    if (rateLimited(`health:${clientIp(req)}`)) {
       json(res, 429, { error: "Хэт олон хүсэлт" });
       return;
     }

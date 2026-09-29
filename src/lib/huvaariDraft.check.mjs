@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import {
   hdKey, kS, kH, kA, kR, kM, kN, parseKey, mapsToCells, cellsToMaps, resOfVal,
-  serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL,
+  serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL, remapDraft,
 } from './huvaariDraft.ts';
 
 /* ── 1. Түлхүүр ── */
@@ -257,5 +257,28 @@ console.log('✅ хуучирсан нүд');
   assert.equal(parse('{"v":1,"t":1,"cleared":"x"}').cleared, undefined);
 }
 console.log('✅ эвдэрсэн оролт');
+
+/* ── 6. remapDraft — «Улсын комисс» шинэ жааз: мөрийн түлхүүр шинэ oid руу, хуучинд tombstone (2026-09-25) ── */
+{
+  const d = mk([
+    [kS(10, 0), cell({ start: 1, end: 2 }, 50, 'a')],
+    [kH(10), cell('11FS0', 50, 'a')],
+    [kA(11, 1), cell([1, null], 50, 'b')],
+    [kR(12), cell({ hun: 1, mashin: null }, 50, 'b')],
+    [kM('5|9F'), cell([['2026-01', 3]], 50, 'a')],
+  ], [[kS(13, 0), 40]]);
+  const map = new Map([[10, 110], [11, 111], [13, 113]]);
+  const r = remapDraft(d, map, 777);
+  assert.ok(r.entries.has(kS(110, 0)) && r.entries.has(kH(110)) && r.entries.has(kA(111, 1)), 'мөрийн түлхүүр шинэ oid руу зөөгдөнө');
+  assert.ok(r.entries.has(kR(12)), 'зураглалд байхгүй oid хэвээр');
+  assert.ok(r.entries.has(kM('5|9F')), 'сарын түлхүүр (des|блок) хөндөгдөхгүй');
+  assert.equal(r.entries.has(kS(10, 0)), false, 'хуучин түлхүүр үлдэхгүй');
+  assert.equal(r.del.get(kS(10, 0)), 777, 'хуучин түлхүүрт tombstone');
+  assert.equal(r.del.get(kS(113, 0)), 40, 'tombstone ч зөөгдөнө');
+  assert.equal(r.entries.get(kS(110, 0)).at, 50, 'мета хэвээр');
+  assert.equal(d.entries.size, 5, 'оролт хөндөгдөөгүй');
+  assert.equal(remapDraft(d, new Map()), d, 'хоосон зураглал — ижил объект');
+}
+console.log('✅ remapDraft');
 
 console.log('✅ huvaariDraft: бүх шалгуур давлаа');

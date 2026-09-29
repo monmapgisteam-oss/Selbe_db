@@ -36,7 +36,7 @@
  * ⚠️ ДУГААР ГАРААР ОРОХГҮЙ — `chanarMs.docNo` автомат.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { roleForUser } from '@/lib/services';
@@ -130,8 +130,22 @@ export function Chanar() {
   /* Хэвлэх сонголт (MA) — зөвлөхийн мөр · тоноглолын мөр */
   const [prConsultant, setPrConsultant] = useState(false);
   const [prEquipment, setPrEquipment] = useState(false);
-  /* Хураангуйн бие — жагсаалтад бие байхгүй тул толгой бүрийн биеийг нэг удаа татна */
+  /* ⚠️ 2026-09-25: Хураангуйн бие — эх нь REF (`bodiesRef`, ачаалалт бүрд шинээр
+     эхлэхгүй, зэрэгцээ 4-өөр татна), `bodies` state нь зөвхөн зурах агшин
+     (багц дуусахад нэг удаа). `bodiesGen` нь `refresh()`-ээр хүчингүй болсон
+     хуучин хариуг хаяна. */
+  const bodiesRef = useRef<Map<number, AnyBody>>(new Map());
+  const bodiesGen = useRef(0);
+  const bodiesPending = useRef<Set<number>>(new Set());
   const [bodies, setBodies] = useState<Map<number, AnyBody>>(new Map());
+  /* ⚠️ 2026-09-25: `run()` дуусахад сонголт солигдсон бол хуучин баримтын
+     биеийг шинэ сонголт дээр бичихгүй — `selRef` нь сүүлийн `sel`. */
+  const selRef = useRef<number | null>(null);
+  /* Засах горимд хадгалаагүй өөрчлөлт бий эсэх — багц/таб солих, «Болих»-д асууна */
+  const [dirty, setDirty] = useState(false);
+  /* `sel` effect дотор баримтын төлөвийг deps-гүй унших */
+  const docsRef = useRef<MsDoc[]>([]);
+  useEffect(() => { docsRef.current = docs; }, [docs]);
 
   const authorOk = isAuthorFor(me || null, pkg);
   /* ⚠️ `useMemo` БИШ (2026-09-24): ACL remote-оос ирэхэд (`subscribeChanarAcl`
@@ -151,6 +165,11 @@ export function Chanar() {
       if (!st.ok) { setDocs([]); return; }
       /* ⚠️ Долоон төрлийг НЭГ асуулгаар — таб дээрх тоо, MIR→MA, NCR→MIR иш */
       setDocs(await loadAllDocs());
+      /* ⚠️ 2026-09-25: хураангуйн биеийн кэш хүчингүй — «Шинэчлэх» бодит утга үзүүлнэ */
+      bodiesGen.current += 1;
+      bodiesRef.current = new Map();
+      bodiesPending.current.clear();
+      setBodies(new Map());
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
@@ -178,21 +197,36 @@ export function Chanar() {
   const doc = useMemo(() => kindDocs.find((d) => d.oid === sel) ?? null, [kindDocs, sel]);
   const hist = useMemo(() => (doc ? history(kindDocs, doc.bagts, doc.seq, doc.kind) : []), [kindDocs, doc]);
 
-  /* Хураангуй — толгой бүрийн биеийг нэг удаа татна (MS: workType · MA: материал · NCR: reopened) */
+  /* Хураангуй — толгой бүрийн биеийг нэг удаа татна (MS: workType · MA: материал · NCR: reopened).
+     ⚠️ 2026-09-25: N зэрэгцээ хүсэлт биш — 4 ажилчинтай дараалал (`loadBodyOf` нэг
+     мөр тутам; lib-д багц уншигч байхгүй). Ирсэн бие нь REF-д, `gen` таарвал л. */
   useEffect(() => {
-    const need = allHeads.filter((d) => !bodies.has(d.oid));
-    if (!need.length) return;
+    const gen = bodiesGen.current;
+    const pending = bodiesPending.current;
+    const queue = allHeads.filter((d) => !bodiesRef.current.has(d.oid) && !pending.has(d.oid));
+    if (!queue.length) return;
+    for (const d of queue) pending.add(d.oid);
     let live = true;
-    void Promise.all(need.map(async (d) => [d.oid, d.kind, await loadBodyOf(d.oid)] as const)).then((rs) => {
-      if (!live) return;
-      setBodies((prev) => {
-        const next = new Map(prev);
-        for (const [oid, k, r] of rs) next.set(oid, r?.body ?? emptyBodyOf(k));
-        return next;
-      });
-    }).catch(() => { /* хураангуй л — чимээгүй */ });
-    return () => { live = false; };
+    const worker = async () => {
+      for (let d = queue.shift(); d && live; d = queue.shift()) {
+        try {
+          const r = await loadBodyOf(d.oid);
+          if (bodiesGen.current === gen) bodiesRef.current.set(d.oid, r?.body ?? emptyBodyOf(d.kind));
+        } catch { /* хураангуй л — чимээгүй; дараагийн effect дахин оролдоно */ } finally {
+          pending.delete(d.oid);
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker))
+      /* ⚠️ `live`-ээс үл хамааран агшин авна — effect дахин эхэлсэн ч явж байсан
+         хүсэлтийн үр дүн зурагдана (эс тэгвээс «ачаалж байна» гацна) */
+      .then(() => { if (bodiesGen.current === gen) setBodies(new Map(bodiesRef.current)); });
+    return () => {
+      live = false;
+      for (const d of queue) pending.delete(d.oid);
+    };
   }, [allHeads, bodies]);
+  const bodiesLoading = allHeads.some((d) => !bodies.has(d.oid));
 
   const reloadBody = useCallback(async (oid: number) => {
     const r = await loadBodyOf(oid);
@@ -208,6 +242,7 @@ export function Chanar() {
     setCorr({ text: '', completedAt: null, steps: [] });
     setNcrClose(emptyNcrClose());
     setPrConsultant(false);
+    selRef.current = sel;
     if (sel == null) { setBody(null); return; }
     let live = true;
     setBody(null); setEdit(false);
@@ -216,7 +251,10 @@ export function Chanar() {
       setBody(b);
       const meta = metaOf(b);
       setMOwners(meta?.owners ?? []); setMCat(meta?.category ?? '');
-      setRevNote(commonOf(b).revNote ?? '');
+      /* ⚠️ 2026-09-25: БУЦААГДСАН баримтад өмнөх хувилбарын шалтгааныг урьдчилан
+         бөглөхгүй — rev+1-ийн шалтгаан нь ШИНЭ өөрчлөлт. */
+      const returned = docsRef.current.find((d) => d.oid === sel)?.status === MS_STATUS.returned;
+      setRevNote(returned ? '' : commonOf(b).revNote ?? '');
       if (b && 'correction' in b) { setCorr({ ...(b as NcrBody).correction }); setNcrClose(ncrCloseFrom((b as NcrBody).closure)); }
       if (b && 'items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
       if (b && 'materials' in b) {
@@ -259,15 +297,19 @@ export function Chanar() {
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
     if (busy) return false;
     setBusy(true); setErr(''); setNote('');
+    const sel0 = sel;
     try {
       const r = await fn();
       if (!r.ok) { setErr(r.error ?? tr('Амжилтгүй.')); return false; }
       setNote(okMsg);
       await refresh();
-      if (sel != null) {
-        const b = await reloadBody(sel);
+      /* ⚠️ 2026-09-25: хүлээх хооронд сонголт солигдсон бол (жагсаалт/таб busy үед
+         хаалттай ч гэсэн) хуучин баримтын биеийг шинэ сонголт дээр БИЧИХГҮЙ. */
+      if (sel0 != null && selRef.current === sel0) {
+        const b = await reloadBody(sel0);
+        if (selRef.current !== sel0) return true;
         setBody(b);
-        if (b) setBodies((prev) => new Map(prev).set(sel, b));
+        if (b) { bodiesRef.current.set(sel0, b); setBodies(new Map(bodiesRef.current)); }
         if (b && 'items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
         if (b && 'correction' in b) setNcrClose(ncrCloseFrom((b as NcrBody).closure));
       }
@@ -288,14 +330,30 @@ export function Chanar() {
     return window.confirm(tr('Ижил нэртэй идэвхтэй MA бий: {0}. Үргэлжлүүлэх үү?', twins.map((d) => d.docNo).join(', ')));
   };
 
+  const changeTitle = (v: string) => { setDTitle(v); setDirty(true); };
+  const changeBody = (v: AnyBody) => { setDBody(v); setDirty(true); };
+  /* MIR/FIC — захиалагчийн багана хадгалагдаагүй өөрчлөлттэй юу */
+  const clientDirty = !!clientDraft && !!body && 'items' in body
+    && (body as InspBody).items.some((it, i) => (clientDraft[i] ?? null) !== it.client);
+  /* ⚠️ 2026-09-25: багц/таб солих, өөр карт, «Болих» — хадгалаагүй өөрчлөлтийг асуулгүй хаяхгүй */
+  const discardOk = (): boolean => {
+    if (!(edit && dirty) && !clientDirty) return true;
+    return window.confirm(tr('Хадгалаагүй өөрчлөлт бий — хаях уу?'));
+  };
+  const cancelEdit = () => { if (discardOk()) { setEdit(false); setDirty(false); } };
+  const select = (oid: number | null) => { if (oid === sel && !edit) return; if (!discardOk()) return; setSel(oid); setEdit(false); setDirty(false); };
   /* ── 1-р алхам: шинэ ноорог ── */
   const startNew = () => {
-    setSel(null); setEdit(true);
+    if (!discardOk()) return;
+    setSel(null); setEdit(true); setDirty(false);
     setDTitle(''); setDBody(emptyBodyOf(kind)); setBody(null); setAtts([]);
   };
   const startEdit = () => {
     if (!doc || !body) return;
-    setEdit(true); setDTitle(doc.title); setDBody(structuredClone(body));
+    const b = structuredClone(body);
+    /* ⚠️ 2026-09-25: буцаагдсан баримтын засварт хуучин `revNote` урьдчилан бөглөгдөхгүй */
+    if (doc.status === MS_STATUS.returned && 'revNote' in b) (b as BodyCommon).revNote = '';
+    setEdit(true); setDirty(false); setDTitle(doc.title); setDBody(b);
   };
   const titleErr = () => (isMsLike(kind) ? tr('Аргачлалын нэрийг бичнэ үү.') : tr('Баримтын нэрийг бичнэ үү.'));
   const saveNew = async () => {
@@ -307,7 +365,7 @@ export function Chanar() {
       if (r.ok) oid = r.oid;
       return r;
     }, tr('Ноорог хадгалагдлаа — дугаар автоматаар олгогдов.'));
-    if (ok) { setEdit(false); setSel(oid); }
+    if (ok) { setEdit(false); setDirty(false); setSel(oid); }
   };
   /* Засах горимд хувилбарын шалтгаан шаардлагатай юу — буцаагдсан (rev+1 үүснэ) эсвэл rev>0 ноорог */
   const needRevNote = !!doc && doc.kind !== 'NCR' && (doc.status === MS_STATUS.returned || doc.rev > 0);
@@ -323,7 +381,7 @@ export function Chanar() {
       return r;
     }, tr('Ноорог хадгалагдлаа.'));
     /* ⚠️ Буцаагдсан баримтыг засахад `saveDraft` rev+1 ШИНЭ мөр үүсгэнэ — түүн рүү шилжинэ. */
-    if (ok) { setEdit(false); if (oid !== doc.oid) setSel(oid); }
+    if (ok) { setEdit(false); setDirty(false); if (oid !== doc.oid) setSel(oid); }
   };
 
   /* ── 2-р алхам: ирүүлэх ── */
@@ -363,6 +421,9 @@ export function Chanar() {
     if (ok) setSel(oid);
   };
 
+  /* MA: материал бүрийн шийдвэрт AN/R байвал нийт A боломжгүй (`chanarMs.review` өсгөдөг) — товч хаалттай, тайлбартай */
+  const pmBlocksA = !!doc && doc.kind === 'MA' && Object.values(perMat).some((c) => c !== 'A');
+
   /* ── 3 · 4а · 4б: хянагчийн шийдвэр — A / AN / R ── */
   const decide = async (as: Reviewer, code: VerdictCode) => {
     if (!doc) return;
@@ -370,9 +431,19 @@ export function Chanar() {
     if (code === 'R' && !rNote.trim()) { setErr(tr('Татгалзах шалтгаанаа бичнэ үү.')); return; }
     if (code === 'AN' && !rNote.trim()) { setErr(tr('Санал бүхий зөвшөөрөлд саналаа бичнэ үү.')); return; }
     const pm = doc.kind === 'MA' && Object.keys(perMat).length ? perMat : undefined;
+    if (code === 'A' && pmBlocksA) { setErr(tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.')); return; }
     const dl = code === 'AN' ? fromDateInput(anDeadline) : null;
+    /* ⚠️ 2026-09-25: MIR/FIC — захиалагчийн баганын хадгалаагүй өөрчлөлтийг ЭХЛЭЭД
+       хадгална (`saveClientChecks`), унавал шийдвэр өгөхгүй; өмнө нь алдагддаг байв. */
+    const cd = clientDirty && act.clientChecks && clientDraft ? clientDraft : null;
     const ok = await run(
-      () => reviewDoc({ oid: doc.oid, as, who: me, verdict, note: rNote, perMaterial: pm, anDeadline: dl }),
+      async () => {
+        if (cd) {
+          const r = await saveClientChecks({ oid: doc.oid, who: me, client: cd });
+          if (!r.ok) return { ok: false, error: tr('Захиалагчийн багана хадгалагдсангүй — шийдвэр өгөгдөөгүй: {0}', r.error ?? '') };
+        }
+        return reviewDoc({ oid: doc.oid, as, who: me, verdict, note: rNote, perMaterial: pm, anDeadline: dl });
+      },
       code === 'R' ? tr('Татгалзаж, гүйцэтгэгч рүү буцаав.') : code === 'AN' ? tr('Санал бүхий зөвшөөрөв.') : tr('Зөвшөөрөв.'),
     );
     if (ok) { setRNote(''); setPerMat({}); setAnDeadline(''); }
@@ -495,13 +566,14 @@ export function Chanar() {
   };
 
   /* ── Багцын хураангуй мөр — төрлөөр (бие `bodies`-оос) ── */
+  /* ⚠️ 2026-09-25: бие бүрэн татагдаагүй байхад «дутуу N» гэх худал тоо биш — «ачаалж байна» */
+  const LOADING = tr('биеийн хураангуй ачаалж байна…');
   const summary = (): string[] => {
     if (isMsLike(kind)) {
+      const ap = allHeads.filter((d) => d.status === MS_STATUS.approved).length;
+      if (kind !== 'MS') return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
+      if (bodiesLoading) return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap), LOADING];
       const p = msRequiredProgress(allHeads.map((d) => ({ status: d.status, workType: metaOf(bodies.get(d.oid))?.workType ?? null })), MS_STATUS.approved, MS_STATUS.draft);
-      if (kind !== 'MS') {
-        const ap = allHeads.filter((d) => d.status === MS_STATUS.approved).length;
-        return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
-      }
       return [
         tr('Шаардлагатай {0} аргачлалаас ирүүлсэн {1} · батлагдсан {2} · дутуу {3}', p.total, p.submitted, p.approved, p.missing.length),
         MS_GROUPS.map((g) => `${msGroupLabel(g)} ${p.byGroup[g].approved}/${p.byGroup[g].total}`).join(' · '),
@@ -509,17 +581,20 @@ export function Chanar() {
     }
     if (kind === 'MA') {
       const m = maSummary(allHeads);
+      const line1 = tr('A {0} · AN {1} · R {2} · хүлээгдэж буй {3} · нээлттэй {4} · AN нээлттэй {5}', m.A, m.AN, m.R, m.pending, m.open, m.anOpen);
+      if (bodiesLoading) return [line1, LOADING];
       const mm = maMaterialSummary(allHeads.map((d) => {
         const b = bodies.get(d.oid) as MaBody | undefined;
         return { head: d, category: b?.meta.category ?? '', materials: b?.materials ?? [] };
       }));
       return [
-        tr('A {0} · AN {1} · R {2} · хүлээгдэж буй {3} · нээлттэй {4} · AN нээлттэй {5}', m.A, m.AN, m.R, m.pending, m.open, m.anOpen),
+        line1,
         `${tr('Материал')} ${mm.approved}/${mm.required} · ${MA_CATEGORIES.map((c) => `${maCategoryLabel(c)} ${mm.byCategory[c].approved}/${mm.byCategory[c].required}`).join(' · ')}${mm.other ? ` · ${tr('бусад')} ${mm.other}` : ''}`,
       ];
     }
     if (kind === 'NCR') {
       const n = ncrSummary(allHeads);
+      if (bodiesLoading) return [tr('Нээлттэй {0} · хаагдсан {1}', n.open, n.closed), LOADING];
       const reopened = allHeads.filter((d) => ((bodies.get(d.oid) as NcrBody | undefined)?.reopened ?? 0) > 0).length;
       return [tr('Нээлттэй {0} · хаагдсан {1} · дахин нээсэн {2}', n.open, n.closed, reopened)];
     }
@@ -527,7 +602,19 @@ export function Chanar() {
     return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
   };
 
-  const switchKind = (k: DocKind) => { setKind(k); setSel(null); setEdit(false); setFilter('all'); };
+  const switchKind = (k: DocKind) => {
+    if (k === kind || busy || !discardOk()) return;
+    setKind(k); setSel(null); setEdit(false); setDirty(false); setFilter('all');
+  };
+  /* Таб — ← → сумаар шилжинэ (WAI-ARIA tablist) */
+  const tabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const i = KINDS.indexOf(kind);
+    const k = KINDS[(i + (e.key === 'ArrowRight' ? 1 : KINDS.length - 1)) % KINDS.length];
+    switchKind(k);
+    document.getElementById(`chanar-tab-${k}`)?.focus();
+  };
 
   /* ── Төрлийн маягт — харах/засах ── */
   const renderBody = (b: AnyBody, editing: boolean, onChange: (v: AnyBody) => void) => {
@@ -542,7 +629,7 @@ export function Chanar() {
     }
     if (k === 'MIR' || k === 'FIC') {
       return (
-        <InspForm m={m} kind={k} body={b as InspBody} onChange={onChange} isNew={editing && !doc}
+        <InspForm m={m} kind={k} body={b as InspBody} onChange={onChange}
           onTemplate={(title) => { if (!dTitle.trim()) setDTitle(title); }}
           clientEdit={!editing && act.clientChecks} client={clientDraft ?? undefined} onClient={setClientDraft}
           maDocs={approvedMa} tuhVerdict={doc?.reviews.tuh?.verdict ?? null} approved={doc?.status === MS_STATUS.approved} />
@@ -567,10 +654,11 @@ export function Chanar() {
 
   return (
     <div className={s.frame}>
-      <div className={s.tabs} role="tablist" aria-label={tr('Баримтын төрөл')}>
+      <div className={s.tabs} role="tablist" aria-label={tr('Баримтын төрөл')} onKeyDown={tabKey}>
         {KINDS.map((k) => (
           <button
-            key={k} type="button" role="tab" aria-selected={k === kind}
+            key={k} type="button" role="tab" aria-selected={k === kind} id={`chanar-tab-${k}`} aria-controls="chanar-panel"
+            tabIndex={k === kind ? 0 : -1} disabled={busy}
             className={`${s.tab} ${k === kind ? s.tabOn : ''}`}
             onClick={() => switchKind(k)}
           >
@@ -582,7 +670,8 @@ export function Chanar() {
       <div className={s.head}>
         <label className={s.field}>
           {tr('Багц')}
-          <select className={s.select} value={pkg} onChange={(e) => { setPkg(e.target.value); setSel(null); setEdit(false); }}>
+          <select className={s.select} value={pkg} disabled={busy}
+            onChange={(e) => { if (!discardOk()) return; setPkg(e.target.value); setSel(null); setEdit(false); setDirty(false); }}>
             {PKG_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </label>
@@ -622,7 +711,7 @@ export function Chanar() {
       {note && <p className={s.note}>{note}</p>}
       {table && !table.ok && <p className={s.err} role="alert">{tableMsg(table)}</p>}
 
-      <div className={s.split}>
+      <div className={s.split} id="chanar-panel" role="tabpanel" aria-labelledby={`chanar-tab-${kind}`}>
         <div className={s.list}>
           {heads.length === 0 && !loading && (
             <div className={s.empty}>{emptyLabel(kind)}</div>
@@ -636,7 +725,8 @@ export function Chanar() {
                 key={d.oid}
                 type="button"
                 className={`${s.card} ${d.oid === sel ? s.cardOn : ''}`}
-                onClick={() => { setSel(d.oid); setEdit(false); }}
+                disabled={busy}
+                onClick={() => select(d.oid)}
               >
                 <span className={s.cardNo}>{d.docNo}</span>
                 <span className={s.cardTitle}>{d.title || tr('(нэргүй)')}</span>
@@ -660,25 +750,25 @@ export function Chanar() {
         <div className={s.doc}>
           {edit && !doc ? (
             <>
-              <FormHead head={tr('Шинэ {0} — {1}', kindLabel(kind), pkg)} kind={kind} title={dTitle} onTitle={setDTitle} busy={busy} />
-              {renderBody(dBody, true, setDBody)}
-              <FormActs busy={busy} onSave={() => void saveNew()} onCancel={() => setEdit(false)} />
+              <FormHead head={tr('Шинэ {0} — {1}', kindLabel(kind), pkg)} kind={kind} title={dTitle} onTitle={changeTitle} busy={busy} />
+              {renderBody(dBody, true, changeBody)}
+              <FormActs busy={busy} onSave={() => void saveNew()} onCancel={cancelEdit} />
             </>
           ) : !doc ? (
             <div className={s.empty}>{tr('Зүүн жагсаалтаас баримт сонгоно уу.')}</div>
           ) : edit ? (
             <>
-              <FormHead head={doc.docNo} kind={doc.kind} title={dTitle} onTitle={setDTitle} busy={busy} />
+              <FormHead head={doc.docNo} kind={doc.kind} title={dTitle} onTitle={changeTitle} busy={busy} />
               {needRevNote && (
                 <div className={s.sec}>
                   <div className={s.secHead}>{tr('Хувилбарын шалтгаан (rev {0}) — заавал', doc.status === MS_STATUS.returned ? doc.rev + 1 : doc.rev)}</div>
                   <textarea className={s.textarea} aria-label={tr('Хувилбарын шалтгаан')} value={commonOf(dBody).revNote ?? ''} disabled={busy}
                     placeholder={tr('Юу өөрчлөгдсөн — нийлүүлэгч солигдсон, техник үзүүлэлт шинэчлэгдсэн …')}
-                    onChange={(e) => setDBody({ ...dBody, revNote: e.target.value } as AnyBody)} />
+                    onChange={(e) => changeBody({ ...dBody, revNote: e.target.value } as AnyBody)} />
                 </div>
               )}
-              {renderBody(dBody, true, setDBody)}
-              <FormActs busy={busy} onSave={() => void saveEdit()} onCancel={() => setEdit(false)} />
+              {renderBody(dBody, true, changeBody)}
+              <FormActs busy={busy} onSave={() => void saveEdit()} onCancel={cancelEdit} />
             </>
           ) : (
             <>
@@ -865,7 +955,8 @@ export function Chanar() {
                         )}
                         {mine && (
                           <div className={s.revActs}>
-                            <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy} onClick={() => void decide(r, 'A')}>
+                            <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || pmBlocksA} onClick={() => void decide(r, 'A')}
+                              title={pmBlocksA ? tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.') : undefined}>
                               {verdictLabel('A', doc.kind)}
                             </button>
                             <button type="button" className={`${s.btn} ${s.btnWarn}`} disabled={busy} onClick={() => void decide(r, 'AN')}>
@@ -882,6 +973,9 @@ export function Chanar() {
                 </div>
                 {act.review.length > 0 && (
                   <>
+                    {pmBlocksA && (
+                      <p className={s.warnText}>{tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.')}</p>
+                    )}
                     <textarea
                       className={s.textarea}
                       placeholder={tr('Санал, шаардлага — AN ба R-д ЗААВАЛ')}
@@ -952,22 +1046,17 @@ export function Chanar() {
                         </tr>
                       </thead>
                       <tbody>
-                        {/* ⚠️ Гараар ч сонгогдоно (2026-09-23): `<tr onClick>` фокус авдаггүй. */}
+                        {/* ⚠️ Гараар ч сонгогдоно (2026-09-23); 2026-09-25: `<tr role=button>` биш —
+                            дугаарын нүдэнд жинхэнэ <button> (хүснэгтийн семантик хэвээр). */}
                         {hist.map((h) => (
-                          <tr
-                            key={h.oid}
-                            className={h.oid === doc.oid ? s.histOn : ''}
-                            onClick={() => setSel(h.oid)}
-                            tabIndex={0}
-                            role="button"
-                            aria-pressed={h.oid === doc.oid}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(h.oid); }
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          >
+                          <tr key={h.oid} className={h.oid === doc.oid ? s.histOn : ''}>
                             {doc.kind !== 'NCR' && <td>{h.rev}</td>}
-                            <td>{h.docNo}</td>
+                            <td>
+                              <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} aria-pressed={h.oid === doc.oid}
+                                aria-label={tr('«{0}» хувилбарыг нээх', h.docNo)} onClick={() => select(h.oid)}>
+                                {h.docNo}
+                              </button>
+                            </td>
                             <td>
                               <span className={`${s.tag} ${tagCls(h.status)}`}>{statusLabel(h.kind, h.status)}</span>
                               {h.bounce && <> <span className={`${s.tag} ${s.tagReturned}`}>{bounceLabel(h.bounce.reason)}</span></>}

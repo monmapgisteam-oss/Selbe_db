@@ -103,4 +103,22 @@ assert.match(SRC, /gArr\[i\]\.s \+= plan \* sh\.nBld;[\s\S]{0,160}return;/,
    ⚠️ Багц 3.2-т excel-ийн 0 сериал (1899-12-30) хоёр нүд бий. */
 assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаалалт үлдэх ёстой');
 
-console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓');
+/* ── 10. `planPctAt` — ШУУД тест (2026-09-25, аудит 8) ──
+   ⚠️ Урьд нь энэ функц зөвхөн `negtgel.check`-ийн `housingPlanOf`-оор дам
+   шалгагддаг байв; `Finance.lagOf` · PkgProg · execReport · negtgelAuto ДӨРВҮҮЛЭЭ
+   энэ дүрмээр хоцрогдол боддог тул хазайлт нь бүх дэлгэцийг зэрэг худал болгоно. */
+{
+  const { planPctAt } = await import('./planProgress.ts');
+  const S = [{ label: '2026-08', pct: 20 }, { label: '2026-09', pct: 50 }];
+  assert.equal(planPctAt(S, '2026-09-15'), 35, 'сарын дундуур — өмнөх сарын эцэс → энэ сарын эцэс шугаман');
+  assert.equal(planPctAt(S, '2026-09-30'), 50, 'сарын сүүлийн өдөр = сарын цэг');
+  assert.equal(planPctAt(S, '2026-09-31'), 50, '`-31` сарын уртаас их → сарын эцэс');
+  assert.equal(planPctAt(S, '2026-08-31'), 20, 'өмнөх сарын цэггүй = хуваарь энэ сард эхэлсэн → 0-ээс');
+  assert.ok(Math.abs(planPctAt(S, '2026-08-15') - 20 * (15 / 31)) < 1e-9, 'эхний сар: 0 → 20 шугаман (15/31)');
+  assert.equal(planPctAt(S, '2026-11-10'), 50, 'муж өнгөрсөн → сүүлийн өнгөрсөн цэг');
+  assert.equal(planPctAt(S, '2026-07-10'), null, 'бүх цэг ирээдүйд → null (төлөвлөгөөгүй ≠ 0)');
+  assert.equal(planPctAt(S, 'хог'), null, 'эвдэрсэн огноо → null');
+  assert.equal(planPctAt([], '2026-09-15'), null, 'хоосон муруй → null');
+}
+
+console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

@@ -324,6 +324,9 @@
   .frame { min-height: 0; }
   .split { display: block; }
   .doc { border: 0; padding: 0; overflow: visible; }
+  /* ⚠️ 2026-09-25: гүйлгэдэг хүснэгтийн хайрцаг хэвлэхэд ТАСАРДАГ — задгай, хүснэгт багана өргөнөө өөрөө */
+  .tblWrap { overflow: visible; max-width: none; }
+  .tbl, .matTbl { table-layout: auto; width: 100%; }
   .printOnly { display: block; page-break-inside: avoid; }
   .tbl th, .tbl td, .hist th, .hist td { border: 1px solid #000; }
   .ck, .vb, .tag { border-color: #000; }

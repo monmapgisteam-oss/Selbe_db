@@ -250,7 +250,26 @@ export type Review = {
   anDeadline?: number;
 };
 
-export type Reviews = Record<Reviewer, Review | null>;
+/**
+ * ⚠️ 2026-09-25: `undefined` = JSON-д ТҮЛХҮҮР ӨӨРӨӨ БАЙХГҮЙ (хуучин мөр — тухайн үүрэг
+ *    урсгалд ороогүй үед илгээгдсэн), `null` = үүрэг бий, шийдвэр хараахан үгүй.
+ *    `requiredReviewers` дараалсан төрөлд `undefined` слотыг тоолохгүй;
+ *    `JSON.stringify` `undefined`-ийг хаядаг тул хуучин мөр хуучин хэвээр үлдэнэ.
+ */
+export type Reviews = Record<Reviewer, Review | null | undefined>;
+
+/** Хянагчийн санал/шалтгаан · буцаалтын тайлбар · AN хаалтын тэмдэглэлийн ДЭЭД урт (тэмдэгт) */
+export const NOTE_MAX = 1500;
+/** Хариу (`rep.anText` · `rReasons`) дахь нэг саналын хураангуй урт — бүтэн текст `reviews[r].note`-д */
+export const REP_NOTE_MAX = 300;
+/**
+ * ⚠️ 2026-09-25: `hyanalt` багана 8000 тэмдэгт (`chanarStore` хүснэгтийн тодорхойлолт).
+ *    Урьд нь саналын уртад хязгаар үгүй, дээр нь `repFrom` бүх саналыг `anText`/
+ *    `rReasons`-д ДАВХАРЛАН хуулдаг тул нэг урт санал бичилтийг чимээгүй унагадаг байв.
+ *    Одоо санал ≤ NOTE_MAX, хариунд хураангуй (≤ REP_NOTE_MAX) — 3 хянагч × 1500 +
+ *    хариу + материалын шийдвэр 8000-д багтана.
+ */
+const clipNote = (s: string, max = REP_NOTE_MAX): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 /**
  * «ХЯНАХГҮЙ БУЦААХ» — формат буруу / бүрдэл дутуу (2026-09-28: бүртгэлд 10 мөр
@@ -1194,7 +1213,13 @@ export const emptyReviews = (): Reviews =>
 export function requiredReviewers(reviews: Reviews, kind: DocKind): readonly Reviewer[] {
   const need = REVIEWERS_OF[kind];
   if (!SEQUENTIAL_KINDS.includes(kind)) return need;
-  return need.filter((r, i) => reviews[r] != null || !need.slice(i + 1).some((later) => reviews[later] != null));
+  /* ⚠️ 2026-09-25: ШИЙДВЭРГҮЙ хуучин MA мөр (JSON-д `cheng` түлхүүр огт байхгүй) урьд нь
+     cheng-ийг шаарддаг байв — «дараагийнх бөглөгдсөн» дүрэм зөвхөн шийдвэртэй мөрд
+     ажилладаг тул. Одоо `undefined` слот (`parseReviews`: түлхүүр байхгүй) тоологдохгүй.
+     FAIL-CLOSED: бүгд алга бол (эвдэрсэн/хоосон JSON) бүх хянагчийг шаардана. */
+  const out = need.filter((r, i) => reviews[r] !== undefined
+    && (reviews[r] != null || !need.slice(i + 1).some((later) => reviews[later] != null)));
+  return out.length ? out : need;
 }
 
 /**
@@ -1242,10 +1267,10 @@ export function progress(reviews: Reviews, kind: DocKind = 'MS'): { done: number
  */
 export function repFrom(reviews: Reviews, kind: DocKind, materials?: readonly Pick<MaMaterial, 'verdict' | 'locked'>[]): Omit<Rep, 'no' | 'at'> {
   const rs = REVIEWERS_OF[kind].map((r) => reviews[r]).filter((r): r is Review => r != null);
-  const anText = rs.filter((r) => r.verdict !== VERDICT.return && r.note).map((r) => r.note as string).join('\n');
-  const rReasons = rs.filter((r) => r.verdict === VERDICT.return && r.note).map((r) => r.note as string);
-  const verdict: VerdictCode = rReasons.length || rs.some((r) => r.verdict === VERDICT.return) ? 'R'
-    : rs.some((r) => r.verdict === VERDICT.note) ? 'AN' : 'A';
+  /* ⚠️ 2026-09-25: хариунд саналын ХУРААНГУЙ (`clipNote`) — бүтэн текст `reviews[r].note`-д
+     хэвээр; `hyanalt` 8000-д багтаахын тулд давхардлыг богиносгоно. */
+  const anText = rs.filter((r) => r.verdict !== VERDICT.return && r.note).map((r) => clipNote(r.note as string)).join('\n');
+  const rReasons = rs.filter((r) => r.verdict === VERDICT.return && r.note).map((r) => clipNote(r.note as string));
   const per: Record<string, VerdictCode> = {};
   const rank = { A: 0, AN: 1, R: 2 } as const;
   for (const r of rs) {
@@ -1258,6 +1283,15 @@ export function repFrom(reviews: Reviews, kind: DocKind, materials?: readonly Pi
       if (m.locked && m.verdict) per[String(i)] = m.verdict;
     });
   }
+  /* ⚠️ 2026-09-25: баримтын шийдвэр = ХЯНАГЧДЫН ба ТҮГЖИГДСЭН материалын хамгийн хатуу нь.
+     Урьд нь зөвхөн хянагчдаас — өмнөх хувилбарт AN болж түгжигдсэн материалын нөхцөл
+     биелээгүй атал rev+1 бүхэлдээ «A» болж, AN нээлттэй байдал (`isAnOpen`) алдагддаг байв. */
+  const reviewCode: VerdictCode = rs.some((r) => r.verdict === VERDICT.return) ? 'R'
+    : rs.some((r) => r.verdict === VERDICT.note) ? 'AN' : 'A';
+  const lockedMax = maxPerMaterial(materials
+    ? Object.fromEntries(materials.map((m, i) => [String(i), m.locked ? m.verdict : null]).filter(([, v]) => v != null) as [string, VerdictCode][])
+    : undefined);
+  const verdict: VerdictCode = lockedMax && rank[lockedMax] > rank[reviewCode] ? lockedMax : reviewCode;
   const out: Omit<Rep, 'no' | 'at'> = { verdict };
   if (anText) out.anText = anText;
   if (rReasons.length) out.rReasons = rReasons;
@@ -1361,6 +1395,9 @@ export function review(
   if (SEQUENTIAL_KINDS.includes(kind)) {
     const order = requiredReviewers(doc.reviews, kind);
     const i = order.indexOf(args.as);
+    /* ⚠️ 2026-09-25: хуучин мөрд алгасагдсан үүрэг (cheng) — `canAct` товчийг нуудаг байсан ч
+       `review()` хүлээн авч, тоологдохгүй слотод шийдвэр бичдэг байв. */
+    if (i < 0) return { ok: false, error: tr('Энэ баримтад «{0}» үүргийн шийдвэр шаардлагагүй (хуучин урсгал)', reviewerLabel(args.as)) };
     for (let k = 0; k < i; k += 1) {
       if (!doc.reviews[order[k]]) {
         return { ok: false, error: tr('Эхлээд {0} шийдвэр өгнө', reviewerLabel(order[k])) };
@@ -1398,6 +1435,9 @@ export function review(
   const pmMax = maxPerMaterial(perMaterial);
   if (pmMax && rank[pmMax] > rank[verdictCode(verdict)]) verdict = verdictOf(pmMax);
   const note = args.note?.trim() || null;
+  if (note && note.length > NOTE_MAX) {
+    return { ok: false, error: tr('Санал {0} тэмдэгтээс урт байж болохгүй', String(NOTE_MAX)) };
+  }
   if (verdict === VERDICT.return && !note) {
     return { ok: false, error: tr('Татгалзах шалтгаанаа бичнэ үү') };
   }
@@ -1533,9 +1573,11 @@ export function bounce(
   if (doc.status !== MS_STATUS.review) return { ok: false, error: tr('Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй') };
   if (doc.author.trim().toLowerCase() === me) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   if (args.reason !== 'format' && args.reason !== 'incomplete') return { ok: false, error: tr('Буцаах шалтгааны төрөл танигдсангүй') };
+  const note = args.note?.trim() ?? '';
+  if (note.length > NOTE_MAX) return { ok: false, error: tr('Санал {0} тэмдэгтээс урт байж болохгүй', String(NOTE_MAX)) };
   return {
     ok: true, status: MS_STATUS.returned, reviews: emptyReviews(),
-    bounce: { at: args.now ?? Date.now(), by: me, reason: args.reason, note: args.note?.trim() ?? '' },
+    bounce: { at: args.now ?? Date.now(), by: me, reason: args.reason, note },
   };
 }
 
@@ -1569,8 +1611,14 @@ export function closeAn(
   const me = args.who.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Хянагчийн нэр хоосон') };
   if (!REVIEWERS_OF[kind].includes(args.as)) return { ok: false, error: tr('Энэ төрлийн баримтыг «{0}» үүргээр хянахгүй', args.as) };
+  /* ⚠️ 2026-09-25: AN-ийн нөхцөл биелснийг ЧАНАРЫН ХЭЛТЭС (chanar/cheng) л баталгаажуулна —
+     урьд нь тухайн төрлийн аль ч хянагч (tug, habea…) хааж чаддаг байв; зохиогч
+     өөрөө ч (NCR-ээс бусад) хаахгүй — `review()`-ийн ижил дүрэм. */
+  if (args.as !== 'chanar' && args.as !== 'cheng') return { ok: false, error: tr('AN-ийг зөвхөн Чанарын хэлтэс хаана') };
+  if (kind !== 'NCR' && doc.author.trim().toLowerCase() === me) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   if (doc.status !== MS_STATUS.approved || !doc.rep) return { ok: false, error: tr('Зөвхөн батлагдсан баримтын AN-ийг хаана') };
   if (doc.rep.verdict !== 'AN') return { ok: false, error: tr('Хариу AN биш — хаах зүйл үгүй') };
+  if ((args.note?.trim().length ?? 0) > NOTE_MAX) return { ok: false, error: tr('Санал {0} тэмдэгтээс урт байж болохгүй', String(NOTE_MAX)) };
   const now = args.now ?? Date.now();
   const per = doc.rep.perMaterial
     ? Object.fromEntries(Object.entries(doc.rep.perMaterial).map(([k, v]) => [k, v === 'AN' ? 'A' : v]))
@@ -1578,7 +1626,7 @@ export function closeAn(
   const rep: Rep = { ...doc.rep, no: args.no, at: now, verdict: 'A', anClosedAt: now, anClosedBy: me };
   if (per) rep.perMaterial = per as Record<string, VerdictCode>;
   const note = args.note?.trim();
-  if (note) rep.anText = [rep.anText, note].filter(Boolean).join('\n');
+  if (note) rep.anText = [rep.anText, clipNote(note)].filter(Boolean).join('\n');
   delete rep.receivedAt; delete rep.receivedBy;
   return { ok: true, rep };
 }
@@ -1591,7 +1639,7 @@ export function closeAn(
  *    энд зөвхөн төлөв, агуулга.
  */
 export function submitCorrection(
-  doc: Pick<MsDoc, 'status'> & { kind?: DocKind },
+  doc: Pick<MsDoc, 'status'> & { kind?: DocKind; reviews?: Reviews },
   body: NcrBody,
   args: { who: string; correction: NcrCorrection; now?: number },
 ): { ok: true; body: NcrBody; status: MsStatus; reviews: Reviews } | Reject {
@@ -1599,6 +1647,13 @@ export function submitCorrection(
   if (!args.who.trim()) return { ok: false, error: tr('Илгээгчийн нэр хоосон') };
   if (doc.status !== MS_STATUS.review && doc.status !== MS_STATUS.returned) {
     return { ok: false, error: tr('Үл тохирол гүйцэтгэгчид илгээгдсэн эсвэл дахин засах төлөвт биш') };
+  }
+  /* ⚠️ 2026-09-25: `review` төлөвт залруулга аль хэдийн илгээгдэж, хянагч дүгнэлт өгч
+     ЭХЭЛСЭН бол дахин илгээх нь тэдгээр шийдвэрийг чимээгүй АРИЛГАДАГ байв. Одоо зөвхөн
+     хянагчийн шийдвэр ОГТ ҮГҮЙ үед (эсвэл `returned`-ээс) дахин илгээнэ. */
+  if (doc.status === MS_STATUS.review && body.correctionAt
+    && Object.values(doc.reviews ?? {}).some((r) => r != null)) {
+    return { ok: false, error: tr('Хянагч дүгнэлт өгч эхэлсэн — залруулгыг дахин илгээхгүй, дүгнэлтийг хүлээнэ үү') };
   }
   const text = args.correction.text.trim();
   if (!text) return { ok: false, error: tr('Залруулгын тайлбараа бичнэ үү') };
@@ -1667,6 +1722,8 @@ export function closeNcr(
   if ((doc.kind ?? 'MS') !== 'NCR') return { ok: false, error: tr('Зөвхөн үл тохирлыг хаана') };
   if (!args.who.trim()) return { ok: false, error: tr('Илгээгчийн нэр хоосон') };
   if (doc.status !== MS_STATUS.approved || !body.closure) return { ok: false, error: tr('Захиалагч баталгаажуулаагүй үл тохирлыг гүйцэтгэгч хаахгүй') };
+  /* ⚠️ 2026-09-25: нэг удаа — хаагдсан мөрийг дахин бичвэл бүртгэлийн хаалт (нэр, огноо, архив) солигддог байв */
+  if (body.closure.closedByContractor.length) return { ok: false, error: tr('Гүйцэтгэгч аль хэдийн хаасан') };
   const closers = args.closedByContractor
     .map((c) => ({ name: c.name.trim(), position: c.position.trim(), date: c.date ?? null }))
     .filter((c) => c.name || c.position)
@@ -1754,8 +1811,10 @@ export function canAct(
     && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
   const ack = mine && !!doc.rep && !doc.rep.receivedAt
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
+  /* ⚠️ 2026-09-25: `closeAn`-ийн ижил дүрэм — Чанарын хэлтэс (chanar/cheng), зохиогч биш (NCR-ээс бусад) */
   const closeAnOk = !!u && doc.status === MS_STATUS.approved && doc.rep?.verdict === 'AN'
-    && roles.some((r) => need.includes(r));
+    && (kind === 'NCR' || !mine)
+    && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
   const newRev = kind !== 'NCR' && mine && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
   const closeNcrOk = kind === 'NCR' && !!u && extra.contractor === true && doc.status === MS_STATUS.approved && !extra.ncrClosed;
   return {

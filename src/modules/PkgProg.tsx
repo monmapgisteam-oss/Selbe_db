@@ -51,8 +51,9 @@ type ProgPt = {
   planM?: number | null;
 };
 import {
-  BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf,
+  BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere, parcelOidsWhere } from '@/lib/services';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { cat, shade, num, pct, monthKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -408,6 +409,18 @@ export function PkgProg({ dim, setDim }: {
     return s;
   }, [packs, finMap]);
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
+  /**
+   * ⚠️ 2026-09-25: ХОЦРОГДОЛ НЬ МЭДЭГДЭХГҮЙ багцууд — бөглөх хуудас нь уншигдаагүй
+   *    (`PlanCurve.failed`) тул `byBagts`-д муруй байхгүй, `lagOf` `null` буцааж
+   *    `alertKeys` тэднийг ЧИМЭЭГҮЙ орхидог байв: «⚠ Хоцрогдолтой багц» бүлэгт
+   *    гарахгүй нь «хоцроогүй» гэсэн худал сайн мэдээ. Одоо тусдаа мэдэгдэл.
+   */
+  const lagUnknown = useMemo(() => {
+    if (planQ.state !== 'ready' || !planQ.data.failed.length) return [] as Pack[];
+    const failed = new Set(planQ.data.failed);
+    const groups = new Set(PKGS.filter((x) => failed.has(x.key)).map((x) => bagtsKey(x.group)));
+    return packs.filter((p) => p.kind === 'build' && groups.has(p.key) && !alertKeys.has(p.key));
+  }, [packs, planQ, alertKeys]);
 
 
 
@@ -688,6 +701,11 @@ export function PkgProg({ dim, setDim }: {
                   finMap={finMap}
                 />
               </div>
+            )}
+            {lagUnknown.length > 0 && (
+              <Section title={tr('⚠ Хоцрогдол тодорхойгүй багц')}>
+                <Note>{tr('{0}: бөглөх хуудас уншигдсангүй — хоцрогдол тооцоологдоогүй.', lagUnknown.map((p) => tr(p.name)).join(', '))}</Note>
+              </Section>
             )}
             {/* ⚠️ 2026-09-08 (аудит, HIGH): `finMap` нь `finQ`-ээс гардаг тул
                 `loadFinData` унавал `alertKeys` ХООСОРЧ «⚠ Хоцрогдолтой багц»

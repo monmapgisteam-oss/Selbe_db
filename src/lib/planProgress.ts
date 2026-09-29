@@ -454,6 +454,12 @@ export function loadPlanCurveCached(): Promise<PlanCurve> {
     curveP = mine;
     /* ⚠️ Уналт нь ЗӨВХӨН өөрөө идэвхтэй байхад л кэшийг цэвэрлэнэ (`live.cached`-ийн ⚠️) */
     mine.catch(() => { if (curveP === mine) curveP = null; });
+    /* ⚠️ 2026-09-25: ХАГАС үр дүн (`failed.length` — нэг хуудас 429/timeout) ч
+       КЭШЛЭГДЭХГҮЙ: урьд нь дутуу муруй 5 минут дашбоард · багцын гүйцэтгэл ·
+       удирдлагын тайланд хуваалцагдаж, «дахин оролдох» ч тэр хуулбарыг авдаг
+       байв. Одоогийн дуудагчид энэ амлалтыг хэвээр авна (дутуу гэдгээ
+       `failed`-ээр хэлнэ), дараагийнх нь шинээр уншина. */
+    mine.then((pc) => { if (pc.failed.length && curveP === mine) curveP = null; }, () => {});
   }
   return curveP;
 }

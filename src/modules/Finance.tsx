@@ -751,7 +751,9 @@ async function loadFinDataRaw(): Promise<FinData> {
        */
       /* ⚠️ 2026-09-25: КЭШТЭЙ (`loadPlanCurveCached`) — PkgProg · negtgel ·
          execReport-той НЭГ хуулбар; урьд нь энд КЭШГҮЙ дуудагдаж, багцын
-         гүйцэтгэл нээхэд 10 хуудас ХОЁР удаа бүтнээр уншигддаг байв. */
+         гүйцэтгэл нээхэд 10 хуудас ХОЁР удаа бүтнээр уншигддаг байв.
+         ⚠️ ХАГАС муруй (`failed.length`) кэшлэгдэхгүй — дараагийн ачаалалт
+         шинээр уншина; энэ удаад `lagOf` унасан багцад `null` («—») өгнө. */
       loadPlanCurveCached()
         .then((pc) => { planCurveCache = pc; })
         .catch(() => { planCurveCache = null; }),

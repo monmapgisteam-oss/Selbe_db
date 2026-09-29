@@ -32,7 +32,7 @@ import {
 import { draftFlowMsg, newAccountMsg, removeMarkedMsg } from './erhLabels';
 import s from './guitsetgel.module.css';
 
-/** Засах нүдний багана — матрицын 17 + дэд бүтцийн «Засварлагч» */
+/** Засах нүдний багана — матрицын 19 (`MATRIX_COLS`) + дэд бүтцийн «Засварлагч» */
 export type EditCol = { sys: 'flow' | 'qaqc' | ScopedSys; role: string };
 
 export function ErhCellEditor({

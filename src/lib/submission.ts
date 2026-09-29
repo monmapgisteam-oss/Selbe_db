@@ -146,6 +146,15 @@ export type SubmissionPayload = {
    *    өдөр нэгтгэл/IPC-гүй МӨНХӨД үлддэг байв.
    */
   regPending?: boolean;
+  /**
+   * «ҮЛДЭГДЭЛ НЭМЭЛТ» (2026-09-25 аудит) — батлах явцад гүйцэтгэгч дахин илгээснээс
+   * архивласан хэсгийг хассан үлдэгдэл (`residualAfterArchive`), `hyanaltStore` бичнэ.
+   * ⚠️ Хяналтын мөр нь «Шилжүүлсэн» болсон атлаа энэ агуулга архивт ОРООГҮЙ тул
+   *    FillNew түүнийг урсгалаас үл хамааран давхарлаж/нэгтгэнэ; `hyanaltStore.apply`
+   *    шинэ хяналтын тойрог нээнэ. `mergeSubmission` ДАМЖУУЛАХГҮЙ (дараагийн илгээлт
+   *    өөрөө шинэ тойрог нээдэг); `done|` болоход утгагүй болно.
+   */
+  residual?: true;
 };
 
 /** Хүснэгтээс уншсан илгээлт — мөрийн дугаар ба төлөвтэй */
@@ -320,6 +329,7 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (Number.isInteger(d.archiveOid) && (d.archiveOid as number) > 0) out.archiveOid = d.archiveOid as number;
     if (isFin(d.approvedAt)) out.approvedAt = d.approvedAt;
     if (d.regPending === true) out.regPending = true;
+    if (d.residual === true) out.residual = true;
     return out;
   } catch {
     return null;

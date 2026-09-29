@@ -19,6 +19,7 @@ import { dataCatalog, CAT_GROUPS, CLOSED_SERVICES, searchText } from './dataCata
 import { LAYERS, VIEWS } from './services.ts';
 import { PKGS } from '../modules/sheet/bagts.pkg.ts';
 import { QAQC_TABLE } from './qaqc.ts';
+import { KINDS, REVIEWERS_OF, SEQUENTIAL_KINDS } from './chanarMs.ts';
 
 const cat = dataCatalog();
 assert.ok(cat.length > 50, `каталог хэт цөөн: ${cat.length}`);
@@ -73,6 +74,23 @@ for (const e of cat.filter((x) => x.closed)) {
     CLOSED_SERVICES.some((svc) => e.service === svc),
     `${e.id}: хаалттай гэж тэмдэглэсэн ч CLOSED_SERVICES-д байхгүй (${e.service})`,
   );
+}
+
+/* ── 6. Чанарын баримтын мөр ↔ `chanarMs` (2026-09-25, аудит 8) ──
+   ⚠️ Каталогийн текст нь дүрмийн ХУУЛБАР тул төрөл/хянагч нэмэгдэхэд чимээгүй
+   хуучирдаг (2026-09-28-нд 5 төрөл · «MA — Чанар · ТУГ зэрэг» гэж үлдсэн байв). */
+{
+  const e = cat.find((x) => x.id === 'chanar');
+  assert.ok(e, 'chanar мөр алга');
+  for (const k of KINDS) assert.ok(e.name.includes(k), `chanar: нэрэнд төрөл ${k} алга (KINDS=${KINDS.length})`);
+  const chain = e.chain().map((s) => s.label).join(' ');
+  const LABEL = { tuh: 'ТУХ', chanar: 'Чанар', habea: 'ХАБЭА', tug: 'ТУГ', cheng: 'ЧХ инженер' };
+  for (const k of SEQUENTIAL_KINDS) {
+    const seq = REVIEWERS_OF[k].map((r) => LABEL[r]).join(' → ');
+    assert.ok(chain.includes(seq), `chanar: ${k}-ийн дараалсан хянагч «${seq}» шатлалд алга`);
+  }
+  for (const r of REVIEWERS_OF.NCR) assert.ok(chain.includes(LABEL[r]), `chanar: NCR-ийн хянагч ${r} шатлалд алга`);
+  assert.ok(e.views.includes('qaqc'), 'chanar: QAQC харагдац уншдаг (MA · MIR · FIC сонголт)');
 }
 
 /* ── Нэг физик давхарга = нэг мөр ── */

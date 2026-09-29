@@ -527,6 +527,37 @@ function prune(d: HDDraft, now: number): HDDraft {
   return { ...d, entries, del };
 }
 
+/**
+ * МӨРИЙН ТҮЛХҮҮРИЙГ ШИНЭ OID РУУ ЗӨӨНӨ (2026-09-25 аудит) — «Улсын комисс» автомат
+ * нэмэлт шинэ жааз бичсэний дараа хуваалцсан ноорогийг сэргээхэд (`Huvaari`-ийн
+ * `remapOids`-ийн зураглалаар). `s/h/a/r` түлхүүр л зөөгдөнө; `m/n` (`des|блок`)
+ * жаазаас хамаардаггүй тул хэвээр. Зөөгдсөн хуучин түлхүүр tombstone авна — хуучин
+ * жаазтай клиентийн хуулбар түүнийг дахин амилуулахгүй. `bv` хэвээр: шинэ жааз нь
+ * хуучныг хуулсан тул суурь утга ижил. Зураглалд БАЙХГҮЙ oid-той нүд хэвээр
+ * (дараа нь `cellsToMaps` «мөр алга» гэж шийднэ). Оролтыг өөрчлөхгүй.
+ */
+export function remapDraft(d: HDDraft, map: ReadonlyMap<number, number>, now = Date.now()): HDDraft {
+  if (!map.size) return d;
+  const mv = (k: string): string | null => {
+    const p = parseKey(k);
+    if (!p || p.type === 'm' || p.type === 'n') return null;
+    const to = map.get(p.oid);
+    if (to == null || to === p.oid) return null;
+    return p.type === 's' ? kS(to, p.blk) : p.type === 'a' ? kA(to, p.blk) : p.type === 'h' ? kH(to) : kR(to);
+  };
+  const entries: HDEntries = new Map();
+  const del = new Map<string, number>();
+  for (const [k, at] of d.del) del.set(mv(k) ?? k, at);
+  for (const [k, e] of d.entries) {
+    const nk = mv(k);
+    if (nk == null) { entries.set(k, e); continue; }
+    entries.set(nk, e);
+    del.set(k, now);
+    del.delete(nk);
+  }
+  return { ...d, entries, del };
+}
+
 /** Ноорогт нүд бичсэн ЯЛГААТАЙ хэрэглэгчид — толгойн «ноорогт: …» жагсаалт */
 export function users(d: HDDraft | null): string[] {
   if (!d) return [];

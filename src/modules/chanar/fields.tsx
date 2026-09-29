@@ -175,7 +175,8 @@ export function NumInp({
           <input
             type="number" min={0} step={1} className={s.input} aria-label={label}
             value={value ?? ''} disabled={m.busy}
-            onChange={(e) => { const n = Number(e.target.value); onChange(Number.isInteger(n) && n > 0 ? n : null); }}
+            /* ⚠️ 2026-09-25: 0 зөвшөөрнө (хоосон → null); өмнө нь 0 → null болж бичигдэхгүй байв */
+            onChange={(e) => { const v = e.target.value.trim(); const n = Number(v); onChange(v !== '' && Number.isInteger(n) && n >= 0 ? n : null); }}
           />
         ) : (value ?? <span className={s.secEmpty}>—</span>)}
       </dd>

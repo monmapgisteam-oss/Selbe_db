@@ -32,14 +32,13 @@ import {
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadNegtgelPct } from '@/lib/negtgel';
-import { loadPlanCurveCached } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { loadFinData } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
-import { housingPlanOf } from '@/lib/negtgelAuto';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
@@ -103,6 +102,12 @@ export type ExecReport = {
     planned: number | null;
     /** төлөвлөгөө − бодит; эерэг = хоцрогдол */
     gap: number | null;
+    /**
+     * ⚠️ 2026-09-25: УНШИГДААГҮЙ бөглөх хуудасны тоо (`PlanCurve.failed`). 0-ээс их
+     *    бол `planned` нь `null` (төслийн муруй хоосон) — урьд нь тайлан «—» гэж
+     *    чимээгүй хэвлэж, шалтгаан хаана ч гардаггүй байв (`PkgProg.TsKpi`-тай ижил).
+     */
+    planFailed: number;
     packs: { key: string; name: string; kind: 'build' | 'infra'; blocks: number; households: number; progress: number | null }[];
     /** Блокийн гүйцэтгэлийн түвшний тархалт */
     levels: { label: string; range: string; n: number; color: string }[];
@@ -196,25 +201,18 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   const nowYm = monthKey();
   /* ⚠️ 2026-09-22: `physNow` — PkgProg `TsKpi` · Dashboard-тай НЭГ туслах (pkgShared.ts) */
   const actual = physNow(fin, nowYm);
-  /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨГ ХЭМЖИЛТИЙН ОГНООНД ЗАВСАРЛАНА (`housingPlanOf`-ийн
-     дүрэм). Урьд нь ЭНЭ сарын цэг (сарын СҮҮЛИЙН өдрийн төлөвлөгөө)-ийг өмнөх
-     сарын (эсвэл сарын эхний) хэмжилттэй харьцуулж, хуваарийн дагуу явж буй
-     төслийг «хоцорч байна» гэж худал дүгнэдэг байв. Хэмжилтийн огноо: хэмжигдсэн
-     сар дотор блокийн сүүлийн бөглөлт (`bld.asOf`) байвал тэр өдөр; энэ сар бол
-     өнөөдөр; өмнөх сар бол тэр сарын эцэс. */
-  let measYm: string | null = null;
-  for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) measYm = m.label;
-  const measDate = (() => {
-    if (!measYm) return new Date();
-    if (/^\d{4}-\d{2}-\d{2}/.test(bld.asOf) && bld.asOf.slice(0, 7) === measYm) {
-      const [yy, mm, dd] = bld.asOf.slice(0, 10).split('-').map(Number);
-      return new Date(yy, mm - 1, dd);
-    }
-    if (measYm === nowYm) return new Date();
-    const [yy, mm] = measYm.split('-').map(Number);
-    return new Date(yy, mm, 0); /* сарын сүүлийн өдөр */
-  })();
-  const planned: number | null = housingPlanOf(new Map([['all', plan.months]]), measDate).get('all') ?? null;
+  /* ⚠️ 2026-09-25: ТӨЛӨВЛӨГӨӨГ ХЭМЖИЛТИЙН ОГНООНД ЗАВСАРЛАНА (`planPctAt`). Урьд нь
+     ЭНЭ сарын цэг (сарын СҮҮЛИЙН өдрийн төлөвлөгөө)-ийг өмнөх сарын (эсвэл сарын
+     эхний) хэмжилттэй харьцуулж, хуваарийн дагуу явж буй төслийг «хоцорч байна»
+     гэж худал дүгнэдэг байв.
+     ⚠️ Хэмжилтийн огноо нь `aggregateMonths().physAt` — `PkgProg.TsKpi`-тай ЯГ
+     НЭГ эх (урьд нь энд `bld.asOf`-оос ТУСДАА логикоор бодож, хоёр дэлгэц
+     өөр өдрийн төлөвлөгөө үзүүлж болох байв): хэмжигдсэн сарын цэг байвал тэр
+     өдөр; байхгүй бол тэр сарын эцэс (`-31`); хэмжилтгүй бол энэ сарын эцэс. */
+  let lastM: { label: string; physAt?: string | null } | null = null;
+  for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
+  const measAt = lastM ? (lastM.physAt ?? `${lastM.label}-31`) : `${nowYm}-31`;
+  const planned: number | null = plan.months.length ? planPctAt(plan.months, measAt) : null;
   const gap = planned != null && actual != null ? planned - actual : null;
 
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ──
@@ -326,6 +324,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     prog: {
       blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: bld.asOf,
       actual, planned, gap,
+      planFailed: plan.failed.length,
       packs: packs.map((p) => ({
         key: p.key, name: p.name, kind: p.kind, blocks: p.blocks.length,
         households: p.households, progress: p.progress,

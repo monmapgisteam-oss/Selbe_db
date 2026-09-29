@@ -27,7 +27,7 @@ import type { Role } from '@/lib/services';
 import { allAclReady } from '@/lib/aclOps';
 import { TYPE_ORDER, isTypeRole, tplOf, typeLabel } from '@/lib/roleTypes';
 import {
-  applyType, currentSel, defaultSel, pkgOptions, typeApplyBusy, type PkgKind, type PkgSel,
+  applyType, currentPkgs, currentSel, defaultSel, pkgOptions, typeApplyBusy, type PkgKind, type PkgSel,
 } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
 import t from '@/modules/erhTypes.module.css';
@@ -65,8 +65,13 @@ export function UserTypeSection({
     setBusy(true); setErr(''); setMsg('');
     /* ⚠️ 2026-09-25: try/finally — шидвэл товч үүрд «Тохируулж байна…» дээр үлдэхгүй */
     try {
-      const r = await applyType(user, type, sel);
-      if (r.ok) setMsg(tr('Тохируулагдлаа.'));
+      /* ⚠️ 2026-09-25: чип ХӨНДӨӨГҮЙ бол систем бүрийн ОДООГИЙН багц (`currentPkgs`) —
+         бөөнөөр хэрэгжүүлэлттэй (`applyTypeBulk`) НЭГ дүрэм. Урьд нь `{}` тул
+         төрлийн нэгдэл (`currentSel`) бүх системд тарж, хуваарийн багц QAQC-д ч
+         орж хүрээ ӨРГӨСДӨГ байв. Чип сонгосон бол тэр нь бүх системд (хэрэглэгчийн
+         санаатай сонголт). */
+      const r = await applyType(user, type, sel, picked ? {} : currentPkgs(user));
+      if (r.ok) setMsg(r.warnings?.length ? `${tr('Тохируулагдлаа.')} ${r.warnings.join(' ')}` : tr('Тохируулагдлаа.'));
       else setErr(r.errors.join('\n'));
     } catch (e) {
       setErr(String(e));

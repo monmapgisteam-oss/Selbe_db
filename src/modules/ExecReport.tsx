@@ -397,7 +397,8 @@ export function ExecReport() {
                   <h2 className={r.h2}>{tr('2. Багцын гүйцэтгэл')}</h2>
                   <KpiRow items={[
                     { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
-                    { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1) },
+                    /* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — «—»-ийн шалтгаан (`PkgProg.TsKpi`-тай ижил) */
+                    { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1), sub: x.prog.planFailed > 0 ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed) : undefined },
                     { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />

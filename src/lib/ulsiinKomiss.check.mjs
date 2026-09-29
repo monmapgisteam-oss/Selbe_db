@@ -16,8 +16,10 @@ const rows = [
 /* 1. байхгүй → null; нэр том/жижиг үсэг, зай үл хамаарна; бүлэг/гүн 1 бол биш */
 assert.equal(findKomissRow(rows), null);
 assert.ok(findKomissRow([...rows, { oid: 9, no: 'УК', work: ' улсын КОМИСС ', depth: 0, group: false }]));
-assert.equal(findKomissRow([...rows, { oid: 9, no: 'УК', work: 'Улсын комисс', depth: 1, group: false }]), null, 'гүн 1 — навч биш');
+/* ⚠️ 2026-09-25 аудит: гүнээс ҮЛ ХАМААРНА (TREES fallback гүн 1-д тавьсан ч давхар жааз бичихгүй) */
+assert.ok(findKomissRow([...rows, { oid: 9, no: 'УК', work: 'Улсын комисс', depth: 1, group: false }]), 'гүн 1 — мөн олдоно');
 assert.equal(findKomissRow([...rows, { oid: 9, no: 'УК', work: 'Улсын комисс', depth: 0, group: true }]), null, 'бүлэг биш');
+assert.equal(findKomissRow([...rows, { oid: 9, no: '7', work: 'Улсын комисс', depth: 0, group: false }]), null, '№ «УК» биш — өөр мөр');
 /* ⚠️ Нэгтгэлийн түлхүүртэй («…, хүлээлгэн өгөх») санаатай зөрүүтэй — таарахгүй */
 assert.equal(findKomissRow([...rows, { oid: 9, no: 'УК', work: 'Улсын комисс, хүлээлгэн өгөх', depth: 0, group: false }]), null);
 assert.notEqual(KOMISS_NO.slice(-1), '.', '№ нь үсэг+цэг байж болохгүй (levelFromNo)');

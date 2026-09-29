@@ -1301,7 +1301,9 @@ function EnvRight({ d }: { d: DashData }) {
                   key: r.key,
                   label: r.label,
                   value: r.progress ?? 0,
-                  color: 'var(--data)',
+                  /* ⚠️ 2026-09-25: хэмжигдээгүй багц саарал (`NO_DATA`) — өгөгдлийн
+                     өнгөөр 0% зурвал «эхэлсэн ч юу ч хийгээгүй» гэсэн худал уншилт */
+                  color: r.progress == null ? NO_DATA : 'var(--data)',
                   display: r.progress == null ? '—' : pct(r.progress, 1),
                 }))}
             />

@@ -31,12 +31,18 @@ import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 export const KOMISS_WORK = 'Улсын комисс';
 export const KOMISS_NO = 'УК';
 
-type RowLike = Pick<SheetRow, 'depth' | 'group' | 'work'>;
+type RowLike = Pick<SheetRow, 'depth' | 'group' | 'work' | 'no'>;
 
-/** Багцын хуудсанд улсын комиссын мөр байгаа юу — үндсэн түвшний навч, нэрээр (цэвэр) */
+/**
+ * Багцын хуудсанд улсын комиссын мөр байгаа юу — № «УК» + нэрээр (цэвэр), навч мөр.
+ * ⚠️ 2026-09-25 аудит: ГҮНЭЭС ҮЛ ХАМААРНА. Урьд нь `depth === 0` шаарддаг тул
+ *    `loadRows`-ын мод (TREES fallback · `levelFromNo`) мөрийг гүн 1-д тавьбал «алга»
+ *    гэж үзэн багц бүрийн нээлт бүрд ШИНЭ жааз + давхар мөр бичих байв. Гүн ≠ 0
+ *    бол `ensureInner` console-д тэмдэглэнэ (мөр байгаа — бичихгүй).
+ */
 export function findKomissRow<T extends RowLike>(rows: readonly T[]): T | null {
   const key = KOMISS_WORK.toLowerCase();
-  return rows.find((r) => r.depth === 0 && !r.group && String(r.work ?? '').trim().toLowerCase() === key) ?? null;
+  return rows.find((r) => !r.group && String(r.no ?? '').trim() === KOMISS_NO && String(r.work ?? '').trim().toLowerCase() === key) ?? null;
 }
 
 /**
@@ -107,7 +113,14 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   };
   const maxOid0 = await maxOidOf();
   const loaded = await loadRows(pkg, sc);
-  if (findKomissRow(loaded.rows)) return { ok: true, added: false };
+  {
+    const have = findKomissRow(loaded.rows);
+    if (have) {
+      /* ⚠️ 2026-09-25: гүн ≠ 0 — мод үүсгэлт өөрөөр уншсан; мөр байгаа тул бичихгүй, зөвхөн тэмдэглэнэ */
+      if (have.depth !== 0) console.warn('[selbe] «Улсын комисс» мөр гүн', have.depth, 'дээр байна (үндсэн түвшин хүлээсэн):', pkg.key);
+      return { ok: true, added: false };
+    }
+  }
   if (!loaded.rows.length) return { ok: false, error: tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label) };
 
   const src = komissDepSource(loaded.rows);

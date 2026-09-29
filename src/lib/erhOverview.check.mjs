@@ -271,10 +271,11 @@ console.log('✅ матриц — 19 багана, багц бүр мөр');
     { user: 't', grants: [{ role: 'tuh', bagts: [G0] }] },
   ] };
   assert.equal(tone(ch, 'chanar:tuh'), null, 'томилогдсон хянагч хэвийн');
-  assert.equal(tone(ch, 'chanar:chanar'), 'bad', 'дутуу хянагч улаан');
-  assert.equal(tone(ch, 'chanar:habea'), 'bad');
-  assert.equal(tone(ch, 'chanar:tug'), 'bad', 'ТУГ дутуу → улаан');
-  assert.equal(tone(ch, 'chanar:cheng'), 'bad', 'ЧХ инженер дутуу → улаан');
+  /* ⚠️ 2026-09-25: `warn` — үүрэг бүр зөвхөн ӨӨРИЙН төрлийн баримтыг гацаана (habea зөвхөн MS) */
+  assert.equal(tone(ch, 'chanar:chanar'), 'warn', 'дутуу хянагч шар');
+  assert.equal(tone(ch, 'chanar:habea'), 'warn');
+  assert.equal(tone(ch, 'chanar:tug'), 'warn', 'ТУГ дутуу → шар (MA · NCR л хүлээнэ)');
+  assert.equal(tone(ch, 'chanar:cheng'), 'warn', 'ЧХ инженер дутуу → шар (MA л хүлээнэ)');
   assert.equal(tone(ch, 'chanar:author'), null);
 
   /* Issue бүр `cols`-тай — баганагүй issue матрицад харагдахгүй */

@@ -354,7 +354,9 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
     const r = await fl.applyEdits(
       { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0],
     );
-    return (r.deleteFeatureResults ?? []).every((x) => x.error == null);
+    /* ⚠️ 2026-09-25: хоосон/дутуу хариу ≠ амжилт — ArcGIS алдаагаа 200-аар буцаадаг тул тоо нь oid-тай тэнцэх ёстой */
+    const dr = r.deleteFeatureResults ?? [];
+    return dr.length === oids.length && dr.every((x) => x.error == null);
   } catch {
     return false;
   }
@@ -529,7 +531,9 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
     const r = await fl.applyEdits(
       { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0],
     );
-    return (r.deleteFeatureResults ?? []).every((x) => x.error == null);
+    /* ⚠️ 2026-09-25: хоосон/дутуу хариу ≠ амжилт — ArcGIS алдаагаа 200-аар буцаадаг тул тоо нь oid-тай тэнцэх ёстой */
+    const dr = r.deleteFeatureResults ?? [];
+    return dr.length === oids.length && dr.every((x) => x.error == null);
   } catch {
     return false;
   }

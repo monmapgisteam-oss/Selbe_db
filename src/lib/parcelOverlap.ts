@@ -94,15 +94,26 @@ type Geoms = { rings: number[][][]; paths: number[][][]; points: number[][] };
    хэрэгтэй (`objectid`/`FID` байж болно — `ceo/workforce.ts`-ийн сургамж).
    Метадата унавал `OBJECTID` — буруу нэр бол сервер алдаа буцааж давхарга
    `failed`-д орно (чимээгүй дутуу үр дүн биш). */
-const oidCache = new Map<string, Promise<string>>();
-function oidFieldOf(url: string): Promise<string> {
+/* ⚠️ 2026-09-25 (аудит 8): `paging` — давхарга `resultOffset`-ийг ДЭМЖДЭГ эсэх
+   (`advancedQueryCapabilities.supportsPagination`). Дэмжихгүй үйлчилгээ offset-ийг
+   үл тоож ИЖИЛ хуудсыг буцаадаг тул `exceededTransferLimit` хэвээр → 200 хуудас
+   давтаад л унадаг байв. Мэдэгдэхгүй (метадата унасан) бол `true` — хуучин зан. */
+type LayerMeta = { oid: string; paging: boolean };
+const oidCache = new Map<string, Promise<LayerMeta>>();
+function oidFieldOf(url: string): Promise<LayerMeta> {
   let p = oidCache.get(url);
   if (!p) {
     p = fetch(`${url}?f=json${tokenQs()}`)
       .then((r) => r.json())
-      .then((m: { objectIdField?: string; fields?: { name: string; type: string }[] }) =>
-        m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID')
-      .catch(() => 'OBJECTID');
+      .then((m: {
+        objectIdField?: string;
+        fields?: { name: string; type: string }[];
+        advancedQueryCapabilities?: { supportsPagination?: boolean };
+      }) => ({
+        oid: m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID',
+        paging: m?.advancedQueryCapabilities?.supportsPagination !== false,
+      }))
+      .catch(() => ({ oid: 'OBJECTID', paging: true }));
     oidCache.set(url, p);
   }
   return p;
@@ -139,7 +150,7 @@ function layerGeoms(src: Src, wkid: number): Promise<Geoms> {
        дэмжигдэхгүй — ДУТУУ үр дүн буцаахгүй, шидэж давхаргыг `failed`-д оруулна. */
     const url = d.url as string;
     p = (async () => {
-      const oidF = await oidFieldOf(url);
+      const { oid: oidF, paging } = await oidFieldOf(url);
       const out: Geoms = { rings: [], paths: [], points: [] };
       type G = { rings?: number[][][]; paths?: number[][][]; x?: number; y?: number };
       let off = 0;
@@ -163,7 +174,8 @@ function layerGeoms(src: Src, wkid: number): Promise<Geoms> {
           else if (typeof g.x === 'number' && typeof g.y === 'number') out.points.push([g.x, g.y]);
         }
         if (!j.exceededTransferLimit) break;
-        if (!fs.length) throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', src.layerId));
+        /* ⚠️ Хуудаслалтгүй давхарга дээр offset давтахгүй — шууд `failed` (дутуу үр дүн биш) */
+        if (!fs.length || !paging) throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', src.layerId));
         off += fs.length;
       }
       return out;

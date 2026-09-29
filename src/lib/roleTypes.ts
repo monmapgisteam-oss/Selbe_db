@@ -384,10 +384,12 @@ export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
   const clean = cleanTpl(role, tpl);
   if (!clean || !isTypeRole(role)) return false;
   /* ⚠️ 2026-09-25: эхлэх ба дуусах агшинд тэмдэглэнэ — `_typesMark`-ийн тайлбар */
+  const before = writtenAt.get(role);
   writtenAt.set(role, ++tick);
+  let ok = false;
   try {
     const { typeUpsert } = await import('./permsRemote');
-    const ok = await typeUpsert(role, clean);
+    ok = await typeUpsert(role, clean);
     if (ok) {
       remote = { ...remote, [role]: clean };
       broken.delete(role);
@@ -398,7 +400,13 @@ export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    writtenAt.set(role, ++tick);
+    /* ⚠️ 2026-09-25 (аудит 8): УНАСАН бичилт тэмдэглэгээг АХИУЛАХГҮЙ — урьд нь
+       `finally` үргэлж ахиулдаг тул амжилтгүй хадгалалтын дараа ч poll-ийн шинэ
+       snapshot энэ төрөлд ХУУЧИН локал хуулбарыг хадгалж, өөр админы бичсэн
+       загвар харагдахгүй байв. Унавал өмнөх тэмдэглэгээг сэргээнэ. */
+    if (ok) writtenAt.set(role, ++tick);
+    else if (before === undefined) writtenAt.delete(role);
+    else writtenAt.set(role, before);
   }
 }
 

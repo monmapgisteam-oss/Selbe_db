@@ -823,12 +823,20 @@ export const HOUSING_PKGS: readonly string[] = [
  *    муруй = (бусад ажлын cashflow + орон сууцны биет явц) ÷ төслийн нийт.
  *    Үлдсэн ажлуудын cashflow бөглөгдмөгц тэр нь ЭНЭ нийлбэрт өөрөө орно.
  *
- * @param phys    багц → (сар → %), `FinData.phys` (аль хэдийн хуримтлагдсан)
+ * @param phys    багц → (сар → %), `FinData.phys` — ЗӨВХӨН шинэ бичилттэй сард
+ *                цэгтэй (`finPhys.buildPhys`-ийн дүрэм 2, сийрэг)
  * @param weight  багц → ХО дүн (₮). Байхгүй/тэг бол тооцоонд орохгүй.
- * @param labels  сарын тэнхлэг
+ * @param labels  сарын тэнхлэг (өсөх дарааллаар)
  * @param only    хамрах багцууд (анхдагч: орон сууцны 7)
- * @returns сар → ₮; тэр сард НЭГ Ч багц хэмжигдээгүй бол бичлэг ҮГҮЙ
+ * @returns сар → ₮; тэр сард НЭГ Ч багц ШИНЭЭР хэмжигдээгүй бол бичлэг ҮГҮЙ
  *          (`null ≠ 0` — дуудагч сүүлийн хэмжилтийг урагш авч явна)
+ *
+ * ⚠️ 2026-09-25: БАГЦ БҮРИЙН СҮҮЛИЙН МЭДЭГДЭЖ БУЙ УТГА (as-of). Урьд нь тухайн
+ *    сард цэггүй багцыг нийлбэрээс ОРХИДОГ байв — `FinData.phys` хуримтлагдсан
+ *    (carry-forward) үед зөв байсан ч `buildPhys` сийрэг болсноос хойш ганц
+ *    жижиг багц тайлагнасан сард бусад 6 багцын мөнгө алга болж, Cashflow-ийн
+ *    `physPct` муруй УНАЖ буцдаг байв. Одоо `aggregateMonths`-тай ижил: цэг нь
+ *    аль нэг багц шинээр тайлагнасан сард гарна, утга нь БҮХ багцын as-of.
  */
 export function housingMoney(
   phys: Map<string, Map<string, number>>,
@@ -838,19 +846,25 @@ export function housingMoney(
 ): Map<string, number> {
   const keep = new Set(only);
   const out = new Map<string, number>();
+  /** багц → сүүлийн мэдэгдэж буй % (тэнхлэгийн дарааллаар урагш) */
+  const last = new Map<string, number>();
   for (const label of labels) {
-    let sum = 0;
-    let any = false;
+    let fresh = false;
     for (const [key, byMon] of phys) {
       if (!keep.has(key)) continue;
       const v = byMon.get(label);
-      if (v == null) continue;              // хэмжигдээгүй — оруулахгүй
+      if (v == null) continue;              // энэ сард шинэ бичилтгүй — өмнөх утга хэвээр
+      last.set(key, v);
+      fresh = true;
+    }
+    if (!fresh) continue;                   // нэг ч багц шинээр хэмжигдээгүй — бичлэг үгүй
+    let sum = 0;
+    for (const [key, v] of last) {
       const w = weight.get(key) ?? 0;
       if (w <= 0) continue;
       sum += (w * v) / 100;
-      any = true;
     }
-    if (any) out.set(label, sum);
+    out.set(label, sum);
   }
   return out;
 }
