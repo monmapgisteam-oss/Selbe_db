@@ -45,7 +45,7 @@ import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, history, kindLabel, latest, progress, repVerdictText, requiredReviewers, reviewerLabel, statusLabel,
+  delayDays, emptyBodyOf, history, kindLabel, latest, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, statusLabel,
   verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
   type MsStatus, type NcrBody, type NcrCorrection, type Reviewer, type VerdictCode,
@@ -155,7 +155,12 @@ export function Chanar() {
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
   /* NCR нээх эрх — тухайн багцад tuh · chanar · tug хянагч */
   const ncrOpener = REVIEWERS_OF.NCR.some((r) => myRoles.includes(r));
-  const canCreate = kind === 'NCR' ? ncrOpener : authorOk;
+  /* ⚠️ 2026-09-29 (аудит 10): `ORG_CODE`-д байхгүй багцад (Багц 5.2 · 5.3 · 5.4 · 6.4 · 10)
+     «+ Шинэ …» гарахгүй — урьд нь зохиогч маягтаа бүтэн бөглөсний ДАРАА `createDraft`
+     «гүйцэтгэгчийн код тодорхойгүй» гэж татгалзаж, ажил нь алдагддаг байв. NCR-д код
+     шаардахгүй (`NCR_PREFIX`). Шалтгааныг товчны оронд бичнэ. */
+  const noOrg = kind !== 'NCR' && authorOk && orgCode(pkg) == null;
+  const canCreate = kind === 'NCR' ? ncrOpener : authorOk && !noOrg;
 
   const refresh = useCallback(async () => {
     setLoading(true); setErr('');
@@ -285,7 +290,8 @@ export function Chanar() {
 
   const ncrClosed = !!body && 'closure' in body && ((body as NcrBody).closure?.closedByContractor.length ?? 0) > 0;
   const act = doc
-    ? canAct({ ...doc, correctionAt: body && 'correctionAt' in body ? (body as NcrBody).correctionAt : null }, me || null, myRoles, { contractor: authorOk, ncrClosed })
+    /* ⚠️ 2026-09-29 (аудит 10): `superseded` — түүхээс нээсэн хуучин хувилбарт засах/илгээх товч гарахгүй */
+    ? canAct({ ...doc, correctionAt: body && 'correctionAt' in body ? (body as NcrBody).correctionAt : null }, me || null, myRoles, { contractor: authorOk, ncrClosed, superseded: hist.some((h) => h.rev > doc.rev) })
     : {
       edit: false, submit: false, review: [] as Reviewer[], correction: false, reopen: false, clientChecks: false,
       bounce: false, ack: false, closeAn: false, newRevision: false, closeNcr: false,
@@ -452,7 +458,10 @@ export function Chanar() {
   /* ── Хянахгүй буцаах (Чанарын хэлтэс) ── */
   const need = doc ? REVIEWERS_OF[doc.kind] : REVIEWERS_OF[kind];
   const bounceAs = myRoles.find((r) => (r === 'chanar' || r === 'cheng') && need.includes(r)) ?? null;
-  const closeAs = myRoles.find((r) => need.includes(r)) ?? null;
+  /* ⚠️ 2026-09-29 (аудит 10): `closeAn` зөвхөн chanar/cheng-ийг хүлээн авна. Урьд нь эхний
+     тохирсон үүрэг (`tuh` түрүүлдэг) сонгогдож, tuh+chanar хоёр үүрэгтэй хүнд товч
+     гарсан атлаа «AN-ийг зөвхөн Чанарын хэлтэс хаана» гэж татгалздаг байв. */
+  const closeAs = myRoles.find((r) => (r === 'chanar' || r === 'cheng') && need.includes(r)) ?? null;
   const bounce = async () => {
     if (!doc || !bounceAs) return;
     if (!rNote.trim()) { setErr(tr('Буцаах шалтгаанаа бичнэ үү.')); return; }
@@ -701,6 +710,7 @@ export function Chanar() {
             {newLabel(kind)}
           </button>
         )}
+        {noOrg && table?.ok && <span className={s.hint}>{tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', pkg)}</span>}
       </div>
       <div className={s.summary} title={tr('Багцын хураангуй')}>
         {summary().map((line, i) => <span key={i}>{line}</span>)}

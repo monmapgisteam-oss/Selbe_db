@@ -355,6 +355,30 @@ export type MapFilter = {
 /** SQL string literal — дан хашилтыг давхарлана (нэрэнд ' орсон ч эвдрэхгүй) */
 const sq = (v: string) => v.replace(/'/g, "''");
 
+/**
+ * Нэгж талбарын ТӨЛӨВИЙН шүүлт (`land:left`) — чартын шошгоос WHERE.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): «Тодорхойгүй» нь өгөгдлийн утга БИШ, `land.ts`-ийн
+ *    ХООСОН төлөвт өгдөг шошго (`tr()`-ээр, EN-д «Unspecified»). Түүнийг
+ *    `= N'Тодорхойгүй'` гэж шүүвэл нэг ч талбар таарахгүй, зураг бүхэлдээ
+ *    бүдгэрдэг байв — хоосон төлөвийг IS NULL/'' -ээр хайна.
+ */
+const statusWhere = (label: string): string =>
+  label === tr('Тодорхойгүй')
+    ? `(${PL.status} IS NULL OR ${PL.status} = '')`
+    : `${PL.status} = N'${sq(label)}'`;
+
+/**
+ * Утга хараахан алга үед юу харуулах вэ: ачаалж байвал «…», УНАСАН бол «—».
+ *
+ * ⚠️ 2026-09-29 (аудит 10): урьд нь `x == null ? '…'` байсан тул хүсэлт унахад
+ *    (499 · rate-limit · сүлжээ) нүд «ачаалж байна» гэсээр МӨНХӨД үлддэг байв —
+ *    хэрэглэгч хүлээгээд л байдаг. 09-25-нд `schedule`/`bagts`/`network`-д
+ *    зассантай ижил ангилал; энд нүүр хэсгийн үлдсэн нүднүүдэд.
+ */
+const dots = (...qs: { state: string }[]): string =>
+  qs.some((q) => q.state === 'loading') ? '…' : '—';
+
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
 export function Dashboard({ dim, setDim, zone, setZone }: {
@@ -393,6 +417,11 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   /** Чарт-шүүлт (бүх хэсэгт нэгдсэн) — аттрибутын тодруулгыг зурагт тусгана */
   const [flt, setFlt] = useState<MapFilter | null>(null);
   useEffect(() => { setHighlight(flt?.where ?? null, flt?.only); }, [flt, setHighlight]);
+  /* ⚠️ 2026-09-29 (аудит 10): харагдац хаагдахад тодруулгыг ЗААВАЛ арилгана —
+     `MapProvider.hl` порталын хэмжээнд амьдардаг тул чарт-шүүлт үлдвэл дараагийн
+     харагдацын зурагт (dimOther) бүдгэрүүлэлт хэвээр гарна. `Bagts`/`ViewPanel`-ийн
+     unmount-цэвэрлэлттэй ижил зарчим. */
+  useEffect(() => () => { setHighlight(null); }, [setHighlight]);
 
 
   /**
@@ -804,8 +833,8 @@ function railStat(k: SecKey, d: DashData): {
       // АМЬД — хилийн давхаргын Hec_area (урьд нь бэхлэгдсэн 158 га ◆)
       const h = d.headline.state === 'ready' ? d.headline.data : null;
       return {
-        value: h == null ? '…' : tr('{0} га', num(h.areaHa, 1)),
-        note: blocks == null ? '…' : tr('{0} блок · {1} өрх', num(blocks), num(ail)),
+        value: h == null ? dots(d.headline) : tr('{0} га', num(h.areaHa, 1)),
+        note: blocks == null ? dots(d.bagts) : tr('{0} блок · {1} өрх', num(blocks), num(ail)),
       };
     }
     case 'schedule':
@@ -814,7 +843,7 @@ function railStat(k: SecKey, d: DashData): {
       return {
         /* ⚠️ 2026-09-25: ачаалагдсан ч утгагүй бол «—» (мөнхийн «…» биш) */
         value: overall != null ? pct(overall, 2) : d.fin.state === 'loading' ? '…' : '—',
-        note: f == null ? '…' : tr('{0} багц тайлагнасан', num(f.phys.size)),
+        note: f == null ? dots(d.fin) : tr('{0} багц тайлагнасан', num(f.phys.size)),
         pct: overall ?? undefined, tone: o.active,
       };
     case 'bagts': {
@@ -832,8 +861,8 @@ function railStat(k: SecKey, d: DashData): {
       return {
         /* ⚠️ 2026-09-24: өгөгдөл бэлэн (`b != null`) ч нэг ч багц тайлагнаагүй бол
            «…» мөнхөд үлддэг байв — тэр үед «—». */
-        value: b == null ? '…' : avg == null ? '—' : pct(avg, 1),
-        note: ailSum == null ? '…' : tr('7 багц · {0} блок · {1} өрх', num(bl), num(ailSum)),
+        value: b == null ? dots(d.bagts) : avg == null ? '—' : pct(avg, 1),
+        note: ailSum == null ? dots(d.bagts) : tr('7 багц · {0} блок · {1} өрх', num(bl), num(ailSum)),
         pct: avg ?? undefined, tone: o.active,
       };
     }
@@ -848,8 +877,8 @@ function railStat(k: SecKey, d: DashData): {
       //    (амьдаар 1,945 ÷ 2,088 = 93.15%). `pct`-ийг ЭНД дахин БОДОХГҮЙ.
       const land = d.land.state === 'ready' ? d.land.data : null;
       return {
-        value: land?.pct == null ? '…' : pct(land.pct, 1),
-        note: land == null ? '…' : tr('{0} үлдсэн · {1} талбар', num(land.remaining), num(land.total)),
+        value: land?.pct == null ? dots(d.land) : pct(land.pct, 1),
+        note: land == null ? dots(d.land) : tr('{0} үлдсэн · {1} талбар', num(land.remaining), num(land.total)),
         pct: land?.pct ?? undefined, tone: o.done,
       };
     }
@@ -863,7 +892,7 @@ function railStat(k: SecKey, d: DashData): {
         /* ⚠️ 2026-09-25: сүлжээ/цахилгааны багц бөглөх хүснэгтэд ихэвчлэн
            БАЙХГҮЙ тул `pkgPct` нь `f` бэлэн болсны дараа ч `null` — урьд нь
            «…» (ачаалж байна) МӨНХӨД үлддэг байв. Бэлэн бол «—». */
-        value: f == null ? '…' : nw.actual == null ? '—' : pct(nw.actual, 1),
+        value: f == null ? dots(d.fin) : nw.actual == null ? '—' : pct(nw.actual, 1),
         note: tr('{0} багц зурагт · гадна дулаан, ус', num(n)),
         pct: nw.actual ?? undefined, tone: o.active,
       };
@@ -875,7 +904,7 @@ function railStat(k: SecKey, d: DashData): {
       const n = infraPackList(isPowerPack).length;
       return {
         /* ⚠️ 2026-09-25: `network`-ийн ⚠️-г үз — бэлэн ч утгагүй бол «—» */
-        value: f == null ? '…' : pw.actual == null ? '—' : pct(pw.actual, 1),
+        value: f == null ? dots(d.fin) : pw.actual == null ? '—' : pct(pw.actual, 1),
         note: tr('{0} багц зурагт · гадна цахилгаан', num(n)),
         pct: pw.actual ?? undefined, tone: o.active,
       };
@@ -883,7 +912,11 @@ function railStat(k: SecKey, d: DashData): {
     case 'source': {
       // Эх үүсвэр — нэгтгэсэн үйлчилгээнээс АМЬД (дулаан, цахилгаан, ус)
       const rows = d.sources.state === 'ready' ? d.sources.data : null;
-      if (!rows) return { value: '…', note: tr('татаж байна'), tone: o.active };
+      if (!rows) {
+        return d.sources.state === 'loading'
+          ? { value: '…', note: tr('татаж байна'), tone: o.active }
+          : { value: '—', note: tr('татагдсангүй'), tone: o.active };
+      }
       const types = new Set(rows.map((r) => srcStr(r[SOURCE_FS.fields.type])).filter(Boolean));
       return {
         value: `${rows.length}`,
@@ -899,8 +932,8 @@ function railStat(k: SecKey, d: DashData): {
       const bg = d.budget.state === 'ready' ? d.budget.data : null;
       const share = bg && bg.total ? (bg.contract / bg.total) * 100 : null;
       return {
-        value: share == null ? '…' : pct(share, 1),
-        note: bg == null ? '…' : tr('гэрээ {0} / төсөв {1}', mnt(bg.contract), mnt(bg.total)),
+        value: share == null ? dots(d.budget) : pct(share, 1),
+        note: bg == null ? dots(d.budget) : tr('гэрээ {0} / төсөв {1}', mnt(bg.contract), mnt(bg.total)),
         pct: share ?? undefined, tone: o.active,
       };
     }
@@ -909,8 +942,8 @@ function railStat(k: SecKey, d: DashData): {
       const h = d.headline.state === 'ready' ? d.headline.data : null;
       const soc = d.social.state === 'ready' ? d.social.data : null;
       return {
-        value: h == null ? '…' : num(h.population),
-        note: soc == null ? '…' : tr('{0} нийгмийн байгууламж', num(soc.totalN)),
+        value: h == null ? dots(d.headline) : num(h.population),
+        note: soc == null ? dots(d.social) : tr('{0} нийгмийн байгууламж', num(soc.totalN)),
       };
     }
   }
@@ -1003,9 +1036,9 @@ function IndStrip({ d }: { d: DashData }) {
    */
   const clearedPct = l?.pct ?? null;
   const cells = [
-    { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? tr('{0} га', num(h.areaHa, 1)) : '…' },
-    { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? num(h.population) : '…' },
-    { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : '…' },
+    { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? tr('{0} га', num(h.areaHa, 1)) : dots(d.headline) },
+    { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? num(h.population) : dots(d.headline) },
+    { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : dots(d.bagts) },
     /**
      * ⚠️ ШОШГЫГ ЯЛГАВ (2026-09-11): «Төслийн гүйцэтгэл» → «Биет гүйцэтгэл
      * (сарын тайлан)». Урьд нь ЭНЭ нүд ба `execData.buildProgressOf`-ийн
@@ -1024,8 +1057,10 @@ function IndStrip({ d }: { d: DashData }) {
      * хариу); зөвхөн нэрийг нь ялгаж, хоёрыг ХАРЬЦУУЛАХГҮЙ болгов.
      */
     /* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)» — HeadKpi-тэй нэг нэр, нэг тоо */
-    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall == null ? '…' : pct(overall, 1) },
-    { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : '…' },
+    /* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; ачаалагдсан ч утгагүй
+       (эсвэл унасан) бол «—» — `railStat`/`ScheduleDetail`-ийн 09-25-ны засвартай ижил */
+    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall != null ? pct(overall, 1) : d.fin.state === 'loading' ? '…' : '—' },
+    { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : dots(d.land) },
   ];
   return (
     <div className={o.ind} aria-label={tr('Гол үзүүлэлт')}>
@@ -1365,9 +1400,9 @@ export function HeadKpi({ bagts, extra }: {
    * KPI биш ТАЙЛБАР — нүдний гол тоог сулруулж байлаа.
    */
   const tiles: { v: string; unit?: string; label: string; lead?: true; title?: string }[] = [
-    { v: h == null ? '…' : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
-    { v: ail == null ? '…' : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
-    { v: h == null ? '…' : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
+    { v: h == null ? dots(hq) : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
+    { v: ail == null ? dots(bagts) : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
+    { v: h == null ? dots(hq) : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
     /* ⚠️ 2026-09-06: `bar` (гүйцэтгэлийн зурвас) ХАСАГДАВ. Гүйцэтгэл 4.18%
        үед дүүргэлт нь 2px өндөр замын 4% буюу үл үзэгдэх богино байсан тул
        нүдэн дээр «санамсаргүй зураас» мэт харагдаж, бусад ДӨРВӨН нүдэнд
@@ -1383,13 +1418,15 @@ export function HeadKpi({ bagts, extra }: {
        `progressSrc`). Нэг нэрээр гурван тоо гарахаар аль нь үнэн нь мэдэгдэхгүй тул
        нэр бүр ЮУ болохоо хэлнэ; `title` нь тодорхойлолтыг өгнө. */
     {
-      v: p.actual == null ? '…' : num(p.actual, 2), unit: '%',
+      /* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; утгагүй/унасан бол «—»
+         (мөнхийн «…» биш) — `ScheduleDetail`-ийн 09-25-ны засвартай ижил */
+      v: p.actual != null ? num(p.actual, 2) : pq.state === 'loading' ? '…' : '—', unit: '%',
       label: tr('Биет гүйцэтгэл (багцаар)'),
       title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, блокийн тоогоор жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },
     {
-      v: h == null ? '…' : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв'),
+      v: h == null ? dots(hq) : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв'),
       /* ⚠️ 2026-09-21: `investTotal` = `finXlInTotal` хүрээ (Excel-ийн НИЙТ мөр, 2,493 тэрбум) */
       title: tr('Орон сууцны хороолол ба ГИШС-ийн хүрээний төсөвт өртөг (Excel-ийн НИЙТ мөр); нийгмийн дэд бүтэц, газар чөлөөлөлт, бондын хүү ОРОХГҮЙ'),
     },
@@ -1455,7 +1492,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               тодорхойлолт БИШ — тэр нь бүх блокоор хуваадаг ӨӨР хэмжилт.
               Дэлгэрэнгүйг `IndStrip`-ийн ⚠️-ээс үз. */}
           {/* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)», эх `physNow` — HeadKpi-тэй нэг */}
-          <Stat accent color={HUE[1]} value={prog.actual == null ? '…' : num(prog.actual, 2)} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
+          {/* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; утгагүй/унасан бол «—» */}
+          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 2) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
           <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal)} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? '…' : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
@@ -2049,7 +2087,10 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
             /** багц → огноогоор эрэмбэлэгдсэн бүртгэлүүд */
             const by = new Map<string, PkgProgressRow[]>();
             for (const r of list) {
-              if (r.actual == null) continue;
+              /* ⚠️ 2026-09-29 (аудит 10): ОГНООГҮЙ мөр (`date: ''`) орохгүй — хоосон
+                 мөр эрэмбэд ХАМГИЙН ЭХЭНД гарч, «өмнөх бүртгэл» болж зөрүүг огноо нь
+                 мэдэгдэхгүй хэмжилттэй тулгадаг байв (дээрх цувааны `!ym` дүрэмтэй ижил). */
+              if (r.actual == null || !r.date) continue;
               const arr = by.get(r.key) ?? [];
               arr.push(r);
               by.set(r.key, arr);
@@ -2777,17 +2818,24 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             <Bars
               inline
               selected={flt?.sec === 'land' ? flt.key : null}
-              onSelect={(label) => onFlt({
-                sec: 'land',
-                key: 'st:' + label,
-                /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
-                   «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
-                label: tr('Төлөв: {0}', tr(label)),
-                where: `${PL.status} = N'${sq(label)}'`,
-                only: ['land:left'],
-              })}
+              /* ⚠️ 2026-09-29 (аудит 10): мөрийн `key` нь `flt.key`-тэй ИЖИЛ угтвартай
+                 (`st:`) — урьд нь item нь түүхий шошго, `flt.key` нь угтвартай тул
+                 `Bars`-ын `sel.includes(it.key)` хэзээ ч таарахгүй, дарсны дараа БҮХ
+                 мөр бүдгэрдэг байв. `onSelect` угтварыг хуулж түүхий шошго авна. */
+              onSelect={(k) => {
+                const label = k.slice(3);
+                onFlt({
+                  sec: 'land',
+                  key: k,
+                  /* ⚠️ Утгыг ч tr()-ээр — интерполяци түүхийгээр залгадаг тул EN-д
+                     «Status: Гэрээлсэн» гэж хольмог гардаг байв (where нь түүхий хэвээр) */
+                  label: tr('Төлөв: {0}', tr(label)),
+                  where: statusWhere(label),
+                  only: ['land:left'],
+                });
+              }}
               items={heatBars([...ls.byStatus].sort((a, b) => b.n - a.n), (x) => ({
-                key: x.label,
+                key: 'st:' + x.label,
                 label: x.label,
                 value: x.n,
                 display: tr('{0} талбар', num(x.n)),
@@ -2858,8 +2906,12 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                        ⚠️ 2026-09-06: төлөвийн НЭМЭЛТ шүүлт ХЭРЭГГҮЙ болов —
                        шинэ эхэд `status` ба `progress` нэг талбар тул шалтгааны
                        утга нь өөрөө «чөлөөлөгдөөгүй»-г заана. */
+                    /* ⚠️ 2026-09-29 (аудит 10): `land.ts`-ийн `cleanReason` шошгыг
+                       `tr('Тодорхойгүй')`-ээр өгдөг тул EN-д «Unspecified» ирдэг —
+                       түүхий монголтой тулгавал салаа унаж `LIKE N'Unspecified%'`
+                       болж юу ч олдохгүй байв. */
                     const eq =
-                      label === 'Тодорхойгүй'
+                      label === tr('Тодорхойгүй')
                         ? `(${PL.progress} IS NULL OR ${PL.progress} = '')`
                         : `${PL.progress} LIKE N'${sq(label)}%'`;
                     onFlt({
@@ -2903,16 +2955,21 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                      сурвалж, нэг талбар) тул түлхүүрийн угтвар нь ялгаатай —
                      хоёр чарт бие биенийхээ сонголтыг цуцлахгүй. */
                   selected={flt?.sec === 'land' ? flt.key : null}
-                  onSelect={(label) => onFlt({
-                    sec: 'land',
-                    key: `ha:${label}`,
-                    /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
-                    label: tr('Төлөв: {0}', tr(label)),
-                    where: `${PL.status} = N'${sq(label)}'`,
-                    only: ['land:left'],
-                  })}
+                  /* ⚠️ 2026-09-29 (аудит 10): `key` нь `ha:` угтвартай — дээрх
+                     «төлөвөөр» чарттай ижил засвар (сонголт таарахгүй бүгд бүдгэрдэг байв) */
+                  onSelect={(k) => {
+                    const label = k.slice(3);
+                    onFlt({
+                      sec: 'land',
+                      key: k,
+                      /* ⚠️ Утгыг ч tr()-ээр — EN-д хольмог хэл гарахгүй (where түүхий) */
+                      label: tr('Төлөв: {0}', tr(label)),
+                      where: statusWhere(label),
+                      only: ['land:left'],
+                    });
+                  }}
                   items={rows.map((x) => ({
-                    key: x.label,
+                    key: `ha:${x.label}`,
                     label: x.label,
                     value: x.ha,
                     display: tr('{0} га · {1}', num(x.ha, 2), pct((x.ha / totHa) * 100, 1)),

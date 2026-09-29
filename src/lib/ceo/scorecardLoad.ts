@@ -59,11 +59,14 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   /* ⚠️ ХАБЭА: ЗӨВХӨН ажлын байрны үзлэг (хоёр маягт). Хүн хүчний бүртгэл нь
      зөвхөн «идэвхтэй талбар уу» гэдгийг ялгана — оноонд ОРОХГҮЙ. */
   const { loadUzlegRows } = await import('@/modules/habeaUzleg');
+  /* ⚠️ 2026-09-29 (аудит 10): гэрээ·HO_IPC·барилга унавал БҮХ карт «татагдсангүй»
+     болдог байв — одоо тус тусдаа `failed`-д орж, бусад хэмжээс хэвээр гарна.
+     `cf` (ажлын жагсаалт) л заавал — түүнгүй оноо тавих мөр өөрөө байхгүй. */
   const [cf, contracts, fin, bld, uzV11, uzCo, zovRows, workforce] = await Promise.all([
     loadGdashCf(),
-    loadContractSum(),
-    F.loadFinData(),
-    loadBuildings(),
+    loadContractSum().catch(() => null),
+    F.loadFinData().catch(() => null),
+    loadBuildings().catch(() => null),
     loadUzlegRows('v11').catch(() => null),
     loadUzlegRows('guitsetgegch').catch(() => null),
     /* ⚠️ `loadZov` нь үйлчилгээ холбогдоогүй үед null буцаадаг — «мэдэхгүй», 0 биш */
@@ -71,6 +74,9 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
   ]);
   const failed: string[] = [];
+  if (!contracts) failed.push(tr('Гэрээний дүн'));
+  if (!fin) failed.push(tr('Санхүүжилтийн гүйцэтгэл (HO_IPC)'));
+  if (!bld) failed.push(tr('Барилгын бүртгэл'));
   if (!uzV11) failed.push(tr('Ажлын байрны үзлэг V1.1'));
   if (!uzCo) failed.push(tr('Гүйцэтгэгчийн ажлын байрны үзлэг'));
   const uzFailed = !uzV11 && !uzCo;
@@ -95,12 +101,13 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
 
   const now = Date.now();
   /* 05-ын хуваарийн хоцрогдол — `loadScheduleKpi`-тай ЯГ ижил дуудлага */
+  /* ⚠️ 2026-09-29 (аудит 10): эх сурвалж унасан бол хоосон — `null` («мэдэхгүй»), 0 биш */
   const lags = new Map(
-    collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow).map((p) => [p.key, p.lag]),
+    fin ? collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow).map((p) => [p.key, p.lag]) : [],
   );
   /* 04-ийн олголт — `PkgFin` хуудастай ЯГ ижил (`pkgFinRows`) */
-  const packs = buildPacks(bld.rows);
-  const paid = new Map(pkgFinRows(packs, fin).rows.map((r) => [r.key, r.pct]));
+  const packs = bld ? buildPacks(bld.rows) : [];
+  const paid = new Map(fin && bld ? pkgFinRows(packs, fin).rows.map((r) => [r.key, r.pct]) : []);
 
   /* ХАБЭА — багц бүрийн ажлын байрны үзлэг (талбай → `bagtsKey`) */
   const inspections = new Map<string, Inspection[]>();
@@ -143,7 +150,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
        мөр `lag = null` → `scorePerf` өөрийнх нь огноо/гүйцэтгэлээр (0 БИШ). */
     const lag = key && r.sec === FIN_XL_BUILD_CODE ? lags.get(key) ?? null : null;
     const actual = lag ? lag.actual : r.progress;
-    const contract = contracts.get(r.oid) ?? null;
+    const contract = contracts?.get(r.oid) ?? null;
     return {
       oid: r.oid,
       name: r.name || r.project,
@@ -177,8 +184,12 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ.
          ⚠️ 2026-09-21: газрын мөрд зөвшөөрөл/ХАБЭА оноо АВАХГҮЙ (багц ажил биш). */
       permit: cancelled || isLandWork || !key || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
+      /* ⚠️ 2026-09-29 (аудит 10): ХОЁР маягтын нэг нь унавал `active` тавихгүй — эс
+         бөгөөс зөвхөн унасан маягтад үзлэгтэй багц «үзлэг хийж бүртгэх» (хүлээгдэж)
+         гэж татах алдааг гүйцэтгэгчийн дутагдал мэт харуулдаг байв; унасан маягт
+         `failed`-д аль хэдийн жагсаадаг, багц «—» болно. */
       hse: cancelled || isLandWork || !key || uzFailed ? { score: null, facts: [] } : scoreHse({
-        active: active.has(key), inspections: inspections.get(key) ?? [],
+        active: active.has(key) && !!uzV11 && !!uzCo, inspections: inspections.get(key) ?? [],
       }),
     };
   });

@@ -5884,6 +5884,22 @@ const en: Record<string, string> = {
   "Гүйцэтгэгчид төлөх": "Payable to contractor",
   "Гарын үсэг зурах хүмүүс (сонголттой)": "Signatories (optional)",
   "жишээ: Б.Болд": "e.g. B.Bold",
+  /* 2026-09-29 — аудит 10 */
+  "Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?": "The finance register has unsaved edits. They will be lost if you leave. Leave anyway?",
+  "Санхүүжилтийн гүйцэтгэл (HO_IPC)": "Payment performance (HO_IPC)",
+  "Барилгын бүртгэл": "Building register",
+  "Давхар нэгтгэлийн мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}": "A duplicate summary row (OID {0}) remains — delete it manually in AGOL: {1}",
+  "Сарын задаргаа уншигдсангүй. Хуудсыг дахин ачаална уу.": "The monthly breakdown could not be loaded. Please reload the page.",
+  "Төлөвлөгөөт хугацаа бөглөгдсөн боловч сарын мөр үүсээгүй байна. Гэрээний бүртгэлд эхлэх/дуусах огноог засаж нийтлэхэд сарууд үүснэ.": "Planned dates are filled in but no month rows exist yet. Edit and publish the start/end dates in the contract register to create the months.",
+  "{0} давхарга татагдсангүй — үр дүн бүрэн бус": "{0} layers could not be loaded — results are incomplete",
+  "Загварчлал дууссан боловч {0} м-ээс гүн усанд автсан талбай гараагүй тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {1} м) тооцов.": "The simulation finished but produced no area flooded deeper than {0} m, so damage was estimated with the flood BUFFER ({1} m from the river bank).",
+  "Загварчлал алдаагаар зогссон тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Дахин ажиллуулахад бодит мөрөөр бодогдохгүй.": "The simulation stopped with an error, so damage was estimated with the flood BUFFER ({0} m from the river bank). Re-running will not use the simulated extent.",
+  "Сарын задаргаа уншигдсангүй — хугацаа эсвэл ХО дүнгийн засвар сарын мөрийг давхардуулж болзошгүй тул нийтлэгдсэнгүй. Хуудсыг дахин ачаална уу.": "The monthly breakdown could not be loaded — edits to dates or the contract amount could duplicate month rows, so nothing was published. Please reload the page.",
+  "Бүсийн давхцлыг тоолж чадсангүй.": "Could not count overlaps by zone.",
+  "Нийт төсөвт ордоггүй": "Not included in the total budget",
+  "Бүх ажлын нийлбэрийн": "Of the all-works total",
+  "Зарим давхаргын давхцал татагдсангүй — тоо дутуу байж болно": "Overlaps for some layers could not be loaded — counts may be incomplete",
+  "Задаргаа татагдсангүй.": "The breakdown could not be loaded.",
   "{0} сард батлагдсан гүйцэтгэлийн агшин архивт алга — хамгийн сүүлийн сарыг сонголоо.": "No approved performance snapshot in the archive for {0} — the latest month was selected.",
 };
 

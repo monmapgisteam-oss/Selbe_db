@@ -172,6 +172,10 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   /** `snap` — `onDown`-д ТҮР тогтоосон баганын индексүүд (хөдөлгөөнгүй бол буцаана). */
   const drag = useRef<{ i: number; x: number; w: number; px?: number; snap: number[] } | null>(null);
 
+  /* ⚠️ 2026-09-29 (аудит 10): чирэлтийн ДУНДУУР unmount болбол `finish` ажиллахгүй,
+     body-ийн класс үлдэнэ — unmount дээр заавал цэвэрлэнэ (`Portal.useColumnResize`). */
+  useEffect(() => () => { document.body.classList.remove(st.dragging); }, []);
+
   const onDown = (i: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -325,6 +329,11 @@ export function ResizableTable({ storeKey, className, children }: Props) {
             onPointerMove={onMove}
             onPointerUp={finish}
             onPointerCancel={finish}
+            /* ⚠️ 2026-09-29 (аудит 10): барилт өөр шалтгаанаар алдагдвал `pointerup`
+               ирэхгүй — `body.dragging` курсор гацдаг (`Portal.useColumnResize`-ийн
+               2026-09-25-ны засвартай ижил). `finish` нь `drag.current`-оор давхар
+               дуудлагаас хамгаалагдсан. */
+            onLostPointerCapture={finish}
             onDoubleClick={reset}
             onKeyDown={(e) => {
               const d = e.key === 'ArrowLeft' ? -8 : e.key === 'ArrowRight' ? 8 : 0;

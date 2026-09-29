@@ -445,7 +445,8 @@ export async function buildExecDoc(
           ]),
           [tdBold(tr('Нийт')), tdBold(num(g.bySource.reduce((a, s) => a + s.n, 0)), true),
             tdBold(num(g.bySource.reduce((a, s) => a + s.contracted, 0)), true),
-            tdBold(num(srcSum), true), tdBold('100.0%', true)],
+            /* ⚠️ 2026-09-29 (аудит 10): дүн 0 бол мөрүүд «—» тул нийт ч «—» */
+            tdBold(num(srcSum), true), tdBold(srcSum ? '100.0%' : '—', true)],
         ] }, layout: tableLayout } as Content,
         note(tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага гарна.')),
       ] : []),

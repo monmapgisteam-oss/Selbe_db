@@ -29,7 +29,7 @@ import { useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
-  contractBlocks, anyObyem, sortBlocks, ipcTotals,
+  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount,
   type ContractBlock, type Detail, type PayRow, type SortKey,
 } from '@/lib/ipcTable';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
@@ -119,7 +119,8 @@ function Head({
           <span className={s.gTitle}>{b.title}</span>
           <span className={s.gMeta}>{b.contractor || '—'}</span>
           <span className={s.gCount}>
-            {tr('{0} төлбөр', num(b.rows.length))}
+            {/* ⚠️ 2026-09-29 (аудит 10): `dun`-гүй AUTO мөр төлбөр биш (`payCount`) */}
+            {tr('{0} төлбөр', num(payCount(b.rows)))}
           </span>
           <span className={s.gSpacer} />
           <span className={s.gSum}>
@@ -347,11 +348,16 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   /* ⚠️ Түлхүүр нь `code` — кодгүй гэрээ (амьдаар ХО-0045) `''` болно.
      Тиймээс индексийг ХАМТ хэрэглэнэ, эс бөгөөс хоёр кодгүй гэрээ
      нэг зэрэг нээгдэж хаагдана. */
-  const keyOf = (b: ContractBlock, i: number) => `${b.code}#${i}`;
+  /* ⚠️ 2026-09-29 (аудит 10): индекс нь ЭРЭМБЭЛЭЭГҮЙ `blocks`-ийнх. Урьд нь
+     эрэмбэлсэн массивын индекс байсан тул эрэмбэ солиход хураасан төлөв ӨӨР
+     гэрээнд шилждэг байв. `sortBlocks` объектыг хуулдаггүй тул лавлагаагаар
+     олдоно. */
+  const baseIdx = useMemo(() => new Map(blocks.map((b, i) => [b, i])), [blocks]);
+  const keyOf = (b: ContractBlock) => `${b.code}#${baseIdx.get(b) ?? -1}`;
 
   const allShut = shut.size >= sorted.length;
   const toggleAll = () => {
-    setShut(allShut ? new Set() : new Set(sorted.map(keyOf)));
+    setShut(allShut ? new Set() : new Set(sorted.map((b) => keyOf(b))));
   };
 
   return (
@@ -393,8 +399,8 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
           нийтлэг `<table>` баганын бүтэц шаардлагагүй. Гэрээ бүр нь
           толгой + дэлгэрэнгүй + картын сүлжээ. */}
       <div className={s.list}>
-        {sorted.map((b, i) => {
-          const k = keyOf(b, i);
+        {sorted.map((b) => {
+          const k = keyOf(b);
           const open = !shut.has(k);
           return (
             <section className={s.blk} key={k}>

@@ -456,6 +456,14 @@ export type SubBar = {
    * ⚠️ `null` ≠ 0 — хэмжигдээгүй бол тэмдэг ОГТ зурагдахгүй.
    */
   fin?: number | null;
+  /**
+   * ⚠️ 2026-09-29 (аудит 10): «НИЙТ ТӨСӨВ» ИНДИКАТОРТ ОРОХ УУ (`CfRow.inTotal`).
+   * Мөнгөн чартын «Нийт төсвийн X%» суурь нь ЗӨВХӨН эдгээр мөрийн нийлбэр
+   * байх ёстой — эс бөгөөс «ГАЗАР ЧӨЛӨӨЛӨЛТ» (нийт томьёоны гадна) «Нийт
+   * төсвийн 15.2%» гэж бичигдэж, дэлгэц дээрх индикатортой зөрдөг байв.
+   * `undefined` = ялгаагүй чарт (эх үүсвэр) — бүх мөр суурьт орно.
+   */
+  inTotal?: boolean;
 };
 
 const groupSum = (
@@ -546,12 +554,15 @@ export function chartTypeCost(
     (r) => (r.note === CONTRACTED ? r.cost : 0),
   );
   const cnt = new Map<string, { n: number; c: number }>();
+  /* ⚠️ 2026-09-29 (аудит 10): ангилал «Нийт төсөв»-т ордог уу — `SubBar.inTotal` */
+  const inTot = new Set<string>();
   for (const r of rows) {
     if (!r.type) continue;
     const a = cnt.get(r.type) ?? { n: 0, c: 0 };
     a.n += 1;
     if (r.note === CONTRACTED) a.c += 1;
     cnt.set(r.type, a);
+    if (r.inTotal) inTot.add(r.type);
   }
   /* ⚠️ ГҮЙЦЭТГЭЛИЙН ХОЁР ХЭМЖҮҮР нь одоо ЭНЭ чартад ирнэ: «Гэрээлсэн байдал,
      бодит гүйцэтгэл» чарттай НЭГТГЭГДСЭН (2026-09-10). Хоёр чарт нэг
@@ -569,6 +580,7 @@ export function chartTypeCost(
     /* ⚠️ Ангиллын ил утга ДАВАМГАЙЛНА (`catPct`-ийн тайлбарыг үз) */
     perf: catPct.get(b.key) ?? w.get(b.key) ?? null,
     fin: wf.get(b.key) ?? null,
+    inTotal: inTot.has(b.key),
   }));
 }
 

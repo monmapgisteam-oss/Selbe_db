@@ -892,6 +892,9 @@ export function PkgProg({ dim, setDim }: {
         <ProgChart
           months={progMonths}
           planFailed={planQ.state === 'error' ? -1 : planQ.state === 'ready' ? planQ.data.failed.length : 0}
+          /* ⚠️ 2026-09-29 (аудит 10): ачаалж байх үед `progMonths` = null тул график
+             «Гүйцэтгэлийн дата алга» гэж ХАРИУЛТ мэт бичдэг байв — ачаалал ≠ хоосон. */
+          loading={planQ.state === 'loading' || finQ.state === 'loading'}
           title={active ? tr('{0} — гүйцэтгэлийн явц', tr(active.name)) : tr('Төсөл нийт — гүйцэтгэлийн явц')}
         />
       </div>
@@ -1309,9 +1312,15 @@ function LevelsCard({
  * мэт харагдана. Мөн «0%» нь «эхлээгүй» ба «0.4% хийгдсэн» хоёрыг
  * ялгахгүй болгоно.
  */
-function ProgChart({ months, title, planFailed = 0 }: {
+function ProgChart({ months, title, planFailed = 0, loading = false }: {
   months: ProgPt[] | null;
   title: string;
+  /**
+   * ⚠️ 2026-09-29 (аудит 10): хуваарь (`planQ`) эсвэл бодит гүйцэтгэл (`finQ`)
+   * АЧААЛЖ байна. Урьд нь энэ үед «дата алга» / «хараахан бөглөгдөөгүй» гэж
+   * бичигдэж, хүлээлтийг хоосон ХАРИУЛТ мэт уншуулдаг байв.
+   */
+  loading?: boolean;
   /**
    * Уншигдаагүй бөглөх хуудасны тоо (`PlanCurve.failed`); `-1` = муруй бүхэлдээ
    * уншигдсангүй. ⚠️ 2026-09-25: урьд нь хоёулаа «Гүйцэтгэлийн дата алга» гэж
@@ -1338,7 +1347,8 @@ function ProgChart({ months, title, planFailed = 0 }: {
           ? (planFailed > 0
             ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)
             : tr('Төлөвлөгөөт муруй уншигдсангүй'))
-          : tr('Гүйцэтгэлийн дата алга.')}
+          /* ⚠️ 2026-09-29 (аудит 10): алдаа нь ачааллаас ДАВУУ — унасан муруйг хүлээлгэхгүй */
+          : loading ? tr('Ачаалж байна…') : tr('Гүйцэтгэлийн дата алга.')}
         />
       </Section>
     );
@@ -1396,7 +1406,12 @@ function ProgChart({ months, title, planFailed = 0 }: {
      hover-ийн индекс мужаас гарч `rows[hi].plan` дээр УНАДАГ байв. */
   const hv = hi != null && hi >= 0 && hi < N ? hi : null;
   const pt = hv != null ? rows[hv] : null;
-  const anchor = (i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
+  /* ⚠️ 2026-09-29 (аудит 10): tooltip-ийн «Төлөвлөсөн»/«Зөрүү» нь толгойн тэмдэглэл
+     (`curGap`) ба KPI-тай НЭГ суурь — хэмжилтийн ӨДРИЙН төлөвлөгөө (`planM`). Урьд нь
+     сарын эцсийн `plan`-аар бодож, нэг цэгт хоёр өөр зөрүү гардаг байв. Хэмжилтгүй
+     сард `planM` = null тул сарын эцсийн цэг хэвээр. */
+  const ptPlan = pt ? (pt.act != null ? (pt.planM ?? pt.plan) : pt.plan) : 0;
+  const anchor =(i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
 
   /*
    * ⚠️ ЦЭГ БҮР ДЭЭР УТГА — «Санхүүжилтийн явц» (ComboChart)-ийн ЯГ тэр дүрэм.
@@ -1461,8 +1476,12 @@ function ProgChart({ months, title, planFailed = 0 }: {
             <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
           </>
         )}
+        {/* ⚠️ 2026-09-29 (аудит 10): `finQ` ачаалж байхад «бөглөгдөөгүй» гэж хэлэхгүй —
+            бодит гүйцэтгэл ирээгүй байгаа нь бөглөөгүй гэсэн үг БИШ. */}
         {measured.length === 0 && (
-          <span className={ts.progNoData}>{tr('Бодит гүйцэтгэл хараахан бөглөгдөөгүй')}</span>
+          <span className={ts.progNoData}>
+            {loading ? tr('Ачаалж байна…') : tr('Бодит гүйцэтгэл хараахан бөглөгдөөгүй')}
+          </span>
         )}
       </div>
 
@@ -1595,7 +1614,7 @@ function ProgChart({ months, title, planFailed = 0 }: {
             <p className={`num ${ts.progTipHd}`}>{pt.label}</p>
             <p className={ts.progTipRow}>
               <i style={{ background: cat(2) }} />
-              {tr('Төлөвлөсөн')}<b className="num">{pt.plan.toFixed(1)}%</b>
+              {tr('Төлөвлөсөн')}<b className="num">{ptPlan.toFixed(1)}%</b>
             </p>
             <p className={ts.progTipRow}>
               <i style={{ background: cat(1) }} />
@@ -1605,7 +1624,7 @@ function ProgChart({ months, title, planFailed = 0 }: {
             <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
               {tr('Зөрүү')}
               <b className="num">
-                {pt.act == null ? '—' : `${pt.plan - pt.act >= 0 ? '−' : '+'}${Math.abs(pt.plan - pt.act).toFixed(1)}%`}
+                {pt.act == null ? '—' : `${ptPlan - pt.act >= 0 ? '−' : '+'}${Math.abs(ptPlan - pt.act).toFixed(1)}%`}
               </b>
             </p>
           </div>

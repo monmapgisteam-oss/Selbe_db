@@ -72,7 +72,20 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        */
       const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.wC, sc.f.vol, sc.f.unit, ...cols]
         .filter((x): x is string => !!x);
-      const { rows } = await loadRows(pkg, sc, day, need);
+      /*
+       * ⚠️ 2026-09-29 (аудит 10): хуудас бүрийн ТЭР ӨДӨР БУЮУ ӨМНӨХ хамгийн
+       *    сүүлийн жааз (`negtgelWrite.summaryOf`-ийн `<= at`-тай ижил дүрэм —
+       *    обьём ХУРИМТЛАГДСАН тул сүүлийн агшин нь тэр өдрийн нийт байдал).
+       *    Урьд нь ЯГ `day`-ээр татдаг байсан бөгөөд `loadRows` 0 мөрд ШИДДЭГ
+       *    тул доорх `missing` салбар үхсэн код байв: хоёр хуудастай багцын
+       *    (1 · 2 · 4-2) 9F-ийг D өдөр батлахад 12F-д D огноотой жааз байхгүй
+       *    бол батлалт бүрд алдаа гарч, хоёр хуудсыг өөр өдөр батлавал IPC
+       *    AUTO мөр ХЭЗЭЭ Ч үүсдэггүй байв. Хэзээ ч нийтлэгдээгүй хуудас
+       *    `missing` хэвээр (09-15-ны дүрэм — дутуу дүнгээр бичихгүй).
+       */
+      const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
+      if (!upTo) { missing += 1; continue; }
+      const { rows } = await loadRows(pkg, sc, upTo, need);
       if (!rows.length) { missing += 1; continue; }
       read += 1;
       const s = snapshotOf(rows, day);
@@ -159,6 +172,25 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }
+}
+
+/**
+ * Хуудасны `day`-ээс ХОЙШГҮЙ хамгийн сүүлийн жаазны огноо (`YYYY-MM-DD`,
+ * UTC — `bagtsSheet.dayFilter`/`msToDay`-тай ижил). Жааз байхгүй бол `null`.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): `syncIpcFromFill`-ийн хоёр хуудастай багцын
+ *    засвар — дэлгэрэнгүйг дуудагчийн ⚠️-ээс.
+ */
+async function latestDayUpTo(url: string, fld: string, day: string): Promise<string | null> {
+  const j = await agsFetch(`${url}/query`, {
+    where: `${fld} <= timestamp '${day} 23:59:59'`,
+    outStatistics: JSON.stringify([
+      { statisticType: 'max', onStatisticField: fld, outStatisticFieldName: 'mx' },
+    ]),
+    returnGeometry: 'false',
+  });
+  const mx = num(j.features?.[0]?.attributes?.mx);
+  return mx == null ? null : new Date(mx).toISOString().slice(0, 10);
 }
 
 /** `applyEdits`-ийн мөр бүрийн үр дүн */

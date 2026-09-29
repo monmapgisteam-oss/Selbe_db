@@ -20,23 +20,25 @@
  */
 
 import { t as tr } from './i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { agsFetch } from '@/modules/sheet/ags';
 import { BAGTS_NEGTGEL, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 
 const F = BAGTS_NEGTGEL.fields;
 
-/** ArcGIS алдааг HTTP 200-аар буцаадаг — биен доторх `error`-ыг ЗААВАЛ шалгана */
+/**
+ * ArcGIS алдааг HTTP 200-аар буцаадаг — биен доторх `error`-ыг ЗААВАЛ шалгана.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): хуваалцсан `agsFetch`-ээр. Урьд нь шууд `fetch` +
+ *    `tokenParam()` байсан тул (а) богино хугацаатай PKCE токеныг хүсэлтийн
+ *    өмнө шинэчилдэггүй, 498-д дахин оролддоггүй — удаан нээлттэй табаас
+ *    батлахад нэгтгэлийн бичилт «Invalid token»-оор унадаг; (б) `res.ok` /
+ *    JSON задлалт шалгадаггүй тул proxy-ийн HTML 502 «Unexpected token <»
+ *    болж гардаг байв. `agsFetch` хоёуланг нь хийдэг.
+ */
 async function post(url: string, body: Record<string, string>) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }),
-  });
-  const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
-  return j;
+  return (await agsFetch(url, body)) as Record<string, unknown>;
 }
 
 const num = (v: unknown): number | null =>
@@ -398,16 +400,19 @@ export async function registerApproved(
       const oid = num(dupRow[BAGTS_NEGTGEL.oid]);
       if (oid == null)
         return { ok: false, error: tr('Нэгтгэлийн мөрийн дугаар уншигдсангүй — дахин оролдоно уу.') };
+      /* ⚠️ 2026-09-29 (аудит 10): `null` нь хадгалсан утгыг ДАРАХГҮЙ
+         (`negtgelAuto.negDiff`-тэй ижил дүрэм). Урьд нь гурван талбарыг
+         болзолгүй бичдэг байсан тул УРЬДЧИЛАН суулгасан төлөвлөгөөний мөрийн
+         `planned`/обьём нь хуудсанд хэмжигдээгүй (`null`) үед арчигддаг байв. */
+      const attrs: Record<string, unknown> = {
+        [BAGTS_NEGTGEL.oid]: oid,
+        [F.progress]: s.progress,
+      };
+      if (s.planned != null) attrs[F.planned] = s.planned;
+      if (s.volume != null) attrs[F.volume] = s.volume;
+      if (s.volumePlan != null) attrs[F.volumePlan] = s.volumePlan;
       const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
-        updates: JSON.stringify([{
-          attributes: {
-            [BAGTS_NEGTGEL.oid]: oid,
-            [F.progress]: s.progress,
-            [F.planned]: s.planned,
-            [F.volume]: s.volume,
-            [F.volumePlan]: s.volumePlan,
-          },
-        }]),
+        updates: JSON.stringify([{ attributes: attrs }]),
         rollbackOnFailure: 'true',
       })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
       const ur = upd.updateResults?.[0];
@@ -438,9 +443,57 @@ export async function registerApproved(
      *    хяналтын мөр «Шилжүүлсэн» болоод дахин батлах боломжгүй болдог байв —
      *    батлагдсан гүйцэтгэл нэгтгэлд ХЭЗЭЭ Ч орохгүй, хаана ч алдаа гарахгүй.
      */
-    const r = res.addResults?.[0];
+    const r = res.addResults?.[0] as { success?: boolean; objectId?: number; error?: { description?: string } } | undefined;
     if (!r || r.success !== true) {
       throw new Error(r?.error?.description ?? tr('Нэгтгэлд мөр нэмэгдсэнгүй'));
+    }
+    /*
+     * ⚠️ 2026-09-29 (аудит 10): ЗЭРЭГ БАТЛАЛТЫН ДАВХАР МӨР. Дээрх `dupQ` нь
+     *    шалгаад-нэмэх дараалал, ArcGIS-д «багц · огноо»-ны давтагдашгүй хязгаар
+     *    байхгүй — хоёр батлалт секундын зайтай (9F ба 12F хоёр таб) ирвэл
+     *    хоёулаа мөр олохгүй өнгөрч ХОЁР мөр нэмнэ; `latestPkgProgress` аль нь
+     *    давамгайлахыг ArcGIS-ийн буцаах дараалал шийднэ (дээрх «ШИНЭ МӨР БИШ,
+     *    ШИНЭЧЛЭЛ» ⚠️). `ipcAutoWrite.dedupeAuto`-тай ИЖИЛ дүрэм: нэмсний дараа
+     *    дахин уншиж, ХАМГИЙН БАГА OID үлдэнэ; манайх түүнээс их бол үлдэх мөрийг
+     *    манай утгаар шинэчилж (`null` дарахгүй), манайхыг устгана. БУСДЫН мөрийг
+     *    хэзээ ч устгахгүй.
+     */
+    const newOid = num(r.objectId);
+    if (newOid != null) {
+      const tw = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+        where: `${F.bagts} = N'${nameSql}' AND ${F.date} = ${ts(s.at)}`,
+        outFields: `${BAGTS_NEGTGEL.oid}`,
+        returnGeometry: 'false',
+        orderByFields: `${BAGTS_NEGTGEL.oid} ASC`,
+      })) as { features?: { attributes: Record<string, unknown> }[] };
+      const keepOid = num(tw.features?.[0]?.attributes?.[BAGTS_NEGTGEL.oid]);
+      if (keepOid != null && keepOid < newOid) {
+        const attrs: Record<string, unknown> = { [BAGTS_NEGTGEL.oid]: keepOid, [F.progress]: s.progress };
+        if (s.planned != null) attrs[F.planned] = s.planned;
+        if (s.volume != null) attrs[F.volume] = s.volume;
+        if (s.volumePlan != null) attrs[F.volumePlan] = s.volumePlan;
+        const u = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: attrs }]),
+          rollbackOnFailure: 'true',
+        })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
+        const ur = u.updateResults?.[0];
+        if (!ur || ur.success !== true) {
+          invalidate('BAGTS_NEGTGEL');
+          throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
+        }
+        const d = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+          deletes: String(newOid),
+          rollbackOnFailure: 'true',
+        })) as { deleteResults?: { success?: boolean; error?: { description?: string } }[] };
+        const dr = d.deleteResults?.[0];
+        invalidate('BAGTS_NEGTGEL');
+        if (!dr || dr.success !== true)
+          return {
+            ok: false,
+            error: tr('Давхар нэгтгэлийн мөр (OID {0}) үлдлээ — AGOL дээр гараар устгана уу: {1}', newOid, dr?.error?.description ?? ''),
+          };
+        return { ok: true };
+      }
     }
     /* ⚠️ Нэгтгэлд шинэ мөр орсон тул `loadPkgProgress` хуучирлаа: 02/04
        дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ. */

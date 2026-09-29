@@ -375,5 +375,18 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
     A._resetNegSync();
   }
 
+  /* 19 — (2026-09-29, аудит 10) газрын модулиас утга ирээгүй бол эх сурвалжийг
+     «Газар чөлөөлөлт хэсгээс» гэж ХУДАЛ заахгүй; хадгалсан утга үлдэнэ */
+  {
+    const lTree = [{ oid: 31, code: '3', name: 'Газар чөлөөлөлт', p: 1, act: 0.4 }];
+    const noLand = A.computeNegAuto(mk(lTree), emptySrc)[0];
+    const withLand = A.computeNegAuto(mk(lTree), { ...emptySrc, land: 90 })[0];
+    assert.equal(noLand.act, 0.4, 'land null → хадгалсан утга');
+    assert.equal(noLand.auto, false);
+    assert.notEqual(noLand.how, withLand.how, 'land null → эх сурвалжийн тайлбар өөр');
+    assert.equal(withLand.act, 0.9);
+    assert.equal(withLand.auto, true);
+  }
+
   console.log('negtgel 2026-09-25: ok — биелэлт null · нийт null · орон сууцны уналт · төлөвлөгөөний завсар · хамгаалалт · эрх');
 }

@@ -58,8 +58,11 @@ export function kindCounts(docs: readonly MsDoc[]): Record<DocKind, number> {
 
 /** Баримтын шийдвэрийн код — REP байвал түүнээс, үгүй бол хянагчдын нэгтгэл; шийдвэргүй → null */
 export function docVerdict(doc: Pick<MsDoc, 'kind' | 'status' | 'reviews' | 'rep'>): VerdictCode | null {
-  if (doc.rep) return doc.rep.verdict;
+  /* ⚠️ 2026-09-29 (аудит 10): ШИЙДВЭРЛЭГДЭЭГҮЙ төлөвт `rep`-ийг тооцохгүй. NCR-ийн
+     залруулга/дахин нээлт нь REP дугаарын lineage-ийн тулд ӨМНӨХ хариуг мөрөнд
+     үлдээдэг (`chanarStore.submitCorrection`) — тэр нь одоогийн шийдвэр биш. */
   if (doc.status !== MS_STATUS.approved && doc.status !== MS_STATUS.returned) return null;
+  if (doc.rep) return doc.rep.verdict;
   const rs = REVIEWERS_OF[doc.kind].map((r) => doc.reviews[r]).filter((r) => r != null);
   if (!rs.length) return null;
   const codes = rs.map((r) => verdictCode(r.verdict));

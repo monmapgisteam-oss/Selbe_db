@@ -265,6 +265,11 @@ export async function ask(opts: {
 
     onProgress?.(describeCall(calls[0].name, calls[0].input));
 
+    /* ⚠️ 2026-09-29 (аудит 10): `signal` хэрэгслийн гүйцэтгэлд дамждаггүй — ✕/Esc/⟲ зөвхөн
+       релегийн fetch-ийг таслаад хэрэгслүүд (~10 с) үргэлжилж, `busy` тогтож байв.
+       Гүйцэтгэлийн өмнө ба дараа таслалтыг шалгаж AbortError шидэнэ. */
+    const aborted = () => { if (signal?.aborted) throw new DOMException('aborted', 'AbortError'); };
+    aborted();
     // Зэрэг дуудлагуудыг ЗЭРЭГ гүйцэтгэнэ — `query.ts` өөрөө 6-аар хязгаарлана
     const results = await Promise.all(
       calls.map(async (c) => {
@@ -277,6 +282,7 @@ export async function ask(opts: {
         };
       }),
     );
+    aborted();
 
     // ⚠️ БҮХ үр дүн НЭГ мессежид орно. Салгавал загвар зэрэгцээ дуудлага
     //    хийхээ болино.

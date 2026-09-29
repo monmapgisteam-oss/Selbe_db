@@ -131,8 +131,19 @@ export function AgentChat({
   useEffect(() => {
     if (!open) return;
     const c = new AbortController();
-    void relayAlive(c.signal).then(setAlive).catch(() => setAlive(false));
+    /* ⚠️ 2026-09-29 (аудит 10): тасалсан (`/health` хариулахаас өмнө хаасан) шалгалтын
+       `false`-г хадгалахгүй — дахин нээхэд «ажиллахгүй байна» худал гардаг байв. */
+    void relayAlive(c.signal)
+      .then((ok) => { if (!c.signal.aborted) setAlive(ok); })
+      .catch(() => { if (!c.signal.aborted) setAlive(false); });
     return () => c.abort();
+  }, [open]);
+
+  /* ⚠️ 2026-09-29 (аудит 10): нээхэд фокустай FAB unmount болж фокус алга болдог байв
+     — оролтын талбарт шилжүүлнэ (хаахад FAB өөрөө буцааж авна, `AgentButton`). */
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
   }, [open]);
 
   /** Шинэ мессеж ирэхэд доош гүйлгэнэ */
@@ -228,7 +239,13 @@ export function AgentChat({
    */
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      /* ⚠️ 2026-09-29 (аудит 10): дээр нь модал (`DocViewer` г.м. `aria-modal`) нээлттэй
+         бол Esc нь ТҮҮНИЙ — нэг Esc хоёуланг нь хаадаг байв. */
+      if (document.querySelector('[aria-modal="true"]')) return;
+      onClose();
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [open, onClose]);
@@ -308,6 +325,7 @@ export function AgentChat({
 
       <div className={s.foot}>
         <textarea
+          ref={inputRef}
           className={s.input}
           value={input}
           placeholder={tr('Асуултаа бичнэ үү…')}
@@ -336,9 +354,17 @@ export function AgentChat({
 
 /** Нээх товч — цонх хаалттай үед харагдана */
 export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  /* ⚠️ 2026-09-29 (аудит 10): самбар хаагдахад фокус body дээр үлддэг байв — FAB
+     дахин гарч ирэхэд (нээлттэй → хаалттай шилжилт) өөр дээрээ фокус авна. */
+  const ref = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) ref.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   if (open) return null;
   return (
-    <button type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
+    <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />
       {tr('AI туслах')}
     </button>

@@ -13,7 +13,7 @@
  * тодорхой мессеж гарна — эс бөгөөс «зөвшөөрөл байхгүй» гэж уншигдана.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   URL as ZOV_URL, TOLOV, byBagts, loadZov, summarize, type Zov, type ZovDraft,
@@ -168,6 +168,10 @@ export function Zovshoorol() {
   const [rows, setRows] = useState<Zov[] | null>(null);
   const [busy, setBusy] = useState(true);
   const [pick, setPick] = useState<Zov | null>(null);
+  /* ⚠️ 2026-09-29 (аудит 10): ТОГТВОРТОЙ заалт — `Detail`-ийн эффект `[onClose]`-оос
+     хамаардаг тул рендер бүрд шинэ функц өгөхөд сонсогч дахин бүртгэгдэж, фокус
+     60 мс-д ✕ рүү үсэрдэг байв. */
+  const closePick = useCallback(() => setPick(null), []);
   /** Засварын маягтын ноорог — `null` бол маягт хаалттай */
   const [edit, setEdit] = useState<ZovDraft | null>(null);
   const [n, setN] = useState(0);
@@ -324,7 +328,7 @@ export function Zovshoorol() {
           z={pick}
           canEdit={canEdit}
           onEdit={() => { setEdit({ ...pick, tolov: pick.tolov === 'unknown' ? TOLOV.wait : pick.tolov }); setPick(null); }}
-          onClose={() => setPick(null)}
+          onClose={closePick}
         />
       )}
       {edit && rows && (

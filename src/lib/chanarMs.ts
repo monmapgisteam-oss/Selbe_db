@@ -1772,19 +1772,23 @@ export type Actions = {
  * энэ нь зөвхөн тэдгээрийг ДУУДАХГҮЙГЭЭР урьдчилан харуулна.
  * `extra.contractor` — тухайн багцын гүйцэтгэгч (`isAuthorFor`) мөн эсэх;
  * NCR-ийн залруулгын товч үүгээр. `extra.ncrClosed` — `body.closure.closedByContractor` бөглөгдсөн.
+ * `extra.superseded` — энэ мөрөөс ШИНЭ хувилбар (rev+1) аль хэдийн бий (түүхээс нээсэн хуучин мөр).
  */
 export function canAct(
   doc: FlowDoc,
   me: string | null | undefined,
   roles: readonly Reviewer[],
-  extra: { contractor?: boolean; ncrClosed?: boolean } = {},
+  extra: { contractor?: boolean; ncrClosed?: boolean; superseded?: boolean } = {},
 ): Actions {
   const kind = doc.kind ?? 'MS';
   const u = (me ?? '').trim().toLowerCase();
   const mine = !!u && doc.author.trim().toLowerCase() === u;
-  const editable = kind === 'NCR'
+  /* ⚠️ 2026-09-29 (аудит 10): шинэ хувилбартай ХУУЧИН мөрд «Засах»/«Дахин илгээх» гарахгүй —
+     урьд нь «Өөрчлөлтийн түүх»-ээс rev N-ийг нээхэд товч харагдаж, дарахад л
+     «шинэ хувилбар аль хэдийн бий» гэж татгалздаг байв (`chanarStore.newerExists`). */
+  const editable = extra.superseded !== true && (kind === 'NCR'
     ? doc.status === MS_STATUS.draft
-    : doc.status === MS_STATUS.draft || doc.status === MS_STATUS.returned;
+    : doc.status === MS_STATUS.draft || doc.status === MS_STATUS.returned);
   /* ⚠️ Нэвтрээгүй (`u` хоосон) хүнд хянах товч ГАРАХГҮЙ — `review()` хоосон
      нэрийг татгалздаг ч дэлгэц дээр товч харагдах нь өөрөө буруу. */
   /* ⚠️ `review()`-ийн «нэг хүн зөвхөн НЭГ үүргээр» дүрмийг ЭНД ч давтана
@@ -1815,7 +1819,9 @@ export function canAct(
   const closeAnOk = !!u && doc.status === MS_STATUS.approved && doc.rep?.verdict === 'AN'
     && (kind === 'NCR' || !mine)
     && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
-  const newRev = kind !== 'NCR' && mine && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
+  /* ⚠️ 2026-09-29 (аудит 10): `superseded` — `newRevisionDoc` ч `newerExists`-ээр татгалздаг */
+  const newRev = kind !== 'NCR' && mine && extra.superseded !== true
+    && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
   const closeNcrOk = kind === 'NCR' && !!u && extra.contractor === true && doc.status === MS_STATUS.approved && !extra.ncrClosed;
   return {
     edit: mine && editable, submit: mine && editable, review: reviewable,

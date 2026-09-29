@@ -429,7 +429,10 @@ function leafValue(
 
   switch (stage) {
     case 'land':
-      return { act: src.land, planGu: null, how: tr('Газар чөлөөлөлт хэсгээс') };
+      /* ⚠️ 2026-09-29 (аудит 10): газрын модулиас утга ИРЭЭГҮЙ (`null`) бол
+         `none` — урьд нь хадгалсан утга үлдсэн атлаа тайлбар нь «Газар
+         чөлөөлөлт хэсгээс» гэж худал эх сурвалж заадаг байв. */
+      return src.land == null ? none : { act: src.land, planGu: null, how: tr('Газар чөлөөлөлт хэсгээс') };
     case 'tezu':
     case 'design':
     case 'permit':
@@ -441,7 +444,8 @@ function leafValue(
       /* ⚠️ ДАРААЛАЛ ЧУХАЛ: «5.1.3 Талбайн бэлтгэл» дотор ч «Орон сууцны
          хороолол» гэсэн мөр бий — бэлтгэл ажил нь биет гүйцэтгэл БИШ. */
       if (chain.includes(nkey('Газар чөлөөлөлт'))) {
-        return { act: src.land, planGu: null, how: tr('Газар чөлөөлөлт хэсгээс') };
+        /* ⚠️ 2026-09-29 (аудит 10): дээрхтэй ижил — `null` бол `none` */
+        return src.land == null ? none : { act: src.land, planGu: null, how: tr('Газар чөлөөлөлт хэсгээс') };
       }
       if (chain.includes(nkey('Буулгалт, цэвэрлэгээ'))) {
         let w = 0;
@@ -719,10 +723,23 @@ const liveLoad = async () => {
   return { stored, src };
 };
 const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
-  const { tokenParam } = await import('@/lib/authToken');
+  const { tokenParam, ensureFreshToken, isTokenError } = await import('@/lib/authToken');
+  /* ⚠️ 2026-09-29 (аудит 10): `agsFetch`/`arcgisPost`-той ижил — богино
+     хугацаатай PKCE токеныг бичихийн ӨМНӨ шинэчилж, токены алдаанд НЭГ удаа
+     дахин оролдоно. Урьд нь таб удаан нээлттэй байсны дараах синк хуучирсан
+     токеноор 498 авч `error` төлөвт унадаг байв. Токены алдаа нь хүсэлтийг
+     БҮХЭЛД нь татгалздаг (бичилт болоогүй) тул дахин илгээх нь аюулгүй.
+     (`tableWrite.post` нь `res.ok`/JSON задлалтыг аль хэдийн шалгадаг.) */
+  await ensureFreshToken();
   if (!tokenParam().token) throw new Error(tr('Нэвтрэлтийн токен алга — бичсэнгүй'));
   const { applyAll } = await import('@/lib/tableWrite');
-  return (await applyAll(TUSUL_NEGTGEL.url, TUSUL_NEGTGEL.oid, { updates: ups })).n;
+  try {
+    return (await applyAll(TUSUL_NEGTGEL.url, TUSUL_NEGTGEL.oid, { updates: ups })).n;
+  } catch (e) {
+    if (!isTokenError((e as { code?: unknown })?.code, (e as Error)?.message)) throw e;
+    await ensureFreshToken(true);
+    return (await applyAll(TUSUL_NEGTGEL.url, TUSUL_NEGTGEL.oid, { updates: ups })).n;
+  }
 };
 
 /** Сүүлийн синкийн төлөв (энэ хөтөчид) */

@@ -776,7 +776,16 @@ export async function saveDraft(args: {
     /* ⚠️ 2026-09-28: rev+1 ноорогт хувилбарын шалтгаан ЗААВАЛ; MA-д A/AN материал түгжигдэнэ */
     const reason = (args.revNote ?? (body as { revNote?: string }).revNote ?? '').trim();
     if (!reason) return { ok: false, error: tr('Хувилбарын шалтгаанаа бичнэ үү (rev {0})', String(rev)) };
-    const nextBody = nextRevisionBody(kind, body, { rev, reason, by: act.who });
+    /* ⚠️ 2026-09-29 (аудит 10): ТҮГЖЭЭГ ЭХЛЭЭД серверийн (буцаагдсан rev N) биед тавина.
+       Урьд нь `ownClientBody` → `nextRevisionBody` дараалалтай байв: rev N-ийн материал
+       `applyRepToMaterials`-аар A/AN шийдвэртэй ч `locked:false` тул `ownClientBody`
+       бүгдийг `{verdict:null, locked:false}` болгож, дараа нь түгжих юм үлддэггүй —
+       rev+1 БҮХ материалыг дахин хянуулдаг байлаа («Дахин илгээх»-ийн засваргүй зам
+       `submitDoc` зөв түгждэг). Одоо `nextRevisionBody` серверийн биеэс A/AN-ийг түгжиж
+       (түүх · revNote ч энд), `ownClientBody` клиентийн материалыг НЭРЭЭР нь тэр
+       түгжээтэй тулгана — дахин түгжих шаардлагагүй. */
+    const locked = nextRevisionBody(kind, parseBodyOf(kind, cur[0][F.body]), { rev, reason, by: act.who });
+    const nextBody = { ...ownClientBody(kind, args.body, locked), revNote: reason } as AnyBody;
     const attrs: Attrs = {
       [F.kind]: kind, [F.docNo]: no, [F.org]: doc.org, [F.bagts]: doc.bagts,
       [F.seq]: doc.seq, [F.rev]: rev, [F.title]: args.title.trim(),
@@ -1086,9 +1095,14 @@ export async function submitCorrection(args: {
   const r = correctionPure(doc, body, { who: act.who, correction: args.correction });
   if (!r.ok) return r;
   try {
+    /* ⚠️ 2026-09-29 (аудит 10): ӨМНӨХ ХАРИУГ (`rep`) ХАДГАЛНА. NCR нь НЭГ мөртэй (rev үгүй)
+       тул `JSON.stringify(r.reviews)` нь өмнөх REP дугаарыг арилгадаг байв → `nextRepNo`
+       тэр NNNN-ийг өөр баримтад ДАХИН олгож (төслийн хэмжээнд давхардал), `repSeqFor`
+       lineage-ээ алдана (0005-01 байх ёстой нь 0006-00). Хянагдаж буй төлөвт шийдвэрийн
+       тэмдэг гаргахгүй байх нь `chanarUi.docVerdict`-д. */
     const j = await req(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: JSON.stringify(r.reviews),
+        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
         [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
       } }]),
       rollbackOnFailure: 'true',
@@ -1115,9 +1129,10 @@ export async function reopenDoc(args: { oid: number; who: string }): Promise<Res
   const r = reopenPure(doc, body);
   if (!r.ok) return r;
   try {
+    /* ⚠️ 2026-09-29 (аудит 10): өмнөх хариуг (`rep`) хадгална — `submitCorrection`-ийн тайлбар */
     const j = await req(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: JSON.stringify(r.reviews),
+        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
         [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
       } }]),
       rollbackOnFailure: 'true',

@@ -28,7 +28,7 @@
 import { t as tr } from '@/lib/i18nCore';
 /* ⚠️ Цагийн бүсийн логик ГАНЦ газар (`salhiTor.ts` §TZ) — хоёр модуль нэг
    дүрмээр цаг тайлбарлана. Давхардуулбал нэгийг нь засахад нөгөө нь хоцорно. */
-import { TZ, epochOf, ymd } from '@/lib/salhiTor';
+import { TZ, epochOf, pruneDayCache, ymd } from '@/lib/salhiTor';
 
 const API = 'https://api.open-meteo.com/v1/forecast';
 
@@ -182,6 +182,9 @@ export async function loadWind(lat: number, lon: number): Promise<Wind> {
   try {
     const hours = await fetchHours(lat, lon, date);
     const ts = Date.now();
+    /* ⚠️ 2026-09-29 (аудит 10): өмнөх өдрүүдийн `salhi:` кэш квот дүүргэхээс
+       сэргийлнэ — өнөөдрийн (бүх цэгийн) түлхүүр үлдэнэ (`pruneDayCache`). */
+    pruneDayCache('salhi:', [date]);
     try { localStorage.setItem(key, JSON.stringify({ ts, hours } satisfies Cached)); } catch { /* квот */ }
     return { hours, lat, lon, asOf: ts, cached: false };
   } catch (err) {

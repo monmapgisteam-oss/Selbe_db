@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  payRows, contractBlocks, anyObyem, sortBlocks, ipcTotals, details,
+  payRows, contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, details,
 } from './ipcTable.ts';
 import { LINK_FIELDS } from './ipcLink.ts';
 import { HO_IPC } from './services.ts';
@@ -285,12 +285,17 @@ const contract = (o = {}) => ({
   const mk = (contractTotal, paidTotal, n) => ({
     code: 'x', title: 'x', contractor: '', workType: '', contractNo: '',
     contractTotal, paidTotal, paidPct: null,
-    rows: Array.from({ length: n }, (_, i) => ({ oid: i })), hasObyem: false,
+    rows: Array.from({ length: n }, (_, i) => ({ oid: i, amount: 10 })), hasObyem: false,
     details: [], advanceTotal: null, workTotal: null, savingMismatch: false,
   });
   const t = ipcTotals([mk(100, 40, 2), mk(200, 60, 3)]);
   assert.equal(t.contracts, 2);
   assert.equal(t.pays, 5);
+  /* ⚠️ 2026-09-29 (аудит 10): `dun`-гүй AUTO мөр төлбөр БИШ */
+  const withAuto = mk(100, 40, 2);
+  withAuto.rows.push({ oid: 9, id: 'AUTO|Багц 1|2026-09-01', amount: null });
+  assert.equal(ipcTotals([withAuto]).pays, 2, '⚠️ AUTO мөр (dun = null) тоологдохгүй');
+  assert.equal(payCount(withAuto.rows), 2);
   assert.equal(t.contract, 300);
   assert.equal(t.paid, 100);
   assert.equal(Math.round(t.paidPct), 33, '100/300 → 33 (0–100, ⚠️ pct() үржүүлдэггүй)');

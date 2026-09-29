@@ -658,6 +658,9 @@ function LayerTypeCharts({
       .sort((a, b) => b.values.n - a.values.n);
   }, [d.id, f.field, where]);
 
+  /* ⚠️ 2026-09-29 (аудит 10): унасан асуулга чартыг ЧИМЭЭГҮЙ алга болгодог байв —
+     «ангилалгүй давхарга»-аас ялгагдахгүй. Алдааг дахин оролдох товчтой харуулна. */
+  if (q.state === 'error') return <Empty label={tr('Задаргаа татагдсангүй.')} onRetry={q.retry} />;
   // ⚠️ Ганц ангилалтай бол задаргаа биш — давхарга өөрөө. Чарт нэмэхгүй.
   if (q.state !== 'ready' || q.data.length < 2) return null;
 

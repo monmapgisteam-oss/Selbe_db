@@ -143,7 +143,7 @@ export function FieldInput({
 }
 
 export function DedButetsEdit({
-  layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra,
+  layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra, geomRev = 0,
 }: {
   layerId: string;
   /** БАЙГАА мөрийн дугаар. `null` бол ШИНЭ объект үүсгэх горим. */
@@ -174,6 +174,11 @@ export function DedButetsEdit({
    * салшгүй холбогдоно.
    */
   extra?: ReactNode;
+  /**
+   * ГЕОМЕТР БИЧИГДСЭН тоолуур (`DedButets.geomRev`) — өсөхөд `before`-ийн
+   * ЗӨВХӨН `Shape__*` талбаруудыг дахин уншина (доорх эффект).
+   */
+  geomRev?: number;
 }) {
   /** Шинэ объект үүсгэж байна уу (эсвэл байгааг засаж байна уу) */
   const isNew = oid == null;
@@ -231,6 +236,31 @@ export function DedButetsEdit({
     return () => { alive = false; };
   }, [layerId, oid, saved]);
 
+  /**
+   * ⚠️ 2026-09-29 (аудит 10): ХЭЛБЭР хадгалсан / буцаасны дараа `before`-ийн
+   * `Shape__Length/Area` хуучирч, `urt_m`-ийн доорх «Геометрийн бодит урт» нь
+   * ХУУЧИН уртыг харуулдаг байв. Мөрийг дахин татаж ЗӨВХӨН `Shape__*`-ийг
+   * солино — `p` (хадгалаагүй оролт) ба `dirty`-г ХӨНДӨХГҮЙ. Дээрх ачаалах
+   * эффектийг ашиглавал бичсэн оролт дарагдана.
+   * ⚠️ `lastRev` — `layerId`/`oid` солигдоход энэ эффект ажиллахгүй (тэр үед
+   * дээрх эффект бүтэн мөрийг аль хэдийн татна).
+   */
+  const lastRev = useRef(geomRev);
+  useEffect(() => {
+    if (geomRev === lastRev.current) return;
+    lastRev.current = geomRev;
+    if (oid == null) return;
+    let alive = true;
+    loadLayerMeta(layerId)
+      .then((m) => loadRow(m, oid))
+      .then((row) => {
+        if (!alive || !row) return;
+        setBefore((b) => (b ? { ...b, [GEOM_LEN]: row[GEOM_LEN], [GEOM_AREA]: row[GEOM_AREA] } : b));
+      })
+      .catch(() => { /* хуучин урт үлдэнэ — маягтыг эвдэхгүй */ });
+    return () => { alive = false; };
+  }, [geomRev, layerId, oid]);
+
   const set = (name: string, v: string) => {
     dirty.current = true;
     setP((x) => (x ? { ...x, [name]: v } : x));
@@ -247,6 +277,16 @@ export function DedButetsEdit({
    * ижил сургамж). Асуулт самбарт гарна; талбар засвал арилна.
    */
   const [askClose, setAskClose] = useState(false);
+  /* ⚠️ 2026-09-29 (аудит 10): маягт `key`-гүй тул объект солигдоход `askClose`
+     үлдэж, Б объектын ЦЭВЭР маягт «Хадгалаагүй өөрчлөлт байна» гэж нээгддэг
+     байв. Объект солигдоход рендерийн үед тэглэнэ («өмнөх prop» хэв —
+     эффект доторх синхрон setState-ийг lint хориглодог). */
+  const objKey = `${layerId}:${oid ?? 'new'}`;
+  const [askFor, setAskFor] = useState(objKey);
+  if (askFor !== objKey) {
+    setAskFor(objKey);
+    setAskClose(false);
+  }
 
   const tryClose = useCallback(() => {
     if (busy) return;

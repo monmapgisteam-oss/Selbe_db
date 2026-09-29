@@ -75,6 +75,8 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
+/* ⚠️ 2026-09-29 (аудит 10): толгойн мөрөнд товч нуугдсан шалтгаан — жижиг, бүдэг */
+.hint { font-size: 11px; color: var(--ink-2); }
 
 .split {
   display: grid;

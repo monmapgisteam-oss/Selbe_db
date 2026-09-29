@@ -3094,6 +3094,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
      */
     const isPct = fillMode === "pct";
     const incN = t === "" ? 0 : Number(t);
+    /* ⚠️ 2026-09-29 (аудит 10): нүдэнд ЮУ Ч БИЧЭЭГҮЙ хаасан (blur/Enter) бол
+       `pending`-д ОДООГИЙН горимд илэрхийлэгдэхгүй нэмэлт байж болно (`cellSeed`
+       нь "" буцаадаг: Обьёмгүй мөрийн `+15` Хувь горимд · `%10` Обьём горимд).
+       Урьд нь тэр хоосон нь `incN === 0` → pending устгаж tombstone тавьж,
+       нэмэлт (хамтран засварлагчийнх ч) ЧИМЭЭГҮЙ алга болдог байв. Одоо
+       хөндөхгүй буцна — буцаах бол «0» гэж ил бичнэ. */
+    if (t === "") {
+      const d0 = parseInc(pending[key]);
+      if (d0 && (d0.n !== 0 || d0.p !== 0) && cellSeed(r, b) === "") return true;
+    }
     if (incN === 0) {
       /* Засвараа буцаасан — «нийтлээгүй» тэмдэглэгээ арилна. `revert`-ийн дүрэм:
          pending-д байгаагүй нүдэнд буцаалт нь tombstone биш (2026-09-21). */
@@ -4491,6 +4501,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const decideObyemHere = useCallback(async (approve: boolean, reason?: string) => {
     /* ⚠️ `locked` — хяналтын харагдацаас шийдвэр гаргахгүй (товчны ⚠️, 2026-09-25) */
     if (!pvSub || pvBusy || !sc || locked) return;
+    /* ⚠️ 2026-09-29 (аудит 10): БАГЦЫН ХАМГААЛАЛТ (`refreshObyem`/`sendObyem`-ийн ⚠️) —
+       батлах хооронд багц солигдвол А-гийн мэдэгдэл/алдаа Б дээр гардаг байв.
+       Бичилт (А руу) хэвээр дуусна; зөвхөн `setPv*` мэдэгдлийг алгасна. */
+    const want = pkg.key;
+    const here = () => pkgKeyRef.current === want;
+    const pvErrHere = (s: string) => { if (here()) setPvErr(s); };
     setPvBusy(true); setPvErr(""); setPvNote("");
     /** Сүүлийн жаазад тулгагдаагүй тул бичигдээгүй нүдний тоо (доорх ⚠️) */
     let pvSkipped = 0;
@@ -4502,7 +4518,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           return;
         }
         const pl = await loadObyemPayload(pvSub.oid);
-        if (!pl) { setPvErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+        if (!pl) { pvErrHere(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
         /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
            oid шилжсэн бол тэр мөрийг АЛГАСНА — буруу мөрөнд бичихээс
            бүрэн алгасах нь дээр.
@@ -4544,7 +4560,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           upd.push({ [sc.f.oid]: to, [fld]: v });
         }
         if (!upd.length) {
-          setPvErr(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
+          pvErrHere(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
           return;
         }
         await applyUpdates(pkg, upd);
@@ -4557,6 +4573,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         author: pvSub.author,
         reason,
       });
+      if (!here()) return;
       if (!r.ok) { setPvErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
@@ -4564,7 +4581,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         : tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
       await refreshObyem();
     } catch (e) {
-      setPvErr(String((e as Error).message || e));
+      pvErrHere(String((e as Error).message || e));
     } finally {
       setPvBusy(false);
     }
@@ -6376,6 +6393,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                                 /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
                                    нь нэг мөр текст л авдаг тул таслан авна. */
                                 onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
+                                  /* ⚠️ 2026-09-29 (аудит 10): `<td>`-ийн onPaste ч `pasteBlock`
+                                     дууддаг тул дамжуулбал ХОЁР удаа асууж/мэдэгддэг байв */
+                                  e.stopPropagation();
                                   const t = e.clipboardData.getData("text/plain");
                                   if (pasteBlock(i, bi, t)) e.preventDefault();
                                 },

@@ -152,6 +152,15 @@ const base = () => ({
   assert.deepEqual(repSeqFor(lin, 'MA', 'Багц 1', 6), { n: 8, rr: 0 }, 'шинэ lineage — max+1, RR=00');
   assert.deepEqual(repSeqFor(lin, 'MA', 'Багц 3.2', 5), { n: 7, rr: 1 });
   assert.equal(repNo('MA', 'Багц 1', 3, 2), 'SLB-REP-MA-P0100-0003-02');
+  /* ⚠️ 2026-09-29 (аудит 10): NCR НЭГ мөртэй — залруулга/дахин нээлтийн дараа өмнөх `rep`
+     мөрөнд ҮЛДЭХ ёстой (`chanarStore.submitCorrection`); эс бөгөөс доорх хоёр нь
+     {6,0} · 6 биш {1,0} · 1 болж, 0005 өөр баримтад дахин олгогдоно. */
+  const ncr = [
+    { kind: 'NCR', bagts: 'Багц 1', seq: 22, rev: 0, status: MS_STATUS.review, rep: { no: 'SLB-REP-NCR-P0100-0005-00', at: T, verdict: 'R' } },
+  ];
+  assert.deepEqual(repSeqFor(ncr, 'NCR', 'Багц 1', 22), { n: 5, rr: 1 }, 'NCR дахин хянагдахад 0005-01');
+  assert.deepEqual(repSeqFor(ncr, 'NCR', 'Багц 1', 23), { n: 6, rr: 0 }, 'өөр NCR — 0005-ыг дахин авахгүй');
+  assert.equal(nextRepNo(ncr, 'NCR'), 6);
 }
 
 /* ══ 3. nextSeq ══ */
@@ -500,6 +509,12 @@ const base = () => ({
   assert.deepEqual(canAct(d, me, ['tuh']), { edit: false, submit: false, review: [], ...none });
   /* Зохиогч ноорогт: засна, илгээнэ */
   assert.deepEqual(canAct({ ...d, status: MS_STATUS.draft }, me, []), { edit: true, submit: true, review: [], ...none });
+  /* ⚠️ 2026-09-29 (аудит 10): шинэ хувилбартай хуучин буцаагдсан мөр — засах/илгээх хаалттай */
+  const ret = canAct({ ...d, status: MS_STATUS.returned }, me, []);
+  assert.equal(ret.edit, true); assert.equal(ret.submit, true);
+  const old = canAct({ ...d, status: MS_STATUS.returned }, me, [], { superseded: true });
+  assert.equal(old.edit, false, 'superseded → засахгүй'); assert.equal(old.submit, false, 'superseded → илгээхгүй');
+  assert.equal(ret.newRevision, true); assert.equal(old.newRevision, false, 'superseded → шинэ хувилбар гаргахгүй');
   /* Хянагч: зөвхөн өгөөгүй үүргээр */
   const half = { ...d, reviews: { ...emptyReviews(), tuh: { who: 'x', at: T, verdict: VERDICT.approve, note: null } } };
   assert.deepEqual(canAct(half, 'rev', ['tuh', 'chanar']).review, ['chanar'], 'tuh өгсөн → зөвхөн chanar үлдэнэ');

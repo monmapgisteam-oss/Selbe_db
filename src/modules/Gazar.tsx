@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -419,7 +419,8 @@ type GazarData = {
   /** Үлдсэн талбарын ШАЛТГААН (явцын_мэдээ) — тоо/хувь/талбайг тус тусад нь */
   reasons: ReasonItems;
   /** ⚠️ area устсан — test_data [96]-д area_m2 талбар байхгүй */
-  b: { n: number; value: number; floors: number; unitPrice: number };
+  /** ⚠️ 2026-09-29 (аудит 10): `value` нь `null` = үнэлгээгүй (SUM = null), 0 биш */
+  b: { n: number; value: number | null; floors: number; unitPrice: number };
   bType: ReturnType<typeof toItems>;
   bMat: ReturnType<typeof toItems>;
   p: { n: number; area: number };
@@ -604,9 +605,28 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       setClearToken((t) => t + 1);
       return;
     }
+    /* ⚠️ 2026-09-29 (аудит 10): багцын сонголтыг ЦЭВЭРЛЭНЭ — `OverlapBars`
+       зурж эхлэхэд нуугддаг ч `ovPick` үлдэж, зураг тэр багцын саадын
+       талбаруудаар шүүгдсэн хэвээр, зүүн/баруун самбар харин полигон доторх
+       БҮХ талбарыг тоолдог байв (зураг ба тоо зөрнө). */
+    setOvPick(null);
     setDrawToken((t) => t + 1);
     setDrawing(true);
   }, [drawing]);
+
+  /**
+   * ЗУРААЛТЫГ Esc-ЭЭР ЦУЦЛАВ (`MapCanvas.onSketchCancel`).
+   *
+   * ⚠️ 2026-09-29 (аудит 10): Esc-ийн цуцлалт `onSketch`-д ИРДЭГГҮЙ тул `drawing`
+   *    асаалттай гацаж, товч «Цуцлах» хэвээр, баруун багана бүх талбайн дүнг
+   *    «тооцоолсон» мэт харуулдаг байв (`DedButets`-ийн 09-25-ны засвартай ижил).
+   * ⚠️ Зөвхөн горимыг унтраана — тооцоолсон AOI-г ХӨНДӨХГҮЙ (`onSketch(null)` биш).
+   */
+  const onSketchCancel = useCallback(() => setDrawing(false), []);
+  /* ⚠️ 2026-09-29 (аудит 10): 2D-ээс гарахад `MapCanvas` SketchViewModel-ийг
+     устгадаг ба тэр үед `cancel` үйл явдал ИРЭХГҮЙ — горимыг энд унтраана
+     (товч 3D-д идэвхгүй тул хэрэглэгч өөрөө цуцалж чадахгүй). */
+  useEffect(() => { if (dim !== '2d') setDrawing(false); }, [dim]);
 
   /**
    * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
@@ -820,7 +840,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       reasons,
       b: {
         n: Number(bStat.n ?? 0),
-        value: Number(bStat.val ?? 0), floors: Number(bStat.fl ?? 0),
+        /* ⚠️ 2026-09-29 (аудит 10): null ≠ 0 — үнэлгээгүй барилгуудын SUM нь
+           `null` ирдэг бөгөөд урьд нь «Нийт үнэлгээ 0 ₮» гэж ХУДАЛ харуулдаг байв. */
+        value: bStat.val == null ? null : Number(bStat.val), floors: Number(bStat.fl ?? 0),
         unitPrice: Number(bStat.up ?? 0),
       },
       bType: toItems(bType, B.fields.type, 'n', tr('барилга')),
@@ -882,6 +904,17 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   * ХОТ ТӨЛӨВЛӨЛТИЙН БҮСИЙН АНГИЛЛААР — `useZoneLeft`-ийн
                   * тайлбарыг үз (2026-09-15, хэрэглэгчийн заавар).
                   */}
+                {/* ⚠️ 2026-09-29 (аудит 10): унасан үед блок ЧИМЭЭГҮЙ алга болдог байв —
+                    «бүсийн давхцал алга» гэж уншигдана. Алдааг ил гаргаж, дахин оролдуулна
+                    (`OverlapBars`-ийн ижил дүрэм). */}
+                {zoneQ.state === 'error' && (
+                  <>
+                    <p className={g.subHead}>
+                      {tr('Үлдсэн талбар бүсийн ангиллаар')}
+                    </p>
+                    <Empty label={tr('Бүсийн давхцлыг тоолж чадсангүй.')} onRetry={zoneQ.retry} />
+                  </>
+                )}
                 {zoneQ.state === 'ready' && zoneQ.data.length > 0 && (
                   <>
                     <p className={g.subHead}>
@@ -993,6 +1026,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           uniform
           sketch
           onSketch={onSketch}
+          onSketchCancel={onSketchCancel}
           drawToken={drawToken}
           clearToken={clearToken}
         />
@@ -1119,7 +1153,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 {/* «Талбай» stat 2026-08-13-нд хасагдав — area_m2 талбар test_data-д алга */}
                 <Stats cols={2}>
                   <Stat value={num(d.b.n)} unit={tr('барилга')} label={tr('Тоо')} />
-                  <Stat value={money(d.b.value).v} unit={money(d.b.value).unit} label={tr('Нийт үнэлгээ')} />
+                  {/* ⚠️ 2026-09-29 (аудит 10): үнэлгээгүй (`null`) бол «—», 0 ₮ биш */}
+                  <Stat value={d.b.value == null ? '—' : money(d.b.value).v}
+                    unit={d.b.value == null ? undefined : money(d.b.value).unit} label={tr('Нийт үнэлгээ')} />
                   <Stat value={d.b.floors ? num(d.b.floors, 1) : '—'} unit={tr('давхар')} label={tr('Дундаж өндөр')} />
                   <Stat value={d.b.unitPrice ? money(d.b.unitPrice).v : '—'} unit={d.b.unitPrice ? tr('{0}/м²', money(d.b.unitPrice).unit) : ''} label={tr('Дундаж м² үнэ')} />
                 </Stats>

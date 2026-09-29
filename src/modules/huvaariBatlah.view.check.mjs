@@ -373,7 +373,9 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
     'Huvaari: ерөнхий олон блокийн сонголт ажлын цонхонд дамжихгүй');
   /* 3. Бодит огноо сонгосон БҮХ блокт */
   assert.ok(/applyExtra\(modalRow\.oid, actBlks, actual, res\);/.test(H), 'Huvaari: бодит огноо зөвхөн идэвхтэй блокт орж байна');
-  assert.ok(/const actDirty = \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
+  assert.ok(/const actDirty = actTouched && \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
+  /* ⚠️ 2026-09-29 (аудит 10): талбарыг ХӨНДӨӨГҮЙ бол бусад сонгосон блокийн бодит огноог дарахгүй */
+  assert.ok(/setActTouched\(true\)/.test(H), 'Huvaari: бодит огнооны талбарыг хөндсөн тэмдэг алга — бусад блокийн бодит огноо арчигдана');
   /* 5. Сольж харах — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ (strict бус харалтаас батлах зам хаалттай) */
   assert.ok(/\{\(!canApprove \|\| isOwnSubmission\) && approving == null && \(\s*<span className=\{h\.tlZoom\}/.test(H),
     'Huvaari: сольж харах товч батлагчид ч гарч байна — strict бус харалтаас батлагдаж болно');
@@ -381,7 +383,7 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   /* 7. Буцаасан шалтгаан — «Хуваарь батлах» хуудсанд зохиогчид; хуудсанд 30 с тутам шалгана */
   assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
-  assert.ok(/void loadPending\(key\)\.then\(\(p\) => \{[\s\S]{0,200}void refreshFlow\(\);/.test(H),
+  assert.ok(/void loadPending\(key\)\.then\(\(p\) => \{[\s\S]{0,400}void refreshFlow\(\);/.test(H),
     'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй');
 }
 console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон блок · бодит огноо · сольж харах · буцаасан шалтгаан');

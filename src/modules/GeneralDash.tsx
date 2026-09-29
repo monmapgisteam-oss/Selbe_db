@@ -528,6 +528,15 @@ export function GeneralDash({
 
   const pickReason = useCallback((k: string) => {
     const next = k === reason ? null : k;
+    /*
+     * ⚠️ 2026-09-29 (аудит 10): OID бэлэн БИШ бол сонголтыг ОГТ авахгүй.
+     * Урьд нь `setReason` нь доорх шалгалтаас ӨМНӨ явдаг байсан тул `byReason`
+     * ачаалж байхад дарвал мөр тодорч, «Тулгамдаж буй асуудал» нь хожим
+     * шүүгдэх атлаа газрын зураг шүүгдэхгүй, ойртохгүй, сэргээх цэг
+     * (`beforeReason`) ч тогтоогдохгүй — гурван байрлал зөрдөг байв.
+     * ЦУЦЛАХ (`next == null`) нь үргэлж нээлттэй.
+     */
+    if (next != null && (byReason.state !== 'ready' || !byReason.data.get(next)?.size)) return;
     setReason(next);
 
     /* ⚠️ «Ажлын төрлөөр давхцаж буй»-гийн сонголт шалтгаанаас ХАМААРНА:
@@ -1260,13 +1269,29 @@ const moneyBars = (
    * гэсэн утга агуулж болох тул үзүүлэх нь зөв.
    */
   const shown = items.filter((i) => i.value > 0);
-  const total = shown.reduce((x, y) => x + y.value, 0);
+  /*
+   * ⚠️ 2026-09-29 (аудит 10): ЭЗЛЭХ ХУВИЙН СУУРЬ = «Нийт төсөв» индикаторын
+   * хамрах хүрээ (`inTotal`). Урьд нь чартын БҮХ мөрийн нийлбэрт (5·6·7-р
+   * хэсэгтэй) хувааж байсан тул «ГАЗАР ЧӨЛӨӨЛӨЛТ» нь индикаторын нийт дүнд
+   * ордоггүй атлаа «Нийт төсвийн 15.2%» гэж бичигддэг байв. Хүрээний гаднах
+   * мөр нь суурийг ӨӨРӨӨР нэрлэнэ (бүх ажлын нийлбэр), мөрөн дээр хувьгүй.
+   * `inTotal === undefined` (эх үүсвэрийн чарт) — бүх мөр суурьт орно.
+   */
+  const all = shown.reduce((x, y) => x + y.value, 0);
+  const total = shown.reduce((x, y) => (y.inTotal === false ? x : x + y.value), 0);
   return byBar(shown.map((i) => {
-    const share = total > 0 ? pct((i.value / total) * 100, 1) : null;
+    const out = i.inTotal === false;
+    const share = out ? null : (total > 0 ? pct((i.value / total) * 100, 1) : null);
     /* ⚠️ БҮТЭН ӨГҮҮЛБЭР: «Нийт дүнгийн 1.2%» гэсэн тасархай хэллэг нь юуны
        1.2% болохыг хэлдэггүй. Суурийг ЗААВАЛ нэрлэнэ — `base`-ийн тайлбарыг
        үз (чарт бүрийн суурь ижил БИШ). */
-    const hint = [tr('{0} {1}-ийг эзэлж байна', base, share ?? '—')];
+    const hint = out
+      ? [
+        tr('Нийт төсөвт ордоггүй'),
+        tr('{0} {1}-ийг эзэлж байна', tr('Бүх ажлын нийлбэрийн'),
+          all > 0 ? pct((i.value / all) * 100, 1) : '—'),
+      ]
+      : [tr('{0} {1}-ийг эзэлж байна', base, share ?? '—')];
     /*
      * ⚠️ ТЭГ ДЭД УТГЫГ Ч ХАРУУЛНА (`> 0` БИШ). 2026-09-04-нд «Гадна тохижилт
      * 14 / 0 гэрээтэй» мөр нь дэд утгагүй гэж тооцогдож БҮТЭН өтгөн будагдаж,
@@ -1793,6 +1818,20 @@ function Timeline({
   const barRef = useRef<HTMLDivElement | null>(null);
 
   const N = all.length;
+  /*
+   * ⚠️ 2026-09-29 (аудит 10): ЦУВАА СОЛИГДОХОД ЗУМ ТЭГЛЭГДЭНЭ. Зумын цонх нь
+   * ИНДЕКС тул хуучин цуваанд л утгатай: сараар (N=60) [20,30]-д зумлаад жил
+   * сонгоход (N=12) lo=hi=11 болж чарт ганц цэгтэй, муруйгүй үлдэж, зумын
+   * зурвас нуугдсан (`N > 12`) атлаа «Бүтэн харах» товч хэвээр байв.
+   * ⚠️ `useEffect` БИШ, рендерийн үед (`LandCard.prevReason`-ийн загвар) —
+   * эффектээр хийвэл нэг агшин эвдэрсэн чарт зурагдана.
+   */
+  const zoomOf = `${grain}:${N}`;
+  const [prevZoomOf, setPrevZoomOf] = useState(zoomOf);
+  if (prevZoomOf !== zoomOf) {
+    setPrevZoomOf(zoomOf);
+    setZoom(null);
+  }
   const lo = zoom ? Math.max(0, Math.min(zoom[0], N - 1)) : 0;
   const hi = zoom ? Math.max(lo, Math.min(zoom[1], N - 1)) : N - 1;
   const pts = zoom ? all.slice(lo, hi + 1) : all;
@@ -2277,22 +2316,36 @@ function Timeline({
  */
 function useOverlapBySubPkg(enabled: boolean) {
   const subs = useAsync<SubPkg[]>(loadSubPkgLayers, []);
-  const [out, setOut] = useState<Map<string, number[]> | 'error' | null>(null);
+  /*
+   * ⚠️ 2026-09-29 (аудит 10): `failed` — огтлолцол нь ДУТУУ/УНАСАН дэд багцын
+   * түлхүүрүүд. Урьд нь зөвхөн `.oids` уншиж `Overlap.failed`-ийг хаядаг
+   * байсан тул нэг давхарга нь унасан дэд багцын ХАГАС жагсаалт бүрэн мэт
+   * хадгалагдаж, бүхэлдээ унасан нь чимээгүй алга болж, карт «Давхцал
+   * илрээгүй» гэсэн ХУДАЛ баталгаа өгдөг байв (`pkgSaad.failed`-ийн дүрэм).
+   */
+  const [out, setOut] = useState<
+    { m: Map<string, number[]>; failed: Set<string> } | 'error' | null
+  >(null);
 
   useEffect(() => {
     if (!enabled || subs.state !== 'ready') return;
     let alive = true;
+    const keys = subs.data.map((sp) => sp.key);
     Promise.allSettled(
-      subs.data.map(async (sp) => [
-        sp.key,
-        (await overlapLeftParcels(sp.layerIds.map((layerId) => ({ layerId, where: null })))).oids,
-      ] as const),
+      subs.data.map((sp) => overlapLeftParcels(
+        sp.layerIds.map((layerId) => ({ layerId, where: null })),
+      )),
     ).then((res) => {
       if (!alive) return;
       if (res.length > 0 && res.every((r) => r.status === 'rejected')) { setOut('error'); return; }
       const m = new Map<string, number[]>();
-      for (const r of res) if (r.status === 'fulfilled' && r.value[1].length > 0) m.set(r.value[0], r.value[1]);
-      setOut(m);
+      const failed = new Set<string>();
+      res.forEach((r, i) => {
+        if (r.status === 'rejected') { failed.add(keys[i]); return; }
+        if ((r.value.failed?.length ?? 0) > 0) failed.add(keys[i]);
+        if (r.value.oids.length > 0) m.set(keys[i], r.value.oids);
+      });
+      setOut({ m, failed });
     });
     return () => { alive = false; };
   }, [enabled, subs]);
@@ -2438,18 +2491,22 @@ function LandCard({
     if (reason == null || ov == null || ov === 'error' || subs.state !== 'ready') return [];
     const want = byReason.state === 'ready' ? byReason.data.get(reason) : null;
     if (!want) return [];
-    const acc = new Map<string, { oids: Set<number>; layers: Set<string> }>();
+    const acc = new Map<string, { oids: Set<number>; layers: Set<string>; failed: boolean }>();
     for (const sp of subs.data) {
       /* ⚠️ ХУГАЦААНЫ ШҮҮЛТ: тухайн үед ажилгүй дэд багц ЖАГСААЛТААС ГАРНА */
       const types = active?.get(sp.key);
       if (!types || types.length === 0) continue;
-      const hit = (ov.get(sp.key) ?? []).filter((o) => want.has(o));
-      if (hit.length === 0) continue;
+      const hit = (ov.m.get(sp.key) ?? []).filter((o) => want.has(o));
+      /* ⚠️ 2026-09-29 (аудит 10): огтлолцол нь УНАСАН дэд багц 0 давхцалтай ч
+         ЖАГСААЛТАД ҮЛДЭНЭ — алгасвал төрөл нь «Давхцал илрээгүй» болж уншигдана */
+      const bad = ov.failed.has(sp.key);
+      if (hit.length === 0 && !bad) continue;
       for (const ty of types) {
         let a = acc.get(ty);
-        if (!a) { a = { oids: new Set(), layers: new Set() }; acc.set(ty, a); }
+        if (!a) { a = { oids: new Set(), layers: new Set(), failed: false }; acc.set(ty, a); }
         for (const o of hit) a.oids.add(o);
         for (const id of sp.layerIds) a.layers.add(id);
+        if (bad) a.failed = true;
       }
     }
     return [...acc]
@@ -2459,9 +2516,15 @@ function LandCard({
         layerIds: [...a.layers],
         value: a.oids.size,
         sub: 0,
+        failed: a.failed,
       }))
       .sort((x, y) => y.value - x.value);
   }, [reason, ov, subs, byReason, active]);
+  /** ⚠️ 2026-09-29 (аудит 10): огтлолцол нь унасан/дутуу төрлүүд — мөрийн тэмдэглэгээнд */
+  const failedTypes = useMemo(
+    () => new Set(rows.filter((r) => r.failed).map((r) => r.key)),
+    [rows],
+  );
 
   /**
    * СОНГОСОН АЖЛЫН ТӨРӨЛ — мөр тодруулах ба зургийн холбоос.
@@ -2550,7 +2613,18 @@ function LandCard({
                    дарвал тайлагдаж, зураг өмнөх төлөв рүүгээ буцна. */
                 selected={pick}
                 onSelect={show}
-                items={countBars(rows, { one: tr('нэгж талбар'), many: tr('давхцлын') })}
+                /* ⚠️ 2026-09-29 (аудит 10): огтлолцол нь унасан/дутуу төрөл
+                   анхааруулгын өнгөөр; 0 бол «0» БИШ «татагдсангүй»
+                   (`Gazar`-ын саадын жагсаалттай ИЖИЛ дүрэм). */
+                items={countBars(rows, { one: tr('нэгж талбар'), many: tr('давхцлын') })
+                  .map((it) => (failedTypes.has(it.key)
+                    ? {
+                      ...it,
+                      color: 'var(--warn)',
+                      ...(it.value === 0 ? { display: tr('татагдсангүй') } : {}),
+                      hint: [...it.hint, tr('Зарим давхаргын давхцал татагдсангүй — тоо дутуу байж болно')],
+                    }
+                    : it))}
               />
             )}
           </>
@@ -2612,11 +2686,16 @@ function SaadCard({
     if (q.state !== 'ready') return [];
     const byKey = keys ? q.data.filter((r) => keys.has(r.key)) : q.data;
     if (!oids) return byKey.map((r) => ({ ...r, hit: r.oids }));
+    /* ⚠️ 2026-09-29 (аудит 10): татагдаагүй багц (`failed`, `oids: []`) шүүлтийн
+       үед ч ҮЛДЭНЭ — хасвал «энэ шалтгаанд саадгүй» гэсэн худал уншилт болно */
     return byKey
       .map((r) => ({ ...r, hit: r.oids.filter((o) => oids.has(o)) }))
-      .filter((r) => r.hit.length > 0)
+      .filter((r) => r.hit.length > 0 || r.failed)
       .sort((a, b) => b.hit.length - a.hit.length);
   }, [q, keys, oids]);
+  /* ⚠️ 2026-09-29 (аудит 10): гарчгийн тоонд ЗӨВХӨН татагдсан багц — татагдаагүй
+     нь «0 талбартай багц» биш, тоо нь МЭДЭГДЭХГҮЙ (`PkgOverlap.failed`) */
+  const okRows = useMemo(() => rows.filter((r) => !r.failed), [rows]);
   /**
    * ХҮЧИНТЭЙ сонголт — жагсаалтад БАЙГАА эсэхээр шалгагдана.
    *
@@ -2633,10 +2712,10 @@ function SaadCard({
          талбарын 73 нь 2–7 багцад тоологдож, нийлбэр 244 болдог). `Gazar`
          харагдацад 2026-09-06-нд яг үүнийг зассан — энэ бол тэр кодын
          хуулбар тул ижил дүрэм үйлчилнэ. */
-      note={rows.length > 0
+      note={okRows.length > 0
         ? tr('{0} багц · {1} талбар',
-            num(rows.length),
-            num(new Set(rows.flatMap((r) => r.hit)).size))
+            num(okRows.length),
+            num(new Set(okRows.flatMap((r) => r.hit)).size))
         : undefined}
     >
       <Data q={q} minH={160}>
@@ -2658,7 +2737,10 @@ function SaadCard({
                 key: r.key,
                 label: nice(tr(r.name)),
                 value: r.hit.length,
-                display: tr('{0} талбар', num(r.hit.length)),
+                /* ⚠️ 2026-09-29 (аудит 10): татагдаагүй багц «0 талбар» гэж
+                   БИЧИГДЭХГҮЙ — `Gazar`-ын саадын жагсаалттай ИЖИЛ дүрэм */
+                display: r.failed ? tr('татагдсангүй') : tr('{0} талбар', num(r.hit.length)),
+                ...(r.failed ? { color: 'var(--warn)' } : {}),
               }))}
             />
           ))}

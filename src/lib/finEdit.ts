@@ -12,6 +12,24 @@
  *    (`Finance` нь `tr()`-ээр орчуулна), орон нутгийн өдрийг энд бодно.
  */
 
+/**
+ * САНХҮҮГИЙН ХАДГАЛААГҮЙ ЗАСВАР — `Portal.setView` харагдац солихоос өмнө асууна.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): урьд нь «Гэрээний бүртгэл»-ийн `pend`/`adds` ба
+ *    «Cashflow хувиарлах»-ын засвар зөвхөн `Finance` доторх ТАБ солилтод
+ *    хамгаалагддаг байв; өөр харагдац руу шилжихэд `Finance` unmount болж засвар
+ *    баталгаагүй алга болдог. `huvaariBatlah.planNavBusy`-тэй ижил загвар.
+ * ⚠️ ЭНД (импортгүй lib) — `Finance` нь `dynamic` ачаалалттай тул `Portal` түүнийг
+ *    шууд импортлохгүй. Табын түлхүүр бүр (`cf` · `plan`) өөрөө тэмдэглэнэ.
+ */
+const finDirty = new Set<string>();
+export function setFinNavDirty(key: string, on: boolean): void {
+  if (on) finDirty.add(key); else finDirty.delete(key);
+}
+export function finNavDirty(): boolean {
+  return finDirty.size > 0;
+}
+
 /** Тоон талбарын төрлүүд */
 export const NUMERIC_TYPES = new Set([
   'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
@@ -118,7 +136,16 @@ export function parseCell(s: string, type: string, label: string, msg: ParseMsg 
   }
   if (NUMERIC_TYPES.has(type)) {
     /* Хэрэглэгч хуулж тавихад мянгатын таслал/зай дагалдаж болно */
-    const x = Number(v.replace(/[\s, ]/g, ''));
+    /* ⚠️ 2026-09-29 (аудит 10): таслалыг ХОЁР утгаар ялгана. Урьд нь бүх таслал
+       хасагддаг тул «12,5» (аравтын таслал) бүртгэлд 125 болж, «Cashflow
+       хувиарлах» (`CashflowPlan.nOf`) дээр 12.5 болдог байв — нэг хувь хоёр
+       утгатай. Одоо: `12,5` / `12,50` → аравтын; `1,234` / `1,234.5` → мянгатын;
+       бусад таслалтай хэлбэр → «тоо буруу» (чимээгүй таамаглахгүй). */
+    const t = v.replace(/[\s ]/g, '');
+    const u = /^-?\d+,\d{1,2}$/.test(t)
+      ? t.replace(',', '.')
+      : /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) ? t.replace(/,/g, '') : t;
+    const x = Number(u);
     if (!Number.isFinite(x)) throw new Error(msg.numBad(label, v));
     return x;
   }

@@ -1921,7 +1921,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
         {opOpen && (
           <OpacityPanel
-            visible={visible}
+            /* ⚠️ 2026-09-29 (аудит 10): `mapVisible` — зурагт БОДИТ зурагдаж буй
+               давхаргууд (`DedButets`-ийн 09-23-ны ижил засвар). `visible` (каталогийн
+               сонголт) өгөхөд фокус/үзлэгийн горимд зурагт байхгүй давхаргын
+               гулсуур гарч, зурагт байгаа нь гардаггүй байв. */
+            visible={mapVisible}
             opacity={opacity}
             setOpacity={setOpacity}
             onClose={() => setOpOpen(false)}

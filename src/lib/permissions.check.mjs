@@ -40,8 +40,25 @@ const { roleForUser } = await import('./services.ts');
 const row = P.listUsers().find((u) => u.username.toLowerCase() === 'selbe_redesign');
 assert.ok(row, 'selbe_redesign жагсаалтад алга');
 assert.deepEqual(row.views, ['plan', 'iot'], `үхсэн түлхүүр үлдэв: ${JSON.stringify(row.views)}`);
+/* ⚠️ 2026-09-29 (аудит 10): remote уншигдаагүй сешнд localStorage-ийн override ҮЛ ТООЦНО —
+   харагдац ба үүрэг хатуу суурьтай ижил; гараар тарьсан `views:'all'`/`role:'super'` хүчингүй. */
+{
+  const { roleAccess } = await import('./roleTypes.ts');
+  assert.equal(P.remoteReady(), false);
+  /* Баталгаажаагүй override зөвхөн ХУМЬЖ чадна: суурь ∩ override — суурийг хэзээ ч давахгүй,
+     админы хумьсан харагдац ч сүлжээ унасан сешнд буцаж нээгдэхгүй. */
+  const baseV = roleAccess(roleForUser('selbe_redesign')).views;
+  const want = baseV === 'all' ? ['plan', 'iot'] : baseV.filter((v) => ['plan', 'iot'].includes(v));
+  assert.deepEqual(P.resolveBaseAccess('selbe_redesign').views, want, 'remote-гүй сешнд суурь ∩ override');
+  assert.equal(P.roleOf('selbe_redesign'), roleForUser('selbe_redesign'));
+  assert.equal(P.resolveBaseAccess('hacker_selfadd'), null, 'өөрийгөө нэмсэн мөр эрх өгөхгүй');
+  assert.equal(P.roleOf('hacker_selfadd'), null, 'өөртөө super үүрэг олгож болохгүй');
+}
+/* Remote уншигдсаны дараа (дуурайлт) — override хүчинтэй, цэвэрлэгдсэн */
+P._markRemoteLoaded();
 const acc = P.resolveAccess('selbe_redesign');
 assert.deepEqual(acc.views, ['plan', 'iot'], 'resolveAccess цэвэрлээгүй');
+P._markRemoteLoaded(false);
 
 /* ── 2. Remote баталгаажаагүй мөр нэвтрүүлэхгүй ── */
 assert.equal(P.hasAccess('hacker_selfadd'), false,
@@ -73,6 +90,8 @@ assert.ok(left >= 1, 'retry унасан ч dirty хадгалагдах ёст�
 assert.ok(P.dirtyKeys().includes('test_dirty_user'), 'retry-ийн дараа dirty алга болов');
 
 /* ── 5. roleOf — override → хатуу жагсаалт дараалал ── */
+assert.equal(P.roleOf('test_dirty_user'), null, '⚠️ remote-гүй сешнд override-ын үүрэг гарахгүй (2026-09-29)');
+P._markRemoteLoaded();
 assert.equal(P.roleOf('test_dirty_user'), 'tolovlolt', 'override-ын үүрэг гарах ёстой');
 assert.equal(P.roleOf('selbe_injener'), 'injener', 'хатуу жагсаалтын үүрэг гарах ёстой');
 assert.equal(P.roleOf('huniigui_hun'), null, 'үл мэдэх хүн null');

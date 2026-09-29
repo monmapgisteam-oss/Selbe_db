@@ -88,8 +88,12 @@ export type ReportExtra = {
    *    «0.3%» болж ЧИМЭЭГҮЙ буурч харагдана.
    */
   overall: {
-    /** Жингээр нормчилсон нийт гүйцэтгэл, 0–100 */
-    pct: number;
+    /**
+     * Жингээр нормчилсон нийт гүйцэтгэл, 0–100.
+     * ⚠️ 2026-09-29 (аудит 10): `null` = блокийн мөр алга (жин 0) — хэмжилтгүйг
+     * «0.00% гүйцэтгэлтэй» гэж хэвлэхгүй (null ≠ 0); `pct()` «—» болгоно.
+     */
+    pct: number | null;
     /**
      * Жингийн нийлбэр, 0–100 — гүйцэтгэл бүртгэгдсэн багцуудын эзлэх төсвийн
      * хувь. 100-аас бага бол зарим багц хараахан бөглөгдөөгүй гэсэн үг.
@@ -127,8 +131,12 @@ export type ReportExtra = {
   };
   progress: {
     blocks: number;
-    /** Блокуудын гүйцэтгэлийн дундаж, % — дашбоардын толгойн тоотой нэг загвар */
-    overall: number;
+    /**
+     * Блокуудын гүйцэтгэлийн дундаж, % — дашбоардын толгойн тоотой нэг загвар.
+     * ⚠️ 2026-09-29 (аудит 10): `null` = тайлагнасан блок алга — `mean([])`-ийн 0 нь
+     * хэмжилт мэт «0.00%» гэж хэвлэгддэг байв (null ≠ 0).
+     */
+    overall: number | null;
     /** Хамгийн сүүлийн тайлагнасан огноо */
     date: string;
     /** Үе шат тус бүрийн дундаж гүйцэтгэл */
@@ -377,7 +385,8 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   return {
     // ⚠️ Жингийн НИЙЛБЭРТ харьцуулна, 1-д БИШ: бүртгэгдээгүй багцыг «0%
     //    гүйцэтгэлтэй» гэж тооцвол төслийн дүн худал буурна.
-    pct: weightSum ? done / weightSum : 0,
+    // ⚠️ 2026-09-29 (аудит 10): жин 0 (блокийн мөр алга) → `null`, 0 БИШ — «—» гэж гарна.
+    pct: weightSum ? done / weightSum : null,
     weightSum,
     rows: stages.reduce((a, s) => a + s.rows, 0),
     stages,
@@ -529,7 +538,8 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
 
   return {
     blocks: rows.length,
-    overall: mean(rows.map((r) => r.pct)),
+    /* ⚠️ 2026-09-29 (аудит 10): блок алга бол `null` — `mean([])` = 0 нь худал хэмжилт */
+    overall: rows.length ? mean(rows.map((r) => r.pct)) : null,
     date: rows.map((r) => r.date).filter(Boolean).sort().pop() ?? '',
     /**
      * ⚠️ ХЭМЖИЛТГҮЙ ҮЕ ШАТЫГ ОРУУЛАХГҮЙ (2026-09-03-ны аудит).
@@ -694,10 +704,14 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    *    шинэд `CF005` нь NULL — `str()` хоёуланг нь хоосон болгодог тул энэ
    *    шалгуур хэвээр ажиллана.
    */
+  /* ⚠️ 2026-09-29 (аудит 10): ангилалгүй мөрийг АЛГАСАХГҮЙ, тусдаа мөрд цуглуулна.
+     Урьд нь алгасдаг байсан ч «Нийт» мөр (`byTypeTotal`) БҮХ мөрөөр бодогддог тул
+     7.2 хүснэгтийн мөрүүд нийлбэртээ хүрдэггүй, «Ажил» багана өөр хүрээтэй байв. */
+  const UNTYPED = tr('Төрөл тодорхойлоогүй');
   const typeMap = new Map<string, { n: number; budget: number; contract: number }>();
   master.forEach((r) => {
-    const t = str(r[F.type]);
-    if (!t || t === '0') return;
+    const t0 = str(r[F.type]);
+    const t = !t0 || t0 === '0' ? UNTYPED : t0;
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;
     e.budget += nn(r[F.budget]);
@@ -775,7 +789,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     paidOther: paid - paidContracted,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
-      .sort((a, b) => b.budget - a.budget),
+      /* ⚠️ 2026-09-29 (аудит 10): «Төрөл тодорхойлоогүй» мөр үргэлж СҮҮЛД */
+      .sort((a, b) => Number(a.type === UNTYPED) - Number(b.type === UNTYPED) || b.budget - a.budget),
     /**
      * «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — задаргаа нь БҮХ мөрөөр явдаг
      * тул НИЙТ нь ч бүх мөрөөр (2026-09-15).
@@ -987,8 +1002,10 @@ export function useReportExtra(): Async<ReportExtra> {
 /* ═══════════════ Шинжилгээ — товч танилцуулга ба дүгнэлт ═══════════════ */
 
 export type Findings = {
-  buildWeight: number; buildActual: number; buildLag: number | null;
-  landLeft: number; topReason: { label: string; n: number } | null;
+  /* ⚠️ 2026-09-29 (аудит 10): `buildActual` / `landLeft` — `null` = хэмжилт/кадастр
+     алга (блок тайлагнаагүй · `land.parcels == null`); 0 гэж хэвлэхгүй, «—». */
+  buildWeight: number; buildActual: number | null; buildLag: number | null;
+  landLeft: number | null; topReason: { label: string; n: number } | null;
   contractRate: number | null; paidRate: number | null;
   peakMonth: { label: string; amount: number } | null;
   bestBagts: { bagts: string; pct: number } | null;
@@ -1072,9 +1089,13 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   const worstBagts = ext ? ext.worst : byBagts.length ? byBagts[byBagts.length - 1] : null;
   const stalled = x.progress.stalled;
 
-  const landLeft = x.land.byStatus
-    .filter((s) => isLeftParcel(s.label))
-    .reduce((a, s) => a + s.n, 0);
+  /* ⚠️ 2026-09-29 (аудит 10): кадастр уншигдаагүй (`parcels == null`) үед `byStatus`
+     хоосон тул нийлбэр 0 гарч, «0 нэгж талбар үлдсэн» гэж худал бичдэг байв. */
+  const landLeft = x.land.parcels == null
+    ? null
+    : x.land.byStatus
+      .filter((s) => isLeftParcel(s.label))
+      .reduce((a, s) => a + s.n, 0);
   const topReason = x.land.byReason[0] ?? null;
 
   const contractRate = x.finance.orderTotal
@@ -1131,7 +1152,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
     f.push(tr('{0} блокийн гүйцэтгэл 1 хувиас доогуур буюу ажил бодитоор эхлээгүй байна.', num(stalled)));
   }
 
-  if (landLeft > 0) {
+  if (landLeft != null && landLeft > 0) {
     f.push(tr('Газар чөлөөлөлтөд {0} нэгж талбар шийдвэрлэгдээгүй үлдсэн{1}. Эдгээр нь холбогдох блокийн ажлыг саатуулах эрсдэлтэй тул шуурхай шийдвэрлэх шаардлагатай.', num(landLeft), topReason ? tr('; тэргүүлэх шалтгаан нь «{0}» ({1} нэгж талбар)', tr(topReason.label), num(topReason.n)) : ''));
   }
 

@@ -183,6 +183,9 @@ export default function SysDoc({ setView, navScope = 'all' }: {
   const [q, setQ] = useState('');
   const [grp, setGrp] = useState<CatGroup | 'all'>('all');
   const [hl, setHl] = useState<string | null>(null);
+  /* ⚠️ 2026-09-29 (аудит 10): тодруулга асаалттай (2.4 с) байхад ИЖИЛ мөр рүү дахин
+     үсрэхэд `setHl(id)` өөрчлөлтгүй тул эффект дахин ажилладаггүй байв — тоолуураар. */
+  const [hlNonce, setHlNonce] = useState(0);
 
   const shown = useMemo(() => {
     const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -194,6 +197,7 @@ export default function SysDoc({ setView, navScope = 'all' }: {
     if (!domOf.has(id)) return;
     if (!shown.some((e) => e.id === id)) { setQ(''); setGrp('all'); }
     setHl(id);
+    setHlNonce((n) => n + 1);
   };
 
   /* Үсэрсэн мөрийг төвд аваачиж, фокуслаад, түр тодруулна */
@@ -204,7 +208,7 @@ export default function SysDoc({ setView, navScope = 'all' }: {
     el?.focus({ preventScroll: true });
     const t = window.setTimeout(() => setHl(null), 2400);
     return () => window.clearTimeout(t);
-  }, [hl, domOf]);
+  }, [hl, hlNonce, domOf]);
 
   return (
     <div className={s.wrap}>

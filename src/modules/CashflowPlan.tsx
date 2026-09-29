@@ -36,6 +36,18 @@ const nOf = (v: unknown): number | null => {
   const x = Number(t);
   return Number.isFinite(x) ? x : null;
 };
+/**
+ * `Cashflow_ID` — хоосон бол `null`.
+ * ⚠️ 2026-09-29 (аудит 10): `Number(null)` = 0 тул дугааргүй ажил `0` түлхүүртэй
+ *    болж, ийм хоёр ажил нэг сарын жагсаалт ба нэг `w0` React түлхүүр
+ *    хуваалцдаг байв (`Finance.cfIdOf`-тэй ижил дүрэм).
+ */
+const idOf = (v: unknown): number | null => {
+  if (v == null || String(v).trim() === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
+
 /** Хоосон биш атлаа тоо болохгүй оролт — хадгалахаас өмнө татгалзана */
 const badNum = (v: unknown) => String(v ?? '').trim() !== '' && nOf(v) == null;
 
@@ -56,12 +68,16 @@ const cmpSeg = (a: number[], b: number[]): number => {
   return 0;
 };
 
-/** «2026-03» */
+/**
+ * «2026-03» — ОРОН НУТГИЙН (УБ) сараар.
+ * ⚠️ 2026-09-29 (аудит 10): `Finance.publish`-ийн сарын мужтай НЭГ дүрэм (тэндхийн
+ *    `keyOf`-ийн ⚠️). УБ-ын шөнө дунд (өмнөх өдрийн 16:00Z) UTC-ээр өмнөх сар болдог байв.
+ */
 const monthKey = (ms: unknown): string => {
   const t = Number(ms);
   if (!Number.isFinite(t)) return '';
   const d = new Date(t);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
 /** Бөглөлтийн төлөв — өнгө ба шошго нь эндээс */
@@ -103,8 +119,13 @@ const costOf = (r: Row | null | undefined): number | null => {
 };
 
 export function CashflowPlan({
-  works, months, onSaved, canEdit = true, onDirty,
+  works, months, onSaved, canEdit = true, onDirty, monthsError = false,
 }: {
+  /**
+   * Сарын задаргаа УНШИГДСАНГҮЙ (2026-09-29 аудит 10) — «сар үүсээгүй» гэж
+   * худал зөвлөхгүй, «уншигдсангүй» гэж хэлнэ.
+   */
+  monthsError?: boolean;
   /** `finEdit` эрх — үгүй бол нүд засагдахгүй, «Хадгалах» хаалттай (2026-09-17) */
   canEdit?: boolean;
   /** Ажлын мөрүүд (78) — `Cashflow_start IS NULL` */
@@ -130,8 +151,8 @@ export function CashflowPlan({
   const byWork = useMemo(() => {
     const m = new Map<number, Row[]>();
     for (const r of months) {
-      const id = Number(r[CF_MONTH.id]);
-      if (!Number.isFinite(id)) continue;
+      const id = idOf(r[CF_MONTH.id]); // ⚠️ 2026-09-29 (аудит 10): хоосон → 0 БИШ
+      if (id == null) continue;
       const arr = m.get(id) ?? [];
       arr.push(r);
       m.set(id, arr);
@@ -177,6 +198,10 @@ export function CashflowPlan({
     const NF = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
     let prev: string[] = [];
     for (const r of sorted) {
+      /* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажил жагсаалтад ОРОХГҮЙ — сарын мөр
+         түүнд холбогдох түлхүүргүй; `0` гэж оруулбал давхар `w0` түлхүүр үүснэ. */
+      const wid = idOf(r[CF_MONTH.id]);
+      if (wid == null) continue;
       const chain: string[] = [];
       for (let d = 0; d < NF.length; d += 1) {
         const n = sOf(r[NF[d]]);
@@ -189,12 +214,12 @@ export function CashflowPlan({
         out.push({ kind: 'band', depth: d, code: sOf(r[FIN_XL_CODE[d]]), label: chain[d] });
       }
       prev = chain;
-      out.push({ kind: 'work', row: r, id: Number(r[CF_MONTH.id]) });
+      out.push({ kind: 'work', row: r, id: wid });
     }
     return out;
   }, [sorted]);
 
-  const cur = sel == null ? null : sorted.find((r) => Number(r[CF_MONTH.id]) === sel) ?? null;
+  const cur = sel == null ? null : sorted.find((r) => idOf(r[CF_MONTH.id]) === sel) ?? null;
   const curMonths = sel == null ? [] : byWork.get(sel) ?? [];
   const curCost = costOf(cur);
   const curSum = sel == null ? null : sumOf(sel);
@@ -219,7 +244,11 @@ export function CashflowPlan({
     try {
       /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн */
       const costById = new Map<number, number | null>();
-      for (const w of works) costById.set(Number(w[CF_MONTH.id]), costOf(w));
+      for (const w of works) {
+        /* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажил `0`-д ХО дүнгээ бичихгүй (`idOf`) */
+        const wid = idOf(w[CF_MONTH.id]);
+        if (wid != null) costById.set(wid, costOf(w));
+      }
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
 
@@ -238,7 +267,8 @@ export function CashflowPlan({
       const updates = Object.entries(pend).map(([k, v]) => {
         const oid = Number(k);
         const pct = nOf(v);
-        const cost = costById.get(Number(mById.get(oid)?.[CF_MONTH.id])) ?? null;
+        const mid = idOf(mById.get(oid)?.[CF_MONTH.id]);
+        const cost = mid == null ? null : costById.get(mid) ?? null;
         if (pct != null && cost == null) noCost += 1;
         return {
           [oidField]: oid,
@@ -328,10 +358,24 @@ export function CashflowPlan({
 
             {curMonths.length === 0 ? (
               /* ⚠️ Огноогүй ажилд сарын мөр үүсдэггүй — шалтгааныг ХЭЛНЭ,
-                 эс бөгөөс хүн хоосон дэлгэц хараад алдаа гэж бодно. */
-              <p className={c.hint}>
-                {tr('Төлөвлөгөөт хугацаа бөглөгдөөгүй тул сар үүсээгүй. Эхлэх/дуусах огноог гэрээний бүртгэлээс оруулна уу.')}
-              </p>
+                 эс бөгөөс хүн хоосон дэлгэц хараад алдаа гэж бодно.
+                 ⚠️ 2026-09-29 (аудит 10): ГУРВАН шалтгаан ялгана. Урьд нь үргэлж
+                 «хугацаа бөглөгдөөгүй» гэдэг байв — (1) сарын задаргаа УНШИГДААГҮЙ
+                 (`monthsError`) үед ч, (2) огноо БӨГЛӨГДСӨН атлаа сар үүсээгүй
+                 (огноотой нэмсэн мөр / порталаас огноо засаагүй) үед ч. */
+              monthsError ? (
+                <p className={c.warn}>
+                  {tr('Сарын задаргаа уншигдсангүй. Хуудсыг дахин ачаална уу.')}
+                </p>
+              ) : cur.ehleh_ognoo != null && cur.duusah_ognoo != null ? (
+                <p className={c.hint}>
+                  {tr('Төлөвлөгөөт хугацаа бөглөгдсөн боловч сарын мөр үүсээгүй байна. Гэрээний бүртгэлд эхлэх/дуусах огноог засаж нийтлэхэд сарууд үүснэ.')}
+                </p>
+              ) : (
+                <p className={c.hint}>
+                  {tr('Төлөвлөгөөт хугацаа бөглөгдөөгүй тул сар үүсээгүй. Эхлэх/дуусах огноог гэрээний бүртгэлээс оруулна уу.')}
+                </p>
+              )
             ) : (
               <>
                 <table className={c.tbl}>
@@ -358,10 +402,14 @@ export function CashflowPlan({
                               className={c.inp}
                               value={raw}
                               inputMode="decimal"
-                              readOnly={!canEdit}
+                              /* ⚠️ 2026-09-29 (аудит 10): хадгалж байх үед (`busy`) ч `readOnly` —
+                                 `save` нь `await applyAll`-ийн дараа `pend`-ийг бүхэлд нь
+                                 цэвэрлэдэг тул тэр хооронд бичсэн хувь илгээгдэлгүй арилж,
+                                 «хадгалагдав» гэж худал мэдэгддэг байв. */
+                              readOnly={!canEdit || busy}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
                               onChange={(e) => {
-                                if (!canEdit) return;
+                                if (!canEdit || busy) return;
                                 const v = e.target.value;
                                 /* ⚠️ 2026-09-25: анхны утга руугаа БУЦВАЛ засвар биш — `pend`-ээс
                                    хасна. Урьд нь үлдэж, «Хадгалах (N)» ба таб солих баталгаа

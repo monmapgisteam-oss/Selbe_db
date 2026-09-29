@@ -144,6 +144,9 @@ assert.equal(resolveFlowStage('late', 'beginner').stage, 'director');
 console.log('✅ resolveFlowStage — шат томилгооноос');
 
 /* ── 7. setAssign → grant: урсгалын бус үүрэг ХЭВЭЭР, guitsetgel НЭМЭГДЭНЭ ── */
+/* ⚠️ 2026-09-29 (аудит 10): `permissions.resolveBaseAccess`/`roleOf` remote уншигдсаны дараа л
+   override-ыг тооцно — аппд `initRemote` хоёр тугийг ХАМТ асаадаг; энд дуурайна. */
+P._markRemoteLoaded();
 _syncRemoteAssigns([]);
 let w = setAssign('selbe_redesign', 'company', [ALL_BAGTS]); // хатуу tolovlolt: views ['plan']
 assert.equal(w.ok, true);

@@ -378,6 +378,16 @@ type Result = {
    * үүнийг хэрэглэгчид ИЛ хэлнэ, эс бөгөөс хоёр өөр арга нэг нэрээр явна.
    */
   simFootprint?: boolean;
+  /**
+   * ЯАГААД буферээр ухарсан бэ (`simFootprint` худал үед л).
+   * ⚠️ 2026-09-29 (аудит 10): гурван шалтгаан гурван өөр тайлбартай — урьд нь
+   * бүгдэд «загварчлал бэлэн биш, дахин ажиллуул» гэдэг байсан нь загварчлал
+   * ДУУССАН (ус гүехэн) эсвэл УНАСАН үед худал: дахин ажиллуулаад нэмэргүй.
+   *   · `notReady` — загварчлал эхлээгүй/цуцлагдсан
+   *   · `dry`      — дууссан, гэхдээ босгоос гүн усны мөр гараагүй
+   *   · `failed`   — алдаагаар унасан
+   */
+  simWhy?: 'notReady' | 'dry' | 'failed';
 };
 
 /**
@@ -515,7 +525,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        өмнөхийг ЗОГСООНО (`uyrSim.ts` §signal). */
     const ac = new AbortController();
     const pr0 = simulateFlood(level, (pr) => {
-      if (alive) setSimPct(Math.min(0.99, pr.step / pr.total));
+      /* ⚠️ 2026-09-29 (аудит 10): явцыг СИМИЙН ХУГАЦААГААР. Давталт `t >= totalS`
+         дээр дуусдаг тул `step / MAX_STEPS` (9000) нь 15–40%-д гацаад шууд
+         дуусдаг байв. Алхмын хязгаар түрүүлж хүрэх тохиолдолд аль ИХИЙГ нь. */
+      if (alive) setSimPct(Math.min(0.99, Math.max(pr.minute / pr.totalMin, pr.step / pr.total)));
     }, area, ac.signal);
     simPromise.current = pr0;
     pr0
@@ -714,13 +727,19 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     return { lat, lon };
   }, [stations]);
   const hubKey = airHub ? `${airHub.lat.toFixed(3)},${airHub.lon.toFixed(3)}` : '';
+  /* ⚠️ 2026-09-29 (аудит 10): САЛХИНЫ ӨДӨР цагийн алхамтай `now`-оос. Урьд нь
+     `useMemo(…, [])` ба `windQ`-ийн `[hubKey]` хамаарал нь ачааллын өдөрт
+     ХӨЛДДӨГ тул шөнөжин нээлттэй дэлгэц өчигдрийн салхийг «одоогийн» гэж
+     харуулдаг байв. `now` зөвхөн цаг солигдоход өөрчлөгдөх тул шинэ таймер
+     нэмэхгүй; `ymd` нь УБ-ын өдрөөр (`TZ`), `loadWind` ч өөрийн өдрөөр кэшилнэ. */
+  const windDate = useMemo(() => ymd(new Date(now)), [now]);
   const windQ = useAsync(
     () => {
       if (!hubKey) return Promise.resolve(null);
       const [la, lo] = hubKey.split(',').map(Number);
       return loadWind(la, lo);
     },
-    [hubKey],
+    [hubKey, windDate],
   );
   const wind = windQ.state === 'ready' ? windQ.data : null;
   const windNow = wind ? nowHour(wind) : null;
@@ -756,9 +775,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * салхи нь тусдаа судалгааны хэрэгсэл бөгөөд аюулын мужийн шинжилгээтэй
    * зэрэгцэн байвал «аль цагийн зураг вэ» гэдэг эргэлзээ төрүүлнэ.
    *
-   * ⚠️ Тиймээс ҮРГЭЛЖ ӨНӨӨДРИЙН огноо, ОДООГИЙН цаг.
+   * ⚠️ Тиймээс ҮРГЭЛЖ ӨНӨӨДРИЙН огноо, ОДООГИЙН цаг (`windDate` — `windQ`-ийн
+   * өмнө тодорхойлогдсон, 2026-09-29).
    */
-  const windDate = useMemo(() => ymd(new Date()), []);
 
   /**
    * ⚠️ Талбарыг ЗӨВХӨН урсгал асаалттай үед татна. `enabled`-гүй бол хуудас
@@ -880,6 +899,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     setRunErr(null);
     /** Хохирол загварчлалын мөрөөр бодогдов уу (эсвэл буферээр ухарсан уу) */
     let simFootprint = false;
+    /** Буферээр ухарсан шалтгаан — ⚠️ 2026-09-29 (аудит 10), `simWhy`-г үз */
+    let simWhy: 'notReady' | 'dry' | 'failed' = 'notReady';
     try {
       /**
        * ⚠️ АГААРЫН СЭВСГЭР нь БОДИТ САЛХИАР чиглэнэ (2026-09-03, хүсэлт).
@@ -929,13 +950,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
            closure нь ӨМНӨХ түвшин/талбайн загварчлалыг барьж, 3-р түвшинд 1-р
            түвшний усаар хохирол бодогдож болдог байв. Ref нь үргэлж сүүлийн
            рендерийнх (түвшин солигдоход эффект `setFlood(null)` хийнэ). */
-        fd = floodRef.current ?? (await simPromise.current?.catch(() => null)) ?? null;
+        /* ⚠️ 2026-09-29 (аудит 10): УНАСАН ба ЦУЦЛАГДСАН хоёрыг ялгана —
+           `AbortError` нь шинэ сим эхэлсний дохио (дахин ажиллуулбал болно),
+           бусад алдаа нь дахин ажиллуулаад арилахгүй. */
+        fd = floodRef.current
+          ?? (await simPromise.current?.catch((er: unknown) => {
+            if (!(er instanceof Error && er.name === 'AbortError')) simWhy = 'failed';
+            return null;
+          }))
+          ?? null;
         if (stale()) return;
         const rings = fd ? floodFootprint(fd) : [];
         if (rings.length) {
           extent = new Polygon({ rings, spatialReference: { wkid: fd!.meta.wkid } });
           simFootprint = true;
         } else {
+          if (fd) simWhy = 'dry';
           extent = await floodExtent(level);
           if (stale()) return;
         }
@@ -968,6 +998,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       if (stale()) return;
       setResult({
         hazard, level, bands, rows, simFootprint,
+        simWhy: hazard === 'flood' && !simFootprint ? simWhy : undefined,
         /* ⚠️ 2026-09-25: алгассан давхаргыг тоолохгүй — `damageOf`-ийн `analyzed` */
         layers: analyzed,
         failed,
@@ -2228,6 +2259,19 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     : <Empty label={tr('Хувилбар сонгоод «Шинжилгээ хийх» дарна уу')} />}
                 </div>
               </section>
+            ) : result.rows.length === 0 && result.failed.length > 0 ? (
+              /* ⚠️ 2026-09-29 (аудит 10): ТАТАГДААГҮЙ давхарга байхад 0 мөр нь
+                 «эрсдэлгүй» БИШ, «мэдээлэлгүй» (дээрх `chipWarn`-ын ⚠️). Урьд нь
+                 энд «өртсөн объект олдсонгүй» гэж баталж, зураг дээрх «⚠ N
+                 давхарга татагдсангүй»-тэй зөрчилддөг байв. */
+              <section className={e.panel} style={{ borderTop: '2px solid var(--warn)' }}>
+                <div className={e.panelBody}>
+                  <Empty
+                    label={tr('{0} давхарга татагдсангүй — үр дүн бүрэн бус', num(result.failed.length))}
+                    onRetry={busy ? undefined : () => { void run(); }}
+                  />
+                </div>
+              </section>
             ) : result.rows.length === 0 ? (
               <section className={e.panel}>
                 <div className={e.panelBody}>
@@ -2317,8 +2361,16 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         {result.simFootprint
                           ? tr('Хохирол нь ЗАГВАРЧЛАЛЫН бодит үерийн мөрөөр бодогдов — бүх {0} минутын дээд гүн {1} м-ээс дээш газар. Зурган дээр урсаж буй ус ба улаанаар тэмдэглэсэн хохирол НЭГ эх сурвалжтай.',
                             num(flood?.meta.simMin ?? 60), num(0.15, 2))
-                          : tr('Загварчлал бэлэн биш байсан тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Загварчлал дуусмагц дахин ажиллуулбал бодит мөрөөр бодогдоно.',
-                            num(FLOOD_LEVELS[result.level].reach))}
+                          /* ⚠️ 2026-09-29 (аудит 10): шалтгаан бүрд ӨӨР өгүүлбэр —
+                             «дахин ажиллуулбал…» нь зөвхөн бэлэн биш үед үнэн. */
+                          : result.simWhy === 'dry'
+                            ? tr('Загварчлал дууссан боловч {0} м-ээс гүн усанд автсан талбай гараагүй тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {1} м) тооцов.',
+                              num(0.15, 2), num(FLOOD_LEVELS[result.level].reach))
+                            : result.simWhy === 'failed'
+                              ? tr('Загварчлал алдаагаар зогссон тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Дахин ажиллуулахад бодит мөрөөр бодогдохгүй.',
+                                num(FLOOD_LEVELS[result.level].reach))
+                              : tr('Загварчлал бэлэн биш байсан тул хохирлыг үерийн ЗУРВАСААР (голын ирмэгээс {0} м) тооцов. Загварчлал дуусмагц дахин ажиллуулбал бодит мөрөөр бодогдоно.',
+                                num(FLOOD_LEVELS[result.level].reach))}
                       </Note>
                     )}
                     {/* ⚠️ 2026-09-08: эх сурвалж тус бүрд ӨӨР өгүүлбэр. Урьд нь

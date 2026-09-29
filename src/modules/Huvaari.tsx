@@ -2004,7 +2004,10 @@ export function Huvaari({
      * блок автомат тараалтаа авч, ЭНЭ блок нь гарын утгаа хадгална.
      */
     const des = plan[at].des;
-    if (ob && des != null) {
+    /* ⚠️ 2026-09-29 (аудит 10): сарын обьём/нөөц ЗӨВХӨН төлөвлөгөөнд (`applyChanges`-ийн
+       ижил хаалт) — гэрээ табын «Тавих»/«Арилгах» нь төлөвлөгөөний сарын задаргаа ·
+       хүн/машиныг (kind-гүй түлхүүр) хөндөж болохгүй. */
+    if (ob && des != null && kind === 'plan') {
       const { months, res } = ob;
       for (const bAt of blks) {
         const blok = sc?.bld[bAt];
@@ -2036,7 +2039,7 @@ export function Huvaari({
         }
       }
     }
-  }, [plan, byCode, n, busy, locked, ham, rowsAll, applyChanges, sc, blk, obPlan, obRes]);
+  }, [plan, byCode, n, busy, locked, ham, rowsAll, applyChanges, sc, blk, obPlan, obRes, kind]);
 
   /**
    * POPUP-ЫН «Тавих» — БОДИТ ОГНОО (энэ блок) ба НӨӨЦ (мөр) (2026-09-23).
@@ -3001,9 +3004,13 @@ export function Huvaari({
    * ⚠️ ХӨНГӨН: зөвхөн `loadPending` (толгой). Төлөв өөрчлөгдсөн үед л `refreshFlow` —
    *    тэр нь `flowReady`-г түр `null` болгодог тул тогтмол дуудвал дэлгэц анивчина.
    * ⚠️ Батлах/урьдчилан харах/бичих явцад ба хяналтын горимд шалгахгүй.
+   * ⚠️ 2026-09-29 (аудит 10): ЗОХИОГЧ өөрийн «Илгээсэн хуваарь»-ийг харж байхад (`viewSent`,
+   *    зөвхөн харах) шалгалт ҮРГЭЛЖИЛНЭ — урьд нь `previewing` мөчлөгийг зогсоож, батлагчийн
+   *    шийдвэр · буцаасан шалтгаан «Батлагдсан хуваарь» руу буцтал харагддаггүй байв.
+   *    Өөрчлөгдвөл `refreshFlow` харалтыг өөрөө цэвэрлэнэ. Батлагчийн харалтад хэвээр үгүй.
    */
   const pollOkRef = useRef(false);
-  pollOkRef.current = !review && pending != null && approving == null && !previewing && !busy && flowReady === true;
+  pollOkRef.current = !review && pending != null && approving == null && (!previewing || isOwnSubmission) && !busy && flowReady === true;
   useEffect(() => {
     if (status === 'off') return undefined;
     const key = pkg.key;
@@ -3012,7 +3019,11 @@ export function Huvaari({
       const was = flowPendRef.current.oid;
       void loadPending(key).then((p) => {
         if (!pollOkRef.current || pkgKeyRef.current !== key) return;
-        if ((p?.oid ?? null) !== was) void refreshFlow();
+        if ((p?.oid ?? null) !== was) {
+          /* ⚠️ 2026-09-29 (аудит 10): харалт цэвэрлэгдэх тул «илгээсэн хуваарь харагдаж байна» мэдэгдэл худал болно */
+          if (previewingRef.current) setNote('');
+          void refreshFlow();
+        }
       }).catch(() => { /* дараагийн мөчлөгт */ });
     }, 30_000);
     return () => window.clearInterval(id);
@@ -5736,7 +5747,8 @@ export function Huvaari({
                алдаа» мэт гарч байв. */
             onClick={() => { setErr(''); setFlowBox('send'); }}
           >
-            {tr('Батлуулах')}{dirtyN ? ` (${dirtyN})` : ''}
+            {/* ⚠️ 2026-09-29 (аудит 10): `dirtyRows` — толгойн «хадгалаагүй N», илгээлтийн `rowCount`-тай НЭГ тоо */}
+            {tr('Батлуулах')}{dirtyN ? ` (${num(dirtyRows)})` : ''}
           </button>
         )}
         {/* ⚠️ УРЬДЧИЛАН ХАРАХ — батлагч саналыг ХУАНЛИ ДЭЭР харна. Үүнгүй бол
@@ -6091,7 +6103,8 @@ export function Huvaari({
               <span className={h.fullBarNote}>
                 {review
                   ? `${tr('Хуваарь шийдвэрлэх')} · ${pkg.label} · ${kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө')}`
-                  : `${pkg.label}${dirtyN ? ` · ${tr('өөрчлөлт')} ${dirtyN}` : ''}`}
+                  /* ⚠️ 2026-09-29 (аудит 10): `dirtyRows` — толгойн «хадгалаагүй N»-тэй ижил тоо */
+                  : `${pkg.label}${dirtyN ? ` · ${tr('өөрчлөлт')} ${num(dirtyRows)}` : ''}`}
               </span>
             )}
           </div>
@@ -7372,11 +7385,16 @@ function PlanModal({
    */
   const [aa, setAa] = useState('');
   const [az, setAz] = useState('');
+  /* ⚠️ 2026-09-29 (аудит 10): хэрэглэгч бодит огнооны талбарыг ӨӨРӨӨ хөндсөн үү —
+     хөндөөгүй бол «Тавих» бодит огноог огт бичихгүй (доорх `actDirty`). Мөр/блок
+     солигдоход талбар дахин бөглөгддөг тул тэглэнэ. */
+  const [actTouched, setActTouched] = useState(false);
   useEffect(() => {
     const s = r.aStart?.[blk] ?? null;
     const e = r.aEnd?.[blk] ?? null;
     setAa(s != null ? msToDay(s) : '');
     setAz(e != null ? msToDay(e) : '');
+    setActTouched(false);
   }, [r.oid, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
   const am1 = dayToMs(aa);
   const am2 = dayToMs(az);
@@ -7384,7 +7402,11 @@ function PlanModal({
   /* ⚠️ 2026-09-29: СОНГОСОН блок бүртэй тулгана — идэвхтэй блок аль хэдийн ижил утгатай
      ч бусад сонгосон блокт тавигдах ёстой (урьд нь зөвхөн идэвхтэй блокоор шийддэг тул
      олон блокт «Тавих» юу ч хийдэггүй байв). */
-  const actDirty = [...selB].some((b) => (am1 ?? null) !== (r.aStart?.[b] ?? null) || (am2 ?? null) !== (r.aEnd?.[b] ?? null));
+  /* ⚠️ 2026-09-29 (аудит 10): ЗӨВХӨН талбарыг хөндсөн үед (`actTouched`). Урьд нь идэвхтэй
+     блокийн бодит огноо хоосон, сонгосон өөр блок бүртгэлтэй бол төлөвлөсөн огноог олон
+     блокт тавихад `actArg = {null, null}` болж тэр блокийн БҮРТГЭГДСЭН бодит огноо
+     чимээгүй арчигддаг байв (`applyExtra` → `save`). Бодит нь бүртгэл — таамаглаж хуулахгүй. */
+  const actDirty = actTouched && [...selB].some((b) => (am1 ?? null) !== (r.aStart?.[b] ?? null) || (am2 ?? null) !== (r.aEnd?.[b] ?? null));
   /* ⚠️ МӨРИЙН хүн/машин popup-аас ЗАСАГДАХГҮЙ (2026-09-24, хэрэглэгч: «дээд талын
      үндсэн хүн хүч машин механизм бөглөлт хэрэггүй, сар сард төлөвлөнө») — мөрийн
      утга нь хадгалахад саруудын нийлбэрээр бичигдэнэ (`save`). */
@@ -7601,7 +7623,10 @@ function PlanModal({
          `mr` өгч, олон блокт тавихад бусад блокийн серверийн нөөц арчигддаг байв. */
   /** ЗӨВХӨН бодит огноо (ба уялдаа) хөндөгдсөн — олон блок сонгосон ч төлөвлөгөөг хуулахгүй (2026-09-29) */
   const extraOnly = extraDirty && (!spanDirty || prefilled) && !mvDirty && !mrDirty;
-  const obArg = { months: total == null ? null : mv, res: mrDirty || mrHas ? mr : null };
+  /* ⚠️ 2026-09-29 (аудит 10): гэрээ табд (`obyem=false`) сарын нөөцийг ХЭЗЭЭ Ч өгөхгүй —
+     сарын хэсэг харагдахгүй атлаа `mr` нь төлөвлөгөөний нөөцөөр бөглөгддөг тул гэрээний
+     огноо тавихад бусад сонгосон блокийн төлөвлөсөн хүн/машин дарагддаг байв. */
+  const obArg = { months: total == null ? null : mv, res: obyem && (mrDirty || mrHas) ? mr : null };
   /* ⚠️ Алхам 0 → сар/нөөц/бодит огноо СОНГОСОН БҮХ блокт (мужууд ижил);
      алхам >0 → зөвхөн идэвхтэй блокт (бусдын муж шилжсэн тул сарууд зөрнө,
      `applyChanges` тэднийг `keepMonths`/`keepRes`-ээр өөрөө бэлтгэнэ). */
@@ -7750,12 +7775,12 @@ function PlanModal({
               <label className={h.mdField}>
                 {tr('Эхэлсэн')}
                 <input type="date" className={h.select} value={aa} disabled={!dEdit}
-                  onChange={(e) => setAa(e.target.value)} />
+                  onChange={(e) => { setAa(e.target.value); setActTouched(true); }} />
               </label>
               <label className={h.mdField}>
                 {tr('Дууссан')}
                 <input type="date" className={h.select} value={az} disabled={!dEdit}
-                  onChange={(e) => setAz(e.target.value)} />
+                  onChange={(e) => { setAz(e.target.value); setActTouched(true); }} />
               </label>
               {/* ⚠️ Бодит «үргэлжлэх хоног» ХАСАГДСАН (2026-09-24, хэрэглэгч) */}
               {aBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Бодит дууссан нь эхэлснээс өмнө')}</b></span>}

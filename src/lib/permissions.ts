@@ -34,7 +34,7 @@ import {
 import { capViewsOf } from './caps';
 import { _typesMark, roleAccess } from './roleTypes';
 import { currentUser } from './who';
-import { _beginRemoteFetch } from './scopedAcl';
+import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
@@ -123,6 +123,33 @@ function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const tail = p.then(() => undefined, () => undefined);
   chain.set(key, tail);
   void tail.then(() => { if (chain.get(key) === tail) chain.delete(key); });
+  return p;
+}
+
+/**
+ * ⚠️ 2026-09-29 (аудит 10): ХЭРЭГЛЭГЧИЙН БИЧИЛТ (`setUser` · `removeUser` · `clearOverride`)
+ *    — `serial` + агшны тэмдэг. `caps.enqueueCap` · `scopedAcl.enqueue`-д 2026-09-25-нд
+ *    нэмэгдсэн хамгаалалт энд ХУУЛАГДААГҮЙ байв: `initRemoteInner` зөвхөн `chain.has(k)`
+ *    (`applyDone`) шалгадаг тул бичилт ДУУССАНЫ дараа буусан, бичилтээс ӨМНӨ авагдсан
+ *    snapshot `cache[u]`-г дараагийн poll хүртэл (5 мин) хуучин утгаар дардаг байлаа.
+ * ⚠️ `retryDirtyOnce` энэ замаар ЯВАХГҮЙ (шууд `serial`): retry нь `initRemoteInner`-ийн
+ *    ДОТОР, snapshot-ын дараа ажилладаг тул тэмдэглэвэл БҮХ dirty түлхүүр (өөр сешний,
+ *    гараар тарьсан мөр ч) «snapshot-оос шинэ» болж локал утга нь давамгайлна —
+ *    `mine`-ийн хаасан өөртөө эрх олгох зам дахин нээгдэнэ.
+ */
+const touched = new Map<string, number>();
+/** Дуусаагүй хэрэглэгчийн бичилтийн тоо (түлхүүрээр) — snapshot-оос ӨМНӨ эхэлсэн ч дуусаагүйг хамгаална */
+const writing = new Map<string, number>();
+function serialWrite<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  touched.set(key, _touchSeq());
+  writing.set(key, (writing.get(key) ?? 0) + 1);
+  const p = serial(key, fn);
+  const done = (): void => {
+    touched.set(key, _touchSeq());
+    const n = (writing.get(key) ?? 1) - 1;
+    if (n > 0) writing.set(key, n); else writing.delete(key);
+  };
+  void p.then(done, done);
   return p;
 }
 
@@ -444,6 +471,15 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
       else s[k] = sanitizeEntry(intended);
     }
   }
+  /* ⚠️ 2026-09-29 (аудит 10): ДУУСААГҮЙ ба SNAPSHOT-ЫН ДАРАА БИЧИГДСЭН түлхүүрийн ЛОКАЛ
+     утга давамгайлна (`caps._syncRemoteCaps`-ийн ижил дүрэм, `serialWrite`-ийн тайлбар).
+     Дараагийн poll (тэмдэг нь бичилтээс хойш) remote-оор засна. */
+  const keep = new Set<string>(writing.keys());
+  for (const [k, t] of touched) if (_newerThanSnapshot(t)) keep.add(k);
+  for (const k of keep) {
+    const loc = cache[k];
+    if (loc) s[k] = loc; else delete s[k];
+  }
   cache = s;
   remoteLoaded = true;
   saveLocal(s);
@@ -542,6 +578,15 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
 /** Энэ сешнд remote эрх амжилттай уншигдсан уу — админ панелийн offline тэмдэг */
 export const remoteReady = (): boolean => remoteLoaded;
 
+/**
+ * ⚠️ ЗӨВХӨН ШАЛГУУРТ (`*.check.mjs`, 2026-09-29 аудит 10): offline орчинд `initRemote`
+ *    амжилттай болох замгүй тул override уншилтыг (`resolveBaseAccess` · `roleOf`)
+ *    шалгахад remote уншигдсан төлөвийг дуурайна. Аппын кодоос ДУУДАХГҮЙ.
+ */
+export function _markRemoteLoaded(v = true): void {
+  remoteLoaded = v;
+}
+
 /** Хатуу тохиргооноос суурь эрх — override байхгүй хэрэглэгчид */
 function baseline(username: string): Access | null {
   const role = roleForUser(username);
@@ -611,8 +656,23 @@ export function resolveBaseAccess(username?: string | null): Access | null {
   if (ov?.removed) return isHardSuper(username) ? baseline(username) : null;
   // ТҮР: бүх нэвтэрсэн аккаунт бүх эрхтэй
   if (GRANT_ALL) return { views: 'all', docs: true };
-  if (ov) return { views: ov.views, docs: ov.docs };
-  return baseline(username);
+  /* ⚠️ 2026-09-29 (аудит 10): FAIL-CLOSED — remote нэг ч удаа уншигдаагүй сешнд override-ыг
+     ҮЛ ТООЦНО (`caps.capsOf` · `scopedAcl.effective` · `guitsetgelAcl.effective`-ийн
+     2026-09-21-ний ижил дүрэм). `cache` нь эхэндээ localStorage-оос тул хатуу жагсаалтын
+     хэрэглэгч `selbe-perms-v1`-д өөртөө `views:'all'` бичээд сүлжээгээ хаавал бүх
+     харагдац нээгддэг байв. Tombstone (`removed`) дээр ХЭВЭЭР шалгагдана — тэр нь
+     эрхийг зөвхөн ХУМИНА. Дев (`status==='off'`) хэрэглэгчгүй тул энд хүрэхгүй.
+     ⚠️ Гэхдээ override-ыг БҮРЭН хаявал эсрэг талдаа НЭЭГДЭНЭ: админ хатуу жагсаалтын
+     хүний харагдацыг ХУМЬСАН бол ArcGIS унасан сешнд тэр хүн суурийн ӨРГӨН эрхээ
+     буцааж авна. Тиймээс баталгаажаагүй override зөвхөн ХУМЬЖ чадна — суурь ∩ override
+     (tombstone-той ижил зарчим: локал утга эрхийг нэмэхгүй, зөвхөн хасна). */
+  if (ov && remoteLoaded) return { views: ov.views, docs: ov.docs };
+  const base = baseline(username);
+  if (!ov || !base) return base;
+  const views: Access['views'] = ov.views === 'all'
+    ? base.views
+    : base.views === 'all' ? ov.views : base.views.filter((v) => (ov.views as ViewKey[]).includes(v));
+  return { views, docs: base.docs && ov.docs };
 }
 
 /**
@@ -628,7 +688,9 @@ export function roleOf(username?: string | null): Role | null {
   if (!username) return null;
   const ov = loadStore()[username.toLowerCase()];
   if (ov?.removed) return isHardSuper(username) ? 'super' : null;
-  return ov?.role ?? roleForUser(username);
+  /* ⚠️ 2026-09-29 (аудит 10): remote уншигдаагүй бол override-ын үүргийг үл тооцно —
+     `resolveBaseAccess`-ийн тайлбар (localStorage-д өөртөө `role:'super'` бичих зам). */
+  return (remoteLoaded ? ov?.role : null) ?? roleForUser(username);
 }
 
 /** Панелийн жагсаалт — хатуу тохиргооны бүх хэрэглэгч + override-той шинэ хэрэглэгч */
@@ -689,8 +751,8 @@ export function removeUser(username: string): Promise<boolean> {
     const store = { ...loadStore() };
     store[key] = entry;
     saveStore(store);
-    /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
-    return serial(key, () => import('./permsRemote')
+    /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
+    return serialWrite(key, () => import('./permsRemote')
       .then((m) => m.upsert({ username, role: null, views: [], docs: false, removed: true }))
       .catch(() => false)
       .then((ok) => { trackWrite(key, entry, ok); return ok; }));
@@ -710,8 +772,8 @@ export function setUser(username: string, access: Access, role: Role | null = nu
   const store = { ...loadStore() };
   store[key] = entry;
   saveStore(store);
-  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
-  return serial(key, () => import('./permsRemote')
+  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
+  return serialWrite(key, () => import('./permsRemote')
     .then((m) => m.upsert({ username, role, views: entry.views, docs: entry.docs }))
     .catch(() => false)
     .then((ok) => { trackWrite(key, entry, ok); return ok; }));
@@ -723,8 +785,8 @@ export function clearOverride(username: string): Promise<boolean> {
   const store = { ...loadStore() };
   delete store[key];
   saveStore(store);
-  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25) */
-  return serial(key, () => import('./permsRemote')
+  /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
+  return serialWrite(key, () => import('./permsRemote')
     .then((m) => m.remove(username))
     .catch(() => false)
     .then((ok) => { trackWrite(key, null, ok); return ok; }));

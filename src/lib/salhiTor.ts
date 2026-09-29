@@ -283,6 +283,34 @@ const TTL = 2 * 3600 * 1000;
 
 type Cached = { ts: number; times: number[]; u: number[]; v: number[] };
 
+/**
+ * ⚠️ 2026-09-29 (аудит 10): ӨДӨР ТУТМЫН КЭШИЙГ ЦЭВЭРЛЭНЭ. `selbe-windgrid:`
+ *    (≈146 KB) ба `salhi:` түлхүүрүүд огноогоор нэрлэгддэг тул хэзээ ч
+ *    устдаггүй байв — ~35 өдрийн дараа 5 MB квот дүүрч, БУСАД модулийн
+ *    `setItem` (ноорог, самбарын хэмжээ, ACL кэш) чимээгүй бүтэлгүйтдэг
+ *    байсан. Бичихийн ӨМНӨ ижил угтвартай, `keep`-д ороогүй огноотой
+ *    түлхүүрийг устгана (өнөөдөр + бичиж буй өдөр үлдэнэ). `prefix` нь
+ *    `selbe-windgrid:` мэт `:`-ээр төгссөн байх ёстой — огноо нь дараагийн
+ *    `:` хүртэлх хэсэг.
+ */
+export function pruneDayCache(prefix: string, keep: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const ls = window.localStorage;
+    const drop: string[] = [];
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (!k || !k.startsWith(prefix)) continue;
+      const day = k.slice(prefix.length).split(':')[0];
+      if (!keep.includes(day)) drop.push(k);
+    }
+    /* ⚠️ Давталтын дотор устгавал индекс шилжинэ — эхлээд цуглуулна */
+    for (const k of drop) ls.removeItem(k);
+  } catch {
+    /* private горим — цэвэрлэхгүй ажиллана */
+  }
+}
+
 function readCache(key: string): Cached | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -441,6 +469,8 @@ export async function loadWindField(date: string): Promise<WindField> {
       });
     }
 
+    /* ⚠️ 2026-09-29 (аудит 10): бусад өдрийн тор квот дүүргэхээс сэргийлнэ */
+    pruneDayCache('selbe-windgrid:', [date, ymd()]);
     try {
       window.localStorage.setItem(key, JSON.stringify({
         ts: Date.now(), times: outTimes, u: [...outU], v: [...outV],

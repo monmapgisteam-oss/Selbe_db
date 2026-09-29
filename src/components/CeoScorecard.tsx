@@ -195,7 +195,10 @@ function Score({ v, loading, pending, big, dim }: { v: number | null; loading?: 
       style={{ ['--h']: LEVEL_TONE[lv] } as CSSProperties}
       title={loading ? tr('Ачаалж байна…') : v == null ? tr('Энэ багцад хамаарах өгөгдөл алга') : levelLabel(lv)}
     >
-      {loading ? '…' : v == null ? '—' : num(v)}
+      {/* ⚠️ 2026-09-29 (аудит 10): 1 оронтой — `num(v)` 79.6-г «80» гэж бүхэлддэг атал
+          өнгө/түвшин нь бүхэлдээгүй утгаар (`scoreLevel(79.9) → warn`, check.mjs)
+          → «80» шар харагдаж, домог «≥80 хэвийн» гэдэгтэй зөрдөг байв. */}
+      {loading ? '…' : v == null ? '—' : num(v, 1)}
     </span>
   );
 }
@@ -365,7 +368,9 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
       <div className={s.summary}>
         <div className={`${s.sumTile} ${s.sumTotal}`}>
           <span className={s.sumLabel}>{tr('Нийт оноо')}</span>
-          <Score v={project?.total ?? null} loading={!project} big />
+          {/* ⚠️ 2026-09-29 (аудит 10): хүнд хэмжээс татагдаж байхад нийт оноог хэсэгчилсэн
+              дундажаар харуулахгүй — хүснэгтийн нүдтэй (`loadingDims.size > 0`) нэг дүрэм */}
+          <Score v={project?.total ?? null} loading={!project || loadingDims.size > 0} big />
           <span className={s.sumSub}>{works ? tr('{0} багц ажил', num(works.filter((w) => !w.cancelled).length)) : '…'}</span>
         </div>
         {DIMS.map((d) => (
@@ -532,7 +537,8 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                   <b className={s.dTitle}>{sel.name}</b>
                 </div>
                 <div className={s.dTotal}>
-                  <Score v={sel.total} big />
+                  {/* ⚠️ 2026-09-29 (аудит 10): хүснэгтийн мөртэй ижил — хүнд хэмжээс ирээгүй бол «…» */}
+                  <Score v={sel.total} loading={!sel.cancelled && loadingDims.size > 0} big />
                   <span>{tr('Нийт оноо')}</span>
                 </div>
                 <button type="button" className={s.dClose} onClick={() => setPick(null)} aria-label={tr('Сонголт цуцлах')} title={tr('Сонголт цуцлах (Esc)')}>×</button>

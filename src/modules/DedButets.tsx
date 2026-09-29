@@ -262,7 +262,10 @@ const WAIT = "…";
    алга болсон тул гацсан уу, ачаалж байна уу гэдэг нь ялгагдахгүй байв. */
 const kmOrWait = (m: number | null, empty = false, settled = false) =>
   (empty ? '—' : m == null ? (settled ? '—' : WAIT) : km(m, 1));
-const cntOrWait = (n: number | null, empty = false) => (empty ? '—' : n == null ? WAIT : num(n));
+/* ⚠️ 2026-09-29 (аудит 10): `settled` — `kmOrWait`-тай ижил дүрэм. Урьд нь
+   нэг давхарга унахад тооны KPI «…»-д мөнхөд үлдэж, км-ийн KPI «—» болдог байв. */
+const cntOrWait = (n: number | null, empty = false, settled = false) =>
+  (empty ? '—' : n == null ? (settled ? '—' : WAIT) : num(n));
 
 
 
@@ -371,6 +374,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * зүйл хийж, аль нь болсныг хэрэглэгч ялгахгүй.
    */
   const [multi, setMulti] = useState(false);
+  /* ⚠️ 2026-09-29 (аудит 10): тэгш өнцөгтийн асуулгын `then()` нь горимыг ref-ээр
+     уншина (`editModeRef`-тэй ижил) — хариу ирэхэд горим аль хэдийн унтарсан байж болно. */
+  const multiRef = useRef(false);
+  multiRef.current = multi;
   /**
    * Сонголт — НЭГ давхаргын объектууд (хэрэглэгчийн сонголт: давхарга бүр
    * өөр схемтэй тул нэг маягт нэг давхаргыг л зурна). `layerId` нь сонголт
@@ -420,6 +427,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const [reshaped, setReshaped] = useState<unknown>(null);
   const [reshapeToken, setReshapeToken] = useState(0);
   const [geomBusy, setGeomBusy] = useState(false);
+  /* ⚠️ 2026-09-29 (аудит 10): геометр БИЧИГДСЭН тоолуур (хэлбэр хадгалах ·
+     хэлбэрийн буцаалт). Нээлттэй маягт (`DedButetsEdit`) үүгээр `Shape__*`-ээ
+     дахин уншина — эс бөгөөс «Геометрийн бодит урт» ХУУЧИН уртыг харуулдаг байв. */
+  const [geomRev, setGeomRev] = useState(0);
   /** Устгал явж байна — маягтын бүх товч түгжигдэнэ */
   const [delBusy, setDelBusy] = useState(false);
   /** Зураалтын нэг алхам буцаах дохио (`SketchViewModel.undo`) */
@@ -1066,6 +1077,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       await saveGeometry(meta, reshape.oid, reshaped);
       refreshLayer(reshape.layerId);
       dropTotalsLater();
+      /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
+      setGeomRev((x) => x + 1);
       /* Урьдчилсан геометр хуучирлаа — дараагийн засвар шинээр татна */
       preGeom.current = null;
       /* ⚠️ Буцаах геометр нь ЗАСВАРААС ӨМНӨХ хуулбар (`reshape.geometry`) —
@@ -1105,7 +1118,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         if (u.kind === 'add') await deleteRow(meta, u.oid);
         else if (u.kind === 'attr') await applyAttrs(meta, u.oid, u.attrs);
         else if (u.kind === 'batch') await revertRows(meta, u.rows);
-        else await saveGeometry(meta, u.oid, u.geometry);
+        else {
+          await saveGeometry(meta, u.oid, u.geometry);
+          /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
+          setGeomRev((x) => x + 1);
+        }
         refreshLayer(u.layerId);
         dropTotalsLater();
         /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
@@ -1237,7 +1254,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
              уншиж ГАДНА нь бодно; татаж байх зуур хэрэглэгч товшсон бол ref
              хамгийн сүүлийн төлөвтэй тул алдахгүй. */
           const m = mselRef.current;
-          if (m.layerId !== layerId) return;
+          /* ⚠️ 2026-09-29 (аудит 10): татаж байх зуур хэрэглэгч засварын/олон
+             сонголтын горимоос ГАРСАН бол хариуг хаяна — эс бөгөөс хоцорсон
+             `featureEffect` бүх объектыг бүдгэрүүлж (арилгах UI байхгүй), хуучин
+             `msel.oids` дараагийн нээлтэд дахин гарч ирдэг байв. */
+          if (!editModeRef.current || !multiRef.current || m.layerId !== layerId) return;
           const oids = [...new Set([...m.oids, ...found])];
           setMsel({ layerId, oids });
           showMsel(layerId, oids);
@@ -1380,7 +1401,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               label={tr('Гэрээний багцын шугам')}
             />
             <Stat
-              value={cntOrWait(countOf(totals, wellIds), wellIds.length === 0)}
+              value={cntOrWait(countOf(totals, wellIds), wellIds.length === 0, totals.done >= totals.total)}
               unit={tr('ш')}
               label={tr('Бохирын худаг')}
             />
@@ -1820,6 +1841,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               layerId={pick.layerId}
               oid={pick.oid}
               geometry={pick.geometry}
+              geomRev={geomRev}
               canEdit={canEdit && canEditLayer(pick.layerId)}
               docked
               onCancel={closeEdit}

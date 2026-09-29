@@ -204,12 +204,17 @@ class Painter {
       sx += sw;
     }
     let gx = x;
-    const ly = y + h + 16;
+    let ly = y + h + 16;
     for (const [n, c, lb] of segs) {
-      this.rect(gx, ly - 9, 10, 10, c, 2);
       const s = `${lb} ${n}`;
+      const ew = 14 + s.length * 6 + 14;
+      /* ⚠️ 2026-09-29 (аудит 10): домог нэг мөрөнд таслагдахгүй байсан тул
+         газрын 8 төлөв 550px баганад ~900px болж ХАБ хавтан дээр давхардаж
+         зурагддаг байв — багтахгүй бол дараагийн мөрөнд */
+      if (gx > x && gx + ew > x + w) { gx = x; ly += 16; }
+      this.rect(gx, ly - 9, 10, 10, c, 2);
       this.text(gx + 14, ly, s, { size: 10.5, fill: INK3 });
-      gx += 14 + s.length * 6 + 14;
+      gx += ew;
     }
     return ly + 20;
   }
@@ -275,7 +280,11 @@ export function buildInfographic(
   P.hbar(L, yl, colW, tr('Бодит'), (p.actual ?? 0) / 100, p.actual == null ? '—' : pct(p.actual, 1), { color: late ? WARN : DATA, nameW: 100, valW: 80 });
   yl += 20;
   if (p.gap != null) {
-    const s = p.gap >= 0 ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1)) : tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1));
+    /* ⚠️ 2026-09-29 (аудит 10): `LATE_GAP`-аас доош зөрүүг «Хоцрогдол 0.0» гэж
+       бичдэг байв — дэлгэц (`ExecReport`) ба PDF (`execPdf`) «хуваарийн дагуу» гэдэг */
+    const s = p.gap >= LATE_GAP
+      ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1))
+      : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1)) : tr('хуваарийн дагуу');
     /* ⚠️ Хоцрогдол бол УЛААН, бусад тохиолдолд өнгөгүй (хэвийн байдлыг
        өнгөөр тэмдэглэхээ больсон — зөвхөн асуудал өнгөтэй) */
     P.text(L + colW, yl + 6, s, { size: 11.5, weight: 600, fill: late ? BAD : INK2, anchor: 'end' });
@@ -331,8 +340,9 @@ export function buildInfographic(
    *   · BAD улаан — АСУУДАЛ (чөлөөлөгдөөгүй бүх төлөв)
    * ⚠️ Чөлөөлсөн төлөв ТҮҮХИЙ утгаар (`PARCEL_CLEARED`) — `land.ts`-тэй ижил.
    */
+  /* ⚠️ 2026-09-29 (аудит 10): шошго нь `tr()`-ээр (дэлгэц/PDF-тэй ижил) — жишилт түүхийгээр */
   const stSegs: [number, string, string][] = g.land.byStatus.map((b) => [
-    b.n, b.label === PARCEL_CLEARED ? DATA : BAD, b.label,
+    b.n, b.label === PARCEL_CLEARED ? DATA : BAD, tr(b.label),
   ]);
   if (stSegs.length) yl = P.segments(L, yl, colW, stSegs, 18);
   yl += 4;
@@ -342,7 +352,7 @@ export function buildInfographic(
   if (!g.land.reasons.length) { P.text(L, yl + 11, tr('Шалтгаан бүртгэгдээгүй'), { size: 11.5, fill: INK3 }); yl += 20; }
   for (const r of g.land.reasons.slice(0, 5)) {
     /* ⚠️ Чөлөөлөгдөөгүй шалтгаан бүр АСУУДАЛ тул улаан */
-    P.hbar(L, yl, colW, r.label, topReason ? r.n / topReason : 0, num(r.n), { color: BAD, nameW: 210, valW: 60 });
+    P.hbar(L, yl, colW, tr(r.label), topReason ? r.n / topReason : 0, num(r.n), { color: BAD, nameW: 210, valW: 60 });
     yl += 20;
   }
 
@@ -405,9 +415,11 @@ export function buildInfographic(
   yr += 32;
   const top = g.byType[0]?.cost ?? 0;
   const nameW = 170, valW = 215;
+  const trackW = colW - nameW - valW - 8;
   for (const t of g.byType.slice(0, 7)) {
     P.hbar(R, yr, colW, t.label, top ? t.cost / top : 0, `${money(t.cost)} · ${t.perf == null ? '—' : pct(t.perf, 1)}`, { color: DATA_SOFT, nameW, valW });
-    P.rect(R + nameW, yr, top ? ((colW - nameW - valW - 8) * t.contract) / top : 0, 14, DATA, 3);
+    /* ⚠️ 2026-09-29 (аудит 10): гэрээ > төсөв бол зурвас утгын багана дээр гарч байв — хязгаарлана */
+    P.rect(R + nameW, yr, Math.min(trackW, top ? (trackW * t.contract) / top : 0), 14, DATA, 3);
     yr += 20;
   }
   yr += 4;

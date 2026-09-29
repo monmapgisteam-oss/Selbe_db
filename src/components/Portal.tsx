@@ -91,6 +91,8 @@ import {
 } from '@/lib/services';
 import { readParam, writeParams } from '@/lib/urlState';
 import { planNavBusy } from '@/lib/huvaariBatlah';
+/* ⚠️ 2026-09-29 (аудит 10): импортгүй хөнгөн lib — `Finance` өөрөө `dynamic` */
+import { finNavDirty } from '@/lib/finEdit';
 import { num } from '@/lib/format';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
@@ -469,6 +471,11 @@ function PortalContent(
   const setView = useCallback((v: ViewKey): boolean => {
     if (v !== viewNowRef.current && planNavBusy()
       && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
+    /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
+       хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
+       байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
+    if (v !== viewNowRef.current && finNavDirty()
+      && !window.confirm(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);

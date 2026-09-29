@@ -323,7 +323,10 @@ function TailanFull() {
       setOk('');
       setBusy(true);
       try {
-        await fn(rows, date || dateTime(Date.now()), extra);
+        /* ⚠️ 2026-09-29 (аудит 10): огноог ҮҮСГЭХ агшинд авна. Урьд нь хуудас нээсэн
+           үеийн `date` дамждаг тул хэдэн цагийн дараа гаргасан PDF/.eml хуучин цагаар
+           тамгалагддаг байв (`||`-ийн нөөц хэзээ ч ажилладаггүй). */
+        await fn(rows, dateTime(Date.now()), extra);
         setOk(done);
       } catch (e) {
         console.error('[selbe] тайлан:', e);
@@ -339,7 +342,7 @@ function TailanFull() {
         setBusy(false);
       }
     },
-    [rows, extra, busy, date],
+    [rows, extra, busy],
   );
 
   const send = useCallback(
@@ -503,6 +506,8 @@ function TailanFull() {
                         {tr('. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр')}
                         {/* ⚠️ null → «—» (тоо орхигдвол өгүүлбэр утгагүй болно) */}
                         {' '}<strong>{pct(x.land.pct, 1)}</strong> {tr('байгаа ч')}
+                        {/* ⚠️ 2026-09-29 (аудит 10): `d.landLeft` кадастр уншигдаагүй үед `null` → «—»
+                            (урьд нь «0 нэгж талбар үлдсэн» гэж худал бичдэг байв) */}
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
                       <p>

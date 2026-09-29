@@ -2716,7 +2716,10 @@ export const MapCanvas = memo(function MapCanvas({
             else pickRef.current?.(hit.attrs, hit.id);
             return;
           }
-          if (view.destroyed || !e.mapPoint) { pickRef.current?.(null, null); return; }
+          /* ⚠️ 2026-09-29 (аудит 10): view устсаны дараа ирсэн hitTest дуудагчийн
+             сонголтыг `null`-аар арилгадаг байв — устсан бол юу ч хөндөхгүй. */
+          if (view.destroyed) return;
+          if (!e.mapPoint) { pickRef.current?.(null, null); return; }
           // ≈6 пикселийн хүлцэл — нимгэн шугам, жижиг цэгийг барихад хангалттай
           const tol = Math.max(2, (view.resolution || 1) * 6);
           const q = await pickByQuery(e.mapPoint, tol);
@@ -4873,8 +4876,9 @@ function TipBox({
       <div className={s.tipHead}>{title}</div>
       {rows.length > 0 && (
         <dl className={s.tipRows}>
-          {rows.map((r) => (
-            <div key={r.k}>
+          {/* ⚠️ 2026-09-29 (аудит 10): `r.k` нь alias — хоёр талбар ижил alias-тай бол key давхцана */}
+          {rows.map((r, i) => (
+            <div key={`${r.k}|${i}`}>
               <dt>{r.k}</dt>
               <dd className="num">{r.v}</dd>
             </div>

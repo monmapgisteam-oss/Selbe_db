@@ -191,20 +191,41 @@ export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[
 
   const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
   const lenOf = (k: number) => endOf(k) - starts[k];
+  const need = fullLen(starts.length, lenOf, expect);
 
   /* Сүүлийн жаазаас ухарч ЭХНИЙ бүтэн жаазыг ол */
   let k = starts.length - 1;
   while (k > 0) {
     const len = lenOf(k);
     /* Өмнөхөөсөө богино = тасарсан; зураглалаас богино нь ч мөн адил */
-    if (len >= lenOf(k - 1) && (expect <= 0 || len >= expect)) break;
+    if (len >= lenOf(k - 1) && (need <= 0 || len >= need)) break;
     console.warn(
       `[selbe] хагас бичигдсэн жаазыг алгаслаа: ${len} мөр `
-      + `(өмнөх ${lenOf(k - 1)}, хүлээгдэх ${expect || '?'}) — унасан нийтлэлийн үлдэгдэл`,
+      + `(өмнөх ${lenOf(k - 1)}, хүлээгдэх ${need || '?'}) — унасан нийтлэлийн үлдэгдэл`,
     );
     k -= 1;
   }
   return all.slice(starts[k], k + 1 < starts.length ? starts[k + 1] : undefined);
+}
+
+/**
+ * «БҮТЭН» ЖААЗНЫ ШААРДАХ УРТ — зураглал ба АЖИГЛАГДСАН хамгийн урт жаазны бага нь.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): `expect` нь `TREES[key].length` бөгөөд зураглал
+ *    № ба Ажил хоёул ХООСОН мөрийг тоолдог атлаа `loadRows` тэднийг алгасдаг
+ *    тул Багц 3.1 · 9F-д архивын жааз ҮРГЭЛЖ 1,470 (зураглал 1,471). Тэгвэл
+ *    `len >= expect` ХЭЗЭЭ Ч биелэхгүй — нэг өдөрт хоёр жааз байхад
+ *    `lastFrame` k=0 хүртэл ухарч ХАМГИЙН ХУУЧИН жаазыг (`firstFrame` эсрэгээр
+ *    хамгийн шинийг) буцаадаг байв: бөглөх хуудас хуучин жааз харуулж,
+ *    дараагийн `archiveSubmission` тэр хуучин суурь дээр бичиж хоёр дахь
+ *    батлалтын нэмэлт чимээгүй алга болдог. Жааз зөвхөн НЭМЭГДДЭГ тул
+ *    ажиглагдсан хамгийн урт жааз нь «бүтэн»-ий бодит дээд хязгаар.
+ */
+function fullLen(n: number, lenOf: (k: number) => number, expect: number): number {
+  if (expect <= 0) return 0;
+  let longest = 0;
+  for (let k = 0; k < n; k += 1) longest = Math.max(longest, lenOf(k));
+  return Math.min(expect, longest);
 }
 
 /**
@@ -238,14 +259,17 @@ export function firstFrame(all: Feature[], noField: string, expect = 0): Feature
 
   const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
   const lenOf = (k: number) => endOf(k) - starts[k];
+  /* ⚠️ 2026-09-29 (аудит 10): зураглалаас нэгээр богино жаазтай багцад (1470↔1471)
+     `expect`-ээр шалгавал бүтэн жааз хэзээ ч олдохгүй — `fullLen`-ийн ⚠️ */
+  const need = fullLen(starts.length, lenOf, expect);
 
   /* Эхнээс урагшаа — ЭХНИЙ бүтэн (зураглалын урттай) жааз */
   let k = 0;
   while (k < starts.length - 1) {
-    if (expect <= 0 || lenOf(k) >= expect) break;
+    if (need <= 0 || lenOf(k) >= need) break;
     console.warn(
       `[selbe] лавлах: хагас эхний жаазыг алгаслаа: ${lenOf(k)} мөр `
-      + `(хүлээгдэх ${expect}) — унасан нийтлэлийн үлдэгдэл`,
+      + `(хүлээгдэх ${need}) — унасан нийтлэлийн үлдэгдэл`,
     );
     k += 1;
   }

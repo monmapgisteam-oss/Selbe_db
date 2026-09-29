@@ -324,7 +324,7 @@ export function ExecReport() {
                               <td className={r.num}>{srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—'}</td>
                             </tr>
                           ))}
-                          <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td><td className={r.num}>100.0%</td></tr>
+                          <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td>{/* ⚠️ 2026-09-29 (аудит 10): дүн 0 бол мөрүүд «—» тул нийт ч «—» */}<td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
                         </tbody>
                       </table>
                       {/* ⚠️ Хувь нь НИЙТ ТӨСӨВТ эзлэх БИШ гэдгийг ил хэлнэ */}

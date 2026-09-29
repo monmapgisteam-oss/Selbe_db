@@ -1154,7 +1154,10 @@ export async function apply(a: {
         }
       }
     }
-    await refresh();
+    /* ⚠️ 2026-09-29 (аудит 10): шийдвэр · архив · нэгтгэл · IPC бүгд бүтсэний ДАРААХ
+       дахин ачаалалт унавал `{ok:false}` буцаж хянагч улаан алдаа хараад дахин
+       оролдож STALE авдаг байв — уншилтын алдаа батлалтыг унагахгүй. */
+    try { await refresh(); } catch (e) { console.warn('[selbe] шийдвэрийн дараах дахин ачаалалт унав:', e); }
     /* 2026-09-23 (#16): `Zovshoorson_nud` талбар алга байсан бол шар мөрөөр хэлнэ */
     if (okWarn) warns.push(okWarn);
     return warns.length ? { ok: true, warn: warns.join(' · ') } : { ok: true };

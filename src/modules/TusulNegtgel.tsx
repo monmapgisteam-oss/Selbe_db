@@ -195,9 +195,14 @@ function SyncNotice({ live, sync, onDone }: {
     return <p className={n.syncNote}>{tr('Системийн эх уншигдсангүй — хүснэгтийн хадгалсан утгыг харуулж байна.')}</p>;
   }
   if (!st || st.kind === 'off' || st.kind === 'ok') return null;
+  /* ⚠️ 2026-09-29 (аудит 10): `force` ЗӨВХӨН `guard` төлөвт (super хамгаалалтыг
+     нүдээр харж баталгаажуулсан). Урьд нь `error` төлөвийн цорын ганц товч ч
+     мөн `force: true` дууддаг тул түр 429-ийн дараах «дахин оролдлого» ±20-ийн
+     мөр/нийт хамгаалалтыг ДАВЖ бүх зөрүүг шалгалтгүй бичдэг байв. Алдааны
+     дараа энгийн дуудлага дахин ажиллана (`syncNegtgel` уналтад `lastSync = 0`). */
   const force = async () => {
     setBusy(true);
-    const r = await syncNegtgel({ force: true });
+    const r = await syncNegtgel({ force: st.kind === 'guard' });
     setBusy(false);
     if (r.kind === 'ok') onDone();
     else setSt(r);
@@ -219,7 +224,7 @@ function SyncNotice({ live, sync, onDone }: {
         </span>
       )}
       <button type="button" disabled={busy} onClick={() => { void force(); }}>
-        {busy ? tr('Бичиж байна…') : tr('Системийн утгаар шинэчлэх')}
+        {busy ? tr('Бичиж байна…') : st.kind === 'error' ? tr('Дахин оролдох') : tr('Системийн утгаар шинэчлэх')}
       </button>
     </div>
   );

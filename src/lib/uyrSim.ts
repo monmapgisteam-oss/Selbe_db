@@ -422,7 +422,10 @@ const ACC_EVERY = 5;
 /** Нэг чөлөөт алхмын дараа хөтөчид амьсгал өгөх давтамж */
 const YIELD_EVERY = 60;
 
-export type SimProgress = { step: number; total: number; minute: number };
+/* ⚠️ 2026-09-29 (аудит 10): `totalMin` — давталт ихэвчлэн `t >= totalS`-ээр
+   (1,500–3,500 алхамд) дуусдаг тул явцыг `step / MAX_STEPS`-ээр бодвол
+   15–40%-д гацаад шууд дуусдаг байв. Дуудагч `minute / totalMin`-ээр бодно. */
+export type SimProgress = { step: number; total: number; minute: number; totalMin: number };
 
 /**
  * ЗАГВАРЧЛАХ ТАЛБАЙ — хэрэглэгчийн зурсан полигон (Web Mercator цагирагууд).
@@ -1227,7 +1230,7 @@ export async function simulateFlood(
         err.name = 'AbortError';
         throw err;
       }
-      onProgress?.({ step, total: MAX_STEPS, minute: t / 60 });
+      onProgress?.({ step, total: MAX_STEPS, minute: t / 60, totalMin: SIM_MIN });
       // Хөтөчид амьсгал өгнө — эс бөгөөс UI хөлддөг
       await new Promise((r) => setTimeout(r, 0));
     }

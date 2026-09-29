@@ -494,12 +494,24 @@ export type IpcTotals = {
  * хэдийн гэрээ бүрд НЭГ утга үлдээсэн. Түүхий 45 мөрөөр нийлүүлэхийг
  * ХОРИГЛОНО (7 дахин давхардана).
  */
+/**
+ * ТӨЛБӨРИЙН ТОО — зөвхөн дүн (`dun`) бүхий мөр.
+ *
+ * ⚠️ 2026-09-29 (аудит 10): урьд нь `rows.length` тоолдог тул гүйцэтгэлээс
+ *    автоматаар үүссэн AUTO мөр (`murun_id` `AUTO|…`, `dun` = `null` —
+ *    санхүүгийн газар хараахан олгоогүй) «төлбөр» болж тоологддог байв. Тэр нь
+ *    олголт биш, гүйцэтгэлийн тэмдэглэл; `dun` нөхөгдмөгц төлбөр болж
+ *    тоологдоно. Бүлгийн толгой ба хөлийн нийт ИЖИЛ дүрмээр.
+ */
+export const payCount = (rows: readonly PayRow[]): number =>
+  rows.filter((r) => r.amount != null).length;
+
 export function ipcTotals(bs: readonly ContractBlock[]): IpcTotals {
   let contract: number | null = null;
   let paid: number | null = null;
   let pays = 0;
   for (const b of bs) {
-    pays += b.rows.length;
+    pays += payCount(b.rows);
     if (b.contractTotal != null) contract = (contract ?? 0) + b.contractTotal;
     if (b.paidTotal != null) paid = (paid ?? 0) + b.paidTotal;
   }

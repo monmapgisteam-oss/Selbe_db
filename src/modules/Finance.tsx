@@ -65,6 +65,7 @@ import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, parseCell as parseCellRaw, type ParseMsg,
+  setFinNavDirty,
 } from '@/lib/finEdit';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
@@ -892,6 +893,13 @@ type FinTables = {
    * ⚠️ `cashflow`-д ОРОХГҮЙ: гол хүснэгт нь 78 ажлын мөр л байна.
    */
   cfMonths: Row[];
+  /**
+   * Сарын задаргаа УНШИГДСАНГҮЙ (2026-09-29 аудит 10). ⚠️ Урьд нь алдаа `[]`
+   * болж «сар огт үүсээгүй»-тэй ялгагдахгүй байв — хугацаа засахад БҮХ сар
+   * дахин нэмэгдэж давхардан, S-муруй хоёр дахин тоологддог. `publish` энэ үед
+   * сарын нийцүүлэлтийг зогсооно; «Cashflow хувиарлах» «уншигдсангүй» гэж хэлнэ.
+   */
+  cfMonthsError: boolean;
 };
 
 /**
@@ -934,7 +942,9 @@ async function loadFinRegisterRaw(): Promise<FinTables> {
     loadHoRows(),
     /* ⚠️ Сарын задаргаа унасан ч бүртгэл нээгдэх ёстой — хоосон жагсаалтад
        буцна. Тэр өгөгдөл байхгүй бол 5-р түвшин хоосон, бусад нь бүтэн. */
-    loadCfMonthRows().catch(() => [] as Row[]),
+    /* ⚠️ 2026-09-29 (аудит 10): алдааг `null` болгож ТЭМДЭГЛЭНЭ (`cfMonthsError`) —
+       хоосон `[]` нь «сар үүсээгүй»-тэй ялгагдахгүй байв. */
+    loadCfMonthRows().catch((e) => { console.warn('[selbe] cf months:', e); return null; }),
   ]);
   /*
    * ⚠️ «БОНДЫН ХҮҮ» мөр ЭНД шүүгдэнэ (2026-09-10) — хүснэгт ба «Cashflow
@@ -950,7 +960,8 @@ async function loadFinRegisterRaw(): Promise<FinTables> {
     cfFields: cfFields ?? [],
     ipcFields: ipcFields ?? [],
     fieldsError: cfFields == null || ipcFields == null,
-    cfMonths,
+    cfMonths: cfMonths ?? [],
+    cfMonthsError: cfMonths == null,
   };
 }
 
@@ -1138,6 +1149,13 @@ const PLAIN_INT = new Set<string>([
   /* ⚠️ `on_` нь Integer тул ерөнхий тоон дүрэмд орж «2,025» гэж гарна. */
   HO_IPC.payFields.year,           // Он
   HO_IPC.contractFields.no,        // № (гэрээний дугаарлалт)
+  /* ⚠️ 2026-09-29 (аудит 10): ТАНИГЧ талбарууд — зурвас/НИЙТ мөрөнд НИЙЛБЭР
+     болж гардаг байв (`summable` нь `PLAIN_INT`-ийг хасдаг). `Cashflow_ID` нь
+     тоон (сарын мөрийн холбоос); `dugaar2`, `bagts_74` нь дугаар/кодын багана —
+     тоон биш бол энэ жагсаалт тэдэнд нөлөөгүй. */
+  'Cashflow_ID',
+  'dugaar2',
+  'bagts_74',
 ]);
 
 /**
@@ -1244,6 +1262,18 @@ const EMPTY_HIDE: string[] = [];
 const CALC_RO = new Set<string>(['Cashflow_dun']);
 
 /**
+ * `Cashflow_ID` — хоосон бол `null`.
+ * ⚠️ 2026-09-29 (аудит 10): урьд нь `Number(r.Cashflow_ID)` шууд — `Number(null)` = 0
+ *    тул `Cashflow_ID`-гүй ажил `0` гэж түлхүүрлэгдэж, `Cashflow_ID: 0` сарын мөр
+ *    үүсгэдэг, ийм хоёр ажил нэг сарын жагсаалтыг ХУВААЛЦДАГ байв.
+ */
+const cfIdOf = (v: unknown): number | null => {
+  if (v == null || String(v).trim() === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
+
+/**
  * Үйлчилгээний БҮРЭН хүснэгт — талбар бүр багана (alias), мөр бүр яг байгаагаар.
  *
  * ⚠️ ЗАСВАРЫН ГОРИМ (2026-08-28). Эдгээр хоёр хүснэгт нь өдөр тутам засагддаг
@@ -1261,7 +1291,7 @@ const CALC_RO = new Set<string>(['Cashflow_dun']);
  *      дахин дарна.
  */
 function FullTable({
-  title, subtitle, rows, fields, url, oidField, dataKey, facets, months = [],
+  title, subtitle, rows, fields, url, oidField, dataKey, facets, months = [], monthsError = false,
   canEdit, canRow, onSaved, onDirty,
 }: {
   title: string;
@@ -1279,6 +1309,8 @@ function FullTable({
    * бүгд `rows`-ийн индексээр ажилладаг тул тэнд мөр шургуулбал гажина.
    */
   months?: Row[];
+  /** Сарын задаргаа уншигдсангүй — `publish` сарын нийцүүлэлтийг зогсооно (2026-09-29 аудит 10) */
+  monthsError?: boolean;
   /**
    * Шүүлтийн гурван нүүр (багц · он · төрөл) — талбарын код нь үйлчилгээ
    * бүрд ӨӨР тул ЭЦГЭЭС дамжина. ⚠️ `FullTable` нь дурын үйлчилгээнд
@@ -1299,7 +1331,21 @@ function FullTable({
   /** Засварын горим асаалттай эсэх — эрхтэй хүнд л товч гарна */
   const [edit, setEdit] = useState(false);
   /** `oid:талбар` → шинэ ТЕКСТ. Хоосон мөр ('') нь «null болгоно» гэсэн үг. */
-  const [pend, setPend] = useState<Record<string, string>>({});
+  const [pend, setPendRaw] = useState<Record<string, string>>({});
+  /**
+   * ⚠️ 2026-09-29 (аудит 10): НИЙТЛЭЖ БАЙХ ҮЕД ЗАСВАРЫГ ХААНА. `publish` нь
+   *    `await applyAll`-ийн дараа `reset()`-ээр `pend`/`adds`-ийг БҮХЭЛД нь
+   *    цэвэрлэдэг тул тэр 1–2 с-д бичсэн утга илгээгдэлгүй арилж, мэдэгдэл
+   *    «хадгалагдав» гэдэг байв. Олон оролтын цэгийг тус бүр `readOnly` болгохын
+   *    оронд ГАНЦ боомт: засварын бүх зам `setPend`/`setAdds`-ээр явдаг тул
+   *    `busyRef` үед үл тоомсорлоно (удирдлагатай оролт тул утга өөрчлөгдөхгүй).
+   *    `reset()` ба нийтлэл өөрөө `…Raw`-г шууд хэрэглэнэ.
+   *    `ref` (state биш) — `setBusy(true)`-ийн дахин зурагдалтаас ӨМНӨ хаагдана.
+   */
+  const busyRef = useRef(false);
+  const setPend: typeof setPendRaw = useCallback((u: Parameters<typeof setPendRaw>[0]) => {
+    if (!busyRef.current) setPendRaw(u);
+  }, []);
   /**
    * НИЙТЭЛСЭН НҮД — «энэ сешнд юу өөрчлөгдсөн» гэдгийн тэмдэг.
    *
@@ -1320,7 +1366,11 @@ function FullTable({
    */
   const [saved, setSaved] = useState<Set<string>>(new Set());
   /** Нийтлээгүй ШИНЭ мөрүүд — сөрөг түр дугаартай */
-  const [adds, setAdds] = useState<Record<string, string>[]>([]);
+  const [adds, setAddsRaw] = useState<Record<string, string>[]>([]);
+  /* ⚠️ 2026-09-29 (аудит 10): `setPend`-ийн ⚠️ — нийтлэх үед шинэ мөрийн засвар ч хаагдана */
+  const setAdds: typeof setAddsRaw = useCallback((u: Parameters<typeof setAddsRaw>[0]) => {
+    if (!busyRef.current) setAddsRaw(u);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1399,8 +1449,9 @@ function FullTable({
   const monthBy = useMemo(() => {
     const m = new Map<number, Row[]>();
     for (const r of months) {
-      const id = Number(r.Cashflow_ID);
-      if (!Number.isFinite(id)) continue;
+      /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → алгасна (`cfIdOf`-ийн ⚠️) */
+      const id = cfIdOf(r.Cashflow_ID);
+      if (id == null) continue;
       const arr = m.get(id) ?? [];
       arr.push(r);
       m.set(id, arr);
@@ -1595,10 +1646,10 @@ function FullTable({
 
   /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
      нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
-  const reset = () => { setPend({}); setAdds([]); setErr(null); };
+  const reset = () => { setPendRaw({}); setAddsRaw([]); setErr(null); };
 
   const publish = async () => {
-    if (busy || !dirty) return;
+    if (busy || busyRef.current || !dirty) return;
     /*
      * ⚠️ ЭНЭ ХҮСНЭГТ ЭХ МӨРИЙГ УСТГАХГҮЙ (2026-09-08, хэрэглэгчийн заавар).
      * Урьд нь мөр устгах товч байсан бөгөөд нийтлэхийн өмнө баталгаа асуудаг
@@ -1609,6 +1660,7 @@ function FullTable({
      * ⚠️ Иймд нийтлэх нь ЗАСВАР ба НЭМЭЛТ хоёрыг л илгээнэ — баталгаа
      * асуухгүй: өдөр тутмын ажил бүрд цонх гарвал хүн уншихаа болино.
      */
+    busyRef.current = true; // ⚠️ 2026-09-29 (аудит 10): `setPend`-ийн ⚠️
     setBusy(true);
     setErr(null);
     setMsg(null);
@@ -1633,6 +1685,9 @@ function FullTable({
         const o: Record<string, unknown> = {};
         for (const [fld, v] of Object.entries(a)) {
           if (v.trim() === '') continue;            // хоосон нүд — талбарыг огт илгээхгүй
+          /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч илгээгдэхгүй —
+             гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
+          if (CALC_RO.has(fld)) continue;
           o[fld] = parseCell(v, typeOf(fld), labelOf(fld));
         }
         return o;
@@ -1671,26 +1726,24 @@ function FullTable({
           const x = Number(v);
           return Number.isFinite(x) && x > 0 ? new Date(x) : null;
         };
-        /** «2026-03» */
-        const keyOf = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-
-        for (const [oid, a] of upd) {
-          if (!('ehleh_ognoo' in a) && !('duusah_ognoo' in a)) continue;
-          const r = rowByOid.get(oid);
-          const id = Number(r?.Cashflow_ID);
-          if (!Number.isFinite(id)) continue;
-          const st = dateOf(a, r, 'ehleh_ognoo');
-          const en = dateOf(a, r, 'duusah_ognoo');
-          /* ⚠️ Хоёр огнооны АЛЬ НЭГ нь дутуу бол сарын жагсаалт тодорхойгүй —
-             хуучин мөрүүдийг ХЭВЭЭР үлдээнэ, таамаглаж устгахгүй. */
-          if (st == null || en == null) continue;
-
-          /* Шинэ мужийн сарууд */
+        /**
+         * «2026-03» — ОРОН НУТГИЙН (УБ) цагаар.
+         * ⚠️ 2026-09-29 (аудит 10): урьд нь UTC-ээр уншдаг байв. Порталаас орсон огноо
+         *    UTC шөнө дунд (`T00:00:00Z`) тул зөрөөгүй, харин AGOL/Excel-ээс орсон УБ-ын
+         *    шөнө дунд (= өмнөх өдрийн 16:00Z) нь нүдэнд «2026-06-01» харагдаж байхад
+         *    сарын муж «5-р сар»-аар төгсөж, 6-р сарын мөр үүсдэггүй (эсвэл хоосон бол
+         *    устдаг) байв. Нүд `dayKey`/`localDay` (орон нутгийн) тул муж ч түүгээр.
+         *    УБ = UTC+8 тул UTC шөнө дундын утга орон нутгаар ЯГ ТЭР өдөр — хуучин
+         *    өгөгдлийн сар өөрчлөгдөхгүй. `Cashflow_start` `Date.UTC`-ээр бичигдсээр.
+         */
+        const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        /** Эхлэх–дуусах огнооны хоорондох сарууд (орон нутгийн сараар, дээд тал нь 480) */
+        const monthsOf = (st: Date, en: Date) => {
           const want = new Map<string, { s: number; e: number }>();
-          let y = st.getUTCFullYear();
-          let m = st.getUTCMonth();
+          let y = st.getFullYear();
+          let m = st.getMonth();
           const n2 = Math.min(480, Math.max(1,
-            (en.getUTCFullYear() - y) * 12 + (en.getUTCMonth() - m) + 1));
+            (en.getFullYear() - y) * 12 + (en.getMonth() - m) + 1));
           for (let i = 0; i < n2; i += 1) {
             want.set(`${y}-${String(m + 1).padStart(2, '0')}`, {
               s: Date.UTC(y, m, 1),
@@ -1699,6 +1752,51 @@ function FullTable({
             m += 1;
             if (m > 11) { m = 0; y += 1; }
           }
+          return want;
+        };
+
+        /* ⚠️ 2026-09-29 (аудит 10): сарын задаргаа УНШИГДААГҮЙ (`monthsError`) үед
+           хугацаа/ХО дүнгийн засварыг ЗОГСООНО. Урьд нь алдаа нь «сар байхгүй»
+           мэт харагдаж, хугацаа засахад БҮХ сар дахин нэмэгдэн давхардаж,
+           S-муруй хоёр дахин тоологддог байв. */
+        if (monthsError && [...upd.values()].some((a) => 'ehleh_ognoo' in a || 'duusah_ognoo' in a || 'ho_dun_geree' in a)) {
+          throw new Error(tr('Сарын задаргаа уншигдсангүй — хугацаа эсвэл ХО дүнгийн засвар сарын мөрийг давхардуулж болзошгүй тул нийтлэгдсэнгүй. Хуудсыг дахин ачаална уу.'));
+        }
+
+        /* ⚠️ 2026-09-29 (аудит 10): `Cashflow_ID`-гүй мөрд ДАРААГИЙН дугаар ононо
+           (max + 1, дараалан) — шинэ мөр ба хугацаа нь засагдаж буй хуучин мөр.
+           Дугааргүй бол сарын мөр холбогдох түлхүүргүй (`cfIdOf`-ийн ⚠️).
+           ⚠️ max-ийг БҮТЭН хүснэгтээс (`loadCashflowNewRows` — «БОНДЫН ХҮҮ» шүүгдээгүй)
+           ба сарын мөрөөс авна: зөвхөн харагдаж буй `rows`-оор бодвол нуусан
+           мөрийн дугаартай давхцана. Талбар хүснэгтэд байхгүй бол огт хөндөхгүй. */
+        if (byName.has('Cashflow_ID')) {
+          const lackNew = newRows.filter((o) => cfIdOf(o.Cashflow_ID) == null);
+          const lackOld = [...upd.entries()].filter(([oid, a]) => ('ehleh_ognoo' in a || 'duusah_ognoo' in a)
+            && cfIdOf(a.Cashflow_ID) == null && cfIdOf(rowByOid.get(oid)?.Cashflow_ID) == null);
+          if (lackNew.length || lackOld.length) {
+            const all = await loadCashflowNewRows();
+            let next = 1 + Math.max(0, ...[...all, ...rows, ...months, ...newRows]
+              .map((r) => cfIdOf(r.Cashflow_ID) ?? 0));
+            for (const o of lackNew) { o.Cashflow_ID = next; next += 1; }
+            for (const [, a] of lackOld) { a.Cashflow_ID = next; next += 1; }
+          }
+        }
+
+        for (const [oid, a] of upd) {
+          if (!('ehleh_ognoo' in a) && !('duusah_ognoo' in a)) continue;
+          const r = rowByOid.get(oid);
+          /* ⚠️ 2026-09-29 (аудит 10): хоосон `Cashflow_ID` → 0 БИШ (`cfIdOf`); дээр
+             оноосон шинэ дугаар (`a.Cashflow_ID`) давамгайлна. */
+          const id = cfIdOf(a.Cashflow_ID) ?? cfIdOf(r?.Cashflow_ID);
+          if (id == null) continue;
+          const st = dateOf(a, r, 'ehleh_ognoo');
+          const en = dateOf(a, r, 'duusah_ognoo');
+          /* ⚠️ Хоёр огнооны АЛЬ НЭГ нь дутуу бол сарын жагсаалт тодорхойгүй —
+             хуучин мөрүүдийг ХЭВЭЭР үлдээнэ, таамаглаж устгахгүй. */
+          if (st == null || en == null) continue;
+
+          /* Шинэ мужийн сарууд */
+          const want = monthsOf(st, en);
 
           const have = new Map<string, Row>();
           for (const mr of monthBy.get(id) ?? []) {
@@ -1714,10 +1812,38 @@ function FullTable({
           /* Мужаас гарсан сар — ЗӨВХӨН хоосныг устгана */
           for (const [k, mr] of have) {
             if (want.has(k)) continue;
-            const filled = mr.Cashflow_huwi != null && String(mr.Cashflow_huwi).trim() !== '';
             const moid = Number(mr[oidField]);
+            /* ⚠️ 2026-09-29 (аудит 10): ЭНЭ нийтлэлд бичсэн хувь ч «бөглөгдсөн»
+               гэж тооцогдоно. Урьд нь зөвхөн СЕРВЕРИЙН утгыг хардаг байсан тул
+               хүн сард 10 гэж бичээд тэр дороо `duusah_ognoo`-г богиносгоход
+               мөр нь `deletes` ба `updates` ХОЁУЛАНД орж, бичсэн утга чимээгүй
+               алга болдог байв. */
+            const pv = upd.get(moid)?.Cashflow_huwi;
+            const filled = (mr.Cashflow_huwi != null && String(mr.Cashflow_huwi).trim() !== '')
+              || (pv != null && String(pv).trim() !== '');
             if (filled) { keptOut += 1; continue; }
-            if (Number.isFinite(moid)) monthDels.push(moid);
+            if (Number.isFinite(moid)) {
+              monthDels.push(moid);
+              /* ⚠️ Устгагдах мөр `updates`-д ҮЛДЭХГҮЙ — нэг OID нэг applyEdits-д
+                 хоёр үйлдэлтэй явахгүй. */
+              upd.delete(moid);
+            }
+          }
+        }
+
+        /* ⚠️ 2026-09-29 (аудит 10): ШИНЭ мөр огноотойгоо нэмэгдэхэд сар ҮҮСДЭГГҮЙ байв
+           (давталт зөвхөн `upd`-ээр) — «Cashflow хувиарлах»-д тэр ажил саргүй үлдэж,
+           хэрэглэгч огноогоо дахин засаж нийтлэх шаардлагатай болдог байв. Сарын мөр
+           эцэгтэйгээ OID-оор БИШ `Cashflow_ID`-аар холбогддог (дээр оноосон) тул нэг
+           applyEdits-д шууд нэмж болно. Шинэ мөрд одоо байгаа сар байхгүй. */
+        for (const o of newRows) {
+          const id = cfIdOf(o.Cashflow_ID);
+          if (id == null) continue;
+          const st = dateOf(o, undefined, 'ehleh_ognoo');
+          const en = dateOf(o, undefined, 'duusah_ognoo');
+          if (st == null || en == null) continue;
+          for (const v of monthsOf(st, en).values()) {
+            monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
           }
         }
 
@@ -1754,7 +1880,10 @@ function FullTable({
         for (const [oid, a] of upd) {
           if (!('Cashflow_huwi' in a)) continue;
           const mr = monthByOid.get(oid);
-          const parent = rows.find((r) => Number(r.Cashflow_ID) === Number(mr?.Cashflow_ID));
+          /* ⚠️ 2026-09-29 (аудит 10): хоосон дугаар 0 === 0 болж ДУРЫН дугааргүй
+             ажилд наалддаг байв (`cfIdOf`-ийн ⚠️) — дугааргүй бол эцэггүй (`null` ₮). */
+          const mid = cfIdOf(mr?.Cashflow_ID);
+          const parent = mid == null ? undefined : rows.find((r) => cfIdOf(r.Cashflow_ID) === mid);
           /* ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй */
           a.Cashflow_dun = dunOf(a.Cashflow_huwi, costOf(parent));
         }
@@ -1764,12 +1893,15 @@ function FullTable({
         for (const [oid, a] of upd) {
           if (!('ho_dun_geree' in a)) continue;
           const parent = rowByOid.get(oid);
-          const id = Number(parent?.Cashflow_ID);
-          if (!Number.isFinite(id)) continue;
+          const id = cfIdOf(parent?.Cashflow_ID); // ⚠️ 2026-09-29 (аудит 10): хоосон → 0 БИШ
+          if (id == null) continue;
           const cost = costOf(parent);
           for (const mr of monthBy.get(id) ?? []) {
             const moid = Number(mr[oidField]);
             if (!Number.isFinite(moid)) continue;
+            /* ⚠️ 2026-09-29 (аудит 10): дээр устгахаар тэмдэглэсэн сарыг `upd`-д
+               БУЦААЖ оруулахгүй (хугацаа ба ХО дүн нэг нийтлэлд засагдсан үед). */
+            if (monthDels.includes(moid)) continue;
             const ma = upd.get(moid) ?? { [oidField]: moid };
             if ('Cashflow_huwi' in ma) continue; // дээрх давталт аль хэдийн бодсон
             const next = dunOf(mr.Cashflow_huwi, cost);
@@ -1788,8 +1920,12 @@ function FullTable({
         deletes: monthDels,
       /* ⚠️ Эрх: мөр нэмэх/устгах байвал `finRow`, зөвхөн утга засах бол `finEdit`
          (2026-09-17): урьд нь үргэлж `finRow` шаардаж, `finEdit`-тэй л хүн
-         «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг). */
-      }, { cap: newRows.length + monthAdds.length + monthDels.length > 0 ? 'finRow' : 'finEdit' });
+         «эрхгүй» гэж унадаг байв (UI товч нь `canEdit`-ээр нээгддэг).
+         ⚠️ 2026-09-29 (аудит 10): СИСТЕМИЙН сарын мөр (`monthAdds`/`monthDels`) `finRow`
+         шаардахгүй — тэдгээр нь эх өгөгдөл БИШ, хугацаанаас бодогдсон хуваарь
+         (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
+         сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
+      }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
       invalidate(dataKey);
@@ -1813,6 +1949,7 @@ function FullTable({
     } catch (e) {
       setErr(String((e as Error).message || e));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -2031,9 +2168,12 @@ function FullTable({
     return rows.filter((r) => {
       const oid = typeof r[oidField] === 'number' ? (r[oidField] as number) : null;
       if (oid != null && keepOids.has(oid)) return true;
-      return rowMatches(r, cols, flt, facets, cellStr, isNumericType);
+      /* ⚠️ 2026-09-29 (аудит 10): `allCols` — НУУГДСАН баганаар ч хайна. Урьд нь
+         `cols` (нуултын дараах харагдац) өгдөг байсан тул анхдагчаар нуугдсан
+         19 баганад байгаа бичвэрийг «Бүх баганаар хайх…» олдоггүй байв. */
+      return rowMatches(r, allCols, flt, facets, cellStr, isNumericType);
     });
-  }, [active, rows, cols, flt, facets, oidField, keepOids]);
+  }, [active, rows, allCols, flt, facets, oidField, keepOids]);
 
   /**
    * Багана бүрийн сонголтын жагсаалт — ялгаатай утга ЦӨӨН бол `<select>`.
@@ -2171,7 +2311,10 @@ function FullTable({
       )}
       {cols.map((c) => (
         <td key={c.name} className={f.cellEdit}>
-          {SERVER_RO.test(c.name) ? null : (
+          {/* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч бичигдэхгүй —
+              урьд нь зөвхөн `SERVER_RO` шалгадаг байсан тул `Cashflow_dun`-г
+              гараар бичиж нийтэлж болдог байв. */}
+          {SERVER_RO.test(c.name) || CALC_RO.has(c.name) ? null : (
             <input
               className={`${f.cellInput} ${NUMERIC_TYPES.has(c.type) ? 'num' : ''}`}
               value={a[c.name] ?? ''}
@@ -3141,6 +3284,10 @@ function FullTable({
      */
     const sumText = (c: FieldDef, rows: GroupRow[]) => {
       const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      /* ⚠️ 2026-09-29 (аудит 10): «Үнэт цаас %» нь мөр бүрийн 0–1 БУТАРХАЙ
+         (`FIN_XL_PCT`-д санаатай БАЙХГҮЙ). Нийлбэрийн салаанд унаж зурвас ба
+         НИЙТ мөрд «9.13» гэж гардаг байв — хувиудын нийлбэр утгагүй тул хоосон. */
+      if (c.name === CASHFLOW_NEW.fields.share) return '';
       if (isPct(c.name)) {
         let w = 0;
         let top = 0;
@@ -3402,7 +3549,8 @@ function FullTable({
                 * нь АЖЛЫН НЭР-ийнх, огноо тэнд байх нь баганы утгыг эвдэнэ.
                 * Сар нь «Сар эхлэх» баганаас уншигдана.
                 */}
-              {!rowHid && monthOn && (monthBy.get(Number(p.row.Cashflow_ID)) ?? []).map((mr) => (
+              {/* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажилд `0`-ийн сар наалдахгүй (`cfIdOf`) */}
+              {!rowHid && monthOn && ((cfIdOf(p.row.Cashflow_ID) == null ? null : monthBy.get(cfIdOf(p.row.Cashflow_ID) as number)) ?? []).map((mr) => (
                 <tr key={`m${mr[oidField]}`} className={f.xlMonth}>
                   {!xlView && (
                     <td className={f.xlNo} style={{ width: FZ_DEF[0], minWidth: FZ_DEF[0] }} />
@@ -3486,7 +3634,8 @@ function FullTable({
                     className={`${f.cellEdit} ${frz(ci)}`}
                     style={colSty(c, ci)}
                   >
-                    {SERVER_RO.test(c.name) ? null : c.choices?.length ? (
+                    {/* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч уншигдах л */}
+                    {SERVER_RO.test(c.name) || CALC_RO.has(c.name) ? null : c.choices?.length ? (
                       <select
                         className={f.cellPick}
                         value={a[c.name] ?? ''}
@@ -3722,7 +3871,8 @@ function FullTable({
             {adds.map((a, ai) => (
               <td key={`n-${ai}-${c.name}`} className={f.cellEdit}>
                 {(() => {
-                  if (SERVER_RO.test(c.name)) return null;
+                  /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч уншигдах л */
+                  if (SERVER_RO.test(c.name) || CALC_RO.has(c.name)) return null;
                   const cur = a[c.name] ?? '';
                   const put = (v: string) =>
                     setAdds((st) => st.map((x, k) => (k === ai ? { ...x, [c.name]: v } : x)));
@@ -4263,11 +4413,13 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
      компонент unmount болж засвар АЛГА БОЛДОГ байв — баталгаажуулалт асууна.
      `ref` (state биш): dirty солигдох бүрд энэ хуудсыг дахин зурах хэрэггүй. */
   const planDirty = useRef(false);
-  const onPlanDirty = useCallback((v: boolean) => { planDirty.current = v; }, []);
+  /* ⚠️ 2026-09-29 (аудит 10): модулийн түвшний `setFinNavDirty` — `Portal.setView`
+     харагдац солихоос өмнө асууна (`finEdit.finNavDirty`-ийн ⚠️). */
+  const onPlanDirty = useCallback((v: boolean) => { planDirty.current = v; setFinNavDirty('plan', v); }, []);
   /* ⚠️ 2026-09-25: «Cashflow» (гэрээний бүртгэл) табын `FullTable` ч мөн адил
      өөрийн `pend`/`adds`-тэй — таб солиход засвар нь чимээгүй алга болдог байв. */
   const cfDirty = useRef(false);
-  const onCfDirty = useCallback((v: boolean) => { cfDirty.current = v; }, []);
+  const onCfDirty = useCallback((v: boolean) => { cfDirty.current = v; setFinNavDirty('cf', v); }, []);
   const switchTab = (t: 'cf' | 'ipc' | 'plan') => {
     if (t === tab) return;
     if (tab === 'plan' && planDirty.current
@@ -4337,6 +4489,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         canEdit={canEdit}
         works={d.cashflow}
         months={d.cfMonths}
+        monthsError={d.cfMonthsError}
         onSaved={onSaved}
         onDirty={onPlanDirty}
       />
@@ -4351,6 +4504,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         oidField={CASHFLOW_NEW.oid}
         dataKey="CASHFLOW_NEW"
         months={d.cfMonths}
+        monthsError={d.cfMonthsError}
         facets={FIN_FACETS.CASHFLOW_NEW}
         canEdit={canEdit}
         canRow={canRow}

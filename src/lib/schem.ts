@@ -472,8 +472,10 @@ export type SourceKey = keyof typeof SOURCE_NAME;
 export type SchemSources = {
   headline: { areaHa: number; population: number; investTotal: number } | null;
   clearance: { cleared: number; remaining: number; remainingHa: number; total: number; pct: number | null } | null;
-  overall: { pct: number; weightSum: number; rows: number } | null;
-  progress: { blocks: number; overall: number; date: string; stalled: number } | null;
+  /* ⚠️ 2026-09-29 (аудит 10): `pct`/`overall` нь null байж болно — блокийн мөргүй үед
+     reportData 0 биш «мэдээлэлгүй» буцаана (null ≠ 0); энд бүгд `fin()`-ээр уншигдана. */
+  overall: { pct: number | null; weightSum: number; rows: number } | null;
+  progress: { blocks: number; overall: number | null; date: string; stalled: number } | null;
   finance: { budget: number; contractAmount: number; paid: number; byBagts: Record<string, number> } | null;
   habea: { workers: number; tehnik: number; incidents: number } | null;
   /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
