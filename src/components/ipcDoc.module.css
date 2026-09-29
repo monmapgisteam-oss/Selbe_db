@@ -1,0 +1,61 @@
+/* ══════════════════════════════════════════════════════════
+   САР БҮРИЙН IPC БАРИМТ — татах цонх (2026-09-29).
+   ⚠️ Зөвхөн энэ цонх — «Багцын санхүү»-гийн хэв маягт хүрэхгүй.
+   ══════════════════════════════════════════════════════════ */
+.back {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+.box {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: grid; gap: 10px;
+  padding: 16px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md, 10px);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 25%, transparent);
+}
+.head { display: flex; align-items: center; gap: 8px; }
+.head b { font-size: 14px; flex: 1; }
+.x { font: inherit; font-size: 18px; line-height: 1; padding: 2px 8px; color: var(--ink-2); background: none; border: 0; cursor: pointer; }
+.sub { margin: 0; font-size: 12px; color: var(--ink-2); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
+.field { display: grid; gap: 3px; font-size: 11px; color: var(--ink-2); }
+.field input, .field select {
+  font: inherit; font-size: 12px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.wide { grid-column: 1 / -1; }
+.sum {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+  padding: 8px; font-size: 11px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+}
+.sum span { display: grid; gap: 2px; color: var(--ink-2); }
+.sum b { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.note { margin: 0; font-size: 11px; color: var(--warn); }
+.err { margin: 0; font-size: 12px; color: var(--bad, #dc2626); }
+.sig { font-size: 12px; }
+.sig summary { cursor: pointer; font-weight: 700; margin-bottom: 6px; }
+.foot { display: flex; justify-content: flex-end; gap: 8px; }
+.btn {
+  font: inherit; font-size: 12px; font-weight: 700;
+  padding: 7px 14px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.45; cursor: default; }
+.pri { color: #fff; background: var(--data); border-color: var(--data); }

@@ -34,7 +34,21 @@ import {
 } from '@/lib/ipcTable';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import type { HoContract } from '@/lib/ipc';
+import { pkgKeyOf } from '@/lib/services';
+import { AUTO_PREFIX } from '@/lib/ipcAuto';
+import { IpcDocDialog, hasIpcDoc } from '@/components/IpcDocDialog';
 import s from './ipcTable.module.css';
+
+/**
+ * ГҮЙЦЭТГЭЛЭЭС ҮҮССЭН (AUTO) мөрийн өдөр — `AUTO|<багц>|YYYY-MM-DD` (2026-09-29).
+ * ⚠️ IPC баримт татах товч ЗӨВХӨН эдгээр картад: гараар оруулсан IPC-үүд бөглөлтийн
+ *    архив эхлэхээс (2026-09-03) өмнөх тул тэр сарын гүйцэтгэл системд алга.
+ */
+const autoDayOf = (r: PayRow): string | null => {
+  if (!r.id.startsWith(AUTO_PREFIX)) return null;
+  const m = /(\d{4}-\d{2}-\d{2})$/.exec(r.id);
+  return m ? m[1] : null;
+};
 
 /**
  * ⚠️ `null` ба `0`-ийг ЯЛГАНА. `mnt()` нь `0`-ийг «—» болгодог тул шууд
@@ -240,7 +254,16 @@ function Line({ k, v, cls }: { k: string; v: string; cls?: string }) {
   );
 }
 
-function PayCard({ r }: { r: PayRow }) {
+/** Нээлттэй IPC баримтын цонх — картаас */
+type DocAsk = { packKey: string; packName: string; month: string; ipcNo: number };
+
+function PayCard({ r, ipcNo, onDoc }: {
+  r: PayRow;
+  /** Гэрээний гүйцэтгэлийн төлбөрүүдийн дараалал — AUTO картын «IPC-NN» */
+  ipcNo?: number;
+  /** IPC баримт татах (2026-09-29) — AUTO картад л */
+  onDoc?: () => void;
+}) {
   return (
     <article className={`${s.card} ${r.advance ? s.cardAdv : ''}`}>
       {/* ── ТОЛГОЙ: IPC дугаар + ХУГАЦАА ──
@@ -249,7 +272,10 @@ function PayCard({ r }: { r: PayRow }) {
           харуулбал толгой «—» болж, ганц мэдэгдэж буй хугацааны утга
           (он) доор нуугдана. ⚠️ Он нь ТАНИГЧ — мянгатын таслалгүй. */}
       <header className={s.cardHd}>
-        <span className={r.advance ? s.tagAdv : s.tagIpc}>{r.code}</span>
+        {/* ⚠️ AUTO мөр (гүйцэтгэлээс үүссэн) — «Гүйцэтгэл» биш IPC дугаараар (2026-09-29) */}
+        <span className={r.advance ? s.tagAdv : s.tagIpc}>
+          {onDoc && ipcNo ? `IPC-${String(ipcNo).padStart(2, '0')}` : r.code}
+        </span>
         <span className={s.cardDate}>
           {r.date != null && r.date !== ''
             ? payDate(r.date)
@@ -294,6 +320,12 @@ function PayCard({ r }: { r: PayRow }) {
       </div>
 
       <footer className={s.cardFt}>{r.id}</footer>
+      {onDoc && (
+        <button type="button" className={s.docBtn} onClick={onDoc}
+          title={tr('Сар бүрийн гүйцэтгэлээс Хүснэгт 7 · Гүйцэтгэл-1 · Хавсралт 12-ыг PDF-ээр')}>
+          {tr('IPC баримт татах (PDF)')}
+        </button>
+      )}
     </article>
   );
 }
@@ -304,6 +336,8 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   const [sort, setSort] = useState<SortKey>('paid');
   /** Хаагдсан бүлгүүд — анхдагчаар БҮГД НЭЭЛТТЭЙ */
   const [shut, setShut] = useState<Set<string>>(new Set());
+  /** Нээлттэй IPC баримтын цонх (2026-09-29) */
+  const [doc, setDoc] = useState<DocAsk | null>(null);
 
   const blocks = useMemo(() => contractBlocks(contracts), [contracts]);
   const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
@@ -377,9 +411,21 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
                 <>
                   <Details b={b} />
                   <div className={s.cards}>
-                    {b.rows.map((r) => (
-                      <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} />
-                    ))}
+                    {(() => {
+                      const packKey = pkgKeyOf(b.code);
+                      const docOk = hasIpcDoc(packKey);
+                      let n = 0;
+                      return b.rows.map((r) => {
+                        /* IPC дугаар = гэрээний гүйцэтгэлийн (урьдчилгаа биш) төлбөрийн дараалал */
+                        if (!r.advance) n += 1;
+                        const day = docOk ? autoDayOf(r) : null;
+                        const no = n;
+                        return (
+                          <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} ipcNo={no}
+                            onDoc={day ? () => setDoc({ packKey, packName: b.title, month: day.slice(0, 7), ipcNo: no }) : undefined} />
+                        );
+                      });
+                    })()}
                   </div>
                 </>
               )}
@@ -387,6 +433,11 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
           );
         })}
       </div>
+
+      {doc && (
+        <IpcDocDialog packKey={doc.packKey} packName={doc.packName} month={doc.month} ipcNo={doc.ipcNo}
+          onClose={() => setDoc(null)} />
+      )}
 
       {!showObyem && (
         <p className={s.note}>
