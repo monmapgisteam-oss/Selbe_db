@@ -129,7 +129,8 @@ console.log('✅ өөрийгөө батлах — тусдаа хэсэг, хо
 {
   assert.ok(/if\s*\(busy\s*\|\|\s*!why\)/.test(V),
     'HuvaariBatlah: буцаах функц шалтгааныг шалгахгүй байна');
-  assert.ok(/disabled=\{busy\s*\|\|\s*!reason\.trim\(\)\}/.test(V),
+  /* 2026-09-29: өөр батлагч түгжсэн бол (`holder`) ч хаалттай */
+  assert.ok(/disabled=\{busy\s*\|\|\s*!reason\.trim\(\)\s*\|\|\s*!!holder\}/.test(V),
     'HuvaariBatlah: буцаах товч шалтгаангүйд хаагдахгүй байна');
 }
 console.log('✅ буцаах — шалтгаан заавал (функц ба товч хоёуланд)');
@@ -278,6 +279,25 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: буцаахад зөвшөөрсөн мөр `decidePlan`-д дамжихгүй');
   assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
+  /* 2026-09-29 аудит: хяналтын горимоос ГАДУУРХ «Шийдвэрлэх → Буцаах» ч тэмдэг дамжуулна */
+  assert.ok(/onReject=\{\(txt\) => void decide\(false, txt, previewing \? reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)/.test(H),
+    'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна');
+  /* 2026-09-29 аудит: буцаалт · илгээлт солигдох · батлалтын дараа `okRows` цэвэрлэгдэнэ */
+  assert.ok((H.match(/setOkRows\(new Set\(\)\)/g) ?? []).length >= 7,
+    'Huvaari: `okRows` буцаалт/илгээлт солигдолт/батлалтын дараа цэвэрлэгдэхгүй — өмнөх ногоон дараагийн илгээлтэд үлдэнэ');
+  /* 2026-09-29 аудит: `refreshFlow`-ийн catch ижил багцын pending-ийг ҮЛДЭЭНЭ (fail-open биш) */
+  {
+    const c0 = H.indexOf('const refreshFlow = useCallback');
+    const c1 = H.indexOf('useEffect(() => { void refreshFlow(); }', c0);
+    const rf = H.slice(c0, c1);
+    const cat = rf.slice(rf.lastIndexOf('} catch {'));
+    assert.ok(!/setPending\(null\)/.test(cat) && /setPending\(\(p0\) => \(p0 && p0\.pkgKey === key \? p0 : null\)\)/.test(cat),
+      'Huvaari.refreshFlow: сүлжээний алдаанд pending=null → түгжээ тайлагдана');
+  }
+  /* 2026-09-29 аудит: `previewing` нь `decidePlan` АМЖИЛТТАЙ болсны дараа л тайлагдана */
+  assert.ok(/if \(r\.ok\) \{ setPreviewing\(false\); setOkRows\(new Set\(\)\); \}/.test(H)
+    && /\} else \{\s*setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
+    'Huvaari: батлалт унахад previewing тайлагдаж хяналтын товчнууд идэвхгүй үлдэнэ');
   /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
   assert.ok(/if \(back && ap\.ok && lastDecision\.okRows\) \{\s*setBackMarks\(/.test(H),
     'Huvaari: буцаагдсан саналын улаан/ногоон тэмдэглэгээ тавигдахгүй');

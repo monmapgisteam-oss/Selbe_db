@@ -442,12 +442,20 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
  *    Бусад хэрэглэгчид хүснэгт үүсэх хүртэл «олдсонгүй» гэж харна — тэр нь
  *    зөв: тэдэнд үүсгэх эрх байхгүй, super нэг удаа нэвтэрмэгц шийдэгдэнэ.
  */
-export type RemoteSave = { ok: true } | { ok: false; error: string };
+export type RemoteSave = { ok: true } | { ok: false; error: string; conflict?: boolean };
 
+/**
+ * @param opt.expectAt — ХУВААЛЦСАН нооргийн optimistic lock (2026-09-29 аудит):
+ *   дуудагчийн сүүлд уншсан `at`. Серверийн мөрийн `at` зөрвөл (завсарт өөр хүн
+ *   бичсэн) ЮУ Ч БИЧИХГҮЙ, `conflict: true` буцаана — дуудагч дахин уншиж нийлүүлнэ.
+ *   Урьд нь read→merge→write-ийн завсарт бусдын сүүлийн нүд дарагддаг байв.
+ *   `undefined` = хуучин зан (blind overwrite; FillNew-ийн хувийн ноорог).
+ */
 export async function saveRemoteDraft(
   pkgKey: string,
   at: number,
   payload: string,
+  opt?: { expectAt?: number | null },
 ): Promise<RemoteSave> {
   if (payload.length > REMOTE_MAX) {
     return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
@@ -468,7 +476,7 @@ export async function saveRemoteDraft(
     const dkey = keyOf(pkgKey);
     const found = await fl.queryFeatures({
       where: `dkey = ${sqlStr(dkey)}`,
-      outFields: ['OBJECTID'],
+      outFields: ['OBJECTID', 'at'],
       returnGeometry: false,
       orderByFields: ['OBJECTID ASC'],
     });
@@ -476,6 +484,14 @@ export async function saveRemoteDraft(
       .map((f) => f.attributes?.OBJECTID as number)
       .filter((x) => typeof x === 'number');
     const target = oids.length ? oids[oids.length - 1] : null;
+    if (opt && opt.expectAt !== undefined) {
+      const last = found.features[found.features.length - 1];
+      const rowAt = Number(last?.attributes?.at);
+      const have = Number.isFinite(rowAt) && rowAt > 0 ? rowAt : 0;
+      if (have !== (opt.expectAt ?? 0)) {
+        return { ok: false, conflict: true, error: tr('хооронд нь өөр хүн ноорог бичсэн — дахин уншиж нийлүүлнэ') };
+      }
+    }
     const dupes = oids.slice(0, -1);
     const attrs = { dkey, usr: auth.user.toLowerCase(), pkg: pkgKey, at, payload };
     const edit = {

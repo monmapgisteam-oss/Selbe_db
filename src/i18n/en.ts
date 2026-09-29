@@ -5812,6 +5812,13 @@ const en: Record<string, string> = {
   "⚠ Хоцрогдол тодорхойгүй багц": "⚠ Packages with unknown lag",
   "{0}: бөглөх хуудас уншигдсангүй — хоцрогдол тооцоологдоогүй.": "{0}: fill sheet failed to load — lag not computed.",
   "{0} · {1}:\nөмнө нь {2} бүртгэгдсэн (хувиар) — нэмэлт бичихэд обьём 0-ээс эхэлж {3} болж БУУРНА.\nҮргэлжлүүлэх үү?": "{0} · {1}:\npreviously {2} was recorded (as a percentage) — adding an increment restarts the quantity from 0, so it DROPS to {3}.\nContinue?",
+  "хооронд нь өөр хүн ноорог бичсэн — дахин уншиж нийлүүлнэ": "someone else saved the draft in between — re-reading and merging",
+  "Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.": "The name does not match the signed-in user — refresh the page.",
+  "Илгээлтийн агуулга хэт том ({0} тэмдэгт, дээд {1}) — ноорогоо хэд хэдэн илгээлтэд хуваана уу.": "The submission content is too large ({0} characters, max {1}) — split the draft into several submissions.",
+  "{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.": "{0} has locked this submission — your lock has expired. Refresh the page.",
+  "«{0}» талбарын урт уншигдсангүй (сүлжээ) — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан).": "Could not read the length of field “{0}” (network) — approved-row marks were not saved (the decision was saved).",
+  "{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй — тэр задаргаа хадгалагдсангүй, дахин бөглөнө үү.": "For {0} work·block(s) the monthly breakdown's work was not found in the sheet — that breakdown was not saved, please fill it in again.",
+  "{0} батлаж байна": "{0} is approving",
 };
 
 export default en;

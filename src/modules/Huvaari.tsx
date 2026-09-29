@@ -62,7 +62,7 @@ import {
 } from '@/lib/huvaariObyem';
 import {
   claimPlan, decidePlan, loadHistory, loadPayload, loadPending, planTableState, PLAN_STATUS,
-  releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan, type PlanPayloadKind,
+  releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan, REASON_MAX, type PlanPayloadKind,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -1771,7 +1771,10 @@ export function Huvaari({
      *
      * ⚠️ Обьёмгүй эсвэл кодгүй мөрд юу ч хийхгүй: хадгалах холбоос байхгүй.
      */
-    setObDraft((prev) => {
+    /* ⚠️ 2026-09-29 аудит: сарын обьём/нөөц ЗӨВХӨН төлөвлөгөөнд — гэрээний зурвас
+       чирэхэд `obDraft` (kind-гүй түлхүүр) гэрээний мужаар тайрагдаж, `save` тэр
+       сарын мөрийг устгадаг байв (`null ≠ 0`). */
+    if (kind === 'plan') setObDraft((prev) => {
       const next = new Map(prev);
       let touched = false;
       for (const [i, spans] of ch) {
@@ -1796,8 +1799,11 @@ export function Huvaari({
              хуулбар) — гинжээр буцсан бусад мөрд `keepMonths` хэвээр. */
           const back = sameSpan(sp, base[i]?.spans[b]);
           const orig = drag && drag.oid === r.oid && b === blk ? drag.origMonths : null;
+          /* ⚠️ 2026-09-29 аудит: чирж буй мөр·блокт `keepMonths`-ыг чирэлтийн ӨМНӨХ
+             бүтэн хуулбараас — `cur` нь аль хэдийн тайрагдсан ноорог тул зурвасыг
+             богиносгоод буцаан сунгахад мужаас гарсан сарын утга сэргэдэггүй байв. */
           const val = sp
-            ? (back && orig ? new Map(orig) : keepMonths(sp, cur))
+            ? (back && orig ? new Map(orig) : keepMonths(sp, orig ?? cur))
             : new Map<string, number>();
           /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ (эсвэл хоёулаа хоосон) задаргааг НООРОГТ
              ҮЛДЭЭХГҮЙ (2026-09-21): задаргаагүй ажлыг чирэхэд
@@ -1813,7 +1819,7 @@ export function Huvaari({
     });
     /* САРЫН НӨӨЦ — обьёмын ИЖИЛ дүрмээр дагана (2026-09-24): `keepRes`, чирэлт
        буцахад `Drag.origRes`, сервертэй ижил бол ноорогоос хасна. */
-    setObResDraft((prev) => {
+    if (kind === 'plan') setObResDraft((prev) => {
       const next = new Map(prev);
       let touched = false;
       for (const [i, spans] of ch) {
@@ -1830,7 +1836,7 @@ export function Huvaari({
           const back = sameSpan(sp, base[i]?.spans[b]);
           const orig = drag && drag.oid === r.oid && b === blk ? drag.origRes : null;
           const val = sp
-            ? (back && orig ? new Map(orig) : keepRes(sp, cur))
+            ? (back && orig ? new Map(orig) : keepRes(sp, orig ?? cur))
             : new Map<string, MonthRes>();
           if (sameRes(val, srv)) next.delete(key);
           else next.set(key, val);
@@ -1839,7 +1845,7 @@ export function Huvaari({
       }
       return touched ? next : prev;
     });
-  }, [plan, base, n, sc, obPlan, obRes, drag, blk]);
+  }, [plan, base, n, sc, obPlan, obRes, drag, blk, kind]);
 
   /**
    * Popup-ын «Тавих» — огноо ба/эсвэл уялдааг НЭГ алхамд.
@@ -2133,7 +2139,8 @@ export function Huvaari({
     /* ⚠️ Хадгалалт явж байхад бичсэн уялдаа чимээгүй алга болдог байв (2026-09-23
        аудит) — одоо мэдэгдэнэ; нүд нь хадгалсан утга руугаа буцна. */
     if (busy) { setErr(tr('Хадгалж байна — түр хүлээгээд уялдааг дахин оруулна уу.')); return; }
-    if (locked || !canEdit) return;
+    /* ⚠️ 2026-09-29 аудит: уялдаа ЗӨВХӨН төлөвлөгөөнд — гэрээний огноо гинжээр хөдөлдөггүй */
+    if (locked || !canEdit || kind !== 'plan') return;
     const cur = plan.find((x) => x.oid === oid);
     if (!cur) return;
     const next = parseDeps(text);
@@ -2142,7 +2149,7 @@ export function Huvaari({
     if (formatDeps(next) === formatDeps(cur.deps)) return;
     setErr('');
     applyModal(oid, null, next, null);
-  }, [busy, locked, canEdit, plan, applyModal]);
+  }, [busy, locked, canEdit, kind, plan, applyModal]);
 
   /* ── Чирэлт ── */
 
@@ -2511,6 +2518,8 @@ export function Huvaari({
       let resDropped = 0;
       /** Талбарын шалгалт 2 удаа ч бүтсэнгүй → нөөц бичигдэхгүй (2026-09-24 аудит) */
       let rfUnknown = false;
+      /** Ажил нь хуудсанд олдоогүй сарын ноорог (ажил·блок) — хаягдсан (2026-09-29 аудит) */
+      let obLost = 0;
       const fields = { hun: false, mashin: false };
       let obEdits: PlanEdits | null = null;
       if (obDraft.size || obResDraft.size) {
@@ -2528,7 +2537,9 @@ export function Huvaari({
           const des = Number(key.slice(0, cut));
           const blok = key.slice(cut + 1);
           const r = byDes.get(des);
-          if (!r || !blok) continue;
+          /* ⚠️ 2026-09-29 аудит: ажил хуудсанд олдохгүй (шинэ жаазанд код солигдсон/устсан)
+             бол ЧИМЭЭГҮЙ алгасахгүй — тоолж доор ил хэлнэ; ноорог нь цэвэрлэгдэнэ. */
+          if (!r || !blok) { obLost += 1; continue; }
           /* Обьёмын ноорог байхгүй бол СЕРВЕРИЙН задаргаан дээр нөөц л өөрчлөгдсөн */
           const months = obDraft.get(key) ?? obPlan.get(des)?.get(blok) ?? new Map<string, number>();
           /**
@@ -2714,8 +2725,23 @@ export function Huvaari({
            хоёр мөр үлдээж чадна. `buildEdits` нь `obOids`-оос ЗӨВХӨН нэг OID
            авдаг тул илүүдэл нь өөрөө хэзээ ч устахгүй. */
         for (const d of obDups) if (!obEdits.deletes.includes(d)) obEdits.deletes.push(d);
-        const [a2, u2, d2] = await applyPlanEdits(obEdits);
-        obN = a2 + u2 + d2;
+        let r2: [number, number, number];
+        try {
+          r2 = await applyPlanEdits(obEdits);
+        } catch (e) {
+          /* ⚠️ 2026-09-29 аудит: огноо БИЧИГДСЭН, задаргаа ДУНДАА унасан (жиш. 2 дахь
+             500-ийн багц) — `rows`/`obOids` сэргээгээгүй бол дахин «Хадгалах»-д амжсан
+             `adds` ДАХИН нэмэгдэж `dkey` давхардана (сангийн unique индекс алга).
+             Эх мөр ба задаргааг серверээс дахин татаад л алдааг дамжуулна. */
+          try {
+            const r0 = await loadRows(pkg, sc);
+            setRows(r0.rows);
+            const fr = await loadPkgPlan(pkg.key);
+            setObPlan(fr.plan); setObRes(fr.res); setObOids(fr.oids); setObDups(fr.dups); setObState('ok');
+          } catch { setObState('fail'); }
+          throw e;
+        }
+        obN = r2[0] + r2[1] + r2[2];
       }
 
       const r = await loadRows(pkg, sc);
@@ -2780,6 +2806,9 @@ export function Huvaari({
       /* ⚠️ Мужаас гадуурх сарын нөөц хаягдсаныг ил хэлнэ (2026-09-24 аудит) */
       if (resDropped) {
         errs.push(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.', num(resDropped)));
+      }
+      if (obLost) {
+        errs.push(tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй — тэр задаргаа хадгалагдсангүй, дахин бөглөнө үү.', num(obLost)));
       }
       if (errs.length) setErr(errs.join(' · '));
       return true;
@@ -2873,6 +2902,9 @@ export function Huvaari({
             setADraft(new Map()); setResDraft(new Map());
             setPreviewing(false);
           }
+          /* ⚠️ 2026-09-29 аудит: ӨМНӨХ илгээлтийн ногоон/улаан тэмдэг ШИНЭ илгээлтэд
+             үлдэхгүй — `markOf` шууд ногоон болгож, хараагүй мөр батлагдах байв. */
+          setOkRows(new Set());
           if (!opt?.noRefetch) void refetchRef.current().catch(() => { /* дараагийн ачаалалтаар */ });
         }
       }
@@ -2885,7 +2917,10 @@ export function Huvaari({
       if (!live()) return;
       setFlowReady(false);
       setFlowWhy(tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
-      setPending(null);
+      /* ⚠️ 2026-09-29 аудит: ИЖИЛ багцын `pending`-ийг ҮЛДЭЭНЭ (дээрх эхлэлийн дүрэмтэй
+         ижил) — урьд нь түр сүлжээний алдаанд `null` болгож `locked` тайлагдаж, засвар ·
+         хуваалцсан ноорог нээгдээд, урсгал сэргэхэд гарах замгүй ноорог үлддэг байв. */
+      setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null));
       setLastDecision(null);
     }
   }, [pkg.key, user, status]);
@@ -3905,6 +3940,8 @@ export function Huvaari({
       setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
       setADraft(new Map()); setResDraft(new Map());
       setPreviewing(false);
+      /* ⚠️ 2026-09-29 аудит: тэмдэглэгээ дараагийн илгээлтэд үлдэхгүй */
+      setOkRows(new Set());
       setFlowBox(null); setFlowTxt('');
       /* ⚠️ Талбаргүй үед тэмдэглэгээ хадгалагдаагүйг НУУХГҮЙ — хяналтын горимд
          цонх хаагдаж мессеж нь дараалал руу дамждаг тул `note`-д нийлүүлнэ. */
@@ -3965,7 +4002,8 @@ export function Huvaari({
        */
       if (!dirtyN) {
         setApproving(null);
-        setPreviewing(false);
+        /* ⚠️ 2026-09-29 аудит: `previewing`-ийг АМЖИЛТТАЙ болсны дараа л тайлна —
+           унавал хяналтын горимд «Батлах» дахин идэвхтэй үлдэж давтан оролдоно. */
         /* ⚠️ `busy` гинж ДУУСТАЛ (2026-09-21): урьд нь энэ алхам busy-гүй тул
            `decidePlan` явж байхад багц солиход өөр багцын pending/шийдвэр
            наалддаг байв. Сонгогчууд `busy`-д түгжигдэнэ. */
@@ -3976,6 +4014,7 @@ export function Huvaari({
               oid: approving, approve: true,
               approver: user?.username ?? '', author: pending?.author ?? '',
             });
+            if (r.ok) { setPreviewing(false); setOkRows(new Set()); }
             setNote(r.ok
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
               : '');
@@ -4038,7 +4077,11 @@ export function Huvaari({
       setErr((cur) => cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
       return;
     }
-    setPreviewing(false);
+    /* ⚠️ 2026-09-29 аудит: `previewing`-ийг `decidePlan` АМЖИЛТТАЙ болсны ДАРАА л
+       тайлна — урьд нь өмнө тайлдаг тул сүлжээний уналтад `reviewLive` худал болж
+       хяналтын горимд «Батлах»/«Буцаах» хоёулаа идэвхгүй, зөвхөн «Хаах» үлддэг байв.
+       Одоо дахин «Батлах» дарвал ноорог хоосон тул «бичих зүйлгүй» салаагаар
+       `decidePlan` дахин дуудагдана. */
     /* ⚠️ `busy` гинж ДУУСТАЛ (2026-09-21) — дээрх салаатай ижил шалтгаан. */
     setBusy(true);
     void (async () => {
@@ -4050,6 +4093,8 @@ export function Huvaari({
         if (!r.ok) {
           setErr(r.error ?? tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'));
         } else {
+          setPreviewing(false);
+          setOkRows(new Set());
           setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
         }
         await refreshFlow({ noRefetch: true });
@@ -4335,11 +4380,13 @@ export function Huvaari({
      Хаах нь урьдчилан харалтыг үлдээнэ, солих нь ТАСАЛНА — батлагч юу харж
      байснаа алдаж, илгээлт нь хүлээгдсэн хэвээр үлдэнэ. */
   useEffect(() => {
-    if (!dirtyN || previewing) return undefined;
+    /* ⚠️ 2026-09-29 аудит: зөвхөн ХАРАХ эрхтэйд бусдын хуваалцсан ноорог Map-д орж
+       `dirtyN > 0` болдог — түүнд «хадгалаагүй» анхааруулга худал. */
+    if (!dirtyN || previewing || !canEdit) return undefined;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [dirtyN, previewing]);
+  }, [dirtyN, previewing, canEdit]);
   /*
    * ⚠️ ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ (2026-09-25 аудит #4): батлах явцад (`approving`)
    *    эсвэл бичилт/шийдвэр явж байхад (`busy`) өөр харагдац руу шилжих, таб
@@ -4487,6 +4534,9 @@ export function Huvaari({
   const hdWritable = canEdit && status !== 'off' && !locked && !previewing && approving == null;
   const hdWritableRef = useRef(hdWritable);
   hdWritableRef.current = hdWritable;
+  /** `askSwitch`-д (2026-09-29) — харагчид «хадгалаагүй» асуулт тавихгүй */
+  const canEditRef = useRef(canEdit);
+  canEditRef.current = canEdit;
   /** Уншиж нийлүүлж болох уу — засах эрхгүй ч харж болно; түгжээ/харалт/батлалтад үгүй */
   const hdPollOk = !hdBlocked;
   const hdPollOkRef = useRef(hdPollOk);
@@ -4660,7 +4710,10 @@ export function Huvaari({
       if (body.length > REMOTE_MAX) { setHdSt({ st: 'big' }); return; }
       setHdSt({ st: 'saving' });
       const gen = hdGen.current;
-      const r = await saveRemoteDraft(key, local.t, body);
+      /* ⚠️ 2026-09-29 аудит: optimistic lock — дээрх уншилтаас хойш өөр хүн бичсэн бол
+         юу ч дарахгүй, дахин уншиж нийлүүлнэ (`conflict`). */
+      const r = await saveRemoteDraft(key, local.t, body, { expectAt: hdLastSeenAt.current });
+      if (!r.ok && r.conflict) { if (live()) hdAgain.current = true; return; }
       /* ⚠️ Бичилт явж байхад цэвэрлэсэн/түлхүүр солигдсон бол (2026-09-24) энэ
          бичилт хаясан нооргийг амилуулсан — тэр даруй дахин цэвэрлэнэ. */
       if (r.ok && gen !== hdGen.current) {
@@ -4876,7 +4929,9 @@ export function Huvaari({
       try { localStorage.setItem(hdLocalKey(key), body); } catch { /* хаалттай орчин */ }
       if (body.length > REMOTE_MAX || hdSig(local) === hdLastSig.current) return;
       const gen = hdGen.current;
-      void saveRemoteDraft(key, local.t, body).then((r) => {
+      /* ⚠️ 2026-09-29: уншилтгүй бичилт ч бусдын шинэ нүдийг дарахгүй (`expectAt`) —
+         зөрвөл алгасна; локал хуулбар дээр бичигдсэн тул дараагийн нээлтэд нийлнэ. */
+      void saveRemoteDraft(key, local.t, body, { expectAt: hdLastSeenAt.current }).then((r) => {
         if (r.ok && gen === hdGen.current && key === hdKeyRef.current) {
           hdLastSig.current = hdSig(local); hdLastSeenAt.current = local.t;
         }
@@ -4918,7 +4973,8 @@ export function Huvaari({
       if (previewing) {
         return window.confirm(tr('Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?'));
       }
-      if (dirtyN === 0) return true;
+      /* ⚠️ 2026-09-29 аудит: зөвхөн ХАРАГЧИД бусдын ноорог Map-д байдаг — асуухгүй, устгахгүй */
+      if (dirtyN === 0 || !canEditRef.current) return true;
       const ok = window.confirm(tr('Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу? Хуваалцсан ноорог бүх оролцогчид устна.', num(dirtyN)));
       /* ⚠️ Хаяхыг зөвшөөрвөл ХУВААЛЦСАН нооргийг ч цэвэрлэнэ (2026-09-23) — эс
          бөгөөс буцаж ирэхэд «хаясан» ноорог алсаас дахин сэргэнэ.
@@ -5317,7 +5373,10 @@ export function Huvaari({
         {sc && rows.length > 0 && (
           <span className={h.flowNote}>
             {msToDay(from)} → {msToDay(to)} · {num(total)} {tr('хоног')}
-            {dirtyN ? <> · <b className={h.dirtyTag}>{tr('хадгалаагүй')} {num(dirtyN)}</b></> : null}
+            {/* ⚠️ 2026-09-29 аудит: `dirtyRows` (ялгаатай мөр) — `dirtyN` нь `rollUpGroups`-оор
+                автоматаар орсон бүлгийн мөр · сарын нүд бүрийг тоолдог тул хэрэглэгчийн
+                засварын тооноос их гардаг байв (илгээлтийн `rowCount`-тай ижил). */}
+            {dirtyN ? <> · <b className={h.dirtyTag}>{tr('хадгалаагүй')} {num(dirtyRows)}</b></> : null}
           </span>
         )}
         {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}
@@ -5351,7 +5410,7 @@ export function Huvaari({
                  буцааж засах» эсвэл дахин ачаалалт тэмдгийг дахин тавина. */
               setBackMarks(null);
             }}>
-            {tr('Цуцлах')} ({num(dirtyN)})
+            {tr('Цуцлах')} ({num(dirtyRows)})
           </button>
         )}
         {/* ⚠️ «Хадгалах» → «Батлуулах» (2026-09-07). Гүйцэтгэгч эх хуудсанд
@@ -5835,7 +5894,8 @@ export function Huvaari({
                     /* ⚠️ Уялдааг нүдэнд ШУУД бичих зам (`HamCell`). Түгжээтэй
                        (батлагдахыг хүлээж буй илгээлт) үед ч засагдахгүй —
                        `applyHamText` дотор `locked` шалгагдана. */
-                    canEdit={canEdit && !locked}
+                    /* ⚠️ 2026-09-29 аудит: уялдааны нүд ЗӨВХӨН төлөвлөгөө табд засагдана */
+                    canEdit={canEdit && !locked && kind === 'plan'}
                     onHamText={applyHamText}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
@@ -6184,9 +6244,13 @@ export function Huvaari({
           onBlk={setBlk}
           onTakt={setTakt}
           cands={depCands}
-          hasHam={!!sc.f.ham}
+          /* ⚠️ 2026-09-29 аудит: уялдаа · сарын обьём/нөөц ЗӨВХӨН төлөвлөгөө табд —
+             гэрээний огноонд `mvOk` (төлөвлөгөөний сарын нийлбэр) шаардаж, гинжээр
+             гэрээг хөдөлгөдөг байв. */
+          hasHam={!!sc.f.ham && kind === 'plan'}
           hasActual={hasActual}
           hasRes={hasRes}
+          obyem={kind === 'plan'}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
           resFields={obResFields}
@@ -6320,7 +6384,7 @@ export function Huvaari({
       {flowBox === 'send' && (
         <FlowBox
           title={tr('Хуваарь батлуулах')}
-          desc={tr('{0} мөрийн өөрчлөлт батлагчид илгээгдэнэ. Батлагдтал эх хуваарь хөдлөхгүй.', num(dirtyN))}
+          desc={tr('{0} мөрийн өөрчлөлт батлагчид илгээгдэнэ. Батлагдтал эх хуваарь хөдлөхгүй.', num(dirtyRows))}
           label={tr('Тайлбар (сонголтоор)')}
           okText={tr('Илгээх')}
           busy={busy}
@@ -6356,7 +6420,9 @@ export function Huvaari({
           onPreview={previewing ? undefined : () => void preview()}
           onClose={() => setFlowBox(null)}
           onOk={() => void decide(true, '')}
-          onReject={(txt) => void decide(false, txt)}
+          /* ⚠️ 2026-09-29 аудит: урьдчилан харж тэмдэглэсэн бол ногоон/улаан `rejectReview`-тэй
+             ИЖИЛ дамжина — урьд нь хаягдаж гүйцэтгэгч тэмдэггүй хардаг байв. */
+          onReject={(txt) => void decide(false, txt, previewing ? reviewOids.filter((o) => okRows.has(o)) : undefined)}
         />
       )}
       {flowBox === 'reject' && pending && (
@@ -6438,6 +6504,8 @@ function FlowBox({
             value={txt}
             onChange={(e) => setTxt(e.target.value)}
             disabled={busy}
+            /* ⚠️ Талбар 2048 — хэтэрвэл `applyEdits` бүхэлдээ унана (2026-09-29) */
+            maxLength={REASON_MAX}
           />
         </label>
         <div className={h.mdFoot}>
@@ -6802,7 +6870,7 @@ function HamCell({
  * талбар болгож оруулбал гурвуулаа зөрчилдөх боломжтой болно.
  */
 function PlanModal({
-  r, par, blocks, blk, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, months, res, resFields, onClose, onApply,
+  r, par, blocks, blk, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
 }: {
   r: PlanRow;
   /** Хамгийн ойрын дээд БҮЛЭГ — түүний муж нь хатуу хязгаар */
@@ -6821,6 +6889,8 @@ function PlanModal({
   hasActual: boolean;
   /** ⚠️ Хадгалагдана — дуудагч дамжуулдаг; popup-д мөрийн нөөц засагдахгүй болсон (2026-09-24) */
   hasRes?: boolean;
+  /** Сарын обьём/нөөцийн хэсэг гарах уу — гэрээ табд `false` (2026-09-29): «Тавих» нийлбэр шаардахгүй, `ob` null */
+  obyem?: boolean;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын задаргаа */
   months: Map<string, number>;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын НӨӨЦ (2026-09-24) */
@@ -7003,7 +7073,8 @@ function PlanModal({
    *    даруй дагах ёстой. Эс бөгөөс «Тавих» дарах хүртэл өөр саруудыг
    *    бөглөж, дараа нь бүгд дахин тарааж хаягдана.
    */
-  const total = r.vol != null && r.vol > 0 ? r.vol : null;
+  /* ⚠️ `obyem=false` (гэрээ таб) — сарын хэсэг огт гарахгүй, `mvOk` үргэлж үнэн */
+  const total = obyem && r.vol != null && r.vol > 0 ? r.vol : null;
   const [mv, setMv] = useState<Map<string, number>>(months);
   /** Сарын НӨӨЦ (хүн хүч · машин) — `mv`-тэй зэрэгцээ (2026-09-24) */
   const [mr, setMr] = useState<Map<string, MonthRes>>(res);
@@ -7351,7 +7422,13 @@ function PlanModal({
                           setMv((m) => {
                             const out = new Map(m);
                             if (t === '') out.delete(k);
-                            else out.set(k, Math.max(0, Number(t) || 0));
+                            else {
+                              /* ⚠️ 2026-09-29 аудит: сөрөг/буруу утга → нүд ХООСОН (`setMrCell`-тэй ижил),
+                                 0 БИШ — 0 нь «тэр сард ажил хийхгүй» гэсэн бодит төлөвлөгөө. */
+                              const v = Number(t);
+                              if (!Number.isFinite(v) || v < 0) out.delete(k);
+                              else out.set(k, v);
+                            }
                             return out;
                           });
                         }}

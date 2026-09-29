@@ -28,7 +28,9 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-const { PLAN_STATUS, parsePayload, parseOkRows, decidePlan, withdrawPlan } = await import('@/lib/huvaariBatlah.ts');
+const {
+  PLAN_STATUS, parsePayload, parseOkRows, decidePlan, withdrawPlan, claimPlan, submitPlan, claimHolderOf, PAYLOAD_MAX,
+} = await import('@/lib/huvaariBatlah.ts');
 
 /* ── 1. Төлөвийн утгууд — өгөгдөл тул ОРЧУУЛАГДАХГҮЙ ── */
 assert.equal(PLAN_STATUS.pending, 'Хүлээгдэж буй');
@@ -198,12 +200,27 @@ console.log('✅ буцаахад шалтгаан заавал');
  *
  *    Харин ХҮЧИНТЭЙ шийдвэр нь хүснэгтгүйд ЗӨВ шалтгаанаар унана.
  */
-const noTable = await decidePlan({
-  oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a',
-});
-assert.equal(noTable.ok, false);
-assert.match(noTable.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${noTable.error}`);
-console.log('✅ дүрэм → сүлжээ гэсэн дараалал');
+/* ⚠️ 2026-09-29: батлагчийн нэр НЭВТЭРСЭН хэрэглэгчтэй тулгагдана (`sameAsLogin`) —
+   нэвтрээгүй бол «тодорхойгүй», өөр нэр бол «зөрж байна», ижил бол сүлжээ рүү. */
+{
+  const WHO = await import('@/lib/who.ts');
+  const r0 = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
+  assert.equal(r0.ok, false);
+  assert.match(r0.error, /тодорхойгүй/, `нэвтрээгүй батлагч: ${r0.error}`);
+  WHO.setCurrentUser('ondoo_hun');
+  const r1 = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
+  assert.equal(r1.ok, false);
+  assert.match(r1.error, /зөрж байна/, `өөр нэрээр батлах өнгөрөв: ${r1.error}`);
+  const r2 = await claimPlan({ oid: 1, approver: 'batlagch_b', author: 'zohiogch_a' });
+  assert.equal(r2.ok, false);
+  assert.match(r2.error, /зөрж байна/, `өөр нэрээр түгжих өнгөрөв: ${r2.error}`);
+  WHO.setCurrentUser('batlagch_b');
+  const noTable = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
+  assert.equal(noTable.ok, false);
+  assert.match(noTable.error, /хүснэгт олдсонгүй/, `буруу шалтгаан: ${noTable.error}`);
+  WHO.setCurrentUser(null);
+}
+console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараалал');
 
 /* ── 5б. ИЛГЭЭЛТЭЭ ТАТАХ (2026-09-21) — дүрэм сүлжээнээс өмнө ──
  * ⚠️ `window` shim байгаа тул `requireCap('plan')` ажиллана: эрхгүй бол шидэх
@@ -298,4 +315,31 @@ console.log('✅ татах дараалал — унш → төрөл → та�
 }
 console.log('✅ зөвшөөрсөн мөр — null ≠ [] · fail-closed');
 
-console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал');
+/* ══════════ ТҮГЖЭЭ (claim) — сүлжээнээс ӨМНӨХ дүрэм (2026-09-29 аудит) ══════════ */
+{
+  const r1 = await claimPlan({ oid: 1, approver: '   ', author: 'a' });
+  assert.equal(r1.ok, false, 'нэргүй түгжилт зөвшөөрөгдөв');
+  const r2 = await claimPlan({ oid: 1, approver: 'Bat', author: 'bat' });
+  assert.equal(r2.ok, false, 'өөрийн илгээлтээ түгжиж болж байна');
+  assert.match(r2.error, /өөрөө батлах/, 'өөрийгөө түгжихэд буруу мессеж');
+  /* claimHolderOf — жагсаалтын мөр: pending + approver + амьд approverAt */
+  const now = 1_000_000_000;
+  const base = { status: PLAN_STATUS.pending, approver: 'Dorj', approverAt: now - 60_000 };
+  assert.equal(claimHolderOf(base, now), 'dorj', 'амьд түгжээ уншигдсангүй (жижиг үсгээр)');
+  assert.equal(claimHolderOf({ ...base, approverAt: now - 11 * 60_000 }, now), null, 'хугацаа дууссан түгжээ амьд гэж уншигдав');
+  assert.equal(claimHolderOf({ ...base, status: PLAN_STATUS.approved }, now), null, 'шийдвэрлэгдсэн мөр түгжээтэй гэж уншигдав');
+  assert.equal(claimHolderOf({ ...base, approver: null }, now), null, 'түгжигчгүй мөр');
+}
+console.log('✅ түгжээ — нэргүй/өөрийгөө хаагдана · claimHolderOf TTL');
+
+/* ══════════ АГУУЛГЫН ДЭЭД ХЭМЖЭЭ (2026-09-29 аудит) ══════════ */
+{
+  assert.equal(PAYLOAD_MAX, 1_048_576);
+  const big = { spans: { 1: [{ start: 0, end: 1 }] }, deps: {}, obyem: {}, note: 'x'.repeat(PAYLOAD_MAX) };
+  const r = await submitPlan({ pkgKey: 'p', pkgGroup: 'g', author: 'a', rowCount: 1, payload: big });
+  assert.equal(r.ok, false, 'хэт том агуулга сүлжээнд хүрэв');
+  assert.match(r.error, /хэт том/, 'уртын алдааны мессеж');
+}
+console.log('✅ агуулга — 1 MB-аас хэтэрвэл илгээхийн өмнө зогсоно');
+
+console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал · түгжээ · урт');

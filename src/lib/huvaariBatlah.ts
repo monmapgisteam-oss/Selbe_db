@@ -311,11 +311,20 @@ async function findTableUrl(token: string): Promise<string | null> {
 }
 
 /**
+ * `aguulga` талбарын урт (тэмдэгт). ⚠️ 2026-09-29: `base` (2026-09-21) нэмэгдсэнээс
+ * хойш «бүх мөр багтана» гэсэн таамаг худал — `submitPlan` илгээхийн өмнө шалгана.
+ */
+export const PAYLOAD_MAX = 1_048_576;
+/** Буцаах шалтгаан · тайлбарын талбарын урт — UI `maxLength` үүнтэй ижил */
+export const REASON_MAX = 2000;
+
+/**
  * Хүснэгт үүсгэх (publish эрхтэй super admin).
  *
- * ⚠️ `aguulga` нь 1,048,576 тэмдэгт — нэг багцын БҮХ мөрийн огноо, уялдаа,
- *    сарын обьём багтана. `permsRemote`-ийн 2048 тэмдэгтэд ЯМАР Ч ТОХИОЛДОЛД
- *    багтахгүй тул тэнд мөр нэмэх замыг сонгоогүй.
+ * ⚠️ `aguulga` нь 1,048,576 тэмдэгт — нэг багцын огноо, уялдаа, сарын обьём
+ *    ихэвчлэн багтана (том багцад `base`-тэй хамт хэтэрч болно — `PAYLOAD_MAX`).
+ *    `permsRemote`-ийн 2048 тэмдэгтэд ЯМАР Ч ТОХИОЛДОЛД багтахгүй тул тэнд мөр
+ *    нэмэх замыг сонгоогүй.
  */
 async function createTable(token: string, user: string): Promise<string | null> {
   const createParameters = {
@@ -354,7 +363,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
         { name: F.reason, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
         { name: F.note, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
         { name: F.rowCount, type: 'esriFieldTypeInteger', nullable: true, editable: true },
-        { name: F.payload, type: 'esriFieldTypeString', length: 1048576, nullable: true, editable: true },
+        { name: F.payload, type: 'esriFieldTypeString', length: PAYLOAD_MAX, nullable: true, editable: true },
         { name: F.okRows, type: 'esriFieldTypeString', length: 65536, nullable: true, editable: true },
       ],
     }],
@@ -512,25 +521,42 @@ let okRowsMissAt = 0;
  * `Zovshoorson_Mor` г.м. нэртэй талбарыг уншихгүй байв.
  */
 let okRowsName: string = F.okRows;
-/** Талбарын урт (тэмдэгт); `0` = талбар алга/уншигдсангүй */
+/** Талбарын урт (тэмдэгт); `0` = талбар алга; `-1` = уншигдсангүй (сүлжээ/хүснэгтгүй) */
 async function okRowsFieldLen(): Promise<number> {
   if (okRowsLenCache > 0) return okRowsLenCache;
   if (okRowsMissAt && Date.now() - okRowsMissAt < OK_ROWS_MISS_TTL) return 0;
   const url = await tableUrl(false);
-  if (!url) return 0;
+  if (!url) return -1;
   try {
     const j = await req(url, {});
     const fields = (j.fields as { name?: string; length?: number }[] | undefined) ?? [];
+    /* ⚠️ 2026-09-29: талбарын жагсаалт ирээгүй = уншигдсангүй, «алга» биш */
+    if (!fields.length) return -1;
     const f = fields.find((x) => (x.name ?? '').toLowerCase() === F.okRows);
     /* урт заагаагүй бол AGOL-ийн анхдагч 256 гэж үзнэ */
     const len = f ? (Number(f.length) > 0 ? Number(f.length) : 256) : 0;
     if (len > 0) { okRowsLenCache = len; okRowsName = f?.name ?? F.okRows; okRowsMissAt = 0; }
     /* ⚠️ Талбарын жагсаалт ИРСЭН үед л «алга»-г кэшлэнэ — хоосон/буруу хариу биш */
-    else if (fields.length) okRowsMissAt = Date.now();
+    else okRowsMissAt = Date.now();
     return len;
   } catch {
-    return 0;
+    return -1;
   }
+}
+
+/**
+ * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед).
+ * ⚠️ 2026-09-29 аудит: `submitPlan`/`decidePlan`/`claimPlan` хүрээг `currentUser`-оор
+ *    шалгаад НЭРИЙГ args-аас бичдэг байсан тул консолоос өөр нэр дамжуулж
+ *    өөрийн илгээлтээ батлах, түүхэнд өөр нэр үлдээх боломжтой байв.
+ *    Зөрвөл алдаа, эс бөгөөс `null`.
+ */
+function sameAsLogin(name: string): { ok: false; error: string } | null {
+  if (typeof window === 'undefined' || !AUTH.appId) return null;
+  const meNow = currentUser();
+  if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  if (meNow.toLowerCase() !== name.trim().toLowerCase()) return { ok: false, error: tr('Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.') };
+  return null;
 }
 /** Мөрийн attributes-аас `zovshoorson_mor`-ыг нэрийн том/жижиг үсэг үл харгалзан уншина */
 function okRowsAttr(a: Attrs): unknown {
@@ -775,12 +801,24 @@ export async function submitPlan(args: {
   note?: string;
   payload: PlanPayload;
 }): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ 2026-09-29 аудит: `aguulga` 1,048,576 тэмдэгт — `base` нэмэгдсэнээс хойш
+     том багцад (1,459 мөр × 22 блок) хэтэрч `applyEdits` шалтгаангүй унадаг байв.
+     Цэвэр шалгуур тул эрх/сүлжээнээс ӨМНӨ. */
+  const payloadJson = JSON.stringify(args.payload);
+  if (payloadJson.length > PAYLOAD_MAX) {
+    return { ok: false, error: tr('Илгээлтийн агуулга хэт том ({0} тэмдэгт, дээд {1}) — ноорогоо хэд хэдэн илгээлтэд хуваана уу.', String(payloadJson.length), String(PAYLOAD_MAX)) };
+  }
   /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
   if (AUTH.appId) {
     /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос super-ийн
        нэр дамжуулж алгасахаас (2026-09-17). Хөтөчид нэвтрээгүй бол хаана. */
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    /* ⚠️ 2026-09-29 аудит: хадгалагдах ЗОХИОГЧ = нэвтэрсэн хүн. Урьд нь хүрээг
+       `meNow`-оор шалгаад нэрийг `args.author`-оос бичдэг тул консолоос өөр нэр
+       дамжуулж илгээгээд ӨӨРӨӨ батлах боломжтой байв (`withdrawPlan`-тай ижил дүрэм). */
+    const own = sameAsLogin(args.author);
+    if (own) return own;
     const sc = huvaariScope(meNow ?? args.author, 'author');
     if (sc !== null && !sc.includes(args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
@@ -799,7 +837,7 @@ export async function submitPlan(args: {
     [F.authorSent]: Date.now(),
     [F.rowCount]: args.rowCount,
     [F.note]: args.note?.trim() || null,
-    [F.payload]: JSON.stringify(args.payload),
+    [F.payload]: payloadJson,
   };
   try {
     const j = await req(`${url}/applyEdits`, {
@@ -873,6 +911,10 @@ export async function decidePlan(args: {
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
   }
+  /* ⚠️ 2026-09-29 аудит: хадгалагдах БАТЛАГЧ = нэвтэрсэн хүн (`withdrawPlan`-тай ижил) —
+     `args.approver`-т өөр нэр дамжуулж «өөрийгөө батлахгүй» дүрмийг тойрдог байв. */
+  const own = sameAsLogin(me);
+  if (own) return own;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   /*
@@ -921,17 +963,31 @@ export async function decidePlan(args: {
   if (holder && holder !== me) {
     return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder) };
   }
+  /* ⚠️ 2026-09-29 аудит: БАТЛАХАД түгжээ ӨӨРИЙНХ байх ёстой (хугацаа дууссан ч).
+     `save` 10 минутаас хэтэрвэл өөр батлагч түгжиж чаддаг байв — тэр үед энэ
+     батлалт нөгөөгийн бичилтийг «батлагдсан» болгоно. `approver` хоосон (татсан/
+     түгжээгүй) эсвэл өөр хүн бол зогсоно; буцаалт (`approve=false`) хуучин дүрмээр. */
+  if (args.approve) {
+    const raw = s(cur[0][F.approver])?.trim().toLowerCase() ?? '';
+    if (raw && raw !== me) {
+      return { ok: false, error: tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', raw) };
+    }
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: args.approve ? PLAN_STATUS.approved : PLAN_STATUS.returned,
-    [F.approver]: args.approver.toLowerCase(),
+    [F.approver]: me,
     [F.approverAt]: Date.now(),
-    [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
+    [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
   let warn: string | undefined;
   if (args.okRows) {
     const js = JSON.stringify(args.okRows.filter((x) => Number.isInteger(x)));
     const len = await okRowsFieldLen();
+    /* ⚠️ 2026-09-29 аудит: «уншигдсангүй» (−1) ≠ «алга» (0) — сүлжээний алдаанд
+       «AGOL дээр талбар нэмнэ үү» гэсэн худал заавар өгдөг байв. */
+    if (len < 0) warn = tr('«{0}» талбарын урт уншигдсангүй (сүлжээ) — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан).', F.okRows);
+    else
     /* ⚠️ УРТ ХЭТЭРВЭЛ БИЧИХГҮЙ (2026-09-25 аудит): AGOL-ийн анхдагч 256 тэмдэгттэй
        талбарт ~35-аас олон мөр багтахгүй — хэтэрсэн утга `applyEdits`-ийг бүхэлд нь
        унагаж, батлагч БУЦААЖ ЧАДАХГҮЙ болно. Шийдвэр чухал, тэмдэглэгээ нэмэлт. */
@@ -976,6 +1032,18 @@ function claimHolder(a: Attrs, now = Date.now()): string | null {
   if (!who || !Number.isFinite(at) || at <= 0) return null;
   return now - at < CLAIM_TTL ? who : null;
 }
+/**
+ * Жагсаалтын мөрөөс түгжигчийг уншина (`claimHolder`-тай ИЖИЛ дүрэм) — 2026-09-29
+ * аудит: батлагчийн жагсаалт «X батлаж байна» гэж харуулж, хоёр дахь батлагч бүтэн
+ * хяналт хийгээд сая `claimPlan` дээр унахаас сэргийлнэ.
+ */
+export function claimHolderOf(sub: Pick<PlanSubmission, 'status' | 'approver' | 'approverAt'>, now = Date.now()): string | null {
+  if (sub.status !== PLAN_STATUS.pending) return null;
+  const who = sub.approver?.trim().toLowerCase() || null;
+  const at = sub.approverAt;
+  if (!who || at == null || !Number.isFinite(at) || at <= 0) return null;
+  return now - at < CLAIM_TTL ? who : null;
+}
 
 /**
  * БАТЛАХААР ТҮГЖИХ — эх хуудсанд бичихээс ӨМНӨ (`Huvaari.decide`).
@@ -990,6 +1058,9 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
   if (claimed && me === claimed) {
     return { ok: false, error: tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
   }
+  /* ⚠️ 2026-09-29 аудит: түгжигчийн нэр = нэвтэрсэн хүн (`decidePlan`-тай ижил) */
+  const own = sameAsLogin(me);
+  if (own) return own;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const fields = `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`;

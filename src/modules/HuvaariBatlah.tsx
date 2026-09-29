@@ -47,7 +47,7 @@ import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { Huvaari } from '@/modules/Huvaari';
 import {
-  decidePlan, loadAllPending, loadPayload, planTableState, withdrawPlan,
+  claimHolderOf, decidePlan, loadAllPending, loadPayload, planTableState, withdrawPlan, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /**
@@ -366,10 +366,11 @@ export function HuvaariBatlah({
         <input
           className={s.search}
           placeholder={tr('Багц, илгээгч, тайлбараар хайх…')}
+          aria-label={tr('Багц, илгээгч, тайлбараар хайх…')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)}>
+        <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)} aria-label={tr('Бүх багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
           {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
@@ -435,6 +436,8 @@ export function HuvaariBatlah({
                   onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                   onReject={() => void reject(x)}
                   onApprove={PKG_BY_KEY.has(x.pkgKey) ? () => openReview(x) : undefined}
+                  /* ⚠️ 2026-09-29 аудит: ӨӨР батлагч түгжсэн бол ил хэлж, товчийг хаана */
+                  holder={(() => { const h = claimHolderOf(x); return h && h !== me ? h : null; })()}
                 />
               ))}
             </div>
@@ -501,9 +504,11 @@ export function HuvaariBatlah({
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, holder,
 }: {
   sub: PlanSubmission;
+  /** ӨӨР батлагч түгжсэн (эх хуудсанд бичиж буй) — нэр; товчнууд хаалттай (2026-09-29) */
+  holder?: string | null;
   open: boolean;
   onToggle: (oid: number) => void;
   detail: Detail | undefined;
@@ -566,7 +571,7 @@ function Row({
             {tr('{0} мөр', num(sub.rowCount))}
           </span>
         </span>
-        <span className={`${s.badge} ${s.bWait}`}>{tr('Хүлээгдэж буй')}</span>
+        <span className={`${s.badge} ${s.bWait}`}>{holder ? tr('{0} батлаж байна', holder) : tr('Хүлээгдэж буй')}</span>
       </button>
 
       {open && (
@@ -641,8 +646,15 @@ function Row({
                 value={reason}
                 onChange={(e) => onReason(e.target.value)}
                 disabled={busy}
+                /* ⚠️ Талбар 2048 — хэтэрвэл `applyEdits` бүхэлдээ унана (2026-09-29) */
+                maxLength={REASON_MAX}
               />
             </>
+          )}
+          {holder && (
+            <p className={s.reasonBox} role="status">
+              {tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder)}
+            </p>
           )}
 
           <div className={s.actions}>
@@ -651,8 +663,8 @@ function Row({
                 type="button"
                 className={`${s.btn} ${s.ok}`}
                 /* ⚠️ Агуулга уншигдаагүй бол БАТЛАХГҮЙ — батлагч юу
-                   батлахаа хараагүй байна. */
-                disabled={busy || detail?.k !== 'ok'}
+                   батлахаа хараагүй байна. Өөр батлагч түгжсэн бол мөн (2026-09-29). */
+                disabled={busy || detail?.k !== 'ok' || !!holder}
                 /* ⚠️ Шошго нь «Хуваарийг харж батлах» — зүгээр «Батлах» гэвэл нэг
                    товшилтоор батлагдана гэж ойлгогдоно. Бүтэн дэлгэцэд мөр бүрийг
                    зөвшөөрсний дараа л батлах товч идэвхжинэ (2026-09-25). */
@@ -681,7 +693,7 @@ function Row({
               <button
                 type="button"
                 className={`${s.btn} ${s.bad}`}
-                disabled={busy || !reason.trim()}
+                disabled={busy || !reason.trim() || !!holder}
                 title={reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
                 onClick={onReject}
               >

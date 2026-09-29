@@ -354,7 +354,7 @@ assert.ok(SRC.includes("setRemoteState({ kind: 'big' })"), 'хэт том ноо
 assert.ok(SRC.includes("{ kind: 'fail', why: r.error }"), 'алсын хуулбар унасны ШАЛТГААН дэлгэцэд хүрэхгүй байна');
 assert.ok(SRC.includes('if (!remoteQueue.current) remoteQueue.current = q;'), 'унасан ноорог дарааллаас бүрмөсөн хасагдаж байна — retry алга');
 const DR = fs.readFileSync('src/lib/draftRemote.ts', 'utf8');
-assert.ok(DR.includes('export type RemoteSave = { ok: true } | { ok: false; error: string };'), 'saveRemoteDraft шалтгаан ялгадаггүй (boolean хэвээр)');
+assert.ok(DR.includes('export type RemoteSave = { ok: true } | { ok: false; error: string; conflict?: boolean };'), 'saveRemoteDraft шалтгаан ялгадаггүй (boolean хэвээр)');
 {
   /* Зөвхөн `saveRemoteDraft`-ийн БИЕ — дараагийн `clearRemoteDraft` нь boolean
      хэвээр (зөв: устгалт унавал шалтгаан хэрэглэгчид хамаагүй). */

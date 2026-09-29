@@ -90,6 +90,16 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     const sc0 = huvaariScope(me, 'author');
     if (sc0 !== null && !sc0.includes(pkg.group)) return { ok: false, error: tr('Энэ багцын хуваарийг төлөвлөх эрхгүй.') };
   }
+  /* ⚠️ 2026-09-29 аудит: ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ байхад ШИНЭ ЖААЗ бичихгүй — саналын
+     бүх oid «мэдэгдэхгүй» болж батлагдахгүй. UI-ийн `pending` шалгалт (`komissGateRef`)
+     нь `refreshFlow`-оос түрүүлж болох тул ЭНД серверээс дахин асууна; уншигдахгүй
+     бол ч бичихгүй (fail-closed — дараагийн нээлтэд нэмэгдэнэ). */
+  try {
+    const { loadPending } = await import('./huvaariBatlah');
+    if (await loadPending(pkgKey)) return { ok: true, added: false };
+  } catch {
+    return { ok: false, error: tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.') };
+  }
 
   const [{ loadRows, applyAdds, applyDeletes }, { appendRootLeaf, buildFrame }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
