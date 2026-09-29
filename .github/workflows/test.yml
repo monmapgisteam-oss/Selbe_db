@@ -1,12 +1,12 @@
 name: Test (typecheck + live-data checks)
 
-# ⚠️ Deploy-оос ТУСДАА, түүнийг ХААХГҮЙ workflow. Амьд ArcGIS үйлчилгээ рүү
-# хандаж кодын өгөгдлийн таамгийг шалгадаг тул мэдээлэл өөрчлөгдөхөд эрт барина.
-# (deploy.yml нь зөвхөн typecheck + build хийж, статикаар нийтэлдэг хэвээр.)
+# ⚠️ 2026-09-29: ЗӨВХӨН PR ба гараар. `main` руу push хийхэд ИЖИЛ дөрвөн хаалт
+# одоо `deploy.yml`-ийн build job дотор, deploy-ийн ӨМНӨ ажилладаг (унавал сайт
+# хөндөгдөхгүй) — энд давхар ажиллуулбал нэг push-д хоёр удаа minute зарцуулна.
+# Энэ workflow нь PR-ыг merge-ээс өмнө шалгах, мөн Variables/токен өөрчилсний
+# дараа гараар (`workflow_dispatch`) шалгах зориулалттай.
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 

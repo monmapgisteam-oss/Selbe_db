@@ -1,6 +1,6 @@
 # Багцын гүйцэтгэлийн нэгтгэл — `selbe_bagts_guitsetgel_negtgel`
 
-Дөрвөн шатны хяналт бүрэн өнгөрсөн **батлагдсан** гүйцэтгэлийн бүртгэл.
+Зургаан шатны хяналт бүрэн өнгөрсөн **батлагдсан** гүйцэтгэлийн бүртгэл.
 
 ```
 https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/
