@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { PKGS, loadSchema } from './bagts.pkg.ts';
 import { loadRows, computeAll, childIndexes } from './bagtsSheet.ts';
 import { TREES } from './bagts.trees.ts';
+import { findKomissRow } from '@/lib/ulsiinKomiss.ts';
 
 /* ⚠️ Org-only үйлчилгээ, токенгүй → АМЬД хэсгүүд (2–4) алгасна (`tools/ts-alias.mjs`, 2026-09-17).
    ⚠️ 2026-09-25: 1-р хэсэг СҮЛЖЭЭГҮЙ тул алгасалтад ОРОХГҮЙ. Урьд нь файлын эхэн дэх
@@ -66,7 +67,10 @@ if (liveSkip) {
     if (!filled) { console.log(`${pkg.key.padEnd(9)} — «gun» хоосон (нийтлэгдээгүй)`); continue; }
 
     // Мөрийн тоо TREES-тэй тэнцүү үед л тулгах утгатай (мөр нэмэгдсэн бол зөрнө).
-    if (rows.length === tree.length) {
+    /* ⚠️ 2026-09-29: «Улсын комисс» мөр (2026-09-28, автомат) нь TREES-д БАЙХГҮЙ. Амьд хуудсанд
+       нэмэгдсэний дараа мөрийн тоо TREES-тэй САНАМСАРГҮЙ тэнцэж (b31_9f: 1470 + 1 = 1471),
+       сүүлийн мөр гүн 0 ≠ 2 гэж унадаг байв — тэр багцыг «мөр нэмэгдсэн» гэж үзнэ. */
+    if (rows.length === tree.length && !findKomissRow(rows)) {
       for (let i = 0; i < rows.length; i++) {
         const ch = tree[i];
         const wantGroup = ch >= 'A' && ch <= 'E';
@@ -192,8 +196,11 @@ if (liveSkip) {
     for (let i = 0; i < cur.length; i += 1) {
       d[i] = map[i] >= 0 ? dep(map[i]) : (i > 0 ? d[i - 1] : 0);
     }
+    /* ⚠️ 2026-09-29: «Улсын комисс» мөр TREES-д байхгүй (автоматаар нэмэгдсэн, гүн 0) —
+       TREES-ийн тэр индексийн тэмдэгттэй тулгахгүй (b31_9f-д индекс нь TREES дотор таардаг). */
+    const kr = findKomissRow(r.rows);
     for (let i = 0; i < cur.length; i += 1) {
-      if (map[i] >= 0) {
+      if (map[i] >= 0 && r.rows[map[i]] !== kr) {
         assert.equal(d[i], r.rows[map[i]].depth, `${pkg.key} i=${i}: хуучин мөрийн гүн гулсав`);
       }
     }

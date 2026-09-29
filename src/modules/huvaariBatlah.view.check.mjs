@@ -333,3 +333,23 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: `flowReady=true` нь `loadPending`-ээс ӨМНӨ — хяналт хүлээгдэж буйг шийдвэрлэгдсэн гэж андуурна');
 }
 console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахин ашиглана · бүгд ногоон · okRows хадгална');
+
+/* ══════════ БУЦААГДСАН САНАЛ АВТОМАТААР НООРОГТ (2026-09-29) ══════════
+ * Хэрэглэгч: «хуваарь төлөвлөөд явуулаад буцаасан тохиолдолд төлөвлөсөн хуваарь алга
+ * болж байна». Урьд нь зөвхөн жижиг товчоор л буцдаг байв. */
+{
+  const H = read('src/modules/Huvaari.tsx');
+  assert.ok(/void restoreWithdrawn\(true\);/.test(H), 'Huvaari: буцаагдсан саналын автомат буулгалт алга');
+  const i = H.indexOf('const autoBackRef = useRef');
+  const body = H.slice(i, H.indexOf('void restoreWithdrawn(true);', i));
+  assert.ok(i > 0 && /dirtyN > 0/.test(body) && /!canEdit/.test(body) && /pending/.test(body),
+    'Huvaari: автомат буулгалт ноорогтой/эрхгүй/хүлээгдэж буй үед хаагдаагүй');
+  assert.ok(/hdReadyKey !== hdKey\(kind, pkg\.key\)/.test(body),
+    'Huvaari: автомат буулгалт хуваалцсан нооргийн сэргээлтийг хүлээхгүй — хамтрагчийн ноорогтой давхарлана');
+  assert.ok(/\.author[\s\S]{0,60}!== me/.test(body), 'Huvaari: автомат буулгалт зөвхөн зохиогчид биш');
+  assert.ok(/backSeenGet\(pkg\.key, kind\) === d\.oid/.test(body), 'Huvaari: хаясан нооргийг нээх бүрд дахин буулгана');
+  /* Санал ажлын кодоор одоогийн жааз руу зөөгдөнө */
+  assert.ok(/const p = remapPayload\(p0, curRows\)\.pay;/.test(H), 'Huvaari: applyPayloadToDraft саналын oid-ыг зөөхгүй');
+  assert.ok(/keys\[String\(oid\)\] = des;/.test(H), 'Huvaari: илгээлтэд мөрийн тогтвортой түлхүүр (keys) бичигдэхгүй');
+}
+console.log('✅ буцаагдсан санал — автоматаар ноорогт · кодоор зөөнө');

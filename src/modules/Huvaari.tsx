@@ -62,7 +62,7 @@ import {
 } from '@/lib/huvaariObyem';
 import {
   claimPlan, decidePlan, loadHistory, loadPayload, loadPending, planTableState, PLAN_STATUS,
-  releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan, REASON_MAX, type PlanPayloadKind,
+  releasePlanClaim, remapPayload, setPlanNavBusy, submitPlan, withdrawPlan, REASON_MAX, type PlanPayloadKind,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -261,6 +261,22 @@ function mergeIncoming(prev: readonly NewRow[], incoming: readonly NewRow[]): Ne
  * ⚠️ ИЖИЛ ЗАМ дотор шинэ мөр нэмэгдсэн бол (`insertAdds` бүлгийн ЭХЭНД оруулдаг)
  *    илүүдлийг ЭХНЭЭС нь алгасна — хуучин мөрүүд СҮҮЛИЙН хэсэгтэйгээ хосолно.
  */
+/**
+ * АВТОМАТААР НООРОГТ БУУЛГАСАН ИЛГЭЭЛТ (2026-09-29) — багц·төрөл бүрд сүүлийн `oid`.
+ * ⚠️ Зөвхөн ЭНЭ хөтчид (localStorage): өөр төхөөрөмжид хаясан ноорог дахин нэг удаа
+ *    бууж болно — хор багатай (хаяхад дахин тэмдэглэгдэнэ). Хаалттай орчинд чимээгүй.
+ */
+const backSeenKey = (pkgKey: string, kind: string) => `selbe-huvaari-back:${kind}:${pkgKey}`;
+function backSeenGet(pkgKey: string, kind: string): number | null {
+  try {
+    const v = Number(localStorage.getItem(backSeenKey(pkgKey, kind)));
+    return Number.isInteger(v) && v > 0 ? v : null;
+  } catch { return null; }
+}
+function backSeenSet(pkgKey: string, kind: string, oid: number): void {
+  try { localStorage.setItem(backSeenKey(pkgKey, kind), String(oid)); } catch { /* хаалттай орчин */ }
+}
+
 function remapOids(oldRows: readonly SheetRow[], newRows: readonly SheetRow[]): Map<number, number> {
   const keysOf = (rs: readonly SheetRow[]): string[] => {
     const stack: { d: number; k: string }[] = [];
@@ -658,6 +674,12 @@ export function Huvaari({
    *    болно (2026-09-07-ны шалгалтаар илэрсэн).
    */
   const [lastDecision, setLastDecision] = useState<PlanSubmission | null>(null);
+  /**
+   * Хуваалцсан нооргийн СЭРГЭЭЛТ ДУУССАН түлхүүр (2026-09-29) — `hdReady` ref-ийн
+   * зурагдалтад харагдах хуулбар. Буцаагдсан саналыг автоматаар буулгах эффект үүнийг
+   * хүлээнэ: хамт ажиллагчийн ноорог ирэхээс өмнө буулгавал давхарлана.
+   */
+  const [hdReadyKey, setHdReadyKey] = useState<string | null>(null);
   /** Илгээх/шийдвэрлэх цонх */
   /* `reject` — хяналтын горимын буцаах цонх (2026-09-25) */
   const [flowBox, setFlowBox] = useState<'send' | 'decide' | 'reject' | null>(null);
@@ -3026,9 +3048,18 @@ export function Huvaari({
     }
     /* ⚠️ `kind` нь ЗААВАЛ — батлагч нь ӨӨРИЙН табаар бичих талбарыг дур
        мэдэн шийдэхээс сэргийлнэ (2026-09-11-ний аудитын S1). */
+    /* ⚠️ МӨРИЙН ТОГТВОРТОЙ ТҮЛХҮҮР (2026-09-29) — `oid` → ажлын код. Илгээснээс хойш
+       шинэ жааз нийтлэгдэж бүх `oid` солигдсон ч санал одоогийн мөр рүүгээ зөөгдөнө
+       (`remapPayload`). Кодгүй мөр орохгүй. */
+    const keys: NonNullable<PlanPayload['keys']> = {};
+    for (const oid of new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()])) {
+      const des = rowByOid.get(oid)?.des;
+      if (des != null) keys[String(oid)] = des;
+    }
     return {
       kind, spans, deps, obyem, actual, res, obres,
       base: { spans: bSpans, deps: bDeps, obyem: bObyem, actual: bActual, res: bRes, obres: bObRes },
+      keys,
     };
   }, [draft, ham, aDraft, resDraft, obDraft, obResDraft, kind, base, rows, obPlan, obRes]);
 
@@ -3159,13 +3190,17 @@ export function Huvaari({
    *    хуучин. Дуудагч өгөөгүй бол state-ийнх (татах зам).
    */
   const applyPayloadToDraft = useCallback((
-    p: PlanPayload,
+    p0: PlanPayload,
     curRows: SheetRow[],
     strict = true,
     curPlan: PkgPlan = obPlan,
     curRes: PkgRes = obRes,
   ): { ok: true; conflicts: number; unknown: number } | { ok: false; why: 'kind' | 'conflict' | 'unknown'; conflicts: number; unknown: number } => {
-    if (p.kind !== kind) return { ok: false, why: 'kind', conflicts: 0, unknown: 0 };
+    if (p0.kind !== kind) return { ok: false, why: 'kind', conflicts: 0, unknown: 0 };
+    /* ⚠️ 2026-09-29: илгээснээс хойш жааз солигдсон бол саналын `oid`-ыг ажлын кодоор
+       одоогийн мөр рүү зөөнө — эс бөгөөс бүх мөр «олдсонгүй» болж, буцаагдсан хуваарь
+       ноорогт буухгүй, хүлээгдэж буй нь батлагдахгүй байв. `keys`-гүй хуучин илгээлт хэвээр. */
+    const p = remapPayload(p0, curRows).pay;
     const curPlanRows = toPlanRows(curRows, n, kind);
     const cur = new Map(curPlanRows.map((r) => [r.oid, r]));
     const curSheet = new Map(curRows.map((r) => [r.oid, r]));
@@ -3489,7 +3524,7 @@ export function Huvaari({
         if (dirtyNRef.current > 0 || uiOpenRef.current) {
           setAjApplied(true);
         } else {
-          hdReady.current = null; hdLastSeenAt.current = 0;
+          hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
           await refetchRef.current();
           if (!live()) return;
           setAjNote(tr('Нэмэлт ажил батлагдаж хуудсанд орлоо — мөрүүд серверээс шинэчлэгдэв.'));
@@ -3510,7 +3545,7 @@ export function Huvaari({
     setBusy(true); setErr('');
     try {
       const oldRows = rows;
-      hdReady.current = null; hdLastSeenAt.current = 0;
+      hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
       const srv = await refetchRef.current();
       const map = remapOids(oldRows, srv.rows);
       /* ⚠️ СИНХРОН БОДНО (2026-09-25 аудит): урьд нь `lost`-ыг функц-шинэчлэгч
@@ -3713,6 +3748,9 @@ export function Huvaari({
          Мөн энэ нэг удаад хоослохгүй (`hdSkipUnlockOnce`) — агуулга нь
          зохиогчийн буцааж авсан ажил. */
       hdSkipUnlockOnce.current = true;
+      /* ⚠️ 2026-09-29: энэ илгээлтийг ЭНД буулгана — автомат буулгалт давхардахгүй,
+         дараа нь нооргоо хаявал дахин тулгахгүй */
+      backSeenSet(pkg.key, kind, pending.oid);
       await refreshFlow({ noRefetch: true });
       /* Серверийн одоогийн мөртэй тулгаж буулгана — зөрчлийн тоо бодит байна */
       const srv = await refetchServer();
@@ -3738,7 +3776,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [pending, busy, isOwnSubmission, user, kind, applyPayloadToDraft, refetchServer, refreshFlow]);
+  }, [pending, busy, isOwnSubmission, user, kind, pkg.key, applyPayloadToDraft, refetchServer, refreshFlow]);
 
   /**
    * ТАТСАН ИЛГЭЭЛТИЙГ НООРОГТ БУЦААХ (2026-09-23) — сүүлийн шийдвэр `withdrawn`
@@ -3746,7 +3784,11 @@ export function Huvaari({
    * зөвхөн серверт үлддэг; энд `withdraw`-тай ИЖИЛ замаар (`strict: false`)
    * буулгана. Эх хуудсанд ЮУ Ч бичихгүй.
    */
-  const restoreWithdrawn = useCallback(async () => {
+  /**
+   * @param auto — АВТОМАТ сэргээлт (2026-09-29, доорх эффект): төрөл зөрсөн бол
+   *   алдаа харуулахгүй чимээгүй алгасна (өөр табд нээхэд тэнд сэргэнэ).
+   */
+  const restoreWithdrawn = useCallback(async (auto = false) => {
     /* ⚠️ БУЦААГДСАН саналыг ч (2026-09-25): гүйцэтгэгч батлагчийн зөвшөөрөөгүй
        мөрүүдийг (улаан) засаад дахин илгээнэ — гүйцэтгэлийн «буцаагдсан илгээлт
        ноорог болж ачаалагдана» загвар. */
@@ -3755,15 +3797,18 @@ export function Huvaari({
     setBusy(true); setErr(''); setNote('');
     try {
       const p = await loadPayload(lastDecision.oid).catch(() => null);
-      if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      if (!p) { if (!auto) setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
       if (p.kind !== kind) {
-        setErr(p.kind === 'geree'
+        if (!auto) setErr(p.kind === 'geree'
           ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.')
           : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.'));
         return;
       }
       const srv = await refetchServer();
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan, srv.res);
+      /* ⚠️ Сэргээсэн илгээлтийг тэмдэглэнэ (2026-09-29) — зохиогч нооргоо «Цуцлах»-аар
+         хаясны дараа хуудас нээх бүрд автоматаар дахин буухгүй (товч хэвээр). */
+      if (ap.ok) backSeenSet(pkg.key, kind, lastDecision.oid);
       setPreviewing(false);
       /* ⚠️ Шинэ жаазад олдоогүй мөрийг НУУХГҮЙ (2026-09-25 аудит) — ноорогт буугаагүй */
       const lostTxt = ap.unknown ? ` ${tr('{0} мөр одоогийн хуудаснаас олдсонгүй тул ноорогт буусангүй.', num(ap.unknown))}` : '';
@@ -3791,7 +3836,36 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [lastDecision, busy, dirtyN, canEdit, kind, applyPayloadToDraft, refetchServer]);
+  }, [lastDecision, busy, dirtyN, canEdit, kind, pkg.key, applyPayloadToDraft, refetchServer]);
+
+  /**
+   * БУЦААГДСАН/ТАТСАН САНАЛЫГ АВТОМАТААР НООРОГТ БУУЛГАНА (2026-09-29, хэрэглэгч:
+   * «хуваарь төлөвлөөд явуулаад буцаасан тохиолдолд төлөвлөсөн хуваарь алга болж байна»).
+   *
+   * ⚠️ ЯАГААД: илгээхэд ноорог цэвэрлэгддэг (агуулга илгээлтэд хадгалагдана). Татахад
+   *    (`withdraw`) агуулга шууд ноорогт буцдаг атал БУЦААГДАХАД зөвхөн улаан мэдэгдлийн
+   *    доторх жижиг товчоор л буцдаг байв — дараагүй бол хуанли хуучин хуваарийг харуулж,
+   *    төлөвлөсөн ажил «алга болсон» мэт. Амьд өгөгдөл (b31_9f #6): 133 мөр серверт бүтэн,
+   *    хуваалцсан ноорог илгээснээс хойш хоосон.
+   * ⚠️ НӨХЦӨЛ: зөвхөн ЗОХИОГЧИД · засах эрхтэй · ноорог ХООСОН · хуваалцсан нооргийн
+   *    сэргээлт ДУУССАН (`hdReadyKey` — эс бөгөөс хамт ажиллагчийн ноорог ирэхээс өмнө
+   *    буулгаж давхарлана) · илгээлт хүлээгдээгүй · хяналтын горим биш.
+   * ⚠️ НЭГ УДАА: илгээлт·төрөл бүрд (`autoBackRef` + localStorage `backSeen`) — зохиогч
+   *    нооргоо хаясан бол дахин тулгахгүй; «Ноорогт буцааж засах» товч хэвээр.
+   */
+  const autoBackRef = useRef('');
+  useEffect(() => {
+    const d = lastDecision;
+    if (review || !d || pending || busy || dirtyN > 0 || !canEdit || flowReady !== true) return;
+    if (d.status !== PLAN_STATUS.returned && d.status !== PLAN_STATUS.withdrawn) return;
+    if (d.pkgKey !== pkg.key || hdReadyKey !== hdKey(kind, pkg.key) || obState !== 'ok' || !rows.length) return;
+    const me = (user?.username ?? '').trim().toLowerCase();
+    if (!me || (d.author ?? '').trim().toLowerCase() !== me) return;
+    const tag = `${pkg.key}:${kind}:${d.oid}`;
+    if (autoBackRef.current === tag || backSeenGet(pkg.key, kind) === d.oid) return;
+    autoBackRef.current = tag;
+    void restoreWithdrawn(true);
+  }, [review, lastDecision, pending, busy, dirtyN, canEdit, flowReady, hdReadyKey, obState, rows.length, kind, pkg.key, user, restoreWithdrawn]);
 
   /** Урьдчилан харахыг болих — ноорог зүгээр л хаягдана */
   const clearPreview = useCallback(() => {
@@ -3802,7 +3876,7 @@ export function Huvaari({
     setPreviewing(false); setNote('');
     /* ⚠️ Хуваалцсан нооргийг ДАХИН сэргээнэ (2026-09-24): харалт Map-уудыг
        дарсан тул алсад шинэ бичилт ирэх хүртэл ноорог харагдахгүй байв. */
-    hdReady.current = null; hdLastSeenAt.current = 0;
+    hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
   }, []);
 
   /**
@@ -4282,7 +4356,10 @@ export function Huvaari({
   const backMarkMap = useMemo(() => {
     const out = new Map<number, 'ok' | 'bad'>();
     if (!backOn || !backMarks) return out;
-    const p = backMarks.pay;
+    /* ⚠️ 2026-09-29: тэмдэг ч одоогийн жаазын `oid`-оор — санал ба зөвшөөрсөн мөрийг зөөнө */
+    const rm = remapPayload(backMarks.pay, rows);
+    const p = rm.pay;
+    const okSet = new Set([...backMarks.ok].map((o) => rm.map.get(o) ?? o));
     const pb = p.base;
     const idx = new Map(plan.map((r, i) => [r.oid, i]));
     const oids = new Set<number>();
@@ -4355,10 +4432,10 @@ export function Huvaari({
       const i = idx.get(o);
       if (i == null) continue;
       if (!samePay(plan[i], i)) continue;
-      out.set(o, backMarks.ok.has(o) ? 'ok' : 'bad');
+      out.set(o, okSet.has(o) ? 'ok' : 'bad');
     }
     return out;
-  }, [backOn, backMarks, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes]);
+  }, [backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes]);
   /* ⚠️ 2026-09-25 аудит: батлагч ЭНГИЙН хуудсанд урьдчилан харж байхад ч мөр бүрийг
      ногоон болгоно — «Шийдвэрлэх»-ийн батлалт тэр дүрмээр хаалттай (`decide`). */
   const marking = !!review || (previewing && pending != null && canApprove && !isOwnSubmission);
@@ -4769,6 +4846,7 @@ export function Huvaari({
     /* ⚠️ `null` (хуучин түлхүүр БИШ): b32→b33→b32 хурдан солиход хуучин утга
        «бэлэн» гэж уншигдаж сэргээлт алгасагддаг байв (2026-09-24). */
     hdReady.current = null;
+    setHdReadyKey(null);
     hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map(); hdStale.current = new Map();
     hdLastSeenAt.current = 0; hdLastSig.current = ''; hdAgain.current = false; hdBackoff.current = 3000;
     hdGen.current += 1;
@@ -4819,6 +4897,8 @@ export function Huvaari({
         if (merged) merged = hdRemapDraft(merged, rm.map);
       }
       hdReady.current = key;
+      /* ⚠️ `hdApply`-тай НЭГ багцад (React 18) — автомат буулгалт ноорогтой зурагдалтыг харна */
+      setHdReadyKey(key);
       hdPrevW.current = hdWritableRef.current;
       if (readErr && !fromLocal) setHdSt({ st: 'err', err: readErr });
       if (!merged || hdIsEmpty(merged)) return;

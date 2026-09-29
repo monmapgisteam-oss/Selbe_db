@@ -343,3 +343,51 @@ console.log('✅ түгжээ — нэргүй/өөрийгөө хаагдана
 console.log('✅ агуулга — 1 MB-аас хэтэрвэл илгээхийн өмнө зогсоно');
 
 console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал · түгжээ · урт');
+
+/* ══════════ МӨРИЙН ТОГТВОРТОЙ ТҮЛХҮҮР — `keys` + `remapPayload` (2026-09-29) ══════════
+ * ⚠️ Илгээснээс хойш шинэ жааз нийтлэгдэж бүх `oid` солигдоход санал «мөр олдсонгүй»
+ *    болж, буцаагдсан хуваарь ноорогт буухгүй байв. Ажлын кодоор зөөнө. */
+{
+  const { remapPayload } = await import('@/lib/huvaariBatlah.ts');
+  const raw = JSON.stringify({
+    kind: 'plan',
+    spans: { 10: [{ start: 1, end: 2 }], 11: [null], 12: [{ start: 5, end: 6 }] },
+    deps: { 10: '7FS' },
+    obyem: { '501|9F': { '2026-01': 3 } },
+    actual: { 11: { start: [1], end: [null] } },
+    res: { 12: { hun: 4, mashin: null } },
+    base: { spans: { 10: [null] }, deps: { 10: null }, obyem: {} },
+    keys: { 10: 501, 11: 502, 12: 503, x: 9, 13: 'буруу' },
+  });
+  const p0 = parsePayload(raw);
+  assert.deepEqual(p0.keys, { 10: 501, 11: 502, 12: 503 }, 'keys: эвдэрсэн хос хаягдаж бусад нь үлдэнэ');
+  /* Хуучин илгээлт (`keys`-гүй) — талбар огт байхгүй, зөөлтгүй */
+  assert.equal('keys' in parsePayload(JSON.stringify({ spans: { 7: [null] } })), false);
+
+  /* (а) жааз солигдоогүй — юу ч хөдлөхгүй, ИЖИЛ объект */
+  const same = remapPayload(p0, [{ oid: 10, des: 501 }, { oid: 11, des: 502 }, { oid: 12, des: 503 }]);
+  assert.equal(same.map.size, 0); assert.equal(same.pay, p0);
+
+  /* (б) шинэ жааз — бүх oid шинэ; кодоор зөөгдөнө, суурь ч хамт */
+  const cur = [{ oid: 110, des: 501 }, { oid: 111, des: 502 }, { oid: 112, des: 503 }, { oid: 113, des: null }];
+  const mv = remapPayload(p0, cur);
+  assert.deepEqual([...mv.map], [[10, 110], [11, 111], [12, 112]]);
+  assert.deepEqual(Object.keys(mv.pay.spans).sort(), ['110', '111', '112']);
+  assert.deepEqual(mv.pay.deps, { 110: '7FS' });
+  assert.deepEqual(Object.keys(mv.pay.actual), ['111']);
+  assert.deepEqual(Object.keys(mv.pay.res), ['112']);
+  assert.deepEqual(Object.keys(mv.pay.base.spans), ['110']);
+  assert.deepEqual(mv.pay.base.deps, { 110: null });
+  assert.deepEqual(mv.pay.obyem, p0.obyem, 'обьём кодоор түлхүүрлэгддэг — хөндөгдөхгүй');
+  assert.deepEqual(mv.pay.keys, { 110: 501, 111: 502, 112: 503 });
+
+  /* (в) код одоогийн жаазад ДАВХАРДСАН эсвэл алга — зөөхгүй (буруу мөрд буулгахгүй) */
+  const dup = remapPayload(p0, [{ oid: 110, des: 501 }, { oid: 120, des: 501 }, { oid: 111, des: 502 }]);
+  assert.deepEqual([...dup.map], [[11, 111]], 'давхардсан код 501 зөөгдөхгүй, 503 алга');
+  assert.ok('10' in dup.pay.spans && '12' in dup.pay.spans && '111' in dup.pay.spans);
+
+  /* (г) `keys`-гүй бол хэзээ ч зөөхгүй */
+  const old = parsePayload(JSON.stringify({ spans: { 10: [null] } }));
+  assert.equal(remapPayload(old, cur).pay, old);
+}
+console.log('✅ тогтвортой түлхүүр — кодоор зөөнө · давхардсан код зөөхгүй · хуучин илгээлт хэвээр');

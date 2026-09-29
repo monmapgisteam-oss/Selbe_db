@@ -188,7 +188,79 @@ export type PlanPayload = {
   actual: Record<string, { start: (number | null)[]; end: (number | null)[] }>;
   /** Хүн хүч · машин механизм — `oid` → { hun, mashin } (2026-09-23). Сонголттой, дээрхтэй ижил. */
   res: Record<string, { hun: number | null; mashin: number | null }>;
+  /**
+   * МӨРИЙН ТОГТВОРТОЙ ТҮЛХҮҮР — `oid` → ажлын код (`des`) (2026-09-29).
+   *
+   * ⚠️ ЯАГААД: `spans`/`deps`/`actual`/`res` нь ИЛГЭЭСЭН ҮЕИЙН жаазын `oid`-оор
+   *    түлхүүрлэгддэг. Хооронд нь шинэ жааз нийтлэгдвэл (гүйцэтгэл батлагдах ·
+   *    нэмэлт ажил · «Улсын комисс») бүх `oid` солигдож, санал «мөр олдсонгүй»
+   *    болж батлагдах ч, буцаагдаад ноорогт буух ч боломжгүй болдог байв.
+   *    Ажлын код нь жааз солигдоход ХАДГАЛАГДДАГ (сарын обьём, уялдаа түүгээр
+   *    түлхүүрлэгддэг) тул `remapPayload` түүгээр одоогийн `oid` руу зөөнө.
+   * ⚠️ СОНГОЛТТОЙ — өмнөх илгээлтэд байхгүй; тэр үед зөөлтгүй (хуучин зан үйл).
+   *    Кодгүй мөр (`des == null`) энд ОРОХГҮЙ — зөөгдөхгүй.
+   */
+  keys?: Record<string, number>;
 };
+
+/**
+ * ИЛГЭЭЛТИЙН `oid`-ЫГ ОДООГИЙН ЖААЗ РУУ ЗӨӨНӨ — ажлын кодоор (2026-09-29).
+ *
+ * ⚠️ ЦЭВЭР функц (сүлжээгүй). `cur` = одоогийн жаазын мөрүүд.
+ * ⚠️ Одоогийн жаазад БАЙГАА `oid` хөндөгдөхгүй. Байхгүй нь `keys`-ийн кодоор
+ *    хайгдана; код одоогийн жаазад ДАВХАРДСАН бол зөөхгүй (буруу мөрд буулгахаас
+ *    «олдсонгүй» гэж хэлэх нь аюулгүй). Хоёр хуучин `oid` нэг мөр рүү зөөгдөхгүй.
+ * ⚠️ `obyem`/`obres` нь угаасаа кодоор түлхүүрлэгддэг — хөндөхгүй.
+ */
+export function remapPayload(
+  p: PlanPayload,
+  cur: readonly { oid: number; des: number | null }[],
+): { pay: PlanPayload; map: Map<number, number> } {
+  const map = new Map<number, number>();
+  if (!p.keys) return { pay: p, map };
+  const have = new Set(cur.map((r) => r.oid));
+  const byDes = new Map<number, number | null>();
+  for (const r of cur) {
+    if (r.des == null) continue;
+    byDes.set(r.des, byDes.has(r.des) ? null : r.oid);
+  }
+  const taken = new Set<number>();
+  for (const [k, des] of Object.entries(p.keys)) {
+    const oid = Number(k);
+    if (!Number.isInteger(oid) || have.has(oid)) continue;
+    const to = byDes.get(des);
+    if (to == null || taken.has(to) || String(to) in p.spans || String(to) in p.deps) continue;
+    taken.add(to);
+    map.set(oid, to);
+  }
+  if (!map.size) return { pay: p, map };
+  const re = <T,>(rec: Record<string, T> | undefined): Record<string, T> => {
+    const out: Record<string, T> = {};
+    for (const [k, v] of Object.entries(rec ?? {})) {
+      const nk = String(map.get(Number(k)) ?? k);
+      if (!(nk in out)) out[nk] = v;
+    }
+    return out;
+  };
+  const pay: PlanPayload = {
+    ...p,
+    spans: re(p.spans),
+    deps: re(p.deps),
+    actual: re(p.actual),
+    res: re(p.res),
+    keys: re(p.keys),
+    ...(p.base ? {
+      base: {
+        ...p.base,
+        spans: re(p.base.spans),
+        deps: re(p.base.deps),
+        ...(p.base.actual ? { actual: re(p.base.actual) } : {}),
+        ...(p.base.res ? { res: re(p.base.res) } : {}),
+      },
+    } : {}),
+  };
+  return { pay, map };
+}
 
 const TITLE = 'Selbe_Huvaari_Batlah';
 const TABLE_NAME = 'huvaari_batlah';
@@ -736,6 +808,16 @@ function sanitizeObRes(raw: object): NonNullable<PlanPayload['obres']> {
   return out;
 }
 
+/** `keys` — эвдэрсэн хосыг хаяна (зөөлт нэмэлт; нэг буруу хос бүх саналыг унагахгүй) */
+function sanitizeKeys(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const des = typeof v === 'number' ? v : Number.NaN;
+    if (Number.isInteger(Number(k)) && Number.isInteger(des)) out[k] = des;
+  }
+  return out;
+}
+
 export function parsePayload(raw: string): PlanPayload | null {
   try {
     const j = JSON.parse(raw) as Partial<PlanPayload>;
@@ -774,6 +856,8 @@ export function parsePayload(raw: string): PlanPayload | null {
       /* Сарын нөөц (2026-09-24) — хуучин илгээлтэд байхгүй → `{}` */
       obres: j.obres && typeof j.obres === 'object' ? sanitizeObRes(j.obres) : {},
       ...(base ? { base } : {}),
+      /* Мөрийн тогтвортой түлхүүр (2026-09-29) — бүхэл тоон `oid` → бүхэл код л үлдэнэ */
+      ...(j.keys && typeof j.keys === 'object' ? { keys: sanitizeKeys(j.keys) } : {}),
     };
   } catch {
     return null;
