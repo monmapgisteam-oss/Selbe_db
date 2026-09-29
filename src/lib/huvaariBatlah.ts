@@ -34,7 +34,7 @@
 import { AUTH, ROLE_BY_USER } from './services';
 import { huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 
 /** Илгээлтийн төлөв */
@@ -307,13 +307,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ (`permsRemote`-ийн сургамж).
  */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
-  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
+     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
+     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
+  return arcgisPost(url, params);
 }
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
@@ -694,6 +691,22 @@ export async function loadPending(pkgKey: string): Promise<PlanSubmission | null
 export async function loadAllPending(): Promise<PlanSubmission[]> {
   const rows = await query(`${F.status} = N'${PLAN_STATUS.pending}'`, HEAD_FIELDS);
   return rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
+}
+
+/**
+ * БАГЦ БҮРИЙН СҮҮЛИЙН ИЛГЭЭЛТ — толгой л (`payload`-гүй) (2026-09-29).
+ * ⚠️ «Хуваарь батлах» хуудас зохиогчид БУЦААГДСАН илгээлтийг шалтгаантай нь харуулахад:
+ *    буцаалт нь тухайн багцын СҮҮЛИЙН илгээлт байх үед л хүчинтэй (дараа нь дахин
+ *    илгээсэн бол хуучин шалтгаан хамааралгүй). «Их OBJECTID ялна» (`loadPending`-тэй ижил).
+ */
+export async function loadLastPerPkg(): Promise<PlanSubmission[]> {
+  const rows = await query('1=1', await headFields());
+  const last = new Map<string, PlanSubmission>();
+  for (const a of rows) {
+    const x = toSubmission(a);
+    if (x) last.set(x.pkgKey, x);
+  }
+  return [...last.values()];
 }
 
 /** Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан ба буцаагдсан) */

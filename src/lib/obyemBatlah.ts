@@ -38,7 +38,7 @@
 import { AUTH, ROLE_BY_USER } from './services';
 import { obyemScope } from './obyemAcl';
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 
 /** Илгээлтийн төлөв */
@@ -130,13 +130,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ.
  */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
-  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
+     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
+     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
+  return arcgisPost(url, params);
 }
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;

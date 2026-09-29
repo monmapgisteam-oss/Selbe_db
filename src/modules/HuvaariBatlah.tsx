@@ -47,7 +47,7 @@ import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { Huvaari } from '@/modules/Huvaari';
 import {
-  claimHolderOf, decidePlan, loadAllPending, loadPayload, planTableState, withdrawPlan, REASON_MAX,
+  claimHolderOf, decidePlan, loadAllPending, loadLastPerPkg, loadPayload, planTableState, withdrawPlan, PLAN_STATUS, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /**
@@ -107,6 +107,13 @@ export function HuvaariBatlah({
   useEffect(() => subscribeHuvaariAcl(() => setAclN((x) => x + 1)), []);
 
   const [st, setSt] = useState<State>({ k: 'loading' });
+  /**
+   * ӨӨРИЙН БУЦААГДСАН илгээлтүүд (2026-09-29, хэрэглэгч: «буцаасан шалтгаан зохиогчид
+   * харагдахгүй байна») — багцын СҮҮЛИЙН илгээлт нь буцаагдсан бөгөөд зохиогч нь би.
+   * ⚠️ Урьд нь энэ хуудас зөвхөн ХҮЛЭЭГДЭЖ буйг харуулдаг тул буцаагдмагц мөр шалтгаантайгаа
+   *    хамт алга болж, зохиогч «Хуваарь» хуудсанд тэр багцыг нээх хүртэл юу ч мэддэггүй байв.
+   */
+  const [back, setBack] = useState<PlanSubmission[]>([]);
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((n) => n + 1), []);
 
@@ -162,6 +169,11 @@ export function HuvaariBatlah({
         const rows = await loadAllPending();
         if (!alive) return;
         setSt({ k: 'ready', rows });
+        /* Буцаагдсан — нэмэлт мэдээлэл; уншигдахгүй бол дараалал хэвээр ажиллана */
+        try {
+          const lastAll = await loadLastPerPkg();
+          if (alive) setBack(lastAll.filter((x) => x.status === PLAN_STATUS.returned));
+        } catch { if (alive) setBack([]); }
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
       }
@@ -447,6 +459,38 @@ export function HuvaariBatlah({
                 UI нь товч дарахаас ӨМНӨ хэлэх ёстой. Хаагдсан товчийг
                 бусад мөрийн дунд тавибал «эвдэрсэн» гэж ойлгогдоно —
                 тусад нь гаргавал шалтгаан нь нэг харцад ойлгогдоно. */}
+            {back.filter(isOwn).length > 0 && (
+              <div className={s.list} style={{ marginTop: 18 }}>
+                <div className={s.groupHead}>
+                  <span>{tr('Буцаагдсан — засаад дахин илгээнэ')}</span>
+                  <span className={s.groupCount}>{num(back.filter(isOwn).length)}</span>
+                </div>
+                {back.filter(isOwn).map((x) => (
+                  <div key={x.oid} className={s.item}>
+                    <div className={s.open}>
+                      <span className={s.who}>
+                        <span className={s.ajil}>{PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey}</span>
+                        <span className={s.meta}>
+                          {tr('буцаасан')}: {x.approver ?? '—'}
+                          {' · '}
+                          {x.approverAt == null ? '—' : dayKey(x.approverAt)}
+                          {' · '}
+                          {tr('{0} мөр', num(x.rowCount))}
+                        </span>
+                      </span>
+                      <div className={s.reasonBox} style={{ whiteSpace: 'pre-line' }}>
+                        <div className={s.reasonLabel}>{tr('Буцаасан шалтгаан')}</div>
+                        {x.reason?.trim() || tr('шалтгаан бичигдээгүй')}
+                      </div>
+                      <p className={s.meta}>
+                        {tr('«Хуваарь» хуудсанд энэ багцыг нээхэд илгээсэн хуваарь ноорог болж буцна — засаад дахин илгээнэ.')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {own.length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>

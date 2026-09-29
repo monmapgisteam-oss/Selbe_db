@@ -24,7 +24,7 @@
 //    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
 import { t as tr } from "@/lib/i18nCore";
-import { tokenParam, tokenQs, authToken } from '@/lib/authToken';
+import { tokenParam, tokenQs, authToken, ensureFreshToken, isTokenError } from '@/lib/authToken';
 import { HJ } from '@/lib/services';
 export const base = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
 
@@ -34,20 +34,30 @@ export async function agsFetch(
   params: Record<string, string>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...tokenParam(), ...params, f: "json" }),
-  });
-  // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
-  // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
-  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+  /* ⚠️ 2026-09-29 (хэрэглэгч: «илгээхэд Invalid token»): токен богино хугацаатай
+     (PKCE) — хүсэлтийн ӨМНӨ шинэчилж, токены алдаанд (498/499) НЭГ удаа дахин оролдоно
+     (`authToken.ensureFreshToken`-ийн ⚠️). */
+  const once = async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...tokenParam(), ...params, f: "json" }),
+    });
+    // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
+    // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
+    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+    try {
+      return await res.json();
+    } catch {
+      throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
+    }
+  };
+  await ensureFreshToken();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let json: any;
-  try {
-    json = await res.json();
-  } catch {
-    throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
+  let json: any = await once();
+  if (json.error && isTokenError(json.error.code, json.error.message) && authToken()) {
+    await ensureFreshToken(true);
+    json = await once();
   }
   if (json.error)
     /* ⚠️ `code`-ыг ХАДГАЛНА (2026-09-25): дуудагч түр (429/5xx) ба тогтвортой

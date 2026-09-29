@@ -353,3 +353,35 @@ console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахи
   assert.ok(/keys\[String\(oid\)\] = des;/.test(H), 'Huvaari: илгээлтэд мөрийн тогтвортой түлхүүр (keys) бичигдэхгүй');
 }
 console.log('✅ буцаагдсан санал — автоматаар ноорогт · кодоор зөөнө');
+
+/* ══════════ 2026-09-29-ний хэрэглэгчийн 7 засвар — механик хамгаалалт ══════════ */
+{
+  const H = read('src/modules/Huvaari.tsx');
+  const V = read('src/modules/HuvaariBatlah.tsx');
+  /* 1. Хүлээгдэж буй нэмэлт ажлыг засах — татахгүй, ижил илгээлтийг шинэчилнэ */
+  assert.ok(/const saveAjilEdit = useCallback[\s\S]{0,700}updateAjil\(\{ oid: ajSub\.oid/.test(H),
+    'Huvaari: нэмэлт ажлын засвар `updateAjil`-аар хадгалагдахгүй');
+  {
+    const i = H.indexOf('const editAjilHere = useCallback');
+    const body = H.slice(i, H.indexOf('const saveAjilEdit = useCallback', i));
+    assert.ok(i > 0 && !/withdrawAjil\(/.test(body), 'Huvaari: засахад илгээлт татагдаж байна — `pending` хэвээр байх ёстой');
+  }
+  assert.ok(/if \(ajSub && ajSub\.oid === ajEdit\.oid\) return;/.test(H) && /ajSubFor !== pkg\.key/.test(H),
+    'Huvaari: илгээлт шийдэгдсэн үед засварын хуулбар хасагдахгүй — давхар мөр үүснэ');
+  /* 2. Ерөнхий олон блок — цонх урьдчилан сонгосон нээгдэнэ */
+  assert.ok(/initSel=\{gBlks\}/.test(H) && /new Set\(\[blk, \.\.\.\(initSel \?\? \[\]\)\.values\(\)\]/.test(H),
+    'Huvaari: ерөнхий олон блокийн сонголт ажлын цонхонд дамжихгүй');
+  /* 3. Бодит огноо сонгосон БҮХ блокт */
+  assert.ok(/applyExtra\(modalRow\.oid, actBlks, actual, res\);/.test(H), 'Huvaari: бодит огноо зөвхөн идэвхтэй блокт орж байна');
+  assert.ok(/const actDirty = \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
+  /* 5. Сольж харах — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ (strict бус харалтаас батлах зам хаалттай) */
+  assert.ok(/\{\(!canApprove \|\| isOwnSubmission\) && approving == null && \(\s*<span className=\{h\.tlZoom\}/.test(H),
+    'Huvaari: сольж харах товч батлагчид ч гарч байна — strict бус харалтаас батлагдаж болно');
+  assert.ok(/const viewSent = useCallback[\s\S]{0,900}applyPayloadToDraft\(p0, srv\.rows, false/.test(H), 'Huvaari: `viewSent` алга');
+  /* 7. Буцаасан шалтгаан — «Хуваарь батлах» хуудсанд зохиогчид; хуудсанд 30 с тутам шалгана */
+  assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
+    'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
+  assert.ok(/void loadPending\(key\)\.then\(\(p\) => \{[\s\S]{0,200}void refreshFlow\(\);/.test(H),
+    'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй');
+}
+console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон блок · бодит огноо · сольж харах · буцаасан шалтгаан');

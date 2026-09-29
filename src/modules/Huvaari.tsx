@@ -34,7 +34,7 @@ import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
-import { num } from '@/lib/format';
+import { dayKey, num } from '@/lib/format';
 import {
   loadSchema, pkgFloors, PKG_GROUPS, PKGS, type Pkg, type Schema,
 } from '@/modules/sheet/bagts.pkg';
@@ -45,7 +45,7 @@ import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
 import {
   AJIL_STATUS, loadApproved as loadAjilApproved, loadHistory as loadAjilHistory,
   loadPayload as loadAjilPayload, loadPending as loadAjilPending, markRestored as markAjilRestored,
-  submitAjil, withdrawAjil, type AjilSubmission,
+  submitAjil, updateAjil, withdrawAjil, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import {
   DAY, coverageOf, endOf, spanDays, statusOf,
@@ -223,6 +223,28 @@ function writeAdds(pkgKey: string, adds: readonly NewRow[]): void {
   try {
     if (!adds.length) localStorage.removeItem(ADDS_LS(pkgKey));
     else localStorage.setItem(ADDS_LS(pkgKey), JSON.stringify({ v: 1, adds }));
+  } catch { /* хаалттай орчин */ }
+}
+/**
+ * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТИЙГ ЗАСАЖ БУЙ ТӨЛӨВ (2026-09-29) — `oid` = илгээлт, `rows` = түүнээс
+ * `adds`-д буулгасан мөрийн түр oid-ууд («Болих» эдгээрийг л хасна).
+ * ⚠️ localStorage-д: `adds` өөрөө тэнд хадгалагддаг тул хуудас дахин ачаалахад төлөв
+ *    алдагдвал буулгасан мөрүүд «илгээгээгүй шинэ мөр» болж, илгээлт батлагдахад ДАВХАР
+ *    мөр үүснэ.
+ */
+type AjEdit = { oid: number; rows: number[] };
+const AJ_EDIT_LS = (pkgKey: string) => `selbe-ajil-edit|${pkgKey}`;
+function readAjEdit(pkgKey: string): AjEdit | null {
+  try {
+    const j = JSON.parse(localStorage.getItem(AJ_EDIT_LS(pkgKey)) ?? 'null') as Partial<AjEdit> | null;
+    if (!j || !Number.isInteger(j.oid) || !Array.isArray(j.rows)) return null;
+    return { oid: j.oid as number, rows: j.rows.filter((x) => Number.isInteger(x)) };
+  } catch { return null; }
+}
+function writeAjEdit(pkgKey: string, v: AjEdit | null): void {
+  try {
+    if (!v) localStorage.removeItem(AJ_EDIT_LS(pkgKey));
+    else localStorage.setItem(AJ_EDIT_LS(pkgKey), JSON.stringify(v));
   } catch { /* хаалттай орчин */ }
 }
 /**
@@ -680,6 +702,21 @@ export function Huvaari({
    * хүлээнэ: хамт ажиллагчийн ноорог ирэхээс өмнө буулгавал давхарлана.
    */
   const [hdReadyKey, setHdReadyKey] = useState<string | null>(null);
+  /**
+   * ОЛОН БЛОК — ЕРӨНХИЙ СОНГОЛТ (2026-09-29, хэрэглэгч: «өмнө нь нэг ажил дээр блок сонгож
+   * төлөвлөж болдог байсан бол төлөвлөгөөг бүхэлд нь олон блок сонгож төлөвлөх боломжтой
+   * болгох; нэг ажил олон блок сонгох хэвээр үлдэнэ»).
+   *
+   * ⚠️ Идэвхтэй блок (`blk`) ҮРГЭЛЖ сонгогдсон — энэ Set нь НЭМЭЛТ блокууд.
+   * ⚠️ ХЭРЭГЖИЛТ: ажил бүрийн цонх (`PlanModal`) эдгээр блокийг УРЬДЧИЛАН сонгосон
+   *    нээгдэнэ — чирэлт/товшилтын дараа «Тавих» дарахад огноо · сарын обьём · нөөц
+   *    сонгосон бүх блокт ИЖИЛ тавигдана (`applyModal`-ийн `blks`, 2026-09-24-ний
+   *    шалгагдсан зам). Чирэлт өөрөө идэвхтэй блокт л зурагдана: цуцлах (`undoRef`),
+   *    гинж, сарын тайралт бүгд нэг блокоор бичигдсэн — олон блокт шууд бичвэл цуцлалт
+   *    бусад блокийг сэргээхгүй.
+   * ⚠️ Багц · төрөл солигдоход цэвэрлэгдэнэ (блокийн жагсаалт өөр).
+   */
+  const [gBlks, setGBlks] = useState<Set<number>>(() => new Set());
   /** Илгээх/шийдвэрлэх цонх */
   /* `reject` — хяналтын горимын буцаах цонх (2026-09-25) */
   const [flowBox, setFlowBox] = useState<'send' | 'decide' | 'reject' | null>(null);
@@ -794,6 +831,12 @@ export function Huvaari({
   const [addForm, setAddForm] = useState<AddForm>(EMPTY_FORM);
   /** Хүлээгдэж буй нэмэлт ажлын илгээлт — БҮХ хүнд харагдана */
   const [ajSub, setAjSub] = useState<AjilSubmission | null>(null);
+  /** `ajSub` аль багцад АЧААЛАГДСАН — `null` = хараахан уншаагүй (засварын төлөвийг эрт арчихгүйн тулд) */
+  const [ajSubFor, setAjSubFor] = useState<string | null>(null);
+  /** Хүлээгдэж буй илгээлтээ ЗАСАЖ буй төлөв (2026-09-29) — `AjEdit`-ийн ⚠️ */
+  const [ajEdit, setAjEditSt] = useState<AjEdit | null>(null);
+  /** Засаж буй НЭМЭЛТ МӨР (түр oid) — маягт тэр мөрийн доор нээгдэнэ */
+  const [editAdd, setEditAdd] = useState<number | null>(null);
   const [ajBusy, setAjBusy] = useState(false);
   const [ajErr, setAjErr] = useState('');
   const [ajNote, setAjNote] = useState('');
@@ -1090,11 +1133,12 @@ export function Huvaari({
        шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
        болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
-    setBlk(0); jumped.current = false;
+    setBlk(0); jumped.current = false; setGBlks(new Set());
     /* Нэмэлт ажил (2026-09-24): маягт хаана, баннер тэглэнэ, локал ноорогийг сэргээнэ */
     setAddFor(null); setAddForm(EMPTY_FORM);
     setAjSub(null); setAjErr(''); setAjNote(''); setAjBack(null); setAjStuck(0); setAjApplied(false);
     setAjTrack(null);
+    setAjSubFor(null); setEditAdd(null); setAjEditSt(readAjEdit(pkg.key));
     const restored = readAdds(pkg.key);
     pushTmpOid(restored);
     setAddsSt({ key: pkg.key, list: restored });
@@ -2950,6 +2994,31 @@ export function Huvaari({
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
 
   /**
+   * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТИЙГ 30 с ТУТАМ ШАЛГАНА (2026-09-29, хэрэглэгч: «буцаасан шалтгаан
+   * зохиогчид харагдахгүй байна»). Урьд нь урсгал зөвхөн хуудас нээхэд уншигддаг тул
+   * батлагч буцаасан/баталсан ч зохиогчийн нээлттэй хуудас «хүлээгдэж буй» хэвээр үлдэж,
+   * шалтгаан ба буцсан ноорог хуудсаа дахин ачаалах хүртэл харагддаггүй байв.
+   * ⚠️ ХӨНГӨН: зөвхөн `loadPending` (толгой). Төлөв өөрчлөгдсөн үед л `refreshFlow` —
+   *    тэр нь `flowReady`-г түр `null` болгодог тул тогтмол дуудвал дэлгэц анивчина.
+   * ⚠️ Батлах/урьдчилан харах/бичих явцад ба хяналтын горимд шалгахгүй.
+   */
+  const pollOkRef = useRef(false);
+  pollOkRef.current = !review && pending != null && approving == null && !previewing && !busy && flowReady === true;
+  useEffect(() => {
+    if (status === 'off') return undefined;
+    const key = pkg.key;
+    const id = window.setInterval(() => {
+      if (document.hidden || !pollOkRef.current || pkgKeyRef.current !== key) return;
+      const was = flowPendRef.current.oid;
+      void loadPending(key).then((p) => {
+        if (!pollOkRef.current || pkgKeyRef.current !== key) return;
+        if ((p?.oid ?? null) !== was) void refreshFlow();
+      }).catch(() => { /* дараагийн мөчлөгт */ });
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [pkg.key, status, refreshFlow]);
+
+  /**
    * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
    *
    * ⚠️ ХОЁР ШАТТАЙ: эхлээд БАГЦЫГ солино, `refreshFlow` (дээрх эффект)
@@ -3465,6 +3534,7 @@ export function Huvaari({
       const sub = await loadAjilPending(want);
       if (!live()) return;
       setAjSub(sub);
+      setAjSubFor(want);
       const lookBack = prevOid != null && sub?.oid !== prevOid;
       const stuck = await loadAjilApproved(want);
       if (!live()) return;
@@ -3636,15 +3706,96 @@ export function Huvaari({
     }
   }, [adds, ajBusy, pkg.key, pkg.group, user, refreshAjil]);
 
+  /**
+   * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТЭЭ ЗАСАХ (2026-09-29, хэрэглэгч: «ажил нэмэх хүсэлт явуулсны дараа
+   * буцаагаагүй байхад өөрөө дахин засах боломжтой байх»).
+   * ⚠️ ТАТАХГҮЙ: илгээлт `pending` хэвээр, мөрүүд нь `adds`-д ЗАСВАРЫН ХУУЛБАР болж бууна
+   *    (улаан мөр — «✎» засах, «×» хасах, «+» нэмэх). «Засварыг хадгалах» нь ИЖИЛ илгээлтийн
+   *    агуулгыг солино (`updateAjil`); «Болих» нь буулгасан мөрүүдийг л хасна.
+   */
+  const setAjEdit = useCallback((v: AjEdit | null) => { writeAjEdit(pkg.key, v); setAjEditSt(v); }, [pkg.key]);
+  const editAjilHere = useCallback(async () => {
+    if (!ajSub || ajBusy || ajEdit) return;
+    const want = pkg.key;
+    setAjBusy(true); setAjErr(''); setAjNote('');
+    try {
+      const pl = await loadAjilPayload(ajSub.oid);
+      if (!pl?.adds.length) { setAjErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      if (pkgKeyRef.current !== want) return;
+      const st = addsStRef.current;
+      const before = st.key === want ? st.list : readAdds(want);
+      const had = new Set(before.map((a) => a.oid));
+      const merged = mergeIncoming(before, pl.adds);
+      writeAdds(want, merged);
+      setAddsSt({ key: want, list: merged });
+      addsStRef.current = { key: want, list: merged };
+      setAjEdit({ oid: ajSub.oid, rows: merged.filter((a) => !had.has(a.oid)).map((a) => a.oid) });
+      setAjNote(tr('Илгээсэн нэмэлт ажил засварт нээгдлээ — улаан мөрүүдийг засаад «Засварыг хадгалах» дарна уу. Батлагч шийдээгүй хэвээр.'));
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [ajSub, ajBusy, ajEdit, pkg.key, setAjEdit]);
+
+  /** Засварыг ИЖИЛ илгээлтэд хадгална — `adds` бүхэлдээ илгээлтийн шинэ агуулга болно */
+  const saveAjilEdit = useCallback(async () => {
+    if (!ajSub || !ajEdit || ajEdit.oid !== ajSub.oid || ajBusy) return;
+    const want = pkg.key;
+    const sent = new Set(adds.map((a) => a.oid));
+    setAjBusy(true); setAjErr(''); setAjNote('');
+    try {
+      const r = await updateAjil({ oid: ajSub.oid, me: user?.username ?? '', payload: { v: 1, pkgKey: want, adds } });
+      if (!r.ok) { setAjErr(r.error ?? tr('Засвар хадгалагдсангүй.')); return; }
+      const st = addsStRef.current;
+      writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
+      setAddsSt((s0) => (s0.key === want ? { key: want, list: s0.list.filter((a) => !sent.has(a.oid)) } : s0));
+      writeAjEdit(want, null);
+      if (pkgKeyRef.current === want) { setAjEditSt(null); setEditAdd(null); setAddFor(null); }
+      setAjNote(tr('Нэмэлт ажлын засвар хадгалагдлаа — батлагч шинэ хувилбарыг харна.'));
+      await refreshAjil(null);
+    } catch (e) {
+      setAjErr(String((e as Error).message || e));
+    } finally {
+      setAjBusy(false);
+    }
+  }, [ajSub, ajEdit, ajBusy, adds, pkg.key, user, refreshAjil]);
+
+  /** Засварыг болих — илгээлтээс буулгасан мөрүүдийг хасна (илгээлт хөндөгдөхгүй) */
+  const cancelAjilEdit = useCallback(() => {
+    if (!ajEdit) return;
+    const drop = new Set(ajEdit.rows);
+    setAdds((a) => a.filter((x) => !drop.has(x.oid)));
+    setAjEdit(null); setEditAdd(null);
+    setAjErr(''); setAjNote(tr('Засвар хаягдлаа — илгээлт өмнөх хэвээрээ хүлээгдэж байна.'));
+  }, [ajEdit, setAdds, setAjEdit]);
+
+  /*
+   * ⚠️ ИЛГЭЭЛТ ЗАСВАРЫН ДУНДУУР ШИЙДЭГДСЭН/СОЛИГДСОН бол буулгасан мөрүүдийг ХАСНА —
+   *    эс бөгөөс тэд «илгээгээгүй шинэ мөр» болж дахин илгээгдэн ДАВХАР мөр үүсгэнэ.
+   *    Зөвхөн энэ багцын `ajSub` АЧААЛАГДСАНЫ дараа (`ajSubFor`) — анхны `null`-д биш.
+   */
+  useEffect(() => {
+    if (!ajEdit || ajSubFor !== pkg.key) return;
+    if (ajSub && ajSub.oid === ajEdit.oid) return;
+    const drop = new Set(ajEdit.rows);
+    setAdds((a) => a.filter((x) => !drop.has(x.oid)));
+    setAjEdit(null); setEditAdd(null);
+    setAjNote(tr('Засаж байсан илгээлт хооронд нь шийдвэрлэгдсэн тул засвар хаагдлаа.'));
+  }, [ajEdit, ajSub, ajSubFor, pkg.key, setAdds, setAjEdit]);
+
   /** ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч алдаатай илгээлтээ буцааж авна; мөрүүд `adds` руу */
   const withdrawAjilHere = useCallback(async () => {
     if (!ajSub || ajBusy) return;
+    /* ⚠️ 2026-09-29: засварын дундуур татвал ЗАССАН хувилбар хуудсанд үлдэх ёстой — серверийн
+       (хуучин) агуулгыг давхар буулгахгүй */
+    const editing = !!ajEdit && ajEdit.oid === ajSub.oid;
     if (!window.confirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүд хуудсанд буцаж орно.'))) return;
     /* ⚠️ Багцыг ОДОО барина (2026-09-25 аудит) — `sendAjil`-ийн ижил шалтгаан */
     const want = pkg.key;
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
-      const pl = await loadAjilPayload(ajSub.oid);
+      const pl = editing ? null : await loadAjilPayload(ajSub.oid);
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
       if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
@@ -3658,6 +3809,7 @@ export function Huvaari({
           addsStRef.current = { key: want, list: merged };
         }
       }
+      if (editing) { writeAjEdit(want, null); setAjEditSt(null); }
       setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
       await refreshAjil(null);
     } catch (e) {
@@ -3665,7 +3817,7 @@ export function Huvaari({
     } finally {
       setAjBusy(false);
     }
-  }, [ajSub, ajBusy, user, pkg.key, refreshAjil]);
+  }, [ajSub, ajBusy, ajEdit, user, pkg.key, refreshAjil]);
 
   /**
    * БҮЛЭГТ ШИНЭ АЖИЛ НЭМЭХ — шалгалт FillNew-ийн 2026-09 хувилбартай ҮГЧЛЭН ижил.
@@ -3674,7 +3826,8 @@ export function Huvaari({
    * ⚠️ `parentIdx` нь `rowsAll` дахь индекс (`PlanRow.i`) — `insertAdds.parentOf`
    *    нэр давхардсан эцгүүдээс байрлалаар ойрхныг сонгоно.
    */
-  const addRow = useCallback((parent: PlanRow) => {
+  /** Маягтын шалгалт — нэмэх ба засах ХОЁУЛАА (нэг дүрэм) */
+  const readForm = useCallback((): { no: string; work: string; vol: number | null; unit: number | null } | null => {
     const no = addForm.no.trim();
     const work = addForm.work.trim();
     const nn = (v: string) => {
@@ -3683,13 +3836,27 @@ export function Huvaari({
     };
     const vol = nn(addForm.vol);
     const unit = nn(addForm.unit);
-    if (!work) { setAjErr(tr('Ажлын нэрийг оруулна уу.')); return; }
+    if (!work) { setAjErr(tr('Ажлын нэрийг оруулна уу.')); return null; }
     if (!/^\d+$/.test(no)) {
       setAjErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
-      return;
+      return null;
     }
-    if (Number.isNaN(vol) || Number.isNaN(unit)) { setAjErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.')); return; }
+    if (Number.isNaN(vol) || Number.isNaN(unit)) { setAjErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.')); return null; }
     setAjErr('');
+    return { no, work, vol, unit };
+  }, [addForm]);
+  /** НЭМЭЛТ МӨРИЙГ ЗАСАХ (2026-09-29) — № · нэр · обьём · нэгж өртөг; бүлэг нь хэвээр (өөр бүлэгт бол хасаад тэнд нэмнэ) */
+  const saveEditAdd = useCallback((oid: number) => {
+    const v = readForm();
+    if (!v) return;
+    setAdds((a) => a.map((x) => (x.oid === oid ? { ...x, no: v.no, work: v.work, vol: v.vol, unit: v.unit } : x)));
+    setEditAdd(null); setAddForm(EMPTY_FORM);
+    setAjNote(tr('«{0}» засагдлаа.', v.work));
+  }, [readForm, setAdds]);
+  const addRow = useCallback((parent: PlanRow) => {
+    const v = readForm();
+    if (!v) return;
+    const { no, work, vol, unit } = v;
     const oid = nextTmpOid();
     /* ⚠️ `parentIdx` нь СЕРВЕРИЙН `rows` дахь индекс (2026-09-24 аудит #7) —
        `parent.i` нь `rowsAll`-ынх (локал нэмэлт мөр орсон) тул батлахад
@@ -3705,7 +3872,7 @@ export function Huvaari({
     });
     setAddFor(null); setAddForm(EMPTY_FORM);
     setAjNote(tr('«{0}» нэмэгдлээ — «Нэмэлт ажил батлуулах» товчоор батлуулна; батлагдмагц үндсэн хүснэгтэд бичигдэнэ.', work));
-  }, [addForm, setAdds, rows]);
+  }, [readForm, setAdds, rows]);
   /** Батлуулаагүй мөрийг хасах — зөвхөн локал (`adds` + LS) */
   const dropAdd = useCallback((oid: number) => setAdds((a) => a.filter((x) => x.oid !== oid)), [setAdds]);
 
@@ -3878,6 +4045,45 @@ export function Huvaari({
        дарсан тул алсад шинэ бичилт ирэх хүртэл ноорог харагдахгүй байв. */
     hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
   }, []);
+
+  /**
+   * ИЛГЭЭСЭН (БАТЛАГДААГҮЙ) ХУВААРИЙГ ХАРАХ (2026-09-29, хэрэглэгч: «одоо байгаа батлагдсан
+   * хуваарь болон илгээсэн батлагдаагүй хуваарийг сольж харах товч нэмэх»).
+   *
+   * ⚠️ ЗӨВХӨН ХАРНА: илгээлт хүлээгдэж байхад засвар түгжээтэй (`locked`), «Хадгалах»/
+   *    «Батлуулах» гарахгүй тул ноорогт буусан агуулга хаашаа ч бичигдэхгүй. «Батлагдсан
+   *    хуваарь» товч (`clearPreview`) нооргийг хаяж серверийн хуваарийг буцаана.
+   * ⚠️ `strict = false`: зохиогч өөрийн илгээснээ ХАРАХ гэсэн — зэрэгцээ өөрчлөлт/олдоогүй
+   *    мөр нь харахад саад биш, тоог нь хэлнэ. Батлагчийн `preview` (strict) хэвээр.
+   * ⚠️ ШИЙДВЭР ГАРГАЖ ЧАДАХ ХҮНД ЭНЭ ТОВЧ ГАРАХГҮЙ (доорх JSX): `decide` нь `previewing`
+   *    үед харж буй ноорогийг ДАХИН ТУЛГАЛГҮЙ бичдэг тул strict бус харалтаас батлах зам
+   *    нээгдэж болохгүй — батлагч «Урьдчилан харах»-аар (strict) харна.
+   */
+  const viewSent = useCallback(async () => {
+    if (!pending || busy || previewing) return;
+    setBusy(true); setErr(''); setNote('');
+    try {
+      const p0 = await loadPayload(pending.oid);
+      if (!p0) { setErr(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
+      if (p0.kind !== kind) {
+        setErr(p0.kind === 'geree'
+          ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд дахин үзнэ үү.')
+          : tr('Энэ илгээлт ТӨЛӨВЛӨГӨӨНИЙ огноонд хамаарна — «Төлөвлөгөө» таб руу шилжээд дахин үзнэ үү.'));
+        return;
+      }
+      const srv = await refetchServer();
+      const ap = applyPayloadToDraft(p0, srv.rows, false, srv.plan, srv.res);
+      if (!ap.ok) { setErr(tr('Илгээсэн хуваарь хуанли дээр буусангүй.')); return; }
+      setPreviewing(true);
+      setNote(tr('Илгээсэн (батлагдаагүй) хуваарь харагдаж байна — зөвхөн харах.')
+        + (ap.conflicts ? ` ${tr('{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.', num(ap.conflicts))}` : '')
+        + (ap.unknown ? ` ${tr('{0} мөр одоогийн хуудаснаас олдсонгүй тул ноорогт буусангүй.', num(ap.unknown))}` : ''));
+    } catch (e) {
+      setErr(String((e as Error).message || e));
+    } finally {
+      setBusy(false);
+    }
+  }, [pending, busy, previewing, kind, applyPayloadToDraft, refetchServer]);
 
   /**
    * ШИЙДВЭР — батлах эсвэл буцаах.
@@ -5692,6 +5898,28 @@ export function Huvaari({
       {ajSub && (
         <p className={h.note} role="status">
           {tr('Нэмэлт ажил батлуулахаар илгээгдсэн: {0} мөр · {1}', String(ajSub.rowCount), ajSub.author)}
+          {ajEdit && ajEdit.oid === ajSub.oid && (
+            <>
+              {' · '}<b>{tr('засаж байна')}</b>
+              <button type="button" className={h.noteBtn} disabled={ajBusy || adds.length === 0}
+                title={tr('Зассан мөрүүдийг ИЖИЛ илгээлтэд хадгална — батлагч шинэ хувилбарыг харна')}
+                onClick={() => void saveAjilEdit()}>
+                {tr('Засварыг хадгалах')} ({num(adds.length)})
+              </button>
+              <button type="button" className={h.noteBtn} disabled={ajBusy}
+                title={tr('Засварыг хаяна — илгээлт өмнөх хэвээрээ үлдэнэ')}
+                onClick={cancelAjilEdit}>
+                {tr('Болих')}
+              </button>
+            </>
+          )}
+          {canAddRow && !ajEdit && (status === 'off' || (user?.username ?? '').trim().toLowerCase() === ajSub.author) && (
+            <button type="button" className={h.noteBtn} disabled={ajBusy}
+              title={tr('Батлагч шийдээгүй байхад илгээсэн мөрүүдээ засна — илгээлт хүлээгдсэн хэвээр')}
+              onClick={() => void editAjilHere()}>
+              {tr('Засах')}
+            </button>
+          )}
           {(status === 'off' || (user?.username ?? '').trim().toLowerCase() === ajSub.author) && (
             <button type="button" className={h.noteBtn} disabled={ajBusy}
               title={tr('Илгээлтээ буцааж авна — мөрүүд хуудсанд эргэж орно')}
@@ -5750,6 +5978,24 @@ export function Huvaari({
           <button type="button" className={h.noteBtn} disabled={busy} onClick={() => void refreshFlow()}>
             {tr('Шинэчлэх')}
           </button>
+          {/* ⚠️ СОЛЬЖ ХАРАХ (2026-09-29) — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ
+              (`viewSent`-ийн ⚠️): тэр «Урьдчилан харах»-аар харна. */}
+          {(!canApprove || isOwnSubmission) && approving == null && (
+            <span className={h.tlZoom} role="group" aria-label={tr('Хуваарийн хувилбар')} style={{ marginLeft: 8 }}>
+              <button type="button" className={`${h.tlZoomB} ${!previewing ? h.tlZoomOn : ''}`}
+                aria-pressed={!previewing} disabled={busy}
+                title={tr('Одоо хүчинтэй, батлагдсан хуваарь')}
+                onClick={() => { if (previewing) clearPreview(); }}>
+                {tr('Батлагдсан хуваарь')}
+              </button>
+              <button type="button" className={`${h.tlZoomB} ${previewing ? h.tlZoomOn : ''}`}
+                aria-pressed={previewing} disabled={busy}
+                title={tr('Илгээсэн, хараахан батлагдаагүй хуваарь — зөвхөн харах')}
+                onClick={() => { if (!previewing) void viewSent(); }}>
+                {tr('Илгээсэн хуваарь')}
+              </button>
+            </span>
+          )}
         </p>
       )}
       {/* ⚠️ БУЦААСАН ШАЛТГААН — гүйцэтгэгчид хүрэх цорын ганц зам. Үүнгүй бол
@@ -5757,9 +6003,14 @@ export function Huvaari({
       {!review && lastDecision && lastDecision.status === PLAN_STATUS.returned && (
         /* `pre-line` — шалтгааны «Зөвшөөрөгдөөгүй N мөр: …» жагсаалт тусдаа мөрөнд */
         <p className={h.err} role="status" style={{ whiteSpace: 'pre-line' }}>
-          {tr('Өмнөх хуваарь буцаагдсан ({0}): {1}',
-            lastDecision.approver ?? '', lastDecision.reason ?? '')}
-          {' '}
+          {/* ⚠️ 2026-09-29 (хэрэглэгч: «буцаасан шалтгаан зохиогчид харагдахгүй байна»):
+              шалтгааныг ТУСДАА мөрөнд, шошготой, тодоор — урт мэдэгдлийн дунд уусдаг байв. */}
+          <b>{tr('Хуваарь буцаагдсан')}</b>
+          {` · ${lastDecision.approver ?? '—'} · ${lastDecision.approverAt == null ? '—' : dayKey(lastDecision.approverAt)}`}
+          {'\n'}
+          <b>{tr('Буцаасан шалтгаан')}: </b>
+          {lastDecision.reason?.trim() || tr('шалтгаан бичигдээгүй')}
+          {'\n'}
           {tr('Засаад дахин илгээнэ үү.')}
           {/* ⚠️ БАТЛАГЧИЙН ТЭМДЭГЛЭГЭЭ (2026-09-25) — гүйцэтгэлийн «буцаагдсан
               илгээлт ноорог болж ачаалагдана, улаан/ногоон нүдтэй» загвар.
@@ -5849,6 +6100,37 @@ export function Huvaari({
             <p className={h.plHint}>
               {tr('Өөрчлөгдсөн мөр улаан хүрээтэй · хуучин огноо нь зурвасын доор бүдгээр · ажлын кодын ✕ дээр дарж зөвшөөрнө (ногоон ✓) · нэр дээр дарж дэлгэрэнгүйг харна · бүгд ногоон болсны дараа «Батлах» идэвхжинэ')}
             </p>
+          )}
+          {canEdit && !locked && sc.bld.length > 1 && (
+            <div className={h.gBlks} role="group" aria-label={tr('Олон блок сонгох')}>
+              <span className={h.gBlksLabel}>{tr('Олон блок сонгох')}</span>
+              {sc.bld.map((b, k) => {
+                const on = k === blk || gBlks.has(k);
+                return (
+                  <button type="button" key={b}
+                    className={`${h.gChip} ${on ? h.gChipOn : ''} ${k === blk ? h.gChipAct : ''}`}
+                    aria-pressed={on}
+                    title={k === blk
+                      ? tr('Идэвхтэй блок — хуанли дээр энэ блок харагдана (дээрх «Блок» сонгогчоор солино)')
+                      : tr('Энэ блокт зэрэг төлөвлөх')}
+                    onClick={() => {
+                      if (k === blk) return;
+                      setGBlks((s0) => { const m = new Set(s0); if (m.has(k)) m.delete(k); else m.add(k); return m; });
+                    }}>
+                    {b}
+                  </button>
+                );
+              })}
+              <button type="button" className={h.tlZoomB}
+                onClick={() => setGBlks(new Set(sc.bld.map((_, k) => k)))}>{tr('Бүгд')}</button>
+              <button type="button" className={h.tlZoomB} disabled={gBlks.size === 0 || (gBlks.size === 1 && gBlks.has(blk))}
+                onClick={() => setGBlks(new Set())}>{tr('Цэвэрлэх')}</button>
+              {new Set([blk, ...gBlks]).size > 1 && (
+                <span className={h.gBlksNote}>
+                  {tr('{0} блокт зэрэг төлөвлөнө — ажлын цонхонд «Тавих» дарахад сонгосон бүх блокт ижил огноо тавигдана', num(new Set([blk, ...gBlks]).size))}
+                </span>
+              )}
+            </div>
           )}
           {canEdit && (
             <p className={h.plHint}>
@@ -5980,9 +6262,17 @@ export function Huvaari({
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
                     onAdd={r.group && canAddRow && !locked
-                      ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setAddForm(EMPTY_FORM); setAjErr(''); }
+                      ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setEditAdd(null); setAddForm(EMPTY_FORM); setAjErr(''); }
                       : undefined}
                     onDrop={r.oid < 0 ? () => dropAdd(r.oid) : undefined}
+                    /* НЭМЭЛТ МӨР ЗАСАХ (2026-09-29) — илгээгээгүй ба засварт нээсэн мөрд */
+                    onEditAdd={r.oid < 0 && canAddRow ? () => {
+                      const a0 = adds.find((x) => x.oid === r.oid);
+                      if (!a0) return;
+                      setAddFor(null); setAjErr('');
+                      setEditAdd((x) => (x === r.oid ? null : r.oid));
+                      setAddForm({ no: a0.no, work: a0.work, vol: a0.vol == null ? '' : String(a0.vol), unit: a0.unit == null ? '' : String(a0.unit) });
+                    } : undefined}
                     /* ЗӨВШӨӨРӨЛ (2026-09-25): хяналтад — батлагч сэлгэнэ; гүйцэтгэгчид —
                        буцаасан шийдвэрийн улаан/ногоон (зөвхөн харуулна). */
                     mark={markOf(r)}
@@ -5991,6 +6281,10 @@ export function Huvaari({
                     {addFor === r.oid && (
                       <AddBox parent={r} form={addForm} onForm={setAddForm}
                         onOk={() => addRow(r)} onCancel={() => setAddFor(null)} />
+                    )}
+                    {editAdd === r.oid && r.oid < 0 && (
+                      <AddBox parent={r} form={addForm} onForm={setAddForm} edit
+                        onOk={() => saveEditAdd(r.oid)} onCancel={() => setEditAdd(null)} />
                     )}
                   </TaskRow>
                   );
@@ -6317,6 +6611,7 @@ export function Huvaari({
           par={modalPar}
           blocks={sc.bld}
           blk={blk}
+          initSel={gBlks}
           takt={takt}
           /* ⚠️ `locked` — хүлээгдэж буй илгээлт байхад popup-аас ч засахгүй.
              Зөвхөн `onDown`-г түгжвэл хуанлийн цонх нээлттэй хэвээр үлдэнэ. */
@@ -6447,16 +6742,19 @@ export function Huvaari({
               }
             }
           }}
-          onApply={(spans, deps, ob, actual, res, blks) => {
+          onApply={(spans, deps, ob, actual, res, blks, actBlks) => {
             /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
                эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */
             undoRef.current = null;
             applyModal(modalRow.oid, spans, deps, ob, blks);
             /* Бодит огноо · нөөц — гинжээс гадуур, ноорогт л (2026-09-23).
-               ⚠️ Бодит огноо ЗӨВХӨН идэвхтэй блокт (2026-09-24 аудит): энэ нь
-                  БҮРТГЭЛ, төлөвлөгөө биш — сонгосон бүх блокт хуулбал хараахан
-                  эхлээгүй блок «эхэлсэн» болно. `blks` нь муж/сар/нөөцийнх. */
-            applyExtra(modalRow.oid, [blk], actual, res);
+               ⚠️ 2026-09-29 (хэрэглэгчийн шийдвэр: «бодит эхлэх дуусахыг нэг ажил дээр
+                  тохируулахад олон блокт орохгүй байна»): бодит огноо popup-д СОНГОСОН БҮХ
+                  блокт орно (`actBlks`). 2026-09-24-ний «зөвхөн идэвхтэй блок» дүрмийг
+                  хэрэглэгч ЦУЦАЛСАН — блокоо өөрөө сонгодог тул «эхлээгүй блок эхэлсэн
+                  болно» гэсэн эрсдэл нь хэрэглэгчийн ил сонголт. Алхам (takt)-аас үл хамаарна:
+                  бодит огноо шилждэггүй. */
+            applyExtra(modalRow.oid, actBlks, actual, res);
           }}
         />
       )}
@@ -6623,7 +6921,7 @@ function FlowBox({
 
 function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
-  hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, mark, onMark, children,
+  hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, onEditAdd, mark, onMark, children,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   /**
@@ -6647,6 +6945,8 @@ function TaskRow({
   added?: boolean;
   onAdd?: () => void;
   onDrop?: () => void;
+  /** Нэмэлт мөрийг засах маягт нээх (2026-09-29) */
+  onEditAdd?: () => void;
   children?: ReactNode;
   /**
    * БОДИТ огноо (идэвхтэй блокийн) ба НӨӨЦ (2026-09-23) — зөвхөн харуулна,
@@ -6730,6 +7030,14 @@ function TaskRow({
             title={`${r.work}\n${tr('Хуанлиар оруулах')}`}>
             <span className={h.rowNo}>{r.no}</span>
             <span className={h.rowWork}>{r.work}</span>
+          </button>
+        )}
+        {added && onEditAdd && (
+          <button type="button" className={h.dropBtn}
+            title={tr('Шинэ мөрийг засах (№ · нэр · обьём · нэгж өртөг)')}
+            aria-label={tr('«{0}» мөрийг засах', r.work)}
+            onClick={(e) => { e.stopPropagation(); onEditAdd(); }}>
+            ✎
           </button>
         )}
         {added && onDrop && (
@@ -6819,8 +7127,11 @@ function TaskRow({
  * ⚠️ `role="dialog"`: `wide`-ийн Esc сонсогч диалог нээлттэй үед бүтэн дэлгэцийг
  *    хаадаггүй — Esc энд маягтыг л хаана.
  */
-function AddBox({ parent, form, onForm, onOk, onCancel }: {
+function AddBox({ parent, form, onForm, onOk, onCancel, edit = false }: {
+  /** `edit` үед ЗАСАЖ буй нэмэлт мөр өөрөө, эс бөгөөс эцэг бүлэг */
   parent: PlanRow;
+  /** Байгаа нэмэлт мөрийг засах (2026-09-29) — гарчиг · товчны текст өөр */
+  edit?: boolean;
   form: AddForm;
   onForm: (f: AddForm) => void;
   onOk: () => void;
@@ -6838,14 +7149,14 @@ function AddBox({ parent, form, onForm, onOk, onCancel }: {
       onChange={(e) => onForm({ ...form, [k]: e.target.value })} onKeyDown={key} />
   );
   return (
-    <div className={h.addPop} role="dialog" aria-label={tr('«{0}» дотор шинэ ажил', parent.work)}
+    <div className={h.addPop} role="dialog" aria-label={edit ? tr('«{0}» мөрийг засах', parent.work) : tr('«{0}» дотор шинэ ажил', parent.work)}
       onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-      <span className={h.addTitle}>{tr('«{0}» дотор шинэ ажил', parent.work)}</span>
+      <span className={h.addTitle}>{edit ? tr('«{0}» мөрийг засах', parent.work) : tr('«{0}» дотор шинэ ажил', parent.work)}</span>
       {field('no', h.addNo, tr('№'), false, first)}
       {field('work', h.addWork, tr('Ажлын нэр'))}
       {field('vol', h.addNum, tr('Обьём'), true)}
       {field('unit', h.addNum, tr('Нэгж өртөг'), true)}
-      <button type="button" className={h.addOk} onClick={onOk}>{tr('Нэмэх')}</button>
+      <button type="button" className={h.addOk} onClick={onOk}>{edit ? tr('Хадгалах') : tr('Нэмэх')}</button>
       <button type="button" className={h.addNo2} onClick={onCancel}>{tr('Болих')}</button>
       <span className={h.addHint}>
         {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
@@ -6950,7 +7261,7 @@ function HamCell({
  * талбар болгож оруулбал гурвуулаа зөрчилдөх боломжтой болно.
  */
 function PlanModal({
-  r, par, blocks, blk, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
+  r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
 }: {
   r: PlanRow;
   /** Хамгийн ойрын дээд БҮЛЭГ — түүний муж нь хатуу хязгаар */
@@ -6963,6 +7274,8 @@ function PlanModal({
   onTakt: (v: number) => void;
   /** Урьдчилагчийн нэр дэвшигчид — дугуй хамаарал үүсгэгчид ХАСАГДСАН */
   cands: { code: number; label: string }[];
+  /** ЕРӨНХИЙ олон блокийн сонголт (2026-09-29) — цонх эдгээрийг урьдчилан сонгосон нээгдэнэ */
+  initSel?: ReadonlySet<number>;
   /** Үйлчилгээнд `Hamaaral` талбар бий эсэх — үгүй бол уялдааны хэсэг нуугдана */
   hasHam: boolean;
   /** Бодит огноо · нөөцийн талбар үйлчилгээнд бий эсэх (2026-09-23) — үгүй бол хэсэг нуугдана */
@@ -6992,6 +7305,8 @@ function PlanModal({
     actual: { start: number | null; end: number | null } | null,
     res: { hun: number | null; mashin: number | null } | null,
     blks: number[],
+    /** Бодит огноо тавигдах блокууд (2026-09-29) — сонгосон бүгд */
+    actBlks: number[],
   ) => void;
 }) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
@@ -7015,8 +7330,10 @@ function PlanModal({
    *    (огноо, бодит огноо, сар/нөөц) бичсэн утгыг тэглэж байв. Зөвхөн
    *    идэвхтэйг нь хасахад л хамгийн доод үлдсэн блок руу шилжинэ.
    */
-  const [selB, setSelB] = useState<Set<number>>(() => new Set([blk]));
-  useEffect(() => { setSelB(new Set([blk])); }, [r.oid]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /* ⚠️ 2026-09-29: ерөнхий сонголт (`initSel`) + идэвхтэй блок; бүлгийн мөрд хамаарахгүй */
+  const selInit = () => new Set([blk, ...(initSel ?? []).values()].filter((k) => k >= 0 && k < blocks.length));
+  const [selB, setSelB] = useState<Set<number>>(selInit);
+  useEffect(() => { setSelB(selInit()); }, [r.oid]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setSelB((s) => (s.has(blk) ? s : new Set([...s, blk]))); }, [blk]);
   const toggleB = (k: number) => {
     if (!dEdit) { onBlk(k); return; }
@@ -7064,7 +7381,10 @@ function PlanModal({
   const am1 = dayToMs(aa);
   const am2 = dayToMs(az);
   const aBad = am1 != null && am2 != null && am1 > am2;
-  const actDirty = (am1 ?? null) !== (r.aStart?.[blk] ?? null) || (am2 ?? null) !== (r.aEnd?.[blk] ?? null);
+  /* ⚠️ 2026-09-29: СОНГОСОН блок бүртэй тулгана — идэвхтэй блок аль хэдийн ижил утгатай
+     ч бусад сонгосон блокт тавигдах ёстой (урьд нь зөвхөн идэвхтэй блокоор шийддэг тул
+     олон блокт «Тавих» юу ч хийдэггүй байв). */
+  const actDirty = [...selB].some((b) => (am1 ?? null) !== (r.aStart?.[b] ?? null) || (am2 ?? null) !== (r.aEnd?.[b] ?? null));
   /* ⚠️ МӨРИЙН хүн/машин popup-аас ЗАСАГДАХГҮЙ (2026-09-24, хэрэглэгч: «дээд талын
      үндсэн хүн хүч машин механизм бөглөлт хэрэггүй, сар сард төлөвлөнө») — мөрийн
      утга нь хадгалахад саруудын нийлбэрээр бичигдэнэ (`save`). */
@@ -7279,23 +7599,35 @@ function PlanModal({
   /** Сарын обьём + нөөц — «Тавих»-д өгөх багц; обьёмгүй мөрд обьём хөндөхгүй.
       ⚠️ Нөөц хөндөгдөөгүй, хоосон бол `null` (2026-09-24 аудит) — урьд нь үргэлж
          `mr` өгч, олон блокт тавихад бусад блокийн серверийн нөөц арчигддаг байв. */
+  /** ЗӨВХӨН бодит огноо (ба уялдаа) хөндөгдсөн — олон блок сонгосон ч төлөвлөгөөг хуулахгүй (2026-09-29) */
+  const extraOnly = extraDirty && (!spanDirty || prefilled) && !mvDirty && !mrDirty;
   const obArg = { months: total == null ? null : mv, res: mrDirty || mrHas ? mr : null };
   /* ⚠️ Алхам 0 → сар/нөөц/бодит огноо СОНГОСОН БҮХ блокт (мужууд ижил);
      алхам >0 → зөвхөн идэвхтэй блокт (бусдын муж шилжсэн тул сарууд зөрнө,
      `applyChanges` тэднийг `keepMonths`/`keepRes`-ээр өөрөө бэлтгэнэ). */
   const obBlks = takt > 0 ? [blk] : [...selB];
+  /** Бодит огноо тавигдах блокууд (2026-09-29) — сонгосон бүгд, алхамаас үл хамаарна */
+  const actBlks = [...selB];
 
   const apply = () => {
     /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа (бодит огноо · нөөц ч бүлэгт
        хаалттай: `aggExtra`-аар бодогдоно). */
-    if (r.group) { if (depsDirty) onApply(null, dl, null, null, null, [blk]); onClose(); return; }
+    if (r.group) { if (depsDirty) onApply(null, dl, null, null, null, [blk], [blk]); onClose(); return; }
     if (ms1 == null || ms2 == null || bad) {
       /* Огноо буруу ч УЯЛДАА · бодит огноо · нөөцийг дангаар нь тавьж болно —
          төлөвлөгөөт огноог хөндөхгүй */
-      if (depsDirty || extraDirty) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks); onClose(); }
+      if (depsDirty || extraDirty) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); }
       return;
     }
-    if (depsOnly) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks); onClose(); return; }
+    if (depsOnly) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); return; }
+    /* ⚠️ ЗӨВХӨН БОДИТ ОГНОО, ОЛОН БЛОК (2026-09-29): төлөвлөсөн муж · сар · нөөц хөндөгдөөгүй
+       бол бодит огноог (ба уялдааг) л сонгосон блокуудад тавина. Урьд нь олон блок
+       сонгосон үед бүтэн зам руу орж, (1) сарын нийлбэр таараагүй бол «Тавих» хаагдаж,
+       (2) идэвхтэй блокийн ТӨЛӨВЛӨСӨН мужийг бусад блокт хуулдаг байв — хэрэглэгч
+       зөвхөн бодит огноо бүртгэх гэсэн. Төлөвлөгөөг хуулах бол бодит огноог хөндөлгүй тавина. */
+    if (extraOnly) {
+      onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); return;
+    }
     /* ⚠️ НИЙЛБЭР ТААРААГҮЙ бол хуваарийг ОРУУЛАХГҮЙ (хэрэглэгчийн дүрэм №3).
        Товч нь аль хэдийн хаалттай ч Enter/гар хандалтаар энд ирж болно. */
     if (!mvOk) return;
@@ -7308,7 +7640,7 @@ function PlanModal({
       const shift = takt > 0 ? (b - blk) * takt * DAY : 0;
       next[b] = b === blk ? { start: ms1, end: ms2 } : { start: ms1 + shift, end: endOf(ms1 + shift, len) };
     }
-    onApply(next, depsDirty ? dl : null, obArg, actArg, resArg, obBlks);
+    onApply(next, depsDirty ? dl : null, obArg, actArg, resArg, obBlks, actBlks);
     onClose();
   };
 
@@ -7321,7 +7653,7 @@ function PlanModal({
        үлдвэл нийлбэрийн шалгуур мөнхөд зөрчилтэй болно.
        ⚠️ Бодит огноо · нөөц ХӨНДӨХГҮЙ (2026-09-23): төлөвлөгөөг арилгах нь
        баримтыг устгах шалтгаан биш — талбарыг хоослоод «Тавих». */
-    onApply(next, null, { months: new Map(), res: new Map() }, null, null, [...selB]);
+    onApply(next, null, { months: new Map(), res: new Map() }, null, null, [...selB], [...selB]);
     onClose();
   };
 
@@ -7695,12 +8027,12 @@ function PlanModal({
               disabled={r.group
                 ? !depsDirty
                 : aBad ? true
-                : depsOnly ? false
+                : (depsOnly || extraOnly) ? false
                 /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
                    сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
                 : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
                 : !mvOk}
-              title={mvOk || depsOnly || ms1 == null || ms2 == null || bad ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
+              title={mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
               {tr('Тавих')}
             </button>
           )}

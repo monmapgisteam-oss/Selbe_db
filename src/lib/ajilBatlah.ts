@@ -43,7 +43,7 @@
 import { AUTH, ROLE_BY_USER } from './services';
 import { ajilScope } from './ajilAcl';
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
 
@@ -165,13 +165,10 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * «амжилттай хадгаллаа» гэж ХУДЛААР мэдээлнэ.
  */
 async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ. */
-  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
+  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
+     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
+     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
+  return arcgisPost(url, params);
 }
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
@@ -830,6 +827,79 @@ export async function withdrawAjil(args: {
     return editOk(j.updateResults)
       ? { ok: true }
       : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТЭЭ ЗАСАХ — зохиогч батлагч шийдэхээс ӨМНӨ (2026-09-29,
+ * хэрэглэгч: «ажил нэмэх хүсэлт явуулсны дараа буцаагаагүй байхад өөрөө дахин засах
+ * боломжтой байх»).
+ *
+ * ⚠️ ШИНЭ ИЛГЭЭЛТ ҮҮСГЭХГҮЙ — ИЖИЛ мөрийн `aguulga` + мөрийн тоог солино. Төлөв
+ *    `pending` хэвээр; батлагч дараагийн нээлтэд ШИНЭ хувилбарыг харна. Татаад дахин
+ *    илгээхээс ялгаа: дарааллын байр (`ilgeesen_ognoo`) ба дугаар хадгалагдана.
+ * ⚠️ ЗӨВХӨН ЗОХИОГЧ, ЗӨВХӨН `pending` — жинхэнэ дүрэм нь СЕРВЕРИЙН мөр (`withdrawAjil`-тай
+ *    ижил). Батлагч аль хэдийн шийдсэн бол татгалзана.
+ * ⚠️ ArcGIS-д нөхцөлт update байхгүй — бичсэний ДАРАА дахин уншиж төлөв `pending`
+ *    хэвээр эсэхийг шалгана: завсарт батлагдсан бол батлагчийн харсан (хуучин) хувилбар
+ *    буусан байж болох тул ИЛ хэлнэ.
+ * ⚠️ ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ.
+ */
+export async function updateAjil(args: {
+  oid: number;
+  /** Засаж буй хүн — нэвтэрсэн хэрэглэгч (`currentUser`) байх ёстой */
+  me: string;
+  payload: AjilPayload;
+}): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
+  requireCap('addRow');
+  const me = args.me.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  if (!args.payload.adds.length) {
+    return { ok: false, error: tr('Нэмсэн мөр алга — бүх мөрийг хасах бол илгээлтээ татна уу.') };
+  }
+  if (typeof window !== 'undefined' && AUTH.appId) {
+    const meNow = currentUser();
+    if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    if (meNow !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ засна.') };
+  }
+  const url = await tableUrl();
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  const fields = `${F.oid},${F.status},${F.author},${F.approver},${F.pkgKey}`;
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, fields);
+  if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ засна.') };
+  if (s(cur[0][F.pkgKey]) !== args.payload.pkgKey) {
+    return { ok: false, error: tr('Илгээлт өөр багцынх байна — хуудсаа шинэчилнэ үү.') };
+  }
+  const gone = (st: string | null, by: string | null) => (by
+    ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, st ?? '')
+    : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
+  if (s(cur[0][F.status]) !== AJIL_STATUS.pending) {
+    return { ok: false, error: gone(s(cur[0][F.status]), s(cur[0][F.approver])) };
+  }
+  const attrs: Attrs = {
+    [F.oid]: args.oid,
+    [F.rowCount]: args.payload.adds.length,
+    [F.payload]: JSON.stringify(args.payload),
+  };
+  try {
+    const j = await req(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: attrs }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    const after = await query(`${F.oid} = ${Number(args.oid)}`, fields);
+    if (after.length && s(after[0][F.status]) !== AJIL_STATUS.pending) {
+      return {
+        ok: false,
+        error: tr('Засвар хадгалагдах зуур батлагч шийдвэрлэсэн байна ({0}) — батлагчийн харсан нь өмнөх хувилбар байж болзошгүй. Батлагчтай тулгана уу.', s(after[0][F.status]) ?? ''),
+      };
+    }
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
