@@ -881,6 +881,27 @@
   border-right: none;
   border-left: 1px solid color-mix(in srgb, var(--surface) 60%, transparent);
 }
+/* ⚠️ 2026-09-30: ДАРАХ ТАЛБАР ≥16px — харагдах бариул 7px хэвээр, тунгалаг
+   `::before` нь хитийг өргөсгөнө (хуруугаар 7px-ийг онох бараг боломжгүй байв).
+   · Зүүн: зурвасын ГАДАГШ тэлнэ — зурвасын их бие (зөөх) хөндөгдөхгүй.
+   · Баруун: гадагш 5px л — түүнээс цааш `.plLink` (z-index 1, DOM-д хойно) давамгайлна;
+     дотогш 4px (богино зурвасын зөөх талбайг хэт идэхгүй).
+   · Босоо: мөрийн `.plBar` top/bottom 4px зайг ашиглана. */
+.plGrip { position: relative; }
+.plGrip::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: -9px;
+  right: 0;
+}
+.plGripR::before { left: -4px; right: -5px; }
+@media (pointer: coarse) {
+  /* Мэдрэгч дэлгэц — ~24px; дотогш илүү тэлэхгүй (зөөх талбай) */
+  .plGrip::before { left: -17px; }
+  .plGripR::before { left: -6px; right: -11px; }
+}
 
 /* ── ХАМААРАЛ ШУГАМААР ХОЛБОХ (2026-09-22) ──
    Зурвасын баруун захаас гадагш цухуйсан дугуй бариул. ⚠️ Зурвас `overflow`-гүй

@@ -95,8 +95,9 @@ export type ExecReport = {
     households: number;
     /** Бөглөгдөөгүй блок */
     noData: number;
+    /** ⚠️ 2026-09-30: `actual`-ийн ХЭМЖИЛТИЙН огноо («YYYY-MM-DD», эсвэл «YYYY-MM»); барилгын давхаргын сүүлийн огноо БИШ. Хэмжилтгүй бол '' */
     asOf: string;
-    /** Орон сууцны биет гүйцэтгэл — блокоор жигнэсэн, одоогийн сар хүртэлх сүүлийн хэмжилт */
+    /** Орон сууцны биет гүйцэтгэл — ХО дүнгээр жигнэсэн (`gdash.housingPct`, 2026-09-30), одоогийн сар хүртэлх сүүлийн хэмжилт */
     actual: number | null;
     /** Хуваарийн төлөвлөгөө — `actual`-ийн хэмжилтийн огноонд завсарласан (2026-09-25) */
     planned: number | null;
@@ -162,6 +163,11 @@ export type ExecReport = {
     /** Анхаарал шаардах мөрүүд — зөвшөөрөөгүй ба хүлээгдэж буй */
     issues: { bagts: string; ner: string; baiguullaga: string; tolov: string; shat: number }[];
   } | null;
+  /**
+   * Өгөгдөл ХЭЗЭЭ татагдсан (epoch мс) — 2026-09-30. Тайлан 5 мин кэштэй тул
+   * толгойн «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин; `Tailan`-ийн `fetchedAt`-тай ижил.
+   */
+  fetchedAt: number;
 };
 
 /* ═══════════════ Ачаалагч ═══════════════ */
@@ -212,6 +218,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   let lastM: { label: string; physAt?: string | null } | null = null;
   for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
   const measAt = lastM ? (lastM.physAt ?? `${lastM.label}-31`) : `${nowYm}-31`;
+  /* ⚠️ 2026-09-30: «Бодит»-ын ХЭМЖИЛТИЙН ОГНОО — `actual` гарсан цэгийнх
+     (`physAt`, байхгүй бол тэр сар). Урьд нь `prog.asOf` = `bld.asOf` (барилгын
+     давхаргын ХАМГИЙН СҮҮЛИЙН огноо) байсан тул «хэмжилт {огноо}» шошго нь тоо
+     гарсан хэмжилтээс өөр өдрийг заадаг байв. Хэмжилтгүй бол '' (шошго гарахгүй). */
+  const physAsOf = lastM ? (lastM.physAt ?? lastM.label) : '';
   const planned: number | null = plan.months.length ? planPctAt(plan.months, measAt) : null;
   const gap = planned != null && actual != null ? planned - actual : null;
 
@@ -225,7 +236,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      тайлан бусад дэлгэцээс өөр тоо хэвлэдэг байв. */
   const csum = cf.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
   const k = kpisOf(cf, csum, land.pct, wbsPct);
-  /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь блок-жигнэсэн биет хувь —
+  /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь ХО дүнгээр жигнэсэн биет хувь (`physNow`, 2026-09-30) —
      `GeneralDash.catPct`-тай ижил дүрэм. */
   const catPct = new Map<string, number>();
   if (actual != null) catPct.set('ОРОН СУУЦНЫ ХОРООЛОЛ', actual);
@@ -322,7 +333,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       bySource,
     },
     prog: {
-      blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: bld.asOf,
+      blocks: bld.blocks, households: bld.households, noData: bld.noData, asOf: physAsOf,
       actual, planned, gap,
       planFailed: plan.failed.length,
       packs: packs.map((p) => ({
@@ -346,6 +357,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       rows: finRows,
     },
     zov,
+    fetchedAt: Date.now(),
   };
 }
 

@@ -382,6 +382,18 @@ export function SuitMap({
   const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick });
   cb.current = { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick };
 
+  /** Панелийг заагчийн хажууд, зургийн хүрээнээс гарахгүйгээр */
+  function placeTip(tip: HTMLDivElement, x: number, y: number) {
+    const pad = 14;
+    const box = tip.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    let left = x + pad, top = y + pad;
+    if (left + tip.offsetWidth > box.width - 6) left = x - tip.offsetWidth - pad;
+    if (top + tip.offsetHeight > box.height - 6) top = y - tip.offsetHeight - pad;
+    tip.style.left = `${Math.max(6, left)}px`;
+    tip.style.top = `${Math.max(6, top)}px`;
+  }
+
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
    * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
@@ -768,18 +780,6 @@ export function SuitMap({
 
     return clear;
   }, [dim, ready]);
-
-  /** Панелийг заагчийн хажууд, зургийн хүрээнээс гарахгүйгээр */
-  function placeTip(tip: HTMLDivElement, x: number, y: number) {
-    const pad = 14;
-    const box = tip.parentElement?.getBoundingClientRect();
-    if (!box) return;
-    let left = x + pad, top = y + pad;
-    if (left + tip.offsetWidth > box.width - 6) left = x - tip.offsetWidth - pad;
-    if (top + tip.offsetHeight > box.height - 6) top = y - tip.offsetHeight - pad;
-    tip.style.left = `${Math.max(6, left)}px`;
-    tip.style.top = `${Math.max(6, top)}px`;
-  }
 
   /* ── Давхаргын ил байдал (оноон будалт, шошго ч энд орно) ── */
   useEffect(() => {

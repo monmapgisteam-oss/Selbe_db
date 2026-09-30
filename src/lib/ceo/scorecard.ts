@@ -9,6 +9,16 @@
  *    оноо + гэрлэн дохио (≥80 ногоон · 50–79 шар · <50 улаан).
  *    Нийт оноо = бодогдсон бүлгүүдийн ЭНГИЙН дундаж.
  *
+ * ⚠️ 2026-09-30: ОЛОН ажлыг НЭГТГЭХДЭЭ (төрлийн бүлэг, төслийн нийт) ТӨСВӨӨР
+ *    ЖИГНЭНЭ — порталын дүрэм (gdash, PkgFin: өртгөөр жигнэсэн нэгтгэл). CEO_KPI
+ *    спект онооны жигнэлт тодорхойлогдоогүй. Урьд нь энгийн дундаж байсан тул
+ *    1.5 тэрбумын ажил 448 тэрбумын ажилтай ижил жинтэй байв. Мөн төслийн нийт
+ *    = ажлын нийт оноонуудын дундаж байсан тул хажууд харагдах 7 бүлгийн
+ *    дунджаас ӨӨР тоо гардаг байв. Одоо:
+ *      · бүлэг d-ийн дундаж = Σ(өртөг × оноо_d) ÷ Σ өртөг (оноотой ажлуудаар)
+ *      · бүлгийн / төслийн НИЙТ = хажууд харагдах бүлгийн дундажуудын дундаж
+ *        (ажлын нийт = өөрийн бүлгүүдийн дундаж — НЭГ дүрэм, НЭГ олонлог)
+ *
  * ⚠️ `null` ≠ 0 (төслийн үндсэн дүрэм). Тухайн багцад хэмжигдэх өгөгдөлгүй
  *    бүлэг (жишээ нь QAQC хүснэгтгүй дэд бүтцийн ажил, газрын зураглалгүй
  *    ТЭЗҮ) «—» бөгөөд нийт дунджид ОРОХГҮЙ. Тэгээр орлуулбал өгөгдөл
@@ -515,18 +525,44 @@ export type WorkScore = {
 export type TypeGroup = {
   type: string;
   works: WorkScore[];
-  /** Бүлэг бүрийн дундаж — багцуудын энгийн дундаж */
+  /** Бүлэг бүрийн дундаж — ТӨСВӨӨР жигнэсэн (`weightedMeanOf`, 2026-09-30) */
   dims: Record<Dim, number | null>;
   /** Оноотой ажил алга, гэхдээ дата хүлээгдэж буй ажил бий */
   pending: Record<Dim, boolean>;
+  /** `dims`-ийн (null-гүй) энгийн дундаж — хажууд харагдах тоонуудтай ЯГ таарна */
   total: number | null;
 };
 
 export const totalOf = (dims: Record<Dim, DimScore>): number | null => meanOf(DIMS.map((d) => dims[d].score));
 
+/**
+ * Жин — ажлын урьдчилсан төсөвт өртөг (₮, Cashflow).
+ * ⚠️ Гэрээний дүнгээр БИШ: гэрээгүй ажилд дүн байхгүй (`contract: null`) тул
+ *    жин нь алга болж, тэдгээрийн оноо (газар, зөвшөөрөл…) нэгтгэлээс хасагдана.
+ */
+export const workWeight = (w: WorkScore): number => (Number.isFinite(w.cost) && w.cost > 0 ? w.cost : 0);
+
+/**
+ * Жигнэсэн дундаж — `null` утга АЛГАСНА (null ≠ 0).
+ * ⚠️ Оноотой бүх ажлын жин 0 (төсөвгүй) бол ЭНГИЙН дундаж — оноотой ажлыг
+ *    «жингүй» гэж хаявал өгөгдөл байхад «—» гарна.
+ */
+export const weightedMeanOf = (xs: readonly { v: number | null; w: number }[]): number | null => {
+  const v = xs.filter((x): x is { v: number; w: number } => x.v != null && Number.isFinite(x.v));
+  if (!v.length) return null;
+  const W = v.reduce((a, x) => a + (x.w > 0 ? x.w : 0), 0);
+  if (!(W > 0)) return meanOf(v.map((x) => x.v));
+  return v.reduce((a, x) => a + x.v * (x.w > 0 ? x.w : 0), 0) / W;
+};
+
 const dimMeans = (works: readonly WorkScore[]): Record<Dim, number | null> => (
-  Object.fromEntries(DIMS.map((d) => [d, meanOf(works.map((w) => w.dims[d].score))])) as Record<Dim, number | null>
+  Object.fromEntries(DIMS.map((d) => [
+    d, weightedMeanOf(works.map((w) => ({ v: w.dims[d].score, w: workWeight(w) }))),
+  ])) as Record<Dim, number | null>
 );
+
+/** Нийт = харагдаж буй бүлгийн дундажуудын дундаж (`totalOf`-той нэг дүрэм) */
+const totalOfMeans = (dims: Record<Dim, number | null>): number | null => meanOf(DIMS.map((d) => dims[d]));
 
 const dimPending = (works: readonly WorkScore[], means: Record<Dim, number | null>): Record<Dim, boolean> => (
   Object.fromEntries(DIMS.map((d) => [d, means[d] == null && works.some((w) => w.dims[d].pending)])) as Record<Dim, boolean>
@@ -556,16 +592,19 @@ export function groupByType(works: readonly WorkScore[]): TypeGroup[] {
         || b.cost - a.cost
       ));
       const dims = dimMeans(live);
-      return { type, works: sorted, dims, pending: dimPending(live, dims), total: meanOf(live.map((w) => w.total)) };
+      return { type, works: sorted, dims, pending: dimPending(live, dims), total: totalOfMeans(dims) };
     })
     .sort((a, b) => cost(b.works) - cost(a.works));
 }
 
-/** Төслийн нийт — бүх ажлын бүлэг бүрийн дундаж */
+/**
+ * Төслийн нийт — бүлэг бүрийн ТӨСВӨӨР жигнэсэн дундаж; нийт нь тэдгээрийн
+ * дундаж (`CeoScorecard`-ийн «Нийт оноо» == хажуугийн 7 хавтангийн дундаж).
+ */
 export function projectDims(works: readonly WorkScore[]): { dims: Record<Dim, number | null>; pending: Record<Dim, boolean>; total: number | null } {
   const live = works.filter((w) => !w.cancelled);
   const dims = dimMeans(live);
-  return { dims, pending: dimPending(live, dims), total: meanOf(live.map((w) => w.total)) };
+  return { dims, pending: dimPending(live, dims), total: totalOfMeans(dims) };
 }
 
 /* ══════════════ Төлөв ба шүүлт ══════════════ */

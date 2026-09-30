@@ -6,6 +6,7 @@ import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
 import { registerIdentity } from '@/lib/authToken';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './auth.module.css';
 
 /**
@@ -37,6 +38,12 @@ type AuthCtx = {
   error: string | null;
   /** Эрхийн хүснэгт уншигдсан уу — `false` бол татгалзал нь СҮЛЖЭЭНИЙХ, эрхийнх БИШ */
   permsRead: boolean;
+  /**
+   * Порталд АЖИЛЛАЖ БАЙХ ҮЕД эрх хасагдсан уу (2026-09-30) — `signed-in` →
+   * `denied` шилжилт зөвхөн үечилсэн шалгалтаас. `Root` үүгээр Portal-ыг
+   * УСТГАЛГҮЙ үлдээж, дээр нь хаалтын цонх (`AuthNotice`) гаргана.
+   */
+  accessLost: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Алдааны мэдэгдлийг хаах — signed-out+error дэлгэцээс гарах гарц */
@@ -50,6 +57,7 @@ const Ctx = createContext<AuthCtx>({
   role: null,
   error: null,
   permsRead: true,
+  accessLost: false,
   signIn: async () => {},
   signOut: async () => {},
   clearError: () => {},
@@ -117,6 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * ХУДАЛ шалтгаан гарч, админ эрхийг нь дахин дахин шалгаж цаг алдана.
    */
   const [permsRead, setPermsRead] = useState(true);
+  /** Ажиллаж байхад эрх хасагдсан (`AuthCtx.accessLost`-ийн тайлбар) */
+  const [accessLost, setAccessLost] = useState(false);
   // ⚠️ registerOAuthInfos дууссаныг илтгэх promise — бүртгэл дуусаагүй үед getCredential
   //    PKCE redirect хийдэггүй тул эрт дарсан «Нэвтрэх» race-д унахаас сэргийлж
   //    signIn эхэндээ үүнийг хүлээнэ.
@@ -292,11 +302,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            харуулна (2026-09-08). Хатуу үүрэгтэй хүнд remote хамаагүй. */
         setPermsRead(rok || !!roleForUser(user.username));
         const ok = hasAccess(user.username);
+        /* ⚠️ 2026-09-30: ТҮР УНШИЛТЫН АЛДААГААР ХААХГҮЙ. Эрхийн хүснэгт
+           уншигдаагүй (`rok === false`) бол «эрхгүй» гэдэг нь ТОДОРХОЙ ДҮН
+           биш — зөвхөн «мэдэхгүй». Урьд нь ийм үед ч `denied` болж, Portal
+           устгагдаж хадгалаагүй ажил алга болдог байв. Хаахыг ЗӨВХӨН амжилттай
+           уншилтын дараа. Нээх (`ok`) нь хэвээр шууд. */
+        if (!ok && !rok) return;
         /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
            урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
            `current=null` үлдэж F5 хүртэл бүх бичилт «эрхгүй» гэдэг байв. */
         setCurrentUser(ok ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
+        /* ⚠️ 2026-09-30: ажиллаж байхад хасагдсаныг тэмдэглэнэ — `Root` Portal-ыг
+           үлдээж, дээр нь хаалтын цонх гаргана (ажил алга болохгүй). */
+        if (!ok && status === 'signed-in') setAccessLost(true);
+        if (ok) setAccessLost(false);
         setStatus((prev) => {
           if (prev === 'signed-in' && !ok) return 'denied';
           if (prev === 'denied' && ok) return 'signed-in';
@@ -390,7 +410,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authorized = status === 'signed-in' || status === 'off';
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, signIn, signOut, clearError: () => setError(null) }}>
+    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, accessLost, signIn, signOut, clearError: () => setError(null) }}>
       {children}
     </Ctx.Provider>
   );
@@ -401,8 +421,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, signIn, signOut, clearError } = useAuth();
+  const { status, user, error, permsRead, accessLost, signIn, signOut, clearError } = useAuth();
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
+
+  /*
+   * ⚠️ 2026-09-30: АЖИЛЛАЖ БАЙХАД ЭРХ ХАСАГДСАН — Portal доор нь АМЬД үлдэнэ
+   *    (`Root`). Бүтэн дэлгэцийн хаалт (ард нь ажиллах боломжгүй), гэхдээ
+   *    эрх сэргээгдвэл (15 с тутмын шалгалт) цонх өөрөө хаагдаж хадгалаагүй
+   *    ажил хэвээр үлдэнэ. Дахин ачаалах/гарах нь хэрэглэгчийн сонголт.
+   */
+  if (status === 'denied' && accessLost) return <AccessLost username={user?.username} onSignOut={signOut} />;
   /*
    * ТАТГАЛЗСАН ШАЛТГААНЫ ДАРААЛАЛ (2026-09-21): org зөрөв → эрхийн жагсаалт
    * уншигдсангүй → эрх олгогдоогүй.
@@ -490,6 +518,35 @@ export function AuthNotice() {
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * АЖИЛЛАЖ БАЙХАД ЭРХ ХАСАГДСАН — хаалтын цонх (2026-09-30, `AuthNotice`-ийн ⚠️).
+ * ⚠️ Тусдаа компонент: фокусын урхи (`useFocusTrap`) hook тул `AuthNotice`-ийн
+ *    эрт `return`-үүдийн дараа дуудаж болохгүй. Урхигүй бол Tab нь доорх
+ *    порталын товчнууд руу гарна.
+ */
+function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  return (
+    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-access-lost">
+      <div className={s.card}>
+        <img src="/logo.svg" alt="" className={s.logo} />
+        <div className={s.title} id="selbe-access-lost">{tr('Таны хандах эрх өөрчлөгдлөө')}</div>
+        <p className={s.sub}>
+          {tr('Админ таны порталын эрхийг хассан эсвэл өөрчилсөн байна. Эрх сэргээгдвэл энэ цонх өөрөө хаагдаж, нээлттэй байсан ажил тань хэвээр үлдэнэ.')}
+        </p>
+        <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
+        <button type="button" className={s.btn} onClick={() => window.location.reload()} style={{ marginTop: 16 }}>
+          {tr('Хуудсыг дахин ачаалах')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={onSignOut}>
+          {tr('Гарах')}
+        </button>
       </div>
     </div>
   );

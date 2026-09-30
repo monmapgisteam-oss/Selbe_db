@@ -357,8 +357,7 @@ export function ComboChart({
    *    багана ОГТ БАЙХГҮЙ. Тиймээс тэнхлэгийн дээд хязгаар нь одоо
    *    ТӨЛӨВЛӨГӨӨ биш, өссөн ОЛГОЛТ. Хоёулаа хоосон бол `1` — 0-д хуваахаас.
    */
-  let gsum = 0;
-  const cums = items.map((it) => { gsum += it.given; return gsum; });
+  const cums = items.reduce<number[]>((a, it) => { a.push((a[a.length - 1] ?? 0) + it.given); return a; }, []);
   /** Биет нь ӨӨРИЙН %-ийн тэнхлэгтэй эсэх — `contract`-ийн ⚠️ */
   const ownAxis = !(contract != null && Number.isFinite(contract) && contract > 0);
   const physVal = (p: number | null): number | null => (

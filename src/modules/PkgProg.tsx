@@ -187,7 +187,10 @@ export function PkgProg({ dim, setDim }: {
     return () => {
       alive = false;
     };
-  }, [active]);
+    /* ⚠️ `packs` ЗААВАЛ — багц сонгоогүй үед эх сурвалжийг `packs`-аас бүрдүүлдэг;
+       урьд нь өгөгдөл ачаалагдахаас өмнөх хоосон `packs`-аар тоолоод дахин
+       тоолдоггүй тул дэд бүтцийн багцын саад нийт тоонд ордоггүй байв. */
+  }, [active, packs]);
 
   /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
   const ovOk = overlap !== 'error' ? overlap : null;
@@ -208,14 +211,14 @@ export function PkgProg({ dim, setDim }: {
    *    учрыг нь олохгүй (2026-08-27, хэрэглэгчийн заалт).
    */
   const [ovPick, setOvPick] = useState<{ key: string; oids: number[] } | null>(null);
-  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
-  useEffect(() => { setOvPick(null); setCardSel(null); }, [active]);
   /**
    * ⚠️ 2026-09-21: багц СОНГООГҮЙ үеийн «Багц N — блокууд» картуудын
    * сонголт — НЭГ л карт, нэг л мөр (`BlocksCard.sel`-ийн тайлбар).
    * `oid` нь блокийн OID эсвэл давхцлын зурвасын түлхүүр (`'overlap'`).
    */
   const [cardSel, setCardSel] = useState<{ key: string; oid: string } | null>(null);
+  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
+  useEffect(() => { setOvPick(null); setCardSel(null); }, [active]);
 
   /** Сонгогдсон багц — түүний давхаргууд зурагт нэмэгдэнэ */
   const ovPack = useMemo(
@@ -224,7 +227,10 @@ export function PkgProg({ dim, setDim }: {
   );
 
   /** Зурагт үзүүлэх давхцсан талбарууд — сонголт байвал түүнийг */
-  const ovShown = ovPick?.oids.length ? ovPick.oids : (ovOk?.oids ?? []);
+  const ovShown = useMemo(
+    () => (ovPick?.oids.length ? ovPick.oids : (ovOk?.oids ?? [])),
+    [ovPick, ovOk],
+  );
 
   /**
    * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
@@ -811,7 +817,8 @@ export function PkgProg({ dim, setDim }: {
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <CatChart packs={packs} />
+            {/* ⚠️ 2026-09-30: орон сууцны багана = `physNow` (TsKpi-тай нэг тоо); ачаалж байхад `undefined` */}
+            <CatChart packs={packs} housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined} />
             {allPack && <LevelsCard blocks={allPack.blocks} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
@@ -918,7 +925,8 @@ export function PkgProg({ dim, setDim }: {
  *    бөглөх»-ийн ХУВААРЬ (`loadPlanCurve`), 2026-09-04-нөөс. Урьдын
  *    `aggregateMonths().cumPct` нь cashflow-ийн 12 сарын ЦОНХОНД
  *    нормчлогддог тул «2026-09-д 100%» гэсэн худал тоо өгдөг байв.
- * ⚠️ БОДИТ хувь нь хэвээр `aggregateMonths().phys` — блок-жигнэсэн биет %.
+ * ⚠️ БОДИТ хувь нь хэвээр `aggregateMonths().phys` — ХО дүнгээр жигнэсэн биет %
+ *    (`gdash.housingPct`, 2026-09-30; өмнө нь блокоор).
  */
 /*
  * ⚠️ 2026-09-08 (аудит, HIGH): `fin`/`plan`-ийг задалсан утгаар БИШ, бүтэн
@@ -1163,7 +1171,7 @@ function TsPackList({
 /**
  * «ТӨСЛИЙН ТӨРӨЛ» — 4 ангиллын гүйцэтгэлийн харьцуулсан багана (2026-08-21,
  * хуучин «Төсөл нийт» картын оронд, хэрэглэгчийн хүсэлтээр). Барилга угсралт
- * нь блокийн дундаж %, бусад ангилал нь санхүүгийн гүйцэтгэл % (олгосон ÷
+ * нь орон сууцны биет % (`physNow`, 2026-09-30), бусад ангилал нь санхүүгийн гүйцэтгэл % (олгосон ÷
  * төлөвлөгөө — зүүн жагсаалттай ИЖИЛ дүрэм тул тоо зөрөхгүй). Ангилал бүрд
  * багцын тоо шошгонд хамт гарна.
  */
@@ -1177,7 +1185,14 @@ function TsPackList({
  * ⚠️ Санхүүгийн бүртгэлгүй багцыг ХАСНА — «0 ₮» гэж харуулбал «олгоогүй»
  * гэсэн ХУДАЛ дохио өгнө; бодит утга нь «гэрээ бүртгэгдээгүй».
  */
-function CatChart({ packs }: { packs: Pack[] }) {
+function CatChart({ packs, housing }: {
+  packs: Pack[];
+  /**
+   * Орон сууцны (барилга угсралт) биет хувь — `physNow` (ХО дүнгээр жигнэсэн,
+   * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = мэдээлэлгүй.
+   */
+  housing: number | null | undefined;
+}) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
     const pcts: number[] = [];
@@ -1187,15 +1202,20 @@ function CatChart({ packs }: { packs: Pack[] }) {
      *    баганад нийлүүлдэг байв — хоёр өөр хэмжигдэхүүний дундаж нь юуг ч
      *    хэмждэггүй тоо.
      */
-    /* ⚠️ 2026-09-25: БЛОКООР ЖИГНЭНЭ — урьд нь багц бүрийн дунджийн ДУНДАЖ
-       (4 блоктой багц 22 блоктойтой ижил жинтэй) байсан тул KPI/Dashboard-ийн
-       блок-жигнэсэн тооноос зөрдөг байв. Мэдээлэлгүй блок (`null`) ОРОХГҮЙ. */
+    /* ⚠️ 2026-09-30: ОРОН СУУЦ (`build`) = `housing` (`physNow` — ХО дүнгээр
+       жигнэсэн, дээд индикатор `TsKpi`-тай ЯГ НЭГ тоо). Урьд нь (2026-09-25) БҮХ
+       тайлагнасан блокийн энгийн дундаж байсан тул нэг дэлгэц дээр орон сууцны
+       хоёр өөр хувь зэрэг харагддаг байв. Бусад ангилал биет өгөгдөлгүй тул
+       хоосон («мэдээлэлгүй») хэвээр — мөнгөн хувиар нөхөхгүй. */
+    if (c.key === 'build') {
+      return { c, n: list.length, mean: housing ?? null, wait: housing === undefined };
+    }
     for (const p of list) {
       if (p.kind !== 'build') continue;
       for (const b of p.blocks) if (b.progress != null) pcts.push(b.progress);
     }
     const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
-    return { c, n: list.length, mean };
+    return { c, n: list.length, mean, wait: false };
   });
   return (
     <Section
@@ -1211,7 +1231,7 @@ function CatChart({ packs }: { packs: Pack[] }) {
           label: `${r.c.name()} · ${num(r.n)}`,
           value: r.mean ?? 0,
           color: shade(HUE, i, rows.length),
-          display: r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
+          display: r.wait ? '…' : r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
         }))}
       />
     </Section>

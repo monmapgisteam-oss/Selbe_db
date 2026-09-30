@@ -481,9 +481,19 @@ export type IpcTotals = {
   pays: number;
   /** Σ гэрээт төсөв — ⚠️ ГЭРЭЭНИЙ түвшнээс */
   contract: number | null;
-  /** Σ олгосон */
+  /** Σ олгосон — БҮХ гэрээ (гэрээт дүн тодорхойгүй гэрээ ч орно) */
   paid: number | null;
-  /** `paid / contract` × 100 */
+  /**
+   * Σ олгосон — ЗӨВХӨН гэрээт дүн (`contractTotal`) тодорхой гэрээнүүдийнх.
+   * `paidPct`-ийн ТООЛОГЧ (`reportData.finance.paidContracted`-тэй ижил хамрах хүрээ).
+   */
+  paidContracted: number | null;
+  /**
+   * Σ олгосон — гэрээт дүн ТОДОРХОЙГҮЙ гэрээнүүдийнх (`paid − paidContracted`).
+   * `null` = тийм гэрээнд олголт алга. Хувьд ОРОХГҮЙ тул дэлгэцэд ТУСАД НЬ.
+   */
+  paidOther: number | null;
+  /** `paidContracted / contract` × 100 (0–100) */
   paidPct: number | null;
 };
 
@@ -506,23 +516,39 @@ export type IpcTotals = {
 export const payCount = (rows: readonly PayRow[]): number =>
   rows.filter((r) => r.amount != null).length;
 
+/**
+ * ⚠️ 2026-09-30: «олгосон (Y%)»-ийн ТООЛОГЧ ба ХУВААРЬ НЭГ хамрах хүрээтэй.
+ *    Урьд нь тоологч нь БҮХ гэрээний олголт (гэрээт дүн `null` гэрээ ч), хуваарь
+ *    нь зөвхөн дүн нь тодорхой гэрээнийх байсан тул хувь хөөрөгддөг байв.
+ *    Одоо тоологч = `paidContracted` (дүн тодорхой гэрээ), бусад олголт
+ *    `paidOther`-д тусад нь — `reportData.finance.paidContracted/paidOther`-той
+ *    ижил дүрэм. `paid` (нийт олгосон) нь хэвээр БҮХ гэрээнийх.
+ */
 export function ipcTotals(bs: readonly ContractBlock[]): IpcTotals {
   let contract: number | null = null;
   let paid: number | null = null;
+  let paidContracted: number | null = null;
+  let paidOther: number | null = null;
   let pays = 0;
   for (const b of bs) {
     pays += payCount(b.rows);
     if (b.contractTotal != null) contract = (contract ?? 0) + b.contractTotal;
-    if (b.paidTotal != null) paid = (paid ?? 0) + b.paidTotal;
+    if (b.paidTotal != null) {
+      paid = (paid ?? 0) + b.paidTotal;
+      if (b.contractTotal != null) paidContracted = (paidContracted ?? 0) + b.paidTotal;
+      else paidOther = (paidOther ?? 0) + b.paidTotal;
+    }
   }
   return {
     contracts: bs.length,
     pays,
     contract,
     paid,
+    paidContracted,
+    paidOther,
     /* ⚠️ 0-д хуваавал Infinity — график/хувь эвдэрнэ */
-    paidPct: paid == null || contract == null || contract === 0
+    paidPct: paidContracted == null || contract == null || contract === 0
       ? null
-      : (paid / contract) * 100,
+      : (paidContracted / contract) * 100,
   };
 }

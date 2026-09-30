@@ -192,6 +192,21 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--hue) 12%, transparent);
 }
+/* «Миний хийх» (2026-09-30) — таб/карт дээрх тэмдэг, шүүлтийн товч */
+.tabMine {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--warn-ink);
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  font-weight: 700;
+}
+.tagMine { color: var(--warn-ink); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); font-weight: 700; }
+.cardMine { box-shadow: inset 3px 0 0 var(--warn); }
+.btnOn { border-color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); font-weight: 700; }
+/* NCR-ийн өмнөх тойргууд */
+.rounds { display: flex; flex-direction: column; gap: 8px; }
+.round { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .inpSearch { min-width: 160px; }
 .inpFull { width: 100%; min-width: 0; }
 .cellInp { width: 100%; min-width: 80px; }

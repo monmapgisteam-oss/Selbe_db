@@ -41,7 +41,8 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
-import { ajilScope } from './ajilAcl';
+import { ajilAclReady, ajilScope } from './ajilAcl';
+import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
@@ -547,9 +548,39 @@ export async function loadAddedKeys(pkgKey: string): Promise<AddedKey[]> {
 
 /** Нэг илгээлтийн АГУУЛГА — батлахад л хэрэгтэй тул тусад нь татна */
 export async function loadPayload(oid: number): Promise<AjilPayload | null> {
+  return (await loadPayloadStamped(oid))?.p ?? null;
+}
+
+/**
+ * АГУУЛГЫН ХУВИЛБАРЫН ТЭМДЭГ — түүхий `aguulga` мөрийн хэш (FNV-1a 32 + урт).
+ *
+ * ⚠️ 2026-09-30: ЯАГААД ХЭШ, ЦАГ БИШ. `updateAjil` нь дарааллын байрыг
+ *    хадгалахын тулд `ilgeesen_ognoo`-г САНААТАЙ хөндөхгүй (тэндхийн ⚠️),
+ *    засварын агшны талбар хүснэгтэд алга, схем өөрчлөхгүй. Тиймээс батлагчийн
+ *    ХАРСАН агуулгыг түүхий мөрийн хэшээр танина — ижил мөр = ижил тэмдэг.
+ * ⚠️ Нууцлалын хэш БИШ — зөвхөн «өөрчлөгдсөн үү» гэдгийг илрүүлнэ; мөргөлдөх
+ *    магадлал (2⁻³² + урт тэнцэх) нь санамсаргүй засварт тоомжиргүй.
+ */
+export function payloadStamp(raw: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < raw.length; i++) {
+    h ^= raw.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${raw.length}:${h.toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * АГУУЛГА + ХУВИЛБАРЫН ТЭМДЭГ (2026-09-30) — батлагчийн урьдчилан харах цонх.
+ * ⚠️ Тэмдэг нь ЗАДЛАХААС ӨМНӨХ түүхий мөрөөс — `decideAjil` · `materializeAdds`
+ *    серверээс дахин уншаад ИЖИЛ аргаар бодож тулгана.
+ */
+export async function loadPayloadStamped(oid: number): Promise<{ p: AjilPayload; stamp: string } | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.payload}`);
   if (!rows.length) return null;
-  return parsePayload(String(rows[0][F.payload] ?? ''));
+  const raw = String(rows[0][F.payload] ?? '');
+  const p = parsePayload(raw);
+  return p ? { p, stamp: payloadStamp(raw) } : null;
 }
 
 /**
@@ -689,7 +720,16 @@ export async function decideAjil(args: {
    */
   author?: string;
   reason?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Батлагчийн ХАРСАН агуулгын тэмдэг (`loadPayloadStamped().stamp`) — 2026-09-30.
+   *
+   * ⚠️ 2026-09-30: БАТЛАХАД ЗААВАЛ. `updateAjil` нь хүлээгдэж буй илгээлтийг
+   *    хүссэн үедээ засдаг тул батлагчийн дэлгэц дээрх агуулга хуучирсан байж
+   *    болно — тэмдэггүй бол батлагч ХАРААГҮЙ мөрөө батлана. Буцаахад заавал
+   *    биш (буцаалт юу ч бичихгүй), гэхдээ өгсөн бол мөн тулгана.
+   */
+  stamp?: string;
+}): Promise<{ ok: boolean; error?: string; /** Зохиогч агуулгыг өөрчилсөн — дахин харуулна */ stale?: boolean }> {
   /*
    * ⚠️ ДҮРМҮҮДИЙГ СҮЛЖЭЭНЭЭС ӨМНӨ шалгана. `tableUrl`-ийн ДАРАА байрлуулбал
    *    ArcGIS уншигдахгүй орчинд «хүснэгт олдсонгүй» гэсэн буруу шалтгаан
@@ -715,6 +755,10 @@ export async function decideAjil(args: {
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
   }
+  /* ⚠️ 2026-09-30: тэмдэггүй батлалт = батлагч юу батлахаа хараагүй (fail-closed). */
+  if (args.approve && !args.stamp) {
+    return { ok: false, stale: true, error: tr('Илгээлтийн агуулгыг харсны дараа батлана уу.') };
+  }
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   /*
@@ -722,8 +766,11 @@ export async function decideAjil(args: {
    *    нээгээд нэг нь баталчихвал нөгөөгийн дэлгэц ХУУЧИН хэвээр үлдэнэ.
    *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
    *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
+   * ⚠️ 2026-09-30: тэмдэг өгсөн бол `aguulga`-г ч ХАМТ уншина (нэг мөр, нэг
+   *    хүсэлт) — доор батлагчийн харсан хувилбартай тулгана.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}`);
+  const curFields = `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}${args.stamp ? `,${F.payload}` : ''}`;
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, curFields);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР — дуудагчийн өгсөн багцаар БИШ. */
   if (AUTH.appId) {
@@ -750,6 +797,17 @@ export async function decideAjil(args: {
         ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
+  }
+  /*
+   * ⚠️ 2026-09-30: ХУВИЛБАРЫН ШАЛГУУР — батлагч харснаас хойш зохиогч
+   *    `updateAjil`-аар агуулгыг сольсон бол ШИЙДВЭР ГАРГАХГҮЙ. Төлөвийн
+   *    шалгуурын ДАРАА: аль хэдийн шийдвэрлэгдсэн бол тэр мессеж илүү чухал.
+   * ⚠️ Үлдэх цонх: энэ уншилтаас `applyEdits` хүртэл (ArcGIS-д нөхцөлт update
+   *    алга). Тэр завсрын засварыг `updateAjil`-ийн бичсэний дараах шалгалт
+   *    зохиогчид, `materializeAdds`-ийн `stamp` тулгалт батлагчид барина.
+   */
+  if (args.stamp && payloadStamp(String(cur[0][F.payload] ?? '')) !== args.stamp) {
+    return { ok: false, stale: true, error: tr('Зохиогч илгээлтийг өөрчилсөн — дахин харж шийднэ үү.') };
   }
   const attrs: Attrs = {
     [F.oid]: args.oid,
@@ -902,5 +960,37 @@ export async function updateAjil(args: {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ШИЙДВЭРЛЭХ БОЛОМЖТОЙ ИЛГЭЭЛТИЙН ТОО — цэсний тэмдэгт (2026-09-30).
+ *
+ * `AjilBatlah`-ийн «Шийдвэрлэх» + «Бүртгэлгүй багц» хэсэгтэй ИЖИЛ дүрэм:
+ * `pending` · батлагчийн хүрээнд (`ajilScope(…, 'approver')`, super/нэвтрэлтгүй
+ * бол хязгааргүй) · ӨӨРИЙН илгээлт БИШ (`decideAjil` татгалздаг).
+ *
+ * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, хүснэгт алга,
+ *    сүлжээ унасан); `0` нь «шийдэх зүйл алга». Тэмдэгт `null`-ыг 0 гэж
+ *    харуулбал батлагч хүлээгдэж буй ажлаа алгасна.
+ * ⚠️ `ajilApprove` эрхгүй бол 0 — `decideAjil` түүнгүйгээр шиднэ.
+ * ⚠️ Бүртгэлгүй багцын (`PKGS`-д алга) илгээлтийг ТООЛНО: тэнд батлах хаалттай
+ *    ч БУЦААХ нээлттэй — гацлаас гаргах үйлдэл хэвээр.
+ */
+export async function countAjilPending(username: string | null | undefined): Promise<number | null> {
+  try {
+    const me = (username ?? '').trim().toLowerCase();
+    if (AUTH.appId) {
+      /* ⚠️ Эрх/хуваарилалт хараахан уншигдаагүй бол «мэдэхгүй» — 0 БИШ. */
+      if (!me || !capsRemoteReady() || !ajilAclReady()) return null;
+      if (!hasCap(me, 'ajilApprove')) return 0;
+    }
+    if (!(await ajilTableState()).ok) return null;
+    const sc = AUTH.appId ? ajilScope(me, 'approver') : null;
+    if (Array.isArray(sc) && sc.length === 0) return 0;
+    const rows = await loadAllPending();
+    return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author !== me).length;
+  } catch {
+    return null;
   }
 }

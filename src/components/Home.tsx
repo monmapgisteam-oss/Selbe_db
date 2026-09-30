@@ -73,6 +73,7 @@ export function Home({
   docsAllowed = true,
   isSuper = false,
   boardAllowed,
+  homeView,
 }: {
   /** «Нэвтрэх» / «Орох» — эрхийн дагуу орох цэгт хүргэнэ */
   onEnterAll: () => void;
@@ -107,6 +108,11 @@ export function Home({
    *    шаардлагагүй.
    */
   boardAllowed?: boolean;
+  /**
+   * Хэрэглэгчийн үүргийн НҮҮР харагдац (`ROLE_ACCESS.home` / override) —
+   * хязгаарлагдмал хэрэглэгчийн картуудад «Таны үндсэн хэсэг» гэж тодруулна.
+   */
+  homeView?: ViewKey;
 }) {
   const { status, user, signOut } = useAuth();
 
@@ -183,7 +189,7 @@ export function Home({
                     type="button"
                     className={`${s.menuBtn} ${on ? s.menuBtnOn : ''}`}
                     aria-expanded={on}
-                    aria-haspopup="true"
+                    aria-controls={`home-menu-${g.id}`}
                     /* Хүрэлт ба ГАР (Enter/Space)-т — hover байхгүй тул товшилт хэвээр */
                     onClick={() => setOpen(on ? null : g.id)}
                   >
@@ -191,13 +197,16 @@ export function Home({
                     <span className={`${s.caret} ${on ? s.caretOn : ''}`} aria-hidden>▾</span>
                   </button>
 
+                  {/* ⚠️ 2026-09-30: `role="menu"`/`menuitem` ХАСАГДАВ — тэдгээр нь
+                      сум/Home/End товчны удирдлагыг амладаг ч хэрэгжээгүй байсан
+                      тул дэлгэц уншигчтай хүн цэсэн дотор гацдаг байв. Энгийн
+                      товчнууд Tab-аар дараалан явна (disclosure хэв маяг). */}
                   {on && (
-                    <div className={s.dropdown} role="menu">
+                    <div className={s.dropdown} id={`home-menu-${g.id}`}>
                       {g.views.map((v) => (
                         <button
                           key={v.key}
                           type="button"
-                          role="menuitem"
                           className={s.viewBtn}
                           onClick={() => { setOpen(null); onEnterView(v.key); }}
                           title={v.desc}
@@ -317,6 +326,56 @@ export function Home({
           </div>
         )}
       </main>
+      )}
+
+      {/*
+        * ── ХЯЗГААРЛАГДМАЛ ХЭРЭГЛЭГЧИЙН НҮҮР (2026-09-30) ──
+        * ⚠️ Удирдлагын самбаргүй хэрэглэгч (гүйцэтгэгч, инженер, чанарын
+        *    ажилтан…) урьд нь зөвхөн дээд зурвастай ХООСОН хуудас хардаг байв —
+        *    хаашаа орохоо dropdown нээж байж л мэднэ. Одоо эрхэнд нь байгаа
+        *    хэсэг бүрийг энгийн тайлбартай карт болгож, үүргийнх нь үндсэн
+        *    хэсгийг (`homeView`) эхэнд тодруулна.
+        */}
+      {!(boardAllowed ?? isSuper) && groups.length > 0 && (
+        <main className={s.board}>
+          <header className={s.boardHead}>
+            <div>
+              <h1 className={s.title}>{tr('Сэлбэ ухаалаг хот')}</h1>
+              <p className={s.lede}>{tr('Танд нээлттэй хэсгүүд. Ажиллах хэсгээ сонгоод «Орох» дарна уу.')}</p>
+            </div>
+          </header>
+          {groups.map((g) => {
+            /* Үндсэн хэсэг бүлгийнхээ ЭХЭНД */
+            const views = homeView
+              ? [...g.views].sort((a, b) => Number(b.key === homeView) - Number(a.key === homeView))
+              : g.views;
+            return (
+              <section key={g.id} className={s.cardGroup} aria-label={g.title}>
+                <h2 className={s.cardGroupTitle}>{g.title}</h2>
+                <ul className={s.cardGrid}>
+                  {views.map((v) => {
+                    const main = v.key === homeView;
+                    return (
+                      <li key={v.key} className={`${s.viewCard} ${main ? s.viewCardMain : ''}`}>
+                        {main && <span className={s.viewCardTag}>{tr('Таны үндсэн хэсэг')}</span>}
+                        <h3 className={s.viewCardTitle}>{v.title}</h3>
+                        <p className={s.viewCardDesc}>{v.desc}</p>
+                        <button
+                          type="button"
+                          className={`${s.signBtn} ${main ? s.signIn : ''} ${s.viewCardBtn}`}
+                          onClick={() => onEnterView(v.key)}
+                          aria-label={tr('«{0}» хэсэгт орох', v.title)}
+                        >
+                          {tr('Орох')} <span aria-hidden>→</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+        </main>
       )}
 
       {/* Баримт үзэгч — порталынхтай ИЖИЛ компонент, нэвтрэх шаардлагагүй */}

@@ -21,7 +21,7 @@
 import assert from 'node:assert/strict';
 
 import { VEHICLE_TYPES,
-  CAR_LEN, MIN_GAP_M, PATIENCE_S, SIGNAL_CYCLE_S, SIGNAL_PLANS, SIGNAL_SNAP_M, U_TURN_V, V_MAX,
+  CAR_LEN, MIN_GAP_M, PATIENCE_S, SIGNAL_CYCLE_S, SIGNAL_PLANS, U_TURN_V, V_MAX,
   boundaryEntries, boundaryNodes, buildNetwork, carPose, clockText, compatPlan, compatStages,
   diurnalAt, makeSegment, markDuplicates, nodeByIntersection, outHeading, pickEdge, pickNext,
   portalNodes, posAt, poseAt, signalLineGreen, signalPhase, spawnCar, spawnCarAt, spawnTable,

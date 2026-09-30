@@ -2786,6 +2786,9 @@ export const MapCanvas = memo(function MapCanvas({
       registerRef.current(null);
     };
     // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
+    /* ⚠️ scene/setOrtho/uniform санаатай ОРУУЛААГҮЙ — тэдгээр солигдоход view-г
+       устгаж дахин үүсгэвэл газрын зураг бүхэлдээ дахин ачаална. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, stylesReady, initToken]);
 
   /**
@@ -4422,6 +4425,10 @@ export const MapCanvas = memo(function MapCanvas({
     });
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
+    /* ⚠️ pulseIds/restartPulse санаатай ОРУУЛААГҮЙ — пульс нь зөвхөн давхарга ил
+       болох эсвэл шүүлт солигдоход эхэлнэ (`pulsedWhere`), жагсаалт шинэчлэгдэх
+       бүрд бүх давхаргын шүүлтийг дахин тавихгүй. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer]);
 
   /**

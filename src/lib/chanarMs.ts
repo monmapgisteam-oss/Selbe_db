@@ -734,6 +734,38 @@ export type NcrClosure = {
 
 export type NcrPhoto = { no: string; location: string; note: string };
 
+/**
+ * NCR-ИЙН ӨМНӨХ ТОЙРОГ — залруулга дахин илгээх (`submitCorrection`) эсвэл дахин
+ * нээх (`reopen`) бүрд ӨМНӨХ тойргийн бүртгэл энд хуримтлагдана (append-only).
+ * ⚠️ 2026-09-30: NCR нь НЭГ мөртэй (rev үгүй) тул урьд нь дахин илгээхэд хянагчдын
+ *    дүгнэлт (татгалзлын шалтгаан) цэвэрлэгдэж, өмнөх залруулгын текст дарагдаж,
+ *    дахин нээхэд хаалтын бүртгэл (баталгаажуулагч, гүйцэтгэгчийн хаагч) УСТДАГ байв —
+ *    «юуг, хэн, яагаад буцаасан» гэдэг нотолгоо үлддэггүй. Одоо тэдгээрийг устгахын
+ *    ӨМНӨ энд хуулна.
+ * ⚠️ 2026-09-30: `hyanalt` БИШ, БИЕД (`aguulga`, 1 МБ) — `hyanalt` 8000 тэмдэгт тул
+ *    3 хянагч × `NOTE_MAX` (1500) саналтай нэг тойрог л түүнийг дүүргэж, дараагийн
+ *    бичилт бүр унана. Схем өөрчлөгдөхгүй.
+ */
+export type NcrRound = {
+  /** Тойрог юугаар хаагдсан: залруулга дахин илгээсэн · дахин нээсэн */
+  end: 'resubmit' | 'reopen';
+  /** Тойрог хаагдсан агшин ба хэн хаасан (гүйцэтгэгч эсвэл дахин нээсэн хянагч) */
+  at: number;
+  by: string;
+  /** Дахин нээсэн шалтгаан (`reopen`-д ЗААВАЛ) */
+  reason: string;
+  /** Тэр үеийн төлөв (review · returned · approved) */
+  status: MsStatus;
+  correction: NcrCorrection;
+  correctionAt: number | null;
+  /** Тэр тойргийн хянагчдын шийдвэр (шийдвэргүй слот орохгүй) */
+  reviews: Partial<Record<Reviewer, Review>>;
+  /** Тэр тойргийн хариу — дугаар ба шийдвэр л (бүтэн текст `reviews`-д) */
+  rep: { no: string; verdict: VerdictCode } | null;
+  /** Тэр тойргийн хаалт (дахин нээхэд) */
+  closure: NcrClosure | null;
+};
+
 export type NcrBody = BodyCommon & {
   meta: Meta;
   subject: string;
@@ -774,6 +806,8 @@ export type NcrBody = BodyCommon & {
   closure: NcrClosure | null;
   /** Дахин нээсэн тоо */
   reopened: number;
+  /** Өмнөх тойргууд — 2026-09-30 (`NcrRound`), хуучин мөрд `[]` */
+  rounds: NcrRound[];
 };
 
 export const EMPTY_NCR: NcrBody = {
@@ -786,7 +820,7 @@ export const EMPTY_NCR: NcrBody = {
   initialVerdict: 'R', initialReviewedBy: '',
   contractName: '', generalContractor: '', subcontractor: '', toWhom: '', fromWhom: '', photos: [],
   correction: { text: '', completedAt: null, steps: [] },
-  correctionAt: null, closure: null, reopened: 0,
+  correctionAt: null, closure: null, reopened: 0, rounds: [],
 };
 
 /** Аль ч төрлийн бие — `chanarStore` бичихдээ ийм авна */
@@ -981,6 +1015,52 @@ function normalizeClosure(raw: unknown): NcrClosure | null {
   };
 }
 
+/** Нэг хянагчийн бүртгэл (тойргийн түүхэд) — эвдэрсэн бол null */
+function normalizeReviewRec(raw: unknown): Review | null {
+  const v = obj(raw);
+  const who = str(v.who).trim().toLowerCase();
+  const at = numOrNull(v.at);
+  if (!who || !at || !isVerdict(v.verdict)) return null;
+  const rec: Review = { who, at, verdict: v.verdict, note: str(v.note) || null };
+  const pm = obj(v.perMaterial);
+  const per = Object.fromEntries(Object.entries(pm).filter(([, c]) => isVerdictCode(c))) as Record<string, VerdictCode>;
+  if (Object.keys(per).length) rec.perMaterial = per;
+  const dl = numOrNull(v.anDeadline);
+  if (dl) rec.anDeadline = dl;
+  return rec;
+}
+
+/** Тойргийн түүх (`NcrBody.rounds`) — хуучин/эвдэрсэн мөрийг хаяна */
+function normalizeRounds(raw: unknown): NcrRound[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NcrRound[] = [];
+  for (const x of raw) {
+    const j = obj(x);
+    const at = numOrNull(j.at);
+    if (!at) continue;
+    const c = obj(j.correction);
+    const rv = obj(j.reviews);
+    const reviews: Partial<Record<Reviewer, Review>> = {};
+    for (const r of ALL_REVIEWERS) {
+      const rec = normalizeReviewRec(rv[r]);
+      if (rec) reviews[r] = rec;
+    }
+    const rp = obj(j.rep);
+    const st = j.status;
+    out.push({
+      end: j.end === 'reopen' ? 'reopen' : 'resubmit',
+      at, by: str(j.by).trim().toLowerCase(), reason: str(j.reason),
+      status: isMsStatus(st) ? st : MS_STATUS.review,
+      correction: { text: str(c.text), completedAt: numOrNull(c.completedAt), steps: strArr(c.steps) },
+      correctionAt: numOrNull(j.correctionAt),
+      reviews,
+      rep: str(rp.no) && isVerdictCode(rp.verdict) ? { no: str(rp.no), verdict: rp.verdict } : null,
+      closure: normalizeClosure(j.closure),
+    });
+  }
+  return out;
+}
+
 export function normalizeNcr(raw: unknown): NcrBody {
   const j = obj(raw);
   const a = obj(j.attachments);
@@ -1014,6 +1094,7 @@ export function normalizeNcr(raw: unknown): NcrBody {
     correctionAt: numOrNull(j.correctionAt),
     closure: normalizeClosure(j.closure),
     reopened: Number.isInteger(reopened) && reopened > 0 ? reopened : 0,
+    rounds: normalizeRounds(j.rounds),
   };
 }
 
@@ -1558,7 +1639,8 @@ export function applyRepToMaterials(body: MaBody, rep: Pick<Rep, 'verdict' | 'pe
 /**
  * «ХЯНАХГҮЙ БУЦААХ» — формат буруу / бүрдэл дутуу (2026-09-28). Чанарын хэлтсийн
  * хянагч (`chanar` эсвэл `cheng`, MA-д; MS-төрөлд `chanar`) `review` төлөвт
- * → `returned`, REP ҮГҮЙ, хянагчдын бүртгэл ЦЭВЭР, `bounce` тэмдэг. NCR-д үгүй.
+ * → `returned`, REP ҮГҮЙ, `bounce` тэмдэг. NCR-д үгүй.
+ * ⚠️ 2026-09-30: зөвхөн ЯМАР Ч шийдвэр өгөгдөөгүй үед, тайлбар ЗААВАЛ.
  */
 export function bounce(
   doc: FlowDoc,
@@ -1573,7 +1655,17 @@ export function bounce(
   if (doc.status !== MS_STATUS.review) return { ok: false, error: tr('Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй') };
   if (doc.author.trim().toLowerCase() === me) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   if (args.reason !== 'format' && args.reason !== 'incomplete') return { ok: false, error: tr('Буцаах шалтгааны төрөл танигдсангүй') };
+  /* ⚠️ 2026-09-30: ШИЙДВЭР ӨГӨГДСӨН БОЛ ХЯНАХГҮЙ БУЦААХГҮЙ. Урьд нь `emptyReviews()`
+     буцаадаг тул аль хэдийн өгсөн шийдвэр (MA-д cheng-ийн A, MS-д ТУХ-ийн R …)
+     ЧИМЭЭГҮЙ устдаг байв — «хянахгүй» гэдэг нь хэн ч хараахан хянаагүй гэсэн утга.
+     Хянаж эхэлсэн баримтыг буцаах бол R (татгалзах) — шалтгаан, REP-тэй. */
+  if (Object.values(doc.reviews).some((r) => r != null)) {
+    return { ok: false, error: tr('Хянагч шийдвэр өгч эхэлсэн тул хянахгүй буцаах боломжгүй — «Татгалзсан (R)» шийдвэр өгнө үү') };
+  }
   const note = args.note?.trim() ?? '';
+  /* ⚠️ 2026-09-30: тайлбар ЗААВАЛ — урьд нь зөвхөн UI шалгадаг байв; тайлбаргүй
+     буцаалтад гүйцэтгэгч юу дутуу байгааг мэдэхгүй (R-ийн шалтгаантай ижил дүрэм). */
+  if (!note) return { ok: false, error: tr('Буцаах шалтгаанаа бичнэ үү.') };
   if (note.length > NOTE_MAX) return { ok: false, error: tr('Санал {0} тэмдэгтээс урт байж болохгүй', String(NOTE_MAX)) };
   return {
     ok: true, status: MS_STATUS.returned, reviews: emptyReviews(),
@@ -1638,8 +1730,33 @@ export function closeAn(
  * ⚠️ Гүйцэтгэгч мөн эсэхийг (`isAuthorFor`) дуудагч (`chanarStore`) шалгана —
  *    энд зөвхөн төлөв, агуулга.
  */
+/**
+ * ӨМНӨХ ТОЙРГИЙН БҮРТГЭЛ — `submitCorrection`/`reopen` тэглэхээс ӨМНӨ (2026-09-30).
+ * Шийдвэргүй слот орохгүй; хариунаас зөвхөн дугаар·шийдвэр (текст нь `reviews`-д).
+ */
+export function ncrRound(
+  doc: Pick<MsDoc, 'status'> & { reviews?: Reviews; rep?: Rep | null },
+  body: NcrBody,
+  args: { end: NcrRound['end']; by: string; at: number; reason?: string },
+): NcrRound {
+  const reviews: Partial<Record<Reviewer, Review>> = {};
+  for (const r of ALL_REVIEWERS) {
+    const v = doc.reviews?.[r];
+    if (v) reviews[r] = { ...v };
+  }
+  return {
+    end: args.end, at: args.at, by: args.by.trim().toLowerCase(), reason: (args.reason ?? '').trim(),
+    status: doc.status,
+    correction: { ...body.correction, steps: [...body.correction.steps] },
+    correctionAt: body.correctionAt,
+    reviews,
+    rep: doc.rep ? { no: doc.rep.no, verdict: doc.rep.verdict } : null,
+    closure: body.closure ? structuredClone(body.closure) : null,
+  };
+}
+
 export function submitCorrection(
-  doc: Pick<MsDoc, 'status'> & { kind?: DocKind; reviews?: Reviews },
+  doc: Pick<MsDoc, 'status'> & { kind?: DocKind; reviews?: Reviews; rep?: Rep | null },
   body: NcrBody,
   args: { who: string; correction: NcrCorrection; now?: number },
 ): { ok: true; body: NcrBody; status: MsStatus; reviews: Reviews } | Reject {
@@ -1663,9 +1780,16 @@ export function submitCorrection(
     completedAt: args.correction.completedAt ?? null,
     steps: args.correction.steps.map((s) => s.trim()).filter(Boolean),
   };
+  /* ⚠️ 2026-09-30: ӨМНӨХ ЗАЛРУУЛГА (текст, хянагчдын татгалзлын шалтгаан) `rounds`-д —
+     урьд нь `correction` дарагдаж, `reviews` цэвэрлэгдэж ул мөргүй алга болдог байв.
+     Анхны илгээлтэд (өмнөх залруулга үгүй) тойрог нэмэхгүй. */
+  const hadPrev = !!body.correctionAt || !!body.correction.text.trim();
+  const rounds = hadPrev
+    ? [...(body.rounds ?? []), ncrRound(doc, body, { end: 'resubmit', by: args.who, at: now })]
+    : (body.rounds ?? []);
   return {
     ok: true,
-    body: { ...body, correction, correctionAt: now, closure: null },
+    body: { ...body, correction, correctionAt: now, closure: null, rounds },
     status: MS_STATUS.review,
     reviews: emptyReviews(),
   };
@@ -1675,16 +1799,25 @@ export function submitCorrection(
  * NCR — ХААГДСАНЫГ ДАХИН НЭЭХ (tuh/chanar/tug). Төлөв `review`, хянагчид цэвэр,
  * `correctionAt` ба `closure` тэглэгдэнэ (гүйцэтгэгч дахин залруулна),
  * `reopened + 1`.
+ * ⚠️ 2026-09-30: ШАЛТГААН ЗААВАЛ, хаагдсан тойргийн бүртгэл (хаалт, шийдвэр,
+ *    залруулга) `rounds`-д хадгалагдана — урьд нь хаалт ул мөргүй устдаг байв.
  */
 export function reopen(
-  doc: Pick<MsDoc, 'status'> & { kind?: DocKind },
+  doc: Pick<MsDoc, 'status'> & { kind?: DocKind; reviews?: Reviews; rep?: Rep | null },
   body: NcrBody,
+  args: { who: string; reason: string; now?: number },
 ): { ok: true; body: NcrBody; status: MsStatus; reviews: Reviews } | Reject {
   if ((doc.kind ?? 'MS') !== 'NCR') return { ok: false, error: tr('Зөвхөн үл тохирлыг дахин нээнэ') };
   if (doc.status !== MS_STATUS.approved) return { ok: false, error: tr('Зөвхөн хаагдсан үл тохирлыг дахин нээнэ') };
+  const who = (args?.who ?? '').trim();
+  if (!who) return { ok: false, error: tr('Хянагчийн нэр хоосон') };
+  const reason = (args?.reason ?? '').trim();
+  if (!reason) return { ok: false, error: tr('Дахин нээх шалтгаанаа бичнэ үү.') };
+  if (reason.length > NOTE_MAX) return { ok: false, error: tr('Санал {0} тэмдэгтээс урт байж болохгүй', String(NOTE_MAX)) };
+  const round = ncrRound(doc, body, { end: 'reopen', by: who, at: args.now ?? Date.now(), reason });
   return {
     ok: true,
-    body: { ...body, correctionAt: null, closure: null, reopened: body.reopened + 1 },
+    body: { ...body, correctionAt: null, closure: null, reopened: body.reopened + 1, rounds: [...(body.rounds ?? []), round] },
     status: MS_STATUS.review,
     reviews: emptyReviews(),
   };
@@ -1811,7 +1944,9 @@ export function canAct(
     && roles.some((r) => need.includes(r));
   const clientChecks = SEQUENTIAL_KINDS.includes(kind) && need.includes('tuh') && !!u && !mine && doc.status === MS_STATUS.review
     && roles.includes('tuh') && !doc.reviews.tuh;
+  /* ⚠️ 2026-09-30: `bounce()`-ийн ижил — шийдвэр өгөгдсөн бол хянахгүй буцаах товч гарахгүй */
   const bounceable = kind !== 'NCR' && !!u && !mine && doc.status === MS_STATUS.review
+    && !Object.values(doc.reviews).some((r) => r != null)
     && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
   const ack = mine && !!doc.rep && !doc.rep.receivedAt
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
@@ -1828,6 +1963,93 @@ export function canAct(
     correction: contractor, reopen: reopenable, clientChecks,
     bounce: bounceable, ack, closeAn: closeAnOk, newRevision: newRev, closeNcr: closeNcrOk,
   };
+}
+
+/**
+ * «МИНИЙ ХИЙХ» — энэ хэрэглэгч ОДОО үйлдэл хийх ёстой юу (2026-09-30).
+ * `canAct`-ийн үр дүнгээс ЗӨВХӨН хүлээгдэж буй ажлыг тоолно:
+ *   · хянах шийдвэр (`review`) — MIR/FIC-ийн захиалагчийн багана үүнд багтана
+ *   · зохиогчийн ноорог/буцаагдсаныг илгээх (`submit`)
+ *   · хариуг хүлээн авах (`ack`) · NCR гүйцэтгэгчийн хаалт (`closeNcr`)
+ *   · NCR залруулга — зөвхөн «Нэмэлт арга хэмжээ» эсвэл тайлан хараахан ирээгүй үед
+ * ⚠️ `reopen` · `newRevision` · `closeAn` · `bounce` ТООЛОГДОХГҮЙ — тэдгээр нь
+ *    «боломжтой» үйлдэл, хүлээгдэж буй ажил биш (AN нөхцөл биелэхийг гүйцэтгэгч
+ *    мэдэгдэнэ; хаагдсан NCR бүрийг «хийх» гэж тоолвол жагсаалт утгаа алдана).
+ */
+export function needsMyAction(doc: Pick<FlowDoc, 'status' | 'correctionAt'>, a: Actions): boolean {
+  if (a.review.length > 0 || a.submit || a.ack || a.closeNcr) return true;
+  if (a.correction) return doc.status === MS_STATUS.returned || !doc.correctionAt;
+  return false;
+}
+
+/**
+ * ХЯНАГЧ ХҮЛЭЭГДЭЖ БУЙ ҮҮРГИЙН ШАЛТГААН (2026-09-30) — «хүлээгдэж байна»-ын оронд.
+ * `holders` — тухайн багцад тэр үүрэгт томилогдсон аккаунтууд (ACL-ээс дуудагч).
+ *   unassigned   — хэн ч томилогдоогүй
+ *   authorOnly   — зөвхөн зохиогч өөрөө (NCR-ээс бусад: зохиогч өөрийгөө хянахгүй)
+ *   decidedOther — бүх эзэн нь энэ баримтад ӨӨР үүргээр шийдвэр өгчихсөн —
+ *                  «нэг хүн нэг үүргээр» (`review` дүрэм 3) тул хэзээ ч шийдэхгүй
+ * `null` = хэн нэгэн шийдэж чадна (эсвэл хүлээх зүйлгүй).
+ * ⚠️ super (хязгааргүй хүрээ) `holders`-д ороогүй байж болно — анхааруулга л.
+ */
+export type RoleWait = { why: 'unassigned' | 'authorOnly' | 'decidedOther'; users: string[] };
+export function roleWaitReason(doc: FlowDoc, r: Reviewer, holders: readonly string[]): RoleWait | null {
+  if (doc.status !== MS_STATUS.review || doc.reviews[r]) return null;
+  const kind = doc.kind ?? 'MS';
+  const hs = [...new Set(holders.map((h) => h.trim().toLowerCase()).filter(Boolean))];
+  if (!hs.length) return { why: 'unassigned', users: [] };
+  const author = doc.author.trim().toLowerCase();
+  const cand = kind === 'NCR' ? hs : hs.filter((h) => h !== author);
+  if (!cand.length) return { why: 'authorOnly', users: hs };
+  const decided = new Set((Object.entries(doc.reviews) as [Reviewer, Review | null | undefined][])
+    .filter(([k, v]) => k !== r && v != null).map(([, v]) => (v as Review).who.trim().toLowerCase()));
+  if (cand.every((h) => decided.has(h))) return { why: 'decidedOther', users: cand };
+  return null;
+}
+
+/**
+ * НЭГ ХҮН ХОЁР ҮҮРЭГТ — ГАЦААНЫ ШАЛГУУР (2026-09-30).
+ * «Нэг хүн зөвхөн НЭГ үүргээр» (`review` дүрэм 3) тул төрлийн хянагч бүрд ӨӨР ӨӨР
+ * хүн хэрэгтэй. Үүрэг бүрд хүн байгаа ч ялгаатай хүмүүсээр хуваарилах боломжгүй
+ * (жишээ: ТУХ ба ХАБЭА хоёулаа зөвхөн «bat») бол тэр төрлийн баримт ХЭЗЭЭ Ч
+ * батлагдахгүй. Холлын нөхцөлөөр: үүргийн S олонлогийн нэр дэвшигчдийн нэгдэл |S|-ээс
+ * бага бол гацна (үүрэг ≤ 3 тул бүх дэд олонлогийг шалгана).
+ *   holders — үүрэг → тухайн багцын аккаунтууд
+ *   authors — гүйцэтгэгчид; NCR-ээс бусад төрөлд зохиогч бүрээр (зохиогч өөрийгөө
+ *             хянахгүй) шалгана, гүйцэтгэгчгүй бол шалгахгүй (`chanarNoReviewer`-тай ижил)
+ * ⚠️ Нэр дэвшигчгүй үүрэг ЭНД ОРОХГҮЙ — тэр нь «хянагч дутуу» (өөр анхааруулга).
+ * Буцаах: гацсан төрлүүд, хамаарах үүрэг, хүмүүс (ижил үүрэг+хүн нэг мөрөнд).
+ */
+export type RoleClash = { kinds: DocKind[]; roles: Reviewer[]; users: string[] };
+export function reviewerClashes(
+  holders: Partial<Record<Reviewer, readonly string[]>>, authors: readonly string[],
+): RoleClash[] {
+  const lc = (xs: readonly string[] | undefined) => [...new Set((xs ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const as = lc(authors);
+  const out: RoleClash[] = [];
+  const add = (kind: DocKind, roles: Reviewer[], users: string[]) => {
+    const key = `${roles.join('+')}|${users.slice().sort().join(',')}`;
+    const hit = out.find((c) => `${c.roles.join('+')}|${c.users.slice().sort().join(',')}` === key);
+    if (hit) { if (!hit.kinds.includes(kind)) hit.kinds.push(kind); } else out.push({ kinds: [kind], roles, users });
+  };
+  for (const kind of KINDS) {
+    const need = REVIEWERS_OF[kind];
+    const checks: (string | null)[] = kind === 'NCR' ? [null] : as;
+    for (const a of checks) {
+      const cand = Object.fromEntries(need.map((r) => [r, lc(holders[r]).filter((u) => u !== a)])) as Record<Reviewer, string[]>;
+      if (need.some((r) => !cand[r].length)) continue;
+      /* Хамгийн жижиг зөрчилтэй дэд олонлог (≥ 2 үүрэг) */
+      let worst: { roles: Reviewer[]; users: string[] } | null = null;
+      for (let m = 1; m < (1 << need.length); m += 1) {
+        const roles = need.filter((_, i) => m & (1 << i));
+        if (roles.length < 2) continue;
+        const users = [...new Set(roles.flatMap((r) => cand[r]))];
+        if (users.length < roles.length && (!worst || roles.length < worst.roles.length)) worst = { roles, users };
+      }
+      if (worst) add(kind, worst.roles, worst.users);
+    }
+  }
+  return out;
 }
 
 /**

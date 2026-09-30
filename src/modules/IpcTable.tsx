@@ -374,6 +374,12 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
               money(t.paid),
             )}
             {t.paidPct != null && ` (${pct(t.paidPct)})`}
+            {/* ⚠️ 2026-09-30: хувь нь ЗӨВХӨН гэрээт дүн тодорхой гэрээний олголтоор
+                (`ipcTotals.paidContracted`). Бусад олголтыг хувьд хольж хөөрөгдөхгүй,
+                харин нуухгүй — тусад нь нэрлэнэ. */}
+            {t.paidOther != null && t.paidOther !== 0 && (
+              <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', money(t.paidOther))}</>
+            )}
           </p>
         </div>
         <div className={s.hdR}>

@@ -11,6 +11,7 @@
  * ⚠️ Зөвхөн хуучин-биш, сүлжээгүй, React-гүй логик — hook/JSX энд орохгүй.
  */
 import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS, cfMonthAxis } from '@/lib/services';
+import { housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
 import type { FinData } from '@/modules/Finance';
 
@@ -40,7 +41,7 @@ export const catOf = (p: Pack): PackCat => {
  */
 /**
  * ТӨСЛИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `aggregateMonths`-ийн одоогийн сар хүртэлх
- * СҮҮЛИЙН хэмжигдсэн сарын блок-жигнэсэн %.
+ * СҮҮЛИЙН хэмжигдсэн сарын ӨРТГӨӨР (ХО дүн) жигнэсэн % (`gdash.housingPct`).
  *
  * ⚠️ 2026-09-22 (өгөгдлийн аудит): Дашбоардын `pkgPhys` (багц бүрийн ӨӨРИЙН
  *    сүүлийн сар, дараа нь жигнэх) ба PkgProg `TsKpi`/ExecReport (`aggregateMonths`
@@ -64,52 +65,26 @@ export function aggregateMonths(d: FinData) {
   /*
    * ⚠️ 2026-09-25: `FinData.phys` нь одоо ЗӨВХӨН шинэ бичилттэй сард цэгтэй
    *    (`finPhys.buildPhys`-ийн дүрэм 2). Нэгтгэлд багц бүрийн СҮҮЛИЙН
-   *    мэдэгдэж буй утгыг (as-of) авч, ТОГТМОЛ жинтэй (блокийн тоо) жигнэнэ;
+   *    мэдэгдэж буй утгыг (as-of) авч, ТОГТМОЛ жинтэй жигнэнэ;
    *    хараахан тайлагнаагүй багц 0% (дүрэм 1-тэй ижил). Эс бөгөөс тухайн
    *    сард ганц жижиг багц тайлагнахад төслийн дундаж тэр багцын хувь болж
    *    ҮСЭРНЭ. Цэг нь аль нэг багц тэр сард ШИНЭ бичилттэй үед л гарна.
    */
-  const pk = [...d.phys].map(([k, byMon]) => {
-    const cnt = d.physCnt.get(k);
-    let w = 1;
-    cnt?.forEach((v) => { if (v > w) w = v; });
-    return {
-      pts: [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)),
-      at: d.physAt?.get(k),
-      w,
-    };
-  }).filter((x) => x.pts.length > 0);
-  return labels.map((label) => {
+  /*
+   * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ. Урьд нь
+   *    блокоор жигнэдэг тул энэ тоо (PkgProg · Dashboard · ExecReport · GeneralDash)
+   *    Тайлангийн төсвөөр жигнэсэн «Орон сууцны гүйцэтгэл»-ээс зөрдөг байв — нэг
+   *    үзүүлэлт, хоёр тоо. Одоо бүгд `gdash.housingPct` — нэг томьёо. Блокийн тоо
+   *    зөвхөн НӨӨЦ жин (ХО дүн огт олдоогүй үед, `housingPct`-ийн дүрэм).
+   */
+  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
+  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels);
+  return series.map((s) => {
     let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(label) ?? 0; });
-    // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын дунджийн ДУНДАЖ БИШ. Давхар
-    //    дундаж нь блок цөөтэй багцыг том багцтай ижил жинтэй болгож гажуудуулж,
-    //    мөн дэлгэц дээрх PackKpi-ийн блок-жигнэсэн дүнтэй зөрдөг. Багц бүрийг
-    //    блокийнх нь тоогоор жигнэнэ: Σ(pct_p · blocks_p) / Σ blocks_p.
-    let physW = 0, physN = 0;
-    let fresh = false;
-    let physAt = '';
-    for (const x of pk) {
-      let v = 0;
-      let at = '';
-      for (const [m, val] of x.pts) {
-        if (m > label) break;
-        v = val;
-        at = x.at?.get(m) ?? '';
-        if (m === label) fresh = true;
-      }
-      physW += v * x.w;
-      physN += x.w;
-      if (at > physAt) physAt = at;
-    }
-    return {
-      label,
-      given,
-      // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
-      //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
-      phys: fresh && physN > 0 ? physW / physN : null,
-      /* Хэмжилтийн огноо — `lagOf` төлөвлөгөөг үүгээр завсарлана */
-      physAt: fresh && physAt ? physAt : null,
-    };
+    d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
+    // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын ЭНГИЙН дундаж БИШ; ХО дүнгээр
+    //    жигнэнэ: Σ(pct_p · ХО_p) / Σ ХО_p (`gdash.housingSeries` → `housingPct`).
+    //    Хэмжилтгүй сар `phys: null` (0 биш); `physAt` — `lagOf`-ийн завсар.
+    return { label: s.label, given, phys: s.phys, physAt: s.physAt };
   });
 }

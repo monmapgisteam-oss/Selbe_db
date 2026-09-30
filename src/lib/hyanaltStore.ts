@@ -218,6 +218,43 @@ async function liveRow(oid: number): Promise<Row | undefined> {
 
 const STALE = tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
 
+/**
+ * БИЧИХИЙН ЯГ ӨМНӨ ДАХИН ШАЛГАНА — дунд шатны compare-and-set-маягийн хамгаалалт.
+ *
+ * ⚠️ 2026-09-30: ArcGIS-д CAS байхгүй. `apply`/`recheck` мөрийг эхэнд нэг удаа
+ *    уншдаг ч түүнээс хойш эрх, илгээлтийн агуулга (`subAt`), `okCellsPatch`
+ *    гэх мэт сүлжээний алхмууд явдаг тул нэг шатанд ХОЁР данс томилогдсон үед
+ *    хоёулаа эхний шалгуурыг давж, сүүлд бичсэн нь өмнөхийн шийдвэрийг
+ *    (шалтгаан, огноо, нэр) ЧИМЭЭГҮЙ дардаг байв. Эцсийн шатны
+ *    `archiveSubmission`-ийн «бичихийн өмнө дахин шалгах»-тай ижил санаа:
+ *    цонх атом биш ч секундээс мс болж нарийсна.
+ * ⚠️ Төлөв + ТЭР ШАТНЫ өөрийн талбарууд + `Zovshoorson_nud` өөрчлөгдсөн эсэхийг
+ *    харьцуулна; `twin` бол дахин шалгалтын «ok» ижил илгээлтэд шинэ тойрог
+ *    (`Хэддэх_удаа` + 1) аль хэдийн үүсгэсэн эсэх (хуучин мөр хөндөгддөггүй).
+ * ⚠️ Уншиж чадаагүй бол БИЧИХГҮЙ (fail-closed).
+ * @returns `null` = өөрчлөгдөөгүй, эс бөгөөс хэрэглэгчид харуулах мессеж
+ */
+async function movedSince(oid: number, prev: Row, stage: ReviewStage): Promise<string | null> {
+  let now: Row | undefined;
+  try { now = await liveRow(oid); } catch (e) {
+    return tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e));
+  }
+  const f = SF[stage];
+  const actor = (r: Row | undefined) => String((r as Record<string, unknown> | undefined)?.[f.who] ?? '').trim();
+  const busy = (name: string) => (name
+    ? tr('Энэ ажлыг {0} таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.', name)
+    : tr('Энэ ажлыг өөр хэрэглэгч таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.'));
+  if (!now) return tr('Бүртгэл олдсонгүй');
+  const keys = [F.status, F.okCells, f.who, f.decision, f.reason, f.returned, f.sent];
+  const val = (r: Row, k: string) => String((r as Record<string, unknown>)[k] ?? '');
+  if (keys.some((k) => val(now as Row, k) !== val(prev, k))) return busy(actor(now));
+  const so = Number(prev[F.sheetOid]);
+  const twin = Number.isInteger(so) && so > 0 && ROWS.find((r) => r.__oid !== oid && Number(r[F.sheetOid]) === so
+    && r[F.bagts] === prev[F.bagts] && Number(r[F.ergelt]) > Number(prev[F.ergelt]));
+  if (twin) return busy(actor(twin));
+  return null;
+}
+
 export function useHyanaltRows(): {
   rows: Row[];
   loading: boolean;
@@ -1017,6 +1054,15 @@ export async function apply(a: {
          `archiveSubmission` `done|`-оор idempotent тул хоёр дахь жааз үүсэхгүй. */
     }
 
+    /* ⚠️ 2026-09-30: ДУНД ШАТАНД бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️).
+       Эцсийн шатанд ХИЙХГҮЙ — архив аль хэдийн бичигдсэн бол мөр түүнийг ЗААВАЛ
+       дагана (дээрх «Архивласны ДАРАА … ДАХИН ШАЛГАХГҮЙ» ⚠️); тэнд
+       `archiveSubmission` өөрөө бичихийн өмнө шалгадаг. */
+    if (!registerNow) {
+      const moved = await movedSince(a.oid, cur, a.stage);
+      if (moved) { emit(); return { ok: false, error: moved }; }
+    }
+
     try {
       await updateRows([attrs]);
     } catch (e) {
@@ -1411,6 +1457,13 @@ export async function recheck(
     [F.status]: RETURNED_STATUS[by],
     ...okPatch,
   };
+
+  /* ⚠️ 2026-09-30: бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️) — нөгөө данс
+     энэ хооронд «ok» (шинэ тойрог) эсвэл «back» хийсэн бол дарж бичихгүй. */
+  {
+    const moved = await movedSince(oid, prev, by);
+    if (moved) { emit(); return { ok: false, error: moved }; }
+  }
 
   try {
     await updateRows([back]);

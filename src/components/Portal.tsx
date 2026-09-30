@@ -7,7 +7,9 @@ import {
 } from 'react';
 import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
-import { ViewRail } from '@/components/ViewRail';
+import { ViewRail, type NavBadges } from '@/components/ViewRail';
+import { HelpPanel, HelpTip } from '@/components/HelpPanel';
+import { loadNavBadges, BADGE_VIEWS } from '@/components/navBadges';
 import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -438,6 +440,38 @@ function PortalContent(
    * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
    */
   const [agentOpen, setAgentOpen] = useState(false);
+  /** Порталын тусламжийн цонх (2026-09-30, `HelpPanel`) */
+  const [helpOpen, setHelpOpen] = useState(false);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+
+  /**
+   * ЦЭСНИЙ ТООН ТЭМДЭГ (2026-09-30, `navBadges.ts`).
+   *
+   * ⚠️ Нэвтэрсний ДАРАА л ачаална (эрх, токен бэлэн) · 3 минут тутам ·
+   *    тэмдэгтэй харагдацаас ГАРАХАД шууд (батлагч дөнгөж шийдвэрлэсэн тоо
+   *    хуучин хэвээр үлдэхгүй). Алдаа чимээгүй — өмнөх тоо хэвээр.
+   * ⚠️ Таб нуугдсан үед хүсэлт явуулахгүй.
+   */
+  const [badges, setBadges] = useState<NavBadges>({});
+  const badgeUser = auth.user?.username ?? null;
+  const badgeReady = auth.status === 'signed-in' || auth.status === 'off';
+  /* ⚠️ `navScope` массив нь `Root`-ийн рендер бүрт ШИНЭ лавлагаа (эрхийн poll
+     15 с–5 мин тутам рендерлэдэг) — шууд deps-д тавибал тэр бүрд дахин татна.
+     Агуулгын түлхүүрээр л шинэчилнэ. */
+  const scopeKey = navScope === 'all' ? 'all' : navScope.join(',');
+  const badgeScope = useMemo<'all' | ViewKey[]>(
+    () => (scopeKey === 'all' ? 'all' : (scopeKey.split(',').filter(Boolean) as ViewKey[])),
+    [scopeKey],
+  );
+  const refreshBadges = useCallback(() => {
+    if (!badgeReady || document.visibilityState === 'hidden') return;
+    loadNavBadges(badgeUser, badgeScope).then(setBadges, () => { /* чимээгүй */ });
+  }, [badgeReady, badgeUser, badgeScope]);
+  useEffect(() => {
+    refreshBadges();
+    const iv = setInterval(refreshBadges, 3 * 60_000);
+    return () => clearInterval(iv);
+  }, [refreshBadges]);
 
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
@@ -457,7 +491,7 @@ function PortalContent(
     // ⚠️ 2026-08-20: Каталог БҮХ давхаргыг харуулдаг болсон тул тоо/хэмжээний
     //    жагсаалт нь түүнтэй ижил байх ёстой (эс бөгөөс шинэ мөрүүд «…» хэвээр).
     () => CATALOG_LAYER_IDS,
-    [view],
+    [],
   );
   // ⚠️ Зөвхөн каталог/самбартай харагдацуудад — дашбоард/анализ өөрсдөө татна
   const totals = usePlanTotals(zone, !standalone, catalogIds);
@@ -468,14 +502,21 @@ function PortalContent(
   viewNowRef.current = view;
   /* ⚠️ 2026-09-25: `boolean` буцаана — татгалзсан эсэхийг popstate мэдэх ёстой
      (доорх `onPop`-ийн ⚠️). */
-  const setView = useCallback((v: ViewKey): boolean => {
-    if (v !== viewNowRef.current && planNavBusy()
+  /* ⚠️ 2026-09-30: хамгаалалт ТУСДАА функц — харагдац солих, лого (нүүр рүү)
+     ба «Гарах» ГУРВУУЛАА үүгээр явна. Урьд нь зөвхөн `setView`-д байсан тул
+     лого эсвэл «Гарах» дарахад хадгалаагүй ажил асуултгүй алга болдог байв. */
+  const confirmLeave = useCallback((): boolean => {
+    if (planNavBusy()
       && !window.confirm(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'))) return false;
     /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
        хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
        байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
-    if (v !== viewNowRef.current && finNavDirty()
+    if (finNavDirty()
       && !window.confirm(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
+    return true;
+  }, []);
+  const setView = useCallback((v: ViewKey): boolean => {
+    if (v !== viewNowRef.current && !confirmLeave()) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -517,7 +558,14 @@ function PortalContent(
        тайлбарыг үз. Харагдац солихдоо ч, анхны ачаалалтад ч ижил дүрэм. */
     if (v === 'dedButets') setDim('2d');
     return true;
-  }, [clearFilter]);
+  }, [clearFilter, confirmLeave]);
+
+  const badgeViewRef = useRef(view);
+  useEffect(() => {
+    const prev = badgeViewRef.current;
+    badgeViewRef.current = view;
+    if (prev !== view && BADGE_VIEWS.has(prev)) refreshBadges();
+  }, [view, refreshBadges]);
 
   /* ── URL төлөв — хуваалцах холбоос, F5, Back ── */
 
@@ -748,7 +796,8 @@ function PortalContent(
           <button
             type="button"
             className={s.brand}
-            onClick={onHome}
+            /* ⚠️ 2026-09-30: `confirmLeave` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️) */
+            onClick={onHome ? () => { if (confirmLeave()) onHome(); } : undefined}
             disabled={!onHome}
             title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
           >
@@ -787,6 +836,21 @@ function PortalContent(
             >
               <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={17} />
             </button>
+
+            {/* ⚠️ 2026-09-30: ТУСЛАМЖ — хэрэглэгчийн эрхэнд байгаа хэсэг бүр юунд
+                зориулагдсан, хэн ашигладгийг тайлбарлана (`HelpPanel`). Баруун
+                захад: анхны зөвлөмжийн сум (`help.module.css` §tipArrow) үүнийг заана. */}
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={() => setHelpOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={helpOpen}
+              aria-label={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
+              title={tr('Тусламж — хэсэг бүр юунд зориулагдсан')}
+            >
+              <span aria-hidden style={{ fontWeight: 700, fontSize: 16, lineHeight: 1 }}>?</span>
+            </button>
           </div>
         </header>
 
@@ -819,7 +883,8 @@ function PortalContent(
             /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
                зүйл байхгүй тул мөр гарахгүй. */
             userName={auth.user?.fullName || auth.user?.username}
-            onSignOut={auth.status === 'signed-in' ? () => { void auth.signOut(); } : undefined}
+            onSignOut={auth.status === 'signed-in' ? () => { if (confirmLeave()) void auth.signOut(); } : undefined}
+            badges={badges}
           />
         </aside>
 
@@ -1046,6 +1111,10 @@ function PortalContent(
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
       {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
+
+      {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
+      <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
+      {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
 
       {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
       <AgentButton open={agentOpen} onToggle={() => setAgentOpen(true)} />

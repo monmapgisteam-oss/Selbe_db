@@ -521,6 +521,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     [ovPick],
   );
 
+  /**
+   * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
+   * Ижил мөрийг дахин дарвал арилна. Полигон (AOI) шүүлттэй ЗЭРЭГ биш —
+   * сүүлд хийсэн үйлдэл нь тодруулгыг эзэмшинэ.
+   */
+  const [flt, setFlt] = useState<GFlt | null>(null);
   /* Сонголт хийхэд зураг тэр талбарууд руу очно */
   const pickOverlap = useCallback((r: PkgOverlap | null) => {
     setOvPick(r);
@@ -628,12 +634,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      (товч 3D-д идэвхгүй тул хэрэглэгч өөрөө цуцалж чадахгүй). */
   useEffect(() => { if (dim !== '2d') setDrawing(false); }, [dim]);
 
-  /**
-   * Чарт-шүүлт — бар/зүсмэг дарахад холбогдох давхаргад тодруулга тавина.
-   * Ижил мөрийг дахин дарвал арилна. Полигон (AOI) шүүлттэй ЗЭРЭГ биш —
-   * сүүлд хийсэн үйлдэл нь тодруулгыг эзэмшинэ.
-   */
-  const [flt, setFlt] = useState<GFlt | null>(null);
   // Шүүлт солигдоход зураг тэр объектууд руу нисэнэ
   useZoomToFilter({ zone, layerId: flt?.only?.[0] ?? null, where: flt?.where ?? null });
   const fltRef = useRef<GFlt | null>(null);

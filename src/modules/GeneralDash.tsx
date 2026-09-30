@@ -44,15 +44,15 @@ import {
      давхаргад наалдахаас сэргийлнэ. */
   PKG_BY_BAGTS, pkgKeyOf,
   HO_IPC, hoAmount,
-  /* ⚠️ 2026-09-10: орон сууцны биет явцын жин ба сарын тэнхлэг — `housingMoneyByMonth` */
-  bagtsKey, cfMonthAxis,
+  /* ⚠️ 2026-09-10: сарын тэнхлэг — `housingMoneyByMonth` (жин нь 2026-09-30-аас `gdash.pkgCostWeight`) */
+  cfMonthAxis,
   BUILT_STATUS,
 } from '@/lib/services';
 import { queryStats, count, sqlStr } from '@/lib/query';
 import { cat, mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cashflowCurve, housingMoney, loadBuildPkgs,
+  loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
   grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
@@ -296,12 +296,9 @@ export function GeneralDash({
   const housingMoneyByMonth = useMemo(() => {
     if (finD.state !== 'ready' || cf.state !== 'ready') return new Map<string, number>();
     /* Багц → ХО дүн (жин). Нэг багцад олон гэрээ байвал НИЙЛБЭР. */
-    const w = new Map<string, number>();
-    for (const r of cf.data) {
-      const k = r.pkg2 ? bagtsKey(r.pkg2) : '';
-      if (!k || r.cost <= 0) continue;
-      w.set(k, (w.get(k) ?? 0) + r.cost);
-    }
+    /* ⚠️ 2026-09-30: `pkgCostWeight` — `housingPct` (05 · Тайлан · ExecReport-ийн
+       орон сууцны хувь)-тай ЯГ НЭГ жин (`inTotal` хүрээ, диапазон мөр хасагдана). */
+    const w = pkgCostWeight(cf.data.map((r) => ({ pkg: r.pkg2 || r.pkg, cost: r.cost, inTotal: r.inTotal })));
     return housingMoney(finD.data.phys, w, cfMonthAxis());
   }, [finD, cf]);
   /**
@@ -310,10 +307,12 @@ export function GeneralDash({
    * хэрэглэгчийн заавар: «энэ 2 нэг мэдээлэл тул source-г 05-ын бодит
    * гүйцэтгэлийн хувиас авахаар холбо»).
    *
-   * ⚠️ ИЖИЛ ТОМЬЁО: `aggregateMonths().phys` (блок-жигнэсэн), одоогийн сар
-   *    хүртэлх СҮҮЛИЙН хэмжилт — `PkgProg.TsKpi`-тай мөр мөрөөрөө ижил.
-   *    Төслийн мөнгөн жингээр дахин бодохгүй: тэгвэл хоёр самбар зөрнө
-   *    (2026-09-10-нд 23.44 ↔ 23.84 зөрж байв).
+   * ⚠️ ИЖИЛ ТОМЬЁО: `aggregateMonths().phys`, одоогийн сар хүртэлх СҮҮЛИЙН
+   *    хэмжилт — `PkgProg.TsKpi`-тай мөр мөрөөрөө ижил. Энд ДАХИН бодохгүй:
+   *    тэгвэл хоёр самбар зөрнө (2026-09-10-нд 23.44 ↔ 23.84 зөрж байв).
+   * ⚠️ 2026-09-30: `aggregateMonths` өөрөө одоо ХО дүнгээр жигнэнэ
+   *    (`gdash.housingPct`), блокоор биш — Тайлангийн «Орон сууцны гүйцэтгэл»-тэй
+   *    ч нэг томьёо.
    * ⚠️ Хэмжилтгүй бол `null` — чартын мөр ОГТ гарахгүй (0% зурвас нь
    *    «эхэлсэн ч юу ч хийгээгүй» гэсэн худал мэдэгдэл болно).
    */

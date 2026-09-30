@@ -282,19 +282,29 @@ export function AgentChat({
         </button>
       </div>
 
+      {/* ⚠️ 2026-09-30: эцсийн хэрэглэгчид хөгжүүлэгчийн команд (npm install,
+          ANTHROPIC_API_KEY) харуулдаг байв — тэдэнд утгагүй, айдас төрүүлнэ.
+          Одоо энгийн мессеж; асаах заавар ЗӨВХӨН `development` build-д. */}
       {alive === false && (
-        <div className={s.offline}>
-          {tr('AI үйлчилгээ ажиллахгүй байна. Локалаар асаахдаа:')}
-          <br />
-          <code>cd agent-proxy &amp;&amp; npm install</code>
-          <br />
-          <code>ANTHROPIC_API_KEY=… node server.mjs</code>
-          <br />
-          {tr('Хаяг:')} <code>{AGENT_API}</code>
+        <div className={s.offline} role="status">
+          {tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.')}
+          {process.env.NODE_ENV === 'development' && (
+            <>
+              <br />
+              {tr('Локалаар асаахдаа:')}
+              <br />
+              <code>cd agent-proxy &amp;&amp; npm install</code>
+              <br />
+              <code>ANTHROPIC_API_KEY=… node server.mjs</code>
+              <br />
+              {tr('Хаяг:')} <code>{AGENT_API}</code>
+            </>
+          )}
         </div>
       )}
 
-      <div className={s.log} ref={logRef}>
+      {/* ⚠️ 2026-09-30: `aria-live` — хариу ирэхэд дэлгэц уншигч зарлана */}
+      <div className={s.log} ref={logRef} aria-live="polite">
         {/* ⚠️ Тайлбар бичиг ЗОРИУДААР байхгүй — зөвхөн дарж болох жишээ асуултууд.
             Хэрэглэгч уншихаас илүү дарж эхэлдэг. */}
         {!log.length && (

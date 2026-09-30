@@ -849,13 +849,12 @@ export function Donut({
   const ro = r + width / 2;
 
   // Зүсмэг бүрийн ЭХЛЭХ байрлал — өмнөх зүсмэгүүдийн нийлбэр
-  let acc = 0;
-  const slices = items.map((it) => {
+  const slices = items.reduce<((typeof items)[number] & { frac: number; offset: number })[]>((a, it) => {
     const frac = total > 0 ? fin(it.value) / total : 0;
-    const offset = acc;
-    acc += frac;
-    return { ...it, frac, offset };
-  });
+    const prev = a[a.length - 1];
+    a.push({ ...it, frac, offset: prev ? prev.offset + prev.frac : 0 });
+    return a;
+  }, []);
 
   /**
    * Дэлгэц уншигчид зориулсан товч тойм — эхний 3 зүсмэг.
@@ -2220,6 +2219,33 @@ export function Empty({
 }
 
 /**
+ * АЛДААГ ХЭРЭГЛЭГЧИЙН ХЭЛЭЭР (2026-09-30).
+ *
+ * ⚠️ Ангиллыг МЕССЕЖ/НЭРЭЭР таамаглана — `query.ts`-ийн `ArcGISError` нь
+ *    HTTP статусыг текстэд («HTTP 498») эсвэл ArcGIS-ийн мессежийг шууд
+ *    дамжуулдаг, тусгай код талбаргүй. Танихгүй бол ерөнхий мессеж — техникийн
+ *    мөр нь `Data`-гийн эвхмэл хэсэгт ҮРГЭЛЖ үлдэнэ.
+ * ⚠️ 499 («Token Required») нь хаалттай үйлчилгээ (CLAUDE.md) — «эрх» ангилалд.
+ */
+export function friendlyError(e: unknown): string {
+  const name = (e as { name?: string } | null)?.name ?? '';
+  const m = String((e as { message?: string } | null)?.message ?? e ?? '').toLowerCase();
+  if (name === 'TimeoutError' || /timeout|timed out|хугацаа хэтэр/.test(m)) {
+    return tr('Сервер удаан хариулж байна. Хэсэг хүлээгээд дахин оролдоно уу.');
+  }
+  if (/failed to fetch|networkerror|network error|load failed|err_internet|offline/.test(m)) {
+    return tr('Сүлжээний холболт тасарсан бололтой. Интернэтээ шалгаад дахин оролдоно уу.');
+  }
+  if (/\b498\b|invalid token|token.*expired|expired.*token|токен/.test(m)) {
+    return tr('Нэвтрэлтийн хугацаа дууссан байна. Хуудсыг дахин ачаалж нэвтэрнэ үү.');
+  }
+  if (/\b(401|403|499)\b|not authorized|permission|token required|access denied|эрх/.test(m)) {
+    return tr('Энэ өгөгдөлд хандах эрх алга байна. Админд хандана уу.');
+  }
+  return tr('Түр алдаа гарлаа. Дахин оролдоно уу — давтагдвал админд мэдэгдэнэ үү.');
+}
+
+/**
  * Async төлөвийг зурна.
  * Алдааг ҮРГЭЛЖ харуулна — өгөгдөл татагдаагүй үед хуучин/зохиомол тоо
  * дэлгэц дээр үлдэх боломжгүй.
@@ -2247,7 +2273,16 @@ export function Data<T>({
     return (
       <div className={s.state} role="alert" style={minH ? { minHeight: minH } : undefined}>
         <strong className={s.error}>{tr('Өгөгдөл татагдсангүй')}</strong>
-        <span className={s.errorMsg}>{q.error.message}</span>
+        {/* ⚠️ 2026-09-30: түүхий `error.message` («HTTP 499», «Invalid token»…)
+            барилгын ажилтанд юу ч хэлдэггүй — ойлгомжтой тайлбар гаргаж,
+            техникийн мөрийг админд дамжуулахад зориулж эвхмэл хэсэгт үлдээв. */}
+        <span className={s.errorMsg}>{friendlyError(q.error)}</span>
+        {q.error.message && (
+          <details className={s.errorMsg}>
+            <summary style={{ cursor: 'pointer' }}>{tr('Техникийн дэлгэрэнгүй')}</summary>
+            <span style={{ wordBreak: 'break-word' }}>{q.error.message}</span>
+          </details>
+        )}
         {/* ArcGIS түр гацах нь энгийн — бүтэн refresh хийлгэхгүйгээр энэ
             хүсэлтийг л дахин явуулна (`useAsync`-ийн retry) */}
         {q.retry && (

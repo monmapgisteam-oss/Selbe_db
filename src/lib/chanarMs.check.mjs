@@ -24,6 +24,7 @@ import {
   repSeqFor, requiredReviewers, newRevision, nextRevisionBody, applyRepToMaterials, bounce, ackRep, closeAn, closeNcr,
   isAnOpen, activeSameTitle, ncrClosureStatusLabel, repVerdictText, reviewerLabel, MA_CHECKLIST, maCheckLabel,
   ncrSeverityLabel, ncrTypeLabel, ncrProposedLabel, parseCommon, NCR_PREFIX, NOTE_MAX, REP_NOTE_MAX,
+  needsMyAction, roleWaitReason, reviewerClashes,
 } from './chanarMs.ts';
 
 const T = 1_700_000_000_000;
@@ -388,8 +389,16 @@ const base = () => ({
   assert.equal(rj.status, MS_STATUS.returned, 'Rejected → Дахин засах');
   assert.equal(statusLabel('NCR', rj.status), 'Нэмэлт арга хэмжээ шаардлагатай');
   /* returned → correction дахин (rev үгүй) → review */
-  const c2 = submitCorrection({ ...ncr2, status: rj.status }, c1.body, { who: 'con', correction: { text: 'Дахин', completedAt: T, steps: [] }, now: T + 2 });
+  const c2 = submitCorrection({ ...ncr2, status: rj.status, reviews: rj.reviews }, c1.body, { who: 'con', correction: { text: 'Дахин', completedAt: T, steps: [] }, now: T + 2 });
   assert.ok(c2.ok); assert.equal(c2.status, MS_STATUS.review);
+  /* ⚠️ 2026-09-30: өмнөх тойрог (залруулга + татгалзлын шалтгаан) устахгүй */
+  assert.equal(c1.body.rounds.length, 0, 'анхны илгээлтэд тойрог үгүй');
+  assert.equal(c2.body.rounds.length, 1, 'дахин илгээхэд өмнөх тойрог хадгалагдана');
+  assert.equal(c2.body.rounds[0].end, 'resubmit'); assert.equal(c2.body.rounds[0].by, 'con');
+  assert.equal(c2.body.rounds[0].correction.text, 'Дахин цутгав', 'өмнөх залруулгын текст');
+  assert.equal(c2.body.rounds[0].reviews.tuh.note, 'Хангалтгүй', 'татгалзлын шалтгаан');
+  assert.equal(c2.body.rounds[0].status, MS_STATUS.returned);
+  assert.deepEqual(parseBodyOf('NCR', JSON.stringify(c2.body)).rounds, c2.body.rounds, 'тойрог JSON-оор бүрэн эргэнэ');
   assert.equal(canAct({ ...ncr2, status: rj.status }, 'con', [], { contractor: true }).correction, true, 'буцаагдсанд ч залруулгын товч');
   /* Accepted + Concession → approved (хаагдсан) */
   const ncr3 = { ...ncr2, status: c2.status, reviews: c2.reviews, correctionAt: c2.body.correctionAt };
@@ -425,10 +434,17 @@ const base = () => ({
   assert.equal(canAct(ncr4, 'ch', ['chanar']).reopen, true);
   assert.equal(canAct(ncr4, 'h', ['habea']).reopen, false);
   assert.equal(reopen({ kind: 'NCR', status: MS_STATUS.review }, closed).ok, false, 'зөвхөн хаагдсаныг');
-  const ro = reopen(ncr4, closed);
+  assert.equal(reopen(ncr4, closed, { who: 'ch', reason: '  ' }).ok, false, '⚠️ 2026-09-30: шалтгаан заавал');
+  const ro = reopen({ ...ncr4, rep: { no: 'REP-1', at: T, verdict: 'AN' } }, closed, { who: 'CH', reason: 'Дахин цуурсан', now: T + 9 });
   assert.ok(ro.ok); assert.equal(ro.status, MS_STATUS.review); assert.equal(ro.body.reopened, 1);
   assert.equal(ro.body.correctionAt, null, 'дахин нээхэд залруулга дахин шаардана'); assert.equal(ro.body.closure, null);
   assert.deepEqual(ro.reviews, emptyReviews());
+  /* ⚠️ 2026-09-30: хаалтын бүртгэл тойрогт үлдэнэ */
+  const rd = ro.body.rounds.at(-1);
+  assert.equal(rd.end, 'reopen'); assert.equal(rd.reason, 'Дахин цуурсан'); assert.equal(rd.by, 'ch'); assert.equal(rd.at, T + 9);
+  assert.deepEqual(rd.closure, closed.closure, 'хаалт устахгүй');
+  assert.equal(rd.reviews.tug.who, 'tm', 'хаасан шийдвэрүүд');
+  assert.deepEqual(rd.rep, { no: 'REP-1', verdict: 'AN' });
   /* NCR canAct: нээгч ноорогт засна, review-д үгүй */
   assert.equal(canAct(ncr0, opener, ['tuh']).edit, true);
   assert.equal(canAct({ ...ncr0, status: MS_STATUS.returned }, opener, ['tuh']).edit, false, 'буцаагдсан NCR нээгч засахгүй');
@@ -646,7 +662,7 @@ console.log('✅ нэг хүн НЭГ үүрэг — үүргийн слот Б�
   const nr2 = newRevision({ ...doc, rev: 1, status: MS_STATUS.returned }, { who: 'g', reason: 'Засав' });
   assert.ok(nr2.ok); assert.equal(nr2.rev, 2);
   /* Дараагийн хувилбарын бие — MA түгжээ + түүх */
-  const body = { ...EMPTY_MA, materials: [{ ...EMPTY_MA.materials[0], name: 'a' }, { name: 'b' }, { name: 'c' }].map((m, i) => ({ ...parseBodyOf('MA', '{}').materials[0] ?? {}, name: m.name, verdict: null, locked: false })) };
+  const body = { ...EMPTY_MA, materials: [{ ...EMPTY_MA.materials[0], name: 'a' }, { name: 'b' }, { name: 'c' }].map((m) => ({ ...parseBodyOf('MA', '{}').materials[0] ?? {}, name: m.name, verdict: null, locked: false })) };
   const applied = applyRepToMaterials(body, { verdict: 'R', perMaterial: { 0: 'A', 1: 'AN' } });
   assert.deepEqual(applied.materials.map((m) => m.verdict), ['A', 'AN', 'R'], 'perMaterial-д байхгүй → баримтын шийдвэр');
   const locked = { ...applied, materials: applied.materials.map((m, i) => (i === 0 ? { ...m, locked: true } : m)) };
@@ -680,10 +696,14 @@ console.log('✅ нэг хүн НЭГ үүрэг — үүргийн слот Б�
   assert.equal(bounce(rev1, { as: 'chanar', who: 'g', reason: 'format' }).ok, false, 'зохиогч');
   assert.equal(bounce(rev1, { as: 'chanar', who: 'c', reason: 'zoo' }).ok, false);
   assert.equal(bounce({ ...rev1, status: MS_STATUS.approved }, { as: 'chanar', who: 'c', reason: 'format' }).ok, false);
-  const b = bounce({ ...rev1, reviews: rr.reviews }, { as: 'chanar', who: 'C', reason: 'incomplete', note: 'Бүрдэл дутуу', now: T });
-  assert.ok(b.ok); assert.equal(b.status, MS_STATUS.returned); assert.deepEqual(b.reviews, emptyReviews(), 'хянагчид цэвэр'); 
+  /* ⚠️ 2026-09-30: шийдвэр өгөгдсөн бол хянахгүй буцаахгүй (өгсөн шийдвэр устдаг байв) */
+  const bx = bounce({ ...rev1, reviews: rr.reviews }, { as: 'chanar', who: 'C', reason: 'incomplete', note: 'Бүрдэл дутуу', now: T });
+  assert.equal(bx.ok, false); assert.match(bx.error, /шийдвэр өгч эхэлсэн/);
+  assert.equal(canAct({ ...rev1, reviews: rr.reviews }, 'c', ['chanar']).bounce, false, 'товч ч гарахгүй');
+  const b = bounce(rev1, { as: 'chanar', who: 'C', reason: 'incomplete', note: 'Бүрдэл дутуу', now: T });
+  assert.ok(b.ok); assert.equal(b.status, MS_STATUS.returned); assert.deepEqual(b.reviews, emptyReviews());
   assert.deepEqual(b.bounce, { at: T, by: 'c', reason: 'incomplete', note: 'Бүрдэл дутуу' });
-  assert.equal(bounce(rev1, { as: 'chanar', who: 'c', reason: 'format' }).bounce.note, '');
+  assert.equal(bounce(rev1, { as: 'chanar', who: 'c', reason: 'format' }).ok, false, '⚠️ 2026-09-30: тайлбар заавал (логикт)');
   /* QMP / PRC — MS-ийн урсгал */
   const q = { kind: 'QMP', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
   assert.equal(review(q, { as: 'tug', who: 't', verdict: VERDICT.approve }).ok, false);
@@ -773,5 +793,45 @@ console.log('✅ 2-р үе шат — AN нээлттэй · closeAn · newRevis
   assert.equal(again.ok, false, '⚠️ хаагдсаныг дахин бичихгүй'); assert.match(again.error, /аль хэдийн/);
 }
 console.log('✅ аудит 8 — undefined слот · NOTE_MAX · repFrom түгжээ · closeAn chanar/cheng · залруулгын хамгаалалт · NCR нэг хаалт');
+
+/* ══ 2026-09-30: гацаа · «миний хийх» ══ */
+{
+  /* reviewerClashes — нэг хүн хоёр үүргийн ЦОРЫН ГАНЦ эзэн */
+  const ok = reviewerClashes({ tuh: ['t'], chanar: ['c'], habea: ['h'], tug: ['g2'], cheng: ['e'] }, ['a']);
+  assert.deepEqual(ok, [], 'үүрэг бүр өөр хүн → гацаагүй');
+  const ms = reviewerClashes({ tuh: ['t'], chanar: ['c'], habea: ['t'], tug: ['g2'], cheng: ['e'] }, ['a']);
+  assert.equal(ms.length, 1); assert.deepEqual(ms[0].kinds, ['MS', 'QMP', 'PRC']);
+  assert.deepEqual(ms[0].roles, ['tuh', 'habea']); assert.deepEqual(ms[0].users, ['t']);
+  const ma = reviewerClashes({ tuh: ['t'], chanar: ['c'], habea: ['h'], tug: ['g2'], cheng: ['c'] }, ['a']);
+  assert.deepEqual(ma.map((c) => c.kinds), [['MA']], 'MA: cheng+chanar нэг хүн');
+  assert.deepEqual(reviewerClashes({ tuh: ['t', 'x'], chanar: ['c'], habea: ['t'], tug: ['g2'], cheng: ['e'] }, ['a']), [], 'ТУХ-д өөр хүн бий → гацаагүй');
+  /* Зохиогч бүрээр: x нь ТУХ-ийн хоёр дахь эзэн боловч зохиогч өөрөө бол түүний баримтад тоологдохгүй */
+  const byAuthor = reviewerClashes({ tuh: ['t', 'x'], chanar: ['c'], habea: ['t'], tug: ['g2'], cheng: ['e'] }, ['x']);
+  assert.deepEqual(byAuthor.map((c) => c.roles), [['tuh', 'habea']]);
+  assert.deepEqual(reviewerClashes({ tuh: [], chanar: ['c'], habea: ['c'] }, ['a']).filter((c) => c.kinds.includes('MS')), [], 'дутуу үүрэг — өөр анхааруулга');
+  assert.deepEqual(reviewerClashes({ tuh: ['t'], chanar: ['t'], tug: ['g2'] }, []).map((c) => c.kinds), [['NCR']], 'NCR зохиогчоос үл хамаарна');
+
+  /* roleWaitReason */
+  const d = { kind: 'MS', status: MS_STATUS.review, author: 'g', reviews: { ...emptyReviews(), tuh: { who: 't', at: T, verdict: VERDICT.approve, note: null } } };
+  assert.deepEqual(roleWaitReason(d, 'habea', ['T']), { why: 'decidedOther', users: ['t'] }, '⚠️ ганц эзэн өөр үүргээр шийдсэн → гацсан');
+  assert.equal(roleWaitReason(d, 'habea', ['t', 'h']), null, 'өөр эзэн бий');
+  assert.deepEqual(roleWaitReason(d, 'chanar', ['g']), { why: 'authorOnly', users: ['g'] });
+  assert.deepEqual(roleWaitReason(d, 'chanar', []), { why: 'unassigned', users: [] });
+  assert.equal(roleWaitReason(d, 'tuh', []), null, 'шийдсэн үүрэг');
+  assert.equal(roleWaitReason({ ...d, status: MS_STATUS.approved }, 'habea', ['t']), null);
+  assert.equal(roleWaitReason({ ...d, kind: 'NCR' }, 'chanar', ['g']), null, 'NCR: нээгч өөрөө дүгнэж болно');
+
+  /* needsMyAction */
+  const none = { edit: false, submit: false, review: [], correction: false, reopen: false, clientChecks: false, bounce: false, ack: false, closeAn: false, newRevision: false, closeNcr: false };
+  assert.equal(needsMyAction(d, none), false);
+  assert.equal(needsMyAction(d, { ...none, review: ['chanar'] }), true);
+  assert.equal(needsMyAction(d, { ...none, submit: true, edit: true }), true);
+  assert.equal(needsMyAction(d, { ...none, reopen: true, newRevision: true, closeAn: true, bounce: true }), false, 'боломжит үйлдэл ≠ хүлээгдэж буй ажил');
+  const ncr = { kind: 'NCR', status: MS_STATUS.review, correctionAt: T };
+  assert.equal(needsMyAction(ncr, { ...none, correction: true }), false, 'залруулга илгээгдсэн — хянагчийг хүлээж байна');
+  assert.equal(needsMyAction({ ...ncr, correctionAt: null }, { ...none, correction: true }), true);
+  assert.equal(needsMyAction({ ...ncr, status: MS_STATUS.returned }, { ...none, correction: true }), true);
+}
+console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) · хүлээлтийн шалтгаан · миний хийх');
 
 console.log('chanarMs.check ✓');

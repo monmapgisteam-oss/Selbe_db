@@ -112,7 +112,10 @@ export function MapTools({
    * жижиг бариулыг олохгүй байв. Хураах боломж нь бариулаар үлдэнэ.
    */
   const [barOn, setBarOn] = useState(true);
-  const [dimsOn, setDimsOn] = useState(false);
+  /* ⚠️ 2026-09-30: 2D/3D/BIM сонгогч АНХДАГЧААР НЭЭЛТТЭЙ — дээрх `barOn`-той
+     ижил шалтгаан: жижиг бариулын ард нуугдсан тул хэрэглэгч 3D/BIM горим
+     байгааг олж мэддэггүй байв. Хураах боломж бариулаар үлдэнэ. */
+  const [dimsOn, setDimsOn] = useState(true);
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
 
   /**

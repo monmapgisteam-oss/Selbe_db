@@ -24,6 +24,7 @@ import {
   inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney,
+  housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF,
 } from './gdash.ts';
 import { CASHFLOW_NEW } from './services.ts';
 
@@ -296,7 +297,16 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   ];
   const cp = chartTypeCost(perfRows);
   assert.equal(Math.round(cp[0].fin * 100) / 100, 19, '(900×10+100×100)/1000');
-  assert.equal(cp[0].perf, cp[0].fin, 'объёмын эх сурвалжгүй бол хоёулаа тэнцүү');
+  /* ⚠️ 2026-09-30: объёмын (биет) эх сурвалжгүй бол `perf` = null — санхүүжсэн
+     хувь руу чимээгүй УНАХГҮЙ (биет ба санхүүгийн хувийг холихгүй); `fin` тусдаа. */
+  assert.equal(cp[0].perf, null, 'биет хэмжилтгүй бол perf null (fin руу унахгүй)');
+  /* Холимог ангилал: биеттэй мөр л `perf`-д орно, биетгүй мөр хуваарьт ч орохгүй */
+  const mix = chartTypeCost([
+    buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' }),
+    buildRow({ oid: 2, type: 'A', cost: 900, progress: 90, pkg2: 'Багц -9' }),
+  ], new Map([['БАГЦ1', 40]]));
+  assert.equal(mix[0].perf, 40, 'биетгүй мөрийн санхүүгийн 90% perf-д холилдов');
+  assert.equal(mix[0].fin, 82, 'fin = (100×10+900×90)/1000');
   /* Объёмын эх сурвалж БАЙВАЛ `perf` түүн рүү шилжинэ, `fin` ХЭВЭЭР */
   const volRows = [buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' })];
   const cv = chartTypeCost(volRows, new Map([['БАГЦ1', 80]]));
@@ -438,6 +448,90 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(cq[0].amount, 300, 'улирлын мөнгө НИЙЛБЭР байх ёстой');
   assert.equal(cq[0].ipcPct, 8,
     'улирлын IPC нь бүлгийн СҮҮЛИЙН хуримтлал байх ёстой (нийлбэр БИШ)');
+}
+
+/*
+ * ── ОРОН СУУЦНЫ БИЕТ ГҮЙЦЭТГЭЛ — НЭГ ТОМЬЁО (2026-09-30) ──
+ *
+ * ⚠️ Урьд нь дөрвөн өөр дундаж байв (блокоор · төсвөөр · блокийн энгийн · ХО
+ *    дүнгээр). Одоо `housingPct` ганц томьёо; доорх нь ХАРАГДАЦ бүрийн замаар
+ *    НЭГ өгөгдлөөс ИЖИЛ тоо гарахыг баталгаажуулна:
+ *      · `housingSeries` (→ `pkgShared.aggregateMonths`/`physNow`: PkgProg · Dashboard
+ *        · ExecReport · GeneralDash «ОРОН СУУЦНЫ ХОРООЛОЛ»)
+ *      · `housingPct` багцын одоогийн утгаар (→ `reportData.loadOverall` = Тайлан)
+ *      · `housingMoney` ÷ хэмжигдсэн багцын ХО нийлбэр (→ GeneralDash S-муруй)
+ */
+{
+  /* Жин — ТҮҮХИЙ мөрөөс (`cfWeightRow` → `pkgCostWeight`): «Нийт»-ийн гадна мөр,
+     диапазон мөр, '0' түлхүүр хасагдана; нэг багцын олон гэрээ НИЙЛБЭР. */
+  const raw = [
+    { [CF.pkg2]: 'Багц 1', [CF.cost]: 300, [CF.code1]: '1' },
+    { [CF.pkg2]: 'Багц 1', [CF.cost]: 100, [CF.code1]: '1' },
+    { [CF.pkg2]: 'Багц 2', [CF.cost]: 600, [CF.code1]: '1' },
+    { [CF.pkg2]: 'БАГЦ 1-4', [CF.cost]: 5000, [CF.code1]: '1' },
+    { [CF.pkg2]: 'Багц 3.1', [CF.cost]: 999, [CF.code1]: '7' },
+  ];
+  const cost = pkgCostWeight(raw.map(cfWeightRow));
+  assert.equal(cost.get('БАГЦ1'), 400, 'нэг багцын олон гэрээ нийлбэр');
+  assert.equal(cost.get('БАГЦ2'), 600);
+  assert.equal(cost.has('БАГЦ14'), false, 'диапазон мөр «Багц 14»-т наалдав');
+  assert.equal(cost.has('БАГЦ31'), false, '«Нийт»-ийн гадна (7-р хэсэг) мөр жинд орлоо');
+
+  /* ӨРТГӨӨР ЖИГНЭНЭ, блокоор биш: 400₮·10% + 600₮·60% = 40% (блокоор 4·10+20·60 → 51.7) */
+  assert.equal(housingPct([
+    { pct: 10, cost: 400, blocks: 4 }, { pct: 60, cost: 600, blocks: 20 },
+  ]), 40);
+  /* null ≠ 0 — хэмжигдээгүй багц хуваарьт ОРОХГҮЙ */
+  assert.equal(housingPct([
+    { pct: 10, cost: 400 }, { pct: null, cost: 600 },
+  ]), 10, 'хэмжигдээгүй багц 0% гэж орлоо');
+  assert.equal(housingPct([{ pct: null, cost: 1 }]), null, 'хэмжилтгүй үед null байх ёстой');
+  assert.equal(housingPct([]), null);
+  /* ХО дүн огт алга → блокийн тоонд БҮРЭН шилжинэ (хагас холихгүй) */
+  assert.equal(housingPct([
+    { pct: 10, cost: 0, blocks: 1 }, { pct: 40, cost: 0, blocks: 2 },
+  ]), 30);
+  /* Нэг нь л ХО-тэй бол ХО-гүй багц жингүй (блокоор нөхөхгүй) */
+  assert.equal(housingPct([
+    { pct: 10, cost: 100, blocks: 1 }, { pct: 90, cost: 0, blocks: 50 },
+  ]), 10);
+
+  /* ── Гурван замын ИЖИЛ тоо ── */
+  const labels = ['2026-06', '2026-07', '2026-08'];
+  const phys = new Map([
+    ['БАГЦ1', new Map([['2026-06', 10], ['2026-08', 20]])],
+    ['БАГЦ2', new Map([['2026-07', 50]])],
+  ]);
+  const physCnt = new Map([
+    ['БАГЦ1', new Map([['2026-06', 4], ['2026-08', 4]])],
+    ['БАГЦ2', new Map([['2026-07', 20]])],
+  ]);
+  const physAt = new Map([
+    ['БАГЦ1', new Map([['2026-06', '2026-06-05'], ['2026-08', '2026-08-12']])],
+    ['БАГЦ2', new Map([['2026-07', '2026-07-20']])],
+  ]);
+  const s = housingSeries(phys, physCnt, physAt, cost, labels);
+  /* 6-р сар: БАГЦ2 хараахан тайлагнаагүй → 0% (finPhys дүрэм 1, as-of) */
+  assert.deepEqual(s.map((x) => x.phys), [4, 34, 38],
+    'сарын цуваа: 6 — 400·10/1000; 7 — (400·10+600·50)/1000; 8 — (400·20+600·50)/1000');
+  assert.deepEqual(s.map((x) => x.physAt), ['2026-06-05', '2026-07-20', '2026-08-12'],
+    'хэмжилтийн огноо — тэр сарын хамгийн сүүлийн бичилт');
+  /* Хэмжилтгүй сар `null` (0 биш) */
+  const gap = housingSeries(phys, physCnt, physAt, cost, ['2026-06', '2026-06b', '2026-07']);
+  assert.equal(gap[1].phys, null, 'шинэ бичилтгүй сар null байх ёстой');
+
+  /* (1) aggregateMonths/physNow замын СҮҮЛИЙН утга */
+  const viaSeries = s[s.length - 1].phys;
+  /* (2) Тайлан (`loadOverall`): багц бүрийн ОДООГИЙН утга → `housingPct` */
+  const viaReport = housingPct([...phys].map(([k, m]) => ({
+    pct: [...m.entries()].sort()[m.size - 1][1], cost: cost.get(k) ?? 0, blocks: 1,
+  })));
+  /* (3) GeneralDash S-муруй: `housingMoney` (₮) ÷ хэмжигдсэн багцын ХО нийлбэр */
+  const money = housingMoney(phys, cost, labels, ['БАГЦ1', 'БАГЦ2']);
+  const viaMoney = (money.get('2026-08') / (cost.get('БАГЦ1') + cost.get('БАГЦ2'))) * 100;
+  assert.equal(viaSeries, 38);
+  assert.equal(viaReport, viaSeries, 'Тайлан ба 05/Dashboard/ExecReport-ийн орон сууцны хувь зөрөв');
+  assert.equal(Math.round(viaMoney * 1e9) / 1e9, viaSeries, 'S-муруйн мөнгөн жин өөр томьёо болов');
 }
 
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

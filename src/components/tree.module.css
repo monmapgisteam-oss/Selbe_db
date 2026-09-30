@@ -20,12 +20,17 @@
   letter-spacing: 0.15em;
   color: var(--ink-3);
 }
-/* Хоёр дахь бүлгийн гарчиг («Баримт») — дээрээсээ зураасаар тусгаарлана */
-.railHead ~ .railHead {
-  margin-top: 8px;
-  padding-top: 12px;
+/* ⚠️ 2026-09-30: бүлэг бүр (`NAV_GROUPS` · Баримт · Систем) өөрийн саванд —
+   хоёр дахь бүлгээс эхлэн дээрээсээ зураасаар тусгаарлана. Урьд нь
+   `.railHead ~ .railHead` сонгогч байсан ч бүлгүүд тусдаа саванд орсноор
+   ах дүүгийн сонгогч ажиллахаа больсон. */
+.railGroup { display: flex; flex-direction: column; }
+.railGroup + .railGroup {
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--line);
 }
+.railList { display: flex; flex-direction: column; }
 
 .item {
   display: flex;
@@ -93,21 +98,115 @@
 .itemOn .chev { color: var(--hue); }
 .chevOn { transform: rotate(90deg); }
 
-/* Нарийн дэлгэц — босоо жагсаалт ХЭВТЭЭ гүйдэг зурвас болно */
+/* ── Цэсний тоон тэмдэг (2026-09-30) — хүлээгдэж буй зүйл ── */
+.icon { position: relative; }
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--bad, #dc2626);
+  font-variant-numeric: tabular-nums;
+}
+/* Дэлгэгдсэн мөрөнд — нэрийн баруун талд */
+.badgeInline { flex: none; }
+/* Дүрсний буланд — ЗӨВХӨН хураагдсан горимд (нэр нуугдсан үед) */
+.badgeDot {
+  display: none;
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+/* ── Хураагдсан горимын tooltip (hover · focus · удаан дарах) ── */
+.tip {
+  position: fixed;
+  z-index: 3000;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 280px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--shadow-lg, 0 6px 20px rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+}
+.tipTitle { font-size: 13px; font-weight: 600; line-height: 1.3; }
+.tipSub { font-size: 12px; line-height: 1.4; opacity: 0.8; }
+
+/* ── Нарийн дэлгэцийн цэсний товч — өргөн дэлгэцэд нуугдана ── */
+.menuBtn { display: none; }
+
+/*
+ * НАРИЙН ДЭЛГЭЦ (≤1180px) — УНЖИХ ЦЭС.
+ *
+ * ⚠️ 2026-09-30: урьд нь босоо жагсаалт 23 табтай ХЭВТЭЭ гүйдэг зурвас
+ *    болдог байв — таблет дээр аль хэсэг хаана байгааг харахгүй, хуруугаар
+ *    гүйлгэж хайна. Одоо «☰ Одоогийн хэсэг ▾» товч; дарахад бүлэглэсэн
+ *    жагсаалт зургийн ДЭЭР унжина (зохион байгуулалт шахагдахгүй).
+ * ⚠️ Хураагдсан (`.railMin`) горим энд ҮЙЛЧЛЭХГҮЙ — унжих жагсаалтад нэр
+ *    заавал харагдана.
+ */
 @media (max-width: 1180px) {
-  .rail { flex-direction: row; align-items: center; overflow-x: auto; padding: 6px 8px; min-height: 0; }
-  .railHead { display: none; }
-  .item {
-    width: auto;
-    flex: none;
+  .rail { position: relative; min-height: 0; padding: 6px 10px; }
+  .menuBtn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
     padding: 6px 10px;
-    border-left: 0;
-    border-bottom: 2px solid transparent;
+    border: 1px solid var(--line);
     border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
   }
-  .itemOn { border-bottom-color: var(--hue); }
-  /* Хэвтээ зурваст дугаар нь зай эзэлж, нэрийг шахна */
-  .no { display: none; }
+  .menuBurger { font-size: 16px; line-height: 1; color: var(--ink-3); }
+  .menuCurrent { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menuCaret { color: var(--ink-3); }
+  .railList {
+    display: none;
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 10px;
+    right: 10px;
+    z-index: 40;
+    max-height: min(70vh, 640px);
+    overflow-y: auto;
+    padding: 8px 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.2));
+  }
+  .railOpen .railList { display: flex; }
+  /* Хүрэлтэд тохирох өндөр мөр */
+  .item { min-height: 44px; padding: 8px 14px; }
+  .title { font-size: 14px; }
+  /* Хураагдсан горимын дүрэм УНЖИХ жагсаалтад хүчингүй */
+  .rail.railMin .text { display: flex; }
+  .rail.railMin .no, .rail.railMin .chev { display: inline; }
+  .rail.railMin .railHead { display: block; }
+  .rail.railMin .item { justify-content: flex-start; padding: 8px 14px; gap: 9px; }
+  .rail.railMin .badgeDot { display: none; }
+  .rail.railMin .badgeInline { display: inline-grid; }
 }
 
 /* ── Толгойн ХЭВТЭЭ хувилбар (header) ── */
@@ -175,3 +274,5 @@
 .railMin .item { justify-content: center; padding: 9px 0; gap: 0; }
 .railMin .icon { width: 26px; height: 26px; }
 .railMin .icon svg { width: 15px; height: 15px; }
+.railMin .badgeDot { display: inline-grid; }
+.railMin .badgeInline { display: none; }

@@ -118,6 +118,18 @@
   color: var(--data);
 }
 
+/* ⚠️ 2026-09-30: порталын нэг өгүүлбэрийн тайлбар — шошгоны доор, энгийн бичвэр */
+.lede {
+  margin: 14px 0 0 var(--indent);
+  max-width: 560px;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* Хэл солигч + нэвтрэх товч — баруун дээд буланд хамт */
+.topRight { display: flex; align-items: center; gap: 10px; flex: none; }
+
 /* ══════════ Нэвтрэх ══════════ */
 
 .enter {

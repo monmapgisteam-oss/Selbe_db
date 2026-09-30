@@ -6,7 +6,7 @@ import '@/lib/silenceOrthoLogs';
 import { t as tr } from '@/lib/i18nCore';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
@@ -78,7 +78,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, signOut, status, user } = useAuth();
+  const { authorized, signIn, signOut, status, user, accessLost } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -123,6 +123,39 @@ export default function Root() {
     if (!sc || allowed === 'all') return sc;
     if (sc === 'all') return allowed;
     return sc.filter((v) => allowed.includes(v));
+  };
+
+  /** БҮХ сэдэв (Удирдлага) — бүх харагдац навигацид */
+  const openAll = () => {
+    /* Сүүлд ажилласан харагдацыг сэргээнэ (Portal хадгалдаг) — өдөр бүр ижил
+       хэсэгт ажилладаг хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно.
+       ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
+       Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
+       навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй. */
+    let last: string | null = null;
+    try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
+    const v = last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
+      ? (last as ViewKey) : DEFAULT_VIEW;
+    const u = new URL(window.location.href);
+    u.searchParams.set('v', v);
+    u.searchParams.set('all', '1');
+    u.searchParams.delete('g');
+    window.history.pushState({}, '', u);
+    setScope('all');
+  };
+
+  /**
+   * Тодорхой харагдацад орох.
+   * ⚠️ Навигацийн хүрээ нь ҮРГЭЛЖ «бүх» — сэдэв нь зөвхөн орох цэг (дээрх
+   * `scopeFromUrl`-ийн тайлбарыг үз). `?g=` бичихээ больсон.
+   */
+  const openView = (key: ViewKey) => {
+    const u = new URL(window.location.href);
+    u.searchParams.set('v', key);
+    u.searchParams.set('all', '1');
+    u.searchParams.delete('g');
+    window.history.pushState({}, '', u);
+    setScope('all');
   };
 
   /**
@@ -170,39 +203,6 @@ export default function Root() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  /** БҮХ сэдэв (Удирдлага) — бүх харагдац навигацид */
-  const openAll = () => {
-    /* Сүүлд ажилласан харагдацыг сэргээнэ (Portal хадгалдаг) — өдөр бүр ижил
-       хэсэгт ажилладаг хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно.
-       ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
-       Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
-       навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй. */
-    let last: string | null = null;
-    try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
-    const v = last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
-      ? (last as ViewKey) : DEFAULT_VIEW;
-    const u = new URL(window.location.href);
-    u.searchParams.set('v', v);
-    u.searchParams.set('all', '1');
-    u.searchParams.delete('g');
-    window.history.pushState({}, '', u);
-    setScope('all');
-  };
-
-  /**
-   * Тодорхой харагдацад орох.
-   * ⚠️ Навигацийн хүрээ нь ҮРГЭЛЖ «бүх» — сэдэв нь зөвхөн орох цэг (дээрх
-   * `scopeFromUrl`-ийн тайлбарыг үз). `?g=` бичихээ больсон.
-   */
-  const openView = (key: ViewKey) => {
-    const u = new URL(window.location.href);
-    u.searchParams.set('v', key);
-    u.searchParams.set('all', '1');
-    u.searchParams.delete('g');
-    window.history.pushState({}, '', u);
-    setScope('all');
-  };
 
   const enterAll = () => {
     if (authorized) openEntry();
@@ -281,6 +281,29 @@ export default function Root() {
    */
   const clamped = clamp(scope);
   const noAccess = Array.isArray(clamped) && !clamped.length;
+
+  /**
+   * ⚠️ 2026-09-30: АЖИЛЛАЖ БАЙХАД ЭРХ ХАСАГДВАЛ PORTAL-ЫГ УСТГАХГҮЙ.
+   *    Урьд нь үечилсэн шалгалт `denied` болгомогц `authorized` худал болж
+   *    Portal unmount хийгдэж, хадгалаагүй бөглөлт/хуваарь/санхүүгийн засвар
+   *    чимээгүй алга болдог байв. Одоо СҮҮЛИЙН хүчинтэй хүрээгээр Portal-ыг
+   *    амьд үлдээж, дээр нь `AuthNotice`-ийн хаалтын цонх гарна (ард нь
+   *    ажиллах боломжгүй). Эрх сэргэвэл цонх хаагдаж ажил үргэлжилнэ.
+   * ⚠️ Хүрээг хадгалах шалтгаан: эрх хасагдсаны дараа `access` нь `null` →
+   *    `clamped` хоосон → Portal-ын оронд «эрх хүрэлцэхгүй» дэлгэц гарч
+   *    мөн л unmount болно.
+   */
+  const lastPortal = useRef<{ navScope: 'all' | ViewKey[]; docsAllowed: boolean } | null>(null);
+  if (scope && authorized && !noAccess) {
+    lastPortal.current = { navScope: clamped as 'all' | ViewKey[], docsAllowed: access?.docs ?? false };
+  }
+  const frozen = scope && accessLost && status === 'denied' ? lastPortal.current : null;
+
+  /* Үүргийн нүүр харагдац — хязгаарлагдмал хэрэглэгчийн нүүрт тодруулна (`openEntry`-тэй ижил эх) */
+  const roleHome = (() => {
+    const r = roleOf(user?.username);
+    return r ? roleAccess(r).home : undefined;
+  })();
   /* ⚠️ Нэг ч харагдацгүй (админ бүгдийг унтраасан / шинэ бүртгэл) — «энэ хэсэг»
      биш «ерөөсөө» гэсэн ӨӨР мессеж (2026-09-21, `openEntry`-ийн тайлбар). */
   const noViews = Array.isArray(allowed) && !allowed.length;
@@ -303,6 +326,15 @@ export default function Root() {
         >
           {tr('Нэвтрэлтийг шалгаж байна…')}
         </div>
+      ) : frozen ? (
+        /* ⚠️ Дээрх `frozen`-ийн тайлбар — ИЖИЛ байрлал, ИЖИЛ төрөл тул React
+           Portal-ыг дахин үүсгэхгүй (төлөв хэвээр). */
+        <Portal
+          onHome={goHome}
+          navScope={frozen.navScope}
+          docsAllowed={frozen.docsAllowed}
+          isSuper={isSuper}
+        />
       ) : scope && authorized ? (
         noAccess ? (
           <div
@@ -374,6 +406,7 @@ export default function Root() {
            *    `admin` товч нь `isSuper`-ээр ХЭВЭЭР хаагдсан.
            */
           boardAllowed={isSuper || allowed === 'all'}
+          homeView={roleHome}
         />
       ) : (
         /*

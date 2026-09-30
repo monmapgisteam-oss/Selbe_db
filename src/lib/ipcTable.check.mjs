@@ -308,6 +308,26 @@ const contract = (o = {}) => ({
   /* ⚠️ 0-д хуваахгүй */
   assert.equal(ipcTotals([mk(0, 50, 0)]).paidPct, null, '⚠️ Infinity БИШ');
   assert.equal(ipcTotals([]).contracts, 0);
+
+  /* ⚠️ 2026-09-30: хувийн ТООЛОГЧ = зөвхөн гэрээт дүн тодорхой гэрээний олголт.
+     Урьд нь (40 + 60 + 500) / 300 = 200% гарч байв. */
+  {
+    const m = ipcTotals([mk(100, 40, 1), mk(200, 60, 1), mk(null, 500, 1)]);
+    assert.equal(m.paid, 600, 'нийт олгосон — БҮХ гэрээ');
+    assert.equal(m.paidContracted, 100);
+    assert.equal(m.paidOther, 500, 'гэрээт дүнгүй гэрээний олголт ТУСДАА');
+    assert.equal(m.contract, 300);
+    assert.equal(Math.round(m.paidPct), 33, '100/300 — дүнгүй гэрээний 500 хувьд ОРОХГҮЙ');
+    assert.equal(m.paidContracted + m.paidOther, m.paid);
+  }
+  assert.equal(t.paidOther, null, 'дүнгүй гэрээ алга → null (0 БИШ)');
+  assert.equal(t.paidContracted, t.paid);
+  {
+    const o = ipcTotals([mk(null, 70, 1)]);
+    assert.equal(o.paidPct, null, 'хуваарь алга — хувь бодогдохгүй');
+    assert.equal(o.paidContracted, null);
+    assert.equal(o.paidOther, 70);
+  }
 }
 
 console.log('ipcTable.check ✓');

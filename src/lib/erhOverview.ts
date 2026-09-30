@@ -29,6 +29,7 @@ import { STAGE_ORDER, type Stage } from './hyanalt';
 import { ALL_BAGTS } from './scopedAcl';
 import type { CapKey } from './caps';
 import { QAQC_CAP, ROLE_CAPS, SCOPED_SYSTEMS, capSystem, rolesOfCap } from './aclRoleCaps';
+import { reviewerClashes, type Reviewer } from './chanarMs';
 
 /* ── Тоймд хэрэгтэй хэмжээгээр нь эх сурвалжийг тодорхойлно ──
    ⚠️ ЖИНХЭНЭ модулиудыг ЭНД импортлохгүй: тэдгээр нь `localStorage`-тай
@@ -299,6 +300,18 @@ function pkgIssues(
          дүрмээр «дутуу ч ажиллана» = `warn`. Матрицад шар. */
       out.push({ tone: 'warn', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
     }
+  }
+  /* ⚠️ 2026-09-30: НЭГ ХҮН ХОЁР ҮҮРЭГТ — `chanarMs.review` «нэг хүн зөвхөн НЭГ үүргээр»
+     дүрэмтэй тул ТУХ+ХАБЭА (MS-төрөл) эсвэл ЧХ инженер+Чанар (MA)-ийн ЦОРЫН ГАНЦ эзэн
+     нэг хүн бол тэр төрлийн баримт хэзээ ч батлагдахгүй. Дээрх «дутуу» шалгуур үүнийг
+     харахгүй (үүрэг бүрд хүн байгаа). Төрлөөр (`reviewerClashes`), NCR-д зохиогчоос
+     үл хамаарна. `warn` — зөвхөн тэр төрөл гацна. Мессеж `erhLabels.issueText`-д. */
+  for (const c of reviewerClashes(chanar as Partial<Record<Reviewer, string[]>>, cA)) {
+    out.push({
+      tone: 'warn', key: 'chanarOneManRoles',
+      args: [bagts, c.kinds.join(', '), c.roles.join(', '), c.users.join(', ')],
+      cols: c.roles.map((r) => `chanar:${r}`),
+    });
   }
 
   /* ── Хуваарь ── */

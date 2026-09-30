@@ -121,7 +121,9 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
   const g = groupByType([mk(1, 'A', 90, 10), mk(2, 'A', 30, 5), mk(3, 'A', null, 1), mk(4, 'B', 50, 100), mk(5, 'A', 0, 1, true)]);
   assert.equal(g[0].type, 'B', 'төсвөөр буурах эрэмбэ');
   assert.deepEqual(g[1].works.map((w) => w.oid), [5, 2, 1, 3], 'хамгийн бага оноо эхэнд, оноогүй нь сүүлд');
-  assert.equal(g[1].total, 60, 'хасагдсан ажил (0) дунджид орохгүй');
+  /* ⚠️ 2026-09-30: ТӨСВӨӨР жигнэнэ — (90×10 + 30×5) / 15 = 70 (энгийн дундаж 60 байв) */
+  assert.equal(g[1].total, 70, 'төсвөөр жигнэсэн; хасагдсан ажил (0) дунджид орохгүй');
+  assert.equal(g[1].dims.perf, 70);
   assert.equal(projectDims([mk(1, 'A', 90, 1), mk(2, 'A', null, 1)]).total, 90);
   {
     const p = mk(7, 'A', null, 1);
@@ -129,6 +131,36 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
     assert.equal(projectDims([p]).pending.qual, true, 'оноогүй + хүлээгдэж буй → бүлэг «хүлээгдэж»');
     assert.equal(projectDims([mk(8, 'A', 60, 1), p]).pending.qual, false, 'оноотой ажил байвал дундаж харагдана');
   }
+}
+
+/* ── ⚠️ 2026-09-30: нэгтгэл ТӨСВӨӨР жигнэсэн, нийт == харагдах бүлгийн дундажуудын дундаж ── */
+{
+  const none = () => Object.fromEntries(DIMS.map((d) => [d, { score: null, facts: [] }]));
+  const mkw = (oid, cost, scores) => {
+    const dims = none();
+    for (const [d, v] of Object.entries(scores)) dims[d] = { score: v, facts: [] };
+    return {
+      oid, name: `w${oid}`, pkgLabel: '', key: '', type: 'T', cost, contract: null,
+      cancelled: false, isLandWork: false, dims, total: totalOf(dims),
+    };
+  };
+  /* 1.5 тэрбумын ажил 448 тэрбумынхтай ижил жинтэй БАЙХГҮЙ */
+  const small = mkw(1, 1.5e9, { perf: 0, fin: 0 });
+  const big = mkw(2, 448e9, { perf: 100, land: 50 });
+  const p = projectDims([small, big]);
+  assert.ok(p.dims.perf > 99, 'гүйцэтгэл — том ажил давамгайлна');
+  assert.equal(p.dims.fin, 0, 'зөвхөн жижиг ажил оноотой бүлэг — өөрийн утга');
+  assert.equal(p.dims.land, 50);
+  /* ГОЛ ИНВАРИАНТ: нийт == хажууд харагдах бүлгүүдийн (null-гүй) дундаж */
+  const shown = DIMS.map((d) => p.dims[d]).filter((v) => v != null);
+  assert.equal(p.total, shown.reduce((a, b) => a + b, 0) / shown.length);
+  const g = groupByType([small, big])[0];
+  assert.deepEqual(g.dims, p.dims, 'нэг бүлэгт — бүлэг ба төсөл ижил');
+  assert.equal(g.total, p.total);
+  /* Төсөвгүй (0₮) ажлууд л оноотой бол — энгийн дундаж (оноог хаяхгүй) */
+  const z = projectDims([mkw(3, 0, { hse: 80 }), mkw(4, 0, { hse: 40 })]);
+  assert.equal(z.dims.hse, 60);
+  assert.equal(z.total, 60);
 }
 
 /* ── Орон зай ── */

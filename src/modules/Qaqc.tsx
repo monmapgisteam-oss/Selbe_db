@@ -391,6 +391,25 @@ export function Qaqc() {
     }
   }, []);
 
+  const [grpA, setGrpA] = useState(0);
+  const [grpB, setGrpB] = useState(0);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+
+  /**
+   * АЛСЫН ХУУЛБАРЫН БАЙДАЛ (2026-09-07, `FillNew`-ийн загвар).
+   *
+   * ⚠️ Урьд нь `saveQaqcDraft(...)`-ийн үр дүнг `void`-оор ХАЯДАГ байсан тул
+   * сүлжээгүй, токен дууссан, хүснэгт олдоогүй — аль ч тохиолдолд дэлгэц
+   * дээр «ноорог хадгалагдав» гэж ХЭВЭЭР гарч, бөглөгч алсад хуулагдсан гэж
+   * итгээд өөр компьютер дээр хоосон хуудас хүлээж авдаг байв. Локал ноорог
+   * бүрэн бүтэн тул бөглөлтийг ЗОГСООХГҮЙ — зөвхөн байдлыг ҮНЭН харуулна.
+   *
+   * ⚠️ `null` = хараахан илгээгээгүй — тэр үед юу ч хэлэхгүй, эс бөгөөс
+   *    бичиж эхэлмэгц худал анхааруулга гарна.
+   */
+  const [remoteState, setRemoteState] = useState<
+    null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
+  >(null);
   useEffect(() => {
     /* ⚠️ Багц солиход хадгалаагүй засварыг ЗААВАЛ цэвэрлэнэ: түлхүүр нь
        ObjectID тул өөр хүснэгтийн ижил дугаартай мөрд наалдаж, ӨӨР БАГЦЫН
@@ -419,9 +438,6 @@ export function Qaqc() {
   }, [pkg.key, load]);
 
   /* ══════════════ ШАТЛАЛЫН ШҮҮЛТ (FillNew-тэй ижил) ══════════════ */
-  const [grpA, setGrpA] = useState(0);
-  const [grpB, setGrpB] = useState(0);
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const toggle = (oid: number) =>
     setCollapsed((s0) => {
       const n = new Set(s0);
@@ -634,21 +650,6 @@ export function Qaqc() {
 
   /* ══════════════ НООРОГ — ХАДГАЛАХ ══════════════ */
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  /**
-   * АЛСЫН ХУУЛБАРЫН БАЙДАЛ (2026-09-07, `FillNew`-ийн загвар).
-   *
-   * ⚠️ Урьд нь `saveQaqcDraft(...)`-ийн үр дүнг `void`-оор ХАЯДАГ байсан тул
-   * сүлжээгүй, токен дууссан, хүснэгт олдоогүй — аль ч тохиолдолд дэлгэц
-   * дээр «ноорог хадгалагдав» гэж ХЭВЭЭР гарч, бөглөгч алсад хуулагдсан гэж
-   * итгээд өөр компьютер дээр хоосон хуудас хүлээж авдаг байв. Локал ноорог
-   * бүрэн бүтэн тул бөглөлтийг ЗОГСООХГҮЙ — зөвхөн байдлыг ҮНЭН харуулна.
-   *
-   * ⚠️ `null` = хараахан илгээгээгүй — тэр үед юу ч хэлэхгүй, эс бөгөөс
-   *    бичиж эхэлмэгц худал анхааруулга гарна.
-   */
-  const [remoteState, setRemoteState] = useState<
-    null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
-  >(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);

@@ -158,11 +158,51 @@ export type SeriesPoint = {
   label: string;
   /** Тухайн үеийн бодит агшин (as-of огноо) */
   date: string;
-  /** Хамрах хүрээний БҮХ блокийн дундаж гүйцэтгэл, 0–100 (бөглөгдөөгүй = 0%) */
+  /**
+   * Дундаж гүйцэтгэл, 0–100.
+   *   · `'peak'` (анхдагч) — хуваарь нь хамрах хүрээний БҮХ блок (бөглөгдөөгүй = 0%)
+   *   · `'latest'` — хуваарь нь тухайн агшинд ХЭМЖИГДСЭН блок л (null ≠ 0)
+   */
   overall: number;
-  /** Тухайн үед бөглөгдсөн байсан блокийн тоо (хуваарь нь БИШ — tooltip-д) */
+  /** Тухайн үед бөглөгдсөн байсан блокийн тоо (`'peak'`-д хуваарь БИШ; `'latest'`-д хуваарь) */
   blocks: number;
 };
+
+/**
+ * Цувааны утгын тодорхойлолт.
+ *   · `'peak'`   — блок бүрийн ӨССӨН дүн (running max), хуваарь ТОГТМОЛ (`keys`)
+ *   · `'latest'` — блок бүрийн ТУХАЙН АГШИН ДАХЬ СҮҮЛИЙН бичлэг (`compute`-тэй
+ *                  ижил дүрэм), хуваарь нь хэмжигдсэн блок л
+ */
+export type SeriesMode = 'peak' | 'latest';
+
+/**
+ * Блокуудын СҮҮЛИЙН хэмжигдсэн гүйцэтгэлийн дундаж — `progressSeries(…, 'latest')`-ийн
+ * СҮҮЛИЙН цэгтэй ЯГ таарах «одоо»-гийн тоо.
+ *
+ * ⚠️ 2026-09-30: Дашбоардын «Дундаж гүйцэтгэл» бөгж ба «Барилга угсралтын явц»
+ *    цуваа ӨӨР хуваарь (бөгж: тайлагнасан багцын бүх блок; цуваа: 7 багцын БҮХ
+ *    блок) ба ӨӨР утга (бөгж: сүүлийн; цуваа: өссөн дүн) хэрэглэдэг тул цувааны
+ *    сүүлийн цэг бөгжөөс зөрдөг байв. Хоёулаа ЭНЭ дүрмээр: хэмжигдээгүй блок
+ *    хуваарьт ОРОХГҮЙ (null ≠ 0, 06 §2), утга нь сүүлийн хэмжилт.
+ *
+ * `keys` — ДАВХАРДЛЫГ ХАДГАЛНА (`BagtsRow.keys`-ийн `flatMap`) — цуваатай
+ * ижил жагсаалтаар тоолно.
+ */
+export function latestMean(
+  pm: BlockProgressMap,
+  keys: Iterable<string>,
+): { pct: number | null; blocks: number; total: number } {
+  let sum = 0, n = 0, total = 0;
+  for (const k of keys) {
+    total += 1;
+    const c = pm.get(k);
+    if (c == null || !Number.isFinite(c.overall)) continue;
+    sum += c.overall;
+    n += 1;
+  }
+  return { pct: n ? sum / n : null, blocks: n, total };
+}
 
 /** «YYYY-MM-DD» → «YYYY-MM» */
 const monthOf = (d: string) => d.slice(0, 7);
@@ -184,6 +224,14 @@ export function progressSeries(
   hist: BlockHistory,
   keys: Iterable<string>,
   grain: 'day' | 'month',
+  /**
+   * ⚠️ 2026-09-30: `'latest'` НЭМЭГДЭВ — анхдагч `'peak'` ХЭВЭЭР (BuildingPanel,
+   *    Dashboard-ийн EnvRight, finPhys-ийн дүрэм түүнээс хамаарна). `'latest'`
+   *    нь `latestMean`/`loadBlockProgress`-той ЯГ ижил тоо өгнө: сүүлийн цэг ==
+   *    бөгж. Сул тал нь мэдэгдэж байгаа: шинэ блок тайлагнах сард дундаж буурч
+   *    болно — `blocks` (хуваарь) цэг бүрд хамт харагдах ЁСТОЙ.
+   */
+  mode: SeriesMode = 'peak',
 ): SeriesPoint[] {
   const keyList = [...keys];
   const mine = keyList.map((k) => hist.get(k)).filter((h): h is HistoryPoint[] => h != null);
@@ -207,13 +255,27 @@ export function progressSeries(
     return v;
   };
 
+  /**
+   * Тухайн агшин дахь СҮҮЛИЙН бичлэг (`'latest'`). `pct: null` (нүд
+   * цэвэрлэгдсэн) бол тэр блок «бөглөгдөөгүй» — `compute`-ийн дүрэм.
+   */
+  const latest = (h: HistoryPoint[], asOf: string) => {
+    let v: number | null = null;
+    for (const p of h) {
+      if (p.date > asOf) break;
+      v = p.pct;
+    }
+    return v;
+  };
+
   const at = (asOf: string) => {
     let sum = 0, n = 0;
     for (const h of mine) {
-      const v = peak(h, asOf);
-      if (v != null) { sum += v; n += 1; }
+      const v = mode === 'latest' ? latest(h, asOf) : peak(h, asOf);
+      if (v != null && Number.isFinite(v)) { sum += v; n += 1; }
     }
-    return { date: asOf, overall: keyList.length ? sum / keyList.length : 0, blocks: n };
+    const den = mode === 'latest' ? n : keyList.length;
+    return { date: asOf, overall: den ? sum / den : 0, blocks: n };
   };
 
   /** Бүртгэлгүй агшин — 0% гэж зурвал байхгүй хэмжилт «ухралт» мэт харагдана */

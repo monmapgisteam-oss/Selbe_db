@@ -41,7 +41,7 @@ import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayload, withdrawAjil,
+  ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { materializeAdds } from '@/lib/ajilApply';
@@ -74,7 +74,8 @@ type State =
 type Detail =
   | { k: 'loading' }
   | { k: 'fail' }
-  | { k: 'ok'; p: AjilPayload };
+  /** `stamp` — харсан хувилбарын тэмдэг (2026-09-30); `decideAjil`-д дамжина */
+  | { k: 'ok'; p: AjilPayload; stamp: string };
 
 export function AjilBatlah() {
   const { user, status } = useAuth();
@@ -100,6 +101,44 @@ export function AjilBatlah() {
 
   const me = (user?.username ?? '').trim().toLowerCase();
   const isSuper = roleForUser(user?.username) === 'super';
+
+  /* ⚠️ Салсны дараа setState дуудахгүй — `fetchDetail`-ийн async ачаалалт ба
+     үйлдлүүдийн `finally` хоёулаа энэ тугийг шалгана. */
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  /** Одоо дэлгэгдсэн мөр — дараалал дахин уншигдахад түүний агуулгыг шинэчилнэ */
+  const openRef = useRef<number | null>(null);
+  useEffect(() => { openRef.current = open; }, [open]);
+  /**
+   * Кэшийн ҮЕ — `resetDetail` бүрд өснө (2026-09-30). Өмнөх үеийн хоцорсон
+   * хариу шинэ кэшийг ХУУЧИН агуулгаар дарахгүй.
+   */
+  const gen = useRef(0);
+
+  /** Нэг мөрийн агуулгыг (дахин) татна — кэшийг үл харгалзан */
+  const fetchDetail = useCallback((oid: number) => {
+    const g = gen.current;
+    setDetail((m) => new Map(m).set(oid, { k: 'loading' }));
+    void (async () => {
+      /* ⚠️ `loadPayloadStamped` нь ӨӨРӨӨ `parsePayload`-оор задалж, эвдэрсэн бол
+         `null` буцаана — энд дахин задлах шаардлагагүй. */
+      const r = await loadPayloadStamped(oid).catch(() => null);
+      if (!alive.current || g !== gen.current) return;
+      setDetail((m2) => new Map(m2).set(oid, r ? { k: 'ok', p: r.p, stamp: r.stamp } : { k: 'fail' }));
+    })();
+  }, []);
+
+  /**
+   * ⚠️ 2026-09-30: ДАРААЛАЛ ДАХИН УНШИГДАХАД КЭШИЙГ ЦЭВЭРЛЭНЭ. Урьд нь мөр
+   *    анх дэлгэхэд татсан агуулга хуудас refresh хийтэл хэвээр үлддэг байв —
+   *    зохиогч `updateAjil`-аар зассан ч батлагч ХУУЧИН мөрүүдийг харж батлах
+   *    боломжтой. Дэлгэгдсэн мөрийг шууд дахин татна, бусад нь дэлгэхэд.
+   */
+  const resetDetail = useCallback(() => {
+    gen.current += 1;
+    setDetail(new Map());
+    if (openRef.current != null) fetchDetail(openRef.current);
+  }, [fetchDetail]);
 
   /* ══════════════════════ ТАТАХ ══════════════════════ */
   useEffect(() => {
@@ -133,11 +172,13 @@ export function AjilBatlah() {
         const [rows, approved] = await Promise.all([loadAllPending(), loadAllApproved()]);
         if (!alive) return;
         setSt({ k: 'ready', rows, approved });
+        resetDetail();
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
       }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, status, isSuper, user?.username]);
 
   /* ══════════════════════ ХАМРАХ ХҮРЭЭ ══════════════════════ */
@@ -164,7 +205,7 @@ export function AjilBatlah() {
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
   const noRole = status !== 'off' && !isSuper && !hasAjilRole(user?.username, 'approver');
 
-  const all = st.k === 'ready' ? st.rows : [];
+  const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
     () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
     [all, scope],
@@ -206,11 +247,6 @@ export function AjilBatlah() {
 
   const dirty = !!q || !!grp;
 
-  /* ⚠️ Салсны дараа setState дуудахгүй — `toggle`-ийн async ачаалалт ба
-     үйлдлүүдийн `finally` хоёулаа энэ тугийг шалгана. */
-  const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
-
   /* ══════════════════════ МӨР ДЭЛГЭХ ══════════════════════ */
   const toggle = useCallback((oid: number) => {
     setOpen((cur) => (cur === oid ? null : oid));
@@ -219,20 +255,9 @@ export function AjilBatlah() {
        ⚠️ `fail`-ийг КЭШЛЭХГҮЙ (2026-09-25 аудит): түр сүлжээний алдаа
        мөнхөд кэшлэгдэж, хуудас refresh хийтэл «Батлах» хаалттай үлддэг байв
        (`reload` нь `detail`-ийг цэвэрлэдэггүй) — дахин дарахад дахин татна. */
-    setDetail((m) => {
-      const cur = m.get(oid);
-      if (cur && cur.k !== 'fail') return m;
-      const next = new Map(m);
-      next.set(oid, { k: 'loading' });
-      void (async () => {
-        /* ⚠️ `loadPayload` нь ӨӨРӨӨ `parsePayload`-оор задалж, эвдэрсэн бол
-           `null` буцаана — энд дахин задлах шаардлагагүй. */
-        const p = await loadPayload(oid).catch(() => null);
-        if (alive.current) setDetail((m2) => new Map(m2).set(oid, p ? { k: 'ok', p } : { k: 'fail' }));
-      })();
-      return next;
-    });
-  }, []);
+    const cur = detail.get(oid);
+    if (!cur || cur.k === 'fail') fetchDetail(oid);
+  }, [detail, fetchDetail]);
 
   /* ══════════════════════ БАТЛАХ ══════════════════════ */
   /**
@@ -250,7 +275,8 @@ export function AjilBatlah() {
        буцаах товчгүй тул мөрийн тоог нэрлээд асууна. Товч нь агуулга
        уншигдсан үед л идэвхтэй тул `detail` энд бэлэн. */
     const d = detail.get(x.oid);
-    const n = d?.k === 'ok' ? d.p.adds.length : 0;
+    if (d?.k !== 'ok') return;
+    const n = d.p.adds.length;
     if (!window.confirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)))) return;
     setBusy(true); setErr(''); setNote('');
     /* ⚠️ Шийдвэр СЕРВЕРТ гарсан эсэх — `catch`-д дараалал дахин уншихад
@@ -267,11 +293,21 @@ export function AjilBatlah() {
            батлахыг таслах). Жинхэнэ дүрэм нь СЕРВЕРИЙН мөрөөс уншигдана —
            UI-ийн утгыг хэзээ ч дүрэм гэж авч болохгүй. */
         author: x.author,
+        /* ⚠️ 2026-09-30: ХАРСАН хувилбарын тэмдэг — зохиогч энэ хооронд
+           `updateAjil`-аар зассан бол `decideAjil` татгалзана (`stale`). */
+        stamp: d.stamp,
       });
-      if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) {
+        setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+        /* ⚠️ Хуучирсан бол дараалал + агуулгыг дахин уншиж ШИНЭ хувилбарыг харуулна */
+        if (r.stale) reload();
+        return;
+      }
       decided = true;
-      /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`). */
-      const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
+      /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`).
+         ⚠️ 2026-09-30: `stamp` — шийдвэр ба бичилтийн завсарт агуулга
+         солигдвол батлагчийн хараагүй мөрийг бичихгүй. */
+      const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid, stamp: d.stamp });
       if (!alive.current) return;
       if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
@@ -318,16 +354,28 @@ export function AjilBatlah() {
     /* ⚠️ Шалтгаан ЗААВАЛ — `decideAjil`-ийн домэйн дүрмийн UI тусгал.
        Жинхэнэ гэйт нь тэнд хэвээр; энэ нь зөвхөн урьдчилан хэлэх. */
     if (busy || !why) return;
+    /* ⚠️ 2026-09-30: БАТАЛГААЖУУЛНА — буцаалт нь буцаах замгүй бөгөөд шалтгаан
+       нэмэгчид шууд харагдана (`Huvaari` буцаагдсан илгээлтийг шалтгаантай нь
+       нооргонд буулгана). */
+    if (!window.confirm(tr('Илгээлтийг буцаах уу? Бичсэн шалтгаан нэмэгчид илгээгдэнэ — нэмэгч засаад дахин илгээнэ.'))) return;
     setBusy(true); setErr(''); setNote('');
     try {
+      const d = detail.get(x.oid);
       const r = await decideAjil({
         oid: x.oid,
         approve: false,
         approver: user?.username ?? '',
         author: x.author,
         reason: why,
+        /* ⚠️ 2026-09-30: агуулга уншигдсан бол ХАРСАН хувилбарыг тулгана;
+           уншигдаагүй (эвдэрсэн агуулга) бол буцаалт нээлттэй хэвээр. */
+        stamp: d?.k === 'ok' ? d.stamp : undefined,
       });
-      if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) {
+        setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+        if (r.stale) reload();
+        return;
+      }
       setNote(tr('Нэмэлт ажил буцаагдлаа — нэмэгч засаад дахин илгээнэ.'));
       setReason((m) => { const n = new Map(m); n.delete(x.oid); return n; });
       setOpen(null);
@@ -337,7 +385,7 @@ export function AjilBatlah() {
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [reason, busy, user, reload]);
+  }, [reason, busy, user, reload, detail]);
 
   /* ══════════════════════ ИЛГЭЭЛТЭЭ ТАТАХ ══════════════════════
    * ⚠️ Зохиогчийн ӨӨРИЙН үйлдэл — «Өөрийн илгээсэн» хэсэгт л гарна.
@@ -655,6 +703,21 @@ function Row({
               />
             </>
           )}
+
+          {/* ⚠️ 2026-09-30: ХААЛТТАЙ ТОВЧНЫ ШАЛТГААН ИЛ МӨРӨӨР — `title` хүрэлцэх
+              төхөөрөмж дээр гарахгүй тул товч яагаад дарагдахгүйг хэлэх ганц зам.
+              Агуулга уншигдаагүй (`fail`) бол дээрх алдааны мөр аль хэдийн хэлсэн. */}
+          {(() => {
+            const why: string[] = [];
+            if (busy) why.push(tr('Өөр үйлдэл хийгдэж байна — дуусахыг хүлээнэ үү.'));
+            else {
+              if (onApprove && detail?.k !== 'ok' && detail?.k !== 'fail')
+                why.push(tr('Агуулга ачаалагдсаны дараа батлах боломжтой.'));
+              if (onReject && !reason.trim())
+                why.push(tr('Буцаахын тулд дээр шалтгаанаа бичнэ үү.'));
+            }
+            return why.length ? <div className={s.reasonLabel} role="note">{why.join(' ')}</div> : null;
+          })()}
 
           <div className={s.actions}>
             {onApprove && (

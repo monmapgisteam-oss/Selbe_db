@@ -17,6 +17,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from './AuthGate';
+import { LocaleToggle } from './LocaleToggle';
 import s from './landing.module.css';
 
 export function Landing() {
@@ -30,10 +31,15 @@ export function Landing() {
       {/* ── Зүүн дээд: лого · Баруун дээд: нэвтрэх ── */}
       <header className={s.top}>
         <img src="/logo.svg" alt={tr('Сэлбэ')} className={s.logo} />
-        <button type="button" className={s.enter} onClick={signIn} disabled={busy}>
-          {busy ? tr('Шалгаж байна…') : tr('Нэвтрэх')}
-          {!busy && <span className={s.arrow} aria-hidden>→</span>}
-        </button>
+        {/* ⚠️ 2026-09-30: хэл солигч — англи хэлтэй зочин нэвтрэхээс ӨМНӨ ч
+            хуудсыг уншиж чаддаг байх ёстой (урьд нь зөвхөн дотор нь байв). */}
+        <div className={s.topRight}>
+          <LocaleToggle />
+          <button type="button" className={s.enter} onClick={signIn} disabled={busy}>
+            {busy ? tr('Шалгаж байна…') : tr('Нэвтрэх')}
+            {!busy && <span className={s.arrow} aria-hidden>→</span>}
+          </button>
+        </div>
       </header>
 
       {/* ── Гол хэсэг — ЗҮҮН эгнээнд ── */}
@@ -49,6 +55,11 @@ export function Landing() {
         </h1>
 
         <p className={s.tag}>Digital Twin Platform</p>
+        {/* ⚠️ 2026-09-30: «Digital Twin Platform» дангаараа юу болохыг хэлдэггүй —
+            нэг өгүүлбэрээр энгийн тайлбар. */}
+        <p className={s.lede}>
+          {tr('Сэлбэ дэд төвийн бүтээн байгуулалтын хуваарь, гүйцэтгэл, чанар, санхүүг газрын зурагтай нэг дор хянах ажлын портал.')}
+        </p>
 
         {/*
           * ⚠️ Алдааг ЗААВАЛ үзүүлнэ. Эс бөгөөс эрх нь хүрэлцээгүй хэрэглэгч

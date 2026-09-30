@@ -177,7 +177,9 @@ export function ExecReport() {
         <header className={`${r.docHead} ${e.docHeadMid}`}>
           {/* ⚠️ Төслийн нэр мэйлийн гарчиг, ерөнхий тайлантай НЭГ: «Сэлбэ 20 минутын хот» */}
           <h1 className={`${r.title} ${e.titleUp}`}>{tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}</h1>
-          {date && <p className={`${r.sub} ${e.subMid}`}>{tr('Огноо:')} {date}</p>}
+          {/* ⚠️ 2026-09-30: өгөгдөл ХЭЗЭЭ татагдсан — `loadExecReport` 5 мин кэштэй тул
+              «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин (`Tailan`-ийн `fetchedAt`-тай ижил). */}
+          {date && <p className={`${r.sub} ${e.subMid}`}>{tr('Огноо:')} {date}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</p>}
         </header>
 
         <Data q={q} loading={tr('Дөрвөн дашбоардын өгөгдлийг нэгтгэж байна…')}>
@@ -396,6 +398,8 @@ export function ExecReport() {
                 <section id="exec-2" tabIndex={-1} className={r.section}>
                   <h2 className={r.h2}>{tr('2. Багцын гүйцэтгэл')}</h2>
                   <KpiRow items={[
+                    /* ⚠️ 2026-09-30: `prog.asOf` нь одоо «Бодит» гарсан ХЭМЖИЛТИЙН огноо
+                       (`execReport` — `aggregateMonths().physAt`), барилгын сүүлийн огноо биш */
                     { label: tr('Бодит'), value: x.prog.actual == null ? '—' : pct(x.prog.actual, 1), sub: x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : undefined },
                     /* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — «—»-ийн шалтгаан (`PkgProg.TsKpi`-тай ижил) */
                     { label: tr('Төлөвлөсөн'), value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1), sub: x.prog.planFailed > 0 ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed) : undefined },

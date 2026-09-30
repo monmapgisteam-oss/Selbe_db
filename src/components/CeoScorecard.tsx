@@ -367,11 +367,14 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
       {/* ── Төслийн нийт — 6 бүлэг + нийт; хавтан дарахад тухайн бүлэгт АСУУДАЛТАЙ ажлууд шүүгдэнэ ── */}
       <div className={s.summary}>
         <div className={`${s.sumTile} ${s.sumTotal}`}>
-          <span className={s.sumLabel}>{tr('Нийт оноо')}</span>
+          {/* ⚠️ 2026-09-30: арга нь ИЛ — бүлгийн дундаж ТӨСВӨӨР жигнэсэн, нийт =
+              хажуугийн бүлгүүдийн дундаж (`scorecard.projectDims`) */}
+          <span className={s.sumLabel} title={tr('Бүлэг бүрийн оноо багц ажлын урьдчилсан төсөвт өртгөөр жигнэсэн. Нийт оноо = оноотой бүлгүүдийн дундаж.')}>{tr('Нийт оноо')}</span>
           {/* ⚠️ 2026-09-29 (аудит 10): хүнд хэмжээс татагдаж байхад нийт оноог хэсэгчилсэн
               дундажаар харуулахгүй — хүснэгтийн нүдтэй (`loadingDims.size > 0`) нэг дүрэм */}
           <Score v={project?.total ?? null} loading={!project || loadingDims.size > 0} big />
           <span className={s.sumSub}>{works ? tr('{0} багц ажил', num(works.filter((w) => !w.cancelled).length)) : '…'}</span>
+          <span className={s.sumSub}>{tr('Төсвөөр жигнэсэн')}</span>
         </div>
         {DIMS.map((d) => (
           <button
@@ -439,7 +442,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                     <button type="button" className={s.thBtn} onClick={() => setDim(d)}>{defs[d].short}</button>
                   </th>
                 ))}
-                <th className={s.thDim}>{tr('Нийт')}</th>
+                <th className={s.thDim} title={tr('Бүлгийн мөр: төсвөөр жигнэсэн бүлгийн дундажуудын дундаж. Ажлын мөр: бүлгүүдийн дундаж.')}>{tr('Нийт')}</th>
               </tr>
             </thead>
             <tbody>

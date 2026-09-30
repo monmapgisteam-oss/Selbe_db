@@ -66,6 +66,8 @@ import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
   bagtsKey, pkgKeyOf, laborCompanyFields, hoAmount, CF_WORK_WHERE,
 } from '@/lib/services';
+import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { loadNegtgelPct } from '@/lib/negtgel';
 import {
   finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
 } from '@/lib/finExcelLayout';
@@ -214,6 +216,19 @@ export type ReportExtra = {
   };
   /** Өгөгдөл ХЭЗЭЭ татагдсан (epoch мс) — 5 мин кэш тул толгойд харуулна (2026-09-23) */
   fetchedAt: number;
+  /**
+   * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ, 0–100 — «Нэгтгэл гүйцэтгэл»-ийн 1-р түвшний жигнэсэн
+   * дүн (`negtgel.loadNegtgelPct`), ерөнхий дашбоардын «Гүйцэтгэлийн хувь» ба
+   * удирдлагын тайлантай ЯГ НЭГ эх.
+   *
+   * ⚠️ 2026-09-30: тайлангийн эхний өгүүлбэр «төслийн хэрэгжилт X» гэж бичдэг
+   *    атлаа X нь `overall.pct` (ЗӨВХӨН орон сууцны барилгажилт) байв — дашбоард
+   *    дээрх төслийн хувиас эрс зөрнө. Одоо өгүүлбэр ҮҮНИЙГ хэвлэнэ.
+   * ⚠️ `null` = нэгтгэл уншигдаагүй эсвэл жинтэй мөр хэмжигдээгүй. Тайлан УНАХГҮЙ
+   *    (нэмэлт үзүүлэлт) — өгүүлбэр «уншигдсангүй» гэж шударгаар хэлнэ, орон
+   *    сууцны тоог төслийн нэрээр ОРЛУУЛАХГҮЙ.
+   */
+  projectPct: number | null;
 };
 
 /* ═══════════════ Туслах ═══════════════ */
@@ -327,21 +342,12 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
-  const budget = new Map<string, number>();
-  cf.forEach((r) => {
-    /* ⚠️ 2026-09-21: ЗӨВХӨН `finXlInTotal` хүрээ (Excel-ийн НИЙТ мөр, 2,493 тэрбум).
-       Урьд нь БҮХ мөрийн төсөв (5·6·7-р хэсэг ч орсон, 3,167.6 тэрбум) байсан
-       тул `weightSum` («Төслийн төсвийн X%-ийг эзэлдэг», Tailan.tsx) худал бага
-       гардаг байв — хуваарь нь `loadFinance.budget`-тай ИЖИЛ хүрээ байх ёстой. */
-    if (!finXlInTotal(r)) return;
-    // ⚠️ `pkg2` (CF007, НАВЧ) ЭХЭЛЖ: `pkg` (CF006) нь дээд багц тул
-    //    «БАГЦ-16.1…16.7»-г НЭГ түлхүүрт нурааж, багцын жин холилдоно.
-    // ⚠️ `pkgKeyOf` (bagtsKey БИШ): «БАГЦ 1-4» мэт ДИАПАЗОН мөр хоосон түлхүүр
-    //    авах тул бодит «Багц 14»-т харийн төсөв наалдахгүй.
-    const k = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
-    if (!k || k === '0') return;
-    budget.set(k, (budget.get(k) ?? 0) + nn(r[F.budget]));
-  });
+  /* ⚠️ 2026-09-30: жин нь `gdash.pkgCostWeight` — PkgProg · Dashboard · ExecReport ·
+     GeneralDash-ийн орон сууцны хувьтай (`aggregateMonths`) ЯГ НЭГ жин. Дүрэм нь
+     хэвээр: ЗӨВХӨН `finXlInTotal` хүрээ (2026-09-21 — Excel-ийн НИЙТ мөр, 2,493
+     тэрбум; урьд нь 5·6·7-р хэсэг ч орж `weightSum` худал бага гардаг байв),
+     `pkg2` (навч) эхэлж, `pkgKeyOf` (ДИАПАЗОН мөр «Багц 14»-т наалдахгүй). */
+  const budget = pkgCostWeight(cf.map(cfWeightRow));
 
   /** багц → блокийн гүйцэтгэлүүд (0–1) */
   const byPkg = new Map<string, number[]>();
@@ -380,13 +386,16 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
     .sort((x, y) => y.weight - x.weight || x.label.localeCompare(y.label, 'mn', { numeric: true }));
 
   const weightSum = stages.reduce((a, s) => a + s.weight, 0);
-  const done = stages.reduce((a, s) => a + s.weight * s.actual, 0);
+  /* ⚠️ 2026-09-30: НИЙТ хувь нь `gdash.housingPct` — порталын ГАНЦ орон сууцны
+     томьёо (PkgProg · Dashboard · ExecReport · GeneralDash-тай нэг). Утга нь
+     хуучин `Σ жин·хувь ÷ Σ жин`-тэй ижил (жин нь ижил ХО дүн). */
+  const housing = housingPct(raw.map((s) => ({ pct: s.actual, cost: s.money, blocks: s.rows })));
 
   return {
     // ⚠️ Жингийн НИЙЛБЭРТ харьцуулна, 1-д БИШ: бүртгэгдээгүй багцыг «0%
     //    гүйцэтгэлтэй» гэж тооцвол төслийн дүн худал буурна.
     // ⚠️ 2026-09-29 (аудит 10): жин 0 (блокийн мөр алга) → `null`, 0 БИШ — «—» гэж гарна.
-    pct: weightSum ? done / weightSum : null,
+    pct: housing,
     weightSum,
     rows: stages.reduce((a, s) => a + s.rows, 0),
     stages,
@@ -946,9 +955,12 @@ async function loadReportExtraRaw(): Promise<ReportExtra> {
    * `loadLand` нь одоо өөрөө боддог. Дараалал шаардлагагүй болсон — бүх
    * хэсэг ЗЭРЭГ ачаалагдана.
    */
-  const [o, p, f, i, h, l, s] = await Promise.allSettled([
+  const [o, p, f, i, h, l, s, w] = await Promise.allSettled([
     loadOverall(), loadProgress(), loadFinance(), loadInfra(), loadHabeaSummary(),
     loadLand(), loadSocial(),
+    /* ⚠️ 2026-09-30: төслийн нийт хувь — `projectPct`-ийн тайлбарыг үз. Доорх
+       «дутуу бол шидэх» жагсаалтад ОРОХГҮЙ: унавал `null`, өгүүлбэр үүнийг хэлнэ. */
+    loadNegtgelPct(),
   ]);
   /**
    * ⚠️ УНАЛТЫГ ТЭГЭЭР НӨХӨХГҮЙ (2026-09-03-ны аудитын олдвор).
@@ -992,6 +1004,7 @@ async function loadReportExtraRaw(): Promise<ReportExtra> {
     infra: (i as PromiseFulfilledResult<Awaited<ReturnType<typeof loadInfra>>>).value,
     habea: (h as PromiseFulfilledResult<Awaited<ReturnType<typeof loadHabeaSummary>>>).value,
     fetchedAt: Date.now(),
+    projectPct: w.status === 'fulfilled' ? w.value : null,
   };
 }
 
@@ -1070,11 +1083,16 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
    * хэзээ ч олдохгүй бөгөөд гурвуулаа 0/null болж, тайлангийн эхний өгүүлбэр
    * «0.00%-ийн гүйцэтгэлтэй» гэж ЧИМЭЭГҮЙ худал бичдэг байлаа.
    *
-   * Одоо: гүйцэтгэл нь блокуудын дундаж (6-р хэсэгтэй нэг тоо), жин нь
-   * тэдгээр багцын эзлэх төсвийн хувь (3-р хэсгийн жингийн нийлбэр).
+   * Одоо: жин нь тэдгээр багцын эзлэх төсвийн хувь (3-р хэсгийн жингийн нийлбэр).
+   *
+   * ⚠️ 2026-09-30: гүйцэтгэл нь `overall.pct` (ХО дүнгээр жигнэсэн — `gdash.housingPct`),
+   *    6-р хэсгийн блокийн ЭНГИЙН дундаж (`progress.overall`) БИШ. Урьд нь нэг
+   *    өгүүлбэрт «төсвийн X%-ийг эзэлдэг» (төсвөөр) ба «Y%-ийн гүйцэтгэлтэй» (блокоор)
+   *    хоёр өөр жинтэй тоо зэрэгцэж, Y нь бусад дэлгэцийн орон сууцны хувиас зөрдөг
+   *    байв. `progress.overall` нь 6-р хэсэгт «блокийн дундаж» шошготойгоо үлдэнэ.
    */
   const buildWeight = x.overall.weightSum;
-  const buildActual = x.progress.overall;
+  const buildActual = x.overall.pct;
   /*
    * ⚠️ ТӨЛӨВЛӨГӨӨ ОДООГООР БАЙХГҮЙ. `Төсөл_Гүйцэтгэл_` хасагдсанаас хойш
    * төлөвлөгөөт хувь нь зөвхөн бөглөх хуудасны мөр бүрд байгаа бөгөөд
@@ -1141,7 +1159,9 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
    * Одоо БАЙГАА хоёр тоо дээр тогтоно: гүйцэтгэл ба түүний төсвийн хамрал.
    */
   if (x.progress.blocks > 0) {
-    f.push(tr('Барилга угсралтын ажлын гүйцэтгэл {0} байна (хяналтын {1} блокийн дундаж). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.progress.blocks), pct(buildWeight, 1)));
+    /* ⚠️ 2026-09-30: `buildActual` нь ХО дүнгээр жигнэсэн болсон тул «блокийн дундаж»
+       гэсэн хаалтын тайлбар солигдов (тоо ба нэр нэг хэмжүүрийг хэлнэ). */
+    f.push(tr('Барилга угсралтын ажлын гүйцэтгэл {0} байна ({1} блокийн хэмжилтийг багцаар нь ХО дүнгийн жингээр нэгтгэсэн). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.overall.rows), pct(buildWeight, 1)));
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {

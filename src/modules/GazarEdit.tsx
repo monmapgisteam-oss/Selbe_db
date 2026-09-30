@@ -115,7 +115,7 @@ export function GazarEdit({
     dirty.current = false;
     onDirty?.(false);
     onCancel();
-  }, [busy, onCancel]);
+  }, [busy, onCancel, onDirty]);
 
   /* Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй */
   useEffect(() => {

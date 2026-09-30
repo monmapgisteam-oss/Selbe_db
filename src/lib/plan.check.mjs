@@ -20,6 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import { DAY, spanDays, endOf, statusOf, coverageOf } from './plan.ts';
+import { planAt } from '@/modules/sheet/bagtsSheet.ts';
 
 const d = (iso) => Date.parse(`${iso}T00:00:00Z`);
 const span = (a, b) => ({ start: d(a), end: d(b) });
@@ -86,4 +87,29 @@ const c0 = coverageOf([]);
 assert.equal(c0.tasks, 0);
 assert.equal(c0.from, null);
 
-console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓');
+
+/* ══════════ planAt — ХОЁР ЗАХЫГ ОРУУЛСАН муж (2026-09-30) ══════════
+   ⚠️ `spanDays`-ийн конвенцтой нэг: ажил [эхлэх 00:00, дуусах+1 хоног 00:00)
+   хооронд шугаман; `asOf` нь ТЭР ӨДРИЙН төгсгөлөөр үнэлэгдэнэ. Урьд нь
+   эхлэх өдөр бүхэлдээ 0%, 1 хоногийн ажил тэр өдөртөө 0% байв. */
+{
+  /* 1 хоногийн ажил — тэр өдрийн тайланд 100%, өмнөх өдөр 0% */
+  assert.equal(planAt(d('2026-10-01'), d('2026-10-01'), d('2026-10-01')), 1, '1 хоногийн ажил тэр өдөртөө 100%');
+  assert.equal(planAt(d('2026-09-30'), d('2026-10-01'), d('2026-10-01')), 0, 'эхлэхээс өмнө 0%');
+  /* 10 хоног: эхлэх өдөр 1/10, 5 дахь өдөр 5/10, дуусах өдөр 100% */
+  const s = d('2026-10-01'); const e = d('2026-10-10');
+  assert.equal(spanDays({ start: s, end: e }), 10);
+  assert.equal(planAt(s, s, e), 0.1, 'эхлэх өдөр 1/10 (0 биш)');
+  assert.equal(planAt(d('2026-10-05'), s, e), 0.5, '5 дахь өдөр 50%');
+  assert.equal(planAt(e, s, e), 1, 'дуусах өдөр 100%');
+  assert.equal(planAt(d('2026-10-09'), s, e), 0.9, 'дуусахын өмнөх өдөр 90% (100 биш)');
+  /* Өдрийн дундах агшин — тэр өдрийн төгсгөлөөр (өдөр дотор үсрэхгүй) */
+  assert.equal(planAt(d('2026-10-05') + 13 * 3_600_000, s, e), 0.5);
+  /* null ≠ 0 — огноогүй бол null */
+  assert.equal(planAt(null, s, e), null);
+  assert.equal(planAt(s, null, e), null);
+  /* Урвуу муж — унахгүй, 0/1 */
+  assert.doesNotThrow(() => planAt(s, e + 5 * DAY, s));
+}
+
+console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓ planAt ✓');

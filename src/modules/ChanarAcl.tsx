@@ -33,6 +33,7 @@ import {
   CHANAR_ROLES, chanarAclReady, chanarFailedUsers, listChanarAssigns, subscribeChanarAcl, type ChanarRole,
 } from '@/lib/chanarAcl';
 import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { reviewerClashes } from '@/lib/chanarMs';
 import { useAclRunner } from './useAclRunner';
 import s from './guitsetgel.module.css';
 
@@ -120,6 +121,10 @@ export function ChanarAcl() {
              чадах атал «дутуу» гэж худал анхааруулдаг байв. */
           const missing = (['tuh', 'chanar', 'habea', 'tug', 'cheng'] as const)
             .filter((r) => authors.length > 0 && authors.some((a) => !by[r].some((u) => u !== a)));
+          /* ⚠️ 2026-09-30: НЭГ ХҮН ХОЁР ҮҮРЭГТ — «нэг хүн зөвхөн НЭГ үүргээр» (`chanarMs.review`)
+             тул тухайн төрлийн хоёр үүргийн ЦОРЫН ГАНЦ эзэн нэг хүн бол баримт гацна
+             (`erhOverview`-ийн `chanarOneManRoles`-той НЭГ шалгуур — `reviewerClashes`). */
+          const clashes = reviewerClashes(by, authors);
 
           return (
             <div key={group} className={s.aclCol}>
@@ -151,6 +156,12 @@ export function ChanarAcl() {
                   {tr('⚠️ {0} — зохиогчоос өөр хянагч томилоогүй. Тухайн төрлийн хянагч бүгд зөвшөөрөх ёстой тул энэ багцын баримт батлагдахгүй.', missing.map(chanarRoleLabel).join(' · '))}
                 </div>
               )}
+              {clashes.map((c) => (
+                <div key={`${c.roles.join('+')}|${c.users.join(',')}`} className={s.aclErr} role="alert">
+                  {tr('⚠️ Нэг хүн хоёр үүрэгт — баримт гацна ({0}): {1} нь {2} үүргийн цорын ганц хянагч. Нэг хүн зөвхөн нэг үүргээр хянадаг тул үүрэг тус бүрд өөр хүн томилно уу.',
+                    c.kinds.join(', '), c.users.join(', '), c.roles.map(chanarRoleLabel).join(' · '))}
+                </div>
+              ))}
             </div>
           );
         })}

@@ -262,6 +262,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     void initRemote(false, true).then((ok) => { setRemoteOk(ok); setUsers(listUsers()); });
   }, [open]);
 
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
   useEffect(() => {
     if (!open) return;
@@ -274,8 +276,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   }, [open]);
 
   /** Хадгалаагүй ноорогтой үед санамсаргүй хаагдахаас хамгаална */
-  const draftsRef = useRef(drafts);
-  draftsRef.current = drafts;
   const requestClose = () => {
     if (saving) return; // хадгалалт дуустал хүлээнэ — дундуур гарвал төлөв төөрнө
     if (draftsRef.current.size > 0
@@ -343,7 +343,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose]);
 
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
@@ -373,6 +372,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => { setTypeDraftUsers(drafts.keys()); }, [drafts]);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
+  /* ⚠️ `users` санаатай — `listRemoved()` гадаад төлөвөөс уншдаг тул жагсаалт
+     шинэчлэгдэх бүрд дахин уншина */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const removed = useMemo(() => (open ? listRemoved() : []), [open, users]);
 
   /**

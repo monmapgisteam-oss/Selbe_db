@@ -1,0 +1,133 @@
+/* ПОРТАЛЫН ТУСЛАМЖ — `HelpPanel.tsx` (2026-09-30) */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, #000 42%, transparent);
+}
+
+.panel {
+  width: min(720px, 100%);
+  max-height: min(86dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 12px);
+  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.3));
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.head > div { flex: 1; min-width: 0; }
+.title { margin: 0; font-size: 17px; font-weight: 700; }
+.lede { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-3); }
+.close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+}
+.close:hover { background: var(--surface-2); color: var(--ink); }
+
+.body { overflow-y: auto; padding: 8px 18px 16px; }
+
+.group + .group { margin-top: 10px; }
+.groupTitle {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  color: inherit;
+}
+.row:hover { background: var(--surface-2); border-color: var(--line); }
+.rowOn { border-color: color-mix(in oklab, var(--hue) 45%, transparent); background: color-mix(in oklab, var(--hue) 8%, transparent); }
+
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--hue);
+  background: color-mix(in oklab, var(--hue) 12%, transparent);
+}
+.icon svg { width: 15px; height: 15px; }
+
+.text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.here {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--hue);
+  background: color-mix(in oklab, var(--hue) 14%, transparent);
+}
+.desc { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.who { font-size: 12px; color: var(--ink-3); }
+
+.foot { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+
+/* ── Анхны оролтын зөвлөмж — толгойн «?» товчны доор ── */
+.tip {
+  position: fixed;
+  top: calc(var(--head, 56px) + 8px);
+  right: 16px;
+  z-index: 2400;
+  width: min(300px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.3));
+}
+.tipArrow {
+  position: absolute;
+  top: -6px;
+  right: 13px;
+  width: 12px;
+  height: 12px;
+  background: var(--ink);
+  transform: rotate(45deg);
+}
+.tipText { margin: 0; font-size: 13px; line-height: 1.5; }
+.tipActions { display: flex; gap: 8px; margin-top: 10px; }
+.tipPrimary, .tipGhost {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+}
+.tipPrimary { background: var(--surface); color: var(--ink); }
+.tipGhost { color: var(--surface); border: 1px solid color-mix(in srgb, var(--surface) 40%, transparent); }

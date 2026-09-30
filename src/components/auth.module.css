@@ -9,6 +9,15 @@
   background: var(--bg);
 }
 
+/* ⚠️ 2026-09-30: ажиллаж байхад эрх хасагдсан — Portal ДООР нь амьд үлдэнэ.
+ *    Бүх модал (DocViewer, UserAdmin, тусламж…)-аас ДЭЭР, хагас тунгалаг
+ *    бүрхүүл: ард нь ажил хэвээр байгаа нь харагдана, гэхдээ дарагдахгүй. */
+.screenOver {
+  z-index: 6000;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(3px);
+}
+
 .card {
   width: 100%;
   max-width: 380px;

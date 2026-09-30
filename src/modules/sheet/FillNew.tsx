@@ -836,6 +836,25 @@ function changedKeys(base: SheetRow[], ov: Overlay, bld: string[]): Set<string> 
   return out;
 }
 
+/**
+ * «ЗАСААД ДАХИН ИЛГЭЭХ»-ИЙН НЭЭХ ХҮСЭЛТ (`Guitsetgel.goFix`).
+ *
+ * ⚠️ 2026-09-30: урьд нь «Гүйцэтгэлийн хяналт»-аас зөвхөн таб солигддог тул
+ *    хуудас анхдагч багц (`PKGS[0]`) дээр нээгдэж, гүйцэтгэгч буцаагдсан
+ *    багцаа гараар хайдаг байв. `Sheet.tsx` пропс дамжуулдаггүй тул МОДУЛИЙН
+ *    нэг удаагийн хүсэлт: FillNew mount болохдоо уншиж (`fixReq`), mount-ийн
+ *    эффектэд цэвэрлэнэ (StrictMode-ийн давхар initializer-т алдагдахгүй).
+ * ⚠️ Хяналтын харагдацад (`view`) ҮЛ ТООНО.
+ */
+export type FillOpenRequest = { bagts: string; ajil: string; sheetOid: number | null };
+let openReq: FillOpenRequest | null = null;
+export function requestFillOpen(r: FillOpenRequest): void { openReq = r; }
+/** Хүсэлтийн хуудас — `flow`-ийн тулгалттай ИЖИЛ дүрэм (`pkg.name` нь `Ажлын_нэр`-д) */
+function pkgOfReq(r: FillOpenRequest): Pkg | null {
+  const cand = PKGS.filter((p) => p.group === r.bagts);
+  return cand.find((p) => r.ajil.includes(p.name)) ?? cand[0] ?? null;
+}
+
 export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Засагдахгүй (хяналтын) горим уу — бүх бичих зам үүгээр хаагдана. */
   const locked = !!view;
@@ -916,8 +935,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }, [wide]);
   /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
   const hiddenNow = () => !wrapRef.current?.offsetParent;
+  /** «Засаад дахин илгээх»-ийн хүсэлт (`requestFillOpen`-ийн ⚠️, 2026-09-30) */
+  const [fixReq, setFixReq] = useState<{ pkgKey: string; soid: number | null } | null>(() => {
+    if (view || !openReq) return null;
+    const p = pkgOfReq(openReq);
+    return p ? { pkgKey: p.key, soid: openReq.sheetOid } : null;
+  });
+  useEffect(() => { openReq = null; }, []);
   const [pkg, setPkg] = useState<Pkg>(
-    () => (view && PKGS.find((p) => p.key === view.pkgKey)) || PKGS[0],
+    () => (view && PKGS.find((p) => p.key === view.pkgKey))
+      || (fixReq && PKGS.find((p) => p.key === fixReq.pkgKey))
+      || PKGS[0],
   ); // Багц 1 · 9F — жагсаалтын эхнийх
   const [sc, setSc] = useState<Schema | null>(null);
   /** Тайлангийн огноонууд — «Гүйцэтгэл бөглөх» табтай НЭГ эх сурвалжаас. */
@@ -1571,17 +1599,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ `ro` (засагдахгүй нүд) ба `warn` нь ХЭВЭЭР 4 секунд: тэдгээр нь дараагийн
    * товшилтоор дахин гарах тул удаан үлдвэл ажилд саад болно.
    */
-  const show = (kind: 'ro' | 'ok' | 'warn', msg: string) => {
+  const show = useCallback((kind: 'ro' | 'ok' | 'warn', msg: string) => {
     if (noticeT.current) clearTimeout(noticeT.current);
     setNotice({ kind, msg });
     noticeT.current = setTimeout(() => setNotice(null), kind === 'ok' ? 15_000 : 4000);
-  };
+  }, []);
   /** Засагдахгүй нүдний тайлбар — «Энэ нүд засагдахгүй.» гарчигтай */
-  const say = (msg: string) => show('ro', msg);
+  const say = useCallback((msg: string) => show('ro', msg), [show]);
   /** Үр дүнгийн мэдээ (нийтлэл, буулгалт, мөр нэмэх) — амжилтын гарчигтай */
-  const done = (msg: string) => show('ok', msg);
+  const done = useCallback((msg: string) => show('ok', msg), [show]);
   /** Үйлдэл БҮТСЭНГҮЙ ч алдаа биш (буулгах нүд таарсангүй г.м.) */
-  const warn = (msg: string) => show('warn', msg);
+  const warn = useCallback((msg: string) => show('warn', msg), [show]);
   useEffect(
     () => () => {
       if (noticeT.current) clearTimeout(noticeT.current);
@@ -2085,6 +2113,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return () => {
       alive = false;
     };
+    /* ⚠️ `view` бүхлээр биш — зөвхөн `day`/`subOid` солигдоход дахин ачаална
+       (объект шинэчлэгдэх бүрд бөглөж буй хуудас тэглэгдэхгүйн тулд). */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg, view?.day, view?.subOid, todayFillMs]);
 
   /**
@@ -2274,6 +2305,101 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
 
   const nBld = sc?.bld.length ?? 0;
+
+  /*
+   * ⚠️ 2026-09-30: ӨӨР ӨДРИЙН ХЯНАЛТАД БАЙГАА НЭМЭЛТ — ЗӨВХӨН ХАРАГДАЦ.
+   *    «өмнөх: X» (`prevHint`) ба «мөрийн Обьёмоос хэтэрлээ» асуулт (`commit`)
+   *    урьд нь зөвхөн АРХИВЫН утгаар бодогддог тул өчигдрийн +30 хяналтад
+   *    байхад өнөөдөр дахин +30 бичсэн хүн давхардлаа мэдэхгүй, Обьёмоос
+   *    хэтэрсэн ч асуулт гардаггүй байв.
+   * ⚠️ Импортын дэргэдэх `listActiveSubmissions`-ийн ⚠️-тэй НИЙЦНЭ: «аль өдөр
+   *    хянагдаж байна» гэдгийг ХЯНАЛТЫН МӨРӨӨС (`hyRows`, `otherDaysInReview`-тэй
+   *    ижил шүүлт) авч, зөвхөн тэдгээрийн АГУУЛГЫГ OBJECTID-оор (`readSubmissionByOid`)
+   *    уншина — `sub|` жагсаалтыг давхар уншихгүй.
+   * ⚠️ БИЧИЛТЭД ОГТ ОРОХГҮЙ: `pending`, илгээлт, архив хөндөгдөхгүй — батлахад
+   *    нэмэлт бүр СҮҮЛИЙН архив дээр нэмэгддэг (`overlaySubmission`-ийн ⚠️).
+   * ⚠️ Зөвхөн `mode: 'inc'` илгээлт: хуучин (НИЙТ орлуулах) илгээлтийг нэмэлт
+   *    гэж нэмбэл худал тоо гарна. Нэмсэн (oid < 0) мөрийг алгасна.
+   * ⚠️ `null ≠ 0`: утгагүй бол түлхүүр ОГТ байхгүй (0 гэж харуулахгүй).
+   */
+  const reviewSoids = useMemo(() => {
+    if (view) return [] as number[];
+    const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
+    const lastRound = new Map<number, (typeof hyRows)[number]>();
+    for (const r of hyRows) {
+      if (r[HF.bagts] !== pkg.group) continue;
+      const ajil = String(r[HF.ajil] ?? '');
+      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
+      const so = Number(r[HF.sheetOid]);
+      if (!Number.isInteger(so) || so <= 0) continue;
+      const prev = lastRound.get(so);
+      if (!prev || r.__oid > prev.__oid) lastRound.set(so, r);
+    }
+    const out: number[] = [];
+    for (const [so, r] of lastRound) {
+      if (String(r[HF.ajil] ?? '').startsWith(todayAjilTag)) continue;
+      if (r[HF.status] === STATUS.transferred || OWNER[r[HF.status]] === 'company') continue;
+      out.push(so);
+    }
+    return out.sort((a, b) => a - b);
+  }, [view, hyRows, pkg.group, pkg.key, pkg.name, todayAjilTag]);
+  const reviewSoidsKey = reviewSoids.join(',');
+  /** `${oid}:${b}` → хяналтад байгаа нэмэлт: `n` обьём, `a` хувь (0–1) */
+  const [reviewInc, setReviewInc] = useState<Map<string, { n: number | null; a: number | null }>>(new Map());
+  const reviewIncKeyRef = useRef('');
+  useEffect(() => {
+    if (view || !sc || loadedPkgRef.current !== pkg.key) return undefined;
+    const k = `${pkg.key}|${reviewSoidsKey}`;
+    if (reviewIncKeyRef.current === k) return undefined;
+    reviewIncKeyRef.current = k;
+    setReviewInc(new Map());
+    if (!reviewSoidsKey) return undefined;
+    let alive = true;
+    let finished = false;
+    const soids = reviewSoidsKey.split(',').map(Number);
+    const add = (x: number | null | undefined, y: number | null) =>
+      (y == null ? (x ?? null) : (x ?? 0) + y);
+    void (async () => {
+      try {
+        const base = await loadRows(pkg, sc);
+        const baseBy = new Map(base.rows.map((x) => [x.oid, x] as const));
+        const acc = new Map<string, { n: number | null; a: number | null }>();
+        for (const so of soids) {
+          const rr = await readSubmissionByOid(so);
+          if (!alive) return;
+          const sub = rr.ok ? rr.sub : null;
+          if (!sub || sub.done || sub.payload.pkgKey !== pkg.key || sub.payload.mode !== 'inc') continue;
+          const ov = overlaySubmission(base.rows, sub.payload, sc, sc.bld.length);
+          const ovBy = new Map(ov.rows.map((x) => [x.oid, x] as const));
+          for (const ck of ov.cellKeys) {
+            const cut = ck.indexOf(':');
+            if (cut <= 0) continue;
+            const oid = Number(ck.slice(0, cut));
+            const b = Number(ck.slice(cut + 1));
+            const o = ovBy.get(oid);
+            const bs = baseBy.get(oid);
+            if (!o || !bs || oid < 0) continue;
+            const dn = o.obyem[b] != null ? o.obyem[b]! - (bs.obyem[b] ?? 0) : null;
+            const da = o.act[b] != null ? o.act[b]! - (bs.act[b] ?? 0) : null;
+            if (!dn && !da) continue;
+            const prev = acc.get(ck);
+            acc.set(ck, { n: add(prev?.n, dn || null), a: add(prev?.a, da || null) });
+          }
+        }
+        finished = true;
+        if (alive) setReviewInc(acc);
+      } catch {
+        /* Зөвхөн харагдац — уншилт унавал сануулгагүй үлдэнэ, дараагийн ачаалалтаар дахин */
+        finished = true;
+        reviewIncKeyRef.current = '';
+      }
+    })();
+    return () => {
+      alive = false;
+      if (!finished) reviewIncKeyRef.current = '';
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, sc, pkg, reviewSoidsKey, rows]);
 
   /* ── ВИРТУАЛЬ ГҮЙЛГЭЭ ──────────────────────────────────────────────────
    * 1,400 мөр × 60–100 багана = 137 мянган нүд. Бүгдийг DOM-д барьвал төлөв
@@ -3029,7 +3155,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const prevHint = (r: SheetRow, b: number): string => {
     const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null ? r.obyem[b]! / r.vol : r.act[b];
     const v = fillMode === "pct" ? (storedPct == null ? "" : pc(storedPct, 1)) : qty(r.obyem[b]);
-    return tr('өмнөх: {0}', v || '—');
+    /* ⚠️ 2026-09-30: өөр өдрийн хяналтад байгаа нэмэлтийг ТУСАД НЬ (`reviewInc`-ийн ⚠️) */
+    const ri = reviewInc.get(cellKey(r.oid, b));
+    const rv = ri ? (fillMode === "pct" ? (ri.a == null ? "" : pc(ri.a, 1)) : (ri.n == null ? "" : qty(ri.n))) : "";
+    return rv
+      ? tr('өмнөх: {0} · + хяналтад: {1}', v || '—', rv)
+      : tr('өмнөх: {0}', v || '—');
   };
 
 
@@ -3161,22 +3292,37 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       )
     )
       return false;
+    /* ⚠️ 2026-09-30: өөр өдрийн ХЯНАЛТАД байгаа нэмэлтийг ч тооцно (`reviewInc`-ийн ⚠️) —
+       батлагдвал тэр нь мөн архив дээр нэмэгдэнэ. Зөвхөн сануулга, бичилтэд орохгүй. */
+    const revN = reviewInc.get(key)?.n ?? null;
+    const afterAll = after != null && revN != null && revN > 0 ? after + revN : after;
     if (
       !isPct &&
       incN > 0 &&
-      after != null &&
+      afterAll != null &&
       vol != null &&
       vol > 0 &&
-      after > vol &&
+      afterAll > vol &&
       !window.confirm(
-        tr(
-          '{0} · {1}:\n{2} нь мөрийн Обьём {3}-оос ХЭТЭРЧ байна ({4}).\nҮргэлжлүүлэх үү?',
-          sc?.bld[b] ?? "",
-          r.work,
-          qty(after),
-          qty(vol),
-          pc(after / vol, 1),
-        ),
+        revN != null && revN > 0
+          ? tr(
+            '{0} · {1}:\n{2} + хяналтад байгаа {3} = {4} нь мөрийн Обьём {5}-оос ХЭТЭРЧ байна ({6}).\nҮргэлжлүүлэх үү?',
+            sc?.bld[b] ?? "",
+            r.work,
+            qty(after),
+            qty(revN),
+            qty(afterAll),
+            qty(vol),
+            pc(afterAll / vol, 1),
+          )
+          : tr(
+            '{0} · {1}:\n{2} нь мөрийн Обьём {3}-оос ХЭТЭРЧ байна ({4}).\nҮргэлжлүүлэх үү?',
+            sc?.bld[b] ?? "",
+            r.work,
+            qty(afterAll),
+            qty(vol),
+            pc(afterAll / vol, 1),
+          ),
       )
     )
       return false;
@@ -3949,7 +4095,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ `rows` нь хамаарлын жагсаалтад ЗААВАЛ — `rowKeys` түүнээс баригдана.
        Мөр ачаалагдахаас өмнөх (хоосон) төлөвөөр бичвэл танигчгүй ноорог
        үүсэж, зөөх боломж дахин алдагдана. */
-  }, [pending, pendDate, asOf, asOfOrig, pkg.key, rows]);
+  }, [pending, pendDate, asOf, asOfOrig, pkg.key, rows, user?.username]);
 
   /**
    * ── АЛСЫН ХУУЛБАР (ArcGIS) — `REMOTE_DEBOUNCE_MS` (3 сек) завсарлагатай ──
@@ -4629,6 +4775,24 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, sc, view, pending, pendDate, asOf, asOfOrig, pkg, nBld]);
 
+  /*
+   * ⚠️ 2026-09-30: «ЗАСААД ДАХИН ИЛГЭЭХ»-ЭЭР ИРСЭН бол (`fixReq`) хуудас
+   *    ачаалагдсаны дараа тэр илгээлтийг нээнэ. `flow` нь өөрөө тэр буцаалт
+   *    бол ачаалах зам аль хэдийн давхарласан — юу ч хийхгүй; өөр өдрийн
+   *    буцаалт (`otherDaysReturned`) бол `resumeReturned`-ээр ТҮҮНИЙ өдрөөр.
+   *    Багц хүрээнээс гадуур (хуваарилалтын эффект сольсон) эсвэл хэрэглэгч
+   *    өөр багц сонгосон бол хүсэлтийг хаяна. Нэг л удаа оролдоно.
+   */
+  useEffect(() => {
+    if (!fixReq || view) return;
+    if (pkg.key !== fixReq.pkgKey) { setFixReq(null); return; }
+    if (!sc || busy || hyLoading || loadedPkgRef.current !== pkg.key) return;
+    const soid = fixReq.soid;
+    setFixReq(null);
+    if (soid == null || (flow && Number(flow[HF.sheetOid]) === soid)) return;
+    if (resumedOid !== soid && otherDaysReturned.some((x) => x.soid === soid)) void resumeReturned(soid);
+  }, [fixReq, view, pkg.key, sc, busy, hyLoading, flow, otherDaysReturned, resumedOid, resumeReturned]);
+
   /**
    * ӨДӨР СОЛИГДОХЫГ ТАНИХ (2026-09-25-ны аудит, `todayFillMs`-ийн ⚠️).
    * Минут тутам ба таб харагдах болоход шалгаж, өдөр солигдсон бол
@@ -5172,7 +5336,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, inReview, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин

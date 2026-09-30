@@ -36,7 +36,8 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
-import { obyemScope } from './obyemAcl';
+import { obyemAclReady, obyemScope } from './obyemAcl';
+import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
@@ -593,5 +594,31 @@ export async function decideObyem(args: {
       : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ШИЙДВЭРЛЭХ БОЛОМЖТОЙ ОБЬЁМЫН ИЛГЭЭЛТИЙН ТОО — цэсний тэмдэгт (2026-09-30).
+ *
+ * `decideObyem`-ийн дүрэм: `pending` · батлагчийн хүрээнд (`obyemScope(…,
+ * 'approver')`, super/нэвтрэлтгүй бол хязгааргүй) · ӨӨРИЙН илгээлт БИШ.
+ *
+ * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, эрх/хуваарилалт
+ *    уншигдаагүй, хүснэгт алга, сүлжээ унасан). ⚠️ Хүснэгт ҮҮСГЭХГҮЙ.
+ */
+export async function countObyemPending(username: string | null | undefined): Promise<number | null> {
+  try {
+    const me = (username ?? '').trim().toLowerCase();
+    if (AUTH.appId) {
+      if (!me || !capsRemoteReady() || !obyemAclReady()) return null;
+      if (!hasCap(me, 'obyemApprove')) return 0;
+    }
+    if (!(await obyemTableReady(false))) return null;
+    const sc = AUTH.appId ? obyemScope(me, 'approver') : null;
+    if (Array.isArray(sc) && sc.length === 0) return 0;
+    const rows = await loadAllPending();
+    return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author.trim().toLowerCase() !== me).length;
+  } catch {
+    return null;
   }
 }

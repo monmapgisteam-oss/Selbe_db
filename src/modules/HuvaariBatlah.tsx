@@ -179,7 +179,6 @@ export function HuvaariBatlah({
       }
     })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, status, isSuper, user?.username]);
 
   /* ══════════════════════ ХАМРАХ ХҮРЭЭ ══════════════════════ */
@@ -213,7 +212,7 @@ export function HuvaariBatlah({
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
   const noRole = status !== 'off' && !isSuper && !hasPlanRole(user?.username, 'approver');
 
-  const all = st.k === 'ready' ? st.rows : [];
+  const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
     () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
     [all, scope],
@@ -284,6 +283,9 @@ export function HuvaariBatlah({
     /* ⚠️ Шалтгаан ЗААВАЛ — `decidePlan`-ийн домэйн дүрмийн UI тусгал.
        Жинхэнэ гэйт нь тэнд хэвээр; энэ нь зөвхөн урьдчилан хэлэх. */
     if (busy || !why) return;
+    /* ⚠️ 2026-09-30: Буцаалт нэг товшилтоор явдаг байв — «Татах»-тай адил
+       баталгаажуулна; буцаасны дараа гүйцэтгэгч дахин илгээх хэрэгтэй болно. */
+    if (!window.confirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'))) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await decidePlan({
@@ -738,13 +740,22 @@ function Row({
                 type="button"
                 className={`${s.btn} ${s.bad}`}
                 disabled={busy || !reason.trim() || !!holder}
-                title={reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
+                /* ⚠️ 2026-09-30: Шалтгааныг ЖИНХЭНЭ хаалтаар нь — өөр батлагч түгжсэн
+                   үед «шалтгаан бичнэ үү» гэж худал хэлдэг байв. */
+                title={holder
+                  ? tr('{0} энэ илгээлтийг яг одоо батлаж байна.', holder)
+                  : reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
                 onClick={onReject}
               >
                 {tr('Буцаах')}
               </button>
             )}
           </div>
+          {/* ⚠️ 2026-09-30: Хаалтын шалтгаан ИЛ мөрөөр — `title` мэдрэгч дэлгэцэд
+              гарахгүй. `holder`-ийн шалтгаан дээрх `reasonBox`-д аль хэдийн бий. */}
+          {onReject && !holder && !busy && !reason.trim() && (
+            <div className={s.meta} role="status">{tr('Буцаахын тулд дээрх талбарт шалтгаанаа бичнэ үү.')}</div>
+          )}
         </div>
       )}
     </div>

@@ -30,6 +30,7 @@ import { useAuth } from '@/components/AuthGate';
 import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
+import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, retryPendingRegistrations, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
@@ -696,7 +697,9 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
 /* ══════════ Нэг ажил ══════════ */
 
 function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
-  work: Work; stage: Stage; who: string; onFix: () => void;
+  work: Work; stage: Stage; who: string;
+  /** ⚠️ 2026-09-30: буцаагдсан ажлын багц/илгээлтийг дамжуулна (`goFix`-ийн ⚠️) */
+  onFix: (w: Work) => void;
   /**
    * ЭРХИЙН ШАЛГУУРЫН ХЭРЭГЛЭГЧИЙН НЭР (ArcGIS username).
    *
@@ -932,6 +935,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     }));
 
   const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
+  /** ⚠️ 2026-09-30: батлах товч ХААЛТТАЙ байгаа шалтгаан — tooltip ба ил бичвэрт нэг эх */
+  const approveWhy: string | undefined = changes == null
+    ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
+    : changes.length > 0 && !allOk
+      ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+      : undefined;
   const rechecking = recheckSeed;
   const reBy = (stage === 'company' || stage === 'chief' ? 'engineer' : stage) as Exclude<ReviewStage, 'chief'>;
 
@@ -983,22 +992,26 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     <button
                       className={`${s.btn} ${s.ok}`}
                       disabled={busy || lackBlocks || changes == null || (changes.length > 0 && !allOk)}
-                      title={
-                        changes == null
-                          ? tr('Илгээлтийн агуулга татагдаагүй тул батлах боломжгүй')
-                          : changes.length > 0 && !allOk
-                          ? tr('Эхлээд өөрчлөгдсөн нүд бүр дээр дарж зөвшөөрнө үү — үлдсэн {0}', String(bad.length))
+                      title={approveWhy
                           /*
                            * ⚠️ ЕРӨНХИЙ МЕНЕЖЕРИЙН товч нь одоо ЖИНХЭНЭ бичилт
                            *    хийдэг: түүнийг дарж байж л гүйцэтгэл үндсэн
                            *    өгөгдөлд (архив + нэгтгэл) орно. Хэрэглэгч
                            *    үүнийг МЭДЭЖ дарах ёстой.
                            */
-                          : stage === 'chief'
+                          ?? (stage === 'chief'
                             ? tr('Баталсны дараа гүйцэтгэл архивт бичигдэж, нэгтгэлд бүртгэгдэнэ — үүнээс өмнө үндсэн өгөгдөлд ОРООГҮЙ')
-                            : undefined
+                            : undefined)
                       }
-                      onClick={() => review(DECISION.approve)}>
+                      /* ⚠️ 2026-09-30: ЭЦСИЙН (газрын даргын) батлалт архив + нэгтгэлд
+                         ЖИНХЭНЭ бичилт хийдэг тул `Huvaari`-ийн «Хуваарийг батлах»-тай
+                         адил баталгаажуулах асуулт тавина — урьд нь анхааруулга нь
+                         зөвхөн tooltip байсан тул нэг санамсаргүй товшилтоор архивт
+                         орж байв. */
+                      onClick={() => {
+                        if (stage === 'chief' && !window.confirm(tr('Гүйцэтгэлийг баталж архивт бүртгэх үү? Архив болон нэгтгэлд бичигдэж, үндсэн өгөгдөлд орно.'))) return;
+                        review(DECISION.approve);
+                      }}>
                       {APPROVE_LABEL[stage]}
                       {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
@@ -1029,6 +1042,13 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
+                  {/* ⚠️ 2026-09-30: хаалттай товчны ШАЛТГААН ил бичвэрээр — урьд нь зөвхөн
+                      tooltip байсан тул хүрэлцэх дэлгэц дээр огт харагддаггүй, хянагч
+                      «товч яагаад дарагдахгүй байна» гэж гацдаг байв. `lack`-ийн
+                      алдааны мөр дээр аль хэдийн хэлсэн бол давтахгүй. */}
+                  {!busy && !lackBlocks && approveWhy && (
+                    <div className={s.blockedWhy} role="note">{approveWhy}</div>
+                  )}
                 </>
               )}
 
@@ -1090,6 +1110,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>
                   </div>
+                  {/* ⚠️ 2026-09-30: хаалттай «дээш илгээх»-ийн шалтгаан ил (батлах товчтой ижил) */}
+                  {!busy && !lackBlocks && changes == null && (
+                    <div className={s.blockedWhy} role="note">
+                      {tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй')}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1108,7 +1134,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       * хийвэл нэг засварт ХОЁР бүртгэл орж, хянуулалтын тоо
                       * хоёр дахин их харагдана.
                       */}
-                    <button className={`${s.btn} ${s.ok}`} onClick={onFix}>
+                    <button className={`${s.btn} ${s.ok}`} onClick={() => onFix(work)}>
                       {tr('Засаад дахин илгээх')}
                     </button>
                   </div>
@@ -1376,7 +1402,25 @@ export function Guitsetgel() {
    * хоёр хаалга, хоёр эрх шаарддаг байсан бөгөөд буцаж ирэх зам нь ойлгомжгүй
    * байлаа. Одоо бөглөх нь энэ хуудасны нэг таб тул шилжилт нь газар дээрээ.
    */
-  const goFix = () => setTab('fill');
+  /*
+   * ⚠️ 2026-09-30: БУЦААГДСАН ИЛГЭЭЛТИЙН БАГЦЫГ НЭЭНЭ. Урьд нь зөвхөн таб
+   *    солигддог тул бөглөх хуудас анхдагч багц (`PKGS[0]`) дээр нээгдэж,
+   *    гүйцэтгэгч буцаагдсан багцаа гараар хайдаг байв. Одоо багц + хуудас +
+   *    илгээлтийн OBJECTID-г `requestFillOpen`-оор дамжуулна — FillNew тэр
+   *    хуудсыг сонгож, өөр өдрийн буцаалт бол `resumeReturned`-ээр ТҮҮНИЙ
+   *    өдрөөр давхарлана. `Sheet.tsx`-ийг хөндөхгүйн тулд пропс биш модулийн
+   *    нэг удаагийн хүсэлт (FillNew зөвхөн `fill` табд mount болдог).
+   */
+  const goFix = (w: Work) => {
+    const r = w.current;
+    const so = Number(r?.[F.sheetOid]);
+    requestFillOpen({
+      bagts: w.bagts,
+      ajil: String(r?.[F.ajil] ?? w.ajil ?? ''),
+      sheetOid: Number.isInteger(so) && so > 0 ? so : null,
+    });
+    setTab('fill');
+  };
 
   return (
     <div className={s.wrap}>

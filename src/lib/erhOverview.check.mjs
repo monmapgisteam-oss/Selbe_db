@@ -237,6 +237,17 @@ console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
   assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
   const u = userErh(full, 't');
   assert.equal(u.chanar.length, 2); assert.equal(u.chanar[0].bagts, null, '* → null'); assert.equal(u.any, true);
+  /* ⚠️ 2026-09-30: нэг хүн хоёр үүргийн ЦОРЫН ГАНЦ эзэн — «нэг хүн нэг үүргээр» тул гацна */
+  const clash = pkgErh(full, G0).issues.filter((i) => i.key === 'chanarOneManRoles');
+  assert.ok(clash.some((i) => i.args[1] === 'MS, QMP, PRC' && i.args[2] === 'tuh, habea' && i.args[3] === 't'),
+    't = ТУХ+ХАБЭА ганцаараа → MS-төрөл гацна');
+  assert.ok(clash.some((i) => i.args[1] === 'MA' && i.args[3] === 'q'), 'q = ЧХ инженер+Чанар+ТУГ → MA гацна');
+  assert.ok(clash.every((i) => i.tone === 'warn' && i.cols.every((c) => c.startsWith('chanar:'))));
+  const indep = { ...empty(), chanar: [
+    { user: 'g', grants: [{ role: 'author', bagts: [G0] }] },
+    ...['tuh', 'chanar', 'habea', 'tug', 'cheng'].map((r) => ({ user: `u_${r}`, grants: [{ role: r, bagts: [G0] }] })),
+  ] };
+  assert.equal(pkgErh(indep, G0).issues.some((i) => i.key.startsWith('chanar')), false, 'үүрэг бүр өөр хүн → анхааруулгагүй');
 }
 console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar · habea · tug · cheng), зохиогч≠хянагч');
 

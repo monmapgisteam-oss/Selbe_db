@@ -48,7 +48,7 @@ import { AUTH } from './services';
 import { ajilScope } from './ajilAcl';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser, requireCap } from './who';
-import { AJIL_STATUS, loadHead, loadPayload, markApplied } from './ajilBatlah';
+import { AJIL_STATUS, loadHead, loadPayloadStamped, markApplied } from './ajilBatlah';
 import type { NewRow } from './submission';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
@@ -195,8 +195,10 @@ export type ApplyResult =
  *
  * @param pkgKey дуудагчийн мэдэж буй багц — СЕРВЕРИЙН `pkgKey`-тэй тулгана
  *               (зөрвөл татгалзана); жинхэнэ эх нь сервер.
+ * @param stamp  батлагчийн ХАРСАН агуулгын тэмдэг (`ajilBatlah.payloadStamp`) — өгсөн
+ *               бол серверийн одоогийн агуулгатай тулгана (2026-09-30).
  */
-export async function materializeAdds(args: { pkgKey?: string; ajilOid: number }): Promise<ApplyResult> {
+export async function materializeAdds(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
   /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-ийн ижил шалтгаан. Эрхгүй бол
      ШИДНЭ (доорх `try`-ийн гадна) — энэ нь сүлжээний алдаа биш. */
   requireCap('ajilApprove');
@@ -214,7 +216,7 @@ export async function materializeAdds(args: { pkgKey?: string; ajilOid: number }
 }
 
 /** `materializeAdds`-ийн бие — эрхийн шалгалтын ДАРАА л дуудагдана. */
-async function materializeInner(args: { pkgKey?: string; ajilOid: number }): Promise<ApplyResult> {
+async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
   const head = await loadHead(args.ajilOid);
   if (!head) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   if (args.pkgKey && args.pkgKey !== head.pkgKey)
@@ -231,8 +233,15 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number }): Pro
   if (head.status !== AJIL_STATUS.approved)
     return { ok: false, error: tr('Илгээлт батлагдаагүй ({0}) — хуудсанд буулгах боломжгүй.', head.status) };
 
-  const pl = await loadPayload(args.ajilOid);
+  const st = await loadPayloadStamped(args.ajilOid);
+  const pl = st?.p ?? null;
   if (!pl) return { ok: false, error: tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй. Буцаавал нэмэгч дахин илгээнэ.') };
+  /* ⚠️ 2026-09-30: `decideAjil`-ийн тулгалт ба `approved` бичилтийн ЗАВСАРТ
+     зохиогч агуулгыг сольсон бол батлагчийн ХАРААГҮЙ мөрийг бичихгүй — төлөв
+     `approved` хэвээр, «Батлагдсан · буулгаагүй»-д шинэ агуулгыг харж «Дахин
+     буулгах» (тэмдэггүй) дарна. */
+  if (args.stamp && st && st.stamp !== args.stamp)
+    return { ok: false, error: tr('Батлах зуур зохиогч агуулгыг өөрчилсөн — юу ч бичсэнгүй. Шинэ агуулгыг харж «Дахин буулгах» дарна уу.') };
 
   const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === head.pkgKey);

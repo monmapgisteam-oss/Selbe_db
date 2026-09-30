@@ -45,16 +45,16 @@ import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, history, kindLabel, latest, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, statusLabel,
-  verdictCode, verdictLabel,
+  delayDays, emptyBodyOf, history, kindLabel, latest, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
+  statusLabel, verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
-  type MsStatus, type NcrBody, type NcrCorrection, type Reviewer, type VerdictCode,
+  type MsStatus, type NcrBody, type NcrCorrection, type Review, type Reviewer, type VerdictCode,
 } from '@/lib/chanarMs';
 import { MA_CATEGORIES, MS_GROUPS, maCategoryLabel, msGroupLabel, msRequiredProgress } from '@/lib/chanarTemplates';
 import {
-  ackRepDoc, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
-  loadAllDocs, loadBodyOf, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
-  submitCorrection, submitDoc, type Attachment, type TableState,
+  ackRepDoc, actionableDocs, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
+  loadAllDocs, loadBodyOf, loadNcrFlags, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
+  submitCorrection, submitDoc, type Attachment, type NcrFlags, type TableState,
 } from '@/lib/chanarStore';
 import { chanarRoleLabel } from './ChanarAcl';
 import {
@@ -100,6 +100,9 @@ export function Chanar() {
   const [search, setSearch] = useState('');
   const [table, setTable] = useState<TableState | null>(null);
   const [docs, setDocs] = useState<MsDoc[]>([]);
+  /* «Миний хийх» (2026-09-30): NCR-ийн биеийн туг (залруулга ирсэн · хаасан) ба шүүлтүүр */
+  const [ncrFlags, setNcrFlags] = useState<NcrFlags | null>(null);
+  const [mineOnly, setMineOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
@@ -169,7 +172,10 @@ export function Chanar() {
       setTable(st);
       if (!st.ok) { setDocs([]); return; }
       /* ⚠️ Долоон төрлийг НЭГ асуулгаар — таб дээрх тоо, MIR→MA, NCR→MIR иш */
-      setDocs(await loadAllDocs());
+      /* ⚠️ 2026-09-30: NCR туг алдвал «Миний хийх» NCR-ийг л алгасна — жагсаалт унахгүй */
+      const [all, nf] = await Promise.all([loadAllDocs(), loadNcrFlags().catch(() => null)]);
+      setDocs(all);
+      setNcrFlags(nf);
       /* ⚠️ 2026-09-25: хураангуйн биеийн кэш хүчингүй — «Шинэчлэх» бодит утга үзүүлнэ */
       bodiesGen.current += 1;
       bodiesRef.current = new Map();
@@ -188,10 +194,28 @@ export function Chanar() {
   const inPkg = useMemo(() => visibleInPkg(docs, pkg, me, isSuper), [docs, pkg, me, isSuper]);
   const counts = useMemo(() => kindCounts(inPkg), [inPkg]);
   const kindDocs = useMemo(() => inPkg.filter((d) => d.kind === kind), [inPkg, kind]);
-  const heads = useMemo(() => latest(kindDocs)
-    .filter((d) => filter === 'all' || d.status === filter)
-    .filter((d) => matchesSearch(d, search))
-    .sort((a, b) => b.seq - a.seq), [kindDocs, filter, search]);
+  /* ⚠️ «МИНИЙ ХИЙХ» (2026-09-30): БҮХ багц, бүх төрлөөс энэ хэрэглэгчийн ОДОО хийх ёстой
+     баримт (`chanarStore.actionableDocs` — товчны `canAct` дүрэмтэй ижил). `tickN` — ACL
+     remote-оос ирэхэд үүрэг шинэчлэгдэнэ (`myRoles`-ийн ижил шалтгаан). */
+  const actionable = useMemo(
+    () => actionableDocs(docs, ncrFlags, me),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `tickN`: ACL шинэчлэгдэхэд дахин
+    [docs, ncrFlags, me, tickN],
+  );
+  const actionSet = useMemo(() => new Set(actionable.map((d) => d.oid)), [actionable]);
+  /* Таб дээрх тэмдэг — СОНГОСОН багц дахь төрөл бүрийн «миний хийх» тоо */
+  const mineByKind = useMemo(() => {
+    const out = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<DocKind, number>;
+    for (const d of actionable) if (d.bagts === pkg) out[d.kind] += 1;
+    return out;
+  }, [actionable, pkg]);
+  const heads = useMemo(() => (mineOnly
+    ? actionable.filter((d) => matchesSearch(d, search))
+      .sort((a, b) => a.bagts.localeCompare(b.bagts) || KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind) || b.seq - a.seq)
+    : latest(kindDocs)
+      .filter((d) => filter === 'all' || d.status === filter)
+      .filter((d) => matchesSearch(d, search))
+      .sort((a, b) => b.seq - a.seq)), [mineOnly, actionable, kindDocs, filter, search]);
   const allHeads = useMemo(() => latest(kindDocs), [kindDocs]);
   /* Иш татах баримтууд — батлагдсан MA (MIR-д), батлагдсан MIR/FIC (NCR-д), батлагдсан MA/MS/QMP/PRC (MA-ийн refs) */
   const approvedMa = useMemo(() => latest(inPkg.filter((d) => d.kind === 'MA')).filter((d) => d.status === MS_STATUS.approved), [inPkg]);
@@ -348,6 +372,15 @@ export function Chanar() {
   };
   const cancelEdit = () => { if (discardOk()) { setEdit(false); setDirty(false); } };
   const select = (oid: number | null) => { if (oid === sel && !edit) return; if (!discardOk()) return; setSel(oid); setEdit(false); setDirty(false); };
+  /* «Миний хийх» жагсаалтаас — өөр багц/төрлийн баримт бол тэр багц, таб руу шилжинэ
+     (`doc` нь `kindDocs`-оос олддог тул) */
+  const pick = (d: MsDoc) => {
+    if (d.oid === sel && !edit) return;
+    if (!discardOk()) return;
+    if (d.bagts !== pkg) setPkg(d.bagts);
+    if (d.kind !== kind) { setKind(d.kind); setFilter('all'); }
+    setSel(d.oid); setEdit(false); setDirty(false);
+  };
   /* ── 1-р алхам: шинэ ноорог ── */
   const startNew = () => {
     if (!discardOk()) return;
@@ -439,6 +472,22 @@ export function Chanar() {
     const pm = doc.kind === 'MA' && Object.keys(perMat).length ? perMat : undefined;
     if (code === 'A' && pmBlocksA) { setErr(tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.')); return; }
     const dl = code === 'AN' ? fromDateInput(anDeadline) : null;
+    /* ⚠️ 2026-09-30: БАТАЛГААЖУУЛАЛТ — шийдвэр БУЦААГДАХГҮЙ (`review` дүрэм 3), сүүлийн
+       зөвшөөрөл эсвэл R нь REP дугаар олгоно. Урьд нь нэг товшилтоор явдаг байв.
+       MA-д материалын R нь нийт шийдвэрийг R болгодог (`review` дүрэм 8) — мессеж үүгээр. */
+    const eff: VerdictCode = pm && Object.values(pm).includes('R') ? 'R' : code;
+    const lastOne = requiredReviewers(doc.reviews, doc.kind).filter((x) => x !== as)
+      .every((x) => { const v = doc.reviews[x]; return v != null && v.verdict !== VERDICT.return; });
+    const ncr = doc.kind === 'NCR';
+    const tail = eff === 'R'
+      ? (ncr ? tr('Үл тохирол «Нэмэлт арга хэмжээ шаардлагатай» болж, гүйцэтгэгч залруулгаа дахин илгээнэ.')
+        : tr('Баримт гүйцэтгэгч рүү буцаагдаж, захиалагчийн хариу (REP) дугаар олгогдоно — гүйцэтгэгч засаад шинэ хувилбар илгээнэ.'))
+      : lastOne
+        ? (ncr ? tr('Та сүүлийн дүгнэгч — үл тохирол хаагдаж, захиалагчийн хариу (REP) дугаар олгогдоно.')
+          : tr('Та сүүлийн хянагч — баримт батлагдаж, захиалагчийн хариу (REP) дугаар олгогдоно.'))
+        : '';
+    const q = tr('«{0}» — «{1}» үүргээр «{2}» шийдвэр өгөх үү? Өгсөн шийдвэрийг буцааж өөрчлөх боломжгүй.', doc.docNo, chanarRoleLabel(as), verdictLabel(eff, doc.kind));
+    if (!window.confirm(tail ? `${q}\n\n${tail}` : q)) return;
     /* ⚠️ 2026-09-25: MIR/FIC — захиалагчийн баганын хадгалаагүй өөрчлөлтийг ЭХЛЭЭД
        хадгална (`saveClientChecks`), унавал шийдвэр өгөхгүй; өмнө нь алдагддаг байв. */
     const cd = clientDirty && act.clientChecks && clientDraft ? clientDraft : null;
@@ -495,9 +544,13 @@ export function Chanar() {
     if (!window.confirm(tr('Залруулгын тайланг захиалагчид илгээх үү?'))) return;
     await run(() => submitCorrection({ oid: doc.oid, who: me, correction: corr }), tr('Залруулгын тайлан илгээгдлээ — захиалагч дүгнэнэ.'));
   };
+  /* ⚠️ 2026-09-30: шалтгаан ЗААВАЛ (`chanarMs.reopen`) — хаалтын бүртгэл `rounds`-д үлдэнэ */
   const reopen = async () => {
-    if (!doc || !window.confirm(tr('«{0}» үл тохирлыг дахин нээх үү? Гүйцэтгэгч дахин залруулна.', doc.docNo))) return;
-    await run(() => reopenDoc({ oid: doc.oid, who: me }), tr('Дахин нээгдлээ.'));
+    if (!doc) return;
+    const reason = window.prompt(tr('«{0}» үл тохирлыг дахин нээх шалтгаан (заавал) — гүйцэтгэгч дахин залруулна:', doc.docNo), '');
+    if (reason == null) return;
+    if (!reason.trim()) { setErr(tr('Дахин нээх шалтгаанаа бичнэ үү.')); return; }
+    await run(() => reopenDoc({ oid: doc.oid, who: me, reason }), tr('Дахин нээгдлээ.'));
   };
   const closeNcr = async () => {
     if (!doc) return;
@@ -658,6 +711,18 @@ export function Chanar() {
   const sequential = !!doc && SEQUENTIAL_KINDS.includes(doc.kind);
   const order = doc ? requiredReviewers(doc.reviews, doc.kind) : reviewers;
   const dv = doc ? docVerdict(doc) : null;
+  /* ⚠️ 2026-09-30: «хүлээгдэж байна»-ын ОРОНД ШАЛТГААН — хүлээгдэж буй үүргийн эзэд бүгд
+     өөр үүргээр шийдсэн / зөвхөн зохиогч / томилоогүй бол баримт ГАЦСАН (`roleWaitReason`).
+     Эзэд нь ACL-ээс (тухайн багцад тэр үүрэгтэй аккаунтууд). */
+  const holdersOf = (bagts: string, r: Reviewer): string[] => listChanarAssigns()
+    .filter((a) => a.grants.some((g) => g.role === r && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(bagts))))
+    .map((a) => a.user);
+  const flowDoc = doc ? { ...doc, correctionAt: body && 'correctionAt' in body ? (body as NcrBody).correctionAt : null } : null;
+  const meLc = me.trim().toLowerCase();
+  const mySlot = doc ? ((Object.entries(doc.reviews) as [Reviewer, Review | null | undefined][])
+    .find(([, x]) => x != null && x.who === meLc)?.[0] ?? null) : null;
+  /* NCR-ийн өмнөх тойргууд (2026-09-30) */
+  const ncrRounds = body && 'rounds' in body ? (body as NcrBody).rounds : [];
   const common = commonOf(body);
   const maBody = body && 'materials' in body ? (body as MaBody) : null;
 
@@ -672,6 +737,7 @@ export function Chanar() {
             onClick={() => switchKind(k)}
           >
             {kindLabel(k)} <span className={s.tabK}>{k}</span> <span className={s.tabN}>{counts[k]}</span>
+            {mineByKind[k] > 0 && <> <span className={s.tabMine} title={tr('Таны хийх баримт')}>● {mineByKind[k]}</span></>}
           </button>
         ))}
       </div>
@@ -686,7 +752,7 @@ export function Chanar() {
         </label>
         <label className={s.field}>
           {tr('Төлөв')}
-          <select className={s.select} value={filter} onChange={(e) => setFilter(e.target.value as 'all' | MsStatus)}>
+          <select className={s.select} value={filter} disabled={mineOnly} onChange={(e) => setFilter(e.target.value as 'all' | MsStatus)}>
             <option value="all">{tr('Бүгд')}</option>
             {Object.values(MS_STATUS).map((v) => <option key={v} value={v}>{statusLabel(kind, v)}</option>)}
           </select>
@@ -696,6 +762,11 @@ export function Chanar() {
           <input className={`${s.input} ${s.inpSearch}`} type="search" value={search} placeholder={tr('дугаар · нэр')}
             aria-label={tr('Хайх')} onChange={(e) => setSearch(e.target.value)} />
         </label>
+        <button type="button" className={`${s.btn} ${mineOnly ? s.btnOn : ''}`} aria-pressed={mineOnly}
+          title={tr('Бүх багц, бүх төрлөөс таны одоо хийх ёстой баримт (хянах · илгээх · залруулах · хүлээн авах)')}
+          onClick={() => setMineOnly((v) => !v)}>
+          {tr('Миний хийх')} ({actionable.length})
+        </button>
         <span className={s.grow} />
         {myRoles.length > 0 && (
           <span className={s.field} title={tr('Энэ багцад таны хянагчийн үүрэг')}>
@@ -724,23 +795,26 @@ export function Chanar() {
       <div className={s.split} id="chanar-panel" role="tabpanel" aria-labelledby={`chanar-tab-${kind}`}>
         <div className={s.list}>
           {heads.length === 0 && !loading && (
-            <div className={s.empty}>{emptyLabel(kind)}</div>
+            <div className={s.empty}>{mineOnly ? tr('Таны хийх баримт алга.') : emptyLabel(kind)}</div>
           )}
           {heads.map((d) => {
             const p = progress(d.reviews, d.kind);
             const v = docVerdict(d);
             const dl = delayDays(d);
+            const todo = actionSet.has(d.oid);
             return (
               <button
                 key={d.oid}
                 type="button"
-                className={`${s.card} ${d.oid === sel ? s.cardOn : ''}`}
+                className={`${s.card} ${d.oid === sel ? s.cardOn : ''} ${todo && d.oid !== sel ? s.cardMine : ''}`}
                 disabled={busy}
-                onClick={() => select(d.oid)}
+                onClick={() => (mineOnly ? pick(d) : select(d.oid))}
               >
                 <span className={s.cardNo}>{d.docNo}</span>
                 <span className={s.cardTitle}>{d.title || tr('(нэргүй)')}</span>
                 <span className={s.cardMeta}>
+                  {todo && <span className={`${s.tag} ${s.tagMine}`}>{tr('Таны ээлж')}</span>}
+                  {mineOnly && <span>{kindLabel(d.kind)} · {d.bagts}</span>}
                   <span className={`${s.tag} ${tagCls(d.status)}`}>{statusLabel(d.kind, d.status)}</span>
                   {d.status === MS_STATUS.review && <span>{p.done}/{p.total}</span>}
                   {d.kind !== 'NCR' && <span>{tr('Хувилбар')} {d.rev}</span>}
@@ -942,6 +1016,19 @@ export function Chanar() {
                     const idx = order.indexOf(r);
                     const prev = waiting && sequential ? order.slice(0, idx < 0 ? order.length : idx).find((p) => !doc.reviews[p]) ?? null : null;
                     const skipped = sequential && waiting && idx < 0;
+                    const wait = waiting && !prev && !skipped && !aclLocked && flowDoc
+                      ? roleWaitReason(flowDoc, r, holdersOf(doc.bagts, r)) : null;
+                    const waitMsg = !wait ? null
+                      : wait.why === 'decidedOther'
+                        ? tr('Гацсан: {0} энэ баримтад өөр үүргээр шийдвэр өгсөн — нэг хүн зөвхөн нэг үүргээр хянана. «{1}» үүрэгт өөр хүн томилуулна уу.', wait.users.join(', '), chanarRoleLabel(r))
+                        : wait.why === 'authorOnly'
+                          ? tr('Гацсан: энэ үүрэгт зөвхөн зохиогч ({0}) томилогдсон — зохиогч өөрийгөө хянахгүй. Өөр хүн томилуулна уу.', wait.users.join(', '))
+                          : tr('Энэ багцад «{0}» үүрэгт хянагч томилогдоогүй — эрхийн админд хандана уу.', chanarRoleLabel(r));
+                    /* Энэ үүрэгтэй ч товч гараагүй хэрэглэгчид — яагаад */
+                    const whyMe = !wait && waiting && !mine && !prev && !skipped && !!meLc && myRoles.includes(r)
+                      ? (doc.kind !== 'NCR' && doc.author === meLc ? tr('Та энэ баримтын зохиогч тул хянахгүй.')
+                        : mySlot ? tr('Та энэ баримтад «{0}» үүргээр шийдвэр өгсөн — нэг хүн зөвхөн нэг үүргээр хянана.', chanarRoleLabel(mySlot)) : null)
+                      : null;
                     return (
                       <div key={r} className={s.rev}>
                         <span className={s.revWho}>{chanarRoleLabel(r)}</span>
@@ -958,11 +1045,15 @@ export function Chanar() {
                             )}
                           </>
                         ) : (
-                          <span className={s.secEmpty}>
-                            {prev ? tr('Эхлээд {0} шийдвэр өгнө', reviewerLabel(prev))
-                              : skipped ? tr('алгассан (хуучин мөр)') : waiting ? tr('хүлээгдэж байна') : '—'}
-                          </span>
+                          <>
+                            <span className={s.secEmpty}>
+                              {prev ? tr('Эхлээд {0} шийдвэр өгнө', reviewerLabel(prev))
+                                : skipped ? tr('алгассан (хуучин мөр)') : waiting ? tr('хүлээгдэж байна') : '—'}
+                            </span>
+                            {waitMsg && <span className={s.warnText} role="note">{waitMsg}</span>}
+                          </>
                         )}
+                        {whyMe && <span className={s.hint}>{whyMe}</span>}
                         {mine && (
                           <div className={s.revActs}>
                             <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || pmBlocksA} onClick={() => void decide(r, 'A')}
@@ -1019,6 +1110,11 @@ export function Chanar() {
                     <button type="button" className={`${s.btn} ${s.btnBad}`} disabled={busy} onClick={() => void bounce()}>{tr('Хянахгүй буцаах')}</button>
                   </div>
                 )}
+                {/* ⚠️ 2026-09-30: шийдвэр өгөгдсөн баримтыг хянахгүй буцаахгүй (`chanarMs.bounce`) — яагаад товч алга */}
+                {!act.bounce && bounceAs && doc.kind !== 'NCR' && doc.status === MS_STATUS.review && doc.author !== meLc
+                  && Object.values(doc.reviews).some((x) => x != null) && (
+                  <p className={s.hint}>{tr('Хянагч шийдвэр өгч эхэлсэн тул хянахгүй буцаах боломжгүй — «Татгалзсан (R)» шийдвэр өгнө үү')}</p>
+                )}
                 {act.closeAn && closeAs && (
                   <div className={s.revActs}>
                     <textarea className={s.textarea} placeholder={tr('AN хаалтын тайлбар (сонголт)')} aria-label={tr('AN хаалтын тайлбар')}
@@ -1043,7 +1139,7 @@ export function Chanar() {
                 )}
               </div>
 
-              {(hist.length > 1 || (common.revHistory?.length ?? 0) > 0 || (common.bounces?.length ?? 0) > 0) && (
+              {(hist.length > 1 || (common.revHistory?.length ?? 0) > 0 || (common.bounces?.length ?? 0) > 0 || ncrRounds.length > 0) && (
                 <div className={s.sec}>
                   <div className={s.secHead}>{tr('Өөрчлөлтийн түүх')}</div>
                   {hist.length > 1 && (
@@ -1104,6 +1200,42 @@ export function Chanar() {
                           ))}
                         </tbody>
                       </table>
+                    </>
+                  )}
+                  {/* ⚠️ 2026-09-30: NCR-ийн өмнөх тойргууд — дахин илгээх/нээхэд устдаг байсан бүртгэл */}
+                  {ncrRounds.length > 0 && (
+                    <>
+                      <div className={s.secSub}>{tr('Өмнөх тойргууд')}</div>
+                      <div className={s.rounds}>
+                        {ncrRounds.map((rd, i) => (
+                          <div key={`${rd.at}-${i}`} className={s.round}>
+                            <span>
+                              <strong>{i + 1}.</strong> {rd.end === 'reopen' ? tr('Дахин нээсэн') : tr('Залруулга дахин илгээсэн')}
+                              {' — '}{rd.by} · {ymd(rd.at)} · {statusLabel('NCR', rd.status)}
+                              {rd.rep ? ` · ${rd.rep.no} (${rd.rep.verdict})` : ''}
+                            </span>
+                            {rd.reason && <span>{tr('Шалтгаан')}: {rd.reason}</span>}
+                            {rd.correction.text && (
+                              <span>{tr('Залруулга')} ({ymd(rd.correctionAt)}): {rd.correction.text}{rd.correction.steps.length ? ` — ${rd.correction.steps.join(' · ')}` : ''}</span>
+                            )}
+                            {REVIEWERS_OF.NCR.map((r) => {
+                              const v = rd.reviews[r];
+                              return v ? (
+                                <span key={r}>
+                                  {chanarRoleLabel(r)}: <span className={`${s.vb} ${vbCls(verdictCode(v.verdict))}`}>{verdictLabel(v.verdict, 'NCR')}</span>
+                                  {' '}{v.who} · {ymd(v.at)}{v.note ? ` — ${v.note}` : ''}
+                                </span>
+                              ) : null;
+                            })}
+                            {rd.closure && (
+                              <span>
+                                {tr('Хаалт')}: {rd.closure.verifiedBy} · {ymd(rd.closure.verifiedAt)}
+                                {rd.closure.closedByContractor.length ? ` · ${rd.closure.closedByContractor.map((c) => [c.name, c.position].filter(Boolean).join(', ')).join('; ')}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </>
                   )}
                 </div>

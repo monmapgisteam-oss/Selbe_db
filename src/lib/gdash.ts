@@ -541,7 +541,7 @@ export function chartTypeCost(
    *
    * ⚠️ Зарим ангиллын бодит гүйцэтгэл нь гэрээний мөрөөс БИШ ӨӨР самбараас
    * гардаг: «ОРОН СУУЦНЫ ХОРООЛОЛ» нь «Багцын гүйцэтгэл» хуудасны
-   * БЛОК-ЖИГНЭСЭН биет хувь (2026-09-10, хэрэглэгчийн заавар). Тэр үед мөр
+   * биет хувь (2026-09-10, хэрэглэгчийн заавар; 2026-09-30-аас ХО дүнгээр жигнэсэн — `housingPct`). Тэр үед мөр
    * тус бүрийн тооцоог БҮХЭЛД НЬ дарна — эс бөгөөс нэг үзүүлэлт хоёр
    * самбарт хоёр өөр тоо харуулна.
    */
@@ -568,10 +568,13 @@ export function chartTypeCost(
      бодит гүйцэтгэл» чарттай НЭГТГЭГДСЭН (2026-09-10). Хоёр чарт нэг
      ангиллыг хоёр өөр нэгжээр хэмждэг тул зэрэгцүүлэн уншихад нүд хоёр
      удаа гүйх шаардлагатай байв. */
-  const w = weighted(rows, (r) => {
-    const vol = r.pkg2 ? pkgPct.get(bagtsKey(r.pkg2)) : undefined;
-    return vol ?? r.progress;
-  });
+  /* ⚠️ 2026-09-30: `perf` = ЗӨВХӨН БИЕТ (объёмын) хувь. Урьд нь объёмын эх
+     сурвалжгүй мөрд санхүүжсэн `r.progress` (`guitsetgel_huvi`) руу чимээгүй
+     УНАЖ, нэг ангилал дотор биет ба санхүүгийн хувийг ХОЛЬЖ жигнэдэг байв —
+     хоёр өөр хэмжигдэхүүний дундаж нь юуг ч хэмждэггүй тоо (`PkgFin`
+     «Төслийн төрөл»-ийн ижил шийдвэр). Одоо биет хэмжилтгүй мөр `null` —
+     хуваарьт орохгүй; санхүүжсэн хувь `fin`-д ТУСДАА шошготой хэвээр. */
+  const w = weighted(rows, (r) => (r.pkg2 ? pkgPct.get(bagtsKey(r.pkg2)) ?? null : null));
   const wf = weighted(rows, (r) => r.progress);
   return bars.map((b) => ({
     ...b,
@@ -824,6 +827,138 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
 export const HOUSING_PKGS: readonly string[] = [
   'БАГЦ1', 'БАГЦ2', 'БАГЦ31', 'БАГЦ32', 'БАГЦ33', 'БАГЦ41', 'БАГЦ42',
 ];
+
+/**
+ * ОРОН СУУЦНЫ БИЕТ ГҮЙЦЭТГЭЛИЙН НЭГДСЭН ТОДОРХОЙЛОЛТ — ГАНЦ томьёо.
+ *
+ *     хувь = Σ(ХО дүн_p × гүйцэтгэл_p) ÷ Σ ХО дүн_p      (p — хэмжигдсэн багц)
+ *
+ * ⚠️ 2026-09-30: орон сууцны гүйцэтгэл ДӨРВӨН өөр аргаар дундажлагдаж байв —
+ *    `pkgShared.aggregateMonths`/`physNow` (БЛОКИЙН ТООГООР; PkgProg · Dashboard ·
+ *    ExecReport · GeneralDash «ОРОН СУУЦНЫ ХОРООЛОЛ»), `reportData.loadOverall`
+ *    (төсвөөр), `reportData.buildFindings.buildActual` (блокийн ЭНГИЙН дундаж),
+ *    `housingMoney` (ХО дүнгээр). Нэг үзүүлэлт дэлгэц бүрд өөр тоо гаргадаг байсан
+ *    тул БҮГД ЭНЭ функцээр — порталын дүрэм ӨРТГӨӨР ЖИГНЭХ (`weighted()`,
+ *    `PkgFin` «Төслийн төрөл», `housingMoney`-тэй нэг зарчим).
+ * ⚠️ `pct == null` (хэмжигдээгүй) багц хуваарь, хүртвэрт ХОЁУЛАНД орохгүй — 0 биш.
+ * ⚠️ ХО дүнгүй (`cost <= 0`) багц жингүй тул орохгүй. Хэмжигдсэн багцуудын НЭГ Ч
+ *    нь ХО дүнгүй бол (Cashflow уншигдаагүй г.м.) БЛОКИЙН ТООНД БҮРЭН шилжинэ —
+ *    хагас хагасаар холивол нэгж зөрж жин утгагүй болно (`loadOverall`-ийн
+ *    хуучин дүрэм).
+ * ⚠️ Оролт/гаралт 0–100 (`pct()` 100-аар үржүүлдэггүй).
+ * @returns хэмжигдсэн, жинтэй багц алга бол `null`
+ */
+export type HousingItem = {
+  /** Багцын биет гүйцэтгэл, 0–100; `null` = хэмжигдээгүй */
+  pct: number | null | undefined;
+  /** ХО дүн (₮) — `pkgCostWeight()` */
+  cost: number;
+  /** Нөөц жин — блокийн тоо (ХО дүн огт алга үед л) */
+  blocks?: number;
+};
+export function housingPct(items: Iterable<HousingItem>): number | null {
+  const known: { pct: number; cost: number; blocks: number }[] = [];
+  for (const x of items) {
+    if (x.pct == null || !Number.isFinite(x.pct)) continue;
+    known.push({ pct: x.pct, cost: Number.isFinite(x.cost) ? x.cost : 0, blocks: x.blocks ?? 0 });
+  }
+  const byCost = known.some((x) => x.cost > 0);
+  let top = 0;
+  let base = 0;
+  for (const x of known) {
+    const w = byCost ? x.cost : x.blocks;
+    if (!(w > 0)) continue;
+    top += w * x.pct;
+    base += w;
+  }
+  return base > 0 ? top / base : null;
+}
+
+/**
+ * БАГЦ → ХО ДҮН (₮) — `housingPct`-ийн жин, ГАНЦ эх.
+ *
+ * ⚠️ 2026-09-30: `ho_dun_geree` (`CF.cost` = `CASHFLOW_NEW.fields.budget`), ЗӨВХӨН
+ *    «Нийт төсөв»-ийн хүрээ (`inTotal` / `finXlInTotal`) — `reportData.loadOverall`-ийн
+ *    2026-09-21-ний дүрэм. Түлхүүр `pkgKeyOf`: «БАГЦ 1-4» мэт ДИАПАЗОН мөр хоосон
+ *    түлхүүр авч, бодит «Багц 14»-т харийн дүн наалдахгүй. Нэг багцад олон гэрээ
+ *    байвал НИЙЛБЭР.
+ */
+export function pkgCostWeight(
+  rows: Iterable<{ pkg: unknown; cost: number; inTotal: boolean }>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.inTotal || !(r.cost > 0)) continue;
+    const k = isPkgRange(r.pkg) ? '' : bagtsKey(r.pkg);
+    if (!k || k === '0') continue;
+    out.set(k, (out.get(k) ?? 0) + r.cost);
+  }
+  return out;
+}
+
+/**
+ * ОРОН СУУЦНЫ БИЕТ ГҮЙЦЭТГЭЛИЙН САРЫН ЦУВАА — `pkgShared.aggregateMonths`-ийн цөм
+ * (2026-09-30-нд ЭНД шилжсэн: цэвэр функц тул `gdash.check`-ээр шалгагдана).
+ *
+ * ⚠️ 2026-09-25-ны дүрмүүд ХЭВЭЭР (`pkgShared`-ийн тайлбар): `phys` сийрэг — цэг
+ *    зөвхөн шинэ бичилттэй сард; багц бүрийн СҮҮЛИЙН мэдэгдэж буй утга (as-of);
+ *    хараахан тайлагнаагүй багц 0% (`finPhys` дүрэм 1); цэг нь аль нэг багц тэр
+ *    сард ШИНЭЭР тайлагнасан үед л гарна, бусад сард `null` (0 биш).
+ * ⚠️ 2026-09-30: жигнэлт нь `housingPct` (ХО дүн; блокийн тоо — зөвхөн нөөц).
+ *
+ * @param physCnt багц → сар → блокийн тоо (нөөц жин — хамгийн их утга)
+ * @param cost    багц → ХО дүн (`pkgCostWeight`)
+ */
+export function housingSeries(
+  phys: Map<string, Map<string, number>>,
+  physCnt: Map<string, Map<string, number>>,
+  physAt: Map<string, Map<string, string>> | undefined,
+  cost: Map<string, number>,
+  labels: readonly string[],
+): { label: string; phys: number | null; physAt: string | null }[] {
+  const pk = [...phys].map(([k, byMon]) => {
+    let w = 1;
+    physCnt.get(k)?.forEach((v) => { if (v > w) w = v; });
+    return {
+      pts: [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)),
+      at: physAt?.get(k),
+      w,
+      cost: cost.get(k) ?? 0,
+    };
+  }).filter((x) => x.pts.length > 0);
+  return labels.map((label) => {
+    const items: HousingItem[] = [];
+    let fresh = false;
+    let at = '';
+    for (const x of pk) {
+      let v = 0;
+      let a = '';
+      for (const [m, val] of x.pts) {
+        if (m > label) break;
+        v = val;
+        a = x.at?.get(m) ?? '';
+        if (m === label) fresh = true;
+      }
+      items.push({ pct: v, cost: x.cost, blocks: x.w });
+      if (a > at) at = a;
+    }
+    return {
+      label,
+      // ⚠️ Хэмжилт огт байхгүй сар — `null`. 0 гэж буцаавал график дээр
+      //    «биет гүйцэтгэл тэг» гэсэн худал шугам зурагдана.
+      phys: fresh ? housingPct(items) : null,
+      physAt: fresh && at ? at : null,
+    };
+  });
+}
+
+/** CASHFLOW_NEW-ийн ТҮҮХИЙ мөр (`FinData.contracts`, `queryFeatures`) → `pkgCostWeight`-ийн оролт */
+export const cfWeightRow = (r: Readonly<Record<string, unknown>>): { pkg: unknown; cost: number; inTotal: boolean } => ({
+  /* ⚠️ `pkg2` эхэлж (навч), хоосон бол `pkg` — `loadOverall`/`Finance.planTotal`-тай ижил */
+  pkg: sOf(r[CF.pkg2]) || sOf(r[CF.pkg]),
+  cost: nOf(r[CF.cost]),
+  inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
+});
 
 /**
  * Орон сууцны багцуудын биет гүйцэтгэлийг МӨНГӨН ДҮНГЭЭР сараар нэгтгэнэ —

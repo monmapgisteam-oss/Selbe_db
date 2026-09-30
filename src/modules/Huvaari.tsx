@@ -1196,6 +1196,9 @@ export function Huvaari({
       .catch((e) => alive && setErr(String((e as Error).message || e)))
       .finally(() => alive && setBusy(false));
     return () => { alive = false; };
+    /* ⚠️ `review` санаатай ОРУУЛААГҮЙ — хянах горим солиход мөрийг дахин
+       татахгүй; зөвхөн багц солигдоход ачаална. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg]);
 
   /**
@@ -1495,7 +1498,6 @@ export function Huvaari({
       }
     }
     return { per, tot };
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [plan, n, sc, obDraft, obPlan]);
 
   /**
@@ -3230,7 +3232,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft]);
+  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -3512,7 +3514,6 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, busy, applyPayloadToDraft, refetchServer]);
 
   /* ══════════════════ НЭМЭЛТ АЖИЛ — урсгал (2026-09-24) ══════════════════ */
@@ -4243,7 +4244,6 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, busy, pkg, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows]);
 
   /**
@@ -5693,13 +5693,18 @@ export function Huvaari({
              өөрчлөлт гарна — хадгалахаас өмнө бүгдийг нэг товчоор цуцлах
              боломжгүй бол хэрэглэгч хуудсаа дахин ачаалахаас өөр аргагүй. */
           <button type="button" className={h.discard} disabled={busy}
-            title={tr('Хадгалаагүй бүх өөрчлөлтийг хаяна')}
+            title={tr('Хадгалаагүй бүх өөрчлөлтийг хаяна — хуваалцсан ноорог БҮХ оролцогчид устна')}
             onClick={() => {
               /* ⚠️ Олон өөрчлөлтийг нэг товшилтоор алдахгүй (2026-09-23): 3-аас
                  дээш бол баталгаажуулна; цөөнд нь асуулт саад болно. */
               /* ⚠️ Хуваалцсан ноорог (2026-09-24): хоосорсныг дифф → `hdFlush` алсыг
                  нийлүүлээд цэвэрлэнэ — зөвхөн бичих эрхтэй үед (энэ товч `canEdit`). */
-              if (dirtyN > 3 && !window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид устна.', num(dirtyN)))) return;
+              /* ⚠️ 2026-09-30: «3-аас дээш» босгыг ХАСАВ — цөөн засвар ч гэсэн
+                 хуваалцсан ноорогоор дамжин БУСАД оролцогчийнх устна (`hdFlush`).
+                 Товч зөвхөн `dirtyN > 0` үед гардаг тул үргэлж асууна; алдах зүйлгүй
+                 (dirtyN = 0) үед товч өөрөө харагдахгүй. */
+              const others = hdUsers.length > 0 ? ` (${hdUsers.join(', ')})` : '';
+              if (!window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyN), others))) return;
               setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
               /* ⚠️ Буцаасан тэмдэглэгээ ноорогтой хамт (2026-09-25 аудит) — үлдвэл дараагийн
                  ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана.
@@ -5707,7 +5712,7 @@ export function Huvaari({
                  буцааж засах» эсвэл дахин ачаалалт тэмдгийг дахин тавина. */
               setBackMarks(null);
             }}>
-            {tr('Цуцлах')} ({num(dirtyRows)})
+            {tr('Ноорог хаях')} ({num(dirtyRows)})
           </button>
         )}
         {/* ⚠️ «Хадгалах» → «Батлуулах» (2026-09-07). Гүйцэтгэгч эх хуудсанд
@@ -5868,6 +5873,22 @@ export function Huvaari({
               onClick={() => review.onClose()}>
               ✕ {tr('Хаах')}
             </button>
+            {/* ⚠️ 2026-09-30: «Батлах»/«Буцаах» хаалттай ШАЛТГААН ИЛ мөрөөр (5784-ийн
+                сургамж) — `title` мэдрэгч дэлгэцэд гарахгүй. `busy`/`approving` үед
+                түр хаалт тул бичихгүй. Өөрийн илгээлтийн шалтгааныг дээрх span хэлдэг. */}
+            {(() => {
+              if (busy || approving != null || isOwnSubmission) return null;
+              const why = !canApprove
+                ? tr('Энэ багцын хуваарийг батлах эрхгүй.')
+                : reviewConflict
+                  ? tr('Санал одоогийн хуваарьтай зөрчилдсөн тул зөвхөн буцаах боломжтой.')
+                  : !reviewLive
+                    ? tr('Санал хуанли дээр буулгагдаагүй байна — буулгагдсаны дараа шийдвэрлэнэ.')
+                    : reviewOids.length > 0 && !allOk
+                      ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
+                      : '';
+              return why ? <span className={h.muted} role="status">{why}</span> : null;
+            })()}
           </>
         )}
       </header>
@@ -7273,6 +7294,37 @@ function HamCell({
  * ⚠️ ХОНОГ нь эхлэх/дуусахаас БОДОГДОНО (хоёр захыг оруулаад). Гурав дахь
  * талбар болгож оруулбал гурвуулаа зөрчилдөх боломжтой болно.
  */
+/**
+ * ХОЦРОЛТЫН (lag) ТАЛБАР — хоногоор, ±365.
+ * ⚠️ 2026-09-30: Урьд нь `Number(v) || 0`-оор шууд хяналттай байсан тул «-»
+ *    бичихэд (хөтөч түр `''` өгдөг) утга 0 болж, «-5» бичих боломжгүй/тэмдэг
+ *    эргэдэг байв. Бичиж байхад ОРОН НУТГИЙН мөр хадгалж, хүчинтэй бүхэл тоо
+ *    болмогц л дээш өгнө; хүчингүй үлдвэл blur-д сүүлийн утгаа сэргээнэ.
+ */
+function LagInput({ value, disabled, onCommit }: {
+  value: number;
+  disabled?: boolean;
+  onCommit: (n: number) => void;
+}) {
+  const [txt, setTxt] = useState(String(value));
+  /* Гаднаас (өөр замаар) өөрчлөгдвөл дагана — бичиж буй мөр ижил тоо бол хөндөхгүй */
+  useEffect(() => {
+    setTxt((t) => (t.trim() !== '' && Number(t) === value ? t : String(value)));
+  }, [value]);
+  return (
+    <input type="number" className={h.numIn} value={txt} disabled={disabled}
+      min={-365} max={365} step={1} aria-label={tr('Хоцролт (хоног)')}
+      title={tr('Хоцролт: FS — дууссанаас, SS — эхэлснээс хойш хэд хоногийн дараа (сөрөг = давхцана)')}
+      onChange={(e) => {
+        const t = e.target.value;
+        setTxt(t);
+        const n = Number(t);
+        if (t.trim() !== '' && Number.isFinite(n)) onCommit(Math.max(-365, Math.min(365, Math.trunc(n))));
+      }}
+      onBlur={() => setTxt(String(value))} />
+  );
+}
+
 function PlanModal({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
 }: {
@@ -7441,11 +7493,24 @@ function PlanModal({
     setZ(s ? msToDay(s.end) : '');
   }, [r.oid, par?.oid, blk]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ⚠️ 2026-09-30: Esc/ард товшиход бичсэн огноо, сарын хүснэгт ЧИМЭЭГҮЙ алдагддаг
+     байв — оруулсан зүйл байвал асууна. `mdDirtyRef` нь доор (бүх dirty бодогдсоны
+     дараа) зурагдалт бүрд шинэчлэгдэнэ; эффект дахин бүртгэгдэхгүйн тулд ref. */
+  const mdDirtyRef = useRef(false);
+  const tryClose = useCallback(() => {
+    if (mdDirtyRef.current && !window.confirm(tr('Оруулсан өөрчлөлт хадгалагдаагүй — хаяж цонхыг хаах уу?'))) return;
+    onClose();
+  }, [onClose]);
+  /* ⚠️ 2026-09-30: Талбар дотор дараад (сонголт/чирэлт) АРД суллахад `click` нь
+     арын элемент дээр буудаг тул цонх санамсаргүй хаагддаг байв — дарах нь ч
+     ард эхэлсэн үед л хаана. */
+  const downOnBack = useRef(false);
+
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') tryClose(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onClose]);
+  }, [tryClose]);
 
   /**
    * ОГНОО ЗАСАХ ЭРХ. Бүлгийн муж нь дэд ажлуудаасаа бодогддог
@@ -7497,9 +7562,12 @@ function PlanModal({
    */
   /* ⚠️ `obyem=false` (гэрээ таб) — сарын хэсэг огт гарахгүй, `mvOk` үргэлж үнэн */
   const total = obyem && r.vol != null && r.vol > 0 ? r.vol : null;
-  const [mv, setMv] = useState<Map<string, number>>(months);
+  /* ⚠️ 2026-09-30: `mvAll`/`mrAll` нь мужаас ГАДУУРХ сарыг ч ХАДГАЛНА — доорх
+     `mv`/`mr` нь одоогийн мужаар шүүсэн ХАРАГДАЦ. Огноог бичиж байхад (завсрын
+     утга) сарын утга устахгүй; «Тавих» нь зөвхөн шүүсэн `mv`/`mr`-ийг өгнө. */
+  const [mvAll, setMv] = useState<Map<string, number>>(months);
   /** Сарын НӨӨЦ (хүн хүч · машин) — `mv`-тэй зэрэгцээ (2026-09-24) */
-  const [mr, setMr] = useState<Map<string, MonthRes>>(res);
+  const [mrAll, setMr] = useState<Map<string, MonthRes>>(res);
   /**
    * Мөр/блок солигдоход ХАДГАЛАГДСАНАА суурь болгоно.
    *
@@ -7531,25 +7599,29 @@ function PlanModal({
      «мужаас гадуур» гэж арчдаг байв — цонх нээх бүрд сарын обьём/нөөц хоосорч,
      «Тавих» дарахад сарын хүн/машин устдаг байлаа. Огноо түр хоосон (засаж буй)
      үед ч сарын утга хадгалагдана; хүчинтэй муж тавигдмагц энэ эффект тайрна. */
-  useEffect(() => {
-    if (!mKeys.length) return;
-    setMv((cur) => {
-      let extra = false;
-      for (const k of cur.keys()) if (!mKeys.includes(k)) { extra = true; break; }
-      if (!extra) return cur;
-      const out = new Map<string, number>();
-      for (const k of mKeys) { const v = cur.get(k); if (v != null) out.set(k, v); }
-      return out;
-    });
-    setMr((cur) => {
-      let extra = false;
-      for (const k of cur.keys()) if (!mKeys.includes(k)) { extra = true; break; }
-      if (!extra) return cur;
-      const out = new Map<string, MonthRes>();
-      for (const k of mKeys) { const v = cur.get(k); if (v) out.set(k, v); }
-      return out;
-    });
-  }, [mKeys]);
+  /* ⚠️ 2026-09-30: ЭФФЕКТЭЭР ТАЙРАХАА БОЛИВ — огноог гараар бичих үеийн завсрын
+     утга (жиш. он «2» гэж эхлэх) мужийг богиносгож, бичсэн сарын обьём/нөөцийг
+     шууд УСТГАДАГ байв. Одоо төлөвт хадгалж, зөвхөн ХАРАГДАЦ/нийлбэр/«Тавих»-д
+     шүүнэ; муж буцаж өргөсөхөд утга эргэж гарна. Муж хоосон бол шүүхгүй (дээрх
+     2026-09-25-ны дүрэм хэвээр). */
+  const mv = useMemo(() => {
+    if (!mKeys.length) return mvAll;
+    let extra = false;
+    for (const k of mvAll.keys()) if (!mKeys.includes(k)) { extra = true; break; }
+    if (!extra) return mvAll;
+    const out = new Map<string, number>();
+    for (const k of mKeys) { const v = mvAll.get(k); if (v != null) out.set(k, v); }
+    return out;
+  }, [mvAll, mKeys]);
+  const mr = useMemo(() => {
+    if (!mKeys.length) return mrAll;
+    let extra = false;
+    for (const k of mrAll.keys()) if (!mKeys.includes(k)) { extra = true; break; }
+    if (!extra) return mrAll;
+    const out = new Map<string, MonthRes>();
+    for (const k of mKeys) { const v = mrAll.get(k); if (v) out.set(k, v); }
+    return out;
+  }, [mrAll, mKeys]);
   /** Нэг сарын нөөцийн нэг талбарыг бичнэ — хоосон = `null`; хоёулаа null болвол сар Map-аас хасагдана.
       ⚠️ Тоо биш («abc») ч `null` (2026-09-24 аудит) — урьд нь 0 болж «тэг нөөц» гэж бичигддэг байв. */
   const setMrCell = (k: string, f: 'hun' | 'mashin', t: string) => {
@@ -7623,6 +7695,17 @@ function PlanModal({
          `mr` өгч, олон блокт тавихад бусад блокийн серверийн нөөц арчигддаг байв. */
   /** ЗӨВХӨН бодит огноо (ба уялдаа) хөндөгдсөн — олон блок сонгосон ч төлөвлөгөөг хуулахгүй (2026-09-29) */
   const extraOnly = extraDirty && (!spanDirty || prefilled) && !mvDirty && !mrDirty;
+  /* ⚠️ 2026-09-30: Хаахаас өмнө асуух «оруулсан зүйл бий» — ТАЙРААГҮЙ төлөвийг
+     (`mvAll`/`mrAll`) харьцуулна: шүүсэн `mv` нь хуучирсан мужийн сарыг хасдаг тул
+     хэрэглэгч юу ч бичээгүй атлаа «өөрчлөгдсөн» гэж асуухгүй. Урьдчилан бөглөсөн
+     бүлгийн муж (`prefilled`) ч хэрэглэгчийн оролт биш. */
+  mdDirtyRef.current = canEdit && (
+    (dEdit && spanDirty && !prefilled)
+    || depsDirty
+    || actDirty
+    || mvAll.size !== months.size || [...mvAll].some(([k, v]) => months.get(k) !== v)
+    || !sameRes(mrAll, res)
+  );
   /* ⚠️ 2026-09-29 (аудит 10): гэрээ табд (`obyem=false`) сарын нөөцийг ХЭЗЭЭ Ч өгөхгүй —
      сарын хэсэг харагдахгүй атлаа `mr` нь төлөвлөгөөний нөөцөөр бөглөгддөг тул гэрээний
      огноо тавихад бусад сонгосон блокийн төлөвлөсөн хүн/машин дарагддаг байв. */
@@ -7683,7 +7766,13 @@ function PlanModal({
   };
 
   return (
-    <div className={h.mdBack} role="presentation" onClick={onClose}>
+    <div className={h.mdBack} role="presentation"
+      onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const ok = downOnBack.current && e.target === e.currentTarget;
+        downOnBack.current = false;
+        if (ok) tryClose();
+      }}>
       <div ref={mdRef} className={h.md} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}>
         <header className={h.mdHead}>
@@ -7974,12 +8063,8 @@ function PlanModal({
                 </select>
                 {/* ⚠️ ±365-аар хязгаарлана: илүү том хоцролт нь бараг үргэлж
                     бичилтийн алдаа бөгөөд гинжийг хуанлиас хол шидНЭ */}
-                <input type="number" className={h.numIn} value={d.lag} disabled={!canEdit}
-                  min={-365} max={365} aria-label={tr('Хоцролт (хоног)')}
-                  title={tr('Хоцролт: FS — дууссанаас, SS — эхэлснээс хойш хэд хоногийн дараа (сөрөг = давхцана)')}
-                  onChange={(e) => setDl((v) => v.map((x, k) => (
-                    k === j ? { ...x, lag: Math.max(-365, Math.min(365, Number(e.target.value) || 0)) } : x
-                  )))} />
+                <LagInput value={d.lag} disabled={!canEdit}
+                  onCommit={(n) => setDl((v) => v.map((x, k) => (k === j ? { ...x, lag: n } : x)))} />
                 <span className={h.mdDepD}>{tr('хоног')}</span>
                 {/* ⚠️ БЛОК (2026-09-24): хоосон = бүх блокт (блокгүй бичиглэл), эс бөгөөс
                     зөвхөн тэр блокт (`@N`). Ганц блоктой (синтетик) багцад нуугдана. */}
@@ -8133,10 +8218,7 @@ function LinkModal({ src, dst, blk, blocks, onClose, onApply, onRemove }: {
             <option value="FS">{tr('дуусаад эхэлнэ (FS)')}</option>
             <option value="SS">{tr('зэрэг эхэлнэ (SS)')}</option>
           </select>
-          <input type="number" className={h.numIn} value={lag} min={-365} max={365}
-            aria-label={tr('Хоцролт (хоног)')}
-            title={tr('Хоцролт: FS — дууссанаас, SS — эхэлснээс хойш хэд хоногийн дараа (сөрөг = давхцана)')}
-            onChange={(e) => setLag(Math.max(-365, Math.min(365, Number(e.target.value) || 0)))} />
+          <LagInput value={lag} onCommit={setLag} />
           <span className={h.mdDepD}>{tr('хоног')}</span>
         </div>
         <footer className={h.mdFoot}>

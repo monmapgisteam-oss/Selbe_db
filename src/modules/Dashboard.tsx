@@ -33,7 +33,7 @@ import {
 import { loadFinData, lagOf, type FinData } from '@/modules/Finance';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import {
-  loadBlockProgress, loadBlockHistory, progressSeries,
+  loadBlockProgress, loadBlockHistory, progressSeries, latestMean,
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
@@ -783,7 +783,7 @@ function railStat(k: SecKey, d: DashData): {
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   /**
    * Багцын биет гүйцэтгэл — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга,
-   * блокийн тоогоор жигнэсэн.
+   * багцын ХО дүнгээр жигнэсэн (⚠️ 2026-09-30: `gdash.housingPct` — өмнө нь блокийн тоогоор).
    *
    * ⚠️ Эх нь TASK_SHEET («Гүйцэтгэл бөглөх») тул зурвасын тоо нь дэлгэрэнгүй
    * самбарынхтай ЯГ таарна — хоёулаа нэг хүснэгтээс уншина.
@@ -1208,6 +1208,10 @@ function EnvLeft({ d }: { d: DashData }) {
  * буудаггүй тул тэр нь «ажил ухарсан» гэж уншигдана. Түүнчлэн «Барилга
  * угсралтын явц» (04·C5) самбар аль хэдийн `progressSeries` хэрэглэдэг тул нэг
  * өгөгдлөөс ХОЁР зөрүүтэй муруй нэг дэлгэцэд гарч байлаа.
+ *
+ * ⚠️ 2026-09-30: 04·C5 нь `'latest'` горимд шилжсэн (бөгжтэйгээ таарахын тулд).
+ * Энэ муруй (EnvRight) нь ТУСДАА төлөвт (`open.length === 0`) л харагддаг тул
+ * нэг дэлгэцэнд зэрэг гарахгүй; анхдагч `'peak'` хэвээр.
  */
 function projTrendPoints(
   h: BlockHistory,
@@ -1422,7 +1426,7 @@ export function HeadKpi({ bagts, extra }: {
          (мөнхийн «…» биш) — `ScheduleDetail`-ийн 09-25-ны засвартай ижил */
       v: p.actual != null ? num(p.actual, 2) : pq.state === 'loading' ? '…' : '—', unit: '%',
       label: tr('Биет гүйцэтгэл (багцаар)'),
-      title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, блокийн тоогоор жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
+      title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, багцын ХО дүнгээр жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },
     {
@@ -2487,16 +2491,21 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
   const rows = q.data;
   const blocks = sumBy(rows, (x) => x.blocks);
   const ail = sumBy(rows, (x) => x.ail);
-  /* ⚠️ 2026-09-23: `progress == null` (тайлан огт ирээгүй) багцыг хуваарьт
-     ОРУУЛАХГҮЙ — `pkgPct`-тэй ижил. Тайлагнасан багц ДОТРОО тайлангүй блок
-     0% хэвээр (`joinBagts`, доорх `note`). */
-  const known = rows.filter((x) => x.progress != null);
-  const blKnown = sumBy(known, (x) => x.blocks);
-  const avg = blKnown ? sumBy(known, (x) => (x.progress as number) * x.blocks) / blKnown : null;
   // Хамгийн сүүлийн бүртгэлийн огноо — `BlockProgress.date` нь `joinBagts`-д
   // ХАЯГДДАГ тул `prog`-оос шууд. Ингэснээр «энэ тоо ХЭЗЭЭНИЙ байдлаар» гэсэн
   // асуулт самбар дээрээ хариултаа авна.
   const pm = prog.state === 'ready' ? prog.data : null;
+  /* ⚠️ 2026-09-30: бөгж = ХЭМЖИГДСЭН блокуудын СҮҮЛИЙН утгын дундаж
+     (`latestMean`) — доорх «Барилга угсралтын явц» цувааны (`'latest'`) сүүлийн
+     цэгтэй ЯГ ижил тоо. Урьд нь бөгж тайлагнасан БАГЦЫН бүх блокоор (дотор нь
+     тайлангүй блок 0%), цуваа 7 багцын БҮХ блокоор + өссөн дүнгээр хуваадаг тул
+     нэг самбарт хоёр өөр «одоогийн» тоо гардаг байв. Тайлангүй блок хуваарьт
+     ОРОХГҮЙ (06 §2 — null ≠ 0); тэдний тоо «Тайлан ирээгүй»-д ил, бөгжийн
+     `note`-д «N/M блок» гэж хамт бичигдэнэ.
+     ⚠️ `flatMap` — давхардлыг ХАСАХГҮЙ, цуваатай ижил жагсаалт. */
+  const scopeKeys = rows.flatMap((r) => r.keys);
+  const ring = pm ? latestMean(pm, scopeKeys) : null;
+  const avg = ring?.pct ?? null;
   const asOf = pm ? [...pm.values()].reduce((a, c) => (c.date > a ? c.date : a), '') : '';
   /** Багц дарахад — газрын зурагт тэр багцын блокуудыг тодруулна */
   const pick = (key: string) => {
@@ -2510,10 +2519,10 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
   return (
     <>
       {/* ⚠️ `missing` ба тайлангийн огноо хоёул `joinBagts`/`loadBlockProgress`-д
-          бодогдоод хаягддаг байв. Эдгээрийг ил гаргаснаар «Барилгын хяналт»-тай
-          зөрдөг МЭДЭГДЭЖ БУЙ зөрүү (тэд тайлангүй блокоо хасч дундажладаг)
-          тайлбарлагдана — хуваарь нь БҮХ блок гэдэг нь толгойд бичигдэв. */}
-      <Panel title={tr('Нийт гүйцэтгэл')} note={tr('хуваарь = БҮХ блок (тайлангүй = 0%)')}>
+          бодогдоод хаягддаг байв. ⚠️ 2026-09-30: дундаж (бөгж, цуваа) нь
+          тайлагнасан блокоор болсон тул «Тайлан ирээгүй» нь хуваарьт ОРООГҮЙ
+          блокийн тоо — толгойн тайлбар түүнийг хэлнэ. */}
+      <Panel title={tr('Нийт гүйцэтгэл')} note={tr('дундаж = тайлагнасан блокоор (тайлангүй блок хуваарьт орохгүй)')}>
           <Stats cols={2}>
             <Stat accent color={cat(0)} value={num(blocks)} unit={tr('блок')} label={tr('Барилгын блок')} />
             <Stat accent color={cat(3)} value={num(ail)} unit={tr('өрх')} label={tr('Орон сууц')} />
@@ -2524,7 +2533,8 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
       </Panel>
 
       {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
-      <Panel title={tr('Дундаж гүйцэтгэл')}>
+      <Panel title={tr('Дундаж гүйцэтгэл')}
+             note={ring && ring.total ? tr('{0}/{1} блок тайлагнасан', num(ring.blocks), num(ring.total)) : undefined}>
         <RingCard value={avg} label={tr('дундаж гүйцэтгэл')} color={cat(0)} />
       </Panel>
 
@@ -2554,7 +2564,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
           задарч бодогдоод `joinBagts`-д хаягддаг байв. «Барилга бүтэн 18%»
           гэдгээс «дотор нь ЯМАР ажил хоцорсон» нь хамаагүй ашигтай. */}
       <Panel title={tr('Дэд үе шатын гүйцэтгэл (Б1–Б5)')}
-             note={tr('тайлагнасан блокоор дундажлав — Ring нь БҮХ блокоор тул зөрнө')}>
+             note={tr('тайлагнасан блокоор дундажлав')}>
         {pm == null ? <Empty label={tr('Гүйцэтгэлийн хүснэгт татагдаж байна…')} /> : (() => {
           // Багц сонгосон бол ТЭР багцаар (cross-filter), эс бөгөөс 7 багц бүгд.
           const scope = new Set(rows.filter((r) => !sel || r.key === sel).flatMap((r) => r.keys));
@@ -2597,7 +2607,13 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
       {/* ⚠️ ЦУВАА нь 5-Р ХҮҮХДЭЭС ХОЙШ байх ЁСТОЙ: `overview.module.css`-ийн
           `nth-child(n+5)` л түүнд бүтэн өргөн өгдөг. 1–4 слотод 7 хуваарийн
           тэнхлэг нь `var(--side-l)` дотор шахагдаж уншигдахаа болино. */}
-      <Panel title={tr('Барилга угсралтын явц')} note={tr('сараар · өссөн дүнгээр')}>
+      {/* ⚠️ 2026-09-30: `'latest'` — бөгжтэй НЭГ дүрэм (`latestMean`): сар бүрийн
+          эцсийн агшинд ХЭМЖИГДСЭН блокуудын СҮҮЛИЙН утгын дундаж ⇒ сүүлийн цэг
+          == «Дундаж гүйцэтгэл» бөгж. Урьд нь `'peak'` (өссөн дүн, хуваарь = БҮХ
+          блок, тайлангүй 0%) байсан тул сүүлийн цэг бөгжөөс доогуур гардаг байв.
+          Шинэ блок тайлагнах сард дундаж буурч болох тул цэг бүрд хуваарийн
+          блокийн тоо `note`-д бичигдэнэ. */}
+      <Panel title={tr('Барилга угсралтын явц')} note={tr('сараар · тайлагнасан блокийн сүүлийн утгаар')}>
         <Data q={hist} loading={tr('Бүртгэлийн түүхийг уншиж байна…')}>
           {(h) => (
             <Trend
@@ -2606,15 +2622,18 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
                 h,
                 // ⚠️ `flatMap` — `new Set` болгож ХАСАХГҮЙ. Барилгын давхаргад
                 //    113 мөр, ялгаатай (багц|блок) хос нь 111 (2 давхардсан).
-                //    `joinBagts` МӨРӨӨР хуваадаг тул давхардлыг хаявал
-                //    цувааны хуваарь 111 болж «Нийт гүйцэтгэл» Ring-тэй зөрнө.
-                rows.flatMap((r) => r.keys),
+                //    Бөгж (`latestMean`) ч ЭНЭ жагсаалтаар тоолдог — давхардлыг
+                //    зөвхөн нэг талд хаявал сүүлийн цэг бөгжөөс зөрнө.
+                scopeKeys,
                 'month',
+                'latest',
               ).map((p) => ({
                 label: p.label,
                 value: p.overall,
                 // Сарын шошго бодит хэмжилтийн огноог нуудаг — уншилтын мөрөнд буцаана
-                note: p.label === p.date ? undefined : p.date,
+                note: p.label === p.date
+                  ? tr('{0} блок', num(p.blocks))
+                  : tr('{0} · {1} блок', p.date, num(p.blocks)),
               }))}
             />
           )}
@@ -2681,24 +2700,42 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
         </Data>
       </Panel>
 
-      {/* ЭЗЛЭХҮҮН — багц бүрийн бодит/төлөвлөгөөт ажлын эзлэхүүн */}
-      <Panel title={tr('Ажлын эзлэхүүн — багцаар')} note={srcNote(tr('бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
+      {/* ЭЗЛЭХҮҮН — багц бүрийн бодит/төлөвлөгөөт ажлын эзлэхүүн.
+          ⚠️ 2026-09-30: БАГАНА = багцын ӨӨРИЙН биелэлтийн хувь (бодит ÷
+          төлөвлөгөө), түүхий эзлэхүүн БИШ. Урьд нь м³, м², ш холилдсон түүхий
+          тоог нэг шкалд, хамгийн их утгаар будаж, нэгжгүй харуулдаг байв —
+          багц хооронд харьцуулах боломжгүй (06 §5). Түүхий тоо зөвхөн шошгонд,
+          тухайн багцын дотор. Төлөвлөгөөгүй багц % бодогдохгүй → саарал. */}
+      <Panel title={tr('Ажлын эзлэхүүн — багцаар')} note={srcNote(tr('биелэлтийн % · бодит / төлөвлөгөө'), SRC_NEGTGEL)}>
         <Data q={pkgProg} loading={tr('Татаж байна…')}>
           {(list) => {
-            const withVol = latestPkgProgress(list).filter((x) => (x.volume ?? 0) > 0 || (x.volumePlan ?? 0) > 0);
+            const withVol = latestPkgProgress(list)
+              .filter((x) => (x.volume ?? 0) > 0 || (x.volumePlan ?? 0) > 0)
+              .map((x) => ({
+                ...x,
+                /* ⚠️ `null` = бодит бөглөгдөөгүй ЭСВЭЛ төлөвлөгөө алга — 0% БИШ */
+                vp: x.volume != null && (x.volumePlan ?? 0) > 0
+                  ? (x.volume / (x.volumePlan as number)) * 100
+                  : null,
+              }))
+              .sort((a, b) => (b.vp ?? -1) - (a.vp ?? -1));
             if (!withVol.length) return <Empty label={tr('Эзлэхүүн бүртгэгдээгүй.')} />;
+            const raw = (v: number | null) => (v == null ? tr('мэдээлэлгүй') : num(v));
             return (
               <Bars
                 inline
-                items={heatBars(withVol, (x) => ({
+                max={100}
+                items={withVol.map((x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  value: x.volume ?? 0,
+                  // Багана 0 урттай ч ШОШГО нь үнэнийг хэлнэ
+                  value: x.vp ?? 0,
                   /* ⚠️ 2026-09-25: бодит `null` = «мэдээлэлгүй», «0 / N» БИШ —
                      урьд нь бөглөөгүй багц «0 хийсэн» мэт уншигддаг байв. */
-                  display: x.volumePlan == null
-                    ? (x.volume == null ? tr('мэдээлэлгүй') : num(x.volume))
-                    : tr('{0} / {1}', x.volume == null ? tr('мэдээлэлгүй') : num(x.volume), num(x.volumePlan)),
+                  display: (x.volumePlan ?? 0) > 0
+                    ? tr('{0} · {1} / {2}', x.vp == null ? tr('мэдээлэлгүй') : pct(x.vp, 1), raw(x.volume), num(x.volumePlan))
+                    : tr('{0} · төлөвлөгөөгүй', raw(x.volume)),
+                  color: x.vp == null ? NO_DATA : heat(x.vp, 100),
                 }))}
               />
             );

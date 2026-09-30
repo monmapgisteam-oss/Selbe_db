@@ -32,7 +32,8 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
-import { huvaariScope } from './huvaariAcl';
+import { huvaariAclReady, huvaariScope } from './huvaariAcl';
+import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
@@ -1293,5 +1294,40 @@ export async function withdrawPlan(args: {
       : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ШИЙДВЭРЛЭХ БОЛОМЖТОЙ ХУВААРИЙН ИЛГЭЭЛТИЙН ТОО — цэсний тэмдэгт (2026-09-30).
+ *
+ * `HuvaariBatlah`-ийн «Шийдвэрлэх» + «Бүртгэлгүй багц»-тай ИЖИЛ дүрэм: `pending` ·
+ * батлагчийн хүрээнд (`huvaariScope(…, 'approver')`, super/нэвтрэлтгүй бол
+ * хязгааргүй) · ӨӨРИЙН илгээлт БИШ · ӨӨР батлагчийн хүчинтэй түгжээгүй
+ * (`claimHolderOf` — тэр үед `claimPlan` татгалзана).
+ *
+ * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, эрх/хуваарилалт
+ *    уншигдаагүй, хүснэгт алга, сүлжээ унасан). ⚠️ Хүснэгт ҮҮСГЭХГҮЙ (`canCreate`
+ *    false) — тэмдэгт тоолох нь бичих үйлдэл биш.
+ */
+export async function countPlanPending(username: string | null | undefined): Promise<number | null> {
+  try {
+    const me = (username ?? '').trim().toLowerCase();
+    if (AUTH.appId) {
+      if (!me || !capsRemoteReady() || !huvaariAclReady()) return null;
+      if (!hasCap(me, 'planApprove')) return 0;
+    }
+    if (!(await planTableState(false)).ok) return null;
+    const sc = AUTH.appId ? huvaariScope(me, 'approver') : null;
+    if (Array.isArray(sc) && sc.length === 0) return 0;
+    const now = Date.now();
+    const rows = await loadAllPending();
+    return rows.filter((x) => {
+      if (sc != null && !sc.includes(x.pkgGroup)) return false;
+      if (x.author.trim().toLowerCase() === me) return false;
+      const h = claimHolderOf(x, now);
+      return !h || h === me;
+    }).length;
+  } catch {
+    return null;
   }
 }
