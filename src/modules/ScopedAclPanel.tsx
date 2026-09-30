@@ -27,26 +27,37 @@
  *
  * ⚠️ ХАДГАЛАЛТ нь ХЭРЭГЛЭГЧЭЭР (нэг аккаунт = нэг мөр), панел нь БАГЦААР
  * эргүүлж харуулна — дэлгэцийн бүтэц ба хадгалалтын бүтэц ӨӨР.
+ *
+ * ⚠️ ХӨЗӨР → ХҮСНЭГТ (2026-09-30, хэрэглэгчийн баталсан `GuitsetgelAcl` загвар):
+ *    мөр = багц, багана = хоёр үүрэг, нүдэнд аккаунтын чипүүд (`AclGrid`).
+ *    Багц бүрийн хөзөр (`PkgCol` · `RoleBlock`) ХАСАГДСАН. Нүдний нэмэх/хасах
+ *    нь `aclOps.scopedCellOp`-оор (цэвэр дүрэм `aclGrid.planGrant*`) — ALL
+ *    хамгаалалт, багцгүй grant унах, сүүлийн grant → бүтэн хасалт хэвээр;
+ *    «бүх багц»-ыг НЭГ мөрөөс хасвал бусад багцын ил жагсаалт болно (асууна).
+ *    Гацааны анхааруулга (зохиогч=батлагч · батлагчгүй) мөрийн толгойд ⚠ ба
+ *    батлагчийн нүдэнд бүдэг шараар, бүтэн текст нь хүснэгтийн доор.
  */
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from '@/lib/scopedAcl';
-import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
 import { roleForUser } from '@/lib/services';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
-import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { scopedCellOp } from '@/lib/aclOps';
+import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
+import { AclGrid, type GridHolder } from './AclGrid';
 import s from './guitsetgel.module.css';
 
 /*
  * ⚠️ БИЧИХ ЛОГИК `aclOps.ts`-Д ШИЛЖСЭН (2026-09-25). `removeRevokingRoles` ·
  *    `setGrantsRevokingRoles` · нэмэх/хасах дүрэм (ALL хамгаалалт, багцгүй grant
  *    унах, `revoke=false`) урьд нь ЭНД байв; одоо хэрэглэгчийн карт ба матриц ч
- *    ИЖИЛ op-оор бичдэг тул нэг газар. Энэ панел нь зөвхөн харуулж, op дуудна.
+ *    ИЖИЛ op-оор бичдэг тул нэг газар. Энэ панел нь зөвхөн харуулж, op дуудна
+ *    (2026-09-30-наас нүдний `scopedCellOp`).
  */
 
 /** Хуваарилалтын мөр — үүрэг бүр өөрийн багцтай */
@@ -70,7 +81,7 @@ export type AclPanelSpec<R extends string> = {
   roles: readonly [R, R];
   /** Үүргийн шошго */
   roleLabel: (r: R) => string;
-  /** «Зохиогч томилоогүй» / «Засварлагч томилоогүй» */
+  /** «Зохиогч томилоогүй» / «Засварлагч томилоогүй» — хоосон нүдний tooltip */
   emptyLabel: (r: R) => string;
   /** Хуваарилалтууд ба тэдгээрийн төлөв */
   list: () => Row<R>[];
@@ -131,25 +142,60 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
   const { busy, err, setErr, run } = useAclRunner(ready);
 
   /**
-   * БАГЦАД ААКАУНТ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
-   * ⚠️ Дүрэм (ALL хамгаалалт, grant тус бүр) нь `aclOps.addPkgOp`-д.
+   * НҮДЭНД ААКАУНТ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
+   * ⚠️ Дүрэм (ALL хамгаалалт, grant тус бүр) нь `aclGrid.planGrantAdd` → `aclOps.scopedCellOp`-д.
    */
   const addTo = (group: string, role: R, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    void run(addPkgOp(spec.sys, user, role, group));
+    void run(scopedCellOp(spec.sys, user, role, group, true));
   };
 
   /**
-   * БАГЦААС ААКАУНТ ХАСАХ — тэр ҮҮРГИЙН grant-аас энэ багцыг л хасна.
-   * ⚠️ «Бүх багц»-тай бол бүхэлд нь хасахыг асууна; сүүлийн grant бол мөр
-   *    бүхэлдээ (`revoke=false` + алга болсон үүргийн эрх) — `aclOps.removePkgOp`.
+   * НҮДНЭЭС ААКАУНТ ХАСАХ — тэр ҮҮРГИЙН grant-аас энэ багцыг л хасна.
+   * ⚠️ «Бүх багц»-тай бол бусад багцын ил жагсаалт болгохыг асууна; сүүлийн grant бол
+   *    мөр бүхэлдээ (асууж, `revoke=false` + алга болсон үүргийн эрх) — `aclOps.scopedCellOp`.
    */
   const removeFrom = (group: string, role: R, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    void run(removePkgOp(spec.sys, user, role, group));
+    void run(scopedCellOp(spec.sys, user, role, group, false));
   };
 
   const [note1, note2, note3] = spec.notes();
+  const [authorRole, approverRole] = spec.roles;
+
+  /** Тухайн багцад тэр үүргээр хуваарилагдсан аккаунтууд (+ «бүх багц»-аар эсэх) */
+  const holdersOf = (group: string, role: string): GridHolder[] =>
+    rows.flatMap((a) => {
+      const held = grantHolds(a.grants, role, group);
+      return held ? [{
+        user: a.user,
+        viaAll: held === 'all',
+        gone: !known.has(a.user),
+        failed: failed.has(a.user),
+        dirty: dirtyPerms.has(a.user),
+      }] : [];
+    });
+
+  /** Багц бүрийн гацаа — нэг удаа тооцоод мөр, нүд хоёуланд */
+  const state = new Map(PKG_GROUPS.map((g) => {
+    const authors = holdersOf(g, authorRole).map((h) => h.user);
+    const approvers = holdersOf(g, approverRole).map((h) => h.user);
+    /**
+     * ⚠️ ГАЦААНЫ АНХААРУУЛГА: зохиогч нь бий атлаа батлагч нь ЗӨВХӨН тэр өөрөө
+     *    бол илгээсэн зүйлийг нь хэн ч батлах боломжгүй болно (батлах логик
+     *    өөрийгөө батлахыг татгалздаг). Багц бүхэлдээ гацна.
+     * ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, аудитын засвар): урьд нь «зохиогч биш
+     *    батлагч алга» (`usable.length === 0`) гэж шалгадаг байсан тул A, B
+     *    хоёулаа зохиогч БА батлагч үед худал анхааруулга гардаг байв — A-гийнхыг
+     *    B, B-гийнхыг A батална. Батлах логик ЗӨВХӨН тухайн илгээлтийн зохиогчийг
+     *    татгалздаг тул гацаа = ЯМАР НЭГ зохиогчид өөрөөс нь өөр батлагч алга
+     *    (`erhOverview.noOther`-той ижил дүрэм).
+     */
+    const stuck = approvers.length > 0
+      && authors.some((a) => !approvers.some((b) => b !== a));
+    const noApprover = authors.length > 0 && approvers.length === 0;
+    return [g, { stuck, noApprover }] as const;
+  }));
 
   return (
     <div className={s.aclWrap}>
@@ -168,179 +214,37 @@ export function ScopedAclPanel<R extends string>({ spec }: { spec: AclPanelSpec<
         </div>
       )}
 
-      <div className={s.aclGrid}>
-        {PKG_GROUPS.map((g) => (
-          <PkgCol
-            key={g}
-            spec={spec}
-            group={g}
-            rows={rows}
-            accounts={accounts}
-            known={known}
-            failed={failed}
-            dirtyPerms={dirtyPerms}
-            onAdd={addTo}
-            onRemove={removeFrom}
-            busy={busy || locked}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** НЭГ БАГЦЫН хөзөр — хоёр үүргийн жагсаалт */
-function PkgCol<R extends string>({
-  spec, group, rows, accounts, known, failed, dirtyPerms, onAdd, onRemove, busy,
-}: {
-  spec: AclPanelSpec<R>;
-  group: string;
-  rows: Row<R>[];
-  accounts: string[];
-  known: Set<string>;
-  failed: Set<string>;
-  dirtyPerms: Set<string>;
-  onAdd: (group: string, role: R, user: string) => void;
-  onRemove: (group: string, role: R, user: string) => void;
-  /** Алсын бичилт явж байна — товчнууд түгжигдэнэ (давхар товшилтоос) */
-  busy: boolean;
-}) {
-  /** Тухайн багцад тэр үүргээр хуваарилагдсан аккаунтууд */
-  const usersOf = (role: R): string[] =>
-    rows
-      .filter((a) => a.grants.some((g) => g.role === role
-        && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(group))))
-      .map((a) => a.user);
-
-  const [authorRole, approverRole] = spec.roles;
-  const authors = usersOf(authorRole);
-  const approvers = usersOf(approverRole);
-
-  /**
-   * ⚠️ ГАЦААНЫ АНХААРУУЛГА: зохиогч нь бий атлаа батлагч нь ЗӨВХӨН тэр өөрөө
-   *    бол илгээсэн зүйлийг нь хэн ч батлах боломжгүй болно (батлах логик
-   *    өөрийгөө батлахыг татгалздаг). Багц бүхэлдээ гацна.
-   * ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, аудитын засвар): урьд нь «зохиогч биш
-   *    батлагч алга» (`usable.length === 0`) гэж шалгадаг байсан тул A, B
-   *    хоёулаа зохиогч БА батлагч үед худал анхааруулга гардаг байв — A-гийнхыг
-   *    B, B-гийнхыг A батална. Батлах логик ЗӨВХӨН тухайн илгээлтийн зохиогчийг
-   *    татгалздаг тул гацаа = ЯМАР НЭГ зохиогчид өөрөөс нь өөр батлагч алга
-   *    (`erhOverview.noOther`-той ижил дүрэм).
-   */
-  const stuck = approvers.length > 0
-    && authors.some((a) => !approvers.some((b) => b !== a));
-
-  return (
-    <div className={s.aclCol}>
-      <div className={s.aclHead}>
-        <span>{group}</span>
-        <span className={s.aclCount}>{authors.length + approvers.length}</span>
-      </div>
-
-      {spec.roles.map((role) => {
-        const list = role === authorRole ? authors : approvers;
-        /* Тэр багцад тэр үүргээр аль хэдийн байгааг санал болгохгүй */
-        const free = accounts.filter((a) => !list.includes(a.toLowerCase()));
-        return (
-          <RoleBlock
-            key={role}
-            spec={spec}
-            group={group}
-            role={role}
-            list={list}
-            free={free}
-            known={known}
-            failed={failed}
-            dirtyPerms={dirtyPerms}
-            onAdd={onAdd}
-            onRemove={onRemove}
-            busy={busy}
-          />
-        );
-      })}
-
-      {stuck && (
-        <div className={s.aclErr} role="alert">{spec.stuckMsg()}</div>
-      )}
-      {authors.length > 0 && approvers.length === 0 && (
-        <div className={s.aclErr} role="alert">{spec.noApproverMsg()}</div>
-      )}
-    </div>
-  );
-}
-
-/** Нэг үүргийн блок — жагсаалт + нэмэх сонгогч */
-function RoleBlock<R extends string>({
-  spec, group, role, list, free, known, failed, dirtyPerms, onAdd, onRemove, busy,
-}: {
-  spec: AclPanelSpec<R>;
-  group: string;
-  role: R;
-  list: string[];
-  free: string[];
-  known: Set<string>;
-  failed: Set<string>;
-  dirtyPerms: Set<string>;
-  onAdd: (group: string, role: R, user: string) => void;
-  onRemove: (group: string, role: R, user: string) => void;
-  /** Алсын бичилт явж байна — товчнууд түгжигдэнэ (давхар товшилтоос) */
-  busy: boolean;
-}) {
-  const [add, setAdd] = useState('');
-
-  return (
-    <div className={s.aclRole}>
-      <div className={s.aclRoleHead}>{spec.roleLabel(role)}</div>
-
-      {list.length === 0 && (
-        <div className={s.aclEmpty}>{spec.emptyLabel(role)}</div>
-      )}
-
-      {list.map((u) => (
-        <div key={u} className={s.aclUser}>
-          <span className={s.aclName} title={u}>{u}</span>
-          {!known.has(u) && (
-            <span className={s.aclEmpty} title={tr('устгагдсан аккаунт')}>⚠️</span>
-          )}
-          {failed.has(u) && (
-            <span className={s.aclErr} title={tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}>⚠️</span>
-          )}
-          {dirtyPerms.has(u) && (
-            <span className={s.aclErr} title={tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»')}>⚠️</span>
-          )}
-          <button
-            type="button"
-            className={s.aclX}
-            title={tr('Энэ багцаас хасах')}
-            disabled={busy}
-            onClick={() => onRemove(group, role, u)}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-
-      <div className={s.aclAdd}>
-        {/* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно. */}
-        <select
-          className={s.aclInput}
-          value={add}
-          onChange={(e) => setAdd(e.target.value)}
-          disabled={busy || free.length === 0}
-        >
-          <option value="">{free.length ? tr('Аккаунт нэмэх…') : tr('Чөлөөтэй аккаунт алга')}</option>
-          {free.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <button
-          type="button"
-          className={s.aclBtn}
-          /* ⚠️ Бичилт явж байхад түгжинэ — давхар товшилт нэмэлтийг алдагдуулна */
-          disabled={busy || !add.trim()}
-          onClick={() => { onAdd(group, role, add); setAdd(''); }}
-        >
-          {tr('Нэмэх')}
-        </button>
-      </div>
+      <AclGrid
+        corner={tr('Багц')}
+        rows={PKG_GROUPS.map((g) => {
+          const st = state.get(g);
+          return {
+            key: g,
+            label: g,
+            warn: [st?.stuck ? spec.stuckMsg() : '', st?.noApprover ? spec.noApproverMsg() : ''].filter(Boolean),
+          };
+        })}
+        cols={spec.roles.map((r) => ({
+          key: r,
+          label: spec.roleLabel(r),
+          count: rows.filter((a) => a.grants.some((g) => g.role === r)).length,
+        }))}
+        holders={holdersOf}
+        /* ⚠️ Гацаа нь БАТЛАГЧИЙН нүдэнд: батлагчгүй, эсвэл зохиогч өөрөө л батлагч.
+           Хоосон зохиогчийн нүд гацаа биш — илгээх зүйл үүсэхгүй. */
+        stuck={(g, role) => role === approverRole && !!(state.get(g)?.stuck || state.get(g)?.noApprover)}
+        stuckTitle={(g, role) => (state.get(g)?.noApprover ? spec.emptyLabel(role as R) : spec.stuckMsg())}
+        /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
+        candidates={(g, role) => {
+          const list = holdersOf(g, role).map((h) => h.user);
+          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+        }}
+        onAdd={(g, role, u) => addTo(g, role as R, u)}
+        onRemove={(g, role, h) => removeFrom(g, role as R, h.user)}
+        addTitle={(r, c) => tr('{0} — {1}: аккаунт нэмэх', r.label, c.label)}
+        off={busy || locked}
+        canOpen={() => { if (locked) { setErr(LOCK_MSG); return false; } return true; }}
+      />
     </div>
   );
 }

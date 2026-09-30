@@ -38,6 +38,8 @@ import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
 import { capLabelShort } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
+import { planCellAdd, planCellRemove } from './guitsetgelGrid';
+import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
 import {
   flowAclReady, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
 } from './guitsetgelAcl';
@@ -348,6 +350,11 @@ export function addPkgOp(sys: ScopedSys, user: string, role: string, pkg: string
 
 /**
  * БАГЦААС ҮҮРЭГ ХАСАХ — тэр ҮҮРГИЙН grant-аас энэ багцыг л хасна.
+ * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
+ *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
+ *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
+ *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
+ *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
  *
  * ⚠️ «Бүх багц»-тай grant-ыг нэг багцаас САЛГАЖ хасах боломжгүй — тэр үүргийг
  *    БҮХЭЛД нь хасахыг асууна. ⚠️ ДЭД БҮТЭЦ ТУСГАЙ (2026-09-23, `DedButetsAcl`):
@@ -424,6 +431,55 @@ export function dropRoleOp(sys: ScopedSys, user: string, role: string): AclOp {
   };
 }
 
+/**
+ * «Бүх багц»-ыг нэг мөрөөс хасахад бусад багцын ил жагсаалт болгох асуулт —
+ * хүснэгтийн нүд (`scopedCellOp` · `qaqcCellOp`, 2026-09-30).
+ */
+const narrowMsg = (u: string, pkg: string, n: number): string =>
+  tr('«{0}» нь энэ үүргээр БҮХ багцад хуваарилагдсан. «{1}»-оос хасвал бусад {2} багцын ил жагсаалт болно (шинэ багц нэмэгдэхэд автоматаар хамрахгүй). Үргэлжлүүлэх үү?', u, pkg, n);
+
+/**
+ * «БАГЦ × ҮҮРЭГ» ХҮСНЭГТИЙН НҮД (`ScopedAclPanel` · `ChanarAcl` · `DedButetsAcl`,
+ * 2026-09-30) — нэмэх/хасах.
+ *
+ * ⚠️ Шийдвэр нь ЦЭВЭР `aclGrid.planGrant*`-д; энд зөвхөн бичилт ба асуулт.
+ *    Бичилт нь `addPkgOp` · `removePkgOp`-той ЯГ ижил: нэмэх → `setGrants`
+ *    (эрх олгоно); хасах → `setGrantsRevokingRoles` (алга болсон үүргийн эрх л
+ *    буцна); сүүлийн grant → `removeAllMsg` асуугаад `removeRevokingRoles`.
+ * ⚠️ 2026-09-30: «Тойм»-ын матриц (`ErhCellEditor`) ч ЭНЭ op-оор бичдэг болсон.
+ * ⚠️ `removePkgOp` (хуучин карт · матриц)-оос ЯЛГААТАЙ нэг зүйл: «бүх багц»-тай grant-ыг
+ *    НЭГ мөрөөс хасвал бусад бүх багцын ил жагсаалт болгоно (асууна) —
+ *    `flowCellOp`-ийн ижил хүснэгтийн дүрэм. Дэд бүтэц 2026-09-23-наас ийм
+ *    бөгөөд АСУУДАГГҮЙ — тэр шийдвэр хэвээр.
+ * @param label асуултад гарах багцын нэр (дэд бүтцэд түлхүүр биш нэр)
+ */
+export function scopedCellOp(
+  sys: ScopedSys, user: string, role: string, pkg: string, add: boolean, label: string = pkg,
+): AclOp {
+  const spec = SCOPED_SYS[sys];
+  const u = norm(user);
+  if (!u) return null;
+  const cur = spec.list().find((a) => a.user === u)?.grants;
+  const p = add ? planGrantAdd(cur, role, pkg) : planGrantRemove(cur, role, pkg, spec.universe());
+  switch (p.kind) {
+    case 'none': return null;
+    case 'create': return { user: u, run: () => spec.setGrants(u, p.grants) };
+    case 'set': return add
+      ? { user: u, run: () => spec.setGrants(u, p.grants) }
+      : { user: u, run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps) };
+    case 'narrow': return {
+      user: u,
+      confirm: sys === 'butets' ? [] : [narrowMsg(u, label, p.left.length)],
+      run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps),
+    };
+    case 'drop': return {
+      user: u,
+      confirm: [removeAllMsg(sys, u)],
+      run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps),
+    };
+  }
+}
+
 /* ══════════════════════ QAQC (үүрэггүй, `soleCap`) ══════════════════════ */
 
 const qaqcRow = (u: string) => listQaqcAssigns().find((a) => a.user === u);
@@ -442,7 +498,9 @@ export function qaqcDropOp(user: string): AclOp {
 
 /**
  * БАГЦ НЭМЭХ. ⚠️ ШИНЭ мөр → эрх олгоно (`grant=true`); байгаа мөрийн багц солих →
- *    `grant=false` (эрх аль хэдийн олгогдсон — `QaqcAcl`-ийн дүрэм).
+ *    `grant=false` (эрх аль хэдийн олгогдсон).
+ * ⚠️ 2026-09-30: `qaqcAllOp` · `qaqcChipOp` (хуучин QAQC хөзрийн «Бүх багц» ба багцын
+ *    чипүүд) УСТСАН — панел нь хүснэгт болж `qaqcCellOp`-оор бичдэг.
  */
 export function qaqcAddOp(user: string, pkg: string): AclOp {
   const u = norm(user);
@@ -453,17 +511,13 @@ export function qaqcAddOp(user: string, pkg: string): AclOp {
   return { user: u, run: () => setQaqcAssign(u, [...cur.bagts, pkg], false) };
 }
 
-/** «Бүх багц» — шинэ мөр бол эрх олгоно */
-export function qaqcAllOp(user: string): AclOp {
-  const u = norm(user);
-  if (!u) return null;
-  const cur = qaqcRow(u);
-  if (cur?.bagts.includes(ALL_BAGTS)) return null;
-  return { user: u, run: () => setQaqcAssign(u, [ALL_BAGTS], !cur) };
-}
-
 /**
- * БАГЦААС ХАСАХ (матрицын нүд). ⚠️ «Бүх багц»-тай бол нэг багцаас салгахгүй —
+ * БАГЦААС ХАСАХ (хуучин матрицын нүд). ⚠️ «Бүх багц»-тай бол нэг багцаас салгахгүй —
+ * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
+ *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
+ *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
+ *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
+ *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
  *    бүхэлд нь хасахыг асууна; сүүлийн багц бол ✕-ийн зам (асууж, эрх буцаана).
  */
 export function qaqcRemoveOp(user: string, pkg: string): AclOp {
@@ -480,21 +534,23 @@ export function qaqcRemoveOp(user: string, pkg: string): AclOp {
 }
 
 /**
- * КАРТЫН БАГЦЫН ЧИП — `QaqcAcl` панелийн ЯГ дүрэм: «Бүх багц»-тай үед чип
- * дарвал тэр багц руу НАРИЙСНА; сонгосныг дарвал хасна.
- * ⚠️ СҮҮЛИЙН БАГЦ (2026-09-25, төлөвлөгөө): панел урьд нь «хасахгүй» гэж
- *    зогсоодог байв; одоо ✕-ийн зам руу (асууж, мөрийг хасна) — «бүх багц»
- *    руу БУЦАХГҮЙ (fail-closed хэвээр).
+ * QAQC ХҮСНЭГТИЙН НҮД (`QaqcAcl`, 2026-09-30) — мөр = багц, ганц багана.
+ * ⚠️ Шийдвэр `aclGrid.planList*`-д. Шинэ мөр → эрх олгоно (`qaqcAddOp`-той ижил);
+ *    багц солих → `grant=false`; сүүлийн багц → `qaqcDropOp` (асууж эрх буцаана,
+ *    «бүх багц» руу БУЦАХГҮЙ); «бүх багц»-ыг нэг мөрөөс → бусад багцын ил жагсаалт (асууна).
  */
-export function qaqcChipOp(user: string, pkg: string): AclOp {
+export function qaqcCellOp(user: string, pkg: string, add: boolean): AclOp {
   const u = norm(user);
-  const cur = qaqcRow(u);
-  if (!cur) return qaqcAddOp(u, pkg);
-  const on = cur.bagts.includes(pkg);
-  const rest = cur.bagts.filter((x) => x !== ALL_BAGTS);
-  if (on && rest.length === 1) return qaqcDropOp(u);
-  const next = on ? rest.filter((x) => x !== pkg) : [...rest, pkg];
-  return { user: u, run: () => setQaqcAssign(u, next, false) };
+  if (!u) return null;
+  const cur = qaqcRow(u)?.bagts;
+  const p = add ? planListAdd(cur, pkg) : planListRemove(cur, pkg, PKG_GROUPS);
+  switch (p.kind) {
+    case 'none': return null;
+    case 'create': return { user: u, run: () => setQaqcAssign(u, p.bagts) };
+    case 'set': return { user: u, run: () => setQaqcAssign(u, p.bagts, false) };
+    case 'narrow': return { user: u, confirm: [narrowMsg(u, pkg, p.bagts.length)], run: () => setQaqcAssign(u, p.bagts, false) };
+    case 'drop': return qaqcDropOp(u);
+  }
 }
 
 /* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай) ══════════════════════ */
@@ -558,7 +614,14 @@ export function flowAddOp(user: string, stage: Stage, pkg: string): AclOp {
   return { user: u, run: () => setAssign(u, stage, [...cur.bagts, pkg], false) };
 }
 
-/** ШАТНЫ БАГЦААС ХАСАХ (матрицын нүд) — `qaqcRemoveOp`-ийн ижил дүрэм */
+/**
+ * ШАТНЫ БАГЦААС ХАСАХ (хуучин матрицын нүд) — `qaqcRemoveOp`-ийн ижил дүрэм.
+ * ⚠️ 2026-09-30: UI-ААС ДУУДАГДАХГҮЙ. Матрицын нүд (`ErhCellEditor`) ч `*CellOp`-д
+ *    шилжсэн — «бүх багц»-тай хүнийг НЭГ нүднээс хасахад энэ op «бүхэлд нь хасах уу?»
+ *    асууж БҮХ багцаас хасдаг байсан нь хэрэглэгчийн мэдээлсэн алдаа байв
+ *    («нэг багцаас хасахад бүх багцаас хасагдаж байна»). Шинэ UI-д ХЭРЭГЛЭХГҮЙ —
+ *    `scopedCellOp` · `qaqcCellOp` · `flowCellOp`. Хуучин дүрэм `aclParity`-д бичигдсэн тул үлдээв.
+ */
 export function flowRemoveOp(user: string, pkg: string): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
@@ -581,7 +644,7 @@ export function flowAllOp(user: string): AclOp {
 }
 
 /**
- * КАРТЫН БАГЦЫН ЧИП — `GuitsetgelAcl` панелийн ЯГ дүрэм (`qaqcChipOp`-той ижил).
+ * КАРТЫН БАГЦЫН ЧИП — хуучин `GuitsetgelAcl` панелийн дүрэм.
  * ⚠️ Сүүлийн багц → ✕-ийн зам (асууж, эрх буцаана), «бүх багц» руу БУЦАХГҮЙ.
  */
 export function flowChipOp(user: string, pkg: string): AclOp {
@@ -601,6 +664,39 @@ export function flowViewOnlyOp(user: string, on: boolean): AclOp {
   const cur = flowRow(u);
   if (!cur || (cur.viewOnly === true) === on) return null;
   return { user: u, run: () => setViewOnly(u, on) };
+}
+
+/**
+ * «БАГЦ × ШАТ» ХҮСНЭГТИЙН НҮД (`GuitsetgelAcl`, 2026-09-30) — нэмэх/хасах.
+ *
+ * ⚠️ Шийдвэр нь ЦЭВЭР `guitsetgelGrid.planCell*`-д; энд зөвхөн бичилт ба асуулт.
+ *    Бичилт нь дээрх op-уудтай ЯГ ижил: шинэ → `setAssign` (эрх олгоно);
+ *    шилжүүлэх → `moveMsg` асуугаад `setAssign`; багц солих → `grant=false`;
+ *    бүхэлд нь хасах → `flowDropOp` (асууж эрх буцаана, устгагдсанд revoke=false).
+ * ⚠️ 2026-09-30: «Тойм»-ын матриц (`ErhCellEditor`) ч ЭНЭ op-оор бичдэг болсон.
+ * ⚠️ `flowRemoveOp` (хуучин матриц)-оос ЯЛГААТАЙ нэг зүйл: «бүх багц»-тай
+ *    хүнийг НЭГ мөрөөс хасвал бусад бүх багцын ил жагсаалт болгоно (асууна) —
+ *    хэрэглэгчийн шаардлага (2026-09-30). Матриц ч мөн энэ дүрмээр (2026-09-30, `ErhCellEditor`).
+ * @param pkg багцын нэр эсвэл `ALL_BAGTS` («Бүх багц» мөр)
+ */
+export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
+  const u = norm(user);
+  if (!u) return null;
+  const cur = flowRow(u);
+  const p = add ? planCellAdd(cur, stage, pkg) : planCellRemove(cur, stage, pkg, PKG_GROUPS);
+  switch (p.kind) {
+    case 'none': return null;
+    case 'create': return { user: u, run: () => setAssign(u, p.stage, p.bagts) };
+    case 'move': return { user: u, confirm: [moveMsg(u, p.from, p.stage, pkg)], run: () => setAssign(u, p.stage, p.bagts) };
+    case 'set': return { user: u, run: () => setAssign(u, p.stage, p.bagts, false) };
+    case 'narrow': return {
+      user: u,
+      confirm: [tr('«{0}» нь {1} шатанд БҮХ багцад томилогдсон. «{2}»-оос хасвал бусад {3} багцын ил жагсаалт болно (шинэ багц нэмэгдэхэд автоматаар хамрахгүй). Үргэлжлүүлэх үү?',
+        u, STAGE_LABEL[p.stage], pkg, p.bagts.length)],
+      run: () => setAssign(u, p.stage, p.bagts, false),
+    };
+    case 'drop': return flowDropOp(u);
+  }
 }
 
 /* ══════════════════════ Эрхийг ШУУД олгох/хасах (`__cap__:`) ══════════════════════ */

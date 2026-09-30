@@ -126,6 +126,8 @@
   padding: 8px 24px 24px;
   overflow-y: auto;
 }
+/* ⚠️ 2026-09-30: «Эрхийн төрөл» — 10 төрөл × тохиргооны хүснэгт; 860px-д хэвтээ гүйлгэгддэг байв (хэрэглэгчийн хүсэлт) — бүтэн өргөн */
+.mainWide { max-width: none; }
 
 .head { padding: 16px 0 12px; border-bottom: 1px solid var(--line); }
 .title { font-size: 1.05rem; font-weight: 700; margin: 0; }

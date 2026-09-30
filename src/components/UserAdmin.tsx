@@ -153,6 +153,9 @@ export type Draft = {
  * ганц «Хадгалах» товчоор л ArcGIS + localStorage руу бууна. Хэсэгчилсэн бичилт
  * байхгүй тул «хагас тохируулсан» төлөв үүсэхгүй.
  */
+/** Бүтэн өргөнтэй хуудсууд — «Эрхийн төрөл» ба «багц × үүрэг/шат» хүснэгттэй 7 хуудас (2026-09-30) */
+const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets']);
+
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
   /** Нэвтэрсэн админы нэр — ӨӨРИЙН аккаунтад устгах товч гарахгүй (өөрийгөө түгжихээс сэргийлнэ) */
@@ -931,7 +934,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         ))}
       </aside>
 
-      <div className={s.main}>
+      {/* ⚠️ 2026-09-30: «Гүйцэтгэлийн урсгалын эрх» нь 6 шатны «багц × шат» хүснэгт — 860px-д багтахгүй тул өргөн.
+          Багцаар олгодог бусад 6 хуудас ч ИЖИЛ хүснэгт (`AclGrid`) болсон тул мөн өргөн; `PlainCapAcl`-ийн
+          (аккаунтаар) хуудас хэвээр нарийн. */}
+      <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
         {pane === 'ovw' ? (
           <>
             <header className={s.head}>

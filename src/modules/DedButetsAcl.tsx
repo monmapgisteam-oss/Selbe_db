@@ -10,12 +10,16 @@
  *    `ChanarAcl`-тай ижил.
  *
  * ⚠️ БАГЦ нь `BUTETS_PACKS` (25 дэд бүтцийн багц) — `PKG_GROUPS` биш.
- *    Хөзрийн гарчиг нь нэр, хадгалагдах нь түлхүүр (`p.key`).
+ *    Мөрийн гарчиг нь нэр, хадгалагдах нь түлхүүр (`p.key`).
+ *
+ * ⚠️ ХӨЗӨР → ХҮСНЭГТ (2026-09-30, `GuitsetgelAcl` загвар): мөр = дэд бүтцийн
+ *    багц, ганц багана «Засварлагч», нүдэнд аккаунтын чипүүд (`AclGrid`).
+ *    Бичилт `aclOps.scopedCellOp('butets', …)` — «бүх багц»-аас нэгийг хасахад
+ *    бусад багцын ил жагсаалт (асуухгүй, 2026-09-23-ны дүрэм хэвээр).
  */
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
@@ -23,8 +27,10 @@ import { roleForUser } from '@/lib/services';
 import {
   butetsAclReady, butetsFailedUsers, listButetsAssigns, subscribeButetsAcl, type ButetsRole,
 } from '@/lib/butetsAcl';
-import { addPkgOp, removePkgOp } from '@/lib/aclOps';
+import { scopedCellOp } from '@/lib/aclOps';
+import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
+import { AclGrid, type GridHolder } from './AclGrid';
 import s from './guitsetgel.module.css';
 
 const ROLE: ButetsRole = 'editor';
@@ -58,7 +64,7 @@ export function DedButetsAcl() {
 
   const addTo = (pack: string, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    void run(addPkgOp('butets', user, ROLE, pack));
+    void run(scopedCellOp('butets', user, ROLE, pack, true));
   };
 
   /*
@@ -66,12 +72,29 @@ export function DedButetsAcl() {
    *    ЗАСВАР): ALL → бусад багцын ИЛ жагсаалт болж, зөвхөн энэ багц хасагдана
    *    (асуухгүй). Урьд нь «Хэрэглэгчид» самбарын унтраалга `[ALL]`-аар асаадаг
    *    тул 16 аккаунт бүгд 25 багцад гарч, нэгээс хасахад бүгдээс хасагддаг
-   *    байлаа. Дүрэм нь `aclOps.removePkgOp`-ийн `butets` салаанд (2026-09-25).
+   *    байлаа. Дүрэм нь `aclOps.scopedCellOp` (`sys === 'butets'` → асуухгүй) —
+   *    карт/матрицын `removePkgOp`-ийн `butets` салаатай ижил (2026-09-25 · 09-30).
    */
+  /** Түлхүүр → дэлгэцийн нэр (асуулт ба tooltip-д) */
+  const nameOf = new Map(BUTETS_PACKS.map((p) => [p.key, p.name] as const));
+
   const removeFrom = (pack: string, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    void run(removePkgOp('butets', user, ROLE, pack));
+    void run(scopedCellOp('butets', user, ROLE, pack, false, nameOf.get(pack) ?? pack));
   };
+
+  /** Тухайн багцад засварлагчаар хуваарилагдсан аккаунтууд (+ «бүх багц»-аар эсэх) */
+  const holdersOf = (pack: string): GridHolder[] =>
+    rows.flatMap((a) => {
+      const held = grantHolds(a.grants, ROLE, pack);
+      return held ? [{
+        user: a.user,
+        viaAll: held === 'all',
+        gone: !known.has(a.user),
+        failed: failed.has(a.user),
+        dirty: dirtyPerms.has(a.user),
+      }] : [];
+    });
 
   return (
     <div className={s.aclWrap}>
@@ -90,96 +113,26 @@ export function DedButetsAcl() {
         </div>
       )}
 
-      <div className={s.aclGrid}>
-        {BUTETS_PACKS.map((p) => {
-          const list = rows
-            .filter((a) => a.grants.some((g) => g.role === ROLE
-              && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(p.key))))
-            .map((a) => a.user);
-          const free = accounts.filter((a) => !list.includes(a.toLowerCase()));
-          return (
-            <div key={p.key} className={s.aclCol}>
-              <div className={s.aclHead}>
-                <span>{p.name}</span>
-                <span className={s.aclCount}>{list.length}</span>
-              </div>
-              <PackBlock
-                pack={p.key}
-                list={list}
-                free={free}
-                known={known}
-                failed={failed}
-                dirtyPerms={dirtyPerms}
-                onAdd={addTo}
-                onRemove={removeFrom}
-                busy={busy || locked}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function PackBlock({
-  pack, list, free, known, failed, dirtyPerms, onAdd, onRemove, busy,
-}: {
-  pack: string;
-  list: string[];
-  free: string[];
-  known: Set<string>;
-  failed: Set<string>;
-  dirtyPerms: Set<string>;
-  onAdd: (pack: string, user: string) => void;
-  onRemove: (pack: string, user: string) => void;
-  busy: boolean;
-}) {
-  const [add, setAdd] = useState('');
-  return (
-    <div className={s.aclRole}>
-      <div className={s.aclRoleHead}>{tr('Засварлагч')}</div>
-      {list.length === 0 && <div className={s.aclEmpty}>{tr('Томилоогүй')}</div>}
-      {list.map((u) => (
-        <div key={u} className={s.aclUser}>
-          <span className={s.aclName} title={u}>{u}</span>
-          {!known.has(u) && <span className={s.aclEmpty} title={tr('устгагдсан аккаунт')}>⚠️</span>}
-          {failed.has(u) && (
-            <span className={s.aclErr} title={tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}>⚠️</span>
-          )}
-          {dirtyPerms.has(u) && (
-            <span className={s.aclErr} title={tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»')}>⚠️</span>
-          )}
-          <button
-            type="button"
-            className={s.aclX}
-            title={tr('Энэ багцаас хасах')}
-            disabled={busy}
-            onClick={() => onRemove(pack, u)}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <div className={s.aclAdd}>
-        <select
-          className={s.aclInput}
-          value={add}
-          onChange={(e) => setAdd(e.target.value)}
-          disabled={busy || free.length === 0}
-        >
-          <option value="">{free.length ? tr('Аккаунт нэмэх…') : tr('Чөлөөтэй аккаунт алга')}</option>
-          {free.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <button
-          type="button"
-          className={s.aclBtn}
-          disabled={busy || !add.trim()}
-          onClick={() => { onAdd(pack, add); setAdd(''); }}
-        >
-          {tr('Нэмэх')}
-        </button>
-      </div>
+      <AclGrid
+        corner={tr('Багц')}
+        rows={BUTETS_PACKS.map((p) => ({ key: p.key, label: p.name }))}
+        cols={[{ key: ROLE, label: tr('Засварлагч'), count: rows.filter((a) => a.grants.some((g) => g.role === ROLE)).length }]}
+        holders={(pack) => holdersOf(pack)}
+        /* ⚠️ Хоосон багц гацаа биш — засвар батлах шатгүй, зөвхөн super засна */
+        stuck={() => false}
+        stuckTitle={() => ''}
+        candidates={(pack) => {
+          const list = holdersOf(pack).map((h) => h.user);
+          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+        }}
+        onAdd={(pack, _c, u) => addTo(pack, u)}
+        onRemove={(pack, _c, h) => removeFrom(pack, h.user)}
+        addTitle={(r) => tr('{0} — засварлагч нэмэх', r.label)}
+        off={busy || locked}
+        canOpen={() => { if (locked) { setErr(LOCK_MSG); return false; } return true; }}
+        /* ⚠️ Дэд бүтцийн багцын нэр урт («Багц 5.1 — …») — эхний багана өргөн */
+        rowWidth={220}
+      />
     </div>
   );
 }

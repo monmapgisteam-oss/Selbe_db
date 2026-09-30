@@ -2,7 +2,7 @@
 .wrap {
   max-width: 100%;
   overflow: auto;
-  max-height: calc(100vh - 290px);
+  max-height: calc(100vh - 230px); /* ⚠️ 2026-09-30: бүтэн дэлгэц — өндрийг ч дээд зэргээр */
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);

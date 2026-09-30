@@ -27,7 +27,7 @@ import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 import type { ScopedSys } from '@/lib/aclRoleCaps';
 import {
-  addPkgOp, flowAddOp, flowRemoveOp, lockMsg, qaqcAddOp, qaqcRemoveOp, removePkgOp, type AclOp,
+  flowCellOp, lockMsg, qaqcCellOp, scopedCellOp, type AclOp,
 } from '@/lib/aclOps';
 import { draftFlowMsg, newAccountMsg, removeMarkedMsg } from './erhLabels';
 import s from './guitsetgel.module.css';
@@ -82,12 +82,23 @@ export function ErhCellEditor({
     box.current?.focus();
   };
 
-  const addOp = (u: string): AclOp => (col.sys === 'flow' ? flowAddOp(u, col.role as Stage, pkg)
-    : col.sys === 'qaqc' ? qaqcAddOp(u, pkg)
-      : addPkgOp(col.sys, u, col.role, pkg));
-  const rmOp = (u: string): AclOp => (col.sys === 'flow' ? flowRemoveOp(u, pkg)
-    : col.sys === 'qaqc' ? qaqcRemoveOp(u, pkg)
-      : removePkgOp(col.sys, u, col.role, pkg));
+  /*
+   * ⚠️ НҮДНИЙ OP — багцын хуудасны хүснэгттэй (`AclGrid`) ЯГ ИЖИЛ (2026-09-30, хэрэглэгчийн
+   *    мэдээлсэн алдаа: «нэг багцаас хасахад бүх багцаас хасагдаж байна»). Урьд нь энд
+   *    `removePkgOp` · `qaqcRemoveOp` · `flowRemoveOp` дуудагддаг байв: «Бүх багц»-тай хүнийг
+   *    НЭГ нүднээс ✕ дарахад «энэ үүргийг БҮХЭЛД НЬ хасах уу?» гэж асуугаад зөвшөөрвөл
+   *    БҮХ багцаас хасдаг — тэр хүн матрицын нүд бүрд энгийн нэр шиг харагддаг тул админ
+   *    «зөвхөн энэ багц» гэж ойлгож зөвшөөрдөг. Хуудасны хүснэгт 2026-09-30-нд «бусад
+   *    багцын ил жагсаалт болно» (`narrow`) дүрэмд шилжсэн ч матриц хуучин op дээр үлдсэн.
+   *    Одоо `*CellOp` — нэг дүрэм, нэг асуулт (`aclE2E.ui.check.mjs` барина).
+   *    Урсгалын баганад ШАТЫГ нь (`col.role`) дамжуулна — `flowRemoveOp` шатгүй байв.
+   */
+  const addOp = (u: string): AclOp => (col.sys === 'flow' ? flowCellOp(u, col.role as Stage, pkg, true)
+    : col.sys === 'qaqc' ? qaqcCellOp(u, pkg, true)
+      : scopedCellOp(col.sys, u, col.role, pkg, true));
+  const rmOp = (u: string): AclOp => (col.sys === 'flow' ? flowCellOp(u, col.role as Stage, pkg, false)
+    : col.sys === 'qaqc' ? qaqcCellOp(u, pkg, false)
+      : scopedCellOp(col.sys, u, col.role, pkg, false));
 
   /** Урсгалын сонголтод одоогийн шатыг харуулна — шилжүүлэхээс өмнө мэдэгдэнэ */
   const optLabel = (a: string): string => {

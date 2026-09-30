@@ -529,7 +529,7 @@
   color: var(--ink-2);
   font-size: 0.8rem;
 }
-/* Дөрвөн багана — шат бүр нэг. Нарийн дэлгэцэд өөрөө нугална. */
+/* Хөзрийн сүлжээ — тойм (`ErhOverview`) ба `PlainCapAcl`. Багцаар олгодог хуудсууд `.gg*` хүснэгттэй. */
 .aclGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -544,7 +544,7 @@
   border-radius: 10px;
   background: var(--surface);
 }
-/* ⚠️ Чанарын (QAQC) панел нь ГАНЦ баганатай (шатгүй) тул `auto-fit` түүнийг
+/* ⚠️ Ганц баганатай хөзөр (2026-09-30-наас зөвхөн `PlainCapAcl` — QAQC хүснэгт болсон) `auto-fit`-ээр
    дэлгэц дүүрэн сунгана — уншихад хэцүү, урсгалын 4 баганатай ч зөрнө.
    Тиймээс өргөнийг нь баганын хэмжээнд барина. */
 .aclOne { max-width: 420px; }
@@ -586,15 +586,6 @@
 .aclBtn:disabled { opacity: 0.45; }
 .aclErr { color: var(--bad); font-size: 0.76rem; }
 .aclEmpty { color: var(--ink-3); font-size: 0.78rem; padding: 4px 0; }
-.aclRow {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-2);
-}
 .aclUser { display: flex; align-items: center; gap: 8px; }
 .aclName { flex: 1; min-width: 0; font-weight: 600; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; }
 /*
@@ -744,4 +735,131 @@
 /* ⚠️ 2026-09-30: хаалттай товчны шалтгаан — tooltip-оос гадна ил бичвэр (хүрэлцэх дэлгэц) */
 .blockedWhy {
   margin-top: 6px; font-size: 0.78rem; color: var(--ink-3); line-height: 1.4;
+}
+
+/* ══════════ ЭРХИЙН «БАГЦ × ҮҮРЭГ/ШАТ» ХҮСНЭГТ (2026-09-30) — `AclGrid.tsx` ══════════
+   ⚠️ Урсгал · Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · QAQC · Дэд бүтэц — БҮГД
+   энэ нэг загвар (хуучин багц бүрийн хөзөр `.aclGrid`/`.aclRole` эдгээрт ашиглагдахаа больсон).
+   ⚠️ Мөр = багц, багана = шат/үүрэг. Толгой мөр ба эхний багана НААЛДАНА — гар утсанд
+   (6 шат нэг дэлгэцэнд багтахгүй) `.ggWrap` дотор хэвтээ гүйлгэхэд багц/шатны
+   нэр харагдсаар байх ёстой. Хуудас өөрөө хэвтээ гүйхгүй. */
+/* ═══ «БАГЦ × ШАТ» ХҮСНЭГТ (2026-09-30, 2-р загвар — хэрэглэгчийн «загварыг сайжруул») ═══
+   · багана тэнцүү өргөн (table-layout: fixed), багцын багана нарийн
+   · «+» нүдний баруун дээд буланд — мөр бүрд тусдаа мөр эзлэхгүй
+   · «бүх багц»-аар хамрагдсан чип нь бүдэг, үйлдэл нь зөвхөн hover-т
+   · мөрүүд ээлжилсэн өнгөтэй — урт жагсаалтад мөрөө алдахгүй */
+.ggWrap {
+  max-width: 100%;
+  overflow: auto;
+  max-height: calc(100vh - 250px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+/* ⚠️ min-width ба эхний баганын өргөн нь баганын тооноос — `AclGrid` inline style-аар */
+.gg { border-collapse: separate; border-spacing: 0; font-size: 0.76rem; width: 100%; table-layout: fixed; }
+.gg th, .gg td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
+.gg th:last-child, .gg td:last-child { border-right: 0; }
+.ggCorner, .ggHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-align: left;
+  padding: 9px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--line-strong);
+}
+.ggHead > span:first-child { margin-right: 6px; }
+.ggCorner { left: 0; z-index: 3; }
+.ggRow {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 8px 10px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.gg tbody tr:nth-child(even) td, .gg tbody tr:nth-child(even) .ggRow { background: color-mix(in srgb, var(--ink) 3%, var(--surface)); }
+.gg tbody tr:hover td, .gg tbody tr:hover .ggRow { background: color-mix(in srgb, var(--data) 5%, var(--surface)); }
+/* Гацаатай багц (зохиогч=батлагч, нэг хүн хоёр үүрэгт г.м.) — мөрийн толгой шар, ⚠ заагчтай */
+.gg tbody tr .ggRow.ggRowWarn { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+.ggRow { overflow: hidden; text-overflow: ellipsis; }
+.ggWarns { display: flex; flex-direction: column; gap: 4px; }
+.ggCell { position: relative; vertical-align: top; padding: 6px 30px 6px 8px; }
+/* ⚠️ Хоосон нүд = шийдвэрлэх хүнгүй → ажил гацна. Бүдэг анхааруулга, хашгирахгүй. */
+.gg tbody tr td.ggEmpty { background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+.ggDash { color: var(--ink-3); padding: 3px 2px; }
+/* ⚠️ 2026-09-30: нэг нүдэнд олон аккаунт — ДООШОО жагсана (хэрэглэгчийн хүсэлт: ар араасаа биш) */
+.ggChips { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+.ggChip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.ggChip .ggName { flex: 1; min-width: 0; }
+/* «Бүх багц»-аар хамарсан — энэ мөрөнд ил томилоогүй: бүдэг, хүрээгүй; үйлдэл нь hover-т л */
+.ggChipAll { border-color: transparent; background: transparent; color: var(--ink-3); }
+.ggChipAll .ggName { font-weight: 500; }
+.ggChipAll .ggVo:not(.ggVoOn), .ggChipAll .ggX { visibility: hidden; }
+.ggChipAll:hover .ggVo, .ggChipAll:hover .ggX, .ggChipAll:focus-within .ggVo, .ggChipAll:focus-within .ggX { visibility: visible; }
+.ggChipAll .ggVoOn { background: color-mix(in srgb, var(--data) 45%, transparent); }
+.ggChipOdd .ggName { text-decoration: line-through; color: var(--ink-3); }
+.ggChipBad { border-color: var(--bad); }
+.ggName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ggTag { font-size: 0.64rem; color: var(--ink-3); padding: 0 3px; }
+.ggWarn { color: var(--bad); font-weight: 800; padding: 0 3px; }
+.ggVo, .ggX {
+  flex: none;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  color: var(--ink-3);
+}
+.ggVoOn { background: var(--data); color: #fff; font-weight: 650; }
+.ggX { color: var(--bad-ink); }
+.ggX:hover, .ggX:focus-visible { color: var(--bad); }
+.ggVo:disabled, .ggX:disabled, .ggAdd:disabled { opacity: 0.45; }
+/* «+» — нүдний баруун дээд буланд, мөр эзлэхгүй */
+.ggAdd {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.55;
+}
+.ggCell:hover .ggAdd, .ggAdd:focus-visible { opacity: 1; }
+.ggAdd:hover, .ggAdd:focus-visible { color: var(--ink); border-color: var(--data); }
+@media (pointer: coarse) { .ggAdd { opacity: 1; width: 28px; height: 28px; } }
+.ggSelect {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--data);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 0.76rem;
 }

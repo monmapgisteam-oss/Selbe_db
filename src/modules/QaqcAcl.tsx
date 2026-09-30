@@ -19,18 +19,29 @@
  * хоёрыг тусад нь тохируулах шаардлагагүй (`qaqcAcl.setQaqcAssign`).
  *
  * ⚠️ БИЧИЛТ `aclOps`-ООР (2026-09-25) — хэрэглэгчийн карт ба матрицтай ИЖИЛ
- *    дүрэм, ИЖИЛ асуулт (`qaqcAllOp` · `qaqcChipOp` · `qaqcDropOp`). Сүүлийн
+ *    дүрэм, ИЖИЛ асуулт (2026-09-30-наас `qaqcCellOp` · `qaqcDropOp`). Сүүлийн
  *    багцыг дарвал урьд нь «хасахгүй» гэж зогсоодог байв; одоо ✕-ийн зам
  *    (асууж, хуваарилалтаас хасна) — «бүх багц» руу БУЦАХГҮЙ (fail-closed хэвээр).
+ *
+ * ⚠️ ХӨЗӨР → ХҮСНЭГТ (2026-09-30, `GuitsetgelAcl` загвар): мөр = багц, ганц
+ *    багана «Чанарын хяналт», нүдэнд аккаунтын чипүүд (`AclGrid`). Урьд нь
+ *    аккаунтын мөр бүрд багцын чипүүд + «Бүх багц» товч байв. Одоо «+» = тэр
+ *    аккаунтын жагсаалтад ЭНЭ багцыг нэмнэ (мөргүй бол зөвхөн энэ багцаар
+ *    шинэ мөр, эрх олгоно); ✕ = энэ багцыг хасна (сүүлийнх бол ✕-ийн зам,
+ *    «бүх багц»-тай бол бусад багцын ил жагсаалт болгохыг асууна) —
+ *    `aclOps.qaqcCellOp` (цэвэр дүрэм `aclGrid.planList*`). Устгагдсан аккаунтын
+ *    өнчин мөрийг ✕ шууд цэвэрлэнэ (`qaqcDropOp`, асуухгүй — хуучин дүрэм).
  */
 
 import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  ALL_BAGTS, listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, subscribeQaqcAcl,
+  listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, subscribeQaqcAcl,
 } from '@/lib/qaqcAcl';
-import { qaqcAllOp, qaqcChipOp, qaqcDropOp } from '@/lib/aclOps';
+import { qaqcCellOp, qaqcDropOp } from '@/lib/aclOps';
+import { listHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
+import { AclGrid, type GridHolder } from './AclGrid';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { dirtyKeys, listUsers, remoteReady, subscribe } from '@/lib/permissions';
 import { capsRemoteReady } from '@/lib/caps';
@@ -58,7 +69,6 @@ export function QaqcAcl() {
   const known = new Set(all.map((a) => a.toLowerCase()));
 
   const rows = listQaqcAssigns();
-  const [add, setAdd] = useState('');
 
   /** Remote бичилт нь унасан хэрэглэгчид — мөр бүрд тэмдэг */
   const failed = new Set(qaqcFailedUsers());
@@ -66,10 +76,6 @@ export function QaqcAcl() {
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   /** Эрхийн мөр (үүрэг/харагдац) ArcGIS-т хүрээгүй — `permissions` dirty-set */
   const dirtyPerms = new Set(dirtyKeys());
-
-  /* Аль хэдийн хуваарилагдсаныг давхардуулж санал болгохгүй */
-  const taken = new Set(rows.map((a) => a.user));
-  const free = accounts.filter((a) => !taken.has(a.toLowerCase()));
 
   /*
    * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
@@ -84,137 +90,62 @@ export function QaqcAcl() {
   const { busy, err, setErr, run } = useAclRunner(ready);
   const off = locked || busy;
 
-  /* Шинэ мөр → «бүх багц», эрх олгоно (`qaqcAllOp`: мөргүй бол grant=true) */
-  const push = () => {
+  const act = (op: Parameters<typeof run>[0]) => {
     if (locked) { setErr(LOCK_MSG); return; }
-    const u = add;
-    void run(qaqcAllOp(u)).then((ok) => { if (ok) setAdd(''); });
+    void run(op);
   };
+
+  /** Тухайн багцыг хариуцах аккаунтууд (+ «бүх багц»-аар эсэх) */
+  const holdersOf = (pkg: string): GridHolder[] =>
+    rows.flatMap((r) => {
+      const held = listHolds(r.bagts, pkg);
+      return held ? [{
+        user: r.user,
+        viaAll: held === 'all',
+        gone: !known.has(r.user),
+        failed: failed.has(r.user),
+        dirty: dirtyPerms.has(r.user),
+      }] : [];
+    });
 
   return (
     <div className={s.aclWrap}>
       <p className={s.aclNote}>
-        {tr('Аккаунт нэмээд аль багцын чанарын баримтыг хариуцахыг зааж өгнө — заагаагүй бол бүх багц.')}
+        {tr('Мөр = багц. «+»-ээр тухайн багцын чанарын баримтыг хариуцах аккаунт нэмж, ✕-ээр хасна.')}
         {' '}
         {tr('Хуваарилалт ArcGIS дээрх хуваалцсан хүснэгтэд хадгалагдаж, тухайн хүн өөрийн төхөөрөмжөөс нэвтрэхэд шууд үйлчилнэ. Нэмэхэд «QAQC — Inspection Test Plan» эрх ба «Чанар (QAQC)» харагдац автоматаар нээгдэж, хасахад буцаагдана.')}
         {' '}
         {tr('⚠️ Энэ нь гүйцэтгэлийн урсгалаас ТУСДАА: чанарын багц олгосон нь тухайн хүнд гүйцэтгэл зөвшөөрөх/буцаах эрх өгөхгүй, түүний урсгалын шатыг ч хөндөхгүй.')}
       </p>
-
-      <div className={s.aclGrid}>
-        <div className={`${s.aclCol} ${s.aclOne}`}>
-          <div className={s.aclHead}>
-            <span>{tr('Чанарын хяналт')}</span>
-            <span className={s.aclCount}>{rows.length}</span>
-          </div>
-
-          <div className={s.aclAdd}>
-            {/* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно. */}
-            <select
-              className={s.aclInput}
-              value={add}
-              onChange={(e) => setAdd(e.target.value)}
-              disabled={off}
-            >
-              <option value="">{tr('Аккаунт сонгох…')}</option>
-              {free.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <button type="button" className={s.aclBtn} onClick={push} disabled={off || !add.trim()}>
-              {tr('Нэмэх')}
-            </button>
-          </div>
-          {free.length === 0 && (
-            <div className={s.aclEmpty}>
-              {tr('Чөлөөтэй аккаунт алга — «Хэрэглэгчдийн эрх удирдах» хэсэгт шинээр нэмнэ үү.')}
-            </div>
-          )}
-          {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
-          {err && <div className={s.aclErr}>{err}</div>}
-          {orphanFail && (
-            <div className={s.aclErr} role="alert">
-              {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
-            </div>
-          )}
-
-          {rows.length === 0 && <div className={s.aclEmpty}>{tr('Аккаунт хуваарилаагүй')}</div>}
-
-          {rows.map((r) => {
-            /* Устгагдсан аккаунтын өнчин мөр — цэвэрлэх л үлдсэн */
-            const gone = !known.has(r.user);
-            return (
-              <div key={r.user} className={s.aclRow}>
-                <div className={s.aclUser}>
-                  <span className={s.aclName} title={r.user}>{r.user}</span>
-                  <button
-                    type="button"
-                    className={s.aclX}
-                    title={tr('Хуваарилалтаас хасах')}
-                    disabled={off}
-                    onClick={() => {
-                      if (locked) { setErr(LOCK_MSG); return; }
-                      /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false, асуухгүй) —
-                         эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. Дүрэм `qaqcDropOp`-д. */
-                      void run(qaqcDropOp(r.user));
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-                {failed.has(r.user) && (
-                  <div className={s.aclErr} role="alert">{tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т')}</div>
-                )}
-                {dirtyPerms.has(r.user) && (
-                  <div className={s.aclErr}>{tr('Эрхийн мөр ArcGIS-т хадгалагдсангүй — «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»')}</div>
-                )}
-
-                {gone ? (
-                  <div className={s.aclEmpty}>{tr('устгагдсан аккаунт — хуваарилалтыг ✕-ээр цэвэрлэнэ үү')}</div>
-                ) : (
-                  /* БАГЦУУД — олон сонголт. «Бүх багц» нь бусдыг хүчингүй болгоно. */
-                  <div className={s.aclPkgs}>
-                    <button
-                      type="button"
-                      className={`${s.aclPkg} ${r.bagts.includes(ALL_BAGTS) ? s.aclPkgOn : ''}`}
-                      /* grant:false — эрх нь нэмэх үедээ аль хэдийн олгогдсон;
-                         багц солих бүрд эрхийн мөр дахин бичих нь дэмий (`qaqcAllOp`) */
-                      disabled={off}
-                      onClick={() => {
-                        if (locked) { setErr(LOCK_MSG); return; }
-                        void run(qaqcAllOp(r.user));
-                      }}
-                    >
-                      {tr('Бүх багц')}
-                    </button>
-                    {PKG_GROUPS.map((g) => {
-                      const on = r.bagts.includes(g);
-                      return (
-                        <button
-                          key={g}
-                          type="button"
-                          className={`${s.aclPkg} ${on ? s.aclPkgOn : ''}`}
-                          disabled={off}
-                          onClick={() => {
-                            if (locked) { setErr(LOCK_MSG); return; }
-                            /*
-                             * ⚠️ FAIL-CLOSED (урсгалын панелтай ижил дүрэм): сүүлийн
-                             * багцыг хасахад «бүх багц» руу БУЦААХГҮЙ — хязгаарлах
-                             * гэсэн даралт хүрээг тэлэх ёсгүй. 2026-09-25-аас ✕-ийн
-                             * зам (асууж хасна) — `aclOps.qaqcChipOp`.
-                             */
-                            void run(qaqcChipOp(r.user, g));
-                          }}
-                        >
-                          {g}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
+      {err && <div className={s.aclErr} role="alert">{err}</div>}
+      {orphanFail && (
+        <div className={s.aclErr} role="alert">
+          {tr('⚠️ ArcGIS-т бичигдсэнгүй — хуваарилалт түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин оролдоно уу.')}
         </div>
-      </div>
+      )}
+
+      <AclGrid
+        corner={tr('Багц')}
+        rows={PKG_GROUPS.map((g) => ({ key: g, label: g }))}
+        cols={[{ key: 'qaqc', label: tr('Чанарын хяналт'), count: rows.length }]}
+        holders={(g) => holdersOf(g)}
+        /* ⚠️ Хоосон багц гацаа биш — QAQC хуудас батлах шатгүй (хэн ч бөглөөгүй л болно) */
+        stuck={() => false}
+        stuckTitle={() => ''}
+        /* Аль хэдийн хамарсан («бүх багц»-аар ч) аккаунтыг санал болгохгүй */
+        candidates={(g) => {
+          const list = holdersOf(g).map((h) => h.user);
+          return accounts.filter((a) => !list.includes(a.toLowerCase())).map((a) => ({ value: a, label: a }));
+        }}
+        onAdd={(g, _c, u) => act(qaqcCellOp(u, g, true))}
+        /* ⚠️ Устгагдсан аккаунт: зөвхөн мөрийг арилгана (revoke=false, асуухгүй) —
+           эрх буцаах бичилт tombstone-ыг хөндөх ёсгүй. Дүрэм `qaqcDropOp`-д. */
+        onRemove={(g, _c, h) => act(h.gone ? qaqcDropOp(h.user) : qaqcCellOp(h.user, g, false))}
+        addTitle={(r) => tr('{0} — чанарын хяналтад аккаунт нэмэх', r.label)}
+        off={off}
+        canOpen={() => { if (locked) { setErr(LOCK_MSG); return false; } return true; }}
+      />
     </div>
   );
 }

@@ -195,12 +195,14 @@ const CASES = [
   { name: 'ViewPanel', skip: 'Portal-ын дотоод самбар — олон тооны төлөв/callback prop; Portal тохиолдол дамжуулан зурна' },
   { name: 'FillNew', load: () => import('@/modules/sheet/FillNew'), pick: (m) => m.default, props: {} },
   { name: 'ErhTypes', load: () => import('@/modules/ErhTypes'), pick: (m) => m.ErhTypes, props: {}, map: false },
-  /* ⚠️ 2026-09-30: НЭГ УРСГАЛ = НЭГ ХУУДАС — хуудас бүрийн панел (зохиогч + батлагч нэг дор) */
+  /* ⚠️ 2026-09-30: НЭГ УРСГАЛ = НЭГ ХУУДАС — хуудас бүрийн панел (зохиогч + батлагч нэг дор).
+     Багцаар олгодог 7 хуудас «багц × үүрэг» хүснэгт (`AclGrid`) — «Багц» булан ба багцын мөр зурагдах ёстой */
   { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false,
-    expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА'] },
-  { name: 'QaqcAcl', load: () => import('@/modules/QaqcAcl'), pick: (m) => m.QaqcAcl, props: {}, map: false },
+    expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА', 'Багц 1'] },
+  { name: 'QaqcAcl', load: () => import('@/modules/QaqcAcl'), pick: (m) => m.QaqcAcl, props: {}, map: false,
+    expect: ['Чанарын хяналт', 'Багц 1'] },
   { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false,
-    expect: ['Зохиогч', 'Батлагч'] },
+    expect: ['Зохиогч', 'Батлагч', 'Багц 1'] },
   { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false,
     expect: ['Засварлагч', 'Батлагч'] },
   { name: 'AjilAcl', load: () => import('@/modules/AjilAcl'), pick: (m) => m.AjilAcl, props: {}, map: false,
@@ -218,8 +220,10 @@ const CASES = [
   { name: 'CapOrphanNote', load: () => import('@/modules/CapOrphanNote'), pick: (m) => m.CapOrphanNote, props: { cap: 'plan' }, map: false,
     /* ⚠️ ACL уншигдаагүй тул `null` — markup хоосон байх нь ЗӨВ; wrap-ын provider-ууд л зурагдана */
     allowEmpty: true },
-  { name: 'GuitsetgelAcl', load: () => import('@/modules/GuitsetgelAcl'), pick: (m) => m.GuitsetgelAcl, props: {}, map: false },
-  { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false },
+  { name: 'GuitsetgelAcl', load: () => import('@/modules/GuitsetgelAcl'), pick: (m) => m.GuitsetgelAcl, props: {}, map: false,
+    expect: ['Багц 1'] },
+  { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false,
+    expect: ['Засварлагч'] },
 ];
 
 if (listOnly) { CASES.forEach((c) => console.log(`${c.skip ? '⏭' : '·'} ${c.name}${c.skip ? ' — ' + c.skip : ''}`)); process.exitCode = 0; }

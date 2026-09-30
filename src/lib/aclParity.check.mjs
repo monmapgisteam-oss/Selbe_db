@@ -434,7 +434,8 @@ for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/
   }
 }
 
-/* ⚠️ Панелууд op-оор бичнэ — шууд set*Grants / remove*Assign дуудахгүй (2026-09-25) */
+/* ⚠️ Панелууд op-оор бичнэ — шууд set*Grants / remove*Assign дуудахгүй (2026-09-25).
+   ⚠️ 2026-09-30: хөзөр → «багц × үүрэг» хүснэгт (`AclGrid`) — нүд бүр `scopedCellOp` (дүрэм `aclGrid.planGrant*`) */
 for (const [f, sys] of [
   ['src/modules/ScopedAclPanel.tsx', 'spec.sys'],
   ['src/modules/ChanarAcl.tsx', "'chanar'"],
@@ -443,8 +444,12 @@ for (const [f, sys] of [
   const src = readCode(f);
   const add = src.slice(src.indexOf('const addTo ='), src.indexOf('const removeFrom ='));
   const rm = src.slice(src.indexOf('const removeFrom ='), src.indexOf('const removeFrom =') + 400);
-  assert.ok(add.includes(`addPkgOp(${sys}`), `${f}: addTo нь aclOps.addPkgOp-оор бичих ёстой`);
-  assert.ok(rm.includes(`removePkgOp(${sys}`), `${f}: removeFrom нь aclOps.removePkgOp-оор бичих ёстой`);
+  assert.ok(/scopedCellOp\([^;]*, true\)/.test(add) && add.includes(`scopedCellOp(${sys}`), `${f}: addTo нь aclOps.scopedCellOp(…, true)-оор бичих ёстой`);
+  assert.ok(/scopedCellOp\([^;]*, false/.test(rm) && rm.includes(`scopedCellOp(${sys}`), `${f}: removeFrom нь aclOps.scopedCellOp(…, false)-оор бичих ёстой`);
+  assert.ok(src.includes('<AclGrid'), `${f}: нийтлэг хүснэгт (AclGrid)-ээр зурах ёстой`);
+  for (const dead of ['function PkgCol', 'function RoleBlock', 'function PackBlock', 's.aclGrid', 's.aclRole']) {
+    assert.ok(!src.includes(dead), `${f}: хуучин хөзрийн загвар (${dead}) буцаж ирэв`);
+  }
   assert.doesNotMatch(src, /set(Huvaari|Obyem|Ajil|Chanar|Butets)Grants\(|remove(Huvaari|Obyem|Ajil|Chanar|Butets)Assign\(/,
     `${f}: шууд бичилт буцаж ирэв — aclOps-оор явах ёстой`);
 }
@@ -454,10 +459,11 @@ console.log('✅ aclOps — grant тус бүр тусад нь · ALL хамг�
 {
   const src = readCode('src/modules/GuitsetgelAcl.tsx');
   const decl = src.indexOf('const orphanFail');
-  const col = src.indexOf('function Column(');
-  assert.ok(decl > 0 && col > 0, 'GuitsetgelAcl: orphanFail эсвэл Column олдсонгүй');
+  /* ⚠️ 2026-09-30: багана → «багц × шат» хүснэгт; нүд нь `cell` — orphanFail түүнээс ӨМНӨ, гадна */
+  const col = src.indexOf('const cell =');
+  assert.ok(decl > 0 && col > 0, 'GuitsetgelAcl: orphanFail эсвэл cell олдсонгүй');
   assert.ok(decl < col,
-    'orphanFail нь Column ДОТОР тодорхойлогдсон — 4 баганад давхардаж, 4 өөр асуудал мэт харагдана');
+    'orphanFail нь нүд ДОТОР тодорхойлогдсон — нүд бүрд давхардаж, олон өөр асуудал мэт харагдана');
   const uses = src.match(/\{orphanFail && \(/g) ?? [];
   assert.equal(uses.length, 1, `orphanFail нь ЯГ 1 удаа зурагдах ёстой, олдсон: ${uses.length}`);
 }
@@ -792,21 +798,21 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   assert.ok(!CAPS.capsStored('q_new').includes('qaqc'), 'qaqcAddOp: багц солиход эрх дахин бичих ёсгүй (grant=false)');
   assert.equal(OPS.qaqcAddOp('q_new', G1), null, 'qaqcAddOp: аль хэдийн байгаа багц → null');
 
-  /* qaqcAllOp: шинэ → grant=true; байгаа → grant=false */
-  const w3 = OPS.qaqcAllOp('q_all').run();
+  /* qaqcCellOp (хүснэгтийн нүд, 2026-09-30 — хуучин qaqcAllOp/qaqcChipOp-ийн оронд):
+     шинэ → grant=true; «Бүх багц»-аас нэг мөр → бусад багцын ил жагсаалт; сүүлийн багц → ✕-ийн зам */
+  const w3 = OPS.qaqcCellOp('q_all', G0, true).run();
   await settle(w3);
-  assert.ok(CAPS.capsStored('q_all').includes('qaqc'), 'qaqcAllOp: шинэ мөрөнд эрх олгох ёстой');
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, ['*']);
-  assert.equal(OPS.qaqcAllOp('q_all'), null, 'qaqcAllOp: аль хэдийн бүх багц → null');
-
-  /* qaqcChipOp: «Бүх багц»-аас чип → НАРИЙСНА; сүүлийн багц → ✕-ийн зам */
-  await settle(OPS.qaqcChipOp('q_all', G1).run());
-  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, [G1], 'qaqcChipOp: ALL → [g] нарийсах ёстой');
+  assert.ok(CAPS.capsStored('q_all').includes('qaqc'), 'qaqcCellOp: шинэ мөрөнд эрх олгох ёстой');
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all').bagts, [G0]);
+  QA._syncRemoteQaqc([{ user: 'q_all2', bagts: ['*'] }]);
+  await settle(OPS.qaqcCellOp('q_all2', G1, false).run());
+  assert.deepEqual(QA.listQaqcAssigns().find((a) => a.user === 'q_all2').bagts, PKG_GROUPS.filter((g) => g !== G1),
+    'qaqcCellOp: ALL → бусад багцын ил жагсаалт');
   QA._syncRemoteQaqc([{ user: K[0], bagts: [G0] }]);
-  const last = OPS.qaqcChipOp(K[0], G0);
-  assert.equal(last.confirm?.length, 1, 'qaqcChipOp: сүүлийн багц → асуух ёстой (✕-ийн зам)');
+  const last = OPS.qaqcCellOp(K[0], G0, false);
+  assert.equal(last.confirm?.length, 1, 'qaqcCellOp: сүүлийн багц → асуух ёстой (✕-ийн зам)');
   const wl = last.run();
-  assert.equal(QA.listQaqcAssigns().some((a) => a.user === K[0]), false, 'qaqcChipOp: сүүлийн багц → мөр хасагдах ёстой');
+  assert.equal(QA.listQaqcAssigns().some((a) => a.user === K[0]), false, 'qaqcCellOp: сүүлийн багц → мөр хасагдах ёстой');
   /* ⚠️ Дараалал дуустал хүлээнэ — эс бөгөөс дараагийн `_syncRemote*` локалыг давамгайлуулна */
   await settle(wl);
 
@@ -842,6 +848,12 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   await settle(wf);
   assert.equal(OPS.flowRemoveOp(K[4], G0).confirm?.length, 1, 'flowRemoveOp: сүүлийн багц → асуух ёстой');
   assert.equal(OPS.flowRemoveOp(K[5], G0).confirm?.length, 2, 'flowRemoveOp: ALL → 2 асуулт');
+  /* «багц × шат» хүснэгтийн нүд (2026-09-30): ALL-ыг нэг мөрөөс хасвал ил жагсаалт (1 асуулт) · сүүлийн багц → ✕-ийн зам · хамарсан → null */
+  assert.equal(OPS.flowCellOp(K[5], S0, G0, false).confirm?.length, 1, 'flowCellOp: ALL → ил жагсаалт болгохыг асуух ёстой');
+  assert.equal(OPS.flowCellOp(K[4], S0, G0, false).confirm?.length, 1, 'flowCellOp: сүүлийн багц → flowDropOp асуулт');
+  assert.equal(OPS.flowCellOp(K[4], S0, G0, true), null, 'flowCellOp: аль хэдийн хамарсан → null');
+  assert.equal(OPS.flowCellOp(K[5], S0, G1, true), null, 'flowCellOp: ALL хамарсан → null');
+  assert.equal(OPS.flowCellOp(K[4], S1, G0, true).confirm?.length, 1, 'flowCellOp: өөр шат → шилжүүлэхийг асуух ёстой');
   assert.ok(OPS.flowViewOnlyOp(K[5], true), 'flowViewOnlyOp: асаах op');
   assert.equal(OPS.flowViewOnlyOp(K[5], false), null, 'flowViewOnlyOp: өөрчлөлтгүй → null');
   const ops = readCode('src/lib/aclOps.ts');
@@ -874,6 +886,33 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   assert.deepEqual(BT.listButetsAssigns().find((a) => a.user === 'b_all').grants[0].bagts, P.slice(1),
     'removePkgOp(butets): ALL → бусад багцын ИЛ жагсаалт');
 
+  /* ── «Багц × үүрэг» хүснэгтийн нүд (2026-09-30): scopedCellOp · qaqcCellOp ── */
+  HV._syncRemoteHuvaari([{ user: 'c_all', grants: [{ role: 'author', bagts: ['*'] }, { role: 'approver', bagts: [G0] }] }]);
+  assert.equal(OPS.scopedCellOp('huvaari', 'c_all', 'author', G1, true), null, 'scopedCellOp: ALL хамарсан → null');
+  const cn = OPS.scopedCellOp('huvaari', 'c_all', 'author', G1, false);
+  assert.equal(cn.confirm?.length, 1, 'scopedCellOp: ALL → ил жагсаалт болгохыг асууна');
+  cn.run();
+  assert.deepEqual(HV.listHuvaariAssigns().find((a) => a.user === 'c_all').grants,
+    [{ role: 'author', bagts: PKG_GROUPS.filter((g) => g !== G1) }, { role: 'approver', bagts: [G0] }],
+    'scopedCellOp: ALL → бусад багц, бусад үүрэг хэвээр');
+  const cr = OPS.scopedCellOp('huvaari', 'c_all', 'approver', G0, false);
+  assert.equal(cr.confirm?.length ?? 0, 0, 'scopedCellOp: үүрэг унаж бусад үлдвэл асуулгагүй (removePkgOp-той ижил)');
+  cr.run();
+  assert.deepEqual(HV.listHuvaariAssigns().find((a) => a.user === 'c_all').grants.map((g) => g.role), ['author']);
+  const cadd = OPS.scopedCellOp('huvaari', 'c_new', 'approver', G1, true);
+  assert.equal(cadd.confirm, undefined, 'scopedCellOp: шинэ аккаунт асуулгагүй');
+  cadd.run();
+  assert.deepEqual(HV.listHuvaariAssigns().find((a) => a.user === 'c_new').grants, [{ role: 'approver', bagts: [G1] }]);
+  assert.equal(OPS.scopedCellOp('huvaari', 'c_new', 'approver', G1, false).confirm?.length, 1,
+    'scopedCellOp: сүүлийн grant → мөрийг бүхэлд нь хасахыг асууна');
+  BT._syncRemoteButets([{ user: 'c_ball', grants: [{ role: 'editor', bagts: ['*'] }] }]);
+  assert.equal(OPS.scopedCellOp('butets', 'c_ball', 'editor', P[0], false).confirm?.length ?? 0, 0,
+    'scopedCellOp(butets): ALL → ил жагсаалт асуулгагүй (2026-09-23-ны дүрэм)');
+  QA._syncRemoteQaqc([{ user: 'c_q', bagts: ['*'] }]);
+  assert.equal(OPS.qaqcCellOp('c_q', G0, true), null, 'qaqcCellOp: ALL хамарсан → null');
+  assert.equal(OPS.qaqcCellOp('c_q', G0, false).confirm?.length, 1, 'qaqcCellOp: ALL → ил жагсаалт болгохыг асууна');
+  assert.equal(OPS.qaqcCellOp('c_qnew', G0, true).confirm, undefined, 'qaqcCellOp: шинэ аккаунт асуулгагүй');
+
   /* Явагдаж буй бичилтийн тэмдэг — `runOp` дуусахад арилна */
   globalThis.confirm = () => true;
   const pr = OPS.runOp(OPS.qaqcAddOp('p_user', G0), () => {}, () => true);
@@ -885,9 +924,18 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
 {
   const g = readCode('src/modules/GuitsetgelAcl.tsx');
   assert.doesNotMatch(g, /\b(setAssign|removeAssign|setViewOnly)\(/, 'GuitsetgelAcl: шууд бичилт буцаж ирэв — aclOps.flow*Op-оор');
-  for (const op of ['flowStageOp(', 'flowAllOp(', 'flowChipOp(', 'flowDropOp(', 'flowViewOnlyOp(']) assert.ok(g.includes(op), 'GuitsetgelAcl: ' + op + ' алга');
+  /* ⚠️ 2026-09-30: «багц × шат» хүснэгт — нүд бүр `flowCellOp` (дотроо flowDropOp-ын зам), туг `flowViewOnlyOp` */
+  for (const op of ['flowCellOp(', 'flowViewOnlyOp(']) assert.ok(g.includes(op), 'GuitsetgelAcl: ' + op + ' алга');
+  assert.equal((g.match(/useAclRunner\(/g) ?? []).length, 1, 'GuitsetgelAcl: НЭГ runner (нэг түгжээ) бүх хүснэгтэд');
+  const oc = readCode('src/lib/aclOps.ts');
+  const at = oc.indexOf('export function flowCellOp(');
+  const cellOp = oc.slice(at, oc.indexOf('export function', at + 10));
+  assert.ok(cellOp.includes("case 'drop': return flowDropOp(u)"), 'flowCellOp: бүхэлд нь хасах нь flowDropOp-ын зам байх ёстой');
+  assert.ok(cellOp.includes('moveMsg('), 'flowCellOp: шат шилжүүлэх нь moveMsg асуух ёстой');
   const q = readCode('src/modules/QaqcAcl.tsx');
   assert.doesNotMatch(q, /\b(setQaqcAssign|removeQaqcAssign)\(/, 'QaqcAcl: шууд бичилт буцаж ирэв — aclOps.qaqc*Op-оор');
-  for (const op of ['qaqcAllOp(', 'qaqcChipOp(', 'qaqcDropOp(']) assert.ok(q.includes(op), 'QaqcAcl: ' + op + ' алга');
+  /* ⚠️ 2026-09-30: хүснэгт — нүд `qaqcCellOp`, устгагдсан аккаунтын өнчин мөр `qaqcDropOp` */
+  for (const op of ['qaqcCellOp(', 'qaqcDropOp(', '<AclGrid']) assert.ok(q.includes(op), 'QaqcAcl: ' + op + ' алга');
+  assert.ok(g.includes('<AclGrid'), 'GuitsetgelAcl: нийтлэг хүснэгт (AclGrid)-ээр зурах ёстой');
 }
 console.log('✅ aclOps зан төлөв — QAQC grant · шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');
