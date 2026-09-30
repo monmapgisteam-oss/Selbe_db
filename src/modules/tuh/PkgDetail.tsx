@@ -1,0 +1,548 @@
+'use client';
+
+/**
+ * ТУХ — БАГЦЫН ДЭЛГЭРЭНГҮЙ. Жишээ HTML-ийн дараалал:
+ *   гарчиг → KPI → [Тойм · Хуваарь · Гүйцэтгэл · Ашиглалт|Хамааралтай орон сууц ·
+ *   Зураг · Материал · Төлбөр (IPC) · Асуудал].
+ *
+ * ⚠️ Хуваарийн мэдээлэл (гол үе шат, Level 3, хүн хүч/техник, улсын комисс) нь
+ *    «Хуваарь»-ийн бөглөх хуудаснаас (`loadPkgSchedule`) — ЗӨВХӨН энэ багцынх.
+ * ⚠️ Эх сурвалжгүй хэсэг бүтцээрээ «—» (хэрэглэгчийн сонголт, 2026-09-30).
+ */
+import { useMemo } from 'react';
+import { t as tr } from '@/lib/i18nCore';
+import { num, pct, mnt, date } from '@/lib/format';
+import { useAsync } from '@/lib/useAsync';
+import { CASHFLOW_NEW, HO_IPC, PKG_BY_BAGTS, LAYER_BY_ID } from '@/lib/services';
+import { CONTRACTED } from '@/lib/gdash';
+import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
+import { statusOf as planStatus } from '@/lib/plan';
+import {
+  groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
+  TUH_STATUS, statusOf as tuhStatus,
+} from '@/lib/tuhData';
+import type { TuhModel, TuhRow } from './model';
+import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
+import { Meter, Legend, BarChart, Gantt, type GanttRow } from './charts';
+/* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
+   ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
+import { ProgChart } from '@/modules/PkgProg';
+import { ComboChart, lagLevel } from '@/modules/Finance';
+import {
+  Section, StatusChip, EmptyRow, GanttLegend, ganttDomain, level1Rows, pp,
+} from './Overview';
+import s from '../tuh.module.css';
+
+type Row = Record<string, unknown>;
+const numOf = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+};
+
+const NAV = (housing: boolean, hasDeps: boolean) => [
+  ['overview', tr('Тойм')],
+  ['schedule', tr('Хуваарь')],
+  ['progress', tr('Гүйцэтгэл')],
+  ...(housing ? [['commissioning', tr('Ашиглалт')]] : hasDeps ? [['dependents', tr('Хамааралтай орон сууц')]] : []),
+  ['drawings', tr('Зураг')],
+  ['materials', tr('Материал')],
+  ['payments', tr('Төлбөр (IPC)')],
+  ['issues', tr('Асуудал')],
+] as [string, string][];
+
+const PLAN_TONE: Record<string, GanttRow['tone']> = { done: 'good', run: 'good', late: 'bad', todo: 'mute', none: 'mute' };
+
+export function PkgDetail({ r, m, onBack, onOpen }: {
+  r: TuhRow;
+  m: TuhModel;
+  onBack: () => void;
+  onOpen: (key: string) => void;
+}) {
+  const housing = r.p.group === 'housing';
+  const now = m.now;
+  const hasSheets = sheetsOf(r.p.pkgKey).length > 0;
+  const schedQ = useAsync(
+    () => (hasSheets ? loadPkgSchedule(r.p.pkgKey) : Promise.resolve([])),
+    [r.p.pkgKey, hasSheets],
+  );
+  const sched = schedQ.state === 'ready' ? schedQ.data : null;
+
+  const derived = useMemo(() => {
+    if (!sched) return null;
+    const multi = sched.length > 1;
+    const milestones = sched.flatMap((x) => milestonesOf(x.rows).map((ms) => ({ ...ms, name: multi ? `${ms.name} · ${x.sheet.label}` : ms.name })))
+      .sort((a, b) => (a.end ?? Infinity) - (b.end ?? Infinity));
+    let hun: number | null = null;
+    let mashin: number | null = null;
+    let finish: number | null = null;
+    const l3: GanttRow[] = [];
+    for (const x of sched) {
+      const res = resourcesOf(x.rows);
+      if (res.hun != null) hun = (hun ?? 0) + res.hun;
+      if (res.mashin != null) mashin = (mashin ?? 0) + res.mashin;
+      if (!x.rows.length) continue;
+      const top = Math.min(...x.rows.map((q) => q.depth));
+      if (multi) l3.push({ key: `h:${x.sheet.key}`, label: x.sheet.label, heading: true });
+      x.rows.forEach((q, i) => {
+        if (q.depth > top + 1 || !q.work.trim()) return;
+        const sp = rowSpan(x.rows, i);
+        if (sp.end != null && (finish == null || sp.end > finish)) finish = sp.end;
+        const act = rowAct(q);
+        const st = sp.start != null && sp.end != null ? planStatus({ start: sp.start, end: sp.end }, act, now) : 'none';
+        l3.push({
+          key: `${x.sheet.key}:${i}`,
+          label: q.depth === top ? <b>{q.work}</b> : q.work,
+          start: sp.start,
+          end: sp.end,
+          progress: act == null ? null : act * 100,
+          tone: PLAN_TONE[st],
+        });
+      });
+    }
+    return { milestones, hun, mashin, finish, l3 };
+  }, [sched, now]);
+
+  const elapsed = elapsedPct(r.p.start, r.p.end, now);
+  const left = daysBetween(now, r.p.end);
+  const layerTitles = (PKG_BY_BAGTS[r.p.pkgKey] ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
+  const nav = NAV(housing, false);
+  const go = (id: string) => document.getElementById(`tuh-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  /* IPC */
+  const pays: Row[] = useMemo(() => r.ipc?.contracts.flatMap((c) => c.pays) ?? [], [r.ipc]);
+  /** Олголтын бүртгэл — огноогоор, хуримтлалтай (render дотор хувьсагч өөрчлөхгүй) */
+  const payLog = useMemo(() => {
+    const P = HO_IPC.payFields;
+    const sorted = [...pays].sort((a, b) => String(a[P.payDate] ?? '').localeCompare(String(b[P.payDate] ?? '')));
+    return sorted.reduce<{ p: Row; amt: number | null; cum: number }[]>((acc, p) => {
+      const amt = numOf(p[P.amount]);
+      const prev = acc.length ? acc[acc.length - 1].cum : 0;
+      acc.push({ p, amt, cum: prev + (amt ?? 0) });
+      return acc;
+    }, []);
+  }, [pays]);
+  const l1 = useMemo(() => level1Rows(m.rows.filter((x) => x.p.key === r.p.key), onOpen, r.p.key), [m.rows, r.p.key, onOpen]);
+  const dom = ganttDomain([
+    { start: r.p.start, end: r.p.end, extra: [r.commission, ...(derived?.l3.flatMap((g) => [g.start ?? null, g.end ?? null]) ?? [])] },
+  ], now);
+
+  return (
+    <>
+      <nav className={s.crumbs}>
+        <button type="button" className={s.rowLink} onClick={onBack}>← {tr('Бүх багц руу')}</button>
+        <span>/ {groupLabel(r.p.group)}</span>
+      </nav>
+
+      <header className={s.titleBlock}>
+        <div className={s.tbMain}>
+          <span className={s.tbCode}>{r.p.code}</span>
+          <div>
+            <h1>{r.p.name || '—'}</h1>
+            <div className={s.chips}>
+              <StatusChip st={r.status} />
+              <span className={s.chip}>{tr('Сүүлд тайлагнасан')} {m.lastReport ?? '—'}</span>
+            </div>
+          </div>
+        </div>
+        <dl className={s.tbGrid}>
+          <div><dt>{tr('Гэрээний нийт дүн')}</dt><dd>{mnt(r.p.cost)}</dd></div>
+          <div><dt>{tr('Гэрээт хугацаа')}</dt><dd>{date(r.p.start)} – {date(r.p.end)}</dd></div>
+          <div><dt>{tr('Ерөнхий гүйцэтгэгч')}</dt><dd>{r.p.contractor || '—'}</dd></div>
+          <div><dt>{tr('Гэрээт байгууллага')}</dt><dd>—</dd></div>
+          <div><dt>{tr('Захиалагчийн хяналт')}</dt><dd>{r.p.client || '—'}</dd></div>
+          <div><dt>{tr('Хяналтын баг')}</dt><dd>—</dd></div>
+        </dl>
+      </header>
+
+      <div className={s.stats} style={{ marginTop: 8 }}>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Нийт гүйцэтгэл')}</span>
+          <span className={s.statValue}>{pct(r.progress, 2)}</span>
+          <Meter value={r.progress} plan={r.planContract} />
+          <span className={s.statNote}>{tr('Гэрээний төлөвлөгөө {0}', pct(r.planContract))}</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('7 хоногийн ахиц')}</span>
+          <span className={s.statValue}>{pp(r.week)}</span>
+          <span className={s.statNote}>{tr('Өнгөрсөн 7 хоногийн төлөвлөгөө: {0}', '—')}</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
+          <span className={`${s.statValue} ${r.gapContractor != null && r.gapContractor < 0 ? s.bad : s.good}`}>{pp(r.gapContractor)}</span>
+          <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2))}</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
+          <span className={`${s.statValue} ${r.gapContract != null && r.gapContract < 0 ? s.bad : s.good}`}>{pp(r.gapContract)}</span>
+          <span className={s.statNote}>{tr('SPI (гэрээ) {0}', r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2))}</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Хүн хүч')}</span>
+          <span className={s.statValue}>{num(r.workers ?? derived?.hun ?? null)}<small>{tr('хүн')}</small></span>
+          <span className={s.statNote}>{tr('шууд / шууд бус: {0}', '—')}</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Машин, техник')}</span>
+          <span className={s.statValue}>{num(r.technik ?? derived?.mashin ?? null)}<small>{tr('нэгж')}</small></span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statLabel}>{tr('Гэрээт хугацаа')}</span>
+          <span className={`${s.statValue} ${left != null && left < 0 ? s.bad : ''}`}>
+            {left == null ? '—' : left >= 0 ? num(left) : num(-left)}<small>{left != null && left < 0 ? tr('хоног хэтэрсэн') : tr('хоног')}</small>
+          </span>
+          <span className={s.statNote}>{tr('гэрээ дуусахад · {0}', pct(elapsed, 0))}</span>
+        </div>
+      </div>
+
+      <nav className={s.secNav} aria-label={tr('Хэсгүүд')}>
+        {nav.map(([id, label]) => <button key={id} type="button" onClick={() => go(id)}>{label}</button>)}
+      </nav>
+
+      {/* ── Тойм ── */}
+      <Section id="tuh-overview" title={tr('Одоо хаана байна')}>
+        <div className={s.panels}>
+          <div className={s.panel}>
+            <h3>{tr('Гол үе шат')}</h3>
+            {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+              : schedQ.state === 'error' ? <p className={s.failNote}>{tr('Хуваарь уншигдсангүй')}</p>
+                : derived && derived.milestones.length ? (
+                  <ol className={s.milestones}>
+                    {derived.milestones.map((ms, i) => (
+                      <li key={i} data-past={ms.end != null && ms.end < now}><span>{date(ms.end)}</span><span>{ms.name}</span></li>
+                    ))}
+                  </ol>
+                ) : <p className={s.note}>—</p>}
+            <div className={s.elapsed}><span>{tr('Гэрээт хугацаа')}</span><Meter value={elapsed} tone="mute" /><span className={s.num}>{pct(elapsed, 0)}</span></div>
+            <div className={s.elapsed}><span>{tr('Нийт гүйцэтгэл')}</span><Meter value={r.progress} /><span className={s.num}>{pct(r.progress)}</span></div>
+          </div>
+          <div className={s.panel}>
+            <h3>{tr('Digital twin холбоос')}</h3>
+            <dl className={s.kv}>
+              <dt>{tr('GIS давхарга')}</dt><dd>{housing ? tr('Барилга (блок)') : layerTitles.length ? layerTitles.join(', ') : '—'}</dd>
+              <dt>{tr('BIM/IFC загвар')}</dt><dd>—</dd>
+              <dt>ID</dt><dd>{r.p.pkgKey || '—'}</dd>
+            </dl>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Хуваарь ── */}
+      <Section id="tuh-schedule" title={tr('Хуваарь')} lead={tr('Level 1 — мастер, Level 2 — багц, Level 3 — ажлын («Хуваарь» хэсгийн мөрүүд), Level 4 — 7 хоногийн төлөвлөгөө.')}>
+        <ol className={s.levels}>
+          <li><b>L1</b>{tr('Мастер хуваарь')}</li>
+          <li><b>L2</b>{tr('Багцын хуваарь')}</li>
+          <li><b>L3</b>{tr('Дэлгэрэнгүй хуваарь')}</li>
+          <li><b>L4</b>{tr('7 хоногийн төлөвлөгөө')}</li>
+        </ol>
+        <h3>{tr('Level 2 — Багцын хуваарь')}</h3>
+        <GanttLegend />
+        <Gantt
+          rows={[
+            {
+              key: 'main', label: <b>{r.p.code}</b>, start: r.p.start, end: r.p.end, progress: r.progress,
+              tone: TUH_STATUS.find((x) => x.key === r.status)?.tone,
+              thin: derived?.finish != null ? { start: r.p.start, end: derived.finish } : null,
+              marks: r.commission != null ? [{ at: r.commission, kind: 'commission', label: tr('Улсын комисс') }] : [],
+            },
+            ...(derived?.milestones ?? []).map((ms, i) => ({
+              key: `ms${i}`, label: ms.name, start: ms.start, end: ms.end, progress: ms.act == null ? null : ms.act * 100, tone: 'mute' as const,
+            })),
+          ]}
+          from={dom.from} to={dom.to} now={now}
+        />
+        <div className={s.tableWrap} style={{ marginTop: 8 }}>
+          <table className={s.table}>
+            <caption className={s.note} style={{ textAlign: 'left', padding: '6px 8px' }}>{tr('Дэд багцууд, гэрээт байгууллага')}</caption>
+            <thead>
+              <tr>
+                <th>{tr('Код')}</th><th>{tr('Ажлын нэр')}</th><th>{tr('Гүйцэтгэгч')}</th>
+                <th className={s.num}>{tr('Дүн')}</th><th>{tr('Дуусах')}</th><th className={s.num}>{tr('Гүйц.')}</th><th>{tr('Төлөв')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.p.rows.map((c, i) => {
+                const C = CASHFLOW_NEW.fields;
+                const F = { pkg: C.pkg, name: C.detail, contractor: C.contractor, cost: C.budget, end: C.endDate, prog: C.progressPct, note: C.amountNote };
+                const one = r.p.rows.length === 1;
+                const pr = one ? r.progress : numOf(c[F.prog]);
+                const st = one ? r.status : tuhStatus({ contracted: String(c[F.note] ?? '').trim() === CONTRACTED, progress: pr, gap: null });
+                return (
+                  <tr key={i}>
+                    <td>{String(c[F.pkg] ?? '—')}</td>
+                    <td>{String(c[F.name] ?? '—')}<small>{String(c[F.note] ?? '')}</small></td>
+                    <td>{String(c[F.contractor] ?? '') || tr('Гэрээлээгүй')}</td>
+                    <td className={s.num}>{mnt(numOf(c[F.cost]))}</td>
+                    <td>{date(numOf(c[F.end]))}</td>
+                    <td className={s.num}>{pct(pr)}</td>
+                    <td><StatusChip st={st} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <h3>{tr('Level 3 — Дэлгэрэнгүй хуваарь')}</h3>
+        {!hasSheets ? <p className={s.note}>—</p>
+          : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
+            : schedQ.state === 'error' ? <p className={s.failNote}>{tr('Хуваарь уншигдсангүй')}</p>
+              : derived && derived.l3.length ? (
+                <>
+                  <Legend items={[
+                    { key: 'g', label: tr('Хийгдэж байна / дууссан'), color: 'var(--good)', box: true },
+                    { key: 'b', label: tr('Хоцорсон'), color: 'var(--bad)', box: true },
+                    { key: 'm', label: tr('Эхлээгүй / огноогүй'), color: 'var(--ink-3)', box: true },
+                    { key: 't', label: tr('Гүйцэтгэгчийн төлөвлөгөөгөөр'), color: 'var(--ink-2)', box: true },
+                  ]} />
+                  <Gantt rows={derived.l3} from={dom.from} to={dom.to} now={now} />
+                </>
+              ) : <p className={s.note}>—</p>}
+        <h3>{tr('Level 4 — 7 хоногийн төлөвлөгөө')}</h3>
+        <div className={s.chips} style={{ marginBottom: 6 }}>
+          <span className={s.chip}>PPC —</span>
+          <span className={s.chip}>{tr('Шийдэгдээгүй саад {0}', '—')}</span>
+        </div>
+        <div className={s.weeks}>
+          <div className={s.week}><b>{tr('Өнгөрсөн 7 хоног')}</b>—</div>
+          <div className={s.week}><b>{tr('Энэ 7 хоног')}</b>—</div>
+          <div className={s.week}><b>{tr('+1 долоо хоног')}</b>—</div>
+          <div className={s.week}><b>{tr('+2 долоо хоног')}</b>—</div>
+        </div>
+        <h3>{tr('Level 1 — Мастер хуваарь')}</h3>
+        <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
+      </Section>
+
+      {/* ── Гүйцэтгэл ── */}
+      <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
+        <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} />
+        <h3>{tr('Хүн хүч (хүн)')}</h3>
+        {r.workerDays.length ? (
+          <>
+            <BarChart items={r.workerDays.map((d) => ({ key: d.key, label: d.key, value: d.value }))} fmt={(v) => num(v)} />
+            <p className={s.note}>{tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(r.workerDays.length))}</p>
+          </>
+        ) : <p className={s.note}>—</p>}
+        <h3>{tr('EV ба PV')}</h3>
+        <div className={s.stats}>
+          {([
+            ['EV', mnt(r.ev.ev)],
+            [tr('PV (гэрээ)'), mnt(r.ev.pvContract)],
+            [tr('PV (гүйцэтгэгч)'), mnt(r.ev.pvContractor)],
+            [tr('SV (гэрээ)'), r.ev.svContract == null ? '—' : `${r.ev.svContract < 0 ? '−' : ''}${mnt(Math.abs(r.ev.svContract))}`],
+            [tr('SPI (гэрээ)'), r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2)],
+            [tr('SPI (гүйцэтгэгч)'), r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)],
+          ] as [string, string][]).map(([k, v]) => (
+            <div key={k} className={s.stat}><span className={s.statLabel}>{k}</span><span className={s.statValue} style={{ fontSize: '1rem' }}>{v}</span></div>
+          ))}
+        </div>
+        <p className={s.note}>{tr('EV = гэрээний дүн × биет гүйцэтгэл; PV = гэрээний дүн × төлөвлөгөөт гүйцэтгэл; SPI = EV ÷ PV.')}</p>
+      </Section>
+
+      {/* ── Ашиглалт / Хамааралтай ── */}
+      {housing ? (
+        <Section id="tuh-commissioning" title={tr('Улсын комисст бэлэн байдал')}>
+          <div className={s.flow}>
+            <div>
+              <span className={s.stepNo}>{tr('1 · Урьдчилсан нөхцөл')}</span>
+              <div className={s.lanes}>
+                {[tr('Инженерийн шугам сүлжээ'), tr('Эрчим хүч, холбоо'), tr('Дулааны эх үүсвэр'), tr('Гадна тохижилт, өндөржилт')].map((l) => (
+                  <div key={l} className={s.lane}><b>{l}</b>—</div>
+                ))}
+              </div>
+            </div>
+            <div className={s.flowArrow}>→</div>
+            <div className={s.panel}>
+              <span className={s.stepNo}>{tr('2 · Гол багц')}</span>
+              <b>{r.p.code}</b>
+              <dl className={s.kv}>
+                <dt>{tr('Нийт гүйцэтгэл')}</dt><dd>{pct(r.progress)}</dd>
+                <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
+                <dt>{tr('Барилга дуусах (гүйцэтгэгчийн төлөвлөгөө)')}</dt><dd>{date(derived?.finish ?? null)}</dd>
+                <dt>{tr('Гэрээний төлөвлөгөөнөөс')}</dt><dd>{pp(r.gapContract)}</dd>
+              </dl>
+            </div>
+          </div>
+          <div className={s.commission}>
+            <span className={s.stepNo}>{tr('3 · Улсын комисс')}</span>
+            <dl className={s.kv}>
+              <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
+              <dt>{tr('Хамгийн эрт ашиглалтад')}</dt><dd><b>{date(r.commission)}</b></dd>
+              <dt>{tr('Хоцролт')}</dt><dd className={r.delay != null && r.delay > 0 ? s.bad : ''}>{r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`)}</dd>
+            </dl>
+          </div>
+          <p className={s.note}>{tr('Огноо нь «Хуваарь» хэсгийн «Улсын комисс» мөрөөс. Салбар багцын хамаарал системд бүртгэгдээгүй.')}</p>
+        </Section>
+      ) : (
+        <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')}>
+          <p className={s.note}>—</p>
+        </Section>
+      )}
+
+      {/* ── Зураг ── */}
+      <Section id="tuh-drawings" title={tr('Зураг')}>
+        <p className={s.note}>—</p>
+      </Section>
+
+      {/* ── Материал ── */}
+      <Section id="tuh-materials" title={tr('Материалын хуваарь, төлөв')}>
+        <h3>{tr('Материалын 3-6-9 долоо хоногийн төлөвлөгөө')}</h3>
+        <div className={s.weeks}>
+          <div className={s.week}><b>{tr('Хугацаа хэтэрсэн')}</b>—</div>
+          <div className={s.week}><b>{tr('3 долоо хоног')}</b>—</div>
+          <div className={s.week}><b>{tr('6 долоо хоног')}</b>—</div>
+          <div className={s.week}><b>{tr('9 долоо хоног')}</b>—</div>
+        </div>
+        <h3>{tr('MA / MIR')}</h3>
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead><tr><th>{tr('Төрөл')}</th><th>{tr('Дугаар / хувилбар')}</th><th>{tr('Нэр')}</th><th>{tr('Ирүүлсэн')}</th><th>{tr('Шийдвэрлэсэн')}</th><th>{tr('Төлөв')}</th></tr></thead>
+            <tbody>
+              {r.docs.filter((d) => d.kind === 'MA' || d.kind === 'MIR').map((d) => (
+                <tr key={d.oid}>
+                  <td>{d.kind}</td><td>{d.docNo}</td><td>{d.title || '—'}</td>
+                  <td>{date(d.sentAt)}</td><td>{date(d.decidedAt)}</td>
+                  <td><span className={s.chip} data-tone={d.status === MS_STATUS.approved ? 'good' : d.status === MS_STATUS.returned ? 'bad' : 'warn'}>{statusLabel(d.kind, d.status)}</span></td>
+                </tr>
+              ))}
+              {!r.docs.some((d) => d.kind === 'MA' || d.kind === 'MIR') && <EmptyRow cols={6} />}
+            </tbody>
+          </table>
+        </div>
+        <h3>{tr('Материалын хуваарь, төлөв')}</h3>
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead><tr>
+              <th>{tr('Материал')}</th><th>{tr('Нэгж')}</th><th className={s.num}>{tr('Хэрэгцээ')}</th><th className={s.num}>{tr('Захиалсан')}</th>
+              <th className={s.num}>{tr('Ирсэн')}</th><th className={s.num}>{tr('Суурилуулсан')}</th><th>{tr('Нийлүүлэгч / PO')}</th>
+              <th>{tr('Талбайд байх')}</th><th>{tr('Нийлүүлэх')}</th><th>{tr('Төлөв')}</th>
+            </tr></thead>
+            <tbody><EmptyRow cols={10} /></tbody>
+          </table>
+        </div>
+        <h3>{tr('Материалын түүврийн төлөв')}</h3>
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead><tr>
+              <th>{tr('Материал')}</th><th>{tr('Ирүүлсэн')}</th><th>{tr('Хянагч')}</th><th>{tr('Одоо хэн дээр')}</th>
+              <th>{tr('Хариу өгөх')}</th><th>{tr('Шийдвэрлэсэн')}</th><th className={s.num}>{tr('Хоног')}</th><th>{tr('Төлөв')}</th>
+            </tr></thead>
+            <tbody><EmptyRow cols={8} /></tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* ── Төлбөр (IPC) ── */}
+      <Section id="tuh-payments" title={tr('Явцын төлбөрийн гэрчилгээ (IPC)')}>
+        <div className={s.stats}>
+          <div className={s.stat}>
+            <span className={s.statLabel}>{tr('Гэрээний дүн')}</span>
+            <span className={s.statValue}>{mnt(r.ipc?.contractTotal ?? null)}</span>
+            <span className={s.statNote}>{r.ipc && r.ipc.contracts.length > 1 ? tr('{0} гэрээ', num(r.ipc.contracts.length)) : (r.ipc?.contracts[0]?.contractNo || '—')}</span>
+          </div>
+          <div className={s.stat}>
+            <span className={s.statLabel}>{tr('Олгосон санхүүжилт')}</span>
+            <span className={s.statValue}>{mnt(r.ipc?.paid ?? null)}</span>
+            <Meter value={r.ipc?.paidPct ?? null} plan={r.progress} />
+            <span className={s.statNote}>{tr('{0} гэрээний · биет гүйцэтгэл {1}', pct(r.ipc?.paidPct ?? null), pct(r.progress))}</span>
+          </div>
+          <div className={s.stat}>
+            <span className={s.statLabel}>{tr('Урьдчилгаа')}</span>
+            <span className={s.statValue}>{mnt(r.ipc?.advance ?? null)}</span>
+          </div>
+          <div className={s.stat}>
+            <span className={s.statLabel}>{tr('Олгосон IPC')}</span>
+            <span className={s.statValue}>{num(r.ipc?.ipcNos.length ?? null)}</span>
+            <span className={s.statNote}>{r.ipc?.lastIpc != null ? `IPC-${r.ipc.lastIpc} · ${r.ipc.lastPaidDate ?? '—'}` : '—'}</span>
+          </div>
+          <div className={s.stat}>
+            <span className={s.statLabel}>{tr('Хүлээгдэж буй')}</span>
+            <span className={s.statValue}>{r.ipc?.pending == null ? '—' : mnt(r.ipc.pending)}</span>
+          </div>
+        </div>
+        <h3>{tr('Санхүүжилтийн явц')}</h3>
+        {r.months?.length ? (
+          <ComboChart
+            items={r.months}
+            height={280}
+            lagMonth={r.lag?.month}
+            lagLvl={r.lag ? lagLevel(r.lag.gap) : null}
+            contract={r.p.cost != null && r.p.cost > 0 ? r.p.cost : null}
+          />
+        ) : <p className={s.note}>—</p>}
+        <p className={s.note}>{tr('Төлөвлөсөн IPC-ийн хуваарь системд бүртгэгдээгүй.')}</p>
+        <h3>{tr('Олголтын бүртгэл')}</h3>
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead><tr>
+              {(r.ipc?.contracts.length ?? 0) > 1 && <th>{tr('Код')}</th>}
+              <th>{tr('Төрөл')}</th><th>{tr('Олгосон огноо')}</th><th className={s.num}>{tr('Дүн')}</th>
+              <th className={s.num}>{tr('Хуримтлагдсан')}</th><th className={s.num}>{tr('гэрээний %')}</th>
+            </tr></thead>
+            <tbody>
+              {(() => {
+                const P = HO_IPC.payFields;
+                const tot = r.ipc?.contractTotal ?? null;
+                return payLog.map(({ p, amt, cum }, i) => {
+                  const kind = String(p[P.kind] ?? '');
+                  return (
+                    <tr key={i}>
+                      {(r.ipc?.contracts.length ?? 0) > 1 && <td>{String(p[HO_IPC.contractFields.code] ?? '—')}</td>}
+                      <td><span className={s.chip} data-tone={kind === HO_IPC.kinds.advance ? 'mute' : 'good'}>
+                        {kind === HO_IPC.kinds.advance ? tr('Урьдчилгаа') : numOf(p[P.ipcNo]) != null ? `IPC-${numOf(p[P.ipcNo])}` : (kind || '—')}
+                      </span></td>
+                      <td>{String(p[P.payDate] ?? '').slice(0, 10) || '—'}</td>
+                      <td className={s.num}>{mnt(amt)}</td>
+                      <td className={s.num}>{mnt(cum)}</td>
+                      <td className={s.num}>{tot ? pct((cum / tot) * 100) : '—'}</td>
+                    </tr>
+                  );
+                });
+              })()}
+              {!pays.length && <EmptyRow cols={6} />}
+            </tbody>
+          </table>
+        </div>
+        <h3>{tr('Гэрээ, санхүүжилтийн эх үүсвэр')}</h3>
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead><tr>
+              <th>{tr('Код')}</th><th>{tr('Гүйцэтгэгч')}</th><th>{tr('Гэрээ / захирамж')}</th>
+              <th className={s.num}>{tr('Батлагдсан төсөв')}</th><th className={s.num}>{tr('Гэрээний дүн')}</th><th className={s.num}>{tr('Хэмнэлт')}</th>
+              <th className={s.num}>{tr('Нийслэлийн төсөв')}</th><th className={s.num}>{tr('Борлуулалтын орлого')}</th><th className={s.num}>{tr('Хүлээгдэж буй')}</th>
+            </tr></thead>
+            <tbody>
+              {(r.ipc?.contracts ?? []).map((c) => {
+                const raw = c.pays[0] ?? {};
+                const CF = HO_IPC.contractFields;
+                const pend = c.pays.flatMap((p) => Object.values(HO_PENDING).map((f) => numOf(p[f]))).filter((x): x is number => x != null);
+                return (
+                  <tr key={`${c.code}|${c.contractNo}`}>
+                    <td>{c.code || '—'}</td>
+                    <td>{c.contractor || '—'}</td>
+                    <td>{c.contractNo || '—'}<small>{[raw[CF.order1No], raw[CF.order2No], raw[CF.order3No]].filter(Boolean).join(' · ')}</small></td>
+                    <td className={s.num}>{mnt(c.budgetTotal)}</td>
+                    <td className={s.num}>{mnt(c.contractTotal)}</td>
+                    <td className={s.num}>{mnt(c.saving)}</td>
+                    <td className={s.num}>{mnt(numOf(raw[CF.budgetCity]))}</td>
+                    <td className={s.num}>{mnt(numOf(raw[CF.budgetSales]))}</td>
+                    <td className={s.num}>{pend.length ? mnt(pend.reduce((a, b) => a + b, 0)) : '—'}</td>
+                  </tr>
+                );
+              })}
+              {!r.ipc && <EmptyRow cols={9} />}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* ── Асуудал ── */}
+      <Section id="tuh-issues" title={tr('Асуудал')}>
+        <div className={s.three}>
+          <div className={s.panel}><h3>{tr('Өнгөрсөн 7 хоногийн ололт')}</h3><p className={s.note}>—</p></div>
+          <div className={s.panel} data-tone="bad"><h3>{tr('Тулгамдсан асуудал')}</h3><p className={s.note}>—</p></div>
+          <div className={s.panel}><h3>{tr('Дараа 7 хоногийн төлөвлөгөө')}</h3><p className={s.note}>—</p></div>
+        </div>
+      </Section>
+    </>
+  );
+}

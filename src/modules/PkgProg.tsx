@@ -22,7 +22,7 @@ import {
   loadFinData, contractMonths, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { HUE, catOf, aggregateMonths, physNow, type PackCat } from '@/modules/pkgShared';
+import { HUE, catOf, aggregateMonths, physNow, progMonthsOf, type PackCat } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
 import { loadPlanCurveCached, planPctAt, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
@@ -41,7 +41,8 @@ import { loadPlanCurveCached, planPctAt, type PlanPoint, type PlanCurve } from '
  *    `null` = задаргаа ороогүй; 0 БИШ. Нэгж холилдсон нийлбэр тул зөвхөн
  *    ХАРУУЛНА, тооцоонд ОРОХГҮЙ (`planProgress.PlanPoint.vol`-ийн ⚠️).
  */
-type ProgPt = {
+/* ⚠️ export (2026-09-30) — «ТУХ» ижил графикийг ашиглана (нэг график хэл) */
+export type ProgPt = {
   label: string; plan: number; act: number | null; vol: number | null;
   /**
    * ХЭМЖИЛТИЙН ӨДРИЙН төлөвлөгөө (2026-09-25) — `act`-ын огноогоор завсарласан
@@ -385,21 +386,9 @@ export function PkgProg({ dim, setDim }: {
     const series = active && active.key !== '__all'
       ? pc.byBagts.get(active.key)
       : pc.months;
-    if (!series?.length) return null;
-    const phys = new Map((base ?? []).map((m) => [m.label, m]));
-    return series.map((p) => {
-      const m = phys.get(p.label);
-      const act = m?.phys ?? null;
-      return {
-        label: p.label,
-        plan: p.pct,
-        vol: p.vol,
-        /* ⚠️ Хэмжилтгүй сар `null` хэвээр — 0 гэж дүүргэвэл худал шугам гарна */
-        act,
-        /* ⚠️ 2026-09-25: хэмжилтийн ӨДРӨӨР завсарласан төлөвлөгөө (`ProgPt.planM`) */
-        planM: act == null ? null : planPctAt(series, m?.physAt ?? `${p.label}-31`),
-      };
-    });
+    /* ⚠️ 2026-09-30: цэгүүдийг `pkgShared.progMonthsOf` бүтээнэ — «ТУХ» ижил функцийг
+       хэрэглэдэг (хэмжилтгүй сар `null`, `planM` нь хэмжилтийн өдрөөр). */
+    return progMonthsOf(base, series);
   }, [active, finMap, finQ, planQ]);
 
 
@@ -1343,7 +1332,11 @@ function LevelsCard({
  * мэт харагдана. Мөн «0%» нь «эхлээгүй» ба «0.4% хийгдсэн» хоёрыг
  * ялгахгүй болгоно.
  */
-function ProgChart({ months, title, planFailed = 0, loading = false }: {
+/**
+ * ⚠️ export (2026-09-30) — «ТУХ» харагдац багц бүрийн S-муруйд ЭНЭ графикийг
+ *    ашиглана: хэрэглэгч «үндсэн системтэй адилхан» байхыг шаардсан.
+ */
+export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   months: ProgPt[] | null;
   title: string;
   /**
