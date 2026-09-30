@@ -476,9 +476,8 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
  * бөглөгдөөгүй блок `BlockProgressMap`-д ОГТ ОРДОГГҮЙ (`blockProgress.ts:100`).
  * Нэг ч блок хэмжигдээгүй багц Map-д ОРОХГҮЙ — «0%» БИШ, «мэдээлэлгүй».
  *
- * ⚠️ БАГЦ 3.1 ЭНД аль хэдийн Cashflow-гийн утгатай (16.4) ирнэ —
- *    `loadBlockProgress` эх сурвалжийн түвшинд солидог (`cashflowOverride`).
- *    Энд дахин солих ХЭРЭГГҮЙ.
+ * ⚠️ БАГЦ 3.1 бусад багцтай ИЖИЛ — бөглөлтөөс. Түүний cashflow солилт
+ *    (`FILL_FROM_CASHFLOW`) 2026-09-30-нд хасагдсан (`loadBlockProgress`-ийн ⚠️).
  */
 async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> {
   const [{ loadBlockProgress, loadBlockProgressFresh }, { BUILDING, bagtsKey, buildingKey }] = await Promise.all([
@@ -510,10 +509,10 @@ async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> 
   return out;
 }
 
-/* ⚠️ `CASHFLOW_NEW` нэмэгдэв (2026-09-17): дотор нь `loadBlockProgress` Багц 3.1-ийг
-   Cashflow-оос дардаг тул санхүүжилтийн засвар энэ кэшийг ч хуучруулна. */
+/* ⚠️ `CASHFLOW_NEW` ХАСАГДАВ (2026-09-30) — Багц 3.1-ийн cashflow солилт хасагдсан тул
+   энэ ачаалагч cashflow-оос хамаарахаа больсон. */
 export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProgressRaw(false),
-  undefined, ['BAGTS_SHEET', 'BUILDING', 'CASHFLOW_NEW']);
+  undefined, ['BAGTS_SHEET', 'BUILDING']);
 
 /**
  * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
@@ -525,61 +524,12 @@ export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProg
  */
 export const loadFillPkgProgressFresh = (): Promise<Map<string, number>> => fillPkgProgressRaw(true);
 
-/**
- * БАГЦ 3.1-ИЙН ГҮЙЦЭТГЭЛ — САНХҮҮЖИЛТИЙН БҮРТГЭЛЭЭС (2026-09-10,
- * хэрэглэгчийн заавар: «Багц 3.1-ийн эх сурвалжийг 11.Санхүүжилт cashflow
- * хэсгийн багц 3.1 гүйцэтгэлийн хувиар оруул»).
- *
- * ⚠️ ЯАГААД ЗӨВХӨН 3.1: тэр багцын бөглөх хуудас бараг хоосон (амьдаар
- * 0.05% — 11 блок хэмжигдсэн ч утга нь тэг орчим), гэтэл гэрээний бүртгэлд
- * 16.4% гэж бүртгэгдсэн. Бусад 6 багцад бөглөлт бодитой явж байгаа тул
- * тэдгээрийг ХӨНДӨХГҮЙ — эс бөгөөс амьд хэмжилтийг гэрээний тоогоор дарна.
- *
- * ⚠️ ЭНЭ БОЛ ТҮР ЗУУРЫН НӨХӨӨС. Багц 3.1-ийн бөглөлт бодитоор явж эхэлмэгц
- * энэ функцийг ХАСАХ ёстой — эс бөгөөс амьд хэмжилт гэрээний тооны ард
- * нуугдана. Тиймээс багцын түлхүүр нь ЭНД ил бичигдсэн, тохиргоо БИШ:
- * хасахад нэг л газар өөрчлөгдөнө.
- *
- * ⚠️ `guitsetgel_huvi` нь 0–100 (Double). `null` бол Map ХООСОН — «мэдээлэлгүй».
+/*
+ * ⚠️ БАГЦ 3.1-ИЙН CASHFLOW СОЛИЛТ ХАСАГДСАН (2026-09-30, хэрэглэгч: «багц 3.1 бодит гүйцэтгэл бөглөлтөөс гарсан хувь руу
+ *    шилжүүлэлдээ, 16.4 биш үүнээс бага хувь байх ёстой»).
+ *    Энд байсан `FILL_FROM_CASHFLOW` · `loadCashflowPkgPct` нь 3.1-ийн бөглөлтийг
+ *    гэрээний 16.4%-иар дарахад л хэрэглэгддэг байв (`blockProgress.loadBlockProgress`).
  */
-export const FILL_FROM_CASHFLOW = 'БАГЦ31';
-
-async function cashflowPkgPctRaw(): Promise<Map<string, number>> {
-  const { CASHFLOW_NEW, CF_WORK_WHERE, bagtsKey } = await import('@/lib/services');
-  const F = CASHFLOW_NEW.fields;
-  const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    /* ⚠️ `CF_WORK_WHERE` ЗААВАЛ — сарын задаргааны 681 мөр нь ижил хүснэгтэд
-       доош нэмэгдсэн тул шүүлтгүй бол нэг багц олон удаа тоологдоно. */
-    where: CF_WORK_WHERE,
-    outFields: [F.pkg2, F.pkg, CASHFLOW_NEW.stages.build],
-    limit: 2000,
-  });
-  /* Багц бүрд гэрээ олон байж болно — жин нь энэ функцэд ХЭРЭГГҮЙ (3.1 нь
-     ганц гэрээтэй), гэвч ирээдүйд олон болвол дундаж нь эвдрэхгүй байхаар
-     хуримтлуулна. */
-  const acc = new Map<string, number[]>();
-  for (const r of rows) {
-    /* ⚠️ 2026-09-25: `??` БИШ `||` — `pkg2` ХООСОН МӨР ('') байхад `??` нь
-       `pkg` руу унадаггүй тул 3.1-ийн мөр алгасагдаж override алга болдог байв. */
-    const raw = String(r[F.pkg2] ?? '').trim() || String(r[F.pkg] ?? '').trim();
-    if (!raw) continue;
-    const key = bagtsKey(raw);
-    if (!key) continue;
-    const v = r[CASHFLOW_NEW.stages.build];
-    if (v == null || v === '') continue;
-    const n = Number(v);
-    if (!Number.isFinite(n)) continue;
-    (acc.get(key) ?? acc.set(key, []).get(key) as number[]).push(n);
-  }
-  const out = new Map<string, number>();
-  for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
-  return out;
-}
-
-export const loadCashflowPkgPct = cached<Map<string, number>>(cashflowPkgPctRaw, undefined, ['CASHFLOW_NEW']);
-
-/** ⚠️ КЭШГҮЙ — зөвхөн бичих зам (`loadFillPkgProgressFresh`-ийн ⚠️) */
-export const loadCashflowPkgPctFresh = cashflowPkgPctRaw;
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 

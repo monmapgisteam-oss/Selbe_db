@@ -19,7 +19,7 @@ import {
   pickedBuilding, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, lagOf, lagLevel, type FinData,
+  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, physNow, progMonthsOf, type PackCat } from '@/modules/pkgShared';
@@ -52,7 +52,7 @@ export type ProgPt = {
   planM?: number | null;
 };
 import {
-  BUILDING, CASHFLOW_NEW, PROGRESS_LEVELS, LAYER_BY_ID, pkgKeyOf, bagtsKey,
+  BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey,
   zoneWhere, parcelOidsWhere } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { cat, shade, num, pct, monthKey } from '@/lib/format';
@@ -329,25 +329,11 @@ export function PkgProg({ dim, setDim }: {
    * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
    * alert үүнээс тооцогдоно.
    */
-  const finMap = useMemo(() => {
-    if (finQ.state !== 'ready') return null;
-    const C = CASHFLOW_NEW.fields;
-    const m = new Map<string, ReturnType<typeof contractMonths>>();
-    finQ.data.contracts.forEach((r) => {
-      // ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт ОЛОН багц хамарсан мөр нь bagtsKey-ээр
-      //    «БАГЦ14» болж, бодит «Багц 14 · Дулаан хангамжийн нэвтрэх суваг»-т
-      //    ХАРИЙН ТЭЗҮ гэрээ (2.23 тэрбум ₮) наалдаж, тэр багц «санхүү
-      //    бүртгэлгүй» гэхийн оронд ХУДАЛ гүйцэтгэл харуулдаг байв.
-      const k2 = pkgKeyOf(r[C.pkg2]);
-      const k3 = pkgKeyOf(r[C.pkg]);
-      // ⚠️ Хуучин `k !== '0'` шүүлт ХАСАГДАВ — «0» sentinel нь ХУУЧИН бүдүүвчийн
-      //    үлдэгдэл. Бөглөөгүй багц нь NULL (pkgKeyOf → '').
-      [k2, k3].forEach((k) => {
-        if (k && !m.has(k)) m.set(k, contractMonths(r, finQ.data));
-      });
-    });
-    return m;
-  }, [finQ]);
+  /* ⚠️ 2026-09-30: логик нь `Finance.pkgMonthsMap`-д — «Багцын мэдээлэл» ч мөн үүнийг ашиглана. */
+  const finMap = useMemo(
+    () => (finQ.state === 'ready' ? pkgMonthsMap(finQ.data) : null),
+    [finQ],
+  );
 
   /**
    * ХУВААРИЙН ТӨЛӨВЛӨГӨӨ — «Гүйцэтгэл бөглөх» хуудсуудын эхлэх/дуусах
@@ -1058,7 +1044,16 @@ function TsPackList({
       const lag = months ? lagOf(months) : null;
       const lvl = lag ? lagLevel(lag.gap) : null;
       let execPct: number | null = null;
-      if (p.kind === 'build') execPct = p.progress;
+      /*
+       * ⚠️ БОДИТ ГҮЙЦЭТГЭЛ (2026-09-30, хэрэглэгч: «бодит гүйцэтгэлийн хувь руу
+       *    шилжүүл») — ажлын хуудсын БИЕТ %, дээд талын «бодит гүйцэтгэлийн хувь»
+       *    ба хоцрогдлын тэмдгийн «бодит»-той НЭГ эх (`physLatest` = `lagOf`-ийн
+       *    цэг). Урьд нь `p.progress` — блокийн хүснэгтийн ЖИНГҮЙ дундаж байсан
+       *    тул жагсаалт ба толгойн тоо зөрдөг байв.
+       *    Хэмжилтгүй бол «—» (блокийн дундаж руу БУЦАЖ УНАХГҮЙ — хоёр өөр
+       *    хэмжигдэхүүн нэг баганад холилдоно).
+       */
+      if (p.kind === 'build') execPct = physLatest(months);
       /*
        * ⚠️ ДЭД БҮТЦИЙН БАГЦАД БИЕТ ЯВЦЫН ӨГӨГДӨЛ БАЙХГҮЙ. Урьд нь түүний
        *    оронд «олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж
@@ -1128,7 +1123,7 @@ function TsPackList({
                   )}
                 </span>
               }
-              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : p.kind === 'build' ? levelColor(p.progress) : cat(2)}
+              color={lvl === 'red' ? 'var(--bad)' : lvl === 'yellow' ? 'var(--warn)' : p.kind === 'build' ? levelColor(execPct) : cat(2)}
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />

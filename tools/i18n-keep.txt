@@ -91,6 +91,9 @@
 @dyn lib/execInfographic.ts  tr(b.label)
 @dyn lib/execPdf.ts  tr(b.label)
 @dyn lib/reportPdf.ts  tr(s.label)
+
+# [const] huvaariPdf геометрийн баганын гарчиг (Ажлын код · Ажил) — en.ts (2026-09-30 merge bagtsiin-medeelel)
+@dyn lib/huvaariPdf.ts  tr(c.head)
 @dyn modules/ExecReport.tsx  tr(b.label)
 @dyn modules/Tailan.tsx  tr(s.label)
 @dyn modules/Gazar.tsx  tr(value)

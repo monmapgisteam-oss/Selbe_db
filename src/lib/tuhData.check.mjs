@@ -155,4 +155,26 @@ ok('өнгөрсөн хувь 0–100-д хавчигдана', () => {
   assert.equal(elapsedPct(null, d(100), d(50)), null);
 });
 
+/*
+ * 9. НЭГ ЭХ (2026-09-30, merge irgediin-hurteemj × bagtsiin-medeelel): ТУХ-ын орон
+ *    сууцны багцын хувь ба сарын цэг нь «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн
+ *    жагсаалттай ИЖИЛ (`Finance.pkgMonthsMap` → `physLatest`). Хуучин хуулбар
+ *    (`bagtsKey(pkg)` · `loadFillPkgProgress`) буцаж ирвэл нэг багц гурван дэлгэцэд
+ *    өөр тоо харуулна.
+ */
+console.log('\n9. Бусад харагдацтай нэг эх');
+{
+  const { readFileSync } = await import('node:fs');
+  const model = readFileSync(new URL('../modules/tuh/model.ts', import.meta.url), 'utf8');
+  const view = readFileSync(new URL('../modules/Tuh.tsx', import.meta.url), 'utf8');
+  ok('model: сарын цэг pkgMonthsMap-аас', () => assert.ok(/const monthsBy = pkgMonthsMap\(fin\)/.test(model)));
+  ok('model: орон сууцны хувь physLatest-ээс', () => assert.ok(/physLatest\(m\)/.test(model) && /progressOf\(p, actual\)/.test(model)));
+  ok('ТУХ loadFillPkgProgress-ийг ачаалахгүй (блокийн жингүй дундаж — өөр хэмжигдэхүүн)',
+    () => {
+      /* тайлбарт нэр нь үлдэж болно — зөвхөн импорт/дуудлагыг шалгана */
+      const used = (src) => /import[^;]*\bloadFillPkgProgress\b/.test(src) || /useAsync\(loadFillPkgProgress/.test(src);
+      assert.ok(!used(view) && !used(model));
+    });
+}
+
 console.log(`\ntuhData: ${n} шалгуур ✅`);

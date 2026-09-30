@@ -1029,6 +1029,41 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
 }
 
 /**
+ * БАГЦ БҮРИЙН САРЫН ЦЭГҮҮД — гэрээний мөрийг багцын түлхүүрээр (`pkg2` → `pkg`)
+ * тааруулж НЭГ УДАА бэлдэнэ. «Гүйцэтгэл» (`PkgProg`) ба «Багцын мэдээлэл»
+ * (`Bagts`) жагсаалтын БОДИТ гүйцэтгэл ба хоцрогдол ҮҮНЭЭС.
+ * ⚠️ 2026-09-30: `PkgProg.finMap`-аас ЭНД шилжүүлэв — хоёр харагдац НЭГ дүрмээр
+ *    (хуулбарлавал нэг нь `pkgKeyOf` засвараас хоцорно).
+ * ⚠️ `pkgKeyOf` — «БАГЦ 1-4» мэт ОЛОН багц хамарсан мөр нь хоосон түлхүүртэй
+ *    (bagtsKey-ээр «БАГЦ14» болж, бодит «Багц 14»-т харийн гэрээ наалддаг байв).
+ */
+export function pkgMonthsMap(fin: FinData): Map<string, MonthPt[]> {
+  const C = CASHFLOW_NEW.fields;
+  const m = new Map<string, MonthPt[]>();
+  fin.contracts.forEach((r) => {
+    const k2 = pkgKeyOf(r[C.pkg2]);
+    const k3 = pkgKeyOf(r[C.pkg]);
+    [k2, k3].forEach((k) => {
+      if (k && !m.has(k)) m.set(k, contractMonths(r, fin));
+    });
+  });
+  return m;
+}
+
+/**
+ * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — ЭНЭ САР хүртэлх хамгийн сүүлийн биет % (0–100).
+ * `lagOf().actual`-тай ИЖИЛ цэг (`m.label <= nowYm && m.phys != null`).
+ * ⚠️ `null` = хэмжилт алга — 0 БИШ (0% нь «эхлээгүй» гэсэн хэмжилт).
+ */
+export function physLatest(months: MonthPt[] | null | undefined): number | null {
+  if (!months) return null;
+  const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар (`lagOf`-ийн ⚠️) */
+  let v: number | null = null;
+  for (const m of months) if (m.label <= nowYm && m.phys != null) v = m.phys;
+  return v;
+}
+
+/**
  * ХОЦРОГДЛЫН ШАЛГАЛТ — БИЕТ гүйцэтгэлийн ХУВИЙГ жишнэ (дүн биш):
  * сүүлийн биет дататай сар дээр «хуваариар байх ЁСТОЙ биет %» − «бодит биет %».
  * Хоёул бөглөгдсөн үед л утга буцаана — өрөөсгөл дататай харьцуулалт хийхгүй.

@@ -185,10 +185,8 @@ export function GeneralDash({
    *    бөглөлт, «05. Багцын гүйцэтгэл» хуудасны `Pack.progress`-ТАЙ ЯГ
    *    ИЖИЛ томьёогоор (блокуудын энгийн дундаж).
    *
-   * ⚠️ БАГЦ 3.1 нь Cashflow-гоос (16.40%) — гэвч ЭНД солигдохгүй:
-   *    солилт нь `blockProgress.ts`-ийн ЭХ СУРВАЛЖИЙН түвшинд хийгддэг тул
-   *    энэ Map, «05. Багцын гүйцэтгэл», `FinData.phys` бүгд аль хэдийн
-   *    ижил тоотой ирнэ (`cashflowOverride`-ийн тайлбарыг үз).
+   * ⚠️ БАГЦ 3.1 бусад багцтай ИЖИЛ — бөглөлтөөс (2026-09-30-нд cashflow
+   *    солилт хасагдсан, `blockProgress.loadBlockProgress`-ийн ⚠️).
    */
   const fillProg = useAsync(loadFillPkgProgress, []);
   const pkgPct = useMemo(() => {
@@ -294,8 +292,7 @@ export function GeneralDash({
    *    хэмжилтээс мөнгө болгон (ХО дүн × %) авна — тэдний Cashflow сарын
    *    мөр бөглөгдсөн ч энэ муруй нь ӨӨР асуултад хариулна: «төлөвлөсөн»
    *    биш «бодитоор баригдсан».
-   * ⚠️ Багц 3.1 ЭНД онцгой БИШ — `FinData.phys` аль хэдийн Cashflow-гийн
-   *    утгаар ирдэг (`blockProgress.cashflowOverride`).
+   * ⚠️ Багц 3.1 ЭНД онцгой БИШ — `FinData.phys` бусад багцтай ижил бөглөлтөөс.
    */
   const housingMoneyByMonth = useMemo(() => {
     if (finD.state !== 'ready' || cf.state !== 'ready') return new Map<string, number>();

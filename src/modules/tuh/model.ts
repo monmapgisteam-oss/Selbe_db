@@ -5,7 +5,6 @@
  *    `physNow`, `planPctAt`, `housingPct`, `hoTotals`, `progressSeries`) эсвэл
  *    `tuhData`-ийн шалгагдсан цэвэр функцээс. Энд зөвхөн холбоно.
  */
-import { CASHFLOW_NEW } from '@/lib/services';
 import { monthKey } from '@/lib/format';
 import { housingPct, type CfPlanRow } from '@/lib/gdash';
 import { hoTotals, ipcNumbers } from '@/lib/ipc';
@@ -13,7 +12,7 @@ import { planPctAt, type PlanCurve } from '@/lib/planProgress';
 import { progressSeries, type BlockHistory } from '@/lib/blockProgress';
 import type { WorkforceDetail } from '@/lib/ceo/workforce';
 import { MS_STATUS, type MsDoc } from '@/lib/chanarMs';
-import { contractMonths, lagOf, type FinData, type MonthPt } from '@/modules/Finance';
+import { lagOf, pkgMonthsMap, physLatest, type FinData, type MonthPt } from '@/modules/Finance';
 import { physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
@@ -105,7 +104,6 @@ export function buildModel(input: {
   fin: FinData;
   plan: PlanCurve | null;
   cfPlan: CfPlanRow[] | null;
-  fill: ReadonlyMap<string, number> | null;
   packs: Pack[];
   hist: BlockHistory | null;
   commission: ReadonlyMap<string, number | null> | null;
@@ -114,20 +112,34 @@ export function buildModel(input: {
   contractedNote: string;
   failed: string[];
 }): TuhModel {
-  const { fin, plan, cfPlan, fill, packs, hist, commission, workforce, docs } = input;
+  const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
   const nowYm = monthKey();
   const pkgs = buildTuhPkgs(fin.contracts, input.contractedNote);
 
-  /* Гэрээний мөр → сарын цэгүүд (`lagOf`-ийн оролт) — багцын түлхүүрээр */
-  const monthsBy = new Map<string, ReturnType<typeof contractMonths>>();
-  for (const r of fin.contracts) {
-    const k = bagtsKey(r[CASHFLOW_NEW.fields.pkg]);
-    if (k && !monthsBy.has(k)) monthsBy.set(k, contractMonths(r, fin));
-  }
+  /*
+   * Гэрээний мөр → сарын цэгүүд (`lagOf`-ийн оролт) — багцын түлхүүрээр.
+   * ⚠️ 2026-09-30 (merge bagtsiin-medeelel): `Finance.pkgMonthsMap` — «Гүйцэтгэл»
+   *    (`PkgProg`) ба «Багцын мэдээлэл» (`Bagts`)-тай НЭГ дүрэм. Урьд энд `bagtsKey(pkg)`
+   *    хуулбар байсан тул «БАГЦ 1-4» мэт диапазон мөр «БАГЦ14»-т наалдах (`pkgKeyOf`-ийн
+   *    ⚠️) ба `pkg2`-ийг алгасах эрсдэлтэй байв.
+   */
+  const monthsBy = pkgMonthsMap(fin);
+  /*
+   * ОРОН СУУЦНЫ БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — `physLatest` (`lagOf`-ийн «бодит» цэг).
+   * ⚠️ 2026-09-30 (merge): урьд `live.loadFillPkgProgress` (блокийн жингүй дундаж) байв;
+   *    bagtsiin-medeelel салбарт «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн жагсаалт энэ «бодит
+   *    гүйцэтгэл» рүү шилжсэн тул ТУХ ч мөн адил — нэг багц гурван дэлгэцэд НЭГ тоо.
+   *    Хэмжилтгүй бол Map-д ОРОХГҮЙ → «—» (0 биш).
+   */
+  const actual = new Map<string, number>();
+  monthsBy.forEach((m, k) => {
+    const v = physLatest(m);
+    if (v != null) actual.set(k, v);
+  });
 
   const rows: TuhRow[] = pkgs.map((p) => {
-    const progress = progressOf(p, fill);
+    const progress = progressOf(p, actual);
     const housing = p.group === 'housing';
     const months = housing ? monthsBy.get(p.pkgKey) : undefined;
     const lag = months ? lagOf(months) : null;

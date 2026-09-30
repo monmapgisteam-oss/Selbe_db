@@ -11,6 +11,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
 import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
+import { loadFinData, pkgMonthsMap, physLatest, type FinData } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
@@ -151,6 +152,21 @@ export function buildPacks(rows: Block[] | null): Pack[] {
 
 export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const q = useBuildings();
+  /**
+   * БАГЦ БҮРИЙН БОДИТ ГҮЙЦЭТГЭЛ — жагсаалтын утга (2026-09-30, хэрэглэгч:
+   * «бодит гүйцэтгэлийн хувь руу шилжүүл»). «Гүйцэтгэл» харагдацтай НЭГ эх
+   * (`Finance.pkgMonthsMap` → `physLatest`). ⚠️ `loadFinData` кэштэй —
+   * хоёр харагдац давхар татахгүй.
+   */
+  const finQ = useAsync<FinData>(loadFinData, []);
+  const actual = useMemo(() => {
+    if (finQ.state !== 'ready') return null;
+    const out = new Map<string, number | null>();
+    pkgMonthsMap(finQ.data).forEach((months, k) => out.set(k, physLatest(months)));
+    return out;
+  }, [finQ]);
+  /* Ачаалж байхад «…», алдаа эсвэл хэмжилтгүй бол «—» */
+  const actualLoading = finQ.state === 'loading';
   const { zoomToWhere, setHighlight } = useMap();
   /**
    * Сонгосон багц URL-ийн `pkg` параметрээс сэргэнэ — «Багц-3.1-ийн хуудсыг үз»
@@ -323,10 +339,12 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <>
             <PackList
               title={tr('Барилга угсралт')}
-              note={tr('блокийн гүйцэтгэл')}
+              note={tr('бодит гүйцэтгэл')}
               packs={packs.filter((p) => p.kind === 'build')}
               sel={sel}
               onSel={setSel}
+              actual={actual}
+              actualLoading={actualLoading}
             />
             <PackList
               title={tr('Дэд бүтэц ба нийгмийн барилга')}
@@ -446,13 +464,20 @@ export function levelColor(v: number | null): string {
 /* ══════════════════ Багцын жагсаалт ══════════════════ */
 
 export function PackList({
-  title, note, packs, sel, onSel,
+  title, note, packs, sel, onSel, actual = null, actualLoading = false,
 }: {
   title: string;
   note: string;
   packs: Pack[];
   sel: string | null;
   onSel: (k: string | null) => void;
+  /**
+   * Багцын БОДИТ гүйцэтгэл (0–100) түлхүүрээр — `Finance.physLatest`.
+   * ⚠️ Барилгын багцын утга нь ЗӨВХӨН үүнээс; блокийн дундаж (`p.progress`)
+   *    руу БУЦАЖ УНАХГҮЙ — хэмжилтгүй бол «—» (`PkgProg.TsPackList`-ийн ⚠️).
+   */
+  actual?: Map<string, number | null> | null;
+  actualLoading?: boolean;
 }) {
   if (!packs.length) return null;
   return (
@@ -466,9 +491,12 @@ export function PackList({
               ? tr('{0} блок · {1} айл', num(p.blocks.length), num(p.households))
               : subInfra(p)}
             value={p.kind === 'build'
-              ? (p.progress == null ? '—' : pct(p.progress, 1))
+              ? (() => {
+                const v = actual?.get(p.key) ?? null;
+                return v != null ? pct(v, 1) : actualLoading ? '…' : '—';
+              })()
               : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : '—')}
-            color={p.kind === 'build' ? levelColor(p.progress) : INFRA_HUE}
+            color={p.kind === 'build' ? levelColor(actual?.get(p.key) ?? null) : INFRA_HUE}
             active={p.key === sel}
             onClick={() => onSel(p.key === sel ? null : p.key)}
           />

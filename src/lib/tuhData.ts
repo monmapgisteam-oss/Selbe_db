@@ -235,8 +235,9 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
 
 /**
  * Багцын биет гүйцэтгэл (0–100).
- * ⚠️ Орон сууц — «Гүйцэтгэл бөглөх»-ийн блокийн дундаж (`loadFillPkgProgress`,
- *    бусад харагдацтай ИЖИЛ эх); бусад — гэрээний `guitsetgel_huvi` (дүнгээр
+ * ⚠️ Орон сууц — багцын БОДИТ гүйцэтгэл (`Finance.physLatest` · `pkgMonthsMap`,
+ *    «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн жагсаалттай ИЖИЛ эх; 2026-09-30 merge —
+ *    урьд `loadFillPkgProgress`); бусад — гэрээний `guitsetgel_huvi` (дүнгээр
  *    жигнэсэн, хэмжигдээгүй мөр жинд орохгүй).
  */
 export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null): number | null {

@@ -72,6 +72,7 @@ import {
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
 import { useLatest } from './huvaari/useLatest';
 import { useCalendar } from './huvaari/useCalendar';
+import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
 import { useAjil } from './huvaari/useAjil';
@@ -2940,6 +2941,71 @@ export function Huvaari({
     r.group ? { ...r, spans: r.spans.map((_, b) => effSpan(plan, r.i, b)), ...aggExtra(plan, r.i, n) } : r
   ), [plan, n]);
 
+  /**
+   * PDF ТАТАХ — дэлгэц дээрх хуваарийг ЯГ ЭНЭ загвараар (2026-09-30, хэрэглэгч).
+   *
+   * ⚠️ Огноо · нөөц · хамаарлын багана PDF-д ОРОХГҮЙ (`huvaariPdf.LEFT_COLS`).
+   * ⚠️ `visible` мөрүүдийг авна — эвхсэн бүлэг · түвшин · хайлт дэлгэцтэй
+   *    ижил. Цонхлолтын `slice` БИШ: тэр нь зөвхөн харагдах хэсэг.
+   * ⚠️ Мөр бүрийн утгыг хуанлийн зурвастай НЭГ ЭХЭЭС бодно (`rowSpanAt` ·
+   *    `refSpanAt` · `effRow` · `statusOf` · `requiredStart`) — PDF нь өөрөө
+   *    тооцоо хийхгүй (`huvaariPdf.ts`-ийн ⚠️).
+   * ⚠️ Хадгалаагүй ноорог ОРНО — дэлгэц дээр харагдаж буй зүйл л хэвлэгдэнэ.
+   */
+  const [pdfBusy, setPdfBusy] = useState(false);
+  /**
+   * ТАТАХЫН ӨМНӨХ СОНГОЛТ (2026-09-30) — хугацааны цонх · зөвхөн идэвхтэй · цаас.
+   * ⚠️ Сешн дотор санагдана (state), хадгалагдахгүй — дараагийн удаа дахин
+   *    сонгоход «бүх хугацаа» гэсэн анхдагч нь гэнэтийн жижиг PDF-ээс сэргийлнэ.
+   */
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfOpts, setPdfOpts] = useState<HvPdfOpts>(HV_PDF_DEFAULT);
+  const savePdf = useCallback(async () => {
+    if (!sc || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfOpen(false);
+    try {
+      const out: HvPdfRow[] = visible.map((r) => {
+        const x = r.group ? effRow(r) : r;
+        const sp = rowSpanAt(r);
+        const need = sp && r.deps.length && kind === 'plan'
+          ? requiredStart(plan, byCode, r.i, blk) : null;
+        const other = refSpanAt(r.oid);
+        return {
+          des: r.des,
+          no: r.no,
+          work: r.work,
+          depth: r.depth,
+          group: r.group,
+          aStart: x.aStart?.[blk] ?? null,
+          aEnd: x.aEnd?.[blk] ?? null,
+          bar: sp,
+          st: sp ? statusOf(sp, r.act?.[blk], now) : 'none',
+          viol: !!(sp && need != null && sp.start < need),
+          ref: showRef ? other : null,
+          /* ⚠️ 0–1 бутархай (хувь биш) — `huvaariPdf` × 100 хийнэ */
+          act: r.act?.[blk] ?? null,
+        };
+      });
+      const kindLabel = kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
+      await downloadHuvaariPdf({
+        pkg: pkg.label,
+        kindLabel,
+        refLabel: showRef ? (kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')) : null,
+        block: n > 1 ? (sc.bld[blk] ?? '') : '',
+        from, to, now,
+        rows: out,
+        hasActual,
+        opts: pdfOpts,
+      }, `Huvaari_${pkg.key}_${kind}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${msToDay(Date.now())}.pdf`);
+    } catch (e) {
+      setErr(tr('PDF үүсгэж чадсангүй: {0}', e instanceof Error ? e.message : String(e)));
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [sc, pdfBusy, visible, effRow, rowSpanAt, refSpanAt, kind, plan, byCode, blk, now, showRef,
+    pkg, n, from, to, hasActual, pdfOpts, setErr, setPdfOpen]);
+
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */
   const linkRows = useMemo(() => {
     if (!linkAsk) return null;
@@ -3288,6 +3354,48 @@ export function Huvaari({
                 автоматаар орсон бүлгийн мөр · сарын нүд бүрийг тоолдог тул хэрэглэгчийн
                 засварын тооноос их гардаг байв (илгээлтийн `rowCount`-тай ижил). */}
             {dirtyN ? <> · <b className={h.dirtyTag}>{tr('хадгалаагүй')} {num(dirtyRows)}</b></> : null}
+          </span>
+        )}
+        {/* PDF ТАТАХ (2026-09-30) — дэлгэц дээрх хуваарийг ижил загвараар (`savePdf`) */}
+        {sc && visible.length > 0 && (
+          <span className={h.pdfWrap}>
+            <button type="button" className={h.discard} disabled={pdfBusy}
+              aria-expanded={pdfOpen}
+              title={tr('Дэлгэц дээрх хуваарийг (нээлттэй мөр · таб · блок · багана) PDF болгож татна')}
+              onClick={() => setPdfOpen((v) => !v)}>
+              {pdfBusy ? tr('Бэлтгэж байна…') : tr('PDF татах')}
+            </button>
+            {pdfOpen && (
+              <span className={h.pdfPop} role="dialog" aria-label={tr('PDF татах')}
+                onKeyDown={(e) => { if (e.key === 'Escape') setPdfOpen(false); }}>
+                <label className={h.pdfRow}>
+                  <span>{tr('Хугацаа')}</span>
+                  <select className={h.select} value={pdfOpts.months}
+                    onChange={(e) => setPdfOpts((o) => ({ ...o, months: Number(e.target.value) as HvPdfOpts['months'] }))}>
+                    <option value={0}>{tr('Бүх хугацаа')}</option>
+                    <option value={1}>{tr('Ирэх 1 сар')}</option>
+                    <option value={3}>{tr('Ирэх 3 сар')}</option>
+                  </select>
+                </label>
+                <label className={h.pdfRow}>
+                  <input type="checkbox" checked={pdfOpts.active}
+                    onChange={(e) => setPdfOpts((o) => ({ ...o, active: e.target.checked }))} />
+                  <span>{tr('Зөвхөн хоцорсон ба явж буй')}</span>
+                </label>
+                <label className={h.pdfRow}>
+                  <span>{tr('Цаас')}</span>
+                  <select className={h.select} value={pdfOpts.paper}
+                    onChange={(e) => setPdfOpts((o) => ({ ...o, paper: e.target.value as HvPdfOpts['paper'] }))}>
+                    <option value="A3">A3</option>
+                    <option value="A4">A4</option>
+                  </select>
+                </label>
+                <span className={h.pdfBtns}>
+                  <button type="button" className={h.discard} onClick={() => setPdfOpen(false)}>{tr('Болих')}</button>
+                  <button type="button" className={h.save} disabled={pdfBusy} onClick={() => void savePdf()}>{tr('Татах')}</button>
+                </span>
+              </span>
+            )}
           </span>
         )}
         {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}

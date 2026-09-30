@@ -22,7 +22,6 @@ import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { useAsync } from '@/lib/useAsync';
 import { readParam, writeParams } from '@/lib/urlState';
 import { loadBudget } from '@/lib/live';
-import { loadFillPkgProgress } from '@/lib/live';
 import { loadCfPlan, CONTRACTED } from '@/lib/gdash';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
@@ -47,7 +46,6 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const finQ = useAsync(loadFinData, []);
   const planQ = useAsync(loadPlanCurveCached, []);
   const cfPlanQ = useAsync(loadCfPlan, []);
-  const fillQ = useAsync(loadFillPkgProgress, []);
   const histQ = useAsync(loadBlockHistory, []);
   const comQ = useAsync(loadCommissionDates, []);
   const wfQ = useAsync(loadWorkforceKpi, []);
@@ -67,7 +65,6 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const failed: string[] = [];
     if (planQ.state === 'error') failed.push(tr('Хуваарийн төлөвлөгөө'));
     if (cfPlanQ.state === 'error') failed.push(tr('Гэрээний сарын төлөвлөгөө'));
-    if (fillQ.state === 'error') failed.push(tr('Биет гүйцэтгэл'));
     if (histQ.state === 'error') failed.push(tr('Гүйцэтгэлийн түүх'));
     if (comQ.state === 'error') failed.push(tr('Улсын комиссын огноо'));
     if (comQ.state === 'ready' && comQ.data.failed.length) failed.push(tr('Улсын комиссын огноо ({0})', comQ.data.failed.join(', ')));
@@ -79,7 +76,6 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       fin: finQ.data,
       plan: planQ.state === 'ready' ? planQ.data : null,
       cfPlan: cfPlanQ.state === 'ready' ? cfPlanQ.data : null,
-      fill: fillQ.state === 'ready' ? fillQ.data : null,
       packs,
       hist: histQ.state === 'ready' ? histQ.data : null,
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
@@ -88,7 +84,7 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       contractedNote: CONTRACTED,
       failed,
     });
-  }, [finQ, planQ, cfPlanQ, fillQ, histQ, comQ, wfQ, docQ, bq, packs]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);
