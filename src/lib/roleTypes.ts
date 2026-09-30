@@ -1,30 +1,42 @@
 'use client';
 
 /**
- * ЭРХИЙН ТӨРӨЛ — 10 төрөл × системийн бүх тохиргоо (2026-09-25).
+ * ЭРХИЙН ТӨРӨЛ — 10 төрөл × ХАРАХ тохиргоо (2026-09-25 · 2026-09-30).
  *
  * ⚠️ ЯАГААД (хэрэглэгчийн шийдвэр). Урьд нь хэрэглэгчийн «үүрэг» нь гурван
- *    preset (Супер · Энгийн · Төлөвлөлт) байж, бусад эрхийг (хуваарь, обьём,
- *    чанар…) хүн бүрд долоон хуудсаар тусад нь өгдөг байв. Одоо төрөл бүрд юу
- *    ХАРАХ, юу ЗАСАХ нь нэг загвартай; хэрэглэгчид төрөл + багц сонгоод
- *    «Төрлөөр тохируулах» дарахад бүгд нэг дор бичигдэнэ (`roleTypeApply.ts`).
+ *    preset (Супер · Энгийн · Төлөвлөлт) байж, харагдацыг хүн бүрд тусад нь
+ *    өгдөг байв. Одоо төрөл бүрд юу ХАРАХ (харагдац · ТЭЗҮ-БОНУ · нүүр цонх ·
+ *    админ самбар) нэг загвартай; хэрэглэгчид төрөл сонгоод «Төрлөөр тохируулах»
+ *    дарахад харагдац нь нэг дор бичигдэнэ (`roleTypeApply.ts`).
  *
- * ⚠️ ЗАГВАР ӨӨРӨӨ ЭРХ ОЛГОХГҮЙ. Хэрэгжүүлэлт нь урьдын хуваарилалтын бичих
- *    давхаргаар (`aclOps` · `caps` · `guitsetgelAcl`) явна — хяналт, fail-closed
- *    дүрмүүд хэвээр. Загварыг өөрчилсний дараа тухайн төрлийн хэрэглэгчдэд
- *    «Дахин хэрэгжүүлэх» дарж тараана.
- * ⚠️ ХАРАГДАЦ ба НҮҮР ЦОНХ нь харин ШУУД загвараас (`roleAccess`) — урсгалын
+ * ⚠️ ЗӨВХӨН ХАРАХ (2026-09-30, хэрэглэгчийн шийдвэр). Урьд нь загварт засах эрх
+ *    (`cap:*`), чанарын үүрэг (`chanar:*`), урсгал (`flow:*`), багцын хүрээ
+ *    (`scope`) ч байж, «Төрлөөр тохируулах» нь хуваарилалт бичдэг байв. Одоо
+ *    засах эрх БҮР админ порталын ӨӨРИЙН хуудсанд багц/аккаунтаар олгогдоно;
+ *    загвар тэднийг ОГТ хөндөхгүй. Хүснэгтэд хадгалсан хуучин загварын
+ *    `cap:*` · `chanar:*` · `flow:*` id нь `KNOWN` шүүлтээр ЧИМЭЭГҮЙ хаягдана
+ *    (fail-closed — `cleanTpl`).
+ * ⚠️ ХАРАГДАЦ ба НҮҮР ЦОНХ нь ШУУД загвараас (`roleAccess`) — урсгалын
  *    томилгоо (`grantFlowAccess`) ба «Сэргээх» нь `ROLE_ACCESS`-ийн оронд
- *    үүнийг уншдаг, эс бөгөөс загварын харагдацыг `guitsetgel` ганцаар дарна.
+ *    үүнийг уншдаг; шатанд томилогдсон хүнд «Гүйцэтгэл» хуудсыг
+ *    `grantFlowAccess` өөрөө нэмдэг (загвараас хамаарахгүй).
  *
- * ⚠️ Анхдагч загвар = хэрэглэгчийн 2026-09-25-нд чеклэсэн хүснэгт. Хүснэгтэд
- *    (`__type__:` мөр) хадгалсан загвар байвал тэр давамгайлна.
+ * ⚠️ Анхдагч загвар = хэрэглэгчийн 2026-09-25-нд чеклэсэн хүснэгтийн ХАРАХ хэсэг.
+ *    Хүснэгтэд (`__type__:` мөр) хадгалсан загвар байвал тэр давамгайлна.
  */
 
 import { t as tr } from './i18nCore';
-import { ROLE_ACCESS, ROLE_STAGE, VIEWS, type Role, type ViewKey } from './services';
-import type { ScopedSys } from './aclRoleCaps';
-import type { CapKey } from './caps';
+import { ROLE_ACCESS, VIEWS, type Role, type ViewKey } from './services';
+import { WORKFLOW_VIEWS } from './caps';
+
+/**
+ * ⚠️ ЗАГВАРТ ОРОХ ХАРАГДАЦ — урсгалтай 6-г ХАСНА (2026-09-30, хэрэглэгчийн
+ *    шийдвэр): Гүйцэтгэл · Хуваарь · Хуваарь батлах · Нэмэлт ажил батлах · Чанарын
+ *    баримт · Чанар (QAQC) нь урсгалын хуваарилалтаар нээгдэнэ (`caps.WORKFLOW_VIEWS`).
+ *    Загвар зөвхөн харах хуудас олгоно; хадгалсан хуучин загварын тэдгээр id
+ *    `cleanTpl`-д хаягдана.
+ */
+const TPL_VIEWS = VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key));
 
 /** Сонгох 10 төрөл — дараалал нь урсгалын шат, дараа нь урсгалын бус, эцэст нь super */
 export const TYPE_ORDER: readonly Role[] = [
@@ -52,105 +64,26 @@ export function typeLabel(r: Role): string {
 
 /* ══════════════════════ Тохиргооны каталог ══════════════════════ */
 
-/**
- * Багцаар хуваарилагддаг тохиргоо → систем · үүрэг.
- * ⚠️ `aclRoleCaps.ROLE_CAPS`-тэй тэгш: `cap:plan` = Хуваарь зохиогч → `plan` г.м.
+/*
+ * ⚠️ `SCOPED_SETTING` · `PLAIN_SETTING` · `SUPER_CAP` УСТСАН (2026-09-30) —
+ *    загвар засах эрх агуулахгүй (толгойн ⚠️). Хуучин id-ууд `KNOWN`-д ОРОХГҮЙ.
  */
-export const SCOPED_SETTING: Readonly<Record<string, { sys: ScopedSys; role: string }>> = {
-  'cap:plan': { sys: 'huvaari', role: 'author' },
-  'cap:planApprove': { sys: 'huvaari', role: 'approver' },
-  'cap:obyemEdit': { sys: 'obyem', role: 'editor' },
-  'cap:obyemApprove': { sys: 'obyem', role: 'approver' },
-  'cap:addRow': { sys: 'ajil', role: 'editor' },
-  'cap:ajilApprove': { sys: 'ajil', role: 'approver' },
-  'chanar:author': { sys: 'chanar', role: 'author' },
-  'chanar:tuh': { sys: 'chanar', role: 'tuh' },
-  'chanar:chanar': { sys: 'chanar', role: 'chanar' },
-  'chanar:habea': { sys: 'chanar', role: 'habea' },
-  'chanar:tug': { sys: 'chanar', role: 'tug' },
-  'chanar:cheng': { sys: 'chanar', role: 'cheng' },
-  'cap:butets': { sys: 'butets', role: 'editor' },
-};
-
-/** Хуваарилалтгүй дөрвөн энгийн эрх (`aclRoleCaps.PLAIN_CAPS`) */
-export const PLAIN_SETTING: Readonly<Record<string, CapKey>> = {
-  'cap:zovshoorol': 'zovshoorol',
-  'cap:finEdit': 'finEdit',
-  'cap:finRow': 'finRow',
-  'cap:gazar': 'gazar',
-};
-
-/** Super-т шууд олгох бүх эрх (`hasCap` super-ийг тойрдоггүй — `UserAdmin.flipCap`-ийн ⚠️) */
-export const SUPER_CAP: Readonly<Record<string, CapKey>> = {
-  'cap:plan': 'plan', 'cap:planApprove': 'planApprove',
-  'cap:obyemEdit': 'obyemEdit', 'cap:obyemApprove': 'obyemApprove',
-  'cap:addRow': 'addRow', 'cap:ajilApprove': 'ajilApprove',
-  'chanar:author': 'chanarAuthor', 'chanar:tuh': 'chanarReview', 'chanar:chanar': 'chanarReview', 'chanar:habea': 'chanarReview', 'chanar:tug': 'chanarReview', 'chanar:cheng': 'chanarReview',
-  'cap:qaqc': 'qaqc', 'cap:butets': 'butets',
-  'cap:zovshoorol': 'zovshoorol', 'cap:finEdit': 'finEdit', 'cap:finRow': 'finRow', 'cap:gazar': 'gazar',
-};
 
 export type SettingRow = { id: string; label: string; hint?: string; superOnly?: true };
 export type SettingGroup = { title: string; rows: SettingRow[] };
 
-/** Хүснэгтийн бүлэг ба мөрүүд — ЗУРАГДАХ агшинд (`tr`) */
+/**
+ * Хүснэгтийн бүлэг ба мөрүүд — ЗУРАГДАХ агшинд (`tr`).
+ * ⚠️ ЗӨВХӨН ХАРАХ (2026-09-30): харагдац · ТЭЗҮ-БОНУ · админ самбар. Засах эрхийн
+ *    мөрүүд (`cap:*` · `chanar:*` · `flow:*`) ХАСАГДСАН — толгойн ⚠️.
+ */
 export function settingGroups(): SettingGroup[] {
   return [
     {
       title: tr('Харах цонх'),
       rows: [
-        ...VIEWS.map((v) => ({ id: `view:${v.key}`, label: v.title })),
+        ...TPL_VIEWS.map((v) => ({ id: `view:${v.key}`, label: v.title })),
         { id: 'docs', label: tr('ТЭЗҮ · ДБОНҮ баримт үзэх') },
-      ],
-    },
-    {
-      title: tr('Гүйцэтгэлийн урсгал (6 шат)'),
-      rows: [
-        { id: 'flow:act', label: tr('Өөрийн шатанд гүйцэтгэл бөглөх / хянах / батлах'), hint: tr('Зөвхөн урсгалын 6 төрөлд — шат нь төрлөөсөө') },
-        { id: 'flow:viewOnly', label: tr('Зөвхөн харна (шийдвэр гаргахгүй)'), hint: tr('Дээрхтэй хамт чеклэвэл дээрх нь давамгайлна') },
-      ],
-    },
-    {
-      title: tr('Хуваарь'),
-      rows: [
-        { id: 'cap:plan', label: tr('Хуваарь төлөвлөх') },
-        { id: 'cap:planApprove', label: tr('Хуваарь батлах') },
-      ],
-    },
-    {
-      title: tr('Инженерийн обьём'),
-      rows: [
-        { id: 'cap:obyemEdit', label: tr('Инженерийн обьём засах') },
-        { id: 'cap:obyemApprove', label: tr('Инженерийн обьём батлах') },
-      ],
-    },
-    {
-      title: tr('Нэмэлт ажил'),
-      rows: [
-        { id: 'cap:addRow', label: tr('Мөр нэмэх (нэмэлт ажил илгээх)') },
-        { id: 'cap:ajilApprove', label: tr('Нэмэлт ажил батлах') },
-      ],
-    },
-    {
-      title: tr('Чанарын баримт'),
-      rows: [
-        { id: 'chanar:author', label: tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)') },
-        { id: 'chanar:tuh', label: tr('Хянах — ТУХ') },
-        { id: 'chanar:chanar', label: tr('Хянах — Чанар') },
-        { id: 'chanar:habea', label: tr('Хянах — ХАБЭА') },
-        { id: 'chanar:cheng', label: tr('Хянах — Чанарын хяналтын инженер'), hint: tr('Материал баталгаажуулалт (MA) — эхний шат «Боловсруулсан»') },
-        { id: 'chanar:tug', label: tr('Хянах — ТУГ'), hint: tr('Материал баталгаажуулалт (MA) — сүүлийн шат «Танилцсан»; үл тохирол (NCR)') },
-      ],
-    },
-    { title: tr('QAQC'), rows: [{ id: 'cap:qaqc', label: tr('QAQC — Inspection Test Plan бөглөх') }] },
-    { title: tr('Инженерийн дэд бүтэц'), rows: [{ id: 'cap:butets', label: tr('Инженерийн дэд бүтцийн засвар (бөглөх)') }] },
-    {
-      title: tr('Бусад засвар'),
-      rows: [
-        { id: 'cap:zovshoorol', label: tr('Зөвшөөрөл засах') },
-        { id: 'cap:finEdit', label: tr('Санхүүгийн бүртгэл — утга засах') },
-        { id: 'cap:finRow', label: tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах') },
-        { id: 'cap:gazar', label: tr('Газрын төлөв засах') },
       ],
     },
     {
@@ -161,76 +94,61 @@ export function settingGroups(): SettingGroup[] {
 }
 
 const VIEW_KEYS = new Set<string>(VIEWS.map((v) => v.key));
-const KNOWN = new Set<string>([
-  ...VIEWS.map((v) => `view:${v.key}`), 'docs', 'flow:act', 'flow:viewOnly',
-  ...Object.keys(SCOPED_SETTING), 'cap:qaqc', ...Object.keys(PLAIN_SETTING), 'admin',
-]);
+/* ⚠️ 2026-09-30: хадгалсан хуучин загварын `cap:*` · `chanar:*` · `flow:*` id ба урсгалтай 6
+   харагдац (`view:guitsetgel` …) ЭНД БАЙХГҮЙ тул хаягдана */
+const KNOWN = new Set<string>([...TPL_VIEWS.map((v) => `view:${v.key}`), 'docs', 'admin']);
 
 /* ══════════════════════ Загвар ══════════════════════ */
 
 export type TypeTpl = {
-  /** Чеклэсэн тохиргооны id-ууд */
+  /** Чеклэсэн тохиргооны id-ууд (`view:*` · `docs` · `admin`) */
   on: string[];
   /** Нэвтрэхэд нээгдэх цонх */
   home: ViewKey;
-  /** `own` — зөвхөн оноосон багц · `all` — бүх багц */
-  scope: 'own' | 'all';
 };
 
 const V = (...k: string[]) => k.map((x) => `view:${x}`);
-const ALL_VIEWS = VIEWS.map((v) => `view:${v.key}`);
-/* ⚠️ 2026-09-28: `chanar:tug` — ТУГ (удирдлага) MA-ийн хянагч; удирдлагын
-   гурван төрөл + super-т анхдагчаар чеклэгдсэн. */
-const LEADER = [
-  ...ALL_VIEWS, 'docs', 'flow:act', 'flow:viewOnly',
-  'cap:planApprove', 'cap:obyemApprove', 'cap:ajilApprove', 'cap:zovshoorol', 'chanar:tug',
-];
+const ALL_VIEWS = TPL_VIEWS.map((v) => `view:${v.key}`);
+const LEADER = [...ALL_VIEWS, 'docs'];
 
 /**
- * ⚠️ Хэрэглэгчийн 2026-09-25-нд чеклэсэн хүснэгт — хадгалсан загвар байхгүй үеийн анхдагч.
+ * ⚠️ Хэрэглэгчийн 2026-09-25-нд чеклэсэн хүснэгтийн ХАРАХ хэсэг — хадгалсан загвар
+ *    байхгүй үеийн анхдагч (2026-09-30: засах эрх · урсгал · `scope` хасагдсан).
  * ⚠️ 2026-09-25: ЗӨВХӨН синк (эсвэл кэш) «мөр байхгүй» гэж хэлсэн үед — `tplOf`.
  */
 const DEFAULT_TPL: Record<string, TypeTpl> = {
   guitsetgegch: {
-    on: [...V('guitsetgel', 'pkgFin', 'pkgProg', 'plan', 'huvaari', 'huvaariBatlah', 'ajilBatlah', 'habea', 'dedButets', 'qaqc', 'zovshoorol', 'chanar'),
-      'flow:act', 'cap:plan', 'cap:addRow', 'chanar:author', 'cap:qaqc', 'cap:zovshoorol'],
-    home: 'guitsetgel', scope: 'own',
+    on: V('pkgFin', 'pkgProg', 'plan', 'habea', 'dedButets', 'zovshoorol'),
+    home: 'guitsetgel',
   },
   injener: {
-    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'huvaari', 'huvaariBatlah', 'ajilBatlah', 'habea', 'dedButets', 'zovshoorol', 'guitsetgel', 'qaqc', 'chanar'),
-      'docs', 'flow:act', 'flow:viewOnly', 'cap:obyemEdit', 'cap:ajilApprove', 'cap:butets', 'cap:zovshoorol', 'cap:qaqc',
-      'chanar:author', 'chanar:tuh', 'chanar:chanar', 'chanar:habea', 'cap:planApprove'],
-    home: 'guitsetgel', scope: 'own',
+    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol'), 'docs'],
+    home: 'guitsetgel',
   },
   menejer: {
-    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'huvaari', 'huvaariBatlah', 'ajilBatlah', 'habea', 'dedButets', 'zovshoorol', 'guitsetgel', 'finance', 'chanar', 'qaqc'),
-      'docs', 'flow:act', 'flow:viewOnly', 'cap:planApprove', 'cap:obyemApprove', 'cap:ajilApprove', 'cap:zovshoorol'],
-    home: 'gdash', scope: 'own',
+    on: [...V('gdash', 'dashboard', 'plan', 'pkgFin', 'pkgProg', 'gazar', 'habea', 'dedButets', 'zovshoorol', 'finance'), 'docs'],
+    home: 'gdash',
   },
-  eronhii: { on: LEADER, home: 'gdash', scope: 'all' },
-  heltsiin: { on: LEADER, home: 'gdash', scope: 'all' },
-  gazriin: { on: LEADER, home: 'gdash', scope: 'all' },
+  eronhii: { on: LEADER, home: 'gdash' },
+  heltsiin: { on: LEADER, home: 'gdash' },
+  gazriin: { on: LEADER, home: 'gdash' },
   taniltsah: {
     on: [...V('gdash', 'dashboard', 'plan', 'pkgProg', 'tailan', 'schem', 'sysdoc', 'gazar'), 'docs'],
-    home: 'gdash', scope: 'all',
+    home: 'gdash',
   },
   chanar: {
-    on: [...V('qaqc', 'chanar', 'gdash', 'plan', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
-      'cap:qaqc', 'chanar:chanar', 'chanar:tuh', 'chanar:author', 'chanar:habea', 'chanar:cheng'],
-    home: 'chanar', scope: 'all',
+    on: V('gdash', 'plan', 'gazar', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
+    home: 'chanar',
   },
   gazar: {
-    on: [...V('gazar', 'gdash', 'plan', 'irged', 'huvaari', 'habea', 'iot', 'dedButets', 'zovshoorol', 'chanar', 'schem'), 'cap:gazar'],
-    home: 'gazar', scope: 'all',
+    on: V('gazar', 'gdash', 'plan', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
+    home: 'gazar',
   },
-  super: {
-    on: [...ALL_VIEWS, 'docs', ...Object.keys(SUPER_CAP), 'admin'],
-    home: 'gdash', scope: 'all',
-  },
+  super: { on: [...ALL_VIEWS, 'docs', 'admin'], home: 'gdash' },
 };
 
 /**
- * НАРИЙН НӨӨЦ ЗАГВАР — `ROLE_ACCESS`-ийн харагдац/баримт/нүүр цонх л, засах эрхгүй.
+ * НАРИЙН НӨӨЦ ЗАГВАР — `ROLE_ACCESS`-ийн харагдац/баримт/нүүр цонх л.
  * ⚠️ 2026-09-25: эвдэрсэн мөр ба анхны синкээс ӨМНӨ (кэшгүй) үед `DEFAULT_TPL`-ийн
  *    оронд үүнийг өгнө — FAIL-CLOSED. `DEFAULT_TPL` нь хэрэглэгчийн чеклэсэн
  *    хүснэгт тул ӨРГӨН; хадгалсан загвар нь нарийн байхад синк хүлээх хооронд
@@ -238,30 +156,27 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
  */
 function narrowTpl(role: Role): TypeTpl {
   const a = ROLE_ACCESS[role];
-  const views = a.views === 'all' ? ALL_VIEWS : a.views.map((v) => `view:${v}`);
-  return { on: [...views, ...(a.docs ? ['docs'] : [])], home: a.home, scope: 'own' };
+  /* ⚠️ Урсгалтай харагдац загварт орохгүй (`TPL_VIEWS`) */
+  const views = a.views === 'all' ? ALL_VIEWS : a.views.filter((v) => !WORKFLOW_VIEWS.includes(v)).map((v) => `view:${v}`);
+  return { on: [...views, ...(a.docs ? ['docs'] : [])], home: a.home };
 }
-
-/** Урсгалын 6 төрөлд урсгал асаалттай эсэх */
-const flowOn = (role: Role, on: readonly string[]): boolean =>
-  !!ROLE_STAGE[role] && (on.includes('flow:act') || on.includes('flow:viewOnly'));
 
 /**
  * Хүснэгтээс ирсэн (итгэлгүй) загварыг шүүнэ.
  * ⚠️ FAIL-CLOSED: танигдахгүй id хаягдана; `admin` зөвхөн super-т; эвдэрсэн бол `null`
  *    (⚠️ 2026-09-25: эвдэрсэн мөрд `narrowTpl` үйлчилнэ — `_syncRemoteTypes`).
- * ⚠️ 2026-09-25: урсгал (`flow:act`/`flow:viewOnly`) асаалттай бол `view:guitsetgel`
- *    ЗААВАЛ — эс бөгөөс хүн шатанд томилогдсон атлаа хуудас нь нээгдэхгүй.
+ * ⚠️ 2026-09-30: хуучин `cap:*` · `chanar:*` · `flow:*` · `scope` нь ЭНД хаягдана
+ *    (толгойн ⚠️). Урсгалын «Гүйцэтгэл» хуудсыг `grantFlowAccess` өөрөө нэмдэг тул
+ *    загвараас албадахгүй.
  */
 export function cleanTpl(role: Role, raw: unknown): TypeTpl | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as { on?: unknown; home?: unknown; scope?: unknown };
+  const r = raw as { on?: unknown; home?: unknown };
   if (!Array.isArray(r.on)) return null;
   const on = [...new Set(r.on.filter((x): x is string => typeof x === 'string' && KNOWN.has(x)))]
     .filter((x) => x !== 'admin' || role === 'super');
-  if (flowOn(role, on) && !on.includes('view:guitsetgel')) on.push('view:guitsetgel');
   const home = typeof r.home === 'string' && VIEW_KEYS.has(r.home) ? (r.home as ViewKey) : (DEFAULT_TPL[role]?.home ?? 'gdash');
-  return { on, home, scope: r.scope === 'all' ? 'all' : 'own' };
+  return { on, home };
 }
 
 /* ══════════════════════ Хүснэгтээс уншсан загвар ══════════════════════ */
@@ -376,7 +291,7 @@ export function tplOf(role: Role): TypeTpl {
   loadCache();
   const known = synced || cacheLoaded;
   const t = remote[role] ?? (known && !broken.has(role) ? DEFAULT_TPL[role] : undefined);
-  return t ? { on: [...t.on], home: t.home, scope: t.scope } : narrowTpl(role);
+  return t ? { on: [...t.on], home: t.home } : narrowTpl(role);
 }
 
 /** Загварыг хүснэгтэд бичнэ — амжилттай бол локал хуулбарыг шинэчилнэ */
@@ -421,7 +336,5 @@ export function roleAccess(role: Role): { views: ViewKey[] | 'all'; docs: boolea
   const t = tplOf(role);
   if (role === 'super') return { views: 'all', docs: true, home: t.home };
   const views = t.on.filter((x) => x.startsWith('view:')).map((x) => x.slice(5) as ViewKey);
-  /* ⚠️ 2026-09-25: урсгалтай загварт «Гүйцэтгэл» хуудас ЗААВАЛ (`cleanTpl`-ийн ⚠️) */
-  if (flowOn(role, t.on) && !views.includes('guitsetgel')) views.push('guitsetgel');
   return { views, docs: t.on.includes('docs'), home: t.home };
 }

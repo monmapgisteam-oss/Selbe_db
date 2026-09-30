@@ -203,7 +203,8 @@ w = setAssign('comp_a', 'manager', ['Багц 2']);
 await Promise.all([rm.sync, w.sync]);
 assert.equal(stageOfUser('comp_a'), 'manager');
 assert.equal(P.roleOf('comp_a'), 'menejer', 'хойшилсон revoke шинэ grant-ыг дарахгүй');
-assert.deepEqual(P.resolveBaseAccess('comp_a').views, roleAccess('menejer').views);
+/* ⚠️ 2026-09-30: загвар урсгалтай харагдац (guitsetgel) агуулахгүй — урсгалын томилгоо нэмнэ */
+assert.deepEqual(P.resolveBaseAccess('comp_a').views, [...new Set([...roleAccess('menejer').views, 'guitsetgel'])]);
 console.log('✅ хас→нэм дараалал');
 
 /* ══════════════════════════════════════════════════════════════════════

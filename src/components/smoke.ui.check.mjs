@@ -195,11 +195,29 @@ const CASES = [
   { name: 'ViewPanel', skip: 'Portal-ын дотоод самбар — олон тооны төлөв/callback prop; Portal тохиолдол дамжуулан зурна' },
   { name: 'FillNew', load: () => import('@/modules/sheet/FillNew'), pick: (m) => m.default, props: {} },
   { name: 'ErhTypes', load: () => import('@/modules/ErhTypes'), pick: (m) => m.ErhTypes, props: {}, map: false },
-  { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false },
+  /* ⚠️ 2026-09-30: НЭГ УРСГАЛ = НЭГ ХУУДАС — хуудас бүрийн панел (зохиогч + батлагч нэг дор) */
+  { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false,
+    expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА'] },
   { name: 'QaqcAcl', load: () => import('@/modules/QaqcAcl'), pick: (m) => m.QaqcAcl, props: {}, map: false },
-  { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false },
-  { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false },
-  { name: 'AjilAcl', load: () => import('@/modules/AjilAcl'), pick: (m) => m.AjilAcl, props: {}, map: false },
+  { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false,
+    expect: ['Зохиогч', 'Батлагч'] },
+  { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false,
+    expect: ['Засварлагч', 'Батлагч'] },
+  { name: 'AjilAcl', load: () => import('@/modules/AjilAcl'), pick: (m) => m.AjilAcl, props: {}, map: false,
+    expect: ['Мөр нэмэгч', 'Батлагч'] },
+  { name: 'PlainCapAcl:zovshoorol', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'zovshoorol' }, map: false,
+    expect: ['Зөвшөөрөл засах', 'шууд хадгалагдана'] },
+  { name: 'PlainCapAcl:finEdit', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'finEdit' }, map: false,
+    expect: ['Санхүүгийн бүртгэл — утга засах'] },
+  { name: 'PlainCapAcl:finRow', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'finRow' }, map: false,
+    expect: ['Санхүүгийн бүртгэл — мөр нэмэх, устгах'] },
+  { name: 'PlainCapAcl:gazar', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'gazar' }, map: false,
+    expect: ['Газрын төлөв засах'] },
+  { name: 'PlainCapAcl:super', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'plan', superOnly: true }, map: false,
+    expect: ['Админ (super)'] },
+  { name: 'CapOrphanNote', load: () => import('@/modules/CapOrphanNote'), pick: (m) => m.CapOrphanNote, props: { cap: 'plan' }, map: false,
+    /* ⚠️ ACL уншигдаагүй тул `null` — markup хоосон байх нь ЗӨВ; wrap-ын provider-ууд л зурагдана */
+    allowEmpty: true },
   { name: 'GuitsetgelAcl', load: () => import('@/modules/GuitsetgelAcl'), pick: (m) => m.GuitsetgelAcl, props: {}, map: false },
   { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false },
 ];
@@ -229,7 +247,8 @@ else {
       }
       const props = typeof c.props === 'function' ? await c.props() : c.props;
       const html = renderToStaticMarkup(wrap(h(Comp, props), { map: c.map !== false }));
-      assert.ok(html && html.trim().length > 0, `${c.name}: markup хоосон`);
+      /* ⚠️ `allowEmpty` — санаатайгаар `null` буцаадаг бүрэлдэхүүн (ACL уншигдаагүй үеийн `CapOrphanNote`) */
+      assert.ok(c.allowEmpty || (html && html.trim().length > 0), `${c.name}: markup хоосон`);
       for (const s of c.expect ?? []) assert.ok(html.includes(s), `${c.name}: «${s}» markup-д алга`);
       ok++;
       console.log(`✅ ${c.name} (${html.length} т · ${Date.now() - t1}мс${errs.length ? ` · console ${errs.length}` : ''})`);

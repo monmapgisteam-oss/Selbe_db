@@ -73,7 +73,5 @@
 .err { color: var(--bad-ink); font-size: 0.78rem; white-space: pre-line; }
 .ok { color: var(--ink-2); font-size: 0.78rem; }
 
-/* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг */
+/* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг (2026-09-30: багцын чип хасагдсан) */
 .typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-/* ⚠️ 2026-09-25: картын багцын чип хоёр бүлэг (бөглөх хуудас · дэд бүтэц) — бүлгийн гарчиг */
-.pkgKind { color: var(--ink-3); font-size: 0.7rem; font-weight: 600; margin: 8px 0 4px; }

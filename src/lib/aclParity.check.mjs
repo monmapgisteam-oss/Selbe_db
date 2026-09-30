@@ -299,24 +299,32 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
     assert.ok(!src.includes(fn),
       `UserAdmin: «${fn}» буцаж ирэв — хуваарилалтын бичилт зөвхөн aclOps-оор`);
   }
-  /* (а) super-т эрх ШУУД — `setGrants` super-ийг татгалздаг (2026-09-07 · 08) */
-  const i = src.indexOf('const flipCap = (');
-  assert.ok(i > 0, 'UserAdmin: flipCap олдсонгүй');
-  const body = src.slice(i, src.indexOf('const dropOrphan = ('));
-  assert.equal((body.match(/roleForUser\(u\.username\) === 'super'/g) ?? []).length, 1,
-    'flipCap: super шалгалт ЯГ 1 удаа байх ёстой');
-  assert.equal((body.match(/void toggleCap\([^)]*\);\s*$/gm) ?? []).length, 0,
-    'flipCap: .then-гүй toggleCap — бичилтийн уналт нуугдана');
-  /* (б) гаргалгаатай эрх super-ээс бусдад ҮЗҮҮЛЭЛТ — унтраалгаас бичихгүй */
-  assert.match(body, /if \(isDerivedCap\(c\)\) return;/,
-    'flipCap: гаргалгаатай эрх super-ээс бусдад унтраалгаар бичигдэж байна');
-  /* (в) өнчин эрхийг ИЛ хасах — баталгаажуулалттай, үр дүнг барина */
-  const d = src.slice(src.indexOf('const dropOrphan = ('), src.indexOf('const flipRemove = ('));
-  assert.ok(d.includes('window.confirm(msg)'), 'dropOrphan: баталгаажуулалтгүй');
-  assert.ok(d.includes('toggleCap(u.username, c, false).then(markCap(u))'),
-    'dropOrphan: toggleCap(false)-ийн үр дүнг барих ёстой');
+  /* ⚠️ 2026-09-30: картын «Нэмэлт эрх» унтраалга (`flipCap` · `dropOrphan`) УСТСАН —
+     эрх бүр өөрийн хуудсанд. `__cap__:` бичилт ЗӨВХӨН `aclOps.capDirectOp`-оор
+     (`PlainCapAcl` · `CapOrphanNote`); `UserAdmin`/`UserRights`/`UserCard` toggleCap дуудахгүй. */
+  for (const f of ['src/components/UserAdmin.tsx', 'src/components/UserRights.tsx', 'src/components/UserCard.tsx', 'src/components/UserRow.tsx']) {
+    const c = readCode(f);
+    assert.ok(!c.includes('toggleCap('), `${f}: toggleCap буцаж ирэв — эрх зөвхөн aclOps.capDirectOp-оор (эрхийн хуудас)`);
+    assert.ok(!c.includes('flipCap') && !c.includes('dropOrphan') && !c.includes('onFlipCap'),
+      `${f}: картын нэмэлт эрхийн унтраалга буцаж ирэв — «Хэрэглэгчдийн эрх удирдах» зөвхөн харагдац`);
+  }
+  const ops = readCode('src/lib/aclOps.ts');
+  const co = ops.slice(ops.indexOf('export function capDirectOp('), ops.indexOf('export async function runOp('));
+  /* (a) гаргалгаатай эрх super-ээс бусдад ШУУД олгогдохгүй — хуваарилалтын хоёр дахь эх сурвалж болохгүй */
+  assert.ok(co.includes("if (on && isDerivedCap(cap) && roleForUser(u) !== 'super')"),
+    'capDirectOp: гаргалгаатай эрх super-ээс бусдад шууд олгогдож байна');
+  /* (b) хасалт баталгаажуулалттай; addRow-д «Бөглөх» таб хаагдахыг ил хэлнэ */
+  assert.ok(co.includes("cap === 'addRow'"), 'capDirectOp: addRow хасахад «Бөглөх» таб хаагдах анхааруулга алга');
+  assert.ok(co.includes('sync: toggleCap(u, cap, on)'), 'capDirectOp: toggleCap-ийн үр дүн sync-ээр буцах ёстой (уналт нуугдахгүй)');
+  /* (c) хуудсууд op-оор бичнэ, шууд toggleCap биш */
+  const pc = readCode('src/modules/PlainCapAcl.tsx');
+  assert.ok(!pc.includes('toggleCap(') && pc.includes('capDirectOp('), 'PlainCapAcl: бичилт capDirectOp-оор байх ёстой');
+  const on = readCode('src/modules/CapOrphanNote.tsx');
+  assert.ok(on.includes('capDirectOp(u, cap, false)'), 'CapOrphanNote: өнчин эрхийг capDirectOp(false)-оор хасах ёстой');
+  assert.ok(on.includes('if (!allAclReady()) return null;'), 'CapOrphanNote: бүх ACL уншигдтал өнчин тэмдэг гаргахгүй байх ёстой');
+  assert.ok(on.includes('if (aclPendingFor(u)) continue;'), 'CapOrphanNote: бичилт явагдаж буй хүнийг алгасах ёстой');
 }
-console.log('✅ UserAdmin — flipScoped устсан · set*Grants алга · super шууд · өнчин эрх ИЛ');
+console.log('✅ UserAdmin — flipScoped · flipCap устсан · set*Grants алга · capDirectOp (super шууд · өнчин эрх ИЛ)');
 
 /* ══════════ 7. add() — ДӨРВҮҮЛЭН ACL-ийн өнчин мөрийг шалгана ══════════ */
 {
@@ -518,7 +526,7 @@ console.log('\naclParity.check: ok');
   /* Панел хаагдахад салангид төлөв цэвэрлэгдэнэ */
   const ri = ua.indexOf('const requestClose = () =>');
   const rb = ua.slice(ri, ri + 1400);
-  for (const st of ['setSel(new Set())', 'setCapErr(new Map())']) {
+  for (const st of ['setSel(new Set())', 'setCard(null)']) {
     assert.ok(rb.includes(st),
       `UserAdmin.requestClose: ${st} алга — панел дахин нээхэд хуучин сонголт/алдаа үлдэнэ`);
   }
@@ -603,30 +611,36 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
     'UserAdmin: capsLocked нь allAclReady()-аас гарах ёстой — remote-гүй панел уншихдаа [], бичихдээ кэш холино');
   assert.ok(readCode('src/modules/ErhOverview.tsx').includes('const locked = !allAclReady();'),
     'ErhOverview: түгжээ allAclReady()-аас гарах ёстой');
-  assert.ok(readCode('src/components/UserCard.tsx').includes('const ready = allAclReady();'),
-    'UserCard: түгжээ allAclReady()-аас гарах ёстой');
+  /* ⚠️ 2026-09-30: карт хуваарилалт бичихээ больсон — «Төрлөөр тохируулах» (зөвхөн харагдац) remoteReady-ээр түгжигдэнэ */
+  assert.ok(!readCode('src/components/UserCard.tsx').includes('aclOps'),
+    'UserCard: aclOps бичилт буцаж ирэв — карт зөвхөн харагдац (2026-09-30)');
+  assert.ok(readCode('src/components/UserTypeSection.tsx').includes('!remoteReady()'),
+    'UserTypeSection: түгжээ remoteReady()-аас гарах ёстой');
+  assert.ok(readCode('src/lib/roleTypeApply.ts').includes('if (!remoteReady())'),
+    'roleTypeApply.applyType: remote-гүй бол татгалзах ёстой');
   /* Матриц — `useAclRunner()` анхдагч түгжээ = allAclReady (runOp дарах агшинд шалгана) */
   assert.ok(readCode('src/modules/ErhMatrix.tsx').includes('useAclRunner();'),
     'ErhMatrix: бичилт useAclRunner()-оор (allAclReady түгжээтэй) явах ёстой');
   assert.ok(readCode('src/modules/useAclRunner.ts').includes('ready: () => boolean = allAclReady'),
     'useAclRunner: анхдагч түгжээ allAclReady биш');
   assert.ok(ops.includes('ready: () => boolean = allAclReady'), 'aclOps.runOp: анхдагч түгжээ allAclReady биш');
-  for (const fn of ['const flipCap = (', 'const dropOrphan = (', 'const add = () =>']) {
+  /* ⚠️ 2026-09-30: `flipCap` · `dropOrphan` устсан — зөвхөн `add()` үлдэнэ */
+  for (const fn of ['const add = () =>']) {
     const i = ua.indexOf(fn);
     assert.ok(i > 0, `UserAdmin: ${fn} олдсонгүй`);
     assert.ok(ua.slice(i, i + 1200).includes('if (capsLocked) { setAddErr(LOCK_MSG); return; }'),
       `UserAdmin.${fn.trim()}: remote-гүй хаалт алга`);
   }
   assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
-    'UserAdmin: remote-гүй бол унтраалга кэшнээс (`capsStored`) харагдах ёстой');
-  assert.ok(/\n\s+capsLocked,\s/.test(ua),
-    'UserAdmin → UserRow: capsLocked дамжихгүй байна — унтраалга disabled болохгүй');
+    'UserAdmin: remote-гүй бол эрхээр нээгдсэн харагдацын тэмдэг кэшнээс (`capsStored`) харагдах ёстой');
   assert.ok(/if \(r && !\(await regrantFlowAccess\(uname\)\)\) bad = true;/.test(ua),
     'UserAdmin.saveAll: regrantFlowAccess-ийг stageOfUser-оор урьдчилж шүүж байна (remote-гүй бол алгасна)');
-  /* ⚠️ 2026-09-25: унтраалга `UserRights.tsx`-д шилжсэн (мөр ба карт хуваалцана) */
-  const ur = readCode('src/components/UserRights.tsx');
-  assert.ok(ur.includes('disabled={!!d.isNew || !!capsLocked}'),
-    'UserRights: нэмэлт эрхийн унтраалга capsLocked үед disabled биш');
+  /* ⚠️ 2026-09-30: энгийн эрхийн хуудас (`PlainCapAcl`) — QaqcAcl-тай ИЖИЛ түгжээ */
+  const pc = readCode('src/modules/PlainCapAcl.tsx');
+  assert.ok(pc.includes('const ready = () => remoteReady() && capsRemoteReady();'),
+    'PlainCapAcl: түгжээ remoteReady && capsRemoteReady байх ёстой');
+  assert.ok(pc.includes('useAclRunner(ready)'), 'PlainCapAcl: runner нь өөрийн түгжээгээ авах ёстой');
+  assert.ok(pc.includes('locked ? capsStored(u) : capsOf(u)'), 'PlainCapAcl: remote-гүй бол жагсаалт кэшнээс');
 
   /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
   const ag = readCode('src/components/AuthGate.tsx');
@@ -682,6 +696,45 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
 console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 4 = CAPS');
+
+/* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
+/**
+ * ⚠️ Хэрэглэгч үйлдэл бүрийг тусад нь 14 хуудас болгосныг ТАТГАЛЗСАН — зохиогч ба
+ *    батлагч нэг хуудсанд. Энэ шалгуур: хуудас 9 (+ урсгал), эрх БҮР яг нэг
+ *    хуудсанд, картын унтраалга урсгалтай 6 харагдацыг зурахгүй, «Бүгдийг
+ *    асаах/унтраах» тэдгээрийг хөндөхгүй.
+ */
+{
+  const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
+  const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
+  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar'],
+    'capText.ERH_PANES: хажуугийн цэсний 9 урсгалын хуудас, энэ дарааллаар');
+  const capsSrc = readCode('src/lib/caps.ts');
+  const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
+    .matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  const placed = Object.values(PANE_CAPS).flat();
+  assert.deepEqual([...placed].sort(), [...all].sort(), 'PANE_CAPS: эрх бүр ЯГ нэг хуудсанд байх ёстой');
+  assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow'], 'Санхүү: утга + мөр нэг хуудсанд');
+  for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
+  assert.equal(new Set(WORKFLOW_VIEWS).size, 6, 'WORKFLOW_VIEWS 6 байх ёстой');
+  for (const v of WORKFLOW_VIEWS) assert.ok(Object.values(CAP_HOST_VIEW).some((vs) => vs.includes(v)), `WORKFLOW_VIEWS: ${v} CAP_HOST_VIEW-д алга`);
+
+  const ua = readCode('src/components/UserAdmin.tsx');
+  assert.ok(!ua.includes('ACTION_PANES') && ua.includes('ERH_PANES.map('), 'UserAdmin: хажуугийн цэс ERH_PANES-аар (нэг урсгал = нэг хуудас)');
+  for (const bad of ['role="editor"', 'role="approver"', 'role="author"', 'mode="author"', 'mode="review"']) {
+    assert.ok(!ua.includes(bad), `UserAdmin: ${bad} — үүргээр салгасан хуудас буцаж ирэв`);
+  }
+  assert.ok(ua.includes('if (WORKFLOW_VIEWS.includes(k)) return;'), 'UserAdmin.flipView: урсгалтай харагдац картаас засагдах ёсгүй');
+  assert.ok(ua.includes("keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : [])"), 'UserAdmin.setAllViews: урсгалтай 6-г хөндөхгүй байх ёстой');
+  const ur = readCode('src/components/UserRights.tsx');
+  assert.ok(ur.includes('VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key))'), 'UserRights: урсгалтай 6 харагдац унтраалгад орох ёсгүй');
+  assert.ok(ur.includes('shownViews.map('), 'UserRights: жагсаалт шүүгдсэн харагдацаас зурагдах ёстой');
+  for (const f of ['src/modules/ScopedAclPanel.tsx', 'src/modules/ChanarAcl.tsx']) {
+    assert.ok(!readCode(f).includes('pageOf'), `${f}: үүргээр салгасан хуудасны үлдэгдэл (pageOf)`);
+  }
+}
+console.log('✅ capText — 9 урсгалын хуудас · эрх бүр нэг хуудсанд · урсгалтай 6 харагдац картаас гадуур');
 
 /* ══════════ 13. aclOps — ЗАН ТӨЛӨВИЙН ШАЛГУУР (2026-09-25, хянагчийн олдвор) ══════════ */
 /**

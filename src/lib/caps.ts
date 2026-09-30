@@ -254,6 +254,26 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
 };
 
 /**
+ * УРСГАЛТАЙ ХАРАГДАЦУУД — хэрэглэгчийн картын «Харагдац» унтраалгад ОРОХГҮЙ
+ * (2026-09-30, хэрэглэгчийн шийдвэр): Гүйцэтгэл · Хуваарь · Хуваарь батлах ·
+ * Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC). Тэдгээр нь урсгалын
+ * хуваарилалтаар (эрх → `CAP_HOST_VIEW`, урсгалын шат → `grantFlowAccess`)
+ * автоматаар нээгдэж, хуваарилалт хасахад буцаагдана.
+ *
+ * ⚠️ `CAP_HOST_VIEW`-ээс ГАРНА — гараар хоёр газар бичвэл шинэ эрх/харагдац
+ *    нэмэгдэхэд хоцорно. Багцаар хуваарилагддаг эрхүүдээс `butets`-ийг
+ *    ОРУУЛАХГҮЙ: «Дэд бүтэц» нь засварын эрхгүй хүнд ч ердийн харах хуудас.
+ *    Энгийн дөрвөн эрхийн харагдац (зөвшөөрөл · санхүү · газар) мөн ердийн.
+ * ⚠️ `VIEWS` (23) хэвээр — энэ нь зөвхөн унтраалгын шүүлт; хадгалагдсан
+ *    `views` дахь утга хөндөгдөхгүй.
+ */
+const WORKFLOW_CAPS: readonly CapKey[] = [
+  'addRow', 'ajilApprove', 'plan', 'planApprove', 'obyemEdit', 'obyemApprove', 'chanarAuthor', 'chanarReview', 'qaqc',
+];
+export const WORKFLOW_VIEWS: readonly ViewKey[] = [...new Set(WORKFLOW_CAPS.flatMap((c) => CAP_HOST_VIEW[c]))];
+export const isWorkflowView = (v: ViewKey): boolean => WORKFLOW_VIEWS.includes(v);
+
+/**
  * Хэрэглэгчийн эрхүүдээс гарах харагдацууд (давхардалгүй).
  *
  * ⚠️ `flatMap` — `map` БИШ (2026-09-16). `CAP_HOST_VIEW` массив болсон тул

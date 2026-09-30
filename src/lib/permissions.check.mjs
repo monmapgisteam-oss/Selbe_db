@@ -102,4 +102,25 @@ await P.clearOverride('test_dirty_user');
 assert.ok(P.dirtyKeys().includes('test_dirty_user'), 'устгалын dirty тэмдэг алга');
 assert.equal(P.roleOf('test_dirty_user'), null, 'override арилсан байх ёстой');
 
-console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf');
+/* ── 7. «Хуваарь» харагдац ЭРХЭЭС гарна (2026-09-30 регресс): төрлийн загвар урсгалтай
+      харагдацыг (`WORKFLOW_VIEWS`) агуулахаа больсон тул хадгалагдсан `views`-д
+      'huvaari' байхгүй гүйцэтгэгч зөвхөн `plan` эрх (→ `CAP_HOST_VIEW`) -ээр хүрнэ. ── */
+{
+  const CAPS = await import('./caps.ts');
+  const { roleAccess } = await import('./roleTypes.ts');
+  const { WORKFLOW_VIEWS } = CAPS;
+  assert.ok(WORKFLOW_VIEWS.includes('huvaari'), 'huvaari нь урсгалтай харагдац');
+  const tpl = roleAccess('guitsetgegch').views;
+  assert.ok(tpl === 'all' || !tpl.includes('huvaari'), 'гүйцэтгэгчийн загварт huvaari байхгүй (эрхээс гарна)');
+  /* remote-гүй сешнд бичилт унана (dirty) — локал override нь хэвээр үйлчилнэ */
+  await P.setUser('test_plan_user', { views: ['plan'], docs: false }, 'guitsetgegch');
+  assert.ok(!P.resolveAccess('test_plan_user').views.includes('huvaari'), 'эрхгүй → huvaari хаалттай');
+  CAPS._syncRemoteCaps([{ user: 'test_plan_user', caps: ['plan'] }], true);
+  assert.deepEqual(CAPS.capViewsOf('test_plan_user'), ['huvaari'], 'plan → huvaari');
+  assert.ok(P.resolveAccess('test_plan_user').views.includes('huvaari'), '⚠️ plan эрхтэй гүйцэтгэгчид «Хуваарь» нээлттэй байх ёстой');
+  CAPS._syncRemoteCaps([{ user: 'test_plan_user', caps: [] }], true);
+  assert.ok(!P.resolveAccess('test_plan_user').views.includes('huvaari'), 'эрх хасагдахад буцаагдана');
+  await P.clearOverride('test_plan_user');
+}
+
+console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view');

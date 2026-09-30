@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
 import type { PlanRow, Span, Status } from '@/lib/plan';
-import type { MonthRes } from '@/lib/huvaariObyem';
+import { balanced, type MonthRes } from '@/lib/huvaariObyem';
 import type { PlanKind } from './types';
 
 /** Ажил+блокийн ноорогийн түлхүүр */
@@ -222,3 +222,48 @@ export const stText = (st: Status): string => {
  */
 export const inScope = (scope: string[] | null, group: string): boolean =>
   scope == null || scope.includes(group);
+
+/* ══════════════════ Илгээхийн өмнөх сарын задаргааны хаалт ══════════════════ */
+
+/**
+ * ТЭНЦЭЭГҮЙ сарын задаргаатай (ажил·блок) илгээхийг ХОРИГЛОНО (2026-09-17): батлах
+ * үеийн `save` тэдгээрийг алгасдаг (`unbal`) тул ноорог үлдэж батлах гинж
+ * «эх хуудсанд бичигдсэнгүй» гэж мөнхөд гацдаг байв.
+ * ⚠️ 2026-09-30: `Huvaari.sendForApproval`-аас ЦЭВЭР функц болгон салгав — дүрэм
+ *    ХЭВЭЭР; одоо `obyemGate.check.mjs`-ээр (popup-ын шүүсэн `mv` → ноорог → энэ
+ *    хаалт) тестлэгдэнэ. Буцаах: тэнцээгүй тоо + ажлын НЭРС (2026-09-21 — «1 ажлын…»
+ *    гэсэн тоо л хараад 1,400 мөрөөс алийг нь нээхээ мэдэхгүй байв).
+ * ⚠️ ХООСОН ЗАДАРГАА + ХУВААРЬТАЙ блок = 0 ≠ обьём (2026-09-21). Гинжээр (уялдаа,
+ *    чирэлт) ажил БҮТЭН шинэ саруудад шилжвэл `keepMonths` бүх сарыг хаяж Map хоосон
+ *    болдог; урьд нь `months.size &&` нөхцөл үүнийг өнгөрөөж, батлахад `buildEdits`
+ *    тэр ажлын БҮХ сарын мөрийг устгадаг байв — задаргаа ул мөргүй алга. Хоосон Map нь
+ *    зөвхөн хуваарь ч ХООСОН (`clear`) үед л хүчинтэй «арилгах» санаа.
+ * ⚠️ ЗӨВХӨН СЕРВЕРТ ЗАДАРГАА БАЙСАН үед (2026-09-21): «buildEdits бүх сарыг устгана»
+ *    гэсэн үндэслэл серверт задаргаа БАЙХГҮЙ ажилд хамаарахгүй — устгах зүйл алга.
+ *    Задаргаагүй обьёмтой ажлыг чирээд цонхыг X-ээр хаахад хоосон Map үлдэж, илгээх
+ *    зам мөнхөд түгжигдэж байв (одоо `applyChanges`/`applyModal` ийм ноорогийг хасдаг
+ *    ч хуучин ноорог/өөр замаар орсныг энд давхар хамгаална).
+ * ⚠️ Обьёмгүй (`vol` null/0) эсвэл кодгүй мөрд шалгах суурь алга — алгасна.
+ */
+export function unbalancedObyem(
+  plan: readonly PlanRow[],
+  bld: readonly string[],
+  obDraft: ReadonlyMap<string, ReadonlyMap<string, number>>,
+  obPlan: ReadonlyMap<number, ReadonlyMap<string, ReadonlyMap<string, number>>>,
+): { bad: number; names: string[] } {
+  let bad = 0;
+  const names = new Set<string>();
+  for (const r of plan) {
+    for (let b = 0; b < bld.length; b += 1) {
+      const blok = bld[b];
+      if (r.des == null || !blok) continue;
+      const months = obDraft.get(obKey(r.des, blok));
+      if (!months || r.vol == null || !(r.vol > 0)) continue;
+      if (months.size && !balanced(months, r.vol)) { bad += 1; names.add(`${r.no} ${r.work}`.trim()); }
+      else if (!months.size && r.spans[b] && (obPlan.get(r.des)?.get(blok)?.size ?? 0) > 0) {
+        bad += 1; names.add(`${r.no} ${r.work}`.trim());
+      }
+    }
+  }
+  return { bad, names: [...names] };
+}

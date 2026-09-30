@@ -40,6 +40,7 @@ import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
 import { allPkgErh, allUserErh, type RoleLine } from '@/lib/erhOverview';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
+import { ERH_PANES, paneLabel } from './capText';
 import { ErhMatrix } from './ErhMatrix';
 import s from './guitsetgel.module.css';
 
@@ -187,7 +188,7 @@ export function ErhOverview({
 
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>
-                  <div className={s.aclRoleHead}>{tr('Нэмэлт эрх')}</div>
+                  <div className={s.aclRoleHead}>{tr('Засах эрх')}</div>
                   {/* ⚠️ `join` ЗААВАЛ (2026-09-16): `CAP_HOST_VIEW` нь массив
                       болсон тул шууд өгвөл React түүнийг тусгаарлагчгүй
                       нийлүүлж «huvaariBatlahhuvaari» болгоно. */}
@@ -205,16 +206,16 @@ export function ErhOverview({
         </div>
       )}
 
+      {/* ⚠️ 2026-09-30: холбоос = урсгалын хуудас бүр (`capText.ERH_PANES`, нэг урсгал = нэг хуудас) */}
       <p className={s.aclNote}>
         {tr('Засах бол:')}{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('users')}>{tr('Хэрэглэгчдийн эрх')}</button>{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('guits')}>{tr('Гүйцэтгэлийн урсгал')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('qaqc')}>{tr('Чанар')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('huvaari')}>{tr('Хуваарь')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('obyem')}>{tr('Обьём')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('chanar')}>{tr('Чанарын баримт')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('ajil')}>{tr('Нэмэлт ажил')}</button>{' '}
-        <button type="button" className={s.aclPkg} onClick={() => onGo('butets')}>{tr('Дэд бүтэц')}</button>
+        {ERH_PANES.map((k) => (
+          <span key={k}>
+            <button type="button" className={s.aclPkg} onClick={() => onGo(k)}>{paneLabel(k)}</button>{' '}
+          </span>
+        ))}
       </p>
     </div>
   );

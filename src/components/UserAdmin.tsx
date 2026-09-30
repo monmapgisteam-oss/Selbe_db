@@ -22,8 +22,8 @@ import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
 import {
-  capsOf, capsStored, capViewsOf, dirtyCapKeys, foreignCapsDirty, retryCapsDirty, setCaps,
-  subscribeCaps, toggleCap,
+  CAPS, WORKFLOW_VIEWS, capsOf, capsStored, capViewsOf, dirtyCapKeys, foreignCapsDirty, retryCapsDirty, setCaps,
+  subscribeCaps,
   type CapKey,
 } from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
@@ -48,17 +48,33 @@ import { listQaqcAssigns, purgeQaqcAssign, subscribeQaqcAcl } from '@/lib/qaqcAc
 import {
   purgeAssign, regrantFlowAccess, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
-import { aclPendingFor, allAclReady, liveErhSource, subscribeAclPending } from '@/lib/aclOps';
+import { allAclReady, subscribeAclPending } from '@/lib/aclOps';
 import { isDerivedCap } from '@/lib/aclRoleCaps';
-import { orphanCaps, userErh } from '@/lib/erhOverview';
+import { PlainCapAcl } from '@/modules/PlainCapAcl';
+import { CapOrphanNote } from '@/modules/CapOrphanNote';
+import {
+  ERH_PANES, PANE_CAPS, paneLabel, paneNote, paneSubtitle, type ErhPane,
+} from '@/modules/capText';
 import { UserCard } from './UserCard';
 import { ErhTypes } from '@/modules/ErhTypes';
 import { TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
 
-/** Toggle хийж болох бүх харагдац */
+/** Бүх харагдац — тоолуур ба 'all'-ыг жагсаалт болгоход */
 const ALL_KEYS: ViewKey[] = VIEWS.map((v) => v.key);
+/**
+ * Картын унтраалгаар toggle хийж болох харагдац — урсгалтай 6-г ХАСНА
+ * (2026-09-30, `caps.WORKFLOW_VIEWS`-ийн ⚠️): тэдгээр нь урсгалын хуваарилалтаар
+ * нээгдэж, хасахад буцаагдана. Хадгалагдсан `views` дахь утга нь ХӨНДӨГДӨХГҮЙ —
+ * зөвхөн энд засагдахгүй.
+ */
+const TOGGLE_KEYS: ViewKey[] = ALL_KEYS.filter((k) => !WORKFLOW_VIEWS.includes(k));
+/** `next`-д хадгалагдсан урсгалтай харагдацуудыг (`cur`-ээс) хэвээр үлдээнэ */
+const keepWorkflow = (cur: ViewKey[] | 'all', next: ViewKey[]): ViewKey[] => {
+  const held = (cur === 'all' ? ALL_KEYS : cur).filter((k) => WORKFLOW_VIEWS.includes(k) && !next.includes(k));
+  return [...next, ...held];
+};
 
 /**
  * Үүргийн preset товчнууд — «Эрхийн төрөл»-ийн 10 төрөл (2026-09-25).
@@ -77,78 +93,18 @@ const toggled = (views: ViewKey[] | 'all', k: ViewKey): ViewKey[] => {
   return arr.includes(k) ? arr.filter((x) => x !== k) : [...arr, k];
 };
 
-/** 'all' ба бүрэн жагсаалтыг ИЖИЛ гэж үзэж харьцуулна */
-/* ⚠️ Нэмэлт эрхийн текстийг ЗУРАГДАХ агшинд гаргана — `caps.ts`-д биш.
-   Модулийн түвшинд `tr()` дуудвал хэл солиход шинэчлэгдэхгүй, мөн i18n
-   гаргагч зөвхөн үсгэн дуудлагыг олдог тул толиноос хоцорно. */
-const capLabel = (k: CapKey): string => {
-  if (k === 'addRow') return tr('Мөр нэмэх');
-  if (k === 'qaqc') return tr('QAQC — Inspection Test Plan');
-  if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
-  if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
-  if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах');
-  if (k === 'plan') return tr('Хуваарь төлөвлөх');
-  if (k === 'planApprove') return tr('Хуваарь батлах');
-  if (k === 'obyemEdit') return tr('Инженерийн обьём засах');
-  if (k === 'obyemApprove') return tr('Инженерийн обьём батлах');
-  if (k === 'ajilApprove') return tr('Нэмэлт ажил батлах');
-  if (k === 'chanarAuthor') return tr('Чанарын баримт ирүүлэх (гүйцэтгэгч)');
-  /* ⚠️ 2026-09-25: + ЧХ инженер (`cheng`, MA-ийн эхний шат — `chanarMs.REVIEWERS_OF`) */
-  if (k === 'chanarReview') return tr('Чанарын баримт хянах (ТУХ · Чанар · ХАБЭА · ТУГ · ЧХ инженер)');
-  if (k === 'gazar') return tr('Газрын төлөв засах');
-  if (k === 'butets') return tr('Инженерийн дэд бүтцийн засвар');
-  return k;
-};
-const capHint = (k: CapKey): string => {
-  if (k === 'addRow') {
-    /* ⚠️ 2026-09-25: мөр нэмэх нь «Хуваарь»-д, батлуулж, багцаар (`ajilAcl` editor) */
-    return tr('«Хуваарь» хуудсанд бүлгийн мөрөнд шинэ ажил нэмж, батлуулахаар илгээх. Батлагдсаны дараа л мөр үндсэн өгөгдөлд үүсч, жин ба мөнгөн дүн дахин бодогдоно. Нэмэлт ажлын «Мөр нэмэгч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Нэмэлт ажлын эрх» хуудсанд онооно.');
-  }
-  if (k === 'qaqc') {
-    return tr('«Чанар (QAQC)» харагдац дээр Inspection Test Plan-ийг (М-акт, FIC, MA, MIR) бөглөх. QAQC хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Чанарын (QAQC) эрх» хуудсанд онооно. Гүйцэтгэлийн урсгалаас тусдаа: гүйцэтгэл зөвшөөрөх эрх дагалдахгүй.');
-  }
-  if (k === 'zovshoorol') {
-    return tr('«Зөвшөөрөл» хуудсанд зөвшөөрөл нэмэх, засах, устгах. Эрхгүй хүн зөвхөн харна.');
-  }
-  if (k === 'finEdit') {
-    return tr('«Санхүүжилт» харагдацын Cashflow (/173) ба IPC (/172) хүснэгтийн нүдний утга засах. Эдгээр нь дашбоардын санхүүгийн БҮХ тооны эх сурвалж тул нэг нүд засахад 02, 08 дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.');
-  }
-  if (k === 'gazar') {
-    return tr('«Газар чөлөөлөлт» дээр нэгж талбарын төлөв, явцын мэдээ, эзэмшигч, тайлбарыг засах. Нэг талбарын төлөв солиход чөлөөлөлтийн хувь, давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.');
-  }
-  if (k === 'butets') {
-    return tr('«Дэд бүтэц» харагдац дээр инженерийн шугамын атрибутыг (урт, бүс, баримтын нэр, багц) засах. Уртын талбар нь каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын хохирлын үнэлгээ гурвын эх сурвалж тул нэг тоо засахад тэр бүгд дагаж өөрчлөгдөнө. Дэд бүтцийн «Засварлагч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Инженерийн дэд бүтцийн засварын эрх» хуудсанд онооно.');
-  }
-  if (k === 'finRow') {
-    return tr('Тэр хоёр хүснэгтэд шинэ мөр нэмэх, байгаа мөрийг устгах. ⚠️ Устгасан мөрийг порталаас буцаах арга БАЙХГҮЙ.');
-  }
-  if (k === 'plan') {
-    return tr('«Хуваарь» харагдацад ажлын эхлэх/дуусах огноог ЗОХИОХ. Хадгалахад шууд бичигдэхээ болиод батлагчид илгээгдэнэ — батлагдтал эх хуваарь хөдлөхгүй. Хуваарийн «Зохиогч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Хуваарийн эрх» хуудсанд онооно.');
-  }
-  if (k === 'planApprove') {
-    return tr('Гүйцэтгэгчийн илгээсэн хуваарийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л огноо эх хуудсанд бичигдэж, тайлан ба хоцрогдлын тооцоонд орно. Хуваарийн «Батлагч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Хуваарийн эрх» хуудсанд онооно. ⚠️ Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
-  }
-  if (k === 'chanarAuthor') {
-    /* ⚠️ 2026-09-25: 6 төрөл ирүүлнэ (MS · QMP · PRC · MA · MIR · FIC — `chanarMs.KINDS`); NCR-ийг захиалагч нээдэг */
-    return tr('«Чанарын баримт» харагдацад ажлын аргачлал (MS), чанарын удирдлагын төлөвлөгөө (QMP), процедур (PRC), материал баталгаажуулалт (MA), материалын/талбайн үзлэг (MIR · FIC) боловсруулж хянуулахаар илгээх; үл тохиролд (NCR) залруулгын тайлан илгээх. Чанарын баримтын «Гүйцэтгэгч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Чанарын баримтын эрх» хуудсанд онооно.');
-  }
-  if (k === 'chanarReview') {
-    /* ⚠️ 2026-09-25: хянагч төрлөөр өөр (`chanarMs.REVIEWERS_OF` · `SEQUENTIAL_KINDS`):
-       MA — ЧХ инженер → Чанар → ТУГ ДАРААЛСАН; NCR — ТУХ · Чанар · ТУГ зэрэг */
-    return tr('«Чанарын баримт» харагдацад ирүүлсэн баримтыг хянаж A / AN / R шийдвэр өгөх. АЛЬ хянагч (ТУХ · Чанар · ХАБЭА · ТУГ · ЧХ инженер) болохыг хуваарилалт заана — багцыг хэрэглэгчийн карт эсвэл «Чанарын баримтын эрх» хуудсанд онооно. Төрөл бүрийн хянагч өөр: MS · QMP · PRC — ТУХ · Чанар · ХАБЭА зэрэг; MA — ЧХ инженер, дараа нь Чанар, дараа нь ТУГ (дараалсан); MIR · FIC — ТУХ, дараа нь Чанар; NCR — захиалагч (ТУХ · Чанар) нээж, залруулгын дараа ТУХ · Чанар · ТУГ хаана.');
-  }
-  if (k === 'obyemEdit') {
-    return tr('«Гүйцэтгэл бөглөх» хуудасны «Инженерийн төлөвлөсөн обьём» баганын нүднүүдийг ЗАСАХ. Засвар нь шууд бичигдэхгүй — батлагчид илгээгдэж, батлагдтал үндсэн өгөгдөл хөдлөхгүй. Обьёмын «Засварлагч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Инженерийн обьёмын эрх» хуудсанд онооно.');
-  }
-  if (k === 'obyemApprove') {
-    return tr('Инженерийн илгээсэн төлөвлөсөн обьёмыг БАТЛАХ эсвэл буцаах. Батлагдсан үед л утга үндсэн өгөгдөлд бичигдэнэ. Обьёмын «Батлагч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Инженерийн обьёмын эрх» хуудсанд онооно. ⚠️ Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — хоёр эрхийг нэг хүнд олгосон ч.');
-  }
-  if (k === 'ajilApprove') {
-    return tr('«Гүйцэтгэл бөглөх» хуудсанд нэмэгдсэн ШИНЭ ажлын мөрийг БАТЛАХ эсвэл буцаах. Батлагдсан үед л мөр үндсэн өгөгдөлд үүснэ — хүртэл дашбоард, тайлан, тооцоонд ОГТ нөлөөлөхгүй. Гүйцэтгэлийн 6 шатат урсгалаас ТУСДАА: тэр нь тоог, энэ нь ажил гэрээнд байх эсэхийг шийднэ. Нэмэлт ажлын «Батлагч» хуваарилалтаас гарна — багцыг хэрэглэгчийн карт эсвэл «Нэмэлт ажлын эрх» хуудсанд онооно. ⚠️ Өөрийн нэмсэн ажлыг өөрөө батлах боломжгүй — «Мөр нэмэх»-тэй хамт олгосон ч.');
-  }
-  return '';
+/*
+ * ⚠️ `capLabel` · `capHint` ЭНДЭЭС `modules/capText.ts`-д шилжсэн (2026-09-30):
+ *    засах эрх урсгал бүрийн өөрийн хуудсанд, гарчиг/дэд гарчиг/тайлбар нь тэнд.
+ */
+
+/** Хажуугийн цэсний хуудасны icon — хуудасны ЭХНИЙ эрхийнх (`caps.CAPS`) */
+const paneIcon = (p: ErhPane): string => {
+  const k: CapKey | undefined = PANE_CAPS[p][0];
+  return (k && CAPS.find((c) => c.key === k)?.icon) || 'pen';
 };
 
+/** 'all' ба бүрэн жагсаалтыг ИЖИЛ гэж үзэж харьцуулна */
 const viewsEq = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
   ALL_KEYS.every((k) => hasView(a, k) === hasView(b, k));
 
@@ -216,8 +172,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
    *    «энэ хүн юу хийж чадах вэ», «энэ багцыг хэн хариуцаж байна» гэсэн
    *    хоёр байнгын асуултад хариулах газар БАЙХГҮЙ байв — таван бүлгийг
    *    тус тусад нь нээж хайх ёстой байлаа.
+   * ⚠️ НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30, хэрэглэгчийн шийдвэр): картын
+   *    «Нэмэлт эрх» блок хасагдаж, засах эрх бүр урсгалынхаа хуудсанд (`ErhPane`,
+   *    `capText.PANE_CAPS`) — зохиогч ба батлагч НЭГ хуудсанд. Үйлдэл бүрийг
+   *    тусад нь 14 хуудас болгосон завсрын хувилбарыг хэрэглэгч татгалзсан.
    */
-  const [pane, setPane] = useState<'ovw' | 'types' | 'users' | 'guits' | 'qaqc' | 'huvaari' | 'obyem' | 'ajil' | 'chanar' | 'butets'>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'types' | 'users' | ErhPane>('ovw');
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   /** Хайлт — олон аккаунттай үед шаардлагатай (нэрээр шүүнэ) */
@@ -232,8 +192,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [syncing, setSyncing] = useState(false);
   /** username(жижиг үсгээр) → хадгалаагүй ноорог */
   const [drafts, setDrafts] = useState<Map<string, Draft>>(new Map());
-  /** Нэмэлт эрхийн ArcGIS бичилт унасан хэрэглэгчид */
-  const [capErr, setCapErr] = useState<Map<string, boolean>>(new Map());
   const [saving, setSaving] = useState(false);
   /** Хамгийн сүүлийн хадгалалтын үр дүн — товчийн доор товч мэдэгдэл */
   /** `msg` — ЭХНИЙ баригдсан алдааны текст (нэрсийн жагсаалтын хажууд харуулна) */
@@ -241,11 +199,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /**
    * НЭЭЛТТЭЙ ХЭРЭГЛЭГЧИЙН КАРТ (2026-09-25) — «Хэрэглэгчид» табд жагсаалтын
    * оронд зурагдана; доод талын «Хадгалах» мөр хэвээр (ноорог хуваалцана).
-   * `focus` — нээхэд гүйлгэх хэсэг (`erh-sec-{sys}`).
    */
-  const [card, setCard] = useState<{ user: string; focus?: string } | null>(null);
-  /** Зөвхөн хуваарилалтгүй (өнчин) эрхтэй хэрэглэгчдийг харуулах шүүлт (2026-09-25) */
-  const [orphanOnly, setOrphanOnly] = useState(false);
+  const [card, setCard] = useState<{ user: string } | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -288,20 +243,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      * ⚠️ САЛАНГИД ТӨЛӨВҮҮДИЙГ ч ЦЭВЭРЛЭНЭ (2026-09-08). Панел нь `open=false`
      * үед `return null` хийдэг ч UNMOUNT БОЛОХГҮЙ (эцэг нь prop-оор удирдана)
      * тул эдгээр нь дараагийн нээлт хүртэл үлддэг байв:
-     *   · `capErr` — аль хэдийн засагдсан алдааны улаан тэмдэг дахин гарна;
      *   · `sel` — сонголт үлдэж, нээмэгц «N сонгосон» бөөнөөр устгах зурвас
      *     санамсаргүй идэвхтэй харагдана (АЮУЛТАЙ);
      *   · `saved`/`addErr`/`q` — хуучин мэдэгдэл, хайлт төөрөгдүүлнэ.
      * Ноорог нь дээр цэвэрлэгдсэн тул эрхийн алдагдал үүсэхгүй.
      */
     setSel(new Set());
-    setCapErr(new Map());
     setSaved(null);
     setAddErr('');
     setQ('');
     /* ⚠️ Карт ч хаагдана — дахин нээхэд жагсаалтаас эхэлнэ (2026-09-25) */
     setCard(null);
-    setOrphanOnly(false);
     onClose();
   };
 
@@ -516,14 +468,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const applyRole = (u: UserPerm, role: Role, confirmed = false) => {
     const a = roleAccess(role);
     const d = draftOf(u);
-    const drop = dropsGuits(u, d.views, a.views);
+    const drop = a.views !== 'all' && dropsGuits(u, d.views, keepWorkflow(d.views, a.views));
     if (drop && !confirmed && !confirmDropGuits()) return;
+    /* ⚠️ Загвар урсгалтай харагдацгүй (2026-09-30) — хадгалагдсаныг нь хэвээр үлдээнэ */
     putDraft(u, {
-      ...d, clear: false, views: a.views, docs: a.docs, role, touchedRole: true,
+      ...d, clear: false, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
       ...(drop ? { touchedGuits: true } : null),
     });
   };
   const flipView = (u: UserPerm, k: ViewKey) => {
+    /* ⚠️ Урсгалтай харагдац картаас засагдахгүй (2026-09-30) — хуваарилалтын хуудсаар */
+    if (WORKFLOW_VIEWS.includes(k)) return;
     const d = draftOf(u);
     const next = toggled(d.views, k);
     if (dropsGuits(u, d.views, next) && !confirmDropGuits()) return;
@@ -532,7 +487,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   };
   const setAllViews = (u: UserPerm, on: boolean) => {
     const d = draftOf(u);
-    const next: ViewKey[] = on ? [...ALL_KEYS] : [];
+    /* ⚠️ «Бүгдийг асаах/унтраах» урсгалтай 6-г ХӨНДӨХГҮЙ (2026-09-30) — байгаагаараа үлдэнэ */
+    const next: ViewKey[] = keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : []);
     const drop = dropsGuits(u, d.views, next);
     if (drop && !confirmDropGuits()) return;
     putDraft(u, { ...d, clear: false, views: next, docs: on, ...(drop ? { touchedGuits: true } : null) });
@@ -541,68 +497,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const d = draftOf(u);
     putDraft(u, { ...d, clear: false, docs: !d.docs });
   };
-  /**
-   * НЭМЭЛТ ЭРХ — ШУУД үйлчилнэ, «Хадгалах» хүлээхгүй.
-   *
-   * ⚠️ Яагаад бусад унтраалгын адил ноорогт биш вэ: 2026-08-28-нд эрхийг
-   * асаасан ч ажиллаагүй гэсэн гомдол гарсан — унтраалга зөвхөн ноорогт
-   * бичигдээд «Хадгалах» дарагдаагүй байв. Тусад нь олгодог эрх нь тусад нь
-   * хадгалагдах нь ойлгомжтой; үр дүн нь тэр дороо харагдана.
-   *
-   * ⚠️ ArcGIS бичилт унавал ИЛ анхааруулна — эрх зөвхөн энэ browser-т үлдэж,
-   * дараагийн синхрончлолоор чимээгүй арилах тул.
+  /*
+   * ⚠️ `flipCap` · `markCap` · `dropOrphan` УСТСАН (2026-09-30, хэрэглэгчийн
+   *    шийдвэр). Урьд нь картын «Нэмэлт эрх» унтраалга энгийн дөрвөн эрхийг
+   *    `toggleCap`-аар шууд бичиж, super-т гаргалгаатай эрхийг ч олгодог, өнчин
+   *    эрхийг ил хасдаг байв. Одоо тэр бүгд тухайн эрхийн ӨӨРИЙН хуудсанд:
+   *    `PlainCapAcl` (`aclOps.capDirectOp`) ба `CapOrphanNote`. `flipScoped` нь
+   *    2026-09-25-нд аль хэдийн устсан (хуваарилалт зөвхөн `aclOps`-оор).
    */
-  /**
-   * ⚠️ `flipScoped` УСТСАН (2026-09-25, баталсан төлөвлөгөө). Урьд нь хуваарилалтаас
-   *    гардаг 10 эрхийн унтраалга нь `set*Grants`-аар `[ALL]` (эсвэл өвлөсөн багц)
-   *    хуваарилалт БИЧДЭГ байв — нэг хуваарилалтын ХОЁР ДАХЬ эх сурвалж болж,
-   *    багцын хязгаарыг чимээгүй тэлдэг, бүлгийн панелтай өөр дүрэмтэй байлаа.
-   *    Одоо тэдгээр нь super-ээс бусдад ҮЗҮҮЛЭЛТ; хуваарилалт нь хэрэглэгчийн
-   *    карт / матриц / бүлгийн панелаас `aclOps`-оор.
-   *
-   * ⚠️ SUPER-Т ШУУД `toggleCap` ХЭВЭЭР (2026-09-07 · 08-ын дүрэм): `set*` нь
-   *    super-т `{ok:false}` буцаадаг тул хуваарилалтаар эрх өгөх боломжгүй, харин
-   *    `hasCap` super-ийг тойрдоггүй — эрхийг шууд олгох цорын ганц зам.
-   */
-  const markCap = (u: UserPerm) => (ok: boolean) => setCapErr((prev) => {
-    const m = new Map(prev);
-    if (ok) m.delete(u.username.toLowerCase());
-    else m.set(u.username.toLowerCase(), true);
-    return m;
-  });
-
-  const flipCap = (u: UserPerm, c: CapKey) => {
-    // ⚠️ Хадгалаагүй ШИНЭ аккаунтад бичихгүй — ноорог цуцлагдвал remote дээр
-    //    өнчин `__cap__:` мөр үлдэж, тэр нэрийг дараа нэмэхэд эрх нь өөрөө асна.
-    if (draftOf(u).isNew) return;
-    /* ⚠️ Remote уншигдаагүй — унтраалга disabled ч хамгаалалт давхар (2026-09-21) */
-    if (capsLocked) { setAddErr(LOCK_MSG); return; }
-    const on = capsOf(u.username).includes(c);
-    if (roleForUser(u.username) === 'super') {
-      void toggleCap(u.username, c, !on).then(markCap(u));
-      return;
-    }
-    /* ⚠️ Гаргалгаатай эрх super-ээс бусдад ҮЗҮҮЛЭЛТ — унтраалга байхгүй (дээрх ⚠️) */
-    if (isDerivedCap(c)) return;
-    void toggleCap(u.username, c, !on).then(markCap(u));
-  };
-
-  /**
-   * ӨНЧИН ЭРХИЙГ ИЛ ХАСАХ — асаалттай атлаа түүн рүү заадаг хуваарилалт алга.
-   * ⚠️ Автоматаар ХЭЗЭЭ Ч хасахгүй (ачаалахад, sync-д): админы гараар олгосон
-   *    хуучин эрх байж болох тул зөвхөн баталгаажуулсан товшилтоор.
-   * ⚠️ `addRow` — «Гүйцэтгэл бөглөх»-ийн «Бөглөх» таб түүнээс хамаардаг
-   *    (`Guitsetgel.tsx` `canFill`) тул асуултад ил хэлнэ.
-   */
-  const dropOrphan = (u: UserPerm, c: CapKey) => {
-    if (draftOf(u).isNew) return;
-    if (capsLocked) { setAddErr(LOCK_MSG); return; }
-    const msg = c === 'addRow'
-      ? tr('«{0}»-ийн «{1}» эрх хуваарилалтгүй (өнчин). Хасвал «Гүйцэтгэл бөглөх»-ийн «Бөглөх» таб мөн хаагдана (урсгалын гүйцэтгэгч шатнаас бусдад). Хасах уу?', u.username, capLabel(c))
-      : tr('«{0}»-ийн «{1}» эрх хуваарилалтгүй (өнчин). Хасах уу?', u.username, capLabel(c));
-    if (!window.confirm(msg)) return;
-    void toggleCap(u.username, c, false).then(markCap(u));
-  };
   const flipRemove = (u: UserPerm) => {
     const d = draftOf(u);
     putDraft(u, { ...d, remove: !d.remove });
@@ -760,8 +662,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         //    урсгалын хуудаснаас олгогдсон үүргийг snapshot дарж бичихгүй.
         const role = d.touchedRole || !u ? d.role : u.role;
         const r = await setUser(uname, { views, docs: d.docs }, role);
-        /* ⚠️ НЭМЭЛТ ЭРХ энд БИЧИГДЭХГҮЙ — `flipCap` дарах агшинд шууд
-           хадгалагддаг (`__cap__:` тусдаа мөр). */
+        /* ⚠️ ЗАСАХ ЭРХ энд БИЧИГДЭХГҮЙ — эрхийн өөрийн хуудсанд шууд
+           хадгалагддаг (`__cap__:` ба хуваарилалтын мөрүүд, `aclOps`). */
         if (r) ok += 1; else { fail += 1; failed.push(uname); }
       } catch (e) {
         fail += 1;
@@ -841,14 +743,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      *    эрх, багцын хүрээ нь ЧИМЭЭГҮЙ наалддаг байв — яг тэр аюулаас
      *    сэргийлэхээр урсгалын шалгалт нэмэгдсэн атал гурав нь орхигдсон.
      */
+    /* ⚠️ 2026-09-30: хуудасны нэр = урсгалын хуудас (`capText.paneLabel`) */
     const orphan: [boolean, string][] = [
-      [listQaqcAssigns().some((a) => a.user === key), tr('Чанарын (QAQC) эрх')],
-      [listHuvaariAssigns().some((a) => a.user === key), tr('Хуваарийн эрх')],
-      [listObyemAssigns().some((a) => a.user === key), tr('Инженерийн обьёмын эрх')],
-      [listAjilAssigns().some((a) => a.user === key), tr('Нэмэлт ажлын эрх')],
-      [listButetsAssigns().some((a) => a.user === key), tr('Инженерийн дэд бүтцийн засварын эрх')],
+      [listQaqcAssigns().some((a) => a.user === key), paneLabel('qaqc')],
+      [listHuvaariAssigns().some((a) => a.user === key), paneLabel('huvaari')],
+      [listObyemAssigns().some((a) => a.user === key), paneLabel('obyem')],
+      [listAjilAssigns().some((a) => a.user === key), paneLabel('ajil')],
+      [listButetsAssigns().some((a) => a.user === key), paneLabel('butets')],
       /* ⚠️ Чанарын баримт ч (2026-09-24) — урьд нь орхигдсон, өнчин `__chanar__:` мөр наалддаг байв */
-      [listChanarAssigns().some((a) => a.user === key), tr('Чанарын баримтын эрх')],
+      [listChanarAssigns().some((a) => a.user === key), paneLabel('chanar')],
     ];
     /*
      * ⚠️ НЭМЭЛТ ЭРХ (`__cap__:`) ч мөн ӨНЧИН ҮЛДЭНЭ (2026-09-08-ны хоёр дахь
@@ -861,7 +764,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     const orphanCaps = capsOf(key);
     if (orphanCaps.length) {
-      setAddErr(tr('«{0}» нэрээр хуучин нэмэлт эрх ({1}) үлдсэн байна — тэр аккаунтыг эхлээд «Буцаах»-аар сэргээж эрхийг нь арилгаад дахин нэмнэ үү.', n, String(orphanCaps.length)));
+      setAddErr(tr('«{0}» нэрээр хуучин засах эрх ({1}) үлдсэн байна — тэр аккаунтыг эхлээд «Буцаах»-аар сэргээж эрхийг нь арилгаад дахин нэмнэ үү.', n, String(orphanCaps.length)));
       return;
     }
     const stuck = orphan.find(([hit]) => hit);
@@ -879,13 +782,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setSaved(null);
   };
 
-  /*
-   * ⚠️ ЭРХИЙН ЗУРАГ — өнчин эрх ба «хуваарилалтаас · N багц» үзүүлэлтэд
-   *    (2026-09-25). Бүх ACL уншигдтал `null`: `[]` жагсаалтаас ХУДАЛ өнчин
-   *    гарахгүй (`UserRights`-ийн ⚠️).
-   */
-  const erhSrc = capsLocked ? null : liveErhSource();
-
   /** Мөр ба картын props — НЭГ газар (хоёр газар бичвэл нэгд нь хоцорно) */
   const rowPropsOf = (u: UserPerm): UserRowProps => {
     const key = u.username.toLowerCase();
@@ -896,8 +792,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         ХАСАВ: тэр товчлол багц сонгох чадваргүй тул үргэлж «бүх багц»
         гэж бичиж, тусдаа хуудсан дээр тавьсан хязгаарлалтыг ЧИМЭЭГҮЙ
         арилгадаг байлаа. */
-    /* Нэмэлт эрхийн гэр харагдац runtime дээр нээлттэй — тоолуур ба
-       унтраалга үүнийг ч тусгана */
+    /* Засах эрхийн гэр харагдац runtime дээр нээлттэй — тоолуур ба
+       унтраалга үүнийг ч тусгана (`UserRights`-ийн ⚠️) */
     const capViews = capViewsOf(u.username);
     return {
       u,
@@ -908,20 +804,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       expanded: openRows.has(key),
       on: ALL_KEYS.filter((k) => hasView(d.views, k) || capViews.includes(k)).length,
       capViews,
-      /* ⚠️ Remote-гүй бол `capsStored` (кэш) — `capsOf` [] тул бүх унтраалга
-         OFF харагдаж, худал «эрхгүй» дүр зурна (2026-09-21) */
+      /* ⚠️ Remote-гүй бол `capsStored` (кэш) — `capsOf` [] тул нээгдсэн харагдацын
+         тэмдэг алга болж, худал «эрхгүй» дүр зурна (2026-09-21) */
       caps: capsLocked ? capsStored(u.username) : capsOf(u.username),
-      capsLocked,
-      capsLockMsg: LOCK_MSG,
       selected: sel.has(key),
-      capErr: !!capErr.get(key),
       dirtyPerm: dirtyRemote.has(key),
       myName,
       allKeys: ALL_KEYS,
       rolePresets: rolePresets(),
       hasView,
-      capLabel,
-      capHint,
       onPick: (checked) => setSel((prev) => {
         const n = new Set(prev);
         if (checked) n.add(key); else n.delete(key);
@@ -936,32 +827,16 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onFlipView: (k) => flipView(u, k),
       onAllViews: (v) => setAllViews(u, v),
       onFlipDocs: () => flipDocs(u),
-      onFlipCap: (c) => flipCap(u, c),
       onFlipRemove: () => flipRemove(u),
       onClear: () => markClear(u),
       onGoFlow: () => setPane('guits'),
       superUser: roleForUser(u.username) === 'super',
-      erh: erhSrc ? userErh(erhSrc, u.username) : null,
-      settling: aclPendingFor(key),
-      onOpenCard: (sys) => setCard({ user: key, focus: sys }),
-      onDropOrphan: (c) => dropOrphan(u, c),
+      onOpenCard: () => setCard({ user: key }),
     };
   };
   /** Нээлттэй картын хэрэглэгч — хадгалаагүй шинэ аккаунт ч (`allRows`) */
   const cardRow = card ? allRows.find((x) => x.username.toLowerCase() === card.user) ?? null : null;
-  /*
-   * ⚠️ ӨНЧИН ЭРХИЙН НЭГ МӨР ТОЙМ (2026-09-25). Хуучин «Хэрэглэгчид» унтраалгаар
-   *    олгосон `addRow` г.м. эрхүүд олон хүнд өнчин харагдана — мөр бүрд улаан
-   *    хана биш, дээр НЭГ мөр + шүүлт. Автоматаар юу ч хасахгүй. Super ба бичилт
-   *    явагдаж буй хүн тоологдохгүй (`UserRights`-ийн ⚠️).
-   */
-  const orphanKeys = new Set(erhSrc
-    ? allRows
-      .filter((u) => roleForUser(u.username) !== 'super' && !aclPendingFor(u.username)
-        && orphanCaps(userErh(erhSrc, u.username)).length > 0)
-      .map((u) => u.username.toLowerCase())
-    : []);
-  const shownRows = orphanOnly ? rows.filter((u) => orphanKeys.has(u.username.toLowerCase())) : rows;
+  /* ⚠️ Өнчин эрхийн тойм (2026-09-25) ЭНДЭЭС тухайн эрхийн хуудас руу шилжсэн (`CapOrphanNote`, 2026-09-30) */
 
   return (
     /**
@@ -1031,67 +906,29 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <Icon name="pen" size={14} />
           {tr('Гүйцэтгэлийн урсгалын эрх')}
         </button>
-        {/* ⚠️ ЧАНАР нь урсгалын ШАТГҮЙ асуулт тул тусдаа бүлэг — урсгалын
-            багананд байрлуулбал чанарын ажилтанд гүйцэтгэл зөвшөөрөх эрх
-            дагалдана (`qaqcAcl.ts`). */}
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'qaqc' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'qaqc'}
-          onClick={() => setPane('qaqc')}
-        >
-          <Icon name="shield" size={14} />
-          {tr('Чанарын (QAQC) эрх')}
-        </button>
-        {/* ⚠️ ХУВААРЬ нь ТӨЛӨВЛӨГӨӨНИЙ асуулт (зохиогч · батлагч) — гүйцэтгэлийн
-            урсгал ба чанарын аль алинаас нь тусдаа (`huvaariAcl.ts`). */}
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'huvaari' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'huvaari'}
-          onClick={() => setPane('huvaari')}
-        >
-          <Icon name="calendar" size={14} />
-          {tr('Хуваарийн эрх')}
-        </button>
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'obyem' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'obyem'}
-          onClick={() => setPane('obyem')}
-        >
-          <Icon name="frame" size={14} />
-          {tr('Инженерийн обьёмын эрх')}
-        </button>
-        {/* ⚠️ НЭМЭЛТ АЖИЛ нь «ажил гэрээнд байх эсэх» асуулт — обьём («хэр их»)
-            ба урсгалаас («тоо») тусдаа (`ajilAcl.ts`). */}
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'ajil' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'ajil'}
-          onClick={() => setPane('ajil')}
-        >
-          <Icon name="pen" size={14} />
-          {tr('Нэмэлт ажлын эрх')}
-        </button>
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'chanar' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'chanar'}
-          onClick={() => setPane('chanar')}
-        >
-          <Icon name="shield" size={14} />
-          {tr('Чанарын баримтын эрх')}
-        </button>
-        <button
-          type="button"
-          className={`${s.sideItem} ${pane === 'butets' ? s.sideItemOn : ''}`}
-          aria-current={pane === 'butets'}
-          onClick={() => setPane('butets')}
-        >
-          <Icon name="network" size={14} />
-          {tr('Инженерийн дэд бүтцийн засварын эрх')}
-        </button>
+        {/*
+          * ⚠️ НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30, хэрэглэгчийн шийдвэр): дараалал
+          *    `capText.ERH_PANES` — хуваарь · нэмэлт ажил · обьём · чанарын баримт
+          *    (зохиогч + батлагч/хянагч НЭГ хуудсанд) · QAQC · дэд бүтэц багцаар;
+          *    зөвшөөрөл · санхүү (утга + мөр нэг хуудсанд) · газар аккаунтаар.
+          * ⚠️ ЧАНАР (QAQC) нь урсгалын ШАТГҮЙ асуулт тул урсгалын багананд биш —
+          *    тэнд байрлуулбал чанарын ажилтанд гүйцэтгэл зөвшөөрөх эрх дагалдана
+          *    (`qaqcAcl.ts`). Хуваарь · обьём · нэмэлт ажил · чанарын баримт ч
+          *    урсгалаас ТУСДАА асуулт (тус бүрийн `*Acl.ts`).
+          */}
+        <div className={s.sideHead}>{tr('Засах эрх')}</div>
+        {ERH_PANES.map((k) => (
+          <button
+            key={k}
+            type="button"
+            className={`${s.sideItem} ${pane === k ? s.sideItemOn : ''}`}
+            aria-current={pane === k}
+            onClick={() => setPane(k)}
+          >
+            <Icon name={paneIcon(k)} size={14} />
+            {paneLabel(k)}
+          </button>
+        ))}
       </aside>
 
       <div className={s.main}>
@@ -1110,72 +947,32 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               onOpenUser={(user) => { setPane('users'); setCard({ user: user.toLowerCase() }); }}
             />
           </>
-        ) : pane === 'chanar' ? (
+        ) : pane !== 'types' && pane !== 'guits' && pane !== 'users' ? (
           <>
             <header className={s.head}>
-              <h2 className={s.title}>{tr('Чанарын баримтын эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('Ажлын аргачлал (MS) ирүүлэх гүйцэтгэгч ба хянах ТУХ · Чанар · ХАБЭА аккаунтад багц хуваарилна. QAQC (ITP) ба гүйцэтгэлийн урсгалын эрхээс тусдаа.')}
-              </p>
+              <h2 className={s.title}>{paneLabel(pane)}</h2>
+              <p className={s.subtitle}>{paneSubtitle(pane)}</p>
             </header>
-            <ChanarAcl />
-          </>
-        ) : pane === 'butets' ? (
-          <>
-            <header className={s.head}>
-              <h2 className={s.title}>{tr('Инженерийн дэд бүтцийн засварын эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('«Инженерийн дэд бүтэц» хуудсанд атрибут засах аккаунтад багц хуваарилна. Багц хуваарилаагүй бол засах боломжгүй.')}
-              </p>
-            </header>
-            <DedButetsAcl />
-          </>
-        ) : pane === 'obyem' ? (
-          <>
-            <header className={s.head}>
-              <h2 className={s.title}>{tr('Инженерийн обьёмын эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('Инженерийн төлөвлөсөн обьёмыг засах ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгал ба хуваарийн эрхээс тусдаа.')}
-              </p>
-            </header>
-            <ObyemAcl />
-          </>
-        ) : pane === 'ajil' ? (
-          <>
-            <header className={s.head}>
-              <h2 className={s.title}>{tr('Нэмэлт ажлын эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('«Гүйцэтгэл бөглөх» хуудсанд шинэ ажлын мөр нэмэх ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгал ба обьёмын эрхээс тусдаа.')}
-              </p>
-            </header>
-            <AjilAcl />
-          </>
-        ) : pane === 'huvaari' ? (
-          <>
-            <header className={s.head}>
-              <h2 className={s.title}>{tr('Хуваарийн эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('Хуваарь зохиох ба батлах аккаунтад үүрэг, багц хуваарилна. Гүйцэтгэлийн урсгалаас тусдаа.')}
-              </p>
-            </header>
-            <HuvaariAcl />
-          </>
-        ) : pane === 'qaqc' ? (
-          <>
-            <header className={s.head}>
-              <h2 className={s.title}>{tr('Чанарын (QAQC) эрх')}</h2>
-              <p className={s.subtitle}>
-                {tr('Чанарын баримт (М-акт · FIC · MA · MIR) хөтлөх аккаунтад багц хуваарилна. Гүйцэтгэлийн урсгалаас тусдаа.')}
-              </p>
-            </header>
-            <QaqcAcl />
+            {/* ⚠️ Хуваарилалттай хуудас: тайлбар · эрх бүрийн өнчин/дутуу анхааруулга · багцын панел ·
+                хатуу super-ийн шууд олголт (эрх бүрд). Энгийн эрх: `PlainCapAcl` хэсэг бүрийг өөрөө зурна
+                (санхүү — «утга засах» ба «мөр нэмэх, устгах» хоёр хэсэг нэг хуудсанд). */}
+            {PANE_CAPS[pane].some(isDerivedCap) && <p className={s.note}>{paneNote(pane)}</p>}
+            {PANE_CAPS[pane].filter(isDerivedCap).map((c) => <CapOrphanNote key={c} cap={c} />)}
+            {pane === 'ajil' ? <AjilAcl />
+              : pane === 'huvaari' ? <HuvaariAcl />
+                : pane === 'obyem' ? <ObyemAcl />
+                  : pane === 'chanar' ? <ChanarAcl />
+                    : pane === 'qaqc' ? <QaqcAcl />
+                      : pane === 'butets' ? <DedButetsAcl />
+                        : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
+            {PANE_CAPS[pane].filter(isDerivedCap).map((c) => <PlainCapAcl key={c} cap={c} superOnly />)}
           </>
         ) : pane === 'types' ? (
           <>
             <header className={s.head}>
               <h2 className={s.title}>{tr('Эрхийн төрөл')}</h2>
               <p className={s.subtitle}>
-                {tr('Төрөл бүрд юу харах, юу засахыг чеклээд хадгална. Хэрэглэгчийн картад төрөл ба багц сонгож «Төрлөөр тохируулах» дарахад бүгд нэг дор бичигдэнэ.')}
+                {tr('Төрөл бүрд юу харахыг (харагдац · ТЭЗҮ-БОНУ · нүүр цонх) чеклээд хадгална. Хэрэглэгчийн картад төрөл сонгож «Төрлөөр тохируулах» дарахад харагдац нь нэг дор бичигдэнэ. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
               </p>
             </header>
             <ErhTypes />
@@ -1195,14 +992,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         <header className={s.head}>
           <h2 className={s.title}>{tr('Хэрэглэгчдийн эрх удирдах')}</h2>
           <p className={s.subtitle}>
-            {tr('Сэдэв бүрийг унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална.')}
+            {tr('Аккаунт · үүргийн шошго · харагдац · ТЭЗҮ-БОНУ. Унтраалгаар нээж/хааж, доод талын «Хадгалах» товчоор нэг дор хадгална. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
           </p>
           {/* ⚠️ ХОЁР ӨӨР ТӨЛӨВ (2026-09-21): энэ сешнд НЭГ Ч удаа уншигдаагүй бол
               эрх/хуваарилалтын засвар хаалттай (`capsLocked`); өмнө уншигдаад
               одоо унасан бол хуучин cache + dirty-overlay хэвээр ажиллана. */}
           {capsLocked ? (
             <div className={s.addErr} role="alert">
-              {tr('⚠️ Эрхийн хүснэгт уншигдсангүй — нэмэлт эрх, хуваарилалт, нэмэх/устгах/сэргээх засвар хаалттай, дахин ачаална уу. Нэмэлт эрхийн унтраалга энэ browser-ийн кэшнээс харагдаж байна.')}
+              {tr('⚠️ Эрхийн хүснэгт уншигдсангүй — нэмэх/устгах/сэргээх засвар хаалттай, дахин ачаална уу. Засах эрхээр нээгдсэн харагдацын тэмдэг энэ browser-ийн кэшнээс харагдаж байна.')}
             </div>
           ) : !remoteOk && (
             <div className={s.addErr} role="alert">
@@ -1228,7 +1025,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             {addErr && <div className={s.addErr} role="alert">{addErr}</div>}
             <UserCard
               p={rowPropsOf(cardRow)}
-              focus={card?.focus}
               hasDraft={drafts.has(cardRow.username.toLowerCase())}
               onBack={() => setCard(null)}
             />
@@ -1281,22 +1077,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
           )}
 
-          {orphanKeys.size > 0 && (
-            <div className={s.capNote} role="status">
-              <span className={s.capOrphanText}>
-                {tr('⚠️ {0} хэрэглэгчид хуваарилалтгүй эрх байна — мөрийг дэлгэж «хасах» эсвэл «Засах →» дарна уу.', String(orphanKeys.size))}
-              </span>{' '}
-              <button type="button" className={s.linkBtn} onClick={() => setOrphanOnly((v) => !v)}>
-                {orphanOnly ? tr('Бүгдийг харуулах') : tr('Зөвхөн эдгээрийг харуулах')}
-              </button>
-            </div>
-          )}
           {/* Хэрэглэгчийн жагсаалт */}
           <div className={s.list}>
-            {shownRows.length === 0 && (
+            {rows.length === 0 && (
               <div className={s.empty}>{tr('Тохирох аккаунт олдсонгүй.')}</div>
             )}
-            {shownRows.map((u) => <UserRow key={u.username.toLowerCase()} {...rowPropsOf(u)} />)}
+            {rows.map((u) => <UserRow key={u.username.toLowerCase()} {...rowPropsOf(u)} />)}
           </div>
 
           {removed.length > 0 && (

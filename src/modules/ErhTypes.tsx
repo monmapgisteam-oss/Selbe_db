@@ -1,16 +1,19 @@
 'use client';
 
 /**
- * «ЭРХИЙН ТӨРӨЛ» ХУУДАС — 10 төрөл × системийн бүх тохиргоо (2026-09-25).
+ * «ЭРХИЙН ТӨРӨЛ» ХУУДАС — 10 төрөл × ХАРАХ тохиргоо (2026-09-25 · 2026-09-30).
  *
- * Төрөл бүрд юу ХАРАХ, юу ЗАСАХ-ыг чеклээд «Хадгалах» — загвар `__type__:`
- * мөрөнд бичигдэнэ. Хадгалсны дараа «Хэрэгжүүлэх» нь тэр төрлийн бүх
- * хэрэглэгчид загварыг дахин тараана (`roleTypeApply.applyType`).
+ * Төрөл бүрд юу ХАРАХ-ыг (харагдац · ТЭЗҮ-БОНУ · нүүр цонх · админ самбар)
+ * чеклээд «Хадгалах» — загвар `__type__:` мөрөнд бичигдэнэ. Хадгалсны дараа
+ * «Хэрэгжүүлэх» нь тэр төрлийн бүх хэрэглэгчид загварыг дахин тараана
+ * (`roleTypeApply.applyType`).
  *
- * ⚠️ ЗАГВАР ≠ ЭРХ: чеклэх нь хэн нэгний эрхийг шууд өөрчлөхгүй (харагдац ба
- *    нүүр цонхоос бусад нь — тэдгээрийг `roleAccess` шууд уншдаг тул «Сэргээх»
- *    ба урсгалын томилгоо шинэ загвараар явна). Хуваарилалт нь зөвхөн
- *    «Хэрэгжүүлэх»-ээр — админ хэзээ тарахаа өөрөө шийднэ.
+ * ⚠️ 2026-09-30 (хэрэглэгчийн шийдвэр): засах эрх · чанарын үүрэг · урсгал ·
+ *    багцын хүрээ мөрүүд ХАСАГДСАН — засах эрх админ порталын өөрийн хуудсанд
+ *    (`roleTypes.ts`-ийн ⚠️).
+ * ⚠️ ЗАГВАР ≠ ЭРХ: чеклэх нь хэн нэгний эрхийг шууд өөрчлөхгүй (`roleAccess`-ийг
+ *    «Сэргээх» ба урсгалын томилгоо шууд уншдаг тул тэдгээр шинэ загвараар явна);
+ *    байгаа хэрэглэгчдэд зөвхөн «Хэрэгжүүлэх»-ээр — админ хэзээ тарахаа өөрөө шийднэ.
  * ⚠️ «Хэрэгжүүлэх» нь хадгалаагүй өөрчлөлттэй баганад хаалттай — хуучин
  *    загварыг тарааж, админы харж буйгаас өөр зүйл бичихгүйн тулд.
  * ⚠️ 2026-09-25: бөөнөөр хэрэгжүүлэлтийн төлөв МОДУЛЬД (`roleTypeApply.applyTypeBulk`)
@@ -22,7 +25,6 @@ import { useEffect, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, type Role, type ViewKey } from '@/lib/services';
 import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
-import { allAclReady, lockMsg } from '@/lib/aclOps';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, typeLabel, typesReady,
   type TypeTpl,
@@ -34,7 +36,7 @@ import s from './erhTypes.module.css';
 type Drafts = Partial<Record<Role, TypeTpl>>;
 
 const eq = (a: TypeTpl, b: TypeTpl): boolean =>
-  a.home === b.home && a.scope === b.scope && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x));
+  a.home === b.home && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x));
 
 export function ErhTypes() {
   const [, setTick] = useState(0);
@@ -96,11 +98,11 @@ export function ErhTypes() {
 
   const applyAll = async (r: Role) => {
     if (busy) return;
-    if (!allAclReady()) { setErr(lockMsg()); return; }
+    if (!remoteReady()) { setErr(tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')); return; }
     if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
-    if (!window.confirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Загварт чеклээгүй хуваарилалт, эрх нь хасагдана.', typeLabel(r), String(users.length)))) return;
+    if (!window.confirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)))) return;
     setErr(''); setMsg('');
     if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
   };
@@ -165,7 +167,7 @@ export function ErhTypes() {
             </tr>
           </thead>
           <tbody>
-            <tr className={s.sec}><td className={s.secLbl} colSpan={TYPE_ORDER.length + 1}>{tr('Нүүр цонх ба хамрах хүрээ')}</td></tr>
+            <tr className={s.sec}><td className={s.secLbl} colSpan={TYPE_ORDER.length + 1}>{tr('Нүүр цонх')}</td></tr>
             <tr>
               <td className={s.lbl}><span className={s.lblText}>{tr('Нэвтрэхэд нээгдэх цонх')}</span></td>
               {TYPE_ORDER.map((r) => (
@@ -174,22 +176,6 @@ export function ErhTypes() {
                     aria-label={`${tr('Нэвтрэхэд нээгдэх цонх')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), home: e.target.value as ViewKey })}>
                     {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}</option>)}
-                  </select>
-                </td>
-              ))}
-            </tr>
-            <tr>
-              <td className={s.lbl}>
-                <span className={s.lblText}>{tr('Багцын хамрах хүрээ')}</span>
-                <span className={s.lblHint}>{tr('Өөрийн багц = хэрэглэгчийн картад сонгосон багцууд')}</span>
-              </td>
-              {TYPE_ORDER.map((r) => (
-                <td key={r}>
-                  <select id={`tt-scope-${r}`} className={s.sel} value={cur(r).scope} disabled={busy || r === 'super'}
-                    aria-label={`${tr('Багцын хамрах хүрээ')} — ${typeLabel(r)}`}
-                    onChange={(e) => put(r, { ...cur(r), scope: e.target.value === 'all' ? 'all' : 'own' })}>
-                    <option value="own">{tr('Өөрийн багц')}</option>
-                    <option value="all">{tr('Бүх багц')}</option>
                   </select>
                 </td>
               ))}
@@ -209,7 +195,7 @@ export function ErhTypes() {
             {tr('Цуцлах')}
           </button>
         )}
-        {!remoteReady() && <span className={s.err}>{lockMsg()}</span>}
+        {!remoteReady() && <span className={s.err}>{tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')}</span>}
         {msg && <span className={s.ok}>{msg}</span>}
         {bulkMsg && <span className={s.ok} role="status">{bulkMsg}</span>}
       </div>

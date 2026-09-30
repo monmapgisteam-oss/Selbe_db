@@ -12,18 +12,19 @@
  * props-оор ирнэ; энэ файл нь ӨӨРИЙН төлөв хадгалахгүй (цорын ганц эх сурвалж
  * эцэгтээ хэвээр).
  *
- * ⚠️ 2026-09-25: дэлгэсэн хэсэг (харагдац · ТЭЗҮ-БОНУ · нэмэлт эрх) нь
- *    `UserRights.tsx`-д, толгойн шошго/товчнууд нь `UserHeadBadges` ·
- *    `UserHeadActions` — хэрэглэгчийн карт ч ИЖИЛ бүрэлдэхүүнийг зурна.
+ * ⚠️ 2026-09-25: дэлгэсэн хэсэг (харагдац · ТЭЗҮ-БОНУ) нь `UserRights.tsx`-д,
+ *    толгойн шошго/товчнууд нь `UserHeadBadges` · `UserHeadActions` —
+ *    хэрэглэгчийн карт ч ИЖИЛ бүрэлдэхүүнийг зурна.
  *    НЭР дээр дарвал КАРТ нээгдэнэ; ▸ нь мөрийг дэлгэнэ.
+ * ⚠️ 2026-09-30: нэмэлт эрхийн props (`onFlipCap` · `onDropOrphan` · `capLabel` ·
+ *    `capHint` · `erh` · `settling` · `capErr` · `capsLocked`) ХАСАГДСАН — засах
+ *    эрх админ порталын өөрийн хуудсуудад (`UserRights.tsx`-ийн ⚠️).
  */
 
 import { t as tr } from '@/lib/i18nCore';
 import { roleForUser, type ViewKey, type Role } from '@/lib/services';
 import type { UserPerm } from '@/lib/permissions';
 import type { CapKey } from '@/lib/caps';
-import type { DerivedSys } from '@/lib/aclRoleCaps';
-import type { UserErh } from '@/lib/erhOverview';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 import s from './userAdmin.module.css';
@@ -43,41 +44,28 @@ export type UserRowProps = {
   /** Нээлттэй харагдацын тоо (нэмэлт эрхийн дагуулыг оруулаад) */
   on: number;
   capViews: ViewKey[];
-  /** `caps` дэх эрхүүд (runtime) */
+  /** `caps` дэх эрхүүд (runtime) — засах эрхээр нээгдсэн харагдацын tooltip-д */
   caps: CapKey[];
-  /** ⚠️ Remote эрхийн хүснэгт уншигдаагүй — унтраалга хаалттай (2026-09-21) */
-  capsLocked?: boolean;
-  capsLockMsg?: string;
   selected: boolean;
-  capErr: boolean;
   dirtyPerm: boolean;
   /** ⚠️ Нэвтэрсэн хүний нэр — ӨӨРИЙГӨӨ устгах товч харагдахгүй */
   myName: string | null;
   allKeys: ViewKey[];
   rolePresets: { key: Role; label: string }[];
   hasView: (views: ViewKey[] | 'all', k: ViewKey) => boolean;
-  capLabel: (k: CapKey) => string;
-  capHint: (k: CapKey) => string;
   onPick: (checked: boolean) => void;
   onExpand: () => void;
   onRole: (role: Role) => void;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
   onFlipDocs: () => void;
-  onFlipCap: (c: CapKey) => void;
   onFlipRemove: () => void;
   onClear: () => void;
   onGoFlow: () => void;
-  /** Хатуу super — гаргалгаатай эрх унтраалгаар (`UserRights`-ийн ⚠️) */
+  /** Хатуу super — «Төрлөөр тохируулах»-д Super төрөл зөвхөн түүнд */
   superUser: boolean;
-  /** Бүх ACL уншигдсан үеийн эрхийн зураг (`null` = түгжээтэй) */
-  erh: UserErh | null;
-  /** `aclOps` бичилт явагдаж байна — өнчин/дутуу тэмдэг нуугдана (`UserRights`) */
-  settling: boolean;
-  /** Хэрэглэгчийн карт нээх — `sys` өгвөл тэр хэсэг рүү гүйлгэнэ */
-  onOpenCard: (sys?: DerivedSys | 'flow') => void;
-  /** Өнчин эрхийг ИЛ хасах */
-  onDropOrphan: (c: CapKey) => void;
+  /** Хэрэглэгчийн карт нээх */
+  onOpenCard: () => void;
 };
 
 /** Мөр ба картын `UserRights`-ийн props — НЭГ газар */
@@ -85,21 +73,10 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   d: p.d,
   capViews: p.capViews,
   caps: p.caps,
-  capsLocked: p.capsLocked,
-  capsLockMsg: p.capsLockMsg,
-  capErr: p.capErr,
-  superUser: p.superUser,
-  erh: p.erh,
-  settling: p.settling,
   hasView: p.hasView,
-  capLabel: p.capLabel,
-  capHint: p.capHint,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
   onFlipDocs: p.onFlipDocs,
-  onFlipCap: p.onFlipCap,
-  onDropOrphan: p.onDropOrphan,
-  onOpenCard: (sys) => p.onOpenCard(sys),
 });
 
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */
@@ -144,19 +121,22 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
   const { u, rowKey: key, d, dirty, myName, rolePresets, onRole, onClear, onFlipRemove } = p;
   return (
     <div className={s.presets}>
-      {rolePresets.map((r) => (
-        <button
-          key={r.key}
-          type="button"
-          className={`${s.preset} ${d.role === r.key ? s.presetOn : ''}`}
-          onClick={() => onRole(r.key)}
-          title={r.key === 'super'
-            ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
-            : tr('{0} эрхийн багц', r.label)}
-        >
-          {r.label}
-        </button>
-      ))}
+      {/* ⚠️ 2026-09-30: 10 чип бүгд ил байхад мөр бүр 2 мөр зай эзэлдэг байв
+          (хэрэглэгчийн хүсэлт) — нэрийн ард нэг сонгогч. Сонголт = өмнөх чип дарахтай ижил (`onRole`). */}
+      <select
+        className={s.roleSelect}
+        value={d.role ?? ''}
+        onChange={(e) => { if (e.target.value) onRole(e.target.value as Role); }}
+        aria-label={tr('Үүрэг')}
+        title={d.role === 'super'
+          ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
+          : tr('Үүрэг')}
+      >
+        {!d.role && <option value="">{tr('Үүрэг сонгох…')}</option>}
+        {rolePresets.map((r) => (
+          <option key={r.key} value={r.key}>{r.label}</option>
+        ))}
+      </select>
       {/* ⚠️ Зөвхөн хатуу суурьтай хэрэглэгчид — панелаас нэмсэн аккаунтад
           «сэргээх» = чимээгүй устгах байв; тэдэнд «Устгах» л байна */}
       {roleForUser(u.username) && (u.overridden || dirty) && !d.remove && !d.isNew && (

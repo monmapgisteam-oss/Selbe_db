@@ -67,7 +67,7 @@ import {
   PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
 import {
-  aggExtra, hasDatedLeaf, inScope, obKey, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
+  aggExtra, hasDatedLeaf, inScope, obKey, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows, unbalancedObyem,
 } from './huvaari/util';
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
 import { useLatest } from './huvaari/useLatest';
@@ -2010,42 +2010,13 @@ export function Huvaari({
   const sendForApproval = useCallback(async (userNote: string) => {
     /* ⚠️ Урьдчилан харж байхад ИЛГЭЭХГҮЙ (2026-09-25 аудит) — ноорог нь бусдын санал */
     if (!dirtyN || busy || previewing) return;
-    /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17): батлах
-       үеийн `save` тэдгээрийг алгасдаг (`unbal`) тул ноорог үлдэж батлах гинж
-       «эх хуудсанд бичигдсэнгүй» гэж мөнхөд гацдаг байв. */
+    /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17) — дүрэм ба
+       ⚠️ тайлбарууд `huvaari/util.unbalancedObyem`-д (2026-09-30: цэвэр функц,
+       `obyemGate.check.mjs`-ээр тестлэгдэнэ). Цонх автоматаар нээхгүй — гинж олон
+       мөр хөндөж болно; алдаанд тоо ба нэрийг нэрлэнэ. */
     {
-      let bad = 0;
-      /* ⚠️ Ажлын НЭРИЙГ нэрлэнэ (2026-09-21) — «1 ажлын…» гэсэн тоо л хараад
-         1,400 мөрөөс алийг нь нээхээ мэдэхгүй байв. */
-      const names = new Set<string>();
-      for (const r of plan) {
-        for (let b = 0; b < (sc?.bld.length ?? 0); b += 1) {
-          const blok = sc?.bld[b];
-          if (r.des == null || !blok) continue;
-          const months = obDraft.get(obKey(r.des, blok));
-          if (!months || r.vol == null || !(r.vol > 0)) continue;
-          if (months.size && !balanced(months, r.vol)) { bad += 1; names.add(`${r.no} ${r.work}`.trim()); }
-          /* ⚠️ ХООСОН ЗАДАРГАА + ХУВААРЬТАЙ блок = 0 ≠ обьём (2026-09-21).
-             Гинжээр (уялдаа, чирэлт) ажил БҮТЭН шинэ саруудад шилжвэл
-             `keepMonths` бүх сарыг хаяж Map хоосон болдог; урьд нь `months.size
-             &&` нөхцөл үүнийг өнгөрөөж, батлахад `buildEdits` тэр ажлын БҮХ
-             сарын мөрийг устгадаг байв — задаргаа ул мөргүй алга. Хоосон Map нь
-             зөвхөн хуваарь ч ХООСОН (`clear`) үед л хүчинтэй «арилгах» санаа.
-             Цонх автоматаар нээхгүй — гинж олон мөр хөндөж болно; алдаанд
-             тоог нэрлэнэ.
-             ⚠️ ЗӨВХӨН СЕРВЕРТ ЗАДАРГАА БАЙСАН үед (2026-09-21): «buildEdits бүх
-             сарыг устгана» гэсэн үндэслэл серверт задаргаа БАЙХГҮЙ ажилд
-             хамаарахгүй — устгах зүйл алга. Задаргаагүй обьёмтой ажлыг чирээд
-             цонхыг X-ээр хаахад хоосон Map үлдэж, илгээх зам мөнхөд түгжигдэж
-             байв (одоо `applyChanges`/`applyModal` ийм ноорогийг хасдаг ч
-             хуучин ноорог/өөр замаар орсныг энд давхар хамгаална). */
-          else if (!months.size && r.spans[b] && (obPlan.get(r.des)?.get(blok)?.size ?? 0) > 0) {
-            bad += 1; names.add(`${r.no} ${r.work}`.trim());
-          }
-        }
-      }
+      const { bad, names: list } = unbalancedObyem(plan, sc?.bld ?? [], obDraft, obPlan);
       if (bad > 0) {
-        const list = [...names];
         const shown = list.slice(0, 3).join(', ') + (list.length > 3 ? ` (+${num(list.length - 3)})` : '');
         setErr(tr('{0} ажлын сарын задаргаа обьёмтойгоо тэнцэхгүй байна (хоосон задаргаа = 0): {1}. Тухайн ажлын цонхыг нээж сараар тэнцүүлнэ үү.', num(bad), shown));
         return;

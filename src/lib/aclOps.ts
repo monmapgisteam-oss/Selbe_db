@@ -32,10 +32,11 @@ import { roleForUser, VIEWS } from './services';
 import type { ErhSource } from './erhOverview';
 import { capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
-import { ROLE_CAPS, type ScopedSys } from './aclRoleCaps';
+import { ROLE_CAPS, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
+import { capLabelShort } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import {
   flowAclReady, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
@@ -600,6 +601,37 @@ export function flowViewOnlyOp(user: string, on: boolean): AclOp {
   const cur = flowRow(u);
   if (!cur || (cur.viewOnly === true) === on) return null;
   return { user: u, run: () => setViewOnly(u, on) };
+}
+
+/* ══════════════════════ Эрхийг ШУУД олгох/хасах (`__cap__:`) ══════════════════════ */
+
+/**
+ * ЭРХИЙГ АККАУНТАД ШУУД ОЛГОХ / ХАСАХ — хуваарилалтгүй (2026-09-30).
+ *
+ * ⚠️ ЯАГААД ЭНД: хэрэглэгчийн картын «Нэмэлт эрх» унтраалга (`UserAdmin.flipCap`)
+ *    ХАСАГДАЖ, засах эрх бүр өөрийн хуудастай болов. Энгийн дөрвөн эрх
+ *    (`PLAIN_CAPS`) тэр хуудсанд аккаунтаар олгогдоно; хатуу super-т
+ *    гаргалгаатай эрх ч ЭНЭ замаар — `setGrants` super-ийг татгалздаг,
+ *    `hasCap` super-ийг тойрдоггүй тул шууд олгох цорын ганц зам (2026-09-07 · 08).
+ * ⚠️ Гаргалгаатай эрхийг super-ээс БУСДАД энэ op-оор олгохгүй — хуваарилалтын
+ *    хоёр дахь эх сурвалж болж багцын хязгаарыг тэлнэ (`aclRoleCaps`-ийн ⚠️).
+ *    Өнчин эрхийг ХАСАХ нь зөвшөөрөгдөнө (`on=false`).
+ * ⚠️ `toggleCap` remote уншигдаагүй бол `false` — `runOp` «ArcGIS-т хадгалагдсангүй»
+ *    гэж хэлнэ; `useAclRunner`-ийн `ready` давхар хаана.
+ */
+export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
+  const u = norm(user);
+  if (!u) return null;
+  if (capsOf(u).includes(cap) === on) return null;
+  if (on && isDerivedCap(cap) && roleForUser(u) !== 'super') {
+    return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };
+  }
+  const confirm = on ? [] : [
+    cap === 'addRow'
+      ? tr('«{0}»-ийн «{1}» эрхийг хасах уу? «Гүйцэтгэл бөглөх»-ийн «Бөглөх» таб мөн хаагдана (урсгалын гүйцэтгэгч шатнаас бусдад).', u, capLabelShort(cap))
+      : tr('«{0}»-ийн «{1}» эрхийг хасах уу?', u, capLabelShort(cap)),
+  ];
+  return { user: u, confirm, run: () => ({ ok: true, sync: toggleCap(u, cap, on) }) };
 }
 
 /* ══════════════════════ Гүйцэтгэгч ══════════════════════ */

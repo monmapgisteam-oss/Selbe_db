@@ -1,90 +1,63 @@
 'use client';
 
 /**
- * НЭГ ХЭРЭГЛЭГЧИЙН ХАРАГДАЦ · ТЭЗҮ-БОНУ · НЭМЭЛТ ЭРХ — жагсаалтын дэлгэсэн мөр
- * ба хэрэглэгчийн карт ХОЁУЛАА энэ бүрэлдэхүүнийг зурна (2026-09-25).
+ * НЭГ ХЭРЭГЛЭГЧИЙН ХАРАГДАЦ · ТЭЗҮ-БОНУ — жагсаалтын дэлгэсэн мөр ба
+ * хэрэглэгчийн карт ХОЁУЛАА энэ бүрэлдэхүүнийг зурна (2026-09-25).
  *
  * ⚠️ `UserRow.tsx`-ээс САЛГАСАН: карт ба мөр хоёр газар ижил унтраалгыг
  *    тусад нь бичвэл нэгд нь засвар хүрч нөгөөд нь хоцорно (`aclParity`-ийн
  *    хэв шинж). Өөрийн төлөвгүй — бүгд props-оор.
  *
- * ⚠️ ХАДГАЛАХ ДҮРЭМ: харагдац ба ТЭЗҮ-БОНУ нь НООРОГ («Хадгалах» товч);
- *    нэмэлт эрх ШУУД хадгалагдана (2026-08-28-аас) — хэсэг бүрт ил бичнэ.
+ * ⚠️ ХАДГАЛАХ ДҮРЭМ: харагдац ба ТЭЗҮ-БОНУ нь НООРОГ («Хадгалах» товч).
  *
- * ⚠️ ГАРГАЛГААТАЙ ЭРХ = ҮЗҮҮЛЭЛТ (2026-09-25, баталсан төлөвлөгөө). Хуваарилалтаас
- *    гардаг 10 эрх (`aclRoleCaps.isDerivedCap`) super-ээс бусдад унтраалга БИШ:
- *    урьд нь унтраалга нь `[ALL]` хуваарилалт бичиж багцын хязгаарыг чимээгүй
- *    тэлдэг байв. Одоо «хуваарилалтаас · N багц» + «Засах →» (картын хэсэг рүү).
- *    ⚠️ SUPER-Т УНТРААЛГА ХЭВЭЭР: `setGrants` super-ийг татгалздаг, `hasCap`-д
- *    super-ийн тойрох зам байхгүй — эрхийг ШУУД олгох цорын ганц зам.
- * ⚠️ ӨНЧИН ЭРХ (асаалттай атлаа хуваарилалтгүй): улаан анхааруулга + ИЛ «хасах».
- *    Ачаалахад АВТОМАТААР юу ч хасахгүй; бүх ACL уншигдтал (`erh` null) харуулахгүй
- *    — эс бөгөөс `[]` жагсаалтаас худал өнчин гарна.
+ * ⚠️ «НЭМЭЛТ ЭРХ» БЛОК ХАСАГДСАН (2026-09-30, хэрэглэгчийн шийдвэр). Урьд нь энд
+ *    13 засах эрх (4 энгийн унтраалга + 9 «хуваарилалтаас · Засах →» үзүүлэлт)
+ *    зурагддаг байв. Одоо «Хэрэглэгчдийн эрх удирдах» = ЗӨВХӨН ХАРАХ: аккаунт ·
+ *    үүргийн шошго · 23 харагдац · ТЭЗҮ-БОНУ · хадгалах. Засах эрх БҮР админ
+ *    порталын ӨӨРИЙН хуудсанд (багцаар — `ScopedAclPanel` · `ChanarAcl` ·
+ *    `QaqcAcl` · `DedButetsAcl`; аккаунтаар — `PlainCapAcl`). Өнчин/дутуу эрхийн
+ *    анхааруулга тэр хуудсанд (`CapOrphanNote`).
+ *
+ * ⚠️ ЗАСАХ ЭРХЭЭР НЭЭГДСЭН ХАРАГДАЦ (`CAP_HOST_VIEW`) runtime дээр НЭЭЛТТЭЙ тул
+ *    унтраалга үүнийг ч харуулна («хаалттай» атлаа хэрэглэгч харсаар байдаг байв).
+ *    Tooltip нь тухайн эрхийн хуудас руу заана — унтраалгаар хаагдахгүй.
  */
 
 import { Icon } from '@/components/Icon';
 import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, type ViewKey } from '@/lib/services';
-import { CAPS, CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
-import { capSystem, type DerivedSys } from '@/lib/aclRoleCaps';
-import { capBacking, missingCaps, orphanCaps, type UserErh } from '@/lib/erhOverview';
+import { CAP_HOST_VIEW, WORKFLOW_VIEWS, type CapKey } from '@/lib/caps';
+import { paneLabel, paneOfCap } from '@/modules/capText';
 import s from './userAdmin.module.css';
 import type { Draft } from './UserAdmin';
 
 export type UserRightsProps = {
   d: Draft;
-  /** Нэмэлт эрхээр нээгдсэн харагдацууд (`capViewsOf`) */
+  /** Засах эрхээр нээгдсэн харагдацууд (`capViewsOf`) */
   capViews: ViewKey[];
-  /** `caps` дэх эрхүүд (runtime) */
+  /** Хэрэглэгчийн эрхүүд — аль эрх аль харагдацыг нээснийг tooltip-д хэлнэ */
   caps: CapKey[];
-  /** ⚠️ Remote эрхийн хүснэгт уншигдаагүй — унтраалга хаалттай (2026-09-21) */
-  capsLocked?: boolean;
-  capsLockMsg?: string;
-  capErr: boolean;
-  /** Хатуу super — гаргалгаатай эрх ч унтраалгаар (дээрх ⚠️) */
-  superUser: boolean;
-  /** Бүх ACL уншигдсан үеийн эрхийн зураг — `null` бол үзүүлэлт/өнчин нуугдана */
-  erh: UserErh | null;
-  /**
-   * Энэ хэрэглэгчид `aclOps` бичилт явагдаж байна (`aclPendingFor`, 2026-09-25).
-   * ⚠️ Хуваарилалт локалд шууд, эрх нь `sync`-ийн дараа өөрчлөгддөг тул тэр
-   *    хооронд өнчин/дутуу тэмдэг ХУДАЛ гарна — нууж, «хасах»-ыг хаана.
-   */
-  settling?: boolean;
   hasView: (views: ViewKey[] | 'all', k: ViewKey) => boolean;
-  capLabel: (k: CapKey) => string;
-  capHint: (k: CapKey) => string;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
   onFlipDocs: () => void;
-  onFlipCap: (c: CapKey) => void;
-  /** Өнчин эрхийг ИЛ хасах (баталгаажуулалт эцэгт) */
-  onDropOrphan: (c: CapKey) => void;
-  /** Картын тухайн системийн хэсэг рүү */
-  onOpenCard: (sys: DerivedSys) => void;
 };
 
 export function UserRights(props: UserRightsProps) {
-  const {
-    d, capViews, caps, capsLocked, capsLockMsg, capErr, superUser, erh, settling, hasView, capLabel, capHint,
-    onFlipView, onAllViews, onFlipDocs, onFlipCap, onDropOrphan, onOpenCard,
-  } = props;
+  const { d, capViews, caps, hasView, onFlipView, onAllViews, onFlipDocs } = props;
 
-  /* ⚠️ Бичилт явагдаж байхад (`settling`) тэмдэг ГАРГАХГҮЙ — дээрх ⚠️ */
-  const orphans = erh && !settling ? orphanCaps(erh) : [];
-  const missing = erh && !settling ? missingCaps(erh) : [];
-
-  /** Гаргалгаатай эрхийн эх сурвалжийн текст */
-  const srcText = (c: CapKey): string => {
-    if (!erh) return caps.includes(c) ? tr('асаалттай') : '—';
-    if (settling) return tr('хадгалж байна…');
-    if (orphans.includes(c)) return tr('⚠️ Хуваарилалтгүй эрх');
-    const b = capBacking(erh, c);
-    const base = b === null
-      ? tr('хуваарилалтаас · бүх багц')
-      : b.length ? tr('хуваарилалтаас · {0} багц', String(b.length)) : tr('хуваарилаагүй');
-    return missing.includes(c) ? `${base} · ${tr('⚠️ эрх олгогдоогүй — хуваарилалтыг дахин хадгална уу')}` : base;
-  };
+  /** Энэ харагдацыг нээсэн эрхүүдийн ХУУДАСНЫ нэр (хажуугийн цэс) */
+  const impliedBy = (v: ViewKey): string =>
+    [...new Set(caps.filter((c) => CAP_HOST_VIEW[c].includes(v)).map((c) => paneLabel(paneOfCap(c))))].join(' · ');
+  /*
+   * ⚠️ УРСГАЛТАЙ 6 ХАРАГДАЦ ЖАГСААЛТАД ОРОХГҮЙ (2026-09-30, хэрэглэгчийн шийдвэр):
+   *    Гүйцэтгэл · Хуваарь · Хуваарь батлах · Нэмэлт ажил батлах · Чанарын баримт ·
+   *    Чанар (QAQC) нь урсгалын хуваарилалтаар нээгдэж, хасахад буцаагдана
+   *    (`caps.WORKFLOW_VIEWS`). Хадгалагдсан утга нь хөндөгдөхгүй — зөвхөн энд
+   *    засагдахгүй; `hasAccess`/`resolveAccess` хэвээр.
+   */
+  const shownViews = VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key));
+  const workflowNames = VIEWS.filter((v) => WORKFLOW_VIEWS.includes(v.key)).map((v) => v.title).join(' · ');
 
   return (
     <>
@@ -104,12 +77,19 @@ export function UserRights(props: UserRightsProps) {
           {tr('Бүгдийг унтраах')}
         </button>
       </div>
+      <div className={s.capNote}>
+        {tr('Урсгалтай хуудсууд ({0}) урсгалын эрхийн хуудсаар нээгдэнэ — хуваарилалт олгоход нээгдэж, хасахад хаагдана.', workflowNames)}
+      </div>
+      {capViews.some((k) => !WORKFLOW_VIEWS.includes(k)) && (
+        <div className={s.capNote}>
+          {tr('Бүдэг унтраалга — засах эрхээр автоматаар нээгдсэн харагдац; хаахын тулд тухайн эрхийн хуудсанд (хажуугийн цэс) эрхийг нь хасна.')}
+        </div>
+      )}
       <div className={s.topicList}>
-        {VIEWS.map((v) => {
+        {shownViews.map((v) => {
           const base = hasView(d.views, v.key);
-          /* ⚠️ Нэмэлт эрхийн гэр харагдац (CAP_HOST_VIEW) runtime дээр
-             НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна, эс бөгөөс админ
-             «унтраасан» атлаа хэрэглэгч харсаар байдаг байв. Дарвал
+          /* ⚠️ Засах эрхийн гэр харагдац (CAP_HOST_VIEW) runtime дээр
+             НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна (толгойн ⚠️). Дарвал
              суурь жагсаалтад ил орно (эрх хасагдсан ч үлдэнэ). */
           const implied = !base && capViews.includes(v.key);
           const vOn = base || implied;
@@ -124,7 +104,9 @@ export function UserRights(props: UserRightsProps) {
                 role="switch"
                 aria-checked={vOn}
                 aria-label={v.title}
-                title={implied ? tr('Нэмэлт эрхээр нээлттэй — хаахын тулд тухайн эрхийг унтраана') : undefined}
+                title={implied
+                  ? tr('Засах эрхээр нээлттэй ({0}) — хаахын тулд тэр эрхийн хуудсанд эрхийг нь хасна', impliedBy(v.key))
+                  : undefined}
                 className={`${s.sw} ${vOn ? s.swOn : ''} ${implied ? s.swImplied : ''}`}
                 onClick={() => onFlipView(v.key)}
               >
@@ -149,100 +131,6 @@ export function UserRights(props: UserRightsProps) {
             <span className={s.swKnob} />
           </button>
         </div>
-      </div>
-
-      {/* ── НЭМЭЛТ ЭРХҮҮД — харагдацаас ТУСДАА олгоно ──
-          ⚠️ Үүрэг сонгоход өөрчлөгддөггүй: эрсдэлтэй үйлдлийг
-          урьдчилсан тохиргоогоор чимээгүй тараах ёсгүй. */}
-      <div className={s.topicHead}>
-        <span className={s.topicHeadLabel}>{tr('Нэмэлт эрх')}</span>
-        <span className={s.saveHint}>{tr('шууд хадгалагдана')}</span>
-      </div>
-      {capErr && (
-        <div className={s.capErr} role="alert">
-          {tr('⚠️ ArcGIS-т бичигдсэнгүй — эрх түр зөвхөн энэ browser-т. Холболтоо шалгаад дахин дарна уу.')}
-        </div>
-      )}
-      {/* ⚠️ Харагдацын жагсаалт `CAP_HOST_VIEW`-ээс ГАРНА (2026-09-23) —
-          урьд нь гараар бичсэн 6 нэр байсан тул шинэ эрх нэмэгдэх бүрд хоцордог байв. */}
-      <div className={s.capNote}>
-        {tr('Нэмэлт эрх олгоход түүний харагдац ({0}) тухайн хүнд автоматаар нээгдэнэ.',
-          [...new Set(Object.values(CAP_HOST_VIEW).flat())]
-            .map((v) => VIEWS.find((x) => x.key === v)?.title ?? v)
-            .join(' · '))}
-      </div>
-      {!superUser && (
-        <div className={s.capNote}>
-          {tr('Багцаар хуваарилагддаг эрх (хуваарь, обьём, нэмэлт ажил, чанар, QAQC, дэд бүтэц) нь хуваарилалтаас гарна — «Засах →» дарж тухайн хэсэгт багц онооно.')}
-        </div>
-      )}
-      {d.isNew && (
-        <div className={s.capNote}>{tr('Нэмэлт эрхийг эхлээд хадгалсны дараа олгоно.')}</div>
-      )}
-      <div className={s.topicList}>
-        {CAPS.map((c) => {
-          const sys = capSystem(c.key);
-          /* ⚠️ Гаргалгаатай эрх super-ээс бусдад — ҮЗҮҮЛЭЛТ (толгойн ⚠️) */
-          if (sys && !superUser) {
-            const orphan = orphans.includes(c.key);
-            return (
-              <div key={c.key} className={`${s.topicRow} ${s.capDerived} ${orphan ? s.capOrphan : ''}`}>
-                <span className={s.topicName} title={capHint(c.key)}>
-                  <span className={s.topicIcon}><Icon name={c.icon} size={14} /></span>
-                  {capLabel(c.key)}
-                </span>
-                <span className={s.capSrc}>
-                  <span
-                    className={orphan ? s.capOrphanText : undefined}
-                    title={orphan && c.key === 'addRow'
-                      ? tr('Хасвал «Гүйцэтгэл бөглөх» хуудасны «Бөглөх» таб мөн хаагдана (урсгалын гүйцэтгэгч шатнаас бусдад).')
-                      : undefined}
-                  >
-                    {srcText(c.key)}
-                  </span>
-                  {orphan && (
-                    <button
-                      type="button"
-                      className={s.capOrphanX}
-                      disabled={!!d.isNew || !!capsLocked || !!settling}
-                      title={capsLocked ? capsLockMsg : tr('Энэ эрхийг хасна — хуваарилалт байхгүй')}
-                      onClick={() => onDropOrphan(c.key)}
-                    >
-                      {tr('хасах')}
-                    </button>
-                  )}
-                  <button type="button" className={s.linkBtn} onClick={() => onOpenCard(sys)}>
-                    {tr('Засах →')}
-                  </button>
-                </span>
-              </div>
-            );
-          }
-          return (
-            <div key={c.key} className={s.topicRow}>
-              <span className={s.topicName} title={capHint(c.key)}>
-                <span className={s.topicIcon}><Icon name={c.icon} size={14} /></span>
-                {capLabel(c.key)}
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={caps.includes(c.key)}
-                aria-label={capLabel(c.key)}
-                /* ⚠️ `capsLocked` — remote уншигдаагүй бол `[]∪{cap}` бичилт
-                   remote-ийг дарах тул хаалттай (2026-09-21, UserAdmin-ы тайлбар) */
-                disabled={!!d.isNew || !!capsLocked}
-                title={d.isNew
-                  ? tr('Эхлээд хадгална уу — нэмэлт эрх хадгалагдсан аккаунтад олгогдоно')
-                  : capsLocked ? capsLockMsg : undefined}
-                className={`${s.sw} ${caps.includes(c.key) ? s.swOn : ''}`}
-                onClick={() => onFlipCap(c.key)}
-              >
-                <span className={s.swKnob} />
-              </button>
-            </div>
-          );
-        })}
       </div>
     </>
   );
