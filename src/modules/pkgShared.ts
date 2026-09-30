@@ -14,6 +14,35 @@ import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS, cfMonthAxis } from '@/lib/services';
 import { housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
 import type { FinData } from '@/modules/Finance';
+import type { ProgPt } from '@/modules/PkgProg';
+import { planPctAt, type PlanPoint } from '@/lib/planProgress';
+
+/**
+ * «ГҮЙЦЭТГЭЛИЙН ЯВЦ» ГРАФИКИЙН ЦЭГҮҮД — хуваарийн төлөвлөгөө (`PlanCurve`) + БИЕТ
+ * гүйцэтгэл (`FinData.phys` → `MonthPt`). PkgProg ба «ТУХ» ХОЁУЛАА энэ ГАНЦ
+ * функцээр (2026-09-30) — хоёр дэлгэц нэг багцад өөр муруй харуулахгүй.
+ *
+ * ⚠️ Хуваарь байхгүй бол `null` — cashflow руу буцаж унахгүй (PkgProg-ийн ⚠️).
+ * ⚠️ Хэмжилтгүй сар `act: null` (0 биш); `planM` нь хэмжилтийн ӨДРӨӨР завсарласан.
+ */
+export function progMonthsOf(
+  base: readonly { label: string; phys: number | null; physAt?: string | null }[] | null,
+  series: readonly PlanPoint[] | undefined,
+): ProgPt[] | null {
+  if (!series?.length) return null;
+  const phys = new Map((base ?? []).map((m) => [m.label, m]));
+  return series.map((p) => {
+    const m = phys.get(p.label);
+    const act = m?.phys ?? null;
+    return {
+      label: p.label,
+      plan: p.pct,
+      vol: p.vol,
+      act,
+      planM: act == null ? null : planPctAt(series, m?.physAt ?? `${p.label}-31`),
+    };
+  });
+}
 
 /** Блокийн давхаргын өнгө — хоёр харагдацын карт/легенд ижил өнгөтэй байна */
 export const HUE = LAYER_BY_ID[BLOCK_LAYER].hue;

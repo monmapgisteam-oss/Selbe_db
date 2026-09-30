@@ -186,6 +186,7 @@ const CASES = [
   { name: 'Zovshoorol', load: () => import('@/modules/Zovshoorol'), pick: (m) => m.Zovshoorol, props: {} },
   { name: 'Tailan', load: () => import('@/modules/Tailan'), pick: (m) => m.Tailan, props: {}, expect: ['Удирдлагын тайлан'] },
   { name: 'ExecReport', load: () => import('@/modules/ExecReport'), pick: (m) => m.ExecReport, props: {} },
+  { name: 'Tuh', load: () => import('@/modules/Tuh'), pick: (m) => m.Tuh, props: { dim: '2d', setDim: S }, expect: ['Ачаалж байна…'] },
   { name: 'Huvaari', load: () => import('@/modules/Huvaari'), pick: (m) => m.Huvaari, props: {}, expect: ['Батлуулах'] },
   { name: 'HuvaariBatlah', load: () => import('@/modules/HuvaariBatlah'), pick: (m) => m.HuvaariBatlah, props: {}, expect: ['Хуваарь батлах'] },
   { name: 'AjilBatlah', load: () => import('@/modules/AjilBatlah'), pick: (m) => m.AjilBatlah, props: {} },

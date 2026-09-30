@@ -35,6 +35,7 @@ export type ViewKey =
   | "huvaariBatlah"
   | "ajilBatlah"
   | "tailan"
+  | "tuh"
   | "finance"
   | "habea"
   | "irged"
@@ -315,6 +316,22 @@ export const VIEWS: {
     standalone: true,
   },
   /**
+   * ТУХ — Төслийн удирдлагын хэсгийн БАГЦЫН ХЯНАЛТЫН САМБАР (2026-09-30).
+   * ⚠️ `docs/jishee/Selbe City Packages.html`-ийн БҮТЭЦ, системийн загвар, тоо
+   *    бүгд системээс (`modules/Tuh.tsx`-ийн толгой). Өөрийн газрын зурагтай
+   *    (`TuhMap`) тул `standalone`; блокийн давхарга нь суурь.
+   */
+  {
+    key: "tuh",
+    get title() { return tr('ТУХ'); },
+    get desc() { return tr('Багцын хяналтын самбар — улсын комисс, IPC, хуваарь, гүйцэтгэл нэг дор'); },
+    icon: "grid",
+    hue: "#0f766e",
+    layers: ["mon:building"],
+    initial: ["mon:building"],
+    standalone: true,
+  },
+  /**
    * САНХҮҮЖИЛТ — гэрээний бүртгэл (`CASHFLOW_NEW`) + гүйцэтгэлийн
    * олгосон санхүүжилтийн лог (`HO_IPC`). Геометргүй хоёр хүснэгт тул порталын
    * зураг/каталогийг ашиглахгүй, өөрийн бүтэцтэй → `standalone`.
@@ -580,7 +597,7 @@ export const HOME_SECTIONS: {
    * `Root` нь «Бусад хэсэг» болгон нүүрт гаргана (хүрэх зам алдагдахгүй) — тэр
    * бүлэг харагдвал энд юм дутсаны шинж.
    */
-  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tailan", "sysdoc"] },
+  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "analysis", "irged"] },
   { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "qaqc", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "chanar"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
@@ -606,7 +623,7 @@ export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] =
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
-    views: ["gdash", "dashboard", "pkgProg", "plan", "gazar", "zovshoorol", "habea", "dedButets", "iot", "ersdel", "irged", "analysis"],
+    views: ["gdash", "dashboard", "tuh", "pkgProg", "plan", "gazar", "zovshoorol", "habea", "dedButets", "iot", "ersdel", "irged", "analysis"],
   },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
   { id: "report", get title() { return tr('Тайлан'); }, views: ["tailan", "schem"] },

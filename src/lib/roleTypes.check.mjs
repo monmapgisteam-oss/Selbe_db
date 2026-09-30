@@ -38,7 +38,9 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
   /* ⚠️ 2026-09-30: урсгалтай 6 харагдац загварт ОРОХГҮЙ — урсгалын хуваарилалтаар нээгдэнэ */
   assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'chanar', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'qaqc'],
     'WORKFLOW_VIEWS ≠ урсгалтай 6 харагдац');
-  assert.equal(VIEWS.length, 23, 'VIEWS 23 хэвээр байх ёстой — урсгалтай харагдац зөвхөн унтраалгаас шүүгдэнэ');
+  /* ⚠️ 2026-09-30 (merge irgediin-hurteemj): «ТУХ» нэмэгдэж 24 болсон — тоог хатуу бичихгүй.
+     Шалгуурын утга: урсгалтай харагдац VIEWS-ээс ХАСАГДААГҮЙ (зөвхөн унтраалгаас шүүгдэнэ). */
+  for (const k of WORKFLOW_VIEWS) assert.ok(VIEWS.some((v) => v.key === k), `VIEWS-ээс урсгалтай харагдац хасагдсан: ${k}`);
   for (const v of VIEWS) {
     if (WORKFLOW_VIEWS.includes(v.key)) assert.ok(!ids.includes(`view:${v.key}`), `view:${v.key} — урсгалтай харагдац загварт буцаж ирэв`);
     else assert.ok(ids.includes(`view:${v.key}`), `view:${v.key} каталогт алга`);
