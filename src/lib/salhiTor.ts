@@ -376,11 +376,12 @@ export async function loadWindField(date: string): Promise<WindField> {
   });
 
   const get = async (): Promise<Response> => {
-    const r = await fetch(`${API}?${params}`);
+    /* ⚠️ 2026-09-30: timeout — торны олон цэгийн хариу том тул 60с */
+    const r = await fetch(`${API}?${params}`, { signal: AbortSignal.timeout(60_000) });
     /* ⚠️ 429 — өдрийн квот. НЭГ удаа дахин оролдоно (§9.2). */
     if (r.status === 429) {
       await sleep(1200);
-      return fetch(`${API}?${params}`);
+      return fetch(`${API}?${params}`, { signal: AbortSignal.timeout(60_000) });
     }
     return r;
   };

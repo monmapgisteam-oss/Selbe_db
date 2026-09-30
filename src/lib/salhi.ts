@@ -25,7 +25,7 @@
  *    болно. Дуудагч тал ялгааг нь ил гаргах үүрэгтэй.
  */
 
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, perLocale } from '@/lib/i18nCore';
 /* ⚠️ Цагийн бүсийн логик ГАНЦ газар (`salhiTor.ts` §TZ) — хоёр модуль нэг
    дүрмээр цаг тайлбарлана. Давхардуулбал нэгийг нь засахад нөгөө нь хоцорно. */
 import { TZ, epochOf, pruneDayCache, ymd } from '@/lib/salhiTor';
@@ -68,13 +68,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * 8 зүгийн нэр. ⚠️ Монголоор «зүүн» = ДОРНО (east), «баруун» = ӨРНӨ (west) —
  * англи «left/right»-аар бодвол эсрэгээр буудаг нийтлэг алдаа.
  */
-const DIRS = [
+const DIRS = perLocale(() => [
   tr('Хойд'), tr('Зүүн хойд'), tr('Зүүн'), tr('Зүүн өмнөд'),
   tr('Өмнөд'), tr('Баруун өмнөд'), tr('Баруун'), tr('Баруун хойд'),
-];
+]);
 
 /** Градус → зүгийн нэр («Баруун хойд») */
-export const dirName = (deg: number) => DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+export const dirName = (deg: number) => DIRS()[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
 /**
  * САЛХИНЫ ХҮЧ → БОХИРДЛЫН ТАРХАЛТ.
@@ -129,7 +129,8 @@ async function fetchHours(lat: number, lon: number, date: string): Promise<WindH
    */
   let res: Response | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    res = await fetch(url);
+    /* ⚠️ 2026-09-30: timeout — Open-Meteo хариугүй унжвал самбар мөнхөд «ачаалж байна» үлддэг байв */
+    res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (res.ok) break;
     if (res.status === 429 && attempt === 0) { await sleep(1200); continue; }
     throw new Error(`HTTP ${res.status}`);

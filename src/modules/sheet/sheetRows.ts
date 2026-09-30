@@ -23,12 +23,11 @@
  * агшин ялгах түлхүүр БОЛОХГҮЙ.
  */
 import { PKGS, loadSchema, type Pkg, type Schema } from './bagts.pkg';
-import { tokenParam } from '@/lib/authToken';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TREES } from './bagts.trees';
 import { TASK_SHEET, bagtsKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
-import { withSlot, isRateLimit } from '@/lib/query';
+import { arcgisPost, isRateLimit } from '@/lib/query';
 
 /** Урт хэлбэрийн НЭГ мөр — нэг ажлын, нэг блокийн, нэг агшны бүртгэл. */
 export type SheetRow = {
@@ -116,9 +115,9 @@ const nOrNull = (v: unknown): number | null =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Нэг хуудасны хүсэлт — хязгаарлагчийн ДОТОР, rate-limit дээр дахин оролдоно. */
-async function onePage(url: string, params: Record<string, string>) {
+function onePage(url: string, params: Record<string, string>) {
   /*
-   * ⚠️ `withSlot` ЗААВАЛ: энэ модулийн fetch нь `query.ts`-ийн 6 слотын
+   * ⚠️ Слот ЗААВАЛ: энэ модулийн fetch нь `query.ts`-ийн 6 слотын
    *    хязгаарлагчийг ТОЙРЧ гардаг байв. `loadSheetRows` нь 10 багцыг
    *    `Promise.all`-аар зэрэг эхлүүлдэг тул дашбоардын ~120 slotted хүсэлтийн
    *    дээр нэмэгдэж, ArcGIS «Too many requests» гэж татгалздаг. `parcelOverlap`
@@ -129,36 +128,16 @@ async function onePage(url: string, params: Record<string, string>) {
    *    түүнийг HTTP 200 + `{error:…}`-ээр буцаадаг. Урьд нь шууд `throw` хийдэг
    *    тул `loadBlockProgress` реject болж, MapCanvas кэшээ хаяад бүх блок
    *    «мэдээлэлгүй» болж саарладаг байв.
+   *
+   * ⚠️ 2026-09-30: дээрх хоёулаа одоо `query.arcgisPost`-ын цөмд — слот, 429/503
+   *    ба 200-аар ирдэг rate-limit дээр 4 удаа exponential backoff, `res.ok`,
+   *    JSON биш хариу, 30с timeout, 498 токен шинэчлэлт, токен биеэр. Энд
+   *    давхар давталт хийхгүй (4×4 болно). Алдаа нь `ArcGISError` (`code`-той).
    */
-  const RETRIES = 4;
-  for (let attempt = 0; ; attempt += 1) {
-    const j = await withSlot(async () => {
-      const res = await fetch(`${url}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ f: 'json', ...tokenParam(), ...params }),
-      });
-      // ⚠️ HTTP алдаанд (429/503) бие нь JSON биш байж болно — эхлээд `res.ok`
-      //    шалгахгүй бол `res.json()` тодорхойгүй SyntaxError шидэж будлиантана.
-      if (!res.ok) {
-        if ((res.status === 429 || res.status === 503) && attempt < RETRIES) return null;
-        throw new Error(`ArcGIS HTTP ${res.status}`);
-      }
-      const body = await res.json();
-      // ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана.
-      if (body.error) {
-        const msg = body.error.message || 'ArcGIS error';
-        if (isRateLimit(msg) && attempt < RETRIES) return null;
-        throw new Error(msg);
-      }
-      return body as {
-        features?: { attributes: Record<string, unknown> }[];
-        exceededTransferLimit?: boolean;
-      };
-    });
-    if (j) return j;
-    await sleep(400 * 2 ** attempt + Math.random() * 200);
-  }
+  return arcgisPost<{
+    features?: { attributes: Record<string, unknown> }[];
+    exceededTransferLimit?: boolean;
+  }>(`${url}/query`, params);
 }
 
 /**
@@ -171,7 +150,9 @@ const isTransient = (e: unknown): boolean => {
   const code = (e as { code?: unknown } | null)?.code;
   if (typeof code === 'number' && (code === 429 || code >= 500)) return true;
   const msg = e instanceof Error ? e.message : String(e ?? '');
-  return isRateLimit(msg) || /ArcGIS HTTP (429|5\d\d)/.test(msg) || /JSON/.test(msg);
+  /* ⚠️ 2026-09-30: `arcgisPost`-ын HTTP алдааны мессеж `HTTP 503` (урьд нь энд
+     `ArcGIS HTTP 503`) — хоёуланг нь таньна. */
+  return isRateLimit(msg) || /(?:ArcGIS )?HTTP (429|5\d\d)/.test(msg) || /JSON/.test(msg);
 };
 
 /**
@@ -179,7 +160,7 @@ const isTransient = (e: unknown): boolean => {
  *
  * ⚠️ ЯАГААД (2026-09-25-ны аудит): урьд нь `loadSchema(pkg).catch(() => null)`
  *    нь ЯМАР Ч алдааг «архивын багана алга» гэж үзэж багцыг ЧИМЭЭГҮЙ алгасдаг
- *    байв. `loadSchema`-ийн `agsFetch` нь `withSlot`-ын гадна, дахин
+ *    байв. `loadSchema`-ийн `agsFetch` нь слотын гадна, дахин
  *    оролдлогогүй тул дашбоардын хүйтэн ачаалалтад (~120 хүсэлт) нэг
  *    «Too many requests» тэр багцыг бүхэлд нь хасч, `blockProgress`-ийн memo ба
  *    `saveCache` (localStorage, 7 хоног) ДУТУУ зураглалыг хадгалдаг байлаа —
@@ -192,12 +173,17 @@ const isTransient = (e: unknown): boolean => {
  *   · ТОГТВОРТОЙ алдаа (эрхгүй, токен, үйлчилгээ алга) → `null`, өмнөх шигээ
  *     алгасна: тэр хэрэглэгчид ҮРГЭЛЖ ижил хариу тул нэг хаалттай хуудас
  *     БҮХ дашбоардыг унагах ёсгүй.
+ *
+ * ⚠️ 2026-09-30: гаднах `withSlot` ХАСАГДАВ — `agsFetch` (→ `query.arcgisPost`)
+ *    одоо слотоо ӨӨРӨӨ авдаг; давхар авбал слот дуусахад дотоод хүсэлт гаднах
+ *    бүрхүүлээ хүлээж ГАЦДАГ байсан (`ags.agsFetch`-ийн ⚠️). Дахин оролдлого
+ *    (түр ↔ тогтвортой ялгал) энд хэвээр.
  */
 async function schemaOf(pkg: Pkg): Promise<Schema | null> {
   const RETRIES = 4;
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await withSlot(() => loadSchema(pkg));
+      return await loadSchema(pkg);
     } catch (e) {
       if (!isTransient(e)) return null;
       if (attempt >= RETRIES) throw e;

@@ -36,6 +36,11 @@
 
 import { AUTH, ROLE_BY_USER } from './services';
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — ArcGIS
+   алдаагаа HTTP 200 + `{error}` биеэр буцаадаг тул тэр шалгана (`permsRemote`-ийн
+   сургамж); токеныг хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно. */
+import { arcgisPost } from '@/lib/authToken';
+import { invalidate } from './dataBus';
 
 /** ⚠️ `Selbe_Guitsetgel_Draft`-ААС ӨӨР item — хоёр хуудас огтлолцохгүй. */
 const TITLE = 'Selbe_QAQC_Draft';
@@ -69,20 +74,6 @@ async function getAuth(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-/**
- * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + `{error:{...}}` биеэр буцаадаг — `res.ok`
- *    хангалтгүй. Шалгахгүй бол хагас дутуу хүснэгт үүсгээд URL-ыг нь
- *    кэшилнэ (`permsRemote`-ийн баримтжуулсан сургамж).
- */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
-  return j;
-}
-
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
 /** Хүснэгтийг үүсгэж болох (ба эзэмших) эрхтэй хүмүүс — хатуу тохиргооны super */
@@ -96,7 +87,7 @@ const TABLE_OWNERS = new Set(
  *    Эзэн нь танигдахгүй бол ноорог тэр рүү бичигдэх ёсгүй.
  */
 async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
+  const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
     /* ⚠️ 100 (2026-09-25 аудит, `draftRemote`/`permsRemote`-тэй ижил): 10-т
@@ -129,7 +120,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
     allowGeometryUpdates: false,
     units: 'esriMeters',
   };
-  const created = await req(`${restBase()}/content/users/${encodeURIComponent(user)}/createService`, {
+  const created = await arcgisPost(`${restBase()}/content/users/${encodeURIComponent(user)}/createService`, {
     token,
     createParameters: JSON.stringify(createParameters),
     outputType: 'featureService',
@@ -160,9 +151,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
       ],
     }],
   };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
+  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
   /* Байгууллага даяар — уншихад бүгд, бичихэд ArcGIS-ийн editor эрх шийднэ */
-  await req(`${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`, {
+  await arcgisPost(`${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`, {
     token, org: 'true', everyone: 'false',
   });
   return `${serviceUrl}/0`;
@@ -306,7 +297,9 @@ export async function saveQaqcDraft(
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     const ok = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
-    return ok.length > 0 && ok.every((x) => x.error == null);
+    const saved = ok.length > 0 && ok.every((x) => x.error == null);
+    if (saved) invalidate('QAQC_DRAFT');
+    return saved;
   } catch {
     return false;
   }
@@ -338,7 +331,9 @@ export async function clearQaqcDraft(pkgKey: string): Promise<boolean> {
     );
     /* ⚠️ 2026-09-25: хоосон/дутуу хариу ≠ амжилт — ArcGIS алдаагаа 200-аар буцаадаг тул тоо нь oid-тай тэнцэх ёстой */
     const dr = r.deleteFeatureResults ?? [];
-    return dr.length === oids.length && dr.every((x) => x.error == null);
+    const gone = dr.length === oids.length && dr.every((x) => x.error == null);
+    if (gone) invalidate('QAQC_DRAFT');
+    return gone;
   } catch {
     return false;
   }

@@ -23,6 +23,7 @@ import { t as tr } from '@/lib/i18nCore';
  */
 export function SkipLink() {
   const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
   useEffect(() => setMounted(true), []);
 
   return (

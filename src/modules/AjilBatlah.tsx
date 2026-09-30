@@ -143,6 +143,7 @@ export function AjilBatlah() {
   /* ══════════════════════ ТАТАХ ══════════════════════ */
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setSt({ k: 'loading' });
     void (async () => {
       try {

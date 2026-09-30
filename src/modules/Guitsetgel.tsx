@@ -58,59 +58,59 @@ export { STAGE_LABEL };
  * `i18n-extract` олохгүй.
  */
 const STATUS_LABEL: Record<Status, string> = {
-  [STATUS.engineerReview]: tr('Инженер хянаж байна'),
-  [STATUS.engineerReturned]: tr('Инженер буцаасан'),
-  [STATUS.managerReview]: tr('Менежер хянаж байна'),
-  [STATUS.managerReturned]: tr('Менежер буцаасан'),
-  [STATUS.directorReview]: tr('Ерөнхий менежер хянаж байна'),
-  [STATUS.directorReturned]: tr('Ерөнхий менежер буцаасан'),
-  [STATUS.headReview]: tr('Хэлтсийн дарга хянаж байна'),
-  [STATUS.headReturned]: tr('Хэлтсийн дарга буцаасан'),
-  [STATUS.chiefReview]: tr('Газрын дарга хянаж байна'),
-  [STATUS.chiefReturned]: tr('Газрын дарга буцаасан'),
-  [STATUS.transferred]: tr('Шилжүүлсэн'),
+  get [STATUS.engineerReview]() { return tr('Инженер хянаж байна'); },
+  get [STATUS.engineerReturned]() { return tr('Инженер буцаасан'); },
+  get [STATUS.managerReview]() { return tr('Менежер хянаж байна'); },
+  get [STATUS.managerReturned]() { return tr('Менежер буцаасан'); },
+  get [STATUS.directorReview]() { return tr('Ерөнхий менежер хянаж байна'); },
+  get [STATUS.directorReturned]() { return tr('Ерөнхий менежер буцаасан'); },
+  get [STATUS.headReview]() { return tr('Хэлтсийн дарга хянаж байна'); },
+  get [STATUS.headReturned]() { return tr('Хэлтсийн дарга буцаасан'); },
+  get [STATUS.chiefReview]() { return tr('Газрын дарга хянаж байна'); },
+  get [STATUS.chiefReturned]() { return tr('Газрын дарга буцаасан'); },
+  get [STATUS.transferred]() { return tr('Шилжүүлсэн'); },
 };
 
 /** Шатны ХЭНД илгээх үйл үг — зөвшөөрөх товч ба түүхийн мөрөнд */
 const APPROVE_LABEL: Record<ReviewStage, string> = {
-  engineer: tr('Зөвшөөрч багцын менежерт илгээх'),
-  manager: tr('Зөвшөөрч ерөнхий менежерт илгээх'),
-  director: tr('Зөвшөөрч хэлтсийн даргад илгээх'),
-  head: tr('Зөвшөөрч газрын даргад илгээх'),
-  chief: tr('Баталж архивт бүртгэх'),
+  get engineer() { return tr('Зөвшөөрч багцын менежерт илгээх'); },
+  get manager() { return tr('Зөвшөөрч ерөнхий менежерт илгээх'); },
+  get director() { return tr('Зөвшөөрч хэлтсийн даргад илгээх'); },
+  get head() { return tr('Зөвшөөрч газрын даргад илгээх'); },
+  get chief() { return tr('Баталж архивт бүртгэх'); },
 };
 const SENT_VERB: Record<ReviewStage, string> = {
-  engineer: tr('шалгаж менежерт илгээв'),
-  manager: tr('зөвшөөрч ерөнхий менежерт илгээв'),
-  director: tr('зөвшөөрч хэлтсийн даргад илгээв'),
-  head: tr('зөвшөөрч газрын даргад илгээв'),
-  chief: tr('баталж бүртгэв'),
+  get engineer() { return tr('шалгаж менежерт илгээв'); },
+  get manager() { return tr('зөвшөөрч ерөнхий менежерт илгээв'); },
+  get director() { return tr('зөвшөөрч хэлтсийн даргад илгээв'); },
+  get head() { return tr('зөвшөөрч газрын даргад илгээв'); },
+  get chief() { return tr('баталж бүртгэв'); },
 };
 const RETURN_VERB: Record<ReviewStage, string> = {
-  engineer: tr('компанид буцаав'),
-  manager: tr('инженерт буцаав'),
-  director: tr('багцын менежерт буцаав'),
-  head: tr('ерөнхий менежерт буцаав'),
-  chief: tr('хэлтсийн даргад буцаав'),
+  get engineer() { return tr('компанид буцаав'); },
+  get manager() { return tr('инженерт буцаав'); },
+  get director() { return tr('багцын менежерт буцаав'); },
+  get head() { return tr('ерөнхий менежерт буцаав'); },
+  get chief() { return tr('хэлтсийн даргад буцаав'); },
 };
 /** Дахин шалгагчийн товч · placeholder — «дээшээ» ба «доошоо» */
 const RECHECK_UP: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  engineer: tr('Дахин шалгасан — асуудалгүй, менежерт илгээх'),
-  manager: tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх'),
-  director: tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'),
-  head: tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'),
+  get engineer() { return tr('Дахин шалгасан — асуудалгүй, менежерт илгээх'); },
+  get manager() { return tr('Дахин шалгасан — асуудалгүй, ерөнхий менежерт илгээх'); },
+  get director() { return tr('Дахин шалгасан — асуудалгүй, хэлтсийн даргад илгээх'); },
+  get head() { return tr('Дахин шалгасан — асуудалгүй, газрын даргад илгээх'); },
 };
 const RECHECK_DOWN: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  engineer: tr('Асуудал байна — компанид буцаах'),
-  manager: tr('Асуудал байна — инженерт буцаах'),
-  director: tr('Асуудал байна — багцын менежерт буцаах'),
-  head: tr('Асуудал байна — ерөнхий менежерт буцаах'),
+  get engineer() { return tr('Асуудал байна — компанид буцаах'); },
+  get manager() { return tr('Асуудал байна — инженерт буцаах'); },
+  get director() { return tr('Асуудал байна — багцын менежерт буцаах'); },
+  get head() { return tr('Асуудал байна — ерөнхий менежерт буцаах'); },
 };
 const RECHECK_HINT: Record<Exclude<ReviewStage, 'chief'>, string> = {
-  engineer: tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)'),
-  manager: tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
-  director: tr('Багцын менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
-  head: tr('Ерөнхий менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'),
+  get engineer() { return tr('Компанид буцаах бол шалтгаанаа бичнэ үү (менежерийн бичвэр компанид харагдахгүй)'); },
+  get manager() { return tr('Инженерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get director() { return tr('Багцын менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
+  get head() { return tr('Ерөнхий менежерт буцаах бол шалтгаанаа бичнэ үү (дээд шатны бичвэр доошоо дамжихгүй)'); },
 };
 
 const fmt = (iso: string | null) =>
@@ -178,7 +178,29 @@ type Step = {
   reason: string;
   /** Цэгийн өнгө — илгээсэн / зөвшөөрсөн / буцаасан */
   kind: 'sent' | 'ok' | 'bad';
+  /** ⚠️ Нэрийн хажуугийн тэмдэглэл — «өмнөх шийдвэрийн нэр дарагдсан» (доорх `overwritten`) */
+  note?: string;
 };
+
+/**
+ * ⚠️ 2026-09-30: НЭГ МӨРӨНД НЭГ ШАТ ХОЁР УДАА ШИЙДСЭН — нэр дарагдсан.
+ *
+ * Хяналтын хүснэгтэд шат бүр ГАНЦ `who` талбартай (`hyanalt.SF`). А зөвшөөрөөд
+ * (`sent`), дээд шат буцаасны дараа Б дахин шалгаж компанид буцаавал (`recheck
+ * 'back'` — ИЖИЛ мөр, `returned`) `who` = Б болж, А-гийн нэр АЛГА болно; түүх
+ * хоёр алхмыг хоёуланг нь Б-гийн нэрээр харуулдаг байв. Хүснэгтэд түүхийн
+ * (лог) талбар БАЙХГҮЙ тул нэрийг сэргээх боломжгүй — ядаж ДАРАГДСАН гэдгийг
+ * ил хэлнэ. Илрүүлэх нөхцөл нь яг: нэг шатанд `sent` ба `returned` ХОЁУЛАА
+ * байх (нэг мөрөнд өөр замаар үүсэх боломжгүй — `recheck 'ok'` шинэ мөр
+ * үүсгэдэг, `apply` төлөвөөр хаагддаг). Хоёрын ЭРТ нь дарагдсан.
+ * @returns аль алхмын нэр найдваргүй: `'sent'` · `'ret'` · `null`
+ */
+function overwritten(sent: string | null, ret: string | null): 'sent' | 'ret' | null {
+  if (!sent || !ret) return null;
+  /* ISO мөр — үсгээр харьцуулахад цагийн дараалал хадгалагдана */
+  return sent <= ret ? 'sent' : 'ret';
+}
+const OVERWRITTEN = () => tr('(өмнөх шийдвэрийн нэр дарагдсан)');
 
 /**
  * Нэг тойргийн алхмууд.
@@ -201,6 +223,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     : [];
 
   const eng = `${tr('Инженер')} ${r[F.engineer]}`.trim();
+  const engOv = overwritten(r[F.engineerSent], r[F.engineerReturned]);
 
   if (r[F.engineerSent]) {
     out.push({
@@ -210,6 +233,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       at: r[F.engineerSent],
       reason: '',
       kind: 'ok',
+      note: engOv === 'sent' ? OVERWRITTEN() : '',
     });
   }
   if (r[F.engineerReturned]) {
@@ -219,13 +243,15 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       at: r[F.engineerReturned],
       reason: r[F.engineerReason],
       kind: 'bad',
+      note: engOv === 'ret' ? OVERWRITTEN() : '',
     });
   }
 
   if (seesManager(stage)) {
     const mgr = `${tr('Менежер')} ${r[F.manager]}`.trim();
+    const mgrOv = overwritten(r[F.managerSent], r[F.managerReturned]);
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok' });
+      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -234,6 +260,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
         at: r[F.managerReturned],
         reason: r[F.managerReason],
         kind: 'bad',
+        note: mgrOv === 'ret' ? OVERWRITTEN() : '',
       });
     }
 
@@ -245,8 +272,9 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     ];
     for (const u of upper) {
       const nm = `${u.label} ${u.who}`.trim();
-      if (u.sent) out.push({ who: nm, verb: SENT_VERB[u.st], at: u.sent, reason: '', kind: 'ok' });
-      if (u.ret) out.push({ who: nm, verb: RETURN_VERB[u.st], at: u.ret, reason: u.why, kind: 'bad' });
+      const ov = overwritten(u.sent, u.ret);
+      if (u.sent) out.push({ who: nm, verb: SENT_VERB[u.st], at: u.sent, reason: '', kind: 'ok', note: ov === 'sent' ? OVERWRITTEN() : '' });
+      if (u.ret) out.push({ who: nm, verb: RETURN_VERB[u.st], at: u.ret, reason: u.why, kind: 'bad', note: ov === 'ret' ? OVERWRITTEN() : '' });
     }
   }
 
@@ -306,6 +334,11 @@ function History({ cycles, stage }: { cycles: Row[]; stage: Stage }) {
                   <div className={s.stepBody}>
                     <div className={s.stepTop}>
                       <span className={s.stepWho}>{st.who}</span>
+                      {st.note && (
+                        <span className={s.stepNote} title={tr('Нэг шат энэ мөрөнд хоёр удаа шийдсэн тул хүснэгтийн ганц нэрийн талбар сүүлийн шийдвэрийн нэрээр дарагдсан — энэ алхмыг хэн хийснийг баттай хэлэх боломжгүй.')}>
+                          {st.note}
+                        </span>
+                      )}
                       <span className={`${s.verb} ${st.kind === 'bad' ? s.verbBad : ''}`}>
                         {st.verb}
                       </span>
@@ -404,11 +437,20 @@ function Submitted({
    */
   onOkAll?: () => void;
 }) {
-  const [data, setData] = useState<Submission | null>(null);
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(true);
   /** «Дахин оролдох» тоолуур — уншилтын effect-ийг дахин асаана. */
   const [tryN, setTryN] = useState(0);
+  /*
+   * ⚠️ 2026-09-30 (eslint `set-state-in-effect`): `busy`/`err`/`data` гурван state-ийг
+   *    эффектийн эхэнд синхроноор тэглэдэг байв. Одоо НЭГ state, уншилтын ТҮЛХҮҮРТЭЙ:
+   *    түлхүүр (багц · илгээлт · дахин оролдох · дахин ачаалах) солигдмогц `busy` нь
+   *    ӨӨРӨӨ үнэн болно (`res.key !== reqKey`) — эффектэд юу ч тэглэх шаардлагагүй.
+   *    Зан төлөв ижил: уншилт дуустал «татаж байна», унавал улаан, олдоогүй бол `null`.
+   */
+  const reqKey = `${bagts}|${sheetOid}|${tryN}|${reloadKey}`;
+  const [res, setRes] = useState<{ key: string; data: Submission | null; err: string }>({ key: '', data: null, err: '' });
+  const busy = res.key !== reqKey;
+  const data = busy ? null : res.data;
+  const err = busy ? '' : res.err;
   /**
    * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ хүсэлт — жагсаалтаас дарахад бөглөх хуудас
    * тэр мөр рүү гүйж, нүдийг богино анивчилтаар онцолно.
@@ -425,8 +467,6 @@ function Submitted({
 
   useEffect(() => {
     let alive = true;
-    setBusy(true);
-    setErr('');
     /* ⚠️ Уншилт дуустал ба УНАСАН үед `null` (2026-09-06): урьд нь унахад
        `changes` `[]` хэвээр үлдэж, дээд талын батлах товч «өөрчлөлтгүй» мэт
        ИДЭВХТЭЙ байв — хянагч агуулгыг харалгүй батлах зам. `lack`-ийн гурван
@@ -440,14 +480,13 @@ function Submitted({
          уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
-      .then((d) => { if (alive) { setData(d); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); } })
-      .catch((e) => { if (alive) { setErr(String((e as Error)?.message ?? e)); onChanges?.(null); } })
-      .finally(() => { if (alive) setBusy(false); });
+      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); } })
+      .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: String((e as Error)?.message ?? e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
-    //    (ба «Дахин оролдох» тоолуур)
+    //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bagts, sheetOid, tryN, reloadKey]);
+  }, [reqKey]);
 
   if (busy) return <div className={s.subMuted}>{tr('Нийтэлсэн гүйцэтгэлийг татаж байна…')}</div>;
   /* ⚠️ Унасныг бүдэг биш УЛААНААР, дахин оролдох товчтой (2026-09-23) —
@@ -773,14 +812,22 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
      ИДЭВХТЭЙ үлдэж, талбар үнэхээр дутуу бол `applyEdits` танихгүй талбарыг
      чимээгүй алгасаж «хэн батласан» бүртгэлгүй үлддэг байв. Уншилт дуустал
      ХААЛТТАЙ; ерөнхий менежерийн шат биш бол ил `[]` тавина. */
-  const [lack, setLack] = useState<string[] | null>(null);
   /** «Дахин шалгах» — тоолуур ахих бүрд эффект дахин ажиллана. */
   const [lackTry, setLackTry] = useState(0);
+  /* ⚠️ 4·5·6-р шат — AGOL-д гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`) */
+  const lackNeeded = stage === 'director' || stage === 'head' || stage === 'chief';
+  /*
+   * ⚠️ 2026-09-30 (eslint `set-state-in-effect`): урьд нь эффект эхэндээ `setLack([])`/
+   *    `setLack(null)` синхроноор дууддаг байв. Одоо уншилтын үр дүнг ТҮЛХҮҮРТЭЙ
+   *    хадгална (`stage` · «Дахин шалгах» тоолуур): түлхүүр зөрвөл `null` (= уншиж
+   *    байна, товч ХААЛТТАЙ), дээд шат биш бол ил `[]`. Утга урьдын ижил.
+   */
+  const lackKey = `${stage}|${lackTry}`;
+  const [lackRes, setLackRes] = useState<{ key: string; m: string[] } | null>(null);
+  const lack: string[] | null = !lackNeeded ? [] : (lackRes && lackRes.key === lackKey ? lackRes.m : null);
   useEffect(() => {
-    /* ⚠️ 4·5·6-р шат — AGOL-д гараар нэмсэн талбарууд (`DIRECTOR_FIELDS`) */
-    if (stage !== 'director' && stage !== 'head' && stage !== 'chief') { setLack([]); return; }
+    if (!lackNeeded) return;
     let alive = true;
-    setLack(null);
     /*
      * ⚠️ ТҮР ЗУУРЫН АЛДААНД ДАХИН ОРОЛДОНО (2026-09-04-ний аудит):
      *    `missingDirectorFields` нэг л удаа дуудагддаг байсан тул хуудас нээх
@@ -792,12 +839,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       for (let i = 0; i < 3; i += 1) {
         const m = await missingDirectorFields();
         if (!alive) return;
-        if (m != null) { setLack(m); return; }
+        if (m != null) { setLackRes({ key: lackKey, m }); return; }
         if (i < 2) await new Promise((r) => { setTimeout(r, 400 * (i + 1)); });
       }
     })();
     return () => { alive = false; };
-  }, [stage, lackTry]);
+  }, [lackNeeded, lackKey]);
   /** Товчийг хаах уу — дутуу ЭСВЭЛ тодорхойгүй бол ХАА. */
   const lackBlocks = lack == null || lack.length > 0;
   /**
@@ -806,7 +853,6 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    *    асуудалгүй бол дээшээ эргүүлж илгээнэ, асуудалтай бол доошоо буцаана.
    */
   const upperOfMe = stage !== 'company' ? nextReview(stage) : null;
-  const [okKeys, setOkKeys] = useState<Set<string>>(new Set());
   /*
    * ⚠️ ТОЙРОГ СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-15-ны аудит).
    *
@@ -825,15 +871,32 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    */
   const curOkRaw = cur?.[F.okCells];
   const recheckSeed = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
-  useEffect(() => {
-    if (!recheckSeed) { setOkKeys(new Set()); return; }
+  /*
+   * ⚠️ 2026-09-30 (eslint `set-state-in-effect`): урьд нь эффект `[curSheetOid,
+   *    recheckSeed, curOkRaw]` солигдоход `setOkKeys(seed)` дууддаг байв. Одоо
+   *    ЭХЛЭЛ (`seed`) нь зурагдалтаас гарна, хэрэглэгчийн товшилт нь тэр ЭХЛЭЛИЙН
+   *    ТҮЛХҮҮРТЭЙ давхарга (`okOv`) — түлхүүр солигдмогц давхарга хүчингүй, ЭХЛЭЛ
+   *    рүү буцна. Дээрх гурван ⚠️-ийн зан төлөв (тойрог/агуулга солигдоход тэглэх,
+   *    дахин шалгалтад мөрийн `Zovshoorson_nud`-аас эхлэх) ижил хэвээр.
+   */
+  const seedKey = `${curSheetOid}|${recheckSeed}|${curOkRaw}`;
+  const seed = useMemo(() => {
+    if (!recheckSeed) return new Set<string>();
     try {
       const arr = JSON.parse(String(curOkRaw || '[]')) as unknown;
-      setOkKeys(new Set(Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string') : []));
+      return new Set(Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string') : []);
     } catch {
-      setOkKeys(new Set());
+      return new Set<string>();
     }
-  }, [curSheetOid, recheckSeed, curOkRaw]);
+  }, [recheckSeed, curOkRaw]);
+  const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(null);
+  const okKeys = okOv && okOv.key === seedKey ? okOv.keys : seed;
+  const setOkKeys = useCallback((upd: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setOkOv((prev) => {
+      const base = prev && prev.key === seedKey ? prev.keys : seed;
+      return { key: seedKey, keys: typeof upd === 'function' ? upd(base) : upd };
+    });
+  }, [seedKey, seed]);
   /*
    * ⚠️ АГУУЛГА СОЛИГДОХОД ЗӨВШӨӨРЛИЙГ ТЭГЛЭНЭ (2026-09-25-ны аудит).
    *    Гүйцэтгэгч ИЖИЛ `sub|` мөр дээр дахин илгээхэд (`reused`) `sheetOid`,
@@ -852,7 +915,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     const was = seenAt.current;
     seenAt.current = subAt;
     if (was != null && was !== subAt) setOkKeys(new Set());
-  }, [subAt]);
+    /* ⚠️ `setOkKeys` нь эхлэлийн түлхүүртэй (2026-09-30) — солигдоход дахин ажиллана; `was === subAt` тул тэглэхгүй */
+  }, [subAt, setOkKeys]);
   /** `Submitted`-ийг дахин ачаалуулах тоолуур — «агуулга өөрчлөгдсөн» үед */
   const [subReload, setSubReload] = useState(0);
   const toggleOk = useCallback((row: number, block: string) => {
@@ -863,7 +927,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       else n.add(k);
       return n;
     });
-  }, []);
+  }, [setOkKeys]);
   /** Хараахан зөвшөөрөөгүй = асуудалтай гэж үзэх өөрчлөлтүүд */
   const bad = (changes ?? []).filter((c) => !okKeys.has(`${c.row}:${c.block}`));
   const allOk = changes != null && changes.length > 0 && bad.length === 0;

@@ -16,6 +16,7 @@
  */
 
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
 
@@ -107,6 +108,10 @@ const clientIp = (req) => {
   return peer;
 };
 const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").replace(/\/+$/, "");
+/* ⚠️ 2026-09-30 (`worker.mjs`-тэй ижил): кэшийн дээд хэмжээ (хамгийн хуучныг хаяна) ба
+   нэвтрэлт УНАСАН токеныг кэшээс шууд хасна — ArcGIS 498/401 хариулсан агшнаас тэр
+   токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй. */
+const VERIFIED_MAX = 500;
 const verified = new Map();
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
@@ -121,12 +126,35 @@ async function checkArcGIS(token) {
     });
     data = await r.json();
   } catch {
+    verified.delete(token);
     return { ok: false, reason: "Нэвтрэлт шалгах үйлчилгээ хариу өгсөнгүй" };
   }
-  if (!data || data.error || !data.username) return { ok: false, reason: "Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна" };
-  if (data.orgId !== ARCGIS_ORG_ID) return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
+  if (!data || data.error || !data.username) {
+    verified.delete(token);
+    return { ok: false, reason: "Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна" };
+  }
+  if (data.orgId !== ARCGIS_ORG_ID) {
+    verified.delete(token);
+    return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
+  }
+  verified.delete(token);
+  while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
   verified.set(token, { username: data.username, until: Date.now() + 5 * 60 * 1000 });
   return { ok: true, username: data.username };
+}
+
+/**
+ * ⚠️ 2026-09-30: НУУЦ ТҮЛХҮҮРИЙГ ТОГТМОЛ ХУГАЦААНД харьцуулна (`x-bot-secret`).
+ *    `===` нь эхний зөрсөн байтад зогсдог тул хариу өгөх хугацаанаас нууцыг байт
+ *    байтаар таах онолын боломж (timing attack) үлддэг. `timingSafeEqual` ижил урттай
+ *    буферт л ажиллана — урт зөрвөл шууд `false` (урт нь нууц биш).
+ *    (`worker.mjs`-д гар аргаар тогтмол хугацааны гүйлт — толин хувилбар.)
+ */
+function secretMatches(given, expected) {
+  if (typeof given !== "string" || !expected) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**
@@ -338,7 +366,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const isBot = Boolean(BOT_SECRET) && req.headers["x-bot-secret"] === BOT_SECRET;
+  const isBot = Boolean(BOT_SECRET) && secretMatches(req.headers["x-bot-secret"], BOT_SECRET);
   let caller = `ip:${ip}`;
   if (isBot) {
     /* ⚠️ Тогтмол түлхүүр — ботын бүх хэрэглэгч нэг хязгаар хуваалцана (worker-тэй ижил) */

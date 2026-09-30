@@ -44,9 +44,14 @@ import { AUTH, ROLE_BY_USER } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
+   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
+   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
+import { invalidate } from './dataBus';
+import { cached } from '@/lib/live';
 
 /** Илгээлтийн төлөв */
 export const AJIL_STATUS = {
@@ -160,18 +165,6 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-/**
- * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + `{error:{…}}` биеэр буцаадаг — шалгахгүй бол
- * «амжилттай хадгаллаа» гэж ХУДЛААР мэдээлнэ.
- */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
-     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
-     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
-  return arcgisPost(url, params);
-}
-
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
 /** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
@@ -202,7 +195,7 @@ let ownerMismatch = false;
  * батлах зам нээх байлаа.
  */
 async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
+  const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
     /* ⚠️ 100 — хэн нэгэн 10+ хуурамч item үүсгэвэл ЖИНХЭНЭ хүснэгт эхний
@@ -332,7 +325,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   if (!url) return [];
   const out: Attrs[] = [];
   for (let off = 0; ; ) {
-    const j = await req(`${url}/query`, {
+    const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
       returnGeometry: 'false',
@@ -466,13 +459,13 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
       : { ok: false, error: tr('Энэ илгээлт энэ хооронд өөрчлөгдлөө — хуудсаа шинэчилнэ үү.') };
   }
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.applied } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -498,13 +491,13 @@ export async function markRestored(oid: number): Promise<{ ok: boolean; error?: 
     return { ok: false, error: tr('Энэ илгээлт энэ хооронд өөрчлөгдлөө — хуудсаа шинэчилнэ үү.') };
   }
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.restored } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -680,13 +673,13 @@ export async function submitAjil(args: {
     [F.payload]: JSON.stringify(args.payload),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.addResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -817,13 +810,13 @@ export async function decideAjil(args: {
     [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -878,13 +871,13 @@ export async function withdrawAjil(args: {
     [F.reason]: null,
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -945,11 +938,12 @@ export async function updateAjil(args: {
     [F.payload]: JSON.stringify(args.payload),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
     const after = await query(`${F.oid} = ${Number(args.oid)}`, fields);
     if (after.length && s(after[0][F.status]) !== AJIL_STATUS.pending) {
       return {
@@ -977,6 +971,14 @@ export async function updateAjil(args: {
  * ⚠️ Бүртгэлгүй багцын (`PKGS`-д алга) илгээлтийг ТООЛНО: тэнд батлах хаалттай
  *    ч БУЦААХ нээлттэй — гацлаас гаргах үйлдэл хэвээр.
  */
+/**
+ * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `AJIL_BATLAH` тагтай богино
+ *    кэш (`huvaariBatlah.loadBadgePending`-тэй ижил шалтгаан). Бичих зам бүр
+ *    `invalidate('AJIL_BATLAH')` дууддаг; `loadAllPending` өөрөө кэшлэгдэхгүй.
+ */
+const BADGE_TTL = 60_000;
+const loadBadgePending = cached(loadAllPending, BADGE_TTL, ['AJIL_BATLAH']);
+
 export async function countAjilPending(username: string | null | undefined): Promise<number | null> {
   try {
     const me = (username ?? '').trim().toLowerCase();
@@ -988,7 +990,7 @@ export async function countAjilPending(username: string | null | undefined): Pro
     if (!(await ajilTableState()).ok) return null;
     const sc = AUTH.appId ? ajilScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
-    const rows = await loadAllPending();
+    const rows = await loadBadgePending();
     return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author !== me).length;
   } catch {
     return null;

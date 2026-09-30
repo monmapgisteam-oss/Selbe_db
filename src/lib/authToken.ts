@@ -9,13 +9,19 @@
  *    Энэ модуль НЭГ эх сурвалж: `AuthGate` нэвтрэлт бүтмэгц IdentityManager-ээ
  *    бүртгэнэ, дараа нь `tokenParam()`/`tokenQs()` синхрон уншина.
  *
- * ⚠️ Токен POST-ын БИЕЭР явахыг эрхэмлэнэ (`tokenParam`); GET-д (`tokenQs`)
- *    зөвхөн бэлэн URL-тэй кэшлэгддэг хүсэлтүүдэд. Логд, алдааны мессежид
- *    URL бичихдээ токеныг оруулахгүй байхыг анхаар.
+ * ⚠️ Токен POST-ын БИЕЭР явахыг эрхэмлэнэ (`tokenParam`, `query.arcgisPost`).
+ *    ⚠️ 2026-09-30: `tokenQs` (URL query string) нь ЗӨВХӨН POST хийх боломжгүй
+ *    газарт — `<img src>`/`<a href>`-ийн хавсралтын хаяг (`ags.attachmentUrl`,
+ *    `Habea.tsx`). Бүх `fetch` хүсэлт `query.arcgisPost`-оор явна: query string
+ *    нь серверийн/CDN-ийн access log-д хадгалагддаг (CWE-598) бөгөөд хөтчийн
+ *    HTTP кэшийн түлхүүрт ордог. Логд, алдааны мессежид URL бичихдээ токеныг
+ *    оруулахгүй байхыг анхаар.
  *
  * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон) эсвэл Node (тест/tools)
  *    орчинд хоосон буцаана — зан төлөв өөрчлөгдөхгүй.
  */
+
+import { arcgisPost as queryPost } from '@/lib/query';
 
 type Esri = { findCredential: (url: string) => { token?: string } | null | undefined };
 
@@ -43,7 +49,11 @@ export function tokenParam(): Record<string, string> {
   return t ? { token: t } : {};
 }
 
-/** GET URL-ийн төгсгөлд залгах: `&token=…` эсвэл `''`. */
+/**
+ * GET URL-ийн төгсгөлд залгах: `&token=…` эсвэл `''`.
+ * ⚠️ 2026-09-30: ЗӨВХӨН `<img src>`-ийн хавсралтын хаягт (POST боломжгүй). Шинэ
+ *    `fetch`-д ХЭРЭГЛЭХГҮЙ — `query.arcgisPost` (токен биеэр).
+ */
 export function tokenQs(): string {
   const t = authToken();
   return t ? `&token=${encodeURIComponent(t)}` : '';
@@ -108,24 +118,14 @@ export function describeArcgisError(url: string, code: unknown, message: unknown
  *    токеноо эрт уншсан (`getToken`) бол тэр нь аль хэдийн хуучирсан байж болно. Node
  *    (тест/tools) орчинд `tokenParam()` хоосон тул дуудагчийн утга хэвээр.
  * ⚠️ Алдаа HTTP 200-аар ирдэг — `error` биеийг шалгана; мессежид унасан замыг нэмнэ.
+ *
+ * ⚠️ 2026-09-30: биелэлт нь `query.ts`-ийн хуваалцсан цөм (`arcgisPost`) — timeout,
+ *    зэрэг хүсэлтийн слот, 429/503 backoff, JSON биш хариу нэмэгдэв; алдаа нь
+ *    `ArcGISError` (`Error`-ийн удам, `code` хэвээр). Энэ бүрхүүл нь батлах
+ *    урсгалын дуудагчдын импортыг (`@/lib/authToken`) хөндөхгүйн тулд үлдэв.
+ *    `authToken ↔ query` импортын тойрог нь АЮУЛГҮЙ: хоёулаа нөгөөгөө зөвхөн
+ *    функц дотроос ашиглана, модулийн түвшинд биш.
  */
-export async function arcgisPost(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  type J = Record<string, unknown> & { error?: { code?: number; message?: string; details?: string[] } };
-  const once = async (): Promise<J> => {
-    const body = new URLSearchParams({ f: 'json', ...params, ...tokenParam() });
-    const r = await fetch(url, { method: 'POST', body });
-    if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
-    return (await r.json()) as J;
-  };
-  await ensureFreshToken();
-  let j = await once();
-  if (j.error && isTokenError(j.error.code, j.error.message) && authToken()) {
-    await ensureFreshToken(true);
-    j = await once();
-  }
-  if (j.error) {
-    const e = j.error;
-    throw Object.assign(new Error(describeArcgisError(url, e.code, e.message || e.details?.[0])), { code: e.code });
-  }
-  return j;
+export function arcgisPost(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
+  return queryPost(url, params, { token: 'always', describe: true });
 }

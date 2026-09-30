@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -185,6 +186,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setOverlap(null);
     /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
        өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
@@ -692,7 +694,7 @@ export function BlocksCard({
   const [selInner, setSelInner] = useState<string | null>(null);
   const selOid = sel !== undefined ? sel : selInner;
   const onSelRef = useRef(onSel);
-  onSelRef.current = onSel;
+  useSyncRef(onSelRef, onSel);
   const setSelOid = useCallback((v: string | null) => {
     setSelInner(v);
     onSelRef.current?.(v);
@@ -706,9 +708,9 @@ export function BlocksCard({
    * зураг дээрх барилга-даралтын тодруулгыг дайрч цэвэрлэнэ.
    */
   const selRef = useRef(selOid);
-  selRef.current = selOid;
+  useSyncRef(selRef, selOid);
   const releaseRef = useRef(onOverlapPick);
-  releaseRef.current = onOverlapPick;
+  useSyncRef(releaseRef, onOverlapPick);
   useEffect(() => () => {
     if (selRef.current != null) setHighlight(null);
     // ⚠️ Карт алга болоход парселийн нарийсгалт ҮЛДВЭЛ өөр багц руу
@@ -748,8 +750,11 @@ export function BlocksCard({
    */
   const OV_KEY = 'overlap';
   const ovOn = selOid === OV_KEY;
-  const ovGo = overlapOids?.length
-    ? () => {
+  /* ⚠️ 2026-09-30: нөхцөл (`ovHas`) ба closure тусдаа — `cond ? () => {…} : null`
+     хэлбэрт React Compiler closure-ыг render дунд уншсан ref гэж андуурдаг байв. */
+  const ovHas = !!overlapOids?.length;
+  const ovGo = () => {
+      if (!overlapOids?.length) return;
       /* ⚠️ Тодруулга (`setHighlight`) БИШ, ШҮҮЛТ. Тодруулга нь таарахгүйг
          БҮДГЭРҮҮЛДЭГ — 100 гаруй давхцсан талбарын дунд бүдгэрсэн 99 нь
          зурагдсан хэвээр байж, сонгосон нэг нь тэдний дунд алга болно.
@@ -760,8 +765,7 @@ export function BlocksCard({
       onOverlapPick?.(overlapOids);
       /* ⚠️ Анимацигүй — [[Gazar]]-тай ижил шалтгаанаар */
       zoomToWhere(PARCEL_LAYER, parcelOidsWhere(overlapOids), { animate: false });
-    }
-    : null;
+    };
   /**
    * ТОЛГОЙН БАРУУН ГАРЫН ТЭМДЭГЛЭЛ.
    *
@@ -799,7 +803,7 @@ export function BlocksCard({
               ⚠️ Талбарууд мэдэгдэж байвал ДАРЖ тэдгээр рүү очно. Тэг эсвэл
                  алдааны үед энгийн `div` — дарах юм байхгүй бол товч мэт
                  харагдах нь худал амлалт. */}
-          {ovGo ? (
+          {ovHas ? (
             <button
               type="button"
               className={`${o.ovStrip} ${o.ovStripOn} ${o.ovStripBtn} ${ovOn ? o.ovStripSel : ''}`}

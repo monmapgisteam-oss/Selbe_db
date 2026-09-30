@@ -61,6 +61,7 @@ function FindingItems({ items }: { items: string[] }) {
 export function ExecReport() {
   /** Огноо — ЗӨВХӨН клиент дээр (`Tailan`-тай ижил: hydration зөрөхөөс сэргийлнэ) */
   const [date, setDate] = useState('');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
   useEffect(() => { setDate(dateTime(Date.now())); }, []);
   const q = useAsync(loadExecReport, []);
   const [busy, setBusy] = useState<'' | 'pdf' | 'png' | 'ai'>('');
@@ -87,6 +88,7 @@ export function ExecReport() {
   /* ⚠️ 2026-09-25: цуцласны дараа ref-ийг ЦЭВЭРЛЭНЭ — дууссан хүсэлтийн controller-ийг
      abort() хийвэл `signal.aborted` true болж үлдээд, дараагийн PDF/PNG алдааг
      catch чимээгүй залгидаг байв. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: өгөгдөл солигдоход явж буй AI хүсэлтийг цуцлах (гаднын үйлдэл) ба дүгнэлтийг тэглэх нь нэг эффектэд
   useEffect(() => { aiAc.current?.abort(); aiAc.current = null; setSummary(null); }, [x]);
   const findings = useMemo(() => (x ? execFindings(x) : []), [x]);
   /**

@@ -16,6 +16,7 @@
 // (`el.parentElement`) трекийг мэдэхэд хангалттай — тусдаа `data-*` хэрэггүй.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 
 /**
@@ -74,6 +75,7 @@ export function usePanes() {
            эс бөгөөс хуучин хэрэглэгчид багана тэгш бус хэвээр үлдэнэ. */
         const v = s.l ?? s.r;
         if (v != null) { s.l = v; s.r = v; }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
         setSize(s);
       }
     } catch {
@@ -92,7 +94,7 @@ export function usePanes() {
   // ⚠️ Хадгалахдаа ЭНД-ээс уншина: `setSize(p => { save(p); … })` гэвэл
   //    шинэчлэгч цэвэр биш болж StrictMode-д хоёр дахин ажиллана.
   const cur = useRef<Sizes>({});
-  cur.current = size;
+  useSyncRef(cur, size);
 
   const drag = useRef<{
     k: PaneKey; start: number; base: number; px?: number; grid: HTMLElement | null;

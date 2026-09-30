@@ -20,42 +20,42 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:0",
     "sub": 0,
-    "title": tr('Мод'),
+    get "title"() { return tr('Мод'); },
     "geom": "point",
     "opacity": 1
   },
   {
     "id": "sb:1",
     "sub": 1,
-    "title": tr('Ногоон байгууламж'),
+    get "title"() { return tr('Ногоон байгууламж'); },
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:2",
     "sub": 2,
-    "title": tr('Автозам'),
+    get "title"() { return tr('Автозам'); },
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:3",
     "sub": 3,
-    "title": tr('Явган зам'),
+    get "title"() { return tr('Явган зам'); },
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:4",
     "sub": 4,
-    "title": tr('Барилга'),
+    get "title"() { return tr('Барилга'); },
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:5",
     "sub": 5,
-    "title": tr('Замын цагаан зураас'),
+    get "title"() { return tr('Замын цагаан зураас'); },
     "geom": "line",
     "opacity": 1
   },
@@ -69,7 +69,7 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:8",
     "sub": 8,
-    "title": tr('Спорт талбай'),
+    get "title"() { return tr('Спорт талбай'); },
     "geom": "area",
     "opacity": 1
   },
@@ -104,14 +104,14 @@ export const PLAN2D_LAYERS: Plan2DLayer[] = [
   {
     "id": "sb:15",
     "sub": 15,
-    "title": tr('Дугуйн зам'),
+    get "title"() { return tr('Дугуйн зам'); },
     "geom": "area",
     "opacity": 1
   },
   {
     "id": "sb:16",
     "sub": 16,
-    "title": tr('Гол'),
+    get "title"() { return tr('Гол'); },
     "geom": "area",
     "opacity": 1
   }
@@ -124,7 +124,8 @@ let pending: Promise<void> | null = null;
 /** Style JSON-ыг урьдчилан ачаална — Map барихаас ӨМНӨ дуудна */
 export function loadPlan2dStyle(): Promise<void> {
   if (STYLES) return Promise.resolve();
-  pending ??= fetch("/plan2d-style.json")
+  /* ⚠️ 2026-09-30: timeout — гацсан хүсэлт `pending`-ийг мөнхөд барихгүй (доорх catch дахин оролдуулна) */
+  pending ??= fetch("/plan2d-style.json", { signal: AbortSignal.timeout(30_000) })
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       STYLES = (await r.json()) as Record<string, unknown>;

@@ -108,10 +108,10 @@ export const CF = {
 
 /** Захирамжийн дүнгийн ЭХ ҮҮСВЭРҮҮД — 3-р чартын ангилал (Category) */
 export const CF_SOURCES = [
-  { field: 'zahiramj_niislel_tusuv', label: tr('Нийслэлийн төсөв') },
-  { field: 'zahiramj_nzd_nuuts', label: tr('НЗД нөөц хөрөнгө') },
-  { field: 'zahiramj_unet_tsaas', label: tr('Үнэт цаасны хөрөнгө') },
-  { field: 'zahiramj_borluulalt_dun', label: tr('Төслийн орлого') },
+  { field: 'zahiramj_niislel_tusuv', get label() { return tr('Нийслэлийн төсөв'); } },
+  { field: 'zahiramj_nzd_nuuts', get label() { return tr('НЗД нөөц хөрөнгө'); } },
+  { field: 'zahiramj_unet_tsaas', get label() { return tr('Үнэт цаасны хөрөнгө'); } },
+  { field: 'zahiramj_borluulalt_dun', get label() { return tr('Төслийн орлого'); } },
 ] as const;
 
 /**

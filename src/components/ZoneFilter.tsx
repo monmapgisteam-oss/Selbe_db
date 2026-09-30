@@ -55,7 +55,7 @@ function useZoneGroups(): Async<ZoneGroups> {
       by.get(t)!.add(id);
     }
     // ZONE_TYPES-ийн дараалал эхэнд, дараа нь танигдаагүй төрлүүд, «Тодорхойгүй» сүүлд
-    const known = [...Object.keys(ZONE_TYPES), ZONE_TYPE_EMPTY];
+    const known = [...Object.keys(ZONE_TYPES), ZONE_TYPE_EMPTY()];
     const extra = [...by.keys()].filter((t) => !known.includes(t)).sort();
     return [...known, ...extra]
       .filter((t) => by.has(t))

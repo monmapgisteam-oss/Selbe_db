@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { Section, Stats, Stat, Bars, Donut, Rows, Data, Empty } from '@/components/ui';
 import { Icon } from '@/components/Icon';
@@ -136,10 +137,10 @@ export function ViewPanel({
 const GEOM_CHARTS = [
   {
     geom: 'area' as const,
-    title: tr('Талбайн давхарга'),
+    get title() { return tr('Талбайн давхарга'); },
     /** Индикаторын богино шошго — «Талбай 157.2 га» */
-    short: tr('Талбай'),
-    note: tr('га'),
+    get short() { return tr('Талбай'); },
+    get note() { return tr('га'); },
     /** м² → га */
     /* ⚠️ `t.q` null (мэдээлэлгүй) → графикт 0 өндөр — `chartOf` тийм давхаргыг
        `other` руу шилжүүлдэг тул энд хүрэхгүй */
@@ -148,18 +149,18 @@ const GEOM_CHARTS = [
   },
   {
     geom: 'line' as const,
-    title: tr('Шугаман давхарга'),
-    short: tr('Урт'),
-    note: tr('км'),
+    get title() { return tr('Шугаман давхарга'); },
+    get short() { return tr('Урт'); },
+    get note() { return tr('км'); },
     /** «м» → км; «км» нэгжтэй давхарга шууд */
     value: (d: LayerDef, t: Totals) => (!d.qty || t.q == null ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
     display: (v: number, t: Totals) => tr('{0} км · {1}', num(v, 1), num(t.n)),
   },
   {
     geom: 'point' as const,
-    title: tr('Цэгэн давхарга'),
-    short: tr('Цэг'),
-    note: tr('ширхэг'),
+    get title() { return tr('Цэгэн давхарга'); },
+    get short() { return tr('Цэг'); },
+    get note() { return tr('ширхэг'); },
     /** Цэгт хэмжээ гэж байхгүй — тоо нь өөрөө хэмжигдэхүүн */
     value: (_d: LayerDef, t: Totals) => t.n,
     display: (v: number) => `${num(v)}`,
@@ -173,9 +174,9 @@ const GEOM_CHARTS = [
    */
   {
     geom: 'other' as const,
-    title: tr('Хэмжээ бүртгэгдээгүй'),
-    short: tr('Хэмжээгүй'),
-    note: tr('ширхэг'),
+    get title() { return tr('Хэмжээ бүртгэгдээгүй'); },
+    get short() { return tr('Хэмжээгүй'); },
+    get note() { return tr('ширхэг'); },
     value: (_d: LayerDef, t: Totals) => t.n,
     display: (v: number) => `${num(v)}`,
   },
@@ -812,7 +813,7 @@ function LayerDashboard({
    * шалгана) — эс бөгөөс бусад самбарын тодруулгыг дайрч цэвэрлэнэ.
    */
   const selRef = useRef(sel);
-  selRef.current = sel;
+  useSyncRef(selRef, sel);
   useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
   const prevLayerRef = useRef(d.id);
   useEffect(() => {
@@ -1059,7 +1060,7 @@ function PickedZone({
    * харагддаг байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана.
    */
   const selStRef = useRef(selSt);
-  selStRef.current = selSt;
+  useSyncRef(selStRef, selSt);
   useEffect(() => () => { if (selStRef.current != null) setHighlight(null); }, [setHighlight]);
   const prevIdRef = useRef(id);
   useEffect(() => {
@@ -1184,7 +1185,7 @@ function PickedFeature({
    * Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана).
    */
   const activeRef = useRef(active);
-  activeRef.current = active;
+  useSyncRef(activeRef, active);
   useEffect(() => () => { if (activeRef.current != null) setHighlight(null); }, [setHighlight]);
   const prevAttrsRef = useRef(attrs);
   useEffect(() => {

@@ -1,9 +1,11 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 
 import { DEFAULT_LOCALE, type Locale } from './localeKey';
-import { getLocale, setLocale } from './i18nCore';
+import {
+  getLocale, getLocaleGeneration, getServerLocale, setLocale, subscribeLocale,
+} from './i18nCore';
 
 /**
  * ОЛОН ХЭЛНИЙ REACT ДАВХАРГА.
@@ -17,22 +19,38 @@ import { getLocale, setLocale } from './i18nCore';
  * файлд (жиш. `ViewPanel.tsx`-ийн `t: Totals`) аль хэдийн эзэлсэн нэр.
  */
 
-export { t, t as tr, getLocale, setLocale } from './i18nCore';
+export { t, t as tr, getLocale, setLocale, perLocale } from './i18nCore';
 export { LOCALE_KEY, LOCALES, LOCALE_LABEL, DEFAULT_LOCALE, type Locale } from './localeKey';
 
 const Ctx = createContext<Locale>(DEFAULT_LOCALE);
 
+const getServerGeneration = () => 0;
+
+/**
+ * ⚠️ 2026-09-30: хэл нь `i18nCore`-ийн store-оос `useSyncExternalStore`-оор —
+ *    анхны утга СИНХРОН (урьд нь эффект дотор `setState` тул эхний рендер
+ *    үргэлж mn байгаад дараа нь солигддог байв). Prerender-д
+ *    `getServerLocale` (mn); hydration-ы дараа React өөрөө клиентийн утгаар
+ *    дахин зурна — зөрчилгүй.
+ * ⚠️ `key={generation}` — сешн дотор хэл солигдвол (`LOCALE_SWITCH_RELOADS`
+ *    2026-09-30-наас `false`) аппын дэд модыг бүхэлд нь remount хийнэ: `tr()`-ийг
+ *    рендерээс гадуур (useMemo/useState initializer) дуудсан газрууд шинэ
+ *    хэлээр дахин үнэлэгдэнэ. Анхны уншилтад generation 0 тул hydration-ы
+ *    дараах локаль тохируулга remount ҮҮСГЭХГҮЙ.
+ * ⚠️ Модулийн түвшний тогтмолууд (`VIEWS.title` гэх мэт) remount-д ДАХИН
+ *    ҮНЭЛЭГДЭХГҮЙ — тэдгээр нь getter / `perLocale(() => …)` хэлбэрт
+ *    (`i18nCore.perLocale`, `i18nLazy.check.mjs`); шинэ `key: tr('…')`
+ *    модулийн түвшинд бичвэл тэр шалгуур унагана.
+ */
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  // Сервер дээр `getLocale()` нь үргэлж mn; клиент дээр эхний эффектэд зөв утга
-  const [locale, setState] = useState<Locale>(DEFAULT_LOCALE);
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, getServerLocale);
+  const generation = useSyncExternalStore(subscribeLocale, getLocaleGeneration, getServerGeneration);
 
   useEffect(() => {
-    const l = getLocale();
-    setState(l);
-    document.documentElement.lang = l;
-  }, []);
+    document.documentElement.lang = locale;
+  }, [locale]);
 
-  return <Ctx.Provider value={locale}>{children}</Ctx.Provider>;
+  return <Ctx.Provider key={generation} value={locale}>{children}</Ctx.Provider>;
 }
 
 /** Хэлний сонголт — товч, солигч UI-д */

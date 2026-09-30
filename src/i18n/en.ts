@@ -1209,7 +1209,6 @@ const en: Record<string, string> = {
   "Менежер": "Manager",
   "Менежер буцаасан": "Returned by manager",
   "Менежер хянаж байна": "Under manager review",
-  "Мета уншигдсангүй": "Metadata could not be read",
   "Микро вэн": "Minivan",
   "Мод": "Trees",
   "Модны төрөл": "Tree species",
@@ -3642,7 +3641,6 @@ const en: Record<string, string> = {
   "Төлбөрийн төрөл бүртгэгдээгүй {0} мөр — задаргаанд ороогүй.": "{0} rows with no payment type recorded — excluded from the breakdown.",
   "НИЙТ ОЛГОСОН": "TOTAL DISBURSED",
   "Олгосон {0}": "Disbursed {0}",
-  "Хөрөнгө оруулалтын гүйцэтгэл — олгосон санхүүжилт (/196)": "Investment performance — disbursed funding (/196)",
   "Олгосон төлбөр": "Disbursed payment",
   "Төлбөр бүртгэгдээгүй": "No payment recorded",
   "{0} төлбөр · {1} дүнтэй": "{0} payments · totalling {1}",
@@ -4981,8 +4979,6 @@ const en: Record<string, string> = {
   "{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.": "{0} is approving this submission right now — it cannot be withdrawn. Try again in a little while.",
   "Хуваарийн обьём хадгалагдсангүй": "Schedule volume was not saved",
   "({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)": "({0} added · {1} updated · {2} deleted)",
-  "Тодорхойгүй алдаа": "Unknown error",
-  "Асуулга амжилтгүй": "Query failed",
   "Архивт {0}-ны жааз аль хэдийн байгаа тул {1}-ны илгээлтийг суурьгүйгээр бичвэл хуримтлал буурна. Архивт юу ч бичсэнгүй — гүйцэтгэгчээр дахин илгээүүлнэ үү.": "The archive already has a {0} snapshot, so writing the {1} submission without a base would lower the cumulative totals. Nothing was written to the archive — ask the contractor to resubmit.",
   "Илгээлтийн суурь жаазыг уншиж чадсангүй — архивт юу ч бичсэнгүй: {0}": "Could not read the submission's base snapshot — nothing was written to the archive: {0}",
   "Архивт {0} мөр бичигдэх ёстой, {1} бичигдлээ": "{0} rows should have been written to the archive, but {1} were written",
@@ -6008,7 +6004,9 @@ const en: Record<string, string> = {
   "Ажил бүрийн чанарын шалгалт, туршилтын баримт бүрдсэн эсэхийг тэмдэглэх хүснэгт (баримтыг батлах урсгал нь «Чанарын баримт»-д)": "Table to mark whether each task’s quality inspection and test documents are complete (the document approval flow is in “Quality documents”)",
   "Ажлын аргачлал, материалын баталгаа, үл тохирлын баримтыг ирүүлэх, хянах, батлах урсгал (тэмдэглэх хүснэгт нь «Чанар (QAQC)»-д)": "Flow to submit, review and approve method statements, material approvals and non-conformance documents (the tracking table is in “Quality (QAQC)”)",
   "Төлөвлөхөөс тайлагнах хүртэл ажил хэрхэн урсдагийг амьд тоотой схемээр харах": "See how work flows from planning to reporting, as a diagram with live figures",
-  "Порталын тоо хаанаас ирдэг, хэзээ шинэчлэгддэг, хэн засах эрхтэйг тайлбарласан лавлах": "Reference explaining where the portal’s figures come from, when they update and who may edit them"
+  "Порталын тоо хаанаас ирдэг, хэзээ шинэчлэгддэг, хэн засах эрхтэйг тайлбарласан лавлах": "Reference explaining where the portal’s figures come from, when they update and who may edit them",
+  "(өмнөх шийдвэрийн нэр дарагдсан)": "(previous decision’s name was overwritten)",
+  "Нэг шат энэ мөрөнд хоёр удаа шийдсэн тул хүснэгтийн ганц нэрийн талбар сүүлийн шийдвэрийн нэрээр дарагдсан — энэ алхмыг хэн хийснийг баттай хэлэх боломжгүй.": "One stage decided this row twice, so the table’s single name field was overwritten by the latest decision’s name — who performed this step cannot be stated with certainty."
 };
 
 export default en;

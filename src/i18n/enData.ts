@@ -110,6 +110,16 @@ const enData: Record<string, string> = {
   "Дулааны эх үүсвэр": "Heat source",
   "Усан хангамжийн эх үүсвэр": "Water supply source",
   "Цахилгааны эх үүсвэр": "Power source",
+  /* ⚠️ 2026-09-30: динамик `tr()`-д очих тогтмол/өгөгдлийн утгуудын нөхөлт
+     (`tools/i18n-keep.txt`-ийн `@dyn` бүртгэл). BUILT_STATUS-ийн facet утга
+     (`LayerCatalog` paint.values), TOGLOOM_TYPES (тоглоомын талбайн төрөл),
+     QAQC/Чанар/Хуваарь хүснэгтийн багцын «зураастай» бичиглэл. */
+  "Баригдаж байгаа": "Under construction",
+  "Гулгуур": "Slide",
+  "Дүүжин": "Swing",
+  "Том гулсууран тоглоом": "Large slide play set",
+  "Багц 4-1": "Package 4-1",
+  "Багц 4-2": "Package 4-2",
 };
 
 export default enData;

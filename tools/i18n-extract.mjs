@@ -5,7 +5,8 @@
  *   node tools/i18n-extract.mjs           → дутуу/илүүдэл түлхүүрийн тайлан
  *   node tools/i18n-extract.mjs --json    → дутуу түлхүүрүүдийг JSON-оор
  *   node tools/i18n-extract.mjs --prune   → en.ts-ээс ХЭРЭГГҮЙ түлхүүр цэвэрлэнэ
- *   node tools/i18n-extract.mjs --dynamic → ДИНАМИК `tr(x)` дуудалтын байршлыг жагсаана
+ *   node tools/i18n-extract.mjs --dynamic → ДИНАМИК `tr(x)` дуудалтын БҮРТГЭГДЭЭГҮЙ байршлыг жагсаана
+ *   node tools/i18n-extract.mjs --dynamic-all → бүх динамик цэг (✓ = keep-д @dyn бүртгэлтэй)
  *
  * ⚠️ Түлхүүр нь МОНГОЛ ЭХ ТЕКСТ өөрөө. Тиймээс кодын монгол текстийг засвал
  * толины түлхүүр хоцорч, тэр мөр англи дээр орчуулагдахаа болино (унахгүй —
@@ -14,6 +15,14 @@
  * ⚠️ 2026-09-24: ДИНАМИК дуудалт (`tr(b.label)`, `tr(i.tolov)` …) AST-д
  *    олдохгүй тул тэдгээрийн утгыг `tools/i18n-keep.txt`-д бүртгэнэ — тайлан
  *    ба `--prune` хоёулаа тэр жагсаалтыг «хэрэглэгдэж буй» гэж тооцно.
+ * ⚠️ 2026-09-30: ДИНАМИК ДУУДЛАГЫН ЦЭГИЙГ ч бүртгэнэ — keep-файлын
+ *    `@dyn <файл>  tr(<илэрхийлэл>)` мөр (яг `--dynamic`-ийн хэвлэсэн хэлбэр,
+ *    мөрийн дугааргүй) нь «энэ цэгийн утгууд шалгагдаж, толинд/enData-д
+ *    бүртгэгдсэн» гэсэн үг. Тайлангийн «шалгагдаагүй» тоо нь ЗӨВХӨН
+ *    бүртгэгдээгүй цэгүүд; `--dynamic` тэднийг л жагсаана (`--dynamic-all` бүгд).
+ *    Цэгийн мөрийн дугаар өөрчлөгдөхөд бүртгэл хуучирдаггүй; илэрхийлэл
+ *    өөрчлөгдвөл (`tr(x.label)` → `tr(x.name)`) дахин «шалгагдаагүй» болно —
+ *    санаатай: шинэ эх сурвалжийн утгыг дахин шалгуулна.
  */
 import ts from 'typescript';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -25,11 +34,22 @@ const DICT_FILE = join(ROOT, 'i18n', 'en.ts');
 const KEEP_FILE = join(ROOT, '..', 'tools', 'i18n-keep.txt');
 const argv = process.argv.slice(2);
 
-/** Динамик `tr(x)`-ийн утгуудын хадгалах жагсаалт — мөр бүр нэг түлхүүр, `#` тайлбар */
+/** Динамик `tr(x)`-ийн утгуудын хадгалах жагсаалт — мөр бүр нэг түлхүүр, `#` тайлбар, `@dyn` — цэг (доор) */
 export function readKeep() {
   let src = '';
   try { src = readFileSync(KEEP_FILE, 'utf8'); } catch { return new Set(); }
-  return new Set(src.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
+  return new Set(src.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && !l.startsWith('@dyn ')));
+}
+
+/** Цэгийн түлхүүр: файл + илэрхийллийн ЭХНИЙ мөр (мөрийн дугааргүй), зайг нэгтгэсэн */
+const siteKey = (s) => s.split('\n')[0].replace(/:\d+(?=\s)/, '').replace(/\s+/g, ' ').trim();
+
+/** Бүртгэгдсэн динамик ЦЭГҮҮД: `@dyn <файл>  tr(<илэрхийлэл>)` → «файл tr(…)» */
+export function readKeepSites() {
+  let src = '';
+  try { src = readFileSync(KEEP_FILE, 'utf8'); } catch { return new Set(); }
+  return new Set(src.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('@dyn '))
+    .map((l) => siteKey(l.slice(5))));
 }
 
 function walk(d, acc = []) {
@@ -141,11 +161,26 @@ if (keepMissing.length && !argv.includes('--json')) {
 const missing = [...keys.keys()].filter((k) => !(k in dict));
 const unused = Object.keys(dict).filter((k) => !used(k));
 
+/* ⚠️ 2026-09-30: `@dyn` бүртгэлтэй цэг «шалгагдсан»; keep-д байгаа ч кодод алга
+   болсон цэг — сануулга (илэрхийлэл өөрчлөгдсөн бол шинээр бүртгэнэ). */
+const keepSites = readKeepSites();
+const dynUnchecked = dynamicCalls.filter((d) => !keepSites.has(siteKey(d)));
+const codeSites = new Set(dynamicCalls.map(siteKey));
+const staleSites = [...keepSites].filter((k) => !codeSites.has(k));
+if (staleSites.length && !argv.includes('--json')) {
+  console.warn('⚠️ i18n-keep.txt-ийн ' + staleSites.length + ' @dyn цэг кодод алга (хуучирсан):');
+  staleSites.slice(0, 10).forEach((k) => console.warn('   ' + k));
+}
+
 if (argv.includes('--json')) {
   console.log(JSON.stringify(missing, null, 1));
+} else if (argv.includes('--dynamic-all')) {
+  dynamicCalls.forEach((d) => console.log((keepSites.has(siteKey(d)) ? '✓ ' : '  ') + d));
+  console.log('\nДинамик tr(x) дуудалт: ' + dynamicCalls.length + ' · @dyn бүртгэгдсэн ' + (dynamicCalls.length - dynUnchecked.length));
 } else if (argv.includes('--dynamic')) {
-  dynamicCalls.forEach((d) => console.log(d));
-  console.log('\nДинамик tr(x) дуудалт: ' + dynamicCalls.length);
+  dynUnchecked.forEach((d) => console.log(d));
+  console.log('\nДинамик tr(x) дуудалт: ' + dynamicCalls.length + ' · @dyn бүртгэгдсэн ' + (dynamicCalls.length - dynUnchecked.length)
+    + ' · шалгагдаагүй ' + dynUnchecked.length + ' (дээр) — утгыг нь шалгаад `@dyn <файл>  tr(…)` мөрөөр i18n-keep.txt-д бүртгэнэ');
 } else if (argv.includes('--prune')) {
   const kept = Object.fromEntries(Object.entries(dict).filter(([k]) => used(k)));
   const head = readFileSync(DICT_FILE, 'utf8').split('const en:')[0];
@@ -159,7 +194,8 @@ if (argv.includes('--json')) {
   console.log('Толины ИЛҮҮДЭЛ (хоцорсон):    ' + unused.length);
   /* ⚠️ Унагахгүй — утга нь ажиллах үед л мэдэгдэнэ. Гэхдээ «ДУТУУ 0» нь эдгээрийг
      хамраагүйг ил хэлнэ (`--dynamic` жагсаана). */
-  console.log('Динамик tr(x) (шалгагдаагүй): ' + dynamicCalls.length
+  console.log('Динамик tr(x) (шалгагдаагүй): ' + dynUnchecked.length
+    + ' (нийт ' + dynamicCalls.length + ' · @dyn бүртгэгдсэн ' + (dynamicCalls.length - dynUnchecked.length) + ')'
     + ' — утгыг i18n-keep.txt + en.ts / enData.ts-д бүртгэнэ (--dynamic)');
   if (unused.length) {
     console.log('\n⚠️ Хоцорсон түлхүүрүүд — эх текст нь өөрчлөгдсөн байж магадгүй:');

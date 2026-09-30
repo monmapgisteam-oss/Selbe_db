@@ -31,13 +31,13 @@ export type BuildingCat =
   | 'hospital' | 'office' | 'service' | 'other';
 
 export const CAT_LABEL: Record<BuildingCat, string> = {
-  residential: tr('Орон сууц'),
-  school: tr('Сургууль'),
-  kindergarten: tr('Цэцэрлэг'),
-  hospital: tr('Эмнэлэг'),
-  office: tr('Оффис'),
-  service: tr('Худалдаа, үйлчилгээ'),
-  other: tr('Бусад'),
+  get residential() { return tr('Орон сууц'); },
+  get school() { return tr('Сургууль'); },
+  get kindergarten() { return tr('Цэцэрлэг'); },
+  get hospital() { return tr('Эмнэлэг'); },
+  get office() { return tr('Оффис'); },
+  get service() { return tr('Худалдаа, үйлчилгээ'); },
+  get other() { return tr('Бусад'); },
 };
 
 /**
@@ -130,7 +130,7 @@ export function busBand(distM: number): BusBand {
 }
 
 export const BUS_BAND_LABEL: Record<BusBand, string> = {
-  good: tr('Сайн хүртээмж (≤400 м)'),
-  ok: tr('Боломжийн (400–800 м)'),
-  poor: tr('Үйлчилгээ дутмаг (>800 м)'),
+  get good() { return tr('Сайн хүртээмж (≤400 м)'); },
+  get ok() { return tr('Боломжийн (400–800 м)'); },
+  get poor() { return tr('Үйлчилгээ дутмаг (>800 м)'); },
 };

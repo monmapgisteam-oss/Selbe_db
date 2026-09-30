@@ -39,8 +39,13 @@ import { AUTH, ROLE_BY_USER } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
+   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
+   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
+import { invalidate } from './dataBus';
+import { cached } from '@/lib/live';
 
 /** Илгээлтийн төлөв */
 export const OBYEM_STATUS = {
@@ -125,18 +130,6 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-/**
- * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + `{error:{…}}` биеэр буцаадаг — шалгахгүй бол
- * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ.
- */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
-     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
-     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
-  return arcgisPost(url, params);
-}
-
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
 /** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
@@ -171,7 +164,7 @@ let ownerMismatch = false;
  * батлах зам нээх байлаа.
  */
 async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
+  const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
     /*
@@ -219,7 +212,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
     allowGeometryUpdates: false,
     units: 'esriMeters',
   };
-  const created = await req(
+  const created = await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/createService`,
     { token, createParameters: JSON.stringify(createParameters), outputType: 'featureService' },
   );
@@ -249,8 +242,8 @@ async function createTable(token: string, user: string): Promise<string | null> 
       ],
     }],
   };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  await req(
+  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
+  await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`,
     { token, org: 'true', everyone: 'false' },
   );
@@ -324,7 +317,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   if (!url) return [];
   const out: Attrs[] = [];
   for (let off = 0; ; off += 1000) {
-    const j = await req(`${url}/query`, {
+    const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
       returnGeometry: 'false',
@@ -478,13 +471,13 @@ export async function submitObyem(args: {
     [F.payload]: JSON.stringify(args.payload),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.addResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('OBYEM_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -585,13 +578,13 @@ export async function decideObyem(args: {
     [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('OBYEM_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -606,6 +599,14 @@ export async function decideObyem(args: {
  * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, эрх/хуваарилалт
  *    уншигдаагүй, хүснэгт алга, сүлжээ унасан). ⚠️ Хүснэгт ҮҮСГЭХГҮЙ.
  */
+/**
+ * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `OBYEM_BATLAH` тагтай богино
+ *    кэш (`huvaariBatlah.loadBadgePending`-тэй ижил шалтгаан). Бичих зам бүр
+ *    `invalidate('OBYEM_BATLAH')` дууддаг; `loadAllPending` өөрөө кэшлэгдэхгүй.
+ */
+const BADGE_TTL = 60_000;
+const loadBadgePending = cached(loadAllPending, BADGE_TTL, ['OBYEM_BATLAH']);
+
 export async function countObyemPending(username: string | null | undefined): Promise<number | null> {
   try {
     const me = (username ?? '').trim().toLowerCase();
@@ -616,7 +617,7 @@ export async function countObyemPending(username: string | null | undefined): Pr
     if (!(await obyemTableReady(false))) return null;
     const sc = AUTH.appId ? obyemScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
-    const rows = await loadAllPending();
+    const rows = await loadBadgePending();
     return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author.trim().toLowerCase() !== me).length;
   } catch {
     return null;

@@ -24,9 +24,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
 const src = readFileSync(new URL('./registry.ts', import.meta.url), 'utf8');
-const services = readFileSync(new URL('../services.ts', import.meta.url), 'utf8');
+const services = readFileSync(new URL('../services/views.ts', import.meta.url), 'utf8');
 
-/* ViewKey нэгдэл — services.ts-ээс */
+/* ViewKey нэгдэл — services/views.ts-ээс (⚠️ 2026-09-30: services.ts хуваагдсан) */
 const vkAt = services.indexOf('export type ViewKey');
 assert.ok(vkAt > 0, 'ViewKey олдсонгүй');
 const vkBlock = services.slice(vkAt, services.indexOf(';', vkAt));
@@ -34,7 +34,9 @@ const VIEW_KEYS = new Set([...vkBlock.matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1
 assert.ok(VIEW_KEYS.size > 10, 'ViewKey уншигдсангүй');
 
 /* Картууд */
-const cards = [...src.matchAll(/\{\s*key:\s*'([^']+)',[^}]*?view:\s*'([^']+)',\s*load:\s*(\w+)/g)]
+/* ⚠️ 2026-09-30: `title` нь getter (`get title() { return tr('…'); }`) тул `key`…`view`
+   хооронд нэг `{ … }` блок бий — `[^}]*?` оронд getter-ийн биеийг зөвшөөрнө. */
+const cards = [...src.matchAll(/\{\s*key:\s*'([^']+)',(?:[^{}]|\{[^{}]*\})*?view:\s*'([^']+)',\s*load:\s*(\w+)/g)]
   .map((m) => ({ key: m[1], view: m[2], load: m[3] }));
 assert.ok(cards.length >= 12, `карт хэт цөөн олдов (${cards.length}) — хэв шинж эвдэрсэн байж магадгүй`);
 

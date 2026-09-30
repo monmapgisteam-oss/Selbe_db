@@ -125,7 +125,10 @@ export function PkgProg({ dim, setDim }: {
    * ⚠️ Горим тус бүр ӨӨРИЙН өргөнтэй: санхүүгийн баруун багана нь графиктай,
    * гүйцэтгэлийнх нь блокийн урт жагсаалттай — нэг утга хоёуланд тохирохгүй.
    */
-  const side = useSideResize('pkgProg');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('pkgProg');
   const q = useBuildings();
   const finQ = useAsync<FinData>(loadFinData, []);
   const { zoomToWhere, setHighlight } = useMap();
@@ -160,6 +163,7 @@ export function PkgProg({ dim, setDim }: {
   const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setOverlap(null);
     /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
        өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
@@ -217,8 +221,14 @@ export function PkgProg({ dim, setDim }: {
    * `oid` нь блокийн OID эсвэл давхцлын зурвасын түлхүүр (`'overlap'`).
    */
   const [cardSel, setCardSel] = useState<{ key: string; oid: string } | null>(null);
-  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй */
-  useEffect(() => { setOvPick(null); setCardSel(null); }, [active]);
+  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй.
+     ⚠️ 2026-09-30: эффект биш, RENDER дунд — `active` солигдсон тэр render-т л. */
+  const [selActive, setSelActive] = useState(active);
+  if (selActive !== active) {
+    setSelActive(active);
+    setOvPick(null);
+    setCardSel(null);
+  }
 
   /** Сонгогдсон багц — түүний давхаргууд зурагт нэмэгдэнэ */
   const ovPack = useMemo(
@@ -249,6 +259,7 @@ export function PkgProg({ dim, setDim }: {
   useEffect(() => {
     let alive = true;
     const builds = packs.filter((pk) => pk.kind === 'build');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     if (!builds.length) { setOvByPack(new Map()); return; }
     Promise.allSettled(
       builds.map(async (pk) => [
@@ -654,7 +665,7 @@ export function PkgProg({ dim, setDim }: {
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       /* ⚠️ Горимын класс — хоёр харагдац бүтцээрээ ижил тул ялгах ЦОРЫН ГАНЦ
          дохио нь өнгө. Хэрэглэгч табаа сольсноо мэдэхгүй бол санхүүгийн тоог
          гүйцэтгэл гэж уншина. */

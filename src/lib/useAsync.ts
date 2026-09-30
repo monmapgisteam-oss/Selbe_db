@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useRef, useSyncExternalStore } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { dataVersion, subscribeData } from '@/lib/dataBus';
 
 export type Async<T> = (
@@ -66,7 +67,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], opts?: AsyncO
   const retry = useCallback(() => setNonce((n) => n + 1), []);
   // fn нь рендер бүрт шинэ функц — deps-ээр л дахин ажиллана
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  useSyncRef(fnRef, fn);
 
   /**
    * ⚠️ ХУУЧИН УТГЫГ БАРЬЖ ДАХИН ТАТНА (stale-while-revalidate).

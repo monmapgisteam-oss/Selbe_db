@@ -53,7 +53,29 @@ const MAX_BODY = 2 * 1024 * 1024;
  * хүчинтэй байдал дуусна.
  */
 const TOKEN_TTL = 5 * 60 * 1000;
+/**
+ * ⚠️ 2026-09-30: кэшийн ДЭЭД ХЭМЖЭЭ (хамгийн хуучныг хаяна) ба нэвтрэлт УНАСАН
+ *    токеныг кэшээс ШУУД хасна — ArcGIS 498/401 (хугацаа дууссан, хураагдсан)
+ *    хариулсан агшнаас тэр токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй.
+ */
+const VERIFIED_MAX = 500;
 const verified = new Map();
+
+/**
+ * ⚠️ 2026-09-30: НУУЦ ТҮЛХҮҮРИЙГ ТОГТМОЛ ХУГАЦААНД харьцуулна (`x-bot-secret`).
+ *    `===` нь эхний зөрсөн байтад зогсдог тул хариу өгөх хугацаанаас нууцыг
+ *    байт байтаар таах онолын боломж (timing attack) үлддэг. Урт зөрвөл ч бүх
+ *    байтыг гүйлгэнэ — хугацаа зөвхөн `a`-гийн уртаас хамаарна.
+ *    (`server.mjs`-д `crypto.timingSafeEqual` — толин хувилбар.)
+ */
+function secretMatches(given, expected) {
+  if (typeof given !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const a = new TextEncoder().encode(expected);
+  const b = new TextEncoder().encode(given);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ (b[i % b.length] ?? 0);
+  return diff === 0;
+}
 
 /**
  * ⚠️ БУЛААЛТААС ХАМГААЛАХ — нэг дуудагчийн (баталгаажсан ArcGIS хэрэглэгч, эс
@@ -148,19 +170,25 @@ async function checkArcGIS(token, env) {
     });
     data = await res.json();
   } catch {
+    verified.delete(token);
     return { ok: false, reason: 'Нэвтрэлт шалгах үйлчилгээ хариу өгсөнгүй' };
   }
 
   // ⚠️ ArcGIS буруу токенд ч HTTP 200 буцаадаг — биед нь `error` ирнэ
   if (!data || data.error || !data.username) {
+    verified.delete(token);
     return { ok: false, reason: 'Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна' };
   }
 
   const wantOrg = env.ARCGIS_ORG_ID?.trim();
   if (wantOrg && data.orgId !== wantOrg) {
+    verified.delete(token);
     return { ok: false, reason: 'Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна' };
   }
 
+  /* ⚠️ Дээд хэмжээ — Map оруулсан дарааллаа хадгалдаг тул эхнийх нь хамгийн хуучин */
+  verified.delete(token);
+  while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
   verified.set(token, { username: data.username, until: Date.now() + TOKEN_TTL });
   return { ok: true, username: data.username };
 }
@@ -214,7 +242,7 @@ export default {
      * Ботын хэн ашиглах эрхийг ботын ӨӨРИЙН цагаан жагсаалт (`tools/telegram-bot.mjs`)
      * барина. `BOT_SECRET` тохируулаагүй бол зан төлөв огт өөрчлөгдөхгүй.
      */
-    const isBot = env.BOT_SECRET && request.headers.get('x-bot-secret') === env.BOT_SECRET;
+    const isBot = Boolean(env.BOT_SECRET) && secretMatches(request.headers.get('x-bot-secret'), env.BOT_SECRET);
 
     /*
      * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр

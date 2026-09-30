@@ -188,6 +188,7 @@ export function Chanar() {
     }
   }, [isSuper]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refresh` нь ачааллын төлөвийг синхрон тавиад татна
   useEffect(() => { void refresh(); }, [refresh]);
 
   /* ⚠️ 2026-09-25: НООРОГ ЗӨВХӨН ЗОХИОГЧИД (эсвэл super) — `visibleInPkg` */
@@ -267,6 +268,7 @@ export function Chanar() {
     /* ⚠️ `setEdit(false)` ЭНД БАЙХГҮЙ (2026-09-16 аудит): `startNew` нь
        `setSel(null); setEdit(true)` дуудахад энэ салбар шинэ маягтыг хаадаг байв. */
     /* ⚠️ Хянагчийн тайлбар баримт бүрд ТУСДАА (2026-09-25 аудит). */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setRNote(''); setPerMat({}); setClientDraft(null); setAnDeadline(''); setRevNote('');
     setCorr({ text: '', completedAt: null, steps: [] });
     setNcrClose(emptyNcrClose());
@@ -304,6 +306,7 @@ export function Chanar() {
     setAtts(ls.flat());
   }, [attIds]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     if (!attIds.length) { setAtts([]); return; }
     let live = true;
     void Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))))

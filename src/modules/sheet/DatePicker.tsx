@@ -11,12 +11,12 @@
 // хадгалагддаг тул орон нутгийн цагаар бодвол өдөр нэгээр гулсана.
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent } from "react";
-import { t as tr } from "@/lib/i18nCore";
+import { t as tr, perLocale } from "@/lib/i18nCore";
 import st from "./sheet.module.css";
 
 const DAY = 86_400_000;
 /** Даваагаар эхэлсэн 7 хоног — монголд хэвшсэн дараалал. */
-const WD = [tr('Да'), tr('Мя'), tr('Лх'), tr('Пү'), tr('Ба'), tr('Бя'), tr('Ня')];
+const WD = perLocale(() => [tr('Да'), tr('Мя'), tr('Лх'), tr('Пү'), tr('Ба'), tr('Бя'), tr('Ня')]);
 
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /** Орон нутгийн «өнөөдөр»-ийг UTC шөнө дунд болгож буулгана. */
@@ -195,7 +195,7 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
       </div>
 
       <div className={st.calGrid} onKeyDown={gridKey}>
-        {WD.map((w) => (
+        {WD().map((w) => (
           <span key={w} className={st.calWd}>{w}</span>
         ))}
         {Array.from({ length: 42 }, (_, i) => {

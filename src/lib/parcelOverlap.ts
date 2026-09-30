@@ -19,8 +19,7 @@
  */
 
 import { PARCEL_LEFT, LAYER_BY_ID, parcelLeftWhere } from './services';
-import { tokenParam, tokenQs } from '@/lib/authToken';
-import { withSlot } from './query';
+import { arcgisPost } from './query';
 import { register } from './dataBus';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -59,27 +58,18 @@ export type Overlap = {
 /* ⚠️ withSlot (2026-08-21 гүйцэтгэлийн аудит): энэ модулийн fetch нь query.ts-ийн
    6 слотын хязгаарлагчийг ТОЙРЧ гардаг байсан тул нүүр хуудасны ~53 давхцлын
    ажил зэрэг бууж ArcGIS «Too many requests» өдөөж, бусад картын асуулгыг
-   хардаг байв. Одоо бүх хүсэлт нэг дарааллаар шатлан явна. */
-async function post(url: string, params: Record<string, string>) {
-  return withSlot(async () => {
-    const res = await fetch(`${url}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ...tokenParam(), ...params, f: 'json' }),
-    });
-    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-    const j = await res.json();
-    if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-    return j;
-  });
-}
+   хардаг байв. Одоо бүх хүсэлт нэг дарааллаар шатлан явна.
+   ⚠️ 2026-09-30: слотыг `query.arcgisPost` өөрөө авна (мөн timeout · 429 backoff ·
+   498 шинэчлэлт) — гаднаас `withSlot`-оор ДАВХАР ороохгүй (слот дуусахад гацна). */
+const post = (url: string, params: Record<string, string>) =>
+  arcgisPost<{ features?: unknown[]; exceededTransferLimit?: boolean; objectIds?: number[] }>(`${url}/query`, params);
 
 /** Парселийн давхаргын проекц — нэг л удаа асууж кэшлэнэ. */
 let srCache: Promise<number> | null = null;
 function parcelSR(): Promise<number> {
   if (!srCache)
-    srCache = fetch(`${PARCEL_LEFT.url}?f=json${tokenQs()}`)
-      .then((r) => r.json())
+    /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`?f=json` метаг POST-оор) */
+    srCache = arcgisPost<{ extent?: { spatialReference?: { wkid?: number; latestWkid?: number } } }>(PARCEL_LEFT.url, {})
       .then((m) => {
         const sr = m?.extent?.spatialReference;
         return Number(sr?.wkid ?? sr?.latestWkid) || 32648;
@@ -103,13 +93,12 @@ const oidCache = new Map<string, Promise<LayerMeta>>();
 function oidFieldOf(url: string): Promise<LayerMeta> {
   let p = oidCache.get(url);
   if (!p) {
-    p = fetch(`${url}?f=json${tokenQs()}`)
-      .then((r) => r.json())
-      .then((m: {
-        objectIdField?: string;
-        fields?: { name: string; type: string }[];
-        advancedQueryCapabilities?: { supportsPagination?: boolean };
-      }) => ({
+    p = arcgisPost<{
+      objectIdField?: string;
+      fields?: { name: string; type: string }[];
+      advancedQueryCapabilities?: { supportsPagination?: boolean };
+    }>(url, {})
+      .then((m) => ({
         oid: m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID',
         paging: m?.advancedQueryCapabilities?.supportsPagination !== false,
       }))

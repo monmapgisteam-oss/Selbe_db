@@ -142,6 +142,7 @@ export function HuvaariBatlah({
   /* ══════════════════════ ТАТАХ ══════════════════════ */
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: ArcGIS-ээс дарааллыг ачаалах эффект — «ачаалж байна» төлөв нь гадаад эх сурвалжтай синк; дериваци боломжгүй
     setSt({ k: 'loading' });
     void (async () => {
       try {

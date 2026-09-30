@@ -19,6 +19,7 @@ import {
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
+import { housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
@@ -127,13 +128,18 @@ const pkgSrcKey = (
  *    бүх эх сурвалжид хэмжилтгүй сард `null` ХЭВЭЭР үлдэнэ (0 гэж зурахгүй).
  *
  * ⚠️ 2026-09-25 (аудит 8): олон эх сурвалжийн `phys` — `aggregateMonths`-тай
- *    ИЖИЛ дүрэм: эх бүрийн СҮҮЛИЙН мэдэгдэж буй утга (as-of) БЛОКИЙН ТООГООР
- *    (`FinData.physCnt`) жигнэгдэнэ; цэг нь аль нэг эх тэр сард ШИНЭЭР
- *    тайлагнасан үед л гарна. Урьд нь тухайн сард цэгтэй эхүүдийн ЭНГИЙН
- *    дундаж байсан — `buildPhys` сийрэг болсноос хойш нэг жижиг эх л
- *    тайлагнасан сард бүхэл багцын хувь тэр эхийнх болж ҮСЭРНЭ (одоогийн
- *    өгөгдөлд олон гэрээт багц бүр нэг эхтэй тул далд, гэхдээ БАГЦ-3 мэт
- *    үндсэн түлхүүр жагсаалтад орох мөчид ил болно).
+ *    ИЖИЛ дүрэм: эх бүрийн СҮҮЛИЙН мэдэгдэж буй утга (as-of); цэг нь аль нэг
+ *    эх тэр сард ШИНЭЭР тайлагнасан үед л гарна. Урьд нь тухайн сард цэгтэй
+ *    эхүүдийн ЭНГИЙН дундаж байсан — `buildPhys` сийрэг болсноос хойш нэг
+ *    жижиг эх л тайлагнасан сард бүхэл багцын хувь тэр эхийнх болж ҮСЭРНЭ
+ *    (одоогийн өгөгдөлд олон гэрээт багц бүр нэг эхтэй тул далд, гэхдээ БАГЦ-3
+ *    мэт үндсэн түлхүүр жагсаалтад орох мөчид ил болно).
+ * ⚠️ 2026-09-30 (хэрэглэгчийн шийдвэр — орон сууцны гүйцэтгэл ГАНЦ томьёотой):
+ *    нэгтгэл нь `gdash.housingSeries` ӨӨРӨӨ — `aggregateMonths`-ийн ЯГ тэр код,
+ *    зөвхөн энэ багцын эхүүдээр. Жин = ХО ДҮН (`pkgCostWeight`), блокийн тоо
+ *    зөвхөн нөөц; хараахан тайлагнаагүй эх 0% (as-of, finPhys дүрэм 1) —
+ *    урьд нь энд блокоор жигнэж, тайлагнаагүй эхийг хасдаг тул төслийн
+ *    цуваанаас (PkgProg · Dashboard · ExecReport) ӨӨР дүрэмтэй байв.
  */
 function mergePkgMonths(
   rows: FinData['contracts'],
@@ -142,8 +148,6 @@ function mergePkgMonths(
   if (!rows.length) return null;
   if (rows.length === 1) return contractMonths(rows[0], d);
   const given = new Map<string, number>();    // сар → олгосон ₮
-  /** phys эх бүр: сар → { утга, хэмжилтийн огноо } (зөвхөн шинэ бичилттэй сар) */
-  const physSrc: { pts: Map<string, { v: number; at: string | null }>; w: number }[] = [];
   const seenGiven = new Set<string>();
   const seenPhys = new Set<string>();
   rows.forEach((r) => {
@@ -151,19 +155,13 @@ function mergePkgMonths(
     const givenK = pkgSrcKey(r, d.given);
     const givenNew = givenK != null && !seenGiven.has(givenK);
     if (givenNew) seenGiven.add(givenK);
+    /* Эх түлхүүрийн давхардал `Set`-ээр хасагдана — хоёр гэрээ нэг эхэд унавал нэг л удаа */
     const physK = pkgSrcKey(r, d.phys);
-    const physNew = physK != null && !seenPhys.has(physK);
-    if (physNew) seenPhys.add(physK);
-    /* Жин = тэр эхийн блокийн тоо (`physCnt`-ийн хамгийн их утга — `aggregateMonths`-тай ижил) */
-    let w = 1;
-    if (physNew) d.physCnt.get(physK as string)?.forEach((v) => { if (v > w) w = v; });
-    const pts = new Map<string, { v: number; at: string | null }>();
+    if (physK != null) seenPhys.add(physK);
     for (const m of ms) {
       if (!given.has(m.label)) given.set(m.label, 0);
       if (givenNew) given.set(m.label, (given.get(m.label) ?? 0) + m.given);
-      if (physNew && m.phys != null) pts.set(m.label, { v: m.phys, at: m.physAt ?? null });
     }
-    if (physNew && pts.size) physSrc.push({ pts, w });
   });
   /*
    * ⚠️ 2026-09-04 (аудит): `MonthPt.pkg`-ийг НЭГТГЭСЭН цуваанд ЗААВАЛ
@@ -189,33 +187,21 @@ function mergePkgMonths(
 
   /* «YYYY-MM» тул үсгэн эрэмбэ = цаг хугацааны эрэмбэ */
   const labels = [...given.keys()].sort();
-  /** эх бүрийн сүүлийн мэдэгдэж буй утга (as-of) — тэнхлэгийн дарааллаар урагш */
-  const last = new Map<number, { v: number; at: string | null }>();
-  return labels.map((label) => {
-    let fresh = false;
-    let sum = 0;
-    let wsum = 0;
-    let at = '';
-    physSrc.forEach((x, i) => {
-      const pt = x.pts.get(label);
-      if (pt) { last.set(i, pt); fresh = true; }
-      const cur = last.get(i);
-      if (!cur) return; // хараахан тайлагнаагүй эх — дунджид орохгүй
-      sum += cur.v * x.w;
-      wsum += x.w;
-      if (cur.at && cur.at > at) at = cur.at;
-    });
-    return {
-      label,
-      given: given.get(label) ?? 0,
-      /* ⚠️ Аль нэг эх шинээр тайлагнасан сард л цэг — бусад сар `null` (0 биш) */
-      phys: fresh && wsum > 0 ? sum / wsum : null,
-      /* ⚠️ 2026-09-25: `lagOf` төлөвлөгөөг хэмжилтийн ӨДРӨӨР завсарлана */
-      physAt: fresh && at ? at : null,
-      // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
-      pkg: physKey,
-    };
-  });
+  /* ⚠️ 2026-09-30: ЗӨВХӨН энэ багцын эхүүд — `housingSeries` (`aggregateMonths`-тай
+     нэг код, нэг жин `pkgCostWeight`). Аль нэг эх шинээр тайлагнасан сард л цэг,
+     бусад сар `null` (0 биш); `physAt` — `lagOf` төлөвлөгөөг хэмжилтийн ӨДРӨӨР завсарлана. */
+  const only = <V,>(src: Map<string, V>): Map<string, V> =>
+    new Map([...seenPhys].flatMap((k) => { const v = src.get(k); return v ? [[k, v] as const] : []; }));
+  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
+  const series = housingSeries(only(d.phys), only(d.physCnt), only(d.physAt), cost, labels);
+  return series.map((s) => ({
+    label: s.label,
+    given: given.get(s.label) ?? 0,
+    phys: s.phys,
+    physAt: s.physAt,
+    // ⚠️ Дээрх ⚠️-г үзнэ үү — энэ талбарыг ХЭЗЭЭ Ч бүү хас.
+    pkg: physKey,
+  }));
 }
 
 /**
@@ -428,7 +414,10 @@ export function PkgFin({ dim, setDim }: {
    * ⚠️ Горим тус бүр ӨӨРИЙН өргөнтэй: санхүүгийн баруун багана нь графиктай,
    * гүйцэтгэлийнх нь блокийн урт жагсаалттай — нэг утга хоёуланд тохирохгүй.
    */
-  const side = useSideResize('pkgFin');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв (PkgProg-той ижил). */
+  const { hostRef: sideHostRef, ...side } = useSideResize('pkgFin');
   const q = useBuildings();
   const finRaw = useAsync<FinData>(loadFinData, []);
   /**
@@ -492,6 +481,10 @@ export function PkgFin({ dim, setDim }: {
   useEffect(() => {
     try {
       const v = Number(localStorage.getItem(FIN_H_LS));
+      /* ⚠️ 2026-09-30: `useState`-ийн lazy initializer-т уншвал статик export-ын
+         сервер/клиент HTML зөрж hydration эвдэрнэ — localStorage ЗӨВХӨН mount-ын
+         дараа; тиймээс энэ setState нь санаатай (нэг удаагийн зөв тохируулга). */
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- дээрх ⚠️
       if (Number.isFinite(v) && v >= FIN_H_MIN && v <= FIN_H_MAX) setFinH(v);
     } catch { /* хувийн горим */ }
   }, []);
@@ -833,7 +826,7 @@ export function PkgFin({ dim, setDim }: {
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       /* ⚠️ Горимын класс — хоёр харагдац бүтцээрээ ижил тул ялгах ЦОРЫН ГАНЦ
          дохио нь өнгө. Хэрэглэгч табаа сольсноо мэдэхгүй бол санхүүгийн тоог
          гүйцэтгэл гэж уншина. */

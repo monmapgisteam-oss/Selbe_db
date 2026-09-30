@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
@@ -380,7 +381,7 @@ export function SuitMap({
 
   // Callback-уудыг ref-ээр — эффектийг дахин ажиллуулахгүйгээр шинэчилнэ
   const cb = useRef({ colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick });
-  cb.current = { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick };
+  useSyncRef(cb, { colorOf, shown, zoneTip, buildingTip, transportTip, onSelect, rows, onBldClick });
 
   /** Панелийг заагчийн хажууд, зургийн хүрээнээс гарахгүйгээр */
   function placeTip(tip: HTMLDivElement, x: number, y: number) {

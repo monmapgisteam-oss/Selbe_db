@@ -623,12 +623,12 @@ function Diagram({
 /** «Ерөнхий» схемийн картууд — топологийн дараалалтай */
 const COARSE_CARDS: Card[] = topoOrder().map((id) => {
   const n = NODE_BY_ID[id];
-  return { id, group: id, title: n.title, desc: n.desc, icon: n.icon, view: n.view, col: n.col, row: n.row };
+  return { id, group: id, get title() { return n.title; }, get desc() { return n.desc; }, icon: n.icon, view: n.view, col: n.col, row: n.row };
 });
 /** «Дэлгэрэнгүй» схемийн 26 карт */
 const FINE_CARDS: Card[] = fineOrder().map((id) => {
   const n = FINE_BY_ID[id];
-  return { id, group: n.group, title: n.title, desc: n.desc, icon: n.icon, view: n.view, col: n.col, row: n.row };
+  return { id, group: n.group, get title() { return n.title; }, get desc() { return n.desc; }, icon: n.icon, view: n.view, col: n.col, row: n.row };
 });
 
 /* ⚠️ Топологи бүрэн зурагдаж байгаа эсэх — карт мартвал ажиллах үед биш ЭНД */

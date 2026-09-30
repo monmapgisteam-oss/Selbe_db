@@ -1691,7 +1691,12 @@ export function Trend({
 
   // ⚠️ Цуваа солигдоход (grain/хамрах хүрээ) хуучин hov хүчингүй болно — цэгийн
   //    товч unmount болоход React blur/mouseleave өгдөггүй тул энд цэвэрлэнэ.
-  useEffect(() => setHov(null), [points.length]);
+  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд — цуваа солигдсон тэр render-т hov тэглэгдэнэ. */
+  const [hovLen, setHovLen] = useState(points.length);
+  if (hovLen !== points.length) {
+    setHovLen(points.length);
+    setHov(null);
+  }
 
   /**
    * ⚠️ Анхны харагдац нь СҮҮЛИЙН заалт байх ёстой: цаг хугацааны цуваанд

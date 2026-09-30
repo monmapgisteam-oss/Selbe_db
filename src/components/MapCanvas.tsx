@@ -4,6 +4,7 @@ import {
   createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode,
 } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import Map from '@arcgis/core/Map';
 import { t as tr } from '@/lib/i18nCore';
 import MapView from '@arcgis/core/views/MapView';
@@ -1766,13 +1767,13 @@ export const MapCanvas = memo(function MapCanvas({
   const sketchVMRef = useRef<SketchViewModel | null>(null);
   /* ⚠️ Зурах төрлийг REF-ээр — deps-д оруулбал төрөл солих бүрд зураалт эхэлнэ */
   const drawKindRef = useRef(drawKind);
-  drawKindRef.current = drawKind;
+  useSyncRef(drawKindRef, drawKind);
   const pickRef = useRef(onPick);
-  pickRef.current = onPick;
+  useSyncRef(pickRef, onPick);
   const onSketchRef = useRef(onSketch);
-  onSketchRef.current = onSketch;
+  useSyncRef(onSketchRef, onSketch);
   const onSketchCancelRef = useRef(onSketchCancel);
-  onSketchCancelRef.current = onSketchCancel;
+  useSyncRef(onSketchCancelRef, onSketchCancel);
   /**
    * ӨӨРСДИЙН цуцлалтын туг — `svm.cancel()` нь `create`-ийн `cancel` үйл явдлыг
    * СИНХРОН гаргадаг (`OperationHandle.cancel → complete → emit`), тиймээс
@@ -1780,9 +1781,9 @@ export const MapCanvas = memo(function MapCanvas({
    */
   const selfCancelRef = useRef(false);
   const onReshapeRef = useRef(onReshape);
-  onReshapeRef.current = onReshape;
+  useSyncRef(onReshapeRef, onReshape);
   const reshapeGeomRef = useRef(reshapeGeometry);
-  reshapeGeomRef.current = reshapeGeometry;
+  useSyncRef(reshapeGeomRef, reshapeGeometry);
   /** Давхарга бүрийн БҮТЭЭГДЭХ (build-time) тунгалаг — override арилахад буцаана */
   const defaultOpacityRef = useRef<Record<string, number>>({});
   /** Сүүлд ил байсан давхаргын id-ууд — шинээр ил болсныг илрүүлэхэд */
@@ -1945,7 +1946,7 @@ export const MapCanvas = memo(function MapCanvas({
 
   const register = useContext(RegisterCtx);
   const registerRef = useRef(register);
-  registerRef.current = register;
+  useSyncRef(registerRef, register);
 
 
 
@@ -1960,7 +1961,7 @@ export const MapCanvas = memo(function MapCanvas({
    * утгыг унших ёстой. Мөн «Суурь зураг» товчны чагтыг синк болгоно.
    */
   const orthoRef = useRef(ortho);
-  orthoRef.current = ortho;
+  useSyncRef(orthoRef, ortho);
   const orthoChkRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (orthoChkRef.current) orthoChkRef.current.checked = ortho;
@@ -2002,7 +2003,7 @@ export const MapCanvas = memo(function MapCanvas({
     }
   });
   const meshVerRef = useRef(meshVer);
-  meshVerRef.current = meshVer;
+  useSyncRef(meshVerRef, meshVer);
   const pickMeshVer = useCallback((v: MeshVer) => {
     setMeshVer(v);
     try { window.localStorage.setItem(MESH_VER_KEY, v); } catch { /* хадгалахгүй ч ажиллана */ }
@@ -2028,7 +2029,7 @@ export const MapCanvas = memo(function MapCanvas({
     });
   }, []);
   const toggleFsRef = useRef(toggleFs);
-  toggleFsRef.current = toggleFs;
+  useSyncRef(toggleFsRef, toggleFs);
   useEffect(() => {
     const onChange = () => { if (!document.fullscreenElement) setFs(false); };
     document.addEventListener('fullscreenchange', onChange);
@@ -2783,6 +2784,7 @@ export const MapCanvas = memo(function MapCanvas({
       (view as unknown as { map: Map | null }).map = null;
       view.destroy();
       viewRef.current = null;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- ⚠️ 2026-09-30: cleanup нь view устах агшны ХАМГИЙН СҮҮЛИЙН `register`-ийг санаатай дуудна (ref нь DOM биш, callback)
       registerRef.current(null);
     };
     // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
@@ -3899,8 +3901,8 @@ export const MapCanvas = memo(function MapCanvas({
    *   давхарга ил үлдэж, гогцоо өөрөө хэзээ ч зогсдоггүй байв).
    */
   // `pulseLayer` нь тогтвортой лавлагаатай (useCallback) тул props-ыг ref-ээр уншина.
-  pulseIdsRef.current = pulseIds ?? [];
-  layerStyleRef.current = layerStyle ?? {};
+  useSyncRef(pulseIdsRef, pulseIds ?? []);
+  useSyncRef(layerStyleRef, layerStyle ?? {});
 
   const pulseLayer = useCallback((layer: Layer) => {
     const map = mapRef.current;
@@ -4464,6 +4466,7 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !ready) return;
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
     // Давхарга унтрахад алдааны тэмдгийг хамт нууна — хамааралгүй сануулга үлдэхгүй
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: давхарга унтрахад алдааны тэмдгийг синхрон нууна — ArcGIS давхаргын амьдралын мөчлөгтэй нэг эффектэд
     if (!on.has('mon:building')) { setProgError(false); return; }
     const layer = map.findLayerById('mon:building') as FeatureLayer | null;
     if (!layer) return;

@@ -12,10 +12,10 @@ const cls = (names: string) =>
 // Хоцролтын төрөл — эх файлын кодчлол (`aldaatai` талбарт хадгалагдсан).
 // Утга нь зөвхөн ДЭЛГЭЦИЙН шошго (өгөгдөлтэй тулгагддаггүй) тул tr() аюулгүй.
 const LATE: Record<string, string> = {
-  "1": tr('Шийдэл/Захиалагч'),
-  "2": tr('Гүйцэтгэгч'),
-  "3": tr('Газар чөлөөлөлт'),
-  "4": tr('Хуулийн асуудал'),
+  get "1"() { return tr('Шийдэл/Захиалагч'); },
+  get "2"() { return tr('Гүйцэтгэгч'); },
+  get "3"() { return tr('Газар чөлөөлөлт'); },
+  get "4"() { return tr('Хуулийн асуудал'); },
 };
 
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -139,6 +139,7 @@ export default function Level5() {
   useEffect(() => {
     if (!bagts) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: ачаалалт эхлэхэд busy/err/open тэглэгдэнэ; түлхүүрлэсэн төлөв болгож задалбал алдааны үед хуучин мөр хадгалагддаг зан төлөв өөрчлөгдөнө
     setBusy(true);
     setErr("");
     setOpen(new Set());

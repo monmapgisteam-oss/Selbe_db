@@ -39,14 +39,14 @@ export type DocItem = {
 export const DOCS: DocItem[] = [
   {
     key: "tezu",
-    title: tr('ТЭЗҮ (Rev-01)'),
-    sub: tr('Техник эдийн засгийн үндэслэл'),
+    get title() { return tr('ТЭЗҮ (Rev-01)'); },
+    get sub() { return tr('Техник эдийн засгийн үндэслэл'); },
     file: "tezu-rev-01.pdf",
   },
   {
     key: "deia18",
-    title: tr('ДБОНҮ 2018'),
-    sub: tr('Байгаль орчны нарийвчилсан үнэлгээ (MN)'),
+    get title() { return tr('ДБОНҮ 2018'); },
+    get sub() { return tr('Байгаль орчны нарийвчилсан үнэлгээ (MN)'); },
     file: "deia-2018-mn.pdf",
   },
   {
@@ -60,11 +60,11 @@ export const DOCS: DocItem[] = [
      унагана. Хэрэгтэй болвол R2/өөр хостод байршуулж энд буцааж нэмнэ. */
   {
     key: 'barilgajilt',
-    title: tr('Барилгажилтын төсөл'),
-    sub: tr('107 хуудас · A0 зураг · гадаад холбоос'),
+    get title() { return tr('Барилгажилтын төсөл'); },
+    get sub() { return tr('107 хуудас · A0 зураг · гадаад холбоос'); },
     /* ⚠️ 621 MB тул репод ОРОХГҮЙ — `href`-ийн тайлбарыг үз */
     href: 'https://monmapm-my.sharepoint.com/:b:/g/personal/maralgoo_monmap_mn/IQBNrkEg2fPoTbCZL_lgoGmHASsRJIwiELl6ytVr2V9Xgo0?e=TfyFJp',
-    cta: tr('Барилгажилтын төслийг шинэ таб-д нээж харна уу'),
+    get cta() { return tr('Барилгажилтын төслийг шинэ таб-д нээж харна уу'); },
   },
 ];
 

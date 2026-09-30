@@ -90,15 +90,15 @@ export const qaqcTableOf = (pkgKey: string): QaqcRef | null => QAQC_TABLE[pkgKey
  *    нүд баганатайгаа таарахгүй болж хүснэгт бүхэлдээ гулсана (шалгуур барина).
  */
 export const QAQC_COLS: { name: string; label: string; short: string }[] = [
-  { name: 'Makt_dugaar', label: tr('М-акт — М-актын №'), short: tr('М-актын №') },
-  { name: 'Makt_ner', label: tr('М-акт — М-актын нэр'), short: tr('М-актын нэр') },
-  { name: 'Makt_havsralt', label: tr('М-акт — Хавсралт бичиг баримт'), short: tr('Хавсралт бичиг баримт') },
-  { name: 'FIC_dugaar', label: tr('FIC — FIC дугаар'), short: tr('FIC дугаар') },
-  { name: 'FIC_ner', label: tr('FIC — FIC нэр'), short: tr('FIC нэр') },
-  { name: 'MA_dugaar', label: tr('MA Material Approval — MA дугаар'), short: tr('MA дугаар') },
-  { name: 'MA_ner', label: tr('MA Material Approval — MA нэр'), short: tr('MA нэр') },
-  { name: 'MIR_dugaar', label: tr('MIR — MIR дугаар'), short: tr('MIR дугаар') },
-  { name: 'MIR_ner', label: tr('MIR — MIR нэр'), short: tr('MIR нэр') },
+  { name: 'Makt_dugaar', get label() { return tr('М-акт — М-актын №'); }, get short() { return tr('М-актын №'); } },
+  { name: 'Makt_ner', get label() { return tr('М-акт — М-актын нэр'); }, get short() { return tr('М-актын нэр'); } },
+  { name: 'Makt_havsralt', get label() { return tr('М-акт — Хавсралт бичиг баримт'); }, get short() { return tr('Хавсралт бичиг баримт'); } },
+  { name: 'FIC_dugaar', get label() { return tr('FIC — FIC дугаар'); }, get short() { return tr('FIC дугаар'); } },
+  { name: 'FIC_ner', get label() { return tr('FIC — FIC нэр'); }, get short() { return tr('FIC нэр'); } },
+  { name: 'MA_dugaar', get label() { return tr('MA Material Approval — MA дугаар'); }, get short() { return tr('MA дугаар'); } },
+  { name: 'MA_ner', get label() { return tr('MA Material Approval — MA нэр'); }, get short() { return tr('MA нэр'); } },
+  { name: 'MIR_dugaar', get label() { return tr('MIR — MIR дугаар'); }, get short() { return tr('MIR дугаар'); } },
+  { name: 'MIR_ner', get label() { return tr('MIR — MIR нэр'); }, get short() { return tr('MIR нэр'); } },
 ];
 
 /**
@@ -110,7 +110,7 @@ export const QAQC_COLS: { name: string; label: string; short: string }[] = [
  */
 export const QAQC_BAND = 'Inspection Test Plan';
 export const QAQC_GROUPS: { label: string; count: number }[] = [
-  { label: tr('М-акт'), count: 3 },
+  { get label() { return tr('М-акт'); }, count: 3 },
   { label: 'FIC', count: 2 },
   { label: 'MA Material Approval', count: 2 },
   { label: 'MIR', count: 2 },

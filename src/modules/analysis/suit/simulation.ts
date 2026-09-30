@@ -47,9 +47,9 @@ export type SimDef = {
 export const SIM_KINDS: SimDef[] = [
   {
     key: 'density',
-    label: tr('Хүн амын төвлөрөл'),
-    short: tr('Төвлөрөл'),
-    unit: tr('хүн/га'),
+    get label() { return tr('Хүн амын төвлөрөл'); },
+    get short() { return tr('Төвлөрөл'); },
+    get unit() { return tr('хүн/га'); },
     hue: '#a78bfa',
     icon: 'flame',
     ready: true,
@@ -57,9 +57,9 @@ export const SIM_KINDS: SimDef[] = [
   },
   {
     key: 'transit',
-    label: tr('Тээврийн хүртээмж'),
-    short: tr('Хүртээмж'),
-    unit: tr('м'),
+    get label() { return tr('Тээврийн хүртээмж'); },
+    get short() { return tr('Хүртээмж'); },
+    get unit() { return tr('м'); },
     hue: '#38bdf8',
     icon: 'bus',
     ready: true,
@@ -67,8 +67,8 @@ export const SIM_KINDS: SimDef[] = [
   },
   {
     key: 'road',
-    label: tr('Замын ачаалал'),
-    short: tr('Ачаалал'),
+    get label() { return tr('Замын ачаалал'); },
+    get short() { return tr('Ачаалал'); },
     // ⚠️ Нэгж ЗОРИУДААР хоосон: «Ачаалал» нь амьд симуляц — гарчгийн хажууд
     //    «аялал/ц» гэх бүсийн нэгж төөрөгдүүлж байсан (уншилт нь машин/хурд/урсгал).
     unit: '',
@@ -96,9 +96,9 @@ export const simDef = (kind: SimKind): SimDef =>
 export type PopBasis = 'resident' | 'capacity' | 'total';
 
 export const POP_BASES: { key: PopBasis; label: string; short: string }[] = [
-  { key: 'resident', label: tr('Оршин суугч (өрхөөс)'), short: tr('Оршин суугч') },
-  { key: 'capacity', label: tr('Хүчин чадал (барилга)'), short: tr('Хүчин чадал') },
-  { key: 'total', label: tr('Нийт хүн ам'), short: tr('Нийт') },
+  { key: 'resident', get label() { return tr('Оршин суугч (өрхөөс)'); }, get short() { return tr('Оршин суугч'); } },
+  { key: 'capacity', get label() { return tr('Хүчин чадал (барилга)'); }, get short() { return tr('Хүчин чадал'); } },
+  { key: 'total', get label() { return tr('Нийт хүн ам'); }, get short() { return tr('Нийт'); } },
 ];
 
 const popOf = (z: Zone, basis: PopBasis): number =>

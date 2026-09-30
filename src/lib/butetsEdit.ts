@@ -28,9 +28,8 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam, tokenQs } from '@/lib/authToken';
 import { AUTH, LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
-import { queryFeatures, type Row } from '@/lib/query';
+import { arcgisPost, queryFeatures, type Row } from '@/lib/query';
 import { currentUser, requireCap } from '@/lib/who';
 import { canEditButetsLayer } from '@/lib/butetsAcl';
 
@@ -208,19 +207,16 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
   if (!L) throw new Error(tr('Давхарга танигдсангүй: {0}', layerId));
 
   const url = layerUrl(L);
-  const res = await fetch(`${url}?f=json${tokenQs()}`);
-  /* ⚠️ HTTP алдаа (proxy/CDN-ийн 502, 401 HTML) — JSON парс хийхээс ӨМНӨ
-     (`tableWrite`-ийн ижил дүрэм); эс бөгөөс «талбарын жагсаалт ирсэнгүй»
-     гэсэн төөрөгдүүлсэн мэдээ гардаг байв. */
-  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-  const j = (await res.json()) as {
-    error?: { message?: string };
+  /* ⚠️ HTTP алдаа (proxy/CDN-ийн 502, 401 HTML) — JSON парс хийхээс ӨМНӨ, 200-аар
+     ирдэг `{error}` — бүгд `query.arcgisPost`-д (2026-09-30; урьд нь GET + токен
+     query string-д). Эс бөгөөс «талбарын жагсаалт ирсэнгүй» гэсэн төөрөгдүүлсэн
+     мэдээ гардаг байв. */
+  const j = await arcgisPost<{
     fields?: RawField[];
     capabilities?: string;
     geometryType?: string;
     objectIdField?: string;
-  };
-  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+  }>(url, {});
   if (!Array.isArray(j.fields)) throw new Error(tr('Талбарын жагсаалт ирсэнгүй'));
 
   const fields: FieldDef[] = [];
@@ -297,27 +293,16 @@ export async function loadRow(meta: LayerMeta, oid: number): Promise<Row | null>
  */
 export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknown | null> {
   if (!Number.isFinite(oid)) return null;
-  const res = await fetch(`${meta.url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      f: 'json',
-      ...tokenParam(),
-      where: oidWhere(meta, oid),
-      outFields: meta.oidField,
-      returnGeometry: 'true',
-      outSR: '102100',
-    }),
-  });
-  /* ⚠️ HTTP алдааг JSON парсаас ӨМНӨ — `fetchLayerMeta`-ийн ижил дүрэм */
-  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-  const j = (await res.json()) as {
-    error?: { message?: string };
+  /* ⚠️ HTTP алдааг JSON парсаас ӨМНӨ, 200-аар ирдэг `{error}` — `query.arcgisPost` (2026-09-30) */
+  const j = await arcgisPost<{
     spatialReference?: Record<string, unknown>;
     features?: { geometry?: Record<string, unknown> }[];
-  };
-  /* ⚠️ ArcGIS алдааг HTTP 200-ГААР буцаадаг — биеийг ЗААВАЛ шалгана */
-  if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+  }>(`${meta.url}/query`, {
+    where: oidWhere(meta, oid),
+    outFields: meta.oidField,
+    returnGeometry: 'true',
+    outSR: '102100',
+  });
   const g = j.features?.[0]?.geometry;
   if (!g) return null;
   return { ...g, spatialReference: j.spatialReference ?? { wkid: 102100 } };

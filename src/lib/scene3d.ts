@@ -30,7 +30,7 @@ export type Scene3DLayer = {
 export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:16",
-    "title": tr('Гол'),
+    get "title"() { return tr('Гол'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/16`,
     "opacity": 1,
@@ -58,7 +58,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:15",
-    "title": tr('Дугуйн зам'),
+    get "title"() { return tr('Дугуйн зам'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/15`,
     "opacity": 1,
@@ -99,7 +99,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:14",
     "title": "Suudrevch_polygon",
-    "group": tr('Сүүдрэвч'),
+    get "group"() { return tr('Сүүдрэвч'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/14`,
     "opacity": 1,
     "elevationInfo": {
@@ -139,7 +139,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:13",
     "title": "Suudrevch_line",
-    "group": tr('Сүүдрэвч'),
+    get "group"() { return tr('Сүүдрэвч'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/13`,
     "opacity": 1,
     "elevationInfo": {
@@ -174,7 +174,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:11",
     "title": "Huuhdiin_togloom_polygon",
-    "group": tr('Хүүхдийн тоглоом'),
+    get "group"() { return tr('Хүүхдийн тоглоом'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/11`,
     "opacity": 1,
     "elevationInfo": {
@@ -214,7 +214,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:10",
     "title": "huuhdiin_togloom_line",
-    "group": tr('Хүүхдийн тоглоом'),
+    get "group"() { return tr('Хүүхдийн тоглоом'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/10`,
     "opacity": 1,
     "elevationInfo": {
@@ -248,8 +248,8 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:8",
-    "title": tr('Спорт талбай'),
-    "group": tr('Спорт талбай'),
+    get "title"() { return tr('Спорт талбай'); },
+    get "group"() { return tr('Спорт талбай'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/8`,
     "opacity": 1,
     "elevationInfo": {
@@ -289,7 +289,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   {
     "id": "scene3d:7",
     "title": "sport_area_line",
-    "group": tr('Спорт талбай'),
+    get "group"() { return tr('Спорт талбай'); },
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/7`,
     "opacity": 1,
     "elevationInfo": {
@@ -337,7 +337,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
      * ⚠️ `/4` одоо ПОРТАЛД ХЭРЭГЛЭГДЭХГҮЙ (AGOL дээр л үлдэнэ).
      */
     "id": "scene3d:4",
-    "title": tr('Барилга'),
+    get "title"() { return tr('Барилга'); },
     "group": null,
     "url": layerUrl(LAYER_BY_ID['sb:4']),
     "opacity": 1,
@@ -382,7 +382,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:3",
-    "title": tr('Явган зам'),
+    get "title"() { return tr('Явган зам'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/3`,
     "opacity": 1,
@@ -422,7 +422,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:2",
-    "title": tr('Автозам'),
+    get "title"() { return tr('Автозам'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/2`,
     "opacity": 1,
@@ -462,7 +462,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:1",
-    "title": tr('Ногоон байгууламж'),
+    get "title"() { return tr('Ногоон байгууламж'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/1`,
     "opacity": 1,
@@ -505,7 +505,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:5",
-    "title": tr('Замын цагаан зураас'),
+    get "title"() { return tr('Замын цагаан зураас'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/5`,
     "opacity": 1,
@@ -881,7 +881,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     "id": "scene3d:0",
-    "title": tr('Мод'),
+    get "title"() { return tr('Мод'); },
     "group": null,
     "url": `${HJ}/selbe_3D__0804_WFL1/FeatureServer/0`,
     "opacity": 1,
@@ -894,7 +894,7 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       },
       "type": "uniqueValue",
       "valueExpression": "Text($feature.OBJECTID % 6)",
-      "valueExpressionTitle": tr('Модны төрөл'),
+      get "valueExpressionTitle"() { return tr('Модны төрөл'); },
       "defaultSymbol": {
         "type": "PointSymbol3D",
         "symbolLayers": [

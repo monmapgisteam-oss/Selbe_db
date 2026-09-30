@@ -71,20 +71,20 @@ export type CeoKpiDef = {
  * эрэмбэлбэл нэг үзүүлэлт өдөр бүр өөр газар байрлана.
  */
 export const CEO_KPIS: CeoKpiDef[] = [
-  { key: 'suitability', title: tr('Тохиромжтой байдал'), icon: 'grid', view: 'analysis', load: loadSuitabilityKpi, heavy: true },
-  { key: 'permits', title: tr('Зөвшөөрөл'), icon: 'frame', view: 'zovshoorol', load: loadPermitsKpi },
-  { key: 'land', title: tr('Газар чөлөөлөлт'), icon: 'polygon', view: 'gazar', load: loadLandKpi, heavy: true },
-  { key: 'schedule', title: tr('Хуваарийн хоцрогдол'), icon: 'calendar', view: 'pkgProg', load: loadScheduleKpi },
-  { key: 'variance', title: tr('Обьёмын зөрүү'), icon: 'chart', view: 'guitsetgel', load: loadVarianceKpi, heavy: true },
-  { key: 'qaqc', title: tr('Чанарын хяналт (QAQC)'), icon: 'target', view: 'qaqc', load: loadQaqcKpi, heavy: true },
-  { key: 'iot', title: tr('IoT — босго хэтрэлт'), icon: 'radio', view: 'iot', load: loadIotKpiSafe }, /* ⚠️ 2026-09-25: уналт кэшлэгдэхгүй хувилбар (iot.ts) */
-  { key: 'workforce', title: tr('Хүн · техник'), icon: 'users', view: 'habea', load: loadWorkforceKpi },
-  { key: 'safety', title: tr('ХАБЭА — осол, зөрчил'), icon: 'shield', view: 'habea', load: loadSafetyKpi },
-  { key: 'review', title: tr('Хяналтын хоцролт'), icon: 'reset', view: 'guitsetgel', load: loadReviewKpi },
-  { key: 'contractGap', title: tr('Гэрээ ба төсвийн зөрүү'), icon: 'calc', view: 'finance', load: loadContractGapKpi },
-  { key: 'uncontracted', title: tr('Гэрээгүй ажил'), icon: 'pen', view: 'finance', load: loadUncontractedKpi },
+  { key: 'suitability', get title() { return tr('Тохиромжтой байдал'); }, icon: 'grid', view: 'analysis', load: loadSuitabilityKpi, heavy: true },
+  { key: 'permits', get title() { return tr('Зөвшөөрөл'); }, icon: 'frame', view: 'zovshoorol', load: loadPermitsKpi },
+  { key: 'land', get title() { return tr('Газар чөлөөлөлт'); }, icon: 'polygon', view: 'gazar', load: loadLandKpi, heavy: true },
+  { key: 'schedule', get title() { return tr('Хуваарийн хоцрогдол'); }, icon: 'calendar', view: 'pkgProg', load: loadScheduleKpi },
+  { key: 'variance', get title() { return tr('Обьёмын зөрүү'); }, icon: 'chart', view: 'guitsetgel', load: loadVarianceKpi, heavy: true },
+  { key: 'qaqc', get title() { return tr('Чанарын хяналт (QAQC)'); }, icon: 'target', view: 'qaqc', load: loadQaqcKpi, heavy: true },
+  { key: 'iot', get title() { return tr('IoT — босго хэтрэлт'); }, icon: 'radio', view: 'iot', load: loadIotKpiSafe }, /* ⚠️ 2026-09-25: уналт кэшлэгдэхгүй хувилбар (iot.ts) */
+  { key: 'workforce', get title() { return tr('Хүн · техник'); }, icon: 'users', view: 'habea', load: loadWorkforceKpi },
+  { key: 'safety', get title() { return tr('ХАБЭА — осол, зөрчил'); }, icon: 'shield', view: 'habea', load: loadSafetyKpi },
+  { key: 'review', get title() { return tr('Хяналтын хоцролт'); }, icon: 'reset', view: 'guitsetgel', load: loadReviewKpi },
+  { key: 'contractGap', get title() { return tr('Гэрээ ба төсвийн зөрүү'); }, icon: 'calc', view: 'finance', load: loadContractGapKpi },
+  { key: 'uncontracted', get title() { return tr('Гэрээгүй ажил'); }, icon: 'pen', view: 'finance', load: loadUncontractedKpi },
   /* ⚠️ 2026-09-09: «акт» БИШ «олгосон санхүүжилт». Шинэ эх (HO_guitsetgel)
      нь бүртгэгдсэн ТӨЛБӨР — актын төлөв, хамрах хугацаа, суутгал байхгүй
      тул «акт» гэдэг нэр агуулгатайгаа зөрнө. */
-  { key: 'ipc', title: tr('IPC — олгосон санхүүжилт'), icon: 'file', view: 'finance', load: loadIpcKpi },
+  { key: 'ipc', get title() { return tr('IPC — олгосон санхүүжилт'); }, icon: 'file', view: 'finance', load: loadIpcKpi },
 ];

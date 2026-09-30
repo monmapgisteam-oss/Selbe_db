@@ -53,8 +53,10 @@ export const BUTETS_PACKS: ButetsPack[] = Object.keys(PKG_BY_BAGTS)
   })
   .map((key) => {
     const layerIds = PKG_BY_BAGTS[key] ?? [];
-    const titles = layerIds.map((id) => LAYER_BY_ID[id]?.title ?? id);
-    return { key, name: titles.length ? commonName(titles) : key, layerIds };
+    /* ⚠️ 2026-09-30: нэр нь getter — давхаргын нэр (`tr()`) хэл солиход өөрчлөгдөнө.
+       Эрэмбэ нь ачаалах үеийн хэлээр (нэрс нь «Багц N.N» угтвартай тул хэлээс үл хамаарна). */
+    const titles = () => layerIds.map((id) => LAYER_BY_ID[id]?.title ?? id);
+    return { key, get name() { const t = titles(); return t.length ? commonName(t) : key; }, layerIds };
   })
   .sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
 

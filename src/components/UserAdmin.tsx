@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, ROLE_ACCESS, roleForUser, type Role, type ViewKey } from '@/lib/services';
 import {
@@ -251,6 +252,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: нээх бүрд кэшийг синхрон уншаад remote-оос дахин татна
     setUsers(listUsers());
     /*
      * ⚠️ Нээх бүрд remote-оос ДАХИН татна — өөр админы саяын засвар 5 минутын
@@ -263,7 +265,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   }, [open]);
 
   const draftsRef = useRef(drafts);
-  draftsRef.current = drafts;
+
+  useSyncRef(draftsRef, drafts);
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
   useEffect(() => {
     if (!open) return;
@@ -313,7 +316,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      effect нь `[open, onClose]`-д л дахин ажилладаг тул closure доторх
      `saving` хоцорч, «Хадгалж байна…» дундуур Esc дарахад ноорог арчигддаг байв. */
   const closeRef = useRef<() => void>(() => {});
-  closeRef.current = requestClose;
+  useSyncRef(closeRef, requestClose);
   useEffect(() => {
     if (!open) return;
     const root = dialogRef.current;
@@ -792,6 +795,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setSaving(false);
     setSaved({ ok, fail, failed, msg: firstErr || undefined });
   };
+  // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-09-30: `if (!open) return null`-ийн ДАРАА тул хук (useSyncRef) дуудах боломжгүй; `saveAll` нь тэр салбарын дараах төлөвүүдээс хамаардаг — render дунд оноох нь санаатай
   saveRef.current = () => { void saveAll(); };
 
   /**

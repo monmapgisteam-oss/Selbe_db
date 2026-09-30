@@ -201,6 +201,7 @@ export function DedButetsEdit({
    */
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setLoad(true); setFail(''); setErr({});
     /**
      * ⚠️ ХУУЧИН МӨРИЙГ ЗААВАЛ ЦЭВЭРЛЭНЭ. `before` нь ЗӨВХӨН амжилттай

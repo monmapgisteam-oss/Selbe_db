@@ -5,11 +5,11 @@
 **Эх сурвалж:** `Selbe_ET_20260721/FeatureServer` — 29 давхарга, НЭГ үйлчилгээ
 `https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer`
 
-Кодын ганц эх үүсвэр: [`src/lib/services.ts`](src/lib/services.ts).
+Кодын ганц эх үүсвэр: [`src/lib/services.ts`](../../src/lib/services.ts).
 
 ⚠️ Энэ файл нь **талбарын толь** — талбар бүрийн нэр, нэгж, өртгийн загвар.
 Тэдгээр үйлчилгээ нь порталын аль харагдацад, юунд ашиглагддаг вэ →
-[`docs/system/02-ogogdliin-esurvalj.md`](docs/system/02-ogogdliin-esurvalj.md).
+[`docs/system/02-ogogdliin-esurvalj.md`](../system/02-ogogdliin-esurvalj.md).
 
 ---
 

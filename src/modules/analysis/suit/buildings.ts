@@ -14,7 +14,7 @@
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
-import { tokenQs } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
   TRANSPORT_FIELDS, classifyBuilding, buildingTrips, vehicleTrips,
@@ -117,8 +117,9 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
      алгасагддаг байв. Хоосон хуудас ирвэл зогсоно (хязгааргүй давталтаас). */
   let offset = 0;
   for (let page = 0; page < 20; page++) {
-    const r: QueryResp = await fetch(`${url}/query?${pageQuery(offset)}${tokenQs()}`, { signal })
-      .then((x) => x.json());
+    /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот ·
+       429 backoff · 200-алдаа `ArcGISError`-оор). */
+    const r = await arcgisPost<QueryResp>(`${url}/query`, Object.fromEntries(pageQuery(offset)), { signal });
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
     const got = r.features?.length ?? 0;
     offset += got;

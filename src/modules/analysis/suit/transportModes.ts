@@ -48,40 +48,40 @@ export type TModeDef = {
 export const T_MODES: TModeDef[] = [
   {
     key: 'population',
-    label: tr('Оршин суугчид'),
-    short: tr('Хүн ам'),
-    unit: tr('хүн'), icon: 'users', hue: '#f59e0b', target: 'building', heatable: true,
+    get label() { return tr('Оршин суугчид'); },
+    get short() { return tr('Хүн ам'); },
+    get unit() { return tr('хүн'); }, icon: 'users', hue: '#f59e0b', target: 'building', heatable: true,
   },
   {
     key: 'capacity',
-    label: tr('Үйлчилгээний багтаамж'),
-    short: tr('Багтаамж'),
-    unit: tr('хүн'), icon: 'building', hue: '#60a5fa', target: 'building', heatable: true,
+    get label() { return tr('Үйлчилгээний багтаамж'); },
+    get short() { return tr('Багтаамж'); },
+    get unit() { return tr('хүн'); }, icon: 'building', hue: '#60a5fa', target: 'building', heatable: true,
   },
   {
     key: 'trips',
-    label: tr('Хүн-зорчилт'),
-    short: tr('Зорчилт'),
-    unit: tr('зорчилт/ц'), icon: 'target', hue: '#a78bfa', target: 'building', heatable: true,
+    get label() { return tr('Хүн-зорчилт'); },
+    get short() { return tr('Зорчилт'); },
+    get unit() { return tr('зорчилт/ц'); }, icon: 'target', hue: '#a78bfa', target: 'building', heatable: true,
   },
   {
     key: 'vehicles',
-    label: tr('Машин-зорчилт'),
-    short: tr('Машин'),
-    unit: tr('машин/ц'), icon: 'car', hue: '#fb923c', target: 'building', heatable: true,
+    get label() { return tr('Машин-зорчилт'); },
+    get short() { return tr('Машин'); },
+    get unit() { return tr('машин/ц'); }, icon: 'car', hue: '#fb923c', target: 'building', heatable: true,
   },
   {
     key: 'roadDemand',
-    label: tr('Замын эрэлт'),
-    short: tr('Зам'),
-    unit: tr('машин/ц'), icon: 'road', hue: '#f87171', target: 'road', heatable: true,
+    get label() { return tr('Замын эрэлт'); },
+    get short() { return tr('Зам'); },
+    get unit() { return tr('машин/ц'); }, icon: 'road', hue: '#f87171', target: 'road', heatable: true,
   },
   {
     key: 'busAccess',
-    label: tr('Автобусны хүртээмж'),
-    short: tr('Автобус'),
+    get label() { return tr('Автобусны хүртээмж'); },
+    get short() { return tr('Автобус'); },
     // ⚠️ `heatable: false` — жин нь ЗАЙ; дулаан гадаргуу зайг нэмэх нь утгагүй
-    unit: tr('м'), icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
+    get unit() { return tr('м'); }, icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
   },
 ];
 

@@ -16,7 +16,7 @@
  */
 
 import { invalidate } from './dataBus';
-import { tokenParam, tokenQs } from '@/lib/authToken';
+import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
 
@@ -296,12 +296,6 @@ let fieldsCache: Set<string> | null = null;
 async function serviceFieldNames(): Promise<Set<string> | null> {
   if (fieldsCache) return fieldsCache;
   try {
-    const res = await fetch(`${HYANALT.url}?f=json${tokenQs()}`);
-    if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
-    const j = (await res.json()) as {
-      fields?: { name: string }[];
-      error?: { message?: string };
-    };
     /*
      * ⚠️ ArcGIS алдааг HTTP 200-ГААР буцаадаг (`{error:{…}}` — «Too many
      * requests», «Token Required» гэх мэт). Түүнийг шалгахгүй бол `j.fields`
@@ -309,9 +303,12 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
      * баганууд бүрэн байтал ерөнхий менежерийн «Баталж бүртгэх» товч хаагдаж,
      * «AGOL дээр нэмнэ үү» гэсэн ХУДАЛ заавар гарч байв. Доорх `catch` нь
      * сүлжээний алдааг зөв барьдаг ч 200-алдаа тэр хамгаалалтыг тойрдог.
+     * ⚠️ 2026-09-30: `query.arcgisPost` — 200-алдаа, `res.ok`, timeout тэнд шидэгдэнэ
+     *    (урьд нь GET + токен query string-д).
      */
-    if (j.error || !Array.isArray(j.fields)) {
-      throw new HyanaltError(j.error?.message ?? tr('Талбарын жагсаалт ирсэнгүй'));
+    const j = await arcgisPost<{ fields?: { name: string }[] }>(HYANALT.url, {});
+    if (!Array.isArray(j.fields)) {
+      throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
     }
     fieldsCache = new Set(j.fields.map((x) => x.name));
     return fieldsCache;
@@ -373,24 +370,23 @@ export class HyanaltError extends Error {
  * JSON бие хүлээж авдаггүй. `f=json` заавал.
  */
 async function post(path: string, body: Record<string, string>): Promise<Record<string, unknown>> {
-  const res = await fetch(HYANALT.url + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }).toString(),
-  });
-  if (!res.ok) throw new HyanaltError(`HTTP ${res.status}`);
-
-  const j = (await res.json()) as { error?: { message?: string; details?: string[] } };
   /*
    * ⚠️ ArcGIS алдааг HTTP 200-ГААР буцаадаг — биен дэх `error`-ыг ЗААВАЛ
    * шалгана. Эс бөгөөс амжилтгүй бичилт «болсон» мэт өнгөрч, өгөгдөл
    * чимээгүй алдагдана.
+   * ⚠️ 2026-09-30: `query.arcgisPost` (timeout · слот · 429 backoff · 498 шинэчлэлт)
+   *    шалгаад `ArcGISError` шиднэ — энд `HyanaltError` болгож, `details`-ийг
+   *    мессежид залгана (өмнөх хэлбэр хэвээр).
    */
-  if (j.error) {
-    const d = j.error.details?.length ? ` · ${j.error.details.join('; ')}` : '';
-    throw new HyanaltError((j.error.message ?? tr('Тодорхойгүй алдаа')) + d);
+  try {
+    return await arcgisPost(HYANALT.url + path, body);
+  } catch (e) {
+    if (e instanceof ArcGISError) {
+      const d = e.details?.length ? ` · ${e.details.join('; ')}` : '';
+      throw new HyanaltError(e.message + d);
+    }
+    throw e;
   }
-  return j as Record<string, unknown>;
 }
 
 /** Бүх мөрийг татна — 2000-гийн хуудаслалтыг давна */

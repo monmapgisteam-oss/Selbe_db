@@ -79,6 +79,13 @@ const HEALTH_TIMEOUT_MS = 8_000;
  *    `relayAlive()` товчийг аль хэдийн хаадаг тул энэ нь зөвхөн гүн хамгаалалт
  *    (`askExecSummary` зэрэг товчгүй зам).
  */
+/**
+ * ⚠️ 2026-09-30: реле хүсэлтийн ДЭЭД хугацаа. Релегийн Claude Code timeout нь 180с
+ *    (`claudeCode.mjs` `CLAUDE_TIMEOUT_MS`) тул түүнээс УРТ — эс бөгөөс хууль ёсны
+ *    удаан хариуг клиент өөрөө таслана. Хэрэглэгчийн `init.signal`-тай нэгтгэнэ.
+ */
+const RELAY_TIMEOUT_MS = 240_000;
+
 export async function relayFetch(path: string, init: RequestInit): Promise<Response> {
   if (!AGENT_APIS.length) throw new Error(tr('AI үйлчилгээний хаяг тохируулагдаагүй байна.'));
   const n = Math.max(AGENT_APIS.length, 1);
@@ -86,14 +93,22 @@ export async function relayFetch(path: string, init: RequestInit): Promise<Respo
   for (let k = 0; k < n; k++) {
     const i = (active + k) % n;
     const last = k === n - 1;
+    const ac = new AbortController();
+    const stop = () => ac.abort(init.signal?.reason);
+    if (init.signal?.aborted) stop();
+    else init.signal?.addEventListener('abort', stop, { once: true });
+    const tm = setTimeout(() => ac.abort(new DOMException(`timeout ${RELAY_TIMEOUT_MS}ms`, 'TimeoutError')), RELAY_TIMEOUT_MS);
     try {
-      const res = await fetch(`${AGENT_APIS[i] ?? ''}${path}`, init);
+      const res = await fetch(`${AGENT_APIS[i] ?? ''}${path}`, { ...init, signal: ac.signal });
       if (!last && FAILOVER_STATUS.has(res.status)) continue;
       active = i;
       return res;
     } catch (e) {
       if (init.signal?.aborted) throw e;
       lastErr = e;
+    } finally {
+      clearTimeout(tm);
+      init.signal?.removeEventListener('abort', stop);
     }
   }
   throw lastErr;

@@ -26,6 +26,7 @@
  */
 
 import { AUTH, ROLE_BY_USER } from './services';
+import { arcgisPost } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 
 const TITLE = 'Selbe_Guitsetgel_Draft';
@@ -65,13 +66,9 @@ export async function getAuth(): Promise<{ token: string; user: string } | null>
  *    хангалтгүй. Шалгахгүй бол хагас дутуу хүснэгт үүсгээд URL-ыг нь
  *    кэшилнэ (`permsRemote`-ийн баримтжуулсан сургамж).
  */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
-}
+/* ⚠️ 2026-09-30: `query.arcgisPost` (timeout · слот · 429 backoff · `res.ok`). `token: 'org'` —
+   дуудагч `getAuth()`-ын токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ. */
+const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 

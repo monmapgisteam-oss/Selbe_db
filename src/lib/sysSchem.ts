@@ -60,110 +60,110 @@ export const SYS_GEO: Geo = { w: 190, h: 104, gapX: 64, gapY: 34, pad: 28 };
 export const SYS_NODES: readonly SysNode[] = [
   /* ══ Багана 0 · ЭХ СУРВАЛЖ ══ */
   {
-    id: 'agsSpace', title: tr('Орон зайн үйлчилгээ'),
-    desc: tr('174 давхарга · зам, шугам, барилга'),
+    id: 'agsSpace', get title() { return tr('Орон зайн үйлчилгээ'); },
+    get desc() { return tr('174 давхарга · зам, шугам, барилга'); },
     view: 'plan', doc: '02-ogogdliin-esurvalj', icon: 'layers', col: 0, row: 0, tone: 'src',
   },
   {
-    id: 'agsFin', title: tr('Санхүүгийн хүснэгт'),
-    desc: tr('Төсөв, гэрээ · олгосон санхүүжилт'),
+    id: 'agsFin', get title() { return tr('Санхүүгийн хүснэгт'); },
+    get desc() { return tr('Төсөв, гэрээ · олгосон санхүүжилт'); },
     view: 'finance', doc: '02-ogogdliin-esurvalj', icon: 'calc', col: 0, row: 1, tone: 'src',
   },
   {
-    id: 'agsProg', title: tr('Гүйцэтгэлийн хүснэгт'),
-    desc: tr('10 бөглөх хуудас · батлагдсан нэгтгэл'),
+    id: 'agsProg', get title() { return tr('Гүйцэтгэлийн хүснэгт'); },
+    get desc() { return tr('10 бөглөх хуудас · батлагдсан нэгтгэл'); },
     view: 'pkgProg', doc: '02-ogogdliin-esurvalj', icon: 'grid', col: 0, row: 2, tone: 'src',
   },
   {
-    id: 'agsCtrl', title: tr('Хяналт ба зөвшөөрөл'),
-    desc: tr('Чанар · ХАБЭА · хяналт · зөвшөөрөл'),
+    id: 'agsCtrl', get title() { return tr('Хяналт ба зөвшөөрөл'); },
+    get desc() { return tr('Чанар · ХАБЭА · хяналт · зөвшөөрөл'); },
     view: 'guitsetgel', doc: '02-ogogdliin-esurvalj', icon: 'shield', col: 0, row: 3, tone: 'src',
   },
   {
-    id: 'agsIot', title: tr('Мэдрэгч'),
-    desc: tr('5 төрөл · амьд заалт'),
+    id: 'agsIot', get title() { return tr('Мэдрэгч'); },
+    get desc() { return tr('5 төрөл · амьд заалт'); },
     view: 'iot', doc: '02-ogogdliin-esurvalj', icon: 'radio', col: 0, row: 4, tone: 'src',
   },
 
   /* ══ Багана 1 · ДАМЖУУЛАХ ══ */
   {
-    id: 'query', title: tr('Асуулгын давхарга'),
-    desc: tr('Хязгаар · дахин оролдлого · хуудаслалт'),
+    id: 'query', get title() { return tr('Асуулгын давхарга'); },
+    get desc() { return tr('Хязгаар · дахин оролдлого · хуудаслалт'); },
     view: null, doc: '03-ogogdliin-zam', icon: 'reset', col: 1, row: 1, tone: 'flow',
   },
   {
-    id: 'cache', title: tr('Кэш'),
-    desc: tr('11 хүснэгтийн түлхүүр · хүчингүй болголт'),
+    id: 'cache', get title() { return tr('Кэш'); },
+    get desc() { return tr('11 хүснэгтийн түлхүүр · хүчингүй болголт'); },
     view: null, doc: '03-ogogdliin-zam', icon: 'layers', col: 1, row: 2, tone: 'flow',
   },
 
   /* ══ Багана 2 · БОДОЛТ ══ */
   {
-    id: 'calc', title: tr('Цэвэр бодолт'),
-    desc: tr('Сүлжээгүй · тестээр хамгаалсан'),
+    id: 'calc', get title() { return tr('Цэвэр бодолт'); },
+    get desc() { return tr('Сүлжээгүй · тестээр хамгаалсан'); },
     view: null, doc: '03-ogogdliin-zam', icon: 'chart', col: 2, row: 1, tone: 'calc',
   },
   {
-    id: 'kpi', title: tr('Удирдлагын үзүүлэлт'),
-    desc: tr('13 KPI · төслийн мөчлөгөөр'),
+    id: 'kpi', get title() { return tr('Удирдлагын үзүүлэлт'); },
+    get desc() { return tr('13 KPI · төслийн мөчлөгөөр'); },
     view: 'gdash', doc: '03-ogogdliin-zam', icon: 'target', col: 2, row: 3, tone: 'calc',
   },
 
   /* ══ Багана 3 · ДЭЛГЭЦ ══ */
   {
-    id: 'viewOv', title: tr('Тойм'),
-    desc: tr('Дашбоард · тайлан · схем'),
+    id: 'viewOv', get title() { return tr('Тойм'); },
+    get desc() { return tr('Дашбоард · тайлан · схем'); },
     view: 'gdash', doc: '04-haragdac', icon: 'frame', col: 3, row: 0, tone: 'view',
   },
   {
-    id: 'viewFin', title: tr('Санхүү'),
-    desc: tr('Багцын санхүү · санхүүжилт'),
+    id: 'viewFin', get title() { return tr('Санхүү'); },
+    get desc() { return tr('Багцын санхүү · санхүүжилт'); },
     view: 'pkgFin', doc: '04-haragdac', icon: 'calc', col: 3, row: 1, tone: 'view',
   },
   {
-    id: 'viewProg', title: tr('Гүйцэтгэл ба хуваарь'),
-    desc: tr('Багцын гүйцэтгэл · хуваарь'),
+    id: 'viewProg', get title() { return tr('Гүйцэтгэл ба хуваарь'); },
+    get desc() { return tr('Багцын гүйцэтгэл · хуваарь'); },
     view: 'pkgProg', doc: '04-haragdac', icon: 'calendar', col: 3, row: 2, tone: 'view',
   },
   {
-    id: 'viewCtrl', title: tr('Хяналт ба чанар'),
-    desc: tr('Гүйцэтгэл · чанар · ХАБЭА'),
+    id: 'viewCtrl', get title() { return tr('Хяналт ба чанар'); },
+    get desc() { return tr('Гүйцэтгэл · чанар · ХАБЭА'); },
     view: 'qaqc', doc: '04-haragdac', icon: 'shield', col: 3, row: 3, tone: 'view',
   },
   {
-    id: 'viewGeo', title: tr('Газар ба төлөвлөгөө'),
-    desc: tr('Газар чөлөөлөлт · дэд бүтэц'),
+    id: 'viewGeo', get title() { return tr('Газар ба төлөвлөгөө'); },
+    get desc() { return tr('Газар чөлөөлөлт · дэд бүтэц'); },
     view: 'gazar', doc: '04-haragdac', icon: 'polygon', col: 3, row: 4, tone: 'view',
   },
 
   /* ══ Багана 4 · БУЦАХ УРСГАЛ ══ */
   {
-    id: 'fill', title: tr('Бөглөх'),
-    desc: tr('Гүйцэтгэл · хуваарь · чанар'),
+    id: 'fill', get title() { return tr('Бөглөх'); },
+    get desc() { return tr('Гүйцэтгэл · хуваарь · чанар'); },
     view: 'guitsetgel', doc: '05-erh-batlah', icon: 'pen', col: 4, row: 1, tone: 'write',
   },
   {
-    id: 'approve', title: tr('Батлах'),
-    desc: tr('4 шат · зохиогч өөрийгөө батлахгүй'),
+    id: 'approve', get title() { return tr('Батлах'); },
+    get desc() { return tr('4 шат · зохиогч өөрийгөө батлахгүй'); },
     view: 'guitsetgel', doc: '05-erh-batlah', icon: 'target', col: 4, row: 2, tone: 'write',
   },
   {
-    id: 'write', title: tr('ArcGIS руу бичих'),
-    desc: tr('500-гийн багц · кэш хуучирна'),
+    id: 'write', get title() { return tr('ArcGIS руу бичих'); },
+    get desc() { return tr('500-гийн багц · кэш хуучирна'); },
     view: null, doc: '05-erh-batlah', icon: 'reset', col: 4, row: 3, tone: 'write',
   },
 
   /* ══ Хөндлөн огтлол ══ */
   {
-    id: 'acl', title: tr('Эрх'),
-    desc: tr('Ганц хүснэгт · хаалттай бол татгалзана'),
+    id: 'acl', get title() { return tr('Эрх'); },
+    get desc() { return tr('Ганц хүснэгт · хаалттай бол татгалзана'); },
     /* ⚠️ (4,0) — `fill`-ийн ШУУД ДЭЭР (2026-09-16): урьд нь (2,4)-өөс диагонал
        ирмэг col 3-ын дөрвөн картыг огтолж байв. Одоо босоо салбараар шууд. */
     view: null, doc: '05-erh-batlah', icon: 'users', col: 4, row: 0, tone: 'cross',
   },
   {
-    id: 'ext', title: tr('Гадаад холболт'),
-    desc: tr('Асистент · Telegram · мэдрэгч'),
+    id: 'ext', get title() { return tr('Гадаад холболт'); },
+    get desc() { return tr('Асистент · Telegram · мэдрэгч'); },
     view: null, doc: '07-gadaad-erschim', icon: 'network', col: 2, row: 0, tone: 'cross',
   },
 ];
@@ -215,10 +215,10 @@ export const SYS_EDGES: readonly SysEdge[] = [
 
 /** Бүлгийн тайлбар — тайлбарын зурвасад */
 export const SYS_LEGEND: readonly { tone: SysNode['tone']; label: string }[] = [
-  { tone: 'src', label: tr('Эх сурвалж') },
-  { tone: 'flow', label: tr('Дамжуулах') },
-  { tone: 'calc', label: tr('Бодолт') },
-  { tone: 'view', label: tr('Дэлгэц') },
-  { tone: 'write', label: tr('Буцах бичилт') },
-  { tone: 'cross', label: tr('Хөндлөн') },
+  { tone: 'src', get label() { return tr('Эх сурвалж'); } },
+  { tone: 'flow', get label() { return tr('Дамжуулах'); } },
+  { tone: 'calc', get label() { return tr('Бодолт'); } },
+  { tone: 'view', get label() { return tr('Дэлгэц'); } },
+  { tone: 'write', get label() { return tr('Буцах бичилт'); } },
+  { tone: 'cross', get label() { return tr('Хөндлөн'); } },
 ];

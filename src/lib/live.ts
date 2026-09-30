@@ -615,10 +615,10 @@ export type SocialLive = { rows: SocialRow[]; totalN: number };
 
 /** test_data-гийн нийгмийн давхаргууд — каталогийн id-гаар (URL нь TD руу шилжсэн) */
 const SOCIAL_GROUPS: { key: string; label: string; ids: string[] }[] = [
-  { key: 'school', label: tr('Сургууль'), ids: ['pkg:230', 'pkg:228', 'pkg:232'] },
-  { key: 'kinder', label: tr('Цэцэрлэг'), ids: ['pkg:226', 'pkg:234', 'pkg:235', 'pkg:236', 'pkg:237'] },
-  { key: 'art', label: tr('Хүүхдийн урлан бүтээх төв'), ids: ['pkg:242'] },
-  { key: 'gov', label: tr('Төрийн үйлчилгээ'), ids: ['pkg:243'] },
+  { key: 'school', get label() { return tr('Сургууль'); }, ids: ['pkg:230', 'pkg:228', 'pkg:232'] },
+  { key: 'kinder', get label() { return tr('Цэцэрлэг'); }, ids: ['pkg:226', 'pkg:234', 'pkg:235', 'pkg:236', 'pkg:237'] },
+  { key: 'art', get label() { return tr('Хүүхдийн урлан бүтээх төв'); }, ids: ['pkg:242'] },
+  { key: 'gov', get label() { return tr('Төрийн үйлчилгээ'); }, ids: ['pkg:243'] },
 ];
 
 /**

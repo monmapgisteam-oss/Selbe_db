@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useEffect, useRef, useState, type ReactNode,
+  useCallback, useEffect, useRef, useState, type ReactNode,
   type MouseEvent as RMouseEvent, type FocusEvent as RFocusEvent, type PointerEvent as RPointerEvent,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -106,6 +106,23 @@ export function ViewRail({
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressed = useRef(false);
   useEffect(() => () => { if (pressTimer.current) clearTimeout(pressTimer.current); }, []);
+  /* ⚠️ 2026-09-30: ref-д хүрэх бүх логик ТОГТМОЛ callback-уудад — `tipProps`
+     нь рендерийн үед дуудагддаг тул түүний дотор ref-д хүрэх нь eslint
+     react-hooks/refs (рендерийн үед ref) гэж тэмдэглэгддэг байв. */
+  const cancelPress = useCallback(() => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+  }, []);
+  const startPress = useCallback((show: () => void) => {
+    longPressed.current = false;
+    cancelPress();
+    pressTimer.current = setTimeout(() => { longPressed.current = true; show(); }, 450);
+  }, [cancelPress]);
+  /** Удаан дарсан бол `true` (тугийг арилгана) — товшилт/contextmenu-г залгихад */
+  const consumeLongPress = useCallback((reset = true) => {
+    if (!longPressed.current) return false;
+    if (reset) longPressed.current = false;
+    return true;
+  }, []);
 
   /**
    * НАРИЙН ДЭЛГЭЦИЙН ЦЭС (≤1180px) — нээлттэй эсэх.
@@ -146,19 +163,17 @@ export function ViewRail({
       onBlur: hide,
       onPointerDown: (e: RPointerEvent<HTMLElement>) => {
         if (e.pointerType !== 'touch') return;
-        longPressed.current = false;
         const el = e.currentTarget;
-        if (pressTimer.current) clearTimeout(pressTimer.current);
-        pressTimer.current = setTimeout(() => { longPressed.current = true; show(el); }, 450);
+        startPress(() => show(el));
       },
-      onPointerUp: () => { if (pressTimer.current) clearTimeout(pressTimer.current); },
-      onPointerCancel: () => { if (pressTimer.current) clearTimeout(pressTimer.current); hide(); },
-      onContextMenu: (e: RMouseEvent) => { if (longPressed.current) e.preventDefault(); },
+      onPointerUp: cancelPress,
+      onPointerCancel: () => { cancelPress(); hide(); },
+      onContextMenu: (e: RMouseEvent) => { if (consumeLongPress(false)) e.preventDefault(); },
     };
   };
   /** Удаан дарсны дараах товшилтыг залгина (дээрх ⚠️) */
   const guardClick = (fn: () => void) => () => {
-    if (longPressed.current) { longPressed.current = false; return; }
+    if (consumeLongPress()) return;
     setTip(null);
     setMenuOpen(false);
     fn();

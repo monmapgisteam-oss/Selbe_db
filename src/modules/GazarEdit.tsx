@@ -83,6 +83,7 @@ export function GazarEdit({
    */
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setLoad(true); setFail('');
     Promise.all([loadParcel(oid), loadProgressValues().catch(() => [] as string[])])
       .then(([p, list]) => {

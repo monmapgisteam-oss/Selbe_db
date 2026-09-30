@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { GRIP_TITLE } from './ResizableTable';
 import st from './splitGrip.module.css';
 
@@ -58,7 +59,7 @@ export function SplitGrip({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
-      title={GRIP_TITLE}
+      title={GRIP_TITLE()}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
@@ -113,6 +114,7 @@ export function useSideResize(key: string, hasRight = true) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + key);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагтай ижил эхлээд, localStorage-ийн утгыг mount-ын ДАРАА л тавина
       if (raw) setW(parseSides(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
@@ -120,7 +122,7 @@ export function useSideResize(key: string, hasRight = true) {
   }, [key]);
 
   const cur = useRef<Sides>({});
-  cur.current = w;
+  useSyncRef(cur, w);
 
   const save = useCallback(
     (next: Sides) => {
@@ -139,8 +141,13 @@ export function useSideResize(key: string, hasRight = true) {
 
   const drag = useRef<{ s: 'l' | 'r'; x: number; w: number; px?: number } | null>(null);
 
-  const start =
-    (s: 'l' | 'r') => (e: React.PointerEvent<HTMLButtonElement>) => {
+  /* ⚠️ 2026-09-30: урьд нь `start('l')` гэх мэт КАРРИЛСАН үйлдвэр render дунд
+     дуудагдаж closure буцаадаг байв — React Compiler тэр closure доторх
+     `ref.current` уншилтыг «render үеийн ref хандалт» гэж үзэж, буцаасан
+     обьектыг бүхэлд нь (хэрэглэгч бүрийн `side.hostRef`, `side.left`…) ref
+     мэт тэмдэглэдэг байв. Одоо `useCallback` + талыг аргументаар. */
+  const start = useCallback(
+    (s: 'l' | 'r', e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault();
       const host = hostRef.current;
       if (!host) return;
@@ -194,21 +201,23 @@ export function useSideResize(key: string, hasRight = true) {
       /* ⚠️ capture ямар ч шалтгаанаар алдагдахад (цонхны гадна тавих,
          alt-tab, iframe) up ЗААВАЛ ажиллана — эс бөгөөс dragging гацна */
       grip.addEventListener('lostpointercapture', up);
-    };
+    },
+    [save],
+  );
 
   /** Анхны өргөнд нь буцаана — CSS-ийн (дэлгэцийн) утга дахин хүчинтэй болно. */
-  const reset = (s: 'l' | 'r') => () => {
+  const reset = useCallback((s: 'l' | 'r') => {
     hostRef.current?.style.removeProperty(s === 'l' ? '--side-l' : '--side-r');
     const next = { ...cur.current };
     delete next[s];
     setW(next);
     save(next);
-  };
+  }, [save]);
 
-  const bump = (s: 'l' | 'r') => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+  const bump = useCallback((s: 'l' | 'r', e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'Enter' || e.key === 'Home') {
       e.preventDefault();
-      reset(s)();
+      reset(s);
       return;
     }
     const d = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
@@ -226,7 +235,14 @@ export function useSideResize(key: string, hasRight = true) {
     const next = { ...cur.current, [s]: px };
     setW(next);
     save(next);
-  };
+  }, [reset, save]);
+
+  const startL = useCallback((e: React.PointerEvent<HTMLButtonElement>) => start('l', e), [start]);
+  const startR = useCallback((e: React.PointerEvent<HTMLButtonElement>) => start('r', e), [start]);
+  const resetL = useCallback(() => reset('l'), [reset]);
+  const resetR = useCallback(() => reset('r'), [reset]);
+  const bumpL = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => bump('l', e), [bump]);
+  const bumpR = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => bump('r', e), [bump]);
 
   const style: React.CSSProperties = {};
   if (w.l != null) (style as Record<string, string>)['--side-l'] = `${w.l}px`;
@@ -238,17 +254,17 @@ export function useSideResize(key: string, hasRight = true) {
     style,
     left: {
       side: 'left' as const,
-      onPointerDown: start('l'),
-      onDoubleClick: reset('l'),
-      onKeyDown: bump('l'),
+      onPointerDown: startL,
+      onDoubleClick: resetL,
+      onKeyDown: bumpL,
       dragging: dragging === 'l',
       label: tr('Зүүн баганын өргөн'),
     },
     right: {
       side: 'right' as const,
-      onPointerDown: start('r'),
-      onDoubleClick: reset('r'),
-      onKeyDown: bump('r'),
+      onPointerDown: startR,
+      onDoubleClick: resetR,
+      onKeyDown: bumpR,
       dragging: dragging === 'r',
       label: tr('Баруун баганын өргөн'),
     },

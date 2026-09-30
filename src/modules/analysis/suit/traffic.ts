@@ -849,8 +849,8 @@ export type SignalPlan = {
 export const SIGNAL_PLANS: SignalPlan[] = [
   {
     key: 'real',
-    label: tr('Уулзварын хуваарь'),
-    desc: tr('Уулзвар бүрийн 3 ээлж. 1-р: 3·4·7·8 → 1·6 → 2·5 · 2-р: 1·2 → 3·4 → 5·6.'),
+    get label() { return tr('Уулзварын хуваарь'); },
+    get desc() { return tr('Уулзвар бүрийн 3 ээлж. 1-р: 3·4·7·8 → 1·6 → 2·5 · 2-р: 1·2 → 3·4 → 5·6.'); },
     /*  ⚠️ ХЭРЭГЛЭГЧИЙН ӨГСӨН бодит хуваарь (`gerlen_dohio_code`-оор).
         Код уулзвар бүрд 1-ээс эхэлдэг тул ЗААВАЛ уулзвараар нь салгана.
 
@@ -877,24 +877,24 @@ export const SIGNAL_PLANS: SignalPlan[] = [
   },
   {
     key: '2',
-    label: tr('2 ээлж'),
-    desc: tr('Хоёр тэнхлэг ээлжилнэ — сондгой кодууд, дараа нь тэгш. Хамгийн их багтаамжтай.'),
+    get label() { return tr('2 ээлж'); },
+    get desc() { return tr('Хоёр тэнхлэг ээлжилнэ — сондгой кодууд, дараа нь тэгш. Хамгийн их багтаамжтай.'); },
     stages: [[1, 3, 5, 7], [2, 4, 6, 8]],
     cycle: SIGNAL_CYCLE_S,
     yellow: YELLOW_S,
   },
   {
     key: '4',
-    label: tr('4 ээлж'),
-    desc: tr('Чиглэл бүр дангаараа ногоон болно — эсрэг урсгалын зөрчилгүй, гэхдээ хүлээлт урт.'),
+    get label() { return tr('4 ээлж'); },
+    get desc() { return tr('Чиглэл бүр дангаараа ногоон болно — эсрэг урсгалын зөрчилгүй, гэхдээ хүлээлт урт.'); },
     stages: [[1, 5], [4, 8], [3, 7], [2, 6]],
     cycle: 80,
     yellow: YELLOW_S,
   },
   {
     key: '8',
-    label: tr('8 ээлж'),
-    desc: tr('Эгнээ бүр тусдаа — хамгийн аюулгүй, гэхдээ багтаамж эрс буурна.'),
+    get label() { return tr('8 ээлж'); },
+    get desc() { return tr('Эгнээ бүр тусдаа — хамгийн аюулгүй, гэхдээ багтаамж эрс буурна.'); },
     stages: [[1], [5], [4], [8], [3], [7], [2], [6]],
     cycle: 120,
     yellow: 2,
@@ -1301,12 +1301,12 @@ export type VehicleType = {
  * хэвийн хайрцаг цуваа биш. Хөдөлгүүр зөвхөн `len`-ийг л уншина.
  */
 export const VEHICLE_TYPES: VehicleType[] = [
-  { key: 'car', model: 'sedan', label: tr('Седан'), len: 4.6, vRange: [30 / 3.6, 50 / 3.6], mix: 0.34 },
-  { key: 'car', model: 'hatch', label: tr('Хэтчбэк'), len: 4.1, vRange: [30 / 3.6, 50 / 3.6], mix: 0.26 },
-  { key: 'car', model: 'suv', label: tr('Жийп'), len: 4.8, vRange: [28 / 3.6, 48 / 3.6], mix: 0.24 },
-  { key: 'car', model: 'van', label: tr('Микро вэн'), len: 5.1, vRange: [26 / 3.6, 44 / 3.6], mix: 0.09 },
-  { key: 'car', model: 'pickup', label: tr('Пикап'), len: 5.0, vRange: [28 / 3.6, 46 / 3.6], mix: 0.04 },
-  { key: 'bus', model: 'bus', label: tr('Автобус'), len: 11.0, vRange: [25 / 3.6, 45 / 3.6], mix: 0.03 },
+  { key: 'car', model: 'sedan', get label() { return tr('Седан'); }, len: 4.6, vRange: [30 / 3.6, 50 / 3.6], mix: 0.34 },
+  { key: 'car', model: 'hatch', get label() { return tr('Хэтчбэк'); }, len: 4.1, vRange: [30 / 3.6, 50 / 3.6], mix: 0.26 },
+  { key: 'car', model: 'suv', get label() { return tr('Жийп'); }, len: 4.8, vRange: [28 / 3.6, 48 / 3.6], mix: 0.24 },
+  { key: 'car', model: 'van', get label() { return tr('Микро вэн'); }, len: 5.1, vRange: [26 / 3.6, 44 / 3.6], mix: 0.09 },
+  { key: 'car', model: 'pickup', get label() { return tr('Пикап'); }, len: 5.0, vRange: [28 / 3.6, 46 / 3.6], mix: 0.04 },
+  { key: 'bus', model: 'bus', get label() { return tr('Автобус'); }, len: 11.0, vRange: [25 / 3.6, 45 / 3.6], mix: 0.03 },
 ];
 
 /**

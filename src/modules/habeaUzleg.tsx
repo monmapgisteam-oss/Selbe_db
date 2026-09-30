@@ -22,9 +22,8 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
-import { queryFeatures, queryGroup, count, sum, withSlot, type Row } from '@/lib/query';
+import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
@@ -67,14 +66,15 @@ function loadDomains(url: string): Promise<Domains> {
        ЗААВАЛ шалгана; урьд нь `{}` болж СЕШНИЙ ТУРШ кэшлэгдэж (`domainCache`),
        түр алдаа (токен хоцрох, 499) чартыг кодоор шошголсон хэвээр үлдээдэг
        байв. Одоо унавал кэшээс ХАСНА — дараагийн дуудалт дахин оролдоно;
-       буцаах утга нь хэвээр хоосон толь (самбар унахгүй). Мөн `withSlot` —
-       `query.ts`-ийн 6 слотын хязгаарлагчаар (бусад REST-тэй нэг дараалалд). */
+       буцаах утга нь хэвээр хоосон толь (самбар унахгүй). Мөн слот —
+       `query.ts`-ийн хязгаарлагчаар (бусад REST-тэй нэг дараалалд). */
     /* ⚠️ 2026-09-21: timeout — `query.ts` `request()`-тэй ижил; эс бөгөөс
-       гацсан хүсэлт слотыг мөнхөд эзэлж, бусад REST дараалалд түгжигдэнэ. */
-    p = withSlot(() => fetch(`${url}?f=json${tokenQs()}`, { signal: AbortSignal.timeout(30_000) })
-      .then((r) => r.json() as Promise<Meta & { error?: unknown }>))
+       гацсан хүсэлт слотыг мөнхөд эзэлж, бусад REST дараалалд түгжигдэнэ.
+       ⚠️ 2026-09-30: `arcgisPost` (POST, токен биеэр) — слот, 30с timeout
+       (`timeoutMs`), 429 backoff, `{error}` → `ArcGISError` бүгд цөмд; гаднах
+       `withSlot` хасагдав (цөм өөрөө слот авна — давхар авбал гацна). */
+    p = arcgisPost<Meta>(url, { f: 'json' }, { timeoutMs: 30_000 })
       .then((j) => {
-        if (j.error) throw new Error('domain meta error');
         const out: Domains = {};
         for (const f of j.fields ?? []) {
           const cv = f.domain?.type === 'codedValue' ? f.domain.codedValues : null;
@@ -659,6 +659,7 @@ export function useUzleg(kind: UzlegKind | null): State {
   const [st, setSt] = useState<{ kind: UzlegKind | null; st: State }>({ kind: null, st: { state: 'idle' } });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     if (!kind) { setSt({ kind: null, st: { state: 'idle' } }); return undefined; }
     let alive = true;
     setSt({ kind, st: { state: 'loading' } });
@@ -881,22 +882,16 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
   }[] = [];
   for (let i = 0; i < rows.length; i += OID_BATCH) {
     const chunk = rows.slice(i, i + OID_BATCH);
-    const res = await fetch(`${url}/queryAttachments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        f: 'json',
-        objectIds: chunk.map((x) => x.oid).join(','),
-        attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
-        token: auth.token,
-      }),
-    });
-    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана */
-    const j = await res.json() as {
-      error?: { message?: string };
-      attachmentGroups?: typeof groups;
-    };
-    if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана: `arcgisPost`
+       (2026-09-30) үүнийг цөмдөө хийж `ArcGISError` шиднэ; timeout · слот · 429
+       backoff · `res.ok` нэмэгдэв. `token: 'org'` — дуудагч `getAuth()`-ын
+       токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ (`draftRemote`-той ижил). */
+    const j = await arcgisPost<{ attachmentGroups?: typeof groups }>(`${url}/queryAttachments`, {
+      f: 'json',
+      objectIds: chunk.map((x) => x.oid).join(','),
+      attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
+      token: auth.token,
+    }, { token: 'org' });
     groups.push(...(j.attachmentGroups ?? []));
   }
   const byOid = new Map(rows.map((x) => [x.oid, x]));

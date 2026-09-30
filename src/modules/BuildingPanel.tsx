@@ -32,7 +32,7 @@ const F = BUILDING.fields;
  */
 
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
-const UNKNOWN = tr('Тодорхойгүй');
+const UNKNOWN = () => tr('Тодорхойгүй');
 
 /* ─────────────── Бөглөх хуудасны мөрийн кэш ─────────────── */
 
@@ -112,7 +112,7 @@ const meanOf = (vals: (number | null)[]) => {
 function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
   const m = new Map<string, Block[]>();
   for (const b of blocks) {
-    const k = keyOf(b) || UNKNOWN;
+    const k = keyOf(b) || UNKNOWN();
     const a = m.get(k);
     if (a) a.push(b); else m.set(k, [b]);
   }
@@ -233,8 +233,8 @@ export async function loadBuildings() {
 
 /** Хэмжих алхам — бүртгэлийн огноогоор эсвэл сарын эцсийн байдлаар */
 const GRAINS = [
-  { key: 'month', label: tr('Сараар') },
-  { key: 'day', label: tr('Огноогоор') },
+  { key: 'month', get label() { return tr('Сараар'); } },
+  { key: 'day', get label() { return tr('Огноогоор'); } },
 ];
 
 /**

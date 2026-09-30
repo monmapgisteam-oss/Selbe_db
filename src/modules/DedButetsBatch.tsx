@@ -131,6 +131,7 @@ export function DedButetsBatch({
     let alive = true;
     /* ⚠️ Хуучин сонголтын асуулт ХААГДАНА — «Тийм» нь шинэ сонголтын тоогоор биш
        хуучин асуултаар бичилт явуулах байв (`loadedKey`-ийн тайлбар) */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setLoad(true); setFail(''); setErr({}); setAsk(false);
     (async () => {
       const m = await loadLayerMeta(layerId);

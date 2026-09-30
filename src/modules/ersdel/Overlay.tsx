@@ -30,6 +30,7 @@ import Graphic from '@arcgis/core/Graphic';
 import Point from '@arcgis/core/geometry/Point';
 import { IMAGERY_ID, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { bandAt, type Band, type DamageRow } from '@/lib/ersdelGeom';
 import type { Station } from '@/lib/ersdel';
 import { flowDeg, type FloodData, type FloodMode } from '@/lib/uyr';
@@ -383,14 +384,31 @@ export function Overlay({
   const { view } = useMap();
 
   const onEndRef = useRef(onEnd);
-  onEndRef.current = onEnd;
+  useSyncRef(onEndRef, onEnd);
   /* ⚠️ Анимац эхлэхдээ ОДООГИЙН зүсмэлээс үргэлжилнэ — `floodSlice`-ыг
      эффектийн хамаарал болговол зүсмэл солигдох бүрд дахин эхэлнэ. */
   const floodSliceRef = useRef(floodSlice);
-  floodSliceRef.current = floodSlice;
+  useSyncRef(floodSliceRef, floodSlice);
   /* ⚠️ `drawSurface` нь ДООР зарлагдсан тул REF-ээр дамжина (TDZ) */
   const drawSurfaceRef = useRef<((pos: number) => void) | null>(null);
   const drawWFlowRef = useRef<((pos: number, dt?: number) => void) | null>(null);
+  /* ⚠️ 2026-09-30: доорх ref-үүдийн ЗАРЛАЛТЫГ энд, эхний хэрэглээнээс ӨМНӨ зөөв —
+     урьд нь §«Дарж мэдээлэл авах»-ын дэргэд зарлагдаж, дээрх callback-уудад
+     (TDZ-гүй ч) «зарлахаас өмнө хэрэглэсэн» гэж React Compiler анхааруулдаг байв.
+     Тайлбарууд нь хуучин байрандаа (§«Дарж мэдээлэл авах»). */
+  const bandsRef = useRef(bands);
+  useSyncRef(bandsRef, bands);
+  const damageRef = useRef(damage);
+  useSyncRef(damageRef, damage);
+  const pickRef = useRef(onPick);
+  useSyncRef(pickRef, onPick);
+  const floodRef = useRef(flood);
+  useSyncRef(floodRef, flood);
+  const modeRef = useRef<FloodMode>(floodMode);
+  useSyncRef(modeRef, floodMode);
+  const waveDirRef = useRef(180);
+  const onSliceRef = useRef(onSlice);
+  useSyncRef(onSliceRef, onSlice);
 
 
   /**
@@ -574,7 +592,7 @@ export function Overlay({
     src.elements.removeAll();
     src.elements.add(el);
   }, []);
-  drawWFlowRef.current = drawWFlow;
+  useSyncRef(drawWFlowRef, drawWFlow);
 
   /**
    * ФРЕЙМ СОЛИХ — нэг л газраас.
@@ -853,7 +871,7 @@ export function Overlay({
   /** Долгионы гурван хүч — симболыг фрейм тутам ДАХИН ҮҮСГЭХГҮЙ */
   const symsRef = useRef<Record<string, Sym>>({});
   const dimRef = useRef<Dim>(dim);
-  dimRef.current = dim;
+  useSyncRef(dimRef, dim);
 
   /**
    * УСНЫ ГАДАРГУУГ БУТАРХАЙ АГШИНД шинэчилнэ.
@@ -923,7 +941,7 @@ export function Overlay({
     for (let i = bands.length; i < pool.length; i++) pool[i].visible = false;
   }, [view]);
 
-  drawSurfaceRef.current = drawSurface;
+  useSyncRef(drawSurfaceRef, drawSurface);
 
   /* ЗОГССОН үед — сонгосон зүсмэлийн гадаргуу */
   useEffect(() => {
@@ -1141,24 +1159,14 @@ export function Overlay({
         энэ нь АЮУЛЫН үр дүнг (улаан объект, муж) хариуцна — өөр өөр асуулт.
      ⚠️ `bands`/`damage` нь эффектийн хамаарлаас ГАДУУР, ref-ээр уншигдана:
         эс бөгөөс шинжилгээ ажиллах бүрд `click` бүртгэл салж дахин холбогдоно. */
-  const bandsRef = useRef(bands);
-  bandsRef.current = bands;
-  const damageRef = useRef(damage);
-  damageRef.current = damage;
-  const pickRef = useRef(onPick);
-  pickRef.current = onPick;
-  const floodRef = useRef(flood);
-  floodRef.current = flood;
-  /* ⚠️ Горим нь REF-ээр: анимацийн rAF нь эффектийг дахин эхлүүлэхгүйгээр
+  /* (Зарлалтууд нь дээр, `drawWFlowRef`-ийн дэргэд — 2026-09-30.)
+     ⚠️ Горим нь REF-ээр (`modeRef`): анимацийн rAF нь эффектийг дахин эхлүүлэхгүйгээр
      шинэ горимыг унших ёстой — эс бөгөөс горим солих бүрд ус эхнээс эхэлнэ. */
-  const modeRef = useRef<FloodMode>(floodMode);
-  modeRef.current = floodMode;
   /**
-   * Долгионы чиглэл (градус) — загварчлалын ДУНДАЖ урсгалаас нэг удаа бодно.
+   * Долгионы чиглэл (градус, `waveDirRef`) — загварчлалын ДУНДАЖ урсгалаас нэг удаа бодно.
    * ⚠️ Загварчлал ачаалагдаагүй бол голын ерөнхий чиглэл: Сэлбэ хойноос
    *    урагш урсдаг тул 180°.
    */
-  const waveDirRef = useRef(180);
   useEffect(() => {
     if (!flood) { waveDirRef.current = 180; return; }
     const m = flood.meta;
@@ -1176,8 +1184,6 @@ export function Overlay({
   }, [flood]);
   const geoRef = useRef<ExtentAndRotationGeoreference | null>(null);
   const wflowGeoRef = useRef<ExtentAndRotationGeoreference | null>(null);
-  const onSliceRef = useRef(onSlice);
-  onSliceRef.current = onSlice;
 
   useEffect(() => {
     if (!view || view.destroyed) return;

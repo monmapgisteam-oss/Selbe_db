@@ -51,6 +51,7 @@ import { Bars, Empty, Loading, Note, Ring, Stat, Stats, Tabs, Trend } from '@/co
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID } from '@/lib/services';
 import { blank, ha, mnt, num, text } from '@/lib/format';
 import {
@@ -398,7 +399,10 @@ type Result = {
 const EMPTY_STATIONS: Station[] = [];
 
 export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  const side = useSideResize('ersdel');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('ersdel');
   const { view, ortho, setOrtho, setHighlight } = useMap();
 
   /**
@@ -441,6 +445,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const [busy, setBusy] = useState(false);
   const [runErr, setRunErr] = useState<string | null>(null);
   const [sel, setSel] = useState<number | null>(null);
+  /** Зурган дээрх мэдээллийн хоёр нүд — тайлбар нь §«Зурган дээрх мэдээлэл» (доор).
+      ⚠️ 2026-09-30: зарлалтыг ЭНД зөөв — React Compiler доор зарласан setter-ийг
+      `clear`/`onMapPick`-ийн `[]` deps-тэй тааруулж чадахгүй байв. */
+  const [hazInfo, setHazInfo] = useState<Info | null>(null);
+  const [featInfo, setFeatInfo] = useState<Info | null>(null);
 
   /**
    * ЗУРАГДАХ үеийн «одоо» — ЦАГААР бөөрөнхийлсөн (`hourOf`). Минут тутам
@@ -512,6 +521,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   useEffect(() => {
     if (!wantFlood) return;
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: загварчлалын эффект — түвшин/талбай солигдоход өмнөх үр дүнг синхрон тэглээд шинээр бодно; render үед гаргавал бүтэц өөрчлөгдөнө
     setFloodErr(null);
     setSimPct(0);
     setFlood(null);
@@ -552,7 +562,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const svmRef = useRef<SketchViewModel | null>(null);
   /** Одоогийн талбай + түүний проекц — view дахин үүсэхэд полигоныг сэргээнэ */
   const areaRef = useRef(area);
-  areaRef.current = area;
+  useSyncRef(areaRef, area);
   const areaWkidRef = useRef<number>(3857);
   useEffect(() => {
     if (!view || view.destroyed || !view.map) return;
@@ -660,10 +670,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * урсгалын долгион нэмж зурна; энд зөвхөн ЯВЦЫН заагчийг дагуулна.
    */
 
-  const floodRef = useRef<FloodData | null>(null);
-  floodRef.current = flood;
-  const sliceRef = useRef(0);
-  sliceRef.current = slice;
+  const floodRef = useRef<FloodData | null>(flood);
+  useSyncRef(floodRef, flood);
+  const sliceRef = useRef(slice);
+  useSyncRef(sliceRef, slice);
 
   const q = useAsync(loadStations, []);
   /**
@@ -764,9 +774,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * оруулбал хэрэглэгч гараар унтраамагц эффект дахин асааж, товч нь ажиллахаа
    * болино — агаарын горимд байхад унтраах боломжгүй болно.
    */
-  useEffect(() => {
+  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд тохируулна (React-ийн «adjusting state
+     when a prop changes» загвар) — `hazard` солигдсон тэр render-т л шинэ утга
+     тавигдана, хэрэглэгчийн гараар унтраасан утга бусад render-д хөндөгдөхгүй. */
+  const [windFlowHazard, setWindFlowHazard] = useState(hazard);
+  if (windFlowHazard !== hazard) {
+    setWindFlowHazard(hazard);
     setWindFlow(hazard === 'air');
-  }, [hazard]);
+  }
 
   /**
    * ⚠️ ХУГАЦААНЫ ШУГАМ ХАСАГДСАН (2026-09-03, хэрэглэгчийн хүсэлт). Эх модульд
@@ -791,9 +806,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
   /** Идэвхтэй цагийн индекс — ҮРГЭЛЖ одоогийн цаг */
   const [windH, setWindH] = useState(0);
+  /* ⚠️ 2026-09-30: талбар ирэхэд/солигдоход индексийг RENDER дунд тохируулна
+     (эффект дотор setState биш) — `null` болоход хуучин индекс хэвээр (урьдынхтай ижил). */
+  const [windHField, setWindHField] = useState(windField);
+  if (windHField !== windField) {
+    setWindHField(windField);
+    if (windField) setWindH(nowIndex(windField));
+  }
   useEffect(() => {
     if (!windField) return;
-    setWindH(nowIndex(windField));
     /**
      * ⚠️ ЦАГ БҮР ШИНЭЧЛЭНЭ. Хуудсыг нээлттэй орхивол (хяналтын дэлгэц дээр
      * ердийн зүйл) индекс хөлдөж, шөнө дунд өдрийн салхи урсаж байх болно.
@@ -1051,10 +1072,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * түрүүлж дуусахыг баталгаажуулах боломжгүй — `MapCanvas`-ийнх нь заримдаа
    * REST асуулга руу шилждэг тул удаан. Нэг нүдэнд бичвэл сүүлд ирсэн `null`
    * нь нөгөөгийнхөө олсон хариуг чимээгүй устгана. Тиймээс тусад нь хадгалж,
-   * дэлгэцэд аюулынхыг НЬ ТЭРГҮҮНД тавина.
+   * дэлгэцэд аюулынхыг НЬ ТЭРГҮҮНД тавина. (Төлөвийн зарлалт дээр, `sel`-ийн хажууд.)
    */
-  const [hazInfo, setHazInfo] = useState<Info | null>(null);
-  const [featInfo, setFeatInfo] = useState<Info | null>(null);
   const info = hazInfo ?? featInfo;
 
   const clear = useCallback(() => {
@@ -1075,13 +1094,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   }, []);
 
   const liveRef = useRef(live);
-  liveRef.current = live;
+  useSyncRef(liveRef, live);
   const resultRef = useRef(result);
-  resultRef.current = result;
+  useSyncRef(resultRef, result);
   const viewRef = useRef(view);
-  viewRef.current = view;
+  useSyncRef(viewRef, view);
   const hazardRef = useRef(hazard);
-  hazardRef.current = hazard;
+  useSyncRef(hazardRef, hazard);
 
   /**
    * Мужийн утга — үерт гүн (м), агаарт агууламж (µg/м³).
@@ -1287,14 +1306,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
    * render бүрд шинэ функц өгвөл 3000 мөрт компонент дэмий дахин зурагдана.
    */
   const featCb = useRef<(a: Record<string, unknown> | null, id: string | null) => void>(() => {});
-  featCb.current = (attrs, layerId) => {
+  useSyncRef(featCb, (attrs, layerId) => {
     if (!attrs || !layerId) { setFeatInfo(null); return; }
     setFeatInfo({
       title: LAYER_BY_ID[layerId]?.title ?? layerId,
       sub: tr('Давхаргын объект'),
       rows: attrRows(attrs),
     });
-  };
+  });
   const onFeaturePick = useCallback(
     (a: Record<string, unknown> | null, id: string | null) => featCb.current(a, id),
     [],
@@ -1360,7 +1379,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const overWater = result?.hazard === 'flood' && !!flood;
 
   return (
-    <div ref={side.hostRef} className={`${e.frame} ${side.hostClass}`} style={side.style}>
+    <div ref={sideHostRef} className={`${e.frame} ${side.hostClass}`} style={side.style}>
       <SplitGrip {...side.left} />
       <SplitGrip {...side.right} />
 

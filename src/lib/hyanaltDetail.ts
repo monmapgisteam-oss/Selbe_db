@@ -22,7 +22,7 @@
  */
 
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { tokenParam } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { computeAll, firstFrame, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
 import { overlaySubmission } from '@/modules/sheet/sheetFrame';
@@ -197,17 +197,9 @@ export type Submission = {
  */
 const ts = (ms: number) => `timestamp '${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')}'`;
 
-const post = async (url: string, body: Record<string, string>) => {
-  const res = await fetch(`${url}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ f: 'json', ...tokenParam(), ...body }).toString(),
-  });
-  const j = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
-  // ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг
-  if (j.error) throw new Error(j.error.message || tr('Асуулга амжилтгүй'));
-  return j;
-};
+// ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг — `query.arcgisPost` шалгана (2026-09-30:
+//    timeout · слот · `res.ok` · 498 шинэчлэлт нэмэгдэв; токен биеэр).
+const post = (url: string, body: Record<string, string>) => arcgisPost(`${url}/query`, body);
 
 const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;

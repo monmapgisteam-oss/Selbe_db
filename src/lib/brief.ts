@@ -1,4 +1,12 @@
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, perLocale } from '@/lib/i18nCore';
+const lzStages4 = perLocale(() => ([tr('Барилга угсралт')]));
+
+const lzStages3 = perLocale(() => ([tr('Газар чөлөөлөлт')]));
+
+const lzStages2 = perLocale(() => ([tr('Зөвшөөрөл'), tr('Сонгон шалгаруулалт')]));
+
+const lzStages1 = perLocale(() => ([tr('ТЭЗҮ'), tr('Ажлын зураг төсөл')]));
+
 /**
  * ТӨСЛИЙН ЧАНАРЫН МЕТА — зөвхөн ямар ч үйлчилгээнд БАЙХГҮЙ ангилал/нэршил.
  *
@@ -34,34 +42,34 @@ export const SCHEDULE: {
   stages: string[];
 }[] = [
   {
-    no: "01", label: tr('ТЭЗҮ, зураг төсөл, магадлал'), status: tr('Дуусах шатанд'),
+    no: "01", get label() { return tr('ТЭЗҮ, зураг төсөл, магадлал'); }, get status() { return tr('Дуусах шатанд'); },
     tone: "done", from: 2023, to: 2026,
-    stages: [tr('ТЭЗҮ'), tr('Ажлын зураг төсөл')],
+    get stages() { return lzStages1(); },
   },
   {
-    no: "02", label: tr('Гүйцэтгэгч сонгон шалгаруулалт'), status: tr('Үргэлжилж буй'),
+    no: "02", get label() { return tr('Гүйцэтгэгч сонгон шалгаруулалт'); }, get status() { return tr('Үргэлжилж буй'); },
     tone: "active", from: 2024, to: 2026,
-    stages: [tr('Зөвшөөрөл'), tr('Сонгон шалгаруулалт')],
+    get stages() { return lzStages2(); },
   },
   {
-    no: "03", label: tr('Газар чөлөөлөлт'), status: tr('Дуусах шатанд'),
+    no: "03", get label() { return tr('Газар чөлөөлөлт'); }, get status() { return tr('Дуусах шатанд'); },
     tone: "done", from: 2024, to: 2026,
-    stages: [tr('Газар чөлөөлөлт')],
+    get stages() { return lzStages3(); },
   },
   {
-    no: "04", label: tr('Инженерийн дэд бүтэц, эх үүсвэр'), status: tr('Идэвхтэй'),
+    no: "04", get label() { return tr('Инженерийн дэд бүтэц, эх үүсвэр'); }, get status() { return tr('Идэвхтэй'); },
     tone: "active", from: 2025, to: 2028,
     stages: [], // ⚠️ амьд хүснэгтэд ийм үе шат БАЙХГҮЙ — «—» харагдана
   },
   {
-    no: "05", label: tr('Орон сууцны барилга угсралт'), status: tr('Идэвхтэй'),
+    no: "05", get label() { return tr('Орон сууцны барилга угсралт'); }, get status() { return tr('Идэвхтэй'); },
     tone: "active", from: 2025, to: 2027,
     // 2026-08-13: бэхлэгдсэн 19.24%-ийг халж, амьд «Барилга угсралт» үе шатыг
     // (жин 69.2%) шууд буулгав — бүх тоо үйлчилгээнээс гарах хэрэглэгчийн шийдвэр.
-    stages: [tr('Барилга угсралт')],
+    get stages() { return lzStages4(); },
   },
   {
-    no: "06", label: tr('Олон нийтийн бүсийн барилгажилт'), status: tr('Эхлээгүй'),
+    no: "06", get label() { return tr('Олон нийтийн бүсийн барилгажилт'); }, get status() { return tr('Эхлээгүй'); },
     tone: "idle", from: 2026, to: 2029,
     stages: [], // ⚠️ амьд хүснэгтэд ийм үе шат БАЙХГҮЙ — «—» харагдана
   },
@@ -98,13 +106,13 @@ export const BAGTS_ORIGIN: Record<string, "Гадаад" | "Үндэсний"> =
  *    хүчин чадлыг хамт агуулна (`Irged.tsx` эх текстийг бүтнээр нь харуулна).
  */
 const SOCIAL_ROWS: { label: string; now: string; add: string; total: number }[] = [
-  { label: tr('Сургууль'), now: "2 (1,440)", add: "3 (3,780)", total: 5 },
-  { label: tr('Цэцэрлэг'), now: "3 (640)", add: "5 (1,200)", total: 8 },
-  { label: tr('Өрхийн эмнэлэг, хороо, цагдаа'), now: "3", add: "1", total: 4 },
-  { label: tr('Соёлын цогцолбор'), now: "—", add: "1", total: 1 },
-  { label: tr('Спортын цогцолбор'), now: "—", add: "1", total: 1 },
-  { label: tr('Гал унтраах, аврах анги'), now: "1", add: "—", total: 1 },
-  { label: tr('Бизнес инкубатор төв'), now: "—", add: "1", total: 1 },
+  { get label() { return tr('Сургууль'); }, now: "2 (1,440)", add: "3 (3,780)", total: 5 },
+  { get label() { return tr('Цэцэрлэг'); }, now: "3 (640)", add: "5 (1,200)", total: 8 },
+  { get label() { return tr('Өрхийн эмнэлэг, хороо, цагдаа'); }, now: "3", add: "1", total: 4 },
+  { get label() { return tr('Соёлын цогцолбор'); }, now: "—", add: "1", total: 1 },
+  { get label() { return tr('Спортын цогцолбор'); }, now: "—", add: "1", total: 1 },
+  { get label() { return tr('Гал унтраах, аврах анги'); }, now: "1", add: "—", total: 1 },
+  { get label() { return tr('Бизнес инкубатор төв'); }, now: "—", add: "1", total: 1 },
 ];
 
 /** «2 (1,440)» → 2 · «—» → 0. `Irged.headCount`-той ИЖИЛ дүрэм. */

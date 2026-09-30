@@ -4,6 +4,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type Dispatch, type SetStateAction,
 } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -133,7 +134,10 @@ export function GeneralDash({
    * ⚠️ Өргөнийг `localStorage`-д түлхүүрээрээ санана; давхар товшвол анхны
    * (дэлгэцийн хэмжээнээс хамаарсан) утгад буцна.
    */
-  const side = useSideResize('gdash');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('gdash');
 
   /* Газрын зургийн API — дэд багц дарахад тэр давхарга руу ойртуулна */
   const map = useMap();
@@ -508,7 +512,7 @@ export function GeneralDash({
    */
   const beforeXs = useRef<string[] | null>(null);
   const visRef = useRef<string[]>(visible);
-  visRef.current = visible;
+  useSyncRef(visRef, visible);
   useEffect(() => {
     if (xsPick == null) {
       if (beforeXs.current) {
@@ -615,7 +619,7 @@ export function GeneralDash({
         * өндрийг эзэлнэ.
         */}
       <div
-        ref={side.hostRef}
+        ref={sideHostRef}
         className={`${g.body} ${side.hostClass}`}
         style={side.style}
       >
@@ -1509,22 +1513,22 @@ const BAR_HUE = cat(0);
 const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true }[] = [
   /* ⚠️ 2026-09-25: «1» (ТЭЗҮ) + «2» (Ажлын зураг төсөл) — шошго хоёуланг нь
      нэрлэдэг атлаа зөвхөн «2» авдаг байв. Төсөлд эзлэх хувиар жигнэнэ (доор). */
-  { label: tr('ТЭЗҮ, зураг төсөл'), wbs: ['1', '2'] },
+  { get label() { return tr('ТЭЗҮ, зураг төсөл'); }, wbs: ['1', '2'] },
   /* ⚠️ 2026-09-25: кодууд `Negtgel_guitsetgel`-ийн модоор ШИНЭЧЛЭГДЭВ —
      «Сонгон шалгаруулалт» нь 5 → 4, «Барилга угсралт» нь 6 → 5 болсон. */
-  { label: tr('Сонгон шалгаруулалт'), wbs: ['4'] },
+  { get label() { return tr('Сонгон шалгаруулалт'); }, wbs: ['4'] },
   /* ⚠️ «3» ХОЁР мөрд (Газар чөлөөлөлт · Зөвшөөрөл) — `byCode` ЭХНИЙХИЙГ авна */
-  { label: tr('Газар чөлөөлөлт'), wbs: ['3'] },
+  { get label() { return tr('Газар чөлөөлөлт'); }, wbs: ['3'] },
   /* ⚠️ 5.2.3 — БАРИЛГА УГСРАЛТ хэсгийн доторх ИНЖЕНЕРИЙН ДЭД БҮТЭЦ (хуучин
      модны 6.4.2). Код нь дөрвөн мөрд давхардсан — ЭХНИЙХ нь нэгтгэл мөр.
      1.2/2.2 нь түүний ЗУРАГ ТӨСӨЛ тул огт өөр зүйл. */
-  { label: tr('Гадна инженерийн шугам сүлжээ'), wbs: ['5.2.3'] },
+  { get label() { return tr('Гадна инженерийн шугам сүлжээ'); }, wbs: ['5.2.3'] },
   /* ⚠️ Модонд харгалзах зангилаа БАЙХГҮЙ — гэрээний 3-р түвшнээс */
-  { label: tr('Гадна цахилгаан хангамж'), lvl3: 'Гадна цахилгаан холбоо, дохиолол' },
+  { get label() { return tr('Гадна цахилгаан хангамж'); }, lvl3: 'Гадна цахилгаан холбоо, дохиолол' },
   /* ⚠️ WBS `6.2.1`-ЭЭС ХАСАГДСАН (2026-09-10): тэр нь гэрээний бүртгэлийн
      тоо байсан. Одоо «05. Багцын гүйцэтгэл»-ийн бодит гүйцэтгэлийн хувь —
      нэг үзүүлэлт хоёр самбарт хоёр өөр тоо харуулахаа болино. */
-  { label: tr('Орон сууцны барилга угсралт'), housing: true },
+  { get label() { return tr('Орон сууцны барилга угсралт'); }, housing: true },
 ];
 
 function FinCharts({
@@ -2761,9 +2765,9 @@ function SaadCard({
  * солигдоход «0 км» гэсэн худал мөр үлдэхээс сэргийлнэ.
  */
 const PLAN_QTY: { id: string; label: string }[] = [
-  { id: 'road', label: tr('Нийт замын урт') },
-  { id: 'et:15', label: tr('Инженерийн бэлтгэлийн урт') },
-  { id: 'nogoon', label: tr('Ногоон байгууламж') },
+  { id: 'road', get label() { return tr('Нийт замын урт'); } },
+  { id: 'et:15', get label() { return tr('Инженерийн бэлтгэлийн урт'); } },
+  { id: 'nogoon', get label() { return tr('Ногоон байгууламж'); } },
 ];
 
 /** Инженерийн шугам сүлжээ — гурван гэр бүлийн давхаргын нийлбэр урт */

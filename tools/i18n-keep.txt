@@ -29,3 +29,184 @@
 Одоо байгаа барилга байгууламж
 Газар чөлөөлөлт дутуу
 Таун хаус
+
+# ══════════════════════════════════════════════════════════════════════════
+# ДИНАМИК ДУУДЛАГЫН ЦЭГҮҮД (2026-09-30) — `@dyn <файл>  tr(<илэрхийлэл>)`.
+# Мөр бүр «энэ цэгт очих утгуудыг шалгаж, боломжтойг нь en.ts / enData.ts-д
+# бүртгэсэн» гэсэн баталгаа; `--dynamic` тайлан эдгээрийг «шалгагдсан» гэж
+# тооцно. Илэрхийлэл өөрчлөгдвөл бүртгэл хуучирч, цэг дахин тайланд гарна.
+#
+# Утгын эх сурвалжийн ангилал:
+#   [const]  кодын тогтмол — бүгд en.ts-д (ихэнх нь тодорхойлолтдоо tr()-тэй,
+#            динамик tr() нь зүгээр л давхар дамжуулалт).
+#   [data]   ArcGIS-ээс ажиллах үед ирдэг утга — мэдэгдэж буйг enData.ts-д
+#            бүртгэсэн; шинэ утга гарвал монголоороо харагдана (унахгүй).
+#   [pass]   аль хэдийн tr()-ээр орчуулагдсан мөрийг дахин дамжуулна (үр дүнгүй).
+# ══════════════════════════════════════════════════════════════════════════
+
+# [const] LAYERS[*].paint.labels (Явган хүний зам · Цементэн талбай) + paint.values
+#         түлхүүрүүд: BUILT_STATUS (Одоо байгаа · Баригдаж байгаа · Төлөвлөсөн),
+#         TOGLOOM_TYPES (Гулгуур · Дүүжин · Том гулсууран тоглоом) → enData.ts;
+#         [data] бусад давхаргын facet утга (бүсийн төрөл — доорх zoneCanon)
+@dyn components/LayerCatalog.tsx  tr(f.field === d.paint?.field
+
+# [const] LAYERS[*].qty.unit — м² · м · км · ш · м³ · тн (бүгд en.ts)
+@dyn components/MapCanvas.tsx  tr(d.qty!.unit)
+@dyn components/MapCanvas.tsx  tr(d.qty.unit)
+@dyn modules/ViewPanel.tsx  tr(d.qty!.unit)
+@dyn modules/ViewPanel.tsx  tr(def.qty.unit)
+
+# [const] LAYERS[*].title / LAYER_BY_ID — 181 давхаргын нэр бүгд en.ts-д
+#         (ажиллах үеийн тогтмолыг толинд тулгаж шалгасан, 2026-09-30)
+@dyn components/PackLayers.tsx  tr(L.title)
+@dyn modules/DedButets.tsx  tr(L.title)
+@dyn modules/DedButets.tsx  tr(LAYER_BY_ID[addTo]?.title ?? '')
+
+# [const] zoneCanon / analysis/config бүсийн каноник нэр (дээрх жагсаалт + en.ts)
+@dyn components/ZoneFilter.tsx  tr(g.type)
+@dyn modules/Gazar.tsx  tr(z.label)
+
+# [pass] ui.tsx-ийн ерөнхий график/донат/легенд — шошго нь ДУУДАГЧААС ирнэ
+#        (Dashboard · GeneralDash · Gazar · PkgFin …); дуудагч бүр өөрийн
+#        шошгоо tr()-ээр өгдөг (доорх цэгүүд) тул энд давхар дамжуулалт.
+@dyn components/ui.tsx  tr(cur.label)
+@dyn components/ui.tsx  tr(h.label)
+@dyn components/ui.tsx  tr(i.label)
+@dyn components/ui.tsx  tr(it.label)
+@dyn components/ui.tsx  tr(label)
+@dyn components/ui.tsx  tr(sl.label)
+
+# [const] QAQC_COLS.short / .label · QAQC_GROUPS.label · QAQC_BAND (lib/qaqc.ts —
+#         тодорхойлолтдоо tr(); латин «FIC», «MIR», «Inspection Test Plan» орчуулгагүй)
+@dyn lib/ceo/qaqc.ts  tr(m)
+@dyn modules/Qaqc.tsx  tr(QAQC_BAND)
+@dyn modules/Qaqc.tsx  tr(c.label)
+@dyn modules/Qaqc.tsx  tr(c.short)
+@dyn modules/Qaqc.tsx  tr(dc.label)
+@dyn modules/Qaqc.tsx  tr(g.label)
+
+# [data] газар чөлөөлөлтийн төлөв (Tuluv: Бүрэн чөлөөлсөн · Зөвшилцөх · Маргаантай ·
+#        Гэрээлсэн · Татгалзсан · Үлдэх саналтай · Үнийн дүн зөвшөөрөөгүй · Дүйцүүлсэн ·
+#        Тодорхойгүй) — enData.ts (том/жижиг үсгийн хоёр хувилбар)
+@dyn lib/execInfographic.ts  tr(b.label)
+@dyn lib/execPdf.ts  tr(b.label)
+@dyn lib/reportPdf.ts  tr(s.label)
+@dyn modules/ExecReport.tsx  tr(b.label)
+@dyn modules/Tailan.tsx  tr(s.label)
+@dyn modules/Gazar.tsx  tr(value)
+
+# [data] чөлөөлөгдөөгүй шалтгаан (явцы_1 талбар: Маргаантай · Зөвшилцөх · Үнийн дүн
+#        зөвшөөрөөгүй · Үлдэх саналтай …) — enData.ts; шинэ шалтгаан монголоор үлдэнэ
+@dyn lib/execInfographic.ts  tr(r.label)
+@dyn lib/execPdf.ts  tr(r.label)
+@dyn lib/execPdf.ts  tr(topReason.label)
+@dyn lib/reportData.ts  tr(topReason.label)
+@dyn lib/reportPdf.ts  tr(d.topReason.label)
+@dyn modules/ExecReport.tsx  tr(rs.label)
+@dyn modules/Gazar.tsx  tr(r.label)
+@dyn modules/Tailan.tsx  tr(d.topReason.label)
+
+# [const] zovshoorol.TOLOV — дээрх жагсаалт (Хүлээгдэж буй · Зөвшөөрсөн · Зөвшөөрөөгүй)
+@dyn lib/execInfographic.ts  tr(it.tolov)
+@dyn lib/execPdf.ts  tr(i.tolov)
+@dyn modules/ExecReport.tsx  tr(i.tolov)
+
+# [const] gdash.SOURCES шошго (Нийслэлийн төсөв · НЗД нөөц хөрөнгө · Үнэт цаасны хөрөнгө ·
+#         Төслийн орлого …) — тодорхойлолтдоо tr(), en.ts
+@dyn lib/execPdf.ts  tr(s.label)
+@dyn lib/reportPdf.ts  tr(d.topSource.label)
+@dyn modules/ExecReport.tsx  tr(s.label)
+@dyn modules/Tailan.tsx  tr(d.topSource.label)
+
+# [data] багцын нэр өгөгдлөөс (Багц 1 · Багц 3.2 · Багц 4-1 · Багц 4.1 · Багц -4.1 ·
+#        Багц-4.1 · БАГЦ1 …) — бичиглэлийн бүх хувилбар en.ts + enData.ts;
+#        [const] PKG_ROWS.name (Багц 1 · 9 давхар …) en.ts
+@dyn lib/reportData.ts  tr(bestBagts.bagts)
+@dyn lib/reportData.ts  tr(worstBagts.bagts)
+@dyn lib/reportPdf.ts  tr(b.bagts)
+@dyn lib/reportPdf.ts  tr(c.bagts ?? '—')
+@dyn lib/reportPdf.ts  tr(d.bestBagts?.bagts ?? '—')
+@dyn lib/reportPdf.ts  tr(d.worstBagts?.bagts ?? '—')
+@dyn lib/reportPdf.ts  tr(d.heavyStage.label)
+@dyn lib/reportPdf.ts  tr(x.label)
+@dyn modules/Tailan.tsx  tr(b.bagts)
+@dyn modules/Tailan.tsx  tr(b.label)
+@dyn modules/Tailan.tsx  tr(c.bagts ?? '—')
+@dyn modules/Tailan.tsx  tr(d.bestBagts?.bagts ?? '—')
+@dyn modules/Tailan.tsx  tr(d.heavyStage.label)
+@dyn modules/Tailan.tsx  tr(d.worstBagts?.bagts ?? '—')
+@dyn modules/Bagts.tsx  tr(p.name)
+@dyn modules/PkgFin.tsx  tr(p.name)
+@dyn modules/PkgProg.tsx  tr(active.name)
+@dyn modules/PkgProg.tsx  tr(p.name)
+@dyn modules/GeneralDash.tsx  tr(r.name)
+@dyn modules/DedButets.tsx  tr(x.name)
+@dyn modules/Habea.tsx  tr(habeaPkgLabel(co.bagts.replace(/\s*-\s*/, ' ').trim()))
+@dyn modules/Habea.tsx  tr(habeaPkgLabel(x.bagtsRaw))
+@dyn modules/Habea.tsx  tr(i.bagtsRaw)
+@dyn modules/Habea.tsx  tr(x.bagtsRaw)
+
+# [data] гүйцэтгэгч байгууллага (ХАБЭА labor/incident: Морин сувд констракшн ХХК ·
+#        Професионалстрой ХХК · Хятадын барилгын 6-р инженерийн товчоо …) — enData.ts;
+#        латин нэр (MMSE · Smart craft) орчуулгагүй; шинэ компани монголоор үлдэнэ
+@dyn lib/reportPdf.ts  tr(c.label)
+@dyn modules/Tailan.tsx  tr(c.label)
+@dyn modules/Tailan.tsx  tr(co.label)
+@dyn modules/Habea.tsx  tr(i.company)
+@dyn modules/Habea.tsx  tr(x.company)
+@dyn modules/Dashboard.tsx  tr(r.contractor)
+
+# [data] ослын төрөл (ХАБЭА incident «turul»: Осол дөхсөн тохиолдол · Эд хөрөнгийн хохирол ·
+#        Эмнэлгийн тусламж авсан гэмтэл · Анхны тусламж авсан осол зөрчил · Амь нас эрсдэж
+#        болзошгүй байсан · Ноцтой байдалд хүргэж болзошгүй …) — enData.ts
+@dyn modules/Habea.tsx  tr(i.type)
+@dyn modules/Habea.tsx  tr(x.type)
+
+# [data] ажлын үе шатны нэр (бөглөх хуудасны `Ажил` талбар: Барилгын ажил · Цэвэр бохир
+#        усны ажил · Халаалт агаар сэлгэлт ажил · Цахилгаан, гэрэлтүүлэг · Холбоо дохиолол)
+#        enData.ts; `p.no` нь дугаар («1») — орчуулга хэрэггүй
+@dyn lib/reportPdf.ts  tr(p.name)
+@dyn modules/Tailan.tsx  tr(p.name)
+@dyn modules/Tailan.tsx  tr(p.no)
+@dyn modules/Tailan.tsx  tr(x)
+
+# [data] блокийн нэр (Б1 … Б5, Хоосон блок) — enData.ts
+@dyn modules/Tailan.tsx  tr(b.block)
+
+# [data] санхүүгийн бүртгэлийн «төрөл» талбар (Барилгын ажил · ИНЖЕНЕРИЙН ДЭД БҮТЭЦ ·
+#        НИЙГМИЙН ДЭД БҮТЭЦ · ТЭЗҮ ЗУРАГ ТӨСӨЛ · ГАДНА ТОХИЖИЛТ, ӨНДӨРЖИЛТ …) — enData.ts;
+#        [const] «Төрөл тодорхойлоогүй» en.ts
+@dyn lib/reportPdf.ts  tr(t.type)
+@dyn modules/Tailan.tsx  tr(t.type)
+
+# [const] INFRA_SYSTEMS / catalogGroups гарчиг (Дулаан · Ус хангамж · Цахилгаан …) en.ts
+@dyn lib/reportPdf.ts  tr(g.title)
+@dyn modules/Tailan.tsx  tr(g.title)
+@dyn modules/DedButets.tsx  tr(g.title)
+
+# [const] нийгмийн байгууламжийн давхаргын нэр (LAYERS.title) en.ts
+@dyn lib/reportPdf.ts  tr(s.title)
+@dyn modules/Tailan.tsx  tr(s.title)
+
+# [const] SOURCE_FS-ийн эх үүсвэрийн төрөл (Дулааны · Усан хангамжийн · Цахилгааны эх үүсвэр)
+#         — enData.ts (өгөгдлийн утгатай ижил бичиглэл)
+@dyn lib/services/layers.ts  tr(type)
+
+# [pass] ExecReport-ийн дүгнэлтийн мөрүүд — reportData.ts-д аль хэдийн tr()-ээр үүсдэг
+@dyn modules/ExecReport.tsx  tr(s)
+
+# [const] Dashboard хавтангийн нэгж (га · өрх · хүн · ₮ · %) — тодорхойлолтдоо tr()
+@dyn modules/Dashboard.tsx  tr(t.unit)
+# [data] гүйцэтгэгчийн харьяалал (Гадаад · Үндэсний) + газрын төлөв/шалтгаан — enData.ts
+@dyn modules/Dashboard.tsx  tr(label)
+@dyn modules/Dashboard.tsx  tr(r.origin)
+# [data]+[const] багцын нэр (PKG_ROWS / өгөгдөл) — дээрх багцын хэсэг
+@dyn modules/Dashboard.tsx  tr(r.label)
+@dyn modules/Dashboard.tsx  tr(x.key)
+@dyn modules/Dashboard.tsx  tr(x.label)
+
+# [const] Gazar OV_GROUPS мөрүүд — давхаргын нэр (LAYERS.title) en.ts
+@dyn modules/Gazar.tsx  tr(r.name)
+
+# [const] IRGED_BUILT.types (Байшин · Гэр) — enData.ts
+@dyn modules/Irged.tsx  tr(t)

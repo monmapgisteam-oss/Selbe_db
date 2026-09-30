@@ -79,3 +79,22 @@ export async function loadNavBadges(username: string | null, scope: 'all' | View
 
 /** Тэмдэгтэй харагдацууд — эдгээрээс гарахад тоог шууд шинэчилнэ */
 export const BADGE_VIEWS: ReadonlySet<ViewKey> = new Set(SOURCES.map((x) => x.view));
+
+/* ══ ⚠️ 2026-09-30 (кэшийн ажлын урсгал — ЗӨВХӨН энэ блок): чанарын тэмдгийг ACL ирэхэд дахин тоолох ══ */
+/**
+ * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО. `countChanarActionable` нь ACL ачаалагдахаас ӨМНӨ бага
+ * тоолдог байв (дээрх SOURCES-ийн ⚠️); одоо (1) тоолуур өөрөө ACL-ийг хязгаартай
+ * хүлээнэ (`chanarStore.whenChanarAclReady`), (2) энэ дохио ACL өөрчлөгдөх бүрд
+ * (`chanarStore.subscribeChanarActionable`) `cb`-г дуудна — `Portal` `refreshBadges`-ээ
+ * өгнө. Тайлах функц буцаана. ⚠️ Модуль ДИНАМИКААР — толгойн ⚠️-ийн адил үндсэн
+ * chunk-д орохгүй; тайлагдсаны дараа ирсэн бүртгэл шууд тайлагдана.
+ */
+export function subscribeNavBadges(cb: () => void): () => void {
+  let alive = true;
+  let off: (() => void) | null = null;
+  import('@/lib/chanarStore').then(
+    (m) => { if (alive) off = m.subscribeChanarActionable(cb); else off = null; },
+    () => { /* чимээгүй — тэмдэг бол туслах мэдээлэл */ },
+  );
+  return () => { alive = false; off?.(); off = null; };
+}

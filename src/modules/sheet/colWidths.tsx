@@ -30,6 +30,7 @@ export function useColWidths(key: string) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + key);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: localStorage (гадны сан) зөвхөн эффектэд уншигдана — дээрх hydration-ийн ⚠️; useState-ийн эхний утгад шилжүүлбэл серверийн зурагтай зөрнө
       if (raw) setW(JSON.parse(raw) as Widths);
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
@@ -57,7 +58,9 @@ export function useColWidths(key: string) {
   // ⚠️ Хадгалахдаа ЭНД-ээс уншина: `setW(p => { save(p); ... })` гэвэл
   // state-ийн шинэчлэгч цэвэр биш болж StrictMode-д хоёр дахин ажиллана.
   const cur = useRef<Widths>({});
-  cur.current = w;
+  /* ⚠️ 2026-09-30: render-д биш ЭФФЕКТЭД тольдоно (react-hooks/refs) — уншигч нь зөвхөн заагч/гарын
+     үйл явдлууд (commit-ийн дараа) тул утга ижил; setState-ийн шинэчлэгч цэвэр хэвээр. */
+  useEffect(() => { cur.current = w; }, [w]);
 
   /**
    * Толгойн нүдэнд тавих бариулын props. Жишээ:
@@ -66,7 +69,7 @@ export function useColWidths(key: string) {
   const grip = useCallback(
     (col: string) => ({
       className: st.grip,
-      title: GRIP_TITLE,
+      title: GRIP_TITLE(),
       onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
         // ⚠️ Толгой дээрх бусад үйлдэл (эрэмбэлэх, нүд сонгох) асахаас сэргийлнэ.
         e.preventDefault();
@@ -105,7 +108,7 @@ export function useColWidths(key: string) {
       // өргөн — урьд нь зөвхөн хулгана/хүрэлтээр л ажилладаг байв.
       role: "separator" as const,
       "aria-orientation": "vertical" as const,
-      "aria-label": GRIP_ARIA,
+      "aria-label": GRIP_ARIA(),
       tabIndex: 0,
       onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Enter" || e.key === "Home") {

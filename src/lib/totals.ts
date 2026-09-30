@@ -328,6 +328,7 @@ export function usePlanTotalsLive(
 
   useEffect(() => {
     if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — унтраах/кэш оносон үед дүнг синхрон тавина, эс бөгөөс хуучин дүн нэг агшин үлдэнэ
       setSt({ map: new Map(), done: 0, total: 0, error: null, failed: 0, stale: false });
       return undefined;
     }

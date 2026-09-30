@@ -6,7 +6,7 @@ import '@/lib/silenceOrthoLogs';
 import { t as tr } from '@/lib/i18nCore';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
@@ -191,6 +191,7 @@ export default function Root() {
       if (p) sessionStorage.removeItem(PENDING_KEY);
     } catch { p = null; }
     if (!p) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: нэвтрэлтээс буцаж ирэхэд `sessionStorage` (гаднын систем)-оос хүлээгдэж буй цэгийг уншиж URL + хүрээг тавина; рендер дотор тооцож болохгүй (history.pushState гаднын нөлөө)
     if (p === 'enter' || p === 'all') openEntry();
     // ⚠️ sessionStorage ч гаднын утга — prototype түлхүүрээс хамгаална
     else if (Object.hasOwn(VIEW_BY_KEY, p)) openView(p as ViewKey);
@@ -293,11 +294,19 @@ export default function Root() {
    *    `clamped` хоосон → Portal-ын оронд «эрх хүрэлцэхгүй» дэлгэц гарч
    *    мөн л unmount болно.
    */
-  const lastPortal = useRef<{ navScope: 'all' | ViewKey[]; docsAllowed: boolean } | null>(null);
+  /* ⚠️ 2026-09-30: ref биш STATE — «рендер дотор ref бичих/унших» (eslint
+     react-hooks/refs) оронд React-ийн «өмнөх рендерийн мэдээлэл хадгалах»
+     хэв: хүчинтэй хүрээ ӨӨРЧЛӨГДСӨН үед л (агуулгын түлхүүрээр тулгана —
+     `clamped` массив рендер бүрт шинэ лавлагаатай) рендер дотор setState.
+     React үүнийг шууд дахин зурна; commit-д хүрэх үр дүн урьдынхтай ижил. */
+  const [lastPortal, setLastPortal] = useState<{ navScope: 'all' | ViewKey[]; docsAllowed: boolean; key: string } | null>(null);
   if (scope && authorized && !noAccess) {
-    lastPortal.current = { navScope: clamped as 'all' | ViewKey[], docsAllowed: access?.docs ?? false };
+    const navScope = clamped as 'all' | ViewKey[];
+    const docsAllowed = access?.docs ?? false;
+    const key = `${navScope === 'all' ? 'all' : navScope.join(',')}|${docsAllowed ? 1 : 0}`;
+    if (lastPortal?.key !== key) setLastPortal({ navScope, docsAllowed, key });
   }
-  const frozen = scope && accessLost && status === 'denied' ? lastPortal.current : null;
+  const frozen = scope && accessLost && status === 'denied' ? lastPortal : null;
 
   /* Үүргийн нүүр харагдац — хязгаарлагдмал хэрэглэгчийн нүүрт тодруулна (`openEntry`-тэй ижил эх) */
   const roleHome = (() => {

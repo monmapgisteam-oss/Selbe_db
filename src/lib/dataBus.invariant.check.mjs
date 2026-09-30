@@ -189,11 +189,6 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     + 'өөрөө дахин татдаг. Хүчингүй болгох хуваалцсан кэш байхгүй.'],
   ['src/lib/permsRemote.ts',
     'Эрхийн хүснэгт нь `dataBus`-аар БИШ, өөрийн store-оор тархдаг (permissions.ts).'],
-  ['src/lib/qaqcDraftRemote.ts',
-    'ЧАНАРЫН нооргийн хүснэгт (`Selbe_QAQC_Draft`) нь `dataBus`-ийн кэшид ОГТ '
-    + 'ОРДОГГҮЙ: түүнийг зөвхөн «Чанар (QAQC)» хуудас багц солих агшинд НЭГ '
-    + 'удаа уншиж (`loadQaqcDraft`), дараа нь дэлгэцийн төлөв нь эх сурвалж '
-    + 'болно. Хүчингүй болгох кэш байхгүй — `draftRemote.ts`-тэй ижил шалтгаан.'],
   ['src/lib/draftRemote.ts',
     'Нооргийн хүснэгт нь `dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ: түүнийг зөвхөн '
     + '«Гүйцэтгэл бөглөх» хуудас нээгдэх агшинд НЭГ удаа уншдаг (`loadRemoteDraft`), '
@@ -212,37 +207,11 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     + 'шууд уншдаг («Хуваарь» өөрөө; «Гүйцэтгэл бөглөх» `pkg.key` солигдоход; '
     + '`hyanaltStore` архивлах агшинд). Хүчингүй болгох хуваалцсан кэш байхгүй — '
     + '`qaqc.ts`-тэй ижил шалтгаан (2026-09-06, tezu-bonu merge).'],
-  ['src/lib/chanarStore.ts',
-    'ЧАНАРЫН БАРИМТЫН хүснэгт (`Selbe_Chanar_Barimt`) нь `dataBus`-ийн кэшид '
-    + 'ОГТ ОРДОГГҮЙ: «Чанарын баримт» харагдац нээгдэх бүрд шууд уншдаг '
-    + '(`loadDocs`, `cached()`-гүй), дараа нь дэлгэцийн төлөв эх сурвалж болно. '
-    + 'Мөн энэ модуль ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ — зөвхөн баримтын урсгалыг '
-    + 'хөтөлнө (`huvaariBatlah.ts`-тэй ЯГ ИЖИЛ шалтгаан, 2026-09-16).'],
-  ['src/lib/huvaariBatlah.ts',
-    'ХУВААРИЙН БАТЛАХ УРСГАЛЫН хүснэгт (`Selbe_Huvaari_Batlah`) нь '
-    + '`dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ: «Хуваарь» хуудас багц солих бүрд '
-    + 'шууд уншдаг (`loadPending`, `cached()`-гүй). Мөн ЭНЭ модуль эх '
-    + 'хуудсанд ЮУ Ч бичихгүй — зөвхөн урсгалын төлөвийг хөтөлнө; батлагдсан '
-    + 'хуваарийг `Bagts_*` руу бичих ажил нь `Huvaari.save` → `applyUpdates` '
-    + 'дотор явагддаг тул кэшийг ТЭР зам хүчингүй болгоно (2026-09-07).'],
-  ['src/lib/obyemBatlah.ts',
-    'ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН БАТЛАХ УРСГАЛЫН хүснэгт '
-    + '(`Selbe_Obyem_Batlah`) нь `dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ: '
-    + '«Гүйцэтгэл бөглөх» хуудас багц солих бүрд шууд уншдаг '
-    + '(`loadPending`, `cached()`-гүй). Мөн ЭНЭ модуль үндсэн өгөгдөлд '
-    + 'ЮУ Ч бичихгүй — зөвхөн урсгалын төлөвийг хөтөлнө; батлагдсан обьёмыг '
-    + '`Bagts_*` руу бичих ажил нь `FillNew.decideObyemHere` → `applyUpdates` '
-    + 'дотор явагддаг тул кэшийг ТЭР зам хүчингүй болгоно (2026-09-08). '
-    + '`huvaariBatlah.ts`-тэй ЯГ ИЖИЛ шалтгаан.'],
-  ['src/lib/ajilBatlah.ts',
-    'НЭМЭЛТ АЖЛЫН БАТЛАХ УРСГАЛЫН хүснэгт (`Selbe_Ajil_Batlah_csv`) нь `dataBus`-ийн кэшид ОГТ ОРДОГГҮЙ: «Гүйцэтгэл бөглөх» хуудас багц '
-    + 'солих бүрд шууд уншдаг (`loadPending`, `cached()`-гүй). Мөн ЭНЭ '
-    + 'модуль үндсэн өгөгдөлд ЮУ Ч бичихгүй — зөвхөн урсгалын төлөвийг '
-    + 'хөтөлнө; батлагдсан мөрийг `Bagts_*` руу нэмэх ажил нь '
-    + '`ajilApply.materializeAdds` → `bagtsSheet.applyAdds` (бүтэн жааз, '
-    + '2026-09-24; урьд нь `FillNew` ноорог) дотор явагддаг тул кэшийг ТЭР зам '
-    + '(`applyAdds`-ийн `invalidate(\'BAGTS_SHEET\')`) хүчингүй болгоно. '
-    + '`obyemBatlah.ts`-тэй ЯГ ИЖИЛ шалтгаан.'],
+  /* ⚠️ 2026-09-30: `chanarStore.ts` · `huvaariBatlah.ts` · `obyemBatlah.ts` ·
+     `ajilBatlah.ts` · `qaqcDraftRemote.ts` ЭНДЭЭС ХАСАГДАВ — урсгалын хүснэгтүүд
+     автобусын түлхүүртэй болж (`CHANAR_BARIMT` · `HUVAARI_BATLAH` · `OBYEM_BATLAH`
+     · `AJIL_BATLAH` · `QAQC_DRAFT`), бичих зам бүр `invalidate()` дууддаг.
+     ХАМААРАЛ 5 (доор) функц бүрээр нь шалгана. */
   ['src/modules/sheet/Pivot.tsx',
     'САНААТАЙ АРХИВЛАСАН хуудас (Sheet.tsx, 2026-08-18 хэрэглэгчийн шийдвэр — '
     + 'навигациас л хасагдсан, код нь үлдээгдсэн). Хаанаас ч импортлогддоггүй, '
@@ -438,6 +407,95 @@ assert.equal(
   `GARAAR_ZOVSHOOROGDSON хуучирсан (эдгээрт гараар бичсэн кэш үлдээгүй): ${garaarUldegdel.join(', ')}`,
 );
 console.log('✅ гараар бичсэн кэшийн зөвшөөрлийн жагсаалт хуучраагүй');
+
+/* ══════════════════════════════════════════════════════════════════
+   ХАМААРАЛ 5 — УРСГАЛЫН STORE-ийн БИЧИХ ФУНКЦ БҮР кэшээ хүчингүй болгоно
+
+   ⚠️ ЯАГААД НЭМЭГДСЭН (2026-09-30). ХАМААРАЛ 2 нь ФАЙЛЫН түвшинд шалгадаг:
+   нэг `invalidate()` байвал бүх файл ногоон. Урсгалын store-ууд (чанар ·
+   хуваарь · обьём · нэмэлт ажил · QAQC ноорог) 5–17 бичих функцтэй тул нэг
+   функц хүчингүй болгохоо мартвал файлын шалгуур барихгүй — яг тэр өдрийг
+   хүртэл эдгээр файл `invalidate()`-ийг ОГТ дууддаггүй байсан (цэсний тэмдэг
+   3 мин хүртэл хуучин). Одоо ФУНКЦ БҮРЭЭР: `applyEdits` (REST эсвэл SDK)
+   агуулсан функц бүр биедээ `invalidate('<ТҮЛХҮҮР>')` литералтай байх ёстой.
+
+   ДҮРЭМ: доорх файл бүрийн модулийн түвшний функц (`export async function` ·
+   `async function` · `function`) бүрийг хаалтын балансаар тасалж, `applyEdits`
+   агуулсан бүрд тухайн файлын түлхүүрээр `invalidate(` байгааг шаардана.
+   ══════════════════════════════════════════════════════════════════ */
+
+/** Store файл → түүний хүснэгтийн DataKey (нэгдэлд байх ёстой — ХАМААРАЛ 3 барина) */
+const STORE_KEYS = new Map([
+  ['src/lib/chanarStore.ts', 'CHANAR_BARIMT'],
+  ['src/lib/huvaariBatlah.ts', 'HUVAARI_BATLAH'],
+  ['src/lib/obyemBatlah.ts', 'OBYEM_BATLAH'],
+  ['src/lib/ajilBatlah.ts', 'AJIL_BATLAH'],
+  ['src/lib/qaqcDraftRemote.ts', 'QAQC_DRAFT'],
+]);
+
+/**
+ * Модулийн түвшний функцүүдийг {name, body, line} болгож тасална.
+ * ⚠️ Биеийн `{`-г ПАРАМЕТРИЙН жагсаалтыг (хаалтын баланс) алгассаны ДАРАА, «мөрийн
+ *    төгсгөлийн `{`»-ээр олно: `args: {` (параметрийн объект) ба `Promise<{ ok: … }>`
+ *    (буцах төрөл) хоёулаа биеийн хаалт БИШ — эхнийх нь параметр дотор, хоёр дахь
+ *    нь мөр дундаа байдаг. Эхний `{`-г авбал биеийг параметрийн объект гэж андуурч
+ *    `applyEdits`-тэй функцийг олохгүй (2026-09-30-нд яг ингэж унасан).
+ */
+function topLevelFunctions(src) {
+  const out = [];
+  const re = /^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/gm;
+  for (const m of src.matchAll(re)) {
+    /* параметрийн `( … )`-г хаалтын балансаар алгасна */
+    let pd = 0;
+    let close = -1;
+    for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+      const c = src[i];
+      if (c === '(') pd += 1;
+      else if (c === ')') { pd -= 1; if (pd === 0) { close = i; break; } }
+    }
+    if (close < 0) continue;
+    const bodyRe = /\{[ \t]*\r?\n/g;
+    bodyRe.lastIndex = close + 1;
+    const bm = bodyRe.exec(src);
+    if (!bm) continue;
+    const open = bm.index;
+    let d = 0;
+    let end = -1;
+    for (let i = open; i < src.length; i++) {
+      const c = src[i];
+      if (c === '{') d += 1;
+      else if (c === '}') { d -= 1; if (d === 0) { end = i; break; } }
+    }
+    if (end < 0) continue;
+    out.push({ name: m[1], body: src.slice(open, end + 1), line: lineOf(src, m.index) });
+  }
+  return out;
+}
+
+let storeFnTotal = 0;
+const storeFnBad = [];
+for (const [f, key] of STORE_KEYS) {
+  assert.ok(files.includes(f), `ХАМААРАЛ 5: ${f} олдсонгүй — STORE_KEYS хуучирсан`);
+  assert.ok(KEYS.includes(key), `ХАМААРАЛ 5: ${key} DataKey нэгдэлд алга`);
+  const src = stripNoise(read(f));
+  /* Файл өөрөө түлхүүрээ дор хаяж нэг удаа литералаар дуудна — өөр түлхүүрээр
+     «хүчингүй болгосон» дүр үзүүлэхгүй */
+  assert.ok(new RegExp(`[^\\w.]invalidate\\s*\\(\\s*'${key}'`).test(src), `${f}: invalidate('${key}') дуудлага алга`);
+  for (const fn of topLevelFunctions(src)) {
+    if (!/applyEdits/.test(fn.body)) continue;
+    storeFnTotal += 1;
+    if (!new RegExp(`[^\\w.]invalidate\\s*\\(\\s*'${key}'`).test(fn.body)) storeFnBad.push({ f, ...fn });
+  }
+}
+console.log(`урсгалын store-ийн бичих функц: ${storeFnTotal} (${STORE_KEYS.size} файл)`);
+for (const b of storeFnBad) console.error(`  ✖ ${b.f}:${b.line}  ${b.name}() — applyEdits бичдэг ч invalidate('${STORE_KEYS.get(b.f)}') дуудахгүй`);
+assert.equal(
+  storeFnBad.length, 0,
+  'Урсгалын store-ийн бичих функц кэшээ хүчингүй болгохгүй байна. Бичилт АМЖИЛТТАЙ '
+  + 'болсны дараа (`editOk`/`success` шалгасны ДАРАА) тухайн файлын түлхүүрээр `invalidate()` дууд.',
+);
+assert.ok(storeFnTotal >= 20, `ХАМААРАЛ 5 хэт цөөн функц олов (${storeFnTotal}) — таслагч эвдэрсэн үү?`);
+console.log('✅ урсгалын store-ийн бичих функц бүр кэшээ хүчингүй болгоно');
 
 /* ══════════════════════════════════════════════════════════════════
    ХАМААРАЛ 3 — `invalidate()`-д дамжуулсан түлхүүр бүр нэгдэлд байна

@@ -32,7 +32,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { tokenQs } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import { FLOOD_LEVELS, type LevelKey } from '@/lib/ersdel';
 import { floodDataFromBuffer, type FloodData, type FloodMeta } from '@/lib/uyr';
 import { fillSinks, flowAccum, streamMask } from '@/lib/uyrHydro';
@@ -164,7 +164,9 @@ export async function loadDsm(): Promise<Dsm> {
      * хэш (`version`) нь торны URL-д ордог. Өгөгдөл өөрчлөгдмөгц хаяг
      * өөрчлөгдөх тул кэш өөрөө хүчингүй болно.
      */
-    const meta = await fetch('/uyr/selbe-dsm.json', { cache: 'no-cache' })
+    /* ⚠️ 2026-09-30: статик файлд ч timeout — гацсан хүсэлт `dsmPending`-ийг мөнхөд
+       барьж «шинжилгээ хийх» товч хариугүй үлддэг байв. Тор (МБ) илүү удаан: 120с. */
+    const meta = await fetch('/uyr/selbe-dsm.json', { cache: 'no-cache', signal: AbortSignal.timeout(30_000) })
       .then((r) => {
         if (!r.ok) throw new Error(tr('DSM мета уншигдсангүй ({0})', r.status));
         return r.json() as Promise<DsmMeta>;
@@ -172,7 +174,7 @@ export async function loadDsm(): Promise<Dsm> {
     const url = meta.version
       ? `/uyr/selbe-dsm.bin?v=${meta.version}`
       : '/uyr/selbe-dsm.bin';
-    const buf = await fetch(url, { cache: 'force-cache' }).then((r) => {
+    const buf = await fetch(url, { cache: 'force-cache', signal: AbortSignal.timeout(120_000) }).then((r) => {
       if (!r.ok) throw new Error(tr('DSM тор уншигдсангүй ({0})', r.status));
       return r.arrayBuffer();
     });
@@ -232,18 +234,15 @@ async function loadRiverRings(): Promise<SimArea> {
   riverPending ??= (async () => {
     const def = LAYER_BY_ID['sb:16'];
     if (!def) throw new Error(tr('Голын давхарга каталогт алга'));
-    const params = new URLSearchParams({
+    /* ⚠️ 2026-09-30: урьд нь GET + `cache: 'force-cache'` + токен query string-д —
+       токен хөтчийн HTTP кэшийн түлхүүрт орж диск дээр үлддэг байв. Одоо
+       `query.arcgisPost` (токен биеэр, 200-аар ирдэг `{error}` цөмд); кэш нь энэ
+       модулийн санах ой (`riverPending`, токенгүй) — сесс дотор нэг л удаа татна. */
+    const body = await arcgisPost<{ features?: { geometry?: { rings?: number[][][] } }[] }>(`${layerUrl(def)}/query`, {
       where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
-      maxAllowableOffset: '2', f: 'json',
+      maxAllowableOffset: '2',
     });
-    const res = await fetch(`${layerUrl(def)}/query?${params}${tokenQs()}`, { cache: 'force-cache' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
-    /* ⚠️ ArcGIS алдаагаа HTTP 200-аар буцаана — биеийг ЗААВАЛ шалгана */
-    if (body.error) throw new Error(body.error.message ?? 'ArcGIS error');
-    const rings = (body.features ?? []).flatMap(
-      (ft: { geometry?: { rings?: number[][][] } }) => ft.geometry?.rings ?? [],
-    ) as SimArea;
+    const rings = (body.features ?? []).flatMap((ft) => ft.geometry?.rings ?? []) as SimArea;
     if (!rings.length) throw new Error(tr('Голын давхарга хоосон байна'));
     return rings;
   })();

@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { t as tr } from '@/lib/i18nCore';
+import { useSyncRef } from '@/lib/useSyncRef';
+import { t as tr, perLocale } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -326,7 +327,7 @@ const FILTER_IDS = ['land:left', 'gazar:building', 'gazar:parcel'];
  * Зөвхөн шошго (label) орчуулагдана.
  */
 const STATUS_META = [
-  { value: PARCEL_CLEARED, label: tr('Бүрэн чөлөөлсөн'), color: 'var(--good)' },
+  { value: PARCEL_CLEARED, get label() { return tr('Бүрэн чөлөөлсөн'); }, color: 'var(--good)' },
 ] as const;
 
 /**
@@ -337,7 +338,8 @@ const STATUS_META = [
  * нэр/өнгө/дараалал өгч, бусдыг нь автоматаар доор нэмнэ — баганууд «Нийт»-тэй
  * ҮРГЭЛЖ тэнцэнэ (шинэ/устсан төлөвт өөрөө зохицно). */
 const STATUS_ORDER: string[] = STATUS_META.map((m) => m.value);
-const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.label]));
+/* ⚠️ 2026-09-30: хэл бүрд дахин бодогдоно — `label` нь getter тул энд агшинд авбал хөлдөнө */
+const STATUS_LABEL = perLocale((): Record<string, string> => Object.fromEntries(STATUS_META.map((m) => [m.value, m.label])));
 const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map((m) => [m.value, m.color]));
 
 /** Donut-ийн зүсмэгийн палитр — ГАНЦ өгөгдлийн өнгөний (Сэлбэ teal) сүүдэр */
@@ -434,7 +436,10 @@ type GazarData = {
 
 export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
-  const side = useSideResize('gazar');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('gazar');
   const { setHighlight, zoomToWhere, refreshLayer } = useMap();
 
   /**
@@ -722,12 +727,17 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* ⚠️ 2026-09-29 (аудит 10): 2D-ээс гарахад `MapCanvas` SketchViewModel-ийг
      устгадаг ба тэр үед `cancel` үйл явдал ИРЭХГҮЙ — горимыг энд унтраана
      (товч 3D-д идэвхгүй тул хэрэглэгч өөрөө цуцалж чадахгүй). */
-  useEffect(() => { if (dim !== '2d') setDrawing(false); }, [dim]);
+  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд — `dim` солигдсон (ба эхний) render-т л. */
+  const [drawDim, setDrawDim] = useState<typeof dim | null>(null);
+  if (drawDim !== dim) {
+    setDrawDim(dim);
+    if (dim !== '2d') setDrawing(false);
+  }
 
   // Шүүлт солигдоход зураг тэр объектууд руу нисэнэ
   useZoomToFilter({ zone, layerId: flt?.only?.[0] ?? null, where: flt?.where ?? null });
   const fltRef = useRef<GFlt | null>(null);
-  fltRef.current = flt;
+  useSyncRef(fltRef, flt);
   // ⚠️ setState-ийн updater ДОТОР setHighlight дуудаж болохгүй (React render
   //    дундуур өөр компонент шинэчилнэ) — тул ref-ээс уншиж ГАДНА нь дуудна.
 
@@ -886,7 +896,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
         return {
           key: value,
-          label: STATUS_LABEL[value] ?? tr(value),
+          label: STATUS_LABEL()[value] ?? tr(value),
           value: ha2,
           display: tr('{0} талбар · {1} га', num(s.n), num(ha2, 2)),
           /* ⚠️ Нэрлэгдээгүй БҮХ төлөв = ЧӨЛӨӨЛӨГДӨӨГҮЙ (зөвшилцөх · татгалзсан ·
@@ -966,6 +976,13 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const err = q.state === 'error';
   const pct = d && d.left.n ? (d.left.resolved / d.left.n) * 100 : null;
 
+  /* ⚠️ 2026-09-30: IIFE-ийн ГАДНА зарлана — IIFE дотор үүссэн closure-ын `pickFlt`
+     (ref уншдаг) дуудлагыг React Compiler render үеийн ref хандалт гэж үздэг байв. */
+  const pickReason = (k: string) => {
+    const r = d?.reasons.find((x) => x.key === k);
+    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', k), where: r.where, only: ['land:left'] });
+  };
+
   /** Панелийн агуулгыг ачаалал/алдаа/хоосонтой хамт зурна */
   const guard = (ready: boolean, body: React.ReactNode) =>
     d ? (ready ? body : <Empty label={tr('Мэдээлэл алга')} />)
@@ -974,7 +991,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       className={`${g.frame} ${editMode ? g.frameEdit : ''} ${side.hostClass}`}
       style={side.style}
     >
@@ -1071,10 +1088,6 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 />
                 {d.reasons.length > 0 && (() => {
                   const selReason = flt?.grp === 'reason' ? flt.key : null;
-                  const pickReason = (k: string) => {
-                    const r = d.reasons.find((x) => x.key === k);
-                    if (r) pickFlt({ grp: 'reason', key: k, label: tr('Шалтгаан: {0}', k), where: r.where, only: ['land:left'] });
-                  };
                   return (
                   <>
                     {/* ГУРВАН график ХЭВЭЭР (тоо / хувь / талбай) — мөр бүрийн

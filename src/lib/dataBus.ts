@@ -43,7 +43,16 @@ export type DataKey =
   | 'SOURCE_FS'
   | 'HABEA'
   | 'HYANALT'
-  | 'ZOVSHOOROL';
+  | 'ZOVSHOOROL'
+  /* ⚠️ 2026-09-30: УРСГАЛЫН ХҮСНЭГТҮҮД — урьд нь автобусад ОГТ байгаагүй тул чанар ·
+     хуваарь · обьём · нэмэлт ажил · QAQC-ийн нооргийн бичилт ямар ч кэшийг хүчингүй
+     болгодоггүй байв (цэсний тэмдэг 3 мин хүртэл хуучин). Нэр нь хүснэгтийн item-ийн
+     гарчигтай (`Selbe_*`) тохирно — `services.ts`-д экспорт байхгүй (өөрөө үүсгэдэг). */
+  | 'CHANAR_BARIMT'   // Selbe_Chanar_Barimt   — chanarStore.ts
+  | 'HUVAARI_BATLAH'  // Selbe_Huvaari_Batlah  — huvaariBatlah.ts
+  | 'OBYEM_BATLAH'    // Selbe_Obyem_Batlah    — obyemBatlah.ts
+  | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts
+  | 'QAQC_DRAFT';     // Selbe_QAQC_Draft      — qaqcDraftRemote.ts
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */

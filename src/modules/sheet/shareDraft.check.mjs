@@ -27,7 +27,16 @@ import fs from 'node:fs';
  *    болдог тул тэдгээр хайлт бүтэлгүйтэж, тест ХУДЛААР унадаг байв
  *    (`docs/docs.invariant.check.mjs`-ийн 2026-09-16-ны ижил алдаа).
  */
-const readSrc = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n');
+const readOne = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n');
+/* ⚠️ 2026-09-30: `FillNew.tsx` задарсан (`fill/`) — хуваалцсан ноорогийн код `fill/draft.ts` ·
+   `fill/useDraftSync.ts` · `fill/useCellEdit.ts`-д. `FillNew.tsx`-ийг хүсэхэд НИЙЛБЭРИЙГ буцаана
+   (FillNew эхэнд, дараа нь fill/*.ts(x) нэрийн дарааллаар) — доорх «эхний тохиолдол» anchor-ууд
+   (`if (r.ok) {` · `setPvPend({});`) тэр дараалалд тулгуурлана. */
+const FILL_FILES = [
+  'src/modules/sheet/FillNew.tsx',
+  ...fs.readdirSync('src/modules/sheet/fill').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/sheet/fill/' + f),
+];
+const readSrc = (p) => (p === 'src/modules/sheet/FillNew.tsx' ? FILL_FILES.map(readOne).join('\n') : readOne(p));
 /* ⚠️ 2026-09-22 merge: bagtsiin-medeelel салбар ижил засварыг `read` нэрээр хийсэн — alias. */
 const read = readSrc;
 /* ══════════ `mergeDrafts`-ийн ХУВИЛБАР (FillNew.tsx-ийн дүрэм) ══════════ */

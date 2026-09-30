@@ -32,8 +32,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
    * ачаалалт бүрд харанхуй→цайвар→харанхуй анивчилт өгч, localStorage-д
    * түр зуурын буруу утга бичдэг байлаа.
    */
-  const [theme, setTheme] = useState<Theme | null>(null);
-
   /**
    * Эхлэхдээ: хадгалсан сонголт → байхгүй/хүчингүй бол DARK.
    *
@@ -44,17 +42,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
    *    эффект light болгож (анивчилт), localStorage-д бичдэг тул DARK анхдагч
    *    хэзээ ч ирдэггүй; хуучирсан 'auto' нь `data-theme='auto'` болж `:root`-ийн
    *    цайвар токен руу унаж, буцаж хадгалагддаг байлаа.
+   *
+   * ⚠️ 2026-09-30: хадгалсан утгыг useState-ийн INITIALIZER-т уншина (урьд нь
+   *    эффект дотор `setTheme` — нэг илүү рендер, eslint set-state-in-effect).
+   *    Сервер дээр `null` хэвээр (prerender), хөтөч дээр FOUC скриптийн тавьсан
+   *    `data-theme`-тэй ижил утга тул `shown` (доор) эхний рендерээс өөрчлөгдөхгүй.
+   *    try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ — өнгөний сонголт
+   *    санагдахгүй нь ердөө тав тухын асуудал.
    */
-  useEffect(() => {
-    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
-       эффект дотор шидсэн алдаа БҮХ аппыг унагана — өнгөний сонголт
-       санагдахгүй нь ердөө тав тухын асуудал. */
+  const [theme, setTheme] = useState<Theme | null>(() => {
+    if (typeof window === 'undefined') return null;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(THEME_KEY);
     } catch { /* хувийн горим — DARK анхдагч */ }
-    setTheme(saved === 'light' ? 'light' : 'dark');
-  }, []);
+    return saved === 'light' ? 'light' : 'dark';
+  });
 
   // Уншиж дуустал DOM-д хүрэхгүй — inline скриптийн тавьсан утга хэвээр үлдэнэ
   useEffect(() => {

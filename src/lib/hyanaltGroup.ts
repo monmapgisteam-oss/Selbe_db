@@ -120,12 +120,12 @@ const DAY = 86_400_000;
  * бүтэн хяналтын модулийг (хүснэгт, түүх, бөглөх хуудас) дагуулж татдаг байв.
  */
 export const STAGE_LABEL: Record<Stage, string> = {
-  company: tr('Гүйцэтгэгч компани'),
-  engineer: tr('Хяналтын инженер'),
-  manager: tr('Багцын менежер'),
-  director: tr('Ерөнхий менежер'),
-  head: tr('Хэлтсийн дарга'),
-  chief: tr('Газрын дарга'),
+  get company() { return tr('Гүйцэтгэгч компани'); },
+  get engineer() { return tr('Хяналтын инженер'); },
+  get manager() { return tr('Багцын менежер'); },
+  get director() { return tr('Ерөнхий менежер'); },
+  get head() { return tr('Хэлтсийн дарга'); },
+  get chief() { return tr('Газрын дарга'); },
 };
 
 /**

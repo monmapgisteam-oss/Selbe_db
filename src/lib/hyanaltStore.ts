@@ -216,7 +216,7 @@ async function liveRow(oid: number): Promise<Row | undefined> {
  */
 /* ⚠️ `REVIEW_STATUS` нь `hyanalt.ts`-д (2026-09-23) — 6 шатны нэг эх сурвалж. */
 
-const STALE = tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
+const STALE = () => tr('Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ, дахин шалгана уу');
 
 /**
  * БИЧИХИЙН ЯГ ӨМНӨ ДАХИН ШАЛГАНА — дунд шатны compare-and-set-маягийн хамгаалалт.
@@ -272,9 +272,12 @@ export function useHyanaltRows(): {
   useEffect(() => {
     const f = () => tick((n) => n + 1);
     subs.add(f);
-    if (!loaded) load();
+    /* ⚠️ 2026-09-30 (eslint `set-state-in-effect`): анхны ачаалалтад `load()` БИШ —
+       тэр `setError('')`-ийг эффект дотор синхроноор дууддаг байв. `error` анхнаасаа
+       хоосон тул утга ижил; алдаа нь урьдын адил async `catch`-д. */
+    if (!loaded) refresh().catch((e) => setError(String((e as Error)?.message ?? e)));
     return () => { subs.delete(f); };
-  }, [load]);
+  }, []);
 
   return { rows: ROWS, loading: !loaded && !error, error, reload: load };
 }
@@ -998,7 +1001,7 @@ export async function apply(a: {
     const cur = await liveRow(a.oid);
     if (!cur || cur[F.status] !== REVIEW_STATUS[a.stage]) {
       emit();
-      return { ok: false, error: STALE };
+      return { ok: false, error: STALE() };
     }
     /*
      * ⚠️ ЭРХИЙГ СЕРВЕРИЙН МӨРӨӨС ШАЛГАНА (2026-09-16-ны аудит): багцын
@@ -1334,7 +1337,7 @@ export async function recheck(
   /* ⚠️ Дахин шалгагч нь ДАРААГИЙН шатны буцаалтыг л авна (2026-09-23, 6 шат) */
   const upper = nextReview(by)!;
   const want = RETURNED_STATUS[upper];
-  if (prev[F.status] !== want) { emit(); return { ok: false, error: STALE }; }
+  if (prev[F.status] !== want) { emit(); return { ok: false, error: STALE() }; }
   /* ⚠️ `apply`-тай ИЖИЛ шалгуур — дахин шалгалт нь мөрийг дээд шат руу
      дахин илгээдэг тул эрхийн ижил жинтэй (`hyanaltStore`-ийн authz). */
   {
@@ -1371,7 +1374,7 @@ export async function recheck(
     const ergelt = base[F.ergelt] + 1;
     const twin = ROWS.some((r) => r[F.sheetOid] === base[F.sheetOid]
       && r[F.bagts] === base[F.bagts] && r[F.ergelt] === ergelt);
-    if (twin) { emit(); return { ok: false, error: STALE }; }
+    if (twin) { emit(); return { ok: false, error: STALE() }; }
 
     const sentAt = prev[F.companySent];
     /*

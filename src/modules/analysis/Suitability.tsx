@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import * as projection from '@arcgis/core/geometry/projection';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
@@ -72,8 +73,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ── Ачаалалт ── */
   const [data, setData] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [projected, setProjected] = useState(false);
-  const geomRef = useRef(new Map<string, Polygon | null>());
+  /* ⚠️ 2026-09-30: проекцолсон геометр нь STATE (урьд нь ref + `projected` туг) —
+     `rows` нь render дунд бодогддог тул ref уншиж болохгүй. `null` = хараахан үгүй. */
+  const [geoms, setGeoms] = useState<Map<string, Polygon | null> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -85,12 +87,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         // Дүрслэлийн геометрийг Web Mercator рүү (тооцоо нь UTM дээр хэвээр)
         await projection.load();
         const wm = SpatialReference.WebMercator;
+        const gm = new Map<string, Polygon | null>();
         for (const z of d.zones) {
-          geomRef.current.set(z.id, z.geometry ? (projection.project(z.geometry, wm) as Polygon) : null);
+          gm.set(z.id, z.geometry ? (projection.project(z.geometry, wm) as Polygon) : null);
         }
         if (!alive) return;
         setData(d);
-        setProjected(true);
+        setGeoms(gm);
 
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
@@ -196,7 +199,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /* ── Тооцоо ── */
   const rows = useMemo<Row[]>(() => {
-    if (!data || !projected) return [];
+    if (!data || !geoms) return [];
     /* ⚠️ Засагдсан `indicators`-ыг дамжуулна (2026-09-25 аудит) — эс бөгөөс
        `ASSUME_MET` тогтмол 100-г ашигласаар норм засварыг үл тоодог байв. */
     computeRaw(data.zones, greenCats, parking, scoreOn, indicators);
@@ -209,11 +212,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         ...z,
         urban: u.score,
         parts: u.parts,
-        displayGeom: geomRef.current.get(z.id) ?? null,
+        displayGeom: geoms.get(z.id) ?? null,
         scored: !z.excluded || scoreOn.has(z.type),
       };
     });
-  }, [data, projected, greenCats, parking, indicators, scoreOn]);
+  }, [data, geoms, greenCats, parking, indicators, scoreOn]);
 
   /**
    * Олон нийтийн бүсийн кодууд — чагт асаалттай үед зураг ба картыг хумина.
@@ -474,7 +477,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [realPlan, signalStage]);
 
   // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
-  useEffect(() => { setRoadNet(null); setRoadErr(null); }, [netLoad]);
+  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд — `netLoad` солигдсон (ба эхний) render-т л. */
+  const [netLoaded, setNetLoaded] = useState<typeof netLoad | null>(null);
+  if (netLoaded !== netLoad) {
+    setNetLoaded(netLoad);
+    setRoadNet(null);
+    setRoadErr(null);
+  }
 
   useEffect(() => {
     // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
@@ -574,7 +583,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * гараар асаасан байсныг таслах эрхгүй.
    */
   const layerOnRef = useRef(layerOn);
-  layerOnRef.current = layerOn;
+  useSyncRef(layerOnRef, layerOn);
   useEffect(() => {
     if (!roadMode || netKind !== 'plan' || layerOnRef.current[ROAD_AREA_LAYER]) return;
     setLayerOn((v) => ({ ...v, [ROAD_AREA_LAYER]: true }));
@@ -602,6 +611,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   useEffect(() => {
     if (!(roadMode && netKind === 'real')) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: давхаргыг нуух/буцаах нь cleanup-тай хос үйлдэл — render үед гаргах аргагүй
     setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: false }));
     return () => setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: true }));
   }, [roadMode, netKind]);

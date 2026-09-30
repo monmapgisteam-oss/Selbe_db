@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { tokenParam, authToken, ensureFreshToken, isTokenError, describeArcgisError } from '@/lib/authToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -22,7 +22,14 @@ export const sum = (f: string, as = 's'): Stat => ({ statisticType: 'sum', onSta
 export const avg = (f: string, as = 'a'): Stat => ({ statisticType: 'avg', onStatisticField: f, outStatisticFieldName: as });
 
 export class ArcGISError extends Error {
-  constructor(message: string, readonly url: string) {
+  constructor(
+    message: string,
+    readonly url: string,
+    /** ArcGIS-ийн `error.code` (498/499 токен, 400 Invalid URL …) — дуудагч түр/тогтвортой алдааг ялгана */
+    readonly code?: number,
+    /** ArcGIS-ийн `error.details` — `hyanalt.post` мессежид залгадаг */
+    readonly details?: string[],
+  ) {
     super(message);
     this.name = 'ArcGISError';
   }
@@ -30,7 +37,12 @@ export class ArcGISError extends Error {
 
 export type Row = Record<string, string | number | null>;
 
-type Body = { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; objectIdFieldName?: string; error?: { message?: string } };
+/** ArcGIS хариуны бие — алдаа нь HTTP 200-аар `error`-т ирдэг */
+export type ArcgisBody = Record<string, unknown> & {
+  error?: { code?: number; message?: string; details?: string[] };
+};
+
+type Body = ArcgisBody & { features?: { attributes: Row }[]; count?: number; exceededTransferLimit?: boolean; objectIdFieldName?: string };
 
 /**
  * POST-оор явуулна — where нөхцөл, геометр, outStatistics урт болоход GET-ийн
@@ -146,53 +158,152 @@ const isOrgUrl = (url: string): boolean =>
   (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
   || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
 
-async function attemptRequest(url: string, params: Record<string, string>, attempt: number, netRetried = false): Promise<Body> {
-  const full = `${url}/query`;
+/**
+ * НЭГ ХҮСЭЛТИЙН ЗАМ — `arcgisPost`/`request`-ийн хуваалцсан цөм (⚠️ 2026-09-30).
+ *
+ * ⚠️ ЯАГААД: урьд нь ~20 файл `fetch`-ийг шууд дуудаж, энд байгаа хамгаалалтыг
+ *    (30с timeout · зэрэг хүсэлтийн слот · 429/503 backoff · 200-аар ирдэг
+ *    `{error}` · 498 токен шинэчлээд дахин) тойрдог байв; `authToken.arcgisPost`
+ *    ч timeout/слотгүй байлаа. Одоо бүгд энэ нэг цөмөөр явна.
+ *
+ * Сонголтууд (`ArcgisReqOpts`):
+ *   · `token: 'always'` (анхдагч) — нэвтэрсэн хэрэглэгчийн ОДООГИЙН токен ҮРГЭЛЖ
+ *     явна, дуудагчийн `params.token`-ийг ДАРНА (дуудагч эрт уншсан токен хуучирсан
+ *     байж болно — `authToken.arcgisPost`-ын 2026-09-29-ний шийдвэр).
+ *   · `token: 'org'` — зөвхөн байгууллагын URL-д (`isOrgUrl`), дуудагчийн `token`
+ *     давамгайлна (`queryFeatures`/`queryExtent`-ийн хуучин зан).
+ *   · `slot: false` — хязгаарлагчийн слот АВАХГҮЙ: дуудагч аль хэдийн `withSlot`
+ *     дотор байвал давхар (⚠️ 2026-09-30: src-д `withSlot`-ийн гадна хэрэглээ үлдээгүй — `agsFetch` ч слотоо өөрөө авна)
+ *     авбал слот дуусахад бие биенээ хүлээж ГАЦНА.
+ *   · `describe: true` — алдааны мессежид унасан замыг залгана (`describeArcgisError`).
+ *   · `timeoutMs` — зөвхөн шалгуурт (анхдагч `TIMEOUT_MS`).
+ *
+ * ⚠️ 498/499 (токен хүчингүй) → `ensureFreshToken(true)` → НЭГ удаа дахин. Дуудагч
+ *    өөрөө `token` өгсөн (`'org'` горим) бол дахин оролдохгүй — тэр токен хэвээр
+ *    явах тул утгагүй.
+ * ⚠️ Timeout нь `AbortSignal.timeout` биш, гараар удирдсан `AbortController`:
+ *    дуудагчийн `signal` (хэрэглэгч цуцлах)-тай нэгтгэхэд `AbortSignal.any`
+ *    бүх хөтөчид байхгүй. Шалтгаан нь `DOMException('TimeoutError')` хэвээр тул
+ *    доорх ялгалт өөрчлөгдөөгүй.
+ */
+export type ArcgisReqOpts = {
+  token?: 'always' | 'org';
+  signal?: AbortSignal;
+  slot?: boolean;
+  describe?: boolean;
+  timeoutMs?: number;
+};
+
+const backoff = (attempt: number) => sleep(400 * 2 ** attempt + Math.random() * 200);
+
+async function attemptRequest(
+  full: string,
+  params: Record<string, string>,
+  o: ArcgisReqOpts,
+  attempt: number,
+  netRetried = false,
+  refreshed = false,
+): Promise<ArcgisBody> {
+  const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
+  const always = o.token !== 'org';
+  /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
+     горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
+  const body = always
+    ? { f: 'json', ...params, ...tokenParam() }
+    : { f: 'json', ...(isOrgUrl(full) ? tokenParam() : {}), ...params };
+  const ac = new AbortController();
+  const onAbort = () => ac.abort(o.signal?.reason);
+  if (o.signal?.aborted) onAbort();
+  else o.signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => ac.abort(new DOMException(`timeout ${timeoutMs}ms`, 'TimeoutError')), timeoutMs);
   let res: Response;
   try {
     res = await fetch(full, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). Дуудагч
-         өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
-      body: new URLSearchParams({ f: 'json', ...(isOrgUrl(url) ? tokenParam() : {}), ...params }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      body: new URLSearchParams(body),
+      signal: ac.signal,
     });
   } catch (e) {
     // Түр зуурын сүлжээний тасалт (browser-т fetch-ийн network алдаа нь яг
     // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
     // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
     // Rate-limit retry-ээс ТУСДАА тоолуур (netRetried) тул давхардахгүй.
-    if (e instanceof TypeError && !netRetried) {
+    if (e instanceof TypeError && !netRetried && !o.signal?.aborted) {
       await sleep(300 + Math.random() * 200);
-      return attemptRequest(url, params, attempt, true);
+      return attemptRequest(full, params, o, attempt, true, refreshed);
     }
     // Timeout-ыг ДАХИН оролдохгүй (аль хэдийн 30с хүлээсэн) — ArcGISError болгож
     // дуудагчид хүргэнэ: файлын дүрмээр алдаа UI-д харагдах ёстой.
     if (e instanceof DOMException && e.name === 'TimeoutError') {
-      throw new ArcGISError(tr('Хүсэлтийн хугацаа хэтэрлээ ({0} сек)', TIMEOUT_MS / 1000), full);
+      throw new ArcGISError(tr('Хүсэлтийн хугацаа хэтэрлээ ({0} сек)', timeoutMs / 1000), full);
     }
     throw e;
+  } finally {
+    clearTimeout(timer);
+    o.signal?.removeEventListener('abort', onAbort);
   }
   if (!res.ok) {
     if (res.status === 429 || res.status === 503) throttleDown();
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
-      await sleep(400 * 2 ** attempt + Math.random() * 200);
-      return attemptRequest(url, params, attempt + 1, netRetried);
+      await backoff(attempt);
+      return attemptRequest(full, params, o, attempt + 1, netRetried, refreshed);
     }
     throw new ArcGISError(`HTTP ${res.status}`, full);
   }
-  const body: Body = await res.json();
-  // ArcGIS алдааг HTTP 200-тай буцаадаг — заавал шалгана
-  if (body.error) {
-    if (isRateLimit(body.error.message ?? '')) throttleDown();
-    if (isRateLimit(body.error.message ?? '') && attempt < RETRIES) {
-      await sleep(400 * 2 ** attempt + Math.random() * 200);
-      return attemptRequest(url, params, attempt + 1, netRetried);
-    }
-    throw new ArcGISError(body.error.message || tr('ArcGIS алдаа'), full);
+  let json: ArcgisBody;
+  try {
+    json = (await res.json()) as ArcgisBody;
+  } catch {
+    /* ⚠️ Proxy/CDN-ийн HTML хариу «SyntaxError: Unexpected token <» болж улаан
+       баннерт гардаг байв (`tableWrite`/`ags`-ийн 2026-09-21-ний дүрэм). */
+    throw new ArcGISError(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'), full);
   }
-  return body;
+  // ArcGIS алдааг HTTP 200-тай буцаадаг — заавал шалгана
+  if (json.error) {
+    const { code, message, details } = json.error;
+    if (isRateLimit(message ?? '')) throttleDown();
+    if (isRateLimit(message ?? '') && attempt < RETRIES) {
+      await backoff(attempt);
+      return attemptRequest(full, params, o, attempt + 1, netRetried, refreshed);
+    }
+    /* ⚠️ 2026-09-29 (хэрэглэгч: «илгээхэд Invalid token»): PKCE токен богино хугацаатай —
+       хүчингүй болсон бол шинэчлээд НЭГ удаа дахин (`ensureFreshToken`-ийн ⚠️). */
+    if (!refreshed && isTokenError(code, message) && authToken() && (always || !('token' in params))) {
+      await ensureFreshToken(true);
+      return attemptRequest(full, params, o, attempt, netRetried, true);
+    }
+    const msg = message || details?.[0] || tr('ArcGIS алдаа');
+    throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details);
+  }
+  return json;
+}
+
+/** Слот авч (эсвэл авалгүй) нэг хүсэлт гүйцэтгэнэ — `ensureFreshToken` хүсэлтийн ӨМНӨ */
+async function run(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
+  await ensureFreshToken();
+  if (o.slot === false) return attemptRequest(full, params, o, 0);
+  await acquire();
+  try {
+    return await attemptRequest(full, params, o, 0);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * ArcGIS REST POST — `url` руу ЯГ (`/query` залгахгүй) `f=json` + form биеэр.
+ * Дурын endpoint (`/query` · `/applyEdits` · давхаргын мета `?f=json` · `sharing/rest/*`).
+ * ⚠️ Токен ЗӨВХӨН биеэр — URL-д, логд, `ArcGISError.url`-д хэзээ ч орохгүй (CWE-598).
+ * ⚠️ Дедуп (`inflight`) ҮГҮЙ — бичих хүсэлт (`applyEdits`) хоёр удаа илгээгдвэл хоёр
+ *    удаа биелэх ЁСТОЙ; давхардал арилгах нь зөвхөн `request()`-ийн асуулгад.
+ */
+export async function arcgisPost<T extends ArcgisBody = ArcgisBody>(
+  url: string,
+  params: Record<string, string>,
+  opts: ArcgisReqOpts = {},
+): Promise<T> {
+  return (await run(url, params, opts)) as T;
 }
 
 /**
@@ -230,17 +341,10 @@ async function request(url: string, params: Record<string, string>): Promise<Bod
   /* Хоёр дахь ба цаашхи хүлээгч — сүлжээ огт хөндөхгүй, гүн хуулбар авна */
   if (running) return structuredClone(await running);
 
-  const run = (async () => {
-    await acquire();
-    try {
-      return await attemptRequest(url, params, 0);
-    } finally {
-      release();
-    }
-  })();
-  inflight.set(key, run);
+  const p = run(`${url}/query`, params, { token: 'org' }) as Promise<Body>;
+  inflight.set(key, p);
   try {
-    return await run;
+    return await p;
   } finally {
     inflight.delete(key);
   }

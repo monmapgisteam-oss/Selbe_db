@@ -145,8 +145,8 @@ const BIN_DEPTH_MM = 3015;
 export const SENSORS: SensorDef[] = [
   {
     key: 'waste',
-    label: tr('Хогийн савны дүүрэлт'),
-    note: tr('Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.'),
+    get label() { return tr('Хогийн савны дүүрэлт'); },
+    get note() { return tr('Ультрасоник зай, түвшин мэдрэгч. Савны амсараас хог хүртэлх зайг хэмжинэ — зай БАГАСАХ нь сав дүүрч байгааг заана.'); },
     devEui: '24e124713c198712',
     layerId: 'iot:waste_sensor',
     url: `${IOT}/Waste_Sensor/FeatureServer/62`,
@@ -163,9 +163,9 @@ export const SENSORS: SensorDef[] = [
          * Хөрвүүлснээр: сав дүүрэх тусам хувь нь ӨСӨЖ, 80%-ийн шугамыг
          * давж, улаан болно — бусад чарттай ижил зарчим.
          */
-        key: 'fill', label: tr('Хогийн савны дүүрэлт'), field: 'payload_decoded_data_distance',
+        key: 'fill', get label() { return tr('Хогийн савны дүүрэлт'); }, field: 'payload_decoded_data_distance',
         unit: '%', dp: 0,
-        note: tr('Савны эзлэхүүний хэдэн хувь нь дүүрсэн бэ. Мэдрэгч ЗАЙГ хэмждэг тул дүүрэлт нь савны гүнээс уг зайг хассан нь.'),
+        get note() { return tr('Савны эзлэхүүний хэдэн хувь нь дүүрсэн бэ. Мэдрэгч ЗАЙГ хэмждэг тул дүүрэлт нь савны гүнээс уг зайг хассан нь.'); },
         /** дүүрэлт % = (гүн − зай) / гүн; 0…100-д хумина (гажуу заалтаас хамгаална) */
         derive: (mm) => Math.max(0, Math.min(100, ((BIN_DEPTH_MM - mm) / BIN_DEPTH_MM) * 100)),
         /**
@@ -175,7 +175,7 @@ export const SENSORS: SensorDef[] = [
          * тэнцэх бөгөөд өгөгдлийн хоёр бөөгнөрлийн ЦООРХОЙД (567…2,941мм)
          * яг таарч буусан тул төлөв хоёрыг цэвэр тусгаарлана.
          */
-        alert: { value: 80, note: tr('Сав ≥80% дүүрсэн — цэвэрлэх шаардлагатай') },
+        alert: { value: 80, get note() { return tr('Сав ≥80% дүүрсэн — цэвэрлэх шаардлагатай'); } },
         /**
          * ⚠️ ТААМАГЛАХ ЦОРЫН ГАНЦ хэмжигдэхүүн. Хог нь цуглуулах хүртэл нэг
          * зүг рүү ХУРИМТЛАГДДАГ тул «одоогийн хурдаараа хэдэн цагийн дараа
@@ -196,16 +196,16 @@ export const SENSORS: SensorDef[] = [
   },
   {
     key: 'soil',
-    label: tr('Хөрсний мэдрэгч'),
-    note: tr('Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.'),
+    get label() { return tr('Хөрсний мэдрэгч'); },
+    get note() { return tr('Хөрсний чийгшил, температур болон цахилгаан дамжуулах чадлыг хэмждэг сенсор.'); },
     devEui: '24e124126c148914',
     layerId: 'iot:soil_meter',
     url: `${IOT}/Soil_Meter/FeatureServer/63`,
     metrics: [
       {
-        key: 'moisture', label: tr('Хөрсний чийг'), field: 'payload_decoded_data_moisture',
+        key: 'moisture', get label() { return tr('Хөрсний чийг'); }, field: 'payload_decoded_data_moisture',
         unit: '%r.h.', dp: 1,
-        note: tr('Хөрсний эзлэхүүний харьцангуй чийгшил.'),
+        get note() { return tr('Хөрсний эзлэхүүний харьцангуй чийгшил.'); },
         /**
          * ⚠️ СТАНДАРТ БАЙХГҮЙ (шалгасан): хөрсний чийгийн эгзэгтэй утга нь
          * ХӨРСНИЙ МЕХАНИК БҮРЭЛДЭХҮҮНЭЭС хамаарна (элсэрхэгт ~8%, шаварлагт
@@ -216,12 +216,12 @@ export const SENSORS: SensorDef[] = [
          * ФИЗИК утгаараа асуудал нь ХУУРАЙШИЛТ тул «дээш давсан» нь энд хөрс
          * ЧИЙГЛЭГ гэсэн үг — бүх чартад нэг чиглэл хэрэглэж байгаагийн үр дүн.
          */
-        alert: { value: 15, note: tr('15%-аас дээш — хөрс хангалттай чийглэг') },
+        alert: { value: 15, get note() { return tr('15%-аас дээш — хөрс хангалттай чийглэг'); } },
       },
       {
-        key: 'temperature', label: tr('Хөрсний температур'), field: 'payload_decoded_data_temperature',
+        key: 'temperature', get label() { return tr('Хөрсний температур'); }, field: 'payload_decoded_data_temperature',
         unit: '°C', dp: 1,
-        note: tr('Мэдрэгч булагдсан гүн дэх хөрсний температур.'),
+        get note() { return tr('Мэдрэгч булагдсан гүн дэх хөрсний температур.'); },
         /**
          * ⚠️ СТАНДАРТ БАЙХГҮЙ (шалгасан) — хөрсний температурын хязгаар нь
          * ургамлын ЗҮЙЛЭЭС хамаардаг тул нэгдсэн норм тогтоогдоогүй. 25°C нь
@@ -229,7 +229,7 @@ export const SENSORS: SensorDef[] = [
          * ургамлын үндэс сулран, чийгийн ууршилт огцом нэмэгдэнэ.
          * Бүртгэгдсэн дээд 28.5°C тул босго нь бодитоор ажиллана.
          */
-        alert: { value: 25, note: tr('Үндэсний бүс хэт халсан') },
+        alert: { value: 25, get note() { return tr('Үндэсний бүс хэт халсан'); } },
       },
       {
         /**
@@ -237,9 +237,9 @@ export const SENSORS: SensorDef[] = [
          * (EC), хэрэглээний эрчим хүч БИШ. Нэгж нь µs/cm — урьд нь ХООСОН
          * байсан тул «240» гэсэн тоо ямар хэмжигдэхүүн болох нь мэдэгдэхгүй байв.
          */
-        key: 'electricity', label: tr('Хөрсний цахилгаан дамжуулах чадал'), field: 'payload_decoded_data_electricity',
+        key: 'electricity', get label() { return tr('Хөрсний цахилгаан дамжуулах чадал'); }, field: 'payload_decoded_data_electricity',
         unit: 'µs/cm', dp: 0,
-        note: tr('Хөрсний цахилгаан дамжуулах чадал (EC) — давсжилт, бордооны агууламжийн шууд бус хэмжүүр. USDA-гийн ангиллаар давсжаагүй хөрс нь 2,000 µs/cm-ээс доош; хэмжигдсэн дээд нь 135.'),
+        get note() { return tr('Хөрсний цахилгаан дамжуулах чадал (EC) — давсжилт, бордооны агууламжийн шууд бус хэмжүүр. USDA-гийн ангиллаар давсжаагүй хөрс нь 2,000 µs/cm-ээс доош; хэмжигдсэн дээд нь 135.'); },
         /**
          * ⚠️ БОСГО ХАСАГДСАН (2026-08-21) — СТАНДАРТЫГ ШАЛГАСНЫ ДАРАА.
          *
@@ -263,16 +263,16 @@ export const SENSORS: SensorDef[] = [
   },
   {
     key: 'light',
-    label: tr('Орчны гэрэл'),
-    note: tr('Орчны гэрэл мэдрэгч сенсор.'),
+    get label() { return tr('Орчны гэрэл'); },
+    get note() { return tr('Орчны гэрэл мэдрэгч сенсор.'); },
     devEui: '24e124126c148962',
     layerId: 'iot:light_sensor',
     url: `${IOT}/Light_Sensor/FeatureServer/60`,
     metrics: [
       {
-        key: 'illumination', label: tr('Орчны гэрэл мэдрэгч'), field: 'payload_decoded_data_illumination',
+        key: 'illumination', get label() { return tr('Орчны гэрэл мэдрэгч'); }, field: 'payload_decoded_data_illumination',
         unit: 'lux', dp: 0,
-        note: tr('Мэдрэгч дээр тусах гэрлийн түвшин.'),
+        get note() { return tr('Мэдрэгч дээр тусах гэрлийн түвшин.'); },
         /**
          * ⚠️ БОСГО ОНООГООГҮЙ. Гэрэлтүүлэг нь өдөр/шөнийн мөчлөгөөр 0-ээс
          * 81,540 lux хүртэл ХЭВИЙН хэлбэлздэг — «хэт их/бага» гэсэн эвдрэлийн
@@ -284,16 +284,16 @@ export const SENSORS: SensorDef[] = [
   },
   {
     key: 'air',
-    label: tr('Агаарын температур, чийг'),
-    note: tr('Гадна орчны температур, чийгшил мэдрэгч сенсор.'),
+    get label() { return tr('Агаарын температур, чийг'); },
+    get note() { return tr('Гадна орчны температур, чийгшил мэдрэгч сенсор.'); },
     devEui: '24e124136c220656',
     layerId: 'iot:temp_humidity',
     url: `${IOT}/Temp_Humidity/FeatureServer/64`,
     metrics: [
       {
-        key: 'temperature', label: tr('Гадна орчны температур'), field: 'payload_decoded_data_temperature',
+        key: 'temperature', get label() { return tr('Гадна орчны температур'); }, field: 'payload_decoded_data_temperature',
         unit: '°C', dp: 1,
-        note: tr('Гадна орчны агаарын температур.'),
+        get note() { return tr('Гадна орчны агаарын температур.'); },
         /**
          * ⚠️ СТАНДАРТ ОЛДСОНГҮЙ (шалгасан). Хөдөлмөрийн халууны стрессийн
          * олон улсын стандарт ISO 7243 нь WBGT индексээр (28°C нь хэт
@@ -305,12 +305,12 @@ export const SENSORS: SensorDef[] = [
          * Тиймээс 28°C нь ажлын зохион байгуулалтын ЗӨВЛӨМЖ утга: бүртгэсэн
          * дээд нь 30°C тул хамгийн халуун өдрүүдийг л тэмдэглэнэ.
          */
-        alert: { value: 28, note: tr('Халуун — гадна ажлын нөхцөл хүндэрнэ') },
+        alert: { value: 28, get note() { return tr('Халуун — гадна ажлын нөхцөл хүндэрнэ'); } },
       },
       {
-        key: 'humidity', label: tr('Гадна орчны чийгшил'), field: 'payload_decoded_data_humidity',
+        key: 'humidity', get label() { return tr('Гадна орчны чийгшил'); }, field: 'payload_decoded_data_humidity',
         unit: '%r.h.', dp: 0,
-        note: tr('Гадна орчны агаарын харьцангуй чийгшил.'),
+        get note() { return tr('Гадна орчны агаарын харьцангуй чийгшил.'); },
         /**
          * ✅ СТАНДАРТАД ТУЛГУУРЛАСАН: EN ISO 13788:2012 (барилгын хийц дэх
          * дулаан-чийгийн горим) нь хөгц ургахаас сэргийлэх ЭГЗЭГТЭЙ
@@ -323,22 +323,22 @@ export const SENSORS: SensorDef[] = [
          * нөхцөлийг заадаг тул анхааруулгын заагаар авах нь үндэслэлтэй.
          * Бүртгэгдсэн дээд 90%.
          */
-        alert: { value: 80, note: tr('Конденсац, хөгцний эрсдэл') },
+        alert: { value: 80, get note() { return tr('Конденсац, хөгцний эрсдэл'); } },
       },
     ],
   },
   {
     key: 'water',
-    label: tr('Усны тоолуур'),
-    note: tr('Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.'),
+    get label() { return tr('Усны тоолуур'); },
+    get note() { return tr('Усны хэрэглээний тоолуур. Заалтыг LoRaWAN-аар илгээнэ.'); },
     devEui: '8254812512001104',
     layerId: 'iot:water_meter',
     url: `${IOT}/Water_Meter/FeatureServer/61`,
     metrics: [
       {
-        key: 'meterReading', label: tr('Тоолуурын заалт'), field: 'payload_decoded_data_meterReading',
-        unit: tr('м³'), dp: 2,
-        note: tr('Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.'),
+        key: 'meterReading', get label() { return tr('Тоолуурын заалт'); }, field: 'payload_decoded_data_meterReading',
+        get unit() { return tr('м³'); }, dp: 2,
+        get note() { return tr('Тоолуурын ХУРИМТЛАГДСАН заалт — өссөн дүн тул хэрэглээ нь хоёр заалтын ЗӨРҮҮ.'); },
         /**
          * ⚠️ БОСГО ОНООГООГҮЙ. Заалт нь ЗӨВХӨН ӨСДӨГ хуримтлагдсан тоолуур
          * тул түүн дээр тавьсан ямар ч шугамыг эрт орой хэзээ нэгэн цагт
@@ -351,12 +351,12 @@ export const SENSORS: SensorDef[] = [
          */
         dailyDiff: {
           key: 'dailyUse',
-          label: tr('Усны хоногийн хэрэглээ'),
-          unit: tr('м³'),
+          get label() { return tr('Усны хоногийн хэрэглээ'); },
+          get unit() { return tr('м³'); },
           dp: 2,
           /* ⚠️ 2026-09-21: тодорхойлолт `dailyDiffPoints`-той нийцэв (өмнөх
              хоногийн сүүлийн заалтаас) — хуучин «хоног доторх» бичвэр худал болсон. */
-          note: tr('Хоногийн сүүлийн заалт ба өмнөх хоногийн сүүлийн заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.'),
+          get note() { return tr('Хоногийн сүүлийн заалт ба өмнөх хоногийн сүүлийн заалтын ЗӨРҮҮ — тухайн хоногт хэрэглэсэн бодит эзлэхүүн.'); },
           /**
            * ⚠️ СТАНДАРТ БАЙХГҮЙ — хэрэглээний хэвийн хэмжээ нь холбогдсон
            * объектын тооноос хамаарна. Босгыг зориуд ОРХИВ: зохиомол тоо нь
@@ -473,9 +473,9 @@ function thin<T>(arr: T[], max: number): T[] {
 export type RangeKey = '24h' | '7d' | '30d';
 
 export const RANGES: { key: RangeKey; label: string; hours: number; limit: number }[] = [
-  { key: '24h', label: tr('24 цаг'), hours: 24, limit: 400 },
-  { key: '7d', label: tr('7 хоног'), hours: 24 * 7, limit: 1400 },
-  { key: '30d', label: tr('30 хоног'), hours: 24 * 30, limit: 4000 },
+  { key: '24h', get label() { return tr('24 цаг'); }, hours: 24, limit: 400 },
+  { key: '7d', get label() { return tr('7 хоног'); }, hours: 24 * 7, limit: 1400 },
+  { key: '30d', get label() { return tr('30 хоног'); }, hours: 24 * 30, limit: 4000 },
 ];
 
 const rangeOf = (k: RangeKey) => RANGES.find((r) => r.key === k) ?? RANGES[1];

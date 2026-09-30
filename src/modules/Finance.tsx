@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment, type MouseEvent, type CSSProperties } from 'react';
-import { tokenQs } from '@/lib/authToken';
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -22,7 +21,7 @@ const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
 import { Data, Empty, Note } from '@/components/ui';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
-import { queryFeatures } from '@/lib/query';
+import { queryFeatures, arcgisPost } from '@/lib/query';
 import { cached } from '@/lib/live';
 
 /**
@@ -906,10 +905,10 @@ type FinTables = {
  * ⚠️ Алдаанд ШИДНЭ (`[]` биш) — дуудагч `fieldsError`-оор тэмдэглэнэ.
  */
 async function loadFields(url: string): Promise<FieldDef[]> {
-  const res = await fetch(`${url}?f=json${tokenQs()}`);
-  const j = await res.json();
-  /* ⚠️ ArcGIS алдаагаа HTTP 200-аар ирүүлдэг — биеийг шалгана */
-  if (j?.error) throw new Error(String(j.error.message ?? 'ArcGIS error'));
+  /* ⚠️ 2026-09-30: `arcgisPost` (POST `f=json` — давхаргын мета POST-оор ч ирдэг):
+     токен биеэр (URL-д биш), 30с timeout, слот, 429 backoff, 200-аар ирдэг `{error}`
+     → `ArcGISError` шидэгдэнэ (дуудагч `fieldsError`-оор тэмдэглэнэ). */
+  const j = await arcgisPost<{ fields?: unknown }>(url, { f: 'json' });
   if (!Array.isArray(j?.fields)) throw new Error('fields missing');
   return j.fields.map((x: {
     name: string; alias?: string; type: string;
@@ -3463,7 +3462,7 @@ function FullTable({
                   «НИЙТ (Орон сууцны хороолол+ГИШС)». Кодгүй тул `code: ''` —
                   «БАГЦ» нүдэнд ердөө бүгдийг хумих `+`/`−` товч үлдэнэ. */}
               {cols.map((c, ci) => bandCell(c, ci, {
-                code: '', label: FIN_XL_TOTAL_LABEL, rows: totRows,
+                code: '', label: FIN_XL_TOTAL_LABEL(), rows: totRows,
               }))}
             </tr>
           )}
@@ -4400,7 +4399,9 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * гэрээний талбарууд дэлгэрэнгүйд. Мэдээлэл АЛДАГДААГҮЙ.
    *
    * ⚠️ ГЭВЧ IPC-ийн ЗАСВАР ОДООГООР АЛГА — засвар нь `FullTable`-д
-   * амьдардаг (доорх `IpcRawTableUnused`). Cashflow-ийнх хэвээр.
+   * амьдардаг байсан (`IpcRawTableUnused` — 2026-09-30-нд УСТГАСАН, git түүхэнд
+   * бий; дахин хэрэгтэй бол `FullTable`-ийг `HO_IPC`-ээр буцаан залгана).
+   * Cashflow-ийнх хэвээр.
    *
    * ⚠️ ГУРАВДАХЬ ТАБ «Cashflow хувиарлах» (2026-09-09): сарын хувийг
    * гэрээний бүртгэлийн 33 багана дундаас бөглөх нь хүнд байсан.
@@ -4519,48 +4520,3 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
   );
 }
 
-/* ⚠️ ХУУЧИН ТҮҮХИЙ IPC ХҮСНЭГТ — 2026-09-09-нд НАВИГАЦИАС ХАСАГДСАН.
-   Хэрэглэгчийн шийдвэр: «IPC service дээрх бүх мэдээллийг харах ёстой НЭГ
-   page байх ёстой». Одоо бүх талбар `IpcTable`-ийн дэлгэрэнгүйд гарна.
-
-   ⚠️ ГЭВЧ ЭНЭ ЗАМААР ЗАСВАР ХИЙГДДЭГ БАЙСАН: талбар засах, мөр нэмэх,
-   баганаар шүүх БҮГД `FullTable`-д амьдардаг бөгөөд `IpcTable` нь ЗӨВХӨН
-   УНШИНА. Тиймээс IPC-ийн засварын боломж ОДООГООР АЛГА. Cashflow-ийнх
-   хэвээр (тэр таб хөндөгдөөгүй).
-
-   Кодыг УСТГААГҮЙ — засвар дахин хэрэгтэй болбол `FinTablesView`-д
-   `tab === 'ipcRaw'` салаа болгож буцаан залгана. */
-export function IpcRawTableUnused({
-  d, canEdit, canRow, onSaved,
-}: {
-  d: FinTables; canEdit: boolean; canRow: boolean; onSaved: () => void;
-}) {
-  return (
-      <FullTable
-        key="ipc"
-        /* ⚠️ 2026-09-09: гарчгаас «акт» гэдэг үг ХАСАГДСАН — шинэ эх нь акт БИШ,
-           гүйцэтгэгч компанид өгсөн ТӨЛБӨРИЙН гүйлгээ (урьдчилгаа ч орно). */
-        title={tr('Хөрөнгө оруулалтын гүйцэтгэл — олгосон санхүүжилт (/196)')}
-        subtitle={tr('{0} мөр · {1} багана', num(d.ipc.length), d.ipcFields.length)}
-        rows={d.ipc}
-        fields={d.ipcFields}
-        url={HO_IPC.url}
-        oidField={HO_IPC.oid}
-        dataKey="HO_IPC"
-        facets={FIN_FACETS.HO_IPC}
-        canEdit={canEdit}
-        canRow={canRow}
-        /* ⚠️ `dun` засагдмагц AUTO мөрийн `guits_zoruu`-г ДАХИН БОДНО (2026-09-25
-           аудит): урьд нь зөвхөн дараагийн батлалтад (`syncIpcFromFill`)
-           шинэчлэгддэг тул засварын дараа зөрүү хуучирч үлддэг байв. Аргументгүй
-           дуудлага нь бүх гэрээний AUTO мөрийг шинэчилж HO_IPC-г өөрөө хүчингүй болгоно. */
-        onSaved={() => {
-          void import('@/lib/ipcAutoWrite')
-            .then((m) => m.refreshAutoZoruu())
-            .then((r) => { if (!r.ok) console.warn('[selbe] IPC зөрүү:', r.error); })
-            .catch((e) => console.warn('[selbe] IPC зөрүү:', e));
-          onSaved();
-        }}
-      />
-  );
-}

@@ -16,27 +16,27 @@
 ## 1. Одоогийн статус (юу хийгдсэн, юу үлдсэн)
 
 ### ✅ Хийгдсэн (Phase 1 — тооцооллын цөм)
-- **[src/lib/analysis/transport.ts](src/lib/analysis/transport.ts)** — барилгын ангилал, trip generation, тээврийн хуваарь, замын/автобусны тогтмолуудын БҮРЭН тохиргоо + цэвэр функцууд.
-- **[src/lib/analysis/transport.check.mjs](src/lib/analysis/transport.check.mjs)** — живэ өгөгдлөөр (et:24) шалгах скрипт. `node src/lib/analysis/transport.check.mjs`-ээр ажиллана, тестэнд амжилттай (363 барилга, томьёонууд баталгаажсан).
+- **[src/lib/analysis/transport.ts](../../src/lib/analysis/transport.ts)** — барилгын ангилал, trip generation, тээврийн хуваарь, замын/автобусны тогтмолуудын БҮРЭН тохиргоо + цэвэр функцууд.
+- **[src/lib/analysis/transport.check.mjs](../../src/lib/analysis/transport.check.mjs)** — живэ өгөгдлөөр (et:24) шалгах скрипт. `node src/lib/analysis/transport.check.mjs`-ээр ажиллана, тестэнд амжилттай (363 барилга, томьёонууд баталгаажсан).
 
 ### ✅ Шийдвэрлэгдсэн (2026-08-03)
 **Багтаамжийн талбар** — хэрэглэгч эх өгөгдлөө засаж, `Huchin_chadal`-ыг бүх facility-д бөглөсөн. Зөвхөн `Huchin_chadal` ашиглана, `Total_population` **ашиглахгүй** (§4-ийн талбарын дүрмийг үз).
 
 ### ✅ Хийгдсэн (Phase 2 — замын эрэлт)
-- **[buildings.ts](src/modules/analysis/suit/buildings.ts)** — et:24-ийг `returnCentroid=true`-ээр (полигон БИШ, ~30 кБ) Web Mercator төв цэгээр татаж, барилга бүрийн ангилал · хүн-зорчилт · машин-зорчилтыг бодно. Кэштэй.
-- **[roadDemand.ts](src/modules/analysis/suit/roadDemand.ts)** — төв цэг → хамгийн ойрын 3 замын ирмэг (50/30/20%), ирмэг бүрийн эрэлт, холбогдоогүй барилгын жагсаалт. ⚠️ Жинг **нормчилдог** (3-аас цөөн зам олдвол зорчилт алдагдахгүй).
-- **[traffic.ts](src/modules/analysis/suit/traffic.ts)** — `distToSeg` / `distToPath` цэвэр геометрийн функц нэмэгдсэн.
+- **[buildings.ts](../../src/modules/analysis/suit/buildings.ts)** — et:24-ийг `returnCentroid=true`-ээр (полигон БИШ, ~30 кБ) Web Mercator төв цэгээр татаж, барилга бүрийн ангилал · хүн-зорчилт · машин-зорчилтыг бодно. Кэштэй.
+- **[roadDemand.ts](../../src/modules/analysis/suit/roadDemand.ts)** — төв цэг → хамгийн ойрын 3 замын ирмэг (50/30/20%), ирмэг бүрийн эрэлт, холбогдоогүй барилгын жагсаалт. ⚠️ Жинг **нормчилдог** (3-аас цөөн зам олдвол зорчилт алдагдахгүй).
+- **[traffic.ts](../../src/modules/analysis/suit/traffic.ts)** — `distToSeg` / `distToPath` цэвэр геометрийн функц нэмэгдсэн.
 
 ### ✅ Хийгдсэн (Phase 3 — автобусны хүртээмж)
-- **[busAccess.ts](src/modules/analysis/suit/busAccess.ts)** — et:2 буудлууд, барилга бүрийн ойрын буудал/зай/зурвас (400/800 м), **зөвхөн орон сууцны** хүн амаар зурвасын нэгтгэл, буудал бүрийн эрэлт (зорчилт × 0.40).
+- **[busAccess.ts](../../src/modules/analysis/suit/busAccess.ts)** — et:2 буудлууд, барилга бүрийн ойрын буудал/зай/зурвас (400/800 м), **зөвхөн орон сууцны** хүн амаар зурвасын нэгтгэл, буудал бүрийн эрэлт (зорчилт × 0.40).
 
 ### ✅ Хийгдсэн (Phase 4 — 7 дүрслэл, UI-д холбогдсон)
-- **[transportModes.ts](src/modules/analysis/suit/transportModes.ts)** — 7 дүрслэлийн тодорхойлолт, барилга/зам бүрийн утга, өнгө, эрэмбэ, тоон уншилт, газрын зургийн будалт (`tPaint`).
-- **[TransportPanel.tsx](src/modules/analysis/suit/TransportPanel.tsx)** — «Тээвэр-идэвхийн шинжилгээ» карт. `SimulationPanel`-тэй ижил CSS модуль, ижил бүтэц.
-- **[Suitability.tsx](src/modules/analysis/Suitability.tsx)** — самбар ЗҮҮН баганад «Хүн амын төвлөрөл»-ийн доор; `tActive` төлөв нь аль самбар газрын зургийг буддагийг шийднэ.
-- **[SuitMap.tsx](src/modules/analysis/SuitMap.tsx)** — `transportPaint` prop + «Тээвэр-идэвх» GraphicsLayer (барилгын давхаргын ДЭЭР, шошгоны ДООР).
-- **[SimulationPanel.tsx](src/modules/analysis/suit/SimulationPanel.tsx)** — `muted` prop нэмэгдсэн (тээвэр идэвхтэй үед дэлгэрэнгүйгээ нууна).
-- **[Icon.tsx](src/components/Icon.tsx)** — `car`, `gauge` дүрс нэмэгдсэн.
+- **[transportModes.ts](../../src/modules/analysis/suit/transportModes.ts)** — 7 дүрслэлийн тодорхойлолт, барилга/зам бүрийн утга, өнгө, эрэмбэ, тоон уншилт, газрын зургийн будалт (`tPaint`).
+- **[TransportPanel.tsx](../../src/modules/analysis/suit/TransportPanel.tsx)** — «Тээвэр-идэвхийн шинжилгээ» карт. `SimulationPanel`-тэй ижил CSS модуль, ижил бүтэц.
+- **[Suitability.tsx](../../src/modules/analysis/Suitability.tsx)** — самбар ЗҮҮН баганад «Хүн амын төвлөрөл»-ийн доор; `tActive` төлөв нь аль самбар газрын зургийг буддагийг шийднэ.
+- **[SuitMap.tsx](../../src/modules/analysis/SuitMap.tsx)** — `transportPaint` prop + «Тээвэр-идэвх» GraphicsLayer (барилгын давхаргын ДЭЭР, шошгоны ДООР).
+- **[SimulationPanel.tsx](../../src/modules/analysis/suit/SimulationPanel.tsx)** — `muted` prop нэмэгдсэн (тээвэр идэвхтэй үед дэлгэрэнгүйгээ нууна).
+- **[Icon.tsx](../../src/components/Icon.tsx)** — `car`, `gauge` дүрс нэмэгдсэн.
 
 ### ⬜ Үлдсэн (Phase 5)
 - **21 KPI** (HTML/панель). ⚠️ #17 ба #20 нь живэ өгөгдөл дээр 0 гарна — хадгалах эсэхийг лавла.
@@ -53,7 +53,7 @@ Phase 4-ийн **харагдац нүдээр шалгагдаагүй**: по�
 ```
 https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260721/FeatureServer/24
 ```
-- Кодод: `BUILT_LAYER = LAYER_BY_ID["et:24"]` ([services.ts:2019](src/lib/services.ts:2019)), `ET` суурь ([services.ts:40](src/lib/services.ts:40)).
+- Кодод: `BUILT_LAYER = LAYER_BY_ID["et:24"]` ([services.ts:2019](../../src/lib/services.ts:2019)), `ET` суурь ([services.ts:40](../../src/lib/services.ts:40)).
 - Нийт **363 барилга**.
 
 ### Гол талбарууд (query-ээр баталгаажсан)
@@ -66,7 +66,7 @@ https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260
 | Бүс | `ZONE_ID` | — | Бүсийн код |
 | Блок | `Блокы` | — | Блокийн дугаар |
 
-**Замын давхарга** (Phase 2-т query хийх): `et:5` (замын тэнхлэг) эсвэл `et:29` (замын талбай) — Phase 2-т аль нь тохирохыг шалгах. ⚠️ Эгнээний тоо (lane count) талбар БАЙХГҮЙ ([simulation.ts:10](src/modules/analysis/suit/simulation.ts:10)) → V/C бодохгүй, зөвхөн **Road Demand Index**.
+**Замын давхарга** (Phase 2-т query хийх): `et:5` (замын тэнхлэг) эсвэл `et:29` (замын талбай) — Phase 2-т аль нь тохирохыг шалгах. ⚠️ Эгнээний тоо (lane count) талбар БАЙХГҮЙ ([simulation.ts:10](../../src/modules/analysis/suit/simulation.ts:10)) → V/C бодохгүй, зөвхөн **Road Demand Index**.
 
 **Автобусны буудал**: `et:2` (одоо код transit зайг тооцдог).
 
@@ -74,7 +74,7 @@ https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/Selbe_ET_20260
 
 ## 3. Барилгын ангилал (34 утга → 7 төрөл)
 
-Түлхүүр-үгэн классификац. **ДАРААЛАЛ ЧУХАЛ** (орон сууц эхэнд, оффис үйлчилгээний өмнө). Код: `classifyBuilding()` in [transport.ts](src/lib/analysis/transport.ts).
+Түлхүүр-үгэн классификац. **ДАРААЛАЛ ЧУХАЛ** (орон сууц эхэнд, оффис үйлчилгээний өмнө). Код: `classifyBuilding()` in [transport.ts](../../src/lib/analysis/transport.ts).
 
 ```
 орон сууц|house              → residential (Орон сууц)
@@ -178,7 +178,7 @@ V/C: 0–0.50 Бага · 0.50–0.75 Хэвийн · 0.75–0.90 Өндөр · 
 **Живэ үр дүн (2026-08-03):** 17 буудал · **≤400 м: 43,035 хүн (99%, 361 барилга)** · 400–800 м: 252 хүн (1%, 2 барилга) · **>800 м: 0 хүн** · хамгийн ачаалалтай буудал 1,879 зорчигч/ц.
 > ⚠️ Тиймээс **KPI #20 «800 м-ээс хол хүн ам» = 0**, #18 нь бараг 100% — «Bus Accessibility» дүрслэл бараг бүхэлдээ нэг өнгөтэй гарна. Дүрслэлийг зайн ГРАДИЕНТ (0–400 м дотор ч ялгаатай) болгох нь илүү мэдээлэлтэй байж магадгүй.
 
-Бүх тогтмол/функц [transport.ts](src/lib/analysis/transport.ts)-д бий: `TRIP_COEF`, `buildingTrips`, `MODE_SPLIT`, `CAR_OCCUPANCY`, `vehicleTrips`, `ROAD_MAX_DIST_M`, `ROAD_WEIGHTS`, `CAPACITY_PER_LANE`, `VC_BANDS`, `vcBand`, `BUS_GOOD_M`, `BUS_OK_M`, `busBand`, `classifyBuilding`, `CAT_LABEL`, `CAT_HUE`.
+Бүх тогтмол/функц [transport.ts](../../src/lib/analysis/transport.ts)-д бий: `TRIP_COEF`, `buildingTrips`, `MODE_SPLIT`, `CAR_OCCUPANCY`, `vehicleTrips`, `ROAD_MAX_DIST_M`, `ROAD_WEIGHTS`, `CAPACITY_PER_LANE`, `VC_BANDS`, `vcBand`, `BUS_GOOD_M`, `BUS_OK_M`, `busBand`, `classifyBuilding`, `CAT_LABEL`, `CAT_HUE`.
 
 ---
 
@@ -188,7 +188,7 @@ V/C: 0–0.50 Бага · 0.50–0.75 Хэвийн · 0.75–0.90 Өндөр · 
 
 ## 7. Дүрслэлийн 7 mode (Phase 4 — ХЭРЭГЖСЭН)
 
-`T_MODES` in [transportModes.ts](src/modules/analysis/suit/transportModes.ts). Товчны дараалал = доорх дараалал.
+`T_MODES` in [transportModes.ts](../../src/modules/analysis/suit/transportModes.ts). Товчны дараалал = доорх дараалал.
 
 **6 дүрслэл** (анх 7 байсныг доор үз).
 
@@ -231,19 +231,19 @@ t = min(1, зай ÷ 800)          ← `tNormFor()`
 - **Баруун багана:** «Бүсийн симуляц» (`Simulation`) — **БҮС** бүрээр: төвлөрөл · хүртээмж · ачаалал гурвуулаа.
 - ⚠️ «Хүн амын төвлөрөл» нь эхлээд зүүн талд тусдаа карт байсныг **баруун самбар руу нэгтгэсэн** — гурвуулаа бүсээр тооцогддог тул нэг дор байх нь логиктой, зүүн тал барилгын шинжилгээнд бүтнээрээ үлдэв.
 - Идэвхтэй нь дэлгэрэнгүй + газрын зураг буддаг, нөгөө нь зөвхөн товчоо харуулна.
-- Код: [Suitability.tsx](src/modules/analysis/Suitability.tsx) (`simCommon`, зүүн/баруун слот), [SimulationPanel.tsx](src/modules/analysis/suit/SimulationPanel.tsx) (`kinds?`, `title?`, `activeHere`).
-- Симуляцын төрлүүд: `SIM_KINDS` (density/transit/road) — [simulation.ts:39](src/modules/analysis/suit/simulation.ts:39).
+- Код: [Suitability.tsx](../../src/modules/analysis/Suitability.tsx) (`simCommon`, зүүн/баруун слот), [SimulationPanel.tsx](../../src/modules/analysis/suit/SimulationPanel.tsx) (`kinds?`, `title?`, `activeHere`).
+- Симуляцын төрлүүд: `SIM_KINDS` (density/transit/road) — [simulation.ts:39](../../src/modules/analysis/suit/simulation.ts:39).
 - ✅ **Шийдэгдсэн (2026-08-03):** шинэ 7 mode нь **ЗҮҮН баганад, «Хүн амын төвлөрөл»-ийн ДООР** тусдаа «Тээвэр-идэвхийн шинжилгээ» карт болж нэмэгдсэн. Баруун талын `road` (Ачаалал) **хөндөгдөөгүй**.
 ### ⚠️ ЭРЭМБИЙН ЖАГСААЛТ ХАСАГДСАН (2026-08-03, хэрэглэгчийн шийдвэр)
 Симуляцын **БҮХ самбараас** (төвлөрөл · хүртээмж · ачаалал · тээвэр-идэвх) 14 мөрт эрэмбийн жагсаалт **хасагдсан** — «ойлгомжгүй, газрын зурагтай холбогдохгүй» гэсэн шалтгаанаар. Самбарт үлдсэн нь: сонгогч → тоон уншилт → **легенд** → «зураг дээрээс хараарай» гэсэн зөвлөмж.
 
 Жагсаалтын мэдээлэл бүхэлдээ **hover панель** руу шилжсэн:
-- **Бүсийн симуляц** ([Suitability.tsx](src/modules/analysis/Suitability.tsx) `zoneTip`) — хэмжүүр + **эрэмбэ** (`simRanked`) + **дунджаас хэдэн %** + оршин суугч/барилга.
+- **Бүсийн симуляц** ([Suitability.tsx](../../src/modules/analysis/Suitability.tsx) `zoneTip`) — хэмжүүр + **эрэмбэ** (`simRanked`) + **дунджаас хэдэн %** + оршин суугч/барилга.
 - **Тээвэр-идэвх** (`transportTip`) — 3 төрөл: барилга (утга, эрэмбэ, хүн ам/багтаамж, зорчилт, ойрын зам, автобус), замын хэрчим (эрэлт, эрэмбэ, урт, индекс), автобусны буудал (эрэлт, үйлчлэх барилга/хүн ам).
 - ⚠️ Оноололын (`urban`/`indicator`) hover панель **хөндөгдөөгүй** — тэр урьдын хэвээр.
 
 ### ⚠️ ГАЗРЫН ЗУРГИЙН ХЭВ МАЯГ — Полигон ↔ Дулаан
-[heat.ts](src/modules/analysis/suit/heat.ts) · товч нь газрын зургийн зүүн доод булан (2D/3D-ийн хажууд), зөвхөн «Симуляц» горимд.
+[heat.ts](../../src/modules/analysis/suit/heat.ts) · товч нь газрын зургийн зүүн доод булан (2D/3D-ийн хажууд), зөвхөн «Симуляц» горимд.
 - **Полигон** — бүс/барилгын хилээр будна (одоогийнх).
 - **Дулаан** — ArcGIS `HeatmapRenderer`, клиент талын цэгэн FeatureLayer.
 
@@ -273,7 +273,7 @@ Heatmap нь цөмүүдийг **НЭМДЭГ**. Тиймээс дулаан н
 
 - **Аль самбар газрын зургийг буддаг вэ:** `tActive` төлөв. Тээврийн товч дарвал `tActive=true` (бүс цайрч, барилга/зам тодрно); симуляцын товч дарвал `tActive=false` (урьдын байдалдаа буцна). Идэвхгүй самбар нь `muted`/`activeHere=false`-ээр зөвхөн товчоо харуулна.
 
-Одоо байгаа per-zone pipeline: [data.ts](src/lib/analysis/data.ts) (`residentPop`/`capacityPop` бүсээр). Шинэ шинжилгээ **PER-BARILGA** (бүс биш) тул тусдаа pipeline хэрэгтэй — et:24-ийг геометртэй нь татаж (центроид), замд хуваарилна.
+Одоо байгаа per-zone pipeline: [data.ts](../../src/lib/analysis/data.ts) (`residentPop`/`capacityPop` бүсээр). Шинэ шинжилгээ **PER-BARILGA** (бүс биш) тул тусдаа pipeline хэрэгтэй — et:24-ийг геометртэй нь татаж (центроид), замд хуваарилна.
 
 ---
 
@@ -282,7 +282,7 @@ Heatmap нь цөмүүдийг **НЭМДЭГ**. Тиймээс дулаан н
 1. ~~§4 шийдвэр~~ ✅ · ~~Phase 2~~ ✅ · ~~Phase 3~~ ✅ · ~~Phase 4~~ ✅
 2. **Харагдацыг гараар шалгах** (§1-ийн «шалгагдаагүй зүйл»-ийг үз).
 3. **Phase 5:** 21 KPI. ⚠️ #17 ба #20 нь живэ өгөгдөл дээр 0 гарна (§5-ыг үз) — хадгалах эсэхийг лавла.
-   - Өгөгдөл бэлэн: `TransportCtx` (`buildings` · `demand` · `bus` · `stops` · `net`) нь [Suitability.tsx](src/modules/analysis/Suitability.tsx)-ийн `tCtx` memo-д аль хэдийн бодогдсон.
+   - Өгөгдөл бэлэн: `TransportCtx` (`buildings` · `demand` · `bus` · `stops` · `net`) нь [Suitability.tsx](../../src/modules/analysis/Suitability.tsx)-ийн `tCtx` memo-д аль хэдийн бодогдсон.
 
 **Шалгах:** `node src/lib/analysis/transport.check.mjs` — Phase 1·2·3-ыг живэ өгөгдлөөр бүрэн шалгана (ангилал, зорчилт, замын хуваарилалт, автобусны зурвас). Батламжууд: нийлбэрийн хадгалалт (машин-зорчилт, буудлын эрэлт), зайн босго, зурвасын хүн амын нийлбэр.
 ⚠️ Энэ скрипт ЖИВЭ сүлжээ шаарддаг тул `npm test`-д ОРООГҮЙ — гараар ажиллуулна.

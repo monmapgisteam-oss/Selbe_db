@@ -283,6 +283,10 @@ export function Tailan() {
 function TailanFull() {
   /** Огноо — ЗӨВХӨН клиент дээр (сервертэй зөрж hydration эвдэхээс сэргийлнэ). */
   const [date, setDate] = useState('');
+  /* ⚠️ 2026-09-30: энэ setState санаатай — сервер дээр ('') ба клиент дээр (одоо)
+     ижил HTML гарч, mount-ын дараа л огноо бичигдэнэ; initializer-т `Date.now()`
+     тавивал hydration зөрнө. */
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- дээрх ⚠️
   useEffect(() => { setDate(dateTime(Date.now())); }, []);
 
   const bagts = useBagtsTable();
@@ -469,18 +473,17 @@ function TailanFull() {
                 const budgetOf = (k: string) => x.finance.byBagts[k] ?? 0;
                 const budget = rows.reduce((a, b) => a + budgetOf(b.key), 0);
                 const sorted = [...rows].sort((a, b) => budgetOf(b.key) - budgetOf(a.key));
-                /* ⚠️ 2026-09-24: «Нийт» дундаж — ЗӨВХӨН `progress != null` багцаар жигнэнэ
-                   (`Dashboard` 'bagts' карттай ижил дүрэм). Урьд нь тайлан ирээгүй багц
-                   0% гэж орж, БҮХ блокоор хуваагддаг байв — null ≠ 0. Мэдэгдэх багц
-                   байхгүй бол `null` → «—». */
-                const knownRows = rows.filter((b) => b.progress != null);
-                const knownBlocks = knownRows.reduce((a, b) => a + b.blocks, 0);
-                const bagtsAvg = knownBlocks
-                  ? knownRows.reduce((a, b) => a + (b.progress as number) * b.blocks, 0) / knownBlocks
-                  : null;
+                /* ⚠️ 2026-09-30: §2 «Нийт» = `x.overall.pct` — порталын ГАНЦ орон сууцны
+                   гүйцэтгэл (`gdash.housingPct`: хэмжигдсэн багц, ХО дүнгээр жигнэсэн;
+                   §3 «Нийт» · Dashboard · PkgProg · удирдлагын тайлантай нэг тоо).
+                   Урьд нь (2026-09-24) энд блокийн тоогоор жигнэдэг тул §3-аас зөрдөг
+                   байв. Мөрийн `progress` (тайлагнасан блокийн дундаж, `joinBagts`)
+                   нь §3-ын багцын `actual`-тай нэг дүрэм — `execData.check` баталгаажуулна.
+                   Мэдэгдэх багц байхгүй бол `null` → «—». */
+                const bagtsAvg = x.overall.pct;
                 const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
                 /* ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
-                   тайлангүй блок 0% гэж ордог, БҮХ блокоор хуваана). `rows`-ийг
+                   тайлагнасан блокуудын дундаж, 2026-09-30-аас). `rows`-ийг
                    `buildFindings`-д дамжуулснаар `d.bestBagts`/`d.worstBagts` ба дүгнэлтийн
                    өгүүлбэр (`reportData.bagtsExtremes`) дэлгэц · PDF хоёуланд НЭГ эх —
                    урьд нь энд тусдаа эрэмбэлж, PDF `progress.byBagts` (зөвхөн тайлантай

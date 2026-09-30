@@ -18,7 +18,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const SRC = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+/* ⚠️ 2026-09-30: `FillNew.tsx` задарсан (`fill/`) — ноорогийн код `fill/draft.ts` (задлах · нийлүүлэх)
+   ба `fill/useDraftSync.ts` (сэргээх · хадгалах · алсын · татах) -д, илгээлт FillNew-д хэвээр. Гэрээний
+   шалгуур эх кодыг НИЙЛБЭРЭЭР уншина: FillNew.tsx эхэнд, дараа нь fill/*.ts(x) нэрийн дарааллаар —
+   «эхний тохиолдол» anchor-ууд (`if (r.ok) {` · `const draft: Draft = {` · `setPvPend({});`) тэр дараалалд
+   тулгуурлана. */
+const FILL_FILES = [
+  'src/modules/sheet/FillNew.tsx',
+  ...fs.readdirSync('src/modules/sheet/fill').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/sheet/fill/' + f),
+];
+const SRC = FILL_FILES.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
 const between = (a, b, from = 0) => {
   const i = SRC.indexOf(a, from);
   assert.ok(i >= 0, `«${a}» олдсонгүй`);

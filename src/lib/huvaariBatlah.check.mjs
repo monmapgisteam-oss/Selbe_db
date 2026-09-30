@@ -273,7 +273,9 @@ console.log('✅ хоосон агуулга хүчинтэй');
  *    `withdrawPlan(` гэсэн дараалал. */
 {
   const fs = await import('node:fs');
-  const src = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8')
+  /* 2026-09-30: `withdraw` нь `Huvaari.tsx`-д хэвээр; хуваагдсан файлуудыг ч нийлүүлж уншина (`clearPreview` тэнд) */
+  const src = ['src/modules/Huvaari.tsx', ...fs.readdirSync('src/modules/huvaari').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/huvaari/' + f)]
+    .map((p) => fs.readFileSync(p, 'utf8')).join('\n')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
   const i = src.indexOf('const withdraw = useCallback');

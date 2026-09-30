@@ -21,8 +21,8 @@ import { zoneCanon, zoneRefValues } from '@/lib/services';
 export type MapStyle = 'poly' | 'heat';
 
 export const MAP_STYLES: { key: MapStyle; label: string; title: string }[] = [
-  { key: 'poly', label: tr('Полигон'), title: tr('Бүс/барилгын хилээр будна') },
-  { key: 'heat', label: tr('Дулаан'), title: tr('Хилгүй дулааны гадаргуу — төвлөрөл хаана байгааг харуулна') },
+  { key: 'poly', get label() { return tr('Полигон'); }, get title() { return tr('Бүс/барилгын хилээр будна'); } },
+  { key: 'heat', get label() { return tr('Дулаан'); }, get title() { return tr('Хилгүй дулааны гадаргуу — төвлөрөл хаана байгааг харуулна'); } },
 ];
 
 /** Дулааны гадаргууг тэжээх нэг цэг */

@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, perLocale } from '@/lib/i18nCore';
 import { AGENT_API, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
@@ -66,12 +66,12 @@ function trimHistory(h: ApiMessage[]): void {
  * ⚠️ Агентын ЧАДВАРЫГ төлөөлүүлж сонгосон: нэгтгэл, ангиллын задаргаа, бүсийн
  * бүрэн тойм, санхүү — дөрөв нь дөрвөн өөр зам ажиллуулна.
  */
-const STARTERS = [
+const STARTERS = perLocale(() => [
   tr('Төсөлд нийт хэдэн барилга байгаа вэ?'),
   tr('Багц 1 мэдээллийг дэлгэрэнгүй харуулаач'),
   tr('Барилгын төлөв бүрээр хэдэн барилга вэ?'),
   tr('Багц 6.1-ийн гэрээний дүн хэд вэ?'),
-];
+]);
 
 export function AgentChat({
   open,
@@ -99,6 +99,7 @@ export function AgentChat({
     /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
        эффект дотор шидсэн алдаа чатыг бүхэлд нь унагана. */
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
       setWide(localStorage.getItem(WIDE_KEY) === '1');
     } catch { /* хувийн горим — нарийн харагдац хэвээр */ }
   }, []);
@@ -309,7 +310,7 @@ export function AgentChat({
             Хэрэглэгч уншихаас илүү дарж эхэлдэг. */}
         {!log.length && (
           <div className={s.chips}>
-            {STARTERS.map((q) => (
+            {STARTERS().map((q) => (
               <button key={q} type="button" className={s.chip} onClick={() => void send(q)}>
                 {q}
               </button>

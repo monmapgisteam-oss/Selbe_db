@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 
@@ -282,7 +283,7 @@ export function TrafficOverlay({
   const carsRef = useRef<Car[]>([]);
   // Хөдөлгөөний параметрүүдийг ref-ээр — эффектийг дахин эхлүүлэхгүйгээр солино
   const opt = useRef({ playing, speed, onStats, maxCars, signalPlan });
-  opt.current = { playing, speed, onStats, maxCars, signalPlan };
+  useSyncRef(opt, { playing, speed, onStats, maxCars, signalPlan });
 
   useEffect(() => {
     const cnv = cvs.current;

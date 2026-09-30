@@ -136,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагт «шалгаж байна» гарч, mount-ын дараа л «off» болно; анхны төлөвт тавьбал статик HTML зөрнө
     if (!AUTH.appId) { setStatus('off'); return; }
 
     let alive = true;

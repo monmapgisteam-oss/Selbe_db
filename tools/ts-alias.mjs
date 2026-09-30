@@ -131,4 +131,9 @@ if (IS_CHECK && liveTok) {
   } catch { /* сүлжээгүй — шалгуур өөрөө шийднэ */ }
 }
 
-register('./ts-alias-hooks.mjs', import.meta.url, { data: { liveSkip: !!process.env.SELBE_LIVE_SKIP } });
+/* ⚠️ 2026-09-30: UI SMOKE горим — оролтын цэг `*.ui.check.mjs` (эсвэл `SELBE_UI_SMOKE=1`)
+   бол hooks нь `*.css` → класс-нэрийн Proxy, `next/dynamic` → синхрон стуб,
+   `@arcgis/core/**` → хоосон стуб болгож шийдвэрлэнэ (`ts-alias-hooks.mjs`).
+   Бусад шалгуурт ЮУ Ч өөрчлөгдөхгүй. */
+const UI = /\.ui\.check\.mjs$/i.test(ENTRY) || process.env.SELBE_UI_SMOKE === '1';
+register('./ts-alias-hooks.mjs', import.meta.url, { data: { liveSkip: !!process.env.SELBE_LIVE_SKIP, ui: UI } });

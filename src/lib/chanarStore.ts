@@ -42,10 +42,16 @@ import {
   type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult, type NcrProposed, EMPTY_BODY,
   type MaBody, type NcrBody, EMPTY_COMMON, DISCIPLINES, isInspCheck,
 } from './chanarMs';
-import { isAuthorFor, reviewerRolesFor } from './chanarAcl';
-import { tokenParam, authToken } from '@/lib/authToken';
+import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from './chanarAcl';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
+   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
+   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). Алдаа HTTP
+   200-аар ирдэг — `error` биеийг тэр шалгана. */
+import { authToken, arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { CapKey } from './caps';
+import { invalidate } from './dataBus';
+import { cached } from '@/lib/live';
 
 const TITLE = 'Selbe_Chanar_Barimt';
 const TABLE_NAME = 'chanar_barimt';
@@ -84,17 +90,6 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-/** ⚠️ ArcGIS алдаагаа HTTP 200 + `{error}` биеэр буцаадаг — заавал шалгана */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17). */
-  const body = new URLSearchParams({ f: 'json', ...tokenParam(), ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
-}
-
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
 const SUPER_OWNERS = new Set(
@@ -108,7 +103,7 @@ let tableUrlCache: string | undefined;
 let ownerMismatch = false;
 
 async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
+  const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
     num: '100',
@@ -137,7 +132,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
     allowGeometryUpdates: false,
     units: 'esriMeters',
   };
-  const created = await req(
+  const created = await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/createService`,
     { token, createParameters: JSON.stringify(createParameters), outputType: 'featureService' },
   );
@@ -173,8 +168,8 @@ async function createTable(token: string, user: string): Promise<string | null> 
       ],
     }],
   };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  await req(
+  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
+  await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`,
     { token, org: 'true', everyone: 'false' },
   );
@@ -222,7 +217,7 @@ export type Attachment = { id: number; name: string; size: number; url: string }
 export async function listAttachments(oid: number): Promise<Attachment[]> {
   const url = await tableUrl(false);
   if (!url) return [];
-  const j = await req(`${url}/${Number(oid)}/attachments`, {});
+  const j = await arcgisPost(`${url}/${Number(oid)}/attachments`, {});
   const infos = (j.attachmentInfos as { id: number; name: string; size: number }[]) ?? [];
   /* ⚠️ ТОКЕН ХОЛБООСОНД (2026-09-16 аудит): хүснэгт зөвхөн байгууллагад
      нээлттэй тул токенгүй `<a href>` шинэ табд нэвтрэлт шаардаж эсвэл хоосон
@@ -250,7 +245,9 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
     if (!r.ok) return { ok: false, error: `ArcGIS HTTP ${r.status}` };
     const j = (await r.json()) as { error?: { message?: string }; addAttachmentResult?: { success?: boolean } };
     if (j.error) return { ok: false, error: j.error.message || 'ArcGIS error' };
-    return j.addAttachmentResult?.success ? { ok: true } : { ok: false, error: tr('Хавсралт хадгалагдсангүй.') };
+    if (!j.addAttachmentResult?.success) return { ok: false, error: tr('Хавсралт хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -261,9 +258,11 @@ export async function deleteAttachment(oid: number, id: number): Promise<boolean
   if (!url) return false;
   if (await attachDeny(oid)) return false;
   try {
-    const j = await req(`${url}/${Number(oid)}/deleteAttachments`, { attachmentIds: String(id) });
+    const j = await arcgisPost(`${url}/${Number(oid)}/deleteAttachments`, { attachmentIds: String(id) });
     const rs = (j.deleteAttachmentResults as { success?: boolean }[]) ?? [];
-    return rs.length > 0 && rs.every((x) => x.success === true);
+    const ok = rs.length > 0 && rs.every((x) => x.success === true);
+    if (ok) invalidate('CHANAR_BARIMT');
+    return ok;
   } catch {
     return false;
   }
@@ -422,7 +421,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   if (!url) return [];
   const out: Attrs[] = [];
   for (let off = 0; ; off += 1000) {
-    const j = await req(`${url}/query`, {
+    const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
       returnGeometry: 'false',
@@ -553,15 +552,62 @@ export function actionableDocs(docs: readonly MsDoc[], ncr: NcrFlags | null, use
 }
 
 /**
+ * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `CHANAR_BARIMT` тагтай богино
+ *    кэш. Энэ файлын бичих зам бүр `invalidate('CHANAR_BARIMT')` дууддаг тул ӨӨРИЙН
+ *    үйлдлийн дараа шинэ тоо; бусдын бичилтийг TTL (цэсний 3 мин тутмын шинэчлэлтээс
+ *    богино) барина. ACL ирэхэд дахин тоолоход (`subscribeChanarActionable`) хүснэгтийг
+ *    ДАХИН ТАТАХГҮЙ — ижил өгөгдлийг шинэ үүргээр шүүнэ. `loadAllDocs`/`loadNcrFlags`
+ *    өөрсдөө кэшлэгдэхгүй — харагдац, бичих замууд үргэлж шинэ уншина.
+ */
+const BADGE_TTL = 60_000;
+const loadBadgeDocs = cached(
+  () => Promise.all([loadAllDocs(), loadNcrFlags()]),
+  BADGE_TTL,
+  ['CHANAR_BARIMT'],
+);
+
+/**
+ * ACL REMOTE-ООС ИРЭХИЙГ ХҮЛЭЭНЭ (хязгаартай). ⚠️ 2026-09-30: `countChanarActionable`
+ * ACL ачаалагдахаас ӨМНӨ дуудагдвал үүрэг хоосон тул тоо дутуу гардаг байв — цэсний
+ * дараагийн 3 мин-ын шинэчлэлт хүртэл. `ready` бол шууд; эс бөгөөс `subscribeChanarAcl`
+ * дохио эсвэл `maxMs` (аль түрүүнд). Нэвтрэлтгүй/тест орчинд `ready` хэзээ ч үнэн
+ * болохгүй байж болно — тиймээс хязгаар ЗААВАЛ.
+ */
+function whenChanarAclReady(maxMs: number): Promise<void> {
+  /* ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон — хөгжүүлэлт/тест) бол remote ACL
+     ОГТ ирэхгүй, локал хуваарилалт л байна — хүлээвэл тэмдэг бүр `maxMs` хоцорно. */
+  if (!AUTH.appId || chanarAclReady()) return Promise.resolve();
+  return new Promise((res) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; off(); clearTimeout(t); res(); };
+    const off = subscribeChanarAcl(() => { if (chanarAclReady()) finish(); });
+    const t = setTimeout(finish, maxMs);
+    if (chanarAclReady()) finish();
+  });
+}
+
+/**
+ * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО — ACL (үүрэг/багцын хуваарилалт) өөрчлөгдөх бүрд `cb`.
+ * `navBadges` энэ дохиогоор чанарын тэмдгийг дахин тоолно (2026-09-30). Тайлах функц
+ * буцаана. ⚠️ Хүснэгтийн өөрчлөлт ЭНД ОРОХГҮЙ — тэр нь автобусаар (`CHANAR_BARIMT`).
+ */
+export function subscribeChanarActionable(cb: () => void): () => void {
+  return subscribeChanarAcl(cb);
+}
+
+/**
  * НАВИГАЦИЙН ТЭМДЭГ — хэрэглэгчийн хийх ёстой чанарын баримтын тоо (2026-09-30).
  * Хүснэгт уншигдахгүй/нэвтрээгүй бол 0 (алдаа шидэхгүй — тэмдэг л).
+ * ⚠️ ACL ирээгүй бол хамгийн ихдээ `ACL_WAIT_MS` хүлээнэ (`whenChanarAclReady`) —
+ *    ирэхгүй бол урьдын адил байгаа үүргээр тоолно (дутуу байж болно).
  */
+const ACL_WAIT_MS = 5_000;
 export async function countChanarActionable(user: string | null | undefined): Promise<number> {
   if (!(user ?? '').trim()) return 0;
   try {
     const st = await chanarTableState(false);
     if (!st.ok) return 0;
-    const [docs, ncr] = await Promise.all([loadAllDocs(), loadNcrFlags()]);
+    const [[docs, ncr]] = await Promise.all([loadBadgeDocs(), whenChanarAclReady(ACL_WAIT_MS)]);
     return actionableDocs(docs, ncr, user).length;
   } catch {
     return 0;
@@ -740,11 +786,12 @@ export async function createDraft(args: {
     [F.body]: JSON.stringify(body),
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
     const r = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
     if (!(r?.success && r.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
     const oid = r.objectId;
     /* ⚠️ 2026-09-25: МӨР ҮҮССЭН БОЛ АМЖИЛТ. Доорх давхардлын засвар алдвал урьд нь
        `ok:false` буцааж, хэрэглэгч «Үүсгэх»-ийг дахин дарахад ХОЁР ДАХЬ мөр
@@ -761,11 +808,12 @@ export async function createDraft(args: {
         const seq2 = nextSeq(after, seqScope);
         const no2 = docNo(args.bagts, seq2, 0, kind);
         if (no2) {
-          const j2 = await req(`${url}/applyEdits`, {
+          const j2 = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.seq]: seq2, [F.docNo]: no2 } }]),
             rollbackOnFailure: 'true',
           });
           if (!editOk(j2.updateResults)) console.warn('[selbe] chanar: давхардсан дугаарыг засаж чадсангүй', oid);
+          else invalidate('CHANAR_BARIMT');
         }
       }
     } catch (e) {
@@ -813,13 +861,15 @@ export async function saveDraft(args: {
   try {
     if (doc.status === MS_STATUS.draft) {
       /* Ноорог — ижил мөрийг шинэчилнэ */
-      const j = await req(`${url}/applyEdits`, {
+      const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: {
           [F.oid]: args.oid, [F.title]: args.title.trim(), [F.body]: JSON.stringify(body),
         } }]),
         rollbackOnFailure: 'true',
       });
-      return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      invalidate('CHANAR_BARIMT');
+      return { ok: true, oid: args.oid };
     }
     /*
      * ⚠️ БУЦААГДСАН мөрийг ГАЗАР ДЭЭР НЬ ЗАСАХГҮЙ (2026-09-16 аудит). Урьд нь
@@ -854,13 +904,13 @@ export async function saveDraft(args: {
       [F.status]: MS_STATUS.draft, [F.author]: doc.author,
       [F.reviews]: JSON.stringify(emptyReviews()), [F.body]: JSON.stringify(nextBody),
     };
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
-    return a?.success && a.objectId != null
-      ? { ok: true, oid: a.objectId }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: a.objectId };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -909,14 +959,16 @@ export async function submitDoc(args: {
     }
     if (r.rev === doc.rev) {
       /* Анхны илгээлт — ижил мөрийг шинэчилнэ (NCR: үргэлж энэ зам, rev үгүй) */
-      const j = await req(`${url}/applyEdits`, {
+      const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: {
           [F.oid]: args.oid, [F.status]: r.status, [F.sentAt]: r.sentAt,
           [F.reviews]: JSON.stringify(r.reviews), [F.decidedAt]: null, [F.body]: bodyJson,
         } }]),
         rollbackOnFailure: 'true',
       });
-      return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: args.oid };
     }
     /* Дахин илгээлт — ШИНЭ мөр, шинэ дугаар (rev+1); бие `nextRevisionBody` (MA түгжээ, түүх) */
     const kind = doc.kind;
@@ -930,13 +982,13 @@ export async function submitDoc(args: {
       [F.status]: r.status, [F.author]: doc.author, [F.sentAt]: r.sentAt,
       [F.reviews]: JSON.stringify(r.reviews), [F.body]: JSON.stringify(nextBody),
     };
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
-    return a?.success && a.objectId != null
-      ? { ok: true, oid: a.objectId }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: a.objectId };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1032,11 +1084,12 @@ export async function reviewDoc(args: {
     /* ⚠️ MA (2026-09-28): хариуг материал бүрд бичнэ — дараагийн хувилбарт A/AN түгжигдэнэ */
     if (maBody && rep) attrs[F.body] = JSON.stringify(applyRepToMaterials(maBody, rep));
     try {
-      const j = await req(`${url}/applyEdits`, {
+      const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: attrs }]),
         rollbackOnFailure: 'true',
       });
       if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+      invalidate('CHANAR_BARIMT');
     } catch (e) {
       return { ok: false, error: String((e as Error).message || e) };
     }
@@ -1080,11 +1133,12 @@ async function fixRepDuplicate(
       const { n, rr } = repSeqFor(all.filter((d) => d.oid !== oid), kind, bagts, seq);
       const no2 = repNo(kind, bagts, n, rr);
       if (!no2 || no2 === rep.no) return;
-      const j = await req(`${url}/applyEdits`, {
+      const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reviews]: reviewsJson(reviews, { ...rep, no: no2 }) } }]),
         rollbackOnFailure: 'true',
       });
       if (!editOk(j.updateResults)) console.warn('[selbe] chanar: давхардсан REP дугаарыг засаж чадсангүй', oid);
+      else invalidate('CHANAR_BARIMT');
     }
   } catch (e) {
     console.warn('[selbe] chanar: REP дугаарын тулгалт алдлаа', oid, e);
@@ -1124,11 +1178,13 @@ export async function saveClientChecks(args: {
   if (args.client.length > body.items.length) return { ok: false, error: tr('Захиалагчийн багана мөрийн тооноос олон.') };
   const items = body.items.map((it, i) => ({ ...it, client: i < args.client.length ? args.client[i] : it.client }));
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...body, items }) } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: args.oid };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1163,14 +1219,16 @@ export async function submitCorrection(args: {
        тэр NNNN-ийг өөр баримтад ДАХИН олгож (төслийн хэмжээнд давхардал), `repSeqFor`
        lineage-ээ алдана (0005-01 байх ёстой нь 0006-00). Хянагдаж буй төлөвт шийдвэрийн
        тэмдэг гаргахгүй байх нь `chanarUi.docVerdict`-д. */
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
         [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
         [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
       } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: args.oid };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1196,14 +1254,16 @@ export async function reopenDoc(args: { oid: number; who: string; reason: string
   if (!r.ok) return r;
   try {
     /* ⚠️ 2026-09-29 (аудит 10): өмнөх хариуг (`rep`) хадгална — `submitCorrection`-ийн тайлбар */
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
         [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
         [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
       } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: args.oid };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1224,8 +1284,10 @@ async function loadRow(oid: number): Promise<{ url: string; row: Attrs; doc: MsD
 
 async function update(url: string, attrs: Attrs): Promise<Result> {
   try {
-    const j = await req(`${url}/applyEdits`, { updates: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true' });
-    return editOk(j.updateResults) ? { ok: true, oid: Number(attrs[F.oid]) } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    const j = await arcgisPost(`${url}/applyEdits`, { updates: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true' });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: Number(attrs[F.oid]) };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1344,9 +1406,11 @@ export async function newRevisionDoc(args: { oid: number; who: string; reason: s
     [F.reviews]: JSON.stringify(r.reviews), [F.body]: JSON.stringify(nextBody),
   };
   try {
-    const j = await req(`${url}/applyEdits`, { adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true' });
+    const j = await arcgisPost(`${url}/applyEdits`, { adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true' });
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
-    return a?.success && a.objectId != null ? { ok: true, oid: a.objectId } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: a.objectId };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1439,11 +1503,13 @@ export async function saveMeta(args: {
   if (args.category !== undefined) meta.category = args.category;
   Object.assign(meta, patch);
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...base, meta: normalizeMeta(meta) }) } }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults) ? { ok: true, oid: args.oid } : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('CHANAR_BARIMT');
+    return { ok: true, oid: args.oid };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }

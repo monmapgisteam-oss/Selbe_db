@@ -13,7 +13,7 @@
  * ⚠️ Хэрэглэгчийн ӨӨРИЙН тохиргоо (нуулт · царцаалт · зөөлт · өргөн) нь
  * `useSheetCols`/`useColWidths`-д хадгалагддаг бөгөөд ЭНДЭХИЙГ ДАРНА.
  */
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, perLocale } from '@/lib/i18nCore';
 
 /**
  * ЗОХИОМЖИЙН ХУВИЛБАР — хадгалагдсан баганы дарааллыг хэзээ хаяхыг шийднэ.
@@ -88,6 +88,34 @@ export const FIN_XL_ORDER: readonly string[] = [
   'Cashflow_huwi',
   'Cashflow_dun',
 ];
+const lzGeree_dun14 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
+
+const lzGuitsetgegch13 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
+
+const lzGeree_dugaar12 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
+
+const lzGeree_ognoo11 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
+
+const lzZahiramj_nzd_nuuts10 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
+
+const lzZahiramj_niislel_tusuv9 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
+
+const lzZahiramj_borluulalt_dun8 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
+
+const lzZahiramj_unet_tsaas_huvi7 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
+
+const lzZahiramj_unet_tsaas6 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
+
+const lzZahiramj_niit_dun5 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
+
+const lzZahiramj_dugaar4 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
+
+const lzZahiramj_ognoo3 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
+
+const lzDuusah_ognoo2 = perLocale(() => ([tr('Төлөвлөгөөт хугацаа')]));
+
+const lzEhleh_ognoo1 = perLocale(() => ([tr('Төлөвлөгөөт хугацаа')]));
+
 
 /**
  * БҮЛГИЙН ЗАМ — Excel-ийн нэгтгэсэн толгойн зурвасууд (дээд → доод).
@@ -104,20 +132,20 @@ export const FIN_XL_GROUP: Record<string, readonly string[]> = {
    * дээр нь нэгтгэсэн гарчиг байдаггүй. Урьд нь энд «Хөрөнгө оруулалтын дүн»
    * гэсэн зурвас зохиож тавьсныг 2026-09-09-нд ХАСАВ.
    */
-  ehleh_ognoo: [tr('Төлөвлөгөөт хугацаа')],
-  duusah_ognoo: [tr('Төлөвлөгөөт хугацаа')],
-  zahiramj_ognoo: [tr('Захирамжийн мэдээлэл')],
-  zahiramj_dugaar: [tr('Захирамжийн мэдээлэл')],
-  zahiramj_niit_dun: [tr('Захирамжийн мэдээлэл')],
-  zahiramj_unet_tsaas: [tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')],
-  zahiramj_unet_tsaas_huvi: [tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')],
-  zahiramj_borluulalt_dun: [tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')],
-  zahiramj_niislel_tusuv: [tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')],
-  zahiramj_nzd_nuuts: [tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')],
-  geree_ognoo: [tr('Гэрээний мэдээлэл')],
-  geree_dugaar: [tr('Гэрээний мэдээлэл')],
-  guitsetgegch: [tr('Гэрээний мэдээлэл')],
-  geree_dun: [tr('Гэрээний мэдээлэл')],
+  get ehleh_ognoo() { return lzEhleh_ognoo1(); },
+  get duusah_ognoo() { return lzDuusah_ognoo2(); },
+  get zahiramj_ognoo() { return lzZahiramj_ognoo3(); },
+  get zahiramj_dugaar() { return lzZahiramj_dugaar4(); },
+  get zahiramj_niit_dun() { return lzZahiramj_niit_dun5(); },
+  get zahiramj_unet_tsaas() { return lzZahiramj_unet_tsaas6(); },
+  get zahiramj_unet_tsaas_huvi() { return lzZahiramj_unet_tsaas_huvi7(); },
+  get zahiramj_borluulalt_dun() { return lzZahiramj_borluulalt_dun8(); },
+  get zahiramj_niislel_tusuv() { return lzZahiramj_niislel_tusuv9(); },
+  get zahiramj_nzd_nuuts() { return lzZahiramj_nzd_nuuts10(); },
+  get geree_ognoo() { return lzGeree_ognoo11(); },
+  get geree_dugaar() { return lzGeree_dugaar12(); },
+  get guitsetgegch() { return lzGuitsetgegch13(); },
+  get geree_dun() { return lzGeree_dun14(); },
   /*
    * ⚠️ ЭНДЭЭС ЦААШ ЗУРВАС БАЙХГҮЙ. Excel-ийн толгойд ердөө ГУРВАН нэгтгэсэн
    * зурвас бий: `L3:O3` «ТӨЛӨВЛӨГӨӨТ ХУГАЦАА», `P3:W3` «ЗАХИРАМЖИЙН МЭДЭЭЛЭЛ»
@@ -141,47 +169,47 @@ export const FIN_XL_GROUP: Record<string, readonly string[]> = {
  * картын харагдац, тайлан) хэвээр хэрэглэгдэнэ — ХОЁУЛАА хэрэгтэй.
  */
 export const FIN_XL_LEAF: Record<string, string> = {
-  bagts: tr('БАГЦ'),
-  dugaar: tr('№'),
-  ajil_uilchilgee: tr('Ажил, үйлчилгээ'),
+  get bagts() { return tr('БАГЦ'); },
+  get dugaar() { return tr('№'); },
+  get ajil_uilchilgee() { return tr('Ажил, үйлчилгээ'); },
   /* ⚠️ Excel-ийн `I3`/`J3`-ийн БҮТЭН текст: тэдгээр нь зурвасгүй бие даасан
      нүд тул богиносгох газар байхгүй — нэрээ бүтнээр авч явна. */
-  ho_dun_zahiramj: tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Захирамж болон Урьдчилсан тооцоолол дүн)'),
-  ho_dun_geree: tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Гэрээ болон Урьдчилсан тооцоолол дүн)'),
-  tusuld_ezleh_huvi_dun: tr('Төсөлд эзлэх хувь'),
-  tusuld_ezleh_huvi: tr('Төсөлд эзлэх хувь (текст)'),
-  ehleh_ognoo: tr('Эхлэх'),
-  duusah_ognoo: tr('Дуусах'),
-  zahiramj_ognoo: tr('Захирамжийн огноо'),
-  zahiramj_dugaar: tr('Дугаар'),
-  zahiramj_niit_dun: tr('Захирамж нийт дүн'),
-  zahiramj_unet_tsaas: tr('Үнэт цаас'),
-  zahiramj_unet_tsaas_huvi: tr('Үнэт цаас %'),
-  zahiramj_borluulalt_dun: tr('Борлуулалт орлого'),
-  zahiramj_niislel_tusuv: tr('Нийслэлийн төсөвийн хөрөнгөөр'),
-  zahiramj_nzd_nuuts: tr('НЗД нөөц хөрөнгө'),
-  geree_ognoo: tr('Гэрээ байгуулсан огноо'),
-  geree_dugaar: tr('Гэрээний дугаар'),
-  guitsetgegch: tr('Гүйцэтгэгч'),
-  geree_dun: tr('Гэрээний дүн'),
-  guitsetgel_huvi: tr('Санхүүжсэн гүйцэтгэлийн хувь'),
-  tezu: tr('ТЭЗҮ'),
-  ajliin_zurag_tusul: tr('Ажлын зураг төсөл'),
-  gazar_chuluulult: tr('Газар чөлөөлөлт'),
-  zuwshuurul: tr('Зөвшөөрөл'),
-  songon_shalgaruulalt: tr('Сонгон шалгаруулалт'),
-  ho_dungiin_tailbar: tr('Хөрөнгө оруулалтын дүнгийн тайлбар'),
-  zahialagch_hynalt_baig: tr('Захиалагчийн хяналт хийх байгууллага'),
-  urdchilgaa_batalgaa_dun: tr('Баталгааны дүн'),
-  urdchilgaa_huvi: tr('Хувь'),
-  urdchilgaa_zh_zardal: tr('Суутгасан ЗХ зардал'),
-  dugaar2: tr('Дугаар 2'),
-  bagts_74: tr('Багц 74'),
-  Cashflow_ID: tr('Cashflow дугаар'),
-  Cashflow_start: tr('Сар эхлэх'),
-  Cashflow_end: tr('Сар дуусах'),
-  Cashflow_huwi: tr('Сарын төлөвлөгөө, %'),
-  Cashflow_dun: tr('Сарын дүн'),
+  get ho_dun_zahiramj() { return tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Захирамж болон Урьдчилсан тооцоолол дүн)'); },
+  get ho_dun_geree() { return tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Гэрээ болон Урьдчилсан тооцоолол дүн)'); },
+  get tusuld_ezleh_huvi_dun() { return tr('Төсөлд эзлэх хувь'); },
+  get tusuld_ezleh_huvi() { return tr('Төсөлд эзлэх хувь (текст)'); },
+  get ehleh_ognoo() { return tr('Эхлэх'); },
+  get duusah_ognoo() { return tr('Дуусах'); },
+  get zahiramj_ognoo() { return tr('Захирамжийн огноо'); },
+  get zahiramj_dugaar() { return tr('Дугаар'); },
+  get zahiramj_niit_dun() { return tr('Захирамж нийт дүн'); },
+  get zahiramj_unet_tsaas() { return tr('Үнэт цаас'); },
+  get zahiramj_unet_tsaas_huvi() { return tr('Үнэт цаас %'); },
+  get zahiramj_borluulalt_dun() { return tr('Борлуулалт орлого'); },
+  get zahiramj_niislel_tusuv() { return tr('Нийслэлийн төсөвийн хөрөнгөөр'); },
+  get zahiramj_nzd_nuuts() { return tr('НЗД нөөц хөрөнгө'); },
+  get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
+  get geree_dugaar() { return tr('Гэрээний дугаар'); },
+  get guitsetgegch() { return tr('Гүйцэтгэгч'); },
+  get geree_dun() { return tr('Гэрээний дүн'); },
+  get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
+  get tezu() { return tr('ТЭЗҮ'); },
+  get ajliin_zurag_tusul() { return tr('Ажлын зураг төсөл'); },
+  get gazar_chuluulult() { return tr('Газар чөлөөлөлт'); },
+  get zuwshuurul() { return tr('Зөвшөөрөл'); },
+  get songon_shalgaruulalt() { return tr('Сонгон шалгаруулалт'); },
+  get ho_dungiin_tailbar() { return tr('Хөрөнгө оруулалтын дүнгийн тайлбар'); },
+  get zahialagch_hynalt_baig() { return tr('Захиалагчийн хяналт хийх байгууллага'); },
+  get urdchilgaa_batalgaa_dun() { return tr('Баталгааны дүн'); },
+  get urdchilgaa_huvi() { return tr('Хувь'); },
+  get urdchilgaa_zh_zardal() { return tr('Суутгасан ЗХ зардал'); },
+  get dugaar2() { return tr('Дугаар 2'); },
+  get bagts_74() { return tr('Багц 74'); },
+  get Cashflow_ID() { return tr('Cashflow дугаар'); },
+  get Cashflow_start() { return tr('Сар эхлэх'); },
+  get Cashflow_end() { return tr('Сар дуусах'); },
+  get Cashflow_huwi() { return tr('Сарын төлөвлөгөө, %'); },
+  get Cashflow_dun() { return tr('Сарын дүн'); },
 };
 
 /**
@@ -406,7 +434,7 @@ export const FIN_XL_CHART_FIELDS = [
 export const FIN_XL_TOTAL_CODE_FIELD = 'bagts_tuvshin1';
 export const FIN_XL_TOTAL_SKIP: readonly string[] = ['5', '6', '7'];
 /** Excel-ийн мөр 7-ийн ЯГ ТЭР шошго */
-export const FIN_XL_TOTAL_LABEL = tr('НИЙТ (Орон сууцны хороолол+ГИШС)');
+export const FIN_XL_TOTAL_LABEL = () => tr('НИЙТ (Орон сууцны хороолол+ГИШС)');
 
 /** Мөр ерөнхий нийлбэрт орох уу — `bagts_tuvshin1` кодоор */
 export const finXlInTotal = (row: Record<string, unknown>): boolean => (

@@ -23,7 +23,7 @@
  */
 
 import { TD, LAYER_BY_ID, layerUrl } from '@/lib/services';
-import { tokenQs } from '@/lib/authToken';
+import { arcgisPost, type ArcgisBody } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import {
   buildNetwork, markDuplicates, nodeByIntersection,
@@ -108,8 +108,8 @@ export type NetSource = {
 export const NET_SOURCES: Record<NetKind, NetSource> = {
   real: {
     kind: 'real',
-    label: tr('Одоогийн бодит зам'),
-    short: tr('Бодит'),
+    get label() { return tr('Одоогийн бодит зам'); },
+    get short() { return tr('Бодит'); },
     hue: '#38bdf8',
     // ① Одоогийн бодит замын line (Monmap_zam_selbe, 113 feature, polyline).
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
@@ -120,8 +120,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
   },
   plan: {
     kind: 'plan',
-    label: tr('Ерөнхий төлөвлөгөөний зам'),
-    short: tr('Төлөвлөгөө'),
+    get label() { return tr('Ерөнхий төлөвлөгөөний зам'); },
+    get short() { return tr('Төлөвлөгөө'); },
     hue: '#a78bfa',
     // ② Ерөнхий төлөвлөгөөний машин явах line (selbe_zam_tuluwlult, 205 feature).
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
@@ -271,11 +271,11 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
       resultRecordCount: '2000',
       f: 'json',
     });
-    const page: {
+    /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот · 429 backoff) */
+    const page = await arcgisPost<ArcgisBody & {
       features?: SignalFeature[];
       exceededTransferLimit?: boolean;
-      error?: { message?: string };
-    } = await fetch(`${SIGNAL_LAYER_URL}/query?${q}${tokenQs()}`).then((x) => x.json());
+    }>(`${SIGNAL_LAYER_URL}/query`, Object.fromEntries(q));
     if (page.error) throw new Error(page.error.message ?? tr('гэрлэн дохио query алдаа'));
     const got = page.features ?? [];
     feats.push(...got);

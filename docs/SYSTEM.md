@@ -113,9 +113,9 @@ flowchart LR
 | Файл | Тухай |
 |---|---|
 | [`CLAUDE.md`](../CLAUDE.md) | Хөгжүүлэлтийн ажлын дүрэм — архитектур биш |
-| [`DATA_DICTIONARY.md`](../DATA_DICTIONARY.md) | ArcGIS давхаргын **талбарын** толь (талбарын нэр, нэгж, өртгийн загвар) |
+| [`reference/DATA_DICTIONARY.md`](reference/DATA_DICTIONARY.md) | ArcGIS давхаргын **талбарын** толь (талбарын нэр, нэгж, өртгийн загвар) |
 | [`bagts-guitsetgel-negtgel.md`](bagts-guitsetgel-negtgel.md) | Батлагдсан гүйцэтгэлийн **нэг хүснэгтийн** гүн баримт |
-| `SELBE_BNBD_NORMS.md` | БНБД 30-01-24 нормын эшлэл, босго утга |
+| [`reference/SELBE_BNBD_NORMS.md`](reference/SELBE_BNBD_NORMS.md) | БНБД 30-01-24 нормын эшлэл, босго утга |
 
 ---
 

@@ -27,6 +27,7 @@ import { zoneTrips } from '@/modules/analysis/suit/simulation';
 import { loadBlockProgress, type BlockProgressMap } from './blockProgress';
 import { text } from './format';
 import { BAGTS_ORIGIN } from './brief';
+import { housingPct } from './gdash';
 import { t as tr } from './i18nCore';
 
 const BF = BUILDING.fields;
@@ -41,13 +42,15 @@ export type BagtsRow = {
   origin: string;
   /**
    * Барилга угсралтын гүйцэтгэл (%) — «Гүйцэтгэл бөглөх» хуудасны «Б.» мөрөөр.
-   * ⚠️ Хуваарь нь БҮХ блок (тайлангүйг 0%). Зөвхөн тайлагнасан блокоор
-   * дундажлавал шинэ багц бүртгэгдэх бүрд дүн нь БУУНА.
-   * ⚠️ МЭДЭГДЭЖ БУЙ ЗӨРҮҮ: «Барилгын хяналт» (BuildingPanel) ба «Багцын
-   * мэдээлэл» (Bagts) нь тайлангүй блокоо ХАСЧ дундажладаг тул нэг багц тэнд
-   * арай ӨӨР (өндөр) % харагдана. Нэгтгэхдээ энэ «бүх блокоор хуваах» дүрмийг
-   * ГАНЦ helper болгож гурван модульд хамт хэрэглэх — `missing` тэмдэглэл
-   * хэвээр үлдэнэ.
+   * ⚠️ 2026-09-30: хуваарь нь ЗӨВХӨН ТАЙЛАГНАСАН блок (null ≠ 0) — «Барилгын
+   *    хяналт» (BuildingPanel) · «Багцын мэдээлэл» (Bagts.buildPacks) · Тайлан
+   *    §3 (`reportData.loadOverall`) · `finPhys.buildPhys`-тэй НЭГ дүрэм.
+   *    Урьд нь (2026-08-24, CEO_KPI_PROMPT §7-A) БҮХ блокоор хувааж тайлангүй
+   *    блокийг 0% гэж тооцдог тул нэг багц дэлгэц бүрд өөр % харагддаг байв;
+   *    хэрэглэгч 2026-09-30-нд орон сууцны гүйцэтгэлийг ГАНЦ тодорхойлолттой
+   *    болгохыг шаардсан — тэр шийдвэр 08-24-нийхийг ХҮЧИНГҮЙ болгов.
+   *    Тайлангүй блокийн тоо `missing`-д ХЭВЭЭР — «хэдэн блокоор дундажилсан»
+   *    нь тоотой хамт харагдах ёстой.
    */
   progress: number | null;
   /** Тайлан ирээгүй блокийн тоо */
@@ -107,7 +110,8 @@ export function useBagtsTable(): Async<BagtsRow[]> {
   return useAsync(loadBagtsRows, []);
 }
 
-function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
+/** Экспорт — `execData.check.mjs` цэвэр оролтоор шалгана (сүлжээгүй) */
+export function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
   const by = new Map<string, BagtsRow & { sum: number }>();
   const slot = (name: string) => {
     const k = bagtsKey(name);
@@ -139,17 +143,21 @@ function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
 
   /* ⚠️ 2026-09-24: null ≠ 0 — нэг ч блок нь тайлагнаагүй багц `progress: null`
      (урьд нь `sum / blocks` = 0 гарч, Dashboard/Tailan-ийн «зөвхөн мэдээлэлтэй
-     багцаар жигнэх» дүрэм хэзээ ч ажилладаггүй байв). Тайлагнасан блоктой багцад
-     хуваарь ХЭВЭЭР бүх блок (тайлангүй блок 0%) — `buildProgressOf`-ийн ⚠️. */
+     багцаар жигнэх» дүрэм хэзээ ч ажилладаггүй байв).
+     ⚠️ 2026-09-30: хуваарь = ТАЙЛАГНАСАН блок (`blocks − missing`), бүх блок БИШ —
+     `BagtsRow.progress`-ийн ⚠️ (нэг багц бүх дэлгэцэд нэг %). */
   return [...by.values()]
-    .map(({ sum, ...s }) => ({ ...s, progress: s.blocks - s.missing > 0 ? sum / s.blocks : null }))
+    .map(({ sum, ...s }) => {
+      const reported = s.blocks - s.missing;
+      return { ...s, progress: reported > 0 ? sum / reported : null };
+    })
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
 
 /* ══════════════ ТӨСЛИЙН АЛБАН ЁСНЫ ГҮЙЦЭТГЭЛ ══════════════ */
 
 export type BuildProgress = {
-  /** Блокоор жигнэсэн гүйцэтгэл (%) — тайлангүй блок 0%-аар ордог */
+  /** Орон сууцны гүйцэтгэл (%) — `gdash.housingPct` (хэмжигдсэн багц, ХО дүнгээр жигнэсэн) */
   pct: number | null;
   blocks: number;
   /** Тайлагнасан блок */
@@ -159,36 +167,33 @@ export type BuildProgress = {
 };
 
 /**
- * ТӨСЛИЙН ГҮЙЦЭТГЭЛИЙН ГАНЦ ТОДОРХОЙЛОЛТ.
+ * ОРОН СУУЦНЫ ГҮЙЦЭТГЭЛ — багцын мөрүүдээс, порталын ГАНЦ томьёогоор.
  *
- * ⚠️ 2026-08-24, хэрэглэгчийн шийдвэр (CEO_KPI_PROMPT §7-A). Системд гурван
- * өөр гүйцэтгэлийн тоо зэрэг оршиж, CEO хоёр дэлгэц нээгээд өөр хоёр тоо
- * хардаг байв. Албан ёсны нь болгож сонгосон нь ЭНЭ — `joinBagts`-ийн дүрэм:
- * хуваарь нь БҮХ блок, тайлан ирээгүй блок 0% гэж тооцогдоно.
+ * ⚠️ 2026-09-30, хэрэглэгчийн шийдвэр: орон сууцны гүйцэтгэл ХААНА Ч НЭГ
+ *    тодорхойлолттой — `gdash.housingPct` (Σ ХО × хувь ÷ Σ ХО, хэмжигдсэн
+ *    багцаар; ХО дүн огт алга бол тайлагнасан блокийн тоо). Энэ шийдвэр
+ *    2026-08-24-ний (CEO_KPI_PROMPT §7-A) «бүх блокоор хуваах, тайлан ирээгүй
+ *    блок 0%» дүрмийг ХҮЧИНГҮЙ болгов: тэр «болгоомжтой» дүн нь Dashboard ·
+ *    PkgProg · Тайлан · удирдлагын тайлангийн тооноос зөрж, нэг үзүүлэлт
+ *    хоёр тоотой байв. Хэмжигдээгүй блок/багц ОРОХГҮЙ (null ≠ 0); хэдэн блок
+ *    тайлан ирээгүйг `missing`-ээр ХАМТ харуулна — дүн хөөрөгдөгдөх эсэхийг
+ *    уншигч түүгээр дүгнэнэ.
  *
- * ⚠️ Яагаад «бүх блокоор» вэ: зөвхөн тайлагнасан блокоор дундажлавал шинэ багц
- * бүртгэгдэх бүрд дүн БУУНА, мөн тайлагнаагүй ажил дүнд ОГТ нөлөөлөхгүй болж
- * нуугдана. Бүх блокоор хуваах нь болгоомжтой (консерватив) — гүйцэтгэлийг
- * хэзээ ч хөөрөгдөхгүй.
- *
- * ⚠️ `missing` нь ЗААВАЛ хамт харагдана: 0%-аар орж буй блок хэд байгааг
- * хэлэхгүйгээр энэ тоо төөрөгдүүлнэ.
- *
- * ⚠️ `r.progress` нь `sum ÷ r.blocks` тул `progress × blocks` нь түүхий
- * нийлбэрийг сэргээнэ — багц дамнасан жигнэлт ингэж яг таарна.
+ * @param cost багц (`BagtsRow.key`) → ХО дүн (`gdash.pkgCostWeight`). Өгөөгүй
+ *   бол блокийн тооны нөөц жин — тайлагнасан блок (`reported`).
  */
-export function buildProgressOf(rows: readonly BagtsRow[]): BuildProgress {
+export function buildProgressOf(rows: readonly BagtsRow[], cost?: ReadonlyMap<string, number>): BuildProgress {
   let blocks = 0;
-  let wsum = 0;
   let missing = 0;
   for (const r of rows) {
     blocks += r.blocks;
     missing += r.missing;
-    if (r.progress != null) wsum += r.progress * r.blocks;
   }
-  /* ⚠️ Нэг ч блок тайлагнаагүй бол `null` (0% БИШ) — null ≠ 0 */
+  /* ⚠️ Нэг ч блок тайлагнаагүй бол `null` (0% БИШ) — `housingPct` өөрөө null буцаана */
   return {
-    pct: blocks - missing > 0 ? wsum / blocks : null,
+    pct: housingPct(rows.map((r) => ({
+      pct: r.progress, cost: cost?.get(r.key) ?? 0, blocks: r.blocks - r.missing,
+    }))),
     blocks,
     reported: blocks - missing,
     missing,

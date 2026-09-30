@@ -23,8 +23,8 @@
 //    Энэ мөрийг АРХИВЫН зорилгоор л үлдээв — дээрх «ХОЙШЛУУЛСАН» функцууд
 //    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
-import { t as tr } from "@/lib/i18nCore";
-import { tokenParam, tokenQs, authToken, ensureFreshToken, isTokenError } from '@/lib/authToken';
+import { tokenQs, authToken } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import { HJ } from '@/lib/services';
 export const base = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
 
@@ -36,37 +36,17 @@ export async function agsFetch(
 ): Promise<any> {
   /* ⚠️ 2026-09-29 (хэрэглэгч: «илгээхэд Invalid token»): токен богино хугацаатай
      (PKCE) — хүсэлтийн ӨМНӨ шинэчилж, токены алдаанд (498/499) НЭГ удаа дахин оролдоно
-     (`authToken.ensureFreshToken`-ийн ⚠️). */
-  const once = async () => {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ ...tokenParam(), ...params, f: "json" }),
-    });
-    // ⚠️ Proxy/CDN-ийн 502 эсвэл HTML хариу «SyntaxError: Unexpected token <»
-    // болж улаан баннерт гардаг байв — хүнд ойлгомжтой мессеж болгоно.
-    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-    try {
-      return await res.json();
-    } catch {
-      throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
-    }
-  };
-  await ensureFreshToken();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let json: any = await once();
-  if (json.error && isTokenError(json.error.code, json.error.message) && authToken()) {
-    await ensureFreshToken(true);
-    json = await once();
-  }
-  if (json.error)
-    /* ⚠️ `code`-ыг ХАДГАЛНА (2026-09-25): дуудагч түр (429/5xx) ба тогтвортой
-       (498/499/403) алдааг ялгаж дахин оролдоно (`sheetRows.schemaOf`). */
-    throw Object.assign(
-      new Error(json.error.message || json.error.details?.[0] || "ArcGIS error"),
-      { code: json.error.code },
-    );
-  return json;
+     (`authToken.ensureFreshToken`-ийн ⚠️).
+     ⚠️ 2026-09-30: биелэлт нь `query.arcgisPost` (нэг цөм: `res.ok`, JSON биш хариу,
+     200-аар ирдэг `{error}`, 30с timeout, 429/503 backoff, 498 шинэчлэлт). Алдаа нь
+     `ArcGISError` — `code`-ыг ХАДГАЛНА (2026-09-25): дуудагч түр (429/5xx) ба
+     тогтвортой (498/499/403) алдааг ялгаж дахин оролдоно (`sheetRows.schemaOf`).
+     ⚠️ 2026-09-30 (сүлжээний аудит): СЛОТ ЭНД — цөм өөрөө хязгаарлагчийн слот авна.
+     Урьд нь `slot: false` байсан: `sheetRows.schemaOf` энэ функцийг `withSlot`
+     ДОТРООС дууддаг байв (давхар авбал бүх слот гаднах бүрхүүлд эзлэгдэхэд дотоод
+     хүсэлт мөнхөд хүлээж ГАЦНА). Тэр гаднах `withSlot` хасагдсан тул ДҮРЭМ:
+     `agsFetch`-ийг `withSlot` дотроос ХЭЗЭЭ Ч дуудахгүй. */
+  return arcgisPost(url, params);
 }
 
 export type Feature = { attributes: Record<string, unknown> };
@@ -278,9 +258,8 @@ export type AttachInfo = {
 };
 
 export async function listAttachments(oid: number): Promise<AttachInfo[]> {
-  const res = await fetch(`${base}/${oid}/attachments?f=json${tokenQs()}`);
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message || "ArcGIS error");
+  /* ⚠️ 2026-09-30: GET + токен query string → `agsFetch` (POST, токен биеэр) */
+  const j = await agsFetch(`${base}/${oid}/attachments`, {});
   return j.attachmentInfos || [];
 }
 
@@ -290,10 +269,14 @@ export async function addAttachment(oid: number, file: File) {
   fd.append("attachment", file);
   fd.append("f", "json");
   { const tok = authToken(); if (tok) fd.append("token", tok); } // ⚠️ org-only (2026-09-17)
+  /* ⚠️ 2026-09-30: multipart тул цөмөөр явахгүй — timeout (файл том байж болно: 120с)
+     ба `res.ok`-ийг энд өгнө. */
   const res = await fetch(`${base}/${oid}/addAttachment`, {
     method: "POST",
     body: fd,
+    signal: AbortSignal.timeout(120_000),
   });
+  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
   const j = await res.json();
   if (j.error || j.addAttachmentResult?.success === false)
     throw new Error(j.error?.message || "add attachment failed");
@@ -308,5 +291,7 @@ export async function deleteAttachment(oid: number, id: number) {
 }
 
 // Raw image bytes for <img src> (CORS is open).
+// ⚠️ 2026-09-30: `tokenQs` энд л үлдэнэ — `<img src>` POST хийж чадахгүй тул токен
+//    query string-ээр явахаас өөр аргагүй (`authToken.tokenQs`-ийн ⚠️).
 export const attachmentUrl = (oid: number, id: number) =>
   `${base}/${oid}/attachments/${id}?${tokenQs().slice(1)}`;

@@ -11,7 +11,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import { requireCap } from './who';
 import type { CapKey } from './caps';
 
@@ -27,27 +27,9 @@ export type EditResult = {
 
 type ApplyResult = { success?: boolean; objectId?: number; error?: { description?: string } };
 
-async function post(url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ ...tokenParam(), ...body, f: 'json' }),
-  });
-  /* ⚠️ `res.ok` ба JSON парс (2026-09-21, `ags.agsFetch`-тэй ижил): proxy/CDN-ийн
-     499/502 HTML хариу «SyntaxError: Unexpected token <» болж улаан баннерт
-     гардаг байв — статустай, хүнд ойлгомжтой мессеж болгоно. */
-  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-  let j: Record<string, unknown>;
-  try {
-    j = (await res.json()) as Record<string, unknown>;
-  } catch {
-    throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
-  }
-  /* ⚠️ ArcGIS алдаатай ч HTTP 200 буцаадаг — биеийг ЗААВАЛ шалгана */
-  const e = j.error as { message?: string } | undefined;
-  if (e) throw new Error(e.message || tr('ArcGIS алдаа'));
-  return j;
-}
+/* ⚠️ 2026-09-30: `query.arcgisPost` — `res.ok`, JSON парс (2026-09-21-ний дүрэм),
+   200-аар ирдэг `{error}`, timeout, слот, 498 шинэчлэлт бүгд тэнд. Токен биеэр. */
+const post = (url: string, body: Record<string, string>) => arcgisPost(url, body);
 
 /**
  * Үр дүнгийн массивыг шалгаж, эхний бүтэлгүйг алдаа болгоно.

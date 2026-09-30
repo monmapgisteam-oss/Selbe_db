@@ -27,7 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
-import { queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import {
   HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS,
   laborCompanyFields,
@@ -547,16 +547,15 @@ const photoCache = new Map<number, Promise<Photo[]>>();
 const loadPhotos = (oid: number): Promise<Photo[]> => {
   let p = photoCache.get(oid);
   if (!p) {
-    p = fetch(`${HABEA.incident.url}/${oid}/attachments?f=json${tokenQs()}`)
-      .then((r) => r.json())
-      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана. Урьд нь
-         `{error:{…}}` ирэхэд `?? []` дамжиж «зураг алга» гэсэн ХУДАЛ хариу
-         болдог байв (2026-09-16). `habeaUzleg`-ийн зам үүнийг зөв хийдэг. */
-      .then((j: {
-        error?: { message?: string };
-        attachmentInfos?: { id: number; contentType?: string; name?: string }[];
-      }) => {
-        if (j.error) throw new Error(j.error.message || tr('ArcGIS алдаа'));
+    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана. Урьд нь
+       `{error:{…}}` ирэхэд `?? []` дамжиж «зураг алга» гэсэн ХУДАЛ хариу
+       болдог байв (2026-09-16). `habeaUzleg`-ийн зам үүнийг зөв хийдэг.
+       ⚠️ 2026-09-30: `arcgisPost` (POST, токен биеэр) — `{error}`-ыг цөм өөрөө
+       `ArcGISError` болгож шиднэ; timeout · слот · 429 backoff нэмэгдэв. */
+    p = arcgisPost<{
+      attachmentInfos?: { id: number; contentType?: string; name?: string }[];
+    }>(`${HABEA.incident.url}/${oid}/attachments`, { f: 'json' })
+      .then((j) => {
         return (j.attachmentInfos ?? [])
           .filter((a) => String(a.contentType ?? '').startsWith('image/'))
           .map((a) => ({ id: a.id, name: a.name ?? tr('Зураг {0}', a.id) }));
@@ -613,6 +612,8 @@ function IncPhotos({ oid }: { oid: number }) {
   return (
     <div className={h.photos}>
       {q.data.map((p) => {
+        /* ⚠️ 2026-09-30: `tokenQs` ЗӨВХӨН энд — `<img src>`/`<a href>` POST хийж
+           чадахгүй тул токен query string-ээр явахаас өөр аргагүй (`authToken.tokenQs`-ийн ⚠️). */
         const src = `${HABEA.incident.url}/${oid}/attachments/${p.id}?${tokenQs().slice(1)}`;
         return (
           <a key={p.id} href={src} target="_blank" rel="noreferrer" title={p.name}>
@@ -639,6 +640,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
   const q = useAsync<{ src: string; cap: string; tip: string }[]>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
+        /* ⚠️ 2026-09-30: `tokenQs` — `<img src>`-ийн онцгой тохиолдол (дээрх ⚠️) */
         src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}?${tokenQs().slice(1)}`,
         cap: `${incDate(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
@@ -825,22 +827,23 @@ const PKG_OF_CO: ReadonlyMap<string, string> = new Map<string, string>(
 );
 
 /** Хүний уншиж болох нэр — идэвхтэй шүүлтийн чипэнд гарна */
+/* ⚠️ 2026-09-30: getter — хэл солиход дахин ачаалалгүй орчуулагдана (i18nLazy.check) */
 const DIM_LABEL: Record<Dim2, string> = {
-  pkg: tr('Багц'),
-  co: tr('Компани'),
-  incType: tr('Ослын төрөл'),
-  cause: tr('Шалтгаан'),
+  get pkg() { return tr('Багц'); },
+  get co() { return tr('Компани'); },
+  get incType() { return tr('Ослын төрөл'); },
+  get cause() { return tr('Шалтгаан'); },
   // ⚠️ `co`-той ялгаж нэрлэнэ: хоёулаа компанийг заадаг ч ӨӨР эх сурвалжаас
   //    (`co` = ажилтны маягтын багана, энэ нь ослын бүртгэлийн чөлөөт текст).
   //    Хоёулаа зэрэг идэвхтэй байж болох тул чип дээр ялгарах ёстой.
-  incCompany: tr('Ослын компани'),
-  craneState: tr('Краны төлөв'),
-  uzSev: tr('Үл нийцлийн зэрэг'),
-  uzShift: tr('Ээлж'),
-  uzCompany: tr('Үзлэгийн компани'),
-  uzWeek: tr('Үзлэгийн долоо хоног'),
-  day: tr('Өдөр'),
-  month: tr('Сар'),
+  get incCompany() { return tr('Ослын компани'); },
+  get craneState() { return tr('Краны төлөв'); },
+  get uzSev() { return tr('Үл нийцлийн зэрэг'); },
+  get uzShift() { return tr('Ээлж'); },
+  get uzCompany() { return tr('Үзлэгийн компани'); },
+  get uzWeek() { return tr('Үзлэгийн долоо хоног'); },
+  get day() { return tr('Өдөр'); },
+  get month() { return tr('Сар'); },
 };
 
 /* ═══════════════════════ Үндсэн компонент ═══════════════════════ */

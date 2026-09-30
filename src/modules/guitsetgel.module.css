@@ -226,6 +226,8 @@
   font-size: 0.8rem;
 }
 .stepWho { font-weight: 600; color: var(--ink); }
+/* ⚠️ 2026-09-30: «өмнөх шийдвэрийн нэр дарагдсан» — нэрийн хажуугийн бүдэг тэмдэглэл */
+.stepNote { color: var(--ink-3); font-size: 0.85em; font-style: italic; }
 .verb { color: var(--ink-3); }
 .verbBad { color: var(--bad-ink); }
 .gap {

@@ -18,6 +18,7 @@
 
 import {
   ArcGISError,
+  arcgisPost,
   avg,
   count,
   queryFeatures,
@@ -27,7 +28,6 @@ import {
   type Row,
   type Stat,
 } from '@/lib/query';
-import { tokenQs } from '@/lib/authToken';
 import { resolveSource, type AgentScope, type AgentSource } from './registry';
 import { t as tr } from '@/lib/i18nCore';
 import { zoneOverview } from './overview';
@@ -50,33 +50,31 @@ const MAX_ROWS = 40;
 export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'describe_feature',
-    description:
-      tr('Давхаргын БОДИТ талбаруудыг ArcGIS үйлчилгээнээс шууд татна (нэр, төрөл, алиас). ') +
+    get description() { return tr('Давхаргын БОДИТ талбаруудыг ArcGIS үйлчилгээнээс шууд татна (нэр, төрөл, алиас). ') +
       tr('Каталогт заагаагүй талбар хэрэгтэй үед, эсвэл талбарын нэрэнд эргэлзэж байвал ЭНЭ ХЭРЭГСЛИЙГ ЭХЛЭЭД дууд. ') +
-      tr('Талбарын нэрийг таамаглаж `query_feature` дуудвал хүсэлт бүхэлдээ унана.'),
+      tr('Талбарын нэрийг таамаглаж `query_feature` дуудвал хүсэлт бүхэлдээ унана.'); },
     input_schema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: tr('Давхаргын id — каталогийн жагсаалтаас (жиш. "et:24")') },
+        id: { type: 'string', get description() { return tr('Давхаргын id — каталогийн жагсаалтаас (жиш. "et:24")'); } },
       },
       required: ['id'],
     },
   },
   {
     name: 'query_feature',
-    description:
-      tr('Давхаргаас өгөгдөл асууна. Хоёр горим: ') +
+    get description() { return tr('Давхаргаас өгөгдөл асууна. Хоёр горим: ') +
       tr('(1) НЭГТГЭЛ — `stats` өгвөл ArcGIS дээр тоолол/нийлбэр/дундаж бодогдоно (`groupBy` өгвөл ангиллаар задарна). ') +
       /* ⚠️ `{0}` орлуулагчаар (2026-09-15-ны аудит): урьд нь тоог `+`-оор
          нийлүүлдэг байсан тул `i18n-extract.mjs` ТАСАРХАЙ хэлтэрхийг түлхүүр
          болгож, англи горимд энэ тайлбар хагас орчуулагддаг байв. Мөр 100-д
          ижил утгыг аль хэдийн зөв бичсэн. */
       tr('(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь {0}). ', MAX_ROWS) +
-      tr('Тоон хариулт шаардвал ҮРГЭЛЖ нэгтгэл горимыг ашигла — мөрүүдийг татаад өөрөө нэмэх нь удаан ба алдаатай.'),
+      tr('Тоон хариулт шаардвал ҮРГЭЛЖ нэгтгэл горимыг ашигла — мөрүүдийг татаад өөрөө нэмэх нь удаан ба алдаатай.'); },
     input_schema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: tr('Давхаргын id (жиш. "et:24")') },
+        id: { type: 'string', get description() { return tr('Давхаргын id (жиш. "et:24")'); } },
         where: {
           type: 'string',
           description:
@@ -84,43 +82,42 @@ export const AGENT_TOOLS: ToolDef[] = [
         },
         stats: {
           type: 'array',
-          description: tr('Нэгтгэлүүд. Байвал НЭГТГЭЛ горим ажиллана.'),
+          get description() { return tr('Нэгтгэлүүд. Байвал НЭГТГЭЛ горим ажиллана.'); },
           items: {
             type: 'object',
             properties: {
-              op: { type: 'string', enum: ['count', 'sum', 'avg'], description: tr('Үйлдэл') },
-              field: { type: 'string', description: tr('Талбарын нэр (count-д OID-г ашиглаж болно)') },
-              as: { type: 'string', description: tr('Үр дүнгийн баганын нэр (заавал биш)') },
+              op: { type: 'string', enum: ['count', 'sum', 'avg'], get description() { return tr('Үйлдэл'); } },
+              field: { type: 'string', get description() { return tr('Талбарын нэр (count-д OID-г ашиглаж болно)'); } },
+              as: { type: 'string', get description() { return tr('Үр дүнгийн баганын нэр (заавал биш)'); } },
             },
             required: ['op', 'field'],
           },
         },
-        groupBy: { type: 'string', description: tr('Ангиллаар задлах талбар (зөвхөн нэгтгэл горимд)') },
+        groupBy: { type: 'string', get description() { return tr('Ангиллаар задлах талбар (зөвхөн нэгтгэл горимд)'); } },
         outFields: {
           type: 'array',
           items: { type: 'string' },
-          description: tr('Жагсаалт горимд буцаах талбарууд. Заавал зааж өг — бүгдийг татах нь үрэлгэн.'),
+          get description() { return tr('Жагсаалт горимд буцаах талбарууд. Заавал зааж өг — бүгдийг татах нь үрэлгэн.'); },
         },
-        orderBy: { type: 'string', description: tr('Эрэмбэ, жиш. "Population DESC" (жагсаалт горимд)') },
-        limit: { type: 'number', description: tr('Мөрийн тоо (дээд тал нь {0})', MAX_ROWS) },
+        orderBy: { type: 'string', get description() { return tr('Эрэмбэ, жиш. "Population DESC" (жагсаалт горимд)'); } },
+        limit: { type: 'number', get description() { return tr('Мөрийн тоо (дээд тал нь {0})', MAX_ROWS); } },
       },
       required: ['id'],
     },
   },
   {
     name: 'zone_overview',
-    description:
-      tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээг буцаана. ') +
+    get description() { return tr('НЭГ БҮС/БАГЦЫН нэгдсэн тойм — БҮХ эх сурвалжийг нэг дор шүүж, тус бүрийн тоо, хэмжээг буцаана. ') +
       tr('Хэрэглэгч «Багц 1-ийн мэдээллийг дэлгэрэнгүй», «Багц-3.2-т юу байна вэ», «энэ бүсийн бүх мэдээлэл» гэх мэтээр ') +
       tr('НЭГ бүсийн ЕРӨНХИЙ дүр зургийг асуувал ЭНЭ ХЭРЭГСЛИЙГ дууд — `query_feature`-ээр давхарга бүрийг тусад нь ') +
       tr('асуувал эргэлт хүрэлцэхгүй, хариулт хагас дутуу гарна. ') +
-      tr('Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'),
+      tr('Тодруулга хэрэгтэй бол дараа нь `query_feature` дууд.'); },
     input_schema: {
       type: 'object',
       properties: {
         zone: {
           type: 'string',
-          description: tr('Бүс/багцын нэр — «Багц-1», «Багц 1», «Багц-3.2». Бичиглэлийн зөрөөг систем өөрөө зохицуулна.'),
+          get description() { return tr('Бүс/багцын нэр — «Багц-1», «Багц 1», «Багц-3.2». Бичиглэлийн зөрөөг систем өөрөө зохицуулна.'); },
         },
       },
       required: ['zone'],
@@ -128,19 +125,18 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'compute',
-    description:
-      tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
+    get description() { return tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
       tr('`building_progress` — «Барилгын хяналт» дашбоардын БОДИТ гүйцэтгэл: нийт хувь, багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
       tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
-      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог).'),
+      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог).'); },
     input_schema: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
           enum: ['building_progress'],
-          description: tr('Тооцооллын төрөл'),
+          get description() { return tr('Тооцооллын төрөл'); },
         },
       },
       required: ['kind'],
@@ -166,10 +162,9 @@ const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
 async function fieldsOf(url: string): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
   if (hit && Date.now() - hit.at < META_TTL) return hit.fields;
-  const res = await fetch(`${url}?f=json${tokenQs()}`);
-  if (!res.ok) throw new ArcGISError(`HTTP ${res.status}`, url);
-  const body = (await res.json()) as ServiceMeta;
-  if (body.error) throw new ArcGISError(body.error.message ?? tr('Мета уншигдсангүй'), url);
+  /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`ArcGISError`-оо өөрөө шиднэ:
+     `HTTP n`, 200-алдаа, timeout). */
+  const body = await arcgisPost<ServiceMeta>(url, {});
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
   return fields;

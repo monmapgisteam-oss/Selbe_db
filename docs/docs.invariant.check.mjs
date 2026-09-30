@@ -48,7 +48,8 @@ const chk = (name, pass, detail = '') => {
  *    түлхүүрээр хайх боломжгүй. Оронд нь `services.ts`-ийн `title`-г авч,
  *    баримтад тэр гарчиг байгаа эсэхийг хайна.
  */
-const SERVICES = read('src/lib/services.ts');
+/* ⚠️ 2026-09-30: `services.ts` нь barrel болсон — `VIEWS` нь `services/views.ts`-д. */
+const SERVICES = read('src/lib/services/views.ts');
 const VIEW_BLOCK = SERVICES.slice(SERVICES.indexOf('export const VIEWS'));
 
 /* `key: "gdash",` ба түүний дараах `title: tr('...')` хосыг цуглуулна */
@@ -56,7 +57,8 @@ const views = [];
 {
   /* ⚠️ Цонх 1500 (2026-09-16): `key` ба `title` хооронд урт ⚠️ тайлбартай
      entry 400-д багтахгүй чимээгүй алгасагддаг байв. Доор `key:` тоолж ТУЛГАНА. */
-  const re = /key:\s*"([A-Za-z0-9]+)"[\s\S]{0,1500}?title:\s*tr\(\s*'([^']+)'/g;
+  /* ⚠️ 2026-09-30: `title: tr('…')` → `get title() { return tr('…'); }` (хэл солиход lazy) */
+  const re = /key:\s*"([A-Za-z0-9]+)"[\s\S]{0,1500}?(?:get title\(\)\s*\{\s*return|title:)\s*tr\(\s*'([^']+)'/g;
   let m;
   while ((m = re.exec(VIEW_BLOCK)) !== null) views.push({ key: m[1], title: m[2] });
 }
@@ -220,7 +222,10 @@ const broken = [];
 for (const f of docFiles) {
   const dir = f.slice(0, f.lastIndexOf('/'));
   for (const m of read(f).matchAll(/]\(([^)#][^)]*)\)/g)) {
-    const raw = m[1].split('#')[0];
+    /* ⚠️ 2026-09-30: `docs/reference/`-ийн лавлах баримтууд (үндсээс зөөгдсөн)
+       `config.ts:383` хэлбэрийн МӨРИЙН дугаартай холбоос хэрэглэдэг — дугаарыг
+       таслаад зөвхөн файлын замыг шалгана (anchor-тай ижил зарчим). */
+    const raw = m[1].split('#')[0].replace(/:\d+$/, '');
     if (!raw || /^https?:/.test(raw)) continue;
     const target = norm(join(dir, raw));
     if (!existsSync(target)) broken.push(`${f} → ${raw}`);

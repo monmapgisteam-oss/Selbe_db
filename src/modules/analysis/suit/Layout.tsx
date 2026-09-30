@@ -1,11 +1,12 @@
 'use client';
 
 import {
-  useEffect, useRef, useState,
+  useCallback, useEffect, useRef, useState,
   type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode,
 } from 'react';
 import { clamp } from '@/lib/analysis/score';
 import { t as tr } from '@/lib/i18nCore';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { COLLAPSE_KEY, PANEL_KEY, readSet } from './model';
 import s from '../suitability.module.css';
 
@@ -50,7 +51,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
   const shell = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const hasRightRef = useRef(right != null);
-  hasRightRef.current = right != null;
+  useSyncRef(hasRightRef, right != null);
 
   /* ⚠️ 2026-09-25: Цонх нарийсахад хэт өргөн самбарыг шахна (хадгалахгүй —
      localStorage-д хэрэглэгчийн сонголт хэвээр). */
@@ -104,7 +105,7 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     }
   }, []);
 
-  const save = () => {
+  const save = useCallback(() => {
     if (!shell.current) return;
     const o: Record<string, string> = {};
     for (const k of Object.keys(DEFAULTS)) {
@@ -112,9 +113,13 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
       if (v) o[k] = v;
     }
     try { localStorage.setItem(PANEL_KEY, JSON.stringify(o)); } catch { /* private mode */ }
-  };
+  }, []);
 
-  const start = (cssVar: string, side: 'left' | 'right') => (e: ReactPointerEvent<HTMLDivElement>) => {
+  /* ⚠️ 2026-09-30: урьд нь `start(cssVar, side)` КАРРИЛСАН үйлдвэр render дунд
+     дуудагдаж closure буцаадаг байв — React Compiler тэр closure доторх
+     `shell.current` уншилтыг render үеийн ref хандалт гэж анхааруулдаг.
+     Одоо `useCallback` + талыг аргументаар; JSX-д тал бүрийн тогтмол боодол. */
+  const start = useCallback((cssVar: string, side: 'left' | 'right', e: ReactPointerEvent<HTMLDivElement>) => {
     const host = shell.current;
     if (!host) return;
     e.preventDefault();
@@ -149,14 +154,14 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     bar.addEventListener('pointerup', up);
     bar.addEventListener('pointercancel', up);
     bar.addEventListener('lostpointercapture', up);
-  };
+  }, [save]);
 
   /**
    * ⚠️ 2026-09-25: ГАРААР өргөн тохируулах — зураас нь зөвхөн хулганаар
    * ажилладаг байв. ←/→ нь зураасыг тэр зүгт хөдөлгөнө (чирэлттэй ижил
    * `side` тэмдэг), Shift — 64px алхам, Home/End — хязгаар.
    */
-  const keyMove = (cssVar: string, side: 'left' | 'right') => (e: ReactKeyboardEvent<HTMLDivElement>) => {
+  const keyMove = useCallback((cssVar: string, side: 'left' | 'right', e: ReactKeyboardEvent<HTMLDivElement>) => {
     const host = shell.current;
     if (!host) return;
     const step = e.shiftKey ? 64 : 16;
@@ -172,12 +177,19 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     e.preventDefault();
     host.style.setProperty(cssVar, `${Math.round(clamp(w, PANEL_MIN, mx))}px`);
     save();
-  };
+  }, [save]);
 
-  const reset = (cssVar: string) => () => {
+  const reset = useCallback((cssVar: string) => {
     shell.current?.style.setProperty(cssVar, DEFAULTS[cssVar as keyof typeof DEFAULTS]);
     save();
-  };
+  }, [save]);
+
+  const startL = useCallback((e: ReactPointerEvent<HTMLDivElement>) => start('--left-w', 'left', e), [start]);
+  const startR = useCallback((e: ReactPointerEvent<HTMLDivElement>) => start('--right-w', 'right', e), [start]);
+  const keyL = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => keyMove('--left-w', 'left', e), [keyMove]);
+  const keyR = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => keyMove('--right-w', 'right', e), [keyMove]);
+  const resetL = useCallback(() => reset('--left-w'), [reset]);
+  const resetR = useCallback(() => reset('--right-w'), [reset]);
 
   return (
     <main ref={shell} className={`${s.shell} ${right == null ? s.shellNoRight : ''}`}>
@@ -189,9 +201,9 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
         aria-label={tr('Самбарын өргөн')}
         tabIndex={0}
         title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-        onPointerDown={start('--left-w', 'left')}
-        onDoubleClick={reset('--left-w')}
-        onKeyDown={keyMove('--left-w', 'left')}
+        onPointerDown={startL}
+        onDoubleClick={resetL}
+        onKeyDown={keyL}
       />
       {/* ⚠️ Чирэх үед зураг заагчийг барихгүй — эс бөгөөс ArcGIS чирэлтийг таслана.
           `position: relative` нь дэлгэрэнгүй картын байрлуулах эцэг. */}
@@ -212,9 +224,9 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
             aria-label={tr('Самбарын өргөн')}
             tabIndex={0}
             title={tr('Чирж өргөсгөнө · давхар товшиж анхны хэмжээнд буцаана')}
-            onPointerDown={start('--right-w', 'right')}
-            onDoubleClick={reset('--right-w')}
-            onKeyDown={keyMove('--right-w', 'right')}
+            onPointerDown={startR}
+            onDoubleClick={resetR}
+            onKeyDown={keyR}
           />
           <aside className={`${s.panel} ${s.right}`}>{right}</aside>
         </>
@@ -248,6 +260,7 @@ export function Card({
        эффект дотор шидсэн алдаа энэ харагдацыг унагана. */
     try {
       if (localStorage.getItem(COLLAPSE_KEY) === null) return;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — статик экспортод localStorage байхгүй тул хадгалсан эвхэлтийг mount-ын ДАРАА л тавина
       setOff(readSet().has(key));
     } catch { /* хувийн горим — анхдагч эвхэлт хэвээр */ }
   }, [key]);

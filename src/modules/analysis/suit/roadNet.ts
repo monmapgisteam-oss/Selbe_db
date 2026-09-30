@@ -13,8 +13,7 @@
  */
 
 import { HOME } from '@/lib/services';
-import { tokenQs } from '@/lib/authToken';
-import { withSlot, isRateLimit } from '@/lib/query';
+import { arcgisPost } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import type { Network, Pt } from './traffic';
 import { zoneTrips } from './simulation';
@@ -101,22 +100,19 @@ const pageQuery = (offset: number, count = PAGE) => new URLSearchParams({
  * давхаргын URL л өөр. `netSources.ts`-ийн бүртгэл үүнийг дуудна.
  */
 /**
- * ⚠️ Шууд fetch-ийг query.ts-ийн 6 слотын хязгаарлагчаар (`withSlot`) оруулна —
+ * ⚠️ Шууд fetch-ийг query.ts-ийн 6 слотын хязгаарлагчаар оруулна —
  * тойрсон хүсэлт «Too many requests»-ийн шалтгаан болдог (query.ts, 2026-08-21).
  * 13 хуудас Promise.all-аар зэрэг эхэлсэн ч слотоор 6-аараа шатлан цувна.
- * ArcGIS rate-limit алдааг HTTP 200-тай буцаадаг тул мессежийг шалгаж НЭГ удаа
+ * ArcGIS rate-limit алдааг HTTP 200-тай буцаадаг тул мессежийг шалгаж
  * богино хүлээгээд дахин оролдоно — эс бөгөөс симуляц нээх агшин дашбоардын
  * асуулгуудтай давхцахад сүлжээ дутуу ачаалагдаж, кэшлэгдэн үлддэг.
+ * ⚠️ 2026-09-30: слот · rate-limit backoff · timeout · 200-алдаа бүгд
+ *    `query.arcgisPost`-д (POST, токен биеэр — урьд нь GET + `tokenQs`). Алдаа
+ *    `ArcGISError`-оор шидэгдэнэ (урьд нь `r.error`-ийг дуудагч шалгадаг байв —
+ *    тэр шалгалт одоо хүрэхгүй ч хэвээр, хоргүй).
  */
-const slotFetch = <T extends { error?: { message?: string } }>(url: string, signal?: AbortSignal): Promise<T> =>
-  withSlot(async () => {
-    const r: T = await fetch(url + tokenQs(), { signal }).then((x) => x.json());
-    if (r.error && isRateLimit(r.error.message ?? '')) {
-      await new Promise((res) => setTimeout(res, 500 + Math.random() * 300));
-      return (await fetch(url + tokenQs(), { signal }).then((x) => x.json())) as T;
-    }
-    return r;
-  });
+const slotFetch = <T extends { error?: { message?: string } }>(url: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> =>
+  arcgisPost<T>(`${url}/query`, Object.fromEntries(params), { signal });
 
 export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<Pt[][]> {
   /**
@@ -129,7 +125,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
     const out: Pt[][] = [];
     let off = start;
     for (let guard = 0; off < end && guard < 50; guard++) {
-      const r = await slotFetch<QueryResp>(`${url}/query?${pageQuery(off, end - off)}`, signal);
+      const r = await slotFetch<QueryResp>(url, pageQuery(off, end - off), signal);
       if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
       const got = r.features?.length ?? 0;
       for (const f of r.features ?? []) {
@@ -145,8 +141,11 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
 
   // ⚠️ 24 мянган хэрчим = 13 хуудас. Дараалуулбал 13 удаагийн round-trip болж
   //    таб нээхэд удаан үзэгдэнэ — тоог нь эхлээд асуугаад ЗЭРЭГ татна.
+  /* ⚠️ 2026-09-30: `slotFetch` өөрөө `/query`-г залгаж POST биеэр явуулна — URL-д
+     параметр залгахгүй (урьд GET query string байсан). */
   const cnt = await slotFetch<{ count?: number; error?: { message?: string } }>(
-    `${url}/query?${new URLSearchParams({
+    url,
+    new URLSearchParams({
       where: '1=1',
       geometry: JSON.stringify({ ...AREA_UTM, spatialReference: { wkid: AREA_WKID } }),
       geometryType: 'esriGeometryEnvelope',
@@ -154,7 +153,7 @@ export async function loadPathsFrom(url: string, signal?: AbortSignal): Promise<
       spatialRel: 'esriSpatialRelIntersects',
       returnCountOnly: 'true',
       f: 'json',
-    })}`,
+    }),
     signal,
   );
   if (cnt.error) throw new Error(cnt.error.message ?? tr('ArcGIS count алдаа'));

@@ -29,32 +29,32 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
    * alias нь аль хэдийн монголоор бичигдсэн. Талбар өөрчлөгдвөл метадатагаас
    * дахин үүсгэнэ — гараар бүү бич.
    */
-  ajil_tuvshin2: tr('Төрөл'),
-  bagts_74: tr('Багц 74'),
-  ajil_tuvshin1: tr('Төсөл'),
-  bagts: tr('Багц'),
-  ajil_uilchilgee: tr('Нарийвчилсан төрөл'),
-  ho_dun_geree: tr('Урьдчилсан төсөвт өртөг /гэрээлээгүй ажлыг магадласан дүнгээр, м'),
-  ho_dungiin_tailbar: tr('Хөрөнгө оруулалтын дүнгийн тайлбар'),
-  ehleh_ognoo: tr('Төлөвлөгөөт хугацаа эхлэх'),
-  duusah_ognoo: tr('Төлөвлөгөөт хугацаа дуусах'),
-  zahiramj_ognoo: tr('Захирамжийн огноо'),
-  zahiramj_dugaar: tr('Захирамжийн дүн дугаар'),
-  zahiramj_niit_dun: tr('Захирамжийн дүн нийт дүн'),
-  zahiramj_unet_tsaas: tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр үнэт цаасны хөрөнгө'),
-  zahiramj_unet_tsaas_huvi: tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийт хөрөнгөд эзлэх'),
-  zahiramj_borluulalt_dun: tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр төслийн орлого'),
-  zahiramj_niislel_tusuv: tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийслэлийн төсөвийн'),
-  zahiramj_nzd_nuuts: tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр НЗД нөөц хөрөнгө'),
-  zahialagch_hynalt_baig: tr('Захиалагчийн хяналт хийх байгууллага'),
-  guitsetgegch: tr('Гүйцэтгэгч байгууллага'),
-  geree_ognoo: tr('Гэрээ байгуулсан огноо'),
-  geree_dugaar: tr('Гэрээний дугаар'),
-  geree_dun: tr('Гэрээ байгуулах эрх олгосон дүн'),
-  urdchilgaa_batalgaa_dun: tr('Урьдчилгаа төлбөрийн баталгааны дүн'),
-  urdchilgaa_huvi: tr('Урьдчилгаа төлбөрийн хувь'),
-  urdchilgaa_zh_zardal: tr('Урьдчилгаа төлбөрөөс суутгасан захиалагчийн хяналтын зардал'),
-  guitsetgel_huvi: tr('Санхүүжсэн гүйцэтгэлийн хувь'),
+  get ajil_tuvshin2() { return tr('Төрөл'); },
+  get bagts_74() { return tr('Багц 74'); },
+  get ajil_tuvshin1() { return tr('Төсөл'); },
+  get bagts() { return tr('Багц'); },
+  get ajil_uilchilgee() { return tr('Нарийвчилсан төрөл'); },
+  get ho_dun_geree() { return tr('Урьдчилсан төсөвт өртөг /гэрээлээгүй ажлыг магадласан дүнгээр, м'); },
+  get ho_dungiin_tailbar() { return tr('Хөрөнгө оруулалтын дүнгийн тайлбар'); },
+  get ehleh_ognoo() { return tr('Төлөвлөгөөт хугацаа эхлэх'); },
+  get duusah_ognoo() { return tr('Төлөвлөгөөт хугацаа дуусах'); },
+  get zahiramj_ognoo() { return tr('Захирамжийн огноо'); },
+  get zahiramj_dugaar() { return tr('Захирамжийн дүн дугаар'); },
+  get zahiramj_niit_dun() { return tr('Захирамжийн дүн нийт дүн'); },
+  get zahiramj_unet_tsaas() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр үнэт цаасны хөрөнгө'); },
+  get zahiramj_unet_tsaas_huvi() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийт хөрөнгөд эзлэх'); },
+  get zahiramj_borluulalt_dun() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр төслийн орлого'); },
+  get zahiramj_niislel_tusuv() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийслэлийн төсөвийн'); },
+  get zahiramj_nzd_nuuts() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр НЗД нөөц хөрөнгө'); },
+  get zahialagch_hynalt_baig() { return tr('Захиалагчийн хяналт хийх байгууллага'); },
+  get guitsetgegch() { return tr('Гүйцэтгэгч байгууллага'); },
+  get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
+  get geree_dugaar() { return tr('Гэрээний дугаар'); },
+  get geree_dun() { return tr('Гэрээ байгуулах эрх олгосон дүн'); },
+  get urdchilgaa_batalgaa_dun() { return tr('Урьдчилгаа төлбөрийн баталгааны дүн'); },
+  get urdchilgaa_huvi() { return tr('Урьдчилгаа төлбөрийн хувь'); },
+  get urdchilgaa_zh_zardal() { return tr('Урьдчилгаа төлбөрөөс суутгасан захиалагчийн хяналтын зардал'); },
+  get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
 
   /* ⚠️ 2026-09-06: хуучин `cashflow_0813` (CF001…CF036)-ийн 36 бичлэг
      УСТГАВ — тэр үйлчилгээ бүрмөсөн хаягдаж, `Cashflow_0904` орлосон.
@@ -79,48 +79,48 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
    * толинд `on` гэж бичигдсэн ч ЖИНХЭНЭ нэр нь `on_`. Толгойн нэр гаргахад
    * үйлчилгээний нэрээр хайдаг тул энд `on_` байх ЁСТОЙ.
    */
-  murun_id: tr('Мөрийн ID'),
-  geree_kod: tr('Гэрээний код'),
-  dugaar: tr('№'),
+  get murun_id() { return tr('Мөрийн ID'); },
+  get geree_kod() { return tr('Гэрээний код'); },
+  get dugaar() { return tr('№'); },
   /* `bagts` — Cashflow_0909-тэй НЭГ ижил нэр, ижил шошго (дээр). Нэг толь тул давтахгүй. */
-  tosol_ner: tr('Төсөл арга хэмжээний нэр'),
+  get tosol_ner() { return tr('Төсөл арга хэмжээний нэр'); },
   /* `guitsetgegch` — Cashflow_0909-тэй НЭГ ижил нэр, ижил шошго (дээр). Нэг толь тул давтахгүй. */
-  ajliin_turul: tr('Ажлын төрөл'),
-  geree_helber: tr('Гэрээний хэлбэр'),
-  huuliin_undeslel: tr('Шийдвэр гаргасан хуулийн үндэслэл'),
-  zahiramj1_ognoo: tr('Захирамж 1 · огноо'),
-  zahiramj1_dugaar: tr('Захирамж 1 · дугаар'),
-  zahiramj2_ognoo: tr('Захирамж 2 · огноо'),
-  zahiramj2_dugaar: tr('Захирамж 2 · дугаар'),
-  zahiramj3_ognoo: tr('Захирамж 3 · огноо'),
-  zahiramj3_dugaar: tr('Захирамж 3 · дугаар'),
+  get ajliin_turul() { return tr('Ажлын төрөл'); },
+  get geree_helber() { return tr('Гэрээний хэлбэр'); },
+  get huuliin_undeslel() { return tr('Шийдвэр гаргасан хуулийн үндэслэл'); },
+  get zahiramj1_ognoo() { return tr('Захирамж 1 · огноо'); },
+  get zahiramj1_dugaar() { return tr('Захирамж 1 · дугаар'); },
+  get zahiramj2_ognoo() { return tr('Захирамж 2 · огноо'); },
+  get zahiramj2_dugaar() { return tr('Захирамж 2 · дугаар'); },
+  get zahiramj3_ognoo() { return tr('Захирамж 3 · огноо'); },
+  get zahiramj3_dugaar() { return tr('Захирамж 3 · дугаар'); },
   /* `geree_dugaar` — Cashflow_0909-тэй НЭГ ижил нэр, ижил шошго (дээр). Нэг толь тул давтахгүй. */
-  geree_nemelt: tr('Гэрээнд нэмэлт өөрчлөлт орсон эсэх'),
+  get geree_nemelt() { return tr('Гэрээнд нэмэлт өөрчлөлт орсон эсэх'); },
   /* Нийт төсөвт өртөг /Захирамж/ — дөрвөн эх үүсвэр */
-  tosov_niit: tr('Төсөвт өртөг · нийт'),
-  tosov_unet_tsaas: tr('Төсөвт өртөг · үнэт цаас'),
-  tosov_niislel_tosov: tr('Төсөвт өртөг · нийслэлийн төсөв'),
-  tosov_borluulalt: tr('Төсөвт өртөг · борлуулалтын орлого'),
+  get tosov_niit() { return tr('Төсөвт өртөг · нийт'); },
+  get tosov_unet_tsaas() { return tr('Төсөвт өртөг · үнэт цаас'); },
+  get tosov_niislel_tosov() { return tr('Төсөвт өртөг · нийслэлийн төсөв'); },
+  get tosov_borluulalt() { return tr('Төсөвт өртөг · борлуулалтын орлого'); },
   /* Гэрээ байгуулагдсан төсөв — ижил дөрвөн эх үүсвэр */
-  gereet_tosov_niit: tr('Гэрээт төсөв · нийт'),
-  gereet_unet_tsaas: tr('Гэрээт төсөв · үнэт цаас'),
-  gereet_niislel_tosov: tr('Гэрээт төсөв · нийслэлийн төсөв'),
-  gereet_borluulalt: tr('Гэрээт төсөв · борлуулалтын орлого'),
-  hemnelt_hetrelt: tr('Хэмнэлт / хэтрэлт'),
+  get gereet_tosov_niit() { return tr('Гэрээт төсөв · нийт'); },
+  get gereet_unet_tsaas() { return tr('Гэрээт төсөв · үнэт цаас'); },
+  get gereet_niislel_tosov() { return tr('Гэрээт төсөв · нийслэлийн төсөв'); },
+  get gereet_borluulalt() { return tr('Гэрээт төсөв · борлуулалтын орлого'); },
+  get hemnelt_hetrelt() { return tr('Хэмнэлт / хэтрэлт'); },
   /* Санхүүжилт ба гүйцэтгэлийн төсвийн зарцуулалт */
-  on_: tr('Он'),
-  tulult_turul: tr('Төлбөрийн төрөл'),
-  ipc_dugaar: tr('IPC дугаар'),
-  dun: tr('Дүн (₮)'),
-  guilgee_ognoo: tr('Гүйлгээ хийсэн огноо'),
+  get on_() { return tr('Он'); },
+  get tulult_turul() { return tr('Төлбөрийн төрөл'); },
+  get ipc_dugaar() { return tr('IPC дугаар'); },
+  get dun() { return tr('Дүн (₮)'); },
+  get guilgee_ognoo() { return tr('Гүйлгээ хийсэн огноо'); },
   /*
    * ⚠️ ГУРВУУЛАА 45/45 ХООСОН (2026-09-09-ний амьд хэмжилт). Нэрийг нь
    * үлдээв — багана дэлгэцэд гарвал латин нэрээр бус монголоор харагдана;
    * тоо нь хоосон гэдэг нь ӨГӨГДЛИЙН байдал, толины дутуу байдал БИШ.
    */
-  hul_turiin_san: tr('Төрийн сан дээр хүлээгдэж буй'),
-  hul_ho_helts: tr('ХО хэлтэст хүргүүлсэн хүлээгдэж буй'),
-  hul_zahialagch: tr('Захиалагчийн хяналтад хүлээгдэж буй'),
+  get hul_turiin_san() { return tr('Төрийн сан дээр хүлээгдэж буй'); },
+  get hul_ho_helts() { return tr('ХО хэлтэст хүргүүлсэн хүлээгдэж буй'); },
+  get hul_zahialagch() { return tr('Захиалагчийн хяналтад хүлээгдэж буй'); },
 
   /*
    * ── ГҮЙЦЭТГЭЛИЙН ХОЛБООС (2026-09-09-нд ArcGIS-д нэмэгдсэн 3 талбар) ──
@@ -130,9 +130,9 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
    * (2026-09-03) ӨМНӨ тул холбогдох агшин байхгүй. Хоосон нь ӨГӨГДЛИЙН
    * байдал — толины дутуу байдал БИШ.
    */
-  [LINK_FIELDS.obyem]: tr('Бодит гүйцэтгэлийн обьём'),
-  [LINK_FIELDS.une]: tr('Гүйцэтгэлийн үнэ'),
-  [LINK_FIELDS.zoruu]: tr('Зөрүү'),
+  get [LINK_FIELDS.obyem]() { return tr('Бодит гүйцэтгэлийн обьём'); },
+  get [LINK_FIELDS.une]() { return tr('Гүйцэтгэлийн үнэ'); },
+  get [LINK_FIELDS.zoruu]() { return tr('Зөрүү'); },
 };
 
 /** Код → монгол нэр; толинд байхгүй бол кодоо буцаана. */

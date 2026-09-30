@@ -76,15 +76,15 @@ import o from './dashboardOv.module.css';
 type SecKey = 'scope' | 'schedule' | 'bagts' | 'land' | 'network' | 'power' | 'source' | 'finance' | 'benefit';
 
 const SECTIONS: { key: SecKey; no: string; title: string }[] = [
-  { key: 'scope', no: '01', title: tr('Төслийн цар хүрээ') },
-  { key: 'schedule', no: '02', title: tr('Хэрэгжилтийн ерөнхий график') },
-  { key: 'land', no: '03', title: tr('Газар чөлөөлөлтийн одоогийн төлөв') },
-  { key: 'bagts', no: '04', title: tr('Орон сууцны бүс') },
-  { key: 'network', no: '05', title: tr('Шугам сүлжээ') },
-  { key: 'power', no: '06', title: tr('Цахилгаан') },
-  { key: 'source', no: '07', title: tr('Эх үүсвэр') },
-  { key: 'finance', no: '08', title: tr('Хөрөнгө оруулалт, бонд') },
-  { key: 'benefit', no: '09', title: tr('Нийгмийн дэд бүтэц') },
+  { key: 'scope', no: '01', get title() { return tr('Төслийн цар хүрээ'); } },
+  { key: 'schedule', no: '02', get title() { return tr('Хэрэгжилтийн ерөнхий график'); } },
+  { key: 'land', no: '03', get title() { return tr('Газар чөлөөлөлтийн одоогийн төлөв'); } },
+  { key: 'bagts', no: '04', get title() { return tr('Орон сууцны бүс'); } },
+  { key: 'network', no: '05', get title() { return tr('Шугам сүлжээ'); } },
+  { key: 'power', no: '06', get title() { return tr('Цахилгаан'); } },
+  { key: 'source', no: '07', get title() { return tr('Эх үүсвэр'); } },
+  { key: 'finance', no: '08', get title() { return tr('Хөрөнгө оруулалт, бонд'); } },
+  { key: 'benefit', no: '09', get title() { return tr('Нийгмийн дэд бүтэц'); } },
 ];
 
 /**
@@ -198,7 +198,8 @@ const PL = PARCEL_LEFT.fields;
    тулд дамжуулан экспортолж, дотооддоо мөн хэрэглэнэ. */
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
-import { useBagtsTable, type BagtsRow } from '@/lib/execData';
+import { useBagtsTable, buildProgressOf, type BagtsRow } from '@/lib/execData';
+import { pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -385,7 +386,10 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   dim: Dim; setDim: (d: Dim) => void; zone: string | null; setZone: (z: string | null) => void;
 }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
-  const side = useSideResize('dashboard');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('dashboard');
   /**
    * Нээлттэй хэсгүүд — ОЛОН сонголт. Дараалал нь ДАРСАН дараалал биш,
    * `SECTIONS`-ийн дараалал: баганууд 01→07 тогтмол эрэмбэтэй байх нь
@@ -541,7 +545,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
     /* Талын багануудыг чирж өргөсгөх/нарийсгах — өргөн нь `--side-l/--side-r`
        хувьсагчаар өгөгддөг тул бариул тэднийг л өөрчилнө. */
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       className={`${o.shell} ${side.hostClass}`}
       style={side.style}
       data-detail={open.length > 0 ? '1' : '0'}
@@ -848,14 +852,14 @@ function railStat(k: SecKey, d: DashData): {
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
-      // Амьд жигнэсэн дундаж — блокийн тоогоор жинлэсэн 7 багцын гүйцэтгэл.
       /* ⚠️ 2026-09-23: ЗӨВХӨН `progress != null` багцаар жигнэнэ (`pkgPct`-тэй
          ижил дүрэм). Урьд нь хуваарь БҮХ блок байсан тул тайлан ирээгүй багц
          0% гэж орж, дундаж хиймлээр доошилдог байв — null ≠ 0. */
-      const known = b ? b.filter((x) => x.progress != null) : null;
-      const blKnown = known ? known.reduce((a, x) => a + x.blocks, 0) : 0;
-      const avg = known && blKnown
-        ? known.reduce((a, x) => a + (x.progress as number) * x.blocks, 0) / blKnown
+      /* ⚠️ 2026-09-30: НЭГ томьёо — `buildProgressOf` → `gdash.housingPct` (ХО дүнгээр
+         жигнэсэн, хэмжигдээгүй багц орохгүй; ХО байхгүй бол тайлагнасан блокоор).
+         Урьд нь энд блокийн тоогоор тусад нь жигнэдэг тул 05 · Тайлан · ExecReport-оос зөрдөг байв. */
+      const avg = b
+        ? buildProgressOf(b, f ? pkgCostWeight(f.contracts.map(cfWeightRow)) : undefined).pct
         : null;
       const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
@@ -2459,12 +2463,12 @@ function heatBars<T>(
 
 /** Багцын гэр бүлийн нэр — `PKG_HUE`-ийн тайлбар мөрүүдтэй ижил ангилал */
 const FAMILY_LABEL: Record<PkgFamily, string> = {
-  net: tr('Гадна дулаан, ус (Багц 5)'),
-  pow: tr('Цахилгаан, ХТП/РП (Багц 6)'),
-  src: tr('Эх үүсвэр, магистраль (Багц 7–15)'),
-  site: tr('Өндөржилт, тохижилт (Багц 16–18)'),
-  soc: tr('Нийгмийн барилга (Багц 19–21)'),
-  com: tr('Холбоо, дохиолол (Багц 1–4)'),
+  get net() { return tr('Гадна дулаан, ус (Багц 5)'); },
+  get pow() { return tr('Цахилгаан, ХТП/РП (Багц 6)'); },
+  get src() { return tr('Эх үүсвэр, магистраль (Багц 7–15)'); },
+  get site() { return tr('Өндөржилт, тохижилт (Багц 16–18)'); },
+  get soc() { return tr('Нийгмийн барилга (Багц 19–21)'); },
+  get com() { return tr('Холбоо, дохиолол (Багц 1–4)'); },
 };
 /** Гэр бүл → ялгаатай БАГЦЫН тоо (давхаргын тоо БИШ: 6.5 нь трасс+цэг = 2 давхарга) */
 const familyPacks = (f: PkgFamily): string[] =>
@@ -3311,10 +3315,10 @@ function LandDetail({ parcels, land, flt, onFlt }: {
 const consumerBagtsKey = (k: string) => `БАГЦ${k.slice(1)}`;
 
 const NET_SERVES: readonly { key: string; label: string; bagts: readonly string[] }[] = [
-  { key: 'БАГЦ51', label: tr('Багц 5.1 · Багц 1'), bagts: ['БАГЦ1'] },
-  { key: 'БАГЦ52', label: tr('Багц 5.2 · Багц 2'), bagts: ['БАГЦ2'] },
-  { key: 'БАГЦ53', label: tr('Багц 5.3 · Багц 3'), bagts: ['БАГЦ31', 'БАГЦ32', 'БАГЦ33'] },
-  { key: 'БАГЦ54', label: tr('Багц 5.4 · Багц 4'), bagts: ['БАГЦ41', 'БАГЦ42'] },
+  { key: 'БАГЦ51', get label() { return tr('Багц 5.1 · Багц 1'); }, bagts: ['БАГЦ1'] },
+  { key: 'БАГЦ52', get label() { return tr('Багц 5.2 · Багц 2'); }, bagts: ['БАГЦ2'] },
+  { key: 'БАГЦ53', get label() { return tr('Багц 5.3 · Багц 3'); }, bagts: ['БАГЦ31', 'БАГЦ32', 'БАГЦ33'] },
+  { key: 'БАГЦ54', get label() { return tr('Багц 5.4 · Багц 4'); }, bagts: ['БАГЦ41', 'БАГЦ42'] },
 ];
 
 /**

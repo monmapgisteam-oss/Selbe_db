@@ -28,6 +28,7 @@
  */
 
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
+import { arcgisPost } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from './scopedAcl';
 
@@ -205,13 +206,9 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
  * хүснэгт үүсгээд URL-ыг нь кэшилдэг байв. Одоо алдаанд ШИДНЭ — дуудагч
  * тал catch-ээрээ null/false руу ухардаг.
  */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ f: 'json', ...params });
-  const r = await fetch(url, { method: 'POST', body });
-  const j = (await r.json()) as Record<string, unknown> & { error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message || 'ArcGIS error');
-  return j;
-}
+/* ⚠️ 2026-09-30: `query.arcgisPost` (timeout · слот · 429 backoff · `res.ok`). `token: 'org'` —
+   дуудагч `getToken()`-ы токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ. */
+const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 

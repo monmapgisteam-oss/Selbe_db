@@ -120,53 +120,53 @@ export type SchemEdge = {
 export const NODES: readonly SchemNode[] = [
   {
     id: 'tolovlolt', col: 0, row: 1, view: 'plan', icon: 'layers',
-    title: tr('Ерөнхий төлөвлөгөө'),
-    desc: tr('Бүс, барилга, инженерийн дэд бүтэц — төслийн эхлэл'),
+    get title() { return tr('Ерөнхий төлөвлөгөө'); },
+    get desc() { return tr('Бүс, барилга, инженерийн дэд бүтэц — төслийн эхлэл'); },
   },
   {
     id: 'zovshoorol', col: 1, row: 0, view: 'zovshoorol', icon: 'shield',
-    title: tr('Зөвшөөрөл'),
-    desc: tr('Багц бүрийн зөвшөөрлүүд — шатлал нь өгөгдлөөс тодорхойлогдоно'),
+    get title() { return tr('Зөвшөөрөл'); },
+    get desc() { return tr('Багц бүрийн зөвшөөрлүүд — шатлал нь өгөгдлөөс тодорхойлогдоно'); },
   },
   {
     id: 'gazar', col: 1, row: 2, view: 'gazar', icon: 'frame',
-    title: tr('Газар чөлөөлөлт'),
-    desc: tr('Нэгж талбарын төлөв — барилга эхлүүлэх нөхцөл'),
+    get title() { return tr('Газар чөлөөлөлт'); },
+    get desc() { return tr('Нэгж талбарын төлөв — барилга эхлүүлэх нөхцөл'); },
   },
   {
     id: 'huvaari', col: 2, row: 1, view: 'huvaari', icon: 'calendar',
-    title: tr('Хуваарь'),
-    desc: tr('Ажлын эхлэх, дуусах хугацаа — блокийн хэмнэлээр'),
+    get title() { return tr('Хуваарь'); },
+    get desc() { return tr('Ажлын эхлэх, дуусах хугацаа — блокийн хэмнэлээр'); },
   },
   {
     id: 'barilga', col: 3, row: 1, view: 'pkgProg', icon: 'building',
-    title: tr('Барилга угсралт'),
-    desc: tr('Блокийн биет гүйцэтгэл — «Гүйцэтгэл бөглөх» хуудсаас'),
+    get title() { return tr('Барилга угсралт'); },
+    get desc() { return tr('Блокийн биет гүйцэтгэл — «Гүйцэтгэл бөглөх» хуудсаас'); },
   },
   {
     id: 'ersdel', col: 4, row: 3, view: 'ersdel', icon: 'waves',
-    title: tr('Эрсдэл'),
-    desc: tr('Зогссон блок, байгалийн аюулын нөлөө'),
+    get title() { return tr('Эрсдэл'); },
+    get desc() { return tr('Зогссон блок, байгалийн аюулын нөлөө'); },
   },
   {
     id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
-    title: tr('Гүйцэтгэлийн хяналт'),
-    desc: tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга'),
+    get title() { return tr('Гүйцэтгэлийн хяналт'); },
+    get desc() { return tr('Гүйцэтгэгч → инженер → багцын менежер → ерөнхий менежер → хэлтсийн дарга → газрын дарга'); },
   },
   {
     id: 'habea', col: 3, row: 2, view: 'habea', icon: 'flame',
-    title: tr('ХАБЭА'),
-    desc: tr('Ажилтан, техник, осол зөрчил'),
+    get title() { return tr('ХАБЭА'); },
+    get desc() { return tr('Ажилтан, техник, осол зөрчил'); },
   },
   {
     id: 'sankhuu', col: 4, row: 1, view: 'pkgFin', icon: 'calc',
-    title: tr('Санхүүжилт'),
-    desc: tr('Гэрээ, IPC акт, олгосон санхүүжилт'),
+    get title() { return tr('Санхүүжилт'); },
+    get desc() { return tr('Гэрээ, IPC акт, олгосон санхүүжилт'); },
   },
   {
     id: 'tailan', col: 5, row: 1, view: 'tailan', icon: 'chart',
-    title: tr('Тайлан'),
-    desc: tr('Нэгтгэсэн үзүүлэлт — төслийн эцсийн баримт'),
+    get title() { return tr('Тайлан'); },
+    get desc() { return tr('Нэгтгэсэн үзүүлэлт — төслийн эцсийн баримт'); },
   },
 ];
 
@@ -186,7 +186,7 @@ export const EDGES: readonly SchemEdge[] = [
    * гүйцэтгэгч рүү эргэж, дахин бөглөгдөнө (`hyanaltStore.apply`). Энэ ирмэг
    * байхгүй бол схем нь «нэг л удаа өгвөл болоо» гэсэн худал зураг болно.
    */
-  { from: 'hyanalt', to: 'barilga', kind: 'back', label: tr('Буцаасан') },
+  { from: 'hyanalt', to: 'barilga', kind: 'back', get label() { return tr('Буцаасан'); } },
   /**
    * ХАЖУУГИЙН ХЭМЖҮҮР — дараалал БИШ, барилгаас САЛБАРЛАСАН хяналт.
    * ⚠️ Хоёулаа `barilga`-аас ШУУД гарна. Урьд нь `gazar → ersdel` гэсэн ирмэг
@@ -455,15 +455,15 @@ export type BagtsLite = {
  * боломжгүй (цэвэр загварыг бохирдуулна).
  */
 export const SOURCE_NAME = {
-  headline: tr('ерөнхий үзүүлэлт'),
-  clearance: tr('газар чөлөөлөлт'),
-  overall: tr('нийт гүйцэтгэл'),
-  progress: tr('блокийн гүйцэтгэл'),
-  finance: tr('санхүү'),
-  habea: tr('ХАБЭА'),
-  zov: tr('зөвшөөрөл'),
-  review: tr('гүйцэтгэлийн хяналт'),
-  bagts: tr('багцын жагсаалт'),
+  get headline() { return tr('ерөнхий үзүүлэлт'); },
+  get clearance() { return tr('газар чөлөөлөлт'); },
+  get overall() { return tr('нийт гүйцэтгэл'); },
+  get progress() { return tr('блокийн гүйцэтгэл'); },
+  get finance() { return tr('санхүү'); },
+  get habea() { return tr('ХАБЭА'); },
+  get zov() { return tr('зөвшөөрөл'); },
+  get review() { return tr('гүйцэтгэлийн хяналт'); },
+  get bagts() { return tr('багцын жагсаалт'); },
 } as const;
 
 export type SourceKey = keyof typeof SOURCE_NAME;

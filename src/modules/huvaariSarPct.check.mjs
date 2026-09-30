@@ -26,7 +26,16 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 /** ТАЙЛБАРГҮЙ эх код — ⚠️ тайлбарт бичсэн нэр худал уналт үүсгэхээс. */
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const TSX = strip(read('src/modules/Huvaari.tsx'));
+/**
+ * ⚠️ 2026-09-30: `Huvaari.tsx` нь `src/modules/huvaari/*`-д хуваагдсан (hook · дэд бүрэлдэхүүн ·
+ *    цэвэр функц). Эх кодын шалгуурууд хуваарийн БҮХ файлын нийлбэр дээр ажиллана —
+ *    `Huvaari.tsx` эхэнд, дараа нь хавтасны файлууд нэрийн дарааллаар (индексийн
+ *    харьцуулалт файл дотроо л утгатай).
+ */
+const HV_FILES = ['src/modules/Huvaari.tsx',
+  ...fs.readdirSync('src/modules/huvaari').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/huvaari/' + f)];
+const readHv = () => HV_FILES.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
+const TSX = strip(readHv());
 const CSS = read('src/modules/huvaari.module.css');
 const CSSc = strip(CSS);
 

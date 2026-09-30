@@ -9,69 +9,18 @@ import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/co
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
-import { loadNavBadges, BADGE_VIEWS } from '@/components/navBadges';
+import { loadNavBadges, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
+import { subscribeData } from '@/lib/dataBus';
 import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
-/**
- * ⚠️ `Dashboard` СТАТИК импорт. Анх `DEFAULT_VIEW` байсан тул «нэмэлт спиннергүй
- * байх» үүднээс статик болгосон; 2026-09-ээс `DEFAULT_VIEW = "gdash"`
- * (`GeneralDash`, доор dynamic) болсон ч Dashboard-ыг статик үлдээв — `MapCanvas`
- * (+ `@arcgis/core`) нь түүний дамжсан хамаарал бөгөөд бүх зурагтай харагдацад
- * ямар ч байсан татагдана; Dashboard өөрөө жижиг тул chunk болгох ашиггүй.
- */
-import { Dashboard } from '@/modules/Dashboard';
-/* ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
-   аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
-   Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
-   нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан өөрчлөгдөхгүй;
-   эхний нээлтэд Booting-той ижил түр төлөв харагдана.
-
-   ⚠️ 2026-09-03-ны хэрэглэгч талын аудит: газрын зурагтай ҮЛДСЭН харагдацууд
-   (PkgFin · PkgProg · Gazar · Habea · Irged · Iot · Ersdel) МӨН статик байсан
-   тул тэдгээрийн ~474 KB эх код нь `?v=huvaari` гэж шууд орсон хүнд ч
-   татагддаг байв. Тэдгээр нь `MapCanvas`-ыг ХУВААЛЦДАГ (Dashboard-той нэг
-   chunk) тул динамик болгоход ArcGIS давхардахгүй — зөвхөн өөрсдийнх нь код
-   хойшилно. */
-/* ⚠️ Шинэ «Ерөнхий дашбоард» нь `Dashboard`-аас ЯЛГААТАЙ dynamic: тэр нь
-   `DEFAULT_VIEW` тул статик хэвээр (эхний ачаалалтад заавал хэрэгтэй), энэ нь
-   нээх үедээ л татагдана. */
-const GeneralDash = dynamic(() => import('@/modules/GeneralDash').then((m) => m.GeneralDash), { ssr: false });
-const PkgFin = dynamic(() => import('@/modules/PkgFin').then((m) => m.PkgFin), { ssr: false });
-const PkgProg = dynamic(() => import('@/modules/PkgProg').then((m) => m.PkgProg), { ssr: false });
-const Gazar = dynamic(() => import('@/modules/Gazar').then((m) => m.Gazar), { ssr: false });
-const Habea = dynamic(() => import('@/modules/Habea').then((m) => m.Habea), { ssr: false });
-const Irged = dynamic(() => import('@/modules/Irged').then((m) => m.Irged), { ssr: false });
-const Iot = dynamic(() => import('@/modules/Iot').then((m) => m.Iot), { ssr: false });
-const Ersdel = dynamic(() => import('@/modules/Ersdel').then((m) => m.Ersdel), { ssr: false });
-/* ⚠️ «Дэд бүтэц» нь бусад газрын зурагтай харагдацтай ИЖИЛ dynamic: модуль
-   нь DedButetsEdit ба butetsEdit.ts-ийг дагуулдаг (~92 KB эх код) бөгөөд
-   `MapCanvas`-ыг тэдэнтэй ХУВААЛЦДАГ тул ArcGIS давхардахгүй. Статик
-   импорт бол `?v=huvaari` гэж орсон хүнд ч татагдана. */
-const DedButets = dynamic(() => import('@/modules/DedButets').then((m) => m.DedButets), { ssr: false });
-const Suitability = dynamic(() => import('@/modules/analysis/Suitability').then((m) => m.Suitability), { ssr: false });
-const Finance = dynamic(() => import('@/modules/Finance').then((m) => m.Finance), { ssr: false });
-const Guitsetgel = dynamic(() => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel), { ssr: false });
-const Qaqc = dynamic(() => import('@/modules/Qaqc').then((m) => m.Qaqc), { ssr: false });
-const Chanar = dynamic(() => import('@/modules/Chanar').then((m) => m.Chanar), { ssr: false });
-const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol), { ssr: false });
-const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
-/* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
-   нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
-const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
-/* ⚠️ Батлах дараалал нь `loadAllPending`-ээр БҮХ багцын pending мөрийг татдаг
-   тул зөвхөн нээгдэх үедээ (`Huvaari`-тай ижил шалтгаан). */
-const HuvaariBatlah = dynamic(() => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah), { ssr: false });
-const AjilBatlah = dynamic(() => import('@/modules/AjilBatlah').then((m) => m.AjilBatlah), { ssr: false });
-/* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
-   багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
-const Schem = dynamic(() => import('@/modules/Schem').then((m) => m.Schem), { ssr: false });
-/* ⚠️ Системийн баримт — 54 КБ бичвэр агуулдаг тул ЗААВАЛ dynamic: нээгээгүй
-   хэрэглэгч тэр жинг ачаалахгүй. */
-const SysDoc = dynamic(() => import('@/modules/SysDoc'), { ssr: false });
+/* ⚠️ 2026-09-30: харагдацын модулиуд (статик `Dashboard` + бүх `dynamic` chunk)
+   ба тэдгээрийн ⚠️ шийдвэрүүд `viewRegistry.tsx`-д — шинэ харагдац нэмэхэд
+   энд ЮУ Ч засахгүй. */
+import { ViewSlot, type PlanJump } from '@/components/viewRegistry';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
@@ -135,25 +84,27 @@ function useColumnResize(
   { min, max, initial, storageKey, dir, axis = 'x' }:
   { min: number; max: number; initial: number; storageKey: string; dir: 1 | -1; axis?: 'x' | 'y' },
 ) {
-  const [width, setWidth] = useState(initial);
+  /* ⚠️ 2026-09-30: хадгалсан өргөнийг useState-ийн INITIALIZER-т уншина (урьд
+     нь эффект дотор setState — нэг илүү рендер, eslint set-state-in-effect).
+     Portal нь `ssr:false` тул initializer ҮРГЭЛЖ хөтөч дээр ажиллана; `window`
+     хамгаалалт нь зөвхөн болгоомжлол.
+     ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд шидсэн
+     алдаа ЭНЭ БҮХЭЛ ПОРТАЛЫГ унагана — баганын өргөн санагдахгүй нь ердөө
+     тав тухын асуудал. */
+  const [width, setWidth] = useState(() => {
+    if (typeof window === 'undefined') return initial;
+    try {
+      const v = Number(localStorage.getItem(storageKey));
+      return Number.isFinite(v) && v >= min && v <= max ? v : initial;
+    } catch { return initial; /* хувийн горим — анхдагч өргөн хэвээр */ }
+  });
   const [dragging, setDragging] = useState(false);
   /**
    * ⚠️ Одоогийн өргөн REF-ээр давхар — `onPointerDown` render бүрт шинээр
    * үүсвэл `memo(LayerCatalog)` пропсын өөрчлөлт гэж үзэж дахин зурна.
    * Ref-ээс уншсанаар callback нь тогтмол лавлагаатай (useCallback) болно.
    */
-  const widthRef = useRef(initial);
-
-  // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй
-  useEffect(() => {
-    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
-       эффект дотор шидсэн алдаа ЭНЭ БҮХЭЛ ПОРТАЛЫГ унагана — баганын
-       өргөн санагдахгүй нь ердөө тав тухын асуудал. */
-    try {
-      const v = Number(localStorage.getItem(storageKey));
-      if (Number.isFinite(v) && v >= min && v <= max) { widthRef.current = v; setWidth(v); }
-    } catch { /* хувийн горим — анхдагч өргөн хэвээр */ }
-  }, [storageKey, min, max]);
+  const widthRef = useRef(width);
 
   // ⚠️ Чирэлтийн ДУНДУУР компонент unmount болбол `up()` хэзээ ч ажиллахгүй,
   //    body-ийн класс үлдэж апп даяар курсор/текст сонголт эвдэрнэ (globals.css-ийн
@@ -400,10 +351,13 @@ function PortalContent(
    */
   /* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): анх орж ирэхэд зүүн цэс ХУРААСТАЙ —
      зөвхөн дүрс (54px) харагдаж, газрын зурагт илүү зай өгнө. Товчоор дэлгэнэ. */
-  const [navMin, setNavMin] = useState(true);
-  useEffect(() => {
-    try { setNavMin(localStorage.getItem('selbe-nav-min') === '1'); } catch { /* private */ }
-  }, []);
+  /* ⚠️ 2026-09-30: initializer-т уншина (эффект дотор setState байсан) — Portal
+     `ssr:false` тул хөтөч дээр л ажиллана. Дүрэм ХЭВЭЭР: хадгалсан `'1'` л
+     хураана; хадгалалт хаалттай (шидвэл) бол анхдагч ХУРААСТАЙ. */
+  const [navMin, setNavMin] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try { return localStorage.getItem('selbe-nav-min') === '1'; } catch { return true; /* private */ }
+  });
   const toggleNav = useCallback(() => {
     setNavMin((v) => {
       try { localStorage.setItem('selbe-nav-min', v ? '0' : '1'); } catch { /* private */ }
@@ -470,7 +424,11 @@ function PortalContent(
   useEffect(() => {
     refreshBadges();
     const iv = setInterval(refreshBadges, 3 * 60_000);
-    return () => clearInterval(iv);
+    /* ⚠️ 2026-09-30: ACL ирэхэд (чанарын тоо ACL-гүй бага гардаг) ба бичилт
+       бүрийн дараа (`dataBus.invalidate`) тэмдгийг шууд шинэчилнэ — 3 минут хүлээхгүй. */
+    const offBadge = subscribeNavBadges(refreshBadges);
+    const offData = subscribeData(refreshBadges);
+    return () => { clearInterval(iv); offBadge(); offData(); };
   }, [refreshBadges]);
 
   /**
@@ -499,7 +457,10 @@ function PortalContent(
   /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
-  viewNowRef.current = view;
+  /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
+     react-hooks/refs). Уншигч нь зөвхөн үйл явдлын хариулагч ба доорх guard
+     эффект — хоёулаа энэ эффектийн ДАРАА ажиллана (зарлалтын дараалал). */
+  useEffect(() => { viewNowRef.current = view; });
   /* ⚠️ 2026-09-25: `boolean` буцаана — татгалзсан эсэхийг popstate мэдэх ёстой
      (доорх `onPop`-ийн ⚠️). */
   /* ⚠️ 2026-09-30: хамгаалалт ТУСДАА функц — харагдац солих, лого (нүүр рүү)
@@ -595,7 +556,9 @@ function PortalContent(
 
   /** Одоогийн URL төлөв — Back татгалзагдахад URL-ыг буцааж бичихэд (onPop) */
   const urlNowRef = useRef({ view, zone, layer, dim });
-  urlNowRef.current = { view, zone, layer, dim };
+  /* ⚠️ 2026-09-30: эффектэд шинэчилнэ (`viewNowRef`-тэй ижил) — `onPop` нь
+     popstate үйл явдалд л уншина. */
+  useEffect(() => { urlNowRef.current = { view, zone, layer, dim }; });
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
   useEffect(() => {
@@ -643,6 +606,7 @@ function PortalContent(
       //    push — гарах аргагүй гогцоо. lastViewRef-ыг урьдчилан оноож URL
       //    эффектийн push-ыг дарна: redirect нь replace байх ёстой.
       lastViewRef.current = navScope[0];
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
       setView(navScope[0]);
     }
   }, [navScope, view, setView]);
@@ -697,12 +661,6 @@ function PortalContent(
    *   · analysis  — Suitability Modeler (өөрийн 3 багана, харанхуй палитр)
    *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
    */
-  const isGdash = view === 'gdash';
-  const isDash = view === 'dashboard';
-  const isHuvaari = view === 'huvaari';
-  const isHuvaariBatlah = view === 'huvaariBatlah';
-  const isAjilBatlah = view === 'ajilBatlah';
-  const isTailan = view === 'tailan';
   /**
    * «ХУВААРЬ БАТЛАХ» → «ХУВААРЬ» ДАМЖУУЛАЛТ — ЗӨВХӨН САНАХ ОЙД.
    *
@@ -718,25 +676,9 @@ function PortalContent(
    *    зайлсхийх шаардлагатай. React төлөв нь refresh-д үхдэг тул
    *    цэвэрлэх юм байхгүй: энэ нь шинж, хязгаарлалт биш.
    */
-  const [planJump, setPlanJump] = useState<{ pkgKey: string; oid: number } | null>(null);
+  const [planJump, setPlanJump] = useState<PlanJump | null>(null);
   const clearPlanJump = useCallback(() => setPlanJump(null), []);
-  const isGazar = view === 'gazar';
-  const isFinance = view === 'finance';
-  const isHabea = view === 'habea';
-  const isIot = view === 'iot';
-  const isErsdel = view === 'ersdel';
-  const isDedButets = view === 'dedButets';
-  const isGuitsetgel = view === 'guitsetgel';
-  const isQaqc = view === 'qaqc';
-  const isChanar = view === 'chanar';
-  const isZovshoorol = view === 'zovshoorol';
-  const isSchem = view === 'schem';
-  const isSysDoc = view === 'sysdoc';
-  /* Багцын хоёр харагдац — НЭГ модулиас `mode` пропоор (`services.ts` §pkgFin) */
-  const isPkgFin = view === 'pkgFin';
-  const isPkgProg = view === 'pkgProg';
-  const isIrged = view === 'irged';
-  // `standalone` нь эдгээрийг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
+  // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
    * ⚠️ «Ерөнхий мэдээлэл»-нд нэгтгэсэн зурвас нь самбарын толгойд (доод хүрээгүй)
@@ -896,68 +838,13 @@ function PortalContent(
                 каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
                 харагдац солиход хашлагыг remount хийж, хуучин алдааг арилгана. */}
             <ErrorBoundary scope="view" key={view} label={tr('«{0}» нээгдсэнгүй', VIEW_BY_KEY[view].title)}>
-            {isGdash
-              ? <GeneralDash dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : isDash
-              ? <Dashboard dim={dim} setDim={setDim} zone={zone} setZone={setZone} />
-              : isPkgFin
-              ? <PkgFin dim={dim} setDim={setDim} />
-              : isPkgProg
-                ? <PkgProg dim={dim} setDim={setDim} />
-                  : isHuvaari
-                    ? <Huvaari jump={planJump} onJumpDone={clearPlanJump} />
-                    : isHuvaariBatlah
-                    ? (
-                      <HuvaariBatlah
-                        navScope={navScope}
-                        /* ⚠️ `setView`-ЭЭР шилжинэ, URL-аар БИШ (`Schem`-ийн
-                           доорх дүрэмтэй ижил): тэр функц шүүлт, сонголт,
-                           давхаргыг цэвэрлэдэг. */
-                        onApprove={(pkgKey, oid) => {
-                          setPlanJump({ pkgKey, oid });
-                          setView('huvaari');
-                        }}
-                      />
-                    )
-                    : isAjilBatlah
-                    /* ⚠️ `onApprove`-ГҮЙ (`HuvaariBatlah`-аас ЯЛГААТАЙ):
-                       батлах нь тэр хуудсандаа бүрэн дуусна — эх өгөгдөлд
-                       хүрдэггүй тул шилжих шаардлагагүй. Батлагдсан мөр нь
-                       «Гүйцэтгэл бөглөх» нээгдэхэд тэнд өөрөө буудаг
-                       (`FillNew`-ийн `loadApproved` эффект). */
-                    ? <AjilBatlah />
-                    : isTailan
-                      ? <Tailan />
-                      : isGazar
-                        ? <Gazar dim={dim} setDim={setDim} />
-                        : isFinance
-                          ? <Finance />
-                          : isHabea
-                            ? <Habea dim={dim} setDim={setDim} />
-                            : isIrged
-                              ? <Irged dim={dim} setDim={setDim} />
-                              : isIot
-                                ? <Iot dim={dim} setDim={setDim} />
-                                : isErsdel
-                                ? <Ersdel dim={dim} setDim={setDim} />
-                                : isDedButets
-                                ? <DedButets dim={dim} setDim={setDim} />
-                                : isZovshoorol
-                                  ? <Zovshoorol />
-                                : isGuitsetgel
-                                  ? <Guitsetgel />
-                                : isQaqc
-                                  ? <Qaqc />
-                                : isChanar
-                                  ? <Chanar />
-                                : isSchem
-                                  /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд
-                                     хэрэгтэй. URL-аар тойрч болохгүй — энэ
-                                     функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
-                                  ? <Schem setView={setView} navScope={navScope} />
-                                : isSysDoc
-                                  ? <SysDoc setView={setView} navScope={navScope} />
-                                  : <Suitability dim={dim} setDim={setDim} />}
+              {/* ⚠️ 2026-09-30: харагдац → модуль нь `viewRegistry.tsx`-ийн НЭГ
+                  хүснэгт (урьд нь энд 20 давхар гурвалсан оператор байв).
+                  Модуль бүр контекстоос зөвхөн өөрт хэрэгтэй пропоо авна. */}
+              <ViewSlot
+                view={view}
+                ctx={{ dim, setDim, zone, setZone, navScope, setView, planJump, setPlanJump, clearPlanJump }}
+              />
             </ErrorBoundary>
           </div>
         )}

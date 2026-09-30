@@ -36,6 +36,15 @@ const strip = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
+/**
+ * ⚠️ 2026-09-30: `Huvaari.tsx` нь `src/modules/huvaari/*`-д хуваагдсан (hook · дэд бүрэлдэхүүн ·
+ *    цэвэр функц). Эх кодын шалгуурууд хуваарийн БҮХ файлын нийлбэр дээр ажиллана —
+ *    `Huvaari.tsx` эхэнд, дараа нь хавтасны файлууд нэрийн дарааллаар (индексийн
+ *    харьцуулалт файл дотроо л утгатай).
+ */
+const HV_FILES = ['src/modules/Huvaari.tsx',
+  ...fs.readdirSync('src/modules/huvaari').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/huvaari/' + f)];
+const readHv = () => HV_FILES.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
 
 const VIEW = 'src/modules/HuvaariBatlah.tsx';
 const V = readCode(VIEW);
@@ -220,7 +229,8 @@ console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
  *    харагдацын шүүлт үлдэнэ.
  */
 {
-  const P = readCode('src/components/Portal.tsx');
+  /* ⚠️ 2026-09-30: харагдацын бүртгэл `viewRegistry.tsx`-д гарсан — батлах шилжилт тэнд */
+  const P = readCode('src/components/Portal.tsx') + '\n' + readCode('src/components/viewRegistry.tsx');
   assert.ok(/const \[planJump, setPlanJump\]\s*=\s*useState/.test(P),
     'Portal: `planJump` санах ойн төлөв алга — батлах шилжилт ажиллахгүй');
   assert.ok(!/approve['"]?\s*:\s*(jump|oid|planJump)/.test(P) && !P.includes("'approve'"),
@@ -230,7 +240,7 @@ console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
   assert.ok(/setPlanJump\([\s\S]{0,120}setView\('huvaari'\)/.test(P),
     'Portal: `setView`-ээр шилжээгүй — өмнөх харагдацын шүүлт үлдэнэ');
 
-  const H = readCode('src/modules/Huvaari.tsx');
+  const H = strip(readHv());
   assert.ok(/jump\?:\s*\{\s*pkgKey: string; oid: number\s*\}/.test(H),
     'Huvaari: `jump` prop алга — дараалалаас шилжих зам байхгүй');
   assert.ok(H.includes('onJumpDone'),
@@ -263,7 +273,7 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(!V.includes('plLanes') && !V.includes('propagate('),
     'HuvaariBatlah: өөрийн Gantt бичигдсэн — `Huvaari`-г дахин ашиглах ёстой');
 
-  const H = readCode('src/modules/Huvaari.tsx');
+  const H = strip(readHv());
   assert.ok(/review\?:\s*HuvaariReview/.test(H), 'Huvaari: `review` prop алга');
   /* Засвар хаалттай: canEdit нь review-д худал */
   assert.ok(/const canEdit = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H),
@@ -325,7 +335,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(/Date\.now\(\) - okRowsMissAt < OK_ROWS_MISS_TTL/.test(L) && /okRows: parseOkRows\(okRowsAttr\(a\)\)/.test(L),
     'huvaariBatlah: «талбар алга» TTL-гүй эсвэл okRows нэрийн том/жижгээр уншигдахгүй');
   /* Батлах явцад Esc хаахгүй — хагас батлалт */
-  assert.ok(/escBlockRef\.current = busy \|\| approving != null/.test(H),
+  /* 2026-09-30: зурагдалтын дунд `ref.current = …` бичихээ больж `useLatest` болов — утга ижил */
+  assert.ok(/escBlockRef = useLatest\(busy \|\| approving != null\)/.test(H),
     'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
   /* flowReady нь pending-тэй НЭГ зурагдалтад — «аль хэдийн шийдвэрлэгдсэн» худал алдаа */
   const rf = H.slice(H.indexOf('const refreshFlow = useCallback'), H.indexOf('useEffect(() => { void refreshFlow(); }'));
@@ -338,7 +349,7 @@ console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахи
  * Хэрэглэгч: «хуваарь төлөвлөөд явуулаад буцаасан тохиолдолд төлөвлөсөн хуваарь алга
  * болж байна». Урьд нь зөвхөн жижиг товчоор л буцдаг байв. */
 {
-  const H = read('src/modules/Huvaari.tsx');
+  const H = readHv();
   assert.ok(/void restoreWithdrawn\(true\);/.test(H), 'Huvaari: буцаагдсан саналын автомат буулгалт алга');
   const i = H.indexOf('const autoBackRef = useRef');
   const body = H.slice(i, H.indexOf('void restoreWithdrawn(true);', i));
@@ -356,7 +367,7 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
 
 /* ══════════ 2026-09-29-ний хэрэглэгчийн 7 засвар — механик хамгаалалт ══════════ */
 {
-  const H = read('src/modules/Huvaari.tsx');
+  const H = readHv();
   const V = read('src/modules/HuvaariBatlah.tsx');
   /* 1. Хүлээгдэж буй нэмэлт ажлыг засах — татахгүй, ижил илгээлтийг шинэчилнэ */
   assert.ok(/const saveAjilEdit = useCallback[\s\S]{0,700}updateAjil\(\{ oid: ajSub\.oid/.test(H),

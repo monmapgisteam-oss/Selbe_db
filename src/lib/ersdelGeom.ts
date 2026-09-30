@@ -25,7 +25,7 @@
  */
 
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
-import { tokenQs } from '@/lib/authToken';
+import { arcgisPost } from '@/lib/query';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
@@ -68,34 +68,38 @@ const RIVER_URL = (): string => {
 };
 
 let riverCache: Polygon | null = null;
+let riverPending: Promise<Polygon> | null = null;
 
 /**
  * ГОЛЫН ПОЛИГОН — нэг удаа татаад кэшилнэ (хувилбар солих бүрд дахин татахгүй).
  * ⚠️ `outSR=102100` — буфер, огтлолцол бүгд нэг SR дээр бодогдоно.
+ *
+ * ⚠️ 2026-09-30: урьд нь GET + `cache: 'force-cache'` + токен query string-д байв —
+ *    токен нь хөтчийн HTTP кэшийн ТҮЛХҮҮРТ орж (токен бүрд шинэ кэш) диск дээр
+ *    үлддэг байлаа. Одоо `query.arcgisPost` (токен биеэр); кэш нь ЭНЭ модулийн
+ *    санах ой (`riverCache` + зэрэг дуудлагад `riverPending`) — токенгүй түлхүүр,
+ *    сесс дотор нэг л удаа татна. Унасан амлалтыг кэшлэхгүй (дахин оролдоно).
  */
 export async function loadRiver(): Promise<Polygon> {
   if (riverCache) return riverCache;
-  const params = new URLSearchParams({
-    where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
-    /**
-     * ⚠️ ЕРӨНХИЙЛӨЛТ (2 м). Голын полигон нь 4,376 оройтой — түүнийг гурван удаа
-     * буфердэх нь браузарыг хэдэн секунд гацаана. 2 м-ийн хүлцэлд орой 572 болж
-     * буурах бөгөөд 100 м-ийн үерийн зурваст ялгаа нь нүдэнд харагдахгүй
-     * (амьдаар хэмжив: 4,376 → 572).
-     */
-    maxAllowableOffset: '2',
-    f: 'json',
-  });
-  const res = await fetch(`${RIVER_URL()}/query?${params}${tokenQs()}`, { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = await res.json();
-  if (body.error) throw new Error(body.error.message ?? 'ArcGIS error');
-  const rings = (body.features ?? []).flatMap(
-    (f: { geometry?: { rings?: number[][][] } }) => f.geometry?.rings ?? [],
-  );
-  if (!rings.length) throw new Error(tr('Голын давхарга хоосон байна'));
-  riverCache = new Polygon({ rings, spatialReference: WM });
-  return riverCache;
+  riverPending ??= (async () => {
+    const body = await arcgisPost<{ features?: { geometry?: { rings?: number[][][] } }[] }>(`${RIVER_URL()}/query`, {
+      where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
+      /**
+       * ⚠️ ЕРӨНХИЙЛӨЛТ (2 м). Голын полигон нь 4,376 оройтой — түүнийг гурван удаа
+       * буфердэх нь браузарыг хэдэн секунд гацаана. 2 м-ийн хүлцэлд орой 572 болж
+       * буурах бөгөөд 100 м-ийн үерийн зурваст ялгаа нь нүдэнд харагдахгүй
+       * (амьдаар хэмжив: 4,376 → 572).
+       */
+      maxAllowableOffset: '2',
+    });
+    const rings = (body.features ?? []).flatMap((f) => f.geometry?.rings ?? []);
+    if (!rings.length) throw new Error(tr('Голын давхарга хоосон байна'));
+    riverCache = new Polygon({ rings, spatialReference: WM });
+    return riverCache;
+  })();
+  riverPending.catch(() => { riverPending = null; });
+  return riverPending;
 }
 
 /* ══════════════════════ Үерийн зурвас ══════════════════════ */

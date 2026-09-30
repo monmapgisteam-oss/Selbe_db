@@ -73,14 +73,14 @@ export const FIN_FACETS: Record<'CASHFLOW_NEW' | 'HO_IPC', Facet[]> = {
    * оронд төслийн ангилал (`Turul`) орно.
    */
   CASHFLOW_NEW: [
-    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.bagts) },
-    { key: 'type', label: tr('Төрөл'), allLabel: tr('Бүх төрөл'), valueOf: (r) => clean(r.ajil_tuvshin2) },
+    { key: 'pkg', get label() { return tr('Багц'); }, get allLabel() { return tr('Бүх багц'); }, valueOf: (r) => clean(r.bagts) },
+    { key: 'type', get label() { return tr('Төрөл'); }, get allLabel() { return tr('Бүх төрөл'); }, valueOf: (r) => clean(r.ajil_tuvshin2) },
     {
       // ⚠️ `FacetKey` нь `pkg|year|type` гурвыг л зөвшөөрнө. Шинэ хүснэгтэд
       //    он гэсэн тусдаа талбар байхгүй тул захирамжийн огноогоор гаргана.
       key: 'year',
-      label: tr('Захирамжийн он'),
-      allLabel: tr('Бүх он'),
+      get label() { return tr('Захирамжийн он'); },
+      get allLabel() { return tr('Бүх он'); },
       valueOf: (r) => yearOf(r.zahiramj_ognoo),
     },
   ],
@@ -91,23 +91,23 @@ export const FIN_FACETS: Record<'CASHFLOW_NEW' | 'HO_IPC', Facet[]> = {
    *    нь асуудалгүй — шүүлт нь мөр СОНГОНО, НИЙЛҮҮЛДЭГГҮЙ.
    */
   HO_IPC: [
-    { key: 'pkg', label: tr('Багц'), allLabel: tr('Бүх багц'), valueOf: (r) => clean(r.bagts) },
+    { key: 'pkg', get label() { return tr('Багц'); }, get allLabel() { return tr('Бүх багц'); }, valueOf: (r) => clean(r.bagts) },
     {
       // ⚠️ `yearOf()` ХЭРЭГЛЭХГҮЙ: `on_` нь Integer 2025/2026 — огноо БИШ.
       //    `yearOf` нь epoch мс ба `YYYY-MM-DD` хэлбэрт зориулагдсан; дан
       //    `2025` дээр САНАМСАРГҮЙ ажиллах ч тэр нь эмзэг тохиолдол.
       //    `clean` нь `String(2025).trim()` = `'2025'` буцаана.
       key: 'year',
-      label: tr('Он'),
-      allLabel: tr('Бүх он'),
+      get label() { return tr('Он'); },
+      get allLabel() { return tr('Бүх он'); },
       valueOf: (r) => clean(r.on_),
     },
     {
       // ⚠️ 2/45 мөрд ХООСОН — `distinct()`-ийн хоосон хувинд (сүүлд) орно,
       //    чимээгүй хаягдахгүй.
       key: 'type',
-      label: tr('Төлбөрийн төрөл'),
-      allLabel: tr('Бүх төрөл'),
+      get label() { return tr('Төлбөрийн төрөл'); },
+      get allLabel() { return tr('Бүх төрөл'); },
       valueOf: (r) => clean(r.tulult_turul),
     },
   ],

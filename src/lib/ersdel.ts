@@ -30,9 +30,8 @@
  *   доор бичив.
  */
 
-import { queryFeatures } from '@/lib/query';
+import { arcgisPost, queryFeatures } from '@/lib/query';
 import { TD } from '@/lib/services';
-import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 
 /* ══════════════════════ Харуулын эх сурвалж ══════════════════════ */
@@ -74,8 +73,8 @@ export type Station = {
 };
 
 export const KIND_LABEL: Record<StationKind, string> = {
-  water: tr('Голын усны харуул'),
-  air: tr('Агаарын чанарын харуул'),
+  get water() { return tr('Голын усны харуул'); },
+  get air() { return tr('Агаарын чанарын харуул'); },
 };
 
 /**
@@ -85,19 +84,15 @@ export const KIND_LABEL: Record<StationKind, string> = {
  * `queryFeatures` нь геометр буцаадаггүй тул энд шууд REST-д хандана.
  */
 export async function loadStations(): Promise<Station[]> {
-  const url = `${ERSDEL_FS.url}/query`;
-  const params = new URLSearchParams({
+  type Feat = { attributes: Record<string, unknown>; geometry?: { x: number; y: number } };
+  /* ⚠️ 2026-09-30: GET + `cache: 'no-store'` → `query.arcgisPost` (POST нь кэшлэгддэггүй тул
+     `no-store`-ын утга хэвээр; токен биеэр, timeout/слот/200-алдаа цөмд). */
+  const body = await arcgisPost<{ features?: Feat[] }>(`${ERSDEL_FS.url}/query`, {
     where: '1=1',
     outFields: `OBJECTID,${ERSDEL_FS.typeField}`,
     returnGeometry: 'true',
     outSR: '4326',
-    f: 'json',
   });
-  const res = await fetch(`${url}?${params}${tokenQs()}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = await res.json();
-  if (body.error) throw new Error(body.error.message ?? 'ArcGIS error');
-  type Feat = { attributes: Record<string, unknown>; geometry?: { x: number; y: number } };
   const feats: Feat[] = body.features ?? [];
 
   /** Төрөл тус бүрийн дугаарлалт — «Усны харуул №1…8» */
@@ -225,9 +220,9 @@ export const GRADE_COLOR: Record<Grade, string> = {
 };
 
 export const GRADE_LABEL: Record<Grade, string> = {
-  ok: tr('хэвийн'),
-  warn: tr('анхаарах'),
-  bad: tr('хэтэрсэн'),
+  get ok() { return tr('хэвийн'); },
+  get warn() { return tr('анхаарах'); },
+  get bad() { return tr('хэтэрсэн'); },
 };
 
 /* ── Голын ус ── */
@@ -242,43 +237,43 @@ export const GRADE_LABEL: Record<Grade, string> = {
  */
 const WATER_METRICS = [
   {
-    key: 'level', label: tr('Усны түвшин'), unit: tr('м'), dp: 2,
-    note: tr('Харуул дээрх усны гүн. Үерийн сэрэмжлүүлэх түвшин — 0.9 м.'),
+    key: 'level', get label() { return tr('Усны түвшин'); }, get unit() { return tr('м'); }, dp: 2,
+    get note() { return tr('Харуул дээрх усны гүн. Үерийн сэрэмжлүүлэх түвшин — 0.9 м.'); },
     warn: 0.9, bad: 1.6,
   },
   {
-    key: 'flow', label: tr('Урсац'), unit: tr('м³/с'), dp: 2,
-    note: tr('Түвшин–урсацын муруйгаар (Q = k·h^1.8) бодов. Сэрэмжлүүлэх — 26 м³/с.'),
+    key: 'flow', get label() { return tr('Урсац'); }, get unit() { return tr('м³/с'); }, dp: 2,
+    get note() { return tr('Түвшин–урсацын муруйгаар (Q = k·h^1.8) бодов. Сэрэмжлүүлэх — 26 м³/с.'); },
     warn: 26, bad: 52,
   },
   {
-    key: 'turb', label: tr('Булингар'), unit: 'NTU', dp: 0,
-    note: tr('Усан дахь дүүжин бодис. MNS 4586:1998 — 25 NTU.'),
+    key: 'turb', get label() { return tr('Булингар'); }, unit: 'NTU', dp: 0,
+    get note() { return tr('Усан дахь дүүжин бодис. MNS 4586:1998 — 25 NTU.'); },
     warn: 25, bad: 60,
   },
   {
-    key: 'do', label: tr('Уусмал хүчилтөрөгч'), unit: tr('мг/л'), dp: 2,
-    note: tr('Их байх нь САЙН. MNS 4586:1998 — 6 мг/л-ээс багагүй.'),
+    key: 'do', get label() { return tr('Уусмал хүчилтөрөгч'); }, get unit() { return tr('мг/л'); }, dp: 2,
+    get note() { return tr('Их байх нь САЙН. MNS 4586:1998 — 6 мг/л-ээс багагүй.'); },
     warn: 6, bad: 4, higherBetter: true as const,
   },
   {
-    key: 'ph', label: tr('pH'), unit: '', dp: 2,
-    note: tr('Хүчиллэг–шүлтлэг. MNS 4586:1998 — 6.5–8.5 хооронд.'),
+    key: 'ph', get label() { return tr('pH'); }, unit: '', dp: 2,
+    get note() { return tr('Хүчиллэг–шүлтлэг. MNS 4586:1998 — 6.5–8.5 хооронд.'); },
     warn: 8.5, bad: 9,
   },
   {
-    key: 'wtemp', label: tr('Усны температур'), unit: '°C', dp: 1,
-    note: tr('Хүчилтөрөгчийн уусалт температураас урвуу хамааралтай.'),
+    key: 'wtemp', get label() { return tr('Усны температур'); }, unit: '°C', dp: 1,
+    get note() { return tr('Хүчилтөрөгчийн уусалт температураас урвуу хамааралтай.'); },
     warn: 20, bad: 24,
   },
   {
-    key: 'nh4', label: tr('Аммони азот (NH₄-N)'), unit: tr('мг/л'), dp: 2,
-    note: tr('Ахуйн бохирдлын шууд шинж. MNS 4586:1998 — 0.5 мг/л.'),
+    key: 'nh4', get label() { return tr('Аммони азот (NH₄-N)'); }, get unit() { return tr('мг/л'); }, dp: 2,
+    get note() { return tr('Ахуйн бохирдлын шууд шинж. MNS 4586:1998 — 0.5 мг/л.'); },
     warn: 0.5, bad: 1.2,
   },
   {
-    key: 'ec', label: tr('Эрдэсжилт'), unit: tr('µS/см'), dp: 0,
-    note: tr('Цахилгаан дамжуулах чанар — уусмал давсны хэмжээг илэрхийлнэ.'),
+    key: 'ec', get label() { return tr('Эрдэсжилт'); }, get unit() { return tr('µS/см'); }, dp: 0,
+    get note() { return tr('Цахилгаан дамжуулах чанар — уусмал давсны хэмжээг илэрхийлнэ.'); },
     warn: 600, bad: 900,
   },
 ] as const;
@@ -296,43 +291,43 @@ const WATER_METRICS = [
 const AIR_METRICS = [
   {
     /* ⚠️ 2026-09-25: кирилл «м» агуулсан нэгжүүд tr()-ээр (англи горимд m) */
-    key: 'pm25', label: 'PM2.5', unit: tr('µg/м³'), dp: 1,
-    note: tr('2.5 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 50 µg/м³.'),
+    key: 'pm25', label: 'PM2.5', get unit() { return tr('µg/м³'); }, dp: 1,
+    get note() { return tr('2.5 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 50 µg/м³.'); },
     warn: 50, bad: 100,
   },
   {
-    key: 'pm10', label: 'PM10', unit: tr('µg/м³'), dp: 0,
-    note: tr('10 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 100 µg/м³.'),
+    key: 'pm10', label: 'PM10', get unit() { return tr('µg/м³'); }, dp: 0,
+    get note() { return tr('10 мкм-ээс жижиг тоосонцор. MNS 4585:2016 — 24 цагийн дундаж 100 µg/м³.'); },
     warn: 100, bad: 200,
   },
   {
-    key: 'so2', label: 'SO₂', unit: tr('µg/м³'), dp: 1,
-    note: tr('Хүхэрлэг хий — нүүрсний шаталтын шинж. MNS 4585:2016 — 50 µg/м³.'),
+    key: 'so2', label: 'SO₂', get unit() { return tr('µg/м³'); }, dp: 1,
+    get note() { return tr('Хүхэрлэг хий — нүүрсний шаталтын шинж. MNS 4585:2016 — 50 µg/м³.'); },
     warn: 50, bad: 100,
   },
   {
-    key: 'no2', label: 'NO₂', unit: tr('µg/м³'), dp: 1,
-    note: tr('Азотын давхар исэл — тээврийн шинж. MNS 4585:2016 — 40 µg/м³.'),
+    key: 'no2', label: 'NO₂', get unit() { return tr('µg/м³'); }, dp: 1,
+    get note() { return tr('Азотын давхар исэл — тээврийн шинж. MNS 4585:2016 — 40 µg/м³.'); },
     warn: 40, bad: 85,
   },
   {
-    key: 'co', label: 'CO', unit: tr('мг/м³'), dp: 2,
-    note: tr('Нүүрстөрөгчийн дутуу исэл. MNS 4585:2016 — 8 цагийн дундаж 10 мг/м³.'),
+    key: 'co', label: 'CO', get unit() { return tr('мг/м³'); }, dp: 2,
+    get note() { return tr('Нүүрстөрөгчийн дутуу исэл. MNS 4585:2016 — 8 цагийн дундаж 10 мг/м³.'); },
     warn: 10, bad: 20,
   },
   {
-    key: 'aqi', label: tr('АЧИ (агаарын чанарын индекс)'), unit: '', dp: 0,
-    note: tr('PM2.5-аас US EPA-ийн эвдрэлийн цэгээр бодов. 100-аас дээш — эмзэг бүлэгт хортой.'),
+    key: 'aqi', get label() { return tr('АЧИ (агаарын чанарын индекс)'); }, unit: '', dp: 0,
+    get note() { return tr('PM2.5-аас US EPA-ийн эвдрэлийн цэгээр бодов. 100-аас дээш — эмзэг бүлэгт хортой.'); },
     warn: 100, bad: 150,
   },
   {
-    key: 'atemp', label: tr('Агаарын температур'), unit: '°C', dp: 1,
-    note: tr('Инверсийн эрсдэлийг үнэлэхэд — хүйтэн, салхигүй үед бохирдол хуримтлагдана.'),
+    key: 'atemp', get label() { return tr('Агаарын температур'); }, unit: '°C', dp: 1,
+    get note() { return tr('Инверсийн эрсдэлийг үнэлэхэд — хүйтэн, салхигүй үед бохирдол хуримтлагдана.'); },
     warn: 30, bad: 34,
   },
   {
-    key: 'wind', label: tr('Салхины хурд'), unit: tr('м/с'), dp: 1,
-    note: tr('Бага байх нь МУУ: 1 м/с-ээс доош салхинд бохирдол тархахаа болино.'),
+    key: 'wind', get label() { return tr('Салхины хурд'); }, get unit() { return tr('м/с'); }, dp: 1,
+    get note() { return tr('Бага байх нь МУУ: 1 м/с-ээс доош салхинд бохирдол тархахаа болино.'); },
     warn: 1.5, bad: 0.8, higherBetter: true as const,
   },
 ] as const;
@@ -523,23 +518,23 @@ export type LevelKey = 1 | 2 | 3;
 export const HAZARDS: { key: HazardKey; title: string; icon: string; desc: string }[] = [
   {
     key: 'flood',
-    title: tr('Голын үер'),
+    get title() { return tr('Голын үер'); },
     icon: 'waves',
-    desc: tr('Сэлбэ голын хур борооны үер — усны түвшин, урсац, үерлэх зурвас'),
+    get desc() { return tr('Сэлбэ голын хур борооны үер — усны түвшин, урсац, үерлэх зурвас'); },
   },
   {
     key: 'air',
-    title: tr('Агаарын бохирдол'),
+    get title() { return tr('Агаарын бохирдол'); },
     icon: 'flame',
-    desc: tr('Халаалтын улирлын инверси — PM2.5-ийн тархалт, өртөх бүс'),
+    get desc() { return tr('Халаалтын улирлын инверси — PM2.5-ийн тархалт, өртөх бүс'); },
   },
 ];
 
 /** Түвшний нэр — ⚠️ 1 нь хамгийн ХӨНГӨН, 3 нь ХАМГИЙН ХҮНД (§2, 2026-08-29) */
 export const LEVELS: { key: LevelKey; title: string; short: string; color: string }[] = [
-  { key: 1, title: tr('1-р түвшин — Анхааруулах'), short: tr('1-р түвшин'), color: 'var(--data)' },
-  { key: 2, title: tr('2-р түвшин — Аюултай'), short: tr('2-р түвшин'), color: 'var(--warn)' },
-  { key: 3, title: tr('3-р түвшин — Онц аюултай'), short: tr('3-р түвшин'), color: 'var(--bad)' },
+  { key: 1, get title() { return tr('1-р түвшин — Анхааруулах'); }, get short() { return tr('1-р түвшин'); }, color: 'var(--data)' },
+  { key: 2, get title() { return tr('2-р түвшин — Аюултай'); }, get short() { return tr('2-р түвшин'); }, color: 'var(--warn)' },
+  { key: 3, get title() { return tr('3-р түвшин — Онц аюултай'); }, get short() { return tr('3-р түвшин'); }, color: 'var(--bad)' },
 ];
 
 /**
@@ -674,14 +669,14 @@ export const DAMAGE_RATE: Record<
   DamageClass,
   { rate: number; per: 'm2' | 'm' | 'ea'; unit: string; label: string }
 > = {
-  building: { rate: 145_000, per: 'm2', unit: tr('₮/м²'), label: tr('Барилга') },
-  paved: { rate: 55_000, per: 'm2', unit: tr('₮/м²'), label: tr('Хатуу хучилт') },
-  green: { rate: 18_000, per: 'm2', unit: tr('₮/м²'), label: tr('Ногоон байгууламж') },
-  pipe: { rate: 92_000, per: 'm', unit: tr('₮/м'), label: tr('Инженерийн шугам') },
-  bridge: { rate: 350_000, per: 'm', unit: tr('₮/м'), label: tr('Гүүрэн байгууламж') },
-  tree: { rate: 250_000, per: 'ea', unit: tr('₮/ш'), label: tr('Мод') },
-  amenity: { rate: 1_200_000, per: 'ea', unit: tr('₮/ш'), label: tr('Тохижилтын төхөөрөмж') },
-  point: { rate: 3_400_000, per: 'ea', unit: tr('₮/ш'), label: tr('Худаг, тулгуур') },
+  building: { rate: 145_000, per: 'm2', get unit() { return tr('₮/м²'); }, get label() { return tr('Барилга'); } },
+  paved: { rate: 55_000, per: 'm2', get unit() { return tr('₮/м²'); }, get label() { return tr('Хатуу хучилт'); } },
+  green: { rate: 18_000, per: 'm2', get unit() { return tr('₮/м²'); }, get label() { return tr('Ногоон байгууламж'); } },
+  pipe: { rate: 92_000, per: 'm', get unit() { return tr('₮/м'); }, get label() { return tr('Инженерийн шугам'); } },
+  bridge: { rate: 350_000, per: 'm', get unit() { return tr('₮/м'); }, get label() { return tr('Гүүрэн байгууламж'); } },
+  tree: { rate: 250_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Мод'); } },
+  amenity: { rate: 1_200_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Тохижилтын төхөөрөмж'); } },
+  point: { rate: 3_400_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Худаг, тулгуур'); } },
 };
 
 /**

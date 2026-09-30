@@ -47,7 +47,7 @@
  */
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, perLocale } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -102,9 +102,9 @@ const SOC_IDS = PKG_BY_FAMILY.soc ?? [];
  * ⚠️ `LAYER_GROUPS`-аас БОДОГДОНО, гараар жагсаахгүй — бүлэг нэмэгдэх/нэр
  * солигдоход энэ файл чимээгүй хоцрохгүй.
  */
-const GROUP_TITLE: Record<string, string> = Object.fromEntries(
+const GROUP_TITLE = perLocale((): Record<string, string> => Object.fromEntries(
   LAYER_GROUPS.map((g) => [g.key, g.title]),
-);
+));
 
 /* ⚠️ 2026-08-23: Урьд нь энд `TOGGLES` гэсэн ХОЁР чагтын жагсаалт байв (жорлон,
    нийгмийн дэд бүтэц) бөгөөд каталогийн ДЭЭР гараар зурагддаг байлаа. Тэр нь
@@ -198,7 +198,10 @@ function Panel({ title, note, grow, children }: {
 
 export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана. */
-  const side = useSideResize('irged');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('irged');
   /** «Давхарга» жагсаалт нээлттэй эсэх (бусад цонхтой ижил зан төлөв) */
   const [layerOpen, setLayerOpen] = useState(false);
   /** Бүсийн шүүлт — toolbar-ын «Бүс» хэрэглүүр */
@@ -331,7 +334,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       const g = gs.size === 1 ? [...gs][0] : null;
       return {
         hue,
-        title: (g && GROUP_TITLE[g]) || LAYER_BY_ID[ids[0]].title,
+        title: (g && GROUP_TITLE()[g]) || LAYER_BY_ID[ids[0]].title,
         n: ids.length,
       };
     })];
@@ -343,7 +346,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       className={`${i.frame} ${side.hostClass}`}
       style={side.style}
     >

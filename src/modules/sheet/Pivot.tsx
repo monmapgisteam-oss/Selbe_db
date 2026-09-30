@@ -538,6 +538,7 @@ export default function Pivot() {
       tr('Нийтлэгдээгүй {0} нүдний засвар олдлоо ({1}).', Object.keys(next).length, when) +
       (dropped ? "\n" + tr('{0} нүд хуучирсан тул орхигдоно.', dropped) : "") +
       "\n" + tr('Сэргээх үү?');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: сэргээх санал нь хэрэглэгчийн `confirm`-оос (эффект дотор нэг удаа) хамаарна — render-д асууж болохгүй, цонхгүй шууд буулгавал зан төлөв өөрчлөгдөнө
     if (window.confirm(msg)) setPending(next);
     else clearDraftLS(bagts, ognoo);
   }, [busy, rows, buildings, bagts, ognoo]);
@@ -848,7 +849,9 @@ export default function Pivot() {
   // бол unmount-д алдагдсан хэвээр — beforeunload зөвхөн таб хаахыг л хамгаалдаг
   // тул харагдац солих баталгаажуулалтыг порталын навигаци талд шийдэх ёстой.
   const pendingFilesRef = useRef(pendingFiles);
-  pendingFilesRef.current = pendingFiles;
+  /* ⚠️ 2026-09-30: render-д биш ЭФФЕКТЭД тольдоно (react-hooks/refs) — уншигч нь зөвхөн unmount-ийн
+     cleanup тул сүүлийн commit-ийн утга ижил. */
+  useEffect(() => { pendingFilesRef.current = pendingFiles; }, [pendingFiles]);
   useEffect(
     () => () => {
       Object.values(pendingFilesRef.current)
@@ -1009,6 +1012,7 @@ export default function Pivot() {
   const [publishQueued, setPublishQueued] = useState(false);
   useEffect(() => {
     if (!publishQueued || edit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: Ctrl+S-ийн дараалал (дээрх ⚠️): нээлттэй нүдний commit төлөвт буусны ДАРАА л нийтэлнэ — эффект бол яг тэр «дараагийн render» цэг
     setPublishQueued(false);
     if (!busy && Object.keys(pending).length) publish();
     // eslint-disable-next-line react-hooks/exhaustive-deps

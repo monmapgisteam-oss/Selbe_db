@@ -1049,8 +1049,9 @@ export type Findings = {
 export type BagtsLike = { key: string; label: string; progress: number | null };
 
 /**
- * ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
- * тайлангүй блок 0% гэж ордог, БҮХ блокоор хуваана). Урьд нь дэлгэц (`Tailan`)
+ * ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`;
+ * 2026-09-30-аас тайлагнасан блокуудын дундаж — `loadOverall`-ийн `actual`-тай нэг,
+ * урьд нь бүх блокоор хувааж тайлангүйг 0% гэдэг байв). Урьд нь дэлгэц (`Tailan`)
  * хүснэгтийн мөрөөс, PDF `progress.byBagts` (ЗӨВХӨН тайлантай блокийн дундаж)-аас
  * авдаг тул хоёр баримт өөр тоо, заримдаа өөр багц нэрлэдэг байв. Одоо ХОЁУЛАА
  * энд — нэг хэсэгт нэг дүрэм. `progress == null` (хэмжигдээгүй) багц эрэмбэд орохгүй.
@@ -1072,7 +1073,8 @@ export function bagtsExtremes(rows: readonly BagtsLike[]): {
 /**
  * @param bagtsRows ⚠️ 2026-09-21: багцын хүснэгтийн мөрүүд — өгвөл `bestBagts`/
  *   `worstBagts` ХҮСНЭГТИЙН дүрмээр (`bagtsExtremes`); дэлгэц ба PDF хоёулаа
- *   дамжуулна. Өгөөгүй бол хуучин `progress.byBagts` (тайлантай блокийн дундаж).
+ *   дамжуулна. Өгөөгүй бол хуучин `progress.byBagts` (тайлантай блокийн дундаж —
+ *   2026-09-30-аас `joinBagts`-тай нэг дүрэм).
  */
 export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]): Findings {
   /*

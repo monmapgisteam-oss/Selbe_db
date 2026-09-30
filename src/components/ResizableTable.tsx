@@ -33,6 +33,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import st from './resizableTable.module.css';
 
@@ -44,8 +45,8 @@ import st from './resizableTable.module.css';
  * дээр нь tr()-гүй тул EN горимд монголоор үлддэг байв. Хэл нь модуль ачаалах
  * үед тогтдог (i18nCore) тул модулийн түвшний tr() аюулгүй.
  */
-export const GRIP_TITLE = tr('Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ');
-export const GRIP_ARIA = tr('Баганы өргөн');
+export const GRIP_TITLE = () => tr('Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ');
+export const GRIP_ARIA = () => tr('Баганы өргөн');
 
 /** Багана уншигдахгүй нарийсахаас сэргийлнэ. */
 const MIN_W = 36;
@@ -107,6 +108,7 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + storeKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
       if (raw) setW(parseWidths(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
@@ -127,7 +129,7 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   // ⚠️ Хадгалахдаа ЭНД-ээс уншина: `setW(p => { save(p); … })` гэвэл state-ийн
   // шинэчлэгч цэвэр биш болж StrictMode-д хоёр дахин ажиллана.
   const cur = useRef<Widths>({});
-  cur.current = w;
+  useSyncRef(cur, w);
 
   /** Толгойн нүднүүдийн баруун ирмэгийг хэмжиж бариулын байрлалыг шинэчилнэ. */
   const measure = useCallback(() => {
@@ -321,8 +323,8 @@ export function ResizableTable({ storeKey, className, children }: Props) {
             type="button"
             className={st.grip}
             style={{ left: x, height: headH }}
-            title={GRIP_TITLE}
-            aria-label={labels[i] ? `${GRIP_ARIA}: ${labels[i]}` : `${GRIP_ARIA} ${i + 1}`}
+            title={GRIP_TITLE()}
+            aria-label={labels[i] ? `${GRIP_ARIA()}: ${labels[i]}` : `${GRIP_ARIA()} ${i + 1}`}
             role="separator"
             aria-orientation="vertical"
             onPointerDown={onDown(i)}

@@ -33,10 +33,10 @@ import s from './zovshoorol.module.css';
  * орчуулагдахгүй үлдэнэ. Тиймээс гурвуулан ИЛ бичигдэнэ.
  */
 const TOLOV_TEXT: Record<Zov['tolov'], string> = {
-  [TOLOV.wait]: tr('Хүлээгдэж буй'),
-  [TOLOV.ok]: tr('Зөвшөөрсөн'),
-  [TOLOV.no]: tr('Зөвшөөрөөгүй'),
-  unknown: tr('танигдаагүй'),
+  get [TOLOV.wait]() { return tr('Хүлээгдэж буй'); },
+  get [TOLOV.ok]() { return tr('Зөвшөөрсөн'); },
+  get [TOLOV.no]() { return tr('Зөвшөөрөөгүй'); },
+  get unknown() { return tr('танигдаагүй'); },
 };
 
 /** Шинэ зөвшөөрлийн хоосон ноорог — багц нь урьдчилан бөглөгдсөн. */
@@ -192,6 +192,7 @@ export function Zovshoorol() {
 
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setBusy(true);
     void loadZov().then((r) => {
       if (!alive) return;

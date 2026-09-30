@@ -20,6 +20,7 @@
  *    агшны шинж, засварын шинж БИШ.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
@@ -261,13 +262,18 @@ export function Qaqc() {
     [user, capN, aclN, unrestricted, pkg.group],
   );
   const floorOpts = useMemo(() => pkgFloors(pkg.group), [pkg.group]);
-  /* Сонгосон багц хуваарилалтаас гадуур үлдвэл зөвшөөрөгдсөн эхнийх рүү */
-  useEffect(() => {
-    if (groupOpts.includes(pkg.group)) return;
-    const first = PKGS.find((p) => p.group === groupOpts[0]);
-    if (first) setPkg(first);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupOpts]);
+  /* Сонгосон багц хуваарилалтаас гадуур үлдвэл зөвшөөрөгдсөн эхнийх рүү.
+     ⚠️ 2026-09-30: эффект биш, RENDER дунд (React-ийн «adjusting state when a prop
+     changes» загвар) — `groupOpts` солигдсон (ба эхний) render-т л шалгана,
+     `pkg.group`-ийг хамааралд оруулахгүй хэвээр. */
+  const [clampedOpts, setClampedOpts] = useState<string[] | null>(null);
+  if (clampedOpts !== groupOpts) {
+    setClampedOpts(groupOpts);
+    if (!groupOpts.includes(pkg.group)) {
+      const first = PKGS.find((p) => p.group === groupOpts[0]);
+      if (first) setPkg(first);
+    }
+  }
 
   const [rows, setRows] = useState<QaqcRow[]>([]);
   /** Шатлал холбогдсон эсэх — хавтгай зурагдвал шалтгааныг ил хэлнэ */
@@ -410,10 +416,17 @@ export function Qaqc() {
   const [remoteState, setRemoteState] = useState<
     null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail' }
   >(null);
+  /* ⚠️ 2026-09-30: доорх ref-үүдийн зарлалтыг ЭНД зөөв (эхний хэрэглээ — доорх эффект —
+     зарлалтаас өмнө байсан тул React Compiler тэдгээрийг ref гэж танихгүй, `save`-ийн
+     memo-г хадгалж чадахгүй байв). Тайлбарууд хуучин байрандаа (§НООРОГ — ХАДГАЛАХ). */
+  const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
+  const remoteVerifiedRef = useRef('');
+  const restoreDoneRef = useRef('');
   useEffect(() => {
     /* ⚠️ Багц солиход хадгалаагүй засварыг ЗААВАЛ цэвэрлэнэ: түлхүүр нь
        ObjectID тул өөр хүснэгтийн ижил дугаартай мөрд наалдаж, ӨӨР БАГЦЫН
        ажилд акт бичих байлаа. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setPend({});
     setEditCell(null);
     setCollapsed(new Set());
@@ -558,6 +571,9 @@ export function Qaqc() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const rowHRef = useRef(26);
+  /* ⚠️ 2026-09-30: мөрийн өндрийг RENDER-т state-ээс уншина (ref-ийг render дунд
+     уншиж болохгүй); ref нь `recalcWin`-ий тооцоонд хэвээр. Утга солигдоход л setState. */
+  const [rowH, setRowH] = useState(26);
   const [win, setWin] = useState({ from: 0, to: 80 });
   const OVER = 20;
   const recalcWin = useCallback(() => {
@@ -565,7 +581,7 @@ export function Qaqc() {
     const tb = tbodyRef.current;
     if (!el || !tb) return;
     const first = tb.querySelector('tr[data-r]') as HTMLElement | null;
-    if (first?.offsetHeight) rowHRef.current = first.offsetHeight;
+    if (first?.offsetHeight) { rowHRef.current = first.offsetHeight; setRowH(first.offsetHeight); }
     const h = rowHRef.current;
     const top = Math.max(0, el.scrollTop - tb.offsetTop);
     const from = Math.max(0, Math.floor(top / h) - OVER);
@@ -652,14 +668,12 @@ export function Qaqc() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
-  const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   const [remoteTick, setRemoteTick] = useState(0);
   /** Явж буй алсын бичилт — устгахаас өмнө хүлээнэ (flush-ийн ⚠️) */
   const remoteInflight = useRef<Promise<unknown> | null>(null);
-  /** Алсын ноорогийг АМЖИЛТТАЙ уншсан багц — зөвхөн тэр үед алс руу бичнэ/устгана */
-  const remoteVerifiedRef = useRef('');
-  /** Ноорог сэргээлт ДУУССАН багц — хадгалах эффектийн устгах салааны нөхцөл */
-  const restoreDoneRef = useRef('');
+  /** `remoteVerifiedRef` — алсын ноорогийг АМЖИЛТТАЙ уншсан багц — зөвхөн тэр үед алс руу бичнэ/устгана.
+      `restoreDoneRef` — ноорог сэргээлт ДУУССАН багц — хадгалах эффектийн устгах салааны нөхцөл.
+      (Зарлалт нь дээр, `remoteQueue`-ийн дэргэд.) */
   /** Алсын уншилтыг дахин оролдуулах тоолуур (сэргээх эффектийн deps) */
   const [restoreTry, setRestoreTry] = useState(0);
   /** Явж буй алсын бичилт дуусахыг хүлээнэ — алдааг үл тоох */
@@ -706,6 +720,7 @@ export function Qaqc() {
         clearDraftLS(dk(user?.username, pkg.key));
         if (remoteVerifiedRef.current === pkg.key) void clearQaqcDraft(pkg.key);
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: ноорог хоосорсон тэр агшинд хадгалсан цагийг арилгана — localStorage/алсын устгалттай нэг эффектэд
       setSavedAt(null);
       return;
     }
@@ -1000,10 +1015,17 @@ export function Qaqc() {
   }, [dirtyCount, pkg.key, show, clearRemoteQueue, user?.username, awaitRemoteInflight]);
 
   /* ══════════════ ХАДГАЛАХ ══════════════ */
+  /* ⚠️ 2026-09-30: `RO_CAP` нь render бүрд `capsRemoteReady()` дууддаг (санаатай —
+     эрхийн remote бэлэн эсэх) тул React Compiler түүнээс хамаарсан memo-г хадгалж
+     чадахгүй байв — сүүлийн (дэлгэцэн дээрх) мессежийг ref-ээр уншина; `user?.username`
+     мөн адил (optional chain deps) — урьдчилан `uname`-д авна. Үйлдэл ижил. */
+  const roCapRef = useRef(RO_CAP);
+  useSyncRef(roCapRef, RO_CAP);
+  const uname = user?.username;
   const save = useCallback(async () => {
     if (busy || !dirtyCount) return;
     if (!canEdit) {
-      setErr(RO_CAP);
+      setErr(roCapRef.current);
       return;
     }
     setBusy(true);
@@ -1021,7 +1043,7 @@ export function Qaqc() {
       const n = await saveQaqc(pkg.key, updates);
       setPend({});
       setEditCell(null);
-      clearDraftLS(dk(user?.username, pkg.key));
+      clearDraftLS(dk(uname, pkg.key));
       /* ⚠️ Эхлээд дараалал, дараа нь алсыг ХҮЛЭЭЖ устгана (2026-09-17) — үгүй бол
          устгалын дараа буусан «зомби» ноорог дараагийн сешнд нүдийг хуучин утгаар дарна. */
       clearRemoteQueue();
@@ -1047,7 +1069,7 @@ export function Qaqc() {
     } finally {
       setBusy(false);
     }
-  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, RO_CAP, clearRemoteQueue, user?.username, awaitRemoteInflight]);
+  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, clearRemoteQueue, uname, awaitRemoteInflight]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
   /* ⚠️ НЭЭЛТТЭЙ НҮДИЙГ ЭХЛЭЭД COMMIT (2026-09-25 аудит): нүдний текст зөвхөн
@@ -1354,7 +1376,7 @@ export function Qaqc() {
                 )}
                 {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно */}
                 {winFrom > 0 && (
-                  <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
+                  <tr aria-hidden="true" style={{ height: winFrom * rowH }}>
                     <td colSpan={2 + QAQC_COLS.length} style={{ padding: 0, border: 0 }} />
                   </tr>
                 )}
@@ -1472,7 +1494,7 @@ export function Qaqc() {
                   );
                 })}
                 {winTo < vis.length && (
-                  <tr aria-hidden="true" style={{ height: (vis.length - winTo) * rowHRef.current }}>
+                  <tr aria-hidden="true" style={{ height: (vis.length - winTo) * rowH }}>
                     <td colSpan={2 + QAQC_COLS.length} style={{ padding: 0, border: 0 }} />
                   </tr>
                 )}

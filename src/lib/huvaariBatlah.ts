@@ -35,8 +35,13 @@ import { AUTH, ROLE_BY_USER } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
+   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
+   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
+import { invalidate } from './dataBus';
+import { cached } from '@/lib/live';
 
 /** Илгээлтийн төлөв */
 export const PLAN_STATUS = {
@@ -302,18 +307,6 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-/**
- * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + `{error:{…}}` биеэр буцаадаг — шалгахгүй бол
- * хагас дутуу хүснэгт үүсгээд URL-ыг нь кэшилнэ (`permsRemote`-ийн сургамж).
- */
-async function req(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  /* ⚠️ Хүснэгт Organization-only — нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17).
-     ⚠️ 2026-09-29: токеныг хүсэлтийн өмнө шинэчилж, 498-д нэг удаа дахин оролдоно;
-     алдаанд унасан замыг нэрлэнэ (`authToken.arcgisPost`). */
-  return arcgisPost(url, params);
-}
-
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
 /** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
@@ -348,7 +341,7 @@ let ownerMismatch = false;
  * Хуурамч хүснэгт үүсгэсэн хүн бүх багцын хуваарийг батлах зам нээх байлаа.
  */
 async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
+  const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
     /*
@@ -407,7 +400,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
     allowGeometryUpdates: false,
     units: 'esriMeters',
   };
-  const created = await req(
+  const created = await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/createService`,
     { token, createParameters: JSON.stringify(createParameters), outputType: 'featureService' },
   );
@@ -438,8 +431,8 @@ async function createTable(token: string, user: string): Promise<string | null> 
       ],
     }],
   };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  await req(
+  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
+  await arcgisPost(
     `${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`,
     { token, org: 'true', everyone: 'false' },
   );
@@ -598,7 +591,7 @@ async function okRowsFieldLen(): Promise<number> {
   const url = await tableUrl(false);
   if (!url) return -1;
   try {
-    const j = await req(url, {});
+    const j = await arcgisPost(url, {});
     const fields = (j.fields as { name?: string; length?: number }[] | undefined) ?? [];
     /* ⚠️ 2026-09-29: талбарын жагсаалт ирээгүй = уншигдсангүй, «алга» биш */
     if (!fields.length) return -1;
@@ -644,7 +637,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   if (!url) return [];
   const out: Attrs[] = [];
   for (let off = 0; ; off += 1000) {
-    const j = await req(`${url}/query`, {
+    const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
       returnGeometry: 'false',
@@ -938,13 +931,13 @@ export async function submitPlan(args: {
     [F.payload]: payloadJson,
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.addResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('HUVAARI_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1094,13 +1087,13 @@ export async function decidePlan(args: {
     else warn = tr('Батлах хүснэгтэд «{0}» талбар алга — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан). AGOL дээр String (урт 65536) талбар нэмнэ үү.', F.okRows);
   }
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true, warn }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('HUVAARI_BATLAH');
+    return { ok: true, warn };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1184,11 +1177,12 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
   }
   const at = Date.now();
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: me, [F.approverAt]: at } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('HUVAARI_BATLAH');
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1216,10 +1210,11 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
     if (!url) return;
     const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt}`);
     if (!cur.length || claimHolder(cur[0]) !== me) return;
-    await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: null, [F.approverAt]: null } }]),
       rollbackOnFailure: 'true',
     });
+    if (editOk(j.updateResults)) invalidate('HUVAARI_BATLAH');
   } catch { /* CLAIM_TTL-ээр тайлагдана */ }
 }
 
@@ -1285,13 +1280,13 @@ export async function withdrawPlan(args: {
     [F.reason]: null,
   };
   try {
-    const j = await req(`${url}/applyEdits`, {
+    const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    return editOk(j.updateResults)
-      ? { ok: true }
-      : { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('HUVAARI_BATLAH');
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1309,6 +1304,16 @@ export async function withdrawPlan(args: {
  *    уншигдаагүй, хүснэгт алга, сүлжээ унасан). ⚠️ Хүснэгт ҮҮСГЭХГҮЙ (`canCreate`
  *    false) — тэмдэгт тоолох нь бичих үйлдэл биш.
  */
+/**
+ * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `HUVAARI_BATLAH` тагтай
+ *    богино кэш. Энэ файлын бичих зам бүр `invalidate('HUVAARI_BATLAH')` дууддаг тул
+ *    ӨӨРИЙН үйлдлийн дараа тэр дор нь шинэ тоо; бусдын бичилтийг TTL (цэсний 3 мин
+ *    тутмын шинэчлэлтээс богино) барина. `loadAllPending` ӨӨРӨӨ кэшлэгдэхгүй —
+ *    батлах хуудас, `submitPlan`-ийн давхардлын шалгалт үргэлж шинэ уншина.
+ */
+const BADGE_TTL = 60_000;
+const loadBadgePending = cached(loadAllPending, BADGE_TTL, ['HUVAARI_BATLAH']);
+
 export async function countPlanPending(username: string | null | undefined): Promise<number | null> {
   try {
     const me = (username ?? '').trim().toLowerCase();
@@ -1320,7 +1325,7 @@ export async function countPlanPending(username: string | null | undefined): Pro
     const sc = AUTH.appId ? huvaariScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const now = Date.now();
-    const rows = await loadAllPending();
+    const rows = await loadBadgePending();
     return rows.filter((x) => {
       if (sc != null && !sc.includes(x.pkgGroup)) return false;
       if (x.author.trim().toLowerCase() === me) return false;

@@ -28,7 +28,8 @@ let pending: Promise<void> | null = null;
 /** Снапшотыг урьдчилан ачаална — Map барихаас ӨМНӨ дуудна */
 export function loadWebmapStyle(): Promise<void> {
   if (S) return Promise.resolve();
-  pending ??= fetch("/webmap-style.json")
+  /* ⚠️ 2026-09-30: timeout — гацсан хүсэлт `pending`-ийг мөнхөд барихгүй (доорх catch дахин оролдуулна) */
+  pending ??= fetch("/webmap-style.json", { signal: AbortSignal.timeout(30_000) })
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       S = (await r.json()) as Record<string, WebmapStyle>;

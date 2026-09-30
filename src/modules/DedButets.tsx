@@ -31,6 +31,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -156,6 +157,9 @@ const INFRA_PACKS: Pack[] = buildPacks(null).filter((x) => {
  * `cntOf(t, "et:3")` алдааны давталт. Одоо суффиксийг `tr()`-ЭЭР ЗОХИОНО —
  * толинд орчуулга нь нэгэн ижил тул аль ч хэлэнд таарна.
  */
+/* i18n-static ⚠️ 2026-09-30: хэл солиход ДАХИН БОДОГДОХГҮЙ — санаатай. Суффикс ба
+   давхаргын нэр (getter) НЭГ агшинд, ижил хэлээр үнэлэгдэх тул ID-ийн олонлог
+   хэлээс хамаарахгүй; `WELL_IDS` нь хэлээс үл хамаарах тогтмол. */
 const WELL_SUFFIX = `· ${tr('Бохир худаг')}`;
 const WELL_IDS = DED_BUTETS_LAYER_IDS.filter((id) =>
   (LAYER_BY_ID[id]?.title ?? '').endsWith(WELL_SUFFIX),
@@ -288,7 +292,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * Түлхүүрийг ӨӨРЧИЛСӨН (`dedButets2`) — хуучин түлхүүрт хадгалагдсан
    * `--side-l` нь одоо байхгүй баганад өргөн олгож, зураг нарийсгах байв.
    */
-  const side = useSideResize('dedButets2');
+  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
+     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
+     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
+  const { hostRef: sideHostRef, ...side } = useSideResize('dedButets2');
   const [layerOpen, setLayerOpen] = useState(false);
   const [zone, setZone] = useState<string | null>(null);
   const [opOpen, setOpOpen] = useState(false);
@@ -307,7 +314,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   /* ⚠️ `dropTotalsLater` нь callback-ийн deps-гүй байх ёстой (засвар бүрийн
      зам дээр дуудагддаг) тул горимыг ref-ээр уншина. */
   const editModeRef = useRef(false);
-  editModeRef.current = editMode;
+  useSyncRef(editModeRef, editMode);
   /**
    * Маягт нээлттэй объект.
    *
@@ -377,7 +384,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   /* ⚠️ 2026-09-29 (аудит 10): тэгш өнцөгтийн асуулгын `then()` нь горимыг ref-ээр
      уншина (`editModeRef`-тэй ижил) — хариу ирэхэд горим аль хэдийн унтарсан байж болно. */
   const multiRef = useRef(false);
-  multiRef.current = multi;
+  useSyncRef(multiRef, multi);
   /**
    * Сонголт — НЭГ давхаргын объектууд (хэрэглэгчийн сонголт: давхарга бүр
    * өөр схемтэй тул нэг маягт нэг давхаргыг л зурна). `layerId` нь сонголт
@@ -389,7 +396,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   );
   /** Сүүлийн сонголт — async then() дотор updater-гүйгээр унших (2026-09-21) */
   const mselRef = useRef(msel);
-  mselRef.current = msel;
+  useSyncRef(mselRef, msel);
   /** Тэгш өнцөгт татаж байна — `onSketch` үүгээр «шинэ объект»-оос ялгана */
   const [rectDraw, setRectDraw] = useState(false);
   const [mselBusy, setMselBusy] = useState(false);
@@ -548,7 +555,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const formDirty = useRef(false);
   const pickRef = useRef(pick);
-  pickRef.current = pick;
+  useSyncRef(pickRef, pick);
   const pickKey = pick ? `${pick.layerId}:${pick.oid ?? 'new'}` : '';
   useEffect(() => { formDirty.current = false; }, [pickKey]);
 
@@ -685,12 +692,16 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    *    бол тэгш өнцөгт сонголт ЭРХГҮЙ давхаргаас объект татах байв. Хүрээ
    *    тодорхой болмогц эхний зөвшөөрөгдсөн давхарга руу шилжүүлнэ.
    */
-  useEffect(() => {
-    if (!editableIds.length) return;
-    if (!editableIds.includes(msel.layerId)) setMsel({ layerId: editableIds[0], oids: [] });
-    if (!editableIds.includes(addTo)) setAddTo(editableIds[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editableIds]);
+  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд (React-ийн «adjusting state when a prop
+     changes» загвар) — `editableIds` солигдсон (ба эхний) render-т л шалгана. */
+  const [clampedIds, setClampedIds] = useState<string[] | null>(null);
+  if (clampedIds !== editableIds) {
+    setClampedIds(editableIds);
+    if (editableIds.length) {
+      if (!editableIds.includes(msel.layerId)) setMsel({ layerId: editableIds[0], oids: [] });
+      if (!editableIds.includes(addTo)) setAddTo(editableIds[0]);
+    }
+  }
 
   /**
    * ЭНЭ ЦОНХНЫ СУУРЬ — ЗӨВХӨН ИНЖЕНЕРИЙН 16 ШУГАМ.
@@ -1348,6 +1359,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const [canDel, setCanDel] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: схем татах эффект — объект солигдоход товчийг синхрон хаагаад схемээр нээнэ
     if (!editMode || !pick || pick.oid == null) { setCanDel(false); return; }
     let alive = true;
     setCanDel(false);
@@ -1359,7 +1371,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
   return (
     <div
-      ref={side.hostRef}
+      ref={sideHostRef}
       className={`${d.frame} ${editMode ? d.frameEdit : ''} ${side.hostClass}`}
       style={side.style}
     >

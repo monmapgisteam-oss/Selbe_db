@@ -27,7 +27,8 @@ for (const [k, v] of Object.entries(KPI_FINE)) {
 
 /* ── 2. `registry.ts`-ийн БҮХ карт зураглалтай ── */
 const reg = readFileSync(new URL('./registry.ts', import.meta.url), 'utf8');
-const keys = [...reg.matchAll(/\{\s*key:\s*'([^']+)',\s*title:/g)].map((m) => m[1]);
+/* ⚠️ 2026-09-30: `title:` → `get title()` (хэл солиход lazy) — хоёуланг таньна */
+const keys = [...reg.matchAll(/\{\s*key:\s*'([^']+)',\s*(?:get title\(\)|title:)/g)].map((m) => m[1]);
 assert.ok(keys.length >= 12, `карт хэт цөөн олдов (${keys.length}) — хэв шинж эвдэрсэн байж магадгүй`);
 for (const k of keys) {
   assert.notEqual(fineOf(k), undefined, `«${k}» үзүүлэлт схемд байрлалгүй — зурган дээр гарахгүй`);

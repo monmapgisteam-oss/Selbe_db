@@ -98,15 +98,11 @@ export function buildReportDoc(
   const blocks = rows.reduce((a, x) => a + x.blocks, 0);
   const ail = rows.reduce((a, x) => a + x.ail, 0);
   const budget = rows.reduce((a, x) => a + budgetOf(x.key), 0);
-  /* ⚠️ 2026-09-25: «Нийт» дундаж — ЗӨВХӨН `progress != null` багцаар жигнэнэ
-     (`Tailan.tsx`-ийн 2026-09-24-ний дүрэмтэй ЯГ ижил). Урьд нь тайлан ирээгүй
-     багц 0% гэж орж БҮХ блокоор хуваагддаг тул имэйлийн PDF дэлгэцээс зөрдөг
-     байв (30.00% ↔ 24.69%) — null ≠ 0. Мэдэгдэх багц байхгүй бол `null` → «—». */
-  const knownRows = rows.filter((x) => x.progress != null);
-  const knownBlocks = knownRows.reduce((a, x) => a + x.blocks, 0);
-  const bagtsAvg = knownBlocks
-    ? knownRows.reduce((a, x) => a + (x.progress as number) * x.blocks, 0) / knownBlocks
-    : null;
+  /* ⚠️ 2026-09-30: §2 «Нийт» = `overall.pct` — порталын ГАНЦ орон сууцны гүйцэтгэл
+     (`gdash.housingPct`), дэлгэц (`Tailan.tsx`) ба §3 «Нийт»-тэй ЯГ нэг тоо. Урьд нь
+     (2026-09-25) блокийн тоогоор жигнэдэг тул §3-аас зөрдөг байв. Мэдэгдэх багц
+     байхгүй бол `null` → «—». */
+  const bagtsAvg = overall.pct;
   const srcTotal = finance.sources.reduce((a, s) => a + s.value, 0);
 
   /* ── Товч танилцуулга — дэлгэцийн `.lead` блоктой ижил гурван догол ──

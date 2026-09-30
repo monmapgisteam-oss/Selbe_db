@@ -25,7 +25,10 @@
  */
 
 import { BUILDING } from './services';
-import { tokenParam } from '@/lib/authToken';
+/* ⚠️ `arcgisPost` (2026-09-30): урьд нь шууд `fetch` байв — токеныг хүсэлтийн өмнө
+   шинэчилж 498-д нэг удаа дахин оролдоно; HTTP 200-аар ирсэн `error`-ыг шидэж
+   доорх `catch`-д орно (урьдын адил кэшлэхгүй, `''` буцаана). */
+import { arcgisPost } from '@/lib/authToken';
 import { addRows, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
@@ -56,29 +59,20 @@ async function companyOf(bagts: string): Promise<string> {
     let ok = false;
     const map = new Map<string, string>();
     try {
-      const res = await fetch(`${BUILDING.url}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          f: 'json',
-          ...tokenParam(),
-          where: '1=1',
-          groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
-          outStatistics: JSON.stringify([
-            { statisticType: 'count', onStatisticField: BUILDING.oid, outStatisticFieldName: 'n' },
-          ]),
-        }).toString(),
-      });
-      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийн `error`-ыг ЗААВАЛ шалгана */
-      const j = (await res.json()) as { features?: { attributes: Attrs }[]; error?: unknown };
-      if (res.ok && !j.error) {
-        for (const f of j.features ?? []) {
-          const k = norm(String(f.attributes[BUILDING.fields.bagts] ?? ''));
-          const v = String(f.attributes[BUILDING.fields.contractor] ?? '').trim();
-          if (k && v && !map.has(k)) map.set(k, v);
-        }
-        ok = true;
+      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — `arcgisPost` биеийн `error`-ыг шалгаж шиднэ */
+      const j = (await arcgisPost(`${BUILDING.url}/query`, {
+        where: '1=1',
+        groupByFieldsForStatistics: `${BUILDING.fields.bagts},${BUILDING.fields.contractor}`,
+        outStatistics: JSON.stringify([
+          { statisticType: 'count', onStatisticField: BUILDING.oid, outStatisticFieldName: 'n' },
+        ]),
+      })) as { features?: { attributes: Attrs }[] };
+      for (const f of j.features ?? []) {
+        const k = norm(String(f.attributes[BUILDING.fields.bagts] ?? ''));
+        const v = String(f.attributes[BUILDING.fields.contractor] ?? '').trim();
+        if (k && v && !map.has(k)) map.set(k, v);
       }
+      ok = true;
     } catch {
       /* сүлжээ унасан — кэшлэхгүй, дараагийн удаа дахин оролдоно */
     }
