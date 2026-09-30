@@ -68,13 +68,10 @@ export type BlockProgress = {
 export type BlockProgressMap = Map<string, BlockProgress>;
 
 /**
- * @param ov 3.1-ийн cashflow солилт (`cashflowOverride`). ⚠️ 2026-09-25: солилт
- *   ЭНД хийгдэнэ — урьд нь `compute`-ийн ДАРАА зөвхөн БАЙГАА түлхүүрүүдэд
- *   хэрэглэгддэг байсан тул «Б.» нүд нь хоосон (`null`) блокууд Map-д орохгүй
- *   үлдэж, багцын нэг хэсэг cashflow-ийн хувийг авч, үлдсэн нь «мэдээлэлгүй»
- *   болдог байв. Одоо тухайн багцын «Б.» мөртэй БҮХ блок солигдоно.
+ * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас.
+ * ⚠️ Багц 3.1-ийн cashflow солилт (`ov`) ХАСАГДСАН — `loadBlockProgress`-ийн ⚠️.
  */
-function compute(rows: Record<string, unknown>[], ov: { key: string; pct: number } | null = null): BlockProgressMap {
+function compute(rows: Record<string, unknown>[]): BlockProgressMap {
   /** барилга → (№ → сүүлийн мөр) */
   const win = new Map<string, Map<string, { pct: number | null; name: string; date: string }>>();
   for (const r of rows) {
@@ -102,13 +99,11 @@ function compute(rows: Record<string, unknown>[], ov: { key: string; pct: number
   const out: BlockProgressMap = new Map();
   for (const [k, cells] of win) {
     const total = cells.get(TASK_SHEET.constructionNo);
-    const owned = ov != null && ownsKey(ov, k);
     // ⚠️ Нийт гүйцэтгэл бөглөгдөөгүй барилгыг ОРУУЛАХГҮЙ — зурагт «мэдээлэлгүй»
     //    саарлаар үлдэх ёстой, 0% гэж будвал «эхлээгүй» гэсэн ХУДАЛ мэдээлэл өгнө.
-    //    (Солигдох 3.1-ийн блок нь үл хамаарна — утга нь cashflow-оос.)
-    if (!total || (total.pct == null && !owned)) continue;
+    if (!total || total.pct == null) continue;
     out.set(k, {
-      overall: owned ? (ov as { pct: number }).pct : (total.pct as number),
+      overall: total.pct,
       date: total.date,
       phases: TASK_SHEET.subPhaseNos.map((no) => ({
         no,
@@ -372,43 +367,26 @@ export function cachedBlockProgress(): BlockProgressMap | null {
 const loadRows = memo(fetchConstruction, ['BAGTS_SHEET']);
 
 /**
- * БАГЦ 3.1 — ЭХ СУРВАЛЖ НЬ CASHFLOW (2026-09-10, хэрэглэгчийн заавар:
- * «3.1 багцын гүйцэтгэлийн хувийг cashflow дээр байгаа хувиар соль»).
+ * Блок бүрийн барилга угсралтын гүйцэтгэл (0–100) — ЗӨВХӨН бөглөх хуудсаас.
  *
- * ⚠️ ЯАГААД ЭНД, дэлгэц тус бүрд БИШ: блокийн гүйцэтгэл нь «05. Багцын
- *    гүйцэтгэл»-ийн жагсаалт · KPI · газрын зураг · сарын цуваа
- *    (`FinData.phys`) · ерөнхий дашбоардын бүх самбар — ЦӨМ энэ хоёр
- *    функцээс гардаг. Дээд түвшинд солибол нэг үзүүлэлт самбар бүрд өөр
- *    тоо харуулна (2026-09-10-нд яг тэгж 22.29 ↔ 23.84 зөрж байв).
- *
- * ⚠️ Багц бүхэлдээ НЭГ тоо (гэрээнд сараар задалсан бүртгэл байхгүй) тул
- *    тэр багцын БҮХ блок, БҮХ огноонд ижил утга бичигдэнэ. Блок тус бүрийн
- *    бодит бөглөлт (одоо 0.05%) ДАРАГДАНА — тэр нь санаатай: бөглөлт бодитоор
- *    эхэлмэгц `live.ts`-ийн `FILL_FROM_CASHFLOW`-ийг хасахад л буцна.
- *
- * ⚠️ Cashflow уншигдахгүй бол (сүлжээ, эрх) солилт ХИЙГДЭХГҮЙ, бөглөлтийн
- *    утга хэвээр — блокийн гүйцэтгэл үүнээс болж унах ЁСГҮЙ.
+ * ⚠️ БАГЦ 3.1-ИЙН CASHFLOW СОЛИЛТ ХАСАГДСАН (2026-09-30, хэрэглэгч: «багц 3.1 бодит гүйцэтгэл бөглөлтөөс гарсан хувь руу
+ *    шилжүүлэлдээ, 16.4 биш үүнээс бага хувь байх ёстой»).
+ *    2026-09-10-нд 3.1-ийн бөглөх хуудас бараг хоосон байсан тул бүх блокийг
+ *    нь cashflow-ийн нэг тоо (16.4%)-оор ДАРДАГ түр нөхөөс байв
+ *    (`cashflowOverride` + `live.FILL_FROM_CASHFLOW`). Бөглөлт одоо бодитоор
+ *    явж байгаа тул нөхөөсийн тайлбарт бичсэний дагуу хасав — 3.1 бусад
+ *    багцтай ИЖИЛ дүрмээр, бөглөлтөөс. БУЦААЖ БҮҮ НЭМ: гэрээний тоо амьд
+ *    хэмжилтийг нууна.
+ * ⚠️ `CASHFLOW_NEW` түлхүүр ч хасагдав — энэ ачаалагч cashflow-ийг уншихаа
+ *    больсон тул санхүүжилтийн засвар кэшийг нь хуучруулах шаардлагагүй.
  */
-async function cashflowOverride(fresh = false): Promise<{ key: string; pct: number } | null> {
-  try {
-    const { loadCashflowPkgPct, loadCashflowPkgPctFresh, FILL_FROM_CASHFLOW } = await import('./live');
-    const v = (await (fresh ? loadCashflowPkgPctFresh() : loadCashflowPkgPct())).get(FILL_FROM_CASHFLOW);
-    return v == null ? null : { key: FILL_FROM_CASHFLOW, pct: v };
-  } catch {
-    return null;
-  }
-}
-const ownsKey = (ov: { key: string }, k: string) => k.startsWith(ov.key + '|');
-
-/** Блок бүрийн барилга угсралтын гүйцэтгэл (0–100). */
 export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
   async () => {
-    const [rows, ov] = await Promise.all([loadRows(), cashflowOverride()]);
-    const m = compute(rows, ov);
+    const m = compute(await loadRows());
     saveCache(m);
     return m;
   },
-  ['BAGTS_SHEET', 'CASHFLOW_NEW'],
+  ['BAGTS_SHEET'],
 );
 
 /**
@@ -420,21 +398,12 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
  *    дэлгэцийн memo-г ХӨНДӨХГҮЙ (дашбоард анивчихгүй).
  */
 export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
-  const [rows, ov] = await Promise.all([fetchConstruction(), cashflowOverride(true)]);
-  return compute(rows, ov);
+  return compute(await fetchConstruction());
 }
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
+/* ⚠️ 3.1-ийн cashflow солилт ХАСАГДСАН (`loadBlockProgress`-ийн ⚠️) */
 export const loadBlockHistory: () => Promise<BlockHistory> = memo(
-  async () => {
-    const [h, ov] = await Promise.all([loadRows().then(history), cashflowOverride()]);
-    if (ov) {
-      for (const [k, pts] of h) {
-        if (!ownsKey(ov, k)) continue;
-        h.set(k, pts.map((p) => ({ ...p, pct: ov.pct })));
-      }
-    }
-    return h;
-  },
-  ['BAGTS_SHEET', 'CASHFLOW_NEW'],
+  async () => history(await loadRows()),
+  ['BAGTS_SHEET'],
 );
