@@ -591,7 +591,9 @@ function PlanModalBody({
         <header className={h.mdHead}>
           <span className={h.mdNo}>{r.no}</span>
           <b className={h.mdWork}>{r.work || tr('(нэргүй)')}</b>
-          <button type="button" className={h.mdX} onClick={onClose} aria-label={tr('Хаах')}>×</button>
+          {/* ⚠️ 2026-10-01: «×» ба доорх «Хаах» ч `tryClose`-оор — урьд нь `onClose`-ыг
+              шууд дуудаж, хадгалаагүй өөрчлөлтийн асуултыг алгасдаг байв. */}
+          <button type="button" className={h.mdX} onClick={tryClose} aria-label={tr('Хаах')}>×</button>
         </header>
 
         {/* ── БЛОКУУД — ОЛНООР СОНГОНО (2026-09-24). Идэвхтэй (тод) блокийн
@@ -969,7 +971,7 @@ function PlanModalBody({
             </button>
           )}
           <span className={h.spacer} />
-          <button type="button" className={h.tlZoomB} onClick={onClose}>{tr('Хаах')}</button>
+          <button type="button" className={h.tlZoomB} onClick={tryClose}>{tr('Хаах')}</button>
           {canEdit && (
             <button type="button" className={h.save} onClick={apply}
               disabled={r.group

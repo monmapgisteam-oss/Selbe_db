@@ -485,3 +485,69 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   assert.ok(H.indexOf('applyPlanEdits(obEdits)', si) > se, 'Huvaari.save: сарын обьём хамгаалалтаас ӨМНӨ бичигдэж байна');
 }
 console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх approveGuard');
+
+/* ══════════ ХАГАС БИЧИЛТИЙН СЕРВЕР ТЭМДЭГ · ДАВХАРДЛЫН ЦУЦЛАЛТ (2026-10-01) ══════════
+ * ⚠️ Хагас бичигдсэн батлалтын хамгаалалт урьд нь зөвхөн санах ойд (`partialRef`) ба
+ *    `CLAIM_TTL`-д байсан — сэргээлт/10 минутын дараа татах, буцаах хоёулаа өнгөрдөг байв.
+ * ⚠️ Давхардлын цуцлалт (устгал унасан → `withdrawn`) багцын «сүүлийн шийдвэр» болж
+ *    жинхэнэ буцаалтын шалтгааныг нууж байв. */
+{
+  const { partialBy, PARTIAL_MARK, isDupCancel, DUP_MARK } = await import('@/lib/huvaariBatlah.ts');
+  const P = PLAN_STATUS.pending;
+  assert.equal(partialBy(P, `${PARTIAL_MARK}:Bat`), 'bat', 'тэмдэг → батлагчийн нэр (жижиг үсгээр)');
+  assert.equal(partialBy(P, PARTIAL_MARK), '', 'нэргүй тэмдэг ч хүчинтэй');
+  assert.equal(partialBy(P, null), null, 'тэмдэггүй');
+  assert.equal(partialBy(P, 'жирийн шалтгаан'), null, 'жирийн текст тэмдэг биш');
+  assert.equal(partialBy(P, `${PARTIAL_MARK}x`), null, 'угтвар төстэй ч тэмдэг биш');
+  assert.equal(partialBy(PLAN_STATUS.approved, `${PARTIAL_MARK}:bat`), null, 'шийдвэрлэгдсэн мөрд хүчингүй');
+
+  const w = (o) => ({ status: PLAN_STATUS.withdrawn, reason: null, approverAt: 1_000, ...o });
+  assert.equal(isDupCancel(w({})), false, 'жинхэнэ татсан (approverAt-тай) — шийдвэр хэвээр');
+  assert.equal(isDupCancel(w({ reason: DUP_MARK })), true, 'тэмдэгтэй цуцлалт');
+  assert.equal(isDupCancel(w({ approverAt: null })), true, 'тэмдэггүй хуучин цуцлалт (approverAt алга)');
+  assert.equal(isDupCancel({ status: PLAN_STATUS.returned, reason: 'x', approverAt: null }), false, 'буцаалтыг хэзээ ч хасахгүй');
+
+  const fs = await import('node:fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const L = strip(fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8'));
+  const part = (a, b) => { const i = L.indexOf(a); const j = L.indexOf(b, i + a.length); assert.ok(i > 0 && j > i, `${a} олдсонгүй`); return L.slice(i, j); };
+  /* decidePlan: буцаалтыг тэмдгээр ТҮГЖИХЭЭС ӨМНӨ хаана */
+  const dp = part('export async function decidePlan(', 'export type ClaimFail');
+  assert.ok(/if \(!args\.approve\) \{\s*const pb = partialBy\(/.test(dp), 'decidePlan: буцаалтад хагас бичилтийн тэмдэг шалгагдахгүй байна');
+  assert.ok(dp.indexOf('partialBy(') < dp.indexOf('casClaim('), 'decidePlan: тэмдгийн шалгалт түгжилтээс хойш');
+  assert.ok(dp.includes('F.reason}'), 'decidePlan: `reason` талбарыг уншихгүй байна');
+  /* withdrawPlan: тэмдэгтэй бол татахгүй — бичилтээс ӨМНӨ */
+  const wp = part('export async function withdrawPlan(', 'export async function countPlanPending(');
+  assert.ok(wp.indexOf('partialBy(') > 0 && wp.indexOf('partialBy(') < wp.indexOf('[F.status]: PLAN_STATUS.withdrawn'), 'withdrawPlan: хагас бичилтийн тэмдэг шалгагдахгүй байна');
+  /* submitPlan: устгал унахад тэмдэглэнэ */
+  const sp = part('export async function submitPlan(', 'export async function decidePlan(');
+  assert.ok(/\[F\.status\]: PLAN_STATUS\.withdrawn, \[F\.reason\]: DUP_MARK/.test(sp), 'submitPlan: давхардлын цуцлалтыг DUP_MARK-аар ялгахгүй байна');
+  /* loadLastPerPkg · loadHistory: цуцлалтыг хасна */
+  assert.ok(part('export async function loadLastPerPkg(', 'export async function loadHistory(').includes('isDupCancel('), 'loadLastPerPkg: цуцлалтыг хасахгүй');
+  assert.ok(part('export async function loadHistory(', 'export async function loadPayload(').includes('isDupCancel('), 'loadHistory: цуцлалтыг хасахгүй');
+
+  /* Huvaari.save: тэмдэг + partialRef АНХНЫ бичилтээс ӨМНӨ; save дотор partialRef арилгахгүй */
+  const H = strip(fs.readFileSync('src/modules/Huvaari.tsx', 'utf8'));
+  const si = H.indexOf('const save = useCallback(');
+  const se = H.indexOf('const decide = useCallback(', si);
+  assert.ok(si > 0 && se > si, 'Huvaari.save / decide олдсонгүй');
+  const sv = H.slice(si, se);
+  const iMark = sv.indexOf('markPlanPartial(');
+  const iRef = sv.indexOf('partialRef.current = approving');
+  const iUpd = sv.indexOf('await applyUpdates(pkg, upd);');
+  const iOb = sv.indexOf('applyPlanEdits(obEdits)');
+  assert.ok(iMark > 0 && iMark < iRef && iRef < iUpd && iUpd < iOb, 'Huvaari.save: хагас бичилтийн тэмдэг анхны бичилтээс ӨМНӨ биш');
+  assert.ok(!/partialRef\.current = null/.test(sv), 'Huvaari.save: partialRef-ийг decidePlan-аас ӨМНӨ арилгаж байна');
+  /* obLost нь батлах горимын «бүгд эсвэл юу ч үгүй» шалгуурт */
+  assert.ok(/approvalMode && \([^)]*obLost/.test(sv), 'Huvaari.save: батлах горимд obLost хаагдахгүй байна');
+  /* decide: түгжээ тайлах нь хагас бичилтэд хамгаалагдсан */
+  const dc = H.slice(se, H.indexOf('const reviewStarted', se));
+  assert.ok(/const release = \(\) => \(partialRef\.current === oid0 \?/.test(dc), 'Huvaari.decide: release хагас бичилтэд хамгаалагдаагүй');
+  const rel = dc.match(/void releasePlanClaim\(\{ oid: approving,[^\n]*/g) ?? [];
+  assert.ok(rel.length >= 2, 'Huvaari: батлах эффектийн эрт буцалт олдсонгүй');
+  for (const ln of dc.split('\n').filter((x) => x.includes('void releasePlanClaim({ oid: approving'))) {
+    assert.ok(/partialRef\.current !== approving\) void releasePlanClaim/.test(ln), `Huvaari: хамгаалалтгүй тайлалт: ${ln.trim()}`);
+  }
+  assert.ok((dc.match(/partialRef\.current = null/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход partialRef арилахгүй');
+}
+console.log('✅ хагас бичилтийн сервер тэмдэг · давхардлын цуцлалт «сүүлийн шийдвэр» биш · obLost хаалт · түгжээ хадгална');

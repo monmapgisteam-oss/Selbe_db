@@ -306,8 +306,9 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
       'Huvaari.refreshFlow: сүлжээний алдаанд pending=null → түгжээ тайлагдана');
   }
   /* 2026-09-29 аудит: `previewing` нь `decidePlan` АМЖИЛТТАЙ болсны дараа л тайлагдана */
-  assert.ok(/if \(r\.ok\) \{ setPreviewing\(false\); setOkRows\(new Set\(\)\); \}/.test(H)
-    && /\} else \{\s*setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
+  /* ⚠️ 2026-10-01: амжилттай салаанд `partialRef` арилгах мөр нэмэгдсэн — хоёр хэлбэрийг таньна */
+  assert.ok(/if \(r\.ok\) \{\s*setPreviewing\(false\); setOkRows\(new Set\(\)\);/.test(H)
+    && /\} else \{\s*(?:if \(partialRef\.current === oid\) partialRef\.current = null;\s*)?setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
     'Huvaari: батлалт унахад previewing тайлагдаж хяналтын товчнууд идэвхгүй үлдэнэ');
   /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
   assert.ok(/if \(back && ap\.ok && lastDecision\.okRows\) \{\s*setBackMarks\(/.test(H),

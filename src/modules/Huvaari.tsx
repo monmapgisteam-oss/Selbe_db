@@ -55,7 +55,7 @@ import {
 } from '@/lib/huvaariObyem';
 import {
   approveGuard, claimPlan, decidePlan, loadHistory, loadPayload, loadPending, loadSubmissionHead, planTableState, PLAN_STATUS,
-  releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
+  markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { hdKey } from '@/lib/huvaariDraft';
@@ -735,8 +735,8 @@ export function Huvaari({
    *    огноо ГЭРЭЭНИЙ талбарт бичигдэнэ — чимээгүй, эргүүлэх аргагүй.
    * ⚠️ Уялдаа (`ham`) ба сарын обьём (`obDraft`) нь ЗӨВХӨН төлөвлөгөөнд
    *    хамаарах тул тэднийг ч цэвэрлэнэ.
-   * ⚠️ Хадгалаагүй ажил байвал товч дарахаас ӨМНӨ асууна (`askSwitch`) —
-   *    энэ эффект нь зөвхөн БОДИТ солилтын дараах цэвэрлэгээ.
+   * ⚠️ Солихоос ӨМНӨ ноорог (төрөл · багцын) хуваалцсан мөрөнд бичигдэнэ (`askSwitch`,
+   *    2026-10-01) — буцаж ирэхэд сэргэнэ. Энэ эффект нь зөвхөн санах ойн цэвэрлэгээ.
    * ⚠️ БАТЛАХ УРСГАЛЫН төлвийг Ч цэвэрлэнэ (2026-09-11-ний аудитын S1).
    *    Урьд нь `previewing`/`approving`/`pending`/`flowBox` үлддэг байсан тул:
    *    батлагч урьдчилан хараад таб солиход ноорог цэвэрлэгдэн `dirtyN` 0
@@ -749,7 +749,7 @@ export function Huvaari({
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
     /* ⚠️ Бодит огноо · нөөц (2026-09-23) нь `kind`-ээс хамаардаггүй ч ЦЭВЭРЛЭНЭ:
        нэг илгээлт нэг `kind` авч явдаг тул таб солиход хагас ноорог үлдвэл
-       дараагийн илгээлт хоёр төрлийн хольц болно. `askSwitch` урьдчилан асуудаг. */
+       дараагийн илгээлт хоёр төрлийн хольц болно. `askSwitch` урьдчилан хадгалдаг. */
     setADraft(new Map()); setResDraft(new Map());
     setSel(null); setModal(null); setNote(''); setKomissNote(''); setErr('');
     setPreviewing(false); setApproving(null); setFlowBox(null); setFlowTxt('');
@@ -1022,7 +1022,13 @@ export function Huvaari({
     if (filter === 'none' && filled) return false;
     if (filter === 'partial' && (!filled || filled === r.spans.length)) return false;
     const sp = rowSpan(r);
-    if (fYear !== 'all' && (!sp || msToDay(sp.start).slice(0, 4) !== fYear)) return false;
+    /* ⚠️ 2026-10-01: жил нь мужтай ДАВХЦВАЛ таарна — урьд нь зөвхөн ЭХЛЭХ жил
+       шалгагдаж, 2025-12 → 2026-03 ажил «2026» шүүлтэд гардаггүй байв. */
+    if (fYear !== 'all') {
+      if (!sp) return false;
+      const y = Number(fYear);
+      if (Number(msToDay(sp.start).slice(0, 4)) > y || Number(msToDay(sp.end).slice(0, 4)) < y) return false;
+    }
     return true;
   }, [filter, fYear]);
 
@@ -1122,7 +1128,11 @@ export function Huvaari({
     const s = new Set<string>();
     for (const r of plan) {
       const sp = rowSpan(r);
-      if (sp) s.add(msToDay(sp.start).slice(0, 4));
+      if (!sp) continue;
+      /* ⚠️ 2026-10-01: мужийн ДАМЖСАН бүх жил (шүүлтийн давхцлын дүрэмтэй ижил) */
+      const y0 = Number(msToDay(sp.start).slice(0, 4));
+      const y1 = Number(msToDay(sp.end).slice(0, 4));
+      for (let y = y0; y <= y1; y++) s.add(String(y));
     }
     return [...s].sort();
   }, [plan]);
@@ -1292,8 +1302,19 @@ export function Huvaari({
              obDraft-д үлдэж «хадгалаагүй 1» + тэнцээгүй нийлбэр гардаг байв.
              Чирж буй мөр·блок бол `Drag.origMonths` (чирэлтээс өмнөх бүтэн
              хуулбар) — гинжээр буцсан бусад мөрд `keepMonths` хэвээр. */
-          const back = sameSpan(sp, base[i]?.spans[b]);
-          const orig = drag && drag.oid === r.oid && b === blk ? drag.origMonths : null;
+          /* ⚠️ 2026-10-01: ГИНЖЭЭР хөдөлсөн мөр·блок ч чирэлтийн ӨМНӨХ агшнаас
+             (`drag.obSnap` → сервер). Урьд нь зөвхөн чирж буй мөр `origMonths`-тэй,
+             хамаарагчид `cur` (өмнөх алхмаар аль хэдийн тайрагдсан ноорог)-оос
+             `keepMonths` авдаг тул өмнөх ажлыг урагш чираад буцаахад хамаарагчийн
+             эрт сарууд алга болж задаргаа «тэнцэхгүй» үлддэг байв. Чирэлтээс
+             өмнөх муждаа (`drag.snap`) буцсан бол агшныг БҮТНЭЭР сэргээнэ. */
+          const inDrag = !!drag && b === blk;
+          const pre = inDrag ? drag!.snap?.get(r.oid) : undefined;
+          const back = sameSpan(sp, base[i]?.spans[b])
+            || (inDrag && pre !== undefined && sameSpan(sp, pre));
+          const orig = !inDrag ? null
+            : drag!.oid === r.oid ? drag!.origMonths ?? null
+            : drag!.obSnap?.get(key) ?? srv ?? null;
           /* ⚠️ 2026-09-29 аудит: чирж буй мөр·блокт `keepMonths`-ыг чирэлтийн ӨМНӨХ
              бүтэн хуулбараас — `cur` нь аль хэдийн тайрагдсан ноорог тул зурвасыг
              богиносгоод буцаан сунгахад мужаас гарсан сарын утга сэргэдэггүй байв. */
@@ -1329,8 +1350,14 @@ export function Huvaari({
           const key = obKey(r.des!, blok);
           const srv = obRes.get(r.des!)?.get(blok);
           const cur = next.get(key) ?? srv ?? new Map<string, MonthRes>();
-          const back = sameSpan(sp, base[i]?.spans[b]);
-          const orig = drag && drag.oid === r.oid && b === blk ? drag.origRes : null;
+          /* ⚠️ 2026-10-01: гинжээр хөдөлсөн мөр ч чирэлтийн өмнөх агшнаас — обьёмын дүрэмтэй ижил */
+          const inDrag = !!drag && b === blk;
+          const pre = inDrag ? drag!.snap?.get(r.oid) : undefined;
+          const back = sameSpan(sp, base[i]?.spans[b])
+            || (inDrag && pre !== undefined && sameSpan(sp, pre));
+          const orig = !inDrag ? null
+            : drag!.oid === r.oid ? drag!.origRes ?? null
+            : drag!.obResSnap?.get(key) ?? srv ?? null;
           const val = sp
             ? (back && orig ? new Map(orig) : keepRes(sp, orig ?? cur))
             : new Map<string, MonthRes>();
@@ -1688,7 +1715,7 @@ export function Huvaari({
   });
 
   /* ── Чирэлтийн хөдөлгүүр (`useDragPlan`) ── */
-  const { undoRef, onDown, onMove, onUp, undoDragOnClose } = useDragPlan({
+  const { undoRef, onDown, onMove, onUp, onCancel, undoDragOnClose } = useDragPlan({
     plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
     setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
   });
@@ -1739,10 +1766,14 @@ export function Huvaari({
        *    унана. Батлалт = бүгд эсвэл юу ч үгүй; энгийн хадгалалт хуучин зан төлөвтэй.
        */
       const approvalMode = approving != null;
-      if (approvalMode && (unbal || resSkipped || (rfUnknown && obResDraft.size > 0))) {
+      /* ⚠️ 2026-10-01: `obLost` (ажил хуудсанд олдоогүй сарын задаргаа) ч мөн — урьд нь
+         задаргаа нь чимээгүй хаягдаж батлалт АМЖИЛТТАЙ болдог байв. `grpSkipped` БИШ:
+         бүлгийн мөр санаатай хөндөгдөхгүй (`savePrep`-ийн ⚠️). */
+      if (approvalMode && (unbal || resSkipped || obLost || (rfUnknown && obResDraft.size > 0))) {
         const why: string[] = [];
         if (unbal) why.push(tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй', num(unbal)));
         if (resSkipped || rfUnknown) why.push(tr('сарын хүн хүч/машины талбар шалгагдсангүй эсвэл алга'));
+        if (obLost) why.push(tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй', num(obLost)));
         setErr(tr('Батлах боломжгүй — {0}. Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр.', why.join(' · ')));
         return false;
       }
@@ -1802,12 +1833,24 @@ export function Huvaari({
         const head = await loadSubmissionHead(approving);
         const why = approveGuard(head, approving, user?.username ?? '');
         if (why) { setErr(why); return false; }
+        /* ⚠️ ХАГАС БИЧИЛТИЙН ТЭМДЭГ — АНХНЫ бичилтээс ӨМНӨ (2026-10-01). Урьд нь `partialRef`
+           зөвхөн «огноо + сарын обьём» хоёулаа бичигдэх үед, огноо бичигдсэний ДАРАА тавигдаж,
+           `decidePlan`-аас ӨМНӨ арилдаг байв: бүгд бичигдээд `decidePlan` унавал (эсвэл зөвхөн
+           огноотой санал) батлагч «Буцаах» дарж, эх хуудсанд суусан саналыг буцаадаг байв.
+           Одоо: сервер дээрх тэмдэг (`markPlanPartial`, хуудас сэргээсэн ч, `CLAIM_TTL`-ийн
+           дараа ч хэвээр) + `partialRef` хоёулаа ЭНД тавигдаж, ЗӨВХӨН `decidePlan(approve)`
+           амжилттай болоход арилна. Тэмдэг бичигдээгүй бол ЮУ Ч бичихгүй (fail-closed). */
+        if (upd.length || obEdits) {
+          const mk = await markPlanPartial({ oid: approving, approver: user?.username ?? '' });
+          if (!mk.ok) {
+            setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
+            return false;
+          }
+          partialRef.current = approving;
+        }
       }
       if (upd.length) {
         await applyUpdates(pkg, upd);
-        /* ⚠️ Батлах горимд огноо бичигдсэн — дараагийн алхам (сарын обьём) унавал
-           санал ХАГАС бичигдсэн гэж тэмдэглэнэ (`partialRef`-ийн ⚠️). */
-        if (approvalMode && obEdits) partialRef.current = approving;
       }
 
       /*
@@ -1840,8 +1883,9 @@ export function Huvaari({
         }
         obN = r2[0] + r2[1] + r2[2];
       }
-      /* Бүх хэсэг бичигдлээ — хагас биш */
-      if (approvalMode && partialRef.current === approving) partialRef.current = null;
+      /* ⚠️ 2026-10-01: `partialRef`-ийг ЭНД АРИЛГАХГҮЙ — бүх хэсэг бичигдсэн ч `decidePlan`
+         унавал санал эх хуудсанд суусан атлаа `pending` хэвээр; батлах эффект `decidePlan`
+         амжилттай болсны ДАРАА л арилгана. */
 
       const r = await loadRows(pkg, sc);
       setRows(r.rows);
@@ -2155,7 +2199,8 @@ export function Huvaari({
         note: userNote,
         payload: buildPayload(),
       });
-      if (!r.ok) { setErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      /* ⚠️ Унасан ч урсгалыг сэргээнэ (2026-10-01) — өөр хүн түрүүлж илгээсэн бол түгжээ харагдана */
+      if (!r.ok) { setErr(r.error ?? tr('Илгээгдсэнгүй.')); await refreshFlow(); return; }
       /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
          локалд үлдээвэл гүйцэтгэгч дахин илгээх, эсвэл батлагдсаны дараа
          хуучин ноорог дахин бичигдэх эрсдэлтэй. */
@@ -2591,7 +2636,10 @@ export function Huvaari({
           await refreshFlow();
           return;
         }
-        const release = () => releasePlanClaim({ oid: pending.oid, approver: user?.username ?? '' });
+        /* ⚠️ 2026-10-01: ХАГАС бичигдсэн илгээлтийн түгжээг ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) —
+           дахин «Батлах» дарж агуулга уншигдаагүй/зөрчил гарсан эрт буцалт ч түгжээг алдуулдаг байв. */
+        const oid0 = pending.oid;
+        const release = () => (partialRef.current === oid0 ? Promise.resolve() : releasePlanClaim({ oid: oid0, approver: user?.username ?? '' }));
         let handed = false;
         try {
         /* ⚠️ Урьдчилан харж байгаа бол агуулга аль хэдийн ноорогт байна —
@@ -2700,7 +2748,8 @@ export function Huvaari({
          «Шийдвэрлэх») мөр бүрийн ногоон дүрэм — харалт руу буцааж тэмдэглүүлнэ.
          Түгжээг ТАЙЛНА: эх хуудсанд юу ч бичигдээгүй. */
       if (reviewOids.some((o) => !okRows.has(o))) {
-        void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
+        /* ⚠️ 2026-10-01: ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) */
+        if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
         // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: батлах гинж САНААТАЙ эффектээр — `save` ноорогийг state-ээс уншдаг тул агуулга буусны ДАРААХ зурагдалтад бичнэ (дээрх ⚠️); хариулагч руу шилжүүлбэл тэр дараалал алдагдана
         setApproving(null);
         setPreviewing(true);
@@ -2714,7 +2763,7 @@ export function Huvaari({
          буулгасан ноорогтой тул «Шийдвэрлэх» (урьдчилан хараагүй) зам ч баригдана.
          Түгжээг ТАЙЛНА: эх хуудсанд юу ч бичигдээгүй. */
       if (obOut.bad > 0) {
-        void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
+        if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
         setApproving(null);
         setPreviewing(true);
         setErr(obOutMsg);
@@ -2746,7 +2795,11 @@ export function Huvaari({
               oid: approving, approve: true,
               approver: user?.username ?? '', author: pending?.author ?? '',
             });
-            if (r.ok) { setPreviewing(false); setOkRows(new Set()); }
+            if (r.ok) {
+              setPreviewing(false); setOkRows(new Set());
+              /* ⚠️ 2026-10-01: өмнөх хагас бичилтийг энэ батлалт гүйцээв (сервер тэмдгийг `decidePlan` арилгасан) */
+              if (partialRef.current === approving) partialRef.current = null;
+            }
             setNote(r.ok
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
               : '');
@@ -2827,8 +2880,12 @@ export function Huvaari({
           approver: user?.username ?? '', author: pending?.author ?? '',
         });
         if (!r.ok) {
-          setErr(r.error ?? tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'));
+          /* ⚠️ 2026-10-01: `partialRef` (ба сервер тэмдэг) ҮЛДЭНЭ — санал эх хуудсанд суусан тул
+             буцаах/татах хаалттай; «Батлах»-ыг дахин дарахад «бичих зүйлгүй» салаагаар гүйцнэ. */
+          setErr((r.error ?? tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'))
+            + ` ${tr('Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.')}`);
         } else {
+          if (partialRef.current === oid) partialRef.current = null;
           setPreviewing(false);
           setOkRows(new Set());
           setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
@@ -3293,7 +3350,7 @@ export function Huvaari({
           {tr('Багц')}{' '}
           {/* ⚠️ Хяналтын горимд багц ТОГТМОЛ (дарааллаас сонгосон илгээлтийнх) */}
           <select className={h.select} value={pkg.group} disabled={busy || !!review}
-            onChange={(e) => { if (askSwitch()) setPkg(pkgFloors(e.target.value)[0]); }}>
+            onChange={(e) => { const v = e.target.value; void askSwitch().then((ok) => { if (ok) setPkg(pkgFloors(v)[0]); }); }}>
             {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </label>
@@ -3302,7 +3359,8 @@ export function Huvaari({
             {tr('Хувилбар')}{' '}
             <select className={h.select} value={pkg.key} disabled={busy || !!review}
               onChange={(e) => {
-                if (askSwitch()) setPkg(PKGS.find((x) => x.key === e.target.value) ?? pkg);
+                const v = e.target.value;
+                void askSwitch().then((ok) => { if (ok) setPkg(PKGS.find((x) => x.key === v) ?? pkg); });
               }}>
               {floors.map((p) => <option key={p.key} value={p.key}>{p.floors}F</option>)}
             </select>
@@ -3410,8 +3468,8 @@ export function Huvaari({
               * ⚠️ ЗӨВХӨН ШИЛЖИНЭ (хэрэглэгчийн хүсэлт): эдгээр хоёр товч нь
               *    аль огноог ЗАСАХ вэ гэдгийг л сонгоно — нэг нь идэвхтэй.
               *    Хоёуланг зэрэг харах нь ТУСДАА товч (`Зэрэг`, доор).
-              * ⚠️ Хадгалаагүй ноорогтой үед асууна (`askSwitch`) — солиход
-              *    ноорог цэвэрлэгддэг тул.
+              * ⚠️ Ноорогтой үед эхлээд хадгална (`askSwitch`) — санах ой цэвэрлэгдэх ч
+              *    хуваалцсан ноорог үлдэж, буцаж ирэхэд сэргэнэ (2026-10-01).
               */}
             <div className={h.tlZoom}>
               {([
@@ -3431,7 +3489,7 @@ export function Huvaari({
                      ингэж түгжигддэг. */
                   /* ⚠️ Хяналтын горимд төрөл нь илгээлтийнх — солиход санал цэвэрлэгдэнэ */
                   disabled={busy || !!review}
-                  onClick={() => { if (kind !== k && askSwitch()) setKind(k); }}>
+                  onClick={() => { if (kind !== k) void askSwitch().then((ok) => { if (ok) setKind(k); }); }}>
                   {label}
                 </button>
               ))}
@@ -4257,12 +4315,15 @@ export function Huvaari({
                     ))}
                   </div>
 
-                  <div className={h.plLanes}
+                  {/* ⚠️ 2026-10-01: `plLanesEdit` (touch-action: none) ЗӨВХӨН засах эрхтэй
+                      үед — бусдад мэдрэгч дэлгэц дээр хуанли ердийнхөөрөө гүйнэ.
+                      `pointercancel` нь `onCancel`: хагас чирэлтийг буцааж, popup нээхгүй. */}
+                  <div className={`${h.plLanes} ${canEdit && !locked ? h.plLanesEdit : ''}`}
                     ref={lanesRef}
                     style={{ height: visible.length * PL_ROW }}
                     onPointerMove={onMove}
                     onPointerUp={onUp}
-                    onPointerCancel={onUp}
+                    onPointerCancel={onCancel}
                   >
                     {months.map((m) => (
                       <span key={m.at} className={`${h.tlGrid} ${h.tlGridBig}`} style={{ left: xOf(m.at) }} />

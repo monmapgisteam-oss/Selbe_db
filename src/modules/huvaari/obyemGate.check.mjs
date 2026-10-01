@@ -221,7 +221,8 @@ const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util
   const ei = H.indexOf('if (approving == null || busy) return;');
   const es = H.indexOf('void save().then(', ei);
   const eff = H.slice(ei, es);
-  assert.ok(/if \(obOut\.bad > 0\) \{\s*void releasePlanClaim\(/.test(eff), 'батлах эффект: мужаас гадуурх обьёмыг шалгахгүй байна');
+  /* ⚠️ 2026-10-01: тайлалт хагас бичилтэд хамгаалагдсан (`partialRef`) — хоёр хэлбэрийг таньна */
+  assert.ok(/if \(obOut\.bad > 0\) \{\s*(?:if \(partialRef\.current !== approving\) )?void releasePlanClaim\(/.test(eff), 'батлах эффект: мужаас гадуурх обьёмыг шалгахгүй байна');
   /* PlanModal руу тэнцээгүй блокууд дамжина */
   assert.ok(/badBlks=\{modalBad\}/.test(H) && /unbalancedBlocks\(modalRow, sc\.bld, obDraft, obPlan\)/.test(H), 'PlanModal-д улаан чипийн өгөгдөл дамжихгүй');
 }

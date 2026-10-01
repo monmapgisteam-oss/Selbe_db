@@ -15,6 +15,9 @@ import { obKey, sameMonths, sameRes, sameSpan } from './util';
  *    `drag.origMonths`) ба хуанлийн хүрээ (`useCalendar`, чирэлтийн үед тогтоно)
  *    хоёулаа түүнийг уншдаг — энд `drag`/`setDrag`-ийг параметрээр авна.
  */
+/** ⚠️ Мэдрэгч дэлгэцийн «товшилт»-ын босго (px, 2026-10-01) — үүнээс хол бол гүйлгээ */
+const TAP_PX = 8;
+
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
   setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
@@ -72,6 +75,17 @@ export function useDragPlan({
   /** Товшилт vs чирэлт */
   const moved = useRef(false);
   /**
+   * ⚠️ МЭДРЭГЧ ДЭЛГЭЦИЙН ГҮЙЛГЭЭ ≠ ТОВШИЛТ (2026-10-01). Хоног зөвхөн `clientX`-ээр
+   * бодогддог тул хуваарьгүй мөр дээр БОСОО шударвал `moved` худал үлдэж `onUp`
+   * 1 хоногийн муж үүсгэдэг байв. Хурууны эхлэх цэг (`down`) — босго (`TAP_PX`)-оос
+   * хол хөдөлсөн бол товшилт биш (`far`); хоног солигдохоос ӨМНӨ босоо давамгай
+   * бол гүйлгээ гэж үзээд чирэлтийг үл тооно (`scroll`).
+   * ⚠️ Зөвхөн `pointerType === 'touch'` — хулганы/үзгийн зан төлөв ХЭВЭЭР.
+   */
+  const down = useRef<{ x: number; y: number; touch: boolean }>({ x: 0, y: 0, touch: false });
+  const far = useRef(false);
+  const scroll = useRef(false);
+  /**
    * ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөрүүд (oid) — цуцлахад ЗӨВХӨН эдгээрийг буцаана
    * (2026-09-24). Урьд нь агшин (`snap`)-аас зөрсөн БҮХ мөрийг буцаадаг тул
    * чирэлт/цонхны хооронд хамт ажиллагчийн алсаас нийлсэн нүд ч «цуцлагдаж»
@@ -127,6 +141,9 @@ export function useDragPlan({
     const k = dayAt(e.clientX);
     lastDay.current = k;
     moved.current = false;
+    down.current = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
+    far.current = false;
+    scroll.current = false;
     /* ⚠️ Сарын задаргааг ЧИРЭЛТЭЭС ӨМНӨ хуулна (2026-09-17): чирэлт `applyChanges`-аар
        задаргааг хумьдаг тул буцаахад зөвхөн энэ хуулбар л бүтэн сэргээнэ. */
     const blokName = sc?.bld[blk] ?? '';
@@ -143,6 +160,14 @@ export function useDragPlan({
 
   const onMove = (e: PEvt<HTMLElement>) => {
     if (!drag) return;
+    /* ⚠️ Мэдрэгчийн гүйлгээ (дээрх `down`-ийн ⚠️) — илэрсэн бол чирэлт ҮГҮЙ */
+    if (scroll.current) return;
+    if (down.current.touch && !moved.current) {
+      const dx = Math.abs(e.clientX - down.current.x);
+      const dy = Math.abs(e.clientY - down.current.y);
+      if (Math.max(dx, dy) > TAP_PX) far.current = true;
+      if (dy > TAP_PX && dy > dx) { scroll.current = true; return; }
+    }
     const k = dayAt(e.clientX);
     /* ⚠️ ХОНОГ СОЛИГДООГҮЙ бол ЮУ Ч ХИЙХГҮЙ (2026-09-21). Урьд нь
        `&& moved.current` нөхцөлтэй байсан тул ЭХНИЙ `pointermove` (1px
@@ -169,7 +194,7 @@ export function useDragPlan({
   const onUp = () => {
     /* Хөдөлгөөнгүй товшилт: хоосон мөрд 1 хоногийн муж, эсрэг тохиолдолд
        зөвхөн сонголт (дээрх тайлбар). */
-    const blank = !!drag && !moved.current && drag.mode === 'new' && !drag.orig;
+    const blank = !!drag && !moved.current && !far.current && !scroll.current && drag.mode === 'new' && !drag.orig;
     if (drag && blank) {
       commit(drag.oid, { start: msAt(drag.anchor), end: msAt(drag.anchor) });
     }
@@ -217,6 +242,26 @@ export function useDragPlan({
   };
 
   /**
+   * ⚠️ `pointercancel` = ЧИРЭЛТИЙГ ЦУЦЛАХ (2026-10-01). Урьд нь `onUp`-тай ижил
+   * байсан тул хөтөч/систем дохиог тасалбал (гүйлгээ эхлэх, дуудлага ирэх, хуруу
+   * дэлгэцээс гарах) ХАГАС чирэлт ноорогт бичигдэж, popup ч нээгддэг байв. Одоо
+   * popup НЭЭХГҮЙ, «Хаах»-тай ижил агшнаар (`rollback`) буцаана.
+   */
+  const onCancel = () => {
+    if (drag && moved.current && !busy && !locked) {
+      rollback({
+        oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
+        touched: new Set(dragTouched.current),
+        obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
+      });
+    }
+    setDrag(null);
+    moved.current = false;
+    far.current = false;
+    scroll.current = false;
+  };
+
+  /**
    * POPUP ХААГДАХАД ЧИРЭЛТИЙГ БУЦААНА (2026-09-30: `PlanModal`-ын `onClose`-оос
    * механикаар салгав — логик · тайлбар ХЭВЭЭР). Цонхыг хааж (`setModal(null)`),
    * чирэлтээр нээгдсэн бол `undoRef`-ийн агшнаар сэргээнэ.
@@ -225,109 +270,115 @@ export function useDragPlan({
     const u = undoRef.current;
     undoRef.current = null;
     setModal(null);
-    if (u && !busy && !locked) {
-      /*
-       * ⚠️ БҮХ ХӨДӨЛСӨН МӨРИЙГ буцаана (2026-09-23 аудит). Урьд нь
-       *    `applyModal`-аар зөвхөн чирсэн мөрийг буцаадаг байв — тэгэхэд
-       *    гинжээр хөдөлсөн хамааралтай мөрүүд (`propagate`) анхны
-       *    огноондоо биш, чирсэн мөрийн ШИНЭ шаардлагад дахин тооцогдож
-       *    «цуцалсан» засвар ноорогт үлддэг байв. Одоо чирэлтээс өмнөх
-       *    агшин (`snap`)-аас ЗӨРСӨН мөр бүрийг `applyChanges`-аар ШУУД
-       *    (тархалтгүй) сэргээнэ — өмнөх төлөв аль хэдийн нийцтэй байсан.
-       * ⚠️ Зөвхөн `u.blk` блок — цонх нээлттэй байхад блок сольсон бол
-       *    нөгөө блокт хийсэн ажил хөндөгдөхгүй (2026-09-21).
-       * ⚠️ ЗӨВХӨН ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөр (`touched`, 2026-09-24):
-       *    хамт ажиллагчийн алсаас нийлсэн нүд агшнаас зөрдөг ч энэ
-       *    чирэлтийнх биш — буцаавал бусдын ажил цуцлагдана.
-       */
-      const ch = new Map<number, (Span | null)[]>();
-      const put = (i: number, sp: Span | null) => {
-        const next = plan[i].spans.slice();
-        next[u.blk] = sp;
-        ch.set(i, next);
-      };
-      const at = plan.findIndex((x) => x.oid === u.oid);
-      if (at >= 0) put(at, u.span);
-      if (u.snap) {
-        plan.forEach((x, i) => {
-          if (i === at) return;
-          if (u.touched && !u.touched.has(x.oid)) return;
-          const sp = u.snap!.get(x.oid);
-          if (sp === undefined || sameSpan(x.spans[u.blk], sp)) return;
-          put(i, sp);
-        });
-      }
-      applyChanges(ch);
-      /* ⚠️ Сарын задаргааг ЧИРЭЛТЭЭС ӨМНӨХ хуулбараар сэргээнэ (2026-09-17):
-         чирэлт `applyChanges`-аар задаргааг хумьсан байж болох тул `null`
-         (хөндөхгүй) хангалтгүй, `new Map()` (устгах) буруу байв. */
-      const des = at >= 0 ? plan[at].des : null;
-      const blok = sc?.bld[u.blk];
-      if (u.months && des != null && blok) {
-        const key = obKey(des, blok);
-        const months = u.months;
-        setObDraft((m) => {
-          const next = new Map(m);
-          if (sameMonths(months, obPlan.get(des)?.get(blok))) next.delete(key);
-          else next.set(key, months);
-          return next;
-        });
-      }
-      /* Сарын нөөц ч чирэлтээс өмнөх хуулбараар (2026-09-24) */
-      if (u.res && des != null && blok) {
-        const key = obKey(des, blok);
-        const res = u.res;
-        setObResDraft((m) => {
-          const next = new Map(m);
-          if (sameRes(res, obRes.get(des)?.get(blok))) next.delete(key);
-          else next.set(key, res);
-          return next;
-        });
-      }
-      /* ⚠️ ГИНЖЭЭР ХӨДӨЛСӨН мөрийн задаргаа/нөөц ч чирэлтээс өмнөх агшнаар
-         (2026-09-24 аудит): муж нь дээр буцсан ч `applyChanges`-ийн
-         `keepMonths`/`keepRes` тайралт ноорогт үлдэж «хадгалаагүй N» +
-         тэнцээгүй нийлбэр гардаг байв. Зөвхөн `touched` мөр · `u.blk` блок. */
-      if (blok && (u.obSnap || u.obResSnap)) {
-        const keys: string[] = [];
-        plan.forEach((x, i) => {
-          if (i === at || x.des == null) return;
-          if (u.touched && !u.touched.has(x.oid)) return;
-          keys.push(obKey(x.des, blok));
-        });
-        /* ⚠️ БУСДЫН нүдийг агшнаар ДАРАХГҮЙ (2026-09-24 аудит): цонх нээлттэй
-           байхад мөчлөг (`hdApply`) бусдын m:/n: нүдийг нийлүүлсэн бол
-           чирэлтээс өмнөх агшин түүнийг арчдаг байв. Мета-д өөр хэрэглэгч
-           бичсэн нүдийг алгасна. */
-        const other = (hk: string) => {
-          const mu = hdMeta.current.get(hk)?.user;
-          return !!mu && mu !== meRef.current;
-        };
-        if (keys.length && u.obSnap) {
-          const snap = u.obSnap;
-          setObDraft((m) => {
-            const next = new Map(m);
-            for (const k of keys) {
-              if (other(kM(k))) continue;
-              const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
-            }
-            return next;
-          });
-        }
-        if (keys.length && u.obResSnap) {
-          const snap = u.obResSnap;
-          setObResDraft((m) => {
-            const next = new Map(m);
-            for (const k of keys) {
-              if (other(kN(k))) continue;
-              const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
-            }
-            return next;
-          });
-        }
-      }
-    }
+    if (u && !busy && !locked) rollback(u);
   };
 
-  return { undoRef, onDown, onMove, onUp, undoDragOnClose };
+  /**
+   * ЧИРЭЛТЭЭС ӨМНӨХ АГШНААР БУЦААХ (2026-10-01: `undoDragOnClose`-оос салгав —
+   * `onCancel` ч ашиглана; логик · тайлбар ХЭВЭЭР).
+   */
+  function rollback(u: NonNullable<typeof undoRef.current>) {
+    /*
+     * ⚠️ БҮХ ХӨДӨЛСӨН МӨРИЙГ буцаана (2026-09-23 аудит). Урьд нь
+     *    `applyModal`-аар зөвхөн чирсэн мөрийг буцаадаг байв — тэгэхэд
+     *    гинжээр хөдөлсөн хамааралтай мөрүүд (`propagate`) анхны
+     *    огноондоо биш, чирсэн мөрийн ШИНЭ шаардлагад дахин тооцогдож
+     *    «цуцалсан» засвар ноорогт үлддэг байв. Одоо чирэлтээс өмнөх
+     *    агшин (`snap`)-аас ЗӨРСӨН мөр бүрийг `applyChanges`-аар ШУУД
+     *    (тархалтгүй) сэргээнэ — өмнөх төлөв аль хэдийн нийцтэй байсан.
+     * ⚠️ Зөвхөн `u.blk` блок — цонх нээлттэй байхад блок сольсон бол
+     *    нөгөө блокт хийсэн ажил хөндөгдөхгүй (2026-09-21).
+     * ⚠️ ЗӨВХӨН ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөр (`touched`, 2026-09-24):
+     *    хамт ажиллагчийн алсаас нийлсэн нүд агшнаас зөрдөг ч энэ
+     *    чирэлтийнх биш — буцаавал бусдын ажил цуцлагдана.
+     */
+    const ch = new Map<number, (Span | null)[]>();
+    const put = (i: number, sp: Span | null) => {
+      const next = plan[i].spans.slice();
+      next[u.blk] = sp;
+      ch.set(i, next);
+    };
+    const at = plan.findIndex((x) => x.oid === u.oid);
+    if (at >= 0) put(at, u.span);
+    if (u.snap) {
+      plan.forEach((x, i) => {
+        if (i === at) return;
+        if (u.touched && !u.touched.has(x.oid)) return;
+        const sp = u.snap!.get(x.oid);
+        if (sp === undefined || sameSpan(x.spans[u.blk], sp)) return;
+        put(i, sp);
+      });
+    }
+    applyChanges(ch);
+    /* ⚠️ Сарын задаргааг ЧИРЭЛТЭЭС ӨМНӨХ хуулбараар сэргээнэ (2026-09-17):
+       чирэлт `applyChanges`-аар задаргааг хумьсан байж болох тул `null`
+       (хөндөхгүй) хангалтгүй, `new Map()` (устгах) буруу байв. */
+    const des = at >= 0 ? plan[at].des : null;
+    const blok = sc?.bld[u.blk];
+    if (u.months && des != null && blok) {
+      const key = obKey(des, blok);
+      const months = u.months;
+      setObDraft((m) => {
+        const next = new Map(m);
+        if (sameMonths(months, obPlan.get(des)?.get(blok))) next.delete(key);
+        else next.set(key, months);
+        return next;
+      });
+    }
+    /* Сарын нөөц ч чирэлтээс өмнөх хуулбараар (2026-09-24) */
+    if (u.res && des != null && blok) {
+      const key = obKey(des, blok);
+      const res = u.res;
+      setObResDraft((m) => {
+        const next = new Map(m);
+        if (sameRes(res, obRes.get(des)?.get(blok))) next.delete(key);
+        else next.set(key, res);
+        return next;
+      });
+    }
+    /* ⚠️ ГИНЖЭЭР ХӨДӨЛСӨН мөрийн задаргаа/нөөц ч чирэлтээс өмнөх агшнаар
+       (2026-09-24 аудит): муж нь дээр буцсан ч `applyChanges`-ийн
+       `keepMonths`/`keepRes` тайралт ноорогт үлдэж «хадгалаагүй N» +
+       тэнцээгүй нийлбэр гардаг байв. Зөвхөн `touched` мөр · `u.blk` блок. */
+    if (blok && (u.obSnap || u.obResSnap)) {
+      const keys: string[] = [];
+      plan.forEach((x, i) => {
+        if (i === at || x.des == null) return;
+        if (u.touched && !u.touched.has(x.oid)) return;
+        keys.push(obKey(x.des, blok));
+      });
+      /* ⚠️ БУСДЫН нүдийг агшнаар ДАРАХГҮЙ (2026-09-24 аудит): цонх нээлттэй
+         байхад мөчлөг (`hdApply`) бусдын m:/n: нүдийг нийлүүлсэн бол
+         чирэлтээс өмнөх агшин түүнийг арчдаг байв. Мета-д өөр хэрэглэгч
+         бичсэн нүдийг алгасна. */
+      const other = (hk: string) => {
+        const mu = hdMeta.current.get(hk)?.user;
+        return !!mu && mu !== meRef.current;
+      };
+      if (keys.length && u.obSnap) {
+        const snap = u.obSnap;
+        setObDraft((m) => {
+          const next = new Map(m);
+          for (const k of keys) {
+            if (other(kM(k))) continue;
+            const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
+          }
+          return next;
+        });
+      }
+      if (keys.length && u.obResSnap) {
+        const snap = u.obResSnap;
+        setObResDraft((m) => {
+          const next = new Map(m);
+          for (const k of keys) {
+            if (other(kN(k))) continue;
+            const v = snap.get(k); if (v) next.set(k, v); else next.delete(k);
+          }
+          return next;
+        });
+      }
+    }
+  }
+
+  return { undoRef, onDown, onMove, onUp, onCancel, undoDragOnClose };
 }

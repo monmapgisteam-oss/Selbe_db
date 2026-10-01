@@ -447,16 +447,27 @@ export function propagate(
 
   /** Мөр шилжсэний дараа: өөрийнх нь код + бүх дээд бүлгийн кодыг дараалалд —
       бүлгийн үр дүнтэй муж хүүхдээсээ болж өөрчлөгддөг тул түүнээс хамаарах
-      ажлууд ч дахин бодогдох ёстой. */
+      ажлууд ч дахин бодогдох ёстой.
+      ⚠️ 2026-10-01: ДАВХАРДАЛГҮЙ (`pending`). Урьд нь бүлэг шилжихэд дэд модны
+      мөр БҮРТ бүлгийн код + өвгүүдийн код дахин дахин орж (25 хүүхэд → бүлгийн
+      код 26 удаа), хамаарагч бүр давхардал болгонд 20-ийн хязгаараа «зарцуулж»,
+      дараа нь ирэх ЖИНХЭНЭ шинэчлэл (жиш. урт гинжний сүүлээс) алгасагдаж огноо
+      нь буруу үлддэг байв. Дараалалд аль хэдийн хүлээж буй код дахин орохгүй —
+      сугалах үедээ хамгийн сүүлийн мужаар бодогдох тул алдагдах зүйлгүй.
+      Мөн өвөг хайлтыг `d > 0`-д зогсооно (rollUpGroups / affectedCodes-тай адил). */
   const q: number[] = [];
+  const pending = new Set<number>();
+  const push = (c: number | null | undefined) => {
+    if (c == null || pending.has(c)) return;
+    pending.add(c);
+    q.push(c);
+  };
   const enqueue = (i: number) => {
-    const c0 = rows[i].des;
-    if (c0 != null) q.push(c0);
-    for (let k = i - 1, d = rows[i].depth; k >= 0; k--) {
+    push(rows[i].des);
+    for (let k = i - 1, d = rows[i].depth; k >= 0 && d > 0; k--) {
       if (rows[k].depth < d && rows[k].group) {
         d = rows[k].depth;
-        const c = rows[k].des;
-        if (c != null) q.push(c);
+        push(rows[k].des);
       }
     }
   };
@@ -520,6 +531,7 @@ export function propagate(
   const passes = new Map<number, number>();
   while (q.length) {
     const code = q.shift()!;
+    pending.delete(code); // ⚠️ сугалсны ДАРАА дахин шилжвэл дахин орох ёстой
     for (const i of dependents.get(code) ?? []) {
       const n = (passes.get(i) ?? 0) + 1;
       if (n > 20) continue;

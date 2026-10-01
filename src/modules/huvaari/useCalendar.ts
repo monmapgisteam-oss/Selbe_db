@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DAY, type PlanRow } from '@/lib/plan';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { PL_OVER, PL_ROW, ZOOM, type Zoom } from './types';
@@ -37,10 +37,17 @@ export function useCalendar({ plan, drag, zoom, visible, sel, jumpedRef }: {
   }, [now]);
   /* ── ХУАНЛИЙН ХҮРЭЭ — доод тал нь 365 хоног, хоёр талдаа СУЛ ЗАЙТАЙ ── */
   const range = useMemo(() => {
-    const all: number[] = [];
-    for (const r of plan) for (const sp of r.spans) if (sp) { all.push(sp.start, sp.end); }
-    const lo = all.length ? Math.min(...all, now) : now;
-    const hi = all.length ? Math.max(...all) : now;
+    /* ⚠️ 2026-10-01: давталтаар — `Math.min(...all)` нь ~64k аргумент дамжуулж
+       Safari дээр RangeError өгөх эрсдэлтэй байв. Зурвасгүй бол `now` (хуучин ёс). */
+    let lo = now;
+    let hi = -Infinity;
+    for (const r of plan) for (const sp of r.spans) if (sp) {
+      if (sp.start < lo) lo = sp.start;
+      if (sp.end < lo) lo = sp.end;
+      if (sp.start > hi) hi = sp.start;
+      if (sp.end > hi) hi = sp.end;
+    }
+    if (hi === -Infinity) hi = now;
     /**
      * ⚠️ СУЛ ЗАЙ (2026-09-02, хэрэглэгч). Урьд нь `from`/`to` нь өгөгдлийн ЯГ
      * захууд байв: хамгийн сүүлийн зурвас хуанлийн баруун ирмэгт наалдаж,
@@ -66,6 +73,19 @@ export function useCalendar({ plan, drag, zoom, visible, sel, jumpedRef }: {
   useEffect(() => { if (!drag) rangeRef.current = range; }, [drag, range]);
   const { from, to } = drag ? rangeRef.current : range;
   const px = ZOOM[zoom];
+  /* ⚠️ `from` ӨӨРЧЛӨГДӨХӨД ХАРАГДАЦ ҮСРЭХГҮЙ (2026-10-01): чирэлт/popup хамгийн
+     эрт ажлыг өмнөх сар руу зөөхөд `from` сараар эрт болж бүх зурвас баруун тийш
+     шилжиж, дэлгэц ~1 сар «үсэрдэг» байв. Зөрүүг `scrollLeft`-д нөхнө.
+     ⚠️ `useLayoutEffect` — будахаас ӨМНӨ, нэг кадр ч үсрэлт харагдахгүй.
+     ⚠️ Томруулалт (`px`) солигдоход нөхөхгүй — зөвхөн `from`-ийн шилжилт. */
+  const fromRef = useRef(from);
+  useLayoutEffect(() => {
+    const old = fromRef.current;
+    fromRef.current = from;
+    const el = scrollRef.current;
+    if (old === from || !el) return;
+    el.scrollLeft = Math.max(0, el.scrollLeft + Math.round(((old - from) / DAY) * px));
+  }, [from, px]);
   const total = Math.round((to - from) / DAY) + 1;
   const W = Math.round(total * px);
   const xOf = useCallback((ms: number) => Math.round(((ms - from) / DAY) * px), [from, px]);

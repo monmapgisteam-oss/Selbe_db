@@ -643,7 +643,13 @@
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
-.plLanes { position: relative; user-select: none; touch-action: none; }
+/* ⚠️ МЭДРЭГЧ ДЭЛГЭЦИЙН ГҮЙЛГЭЭ (2026-10-01): урьд нь `touch-action: none` БҮГДЭД
+   байсан тул зөвхөн харах эрхтэй хэрэглэгч ч хуанлийг хуруугаар гүйлгэж чаддаггүй
+   байв. Анхдагч нь `pan-x pan-y`; засах эрхтэй үед л (`plLanesEdit`) `none` —
+   зурвас/бариул чирэх, хоосон мөрд муж татах. `touch-action` нь өвөг рүүгээ
+   огтлолцдог тул доторх `.plBar`/`.plGrip` ч `none` болно. */
+.plLanes { position: relative; user-select: none; touch-action: pan-x pan-y; }
+.plLanesEdit { touch-action: none; }
 .plLane {
   position: absolute;
   left: 0;

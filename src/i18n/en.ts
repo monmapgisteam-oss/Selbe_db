@@ -4551,7 +4551,6 @@ const en: Record<string, string> = {
   "Ноорог алсад хадгалагдсангүй — {0}": "Draft not saved remotely — {0}",
   "ноорогт: {0}": "in draft: {0}",
   "алсын ноорог цэвэрлэгдсэнгүй — {0}": "remote draft could not be cleared — {0}",
-  "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу? Хуваалцсан ноорог бүх оролцогчид устна.": "{0} unsaved changes. Discard them and switch? The shared draft will be deleted for all participants.",
   "Илгээлтийн агуулга өөрчлөгдсөн — дахин уншина уу": "Submission content has changed — reload and review again",
   "Эхлээд илгээгээгүй засвараа илгээнэ үү эсвэл ноорогоо устгана уу.": "First submit or discard your unsent edits.",
   "Буцаагдсан илгээлт олдсонгүй — хуудсыг дахин ачаална уу.": "Returned submission not found — reload the page.",
@@ -6254,7 +6253,15 @@ const en: Record<string, string> = {
   "Эрхийн түлхүүр": "Permission key",
   "Мөрийн түлхүүр": "Row key",
   "Зурж эхэлсэн дүрс дуусаагүй байна. Хаях уу?": "The shape you started drawing is not finished. Discard it?",
-  "гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)": "paid {0} outside contracted packages (not in %)"
+  "гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)": "paid {0} outside contracted packages (not in %)",
+  "{0} энэ багцын хуваарийг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.": "{0} submitted this package's schedule first — your submission was cancelled. Get it decided first.",
+  "Өөр хэрэглэгч": "Another user",
+  "Хадгалаагүй {0} өөрчлөлт байна. Хаяад солих уу?": "{0} unsaved changes. Discard them and switch?",
+  "Энэ илгээлтийн хуваарийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн — буцаах боломжгүй. «Батлах»-ыг дахин дарж бичилтийг гүйцээнэ үү.": "Approver ({0}) has PARTIALLY written this submission's schedule to the source sheet — it cannot be returned. Press «Approve» again to complete the write.",
+  "Батлагч ({0}) энэ илгээлтийн хуваарийг эх хуудсанд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.": "Approver ({0}) has PARTIALLY written this submission's schedule to the source sheet — it cannot be withdrawn. The approver will complete the approval.",
+  "Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.": "The partial-write protection marker was not saved ({0}) — nothing was written to the source sheet; please try again.",
+  "{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй": "monthly breakdown tasks for {0} task·block(s) were not found on the sheet",
+  "Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.": "The schedule is already written to the source sheet, so it cannot be returned — press «Approve» again to finish."
 };
 
 export default en;

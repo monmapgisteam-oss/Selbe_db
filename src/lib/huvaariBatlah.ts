@@ -294,6 +294,54 @@ export const F = {
   okRows: 'zovshoorson_mor',
 } as const;
 
+/**
+ * ХАГАС БИЧИГДСЭН БАТЛАЛТЫН СЕРВЕРИЙН ТЭМДЭГ (2026-10-01).
+ *
+ * ⚠️ ЯАГААД: батлагчийн `save` нь огноо (`applyUpdates`) ба сарын обьёмыг
+ *    (`applyPlanEdits`) тусдаа бичээд, ДАРАА нь `decidePlan`-аар төлвийг хөдөлгөдөг.
+ *    Завсарт унавал санал эх хуудсанд (хэсэгчлэн ч) суусан атлаа `pending` хэвээр.
+ *    Урьд нь хамгаалалт нь зөвхөн санах ойд (`Huvaari.partialRef`) ба `CLAIM_TTL`
+ *    (10 мин) түгжээнд байсан тул хуудас сэргээх эсвэл 10 минутын дараа зохиогч
+ *    ТАТАХ, жагсаалтаас БУЦААХ хоёулаа амжилттай болж, «татсан/буцаагдсан» саналын
+ *    огноо эх хуудсанд үлддэг байв.
+ * ⚠️ ХЭЛБЭР: ШИНЭ ТАЛБАР НЭМЭЭГҮЙ — `pending` мөрийн `butsaasan_shaltgaan` (буцаах
+ *    шалтгаан нь ЗӨВХӨН `returned`-д утгатай, `pending`-д хэзээ ч уншигддаггүй) талбарт
+ *    `${PARTIAL_MARK}:${батлагч}` бичнэ. Хугацаагүй: зөвхөн `decidePlan(approve:true)`
+ *    амжилттай болоход (`reason: null`) арилна.
+ * ⚠️ Тэмдэгтэй үед: `withdrawPlan` ба `decidePlan(approve:false)` ТАТГАЛЗАНА; батлах нь
+ *    (бичилтийг гүйцээх) ЗӨВШӨӨРӨГДӨНӨ — өөр батлагч ч `claimPlan`-аар хугацаа нь
+ *    дууссан түгжээг авч гүйцээж болно. Өгөгдөл тул ОРЧУУЛАГДАХГҮЙ.
+ */
+export const PARTIAL_MARK = '__hagas_bichigdsen__';
+/**
+ * Хагас бичсэн батлагчийн нэр (`''` = нэргүй тэмдэг), тэмдэггүй бол `null`.
+ * ⚠️ ЦЭВЭР — `huvaariBatlah.check` тестэлнэ. Зөвхөн `pending` мөрд хүчинтэй.
+ */
+export function partialBy(status: string | null | undefined, reason: string | null | undefined): string | null {
+  if (status !== PLAN_STATUS.pending) return null;
+  const r = (reason ?? '').trim();
+  if (r !== PARTIAL_MARK && !r.startsWith(`${PARTIAL_MARK}:`)) return null;
+  return r.slice(PARTIAL_MARK.length + 1).trim().toLowerCase();
+}
+
+/**
+ * ДАВХАР ИЛГЭЭЛТИЙН ЦУЦЛАЛТЫН ТЭМДЭГ (2026-10-01) — `submitPlan`-ийн давхардал арилгах
+ * зам устгал унахад ялагдсан мөрийг `withdrawn` болгохдоо `butsaasan_shaltgaan`-д бичнэ.
+ * ⚠️ ЯАГААД: тэр мөр (их OBJECTID) нь `loadLastPerPkg`/`loadHistory`-д багцын «сүүлийн
+ *    шийдвэр» болж, жинхэнэ буцаалтын шалтгааныг зохиогчоос нууж, «Ноорогт буцаах»
+ *    (`restoreWithdrawn`) нь цуцлагдсан саналыг сэргээх байв. Шийдвэр БИШ — алгасна.
+ */
+export const DUP_MARK = '__davhar_tsutslagdsan__';
+/**
+ * Давхардлын улмаас цуцлагдсан мөр мөн эсэх — «сүүлийн шийдвэр»-ээс хасна.
+ * ⚠️ `approverAt == null` нөөц шалгуур: тэмдэггүй (2026-10-01-ний өмнөх кодоор) бичигдсэн
+ *    цуцлалт ч мөн ийм — жинхэнэ `withdrawPlan` ҮРГЭЛЖ `approverAt`-ийг бичдэг.
+ */
+export function isDupCancel(x: Pick<PlanSubmission, 'status' | 'reason' | 'approverAt'>): boolean {
+  if (x.status !== PLAN_STATUS.withdrawn) return false;
+  return (x.reason ?? '').trim() === DUP_MARK || x.approverAt == null;
+}
+
 /* ══════════════════════ ArcGIS давхарга ══════════════════════ */
 
 async function getToken(): Promise<{ token: string; user: string } | null> {
@@ -676,9 +724,11 @@ export async function loadPending(pkgKey: string): Promise<PlanSubmission | null
     HEAD_FIELDS,
   );
   const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
-  /* ⚠️ Хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) СҮҮЛИЙНХ ялна —
-     `permsRemote`-ийн «их OBJECTID ялна» дүрэмтэй ижил. */
-  return list.length ? list[list.length - 1] : null;
+  /* ⚠️ Хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) ЭХНИЙХ (бага OBJECTID) ялна —
+     `submitPlan`-ийн давхардал арилгах дүрэмтэй ИЖИЛ (2026-10-01): тэнд бага нь үлдэж, их нь
+     устдаг. Урьд «их ялна» байсан тул цуцлагдсан илгээлт хүлээгдэж буй мэт харагдах байв. */
+  list.sort((a, b) => a.oid - b.oid);
+  return list[0] ?? null;
 }
 
 /** Батлагчийн жагсаалт — хүлээгдэж буй БҮХ илгээлт */
@@ -698,7 +748,8 @@ export async function loadLastPerPkg(): Promise<PlanSubmission[]> {
   const last = new Map<string, PlanSubmission>();
   for (const a of rows) {
     const x = toSubmission(a);
-    if (x) last.set(x.pkgKey, x);
+    /* ⚠️ 2026-10-01: давхардлын цуцлалт шийдвэр биш (`isDupCancel`) — буцаалтыг нуухгүй */
+    if (x && !isDupCancel(x)) last.set(x.pkgKey, x);
   }
   return [...last.values()];
 }
@@ -712,7 +763,8 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<PlanSubmi
        хүлээгдэж буй жагсаалт хөнгөн хэвээр (`HEAD_FIELDS`). */
     await headFields(),
   );
-  const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
+  /* ⚠️ 2026-10-01: давхардлын цуцлалтыг хасна (`isDupCancel`) — `limit` хасалтын ДАРАА */
+  const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null && !isDupCancel(x));
   return list.slice(-limit).reverse();
 }
 
@@ -937,6 +989,35 @@ export async function submitPlan(args: {
     });
     if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('HUVAARI_BATLAH');
+    /*
+     * ⚠️ ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (2026-10-01, хэрэглэгч). Дээрх `loadPending` шалгалт ба
+     *    `adds` хоёрын завсарт хоёр хүн зэрэг дарвал хоёулаа шалгалтыг давж, нэг багцад
+     *    хоёр `pending` үүсдэг байв. Бичсэний ДАРАА дахин уншиж, БАГА OBJECTID-тай (түрүүлж
+     *    бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр тал ижил дүрмээр
+     *    шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно (pending-ээс гарна).
+     */
+    const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
+    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:false`
+       буцаавал UI түгжигдэхгүй, дахин илгээх нь «илгээлт байна»-д унадаг байв. */
+    if (Number.isFinite(mine)) try {
+      const rows = await query(
+        `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${PLAN_STATUS.pending}'`,
+        `${F.oid},${F.author}`,
+      );
+      const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
+      if (first != null && first < mine) {
+        const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        if (!editOk(del?.deleteResults)) {
+          /* ⚠️ 2026-10-01: `DUP_MARK`-аар ялгана — «сүүлийн шийдвэр» болохгүй (`isDupCancel`) */
+          await arcgisPost(`${url}/applyEdits`, {
+            updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: PLAN_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
+          }).catch(() => null);
+        }
+        invalidate('HUVAARI_BATLAH');
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
+        return { ok: false, error: tr('{0} энэ багцын хуваарийг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
+      }
+    } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -1019,7 +1100,7 @@ export async function decidePlan(args: {
    *    нэр чимээгүй дарагдана. Мөр нь ганц тул `applyEdits` алдаа өгөхгүй —
    *    ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
@@ -1050,6 +1131,15 @@ export async function decidePlan(args: {
         ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, curStatus ?? '')
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
+  }
+  /* ⚠️ ХАГАС БИЧИГДСЭН САНАЛЫГ БУЦААХГҮЙ (2026-10-01, `PARTIAL_MARK`-ийн ⚠️) — огноо нь эх
+     хуудсанд аль хэдийн орсон; буцаавал «буцаагдсан» санал хуваарьт үлдэнэ. Батлах нь
+     (бичилтийг гүйцээх) зөвшөөрөгдөнө. Хугацаагүй, сервер дээр — сэргээлт/TTL-ээр алга болохгүй. */
+  if (!args.approve) {
+    const pb = partialBy(curStatus, s(cur[0][F.reason]));
+    if (pb != null) {
+      return { ok: false, error: tr('Энэ илгээлтийн хуваарийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн — буцаах боломжгүй. «Батлах»-ыг дахин дарж бичилтийг гүйцээнэ үү.', pb || '—') };
+    }
   }
   /* ⚠️ 2026-09-25 аудит: ӨӨР батлагч түгжсэн (эх хуудсанд бичиж буй) бол шийдвэр
      гаргахгүй — хоёр дахь батлагчийн буцаалт/батлалт эхнийхийн бичилтийг дарна. */
@@ -1352,6 +1442,33 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
 }
 
 /**
+ * ХАГАС БИЧИЛТИЙН ТЭМДЭГ ТАВИХ — батлагчийн `save` эх хуудсанд АНХНЫ бичилтээс ӨМНӨ
+ * (2026-10-01, `PARTIAL_MARK`-ийн ⚠️).
+ * ⚠️ Түгжээ ӨӨРИЙНХ эсэхийг дуудагч (`Huvaari.save` → `approveGuard`) сая шалгасан тул
+ *    энд дахин уншихгүй — зөвхөн `butsaasan_shaltgaan`-д тэмдэг бичнэ (`approver`/
+ *    `approverAt` хөндөхгүй → түгжээ хэвээр).
+ * ⚠️ FAIL-CLOSED: бичигдээгүй бол дуудагч эх хуудсанд ЮУ Ч бичихгүй — тэмдэггүй хагас
+ *    бичилт нь хамгаалалтгүй үлдэнэ. ArcGIS алдаа HTTP 200-аар ирдэг тул `editOk`.
+ */
+export async function markPlanPartial(args: { oid: number; approver: string }): Promise<{ ok: boolean; error?: string }> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const url = await tableUrl(false);
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  try {
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.reason]: `${PARTIAL_MARK}:${me}` } }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('HUVAARI_BATLAH');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
  * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч ӨӨРИЙН хүлээгдэж буй илгээлтийг буцааж авна
  * (2026-09-21).
  *
@@ -1383,7 +1500,7 @@ export async function withdrawPlan(args: {
   }
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt},${F.reason}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
@@ -1400,6 +1517,12 @@ export async function withdrawPlan(args: {
   /* ⚠️ 2026-09-25 аудит: батлагч түгжсэн (эх хуудсанд бичиж буй) үед ТАТАХГҮЙ —
      урьд нь татсны дараа ч батлагчийн бичилт эх хуудсанд орж, «татсан» санал
      хуваарьт суудаг байв. */
+  /* ⚠️ 2026-10-01: ХАГАС БИЧИГДСЭН бол ТАТАХГҮЙ (`PARTIAL_MARK`-ийн ⚠️) — түгжээний
+     хугацаа (`CLAIM_TTL`) дууссан ч, хуудас сэргээсэн ч сервер дээрх тэмдэг хэвээр. */
+  const pb = partialBy(curStatus, s(cur[0][F.reason]));
+  if (pb != null) {
+    return { ok: false, error: tr('Батлагч ({0}) энэ илгээлтийн хуваарийг эх хуудсанд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.', pb || '—') };
+  }
   const holder = claimHolder(cur[0]);
   if (holder) {
     return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.', holder) };

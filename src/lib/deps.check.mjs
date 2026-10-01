@@ -371,4 +371,24 @@ console.log('✅ танигдаагүй токен хадгалалтад алд
   console.log('✅ pinned — overrides + recalc зэрэг: гарын огноо наагдахгүй');
 }
 
+/* ── ⚠️ ДАРААЛЛЫН ДАВХАРДАЛ (2026-10-01): олон хүүхэдтэй бүлэг шилжихэд бүлгийн
+   код хүүхэд БҮРТ дараалалд орж, хамаарагчийн 20 удаагийн хязгаарыг дүүргээд
+   урт гинжний сүүлээс ирэх жинхэнэ шинэчлэл алгасагддаг байв.
+   P(1) → G2(2, 25 хүүхэд); P → Q1 → Q2 → Q3; Y нь G2 ба Q3-аас хамаарна. ── */
+{
+  const rows = [row(0, 1, [], [sp(0, 9)], { depth: 0 })];
+  rows.push(row(1, 2, parseDeps('1FS'), [sp(10, 19)], { group: true, depth: 0 }));
+  for (let k = 0; k < 25; k++) rows.push(row(rows.length, 100 + k, [], [sp(10, 19)], { depth: 1 }));
+  rows.push(row(rows.length, 3, parseDeps('1FS'), [sp(10, 11)], { depth: 0 }));
+  rows.push(row(rows.length, 4, parseDeps('3FS'), [sp(12, 13)], { depth: 0 }));
+  rows.push(row(rows.length, 5, parseDeps('4FS'), [sp(14, 24)], { depth: 0 }));
+  rows.push(row(rows.length, 6, parseDeps('2FS,5FS'), [sp(25, 26)], { depth: 0 }));
+  const Q3 = rows.length - 2, Y = rows.length - 1;
+  const ch = propagate(rows, 1, new Map([[0, [sp(30, 39)]]]));
+  assert.deepEqual(ch.get(1)[0], sp(40, 49), 'бүлэг G2 шилжив');
+  assert.deepEqual(ch.get(Q3)[0], sp(44, 54), 'гинжний сүүл Q3 шилжив');
+  assert.deepEqual(ch.get(Y)[0], sp(55, 56), 'Y нь Q3 дууссаны маргааш — давхардлаас болж алгасагдав');
+  console.log('✅ бүлгийн дэд мод дарааллыг дүүргэж хамаарагчийн шинэчлэл алгасагдахгүй');
+}
+
 console.log('\ndeps.check: ok');
