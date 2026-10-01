@@ -396,6 +396,8 @@ export const cfItemsOf = (p: TuhPkg): { id: number; cost: number }[] => p.rows
  *    хэмжигдсэн блок л тул шинэ блок анх тайлагнах 7 хоногт дундаж унаж, ажил
  *    урагшилсан ч «7 хоногт −3 pp» гэж ХУДАЛ харагддаг байв (`finPhys` дүрэм 1-ийн
  *    засварласан алдаа; `progressSeries`-ийн `'latest'` ⚠️-д «сул тал» гэж бичигдсэн).
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваагч = багцын БҮХ блок (`total` — бөглөх
+ *    хуудасны хуваарь), тайлагнаагүй блок 0% — `buildPhys`-ийн шинэ хуваагчтай нэг.
  * ⚠️ Бүлэглэл нь `buildPhys`-тэй ИЖИЛ: `bagtsKey(багц)` + `blockKey(блок)`.
  * ⚠️ 7 хоногийн өмнө НЭГ Ч блок хэмжигдээгүй бол `null` — багцын анхны тайлан
  *    бүхэлдээ «энэ 7 хоногийн ахиц» болж хөөрөгдөхгүй. Хэмжилт алга бол `null` (0 биш).
@@ -404,6 +406,8 @@ export function weekDelta(
   hist: ReadonlyMap<string, readonly { date: string; pct: number | null }[]>,
   pkgKey: string,
   today: string,
+  /** Багцын блокийн хуваарь (`FinData.physN`) — өгөөгүй бол утгатай блокийн тоо */
+  total?: number,
 ): number | null {
   if (!pkgKey) return null;
   const before = new Date(`${today}T00:00:00Z`);
@@ -446,7 +450,8 @@ export function weekDelta(
       sum += best;
       any = true;
     }
-    return any ? sum / members.length : null;
+    /* ⚠️ 2026-10-01: хуваагч = багцын БҮХ блок (`total`, тайлагнаагүй 0%) — `buildPhys`-тэй нэг */
+    return any ? sum / Math.max(members.length, total ?? 0) : null;
   };
   const now = asOf(today);
   const then = asOf(wk);

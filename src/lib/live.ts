@@ -488,9 +488,10 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
  * Хэрэв тэнд өөрчлөгдвөл энд ч өөрчлөгдөх ёстой — эс бөгөөс нэг үзүүлэлт
  * хоёр самбарт хоёр өөр тоо харуулна (`gdash.chartTypeCost`-ийн ⚠️).
  *
- * ⚠️ ХЭМЖИГДЭЭГҮЙ блокийг ДУНДАЖИД ОРУУЛАХГҮЙ (`null ≠ 0`): «Б.» мөр нь
- * бөглөгдөөгүй блок `BlockProgressMap`-д ОГТ ОРДОГГҮЙ (`blockProgress.ts:100`).
- * Нэг ч блок хэмжигдээгүй багц Map-д ОРОХГҮЙ — «0%» БИШ, «мэдээлэлгүй».
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ХЭМЖИГДЭЭГҮЙ блок 0% гэж ДУНДАЖИД ОРНО —
+ * хуваарь нь бөглөх хуудасны бүх блок (`blockProgress.loadBlockUniverse`). Урьд нь
+ * хэмжигдээгүй блок/багц «мэдээлэлгүй» гэж хасагддаг байв. Нэг ч блок тайлагнаагүй
+ * багц 0%; зөвхөн хуудас уншигдаагүй (ачаалалт унасан) багц Map-д орохгүй.
  *
  * ⚠️ БАГЦ 3.1 бусад багцтай ИЖИЛ — бөглөлтөөс. Түүний cashflow солилт
  *    (`FILL_FROM_CASHFLOW`) 2026-09-30-нд хасагдсан (`loadBlockProgress`-ийн ⚠️).
@@ -500,11 +501,12 @@ async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> 
      энгийн дундаж. Урьд нь барилгын давхаргын feature-ээр гүйлгэдэг байсан тул
      давхардсан feature (29/1, 5/6) хоёр тоологдож, footprint-гүй хэмжилт (29/3, 5/8)
      хасагдаж, Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт (`Finance.physLatest`) ба Тайлан
-     §3 (`loadOverall`)-аас зөрдөг байв. Давхарга ЭНД хэрэггүй болсон. */
-  const { loadBlockProgress, loadBlockProgressFresh, pkgProgressOf } = await import('@/lib/blockProgress');
-  const prog = fresh ? await loadBlockProgressFresh() : await loadBlockProgress();
+     §3 (`loadOverall`)-аас зөрдөг байв. Давхарга ЭНД хэрэггүй болсон.
+     ⚠️ 2026-10-01: `loadPkgProgress` — хэмжилт + бөглөх хуудасны блокийн хуваарь
+     (тайлагнаагүй блок 0%). */
+  const { loadPkgProgress } = await import('@/lib/blockProgress');
   const out = new Map<string, number>();
-  for (const [k, v] of pkgProgressOf(prog)) out.set(k, v.pct);
+  for (const [k, v] of await loadPkgProgress(fresh)) out.set(k, v.pct);
   return out;
 }
 

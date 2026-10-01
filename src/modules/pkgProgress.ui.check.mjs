@@ -18,6 +18,10 @@
  *      байхгүй бол `null` (feature-ийн дундаж руу буцаж унахгүй); Map-гүй бол хуучин.
  *   3. `PackKpi` — сонгосон багцын «гүйцэтгэл» хавтан `active.progress`-ийг зурна
  *      (давхардсан feature-ээр дахин дундажлахгүй).
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь нь бөглөх хуудасны БҮХ блок (`universe`),
+ *    тайлагнаагүй (эсвэл нүд нь цэвэрлэгдсэн) блок 0%; ОГТ тайлагнаагүй багц 0% (урьд нь
+ *    Map-д ордоггүй, null). Доорх хүлээгдэж буй утгууд шинэ дүрмээр (60 → 45, 12.5 → 6.25).
  */
 import assert from 'node:assert/strict';
 
@@ -57,7 +61,7 @@ const { pkgProgressOf } = await import('@/lib/blockProgress.ts');
 const { buildPhys } = await import('@/lib/finPhys.ts');
 const { buildingKey } = await import('@/lib/services.ts');
 const { monthKey } = await import('@/lib/format.ts');
-const { physLatest, projectPlanOf, physNow } = await import('@/modules/Finance.tsx');
+const { physLatest, projectPlanOf, physNow, contractMonths } = await import('@/modules/Finance.tsx');
 const { buildPacks, PackKpi, blockCount } = await import('@/modules/Bagts.tsx');
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
@@ -85,18 +89,35 @@ for (const [k, pts] of hist) {
   const last = pts[pts.length - 1];
   if (last.pct != null) pm.set(k, { overall: last.pct, date: last.date, phases: [] });
 }
-const means = pkgProgressOf(pm);
-assert.equal(means.get('БАГЦ1').pct, 60, '(90 + 30 + 60) / 3 — цэвэрлэгдсэн 29/4 хуваарьт орохгүй');
+/* ⚠️ 2026-10-01: бөглөх хуудасны блокийн хуваарь — Багц 2-т тайлагнаагүй 5/2, Багц 3.1 огт тайлагнаагүй */
+const uni = new Map([
+  ['БАГЦ1', ['29/1', '29/2', '29/3', '29/4'].map((b) => buildingKey('Багц 1', b))],
+  ['БАГЦ2', ['5/1', '5/2'].map((b) => buildingKey('Багц 2', b))],
+  ['БАГЦ31', [buildingKey('Багц 3.1', '5/1')]],
+]);
+const means = pkgProgressOf(pm, uni);
+assert.equal(means.get('БАГЦ1').pct, 45, '(90 + 30 + 60 + 0) / 4 — цэвэрлэгдсэн 29/4 0%-иар хуваарьт (урьд нь /3 = 60)');
 assert.equal(means.get('БАГЦ1').blocks, 3);
-assert.equal(means.get('БАГЦ2').pct, 12.5);
-assert.equal(means.has('БАГЦ3'), false, 'хэмжилтгүй багц Map-д орохгүй (null ≠ 0)');
+assert.equal(means.get('БАГЦ1').total, 4);
+assert.equal(means.get('БАГЦ2').pct, 6.25, '(12.5 + 0) / 2 — тайлагнаагүй 5/2 0% (урьд нь 12.5)');
+assert.equal(means.get('БАГЦ31').pct, 0, 'огт тайлагнаагүй багц 0% (урьд нь Map-д ордоггүй)');
+assert.equal(means.has('БАГЦ3'), false, 'хуваарьгүй багц Map-д орохгүй (null ≠ 0)');
 
 const axis = [ym(3), m2, m1, now];
-const { phys } = buildPhys(hist, axis, now);
+const { phys, physN, physAt } = buildPhys(hist, axis, now, uni);
 const monthsOf = (k) => axis.map((label) => ({ label, given: 0, phys: phys.get(k)?.get(label) ?? null }));
 for (const k of ['БАГЦ1', 'БАГЦ2']) {
   assert.equal(physLatest(monthsOf(k)), means.get(k).pct,
     `${k}: жагсаалтын «бодит гүйцэтгэл» (physLatest) ≠ pkgProgressOf — дэлгэцүүд зөрнө`);
+}
+/* ⚠️ 2026-10-01: огт тайлагнаагүй багц — жагсаалт (`contractMonths` → `physLatest`) ч 0%, «—» БИШ */
+{
+  const fin0 = { given: new Map(), phys, physAt, physN };
+  const ms = contractMonths({ bagts: 'Багц 3.1' }, fin0);
+  assert.equal(physLatest(ms), means.get('БАГЦ31').pct, 'БАГЦ31: жагсаалт 0% биш (pkgProgressOf-оос зөрөв)');
+  assert.equal(ms.filter((m) => m.phys != null).length, 1, 'тайлагнаагүй багцад ганц (энэ сарын) 0 цэг');
+  /* Хуваарьгүй багц — «—» хэвээр */
+  assert.equal(physLatest(contractMonths({ bagts: 'Багц 3.3' }, fin0)), null);
 }
 
 /* ── 2. buildPacks(rows, pkgPct) ── */
@@ -112,9 +133,12 @@ const rows = [
 const pkgPct = new Map([...means].map(([k, v]) => [k, v.pct]));
 const packs = buildPacks(rows, pkgPct);
 const pk = (key) => packs.find((p) => p.key === key);
-assert.equal(pk('БАГЦ1').progress, 60, 'buildPacks: pkgPct-ийг дагасангүй (feature-ийн дундаж 70 гарах ёсгүй)');
-assert.equal(pk('БАГЦ2').progress, 12.5);
-assert.equal(pk('БАГЦ31').progress, null, 'хэмжилтгүй багц null — feature-ийн дундаж руу унахгүй');
+assert.equal(pk('БАГЦ1').progress, 45, 'buildPacks: pkgPct-ийг дагасангүй (feature-ийн дундаж 70 гарах ёсгүй)');
+assert.equal(pk('БАГЦ2').progress, 6.25);
+/* ⚠️ 2026-10-01: тайлагнаагүй багц pkgPct-д 0 — feature-ийн дундаж руу унахгүй */
+assert.equal(pk('БАГЦ31').progress, 0, 'тайлагнаагүй багц 0% (урьд нь null)');
+assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ31').progress, null,
+  'pkgPct-д байхгүй (хуваарьгүй) багц null — feature-ийн дундаж руу унахгүй');
 assert.equal(pk('БАГЦ1').blocks.length, 3, 'блокийн жагсаалт (feature, OID-оор) хэвээр');
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ТОО нь түлхүүрээр — давхардсан «29/1» полигон НЭГ блок */
 assert.equal(blockCount(pk('БАГЦ1')), 2, 'давхардсан полигон блокийн тоонд хоёр орсон');
@@ -124,7 +148,7 @@ assert.equal(buildPacks(rows).find((p) => p.key === 'БАГЦ1').progress, 60);
 
 /* ── 3. PackKpi — сонгосон багцын «гүйцэтгэл» хавтан ── */
 const html = renderToStaticMarkup(React.createElement(PackKpi, { active: pk('БАГЦ1'), packs }));
-assert.ok(html.includes('60.0%'), `PackKpi: сонгосон багцын хувь 60.0% биш — ${html.slice(0, 200)}`);
+assert.ok(html.includes('45.0%'), `PackKpi: сонгосон багцын хувь 45.0% биш — ${html.slice(0, 200)}`);
 assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дундажласан 70.0% гарав');
 
 /* ── 3b. ⚠️ 2026-10-01 (ШИЙДВЭР): багц СОНГООГҮЙ үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны

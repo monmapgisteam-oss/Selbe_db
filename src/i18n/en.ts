@@ -5684,10 +5684,8 @@ const en: Record<string, string> = {
   "Өөр үйлдэл хийгдэж байна — дуусахыг хүлээнэ үү.": "Another action is in progress — please wait.",
   "Агуулга ачаалагдсаны дараа батлах боломжтой.": "You can approve once the content has loaded.",
   "Буцаахын тулд дээр шалтгаанаа бичнэ үү.": "Enter a reason above to return.",
-  "дундаж = тайлагнасан блокоор (тайлангүй блок хуваарьт орохгүй)": "average over reported blocks (unreported blocks excluded)",
   "{0}/{1} блок тайлагнасан": "{0}/{1} blocks reported",
   "тайлагнасан блокоор дундажлав": "averaged over reported blocks",
-  "сараар · тайлагнасан блокийн сүүлийн утгаар": "monthly · latest value of reported blocks",
   "биелэлтийн % · бодит / төлөвлөгөө": "completion % · actual / plan",
   "{0} · төлөвлөгөөгүй": "{0} · no plan",
   "гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)": "paid {0} on contracts without a known amount (not in %)",
@@ -6059,7 +6057,6 @@ const en: Record<string, string> = {
   "{0} блокийн гүйцэтгэл 1%-иас доогуур (эхлээгүй).": "{0} block(s) below 1% progress (not started).",
   "Эхлээгүйн эзлэх хувь": "Share not started",
   "Гүйцэтгэл нь 1%-иас доогуур (ажил бодитоор эхлээгүй) тайлагнасан блокууд — эрсдэлийн дохио": "Reported blocks below 1% progress (work not really started) — risk signal",
-  "Гүйцэтгэл нь огт бөглөгдөөгүй блокууд. Дундаж гүйцэтгэлд ОРОХГҮЙ — дундаж нь зөвхөн тайлагнасан блокуудынх": "Blocks with no progress entered. NOT in the average — the average covers reported blocks only",
   "бүс: {0}": "zone: {0}",
   "Сонгосон давхаргуудад бүсийн талбар (ZONE_ID) байхгүй тул бүсээр шүүгдэхгүй — бүсийн тоймыг харуулав.": "The selected layers have no zone field (ZONE_ID) and cannot be filtered by zone — showing the zone overview.",
   "Гэрлэн дохио ачаалагдсангүй — симуляц ДОХИОГҮЙ явж байна (сүлжээнүүдийг харьцуулахад анхаар).": "Traffic signals failed to load — the simulation runs WITHOUT signals (take care comparing networks).",
@@ -6261,7 +6258,10 @@ const en: Record<string, string> = {
   "Батлагч ({0}) энэ илгээлтийн хуваарийг эх хуудсанд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.": "Approver ({0}) has PARTIALLY written this submission's schedule to the source sheet — it cannot be withdrawn. The approver will complete the approval.",
   "Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.": "The partial-write protection marker was not saved ({0}) — nothing was written to the source sheet; please try again.",
   "{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй": "monthly breakdown tasks for {0} task·block(s) were not found on the sheet",
-  "Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.": "The schedule is already written to the source sheet, so it cannot be returned — press «Approve» again to finish."
+  "Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.": "The schedule is already written to the source sheet, so it cannot be returned — press «Approve» again to finish.",
+  "дундаж = бүх блокоор (тайлангүй блок 0%)": "average over all blocks (unreported blocks count as 0%)",
+  "сараар · бүх блокийн сүүлийн утгаар (тайлангүй блок 0%)": "monthly · latest value of all blocks (unreported blocks count as 0%)",
+  "Гүйцэтгэл нь огт бөглөгдөөгүй блокууд. Багцын болон дундаж гүйцэтгэлд 0%-иар орно": "Blocks with no progress entered. They count as 0% in the package and average progress"
 };
 
 export default en;

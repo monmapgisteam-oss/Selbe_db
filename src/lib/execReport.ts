@@ -207,7 +207,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
   /* ⚠️ 2026-09-30: `bld.pkgPct` — багцын мөрийн хувь «Гүйцэтгэл»-ийн жагсаалт
      (`physLatest`) · Тайлан §2/§3-тай НЭГ (`blockProgress.pkgProgressOf`). Урьд нь
-     давхаргын feature-ээр дундажлагдаж Багц 1 · 2 05-аас зөрдөг байв. */
+     давхаргын feature-ээр дундажлагдаж Багц 1 · 2 05-аас зөрдөг байв.
+     ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): тайлагнаагүй блок/багц 0% — `pkgPct`,
+     `fillProg`, `physNow` гурвуулаа бөглөх хуудасны блокийн хуваариар (`loadBlockUniverse`). */
   const packs = buildPacks(bld.rows, bld.pkgPct);
   const nowYm = monthKey();
   /* ⚠️ 2026-09-22: `physNow` — PkgProg `TsKpi` · Dashboard-тай НЭГ туслах (pkgShared.ts) */

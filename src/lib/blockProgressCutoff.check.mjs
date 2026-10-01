@@ -48,9 +48,12 @@ const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
     row('Багц 2', '1', '2026-10-25', 0.80), /* энэ сард, гэхдээ ирээдүйн өдөр */
   ];
   const pm2 = compute(sameMonth, today);
-  const { phys } = buildPhys(history(sameMonth, today), ['2026-09', '2026-10'], '2026-10');
+  /* ⚠️ 2026-10-01: багцын хувь блокийн хуваарьтай (`universe`) — тайлагнаагүй блок 0%.
+     Энд хуваарь = хэмжигдсэн ганц блок тул утга өөрчлөгдөхгүй. */
+  const uni = new Map([['БАГЦ2', [buildingKey('Багц 2', '1')]]]);
+  const { phys } = buildPhys(history(sameMonth, today), ['2026-09', '2026-10'], '2026-10', uni);
   const listPct = phys.get('БАГЦ2')?.get('2026-09');
-  assert.equal(pkgProgressOf(pm2).get('БАГЦ2')?.pct, 20, 'зураг/багцын хувь 20%');
+  assert.equal(pkgProgressOf(pm2, uni).get('БАГЦ2')?.pct, 20, 'зураг/багцын хувь 20%');
   assert.equal(listPct, 20, 'жагсаалт 20% (ирээдүйн 80% орохгүй)');
   assert.equal(phys.get('БАГЦ2')?.has('2026-10'), false, '10-р сард ирээдүйн бичилтээс цэг үүсэхгүй');
 }

@@ -145,8 +145,10 @@ export const FINE_NODES: readonly FineNode[] = [
     id: 'barNo', group: 'barilga', col: 5, row: 1, view: 'pkgProg', icon: 'building',
     get title() { return tr('Тайлангүй блок'); },
     /* ⚠️ 2026-09-30: «Нийт дүнд 0%-аар ордог» ХУДАЛ болсон — хэмжилтгүй блок дунджид ОРОХГҮЙ
-       (`blockProgress.latestMean`, null ≠ 0); дундаж нь зөвхөн тайлагнасан блокуудынх. */
-    get desc() { return tr('Гүйцэтгэл нь огт бөглөгдөөгүй блокууд. Дундаж гүйцэтгэлд ОРОХГҮЙ — дундаж нь зөвхөн тайлагнасан блокуудынх'); },
+       (`blockProgress.latestMean`, null ≠ 0); дундаж нь зөвхөн тайлагнасан блокуудынх.
+       ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): дахин БУЦСАН — тайлангүй блок багцын болон
+       дундаж гүйцэтгэлд 0%-иар ОРНО (`blockProgress.pkgProgressOf`, `latestMean`). */
+    get desc() { return tr('Гүйцэтгэл нь огт бөглөгдөөгүй блокууд. Багцын болон дундаж гүйцэтгэлд 0%-иар орно'); },
   },
   {
     id: 'ers', group: 'ersdel', col: 5, row: 3, view: 'ersdel', icon: 'waves',

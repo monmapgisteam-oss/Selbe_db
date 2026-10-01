@@ -24,7 +24,10 @@ import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/s
    `simulation.ts` нь ЗӨВХӨН `Zone` төрөл ба `tr`-ийг импортолдог тул ямар ч
    хүнд хамаарал (ArcGIS SDK, газрын зураг) дагуулж ирэхгүй. */
 import { zoneTrips } from '@/modules/analysis/suit/simulation';
-import { loadBlockProgress, pkgProgressOf, type BlockProgressMap } from './blockProgress';
+import {
+  loadBlockProgress, loadBlockUniverse, pkgProgressOf, universeKeys,
+  type BlockProgressMap, type BlockUniverse,
+} from './blockProgress';
 import { text } from './format';
 import { BAGTS_ORIGIN } from './brief';
 import { housingPct } from './gdash';
@@ -42,31 +45,40 @@ export type BagtsRow = {
   origin: string;
   /**
    * Барилга угсралтын гүйцэтгэл (%) — «Гүйцэтгэл бөглөх» хуудасны «Б.» мөрөөр.
-   * ⚠️ 2026-09-30: хуваарь нь ЗӨВХӨН ТАЙЛАГНАСАН блок (null ≠ 0) — «Барилгын
-   *    хяналт» (BuildingPanel) · «Багцын мэдээлэл» (Bagts.buildPacks) · Тайлан
-   *    §3 (`reportData.loadOverall`) · `finPhys.buildPhys`-тэй НЭГ дүрэм.
-   *    Урьд нь (2026-08-24, CEO_KPI_PROMPT §7-A) БҮХ блокоор хувааж тайлангүй
-   *    блокийг 0% гэж тооцдог тул нэг багц дэлгэц бүрд өөр % харагддаг байв;
-   *    хэрэглэгч 2026-09-30-нд орон сууцны гүйцэтгэлийг ГАНЦ тодорхойлолттой
-   *    болгохыг шаардсан — тэр шийдвэр 08-24-нийхийг ХҮЧИНГҮЙ болгов.
-   *    Тайлангүй блокийн тоо `missing`-д ХЭВЭЭР — «хэдэн блокоор дундажилсан»
-   *    нь тоотой хамт харагдах ёстой.
+   * ⚠️ 2026-09-30: «Барилгын хяналт» (BuildingPanel) · «Багцын мэдээлэл»
+   *    (Bagts.buildPacks) · Тайлан §3 (`reportData.loadOverall`) ·
+   *    `finPhys.buildPhys`-тэй НЭГ дүрэм (`blockProgress.pkgProgressOf`).
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь нь багцын БҮХ блок (бөглөх
+   *    хуудасны хуваарь), тайлагнаагүй блок 0% — 2026-09-30-ны «зөвхөн тайлагнасан
+   *    блок (null ≠ 0)» дүрмийг ХҮЧИНГҮЙ болгов. Нэг ч блок тайлагнаагүй багц 0%;
+   *    `null` нь зөвхөн бөглөх хуудас уншигдаагүй (хуваарьгүй) үед.
    */
   progress: number | null;
   /**
-   * `progress`-ийн ХУВААРЬ — бөглөх хуудсанд хэмжигдсэн блокийн тоо
-   * (`blockProgress.pkgProgressOf`). ⚠️ 2026-09-30: `blocks − missing`-ээс ӨӨР
-   * байж болно: давхаргад давхардсан feature (29/1, 5/6) нэг л хэмжилт, footprint-гүй
-   * хэмжилт (29/3, 5/8) энд орно. `buildProgressOf`-ийн нөөц жин үүгээр.
+   * Хэмжигдсэн (тайлагнасан) блокийн тоо (`blockProgress.pkgProgressOf`).
+   * ⚠️ 2026-09-30: `blocks − missing`-ээс ӨӨР байж болно: давхаргад давхардсан
+   * feature (29/1, 5/6) нэг л хэмжилт, footprint-гүй хэмжилт (29/3, 5/8) энд орно.
    */
   measured: number;
-  /** Тайлан ирээгүй блокийн тоо */
+  /**
+   * `progress`-ийн ХУВААРЬ — бөглөх хуудасны блок ∪ хэмжилт (`PkgProgress.total`).
+   * ⚠️ 2026-10-01: `buildProgressOf`-ийн нөөц жин үүгээр (урьд нь `measured`).
+   */
+  total: number;
+  /**
+   * Тайлан ирээгүй блокийн тоо — `keys`-ээс хэмжилтгүй нь.
+   * ⚠️ 2026-10-01: `keys` нь бөглөх хуудасны хуваарь тул бөгжийн (`latestMean`)
+   *    `total − blocks`-тэй ЯГ таарна.
+   */
   missing: number;
   /**
-   * Цувааны хамрах хүрээ — багцын блок бүрийн түлхүүр (`${БАГЦ}|блок`), мөр тутамд нэг.
+   * Цувааны хамрах хүрээ — багцын блок бүрийн түлхүүр (`${БАГЦ}|блок`), давхардалгүй.
    * ⚠️ `joinBagts` аль хэдийн бодож байсныг ХАЯДАГ байв. Цуваа (04·C5) ба дэд
    * үе шатын карт (04·C3) хоёулаа `BlockProgressMap`-д ЯГ ижил түлхүүрээр
    * хандах ёстой — гараар дахин зохиовол нэг тэмдэгт зөрөхөд карт хоосорно.
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): эх нь БӨГЛӨХ ХУУДАСНЫ хуваарь
+   *    (`blockProgress.universeKeys` — `progress`-тэй нэг хуваарь); газрын зургийн
+   *    feature-ийн түлхүүр зөвхөн тэр багц хуваарьт байхгүй үед (нөөц).
    */
   keys: string[];
 };
@@ -90,13 +102,15 @@ export type BagtsRow = {
  * хук дуудаж чадахгүй. Кэш нь хоёр талыг НЭГ хүсэлт хуваалцуулна.
  */
 export const loadBagtsRows = cached<BagtsRow[]>(async () => {
-  const [blocks, prog] = await Promise.all([
+  const [blocks, prog, uni] = await Promise.all([
     queryFeatures(BUILDING.url, {
       outFields: [BUILDING.oid, BF.bagts, BF.block, BF.households, BF.contractor],
     }),
     loadBlockProgress(),
+    /* ⚠️ 2026-10-01: блокийн хуваарь (тайлагнаагүй блок 0%) — `loadSchema` кэштэй */
+    loadBlockUniverse(),
   ]);
-  return joinBagts(blocks, prog);
+  return joinBagts(blocks, prog, uni);
 /*
  * ⚠️ ДАМЖИН ХАМААРАХ ТҮЛХҮҮРИЙГ ЗААВАЛ ЗАРЛАНА (`CASHFLOW_NEW`).
  *
@@ -116,17 +130,19 @@ export function useBagtsTable(): Async<BagtsRow[]> {
 }
 
 /** Экспорт — `execData.check.mjs` цэвэр оролтоор шалгана (сүлжээгүй) */
-export function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
+export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: BlockUniverse): BagtsRow[] {
   /* ⚠️ 2026-09-30: багцын хувь нь ХЭМЖИЛТИЙН нүднээс (`pkgProgressOf`), давхаргын
      feature-ээр БИШ — `pkgProgressOf`-ийн ⚠️ (29/1 · 5/6 давхардал, 29/3 · 5/8
-     footprint-гүй). «Гүйцэтгэл»-ийн жагсаалт ба Тайлан §3-тай нэг тоо. */
-  const means = pkgProgressOf(prog);
+     footprint-гүй). «Гүйцэтгэл»-ийн жагсаалт ба Тайлан §3-тай нэг тоо.
+     ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь = бөглөх хуудасны БҮХ блок
+     (`universe`), тайлагнаагүй блок 0%. */
+  const means = pkgProgressOf(prog, universe);
   const by = new Map<string, BagtsRow>();
   const slot = (name: string) => {
     const k = bagtsKey(name);
     const cur = by.get(k) ?? {
       key: k, label: name, blocks: 0, ail: 0, contractor: '—',
-      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, measured: 0, missing: 0,
+      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, measured: 0, total: 0, missing: 0,
       keys: [],
     };
     by.set(k, cur);
@@ -152,20 +168,27 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
     const comp = text(b[BF.contractor], '').trim();
     if (comp) s.contractor = comp;
     s.keys.push(bk);
-    if (!prog.get(bk)) s.missing += 1;
   }
 
-  /* ⚠️ 2026-09-24: null ≠ 0 — нэг ч блок нь тайлагнаагүй багц `progress: null`
-     (урьд нь `sum / blocks` = 0 гарч, Dashboard/Tailan-ийн «зөвхөн мэдээлэлтэй
-     багцаар жигнэх» дүрэм хэзээ ч ажилладаггүй байв).
-     ⚠️ 2026-09-30: хуваарь = ТАЙЛАГНАСАН блок, бүх блок БИШ — `BagtsRow.progress`-ийн ⚠️.
-     ⚠️ 2026-09-30 (дахин): тайлагнасан блок = ХЭМЖИЛТИЙН нүд (`pkgProgressOf`),
+  /* ⚠️ 2026-09-30 (дахин): тайлагнасан блок = ХЭМЖИЛТИЙН нүд (`pkgProgressOf`),
      давхаргын feature БИШ — урьд нь `Σ feature ÷ (blocks − missing)` байсан тул
-     Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт, Тайлан §3-аас зөрдөг байв. */
+     Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт, Тайлан §3-аас зөрдөг байв.
+     ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): 2026-09-24/09-30-ны «нэг ч блок тайлагнаагүй
+     багц `progress: null`», «хуваарь = ТАЙЛАГНАСАН блок» дүрмүүд ХҮЧИНГҮЙ — хуваарьт
+     (`universe`) байгаа багц тайлагнаагүй ч 0%. `null` нь зөвхөн хуваарьгүй (бөглөх
+     хуудас уншигдаагүй / хуудасгүй) багцад. `keys`, `missing` ч хуваариас. */
   return [...by.values()]
     .map((s) => {
       const m = means.get(s.key);
-      return { ...s, progress: m ? m.pct : null, measured: m ? m.blocks : 0 };
+      const keys = universe.has(s.key) ? universeKeys(prog, universe, [s.key]) : s.keys;
+      return {
+        ...s,
+        keys,
+        missing: keys.filter((k) => !prog.get(k)).length,
+        progress: m ? m.pct : null,
+        measured: m ? m.blocks : 0,
+        total: m ? m.total : 0,
+      };
     })
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
@@ -191,12 +214,13 @@ export type BuildProgress = {
  *    2026-08-24-ний (CEO_KPI_PROMPT §7-A) «бүх блокоор хуваах, тайлан ирээгүй
  *    блок 0%» дүрмийг ХҮЧИНГҮЙ болгов: тэр «болгоомжтой» дүн нь Dashboard ·
  *    PkgProg · Тайлан · удирдлагын тайлангийн тооноос зөрж, нэг үзүүлэлт
- *    хоёр тоотой байв. Хэмжигдээгүй блок/багц ОРОХГҮЙ (null ≠ 0); хэдэн блок
- *    тайлан ирээгүйг `missing`-ээр ХАМТ харуулна — дүн хөөрөгдөгдөх эсэхийг
- *    уншигч түүгээр дүгнэнэ.
+ *    хоёр тоотой байв.
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): тайлагнаагүй блок ба ОГТ тайлагнаагүй багц
+ *    0%-иар ОРНО (бүх дэлгэцэд НЭГ дүрмээр — `blockProgress.pkgProgressOf`,
+ *    `finPhys.buildPhys`). Хэдэн блок тайлан ирээгүйг `missing`-ээр ХАМТ харуулна.
  *
  * @param cost багц (`BagtsRow.key`) → ХО дүн (`gdash.pkgCostWeight`). Өгөөгүй
- *   бол блокийн тооны нөөц жин — тайлагнасан блок (`reported`).
+ *   бол блокийн тооны нөөц жин — багцын хуваарь (`BagtsRow.total`).
  */
 export function buildProgressOf(rows: readonly BagtsRow[], cost?: ReadonlyMap<string, number>): BuildProgress {
   let blocks = 0;
@@ -205,15 +229,17 @@ export function buildProgressOf(rows: readonly BagtsRow[], cost?: ReadonlyMap<st
     blocks += r.blocks;
     missing += r.missing;
   }
-  /* ⚠️ Нэг ч блок тайлагнаагүй бол `null` (0% БИШ) — `housingPct` өөрөө null буцаана */
-  /* ⚠️ 2026-09-30: нөөц жин = `measured` (хувийн хуваарь) — `loadOverall` (`rows`) ·
-     `physNow` (`physCnt`)-тай нэг; `blocks − missing` давхардсан feature-ийг 2 тоолдог. */
+  /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): тайлагнаагүй багц 0%-иар орно (`progress` 0);
+     `null` нь зөвхөн хуваарьгүй багц — `housingPct` түүнийг алгасна. */
+  /* ⚠️ 2026-09-30: нөөц жин = хувийн хуваарь — `loadOverall` (`rows`) · `physNow`
+     (`physCnt`)-тай нэг; `blocks − missing` давхардсан feature-ийг 2 тоолдог.
+     ⚠️ 2026-10-01: хуваарь = `total` (бүх блок), урьд нь `measured`. */
   return {
     pct: housingPct(rows.map((r) => ({
-      pct: r.progress, cost: cost?.get(r.key) ?? 0, blocks: r.measured,
+      pct: r.progress, cost: cost?.get(r.key) ?? 0, blocks: r.total,
     }))),
     blocks,
-    reported: blocks - missing,
+    reported: rows.reduce((a, r) => a + r.measured, 0),
     missing,
   };
 }

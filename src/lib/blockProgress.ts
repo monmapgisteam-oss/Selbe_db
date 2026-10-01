@@ -23,7 +23,7 @@
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
 import { TASK_SHEET, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
-import { loadSheetRows } from '@/modules/sheet/sheetRows';
+import { loadSheetRows, sheetBlockKeys } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
 
@@ -82,6 +82,14 @@ export type BlockProgress = {
 };
 /** `${БАГЦ}|${блок}` → гүйцэтгэл. (`MapCanvas`-д ArcGIS-ийн `Map`-ыг дарсан тул alias.) */
 export type BlockProgressMap = Map<string, BlockProgress>;
+
+/**
+ * БАГЦ БҮРИЙН БЛОКИЙН ХУВААРЬ — `bagtsKey` («БАГЦ1») → `buildingKey`[] («БАГЦ1|29/1»).
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): эх нь БӨГЛӨХ ХУУДСУУДЫН бүдүүвч
+ *    (`sheetRows.sheetBlockKeys`), газрын зургийн давхарга БИШ. `BlockProgressMap` нь
+ *    зөвхөн хэмжигдсэн түлхүүртэй тул «тайлагнаагүй блок = 0%» дүрмийн хуваарь ЭНДЭЭС.
+ */
+export type BlockUniverse = ReadonlyMap<string, readonly string[]>;
 
 /**
  * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас.
@@ -174,12 +182,13 @@ export type SeriesPoint = {
   /** Тухайн үеийн бодит агшин (as-of огноо) */
   date: string;
   /**
-   * Дундаж гүйцэтгэл, 0–100.
-   *   · `'peak'` (анхдагч) — хуваарь нь хамрах хүрээний БҮХ блок (бөглөгдөөгүй = 0%)
-   *   · `'latest'` — хуваарь нь тухайн агшинд ХЭМЖИГДСЭН блок л (null ≠ 0)
+   * Дундаж гүйцэтгэл, 0–100. Хуваарь нь ХОЁР горимд хамрах хүрээний БҮХ блок
+   * (бөглөгдөөгүй = 0%).
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `'latest'`-ийн хуваарь урьд нь тухайн агшинд
+   *    ХЭМЖИГДСЭН блок л байсан — тайлагнаагүй блок одоо 0% гэж орно.
    */
   overall: number;
-  /** Тухайн үед бөглөгдсөн байсан блокийн тоо (`'peak'`-д хуваарь БИШ; `'latest'`-д хуваарь) */
+  /** Тухайн үед бөглөгдсөн байсан блокийн тоо (хуваарь БИШ — хуваарь нь `keys`-ийн тоо) */
   blocks: number;
 };
 
@@ -187,7 +196,7 @@ export type SeriesPoint = {
  * Цувааны утгын тодорхойлолт.
  *   · `'peak'`   — блок бүрийн ӨССӨН дүн (running max), хуваарь ТОГТМОЛ (`keys`)
  *   · `'latest'` — блок бүрийн ТУХАЙН АГШИН ДАХЬ СҮҮЛИЙН бичлэг (`compute`-тэй
- *                  ижил дүрэм), хуваарь нь хэмжигдсэн блок л
+ *                  ижил дүрэм), хуваарь ТОГТМОЛ (`keys`, 2026-10-01-ээс — тайлагнаагүй = 0%)
  */
 export type SeriesMode = 'peak' | 'latest';
 
@@ -198,8 +207,11 @@ export type SeriesMode = 'peak' | 'latest';
  * ⚠️ 2026-09-30: Дашбоардын «Дундаж гүйцэтгэл» бөгж ба «Барилга угсралтын явц»
  *    цуваа ӨӨР хуваарь (бөгж: тайлагнасан багцын бүх блок; цуваа: 7 багцын БҮХ
  *    блок) ба ӨӨР утга (бөгж: сүүлийн; цуваа: өссөн дүн) хэрэглэдэг тул цувааны
- *    сүүлийн цэг бөгжөөс зөрдөг байв. Хоёулаа ЭНЭ дүрмээр: хэмжигдээгүй блок
- *    хуваарьт ОРОХГҮЙ (null ≠ 0, 06 §2), утга нь сүүлийн хэмжилт.
+ *    сүүлийн цэг бөгжөөс зөрдөг байв. Хоёулаа ЭНЭ дүрмээр, утга нь сүүлийн хэмжилт.
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хэмжигдээгүй блок хуваарьт 0% гэж ОРНО
+ *    (`total`) — урьд нь «null ≠ 0» гэж хасагддаг байв. `keys` нь хамрах хүрээний БҮХ
+ *    блок байх ёстой (бөглөх хуудасны хуваарь — `BlockUniverse`). `pct: null` нь
+ *    зөвхөн хуваарь ХООСОН үед.
  *
  * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `keys`-ийн ДАВХАРДЛЫГ ХАЯНА. Урьд нь
  *    «ДАВХАРДЛЫГ ХАДГАЛНА» гэж давхаргын feature-ийн жагсаалтыг (`BagtsRow.keys`-ийн
@@ -219,12 +231,33 @@ export function latestMean(
     sum += c.overall;
     n += 1;
   }
-  return { pct: n ? sum / n : null, blocks: n, total };
+  /* ⚠️ 2026-10-01: хуваарь = `total` (тайлагнаагүй блок 0%), `n` БИШ */
+  return { pct: total ? sum / total : null, blocks: n, total };
 }
 
+/** Багцын гүйцэтгэл — `pkgProgressOf`-ийн мөр */
+export type PkgProgress = {
+  /** 0–100 — Σ хэмжигдсэн блок ÷ `total` (тайлагнаагүй блок 0%) */
+  pct: number;
+  /** Хэмжигдсэн (тайлагнасан) блокийн тоо */
+  blocks: number;
+  /** Хуваарь — багцын БҮХ блок (бөглөх хуудасны хуваарь ∪ хэмжигдсэн түлхүүр) */
+  total: number;
+};
+
 /**
- * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын ХЭМЖИГДСЭН (тайлагнасан) блокуудын
- * ЭНГИЙН дундаж, 0–100. Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»).
+ * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЭНГИЙН дундаж, 0–100;
+ * тайлагнаагүй блок 0%. Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»).
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): гүйцэтгэлийн хэмжилт (тайлагнасан/батлагдсан)
+ *    ОГТ БАЙХГҮЙ блок 0% гэж ОРНО — «мэдээлэлгүй» гэж хасагдахгүй. Жишээ: 4 блоктой
+ *    багцын зөвхөн A нь 100% тайлагнасан бол багц 25%, 100% БИШ. Урьд нь ЗӨВХӨН
+ *    хэмжигдсэн блокуудын дундаж байсан тул нэг блок тайлагнахад багц бүхэлдээ 100%
+ *    харагддаг байв. Хуваарь = `universe` (бөглөх хуудасны блок) ∪ хэмжигдсэн түлхүүр;
+ *    нэг ч блок тайлагнаагүй багц 0% (Map-д ОРНО, `blocks: 0`).
+ * ⚠️ `null` ≠ 0 ХЭВЭЭР зөвхөн АЧААЛАЛТ УНАСАН үед: хуудасны бүдүүвч уншигдаагүй багц
+ *    `universe`-д байхгүй тул хэмжилтгүй бол Map-д ОРОХГҮЙ («—»). `universe` өөрөө
+ *    унавал дуудагч алдааг дамжуулна (0 гэж зурахгүй).
  *
  * ⚠️ 2026-09-30: ЭХ НЬ БӨГЛӨХ ХУУДАСНЫ НҮД (`BlockProgressMap` — багц|блок
  *    түлхүүр бүр НЭГ удаа), барилгын давхаргын feature БИШ. Урьд нь
@@ -241,22 +274,59 @@ export function latestMean(
  * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `physLatest`-тэй урьдын ГАНЦ ялгаа (ирээдүйн
  *    огноотой бичилт — энэ нь тасалдаггүй, тэр нь сараар таслагддаг) АРИЛСАН: `compute` ба
  *    `history` хоёулаа өнөөдрөөр таслана (`progressCutoff`).
- * ⚠️ Хэмжилтгүй багц Map-д ОРОХГҮЙ — «0%» БИШ, «мэдээлэлгүй» (null ≠ 0).
  */
-export function pkgProgressOf(pm: BlockProgressMap): Map<string, { pct: number; blocks: number }> {
-  const acc = new Map<string, { sum: number; n: number }>();
+export function pkgProgressOf(pm: BlockProgressMap, universe: BlockUniverse): Map<string, PkgProgress> {
+  const pkgOf = (key: string) => { const cut = key.indexOf('|'); return cut < 0 ? key : key.slice(0, cut); };
+  /* багц → хуваарийн түлхүүрүүд (давхардалгүй) */
+  const keysOf = new Map<string, Set<string>>();
+  const add = (pk: string, key: string) => {
+    if (!pk) return;
+    const s = keysOf.get(pk) ?? new Set<string>();
+    s.add(key);
+    keysOf.set(pk, s);
+  };
+  for (const [pk, keys] of universe) for (const key of keys) add(pk, key);
+  /* ⚠️ Хуваарьт ОРООГҮЙ хэмжилт (хуучин кэш, бүдүүвч өөрчлөгдсөн) ч тоологдоно —
+     хэмжилт ХЭЗЭЭ Ч хаягдахгүй */
   for (const [key, cell] of pm) {
-    const cut = key.indexOf('|');
-    const k = cut < 0 ? key : key.slice(0, cut);
-    if (!k || cell == null || !Number.isFinite(cell.overall)) continue;
-    const a = acc.get(k) ?? { sum: 0, n: 0 };
-    a.sum += cell.overall;
-    a.n += 1;
-    acc.set(k, a);
+    if (cell != null && Number.isFinite(cell.overall)) add(pkgOf(key), key);
   }
-  const out = new Map<string, { pct: number; blocks: number }>();
-  for (const [k, a] of acc) if (a.n > 0) out.set(k, { pct: a.sum / a.n, blocks: a.n });
+  const out = new Map<string, PkgProgress>();
+  for (const [pk, keys] of keysOf) {
+    let sum = 0, n = 0;
+    for (const key of keys) {
+      const c = pm.get(key);
+      if (c == null || !Number.isFinite(c.overall)) continue; // тайлагнаагүй — 0%
+      sum += c.overall;
+      n += 1;
+    }
+    if (keys.size > 0) out.set(pk, { pct: sum / keys.size, blocks: n, total: keys.size });
+  }
   return out;
+}
+
+/**
+ * БАГЦЫН ХУВААРИЙН ТҮЛХҮҮРҮҮД — `universe` ∪ хэмжигдсэн түлхүүр, багцаар шүүсэн.
+ * ⚠️ 2026-10-01: Дашбоардын бөгж/цуваа (`latestMean`, `progressSeries`) ЭНЭ жагсаалтаар —
+ *    `pkgProgressOf`-той ижил хуваарь (газрын зургийн давхаргын түлхүүр БИШ).
+ * @param only зөвхөн эдгээр багц (`bagtsKey`); өгөөгүй бол бүгд
+ */
+export function universeKeys(
+  pm: BlockProgressMap | null,
+  universe: BlockUniverse,
+  only?: Iterable<string>,
+): string[] {
+  const want = only ? new Set(only) : null;
+  const out = new Set<string>();
+  for (const [pk, keys] of universe) if (!want || want.has(pk)) keys.forEach((k) => out.add(k));
+  if (pm) {
+    for (const key of pm.keys()) {
+      const cut = key.indexOf('|');
+      const pk = cut < 0 ? key : key.slice(0, cut);
+      if (!want || want.has(pk)) out.add(key);
+    }
+  }
+  return [...out];
 }
 
 /**
@@ -266,7 +336,7 @@ export function pkgProgressOf(pm: BlockProgressMap): Map<string, { pct: number; 
  *   · `orphan`  — бөглөх хуудсанд хэмжилттэй атлаа давхаргад footprint-гүй (БАГЦ2|5/8)
  *   · `relabel` — footprint-гүй хэмжилтийн БЛОКИЙН нэр өөр багцын feature-т байгаа
  *                 (БАГЦ1|29/3 ↔ давхаргад «Багц 2» гэж бичигдсэн 29/3) — багцын нэр буруу
- * ⚠️ Тоонууд эдгээрээс ХАМААРАХГҮЙ (`pkgProgressOf` — хэмжилтийн нүднээс;
+ * ⚠️ Тоонууд эдгээрээс ХАМААРАХГҮЙ (`pkgProgressOf` — бөглөх хуудасны хуваарь ба хэмжилтийн нүднээс;
  *    `latestMean`/`progressSeries` — давхардлыг хаядаг). Энэ нь зөвхөн газрын зургийг
  *    засуулах мэдээлэл (`BuildingPanel.loadBuildings` dev горимд console-д бичнэ).
  * @param featureKeys давхаргын feature бүрийн `buildingKey` (давхардлыг ХАДГАЛСАН)
@@ -314,8 +384,10 @@ export function progressSeries(
    * ⚠️ 2026-09-30: `'latest'` НЭМЭГДЭВ — анхдагч `'peak'` ХЭВЭЭР (BuildingPanel,
    *    Dashboard-ийн EnvRight, finPhys-ийн дүрэм түүнээс хамаарна). `'latest'`
    *    нь `latestMean`/`loadBlockProgress`-той ЯГ ижил тоо өгнө: сүүлийн цэг ==
-   *    бөгж. Сул тал нь мэдэгдэж байгаа: шинэ блок тайлагнах сард дундаж буурч
-   *    болно — `blocks` (хуваарь) цэг бүрд хамт харагдах ЁСТОЙ.
+   *    бөгж.
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `'latest'`-ийн хуваарь ч ТОГТМОЛ (`keys`) —
+   *    тайлагнаагүй блок 0%. Урьдын «шинэ блок тайлагнах сард дундаж буурна» сул
+   *    тал ингэснээр арилсан (`latestMean`-тэй ижил хуваарь).
    */
   mode: SeriesMode = 'peak',
 ): SeriesPoint[] {
@@ -362,7 +434,8 @@ export function progressSeries(
       const v = mode === 'latest' ? latest(h, asOf) : peak(h, asOf);
       if (v != null && Number.isFinite(v)) { sum += v; n += 1; }
     }
-    const den = mode === 'latest' ? n : keyList.length;
+    /* ⚠️ 2026-10-01: хуваарь ХОЁР горимд `keys`-ийн тоо (тайлагнаагүй блок 0%) */
+    const den = keyList.length;
     return { date: asOf, overall: den ? sum / den : 0, blocks: n };
   };
 
@@ -494,6 +567,28 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
  */
 export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
   return compute(await fetchConstruction());
+}
+
+/**
+ * БАГЦ БҮРИЙН БЛОКИЙН ХУВААРЬ (`BlockUniverse`) — бөглөх хуудсуудын бүдүүвчээс.
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `pkgProgressOf`-ийн «тайлагнаагүй блок 0%»
+ *    дүрмийн хуваарь. `loadSchema` кэштэй тул `loadBlockProgress`-ийн дараа нэмэлт
+ *    хүсэлтгүй. Бүдүүвч нь бөглөлтөөр өөрчлөгддөггүй тул `BAGTS_SHEET`-д бүртгэхгүй;
+ *    алдаа кэшлэгдэхгүй (`memo`) — дараагийн дуудалт дахин оролдоно.
+ */
+export const loadBlockUniverse: () => Promise<BlockUniverse> = memo(sheetBlockKeys);
+
+/**
+ * Багц бүрийн гүйцэтгэл (`pkgProgressOf`) — хэмжилт + хуваарийг хамт ачаална.
+ * ⚠️ 2026-10-01: аль нэг нь унавал ШИДНЭ — хуваарьгүйгээр хувь бодвол хуучин
+ *    (тайлагнасан блокоор) дүрэм чимээгүй буцаж ирнэ.
+ */
+export async function loadPkgProgress(fresh = false): Promise<Map<string, PkgProgress>> {
+  const [pm, uni] = await Promise.all([
+    fresh ? loadBlockProgressFresh() : loadBlockProgress(),
+    loadBlockUniverse(),
+  ]);
+  return pkgProgressOf(pm, uni);
 }
 
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */

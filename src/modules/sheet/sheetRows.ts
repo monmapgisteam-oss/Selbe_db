@@ -26,7 +26,7 @@ import { PKGS, loadSchema, type Pkg, type Schema } from './bagts.pkg';
 import { msToDay } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TREES } from './bagts.trees';
-import { TASK_SHEET, bagtsKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
+import { TASK_SHEET, bagtsKey, buildingKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
 import { arcgisPost, isRateLimit } from '@/lib/query';
 
 /** Урт хэлбэрийн НЭГ мөр — нэг ажлын, нэг блокийн, нэг агшны бүртгэл. */
@@ -439,6 +439,39 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
   }));
 
   return out;
+}
+
+/**
+ * БАГЦ БҮРИЙН БЛОКИЙН ХУВААРЬ (universe) — бөглөх хуудсуудын бүдүүвчид (`sc.bld`)
+ * бүртгэлтэй блокууд: `bagtsKey(pkg.group)` → `buildingKey(pkg.group, блок)`[].
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): гүйцэтгэл ТАЙЛАГНААГҮЙ блок багцын хувьд
+ *    0% гэж ОРНО («мэдээлэлгүй» гэж хасагдахгүй) — 4 блоктой багцын зөвхөн A нь 100%
+ *    тайлагнасан бол багц 25%, 100% БИШ. Хэмжилтийн Map (`BlockProgressMap`) нь зөвхөн
+ *    ХЭМЖИГДСЭН түлхүүрийг агуулдаг тул хуваарийг ЭНДЭЭС авна.
+ * ⚠️ ГАЗРЫН ЗУРГИЙН ДАВХАРГААС БИШ: давхаргад давхардсан (29/1, 5/6) ба footprint-гүй
+ *    (29/3, 5/8) блок бий (`blockProgress.mapKeyIssues`) — тоо зургийн өгөгдлийн
+ *    алдаанаас хамаарах ёсгүй.
+ * ⚠️ `loadSheetRows`-тэй ЯГ ИЖИЛ шүүлт (`schemaOf` · `fillDate` · `act` багана) — хэмжилт
+ *    уншиж ЧАДАХГҮЙ хуудасны блок хуваарьт орохгүй (тэр багц «мэдээлэлгүй» хэвээр, 0 БИШ).
+ *    `loadSchema` кэштэй тул `loadSheetRows`-ийн дараа нэмэлт сүлжээний хүсэлтгүй.
+ * ⚠️ 9F/12F хоёр хуудас НЭГ багцад нийлнэ (`pkg.group`); блокийн түлхүүр давхардвал Set.
+ */
+export async function sheetBlockKeys(): Promise<Map<string, string[]>> {
+  const acc = new Map<string, Set<string>>();
+  const found = await Promise.all(PKGS.map(async (pkg) => {
+    const sc = await schemaOf(pkg);
+    if (!sc?.f.fillDate) return null;
+    const keys = sc.bld.filter((_, i) => !!sc.act[i]).map((b) => buildingKey(pkg.group, b));
+    return keys.length ? { k: bagtsKey(pkg.group), keys } : null;
+  }));
+  for (const x of found) {
+    if (!x) continue;
+    const s = acc.get(x.k) ?? new Set<string>();
+    x.keys.forEach((k) => s.add(k));
+    acc.set(x.k, s);
+  }
+  return new Map([...acc].map(([k, s]) => [k, [...s]]));
 }
 
 /**

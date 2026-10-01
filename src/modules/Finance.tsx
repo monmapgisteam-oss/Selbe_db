@@ -37,7 +37,7 @@ import { cached } from '@/lib/live';
  * татагддаг тул минутанд нэгээс олон удаа татах нь сүлжээг дэмий эзэлнэ.
  */
 const LIVE_TTL = 60_000;
-import { loadBlockHistory } from '@/lib/blockProgress';
+import { loadBlockHistory, loadBlockUniverse } from '@/lib/blockProgress';
 /*
  * ⚠️ ХУВААРИАС бодсон БИЕТ төлөвлөгөөний муруй (2026-09-04). `lagOf` нь урьд
  *    нь cashflow-ийн ӨССӨН МӨНГӨН хувийг (`cumPct`) БИЕТ гүйцэтгэлийн хувьтай
@@ -280,6 +280,13 @@ export type FinData = {
    *    хиймэл «хоцрогдол» гарна (`negtgelAuto.housingPlanOf`-ийн дүрэм).
    */
   physAt: PhysAtMap;
+  /**
+   * Багц → блокийн ХУВААРЬ (бөглөх хуудасны блок) — `finPhys.PhysBuild.physN`.
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `phys`-д цэггүй атлаа энд байгаа багц = ОГТ
+   *    тайлагнаагүй, 0% (`aggregateMonths`, `contractMonths`). Хуучин кэш/тестийн
+   *    обьектод байхгүй байж болох тул optional.
+   */
+  physN?: Map<string, number>;
   /**
    * ТӨЛБӨРИЙН МӨРҮҮД (45) — `HO_IPC` түүхий мөр, OID дарааллаар.
    *
@@ -795,9 +802,10 @@ export function aggregateMonths(d: FinData): { label: string; given: number; phy
    *    буй утгыг (as-of) авч, ТОГТМОЛ жинтэй жигнэнэ; хараахан тайлагнаагүй багц 0%.
    * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ — бүгд
    *    `gdash.housingPct` — нэг томьёо.
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`) ч 0%-иар орно.
    */
   const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
-  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels);
+  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN);
   return series.map((s) => {
     let given = 0;
     d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
@@ -822,7 +830,7 @@ export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
 }
 
 async function loadFinDataRaw(): Promise<FinData> {
-    const [contracts, ipc, hist] = await Promise.all([
+    const [contracts, ipc, hist, universe] = await Promise.all([
       loadCashflowNewRows(),
       loadHoRows(),
       /*
@@ -835,6 +843,9 @@ async function loadFinDataRaw(): Promise<FinData> {
        *    ижил эх сурвалжийг ДАХИН асуухын оронд түүнийг хуваалцана.
        */
       loadBlockHistory(),
+      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): багц бүрийн блокийн хуваарь — тайлагнаагүй
+         блок/багц 0% (`finPhys.buildPhys`). `loadSchema` кэштэй тул нэмэлт хүсэлтгүй. */
+      loadBlockUniverse(),
       /*
        * ⚠️ Хуваарийн муруйг ЗЭРЭГ татаж кэшлэнэ — `lagOf` үүнийг синхроноор
        *    уншина. ЖАГСААЛТЫН ТӨГСГӨЛД байх ёстой: дээрх задаргаа
@@ -946,9 +957,9 @@ async function loadFinDataRaw(): Promise<FinData> {
      *    импортолж шалгана (хуулбар БИШ).
      */
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
-    const { phys, physCnt, physAt } = buildPhys(hist, axis, nowYm);
+    const { phys, physCnt, physAt, physN } = buildPhys(hist, axis, nowYm, universe);
     return {
-      contracts, planTotal, given, givenTotal, phys, physCnt, physAt,
+      contracts, planTotal, given, givenTotal, phys, physCnt, physAt, physN,
       pays: ipc,
       /* ⚠️ ГЭРЭЭНИЙ ТҮВШИН — энд НЭГ УДАА хурааж бүх дуудагчид өгнө.
          Дуудагч тал өөрөө мөрөөр нийлүүлбэл давхардана. */
@@ -1107,6 +1118,12 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
   const byMon = given.get(k2) ?? given.get(k3);
   const ph = phys.get(k2) ?? phys.get(k3);
   const at = fin.physAt?.get(k2) ?? fin.physAt?.get(k3);
+  /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`-д л байгаа) —
+     ЭНЭ сард 0% гэсэн ганц цэг (`physAt: null`). Урьд нь бүх сар `null` тул
+     `physLatest` «мэдээлэлгүй» буцааж, жагсаалтад «—» гардаг байв. Төслийн нэгтгэлийн
+     цуваанд (`aggregateMonths`) энэ цэг ОРОХГҮЙ — тэнд `housingSeries(…, physN)`. */
+  const zeroPkg = !ph && !!(fin.physN?.has(k2) || fin.physN?.has(k3));
+  const nowYm = zeroPkg ? monthKey() : '';
   /*
    * ⚠️ ХОЦРОГДЛЫН ТӨЛӨВЛӨГӨӨГ БОДОХ БАГЦЫН ТҮЛХҮҮР (2026-09-04) — `phys` ЯМАР
    *    багцаас гарсан, ЯГ ТЭР багцынх. `lagOf` нь `planned − actual` бодох
@@ -1114,14 +1131,15 @@ export function contractMonths(r: Row, fin: FinData): MonthPt[] {
    *    эс тэгвээс нэг багцын хуваарийг нөгөө багцын гүйцэтгэлээс хасна.
    *    Дээрх `??` гинжтэй ЯГ ижил дараалал (`k2` тэргүүлнэ, дараа нь `k3`).
    */
-  const pkg = (phys.has(k2) ? k2 : phys.has(k3) ? k3 : (k2 || k3)) || undefined;
+  const pkg = (phys.has(k2) ? k2 : phys.has(k3) ? k3
+    : zeroPkg ? (fin.physN?.has(k2) ? k2 : k3) : (k2 || k3)) || undefined;
 
   /* ⚠️ Тэнхлэгийг ӨГӨГДЛӨӨС угсрахгүй — хэмжилтгүй сар (2026-01, 2026-03) мөр
      үүсгэдэггүй тул алгасвал түүнээс хойшхи бүх цэг зүүн тийш шилжинэ. */
   return cfMonthAxis().map((label) => ({
     label,
     given: byMon?.get(label) ?? 0,
-    phys: ph?.get(label) ?? null,
+    phys: ph?.get(label) ?? (zeroPkg && label === nowYm ? 0 : null),
     physAt: at?.get(label) ?? null,
     pkg,
   }));
@@ -1153,6 +1171,9 @@ export function pkgMonthsMap(fin: FinData): Map<string, MonthPt[]> {
  * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — ЭНЭ САР хүртэлх хамгийн сүүлийн биет % (0–100).
  * `lagOf().actual`-тай ИЖИЛ цэг (`m.label <= nowYm && m.phys != null`).
  * ⚠️ `null` = хэмжилт алга — 0 БИШ (0% нь «эхлээгүй» гэсэн хэмжилт).
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бөглөх хуудастай боловч ОГТ тайлагнаагүй багц
+ *    0% буцаана (`contractMonths`-ийн одоогийн сарын 0 цэг); `null` нь зөвхөн
+ *    хуваарьгүй (хуудасгүй / уншигдаагүй) багц.
  */
 export function physLatest(months: MonthPt[] | null | undefined): number | null {
   if (!months) return null;

@@ -84,7 +84,7 @@ const curveOf = (rows) => planCurve(rows, 1, axis).map((c) => (c[0] == null ? nu
   const withOwn = sheet('2026-01-01', '2026-06-30', '2026-07-01', '2026-12-31', ['2026-01-01', '2026-06-30']);
   assert.ok(curveOf(withOwn)[1] < 100, 'дэд ажлууд хуваарьтай үед бүлгийн ӨӨРИЙН огноо давамгайлахгүй');
 
-  /* `planProgress`-ийн хийдэг зүйл: бүлгийн огноог цэвэрлэнэ */
+  /* Цэвэрлэсэн ч ижил (2026-10-01-ээс `planProgress` цэвэрлэхээ больсон) */
   const cleared = withOwn.map((r) => (
     r.group ? { ...r, start: r.start.map(() => null), end: r.end.map(() => null) } : r
   ));

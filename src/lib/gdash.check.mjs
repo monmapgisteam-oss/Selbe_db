@@ -520,6 +520,18 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   const gap = housingSeries(phys, physCnt, physAt, cost, ['2026-06', '2026-06b', '2026-07']);
   assert.equal(gap[1].phys, null, 'шинэ бичилтгүй сар null байх ёстой');
 
+  /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`-д л байгаа) бүх сард
+     0%-иар ЖИНД ОРНО — урьд нь хасагддаг байв. Цэгийн сарууд хөдлөхгүй (шинэ бичилт үүсгэхгүй). */
+  {
+    const cost3 = new Map([...cost, ['БАГЦ3', 1000]]);
+    const physN = new Map([['БАГЦ1', 4], ['БАГЦ2', 20], ['БАГЦ3', 5]]);
+    const s3 = housingSeries(phys, physCnt, physAt, cost3, labels, physN);
+    assert.deepEqual(s3.map((x) => x.phys), [2, 17, 19],
+      'тайлагнаагүй БАГЦ3 (ХО 1000) 0%-иар хуваарьт: 6 — 4000/2000; 7 — 34000/2000; 8 — 38000/2000');
+    assert.equal(housingSeries(phys, physCnt, physAt, cost3, ['2026-06b'], physN)[0].phys, null,
+      'тайлагнаагүй багц шинэ цэг үүсгэв');
+  }
+
   /* (1) aggregateMonths/physNow замын СҮҮЛИЙН утга */
   const viaSeries = s[s.length - 1].phys;
   /* (2) Тайлан (`loadOverall`): багц бүрийн ОДООГИЙН утга → `housingPct` */

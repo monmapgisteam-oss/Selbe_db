@@ -168,6 +168,8 @@ export function buildModel(input: {
    *    bagtsiin-medeelel салбарт «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн жагсаалт энэ «бодит
    *    гүйцэтгэл» рүү шилжсэн тул ТУХ ч мөн адил — нэг багц гурван дэлгэцэд НЭГ тоо.
    *    Хэмжилтгүй бол Map-д ОРОХГҮЙ → «—» (0 биш).
+   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бөглөх хуудастай боловч ОГТ тайлагнаагүй багцад
+   *    `physLatest` 0 буцаана (тайлагнаагүй блок 0%) — «—» нь зөвхөн хуваарьгүй багц.
    */
   const actual = new Map<string, number>();
   monthsBy.forEach((m, k) => {
@@ -203,7 +205,8 @@ export function buildModel(input: {
     const pack = housing && packs ? packs.find((x) => x.kind === 'build' && x.key === p.pkgKey) : undefined;
     /* ⚠️ 2026-09-30: картын гүйцэтгэлтэй (`physLatest`) НЭГ тодорхойлолт — `tuhData.weekDelta`-ийн ⚠️
        (урьд нь хувьсах хуваагчтай `progressSeries(…, 'latest')` — шинэ блок тайлагнахад сөрөг) */
-    const week = housing && hist ? weekDelta(hist, p.pkgKey, today) : null;
+    /* ⚠️ 2026-10-01: хуваагч = багцын бүх блок (`fin.physN`, тайлагнаагүй 0%) */
+    const week = housing && hist ? weekDelta(hist, p.pkgKey, today, fin.physN?.get(p.pkgKey)) : null;
 
     const comm = housing ? (commission?.get(p.pkgKey) ?? null) : null;
     /* ⚠️ 2026-10-01: `assignHo`-ийн онооголт ЭЦСИЙН — дахин түлхүүрээр шүүхгүй (`null`):

@@ -11,7 +11,8 @@
  *      дундаж байсан — шинэ блок тайлагнах бүрд хуваагч өсөж муруй ҮСЭРЧ/
  *      УНАДАГ байв. Одоо хуваагч = СҮҮЛИЙН бичилт нь утгатай блокууд
  *      (`blockProgress.compute`-ийн олонлог — эцсийн цэг дэлгэцийн одоогийн
- *      дундажтай ЯГ таарна). Тэр блок тухайн сард хараахан тайлагнаагүй бол
+ *      дундажтай ЯГ таарна) — ⚠️ 2026-10-01-нээс хуваарь нь БҮХ блок (доорх ⚠️).
+ *      Тэр блок тухайн сард хараахан тайлагнаагүй бол
  *      0% — `blockProgress.progressSeries`-ийн «ХУВААРЬ ТОГТМОЛ» шийдвэртэй ижил
  *      (тайлан ирээгүй барилга тэр үед бодитоор ~0%).
  *   2. ДАВТСАН ЦЭГ ГАРАХГҮЙ. Урьд нь сүүлийн бичилт сар бүр урагш ДАВТАГДАЖ
@@ -22,8 +23,17 @@
  *   3. ХЭМЖИЛТИЙН ОГНОО (`physAt`) — сар бүрийн цэг ЯМАР өдрийн байдлаар бэ.
  *      `lagOf` төлөвлөгөөг тэр өдрөөр завсарлана (`planProgress.planPctAt`).
  *
- * ⚠️ `null` ≠ 0: блок бүр утгагүй бол багц Map-д ОРОХГҮЙ; цэггүй сар нь
- *    Map-д түлхүүргүй (дуудагч `null` гэж уншина).
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ХУВААГЧ = багцын БҮХ блок (бөглөх хуудасны
+ *    хуваарь `universe` ∪ утгатай блок) — тайлагнаагүй блок 0%. Урьд нь (дүрэм 1)
+ *    зөвхөн сүүлийн бичилт нь утгатай блокууд байв: 4 блоктой багцын ганц блок 100%
+ *    тайлагнахад багц 100% гардаг байлаа (одоо 25%). `blockProgress.pkgProgressOf`-тэй
+ *    ЯГ нэг хуваарь ⇒ эцсийн цэг == жагсаалтын хувь.
+ * ⚠️ 2026-10-01: ОГТ тайлагнаагүй багц `phys`-д ОРОХГҮЙ (цэг гаргахгүй — «шинэ бичилт»
+ *    байхгүй), харин `physN`-д блокийн тоотойгоо ОРНО — нэгтгэл (`gdash.housingSeries`)
+ *    ба багцын жагсаалт (`Finance.contractMonths`) түүнийг 0% гэж тооцно. `phys.size`
+ *    нь «тайлагнасан багц»-ын тоо хэвээр.
+ * ⚠️ `null` ≠ 0 ХЭВЭЭР зөвхөн: цэггүй сар нь Map-д түлхүүргүй (дуудагч `null` гэж
+ *    уншина); бөглөх хуудас уншигдаагүй (хуваарьт байхгүй) багц хаана ч орохгүй.
  */
 import { bagtsKey, blockKey } from './services';
 
@@ -39,6 +49,11 @@ export type PhysBuild = {
   physCnt: PhysMap;
   /** Багц → сар → тэр цэгийн хамгийн сүүлийн бичилтийн огноо */
   physAt: PhysAtMap;
+  /**
+   * Багц → ХУВААГЧ (блокийн тоо) — ОГТ тайлагнаагүй багцыг ч агуулна (2026-10-01).
+   * ⚠️ `phys`-д түлхүүргүй атлаа энд байгаа багц = тайлагнаагүй, 0%.
+   */
+  physN: Map<string, number>;
 };
 
 /** `${БАГЦ}|блок` → [{ огноо, % 0–100 | null }] — `blockProgress.BlockHistory`-той нийцнэ */
@@ -48,10 +63,30 @@ export type PhysHistory = Map<string, { date: string; pct: number | null }[]>;
  * @param hist  `loadBlockHistory()`-ийн үр дүн
  * @param axis  сарын тэнхлэг («YYYY-MM»), `cfMonthAxis()`
  * @param nowYm ОРОН НУТГИЙН одоогийн сар — түүнээс хойш цэг гарахгүй
+ * @param universe багц → блокийн түлхүүрүүд (`blockProgress.loadBlockUniverse`). Өгөөгүй
+ *   бол хуваарь нь зөвхөн утгатай блокууд (тест/нөөц) — тайлагнаагүй багц мэдэгдэхгүй.
  */
-export function buildPhys(hist: PhysHistory, axis: readonly string[], nowYm: string): PhysBuild {
+export function buildPhys(
+  hist: PhysHistory,
+  axis: readonly string[],
+  nowYm: string,
+  universe?: ReadonlyMap<string, readonly string[]>,
+): PhysBuild {
   /* багц → блок → [огноо, %] */
   const byPkg = new Map<string, Map<string, { d: string; g: number | null }[]>>();
+  /* ⚠️ 2026-10-01: багц → хуваарийн блокууд (`blockKey`) — `history`-тэй ИЖИЛ нормчлол */
+  const uniOf = new Map<string, Set<string>>();
+  for (const [pk, keys] of universe ?? []) {
+    const k = bagtsKey(pk);
+    if (!k) continue;
+    const s = uniOf.get(k) ?? new Set<string>();
+    for (const key of keys) {
+      const cut = key.indexOf('|');
+      const b = blockKey(cut < 0 ? key : key.slice(cut + 1));
+      if (b) s.add(b);
+    }
+    uniOf.set(k, s);
+  }
   for (const [key, pts] of hist) {
     const cut = key.indexOf('|');
     const k = bagtsKey(key.slice(0, cut));
@@ -72,18 +107,25 @@ export function buildPhys(hist: PhysHistory, axis: readonly string[], nowYm: str
   const phys: PhysMap = new Map();
   const physCnt: PhysMap = new Map();
   const physAt: PhysAtMap = new Map();
+  const physN = new Map<string, number>();
 
-  for (const [k, blocks] of byPkg) {
-    /* Хуваагчийн олонлог — СҮҮЛИЙН бичилт нь утгатай блокууд (дүрэм 1) */
+  for (const k of new Set([...byPkg.keys(), ...uniOf.keys()])) {
+    const blocks = byPkg.get(k) ?? new Map<string, { d: string; g: number | null }[]>();
+    /* Утгатай блокууд — СҮҮЛИЙН бичилт нь утгатай (`compute`-ийн олонлог) */
     const members: { d: string; g: number }[][] = [];
-    for (const arr0 of blocks.values()) {
+    /* ⚠️ 2026-10-01: хуваагч = хуваарь ∪ утгатай блок (`pkgProgressOf`-тэй ижил) */
+    const all = new Set(uniOf.get(k) ?? []);
+    for (const [b, arr0] of blocks) {
       const arr = [...arr0].sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
       const last = arr[arr.length - 1];
-      if (!last || last.g == null) continue; // «мэдээлэлгүй» блок — дунджид ОРОХГҮЙ
+      if (!last || last.g == null) continue; // нүд цэвэрлэгдсэн — хуваарьт байвал 0%
       members.push(arr.filter((e): e is { d: string; g: number } => e.g != null));
+      all.add(b);
     }
+    const n = all.size;
+    if (n > 0) physN.set(k, n);
+    /* Огт тайлагнаагүй — цэг гаргахгүй (шинэ бичилт алга), `physN`-ээр 0% */
     if (!members.length) continue;
-    const n = members.length;
     const byMon = new Map<string, number>();
     const cntMon = new Map<string, number>();
     const atMon = new Map<string, string>();
@@ -113,5 +155,5 @@ export function buildPhys(hist: PhysHistory, axis: readonly string[], nowYm: str
     physCnt.set(k, cntMon);
     physAt.set(k, atMon);
   }
-  return { phys, physCnt, physAt };
+  return { phys, physCnt, physAt, physN };
 }

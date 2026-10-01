@@ -329,9 +329,10 @@ export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'C
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW_NEW.fields;
-  const { loadBlockProgress, pkgProgressOf } = await import('@/lib/blockProgress');
-  const [cells, labels, cf] = await Promise.all([
-    loadBlockProgress(),
+  const { loadPkgProgress } = await import('@/lib/blockProgress');
+  const [byPkg, labels, cf] = await Promise.all([
+    /* ⚠️ 2026-10-01: хэмжилт + бөглөх хуудасны блокийн хуваарь (тайлагнаагүй блок 0%) */
+    loadPkgProgress(),
     loadPkgLabels(),
     /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
        тусдаа кэштэй дуудалт тул хөнгөн байлгав.
@@ -351,19 +352,20 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
      `pkg2` (навч) эхэлж, `pkgKeyOf` (ДИАПАЗОН мөр «Багц 14»-т наалдахгүй). */
   const budget = pkgCostWeight(cf.map(cfWeightRow));
 
-  /* багц → хэмжигдсэн блокуудын дундаж (0–100) ба блокийн тоо.
+  /* багц → БҮХ блокийн дундаж (0–100, тайлагнаагүй блок 0%) ба блокийн тоо (`byPkg` дээр).
      ⚠️ 2026-09-30: `blockProgress.pkgProgressOf` — Тайлан §2 (`joinBagts`) ·
      удирдлагын тайлан · Дашбоард · `loadFillPkgProgress`-тэй НЭГ функц (урьд нь
      энд ижил тооцооны хуулбар байсан; бусад нь давхаргын feature-ээр гүйлгэж
-     Багц 1 · 2-т §2 ба §3 өөр хувь хэвлэдэг байв). */
-  const byPkg = pkgProgressOf(cells);
+     Багц 1 · 2-т §2 ба §3 өөр хувь хэвлэдэг байв).
+     ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): нэг ч блок тайлагнаагүй багц ч 0%-иар ОРНО
+     (урьд нь хасагддаг байв); `rows` нь хуваарь (`total`) — бүх блок тооцоонд орно. */
 
   /* Төсвийн НИЙТ дүн — жинг 0–1 болгож нормчилох хуваарь */
   const budgetAll = [...budget.values()].reduce((a, b) => a + b, 0);
 
   const raw = [...byPkg.entries()].map(([pkg, m]) => ({
     label: labels.get(pkg) ?? pkg,
-    rows: m.blocks,
+    rows: m.total,
     /* Төсөв байхгүй бол блокийн тоо — нэгж нь өөр ч доор нормчлогдоно */
     money: budget.get(pkg) ?? 0,
     // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
@@ -390,8 +392,10 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const housing = housingPct(raw.map((s) => ({ pct: s.actual, cost: s.money, blocks: s.rows })));
 
   return {
-    // ⚠️ Жингийн НИЙЛБЭРТ харьцуулна, 1-д БИШ: бүртгэгдээгүй багцыг «0%
-    //    гүйцэтгэлтэй» гэж тооцвол төслийн дүн худал буурна.
+    // ⚠️ Жингийн НИЙЛБЭРТ харьцуулна, 1-д БИШ: орон сууцны бус (бөглөх хуудасгүй)
+    //    багцын төсөв хуваарьт орохгүй.
+    // ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бөглөх хуудастай боловч ОГТ тайлагнаагүй
+    //    орон сууцны багц 0%-иар ОРНО (урьд нь «бүртгэгдээгүй» гэж хасагддаг байв).
     // ⚠️ 2026-09-29 (аудит 10): жин 0 (блокийн мөр алга) → `null`, 0 БИШ — «—» гэж гарна.
     pct: housing,
     weightSum,

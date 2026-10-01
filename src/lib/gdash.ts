@@ -821,8 +821,11 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
  * тэрбум ₮, Багц 3.2 — 197.8). Энгийн дундаж нь жижиг багцыг томтой ижил
  * жинтэй болгоно. Тиймээс ХО дүнгээр жигнэнэ — `weighted()`-ийн ижил дүрэм.
  *
- * ⚠️ ХЭМЖИГДЭЭГҮЙ багц жинд ОРОХГҮЙ (`null ≠ 0`): тухайн сард хэмжилтгүй
- * багцыг 0% гэж тооцвол төслийн явц зохиомлоор буурна.
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц ч 0%-иар жинд ОРНО
+ * (урьд нь «ХЭМЖИГДЭЭГҮЙ багц жинд ОРОХГҮЙ — null ≠ 0» байв; хожим тайлагнаж
+ * эхэлсэн багц өмнөх саруудад 0% байдаг тул тэр дүрэм ч зөрчилтэй байлаа). Жагсаалт
+ * нь `finPhys.PhysBuild.physN` (бөглөх хуудасны блокийн хуваарь) — `housingSeries`.
+ * `null` нь зөвхөн бөглөх хуудас уншигдаагүй багц.
  */
 export const HOUSING_PKGS: readonly string[] = [
   'БАГЦ1', 'БАГЦ2', 'БАГЦ31', 'БАГЦ32', 'БАГЦ33', 'БАГЦ41', 'БАГЦ42',
@@ -840,7 +843,9 @@ export const HOUSING_PKGS: readonly string[] = [
  *    `housingMoney` (ХО дүнгээр). Нэг үзүүлэлт дэлгэц бүрд өөр тоо гаргадаг байсан
  *    тул БҮГД ЭНЭ функцээр — порталын дүрэм ӨРТГӨӨР ЖИГНЭХ (`weighted()`,
  *    `PkgFin` «Төслийн төрөл», `housingMoney`-тэй нэг зарчим).
- * ⚠️ `pct == null` (хэмжигдээгүй) багц хуваарь, хүртвэрт ХОЁУЛАНД орохгүй — 0 биш.
+ * ⚠️ `pct == null` багц хуваарь, хүртвэрт ХОЁУЛАНД орохгүй — 0 биш.
+ *    ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `null` нь зөвхөн АЧААЛАЛТ УНАСАН / хуваарьгүй
+ *    багц; ОГТ тайлагнаагүй багцыг дуудагч 0-ээр өгнө (`pkgProgressOf`, `housingSeries`).
  * ⚠️ ХО дүнгүй (`cost <= 0`) багц жингүй тул орохгүй. Хэмжигдсэн багцуудын НЭГ Ч
  *    нь ХО дүнгүй бол (Cashflow уншигдаагүй г.м.) БЛОКИЙН ТООНД БҮРЭН шилжинэ —
  *    хагас хагасаар холивол нэгж зөрж жин утгагүй болно (`loadOverall`-ийн
@@ -905,9 +910,13 @@ export function pkgCostWeight(
  *    хараахан тайлагнаагүй багц 0% (`finPhys` дүрэм 1); цэг нь аль нэг багц тэр
  *    сард ШИНЭЭР тайлагнасан үед л гарна, бусад сард `null` (0 биш).
  * ⚠️ 2026-09-30: жигнэлт нь `housingPct` (ХО дүн; блокийн тоо — зөвхөн нөөц).
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): `physN`-д байгаа боловч `phys`-д цэггүй (ОГТ
+ *    тайлагнаагүй) багц бүх сард 0%-иар жинд ОРНО — урьд нь хасагддаг байв. Тэр багц
+ *    «шинэ бичилт» үүсгэхгүй тул цэгийн сарууд хөдлөхгүй.
  *
  * @param physCnt багц → сар → блокийн тоо (нөөц жин — хамгийн их утга)
  * @param cost    багц → ХО дүн (`pkgCostWeight`)
+ * @param physN   багц → блокийн хуваарь (`finPhys.PhysBuild.physN`) — тайлагнаагүй багцыг 0%-иар нэмнэ
  */
 export function housingSeries(
   phys: Map<string, Map<string, number>>,
@@ -915,9 +924,10 @@ export function housingSeries(
   physAt: Map<string, Map<string, string>> | undefined,
   cost: Map<string, number>,
   labels: readonly string[],
+  physN?: ReadonlyMap<string, number>,
 ): { label: string; phys: number | null; physAt: string | null }[] {
   const pk = [...phys].map(([k, byMon]) => {
-    let w = 1;
+    let w = physN?.get(k) ?? 1;
     physCnt.get(k)?.forEach((v) => { if (v > w) w = v; });
     return {
       pts: [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)),
@@ -926,6 +936,11 @@ export function housingSeries(
       cost: cost.get(k) ?? 0,
     };
   }).filter((x) => x.pts.length > 0);
+  /* ⚠️ 2026-10-01: огт тайлагнаагүй багц — цэггүй, үргэлж 0% */
+  physN?.forEach((n, k) => {
+    if (phys.get(k)?.size) return;
+    pk.push({ pts: [], at: undefined, w: n > 0 ? n : 1, cost: cost.get(k) ?? 0 });
+  });
   return labels.map((label) => {
     const items: HousingItem[] = [];
     let fresh = false;

@@ -156,7 +156,8 @@ function mergePkgMonths(
     const givenNew = givenK != null && !seenGiven.has(givenK);
     if (givenNew) seenGiven.add(givenK);
     /* Эх түлхүүрийн давхардал `Set`-ээр хасагдана — хоёр гэрээ нэг эхэд унавал нэг л удаа */
-    const physK = pkgSrcKey(r, d.phys);
+    /* ⚠️ 2026-10-01: ОГТ тайлагнаагүй эх (`physN`-д л байгаа) ч 0%-иар орно */
+    const physK = pkgSrcKey(r, d.phys) ?? (d.physN ? pkgSrcKey(r, d.physN) : null);
     if (physK != null) seenPhys.add(physK);
     for (const m of ms) {
       if (!given.has(m.label)) given.set(m.label, 0);
@@ -193,7 +194,8 @@ function mergePkgMonths(
   const only = <V,>(src: Map<string, V>): Map<string, V> =>
     new Map([...seenPhys].flatMap((k) => { const v = src.get(k); return v ? [[k, v] as const] : []; }));
   const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
-  const series = housingSeries(only(d.phys), only(d.physCnt), only(d.physAt), cost, labels);
+  const series = housingSeries(only(d.phys), only(d.physCnt), only(d.physAt), cost, labels,
+    d.physN ? only(d.physN) : undefined);
   return series.map((s) => ({
     label: s.label,
     given: given.get(s.label) ?? 0,

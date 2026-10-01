@@ -437,8 +437,9 @@ export function PkgProg({ dim, setDim }: {
       where: null,
       blocks,
       households: build.reduce((s, p) => s + p.households, 0),
-      /* ⚠️ 2026-10-01: давхардсан полигон нэг блок (`uniqueBlocks`) */
-      progress: meanOf(uniqueBlocks(blocks).map((b) => b.progress)),
+      /* ⚠️ 2026-10-01: давхардсан полигон нэг блок (`uniqueBlocks`).
+         ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): тайлагнаагүй блок 0% (урьд нь хасагддаг байв) */
+      progress: meanOf(uniqueBlocks(blocks).map((b) => b.progress ?? 0)),
     };
   }, [packs]);
 

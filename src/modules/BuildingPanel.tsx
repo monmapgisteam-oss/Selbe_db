@@ -7,7 +7,10 @@ import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
-import { loadBlockProgress, loadBlockHistory, progressSeries, pkgProgressOf, mapKeyIssues, type BlockHistory } from '@/lib/blockProgress';
+import {
+  loadBlockProgress, loadBlockHistory, loadBlockUniverse, progressSeries, pkgProgressOf, universeKeys,
+  latestMean, mapKeyIssues, type BlockHistory,
+} from '@/lib/blockProgress';
 import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
 import { register } from '@/lib/dataBus';
 import { num, pct, text } from '@/lib/format';
@@ -161,7 +164,7 @@ export type BuildingsData = Awaited<ReturnType<typeof loadBuildings>>;
  * ГАЗРЫН ЗУРГИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ → console (ЗӨВХӨН хөгжүүлэлтийн горим, сешнд нэг удаа).
  * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон, footprint-гүй хэмжилт,
  *    багцын нэр буруу байж болзошгүй блокийг админ ArcGIS дээр засахад зориулсан жагсаалт.
- *    Тоонд нөлөөгүй (`uniqueBlocks` · `pkgProgressOf`).
+ *    Тоонд нөлөөгүй (`uniqueBlocks` · `pkgProgressOf` — бөглөх хуудасны хуваариар).
  */
 let mapKeysWarned = false;
 function warnMapKeys(featureKeys: string[], measured: Iterable<string>): void {
@@ -183,13 +186,15 @@ export function useBuildings() {
 
 export async function loadBuildings() {
   {
-    const [rows, prog, hist] = await Promise.all([
+    const [rows, prog, hist, uni] = await Promise.all([
       queryFeatures(BUILDING.url, {
         outFields: [BUILDING.oid, F.bagts, F.block, F.contractor, F.floors, F.households],
         limit: 2000,
       }),
       loadBlockProgress(),
       loadBlockHistory(),
+      /* ⚠️ 2026-10-01: бөглөх хуудасны блокийн хуваарь — тайлагнаагүй блок 0% */
+      loadBlockUniverse(),
     ]);
 
     /** Б1…Б5-ын нэр — хүснэгтээс ирнэ (гар аргаар бичихгүй) */
@@ -229,21 +234,28 @@ export async function loadBuildings() {
     if (process.env.NODE_ENV !== 'production') warnMapKeys(blocks.map((b) => b.key), prog.keys());
     /* ⚠️ 2026-09-30: БАГЦЫН хувь — хэмжилтийн нүднээс (`pkgProgressOf`), feature-ээр
        БИШ: давхардсан feature (29/1, 5/6) ба footprint-гүй хэмжилт (29/3, 5/8)-аас
-       болж Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалтаас зөрдөг байв. */
+       болж Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалтаас зөрдөг байв.
+       ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь = бөглөх хуудасны БҮХ блок (`uni`),
+       тайлагнаагүй блок 0%. */
     const pkgPct = new Map<string, number>();
-    for (const [k, v] of pkgProgressOf(prog)) pkgPct.set(k, v.pct);
+    for (const [k, v] of pkgProgressOf(prog, uni)) pkgPct.set(k, v.pct);
+    /* ⚠️ 2026-10-01: төслийн БҮХ блокийн хуваарь — нийт дундаж ба цувааны анхдагч хүрээ */
+    const allKeys = universeKeys(prog, uni);
 
     return {
       /** Блокийн ТҮҮХИЙ мөрүүд — «Багцын мэдээлэл» блок бүрээр задалж харуулна */
       rows: blocks,
       /**
        * `bagtsKey` → багцын гүйцэтгэл (0–100) — `buildPacks(rows, pkgPct)`-д дамжуулна.
-       * Хэмжилтгүй багц Map-д ОРОХГҮЙ (null ≠ 0).
+       * ⚠️ 2026-10-01: тайлагнаагүй багц 0%; зөвхөн хуваарьгүй (хуудас уншигдаагүй)
+       *    багц Map-д ОРОХГҮЙ.
        */
       pkgPct,
       blocks: uniq.length,
       households: uniq.reduce((s, b) => s + b.ail, 0),
-      progress: meanOf(uniq.map((b) => b.progress)),
+      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бүх блокийн дундаж (тайлагнаагүй 0%) —
+         урьд нь зөвхөн утгатай блокийн дундаж (`meanOf`) байв. */
+      progress: latestMean(prog, allKeys).pct,
       floors: meanOf(uniq.map((b) => b.floors)),
       /** Хүснэгтэд хараахан бөглөгдөөгүй блок */
       noData: uniq.length - withData.length,
@@ -251,8 +263,8 @@ export async function loadBuildings() {
 
       /** Цувааны эх — бүх блокийн «Б.» мөрийн түүх */
       hist,
-      /** Бүх блокийн түлхүүр (цувааны анхдагч хамрах хүрээ) */
-      keys: uniq.map((b) => b.key),
+      /** Бүх блокийн түлхүүр (цувааны анхдагч хамрах хүрээ) — 2026-10-01-ээс бөглөх хуудасны хуваарь */
+      keys: allKeys,
 
       levels: PROGRESS_LEVELS.map((l) => {
         const hit = withData.filter((b) => b.progress! >= l.min && b.progress! < l.max);
@@ -262,8 +274,16 @@ export async function loadBuildings() {
       }),
 
       /* ⚠️ 2026-09-30: багцын `progress` = `pkgPct` (дээрх ⚠️) — feature-ийн дундаж БИШ */
+      /* ⚠️ 2026-10-01: цувааны `keys` — тэр багцын бөглөх хуудасны хуваарь (хувьтай нэг) */
       bagts: aggregate(blocks, (b) => b.bagts)
-        .map((g) => ({ ...g, progress: pkgPct.get(bagtsKey(g.key)) ?? null }))
+        .map((g) => {
+          const bk = bagtsKey(g.key);
+          return {
+            ...g,
+            keys: uni.has(bk) ? universeKeys(prog, uni, [bk]) : g.keys,
+            progress: pkgPct.get(bk) ?? null,
+          };
+        })
         .sort((a, b) => a.key.localeCompare(b.key, 'mn')),
 
       contractors: aggregate(blocks, (b) => b.contractor).sort((a, b) => b.blocks - a.blocks),
