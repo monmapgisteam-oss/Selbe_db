@@ -1214,5 +1214,13 @@ export const zoneWhere = (l: LayerDef, id: string): string | null => {
         : [...zoneLegacyValues(z), ...zoneRefValues(z)])),
     ),
   ];
-  return `${field} IN (${vals.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+  /* ⚠️ 2026-09-30 (төслийн аудит): Юникод (кирилл) утгад `N'…'` угтвар — ArcGIS-ийн дүрэм
+     (`query.sqlStr` · `nPrefixUnicode`-ийн ⚠️): угтваргүй кирилл харьцуулалт зарим
+     үйлчилгээнд АЛДААГҮЙГЭЭР 0 мөр өгдөг. Латин код («D-8.1», «A-14») хэвээр. `query.ts`-ийг
+     импортлохгүй — `services` нь навч модуль (давталт үүсгэхгүй). */
+  const lit = (v: string) => {
+    const q = `'${v.replace(/'/g, "''")}'`;
+    return [...v].some((c) => c.charCodeAt(0) > 0x7f) ? `N${q}` : q;
+  };
+  return `${field} IN (${vals.map(lit).join(", ")})`;
 };

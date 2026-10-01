@@ -16,9 +16,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  URL as ZOV_URL, TOLOV, byBagts, loadZov, summarize, type Zov, type ZovDraft,
+  URL as ZOV_URL, TOLOV, PENDING_STALE_DAYS, byBagts, filterZov, isStalePending, loadZov,
+  pendingAgeDays, summarize, type Zov, type ZovDraft, type ZovFilter,
 } from '@/lib/zovshoorol';
 import { hasCap, subscribeCaps } from '@/lib/caps';
+import { date } from '@/lib/format';
 import { useAuth } from '@/components/AuthGate';
 import { ZovshoorolEdit } from './ZovshoorolEdit';
 import s from './zovshoorol.module.css';
@@ -58,25 +60,47 @@ const ICON: Record<string, string> = {
   [TOLOV.no]: '!',
 };
 
-function Chip({ z, onPick }: { z: Zov; onPick: (z: Zov) => void }) {
+/**
+ * Шүүлтийн товчнууд — дараалал нь ач холбогдлоор.
+ * ⚠️ Шошгыг render үед `tr()`-ээр (модулийн түвшинд БИШ — хэл солиход дагана).
+ */
+const FILTERS: { key: ZovFilter; label: () => string }[] = [
+  { key: 'all', label: () => tr('Бүгд') },
+  { key: 'stale', label: () => tr('{0}+ хоног хүлээгдэж буй', PENDING_STALE_DAYS) },
+  { key: 'wait', label: () => tr('Хүлээгдэж буй') },
+  { key: 'no', label: () => tr('Зөвшөөрөөгүй') },
+  { key: 'ok', label: () => tr('Зөвшөөрсөн') },
+  { key: 'unknown', label: () => tr('танигдаагүй') },
+];
+
+function Chip({ z, now, onPick }: { z: Zov; now: number; onPick: (z: Zov) => void }) {
   const cls = z.tolov === TOLOV.ok ? s.ok
     : z.tolov === TOLOV.no ? s.no
       : z.tolov === TOLOV.wait ? s.wait
         : s.unknown;
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `PENDING_STALE_DAYS`-аас удаж буй
+     хүлээгдэж буй зөвшөөрөл ТОД тэмдэглэгдэнэ (шар хүрээ + «N хоног»).
+     ⚠️ АНИВЧИХГҮЙ — файлын толгойн дүрэм: анивчих нь зөвхөн «Зөвшөөрөөгүй». */
+  const stale = isStalePending(z, now);
+  const age = stale ? pendingAgeDays(z, now) : null;
   /* ⚠️ 2026-09-25: төлөв зөвхөн тэмдгээр (✓ ⏳ !) илэрдэг байсан тул дэлгэц
      уншигч «шалгах тэмдэг» л уншдаг байв — нэр, төлөв, огноог шууд нэрлэнэ. */
   return (
     <button
       type="button"
-      className={`${s.chip} ${cls}`}
+      className={`${s.chip} ${cls} ${stale ? s.stale : ''}`}
       onClick={() => onPick(z)}
       title={tr('Дэлгэрэнгүй харах')}
-      aria-label={[z.ner, TOLOV_TEXT[z.tolov], z.ognoo != null ? dt(z.ognoo) : ''].filter(Boolean).join(' · ')}
+      aria-label={[
+        z.ner, TOLOV_TEXT[z.tolov], z.ognoo != null ? dt(z.ognoo) : '',
+        age != null ? tr('{0} хоног хүлээгдэж байна', age) : '',
+      ].filter(Boolean).join(' · ')}
       aria-haspopup="dialog"
     >
       <span className={s.chipIcon} aria-hidden>{ICON[z.tolov] ?? '?'}</span>
       <span className={s.chipName}>{z.ner}</span>
       {z.ognoo != null && <span className={s.chipDate}>{dt(z.ognoo)}</span>}
+      {age != null && <span className={s.chipAge} aria-hidden>{tr('{0} хоног', age)}</span>}
     </button>
   );
 }
@@ -128,6 +152,9 @@ function Detail({ z, canEdit, onEdit, onClose }: {
     [tr('Байгууллагын хариуцагч'), z.hariutsagch || '—'],
     [tr('Сэлбэ талын хариуцагч'), z.selbe || '—'],
     [tr('Тайлбар'), z.tailbar || '—'],
+    /* ⚠️ 2026-10-01: «N хоног хүлээгдэж буй» тэмдэглэгээний суурь — Editor Tracking
+       байхгүй бол мөр ОГТ гарахгүй («—» нь «бүртгэгдээгүй» гэж худал уншигдана). */
+    ...(z.since != null ? [[tr('Бүртгэгдсэн'), date(z.since)] as [string, string]] : []),
   ];
 
   /* ⚠️ `aria-labelledby` — нэргүй `role="dialog"` нь дэлгэц уншигчид зүгээр
@@ -175,6 +202,16 @@ export function Zovshoorol() {
   /** Засварын маягтын ноорог — `null` бол маягт хаалттай */
   const [edit, setEdit] = useState<ZovDraft | null>(null);
   const [n, setN] = useState(0);
+  /**
+   * ⚠️ 2026-10-01: ТӨЛӨВИЙН ШҮҮЛТ (хэрэглэгч: бүгдийг зас). Санадаггүй — дахин
+   *    ороход «Бүгд»-ээс эхэлнэ (нуусан зөвшөөрөл мартагдахгүйн тулд).
+   */
+  const [flt, setFlt] = useState<ZovFilter>('all');
+  /**
+   * «Одоо» — хүлээлтийн насыг тоолох агшин. ⚠️ Render дотор `Date.now()` дуудвал
+   * цэвэр бус (React Compiler) тул ачаалал бүрийн агшинд тогтооно.
+   */
+  const [now, setNow] = useState(0);
 
   const { user } = useAuth();
   const [capN, setCapN] = useState(0);
@@ -197,6 +234,7 @@ export function Zovshoorol() {
     void loadZov().then((r) => {
       if (!alive) return;
       setRows(r);
+      setNow(Date.now());
       setBusy(false);
     });
     return () => { alive = false; };
@@ -251,9 +289,17 @@ export function Zovshoorol() {
    * нь «Багц 2»-ын дараа орно). Урьдчилан бичсэн жагсаалтад тулгуурлавал
    * дэд бүтэц, нийгмийн барилгын багцууд эрэмбийн гадна үлдэнэ.
    */
-  const groups: [string, Zov[]][] = [...byBagts(rows)]
+  /* ⚠️ 2026-10-01: шүүлт нь МӨРИЙН түвшинд — багц бүр зөвхөн таарсан алхмуудаа
+     харуулж, нэг ч таарахгүй багц нуугдана. Багцын толгойн тоо (`summarize`) нь
+     ШҮҮЛТЭЭС ҮЛ ХАМААРАН бүх алхмаар — «2 зөвшөөрсөн» гэж бичээд 1-ийг харуулбал
+     нөгөө нь алга болсон мэт уншигдана. */
+  const shown = filterZov(rows, flt, now);
+  const all = byBagts(rows);
+  const groups: [string, Zov[]][] = [...byBagts(shown)]
     .filter(([, l]) => l.length > 0)
     .sort((a, b) => a[0].localeCompare(b[0], 'mn', { numeric: true }));
+  /** Шүүлтийн товч бүрийн тоо — 0-тэй «танигдаагүй» товч гарахгүй */
+  const fCount = (k: ZovFilter) => filterZov(rows, k, now).length;
 
   return (
     <div className={s.wrap}>
@@ -283,13 +329,53 @@ export function Zovshoorol() {
         <p className={s.sub}>
           {tr('Багц бүрийн зөвшөөрлүүд шат дараалалаар. Товч дээр дарж дэлгэрэнгүйг харна.')}
         </p>
+        {rows.length > 0 && (
+          <div className={s.filters} role="group" aria-label={tr('Төлөвөөр шүүх')}>
+            {FILTERS.map((f) => {
+              const c = fCount(f.key);
+              /* Хоосон «танигдаагүй» товч мэдээлэл өгөхгүй — сонгогдсон бол үлдэнэ */
+              if (f.key === 'unknown' && c === 0 && flt !== 'unknown') return null;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={flt === f.key}
+                  className={`${s.fBtn} ${flt === f.key ? s.fOn : ''} ${f.key === 'stale' && c > 0 ? s.fStale : ''}`}
+                  onClick={() => setFlt(f.key)}
+                >
+                  {f.label()} <span className={s.fNum}>{c}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
 
-      {/* ⚠️ «Хоосон жагсаалт» гэсэн салаа ХЭРЭГГҮЙ болсон: `groups` нь
-          зөвшөөрөлтэй багцуудаас гардаг. */}
-      {(
+      {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХООСОН ТӨЛӨВ БУЦААВ. Урьд нь
+          «`groups` нь зөвшөөрөлтэй багцуудаас гардаг тул хоосон салаа хэрэггүй»
+          гэж хасагдсан байв — гэвч үйлчилгээ холбогдсон, зөвшөөрөл 0 үед хуудас
+          зөвхөн толгойтой ХООСОН үлдэж «ачаалагдаагүй юу, алга уу» гэдэг нь
+          ойлгогдохгүй байв. Мөн шүүлт нэг ч мөрд таарахгүй үед ил хэлнэ. */}
+      {rows.length === 0 ? (
+        <div className={s.notice}>
+          <b>{tr('Зөвшөөрөл бүртгэгдээгүй')}</b>
+          {canEdit && <p>{tr('«+ Зөвшөөрөл нэмэх» товчоор эхний зөвшөөрлөө бүртгэнэ үү.')}</p>}
+        </div>
+      ) : groups.length === 0 ? (
+        <div className={s.notice}>
+          {tr('Энэ шүүлтэд тохирох зөвшөөрөл алга.')}
+          <div className={s.actions}>
+            <span className={s.spacer} />
+            <button type="button" className={s.btn} onClick={() => setFlt('all')}>
+              {tr('Бүгдийг харах')}
+            </button>
+          </div>
+        </div>
+      ) : (
         groups.map(([bagts, list]) => {
-          const sm = summarize(list);
+          /* ⚠️ Толгойн тоо БҮХ алхмаар (дээрх `shown`-ийн тайлбар) */
+          const full = all.get(bagts) ?? list;
+          const sm = summarize(full, now);
           return (
             <section key={bagts} className={`${s.pack} ${sm.alert ? s.packAlert : ''}`}>
               <div className={s.packHead}>
@@ -299,7 +385,7 @@ export function Zovshoorol() {
                     type="button"
                     className={s.addBtn}
                     title={tr('«{0}»-д зөвшөөрөл нэмэх', bagts)}
-                    onClick={() => setEdit(blank(bagts, Math.max(0, ...list.map((r) => r.shat)) + 1))}
+                    onClick={() => setEdit(blank(bagts, Math.max(0, ...full.map((r) => r.shat)) + 1))}
                   >
                     + {tr('нэмэх')}
                   </button>
@@ -307,6 +393,7 @@ export function Zovshoorol() {
                 <span className={s.counts}>
                   <b className={s.cOk}>{sm.ok}</b> {tr('зөвшөөрсөн')}
                   {sm.wait > 0 && <> · <b className={s.cWait}>{sm.wait}</b> {tr('хүлээгдэж буй')}</>}
+                  {sm.stale > 0 && <> (<b className={s.cStale}>{sm.stale}</b> {tr('нь {0}+ хоног', PENDING_STALE_DAYS)})</>}
                   {sm.no > 0 && <> · <b className={s.cNo}>{sm.no}</b> {tr('зөвшөөрөөгүй')}</>}
                   {sm.unknown > 0 && <> · <b className={s.cNo}>{sm.unknown}</b> {tr('танигдаагүй төлөв')}</>}
                 </span>
@@ -315,7 +402,7 @@ export function Zovshoorol() {
                 {list.map((z, i) => (
                   <div key={z.oid || `${z.shat}-${z.ner}`} className={s.step}>
                     {i > 0 && <span className={s.arrow} aria-hidden>→</span>}
-                    <Chip z={z} onPick={setPick} />
+                    <Chip z={z} now={now} onPick={setPick} />
                   </div>
                 ))}
               </div>

@@ -60,6 +60,11 @@ function nearestEdges(
   /** Хамгийн ойрын k-г ӨСӨХ дарааллаар барих жижиг жагсаалт */
   const best: { i: number; d: number }[] = [];
   for (let i = 0; i < net.edges.length; i++) {
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДАВХАРДСАН ирмэг (`dup` —
+       өөр ирмэгийн яг дээр хэвтэх хуулбар) эрэлт АВАХГҮЙ. Урьд нь барилгын 50/30/20%
+       хоёр хуулбарын хооронд хуваагдаж, нэг гудамжны эрэлт хоёр «хэрчим»-д тарж
+       «Хамгийн өндөр» нь дутуу, «Ачаалалтай зам» нь илүү гардаг байв. */
+    if (net.edges[i].dup) continue;
     const d = distToPath(p, net.edges[i].pts);
     if (d > maxDist) continue;
     if (best.length === k && d >= best[k - 1].d) continue;

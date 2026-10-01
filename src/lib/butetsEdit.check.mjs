@@ -23,8 +23,8 @@
 
 import assert from 'node:assert/strict';
 import {
-  applyAttrs, createRow, deleteRow, diffRow, emptyPatch, loadGeometry,
-  oidWhere, revertAttrs, rowToPatch, saveGeometry, validateRow,
+  applyAttrs, createRow, deleteRow, diffRow, emptyPatch, loadGeometry, loadLayerMeta,
+  oidWhere, revertAttrs, revertRows, rowToPatch, saveGeometry, saveRows, validateChanged, validateRow,
 } from './butetsEdit.ts';
 
 /* ══════════════ Хиймэл схем — үйлчилгээнд байдаг бодит хэлбэрээр ══════════════ */
@@ -162,6 +162,30 @@ assert.ok(
   validateRow(meta, { ...base, turul: 'v' }).turul,
   'домэйнд байхгүй код — сонголтоос гарсан утга',
 );
+
+/* ⚠️ 2026-09-30: ЗӨВХӨН ХООСОН ЗАЙ нь `Number`-т 0 — тоон талбарт 0 бичигддэг байв
+   (олноор засахад «— олон утга —» талбарт зай дарахад БҮХ мөрөнд 0) */
+assert.ok(validateRow(meta, { ...base, urt_m: ' ' }).urt_m, 'зай — тоо биш');
+assert.ok(validateRow(meta, { ...base, urt_m: '   ' }).urt_m, 'олон зай — тоо биш');
+assert.ok(!validateRow(meta, { ...base, urt_m: ' 12.5 ' }).urt_m, 'тоо (захын зайтай) — зөв');
+/* Олноор засах маягтын дэд схем (өөрчилсөн талбар л) — ижил дүрэм */
+assert.ok(
+  validateRow({ ...meta, fields: meta.fields.filter((f) => f.name === 'urt_m') }, { urt_m: ' ' }).urt_m,
+  'олноор засах: зай → алдаа',
+);
+
+/* ⚠️ 2026-09-30: байгаа мөрт ХӨНДӨӨГҮЙ талбарын хуучин буруу утга (домэйнээс гарсан код,
+   заавал талбарт хоосон) нь ӨӨР талбарын засварыг хаадаггүй — `validateChanged` */
+{
+  const legacy = { ...row, turul: 'хуучин', ner: null };
+  const p = { ...rowToPatch(meta, legacy), DocName: 'Шинэ нэр' };
+  assert.ok(validateRow(meta, p).turul && validateRow(meta, p).ner, 'бүтэн шалгуур хөндөөгүйг барьдаг');
+  assert.deepEqual(validateChanged(meta, legacy, p), {}, 'хөндөөгүй талбар засварыг хаах ёсгүй');
+  /* өөрчилсөн талбар нь шалгагдсаар */
+  assert.ok(validateChanged(meta, legacy, { ...p, urt_m: 'арван' }).urt_m);
+  assert.ok(validateChanged(meta, legacy, { ...p, turul: 'v' }).turul);
+  assert.ok(validateChanged(meta, legacy, { ...p, urt_m: ' ' }).urt_m);
+}
 
 /* ══════════════ 8. Засварыг зөвшөөрөхгүй давхарга ══════════════ */
 
@@ -432,5 +456,113 @@ assert.equal(
   del.body.get('rollbackOnFailure'), 'true',
   'устгал ч атом байх ёстой — хэсэгчилсэн үр дүн буцаах аргагүй',
 );
+
+/* ══════════════ 12. 2026-10-01 — бүхэл талбар · SR · атом бус бичилт ══════════════ */
+
+/* ── Бүхэл тоон талбар: бутархай ба хязгаараас гарсныг татгалзана ── */
+{
+  const im = {
+    ...meta,
+    fields: [
+      { name: 'Cap_Count', alias: 'Cap_Count', kind: 'number', length: null, nullable: true, codes: null, int: 'small' },
+      { name: 'N', alias: 'N', kind: 'number', length: null, nullable: true, codes: null, int: 'int' },
+      { name: 'Urt_m', alias: 'Urt_m', kind: 'number', length: null, nullable: true, codes: null, int: null },
+    ],
+  };
+  assert.deepEqual(validateRow(im, { Cap_Count: '3', N: '-5', Urt_m: '2.5' }), {}, 'бүхэл ба бутархай зөв');
+  assert.ok(validateRow(im, { Cap_Count: '2.5', N: '', Urt_m: '' }).Cap_Count, 'бүхэл талбарт 2.5 татгалзана');
+  assert.ok(validateRow(im, { Cap_Count: '40000', N: '', Urt_m: '' }).Cap_Count, 'SmallInteger хязгаараас гарсан');
+  assert.ok(validateRow(im, { Cap_Count: '', N: '3000000000', Urt_m: '' }).N, 'Integer хязгаараас гарсан');
+  assert.ok(validateRow(im, { Cap_Count: 'x', N: '', Urt_m: '' }).Cap_Count, 'тоо биш');
+}
+
+/* ── loadLayerMeta: SR, атом бичилтийн дэмжлэг, бүхэл төрөл (метадатаас) ── */
+{
+  const realF = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      objectIdField: 'OBJECTID',
+      geometryType: 'esriGeometryPolyline',
+      capabilities: 'Query,Update',
+      extent: { spatialReference: { wkid: 32648, latestWkid: 32648 } },
+      supportsRollbackOnFailureParameter: false,
+      fields: [
+        { name: 'OBJECTID', type: 'esriFieldTypeOID' },
+        { name: 'Cap_Count', type: 'esriFieldTypeSmallInteger', nullable: true },
+        { name: 'Urt_m', type: 'esriFieldTypeDouble', nullable: true },
+      ],
+    }),
+  });
+  try {
+    const m = await loadLayerMeta('infra:6');
+    assert.equal(m.wkid, 32648, 'давхаргын SR');
+    assert.equal(m.rollback, false, 'supportsRollbackOnFailureParameter: false танигдана');
+    assert.equal(m.fields.find((f) => f.name === 'Cap_Count').int, 'small');
+    assert.equal(m.fields.find((f) => f.name === 'Urt_m').int, null);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+
+/* ── АТОМ БУС давхарга: багц унавал мөр бүрээр тогтоож, хэсэгчилсэн уналтыг мэдээлнэ ──
+   Сервер: oid 2 «түгжигдсэн» — түүнийг агуулсан хүсэлт бүрд тэр мөр унана. */
+{
+  const nm = { ...meta, rollback: false };
+  const bodies = [];
+  const realF = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = new URLSearchParams(String(init.body));
+    bodies.push(body);
+    const ups = JSON.parse(body.get('updates'));
+    return {
+      ok: true,
+      json: async () => ({
+        updateResults: ups.map((u) => (u.attributes.OBJECTID === 2
+          ? { objectId: 2, success: false, error: { description: 'locked' } }
+          : { objectId: u.attributes.OBJECTID, success: true })),
+      }),
+    };
+  };
+  try {
+    await assert.rejects(
+      () => saveRows(nm, [1, 2, 3], { DocName: 'x', Shape__Length: 5 }),
+      (e) => {
+        assert.deepEqual(e.done, [1, 3], 'БИЧИГДСЭН мөрүүд (дундаас нь унасан ч)');
+        assert.equal(e.failed.length, 1);
+        assert.equal(e.failed[0].oid, 2);
+        assert.match(e.failed[0].msg, /locked/);
+        return true;
+      },
+    );
+    assert.equal(bodies.length, 1 + 3, 'багц унасны дараа мөр бүрээр (3) тогтооно');
+    const ups = JSON.parse(bodies[0].get('updates'));
+    assert.deepEqual(ups[0].attributes, { OBJECTID: 1, DocName: 'x' }, 'серверийн талбар хасагдана');
+
+    /* Буцаалт — шидэхгүй, { done, failed } буцаана */
+    const r = await revertRows(nm, [
+      { oid: 1, attrs: { DocName: 'a' } }, { oid: 2, attrs: { DocName: 'b' } }, { oid: 3, attrs: { DocName: 'c' } },
+    ]);
+    assert.deepEqual(r.done, [1, 3]);
+    assert.deepEqual(r.failed.map((x) => x.oid), [2]);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+
+/* ── АТОМ давхарга (анхдагч): буцаалтын багц унавал бүхэлдээ failed, шидэхгүй ── */
+{
+  const realF = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, json: async () => ({ updateResults: [{ objectId: 7, success: false, error: { description: 'x' } }] }),
+  });
+  try {
+    const r = await revertRows(meta, [{ oid: 7, attrs: { DocName: 'z' } }]);
+    assert.deepEqual(r.done, []);
+    assert.deepEqual(r.failed.map((x) => x.oid), [7]);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
 
 console.log('butetsEdit.check: OK');

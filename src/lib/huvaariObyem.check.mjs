@@ -70,6 +70,25 @@ const s1 = span('2025-10-15', '2025-12-10');
   assert.ok(!balanced(m, 1001), 'дутуу бол няцаана');
   /* ⚠️ Хөвөгч цэгийн алдаа (0.1+0.2≠0.3) худал «таарахгүй» гаргах ёсгүй */
   assert.ok(balanced(new Map([['2026-01', 0.1], ['2026-02', 0.2]]), 0.3));
+  /* ⚠️ 2026-09-30 РЕГРЕСС: 3 оронтой x.xx5 нийт — 2 оронтой хоёр хөрш хоёулаа ЯГ
+     хагас нэгжийн зайтай. Урьд нь хатуу `<` тул аль нь ч тэнцдэггүй байв
+     («обьём зөв хуваасан ч болохгүй»). */
+  const one = (v) => new Map([['2026-01', v]]);
+  assert.ok(balanced(one(0.13), 0.125), '0.125 → 0.13 тэнцэнэ');
+  assert.ok(balanced(one(0.12), 0.125), '0.125 → 0.12 тэнцэнэ');
+  assert.ok(balanced(one(1234.88), 1234.875), '1234.875 → 1234.88');
+  assert.ok(balanced(new Map([['2026-01', 600], ['2026-02', 634.87]]), 1234.875), 'хоёр сар → 1234.87');
+  assert.ok(!balanced(one(0.11), 0.125), '0.015 зөрүү няцаагдана');
+  assert.ok(!balanced(one(1234.86), 1234.875), '0.015 зөрүү няцаагдана (том тоо)');
+  /* Цонхонд харагдах бөөрөнхийлсөн нийт (`num(total, 2)`) ҮРГЭЛЖ тэнцэнэ —
+     3 оронтой, 5-аар төгссөн 20,000 нийт дээр (0.005…199.995; урьд нь ~31% нь унадаг байв) */
+  const fmt = (v) => Number(v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }));
+  let failDisp = 0;
+  for (let k = 5; k < 200_000; k += 10) {
+    const t = k / 1000;
+    if (!balanced(one(fmt(t)), t)) failDisp += 1;
+  }
+  assert.equal(failDisp, 0, `харагдах нийт тэнцээгүй: ${failDisp}`);
 }
 /* ── 5. Төлөвлөгөөт хувь — БОДИТ хуваарилалтаас ── */
 {
@@ -261,3 +280,66 @@ console.log('huvaariObyem.check: ok — давхардсан dkey ✓');
 }
 
 console.log('huvaariObyem.check: ok — сарын нөөц ✓');
+
+/* ══════════ САР ДОТОРХ ХУВЬ — АЖЛЫН ЭХЛЭХ–ДУУСАХ ӨДРӨӨР (2026-10-01, хэрэглэгчийн шийдвэр) ══════════
+ * ⚠️ Урьд нь 20-нд эхлэх ажлын тэр сарын обьём сарын 1-нээс өсдөг тул бодит 0 гүйцэтгэлтэй
+ *    ажил сарын эхэнд «хоцорсон» гэж ХУДАЛ харагддаг байв; 10-нд дуусах ажил 10-нд 100% хүрдэггүй.
+ *    `span`-гүй дуудлага (хуучин дуудагчид) ХЭВЭЭР — бүтэн сараар. */
+{
+  const m = new Map([['2026-03', 100]]);
+  const sp = span('2026-03-20', '2026-03-29');   // 10 хоног
+  /* Сарын 1 — ажил эхлээгүй → 0 (хуучнаар 1/31 ≈ 3.2%) */
+  assert.equal(planPctFromMonths(m, d('2026-03-01'), sp), 0, 'сарын 1-нд эхлээгүй ажил 0 байх ёстой');
+  assert.ok(planPctFromMonths(m, d('2026-03-01')) > 0, 'span-гүй (хуучин) дуудлага бүтэн сараар хэвээр');
+  assert.equal(planPctFromMonths(m, d('2026-03-19'), sp), 0, 'эхлэхийн өмнөх өдөр 0');
+  assert.equal(planPctFromMonths(m, d('2026-03-20'), sp), 0.1, 'эхлэх өдрийн төгсгөлд 1/10');
+  assert.equal(planPctFromMonths(m, d('2026-03-24'), sp), 0.5, '5 дахь өдөр 50%');
+  assert.equal(planPctFromMonths(m, d('2026-03-29'), sp), 1, 'дуусах өдөр 100% (сарын эцэс хүлээхгүй)');
+  assert.equal(planPctFromMonths(m, d('2026-03-31'), sp), 1, 'сарын эцэс 100% — муруйн цэг өөрчлөгдөхгүй');
+  /* Олон сар: 1-р сар 20-ноос, 3-р сар 10 хүртэл */
+  const m3 = new Map([['2026-01', 10], ['2026-02', 30], ['2026-03', 60]]);
+  const sp3 = span('2026-01-20', '2026-03-10');
+  assert.equal(planPctFromMonths(m3, d('2026-01-10'), sp3), 0, '1-р сарын эхэнд 0');
+  assert.equal(planPctFromMonths(m3, d('2026-01-31'), sp3), 0.1, '1-р сарын эцэс = 10%');
+  assert.equal(planPctFromMonths(m3, d('2026-02-28'), sp3), 0.4, '2-р сарын эцэс = 40% (бүтэн сар)');
+  assert.ok(Math.abs(planPctFromMonths(m3, d('2026-03-05'), sp3) - (40 + 60 * 0.5) / 100) < 1e-12, '3-р сар 1–10 доторх 5 дахь өдөр = хагас');
+  assert.equal(planPctFromMonths(m3, d('2026-03-10'), sp3), 1, 'дуусах өдөр 100%');
+  /* Сарын эцсийн цэгүүд span-тай/гүй ИЖИЛ (planProgress-ийн муруй хөдлөхгүй) */
+  for (const at of ['2026-01-31', '2026-02-28', '2026-03-31']) {
+    assert.equal(planPctFromMonths(m3, d(at), sp3), planPctFromMonths(m3, d(at)), `сарын эцэс ${at} зөрөв`);
+  }
+  /* Мужтай огт давхцахгүй сар (хуучирсан задаргаа) — бүтэн сараар, унахгүй */
+  assert.equal(planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16'), sp3), planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16')));
+  /* Эвдэрсэн span (null/урвуу) → хуучин зам */
+  assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: null, end: d('2026-03-29') }), planPctFromMonths(m, d('2026-03-10')));
+  assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: d('2026-03-29'), end: d('2026-03-20') }), planPctFromMonths(m, d('2026-03-10')));
+  /* `bagtsSheet.planAt` ба `plan.spanFrac` НЭГ томъёо */
+  const { spanFrac } = await import('./plan.ts');
+  const { planAt } = await import('@/modules/sheet/bagtsSheet.ts');
+  for (const at of ['2026-03-19', '2026-03-20', '2026-03-24', '2026-03-29', '2026-04-02']) {
+    assert.equal(planAt(d(at), sp.start, sp.end), spanFrac(sp, d(at)), `planAt ≠ spanFrac (${at})`);
+  }
+  /* Цагтай `asOf` (Date.now) — өдрийн төгсгөлөөр (цаг нөлөөгүй) */
+  assert.equal(planPctFromMonths(m, d('2026-03-24') + 13 * 3_600_000, sp), 0.5, 'цагтай asOf өдрөөрөө');
+}
+console.log('huvaariObyem.check: ok — сар доторх хувь ажлын өдрөөр ✓');
+
+/* ══════════ САРЫН ОБЬЁМ БИЧСЭНИЙ ДАРАА КЭШ ХҮЧИНГҮЙ (2026-10-01) ══════════
+ * ⚠️ Батлалтын дараа муруй/дашбоард TTL дуустал хуучин байв. `HUVAARI_OBYEM` түлхүүр
+ *    нэмэгдэж, `applyPlanEdits` бичсэн бол (багц дундуур унасан ч) хүчингүй болгоно;
+ *    төлөвлөгөөт муруй тэр түлхүүрээр бүртгэгдсэн. Сүлжээгүй — автобус ба эх код. */
+{
+  const bus = await import('./dataBus.ts');
+  let dropped = 0;
+  bus.register(() => { dropped += 1; }, ['HUVAARI_OBYEM']);
+  const v0 = bus.dataVersion();
+  bus.invalidate('HUVAARI_OBYEM');
+  assert.equal(dropped, 1, 'HUVAARI_OBYEM-ээр бүртгэсэн кэш хаягдсангүй');
+  assert.ok(bus.dataVersion() > v0, 'хувилбар өссөнгүй — useAsync дахин татахгүй');
+  const fs = await import('node:fs');
+  const SRC = fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8');
+  const i = SRC.indexOf('export async function applyPlanEdits(');
+  const body = SRC.slice(i);
+  assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body), 'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
+}
+console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй ✓');

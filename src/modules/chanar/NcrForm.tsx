@@ -19,6 +19,7 @@
  *    хэсгийг бөглөнө — `canAct.correction` · `canAct.closeNcr`.
  */
 
+import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   MS_STATUS, NCR_CLOSURE_DOC_TYPES, NCR_CLOSURE_RESULTS, NCR_PROPOSED, NCR_SEVERITY, NCR_TYPES,
@@ -26,7 +27,7 @@ import {
   type MsDoc, type MsStatus, type NcrBody, type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult,
   type NcrCorrection, type NcrProposed, type NcrSeverity, type NcrType, type VerdictCode,
 } from '@/lib/chanarMs';
-import { linesToList, listToLines, toDateInput, fromDateInput, ymd } from './chanarUi';
+import { keepLinesText, linesToList, listToLines, toDateInput, fromDateInput, ymd } from './chanarUi';
 import { Sec, Txt, Chk, DateInp, Inp, Radio, Multi, Sel, RowBtn, type Mode } from './fields';
 import s from '../chanar.module.css';
 
@@ -52,6 +53,31 @@ export const ncrCloseFrom = (c: NcrClosure | null): NcrCloseDraft => {
 const NCR_CATEGORY_HINTS = () => [tr('Бетон'), tr('Арматур'), tr('Хэв хашмал'), tr('Өрлөг'), tr('Цахилгаан'), tr('Сантехник'), tr('Гагнуур'), tr('Ус тусгаарлалт')];
 
 const CODES: readonly VerdictCode[] = ['R', 'A', 'AN'];
+
+/**
+ * «ХИЙСЭН АЛХМУУД» — мөр бүр нэг алхам (2026-09-30).
+ * ⚠️ ТҮҮХИЙ текстийг ОРОН НУТАГТ барина (`chanarUi.keepLinesText`-ийн ⚠️): урьд нь
+ *    товчлуур бүрд `linesToList` зай ба хоосон мөрийг хасаж буцааж зурдаг тул үг
+ *    хооронд зай, Enter-ээр шинэ мөр бичих боломжгүй байв. Гадаад утга нь хэвээр
+ *    цэвэрлэсэн жагсаалт (`fields.ListInp`-ийн загвар).
+ */
+function StepsArea({ label, value, disabled, onChange }: {
+  label: string; value: readonly string[]; disabled: boolean; onChange: (v: string[]) => void;
+}) {
+  const joined = listToLines(value);
+  const [txt, setTxt] = useState(joined);
+  /* Гадна утга өөрчлөгдсөн (өөр баримт) — зурах явцад тааруулна (effect биш) */
+  const [prevJoined, setPrevJoined] = useState(joined);
+  if (prevJoined !== joined) {
+    setPrevJoined(joined);
+    const next = keepLinesText(txt, joined);
+    if (next !== txt) setTxt(next);
+  }
+  return (
+    <textarea className={s.textarea} aria-label={label} value={txt} disabled={disabled}
+      onChange={(e) => { setTxt(e.target.value); onChange(linesToList(e.target.value)); }} />
+  );
+}
 
 export function NcrForm({
   m, body, onChange, correctionEdit, correction, onCorrection, inspDocs, busy, status, closeEdit, closeDraft, onCloseDraft,
@@ -194,8 +220,8 @@ export function NcrForm({
               hint={tr('Юуг, хэрхэн зассан')} />
             <div className={s.secSub}>{tr('Хийсэн алхмууд (мөр бүр нэг алхам)')}</div>
             {cm.edit ? (
-              <textarea className={s.textarea} aria-label={tr('Хийсэн алхмууд (мөр бүр нэг алхам)')} value={listToLines(corr.steps)} disabled={busy}
-                onChange={(e) => setCorr({ steps: linesToList(e.target.value) })} />
+              <StepsArea label={tr('Хийсэн алхмууд (мөр бүр нэг алхам)')} value={corr.steps} disabled={busy}
+                onChange={(steps) => setCorr({ steps })} />
             ) : (
               corr.steps.length ? <ol className={s.steps}>{corr.steps.map((x, i) => <li key={i}>{x}</li>)}</ol> : <p className={`${s.secText} ${s.secEmpty}`}>—</p>
             )}

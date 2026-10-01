@@ -111,6 +111,28 @@ export const spanDays = (s: Span): number =>
 export const endOf = (start: number, days: number): number =>
   start + Math.max(0, days - 1) * DAY;
 
+/**
+ * МУЖИЙН ӨНГӨРСӨН ХУВЬ (0–1) — төлөвлөгөөт хувийн ГАНЦ томъёо (2026-10-01,
+ * хэрэглэгчийн шийдвэр «бүгдийг зас»: сар доторх хувийг ажлын жинхэнэ өдрүүдээр).
+ *
+ * ⚠️ ХОЁР ЗАХЫГ ОРУУЛСАН муж (`spanDays`-ийн конвенц): ажил `[start 00:00,
+ *    end + 1 хоног 00:00)` хооронд шугаман өснө; `asOf`-ийг ТЭР ӨДРИЙН ТӨГСГӨЛӨӨР
+ *    үнэлнэ (тайлангийн огноо = «тэр өдрийг оруулаад»). Эхлэх өдрийн тайланд 1/N,
+ *    дуусах өдрийнх 100%; эхлэхээс өмнө 0.
+ * ⚠️ ГУРВАН ГАДАРГУУ НЭГ ТОМЪЁО: `bagtsSheet.planAt` (огноогоор шугаман),
+ *    `huvaariObyem.planPctFromMonths` (сарын цонх = сар ∩ ажлын муж) — хоёулаа
+ *    үүнийг дууддаг. Тусад нь бичвэл бөглөх хуудас ба муруй чимээгүй зөрнө.
+ * ⚠️ Урвуу муж (end < start) унагаахгүй — эхлэхийг давсан бол 1, эс бөгөөс 0.
+ */
+export function spanFrac(s: Span, asOf: number): number {
+  const t = Math.floor(asOf / DAY) * DAY + DAY;
+  const eEx = s.end + DAY;
+  if (eEx <= s.start) return t > s.start ? 1 : 0;
+  if (t <= s.start) return 0;
+  if (t >= eEx) return 1;
+  return (t - s.start) / (eEx - s.start);
+}
+
 /* ══════════════════ ГҮЙЦЭТГЭЛИЙН ТӨЛӨВ ══════════════════ */
 
 /**

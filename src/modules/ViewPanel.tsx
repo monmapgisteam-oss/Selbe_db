@@ -16,8 +16,10 @@ import {
   LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
-import { whereFor, qtyText, geomText, layerStats, type Totals } from '@/lib/totals';
+import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, type Totals } from '@/lib/totals';
+import { POPULATION_FIELD } from '@/lib/live';
 import { num, text, shade } from '@/lib/format';
+import { toggleIsolate, zoomWhereFor, type Iso } from './viewPanelLogic';
 import s from './dashboard.module.css';
 
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
@@ -68,6 +70,19 @@ export function ViewPanel({
   //    дэлгэцээр (Suitability) зурагддаг тул самбар байхгүй.
   const def = layer ? LAYER_BY_ID[layer] : null;
 
+  /**
+   * НЭГ ДАВХАРГЫГ ДАНГААР НЬ ҮЛДЭЭХ — дахин дарвал ӨМНӨХ олонлог руу буцна.
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): буцаахад урьд нь `PLAN_LAYER_IDS` (бүх
+   *    давхарга) асдаг байв — өмнөх сонголт алга болно. `toggleIsolate` санаж сэргээнэ.
+   *    Дарсан объект (`PickedFeature`) ба тоймын чарт (`PlanOverview`) НЭГ санамжтай.
+   */
+  const isoRef = useRef<Iso>(null);
+  const isolate = (id: string) => {
+    const r = toggleIsolate(visible, id, isoRef.current, PLAN_LAYER_IDS);
+    isoRef.current = r.iso;
+    setVisible(r.next);
+  };
+
   return (
     <>
       {/* ⚠️ 2026-08-20: Самбарын дээд талын «Бүс» мөр ХАСАГДАВ — газрын зурган
@@ -86,13 +101,7 @@ export function ViewPanel({
                 def={LAYER_BY_ID[pickedLayer]}
                 setZone={setZone}
                 isolated={visible.length === 1 && visible[0] === pickedLayer}
-                onIsolate={() =>
-                  setVisible((prev) =>
-                    prev.length === 1 && prev[0] === pickedLayer
-                      ? PLAN_LAYER_IDS.slice()
-                      : [pickedLayer],
-                  )
-                }
+                onIsolate={() => isolate(pickedLayer)}
               />
             )
             : null
@@ -119,6 +128,7 @@ export function ViewPanel({
           visible={visible}
           setVisible={setVisible}
           setLayer={setLayer}
+          isolateLayer={isolate}
         />
       )}
     </>
@@ -145,7 +155,8 @@ const GEOM_CHARTS = [
     /* ⚠️ `t.q` null (мэдээлэлгүй) → графикт 0 өндөр — `chartOf` тийм давхаргыг
        `other` руу шилжүүлдэг тул энд хүрэхгүй */
     value: (d: LayerDef, t: Totals) => (d.qty && t.q != null ? t.q / 10_000 : 0),
-    display: (v: number, t: Totals) => tr('{0} га · {1}', num(v, 1), num(t.n)),
+    /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `qtyText` — жижиг давхарга «0.0 га» БИШ «N м²» */
+    display: (d: LayerDef, _v: number, t: Totals) => `${qtyText(d, t.q) ?? '—'} · ${num(t.n)}`,
   },
   {
     geom: 'line' as const,
@@ -154,7 +165,8 @@ const GEOM_CHARTS = [
     get note() { return tr('км'); },
     /** «м» → км; «км» нэгжтэй давхарга шууд */
     value: (d: LayerDef, t: Totals) => (!d.qty || t.q == null ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
-    display: (v: number, t: Totals) => tr('{0} км · {1}', num(v, 1), num(t.n)),
+    /* ⚠️ 2026-10-01: `qtyText` — богино шугам «0.0 км» БИШ «N м» */
+    display: (d: LayerDef, _v: number, t: Totals) => `${qtyText(d, t.q) ?? '—'} · ${num(t.n)}`,
   },
   {
     geom: 'point' as const,
@@ -163,7 +175,7 @@ const GEOM_CHARTS = [
     get note() { return tr('ширхэг'); },
     /** Цэгт хэмжээ гэж байхгүй — тоо нь өөрөө хэмжигдэхүүн */
     value: (_d: LayerDef, t: Totals) => t.n,
-    display: (v: number) => `${num(v)}`,
+    display: (_d: LayerDef, v: number) => `${num(v)}`,
   },
   /**
    * ⚠️ ХЭМЖЭЭГҮЙ талбай/шугам. Зарим давхарга (жишээ нь «Зам (талбай)» —
@@ -178,9 +190,27 @@ const GEOM_CHARTS = [
     get short() { return tr('Хэмжээгүй'); },
     get note() { return tr('ширхэг'); },
     value: (_d: LayerDef, t: Totals) => t.n,
-    display: (v: number) => `${num(v)}`,
+    display: (_d: LayerDef, v: number) => `${num(v)}`,
   },
 ];
+
+/**
+ * `qtyText`-ийн нэгжийн тодорхойлолт — БАГЦ/ЧАРТЫН НИЙЛБЭРТ (давхаргагүй дүн).
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): нийлбэр нь `num(v, 1)` + «км»/«га» байсан тул
+ *    жижиг дүн «0.0 км» / «0.0 га» гэж хэмжилтгүй мэт гардаг байв. `qtyText` нь 1 км / 1 га-аас
+ *    бага бол «N м» / «N м²». `qtyText` зөвхөн `d.qty`-г уншина.
+ */
+const KM_QTY = { qty: { field: '', unit: 'км' } } as LayerDef;
+const M2_QTY = { qty: { field: '', unit: 'м²' } } as LayerDef;
+/** км → «12.3 км» / «450 м» */
+const kmText = (v: number) => qtyText(KM_QTY, v) ?? '—';
+/** га → «12.3 га» / «850 м²» */
+const haText = (v: number) => qtyText(M2_QTY, v * 10_000) ?? '—';
+/** «12.3 км» → { v: '12.3', k: 'км' } — картын тоо/нэгжийн хоёр хэсэгт */
+const splitQty = (x: string) => {
+  const i = x.lastIndexOf(' ');
+  return i < 0 ? { v: x, k: '' } : { v: x.slice(0, i), k: x.slice(i + 1) };
+};
 
 /**
  * Давхарга аль графикт орох вэ.
@@ -240,8 +270,9 @@ function GroupCard({
 }) {
   const x = cardStats(ids, map);
   const rows: { v: string; k: string }[] = [];
-  if (x.km > 0) rows.push({ v: num(x.km, 1), k: tr('км') });
-  if (x.ha > 0) rows.push({ v: num(x.ha, 1), k: tr('га') });
+  /* ⚠️ 2026-10-01: `qtyText`-ээр — жижиг багц «0.0 км» БИШ «450 м» */
+  if (x.km > 0) rows.push(splitQty(kmText(x.km)));
+  if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
   if (x.pts > 0) rows.push({ v: num(x.pts), k: tr('цэг') });
 
   const body = (
@@ -331,6 +362,7 @@ function PlanOverview({
   visible,
   setVisible,
   setLayer,
+  isolateLayer,
 }: {
   /** Шүүлт аль харагдацад харьяалагдахыг тэмдэглэнэ (харагдац солиход цэвэрлэгдэнэ) */
   view: ViewKey;
@@ -339,17 +371,20 @@ function PlanOverview({
   visible: string[];
   setVisible: Dispatch<SetStateAction<string[]>>;
   setLayer: (id: string | null) => void;
+  /** Дангаарчлах/буцаах — `ViewPanel`-ийн санамжтай (`toggleIsolate`) */
+  isolateLayer: (id: string) => void;
 }) {
   /**
-   * Нэг давхаргыг ДАНГААР нь үлдээх — дахин дарвал бүх давхарга руу буцна.
+   * Нэг давхаргыг ДАНГААР нь үлдээх — дахин дарвал ӨМНӨХ олонлог руу буцна.
    *
    * ⚠️ Донат ба багана ХОЁУЛАА давхаргын id-гаар түлхүүрлэдэг тул ЯГ нэг
    * дүрмээр ажиллах ёстой. Урьд нь зөвхөн багана дарагддаг байсан бөгөөд
    * донат нь ижилхэн харагдаж атлаа юу ч хийдэггүй байв.
+   * ⚠️ 2026-10-01: буцаалт нь бүх давхарга БИШ, өмнөх сонголт (`toggleIsolate`).
    */
   const isolate = (id: string) => {
     setLayer(null);
-    setVisible((prev) => (prev.length === 1 && prev[0] === id ? PLAN_LAYER_IDS.slice() : [id]));
+    isolateLayer(id);
   };
 
   return (
@@ -361,10 +396,48 @@ function PlanOverview({
          * Нийлбэрт оруулбал бүсийн дүн бүхэлдээ худал болно.
          */
         const counted = PLAN_LAYER_IDS.filter((id) => !(zone && LAYER_BY_ID[id]?.noZone));
-        const allN = counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        /* ⚠️ 2026-09-30: ТАТАГДААГҮЙ давхарга (`usePlanTotals` нь хэсэгчилсэн Map-ыг «бэлэн»
+           гэж өгдөг) урьд нь 0-оор нэмэгдэж «Нийт» чимээгүй бага гардаг байв (null ≠ 0). */
+        const missing = counted.filter((id) => !map.has(id));
+        const allN = missing.length ? null : counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+        /* ⚠️ 2026-09-30: бүс сонгоход карт ч «Нийт»-тэй ИЖИЛ олонлогоор (`counted`) — урьд нь
+           бүсгүй (`noZone`) давхаргын ТӨСЛИЙН бүхэл км/га бүсийн картанд орж ирдэг байв.
+           Давхаргагүй багц (IoT — `GROUP_LAYERS.iot = []`) карт болохгүй: «0 төрөл» гэж
+           харуулаад дарахад бүх давхаргыг унтраадаг байв. */
+        const cardIds = (key: keyof typeof GROUP_LAYERS) => GROUP_LAYERS[key].filter((id) => counted.includes(id));
 
         const on = counted.filter((id) => visible.includes(id));
         const totalN = on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
+
+        /**
+         * БҮСЭЭР ШҮҮГДЭЭГҮЙ СОНГОСОН ДАВХАРГА — `ZONE_ID`-гүй (`noZone`).
+         * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): бүс сонгоход эдгээр нь `counted`-аас
+         *    хасагдаж самбараас ЧИМЭЭГҮЙ алга болдог байв (бүгд бүсгүй үед л тэмдэглэл
+         *    гардаг). Одоо нэрээр нь жагсааж, тоо нь ТӨСЛИЙН НИЙТ гэдгийг «төслийн нийт»
+         *    тэмдгээр хэлнэ — бүсийн нийлбэрт ОРОХГҮЙ хэвээр (дээрх ⚠️).
+         */
+        const zoneless = zone ? PLAN_LAYER_IDS.filter((id) => LAYER_BY_ID[id]?.noZone && visible.includes(id)) : [];
+        const zonelessList = zoneless.length > 0 ? (
+          <Section title={tr('Бүсээр шүүгдээгүй давхарга')} note={tr('ZONE_ID талбаргүй — дүн нь төслийн нийт')}>
+            <Rows
+              items={zoneless.map((id) => {
+                const d = LAYER_BY_ID[id];
+                const t = map.get(id);
+                return {
+                  key: d.title,
+                  value: (
+                    <>
+                      <span className="num">
+                        {t ? [num(t.n), qtyText(d, t.q)].filter(Boolean).join(' · ') : '—'}
+                      </span>{' '}
+                      <span className={s.facetNote}>{tr('төслийн нийт')}</span>
+                    </>
+                  ),
+                };
+              })}
+            />
+          </Section>
+        ) : null;
 
         /**
          * Хэрэглэгч хараахан сонголт хийгээгүй эсэх — анхдагч багцтай ЯГ тэнцүү.
@@ -418,7 +491,7 @@ function PlanOverview({
                 key: r.x.d.id,
                 label: r.x.d.title,
                 value: r.v,
-                display: c.display(r.v, r.x.t),
+                display: c.display(r.x.d, r.v, r.x.t),
                 color: shade(g.hue, i, arr.length),
               }));
             if (!items.length) return [];
@@ -484,12 +557,27 @@ function PlanOverview({
         if (untouched || !on.length) {
           return (
             <>
-              <Section title={tr('Ерөнхий үзүүлэлт')} note={tr('төсөл бүхэлдээ')}>
+              <Section title={tr('Ерөнхий үзүүлэлт')} note={zone ? tr('бүс: {0}', zone) : tr('төсөл бүхэлдээ')}>
                 <Stats cols={2}>
                   <Stat value={num(allN)} unit={tr('объект')} label={tr('Нийт')} accent />
-                  <Stat value={num(PLAN_LAYER_IDS.length)} unit={tr('ш')} label={tr('Давхарга')} />
+                  <Stat value={num(counted.length)} unit={tr('ш')} label={tr('Давхарга')} />
                 </Stats>
+                {missing.length > 0 && (
+                  <p className={s.warnNote} role="alert">
+                    {tr('{0} давхарга татагдсангүй', num(missing.length))}{' '}
+                    <button type="button" className={s.zoneBarBtn} onClick={retryTotals}>{tr('Дахин оролдох')}</button>
+                  </p>
+                )}
+                {/* ⚠️ 2026-09-30: сонголт бүгд бүсгүй давхарга бол `on` хоосорч тойм руу ЧИМЭЭГҮЙ
+                    буцдаг байв — шалтгааныг хэлнэ */}
+                {zone && !untouched && visible.length > 0 && !on.length && (
+                  <p className={s.warnNote}>
+                    {tr('Сонгосон давхаргуудад бүсийн талбар (ZONE_ID) байхгүй тул бүсээр шүүгдэхгүй — бүсийн тоймыг харуулав.')}
+                  </p>
+                )}
               </Section>
+
+              {zonelessList}
 
               {/**
                 * БАГЦ БҮР нэг карт — төрлийн тоо, урт/талбай, цэгийн тоо.
@@ -501,12 +589,12 @@ function PlanOverview({
                 */}
               {/* ⚠️ Гарчиггүй — картууд өөрсдөө юу болохоо хэлнэ */}
               <Section>
-                <div className={s.cardGrid} style={gridStyle(LAYER_GROUPS.length, true)}>
-                  {LAYER_GROUPS.map((g) => (
+                <div className={s.cardGrid} style={gridStyle(LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).length, true)}>
+                  {LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).map((g) => (
                     <GroupCard
                       key={g.key}
                       g={g}
-                      ids={GROUP_LAYERS[g.key]}
+                      ids={cardIds(g.key)}
                       map={map}
                       // Том хэлбэр — үзүүлэлт хэвтээ эгнэж, тоо нь тод харагдана
                       wide
@@ -568,7 +656,9 @@ function PlanOverview({
                                 {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй.
                                     `note`-той жишиж болохгүй: тэр нь tr()-ээр орчуулагдсан
                                     («items») тул EN-д таарахгүй — ГЕОМЕТРЭЭР шалгана. */}
-                                {c.geom === 'point' || c.geom === 'other' ? num(c.sum) : `${num(c.sum, 1)} ${c.note}`}
+                                {/* ⚠️ 2026-10-01: км/га нийлбэр `qtyText`-ээр — «0.0 км» БИШ «N м» */}
+                                {c.geom === 'point' || c.geom === 'other' ? num(c.sum)
+                                  : c.geom === 'area' ? haText(c.sum) : kmText(c.sum)}
                               </span>
                             </div>
                             {/**
@@ -595,6 +685,8 @@ function PlanOverview({
                     ))}
                   </div>
                 </Section>
+
+                {zonelessList}
 
                 {/* ⚠️ Сонголтыг цуцлах — 29 давхаргыг нэг нэгээр нь унтраах нь
                     тэвчээр барах ажил. Анхдагч байдалд буцаана: зураг бүсээ
@@ -803,7 +895,7 @@ function LayerDashboard({
   toggle: () => void;
   onBack: () => void;
 }) {
-  const { setHighlight, zoomToLayer } = useMap();
+  const { setHighlight, zoomToLayer, zoomToWhere } = useMap();
   const [sel, setSel] = useState<string | null>(null);
   /**
    * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад «‹ Жагсаалт»-аар
@@ -815,15 +907,19 @@ function LayerDashboard({
   const selRef = useRef(sel);
   useSyncRef(selRef, sel);
   useEffect(() => () => { if (selRef.current != null) setHighlight(null); }, [setHighlight]);
-  const prevLayerRef = useRef(d.id);
+  /* ⚠️ 2026-09-30: БҮС солигдоход ч тэглэнэ — «Бүсээр» хэсэг алга болж (бүс сонгосон), ангиллын
+     чарт бүсээр хумигддаг атал хуучин сонголт ба бүсгүй WHERE-тэй тодруулга үлдэж, давхарга
+     цуцлах удирдлагагүйгээр бүдгэрсэн хэвээр байв. */
+  const selKey = `${d.id}|${zone ?? ''}`;
+  const prevLayerRef = useRef(selKey);
   useEffect(() => {
-    if (prevLayerRef.current === d.id) return;
-    prevLayerRef.current = d.id;
+    if (prevLayerRef.current === selKey) return;
+    prevLayerRef.current = selKey;
     if (selRef.current != null) {
       setSel(null);
       setHighlight(null);
     }
-  }, [d.id, setHighlight]);
+  }, [selKey, setHighlight]);
   const where = whereFor(d, zone);
   const g = groupOf(d.id);
   const groupTitle = LAYER_GROUPS.find((x) => x.key === g)?.title ?? '';
@@ -872,8 +968,14 @@ function LayerDashboard({
   const t = totals.state === 'ready' ? totals.data.get(d.id) : undefined;
   const qty = t ? qtyText(d, t.q) : null;
 
-  /** Нэг объектод ногдох дундаж хэмжээ (шугам → м, талбай → м²) */
-  const avgQty = t && d.qty && t.q != null && t.n > 0 ? t.q / t.n : null;
+  /**
+   * Нэг объектод ногдох дундаж хэмжээ (шугам → м, талбай → м²).
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `t.q / t.n` БИШ `avgQty(t)` = q ÷ хэмжээ
+   *    БӨГЛӨГДСӨН объектын тоо (`nq`) — уртгүй объект хуваарьт орж дундажийг бууруулдаг байв.
+   */
+  const avg = d.qty ? avgQty(t) : null;
+  /* ⚠️ 2026-10-01: бүс сонгосон үед БҮСИЙН ДОТОРХ объектууд руу (`zoomWhereFor`) */
+  const zoomWhere = zoomWhereFor(d, zone);
 
   return (
     <div style={{ '--tone': 'var(--hue)' } as CSSProperties}>
@@ -910,13 +1012,16 @@ function LayerDashboard({
 
         {totals.state === 'error' ? (
           <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={totals.retry} />
+        ) : totals.state === 'ready' && !t ? (
+          /* ⚠️ 2026-09-30: хэсэгчилсэн Map-д энэ давхарга алга (унасан) — урьд нь «…» мөнхөд */
+          <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={retryTotals} />
         ) : (
-          <Stats cols={avgQty != null ? 3 : 2}>
+          <Stats cols={avg != null ? 3 : 2}>
             <Stat value={t ? num(t.n) : '…'} unit={tr('ш')} label={tr('Тоо')} accent />
             <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? tr('Талбай') : tr('Урт')} />
-            {avgQty != null && (
+            {avg != null && (
               <Stat
-                value={num(avgQty, 1)}
+                value={num(avg, 1)}
                 /* ⚠️ tr() — config-ийн 'м²'/'км'/'м' EN-д кириллээр үлдэхгүй */
                 unit={tr(d.qty!.unit)}
                 label={tr('Дундаж {0}', d.qty!.unit === 'м²' ? tr('талбай') : tr('урт'))}
@@ -931,7 +1036,8 @@ function LayerDashboard({
           </p>
         )}
 
-        <button type="button" className={s.zoomBtn} onClick={() => zoomToLayer(d.id)}>
+        <button type="button" className={s.zoomBtn}
+          onClick={() => (zoomWhere ? zoomToWhere(d.id, zoomWhere) : zoomToLayer(d.id))}>
           {tr('Зурагт төвлөрөх')}
         </button>
       </Section>
@@ -1071,33 +1177,45 @@ function PickedZone({
       setHighlight(null);
     }
   }, [id, setHighlight]);
-  const pickStatus = (v: string) => {
+  const pickStatus = (v: string, where?: string | null) => {
     const off = selSt === v;
     setSelSt(off ? null : v);
     if (off) { setHighlight(null); return; }
     const zw = zoneWhere(BUILT_LAYER, id);
-    setHighlight(
-      `${zw ? `(${zw}) AND ` : ''}${BUILT_FIELDS.status} = '${v.replace(/'/g, "''")}'`,
-      BUILT_LAYER.id,
-    );
+    /* ⚠️ 2026-09-30: бусад төлөвийн бүлэг өөрийн WHERE-тэй (`groupWhere` — хоосон/NULL ч багтана)
+       ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): кирилл төлөвт `N'…'` угтвар (`sqlStr`) — угтваргүй
+       юникод харьцуулалт зарим үйлчилгээнд АЛДААГҮЙГЭЭР 0 мөр өгдөг (тодруулга хоосорно). */
+    const cond = where ?? `${BUILT_FIELDS.status} = ${sqlStr(v)}`;
+    setHighlight(`${zw ? `(${zw}) AND ` : ''}(${cond})`, BUILT_LAYER.id);
   };
 
   const q = useAsync(async () => {
     const B = BUILT_FIELDS;
     const where = zoneWhere(BUILT_LAYER, id) ?? '1=1';
+    /* ⚠️ 2026-09-30: ХҮН АМ = `Population` (`live.POPULATION_FIELD`). `B.population`
+       (`Total_population`) нь Population + Huchin_chadal (сургуулийн суудал г.м.) —
+       тооцоонд ХОРИОТОЙ (live.ts, TRANSPORT_ANALYSIS_HANDOFF); SummaryBar 2026-09-22-нд засагдсан. */
     const byStatus = await queryGroup(layerUrl(BUILT_LAYER), B.status, [
-      count(oidOf(BUILT_LAYER), 'n'), sum(B.households, 'urh'), sum(B.population, 'pop'),
+      count(oidOf(BUILT_LAYER), 'n'), sum(B.households, 'urh'), sum(POPULATION_FIELD, 'pop'),
     ], where);
     const rows = groups(byStatus, B.status, tr('Тодорхойгүй'), ['n', 'urh', 'pop']);
     const status = BUILT_STATUS.map((st) => {
       const g = rows.find((r) => r.label === st.value);
       return { ...st, n: g?.values.n ?? 0, urh: g?.values.urh ?? 0, pop: g?.values.pop ?? 0 };
     });
+    /* ⚠️ 2026-09-30: БУСАД (хоосон/танигдаагүй) төлөвтэй барилга урьд нь нийлбэрээс ЧИМЭЭГҮЙ
+       хасагддаг байв (`live.loadHeadline`-ийн ижил засвар). Нийлбэр нь БҮХ бүлгээс; бусад нь
+       саарал баганаар, тодруулга нь бүлгийн ЯГ WHERE-ээр (`groupWhere`). */
+    const known = new Set(BUILT_STATUS.map((st) => st.value));
+    const extra = rows
+      .filter((r) => !known.has(r.label) && r.values.n > 0)
+      .map((r) => ({ label: r.label, n: r.values.n, where: groupWhere(B.status, r) }));
     return {
       status,
-      built: status.reduce((a, x) => a + x.n, 0),
-      urh: status.reduce((a, x) => a + x.urh, 0),
-      pop: status.reduce((a, x) => a + x.pop, 0),
+      extra,
+      built: rows.reduce((a, r) => a + r.values.n, 0),
+      urh: rows.reduce((a, r) => a + r.values.urh, 0),
+      pop: rows.reduce((a, r) => a + r.values.pop, 0),
     };
   }, [id]);
 
@@ -1126,7 +1244,8 @@ function PickedZone({
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {num(n(F.bcr), 2)}</span> },
             // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
             //    ил + далдаас угсарна.
-            { key: tr('Зогсоол (норм / төлөвлөсөн)'), value: <span className="num">{num(n(F.parkNorm))} / {num((n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
+            /* ⚠️ 2026-09-30: ил ба далд ХОЁУЛАА хоосон бол «—» — урьд нь «… / 0» гэж хэмжилт мэт гардаг байв */
+            { key: tr('Зогсоол (норм / төлөвлөсөн)'), value: <span className="num">{num(n(F.parkNorm))} / {num(n(F.parkPlanOpen) == null && n(F.parkPlanUnder) == null ? null : (n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
             ...(n(F.landPending) ? [{ key: tr('Газар чөлөөлөлт'), value: tr('дуусаагүй') }] : []),
             // ⚠️ «Батлагдсан төсөв» ба «Гүйцэтгэгч» ХАСАГДСАН: шинэ бүсийн
             //    давхаргад тэр талбарууд байхгүй, санхүүгийн дүн «Тохиромжтой
@@ -1143,12 +1262,18 @@ function PickedZone({
             </div>
             <Bars
               selected={selSt}
-              onSelect={pickStatus}
-              items={x.status.map((st, i) => ({
-                key: st.value, label: st.value, value: st.n,
-                // НЭГ ӨНГӨ (барилгын давхаргын hue) тодоос бүдгэр — солонго биш
-                display: `${num(st.n)}`, color: shade(LAYER_BY_ID['et:24']?.hue ?? '#f59e0b', i, x.status.length),
-              }))}
+              onSelect={(k) => pickStatus(k, x.extra.find((e) => `~${e.label}` === k)?.where ?? null)}
+              items={[
+                ...x.status.map((st, i) => ({
+                  key: st.value, label: st.value, value: st.n,
+                  // НЭГ ӨНГӨ (барилгын давхаргын hue) тодоос бүдгэр — солонго биш
+                  display: `${num(st.n)}`, color: shade(LAYER_BY_ID['et:24']?.hue ?? '#f59e0b', i, x.status.length),
+                })),
+                /* ⚠️ 2026-09-30: бусад төлөв — саарал (ангилал биш, «мэдэгдэхгүй») */
+                ...x.extra.map((e) => ({
+                  key: `~${e.label}`, label: e.label, value: e.n, display: `${num(e.n)}`, color: 'var(--ink-3)',
+                })),
+              ]}
             />
           </div>
         )}
@@ -1213,7 +1338,8 @@ function PickedFeature({
     for (const [f, label] of [
       [BUILT_FIELDS.floors, tr('Давхар')],
       [BUILT_FIELDS.households, tr('Өрхийн тоо')],
-      [BUILT_FIELDS.population, tr('Хүн ам')],
+      /* ⚠️ 2026-09-30: `Population` — `Total_population` нь багтаамж нэмсэн (дээрх бүсийн ⚠️) */
+      [POPULATION_FIELD, tr('Хүн ам')],
     ] as [string, string][]) {
       if (attrs[f] == null) continue;
       rows.push({ key: label, value: <span className="num">{num(Number(attrs[f]))}</span> });

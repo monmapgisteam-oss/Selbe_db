@@ -15,7 +15,7 @@
  *      нийлбэр хоёр дахин өснө — ЗӨВХӨН хэсгийн мөрөөр бодно.
  */
 import assert from 'node:assert/strict';
-import { negtgelDepth, negtgelTree, computeNegtgel, SECTION_WEIGHT } from './negtgel.ts';
+import { negtgelDepth, negtgelTree, computeNegtgel, SECTION_WEIGHT, negtgelComplete } from './negtgel.ts';
 import { CASHFLOW_NEW } from './services.ts';
 
 const ST = CASHFLOW_NEW.stages;
@@ -389,4 +389,22 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   }
 
   console.log('negtgel 2026-09-25: ok — биелэлт null · нийт null · орон сууцны уналт · төлөвлөгөөний завсар · хамгаалалт · эрх');
+}
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ — эх унасан
+   (`live: false`) эсвэл хэсэгчилсэн (`failed`) үр дүн дараагийн дуудалтад дахин уншигдана;
+   аль эх унасныг `NegSourceError.failed` нэрлэнэ. */
+{
+  assert.equal(negtgelComplete({ live: true, failed: [] }), true);
+  assert.equal(negtgelComplete({ live: false, failed: ['Cashflow'] }), false, 'эх унасан — кэшлэхгүй');
+  assert.equal(negtgelComplete({ live: true, failed: ['Хуваарийн муруй (1 хуудас)'] }), false, 'хэсэгчилсэн — кэшлэхгүй');
+  const { NegSourceError } = await import('./negtgelAuto.ts');
+  const e = new NegSourceError(['Газар чөлөөлөлт', 'Хуваарийн муруй'], new Error('429'));
+  assert.ok(e instanceof Error);
+  assert.deepEqual(e.failed, ['Газар чөлөөлөлт', 'Хуваарийн муруй'], 'унасан эхийн нэрс');
+  assert.ok(e.message.includes('Газар чөлөөлөлт') && e.message.includes('429'));
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./negtgel.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('if (!negtgelComplete(v) && fullP === mine) fullP = null;'), 'loadNegtgelFull бүрэн бус үр дүнг кэшэд үлдээж байна');
+  console.log('negtgel 2026-10-01: ok — бүрэн бус үр дүн кэшлэгдэхгүй · уналтын нэр');
 }

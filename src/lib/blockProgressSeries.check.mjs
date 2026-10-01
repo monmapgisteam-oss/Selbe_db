@@ -30,12 +30,14 @@ const hist = new Map([
 /* ⚠️ Давхардсан түлхүүр (A|1 хоёр удаа) ба ТАЙЛАНГҮЙ блок (C|9) — `BagtsRow.keys`-ийн flatMap шиг */
 const keys = ['A|1', 'A|1', 'A|2', 'A|3', 'B|1', 'C|9'];
 
-/* 1. Бөгж: хэмжигдсэн блокоор л — (40+40+10+70)/4 = 40; C|9 ба A|3 хуваарьт ОРОХГҮЙ */
+/* 1. Бөгж: хэмжигдсэн блокоор л — (40+10+70)/3 = 40; C|9 ба A|3 хуваарьт ОРОХГҮЙ.
+      ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан A|1 НЭГ удаа (урьд нь 2 — газрын
+      зургийн давхардсан полигон тоонд ордог байв). */
 {
   const r = latestMean(pmOf(hist), keys);
   assert.equal(r.pct, 40);
-  assert.equal(r.blocks, 4, 'давхардсан A|1 хоёр удаа тоологдоно (цуваатай ижил жагсаалт)');
-  assert.equal(r.total, 6);
+  assert.equal(r.blocks, 3, 'давхардсан A|1 нэг удаа тоологдоно (цуваатай ижил дүрэм)');
+  assert.equal(r.total, 5);
   assert.equal(latestMean(new Map(), keys).pct, null, '⚠️ хэмжилтгүй бол null — 0 БИШ');
 }
 
@@ -52,20 +54,20 @@ for (const grain of ['month', 'day']) {
 {
   const s = progressSeries(hist, keys, 'month', 'latest');
   assert.deepEqual(s.map((p) => p.label), ['2026-06', '2026-07', '2026-08']);
-  /* 06: A|1=20 (×2), A|3=30 → (20+20+30)/3 */
-  assert.equal(s[0].overall, 70 / 3);
-  assert.equal(s[0].blocks, 3);
-  /* 07: A|1=50 (×2), A|2=10, A|3=30 → 140/4 */
-  assert.equal(s[1].overall, 35);
+  /* 06: A|1=20, A|3=30 → 50/2 (⚠️ 2026-10-01: давхардсан A|1 нэг удаа) */
+  assert.equal(s[0].overall, 25);
+  assert.equal(s[0].blocks, 2);
+  /* 07: A|1=50, A|2=10, A|3=30 → 90/3 */
+  assert.equal(s[1].overall, 30);
 }
 
 /* 4. Анхдагч 'peak' ХӨНДӨГДӨӨГҮЙ — хуваарь БҮХ түлхүүр, өссөн дүн */
 {
   const s = progressSeries(hist, keys, 'month');
   const last = s[s.length - 1];
-  /* A|1 peak 50 (×2) + A|2 10 + A|3 peak 30 + B|1 70 = 210 / 6 */
-  assert.equal(last.overall, 35);
-  assert.equal(last.blocks, 5);
+  /* A|1 peak 50 + A|2 10 + A|3 peak 30 + B|1 70 = 160 / 5 (давхардалгүй түлхүүр) */
+  assert.equal(last.overall, 32);
+  assert.equal(last.blocks, 4);
 }
 
 console.log('blockProgressSeries.check: OK');

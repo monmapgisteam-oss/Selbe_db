@@ -27,7 +27,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_LEFT, PARCEL_STATUS_HUES } from '@/lib/services';
-import { queryFeatures, queryGroup, count, sqlStr, type Row } from '@/lib/query';
+import { arcgisPost, queryFeatures, queryGroup, count, sqlStr, type Row } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
@@ -71,6 +71,14 @@ export type Parcel = {
   areaM2: number | null;
   address: string;
   note: string;
+  /**
+   * СҮҮЛД ЗАСВАРЛАСАН ХҮН ба ЦАГ — ArcGIS Editor Tracking-ээс (ЗӨВХӨН харуулна).
+   * ⚠️ 2026-10-01: давхаргын `editFieldsInfo` байхгүй (тохиргоо унтраалттай) эсвэл
+   *    мөрд утга алга бол `null` — «хэн ч засаагүй» гэсэн утга БИШ, «мэдэхгүй».
+   */
+  editedBy: string | null;
+  /** ms epoch; `null` = мэдэгдэхгүй (0 БИШ) */
+  editedAt: number | null;
 };
 
 /** Маягтаас ирэх засварлагдах хэсэг */
@@ -83,9 +91,59 @@ const numOrNull = (v: unknown): number | null => {
   const x = Number(v);
   return v != null && Number.isFinite(x) ? x : null;
 };
+/** ⚠️ 0/сөрөг тамга нь «огноо алга» — 1970 он гэж харуулахгүй */
+const stampOrNull = (v: unknown): number | null => {
+  const t = numOrNull(v);
+  return t != null && t > 0 ? t : null;
+};
+
+/**
+ * EDITOR TRACKING-ИЙН ТАЛБАРУУД — давхаргын метадатагийн `editFieldsInfo`-оос.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): талбарын нэрийг ХАТУУ бичихгүй —
+ *    ArcGIS Online-д анхдагч нь `Editor`/`EditDate` боловч Enterprise ба
+ *    shapefile-аас нийтэлсэн үйлчилгээнд өөр нэртэй байж болно. Метадата нь
+ *    үнэн эх. Тохиргоо унтраалттай бол `editFieldsInfo` нь `null` → энэ функц
+ *    `null` буцааж, маягт «сүүлд засварласан» мөрийг ОГТ харуулахгүй.
+ *    Тохиргоог асаамагц код өөрчлөхгүйгээр идэвхжинэ (амьдаар 2026-10-01-нд
+ *    `Selbe_jijuur` давхаргад асаалттай байгааг баталсан).
+ */
+export type EditFields = { editor: string | null; editDate: string | null };
+
+export function editFieldsOf(meta: unknown): EditFields | null {
+  const e = (meta as { editFieldsInfo?: unknown } | null)?.editFieldsInfo;
+  if (!e || typeof e !== 'object') return null;
+  const pick = (k: string): string | null => {
+    const v = (e as Record<string, unknown>)[k];
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  };
+  const editor = pick('editorField');
+  const editDate = pick('editDateField');
+  return editor || editDate ? { editor, editDate } : null;
+}
+
+/**
+ * Метадатаг НЭГ удаа татаж кэшлэнэ.
+ * ⚠️ Алдаа нь засварыг ХААХГҮЙ — `null` (мөрийг харуулахгүй) болж, кэш
+ *    цэвэрлэгдэнэ: дараагийн маягт дахин оролдоно. Энэ бол бүдүүвчийн мета
+ *    (мөр БИШ) тул `PARCEL_LEFT`-ийн хүчингүйжүүлэлтэд холбох шаардлагагүй.
+ */
+let editFieldsP: Promise<EditFields | null> | null = null;
+export function loadEditFields(): Promise<EditFields | null> {
+  if (!editFieldsP) {
+    const p: Promise<EditFields | null> = arcgisPost(PARCEL_LEFT.url, {})
+      .then((m) => editFieldsOf(m))
+      .catch(() => {
+        if (editFieldsP === p) editFieldsP = null;
+        return null;
+      });
+    editFieldsP = p;
+  }
+  return editFieldsP;
+}
 
 /** Мөрийг `Parcel` болгоно — талбарын нэрийг НЭГ газар зураглана */
-export function rowToParcel(r: Row): Parcel | null {
+export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null {
   /* ⚠️ `Number(null)` нь 0 — `isFinite` дангаараа хоосон OID-г нэвтрүүлнэ */
   const raw = r[PARCEL_OID];
   const oid = raw == null ? NaN : Number(raw);
@@ -100,6 +158,8 @@ export function rowToParcel(r: Row): Parcel | null {
     areaM2: numOrNull(r[F.area]) ?? numOrNull(r[F.areaAlt]),
     address: str(r[F.address]),
     note: str(r[F.note]),
+    editedBy: ef?.editor ? str(r[ef.editor]).trim() || null : null,
+    editedAt: ef?.editDate ? stampOrNull(r[ef.editDate]) : null,
   };
 }
 
@@ -112,11 +172,59 @@ export function rowToParcel(r: Row): Parcel | null {
  */
 export async function loadParcel(oid: number): Promise<Parcel | null> {
   if (!Number.isFinite(oid)) return null;
-  const rows = await queryFeatures(PARCEL_LEFT.url, {
-    where: `${PARCEL_OID} = ${Math.trunc(oid)}`,
-    limit: 1,
+  /* ⚠️ `outFields: *` (анхдагч) тул Editor Tracking-ийн талбарууд ч хамт ирнэ;
+     метадата нь аль талбар болохыг хэлнэ (`loadEditFields` хэзээ ч унахгүй). */
+  const [rows, ef] = await Promise.all([
+    queryFeatures(PARCEL_LEFT.url, {
+      where: `${PARCEL_OID} = ${Math.trunc(oid)}`,
+      limit: 1,
+    }),
+    loadEditFields(),
+  ]);
+  return rows.length ? rowToParcel(rows[0], ef) : null;
+}
+
+/** Дугаараар хайсан үр дүнгийн нэг мөр — жагсаалтаас сонгуулахад хангалттай */
+export type ParcelHit = { oid: number; parcelNo: string; owner: string; status: string };
+
+/** Нэг хайлтын дээд мөр — олон таарвал эхний N-ийг л жагсаана */
+export const PARCEL_FIND_LIMIT = 20;
+/** Хэсэгчилсэн (LIKE) хайлтын доод урт — 1–3 оронгоор хайвал бараг бүх мөр таарна */
+export const PARCEL_FIND_MIN_LIKE = 4;
+
+/**
+ * Хэсэгчилсэн хайлтын SQL — `LIKE N'%…%'`.
+ * ⚠️ LIKE-ийн тусгай тэмдэгтүүдийг (`%` `_` `[` `]`) ХАСНА: кадастрын дугаарт
+ *    байдаггүй бөгөөд үлдээвэл хэрэглэгчийн бичсэн «_» бүх тэмдэгтэд таарна.
+ */
+export const parcelNoLikeWhere = (no: string): string =>
+  `${F.parcelNo} LIKE ${sqlStr(`%${no.replace(/[%_[\]]/g, '')}%`)}`;
+
+/**
+ * КАДАСТРЫН ДУГААРААР ХАЙНА (2026-10-01, хэрэглэгч: бүгдийг зас).
+ *
+ * Эхлээд ЯГ таарцаар (`parcelNoWhere`); олдохгүй бөгөөд ≥4 тэмдэгт бол
+ * хэсэгчилсэн таарцаар. ⚠️ Олон мөр буцааж болно — амьдаар нэг дугаар 2
+ * мөрд байх тохиолдол бий (2026-10-01) тул дуудагч ЖАГСААЖ сонгуулна.
+ * ⚠️ `orderBy` ЗААВАЛ (OID) — `limit`-тэй хуудаслалт эрэмбэгүй бол тогтворгүй.
+ */
+export async function findParcelsByNo(input: string): Promise<ParcelHit[]> {
+  const no = input.trim();
+  if (!no) return [];
+  const ask = (where: string) => queryFeatures(PARCEL_LEFT.url, {
+    where,
+    outFields: [PARCEL_OID, F.parcelNo, F.owner, F.status],
+    orderBy: `${PARCEL_OID} ASC`,
+    limit: PARCEL_FIND_LIMIT,
   });
-  return rows.length ? rowToParcel(rows[0]) : null;
+  let rows = await ask(parcelNoWhere(no));
+  if (!rows.length && no.replace(/[%_[\]]/g, '').length >= PARCEL_FIND_MIN_LIKE) {
+    rows = await ask(parcelNoLikeWhere(no));
+  }
+  return rows
+    .map((r) => rowToParcel(r))
+    .filter((p): p is Parcel => p != null)
+    .map((p) => ({ oid: p.oid, parcelNo: p.parcelNo, owner: p.owner, status: p.status }));
 }
 
 /**
@@ -149,6 +257,24 @@ export function validateParcel(p: ParcelPatch): Partial<Record<keyof ParcelPatch
     e.status = tr('Танигдахгүй төлөв — жагсаалтаас сонгоно уу');
   }
   return e;
+}
+
+/**
+ * ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг шалгана (`butetsEdit.validateChanged`-ийн зарчим).
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `validateParcel` нь төлөвийг
+ *    ҮРГЭЛЖ шалгадаг байв. Хуучин/танигдахгүй төлөвтэй мөр (жиш. 2026-09-06-ны
+ *    шилжилтээс өмнөх «Үлдсэн нэгж талбар», эсвэл хоосон) дээр хэрэглэгч ЗӨВХӨН
+ *    эзэмшигч/хаягийг засахад «Танигдахгүй төлөв» гэж хадгалалт ХААГДДАГ байв —
+ *    огт хөндөөгүй талбарын төлөө. Одоо төлөв нь ӨӨРЧЛӨГДСӨН үед л шалгагдана;
+ *    хөндөөгүй бол `diffParcel` түүнийг БИЧИХГҮЙ тул түүхий утга хэвээр үлдэнэ.
+ */
+export function validateParcelChanged(
+  before: Parcel,
+  patch: ParcelPatch,
+): Partial<Record<keyof ParcelPatch, string>> {
+  if (patch.status === before.status) return {};
+  return validateParcel(patch);
 }
 
 /* ══════════════════ Бичилт ══════════════════ */
@@ -198,15 +324,17 @@ export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, u
  * ⚠️ Амжилттай болсны ДАРАА л кэшийг хүчингүй болгоно — амжилтгүй бичилтийн
  * дараа хүчингүй болговол сайн өгөгдлийг дэмий дахин татна.
  *
- * @returns бичигдсэн талбарын тоо (0 = өөрчлөлт байгаагүй)
+ * @returns хадгалагдсан НЭГЖ ТАЛБАРЫН тоо: 0 = өөрчлөлт байгаагүй, 1 = энэ талбар.
+ *   ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь БАГАНЫН тоо буцаадаг байсан
+ *   тул нэг талбарын 3 багана засахад «3 талбар хадгалагдлаа» гэж бичигдэж, 3
+ *   нэгж талбар засагдсан мэт уншигддаг байв.
  */
 export async function saveParcel(
   before: Parcel,
   patch: ParcelPatch,
 ): Promise<number> {
   const d = diffParcel(before, patch);
-  const n = Object.keys(d).length;
-  if (n === 0) return 0;
+  if (Object.keys(d).length === 0) return 0;
   /* ⚠️ Эрхийг lib-д (2026-09-17) — урьд нь зөвхөн `GazarEdit`-ийн товч. */
   requireCap('gazar');
 
@@ -220,7 +348,7 @@ export async function saveParcel(
    * `loadLandStatus` ба `parcelOverlap`-ийн геометрийн кэш бүртгэгдсэн.
    */
   invalidate('PARCEL_LEFT');
-  return n;
+  return 1;
 }
 
 /** Тухайн талбарыг зурагт тодруулах SQL */

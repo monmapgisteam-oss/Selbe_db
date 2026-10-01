@@ -76,6 +76,12 @@ export type FloodMeta = {
    * «яагаад 18-р минутад ус хамгийн их байв» гэдэг нь тайлбарлагдана.
    */
   hydroQ?: number[];
+  /**
+   * ГОЛЫН ОРОЛТЫН НҮДНҮҮД (торны индекс) — гидрограф ЭНДЭЭС торонд цутгана.
+   * ⚠️ 2026-10-01: газрын зурагт тэмдэглэгдэнэ (`Overlay` §inlet) — «ус хаанаас
+   *    орж ирэв» гэдэг асуултын хариу. Голын оролтгүй бол `undefined`.
+   */
+  inlets?: number[];
   /** Маннингийн барзгар байдал [суваг, үерийн талбай] */
   manning?: [number, number];
   /**
@@ -123,21 +129,66 @@ export type FloodMeta = {
  * ӨӨР зураг шаарддаг:
  *   · `depth`  — «ус хэр гүн вэ»       → хөх шатлал
  *   · `speed`  — «хэр хүчтэй урсаж байна» → хөхөөс цагаан хөөс рүү
- *   · `hazard` — «хүнд аюултай юу»      → гүн × хурд, ногооноос улаан руу
+ *   · `hazard` — «хүнд аюултай юу»      → FD2321 HR = d·(v+0.5)+DF, 4 ангилал
  * Ганц зураг гурвуулангийнх нь оронд явж чадахгүй: 2 м гүн ЗОГСОНГИ ус ба
  * 0.4 м гүн ХУРДАН урсгал хоёр өөр аюул.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДӨРӨВ ДЭХ горим `arrival` — «ус
+ *    ХЭДЭН МИНУТАД ирэх вэ» (нүүлгэн шилжүүлэлтийн хугацаа). Гурван асуулт
+ *    «хэр их» гэдгийг хэлдэг бол энэ нь «хэзээ» гэдгийг хэлнэ.
  */
-export type FloodMode = 'depth' | 'speed' | 'hazard';
+export type FloodMode = 'depth' | 'speed' | 'hazard' | 'arrival';
 
 /**
- * АЮУЛЫН ЗЭРЭГЛЭЛ — гүн × хурд (м²/с), DEFRA/ArcGIS-ийн ангилалтай ижил.
- * ⚠️ Хүн 0.5 м гүн, 2 м/с урсгалд (=1.0) хөл дээрээ зогсож чаддаггүй.
+ * АЮУЛЫН ЗЭРЭГЛЭЛ — DEFRA FD2321 (Flood Risks to People, 2006) «hazard rating».
+ *
+ *     HR = d × (v + 0.5) + DF
+ *     DF = 0    (d ≤ 0.25 м) · 0.5 (0.25 < d ≤ 0.75 м) · 1.0 (d > 0.75 м)
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас» — шийдвэр): урьд нь энгийн `d × v`
+ *    (м²/с) байсан нь ЗОГСОНГИ гүн усыг (v ≈ 0) «Бага» гэж ангилдаг байв —
+ *    1.5 м гүн ус хурдгүй ч хүнийг живүүлнэ. FD2321-ийн `+0.5` нь удаан усанд ч
+ *    гүний аюулыг, `DF` (хог, хог хаягдлын коэффициент) нь гүн усны нэмэлт
+ *    аюулыг тооцдог. Ангилал нь FD2321-ийн дөрвөн зэрэглэл:
+ *      < 0.75 «Бага» · 0.75–1.25 «Дунд» · 1.25–2.0 «Өндөр» · ≥ 2.0 «Онц аюултай»
+ *    (FD2321: «Low» · «Danger for some» · «Danger for most» · «Danger for all»).
+ *    Өнгө нь хуучин дөрвөн ангиллынх хэвээр (ногоон · шар · улаан · хар улаан).
  */
-export const HAZARD_CLASS = (dv: number): { label: string; color: string } =>
-  dv >= 2.0 ? { label: tr('Онц аюултай'), color: '#7f1d1d' }
-    : dv >= 1.25 ? { label: tr('Аюултай'), color: '#dc2626' }
-      : dv >= 0.75 ? { label: tr('Болгоомжтой'), color: '#f59e0b' }
-        : { label: tr('Бага'), color: '#16a34a' };
+/** Хог хаягдлын коэффициент (FD2321) — гүнээс */
+export const debrisFactor = (d: number): number => (d > 0.75 ? 1 : d > 0.25 ? 0.5 : 0);
+/** Аюулын үнэлгээ HR (FD2321) — гүн `d` (м), хурд `v` (м/с). Хуурай бол 0. */
+export const hazardRating = (d: number, v: number): number =>
+  (d > 0 ? d * (Math.max(0, v) + 0.5) + debrisFactor(d) : 0);
+/** «Онц аюултай» ангиллын доод босго (HR) — ангилал, өнгөний ханалт, тайлбар НЭГ тоо */
+export const HAZARD_EXTREME = 2.0;
+/** Ангиллын доод босгууд (HR) — `HAZARD_CLASS`, `HAZARD_LEGEND`, растерын LUT НЭГ эх */
+const HAZARD_BOUNDS = [0.75, 1.25, HAZARD_EXTREME] as const;
+/** Ангиллын өнгө (бага → онц) — хуучин дөрвөн ангиллын өнгө хэвээр */
+const HAZARD_HEX = ['#16a34a', '#f59e0b', '#dc2626', '#7f1d1d'] as const;
+/** Ангиллын нэр — ⚠️ функц: модуль ачаалахад `tr()` дуудахгүй (i18nLazy) */
+const hazardLabels = () => [tr('Бага'), tr('Дунд'), tr('Өндөр'), tr('Онц аюултай')];
+/** HR → ангиллын дугаар (0..3) */
+export const hazardLevel = (hr: number): number =>
+  hr >= HAZARD_BOUNDS[2] ? 3 : hr >= HAZARD_BOUNDS[1] ? 2 : hr >= HAZARD_BOUNDS[0] ? 1 : 0;
+export const HAZARD_CLASS = (hr: number): { label: string; color: string } => {
+  const k = hazardLevel(hr);
+  return { label: hazardLabels()[k], color: HAZARD_HEX[k] };
+};
+/**
+ * ЛЕГЕНДИЙН дөрвөн ангилал — нэр · өнгө · HR-ийн муж.
+ * ⚠️ Растер нь ЯГ эдгээр өнгөөр ШАТЛАН будагдана (`frame` §hazard LUT) тул
+ *    легенд ↔ зураг ↔ попапын өнгө нэг.
+ */
+export const HAZARD_LEGEND = (): { label: string; color: string; range: string }[] => {
+  const L = hazardLabels();
+  const [a, b, c] = HAZARD_BOUNDS;
+  return [
+    { label: L[0], color: HAZARD_HEX[0], range: `< ${a}` },
+    { label: L[1], color: HAZARD_HEX[1], range: `${a}–${b}` },
+    { label: L[2], color: HAZARD_HEX[2], range: `${b}–${c}` },
+    { label: L[3], color: HAZARD_HEX[3], range: `≥ ${c}` },
+  ];
+};
 
 export type FloodData = {
   meta: FloodMeta;
@@ -194,6 +245,13 @@ export type FloodData = {
    * тэр жалга үерлэхээс өөр аргагүй.
    */
   accHa?: (i: number) => number;
+  /**
+   * ХУРААХ ТАЛБАЙ (га) — МАСКГҮЙ (зурсан полигоны гаднах дээд урсгалтай).
+   * ⚠️ 2026-10-01: попапын «Энэ цэгт N га талбайн ус цуглана» тайлбар ЭНДЭЭС —
+   *    `accHa` нь полигоноор маскжсан тул зурсан талбайд ДУТУУ гардаг байв.
+   *    Байхгүй бол `accHa` руу ухарна (`uyrTailbar.ts`).
+   */
+  catchHa?: (i: number) => number;
   /**
    * ГОЛДРИЛ уу — тооцооны сувгийн сүлжээ (`uyrSim.ts` §streamMask ∪ шатаасан
    * голын нүд). `true` = ус энд байх нь хэвийн.
@@ -268,15 +326,16 @@ const SPEED_STOPS: [number, number, number][] = [
 ];
 
 /**
- * АЮУЛЫН ШАТЛАЛ (гүн × хурд) — ногооноос улаан руу.
- * ⚠️ Улаан нь энэ аппад ХОХИРЛЫН өнгө. Энд ч утга нь ЯГ адил — «хүнд аюултай»
- *    тул зөрчил үүсэхгүй.
+ * ИРЭХ ХУГАЦААНЫ ШАТЛАЛ — эрт (хар ягаан) → оройтсон (цайвар шар).
+ * ⚠️ 2026-10-01: ЭРТ ирэх ус = ХАМГИЙН яаралтай тул хамгийн бараан. Улаан/шар нь
+ *    хохирол ба аюулын өнгө тул ХЭРЭГЛЭХГҮЙ (viridis-ийн урвуу дараалал).
+ *    `ersdel.module.css` §rampArrival-тай ЯГ ижил.
  */
-const HAZARD_STOPS: [number, number, number][] = [
-  [22, 163, 74],
-  [250, 204, 21],
-  [249, 115, 22],
-  [153, 27, 27],
+const ARRIVAL_STOPS: [number, number, number][] = [
+  [68, 1, 84],
+  [59, 82, 139],
+  [33, 145, 140],
+  [253, 231, 37],
 ];
 
 const ramp = (stops: [number, number, number][], t: number): [number, number, number] => {
@@ -298,11 +357,28 @@ export function depthColor(t: number): [number, number, number] {
 
 /** ⚠️ Хурд энэ утганд ханана (м/с) — уулын горхины ердийн дээд урсгал */
 export const SATURATE_MS = 3;
-/** ⚠️ Аюулын үзүүлэлт энэ утганд ханана (м²/с) — «онц аюултай»-н босго */
-export const SATURATE_HAZ = 2.5;
+/**
+ * ⚠️ Аюулын үзүүлэлт энэ утганд ханана (HR) — «онц аюултай»-н босго.
+ * ⚠️ 2026-09-30: 2.5 байсан ч `HAZARD_CLASS` 2.0-оос «Онц аюултай» гэдэг тул
+ *    легендийн тайлбар «2.5 м²/с-ээс дээш онц аюултай» гэж ангиллаас ЗӨРДӨГ байв.
+ *    Энэ тайлбарт бичсэнээр — босготой НЭГ.
+ * ⚠️ 2026-10-01: нэгж нь FD2321-ийн HR (`hazardRating`), `d × v` биш.
+ */
+export const SATURATE_HAZ = HAZARD_EXTREME;
 
 export const speedColor = (t: number) => ramp(SPEED_STOPS, t);
-export const hazardColor = (t: number) => ramp(HAZARD_STOPS, t);
+/**
+ * АЮУЛЫН ӨНГӨ — `t = HR / SATURATE_HAZ` (0..1).
+ * ⚠️ 2026-10-01: ТАСРАЛТГҮЙ шатлал БИШ, FD2321-ийн ДӨРВӨН ангиллаар ШАТЛАНА —
+ *    легенд (`HAZARD_LEGEND`) ба попап (`HAZARD_CLASS`) ангиллаар хэлдэг тул
+ *    растер нь завсрын өнгөөр (жиш. 1.1 = улбар шар) өөр зэрэглэл мэт харагдах ёсгүй.
+ */
+export const hazardColor = (t: number): [number, number, number] => {
+  const h = HAZARD_HEX[hazardLevel(Math.max(0, t) * SATURATE_HAZ)];
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+};
+/** Ирэх хугацааны өнгө — `t = минут / симийн нийт минут` (0 = эрт) */
+export const arrivalColor = (t: number) => ramp(ARRIVAL_STOPS, t);
 
 /** Урсгалын чиглэл — векторыг найман зүг рүү */
 export const flowDir = (u: number, v: number): string => {
@@ -345,6 +421,8 @@ export function floodDataFromBuffer(
     arrivalS?: Float32Array;
     /** Хураах талбай (га) — `FlowAccumulation` */
     accHa?: Float32Array;
+    /** Хураах талбай (га) — МАСКГҮЙ, попапын тайлбарт (2026-10-01) */
+    catchHa?: Float32Array;
     /** Голдрилын маск (1 = суваг) — `streamMask` ∪ шатаасан гол (2026-09-21) */
     channelMask?: Uint8Array;
   },
@@ -467,7 +545,20 @@ export function floodDataFromBuffer(
     depth: mkLut(depthColor),
     speed: mkLut(speedColor),
     hazard: mkLut(hazardColor),
+    arrival: mkLut(arrivalColor),
   };
+  /**
+   * АЮУЛЫН ДӨРВӨН АНГИЛЛЫН RGB — растер нь HR-ийг ШУУД ангилна (2026-10-01).
+   * ⚠️ 256 шатлалт LUT-ээр дамжуулбал босго дээр (0.75, 1.25, 2.0) 1/255-ын
+   *    дугуйрлаар нүд хөрш ангилалд унадаг — попап «Дунд» гэх атлаа ногоон.
+   */
+  const HAZ_RGB = HAZARD_HEX.map((h) => [
+    parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16),
+  ]);
+  /** Ус ирсэн хугацаа (сек), −1 = хэзээ ч — `arrival` горимд */
+  const arrS = extra?.arrivalS && extra.arrivalS.length >= P ? extra.arrivalS : null;
+  /** Симийн нийт хугацаа (сек) — ирэх хугацааны өнгөний хуваарь */
+  const simS = (meta.simMin ?? 60) * 60;
   /** Синусын хүснэгт — урсгалын долгионд (Math.sin нь фрейм тутамд хэдэн мянга) */
   const SIN_N = 4096;
   const SIN = new Float32Array(SIN_N);
@@ -495,8 +586,10 @@ export function floodDataFromBuffer(
   const EDGE_SOFT = 60;
 
   const frame = (
-    s: number, f: number, phase: number, mode: FloodMode = 'depth',
+    s: number, f: number, phase: number, mode0: FloodMode = 'depth',
   ): HTMLCanvasElement => {
+    /* ⚠️ Ирэх хугацааны тор байхгүй (бэлэн файл) бол гүний горим руу ухарна */
+    const mode: FloodMode = mode0 === 'arrival' && !arrS ? 'depth' : mode0;
     const LUT = LUTS[mode] ?? LUTS.depth;
     turn = 1 - turn;
     const cv = bufs[turn];
@@ -526,6 +619,35 @@ export function floodDataFromBuffer(
      */
     if (mode === 'depth' && netPx) px.set(netPx);
     else px.fill(0);
+
+    /**
+     * ── УС ИРЭХ ХУГАЦАА (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
+     *
+     * Одоогийн агшин ХҮРТЭЛ ус хүрсэн нүд бүрийг ИРСЭН минутаар нь будна — тоглуулахад
+     * «изохрон» ургаж, ус хаанаас хаашаа ямар хурдаар тархсан нь харагдана.
+     * ⚠️ Одоогийн гүнээс ҮЛ ХАМААРНА: ус татарсан нүд ч өнгөө хадгална — асуулт
+     *    нь «хэзээ хүрсэн бэ», «одоо байгаа юу» биш. Тунгалаг байдал ТОГТМОЛ.
+     * ⚠️ Агшны цаг нь `minuteAt`-ын дүрэм (`(s+1)·simMin/SL`) — попапын
+     *    «Ус ирэх хугацаа»-тай зөрөхгүй.
+     */
+    if (mode === 'arrival' && arrS) {
+      const tNow = ((s0 + 1 + w1 * (s1 - s0)) * simS) / SL;
+      for (let i = 0; i < P; i++) {
+        const a = arrS[i];
+        if (a < 0 || a > tNow) continue;
+        const q = a >= simS ? 255 : ((a / simS) * 255) | 0;
+        const p = i * 4;
+        const o = q * 3;
+        px[p] = LUT[o];
+        px[p + 1] = LUT[o + 1];
+        px[p + 2] = LUT[o + 2];
+        px[p + 3] = 205;
+      }
+      rawCtxs[turn].putImageData(img, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(raws[turn], 0, 0, cv.width, cv.height);
+      return cv;
+    }
 
     for (let y = 0, i = 0; y < H; y++) {
       for (let x = 0; x < W; x++, i++) {
@@ -569,15 +691,29 @@ export function floodDataFromBuffer(
         }
 
         /**
-         * ⚠️ БУДАХ УТГА нь горимоос: гүн (м) · хурд (м/с) · аюул (м²/с).
+         * ⚠️ БУДАХ УТГА нь горимоос: гүн (м) · хурд (м/с) · аюул (HR).
          * Тунгалаг байдал нь ҮРГЭЛЖ ГҮНЭЭС — ус нимгэн газар бүх горимд
          * бүдэг байх ёстой, эс бөгөөс 3 см усан хальс «онц аюултай» улаанаар
          * цул будагдаж, зураг худал болно.
+         * ⚠️ 2026-10-01: аюул = FD2321-ийн HR (`hazardRating`), өнгө нь ДӨРВӨН
+         *    ангиллаар шатална (`HAZ_RGB`) — легенд ба попаптай нэг.
          */
-        const val = mode === 'speed' ? sp / SATURATE_MS
-          : mode === 'hazard' ? (m * sp) / SATURATE_HAZ
-            : m / satM;
-        const q = val >= 1 ? 255 : val > 0 ? (val * 255) | 0 : 0;
+        let cr: number;
+        let cg: number;
+        let cb: number;
+        if (mode === 'hazard') {
+          const c3 = HAZ_RGB[hazardLevel(hazardRating(m, sp))];
+          cr = c3[0];
+          cg = c3[1];
+          cb = c3[2];
+        } else {
+          const val = mode === 'speed' ? sp / SATURATE_MS : m / satM;
+          const q = val >= 1 ? 255 : val > 0 ? (val * 255) | 0 : 0;
+          const o = q * 3;
+          cr = LUT[o];
+          cg = LUT[o + 1];
+          cb = LUT[o + 2];
+        }
         /* Тунгалаг байдлын түлхүүр — үргэлж гүнээс */
         const dq = (() => {
           const td = m / satM;
@@ -585,7 +721,6 @@ export function floodDataFromBuffer(
         })();
 
         const p = i * 4;
-        const o = q * 3;
         /**
          * ХӨӨС — хурдан ус нь агаар холилдож ЦАЙВАР болдог.
          *
@@ -600,9 +735,9 @@ export function floodDataFromBuffer(
           ? (sp - 1.2) * 0.16 < 0.34 ? (sp - 1.2) * 0.16 : 0.34
           : 0;
         const fk = 1 - foam;
-        px[p] = LUT[o] * shade * fk + 255 * foam;
-        px[p + 1] = LUT[o + 1] * shade * fk + 255 * foam;
-        px[p + 2] = LUT[o + 2] * shade * fk + 255 * foam;
+        px[p] = cr * shade * fk + 255 * foam;
+        px[p + 1] = cg * shade * fk + 255 * foam;
+        px[p + 2] = cb * shade * fk + 255 * foam;
         /**
          * Гүехэн ус нь БҮДЭГ — доорх ортофото уншигдана; гүн ус нь бараг цул.
          * ⚠️ ЗАХЫГ ЗӨӨЛРҮҮЛНЭ: босгыг давмагц бүтэн тунгалаг болговол усны
@@ -744,6 +879,7 @@ export function floodDataFromBuffer(
   const terrain = grid(extra?.terrainZ);
   const bed = grid(extra?.bedZ);
   const accHa = grid(extra?.accHa);
+  const catchHa = grid(extra?.catchHa);
   const maxDepth = grid(extra?.maxDepth);
   const maxSpeed = grid(extra?.maxSpeed);
   const arr = extra?.arrivalS;
@@ -755,7 +891,7 @@ export function floodDataFromBuffer(
 
   return {
     meta, depth, u, v, speed, series, indexAt, frame, minuteAt,
-    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa, channel,
+    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa, catchHa, channel,
   };
 }
 

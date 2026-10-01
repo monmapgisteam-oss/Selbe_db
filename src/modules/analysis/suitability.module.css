@@ -163,6 +163,11 @@
 .viewDiv { position: absolute; inset: 0 }
 
 /* ---------- Ranking ---------- */
+/* ⚠️ 2026-10-01: «N/M бүс өгөгдөлтэй» + CSV товч */
+.rankMeta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 8px 6px; font-size: 10.5px; color: var(--ink-3);
+}
 .rankHead {
   display: grid; grid-template-columns: 26px 1fr 74px 52px; gap: 6px;
   font-size: 9.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px;

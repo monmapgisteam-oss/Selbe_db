@@ -101,6 +101,9 @@ export const removeChanarAssign = (user: string, revoke = true) => acl.remove(us
 /** Аккаунт УСТГАХАД мөрийг бүрмөсөн арилгах (эрх буцаахгүй) */
 export const purgeChanarAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryChanarAssign = acl.retry;
+
 /** Тухайн хэрэглэгчийн багцууд — ТУХАЙН ҮҮРГЭЭР. `null` = хязгааргүй */
 export const chanarScope = (user: string | null | undefined, role: ChanarRole) =>
   acl.scope(user, role);

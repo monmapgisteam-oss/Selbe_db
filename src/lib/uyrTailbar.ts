@@ -130,14 +130,22 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
 
   const d = fd.depth(s, idx);
   const sp = fd.speed(s, idx);
-  const accHa = fd.accHa ? Math.round(fd.accHa(idx) * 10) / 10 : null;
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): МАСКГҮЙ хуримтлал (`catchHa`) —
+   *    зурсан полигоноор маскжсан `accHa` нь полигоны дээд урсгалын усыг
+   *    тоолдоггүй тул «3 га» гэх мэт ДУТУУ гардаг байв. Маскгүй нь ч өндрийн
+   *    ТОРНЫ хүрээнд хязгаарлагдана (сав газар цааш үргэлжилж болно) тул
+   *    бичвэр «тооцооны мужид … дор хаяж» гэж хэлнэ.
+   */
+  const acc = fd.catchHa ?? fd.accHa;
+  const accHa = acc ? Math.round(acc(idx) * 10) / 10 : null;
   /**
    * ⚠️ ХУРААХ ТАЛБАЙ нь бусад шалтгаанаас ДЭЭГҮҮР: 20 га-гийн ус цуглаж
    * байгаа нүд нь «хавтгай» ч бай, «налуу» ч бай үерлэнэ. Рельеф, налуу нь
    * зөвхөн ус ХЭР УДААН тогтохыг хэлнэ.
    */
   const catchTxt = accHa != null && accHa >= 1
-    ? tr('Энэ цэгт {0} га талбайн ус цуглаж ирдэг. ', accHa.toFixed(accHa >= 10 ? 0 : 1))
+    ? tr('Тооцооны мужид энэ цэг рүү дор хаяж {0} га талбайн ус цуглаж ирдэг. ', accHa.toFixed(accHa >= 10 ? 0 : 1))
     : '';
   const reason = catchTxt + (channel
     ? tr('Голын суваг — ус энд байх нь хэвийн; эрсдэл нь эрэг давах явдал.')
@@ -187,6 +195,8 @@ export function flowPath(
   let [px, py] = xy(idx, W).map((v) => v + 0.5);
   const pts: number[][] = [];
   const seen = new Set<number>();
+  /** Өмнөх алхмын нүд — хагас нүдний алхам ИЖИЛ нүдэнд хоёр удаа буудаг */
+  let last = -1;
   for (let k = 0; k < MAX_STEPS; k++) {
     const cx = px | 0;
     const cy = py | 0;
@@ -195,9 +205,15 @@ export function flowPath(
     if (fd.depth(s, i) < wet) break;
     pts.push([e.xmin + px * cw, e.ymax - py * ch]);
     /* ⚠️ Мөчлөгт орохоос хамгаална: эргэлдэх урсгалд зам хаалттай гогцоо
-       үүсгэж, MAX_STEPS дуустал ижил дөрвөн нүдийг тойрдог. */
-    if (seen.has(i)) break;
-    seen.add(i);
+       үүсгэж, MAX_STEPS дуустал ижил дөрвөн нүдийг тойрдог.
+       ⚠️ 2026-09-30: ЗӨВХӨН НҮД СОЛИГДОХОД шалгана. Алхам нь хагас нүд (0.5) тул
+       хоёр дахь алхам ихэвчлэн ИЖИЛ нүдэнд буудаг — урьд нь тэр нь «гогцоо» гэж
+       тасарч, зам 1–2 алхамтай (5–10 м) хожуул болдог байв. */
+    if (i !== last) {
+      if (seen.has(i)) break;
+      seen.add(i);
+      last = i;
+    }
     const u = fd.u(s, i);
     const v = fd.v(s, i);
     const sp = Math.hypot(u, v);

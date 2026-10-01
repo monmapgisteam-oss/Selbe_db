@@ -68,14 +68,15 @@ const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
     'scopedAcl: markResult(u, r.ok) үлдсэн — эрх олголтын үр дүнг залгиж байна. '
     + '`r.ok && r.g` байх ёстой (set ба remove ХОЁУЛАА).');
 
+  /* ⚠️ 2026-10-01: + `retry` («Дахин илгээх» · «Дахин олгох») — мөн хоёуланг барина */
   const strong = core.match(/markResult\(u,\s*r\.ok\s*&&\s*r\.g\)/g) ?? [];
-  assert.equal(strong.length, 2,
-    `scopedAcl: markResult(u, r.ok && r.g) нь ЯГ 2 удаа (set + remove) байх ёстой, олдсон: ${strong.length}`);
+  assert.equal(strong.length, 3,
+    `scopedAcl: markResult(u, r.ok && r.g) нь ЯГ 3 удаа (set + remove + retry) байх ёстой, олдсон: ${strong.length}`);
 
   /* `sync` буцаах утга нь мөн адил хоёуланг барина */
   const ret = core.match(/return r\.ok\s*&&\s*r\.g;/g) ?? [];
-  assert.equal(ret.length, 2,
-    `scopedAcl: sync нь 'r.ok && r.g' буцаах ёстой (2 газар), олдсон: ${ret.length}`);
+  assert.equal(ret.length, 3,
+    `scopedAcl: sync нь 'r.ok && r.g' буцаах ёстой (3 газар), олдсон: ${ret.length}`);
 
   /* ⚠️ 2026-09-21: хасалтын revoke нь ГҮЙЦЭТГЭХ агшиндаа «дахин хуваарилагдсан
      уу» гэж шалгана — `guitsetgelAcl.removeAssign`-ийн `revoke && !stageOfUser(u)`
@@ -780,6 +781,13 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   const K = Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase());
   assert.ok(K.length >= 6, 'хатуу жагсаалтад 6+ энгийн аккаунт хэрэгтэй');
   const settle = async (w) => { await w.sync; await w.granted; };
+  /* ⚠️ 2026-09-30: `aclOps.isCleanup` — порталд БАЙХГҮЙ нэрийг устгагдсан аккаунт гэж үзэж нүдний ✕ нь
+     мөрийг бүхэлд нь (асуулгагүй, эрх хөндөхгүй) цэвэрлэнэ. Доорх зохиомол нэрс «порталд байгаа»
+     аккаунтын дүрмийг шалгадаг тул store-д бүртгэнэ (remote бичилт offline унана — хамаагүй). */
+  {
+    const P = await import('@/lib/permissions.ts');
+    for (const n of ['q_all2', 'c_all', 'c_new', 'c_ball', 'c_q']) void P.setUser(n, { views: [], docs: false }, null);
+  }
 
   /* ── QAQC: шинэ мөр grant=true · багц солих grant=false ── */
   CAPS._syncRemoteCaps([]);

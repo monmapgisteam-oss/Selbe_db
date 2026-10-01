@@ -364,6 +364,98 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
 export const waterSurface = (fd: FloodData, s: number, minDepth = 0.08) =>
   waterSurfaceAt(fd, s, minDepth);
 
+/** Цэгээс хэрчим хүртэлх зайн КВАДРАТ */
+function segDist2(p: number[], a: number[], b: number[]): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const L = dx * dx + dy * dy;
+  let t = L > 0 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const x = a[0] + t * dx - p[0];
+  const y = a[1] + t * dy - p[1];
+  return x * x + y * y;
+}
+
+/** Douglas–Peucker — НЭЭЛТТЭЙ шугам, давталтаар (урт цагирагт стек халихгүй) */
+function dpOpen(pts: number[][], tol: number): number[][] {
+  const n = pts.length;
+  if (n <= 2) return pts.slice();
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[n - 1] = 1;
+  const tol2 = tol * tol;
+  const stack: [number, number][] = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    let best = -1;
+    let bd = tol2;
+    for (let i = a + 1; i < b; i++) {
+      const d = segDist2(pts[i], pts[a], pts[b]);
+      if (d > bd) { bd = d; best = i; }
+    }
+    if (best >= 0) {
+      keep[best] = 1;
+      stack.push([a, best], [best, b]);
+    }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+
+/**
+ * ХААЛТТАЙ цагираг (эхний = сүүлийн) — хамгийн алс оройгоор хоёр хуваан DP.
+ * ⚠️ Хаалттай цагирагт DP-г шууд хийвэл эхний ба сүүлийн цэг ИЖИЛ тул «хэрчим»
+ *    нь цэг болж, бүх орой зөвхөн тэр цэгээс хэмжигдэнэ. Хоёр хагаст хуваана.
+ * @returns хаалттай цагираг; хэт жижиг болвол `null`
+ */
+function dpRing(r: number[][], tol: number): number[][] | null {
+  const closed = r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1];
+  const pts = closed ? r.slice(0, -1) : r.slice();
+  if (pts.length < 4) return r;
+  let k = 0;
+  let kd = -1;
+  for (let i = 1; i < pts.length; i++) {
+    const d = (pts[i][0] - pts[0][0]) ** 2 + (pts[i][1] - pts[0][1]) ** 2;
+    if (d > kd) { kd = d; k = i; }
+  }
+  const a = dpOpen(pts.slice(0, k + 1), tol);
+  const b = dpOpen([...pts.slice(k), pts[0]], tol);
+  const ring = [...a, ...b.slice(1)];
+  /* хаалттай: эхний = сүүлийн; давхардсан хаалтгүйгээр 3+ ялгаатай орой */
+  if (ring.length < 4) return null;
+  return ring;
+}
+
+/**
+ * ЦАГИРГИЙГ ОРОЙН ТӨСӨВТ БАГТААЖ ХЯЛБАРЧИЛНА (Douglas–Peucker, өсөх хүлцэл).
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `floodFootprint` нь Chaikin-аар
+ *    ХОЁР удаа гөлгөрүүлэгддэг тул орой нь торны хилийн 4 дахин олон (амьдаар
+ *    хэмжвэл 3-р түвшинд 10–20 мянга). Тэр полигоныг хохирлын асуулгын
+ *    `geometry` болгоход: (1) давхарга бүрд POST бие хэдэн зуун КБ, (2) сервер
+ *    ба хөтчийн `intersect` бүр оройн тоотой пропорциональ удааширдаг байв.
+ *    Хүлцлийг (эхлээд нүдний 1/4) хоёр дахин өсгөсөөр нийт орой `budget`-д
+ *    багтмагц зогсоно. Хүлцэл нь ДӨРӨВ хүртэл (8×) л өснө — төсөвт багтаагүй
+ *    ч хил эхний хүлцлийн 8 дахинаас (≈ 2 нүд) илүү хөдлөхгүй.
+ * ⚠️ Цагираг бүрийг ТУСАД НЬ хялбарчилна — нүх (барилга, дов) хадгалагдана;
+ *    хэт жижиг болсон цагираг (3-аас цөөн орой) хасагдана.
+ *
+ * @param tol    эхлэх хүлцэл (газрын нэгж — WM)
+ * @param budget нийт оройн дээд тоо
+ */
+export function simplifyRings(
+  rings: number[][][],
+  { tol, budget }: { tol: number; budget: number },
+): number[][][] {
+  const count = (rs: number[][][]) => rs.reduce((a, r) => a + r.length, 0);
+  if (count(rings) <= budget || !(tol > 0)) return rings;
+  let out = rings;
+  for (let k = 0, t = tol; k < 4; k++, t *= 2) {
+    out = rings.map((r) => dpRing(r, t)).filter((r): r is number[][] => r != null);
+    if (count(out) <= budget) break;
+  }
+  return out;
+}
+
 /**
  * ҮЕРИЙН БҮРЭН МӨР — БҮХ хугацааны усанд автсан талбайн ХИЛ.
  *

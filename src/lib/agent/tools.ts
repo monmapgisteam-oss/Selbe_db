@@ -21,6 +21,7 @@ import {
   arcgisPost,
   avg,
   count,
+  nPrefixUnicode,
   queryFeatures,
   queryGroupEx,
   queryStats,
@@ -78,7 +79,8 @@ export const AGENT_TOOLS: ToolDef[] = [
         where: {
           type: 'string',
           description:
-            'SQL шүүлт (ArcGIS). Анхдагч "1=1". Текст утгыг нэг хашилтад бич. Жиш: ZONE_ID = \'Багц-1\'',
+            /* ⚠️ 2026-09-30: кирилл утга `N'…'` угтвартай (`nPrefixUnicode`-ийн ⚠️) */
+            'SQL шүүлт (ArcGIS). Анхдагч "1=1". Текст утгыг нэг хашилтад, кирилл утгыг N угтвартай бич. Жиш: ZONE_ID = N\'Багц-1\'',
         },
         stats: {
           type: 'array',
@@ -188,7 +190,12 @@ type QueryIn = {
 /** Агентын хэрэгслийн үр дүн — `is_error` нь загварт алдааг ойлгуулж, өөрөө засах боломж өгнө */
 export type ToolOutcome = { text: string; isError: boolean };
 
-const ok = (v: unknown): ToolOutcome => ({ text: JSON.stringify(v), isError: false });
+/* ⚠️ 2026-09-30: `nPrefixUnicode` нь `query.ts`-д (sqlStr-ийн хажууд) — `overview.ts` ч
+   хэрэглэдэг тул энд байвал tools ↔ overview импортын тойрог үүснэ. Шалгуурт зориулж
+   эндээс дахин экспортолно. */
+export { nPrefixUnicode };
+
+const ok =(v: unknown): ToolOutcome => ({ text: JSON.stringify(v), isError: false });
 const fail = (msg: string): ToolOutcome => ({ text: msg, isError: true });
 
 const notFound = (id?: string) =>
@@ -220,7 +227,8 @@ async function runQuery(input: QueryIn, scope: AgentScope): Promise<ToolOutcome>
   if (!src) return notFound(input.id);
 
   const url = src.url;
-  const where = input.where?.trim() || '1=1';
+  /* ⚠️ 2026-09-30: кирилл литералд `N'…'` угтвар (`nPrefixUnicode`-ийн ⚠️) */
+  const where = nPrefixUnicode(input.where?.trim() || '1=1');
 
   // ⚠️ Талбарын нэрийг УРЬДЧИЛЖ шалгана. ArcGIS буруу нэр дээр «Unable to perform
   //    query» гэсэн ерөнхий алдаа буцаадаг тул агент юу буруу болсныг ойлгохгүй,

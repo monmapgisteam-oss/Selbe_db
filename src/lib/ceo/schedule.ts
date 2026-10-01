@@ -78,7 +78,7 @@ import { FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import type { PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
 import type { MonthPt } from '@/modules/Finance';
-import { cell, table, type Cell, type KpiIssue, type KpiResult } from './kpi';
+import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult } from './kpi';
 
 /* ══════════════ Төрөл ══════════════ */
 
@@ -493,4 +493,6 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
-}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC']);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `HUVAARI_OBYEM` — хуваарийн муруй (`loadFinData` дотор)
+     сарын обьёмын батлалтаар өөрчлөгдөнө. Муруй унасан (`failedSources`) картыг КЭШЛЭХГҮЙ (`kpiComplete`). */
+}, 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'HUVAARI_OBYEM'], kpiComplete);

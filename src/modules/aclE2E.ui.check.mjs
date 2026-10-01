@@ -23,7 +23,7 @@
  *   §C МАТРИЦ (`ErhCellEditor`) — 20 багана бүрд «бүх багц»-тай хүнийг нэг нүднээс ✕ → бусад үлдэнэ
  *      (МЭДЭЭЛСЭН АЛДАА — засвараас өмнө УНАДАГ)
  *   §D Гацааны анхааруулга — зохиогч=батлагч · батлагчгүй · Чанарт «нэг хүн хоёр үүрэгт» · хянагч дутуу
- *   §E «Хэрэглэгчид» самбар (`UserAdmin`) — урсгалтай харагдац унтраалгагүй, хадгалахад хэвээр ·
+ *   §E «Хэрэглэгчид» самбар (`UserAdmin`) — урсгалтай харагдац унтраалгагүй, хадгалахад бичигдэхгүй ·
  *      үүрэг солих · устгах (бүх хуваарилалт + эрх цэвэрлэгдэнэ) · «Буцаах»
  */
 import assert from 'node:assert/strict';
@@ -67,6 +67,8 @@ const { QaqcAcl } = await import('@/modules/QaqcAcl.tsx');
 const { GuitsetgelAcl } = await import('@/modules/GuitsetgelAcl.tsx');
 const { ErhCellEditor } = await import('@/modules/ErhCellEditor.tsx');
 const { UserAdmin } = await import('@/components/UserAdmin.tsx');
+const { UserHeadActions } = await import('@/components/UserRow.tsx');
+const RT = await import('@/lib/roleTypes.ts');
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks += 1; };
@@ -197,6 +199,35 @@ fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringi
 let nextU = 0;
 const mkUser = () => POOL[nextU++];
 const run = async (op) => { takeConfirms(); let err = ''; const r = await OPS.runOp(op, (m) => { err = m; }); await idle(); return { ok: r, err, confirms: takeConfirms() }; };
+/** `UserAdmin`-ыг зурж «Хэрэглэгчдийн эрх удирдах» хуудас руу орно */
+const usersPane = async () => {
+  const m = mount(React.createElement(UserAdmin, { open: true, onClose: noop }), new Set(['UserAdmin']));
+  await idle(); m.render();
+  findAll(m.tree, (n) => n.type === 'button' && /sideItem/.test(n.props?.className ?? ''))
+    .find((x) => text(x.el).includes('Хэрэглэгчдийн эрх удирдах')).el.props.onClick({});
+  m.render();
+  return m;
+};
+const alerts = (m) => findAll(m.tree, (n) => n.props?.role === 'alert').map((x) => text(x.el));
+
+/* ══════════ §0. Remote НЭГ Ч удаа уншигдаагүй сешн — картаас ноорог үүсэхгүй (2026-09-30) ══════════
+ * ⚠️ Тэр үед жагсаалт нь зөвхөн browser-ийн кэш (шинэ browser-т хатуу суурь л) — түүн дээрх
+ *    ноорог хадгалагдвал (эсвэл унасан бичилтийн retry-д) бодит мөрийг дарна
+ *    (`roleTypeApply.applyType`-ийн «уншигдаагүй сешнд бичвэл бодит мөрийг дарна» дүрэм). */
+{
+  fake.searchDown = true;
+  const m = await usersPane();
+  eq(P.remoteReady(), false, '§0 remote уншигдаагүй');
+  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'beginner')[0];
+  const row = () => findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === hard).el.props;
+  row().onFlipView('gdash'); m.render();
+  row().onRole('taniltsah'); m.render();
+  eq(row().dirty, false, '§0 уншигдаагүй сешнд ноорог үүсэхгүй');
+  ok(alerts(m).includes(OPS.lockMsg()), `§0 түгжээний зурвас (${alerts(m).join(' | ')})`);
+  fake.searchDown = false;
+  console.log('✅ §0 remote уншигдаагүй сешн: картын засвар ноорог үүсгэхгүй, түгжээний зурвас');
+}
+
 ok(await P.initRemote(false, true), 'initRemote');
 await idle();
 ok(OPS.allAclReady(), 'бүх туг бэлэн');
@@ -466,7 +497,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   p = rowOf();
   eq(p.dirty, false, `${tag}: хадгалагдав`);
   await P.initRemote(false, true); await idle();
-  ok(stored().includes('guitsetgel'), `${tag}: хадгалахад «Гүйцэтгэл» (урсгалын) хэвээр`);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): карт «Хадгалах» урсгалтай харагдацыг БИЧИХГҮЙ —
+     харин томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр (`permissions.workflowViewsOf`) */
+  ok(!stored().some((v) => WORKFLOW_VIEWS.includes(v)), `${tag}: хадгалахад урсгалтай харагдац бичигдээгүй (${stored()})`);
+  ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag}: томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
   eq(P.roleOf(u), 'chanar', `${tag}: үүрэг солигдов`);
   eq(acl(), aclBefore, `${tag}: карт хадгалахад хуваарилалт/эрх хөндөгдөөгүй`);
   ok(P.resolveAccess(u).views.includes('huvaari') && P.resolveAccess(u).views.includes('qaqc'), `${tag}: эрхээр нээгдсэн харагдац хэвээр`);
@@ -496,7 +530,244 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(P.hasAccess(hard), true, `${tag}: сэргээв`);
   eq(OB.obyemScope(hard, 'editor'), [], `${tag}: хуучин хуваарилалт эргэж ирэхгүй`);
   eq(CAPS.capsOf(hard), [], `${tag}: хуучин эрх эргэж ирэхгүй`);
-  console.log('✅ §E самбар: урсгалтай харагдац унтраалгагүй · хадгалахад хэвээр · үүрэг солих хуваарилалт хөндөөгүй · устгах бүгдийг цэвэрлэв · «Буцаах»');
+  console.log('✅ §E самбар: урсгалтай харагдац унтраалгагүй · хадгалахад бичигдэхгүй (томилгоогоор нээлттэй) · үүрэг солих хуваарилалт хөндөөгүй · устгах бүгдийг цэвэрлэв · «Буцаах»');
+}
+
+/* ══════════ §F. «Хэрэглэгчид» самбарын засварууд (2026-09-30) ══════════ */
+{
+  const tag = '§F';
+  const g = PKG_GROUPS[1];
+  const stored = (u) => P.listUsers().find((x) => x.username === u)?.views;
+  const m = await usersPane();
+  const rowOf = (u) => findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === u)?.el.props;
+  const save = () => { findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.onClick({}); };
+
+  /* (1) ХУУЧИН НООРОГ УРСГАЛТАЙ ХАРАГДАЦЫГ БУЦААЖ НЭЭХГҮЙ: ноорог үүссэний дараа урсгалын томилгоо
+         хасагдвал «Хадгалах» нь ноорог дахь хуулбараас «Гүйцэтгэл»-ийг дахин бичдэг байв */
+  const u = mkUser();
+  await run(OPS.flowCellOp(u, 'engineer', g, true));
+  ok(stored(u).includes('guitsetgel'), `${tag}: урсгал «Гүйцэтгэл»-ийг нээсэн`);
+  m.render();
+  rowOf(u).onFlipView('gdash'); m.render();
+  ok(rowOf(u).dirty, `${tag}: ноорог`);
+  const rm = await run(OPS.flowCellOp(u, 'engineer', g, false));
+  ok(rm.ok && !stored(u).includes('guitsetgel'), `${tag}: томилгоо хасагдахад «Гүйцэтгэл» хаагдав`);
+  m.render(); save(); await idle(); m.render();
+  await P.initRemote(false, true); await idle();
+  ok(!stored(u).includes('guitsetgel'), `${tag}: хуучин ноорог «Гүйцэтгэл»-ийг БУЦААЖ нээхгүй (${stored(u)})`);
+  ok(!stored(u).includes('gdash'), `${tag}: картын өөрчлөлт (gdash) хадгалагдав`);
+  ok(!P.resolveAccess(u).views.includes('guitsetgel'), `${tag}: runtime-д ч хаалттай`);
+
+  /* (2) Бөөнөөр preset — шатанд томилогдсон хүнд ХУДАЛ «Гүйцэтгэл хасагдана» асуулт гарахгүй */
+  const u2 = mkUser();
+  await run(OPS.flowCellOp(u2, 'engineer', g, true));
+  m.render();
+  rowOf(u2).onPick(true); m.render();
+  const preset = (r) => findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'preset' && text(n) === RT.typeLabel(r))[0];
+  takeConfirms();
+  preset('injener').el.props.onClick({}); m.render();
+  eq(takeConfirms(), [], `${tag}: бөөнөөр preset — худал асуулт алга`);
+  ok(rowOf(u2).dirty && rowOf(u2).d.role === 'injener', `${tag}: бөөнөөр preset ноорогт`);
+  save(); await idle(); m.render();
+  /* ⚠️ 2026-10-01: хадгалалтад бичигдэхгүй ч томилгоогоор нээлттэй (`workflowViewsOf`) */
+  ok(P.resolveAccess(u2).views.includes('guitsetgel'), `${tag}: бөөнөөр preset — томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
+
+  /* (3) Хатуу super-ийг доошлуулахгүй — мөрийн сонгогч ба бөөнөөр preset */
+  rowOf(SUPER).onRole('injener'); m.render();
+  eq(rowOf(SUPER).dirty, false, `${tag}: хатуу super-т өөр үүрэг ноорогт орохгүй`);
+  rowOf(SUPER).onPick(true); m.render();
+  preset('menejer').el.props.onClick({}); m.render();
+  eq(rowOf(SUPER).dirty, false, `${tag}: бөөнөөр preset хатуу super-ийг алгасна`);
+  ok(alerts(m).some((a) => a.includes(SUPER)), `${tag}: алгассаныг ил хэлнэ`);
+
+  /* (4) Ноорог үүссэний ДАРАА устгагдсан аккаунтыг «Хадгалах» АМИЛУУЛАХГҮЙ */
+  const u3 = mkUser();
+  rowOf(u3).onFlipView('gdash'); m.render();
+  ok(rowOf(u3).dirty, `${tag}: ноорог (u3)`);
+  const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'tolovlolt')[0];
+  rowOf(hard).onFlipView('gdash'); m.render();
+  ok(await P.removeUser(u3), `${tag}: өөр админ u3-ийг устгав`);
+  ok(await P.removeUser(hard), `${tag}: өөр админ хатуу аккаунтыг устгав (tombstone)`);
+  await idle(); m.render();
+  save(); await idle(); m.render();
+  await P.initRemote(false, true); await idle();
+  eq(P.hasAccess(u3), false, `${tag}: устгагдсан панелийн аккаунт амилахгүй`);
+  eq(fake.find(u3), [], `${tag}: ArcGIS-т мөр дахин үүсэхгүй`);
+  ok(P.listRemoved().includes(hard) && !P.hasAccess(hard), `${tag}: tombstone хэвээр`);
+  ok(alerts(m).some((a) => a.includes(u3)), `${tag}: алгассаныг ил хэлнэ`);
+  eq(findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled, true, `${tag}: ноорог үлдэхгүй`);
+  await P.clearOverride(hard); await idle();
+
+  /* (5) Устгагдсан (tombstone-гүй) аккаунтын үлдсэн засах эрх нэрийг ДАХИН НЭМЭХИЙГ гацаадаг байв */
+  const name = 'ui_orphan_caps';
+  fake.seed([{ username: `__cap__:${name}`, views: JSON.stringify(['finRow', 'zovshoorol']) }]);
+  await P.initRemote(false, true); await idle(); m.render();
+  const input = findAll(m.tree, (n) => n.type === 'input' && n.props?.['aria-label'] === 'Шинэ хэрэглэгчийн нэр')[0];
+  input.el.props.onChange({ target: { value: name } }); m.render();
+  takeConfirms();
+  findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'addBtn')[0].el.props.onClick({});
+  await idle(); m.render();
+  const cf = takeConfirms();
+  ok(cf.length === 1 && cf[0].includes(name) && cf[0].includes('Санхүү — мөр'), `${tag}: өнчин эрхийг нэрээр нь асууна (${cf.join(' | ')})`);
+  eq(fake.find(`__cap__:${name}`), [], `${tag}: өнчин эрх ArcGIS-оос арилав`);
+  eq(CAPS.capsOf(name), [], `${tag}: эрх хоосон`);
+  ok(rowOf(name)?.d.isNew, `${tag}: шинэ аккаунт ноорогт нэмэгдэв`);
+  console.log('✅ §F самбар: хуучин ноорог урсгалтай харагдацыг буцааж нээхгүй · бөөнөөр preset худал асуултгүй · super доошлохгүй · устгагдсан аккаунт амилахгүй · өнчин эрхтэй нэрийг дахин нэмнэ');
+}
+
+/* ══════════ §G. Үүргийн сонгогч — хуучин үүрэг ил, хатуу super идэвхгүй (2026-09-30) ══════════ */
+{
+  const tag = '§G';
+  const presets = RT.TYPE_ORDER.map((r) => ({ key: r, label: RT.typeLabel(r) }));
+  const props = (over) => ({
+    u: { username: 'x_user', role: 'tolovlolt', views: [], docs: false, overridden: true },
+    rowKey: 'x_user', d: { views: [], docs: false, role: 'tolovlolt' }, dirty: false, myName: null,
+    rolePresets: presets, onRole: noop, onClear: noop, onFlipRemove: noop, superUser: false, ...over,
+  });
+  let m = mount(React.createElement(UserHeadActions, { p: props({}) }));
+  let sel = findAll(m.tree, (n) => n.type === 'select')[0].el;
+  const legacy = findAll(sel, (n) => n.type === 'option' && n.props.value === 'tolovlolt');
+  ok(legacy.length === 1 && legacy[0].el.props.disabled, `${tag}: хуучин үүрэг (tolovlolt) идэвхгүй сонголтоор ил`);
+  eq(text(legacy[0].el), RT.typeLabel('tolovlolt'), `${tag}: шошго`);
+  eq(sel.props.value, 'tolovlolt', `${tag}: сонгогчийн утга = бодит үүрэг`);
+  ok(!sel.props.disabled, `${tag}: энгийн аккаунтад идэвхтэй`);
+  m = mount(React.createElement(UserHeadActions, { p: props({ superUser: true, d: { views: 'all', docs: true, role: 'super' } }) }));
+  sel = findAll(m.tree, (n) => n.type === 'select')[0].el;
+  ok(sel.props.disabled, `${tag}: хатуу super-т сонгогч идэвхгүй`);
+  eq(findAll(sel, (n) => n.type === 'option' && n.props.disabled).length, 0, `${tag}: 10 төрөлд байгаа үүрэгт нэмэлт сонголтгүй`);
+  console.log('✅ §G үүргийн сонгогч: хуучин үүрэг ил · хатуу super идэвхгүй');
+}
+
+/* ══════════ §H. Устгагдсан аккаунтын хуучин мөр — хуудсанд ✕ цэвэрлэнэ, гацааг нуухгүй (2026-09-30) ══════════ */
+{
+  const tag = '§H';
+  const [p1, p2] = [PKG_GROUPS[6], PKG_GROUPS[7]];
+  const ghost = 'ui_ghost_gone';
+  const a = mkUser();
+  await run(OPS.scopedCellOp('huvaari', a, 'author', p1, true));
+  fake.seed([
+    { username: `__huvaari__:${ghost}`, views: JSON.stringify({ roles: ['approver'], bagts: [p1, p2], grants: [{ role: 'approver', bagts: [p1, p2] }] }) },
+  ]);
+  await P.initRemote(false, true); await idle();
+  const withGrid = (Comp) => findAll(mount(React.createElement(Comp), new Set([Comp.name, 'ScopedAclPanel'])).tree, byName('AclGrid'))[0].el.props;
+  const grid = withGrid(HuvaariAcl);
+  ok(grid.stuck(p1, 'approver', []), `${tag}: устгагдсан батлагч гацааг нуухгүй (батлагчийн нүд гацсан)`);
+  ok(grid.rows.find((r) => r.key === p1).warn.length === 1, `${tag}: «батлагчгүй» анхааруулга`);
+  ok(grid.holders(p1, 'approver').some((h) => h.user === ghost && h.gone), `${tag}: нүдэнд харагдсаар (gone)`);
+  const src = OPS.liveErhSource();
+  ok(src.gone.includes(ghost), `${tag}: liveErhSource.gone`);
+  ok(pkgMatrix(src).find((r) => r.bagts === p1).issues.some((i) => i.key === 'huvaariNoApprover'), `${tag}: матриц/тойм ч гацааг харуулна`);
+  /* ✕ — мөрийг бүхэлд нь, асуулгагүй, эрх үүсгэхгүй */
+  const m = mount(React.createElement(HuvaariAcl), new Set(['HuvaariAcl', 'ScopedAclPanel', 'AclGrid', 'Chip']));
+  takeConfirms();
+  clickX(m, p1, 'approver', ghost);
+  await idle();
+  eq(takeConfirms(), [], `${tag}: устгагдсан аккаунтын ✕ асуулгагүй`);
+  ok(!HV.listHuvaariAssigns().some((x) => x.user === ghost), `${tag}: мөр бүхэлдээ хасагдав (${p2} ч)`);
+  eq(fake.find(`__huvaari__:${ghost}`), [], `${tag}: ArcGIS мөр алга`);
+  eq(fake.find(`__cap__:${ghost}`), [], `${tag}: устгагдсан аккаунтад эрхийн мөр үүсээгүй`);
+  /* Урсгал: устгагдсан аккаунт ганцаараа эзэн бол нүд гацсан */
+  const fg = withGrid(GuitsetgelAcl);
+  ok(fg.stuck(p1, 'engineer', [{ user: ghost, viaAll: false, gone: true, failed: false, dirty: false }]), `${tag}: урсгал — устгагдсан эзэн гацааг нуухгүй`);
+  console.log('✅ §H устгагдсан аккаунт: гацааг нуухгүй (хуудас · матриц) · ✕ мөрийг бүхэлд нь цэвэрлэж эрх үүсгэхгүй');
+}
+
+/* ══════════ §I. Засварын UI (2026-10-01, «хэрэглэгч: бүгдийг зас») ══════════
+ *   (1) картын урсгалтай 6 хуудас — эх сурвалж · холбоос · «Дахин олгох»
+ *   (2) хуудасны «Дахин илгээх» (унасан бичилт) · устгагдсан аккаунтын «Цэвэрлэх»
+ *   (3) матриц — устгагдсан · админ тэмдэг
+ *   (4) шинэ аккаунт — одоогийн төрөл (`NEW_ACCOUNT_ROLE`)
+ *   (5) «Эрхийн төрөл» — «шинэ хуудас — загварт тохируулаагүй» */
+{
+  const tag = '§I';
+  const { UserWorkflow } = await import('@/components/UserWorkflow.tsx');
+  const { AclRepairNote } = await import('@/modules/AclRepairNote.tsx');
+  const { ErhMatrix } = await import('@/modules/ErhMatrix.tsx');
+  const { ErhTypes } = await import('@/modules/ErhTypes.tsx');
+  const { paneLabel } = await import('@/modules/capText.ts');
+  const btn = (m, re) => findAll(m.tree, (n) => n.type === 'button' && re.test(text(n))).map((x) => x.el);
+  const [p1] = [PKG_GROUPS[8]];
+
+  /* (1) карт */
+  const u = mkUser();
+  await run(OPS.flowCellOp(u, 'engineer', p1, true));
+  await run(OPS.scopedCellOp('huvaari', u, 'author', p1, true));
+  const went = [];
+  let m = mount(React.createElement(UserWorkflow, { user: u, onGo: (p) => went.push(p) }));
+  const rowsTxt = findAll(m.tree, (n) => n.props?.className === 'wfRow').map((x) => text(x.el));
+  eq(rowsTxt.length, WORKFLOW_VIEWS.length, `${tag}: урсгалтай ${WORKFLOW_VIEWS.length} мөр`);
+  const src = btn(m, new RegExp(`${paneLabel('huvaari')} · Зохиогч · ${p1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  ok(src.length === 1, `${tag}: «Хуваарийн эрх · Зохиогч · ${p1}» эх сурвалж (${rowsTxt.join(' | ')})`);
+  src[0].props.onClick({});
+  eq(went, ['huvaari'], `${tag}: эх сурвалж → Хуваарийн эрх хуудас`);
+  ok(btn(m, new RegExp(paneLabel('guits'))).length >= 1, `${tag}: «Гүйцэтгэл» ← урсгалын эрх`);
+  eq(btn(m, /Дахин олгох/).length, 0, `${tag}: эрх бүрэн — «Дахин олгох» алга`);
+  await CAPS.setCaps(u, CAPS.capsStored(u).filter((c) => c !== 'plan')); await idle();
+  m = mount(React.createElement(UserWorkflow, { user: u, onGo: noop }));
+  const re = btn(m, /Дахин олгох/);
+  ok(re.length === 1, `${tag}: эрх алга → «Дахин олгох»`);
+  ok(!P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед «Хуваарь» хаалттай`);
+  re[0].props.onClick({});
+  await idle();
+  ok(CAPS.capsOf(u).includes('plan') && P.resolveAccess(u).views.includes('huvaari'), `${tag}: «Дахин олгох» → эрх ба хуудас сэргэв`);
+
+  /* (2) «Дахин илгээх» */
+  const f = mkUser();
+  fake.failWrites = true;
+  await run(OPS.scopedCellOp('obyem', f, 'editor', p1, true));
+  fake.failWrites = false;
+  ok(OB.obyemFailedUsers().includes(f), `${tag}: бичилт унасан`);
+  m = mount(React.createElement(AclRepairNote, { pane: 'obyem' }));
+  const rb = findAll(m.tree, (n) => n.type === 'button' && text(n) === 'Дахин илгээх').map((x) => x.el);
+  ok(rb.length >= 1, `${tag}: «Дахин илгээх» товч`);
+  rb[0].props.onClick({}); await idle();
+  ok(!OB.obyemFailedUsers().includes(f) && fake.json('__obyem__:', f)?.grants?.length === 1, `${tag}: дахин илгээгдэв`);
+  /* устгагдсан аккаунтын энгийн эрх — «Зөвшөөрөл» хуудсанд л харагдах ёстой */
+  const ghost = 'ui_ghost_caps';
+  fake.seed([{ username: `__cap__:${ghost}`, views: JSON.stringify(['zovshoorol']) }]);
+  await P.initRemote(false, true); await idle();
+  m = mount(React.createElement(AclRepairNote, { pane: 'zovshoorol' }));
+  ok(alerts(m).some((a) => a.includes(ghost)), `${tag}: устгагдсан аккаунтын үлдэгдэл жагсаагдав`);
+  btn(m, /^Цэвэрлэх$/)[0].props.onClick({}); await idle();
+  eq(fake.find(`__cap__:${ghost}`), [], `${tag}: «Цэвэрлэх» → ArcGIS-оос арилав`);
+
+  /* (3) матриц — устгагдсан · админ */
+  const g2 = 'ui_ghost_matrix';
+  fake.seed([{ username: `__huvaari__:${g2}`, views: JSON.stringify({ roles: ['approver'], bagts: [p1], grants: [{ role: 'approver', bagts: [p1] }] }) }]);
+  await P.initRemote(false, true); await idle();
+  m = mount(React.createElement(ErhMatrix, { src: OPS.liveErhSource(), locked: false, drafts: new Map() }));
+  ok(findAll(m.tree, (n) => n.type === 'span' && /aclGoneName/.test(n.props?.className ?? '') && text(n).startsWith(g2)).length >= 1,
+    `${tag}: матрицад устгагдсан аккаунт тэмдэглэгдэв`);
+  await run(OPS.goneCleanupOp('huvaari', ['plan', 'planApprove'], g2));
+
+  /* (4) шинэ аккаунт — одоогийн төрөл */
+  const pane = await usersPane();
+  const nm = 'ui_new_default';
+  findAll(pane.tree, (n) => n.type === 'input' && n.props?.['aria-label'] === 'Шинэ хэрэглэгчийн нэр')[0].el.props.onChange({ target: { value: nm } });
+  pane.render();
+  findAll(pane.tree, (n) => n.type === 'button' && n.props?.className === 'addBtn')[0].el.props.onClick({});
+  pane.render();
+  const nr = findAll(pane.tree, byName('UserRow')).find((x) => x.el.props.u.username === nm)?.el.props;
+  ok(nr?.d.isNew, `${tag}: шинэ аккаунт ноорогт`);
+  eq(nr.d.role, RT.NEW_ACCOUNT_ROLE, `${tag}: анхдагч төрөл = ${RT.NEW_ACCOUNT_ROLE} (хуучин tolovlolt биш)`);
+  ok(Array.isArray(nr.d.views) && !nr.d.views.some((v) => WORKFLOW_VIEWS.includes(v)), `${tag}: урсгалтай харагдацгүй`);
+
+  /* (5) «Эрхийн төрөл» — seen-гүй хадгалсан загварт «ТУХ» шинэ */
+  fake.seed([{ username: '__type__:injener', views: JSON.stringify({ on: ['view:gdash'], home: 'gdash' }) }]);
+  await P.initRemote(false, true); await idle();
+  eq(RT.unseenViews('injener'), ['tuh'], `${tag}: хадгалсан загвар ТУХ-ыг мэдэхгүй`);
+  m = mount(React.createElement(ErhTypes), new Set(['ErhTypes', 'Group']));
+  const badge = btn(m, /шинэ хуудас — загварт тохируулаагүй/);
+  ok(badge.length === 1, `${tag}: баганын «шинэ хуудас» тэмдэг (${badge.length})`);
+  ok(findAll(m.tree, (n) => n.type === 'span' && text(n) === 'шинэ хуудас — загварт тохируулаагүй').length === 1, `${tag}: мөрийн тэмдэг`);
+  badge[0].props.onClick({}); m.render();
+  eq(btn(m, /шинэ хуудас — загварт тохируулаагүй/).length, 0, `${tag}: дарахад ноорогт «тохируулсан»`);
+  const saveB = findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el;
+  ok(!saveB.props.disabled, `${tag}: «Хадгалах» идэвхтэй`);
+  saveB.props.onClick({}); await idle(); m.render();
+  eq(RT.unseenViews('injener'), [], `${tag}: хадгалсны дараа тэмдэг арилав`);
+  ok(Array.isArray(fake.json('__type__:', 'injener')?.seen), `${tag}: ArcGIS-т seen бичигдэв`);
+  console.log('✅ §I засварын UI: картын урсгалтай хуудас · «Дахин олгох» · «Дахин илгээх» · устгагдсаны «Цэвэрлэх» · матрицын тэмдэг · шинэ аккаунтын төрөл · «шинэ хуудас» тэмдэг');
 }
 
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

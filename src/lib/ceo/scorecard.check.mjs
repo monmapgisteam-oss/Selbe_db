@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import {
   scorePerf, scoreFin, scoreLand, scorePlan, scoreHse, scoreQual, scoreLevel, dimLevel, scorePermit,
   totalOf, groupByType, projectDims, pointInRings, ringCenter, blockZoneScores, meanOf, DIMS, workIssues,
-  statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType,
+  statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve,
 } from './scorecard.ts';
 
 const DAY = 86_400_000;
@@ -243,6 +243,24 @@ assert.equal(scoreQual({ qaqc: { total: 10, empty: 4, partial: 2 } }).score, 50,
   const typed = [mk(10, 30), { ...mk(11, 30), type: 'B' }];
   assert.deepEqual(typed.filter((w) => passFilter(w, { status: ['bad'], types: ['B'], problemDim: null })).map((w) => w.oid), [11], 'төрлөөр шүүлт');
   assert.deepEqual(statusByType(typed).map((x) => [x.type, x.counts.bad]), [['A', 1], ['B', 1]]);
+}
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хуваарийн муруй уншигдаагүй барилгын мөр —
+   Cashflow-ийн хувиар ЧИМЭЭГҮЙ оноолохгүй, картад ил тэмдэглэнэ */
+{
+  const d = perfNoCurve();
+  assert.equal(d.score, null, 'муруйгүй үед оноо null («—»), огнооны шугамаар бодохгүй');
+  assert.ok(d.facts.length === 1 && d.facts[0].value, 'картад «Хуваарийн муруй: уншигдсангүй»');
+  assert.equal(d.issues?.[0]?.tone, 'info', 'гүйцэтгэгчийн дутагдал биш — info');
+  /* нийт дунджид ОРОХГҮЙ (null) */
+  const dims = Object.fromEntries(DIMS.map((k) => [k, { score: null, facts: [] }]));
+  dims.perf = d; dims.fin = { score: 80, facts: [] };
+  assert.equal(totalOf(dims), 80, 'муруйгүй гүйцэтгэл нийт оноонд орохгүй');
+  /* scorecardLoad нь ЭНЭ функцээр (эх кодын тулгалт) */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./scorecardLoad.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('lagUnknown ? perfNoCurve()'), 'scorecardLoad перф салаа perfNoCurve-ийг дуудахгүй байна');
+  assert.ok(/\(b\) => b\.failed\.length === 0\);/.test(src), 'loadScoreBase хэсэгчилсэн үр дүнг кэшлэхгүй (keep)');
 }
 
 console.log('scorecard.check ✓');

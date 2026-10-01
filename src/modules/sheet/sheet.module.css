@@ -1494,3 +1494,54 @@
 }
 .linkBtn:hover { color: var(--bad); }
 .linkBtn:focus-visible { outline: 2px solid var(--hue); outline-offset: 2px; }
+
+/* ── 2026-10-01: БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ (`useCellEdit.pastePrev`) ──
+   Бичигдэх нүд — тасархай цэнхэр, ТАТГАЛЗСАН нүд — улаан тасархай + цайвар улаан.
+   ⚠️ Өнгөнөөс гадна тэмдэг (✕) — өнгө ялгахад бэрх хүнд ч уншигдана. */
+.xl td.pasteOk {
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+  outline: 1px dashed var(--accent, #2563eb);
+  outline-offset: -4px;
+}
+.xl td.pasteBad {
+  box-shadow: inset 0 0 0 2px var(--bad);
+  outline: 1px dashed var(--bad);
+  outline-offset: -4px;
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+.xl td.pasteBad .cellVol::after { content: " ✕"; color: var(--bad); }
+.pasteBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent, #2563eb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #2563eb) 40%, transparent);
+  color: var(--ink);
+}
+/* ── 2026-10-01: «Ноорог сэргээж байна…» ба ОФЛАЙН тэмдэг (DraftStatus) ── */
+.restoringBadge,
+.offlineBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.restoringBadge {
+  background: color-mix(in srgb, var(--accent, #2563eb) 14%, transparent);
+  color: var(--ink);
+}
+.offlineBadge {
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  color: var(--ink);
+}

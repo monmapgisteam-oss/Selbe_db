@@ -51,10 +51,34 @@ export function useSimClock(startMin = 0) {
     return () => cancelAnimationFrame(raf.current);
   }, [playing, speed]);
 
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХӨТЧИЙН ТАБ далд болоход ЗОГСООНО.
+   *    Хөтөч далд табын rAF-ийг зогсоодог ч буцаж ирэхэд эхний фреймийн `dt` нь
+   *    хэдэн минут болж, цаг гэнэт хэдэн цагаар «үсэрдэг» байв (×60 хурдад 1 мин
+   *    = 1 сим-цаг). Хэрэглэгч буцаад ▶ дарж үргэлжлүүлнэ. Харагдац доторх
+   *    горим/таб солих үеийн зогсолт нь `Suitability.tsx` §roadMode-д.
+   */
+  useEffect(() => {
+    if (!playing || typeof document === 'undefined') return;
+    const onVis = () => { if (document.hidden) setPlaying(false); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [playing]);
+
   return { minute, minuteRef, playing, setPlaying, speed, setSpeed, seek };
 }
 
 const SPEEDS = [5, 20, 60] as const;
+
+/**
+ * ОРГИЛ ЦАГИЙН ТОВЧ — өглөө 08:00, орой 18:00 (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Гулсуураар яг оргилд тааруулах хэцүү байв; харьцуулалт (Бодит ↔ Төлөвлөгөө)
+ *    ихэвчлэн оргил цагт хийгддэг. `DIURNAL`-ийн өглөө/оройн оргилтой таарна.
+ */
+const PEAKS = [
+  { min: 8 * 60, get title() { return tr('Өглөөний оргил руу шилжих'); } },
+  { min: 18 * 60, get title() { return tr('Оройн оргил руу шилжих'); } },
+] as const;
 
 /** Цагийн шошго — муруйн доор 00 · 06 · 12 · 18 */
 const HOUR_TICKS = [0, 6, 12, 18];
@@ -178,6 +202,20 @@ export function Timeline({
         >
           {playing ? tr('⏸ Зогсоох') : tr('▶ Тоглуулах')}
         </button>
+        <div className={c.segSm} role="group" aria-label={tr('Оргил цаг')}>
+          {PEAKS.map((p) => (
+            <button
+              key={p.min}
+              type="button"
+              aria-pressed={Math.round(wrapMin(minute)) === p.min}
+              className={Math.round(wrapMin(minute)) === p.min ? c.segSmOn : undefined}
+              onClick={() => seek(p.min)}
+              title={p.title}
+            >
+              {clockText(p.min)}
+            </button>
+          ))}
+        </div>
         <div className={c.segSm} role="group" aria-label={tr('Хурд')}>
           {SPEEDS.map((sp) => (
             <button

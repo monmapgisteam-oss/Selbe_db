@@ -18,7 +18,7 @@
  * өгөгдлийн эх сурвалжид утгуудыг ТАТАЖ АВААД `bagtsKey()`-ээр жишнэ.
  */
 
-import { count, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
+import { count, nPrefixUnicode, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { PKG_BY_BAGTS, bagtsKey, zoneWhere, type LayerDef } from '@/lib/services';
 import { layerTotals, qtyText, whereFor } from '@/lib/totals';
@@ -69,6 +69,13 @@ const MAX_SOURCES = 110;
  *
  * ⚠️ Бүтэн галиг хөрвүүлэгч бичихгүй: зөвхөн БАГЦ/БҮС гэсэн хоёр үг л
  * шүүлтэд оролцдог. Илүү өргөн хөрвүүлэлт нь буруу таарц үүсгэх эрсдэлтэй.
+ *
+ * ⚠️ 2026-09-30: үр дүн нь ӨГӨГДЛИЙН утга (`bagtsKey`/`zoneWhere`-д тулгагдана) —
+ *    `tr('Багц-{0}')`-ээр ОРЧУУЛАХГҮЙ. Урьд нь англи горимд «Package-3.2» болж
+ *    (`en.ts`), `bagtsKey` нь «PACKAGE32» ≠ «БАГЦ32» тул тойм ЧИМЭЭГҮЙ ХООСОН
+ *    буцаж, агент «мэдээлэл олдсонгүй» гэж худал хариулдаг байв. Англи горимын
+ *    хэрэглэгч/загвар «package 3.2» гэж бичихэд ч мөн адил — `package`/`pkg`-ийг
+ *    ижил хөрвүүлнэ (апп «Багц»-ыг «Package» гэж орчуулдаг).
  */
 export function normalizeZone(input: string): string {
   const s = String(input).trim();
@@ -76,8 +83,8 @@ export function normalizeZone(input: string): string {
   if (/[А-Яа-яӨөҮү]/.test(s)) return s;
   const num = s.match(/([0-9][0-9.\-]*)/)?.[1];
   if (!num) return s;
-  if (/^\s*(bagts|bagc|bags|bagt)/i.test(s)) return tr('Багц-{0}', num);
-  if (/^\s*(bus|bvs|buus)/i.test(s)) return tr('Багц-{0}', num);
+  if (/^\s*(bagts|bagc|bags|bagt|package|pkg)/i.test(s)) return `Багц-${num}`;
+  if (/^\s*(bus|bvs|buus)/i.test(s)) return `Багц-${num}`;
   return s;
 }
 
@@ -138,13 +145,16 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
      * болно. Багцын харьяалал бүсийн шүүлтээс ДЭЭГҮҮР.
      */
     const m = l.title.match(titleRef);
-    if (pkgIds.has(l.id) || (m && bagtsKey(tr('Багц-{0}', m[1])) === key)) {
+    /* ⚠️ 2026-09-30: `Багц-…` нь ӨГӨГДЛИЙН түлхүүр — `tr()`-ээр орчуулахгүй (`normalizeZone`-ийн ⚠️) */
+    if (pkgIds.has(l.id) || (m && bagtsKey(`Багц-${m[1]}`) === key)) {
       filterable.push({ l, where: '1=1', whole: true });
       continue;
     }
 
     const w = zoneWhere(l, zone);
-    if (w != null) { filterable.push({ l, where: whereFor(l, zone) }); continue; }
+    /* ⚠️ 2026-09-30: `zoneWhere` литералаа угтваргүй угсардаг — «Багц-3.2» зэрэг кирилл
+       бүсэд `N'…'` (`query.nPrefixUnicode`-ийн ⚠️); латин бүсийн код («A-14») хэвээр. */
+    if (w != null) { filterable.push({ l, where: nPrefixUnicode(whereFor(l, zone)) }); continue; }
     skipped++;
   }
 

@@ -22,7 +22,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  DECISION, F, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
+  DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
   REVIEW_STATUS, RETURNED_STATUS, nextReview,
   type ReviewStage, type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
@@ -34,6 +34,8 @@ import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, recheck, retryPendingRegistrations, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
+import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
+import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import s from './guitsetgel.module.css';
 
@@ -180,6 +182,17 @@ type Step = {
   kind: 'sent' | 'ok' | 'bad';
   /** ⚠️ Нэрийн хажуугийн тэмдэглэл — «өмнөх шийдвэрийн нэр дарагдсан» (доорх `overwritten`) */
   note?: string;
+  /** ⚠️ 2026-10-01: аль хянах шатны алхам — шийдвэрийн логтой тулгахад (`attachHistory`) */
+  stage?: ReviewStage;
+};
+
+/** ⚠️ 2026-10-01: логийн үйл явдлын нэрийн өмнөх шатны шошго (`stepsOf`-той ижил) */
+const STAGE_WHO: Record<ReviewStage, string> = {
+  get engineer() { return tr('Инженер'); },
+  get manager() { return tr('Менежер'); },
+  get director() { return tr('Ерөнхий менежер'); },
+  get head() { return tr('Хэлтсийн дарга'); },
+  get chief() { return tr('Газрын дарга'); },
 };
 
 /**
@@ -190,7 +203,10 @@ type Step = {
  * 'back'` — ИЖИЛ мөр, `returned`) `who` = Б болж, А-гийн нэр АЛГА болно; түүх
  * хоёр алхмыг хоёуланг нь Б-гийн нэрээр харуулдаг байв. Хүснэгтэд түүхийн
  * (лог) талбар БАЙХГҮЙ тул нэрийг сэргээх боломжгүй — ядаж ДАРАГДСАН гэдгийг
- * ил хэлнэ. Илрүүлэх нөхцөл нь яг: нэг шатанд `sent` ба `returned` ХОЁУЛАА
+ * ил хэлнэ.
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `Shiidveriin_tuuh` лог талбар нэмэгдсэн
+ *    бол (`hyanalt.F.history`) `stepsOf` нэрийг логоос сэргээж энэ тэмдэглэгээг
+ *    арилгана; логгүй (хуучин) мөрд энэ дүрэм хэвээр. Илрүүлэх нөхцөл нь яг: нэг шатанд `sent` ба `returned` ХОЁУЛАА
  * байх (нэг мөрөнд өөр замаар үүсэх боломжгүй — `recheck 'ok'` шинэ мөр
  * үүсгэдэг, `apply` төлөвөөр хаагддаг). Хоёрын ЭРТ нь дарагдсан.
  * @returns аль алхмын нэр найдваргүй: `'sent'` · `'ret'` · `null`
@@ -234,6 +250,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       reason: '',
       kind: 'ok',
       note: engOv === 'sent' ? OVERWRITTEN() : '',
+      stage: 'engineer',
     });
   }
   if (r[F.engineerReturned]) {
@@ -244,6 +261,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
       reason: r[F.engineerReason],
       kind: 'bad',
       note: engOv === 'ret' ? OVERWRITTEN() : '',
+      stage: 'engineer',
     });
   }
 
@@ -251,7 +269,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     const mgr = `${tr('Менежер')} ${r[F.manager]}`.trim();
     const mgrOv = overwritten(r[F.managerSent], r[F.managerReturned]);
     if (r[F.managerSent]) {
-      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '' });
+      out.push({ who: mgr, verb: tr('зөвшөөрч ерөнхий менежерт илгээв'), at: r[F.managerSent], reason: '', kind: 'ok', note: mgrOv === 'sent' ? OVERWRITTEN() : '', stage: 'manager' });
     }
     if (r[F.managerReturned]) {
       out.push({
@@ -261,6 +279,7 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
         reason: r[F.managerReason],
         kind: 'bad',
         note: mgrOv === 'ret' ? OVERWRITTEN() : '',
+        stage: 'manager',
       });
     }
 
@@ -273,8 +292,39 @@ function stepsOf(r: Row, stage: Stage, showSent: boolean): Step[] {
     for (const u of upper) {
       const nm = `${u.label} ${u.who}`.trim();
       const ov = overwritten(u.sent, u.ret);
-      if (u.sent) out.push({ who: nm, verb: SENT_VERB[u.st], at: u.sent, reason: '', kind: 'ok', note: ov === 'sent' ? OVERWRITTEN() : '' });
-      if (u.ret) out.push({ who: nm, verb: RETURN_VERB[u.st], at: u.ret, reason: u.why, kind: 'bad', note: ov === 'ret' ? OVERWRITTEN() : '' });
+      if (u.sent) out.push({ who: nm, verb: SENT_VERB[u.st], at: u.sent, reason: '', kind: 'ok', note: ov === 'sent' ? OVERWRITTEN() : '', stage: u.st });
+      if (u.ret) out.push({ who: nm, verb: RETURN_VERB[u.st], at: u.ret, reason: u.why, kind: 'bad', note: ov === 'ret' ? OVERWRITTEN() : '', stage: u.st });
+    }
+  }
+
+  /*
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ШИЙДВЭРИЙН ЛОГ (`Shiidveriin_tuuh`) байвал
+   *    алхам бүрийн НЭРИЙГ логоос авна — талбарын ганц нэр дарагдсан ч лог шийдвэр
+   *    бүрийг хадгалсан. Тулгагдсан алхмын «нэр дарагдсан» тэмдэглэгээ арилна;
+   *    талбарт үлдээгүй (тулгагдаагүй) үйл явдал нь ТУСДАА алхам болж нэмэгдэнэ.
+   *    Лог хоосон (талбаргүй үйлчилгээ, хуучин мөр) бол урьдын зан хэвээр.
+   * ⚠️ Компанид зөвхөн инженерийн алхам (`seesManager`-ийн дүрэм).
+   */
+  const log = parseHistory(r[F.history]);
+  if (log.length) {
+    const vis = (x: ReviewStage) => seesManager(stage) || x === 'engineer';
+    const { matched, extra } = attachHistory(out, log, vis);
+    for (const [st, e] of matched) {
+      st.who = `${STAGE_WHO[e.stage]} ${e.who}`.trim();
+      st.note = '';
+    }
+    for (const e of extra) {
+      const ok = isApproveAct(e.act);
+      out.push({
+        who: `${STAGE_WHO[e.stage]} ${e.who}`.trim(),
+        verb: ok
+          ? (!seesManager(stage) && e.stage === 'engineer' ? tr('хүлээн авав') : SENT_VERB[e.stage])
+          : RETURN_VERB[e.stage],
+        at: new Date(e.at).toISOString(),
+        reason: ok ? '' : (e.reason ?? ''),
+        kind: ok ? 'ok' : 'bad',
+        stage: e.stage,
+      });
     }
   }
 
@@ -404,6 +454,7 @@ function Submitted({
   onCell,
   onChanges,
   onSubAt,
+  onRemapped,
   onOkAll,
   reloadKey = 0,
 }: {
@@ -425,6 +476,9 @@ function Submitted({
   onChanges?: (c: Change[] | null) => void;
   /** Илгээлтийн агшин (`payload.at`) — эцэг `apply`-д `subAt` болгон дамжуулна (2026-09-24). */
   onSubAt?: (at: number | undefined) => void;
+  /** ⚠️ 2026-10-01: илгээлтийн мөрүүд шинэ жааз руу зөөгдсөн эсэх (`Submission.remapped`) — хуучин
+      индексийн зөвшөөрөлд итгэх эсэхэд (`hyanaltOkCells.resolveOk`) */
+  onRemapped?: (v: boolean | undefined) => void;
   /**
    * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
    * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
@@ -473,6 +527,7 @@ function Submitted({
        төлөвтэй ижил дүрэм. */
     onChanges?.(null);
     onSubAt?.(undefined);
+    onRemapped?.(undefined);
     loadSubmission(bagts, sheetOid)
       /* ⚠️ Агшин ОЛДООГҮЙ (`null`) бол `[]` БИШ `null` — эс бөгөөс батлах товч
          «өөрчлөлтгүй» гэж нээгддэг байв (2026-09-23). */
@@ -480,7 +535,7 @@ function Submitted({
          уншигдаагүй бол `changes: []` нь «өөрчлөлтгүй» гэсэн баталгаа БИШ
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
-      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); } })
+      .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); } })
       .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: String((e as Error)?.message ?? e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
@@ -871,6 +926,25 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    */
   const curOkRaw = cur?.[F.okCells];
   const recheckSeed = !!upperOfMe && st === RETURNED_STATUS[upperOfMe];
+  /** ⚠️ 2026-10-01: илгээлтийн мөрүүд шинэ жааз руу зөөгдсөн эсэх — `Submitted`-ээс */
+  const [remapped, setRemapped] = useState<boolean | undefined>(undefined);
+  /**
+   * ӨӨРЧЛӨГДСӨН НҮДНИЙ МӨРҮҮДИЙН ТОГТВОРТОЙ ТАНИГЧ — индексээр (`Change.row` → `{oid, sid}`).
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): зөвшөөрлийг индексээр БИШ үүгээр бичиж/уншина
+   *    (`hyanaltOkCells`). Сийрэг массив — зөвхөн өөрчлөгдсөн мөрүүд.
+   */
+  const okRows = useMemo(() => {
+    const arr: ({ oid: number; sid: string } | undefined)[] = [];
+    for (const c of changes ?? []) {
+      const cut = c.rid ? c.rid.indexOf('|') : -1;
+      if (!c.rid || cut <= 0) continue;
+      const oid = Number(c.rid.slice(0, cut));
+      if (Number.isFinite(oid)) arr[c.row] = { oid, sid: c.rid.slice(cut + 1) };
+    }
+    return arr;
+  }, [changes]);
+  /** Хуучин (индексийн) зөвшөөрөл бичигдсэн агшин — дээд шатны буцаалтын огноо */
+  const okWrittenAt = upperOfMe ? Date.parse(String((cur as Record<string, unknown> | undefined)?.[SF[upperOfMe].returned] ?? '')) : NaN;
   /*
    * ⚠️ 2026-09-30 (eslint `set-state-in-effect`): урьд нь эффект `[curSheetOid,
    *    recheckSeed, curOkRaw]` солигдоход `setOkKeys(seed)` дууддаг байв. Одоо
@@ -880,15 +954,21 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    *    дахин шалгалтад мөрийн `Zovshoorson_nud`-аас эхлэх) ижил хэвээр.
    */
   const seedKey = `${curSheetOid}|${recheckSeed}|${curOkRaw}`;
-  const seed = useMemo(() => {
-    if (!recheckSeed) return new Set<string>();
-    try {
-      const arr = JSON.parse(String(curOkRaw || '[]')) as unknown;
-      return new Set(Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string') : []);
-    } catch {
-      return new Set<string>();
-    }
-  }, [recheckSeed, curOkRaw]);
+  /*
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): мөрийн ТОГТВОРТОЙ түлхүүрээр тулгана
+   *    (`resolveOk`). Хуучин индексийн хэлбэрт ЗӨВХӨН мөрийн дараалал бичигдсэн
+   *    агшныхтай ижил нь баттай үед итгэнэ: илгээлт шинэ жааз руу зөөгдөөгүй
+   *    (`remapped === false`) БӨГӨӨД агуулга нь зөвшөөрөл бичигдсэнээс хойш
+   *    шинэчлэгдээгүй (`subAt ≤ okWrittenAt`). Эс бөгөөс «мэдэхгүй» (`unknown`) —
+   *    буруу нүдийг ногоон болгохгүй, доор «дахин хянана уу» гэж хэлнэ.
+   *    Агуулга татагдтал (`changes == null`) хоосон.
+   */
+  const seedRes = useMemo(() => {
+    if (!recheckSeed || changes == null) return { keys: new Set<string>(), unknown: 0 };
+    const trusted = remapped === false && subAt != null && Number.isFinite(okWrittenAt) && subAt <= okWrittenAt;
+    return resolveOk(parseOkCells(curOkRaw), okRows, trusted);
+  }, [recheckSeed, curOkRaw, changes, okRows, remapped, subAt, okWrittenAt]);
+  const seed = seedRes.keys;
   const [okOv, setOkOv] = useState<{ key: string; keys: Set<string> } | null>(null);
   const okKeys = okOv && okOv.key === seedKey ? okOv.keys : seed;
   const setOkKeys = useCallback((upd: Set<string> | ((prev: Set<string>) => Set<string>)) => {
@@ -993,7 +1073,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
        *    ижил харагдана. Одоо ArcGIS-д хадгалагдаж, гүйцэтгэгчийн талд
        *    НОГООН (зөвшөөрсөн) ↔ УЛААН (зөвшөөрөөгүй) гэж ялгарна.
        */
-      okCells: [...okKeys],
+      /* ⚠️ 2026-10-01: мөрийн ТОГТВОРТОЙ түлхүүрээр (`toOkRefs`). Агуулга татагдаагүй
+         үед буцаалт «нэг ч нүд зөвшөөрөөгүй» (`[]`) — урьдын адил. */
+      okCells: changes != null ? toOkRefs(okKeys, okRows) : [],
       /* ⚠️ Илгээлтийн агуулгын тулгалт (2026-09-24) — `hyanaltStore.apply`-ийн `subAt` */
       subAt,
     }));
@@ -1169,7 +1251,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                         доошоо явах нь хараагүй агуулгыг БАТЛАХГҮЙ. */}
                     <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, [...okKeys], subAt))}>
+                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : undefined, subAt))}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>
@@ -1178,6 +1260,13 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                   {!busy && !lackBlocks && changes == null && (
                     <div className={s.blockedWhy} role="note">
                       {tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй')}
+                    </div>
+                  )}
+                  {/* ⚠️ 2026-10-01: өмнөх зөвшөөрлийг мөртэй тулгаж чадаагүй — ногоон болгохгүй,
+                      ил «дахин хянах» (`hyanaltOkCells.resolveOk`) */}
+                  {seedRes.unknown > 0 && (
+                    <div className={s.blockedWhy} role="note">
+                      {tr('Өмнөх шатны {0} зөвшөөрлийг энэ илгээлтийн мөрүүдтэй тулгаж чадсангүй (хуучин хэлбэр эсвэл хүснэгт өөрчлөгдсөн) — тэдгээр нүдийг дахин хянана уу.', String(seedRes.unknown))}
                     </div>
                   )}
                 </>
@@ -1219,6 +1308,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             onCell={reviewing || rechecking ? toggleOk : undefined}
             onChanges={setChanges}
             onSubAt={setSubAt}
+            onRemapped={setRemapped}
             reloadKey={subReload}
             /* ⚠️ ЗӨВХӨН super БА зөвшөөрөх шатанд — эс бөгөөс жинхэнэ хянагч
                нэг товчоор бүгдийг батлах зам нээгдэнэ (2026-08-27-ны дүрэм). */

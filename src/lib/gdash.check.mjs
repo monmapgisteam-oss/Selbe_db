@@ -24,7 +24,7 @@ import {
   inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney,
-  housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF,
+  housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
 } from './gdash.ts';
 import { CASHFLOW_NEW } from './services.ts';
 
@@ -532,6 +532,88 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(viaSeries, 38);
   assert.equal(viaReport, viaSeries, 'Тайлан ба 05/Dashboard/ExecReport-ийн орон сууцны хувь зөрөв');
   assert.equal(Math.round(viaMoney * 1e9) / 1e9, viaSeries, 'S-муруйн мөнгөн жин өөр томьёо болов');
+}
+
+/*
+ * ── «ГЭРЭЭЛСЭН ДҮН»-ИЙ ХҮРЭЭ — `contractedScope` (2026-09-30) ──
+ *
+ * ⚠️ Дашбоардын «Санхүүжилтийн хуримтлал — сараар» (тайлбар «олгосон / гэрээний
+ *    нийт дүн») `FinData.planTotal`-аар (гэрээ ЭСВЭЛ төсөв, бүх мөр) хуваадаг
+ *    байсан тул Тайлангийн `paidRate` (гэрээлсэн дүн = «Нийт» хүрээ ∧ CONTRACTED)-аас
+ *    доогуур гардаг байв. Энэ функц нь `reportData.contractAmount` ·
+ *    `live.loadBudget.contract`-ийн ЯГ дүрэм байх ёстой.
+ */
+{
+  const r = (o) => ({ [CF.code1]: '1', [CF.note]: CONTRACTED, [CF.contract]: 0, [CF.pkg]: '', ...o });
+  const sc = contractedScope([
+    r({ [CF.contract]: 100, [CF.pkg]: 'Багц 1' }),
+    r({ [CF.contract]: 50, [CF.pkg]: 'Багц-3.1' }),
+    /* Дотор нь давхар зай — «Гэрээлсэн  дүн» (reportData.str-ийн дүрэм) */
+    r({ [CF.contract]: 7, [CF.pkg]: 'Багц 2', [CF.note]: ' Гэрээлсэн  дүн ' }),
+    /* Гэрээгүй мөрд `geree_dun` бөглөгдсөн — ОРОХГҮЙ (~33 тэрбумын зөрүү) */
+    r({ [CF.contract]: 999, [CF.pkg]: 'Багц 5.1', [CF.note]: 'Урьдчилсан төсөвт өртөг' }),
+    /* «Нийт»-ийн гадна (5·6·7-р хэсэг) — ОРОХГҮЙ */
+    r({ [CF.contract]: 888, [CF.pkg]: 'Багц 19.1', [CF.code1]: '5' }),
+    /* Диапазон мөр — дүн орно, түлхүүр «БАГЦ14» болж наалдахгүй */
+    r({ [CF.contract]: 3, [CF.pkg]: 'БАГЦ 1-4' }),
+    /* Хоосон/«0» багц — түлхүүргүй */
+    r({ [CF.contract]: 2, [CF.pkg]: '0' }),
+  ]);
+  assert.equal(sc.amount, 100 + 50 + 7 + 3 + 2, 'гэрээлсэн дүн: зөвхөн «Нийт» ∧ CONTRACTED мөр');
+  assert.deepEqual([...sc.keys].sort(), ['БАГЦ1', 'БАГЦ2', 'БАГЦ31'], 'тоологчийн багц: гэрээлсэн мөрийн түлхүүр');
+  assert.equal(sc.keys.has('БАГЦ14'), false, 'диапазон мөр «Багц 14»-т наалдав');
+  assert.equal(sc.keys.has('БАГЦ51'), false, 'гэрээгүй багц тоологчид орлоо');
+  assert.deepEqual(contractedScope([]), { amount: 0, keys: new Set() });
+}
+
+/*
+ * ── ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ — бодит талтай НЭГ жин (`housingPlanSeries`, 2026-09-30) ──
+ *
+ * ⚠️ Бодит (`housingSeries` → `physNow`) ХО дүнгээр жигнэгддэг болсон атал
+ *    төлөвлөгөө (`PlanCurve.months`) БЛОКИЙН тоогоор үлдэж, «төлөвлөсөн − бодит»
+ *    хоёр өөр жинг хасдаг байв. Хуваариараа ЯГ явж буй төсөлд зөрүү 0 байх ЁСТОЙ.
+ */
+{
+  const cost = new Map([['БАГЦ1', 400], ['БАГЦ2', 600]]);
+  const byBagts = new Map([
+    ['БАГЦ1', [{ label: '2026-06', pct: 10 }, { label: '2026-07', pct: 20 }, { label: '2026-08', pct: 30 }]],
+    ['БАГЦ2', [{ label: '2026-07', pct: 50 }, { label: '2026-08', pct: 60 }, { label: '2026-09', pct: 100 }]],
+    /* ХО дүнгүй багц — жингүй тул орохгүй (`housingPct`-ийн дүрэм) */
+    ['БАГЦ9', [{ label: '2026-06', pct: 99 }]],
+  ]);
+  const base = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10']
+    .map((label, i) => ({ label, pct: -1, vol: i === 1 ? 123 : null }));
+  const s = housingPlanSeries(byBagts, cost, base);
+  /* 06: Б2 эхлээгүй → 0; 09-10: Б1 дууссан → сүүлийн утга (30) */
+  assert.deepEqual(s.map((p) => p.pct), [4, 38, 48, 72, 72],
+    'ХО жин: 06 — 400·10/1000; 07 — (400·20+600·50)/1000; 08 — (400·30+600·60)/1000; 09 — (400·30+600·100)/1000');
+  assert.deepEqual(s.map((p) => p.label), base.map((p) => p.label), 'тэнхлэг base-ээс');
+  assert.equal(s[1].vol, 123, 'vol нь base-ээс хадгалагдана');
+  /* Хуваарийн дагуу ЯГ явж буй төсөл: бодит = төлөвлөгөө (багц бүрд) ⇒ зөрүү 0 */
+  const phys = new Map([...byBagts].filter(([k]) => k !== 'БАГЦ9')
+    .map(([k, pts]) => [k, new Map(pts.map((p) => [p.label, p.pct]))]));
+  const act = housingSeries(phys, new Map(), undefined, cost, base.map((p) => p.label));
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(act[i].phys, s[i].pct, `${base[i].label}: хуваарийн дагуу явж буй төсөлд «төлөвлөсөн − бодит» ≠ 0 (жин зөрөв)`);
+  }
+  /* ХО жин огт алга → base хэвээр (блокийн нөөц); хоосон base → хоосон (дутуу муруй гаргахгүй) */
+  assert.deepEqual(housingPlanSeries(byBagts, new Map(), base), base);
+  assert.deepEqual(housingPlanSeries(byBagts, cost, []), []);
+}
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `cashflowCurve` сарыг ОРОН НУТГИЙН цагаар
+   (`monthKey`) — AGOL/Excel-ээс орсон УБ-ын шөнө дунд (= өмнөх өдрийн 16:00Z) UTC-ээр өмнөх
+   сард буудаг байв. Туршилт TZ-ээс хамаарахгүй: локал шөнө дунд нь ямар ч бүсэд тэр сар. */
+{
+  const localJun1 = new Date(2026, 5, 1).getTime();
+  const c = cashflowCurve([{ id: 1, start: localJun1, pct: null, amount: 100 }], 1000, 'month');
+  assert.deepEqual(c.map((p) => p.label), ['2026-06'], 'сарын 1-ний орон нутгийн шөнө дунд өмнөх сард буув');
+  /* Порталаас бичигддэг UTC шөнө дунд — УБ-д ЯГ тэр сар (хуучин өгөгдөл хөдлөхгүй) */
+  const utcJun1 = Date.UTC(2026, 5, 1);
+  const off = new Date(utcJun1).getTimezoneOffset();
+  if (off <= 0) {
+    assert.deepEqual(cashflowCurve([{ id: 1, start: utcJun1, pct: null, amount: 100 }], 1000, 'month').map((p) => p.label), ['2026-06']);
+  }
 }
 
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

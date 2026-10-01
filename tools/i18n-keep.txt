@@ -148,6 +148,10 @@
 @dyn modules/Habea.tsx  tr(habeaPkgLabel(x.bagtsRaw))
 @dyn modules/Habea.tsx  tr(i.bagtsRaw)
 @dyn modules/Habea.tsx  tr(x.bagtsRaw)
+@dyn modules/Habea.tsx  tr(habeaPkgLabel(raw.replace(/\s*-\s*/, ' ').trim()))
+
+# [pass] DedButets систем бүрийн км (2026-10-01) — INFRA_SYSTEMS.title нь getter-ээр аль хэдийн tr()-тэй
+@dyn modules/DedButets.tsx  tr(s.title)
 
 # [data] гүйцэтгэгч байгууллага (ХАБЭА labor/incident: Морин сувд констракшн ХХК ·
 #        Професионалстрой ХХК · Хятадын барилгын 6-р инженерийн товчоо …) — enData.ts;

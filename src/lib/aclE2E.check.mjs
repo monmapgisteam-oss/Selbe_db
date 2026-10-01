@@ -501,7 +501,10 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     eq(acl(), aclBefore, `${tag} ${w}: applyType хуваарилалт/эрхийн мөр хөндөхгүй`);
     eq(sorted(CAPS.capsOf(u)), capsBefore, `${tag} ${w}: applyType эрх хөндөхгүй`);
-    ok(stored().includes('guitsetgel'), `${tag} ${w}: урсгалтай харагдац хадгалагдана`);
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урсгалтай харагдац ЗӨВХӨН хуваарилалтаар —
+       applyType тэдгээрийг БИЧИХГҮЙ, харин урсгалын томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр */
+    ok(!stored().some((v) => CAPS.WORKFLOW_VIEWS.includes(v)), `${tag} ${w}: урсгалтай харагдац хадгалагдахгүй`);
+    ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag} ${w}: томилгоогоор «Гүйцэтгэл» нээлттэй`);
     eq(P.roleOf(u), 'gazar', `${tag} ${w}: үүрэг солигдоно`);
     eq(FL.stageOfUser(u), 'engineer', `${tag} ${w}: урсгалын шат хэвээр`);
     for (const v of RT.roleAccess('gazar').views) ok(P.resolveAccess(u).views.includes(v), `${tag} ${w}: загварын «${v}»`);
@@ -604,6 +607,81 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await roundTrip();
   ok(OB.listObyemAssigns().some((x) => x.user === f), `${tag}: унасан хуваарилалт poll-д арчигдахгүй (failed локал давамгайлна)`);
   console.log('✅ §7b зэрэг бичилт алдагдалгүй (нэг систем 3 · таван систем/эрх зэрэг) · унасан бичилт ил, локал хадгалагдав');
+}
+
+/* ══════════ §9. ЦЭВЭРЛЭХ МӨР — устгагдсан аккаунт · хатуу super-ийн хуучин мөр (2026-09-30) ══════════
+ * ⚠️ Хамгаалж буй алдаанууд:
+ *    (а) устгагдсан аккаунтын чипийн ✕ (олон багцтай) → `setGrants` (grant=true) түүнд `__cap__:` мөр
+ *        ДАХИН үүсгэдэг байв → ижил нэрийг дахин нэмэхэд «хуучин засах эрх үлдсэн» гэж түгждэг;
+ *    (б) super-ийн хуучин мөрийн НЭГ багцыг хасахад `setGrants`/`setAssign` super-ийг татгалзаж ✕ ҮРГЭЛЖ
+ *        унадаг (мөрийг арилгах зам алга);
+ *    (в) super-ийн мөрийг бүхэлд нь хасахад түүнд ШУУД олгосон эрх (`plan` · `qaqc`) буцдаг байв
+ *        (`aclOps.revokeGoneRoles` · `scopedAcl.syncCaps`). */
+{
+  const tag = '§9';
+  const [p1, p2, p3] = PKG_GROUPS;
+  const S2 = Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase())[1];
+  ok(S2 && S2 !== SUPER.toLowerCase(), `${tag}: хоёр дахь хатуу super`);
+  const ghost = 'e2e_ghost_deleted';
+  const G = (grants) => JSON.stringify({ roles: [...new Set(grants.map((g) => g.role))], bagts: [...new Set(grants.flatMap((g) => g.bagts))], grants });
+  const directCaps = ['plan', 'obyemApprove', 'qaqc', 'zovshoorol'];
+  fake.seed([
+    { username: `__huvaari__:${ghost}`, views: G([{ role: 'author', bagts: [p1, p2] }]) },
+    { username: `__obyem__:${ghost}`, views: G([{ role: 'editor', bagts: ['*'] }]) },
+    { username: `__qaqc__:${ghost}`, views: JSON.stringify({ bagts: [p1, p2] }) },
+    { username: `__flow__:${ghost}`, views: JSON.stringify({ stage: 'engineer', bagts: [p1, p2] }) },
+    { username: `__huvaari__:${S2}`, views: G([{ role: 'author', bagts: [p1, p2] }]) },
+    { username: `__obyem__:${S2}`, views: G([{ role: 'approver', bagts: [p1] }]) },
+    { username: `__qaqc__:${S2}`, views: JSON.stringify({ bagts: [p1] }) },
+    { username: `__flow__:${S2}`, views: JSON.stringify({ stage: 'manager', bagts: [p1, p2] }) },
+    { username: `__cap__:${S2}`, views: JSON.stringify(directCaps) },
+  ]);
+  await roundTrip();
+  ok(!P.listUsers().some((x) => x.username.toLowerCase() === ghost), `${tag}: ghost порталд алга (устгагдсан)`);
+  const noGhostCaps = (w) => eq(fake.find(`__cap__:${ghost}`), [], `${tag} ${w}: устгагдсан аккаунтад __cap__ мөр үүсэх ёсгүй`);
+
+  /* (а) устгагдсан аккаунт — ✕ нь мөрийг БҮХЭЛД НЬ, асуулгагүй, эрх үүсгэхгүй */
+  let r = await run(OPS.scopedCellOp('huvaari', ghost, 'author', p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: ghost huvaari ✕ асуулгагүй («${r.err}»)`);
+  r = await run(OPS.scopedCellOp('obyem', ghost, 'editor', p3, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: ghost obyem «бүх багц» ✕ — ил жагсаалт болгохыг асуухгүй`);
+  r = await run(OPS.qaqcCellOp(ghost, p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: ghost qaqc ✕`);
+  r = await run(OPS.flowCellOp(ghost, 'engineer', p2, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: ghost урсгал ✕`);
+  await both((w) => {
+    rowGone('huvaari', ghost, `${tag} ${w}`);
+    rowGone('obyem', ghost, `${tag} ${w}`);
+    ok(!QA.listQaqcAssigns().some((a) => a.user === ghost), `${tag} ${w}: ghost qaqc мөр алга`);
+    eq(fake.find(`__qaqc__:${ghost}`), [], `${tag} ${w}: ghost qaqc ArcGIS мөр алга`);
+    eq(FL.stageOfUser(ghost), null, `${tag} ${w}: ghost урсгалгүй`);
+    eq(fake.find(`__flow__:${ghost}`), [], `${tag} ${w}: ghost урсгалын ArcGIS мөр алга`);
+    noGhostCaps(w);
+  });
+
+  /* (б)+(в) хатуу super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх ХЭВЭЭР */
+  r = await run(OPS.scopedCellOp('huvaari', S2, 'author', p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: super huvaari ✕ (олон багц) бүтэх ёстой («${r.err}»)`);
+  r = await run(OPS.qaqcCellOp(S2, p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: super qaqc ✕ («${r.err}»)`);
+  r = await run(OPS.flowCellOp(S2, 'manager', p1, false));
+  ok(r.ok && r.confirms.length === 0, `${tag}: super урсгал ✕ (олон багц) бүтэх ёстой («${r.err}»)`);
+  /* хуучин op (`dropRoleOp` → `revokeGoneRoles`) ба lib-ийн анхдагч revoke (`syncCaps`) ч super-ийн эрхийг хөндөхгүй */
+  r = await run(OPS.dropRoleOp('obyem', S2, 'approver'));
+  ok(r.ok, `${tag}: dropRoleOp super`);
+  await both((w) => {
+    rowGone('huvaari', S2, `${tag} ${w}`);
+    rowGone('obyem', S2, `${tag} ${w}`);
+    ok(!QA.listQaqcAssigns().some((a) => a.user === S2), `${tag} ${w}: super qaqc мөр алга`);
+    eq(fake.find(`__flow__:${S2}`), [], `${tag} ${w}: super урсгалын мөр алга`);
+    eq(sorted(CAPS.capsOf(S2)), sorted(directCaps), `${tag} ${w}: super-т ШУУД олгосон эрх хэвээр`);
+    eq(sorted(fake.json('__cap__:', S2)), sorted(directCaps), `${tag} ${w}: ArcGIS __cap__ хэвээр`);
+  });
+  fake.seed([{ username: `__qaqc__:${S2}`, views: JSON.stringify({ bagts: [p2] }) }]);
+  await roundTrip();
+  await QA.removeQaqcAssign(S2).sync; await settle();
+  await both((w) => eq(sorted(CAPS.capsOf(S2)), sorted(directCaps), `${tag} ${w}: removeQaqcAssign(revoke) super-ийн qaqc-ийг буцаахгүй`));
+  console.log('✅ §9 цэвэрлэх мөр: устгагдсан аккаунтын ✕ — мөр бүхэлдээ, эрх үүсэхгүй · super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх хэвээр');
 }
 
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

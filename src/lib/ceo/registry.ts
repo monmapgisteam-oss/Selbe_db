@@ -36,7 +36,7 @@ import { loadUncontractedKpi } from './uncontracted';
 import { loadScheduleKpi } from './schedule';
 import { loadReviewKpi } from './review';
 import { loadLandKpi } from './land';
-import { loadPermitsKpi } from './permits';
+import { loadPermitsKpiSafe } from './permits';
 import { loadQaqcKpi } from './qaqc';
 import { loadSafetyKpi } from './safety';
 import { loadWorkforceKpi } from './workforce';
@@ -72,7 +72,7 @@ export type CeoKpiDef = {
  */
 export const CEO_KPIS: CeoKpiDef[] = [
   { key: 'suitability', get title() { return tr('Тохиромжтой байдал'); }, icon: 'grid', view: 'analysis', load: loadSuitabilityKpi, heavy: true },
-  { key: 'permits', get title() { return tr('Зөвшөөрөл'); }, icon: 'frame', view: 'zovshoorol', load: loadPermitsKpi },
+  { key: 'permits', get title() { return tr('Зөвшөөрөл'); }, icon: 'frame', view: 'zovshoorol', load: loadPermitsKpiSafe }, /* ⚠️ 2026-09-30: уналт кэшлэгдэхгүй хувилбар (permits.ts) */
   { key: 'land', get title() { return tr('Газар чөлөөлөлт'); }, icon: 'polygon', view: 'gazar', load: loadLandKpi, heavy: true },
   { key: 'schedule', get title() { return tr('Хуваарийн хоцрогдол'); }, icon: 'calendar', view: 'pkgProg', load: loadScheduleKpi },
   { key: 'variance', get title() { return tr('Обьёмын зөрүү'); }, icon: 'chart', view: 'guitsetgel', load: loadVarianceKpi, heavy: true },

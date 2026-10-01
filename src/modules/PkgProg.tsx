@@ -12,14 +12,14 @@ import { usePlanTotals } from '@/lib/totals';
 import { Section, Note, Data, Empty, Rows, Bars, List, ListItem } from '@/components/ui';
 import { PackLayers } from '@/components/PackLayers';
 import {
-  buildPacks, PackKpi, BlocksCard, LayersCard, levelColor, BLOCK_LAYER, type Pack,
+  buildPacks, PackKpi, BlocksCard, LayersCard, levelColor, blockCount, BLOCK_LAYER, type Pack,
 } from '@/modules/Bagts';
 import {
   useBuildings, MonitorBagts, MonitorGeneral, MonitorDetail, useTaskPerf,
-  pickedBuilding, type PickedBuilding,
+  pickedBuilding, uniqueBlocks, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, type FinData,
+  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, physNow, progMonthsOf, type PackCat } from '@/modules/pkgShared';
@@ -144,7 +144,9 @@ export function PkgProg({ dim, setDim }: {
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(
-    () => buildPacks(q.state === 'ready' ? q.data.rows : null),
+    /* ⚠️ 2026-09-30: `pkgPct` — сонгосон багцын KPI хавтан (`PackKpi`) жагсаалтын
+       «бодит гүйцэтгэл» (`physLatest`)-тэй нэг тоо (`Bagts.buildPacks`-ийн ⚠️) */
+    () => (q.state === 'ready' ? buildPacks(q.data.rows, q.data.pkgPct) : buildPacks(null)),
     [q],
   );
 
@@ -368,10 +370,12 @@ export function PkgProg({ dim, setDim }: {
        унаснаас төслийн нийт хоосон байхад бүрэн ачаалсан багцын `byBagts`
        муруй алга болдог байв — хоосон цувааг доорх `series` шалгалт барина. */
     if (!pc) return null;
-    /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт */
+    /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт.
+       ⚠️ 2026-09-30: төслийн муруй — `projectPlanOf` (ХО дүнгээр, бодит `aggregateMonths`-тай
+       нэг жин); урьд нь `pc.months` (БЛОКИЙН тоогоор) тул хоёр шугам өөр жинтэй байв. */
     const series = active && active.key !== '__all'
       ? pc.byBagts.get(active.key)
-      : pc.months;
+      : (finQ.state === 'ready' ? projectPlanOf(finQ.data, pc) : pc.months);
     /* ⚠️ 2026-09-30: цэгүүдийг `pkgShared.progMonthsOf` бүтээнэ — «ТУХ» ижил функцийг
        хэрэглэдэг (хэмжилтгүй сар `null`, `planM` нь хэмжилтийн өдрөөр). */
     return progMonthsOf(base, series);
@@ -433,7 +437,8 @@ export function PkgProg({ dim, setDim }: {
       where: null,
       blocks,
       households: build.reduce((s, p) => s + p.households, 0),
-      progress: meanOf(blocks.map((b) => b.progress)),
+      /* ⚠️ 2026-10-01: давхардсан полигон нэг блок (`uniqueBlocks`) */
+      progress: meanOf(uniqueBlocks(blocks).map((b) => b.progress)),
     };
   }, [packs]);
 
@@ -928,7 +933,11 @@ function TsKpi(
   { packs: Pack[]; finQ: Async<FinData>; planQ: Async<PlanCurve> },
 ) {
   const fin = finQ.state === 'ready' ? finQ.data : null;
-  const plan: PlanPoint[] | null = planQ.state === 'ready' ? planQ.data.months : null;
+  /* ⚠️ 2026-09-30: `projectPlanOf` — ТӨЛӨВЛӨГӨӨ бодит (`physNow`)-той НЭГ (ХО) жинтэй;
+     урьд нь `planQ.data.months` (БЛОКИЙН тоогоор) тул «зөрүү» хоёр өөр жинг хасдаг байв. */
+  const plan = useMemo<PlanPoint[] | null>(() => (planQ.state === 'ready'
+    ? (fin ? projectPlanOf(fin, planQ.data) : planQ.data.months)
+    : null), [planQ, fin]);
   /** Уншигдаагүй бөглөх хуудсууд — төслийн муруй ХООСОН (`PlanCurve.failed`) */
   const planFailed = planQ.state === 'ready' ? planQ.data.failed.length : 0;
   /** Хэмжилт БОЛОМЖГҮЙ (алдаа) — «…» биш «—». */
@@ -1091,7 +1100,7 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={p.kind === 'build'
-                  ? tr('{0} блок · {1} айл{2}', num(p.blocks.length), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1)) : '')
+                  ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && lvl ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1)) : '')
                   /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
@@ -1247,12 +1256,14 @@ function LevelsCard({
 }) {
   const counts = PROGRESS_LEVELS.map(() => 0);
   let noData = 0;
-  blocks.forEach((b) => {
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок */
+  const uniq = uniqueBlocks(blocks);
+  uniq.forEach((b) => {
     if (b.progress == null) { noData++; return; }
     counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(b.progress / 25))]++;
   });
   return (
-    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', blocks.length, noData ? tr(' · {0} мэдээлэлгүй', noData) : '')}>
+    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', uniq.length, noData ? tr(' · {0} мэдээлэлгүй', noData) : '')}>
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({

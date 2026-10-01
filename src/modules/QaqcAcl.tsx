@@ -103,6 +103,8 @@ export function QaqcAcl() {
         user: r.user,
         viaAll: held === 'all',
         gone: !known.has(r.user),
+        /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
+        admin: roleForUser(r.user) === 'super',
         failed: failed.has(r.user),
         dirty: dirtyPerms.has(r.user),
       }] : [];

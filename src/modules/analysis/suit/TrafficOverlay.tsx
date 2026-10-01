@@ -6,7 +6,7 @@ import type MapView from '@arcgis/core/views/MapView';
 import type SceneView from '@arcgis/core/views/SceneView';
 
 import {
-  boundaryEntries, carCapacity, diurnalAt, stepCars, spawnTable, spawnCar, spawnCarAt,
+  boundaryEntries, diurnalAt, stepCars, subSteps, spawnTable, spawnCar, spawnCarAt,
   targetCars, carPose, carLen,
   signalPhase, VEHICLE_TYPES, DEFAULT_SIGNAL_PLAN, CAR_LEN, MIN_GAP_M, V_MAX,
   type Car, type Network, type SignalPlan,
@@ -268,7 +268,10 @@ export function TrafficOverlay({
   minuteRef: MutableRefObject<number>;
   playing: boolean;
   speed: number;
-  /** Оргил цагт зэрэг явах машины тоо — эрэлтийн загвараас (`peakVehicles`) */
+  /**
+   * Оргил цагт зэрэг явах машины тоо — эрэлтийн загвараас (`peakVehicles`),
+   * БҮХ сүлжээнд НЭГ багтаамжийн тагаар хязгаарласан (`commonCarCap`, 2026-10-01).
+   */
   maxCars: number;
   /**
    * ГЭРЛЭН ДОХИОНЫ зохицуулалтын хөтөлбөр (ээлжийн тоо, мөчлөг).
@@ -293,9 +296,11 @@ export function TrafficOverlay({
     if (!ctx) return;
 
     const tbl = spawnTable(net);
-    /** Сүлжээний багтаамжийн таг — эрэлт үүнээс их бол энд таслана (түгжрэлээс
-        сэргийлнэ; оргилын ЦАГ өөрчлөгдөхгүй, зөвхөн нягтрал хязгаарлагдана) */
-    const capNet = carCapacity(net);
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): сүлжээ БҮРИЙН багтаамжийн таг
+       (`carCapacity(net)`) ЭНД ХАСАГДАВ — тэр нь «Бодит» ба «Төлөвлөгөө»-нд ӨӨР
+       тооны машин тавьж, `netSources.ts`-ийн «бүгд ИЖИЛ эрэлтээр» зарчмыг
+       зөрчдөг байв. Таг нь одоо БҮХ машинтай сүлжээний хамгийн багаас (`commonCarCap`)
+       дуудагч талд бодогдож `maxCars`-аар ирнэ (`Suitability.tsx`). */
     /** Хилийн орц/гарцууд — машин эндээс «ирж», эндээс «явж одно» */
     const entries = boundaryEntries(net);
     // ⚠️ Машиныг ЦЭВЭРЛЭНЭ: тэдгээр нь ирмэгийн ИНДЕКС барьдаг тул өөр сүлжээ
@@ -357,7 +362,7 @@ export function TrafficOverlay({
            · Эрэлт эргэж өсвөл гарч яваа машиныг ЭХЭЛЖ буцаана — устгах/
              төрүүлэх чичиргээ үүсэхгүй. */
       const demand = diurnalAt(minuteRef.current);
-      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars, capNet));
+      const cap = Math.max(1, Math.min(CAR_CAP, opt.current.maxCars));
       const want = targetCars(demand, cap, Math.min(10, cap));
       // Хилээр гарсан (done), далд гарсан, эсвэл бүрэн бүдгэрсэн гарагсдыг авна
       for (let i = cars.length - 1; i >= 0; i--) {
@@ -476,8 +481,12 @@ export function TrafficOverlay({
       let dtSim = 0;
       if (opt.current.playing && dtReal > 0) {
         dtSim = dtReal * paceOf(opt.current.speed);
-        simTime += dtSim;
-        stepCars(net, cars, dtSim, Math.random, simTime, opt.current.signalPlan);
+        /* ⚠️ 2026-10-01: ДЭД АЛХАМ — ×60 хурдад фрейм 0.208 сек болж `stepCars`-ийн
+           0.2 сек-ийн хязгаарыг давдаг байв (`traffic.subSteps`) */
+        for (const h of subSteps(dtSim)) {
+          simTime += h;
+          stepCars(net, cars, h, Math.random, simTime, opt.current.signalPlan);
+        }
       }
 
       /* ── 3. Зуралт ── */
@@ -489,7 +498,12 @@ export function TrafficOverlay({
          дүрсийг бөглөрүүлж байсан. Түгжрэл нь машинуудын өнгө (тормозны гэрэл,
          зогссон бөөгнөрөл)-өөс уншигдана. */
       let sumV = 0;
-      for (const c of cars) sumV += c.v;
+      /* ⚠️ 2026-09-30: машин бүрийн ӨӨРИЙН чөлөөт хурдны нийлбэр — «Урсгал» = Σv / Σvmax.
+         Урьд нь нийтлэг `V_MAX` (50 км/ц)-д хуваадаг байсан тул машины `vmax` 25–50 км/ц
+         тул БҮРЭН ЧӨЛӨӨТ сүлжээ «Урсгал 78%», хүссэн хурдныхаа 90%-тай урсгал 70% (шар)
+         гэж харагддаг байв. */
+      let sumVmax = 0;
+      for (const c of cars) { sumV += c.v; sumVmax += c.vmax; }
       /* ── ЗАМНАЛЫН ГӨЛГӨРҮҮЛЭЛТ (ArcGIS smooth-ийн үзэл) ──
          Зурагдах байрлал/чиглэл нь бодит байрлалаа экспоненциалаар (τ=0.15с)
          дагана. Уулзварын таслалтын БОГИНО хэрчмүүдээр дамжсан эргэлт олон
@@ -644,7 +658,7 @@ export function TrafficOverlay({
         opt.current.onStats({
           cars: cars.length,
           kmh,
-          flow: cars.length ? Math.min(1, sumV / cars.length / V_MAX) : 1,
+          flow: cars.length && sumVmax > 0 ? Math.min(1, sumV / sumVmax) : 1,
         });
       }
     };

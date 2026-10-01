@@ -99,9 +99,11 @@ async function main() {
   for (const name of SHEETS) {
     const service = `${HJ}/${name}/FeatureServer`;
     const admin = service.replace('/rest/services/', '/rest/admin/services/');
-    const q = t ? `&token=${t}` : '';
 
-    const meta = await (await fetch(`${service}/0?f=json${q}`)).json();
+    /* ⚠️ 2026-09-30: ADMIN токен POST БИЕЭР — урьд нь `GET …/0?f=json&token=…` байсан тул
+       бүтцийг өөрчлөх эрхтэй токен ArcGIS/прокси/CDN-ийн access log-д бүтнээрээ
+       хадгалагддаг байв (CWE-598; `authToken.ts` ба `ts-alias.mjs`-ийн дүрэм). */
+    const meta = await post(`${service}/0`, { f: 'json', ...(t ? { token: t } : {}) });
     if (meta.error) {
       console.log(`${name.padEnd(15)} ⛔ уншигдсангүй: ${meta.error.message}`);
       failed += 1;

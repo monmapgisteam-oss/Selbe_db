@@ -183,6 +183,34 @@ function companyDay(r: Row, sfx: string, bagtsFixed: string | null): CompanyDay 
   };
 }
 
+/**
+ * ГҮЙЦЭТГЭГЧ ТУХАЙН ӨДӨР ТАЙЛАН ӨГСӨН ҮҮ — «ажилтан ЭСВЭЛ техник > 0».
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): толгойн ⚠️ «ГҮЙЦЭТГЭГЧ ТАЙЛАНГҮЙ ≠ 0
+ *    АЖИЛТАНТАЙ»-н дүрмийг НЭГ газар экспортлов. `Niit_ajiltan_<SFX>` нь репитэд
+ *    ороогүй үед ч 0 гэж бичигддэг тул «0 ажилтан + 0 техник» = ТАЙЛАН ӨГӨӨГҮЙ
+ *    (мэдээлэлгүй, `null`), бодит 0 БИШ. ХАБЭА хуудасны өдрийн цуваа (`Habea.byDaySeries`)
+ *    үүгээр тайлангүй өдрийг ЦООРХОЙ үлдээнэ — урьд нь сонгосон гүйцэтгэгчийн
+ *    «0 ажилтан» гэсэн худал цэг зурагддаг байв.
+ */
+export const isReported = (d: Pick<CompanyDay, 'workers' | 'technik'>): boolean =>
+  d.workers > 0 || d.technik > 0;
+
+/** Түүхий мөрөөс — `isReported`-ийн ижил дүрэм (`companyDay`-ийн ажилтны нөхөлттэй) */
+export const companyReported = (r: Row, sfx: string): boolean =>
+  isReported(companyDay(r, sfx, null));
+
+/**
+ * ТАЙЛАНГИЙН ШИНЭЛЭГ БАЙДАЛ — сүүлийн тайлангаас хойш хэдэн хоног, хуучирсан эсэх.
+ * ⚠️ 2026-10-01: CEO самбарын `workforceLevel`-тэй ИЖИЛ босго (`WORKFORCE_STALE_DAYS`) —
+ *    ХАБЭА хуудасны «Сүүлийн тайлан: …» анхааруулга үүнийг хэрэглэнэ, хоёр газар
+ *    өөр босго бичихгүй. `asOf` алга бол `days: null` («мэдэгдэхгүй», хуучирсан БИШ).
+ */
+export function laborStaleness(asOf: number | null, now: number): { days: number | null; stale: boolean } {
+  const days = asOf == null || asOf <= 0 ? null : daysBetween(asOf, now);
+  return { days, stale: days != null && days > WORKFORCE_STALE_DAYS };
+}
+
 /** Нэг мөр → өдрийн бүртгэл (компанийн нийлбэрийг энд бодно) */
 function dayOf(r: Row, at: number, oid: number | null, rowsInDay: number): WorkforceDay {
   const comp: Record<string, CompanyDay> = {};
@@ -268,6 +296,61 @@ export function groupDays(rows: Row[]): WorkforceDay[] {
     .map((x) => dayOf(x.r, x.at, numOrNull(x.r[OID_FIELD]), x.n));
 }
 
+/**
+ * ӨДӨР БҮРЭЭС НЭГ ТҮҮХИЙ МӨР — `groupDays`-ийн ЯГ ИЖИЛ дүрмээр (`newer`), мөрийг
+ * өөрийг нь (`Row`) буцаана.
+ *
+ * ⚠️ 2026-09-30: ХАБЭА хуудас (`Habea.tsx`) давхар өдрийн мөрүүдийг НИЙЛБЭРЛЭДЭГ
+ *    байв (`byDaySeries`, `companyTotals`, `mixTotals`, `laborState.cum`) —
+ *    2026-08-21-нд засварласан oid256 (389) ба анхны oid255 (247) нийлж 636
+ *    ажилтан гэж зурагддаг, энэ самбар ба «Тайлан» 389 гэдэг байв. Дүрмийг
+ *    ЭНД нэг газар: хоёр газар бичвэл нэгийг засахад нөгөө нь хоцорно.
+ * ⚠️ Огноогүй/0 огноотой мөр (дуусаагүй маягт) ХЭВЭЭР үлдэнэ — өдөрт
+ *    хамааруулах боломжгүй; дуудагч өөрийн дүрмээр шийднэ. Оролтын ДАРААЛАЛ
+ *    хадгалагдана.
+ * @param keyOf өдрийн түлхүүр — анхдагч нь Улаанбаатарын хуанли (`ubDayKey`);
+ *        ХАБЭА хуудас өөрийн өдрийн цуваатай ижил түлхүүрийг (`dayKey`) өгнө.
+ */
+export function latestRowPerDay(rows: readonly Row[], keyOf: (ms: number) => string = ubDayKey): Row[] {
+  const best = new Map<string, DayPick>();
+  for (const r of rows) {
+    const at = numOrNull(r[F.ognoo]);
+    if (at == null || at <= 0) continue;
+    const cand: DayPick = {
+      r, at, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1,
+    };
+    const key = keyOf(at);
+    const cur = best.get(key);
+    if (!cur || newer(cand, cur)) best.set(key, cand);
+  }
+  const keep = new Set<Row>([...best.values()].map((x) => x.r));
+  return rows.filter((r) => {
+    const at = numOrNull(r[F.ognoo]);
+    return at == null || at <= 0 || keep.has(r);
+  });
+}
+
+/**
+ * ХАМГИЙН СҮҮЛИЙН НЭГ МӨР — `newer`-ийн ЯГ ИЖИЛ дүрмээр: max `Ognoo` → max `EditDate`
+ * → max `objectid` (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ «Тайлан»-гийн ХАБЭА (`reportData.loadHabeaSummary`) урьд нь огноо → OID-оор л
+ *    сонгодог байв — нэг өдрийн давхар мөрийн ЗАСВАРЛАСАН (хуучин OID, шинэ EditDate)
+ *    хувилбарыг алгасаж, энэ самбар (`groupDays`) өөр мөр сонгож болдог байлаа.
+ * ⚠️ Огноогүй/0 огноотой мөр (дуусаагүй маягт) сонгогдохгүй; алга бол `null`.
+ */
+export function latestLaborRow(rows: readonly Row[]): Row | null {
+  let best: DayPick | null = null;
+  for (const r of rows) {
+    const at = numOrNull(r[F.ognoo]);
+    if (at == null || at <= 0) continue;
+    const cand: DayPick = {
+      r, at, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1,
+    };
+    if (!best || newer(cand, best)) best = cand;
+  }
+  return best ? best.r : null;
+}
+
 /** Бууралтын хувь ба тайлангийн шинэлэг байдлаас нэгдсэн түвшин */
 export function workforceLevel(deltaPct: number | null, staleDays: number | null): Level {
   /* ⚠️ Өмнөх тайлангүй (deltaPct null) бол дүгнэлтгүй — `neutral`, «сайн» биш */
@@ -309,11 +392,12 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
     const prevW = p ? p.workers : null;
     const delta = prevW == null ? null : cur.workers - prevW;
     const deltaPct = prevW == null || prevW === 0 || delta == null ? null : (delta / prevW) * 100;
+    /* ⚠️ 2026-10-01: «тайлан өгсөн» дүрэм нь `isReported` — нэг газар */
     const activeBefore = lookback.some((d) => {
       const x = d.comp[c.sfx];
-      return !!x && (x.workers > 0 || x.technik > 0);
+      return !!x && isReported(x);
     });
-    const unreported = cur.workers === 0 && cur.technik === 0 && activeBefore;
+    const unreported = !isReported(cur) && activeBefore;
     return {
       sfx: c.sfx, label: c.label,
       bagts: cur.bagts ?? p?.bagts ?? null,

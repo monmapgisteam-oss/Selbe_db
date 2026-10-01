@@ -19,6 +19,7 @@ import { useBuildings } from '@/modules/BuildingPanel';
 import {
   TOLOV, deleteZov, saveZov, validateZov, type Tolov, type Zov, type ZovDraft,
 } from '@/lib/zovshoorol';
+import { setNavDirty } from '@/lib/navGuard';
 import s from './zovshoorol.module.css';
 
 /** ms → YYYY-MM-DD (UTC). Огноогүй бол хоосон. */
@@ -65,6 +66,13 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
    * бүгдийг алдаж болно. Өөрчлөлт байвал баталгаажуулна.
    */
   const dirty = useRef(false);
+  /* ⚠️ 2026-09-30: `navGuard` — харагдац солих / лого / «Гарах» үед ч асууна (урьд нь
+     зөвхөн модал хаах, F5-д). Маягт хаагдахад (unmount) туг арилна. */
+  const markDirty = () => {
+    dirty.current = true;
+    setNavDirty('zovshoorol', true, tr('Зөвшөөрөл'));
+  };
+  useEffect(() => () => setNavDirty('zovshoorol', false), []);
   /* ⚠️ Фокусын урхи (2026-09-03-ны хүртээмжийн аудит) — `aria-modal` нь
      хөтчийн Tab-д нөлөөлдөггүй, урхигүй бол фокус ард руу гарна. */
   const mdRef = useRef<HTMLDivElement>(null);
@@ -138,7 +146,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   };
 
   const set = (k: keyof ZovDraft, v: unknown) => {
-    dirty.current = true;
+    markDirty();
     setD((p) => ({ ...p, [k]: v }) as ZovDraft);
     setErr((p) => ({ ...p, [k]: undefined }));
     setFail('');
@@ -245,7 +253,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                 value={d.bagts}
                 onChange={(e) => {
                   const b = e.target.value;
-                  dirty.current = true;
+                  markDirty();
                   setD((p) => ({ ...p, bagts: b, shat: p.oid ? p.shat : nextShat(b) }));
                   setErr({});
                 }}

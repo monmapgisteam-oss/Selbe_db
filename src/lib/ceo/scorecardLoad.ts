@@ -31,7 +31,7 @@ import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import { loadQaqcLoaded, summarizePkg } from './qaqc';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
-  DIMS, scorePerf, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
+  DIMS, scorePerf, perfNoCurve, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
   type Dim, type DimScore, type WorkScore, type PlanInput, type Inspection,
 } from './scorecard';
 
@@ -102,9 +102,14 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   const now = Date.now();
   /* 05-ын хуваарийн хоцрогдол — `loadScheduleKpi`-тай ЯГ ижил дуудлага */
   /* ⚠️ 2026-09-29 (аудит 10): эх сурвалж унасан бол хоосон — `null` («мэдэхгүй»), 0 биш */
-  const lags = new Map(
-    fin ? collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow).map((p) => [p.key, p.lag]) : [],
-  );
+  const pkgLags = fin ? collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow) : [];
+  const lags = new Map(pkgLags.map((p) => [p.key, p.lag]));
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХУВААРИЙН МУРУЙ уншигдаагүйгээс `lag` нь `null`
+     болсон багц — биет хэмжилттэй (`hasPhys`) атлаа муруй нь унасан. Ийм барилгын мөрийг
+     Cashflow-ийн хувиар ЧИМЭЭГҮЙ оноолохгүй (`perfNoCurve`). `fin` өөрөө унасан бол
+     хоцрогдлыг огт тооцох боломжгүй тул мөн адил. */
+  const noCurve = new Set(pkgLags.filter((p) => !p.lag && p.hasPhys && F.planCurveMissing(p.curveKey)).map((p) => p.key));
+  const curveFailed = !fin || noCurve.size > 0;
   /* 04-ийн олголт — `PkgFin` хуудастай ЯГ ижил (`pkgFinRows`) */
   const packs = bld ? buildPacks(bld.rows) : [];
   const paid = new Map(fin && bld ? pkgFinRows(packs, fin).rows.map((r) => [r.key, r.pct]) : []);
@@ -149,6 +154,8 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
        төслийн гэрээ «хуваариас 30 пп хоцорсон» гэж улаан гардаг байв. Бусад
        мөр `lag = null` → `scorePerf` өөрийнх нь огноо/гүйцэтгэлээр (0 БИШ). */
     const lag = key && r.sec === FIN_XL_BUILD_CODE ? lags.get(key) ?? null : null;
+    /* ⚠️ 2026-10-01: муруй уншигдаагүйгээс хоцрогдол тодорхойгүй барилгын мөр (дээрх `noCurve`) */
+    const lagUnknown = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && (!fin || noCurve.has(key));
     const actual = lag ? lag.actual : r.progress;
     const contract = contracts?.get(r.oid) ?? null;
     return {
@@ -161,7 +168,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       contract: contracted && contract && contract > 0 ? contract : null,
       cancelled,
       isLandWork,
-      perf: cancelled ? { score: null, facts: [] } : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
+      perf: cancelled ? { score: null, facts: [] } : lagUnknown ? perfNoCurve() : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
       /* ⚠️ Газрын мөр гэрээ байгуулах ажил БИШ — санхүүжилтийн «гэрээгүй» оноо
          хамаарахгүй (null, 0 биш); оноо нь `scoreLand`-ын газрын салаанд. */
       fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({
@@ -194,11 +201,17 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     };
   });
 
+  /* ⚠️ 2026-10-01: муруйн уналт «Татагдсангүй» мөрөнд ч ил (кэшлэгдэхгүй — доорх `keep`) */
+  if (curveFailed && fin) failed.push(tr('Хуваарийн муруй'));
   return { works, footprints: packs.map((p) => p.key), failed };
   /* ⚠️ 2026-09-25: `ZOVSHOOROL` нэмэв — зөвшөөрлийн оноо `loadZov()`-оос. Тэр
      нь зөвхөн ӨӨРИЙН кэшээ хаядаг тул энэ суурь 5 мин хүртэл хуучин
      зөвшөөрлийн төлөв барьдаг байв (ачаалагчийн уншдаг бүх тагийг нэгтгэх дүрэм). */
-}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA', 'ZOVSHOOROL']);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ — аль нэг эх унасан
+     (`failed` хоосон биш) үр дүн одоогийн дэлгэцэд унасан эхийн нэртэй гарч, дараагийн
+     дуудалт дахин татна (урьд нь 5 минут «хуучин нөөц» болж үлддэг байв). */
+  /* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — гүйцэтгэлийн оноо (`lagOf`) хуваарийн муруйгаас (`loadFinData`) */
+}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM'], (b) => b.failed.length === 0);
 
 /* ══════════════ Хүнд бүлгүүд ══════════════ */
 
@@ -229,7 +242,8 @@ export const loadScoreLand = cached(async (): Promise<LandExtra> => {
   for (const [k, s] of ids) m.set(k, s.size);
   for (const k of bad) m.set(k, -1);
   return { landPct: status.pct, overlaps: m, failed: bad.size > 0 };
-}, 5 * 60_000, ['PARCEL_LEFT']);
+  /* ⚠️ 2026-10-01: хэсэгчилсэн огтлолцлыг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
+}, 5 * 60_000, ['PARCEL_LEFT'], (x) => !x.failed);
 
 export type QualExtra = Map<string, { total: number; empty: number; partial: number }> & {
   /** ⚠️ 2026-09-25: уншигдаагүй хуудсууд (`Pkg.label`) — дэлгэц «Татагдсангүй»-д нэмж болно */
@@ -263,7 +277,8 @@ export const loadScoreQual = cached(async (): Promise<QualExtra> => {
   }
   for (const k of failedGroups) m.delete(k);
   return Object.assign(m, { failed: [...failed] });
-}, 5 * 60_000, ['BAGTS_SHEET']);
+  /* ⚠️ 2026-10-01: уншигдаагүй хуудастай үр дүнг кэшлэхгүй (`loadScoreBase`-ийн `keep`-ийн ⚠️) */
+}, 5 * 60_000, ['BAGTS_SHEET'], (x) => x.failed.length === 0);
 
 /**
  * Ерөнхий төлөвлөгөө — блок бүрийн байрлах бүсийн тохиромжтой байдлын оноо.

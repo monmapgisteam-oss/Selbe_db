@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  payRows, contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, details,
+  payRows, contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, details, ipcNumbers,
 } from './ipcTable.ts';
 import { LINK_FIELDS } from './ipcLink.ts';
 import { HO_IPC } from './services.ts';
@@ -328,6 +328,38 @@ const contract = (o = {}) => ({
     assert.equal(o.paidContracted, null);
     assert.equal(o.paidOther, 70);
   }
+}
+
+/* ── ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): AUTO IPC-ийн анхдагч дугаар — гэрээ бүрд ДАРААЛСАН ── */
+{
+  const R = (o) => ({ oid: null, id: 'x', code: '', advance: false, ipcNo: null, date: null, amount: null, cum: null,
+    obyem: null, une: null, zoruu: null, year: null, kind: '', orderNo: '', ...o });
+  const dayOf = (r) => (r.id.startsWith('AUTO|') ? r.id.slice(-10) : null);
+  const adv = R({ id: 'ХО-1', advance: true, amount: 5 });
+  const i1 = R({ id: 'ХО-2', ipcNo: 1, amount: 10 });
+  const i2 = R({ id: 'ХО-3', ipcNo: 2, amount: 20 });
+  /* AUTO мөрүүд OID-оор (эрэмбэгүй) ирнэ — 10-р сарынх 9-р сарынхаас ӨМНӨ */
+  const aOct = R({ id: 'AUTO|Багц 1|2026-10-05' });
+  const aSep = R({ id: 'AUTO|Багц 1|2026-09-30' });
+  const n = ipcNumbers([adv, i1, i2, aOct, aSep], dayOf);
+  assert.equal(n.get(aSep), 3, 'IPC-2-ын дараагийнх 3 — өдрөөр эрт нь эхэнд');
+  assert.equal(n.get(aOct), 4);
+  assert.equal(n.get(i2), 2, 'дугаартай мөр өөрийн дугаараа');
+  assert.equal(n.has(adv), false, 'урьдчилгаа IPC биш');
+  /* дугаарын цоорхой (1, 4) — дараагийнх нь хамгийн их дугаараас */
+  const g = ipcNumbers([R({ ipcNo: 1 }), R({ ipcNo: 4 }), aSep], dayOf);
+  assert.equal(g.get(aSep), 5, 'max дугаар + 1 (харагдах мөрийн тоо 3 БИШ)');
+  /* дугааргүй ГАР мөр — өмнөх IPC гэж тоологдоно, Map-д орохгүй */
+  const manual = R({ id: 'ХО-9', amount: 7 });
+  const h = ipcNumbers([i1, manual, aSep], dayOf);
+  assert.equal(h.get(aSep), 3, '1 + дугааргүй гар мөр → дараагийнх 3');
+  assert.equal(h.has(manual), false);
+  /* санхүүгийн газар нөхсөн AUTO мөр өөрийн дугаараа */
+  const aNum = R({ id: 'AUTO|Багц 1|2026-08-31', ipcNo: 3 });
+  const k = ipcNumbers([i1, i2, aNum, aSep], dayOf);
+  assert.equal(k.get(aNum), 3);
+  assert.equal(k.get(aSep), 4);
+  assert.equal(ipcNumbers([aSep], dayOf).get(aSep), 1, 'өмнөх IPC огт алга → 1');
 }
 
 console.log('ipcTable.check ✓');

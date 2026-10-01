@@ -488,6 +488,26 @@ export const EMPTY_MATERIAL: MaMaterial = {
   certNo: '', pageRef: '', verdict: null, locked: false,
 };
 
+/**
+ * ХОЁР МАТЕРИАЛЫН АГУУЛГА ИЖИЛ ЭСЭХ — шийдвэр (`verdict`) ба түгжээнээс (`locked`) бусад
+ * БҮХ талбар (текстийг зайгүйгээр) — 2026-09-30.
+ * ⚠️ ЯАГААД: `chanarStore.ownClientBody` түгжигдсэн (A/AN) материалыг НЭРЭЭР нь тулгаж
+ *    КЛИЕНТИЙН агуулгыг `locked:true`-тэй хадгалдаг байв. Буцаагдсан MA-г «Засах»-аар
+ *    rev+1 болгоход A/AN материал хараахан түгжигдээгүй (засагдахуйц) тул гүйцэтгэгч
+ *    батлагдсан материалын үзүүлэлтийг (марк, тоо, стандарт …) өөрчилж хадгалахад
+ *    шинэ агуулга «батлагдсан» хэвээр түгжигдэж, ХЭЗЭЭ Ч хянагдахгүй болдог байв.
+ *    Агуулга зөрвөл түгжээ тайлагдаж дахин хянагдана.
+ */
+export function sameMaterialContent(a: unknown, b: unknown): boolean {
+  /* Хоёр талыг ИЖИЛ хэлбэрт (`normalizeMaterial`) — хуучин JSON-д талбар дутуу байж болно */
+  const x = normalizeMaterial(a);
+  const y = normalizeMaterial(b);
+  const n = (v: unknown) => (typeof v === 'string' ? v.trim() : v ?? null);
+  return (Object.keys(EMPTY_MATERIAL) as (keyof MaMaterial)[])
+    .filter((k) => k !== 'verdict' && k !== 'locked')
+    .every((k) => n(x[k]) === n(y[k]));
+}
+
 /** «MA Submittal's appendix» бүрдэл — 9 + 2 (дотоод/гадаад 2-оос доошгүй үйлдвэрлэгч) */
 export const MA_CHECKLIST = [
   'manufacturerIntro', 'materialList', 'techSpec', 'license', 'qualityCert',
@@ -1359,6 +1379,19 @@ export function repFrom(reviews: Reviews, kind: DocKind, materials?: readonly Pi
       if (!per[idx] || rank[v] > rank[per[idx]]) per[idx] = v;
     }
   }
+  /* ⚠️ 2026-09-30: МАТЕРИАЛ ТЭМДЭГЛЭЭГҮЙ хянагчийн НИЙТ шийдвэр бүх материалд
+     (`Review.perMaterial`: «хоосон бол нийт шийдвэр»). Урьд нь зөвхөн тэмдэглэсэн
+     хянагчдыг нийлүүлдэг тул cheng {0:A,1:A} + chanar нийт R (тэмдэглээгүй) → хоёр
+     материал «A» болж rev+1-д ТҮГЖИГДЭЖ, дахин хэзээ ч хянагдахгүй байв (R нь
+     ямар ч материалд хүрэхгүй); нийт AN ч мөн алга болдог. Хэн ч тэмдэглээгүй
+     бол (`per` хоосон) хуучин замаар — `applyRepToMaterials` баримтын шийдвэрийг авна. */
+  if (Object.keys(per).length) {
+    for (const r of rs) {
+      if (r.perMaterial && Object.keys(r.perMaterial).length) continue;
+      const v = verdictCode(r.verdict);
+      for (const idx of Object.keys(per)) if (rank[v] > rank[per[idx]]) per[idx] = v;
+    }
+  }
   if (materials) {
     materials.forEach((m, i) => {
       if (m.locked && m.verdict) per[String(i)] = m.verdict;
@@ -1637,6 +1670,20 @@ export function applyRepToMaterials(body: MaBody, rep: Pick<Rep, 'verdict' | 'pe
 }
 
 /**
+ * «AN ХААХ»-ЫН МАТЕРИАЛ (2026-09-30) — хариуг материалд бичээд ТҮГЖИГДСЭН AN
+ * материалыг ч A болгоно.
+ * ⚠️ ЯАГААД: `closeAn` хариуны `perMaterial`-д (түгжигдсэнийг оруулаад) AN → A
+ *    болгодог атлаа `applyRepToMaterials` түгжигдсэн материалыг хөндөхгүй тул өмнөх
+ *    хувилбараас түгжигдсэн AN материал хүснэгтэд AN хэвээр харагдаж, дараагийн
+ *    «Шинэ хувилбар»-т AN-аар дахин түгжигдэн `repFrom`-ийн түгжигдсэн дээд утгаар
+ *    хаагдсан AN нь хариунд ДАХИН AN болдог байв.
+ */
+export function closeAnMaterials(body: MaBody, rep: Pick<Rep, 'verdict' | 'perMaterial'>): MaBody {
+  const b = applyRepToMaterials(body, rep);
+  return { ...b, materials: b.materials.map((m) => (m.verdict === 'AN' ? { ...m, verdict: 'A' as const } : m)) };
+}
+
+/**
  * «ХЯНАХГҮЙ БУЦААХ» — формат буруу / бүрдэл дутуу (2026-09-28). Чанарын хэлтсийн
  * хянагч (`chanar` эсвэл `cheng`, MA-д; MS-төрөлд `chanar`) `review` төлөвт
  * → `returned`, REP ҮГҮЙ, `bounce` тэмдэг. NCR-д үгүй.
@@ -1675,16 +1722,33 @@ export function bounce(
 
 /**
  * ГҮЙЦЭТГЭГЧ ХАРИУГ ХҮЛЭЭН АВСАН — «Хариу хүлээн авсан гүйцэтгэгчийн ажилтан»
- * блок (2026-09-28). Зөвхөн зохиогч, REP байгаа (approved/returned) баримтад, нэг удаа.
+ * блок (2026-09-28). REP байгаа (approved/returned) баримтад, нэг удаа.
+ *   MS · MA · MIR · FIC · QMP · PRC — зохиогч (= гүйцэтгэгч) хүлээн авна.
+ *   NCR — ТУХАЙН БАГЦЫН ГҮЙЦЭТГЭГЧ (`args.contractor`, дуудагч `isAuthorFor`-оор), НЭЭГЧ БИШ.
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь бүх төрөлд «зөвхөн зохиогч» байсан тул
+ *    NCR-д зохиогч = НЭЭГЧ ЗАХИАЛАГЧ өөрийн гаргасан хариугаа өөрөө «хүлээн авдаг», харин
+ *    хариу очих гүйцэтгэгчид товч огт гардаггүй байв. Хариу маягтын гарын үсэг «Хариу
+ *    хүлээн авсан ГҮЙЦЭТГЭГЧИЙН ажилтан» (`chanarUi.repSigRoles`), дэлгэцийн мөр «гүйцэтгэгч
+ *    хариуг хүлээн аваагүй» — хүлээн авагч нь гүйцэтгэгч. Нээгч гүйцэтгэгчийн эрхтэй байсан
+ *    ч өөрийн NCR-ийн хариуг хүлээн авахгүй.
+ * ⚠️ 2026-10-01: зөвхөн approved/returned төлөвт (`canAct.ack`-тай ижил) — NCR нэг мөртэй тул
+ *    дахин нээх/залруулга дахин илгээхэд ӨМНӨХ хариу (`rep`) хадгалагддаг; урьд нь тэр хуучин
+ *    хариуг «хянагдаж байна» төлөвт консолоос хүлээн авах боломжтой байв.
  */
 export function ackRep(
-  doc: Pick<MsDoc, 'status' | 'author' | 'rep'>,
-  args: { who: string; now?: number },
+  doc: Pick<MsDoc, 'status' | 'author' | 'rep'> & { kind?: DocKind },
+  args: { who: string; now?: number; contractor?: boolean },
 ): { ok: true; rep: Rep } | Reject {
   const me = args.who.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Илгээгчийн нэр хоосон') };
-  if (doc.author.trim().toLowerCase() !== me) return { ok: false, error: tr('Зөвхөн зохиогч хариуг хүлээн авна') };
-  if (!doc.rep) return { ok: false, error: tr('Захиалагчийн хариу хараахан үүсээгүй') };
+  if ((doc.kind ?? 'MS') === 'NCR') {
+    if (doc.author.trim().toLowerCase() === me || args.contractor !== true) {
+      return { ok: false, error: tr('Үл тохирлын хариуг зөвхөн тухайн багцын гүйцэтгэгч хүлээн авна') };
+    }
+  } else if (doc.author.trim().toLowerCase() !== me) return { ok: false, error: tr('Зөвхөн зохиогч хариуг хүлээн авна') };
+  if (!doc.rep || (doc.status !== MS_STATUS.approved && doc.status !== MS_STATUS.returned)) {
+    return { ok: false, error: tr('Захиалагчийн хариу хараахан үүсээгүй') };
+  }
   if (doc.rep.receivedAt) return { ok: false, error: tr('Хариуг аль хэдийн хүлээн авсан') };
   return { ok: true, rep: { ...doc.rep, receivedAt: args.now ?? Date.now(), receivedBy: me } };
 }
@@ -1890,7 +1954,7 @@ export type Actions = {
   clientChecks: boolean;
   /** 2026-09-28: Чанарын хэлтэс «хянахгүй буцаах» (`bounce`) */
   bounce: boolean;
-  /** Зохиогч «Хариу хүлээн авлаа» (`ackRep`) */
+  /** «Хариу хүлээн авлаа» (`ackRep`) — зохиогч; NCR-д тухайн багцын гүйцэтгэгч (2026-10-01) */
   ack: boolean;
   /** Тухайн төрлийн хянагч «AN хаах» (`closeAn`) */
   closeAn: boolean;
@@ -1948,7 +2012,10 @@ export function canAct(
   const bounceable = kind !== 'NCR' && !!u && !mine && doc.status === MS_STATUS.review
     && !Object.values(doc.reviews).some((r) => r != null)
     && roles.some((r) => (r === 'chanar' || r === 'cheng') && need.includes(r));
-  const ack = mine && !!doc.rep && !doc.rep.receivedAt
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): NCR-ийн хариуг ГҮЙЦЭТГЭГЧ (`extra.contractor`)
+     хүлээн авна, нээгч биш — `ackRep`-ийн ⚠️. Урьд нь `mine` (NCR-д = нээгч захиалагч) байв. */
+  const ackBy = kind === 'NCR' ? !!u && extra.contractor === true && !mine : mine;
+  const ack = ackBy && !!doc.rep && !doc.rep.receivedAt
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
   /* ⚠️ 2026-09-25: `closeAn`-ийн ижил дүрэм — Чанарын хэлтэс (chanar/cheng), зохиогч биш (NCR-ээс бусад) */
   const closeAnOk = !!u && doc.status === MS_STATUS.approved && doc.rep?.verdict === 'AN'
@@ -1980,6 +2047,78 @@ export function needsMyAction(doc: Pick<FlowDoc, 'status' | 'correctionAt'>, a: 
   if (a.review.length > 0 || a.submit || a.ack || a.closeNcr) return true;
   if (a.correction) return doc.status === MS_STATUS.returned || !doc.correctionAt;
   return false;
+}
+
+/**
+ * «МИНИЙ ХИЙХ»-ИЙН ШАЛТГААН ба ЖАГСААЛТАД ОРСОН АГШИН (2026-10-01, хэрэглэгч: бүгдийг зас).
+ * `needsMyAction` үнэн үед л НЭГ шалтгаан (эрэмбэ: хянах → залруулах → илгээх → NCR хаах →
+ * хүлээн авах), худал бол `null` — жагсаалт ба шалтгаан ҮРГЭЛЖ таарна.
+ *   review     — хянах: зэрэгцээ төрөлд `sentAt`; дараалсанд (MIR/FIC/MA) өмнөх хянагчийн
+ *                шийдвэрийн агшин — тэр л мөчөөс миний ээлж болсон
+ *   ncrReview  — NCR-д гүйцэтгэгчийн залруулга ирсэн → дүгнэх: `correctionAt`
+ *   correction — NCR залруулгын тайлан илгээх: `sentAt` эсвэл сүүлд дахин нээсэн агшин
+ *                (`extra.reopenedAt`, `body.rounds`-оос) — аль хожуу нь
+ *   recorrect  — NCR «Нэмэлт арга хэмжээ шаардлагатай» → дахин залруулах: `decidedAt`
+ *   submit     — ноорог илгээх: агшин ҮГҮЙ (ноорог үүссэн огноо мөрд хадгалагддаггүй)
+ *   resubmit   — буцаагдсаныг засаж дахин илгээх: `decidedAt` (хянахгүй буцаалтад `bounce.at`)
+ *   closeNcr   — батлагдсан NCR-ийг гүйцэтгэгч хаах: `decidedAt`
+ *   ack        — хариу хүлээн авах: `rep.at`
+ * ⚠️ Агшин мэдэгдэхгүй бол `since: null` — «0 хоног» БИШ (null ≠ 0); дэлгэц юу ч бичихгүй.
+ */
+export type MyActionWhy = 'review' | 'ncrReview' | 'correction' | 'recorrect' | 'submit' | 'resubmit' | 'closeNcr' | 'ack';
+export type MyAction = { why: MyActionWhy; since: number | null };
+export function myAction(
+  doc: FlowDoc & Pick<MsDoc, 'sentAt' | 'decidedAt'> & { bounce?: Bounce | null },
+  a: Actions,
+  extra: { reopenedAt?: number | null } = {},
+): MyAction | null {
+  if (!needsMyAction(doc, a)) return null;
+  const kind = doc.kind ?? 'MS';
+  const ts = (x: number | null | undefined): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null);
+  const latestOf = (xs: (number | null)[]): number | null => {
+    const v = xs.filter((x): x is number => x != null);
+    return v.length ? Math.max(...v) : null;
+  };
+  if (a.review.length > 0) {
+    if (kind === 'NCR') return { why: 'ncrReview', since: ts(doc.correctionAt) };
+    if (!SEQUENTIAL_KINDS.includes(kind)) return { why: 'review', since: ts(doc.sentAt) };
+    const order = requiredReviewers(doc.reviews, kind);
+    const idx = a.review.map((r) => order.indexOf(r)).filter((i) => i >= 0);
+    const prev = order.slice(0, idx.length ? Math.min(...idx) : 0).map((p) => ts(doc.reviews[p]?.at));
+    return { why: 'review', since: latestOf(prev) ?? ts(doc.sentAt) };
+  }
+  if (a.correction && (doc.status === MS_STATUS.returned || !doc.correctionAt)) {
+    if (doc.status === MS_STATUS.returned) return { why: 'recorrect', since: ts(doc.decidedAt) };
+    return { why: 'correction', since: latestOf([ts(doc.sentAt), ts(extra.reopenedAt)]) };
+  }
+  if (a.submit) {
+    if (doc.status === MS_STATUS.returned) return { why: 'resubmit', since: ts(doc.decidedAt) ?? ts(doc.bounce?.at) };
+    return { why: 'submit', since: null };
+  }
+  if (a.closeNcr) return { why: 'closeNcr', since: ts(doc.decidedAt) };
+  if (a.ack) return { why: 'ack', since: ts(doc.rep?.at) };
+  return null;
+}
+
+/** «Миний хийх»-ийн шалтгааны товч шошго (зурагдах агшинд) */
+export function myActionLabel(why: MyActionWhy): string {
+  if (why === 'review') return tr('Хянах');
+  if (why === 'ncrReview') return tr('Залруулга ирсэн — шалгах');
+  if (why === 'correction') return tr('Залруулга илгээх');
+  if (why === 'recorrect') return tr('Нэмэлт арга хэмжээ — дахин залруулах');
+  if (why === 'submit') return tr('Илгээх');
+  if (why === 'resubmit') return tr('Буцаагдсан — засаж илгээх');
+  if (why === 'closeNcr') return tr('Үл тохирлыг хаах');
+  return tr('Хариу хүлээн авах');
+}
+
+/**
+ * ХҮЛЭЭСЭН ХОНОГ — `since`-ээс хойш бүтэн хоног (2026-10-01).
+ * ⚠️ `since` үгүй бол `null` (мэдээлэлгүй) — 0 БИШ. Ирээдүйн агшин (цагийн зөрүү) → 0.
+ */
+export function waitDays(since: number | null | undefined, now = Date.now()): number | null {
+  if (typeof since !== 'number' || !Number.isFinite(since)) return null;
+  return Math.max(0, Math.floor((now - since) / 86_400_000));
 }
 
 /**

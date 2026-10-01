@@ -286,13 +286,25 @@ export function Participants({ participants, byCount, doneBy }: {
 }
 
 /** Инженерийн төлөвлөсөн обьёмын товчнууд ба мэдэгдэл */
-export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote }: {
+export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote, pvReturned = null }: {
   canObyemEdit: boolean; pvSub: ObyemT['pvSub']; pvCells: ObyemT['pvCells']; sendObyem: ObyemT['sendObyem'];
   pvBusy: boolean; canObyemApprove: boolean; locked: boolean; decideObyemHere: ObyemT['decideObyemHere'];
   pvErr: string; pvNote: string;
+  /** ⚠️ 2026-10-01: сүүлийн шийдвэр нь БУЦААЛТ бол тэр илгээлт (`useObyem.pvReturned`) */
+  pvReturned?: ObyemT['pvReturned'];
 }) {
   return (
     <>
+        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУЦААГДСАН обьёмын илгээлт ба ШАЛТГААН —
+            инженер (обьём засах эрхтэй хүн) хуудсандаа харна; дахин илгээмэгц алга болно. */}
+        {canObyemEdit && !pvSub && pvReturned && (
+          <span className={st.lockNote} role="status">
+            {tr('Обьёмын илгээлт буцаагдсан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
+              String(pvReturned.cellCount),
+              [pvReturned.approver ?? '', pvReturned.approverAt ? new Date(pvReturned.approverAt).toLocaleDateString('mn-MN') : ''].filter(Boolean).join(' · ') || '—',
+              pvReturned.reason ?? '—')}
+          </span>
+        )}
         {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════
             ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙГ 6 шатат
             хяналтад оруулдаг, энэ нь ТӨЛӨВЛӨСӨН ОБЬЁМЫГ 2 шатат батлах
@@ -382,7 +394,9 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
             <b className={st.pkgPctNow} title={tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь дундаж. «Багцын гүйцэтгэл» дэлгэц дээрх багцын тоо нь бүх хувилбарын блокуудыг нийлүүлдэг тул арай өөр байж болно.', pkg.label)}>
               {pct(pkgPct.saved, 2)}
             </b>
-            {dirtyCount > 0 && pkgPct.draft != null && (
+            {/* ⚠️ 2026-09-30: илгээсэн (хяналтад буй) нэмэлт ч «батлагдаагүй» — ноорог хоосон ч
+                (`usePkgPct.saved` нь одоо илгээлтгүй архиваас) ялгаатай бол харуулна */}
+            {pkgPct.draft != null && (dirtyCount > 0 || Math.abs(pkgPct.draft - pkgPct.saved) > 1e-9) && (
               <b
                 className={st.pkgPctNew}
                 title={tr('Таны бөглөсөн, хараахан БАТЛАГДААГҮЙ гүйцэтгэл. «Илгээх» дараад 6 шатны хяналт дамжсаны дараа энэ тоо батлагдсан болно.')}
@@ -413,11 +427,26 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
 }
 
 /** Нооргийн байдал — ногоон тоолуур · устгах · хадгалсан агшин · ArcGIS */
-export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState }: {
+export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false }: {
   locked: boolean; dirtyCount: number; noPerf: boolean; dropDraft: () => void; savedAt: number | null; remoteState: RemoteState;
+  /** ⚠️ 2026-10-01: ноорог сэргээж байна — нүд түгжээтэй (`useDraftSync.restoringUi`) */
+  restoring?: boolean;
+  /** ⚠️ 2026-10-01: хөтөч сүлжээгүй — ноорог зөвхөн энэ төхөөрөмжид */
+  offline?: boolean;
 }) {
   return (
     <>
+        {/* ⚠️ 2026-10-01: СЭРГЭЭЛТИЙН түгжээг ИЛ хэлнэ — нүд яагаад нээгдэхгүйг ойлгоно */}
+        {!locked && restoring && (
+          <span className={st.restoringBadge} role="status">{tr('Ноорог сэргээж байна…')}</span>
+        )}
+        {/* ⚠️ 2026-10-01: ОФЛАЙН — бөглөлт зогсохгүй (локалд хадгалагдана), ArcGIS руу дараа нь */}
+        {!locked && offline && (
+          <span className={st.offlineBadge} role="status"
+            title={tr('Сүлжээ тасарсан — засвар энэ төхөөрөмжид хадгалагдаж байна; сүлжээ сэргэмэгц ArcGIS руу автоматаар хуулагдана. Илгээх боломжгүй.')}>
+            {tr('Офлайн')}
+          </span>
+        )}
         {/* ⚠️ ТАЙЛБАР — ХОЁР төлөвийн ялгааг ҮГЭЭР хэлнэ (2026-09-06).
             Өнгө ганцаараа мэдээлэл дамжуулах ёсгүй (төслийн дүрэм).
             Зөвхөн ноорогтой үед гарна — юу ч бөглөөгүй бол чимээ болно. */}

@@ -14,6 +14,7 @@ import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
 import { t as tr } from "@/lib/i18nCore";
 import { invalidate } from "@/lib/dataBus";
+import { spanFrac } from "@/lib/plan";
 
 export type SheetRow = {
   oid: number;
@@ -865,14 +866,11 @@ export const planAt = (
      өдөр «хийгдсэн» мэт. Одоо ажил `[s 00:00, e+1 хоног 00:00)` хооронд
      шугаман өсөж, `asOf`-ийг ТЭР ӨДРИЙН ТӨГСГӨЛӨӨР үнэлнэ (тайлангийн огноо =
      «тэр өдрийг оруулаад»; `huvaariObyem.planPctFromMonths`-ийн `gone + 1`-тэй
-     ижил). Тиймээс эхлэх өдрийн тайланд 1/N, дуусах өдрийнх 100%. */
-  const DAY = 86_400_000;   // `plan.DAY`-тай ижил (огноо нь UTC шөнө дунд)
-  const t = Math.floor(asOf / DAY) * DAY + DAY;
-  const eEx = e + DAY;
-  if (eEx <= s) return t > s ? 1 : 0;   // урвуу муж — унагаахгүй
-  if (t <= s) return 0;
-  if (t >= eEx) return 1;
-  return (t - s) / (eEx - s);
+     ижил). Тиймээс эхлэх өдрийн тайланд 1/N, дуусах өдрийнх 100%.
+     ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр «бүгдийг зас»): томъёо нь `plan.spanFrac`-д
+     НЭГТГЭГДЭВ — сарын задаргааны сар доторх хувь (`planPctFromMonths`, ажлын эхлэх–
+     дуусах өдрөөр) ЯГ ИЖИЛ функцийг дууддаг. Утга өөрчлөгдөөгүй (урвуу муж ч ижил). */
+  return spanFrac({ start: s, end: e }, asOf);
 };
 
 /**
@@ -884,6 +882,14 @@ export const planAt = (
  * ⚠️ Нүдэнд харагдах утганд ЭНИЙГ ХЭРЭГЛЭХГҮЙ — тайлбарыг `Calc.actAgg`-аас
  *    унш: нүд нь өгөгдлийн алдааг ил гаргах ёстой.
  */
+/**
+ * «100%-ИАС ИХ» ТУГИЙН БОСГО — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
+ * ⚠️ Архив 1.1 + нэмэлт 2.2 = 3.3000000000000003 ÷ Обьём 3.3 = 1.0000000000000002 —
+ *    нүд «100%» харагдах атлаа `.pctOver` (улаан, «100%-иас их») өнгөтэй болдог байв.
+ *    Жинхэнэ хэтрэлт (1.001 г.м.) хэвээр тугтай; `clamp1` хөндөгдөхгүй.
+ */
+const ACT_OVER = 1 + 1e-9;
+
 const clamp1 = (v: number | null): number | null =>
   v == null ? null : v > 1 ? 1 : v;
 
@@ -1615,7 +1621,8 @@ export function computeAll(
           act[b] = res
             ? res.act
             : cumI != null && rVol != null && rVol > 0 ? cumI / rVol : r.act[b];
-          actOver[b] = act[b] != null && act[b]! > 1;
+          /* ⚠️ 2026-09-30: хөвөгч цэгийн хүлцэл (`ACT_OVER`-ийн ⚠️) */
+          actOver[b] = act[b] != null && act[b]! > ACT_OVER;
           actAgg[b] = clamp1(act[b]);
           continue;
         }
@@ -1660,7 +1667,7 @@ export function computeAll(
          *    `actAgg` нь 1-ээр таслагдаж, бүлэг · J · E рүү зөвхөн тэр нь
          *    дамжина. Нүдийг ч таслах хувилбарыг СОНГОСОНГҮЙ: тэгвэл алдаа
          *    бүрмөсөн үл үзэгдэх болж, хэн ч засахгүй өнгөрнө. */
-        actOver[b] = act[b] != null && act[b]! > 1;
+        actOver[b] = act[b] != null && act[b]! > ACT_OVER;
         actAgg[b] = clamp1(act[b]);
       }
     }

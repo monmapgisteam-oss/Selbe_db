@@ -96,6 +96,11 @@ export const F = {
   /**
    * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрийн JSON массив.
    *
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас — ШИЙДВЭР): ШИНЭ бичлэг нь мөрийн
+   *    ТОГТВОРТОЙ түлхүүрээр `{"v":2,"c":["<oid>|<sid>|<блок>"]}` (`hyanaltOkCells.ts`);
+   *    хуучин индексийн массивыг зөвхөн уншина (мөрийн дараалал баттай үед), эс
+   *    бөгөөс «дахин хянах». Индекс нь мөр нэмэгдэх/жааз солигдоход гулсдаг байв.
+   *
    * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ (2026-09-22, хэрэглэгчийн шаардлага): хянагч нүд
    *    бүрээр зөвшөөрдөг (`Guitsetgel.toggleOk`) бөгөөд «зөвшөөрсөн 7/10»
    *    гэж тоологддог атал тэр сонголт ЗӨВХӨН React state-д байсан тул
@@ -111,6 +116,18 @@ export const F = {
    *    бүр өөрөө шийдэх шаардлагатай болно.
    */
   okCells: 'Zovshoorson_nud',
+
+  /**
+   * ШИЙДВЭРИЙН ТҮҮХ (ЛОГ) — `{stage, who, at, act, reason}` үйл явдлын JSON массив
+   * (`hyanaltHistory.ts`).
+   *
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): шат бүр ГАНЦ нэрийн талбартай тул
+   *    дараагийн шийдвэр өмнөх нэрийг дардаг байв. Лог нь шийдвэр БҮРИЙГ хадгална.
+   * ⚠️ ТАЛБАРЫГ AGOL ДЭЭР ГАРААР НЭМНЭ (String, урт 65536) — програм
+   *    `hasHistoryField()`-ээр илрүүлж, БАЙВАЛ л бичнэ; байхгүй бол урьдын зан.
+   * ⚠️ ЛАТИН нэр — `okCells`-ийн ⚠️-тэй ижил шалтгаан (`N'…'` шаардлагагүй).
+   */
+  history: 'Shiidveriin_tuuh',
 
   status: 'Төлөв',
 } as const;
@@ -251,6 +268,8 @@ export type Row = {
   [F.chiefReturned]: string | null;
   [F.chiefSent]: string | null;
   [F.okCells]: string;
+  /** ⚠️ 2026-10-01: шийдвэрийн лог (JSON) — талбаргүй үйлчилгээнд `''` */
+  [F.history]: string;
   [F.status]: Status;
 };
 
@@ -330,6 +349,19 @@ async function serviceFieldNames(): Promise<Set<string> | null> {
 export async function hasOkCellsField(): Promise<boolean | null> {
   const have = await serviceFieldNames();
   return have ? have.has(F.okCells) : null;
+}
+
+/**
+ * `Shiidveriin_tuuh` (`F.history`) талбар үйлчилгээнд БАЙНА УУ (2026-10-01).
+ *   · `true`  — байна: `apply`/`recheck` үйл явдал НЭМНЭ;
+ *   · `false` — алга: урьдын зан (лог бичигдэхгүй, анхааруулгагүй — нэмэлт боломж);
+ *   · `null`  — шалгаж чадсангүй: БИЧИХГҮЙ. ⚠️ `okCells`-ээс ялгаатай: лог нь
+ *               шийдвэрийн НЭМЭЛТ мэдээлэл тул танигдахгүй талбар руу бичиж
+ *               шийдвэрийг өөрийг нь эрсдэлд оруулахгүй.
+ */
+export async function hasHistoryField(): Promise<boolean | null> {
+  const have = await serviceFieldNames();
+  return have ? have.has(F.history) : null;
 }
 
 export async function missingDirectorFields(): Promise<string[] | null> {

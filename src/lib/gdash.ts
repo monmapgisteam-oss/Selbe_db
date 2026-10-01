@@ -16,7 +16,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey } from '@/lib/format';
+import { dayKey, monthKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
   BUILDING,
@@ -952,6 +952,83 @@ export function housingSeries(
   });
 }
 
+/**
+ * ОРОН СУУЦНЫ ТӨЛӨВЛӨГӨӨТ ХУВЬ — ТӨСЛИЙН түвшинд ХО дүнгээр жигнэсэн (`housingPct`).
+ *
+ * ⚠️ 2026-09-30: БОДИТ тал (`pkgShared.physNow`/`aggregateMonths` → `housingSeries`)
+ *    ӨНӨӨДӨР ХО дүнгээр жигнэгдэх болсон атал ТӨЛӨВЛӨГӨӨНИЙ тал
+ *    (`planProgress.PlanCurve.months`) БЛОКИЙН тоогоор хэвээр үлдсэн тул
+ *    «төлөвлөсөн − бодит» (PkgProg `TsKpi` · удирдлагын тайлан · Дашбоардын
+ *    хуваарь · PkgFin · `Finance.lagOf`-ийн төслийн зам) ХОЁР ӨӨР жинг хооронд нь
+ *    хасч, хоцрогдлын тоо/өнгө жингийн зөрүүгээр хэлбийж байв. Одоо багц бүрийн
+ *    хуваарийг (`byBagts` — багц доторх нь блокоор, бодит талтай ижил) ЯГ
+ *    `housingSeries`-ийн жингээр нэгтгэнэ.
+ * ⚠️ Багцын хуваарийн мужаас ГАДУУРХ сар — `planProgress`-ийн нэгтгэлийн дүрмээр:
+ *    эхлэхээс өмнө 0%, дууссаны дараа сүүлийн утга (100%).
+ * ⚠️ Тэнхлэг, `vol` ба «дутуу бол хоосон» дүрэм нь `base` (= `PlanCurve.months`)-аас:
+ *    хуудас унасан бол `base` хоосон → энэ ч хоосон (дутуу муруй гаргахгүй).
+ * ⚠️ ХО жинтэй багц НЭГ Ч алга бол `base`-ийг ХЭВЭЭР буцаана (блокийн тооны
+ *    нөөц — `housingPct`-ийн дүрэмтэй ижил санаа).
+ */
+export function housingPlanSeries<P extends { label: string; pct: number }>(
+  byBagts: ReadonlyMap<string, readonly { label: string; pct: number }[]>,
+  cost: ReadonlyMap<string, number>,
+  base: readonly P[],
+): P[] {
+  const pk = [...byBagts]
+    .map(([k, pts]) => ({
+      pts: [...pts].sort((a, b) => a.label.localeCompare(b.label)),
+      w: cost.get(k) ?? 0,
+    }))
+    .filter((x) => x.pts.length > 0 && x.w > 0);
+  if (!pk.length) return [...base];
+  const out: P[] = [];
+  for (const b of base) {
+    const pct = housingPct(pk.map((x) => {
+      let v = 0; /* эхлээгүй багц — 0% */
+      for (const p of x.pts) {
+        if (p.label > b.label) break;
+        v = p.pct; /* муж дотор — тэр сар; дууссан бол сүүлийн утга */
+      }
+      return { pct: v, cost: x.w };
+    }));
+    if (pct != null) out.push({ ...b, pct });
+  }
+  return out;
+}
+
+/**
+ * «ГЭРЭЭЛСЭН ДҮН»-ИЙ ХҮРЭЭ — CASHFLOW_NEW-ийн ТҮҮХИЙ мөрөөс (`FinData.contracts`).
+ *
+ * Порталын ГАНЦ дүрэм (`live.loadBudget.contract`, `reportData.contractAmount`,
+ * `execReport.csum`, `GeneralDash.KpiStrip`): «Нийт»-ийн хүрээ (`finXlInTotal`) ∧
+ * `note === CONTRACTED`. `keys` — тэдгээр мөрийн багцын түлхүүр (`pkg2`, `pkg`;
+ * диапазон мөр хоосон) — «олгосон ÷ гэрээлсэн»-ийн ТООЛОГЧИЙГ шүүнэ
+ * (`reportData.paidContracted`-тай ижил: гэрээлсэн багцын төлбөр л).
+ *
+ * ⚠️ 2026-09-30: Дашбоардын «Санхүүжилтийн хуримтлал — сараар» (тайлбар нь
+ *    «олгосон / гэрээний нийт дүн») `FinData.planTotal`-аар (гэрээ ЭСВЭЛ төсөв,
+ *    БҮХ мөр — 5·6·7-р хэсэг, гэрээгүй мөрийн төсөв ч орно) хуваадаг байсан тул
+ *    Тайлангийн «гэрээлсэн дүнгийн X% нь олгогдсон» ба удирдлагын тайлангийн
+ *    «гэрээний X%»-аас хэдэн нэгж хувиар ДООГУУР гардаг байв.
+ */
+export function contractedScope(
+  rows: Iterable<Readonly<Record<string, unknown>>>,
+): { amount: number; keys: Set<string> } {
+  let amount = 0;
+  const keys = new Set<string>();
+  for (const r of rows) {
+    if (FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1]))) continue;
+    if (String(r[CF.note] ?? '').replace(/\s+/g, ' ').trim() !== CONTRACTED) continue;
+    amount += nOf(r[CF.contract]);
+    for (const v of [r[CF.pkg2], r[CF.pkg]]) {
+      const k = isPkgRange(v) ? '' : bagtsKey(v);
+      if (k && k !== '0') keys.add(k);
+    }
+  }
+  return { amount, keys };
+}
+
 /** CASHFLOW_NEW-ийн ТҮҮХИЙ мөр (`FinData.contracts`, `queryFeatures`) → `pkgCostWeight`-ийн оролт */
 export const cfWeightRow = (r: Readonly<Record<string, unknown>>): { pkg: unknown; cost: number; inTotal: boolean } => ({
   /* ⚠️ `pkg2` эхэлж (навч), хоосон бол `pkg` — `loadOverall`/`Finance.planTotal`-тай ижил */
@@ -1068,8 +1145,11 @@ export function cashflowCurve(
   const per = new Map<string, number>();
   for (const p of plan) {
     if (p.amount == null || p.start == null) continue;
-    const d = new Date(p.start);
-    const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ОРОН НУТГИЙН сар (`monthKey`), UTC БИШ —
+       ТУХ · `Finance.publish` (`keyOf`) · `CashflowPlan`-тай нэг дүрэм. AGOL/Excel-ээс орсон
+       УБ-ын шөнө дунд (= өмнөх өдрийн 16:00Z) сарын 1-ний мөр UTC-ээр ӨМНӨХ сард буудаг байв.
+       Порталаас бичсэн `Date.UTC(y, m, 1)` нь УБ-д ЯГ тэр сар — хуучин өгөгдөл хөдлөхгүй. */
+    const k = monthKey(p.start);
     per.set(k, (per.get(k) ?? 0) + p.amount);
   }
   if (total <= 0) return [];

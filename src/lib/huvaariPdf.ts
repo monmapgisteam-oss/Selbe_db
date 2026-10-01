@@ -40,7 +40,7 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CanvasElement, Column } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { dayKey, num } from '@/lib/format';
 import { spanDays, type Span, type Status } from '@/lib/plan';
 import { stText } from '@/modules/huvaari/util';
 import { renderPdfBase64, download } from '@/lib/emailReport';
@@ -215,13 +215,25 @@ function rangeOf(rows: HvPdfRow[], now: number, hasActual: boolean): [number, nu
 }
 
 /**
+ * Хоногийн масштабын ХАМГИЙН БАГА өргөн (pt/хоног) — 2 оронтой өдрийн дугаар
+ * (6.2pt фонт, ~6.6–7pt) завсартайгаа багтах хэмжээ.
+ */
+const DAY_MIN_PT = 7.5;
+
+/**
  * Мужаас масштаб сонгоно, ирмэгийг нь бүхэл нэгж рүү тэлнэ.
  * ⚠️ БОСГО: 92 хоног (≈3 сар) хүртэл хоног бүр ~8.5pt+ — дугаар багтана;
  *    400 хоног (≈13 сар) хүртэл 7 хоног бүр ~14pt+; түүнээс урт бол сараар.
+ * ⚠️ 2026-09-30: ХОНОГООР нь ЗӨВХӨН хоног бүр `DAY_MIN_PT`-ээс өргөн үед. Дээрх
+ *    ~8.5pt нь A3-ийнх (761pt хуанли); A4-т (522pt) «Ирэх 3 сар» (94 хоног) нь
+ *    5.5pt/хоног болж өдрийн дугаарууд бие биен дээгүүр бичигдэн уншигдахаа
+ *    больдог байв — тэр үед 7 хоногоор зурна (A4: ≤67 хоног л хоногоор).
  */
 function makeAxis(lo: number, hi: number, gw: number, force?: Scale): Axis {
   const span = Math.round((hi - lo) / DAY) + 1;
-  const scale: Scale = force ?? (span <= 92 ? 'day' : span <= 400 ? 'week' : 'month');
+  /* `+ 2` — хоногийн масштаб хоёр захдаа нэг нэг хоног нэмдэг (доор) */
+  const dayOk = span <= 92 && gw / (span + 2) >= DAY_MIN_PT;
+  const scale: Scale = force ?? (dayOk ? 'day' : span <= 400 ? 'week' : 'month');
   let a = lo;
   let b = hi;
   if (scale === 'day') { a -= DAY; b += DAY; }
@@ -460,8 +472,9 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     fillColor: (i: number, _n: unknown, col?: number) => (i === 0 && col !== cols.length ? C.head : null),
   };
 
-  /** Хүснэгтийн толгой мөр — тэнхлэг бүрд шинээр (pdfmake зангилааг өөрчилдөг) */
-  const headRow = (ax: Axis): TableCell[] => {
+  /** Хүснэгтийн толгой мөр — тэнхлэг бүрд шинээр (pdfmake зангилааг өөрчилдөг).
+      `nRows` — ЭНЭ хүснэгтийн (хуудасны хэсгийн) мөрийн тоо: доорх сүлжээ түүгээр (2026-10-01). */
+  const headRow = (ax: Axis, nRows: number): TableCell[] => {
     const left: TableCell[] = cols.map((c) => ({
       text: c.head, bold: true, fontSize: 8, color: C.ink2, alignment: c.align ?? 'left',
       margin: [0, 9, 0, 0],
@@ -498,29 +511,47 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
         relativePosition: { x: xOf(ax, x.now) + 2, y: -HEAD_H + 3 },
       });
     }
-    return [...left, { stack: [{ canvas: cv }, ...txt] }];
+    return [...left, { stack: [{ canvas: cv }, ...txt, ...gridOf(ax, nRows)] }];
   };
 
-  /** Мөрийн сүлжээ — тэнхлэг бүрд нэг удаа бодож кэшлэнэ */
-  const gridCache = new Map<Axis, CanvasElement[]>();
-  const gridOf = (ax: Axis): CanvasElement[] => {
-    const hit = gridCache.get(ax);
-    if (hit) return hit.map((e) => ({ ...e }));
+  /**
+   * БИЕИЙН СҮЛЖЭЭ — ХҮСНЭГТ (хуудасны хэсэг) БҮРД НЭГ УДАА, толгойн нүдэнд (2026-10-01,
+   * хэрэглэгч: бүгдийг зас).
+   *
+   * ⚠️ ЯАГААД: урьд нь хоног/7 хоногийн шугам МӨР БҮРД давтагддаг байв (`bodyRow`-ийн
+   *    `gridOf`) — 1,700 мөр × ~94 шугам ≈ 160 мянган вектор; A3 «Ирэх 3 сар» PDF хөтчид
+   *    ~1 GB санах ой иддэг байв. Одоо хүснэгт бүрд шугам бүр НЭГ удаа, эхний мөрийн
+   *    дээд захаас сүүлийн мөрийн доод зах хүртэл үргэлжилсэн — харагдах байдал ижил
+   *    (мөр хоорондын 0.3pt хэвтээ шугам дээр нь л зурагдана; «Өнөөдөр»-ийн тасархай
+   *    шугамын хэм мөр бүрд дахин эхлэхээ больсон).
+   * ⚠️ СӨРӨГ КООРДИНАТ + `relativePosition` — САНААТАЙ: pdfmake канвасын өндрийг
+   *    `max(y)`-аар хэмждэг тул эерэг урт шугам (а) толгой мөрийг сунгаж, (б) хуудасны
+   *    үлдэгдлээс урт бол толгойг дараагийн хуудас руу түлхэнэ. Тиймээс канвасыг
+   *    сүүлийн мөрийн ДООД зах руу `relativePosition`-оор (салангид блок, байрлалд
+   *    нөлөөгүй) шилжүүлж, шугамыг ДЭЭШ (y ≤ 0) зурна → хэмжсэн өндөр 0.
+   *    Байрлал: толгойн канвас (`HEAD_H`) → толгойн доод зураас 0.7 → мөр бүр
+   *    `ROW_H` + 0.3; сүүлийн мөрийн доод зах = 0.7 + n·unit − 0.3.
+   * ⚠️ Хүснэгт бүр ӨӨРИЙН мөрийн тоотой тул урт бүлэг ГАРААР хуудаслагдана (доорх
+   *    `chunks`) — pdfmake-ийн автомат хуудаслалтад толгой давтагдахад ижил урт
+   *    шугам сүүлийн (дутуу) хуудсанд хүснэгтээс хальна.
+   */
+  const gridOf = (ax: Axis, nRows: number): Content[] => {
+    if (nRows <= 0) return [];
+    const len = nRows * (ROW_H + ROW_LINE) - ROW_LINE;
     const g: CanvasElement[] = [];
     for (const t of ticksOf(ax)) {
       if (t.kind === 'minor' && ax.px < 4) continue;
       g.push({
-        type: 'line', x1: t.x, y1: 0, x2: t.x, y2: ROW_H,
+        type: 'line', x1: t.x, y1: -len, x2: t.x, y2: 0,
         lineWidth: t.kind === 'year' ? 0.9 : t.kind === 'month' ? 0.6 : 0.25,
         lineColor: t.kind === 'minor' ? C.grid : C.gridBig,
       });
     }
     if (x.now >= ax.from && x.now < ax.from + ax.days * DAY) {
       const lx = xOf(ax, x.now);
-      g.push({ type: 'line', x1: lx, y1: 0, x2: lx, y2: ROW_H, lineWidth: 0.9, lineColor: C.bad, dash: { length: 3, space: 2 } });
+      g.push({ type: 'line', x1: lx, y1: -len, x2: lx, y2: 0, lineWidth: 0.9, lineColor: C.bad, dash: { length: 3, space: 2 } });
     }
-    gridCache.set(ax, g);
-    return g.map((e) => ({ ...e }));
+    return g.length ? [{ canvas: g, relativePosition: { x: 0, y: 0.7 + len } }] : [];
   };
 
   const bodyRow = (r: HvPdfRow, ax: Axis, d0: number): TableCell[] => {
@@ -531,11 +562,9 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       { text: r.des != null ? String(r.des) : '—', fontSize: FS, bold: r.group, color: C.ink2, alignment: 'center', margin: [0, ty, 0, 0], fillColor: fill },
       { text: fit(rowLabel(r), cols[1].w - ind - PAD * 2, FS), fontSize: FS, bold: r.group, color: C.ink, margin: [ind, ty, 0, 0], fillColor: fill },
     ];
-    /* ⚠️ Тунгалаг тэгш өнцөгт — хоосон мөрөнд ч canvas өндрийг барина */
     /* ⚠️ Тунгалаг тэгш өнцөгт — хоосон мөрөнд ч canvas өндрийг барина.
-       СҮЛЖЭЭ мөр бүрд (`gridOf`): нэг хуудсанд өөр өөр тэнхлэгтэй хэд хэдэн
-       бүлэг сууж болох тул хуудасны дэвсгэрт нэг удаа зурах боломжгүй. */
-    const cv: CanvasElement[] = [{ type: 'rect', x: 0, y: 0, w: 0.01, h: ROW_H, color: '#ffffff', fillOpacity: 0 }, ...gridOf(ax)];
+       ⚠️ 2026-10-01: СҮЛЖЭЭ мөр бүрд БИШ — хүснэгтийн толгойд нэг удаа (`gridOf`-ийн ⚠️). */
+    const cv: CanvasElement[] = [{ type: 'rect', x: 0, y: 0, w: 0.01, h: ROW_H, color: '#ffffff', fillOpacity: 0 }];
     const half = !!r.ref;
     const refC = r.ref ? clip(ax, r.ref) : null;
     if (refC) {
@@ -658,12 +687,20 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     const soloSummary = sections[si - 1]?.summary && !win && !opts.active;
     const breakBefore = si > 0 && (soloSummary || used + need > G.avail - 4);
     if (breakBefore) used = 0;
-    /* Хуудас дамжсаны дараах `used`-ийг загварчилна */
+    /* Хуудас дамжсаны дараах `used`-ийг загварчилна.
+       ⚠️ 2026-10-01: ХУУДАС БҮРИЙН мөрийн тоог (`chunks`) хадгална — хүснэгт бүр өөрийн
+       сүлжээтэй тул бүлгийг ГАРААР хуудаслана (`gridOf`-ийн ⚠️). Загварчлал нь бодит
+       зохиомжоос ИЛҮҮ өндөр тооцдог (гарчиг ~17pt < `TITLE_H`, `− 4` нөөц) тул хэсэг
+       бүр хуудсандаа ЯГ багтана — pdfmake өөрөө дахин таслахгүй. */
+    const chunks: number[] = [];
     let left = n;
     let y = used + TITLE_H + headH;
     while (left > 0) {
       const fit1 = Math.max(0, Math.floor((G.avail - 4 - y) / unit));
-      if (left <= fit1) { y += left * unit; left = 0; } else { left -= fit1; y = headH; }
+      if (left <= fit1) { chunks.push(left); y += left * unit; left = 0; } else {
+        if (fit1 > 0) chunks.push(fit1);
+        left -= fit1; y = headH;
+      }
     }
     used = y + GAP;
 
@@ -677,16 +714,26 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       ],
       margin: [0, 0, 0, TITLE_H - 15],
     });
-    content.push({
-      table: {
-        headerRows: 1,
-        dontBreakRows: true,
-        widths: [...cols.map((c) => c.w), GW],
-        heights: (k: number) => (k === 0 ? HEAD_H : ROW_H),
-        body: [headRow(ax), ...sec.rows.map((r) => bodyRow(r, ax, d0))],
-      },
-      layout: tableLayout,
-      margin: [0, 0, 0, GAP],
+    /* ⚠️ 2026-10-01: хуудас бүрд ТУСДАА хүснэгт (толгой + сүлжээ + тэр хуудасны мөрүүд).
+       Үргэлжлэлийн хүснэгт шинэ хуудаснаас — урьдын `headerRows` давталттай ИЖИЛ харагдана.
+       `headerRows: 1` хэвээр: загварчлал алдвал (болох ёсгүй) толгой ч гэсэн давтагдана. */
+    let at = 0;
+    chunks.forEach((cnt, ci) => {
+      const part = sec.rows.slice(at, at + cnt);
+      at += cnt;
+      const last = ci === chunks.length - 1;
+      content.push({
+        ...(ci > 0 ? { pageBreak: 'before' as const } : {}),
+        table: {
+          headerRows: 1,
+          dontBreakRows: true,
+          widths: [...cols.map((c) => c.w), GW],
+          heights: (k: number) => (k === 0 ? HEAD_H : ROW_H),
+          body: [headRow(ax, part.length), ...part.map((r) => bodyRow(r, ax, d0))],
+        },
+        layout: tableLayout,
+        margin: [0, 0, 0, last ? GAP : 0],
+      });
     });
   });
   if (!content.length) content.push({ text: tr('Хуваарьтай мөр алга.'), fontSize: 11, color: C.ink3 });
@@ -718,7 +765,11 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     color: C.ink2,
   });
 
-  const printed = iso(Date.now());
+  /* ⚠️ 2026-09-30: ХЭВЛЭСЭН ӨДӨР — ОРОН НУТГИЙН (`dayKey`), `iso` (UTC) БИШ. `iso` нь
+     хуанлийн UTC-шөнө-дундын огноонд зориулагдсан; ЦАГТАЙ `Date.now()`-ийг UTC-ээр
+     өдөр болгоход УБ-д 00:00–07:59-д хэвлэсэн PDF «өчигдөр» гэж гардаг байв
+     (`format.dayKey`-ийн ⚠️ дүрэм). */
+  const printed = dayKey(Date.now());
   const sub = [
     x.kindLabel,
     x.block,

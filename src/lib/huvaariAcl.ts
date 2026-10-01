@@ -89,6 +89,9 @@ export const removeHuvaariAssign = (user: string, revoke = true) => acl.remove(u
 /** Аккаунт УСТГАХАД мөрийг бүрмөсөн арилгах (эрх буцаахгүй) */
 export const purgeHuvaariAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryHuvaariAssign = acl.retry;
+
 /** Тухайн хэрэглэгчийн ХУВААРИЙН багцууд — ТУХАЙН ҮҮРГЭЭР */
 export const huvaariScope = (user: string | null | undefined, role: PlanRole) =>
   acl.scope(user, role);

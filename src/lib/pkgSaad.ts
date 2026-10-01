@@ -11,6 +11,8 @@ import { queryFeatures } from '@/lib/query';
 import { BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey } from '@/lib/services';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { register } from '@/lib/dataBus';
+import { subscribeTotals } from '@/lib/totals';
+import { commonName } from '@/lib/butetsPacks';
 import { text } from '@/lib/format';
 
 
@@ -56,6 +58,10 @@ const BLOCK_LAYER = 'mon:building';
  */
 let ovCache: Promise<PkgOverlap[]> | null = null;
 register(() => { ovCache = null; }, ['PARCEL_LEFT']);
+/* ⚠️ 2026-09-30: ДЭД БҮТЭЦ засагдахад (нэмэх · устгах · хэлбэр) «Саад — багцаар» хуучирдаг
+   байв — `DedButets`-ийн бичих бүх зам `dropTotalsCache()`-аар дуусдаг (энэ харагдацын
+   автобусын таг байхгүй), тэр эриний өсөлтийг сонсоно. */
+subscribeTotals(() => { ovCache = null; });
 export function loadPkgOverlaps(): Promise<PkgOverlap[]> {
   if (ovCache) return ovCache;
   const run = loadPkgOverlapsRaw();
@@ -108,7 +114,9 @@ async function loadPkgOverlapsRaw(): Promise<PkgOverlap[]> {
   /* Дэд бүтцийн багц — давхаргын гарчгуудын НИЙТЛЭГ хэсгийг нэр болгоно */
   const infra: Omit<PkgOverlap, 'oids' | 'failed'>[] = Object.entries(PKG_BY_BAGTS).map(([key, ids]) => ({
     key,
-    name: ids.length ? (LAYER_BY_ID[ids[0]]?.title ?? key) : key,
+    /* ⚠️ 2026-09-30: НИЙТЛЭГ хэсэг (`butetsPacks.commonName`) — урьд нь ЭХНИЙ давхаргын нэр
+       («Багц 5.1 · ДХТ») тул «Газар»/«Ерөнхий дашбоард» багцыг нэг давхаргаар нэрлэдэг байв. */
+    name: ids.length ? commonName(ids.map((id) => LAYER_BY_ID[id]?.title ?? id)) : key,
     layerIds: ids,
     where: null,
   }));

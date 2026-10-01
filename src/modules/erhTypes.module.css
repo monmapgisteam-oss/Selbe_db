@@ -75,3 +75,24 @@
 
 /* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг (2026-09-30: багцын чип хасагдсан) */
 .typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ⚠️ 2026-10-01: «шинэ хуудас — загварт тохируулаагүй» — хадгалсан загварын ДАРАА нэмэгдсэн хуудас
+   (`roleTypes.unseenViews`). Баганын толгойд товч (дарвал «тохируулсан» ноорог), мөрийн нэрэнд шошго. */
+.newBadge {
+  display: inline-block;
+  margin: 3px auto 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: normal;
+}
+button.newBadge { cursor: pointer; }
+button.newBadge:disabled { opacity: 0.5; cursor: default; }
+.lbl .newBadge { margin: 2px 0 0 6px; }
+.cellNew { background: color-mix(in srgb, var(--warn, #d97706) 12%, transparent); }

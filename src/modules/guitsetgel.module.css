@@ -863,3 +863,20 @@
   color: var(--ink);
   font-size: 0.76rem;
 }
+
+/* ⚠️ 2026-10-01: «Тойм»-ын матриц ба нүдний засварлагчид устгагдсан / админ (хатуу super) аккаунтыг
+   ялгана — урьд нь энгийн эзэн шиг харагдаж, устгагдсан батлагчийг «байгаа» гэж андуурдаг байв. */
+.aclGoneName { text-decoration: line-through; color: var(--ink-3); }
+.aclAdminName { font-style: italic; color: var(--ink-2); }
+.aclMarkTag {
+  margin-left: 3px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 0.6rem;
+  font-weight: 600;
+  font-style: normal;
+  text-decoration: none;
+  display: inline-block;
+}

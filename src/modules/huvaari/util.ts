@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
 import type { PlanRow, Span, Status } from '@/lib/plan';
-import { balanced, type MonthRes } from '@/lib/huvaariObyem';
+import { balanced, monthsOf, type MonthRes } from '@/lib/huvaariObyem';
 import type { PlanKind } from './types';
 
 /** Ажил+блокийн ноорогийн түлхүүр */
@@ -244,6 +244,11 @@ export const inScope = (scope: string[] | null, group: string): boolean =>
  *    зам мөнхөд түгжигдэж байв (одоо `applyChanges`/`applyModal` ийм ноорогийг хасдаг
  *    ч хуучин ноорог/өөр замаар орсныг энд давхар хамгаална).
  * ⚠️ Обьёмгүй (`vol` null/0) эсвэл кодгүй мөрд шалгах суурь алга — алгасна.
+ * ⚠️ 2026-09-30: НЭР НЬ БЛОКТОЙ — «1.2 Ажил (5/2)». Урьд нь зөвхөн ажлын нэр тул
+ *    хэрэглэгч цонхыг ИДЭВХТЭЙ блок дээр нээж тэнцсэн задаргаа хараад («зөв
+ *    хуваасан ч болохгүй») өөр блокийн (гинж · алхамтай олон блок) тэнцээгүйг
+ *    олдоггүй байв. Нэг ажил хэд хэдэн блокт бол нэг нэрэнд блокууд жагсана.
+ *    Ганц блоктой багцад блок бичихгүй (нэр хэвээр). `bad` нь (ажил·блок)-оор хэвээр.
  */
 export function unbalancedObyem(
   plan: readonly PlanRow[],
@@ -252,18 +257,120 @@ export function unbalancedObyem(
   obPlan: ReadonlyMap<number, ReadonlyMap<string, ReadonlyMap<string, number>>>,
 ): { bad: number; names: string[] } {
   let bad = 0;
-  const names = new Set<string>();
+  /** ажлын нэр → тэнцээгүй блокууд (оруулсан дарааллаар) */
+  const names = new Map<string, string[]>();
   for (const r of plan) {
+    /* ⚠️ 2026-10-01: БҮЛЭГ АЛГАСНА — `unbalancedBlocks`-ийн ⚠️ («Сарын обьём бүлэгт биш») */
+    const bs = unbalancedBlocks(r, bld, obDraft, obPlan, true);
+    if (!bs.length) continue;
+    bad += bs.length;
+    const k = `${r.no} ${r.work}`.trim();
+    const cur = names.get(k) ?? [];
+    for (const b of bs) if (!cur.includes(bld[b])) cur.push(bld[b]);
+    names.set(k, cur);
+  }
+  return {
+    bad,
+    names: [...names].map(([k, bs]) => (bld.length > 1 ? `${k} (${bs.join(', ')})` : k)),
+  };
+}
+
+/**
+ * НЭГ АЖЛЫН ТЭНЦЭЭГҮЙ БЛОКУУД (индекс) — `unbalancedObyem` ба `PlanModal`-ын улаан
+ * чип НЭГ дүрмээр (2026-10-01, хэрэглэгч: бүгдийг зас — «асуудалтай блокийг шууд олох»).
+ *
+ * ⚠️ `draftOnly` = илгээх хаалтын дүрэм (зөвхөн НООРОГТ задаргаа); `false` = цонхны
+ *    чип — үр дүнтэй задаргаа (ноорог ?? сервер): серверт хадгалагдсан тэнцээгүй
+ *    задаргаа ч асуудал тул улаан.
+ * ⚠️ БҮЛЭГ ХЭЗЭЭ Ч ТЭНЦЭЭГҮЙ БИШ (2026-10-01): «Сарын обьём бүлэгт биш» (2026-09-30,
+ *    `PlanModal`-ын `total`) — бүлэгт сарын нүд гардаггүй тул засах ЗАМГҮЙ. Урьд нь
+ *    HUVAARI_OBYEM-д бүлгийн кодоор хадгалагдсан задаргаа хүүхдийг чирэхэд бүлгийн
+ *    муж дагаж `keepMonths`-оор тайрагдаж «тэнцэхгүй» болж, илгээх/батлах МӨНХӨД
+ *    хаагддаг байв. Одоо бүлгийн задаргааг тэнцлийн шалгалтад ҮЛ ТООНО — оронд нь
+ *    `groupSplits`-ээр ил мэдээлнэ.
+ * ⚠️ Хоосон задаргаа + хуваарьтай блок = 0 ≠ обьём — ЗӨВХӨН серверт задаргаа байсан
+ *    үед (`unbalancedObyem`-ийн 2026-09-21-ний дүрэм).
+ */
+export function unbalancedBlocks(
+  r: PlanRow,
+  bld: readonly string[],
+  obDraft: ReadonlyMap<string, ReadonlyMap<string, number>>,
+  obPlan: ReadonlyMap<number, ReadonlyMap<string, ReadonlyMap<string, number>>>,
+  draftOnly = false,
+): number[] {
+  const out: number[] = [];
+  if (r.group || r.des == null || r.vol == null || !(r.vol > 0)) return out;
+  for (let b = 0; b < bld.length; b += 1) {
+    const blok = bld[b];
+    if (!blok) continue;
+    const d = obDraft.get(obKey(r.des, blok));
+    const srv = obPlan.get(r.des)?.get(blok);
+    const months = draftOnly ? d : (d ?? srv);
+    if (!months) continue;
+    if (months.size && !balanced(months, r.vol)) out.push(b);
+    else if (!months.size && d && r.spans[b] && (srv?.size ?? 0) > 0) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * БҮЛГИЙН КОДООР ХАДГАЛАГДСАН САРЫН ЗАДАРГАА — тэнцлийн шалгалтад ОРОХГҮЙ тул ил
+ * мэдээлнэ (2026-10-01, `unbalancedBlocks`-ийн ⚠️). Нэрс (`№ ажил`), давхардалгүй.
+ * ⚠️ Устгахгүй, засахгүй — хэрэглэгчийн шийдвэр/админы цэвэрлэгээ; апп зөвхөн хэлнэ.
+ */
+export function groupSplits(
+  plan: readonly PlanRow[],
+  bld: readonly string[],
+  obPlan: ReadonlyMap<number, ReadonlyMap<string, ReadonlyMap<string, number>>>,
+): string[] {
+  const out: string[] = [];
+  for (const r of plan) {
+    if (!r.group || r.des == null) continue;
+    const by = obPlan.get(r.des);
+    if (by && bld.some((b) => (by.get(b)?.size ?? 0) > 0)) out.push(`${r.no} ${r.work}`.trim());
+  }
+  return out;
+}
+
+/**
+ * МУЖААС ГАДУУРХ САРЫН ОБЬЁМ — батлахын өмнөх хаалт (2026-10-01, хэрэглэгч: бүгдийг зас).
+ *
+ * ⚠️ ЯАГААД: батлагдмагц хуваарь эх хуудсанд, задаргаа HUVAARI_OBYEM-д бичигдэнэ.
+ *    Обьёмтой сар нь ажлын эхлэх–дуусах мужаас ГАДУУР бол (хуучирсан серверийн
+ *    задаргаа, өөр замаар шилжсэн огноо, хуучин ноорог) `planPctFromMonths` тэр
+ *    сарыг ажил эхлэхээс өмнө/дууссаны дараа «төлөвлөсөн» гэж тооцож муруй гажина.
+ * ⚠️ Зөвхөн `only`-д байгаа (энэ илгээлтээр өөрчлөгдсөн) мөр — бусдын хуучин
+ *    өгөгдлөөс болж батлагч гацахгүй. Бүлэг алгасна (`unbalancedBlocks`-ийн ⚠️).
+ * ⚠️ `0` утгатай сар АСУУДАЛ БИШ («тэр сард ажил хийхгүй» — обьём алга); хуваарьгүй
+ *    блокт обьём байвал (муж `null`) бүх сар нь гадуур.
+ * @param obOf үр дүнтэй задаргаа (ноорог ?? сервер) — `Huvaari.obOf`
+ * @returns `bad` = (ажил·блок) тоо; `names` = «1.2 Ажил (B2: 2026-03, 2026-04)»
+ */
+export function obyemOutsideSpan(
+  plan: readonly PlanRow[],
+  bld: readonly string[],
+  obOf: (des: number, blok: string) => ReadonlyMap<string, number>,
+  only?: ReadonlySet<number>,
+): { bad: number; names: string[] } {
+  let bad = 0;
+  const names: string[] = [];
+  for (const r of plan) {
+    if (r.group || r.des == null) continue;
+    if (only && !only.has(r.oid)) continue;
+    const parts: string[] = [];
     for (let b = 0; b < bld.length; b += 1) {
       const blok = bld[b];
-      if (r.des == null || !blok) continue;
-      const months = obDraft.get(obKey(r.des, blok));
-      if (!months || r.vol == null || !(r.vol > 0)) continue;
-      if (months.size && !balanced(months, r.vol)) { bad += 1; names.add(`${r.no} ${r.work}`.trim()); }
-      else if (!months.size && r.spans[b] && (obPlan.get(r.des)?.get(blok)?.size ?? 0) > 0) {
-        bad += 1; names.add(`${r.no} ${r.work}`.trim());
-      }
+      if (!blok) continue;
+      const months = obOf(r.des, blok);
+      if (!months.size) continue;
+      const sp = r.spans[b];
+      const ok = new Set(sp ? monthsOf(sp) : []);
+      const out = [...months].filter(([k, v]) => v != null && v !== 0 && !ok.has(k)).map(([k]) => k).sort();
+      if (!out.length) continue;
+      bad += 1;
+      parts.push(bld.length > 1 ? `${blok}: ${out.join(', ')}` : out.join(', '));
     }
+    if (parts.length) names.push(`${`${r.no} ${r.work}`.trim()} (${parts.join('; ')})`);
   }
-  return { bad, names: [...names] };
+  return { bad, names };
 }

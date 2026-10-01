@@ -68,6 +68,7 @@ import {
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { loadNegtgelPct } from '@/lib/negtgel';
+import { latestLaborRow, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
 import {
   finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
 } from '@/lib/finExcelLayout';
@@ -327,7 +328,7 @@ export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'C
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW_NEW.fields;
-  const { loadBlockProgress } = await import('@/lib/blockProgress');
+  const { loadBlockProgress, pkgProgressOf } = await import('@/lib/blockProgress');
   const [cells, labels, cf] = await Promise.all([
     loadBlockProgress(),
     loadPkgLabels(),
@@ -349,27 +350,23 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
      `pkg2` (навч) эхэлж, `pkgKeyOf` (ДИАПАЗОН мөр «Багц 14»-т наалдахгүй). */
   const budget = pkgCostWeight(cf.map(cfWeightRow));
 
-  /** багц → блокийн гүйцэтгэлүүд (0–1) */
-  const byPkg = new Map<string, number[]>();
-  for (const [key, cell] of cells) {
-    // Түлхүүр нь `${БАГЦ}|${блок}` (`buildingKey`) — багцын хэсгийг нь авна
-    const pkg = key.split('|')[0];
-    if (!pkg) continue;
-    const arr = byPkg.get(pkg) ?? [];
-    // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
-    arr.push(cell.overall);
-    byPkg.set(pkg, arr);
-  }
+  /* багц → хэмжигдсэн блокуудын дундаж (0–100) ба блокийн тоо.
+     ⚠️ 2026-09-30: `blockProgress.pkgProgressOf` — Тайлан §2 (`joinBagts`) ·
+     удирдлагын тайлан · Дашбоард · `loadFillPkgProgress`-тэй НЭГ функц (урьд нь
+     энд ижил тооцооны хуулбар байсан; бусад нь давхаргын feature-ээр гүйлгэж
+     Багц 1 · 2-т §2 ба §3 өөр хувь хэвлэдэг байв). */
+  const byPkg = pkgProgressOf(cells);
 
   /* Төсвийн НИЙТ дүн — жинг 0–1 болгож нормчилох хуваарь */
   const budgetAll = [...budget.values()].reduce((a, b) => a + b, 0);
 
-  const raw = [...byPkg.entries()].map(([pkg, list]) => ({
+  const raw = [...byPkg.entries()].map(([pkg, m]) => ({
     label: labels.get(pkg) ?? pkg,
-    rows: list.length,
+    rows: m.blocks,
     /* Төсөв байхгүй бол блокийн тоо — нэгж нь өөр ч доор нормчлогдоно */
     money: budget.get(pkg) ?? 0,
-    actual: list.length ? list.reduce((x, y) => x + y, 0) / list.length : 0,
+    // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
+    actual: m.pct,
     planned: null as number | null,
   }));
 
@@ -879,7 +876,11 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
        */
       outFields: [
         L.ognoo,
-        'objectid', // ⚠️ давхар өдрийн tie-break (2026-09-17) — давхаргын OID нэр жижиг үсэгтэй
+        OID_FIELD, // ⚠️ давхар өдрийн tie-break (2026-09-17) — давхаргын OID нэр жижиг үсэгтэй
+        /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): EditDate — tie-break-ийн ЭХНИЙ шат
+           (`ceo/workforce.latestLaborRow`). Survey123 давхаргад Editor Tracking асаалттай
+           (`editFieldsInfo.editDateField = 'EditDate'`, CEO самбар аль хэдийн уншдаг). */
+        EDIT_DATE_FIELD,
         ...HABEA.labor.companies.flatMap((c) => {
           const f = laborCompanyFields(c.sfx);
           return [f.mongol, f.gadaad, f.niitAjiltan, f.niitTehnik];
@@ -892,8 +893,11 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
   /* Хамгийн сүүлийн бүртгэл — маягт нэг мөрөөр «өнөөдрийн байдал»-ыг илэрхийлнэ */
   /* ⚠️ НЭГ ӨДӨРТ ДАВХАР МӨР бий (228 өдрийн 3-т, `ceo/workforce.ts`) — тэр өдрийг
      нийлүүлбэл ажилтан/техник 2× гарна (2026-09-17). Дэлгэц (`Habea.tsx`) ба
-     `workforce.ts` нэг мөр авдаг тул тайлан ч ХАМГИЙН СҮҮЛИЙН (OID их) нэгийг. */
-  const last = labor.slice().sort((a, b) => (nn(b[L.ognoo]) - nn(a[L.ognoo])) || (nn(b.objectid) - nn(a.objectid)))[0];
+     `workforce.ts` нэг мөр авдаг тул тайлан ч ХАМГИЙН СҮҮЛИЙН нэгийг.
+     ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ижил огноотой мөрүүдийн дунд EditDate →
+     OID (урьд нь OID л) — CEO самбарын `groupDays`-тай НЭГ дүрэм (`latestLaborRow`):
+     засварласан хуучин мөр (бага OID, шинэ EditDate) тайланд алгасагддаг байв. */
+  const last = latestLaborRow(labor);
   const day = last ? [last] : [];
   const at = (f: string) => day.reduce((a, r) => a + nn(r[f]), 0);
 

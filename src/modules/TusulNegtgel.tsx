@@ -160,6 +160,7 @@ export function TusulNegtgel() {
         <>
           <SyncNotice
             live={d.live}
+            failed={d.failed}
             sync={d.sync}
             onDone={() => { dropNegtgelFull(); q.retry?.(); }}
           />
@@ -178,8 +179,10 @@ export function TusulNegtgel() {
  *    «Системийн утгаар шинэчлэх»-ээр баталгаажуулна (Excel-ээс тарьсан
  *    хүснэгтийн анхны синк г.м.). `guard` төлөв нь ЗӨВХӨН super-д ирнэ.
  */
-function SyncNotice({ live, sync, onDone }: {
+function SyncNotice({ live, failed, sync, onDone }: {
   live: boolean;
+  /** ⚠️ 2026-10-01: унасан/хэсэгчилсэн эхийн нэрс (`NegtgelFull.failed`) */
+  failed: string[];
   sync: Promise<NegSyncState> | null;
   onDone: () => void;
 }) {
@@ -192,9 +195,21 @@ function SyncNotice({ live, sync, onDone }: {
   }, [sync]);
 
   if (!live) {
-    return <p className={n.syncNote}>{tr('Системийн эх уншигдсангүй — хүснэгтийн хадгалсан утгыг харуулж байна.')}</p>;
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): АЛЬ эх унасныг нэрлэнэ; энэ үр дүн кэшлэгдэхгүй тул
+       дараагийн нээлт дахин уншина. */
+    return (
+      <p className={n.syncNote} role="status">
+        {failed.length
+          ? tr('Системийн эх уншигдсангүй ({0}) — хүснэгтийн хадгалсан утгыг харуулж байна. Дараагийн нээлтэд дахин уншина.', failed.join(', '))
+          : tr('Системийн эх уншигдсангүй — хүснэгтийн хадгалсан утгыг харуулж байна.')}
+      </p>
+    );
   }
-  if (!st || st.kind === 'off' || st.kind === 'ok') return null;
+  /* ⚠️ 2026-10-01: ХЭСЭГЧЛЭН уншигдсан эх (хуваарийн муруйн хуудас) — тоо бодогдсон ч дутуу байж болно */
+  const partialNote = failed.length
+    ? <p className={n.syncNote} role="status">{tr('Хэсэгчлэн уншигдсан: {0} — зарим төлөвлөгөөт хувь дутуу байж болно. Дараагийн нээлтэд дахин уншина.', failed.join(', '))}</p>
+    : null;
+  if (!st || st.kind === 'off' || st.kind === 'ok') return partialNote;
   /* ⚠️ 2026-09-29 (аудит 10): `force` ЗӨВХӨН `guard` төлөвт (super хамгаалалтыг
      нүдээр харж баталгаажуулсан). Урьд нь `error` төлөвийн цорын ганц товч ч
      мөн `force: true` дууддаг тул түр 429-ийн дараах «дахин оролдлого» ±20-ийн
@@ -209,6 +224,8 @@ function SyncNotice({ live, sync, onDone }: {
   };
   const p1 = (v: number) => fmtPct(v * 100, 2);
   return (
+    <>
+    {partialNote}
     <div className={n.syncNote} role="status">
       {st.kind === 'error' ? (
         <span>{tr('Синк хийгдсэнгүй — {0}', st.reason)}</span>
@@ -227,6 +244,7 @@ function SyncNotice({ live, sync, onDone }: {
         {busy ? tr('Бичиж байна…') : st.kind === 'error' ? tr('Дахин оролдох') : tr('Системийн утгаар шинэчлэх')}
       </button>
     </div>
+    </>
   );
 }
 

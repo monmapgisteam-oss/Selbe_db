@@ -212,3 +212,15 @@ export function emptyLabel(kind: DocKind): string {
 /** Мөрийн жагсаалт (алхмууд) ↔ олон мөрт текст */
 export const linesToList = (v: string): string[] => v.split('\n').map((x) => x.trim()).filter(Boolean);
 export const listToLines = (xs: readonly string[]): string => xs.join('\n');
+
+/**
+ * ОЛОН МӨРТ ТАЛБАРЫН ТҮҮХИЙ ТЕКСТ (2026-09-30) — гаднаас ирсэн жагсаалт (`joined`)
+ * өөрчлөгдөхөд оролтын текстийг (`txt`) хэвээр үлдээх үү, солих уу.
+ * ⚠️ ЯАГААД: NCR-ийн «Хийсэн алхмууд» `value={listToLines(steps)}` + `linesToList` гэж
+ *    ШУУД холбогдсон тул товчлуур бүрд мөрийн төгсгөлийн зай ТАСРАЛТГҮЙ хасагдаж
+ *    («Арматур солив» → «Арматурсолив»), Enter-ийн хоосон мөр шүүгдэн ШИНЭ МӨР
+ *    нэмэх боломжгүй байв. Текст нь ижил жагсаалт руу задрах бол ХЭВЭЭР (хэрэглэгч
+ *    бичиж байна), эс бөгөөс гаднаас өөрчлөгдсөн (өөр баримт) — солино.
+ */
+export const keepLinesText = (txt: string, joined: string): string =>
+  (listToLines(linesToList(txt)) === joined ? txt : joined);

@@ -298,8 +298,15 @@ function pageH12(doc: IpcDoc, meta: IpcMeta): Obj[] {
 }
 
 export function ipcPdfDoc(doc: IpcDoc, meta: IpcMeta): TDocumentDefinitions {
-  const notes: Obj[] = doc.notes.length
-    ? [{ text: doc.notes.map((n) => `* ${NOTE_MN[n]}`).join('\n'), fontSize: 6, color: '#777777', margin: [0, 6, 0, 0] }]
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): орой эхэлсэн хуудас (`ipcDoc.lateSheetsOf`) —
+     тайлант үед гэрээний эхнээс хуримтлагдсан ажил орсныг баримт дээр ил бичнэ. */
+  const late = doc.lateSheets;
+  const lines = [
+    ...doc.notes.map((n) => `* ${NOTE_MN[n]}`),
+    ...(late.length ? [`* ${late.join(', ')} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул тайлант үеийн гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.`] : []),
+  ];
+  const notes: Obj[] = lines.length
+    ? [{ text: lines.join('\n'), fontSize: 6, color: '#777777', margin: [0, 6, 0, 0] }]
     : [];
   return {
     pageSize: 'A4',

@@ -23,6 +23,7 @@
 import assert from 'node:assert/strict';
 import {
   computeSafety, aggregateSafety, toSafetyRow, damageLevel, DAMAGE_RE, RECENT_DAYS, CREATED_FIELD,
+  isBlankIncident,
 } from './safety.ts';
 import { DMG_BAD_N, INCIDENT_WARN_MAX } from '../kpiLevels.ts';
 
@@ -191,6 +192,25 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
   assert.equal(r.tables[0].rows.length, 301, '300 + «… бас N мөр»');
   assert.equal(r.tables[0].rows[300][0].v, '… бас 20 мөр');
   assert.equal(r.tables[0].rows[300].length, 7, 'тасалсан мөр багана бүрэн');
+}
+
+/* ══════════════ 7. Хоосон ноорог (2026-10-01) ══════════════ */
+/* ⚠️ Survey123-д эхлүүлээд бөглөөгүй маягт (төрөл · багц · огноо гурвуулаа хоосон) осол БИШ.
+   Нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл — хасахгүй. ХАБЭА хуудас ч энэ функцээр. */
+{
+  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, CreationDate: NOW }), true,
+    'CreationDate байсан ч гурвуулаа хоосон бол ноорог');
+  assert.equal(isBlankIncident({ field_7: '  ', field_6: '', field_22: 0 }), true, 'зай/хоосон мөр/0 огноо = хоосон');
+  assert.equal(isBlankIncident({}), true);
+  assert.equal(isBlankIncident({ field_7: 'Зөрчил', field_6: null, field_22: null }), false, 'төрөлтэй');
+  assert.equal(isBlankIncident({ field_7: null, field_6: 'Багц 2', field_22: null }), false, 'багцтай');
+  assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: NOW }), false, 'огноотой');
+  /* Habea.tsx мөн ижил функцээр шүүнэ (эх кодын хамгаалалт) */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
+  assert.ok(src.includes('all.incident.filter((r) => !isBlankIncident(r))'), 'ХАБЭА хуудас хоосон ноорог хасна');
+  const self = readFileSync(new URL('./safety.ts', import.meta.url), 'utf8');
+  assert.ok(self.includes('raw.filter((r) => !isBlankIncident(r))'), 'CEO ачаалагч хоосон ноорог хасна');
 }
 
 console.log('safety.check.mjs — БҮГД ТЭНЦЛЭЭ');

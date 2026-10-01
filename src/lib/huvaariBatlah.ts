@@ -1002,6 +1002,9 @@ export async function decidePlan(args: {
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
   }
+  /* ⚠️ 2026-10-01: нэргүй шийдвэр түгжээ авч чадахгүй (`casClaim` нэрээр баталгаажуулдаг) —
+     урьд нь нэвтрэлтгүй горимд «батлагч: хоосон» шийдвэр бичигддэг байв. */
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   /* ⚠️ 2026-09-29 аудит: хадгалагдах БАТЛАГЧ = нэвтэрсэн хүн (`withdrawPlan`-тай ижил) —
      `args.approver`-т өөр нэр дамжуулж «өөрийгөө батлахгүй» дүрмийг тойрдог байв. */
   const own = sameAsLogin(me);
@@ -1056,13 +1059,32 @@ export async function decidePlan(args: {
   }
   /* ⚠️ 2026-09-29 аудит: БАТЛАХАД түгжээ ӨӨРИЙНХ байх ёстой (хугацаа дууссан ч).
      `save` 10 минутаас хэтэрвэл өөр батлагч түгжиж чаддаг байв — тэр үед энэ
-     батлалт нөгөөгийн бичилтийг «батлагдсан» болгоно. `approver` хоосон (татсан/
-     түгжээгүй) эсвэл өөр хүн бол зогсоно; буцаалт (`approve=false`) хуучин дүрмээр. */
-  if (args.approve) {
-    const raw = s(cur[0][F.approver])?.trim().toLowerCase() ?? '';
-    if (raw && raw !== me) {
-      return { ok: false, error: tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', raw) };
+     батлалт нөгөөгийн бичилтийг «батлагдсан» болгоно. ӨӨР хүний (хугацаа нь
+     дууссан ч) түгжээтэй бол батлахгүй; буцаалт (`approve=false`) хуучин дүрмээр.
+     ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд энд «`approver` ХООСОН бол зогсоно»
+     гэж бичсэн ч код нь хоосон түгжээг ӨНГӨРӨӨЖ, түгжээгүйгээр шийддэг байв (зохиогчийн
+     татахтай зэрэг явж болох). ОДОО: хоосон (эсвэл өөрийн хугацаа дууссан) түгжээг
+     доорх `casClaim`-аар АТОМААР авна (дахин унш → хоосон хэвээр бол өөр дээрээ тавь
+     → дахин уншиж баталгаажуул), ДАРАА нь шийднэ; өөр хүн барьж авбал НЭРИЙГ нь хэлж
+     татгалзана. Буцаалт ч мөн түгжээгүйгээр шийдэхгүй. */
+  const raw = s(cur[0][F.approver])?.trim().toLowerCase() ?? '';
+  if (args.approve && raw && raw !== me) {
+    return { ok: false, error: tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', raw) };
+  }
+  /** Энэ дуудлага өөрөө түгжээ авсан уу — шийдвэрийн бичилт унавал тайлна */
+  let tookClaim = false;
+  if (holder !== me) {
+    const fields = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
+    try {
+      const got = await casClaim({
+        read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null,
+        write: (at) => writeClaim(url, args.oid, me, at),
+      }, me, { requireEmpty: args.approve });
+      if (!got.ok) return { ok: false, error: claimError(got) };
+    } catch (e) {
+      return { ok: false, error: String((e as Error).message || e) };
     }
+    tookClaim = true;
   }
   const attrs: Attrs = {
     [F.oid]: args.oid,
@@ -1086,17 +1108,130 @@ export async function decidePlan(args: {
     else if (len > 0) warn = tr('«{0}» талбар богино ({1} тэмдэгт) — зөвшөөрсөн мөрийн тэмдэглэгээ багтсангүй (шийдвэр хадгалагдсан). AGOL дээр талбарын уртыг 65536 болгоно уу.', F.okRows, String(len));
     else warn = tr('Батлах хүснэгтэд «{0}» талбар алга — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан). AGOL дээр String (урт 65536) талбар нэмнэ үү.', F.okRows);
   }
+  /* ⚠️ 2026-10-01: ӨӨРӨӨ авсан түгжээг шийдвэр бичигдээгүй үед тайлна — эс бөгөөс
+     `CLAIM_TTL` (10 мин) дуустал зохиогч татаж, өөр батлагч шийдэж чадахгүй. */
+  const undo = () => { if (tookClaim) void releasePlanClaim({ oid: args.oid, approver: me }); };
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
     invalidate('HUVAARI_BATLAH');
     return { ok: true, warn };
   } catch (e) {
+    undo();
     return { ok: false, error: String((e as Error).message || e) };
   }
+}
+
+/**
+ * ТҮГЖЭЭГ АТОМААР АВАХ (CAS) — `claimPlan` ба `decidePlan` хоёулаа (2026-10-01,
+ * хэрэглэгч: бүгдийг зас).
+ *
+ * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ тул «харьцуулаад солих»-ыг гурван алхмаар:
+ *    (1) ДАХИН УНШ — `pending` хэвээр, өөр хүний хүчинтэй түгжээгүй (`requireEmpty`
+ *        үед: өөр хүний хугацаа дууссан түгжээ ч байхгүй) байх ёстой;
+ *    (2) ӨӨР ДЭЭРЭЭ БИЧ (`approver = me`, `approverAt = at`);
+ *    (3) ДАХИН УНШИЖ баталгаажуул — зэрэг бичсэн хүн ялсан бол түүний НЭРИЙГ буцаана.
+ *    Зэрэг хоёр түгжилтийн завсар маш богино болно, тэг биш (`claimPlan`-ийн ⚠️).
+ * ⚠️ ЦЭВЭР (сүлжээг `io`-оор) — `huvaariBatlah.check` хуурамч `io`-оор тестэлнэ.
+ */
+export type ClaimFail = { ok: false; why: 'gone' | 'decided' | 'held' | 'expired' | 'write' | 'lost'; holder: string | null; status?: string | null };
+export async function casClaim(
+  io: { read: () => Promise<Attrs | null>; write: (at: number) => Promise<boolean>; now?: () => number },
+  me: string,
+  opt: { requireEmpty: boolean },
+): Promise<{ ok: true } | ClaimFail> {
+  const now = io.now ?? Date.now;
+  const row = await io.read();
+  if (!row) return { ok: false, why: 'gone', holder: null };
+  const st = s(row[F.status]);
+  if (st !== PLAN_STATUS.pending) return { ok: false, why: 'decided', holder: s(row[F.approver])?.toLowerCase() ?? null, status: st };
+  const h = claimHolder(row, now());
+  if (h && h !== me) return { ok: false, why: 'held', holder: h };
+  const raw = s(row[F.approver])?.toLowerCase() ?? '';
+  if (opt.requireEmpty && raw && raw !== me) return { ok: false, why: 'expired', holder: raw };
+  const at = now();
+  if (!(await io.write(at))) return { ok: false, why: 'write', holder: null };
+  const back = await io.read();
+  const who = back ? s(back[F.approver])?.toLowerCase() ?? null : null;
+  const ok = !!back
+    && s(back[F.status]) === PLAN_STATUS.pending
+    && who === me
+    /* Огнооны талбар секундээр тайрагдаж болзошгүй — 1 с-ийн хүлцэл */
+    && Math.abs(Number(back[F.approverAt]) - at) < 1000;
+  if (ok) return { ok: true };
+  return { ok: false, why: 'lost', holder: who && who !== me ? who : null };
+}
+
+/** `casClaim`-ийн татгалзлыг хэрэглэгчийн мессеж болгоно — БАЙГАА мөрүүд (шинэ tr() үгүй) */
+function claimError(f: ClaimFail): string {
+  switch (f.why) {
+    case 'gone': return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
+    case 'decided': return f.holder
+      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', f.holder, f.status ?? '')
+      : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.');
+    case 'expired': return tr('{0} энэ илгээлтийг түгжсэн байна — таны түгжээ хугацаа дууссан. Хуудсаа шинэчилнэ үү.', f.holder ?? '');
+    case 'write': return tr('ArcGIS-т хадгалагдсангүй.');
+    case 'held':
+    case 'lost':
+    default: return f.holder
+      ? tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', f.holder)
+      : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.');
+  }
+}
+
+/** Түгжээг бичнэ (`approver`/`approverAt`) — амжилттай бол `HUVAARI_BATLAH`-ыг хүчингүй болгоно */
+async function writeClaim(url: string, oid: number, me: string, at: number): Promise<boolean> {
+  const j = await arcgisPost(`${url}/applyEdits`, {
+    updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.approver]: me, [F.approverAt]: at } }]),
+    rollbackOnFailure: 'true',
+  });
+  if (!editOk(j.updateResults)) return false;
+  invalidate('HUVAARI_BATLAH');
+  return true;
+}
+
+/**
+ * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ (`payload`-гүй) — `oid`-оор (2026-10-01).
+ * ⚠️ Батлагч эх хуудсанд бичихийн ӨМНӨ төлвийг дахин уншихад (`approveGuard`):
+ *    `loadPending(pkgKey)` нь «татсан» ба «шийдвэрлэсэн»-ийг ялгахгүй (хоёулаа `null`).
+ */
+export async function loadSubmissionHead(oid: number): Promise<PlanSubmission | null> {
+  const rows = await query(`${F.oid} = ${Number(oid)}`, HEAD_FIELDS);
+  return rows.length ? toSubmission(rows[0]) : null;
+}
+
+/**
+ * ЭХ ХУУДСАНД БИЧИХИЙН ӨМНӨХ ХАМГААЛАЛТ — цэвэр функц (2026-10-01, хэрэглэгч: бүгдийг зас).
+ *
+ * ⚠️ ЯАГААД: батлагч `claimPlan`-аар түгжээд `save` руу ордог ч хооронд нь (урт
+ *    бэлтгэл, сүлжээ удаан, түгжээ 10 минутаас хэтэрсэн) зохиогч ТАТАХ, өөр батлагч
+ *    ШИЙДЭХ боломжтой. Тэр үед эх хуудсанд бичвэл «татсан/буцаагдсан» санал хуваарьт
+ *    суух байв. Бичихийн ЯГ ӨМНӨ төлвийг дахин уншаад энэ функцээр шийднэ.
+ * @returns `null` = бичиж болно; мөр = яагаад зогссон (хэрэглэгчид харуулна)
+ */
+export function approveGuard(
+  fresh: Pick<PlanSubmission, 'oid' | 'status' | 'approver' | 'approverAt'> | null,
+  oid: number,
+  me: string,
+  now = Date.now(),
+): string | null {
+  const mine = me.trim().toLowerCase();
+  if (!fresh || fresh.oid !== oid) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
+  if (fresh.status === PLAN_STATUS.withdrawn) {
+    return tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.');
+  }
+  if (fresh.status !== PLAN_STATUS.pending) {
+    return fresh.approver
+      ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', fresh.approver, fresh.status)
+      : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.');
+  }
+  const h = claimHolderOf(fresh, now);
+  if (h === mine) return null;
+  if (h) return tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', h);
+  return tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.');
 }
 
 /**
@@ -1175,26 +1310,24 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
   if (holder && holder !== me) {
     return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder) };
   }
-  const at = Date.now();
+  /* ⚠️ 2026-10-01: бичих + дахин уншиж баталгаажуулах нь `casClaim`-д (`decidePlan`-тай
+     НЭГ зам). Эхний «дахин унших» нь дээр сая уншсан `cur` — давхар хүсэлтгүй.
+     Зэрэг түгжсэн хоёр дахь батлагч (эсвэл завсарт татсан зохиогч) бичсэн бол
+     бидний түгжээ хүчингүй — эх хуудсанд бичихгүй; ялсан хүний нэрийг хэлнэ.
+     ⚠️ `requireEmpty: false` — өөр хүний ХУГАЦАА ДУУССАН түгжээг авч болно (хуучин дүрэм). */
+  let first: Attrs | null = cur[0];
   try {
-    const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: me, [F.approverAt]: at } }]),
-      rollbackOnFailure: 'true',
-    });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('HUVAARI_BATLAH');
+    const got = await casClaim({
+      read: async () => {
+        if (first) { const f = first; first = null; return f; }
+        return (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
+      },
+      write: (at) => writeClaim(url, args.oid, me, at),
+    }, me, { requireEmpty: false });
+    if (!got.ok) return { ok: false, error: claimError(got) };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
-  /* ⚠️ Дахин уншиж БАТАЛГААЖУУЛНА: зэрэг түгжсэн хоёр дахь батлагч (эсвэл завсарт
-     татсан зохиогч) бичсэн бол бидний түгжээ хүчингүй — эх хуудсанд бичихгүй. */
-  const back = await query(`${F.oid} = ${Number(args.oid)}`, fields);
-  const ok = back.length > 0
-    && s(back[0][F.status]) === PLAN_STATUS.pending
-    && (s(back[0][F.approver])?.toLowerCase() ?? '') === me
-    /* Огнооны талбар секундээр тайрагдаж болзошгүй — 1 с-ийн хүлцэл */
-    && Math.abs(Number(back[0][F.approverAt]) - at) < 1000;
-  if (!ok) return { ok: false, error: tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.') };
   return { ok: true };
 }
 

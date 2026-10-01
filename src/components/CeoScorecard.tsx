@@ -16,7 +16,8 @@
  *    ачаална — ArcGIS «Too many requests»-ээс сэргийлнэ (`useKpis`-ийн дүрэм).
  *    Ирээгүй бүлэг «…», өгөгдөлгүй бүлэг «—»; аль нь ч нийт дунджид ордоггүй.
  */
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -207,6 +208,11 @@ function Score({ v, loading, pending, big, dim }: { v: number | null; loading?: 
 function useDimKpis(dim: Dim | null): { slots: Record<string, Slot>; retry: (key: string) => void } {
   const [slots, setSlots] = useState<Record<string, Slot>>({});
   const [nonce, setNonce] = useState(0);
+  /* ⚠️ 2026-09-30: ӨГӨГДЛИЙН АВТОБУС deps-д — `CeoBoard.useKpis`-тэй ижил. Урьд нь
+     зөвхөн `[dim, nonce]` тул порталаас бичсэний дараа (`invalidate`) хүснэгт/хавтан
+     шинэчлэгдэж, сонгосон ажлын «эх үзүүлэлтүүд» карт ХУУЧИН тоогоо барьдаг байв.
+     Хуучин утга дэлгэц дээр үлдэж, шинэ нь ирэхэд солигдоно (анивчихгүй). */
+  const bus = useSyncExternalStore(subscribeData, dataVersion, () => 0);
   useEffect(() => {
     if (!dim) return;
     let alive = true;
@@ -221,7 +227,7 @@ function useDimKpis(dim: Dim | null): { slots: Record<string, Slot>; retry: (key
       );
     }
     return () => { alive = false; };
-  }, [dim, nonce]);
+  }, [dim, nonce, bus]);
   const retry = (key: string) => {
     setSlots((r) => ({ ...r, [key]: { state: 'loading', data: null, error: null } }));
     setNonce((n) => n + 1);

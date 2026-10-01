@@ -25,16 +25,20 @@
  */
 
 import {
+  ROLE_ACCESS,
   ROLE_BY_USER,
   VIEWS,
   roleForUser,
   type Role,
   type ViewKey,
 } from './services';
-import { capViewsOf } from './caps';
+import { capViewsOf, isWorkflowView } from './caps';
 import { _typesMark, roleAccess } from './roleTypes';
 import { currentUser } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
+/* ⚠️ 2026-10-01: урсгалтай харагдацын эх сурвалж (`workflowViewsOf`). Статик импорт аюулгүй —
+   `guitsetgelAcl` энэ файлыг ЗӨВХӨН динамикаар (`await import('./permissions')`) дууддаг. */
+import { stageOfUser } from './guitsetgelAcl';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
@@ -198,7 +202,19 @@ const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
   return out;
 };
 
-const sanitizeEntry = (e: Entry): Entry => ({ ...e, views: sanitizeViews(e.views) });
+/**
+ * ⚠️ 2026-09-30: ҮҮРГИЙГ Ч ШҮҮНЭ — танигдахгүй утга (`Role`-д байхгүй: хуучин build-ийн нэр,
+ *    гараар засагдсан мөр) → `null` (fail-closed, 05-erh-batlah §2 «түлхүүр танигдахгүй → эрхгүй»).
+ *    Урьд нь `permsRemote.fetchAll` үүргийг шалгалгүй тээвэрлэж, энд ч шүүгддэггүй байв: `roleOf`
+ *    тэр утгыг буцааж, `Root`-ийн нүүр цонхны `roleAccess(r).home` нь `ROLE_ACCESS[r]` → `undefined`
+ *    дээр ШИДЭЖ тэр хэрэглэгчийн портал бүхэлдээ унадаг байв.
+ */
+const VALID_ROLES = new Set<string>(Object.keys(ROLE_ACCESS));
+const sanitizeEntry = (e: Entry): Entry => ({
+  ...e,
+  views: sanitizeViews(e.views),
+  role: e.role && VALID_ROLES.has(e.role) ? e.role : null,
+});
 
 /**
  * Санах ойн CACHE — sync унших цорын ганц эх сурвалж. Эхэндээ `localStorage`-оос
@@ -621,26 +637,68 @@ export function hasAccess(username?: string | null): boolean {
   return remoteLoaded && !!ov;
 }
 
+/*
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): УРСГАЛТАЙ 6 ХАРАГДАЦ (`caps.WORKFLOW_VIEWS` —
+ *    Гүйцэтгэл · Хуваарь · Хуваарь батлах · Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC))
+ *    ЗӨВХӨН ХУВААРИЛАЛТААР нээгдэнэ. Super-ээс бусдад ХАДГАЛАГДСАН `views` дахь (override эсвэл
+ *    хатуу үүргийн нөөц `ROLE_ACCESS` — `beginner`-т «Гүйцэтгэл»+«Хуваарь», урсгалын 6 үүрэгт
+ *    «Гүйцэтгэл», `chanar`-т «Чанар (QAQC)»+«Чанарын баримт») тэдгээр утгыг ҮЛ ТООЦНО — зөвхөн
+ *    `workflowViewsOf` (эрхийн гэр харагдац + урсгалын томилгоо) нээнэ. Урьд нь картаас унтраах
+ *    замгүй атлаа хадгалагдсан утга нь хуваарилалт хасагдсан ч хуудсыг нээлттэй үлдээдэг байв
+ *    («хасахад хаагдана» дүрэм зөрчигдөнө).
+ * ⚠️ SUPER (хатуу эсвэл override үүрэг `super`) ХӨНДӨГДӨХГҮЙ — урьдын зан төлөв.
+ * ⚠️ Дараалал = `VIEWS`-ийн дараалал (тогтвортой) — `Root.openEntry` нүүр цонх хүрэхгүй бол
+ *    ЭХНИЙ зөвшөөрөгдсөн харагдац руу ордог (2026-10-01-нээс урсгалын хүний нүүр «Гүйцэтгэл»
+ *    хуваарилалтгүй бол хаагдах тул тэр нөөц зам ажиллана).
+ */
+const VIEW_ORDER = new Map<string, number>(VIEWS.map((v, i) => [v.key, i]));
+
+/**
+ * ХУВААРИЛАЛТААР БАТАЛГААЖСАН УРСГАЛТАЙ ХАРАГДАЦУУД (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ *   · засах эрхийн гэр харагдац (`CAP_HOST_VIEW` ∩ `WORKFLOW_VIEWS`) — эрх нь хуваарилалтаас
+ *   · урсгалын шатанд томилогдсон (`stageOfUser`, «Зөвхөн харна» ч) → «Гүйцэтгэл»
+ * ⚠️ Хоёр эх сурвалж хоёулаа remote уншигдаагүй сешнд ХООСОН (fail-closed — `capsOf` ·
+ *    `guitsetgelAcl.effective`): томилгоо уншигдтал урсгалтай хуудас хаалттай.
+ */
+export function workflowViewsOf(username?: string | null): ViewKey[] {
+  if (!username) return [];
+  const out = new Set<ViewKey>(capViewsOf(username).filter(isWorkflowView));
+  if (stageOfUser(username)) out.add('guitsetgel');
+  return [...out];
+}
+
 /**
  * Нэвтэрсэн хэрэглэгчийн эцсийн эрх: override байвал түүнийг, эс бөгөөс хатуу
  * суурийг. Аль нь ч байхгүй бол `null` (нэвтрэх эрхгүй).
- */
-/**
+ *
  * ⚠️ ЭРХИЙН ХАРАГДАЦЫГ НЭГТГЭНЭ (2026-08-29): «Мөр нэмэх», «QAQC», «Зөвшөөрөл
  * засах», «Санхүү», «Хуваарь» эрхтэй хүнд тухайн эрхийн гэр харагдац
  * (`CAP_HOST_VIEW`) харагдацын жагсаалтад нь байхгүй ч нээгдэнэ. Эс бөгөөс
  * эрх олгосон атлаа хуудас руу орох замгүй — эрх чимээгүй утгагүй.
- * Устгагдсан (tombstone) аккаунт, `'all'` эрхтэй хүнд нөлөөлөхгүй.
+ * Устгагдсан (tombstone) аккаунтад нөлөөлөхгүй.
  *
  * ⚠️ НЭГ эрх НЭГЭЭС ИЛҮҮ харагдац нээж болно (2026-09-16): `CAP_HOST_VIEW`
  * нь массив болов. Энд кодын засвар шаардахгүй — `capViewsOf` нь
  * `flatMap`-аар аль хэдийн хавтгай `ViewKey[]` буцаана.
+ *
+ * ⚠️ 2026-10-01: урсгалтай 6 харагдац ЗӨВХӨН хуваарилалтаар — дээрх ⚠️. Super-ээс бусад
+ *    `'all'` хадгалалт ч задарч (урсгалтайг хасаад) жагсаалт болно.
  */
 export function resolveAccess(username?: string | null): Access | null {
   const base = resolveBaseAccess(username);
-  if (!base || base.views === 'all' || !username) return base;
-  const extra = capViewsOf(username).filter((v) => !(base.views as ViewKey[]).includes(v));
-  return extra.length ? { ...base, views: [...(base.views as ViewKey[]), ...extra] } : base;
+  if (!base || !username) return base;
+  if (roleOf(username) === 'super') {
+    /* ⚠️ Super — урьдын дүрэм: хадгалсан + эрхийн гэр харагдац */
+    if (base.views === 'all') return base;
+    const extra = capViewsOf(username).filter((v) => !(base.views as ViewKey[]).includes(v));
+    return extra.length ? { ...base, views: [...(base.views as ViewKey[]), ...extra] } : base;
+  }
+  const stored: ViewKey[] = base.views === 'all' ? VIEWS.map((v) => v.key) : base.views;
+  const set = new Set<ViewKey>(stored.filter((v) => !isWorkflowView(v)));
+  for (const v of capViewsOf(username)) set.add(v);
+  for (const v of workflowViewsOf(username)) set.add(v);
+  const views = [...set].sort((a, b) => (VIEW_ORDER.get(a) ?? 999) - (VIEW_ORDER.get(b) ?? 999));
+  return { ...base, views };
 }
 
 /**

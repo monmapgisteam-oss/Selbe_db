@@ -1,5 +1,7 @@
 'use client';
 
+import { subscribeLocale } from '@/lib/i18nCore';
+
 /**
  * ӨГӨГДЛИЙН АВТОБУС — кэшлэгдсэн ачаалагчдыг ХҮСНЭГТЭЭР нь хүчингүй болгоно.
  *
@@ -52,7 +54,12 @@ export type DataKey =
   | 'HUVAARI_BATLAH'  // Selbe_Huvaari_Batlah  — huvaariBatlah.ts
   | 'OBYEM_BATLAH'    // Selbe_Obyem_Batlah    — obyemBatlah.ts
   | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts
-  | 'QAQC_DRAFT';     // Selbe_QAQC_Draft      — qaqcDraftRemote.ts
+  | 'QAQC_DRAFT'      // Selbe_QAQC_Draft      — qaqcDraftRemote.ts
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХУВААРИЙН САРЫН ОБЬЁМ (`huvaari_20260906/193`,
+     `huvaariObyem.HUVAARI_OBYEM` — `services.ts`-д экспорт байхгүй). `applyPlanEdits`
+     бичсэний дараа хүчингүй болгоно — төлөвлөгөөт муруй (`planProgress`) уншина. Урьд нь
+     зөвхөн обьём өөрчилсөн батлалтын дараа муруй/дашбоард TTL дуустал хуучин байв. */
+  | 'HUVAARI_OBYEM';
   /* ⚠️ 'SURVEY' 2026-09-17-нд хасагдсан — selbe_site_monitoring туршилт төслөөс гарсан */
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
@@ -98,6 +105,22 @@ export function invalidateAll(): void {
   version += 1;
   for (const fn of subs) fn();
 }
+
+/**
+ * ⚠️ 2026-09-30: ХЭЛ СОЛИГДОХОД БҮХ КЭШ ХАЯГДАНА.
+ *
+ * Хэл солих нь 2026-09-30-наас хуудсыг ДАХИН АЧААЛАХГҮЙ — `LocaleProvider` аппыг
+ * `key`-ээр remount хийдэг (`i18nCore.LOCALE_SWITCH_RELOADS`). Remount нь МОДУЛИЙН
+ * кэшийг хөндөхгүй, гэтэл олон ачаалагч ОРЧУУЛСАН мөрийг үр дүндээ хадгалдаг
+ * (`live.loadBudget`-ийн «Эх үүсвэр задраагүй» · «Төрөл тодорхойлоогүй»,
+ * `ceo/*`-ийн KPI карт: `facts` · `unit` · хүснэгтийн гарчиг …). Тиймээс англи
+ * руу шилжсэний дараа эдгээр нь TTL дуустал (зарим нь сешн дуустал) МОНГОЛООРОО
+ * үлдэж, нэг дэлгэцэд хоёр хэл холилддог байв. Урьд reload бүх кэшийг устгадаг
+ * байсантай ижил үр дүн: бүртгэлтэй кэш бүр хаягдаж дахин татагдана.
+ * ⚠️ `live.cached()` `reads` хоосон кэшийг ч бүртгэдэг болсон (2026-09-30) — бүгд хамрагдана;
+ *    `invalidate(key)` тэднийг хөндөхгүй (хоосон `reads`).
+ */
+subscribeLocale(invalidateAll);
 
 /** Одоогийн хувилбар — `useAsync` үүнийг deps-дээ авна */
 export function dataVersion(): number {

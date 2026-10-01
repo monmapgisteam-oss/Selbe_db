@@ -25,11 +25,27 @@
 import { TASK_SHEET, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
+import { dayKey } from './format';
 
 const TS = TASK_SHEET.fields;
 
 const t = (v: unknown) => (v == null ? '' : String(v));
 const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+/**
+ * ИРЭЭДҮЙН ОГНООНЫ ТАСЛАЛТ — «өнөөдөр» (ОРОН НУТГИЙН «YYYY-MM-DD»).
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): өнөөдрөөс ХОЙШ огноотой хэмжилт (гараар
+ *    буруу огноо сонгосон бөглөлт) ХОЁУЛАНД хасагдана — газрын зургийн будалт
+ *    (`compute` → `loadBlockProgress`) ба багцын жагсаалт (`history` → `finPhys` →
+ *    `Finance.physLatest`, PkgProg). Урьд нь зураг огт таслалтгүй (ирээдүйн огноо нь
+ *    «сүүлийн» болж ялдаг), жагсаалт сараар (одоогийн сарын ирээдүйн өдөр ОРДОГ,
+ *    дараагийн сар орохгүй) таслагддаг тул нэг блок хоёр дэлгэцэд өөр хувьтай гардаг байв.
+ * ⚠️ Бүх салаа ЭНЭ ганц функцээр — хоёр газар өөр дүрэм бичихгүй.
+ */
+export const progressCutoff = (ms: number = Date.now()): string => dayKey(ms);
+/** Хэмжилтийн огноо таслалтаас хойш уу (ирээдүйн) */
+export const isFutureDay = (d: string, today: string): boolean => d > today;
 
 /**
  * Бөглөх хуудсуудаас Б-ийн мөрүүдийг татаж УРТ хэлбэрт задална.
@@ -71,12 +87,14 @@ export type BlockProgressMap = Map<string, BlockProgress>;
  * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас.
  * ⚠️ Багц 3.1-ийн cashflow солилт (`ov`) ХАСАГДСАН — `loadBlockProgress`-ийн ⚠️.
  */
-function compute(rows: Record<string, unknown>[]): BlockProgressMap {
+export function compute(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockProgressMap {
   /** барилга → (№ → сүүлийн мөр) */
   const win = new Map<string, Map<string, { pct: number | null; name: string; date: string }>>();
   for (const r of rows) {
     const d = t(r[TS.date]);
     if (!isValidDate(d)) continue;
+    /* ⚠️ 2026-10-01: ирээдүйн огноотой хэмжилт тооцохгүй (`progressCutoff`-ийн ⚠️) */
+    if (isFutureDay(d, today)) continue;
     /* ⚠️ № -г ЭНД ч нормчилно: `sheetRows` аль хэдийн нормчилдог ч энэ функц
      *    түүхий мөр (хуучин кэш, өөр дуудагч) хүлээж авах боломжтой тул нийт
      *    мөрийн түлхүүр («Б.») хоёр газарт ХОЁР янз бүтэх ёсгүй. */
@@ -129,13 +147,15 @@ export type BlockHistory = Map<string, HistoryPoint[]>;
  * дээр л зурагдана. `pct: null` нь нүд ЦЭВЭРЛЭГДСЭН гэсэн үг (Pivot нь хоосон
  * нүдийг null мөрөөр бичдэг) тул тэр огнооноос хойш уг блок «бөглөгдөөгүй».
  */
-function history(rows: Record<string, unknown>[]): BlockHistory {
+export function history(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockHistory {
   const out: BlockHistory = new Map();
   for (const r of rows) {
     /* ⚠️ Нормчлолын НЭГ дүрмээр — «Б» (цэггүй) багцуудын түүх алдагдах ёсгүй */
     if (!isConstructionNo(r[TS.no])) continue;
     const d = t(r[TS.date]);
     if (!isValidDate(d)) continue;
+    /* ⚠️ 2026-10-01: `compute`-тэй ЯГ ИЖИЛ таслалт — зураг ба жагсаалт нэг тоо (`progressCutoff`) */
+    if (isFutureDay(d, today)) continue;
     const k = buildingKey(r[TS.bagts], r[TS.block]);
     const arr = out.get(k) ?? [];
     const pct = r[TS.progress] == null ? null : Number(r[TS.progress]) * 100;
@@ -181,15 +201,18 @@ export type SeriesMode = 'peak' | 'latest';
  *    сүүлийн цэг бөгжөөс зөрдөг байв. Хоёулаа ЭНЭ дүрмээр: хэмжигдээгүй блок
  *    хуваарьт ОРОХГҮЙ (null ≠ 0, 06 §2), утга нь сүүлийн хэмжилт.
  *
- * `keys` — ДАВХАРДЛЫГ ХАДГАЛНА (`BagtsRow.keys`-ийн `flatMap`) — цуваатай
- * ижил жагсаалтаар тоолно.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `keys`-ийн ДАВХАРДЛЫГ ХАЯНА. Урьд нь
+ *    «ДАВХАРДЛЫГ ХАДГАЛНА» гэж давхаргын feature-ийн жагсаалтыг (`BagtsRow.keys`-ийн
+ *    `flatMap`) шууд тоолдог тул газрын зурагт ХОЁР feature-тэй блок (БАГЦ1|29/1,
+ *    БАГЦ2|5/6) дундажид хоёр жинтэй орж байв — тоо нь зургийн өгөгдлийн алдаанаас
+ *    хамаарах ёсгүй. `progressSeries` ч мөн адил хаядаг тул «сүүлийн цэг == бөгж» хэвээр.
  */
 export function latestMean(
   pm: BlockProgressMap,
   keys: Iterable<string>,
 ): { pct: number | null; blocks: number; total: number } {
   let sum = 0, n = 0, total = 0;
-  for (const k of keys) {
+  for (const k of new Set(keys)) {
     total += 1;
     const c = pm.get(k);
     if (c == null || !Number.isFinite(c.overall)) continue;
@@ -197,6 +220,74 @@ export function latestMean(
     n += 1;
   }
   return { pct: n ? sum / n : null, blocks: n, total };
+}
+
+/**
+ * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын ХЭМЖИГДСЭН (тайлагнасан) блокуудын
+ * ЭНГИЙН дундаж, 0–100. Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»).
+ *
+ * ⚠️ 2026-09-30: ЭХ НЬ БӨГЛӨХ ХУУДАСНЫ НҮД (`BlockProgressMap` — багц|блок
+ *    түлхүүр бүр НЭГ удаа), барилгын давхаргын feature БИШ. Урьд нь
+ *    `joinBagts` · `live.loadFillPkgProgress` · `Bagts.buildPacks` багцын хувийг
+ *    давхаргын feature-ээр гүйлгэж дундажлагдаг байв:
+ *      · «БАГЦ1|29/1», «БАГЦ2|5/6» давхаргад ХОЁР feature-тэй (`services.buildingKey`-
+ *        ийн ⚠️) — нэг хэмжилт ХОЁР удаа тоологдоно;
+ *      · «БАГЦ1|29/3», «БАГЦ2|5/8» хэмжилттэй атлаа давхаргад footprint-гүй
+ *        (`blockProgress.check`-ийн KNOWN_ORPHAN) — дунджид ОГТ орохгүй.
+ *    Тиймээс «Гүйцэтгэл»/«Багцын мэдээлэл»-ийн жагсаалт (`Finance.physLatest`),
+ *    Тайлан §3 (`reportData.loadOverall`)-аас Багц 1, Багц 2-ын хувь Дашбоард
+ *    «Багц ажлаар», Тайлан §2, удирдлагын тайлан, багцын KPI-д ӨӨР гардаг байв.
+ *    Одоо бүгд ЭНЭ функцээр — нэг багц, нэг тоо.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `physLatest`-тэй урьдын ГАНЦ ялгаа (ирээдүйн
+ *    огноотой бичилт — энэ нь тасалдаггүй, тэр нь сараар таслагддаг) АРИЛСАН: `compute` ба
+ *    `history` хоёулаа өнөөдрөөр таслана (`progressCutoff`).
+ * ⚠️ Хэмжилтгүй багц Map-д ОРОХГҮЙ — «0%» БИШ, «мэдээлэлгүй» (null ≠ 0).
+ */
+export function pkgProgressOf(pm: BlockProgressMap): Map<string, { pct: number; blocks: number }> {
+  const acc = new Map<string, { sum: number; n: number }>();
+  for (const [key, cell] of pm) {
+    const cut = key.indexOf('|');
+    const k = cut < 0 ? key : key.slice(0, cut);
+    if (!k || cell == null || !Number.isFinite(cell.overall)) continue;
+    const a = acc.get(k) ?? { sum: 0, n: 0 };
+    a.sum += cell.overall;
+    a.n += 1;
+    acc.set(k, a);
+  }
+  const out = new Map<string, { pct: number; blocks: number }>();
+  for (const [k, a] of acc) if (a.n > 0) out.set(k, { pct: a.sum / a.n, blocks: a.n });
+  return out;
+}
+
+/**
+ * ГАЗРЫН ЗУРГИЙН БЛОКИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ — админд засуулах жагсаалт (2026-10-01,
+ * «хэрэглэгч: бүгдийг зас»). ӨГӨГДЛИЙГ ЗАСАХГҮЙ, зөвхөн илрүүлнэ.
+ *   · `dup`     — давхаргад ХОЁР+ feature-тэй түлхүүр (БАГЦ1|29/1, БАГЦ2|5/6)
+ *   · `orphan`  — бөглөх хуудсанд хэмжилттэй атлаа давхаргад footprint-гүй (БАГЦ2|5/8)
+ *   · `relabel` — footprint-гүй хэмжилтийн БЛОКИЙН нэр өөр багцын feature-т байгаа
+ *                 (БАГЦ1|29/3 ↔ давхаргад «Багц 2» гэж бичигдсэн 29/3) — багцын нэр буруу
+ * ⚠️ Тоонууд эдгээрээс ХАМААРАХГҮЙ (`pkgProgressOf` — хэмжилтийн нүднээс;
+ *    `latestMean`/`progressSeries` — давхардлыг хаядаг). Энэ нь зөвхөн газрын зургийг
+ *    засуулах мэдээлэл (`BuildingPanel.loadBuildings` dev горимд console-д бичнэ).
+ * @param featureKeys давхаргын feature бүрийн `buildingKey` (давхардлыг ХАДГАЛСАН)
+ * @param measured    хэмжилттэй түлхүүрүүд (`BlockProgressMap.keys()`)
+ */
+export function mapKeyIssues(
+  featureKeys: readonly string[],
+  measured: Iterable<string>,
+): { dup: string[]; orphan: string[]; relabel: { measured: string; feature: string }[] } {
+  const count = new Map<string, number>();
+  for (const k of featureKeys) count.set(k, (count.get(k) ?? 0) + 1);
+  const dup = [...count].filter(([, n]) => n > 1).map(([k]) => k).sort();
+  const orphan = [...new Set(measured)].filter((k) => !count.has(k)).sort();
+  const blockOf = (k: string) => k.slice(k.indexOf('|') + 1);
+  const relabel: { measured: string; feature: string }[] = [];
+  for (const m of orphan) {
+    for (const f of count.keys()) {
+      if (f !== m && blockOf(f) === blockOf(m)) relabel.push({ measured: m, feature: f });
+    }
+  }
+  return { dup, orphan, relabel };
 }
 
 /** «YYYY-MM-DD» → «YYYY-MM» */
@@ -228,7 +319,9 @@ export function progressSeries(
    */
   mode: SeriesMode = 'peak',
 ): SeriesPoint[] {
-  const keyList = [...keys];
+  /* ⚠️ 2026-10-01: давхардсан түлхүүрийг хаяна (`latestMean`-ийн ⚠️) — газрын зургийн
+     давхардсан feature нэг блокийг хоёр тоолуулахгүй. */
+  const keyList = [...new Set(keys)];
   const mine = keyList.map((k) => hist.get(k)).filter((h): h is HistoryPoint[] => h != null);
   const dates = [...new Set(mine.flatMap((h) => h.map((p) => p.date)))].sort();
   if (!dates.length) return [];
@@ -340,7 +433,9 @@ function memo<T>(fn: () => Promise<T>, reads: readonly DataKey[] = []): () => Pr
  * хүсэлт ЯВЖ БАЙХ хооронд харагдана. Хүсэлт АЛДВАЛ дуудагч (MapCanvas) кэшийг
  * хаяж, саарал «мэдээлэлгүй» төлөвт буцаана — TTL-ээр давхар хамгаална.
  */
-const CACHE_KEY = 'selbe-blockprog-v1';
+/* ⚠️ 2026-10-01: v2 — ирээдүйн огнооны таслалтаас (`progressCutoff`) ӨМНӨХ кэш ирээдүйн
+   хэмжилтээр будсан байж болно; хуучныг хэрэглэхгүй. */
+const CACHE_KEY = 'selbe-blockprog-v2';
 /** Кэшийн хүчинтэй хугацаа — долоо хоногоос хуучин бол огт хэрэглэхгүй */
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 

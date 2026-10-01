@@ -151,6 +151,13 @@ export function settled<T>(
   return { ok, failed };
 }
 
+/**
+ * БҮРЭН үр дүн мөн эсэх — `live.cached`-ийн `keep` (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Эх унасан (`failedSources` хоосон биш) картыг 5 минут КЭШЛЭХГҮЙ: тэр нь
+ *    одоогийн дэлгэцэд унасан эхийн нэртэйгээ гарна, дараагийн дуудалт дахин оролдоно.
+ */
+export const kpiComplete = (k: Pick<KpiResult, 'failedSources'>): boolean => k.failedSources.length === 0;
+
 /** Хоног — epoch ms хоёрын зөрүү, доош бүхэлчилж, сөрөг бол 0 */
 export const daysBetween = (from: number, to: number): number => (
   Math.max(0, Math.floor((to - from) / 86_400_000))

@@ -105,8 +105,28 @@ export type Draft = {
    *
    * ⚠️ Буцаах боломжтой («Дахин засах») — тэр үед нэр нь эндээс хасагдаж,
    * бусдын «Илгээх» дахин түгжигдэнэ.
+   * ⚠️ 2026-10-01: ЭНЭ ТАЛБАР ОДОО `marks`-аас ГАРГАСАН хуулбар (хуучин клиентэд
+   *    уншигдахын тулд бичигдсээр). Нэр нь энд БАЙХГҮЙ байх нь «буцаасан» гэсэн үг
+   *    БИШ болсон — `marks`-ийн ⚠️.
    */
   done?: [string, number][];
+  /**
+   * «ДУУСГАСАН» / «ДАХИН ЗАСАХ»-ЫН ИЛ ТЭМДЭГ — `[нэр, төлөв (1 = дуусгасан · 0 = дахин
+   * засах), дараалал (seq), агшин ms]` (2026-10-01, хэрэглэгч: бүгдийг зас — ШИЙДВЭР).
+   *
+   * ⚠️ ЯАГААД: урьд нь `done`-д нэр БАЙХГҮЙ нь «буцаасан» гэж уншигддаг байв
+   *    (`newer.t >= at`). А «Дуусгасан» дарсны ДАРАА А-гийн тэмдэглэгээг хараахан
+   *    татаж амжаагүй Б бичсээр байхад Б-гийн ШИНЭ ноорогт А алга тул нийлүүлэлт
+   *    А-гийн «Дуусгасан»-ыг АРЧДАГ байв. Одоо буцаалт нь ИЛ тэмдэг (төлөв 0);
+   *    нэр алга байх нь юу ч хэлэхгүй.
+   * ⚠️ ЦАГИЙН ЗӨРҮҮНД ТЭСВЭРТЭЙ: хүн бүрийн тэмдэг `seq`-ээр (Лампортын тоолуур)
+   *    эрэмбэлэгдэнэ — товч дарах бүр тухайн хүний ХАРСАН хамгийн их `seq`+1. Хоёр
+   *    төхөөрөмжийн цаг зөрсөн ч дараалал алдагдахгүй; тэнцвэл агшин, түүнээс
+   *    тэнцвэл «дахин засах» (0) ялна (хүлээх нь «илгээх»-ээс аюулгүй).
+   * ⚠️ `marks`-гүй (хуучин) ноорогийн `done` нь `seq = 0`-ийн «дуусгасан» болж
+   *    уншигдана; хуучин ноорогийн «нэр алга = буцаасан» дүрэм ХҮЧИНГҮЙ.
+   */
+  marks?: [string, 0 | 1, number, number][];
   /**
    * НҮД БҮРИЙГ СҮҮЛД ХӨНДСӨН АГШИН — `${oid}:${блок}[:s|e]` → ms (2026-09-21).
    *
@@ -241,6 +261,13 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
        (fail-open): бөглөлт зогсох нь эрхийн алдаанаас ДОР үр дагавартай. */
     if (d.by != null && !Array.isArray(d.by)) d.by = undefined;
     if (d.done != null && !Array.isArray(d.done)) d.done = undefined;
+    /* 2026-10-01: «дуусгасан/дахин засах» тэмдэг — эвдэрсэн элементийг л хаяна */
+    if (d.marks != null) {
+      d.marks = Array.isArray(d.marks)
+        ? d.marks.filter((m) => Array.isArray(m) && typeof m[0] === 'string' && (m[1] === 0 || m[1] === 1)
+          && Number.isFinite(m[2]) && Number.isFinite(m[3]))
+        : undefined;
+    }
     /* 2026-09-21: агшин ба tombstone — эвдэрсэн бол мөн тэр хэсгийг л орхино. */
     if (d.byAt != null && !Array.isArray(d.byAt)) d.byAt = undefined;
     if (d.del != null && !Array.isArray(d.del)) d.del = undefined;
@@ -346,35 +373,30 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   const by = new Map<string, string>(older.by ?? []);
   for (const [k, u] of newer.by ?? []) if (!keepOld.has(k) || !by.has(k)) by.set(k, u);
   /*
-   * ⚠️ `done` — ХҮН ТУС БҮРЭЭР, СҮҮЛИЙН тэмдэглэгээ ялна (2026-09-08).
-   *
-   * Хоёр тал нэгдэхдээ «А дуусгасан» ба «А дахин засаж эхэлсэн» хоёрыг
-   * зөв ялгах ёстой: `removeDone` нь нэрийг ХАСДАГ тул нийлүүлэхэд «байхгүй
-   * нь хожигдож» дахин гарч ирэх эрсдэлтэй. Тиймээс агшин (`t`)-аар шийднэ —
-   * ШИНЭ ноорогт нэр нь БАЙХГҮЙ бол тэр нь «саяхан буцаасан» гэсэн үг тул
-   * хуучин талын тэмдэглэгээ ХҮЧИНГҮЙ болно.
+   * ⚠️ `done` — ХҮН ТУС БҮРЭЭР, ИЛ ТЭМДГЭЭР (`marks`) шийднэ (2026-10-01, хэрэглэгч:
+   *    бүгдийг зас — ШИЙДВЭР; 2026-09-08-ны «шинэ талд нэр алга = буцаасан» дүрмийг
+   *    ХҮЧИНГҮЙ болгов — `Draft.marks`-ийн ⚠️). Хүн бүрд `seq` их нь, тэнцвэл агшин
+   *    их нь, тэнцвэл «дахин засах» (0) ялна. `marks`-гүй (хуучин) тал — `done`-ийн
+   *    нэр бүр `seq = 0`-ийн «дуусгасан»; нэр алга байх нь ЮУ Ч хэлэхгүй.
+   * ⚠️ TS тэмдэглэгээ БИЧИХГҮЙ (`new Map<…>`-ээс бусад) — `draft.check` 4d энэ
+   *    функцийг JS болгож ажиллуулдаг.
    */
-  const done = new Map<string, number>();
-  for (const [u, at] of older.done ?? []) done.set(u, at);
-  /*
-   * ⚠️ «БУЦААСАН» ба «ХУУЧИН НООРОГ» ХОЁРЫГ ЯЛГАНА (2026-09-08).
-   *
-   * `done` талбар нь `undefined` бол тэр ноорог энэ боломжоос ӨМНӨХ хувилбар
-   * — тэмдэглэгээний талаар ЮУ Ч хэлэхгүй тул хуучныг хэвээр үлдээнэ.
-   * Харин `[]` (хоосон массив) нь «би дуусгасныг БУЦААСАН» гэсэн ИЛ мэдэгдэл:
-   * тэр үед шинэ талд байхгүй нэрийг ХАСНА. Хоёрыг ялгахгүй бол «Дахин засах»
-   * дарсан хүний тэмдэглэгээ дараагийн нийлүүлэлтээр СЭРГЭЖ, бусдын «Илгээх»
-   * буруу нээгдэнэ. Тиймээс `toggleDone` нь буцаахдаа `[]`-ийг БИЧНЭ (хасахгүй).
-   */
-  if (newer.done != null) {
-    const fresh = new Map<string, number>(newer.done);
-    for (const [u, at] of done) {
-      /* Шинэ талд нэр нь алга ба тэр тал ЭНЭ хүний тэмдэглэгээнээс ХОЙШ
-         бичигдсэн бол — буцаасан. Эс бөгөөс хуучныг хэвээр үлдээнэ. */
-      if (!fresh.has(u) && newer.t >= at) done.delete(u);
+  const marks = new Map<string, [string, 0 | 1, number, number]>();
+  for (const side of [older, newer]) {
+    for (const m of side.marks ?? []) {
+      const cur = marks.get(m[0]);
+      if (!cur || m[2] > cur[2] || (m[2] === cur[2] && (m[3] > cur[3] || (m[3] === cur[3] && m[1] < cur[1])))) marks.set(m[0], m);
     }
-    for (const [u, at] of fresh) done.set(u, at);
+    if (side.marks == null) {
+      for (const [u, at] of side.done ?? []) {
+        const cur = marks.get(u);
+        if (!cur) marks.set(u, [u, 1, 0, at]);
+        else if (cur[2] === 0 && cur[1] === 1 && at > cur[3]) marks.set(u, [u, 1, 0, at]);
+      }
+    }
   }
+  const done = new Map<string, number>();
+  for (const m of marks.values()) if (m[1] === 1) done.set(m[0], m[3]);
   /*
    * ⚠️ `byAt` — түлхүүр бүрд ХАМГИЙН ИХ агшин (2026-09-21). Хоёр тал нэг
    *    нүдийг хөндсөн бол сүүлд хөндсөн агшин л «идэвхтэй эсэх»-д хэрэгтэй.
@@ -461,12 +483,44 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
        (`[]` ч гэсэн) бол массив буцаана. Урьд нь `done.size ? … : undefined`
        нь «Дахин засах»-ын ИЛ буцаалтыг (`[]`) «хуучин ноорог» (`undefined`)
        болгож, нөгөө талын хуучин «дуусгасан» тэмдэглэгээ СЭРГЭДЭГ байв. */
-    done: newer.done != null || older.done != null ? [...done] : undefined,
+    done: newer.done != null || older.done != null || newer.marks != null || older.marks != null ? [...done] : undefined,
+    /* ⚠️ 2026-10-01: ил тэмдгүүд — аль нэг тал `marks`-тай бол ҮРГЭЛЖ массив */
+    marks: marks.size || newer.marks != null || older.marks != null ? [...marks.values()] : undefined,
     byAt: byAt.size ? [...byAt] : undefined,
     del: del.size ? [...del] : undefined,
     sent: sent.size ? [...sent] : undefined,
   };
 };
+/** «Дуусгасан/дахин засах» тэмдэг — `[нэр, 1|0, seq, агшин]` (`Draft.marks`) */
+export type Mark = [string, 0 | 1, number, number];
+
+/**
+ * Ноорогоос тэмдгүүдийг нэрээр (жижиг үсэг) уншина (2026-10-01).
+ * ⚠️ `marks`-гүй (хуучин) ноорог — `done`-ийн нэр бүр seq 0-ийн «дуусгасан».
+ */
+export function marksOf(d: Draft): Map<string, Mark> {
+  const m = new Map<string, Mark>();
+  if (d.marks) {
+    for (const x of d.marks) {
+      const u = String(x[0]).trim().toLowerCase();
+      const cur = m.get(u);
+      if (!cur || x[2] > cur[2] || (x[2] === cur[2] && x[3] > cur[3])) m.set(u, [u, x[1], x[2], x[3]]);
+    }
+  } else {
+    for (const x of d.done ?? []) {
+      if (Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1])) {
+        const u = x[0].trim().toLowerCase();
+        m.set(u, [u, 1, 0, x[1]]);
+      }
+    }
+  }
+  return m;
+}
+
+/** Тэмдгүүдээс «дуусгасан» жагсаалт (хуучин `done` талбарын хэлбэр) */
+export const doneOfMarks = (m: Map<string, Mark>): [string, number][] =>
+  [...m.values()].filter((x) => x[1] === 1).map((x): [string, number] => [x[0], x[3]]);
+
 export const readDraft = (pkgKey: string): Draft | null => {
   try {
     const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);

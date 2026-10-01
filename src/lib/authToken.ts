@@ -32,6 +32,7 @@ let sharing = '';
 export function registerIdentity(mgr: Esri, sharingUrl: string): void {
   esri = mgr;
   sharing = sharingUrl;
+  lastForced = null; // шинэ сешн — өмнөх шинэчлэлтийн тэмдэглэл хамаарахгүй
 }
 
 export function authToken(): string | null {
@@ -86,6 +87,47 @@ export function ensureFreshToken(force = false): Promise<void> {
     try { await cred.refreshToken!(); } catch { /* хүсэлт өөрөө алдаагаа хэлнэ */ }
   })().finally(() => { refreshing = null; });
   return refreshing;
+}
+
+/**
+ * 498/499-ийн ДАРАА шинэчлэх эсэх — `true` бол дуудагч НЭГ удаа дахин илгээнэ.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас») — ШИНЭЧЛЭЛТИЙН ШУУРГА: таб сэрэхэд
+ *    дашбоардын 40+ хүсэлт ИЖИЛ хуучин токеноор зэрэг 498 авдаг. `ensureFreshToken(true)`
+ *    зөвхөн ЯГ ЗЭРЭГ дуудлагыг нэгтгэдэг тул шинэчлэлт дууссаны ДАРАА ирсэн 498 бүр
+ *    дахин нэг шинэчлэлт эхлүүлж, токен хэд хэдэн удаа солигдон (өмнөх нь хүчингүй
+ *    болж) шинэ 498 үүсгэдэг байв. Одоо:
+ *      · `sent` (хүсэлтэд ЯВСАН токен) ≠ одоогийн токен → аль хэдийн шинэчлэгдсэн:
+ *        шинэчлэхгүй, шууд дахин илгээнэ;
+ *      · шинэчлэлт явж байвал ТҮҮНИЙГ хүлээнэ (хуваалцсан Promise);
+ *      · ижил токеноос шинэчлэлт сая (30с дотор) оролдоод токен өөрчлөгдөөгүй бол
+ *        (шинэчлэлт бүтээгүй) дахин оролдохгүй — хуучин токеноор давтах нь утгагүй.
+ */
+let lastForced: { from: string; at: number } | null = null;
+const FORCED_COOLDOWN_MS = 30_000;
+export async function refreshAfterTokenError(sent: string | null): Promise<boolean> {
+  const cur = authToken();
+  if (!cur) return false;
+  if (sent !== cur) return true;
+  if (refreshing) {
+    await refreshing;
+    return authToken() !== sent;
+  }
+  if (lastForced && lastForced.from === sent && Date.now() - lastForced.at < FORCED_COOLDOWN_MS) return false;
+  lastForced = { from: sent, at: Date.now() };
+  await ensureFreshToken(true);
+  return authToken() !== sent;
+}
+
+/**
+ * ПОРТАЛЫН хаяг мөн үү (`AuthGate`-ийн бүртгэсэн `<portal>/sharing`-ийн суурь).
+ * ⚠️ 2026-10-01: `query.arcgisPost`-ын `token: 'always'` горим токеныг ЗӨВХӨН
+ *    байгууллагын үйлчилгээ (`isOrgUrl`) эсвэл энэ порталд залгана.
+ */
+export function isPortalUrl(url: string): boolean {
+  if (!sharing) return false;
+  const base = sharing.replace(/\/sharing\/?$/i, '').replace(/\/+$/, '');
+  return !!base && url.startsWith(`${base}/`);
 }
 
 /** ArcGIS-ийн токены алдаа уу — 498 (хүчингүй) / 499 (шаардлагатай) */

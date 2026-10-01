@@ -35,18 +35,21 @@
  *    «талбар чөлөөлөгдөөгүй», давхцлын анхааруулгын өгүүлбэр — тэдгээрийг
  *    `en.ts`-д нэмэх нь нэгтгэгчийн ажил (энэ файл толийг засдаггүй).
  *
- * ⚠️ `asOf` нь ҮРГЭЛЖ `null` — `PARCEL_LEFT`-д Editor Tracking асаагүй
- *    (`editFieldsInfo: null`), огнооны талбар ч байхгүй.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `PARCEL_LEFT`-д Editor Tracking АСААЛТТАЙ болсон
+ *    (урьд нь `editFieldsInfo: null` тул `asOf` ҮРГЭЛЖ `null` байв). `asOf` = чөлөөлөгдөөгүй
+ *    талбаруудын хамгийн сүүлийн засварын огноо (`EditDate`). Талбарыг давхаргын
+ *    МЕТАДАТААС (`editFieldsInfo.editDateField`) таньж авна — тохиргоо дахин унтарвал
+ *    `outFields`-д ОРОХГҮЙ (байхгүй талбар асуувал ArcGIS 400) ба `asOf` `null` хэвээр.
  */
 
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, text } from '@/lib/format';
-import { queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { PARCEL_LEFT, parcelLeftWhere } from '@/lib/services';
 import { cached, loadClearance, type Clearance } from '@/lib/live';
 import { loadOverlaps, type Overlaps } from '@/lib/execTriage';
 import { overlapLevel, pctLevel } from '@/lib/kpiLevels';
-import { cell, table, worstOf, type KpiIssue, type KpiResult } from './kpi';
+import { cell, table, worstOf, kpiComplete, type KpiIssue, type KpiResult } from './kpi';
 
 /* ══════════════════ Төрөл ══════════════════ */
 
@@ -78,6 +81,11 @@ export type LandInput = {
   overlaps: Overlaps | null;
   /** Унасан эхийн нэрс (`tr`-ээр орчуулагдсан) */
   failed: string[];
+  /**
+   * Өгөгдлийн агшин — чөлөөлөгдөөгүй талбаруудын хамгийн сүүлийн `EditDate` (ms).
+   * ⚠️ 2026-10-01: Editor Tracking асаалттай үед л; эс бөгөөс `null`/өгөхгүй.
+   */
+  asOf?: number | null;
 };
 
 /* ══════════════════ Тогтмол ══════════════════ */
@@ -262,27 +270,57 @@ export function computeLand(input: LandInput): KpiResult {
     level,
     tables,
     issues,
-    asOf: null,
+    /* ⚠️ 2026-10-01: Editor Tracking-ээс (`fetchParcels`); унтраалттай бол `null` */
+    asOf: input.asOf ?? null,
     failedSources: [...input.failed],
   };
 }
 
 /* ══════════════════ Ачаалагч ══════════════════ */
 
+/**
+ * Editor Tracking-ийн ОГНООНЫ ТАЛБАР — давхаргын метадатаас (`editFieldsInfo.editDateField`).
+ * ⚠️ 2026-10-01: асаагүй, метадата уншигдаагүй эсвэл талбар жагсаалтад алга бол `null` —
+ *    тэр үед асуулгад ОРОХГҮЙ (байхгүй талбар `outFields`-д бол ArcGIS 400).
+ */
+async function editDateFieldOf(url: string): Promise<string | null> {
+  try {
+    const j = await arcgisPost<{ editFieldsInfo?: { editDateField?: string } | null; fields?: { name?: string }[] }>(url, { f: 'json' });
+    const f = j?.editFieldsInfo?.editDateField;
+    return f && (j.fields ?? []).some((x) => x.name === f) ? f : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Хамгийн сүүлийн засварын огноо (ms) — талбар алга/хоосон бол `null` */
+export function lastEditOf(rows: readonly Row[], field: string | null): number | null {
+  if (!field) return null;
+  let m: number | null = null;
+  for (const r of rows) {
+    const v = Number(r[field]);
+    if (r[field] != null && Number.isFinite(v) && v > 0 && (m == null || v > m)) m = v;
+  }
+  return m;
+}
+
 /** Үлдсэн талбаруудыг НЭРТЭЙ нь татах (~143 мөр) */
-async function fetchParcels(): Promise<LandParcel[]> {
+async function fetchParcels(): Promise<{ parcels: LandParcel[]; asOf: number | null }> {
   const F = PARCEL_LEFT.fields;
+  /* ⚠️ 2026-10-01: Editor Tracking асаалттай бол `EditDate`-ийг хамт татна (`asOf`) */
+  const ed = await editDateFieldOf(PARCEL_LEFT.url);
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
     outFields: [
       PARCEL_LEFT.oid, F.parcelNo, F.owner, F.address, F.status,
       F.area, F.areaAlt, F.note, F.landuse,
+      ...(ed ? [ed] : []),
     ],
     // ⚠️ 2000-аас цөөн ч эрэмбэ өгнө — хуудаслалт хэзээ нэгэн цагт хэрэг болбол
     //    OID-гүй offset тогтворгүй (`query.ts`-ийн тайлбар)
     orderBy: `${PARCEL_LEFT.oid} ASC`,
   });
-  return parseParcels(rows);
+  return { parcels: parseParcels(rows), asOf: lastEditOf(rows, ed) };
 }
 
 /**
@@ -303,8 +341,10 @@ export const loadLandKpi = cached<KpiResult>(async () => {
   else if (o.value.failed) failed.push(SOURCE.overlaps());
   return computeLand({
     clearance: c.status === 'fulfilled' ? c.value : null,
-    parcels: p.status === 'fulfilled' ? p.value : null,
+    parcels: p.status === 'fulfilled' ? p.value.parcels : null,
     overlaps: o.status === 'fulfilled' ? o.value : null,
     failed,
+    asOf: p.status === 'fulfilled' ? p.value.asOf : null,
   });
-}, 5 * 60_000, ['PARCEL_LEFT']);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): эх унасан картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
+}, 5 * 60_000, ['PARCEL_LEFT'], kpiComplete);

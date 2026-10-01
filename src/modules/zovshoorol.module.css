@@ -105,6 +105,48 @@
 
 .unknown { border-style: dashed; color: var(--ink-3); }
 
+/* ⚠️ 2026-10-01: `PENDING_STALE_DAYS`-аас удаж буй «Хүлээгдэж буй» — ШАР хүрээ +
+   хоногийн тэмдэг. АНИВЧИХГҮЙ (дээрх .no-ийн дүрэм), бүдгэрүүлэлтийг (.wait)
+   цуцалж тод харагдуулна. */
+.stale {
+  opacity: 1;
+  border-color: var(--warn);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface-2));
+}
+.stale .chipIcon { color: var(--warn-ink); }
+.chipAge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 30%, transparent);
+  white-space: nowrap;
+}
+.cStale { color: var(--warn-ink); }
+
+/* ── Төлөвийн шүүлт ── */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.fBtn {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 5px 11px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.fBtn:hover { color: var(--ink); border-color: var(--line-strong, var(--hue)); }
+.fOn {
+  color: var(--ink);
+  border-color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 16%, transparent);
+}
+.fStale { border-color: var(--warn); }
+.fNum { margin-left: 2px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
 /* ── Дэлгэрэнгүй цонх ── */
 .backdrop {
   position: fixed;

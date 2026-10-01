@@ -173,6 +173,13 @@ export type AnalysisData = {
   buildingCats: BuildingPurposeStat[];
   /** Барилгын цэгүүд — «Байршил» картын шинжилгээ */
   bldPts: LocationPt[];
+  /**
+   * ⚠️ 2026-09-30: ТАТАГДААГҮЙ эх сурвалжууд (нэрээр) — хоосон бол бүгд бүрэн.
+   * Урьд нь автобус/LRT-ийн буудал, инженерийн дэд бүтэц унахад `[]` болж
+   * «Тээврийн хүртээмж» «өгөгдөл алга» эсвэл ХЭТ ХОЛ зай харуулж, тэр хагас үр
+   * дүн сесс дуустал кэшлэгддэг байв.
+   */
+  failed: string[];
 };
 
 /**
@@ -247,10 +254,13 @@ let cache: Promise<AnalysisData> | null = null;
 
 export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<AnalysisData> {
   if (!cache) {
-    cache = loadAnalysis(onProgress).catch((e) => {
-      cache = null; // алдаа кэшлэхгүй — дахин оролдох боломжтой байх ёстой
-      throw e;
-    });
+    cache = loadAnalysis(onProgress)
+      /* ⚠️ 2026-09-30: ХАГАС үр дүнг (`failed`) кэшлэхгүй — дараагийн нээлт дахин оролдоно */
+      .then((d) => { if (d.failed.length) cache = null; return d; })
+      .catch((e) => {
+        cache = null; // алдаа кэшлэхгүй — дахин оролдох боломжтой байх ёстой
+        throw e;
+      });
   }
   return cache;
 }
@@ -290,14 +300,21 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const green = await fetchAll(GREEN_DATA_URL, ['RefName_12', 'Shape__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);
+  /* ⚠️ 2026-09-30: уналт ҮРГЭЛЖИЛНЭ (хагас дүн нь хоосноос дээр) ч НЭРЭЭР нь бүртгэнэ — `failed` */
+  const failed: string[] = [];
+  const soft = (label: string) => (e: unknown): Feat[] => {
+    console.warn(`[selbe] анализ: «${label}» татагдсангүй:`, e);
+    if (!failed.includes(label)) failed.push(label);
+    return [];
+  };
   const [bus, lrt] = await Promise.all([
-    fetchAll(url(SRC.busStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
-    fetchAll(url(SRC.lrtStops), ['OBJECTID'], true).catch(() => [] as Feat[]),
+    fetchAll(url(SRC.busStops), ['OBJECTID'], true).catch(soft(tr('Автобусны буудал'))),
+    fetchAll(url(SRC.lrtStops), ['OBJECTID'], true).catch(soft(tr('LRT буудал'))),
   ]);
 
   onProgress(tr('Инженерийн дэд бүтэц…'), 72);
   const engResults = await Promise.all(
-    ENGINEERING_IDS.map((id) => fetchAll(url(id), ['OBJECTID'], true).catch(() => [] as Feat[])),
+    ENGINEERING_IDS.map((id) => fetchAll(url(id), ['OBJECTID'], true).catch(soft(tr('Инженерийн дэд бүтэц')))),
   );
 
   onProgress(tr('Орон зайн үзүүлэлт…'), 84);
@@ -341,6 +358,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   }
 
   /* ── Бүс бүрийн бичлэг ── */
+  /** BCR талбарын хэмжээс — бүх бүсийн утгаас НЭГ удаа (`bcrScaleOf`) */
+  const bcrFrac = bcrScaleOf(zoneFeats.map((f) => f.attributes[Z.bcr]));
   const zones: Zone[] = zoneFeats.map((f) => {
     const a = f.attributes;
     const id = zoneCanon(a[Z.id]);
@@ -358,7 +377,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     //    `FAR_HUVI ÷ 100`-г ЗАСВАРЛАСАН утга болгон шууд ашиглана.
     const zoneFar = a[Z.farPct] != null ? n(a[Z.farPct]) / 100 : (a[Z.far] != null ? n(a[Z.far]) : null);
     // BCR нь эзлэх ХЭСЭГ (0–0.5) тул ×100 хийж хувь болгоно
-    const zoneBcr = a[Z.bcr] != null ? n(a[Z.bcr]) * 100 : null;
+    /* ⚠️ 2026-10-01: хэмжээсийг ӨГӨГДЛӨӨС шалгана (`bcrScaleOf`) — хувиар ирвэл ×100 БИШ */
+    const zoneBcr = a[Z.bcr] != null ? bcrToPct(n(a[Z.bcr]), bcrFrac) : null;
 
     let transitM: number | null = null;
     if (geom && stopGeoms.length) {
@@ -403,6 +423,7 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     greenCats: [...greenCats].sort(),
     buildingCats: groupBuildingPurposes(buildings),
     bldPts: locationPts(buildings),
+    failed,
   };
 }
 
@@ -653,11 +674,41 @@ function computeSocialAccess(zones: Zone[], buildings: Feat[], greenUnion: GeomA
    тооцдог байсан. Эзэмшигчийн шийдвэрээр эдийн засгийн загвар бүрмөсөн
    хасагдсан — бүсийн оноо одоо ЗӨВХӨН хот төлөвлөлтийн нормоор бодогдоно. */
 
+/**
+ * BCR талбар ХЭСЭГ (0–1) үү, ХУВЬ (0–100) уу — БҮХ бүсийн утгын МЕДИАНААР.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь `× 100` гэж ХАТУУ бичсэн
+ *    тул эх давхаргад BCR хувиар (40, 11 …) бичигдвэл 4,000% болж норм (≤40)
+ *    БҮХ бүсэд зөрчигдөнө — чимээгүй. Одоо: медиан ≤ 1.5 бол хэсэг (`true`),
+ *    эс бөгөөс хувь (`false`). Утгагүй бол хуучин таамаг (хэсэг).
+ * ⚠️ Медиан — нэг эвдэрсэн бичлэг (хувиар бичигдсэн 40) хэмжээсийг шийдэхгүй.
+ */
+export function bcrScaleOf(values: unknown[]): boolean {
+  const v = values
+    .map((x) => (x == null || x === '' ? NaN : Number(x)))
+    .filter((x) => Number.isFinite(x) && x > 0)
+    .sort((a, b) => a - b);
+  if (!v.length) return true;
+  return v[Math.floor(v.length / 2)] <= 1.5;
+}
+
+/**
+ * Нэг BCR утгыг ХУВЬ болгоно.
+ * ⚠️ Хэсгийн горимд ч 1.5-аас их утга нь аль хэдийн хувь (холимог өгөгдөл) —
+ *    дахин ×100 хийхгүй.
+ */
+export const bcrToPct = (v: number, fraction: boolean): number =>
+  (fraction && v <= 1.5 ? v * 100 : v);
+
 /** Зогсоолын хэрэгцээг сонгосон аргаар */
 export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
   switch (p.source) {
     case 'households': return z.households > 0 ? z.households * p.perHousehold : null;
-    case 'population': return z.population > 0 ? (z.population * p.per1000) / 1000 : null;
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Хүн амаар» = ОРШИН СУУГЧ
+       (`Population`, `live.POPULATION_FIELD`). Урьд нь `z.population`
+       (= Population + Huchin_chadal) байсан тул сургууль/оффисын СУУДАЛ ч «хүн ам»
+       болж, зогсоолын хэрэгцээ ~1.6 дахин хөөрөгддөг байв (25,039 хүчин чадал). */
+    case 'population': return z.residentPop > 0 ? (z.residentPop * p.per1000) / 1000 : null;
     default: return z.normParking > 0 ? z.normParking : null;
   }
 }

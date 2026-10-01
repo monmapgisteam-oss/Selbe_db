@@ -126,4 +126,27 @@ const curveOf = (rows) => planCurve(rows, 1, axis).map((c) => (c[0] == null ? nu
     `computeAll ${c1} ≠ planCurve ${c2} — хоёр дүрэм салсан`);
 }
 
+/* ── 8. (2026-10-01, хэрэглэгчийн шийдвэр) САРЫН ЗАДАРГААТАЙ АЖИЛ — сар доторх хувь ажлын
+   өдрөөр. 3-р сарын 20-нд эхлэх ажил сарын 1-нд 0% (хуучнаар 1/31 — бодит 0 гүйцэтгэл
+   «хоцорсон» болдог байв); сарын эцсийн цэг ижил. `planCurve`-ийн `planPct` замаар. */
+{
+  const { planPctFromMonths } = await import('@/lib/huvaariObyem.ts');
+  const one = [
+    row({ oid: 1, no: 'Б. БАРИЛГА УГСРАЛТЫН АЖИЛ', group: true, depth: 0 }),
+    row({ oid: 2, no: '1', depth: 1, des: 7, start: [D('2026-03-20')], end: [D('2026-04-09')] }),
+  ];
+  const m = new Map([['2026-03', 40], ['2026-04', 60]]);
+  const withSpan = (r, b, asOf) => (r.des == null ? null : planPctFromMonths(m, asOf, { start: r.start[b], end: r.end[b] }));
+  const noSpan = (r, b, asOf) => (r.des == null ? null : planPctFromMonths(m, asOf));
+  const at = [D('2026-03-01'), D('2026-03-25'), D('2026-03-31'), D('2026-04-09'), D('2026-04-30')];
+  const a = planCurve(one, 1, at, withSpan).map((c) => c[1]);
+  const b = planCurve(one, 1, at, noSpan).map((c) => c[1]);
+  assert.equal(a[0], 0, `сарын 1-нд эхлээгүй ажил 0 байх ёстой: ${a[0]}`);
+  assert.ok(b[0] > 0, 'span-гүй (хуучин) нь сарын 1-нд эерэг байсныг баталгаажуулна');
+  assert.ok(Math.abs(a[1] - 0.4 * (6 / 12)) < 1e-12, `3-р сарын 25 = 20–31-ийн 6/12: ${a[1]}`);
+  assert.equal(a[2], b[2], 'сарын эцсийн цэг ижил (муруй хөдлөхгүй)');
+  assert.equal(a[3], 1, '4-р сарын 9 (дуусах өдөр) = 100%, сарын эцэс хүлээхгүй');
+  assert.equal(a[4], b[4], 'дараа сарын эцэс ижил');
+}
+
 console.log('planCurveShape.check: ok — хуваарь дагана ✓ бүлэг ✓ хуваарьгүй=0 ✓ хилийн тохиолдол ✓ computeAll≡planCurve ✓');

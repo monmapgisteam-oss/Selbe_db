@@ -296,4 +296,19 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(hoTotals([pay(1, 'Г', 'Г', work, 265, { [C.contractTotal]: 1000 })]).paidPct, 26.5);
 }
 
+/* ══ 11. ⚠️ 2026-09-30: `hoTotals().paidPct`-ийн тоологч = гэрээт дүн ТОДОРХОЙ гэрээний олголт ══
+   Гэрээт дүнгүй гэрээний (ХО-0045 г.м.) төлбөр хуваарьт ороогүй тул тоологчид ч орохгүй —
+   `ipcTable.ipcTotals.paidContracted`-тай нэг дүрэм. `paid` нь хэвээр бүх мөр. */
+{
+  const t = hoTotals([
+    pay(1, 'Д', 'Д', work, 250, { [C.contractTotal]: 1000 }),
+    pay(2, 'Е', 'Е', work, 400), /* гэрээт дүн алга */
+  ]);
+  assert.equal(t.paid, 650, 'нийт олгосон — бүх мөр');
+  assert.equal(t.contract, 1000);
+  assert.equal(t.paidPct, 25, 'хувь 25% (250/1000) байх ёстой — 65% (650/1000) нь хуваарьт ороогүй мөнгөөр хөөрөгдсөн');
+  /* Гэрээт дүн огт алга → хувь бодогдохгүй (null ≠ 0) */
+  assert.equal(hoTotals([pay(1, 'Е', 'Е', work, 400)]).paidPct, null);
+}
+
 console.log('ipc.check.mjs — БҮГД ТЭНЦЛЭЭ');

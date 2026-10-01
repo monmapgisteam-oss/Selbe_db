@@ -19,9 +19,11 @@
  */
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   STATUS_LIST, PARCEL_OID, rowToParcel, diffParcel, validateParcel,
   parcelWhere, parcelNoWhere,
+  validateParcelChanged, editFieldsOf, parcelNoLikeWhere, saveParcel,
 } from './parcelEdit.ts';
 import { PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES } from './services.ts';
 
@@ -157,4 +159,70 @@ assert.equal(
   'нэг хашилт давхарлагдаж SQL тайрагдахаас хамгаална',
 );
 
-console.log('parcelEdit.check: ok — жагсаалт ✓ задаргаа ✓ diff ✓ бохир утга ✓ шалгуур ✓ SQL ✓');
+/* ══════════════ 8. ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг шалгана (2026-10-01) ══════════════
+   ⚠️ Хуучин/танигдахгүй төлөвтэй мөрийн эзэмшигчийг засахад хөндөөгүй төлөвөөс
+   болж хадгалалт ХААГДДАГ байв. */
+{
+  const legacy = { ...p, status: 'Үлдсэн нэгж талбар', progress: 'Үлдсэн нэгж талбар' };
+  const edit = { ...patchOf({}), status: legacy.status, progress: legacy.progress, owner: 'Шинэ эзэмшигч' };
+  assert.ok(validateParcel(edit).status, 'бүтэн шалгуур нь хуучин төлөвийг барьдаг хэвээр');
+  assert.deepEqual(validateParcelChanged(legacy, edit), {}, 'хөндөөгүй төлөв хадгалалтыг хаах ёсгүй');
+  /* хөндөөгүй төлөв diff-д ОРОХГҮЙ — түүхий утга хэвээр үлдэнэ */
+  assert.deepEqual(Object.keys(diffParcel(legacy, edit)), [F.owner]);
+  /* өөрчилсөн төлөв шалгагдсаар */
+  assert.ok(validateParcelChanged(legacy, { ...edit, status: 'Зохиомол' }).status);
+  assert.ok(validateParcelChanged(legacy, { ...edit, status: '' }).status);
+  assert.deepEqual(validateParcelChanged(legacy, { ...edit, status: PARCEL_CLEARED }), {});
+  /* хоосон төлөвтэй мөр ч мөн адил */
+  const blankSt = { ...p, status: '', progress: '' };
+  assert.deepEqual(validateParcelChanged(blankSt, { ...patchOf({}), status: '', progress: '', note: 'x' }), {});
+}
+console.log('✅ төлөв нь ӨӨРЧЛӨГДСӨН үед л шалгагдана');
+
+/* ══════════════ 9. Editor Tracking — метадатагаас (2026-10-01) ══════════════ */
+{
+  const ef = editFieldsOf({
+    editFieldsInfo: { creationDateField: 'CreationDate', creatorField: 'Creator', editDateField: 'EditDate', editorField: 'Editor' },
+  });
+  assert.deepEqual(ef, { editor: 'Editor', editDate: 'EditDate' });
+  /* тохиргоо унтраалттай → null (мөр харагдахгүй) */
+  assert.equal(editFieldsOf({ editFieldsInfo: null }), null);
+  assert.equal(editFieldsOf({}), null);
+  assert.equal(editFieldsOf(null), null);
+  assert.equal(editFieldsOf({ editFieldsInfo: { creationDateField: 'C' } }), null, 'засварын талбаргүй бол null');
+  /* өөр нэртэй талбар — хатуу нэр БИШ */
+  const ef2 = editFieldsOf({ editFieldsInfo: { editDateField: 'last_edited_date', editorField: 'last_edited_user' } });
+  const r2 = rowToParcel({ ...row, last_edited_date: 1790754747577, last_edited_user: 'gazar_choloololt' }, ef2);
+  assert.equal(r2.editedBy, 'gazar_choloololt');
+  assert.equal(r2.editedAt, 1790754747577);
+  /* метадатагүй → null; утга алга → null (0 БИШ, 1970 он БИШ) */
+  assert.equal(rowToParcel({ ...row, EditDate: 1, Editor: 'x' }).editedAt, null, 'ef-гүй бол уншихгүй');
+  const r3 = rowToParcel({ ...row, EditDate: null, Editor: '  ' }, ef);
+  assert.equal(r3.editedAt, null);
+  assert.equal(r3.editedBy, null);
+  assert.equal(rowToParcel({ ...row, EditDate: 0 }, ef).editedAt, null, '0 тамга = огноо алга');
+}
+console.log('✅ Editor Tracking: метадатагаас таньж, байхгүй бол чимээгүй алгасна');
+
+/* ══════════════ 10. Дугаараар хайх — LIKE (2026-10-01) ══════════════ */
+assert.equal(parcelNoLikeWhere('14618'), `${F.parcelNo} LIKE N'%14618%'`);
+assert.equal(parcelNoLikeWhere("1%4_6[1]'"), `${F.parcelNo} LIKE N'%1461''%'`,
+  'LIKE-ийн тусгай тэмдэгт хасагдаж, хашилт давхарлагдана');
+console.log('✅ хэсэгчилсэн хайлтын SQL');
+
+/* ══════════════ 11. saveParcel — НЭГЖ ТАЛБАРЫН тоо (2026-10-01) ══════════════ */
+/* өөрчлөлтгүй бол 0, сүлжээнд залгахгүй (эрх ч шаардахгүй) */
+assert.equal(await saveParcel(p, patchOf({})), 0);
+/* ⚠️ Амжилтын зам сүлжээ шаарддаг тул ЭХ КОДООР: баганын тоо (`Object.keys(d).length`)
+   БИШ, 1 буцаана — «3 талбар хадгалагдлаа» гэсэн төөрөгдөл буцаж ирэхгүй. */
+{
+  const src = fs.readFileSync('src/lib/parcelEdit.ts', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const body = /export async function saveParcel\([\s\S]*?\n\}/.exec(src)?.[0] ?? '';
+  assert.ok(body, 'saveParcel олдсонгүй');
+  assert.match(body, /return 1;/, 'saveParcel нь хадгалсан НЭГЖ ТАЛБАРЫН тоог (1) буцаана');
+  assert.doesNotMatch(body, /return n;/, 'баганын тоо буцаах ёсгүй');
+}
+console.log('✅ saveParcel: 0 (өөрчлөлтгүй) | 1 (нэгж талбар)');
+
+console.log('parcelEdit.check: ok — жагсаалт ✓ задаргаа ✓ diff ✓ бохир утга ✓ шалгуур ✓ SQL ✓ засварын хүн ✓ хайлт ✓');

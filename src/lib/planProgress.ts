@@ -137,7 +137,7 @@ type Sheet = {
   /** «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» мөрийн индекс; олдоогүй бол `-1` */
   bi: number;
   /** Сарын задаргааны хувь бодогч (задаргаагүй бол `undefined`) */
-  planPct?: (row: { des: number | null }, b: number, asOf: number) => number | null;
+  planPct?: (row: { des: number | null; start: (number | null)[]; end: (number | null)[] }, b: number, asOf: number) => number | null;
   /** Сар → тухайн сард төлөвлөсөн обьёмын нийлбэр */
   volByMonth: Map<string, number>;
   from: number;
@@ -215,12 +215,17 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
      *    муруй огнооны шугаман замаараа зурагдана.
      */
     const obPlan = await loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+    /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): сар доторх хувь АЖЛЫН эхлэх–дуусах
+       өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) — `bagtsSheet.planAt`-тай нэг
+       томъёо. Огноо эвдэрсэн (`sane` биш) бол бүтэн сараар (хуучин зам). */
     const planPct = obPlan && obPlan.size
-      ? (row: { des: number | null }, b: number, asOf: number): number | null => {
+      ? (row: { des: number | null; start: (number | null)[]; end: (number | null)[] }, b: number, asOf: number): number | null => {
         if (row.des == null) return null;
         const blok = sc.bld[b];
         const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-        return m ? planPctFromMonths(m, asOf) : null;
+        const s = row.start[b];
+        const e = row.end[b];
+        return m ? planPctFromMonths(m, asOf, sane(s) && sane(e) ? { start: s, end: e } : null) : null;
       }
       : undefined;
 
@@ -321,7 +326,10 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
         return;
       }
       pts.push({ label: a.label, pct: plan * 100, vol: sh.volByMonth.get(a.label) ?? null });
-      /* Багц/төслийн нэгтгэлд БЛОКИЙН ТООГООР жигнэнэ */
+      /* Багц/төслийн нэгтгэлд БЛОКИЙН ТООГООР жигнэнэ.
+         ⚠️ 2026-09-30 (төслийн аудит): ТӨСЛИЙН түвшний ТӨЛӨВЛӨГӨӨГ дэлгэцүүд одоо
+         `months`-оос биш `Finance.projectPlanOf` (= `gdash.housingPlanSeries`, ХО жин)-оос
+         уншина — бодит (`physNow`) ХО-жинтэй тул. `months` нь зөвхөн хуучин/дотоод хэрэглээнд. */
       gArr[i].s += plan * sh.nBld;
       gArr[i].n += sh.nBld;
       tAcc[i].s += plan * sh.nBld;
@@ -445,7 +453,10 @@ export function planPctAt(
  */
 let curveP: Promise<PlanCurve> | null = null;
 let curveAt = 0;
-register(() => { curveP = null; }, ['BAGTS_SHEET']);
+/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `HUVAARI_OBYEM` нэмэгдэв — муруй сарын
+   задаргаанаас (`loadPkgPlan`) ч уншдаг тул зөвхөн обьём өөрчилсөн батлалтын дараа
+   (`applyPlanEdits`) ч тэр дор нь хаягдана. */
+register(() => { curveP = null; }, ['BAGTS_SHEET', 'HUVAARI_OBYEM']);
 
 export function loadPlanCurveCached(): Promise<PlanCurve> {
   if (!curveP || Date.now() - curveAt > 5 * 60_000) {

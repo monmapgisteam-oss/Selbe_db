@@ -261,3 +261,13 @@
   cursor: pointer;
 }
 .docBtn:hover { filter: brightness(1.1); }
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): орой эхэлсэн хуудас — тайлант үед
+   гэрээний эхнээс хуримтлагдсан ажил орсон IPC (`ipcDoc.lateSheetsOf`). Улаан биш,
+   анхаарах (warn) өнгө: алдаа биш, тайлбар шаардлагатай тохиолдол. */
+.lateNote {
+  margin: 0 10px 8px; padding: 5px 8px; border-radius: 6px;
+  font-size: 11px; line-height: 1.45;
+  color: var(--warn-ink, #8a5a00);
+  background: color-mix(in srgb, var(--warn, #d68a00) 12%, transparent);
+}

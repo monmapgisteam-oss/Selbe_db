@@ -374,4 +374,39 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
 }
 console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх');
 
-console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх');
+/* ── 10. Устгагдсан аккаунтын хуучин мөр гацааг НУУХГҮЙ (2026-09-30) ──
+   ⚠️ Урьд нь порталд алга (устгагдсан) батлагч/шатны эзний мөр «батлагчгүй» · «урсгалын цоорхой»-г
+      чимээгүй нуудаг байв — тэр хүн нэвтэрч чадахгүй тул илгээлт тэнд мөнхөд хүлээнэ.
+      Нүдэнд (засахад) харагдсаар, зөвхөн гацааны шалгуурт тоологдохгүй. */
+{
+  const huv = {
+    ...empty(),
+    users: ['a'],
+    huvaari: [
+      { user: 'a', grants: [{ role: 'author', bagts: [G0] }] },
+      { user: 'ghost', grants: [{ role: 'approver', bagts: [G0] }] },
+    ],
+  };
+  assert.ok(!pkgErh(huv, G0).issues.some((i) => i.key === 'huvaariNoApprover'), '`gone`-гүй бол урьдынх шиг эзэн гэж тоологдоно');
+  const gone = { ...huv, gone: ['Ghost'] };
+  assert.ok(pkgErh(gone, G0).issues.some((i) => i.key === 'huvaariNoApprover' && i.tone === 'bad'),
+    'устгагдсан батлагч гацааг нуух ёсгүй');
+  const cell = pkgMatrix(gone).find((r) => r.bagts === G0).cells['huvaari:approver'];
+  assert.deepEqual(cell.owners, ['ghost'], 'нүдэнд харагдсаар (✕-ээр цэвэрлэхийн тулд)');
+  assert.equal(cell.tone, 'bad', 'нүд улаан');
+  const flow = {
+    ...empty(),
+    users: STAGE_ORDER.slice(1).map((st) => `u_${st}`),
+    gone: ['ghost_eng'],
+    flow: [
+      { user: 'ghost_eng', stage: STAGE_ORDER[0], bagts: ['*'] },
+      ...STAGE_ORDER.slice(1).map((st) => ({ user: `u_${st}`, stage: st, bagts: [G0] })),
+    ],
+  };
+  const gap = pkgErh(flow, G0).issues.find((i) => i.key === 'flowGap');
+  assert.ok(gap && gap.cols.includes(`flow:${STAGE_ORDER[0]}`), 'устгагдсан шатны эзэн → урсгалын цоорхой');
+  assert.ok(!pkgErh({ ...flow, gone: [] }, G0).issues.some((i) => i.key === 'flowGap'), 'устгагдаагүй бол цоорхойгүй');
+}
+console.log('✅ устгагдсан аккаунтын хуучин мөр гацааг нуухгүй (нүдэнд харагдсаар)');
+
+console.log('\nerhOverview: ok — «*» · гацааг урьдчилж · багц тусгаарлалт · матриц · өнчин эрх · устгагдсан аккаунт');

@@ -193,6 +193,11 @@ export type Acl<R extends string> = {
   grantsOf: (user: string | null | undefined) => Grant<R>[] | null;
   remove: (user: string, revoke?: boolean) => AclWrite;
   purge: (user: string) => Promise<boolean>;
+  /**
+   * БИЧИЛТ УНАСАН МӨРИЙГ ДАХИН ИЛГЭЭХ (2026-10-01) — локал төлөвийг (мөр байвал upsert,
+   * алга бол устгал) remote руу ДАХИН бичиж, `grant` бол үүргийн эрхийг дахин олгоно.
+   */
+  retry: (user: string, grant?: boolean) => AclWrite;
   /** `null` = хязгааргүй · `[]` = хуваарилагдаагүй · `[...]` = заасан багцууд */
   scope: (user: string | null | undefined, role?: R) => string[] | null;
   hasRole: (user: string | null | undefined, role: R) => boolean;
@@ -349,6 +354,10 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * зөвхөн НЭГ Ч үүрэг үлдээгүй үед л хасна (хуваарилалт бүхэлдээ арилах).
    */
   async function syncCaps(user: string, roles: R[]): Promise<boolean> {
+    /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — эрх нь ЗӨВХӨН шууд олголтоос
+       (`aclOps.capDirectOp`). `setGrants` super-ийг татгалздаг ч `removeAssign(u, revoke=true)`
+       хуучин мөрийг хасахад энд хүрч шууд олгосон эрхийг (`qaqc` г.м.) буцаадаг байв. */
+    if (roleForUser(user) === 'super') return true;
     try {
       const c = await import('./caps');
       /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар) —
@@ -596,6 +605,50 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   };
 
   /**
+   * «ДАХИН ИЛГЭЭХ» · «ДАХИН ОЛГОХ» (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   *
+   * ⚠️ ЯАГААД: `failed` тэмдэг (мөр/эрхийн бичилт унасан) нь панелд «!» л харуулдаг байв —
+   *    дахин оролдох цорын ганц зам нь багцыг хасаад дахин нэмэх (эрх буцаах асуулттай).
+   *    Мөн хуваарилалт бий атлаа эрх нь алга (`erhOverview.missingCaps`) үед ч ижил.
+   * ⚠️ ЛОКАЛ ТӨЛӨВ = ЗОРЬСОН ТӨЛӨВ: `failed` хэрэглэгчийн локал мөр `syncRemote`-д давамгайлдаг
+   *    тул энд ГҮЙЦЭТГЭХ агшиндаа уншаад тэр хэвээр нь бичнэ (`pushRow` — мөр алга бол устгал).
+   * ⚠️ ЭРХ ЗӨВХӨН НЭМЭГДЭНЭ (`syncCaps(roles)`, мөр байвал) — алга болсон мөрийн эрхийг энд
+   *    буцаахгүй: тэр нь `aclOps.revokeGoneRoles`-ийн ажил, өнчин эрх нь хуудасны
+   *    «өнчин эрх — хасах»-аар ил цэвэрлэгдэнэ (автомат хасалт хийхгүй).
+   * @param grant `false` — устгагдсан аккаунт / хатуу super-ийн хуучин мөр: зөвхөн мөрийг бичнэ,
+   *   `__cap__:` мөр ДАХИН үүсгэхгүй (`aclOps.isCleanup`).
+   */
+  const retry = (user: string, grant = true): AclWrite => {
+    const u = user.trim().toLowerCase();
+    if (!u) return { ok: false, error: spec.msg.noUser };
+    const run = enqueue(u, async () => {
+      const ok = await pushRow(u);
+      const a = load().find((x) => x.user === u);
+      const rolesAll = a ? [...new Set(a.grants.map((g) => g.role))].filter((r): r is R => r !== '') : [];
+      let g = grant && a ? await syncCaps(u, rolesAll) : true;
+      /*
+       * ⚠️ ЭРХИЙН МӨР ӨМНӨ НЬ УНАСАН БОЛ ТҮҮНИЙГ Ч ДАХИН БИЧНЭ. Анхны бичилтэд `syncCaps` нь
+       *    кэшийг аль хэдийн шинэчилсэн (`setCaps` локалд эхэлж бичдэг) тул энд «өөрчлөлтгүй» гэж
+       *    ArcGIS руу бичихгүй `true` буцаана — `__cap__:` мөр dirty хэвээр үлдэж, «Дахин илгээх»
+       *    амжилттай мэт харагдах байв. Хадгалсан (зорьсон) жагсаалтыг бүтнээр нь илгээнэ —
+       *    `caps.retryCapsDirty`-ийн тухайн хэрэглэгчийн хувилбар.
+       */
+      if (grant && a && roleForUser(u) !== 'super') {
+        try {
+          const c = await import('./caps');
+          if (c.capsRemoteReady() && c.dirtyCapKeys().includes(u)) g = (await c.setCaps(u, c.capsStored(u))) && g;
+        } catch {
+          g = false;
+        }
+      }
+      return { ok, g };
+    });
+    const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
+    const granted = run.then((r) => r.g);
+    return { ok: true, sync, granted };
+  };
+
+  /**
    * Тухайн хэрэглэгчийн багцууд — ҮҮРЭГТЭЙ системд ТУХАЙН ҮҮРГЭЭР.
    *
    * Буцаах утга:
@@ -648,7 +701,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   return {
     list, syncRemote, failedUsers: () => [...failed],
-    set, setGrants, grantsOf, remove: removeAssign, purge, scope, hasRole, subscribe,
+    set, setGrants, grantsOf, remove: removeAssign, purge, retry, scope, hasRole, subscribe,
     ready: () => remoteSynced,
   };
 }

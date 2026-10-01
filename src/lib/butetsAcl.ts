@@ -79,6 +79,9 @@ export const removeButetsAssign = (user: string, revoke = true) => acl.remove(us
 
 export const purgeButetsAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryButetsAssign = acl.retry;
+
 /**
  * Тухайн хэрэглэгчийн засаж болох БАГЦУУД.
  *   · `null` — хязгааргүй (super / бүх багц)

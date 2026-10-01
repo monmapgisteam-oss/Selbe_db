@@ -100,7 +100,10 @@ console.log('✅ updateAjil — ижил мөр, төлөв хэвээр, дар
   };
   try {
     cred.refreshToken = async () => { n += 1; cred.token = 'c'; cred.expires = Date.now() + 3_600_000; };
-    const j = await T.arcgisPost('https://x/arcgis/rest/services/A/FeatureServer/0/query', { where: '1=1', token: 'хуучин' });
+    /* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана
+       (`query.ts`) — байгууллагын (env HJ) хаягаар шалгана. */
+    const orgUrl = `${(process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '')}/A/FeatureServer/0/query`;
+    const j = await T.arcgisPost(orgUrl, { where: '1=1', token: 'хуучин' });
     assert.deepEqual(j, { ok: 1 });
     assert.deepEqual(seen, ['b', 'c'], 'дуудагчийн хуучин токен давамгайлсан эсвэл дахин оролдоогүй');
     /* Токены биш алдаанд дахин оролдохгүй, мессежид зам */

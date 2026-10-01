@@ -208,6 +208,34 @@
 .stateCounts { display: flex; flex-direction: column; gap: 3px; }
 .stateCounts > span { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; }
 .stateCounts b { font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-10-01: төлвийн тоо нь ТОВЧ — дарахад «Багцууд» тэр төлвөөр шүүгдэнэ */
+.stateBtn {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -4px;
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.stateBtn:hover:not(:disabled) { background: var(--surface-2); }
+.stateBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.stateBtn[aria-pressed='true'] { background: color-mix(in srgb, var(--data) 14%, transparent); }
+.stateBtn:disabled { cursor: default; opacity: 0.55; }
+
+/* ⚠️ 2026-10-01: бүхэлдээ хоосон хэсэг — хураагдсан (`Section empty`), дарахад нээгдэнэ */
+.collapsed > summary { display: flex; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; }
+.collapsed > summary::-webkit-details-marker { display: none; }
+.collapsed > summary::before { content: '▸'; font-size: 0.8rem; color: var(--ink-3); }
+.collapsed[open] > summary::before { content: '▾'; }
+.collapsed[open] > summary { margin-bottom: 10px; }
+.collapsed > summary:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.collapsedNote { font-size: 0.74rem; color: var(--ink-3); }
+
+/* ⚠️ 2026-10-01: `TUH_STALE_DAYS`+ хоног тайлангүй — карт ба огноо тодорно */
+.stale { color: var(--warn-ink); font-weight: 700; }
 
 /* ── Шүүлтүүр ── */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -252,6 +280,13 @@
 .card[data-tone='warn'] { border-left-color: var(--warn); }
 .card[data-tone='bad'] { border-left-color: var(--bad); }
 .card[data-active='true'] { outline: 2px solid var(--data); outline-offset: -1px; }
+/* ⚠️ Зүүн ирмэг нь төлвийн өнгө хэвээр (`data-tone`) — зөвхөн дэвсгэр/бусад ирмэг */
+.card[data-stale='true'] {
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+  border-top-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-right-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-bottom-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
 .cardTop { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .code { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--ink-2); }
 .cardTitle { margin: 0; font-size: 0.86rem; font-weight: 600; line-height: 1.3; }

@@ -23,10 +23,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { dateTime, num } from '@/lib/format';
 import { PARCEL_LEFT, PARCEL_STATUS_HUES } from '@/lib/services';
 import {
-  STATUS_LIST, loadParcel, loadProgressValues, saveParcel, validateParcel,
+  STATUS_LIST, loadParcel, loadProgressValues, saveParcel, validateParcelChanged,
   type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
@@ -47,7 +47,10 @@ export function GazarEdit({
 }: {
   oid: number;
   canEdit: boolean;
-  /** Амжилттай хадгалсны дараа — хэдэн талбар бичигдсэнийг дамжуулна */
+  /**
+   * Амжилттай хадгалсны дараа — хадгалагдсан НЭГЖ ТАЛБАРЫН тоог (0 | 1) дамжуулна.
+   * ⚠️ 2026-10-01: урьд нь баганын тоо байв (`saveParcel`-ийн ⚠️).
+   */
   onDone: (changed: number) => void;
   onCancel: () => void;
   /**
@@ -143,7 +146,10 @@ export function GazarEdit({
 
   const submit = async () => {
     if (!before || !d) return;
-    const e = validateParcel(d);
+    /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗӨВХӨН өөрчилсөн талбар шалгагдана —
+       хуучин/танигдахгүй төлөвтэй мөрийн эзэмшигч, хаягийг засахад хөндөөгүй
+       төлөвөөс болж хадгалалт хаагддаг байв (`validateParcelChanged`). */
+    const e = validateParcelChanged(before, d);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
     setBusy(true); setFail('');
@@ -185,6 +191,19 @@ export function GazarEdit({
                 <dd>{before.parcelNo || '—'}</dd>
                 <dt>{tr('Талбай')}</dt>
                 <dd>{before.areaM2 == null ? '—' : `${num(before.areaM2)} м²`}</dd>
+                {/* ⚠️ 2026-10-01: ArcGIS Editor Tracking — давхаргад асаалттай үед л
+                    (`parcelEdit.loadEditFields`). Утга алга бол мөр ОГТ гарахгүй:
+                    «—» нь «хэн ч засаагүй» гэж худал уншигдана. Зөвхөн СҮҮЛИЙН
+                    засвар — түүх биш (үйлчилгээ өөрөө түүх хадгалдаггүй). */}
+                {(before.editedBy || before.editedAt != null) && (
+                  <>
+                    <dt>{tr('Сүүлд засварласан')}</dt>
+                    <dd>
+                      {[before.editedBy, before.editedAt != null ? dateTime(before.editedAt) : null]
+                        .filter(Boolean).join(' · ')}
+                    </dd>
+                  </>
+                )}
               </dl>
 
               <label className={g.f}>
@@ -206,7 +225,15 @@ export function GazarEdit({
                     </button>
                   ))}
                 </div>
-                {err.status && <span className={g.fErr}>{err.status}</span>}
+                {err.status ? <span className={g.fErr}>{err.status}</span>
+                  /* ⚠️ 2026-10-01: хуучин/танигдахгүй утга аль ч товчинд таарахгүй тул
+                     «юу ч сонгогдоогүй» харагдана — хөндөхгүй бол ХЭВЭЭР үлдэхийг хэлнэ
+                     (`validateParcelChanged`). */
+                  : before.status && d.status === before.status && !STATUS_LIST.includes(before.status)
+                    ? <span className={g.fHint}>
+                      {tr('Одоогийн утга «{0}» жагсаалтад байхгүй — сонгохгүй бол хэвээр үлдэнэ', before.status)}
+                    </span>
+                    : null}
               </div>
 
               {/* ⚠️ 2026-09-21: `status` ба `progress` НЭГ талбар (`явцы_1`) бол

@@ -92,6 +92,22 @@ const toMs = (v: unknown): number | null => {
   return Number.isFinite(t) && t > 0 ? t : null;
 };
 
+/**
+ * ХООСОН НООРОГ — Survey123-д эхлүүлээд бөглөөгүй ослын маягт: ТӨРӨЛ (`field_7`),
+ * БАГЦ (`field_6`), ОГНОО (`field_22`) ГУРВУУЛАА хоосон.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ийм мөр «осол» болж тоологддог байв —
+ *    төрөлгүй, багцгүй, огноогүй (эсвэл `CreationDate`-аар өнөөдрийн огноотой)
+ *    «осол» KPI-г худал өсгөнө. Нүүр самбар ба ХАБЭА хуудас (`Habea.tsx`) ЭНЭ
+ *    НЭГ дүрмээр хасна. Огноо 0 нь хоосонтой адил (`toMs`-ийн дүрэм).
+ * ⚠️ ЗӨВХӨН гурвуулаа хоосон бол — нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл.
+ */
+export function isBlankIncident(r: Row): boolean {
+  const I = HABEA.incident.fields;
+  const blankStr = (v: unknown) => v == null || String(v).trim() === '';
+  return blankStr(r[I.turul]) && blankStr(r[I.bagts]) && toMs(r[I.ognoo]) == null;
+}
+
 /** Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс */
 export function toSafetyRow(r: Row): SafetyRow {
   const I = HABEA.incident.fields;
@@ -262,7 +278,8 @@ export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
     outFields: [...Object.values(I), 'objectid', CREATED_FIELD],
     orderBy: `${I.ognoo} DESC`,
   });
-  return raw.map(toSafetyRow);
+  /* ⚠️ 2026-10-01: хоосон ноорог хасагдана (`isBlankIncident`) */
+  return raw.filter((r) => !isBlankIncident(r)).map(toSafetyRow);
 }, 5 * 60_000, ['HABEA']);
 
 export const loadSafetyKpi = cached(async (): Promise<KpiResult> => (

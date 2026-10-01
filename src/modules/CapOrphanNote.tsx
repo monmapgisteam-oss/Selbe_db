@@ -10,8 +10,8 @@
  *      · ӨНЧИН — асаалттай атлаа түүн рүү заадаг хуваарилалт алга → ИЛ «хасах»
  *        (`aclOps.capDirectOp(on=false)`, баталгаажуулалттай). Автоматаар ХЭЗЭЭ Ч
  *        хасахгүй — админы гараар олгосон хуучин эрх байж болно.
- *      · ДУТУУ — хуваарилалт бий атлаа эрх алга (эрх олголт унасан) → зөвхөн
- *        анхааруулга; засах зам нь хуваарилалтыг дахин хадгалах (`syncCaps`).
+ *      · ДУТУУ — хуваарилалт бий атлаа эрх алга (эрх олголт унасан) → «Дахин олгох»
+ *        (2026-10-01, `aclOps.regrantOp` — хуваарилалтыг хэвээр нь дахин хадгалж `syncCaps`).
  * ⚠️ Бүх ACL уншигдтал (`allAclReady`) юу ч харуулахгүй — `[]` жагсаалтаас ХУДАЛ
  *    өнчин гарна. Бичилт явагдаж буй хүнийг (`aclPendingFor`) алгасна — тэр
  *    хооронд эрх нь `sync`-ийн дараа л ирдэг тул тэмдэг худал.
@@ -20,7 +20,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import type { CapKey } from '@/lib/caps';
-import { aclPendingFor, allAclReady, capDirectOp, liveErhSource } from '@/lib/aclOps';
+import { aclPendingFor, allAclReady, capDirectOp, liveErhSource, regrantOp } from '@/lib/aclOps';
 import { missingCaps, orphanCaps, userErh } from '@/lib/erhOverview';
 import { useAclRunner } from './useAclRunner';
 import s from './guitsetgel.module.css';
@@ -63,9 +63,29 @@ export function CapOrphanNote({ cap }: { cap: CapKey }) {
           ))}
         </div>
       )}
+      {/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Дахин олгох» — урьд нь «багцыг хасаад дахин
+          нэмнэ үү» гэсэн заавар л байв (хасах нь эрх буцаах асуулттай, гацааны анхааруулга өдөөдөг).
+          `regrantOp` хуваарилалтыг ӨӨРЧЛӨХГҮЙ, зөвхөн эрхийг дахин олгоно. */}
       {missing.length > 0 && (
         <div className={s.aclErr} role="alert">
-          {tr('⚠️ Багц оноосон атлаа эрх олгогдоогүй (бичилт унасан): {0} — багцыг хасаад дахин нэмж хуваарилалтыг дахин хадгална уу.', missing.join(', '))}
+          {tr('⚠️ Багц оноосон атлаа эрх олгогдоогүй (бичилт унасан):')}
+          {' '}
+          {missing.map((u) => (
+            <span key={u}>
+              <b>{u}</b>
+              {' '}
+              <button
+                type="button"
+                className={s.aclPkg}
+                disabled={busy}
+                title={tr('Хуваарилалтыг хэвээр нь дахин хадгалж эрхийг олгоно')}
+                onClick={() => { void run(regrantOp(u, [cap])); }}
+              >
+                {tr('Дахин олгох')}
+              </button>
+              {' '}
+            </span>
+          ))}
         </div>
       )}
       {err && <div className={s.aclErr} role="alert">{err}</div>}

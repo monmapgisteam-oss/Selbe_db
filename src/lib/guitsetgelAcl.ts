@@ -421,6 +421,33 @@ export function purgeAssign(user: string): Promise<boolean> {
 }
 
 /**
+ * БИЧИЛТ УНАСАН ТОМИЛГООГ ДАХИН ИЛГЭЭХ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ *
+ * ⚠️ ЯАГААД: `failed` тэмдэг (`flowFailedUsers`) нь панелд «!» л харуулдаг байв — дахин
+ *    оролдох зам нь багцыг хасаад дахин нэмэх (шат/эрх буцаах асуулттай) байлаа.
+ * ⚠️ ЛОКАЛ ТӨЛӨВ = ЗОРЬСОН ТӨЛӨВ (`failed` хэрэглэгчийн локал мөр `_syncRemoteAssigns`-д
+ *    давамгайлдаг): ГҮЙЦЭТГЭХ агшиндаа уншиж `pushFlow` (мөр алга бол устгал). Томилгоо
+ *    байвал (`grant`) урсгалын эрхийг (`grantFlowAccess`) ДАХИН олгоно.
+ * ⚠️ Мөр АЛГА бол эрх БУЦААХГҮЙ: хуучин шат мэдэгдэхгүй, мөн 2026-10-01-нээс «Гүйцэтгэл»
+ *    харагдац хадгалалтаас биш томилгооноос нээгддэг (`permissions.workflowViewsOf`) тул
+ *    томилгоо арилмагц хуудас өөрөө хаагдана.
+ * @param grant `false` — устгагдсан аккаунт / хатуу super-ийн хуучин мөр (`aclOps.isCleanup`):
+ *   зөвхөн мөрийг бичнэ, эрхийн мөр (`setUser`) үүсгэхгүй — tombstone-ыг дарахгүй.
+ */
+export function retryFlow(user: string, grant = true): { sync: Promise<boolean> } {
+  const u = user.trim().toLowerCase();
+  if (!u) return { sync: Promise.resolve(false) };
+  const sync = enqueue(u, async () => {
+    const ok = await pushFlow(u);
+    const a = load().find((x) => x.user === u);
+    const g = grant && a ? await grantFlowAccess(u, a.stage) : true;
+    markResult(u, ok && g);
+    return ok && g;
+  });
+  return { sync };
+}
+
+/**
  * ХӨНДЛӨНГИЙН ХЯНАЛТЫН тугийг асаах / унтраах (2026-09-09).
  *
  * ⚠️ ЗӨВХӨН ТОМИЛОГДСОН хүнд утгатай: тэр нь ШИЙДВЭРЛЭХ эрхийг хасдаг

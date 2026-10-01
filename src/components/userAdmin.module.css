@@ -710,3 +710,34 @@
   font-size: 0.8rem;
 }
 
+/* ══════════ УРСГАЛТАЙ 6 ХУУДАС — картын ЗӨВХӨН ХАРУУЛАХ мөр (2026-10-01) ══════════
+   ⚠️ Унтраалгагүй: хуудас нь хуваарилалтаар л нээгдэнэ (`permissions.workflowViewsOf`);
+   мөр бүрд эх сурвалж (хуудас руу холбоос) ба «Дахин олгох». */
+.wfList { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 2px; }
+.wfRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 4px 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.wfName { display: inline-flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 600; color: var(--ink-2); }
+.wfState { padding: 1px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700; background: var(--surface-2); color: var(--ink-3); }
+.wfOpen { background: color-mix(in srgb, var(--hue) 18%, transparent); color: var(--ink); }
+.wfSrcs { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.wfSrc {
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+  cursor: pointer;
+}
+.wfSrc:hover { border-color: var(--hue); color: var(--ink); }
+.wfSrcBad { border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad-ink, var(--bad)); }
+.wfNone { font-size: 0.72rem; color: var(--ink-3); }

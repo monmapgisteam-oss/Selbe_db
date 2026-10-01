@@ -24,7 +24,7 @@ import { urbanScore, passesNorm, normFor, normGap, normText } from './analysis/s
    `simulation.ts` нь ЗӨВХӨН `Zone` төрөл ба `tr`-ийг импортолдог тул ямар ч
    хүнд хамаарал (ArcGIS SDK, газрын зураг) дагуулж ирэхгүй. */
 import { zoneTrips } from '@/modules/analysis/suit/simulation';
-import { loadBlockProgress, type BlockProgressMap } from './blockProgress';
+import { loadBlockProgress, pkgProgressOf, type BlockProgressMap } from './blockProgress';
 import { text } from './format';
 import { BAGTS_ORIGIN } from './brief';
 import { housingPct } from './gdash';
@@ -53,6 +53,13 @@ export type BagtsRow = {
    *    нь тоотой хамт харагдах ёстой.
    */
   progress: number | null;
+  /**
+   * `progress`-ийн ХУВААРЬ — бөглөх хуудсанд хэмжигдсэн блокийн тоо
+   * (`blockProgress.pkgProgressOf`). ⚠️ 2026-09-30: `blocks − missing`-ээс ӨӨР
+   * байж болно: давхаргад давхардсан feature (29/1, 5/6) нэг л хэмжилт, footprint-гүй
+   * хэмжилт (29/3, 5/8) энд орно. `buildProgressOf`-ийн нөөц жин үүгээр.
+   */
+  measured: number;
   /** Тайлан ирээгүй блокийн тоо */
   missing: number;
   /**
@@ -110,44 +117,55 @@ export function useBagtsTable(): Async<BagtsRow[]> {
 
 /** Экспорт — `execData.check.mjs` цэвэр оролтоор шалгана (сүлжээгүй) */
 export function joinBagts(blocks: Row[], prog: BlockProgressMap): BagtsRow[] {
-  const by = new Map<string, BagtsRow & { sum: number }>();
+  /* ⚠️ 2026-09-30: багцын хувь нь ХЭМЖИЛТИЙН нүднээс (`pkgProgressOf`), давхаргын
+     feature-ээр БИШ — `pkgProgressOf`-ийн ⚠️ (29/1 · 5/6 давхардал, 29/3 · 5/8
+     footprint-гүй). «Гүйцэтгэл»-ийн жагсаалт ба Тайлан §3-тай нэг тоо. */
+  const means = pkgProgressOf(prog);
+  const by = new Map<string, BagtsRow>();
   const slot = (name: string) => {
     const k = bagtsKey(name);
     const cur = by.get(k) ?? {
       key: k, label: name, blocks: 0, ail: 0, contractor: '—',
-      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, missing: 0, sum: 0,
+      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, measured: 0, missing: 0,
       keys: [],
     };
     by.set(k, cur);
     return cur;
   };
 
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДАВХАРДСАН feature (давхаргад ижил
+     `buildingKey`-тэй хоёр полигон — БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок. Урьд нь блок, өрх,
+     «тайлангүй» тоо, цувааны түлхүүр бүгд feature-ээр тоологдож газрын зургийн
+     өгөгдлийн алдаа тоонд шууд ордог байв (зургийг админ засна — `blockProgress.mapKeyIssues`). */
+  const seen = new Set<string>();
   for (const b of blocks) {
     const name = text(b[BF.bagts], tr('Тодорхойгүй'));
+    // Блокийн түлхүүрийг НЭГ УДАА бодож хадгална — цуваа ба дэд үе шатын карт
+    // ижил түлхүүрийн жагсаалтаар ажиллана (`BagtsRow.keys`).
+    const bk = buildingKey(b[BF.bagts], b[BF.block]);
+    if (seen.has(bk)) continue;
+    seen.add(bk);
     const s = slot(name);
     s.blocks += 1;
     s.ail += Number(b[BF.households] ?? 0);
     // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
     const comp = text(b[BF.contractor], '').trim();
     if (comp) s.contractor = comp;
-    // Блокийн түлхүүрийг НЭГ УДАА бодож хадгална — цуваа ба дэд үе шатын карт
-    // ижил түлхүүрийн жагсаалтаар ажиллана (`BagtsRow.keys`).
-    const bk = buildingKey(b[BF.bagts], b[BF.block]);
     s.keys.push(bk);
-    const cell = prog.get(bk);
-    if (cell) s.sum += cell.overall;
-    else s.missing += 1;
+    if (!prog.get(bk)) s.missing += 1;
   }
 
   /* ⚠️ 2026-09-24: null ≠ 0 — нэг ч блок нь тайлагнаагүй багц `progress: null`
      (урьд нь `sum / blocks` = 0 гарч, Dashboard/Tailan-ийн «зөвхөн мэдээлэлтэй
      багцаар жигнэх» дүрэм хэзээ ч ажилладаггүй байв).
-     ⚠️ 2026-09-30: хуваарь = ТАЙЛАГНАСАН блок (`blocks − missing`), бүх блок БИШ —
-     `BagtsRow.progress`-ийн ⚠️ (нэг багц бүх дэлгэцэд нэг %). */
+     ⚠️ 2026-09-30: хуваарь = ТАЙЛАГНАСАН блок, бүх блок БИШ — `BagtsRow.progress`-ийн ⚠️.
+     ⚠️ 2026-09-30 (дахин): тайлагнасан блок = ХЭМЖИЛТИЙН нүд (`pkgProgressOf`),
+     давхаргын feature БИШ — урьд нь `Σ feature ÷ (blocks − missing)` байсан тул
+     Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт, Тайлан §3-аас зөрдөг байв. */
   return [...by.values()]
-    .map(({ sum, ...s }) => {
-      const reported = s.blocks - s.missing;
-      return { ...s, progress: reported > 0 ? sum / reported : null };
+    .map((s) => {
+      const m = means.get(s.key);
+      return { ...s, progress: m ? m.pct : null, measured: m ? m.blocks : 0 };
     })
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
@@ -188,9 +206,11 @@ export function buildProgressOf(rows: readonly BagtsRow[], cost?: ReadonlyMap<st
     missing += r.missing;
   }
   /* ⚠️ Нэг ч блок тайлагнаагүй бол `null` (0% БИШ) — `housingPct` өөрөө null буцаана */
+  /* ⚠️ 2026-09-30: нөөц жин = `measured` (хувийн хуваарь) — `loadOverall` (`rows`) ·
+     `physNow` (`physCnt`)-тай нэг; `blocks − missing` давхардсан feature-ийг 2 тоолдог. */
   return {
     pct: housingPct(rows.map((r) => ({
-      pct: r.progress, cost: cost?.get(r.key) ?? 0, blocks: r.blocks - r.missing,
+      pct: r.progress, cost: cost?.get(r.key) ?? 0, blocks: r.measured,
     }))),
     blocks,
     reported: blocks - missing,

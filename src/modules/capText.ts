@@ -19,7 +19,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { CAP_HOST_VIEW, type CapKey } from '@/lib/caps';
-import { VIEWS } from '@/lib/services';
+import { VIEWS, type ViewKey } from '@/lib/services';
 
 /** Хажуугийн цэсний засах эрхийн хуудас — `UserAdmin`-ы `pane` id */
 export type ErhPane =
@@ -49,6 +49,23 @@ export const ERH_PANES: readonly ErhPane[] = (Object.keys(PANE_CAPS) as ErhPane[
 /** Эрх → түүнийг олгодог хуудас (Тоймын «Засах бол» · картын tooltip) */
 export const paneOfCap = (k: CapKey): ErhPane =>
   (Object.keys(PANE_CAPS) as ErhPane[]).find((p) => PANE_CAPS[p].includes(k)) ?? 'guits';
+
+/**
+ * Харагдацыг НЭЭЖ ЧАДАХ хуудсууд (2026-10-01) — урсгалтай 6 харагдацын картын холбоосонд
+ * (эх сурвалжгүй хаалттай мөрөнд «аль хуудсанд олгох вэ»). `CAP_HOST_VIEW`-ээс гарна;
+ * «Гүйцэтгэл»-ийг урсгалын томилгоо ч нээдэг тул `guits` эхэнд.
+ */
+export const panesOfView = (v: ViewKey): ErhPane[] => {
+  const out = (Object.keys(PANE_CAPS) as ErhPane[]).filter((p) => PANE_CAPS[p].some((k) => CAP_HOST_VIEW[k].includes(v)));
+  return v === 'guitsetgel' ? ['guits', ...out] : out;
+};
+
+/** Хуваарилалтын систем → түүний хуудас (`workflowSources.WfSource.sys`; `cap`-д `paneOfCap`) */
+export const paneOfSys = (sys: string, cap?: CapKey | null): ErhPane => {
+  if (sys === 'flow') return 'guits';
+  if (sys === 'cap' && cap) return paneOfCap(cap);
+  return (Object.keys(PANE_CAPS) as string[]).includes(sys) ? (sys as ErhPane) : 'guits';
+};
 
 /** Хуудасны гарчиг = хажуугийн цэсний нэр */
 export const paneLabel = (p: ErhPane): string => {

@@ -70,6 +70,32 @@ assert.ok(up[up.length - 1][1] > up[0][1], 'дээш зам буруу чигл�
 /* 6. Хуурай нүд дээр зам БАЙХГҮЙ */
 assert.equal(flowPath(fd, 0, 5 * W + 35, true).length, 0, 'хуурай нүдэнд зам гарав');
 
+/* 6б. ЗАМЫН УРТ (2026-09-30): хагас нүдний алхам ИЖИЛ нүдэнд буухыг «гогцоо» гэж
+   тасалдаг байсан тул зам 2–3 цэгтэй (5–10 м) хожуул болдог байв. Шулуун урсгалд
+   зам нойтон нүдээр ҮРГЭЛЖИЛНЭ — сувгийн уртын дагуу олон нүд. */
+{
+  const len = (p) => Math.hypot(p[p.length - 1][0] - p[0][0], p[p.length - 1][1] - p[0][1]);
+  assert.ok(down.length > 20, `доош зам хэт богино: ${down.length} цэг`);
+  assert.ok(len(down) > 100, `доош замын урт ${len(down).toFixed(1)} м`);
+  assert.ok(len(up) > 100, `дээш замын урт ${len(up).toFixed(1)} м`);
+  /* Налуу урсгал (u, v хоёулаа) — хагас алхам нүдний заагийг ташуу гаталдаг */
+  const all = { ...fd, depth: () => 1, u: () => 0.6, v: () => -0.6 };
+  const diag = flowPath(all, 0, 5 * W + 5, false);
+  assert.ok(diag.length > 20 && len(diag) > 100, `ташуу зам хэт богино: ${diag.length} цэг`);
+  /* Эргэлдэх урсгал — 2×2 нүдний гогцоо (зүүн дээд → зүүн, баруун дээд → урд,
+     баруун доод → баруун, зүүн доод → хойд): гогцоонд орвол ТАСАРНА (MAX_STEPS хүртэл тойрохгүй) */
+  const dir = new Map([
+    [20 * W + 20, [1, 0]], [20 * W + 21, [0, -1]], [21 * W + 21, [-1, 0]], [21 * W + 20, [0, 1]],
+  ]);
+  const swirl = {
+    ...fd, depth: () => 1,
+    u: (_s, i) => (dir.get(i) ?? [0, 0])[0],
+    v: (_s, i) => (dir.get(i) ?? [0, 0])[1],
+  };
+  const loop = flowPath(swirl, 0, 20 * W + 20, false);
+  assert.ok(loop.length >= 4 && loop.length < 12, `гогцоо тасарсангүй: ${loop.length}`);
+}
+
 /* 7. ТООЦООНЫ голдрилын маск (`fd.channel`) геометрээс ДАВАМГАЙЛНА (2026-09-21):
    жинхэнэ DSM дээр 17 м нүдэнд гол «эрэггүй» харагддаг тул хавтгай, эрэггүй
    нүд ч маскад байвал суваг; маскад байхгүй бол суваг хэлбэртэй ч суваг БИШ. */
@@ -78,5 +104,16 @@ const masked = whyFlood({ ...fd, channel: (i) => i === flat }, 0, flat);
 assert.equal(masked.channel, true, 'маскын голдрилыг суваг гэж танисангүй');
 const unmasked = whyFlood({ ...fd, channel: () => false }, 0, 20 * W + 20);
 assert.equal(unmasked.channel, false, 'маскгүй нүдийг геометрээр суваг болголоо');
+
+/* 8. ⚠️ 2026-10-01: ХУРААХ ТАЛБАЙ нь МАСКГҮЙ хуримтлалаас (`catchHa`) — зурсан
+   полигоноор маскжсан `accHa` нь дээд урсгалыг тоолохгүй ДУТУУ хэлдэг байв;
+   бичвэр «тооцооны мужид … дор хаяж» гэж хязгаарыг нь хэлнэ. */
+{
+  const both = whyFlood({ ...fd, accHa: () => 3, catchHa: () => 420 }, 0, hole);
+  assert.equal(both.accHa, 420, 'маскгүй хуримтлал давамгайлсангүй');
+  assert.ok(both.reason.includes('Тооцооны мужид') && both.reason.includes('420'), both.reason);
+  const onlyAcc = whyFlood({ ...fd, accHa: () => 12 }, 0, hole);
+  assert.equal(onlyAcc.accHa, 12, '`catchHa` байхгүй бол `accHa` руу ухрах');
+}
 
 console.log('uyrTailbar.check ✔');

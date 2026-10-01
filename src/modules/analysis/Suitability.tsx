@@ -35,7 +35,7 @@ import {
   type SimKind, type PopBasis,
 } from './suit/simulation';
 import { assignLoads } from './suit/roadNet';
-import { SIGNAL_PLANS, type Network } from './suit/traffic';
+import { SIGNAL_PLANS, carCapacity, commonCarCap, type Network } from './suit/traffic';
 import {
   loadNetworkCached, NET_KINDS, NET_SOURCES, isNetReady, netHasCars, type NetKind,
 } from './suit/netSources';
@@ -394,6 +394,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
   const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
+  /* ⚠️ 2026-09-30: цагийн консол зөвхөн «Ачаалал»-д (`SimulationPanel` kind === 'road') —
+     тэндээс гарахад `playing` хэвээр үлдэж rAF нь 10 Гц-ээр `setMinute` дуудаж, БҮХ
+     харагдацыг дахин зурсаар байв. Гарахад зогсооно (render дундах «өмнөх төлөв» хэв). */
+  if (!roadMode && clock.playing) clock.setPlaying(false);
   /** Тээвэр-идэвхийн самбар газрын зургийг буддаг эсэх */
   const transportMode = mode === 'simulation' && tActive;
   /**
@@ -426,8 +430,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * дулааны гадаргуу ч барилгын центроидоос гардаг тул тэнд ч татна.
    */
   const needBuildings = tActive || heatOn;
-  /** Оргил цагт сүлжээнд зэрэг явах машин — бүсийн хүн амаас (гараар өгөөгүй) */
-  const peakCars = useMemo(() => peakVehicles(scoredRows), [scoredRows]);
+  /**
+   * Оргил цагт сүлжээнд зэрэг явах машин — бүсийн хүн амаас (гараар өгөөгүй).
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `assignLoads(net, rows)`-тэй ИЖИЛ
+   *    олонлог (`rows` — БҮХ бүс). Урьд нь машины ТОО оноолсон бүсээс
+   *    (`scoredRows`), машины ТАРХАЛТ бүх бүсээс бодогддог байсан тул оноололоос
+   *    хассан «одоо байгаа барилга»-ын бүсийн оршин суугчид хөдөлгөөнийг
+   *    байршуулдаг атлаа тоонд ороогүй байв. Оршин суугч оноолоос үл хамааран
+   *    аялал үүсгэнэ.
+   */
+  const peakCars = useMemo(() => peakVehicles(rows), [rows]);
   const [roadNet, setRoadNet] = useState<Network | null>(null);
   const [roadErr, setRoadErr] = useState<string | null>(null);
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
@@ -483,6 +495,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     setNetLoaded(netLoad);
     setRoadNet(null);
     setRoadErr(null);
+    /* ⚠️ 2026-09-30: өмнөх сүлжээний хураангуй шинэ сүлжээний мэт үлддэг байв */
+    setTrafficStats(null);
+  }
+  /* ⚠️ 2026-09-30: трафикийн канвас идэвхгүй болоход (3D/BIM, горим солих, сүлжээ ачаалж
+     байх) `onStats` зогсдог ч сүүлийн тоо «амьд» мэт харагдсаар байв — идэвхгүй бол null. */
+  const trafficLive = roadMode && netCars && !!roadNet && dim === '2d';
+  const [trafficWas, setTrafficWas] = useState(trafficLive);
+  if (trafficWas !== trafficLive) {
+    setTrafficWas(trafficLive);
+    if (!trafficLive) setTrafficStats(null);
   }
 
   useEffect(() => {
@@ -508,6 +530,37 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       });
     return () => { alive = false; };
   }, [needNet, roadNet, roadErr, rows, netLoad]);
+
+  /**
+   * МАШИНТАЙ БҮХ СҮЛЖЭЭНИЙ БАГТААМЖ — НЭГ машины тагт (`commonCarCap`).
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь таг нь ИДЭВХТЭЙ сүлжээний
+   *    багтаамжаас (`TrafficOverlay`) тул «Бодит» ба «Төлөвлөгөө» өөр тооны
+   *    машинтай гүйж харьцуулалт шударга бус байв. «Ачаалал»-д орох үед машинтай
+   *    БҮХ сүлжээг (кэшээс) ачаалж багтаамжийг нь хадгална; ачаалагдаагүй байхад
+   *    таг нь мэдэгдэж буйнуудын хамгийн бага — самбар «(бусад сүлжээ ачаалж
+   *    байна)» гэж хэлнэ.
+   */
+  const [netCaps, setNetCaps] = useState<Partial<Record<NetKind, number>>>({});
+  useEffect(() => {
+    if (!roadMode) return;
+    let alive = true;
+    for (const k of NET_KINDS) {
+      if (!netHasCars(k) || !isNetReady(k) || netCaps[k] != null) continue;
+      loadNetworkCached(k)
+        .then((net) => { if (alive) setNetCaps((c) => (c[k] != null ? c : { ...c, [k]: carCapacity(net) })); })
+        .catch(() => { /* тэр сүлжээ унасан — таг нь бусдаас; самбар «ачаалж байна» гэж хэлнэ */ });
+    }
+    return () => { alive = false; };
+  }, [roadMode, netCaps]);
+  const carKinds = NET_KINDS.filter((k) => netHasCars(k) && isNetReady(k));
+  const knownCaps = carKinds.map((k) => netCaps[k]).filter((v): v is number => v != null);
+  const carCap = commonCarCap(peakCars, knownCaps);
+  const capPending = knownCaps.length < carKinds.length;
+  /** Сүлжээнд наалдсан гэрлэн дохиотой уулзварын тоо — самбарт «дохио ачаалагдсан уу» */
+  const signalJunctions = useMemo(
+    () => (roadNet ? new Set(roadNet.signalLines.map((l) => l.j ?? '')).size : undefined),
+    [roadNet],
+  );
 
   /* ── Тээвэр-идэвх: барилга ба автобусны буудлыг самбарыг нээхэд татна ── */
   const [tData, setTData] = useState<{ buildings: BuildingPt[]; stops: BusStop[] } | null>(null);
@@ -779,6 +832,21 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * Аль самбарын товчийг сүүлд дарсан нь газрын зургийг буддаг (`tActive`);
    * нөгөө нь зөвхөн товчоо харуулна (байрлал шилжихгүй).
    */
+  /**
+   * Замын сүлжээ сонгогч — «Ачаалал» ба «Тээвэр-идэвх» хоёр самбарт НЭГ төлөв.
+   * ⚠️ 2026-10-01: тээврийн самбар ч харуулна (`TransportPanel.net`).
+   */
+  const netSel = {
+    kind: netKind,
+    setKind: setNetKind,
+    options: NET_KINDS.map((k) => ({
+      kind: k,
+      label: NET_SOURCES[k].label,
+      short: NET_SOURCES[k].short,
+      ready: isNetReady(k),
+      note: NET_SOURCES[k].note,
+    })),
+  };
   const simCommon = {
     kind: simKind,
     setKind: pickSimKind,
@@ -796,28 +864,26 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     road: {
       edges: roadNet?.edges.length ?? null,
       error: roadErr,
-      stats: trafficStats,
+      stats: trafficLive ? trafficStats : null,
+      signalsFailed: !!roadNet?.signalsFailed,
+      /* Дохиотой нь дахин — кэш нь дохиогүй сүлжээг хадгалдаггүй (`netSources`) */
+      onRetry: () => setRoadNet(null),
       flat: dim !== '2d',
       /** «Шинэ зам» — машингүй, зөвхөн газрын зурагт харагдана */
       carsOff: !netCars,
       /** Харьцуулах замын сүлжээ сонгогч (Бодит/Төлөвлөгөө/Шинэ зам) */
-      net: {
-        kind: netKind,
-        setKind: setNetKind,
-        options: NET_KINDS.map((k) => ({
-          kind: k,
-          label: NET_SOURCES[k].label,
-          short: NET_SOURCES[k].short,
-          ready: isNetReady(k),
-          note: NET_SOURCES[k].note,
-        })),
-      },
+      net: netSel,
       /** Гэрлэн дохионы зохицуулалт — ээлж барьж асаах сонгогч */
       signal: {
         plan: realPlan,
         stage: signalStage,
         setStage: setSignalStage,
       },
+      /* ⚠️ 2026-10-01: эрэлт → нийтлэг таг ба дохионы төлөв (самбарт ил) */
+      demand: peakCars,
+      cap: carCap,
+      capPending,
+      signalJunctions,
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
     //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
@@ -843,6 +909,19 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         </div>
       )}
 
+      {/* ⚠️ 2026-09-30: хэсэгчилсэн ачаалалт — аль эх сурвалж унасныг ИЛ хэлнэ
+          (`AnalysisData.failed`; урьд нь хүртээмж «өгөгдөл алга»/хэт хол зай чимээгүй) */}
+      {data && data.failed.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            padding: '6px 12px', fontSize: 12, color: 'var(--ink-2)',
+            background: 'color-mix(in srgb, var(--warn) 12%, transparent)',
+          }}
+        >
+          {tr('Зарим эх сурвалж татагдсангүй ({0}) — хүртээмжийн үзүүлэлт дутуу байж болно. Хуудсыг дахин нээхэд дахин оролдоно.', data.failed.join(', '))}
+        </div>
+      )}
       <header className={s.topbar}>
         <div className={s.brand}>
           <span className={s.brandMark} />
@@ -892,6 +971,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                    тул сүлжээ унахад самбар «ачаалж байна…» дээр үүрд үлддэг байв. */
                 error={tErr ?? roadErr}
                 onRetry={retryTransport}
+                net={netSel}
               />
             )}
 
@@ -949,6 +1029,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 rows={rankRows}
                 mode={mode}
                 ind={ind}
+                indicators={indicators}
                 selected={selectedLive}
                 onSelect={setSelected}
               />
@@ -975,7 +1056,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 minuteRef: clock.minuteRef,
                 playing: clock.playing,
                 speed: clock.speed,
-                maxCars: peakCars,
+                /* ⚠️ 2026-10-01: БҮХ сүлжээнд нэг таг (`commonCarCap`) */
+                maxCars: carCap,
                 signalPlan,
                 onStats: setTrafficStats,
               } : undefined}

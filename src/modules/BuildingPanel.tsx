@@ -2,19 +2,17 @@
 
 import { useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Stats, Stat, Bars, Stack, Ring, Data, Empty, Col, Note, Split, Tabs, Trend, Select } from '@/components/ui';
+import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Split, Tabs, Trend, Select } from '@/components/ui';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
-import { loadBlockProgress, loadBlockHistory, progressSeries, type BlockHistory } from '@/lib/blockProgress';
+import { loadBlockProgress, loadBlockHistory, progressSeries, pkgProgressOf, mapKeyIssues, type BlockHistory } from '@/lib/blockProgress';
 import { loadSheetRows, sheetBagtsNames, type SheetRow, type SheetRowOpts } from '@/modules/sheet/sheetRows';
 import { register } from '@/lib/dataBus';
-import { num, pct, text, shade } from '@/lib/format';
+import { num, pct, text } from '@/lib/format';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
-/** Гүйцэтгэлийн түвшний нэг өнгө — сүүлийн (Дууссан) хамгийн тод → эхнийх бүдэг */
-const lvlHue = (i: number, n: number) => shade(HUE, n - 1 - i, n);
 const F = BUILDING.fields;
 
 /**
@@ -109,6 +107,17 @@ const meanOf = (vals: (number | null)[]) => {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 };
 
+/**
+ * ТҮЛХҮҮР БҮРЭЭС НЭГ feature — тоолол/дунджид (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Давхаргад ижил `buildingKey`-тэй ХОЁР полигон бий (БАГЦ1|29/1, БАГЦ2|5/6) — хэмжилт
+ *    НЭГ, тиймээс блок · айл · дундаж нэг удаа тоологдоно. Газрын зургийн шүүлтийн OID-ууд
+ *    (`oids`) БҮХ feature-ийг хэвээр агуулна (давхардсан полигон ч зурагт тодорно).
+ */
+export function uniqueBlocks<B extends { key: string }>(bs: readonly B[]): B[] {
+  const seen = new Set<string>();
+  return bs.filter((b) => (seen.has(b.key) ? false : (seen.add(b.key), true)));
+}
+
 function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
   const m = new Map<string, Block[]>();
   for (const b of blocks) {
@@ -116,14 +125,18 @@ function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
     const a = m.get(k);
     if (a) a.push(b); else m.set(k, [b]);
   }
-  return [...m].map(([key, bs]) => ({
-    key,
-    oids: bs.map((b) => b.oid),
-    keys: bs.map((b) => b.key),
-    blocks: bs.length,
-    ail: bs.reduce((s, b) => s + b.ail, 0),
-    progress: meanOf(bs.map((b) => b.progress)),
-  }));
+  return [...m].map(([key, bs]) => {
+    /* ⚠️ 2026-10-01: тоо/дундаж түлхүүрээр (`uniqueBlocks`), OID нь бүх feature */
+    const u = uniqueBlocks(bs);
+    return {
+      key,
+      oids: bs.map((b) => b.oid),
+      keys: u.map((b) => b.key),
+      blocks: u.length,
+      ail: u.reduce((s, b) => s + b.ail, 0),
+      progress: meanOf(u.map((b) => b.progress)),
+    };
+  });
 }
 
 /** FID жагсаалтаар шүүх — гүйцэтгэл нь давхаргын талбарт БАЙХГҮЙ тул SQL-ээр
@@ -133,8 +146,9 @@ const oidWhere = (oids: number[]) =>
 
 /**
  * Барилгын блокуудын нэгдсэн гүйцэтгэл — нэгтгэсэн хүснэгтийн as-of утгаар.
- * `BuildingSummary` нэг л удаа дуудна; `loadBlockProgress` нь cache-тэй тул
- * газрын зургийн өнгө, tooltip, баруун самбартай ЯГ нэг эх сурвалж.
+ * `loadBlockProgress` нь cache-тэй тул газрын зургийн өнгө, tooltip, баруун самбартай
+ * ЯГ нэг эх сурвалж. ⚠️ 2026-10-01: хэрэглэгддэггүй `BuildingSummary` (зүүн баганын
+ * хуучин самбар) УСТГАВ — git түүхэнд бий.
  */
 /**
  * ⚠️ 2026-09-17: ачаалагч нь hook-оос САЛСАН — «Удирдлагын тайлан»
@@ -142,6 +156,26 @@ const oidWhere = (oids: number[]) =>
  * ИЖИЛ багцын тоог хэрэглэнэ. Hook нь урьдын адил ажиллана.
  */
 export type BuildingsData = Awaited<ReturnType<typeof loadBuildings>>;
+
+/**
+ * ГАЗРЫН ЗУРГИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ → console (ЗӨВХӨН хөгжүүлэлтийн горим, сешнд нэг удаа).
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон, footprint-гүй хэмжилт,
+ *    багцын нэр буруу байж болзошгүй блокийг админ ArcGIS дээр засахад зориулсан жагсаалт.
+ *    Тоонд нөлөөгүй (`uniqueBlocks` · `pkgProgressOf`).
+ */
+let mapKeysWarned = false;
+function warnMapKeys(featureKeys: string[], measured: Iterable<string>): void {
+  if (mapKeysWarned) return;
+  mapKeysWarned = true;
+  const { dup, orphan, relabel } = mapKeyIssues(featureKeys, measured);
+  if (!dup.length && !orphan.length) return;
+  console.warn(
+    '[selbe] Барилгын блокийн давхарга (SELBE_ALL_DATA_last_0917/112, BAGTS · BLOK) — админ засна:'
+    + (dup.length ? `\n  · давхардсан полигон (${dup.length}): ${dup.join(', ')}` : '')
+    + (orphan.length ? `\n  · хэмжилттэй атлаа полигонгүй (${orphan.length}): ${orphan.join(', ')}` : '')
+    + (relabel.length ? `\n  · багцын нэр буруу байж болзошгүй: ${relabel.map((x) => `${x.feature} → ${x.measured}?`).join(', ')}` : ''),
+  );
+}
 
 export function useBuildings() {
   return useAsync(loadBuildings, []);
@@ -185,43 +219,66 @@ export async function loadBuildings() {
       };
     });
 
-    const withData = blocks.filter((b) => b.progress != null);
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ТОО БҮР түлхүүрээр (`uniqueBlocks`) —
+       давхардсан feature (БАГЦ1|29/1, БАГЦ2|5/6) блок · айл · дундаж · түвшинд нэг удаа.
+       `rows` (feature бүр) ба шүүлтийн `oids` нь хэвээр — зурагт бүх полигон тодорно. */
+    const uniq = uniqueBlocks(blocks);
+    const withData = uniq.filter((b) => b.progress != null);
+    /* ⚠️ 2026-10-01: ЗӨВХӨН хөгжүүлэлтийн горимд — газрын зургийн түлхүүрийн зөрүүг админд
+       засуулах жагсаалт (`blockProgress.mapKeyIssues`). Өгөгдлийг ЭНД засахгүй. */
+    if (process.env.NODE_ENV !== 'production') warnMapKeys(blocks.map((b) => b.key), prog.keys());
+    /* ⚠️ 2026-09-30: БАГЦЫН хувь — хэмжилтийн нүднээс (`pkgProgressOf`), feature-ээр
+       БИШ: давхардсан feature (29/1, 5/6) ба footprint-гүй хэмжилт (29/3, 5/8)-аас
+       болж Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалтаас зөрдөг байв. */
+    const pkgPct = new Map<string, number>();
+    for (const [k, v] of pkgProgressOf(prog)) pkgPct.set(k, v.pct);
 
     return {
       /** Блокийн ТҮҮХИЙ мөрүүд — «Багцын мэдээлэл» блок бүрээр задалж харуулна */
       rows: blocks,
-      blocks: blocks.length,
-      households: blocks.reduce((s, b) => s + b.ail, 0),
-      progress: meanOf(blocks.map((b) => b.progress)),
-      floors: meanOf(blocks.map((b) => b.floors)),
+      /**
+       * `bagtsKey` → багцын гүйцэтгэл (0–100) — `buildPacks(rows, pkgPct)`-д дамжуулна.
+       * Хэмжилтгүй багц Map-д ОРОХГҮЙ (null ≠ 0).
+       */
+      pkgPct,
+      blocks: uniq.length,
+      households: uniq.reduce((s, b) => s + b.ail, 0),
+      progress: meanOf(uniq.map((b) => b.progress)),
+      floors: meanOf(uniq.map((b) => b.floors)),
       /** Хүснэгтэд хараахан бөглөгдөөгүй блок */
-      noData: blocks.length - withData.length,
+      noData: uniq.length - withData.length,
       asOf,
 
       /** Цувааны эх — бүх блокийн «Б.» мөрийн түүх */
       hist,
       /** Бүх блокийн түлхүүр (цувааны анхдагч хамрах хүрээ) */
-      keys: blocks.map((b) => b.key),
+      keys: uniq.map((b) => b.key),
 
       levels: PROGRESS_LEVELS.map((l) => {
         const hit = withData.filter((b) => b.progress! >= l.min && b.progress! < l.max);
-        return { ...l, value: hit.length, oids: hit.map((b) => b.oid), keys: hit.map((b) => b.key) };
+        const hitKeys = new Set(hit.map((b) => b.key));
+        /* ⚠️ OID — давхардсан полигоныг ч хамруулна (зурагт тодорно), тоо нь түлхүүрээр */
+        return { ...l, value: hit.length, oids: blocks.filter((b) => hitKeys.has(b.key)).map((b) => b.oid), keys: hit.map((b) => b.key) };
       }),
 
-      bagts: aggregate(blocks, (b) => b.bagts).sort((a, b) => a.key.localeCompare(b.key, 'mn')),
+      /* ⚠️ 2026-09-30: багцын `progress` = `pkgPct` (дээрх ⚠️) — feature-ийн дундаж БИШ */
+      bagts: aggregate(blocks, (b) => b.bagts)
+        .map((g) => ({ ...g, progress: pkgPct.get(bagtsKey(g.key)) ?? null }))
+        .sort((a, b) => a.key.localeCompare(b.key, 'mn')),
 
       contractors: aggregate(blocks, (b) => b.contractor).sort((a, b) => b.blocks - a.blocks),
 
       // Үе шат = «Б. Барилга угсралтын ажил»-ын ТАВАН дэд үе шат (Б1…Б5).
       // Эх excel өөрөө жингээр бодсон дүн тул энд дахин жигнэхгүй — дундажлана.
       stages: TASK_SHEET.subPhaseNos.map((no) => {
-        const hit = blocks.filter((b) => b.phases.get(no) != null);
+        const hit = uniq.filter((b) => b.phases.get(no) != null);
+        const hitKeys = new Set(hit.map((b) => b.key));
         return {
           key: no,
           label: `${no} · ${phaseName.get(no) ?? ''}`.trim(),
           value: meanOf(hit.map((b) => b.phases.get(no)!)),
           blocks: hit.length,
-          oids: hit.map((b) => b.oid),
+          oids: blocks.filter((b) => hitKeys.has(b.key)).map((b) => b.oid),
           keys: hit.map((b) => b.key),
         };
       }).filter((st) => phaseName.has(st.key)),
@@ -347,136 +404,6 @@ export function MonitorTrend({ q }: { q: Buildings }) {
 
 /** Багцын шүүлтийн түлхүүрийн угтвар — самбар нь ямар багц сонгогдсоныг эндээс уншина */
 export const BAGTS_FILTER = 'building:bagts:';
-
-export function BuildingSummary({ q }: { q: Buildings }) {
-  const { toggle, active } = useFilter();
-
-  /** Идэвхтэй шүүлтийн түлхүүрээс тухайн жагсаалтын сонголтыг сэргээнэ */
-  const selected = (prefix: string) =>
-    active?.key.startsWith(prefix) ? active.key.slice(prefix.length) : null;
-
-  /**
-   * Газрын зураг дээр блокуудыг тодруулна.
-   * ⚠️ Гүйцэтгэлийн талбар ЗӨВХӨН хяналтын блокийн давхаргад — бусад давхаргад
-   * тавибал ArcGIS хүсэлт унана.
-   */
-  const pick = (key: string, label: string, group: string, oids: number[], color = HUE) =>
-    toggle({ key, label, group, where: oidWhere(oids), view: 'pkgProg', layerIds: 'mon:building', color });
-
-  return (
-    <Data q={q}>
-      {(d) => (
-        <>
-          <Section tone="primary">
-            <Col gap="md">
-              <Stats cols={2}>
-                <Stat value={num(d.blocks)} unit={tr('блок')} label={tr('Барилгын блок')} color={HUE} accent />
-                <Stat value={num(d.households)} unit={tr('айл')} label={tr('Айлын тоо')} color={HUE} accent />
-              </Stats>
-              <Split aside={<Ring value={d.progress} color={HUE} size={78} width={8} />}>
-                <Note>
-                  {num(d.blocks - d.noData)} {tr('блокийн «Барилга угсралтын ажил»-ын амьд дундаж')}{' '}
-                  {pct(d.progress, 1)}{d.asOf ? ` (${d.asOf})` : ''}{tr('. Дундаж')} {num(d.floors, 1)} {tr('давхар.')}
-                  {d.noData > 0 ? tr(' {0} блок хараахан бөглөгдөөгүй.', num(d.noData)) : ''}
-                </Note>
-              </Split>
-            </Col>
-          </Section>
-
-          <Section title={tr('Гүйцэтгэлийн ангилал')} note={tr('дарж шүүнэ')}>
-            <Col gap="md">
-              {/* НЭГ ӨНГӨ (тодоос бүдгэр) — түвшин нь дараалалтай (Эхэлсэн→Дууссан)
-                  тул гүйцэтгэл өндөр нь ТОД, бага нь бүдэг болж уусна. */}
-              <Stack
-                legend={false}
-                total={d.blocks}
-                items={d.levels.map((l, i) => ({ key: l.key, label: l.label, value: l.value, color: lvlHue(i, d.levels.length) }))}
-              />
-              <Bars
-                max={Math.max(1, ...d.levels.map((l) => l.value))}
-                selected={selected('building:level:')}
-                onSelect={(k) => {
-                  const i = d.levels.findIndex((x) => x.key === k);
-                  const l = d.levels[i];
-                  pick(`building:level:${k}`, `${l.label} · ${l.range}`, tr('Гүйцэтгэлийн ангилал'), l.oids, lvlHue(i, d.levels.length));
-                }}
-                items={d.levels.map((l, i) => ({
-                  key: l.key,
-                  label: `${l.label} · ${l.range}`,
-                  value: l.value,
-                  display: tr('{0} блок', num(l.value)),
-                  color: lvlHue(i, d.levels.length),
-                }))}
-              />
-            </Col>
-          </Section>
-
-          <Section title={tr('Багц тус бүрээр')} note={tr('дарж шүүнэ')}>
-            <Bars
-              color={HUE}
-              max={100}
-              selected={selected(BAGTS_FILTER)}
-              onSelect={(k) => {
-                const g = d.bagts.find((x) => x.key === k)!;
-                pick(`${BAGTS_FILTER}${k}`, k, tr('Багц'), g.oids);
-              }}
-              items={d.bagts.map((b) => {
-                const p = b.progress;
-                return {
-                  key: b.key,
-                  label: tr('{0} · {1} блок', b.key, num(b.blocks)),
-                  value: p ?? 0,
-                  // null = гүйцэтгэл бүртгэгдээгүй. «0.0%» гэж бичвэл жинхэнэ 0%-аас ялгагдахгүй.
-                  display: p == null ? tr('мэдээлэлгүй') : pct(p),
-                };
-              })}
-            />
-          </Section>
-
-          <Section title={tr('Барилга угсралтын ажил')} note={tr('дарж шүүнэ')}>
-            <Bars
-              color={HUE}
-              max={100}
-              selected={selected('building:stage:')}
-              onSelect={(k) => {
-                const st = d.stages.find((x) => x.key === k)!;
-                pick(`building:stage:${k}`, st.label, tr('Ажлын үе шат'), st.oids);
-              }}
-              items={d.stages.map((st) => ({
-                key: st.key,
-                label: st.label,
-                value: st.value ?? 0,
-                display: st.value == null ? tr('бөглөгдөөгүй') : tr('{0} · {1} блок', pct(st.value), num(st.blocks)),
-              }))}
-            />
-          </Section>
-
-          <Section title={tr('Гүйцэтгэгч компани')} note={tr('дарж шүүнэ')}>
-            <Bars
-              color={HUE}
-              max={100}
-              limit={8}
-              selected={selected('building:comp:')}
-              onSelect={(k) => {
-                const c = d.contractors.find((x) => x.key === k)!;
-                pick(`building:comp:${k}`, k, tr('Гүйцэтгэгч компани'), c.oids);
-              }}
-              items={d.contractors.map((c) => {
-                const p = c.progress;
-                return {
-                  key: c.key,
-                  label: tr('{0} · {1} блок', c.key, num(c.blocks)),
-                  value: p ?? 0,
-                  display: p == null ? tr('мэдээлэлгүй') : pct(p),
-                };
-              })}
-            />
-          </Section>
-        </>
-      )}
-    </Data>
-  );
-}
 
 /* ═════════════ БАГЦЫН дашбоард — ажлын төрлөөр ═════════════ */
 

@@ -77,6 +77,33 @@ export async function loadNavBadges(username: string | null, scope: 'all' | View
   return out;
 }
 
+/**
+ * ЗӨВХӨН ХАМГИЙН СҮҮЛИЙН дуудлагын хариуг хэрэглэх ачаалагч.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тэмдгийг 3 мин тутам · харагдацаас
+ *    гарахад · ACL ирэхэд · бичилт бүрийн дараа (`dataBus`) — олон эх үүсвэрээс
+ *    ЗЭРЭГ эхлүүлдэг. Хариунууд ДАРААЛАЛГҮЙ ирдэг тул бичилтийн ӨМНӨХ удаан хариу
+ *    сүүлд ирвэл шинэ тоог ХУУЧИН тоогоор дарж, тэмдэг дараагийн 3 минут хүртэл
+ *    худал үлддэг байв (эсвэл хэрэглэгч солигдоход өмнөх хүний тоо гарна).
+ *    Дуудлага бүр дугаар авна; хариу ирэхэд илүү шинэ дуудлага эхэлсэн бол `null`
+ *    (хэрэглэхгүй). Алдаа ч мөн `null` — тэмдэг чимээгүй, өмнөх тоо хэвээр.
+ */
+export function makeBadgeRefresher(
+  load: (username: string | null, scope: 'all' | ViewKey[]) => Promise<NavBadges> = loadNavBadges,
+): (username: string | null, scope: 'all' | ViewKey[]) => Promise<NavBadges | null> {
+  let seq = 0;
+  return async (username, scope) => {
+    const my = ++seq;
+    let b: NavBadges;
+    try {
+      b = await load(username, scope);
+    } catch {
+      return null;
+    }
+    return my === seq ? b : null;
+  };
+}
+
 /** Тэмдэгтэй харагдацууд — эдгээрээс гарахад тоог шууд шинэчилнэ */
 export const BADGE_VIEWS: ReadonlySet<ViewKey> = new Set(SOURCES.map((x) => x.view));
 

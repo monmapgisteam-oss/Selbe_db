@@ -32,7 +32,7 @@ import { useBuildings } from '@/modules/BuildingPanel';
 import { loadFinData } from '@/modules/Finance';
 import { friendlyError } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
-import { buildModel } from './tuh/model';
+import { buildModel, type TuhSrc } from './tuh/model';
 import { Overview } from './tuh/Overview';
 import { PkgDetail } from './tuh/PkgDetail';
 import { TuhMap, type MapSel } from './tuh/TuhMap';
@@ -53,7 +53,21 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const budgetQ = useAsync(loadBudget, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
-  useEffect(() => { writeParams({ tuh: sel }); }, [sel]);
+  /*
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): багц нээх/хаах нь хөтчийн ТҮҮХЭНД шинэ бичлэг
+   *    (`push`) — Back тойм руу буцааж, Forward багцыг дахин нээнэ. Урьд нь `replace` тул
+   *    Back дарахад ТУХ-аас бүхэлдээ гардаг байв.
+   *    · popstate → URL-аас `sel` сэргээнэ; тэр үед URL аль хэдийн зөв тул доорх
+   *      `writeParams` өөрөө no-op (`urlState.writeParams`-ийн ⚠️) — гогцоо үүсэхгүй.
+   *    · Анхны mount-д URL = төлөв → мөн no-op (шинэ бичлэг үүсэхгүй).
+   *    · `Portal`-ийн popstate (харагдац ижил) нь харагдацыг хөндөхгүй — ТУХ mount хэвээр.
+   */
+  useEffect(() => { writeParams({ tuh: sel }, { push: true }); }, [sel]);
+  useEffect(() => {
+    const onPop = () => setSel(readParam('tuh'));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   /* Багц солиход агуулга дээрээсээ эхэлнэ */
   useEffect(() => { contentRef.current?.scrollTo({ top: 0 }); }, [sel]);
 
@@ -71,28 +85,49 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     if (wfQ.state === 'error') failed.push(tr('Хүн хүч (ХАБЭА)'));
     if (docQ.state === 'error') failed.push(tr('MA/MIR баримт'));
     if (bq.state === 'error') failed.push(tr('Барилгын блок'));
+    /* ⚠️ 2026-09-30: хагас уншигдсан хуваарь (`PlanCurve.failed`) — тэр багцын гүйцэтгэгчийн
+       төлөвлөгөө «—» болно; шалтгааныг нэрлэнэ («Гүйцэтгэл»-ийн `TsKpi`-тэй ижил) */
+    if (planQ.state === 'ready' && planQ.data.failed.length) failed.push(`${tr('Хуваарийн төлөвлөгөө')} (${planQ.data.failed.join(', ')})`);
+    if (budgetQ.state === 'error') failed.push(tr('Гэрээний нийт дүн'));
+    /* ⚠️ 2026-10-01: ачаалж буй эх сурвалж — тэдгээрийн тоо «—» биш «…» (`model.lz`-ийн ⚠️) */
+    const loading = new Set<TuhSrc>();
+    if (planQ.state === 'loading') loading.add('plan');
+    if (cfPlanQ.state === 'loading') loading.add('cfPlan');
+    if (histQ.state === 'loading') loading.add('hist');
+    if (comQ.state === 'loading') loading.add('commission');
+    if (wfQ.state === 'loading') loading.add('workforce');
+    if (docQ.state === 'loading') loading.add('docs');
+    if (bq.state === 'loading') loading.add('packs');
+    if (budgetQ.state === 'loading') loading.add('budget');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
     return buildModel({
       fin: finQ.data,
       plan: planQ.state === 'ready' ? planQ.data : null,
       cfPlan: cfPlanQ.state === 'ready' ? cfPlanQ.data : null,
-      packs,
+      /* ⚠️ 2026-09-30: барилгын давхарга ирээгүй/унасан бол `null` — блок, айлын тоо «—»
+         (урьд нь `buildPacks(null)` → «0 айл · 0 блок» гэж ХУДАЛ харагддаг байв) */
+      packs: bq.state === 'ready' ? packs : null,
       hist: histQ.state === 'ready' ? histQ.data : null,
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
       workforce: wf,
       docs: docQ.state === 'ready' ? docQ.data : null,
       contractedNote: CONTRACTED,
       failed,
+      loading,
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);
   const back = useCallback(() => setSel(null), []);
 
+  /* ⚠️ 2026-09-30: ЭНГИЙН утгаар мемолно — `row` нь загвар дахин бүрдэх бүрд (эх сурвалж
+     бүр ачаалагдахад) шинэ объект тул газрын зураг сонгосон багц руу дахин нисдэг байв. */
+  const selPkg = row ? row.p.pkgKey : null;
+  const selHousing = row?.p.group === 'housing';
   const mapSel = useMemo<MapSel>(
-    () => (row ? { pkgKey: row.p.pkgKey, housing: row.p.group === 'housing' } : null),
-    [row],
+    () => (selPkg == null ? null : { pkgKey: selPkg, housing: selHousing }),
+    [selPkg, selHousing],
   );
   /* Газрын зураг дээр блок дарвал — тэр блокийн (орон сууцны) багц нээгдэнэ */
   const onPickPkg = useCallback((pkgKey: string | null) => {

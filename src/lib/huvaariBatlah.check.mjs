@@ -393,3 +393,94 @@ console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed ·
   assert.equal(remapPayload(old, cur).pay, old);
 }
 console.log('✅ тогтвортой түлхүүр — кодоор зөөнө · давхардсан код зөөхгүй · хуучин илгээлт хэвээр');
+
+/* ══════════ CAS ТҮГЖЭЭ — `casClaim` (2026-10-01, хэрэглэгч: бүгдийг зас) ══════════
+ * ⚠️ `decidePlan` урьд нь ТҮГЖЭЭ ХООСОН үед түгжээгүйгээр шийддэг байв (⚠️ тайлбар нь
+ *    «зогсоно» гэж худал хэлж байсан). Одоо: дахин унш → хоосон хэвээр бол өөр дээрээ
+ *    тавь → дахин уншиж баталгаажуул; өөр хүн барьсан/ялсан бол НЭРИЙГ нь хэлнэ.
+ *    Хуурамч `io` — сүлжээгүй. */
+{
+  const { casClaim, approveGuard } = await import('@/lib/huvaariBatlah.ts');
+  const NOW = 1_000_000_000_000;
+  const mk = (o) => ({ OBJECTID: 1, toloh: PLAN_STATUS.pending, batlagch: null, shiidver_ognoo: null, ...o });
+  /** Хуурамч хүснэгт — `write` нь мөрийг шинэчилнэ; `race` бол бичсэний дараа өөр хүн дарна */
+  const io = (row, { race = null, failWrite = false } = {}) => {
+    const st = { row: { ...row }, writes: 0, reads: 0 };
+    return {
+      st,
+      now: () => NOW,
+      read: async () => { st.reads += 1; return st.row ? { ...st.row } : null; },
+      write: async (at) => {
+        st.writes += 1;
+        if (failWrite) return false;
+        st.row = { ...st.row, batlagch: 'bat', shiidver_ognoo: at };
+        if (race) st.row = { ...st.row, batlagch: race, shiidver_ognoo: at + 5 };
+        return true;
+      },
+    };
+  };
+  /* (а) хоосон түгжээ → авна */
+  let t = io(mk({}));
+  assert.deepEqual(await casClaim(t, 'bat', { requireEmpty: true }), { ok: true });
+  assert.equal(t.st.writes, 1, 'хоосон түгжээг бичсэнгүй');
+  assert.equal(t.st.reads, 2, 'дахин уншиж баталгаажуулсангүй');
+  /* (б) өөр хүний ХҮЧИНТЭЙ түгжээ → бичихгүй, нэрээр татгалзана */
+  t = io(mk({ batlagch: 'Dorj', shiidver_ognoo: NOW - 60_000 }));
+  let r = await casClaim(t, 'bat', { requireEmpty: false });
+  assert.equal(r.ok, false); assert.equal(r.why, 'held'); assert.equal(r.holder, 'dorj');
+  assert.equal(t.st.writes, 0, 'өөр хүний түгжээг дарж бичив');
+  /* (в) `requireEmpty` (батлах) — өөр хүний ХУГАЦАА ДУУССАН түгжээ ч хоосон биш */
+  t = io(mk({ batlagch: 'dorj', shiidver_ognoo: NOW - 11 * 60_000 }));
+  r = await casClaim(t, 'bat', { requireEmpty: true });
+  assert.equal(r.why, 'expired'); assert.equal(r.holder, 'dorj'); assert.equal(t.st.writes, 0);
+  /*     буцаалт (`requireEmpty: false`) нь хугацаа дууссаныг авч болно (хуучин дүрэм) */
+  t = io(mk({ batlagch: 'dorj', shiidver_ognoo: NOW - 11 * 60_000 }));
+  assert.deepEqual(await casClaim(t, 'bat', { requireEmpty: false }), { ok: true });
+  /* (г) уралдаан — бичсэний ДАРАА өөр хүн ялсан → ялагчийн нэрээр татгалзана */
+  t = io(mk({}), { race: 'Sukh' });
+  r = await casClaim(t, 'bat', { requireEmpty: true });
+  assert.equal(r.ok, false); assert.equal(r.why, 'lost'); assert.equal(r.holder, 'sukh');
+  /* (д) шийдвэрлэгдсэн/алга/бичилт унасан */
+  r = await casClaim(io(mk({ toloh: PLAN_STATUS.approved, batlagch: 'dorj' })), 'bat', { requireEmpty: true });
+  assert.equal(r.why, 'decided'); assert.equal(r.holder, 'dorj');
+  r = await casClaim({ read: async () => null, write: async () => true }, 'bat', { requireEmpty: true });
+  assert.equal(r.why, 'gone');
+  t = io(mk({}), { failWrite: true });
+  r = await casClaim(t, 'bat', { requireEmpty: true });
+  assert.equal(r.why, 'write');
+  /* (е) өөрийн хүчинтэй түгжээ — дахин авч болно (давхар `claimPlan`) */
+  t = io(mk({ batlagch: 'bat', shiidver_ognoo: NOW - 1000 }));
+  assert.deepEqual(await casClaim(t, 'bat', { requireEmpty: true }), { ok: true });
+
+  /* (ж) ЭХ КОД: `decidePlan` түгжээгүй үед (`holder !== me`) `casClaim`-аар авна, ⚠️ шинэчлэгдсэн */
+  const fs = await import('node:fs');
+  const SRC = fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
+  const i = SRC.indexOf('export async function decidePlan(');
+  const j = SRC.indexOf('export type ClaimFail', i);
+  const body = SRC.slice(i, j);
+  assert.ok(/if \(holder !== me\) \{[\s\S]{0,200}casClaim\(/.test(body), 'decidePlan: хоосон түгжээнд casClaim дуудагдахгүй байна');
+  assert.ok(body.indexOf('casClaim(') < body.indexOf("updates: JSON.stringify([{ attributes: attrs }])"), 'decidePlan: шийдвэрээ түгжихээс ӨМНӨ бичиж байна');
+  assert.ok(body.includes('2026-10-01') && !/хоосон \(татсан\/\s*\n?\s*\*?\s*түгжээгүй\) эсвэл өөр хүн бол зогсоно/.test(body), 'decidePlan: «зогсоно» гэсэн хуучин ⚠️ шинэчлэгдээгүй');
+  assert.ok(/releasePlanClaim\(\{ oid: args\.oid, approver: me \}\)/.test(body), 'decidePlan: өөрөө авсан түгжээг бичилт унахад тайлахгүй байна');
+
+  /* ══ ЭХ ХУУДСАНД БИЧИХИЙН ӨМНӨХ ХАМГААЛАЛТ — `approveGuard` (2026-10-01) ══ */
+  const sub = (o) => ({ oid: 5, status: PLAN_STATUS.pending, approver: 'bat', approverAt: NOW - 1000, ...o });
+  assert.equal(approveGuard(sub({}), 5, 'Bat', NOW), null, 'өөрийн хүчинтэй түгжээ → бичнэ');
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.withdrawn, approver: null }), 5, 'bat', NOW), /татсан/, 'зохиогч татсан');
+  assert.match(approveGuard(sub({ status: PLAN_STATUS.returned, approver: 'dorj' }), 5, 'bat', NOW), /dorj/, 'өөр батлагч шийдсэн → нэр');
+  assert.match(approveGuard(sub({ approver: 'dorj' }), 5, 'bat', NOW), /dorj.*батлаж байна/, 'өөр хүн түгжсэн');
+  assert.match(approveGuard(sub({ approverAt: NOW - 11 * 60_000 }), 5, 'bat', NOW), /хугацаа дууссан/, 'түгжээ хугацаа дууссан');
+  assert.match(approveGuard(null, 5, 'bat', NOW), /олдсонгүй/, 'мөр алга');
+  assert.match(approveGuard(sub({ oid: 6 }), 5, 'bat', NOW), /олдсонгүй/, 'өөр илгээлт');
+
+  /* ЭХ КОД: `Huvaari.save` батлах горимд бичихийн ӨМНӨ дахин уншиж `approveGuard`-аар зогсоно */
+  const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
+  const si = H.indexOf('const save = useCallback(');
+  const se = H.indexOf('if (upd.length) await applyUpdates(pkg, upd);', si);
+  assert.ok(si > 0 && se > si, 'Huvaari.save олдсонгүй');
+  const pre = H.slice(si, se);
+  assert.ok(/if \(approvalMode\) \{\s*const head = await loadSubmissionHead\(approving\);\s*const why = approveGuard\(/.test(pre),
+    'Huvaari.save: эх хуудсанд бичихийн өмнө илгээлтийн төлвийг дахин уншихгүй байна');
+  assert.ok(H.indexOf('applyPlanEdits(obEdits)', si) > se, 'Huvaari.save: сарын обьём хамгаалалтаас ӨМНӨ бичигдэж байна');
+}
+console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх approveGuard');

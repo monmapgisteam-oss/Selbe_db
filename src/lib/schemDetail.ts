@@ -26,10 +26,11 @@ import { groupWorks, STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { dayKey } from '@/lib/format';
 import { STAGE_ORDER, F as HF } from '@/lib/hyanalt';
 import {
-  SOURCE_NAME, TH, ageDays, fin, grade, reviewCounts, samePkg, toWork,
+  SOURCE_NAME, TH, ageDays, fin, grade, housingWeight, pkgRow, reviewCounts, samePkg, toWork,
   type BagtsLite, type Health, type Metric, type MetricKind,
   type SchemId, type SchemSources, type SourceKey,
 } from '@/lib/schem';
+import { bagtsKey } from '@/lib/services';
 import { GROUP_ROOT, type FineId } from '@/lib/schemFine';
 
 /* ══════════════════ Төрөл ══════════════════ */
@@ -129,6 +130,35 @@ function capped<T>(list: T[]): { shown: T[]; hidden: number } {
 const pickPkg = <T>(list: T[], pkg: string | null, of: (x: T) => unknown): T[] => (
   pkg ? list.filter((x) => samePkg(of(x), pkg)) : list
 );
+
+/**
+ * БАГЦААР БҮЛЭГЛЭХ — `bagtsKey`-ээр (бичиглэлээс үл хамаарна).
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хяналтын «Багцаар» хүснэгт урьд нь ТҮҮХИЙ
+ *    бичиглэлээр мөр үүсгээд, мөр бүрийг `samePkg`-ээр шүүдэг байв — «Багц 4-1» ба
+ *    «Багц 4.1» ХОЁР мөр болж, ИЖИЛ ажлууд хоёуланд нь тоологддог (давхар) байлаа.
+ * ⚠️ Шошго — тухайн түлхүүрийн ХАМГИЙН ОЛОН давтагдсан бичиглэл (тэнцвэл цагаан толгойн
+ *    эхнийх). Түлхүүргүй (хоосон) мөр бүлэгт орохгүй (урьдын `filter(Boolean)`).
+ */
+export function byPkgKey<T>(list: readonly T[], of: (x: T) => unknown): { key: string; label: string; list: T[] }[] {
+  const by = new Map<string, { names: Map<string, number>; list: T[] }>();
+  for (const x of list) {
+    const raw = String(of(x) ?? '').trim();
+    const k = bagtsKey(raw);
+    if (!k) continue;
+    const g = by.get(k) ?? { names: new Map<string, number>(), list: [] };
+    g.names.set(raw, (g.names.get(raw) ?? 0) + 1);
+    g.list.push(x);
+    by.set(k, g);
+  }
+  return [...by.entries()]
+    .map(([key, g]) => {
+      const label = [...g.names.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'mn'))[0][0];
+      return { key, label, list: g.list };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
+}
 
 /* ══════════════════ Зангилаа тус бүр ══════════════════ */
 
@@ -319,16 +349,20 @@ function huvaariPart(): Part {
 function barilgaPart(src: SchemSources, pkg: string | null): Part {
   const p = emptyPart();
   const rows: BagtsLite[] = src.bagts ?? [];
-  const row = pkg
-    ? rows.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null
-    : null;
-  const weightSum = fin(src.overall?.weightSum);
+  const row = pkgRow(src.bagts, pkg);
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хуваарь нь ЗӨВХӨН орон сууцны багцууд
+     (`schem.housingWeight`) — урьд нь `overall.weightSum` дэд бүтцийн багцыг ч
+     хуваарьт оруулдаг тул анхааруулга ҮРГЭЛЖ асдаг байв. */
+  const weightSum = housingWeight(src);
+  /* ⚠️ 2026-10-01: багц сонгосон атал мөр олдоогүй бол (хэсэгчилсэн ачаалал) ТӨСЛИЙН
+     нийлбэр БИШ «—» — `cardStat`-ийн `sum`/`proj` дүрэмтэй ижил. */
+  const lost = !!pkg && !row;
   const sum = (of: (b: BagtsLite) => number) => (
-    src.bagts ? rows.reduce((s, b) => s + of(b), 0) : null
+    lost ? null : src.bagts ? rows.reduce((s, b) => s + of(b), 0) : null
   );
 
   p.metrics.push(
-    { label: tr('Гүйцэтгэл'), value: row ? fin(row.progress) : fin(src.overall?.pct), kind: 'pct' },
+    { label: tr('Гүйцэтгэл'), value: row ? fin(row.progress) : lost ? null : fin(src.overall?.pct), kind: 'pct' },
     /* ⚠️ 2026-09-25: багц сонгоогүй үед ч НИЙТ блок (`BagtsLite.blocks`-ийн
        нийлбэр). Урьд нь `progress.blocks` байсан — тэр нь нийт гүйцэтгэл нь
        ТАЙЛАГНАГДСАН блокийн тоо (`blockProgress.ts` тайлангүйг хасдаг) тул
@@ -337,9 +371,17 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
     { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
     { label: tr('Тайлангүй блок'), value: row ? row.missing : sum((b) => b.missing), kind: 'count' },
     { label: tr('Айлын тоо'), value: row ? row.ail : sum((b) => b.ail), kind: 'count' },
-    { label: tr('Төсвийн жингийн хамралт'), value: weightSum, kind: 'pct' },
+    {
+      label: tr('Төсвийн жингийн хамралт'),
+      value: weightSum,
+      kind: 'pct',
+      why: tr('Гүйцэтгэл хэмжигдсэн орон сууцны багцуудын төсөв ÷ бүх орон сууцны багцын төсөв (дэд бүтэц орохгүй)'),
+    },
     { label: tr('Бүртгэгдсэн блок'), value: fin(src.overall?.rows), kind: 'count' },
   );
+  if (lost) {
+    p.issues.push({ text: tr('Энэ багцад мөр олдсонгүй.'), tone: 'none' });
+  }
 
   if (src.bagts) {
     p.tables.push({
@@ -354,7 +396,7 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
         cell(b.contractor || '—'),
       ]),
     });
-    /* ⚠️ ТАЙЛАНГҮЙ БЛОК нь гүйцэтгэлийг ЧИМЭЭГҮЙ доошлуулна — 0%-аар ордог */
+    /* ⚠️ ТАЙЛАНГҮЙ БЛОК — гүйцэтгэл нь хэмжигдээгүй (2026-09-30-аас дунджид ОРОХГҮЙ, null ≠ 0) */
     for (const b of capped(rows.filter((x) => x.missing > 0)).shown) {
       p.issues.push({
         text: tr('«{0}» — {1} блок тайлангүй ({2} блокоос).', b.label, b.missing, b.blocks),
@@ -363,15 +405,19 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
       });
     }
   }
-  if (weightSum != null && weightSum < 100) {
+  /* ⚠️ Төслийн нийтэд л — багц сонгоход тэр багцын тоо харагдана, жингийн хамралт хамааралгүй */
+  if (!pkg && weightSum != null && weightSum < 100) {
     p.issues.push({
       text: tr('Төсвийн жингийн {0}% л бүртгэгдсэн — нийт гүйцэтгэл дутуу хамралт дээр бодогдож байна.', weightSum.toFixed(0)),
       tone: 'warn',
     });
   }
+  /* ⚠️ 2026-09-30: «ЗОГССОН» БИШ — `progress.stalled` нь гүйцэтгэл < 1% (ажил бодитоор
+     ЭХЛЭЭГҮЙ) тайлагнасан блок (`reportData.loadOverall`). 50%-д гацсан блок ОРДОГГҮЙ, 0.5%-тай
+     эхлээгүй блок ОРДОГ тул «сүүлийн тайлангаас хойш ахиагүй» гэж уншуулах нь худал байв. */
   const stalled = fin(src.progress?.stalled);
   if (stalled != null && stalled > 0) {
-    p.issues.push({ text: tr('{0} блок зогссон.', stalled), tone: 'warn', at: 'bar' });
+    p.issues.push({ text: tr('{0} блокийн гүйцэтгэл 1%-иас доогуур (эхлээгүй).', stalled), tone: 'warn', at: 'bar' });
   }
   return p;
 }
@@ -408,15 +454,12 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
   });
 
   /* Багцаар — багц сонгосон ч бүх багц (аль нь гацсаныг харьцуулна) */
-  const pkgs = [...new Set(review.map((r) => String(r[HF.bagts] ?? '')))]
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, 'mn'));
   p.tables.push({
     title: tr('Багцаар'),
     cols: [tr('Багц'), tr('Хүлээгдэж буй'), tr('Буцаасан')],
-    rows: pkgs.map((k) => {
-      const c = reviewCounts(review.filter((r) => samePkg(r[HF.bagts], k)));
-      return [cell(k), cell(c.pending, 'count'), cell(c.returned, 'count')];
+    rows: byPkgKey(review, (r) => r[HF.bagts]).map(({ label, list }) => {
+      const c = reviewCounts(list);
+      return [cell(label), cell(c.pending, 'count'), cell(c.returned, 'count')];
     }),
   });
 
@@ -489,13 +532,13 @@ function ersdelPart(src: SchemSources): Part {
   const stalled = fin(src.progress?.stalled);
   const blocks = fin(src.progress?.blocks);
   p.metrics.push(
-    { label: tr('Зогссон блок'), value: stalled, kind: 'count' },
+    { label: tr('Эхлээгүй блок (<1%)'), value: stalled, kind: 'count' },
     /* ⚠️ 2026-09-25: «Нийт блок» БИШ — `progress.blocks` нь зөвхөн нийт гүйцэтгэл нь
        тайлагнагдсан блок (`blockProgress.ts`), `stalled` ч тэдгээрээс тоологдоно.
-       Тиймээс харьцаа нь «тайлагнасан блокийн хэдэн хувь зогссон бэ». */
+       Тиймээс харьцаа нь «тайлагнасан блокийн хэдэн хувь ЭХЛЭЭГҮЙ (<1%) вэ» (2026-09-30). */
     { label: tr('Тайлагнасан блок'), value: blocks, kind: 'count' },
     {
-      label: tr('Зогссоны эзлэх хувь'),
+      label: tr('Эхлээгүйн эзлэх хувь'),
       value: stalled != null && blocks != null && blocks > 0 ? (stalled / blocks) * 100 : null,
       kind: 'pct',
     },
@@ -503,7 +546,7 @@ function ersdelPart(src: SchemSources): Part {
   if (src.progress == null) {
     p.issues.push({ text: tr('Блокийн гүйцэтгэлийн эх сурвалж татагдсангүй.'), tone: 'none' });
   } else if (stalled != null && stalled > 0) {
-    p.issues.push({ text: tr('{0} блок дээр хөдөлгөөн зогссон.', stalled), tone: 'warn' });
+    p.issues.push({ text: tr('{0} блокийн гүйцэтгэл 1%-иас доогуур (эхлээгүй).', stalled), tone: 'warn' });
   }
   return p;
 }
@@ -513,26 +556,26 @@ function sankhuuPart(src: SchemSources, pkg: string | null): Part {
   const p = emptyPart();
   const rows: BagtsLite[] = src.bagts ?? [];
   const fi = src.finance;
-  const row = pkg
-    ? rows.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null
-    : null;
-  const budget = row && fi ? fin(fi.byBagts[row.key]) : fin(fi?.budget);
+  const row = pkgRow(src.bagts, pkg);
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): багц сонгосон атал мөр олдоогүй бол ТӨСЛИЙН
+     төсөв/гэрээ/олголт тэр багцын нэрийн дор гардаг байв — одоо «—» (`cardStat`-тэй ижил). */
+  const budget = row && fi ? fin(fi.byBagts[row.key]) : pkg ? null : fin(fi?.budget);
   /* ⚠️ Олголт нь БАГЦААР задардаггүй — багц сонгосон үед харьцаа гаргахгүй */
-  const paid = row ? null : fin(fi?.paid);
-  const contract = row ? null : fin(fi?.contractAmount);
+  const paid = pkg ? null : fin(fi?.paid);
+  const contract = pkg ? null : fin(fi?.contractAmount);
   p.metrics.push(
-    { label: tr('Төсөвт өртөг'), value: budget, kind: 'mnt' },
+    { label: tr('Төсөвт өртөг'), value: budget, kind: 'mnt', why: pkg && !row ? tr('Энэ багцад мөр олдсонгүй.') : undefined },
     {
       label: tr('Гэрээний дүн'),
       value: contract,
       kind: 'mnt',
-      why: row ? tr('Гэрээ багцаар задардаггүй') : undefined,
+      why: pkg ? tr('Гэрээ багцаар задардаггүй') : undefined,
     },
     {
       label: tr('Олгосон'),
       value: paid,
       kind: 'mnt',
-      why: row ? tr('Олголт багцаар задардаггүй') : undefined,
+      why: pkg ? tr('Олголт багцаар задардаггүй') : undefined,
     },
     {
       label: tr('Олголтын хувь'),
@@ -759,7 +802,7 @@ export function cardStat(
     }
     case 'ers': {
       const v = fin(src.progress?.stalled);
-      return statOf(tr('Зогссон блок'), v, 'count', fewer(v));
+      return statOf(tr('Эхлээгүй блок (<1%)'), v, 'count', fewer(v));
     }
     case 'hab':
       return statOf(tr('Ажилтан'), fin(src.habea?.workers), 'count', known(fin(src.habea?.workers)));

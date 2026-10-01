@@ -197,8 +197,13 @@ const bagts = (over) => ({
     d.issues.some((i) => i.text.includes('Багц 2') && i.text.includes('2')),
     'тайлангүй блоктой багц дурдагдсангүй',
   );
-  assert.ok(d.issues.some((i) => i.text.includes('58')), 'дутуу жингийн анхааруулга алга');
-  assert.ok(d.issues.some((i) => i.text.includes('зогссон')), 'зогссон блокийн анхааруулга алга');
+  /* ⚠️ 2026-10-01: хамралт нь орон сууцны багцаас (`housingWeight`) — санхүүгүй тул блокоор
+     (4 + 4) ÷ 13 = 62%; `overall.weightSum` (58, дэд бүтэцтэй хуваарь) БИШ */
+  assert.ok(d.issues.some((i) => i.text.includes('62%')), 'дутуу жингийн анхааруулга алга');
+  assert.ok(!d.issues.some((i) => i.text.includes('58%')), 'дэд бүтэцтэй хуваарийн жин хэвээр');
+  /* ⚠️ 2026-09-30: «зогссон» биш — `stalled` нь < 1% (эхлээгүй) блок */
+  assert.ok(d.issues.some((i) => i.text.includes('1%-иас доогуур')), 'эхлээгүй блокийн анхааруулга алга');
+  assert.ok(!d.issues.some((i) => i.text.includes('зогссон')), '«зогссон» гэж худал нэрлэсээр');
 
   /* Багц сонгоход тэр багцын тоо гарна */
   const one = nodeDetail({ ...EMPTY, failed: [], bagts: rows }, 'barilga', 'Багц 2');
@@ -439,6 +444,59 @@ const cyc = (ergelt, oid, over) => ({
   for (const card of fine.keys()) {
     assert.ok(FINE_BY_ID[card], `унасан үеийн анхааруулга байхгүй картад: «${card}»`);
   }
+}
+
+/* ══════════════════ 9. 2026-10-01 (хэрэглэгч: бүгдийг зас) ══════════════════ */
+
+/* ── Хяналтын «Багцаар»: «Багц 4-1» ба «Багц 4.1» НЭГ мөр, ажил давхар тоологдохгүй ── */
+{
+  const review = [
+    cyc(1, 21, { [HF.bagts]: 'Багц 4-1', [HF.ajil]: 'A' }),
+    cyc(1, 22, { [HF.bagts]: 'Багц 4.1', [HF.ajil]: 'B' }),
+    cyc(1, 23, { [HF.bagts]: 'Багц 4-1', [HF.ajil]: 'C', [HF.status]: STATUS.engineerReturned }),
+    cyc(1, 24, { [HF.bagts]: 'Багц 2', [HF.ajil]: 'D' }),
+  ];
+  const d = nodeDetail({ ...EMPTY, failed: [], review }, 'hyanalt', null);
+  const t = d.tables.find((x) => x.title === 'Багцаар');
+  assert.equal(t.rows.length, 2, 'бичиглэлийн хоёр хувилбар хоёр мөр болов');
+  const r41 = t.rows.find((r) => r[0].v === 'Багц 4-1');
+  assert.ok(r41, 'шошго — хамгийн олон давтагдсан бичиглэл');
+  assert.equal(r41[1].v, 3, '4.1-ийн хүлээгдэж буй ажил');
+  assert.equal(r41[2].v, 1, '4.1-ийн буцаасан ажил');
+  /* Мөрүүдийн нийлбэр = нийт (давхар тоолохгүй) */
+  const sumPending = t.rows.reduce((a, r) => a + r[1].v, 0);
+  assert.equal(sumPending, d.metrics.find((m) => m.label === 'Хүлээгдэж буй').value, 'багцын мөрүүд давхар тоолов');
+}
+
+/* ── Хэсэгчилсэн ачаалал: багц сонгосон атал мөр алга → ТӨСЛИЙН тоо багцын дор БИШ ── */
+{
+  const src = {
+    ...EMPTY, failed: [SOURCE_NAME.bagts], bagts: null,
+    overall: { pct: 55, weightSum: 100, rows: 9 },
+    finance: { budget: 1000, contractAmount: 900, paid: 300, byBagts: { b1: 200 } },
+  };
+  const bar = nodeDetail(src, 'barilga', 'Багц 1');
+  for (const m of bar.metrics.filter((x) => x.label !== 'Бүртгэгдсэн блок')) {
+    assert.equal(m.value, null, `барилга «${m.label}»: төслийн тоо багцын дор`);
+  }
+  assert.ok(bar.issues.some((i) => i.text.includes('мөр олдсонгүй')), 'мөр олдоогүйг хэлсэнгүй');
+  const fin = nodeDetail(src, 'sankhuu', 'Багц 1');
+  assert.equal(fin.metrics.find((m) => m.label === 'Төсөвт өртөг').value, null, 'төслийн төсөв багцын дор');
+  /* Багц сонгоогүй — төслийн тоо хэвээр */
+  assert.equal(nodeDetail(src, 'barilga', null).metrics[0].value, 55);
+  assert.equal(nodeDetail(src, 'sankhuu', null).metrics[0].value, 1000);
+}
+
+/* ── Жингийн хамралт: дэд бүтцийн төсөв хуваарьт орохгүй — орон сууц бүгд хэмжигдсэн бол анхааруулгагүй ── */
+{
+  const d = nodeDetail({
+    ...EMPTY, failed: [],
+    bagts: [bagts({ key: 'БАГЦ1', label: 'Багц 1' }), bagts({ key: 'БАГЦ2', label: 'Багц 2' })],
+    finance: { budget: 9000, contractAmount: 0, paid: 0, byBagts: { БАГЦ1: 600, БАГЦ2: 400, БАГЦ14: 8000 } },
+    overall: { pct: 50, weightSum: 11, rows: 8 },
+  }, 'barilga', null);
+  assert.equal(d.metrics.find((m) => m.label === 'Төсвийн жингийн хамралт').value, 100);
+  assert.ok(!d.issues.some((i) => i.text.includes('Төсвийн жингийн')), 'дэд бүтцийн төсөв анхааруулга асаав');
 }
 
 console.log('schemDetail.check: ok — зураглал ✓ мэдээлэлгүй≠тэг ✓ зөвшөөрөл ✓ '

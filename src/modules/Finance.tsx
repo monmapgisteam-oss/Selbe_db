@@ -50,12 +50,16 @@ import { loadBlockHistory } from '@/lib/blockProgress';
  *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
-import { loadPlanCurveCached, planPctAt, type PlanCurve } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
+/* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
+   Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
+import { housingPlanSeries, housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
-  CF_WORK_WHERE, CF_MONTH_WHERE,
+  CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
 } from '@/lib/services';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 /* ⚠️ 2026-09-09: IPC-ийн ГЭРЭЭ ба ТӨЛБӨР гэсэн ХОЁР ТҮВШИН — `@/lib/ipc`-ээс.
    Мөр = НЭГ ГҮЙЛГЭЭ; гэрээний талбар `geree_kod` бүрд ДАВТАГДАНА тул
    гэрээний дүнг мөрөөр SUM хийвэл Багц-4.1 (7 мөр) -ийн төсөв 7 дахин
@@ -64,7 +68,7 @@ import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
   NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, parseCell as parseCellRaw, type ParseMsg,
-  setFinNavDirty,
+  setFinNavDirty, awaitingReload,
 } from '@/lib/finEdit';
 import {
   FIN_XL_ORDER, FIN_XL_LEAF, FIN_XL_WIDTH, FIN_XL_MERGE, FIN_XL_BAND_H, finXlGroup,
@@ -664,7 +668,12 @@ function smoothPath(pts: { x: number; y: number }[]): string {
  *   гурвуулаа дууддаг тул харагдац сэлгэх бүрд 3 query + O(багц×сар×блок)
  *   тооцоо ДАХИН хийгддэг байв.
  */
-export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW', 'BAGTS_SHEET']);
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хуваарийн муруй УНАСАН/ХАГАС үед кэшлэхгүй (`planCurveComplete`) —
+   урьд нь тэр үр дүн 1 мин (TTL) кэшлэгдэж, муруйг дахин уншихгүй тул `lagOf` · «Багц ажлын оноо»
+   муруйгүйгээр бодогдсоор байв. Одоо дараагийн дуудалт муруйг дахин оролдоно. */
+/* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — хуваарийн муруй (`loadPlanCurveCached`) сарын обьёмын батлалтаар
+   хаягддаг; энэ кэш ч дагаж хаягдахгүй бол `lagOf` 1 мин хуучин муруйгаар бодно. */
+export const loadFinData = cached(loadFinDataRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW', 'BAGTS_SHEET', 'HUVAARI_OBYEM'], () => planCurveComplete());
 
 /**
  * ГЭРЭЭНИЙ БҮРТГЭЛ — НЭГ кэштэй эх (2026-08-24 аудит): урьд нь
@@ -723,6 +732,94 @@ const loadCfMonthRows = cached(
  *    ХУДАЛ УЛААНААС дээр, гэхдээ энэ хамаарлыг санах хэрэгтэй.
  */
 let planCurveCache: PlanCurve | null = null;
+/**
+ * ТӨСЛИЙН (орон сууцны) ТӨЛӨВЛӨГӨӨ — ХО дүнгээр жигнэсэн (`projectPlanOf`), `lagOf`-ийн
+ * БАГЦГҮЙ (төслийн нэгтгэл) зам үүнийг уншина. `planCurveCache`-тэй ХОС бөглөгдөнө.
+ * ⚠️ 2026-09-30: урьд нь `lagOf` төслийн түвшинд `PlanCurve.months` (БЛОКИЙН тоогоор)
+ *    уншдаг байсан тул ХО-оор жигнэсэн бодит (`aggregateMonths`)-аас хасахад хоёр өөр
+ *    жин холилдож байв (`gdash.housingPlanSeries`-ийн ⚠️).
+ */
+let planProjectCache: PlanPoint[] | null = null;
+
+/**
+ * ХУВААРИЙН МУРУЙ БҮРЭН УНШИГДСАН ЭСЭХ — `loadFinData`-ийн кэшийн `keep`.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): унасан (`null`) эсвэл ХАГАС
+ *    (`failed.length`) муруйтай үр дүнг кэшлэхгүй.
+ */
+export function planCurveComplete(): boolean {
+  return planCurveCache != null && planCurveCache.failed.length === 0;
+}
+
+/**
+ * ТУХАЙН БАГЦЫН ХУВААРИЙН МУРУЙ УНШИГДААГҮЙ ЮУ — `lagOf` `null` буцаасны ШАЛТГААНЫГ ялгана.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Багц ажлын оноо» муруй унасан үед барилгын
+ *    мөрийг ЧИМЭЭГҮЙ Cashflow-ийн хувиар (огнооны шугам) оноолдог байв. Одоо дуудагч
+ *    үүгээр «хуваарь уншигдаагүй»-г «хуваарьгүй/хэмжилтгүй»-гээс ялгаж картад тэмдэглэнэ.
+ * @param key багцын түлхүүр (`bagtsKey`) — өгөөгүй бол ТӨСЛИЙН муруй
+ *   (аль нэг хуудас унасан бол төслийн муруй хоосон — `PlanCurve.failed`-ийн ⚠️).
+ */
+export function planCurveMissing(key?: string | null): boolean {
+  const pc = planCurveCache;
+  if (!pc) return true;
+  if (!pc.failed.length) return false;
+  if (!key) return true;
+  return PKGS.some((p) => pc.failed.includes(p.key) && bagtsKey(p.group) === key);
+}
+
+/**
+ * ТӨСЛИЙН ТӨЛӨВЛӨГӨӨТ ХУВИЙН ЦУВАА — бодит тал (`pkgShared.aggregateMonths`/`physNow`)-тай
+ * ЯГ НЭГ жин (`gdash.pkgCostWeight` ← ижил `contracts`). PkgProg `TsKpi` + графикийн
+ * төслийн муруй · удирдлагын тайлан · `lagOf` (Дашбоард, PkgFin) бүгд ЭНЭ функцээр.
+ */
+export function projectPlanOf(fin: Pick<FinData, 'contracts'>, pc: PlanCurve): PlanPoint[] {
+  return housingPlanSeries(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), pc.months);
+}
+
+/**
+ * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд — IPC олголт + ХО дүнгээр жигнэсэн биет гүйцэтгэл.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `pkgShared.ts`-ээс ЭНД шилжив (тэр нь
+ *    дахин экспортлодог — дуудагчид хөндөгдөөгүй). «Багцын мэдээлэл» (`Bagts.tsx`)
+ *    сонголтгүй үедээ «Гүйцэтгэл»-ийн толгойтой ЯГ нэг тоо (`physNow`) харуулах ёстой,
+ *    харин `pkgShared` нь `Bagts`-ээс утга импортолдог тул `Bagts → pkgShared` импорт
+ *    модулийн мөчлөг (TDZ) үүсгэнэ. `Finance` нь хоёулангаас нь юу ч авдаггүй.
+ * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ (`amount`/`amountCum`/`cumPct`) ХАСАГДСАН.
+ */
+export function aggregateMonths(d: FinData): { label: string; given: number; phys: number | null; physAt: string | null }[] {
+  /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
+     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */
+  const labels = cfMonthAxis();
+  /*
+   * ⚠️ 2026-09-25: `FinData.phys` нь ЗӨВХӨН шинэ бичилттэй сард цэгтэй
+   *    (`finPhys.buildPhys`-ийн дүрэм 2). Нэгтгэлд багц бүрийн СҮҮЛИЙН мэдэгдэж
+   *    буй утгыг (as-of) авч, ТОГТМОЛ жинтэй жигнэнэ; хараахан тайлагнаагүй багц 0%.
+   * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ — бүгд
+   *    `gdash.housingPct` — нэг томьёо.
+   */
+  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
+  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels);
+  return series.map((s) => {
+    let given = 0;
+    d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
+    /* ⚠️ Хэмжилтгүй сар `phys: null` (0 биш); `physAt` — `lagOf`-ийн завсар */
+    return { label: s.label, given, phys: s.phys, physAt: s.physAt };
+  });
+}
+
+/**
+ * ТӨСЛИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `aggregateMonths`-ийн одоогийн сар хүртэлх СҮҮЛИЙН
+ * хэмжигдсэн сарын ХО дүнгээр жигнэсэн % (`gdash.housingPct`). PkgProg `TsKpi` ·
+ * Дашбоард · ExecReport · «Багцын мэдээлэл» бүгд ЭНЭ туслахаас — нэг үзүүлэлт, нэг тоо.
+ * Тайлагнаагүй бол `null` («мэдээлэлгүй», 0 биш).
+ */
+export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
+  let actual: number | null = null;
+  for (const m of aggregateMonths(d)) {
+    if (m.label > nowYm) continue;
+    if (m.phys != null) actual = m.phys;
+  }
+  return actual;
+}
 
 async function loadFinDataRaw(): Promise<FinData> {
     const [contracts, ipc, hist] = await Promise.all([
@@ -757,6 +854,8 @@ async function loadFinDataRaw(): Promise<FinData> {
         .then((pc) => { planCurveCache = pc; })
         .catch(() => { planCurveCache = null; }),
     ]);
+    /* ⚠️ 2026-09-30: төслийн төлөвлөгөө — бодит талтай НЭГ (ХО) жин (`planProjectCache`) */
+    planProjectCache = planCurveCache ? projectPlanOf({ contracts }, planCurveCache) : null;
 
     /*
      * HO төлбөр → багц бүрд: сар → олгосон дүн.
@@ -1105,7 +1204,9 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
   if (!pc) return null;
   /* Багцын муруй (`pkg` тодорхой) эсвэл ТӨСЛИЙН нийт муруй (`aggregateMonths`) */
   const key = months.find((m) => m.pkg)?.pkg;
-  const series = key ? pc.byBagts.get(key) : pc.months;
+  /* ⚠️ 2026-09-30: төслийн зам — ХО дүнгээр жигнэсэн (`planProjectCache`), бодит тал
+     (`aggregateMonths`)-тай нэг жин. Багцын зам хэвээр (багц дотор блокоор — бодит ч блокоор). */
+  const series = key ? pc.byBagts.get(key) : (planProjectCache ?? pc.months);
   if (!series?.length) return null;
   /* Төлөвлөгөө: ХЭМЖИЛТ ХИЙГДСЭН тэр ӨДРИЙН байдлаар — цаг хугацаагаар тэнцүү
      харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй).
@@ -1275,7 +1376,15 @@ const PARSE_MSG: ParseMsg = {
   dateBad: (l, v) => tr('«{0}» — огноо буруу: {1}', l, v),
   numBad: (l, v) => tr('«{0}» — тоо буруу: {1}', l, v),
 };
-const parseCell = (s: string, type: string, label: string): unknown => parseCellRaw(s, type, label, PARSE_MSG);
+/* ⚠️ 2026-09-30: `pct` — ХУВИЙН талбарт нэг таслал аравтын (`finEdit.parseCell`-ийн ⚠️) */
+const parseCell = (s: string, type: string, label: string, pct = false): unknown =>
+  parseCellRaw(s, type, label, PARSE_MSG, pct);
+/**
+ * ХУВИЙН (0–100) талбар уу — сарын хувь (`Cashflow_huwi`) ба `FIN_XL_PCT`.
+ * ⚠️ 2026-09-30: «8,333» (Excel-ийн аравтын таслал) мянгат гэж уншигдаж 8333% болж,
+ *    `Cashflow_dun`-д гэрээний 83 дахин дүн бичигддэг байв.
+ */
+const isPctField = (f: string): boolean => f === 'Cashflow_huwi' || FIN_XL_PCT.includes(f);
 
 /**
  * ⚠️ ТОГТВОРТОЙ ХООСОН МАССИВ — `useSheetCols`-ийн `hideV` нь агуулгаараа
@@ -1405,6 +1514,17 @@ function FullTable({
     if (!busyRef.current) setAddsRaw(u);
   }, []);
   const [busy, setBusy] = useState(false);
+  /**
+   * НИЙТЛЭЛИЙН АГШИН ДАХЬ `rows` — шинэ мөрүүд ирэх хүртэл дахин нийтлэхийг хаана
+   * (`finEdit.awaitingReload`-ийн ⚠️, 2026-10-01 «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ `ref` ХАМТ: `finally`-ийн `busyRef = false` ба энэ state-ийн дахин зурагдалт
+   *    хооронд хурдан дарсан товшилт хуучин closure-оор `publish`-ийг дуудаж болно.
+   */
+  const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
+  const pubFromRef = useRef<Row[] | null>(null);
+  const reloading = awaitingReload(pubFrom, rows);
+  /** Хадгалж буй эсвэл хадгалсны дараах дахин ачаалалт явж буй — товч «Хадгалж байна…» */
+  const saving = busy || reloading;
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -1683,6 +1803,9 @@ function FullTable({
 
   const publish = async () => {
     if (busy || busyRef.current || !dirty) return;
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): өмнөх нийтлэлийн дахин ачаалалт
+       дуусаагүй (`rows` хуучин хэвээр) — сарын мөр давхардахаас сэргийлж хаана. */
+    if (reloading || awaitingReload(pubFromRef.current, rows)) return;
     /*
      * ⚠️ ЭНЭ ХҮСНЭГТ ЭХ МӨРИЙГ УСТГАХГҮЙ (2026-09-08, хэрэглэгчийн заавар).
      * Урьд нь мөр устгах товч байсан бөгөөд нийтлэхийн өмнө баталгаа асуудаг
@@ -1709,7 +1832,7 @@ function FullTable({
         const oid = Number(k.slice(0, cut));
         const fld = k.slice(cut + 1);
         const a = upd.get(oid) ?? { [oidField]: oid };
-        a[fld] = parseCell(v, typeOf(fld), labelOf(fld));
+        a[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         upd.set(oid, a);
       }
 
@@ -1721,7 +1844,7 @@ function FullTable({
           /* ⚠️ 2026-09-29 (аудит 10): `CALC_RO` шинэ мөрд ч илгээгдэхгүй —
              гараар бичсэн `Cashflow_dun` хувьтайгаа зөрсөн дүн болж хадгалагдана. */
           if (CALC_RO.has(fld)) continue;
-          o[fld] = parseCell(v, typeOf(fld), labelOf(fld));
+          o[fld] = parseCell(v, typeOf(fld), labelOf(fld), isPctField(fld));
         }
         return o;
       }).filter((o) => Object.keys(o).length > 0);
@@ -1978,6 +2101,11 @@ function FullTable({
            хүн S-муруйд яагаад илүү сар байгааг олж чадахгүй. */
         keptOut ? tr('⚠ мужаас гарсан ч бөглөгдсөн тул үлдээсэн: {0}', keptOut) : '',
       ].filter(Boolean).join(' · '));
+      /* ⚠️ 2026-10-01: шинэ мөрүүд (`rows` өөр лавлагаа) ирэх хүртэл дахин нийтлэхгүй.
+         Дахин ачаалалт унавал `Data` алдааны төлөвт орж энэ бүрэлдэхүүн unmount болно —
+         хаалт мөнхөд үлдэхгүй. */
+      pubFromRef.current = rows;
+      setPubFrom(rows);
       onSaved();
     } catch (e) {
       setErr(String((e as Error).message || e));
@@ -4037,10 +4165,10 @@ function FullTable({
             <button
               type="button"
               className={`${f.editBtn} ${f.pubBtn}`}
-              disabled={busy || dirty === 0}
+              disabled={saving || dirty === 0}
               onClick={publish}
             >
-              {busy ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+              {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
             </button>
             <button
               type="button"
@@ -4081,10 +4209,10 @@ function FullTable({
                 <button
                   type="button"
                   className={`${f.editBtn} ${dirty > 0 ? f.editBtnOn : ''}`}
-                  disabled={busy || dirty === 0}
+                  disabled={saving || dirty === 0}
                   onClick={publish}
                 >
-                  {busy ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
+                  {saving ? tr('Хадгалж байна…') : tr('Нийтлэх ({0})', dirty)}
                 </button>
                 {/* ⚠️ Гэрээний бүртгэлд «Болих» БАЙХГҮЙ — хэрэглэгч зөвхөн
                     «Засах» ба «Нийтлэх» хоёрыг хүссэн. Засварыг цуцлах нь

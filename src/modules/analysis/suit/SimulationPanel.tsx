@@ -48,6 +48,24 @@ export type RoadState = {
   net?: NetSel;
   /** Гэрлэн дохионы зохицуулалтын сонголт */
   signal?: SignalSel;
+  /**
+   * ⚠️ 2026-09-30: гэрлэн дохионы үйлчилгээ УНАСАН — сүлжээ ДОХИОГҮЙ угсрагдсан
+   * (`Network.signalsFailed`). Урьд нь зөвхөн console-д бичигддэг байв.
+   */
+  signalsFailed?: boolean;
+  /** Сүлжээг (дохиотой нь) дахин татах */
+  onRetry?: () => void;
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЭРЭЛТ → ТАГ. Эрэлт нь бүсийн хүн
+   *    амаас (`peakVehicles`), таг нь машинтай БҮХ сүлжээний хамгийн бага
+   *    багтаамж (`commonCarCap`) — хоёр сүлжээ ИЖИЛ тооны машинтай гүйнэ.
+   */
+  demand?: number;
+  cap?: number;
+  /** Бусад сүлжээний багтаамж хараахан ачаалагдаагүй — таг түр зуурын */
+  capPending?: boolean;
+  /** Сүлжээнд наалдсан гэрлэн дохиотой уулзварын тоо (`signalLines`-ийн нэрээр) */
+  signalJunctions?: number;
 };
 
 /**
@@ -383,7 +401,8 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
  * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана; tooltip нь юу
  * хийвэл идэвхжихийг (`note`) хэлнэ.
  */
-function NetSelector({ net }: { net?: NetSel }) {
+/* ⚠️ 2026-10-01: export — «Тээвэр-идэвх» самбар ч замын эрэлтийн сүлжээгээ сонгоно */
+export function NetSelector({ net }: { net?: NetSel }) {
   if (!net) return null;
   return (
     <div className={c.pick}>
@@ -508,6 +527,36 @@ function RoadStatus({ road }: { road?: RoadState }) {
   // ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ — зөвхөн 3D-ийн анхааруулга үлдэв.
   return (
     <>
+      {/* ⚠️ 2026-10-01: ЭРЭЛТ → ТАГ ба ДОХИО — сүлжээ харьцуулахад хоёулаа хэрэгтэй:
+          таг нь эрэлтээс бага бол «түгжрэл бага» нь сүлжээний биш, тагийн үр дүн. */}
+      {road.demand != null && road.cap != null && (
+        <p
+          className={c.desc}
+          style={{ marginTop: 6 }}
+          title={tr('Эрэлт — бүсийн хүн амаас (Little-ийн хууль). Таг — машинтай бүх сүлжээний хамгийн бага багтаамж; бүх сүлжээ ИЖИЛ тагтай тул харьцуулалт шударга.')}
+        >
+          {tr('Машин: эрэлт {0} → таг {1}', nf0(road.demand), nf0(road.cap))}
+          {road.capPending ? ` ${tr('(бусад сүлжээ ачаалж байна)')}` : ''}
+        </p>
+      )}
+      {!road.signalsFailed && road.signalJunctions != null && (
+        <p className={c.desc}>
+          {road.signalJunctions > 0
+            ? tr('Гэрлэн дохио: {0} уулзвар ачаалагдсан', road.signalJunctions)
+            : tr('Гэрлэн дохио: сүлжээнд наалдсан уулзвар алга')}
+        </p>
+      )}
+      {road.signalsFailed && (
+        <p className={c.err} role="alert">
+          {tr('Гэрлэн дохио ачаалагдсангүй — симуляц ДОХИОГҮЙ явж байна (сүлжээнүүдийг харьцуулахад анхаар).')}
+          {road.onRetry && (
+            <>
+              {' '}
+              <button type="button" className={c.segBtn} onClick={road.onRetry}>{tr('Дахин оролдох')}</button>
+            </>
+          )}
+        </p>
+      )}
       {road.flat && (
         <p className={c.warn}>
           <Icon name="road" size={14} />

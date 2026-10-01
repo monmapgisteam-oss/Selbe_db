@@ -22,8 +22,10 @@
 import assert from 'node:assert/strict';
 import {
   NODES, EDGES, NODE_BY_ID, GEO, TH,
-  layout, edgePath, topoOrder, buildSchem, stageRail, fin, grade, ageDays, PROJECT_WIDE,
+  layout, layoutOf, edgePath, edgeLabelAt, housingWeight, pkgRow,
+  topoOrder, buildSchem, stageRail, fin, grade, ageDays, PROJECT_WIDE,
 } from './schem.ts';
+import { FINE_NODES, FINE_EDGES, GEO_FINE } from './schemFine.ts';
 import { VIEWS } from './services.ts';
 import { STATUS, OWNER, STAGE_ORDER, F as HF } from './hyanalt.ts';
 import { TOLOV } from './zovshoorol.ts';
@@ -334,8 +336,14 @@ assert.equal(full.barilga.metrics[0].value, 100, 'гүйцэтгэл 0–100 м�
 assert.equal(full.barilga.health, 'good');
 assert.equal(full.barilga.note, undefined, 'бүрэн хамралтад тэмдэглэл гарах ёсгүй');
 
+/* ⚠️ 2026-10-01: хамралт нь `overall.weightSum` БИШ орон сууцны багцаас (`housingWeight`, §9) */
 const partial = buildSchem({
-  ...EMPTY, overall: { pct: 80, weightSum: 42, rows: 10 },
+  ...EMPTY,
+  overall: { pct: 80, weightSum: 42, rows: 10 },
+  bagts: [
+    { key: 'БАГЦ1', label: 'Багц 1', progress: 80, blocks: 10, missing: 0, ail: 0, contractor: '' },
+    { key: 'БАГЦ2', label: 'Багц 2', progress: null, blocks: 10, missing: 10, ail: 0, contractor: '' },
+  ],
 });
 assert.ok(partial.barilga.note, 'дутуу хамралтад тэмдэглэл ЗААВАЛ гарна');
 
@@ -346,4 +354,132 @@ for (const [id, st] of Object.entries(buildSchem(EMPTY))) {
   assert.equal(!!st.projectWide, PROJECT_WIDE.has(id), `PROJECT_WIDE ↔ buildSchem зөрүү: ${id}`);
 }
 
-console.log('schem.check: ok — топологи ✓ байрлал ✓ мэдээлэлгүй≠тэг ✓ NaN ✓ хяналт ✓ босго ✓');
+/* ══════════════════ 9. 2026-10-01 (хэрэглэгч: бүгдийг зас) ══════════════════ */
+
+/* ── «Буцаасан» шошго ӨӨРИЙН ирмэг дээр, картуудтай давхцахгүй (ерөнхий ба нарийн) ──
+   Урьд нь `max(доод ирмэг) + 34` — ерөнхийд сумнаасаа ~350px доор, нарийнд доорх картын ард. */
+{
+  /** SVG замыг цэгүүдээр дээжилнэ (M · L · Q · C) */
+  const sample = (d) => {
+    const t = d.match(/[MLQC]|-?\d+(?:\.\d+)?/g);
+    const pts = [];
+    let cur = null;
+    let i = 0;
+    const nx = () => Number(t[i++]);
+    while (i < t.length) {
+      const cmd = t[i++];
+      if (cmd === 'M') { cur = [nx(), nx()]; pts.push(cur); continue; }
+      if (cmd === 'L') {
+        const p = [nx(), nx()];
+        for (let k = 1; k <= 20; k++) pts.push([cur[0] + (p[0] - cur[0]) * k / 20, cur[1] + (p[1] - cur[1]) * k / 20]);
+        cur = p; continue;
+      }
+      if (cmd === 'Q') {
+        const c1 = [nx(), nx()]; const p = [nx(), nx()];
+        for (let k = 1; k <= 20; k++) {
+          const s = k / 20; const u = 1 - s;
+          pts.push([u * u * cur[0] + 2 * u * s * c1[0] + s * s * p[0], u * u * cur[1] + 2 * u * s * c1[1] + s * s * p[1]]);
+        }
+        cur = p; continue;
+      }
+      if (cmd === 'C') {
+        const c1 = [nx(), nx()]; const c2 = [nx(), nx()]; const p = [nx(), nx()];
+        for (let k = 1; k <= 40; k++) {
+          const s = k / 40; const u = 1 - s;
+          pts.push([
+            u * u * u * cur[0] + 3 * u * u * s * c1[0] + 3 * u * s * s * c2[0] + s * s * s * p[0],
+            u * u * u * cur[1] + 3 * u * u * s * c1[1] + 3 * u * s * s * c2[1] + s * s * s * p[1],
+          ]);
+        }
+        cur = p; continue;
+      }
+      throw new Error(`танихгүй команд ${cmd}`);
+    }
+    return pts;
+  };
+  const check = (name, nodes, edges, L) => {
+    const labeled = edges.filter((e) => e.label);
+    assert.ok(labeled.length > 0, `${name}: шошготой ирмэг алга`);
+    for (const e of labeled) {
+      const a = L.box[e.from]; const b = L.box[e.to];
+      const at = edgeLabelAt(a, b, e.kind);
+      /* 10px фонт — тэмдэгт ≈ 6.2px өргөн */
+      const w = e.label.length * 6.2;
+      const x0 = at.anchor === 'middle' ? at.x - w / 2 : at.x;
+      const box = { x: x0, y: at.y - 9, w, h: 11 };
+      for (const n of nodes) {
+        const r = L.box[n.id];
+        const over = box.x < r.x + r.w && r.x < box.x + box.w && box.y < r.y + r.h && r.y < box.y + box.h;
+        assert.ok(!over, `${name} · ${e.from}→${e.to}: шошго «${n.id}» картыг давхцав`);
+      }
+      assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.w <= L.w && box.y + box.h <= L.h, `${name}: шошго зурагнаас гарав`);
+      const near = Math.min(...sample(edgePath(a, b, e.kind)).map(([px, py]) => Math.hypot(px - at.x, py - at.y)));
+      assert.ok(near <= 14, `${name} · ${e.from}→${e.to}: шошго замаасаа ${near.toFixed(0)}px хол`);
+    }
+  };
+  check('ерөнхий', NODES, EDGES, L);
+  check('нарийн', FINE_NODES, FINE_EDGES, layoutOf(FINE_NODES, GEO_FINE));
+}
+
+/* ── Төсвийн жингийн хамралт — хуваарьт ДЭД БҮТЦИЙН багц орохгүй ── */
+{
+  const bg = (key, progress, blocks, missing = 0) => ({
+    key, label: key, progress, blocks, missing, ail: 0, contractor: '',
+  });
+  const housing = [bg('БАГЦ1', 50, 4), bg('БАГЦ2', null, 5, 5)];
+  const finance = { budget: 6000, contractAmount: 0, paid: 0, byBagts: { БАГЦ1: 600, БАГЦ2: 400, БАГЦ14: 5000 } };
+  assert.equal(housingWeight({ bagts: housing, finance }), 60, 'хуваарь нь орон сууцны багцын төсөв (дэд бүтэц орохгүй)');
+  /* ХО дүн огт алга — блокийн тоонд БҮРЭН шилжинэ */
+  assert.equal(Math.round(housingWeight({ bagts: housing, finance: null }) * 10), 444, 'блокийн нөөц жин');
+  assert.equal(housingWeight({ bagts: null, finance }), null, 'багцын жагсаалт унасан → null');
+  /* Бүх орон сууцны багц хэмжигдсэн — `overall.weightSum` (дэд бүтэцтэй хуваарь) 10 байсан ч анхааруулга ГАРАХГҮЙ */
+  const allIn = buildSchem({
+    ...EMPTY,
+    bagts: [bg('БАГЦ1', 50, 4), bg('БАГЦ2', 30, 5)],
+    finance,
+    overall: { pct: 40, weightSum: 10, rows: 9 },
+  });
+  assert.equal(allIn.barilga.note, undefined, 'дэд бүтцийн төсөв жингийн анхааруулга асаав');
+  const half = buildSchem({ ...EMPTY, bagts: housing, finance, overall: { pct: 50, weightSum: 10, rows: 4 } });
+  assert.ok(half.barilga.note?.includes('60'), 'орон сууцны дутуу хамралт (60%) тэмдэглэгдсэнгүй');
+}
+
+/* ── Ерөнхий «Барилга»: багцаар тайлагнасан блок, төслийн Σ тайлангүй ── */
+{
+  const bagts = [
+    { key: 'БАГЦ31', label: 'Багц 3.1', progress: 40, blocks: 10, missing: 3, ail: 0, contractor: '' },
+    { key: 'БАГЦ2', label: 'Багц 2', progress: 70, blocks: 6, missing: 2, ail: 0, contractor: '' },
+  ];
+  const src = { ...EMPTY, bagts, progress: { blocks: 11, overall: 50, date: '2026-09-30', stalled: 0 } };
+  const m = (st, label) => st.barilga.metrics.find((x) => x.label === label).value;
+  const one = buildSchem(src, 'Багц 3.1');
+  assert.equal(m(one, 'Тайлагнасан блок'), 7, 'багцын тайлагнасан блок = блок − тайлангүй');
+  assert.equal(m(one, 'Тайлангүй блок'), 3);
+  const all = buildSchem(src);
+  assert.equal(m(all, 'Тайлангүй блок'), 5, 'төслийн нийт тайлангүй = Σ багц');
+  assert.equal(m(all, 'Тайлагнасан блок'), 11);
+  /* URL-ын `bagtsKey` хэлбэр («БАГЦ31») ч таарна */
+  assert.equal(m(buildSchem(src, 'БАГЦ31'), 'Тайлагнасан блок'), 7, 'bagtsKey хэлбэрийн багц таарсангүй');
+  assert.equal(pkgRow(bagts, 'БАГЦ31')?.label, 'Багц 3.1');
+  assert.equal(pkgRow(bagts, ''), null);
+}
+
+/* ── Хэсэгчилсэн ачаалал: багц сонгосон атал мөр алга → ТӨСЛИЙН тоо БИШ «—» ── */
+{
+  const src = {
+    ...EMPTY,
+    bagts: null,
+    overall: { pct: 55, weightSum: 100, rows: 9 },
+    progress: { blocks: 9, overall: 55, date: '2026-09-30', stalled: 0 },
+    finance: { budget: 1000, contractAmount: 900, paid: 300, byBagts: { БАГЦ31: 200 } },
+  };
+  const st = buildSchem(src, 'Багц 3.1');
+  for (const x of st.barilga.metrics) assert.equal(x.value, null, `барилга «${x.label}»: төслийн тоо багцын дор`);
+  for (const x of st.sankhuu.metrics) assert.equal(x.value, null, `санхүү «${x.label}»: төслийн тоо багцын дор`);
+  assert.equal(st.barilga.health, 'none');
+  /* Багц сонгоогүй үед төслийн тоо хэвээр */
+  assert.equal(buildSchem(src).barilga.metrics[0].value, 55);
+  assert.equal(buildSchem(src).sankhuu.metrics[0].value, 1000);
+}
+
+console.log('schem.check: ok — топологи ✓ байрлал ✓ мэдээлэлгүй≠тэг ✓ NaN ✓ хяналт ✓ босго ✓ шошго ✓ жин ✓ багц ✓');

@@ -31,6 +31,8 @@ globalThis.dispatchEvent = () => true;
 mem.set('selbe-perms-v1', JSON.stringify({
   selbe_redesign: { views: ['plan', 'bagts', 'monitor', 'iot'], docs: false, role: 'tolovlolt' },
   hacker_selfadd: { views: 'all', docs: true, role: 'super' },
+  /* ⚠️ 2026-09-30: танигдахгүй үүрэг (хуучин build / гараар засагдсан мөр) — §8 */
+  bogus_role_user: { views: ['plan'], docs: false, role: 'zahiral_old' },
 }));
 
 const P = await import('./permissions.ts');
@@ -123,4 +125,65 @@ assert.equal(P.roleOf('test_dirty_user'), null, 'override арилсан бай�
   await P.clearOverride('test_plan_user');
 }
 
-console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view');
+/* ── 8. Танигдахгүй үүрэг → null (2026-09-30 регресс): урьд нь `roleOf` түүхий утгыг буцааж,
+      `Root`-ийн нүүр цонхны `roleAccess(r).home` нь `ROLE_ACCESS[r]` = undefined дээр ШИДЭЖ
+      тэр хэрэглэгчийн портал бүхэлдээ унадаг байв (fail-closed: танигдахгүй түлхүүр → эрхгүй). ── */
+{
+  P._markRemoteLoaded();
+  assert.equal(P.roleOf('bogus_role_user'), null, 'танигдахгүй үүрэг null болох ёстой');
+  assert.equal(P.listUsers().find((u) => u.username === 'bogus_role_user')?.role, null, 'жагсаалтад ч null');
+  assert.deepEqual(P.resolveBaseAccess('bogus_role_user').views, ['plan'], 'харагдац нь хэвээр (зөвхөн үүрэг шүүгдэнэ)');
+  const { roleAccess } = await import('./roleTypes.ts');
+  for (const u of P.listUsers()) {
+    const r = P.roleOf(u.username);
+    if (r) assert.ok(roleAccess(r)?.home, `roleAccess(${r}) — нүүр цонх олдох ёстой`);
+  }
+  P._markRemoteLoaded(false);
+}
+
+/* ── 9. Урсгалтай 6 харагдац ЗӨВХӨН хуваарилалтаар (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
+      Хадгалагдсан `views` (override ба хатуу үүргийн нөөц `ROLE_ACCESS`) дахь урсгалтай
+      харагдацыг super-ээс бусдад ҮЛ ТООЦНО; эрхийн гэр харагдац ба урсгалын томилгоо л нээнэ. */
+{
+  const FL = await import('./guitsetgelAcl.ts');
+  const CAPS = await import('./caps.ts');
+  const { ROLE_ACCESS } = await import('./services.ts');
+  P._markRemoteLoaded();
+  /* (а) хатуу үүргийн нөөц — `beginner`-т «Гүйцэтгэл»+«Хуваарь» байдаг, тооцогдохгүй */
+  assert.ok(ROLE_ACCESS.beginner.views.includes('guitsetgel') && ROLE_ACCESS.beginner.views.includes('huvaari'), 'ROLE_ACCESS.beginner тохиргоо өөрчлөгдсөн — шалгуурыг шинэчил');
+  const et = P.resolveAccess('selbe_et');
+  assert.ok(!et.views.includes('guitsetgel') && !et.views.includes('huvaari'), `selbe_et: хуваарилалтгүй урсгалтай харагдац нээгдэв (${et.views})`);
+  assert.ok(et.views.includes('plan'), 'selbe_et: урсгалгүй харагдац хэвээр');
+  /* (б) override-д хадгалсан урсгалтай харагдац — тооцогдохгүй */
+  await P.setUser('wf_user', { views: ['gdash', 'guitsetgel', 'qaqc', 'chanar', 'huvaariBatlah'], docs: false }, 'taniltsah');
+  assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хадгалсан урсгалтай харагдац хүчингүй');
+  assert.deepEqual(P.workflowViewsOf('wf_user'), [], 'хуваарилалтгүй');
+  /* (в) урсгалын томилгоо → «Гүйцэтгэл» («Зөвхөн харна» ч) */
+  FL._syncRemoteAssigns([{ user: 'wf_user', stage: 'engineer', bagts: ['*'], viewOnly: true }]);
+  assert.deepEqual(P.workflowViewsOf('wf_user'), ['guitsetgel']);
+  assert.ok(P.resolveAccess('wf_user').views.includes('guitsetgel'), 'томилгоо → «Гүйцэтгэл» нээгдэнэ');
+  /* (г) эрхийн гэр харагдац → «Чанар (QAQC)»; planApprove → «Хуваарь батлах» + «Хуваарь» */
+  CAPS._syncRemoteCaps([{ user: 'wf_user', caps: ['qaqc', 'planApprove'] }]);
+  assert.deepEqual([...P.workflowViewsOf('wf_user')].sort(), ['guitsetgel', 'huvaari', 'huvaariBatlah', 'qaqc']);
+  assert.ok(!P.resolveAccess('wf_user').views.includes('chanar'), '«Чанарын баримт» эрхгүй тул хаалттай');
+  /* дараалал — `VIEWS`-ийн дараалал */
+  const { VIEWS } = await import('./services.ts');
+  const order = P.resolveAccess('wf_user').views.map((v) => VIEWS.findIndex((x) => x.key === v));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'resolveAccess дараалал = VIEWS');
+  /* (д) хуваарилалт хасагдахад — хадгалсан утга байсан ч хаагдана */
+  FL._syncRemoteAssigns([]);
+  CAPS._syncRemoteCaps([]);
+  assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хуваарилалт хасагдахад урсгалтай хуудас хаагдана');
+  /* (е) super ХӨНДӨГДӨХГҮЙ — хатуу ба override үүрэг */
+  assert.equal(P.resolveAccess(superName).views, 'all', 'хатуу super — бүх харагдац');
+  await P.setUser('wf_sup', { views: ['gdash', 'guitsetgel'], docs: true }, 'super');
+  assert.ok(P.resolveAccess('wf_sup').views.includes('guitsetgel'), 'override super — хадгалсан урсгалтай харагдац хүчинтэй');
+  /* (ж) super-ээс бусдын 'all' задарна — урсгалтайг хасна */
+  await P.setUser('wf_all', { views: 'all', docs: true }, 'taniltsah');
+  const all = P.resolveAccess('wf_all').views;
+  assert.ok(Array.isArray(all) && !all.some((v) => CAPS.WORKFLOW_VIEWS.includes(v)) && all.includes('gdash'), `'all' → урсгалтайгүй жагсаалт (${all})`);
+  for (const u of ['wf_user', 'wf_sup', 'wf_all']) await P.clearOverride(u);
+  P._markRemoteLoaded(false);
+}
+
+console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар');

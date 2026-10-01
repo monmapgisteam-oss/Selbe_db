@@ -16,7 +16,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { computeLand, parseParcels, byReason, sumAreaM2, NO_STATUS, SOURCE } from './land.ts';
+import { computeLand, parseParcels, byReason, sumAreaM2, NO_STATUS, SOURCE, lastEditOf } from './land.ts';
 import { ROW_CAP } from './kpi.ts';
 import { PARCEL_LEFT } from '../services.ts';
 
@@ -158,5 +158,16 @@ const tp = big.tables[1];
 assert.equal(tp.rows.length, ROW_CAP + 1);
 assert.ok(String(tp.rows.at(-1)[0].v).includes('50'), 'сүүлийн мөр тасалсан тоог заана');
 assert.equal(tp.rows.at(-1).length, 7, 'тасалсан мөр багана тоотой таарна');
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): Editor Tracking асаалттай — `asOf` = хамгийн сүүлийн
+   EditDate; талбар алга (метадатад `editFieldsInfo` байхгүй) бол `null` хэвээр */
+{
+  const rowsEd = [{ EditDate: Date.UTC(2026, 8, 1) }, { EditDate: Date.UTC(2026, 8, 20) }, { EditDate: null }];
+  assert.equal(lastEditOf(rowsEd, 'EditDate'), Date.UTC(2026, 8, 20));
+  assert.equal(lastEditOf(rowsEd, null), null, 'Editor Tracking унтраалттай — null');
+  assert.equal(lastEditOf([{ EditDate: null }], 'EditDate'), null, 'хоосон огноо 0 БИШ');
+  const withAsOf = computeLand({ clearance, parcels, overlaps, failed: [], asOf: Date.UTC(2026, 8, 20) });
+  assert.equal(withAsOf.asOf, Date.UTC(2026, 8, 20));
+}
 
 console.log('land.check: OK');

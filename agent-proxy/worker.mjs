@@ -22,6 +22,9 @@
  *   npx wrangler deploy
  */
 
+/* ⚠️ 2026-10-01: хурдны хязгаар `server.mjs`-тэй ХУВААЛЦСАН модуль — wrangler багцлахдаа оруулна */
+import { createLimiter, LIMITS } from './rateLimit.mjs';
+
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 
@@ -87,29 +90,10 @@ function secretMatches(given, expected) {
  * хамгаалалт. Бат бэх, тархсан хязгаарлалт хэрэгтэй бол Cloudflare KV эсвэл
  * Durable Object-оор тоолуур хийнэ.
  */
-const RATE_LIMIT = 40;
-const RATE_WINDOW = 60 * 1000;
-const hits = new Map();
-/**
- * ⚠️ ХУУЧИРСАН ТҮЛХҮҮРИЙГ ЦЭВЭРЛЭНЭ (2026-09-15-ны аудит). Урьд нь `hits`
- * түлхүүр бүрийг ҮҮРД үлдээдэг байсан тул урт наслалттай isolate дээр олон
- * мянган хэрэглэгч/Origin дамжсаны дараа Map тасралтгүй өсдөг байв.
- */
-function sweepHits(now) {
-  for (const [k, arr] of hits) {
-    if (!arr.length || now - arr[arr.length - 1] >= RATE_WINDOW) hits.delete(k);
-  }
-}
-let lastSweep = 0;
-function rateLimited(key) {
-  const now = Date.now();
-  /* Цонх тутам нэг удаа шүүрдэнэ — хүсэлт бүрд бүтэн Map туулах нь үрэлгэн */
-  if (now - lastSweep > RATE_WINDOW) { sweepHits(now); lastSweep = now; }
-  const arr = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW);
-  arr.push(now);
-  hits.set(key, arr);
-  return arr.length > RATE_LIMIT;
-}
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тоолуур (хуучирсан түлхүүрийн цэвэрлэгээтэй)
+   ба хязгаарууд `rateLimit.mjs`-д — `server.mjs`-тэй ХУВААЛЦСАН: баталгаажсан
+   хэрэглэгч минутад 40 · IP таг 300 (оффисын NAT) · амжилтгүй нэвтрэлт IP-д 20. */
+const limiter = createLimiter();
 
 const json = (code, body, headers = {}) =>
   new Response(JSON.stringify(body), {
@@ -219,7 +203,7 @@ export default {
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       /* ⚠️ 2026-09-25 (аудит 8): түлхүүр нь IP (`cf-connecting-ip`), origin биш — доорх
          `pre:` хязгаартай нэг дүрэм; origin зохиосон хэн ч тойрдог байв. */
-      if (rateLimited(`health:${request.headers.get('cf-connecting-ip') || origin || 'anon'}`)) {
+      if (limiter.hit(`health:${request.headers.get('cf-connecting-ip') || origin || 'anon'}`, LIMITS.ip)) {
         return json(429, { error: 'Хэт олон хүсэлт' }, cors);
       }
       return json(200, { ok: true }, cors);
@@ -251,19 +235,27 @@ export default {
     /* ⚠️ ArcGIS шалгалтаас ӨМНӨ IP-ээр хязгаарлана (2026-09-17): хүчингүй
        токентой үер бүр `/community/self` руу тус тусдаа хүсэлт үүсгэдэг байв
        (амжилтгүйг кэшлэдэггүй) — доорх нэрээр хязгаарлагч тэнд хүрдэггүй. */
+    /* ⚠️ 2026-10-01: IP-ийн хязгаар 40 → ТАГ 300 — гол хязгаар нь доорх баталгаажсан хэрэглэгчийнх */
     const ip = request.headers.get('cf-connecting-ip') || origin || 'anon';
-    if (rateLimited(`pre:${ip}`)) {
+    if (limiter.hit(`ipcap:${ip}`, LIMITS.ip)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
-    let caller = origin || 'anon';
+    let caller = isBot ? 'bot' : `origin:${origin || 'anon'}`;
     if (env.ARCGIS_ORG_ID && !isBot) {
+      /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
+      if (limiter.full(`authfail:${ip}`, LIMITS.authFail)) {
+        return json(429, { error: 'Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
+      }
       const auth = await checkArcGIS(request.headers.get('x-arcgis-token'), env);
-      if (!auth.ok) return json(401, { error: auth.reason, retryable: false }, cors);
-      caller = auth.username;
+      if (!auth.ok) {
+        limiter.hit(`authfail:${ip}`, LIMITS.authFail);
+        return json(401, { error: auth.reason, retryable: false }, cors);
+      }
+      caller = `user:${auth.username}`;
     }
 
     // ⚠️ Дуудагч тус бүрд хурдны хязгаар — түлхүүр барих реле рүү үер хийхээс сэргийлнэ
-    if (rateLimited(caller)) {
+    if (limiter.hit(caller, LIMITS.user)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
 

@@ -264,8 +264,12 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
  *    нэмэгдэхэд хоцорно. Багцаар хуваарилагддаг эрхүүдээс `butets`-ийг
  *    ОРУУЛАХГҮЙ: «Дэд бүтэц» нь засварын эрхгүй хүнд ч ердийн харах хуудас.
  *    Энгийн дөрвөн эрхийн харагдац (зөвшөөрөл · санхүү · газар) мөн ердийн.
- * ⚠️ `VIEWS` (23) хэвээр — энэ нь зөвхөн унтраалгын шүүлт; хадгалагдсан
- *    `views` дахь утга хөндөгдөхгүй.
+ * ⚠️ `VIEWS` хэвээр — энэ нь унтраалгын шүүлт.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХАДГАЛАГДСАН `views` дахь эдгээр утга
+ *    super-ээс бусдад ҮЛ ТООЦОГДОНО (`permissions.resolveAccess` · `workflowViewsOf`) —
+ *    зөвхөн эрхийн гэр харагдац ба урсгалын томилгоо нээнэ; картын «Хадгалах» тэдгээрийг
+ *    БИЧИХЭЭ больсон (`UserAdmin.saveAll` · `roleTypeApply.applyType`). Урьд нь «хадгалсан
+ *    утга хөндөгдөхгүй» байсан тул хуваарилалтгүй хүнд хуудас нээлттэй үлддэг байв.
  */
 const WORKFLOW_CAPS: readonly CapKey[] = [
   'addRow', 'ajilApprove', 'plan', 'planApprove', 'obyemEdit', 'obyemApprove', 'chanarAuthor', 'chanarReview', 'qaqc',
@@ -544,6 +548,17 @@ export const capsRemoteReady = (): boolean => remoteSynced;
 export function capsStored(username?: string | null): CapKey[] {
   if (!username) return [];
   return cache[username.toLowerCase()] ?? [];
+}
+
+/**
+ * ЭРХТЭЙ БҮХ ТҮЛХҮҮР (2026-10-01, «хэрэглэгч: бүгдийг зас») — устгагдсан аккаунтын үлдсэн
+ * `__cap__:` мөрийг эрхийн хуудсанд олж цэвэрлэхэд (`aclOps.goneRightsOf`).
+ * ⚠️ Remote уншигдаагүй бол ХООСОН — `capsOf`-той ижил: кэш дээр «үлдэгдэл» гэж худал хэлж,
+ *    уншигдаагүй жагсаалтаар бичилт өдөөхгүй.
+ */
+export function capUsers(): string[] {
+  if (!remoteSynced) return [];
+  return Object.keys(cache).filter((k) => (cache[k] ?? []).length > 0).sort();
 }
 
 /**

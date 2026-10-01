@@ -340,6 +340,13 @@ export type Overlay = {
    *    тул засах зам байхгүй, багцын илгээлт бүрмөсөн гацдаг байв.
    */
   unmovedKeys: string[];
+  /**
+   * ⚠️ 2026-10-01: илгээлтийн `rowKeys`-ийн oid-ууд суурь жаазад БАЙГААГҮЙ тул
+   *    (№ ¦ Ажил)-аар ЗӨӨСӨН эсэх (`needMap`). `true` бол илгээлтээс хойш архивт шинэ
+   *    жааз орсон — хуучин ИНДЕКСИЙН хэлбэрийн зөвшөөрөл (`hyanaltOkCells`) энэ
+   *    мөрийн дараалалд итгэгдэхгүй.
+   */
+  remapped: boolean;
 };
 
 /**
@@ -517,6 +524,7 @@ export function overlaySubmission(
     dateKeys,
     unmoved: unmovedKeys.length,
     unmovedKeys,
+    remapped: needMap,
   };
 }
 

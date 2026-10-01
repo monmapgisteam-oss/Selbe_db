@@ -21,6 +21,7 @@
 import { PARCEL_LEFT, LAYER_BY_ID, parcelLeftWhere } from './services';
 import { arcgisPost } from './query';
 import { register } from './dataBus';
+import { subscribeTotals } from './totals';
 import { t as tr } from '@/lib/i18nCore';
 
 /**
@@ -216,6 +217,10 @@ const resultCache = new Map<string, Promise<Overlap>>();
  * сешн дуустал хуучин OID-уудаа харуулж, зассан ажил хийгдээгүй мэт харагдана.
  */
 register(() => { geomCache.clear(); resultCache.clear(); }, ['PARCEL_LEFT']);
+/* ⚠️ 2026-09-30: ДЭД БҮТЦИЙН давхаргын геометр ч энд кэшлэгддэг (57 давхарга) — нэмэх ·
+   устгах · хэлбэр засахад сесс дуустал хуучирдаг байв. `DedButets`-ийн бичих зам бүр
+   `dropTotalsCache()`-аар дуусдаг (автобусын таг байхгүй) тул тэр эрийг сонсоно. */
+subscribeTotals(() => { geomCache.clear(); resultCache.clear(); });
 
 async function overlapUncached(sources: Src[]): Promise<Overlap> {
   const wkid = await parcelSR();

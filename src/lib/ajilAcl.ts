@@ -99,6 +99,9 @@ export const removeAjilAssign = (user: string, revoke = true) => acl.remove(user
 /** Аккаунт УСТГАХАД мөрийг бүрмөсөн арилгах (эрх буцаахгүй) */
 export const purgeAjilAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryAjilAssign = acl.retry;
+
 /** Тухайн хэрэглэгчийн НЭМЭЛТ АЖЛЫН багцууд — ТУХАЙН ҮҮРГЭЭР */
 export const ajilScope = (user: string | null | undefined, role: AjilRole) =>
   acl.scope(user, role);

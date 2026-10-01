@@ -36,7 +36,7 @@ import type FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import { LAYER_BY_ID, layerUrl, oidOf, TD } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  AIR_LEVELS, DAMAGE_RATE, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, classOf,
+  AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, classOf, damageCost,
   type DamageClass, type HazardKey, type LevelKey, type Station,
 } from '@/lib/ersdel';
 
@@ -463,8 +463,23 @@ export type DamageRow = {
   area: number;
   /** Урт (м) — зөвхөн шугаман давхаргад. `truncated` үед ТҮҮВРЭЭС шатлуулсан */
   length: number;
-  /** Үнэлгээ (₮) — `area`/`length`-аас гарах тул `truncated` үед мөн тооцоолол */
-  cost: number;
+  /**
+   * Үнэлгээ (₮) — `area`/`length`-аас гарах тул `truncated` үед мөн тооцоолол.
+   * ⚠️ 2026-10-01: `null` = ӨРТӨГ ТОДОРХОЙГҮЙ (`ersdel.damageCost`) — нийтэд ОРОХГҮЙ,
+   *    UI «тодорхойгүй» гэж бичнэ. 0 гэж бүү нэгтгэ (null ≠ 0).
+   */
+  cost: number | null;
+  /**
+   * Давхаргын өртсөн объектуудын ДЭЭД гүн (м) — үерт, `depthOf` өгсөн үед.
+   * ⚠️ 2026-10-01: `null` = гүн мэдэгдэхгүй (агаар, эсвэл footprint-д нойтон нүд алга).
+   */
+  maxDepth: number | null;
+  /**
+   * ОБЪЕКТ ТУС БҮР (татагдсан `MAX_GEOM` хүртэл) — хүснэгт, CSV/GeoJSON экспортод.
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь зөвхөн давхаргын нийлбэр
+   *    байсан тул «аль барилга хамгийн гүн усанд автах вэ» гэдэгт хариулт алга.
+   */
+  objects: DamageObject[];
   /** Өртсөн объектын геометр — улаанаар зурахад (хамгийн ихдээ `MAX_GEOM`) */
   graphics: Graphic[];
   /**
@@ -473,6 +488,21 @@ export type DamageRow = {
    * ⚠️ UI-д «зөвхөн зураг дутуу» гэж ойлгуулах шошго тавьж БОЛОХГҮЙ.
    */
   truncated: boolean;
+};
+
+/** Нэг өртсөн объект — хүснэгт ба экспортын мөр */
+export type DamageObject = {
+  layerId: string;
+  /** Эх давхаргын OID (байхгүй бол `null`) */
+  oid: number | null;
+  /** Аюулын мужид ОРСОН хэмжээ — талбай (м²) / урт (м); цэгт 1 */
+  measure: number;
+  /** Объект дээрх ДЭЭД гүн (м) — `null` = мэдэгдэхгүй */
+  depth: number | null;
+  /** Объектын үнэлгээ (₮) — `null` = тодорхойгүй (`damageCost`) */
+  cost: number | null;
+  /** Огтолсон геометр (WM) — GeoJSON экспортод */
+  geometry: __esri.Geometry;
 };
 
 /** Нэг дуудалтад геометр татах ДЭЭД хязгаар — зураг гацаахаас хамгаална */
@@ -492,6 +522,11 @@ export async function damageOf(
   hazard: Polygon,
   level: LevelKey,
   kind: HazardKey,
+  /**
+   * ⚠️ 2026-10-01: ОБЪЕКТЫН ДЭЭД ГҮН — үерт загварчлалын `maxDepth`-ээс
+   *    (`Ersdel.tsx` §footprintDepth). Өгөөгүй бол гүн `null`.
+   */
+  opts: { depthOf?: (g: __esri.Geometry) => number | null } = {},
 /**
  * ⚠️ БУЦААХ УТГА ӨӨРЧЛӨГДСӨН (2026-09-03-ны аудит): мөрүүдээс ГАДНА
  * УНАСАН давхаргын нэрсийг ч буцаана. Урьд нь унасан давхарга чимээгүй
@@ -538,27 +573,75 @@ export async function damageOf(
          болдог байв. 1,611 объектын 1,200-г үзсэн ~25% дутуу үнэлгээ
          БҮТЭН хэмжилт мэт харагдана. Одоо тоолол унавал ТАЙРАГДСАН гэж
          үзнэ — дутуу үнэлгээг бүтэн гэж зарлахаас илүү аюулгүй. */
-      const [res, total] = await Promise.all([
+      /**
+       * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): СЕРВЕРИЙН `within` шүүлт —
+       *    мужид БҮТНЭЭРЭЭ орсон объектуудын OID. Тэдгээрийг хөтөч дээр
+       *    `intersect` хийх шаардлагагүй (огтлолцол = объект өөрөө). Урьд нь
+       *    объект БҮРД үндсэн урсгалд `intersect` (Chaikin-ий олон мянган оройтой
+       *    полигонтой) хийгдэж, 1,200 барилгад хэдэн секунд гацдаг байв.
+       *    ЦЭГ давхаргад огтлолцол огт хэрэггүй (`intersects` шүүлт хангалттай).
+       *    Асуулга унавал хоосон олонлог — бүгдийг хуучнаар огтолно (аюулгүй).
+       */
+      const wantWithin = geom !== 'point';
+      const qw = fl.createQuery();
+      qw.geometry = hazard;
+      qw.spatialRelationship = 'within';
+      const [res, total, inside] = await Promise.all([
         fl.queryFeatures(q),
         fl.queryFeatureCount(q).catch(() => -1),
+        wantWithin
+          ? fl.queryObjectIds(qw)
+            .then((ids) => new Set<number>((ids ?? []).map(Number)))
+            .catch(() => new Set<number>())
+          : Promise.resolve(new Set<number>()),
       ]);
       analyzed += 1;
       const countFailed = total < 0;
       const n = countFailed ? res.features.length : total;
       if (!n) continue;
 
+      const cls = classOf(id, geom);
       let area = 0;
       let length = 0;
+      let maxDepth: number | null = null;
       const graphics: Graphic[] = [];
+      const objects: DamageObject[] = [];
       for (const f of res.features) {
         const g = f.geometry;
         if (!g) continue;
+        const fid = f.attributes?.[oid];
+        const oidNum = fid == null ? null : Number(fid);
         // ⚠️ ОГТЛОЛЦЛООР хэмжинэ: аюулын зах дээрх барилгын ЗӨВХӨН усанд автсан
         //    хэсгийг тооцно — бүтэн талбайг тоовол хохирол хэтэрсэн гарна.
-        const cut = geometryEngine.intersect(g, hazard) as __esri.Geometry | null;
+        //    ⚠️ 2026-10-01: цэг ба БҮТНЭЭРЭЭ орсон объектод огтлолцол = өөрөө.
+        const whole = geom === 'point' || (oidNum != null && inside.has(oidNum));
+        const cut = whole ? g : geometryEngine.intersect(g, hazard) as __esri.Geometry | null;
         if (!cut) continue;
-        if (geom === 'area') area += Math.abs(geometryEngine.geodesicArea(cut as Polygon, 'square-meters'));
-        else if (geom === 'line') length += geometryEngine.geodesicLength(cut as __esri.Polyline, 'meters');
+        let measure = 1;
+        if (geom === 'area') {
+          measure = Math.abs(geometryEngine.geodesicArea(cut as Polygon, 'square-meters'));
+          area += measure;
+        } else if (geom === 'line') {
+          measure = geometryEngine.geodesicLength(cut as __esri.Polyline, 'meters');
+          length += measure;
+        }
+        /* ⚠️ Гүн нь БҮТЭН геометрээс (footprint-ийн нүднүүдийн дээд) — огтлолцол нь
+           мужийн хилээр тасардаг тул хил дээрх нойтон нүдийг алдаж болзошгүй */
+        const depth = opts.depthOf ? opts.depthOf(g) : null;
+        if (depth != null && (maxDepth == null || depth > maxDepth)) maxDepth = depth;
+        objects.push({
+          layerId: id,
+          oid: oidNum,
+          measure,
+          depth,
+          /* ⚠️ Агаарт объектын өртөг утгагүй (эрүүл мэндийн зардал нь давхаргаар) → null */
+          cost: kind === 'air' ? null : damageCost(cls, geom, {
+            area: geom === 'area' ? measure : 0,
+            length: geom === 'line' ? measure : 0,
+            n: 1,
+          }, sev),
+          geometry: cut,
+        });
         /**
          * ⚠️ OID-г ЗААВАЛ хадгална: зурган дээр улаан объектыг дарахад эх
          * давхаргаас түүний БҮТЭН атрибутыг татаж үзүүлнэ («мэдээлэл яг
@@ -567,7 +650,7 @@ export async function damageOf(
          */
         graphics.push(new Graphic({
           geometry: cut,
-          attributes: { layerId: id, oid: f.attributes?.[oid] ?? null },
+          attributes: { layerId: id, oid: fid ?? null, depth },
         }));
       }
 
@@ -604,16 +687,17 @@ export async function damageOf(
       area *= scale;
       length *= scale;
 
-      const cls = classOf(id, geom);
-      const rate = DAMAGE_RATE[cls];
       const people = cls === 'building' ? area / EXPOSURE.m2PerPerson : 0;
 
+      /* ⚠️ 2026-10-01: үерийн үнэлгээ `damageCost` — нэгж үнэгүй/нэгж-геометр зөрсөн
+         ангилалд `null` (0 БИШ). Агаарын үнэлгээ хуучнаараа (өртөлтөөс). */
       const cost = kind === 'air'
         ? people * EXPOSURE.costPerPersonDay * (AIR_LEVELS[level].hours / 24)
-        : (rate.per === 'm2' ? area : rate.per === 'm' ? length : n) * rate.rate * sev;
+        : damageCost(cls, geom, { area, length, n }, sev);
 
       rows.push({
         layerId: id, title: def.title, geom, cls, n, area, length, people, cost, graphics,
+        maxDepth, objects,
         truncated: countFailed || n > fetched,
       });
     } catch {
@@ -631,5 +715,7 @@ export async function damageOf(
       continue;
     }
   }
-  return { rows: rows.sort((a, b) => b.cost - a.cost || b.n - a.n), failed, analyzed };
+  /* ⚠️ 2026-10-01: тодорхойгүй өртөгтэй мөр нь ДООР (−∞ гэж эрэмбэлнэ, 0 гэж биш) */
+  const costKey = (r: DamageRow) => (r.cost == null ? -Infinity : r.cost);
+  return { rows: rows.sort((a, b) => costKey(b) - costKey(a) || b.n - a.n), failed, analyzed };
 }

@@ -366,9 +366,11 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
 }
 
 /** Багцын бодит гүйцэтгэл (батлагдсан · ноорогтой) ба нөгөө хувилбарынх. */
-export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount }: {
+export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase }: {
   pkg: Pkg; sc: Schema | null; nBld: number; rowsAll: SheetRow[]; calc: Calc; asOf: number | null;
   hasObyem: boolean[]; planPct: (row: SheetRow, b: number) => number | null; dirtyCount: number;
+  /** ⚠️ 2026-09-30: илгээлтийг давхарлахаас ӨМНӨХ архивын мөрүүд (FillNew-ийн `ovBase`) — `saved`-ийн эх */
+  ovBase?: Map<number, SheetRow>;
 }) {
   /**
    * БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — ХОЁР тоо (2026-09-09, хэрэглэгчийн хүсэлт).
@@ -447,11 +449,16 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     let blocks = 0;
     for (let b = 0; b < nBld; b += 1) if (calc[bi]?.act[b] != null) blocks += 1;
     const draft = avg(calc);
-    /* ⚠️ Ноороггүй тооцоо — ЗӨВХӨН ноорог байгаа үед бодно (хүнд). */
-    const saved = dirtyCount > 0
-      ? avg(computeAll(rowsAll, nBld, asOf, {}, {}, hasObyem, planPct))
+    /* ⚠️ 2026-09-30: «БАТЛАГДСАН» нь ИЛГЭЭЛТГҮЙ архивын мөрөөс (`ovBase`) — `saved`-ийн
+       тодорхойлолт («одоо үндсэн өгөгдөлд байгаа»). Урьд нь `rowsAll` нь архив + ИЛГЭЭСЭН
+       (хяналтад буй) нэмэлтийн давхарлалт тул «Илгээх» дармагц хараахан батлагдаагүй хувь
+       «батлагдсан гүйцэтгэл» гэсэн тайлбартай гол тоо болж харагддаг байв. */
+    const base = ovBase && ovBase.size ? rowsAll.map((r) => ovBase.get(r.oid) ?? r) : null;
+    /* ⚠️ Ноороггүй тооцоо — ЗӨВХӨН ноорог (эсвэл илгээлтийн давхарлалт) байгаа үед бодно (хүнд). */
+    const saved = dirtyCount > 0 || base
+      ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct))
       : draft;
     return { saved, draft, blocks };
-  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount]);
+  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase]);
   return { otherPct, pkgPct };
 }

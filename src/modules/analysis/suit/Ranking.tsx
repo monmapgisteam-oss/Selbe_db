@@ -6,16 +6,20 @@ import { SCORE_LEVELS, levelOf, NO_DATA_COLOR, type Indicator } from '@/lib/anal
 import { scoreColor } from '@/lib/analysis/score';
 import { nf } from './format';
 import { valueOf, type Mode, type Row } from './model';
+import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
+import { downloadText, fileDate } from '@/lib/csvFile';
 import s from '../suitability.module.css';
 
 /* ══════════════════ Бүсийн эрэмбэ ══════════════════ */
 
 export function Ranking({
-  rows, mode, ind, selected, onSelect,
+  rows, mode, ind, indicators, selected, onSelect,
 }: {
   rows: Row[];
   mode: Mode;
   ind: Indicator;
+  /** ⚠️ 2026-10-01: CSV экспортод үзүүлэлт бүрийн түүхий утга/оноо */
+  indicators: readonly Indicator[];
   selected: string | null;
   onSelect: (id: string | null) => void;
 }) {
@@ -33,6 +37,15 @@ export function Ranking({
   const sorted = useMemo(
     () => [...rows].sort((a, b) => (valueOf(b, mode, ind) ?? -1) - (valueOf(a, mode, ind) ?? -1)),
     [rows, mode, ind],
+  );
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ИЖИЛ (бүхэлчилсэн) оноонд ИЖИЛ байр
+   *    («1, 2, 2, 4») — урьд нь мөрийн дугаар (`i + 1`) байв (`rankUtil.competitionRanks`).
+   */
+  const ranks = useMemo(() => competitionRanks(sorted.map((r) => valueOf(r, mode, ind))), [sorted, mode, ind]);
+  const withData = countWithData(rows, mode, ind);
+  const exportCsv = () => downloadText(
+    `selbe-bus-onoo-${fileDate()}.csv`, zoneCsv(rows, mode, ind, indicators), 'text/csv',
   );
 
   const perLevel = SCORE_LEVELS.map((_, i) => sorted.filter((r) => levelOf(valueOf(r, mode, ind)) === i).length);
@@ -82,7 +95,7 @@ export function Ranking({
         className={`${s.rankRow} ${selected === r.id ? s.rankSel : ''} ${/багц/i.test(r.id) ? s.bagts : ''}`}
         onClick={() => onSelect(selected === r.id ? null : r.id)}
       >
-        <span className="rk">{i + 1}</span>
+        <span className="rk">{ranks[i] ?? '—'}</span>
         <span className="nm">{r.id}<i>{r.type}</i></span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreColor(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
@@ -92,6 +105,18 @@ export function Ranking({
 
   return (
     <>
+      {/* ⚠️ 2026-10-01: хэдэн бүс ОНООТОЙ вэ (өгөгдөлгүй нь байргүй) + CSV экспорт */}
+      <div className={s.rankMeta}>
+        <span>{tr('{0}/{1} бүс өгөгдөлтэй', withData, rows.length)}</span>
+        <button
+          type="button"
+          className={s.mini}
+          onClick={exportCsv}
+          title={tr('Бүс бүрийн оноо ба үзүүлэлт бүрийн түүхий утгыг CSV-ээр татна')}
+        >
+          {tr('CSV татах')}
+        </button>
+      </div>
       <div className={s.rankHead}><span>#</span><span>{tr('Бүс')}</span><span>{tr('Нягтшил')}</span><span>{tr('Оноо')}</span></div>
       <div className={s.rankList}>{out}</div>
     </>

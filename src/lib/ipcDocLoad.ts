@@ -22,7 +22,8 @@ import { loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { agsFetch } from '@/modules/sheet/ags';
 import { bagtsKey } from '@/lib/services';
 import { loadHoRows, groupHo } from '@/lib/ipc';
-import { monthEnds, pkgCodeOf, type IpcBlock, type IpcMonth } from '@/lib/ipcDoc';
+import { monthEnds, pkgCodeOf, type IpcBlock, type IpcMonth, type IpcSheetStart } from '@/lib/ipcDoc';
+import { register } from '@/lib/dataBus';
 
 export type IpcSource = {
   pkgName: string;
@@ -36,7 +37,15 @@ export type IpcSource = {
   contractEnd: number | null;
   blocks: IpcBlock[];
   months: IpcMonth[];
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хуудас бүрийн ЭХНИЙ агшин — `buildIpcDoc`
+   * (`...src`-ээр дамжина) орой эхэлсэн хуудсыг (`lateSheetsOf`) анхааруулна.
+   */
+  sheets: IpcSheetStart[];
 };
+
+/** Хуудасны шошго — олон хуудастай багцад давхраар («12F»), эс бөгөөс хуудасны нэр */
+const sheetLabel = (pkg: Pkg): string => (pkg.floors ? `${pkg.floors}F` : pkg.label);
 
 /** Багцын түлхүүр (`bagtsKey`, «БАГЦ32») → бөглөх хуудсууд */
 export const sheetsOf = (packKey: string): Pkg[] => PKGS.filter((p) => bagtsKey(p.group) === packKey);
@@ -159,5 +168,31 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
     contractEnd: maxN(cEnd) ?? maxN(blocks.map((b) => b.planEnd)),
     blocks,
     months,
+    sheets: multi ? parts.map(({ pkg, days }) => ({ label: sheetLabel(pkg), first: days[0] ?? null })) : [],
   };
+}
+
+/**
+ * ОЛОН ХУУДАСТАЙ БАГЦЫН хуудас бүрийн ЭХНИЙ агшин — ХӨНГӨН (хуудас бүрд нэг
+ * `returnDistinctValues` асуулга, мөр татахгүй). IPC карт (`IpcTable`) орой эхэлсэн
+ * хуудсыг (`ipcDoc.lateSheetsOf`) баримт нээхээс ӨМНӨ анхааруулахад (2026-10-01,
+ * «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Нэг хуудастай багц → `[]` (асуулга явахгүй — орой эхлэх хуудас байхгүй).
+ * ⚠️ Кэш: бөглөх хуудас руу бичихэд (`BAGTS_SHEET`) хаягдана; алдааг кэшлэхгүй.
+ */
+const startsCache = new Map<string, Promise<IpcSheetStart[]>>();
+register(() => startsCache.clear(), ['BAGTS_SHEET']);
+export function loadSheetStarts(packKey: string): Promise<IpcSheetStart[]> {
+  const sheets = sheetsOf(packKey);
+  if (sheets.length < 2) return Promise.resolve([]);
+  const hit = startsCache.get(packKey);
+  if (hit) return hit;
+  const mine = Promise.all(sheets.map(async (pkg) => {
+    const sc = await loadSchema(pkg);
+    const days = await fillDays(pkg, sc);
+    return { label: sheetLabel(pkg), first: days[0] ?? null };
+  }));
+  startsCache.set(packKey, mine);
+  mine.catch(() => { if (startsCache.get(packKey) === mine) startsCache.delete(packKey); });
+  return mine;
 }

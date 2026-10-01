@@ -172,7 +172,13 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
               <select value={month} onChange={(e) => {
                 setMonth(e.target.value);
                 const i = src.months.findIndex((m) => m.month === e.target.value);
-                if (i >= 0) setIpcNo(String(i + 1));
+                /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): картаас ирсэн дугаар (`ipcNo0`) нь
+                   картын сартай уялдсан — өөр сар сонгоход ДАРААЛЛЫГ хадгалж шилжүүлнэ
+                   (`ipcNo0 + (i − картын сарын индекс)`). Урьд `i + 1` нь архивын эхний
+                   сараас тоолж, картын дугаартай зөрдөг байв. */
+                const base = month0 ? src.months.findIndex((m) => m.month === month0) : -1;
+                const n0 = Number(ipcNo0);
+                if (i >= 0) setIpcNo(String(base >= 0 && Number.isFinite(n0) && n0 > 0 ? Math.max(1, n0 + (i - base)) : i + 1));
               }}>
                 {monthsDesc.map((m) => <option key={m.month} value={m.month}>{m.month} · {m.day}</option>)}
               </select>
@@ -213,6 +219,12 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
           </div>
         )}
         {doc?.notes.map((n) => <p key={n} className={s.note}>⚠ {NOTE_UI(n)}</p>)}
+        {/* ⚠️ 2026-10-01: энэ сард АНХ агшинтай болсон хуудас — IPC хүснэгтийн картын анхааруулгатай ижил */}
+        {doc && doc.lateSheets.length > 0 && (
+          <p className={s.note}>
+            {tr('⚠ {0} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', doc.lateSheets.join(', '))}
+          </p>
+        )}
 
         {src && src.months.length > 0 && (
           <details className={s.sig}>

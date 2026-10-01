@@ -75,10 +75,12 @@ console.log('✅ завсарлага · дээд хүлээлт · pagehide');
    гарч, бөглөгч алсад хуулагдсан гэж итгээд өөр компьютер дээр хоосон хуудас
    хүлээж авдаг байв. */
 const flush = between('const flush = () => {', 'const t = setTimeout(flush, 12_000);');
+/* ⚠️ 2026-10-01: үр дүн нь 'ok' | 'big' | 'fail' — хэмжээг нэгтгэлийн ДАРАА `saveQaqcDraft` шалгана */
 assert.ok(
-  flush.includes('.then((ok) =>') && flush.includes('setRemoteState('),
+  flush.includes('saveQaqcDraft(q.pkg, q.draft).then((res) =>') && flush.includes('setRemoteState('),
   'алсын бичилтийн үр дүн уншигдахгүй байна — «хадгалагдав» нь ХУДАЛ баталгаа болно',
 );
+assert.ok(flush.includes("res === 'big' ? { kind: 'big' }"), '⚠️ хэт том ноорог ил хэлэгдэх ёстой');
 assert.ok(
   SRC.includes("{ kind: 'fail' }") && SRC.includes("{ kind: 'ok', at:"),
   'алсын байдлын ok/fail төлөв алга',
@@ -140,6 +142,7 @@ console.log('✅ эрхгүй үед ноорог устахгүй');
    оролдох зам хаагдаж, зөвхөн хуудсыг бүтнээр дахин ачаалж (F5) байж сэргэнэ. */
 assert.ok(REMOTE.includes('export async function readQaqcDraft'), 'алдааг ялгадаг уншигч алга');
 assert.ok(REMOTE.includes('export type QaqcRemoteDraftRead'), 'уншилтын үр дүнгийн төрөл алга');
+/* 2026-10-01: төгсгөлийн тэмдэг `if (!pick) return;` — `restoreDoneRef` хасагдсан (9-р хэсэг) */
 const restore = between('const local = readDraft(dk(user?.username, key));', 'if (!pick) return;');
 assert.ok(restore.includes('readQaqcDraft(key)'), 'сэргээх зам алдааг ялгадаггүй');
 assert.ok(restore.includes('!rr.ok'), 'уншилтын алдаа шалгагдахгүй байна');
@@ -148,8 +151,12 @@ assert.ok(
   'уншилт унахад дахин оролдох зам нээгдэхгүй байна',
 );
 /* ⚠️ Локал ба алсын аль нь ШИНЭ болохыг агшнаар шийднэ — хуучныг тавибал
-   өөр машин дээрх шинэ ажил чимээгүй дарагдана. */
-assert.ok(restore.includes('remD.t > local.t'), 'локал/алсын агшны харьцуулалт алга');
+   өөр машин дээрх шинэ ажил чимээгүй дарагдана.
+   ⚠️ 2026-10-01: ноорог БҮХЛЭЭР биш, НҮД БҮРЭЭР (`lib/qaqcDraft.ts`, тусдаа шалгуур
+   `src/lib/qaqcDraft.check.mjs`) — ерөнхий `t`-ийн харьцуулалт буцаж ирэх ёсгүй. */
+assert.ok(restore.includes('const pick = mergeDraft(local, remD);'), 'локал/алсын нүд бүрийн нэгтгэл алга');
+assert.ok(SRC.includes('const mergeDraft = mergeQaqcDrafts;'), 'нэгтгэл нь qaqcDraft.ts-ийн нүд бүрийн дүрэм байх ёстой');
+assert.ok(!/remD\.t\s*>=?\s*local\.t/.test(SRC), 'ноорог бүхлээр «шинэ нь ялна» буцаж ирэв');
 console.log('✅ уншилтын алдаа ялгагдана, дахин оролдоно');
 
 /* ── 8. ГҮЙЦЭТГЭЛИЙН НООРОГТОЙ ХОЛИЛДОХГҮЙ ──
@@ -160,5 +167,84 @@ assert.ok(SRC.includes("'selbe-qaqc-draft:'"), 'чанарын локал угт
 assert.ok(!SRC.includes("'selbe-fillnew-draft:'"), 'гүйцэтгэлийн угтвар чанарын хуудсанд орсон');
 assert.ok(REMOTE.includes("const TITLE = 'Selbe_QAQC_Draft';"), 'чанарын ArcGIS item өөрчлөгдсөн');
 console.log('✅ гүйцэтгэлийн ноорогтой тусгаарлагдсан хэвээр');
+
+/* ── 9. АРИЛГАСАН НҮД «ХАДГАЛААГҮЙ НООРОГ» БОЛЖ БУЦАХГҮЙ ──
+   ⚠️ 2026-09-30-ны хувилбар нь хоосон `pend` дээр ноорогийг УСТГАДАГ байв.
+   ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): УСТГАЛ БИШ — БУЛШ. Устгал нь «арилгасан»
+   гэсэн мэдээллийг үлдээдэггүй тул өөр төхөөрөмжийн хуучин ноорог тэр нүдийг
+   буцааж амилуулдаг. Одоо: (а) хадгалах эффект `pend`-ийн шилжилтээс булш
+   тооцно; (б) «ноорог устгах» ба «Хадгалах» нь бүх нүдийг ШУУД булшилж ArcGIS-д
+   НЭГТГЭЖ бичнэ; (в) хуудас нь ArcGIS-ийн ноорогийг БҮРЭН устгахаа больсон;
+   (г) сэргээлтийн дараа ArcGIS-д дутуу (зөвхөн локалд байсан) булш/нүд илгээгдэнэ. */
+{
+  const eff = between('АРИЛГАЛТ = БУЛШ, УСТГАЛ БИШ', 'АЛСЫН ХУУЛБАР (2026-09-07');
+  assert.ok(eff.includes('applyPendDiff(draftStRef.current, prevPendRef.current, pend, stamp)'), '⚠️ (а) эффект pend-ийн шилжилтээс булш тооцох ёстой');
+  assert.ok(eff.includes('prevPendRef.current = pend'), '⚠️ (а) харсан pend тэмдэглэгдэх ёстой');
+  assert.ok(eff.includes('persistLocal(pkg.key, rows)'), '⚠️ (а) локалд НЭГТГЭЖ бичих ёстой');
+  assert.ok(!eff.includes('clearDraftLS(dk('), '⚠️ (а) хоосон pend дээр локал ноорог УСТГАГДАХ ёсгүй');
+  const drop = between('const dropDraft = useCallback(', '/* ══════════════ ХАДГАЛАХ');
+  assert.ok(drop.includes('retirePend(key, pend, rows)') && drop.includes('saveQaqcDraft(key, doc)'), '⚠️ (б) «ноорог устгах» булшилж бичих ёстой');
+  const sv = between('const save = useCallback(', '/* Ctrl+S');
+  assert.ok(sv.includes('retirePend(pkg.key, pend, rows)') && sv.includes('await saveQaqcDraft(pkg.key, doc)'), '⚠️ (б) «Хадгалах» хадгалсан нүдийг булшлах ёстой');
+  assert.ok(sv.indexOf('retirePend(') < sv.indexOf('await load(pkg.key)'), '⚠️ (б) булш нь дахин ачаалахаас ӨМНӨ (load нь loadedPkgRef-ийг хоосолдог)');
+  assert.ok(!/clearQaqcDraft\(/.test(SRC), '⚠️ (в) хуудас ArcGIS-ийн ноорогийг бүрэн устгах ёсгүй (булшгүй устгал = буцаж амилалт)');
+  const swap = between('setPend({});', 'void load(pkg.key);');
+  assert.ok(swap.includes('prevPendRef.current = {}'), '⚠️ багц солиход pend-ийн тэглэлт «бүгдийг арилгасан» гэж булшлагдах ёсгүй');
+  const rs = between('НООРОГ — СЭРГЭЭХ', 'ОЛОН НҮДЭНД БУУЛГАХ');
+  assert.ok(rs.includes('adoptQaqcDraft(pick, draftStRef.current, fits, stamp)'), '⚠️ сэргээлт табын төлөвт хүлээн авах ёстой');
+  assert.ok(rs.includes('!draftIncludes(remD, stored)'), '⚠️ (г) ArcGIS-д дутуу булш/нүд илгээгдэх ёстой');
+  assert.ok(rs.indexOf("if (!canEdit) { promptedPkgRef.current = ''; return; }") < rs.indexOf('adoptQaqcDraft('), '⚠️ эрхгүй үед булш/хүлээн авалт хийгдэх ёсгүй');
+  assert.ok(rs.includes('clockRef.current = Math.max(clockRef.current, pick.t)'), '⚠️ Лампорт — харсан агшнаас хойш л шинэ агшин');
+  /* fail/big заалт зөвхөн хадгалаагүй засвартай үед */
+  assert.ok(SRC.includes("remoteState?.kind === 'fail' && dirtyCount > 0"), '⚠️ хоосон хуудсан дээр «ArcGIS-д хуулагдсангүй» гэх ёсгүй');
+}
+console.log('✅ арилгасан нүд ноорог болж буцахгүй');
+
+/* ── 10. ⚠️ 2026-09-30: ХАДГАЛАХ ЯВЦАД ЗАСВАР ХААЛТТАЙ ──
+   `save` дуусахдаа `setPend({})` хийдэг тул тэр хооронд бичсэн нүд (ноорогтой нь) арилдаг байв. */
+{
+  const click = between('onClick={() => {', 'setEditCell(ekey);');
+  assert.ok(click.includes('if (busy) return say(RO_BUSY())'), '⚠️ хадгалах явцад нүд нээгдэх ёсгүй');
+  const paste = between('const pasteBlock', 'planQaqcPaste(');
+  assert.ok(paste.includes('if (busy) { say(RO_BUSY()); return true; }'), '⚠️ хадгалах явцад буулгах ёсгүй');
+  /* Зай — хадгалагдсан утгыг зайгүйгээр жишнэ (нээгээд хаахад «өөрчлөгдсөн» болохгүй) */
+  const commit = between('const commit = (oid: number, di: number, raw: string) => {', 'setPend((p) => {');
+  assert.ok(commit.includes("(row?.docs[di] ?? '').trim()"), '⚠️ commit: хадгалагдсан утгыг trim хийж жишнэ');
+  /* «Зөвхөн бөглөөгүй N / M» — M нь ажлын мөр */
+  assert.ok(SRC.includes('{emptyCount.toLocaleString()} / {leafCount.toLocaleString()}'), '⚠️ хуваагч нь ажлын мөрийн тоо');
+}
+console.log('✅ хадгалах явцад засвар хаалттай · зай · тоолол');
+
+/* ── 11. ⚠️ 2026-10-01: «ХАДГАЛАХ»-ЫН ДАРАА ГҮЙЛГЭЛТ ҮСРЭХГҮЙ ──
+   `load` нь `setRows([])` хийдэг тул гүйлгэх хайрцаг DOM-оос хасагдаж, шинэ хайрцаг
+   `scrollTop = 0`-ээр үүсдэг байв. Дахин ачаалахын ӨМНӨ байрлалыг тэмдэглэж, мөр
+   ирэхэд layout эффектэд (будахаас өмнө) сэргээнэ. */
+{
+  const sv = between('const save = useCallback(', '/* Ctrl+S');
+  const loads = [...sv.matchAll(/await load\(pkg\.key\);/g)].map((m) => m.index);
+  assert.equal(loads.length, 2, 'save доторх хоёр дахин ачаалалт (амжилт · алдаа)');
+  for (const at of loads) {
+    const before = sv.slice(Math.max(0, at - 120), at);
+    assert.ok(before.includes('keepScroll(pkg.key);'), '⚠️ дахин ачаалахын ӨМНӨ гүйлгэлтийн байрлал тэмдэглэгдэх ёстой');
+  }
+  const keep = between('const keepScroll = useCallback(', '/* ══════════════ БАТЛАГДСАН');
+  assert.ok(keep.includes('el.scrollTop') && keep.includes('el.scrollLeft'), 'хоёр тэнхлэгийн байрлал тэмдэглэгдэх ёстой');
+  assert.ok(/useLayoutEffect\(\(\) => \{[\s\S]{0,400}el\.scrollTop = k\.top;[\s\S]{0,60}el\.scrollLeft = k\.left;[\s\S]{0,40}recalcWin\(\);/.test(keep),
+    '⚠️ мөр ирэхэд (layout эффект) байрлал сэргэж, виртуал цонх дахин бодогдох ёстой');
+  assert.ok(keep.includes('k.pkg !== pkg.key'), 'өөр багцад байрлал сэргээгдэх ёсгүй');
+}
+console.log('✅ хадгалсны дараа гүйлгэлтийн байрлал хадгалагдана');
+
+/* ── 12. ⚠️ 2026-10-01: ArcGIS руу бичих нь НЭГТГЭЛ — ДАРАЛТ БИШ ── */
+{
+  const w = REMOTE.slice(REMOTE.indexOf('async function writeQaqcDraft('), REMOTE.indexOf('async function learnClockOffset('));
+  assert.ok(w.length > 0, 'writeQaqcDraft алга');
+  assert.ok(w.indexOf('mergeQaqcDrafts(') > 0 && w.indexOf('mergeQaqcDrafts(') < w.indexOf('fl.applyEdits('), '⚠️ бичихээс ӨМНӨ ArcGIS дээрхтэй нэгтгэх ёстой');
+  assert.ok(w.includes("outFields: ['OBJECTID', 'payload']"), '⚠️ нэгтгэхийн тулд одоогийн payload уншигдах ёстой');
+  assert.ok(w.includes('serializeQaqcDraft(merged, { now, maxLen: QAQC_REMOTE_MAX })'), '⚠️ хэмжээ нэгтгэлийн ДАРАА шалгагдана (хуучин булш эхэлж хаягдана)');
+  assert.ok(REMOTE.includes('return serial(() => writeQaqcDraft(pkgKey, draft));'), '⚠️ энэ табын бичилтүүд дараалан явах ёстой');
+  assert.ok(REMOTE.includes('editFieldsInfo?.editDateField'), '⚠️ Editor Tracking байвал серверийн цагаар засна (feature-detect)');
+}
+console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · серверийн цаг');
 
 console.log('\nqaqcDraft.check: ok');

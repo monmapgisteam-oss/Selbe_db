@@ -10,7 +10,8 @@
 //     `base`, `queryAll`, `distinct`, `level5Rows`, `constructionByBagts`,
 //     `applySections`, `ACTUAL`, `LEVEL5`, хавсралтын 4 функц
 //   Эдгээрийг ЗӨВХӨН навигациас хасагдсан хуудсууд (Pivot · Wbs · Level5 ·
-//   Conclusion — `Sheet.tsx`-ийн 2026-08-18-ны шийдвэр) л дууддаг. ШИНЭ КОДОД
+//   Conclusion — `Sheet.tsx`-ийн 2026-08-18-ны шийдвэр) л дууддаг. ⚠️ 2026-10-01:
+//   Pivot · Wbs · Level5 УСТГАГДСАН — үлдсэн нь Conclusion (мөн импортлогддоггүй). ШИНЭ КОДОД
 //   ОГТ ХЭРЭГЛЭХГҮЙ — амьд гүйцэтгэлийн өгөгдөл нь `sheetRows.ts`-д байна
 //   (`Bagts_*` бөглөх хуудсууд).
 //

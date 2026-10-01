@@ -84,15 +84,17 @@ export function TuhMap({ dim, setDim, sel, packs, onPickPkg }: {
     return w;
   }, [zone, visible, target, sel]);
 
-  /* Сонгосон багц руу нисэх — дэд бүтцийн багцын `where: null` нь «давхарга бүхэлдээ» */
+  /* Сонгосон багц руу нисэх — дэд бүтцийн багцын `where: null` нь «давхарга бүхэлдээ».
+     ⚠️ 2026-09-30: ТЭМДЭГТ МӨРӨӨР түлхүүрлэнэ — `target` нь өгөгдөл шинэчлэгдэх бүрд
+     (эх сурвалж хожуу ирэх, автобусаар дахин татах) ШИНЭ объект болдог тул хэрэглэгч
+     газрын зургийг томруулж/зөөсөн байхад зураг сонгосон багц руу ДАХИН үсэрдэг байв.
+     Одоо зөвхөн давхарга/шүүлт өөрчлөгдөхөд л нисэнэ. */
+  const zoomLayer = target?.layerIds[0] ?? '';
+  const zoomWhere = target ? (target.where ?? '1=1') : '';
   useEffect(() => {
-    if (target) {
-      const id = target.layerIds[0];
-      if (id) zoomToWhere(id, target.where ?? '1=1');
-      return;
-    }
-    zoomToWhere(BLOCK_LAYER, '1=1');
-  }, [target, zoomToWhere]);
+    if (zoomLayer) zoomToWhere(zoomLayer, zoomWhere);
+    else zoomToWhere(BLOCK_LAYER, '1=1');
+  }, [zoomLayer, zoomWhere, zoomToWhere]);
 
   const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);

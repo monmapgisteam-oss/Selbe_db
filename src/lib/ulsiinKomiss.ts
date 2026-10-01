@@ -149,7 +149,11 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    return m ? planPctFromMonths(m, asOf) : null;
+    /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
+         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
+         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
+         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
+    return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
   });
 
   /* Уралдаа — materializeAdds A.8/A.8а */

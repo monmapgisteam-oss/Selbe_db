@@ -27,7 +27,8 @@
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
-import { DAY, type Span } from './plan';
+import { spanFrac, type Span } from './plan';
+import { invalidate } from './dataBus';
 
 /**
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
@@ -184,12 +185,21 @@ export const sumMonths = (m: ReadonlyMap<string, number>): number => {
  * ⚠️ ХАТУУ `===` БИШ: 0.01 нарийвчлалтай тарааснаас хойш хөвөгч цэгийн алдаа
  *    (0.1 + 0.2 ≠ 0.3) үлддэг. Хагас нэгжийн тэвчээр нь бодит бөглөлтөд
  *    мэдрэгдэхгүй ч худал «таарахгүй» гэж няцаахаас сэргийлнэ.
+ * ⚠️ 2026-09-30: ХАГАС НЭГЖИЙГ ОРУУЛНА (`<=`) + хөвөгч цэгийн өчүүхэн нөөц.
+ *    Урьд нь хатуу `<` байсан тул 3 оронтой, 5-аар төгссөн нийт обьём
+ *    (0.125 · 1.265 т · 1234.875 м³) ХОЁР ОРНЫ хоёр хөршөөсөө ЯГ хагас нэгжийн
+ *    зайтай болж, 2 оронтой ямар ч задаргаа — цонхонд харагдах бөөрөнхийлсөн
+ *    «нийт» (`num(total, 2)`) өөрөө ч — ХЭЗЭЭ Ч тэнцдэггүй байв: «0.01 дутуу»
+ *    ↔ «0.01-ээр илүү» хооронд эргэлдэж «Тавих» хаалттай, илгээх хаалт ч
+ *    няцаадаг («обьём зөв хуваасан ч болохгүй»). 3 оронтой x.xx5 нийтийн 31%-д
+ *    харагдаж буй нийт өөрөө тэнцдэггүй байсныг хэмжсэн. Одоо 2 оронд
+ *    бөөрөнхийлсөн ямар ч утга тэнцэнэ; зөрүү ≤ 0.005 хэвээр.
  */
 export const balanced = (
   m: ReadonlyMap<string, number>,
   total: number,
   step = 0.01,
-): boolean => Math.abs(sumMonths(m) - total) < step / 2;
+): boolean => Math.abs(sumMonths(m) - total) <= step / 2 + 1e-9 * Math.max(1, Math.abs(total));
 
 /* ══════════════════ Төлөвлөгөөт хувь (S-муруй) ══════════════════ */
 
@@ -206,13 +216,30 @@ export const balanced = (
  *
  * ⚠️ Хоосон задаргаа → `null` («мэдэгдэхгүй»), 0 БИШ. Дуудагч нь хуучин
  *    шугаман зам руу буцна.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): САР ДОТОРХ ХУВЬ нь АЖЛЫН
+ *    ЖИНХЭНЭ ЭХЛЭХ–ДУУСАХ ӨДРҮҮДЭЭР (`span`), бүтэн сараар БИШ. Урьд нь 20-нд эхлэх
+ *    ажлын тэр сарын обьём сарын 1-нээс эхлэн өсөж (1-нд 1/31), бодит 0 гүйцэтгэлтэй
+ *    ажил сарын эхэнд «хоцорсон» гэж ХУДАЛ харагддаг байв; 10-нд дуусах ажил ч 10-нд
+ *    100% хүрдэггүй байв. Одоо сарын цонх = [max(сарын 1, эхлэх), min(сарын эцэс,
+ *    дуусах)] — хоёр захыг оруулсан, `asOf` өдрийн ТӨГСГӨЛӨӨР (`plan.spanFrac`,
+ *    `bagtsSheet.planAt`-тай НЭГ томъёо).
+ * ⚠️ `span` ӨГӨӨГҮЙ (хуучин дуудагч) эсвэл сар нь мужтай огт давхцахгүй (хуучирсан
+ *    задаргаа) бол бүтэн сараар — хуучин зан төлөв.
+ * ⚠️ Сарын эцсийн цэгүүд (`planProgress` муруй) өөрчлөгдөхгүй: сарын эцэст цонх
+ *    ямагт бүтэн өнгөрсөн.
  */
 export function planPctFromMonths(
   m: ReadonlyMap<string, number>,
   asOf: number,
+  span?: { start: number | null; end: number | null } | null,
 ): number | null {
   const total = sumMonths(m);
   if (!(total > 0)) return null;
+  const s0 = span?.start ?? null;
+  const e0 = span?.end ?? null;
+  const own = s0 != null && e0 != null && Number.isFinite(s0) && Number.isFinite(e0) && s0 <= e0
+    ? { start: s0, end: e0 } : null;
   const keys = [...m.keys()].sort();
   let done = 0;
   for (const k of keys) {
@@ -220,13 +247,16 @@ export function planPctFromMonths(
     if (ms == null) continue;
     const me = monthEnd(k);
     const v = m.get(k) ?? 0;
-    if (asOf >= me) { done += v; continue; }
-    if (asOf < ms) break;
-    /* Сар дотор — өнгөрсөн хоногийн хувиар */
-    const all = Math.round((me - ms) / DAY) + 1;
-    const gone = Math.round((asOf - ms) / DAY) + 1;
-    done += (v * gone) / all;
-    break;
+    /* Сарын цонх — ажлын мужтай огтлолцол; давхцахгүй бол бүтэн сар */
+    let w: Span = { start: ms, end: me };
+    if (own) {
+      const a = Math.max(ms, own.start);
+      const z = Math.min(me, own.end);
+      if (a <= z) w = { start: a, end: z };
+    }
+    const f = spanFrac(w, asOf);
+    done += v * f;
+    if (f < 1) break;
   }
   return Math.max(0, Math.min(1, done / total));
 }
@@ -588,8 +618,21 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       if (k === 'deleteResults') dl += res.length;
     }
   };
-  for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) });
-  for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) });
-  for (const c of chunk(e.deletes)) await run({ deletes: c.join(',') });
+  /*
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БИЧИГДСЭН бол `HUVAARI_OBYEM`-ыг хүчингүй
+   *    болгоно — төлөвлөгөөт муруй (`planProgress.loadPlanCurveCached`) ба тэр түлхүүрээр
+   *    бүртгэлтэй кэшүүд (дашбоард) тэр дор нь шинэчлэгдэнэ. Урьд нь сарын обьём
+   *    батлагдсаны дараа муруй 5 минут (Finance 10 мин) хуучин тоогоор үлддэг байв.
+   * ⚠️ `finally` — 500-ийн багц ДУНДУУР унасан ч амжсан мөрүүд серверт орсон тул
+   *    хүчингүй болгоно (`dataBus`: «амжилттай бичилтийн дараа»). Юу ч бичигдээгүй
+   *    бол дэмий дахин татахгүй.
+   */
+  try {
+    for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) });
+    for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) });
+    for (const c of chunk(e.deletes)) await run({ deletes: c.join(',') });
+  } finally {
+    if (a + u + dl > 0) invalidate('HUVAARI_OBYEM');
+  }
   return [a, u, dl];
 }

@@ -5,6 +5,12 @@
  *   node tools/test-all.mjs huvaari    — нэрэнд «huvaari» орсон файлууд л
  *   node tools/test-all.mjs -j 2       — зэрэг ажиллах тоо (анхдагч 4)
  *   node tools/test-all.mjs --verbose  — давсан шалгуурын гаралтыг ч хэвлэнэ
+ *   node tools/test-all.mjs --timeout 300 — нэг шалгуурын дээд хугацаа, сек
+ *                                         (анхдагч 180; env TEST_TIMEOUT_S ч болно)
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ШАЛГУУР БҮР ХУГАЦААНЫ ХЯЗГААРТАЙ —
+ *    гацсан нэг тест `npm test`-ийг (тэгэхээр deploy-г) үүрд түгжихгүй, «⏱ ГАЦСАН»
+ *    мессежтэйгээр унасан гэж тоологдоно (`tools/testRun.mjs`).
  *
  * ⚠️ ЯАГААД (2026-09-29). `package.json`-ийн `test` нь 88 дараалсан `node …`
  *    дуудлагыг НЭГ 7,900 тэмдэгттэй мөрөнд гараар жагсаадаг байв. Шинэ
@@ -29,9 +35,9 @@
  * Гаралт: давсан файлын гаралтыг НУУНА (--verbose-гүй бол), унасан файлынхыг
  * төгсгөлд БҮТНЭЭР хэвлэнэ. Нэг ч унавал exit 1.
  */
-import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
+import { runCheck, resolveTimeoutS } from './testRun.mjs';
 
 const ROOTS = ['src', 'docs', 'tools'];
 const LOADER = ['--experimental-transform-types', '--import', './tools/ts-alias.mjs'];
@@ -44,6 +50,8 @@ const LIVE = new Set([
   'src/lib/analysis/transport.check.mjs',
   'src/lib/agent/agent.check.mjs',
   'src/lib/agent/drift.check.mjs',
+  /* ⚠️ 2026-10-01: дэд бүтцийн давхаргын координатын систем · уртын талбар — зөвхөн уншдаг амьд шалгалт */
+  'src/lib/butetsInfra.check.mjs',
 ]);
 
 /* ── Аргументууд ── */
@@ -53,7 +61,8 @@ const verbose = argv.includes('--verbose');
 let jobs = 4;
 const jIdx = argv.indexOf('-j');
 if (jIdx >= 0) jobs = Math.max(1, Number(argv[jIdx + 1]) || 4);
-const filters = argv.filter((a, i) => !a.startsWith('-') && argv[i - 1] !== '-j');
+const timeoutS = resolveTimeoutS(argv, process.env);
+const filters = argv.filter((a, i) => !a.startsWith('-') && argv[i - 1] !== '-j' && argv[i - 1] !== '--timeout');
 
 /* ── Файл олох ── */
 const norm = (p) => p.split(sep).join('/');
@@ -77,23 +86,10 @@ if (!files.length) {
   console.error('test-all: тохирох *.check.mjs олдсонгүй');
   process.exit(1);
 }
-console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs}${live ? ' · амьд орсон' : ''}\n`);
+console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 
 /* ── Ажиллуулах ── */
-const run = (file) =>
-  new Promise((resolve) => {
-    const t0 = Date.now();
-    const out = [];
-    const child = spawn(process.execPath, [...LOADER, file], {
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout.on('data', (b) => out.push(b));
-    child.stderr.on('data', (b) => out.push(b));
-    child.on('close', (code) => {
-      resolve({ file, code: code ?? 1, ms: Date.now() - t0, out: Buffer.concat(out).toString('utf8') });
-    });
-  });
+const run = (file) => runCheck(file, { args: LOADER, timeoutMs: timeoutS * 1000 });
 
 const results = [];
 let next = 0;
@@ -102,7 +98,7 @@ const worker = async () => {
     const file = files[next++];
     const r = await run(file);
     results.push(r);
-    const mark = r.code === 0 ? '✅' : '❌';
+    const mark = r.code === 0 ? '✅' : r.timedOut ? '⏱' : '❌';
     console.log(`${mark} ${file} (${(r.ms / 1000).toFixed(1)}с)`);
     if (verbose && r.code === 0 && r.out.trim()) console.log(r.out.replace(/^/gm, '     '));
   }

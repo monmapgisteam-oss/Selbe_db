@@ -10,10 +10,8 @@
  *
  * ⚠️ Зөвхөн хуучин-биш, сүлжээгүй, React-гүй логик — hook/JSX энд орохгүй.
  */
-import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS, cfMonthAxis } from '@/lib/services';
-import { housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS } from '@/lib/services';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
-import type { FinData } from '@/modules/Finance';
 import type { ProgPt } from '@/modules/PkgProg';
 import { planPctAt, type PlanPoint } from '@/lib/planProgress';
 
@@ -62,58 +60,12 @@ export const catOf = (p: Pack): PackCat => {
 };
 
 /**
- * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд.
+ * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд (`aggregateMonths`) ба биет гүйцэтгэл «ОДОО» (`physNow`).
  *
- * ⚠️ 2026-09-06: САРЫН ТӨЛӨВЛӨГӨӨ (`amount`/`amountCum`/`cumPct`)
- *    ХАСАГДСАН — `cashflow_0813`-ийн «САР» мөрүүд байхгүй болсон. Үлдсэн
- *    хоёр цуваа хоёулаа БОДИТ хэмжилт: IPC олголт ба биет гүйцэтгэл.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хэрэгжилт нь `Finance.tsx`-д ШИЛЖИВ —
+ *    «Багцын мэдээлэл» (`Bagts.tsx`) ч энэ тоог харуулах болсон, харин энэ файл
+ *    `Bagts`-ээс утга (`BLOCK_LAYER`) импортолдог тул `Bagts → pkgShared` нь модулийн
+ *    мөчлөг үүсгэнэ. Дуудагчид (PkgProg · PkgFin · ТУХ · Дашбоард) хөндөгдөөгүй — эндээс
+ *    дахин экспортлоно. Дүрмүүдийн тайлбар `Finance.aggregateMonths`-д.
  */
-/**
- * ТӨСЛИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `aggregateMonths`-ийн одоогийн сар хүртэлх
- * СҮҮЛИЙН хэмжигдсэн сарын ӨРТГӨӨР (ХО дүн) жигнэсэн % (`gdash.housingPct`).
- *
- * ⚠️ 2026-09-22 (өгөгдлийн аудит): Дашбоардын `pkgPhys` (багц бүрийн ӨӨРИЙН
- *    сүүлийн сар, дараа нь жигнэх) ба PkgProg `TsKpi`/ExecReport (`aggregateMonths`
- *    — НЭГ сүүлийн сар) хоёр өөр тоо гаргаж, Dashboard «05-тэй ижил» гэж
- *    ХУДАЛ бичиж байв. Одоо дөрвүүлээ ЭНЭ туслахаас — нэг үзүүлэлт, нэг тоо.
- *    Тайлагнаагүй бол `null` («мэдээлэлгүй», 0 биш).
- */
-export function physNow(d: FinData, nowYm: string): number | null {
-  let actual: number | null = null;
-  for (const m of aggregateMonths(d)) {
-    if (m.label > nowYm) continue;
-    if (m.phys != null) actual = m.phys;
-  }
-  return actual;
-}
-
-export function aggregateMonths(d: FinData) {
-  /* ⚠️ Тэнхлэгийг өгөгдөлд БАЙГАА саруудаас угсрахгүй — хэмжилтгүй сар
-     (2026-01) мөр ҮҮСГЭДЭГГҮЙ тул график нэг нүд шилжинэ. */
-  const labels = cfMonthAxis();
-  /*
-   * ⚠️ 2026-09-25: `FinData.phys` нь одоо ЗӨВХӨН шинэ бичилттэй сард цэгтэй
-   *    (`finPhys.buildPhys`-ийн дүрэм 2). Нэгтгэлд багц бүрийн СҮҮЛИЙН
-   *    мэдэгдэж буй утгыг (as-of) авч, ТОГТМОЛ жинтэй жигнэнэ;
-   *    хараахан тайлагнаагүй багц 0% (дүрэм 1-тэй ижил). Эс бөгөөс тухайн
-   *    сард ганц жижиг багц тайлагнахад төслийн дундаж тэр багцын хувь болж
-   *    ҮСЭРНЭ. Цэг нь аль нэг багц тэр сард ШИНЭ бичилттэй үед л гарна.
-   */
-  /*
-   * ⚠️ 2026-09-30: ЖИН = ХО ДҮН (`gdash.pkgCostWeight`), БЛОКИЙН ТОО БИШ. Урьд нь
-   *    блокоор жигнэдэг тул энэ тоо (PkgProg · Dashboard · ExecReport · GeneralDash)
-   *    Тайлангийн төсвөөр жигнэсэн «Орон сууцны гүйцэтгэл»-ээс зөрдөг байв — нэг
-   *    үзүүлэлт, хоёр тоо. Одоо бүгд `gdash.housingPct` — нэг томьёо. Блокийн тоо
-   *    зөвхөн НӨӨЦ жин (ХО дүн огт олдоогүй үед, `housingPct`-ийн дүрэм).
-   */
-  const cost = pkgCostWeight(d.contracts.map(cfWeightRow));
-  const series = housingSeries(d.phys, d.physCnt, d.physAt, cost, labels);
-  return series.map((s) => {
-    let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
-    // ⚠️ Төслийн сарын биет гүйцэтгэл — багцуудын ЭНГИЙН дундаж БИШ; ХО дүнгээр
-    //    жигнэнэ: Σ(pct_p · ХО_p) / Σ ХО_p (`gdash.housingSeries` → `housingPct`).
-    //    Хэмжилтгүй сар `phys: null` (0 биш); `physAt` — `lagOf`-ийн завсар.
-    return { label: s.label, given, phys: s.phys, physAt: s.physAt };
-  });
-}
+export { aggregateMonths, physNow } from '@/modules/Finance';

@@ -207,7 +207,10 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
           const dup = markDuplicates(net);
           if (dup) console.info(`[selbe] «${src.label}»: давхардсан ${dup}/${net.edges.length} ирмэгийг урсгалаас хасав`);
         }
-        if (signalsFailed) net.signalsFailed = true;
+        /* ⚠️ 2026-09-30: дохиогүй сүлжээг сесс дуустал КЭШЛЭХГҮЙ — урьд нь нэг удаагийн
+           уналтын дараа «Бодит»/«Төлөвлөгөө» дохиотой/дохиогүй чимээгүй харьцуулагдаж,
+           «Дахин оролдох» ч тусалдаггүй байв. Тугийг UI (`RoadStatus`) харуулна. */
+        if (signalsFailed) { net.signalsFailed = true; cache.delete(kind); }
         return net;
       })
       .catch((e) => { cache.delete(kind); throw e; });

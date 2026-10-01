@@ -30,6 +30,7 @@ import Graphic from '@arcgis/core/Graphic';
 import Point from '@arcgis/core/geometry/Point';
 import { IMAGERY_ID, useMap, type Dim } from '@/components/MapCanvas';
 import { t as tr } from '@/lib/i18nCore';
+import { num } from '@/lib/format';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { bandAt, type Band, type DamageRow } from '@/lib/ersdelGeom';
 import type { Station } from '@/lib/ersdel';
@@ -105,6 +106,13 @@ const WSURF_ID = 'ersdel:wsurf';
 
 /** Усны замын шугам — тайлбарын давхарга */
 const PATH_ID = 'ersdel:path';
+/**
+ * ГОЛЫН ОРОЛТЫН НҮД + ГИДРОГРАФЫН ТЭМДЭГ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Урьд нь гидрограф зөвхөн зүүн самбарын бяцхан графикт байсан тул «ус ХААНААС
+ *    орж ирэв» гэдэг зураг дээр огт харагддаггүй — оролтын нүдийг цэнхэр
+ *    тэмдгээр, түүний дэргэд ТУХАЙН агшны урсацыг (м³/с) бичнэ.
+ */
+const INLET_ID = 'ersdel:inlet';
 
 const BAND_ID = 'ersdel:band';
 const DMG_ID = 'ersdel:damage';
@@ -112,6 +120,9 @@ const ST_ID = 'ersdel:station';
 
 const rgb = (hex: string): [number, number, number] => {
   const h = hex.replace('#', '');
+  /* ⚠️ 2026-09-30: HEX биш өнгө ('var(--bad)' г.м.) NaN болж ArcGIS мужийг ЦАГААНААР
+     зурдаг байв — хохирлын улаан руу ухарна (мужийн өнгө нь `Ersdel.run`-д hex). */
+  if (!/^[0-9a-f]{6}/i.test(h)) return [220, 38, 38];
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 };
 
@@ -446,7 +457,7 @@ export function Overlay({
       listMode: 'hide',
       elevationInfo: { mode: 'absolute-height', offset: 0 },
     });
-    const layers = [...water, wsurf, mk(BAND_ID), mk(DMG_ID), mk(PATH_ID), mk(ST_ID)];
+    const layers = [...water, wsurf, mk(BAND_ID), mk(DMG_ID), mk(PATH_ID), mk(INLET_ID), mk(ST_ID)];
     view.map.addMany(layers);
     return () => {
       if (view.map) view.map.removeMany(layers);
@@ -983,6 +994,73 @@ export function Overlay({
     mk2(path.up, true);
     mk2(path.down, false);
   }, [view, dim, path]);
+
+  /* ── ГОЛЫН ОРОЛТ + ГИДРОГРАФЫН ТЭМДЭГ (2026-10-01) ──
+   *
+   * ⚠️ Оролтын нүд бүр — жижиг цэнхэр гурвалжин; бөөгнөрлийн төвд — тухайн
+   *    агшны оролтын урсац (`hydroQ[зүсмэл]`, м³/с). Тоглуулахад зүсмэл бүрд
+   *    шинэчлэгдэж «өсөлт → оргил → татралт» зураг дээр шууд уншигдана.
+   * ⚠️ Голын оролтгүй загварчлалд (талбайд гол ороогүй) юу ч зурахгүй.
+   * ⚠️ 3D-д `point-3d` + дээш өргөлт — эс бөгөөс меш/усан дор алга болно.
+   */
+  useEffect(() => {
+    const gl = view?.map?.findLayerById(INLET_ID) as GraphicsLayer | undefined;
+    if (!gl) return;
+    gl.removeAll();
+    const m = flood?.meta;
+    if (!m?.inlets?.length) return;
+    const d3 = is3D(dim);
+    const W = m.width;
+    const cw = (m.extent.xmax - m.extent.xmin) / W;
+    const ch = (m.extent.ymax - m.extent.ymin) / m.height;
+    const sr = { wkid: m.wkid };
+    let sx = 0;
+    let sy = 0;
+    for (const i of m.inlets) {
+      const x = m.extent.xmin + ((i % W) + 0.5) * cw;
+      const y = m.extent.ymax - (Math.floor(i / W) + 0.5) * ch;
+      sx += x;
+      sy += y;
+      const g = new Graphic({ geometry: new Point({ x, y, spatialReference: sr }), attributes: { inlet: i } });
+      g.symbol = (d3
+        ? {
+          type: 'point-3d',
+          symbolLayers: [{
+            type: 'icon', resource: { primitive: 'triangle' }, size: 9,
+            material: { color: [14, 165, 233, 1] }, outline: { color: [255, 255, 255, 1], size: 1 },
+          }],
+          verticalOffset: { screenLength: 10, maxWorldLength: 60, minWorldLength: 4 },
+        }
+        : {
+          type: 'simple-marker', style: 'triangle', size: 9, angle: 180,
+          color: [14, 165, 233, 0.95], outline: { color: [255, 255, 255, 1], width: 1 },
+        }) as unknown as Sym;
+      gl.add(g);
+    }
+    const q = m.hydroQ?.[Math.max(0, Math.min(m.slices - 1, floodSlice))];
+    if (q == null) return;
+    const n = m.inlets.length;
+    const label = tr('Голын оролт · {0} м³/с', num(q, 1));
+    const at = new Point({ x: sx / n, y: sy / n, spatialReference: sr });
+    const t = new Graphic({ geometry: at, attributes: { inletLabel: true } });
+    t.symbol = (d3
+      ? {
+        type: 'point-3d',
+        symbolLayers: [{
+          type: 'text', text: label, size: 10,
+          material: { color: [255, 255, 255, 1] },
+          halo: { color: [12, 74, 110, 1], size: 1.5 },
+        }],
+        verticalOffset: { screenLength: 34, maxWorldLength: 200, minWorldLength: 10 },
+        callout: { type: 'line', size: 1, color: [14, 165, 233, 1] },
+      }
+      : {
+        type: 'text', text: label, color: [255, 255, 255, 1],
+        haloColor: [12, 74, 110, 1], haloSize: 1.5, yoffset: 14,
+        font: { size: 10, weight: 'bold' },
+      }) as unknown as Sym;
+    gl.add(t);
+  }, [view, dim, flood, floodSlice]);
 
   /* ── Аюулын муж ── */
   useEffect(() => {

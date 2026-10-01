@@ -60,7 +60,7 @@ import { cached } from '@/lib/live';
 import { loadSensors, type MetricSeries, type SensorLive } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
-import { cell, table, type Cell, type KpiIssue, type KpiResult, type Level } from './kpi';
+import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /**
  * Хуучирсан гэж үзэх нас (цаг).
@@ -482,7 +482,8 @@ export const loadIotKpi = cached<KpiResult>(async () => {
   const summary = computeIot(sensors, now);
   const failed = sensors.filter((sn) => sn.error).map((sn) => sn.label);
   return buildIotKpi(summary, failed);
-}, 5 * 60_000, []);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): унасан мэдрэгчтэй картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
+}, 5 * 60_000, [], kpiComplete);
 
 /** Самбарын ачаалагч — бүхэлдээ унавал шидэхгүй, unknown карт (кэшлэгдэхгүй) */
 export const loadIotKpiSafe = (): Promise<KpiResult> =>

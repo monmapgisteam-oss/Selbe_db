@@ -5,6 +5,7 @@ import { submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
 import {
   computeAll,
+  dayToMs,
   incCell,
   parseInc,
   loadRows,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/submission";
 import { OWNER, STATUS, F as HF, queryAll } from "@/lib/hyanalt";
 import { STAGE_LABEL } from "@/lib/hyanaltGroup";
+import { parseOkCells, resolveOk, rowSids } from "@/lib/hyanaltOkCells";
 import { useAuth } from "@/components/AuthGate";
 import { bagtsFor, bagtsScope, subscribeAcl } from "@/lib/guitsetgelAcl";
 import { roleForUser } from "@/lib/services";
@@ -60,6 +62,7 @@ import { seriesBands } from "./bagts.bands";
 import { sheetDates } from "./sheetRows";
 import { useColWidths } from "./colWidths";
 import { t as tr } from "@/lib/i18nCore";
+import { useSyncRef } from "@/lib/useSyncRef";
 import st from "./sheet.module.css";
 /*
  * ⚠️ 2026-09-30: ЗАДРАЛ — 6.9k мөрийн нэг функц `fill/`-ийн hook, компонент, туслахуудад
@@ -78,10 +81,10 @@ import {
 import { useNotice } from "./fill/useNotice";
 import { useWideMode } from "./fill/useWideMode";
 import { useFlow, useReviewInc } from "./fill/useFlow";
-import { useObyem } from "./fill/useObyem";
+import { useObyem, useObyemState } from "./fill/useObyem";
 import { useAddedOids, usePkgPct, useRowFilter, useVirtualWindow } from "./fill/useRows";
-import { useCellEdit } from "./fill/useCellEdit";
-import { useDraftSync } from "./fill/useDraftSync";
+import { useCellEdit, type PastePrev } from "./fill/useCellEdit";
+import { useDraftSync, type DraftSync } from "./fill/useDraftSync";
 import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, SubmitControls } from "./fill/toolbar";
 import { FillNotices, NoticeToast } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
@@ -431,6 +434,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const pctHintRef = useRef(false);
 
   /**
+   * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
+   * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
+   * ⚠️ 2026-10-01: `toggleFill` (доор) ба ачаалах эффект `setEdit` дууддаг тул тэднээс ДЭЭР
+   *    зарлагдана (React Compiler: «зарлагдахаас өмнө хандсан»; зөвхөн байрлал, утга ижил).
+   */
+  const [edit, setEdit] = useState<{
+    i: number;
+    b: number;
+    col: EditCol;
+  } | null>(null);
+
+  /**
    * БӨГЛӨХ ГОРИМ — ОБЬЁМ эсвэл ХУВЬ (2026-09-06, хэрэглэгчийн хүсэлт).
    *
    * ⚠️ Нүд тус бүрд БИШ, ХУУДАС даяар: нэг мөрөнд зарим нүдийг обьёмоор,
@@ -459,7 +474,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        бэлдэгддэг тул нээлттэй хэвээр үлдвэл өмнөх горимын тоо харагдсаар
        байгаад буруу нэгжээр бичигдэнэ. */
     setEdit(null);
-  }, []);
+    /* ⚠️ 2026-10-01: `setEdit` тогтвортой (useState) — React Compiler түүнийг хамаарал гэж
+       тооцдог тул жагсаалтад (preserve-manual-memoization); `[]`-тэй ЯГ ижил. */
+  }, [setEdit]);
   // Нийтлээгүй засварууд, `${oid}:${barilgaIndex}` түлхүүрээр. Утга нь хувь
   // ("" = хоосон болгох). Зөвхөн «Нийтлэх» дархад үйлчилгээнд бичигдэнэ.
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -468,20 +485,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [pendDate, setPendDate] = useState<Record<string, string>>({});
 
   /**
-   * Нээлттэй засварын нүд. `col` нь АЛЬ БАГАНА гэдгийг заана — обьёмгүй
-   * мөрд обьём ба хувь ХОЁУЛАА засагддаг тул мөр+блок ганцаараа хүрэлцэхгүй.
-   */
-  /**
    * Нээлттэй оролтын DOM зангуу. Бичих үед React-ийн төлөв ХӨДӨЛӨХГҮЙ —
    * утгыг зөвхөн commit (blur/Enter/Ctrl+S) үед эндээс уншина.
    */
   const inputRef = useRef<HTMLInputElement>(null);
+  /* ⚠️ 2026-10-01: `edit` төлөв `toggleFill`-ээс ДЭЭР зөөгдөв (тэр нь `setEdit` дууддаг) */
   /** Оролт нээгдэхэд тавих АНХНЫ утга (цаашид ref өөрөө хөтөлнө). */
-  const [edit, setEdit] = useState<{
-    i: number;
-    b: number;
-    col: EditCol;
-  } | null>(null);
   const [val, setVal] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   /**
@@ -580,18 +589,55 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    түрүүлж ирээд `"" !== pkg.key` гэж хаягдана (2026-09-17-ны шалгалт).
    */
   const pkgKeyRef = useRef(pkg.key);
-  pkgKeyRef.current = pkg.key;
+  /* ⚠️ 2026-10-01: render дунд биш `useSyncRef`-ээр (layout эффект — БҮХ passive эффект ба
+     async хариунаас ӨМНӨ commit-д тусна; уншигч нь зөвхөн эффект/async тул утга ижил). */
+  useSyncRef(pkgKeyRef, pkg.key);
   /**
    * ИЛГЭЭЛТИЙН УНШИЛТ УНАСАН (2026-09-07). `null` = асуудалгүй.
    * ⚠️ Энэ нь «илгээлт байхгүй» гэсэн үг БИШ — уншиж чадаагүй гэсэн үг.
    *    Хоёрыг ялгаж байж л хэрэглэгч 0%-ийг үнэн гэж эндүүрэхгүй.
    */
   const [subReadErr, setSubReadErr] = useState<string | null>(null);
+  /**
+   * БУЦААГДСАН ИЛГЭЭЛТИЙН ДАВХАРЛАЛТЫН МЭДЭЭЛЭЛ — `backChg`-тэй ХАМТ тавигдана (2026-10-01).
+   * `at` — илгээлтийн агшин (`payload.at`), `remapped` — шинэ жааз руу зөөгдсөн эсэх.
+   * ⚠️ Хуучин индексийн зөвшөөрөлд итгэх эсэхэд л (`backOkRes`-ийн ⚠️).
+   */
+  const [backMeta, setBackMeta] = useState<{ at: number; remapped: boolean } | null>(null);
+  /* ⚠️ 2026-10-01: `backChg` · `ovBase` ачаалах эффектээс ДЭЭР зарлагдана (тэр нь тавьдаг;
+     React Compiler: «зарлагдахаас өмнө хандсан») — тайлбар нь `backOk`-ийн доор хэвээр. */
+  const [backChg, setBackChg] = useState<Set<string>>(new Set());
+  const [ovBase, setOvBase] = useState<Map<number, SheetRow>>(new Map());
+  /**
+   * ОБЬЁМЫН ТӨЛӨВ — ачаалах эффект багц солиход тэглэдэг тул түүнээс ДЭЭР (2026-10-01,
+   * `useObyemState`-ийн ⚠️). Урсгал/эффект нь `useObyem`-д, ХУУЧИН байрлалдаа.
+   */
+  const obyemSt = useObyemState();
+  const { setPvPend, setPvSub, setPvPreview, setPvErr, setPvNote } = obyemSt;
+  /**
+   * НООРОГИЙН СИНКИЙН ТОЛЬ — ачаалах эффектэд (2026-10-01).
+   * ⚠️ `useDraftSync` нь эффектүүдийн ДАРААЛЛААР энэ эффектээс ДООР дуудагдана (ачаалах
+   *    эффект ТҮҮНИЙХЭЭС ӨМНӨ ажиллах ёстой — `loadedPkgRef` · `flushRef`-ийн ⚠️), тиймээс
+   *    түүний ref/setter-ийг энд шууд нэрлэвэл React Compiler «зарлагдахаас өмнө хандсан»
+   *    гэж үзнэ. `useSyncRef` (layout эффект — БҮХ passive эффектээс ӨМНӨ) тольдох тул
+   *    эффект ЯГ тэр render-ийн утгыг уншина; бүгд тогтвортой (ref · setState ·
+   *    `useCallback`) — зан төлөв урьдын адил.
+   * ⚠️ `keepDraft`/`remoteQueue`-ийг hook-ийн буцаасан утгаас шууд өөрчлөхийг React Compiler
+   *    хориглодог (нэр нь `…Ref` биш) — толиос уншсан утга нь ердийн ref тул зөвшөөрөгдөнө.
+   */
+  const draftSyncRef = useRef<DraftSync | null>(null);
 
   // Багц солигдох бүрд бүдүүвч + мөрүүдийг шинээр татна. Хуучин багцын
   // хариу хожуу ирээд шинийг дарж бичихээс `alive` хамгаална.
   useEffect(() => {
     let alive = true;
+    /* ⚠️ 2026-10-01: ноорогийн синкийн ref/setter толиос (`draftSyncRef`-ийн ⚠️) — `ds.` угтвартай
+       (гаднах ижил нэрийг сүүдэрлэвэл React Compiler нэрийг нь солиж `…Ref` гэж танихаа больдог).
+       `!` — `useSyncRef` нь layout эффект тул энэ (passive) эффектээс ӨМНӨ ҮРГЭЛЖ тавигдсан. */
+    const ds = draftSyncRef.current!;
+    /* `remoteQueue` угтваргүй — доорх мөрүүд урьдын текстээрээ (`draft.check`-ийн эх кодын гэрээ);
+       гаднах нь `remoteQueueRef` нэртэй тул сүүдэрлэхгүй. */
+    const { remoteQueue } = ds;
     /* ⚠️ ХУУЧИН ТҮЛХҮҮРИЙГ ТЭГЛЭХЭЭС ӨМНӨ АВНА (2026-09-24-ний аудит): доорх
        `flushRef` дуудлага `loadedPkgRef`-ийг шалгадаг тул урьд нь энд "" болгосны
        ДАРАА дуудагдаж, `flush` уншилтын дараа буцаад бичдэггүй байв (үхмэл зам). */
@@ -602,7 +648,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        хэвээр үлдэж, А-д сэргээлт ДАХИН явахгүй; хадгалах эффект хоосон
        `pending`-ийг «нийтэлсэн» гэж үзээд бүх оролцогчийн ноорогийг (локал +
        ArcGIS) устгадаг байв. Одоо багц бүрийн нээлтэд сэргээлт заавал явна. */
-    promptedPkgRef.current = "";
+    ds.promptedPkgRef.current = "";
     /* ⚠️ Обьёмын илгээлтийн төлөв ӨМНӨХ багцынх — шууд цэвэрлэнэ (2026-09-17):
        шинэ багцын query унавал А-гийн баннер Б дээр үлдэх байв. */
     setPvSub(null);
@@ -621,17 +667,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        хариу нь шинэ багцын төлөвт буухгүй (fire-and-forget).
        ⚠️ 2026-09-24: түлхүүрийг ИЛ дамжуулна (`prevPkgKey`) — `flush` тэр үед
        `loadedPkgRef`-ийн зөрүүг «бичихгүй» биш «төлөв шинэчлэхгүй» гэж ойлгоно. */
-    if (remoteQueue.current && remoteQueue.current.pkg !== pkg.key) flushRef.current(prevPkgKey || remoteQueue.current.pkg);
+    if (remoteQueue.current && remoteQueue.current.pkg !== pkg.key) ds.flushRef.current(prevPkgKey || remoteQueue.current.pkg);
     remoteQueue.current = null;
-    keepDraft.current = false;
+    ds.keepDraft.current = false;
     /* ⚠️ АЛСЫН БАЙДАЛ ч БАГЦАД ХАРЬЯАЛАГДАНА (2026-09-07). Үлдээвэл
        Багц 1-ийн «ArcGIS 14:20» ногоон заалт (эсвэл «хуулагдсангүй» шар
        анхааруулга) Багц 2 дээр наалдаж, шинэ багцын ажил алсад ороогүй
        байхад ХУДАЛ баталгаа болно. Шинэ багц заалтгүй эхэлж, зөвхөн
        бодит илгээлтийн дараа гарна. */
-    setRemoteState(null);
+    ds.setRemoteState(null);
     /* ⚠️ Илгээлт унасны туг нь НЭГ багцынх — үлдээвэл шинэ багцад худал
        анхааруулга үүснэ. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-01: татах эффект — багц/өдөр солигдоход өмнөх багцын төлөвийг синхрон тэглээд шинээр татна; ref-ийн тэглэлт · `flushRef` дуудлагатай НЭГ дараалалд (`useDraftSync`-ийн эффектүүдээс ӨМНӨ) байх ёстой тул render-д зөөвөл дараалал өөрчлөгдөнө
     setSubmitFailed(false);
     /* ⚠️ Илгээлтийн төлөв ч БАГЦАД харьяалагдана: хуучин багцын `staged`
        үлдвэл шинэ багцын илгээлт түүн дээр НЭГТГЭГДЭЖ, өөр багцын нүднүүд
@@ -651,25 +698,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     /* ⚠️ ХУВААЛЦСАН НООРОГИЙН төлөв ч БАГЦАД харьяалагдана (2026-09-08):
        үлдээвэл Багц 1-д бичсэн эзэмшил Багц 2-ын оролцогчийн жагсаалтад
        наалдаж, «Илгээх» худал түгжигдэнэ (эсвэл худал нээгдэнэ). */
-    mineRef.current = new Set();
-    doneRef.current = [];
-    setDoneBy([]);
-    setByMap(new Map());
+    ds.mineRef.current = new Set();
+    /* ⚠️ 2026-10-01: «дуусгасан» тэмдгүүд (`marks`) ЛОКАЛААР цэвэрлэгдэнэ — алсад юу ч бичихгүй */
+    ds.resetMarks();
+    ds.setByMap(new Map());
     /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
-    setByAtMap(new Map());
-    mineAtRef.current = new Map();
-    delRef.current = new Map();
+    ds.setByAtMap(new Map());
+    ds.mineAtRef.current = new Map();
+    ds.delRef.current = new Map();
     /* 2026-09-25: огнооны буцаалт ба «ноорог амьд» туг ч БАГЦЫН/ачааллын төлөв */
-    asOfRevRef.current = false;
-    draftLiveRef.current = false;
+    ds.asOfRevRef.current = false;
+    ds.draftLiveRef.current = false;
     /* ⚠️ Нийлүүлэлтийн агшны тэмдэглэгээ ч БАГЦАД харьяалагдана (2026-09-08):
        Багц 1-ийн `t` нь Багц 2-ынхаас ИХ байвал шинэ багцын алсын ноорог
        «хуучин» гэж тооцогдож, татах мөчлөг түүнийг ХЭЗЭЭ Ч буулгахгүй —
        нөгөө оролцогчийн ажил тэр сешнд харагдахгүй үлдэнэ. */
-    lastMergedRef.current = 0;
+    ds.lastMergedRef.current = 0;
     /* ⚠️ Дэмий бичилтийн таслуур ч БАГЦАД харьяалагдана — үлдээвэл шинэ багцын
        анхны бичилт хуучин багцын биетэй тэнцэж санамсаргүй алгасагдана. */
-    lastBodyRef.current = '';
+    ds.lastBodyRef.current = '';
     /* ⚠️ Инженерийн обьёмын ноорог ч БАГЦАД харьяалагдана — үлдээвэл өөр
        багцын мөрийн oid дээр буруу утга бичигдэнэ. */
     setPvPend({});
@@ -821,6 +868,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          *    байв — яг тэр гомдол.
          */
         setBackChg(ov && sub ? changedKeys(r.rows, ov, schema.bld) : new Set());
+        /* ⚠️ 2026-10-01: хуучин (индексийн) зөвшөөрөлд итгэх эсэхийн мэдээлэл (`backMeta`-ийн ⚠️) */
+        setBackMeta(ov && sub ? { at: sub.payload.at, remapped: ov.remapped } : null);
         setOvBase(ov ? new Map(r.rows.map((x) => [x.oid, x] as const)) : new Map());
         setStaged(sub && !sub.done && sub.payload.pkgKey === pkg.key ? sub : null);
         setRows(ov ? ov.rows : r.rows);
@@ -872,6 +921,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (hyLoading || hyErr) return;
     if (registeredRef.current.has(staged.oid)) return;
     if (hyRows.some((r) => r[HF.sheetOid] === staged.oid)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-01: `registeredRef` (ref)-ээс уншдаг тул render-д бодох боломжгүй; туг нь `publish`/`resend`-ээр ч тавигддаг (наалддаг) тул гаргалгаа болговол утга өөрчлөгдөнө
     setSubmitFailed(true);
     setStagedOid(staged.oid);
     setStagedFillMs(staged.payload.fillMs);
@@ -923,7 +973,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /* ⚠️ 2026-09-30: `useMemo` — урьд `useState` + эффект дотор `setBackOk` байв; утга нь
      (view · flow · rows · resumedOid · hyRows)-ийн ЦЭВЭР гаралт тул render-д шууд бодно (нэг
      render хоцордог зөрүү арилна, өөр өөрчлөлт үгүй). */
-  const backOk = useMemo(() => {
+  const backOkRes = useMemo(() => {
     /* ⚠️ ЗӨВХӨН `backOk` — `backChg` нь ачаалах эффектүүдийнх (доорх ⚠️) */
     /* ⚠️ ГАРААР СОНГОСОН буцаалт (`resumedOid`, 2026-09-24-ний аудит): `flow` нь
        өнөөдрийн илгээлт байж болох тул ногоон нүдийг ТЭР ИЛГЭЭЛТИЙН (sheetOid
@@ -937,40 +987,50 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (!src || r.__oid > src.__oid) src = r;
       }
     }
-    if (view || !src) return new Set<string>();
+    const none = { ok: new Set<string>(), unknown: 0 };
+    if (view || !src) return none;
     /* Зөвхөн гүйцэтгэгчийн гар дээрх, батлагдаагүй мөр */
     if (OWNER[src[HF.status]] !== 'company' || src[HF.status] === STATUS.transferred) {
-      return new Set<string>();
+      return none;
     }
-    /* ⚠️ Эвдэрсэн JSON → ХООСОН (fail-closed): «бүгд зөвшөөрөгдсөн» гэж
-       үзвэл гүйцэтгэгч засах ёстой нүдээ алдана. */
-    let ok: string[] = [];
-    try {
-      const raw = JSON.parse(String(src[HF.okCells] ?? '[]')) as unknown;
-      if (Array.isArray(raw)) ok = raw.filter((x): x is string => typeof x === 'string');
-    } catch { /* эвдэрсэн — хоосон */ }
-    /* ⚠️ ИНДЕКС → OID (2026-09-23, #15): хянагч `${i}:${шошго}`-оор хадгалдаг
-       (`Guitsetgel.toggleOk`, `i` = overlay мөрийн индекс). Энд `rows` нь ЯГ
-       тэр overlay (`setRows(ov.rows)`) тул `rows[i].oid`-оор хөрвүүлж,
-       `backChg`/хүснэгттэй ижил `${oid}:${шошго}` түлхүүр болгоно — локал
-       нэмсэн мөрөөс индекс гулсахгүй. */
+    /* ⚠️ Эвдэрсэн JSON → ногоон БИШ (fail-closed): «бүгд зөвшөөрөгдсөн» гэж
+       үзвэл гүйцэтгэгч засах ёстой нүдээ алдана. 2026-10-01: «мэдэхгүй» гэж
+       тоологдож доор «дахин хянах» мэдэгдэл гарна. */
+    /*
+     * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас — ШИЙДВЭР): зөвшөөрөл МӨРИЙН ТОГТВОРТОЙ
+     *    түлхүүрээр (`hyanaltOkCells`) — `rows`-ийн `{oid, sid}`-тэй тулгана; индекс
+     *    гулсахгүй. ХУУЧИН индексийн хэлбэрт (`${i}:${шошго}`, 2026-09-23 #15) ЗӨВХӨН
+     *    мөрийн дараалал бичигдсэн агшныхтай ижил нь баттай үед итгэнэ: давхарлалт
+     *    шинэ жааз руу зөөгдөөгүй (`!backMeta.remapped`) БӨГӨӨД илгээлт буцаалтаас
+     *    хойш шинэчлэгдээгүй (`at ≤ инженерийн буцаасан огноо`). Эс бөгөөс
+     *    `unknown` — ногоон болгохгүй, «дахин хянах» мэдэгдэл (`okUnknown`).
+     */
+    const sids = rowSids(rows);
+    const idxRows = rows.map((r, i) => ({ oid: r.oid, sid: sids[i] }));
+    const wroteAt = Date.parse(String(src[HF.engineerReturned] ?? ''));
+    const trusted = !!backMeta && !backMeta.remapped && Number.isFinite(wroteAt) && backMeta.at <= wroteAt;
+    const res = resolveOk(parseOkCells(src[HF.okCells]), idxRows, trusted);
     const byOid = new Set<string>();
-    for (const k of ok) {
+    for (const k of res.keys) {
       const cut = k.indexOf(':');
       if (cut <= 0) continue;
       const r = rows[Number(k.slice(0, cut))];
       if (r) byOid.add(`${r.oid}${k.slice(cut)}`);
     }
-    return byOid;
-  }, [view, flow, rows, resumedOid, hyRows]);
-  const [backChg, setBackChg] = useState<Set<string>>(new Set());
+    return { ok: byOid, unknown: res.unknown };
+  }, [view, flow, rows, resumedOid, hyRows, backMeta]);
+  const backOk = backOkRes.ok;
+  /* `backChg` — ачаалах эффектээс ДЭЭР зарлагдсан (2026-10-01). */
   /**
-   * ДАВХАРЛАЛТЫН СУУРЬ МӨРҮҮД (oid → архивын мөр) — өөрчлөгдсөн нүдний `title`-д
+   * `ovBase` — ДАВХАРЛАЛТЫН СУУРЬ МӨРҮҮД (oid → архивын мөр) — өөрчлөгдсөн нүдний `title`-д
    * «өмнөх: X · энэ удаа: Y · нийт: Z» бичихэд (2026-09-25, нэмэлтийн горим).
    * ⚠️ `backChg`-тэй ХАМТ тавигдана (ачаалах эффект · хожуу давхарлалт ·
    *    `resumeReturned`); суурьгүй бол `title` хуучин хэвээр.
+   * ⚠️ 2026-10-01: зарлалт нь ачаалах эффектээс ДЭЭР (`backChg`-тэй хамт).
    */
-  const [ovBase, setOvBase] = useState<Map<number, SheetRow>>(new Map());
+
+  /* ⚠️ 2026-10-01: доорх хожуу давхарлалтын эффект хэрэглэдэг тул ТҮҮНЭЭС ДЭЭР (урьд нь доор) */
+  const nBld = sc?.bld.length ?? 0;
 
   const lateOverlayRef = useRef<number>(NaN);
   /** Хожуу давхарлалтын уншилт унасан/таслагдсан бол эффектийг ДАХИН асаах цохилт. */
@@ -1007,6 +1067,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(rows, ov, sc.bld));
+      setBackMeta({ at: sub.payload.at, remapped: ov.remapped });
       setOvBase(new Map(rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
       setRows(ov.rows);
@@ -1038,7 +1099,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * харагдацаар өөрөө тавина.
    */
 
-  const nBld = sc?.bld.length ?? 0;
+  /* `nBld` — хожуу давхарлалтын эффектээс ДЭЭР зарлагдсан (2026-10-01). */
 
   const reviewInc = useReviewInc({ view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef });
 
@@ -1076,9 +1137,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (row.des == null || !sc || asOf == null || !obPlan.size) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      return m ? planPctFromMonths(m, asOf) : null;
+      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
+         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
+         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
+         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
+      /* ⚠️ Илгээгээгүй огнооны засвар (`pendDate`) ДАВАМГАЙЛНА — хүснэгтийн `planAt` замтай ижил */
+      const ps = pendDate[`${row.oid}:${b}:s`];
+      const pe = pendDate[`${row.oid}:${b}:e`];
+      const start = ps != null ? dayToMs(ps) : (row.start[b] ?? null);
+      const end = pe != null ? dayToMs(pe) : (row.end[b] ?? null);
+      return m ? planPctFromMonths(m, asOf, { start, end }) : null;
     },
-    [obPlan, sc, asOf],
+    [obPlan, sc, asOf, pendDate],
   );
 
   /*
@@ -1131,11 +1201,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     Object.keys(pendDate).length +
     (asOf !== asOfOrig ? 1 : 0);
 
-  const { otherPct, pkgPct } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount });
+  const { otherPct, pkgPct } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
+  /* ⚠️ 2026-10-01: `setPv*` — ачаалах эффектээс ДЭЭРХ `obyemSt`-ээс (`useObyemState`-ийн ⚠️) */
   const {
-    pvPend, setPvPend, pvSub, setPvSub, pvPreview, setPvPreview, pvBusy, pvErr, setPvErr, pvNote, setPvNote,
-    pvCells, sendObyem, decideObyemHere,
-  } = useObyem({ pkg, pkgKeyRef, rows, sc, user, locked });
+    pvPend, pvSub, pvPreview, pvBusy, pvErr, pvNote,
+    pvCells, sendObyem, decideObyemHere, pvReturned,
+  } = useObyem({ st: obyemSt, pkg, pkgKeyRef, rows, sc, user, locked, todayFillMs, setRows });
 
   /**
    * ИНЖЕНЕРИЙН ОБЬЁМЫН ноорог (`pvPend`) — ХАМГААЛАЛТАД тоологдоно.
@@ -1159,19 +1230,38 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const unsavedCount = dirtyCount + pvDirty;
 
   /* ══════════ НООРОГИЙН СИНК (`fill/useDraftSync`) — эффектүүд нь энд, өмнөх байрлалдаа ══════════ */
-  const {
-    savedAt, keepDraft, remoteQueue, mineRef, mineAtRef, delRef, asOfRevRef, draftLiveRef, touchMine, revert,
-    lastMergedRef, doneRef, doneBy, setDoneBy, byMap, setByMap, setByAtMap, byAtRef, lastBodyRef,
-    remoteState, setRemoteState, promptedPkgRef, flushRef,
-    meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,
-  } = useDraftSync({
+  const draftSync = useDraftSync({
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
-    pending, setPending, pendDate, setPendDate, dirtyCount, pvDirty, fillMode, loadedPkgRef, pkgKeyRef, editRef, show, say,
+    pending, setPending, pendDate, setPendDate, dirtyCount, pvDirty, fillMode, loadedPkgRef, pkgKeyRef, editRef,
+    /* ⚠️ 2026-10-01: нүд хаагдмагц хойшлуулсан нийлүүлэлтийг буулгахад (`deferredRef`) */
+    editOpen: !!edit,
+    show, say,
   });
+  /* ⚠️ 2026-10-01: ачаалах эффектийн толь (`draftSyncRef`-ийн ⚠️) */
+  useSyncRef(draftSyncRef, draftSync);
+  /* ⚠️ 2026-10-01: `keepDraft` → `keepDraftRef` нэрээр — `publish` түүнийг өөрчилдөг; React Compiler
+     зөвхөн `…Ref` нэртэйг hook-оос ирсэн ref гэж таньдаг (утга нь ЯГ тэр ref). `remoteQueueRef` —
+     ачаалах эффектийн `remoteQueue`-г сүүдэрлэхгүйн тулд. Ачаалах эффектэд л хэрэглэгддэг
+     ref/setter (promptedPkgRef · flushRef · resetMarks …) толиос (`ds.`) уншигдана. */
+  const {
+    savedAt, keepDraft: keepDraftRef, remoteQueue: remoteQueueRef, mineRef, mineAtRef, delRef, touchMine, revert,
+    doneBy, byMap, setByMap, setByAtMap, byAtRef,
+    remoteState,
+    meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,
+    undoAllMarks, restoringUi, offline,
+  } = draftSync;
 
-  const { volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable } = useCellEdit({
+  /** ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдац (`useCellEdit.PastePrev`) */
+  const [pastePrev, setPastePrev] = useState<PastePrev | null>(null);
+  const {
+    volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable,
+    remainHint, confirmPaste, cancelPaste,
+  } = useCellEdit({
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
     locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld,
+    /* ⚠️ 2026-10-01: ноорог сэргэж дуустал буулгалт хаалттай */
+    restoring: restoringUi,
+    pastePrev, setPastePrev,
   });
 
   /** Багц/хувилбар солихын өмнө нийтлээгүй засварыг баталгаажуулна. */
@@ -1233,6 +1323,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ov = overlaySubmission(base.rows, sub.payload, sc, nBld);
       setUnmovedWarn(ov.unmoved > 0 ? describeUnmoved(ov.unmovedKeys, sub.payload.rowKeys, sc.bld) : []);
       setBackChg(changedKeys(base.rows, ov, sc.bld));
+      setBackMeta({ at: sub.payload.at, remapped: ov.remapped });
       setOvBase(new Map(base.rows.map((x) => [x.oid, x] as const)));
       setStaged(sub);
       setResumedOid(sub.oid);
@@ -1262,6 +1353,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   useEffect(() => {
     if (!fixReq || view) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-01: нэг удаагийн хүсэлтийг «хэрэглэсэн» гэж тэмдэглэнэ; нөхцөл нь `loadedPkgRef` (ref) уншиж `resumeReturned` (async) дууддаг тул эффектэд л
     if (pkg.key !== fixReq.pkgKey) { setFixReq(null); return; }
     if (!sc || busy || hyLoading || loadedPkgRef.current !== pkg.key) return;
     const soid = fixReq.soid;
@@ -1286,7 +1378,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     const check = () => {
       const d = nowFillMs();
       if (d === todayFillMs) return;
-      if (busy || editRef.current || pickRef.current || remoteQueue.current) return;
+      if (busy || editRef.current || pickRef.current || remoteQueueRef.current) return;
       setTodayFillMs(d);
       say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачааллаа.', msToDay(d)));
     };
@@ -1689,7 +1781,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        *    бусдын тэмдэглэгээг нийлүүлэлтээр ИЛ буцаана (хадгалах эффектийн
        *    цэвэрлэлтийн замтай ижил зорилго).
        */
-      keepDraft.current = false;
+      keepDraftRef.current = false;
       /* ⚠️ БҮТНЭЭР нь цэвэрлэж болно, учир нь `busy` үед засварын БҮХ зам
          (нүд нээх · буулгах · календар) ХААЛТТАЙ (`RO.busy`, 2026-09-25-ны аудит) —
          урьд нь илгээлтийн `await`-уудын завсарт бичсэн нүд энд чимээгүй арилдаг байв. */
@@ -1697,8 +1789,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setPendDate({});
       mineRef.current = new Set();
       mineAtRef.current = new Map();
-      doneRef.current = [];
-      setDoneBy([]);
+      /* ⚠️ 2026-10-01: «дуусгасан» тэмдэг бүрийг ИЛ буцаана (`undoAllMarks`) — шинэ мөчлөг.
+         Урьд нь `done: []` бичиж «нэр алга = буцаасан» дүрмээр арчдаг байв (тэр дүрэм
+         хүчингүй — `draft.Draft.marks`-ийн ⚠️). */
+      undoAllMarks();
       setByMap(new Map());
       setByAtMap(new Map());
       /* Огнооны өөрчлөлт илгээлтэд суусан — `dirtyCount`-д дахин тоологдохгүй */
@@ -1711,6 +1805,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          доорх дахин ачаалалт амжилттай бол серверийн хувилбараар солигдоно. */
       const ovNow = overlaySubmission(freshRows, payload, sc, nBld);
       setRows(ovNow.rows);
+      /* ⚠️ 2026-09-30: давхарлалтын СУУРЬ ч шинэчлэгдэнэ — «батлагдсан» хувь (`usePkgPct`) ба
+         нүдний «өмнөх · энэ удаа» тайлбар түүнээс; урьд нь илгээсний дараа хоосон/хуучин үлддэг байв. */
+      setOvBase(new Map(freshRows.map((x) => [x.oid, x] as const)));
       /* ⚠️ ГАРААР СОНГОСОН буцаалт ДУУСЛАА (2026-09-25-ны аудит): урьд нь
          `resumedOid` зөвхөн багц солиход тэглэгддэг тул дараагийн «Илгээх» ч
          буцаагдсан илгээлтийн өдрөөр (`fillMs`) явж, өнөөдрийн нүд хянагдаж буй
@@ -1792,6 +1889,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           : []);
         setStaged(act2);
         setRows(ov2 ? ov2.rows : next.rows);
+        /* ⚠️ 2026-09-30: давхарлалтын суурь (дээрх `ovNow`-ийн ⚠️) */
+        setOvBase(ov2 ? new Map(next.rows.map((x) => [x.oid, x] as const)) : new Map());
         /* ⚠️ `null ≠ 0` — илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол архивынх. */
         const asOfNext = ov2?.asOf ?? next.asOf ?? asOf;
         setAsOf(asOfNext);
@@ -1825,7 +1924,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     } finally {
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraft, mineRef, mineAtRef, byAtRef, delRef, doneRef, setDoneBy, setByMap, setByAtMap]);
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин
@@ -1833,17 +1932,22 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   // хэрэглэгч «хадгалагдсан» гэж андуурдаг байв. commit нь state-д дараагийн
   // render дээр л тусах тул нийтлэлийг дарааллуулж эффектээр гүйцээнэ.
   const [publishQueued, setPublishQueued] = useState(false);
-  const flushEditRef = useRef<() => void>(() => {});
+  /** ⚠️ 2026-09-30: `false` = нээлттэй нүдний утга НЯЦААГДСАН (тоо биш · тодорхойгүй · асуултад «Цуцлах») */
+  const flushEditRef = useRef<() => boolean>(() => true);
   /* ⚠️ Нээлттэй нүдийг ref-д тольдоно — нийлүүлэлтийн мөчлөг «одоо бичиж
-     байна уу» гэдгийг эндээс уншиж, бичиж байх зуур дэлгэц үсрэхээс сэргийлнэ. */
-  editRef.current = edit;
-  pickRef.current = pick;
-  flushEditRef.current = () => {
+     байна уу» гэдгийг эндээс уншиж, бичиж байх зуур дэлгэц үсрэхээс сэргийлнэ.
+     ⚠️ 2026-10-01: render дунд биш `useSyncRef`-ээр (layout эффект — БҮХ passive эффект,
+     интервал, үйл явдлаас ӨМНӨ commit-д тусна; уншигчид нь бүгд тэдгээр тул утга ижил). */
+  useSyncRef(editRef, edit);
+  useSyncRef(pickRef, pick);
+  useSyncRef(flushEditRef, () => {
     if (edit && rowsAll[edit.i])
-      commit(rowsAll[edit.i], edit.b, inputRef.current?.value ?? val);
-  };
+      return commit(rowsAll[edit.i], edit.b, inputRef.current?.value ?? val);
+    return true;
+  });
   useEffect(() => {
     if (!publishQueued || edit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-01: Ctrl+S-ийн дараалал — нээлттэй нүдний утга төлөвт тусмагц `publish` (async гаднын нөлөө) дуудна; render-д хийх боломжгүй
     setPublishQueued(false);
     publish();
   }, [publishQueued, edit, publish]);
@@ -1852,8 +1956,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       if (hiddenNow()) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        flushEditRef.current();
-        setPublishQueued(true);
+        /* ⚠️ 2026-09-30: нээлттэй нүдний утга НЯЦААГДВАЛ (тоо биш, «1,250», хэтрэлтийн
+           асуултад «Цуцлах») ИЛГЭЭХГҮЙ. Урьд нь үлдсэн нүднүүд илгээгдэж, ганц
+           мэдэгдлийн байрыг «✓ Хяналтад илгээв» эзэлж, няцаагдсан утгын шар
+           анхааруулга алга болдог байв — хэрэглэгч тэр утга орсон гэж андуурна. */
+        if (flushEditRef.current()) setPublishQueued(true);
       }
     };
     window.addEventListener("keydown", h);
@@ -1894,6 +2001,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       </div>
     );
   }
+
+  /* Виртуал гүйлгээний ЧИГЖЭЭСИЙН мөрийн өндөр — `useVirtualWindow.recalcWin` (rAF/эффект) хэмждэг. */
+  // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-10-01: render-ийн агшны хэмжилтийг урьдын адил шууд уншина (урьд нь JSX дотор 2 газар); state болговол өндөр солигдох бүрд нэмэлт render гарч зан төлөв өөрчлөгдөнө
+  const rowH = rowHRef.current;
 
   return (
     <div className={`${st.wrap} ${wide ? st.wrapFull : ""}`} ref={wrapRef}>
@@ -1951,6 +2062,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         <ObyemToolbar
           canObyemEdit={canObyemEdit} pvSub={pvSub} pvCells={pvCells} sendObyem={sendObyem} pvBusy={pvBusy}
           canObyemApprove={canObyemApprove} locked={locked} decideObyemHere={decideObyemHere} pvErr={pvErr} pvNote={pvNote}
+          pvReturned={pvReturned}
         />
         {/* ⚠️ «Нэмэлт ажил батлуулах»/буцаагдсан/хүлээгдэж буй/«Илгээлтээ татах»
             баннерууд ЭНД БАЙХГҮЙ (2026-09-24) — нэмэлт ажлын урсгал «Хуваарь»-д. */}
@@ -1974,8 +2086,20 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           </span>
         )}
         <PkgPctBadge pkgPct={pkgPct} pkg={pkg} dirtyCount={dirtyCount} otherPct={otherPct} />
-        <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState} />
+        <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
+          restoring={restoringUi} offline={offline} />
       </div>
+      {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ — татгалзах
+          нүдтэй буулгалт ШУУД бичигдэхгүй, хэрэглэгч хүснэгтэд харж шийднэ (`useCellEdit.pastePrev`). */}
+      {pastePrev && (
+        <div className={st.pasteBar} role="status">
+          <span>
+            {tr('Буулгалтын урьдчилсан харагдац: {0} нүд бичигдэнэ (цэнхэр), {1} нүд татгалзагдана (улаан ✕ — нүдэн дээр шалтгаан нь).', pastePrev.ok.size, pastePrev.rej.size)}
+          </span>
+          <button type="button" className={st.publishBtn} onClick={confirmPaste}>{tr('Бичих')}</button>
+          <button type="button" className={st.layerBtn} onClick={cancelPaste}>{tr('Болих')}</button>
+        </div>
+      )}
 
       <FillNotices
         locked={locked} submitFailed={submitFailed} resend={resend} resending={resending} unmovedWarn={unmovedWarn}
@@ -1983,6 +2107,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         otherDaysReturned={otherDaysReturned} noEdit={noEdit} busy={busy} resumedOid={resumedOid}
         resumeReturned={resumeReturned} returned={returned}
       />
+      {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хянагчийн зөвшөөрлийг мөртэй тулгаж
+          чадаагүй (хуучин индексийн хэлбэр · жааз солигдсон) — БУРУУ нүдийг ногоон
+          болгохгүй, «дахин хянах» гэж ил хэлнэ (`backOkRes`-ийн ⚠️). */}
+      {!view && backOkRes.unknown > 0 && backChg.size > 0 && (
+        <p className={st.lockNote} role="status">
+          {tr('Хянагчийн {0} зөвшөөрлийг энэ хуудасны мөрүүдтэй тулгаж чадсангүй (хуучин хэлбэр эсвэл хүснэгт өөрчлөгдсөн) — аль нүд зөвшөөрөгдсөнийг баталж чадахгүй тул улаан хүрээтэй нүдийг дахин хянах шаардлагатай.', backOkRes.unknown)}
+        </p>
+      )}
       {err && <p className={st.error} role="alert">{err}</p>}
 
       {busy && rows.length === 0 && (
@@ -2031,7 +2163,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               )}
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
-                <tr aria-hidden="true" style={{ height: winFrom * rowHRef.current }}>
+                <tr aria-hidden="true" style={{ height: winFrom * rowH }}>
                   <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
@@ -2044,12 +2176,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 setVal={setVal} cellSeed={cellSeed} setEdit={setEdit} hitKey={hitKey} noPerf={noPerf} pasteBlock={pasteBlock}
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}
                 nextBlockEditable={nextBlockEditable} pendDate={pendDate} setPick={setPick} asOf={asOf} asOfOrig={asOfOrig}
+                warn={warn}
+                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (
                 <tr
                   aria-hidden="true"
-                  style={{ height: (vis.length - winTo) * rowHRef.current }}
+                  style={{ height: (vis.length - winTo) * rowH }}
                 >
                   <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
                 </tr>

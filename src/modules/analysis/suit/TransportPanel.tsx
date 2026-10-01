@@ -9,6 +9,7 @@ import {
   BUS_BAND_COLOR, type TMode, type TransportCtx,
 } from './transportModes';
 import { BUS_GOOD_M, BUS_OK_M } from '@/lib/analysis/transport';
+import { NetSelector, type NetSel } from './SimulationPanel';
 import c from './simulation.module.css';
 
 const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
@@ -31,7 +32,15 @@ export function TransportPanel({
   loading,
   error,
   onRetry,
+  net,
 }: {
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗАМЫН ЭРЭЛТ (хэрэглэх, холбогдоогүй
+   *    барилга) АЛЬ сүлжээн дээр бодогдсоныг харуулж, сонгуулна. Урьд нь «Ачаалал»
+   *    табын сонголтыг ДАЛДААР дагадаг тул «Төлөвлөгөө» дээр харсан тоо «Бодит»
+   *    сүлжээнийх мэт уншигддаг байв. Сонголт нь «Ачаалал»-тай НЭГ төлөв.
+   */
+  net?: NetSel;
   mode: TMode;
   /** Дүрслэл сонгох — эцэг нь энэ самбарыг ИДЭВХТЭЙ болгоно (газрын зураг солигдоно) */
   setMode: (m: TMode) => void;
@@ -71,6 +80,9 @@ export function TransportPanel({
             </button>
           ))}
         </div>
+
+        {/* ⚠️ 2026-10-01: замын сүлжээ — эрэлт, холболтын KPI ЭНЭ сүлжээн дээр */}
+        {active && net && <NetSelector net={net} />}
 
         {!active ? (
           <p className={c.desc} style={{ marginTop: 6 }}>

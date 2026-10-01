@@ -663,11 +663,25 @@ export const AIR_LEVELS: Record<LevelKey, AirParams> = {
  * эрчмийн коэффициентээр (`SEVERITY`) үржинэ.
  */
 export type DamageClass =
-  | 'building' | 'paved' | 'green' | 'pipe' | 'bridge' | 'tree' | 'amenity' | 'point';
+  | 'building' | 'paved' | 'green' | 'pipe' | 'bridge' | 'tree' | 'amenity' | 'point'
+  | 'roadAxis' | 'roadEdge';
 
+/**
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `rate` нь `null` байж болно —
+ *    «ӨРТӨГ ТОДОРХОЙГҮЙ». Урьд нь «Авто зам»/«Одоо байгаа зам» ШУГАМАН
+ *    давхаргууд `paved` (₮/м²) ангилалд орж, шугамын талбай 0 тул ЧИМЭЭГҮЙ 0 ₮
+ *    гарч, нийт хохирлыг дутуу хэлдэг байв. Одоо:
+ *      · `roadAxis` — ЗАМЫН ТЭНХЛЭГ (`et:5` «Зам_line»): `DATA_DICTIONARY.md`-ийн
+ *        ЕТ-ийн нэгж үнэ 2.5 тэрбум ₮/км = 2,500,000 ₮/м (2026-07-21-ний хэмжилт).
+ *        ⚠️ Энэ нь БАРИЛГЫН (шинээр барих) үнэ — сэргээлтийн үнэ биш тул дээд хязгаар.
+ *      · `roadEdge` — замын ХАШЛАГА/ирмэгийн шугам (`road`/193, `roadOld`/194 —
+ *        `roadNet.ts`-ийн тайлбараар тэнхлэг БИШ, хоёр талын ирмэг). Нэгж үнэ
+ *        баримтад БАЙХГҮЙ (тэнхлэгийн үнээр бодвол 2 дахин давхар тоолно) →
+ *        `null`: хүснэгтэд «өртөг тодорхойгүй», нийт дүнд ОРОХГҮЙ, тэмдэглэлтэй.
+ */
 export const DAMAGE_RATE: Record<
   DamageClass,
-  { rate: number; per: 'm2' | 'm' | 'ea'; unit: string; label: string }
+  { rate: number | null; per: 'm2' | 'm' | 'ea'; unit: string; label: string }
 > = {
   building: { rate: 145_000, per: 'm2', get unit() { return tr('₮/м²'); }, get label() { return tr('Барилга'); } },
   paved: { rate: 55_000, per: 'm2', get unit() { return tr('₮/м²'); }, get label() { return tr('Хатуу хучилт'); } },
@@ -677,7 +691,30 @@ export const DAMAGE_RATE: Record<
   tree: { rate: 250_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Мод'); } },
   amenity: { rate: 1_200_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Тохижилтын төхөөрөмж'); } },
   point: { rate: 3_400_000, per: 'ea', get unit() { return tr('₮/ш'); }, get label() { return tr('Худаг, тулгуур'); } },
+  roadAxis: { rate: 2_500_000, per: 'm', get unit() { return tr('₮/м'); }, get label() { return tr('Замын тэнхлэг'); } },
+  roadEdge: { rate: null, per: 'm', get unit() { return tr('₮/м'); }, get label() { return tr('Замын ирмэгийн шугам'); } },
 };
+
+/**
+ * Мөрийн үнэлгээ (₮) — ангиллын нэгж үнэ × хэмжээ × эрчим; ТОДОРХОЙГҮЙ бол `null`.
+ *
+ * ⚠️ 2026-10-01: `null` ≠ 0. Хоёр тохиолдолд `null`:
+ *   · ангиллын нэгж үнэ байхгүй (`roadEdge`);
+ *   · нэгж ба геометр ЗӨРӨХ — ₮/м² ангилал ШУГАМАН давхаргад (талбай нь үргэлж 0),
+ *     эсвэл ₮/м ангилал ТАЛБАЙН давхаргад. Урьд нь эдгээр нь 0 ₮ болж нийтэд
+ *     чимээгүй ордог байв.
+ */
+export function damageCost(
+  cls: DamageClass, geom: 'area' | 'line' | 'point',
+  q: { area: number; length: number; n: number }, sev: number,
+): number | null {
+  const r = DAMAGE_RATE[cls];
+  if (r.rate == null) return null;
+  if (r.per === 'm2' && geom !== 'area') return null;
+  if (r.per === 'm' && geom !== 'line') return null;
+  const amount = r.per === 'm2' ? q.area : r.per === 'm' ? q.length : q.n;
+  return amount * r.rate * sev;
+}
 
 /**
  * Давхарга → ангилал. Каталогийн `GROUP_LAYERS` бүлэглэлийг ЭНД ХЭРЭГЛЭЖ
@@ -693,7 +730,10 @@ const CLASS_BY_ID: Record<string, DamageClass> = {
   // Хатуу хучилт — зам, явган зам, дугуйн зам
   'et:29': 'paved', 'et:27': 'paved', 'dugui': 'paved',
   'sb:2': 'paved', 'sb:3': 'paved', 'sb:15': 'paved', 'sb:5': 'paved',
-  'road': 'paved', 'roadOld': 'paved',
+  /* ⚠️ 2026-10-01: «Авто зам»/«Одоо байгаа зам» нь ШУГАМ (ирмэг) — `paved` (₮/м²)
+     байсан тул 0 ₮; `et:5` нь замын тэнхлэг — `pipe` (92,000 ₮/м) гэж андуурагддаг
+     байв (`DAMAGE_RATE` §roadAxis/roadEdge). */
+  'road': 'roadEdge', 'roadOld': 'roadEdge', 'et:5': 'roadAxis',
   // Ногоон
   'nogoon': 'green', 'sb:1': 'green',
   'sb:0': 'tree',
@@ -747,7 +787,11 @@ export const scenarioNote = (h: HazardKey, lv: LevelKey): string => {
     /* ⚠️ `rain` нь 1 ЦАГИЙН эрчим (мм/ц) — «24 цагт … мм» гэж бичихгүй
        (`FloodParams.rain`-ы тайлбар). Доорх `Stat` мөн `мм/ц` гэж бичдэг тул
        нэг самбарт хоёр өөр нэгж гарах ёсгүй. */
-    return tr('{0} жилд нэг давтагдах үер · {1} мм/ц хур · оргил урсац {2} м³/с · түвшин +{3} м',
+    /* ⚠️ 2026-09-30: «ЛАВЛАГААНЫ урсац», «оргил урсац» БИШ. `p.peak` (26/52/96) нь харуулын
+       сэрэмжлүүлэх босго; ЯГ доорх `Stat` «Лавлагааны урсац» гэж, `Note` нь загварын
+       жинхэнэ оргил (97.3/194.6/389.2 м³/с) гэж бичдэг тул нэг самбарт «оргил урсац
+       26 м³/с» ба «97.3 м³/с оргил урсац» хоёр зэрэг гардаг байв. */
+    return tr('{0} жилд нэг давтагдах үер · {1} мм/ц хур · лавлагааны урсац {2} м³/с · түвшин +{3} м',
       p.period, p.rain, p.peak, p.rise);
   }
   const p = AIR_LEVELS[lv];

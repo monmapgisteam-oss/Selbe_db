@@ -42,10 +42,27 @@
  * ⚠️ Модулиудыг ДИНАМИКААР импортолно (`hyanaltStore`-ийн ижил шалтгаан):
  *    `AjilBatlah` хуудас `bagtsSheet` · `sheetFrame` · `bagts.pkg`-ийг
  *    статикаар чирвэл батлах дараалал бөглөх хуудсыг бүхэлд нь ачаална.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас) — «БАТЛАГДСАН · БУУЛГААГҮЙ» ГАЦААГҮЙ БАЙХ:
+ *    (1) ИЛРҮҮЛЭЛТ (`classifyStuck`, цэвэр): «буулгасан» тэмдэг = төлөв `applied`
+ *        (`markApplied`); `approved` хэвээр = буулгаагүй. Саяхан батлагдсаныг
+ *        (`APPLY_GRACE_MS`) «буулгаж байж магадгүй» гэж ялгана, бүртгэлгүй багцыг
+ *        нуухгүй — тайлбартай харуулна.
+ *    (2) ДАВХАР ДАРАЛТ / ЗЭРЭГЦЭЭ ОРОЛДЛОГО: нэг илгээлтийн хоёр дахь дуудлага
+ *        эхнийхээ амлалтыг хүлээнэ (`inflight`); бүх буулгалт нэг түгжээгээр
+ *        ДАРААЛНА (`withApplyLock` — Web Locks бол хөтчийн бүх таб, эс бөгөөс
+ *        энэ таб). Түгжээ суллагдахад дараагийнх нь серверээс `applied`-ийг уншаад
+ *        ЮУ Ч БИЧИХГҮЙ (`already`).
+ *    (3) ЭРХ: `ajilApprove` ЭСВЭЛ хатуу super (`mayReapply`). Шийдвэр (`decideAjil`)
+ *        `ajilApprove`-ийг ШААРДСАН хэвээр — админ зөвхөн аль хэдийн БАТЛАГДСАН
+ *        илгээлтийн бичилтийг гүйцээнэ, шинээр батлахгүй.
+ *    (4) Сүлжээний хамаарал `_io`-д — тест (`ajilReapply.check.mjs`) сүлжээгүй
+ *        идемпотент байдлыг шалгана.
  */
 
-import { AUTH } from './services';
+import { AUTH, roleForUser } from './services';
 import { ajilScope } from './ajilAcl';
+import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser, requireCap } from './who';
 import { AJIL_STATUS, loadHead, loadPayloadStamped, markApplied } from './ajilBatlah';
@@ -180,6 +197,95 @@ export function sameFrame(a: FrameLike, b: FrameLike): boolean {
   return true;
 }
 
+/* ══════════ «БАТЛАГДСАН · БУУЛГААГҮЙ» ИЛРҮҮЛЭХ (2026-10-01, тест: ajilReapply.check.mjs) ══════════ */
+
+/**
+ * Батлагдсаны дараах ХҮЛЭЭХ ХУГАЦАА — энэ хугацаанд батлагчийн цонх
+ * `materializeAdds`-ыг ӨӨРӨӨ гүйцээж байж магадгүй.
+ *
+ * ⚠️ 2026-10-01: `approved` нь хэвийн урсгалд ч хэдэн секунд–минут (жааз ачаалах,
+ *    500-аар багцалж бичих, дахин уншиж батлах) үлддэг. Тэр завсарт ӨӨР батлагч/
+ *    админ хуудсаа нээвэл илгээлт «буулгаагүй» болж харагдана; «Дахин буулгах»
+ *    дарвал ХОЁР КОМПЬЮТЕР нэг багцад зэрэг жааз бичиж, 500-ийн багцууд холилдох
+ *    эрсдэлтэй (`bagtsSheet.lastFrame`; Web Locks зөвхөн НЭГ хөтчийг хамгаална).
+ *    Тиймээс саяхан батлагдсаныг ЗӨВХӨН харуулна, товч энэ хугацааны дараа нээгдэнэ.
+ * ⚠️ Энэ цонхонд өөрөө оролдоод дууссан бол (`settled`) хүлээхгүй — батлагч алдааг
+ *    хармагц шууд дахин буулгана.
+ */
+export const APPLY_GRACE_MS = 3 * 60_000;
+
+/**
+ * `retry`  — буулгалт унасан/тасарсан: «Дахин буулгах» нээлттэй
+ * `fresh`  — саяхан батлагдсан: батлагчийн цонх одоо бичиж байж магадгүй
+ * `orphan` — багцын түлхүүр бүртгэлд (`PKGS`) алга: буулгах боломжгүй, админд
+ */
+export type StuckKind = 'retry' | 'fresh' | 'orphan';
+
+/** Ангилахад хэрэгтэй ХАМГИЙН БАГА хэлбэр (`AjilSubmission`-ийн дэд олонлог) */
+export type StuckLike = { oid: number; status: string; pkgKey: string; pkgGroup: string; approverAt: number | null };
+
+export type StuckItem<T extends StuckLike> = {
+  sub: T;
+  kind: StuckKind;
+  /** `fresh` бол «Дахин буулгах» нээгдэх агшин, бусад нь `null` */
+  readyAt: number | null;
+};
+
+/**
+ * БАТЛАГДСАН ч БУУГААГҮЙ илгээлтүүдийг ангилна — хэнд юу харуулахыг.
+ *
+ * ⚠️ Зөвхөн `approved`. `applied` («Буулгасан») нь буулгалт амжилттай дууссаны
+ *    СЕРВЕРИЙН тэмдэг (`markApplied`) — түүнийг энд хэзээ ч оруулахгүй.
+ * ⚠️ Хүрээ: `scope` `null` = хязгааргүй (super / нэвтрэлтгүй), `[...]` = зөвхөн тэр
+ *    бүлгүүд — `AjilBatlah`-ийн «Шийдвэрлэх»-тэй ижил fail-closed дүрэм.
+ * ⚠️ Бүртгэлгүй багцыг ХАЯХГҮЙ (2026-10-01): урьд нь шүүгдэж ЧИМЭЭГҮЙ алга болдог
+ *    байв — батлагдсан ажил хэзээ ч хуудсанд орохгүй атлаа хэн ч мэдэхгүй.
+ * ⚠️ `approverAt` алга (`null`) эсвэл цаг нь хэт ирээдүйд (компьютерийн цаг
+ *    `grace`-ээс илүү зөрсөн) бол `retry` — хүлээлгийг мөнхөд сунгахгүй.
+ */
+export function classifyStuck<T extends StuckLike>(
+  subs: readonly T[],
+  o: {
+    now: number;
+    scope: readonly string[] | null;
+    knownPkg: (pkgKey: string) => boolean;
+    /** Энэ цонхонд буулгах оролдлого ДУУССАН илгээлтүүд — хүлээлгүй */
+    settled?: ReadonlySet<number>;
+    grace?: number;
+  },
+): StuckItem<T>[] {
+  const grace = o.grace ?? APPLY_GRACE_MS;
+  const out: StuckItem<T>[] = [];
+  for (const x of subs) {
+    if (x.status !== AJIL_STATUS.approved) continue;
+    if (o.scope != null && !o.scope.includes(x.pkgGroup)) continue;
+    if (!o.knownPkg(x.pkgKey)) {
+      out.push({ sub: x, kind: 'orphan', readyAt: null });
+      continue;
+    }
+    const at = x.approverAt;
+    if (at != null && Number.isFinite(at) && !o.settled?.has(x.oid) && o.now - at > -grace && o.now - at < grace) {
+      out.push({ sub: x, kind: 'fresh', readyAt: at + grace });
+    } else {
+      out.push({ sub: x, kind: 'retry', readyAt: null });
+    }
+  }
+  return out;
+}
+
+/**
+ * «ДАХИН БУУЛГАХ» ЭРХ — батлагч (`ajilApprove`) ЭСВЭЛ хатуу super.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `ajilApprove` л байсан тул
+ *    тэр эрхгүй админ «Батлагдсан · буулгаагүй»-г харж байгаад дарахад «эрхгүй»
+ *    гэж унадаг байв. Буулгалт нь ШИЙДВЭР БИШ — батлагч аль хэдийн шийдсэн
+ *    (`decideAjil` `ajilApprove`-ийг шаардсан хэвээр), энэ нь зөвхөн бичилтийг
+ *    гүйцээнэ. Багцын хүрээг (`ajilScope`) `materializeInner` тусад нь шалгана.
+ */
+export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: boolean }): boolean {
+  return o.authOff || o.isSuper || o.hasApprove;
+}
+
 /* ══════════════════ СҮЛЖЭЭТЭЙ ХЭСЭГ ══════════════════ */
 
 export type ApplyResult =
@@ -200,24 +306,103 @@ export type ApplyResult =
  */
 export async function materializeAdds(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
   /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-ийн ижил шалтгаан. Эрхгүй бол
-     ШИДНЭ (доорх `try`-ийн гадна) — энэ нь сүлжээний алдаа биш. */
-  requireCap('ajilApprove');
+     ШИДНЭ (доорх `try`-ийн гадна) — энэ нь сүлжээний алдаа биш.
+     ⚠️ 2026-10-01: `ajilApprove` ЭСВЭЛ хатуу super (`mayReapply`-ийн ⚠️). */
+  requireApplyCap();
+  /* ⚠️ 2026-10-01: ДАВХАР ДАРАЛТ — ижил илгээлт энэ табд аль хэдийн буулгагдаж
+     байвал ШИНЭ оролдлого эхлүүлэхгүй, тэр амлалтын үр дүнг буцаана. */
+  const cur = inflight.get(args.ajilOid);
+  if (cur) return cur;
   /* ⚠️ ШИДЭХГҮЙ, `{ok:false}` БУЦААНА (2026-09-25 аудит): `loadHead` ·
      `loadPayload` · `loadSchema` · `loadRows` · динамик импорт нь сүлжээний
      алдаанд ШИДДЭГ байв — `decideAjil` амжилттай (төлөв `approved`) болсны
      дараа шидэхэд `AjilBatlah` дараалал дахин уншаагүй, «Батлагдсан ·
      буулгаагүй» хэсэг гарахгүй, «Батлах» дахин дарахад «аль хэдийн
      шийдвэрлэсэн» гэж гацдаг байлаа. Дуудагч бүр `ok`-оор салбарлана. */
+  const p = withApplyLock(async () => {
+    try {
+      return await materializeInner(args);
+    } catch (e) {
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
+  });
+  inflight.set(args.ajilOid, p);
   try {
-    return await materializeInner(args);
-  } catch (e) {
-    return { ok: false, error: String((e as Error)?.message ?? e) };
+    return await p;
+  } finally {
+    if (inflight.get(args.ajilOid) === p) inflight.delete(args.ajilOid);
   }
 }
 
+/**
+ * Эрхийн шалгуур — `ajilApprove` ЭСВЭЛ хатуу super (2026-10-01, `mayReapply`).
+ * ⚠️ `requireCap`-ийн ижил дүрэм: ЗӨВХӨН хөтөчид (Node тест/скрипт хаагдахгүй);
+ *    эрхгүй бол `requireCap` өөрөө ИЖИЛ мессежээр шиднэ.
+ */
+function requireApplyCap(): void {
+  if (typeof window === 'undefined') return;
+  const me = currentUser();
+  if (mayReapply({ authOff: !AUTH.appId, isSuper: roleForUser(me) === 'super', hasApprove: hasCap(me, 'ajilApprove') })) return;
+  requireCap('ajilApprove');
+}
+
+/** Энэ табд одоо явж буй буулгалт — илгээлтийн OID → амлалт (2026-10-01) */
+const inflight = new Map<number, Promise<ApplyResult>>();
+
+/** Хөтчийн бүх табд нэг — Web Locks-ийн нэр */
+const APPLY_LOCK = 'selbe-ajil-apply';
+/** Web Locks байхгүй орчны (хуучин хөтөч, Node) таб доторх дараалал */
+let applyTail: Promise<unknown> = Promise.resolve();
+
+/**
+ * БҮХ БУУЛГАЛТЫГ НЭГ НЭГЭЭР НЬ — нэг багцад хоёр жааз зэрэг бичигдэхгүй (2026-10-01).
+ *
+ * ⚠️ ЯАГААД ТҮГЖЭЭ: `applyAdds` 500-аар багцалж бичдэг; хоёр таб зэрэг бичвэл
+ *    багцууд холилдож `lastFrame` эвдэрсэн жааз уншина. A.8/A.10б уралдааг
+ *    бичилтийн ӨМНӨ/ДАРАА л барина — бичилт ДУНДАХ холилдлыг биш.
+ * ⚠️ Web Locks (`navigator.locks`) нь ИЖИЛ хөтчийн бүх табыг хамгаална; өөр
+ *    компьютерийг `APPLY_GRACE_MS` + A.8/A.10б хамгаална. Түгжээг БАГЦААР биш
+ *    НИЙТЭЭР нь — буулгалт ховор, энгийн нь найдвартай.
+ * ⚠️ Түгжээ `_io.lockWaitMs`-ээс удаан суллагдахгүй бол ХҮЛЭЭЛГҮЙ алдаа буцаана —
+ *    өөр табын гацсан сүлжээ энэ табыг мөнхөд «ажиллаж байна» болгохгүй. Түгжээ
+ *    олгогдсоны дараа таслахгүй (бичилтийг дундуур нь зогсоохгүй).
+ */
+async function withApplyLock(fn: () => Promise<ApplyResult>): Promise<ApplyResult> {
+  const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
+  if (locks && typeof locks.request === 'function') {
+    try {
+      return await locks.request(APPLY_LOCK, { signal: AbortSignal.timeout(_io.lockWaitMs) }, () => fn());
+    } catch (e) {
+      const n = (e as Error)?.name;
+      if (n === 'TimeoutError' || n === 'AbortError')
+        return { ok: false, error: tr('Өөр цонхонд нэмэлт ажил буулгаж байна — дуусахыг хүлээгээд дахин оролдоно уу.') };
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
+  }
+  const run = applyTail.then(fn, fn);
+  applyTail = run.catch(() => undefined);
+  return run;
+}
+
+/** Жааз бичилтийн үр дүн — `added: 0` = бүх мөр аль хэдийн хуудсанд байна (юу ч бичээгүй) */
+export type FrameWrite = { ok: true; added: number } | { ok: false; error: string };
+
+/**
+ * СҮЛЖЭЭНИЙ ХАМААРАЛ — ⚠️ ЗӨВХӨН тест (`ajilReapply.check.mjs`) солино (2026-10-01).
+ * Ажиллах үед үргэлж жинхэнэ функцууд.
+ */
+export const _io: {
+  loadHead: typeof loadHead;
+  loadPayloadStamped: typeof loadPayloadStamped;
+  markApplied: typeof markApplied;
+  writeFrame: (pkgKey: string, adds: readonly NewRow[]) => Promise<FrameWrite>;
+  /** Өөр табын түгжээг хүлээх дээд хугацаа */
+  lockWaitMs: number;
+} = { loadHead, loadPayloadStamped, markApplied, writeFrame: writeFrameLive, lockWaitMs: 120_000 };
+
 /** `materializeAdds`-ийн бие — эрхийн шалгалтын ДАРАА л дуудагдана. */
 async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
-  const head = await loadHead(args.ajilOid);
+  const head = await _io.loadHead(args.ajilOid);
   if (!head) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   if (args.pkgKey && args.pkgKey !== head.pkgKey)
     return { ok: false, error: tr('Илгээлт «{0}» багцынх — хуудас «{1}». Юу ч бичсэнгүй.', head.pkgKey, args.pkgKey) };
@@ -233,7 +418,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (head.status !== AJIL_STATUS.approved)
     return { ok: false, error: tr('Илгээлт батлагдаагүй ({0}) — хуудсанд буулгах боломжгүй.', head.status) };
 
-  const st = await loadPayloadStamped(args.ajilOid);
+  const st = await _io.loadPayloadStamped(args.ajilOid);
   const pl = st?.p ?? null;
   if (!pl) return { ok: false, error: tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй. Буцаавал нэмэгч дахин илгээнэ.') };
   /* ⚠️ 2026-09-30: `decideAjil`-ийн тулгалт ба `approved` бичилтийн ЗАВСАРТ
@@ -243,9 +428,29 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (args.stamp && st && st.stamp !== args.stamp)
     return { ok: false, error: tr('Батлах зуур зохиогч агуулгыг өөрчилсөн — юу ч бичсэнгүй. Шинэ агуулгыг харж «Дахин буулгах» дарна уу.') };
 
+  /* A.4–A.10б — жааз (2026-10-01: `writeFrameLive`-д тусгаарлав, дараалал ижил) */
+  const w = await _io.writeFrame(head.pkgKey, pl.adds);
+  if (!w.ok) return w;
+
+  /* A.11 — зөвхөн амжилтын дараа.
+     ⚠️ `added: 0` = бүх мөр аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч
+     тэмдэглэж амжаагүй) — юу ч бичээгүй, зөвхөн тэмдэглэнэ. */
+  const m = await _io.markApplied(args.ajilOid);
+  if (w.added === 0)
+    return m.ok ? { ok: true, already: true, added: 0 } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
+  if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
+  return { ok: true, added: w.added };
+}
+
+/**
+ * A.4–A.10б — СҮҮЛИЙН ЖААЗ + ШИНЭ МӨР → БҮТЭН ЖААЗ БИЧИХ (2026-10-01: `materializeInner`-
+ * ээс тусгаарлав; алхам, шалгалт, мессеж ӨӨРЧЛӨГДӨӨГҮЙ).
+ * ⚠️ `markApplied`-ыг ЭНД дуудахгүй — дуудагч (A.11) бичилт амжилттай болсны ДАРАА.
+ */
+async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<FrameWrite> {
   const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
-  const pkg = PKGS.find((p) => p.key === head.pkgKey);
-  if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', head.pkgKey) };
+  const pkg = PKGS.find((p) => p.key === pkgKey);
+  if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
   const [{ loadRows, applyAdds, applyDeletes }, { insertAdds, buildFrame }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
@@ -282,13 +487,10 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   const loaded = await loadRows(pkg, sc);
 
   /* A.4 — давхардал хасах */
-  const { fresh } = dedupeAdds(loaded.rows, pl.adds);
-  if (!fresh.length) {
-    /* Бүгд аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч тэмдэглэж
-       амжаагүй) — зөвхөн тэмдэглэнэ. */
-    const m = await markApplied(args.ajilOid);
-    return m.ok ? { ok: true, already: true, added: 0 } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
-  }
+  const { fresh } = dedupeAdds(loaded.rows, adds);
+  /* Бүгд аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч тэмдэглэж
+     амжаагүй) — юу ч бичихгүй; дуудагч (A.11) зөвхөн тэмдэглэнэ. */
+  if (!fresh.length) return { ok: true, added: 0 };
 
   /* A.5 — оруулах; эцэг олдоогүй мөр байвал ЗОГСОНО (хагас батлахгүй) */
   const rows = insertAdds(loaded.rows, fresh, sc, nBld);
@@ -316,7 +518,11 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
       if (!obPlan || row.des == null || asOf == null) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      return m ? planPctFromMonths(m, asOf) : null;
+      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
+         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
+         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
+         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
+      return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
     });
     /* ⚠️ `assertFrameLength` ЭНД ХЭРЭГГҮЙ (2026-09-24 аудит #8): `frame` нь
        `rows.map` тул урт нь `loaded.rows.length + added`-тай ҮРГЭЛЖ тэнцэнэ —
@@ -391,8 +597,6 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     return { ok: false, error: tr('Бичсэний дараах шалгалт унав: {0} — төлөв «батлагдсан» хэвээр, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
   }
 
-  /* A.11 — зөвхөн амжилтын дараа */
-  const m = await markApplied(args.ajilOid);
-  if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
+  /* A.11 — `markApplied` нь дуудагчид (`materializeInner`) */
   return { ok: true, added };
 }

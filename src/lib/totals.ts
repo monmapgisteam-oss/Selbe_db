@@ -7,9 +7,9 @@
  * хуулбарлавал каталог дээрх дүн самбар дээрхээс зөрөх өдөр ирнэ.
  */
 
-import { queryStats, count, sum } from './query';
+import { queryStats, count, sum, arcgisPost, type Aoi } from './query';
 import { t as tr } from '@/lib/i18nCore';
-import { layerUrl, OID, CATALOG_LAYER_IDS, LAYER_BY_ID, zoneWhere, type LayerDef } from './services';
+import { layerUrl, OID, oidOf, CATALOG_LAYER_IDS, LAYER_BY_ID, ZONE_LAYER, zoneWhere, type LayerDef } from './services';
 import { num, ha, km } from './format';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
@@ -21,7 +21,18 @@ import { useAsync, type Async } from './useAsync';
  *    тэг» гэж худал харагддаг байв (порталын `null ≠ 0` дүрэм). `n` нь
  *    үргэлж тоо — COUNT хэзээ ч null биш.
  */
-export type Totals = { n: number; q: number | null };
+export type Totals = {
+  n: number;
+  q: number | null;
+  /**
+   * ХЭМЖЭЭНИЙ ТАЛБАР БӨГЛӨГДСӨН объектын тоо — `COUNT(qty.field)` (null-ыг тоолдоггүй).
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «дундаж урт» нь `q / n` байсан тул уртгүй
+   *    (`Urt_m` хоосон) объект хуваарьт орж дундажийг ХУДАЛ бууруулдаг байв —
+   *    одоо `q / nq` (`avgQty`). `n - nq` = «N объект уртгүй» (`missingQty`).
+   *    `null`/`undefined` = мэдэгдэхгүй (хэмжээгүй давхарга, хуучин хөтчийн кэш).
+   */
+  nq?: number | null;
+};
 
 /**
  * ДАВХАРГЫН ТОГТМОЛ ШҮҮЛТ (`d.where`) + дуудагчийн шүүлт — AND-аар.
@@ -55,7 +66,22 @@ export const whereFor = (d: LayerDef, zone: string | null) =>
 /** Давхаргын статистикийн хүсэлт — тоо ба (байвал) хэмжээ */
 export const layerStats = (d: LayerDef) =>
   // ⚠️ OID нь давхарга бүрт ижил БИШ (хуучин үйлчилгээнүүд `FID`, `objectid`)
-  [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q')] : [])];
+  [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q'), count(d.qty.field, 'nq')] : [])];
+
+/**
+ * НЭГ ОБЪЕКТЫН ДУНДАЖ ХЭМЖЭЭ — хэмжээ БӨГЛӨГДСӨН объектоор хуваана (`nq`).
+ * ⚠️ 2026-10-01: урьд нь `q / n` (бүх объект) — уртгүй объект дундажийг бууруулдаг байв.
+ *    `nq` мэдэгдэхгүй (хуучин кэш) бол `null` — буруу хуваарьтай тоо гаргахгүй.
+ */
+export const avgQty = (t: Totals | undefined | null): number | null =>
+  (t && t.q != null && t.nq != null && t.nq > 0 ? t.q / t.nq : null);
+
+/**
+ * ХЭМЖЭЭГҮЙ объектын тоо (`n - nq`) — «N объект уртгүй».
+ * ⚠️ `nq` мэдэгдэхгүй бол `null` (0 БИШ — «бүгд урттай» гэж худал хэлэхгүй).
+ */
+export const missingQty = (t: Totals | undefined | null): number | null =>
+  (t && t.nq != null ? Math.max(0, t.n - t.nq) : null);
 
 
 /**
@@ -66,12 +92,56 @@ export const layerStats = (d: LayerDef) =>
  * `{ n, q }` хос болов. Урьд нь энэ хүсэлт нэгж үнээр БҮЛЭГЛЭЖ (`GROUP BY`)
  * явдаг байсан бөгөөд одоо бүлэглэлгүй, ганц мөр буцаана.
  */
-export async function layerTotals(d: LayerDef, where: string): Promise<Totals> {
+export async function layerTotals(d: LayerDef, where: string, aoi?: Aoi): Promise<Totals> {
   /* ⚠️ `d.where`-ийг ЭНД ч залгана (2026-09-25) — `Bagts`/`reportData` нь
-     `'1=1'`-ийг шууд өгдөг тул `whereFor`-оор дамжихгүй (`withLayerWhere`). */
-  const r = await queryStats(layerUrl(d), layerStats(d), withLayerWhere(d, where));
+     `'1=1'`-ийг шууд өгдөг тул `whereFor`-оор дамжихгүй (`withLayerWhere`).
+     ⚠️ 2026-10-01: `aoi` — бүсийн ПОЛИГОНООР орон зайн шүүлт (`ZONE_ID`-гүй давхаргад). */
+  const r = await queryStats(layerUrl(d), layerStats(d), withLayerWhere(d, where), aoi);
   /* ⚠️ `q`: null хэвээр — 0 болгохгүй (`Totals`-ийн тайлбар) */
-  return { n: Number(r.n ?? 0), q: r.q == null ? null : Number(r.q) };
+  return {
+    n: Number(r.n ?? 0),
+    q: r.q == null ? null : Number(r.q),
+    nq: d.qty ? (r.nq == null ? null : Number(r.nq)) : null,
+  };
+}
+
+/* ══════════ Бүсийн полигон — орон зайн шүүлт (2026-10-01) ══════════ */
+
+/**
+ * БҮСИЙН ПОЛИГОН — `ZONE_ID` талбаргүй (`noZone`) давхаргыг бүсээр шүүхэд.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Инженерийн дэд бүтэц»-ийн 73 давхарга
+ *    бүгд `noZone` тул бүс сонгоход KPI «бүсгүй — төслийн нийт» хэвээр үлддэг
+ *    байв. Одоо бүсийн давхаргаас тэр бүсийн ПОЛИГОНЫГ (эх SR-ээр) татаж,
+ *    `intersects` шүүлтээр тоолно.
+ * ⚠️ `intersects`: бүсийн хилийг ОГТОЛСОН шугам бүтнээрээ (уртаараа) тухайн бүсэд
+ *    орно — хоёр бүсийн нийлбэр нь төслийн нийтээс бага зэрэг ИХ байж болно.
+ * ⚠️ Олон бүс («A-1,B-2») — цагиргуудыг НЭГ олон-цагирагт полигонд нийлүүлнэ.
+ * ⚠️ Алдааг кэшлэхгүй; амжилттайг бүсээр санана (бүсийн хил сешн дотор өөрчлөгдөхгүй).
+ */
+const zoneAoiCache = new Map<string, Promise<Aoi | null>>();
+export function loadZoneAoi(zone: string): Promise<Aoi | null> {
+  const hit = zoneAoiCache.get(zone);
+  if (hit) return hit;
+  const where = zoneWhere(ZONE_LAYER, zone);
+  const p: Promise<Aoi | null> = where == null ? Promise.resolve(null) : arcgisPost<{
+    spatialReference?: { wkid?: number; latestWkid?: number };
+    features?: { geometry?: { rings?: number[][][] } }[];
+  }>(`${layerUrl(ZONE_LAYER)}/query`, {
+    where,
+    outFields: oidOf(ZONE_LAYER),
+    returnGeometry: 'true',
+  }).then((j) => {
+    const rings = (j.features ?? []).flatMap((f) => f.geometry?.rings ?? []);
+    const wkid = j.spatialReference?.latestWkid ?? j.spatialReference?.wkid;
+    /* ⚠️ Полигон олдоогүй / SR алга — `null` (дуудагч төслийн нийтээр үлдэнэ) */
+    if (!rings.length || !wkid) return null;
+    const aoi: Aoi = { geometry: { rings, spatialReference: { wkid } }, wkid, type: 'polygon', rel: 'intersects' };
+    return aoi;
+  });
+  p.catch(() => zoneAoiCache.delete(zone));
+  zoneAoiCache.set(zone, p);
+  return p;
 }
 
 /**
@@ -153,7 +223,8 @@ function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> 
   try {
     const raw = localStorage.getItem(persistKey(zone, ids));
     if (!raw) return null;
-    const rows = JSON.parse(raw) as [string, number, number | null][];
+    /* ⚠️ 2026-10-01: 4 дэх элемент `nq` — хуучин 3 элементтэй кэшид байхгүй (мэдэгдэхгүй) */
+    const rows = JSON.parse(raw) as [string, number, number | null, (number | null)?][];
     if (!Array.isArray(rows)) return null;
     const want = new Set(ids);
     const map = new Map<string, Totals>();
@@ -162,7 +233,10 @@ function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> 
       const n = Number(r[1]);
       /* ⚠️ `q` null хэвээр сэргэнэ — 0 болгохгүй */
       const q = r[2] == null ? null : Number(r[2]);
-      if (Number.isFinite(n) && (q == null || Number.isFinite(q))) map.set(r[0], { n, q });
+      const nq = r[3] == null ? null : Number(r[3]);
+      if (Number.isFinite(n) && (q == null || Number.isFinite(q)) && (nq == null || Number.isFinite(nq))) {
+        map.set(r[0], { n, q, nq });
+      }
     }
     return map.size ? map : null;
   } catch {
@@ -174,7 +248,7 @@ function savePersisted(zone: string | null, ids: string[], map: Map<string, Tota
   try {
     const rows = ids.filter((id) => map.has(id)).map((id) => {
       const t = map.get(id)!;
-      return [id, t.n, t.q] as const;
+      return [id, t.n, t.q, t.nq ?? null] as const;
     });
     localStorage.setItem(persistKey(zone, ids), JSON.stringify(rows));
   } catch {
@@ -319,9 +393,17 @@ export function usePlanTotalsLive(
   zone: string | null,
   enabled = true,
   ids: string[] = CATALOG_LAYER_IDS,
+  /**
+   * ⚠️ 2026-10-01: `spatialZone` — `ZONE_ID`-гүй (`noZone`) давхаргыг бүсийн ПОЛИГОНООР
+   *    (`loadZoneAoi`) шүүнэ. Үгүй бол урьдын адил бүс нь тэдгээрт үйлчлэхгүй.
+   */
+  opts?: { spatialZone?: boolean },
 ): LiveTotals {
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
-  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(",")}`;
+  const sp = Boolean(opts?.spatialZone && zone);
+  const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}${sp ? '|sp' : ''}|${epoch}|${ids.join(",")}`;
+  /* ⚠️ Хөтчийн кэшийн түлхүүр — орон зайн шүүлттэй дүн нь бүсийн талбараар шүүснээс ТУСДАА */
+  const pzone = sp ? `${zone}|sp` : zone;
   const [st, setSt] = useState<LiveTotals>(() => ({
     map: new Map(), done: 0, total: ids.length, error: null, failed: 0, stale: false,
   }));
@@ -348,7 +430,7 @@ export function usePlanTotalsLive(
      * амьд дүн ирэх бүрд давхарга бүрээр дарж бичнэ (`view()`). Байхгүй бол
      * урьдын адил «…»-ээс эхэлнэ. (`totalsCache`-ийн тайлбарыг үз.)
      */
-    const seed = loadPersisted(zone, ids);
+    const seed = loadPersisted(pzone, ids);
     /* Дэлгэцэнд өгөх Map: кэш доор, амьд дүн дээр. Амьд дүн бүгд ирмэгц
        кэш хэрэггүй — зөвхөн амьд Map үлдэнэ. */
     const view = () => (seed ? new Map([...seed, ...map]) : new Map(map));
@@ -372,10 +454,16 @@ export function usePlanTotalsLive(
 
     void (async () => {
       let firstErr: Error | null = null;
+      /* ⚠️ Бүсийн полигон НЭГ удаа (кэштэй). Олдохгүй/унавал `null` — тэр үед `noZone`
+         давхарга урьдын адил ТӨСЛИЙН нийтээр (худал «0» гаргахгүй). */
+      const aoi = sp && zone ? await loadZoneAoi(zone).catch(() => null) : null;
+      if (!alive) return;
       await Promise.all(ids.map(async (id) => {
         const d = LAYER_BY_ID[id];
         try {
-          const r = await layerTotals(d, whereFor(d, zone));
+          const r = aoi && d.noZone
+            ? await layerTotals(d, withLayerWhere(d, null), aoi)
+            : await layerTotals(d, whereFor(d, zone));
           if (!alive) return;
           map.set(id, r);
         } catch (e) {
@@ -395,7 +483,7 @@ export function usePlanTotalsLive(
          session дуустал «—» хэвээр үлдэж, өөрөө эдгэрэхгүй. */
       if (!failed) {
         totalsCache.set(key, map);
-        savePersisted(zone, ids, map);
+        savePersisted(pzone, ids, map);
       }
       /* ⚠️ Дууссаны дараа ЗӨВХӨН амьд Map: унасан давхарга кэшийн хуучин
          дүнгээр «эдгэрч» харагдах ёсгүй — тэр нь «—» гэж ил гарна. */

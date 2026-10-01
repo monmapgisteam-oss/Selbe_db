@@ -137,4 +137,22 @@ const mk = (o) => ({
   assert.equal(repSigRoles().length, 4); assert.match(repSigRoles()[3], /хүлээн авсан/);
 }
 
+/* ══ 2026-09-30: NCR «Хийсэн алхмууд» — зай ба шинэ мөр бичигдэх ёстой (`keepLinesText`) ══ */
+{
+  const { keepLinesText } = await import('./chanar/chanarUi.ts');
+  /* Бичиж буй текст (төгсгөлийн зай / хоосон шинэ мөр) нь ижил жагсаалт руу задарна → ХЭВЭЭР */
+  assert.equal(keepLinesText('Арматур ', 'Арматур'), 'Арматур ', '⚠️ үгийн дараах зай хасагдах ёсгүй');
+  assert.equal(keepLinesText('Арматур солив\n', 'Арматур солив'), 'Арматур солив\n', '⚠️ Enter-ийн шинэ мөр хасагдах ёсгүй');
+  assert.equal(keepLinesText('а\n\nб', 'а\nб'), 'а\n\nб');
+  /* Гаднаас өөр жагсаалт ирсэн (өөр баримт) → солино */
+  assert.equal(keepLinesText('хуучин', 'шинэ\nалхам'), 'шинэ\nалхам');
+  assert.equal(keepLinesText('', ''), '');
+  /* NcrForm нь түүхий текстийг ОРОН НУТАГТ барина (эх кодын шалгуур) */
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('./chanar/NcrForm.tsx', import.meta.url), 'utf8');
+  assert.ok(!/value=\{listToLines\(corr\.steps\)\}/.test(src), '⚠️ textarea-ийн утгыг цэвэрлэсэн жагсаалтаас ШУУД зурахгүй');
+  assert.ok(/<StepsArea/.test(src), 'NcrForm: StepsArea ашиглана');
+}
+console.log('✅ NCR алхмууд — зай ба шинэ мөр хадгалагдана');
+
 console.log('chanarUi.check ✓');

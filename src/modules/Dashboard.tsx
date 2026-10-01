@@ -189,6 +189,21 @@ function Panel({ title, note, grow, children }: {
 /* ══════════════════ Түүхий өгөгдөл ══════════════════ */
 
 const BF = BUILDING.fields;
+
+/**
+ * НЭГЖ ТАЛБАРЫН ТАЛБАЙ (м²) — `area`, хоосон бол `alt`; хоёулаа хоосон бол `null`.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `Number(x) || Number(y) || 0` байсан — хоосон нүд
+ *    (`null`/`''`) ба бүртгэгдсэн 0 ялгагдахгүй, хоёулаа «0 м²» болдог байв (null ≠ 0).
+ *    Одоо `??`: хоосон бол дараагийн талбар, тоо бол ТЭР тоо; дуудагч `> 0` шүүлтээ хэвээр.
+ */
+const parcelAreaOf = (r: Row, area: string, alt: string): number | null => {
+  const v = (x: unknown): number | null => {
+    if (x == null || (typeof x === 'string' && x.trim() === '')) return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  };
+  return v(r[area]) ?? v(r[alt]);
+};
 const PL = PARCEL_LEFT.fields;
 
 /* ⚠️ 2026-08-21: `BagtsRow`/`useBagtsTable`/`SuitSummary`/`useSuitability` нь
@@ -199,7 +214,7 @@ const PL = PARCEL_LEFT.fields;
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
 import { useBagtsTable, buildProgressOf, type BagtsRow } from '@/lib/execData';
-import { pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -858,15 +873,21 @@ function railStat(k: SecKey, d: DashData): {
       /* ⚠️ 2026-09-30: НЭГ томьёо — `buildProgressOf` → `gdash.housingPct` (ХО дүнгээр
          жигнэсэн, хэмжигдээгүй багц орохгүй; ХО байхгүй бол тайлагнасан блокоор).
          Урьд нь энд блокийн тоогоор тусад нь жигнэдэг тул 05 · Тайлан · ExecReport-оос зөрдөг байв. */
-      const avg = b
-        ? buildProgressOf(b, f ? pkgCostWeight(f.contracts.map(cfWeightRow)) : undefined).pct
+      /* ⚠️ 2026-09-30: ХО жин (`f`) ирэхээс ӨМНӨ тоо ГАРГАХГҮЙ. Урьд нь `f` ачаалж
+         байхад `buildProgressOf(b, undefined)` БЛОКИЙН тоогоор жигнэсэн өөр тоо
+         (жиш. 51.7%) зурж, санхүү ирмэгц ХО-оор жигнэсэн тоо (40%) руу үсэрдэг —
+         «02 Хуваарь» нүд (`physNow`) ба бусад дэлгэцээс түр зөрдөг байв. */
+      const avg = b && f
+        ? buildProgressOf(b, pkgCostWeight(f.contracts.map(cfWeightRow))).pct
         : null;
       const ailSum = b ? b.reduce((a, x) => a + x.ail, 0) : null;
       return {
         /* ⚠️ 2026-09-24: өгөгдөл бэлэн (`b != null`) ч нэг ч багц тайлагнаагүй бол
            «…» мөнхөд үлддэг байв — тэр үед «—». */
-        value: b == null ? dots(d.bagts) : avg == null ? '—' : pct(avg, 1),
-        note: ailSum == null ? dots(d.bagts) : tr('7 багц · {0} блок · {1} өрх', num(bl), num(ailSum)),
+        value: b == null ? dots(d.bagts) : f == null ? dots(d.fin) : avg == null ? '—' : pct(avg, 1),
+        /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): багцын тоо ХАТУУ «7» БИШ — барилгын
+           давхаргад блоктой багцын бодит тоо (`BagtsRow`), блок/өрх нь давхардсан полигонгүй. */
+        note: ailSum == null || !b ? dots(d.bagts) : tr('{0} багц · {1} блок · {2} өрх', num(b.length), num(bl), num(ailSum)),
         pct: avg ?? undefined, tone: o.active,
       };
     }
@@ -2202,23 +2223,34 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const ms = (months ?? []).filter((m) => m.label <= nowYm);
-            let planTotal = 0;
-            f?.planTotal.forEach((v) => { planTotal += v; });
-            if (!planTotal || ms.length < 2) return <Empty label={tr('Олголтын бүртгэл алга')} />;
+            /* ⚠️ 2026-09-30: ХУВААГЧ = «Гэрээлсэн дүн» (`finXlInTotal` ∧ CONTRACTED),
+               ТООЛОГЧ = ГЭРЭЭЛСЭН багцын олголт — `gdash.contractedScope`. Урьд нь
+               `FinData.planTotal` (гэрээ ЭСВЭЛ төсөв, 5·6·7-р хэсэг ч орсон бүх мөр)-аар
+               хуваадаг тул тайлбарынхаа «гэрээний нийт дүн»-тэй ч, Тайлангийн
+               `paidRate` · удирдлагын тайлангийн `fin.share`-тэй ч зөрж, хэдэн нэгж
+               хувиар доогуур төгсдөг байв. Сүүлийн цэг одоо тэдгээртэй НЭГ тоо. */
+            const sc = f ? contractedScope(f.contracts) : null;
+            const planTotal = sc?.amount ?? 0;
+            if (!f || !sc || !planTotal || ms.length < 2) return <Empty label={tr('Олголтын бүртгэл алга')} />;
             /* ⚠️ 2026-09-25: ОГНООГҮЙ олголтыг СҮҮЛИЙН цэгт нэмнэ. `given` цуваа
                нь огноогүй төлбөрийг хасдаг (`FinData.givenTotal`-ийг үз) тул
                урьд нь хуримтлал нийт олгосноос дутуу төгсдөг байв. Дунд цэгт
                оруулахгүй — хэзээ олгосон нь үл мэдэгдэх. */
             let givenAll = 0;
-            f?.givenTotal.forEach((v) => { givenAll += v; });
+            sc.keys.forEach((k) => { givenAll += f.givenTotal.get(k) ?? 0; });
             /* ⚠️ Огноотойг `f.given`-ээс ШУУД — `months` нь тэнхлэгийн цонхоор
-               тасардаг тул түүгээр хасвал цонхны гаднах олголт «огноогүй» болно. */
+               тасардаг тул түүгээр хасвал цонхны гаднах олголт «огноогүй» болно.
+               ⚠️ 2026-09-30: сар бүрийн дүн ч ГЭРЭЭЛСЭН багцаар (`m.given` — бүх багц БИШ). */
             let dated = 0;
-            f?.given.forEach((byMon) => byMon.forEach((v) => { dated += v; }));
+            const givenByMon = new Map<string, number>();
+            sc.keys.forEach((k) => f.given.get(k)?.forEach((v, mon) => {
+              dated += v;
+              givenByMon.set(mon, (givenByMon.get(mon) ?? 0) + v);
+            }));
             const undated = Math.max(0, givenAll - dated);
             let cum = 0;
             const pts = ms.map((m, i) => {
-              cum += m.given;
+              cum += givenByMon.get(m.label) ?? 0;
               const tail = i === ms.length - 1 && undated > 0.5;
               const v = ((tail ? cum + undated : cum) / planTotal) * 100;
               return {
@@ -3075,7 +3107,8 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             ];
             /* ⚠️ `text`/`nn` нь энэ модульд импортлогдоогүй — `String`/`Number`
                шууд. Талбай нь `area` эсвэл (бөглөгдөөгүй бол) `areaAlt`-аас. */
-            const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
+            /* ⚠️ 2026-10-01: `||` → `??` (`parcelAreaOf`) — хоосон нүд `null`, бүртгэгдсэн 0 нь 0 */
+            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
             /* ⚠️ 2026-09-06: «Үлдсэн нэгж талбар» ангилал алга — «Бүрэн
                чөлөөлсөн»-өөс БУСАД БҮГД нь чөлөөлөгдөөгүй. */
             const left = rows.filter((r) => String(r[PL.status] ?? '').trim() !== PARCEL_CLEARED);
@@ -3084,11 +3117,11 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               n: left.filter((r) => {
                 const a2 = parcelArea(r);
                 /* ⚠️ Талбайгүй парселийг ХАСНА (2026-09-15-ны аудит):
-                   parcelArea нь `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
+                   parcelArea нь (2026-10-01 хүртэл) `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
                    болж «0–300 м²» бүлэгт ЖИНХЭНЭ парсел мэт тоологдож, хамгийн
                    жижиг ангиллыг хөөрөгдөж байв. Доорх «га-гаар» хувилбар энэ
                    шалгуурыг аль хэдийн хийдэг. */
-                return a2 > 0 && a2 >= b.min && a2 < b.max;
+                return a2 != null && a2 > 0 && a2 >= b.min && a2 < b.max;
               }).length,
             })).filter((b) => b.n > 0);
             return counts.length ? (
@@ -3123,18 +3156,19 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'f4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
               { key: 'f5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
-            const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
+            /* ⚠️ 2026-10-01: `||` → `??` (`parcelAreaOf`) — хоосон нүд `null`, бүртгэгдсэн 0 нь 0 */
+            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
             const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
               n: done.filter((r) => {
                 const a2 = parcelArea(r);
                 /* ⚠️ Талбайгүй парселийг ХАСНА (2026-09-15-ны аудит):
-                   parcelArea нь `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
+                   parcelArea нь (2026-10-01 хүртэл) `|| 0` тул хоёр талбайн багана хоосон мөр 0 м²
                    болж «0–300 м²» бүлэгт ЖИНХЭНЭ парсел мэт тоологдож, хамгийн
                    жижиг ангиллыг хөөрөгдөж байв. Доорх «га-гаар» хувилбар энэ
                    шалгуурыг аль хэдийн хийдэг. */
-                return a2 > 0 && a2 >= b.min && a2 < b.max;
+                return a2 != null && a2 > 0 && a2 >= b.min && a2 < b.max;
               }).length,
             })).filter((b) => b.n > 0);
             return counts.length ? (
@@ -3166,13 +3200,14 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'a4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
               { key: 'a5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
-            const parcelArea = (r: Row) => Number(r[PL.area]) || Number(r[PL.areaAlt]) || 0;
+            /* ⚠️ 2026-10-01: `||` → `??` (`parcelAreaOf`) — хоосон нүд `null`, бүртгэгдсэн 0 нь 0 */
+            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
             const list = BUCKETS.map((b) => {
               const inB = rows.filter((r) => {
                 const a2 = parcelArea(r);
-                return a2 > 0 && a2 >= b.min && a2 < b.max;
+                return a2 != null && a2 > 0 && a2 >= b.min && a2 < b.max;
               });
-              return { ...b, n: inB.length, m2: inB.reduce((a2, r) => a2 + parcelArea(r), 0) };
+              return { ...b, n: inB.length, m2: inB.reduce((a2, r) => a2 + (parcelArea(r) ?? 0), 0) };
             }).filter((b) => b.n > 0);
             return list.length ? (
               <Bars

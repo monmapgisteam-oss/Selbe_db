@@ -28,7 +28,7 @@
 import assert from 'node:assert/strict';
 import {
   AIR_LEVELS, DAMAGE_RATE, FLOOD_LEVELS, FLOOD_SKIP_IDS, SEVERITY,
-  aqiOfPm25, buildMetrics, classOf, gradeOf, hourOf,
+  aqiOfPm25, buildMetrics, classOf, damageCost, gradeOf, hourOf,
 } from '@/lib/ersdel';
 
 /** Жишээ харуул — жинхэнэ давхаргын координатын хүрээнд (дээд ба доод урсгал) */
@@ -170,6 +170,29 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
 
   // Гол нь үерийн ХОХИРОГЧ биш (зурвас нь голоос үүсдэг)
   assert.ok(FLOOD_SKIP_IDS.has('sb:16'), 'гол үерийн тооцооноос хасагдана');
+}
+
+/* 8. ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗАМЫН ШУГАМ 0 ₮ БИШ.
+ *    «Авто зам»/«Одоо байгаа зам» (ирмэгийн шугам) `paved` (₮/м²)-д орж талбай 0
+ *    тул ЧИМЭЭГҮЙ 0 ₮ гардаг байв. Одоо: тэнхлэг (`et:5`) → ЕТ-ийн 2.5 тэрбум ₮/км,
+ *    ирмэг → `null` («тодорхойгүй», нийтэд орохгүй); нэгж-геометр зөрвөл `null`. */
+{
+  assert.equal(classOf('road', 'line'), 'roadEdge');
+  assert.equal(classOf('roadOld', 'line'), 'roadEdge');
+  assert.equal(classOf('et:5', 'line'), 'roadAxis');
+  assert.equal(DAMAGE_RATE.roadAxis.rate, 2_500_000, 'DATA_DICTIONARY: км тутамд 2.5 тэрбум (м тутамд 2,500,000 төгрөг)');
+  assert.equal(DAMAGE_RATE.roadAxis.per, 'm');
+  assert.equal(DAMAGE_RATE.roadEdge.rate, null);
+  const q = { area: 0, length: 120, n: 3 };
+  assert.equal(damageCost('roadEdge', 'line', q, 1), null, 'ирмэгийн шугам — тодорхойгүй');
+  assert.equal(damageCost('roadAxis', 'line', q, 0.5), 120 * 2_500_000 * 0.5);
+  /* Нэгж-геометр зөрөх: ₮/м² ангилал шугаманд, ₮/м ангилал талбайд — 0 БИШ null */
+  assert.equal(damageCost('paved', 'line', q, 1), null);
+  assert.equal(damageCost('pipe', 'area', { area: 50, length: 0, n: 1 }, 1), null);
+  /* Хэвийн замууд хэвээр */
+  assert.equal(damageCost('building', 'area', { area: 10, length: 0, n: 1 }, 1), 10 * DAMAGE_RATE.building.rate);
+  assert.equal(damageCost('tree', 'point', { area: 0, length: 0, n: 4 }, 0.25), 4 * DAMAGE_RATE.tree.rate * 0.25);
+  assert.equal(damageCost('tree', 'area', { area: 9, length: 0, n: 4 }, 1), 4 * DAMAGE_RATE.tree.rate, '«ширхэг» нь геометрээс үл хамаарна');
 }
 
 console.log('ersdel.check: OK');

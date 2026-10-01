@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { t as tr } from '@/lib/i18nCore';
 import { AuthProvider } from '@/components/AuthGate';
+import { LocaleRemount } from '@/lib/i18n';
 
 /**
  * ArcGIS SDK нь браузерын API-д (ResizeObserver, WebGL) шууд түшиглэдэг тул
@@ -11,6 +12,9 @@ import { AuthProvider } from '@/components/AuthGate';
  *
  * ⚠️ `AuthProvider` нь дээр — нүүр хуудас нэвтрэлтгүй ч харагдана; нэвтрэлт нь
  * харагдацад орох үед л шаардагдана (`useAuth`).
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `AuthProvider` нь `LocaleRemount`-ийн
+ *    ГАДНА — хэл солиход нэвтрэлтийн шалгалт (portal.load · эрхийн хүснэгт) ДАХИН
+ *    ЯВАХГҮЙ, зөвхөн `Root` (орчуулгатай дэд мод) remount болно (`i18n.tsx`-ийн ⚠️).
  */
 const Root = dynamic(() => import('@/components/Root'), {
   ssr: false,
@@ -32,7 +36,9 @@ const Root = dynamic(() => import('@/components/Root'), {
 export default function Page() {
   return (
     <AuthProvider>
-      <Root />
+      <LocaleRemount>
+        <Root />
+      </LocaleRemount>
     </AuthProvider>
   );
 }

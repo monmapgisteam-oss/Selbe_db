@@ -11,6 +11,8 @@
  *      1 толгой (шошго · preset · Сэргээх/Устгах) — НООРОГ
  *      2 эрхийн төрөл — «Төрлөөр тохируулах» (харагдац · нүүр цонх · ТЭЗҮ-БОНУ)
  *      3 харагдац · ТЭЗҮ-БОНУ — \`UserRights\` (ноорог)
+ *      4 урсгалтай 6 хуудас — \`UserWorkflow\` (ЗӨВХӨН ХАРУУЛНА, 2026-10-01: эх сурвалж ·
+ *        холбоос · «Дахин олгох»; хуудас нь хуваарилалтаар л нээгдэнэ)
  *
  * ⚠️ ХАДГАЛАХ ДҮРЭМ — хэрэглэгчийн эрхийн мөр (харагдац, үүрэг, устгах, сэргээх)
  *    НООРОГ; «Төрлөөр тохируулах» ШУУД (\`roleTypeApply\`) тул ноорогтой үед хаалттай.
@@ -19,6 +21,8 @@
 import { t as tr } from '@/lib/i18nCore';
 import { UserRights } from './UserRights';
 import { UserTypeSection } from './UserTypeSection';
+import { UserWorkflow } from './UserWorkflow';
+import type { ErhPane } from '@/modules/capText';
 import { roleOf } from '@/lib/permissions';
 import { UserHeadActions, UserHeadBadges, rightsProps, type UserRowProps } from './UserRow';
 import s from './userAdmin.module.css';
@@ -29,9 +33,11 @@ export type UserCardProps = {
   /** Энэ хэрэглэгчид хадгалаагүй ноорог байна — «Төрлөөр тохируулах» хаалттай */
   hasDraft: boolean;
   onBack: () => void;
+  /** Урсгалтай хуудасны эх сурвалжийн холбоос — тэр эрхийн хуудас руу (2026-10-01) */
+  onGo: (pane: ErhPane) => void;
 };
 
-export function UserCard({ p, hasDraft, onBack }: UserCardProps) {
+export function UserCard({ p, hasDraft, onBack, onGo }: UserCardProps) {
   const { u, d } = p;
   const key = u.username.trim().toLowerCase();
   /** Шинэ (хадгалаагүй) эсвэл устгахаар тэмдэглэсэн — шууд бичих хэсэг хаалттай */
@@ -59,6 +65,9 @@ export function UserCard({ p, hasDraft, onBack }: UserCardProps) {
           <UserRights {...rightsProps(p)} />
         </section>
       )}
+
+      {/* ── 4. Урсгалтай 6 хуудас — ЗӨВХӨН ХАРУУЛНА (2026-10-01); шинэ/устгах аккаунтад хуваарилалт байхгүй ── */}
+      {!blocked && <UserWorkflow key={`wf-${key}`} user={key} onGo={onGo} />}
       <p className={s.capNote}>
         {tr('Засах эрх (хуваарь · нэмэлт ажил · обьём · чанарын баримт · QAQC · дэд бүтэц · зөвшөөрөл · санхүү · газар) хажуугийн цэсний тухайн урсгалын хуудсанд олгогдоно.')}
       </p>

@@ -60,7 +60,29 @@ const row = (i, oid, des, vol, spans, extra = {}) => ({
   ]);
   const r = unbalancedObyem(plan, BLD, ob, new Map());
   assert.equal(r.bad, 1);
-  assert.deepEqual(r.names, ['1.2 Ажил 12'], 'зөвхөн шилжсэн ажил нэрлэгдэнэ — зөв хуваасан 1.1 биш');
+  /* ⚠️ 2026-09-30: нэр БЛОКТОЙ — идэвхтэй блок дээр тэнцсэн задаргаа хараад
+     «зөв хуваасан ч болохгүй» гэж төөрөхгүй */
+  assert.deepEqual(r.names, ['1.2 Ажил 12 (B1)'], 'зөвхөн шилжсэн ажил нэрлэгдэнэ — зөв хуваасан 1.1 биш');
+}
+
+/* ── 2б. (2026-09-30) Тэнцээгүй нь ИДЭВХГҮЙ блокт — нэр блокоо заана; олон блок нэг нэрэнд ── */
+{
+  const sp = span('2026-10-01', '2026-12-31');
+  const plan = [row(0, 7, 11, 900, [sp, sp])];
+  /* B1 (идэвхтэй гэж үзье) зөв; B2 гинжээр тайрагдсан */
+  const ob = new Map([
+    [obKey(11, 'B1'), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 })],
+    [obKey(11, 'B2'), M({ '2026-11': 300, '2026-12': 300 })],
+  ]);
+  let r = unbalancedObyem(plan, BLD, ob, new Map());
+  assert.deepEqual(r, { bad: 1, names: ['1.1 Ажил 11 (B2)'] }, 'тэнцээгүй блокийг нэрлэнэ');
+  ob.set(obKey(11, 'B1'), M({ '2026-10': 1 }));
+  r = unbalancedObyem(plan, BLD, ob, new Map());
+  assert.deepEqual(r, { bad: 2, names: ['1.1 Ажил 11 (B1, B2)'] }, 'нэг ажлын хоёр блок нэг нэрэнд');
+  /* Ганц блоктой (синтетик) багцад блок бичихгүй */
+  const one = [row(0, 7, 11, 900, [sp])];
+  r = unbalancedObyem(one, ['B1'], new Map([[obKey(11, 'B1'), M({ '2026-10': 1 })]]), new Map());
+  assert.deepEqual(r.names, ['1.1 Ажил 11'], 'ганц блок — нэр хэвээр');
 }
 
 /* ── 3. Хоосон задаргаа + хуваарьтай блок ── */
@@ -115,3 +137,93 @@ const row = (i, oid, des, vol, spans, extra = {}) => ({
 }
 
 console.log('✓ obyemGate: popup-ын шүүсэн задаргаа → хаалт → илгээлт → буулгалт');
+
+/* ══════════ 2026-10-01 (хэрэглэгч: бүгдийг зас) ══════════ */
+const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util.ts');
+
+/* ── 5. БҮЛГИЙН ЗАДАРГАА тэнцлийн шалгалтад ОРОХГҮЙ («Сарын обьём бүлэгт биш») ──
+ * ⚠️ Серверт бүлгийн кодоор хадгалагдсан задаргаа хүүхдийг чирэхэд тайрагдаж
+ *    «тэнцэхгүй» болж, засах замгүйгээр илгээх/батлах хаагддаг байв. */
+{
+  const sp = span('2026-10-01', '2026-12-31');
+  const g = row(0, 6, 10, 900, [sp, null], { group: true, depth: 0, no: '1', work: 'Бүлэг' });
+  const k = row(1, 7, 11, 900, [sp, null], { depth: 1 });
+  /* Бүлгийн тайрагдсан ноорог (хуучин чирэлтээс үлдсэн) — тоологдохгүй */
+  const ob = new Map([[obKey(10, 'B1'), M({ '2026-11': 300 })]]);
+  const srv = new Map([[10, new Map([['B1', M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 })]])]]);
+  assert.deepEqual(unbalancedObyem([g, k], BLD, ob, srv), { bad: 0, names: [] }, 'бүлгийн задаргаа хаалтыг түгжив');
+  assert.deepEqual(unbalancedBlocks(g, BLD, ob, srv), [], 'бүлэг хэзээ ч тэнцээгүй блоктой биш');
+  /* Мэдээлэл: серверт бүлгийн задаргаа бий — нэрлэнэ (устгахгүй) */
+  assert.deepEqual(groupSplits([g, k], BLD, srv), ['1 Бүлэг'], 'бүлгийн хадгалагдсан задаргааг мэдээлэх ёстой');
+  assert.deepEqual(groupSplits([g, k], BLD, new Map()), [], 'задаргаагүй бүлэг мэдээлэгдэхгүй');
+}
+
+/* ── 6. `unbalancedBlocks` — цонхны УЛААН ЧИП: үр дүнтэй задаргаа (ноорог ?? сервер) ── */
+{
+  const sp = span('2026-10-01', '2026-12-31');
+  const r = row(0, 7, 11, 900, [sp, sp]);
+  const srv = new Map([[11, new Map([['B2', M({ '2026-10': 100 })]])]]);
+  const ob = new Map([[obKey(11, 'B1'), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 })]]);
+  assert.deepEqual(unbalancedBlocks(r, BLD, ob, srv), [1], 'серверийн тэнцээгүй B2 улаан, тэнцсэн B1 биш');
+  assert.deepEqual(unbalancedBlocks(r, BLD, ob, srv, true), [], 'илгээх хаалт (draftOnly) — зөвхөн ноорог');
+  /* Ноорог хоосон + серверт байсан + хуваарьтай → улаан (хаалттай ижил) */
+  const ob2 = new Map([[obKey(11, 'B2'), new Map()]]);
+  assert.deepEqual(unbalancedBlocks(r, BLD, ob2, srv, true), [1]);
+  /* Обьёмгүй мөр — шалгах суурьгүй */
+  assert.deepEqual(unbalancedBlocks(row(0, 7, 11, null, [sp, sp]), BLD, ob, srv), []);
+}
+
+/* ── 7. `obyemOutsideSpan` — БАТЛАХЫН ӨМНӨ: обьёмтой сар ажлын мужаас гадуур ── */
+{
+  const sp = span('2026-10-01', '2026-11-30');
+  const r = row(0, 7, 11, 900, [sp, null]);
+  const r2 = row(1, 8, 12, 900, [sp, sp]);
+  const g = row(2, 9, 13, 900, [sp, null], { group: true, depth: 0 });
+  const data = new Map([
+    [obKey(11, 'B1'), M({ '2026-09': 50, '2026-10': 400, '2026-11': 400, '2026-12': 50 })],
+    [obKey(12, 'B2'), M({ '2026-10': 450, '2026-11': 450, '2027-01': 0 })],   // 0 нь асуудал биш
+    [obKey(13, 'B1'), M({ '2027-05': 900 })],                                  // бүлэг — алгасна
+  ]);
+  const obOf = (des, blok) => data.get(obKey(des, blok)) ?? new Map();
+  const res = obyemOutsideSpan([r, r2, g], BLD, obOf);
+  assert.equal(res.bad, 1, `зөвхөн 1.1 · B1: ${JSON.stringify(res)}`);
+  assert.deepEqual(res.names, ['1.1 Ажил 11 (B1: 2026-09, 2026-12)'], 'ажил · блок · сарыг нэрлэнэ');
+  /* Хуваарьгүй блокт обьём → бүх сар гадуур */
+  const r3 = row(0, 7, 11, 900, [null, null]);
+  assert.equal(obyemOutsideSpan([r3], BLD, obOf).bad, 1, 'хуваарьгүй блокийн обьём гадуур');
+  /* `only` — энэ саналаар өөрчлөгдсөн мөр л */
+  assert.equal(obyemOutsideSpan([r, r2], BLD, obOf, new Set([8])).bad, 0, 'өөрчлөгдөөгүй мөрийн хуучин өгөгдлөөр батлагч гацахгүй');
+  /* Ганц блоктой багцад блок бичихгүй */
+  assert.deepEqual(obyemOutsideSpan([row(0, 7, 11, 900, [sp])], ['B1'], obOf).names, ['1.1 Ажил 11 (2026-09, 2026-12)']);
+}
+
+/* ── 8. ЭХ КОД: бүлгийн задаргааг чирэлт · хадгалалт хөндөхгүй; батлах хаалт; «Ноорог хаях» тоо ── */
+{
+  const fs = await import('node:fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const H = strip(fs.readFileSync('src/modules/Huvaari.tsx', 'utf8'));
+  const SP = strip(fs.readFileSync('src/modules/huvaari/savePrep.ts', 'utf8'));
+  /* applyChanges — obDraft ба obResDraft хоёулаа бүлэг алгасна */
+  const ai = H.indexOf('const applyChanges = useCallback(');
+  const ae = H.indexOf('const applyModal = useCallback(', ai);
+  const ac = H.slice(ai, ae);
+  assert.equal((ac.match(/if \(r\.group \|\| r\.des == null \|\| !\(r\.vol != null && r\.vol > 0\)\) continue;/g) ?? []).length, 2,
+    'applyChanges: бүлгийн сарын обьём/нөөцийг чирэлтээр тайрсаар байна');
+  /* savePrep — бүлгийн ноорог бичигдэхгүй, тэнцэлд тоологдохгүй (balanced-аас ӨМНӨ) */
+  const gi = SP.indexOf('if (r.group) { grpSkipped += 1; continue; }');
+  assert.ok(gi > 0 && gi < SP.indexOf('!balanced(months, r.vol)'), 'savePrep: бүлгийн задаргаа unbal-д тоологдож байна');
+  /* «Ноорог хаях» — асуултын тоо = товчны тоо (dirtyRows) */
+  const di = H.indexOf("tr('Ноорог хаях')");
+  const dc = H.lastIndexOf('window.confirm(', di);
+  assert.ok(dc > 0 && /num\(dirtyRows\), others/.test(H.slice(dc, di)), '«Ноорог хаях»-ын асуулт товчноос өөр тоо харуулж байна');
+  assert.ok(/\{tr\('Ноорог хаях'\)\} \(\{num\(dirtyRows\)\}\)/.test(H), 'товчны тоо dirtyRows хэвээр');
+  /* Батлах эффект — мужаас гадуурх обьёмд эх хуудсанд бичихгүй (save-ээс ӨМНӨ) */
+  const ei = H.indexOf('if (approving == null || busy) return;');
+  const es = H.indexOf('void save().then(', ei);
+  const eff = H.slice(ei, es);
+  assert.ok(/if \(obOut\.bad > 0\) \{\s*void releasePlanClaim\(/.test(eff), 'батлах эффект: мужаас гадуурх обьёмыг шалгахгүй байна');
+  /* PlanModal руу тэнцээгүй блокууд дамжина */
+  assert.ok(/badBlks=\{modalBad\}/.test(H) && /unbalancedBlocks\(modalRow, sc\.bld, obDraft, obPlan\)/.test(H), 'PlanModal-д улаан чипийн өгөгдөл дамжихгүй');
+}
+
+console.log('✓ obyemGate 2026-10-01: бүлгийн задаргаа алгасна · улаан чип · мужаас гадуурх обьём · «Ноорог хаях» тоо');

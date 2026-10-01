@@ -101,6 +101,8 @@ export function ChanarAcl() {
         user: a.user,
         viaAll: held === 'all',
         gone: !known.has(a.user),
+        /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
+        admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
       }] : [];
@@ -108,7 +110,8 @@ export function ChanarAcl() {
 
   /** Багц бүрийн гацаа — нэг удаа тооцоод мөр, нүд хоёуланд */
   const state = new Map(PKG_GROUPS.map((group) => {
-    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).map((h) => h.user)])) as Record<ChanarRole, string[]>;
+    /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) гацааны шалгуурт тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
+    const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone).map((h) => h.user)])) as Record<ChanarRole, string[]>;
     const authors = by.author;
     /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх.
        ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, `erhOverview.noOther` ба ScopedAclPanel

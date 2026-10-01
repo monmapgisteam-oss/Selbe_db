@@ -113,3 +113,21 @@ assert.equal(c0.from, null);
 }
 
 console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓ planAt ✓');
+
+/* ── spanFrac — ГАНЦ томъёо (2026-10-01, хэрэглэгчийн шийдвэр «бүгдийг зас») ──
+ * ⚠️ `bagtsSheet.planAt` ба `huvaariObyem.planPctFromMonths` (сарын цонх = сар ∩ ажлын
+ *    муж) хоёулаа үүнийг дууддаг. Хоёр захыг оруулсан, `asOf` өдрийн төгсгөлөөр. */
+{
+  const { spanFrac } = await import('./plan.ts');
+  const sp = span('2026-03-20', '2026-03-29');
+  assert.equal(spanFrac(sp, d('2026-03-01')), 0, 'эхлэхээс өмнө 0 — сарын эхэнд «хоцорсон» биш');
+  assert.equal(spanFrac(sp, d('2026-03-20')), 0.1, 'эхлэх өдөр 1/10');
+  assert.equal(spanFrac(sp, d('2026-03-29')), 1, 'дуусах өдөр 100%');
+  assert.equal(spanFrac(sp, d('2026-03-20') + 23 * 3_600_000), 0.1, 'цаг нөлөөгүй — өдрийн төгсгөлөөр');
+  assert.equal(spanFrac(span('2026-03-20', '2026-03-20'), d('2026-03-20')), 1, '1 хоногийн ажил тэр өдөртөө 100%');
+  assert.doesNotThrow(() => spanFrac(span('2026-03-29', '2026-03-20'), d('2026-03-25')), 'урвуу муж унахгүй');
+  for (const at of ['2026-03-01', '2026-03-20', '2026-03-24', '2026-03-29', '2026-04-10']) {
+    assert.equal(planAt(d(at), sp.start, sp.end), spanFrac(sp, d(at)), `planAt ≡ spanFrac (${at})`);
+  }
+}
+console.log('plan.check: ok — spanFrac ✓');

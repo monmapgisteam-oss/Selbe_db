@@ -6,6 +6,7 @@
 import { useState } from "react";
 import type { SheetRow } from "../bagtsSheet";
 import { t as tr } from "@/lib/i18nCore";
+import { normCell } from "../paste";
 import { RO, qty } from "./util";
 import st from "../sheet.module.css";
 
@@ -21,7 +22,7 @@ import st from "../sheet.module.css";
  * blur/Enter үед `onSet` рүү очно.
  */
 export function PvCell({
-  r, canEdit, draft, preview, hasField, locked, onSet, cls, ro, negj,
+  r, canEdit, draft, preview, hasField, locked, onSet, cls, ro, negj, onBad,
 }: {
   r: SheetRow;
   canEdit: boolean;
@@ -33,6 +34,8 @@ export function PvCell({
   cls: (c: string) => string;
   ro: (msg: string) => { title: string; onClick: () => void };
   negj: string | null;
+  /** ⚠️ 2026-09-30: буруу утгын анхааруулга (хөвөгч `warn`) */
+  onBad?: (msg: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -61,10 +64,18 @@ export function PvCell({
           defaultValue={dirty ? draft : (saved == null ? "" : String(saved))}
           placeholder={tr('обьём')}
           onBlur={(e) => {
-            const t = e.target.value.trim();
+            const t0 = e.target.value.trim();
+            /* ⚠️ 2026-09-30: гүйцэтгэлийн нүдтэй ИЖИЛ задлагч (`paste.normCell`) — урьд нь
+               `Number()` шууд тул «1 250» (мянгатын зай) · «12,5» ЧИМЭЭГҮЙ хаягдаж, сөрөг
+               обьём («-5») батлуулахаар илгээгддэг байв. Буруу бол ИЛ хэлнэ. */
+            const t = t0 === "" ? "" : normCell(t0);
+            if (t === null || (t !== "" && Number(t) < 0)) {
+              onBad?.(tr('Төлөвлөсөн обьём: «{0}» — тоо биш, тодорхойгүй эсвэл сөрөг тул бичигдсэнгүй. 1250 эсвэл 1.25 гэж бичнэ үү.', t0));
+              setOpen(false);
+              return;
+            }
             /* Хадгалагдсантайгаа ижил бол ноорогт ҮЛДЭЭХГҮЙ */
             const v = t === "" ? null : Number(t);
-            if (t !== "" && !Number.isFinite(v)) { setOpen(false); return; }
             if ((saved ?? null) === v) onSet(null); else onSet(t);
             setOpen(false);
           }}

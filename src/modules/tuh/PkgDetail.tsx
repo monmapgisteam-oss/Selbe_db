@@ -8,6 +8,9 @@
  * ⚠️ Хуваарийн мэдээлэл (гол үе шат, Level 3, хүн хүч/техник, улсын комисс) нь
  *    «Хуваарь»-ийн бөглөх хуудаснаас (`loadPkgSchedule`) — ЗӨВХӨН энэ багцынх.
  * ⚠️ Эх сурвалжгүй хэсэг бүтцээрээ «—» (хэрэглэгчийн сонголт, 2026-09-30).
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮХЭЛДЭЭ хоосон хэсэг (Зураг, Асуудал, Хамааралтай
+ *    орон сууц, баримтгүй Материал) ХУРААГДСАН (`Section empty`); ачаалж буй тоо «…»;
+ *    «Сүүлд тайлагнасан» нь ЭНЭ багцынх (урьд нь төслийн нийт огноо байв).
  */
 import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -19,9 +22,9 @@ import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
 import { statusOf as planStatus } from '@/lib/plan';
 import {
   groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
-  TUH_STATUS, statusOf as tuhStatus,
+  TUH_STATUS, statusOf as tuhStatus, firstFilled, rowProgress,
 } from '@/lib/tuhData';
-import type { TuhModel, TuhRow } from './model';
+import { lz, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Meter, Legend, BarChart, Gantt, type GanttRow } from './charts';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
@@ -29,7 +32,7 @@ import { Meter, Legend, BarChart, Gantt, type GanttRow } from './charts';
 import { ProgChart } from '@/modules/PkgProg';
 import { ComboChart, lagLevel } from '@/modules/Finance';
 import {
-  Section, StatusChip, EmptyRow, GanttLegend, ganttDomain, level1Rows, pp,
+  Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp,
 } from './Overview';
 import s from '../tuh.module.css';
 
@@ -61,12 +64,16 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
 }) {
   const housing = r.p.group === 'housing';
   const now = m.now;
-  const hasSheets = sheetsOf(r.p.pkgKey).length > 0;
+  /* ⚠️ 2026-09-30: хуваарь нь түлхүүрийн ЭЗЭН мөрийнх (`TuhRow.own`) — зураг төслийн мөр барилгын
+     хуваарийг (гол үе шат, Level 3, нөөц) өөрийнх мэт харуулахгүй (`tuhData.keyOwners`-ийн ⚠️) */
+  const hasSheets = r.own && sheetsOf(r.p.pkgKey).length > 0;
   const schedQ = useAsync(
     () => (hasSheets ? loadPkgSchedule(r.p.pkgKey) : Promise.resolve([])),
     [r.p.pkgKey, hasSheets],
   );
   const sched = schedQ.state === 'ready' ? schedQ.data : null;
+  /** Хуваарь ачаалж байхад «—» → «…» (`model.lz`-ийн ⚠️) */
+  const schedWait = (t: string): string => (t === '—' && hasSheets && schedQ.state === 'loading' ? '…' : t);
 
   const derived = useMemo(() => {
     if (!sched) return null;
@@ -110,18 +117,26 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
   const go = (id: string) => document.getElementById(`tuh-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   /* IPC */
-  const pays: Row[] = useMemo(() => r.ipc?.contracts.flatMap((c) => c.pays) ?? [], [r.ipc]);
-  /** Олголтын бүртгэл — огноогоор, хуримтлалтай (render дотор хувьсагч өөрчлөхгүй) */
+  /**
+   * Олголтын бүртгэл — огноогоор, хуримтлалтай (render дотор хувьсагч өөрчлөхгүй).
+   * ⚠️ 2026-09-30: (1) ЗӨВХӨН дүнтэй мөр — AUTO мөр (`dun` хоосон, огноо нь батлалтын
+   *    өдөр) олголт БИШ (`ipcTable.payCount`-ийн ⚠️); урьд нь «олгосон огноо»-той мөр болж
+   *    харагддаг байв. (2) «гэрээний %»-ийн ТООЛОГЧ = гэрээт дүн нь тодорхой гэрээний
+   *    олголт (`cumKnown`) — хуваарь (`contractTotal`)-тай нэг хүрээ (`ipcOf.paidPct` ·
+   *    `ipcTable.ipcTotals`); «Хуримтлагдсан» ₮ нь хэвээр БҮХ олголт.
+   */
   const payLog = useMemo(() => {
     const P = HO_IPC.payFields;
-    const sorted = [...pays].sort((a, b) => String(a[P.payDate] ?? '').localeCompare(String(b[P.payDate] ?? '')));
-    return sorted.reduce<{ p: Row; amt: number | null; cum: number }[]>((acc, p) => {
-      const amt = numOf(p[P.amount]);
-      const prev = acc.length ? acc[acc.length - 1].cum : 0;
-      acc.push({ p, amt, cum: prev + (amt ?? 0) });
+    const pays = (r.ipc?.contracts ?? []).flatMap((c) => c.pays.map((p) => ({ p, known: c.contractTotal != null })))
+      .filter((x) => numOf(x.p[P.amount]) != null)
+      .sort((a, b) => String(a.p[P.payDate] ?? '').localeCompare(String(b.p[P.payDate] ?? '')));
+    return pays.reduce<{ p: Row; amt: number | null; cum: number; cumKnown: number }[]>((acc, { p, known }) => {
+      const amt = numOf(p[P.amount]) ?? 0;
+      const prev = acc.length ? acc[acc.length - 1] : null;
+      acc.push({ p, amt, cum: (prev?.cum ?? 0) + amt, cumKnown: (prev?.cumKnown ?? 0) + (known ? amt : 0) });
       return acc;
     }, []);
-  }, [pays]);
+  }, [r.ipc]);
   const l1 = useMemo(() => level1Rows(m.rows.filter((x) => x.p.key === r.p.key), onOpen, r.p.key), [m.rows, r.p.key, onOpen]);
   const dom = ganttDomain([
     { start: r.p.start, end: r.p.end, extra: [r.commission, ...(derived?.l3.flatMap((g) => [g.start ?? null, g.end ?? null]) ?? [])] },
@@ -141,7 +156,7 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             <h1>{r.p.name || '—'}</h1>
             <div className={s.chips}>
               <StatusChip st={r.status} />
-              <span className={s.chip}>{tr('Сүүлд тайлагнасан')} {m.lastReport ?? '—'}</span>
+              <span className={s.chip}>{tr('Сүүлд тайлагнасан')} <ReportAge r={r} /></span>
             </div>
           </div>
         </div>
@@ -160,31 +175,33 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           <span className={s.statLabel}>{tr('Нийт гүйцэтгэл')}</span>
           <span className={s.statValue}>{pct(r.progress, 2)}</span>
           <Meter value={r.progress} plan={r.planContract} />
-          <span className={s.statNote}>{tr('Гэрээний төлөвлөгөө {0}', pct(r.planContract))}</span>
+          <span className={s.statNote}>{tr('Гэрээний төлөвлөгөө {0}', lz(m, 'cfPlan')(pct(r.planContract)))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('7 хоногийн ахиц')}</span>
-          <span className={s.statValue}>{pp(r.week)}</span>
+          <span className={s.statValue}>{lz(m, 'hist')(pp(r.week))}</span>
           <span className={s.statNote}>{tr('Өнгөрсөн 7 хоногийн төлөвлөгөө: {0}', '—')}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${r.gapContractor != null && r.gapContractor < 0 ? s.bad : s.good}`}>{pp(r.gapContractor)}</span>
-          <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2))}</span>
+          <span className={`${s.statValue} ${r.gapContractor != null && r.gapContractor < 0 ? s.bad : s.good}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
+          <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${r.gapContract != null && r.gapContract < 0 ? s.bad : s.good}`}>{pp(r.gapContract)}</span>
-          <span className={s.statNote}>{tr('SPI (гэрээ) {0}', r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2))}</span>
+          <span className={`${s.statValue} ${r.gapContract != null && r.gapContract < 0 ? s.bad : s.good}`}>{lz(m, 'cfPlan')(pp(r.gapContract))}</span>
+          <span className={s.statNote}>{tr('SPI (гэрээ) {0}', lz(m, 'cfPlan')(r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2)))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Хүн хүч')}</span>
-          <span className={s.statValue}>{num(r.workers ?? derived?.hun ?? null)}<small>{tr('хүн')}</small></span>
+          {/* ⚠️ 2026-09-30: багц ХАБЭА-д холбоотой бол ЗӨВХӨН ХАБЭА (тайлангүй → «—»); хуваарийн
+              ТӨЛӨВЛӨСӨН нөөцийн нийлбэрийг (`resourcesOf`) бодит тоо мэт орлуулахгүй */}
+          <span className={s.statValue}>{r.workerDays.length ? num(r.workers) : schedWait(lz(m, 'workforce')(num(derived?.hun ?? null)))}<small>{tr('хүн')}</small></span>
           <span className={s.statNote}>{tr('шууд / шууд бус: {0}', '—')}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Машин, техник')}</span>
-          <span className={s.statValue}>{num(r.technik ?? derived?.mashin ?? null)}<small>{tr('нэгж')}</small></span>
+          <span className={s.statValue}>{r.workerDays.length ? num(r.technik) : schedWait(lz(m, 'workforce')(num(derived?.mashin ?? null)))}<small>{tr('нэгж')}</small></span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээт хугацаа')}</span>
@@ -263,10 +280,15 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             <tbody>
               {r.p.rows.map((c, i) => {
                 const C = CASHFLOW_NEW.fields;
-                const F = { pkg: C.pkg, name: C.detail, contractor: C.contractor, cost: C.budget, end: C.endDate, prog: C.progressPct, note: C.amountNote };
+                const F = { pkg: C.pkg, name: C.detail, contractor: C.contractor, cost: C.budget, end: C.endDate, note: C.amountNote };
                 const one = r.p.rows.length === 1;
-                const pr = one ? r.progress : numOf(c[F.prog]);
-                const st = one ? r.status : tuhStatus({ contracted: String(c[F.note] ?? '').trim() === CONTRACTED, progress: pr, gap: null });
+                /* ⚠️ 2026-10-01: зураг төслийн мөрд шатны талбар (`tuhData.rowProgress`) — барилгын
+                   `guitsetgel_huvi` биш; хоосон бол «Мэдээлэлгүй» (`statusOf`-ийн `nullAs`) */
+                const pr = one ? r.progress : rowProgress(r.p.group, c);
+                const st = one ? r.status : tuhStatus({
+                  contracted: String(c[F.note] ?? '').trim() === CONTRACTED, progress: pr, gap: null,
+                  nullAs: r.p.group === 'design' ? 'unknown' : 'todo',
+                });
                 return (
                   <tr key={i}>
                     <td>{String(c[F.pkg] ?? '—')}</td>
@@ -316,7 +338,7 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
       <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
         <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} />
         <h3>{tr('Хүн хүч (хүн)')}</h3>
-        {r.workerDays.length ? (
+        {r.workerDays.some((d) => d.value != null) ? (
           <>
             <BarChart items={r.workerDays.map((d) => ({ key: d.key, label: d.key, value: d.value }))} fmt={(v) => num(v)} />
             <p className={s.note}>{tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(r.workerDays.length))}</p>
@@ -326,11 +348,11 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
         <div className={s.stats}>
           {([
             ['EV', mnt(r.ev.ev)],
-            [tr('PV (гэрээ)'), mnt(r.ev.pvContract)],
-            [tr('PV (гүйцэтгэгч)'), mnt(r.ev.pvContractor)],
-            [tr('SV (гэрээ)'), r.ev.svContract == null ? '—' : `${r.ev.svContract < 0 ? '−' : ''}${mnt(Math.abs(r.ev.svContract))}`],
-            [tr('SPI (гэрээ)'), r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2)],
-            [tr('SPI (гүйцэтгэгч)'), r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)],
+            [tr('PV (гэрээ)'), lz(m, 'cfPlan')(mnt(r.ev.pvContract))],
+            [tr('PV (гүйцэтгэгч)'), lz(m, 'plan')(mnt(r.ev.pvContractor))],
+            [tr('SV (гэрээ)'), lz(m, 'cfPlan')(r.ev.svContract == null ? '—' : `${r.ev.svContract < 0 ? '−' : ''}${mnt(Math.abs(r.ev.svContract))}`)],
+            [tr('SPI (гэрээ)'), lz(m, 'cfPlan')(r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2))],
+            [tr('SPI (гүйцэтгэгч)'), lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2))],
           ] as [string, string][]).map(([k, v]) => (
             <div key={k} className={s.stat}><span className={s.statLabel}>{k}</span><span className={s.statValue} style={{ fontSize: '1rem' }}>{v}</span></div>
           ))}
@@ -357,8 +379,8 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
               <dl className={s.kv}>
                 <dt>{tr('Нийт гүйцэтгэл')}</dt><dd>{pct(r.progress)}</dd>
                 <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
-                <dt>{tr('Барилга дуусах (гүйцэтгэгчийн төлөвлөгөө)')}</dt><dd>{date(derived?.finish ?? null)}</dd>
-                <dt>{tr('Гэрээний төлөвлөгөөнөөс')}</dt><dd>{pp(r.gapContract)}</dd>
+                <dt>{tr('Барилга дуусах (гүйцэтгэгчийн төлөвлөгөө)')}</dt><dd>{schedWait(date(derived?.finish ?? null))}</dd>
+                <dt>{tr('Гэрээний төлөвлөгөөнөөс')}</dt><dd>{lz(m, 'cfPlan')(pp(r.gapContract))}</dd>
               </dl>
             </div>
           </div>
@@ -366,25 +388,27 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             <span className={s.stepNo}>{tr('3 · Улсын комисс')}</span>
             <dl className={s.kv}>
               <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
-              <dt>{tr('Хамгийн эрт ашиглалтад')}</dt><dd><b>{date(r.commission)}</b></dd>
-              <dt>{tr('Хоцролт')}</dt><dd className={r.delay != null && r.delay > 0 ? s.bad : ''}>{r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`)}</dd>
+              <dt>{tr('Хамгийн эрт ашиглалтад')}</dt><dd><b>{lz(m, 'commission')(date(r.commission))}</b></dd>
+              <dt>{tr('Хоцролт')}</dt><dd className={r.delay != null && r.delay > 0 ? s.bad : ''}>{lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}</dd>
             </dl>
           </div>
           <p className={s.note}>{tr('Огноо нь «Хуваарь» хэсгийн «Улсын комисс» мөрөөс. Салбар багцын хамаарал системд бүртгэгдээгүй.')}</p>
         </Section>
       ) : (
-        <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')}>
+        /* ⚠️ 2026-10-01: эх сурвалжгүй — хураагдсан (`Section empty`) */
+        <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')} empty>
           <p className={s.note}>—</p>
         </Section>
       )}
 
-      {/* ── Зураг ── */}
-      <Section id="tuh-drawings" title={tr('Зураг')}>
+      {/* ── Зураг ── (эх сурвалжгүй — хураагдсан) */}
+      <Section id="tuh-drawings" title={tr('Зураг')} empty>
         <p className={s.note}>—</p>
       </Section>
 
-      {/* ── Материал ── */}
-      <Section id="tuh-materials" title={tr('Материалын хуваарь, төлөв')}>
+      {/* ── Материал ── (MA/MIR алга, ачаалж дууссан бол хураагдсан) */}
+      <Section id="tuh-materials" title={tr('Материалын хуваарь, төлөв')}
+        empty={!r.docs.some((d) => d.kind === 'MA' || d.kind === 'MIR') && !m.loading.has('docs')}>
         <h3>{tr('Материалын 3-6-9 долоо хоногийн төлөвлөгөө')}</h3>
         <div className={s.weeks}>
           <div className={s.week}><b>{tr('Хугацаа хэтэрсэн')}</b>—</div>
@@ -404,7 +428,7 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
                   <td><span className={s.chip} data-tone={d.status === MS_STATUS.approved ? 'good' : d.status === MS_STATUS.returned ? 'bad' : 'warn'}>{statusLabel(d.kind, d.status)}</span></td>
                 </tr>
               ))}
-              {!r.docs.some((d) => d.kind === 'MA' || d.kind === 'MIR') && <EmptyRow cols={6} />}
+              {!r.docs.some((d) => d.kind === 'MA' || d.kind === 'MIR') && <EmptyRow cols={6} loading={m.loading.has('docs')} />}
             </tbody>
           </table>
         </div>
@@ -443,7 +467,11 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             <span className={s.statLabel}>{tr('Олгосон санхүүжилт')}</span>
             <span className={s.statValue}>{mnt(r.ipc?.paid ?? null)}</span>
             <Meter value={r.ipc?.paidPct ?? null} plan={r.progress} />
-            <span className={s.statNote}>{tr('{0} гэрээний · биет гүйцэтгэл {1}', pct(r.ipc?.paidPct ?? null), pct(r.progress))}</span>
+            <span className={s.statNote}>
+              {tr('{0} гэрээний · биет гүйцэтгэл {1}', pct(r.ipc?.paidPct ?? null), pct(r.progress))}
+              {/* ⚠️ 2026-10-01: хувьд ороогүй олголт тусад нь («IPC» хуудастай ижил) */}
+              {r.ipc?.paidOther != null && r.ipc.paidOther !== 0 && <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(r.ipc.paidOther))}</>}
+            </span>
           </div>
           <div className={s.stat}>
             <span className={s.statLabel}>{tr('Урьдчилгаа')}</span>
@@ -482,7 +510,7 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
               {(() => {
                 const P = HO_IPC.payFields;
                 const tot = r.ipc?.contractTotal ?? null;
-                return payLog.map(({ p, amt, cum }, i) => {
+                return payLog.map(({ p, amt, cum, cumKnown }, i) => {
                   const kind = String(p[P.kind] ?? '');
                   return (
                     <tr key={i}>
@@ -493,12 +521,12 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
                       <td>{String(p[P.payDate] ?? '').slice(0, 10) || '—'}</td>
                       <td className={s.num}>{mnt(amt)}</td>
                       <td className={s.num}>{mnt(cum)}</td>
-                      <td className={s.num}>{tot ? pct((cum / tot) * 100) : '—'}</td>
+                      <td className={s.num}>{tot ? pct((cumKnown / tot) * 100) : '—'}</td>
                     </tr>
                   );
                 });
               })()}
-              {!pays.length && <EmptyRow cols={6} />}
+              {!payLog.length && <EmptyRow cols={(r.ipc?.contracts.length ?? 0) > 1 ? 7 : 6} />}
             </tbody>
           </table>
         </div>
@@ -512,19 +540,20 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             </tr></thead>
             <tbody>
               {(r.ipc?.contracts ?? []).map((c) => {
-                const raw = c.pays[0] ?? {};
+                /* ⚠️ 2026-09-30: `c.pays[0]` (толгой мөр) БИШ — `tuhData.firstFilled`-ийн ⚠️ */
                 const CF = HO_IPC.contractFields;
+                const pick = (k: string) => firstFilled(c.pays, k);
                 const pend = c.pays.flatMap((p) => Object.values(HO_PENDING).map((f) => numOf(p[f]))).filter((x): x is number => x != null);
                 return (
                   <tr key={`${c.code}|${c.contractNo}`}>
                     <td>{c.code || '—'}</td>
                     <td>{c.contractor || '—'}</td>
-                    <td>{c.contractNo || '—'}<small>{[raw[CF.order1No], raw[CF.order2No], raw[CF.order3No]].filter(Boolean).join(' · ')}</small></td>
+                    <td>{c.contractNo || '—'}<small>{[pick(CF.order1No), pick(CF.order2No), pick(CF.order3No)].filter(Boolean).join(' · ')}</small></td>
                     <td className={s.num}>{mnt(c.budgetTotal)}</td>
                     <td className={s.num}>{mnt(c.contractTotal)}</td>
                     <td className={s.num}>{mnt(c.saving)}</td>
-                    <td className={s.num}>{mnt(numOf(raw[CF.budgetCity]))}</td>
-                    <td className={s.num}>{mnt(numOf(raw[CF.budgetSales]))}</td>
+                    <td className={s.num}>{mnt(numOf(pick(CF.budgetCity)))}</td>
+                    <td className={s.num}>{mnt(numOf(pick(CF.budgetSales)))}</td>
                     <td className={s.num}>{pend.length ? mnt(pend.reduce((a, b) => a + b, 0)) : '—'}</td>
                   </tr>
                 );
@@ -536,7 +565,8 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
       </Section>
 
       {/* ── Асуудал ── */}
-      <Section id="tuh-issues" title={tr('Асуудал')}>
+      {/* ⚠️ 2026-10-01: эх сурвалжгүй — хураагдсан */}
+      <Section id="tuh-issues" title={tr('Асуудал')} empty>
         <div className={s.three}>
           <div className={s.panel}><h3>{tr('Өнгөрсөн 7 хоногийн ололт')}</h3><p className={s.note}>—</p></div>
           <div className={s.panel} data-tone="bad"><h3>{tr('Тулгамдсан асуудал')}</h3><p className={s.note}>—</p></div>

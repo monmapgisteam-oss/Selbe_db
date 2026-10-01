@@ -199,10 +199,24 @@ export default function Root() {
   }, [authorized]);
 
   /** Back/Forward — URL-аас горимыг сэргээнэ */
+  /* ⚠️ 2026-09-30: ХОЙШЛУУЛЖ (`setTimeout`) уншина — Portal-ийн popstate сонсогч
+     («Гарах уу?» баталгаа, `Portal.inPortalUrl`) ЭХЭЛЖ ажиллах ёстой: хэрэглэгч
+     татгалзвал тэр нь URL-ыг буцааж бичдэг. Энэ сонсогч эхэлж бүртгэгддэг тул урьд
+     нь ЭХЭЛЖ ажиллаж scope-ыг null болгоод, «Үгүй» гэсэн ч Portal unmount болж
+     хадгалаагүй ажил алга болдог байв (URL портал, дэлгэц нүүр — зөрнө).
+     ⚠️ Микро-даалгавар (`queueMicrotask`) ХАНГАЛТГҮЙ: сонсогч бүрийн дараа
+     микро-даалгаврууд ажилладаг тул Portal-ийн сонсогчоос ӨМНӨ гүйнэ. */
   useEffect(() => {
-    const onPop = () => setScope(scopeFromUrl());
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const onPop = () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => { t = null; setScope(scopeFromUrl()); }, 0);
+    };
     window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (t) clearTimeout(t);
+    };
   }, []);
 
   const enterAll = () => {

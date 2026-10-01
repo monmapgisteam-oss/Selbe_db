@@ -8,20 +8,19 @@ import type { Pkg, Schema } from "../bagts.pkg";
 import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
 import {
-  decideObyem, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
-  submitObyem, type ObyemSubmission, type ObyemPayload,
+  decideObyem, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
+  submitObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
 
-export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
-  pkg: Pkg;
-  /** ОДОО сонгогдсон багцын түлхүүр — синхрон (FillNew-ийн `pkgKeyRef`-ийн ⚠️) */
-  pkgKeyRef: RefObject<string>;
-  rows: SheetRow[];
-  sc: Schema | null;
-  user: { username: string } | null;
-  locked: boolean;
-}) {
+/**
+ * ОБЬЁМЫН ТӨЛӨВ (зөвхөн `useState`) — 2026-10-01: `useObyem`-ээс САЛГАВ.
+ * ⚠️ FillNew-ийн ачаалах эффект багц солиход `setPv*`-ээр эдгээрийг ТЭГЛЭДЭГ тул тэр эффектээс
+ *    ДЭЭР зарлагдах ёстой (React Compiler: «зарлагдахаас өмнө хандсан»). Эффект · урсгалтай
+ *    `useObyem` нь ХУУЧИН байрлалдаа — эффектүүдийн дараалал хэвээр; энд зөвхөн төлөвийн
+ *    зарлалт тул зан төлөв өөрчлөгдөхгүй.
+ */
+export function useObyemState() {
   /**
    * Инженерийн обьёмын НООРОГ — `oid` → бичсэн текст ("" = цэвэрлэх).
    * ⚠️ Түлхүүр нь `oid` ДАНГААРАА: талбар нь мөрд ганц скаляр тул
@@ -30,11 +29,50 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
   const [pvPend, setPvPend] = useState<Record<number, string>>({});
   /** Хүлээгдэж буй илгээлт — байвал багана ТҮГЖИГДЭНЭ */
   const [pvSub, setPvSub] = useState<ObyemSubmission | null>(null);
+  /**
+   * СҮҮЛИЙН ШИЙДВЭР НЬ БУЦААЛТ бол тэр илгээлт (2026-10-01, хэрэглэгч: бүгдийг зас).
+   * ⚠️ ЯАГААД: буцаагдсаны дараа `pending` алга болж баннер ч арилдаг тул инженер
+   *    обьём нь буцаагдсаныг ч, ЯАГААД гэдгийг ч хуудсанд хардаггүй байв (шалтгаан нь
+   *    зөвхөн ArcGIS-ийн `butsaasan_shaltgaan` талбарт). Шинэ илгээлт (pending) гармагц
+   *    түүнд дарагдана.
+   */
+  const [pvReturned, setPvReturned] = useState<ObyemSubmission | null>(null);
   /** Батлагчийн урьдчилан харах агуулга (`oid` → утга) */
   const [pvPreview, setPvPreview] = useState<Map<number, number | null> | null>(null);
   const [pvBusy, setPvBusy] = useState(false);
   const [pvErr, setPvErr] = useState("");
   const [pvNote, setPvNote] = useState("");
+  return {
+    pvPend, setPvPend, pvSub, setPvSub, pvReturned, setPvReturned, pvPreview, setPvPreview,
+    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote,
+  };
+}
+export type ObyemState = ReturnType<typeof useObyemState>;
+
+export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFillMs, setRows }: {
+  /** ⚠️ 2026-10-01: төлөв — FillNew ачаалах эффектээс ДЭЭР `useObyemState()`-ээр зарлана */
+  st: ObyemState;
+  pkg: Pkg;
+  /** ОДОО сонгогдсон багцын түлхүүр — синхрон (FillNew-ийн `pkgKeyRef`-ийн ⚠️) */
+  pkgKeyRef: RefObject<string>;
+  rows: SheetRow[];
+  sc: Schema | null;
+  user: { username: string } | null;
+  locked: boolean;
+  /**
+   * ⚠️ 2026-09-30: ӨДӨР солигдоход FillNew-ийн ачаалах эффект `pvSub`-ийг ТЭГЛЭДЭГ (багц
+   *    солихын дүрэм) атлаа энэ дахин уншигддаггүй тул шөнө дунд өнгөрсөн табд хүлээгдэж
+   *    буй обьёмын баннер · «Обьём батлах» товч алга болж, багана ТАЙЛАГДДАГ байв.
+   */
+  todayFillMs?: number;
+  /** ⚠️ 2026-09-30: батлагдсан утгыг хуудасны мөрт тусгах (`decideObyemHere`) */
+  setRows?: (u: (rs: SheetRow[]) => SheetRow[]) => void;
+}) {
+  /* ⚠️ 2026-10-01: төлөвийн зарлалт `useObyemState`-д (дээрх ⚠️) — нэрс урьдынхаараа */
+  const {
+    pvPend, setPvPend, pvSub, setPvSub, pvReturned, setPvReturned, pvPreview, setPvPreview,
+    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote,
+  } = st;
 
   /* ══════════ ИНЖЕНЕРИЙН ОБЬЁМЫН УРСГАЛ ══════════ */
 
@@ -61,6 +99,15 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
       const sub = await loadObyemPending(want);
       if (pkgKeyRef.current !== want) return;
       setPvSub(sub);
+      /* ⚠️ 2026-10-01: хүлээгдэж буй илгээлт БАЙХГҮЙ бол сүүлийн шийдвэрийг шалгана —
+         буцаалт бол шалтгааныг инженерт харуулна (`pvReturned`-ийн ⚠️). Уншилт унавал
+         хуучин төлөв хэвээр (доорх `catch`). */
+      if (sub) setPvReturned(null);
+      else {
+        const last = (await loadObyemHistory(want, 1))[0] ?? null;
+        if (pkgKeyRef.current !== want) return;
+        setPvReturned(last && last.status === OBYEM_STATUS.returned ? last : null);
+      }
       /* Батлагч бол агуулгыг нь урьдчилан харуулна */
       if (sub) {
         const pl = await loadObyemPayload(sub.oid);
@@ -74,10 +121,13 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
          эс бөгөөс сүлжээ тасрахад багана нээгдэж, батлагдаагүй утга дээр
          дахин засвар эхэлнэ. */
     }
-  }, [pkg.key, pkgKeyRef]);
+    /* ⚠️ 2026-10-01: setter-үүд `st`-ээс (тогтвортой useState) — хамаарлын жагсаалтад нэмсэн нь утга өөрчлөхгүй */
+  }, [pkg.key, pkgKeyRef, setPvSub, setPvReturned, setPvPreview]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshObyem` async — setState нь `await`-ийн ДАРАА (шалгуурын худал эерэг); синхрон setState байхгүй
-  useEffect(() => { void refreshObyem(); }, [refreshObyem]);
+  /* ⚠️ 2026-09-30: `todayFillMs` — өдөр солигдоход ч дахин уншина (параметрийн ⚠️) */
+  /* ⚠️ 2026-10-01: `set-state-in-effect` disable ХАСАГДАВ — setter-үүд `st`-ээс ирдэг тул шалгуур
+     тэднийг танихгүй болсон («unused directive»); `refreshObyem` async хэвээр (setState нь `await`-ийн ДАРАА). */
+  useEffect(() => { void refreshObyem(); }, [refreshObyem, todayFillMs]);
 
   /* ⚠️ `refreshAjil`/`sendAjil`/батлагдсан-буцаагдсан мөр буулгах эффект/
      `withdrawAjilHere` ХАСАГДАВ (2026-09-24): нэмэлт ажлын урсгал бүхэлдээ
@@ -143,7 +193,7 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
     } finally {
       setPvBusy(false);
     }
-  }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem, rows, pkgKeyRef]);
+  }, [pvCells, pvBusy, pkg.key, pkg.group, user, refreshObyem, rows, pkgKeyRef, setPvBusy, setPvErr, setPvNote, setPvPend]);
 
   /**
    * ШИЙДВЭР — батлах эсвэл буцаах.
@@ -172,6 +222,21 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
           setPvErr(tr('Энэ багцын үйлчилгээнд талбар байхгүй тул батлах боломжгүй.'));
           return;
         }
+        /* ⚠️ 2026-09-30: ҮНДСЭН ӨГӨГДӨЛД БИЧИХЭЭС ӨМНӨ бүх дүрмийг СЕРВЕРЭЭР шалгана
+           (`decideObyem.dryRun`-ийн ⚠️). Урьд нь `applyUpdates` ЭХЭЛЖ явдаг тул зохиогч
+           өөрийн илгээлтийг (super эсвэл хоёр эрхтэй), эсвэл хуучирсан дэлгэцээс өөр
+           батлагчийн аль хэдийн буцаасан/баталсан илгээлтийг «батлахад» утга нь
+           үндсэн өгөгдөлд БИЧИГДЭЭД, дараа нь л «өөрөө батлах боломжгүй» / «аль хэдийн
+           шийдвэрлэсэн» гэж татгалзагддаг байв (05 §6). Доорх жинхэнэ `decideObyem`
+           бичилтийн ДАРАА дахин шалгана — хоёр дахь шалгалт хэвээр. */
+        const pre = await decideObyem({
+          oid: pvSub.oid,
+          approve: true,
+          approver: user?.username ?? '',
+          author: pvSub.author,
+          dryRun: true,
+        });
+        if (!pre.ok) { pvErrHere(pre.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
         const pl = await loadObyemPayload(pvSub.oid);
         if (!pl) { pvErrHere(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
         /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
@@ -220,6 +285,13 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
         }
         await applyUpdates(pkg, upd);
         pvSkipped = skippedN;
+        /* ⚠️ 2026-09-30: БИЧИГДСЭН утгыг хуудасны мөрт ч тусгана — урьд нь зөвхөн
+           `refreshObyem` явдаг тул баннер алга болмогц багана ХУУЧИН утгаа харуулж,
+           батлалт «хэрэгжээгүй» мэт харагддаг байв (хуудас дахин ачаалтал). */
+        if (here() && setRows) {
+          const wrote = new Map(upd.map((u) => [Number(u[sc.f.oid]), (u[fld] ?? null) as number | null]));
+          setRows((rs) => rs.map((r) => (wrote.has(r.oid) ? { ...r, plannedVol: wrote.get(r.oid) ?? null } : r)));
+        }
       }
       const r = await decideObyem({
         oid: pvSub.oid,
@@ -240,9 +312,11 @@ export function useObyem({ pkg, pkgKeyRef, rows, sc, user, locked }: {
     } finally {
       setPvBusy(false);
     }
-  }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem, locked, pkgKeyRef]);
+  }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem, locked, pkgKeyRef, setRows, setPvBusy, setPvErr, setPvNote]);
   return {
     pvPend, setPvPend, pvSub, setPvSub, pvPreview, setPvPreview, pvBusy, pvErr, setPvErr, pvNote, setPvNote,
     pvCells, sendObyem, decideObyemHere,
+    /* 2026-10-01: ЗӨВХӨН энэ багцынх (уншилт унавал өмнөх багцын баннер наалдахгүй) */
+    pvReturned: pvReturned && pvReturned.pkgKey === pkg.key ? pvReturned : null,
   };
 }

@@ -5,10 +5,26 @@
  */
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
-import { incCell, parseInc, type SheetRow } from "../bagtsSheet";
+import { fmtInc, incCell, parseInc, type SheetRow } from "../bagtsSheet";
 import { isAmbiguousComma, normCell, parseGrid, planPaste } from "../paste";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cellKey, pc, qty, qtyRaw, type EditCell, type EditCol } from "./util";
+import { remainOf } from "./remain";
+
+/**
+ * «ХЭТЭРСЭН ҮҮ» — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
+ * ⚠️ Архив 1.1 + нэмэлт 2.2 = 3.3000000000000003 нь Обьём 3.3-аас «хэтэрсэн» гэж
+ *    ХУДАЛ асуудаг байв («3.3 нь 3.3-оос ХЭТЭРЧ байна (100%)»). Харьцангуй 1e-9.
+ */
+const EPS = 1e-9;
+const overVol = (x: number, vol: number) => x > vol * (1 + EPS);
+const overPct = (x: number) => x > 1 + EPS;
+
+/** ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдац — `${oid}:${b}` түлхүүрээр */
+export type PastePrev = {
+  startI: number; startB: number; grid: string[][]; rows: SheetRow[];
+  ok: Set<string>; rej: Map<string, string>;
+};
 
 export function useCellEdit(p: {
   sc: Schema | null;
@@ -34,11 +50,56 @@ export function useCellEdit(p: {
   vis: number[];
   hidden: boolean[];
   nBld: number;
+  /** ⚠️ 2026-10-01: ноорог сэргэж байна — буулгалт ТҮГЖЭЭТЭЙ (`useDraftSync.restoringUi`) */
+  restoring?: boolean;
+  /**
+   * ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдацын ТӨЛӨВ — дуудагч (FillNew) эзэмшинэ
+   *    (энэ hook нь төлөвгүй цэвэр функц хэвээр — `cellEdit.ui.check` шууд дууддаг).
+   *    Өгөөгүй бол урьдчилан харуулахгүй, урьдын адил шууд бичнэ.
+   */
+  pastePrev?: PastePrev | null;
+  setPastePrev?: (v: PastePrev | null) => void;
 }) {
   const {
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
-    locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld,
+    locked, noEdit, canPerf, busy, editing, rowsAll, vis, hidden, nBld, restoring,
+    pastePrev = null, setPastePrev,
   } = p;
+  /**
+   * БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ (2026-10-01, хэрэглэгч: бүгдийг зас).
+   * ⚠️ Буулгах блокт БИЧИГДЭХГҮЙ нүд (тоо биш · сөрөг · бүлэг/талбаргүй) байвал ШУУД
+   *    бичихгүй: бичигдэх нүдийг цэнхэр, татгалзсаныг УЛААН (✕) тодруулж «Бичих / Болих»-оор
+   *    хэрэглэгч шийднэ. Урьд нь эхлээд бичээд дараа нь л «N утга бичигдсэнгүй» гэдэг тул
+   *    аль нүд гээгдсэнийг 1,400 мөрөөс хайх шаардлагатай байв. Бүх нүд хүчинтэй бол
+   *    урьдын адил ШУУД бичнэ (нэмэлт алхамгүй).
+   * ⚠️ Түлхүүр нь `${oid}:${b}` (`cellKey`) — мөр/шүүлт солигдоход индекс гулсахгүй;
+   *    `rowsAll` өөр болсон (багц солигдсон, дахин ачаалсан) бол баталгаажуулалт ЦУЦЛАГДАНА.
+   */
+
+  /**
+   * ҮЛДЭГДЭЛ-ИЙН ТАЙЛБАР — «үлдэгдэл = Обьём − архив − хяналтад − ноорог» (2026-10-01).
+   * @param base давхарлалтын СУУРЬ (архивын) мөр — `ovBase`; байхгүй бол `r` нь өөрөө архив.
+   * ⚠️ Хяналтад = энэ өдрийн илгээлтийн нэмэлт (`r − base`) + өөр өдрийн хяналтад буй (`reviewInc`).
+   * ⚠️ Мөрийн Обьёмгүй бол `""` (`null ≠ 0`). Хувь горимд хувиар харуулна.
+   */
+  const remainHint = (r: SheetRow, b: number, base?: SheetRow): string => {
+    if (r.group || !volMode(r, b)) return "";
+    const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+    if (vol == null) return "";
+    const volOf = (x: SheetRow) => x.obyem[b] ?? (x.act[b] != null ? (x.act[b] as number) * vol : null);
+    const arch = volOf(base ?? r);
+    const now = volOf(r);
+    const staged = base ? (now ?? 0) - (arch ?? 0) : 0;
+    const ri = reviewInc.get(cellKey(r.oid, b));
+    const other = ri?.n != null ? ri.n : ri?.a != null ? ri.a * vol : 0;
+    const d = parseInc(pending[cellKey(r.oid, b)]);
+    const draft = d ? d.n + d.p * vol : 0;
+    const rem = remainOf(vol, arch, staged + other, draft);
+    if (rem == null) return "";
+    const f = (x: number) => (fillMode === "pct" ? pc(x / vol, 1) : qty(x));
+    return tr('үлдэгдэл = Обьём − архив − хяналтад − ноорог = {0} − {1} − {2} − {3} = {4}',
+      f(vol), f(arch ?? 0), f(staged + other), f(draft), f(rem));
+  };
   /**
    * ОБЬЁМЫН нүд бичигдэх үү — талбар нь байгаа БҮХ ажлын мөрд ТИЙМ.
    * Хуудсан дээрх ЦОРЫН ГАНЦ бөглөх цэг (мөрийн Обьёмоос гадна).
@@ -81,15 +142,31 @@ export function useCellEdit(p: {
     const d = parseInc(pending[cellKey(r.oid, b)]);
     if (!d) return "";
     const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+    /* ⚠️ 2026-09-30: мөрийн Обьёмгүй бол ЗӨВХӨН одоогийн горимын хэсгийг (нөгөө хэсэг нь
+       `commit`-д ХАДГАЛАГДАНА — `otherPart`-ийн ⚠️). Урьд нь холимог («15 %10») нэмэлтэд
+       хоосон тавьдаг тул байгаа +15 ч харагддаггүй байв. */
     if (fillMode === "pct") {
       /* Обьёмын нэмэлтийг хувь руу — мөрийн Обьёмгүй бол илэрхийлэх аргагүй */
-      if (d.n !== 0 && vol == null) return "";
-      const p = d.p + (d.n !== 0 ? d.n / (vol as number) : 0);
+      if (vol == null) return d.p !== 0 ? String(Math.round(d.p * 1e6) / 1e4) : "";
+      const p = d.p + (d.n !== 0 ? d.n / vol : 0);
       return String(Math.round(p * 1e6) / 1e4);
     }
     /* Хувийн нэмэлтийг обьём руу — мөрийн Обьёмгүй бол хоосон (бодох аргагүй) */
-    if (d.p !== 0 && vol == null) return "";
-    return qtyRaw(d.n + (d.p !== 0 ? d.p * (vol as number) : 0));
+    if (vol == null) return d.n !== 0 ? qtyRaw(d.n) : "";
+    return qtyRaw(d.n + (d.p !== 0 ? d.p * vol : 0));
+  };
+  /**
+   * ОДООГИЙН ГОРИМД ИЛЭРХИЙЛЭГДЭХГҮЙ НӨГӨӨ ХЭСЭГ (2026-09-30) — мөрийн Обьёмгүй ажилд обьём
+   * ба хувь ТУСДАА багана тул нэг нүдэнд хоёулаа хуримтлагдаж болно («15 %10»,
+   * `bagtsSheet.parseInc`). Обьём горимд хувийн, Хувь горимд обьёмын хэсэг.
+   * ⚠️ Урьд нь горим сольж тоо бичихэд `pending` бүхэлдээ шинэ утгаар солигдож тэр
+   *    хэсэг (жиш. Хувь горимд бичсэн +10%) ЧИМЭЭГҮЙ арилдаг байв.
+   */
+  const otherPart = (r: SheetRow, key: string): { n: number; p: number } => {
+    const vol = r.vol != null && r.vol > 0 ? r.vol : null;
+    const d = parseInc(pending[key]);
+    if (vol != null || !d) return { n: 0, p: 0 };
+    return fillMode === "pct" ? { n: d.n, p: 0 } : { n: 0, p: d.p };
   };
   /** Оролтын `placeholder` — ӨМНӨХ нийт (одоогийн горимын нэгжээр). `null` бол «—» (0 БИШ). */
   const prevHint = (r: SheetRow, b: number): string => {
@@ -170,6 +247,17 @@ export function useCellEdit(p: {
       const d0 = parseInc(pending[key]);
       if (d0 && (d0.n !== 0 || d0.p !== 0) && cellSeed(r, b) === "") return true;
     }
+    /* ⚠️ 2026-09-30: нөгөө горимын хэсэг (`otherPart`-ийн ⚠️) — хадгалагдана */
+    const keep = otherPart(r, key);
+    const hasKeep = keep.n !== 0 || keep.p !== 0;
+    if (incN === 0 && hasKeep) {
+      /* Зөвхөн ОДООГИЙН горимын хэсгийг буцаана — нөгөө хэсэг үлдэнэ */
+      setErr("");
+      setPending((pv) => ({ ...pv, [key]: fmtInc(keep) }));
+      mineRef.current.add(key);
+      touchMine(key);
+      return true;
+    }
     if (incN === 0) {
       /* Засвараа буцаасан — «нийтлээгүй» тэмдэглэгээ арилна. `revert`-ийн дүрэм:
          pending-д байгаагүй нүдэнд буцаалт нь tombstone биш (2026-09-21). */
@@ -183,7 +271,9 @@ export function useCellEdit(p: {
       revert(key, key in pending);
       return true;
     }
-    const nv = isPct ? `%${incN}` : String(incN);
+    const nv = hasKeep
+      ? fmtInc({ n: (isPct ? 0 : incN) + keep.n, p: (isPct ? incN / 100 : 0) + keep.p })
+      : isPct ? `%${incN}` : String(incN);
     const res = incCell(r, b, nv, !!sc?.obyem[b]);
     const vol = r.vol;
     const storedPct = vol != null && vol > 0 && r.obyem[b] != null ? r.obyem[b]! / vol : r.act[b];
@@ -210,19 +300,24 @@ export function useCellEdit(p: {
     /* ⚠️ 2026-09-25 аудит: ЭЕРЭГ нэмэлт ч БУУРУУЛЖ болно — хувиар бүртгэгдсэн ХУУЧИН
        нүдэнд (act бий, obyem null, мөр обьёмтой) `incCell` обьёмыг 0-ээс эхлүүлдэг
        (санаатай: «хувиас обьём БУЦААЖ БОДОХГҮЙ») тул 50% → +10% = 10%. Чимээгүй
-       бичвэл гүйцэтгэл ул мөргүй унана — ил асууна. */
+       бичвэл гүйцэтгэл ул мөргүй унана — ил асууна.
+       ⚠️ 2026-09-30: ХУВИАР жишнэ, ГОРИМООС үл хамааран. Урьд нь горимын нэгжээр
+       (`before`/`after`) жишдэг тул АНХДАГЧ Обьём горимд `before = obyem = null`
+       болж асуулт ХЭЗЭЭ Ч гардаггүй байв — «+10» бичихэд 50% → 10% чимээгүй
+       буурдаг. Хувь горимд утга нь урьдынхтай ЯГ ижил (`before = storedPct`). */
+    const pctAfter = res ? res.act : storedPct;
     if (
       incN > 0 &&
-      after != null &&
-      before != null &&
-      after < before &&
+      pctAfter != null &&
+      storedPct != null &&
+      pctAfter < storedPct &&
       !window.confirm(
         tr(
           '{0} · {1}:\nөмнө нь {2} бүртгэгдсэн (хувиар) — нэмэлт бичихэд обьём 0-ээс эхэлж {3} болж БУУРНА.\nҮргэлжлүүлэх үү?',
           sc?.bld[b] ?? "",
           r.work,
-          fmt(before),
-          fmt(after),
+          pc(storedPct, 1),
+          pc(pctAfter, 1),
         ),
       )
     )
@@ -237,7 +332,8 @@ export function useCellEdit(p: {
       afterAll != null &&
       vol != null &&
       vol > 0 &&
-      afterAll > vol &&
+      /* ⚠️ 2026-09-30: хөвөгч цэгийн хүлцэл (`overVol`) — 1.1 + 2.2 = 3.3000000000000003 */
+      overVol(afterAll, vol) &&
       !window.confirm(
         revN != null && revN > 0
           ? tr(
@@ -313,6 +409,8 @@ export function useCellEdit(p: {
        дараагүй хүний Ctrl+V шууд `pending`-д бичигддэг байв. `busy` — илгээлтийн
        төгсгөлийн `setPending({})` завсарт бичсэн нүдийг арчина (`RO.busy`). */
     if (busy) { warn(RO.busy); return true; }
+    /* ⚠️ 2026-10-01: ноорог сэргээж байхад буулгахгүй (`RO.restoring`) */
+    if (restoring) { warn(RO.restoring); return true; }
     if (!editing) { warn(RO.notEditing); return true; }
     const grid = parseGrid(text);
     /* Нэг нүдний энгийн буулгалт бол ердийн замаар нь явуулна */
@@ -328,6 +426,23 @@ export function useCellEdit(p: {
       return true;
     }
 
+    return runPaste(startI, startB, grid, false);
+  };
+
+  /** Урьдчилсан харагдацын «Бичих» — ОДООГИЙН мөр/шүүлтээр дахин төлөвлөж бичнэ */
+  const confirmPaste = () => {
+    const pv = pastePrev;
+    setPastePrev?.(null);
+    if (!pv) return;
+    if (pv.rows !== rowsAll) { warn(tr('Хүснэгт шинэчлэгдсэн тул буулгалт цуцлагдлаа — дахин буулгана уу.')); return; }
+    runPaste(pv.startI, pv.startB, pv.grid, true);
+  };
+  const cancelPaste = () => setPastePrev?.(null);
+
+  const runPaste = (startI: number, startB: number, grid: string[][], confirmed: boolean): boolean => {
+    if (!sc) return false;
+    /* Шинэ буулгалт өмнөх урьдчилсан харагдацыг орлоно */
+    if (!confirmed && pastePrev) setPastePrev?.(null);
     /* ⚠️ ЗӨВХӨН ХАРАГДАХ мөрүүд — шүүлт/эвхэлтээр нуугдсаныг алгасвал
        хэрэглэгчийн харж буй эгнээ ба бичигдэх эгнээ хоёр зөрнө. */
     const from = vis.indexOf(startI);
@@ -335,10 +450,26 @@ export function useCellEdit(p: {
 
     /* ⚠️ Байрлалын логик нь `paste.ts`-д — эгнээ гулсах эрсдэлийг зөвхөн
        тестээр (`paste.check.mjs`) барина. */
-    const { hits: raw, skipped, bad } = planPaste(
+    const { hits: raw, skipped, bad, badAt, rejAt } = planPaste(
       grid, vis, sc.bld.length, from, startB,
       (row, b) => volMode(rowsAll[row], b),
     );
+    /* ⚠️ 2026-10-01: ТАТГАЛЗАХ нүд байвал ЭХЛЭЭД урьдчилан харуулна (`pastePrev`-ийн ⚠️) */
+    if (!confirmed && setPastePrev && rejAt.length > 0 && raw.length > 0) {
+      const why = (w: 'bad' | 'neg' | 'noWrite', row: number) =>
+        w === 'neg'
+          ? tr('сөрөг утга — буулгалтаар бууруулахгүй (нүд тус бүрээр залруулна)')
+          : w === 'noWrite'
+            ? (rowsAll[row]?.group ? RO.groupAct : RO.noObyemField)
+            : tr('тоо гэж уншиж чадсангүй (тодорхойгүй таслал «1,250» эсвэл тоо биш)');
+      setPastePrev({
+        startI, startB, grid, rows: rowsAll,
+        ok: new Set(raw.map((x) => cellKey(rowsAll[x.row].oid, x.b))),
+        rej: new Map(rejAt.map((x) => [cellKey(rowsAll[x.row].oid, x.b), `«${x.raw}» — ${why(x.why, x.row)}`] as const)),
+      });
+      warn(tr('Буулгалт: {0} нүд бичигдэнэ, {1} нүд татгалзагдана (улаан ✕). Хүснэгтийн дээрх «Бичих» эсвэл «Болих»-ийг сонгоно уу.', String(raw.length), String(rejAt.length)));
+      return true;
+    }
     /* ⚠️ ГОРИМООР БУУЛГАНА (2026-09-06). Excel-ээс хуулсан багана нь
        обьём ч, хувь ч байж болно — аль болохыг ХУУДАСНЫ горим шийднэ,
        тоог нь таамаглахгүй. Хувь горимд утга бүрд `%` угтвар тавина
@@ -348,9 +479,16 @@ export function useCellEdit(p: {
     const isPct = fillMode === "pct";
     const hits = raw.map((x) => {
       const r = rowsAll[x.row];
-      const v = isPct ? `%${Number(x.v)}` : x.v;
+      /* ⚠️ 2026-09-30: нөгөө горимын хэсэг хадгалагдана (`otherPart`-ийн ⚠️) */
+      const keep = otherPart(r, cellKey(r.oid, x.b));
+      const hasKeep = keep.n !== 0 || keep.p !== 0;
+      const v = hasKeep
+        ? fmtInc({ n: (isPct ? 0 : Number(x.v)) + keep.n, p: (isPct ? Number(x.v) / 100 : 0) + keep.p })
+        : isPct ? `%${Number(x.v)}` : x.v;
       const res = incCell(r, x.b, v, !!sc.obyem[x.b]);
       return {
+        /** Тэг нэмэлт үед үлдэх нөгөө хэсэг (`""` = байхгүй) */
+        keepStr: hasKeep ? fmtInc(keep) : "",
         key: cellKey(r.oid, x.b),
         /** `pending`-д бичигдэх ТҮҮХИЙ мөр (горимын дүрмээр) — НЭМЭЛТ */
         v,
@@ -360,10 +498,10 @@ export function useCellEdit(p: {
         b: x.b,
         /** Шинэ НИЙТ (горимын нэгжээр) */
         after: isPct ? (res ? res.act : null) : (res ? res.obyem : null),
-        /** Өмнөх НИЙТ (горимын нэгжээр) — `commit`-тэй ижил томъёо (2026-09-25) */
-        before: isPct
-          ? (r.vol != null && r.vol > 0 && r.obyem[x.b] != null ? r.obyem[x.b]! / r.vol : r.act[x.b])
-          : r.obyem[x.b],
+        /** Өмнөх ба шинэ ХУВЬ (0–1) — «БУУРНА» асуулт хоёр горимд ХУВИАР (`commit`-ийн
+            2026-09-30 ⚠️: Обьём горимд `obyem = null` хуучин хувийн нүд асуултгүй буурдаг байв) */
+        pBefore: r.vol != null && r.vol > 0 && r.obyem[x.b] != null ? r.obyem[x.b]! / r.vol : r.act[x.b],
+        pAfter: res ? res.act : null,
       };
     });
 
@@ -379,12 +517,21 @@ export function useCellEdit(p: {
        ХООСОН БИШ (2026-09-25 аудит): хувиар бүртгэгдсэн ХУУЧИН нүдэнд (act бий,
        obyem null, мөр обьёмтой) `incCell` обьёмыг 0-ээс эхлүүлдэг тул 50% → 10%
        болж буурдаг — `commit`-ийн ганц нүдний асуулттай ижил дүрэм. */
-    const down = hits.filter((x) => x.after != null && x.before != null && x.after < x.before);
+    const down = hits.filter((x) => x.pAfter != null && x.pBefore != null && x.pAfter < x.pBefore);
     /* ⚠️ Хувь горимд «мөрийн Обьёмоос хэтэрсэн» гэдэг нь «100%-иас их» гэсэн үг;
-       2026-09-25: харьцуулах нь шинэ НИЙТ (суурь + нэмэлт), нэмэлт өөрөө биш. */
+       2026-09-25: харьцуулах нь шинэ НИЙТ (суурь + нэмэлт), нэмэлт өөрөө биш.
+       ⚠️ 2026-09-30: өөр өдрийн ХЯНАЛТАД байгаа нэмэлтийг ч нэмнэ (`commit`-ийн
+       `reviewInc`-тэй ИЖИЛ дүрэм) — урьд нь гараар бичихэд асуудаг хэтрэлт Excel-ээс
+       буулгахад ЧИМЭЭГҮЙ өнгөрч, хоёр илгээлт батлагдвал Обьёмоос хэтэрдэг байв.
+       Хөвөгч цэгийн хүлцэлтэй (`overVol`/`overPct`). */
+    const revOf = (x: { key: string }) => {
+      const ri = reviewInc.get(x.key);
+      const v = isPct ? ri?.a : ri?.n;
+      return v != null && v > 0 ? v : 0;
+    };
     const over = isPct
-      ? hits.filter((x) => x.after != null && x.after > 1)
-      : hits.filter((x) => x.after != null && x.r.vol != null && (x.r.vol as number) > 0 && x.after > (x.r.vol as number));
+      ? hits.filter((x) => x.after != null && overPct(x.after + revOf(x)))
+      : hits.filter((x) => x.after != null && x.r.vol != null && (x.r.vol as number) > 0 && overVol(x.after + revOf(x), x.r.vol as number));
     if (down.length || over.length) {
       const parts: string[] = [];
       if (down.length) parts.push(tr("{0} нүдэнд утга БУУРНА", String(down.length)));
@@ -407,7 +554,9 @@ export function useCellEdit(p: {
       for (const x of hits) {
         /* Тэг нэмэлт = өөрчлөлтгүй → «нийтлээгүй» тэмдэглэгээг арилгана (2026-09-25). */
         const same = x.n === 0;
-        if (same) delete n[x.key];
+        /* ⚠️ 2026-09-30: тэг нэмэлт — нөгөө горимын хэсэг байвал ТҮҮНИЙГ үлдээнэ */
+        if (same && x.keepStr) n[x.key] = x.keepStr;
+        else if (same) delete n[x.key];
         else n[x.key] = x.v;
         /* ⚠️ ЭЗЭМШЛИЙГ ЭНД тэмдэглэнэ (2026-09-08): энэ бол нүдийг ГАРААС
            засах ЦОРЫН ГАНЦ зам. Нийлүүлэлтээр ирсэн бусдын нүд энд ордоггүй
@@ -416,15 +565,26 @@ export function useCellEdit(p: {
         /* 2026-09-21: буцаасан бол tombstone, бичсэн бол агшин (`Draft.byAt`/`del`).
            Дахин аудит: pending-д (`pv`) байгаагүй нүдэнд ижил утга бичих нь
            буцаалт БИШ — `revert`-ийн тайлбар (Б-гийн ирээгүй бичилтийг хамгаална). */
-        if (same) revert(x.key, x.key in pv);
+        if (same && !x.keepStr) revert(x.key, x.key in pv);
         else { mineRef.current.add(x.key); touchMine(x.key); }
       }
       setPending(n);
     }
     setEdit(null);
-    done(bad || skipped
-      ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped + bad))
-      : tr("{0} нүд бичигдлээ", String(hits.length)));
+    /* ⚠️ 2026-09-30: ТОО БИШ / ТОДОРХОЙГҮЙ («1,250») / СӨРӨГ утгыг ногоон «алгасав»-д
+       хоосон нүдтэй НИЙЛҮҮЛЭХГҮЙ — шар анхааруулгаар, аль нүд болохыг нэрлэж хэлнэ
+       (`paste.normCell`-ийн «ИЛ мэдэгдэнэ» дүрэм). Урьд нь хэрэглэгчийн Excel-ийн
+       утга бичигдээгүй атлаа амжилтын мессежид «алгасав» гэж л харагддаг байв. */
+    if (bad) {
+      const ex = badAt
+        .map((x) => `${sc.bld[x.b] ?? ""} · ${rowsAll[x.row]?.work ?? ""}: «${x.raw}»`)
+        .join("; ");
+      warn(tr('{0} нүд бичигдлээ · {1} утгыг тоо гэж уншиж чадсангүй (тодорхойгүй таслал «1,250», сөрөг эсвэл тоо биш) — бичигдсэнгүй: {2}', String(hits.length), String(bad), ex + (bad > badAt.length ? ' …' : '')));
+    } else {
+      done(skipped
+        ? tr("{0} нүд бичигдлээ · {1} алгасав", String(hits.length), String(skipped))
+        : tr("{0} нүд бичигдлээ", String(hits.length)));
+    }
     return true;
   };
 
@@ -451,5 +611,9 @@ export function useCellEdit(p: {
     }
     return null;
   };
-  return { volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable };
+  return {
+    volMode, pctOnly, cellSeed, prevHint, commit, pasteBlock, nextEditable, nextBlockEditable,
+    /* 2026-10-01 */
+    remainHint, confirmPaste, cancelPaste,
+  };
 }

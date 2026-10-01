@@ -30,6 +30,23 @@ export function finNavDirty(): boolean {
   return finDirty.size > 0;
 }
 
+/**
+ * НИЙТЛЭЛИЙН ДАРААХ ДАХИН АЧААЛАЛТ ДУУСААГҮЙ ЮУ — «Гэрээний бүртгэл»-ийн хоёр дахь
+ * нийтлэлийн хаалт.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): нийтэлсний дараа `onSaved` нь хүснэгтийг
+ *    ДАХИН татдаг, харин тэр хооронд (1–3 с) `rows`/`months` ХУУЧИН хэвээр. Тэр үед
+ *    огноог дахин засаж нийтэлбэл ӨМНӨХ нийтлэлийн нэмсэн сарууд хуучин `months`-д
+ *    алга тул ДАХИН нэмэгдэж, сарын мөр давхардан S-муруй хоёр тоологдоно.
+ *    Нийтлэлийн агшны `rows` лавлагааг хадгалж, ШИНЭ мөрүүд (өөр лавлагаа) ирэх
+ *    хүртэл хаалттай байна. `loadFinRegister` дуудалт бүрд шинэ массив буцаадаг.
+ * @param publishedFrom амжилттай нийтлэлийн агшин дахь `rows` (байхгүй бол `null`)
+ * @param rows одоогийн `rows`
+ */
+export function awaitingReload(publishedFrom: object | null, rows: object): boolean {
+  return publishedFrom != null && publishedFrom === rows;
+}
+
 /** Тоон талбарын төрлүүд */
 export const NUMERIC_TYPES = new Set([
   'esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeSingle',
@@ -114,7 +131,18 @@ const isCalendarDay = (v: string): boolean => {
  * ArcGIS 0 болгож хадгалдаг: «бөглөөгүй» ба «тэг» хоёр ЗААВАЛ ялгаатай.
  * ⚠️ Буруу тоо/огноог ЧИМЭЭГҮЙ 0 болгохгүй — `Error` шиднэ.
  */
-export function parseCell(s: string, type: string, label: string, msg: ParseMsg = PARSE_MSG_MN): unknown {
+export function parseCell(
+  s: string, type: string, label: string, msg: ParseMsg = PARSE_MSG_MN,
+  /**
+   * ХУВИЙН талбар (0–100: `Cashflow_huwi`, `FIN_XL_PCT`) — нэг таслал ҮРГЭЛЖ аравтын.
+   * ⚠️ 2026-09-30: мянгатын дүрэм (`1,234` → 1234) хувьд утгагүй бөгөөд аюултай:
+   *    Excel-ээс (аравтын таслалтай) хуулсан сарын хувь «8,333» нь 8333 болж
+   *    `Cashflow_dun = ХО × 8333 / 100` (гэрээний 83 дахин) S-муруйд бичигддэг,
+   *    харин «Cashflow хувиарлах» (`CashflowPlan.nOf`) ижил текстийг 8.333 гэж
+   *    уншдаг байв. Хувь биш талбарт дүрэм ХЭВЭЭР.
+   */
+  pct = false,
+): unknown {
   const v = s.trim();
   if (v === '') return null;
   /* ⚠️ `DateOnly` — epoch БИШ, `YYYY-MM-DD` МӨР буцаана. «27.05.2026» эсвэл
@@ -142,7 +170,7 @@ export function parseCell(s: string, type: string, label: string, msg: ParseMsg 
        утгатай. Одоо: `12,5` / `12,50` → аравтын; `1,234` / `1,234.5` → мянгатын;
        бусад таслалтай хэлбэр → «тоо буруу» (чимээгүй таамаглахгүй). */
     const t = v.replace(/[\s ]/g, '');
-    const u = /^-?\d+,\d{1,2}$/.test(t)
+    const u = (pct ? /^-?\d+,\d+$/ : /^-?\d+,\d{1,2}$/).test(t)
       ? t.replace(',', '.')
       : /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) ? t.replace(/,/g, '') : t;
     const x = Number(u);

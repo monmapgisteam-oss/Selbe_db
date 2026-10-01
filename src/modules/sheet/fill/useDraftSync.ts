@@ -13,7 +13,7 @@ import {
 import { t as tr } from "@/lib/i18nCore";
 import {
   type Draft, LOCAL_DRAFT_TTL_MS, REMOTE_DEBOUNCE_MS, REMOTE_CAP_MS, REMOTE_RETRY_MS, DEL_TTL_MS,
-  parseDraft, mergeDrafts, readDraft, saveDraftLS, clearDraftLS,
+  parseDraft, mergeDrafts, readDraft, saveDraftLS, clearDraftLS, marksOf, doneOfMarks, type Mark,
 } from "./draft";
 import { dt, type NoticeKind, type RemoteState } from "./util";
 
@@ -47,12 +47,17 @@ export function useDraftSync(p: {
   pkgKeyRef: RefObject<string>;
   /** Нээлттэй нүдний толь — татах мөчлөг «одоо бичиж байна уу» гэдгийг эндээс уншина */
   editRef: RefObject<unknown>;
+  /**
+   * Нүд нээлттэй эсэх — РЕАКТИВ хувилбар (2026-10-01). Нүд нээлттэй үед хойшлуулсан
+   * нүдний нийлүүлэлтийг (`deferredRef`) хаагдмагц ШУУД буулгахад.
+   */
+  editOpen: boolean;
   show: (kind: NoticeKind, msg: string) => void;
   say: (msg: string) => void;
 }) {
   const {
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
-    pending, setPending, pendDate, setPendDate, dirtyCount, pvDirty, fillMode, loadedPkgRef, pkgKeyRef, editRef, show, say,
+    pending, setPending, pendDate, setPendDate, dirtyCount, pvDirty, fillMode, loadedPkgRef, pkgKeyRef, editRef, editOpen, show, say,
   } = p;
   /* ⚠️ 2026-09-30: `useCellEdit`-ийн `volMode`-той ИЖИЛ дүрэм (тэр hook энэ hook-ийн ДАРАА дуудагддаг
      тул сэргээлтэд (`pickDraft`) эндээ давтав — хаалтын зан төлөв урьдын адил). */
@@ -117,6 +122,57 @@ export function useDraftSync(p: {
    */
   const mineAtRef = useRef<Map<string, number>>(new Map());
   /**
+   * ЛОГИК ЦАГ (HLC) — 2026-10-01 (хэрэглэгч: бүгдийг зас).
+   * ⚠️ ЯАГААД: `byAt`/`del`/`marks`-ийн агшин нь ӨӨР ӨӨР компьютерийн цаг. Б-гийн цаг
+   *    А-гийнхаас хоцорсон бол Б-гийн ХОЖУУ засвар А-гийн хуучин бичилтээс «эрт» болж
+   *    нийлүүлэлтэд ялагддаг байв. Одоо өөрийн агшин нь `max(одоо, харсан хамгийн их
+   *    агшин + 1)` — нийлүүлэлтээр ирсэн агшнаас ҮРГЭЛЖ хожуу (шалтгаант дараалал
+   *    хадгалагдана). Серверийн тамга энэ хүснэгтэд байхгүй (Editor Tracking-гүй).
+   */
+  const clockRef = useRef(0);
+  const stamp = useCallback(() => {
+    const t = Math.max(Date.now(), clockRef.current + 1);
+    clockRef.current = t;
+    return t;
+  }, []);
+  /** Нийлүүлэлтээр ирсэн агшнуудаар логик цагийг урагшлуулна */
+  const seeClock = useCallback((d: Draft) => {
+    let m = clockRef.current;
+    const see = (x: unknown) => { const n = Number(x); if (Number.isFinite(n) && n > m && n < Date.now() + 366 * 86_400_000) m = n; };
+    for (const [, a] of d.byAt ?? []) see(a);
+    for (const [, a] of d.del ?? []) see(a);
+    for (const mk of d.marks ?? []) see(mk[3]);
+    clockRef.current = m;
+  }, []);
+  /**
+   * «ДУУСГАСАН/ДАХИН ЗАСАХ» ИЛ ТЭМДГҮҮД — нэр → `[нэр, 1|0, seq, агшин]` (2026-10-01,
+   * `Draft.marks`-ийн ⚠️). `doneRef`/`doneBy` нь эндээс ГАРГАСАН хуулбар.
+   */
+  const marksRef = useRef<Map<string, Mark>>(new Map());
+  /**
+   * НҮД НЭЭЛТТЭЙ ҮЕД ХОЙШЛУУЛСАН алсын ноорог (2026-10-01). Эзэмшил/«дуусгасан» нь
+   * ШУУД буудаг, харин нүдний утга нүд хаагдмагц (`editOpen` false) буулгагдана.
+   */
+  const deferredRef = useRef<{ pkg: string; d: Draft } | null>(null);
+  /** СЭРГЭЭЛТ ЭХЭЛСЭН логик агшин — тэр хооронд гараас бичсэн нүдийг дарахгүй (`pickDraft`) */
+  const restoreSinceRef = useRef(0);
+  /**
+   * СЭРГЭЭЛТ ДУУССАН багц (2026-10-01) — `restoringUi`: тэр хүртэл нүд ТҮГЖИГДЭЖ
+   * «Ноорог сэргээж байна…» гэж харагдана (бичсэн нүд сэргээлтэд дарагдахгүй).
+   */
+  const [restDonePkg, setRestDonePkg] = useState('');
+  /** Сүлжээгүй (офлайн) эсэх — хөтчийн `online/offline` үйл явдлаар (2026-10-01) */
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    /* Анхны төлөв — эффектээс СИНХРОН setState хийхгүй (lint), микро даалгавраар */
+    void Promise.resolve().then(() => setOffline(navigator.onLine === false));
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  /**
    * TOMBSTONE — ЭНЭ СЕШНД БУЦААСАН/ХАССАН зүйлс (`key` → хассан агшин ms),
    * 2026-09-21-ний аудит. Түлхүүр нь нүд/огнооных (`${oid}:${b}[:s|e]`) эсвэл
    * хассан нэмэлт мөрийнх (`a:${oid}`). `Draft.del`-д бичигдэж, `mergeDrafts`
@@ -148,9 +204,10 @@ export function useDraftSync(p: {
   /* ⚠️ `useCallback` — зөвхөн үйл явдлын дотор дуудагддаг тул render-д хамаагүй; react-compiler-ийн
      «impure during render» шалгуур энгийн функцийг ялгадаггүй (2026-09-21). */
   const touchMine = useCallback((key: string) => {
-    mineAtRef.current.set(key, Date.now());
+    /* ⚠️ 2026-10-01: логик цаг (`stamp`) — цагийн зөрүүнд тэсвэртэй */
+    mineAtRef.current.set(key, stamp());
     delRef.current.delete(key);
-  }, []);
+  }, [stamp]);
   /* ⚠️ `tombstone()` туслах ХАСАГДАВ (2026-09-24): ганц дуудагч нь `dropAdd` байсан
      (мөр нэмэх Хуваарь руу шилжсэн); нүдний буцаалт `delRef`-д шууд бичнэ (доор). */
   /**
@@ -170,11 +227,11 @@ export function useDraftSync(p: {
   const revert = useCallback((key: string, wasPending: boolean) => {
     if (wasPending) {
       mineRef.current.add(key);
-      delRef.current.set(key, Date.now());
+      delRef.current.set(key, stamp());
     } else {
-      mineAtRef.current.set(key, Date.now());
+      mineAtRef.current.set(key, stamp());
     }
-  }, []);
+  }, [stamp]);
   /**
    * СҮҮЛД НИЙЛҮҮЛСЭН алсын ноорогийн агшин — давхар нийлүүлэлтээс сэргийлнэ.
    * ⚠️ Өөрийн сая бичсэн хуулбар эргэж ирэхэд дахин суулгавал бичиж байгаа
@@ -199,6 +256,31 @@ export function useDraftSync(p: {
   const doneRef = useRef<[string, number][]>([]);
   /** «Дуусгасан» жагсаалт — дэлгэц зурахад (ref нь зурагдалт өдөөдөггүй) */
   const [doneBy, setDoneBy] = useState<[string, number][]>([]);
+  /**
+   * ИЛ ТЭМДГҮҮДИЙГ ТӨЛӨВТ буулгана — `marksRef` + гаргасан `doneRef`/`doneBy` (2026-10-01).
+   * ⚠️ `doneRef`/`doneBy`-г ШУУД бүү тавь — эндээс л (нэг эх сурвалж).
+   */
+  const applyMarks = useCallback((m: Map<string, Mark>) => {
+    marksRef.current = m;
+    const d = doneOfMarks(m);
+    doneRef.current = d;
+    setDoneBy(d);
+  }, []);
+  /**
+   * БҮХ «ДУУСГАСАН» ТЭМДГИЙГ ИЛ БУЦААНА (2026-10-01) — «Илгээх»/«Ноорог устгах»-ийн дараа
+   * шинэ мөчлөг эхэлнэ. ⚠️ Урьд нь `done: []` бичиж «нэр алга = буцаасан» дүрмээр
+   * арчдаг байв; тэр дүрэм хүчингүй болсон тул тэмдэг бүрд `seq+1`-тэй «0» бичнэ —
+   * өөр төхөөрөмжийн хуучин «дуусгасан» хуулбар СЭРГЭХГҮЙ.
+   */
+  const undoAllMarks = useCallback(() => {
+    const m = new Map(marksRef.current);
+    for (const [u, x] of m) if (x[1] === 1) m.set(u, [u, 0, x[2] + 1, stamp()]);
+    applyMarks(m);
+  }, [applyMarks, stamp]);
+  /** Багц солих үеийн ЛОКАЛ цэвэрлэгээ — алсад юу ч бичихгүй */
+  const resetMarks = useCallback(() => {
+    applyMarks(new Map());
+  }, [applyMarks]);
   /** Нүд бүрийн ЭЗЭН (`${oid}:${блок}` → нэр) — оролцогчийг тоолоход */
   const [byMap, setByMap] = useState<Map<string, string>>(new Map());
   /**
@@ -386,21 +468,20 @@ export function useDraftSync(p: {
        бууж, Б-гийн «Илгээх» түгжээ худал түгжигдэх/нээгдэх байв. Бичилт нь
        ТҮЛХҮҮРЭЭРЭЭ (`want`) А руу хэвээр явна — зөвхөн ТӨЛӨВТ буулгахгүй. */
     const want = pkg.key;
-    const next: [string, number][] = iAmDone
-      ? doneRef.current.filter(([u]) => u !== meKey)
-      : [...doneRef.current.filter(([u]) => u !== meKey), [meKey, Date.now()]];
-    doneRef.current = next;
-    setDoneBy(next);
-    /* Одоогийн ноорогийг уншиж, зөвхөн `done`-ыг сольж буцааж бичнэ —
+    /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас — ШИЙДВЭР): ИЛ ТЭМДЭГ (`Draft.marks`) —
+       «Дахин засах» нь нэрийг ХАСАХ биш, `0` төлөвтэй тэмдэг БИЧНЭ. `seq` = энэ хүний
+       сүүлийн тэмдгийн seq + 1 (цагаас үл хамаарах дараалал). */
+    const prevMk = marksRef.current.get(meKey);
+    const nextMarks = new Map(marksRef.current);
+    nextMarks.set(meKey, [meKey, iAmDone ? 0 : 1, (prevMk?.[2] ?? 0) + 1, stamp()]);
+    applyMarks(nextMarks);
+    const next = doneOfMarks(nextMarks);
+    /* Одоогийн ноорогийг уншиж, зөвхөн тэмдгүүдийг сольж буцааж бичнэ —
        нүдний утгыг ЭНД хөндөхгүй (хадгалах эффект түүнийг хариуцна). */
-    /* ⚠️ ХООСОН МАССИВЫГ ЗААВАЛ БИЧНЭ (`undefined` болгож хаяхгүй): `[]` нь
-       «буцаасан» гэсэн ИЛ мэдэгдэл, `undefined` нь «хуучин ноорог, юу ч
-       хэлэхгүй». Ялгахгүй бол `mergeDrafts` буцаалтыг үл тоож, тэмдэглэгээ
-       дараагийн нийлүүлэлтээр СЭРГЭНЭ (`mergeDrafts`-ийн тайлбар). */
     const cur = readDraft(want);
     const d: Draft = cur
-      ? { ...cur, t: Date.now(), done: next }
-      : { t: Date.now(), mode: 'inc', cells: [], done: next };
+      ? { ...cur, t: Date.now(), done: next, marks: [...nextMarks.values()] }
+      : { t: Date.now(), mode: 'inc', cells: [], done: next, marks: [...nextMarks.values()] };
     saveDraftLS(want, d);
     /* ⚠️ READ-MERGE-WRITE (2026-09-08) — `flush`-тэй ИЖИЛ шалтгаан: ноорог
        хуваалцагдсан тул шууд бичвэл нөгөө оролцогчийн нүднүүдийг УСТГАНА.
@@ -425,27 +506,42 @@ export function useDraftSync(p: {
     if (merged) {
       saveDraftLS(want, merged);
       /* ⚠️ Багц солигдсон бол ТӨЛӨВТ буулгахгүй (дээрх ⚠️) */
-      if (pkgKeyRef.current === want) { doneRef.current = merged.done ?? []; setDoneBy(merged.done ?? []); }
+      if (pkgKeyRef.current === want) applyMarks(marksOf(merged));
     }
+    /* ⚠️ 2026-10-01: `expectAt` (optimistic lock) — уншсанаас хойш өөр хүн бичсэн бол
+       ДАРЖ БИЧИХГҮЙ; ердийн `flush` (read-merge-write) руу шилжүүлнэ. */
     const r = merged
-      ? await saveRemoteDraft(want, merged.t, JSON.stringify(merged))
+      ? await saveRemoteDraft(want, merged.t, JSON.stringify(merged), { expectAt: at0 ?? null })
       : { ok: false as const, error: rr.ok ? '' : rr.error };
+    if (!r.ok && 'conflict' in r && r.conflict && merged) {
+      if (!remoteQueue.current || remoteQueue.current.pkg === want) remoteQueue.current = { pkg: want, draft: merged };
+      setRemoteTick((n) => n + 1);
+      return;
+    }
     if (!r.ok) {
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
         iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), r.error));
     }
-  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef]);
+  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp]);
 
   /**
    * Сонгосон ноорогийг ШҮҮЖ, сэргээх цонхонд бэлдэнэ.
    * ⚠️ Энэ нь дэлгэц зурахаас өмнө БҮХ шалгуурыг өнгөрүүлнэ — цонхонд
    *    харагдах тоо ба бодитоор буух өгөгдөл хоёр өөр зам явж болохгүй.
    */
-  const pickDraft = useCallback((d: Draft, source: 'local' | 'remote' | 'both') => {
+  const pickDraft = useCallback((d: Draft, source: 'local' | 'remote' | 'both', opts?: {
+    /**
+     * ⚠️ 2026-10-01: ЗӨВХӨН хамтын төлөв (эзэмшил · агшин · tombstone · «дуусгасан»)-ийг
+     *    буулгана, нүдний утгыг (`pending`) ХӨНДӨХГҮЙ — нүд нээлттэй үед (`deferredRef`).
+     */
+    sharedOnly?: boolean;
+  }) => {
     /* ⚠️ ЭРХГҮЙ бол ЮУ Ч ХӨНДӨХГҮЙ (2026-09-25-ны аудит, HIGH) — сэргээх
        эффектийн `canPerf` ⚠️. Урьд нь доорх `canPerf ? … : []` нь бүх нүдийг
        алгасаад «хоосон ноорог» гэж дүгнэж хуваалцсан ноорогийг УСТГАДАГ байв. */
     if (!sc || !canPerf) return;
+    /* ⚠️ 2026-10-01: нийлүүлэлтээр ирсэн агшнаар логик цагийг урагшлуулна (`stamp`-ийн ⚠️) */
+    seeClock(d);
     /* ⚠️ Ноорогийн `adds` СЭРГЭЭГДЭХГҮЙ (2026-09-24) — мөр нэмэх «Хуваарь» руу
        шилжсэн, батлагдсан мөр серверээс ирнэ. Хуучин ноорогт үлдсэн сөрөг
        oid-той нүд `byOid`-д таарахгүй тул «хуучирсан» (`dropped`) гэж тоологдоно. */
@@ -655,11 +751,22 @@ export function useDraftSync(p: {
       const w = nextByAt.get(k);
       if (w != null && w > a) delRef.current.delete(k);
     }
-    const nextDone = (d.done ?? []).filter(
-      (x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && Number.isFinite(x[1]),
-    ).map(([u, at]): [string, number] => [u.trim().toLowerCase(), at]);
-    doneRef.current = nextDone;
-    setDoneBy(nextDone);
+    /* ⚠️ 2026-10-01: «дуусгасан» нь ИЛ ТЭМДГЭЭС (`Draft.marks`, `marksOf`) — нэр алга
+       байх нь «буцаасан» гэсэн үг БИШ (`mergeDrafts`-ийн ⚠️). */
+    applyMarks(marksOf(d));
+    /* ⚠️ 2026-10-01: нүд НЭЭЛТТЭЙ үед — хамтын төлөв ЭНД хүртэл буусан; нүдний утга,
+       огноо нь нүд хаагдмагц (`deferredRef` эффект) буулгагдана. */
+    if (opts?.sharedOnly) return;
+    /* ⚠️ 2026-10-01: СЭРГЭЭЛТИЙН ЗАВСАРТ ГАРААС бичсэн нүдийг ДАРАХГҮЙ — тэр агшнаас
+       хойш (`restoreSinceRef`) хөндсөн өөрийн нүдний ОДООГИЙН утга ялна. */
+    const since = restoreSinceRef.current;
+    const typed = since ? [...mineAtRef.current].filter(([, a]) => a >= since).map(([k]) => k) : [];
+    const keepTyped = (base: Record<string, string>) => (prev: Record<string, string>) => {
+      if (!typed.length) return base;
+      const out = { ...base };
+      for (const k of typed) if (k in prev) out[k] = prev[k];
+      return out;
+    };
 
     /* ── ШИНЭЧЛЭГДСЭН ОГНОО — зөвхөн ачаалсан утгаас ӨӨР бол ── */
     const draftAsOf = d.asOf != null && d.asOf !== asOfOrig ? d.asOf : null;
@@ -689,8 +796,8 @@ export function useDraftSync(p: {
          нөгөө тал миний сүүлчийн нүдийг буцаасан (tombstone) бол нийлбэр хоосон
          ирнэ — урьд нь энд төлөв хөндөгдөхгүй буцдаг тул тэр нүд `pending`-д
          үлдэж, дараагийн хадгалалтаар алсад СЭРГЭДЭГ байв. */
-      setPending({});
-      setPendDate({});
+      setPending(keepTyped({}));
+      setPendDate(keepTyped({}));
       keepDraft.current = false;
       if (!dropped) {
         /* ⚠️ TOMBSTONE БАЙВАЛ алсыг ЦЭВЭРЛЭХГҮЙ (2026-09-21, дахин аудит):
@@ -745,8 +852,8 @@ export function useDraftSync(p: {
        төлөв ХӨНДӨГДӨХГҮЙ — буцаагдсан нүд/мөр энд үлдэж, дараагийн хадгалалт
        түүнийг алсад СЭРГЭЭДЭГ байв. Курсорын хамгаалалт хэвээр: татах мөчлөг
        нүд нээлттэй үед `pickDraft`-ыг огт дуудахгүй (`editRef`). */
-    setPending(next);
-    setPendDate(nextDates);
+    setPending(keepTyped(next));
+    setPendDate(keepTyped(nextDates));
     if (draftAsOf != null) setAsOf(draftAsOf);
     /* Сэргээгдсэн тул хамгаалалт хэрэггүй — цаашид ердийн дүрмээр хадгалагдана */
     keepDraft.current = false;
@@ -808,6 +915,8 @@ export function useDraftSync(p: {
     /* ⚠️ Хадгалах эффектийн «хоосон → устга» замыг сэргээлт дуустал хаана —
        `restoring`-ийн тайлбарыг үз. */
     restoring.current = true;
+    /* ⚠️ 2026-10-01: энэ агшнаас хойш гараас бичсэн нүд сэргээлтэд ДАРАГДАХГҮЙ (`pickDraft`) */
+    restoreSinceRef.current = stamp();
     /* ⚠️ АЛСЫН ноорогийг ч асууна (2026-09-03): оффисын компьютер дээр
        бөглөсөн ажил гэрийн компьютерт харагдах ёстой.
        ⚠️ 2026-09-08: ХОЁУЛАНГ НЬ НИЙЛҮҮЛНЭ, шинийг нь СОНГОХГҮЙ. Урьд нь
@@ -847,6 +956,7 @@ export function useDraftSync(p: {
            дараагийн засвар түүнийг дарж бичнэ. Багц солигдсон бол
            `promptedPkgRef` аль хэдийн "" тул энэ салаа ажиллахгүй. */
         restoring.current = false;
+        restoreSinceRef.current = 0;
         if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
         return;
       }
@@ -910,10 +1020,15 @@ export function useDraftSync(p: {
       /* ⚠️ Дээрх тасалдалтай ИЖИЛ — дахин оролдох замыг нээнэ (2026-09-25) */
       if (!alive) {
         restoring.current = false;
+        restoreSinceRef.current = 0;
         if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
         return;
       }
-      const merged = mergeDrafts(mergeDrafts(local, remote), migrated);
+      /* ⚠️ 2026-10-01: ЛОКАЛЫГ ДАХИН УНШИНА — сэргээлтийн `await`-уудын завсарт гараас
+         бичсэн нүдийг хадгалах эффект локалд бичсэн (эхэнд уншсан `local`-д БАЙХГҮЙ).
+         Нүд бүрийн агшнаар (`byAt`) нийлж, шинэ бичилт ялна. */
+      const localNow = readDraft(pkg.key);
+      const merged = mergeDrafts(mergeDrafts(mergeDrafts(local, remote), localNow), migrated);
       /* ⚠️ Сэргээлт ЭНД дууслаа — буусан ч бай, сэргээх зүйл байгаагүй ч бай.
          Тугийг `pickDraft`-аас ӨМНӨ тайлна: тэр нь `setPending` хийж, дараагийн
          commit-д хадгалах эффект хоосон биш төлөвтэй ажиллах тул аюулгүй.
@@ -924,6 +1039,9 @@ export function useDraftSync(p: {
         const src = local && remote ? 'both' : remote ? 'remote' : 'local';
         pickDraft(merged, src);
       }
+      restoreSinceRef.current = 0;
+      /* ⚠️ 2026-10-01: нүдний түгжээ («Ноорог сэргээж байна…») тайлагдана */
+      setRestDonePkg(pkg.key);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -978,8 +1096,9 @@ export function useDraftSync(p: {
        «дуусгасан» тэмдэглэгээ шинэ бөглөлтөд наалдаж, «Илгээх» худал
        түгжигдэнэ (эсвэл худал нээгдэнэ). */
     mineRef.current = new Set();
-    doneRef.current = [];
-    setDoneBy([]);
+    /* ⚠️ 2026-10-01: «дуусгасан» тэмдэг бүрийг ИЛ буцаана (`undoAllMarks`) — `done: []` нь
+       «нэр алга = буцаасан» дүрэм хүчингүй болсон тул хангалтгүй. */
+    undoAllMarks();
     setByMap(new Map());
     /* 2026-09-21: агшин ба tombstone ч мөн БАГЦЫН/НООРГИЙН төлөв — хамт цэвэрлэнэ. */
     setByAtMap(new Map());
@@ -991,7 +1110,7 @@ export function useDraftSync(p: {
       const tomb: Draft = {
         t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
         asOf: asOfRevRef.current ? null : undefined,
-        done: [], del: [...delRef.current],
+        done: [], marks: [...marksRef.current.values()], del: [...delRef.current],
       };
       saveDraftLS(pkg.key, tomb);
       remoteQueue.current = { pkg: pkg.key, draft: tomb };
@@ -1055,7 +1174,7 @@ export function useDraftSync(p: {
           const tomb: Draft = {
             t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
             asOf: asOfRevRef.current ? null : undefined,
-            done: doneRef.current, del: liveDel,
+            done: doneRef.current, marks: [...marksRef.current.values()], del: liveDel,
           };
           saveDraftLS(pkg.key, tomb);
           remoteQueue.current = { pkg: pkg.key, draft: tomb };
@@ -1081,6 +1200,7 @@ export function useDraftSync(p: {
            «дуусгасан» тэмдэглэгээ үлдвэл дараагийн бөглөлтөд наалдаж,
            тэр хүн ирээгүй байхад «Илгээх» худал түгжигдэнэ. */
         mineRef.current = new Set();
+        marksRef.current = new Map();
         doneRef.current = [];
         setDoneBy([]);
         setByMap(new Map());
@@ -1175,6 +1295,8 @@ export function useDraftSync(p: {
          ⚠️ ХООСОН МАССИВ ч бичигдэнэ — `undefined` болговол «буцаасан» гэдэг
          мэдээлэл алдагдаж, тэмдэглэгээ нийлүүлэлтээр сэргэнэ. */
       done: doneRef.current,
+      /* ⚠️ 2026-10-01: ИЛ тэмдгүүд (`Draft.marks`) — ҮРГЭЛЖ (хоосон ч) бичнэ */
+      marks: [...marksRef.current.values()],
       byAt: byAt.length ? byAt : undefined,
       del: del.length ? del : undefined,
     };
@@ -1348,9 +1470,18 @@ export function useDraftSync(p: {
          *    алгасуулна (дэмий татахгүй).
          */
         if (live() && !remote && outDraft.t > lastMergedRef.current) lastMergedRef.current = outDraft.t;
-        await saveRemoteDraft(q.pkg, outDraft.t, outBody).then((r) => {
+        /* ⚠️ 2026-10-01: `expectAt` — уншсан `at`-аас хойш өөр хүн бичсэн бол ДАРЖ
+           БИЧИХГҮЙ (`conflict`), дараалалд буцааж дахин read-merge-write хийнэ. Урьд нь
+           уншилт ба бичилтийн завсарт бичигдсэн бусдын нүд дарагдах цонх үлддэг байв;
+           `at` нь өсөх хувилбар (цагаас үл хамаарах тоолуур) тул цагийн зөрүүнд ч зөв. */
+        await saveRemoteDraft(q.pkg, outDraft.t, outBody, { expectAt: at }).then((r) => {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (!live()) return;
+        if (!r.ok && r.conflict) {
+          if (!remoteQueue.current) remoteQueue.current = q;
+          setTimeout(() => setRemoteTick((n) => n + 1), 300);
+          return;
+        }
         if (r.ok) {
           /* ⚠️ ЗӨВХӨН АМЖИЛТТАЙ бичилтийн дараа — унасан бичилтийг «бичигдсэн»
              гэж тэмдэглэвэл дараагийн оролдлого таслагдаж, ажил алсад
@@ -1514,9 +1645,21 @@ export function useDraftSync(p: {
              * тойрогт (гараа авмагц) ЯГ энэ агшин дахин таарч буух ёстой.
              */
             if (editRef.current) {
+              /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): эзэмшил · «дуусгасан» ·
+                 tombstone-ийг ОДОО буулгана (`sharedOnly`) — «Илгээх»-ийн түгжээ нүд
+                 нээлттэй байхад ч цаг тухайд нь шинэчлэгдэнэ; нүдний утга нүд
+                 хаагдмагц (`deferredRef` эффект) буулгагдана. Урьд нь бүгдийг алгасдаг
+                 тул нүдэнд удаан суусан хүнд нөгөөгийн «Дуусгасан» ирдэггүй байв.
+                 ⚠️ `lastMergedRef`-ийг ХӨДӨЛГӨХГҮЙ: нүдний утга `pending`-д хараахан ороогүй
+                 тул `flush` «нийлүүлсэн» гэж үзэж алсыг уншилгүй дарж бичвэл бусдын нүд
+                 устана. Тойрог бүр дахин татаж (хямд) хамтын төлөвийг шинэчилнэ. */
+              deferredRef.current = { pkg: pkg.key, d: remote };
+              const mergedS = mergeDrafts(readDraft(pkg.key), remote);
+              if (mergedS) pickDraftRef.current(mergedS, 'remote', { sharedOnly: true });
               timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
               return;
             }
+            deferredRef.current = null;
             lastMergedRef.current = remote.t;
             const local = readDraft(pkg.key);
             const merged = mergeDrafts(local, remote);
@@ -1529,6 +1672,32 @@ export function useDraftSync(p: {
     timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [busy, noEdit, canPerf, sc, rows.length, pkg.key, loadedPkgRef, editRef]);
+
+  /**
+   * НҮД ХААГДМАГЦ ХОЙШЛУУЛСАН НИЙЛҮҮЛЭЛТИЙГ БУУЛГАНА (2026-10-01).
+   * ⚠️ Дараагийн 3 секундын тойргийг хүлээхгүй — `lastMergedRef` аль хэдийн урагшилсан
+   *    тул тэр тойрог дахин татахгүй. Локалыг ДАХИН уншиж (хадгалах эффект сая хаасан
+   *    нүдийг бичсэн) нүд бүрийн агшнаар нийлүүлнэ — сая бичсэн утга дарагдахгүй.
+   */
+  useEffect(() => {
+    if (editOpen) return;
+    const q = deferredRef.current;
+    if (!q) return;
+    deferredRef.current = null;
+    if (q.pkg !== pkg.key || loadedPkgRef.current !== pkg.key) return;
+    const merged = mergeDrafts(readDraft(pkg.key), q.d);
+    if (!merged) return;
+    pickDraftRef.current(merged, 'remote');
+    /* Одоо `pending`-д буусан — татах мөчлөгийн ердийн замтай ижил тэмдэглэнэ */
+    if (q.d.t > lastMergedRef.current) lastMergedRef.current = q.d.t;
+  }, [editOpen, pkg.key, loadedPkgRef]);
+
+  /**
+   * «НООРОГ СЭРГЭЭЖ БАЙНА…» — нүд ТҮГЖИГДЭНЭ (2026-10-01, хэрэглэгч: бүгдийг зас).
+   * ⚠️ Сэргээлт (`readRemoteDraft` г.м.) дуустал бичсэн нүд нь сэргээгдсэн ноорогтой
+   *    уралддаг байв; одоо тэр хугацаанд нүд нээгдэхгүй, буулгалт хаалттай.
+   */
+  const restoringUi = !noEdit && canPerf && !busy && rows.length > 0 && !!sc && restDonePkg !== pkg.key;
 
   /**
    * ТАБ ХААХ / REFRESH — ноорог ХАДГАЛАГДАЖ АМЖААГҮЙ үед хөтөч зогсооно.
@@ -1575,5 +1744,9 @@ export function useDraftSync(p: {
     lastMergedRef, doneRef, doneBy, setDoneBy, byMap, setByMap, byAtMap, setByAtMap, byAtRef, lastBodyRef,
     remoteState, setRemoteState, promptedPkgRef, flushRef,
     meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,
+    /* 2026-10-01 */
+    undoAllMarks, resetMarks, stamp, restoringUi, offline,
   };
 }
+/** ⚠️ 2026-10-01: FillNew-ийн ачаалах эффектийн толь (`draftSyncRef`) — тэр эффект энэ hook-оос ДЭЭР */
+export type DraftSync = ReturnType<typeof useDraftSync>;

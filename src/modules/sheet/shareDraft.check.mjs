@@ -39,103 +39,11 @@ const FILL_FILES = [
 const readSrc = (p) => (p === 'src/modules/sheet/FillNew.tsx' ? FILL_FILES.map(readOne).join('\n') : readOne(p));
 /* ⚠️ 2026-09-22 merge: bagtsiin-medeelel салбар ижил засварыг `read` нэрээр хийсэн — alias. */
 const read = readSrc;
-/* ══════════ `mergeDrafts`-ийн ХУВИЛБАР (FillNew.tsx-ийн дүрэм) ══════════ */
-const mergeDrafts = (a, b) => {
-  if (!a) return b;
-  if (!b) return a;
-  const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
-  /* 2026-09-25: нүд бүрийг ӨӨРИЙН агшнаар (`byAt`) — хоёр талд агшин байж,
-     хуучин талынх их бол хуучин утга ялна (`keepOld`), эс бөгөөс шинэ тал
-     (FillNew.tsx-ийн дүрэм). */
-  const atOld = new Map(older.byAt ?? []);
-  const atNew = new Map(newer.byAt ?? []);
-  const keepOld = new Map();
-  const cells = new Map(older.cells);
-  for (const [k, v] of newer.cells) {
-    const o = atOld.get(k);
-    const w = atNew.get(k);
-    if (cells.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
-    cells.set(k, v);
-  }
-  const dates = new Map(older.dates ?? []);
-  for (const [k, v] of newer.dates ?? []) {
-    const o = atOld.get(k);
-    const w = atNew.get(k);
-    if (dates.has(k) && o != null && w != null && o > w) { keepOld.set(k, true); continue; }
-    dates.set(k, v);
-  }
-  const adds = new Map();
-  for (const x of older.adds ?? []) adds.set(x.oid, x);
-  for (const x of newer.adds ?? []) adds.set(x.oid, x);
-  const rowKeys = new Map(older.rowKeys ?? []);
-  for (const [o, k] of newer.rowKeys ?? []) rowKeys.set(o, k);
-  const by = new Map(older.by ?? []);
-  for (const [k, u] of newer.by ?? []) if (!keepOld.has(k) || !by.has(k)) by.set(k, u);
-  const done = new Map();
-  for (const [u, at] of older.done ?? []) done.set(u, at);
-  if (newer.done != null) {
-    const fresh = new Map(newer.done ?? []);
-    for (const [u, at] of done) if (!fresh.has(u) && newer.t >= at) done.delete(u);
-    for (const [u, at] of fresh) done.set(u, at);
-  }
-  /* 2026-09-21: `byAt` (түлхүүр бүрд max агшин) ба `del` (tombstone) —
-     FillNew.tsx-ийн дүрэмтэй ижил, доорх 11-р хэсэг ажиллуулж шалгана. */
-  const byAt = new Map(older.byAt ?? []);
-  for (const [k, a] of newer.byAt ?? []) if ((byAt.get(k) ?? 0) < a) byAt.set(k, a);
-  const del = new Map(older.del ?? []);
-  for (const [k, a] of newer.del ?? []) if ((del.get(k) ?? 0) < a) del.set(k, a);
-  const now = Date.now();
-  for (const [k, a] of del) {
-    if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
-    /* 2026-09-21 (дахин аудит): `a:` — мөр байгаа ба нэмсэн агшин (`byAt`-ийн
-       `a:` түлхүүр) tombstone-оос өмнө (эсвэл байхгүй) бол мөр + нүдийг хасна. */
-    if (k.startsWith('a:')) {
-      const o = Number(k.slice(2));
-      if (!adds.has(o)) continue;
-      const added = byAt.get(k);
-      if (added != null && added > a) { del.delete(k); continue; }
-      adds.delete(o);
-      const pre = `${o}:`;
-      for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
-      byAt.delete(k);
-      continue;
-    }
-    const wrote = byAt.get(k);
-    if (wrote != null && wrote > a) { del.delete(k); continue; }
-    cells.delete(k);
-    dates.delete(k);
-    by.delete(k);
-    byAt.delete(k);
-  }
-  /* 2026-09-24: `sent` — батлуулахаар илгээсэн мөр (oid → агшин); батлагдаагүй,
-     илгээснээс хойш дахин нэмэгдээгүй мөрийг нүдтэй нь хасна (FillNew-ийн дүрэм). */
-  const sent = new Map(older.sent ?? []);
-  for (const [o, a] of newer.sent ?? []) if ((sent.get(o) ?? 0) < a) sent.set(o, a);
-  for (const [o, a] of sent) {
-    if (now - a > 7 * 24 * 3600 * 1000) { sent.delete(o); continue; }
-    const row = adds.get(o);
-    if (!row || row.ajilOid) continue;
-    const added = byAt.get(`a:${o}`);
-    if (added != null && added > a) continue;
-    adds.delete(o);
-    const pre = `${o}:`;
-    for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
-    byAt.delete(`a:${o}`);
-  }
-  return {
-    t: newer.t,
-    cells: [...cells],
-    dates: dates.size ? [...dates] : undefined,
-    adds: adds.size ? [...adds.values()] : undefined,
-    asOf: newer.asOf !== undefined ? newer.asOf : older.asOf,
-    rowKeys: [...rowKeys].sort((x, y) => x[0] - y[0]),
-    by: by.size ? [...by] : undefined,
-    done: newer.done != null || older.done != null ? [...done] : undefined,
-    byAt: byAt.size ? [...byAt] : undefined,
-    del: del.size ? [...del] : undefined,
-    sent: sent.size ? [...sent] : undefined,
-  };
-};
+/* ══════════ `mergeDrafts` — ЖИНХЭНЭ код (`fill/draft.ts`) ══════════
+ * ⚠️ 2026-10-01: урьд нь энд JS ХУУЛБАР байв (тест loader-гүй ажилладаг байсан). Одоо
+ *    бүх check `tools/ts-alias.mjs`-ээр ажилладаг тул ЖИНХЭНЭ функцийг шалгана — хуулбар
+ *    эх кодоос салбарлах эрсдэл (2026-10-01-ний `marks` өөрчлөлт) арилна. */
+import { mergeDrafts, marksOf, doneOfMarks } from './fill/draft.ts';
 
 /** «Илгээх» нээлттэй эсэх — FillNew-ийн `waitingOn`/`canSubmitNow` дүрэм */
 const waitingOn = (d, me) => {
@@ -231,14 +139,16 @@ console.log('✅ илгээх түгжээ — ганцаараа нээлттэ
 console.log('✅ оролцогчийн ТОО хамаарахгүй — 1 · 2 · 5 · 9 хүнд ижил');
 
 /* ══════════ 5. «ДАХИН ЗАСАХ» — буцаалт нийлүүлэлтээр эргэж СЭРГЭХГҮЙ ══════════ */
+/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас — ШИЙДВЭР): буцаалт нь ИЛ ТЭМДЭГ (`marks`, төлөв 0,
+   seq өсөх) — урьдын «шинэ ноорогт нэр алга = буцаасан» дүрэм хүчингүй (доорх 5c). */
 {
-  /* А дуусгасан (t=1000). Дараа нь А буцаасан → шинэ ноорогт `done` хоосон. */
-  const before = { t: 1000, cells: [['10:0', '1']], by: [['10:0', 'a']], done: [['a', 900]] };
-  /* ⚠️ Буцаалт нь ХООСОН МАССИВ — `undefined` (хуучин ноорог) БИШ */
-  const after = { t: 2000, cells: [['10:0', '1']], by: [['10:0', 'a']], done: [] };
-  const m = mergeDrafts(before, after);
-  assert.ok(!m.done || !m.done.some(([u]) => u === 'a'),
-    'буцаасны дараа «дуусгасан» тэмдэглэгээ нийлүүлэлтээр СЭРГЭХ ЁСГҮЙ');
+  /* А дуусгасан (seq 1). Дараа нь А «Дахин засах» (seq 2, төлөв 0). */
+  const before = { t: 1000, cells: [['10:0', '1']], by: [['10:0', 'a']], done: [['a', 900]], marks: [['a', 1, 1, 900]] };
+  const after = { t: 2000, cells: [['10:0', '1']], by: [['10:0', 'a']], done: [], marks: [['a', 0, 2, 1500]] };
+  for (const m of [mergeDrafts(before, after), mergeDrafts(after, before)]) {
+    assert.ok(!m.done || !m.done.some(([u]) => u === 'a'),
+      'буцаасны дараа «дуусгасан» тэмдэглэгээ нийлүүлэлтээр СЭРГЭХ ЁСГҮЙ');
+  }
 
   /* ⚠️ ЭСРЭГ ТАЛ: нөгөө хүний ХУУЧИН ноорог ирэхэд шинэ тэмдэглэгээ
      арчигдах ёсгүй. Б-гийн хуучин хуулбарт `done` огт байхгүй ч А саяхан
@@ -262,9 +172,9 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
     assert.equal(new Map(m.cells).get('10:0'), '8', 'хожуу хөндсөн нүд (byAt) ялах ёстой');
     assert.equal(new Map(m.by).get('10:0'), 'b', 'эзэн нь ялсан утгыг дагана');
   }
-  /* Хоосон `done` (ИЛ буцаалт) нийлүүлэлтийн дараа `[]` хэвээр — `undefined` болохгүй */
-  const before = { t: 1000, cells: [], done: [['a', 900]] };
-  const after = { t: 2000, cells: [], done: [] };
+  /* ИЛ буцаалт (төлөв 0) нийлүүлэлтийн дараа `done` нь `[]` — `undefined` болохгүй (2026-10-01: `marks`) */
+  const before = { t: 1000, cells: [], done: [['a', 900]], marks: [['a', 1, 1, 900]] };
+  const after = { t: 2000, cells: [], done: [], marks: [['a', 0, 2, 1000]] };
   assert.deepEqual(mergeDrafts(before, after).done, [], 'ИЛ буцаалт `[]` хэвээр үлдэх ёстой');
   /* rowKeys — oid өсөхөөр (хуудасны дараалал) */
   const r1 = { t: 1000, cells: [], rowKeys: [[30, 'x'], [10, 'x']] };
@@ -272,6 +182,52 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
   assert.deepEqual(mergeDrafts(r1, r2).rowKeys.map(([o]) => o), [10, 20, 30]);
 }
 console.log('✅ нүдний агшин ялна · хоосон done хадгалагдана · rowKeys хуудасны дарааллаар');
+
+/* ══════════ 5c. А «ДУУСГАСАН» ДАРСАН, Б БИЧСЭЭР (2026-10-01, хэрэглэгч: бүгдийг зас — ШИЙДВЭР) ══════════
+ * Б-гийн ноорог А-гийн тэмдгийг хараахан татаж аваагүй (`marks`-д А алга) ч ШИНЭ (t их).
+ * Урьд нь нийлүүлэлт А-гийн «Дуусгасан»-ыг АРЧиж, Б-гийн «Илгээх» түгжигдсэн хэвээр байв.
+ */
+{
+  const aDone = {
+    t: 3000, mode: 'inc', cells: [['10:0', '5']], by: [['10:0', 'a']], byAt: [['10:0', 2000]],
+    done: [['a', 3000]], marks: [['a', 1, 1, 3000]],
+  };
+  const bTyping = {
+    t: 3500, mode: 'inc', cells: [['10:0', '5'], ['11:0', '7']], by: [['10:0', 'a'], ['11:0', 'b']],
+    byAt: [['10:0', 2000], ['11:0', 3400]], done: [], marks: [],
+  };
+  for (const m of [mergeDrafts(aDone, bTyping), mergeDrafts(bTyping, aDone)]) {
+    assert.ok(m.done.some(([u]) => u === 'a'), 'Б-гийн шинэ ноорог А-гийн «Дуусгасан»-ыг АРЧИХ ЁСГҮЙ');
+    assert.equal(new Map(m.cells).get('11:0'), '7', 'Б-гийн бичиж буй нүд хадгалагдах ёстой');
+    assert.equal(canSubmit(m, 'b'), true, 'А дуусгасан тул Б (сүүлд үлдсэн) илгээх ёстой');
+    assert.equal(canSubmit(m, 'a'), false, 'Б дуусгаагүй тул А илгээж болохгүй');
+  }
+  /* Б бичсээр — гурав дахь тойрог (Б-гийн дараагийн бичилт ч А-г агуулаагүй) */
+  const bMore = { ...bTyping, t: 4000, cells: [...bTyping.cells, ['12:0', '9']], marks: [] };
+  const m3 = mergeDrafts(mergeDrafts(aDone, bTyping), bMore);
+  assert.ok(m3.done.some(([u]) => u === 'a'), 'дараалсан бичилтэд ч А-гийн тэмдэг үлдэх ёстой');
+
+  /* ЦАГИЙН ЗӨРҮҮ: А-гийн компьютер 1 цаг УРАГШ (дуусгасан), утас нь 1 цаг ХОЦОРСОН («Дахин засах»).
+     seq (2 > 1) шийднэ — цаг биш. */
+  const H = 3_600_000;
+  const pcDone = { t: 10_000 + H, cells: [], marks: [['a', 1, 1, 10_000 + H]] };
+  const phoneUndo = { t: 11_000 - H, cells: [], marks: [['a', 0, 2, 11_000 - H]] };
+  for (const m of [mergeDrafts(pcDone, phoneUndo), mergeDrafts(phoneUndo, pcDone)]) {
+    assert.equal(m.done.length, 0, 'цаг зөрсөн ч хожуу (seq их) «Дахин засах» ялах ёстой');
+  }
+  /* Хуучин клиентийн ноорог (`marks`-гүй, `done: []`) А-гийн тэмдгийг арчихгүй */
+  const legacy = { t: 9_000, cells: [], done: [] };
+  assert.ok(mergeDrafts(aDone, legacy).done.some(([u]) => u === 'a'), 'хуучин ноорогийн хоосон done буцаалт БИШ');
+  /* Хуучин ноорогийн `done` — seq 0-ийн «дуусгасан»; ил буцаалт (seq 1) ялна */
+  const legacyDone = { t: 1_000, cells: [], done: [['a', 900]] };
+  const undo1 = { t: 500, cells: [], marks: [['a', 0, 1, 400]] };
+  assert.equal(mergeDrafts(legacyDone, undo1).done.length, 0, 'ил буцаалт хуучин done-оос давамгайлах ёстой');
+  /* `marksOf`/`doneOfMarks` — жижиг үсэг, хамгийн их seq */
+  const mk = marksOf({ t: 1, cells: [], marks: [['A ', 1, 1, 5], ['a', 0, 2, 4]] });
+  assert.deepEqual([...mk.values()], [['a', 0, 2, 4]]);
+  assert.deepEqual(doneOfMarks(marksOf({ t: 1, cells: [], done: [['B', 7]] })), [['b', 7]]);
+}
+console.log('✅ «Дуусгасан» — ил тэмдэг · Б бичсээр байхад А-гийн тэмдэг арчигдахгүй · цагийн зөрүүнд seq шийднэ');
 
 /* ══════════ 6. ЭХ КОДЫН ГЭРЭЭ — салбарлалтыг барина ══════════ */
 {
@@ -733,7 +689,9 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(!/if \(nDates\) setPendDate\(nextDates\);/.test(FN), '#2: setPendDate болзолтой хэвээр');
   const ti = FN.indexOf('if (!total) {');
   const tb = FN.slice(ti, ti + 2200);
-  assert.ok(tb.includes('setPending({});') && tb.includes('setPendDate({});'), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
+  /* ⚠️ 2026-10-01: `keepTyped({})` — сэргээлтийн завсарт гараас бичсэн нүдийг л үлдээж хоослоно */
+  assert.ok((tb.includes('setPending({});') && tb.includes('setPendDate({});'))
+    || (tb.includes('setPending(keepTyped({}));') && tb.includes('setPendDate(keepTyped({}));')), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
   assert.ok(tb.includes('if (delRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
   assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
   assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),
@@ -753,7 +711,8 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   const cb = FN.slice(ci, ci + 6000);
   assert.ok(cb.includes('if (incN === 0) {') && cb.includes('revert(key, key in pending);'), '#7: обьём/хувь (нэмэлт 0 = буцаалт)');
   assert.ok(FN.includes('if (sameDate) revert(key, key in pendDate);'), '#7: огноо');
-  assert.ok(FN.includes('if (same) revert(x.key, x.key in pv);'), '#7: paste');
+  /* 2026-09-30: нөгөө горимын хэсэг үлдэх үед (`keepStr`) буцаалт биш — бичилт (`otherPart`) */
+  assert.ok(FN.includes('if (same && !x.keepStr) revert(x.key, x.key in pv);'), '#7: paste');
   /* #8 буцаагдсан өмнөх өдөр мэдэгдэнэ */
   assert.ok(FN.includes('const otherDaysReturned = useMemo(() => {'), '#8: otherDaysReturned алга');
   /* 2026-09-24: өдөр бүр `{day, soid}` — сонгож дахин илгээх товчтой */

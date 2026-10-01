@@ -78,13 +78,37 @@ export function ErhMatrix({
   };
   const isOpen = (pkg: string, col: string) => !!open && open.pkg === pkg && open.col === col;
 
+  /*
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): УСТГАГДСАН ба АДМИН аккаунтыг ИЛ тэмдэглэнэ.
+   *    Урьд нь нүдэнд энгийн эзэн шиг харагддаг тул устгагдсан батлагчийн хуучин мөрийг «багц
+   *    томилогдсон» гэж андуурах (гацааны шалгуур тэднийг тоолдоггүй — `ErhSource.gone`), эсвэл
+   *    super-ийн хуучин мөрийг жирийн хуваарилалт гэж ойлгох эрсдэлтэй байв.
+   */
+  const gone = new Set((src.gone ?? []).map((x) => x.toLowerCase()));
+  const adm = new Set(supers.map((x) => x.toLowerCase()));
+  const person = (u: string, view: boolean) => {
+    const k = u.toLowerCase();
+    const isGone = gone.has(k);
+    const isAdm = !isGone && adm.has(k);
+    const notes = [
+      view ? tr('зөвхөн харна') : '',
+      isGone ? tr('устгагдсан аккаунт — тухайн эрхийн хуудсанд «Цэвэрлэх»') : '',
+      isAdm ? tr('админ — багцын хязгаар үйлчлэхгүй') : '',
+    ].filter(Boolean);
+    const cls = [s.mxName, view ? s.mxView : '', isGone ? s.aclGoneName : '', isAdm ? s.aclAdminName : ''].filter(Boolean).join(' ');
+    return (
+      <span key={`${view ? 'v' : 'o'}-${u}`} className={cls} title={notes.join(' · ') || undefined}>
+        {u}
+        {isGone && <span className={s.aclMarkTag}>{tr('устгагдсан')}</span>}
+        {isAdm && <span className={s.aclMarkTag}>{tr('админ')}</span>}
+      </span>
+    );
+  };
   const names = (owners: string[], viewers: string[]) => (
     owners.length || viewers.length ? (
       <>
-        {owners.map((u) => <span key={`o-${u}`} className={s.mxName}>{u}</span>)}
-        {viewers.map((u) => (
-          <span key={`v-${u}`} className={`${s.mxName} ${s.mxView}`} title={tr('зөвхөн харна')}>{u}</span>
-        ))}
+        {owners.map((u) => person(u, false))}
+        {viewers.map((u) => person(u, true))}
       </>
     ) : <span className={s.mxNone}>—</span>
   );
@@ -154,6 +178,7 @@ export function ErhMatrix({
       <p className={s.aclEmpty}>
         {tr('Улаан нүд — ажил гацна (дээрх «Анхаарах»). Саарал нэр — зөвхөн харна, шатны эзэн биш.')}
         {supers.length > 0 && <>{' '}{tr('Админ {0} — бүх багцад (хуваарилалт үйлчлэхгүй).', String(supers.length))}</>}
+        {' '}{tr('«устгагдсан» — порталд байхгүй аккаунтын үлдсэн мөр (гацааны шалгуурт тоологдохгүй; тухайн эрхийн хуудсанд «Цэвэрлэх»). «админ» — хатуу super-ийн хуучин мөр.')}
       </p>
 
       <div className={s.mxWrap}>

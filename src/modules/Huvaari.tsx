@@ -54,7 +54,7 @@ import {
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
-  claimPlan, decidePlan, loadHistory, loadPayload, loadPending, planTableState, PLAN_STATUS,
+  approveGuard, claimPlan, decidePlan, loadHistory, loadPayload, loadPending, loadSubmissionHead, planTableState, PLAN_STATUS,
   releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
@@ -67,7 +67,8 @@ import {
   PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
 import {
-  aggExtra, hasDatedLeaf, inScope, obKey, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows, unbalancedObyem,
+  aggExtra, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
+  unbalancedBlocks, unbalancedObyem,
 } from './huvaari/util';
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
 import { useLatest } from './huvaari/useLatest';
@@ -1141,6 +1142,30 @@ export function Huvaari({
     return obRes.get(des)?.get(blok) ?? new Map();
   }, [obResDraft, obRes]);
 
+  /**
+   * МУЖААС ГАДУУРХ САРЫН ОБЬЁМ — батлахын өмнөх хаалт (2026-10-01, хэрэглэгч: бүгдийг зас).
+   * ⚠️ Дүрэм · тайлбар `huvaari/util.obyemOutsideSpan`-д. Зөвхөн ЭНЭ саналаар өөрчлөгдсөн
+   *    мөр (`dirtyOids`) — урьдчилан харах/батлах үед ноорог = илгээлт. Гэрээ табд сарын
+   *    обьём хамаарахгүй (төлөвлөгөөний мужтай тулгадаг).
+   */
+  const obOut = useMemo(
+    () => (kind === 'plan' && sc ? obyemOutsideSpan(plan, sc.bld, obOf, dirtyOids) : { bad: 0, names: [] as string[] }),
+    [kind, sc, plan, obOf, dirtyOids],
+  );
+  /** `obOut`-ийн хэрэглэгчид харуулах мөр — эхний 5 нэр (+N) */
+  const obOutMsg = obOut.bad
+    ? tr('Обьёмтой сар ажлын эхлэх–дуусах мужаас гадуур байна — {0} ажил·блок: {1}. Тэр сарын обьёмыг мужид оруулах эсвэл хасаж засуулна уу (буцаана уу).',
+      num(obOut.bad), obOut.names.slice(0, 5).join('; ') + (obOut.names.length > 5 ? ` (+${num(obOut.names.length - 5)})` : ''))
+    : '';
+  /**
+   * БҮЛГИЙН КОДООР ХАДГАЛАГДСАН САРЫН ЗАДАРГАА (2026-10-01) — тэнцлийн шалгалтад ОРОХГҮЙ
+   * («Сарын обьём бүлэгт биш», `util.unbalancedBlocks`-ийн ⚠️), тиймээс ил мэдээлнэ.
+   */
+  const grpSplit = useMemo(
+    () => (kind === 'plan' && sc ? groupSplits(plan, sc.bld, obPlan) : []),
+    [kind, sc, plan, obPlan],
+  );
+
   const applyChanges = useCallback((ch0: Map<number, (Span | null)[]>) => {
     if (!ch0.size) return;
     /**
@@ -1215,7 +1240,12 @@ export function Huvaari({
       let touched = false;
       for (const [i, spans] of ch) {
         const r = plan[i];
-        if (r.des == null || !(r.vol != null && r.vol > 0)) continue;
+        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮЛЭГ АЛГАСНА — «Сарын обьём бүлэгт биш».
+           Урьд нь хүүхдийг чирэхэд бүлгийн муж (`rollUpGroups`) дагаж хөдөлж, серверт
+           БҮЛГИЙН кодоор хадгалагдсан задаргаа `keepMonths`-оор тайрагдан «тэнцэхгүй» болж,
+           бүлэгт сарын нүд гардаггүй тул засах замгүйгээр илгээх/батлах хаагддаг байв
+           (`util.unbalancedBlocks`-ийн ⚠️). */
+        if (r.group || r.des == null || !(r.vol != null && r.vol > 0)) continue;
         spans.forEach((sp, b) => {
           const was = r.spans[b];
           const same = (!sp && !was)
@@ -1260,7 +1290,8 @@ export function Huvaari({
       let touched = false;
       for (const [i, spans] of ch) {
         const r = plan[i];
-        if (r.des == null || !(r.vol != null && r.vol > 0)) continue;
+        /* ⚠️ 2026-10-01: бүлэг алгасна — дээрх обьёмын дүрэмтэй ижил */
+        if (r.group || r.des == null || !(r.vol != null && r.vol > 0)) continue;
         spans.forEach((sp, b) => {
           const was = r.spans[b];
           if (sameSpan(sp, was)) return;
@@ -1647,7 +1678,7 @@ export function Huvaari({
         setErr(tr('{0} мөр энэ хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Хуваарь бичигдсэнгүй; хуудсаа сэргээгээд дахин илгээнэ үү.', num(prep.stale)));
         return false;
       }
-      const { upd, obEdits, unbal, unbalKeys, resSkipped, resSkippedKeys, resDropped, rfUnknown, obLost } = prep;
+      const { upd, obEdits, unbal, unbalKeys, resSkipped, resSkippedKeys, resDropped, rfUnknown, obLost, grpSkipped } = prep;
       let obN = 0;
       /*
        * ⚠️ БАТЛАХ ГОРИМД БҮХ ШАЛГУУР БИЧИХЭЭС ӨМНӨ (2026-09-25 аудит). Урьд нь огноо
@@ -1707,6 +1738,19 @@ export function Huvaari({
         }
         upd.length = 0;
         upd.push(...moved2);
+      }
+      /*
+       * ⚠️ БИЧИХИЙН ЯГ ӨМНӨ ИЛГЭЭЛТИЙН ТӨЛВИЙГ ДАХИН УНШИНА (2026-10-01, хэрэглэгч: бүгдийг
+       *    зас). `decide` түгжсэнээс хойш (бэлтгэл · агшин дахин татах · сүлжээ удаан,
+       *    түгжээ 10 мин) зохиогч ТАТАХ эсвэл өөр батлагч ШИЙДЭХ боломжтой байсан — тэр
+       *    үед «татсан/буцаагдсан» санал эх хуудсанд суудаг байв. `approveGuard` нь
+       *    шалтгааныг ИЛ хэлнэ; эх хуудас ба сарын обьём ХОЁУЛАА бичигдэхгүй (батлах
+       *    эффект түгжээг тайлж, урьдчилан харалт руу буцаана).
+       */
+      if (approvalMode) {
+        const head = await loadSubmissionHead(approving);
+        const why = approveGuard(head, approving, user?.username ?? '');
+        if (why) { setErr(why); return false; }
       }
       if (upd.length) await applyUpdates(pkg, upd);
 
@@ -1807,6 +1851,10 @@ export function Huvaari({
       if (obLost) {
         errs.push(tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй — тэр задаргаа хадгалагдсангүй, дахин бөглөнө үү.', num(obLost)));
       }
+      /* ⚠️ 2026-10-01: бүлгийн сарын ноорог алгасагдсаныг ил хэлнэ (`savePrep`-ийн ⚠️) */
+      if (grpSkipped) {
+        errs.push(tr('{0} бүлгийн сарын задаргаа бичигдсэнгүй — сарын обьём бүлэгт биш, доторх ажил тус бүрт хуваана.', num(grpSkipped)));
+      }
       if (errs.length) setErr(errs.join(' · '));
       return true;
     } catch (e) {
@@ -1815,7 +1863,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, base, dirtyN, busy, pkg, rows, kind, approving,
+  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, base, dirtyN, busy, pkg, rows, kind, approving, user,
     setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
@@ -2459,6 +2507,14 @@ export function Huvaari({
           setFlowBox(null);
           return;
         }
+        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ОБЬЁМТОЙ САР МУЖААС ГАДУУР бол батлахгүй —
+           урьдчилан харж байгаа (ноорог = санал) үед ТҮГЖИХЭЭС ӨМНӨ хэлнэ; харалгүй
+           «Шийдвэрлэх» замд батлах эффект буулгасны дараа шалгана. */
+        if (previewing && obOut.bad > 0) {
+          setErr(obOutMsg);
+          setFlowBox(null);
+          return;
+        }
         /*
          * ⚠️ ТҮГЖЭЭ (claim) — ЭХ ХУУДСАНД БИЧИХЭЭС ӨМНӨ (2026-09-25 аудит). Урьд нь
          *    бичих явцад зохиогч татах, эсвэл хоёр дахь батлагч буцаах/батлах
@@ -2550,7 +2606,7 @@ export function Huvaari({
     } finally {
       setBusy(false);
     }
-  }, [pending, busy, pkg, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows]);
+  }, [pending, busy, pkg, user, canApprove, applyPayloadToDraft, refetchServer, refreshFlow, reviewOids, okRows, previewing, obOut, obOutMsg]);
 
   /**
    * БАТЛАХЫГ ГҮЙЦЭЭХ — агуулга ноорогт буусны ДАРААХ зурагдалт.
@@ -2584,6 +2640,17 @@ export function Huvaari({
         setErr(review
           ? tr('Санал хооронд нь дахин буулгахад өөрчлөгдсөн мөр нэмэгдсэн — шинэ улаан мөрүүдийг шалгаж ногоон болгоод дахин батална уу.')
           : tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.'));
+        return;
+      }
+      /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ОБЬЁМТОЙ САР ажлын мужаас ГАДУУР — эх
+         хуудсанд бичихгүй (`util.obyemOutsideSpan`-ийн ⚠️). Энэ зурагдалт саналыг
+         буулгасан ноорогтой тул «Шийдвэрлэх» (урьдчилан хараагүй) зам ч баригдана.
+         Түгжээг ТАЙЛНА: эх хуудсанд юу ч бичигдээгүй. */
+      if (obOut.bad > 0) {
+        void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
+        setApproving(null);
+        setPreviewing(true);
+        setErr(obOutMsg);
         return;
       }
       /*
@@ -2997,7 +3064,9 @@ export function Huvaari({
         rows: out,
         hasActual,
         opts: pdfOpts,
-      }, `Huvaari_${pkg.key}_${kind}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${msToDay(Date.now())}.pdf`);
+      /* ⚠️ 2026-09-30: файлын нэрийн өдөр ОРОН НУТГИЙН (`dayKey`) — `msToDay` (UTC) нь
+         УБ-д 00:00–07:59-д өчигдрийн огноо өгдөг байв (`format.dayKey`-ийн ⚠️). */
+      }, `Huvaari_${pkg.key}_${kind}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${dayKey(Date.now())}.pdf`);
     } catch (e) {
       setErr(tr('PDF үүсгэж чадсангүй: {0}', e instanceof Error ? e.message : String(e)));
     } finally {
@@ -3018,6 +3087,15 @@ export function Huvaari({
     const r = plan.find((x) => x.oid === modal);
     return r ? effRow(r) : null;
   }, [modal, plan, effRow]);
+  /**
+   * ЦОНХНЫ ТЭНЦЭЭГҮЙ БЛОКУУД — блокийн чип улаан (2026-10-01, хэрэглэгч: бүгдийг зас:
+   * «асуудалтай блокийг шууд олох»). ⚠️ `util.unbalancedBlocks` — илгээх хаалттай нэг
+   * дүрэм (үр дүнтэй задаргаа: ноорог ?? сервер). Гэрээ табд сарын обьём алга.
+   */
+  const modalBad = useMemo(
+    () => new Set(modalRow && sc && kind === 'plan' ? unbalancedBlocks(modalRow, sc.bld, obDraft, obPlan) : []),
+    [modalRow, sc, kind, obDraft, obPlan],
+  );
   /**
    * Popup-д зориулсан ЭЦЭГ БҮЛЭГ — хамгийн ойрын ДЭЭД бүлгийн мөр.
    *
@@ -3398,6 +3476,15 @@ export function Huvaari({
             )}
           </span>
         )}
+        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮЛГИЙН кодоор хадгалагдсан сарын задаргаа —
+            тэнцлийн шалгалтад ОРОХГҮЙ («Сарын обьём бүлэгт биш», `util.unbalancedBlocks`) тул
+            чимээгүй алгасахгүй, ил хэлнэ. Устгах/засах нь админы шийдвэр. */}
+        {grpSplit.length > 0 && (canEdit || canApprove) && (
+          <span className={h.muted} role="status" title={grpSplit.join('; ')}>
+            {tr('{0} бүлгийн мөрд сарын обьём хадгалагдсан байна — бүлэгт задаргаа тооцогдохгүй, тэнцлийн шалгалтад орохгүй: {1}',
+              num(grpSplit.length), grpSplit.slice(0, 3).join('; ') + (grpSplit.length > 3 ? ` (+${num(grpSplit.length - 3)})` : ''))}
+          </span>
+        )}
         {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}
         {(hdLabel || hdUsers.length > 0) && (
           <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' ? h.hdWarn : ''}`} role="status">
@@ -3426,7 +3513,10 @@ export function Huvaari({
                  Товч зөвхөн `dirtyN > 0` үед гардаг тул үргэлж асууна; алдах зүйлгүй
                  (dirtyN = 0) үед товч өөрөө харагдахгүй. */
               const others = hdUsers.length > 0 ? ` (${hdUsers.join(', ')})` : '';
-              if (!window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyN), others))) return;
+              /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): асуултын тоо = ТОВЧНЫ тоо (`dirtyRows`,
+                 өөрчлөгдсөн мөр). Урьд нь `dirtyN` (сарын нүд бүрийг тоолдог) байсан тул
+                 товч «(3)» гэж байхад асуулт «12 өөрчлөлт» гэж зөрдөг байв. */
+              if (!window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others))) return;
               setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
               /* ⚠️ Буцаасан тэмдэглэгээ ноорогтой хамт (2026-09-25 аудит) — үлдвэл дараагийн
                  ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана.
@@ -3579,14 +3669,17 @@ export function Huvaari({
               {tr('Буцаах')}
             </button>
             <button type="button" className={h.save}
-              disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission || (reviewOids.length > 0 && !allOk)}
+              /* ⚠️ 2026-10-01: мужаас гадуурх сарын обьёмтой санал батлагдахгүй (`obOut`) */
+              disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission || (reviewOids.length > 0 && !allOk) || obOut.bad > 0}
               title={isOwnSubmission
                 ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
                 : !canApprove
                   ? tr('Энэ багцын хуваарийг батлах эрхгүй.')
                   : reviewOids.length > 0 && !allOk
                     ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
-                    : tr('Батлахад хуваарь эх хуудсанд бичигдэнэ.')}
+                    : obOut.bad > 0
+                      ? obOutMsg
+                      : tr('Батлахад хуваарь эх хуудсанд бичигдэнэ.')}
               onClick={() => { if (window.confirm(tr('Хуваарийг батлах уу? Эх хуудсанд бичигдэнэ.'))) void decide(true, ''); }}>
               {tr('Батлах')}
             </button>
@@ -3608,7 +3701,10 @@ export function Huvaari({
                     ? tr('Санал хуанли дээр буулгагдаагүй байна — буулгагдсаны дараа шийдвэрлэнэ.')
                     : reviewOids.length > 0 && !allOk
                       ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
-                      : '';
+                      /* ⚠️ 2026-10-01: мужаас гадуурх обьём — аль ажил/блок/сар гэдгийг нэрлэнэ */
+                      : reviewLive && obOut.bad > 0
+                        ? obOutMsg
+                        : '';
               return why ? <span className={h.muted} role="status">{why}</span> : null;
             })()}
           </>
@@ -4383,6 +4479,7 @@ export function Huvaari({
           hasRes={hasRes}
           obyem={kind === 'plan'}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
+          badBlks={modalBad}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
           resFields={obResFields}
           /*

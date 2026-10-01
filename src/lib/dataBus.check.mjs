@@ -38,7 +38,8 @@ const subscribeData = (fn) => { subs.add(fn); return () => subs.delete(fn); };
 function cached(fn, ttlMs, reads = []) {
   let p = null;
   let at = 0;
-  if (reads.length) register(() => { p = null; }, reads);
+  /* ⚠️ 2026-09-30: live.ts-тэй ижил — `reads` хоосон ч бүртгэнэ (хэл солиход хаягдана) */
+  register(() => { p = null; }, reads);
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
       at = Date.now();

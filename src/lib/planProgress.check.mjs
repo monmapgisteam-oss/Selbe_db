@@ -121,4 +121,17 @@ assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаа�
   assert.equal(planPctAt([], '2026-09-15'), null, 'хоосон муруй → null');
 }
 
+/* ── 11. (2026-10-01, хэрэглэгч: бүгдийг зас) САР ДОТОРХ ХУВЬ АЖЛЫН ӨДРӨӨР · КЭШ ──
+   ⚠️ Сарын задаргааны хувь (`planPctFromMonths`) нь ажлын эхлэх–дуусах мужийг авна —
+   `bagtsSheet.planAt`-тай НЭГ томъёо (`plan.spanFrac`). Сарын эцсийн цэгүүд (энэ муруй)
+   хөдлөхгүй ч, муж дамжуулахгүй бол өдрийн `asOf`-тай дуудагч (`planCurve`) зөрнө.
+   ⚠️ Муруй `HUVAARI_OBYEM`-ээр ч бүртгэгдэнэ — зөвхөн обьём өөрчилсөн батлалтын дараа
+   (`applyPlanEdits`) тэр дор нь хаягдана. */
+assert.ok(/register\(\(\) => \{ curveP = null; \}, \[[^\]]*'BAGTS_SHEET'[^\]]*'HUVAARI_OBYEM'[^\]]*\]\)/.test(SRC),
+  'муруй BAGTS_SHEET ба HUVAARI_OBYEM хоёуланд бүртгэгдэх ёстой');
+assert.ok(/planPctFromMonths\(m, asOf, sane\(s\) && sane\(e\) \? \{ start: s, end: e \} : null\)/.test(SRC),
+  'сар доторх хувьд ажлын муж (эвдэрсэн огноо бол null) дамжих ёстой');
+assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
+  '`planAt` нь `plan.spanFrac`-ийг дуудах ёстой — нэг томъёо');
+
 console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

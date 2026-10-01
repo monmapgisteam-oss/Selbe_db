@@ -32,6 +32,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
+import { setNavDirty } from '@/lib/navGuard';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -40,7 +41,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import {
-  dropTotalsCache, retryTotals, usePlanTotals, usePlanTotalsLive,
+  dropTotalsCache, missingQty, retryTotals, usePlanTotals, usePlanTotalsLive,
   type LiveTotals, type Totals,
 } from '@/lib/totals';
 import { PackLayers, Swatch } from '@/components/PackLayers';
@@ -161,8 +162,19 @@ const INFRA_PACKS: Pack[] = buildPacks(null).filter((x) => {
    давхаргын нэр (getter) НЭГ агшинд, ижил хэлээр үнэлэгдэх тул ID-ийн олонлог
    хэлээс хамаарахгүй; `WELL_IDS` нь хэлээс үл хамаарах тогтмол. */
 const WELL_SUFFIX = `· ${tr('Бохир худаг')}`;
+/**
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `infra:69` «Багц 12 · Ариутгах татуургын600 худаг»
+ *    НЭМЭГДЭВ. Нэр нь «· Бохир худаг» биш тул дээрх шүүлтэд ордоггүй байсан ч амьд
+ *    метадатаар (2026-10-01, зөвхөн уншилт) БОХИРЫН ХУДАГ мөн: `infra:1` (Багц 5.1 · Бохир
+ *    худаг)-тай ЯГ ИЖИЛ худгийн схем (`Diameter`, `Cap_Level`, `Bottom_Level`, `Cap_Count`),
+ *    полигон, ариутгах татуургын систем, 320 объект. `infra:62` (Багц 7 · хөрсний ус
+ *    зайлуулах худаг) ижил схемтэй ч ХӨРСНИЙ УСНЫ худаг — ОРУУЛААГҮЙ.
+ * ⚠️ Дугаараар бичсэн нь санаатай (нэр нь өвөрмөц, давхардсан суффиксгүй); давхарга
+ *    устаж/шилжвэл `DED_BUTETS_LAYER_IDS`-ээр шүүгдэж чимээгүй хасагдана.
+ */
+const SEWER_WELL_EXTRA = ['infra:69'];
 const WELL_IDS = DED_BUTETS_LAYER_IDS.filter((id) =>
-  (LAYER_BY_ID[id]?.title ?? '').endsWith(WELL_SUFFIX),
+  (LAYER_BY_ID[id]?.title ?? '').endsWith(WELL_SUFFIX) || SEWER_WELL_EXTRA.includes(id),
 );
 
 if (process.env.NODE_ENV !== 'production' && WELL_IDS.length === 0) {
@@ -466,6 +478,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     | null
   >(null);
   const [undoBusy, setUndoBusy] = useState(false);
+  /** Нээлттэй маягтыг ДАХИН АЧААЛАХ тоолуур (буцаалтын дараа, `key`) — 2026-09-30 */
+  const [formRev, setFormRev] = useState(0);
 
   /**
    * ЗУРГИЙН ДООД МЭДЭГДЭЛ — 4 секундын дараа өөрөө арилна.
@@ -499,9 +513,20 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * эс бөгөөс хуучин тоо ил худал болно (порталын «дутуу дүн гаргахгүй» дүрэм).
    */
   const totalsStale = useRef(false);
+  /* ⚠️ 2026-09-30: каталог НЭЭЛТТЭЙ үед хойшлуулахгүй — тэнд тоо ХАРАГДАЖ байгаа
+     (дээрх «ГАНЦ ТОХИОЛДОЛ»-ын нээлттэй хэвээр хувилбар). Урьд нь нээхэд л нэг удаа
+     цэвэрлэгддэг байсан тул нээлттэй каталогт дараагийн засварууд тусгагддаггүй байв. */
+  const layerOpenRef = useRef(false);
+  useSyncRef(layerOpenRef, layerOpen);
   const dropTotalsLater = useCallback(() => {
-    if (editModeRef.current) { totalsStale.current = true; return; }
+    if (editModeRef.current && !layerOpenRef.current) { totalsStale.current = true; return; }
     dropTotalsCache();
+  }, []);
+  /* ⚠️ 2026-09-30: засварын горимоор харагдацаас ГАРВАЛ (`exitEdit` дуудагдахгүй) хойшлуулсан
+     цэвэрлэгээ мөнхөд алга болж, засварын өмнөх км/тоо KPI, каталог, дашбоардад сешн
+     дуустал үлддэг байв. */
+  useEffect(() => () => {
+    if (totalsStale.current) { totalsStale.current = false; dropTotalsCache(); }
   }, []);
   const flushTotals = useCallback(() => {
     if (!totalsStale.current) return;
@@ -554,10 +579,31 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    *    маягт өөрийн `dirty`-г яг тэр агшинд тэглэдэг.
    */
   const formDirty = useRef(false);
+  /**
+   * ⚠️ 2026-09-30: ОЛНООР ЗАСАХ маягтад бичсэн (хадгалаагүй) утга — `DedButetsBatch.onDirty`.
+   *    Урьд нь «Олноор сонгох» товч, самбарын ✕ бичсэн утгыг асуултгүй хаядаг байв.
+   */
+  const batchDirty = useRef(false);
+  /** navGuard-ыг одоогийн төлөвөөр шинэчлэх (ref-үүд + доорх эффектийн төлөв) */
+  const navSync = useRef<() => void>(() => {});
   const pickRef = useRef(pick);
   useSyncRef(pickRef, pick);
   const pickKey = pick ? `${pick.layerId}:${pick.oid ?? 'new'}` : '';
   useEffect(() => { formDirty.current = false; }, [pickKey]);
+  /**
+   * ⚠️ 2026-09-30: ХАРАГДАЦ СОЛИХ / F5 / ТАБ ХААХ үед хадгалаагүй маягт, зурсан шинэ
+   *    дүрс, чирсэн vertex, олноор засах маягтыг асуулгүй хаядаг байв — `navGuard`-д
+   *    тэмдэглэж `Portal.confirmLeave` ба `beforeunload` асууна. Гарахад тугийг арилгана.
+   */
+  useEffect(() => {
+    navSync.current = () => setNavDirty(
+      'butets',
+      formDirty.current || batchDirty.current || (pick != null && pick.oid == null) || reshaped != null,
+      tr('Инженерийн дэд бүтэц'),
+    );
+    navSync.current();
+  }, [pick, reshaped]);
+  useEffect(() => () => setNavDirty('butets', false), []);
 
   /**
    * ХАДГАЛААГҮЙ МАЯГТ/ДҮРС + VERTEX ЗАСВАРЫГ ХАЯХЫГ АСУУНА (2026-09-25).
@@ -570,7 +616,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    */
   const askDropUnsaved = useCallback((run: () => void): boolean => {
     const pk = pickRef.current;
-    const formLost = pk != null && (pk.oid == null || formDirty.current);
+    const formLost = (pk != null && (pk.oid == null || formDirty.current)) || batchDirty.current;
     if (!formLost) return askDropReshape(run);
     setConfirmQ({ msg: tr('Хадгалаагүй маягт эсвэл зурсан дүрс байна. Хаях уу?'), onYes: run });
     return false;
@@ -684,7 +730,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   /* ⚠️ км-ийн гурван KPI — ЗӨВХӨН урттай шугам давхарга (`isLenLayer`-ийн тайлбар) */
   const netIds = useMemo(() => NET_IDS.filter((id) => isLenLayer(id) && allow(id)), [allow]);
   const heatIds = useMemo(() => SYSTEMS[0].ids.filter((id) => isLenLayer(id) && allow(id)), [allow]);
-  const pkgIds = useMemo(() => PKG_IDS.filter((id) => isLenLayer(id) && allow(id)), [allow]);
+  /**
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Гэрээний багцын шугам» KPI ХАСАГДАВ — багцын
+   *    давхаргууд (`PKG_IDS`) нь инженерийн давхаргуудтай ИЖИЛ олонлог тул «нийт»-тэй ЯГ
+   *    ижил тоо давхардаж байв. Оронд нь СИСТЕМ бүрийн км (ус · бохир · цахилгаан ·
+   *    холбоо) — дулаан нь өөрийн нүдтэй тул энд давтахгүй.
+   */
+  const sysLen = useMemo(
+    () => SYSTEMS.slice(1)
+      .map((s) => ({ key: s.key, title: s.title, hue: s.hue, ids: s.ids.filter((id) => isLenLayer(id) && allow(id)) }))
+      .filter((s) => s.ids.length > 0),
+    [allow],
+  );
   const wellIds = useMemo(() => WELL_IDS.filter(allow), [allow]);
   /**
    * ⚠️ АНХДАГЧ ДАВХАРГА ХҮРЭЭНД БАЙХ ЁСТОЙ (2026-09-23). `msel.layerId` ба `addTo`
@@ -744,7 +801,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
   /* ⚠️ Сонголт солигдоход зураг тэр давхарга руу нисэнэ — олон км-ийн трасс
      дэлгэцээс гадуур байвал «юу ч гарсангүй» гэж уншигдана. */
-  useZoomToFilter({ zone, layerId: sel?.ids[0] ?? null });
+  /* ⚠️ 2026-09-30: `ids[0]` нь заримдаа ТАЛБАЙ давхарга (Багц 5.1/5.2 → ДХТ) тул хоолой нь
+     дэлгэцээс гадна үлддэг байв — багцын ШУГАМ (трасс) давхаргыг эрхэмлэнэ. Бүх
+     давхаргын нэгдсэн хүрээ нь `MapCanvas`-д шинэ API шаардана (тайланд). */
+  useZoomToFilter({ zone, layerId: sel ? (sel.ids.find(isLenLayer) ?? sel.ids[0] ?? null) : null });
 
   /**
    * ЗАСВАРЫН ГОРИМД ЗӨВХӨН ИНЖЕНЕРИЙН ШУГАМ.
@@ -808,7 +868,14 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    * `totals.ts`-ийн тайлбараас үз). Одоо багц бүр бэлэн болмогц өөрийн
    * тоогоо гаргана.
    */
-  const totals = usePlanTotalsLive(zone, true, totalIds);
+  /* ⚠️ 2026-09-30: дэд бүтцийн давхаргууд бүгд `noZone` (ZONE_ID талбаргүй) бол бүс нь
+     KPI-д НӨЛӨӨЛӨХГҮЙ — урьд нь бүс солих бүрд 74 давхаргын статистикийг дахин татаж,
+     ижил төслийн нийтийг «бүсийн» мэт харуулдаг байв. */
+  const kpiZoneless = useMemo(() => totalIds.every((id) => LAYER_BY_ID[id]?.noZone), [totalIds]);
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮСЭЭР — бүсийн ПОЛИГОНООР орон зайн шүүлт
+     (`totals.loadZoneAoi`, `intersects`). Урьд нь «бүсгүй — төслийн нийт» гэж бүсийг
+     үл тоодог байв. Багцын жагсаалт, KPI бүгд бүсээ дагана. */
+  const totals = usePlanTotalsLive(zone, true, totalIds, { spatialZone: true });
 
   /** Тайлбарт багтаагүй давхаргын тоо («+N») */
   const legendHidden = useMemo(
@@ -1020,6 +1087,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         const g = (pre ? await pre : null) ?? await loadGeometry(meta, oid);
         /* ⚠️ Хоцорсон хариу — шинэ сонголт аль хэдийн явж байна */
         if (seq !== geomSeq.current) return;
+        /* ⚠️ 2026-09-30: татаж байх зуур ӨӨР объект товшсон / самбар хаасан бол ХАЯНА —
+           `geomSeq` зөвхөн «Хэлбэр засах»-д өсдөг тул А-гийн бариулууд Б-гийн самбарын доор
+           гарч, «Хэлбэр хадгалах» А-г бичдэг байв. */
+        const pk = pickRef.current;
+        if (!pk || pk.layerId !== layerId || pk.oid !== oid) return;
         if (!g) { toast(tr('Геометр олдсонгүй'), 'err'); return; }
         setReshape({ layerId, oid, geometry: g });
         setReshapeToken((x) => x + 1);
@@ -1128,7 +1200,20 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         const meta = await loadLayerMeta(u.layerId);
         if (u.kind === 'add') await deleteRow(meta, u.oid);
         else if (u.kind === 'attr') await applyAttrs(meta, u.oid, u.attrs);
-        else if (u.kind === 'batch') await revertRows(meta, u.rows);
+        else if (u.kind === 'batch') {
+          /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭСЭГЧИЛСЭН буцаалт — унасан мөрүүдэд л
+             «Үйлдэл буцаах»-ыг үлдээнэ (буцаагдсанг дахин бичихгүй), тоог ил хэлнэ. */
+          const r = await revertRows(meta, u.rows);
+          if (r.failed.length) {
+            const bad = new Set(r.failed.map((x) => x.oid));
+            refreshLayer(u.layerId);
+            dropTotalsLater();
+            setUndoable({ ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) });
+            toast(tr('{0}/{1} объект буцаагдсан, {2} объектод алдаа: {3}. «Үйлдэл буцаах»-аар дахин оролдоно уу.',
+              num(r.done.length), num(u.rows.length), num(r.failed.length), r.failed[0].msg), 'err');
+            return;
+          }
+        }
         else {
           await saveGeometry(meta, u.oid, u.geometry);
           /* ⚠️ 2026-09-29 (аудит 10): маягтын `Shape__*` хуучирлаа (`geomRev`) */
@@ -1139,6 +1224,22 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         /* Буцаалт хэлбэрийг ч сэргээж болно — урьдчилсан геометр хуучирна */
         preGeom.current = null;
         setUndoable(null);
+        /* ⚠️ 2026-09-30: ТЭР объектын маягт нээлттэй бол — нэмэлтийн буцаалт (устгал)-ын
+           дараа байхгүй мөрийн маягт үлдэж (тодруулга хоосон, «Хадгалах»/«Устгах» унана),
+           атрибутын буцаалтын дараа маягт ЗАСВАРЫН утгыг харуулсаар байв. */
+        const pk = pickRef.current;
+        const onForm = pk != null && pk.oid != null && pk.layerId === u.layerId
+          && (u.kind === 'batch' ? u.rows.some((r) => r.oid === pk.oid) : u.oid === pk.oid);
+        if (onForm && u.kind === 'add') {
+          setReshape(null);
+          setReshaped(null);
+          setPick(null);
+          setHighlight(null);
+          setClearToken((x) => x + 1);
+        } else if (onForm && (u.kind === 'attr' || u.kind === 'batch') && !formDirty.current) {
+          /* Бичээгүй маягт — дахин ачаална (бичсэн утгыг хаяхгүй: тэр үед хэвээр) */
+          setFormRev((x) => x + 1);
+        }
         toast(tr('Үйлдэл буцаагдлаа'));
       } catch (e) {
         toast(String((e as Error).message || e), 'err');
@@ -1156,7 +1257,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       return;
     }
     void run();
-  }, [undoable, refreshLayer, toast, dropTotalsLater]);
+  }, [undoable, refreshLayer, toast, dropTotalsLater, setHighlight]);
 
   /**
    * ТЭМПЛЭЙТ СОНГОГДОВ — зураалт ШУУД эхэлнэ (EB-ийн edit widget-ийн зан).
@@ -1396,7 +1497,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             */}
           {/* ⚠️ Хоосон id жагсаалт (багц хуваарилагдаагүй) → «—», «0.0 км» биш
               (`sumOf`-ийн тайлбар, 2026-09-23) */}
-          <Stats cols={4}>
+          <Stats cols={3}>
             <Stat
               value={kmOrWait(sumOf(totals, netIds), netIds.length === 0, totals.done >= totals.total)}
               unit={tr('км')}
@@ -1408,16 +1509,30 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               label={tr('Үүнээс дулаан хангамж')}
             />
             <Stat
-              value={kmOrWait(sumOf(totals, pkgIds), pkgIds.length === 0, totals.done >= totals.total)}
-              unit={tr('км')}
-              label={tr('Гэрээний багцын шугам')}
-            />
-            <Stat
               value={cntOrWait(countOf(totals, wellIds), wellIds.length === 0, totals.done >= totals.total)}
               unit={tr('ш')}
               label={tr('Бохирын худаг')}
             />
           </Stats>
+          {/* ⚠️ 2026-10-01: СИСТЕМ бүрийн км — «Гэрээний багцын шугам»-ын оронд (`sysLen`) */}
+          {sysLen.length > 0 && (
+            <p className={d.kpiSys}>
+              {sysLen.map((s) => (
+                <span key={s.key}>
+                  <i style={{ background: s.hue }} aria-hidden />
+                  {tr(s.title)} <b>{kmOrWait(sumOf(totals, s.ids), false, totals.done >= totals.total)}</b> {tr('км')}
+                </span>
+              ))}
+            </p>
+          )}
+          {/* ⚠️ 2026-10-01: «N объект уртгүй» — уртын талбар (`Urt_m` г.м.) хоосон объект км-д
+              ОРООГҮЙ (`SUM` нь null-ыг алгасдаг). Бүх давхарга ирсний дараа л (дутуу тоо биш). */}
+          {totals.done >= totals.total && ((m) => (m > 0 ? (
+            <p className={d.kpiWait}>{tr('{0} объект уртгүй — км-д ороогүй', num(m))}</p>
+          ) : null))(netIds.reduce((s, id) => s + (missingQty(totals.map.get(id)) ?? 0), 0))}
+          {zone && kpiZoneless && (
+            <p className={d.kpiWait}>{tr('Бүсийн хилээр шүүсэн — хилийг огтолсон шугам бүтнээрээ орно')}</p>
+          )}
           {/* ⚠️ ЯВЦЫН мөр — бүрэн болмогц алга болно. Байхгүй бол «…» нь
               гацсан уу, ачаалж байна уу гэдэг нь ялгагдахгүй. */}
           {totals.done < totals.total && (
@@ -1706,11 +1821,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 <span className={d.modalTitle}>{tr('Олноор засах')}</span>
                 <span className={d.modalNo}>{tr('{0} ш', num(msel.oids.length))}</span>
                 <button type="button" className={d.close} aria-label={tr('Хаах')}
-                  onClick={() => {
+                  /* ⚠️ 2026-09-30: олноор засах маягтад бичсэн утгыг асуулгүй хаядаг байв */
+                  onClick={() => askDropUnsaved(() => {
                     setMulti(false); setRectDraw(false);
                     setMsel((m) => ({ layerId: m.layerId, oids: [] }));
                     setHighlight(null); setClearToken((x) => x + 1);
-                  }}>✕</button>
+                  })}>✕</button>
               </div>
               <div className={d.mselBox}>
                 <label className={d.f}>
@@ -1799,6 +1915,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   key={msel.layerId}
                   layerId={msel.layerId}
                   oids={msel.oids}
+                  onDirty={(v) => { batchDirty.current = v; navSync.current(); }}
                   canEdit={canEdit && canEditLayer(msel.layerId)}
                   /* ⚠️ ХЭСЭГЧИЛСЭН бичилт (2026-09-25): эхний багцууд сервер дээр
                      БИЧИГДСЭН ч дараагийнх унасан. Урьд нь `onDone` дуудагдахгүй тул
@@ -1848,12 +1965,15 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               барина (`formDirty`-ийн тайлбар); хайрцаг үүсгэхгүй тул самбарын
               `position: absolute` нь `mapBox`-оос хэвээр хэмжигдэнэ. */}
           {pick && (
-            <div style={{ display: 'contents' }} onChange={() => { formDirty.current = true; }}>
+            <div style={{ display: 'contents' }} onChange={() => { formDirty.current = true; navSync.current(); }}>
             <DedButetsEdit
+              key={formRev}
               layerId={pick.layerId}
               oid={pick.oid}
               geometry={pick.geometry}
               geomRev={geomRev}
+              /* ⚠️ 2026-10-01: маягт уртыг геометрээс ӨӨРӨӨ бөглөсөн — «хадгалаагүй» гэж тэмдэглэнэ */
+              onDirty={() => { formDirty.current = true; navSync.current(); }}
               canEdit={canEdit && canEditLayer(pick.layerId)}
               docked
               onCancel={closeEdit}
@@ -1931,6 +2051,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
               onDone={(n, back: UndoInfo | null) => {
                 /* ⚠️ Бичигдсэн — маягт өөрийн `dirty`-г тэглэдэг, энд ч мөн */
                 formDirty.current = false;
+                navSync.current();
                 const id = pick.layerId;
                 const created = pick.oid == null;
                 /* ⚠️ 2026-09-21: хадгалаагүй хэлбэрийн засвартай үед `closeEdit`

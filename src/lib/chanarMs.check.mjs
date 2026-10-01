@@ -834,4 +834,53 @@ console.log('✅ аудит 8 — undefined слот · NOTE_MAX · repFrom тү
 }
 console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) · хүлээлтийн шалтгаан · миний хийх');
 
+/* ══════════ 2026-09-30 (өгөгдөл оруулах/хянах аудит): MA материалын шийдвэр · AN хаалт · NCR REP · нотолгоо ══════════ */
+{
+  const { sameMaterialContent, closeAnMaterials, EMPTY_MATERIAL } = await import('./chanarMs.ts');
+  const rv = (verdict, who, note = null, perMaterial) => ({ who, at: T, verdict, note, ...(perMaterial ? { perMaterial } : {}) });
+  /* A2 — тэмдэглээгүй хянагчийн НИЙТ шийдвэр бүх материалд («хоосон бол нийт шийдвэр») */
+  const rR = repFrom({ ...emptyReviews(), cheng: rv(VERDICT.approve, 'e', null, { 0: 'A', 1: 'A' }), chanar: rv(VERDICT.return, 'c', 'буруу') }, 'MA');
+  assert.equal(rR.verdict, 'R');
+  assert.deepEqual(rR.perMaterial, { 0: 'R', 1: 'R' }, '⚠️ chanar-ын нийт R материалд хүрэх ёстой — эс бөгөөс A болж түгжигдэнэ');
+  const rAN = repFrom({ ...emptyReviews(), cheng: rv(VERDICT.approve, 'e', null, { 0: 'A', 1: 'A' }), chanar: rv(VERDICT.note, 'c', 'нөхцөл'), tug: rv(VERDICT.approve, 't') }, 'MA');
+  assert.deepEqual(rAN.perMaterial, { 0: 'AN', 1: 'AN' }, 'нийт AN ч материалд хүрнэ');
+  const body2 = { ...EMPTY_MA, materials: [{ ...EMPTY_MATERIAL, name: 'a' }, { ...EMPTY_MATERIAL, name: 'b' }] };
+  const nbR = nextRevisionBody('MA', applyRepToMaterials(body2, rR), { rev: 1, reason: 'r', by: 'g', now: T });
+  assert.deepEqual(nbR.materials.map((m) => m.locked), [false, false], '⚠️ буцаагдсан материал rev+1-д дахин хянагдана (түгжигдэхгүй)');
+  /* Бүгд материал тэмдэглэсэн бол хуучин дүрэм хэвээр */
+  const rMix = repFrom({ ...emptyReviews(), cheng: rv(VERDICT.note, 'e', 'n', { 0: 'A', 1: 'AN' }), chanar: rv(VERDICT.return, 'c', 's', { 1: 'R' }) }, 'MA');
+  assert.deepEqual(rMix.perMaterial, { 0: 'A', 1: 'R' }, 'тэмдэглэсэн хянагчид — материал бүрд R > AN > A хэвээр');
+
+  /* A3 — түгжигдсэн материалын АГУУЛГА өөрчлөгдсөн эсэх */
+  const m0 = { ...EMPTY_MATERIAL, name: 'Цемент', qty: '10', model: 'M400', verdict: 'A', locked: true };
+  assert.equal(sameMaterialContent(m0, { ...m0, verdict: null, locked: false }), true, 'шийдвэр/түгжээ нь агуулга биш');
+  assert.equal(sameMaterialContent(m0, { ...m0, qty: '20' }), false, '⚠️ тоо өөрчлөгдсөн — дахин хянагдана');
+  assert.equal(sameMaterialContent(m0, { ...m0, model: ' M400 ' }), true, 'зай нь өөрчлөлт биш');
+  assert.equal(sameMaterialContent({ name: 'Цемент', qty: '10', model: 'M400' }, m0), true, 'хуучин JSON-ийн дутуу талбар = хоосон');
+
+  /* A4 — AN хаалт түгжигдсэн AN материалыг ч A болгоно */
+  const anBody = { ...EMPTY_MA, materials: [{ ...EMPTY_MATERIAL, name: 'x', verdict: 'AN', locked: true }, { ...EMPTY_MATERIAL, name: 'y', verdict: 'AN', locked: false }] };
+  const closed = closeAnMaterials(anBody, { verdict: 'A', perMaterial: { 0: 'A', 1: 'A' } });
+  assert.deepEqual(closed.materials.map((m) => [m.verdict, m.locked]), [['A', true], ['A', false]], '⚠️ түгжигдсэн AN ч A (түгжээ хэвээр)');
+  assert.equal(anBody.materials[0].verdict, 'AN', 'оролт өөрчлөгдөөгүй (цэвэр)');
+
+  /* A1 · A7 — сүлжээний давхарга (эх кодын шалгуур) */
+  const fs = await import('node:fs');
+  const store = fs.readFileSync(new URL('./chanarStore.ts', import.meta.url), 'utf8');
+  const rd = store.slice(store.indexOf('export async function reviewDoc'), store.indexOf('const safeJson'));
+  assert.ok(/reviewsJson\(r\.reviews, rep \?\? doc\.rep \?\? null\)/.test(rd), '⚠️ reviewDoc: эцсийн бус шийдвэр өмнөх REP-ийг хадгална (NCR 2-р тойрог)');
+  assert.ok(/attachDeny\(oid, 'delete'\)/.test(store), '⚠️ deleteAttachment нь устгалын дүрмээр шалгана');
+  const ad = store.slice(store.indexOf('async function attachDeny'), store.indexOf('export async function loadDocs'));
+  assert.ok(/op === 'delete'/.test(ad), '⚠️ NCR илгээсний дараа нотолгоо устгагдахгүй');
+  assert.ok(/sameMaterialContent\(m, sm\[j\]\)/.test(store), '⚠️ ownClientBody: агуулга өөрчлөгдсөн материал түгжигдэхгүй');
+  /* A9 — хянах · хянахгүй буцаах бичихийн өмнө дахин уншина (өөр хүний шийдвэр/bounce-ийг дарахгүй) */
+  const w = rd.indexOf("arcgisPost(`${url}/applyEdits`");
+  assert.ok(rd.indexOf('await unchanged(args.oid, cur[0], [F.status, F.reviews])') > 0
+    && rd.indexOf('await unchanged(args.oid, cur[0], [F.status, F.reviews])') < w, '⚠️ reviewDoc: бичихийн өмнө `unchanged`');
+  const bd = store.slice(store.indexOf('export async function bounceDoc'), store.indexOf('async function unchanged'));
+  assert.ok(bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') > 0
+    && bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') < bd.indexOf('return update(url'), '⚠️ bounceDoc: бичихийн өмнө `unchanged`');
+}
+console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр · түгжигдсэн агуулга · AN хаалт · NCR REP · нотолгоо');
+
 console.log('chanarMs.check ✓');

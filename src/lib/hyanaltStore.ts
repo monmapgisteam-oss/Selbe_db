@@ -36,7 +36,7 @@ import { dayKey } from '@/lib/format';
 import { useCallback, useEffect, useState } from 'react';
 import { t as tr } from './i18nCore';
 import {
-  addRows, hasOkCellsField, queryAll, updateRows,
+  addRows, hasHistoryField, hasOkCellsField, queryAll, updateRows,
   DECISION, F, HYANALT, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview,
   type Attrs, type Decision, type ReviewStage, type Row, type Status,
@@ -66,11 +66,27 @@ async function okCellsPatch(okCells: string[] | undefined): Promise<{ patch: Att
       warn: tr('«{0}» багана хяналтын үйлчилгээнд алга — зөвшөөрсөн нүдний жагсаалт хадгалагдсангүй тул гүйцэтгэгч аль нүд зөвшөөрөгдсөнийг харахгүй. AGOL дээр багана нэмнэ үү.', F.okCells),
     };
   }
-  return { patch: { [F.okCells]: JSON.stringify(okCells) } };
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗӨВХӨН ШИНЭ хэлбэр (`{v:2,c:[…]}` — мөрийн
+     тогтвортой түлхүүрээр, `hyanaltOkCells.ts`). Хуучин индексийн массив бичигдэхгүй. */
+  return { patch: { [F.okCells]: encodeOkCells(okCells) } };
+}
+
+/**
+ * ШИЙДВЭРИЙН ЛОГ (`Shiidveriin_tuuh`) — талбар БАЙВАЛ л үйл явдал нэмнэ (2026-10-01).
+ * ⚠️ `base` нь БИЧИХИЙН ӨМНӨ уншсан мөрийн лог — `movedSince` тэр талбарыг ч
+ *    тулгадаг тул завсарт өөр хүн нэмсэн бол бичилт зогсож, лог дарагдахгүй.
+ * ⚠️ `false`/`null` (алга/мэдэхгүй) → `{}` — шийдвэр урьдын адил, логгүй.
+ */
+async function historyPatch(base: unknown, e: HistEntry): Promise<Attrs> {
+  const has = await hasHistoryField();
+  if (has !== true) return {};
+  return { [F.history]: appendHistory(base, e) };
 }
 import {
   bagtsFor, isViewOnly, stageOfUser,
 } from './guitsetgelAcl';
+import { appendHistory, type HistEntry } from './hyanaltHistory';
+import { encodeOkCells } from './hyanaltOkCells';
 
 /**
  * ДОМЭЙН ТҮВШНИЙ ЭРХИЙН ХАМГААЛАЛТ (2026-09-16-ны аудит).
@@ -178,6 +194,8 @@ export function toRow(a: Attrs): Row {
     [F.chiefSent]: toIso(a[F.chiefSent]),
     /* ⚠️ Зөвшөөрсөн нүдний JSON — хоосон бол `''` (`hyanalt.F.okCells`) */
     [F.okCells]: str(a[F.okCells]),
+    /* ⚠️ 2026-10-01: шийдвэрийн лог — талбаргүй үйлчилгээнд `''` (`hyanalt.F.history`) */
+    [F.history]: str(a[F.history]),
     [F.status]: str(a[F.status]) as Status,
   };
 }
@@ -193,6 +211,15 @@ async function refresh(): Promise<void> {
   ROWS = (await queryAll()).map(toRow);
   loaded = true;
   emit();
+}
+
+/**
+ * БИЧИЛТИЙН ДАРААХ дахин ачаалалт — алдааг ШИДЭХГҮЙ (2026-09-30).
+ * ⚠️ Шийдвэр ArcGIS-д аль хэдийн суусан бол уншилтын алдаа (429, сүлжээ) түүнийг
+ *    «амжилтгүй» болгох ёсгүй — `apply`-ийн 2026-09-29-ний (аудит 10) дүрэм.
+ */
+async function refreshQuiet(): Promise<void> {
+  try { await refresh(); } catch (e) { console.warn('[selbe] шийдвэрийн дараах дахин ачаалалт унав:', e); }
 }
 
 /**
@@ -245,7 +272,9 @@ async function movedSince(oid: number, prev: Row, stage: ReviewStage): Promise<s
     ? tr('Энэ ажлыг {0} таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.', name)
     : tr('Энэ ажлыг өөр хэрэглэгч таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.'));
   if (!now) return tr('Бүртгэл олдсонгүй');
-  const keys = [F.status, F.okCells, f.who, f.decision, f.reason, f.returned, f.sent];
+  /* ⚠️ 2026-10-01: `F.history` ч — лог нь `prev`-ээс бодогдож нэмэгддэг тул завсарт
+     өөр хүн нэмсэн бол дарж бичихгүй (талбаргүй үед хоёр тал `''` — нөлөөгүй). */
+  const keys = [F.status, F.okCells, F.history, f.who, f.decision, f.reason, f.returned, f.sent];
   const val = (r: Row, k: string) => String((r as Record<string, unknown>)[k] ?? '');
   if (keys.some((k) => val(now as Row, k) !== val(prev, k))) return busy(actor(now));
   const so = Number(prev[F.sheetOid]);
@@ -709,7 +738,11 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       if (!obPlan || row.des == null || asOf == null) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      return m ? planPctFromMonths(m, asOf) : null;
+      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
+         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
+         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
+         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
+      return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
     });
   /*
    * ⚠️ ЖААЗНЫ УРТЫГ БИЧИХИЙН ӨМНӨ ТУЛГАНА (2026-09-04-ний аудитын CRITICAL
@@ -911,6 +944,8 @@ export async function apply(a: {
   reason?: string;
   /**
    * ХЯНАГЧИЙН ЗӨВШӨӨРСӨН НҮДНҮҮД — `"мөр:блок"` түлхүүрүүд.
+   * ⚠️ 2026-10-01: одоо `"<oid>|<sid>|<блок>"` (`hyanaltOkCells.toOkRefs`) — мөрийн
+   *    тогтвортой түлхүүр; `okCellsPatch` `{v:2,c:[…]}` болгож бичнэ.
    *
    * ⚠️ БУЦААХ ҮЕД чухал: гүйцэтгэгч энэ жагсаалтаар нүдээ ялгана —
    *    доторх нь НОГООН (зөвшөөрөгдсөн), гадна талынх нь УЛААН (засах
@@ -1056,6 +1091,14 @@ export async function apply(a: {
          дагана — «шилжүүлсэн» нь өгөгдөлтэйгээ нийцнэ. Давхар-батлах уралдаанд
          `archiveSubmission` `done|`-оор idempotent тул хоёр дахь жааз үүсэхгүй. */
     }
+
+    /* ⚠️ 2026-10-01: ШИЙДВЭРИЙН ЛОГ — талбар байвал энэ шийдвэрийг `cur`-ийн лог дээр
+       НЭМНЭ (`historyPatch`). Агшин нь шатны огнооны талбартай ЯГ ижил `t` — түүх
+       тэр хоёрыг тулгаж дарагдсан нэрийг сэргээнэ (`Guitsetgel.stepsOf`). */
+    Object.assign(attrs, await historyPatch(cur[F.history], {
+      stage: a.stage, who: a.who, at: t, act: returning ? 'return' : 'approve',
+      ...(returning ? { reason } : {}),
+    }));
 
     /* ⚠️ 2026-09-30: ДУНД ШАТАНД бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️).
        Эцсийн шатанд ХИЙХГҮЙ — архив аль хэдийн бичигдсэн бол мөр түүнийг ЗААВАЛ
@@ -1375,6 +1418,17 @@ export async function recheck(
     const twin = ROWS.some((r) => r[F.sheetOid] === base[F.sheetOid]
       && r[F.bagts] === base[F.bagts] && r[F.ergelt] === ergelt);
     if (twin) { emit(); return { ok: false, error: STALE() }; }
+    /* ⚠️ 2026-09-30: «ok» ЗАМД Ч бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️).
+       Урьд нь зөвхөн «back» зам ба `apply`-д байсан: эхний `liveRow`-оос хойш
+       (`subAt` уншилт г.м.) нөгөө данс «back» хийвэл хуучин мөр «Инженер буцаасан»
+       болсон атлаа энэ зам ergelt+1 мөрийг «Менежер хянаж байна»-аар нэмж,
+       гүйцэтгэгчид очсон буцаалт ЧИМЭЭГҮЙ дарагддаг (`groupWorks` шинэ мөрийг
+       «одоогийн» болгоно); хоёулаа «ok» бол ижил тойрогтой ХОЁР мөр үүсдэг байв.
+       `nextId()` ч ЭНЭ уншилтын шинэ `ROWS`-оос бодогдоно (доор). */
+    {
+      const moved = await movedSince(oid, prev, by);
+      if (moved) { emit(); return { ok: false, error: moved }; }
+    }
 
     const sentAt = prev[F.companySent];
     /*
@@ -1427,12 +1481,19 @@ export async function recheck(
         return [[f.who, ''], [f.decision, ''], [f.reason, ''], [f.returned, null], [f.sent, null]];
       })),
       [F.status]: nextStatus,
+      /* ⚠️ 2026-10-01: ШИНЭ тойргийн лог нь ЭНЭ дахин шалгалтаас эхэлнэ — өмнөх
+         үйл явдлууд хуучин мөрийн логт хэвээр (түүх тойрог бүрээр харуулдаг). */
+      ...(await historyPatch('', { stage: by, who, at: t, act: 'recheck-ok' })),
     };
     try {
       await addRows([fresh]);
-      await refresh();
-      return { ok: true };
     } catch (e) { return fail(e); }
+    /* ⚠️ 2026-09-30: бичилт БҮТСЭНИЙ ДАРААХ дахин ачаалалтын алдаа шийдвэрийг
+       унагахгүй — `apply`-ийн 2026-09-29-ний (аудит 10) ижил засвар. Урьд нь энд
+       `{ok:false}` буцаж, хянагч улаан алдаа хараад дахин дарахад STALE авдаг
+       (мөр аль хэдийн үүссэн) байв. */
+    await refreshQuiet();
+    return { ok: true };
   }
 
   // ── Асуудал БАЙНА — компанид буцаана. Мөрийн ЭЦСИЙН үйлдэл тул шинэ мөр
@@ -1459,6 +1520,9 @@ export async function recheck(
     [bf.returned]: t,
     [F.status]: RETURNED_STATUS[by],
     ...okPatch,
+    /* ⚠️ 2026-10-01: ЭНЭ мөрөнд `by` шат 2 дахь удаагаа шийдэж байна (нэр дарагдана) —
+       лог нь өмнөх нэрийг хадгална. */
+    ...(await historyPatch(prev[F.history], { stage: by, who, at: t, act: 'recheck-back', reason: why })),
   };
 
   /* ⚠️ 2026-09-30: бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️) — нөгөө данс
@@ -1470,7 +1534,8 @@ export async function recheck(
 
   try {
     await updateRows([back]);
-    await refresh();
-    return okp.warn ? { ok: true, warn: okp.warn } : { ok: true };
   } catch (e) { return fail(e); }
+  /* ⚠️ 2026-09-30: дахин ачаалалтын алдаа бүтсэн буцаалтыг «амжилтгүй» болгохгүй (дээрх «ok»-ийн ⚠️) */
+  await refreshQuiet();
+  return okp.warn ? { ok: true, warn: okp.warn } : { ok: true };
 }

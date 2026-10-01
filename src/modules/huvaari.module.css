@@ -1074,6 +1074,11 @@
 .mdChip:hover { border-color: var(--data); }
 .mdChipOn { color: #fff; background: var(--data); border-color: var(--data); }
 .mdChipAct { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--data); }
+/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): САРЫН ЗАДАРГАА ТЭНЦЭЭГҮЙ блок — улаан хүрээ ба
+   цэг; сонгогдсон (`mdChipOn`) үед ч улаан хүрээ хэвээр тул асуудалтай блок шууд олдоно.
+   Өнгө ганцаараа биш — `⚠` тэмдэг ба `title` ч дагалдана (өнгө ялгадаггүй хүнд). */
+.mdChipBad { border-color: var(--bad); color: var(--bad-ink); box-shadow: inset 0 0 0 1px var(--bad); }
+.mdChipBad.mdChipOn { color: #fff; background: var(--bad); border-color: var(--bad); }
 /* ── ОЛОН БЛОК — ерөнхий сонголт, ТОМ чип (2026-09-29, хэрэглэгч: «ерөнхийд томоор») ── */
 .gBlks {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; flex: none;

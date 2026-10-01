@@ -204,6 +204,33 @@ export type NegSources = {
    *    (`leafValue`-ийн ⚠️). Сонголттой — хуучин дуудагч/тест өгөхгүй бол хоосон.
    */
   housingPkgs?: Set<string>;
+  /**
+   * ХЭСЭГЧЛЭН уншигдсан эхүүдийн нэр (2026-10-01, «хэрэглэгч: бүгдийг зас») — одоогоор
+   * хуваарийн муруйн унасан хуудас (`PlanCurve.failed`). Тооцоо явагдана, гэхдээ
+   * дэлгэц нэрлэж, `loadNegtgelFull` энэ үр дүнг КЭШЛЭХГҮЙ (дараагийн дуудалт дахин уншина).
+   */
+  partial?: string[];
+};
+
+/**
+ * ЭХ СУРВАЛЖ УНАСАН — АЛЬ нь унасныг нэрээр (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Урьд нь `Promise.all` эхний алдааг л дамжуулдаг тул «Нэгтгэл» таб «Системийн эх
+ *    уншигдсангүй» гэхээс өөрийг хэлж чаддаггүй байв.
+ */
+export class NegSourceError extends Error {
+  /** Унасан эхүүдийн нэр (`tr()`-ээр) */
+  readonly failed: string[];
+  constructor(failed: string[], cause?: unknown) {
+    super(`${tr('Татагдсангүй: {0}', failed.join(', '))}${cause instanceof Error ? ` (${cause.message})` : ''}`);
+    this.name = 'NegSourceError';
+    this.failed = failed;
+  }
+}
+
+/** Амжилттай үр дүнг задлах — `loadNegSources` бүх уналтыг ӨМНӨ нь шалгасан */
+const settledValue = <T,>(r: PromiseSettledResult<T>): T => {
+  if (r.status === 'rejected') throw r.reason;
+  return r.value;
 };
 
 /**
@@ -333,7 +360,10 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
      тоонуудтай холилдсон «нийт» гарна. Дуудагч хадгалсан утгаа харуулна.
      ⚠️ Муруй нь дэлгэцэнд КЭШТЭЙ (`loadPlanCurveCached`, 2026-09-25) —
      дашбоард ба удирдлагын тайлан нэг хуулбарыг хуваалцана. */
-  const [cf, land, housing, curve, blocks] = await Promise.all([
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `allSettled` — АЛЬ эх унасныг нэрлэнэ
+     (`NegSourceError.failed`). Нэг нь ч унавал БҮХЭЛДЭЭ шиднэ (дээрх дүрэм хэвээр). */
+  const names = [tr('Cashflow'), tr('Газар чөлөөлөлт'), tr('Гүйцэтгэл бөглөх'), tr('Хуваарийн муруй'), tr('Блокийн гүйцэтгэл')];
+  const res = await Promise.allSettled([
     loadCfWork(),
     loadLandPct(),
     fresh ? L.loadFillPkgProgressFresh() : L.loadFillPkgProgress(),
@@ -342,6 +372,16 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
        нэмэлт хүсэлт үүсэхгүй; зөвхөн блок бүрийн огноо хэрэгтэй. */
     fresh ? B.loadBlockProgressFresh() : B.loadBlockProgress(),
   ]);
+  const bad = names.filter((_, i) => res[i].status === 'rejected');
+  if (bad.length) {
+    const first = res.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    throw new NegSourceError(bad, first?.reason);
+  }
+  const cf = settledValue(res[0]);
+  const land = settledValue(res[1]);
+  const housing = settledValue(res[2]);
+  const curve = settledValue(res[3]);
+  const blocks = settledValue(res[4]);
   /* ⚠️ Барилгын (давхартай) хуудас = блоктой багц; 5.x · 6.x · 10 нь блокгүй */
   const housingPkgs = new Set(PKGS.filter((p) => p.floors != null).map((p) => bagtsKey(p.group)));
   /* Багц → блокуудын хамгийн СҮҮЛИЙН бөглөлтийн огноо (`finPhys.buildPhys`-ийн `physAt`-тай ижил дүрэм).
@@ -357,6 +397,8 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     cf, land, housing,
     housingPlan: housingPlanOf(curve.byBagts, new Date(), housingAt),
     housingPkgs, housingAt,
+    /* ⚠️ 2026-10-01: хуваарийн муруйн унасан хуудас — тооцоо явна, дэлгэц нэрлэнэ, кэшлэхгүй */
+    partial: curve.failed.length ? [tr('Хуваарийн муруй ({0} хуудас)', curve.failed.length)] : [],
   };
 }
 

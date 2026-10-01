@@ -19,7 +19,7 @@ import {
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
-import { housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
 import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
@@ -319,6 +319,15 @@ function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
 }
 
 /**
+ * «ОЛГОСОН ХУВЬ» — олгосон ÷ гэрээлсэн дүн × 100 (0–100), гэрээлсэн дүн 0 бол `null`.
+ * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): «Багцын санхүү»-гийн БҮХ хувь
+ *    (жагсаалт · KPI хавтан · карт · ангиллын чарт) ЭНЭ хуваариар — удирдлагын тайлантай
+ *    нэг (`gdash.contractedScope`). Шошго нь «гэрээний дүнгийн %».
+ */
+export const paidPctOf = (given: number, contract: number): number | null =>
+  contract > 0 ? (given / contract) * 100 : null;
+
+/**
  * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — «Багц бүрийн санхүүжилт» жагсаалт ба дээд KPI-тай
  * ЯГ ИЖИЛ тооцоо, React-гүй ЦЭВЭР функц.
  *
@@ -377,10 +386,18 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       /* ⚠️ 2026-09-21: гэрээт мөрүүд нь `list`-ээс — `aliasFin` нь мөрийн `bagts`-ийг
          дарж бичсэн тул `rowsByKey` аль хэдийн холбоосын дараах түлхүүртэй. */
       const contractedRows = list.filter(isContracted);
-      const contract = contractedRows.reduce((a, r) => a + (Number(r[C.contractAmount]) || 0), 0);
+      /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): гэрээлсэн дүн = `gdash.contractedScope`
+         (`finXlInTotal` ∧ CONTRACTED) — удирдлагын тайлан · Тайлан · Дашбоардтай ГАНЦ дүрэм. */
+      const contract = contractedScope(list).amount;
+      const contracted = contractedRows.length > 0;
       return {
-        key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null,
-        contract, contracted: contractedRows.length > 0,
+        key: p.key, label: tr(p.name), plan, given,
+        /* ⚠️ 2026-10-01 (ШИЙДВЭР): «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН («гэрээний дүнгийн %»),
+           удирдлагын тайлангийн хуваарь. Урьд нь `plan` (гэрээ ЭСВЭЛ төсөв, гэрээгүй мөрийн
+           төсөв ч орсон)-оор хуваадаг тул нэг багц хоёр дэлгэцэд өөр хувьтай гардаг байв.
+           Гэрээгүй багцад хувь ЗОХИОХГҮЙ (`null` — «—»). */
+        pct: paidPctOf(given, contracted ? contract : 0),
+        contract, contracted,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x != null)
@@ -596,6 +613,18 @@ export function PkgFin({ dim, setDim }: {
   }, [rowsByKey, finQ]);
 
   /**
+   * Багц → ГЭРЭЭЛСЭН ДҮН (₮) — «олгосон хувь»-ийн хуваарь (`paidPctOf`).
+   * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): `gdash.contractedScope` — удирдлагын
+   *    тайлантай нэг дүрэм; гэрээгүй багц 0 (хувь «—»).
+   */
+  const contractMap = useMemo(() => {
+    if (!rowsByKey) return null;
+    const m = new Map<string, number>();
+    rowsByKey.forEach((rows, k) => { m.set(k, contractedScope(rows).amount); });
+    return m;
+  }, [rowsByKey]);
+
+  /**
    * Багц → ГЭРЭЭНИЙ ТҮҮХИЙ МӨР (CASHFLOW_NEW).
    *
    * ⚠️ `finMap` нь зөвхөн САРЫН цэгүүдийг хадгалдаг тул гэрээний дугаар,
@@ -649,6 +678,10 @@ export function PkgFin({ dim, setDim }: {
       return {
         plan: d.planTotal.get(active.key) ?? 0,
         given: givenMap.get(active.key) ?? 0,
+        /* ⚠️ 2026-10-01: «олгосон хувь»-ийн хуваарь — гэрээлсэн дүн (`contractMap`);
+           тоологч нь багцын олголт өөрөө */
+        contract: contractMap?.get(active.key) ?? 0,
+        givenContracted: givenMap.get(active.key) ?? 0,
       };
     }
     let plan = 0;
@@ -658,8 +691,13 @@ export function PkgFin({ dim, setDim }: {
        нийлбэрлэвэл нэг гэрээ хэд хэдэн түлхүүрт (дэд + үндсэн) орсон тохиолдолд
        давхардана. `FinCard`-ийн сонголтгүй салаатай ЯГ ижил зам. */
     d.givenTotal.forEach((v) => { given += v; });
-    return { plan, given };
-  }, [givenMap, active, finQ]);
+    /* ⚠️ 2026-10-01: ТӨСЛИЙН «олгосон хувь» — гэрээлсэн дүн ба ГЭРЭЭЛСЭН багцын олголт
+       (`gdash.contractedScope`, Дашбоардын «Санхүүжилтийн хуримтлал»-тай нэг тоологч/хуваарь) */
+    const sc = contractedScope(d.contracts);
+    let givenContracted = 0;
+    sc.keys.forEach((k) => { givenContracted += d.givenTotal.get(k) ?? 0; });
+    return { plan, given, contract: sc.amount, givenContracted };
+  }, [givenMap, contractMap, active, finQ]);
 
   /**
    * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
@@ -881,9 +919,11 @@ export function PkgFin({ dim, setDim }: {
                    СОНГОХОД баруун карт ба доод графикт гарсаар (`givenMap`).
                    Бусад гурван бүлэг санхүүгийн мөрөө хэвээр харуулна. */
                 mode={c.key === 'infra' ? 'layers' : 'fin'}
-                note={c.key === 'infra' ? tr('давхарга · олгосон / гэрээ') : tr('олгосон / гэрээ')}
+                /* ⚠️ 2026-10-01 (ШИЙДВЭР): хувь нь «гэрээний дүнгийн %» — шошгонд ил */
+                note={c.key === 'infra' ? tr('давхарга · гэрээний дүнгийн %') : tr('олгосон · гэрээний дүнгийн %')}
                 givenMap={givenMap}
                 planMap={planMap}
+                contractMap={contractMap}
                 finFailed={finErr != null}
                 /* ⚠️ Alert-тай багц нь ДЭЭД бүлэгт гарсан тул эндээс хасагдана —
                    эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
@@ -987,8 +1027,8 @@ export function PkgFin({ dim, setDim }: {
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            <CatChart packs={packs} givenMap={givenMap} planMap={planMap} finOnly />
-            <PkgFinList packs={packs} givenMap={givenMap} planMap={planMap} />
+            <CatChart packs={packs} givenMap={givenMap} planMap={planMap} contractMap={contractMap} finOnly />
+            <PkgFinList packs={packs} givenMap={givenMap} planMap={planMap} contractMap={contractMap} />
           </>
         ) : active.kind === 'build' ? (
           /* ⚠️ Гэрээ нь САНХҮҮГИЙН баримт (дүн, хугацаа, гүйцэтгэгч), блокийн
@@ -1081,9 +1121,16 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
        хуваарь `planTotal` ч диапазон мөрийг агуулдаггүй тул нэг хүрээ
        (`execReport.fin.givenContracted`-ийн зарчим). `null` = мэдээлэлгүй. */
     const given = hoTotals(fin.pays).paid;
+    /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): «олгосон хувь» = ГЭРЭЭЛСЭН багцын
+       олголт ÷ ГЭРЭЭЛСЭН ДҮН (`gdash.contractedScope`) — удирдлагын тайлан (`fin.share`) ·
+       Дашбоардын «Санхүүжилтийн хуримтлал»-тай нэг. Урьд нь `planTotal` (гэрээ ЭСВЭЛ төсөв,
+       5·6·7-р хэсэг ч орсон)-оор хуваадаг тул хэдэн нэгж хувиар доогуур гардаг байв. */
+    const sc = contractedScope(fin.contracts);
+    let givenContracted = 0;
+    sc.keys.forEach((k) => { givenContracted += fin.givenTotal.get(k) ?? 0; });
     return {
       planned, actual, gap, given,
-      share: planTotal > 0 ? (givenPkg / planTotal) * 100 : null,
+      share: paidPctOf(givenContracted, sc.amount),
       /** Төлөвлөгөөт нийтээс олгогдоогүй үлдэгдэл ₮ */
       remain: Math.max(0, planTotal - givenPkg),
     };
@@ -1097,7 +1144,7 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо') },
       { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
-      { v: t?.share == null ? '…' : pct(t.share, 1), l: tr('нийт санхүүжилтийн олгосон хувь') },
+      { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %') },
       /* ⚠️ Гүйцэтгэлийн хувийн оронд МӨНГӨН үлдэгдэл — санхүүгийн харагдацад
          биет явцын тоо огт гарахгүй (2026-08-21, хэрэглэгчийн хүсэлт). */
       { v: t == null ? '…' : mnt(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
@@ -1125,7 +1172,7 @@ const pkgNum = (name: string): [number, number] => {
 };
 
 function TsPackList({
-  title, note, packs, sel, onSel, finMap, planMap, givenMap, mode = 'fin', finFailed = false,
+  title, note, packs, sel, onSel, finMap, planMap, givenMap, contractMap, mode = 'fin', finFailed = false,
 }: {
   title: string;
   note: string;
@@ -1157,6 +1204,11 @@ function TsPackList({
    * Багц 5.1 (984,295,870 ₮) «—», Багц 3.1 (28.8 тэрбум ₮) дутуу харагддаг байв.
    */
   givenMap: Map<string, number> | null;
+  /**
+   * Багц → ГЭРЭЭЛСЭН ДҮН, ₮ (`gdash.contractedScope`) — «олгосон хувь»-ийн хуваарь.
+   * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): удирдлагын тайлантай нэг (`paidPctOf`).
+   */
+  contractMap: Map<string, number> | null;
 }) {
   if (!packs.length) return null;
   const layers = mode === 'layers';
@@ -1174,8 +1226,11 @@ function TsPackList({
       const given = givenMap
         ? (givenMap.get(p.key) ?? 0)
         : (months ? months.reduce((a, m) => a + m.given, 0) : 0);
-      // Багцын төрлөөс үл хамааран ОЛГОСОН / ТӨЛӨВЛӨГӨӨ
-      const execPct = plan > 0 ? (given / plan) * 100 : null;
+      /* ⚠️ 2026-10-01 (ШИЙДВЭР): ОЛГОСОН ÷ ГЭРЭЭЛСЭН ДҮН («гэрээний дүнгийн %») — урьд нь
+         олгосон ÷ төлөвлөгөө (гэрээ ЭСВЭЛ төсөв) байсан тул удирдлагын тайлангаас зөрдөг байв.
+         Гэрээгүй багцад «—». */
+      const contract = contractMap?.get(p.key) ?? 0;
+      const execPct = paidPctOf(given, contract);
       /*
        * ⚠️ ДЭД БҮТЦИЙН БАГЦАД БИЕТ ЯВЦЫН ӨГӨГДӨЛ БАЙХГҮЙ. Урьд нь түүний
        *    оронд «олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж
@@ -1184,7 +1239,7 @@ function TsPackList({
        *    зогсох тул харьцуулж болохгүй хоёр хэмжигдэхүүн холилдож байв.
        *    Одоо «мэдээлэлгүй» гэж ил хэлнэ.
        */
-      return { p, execPct, plan, given };
+      return { p, execPct, plan, given, contract };
     })
     /* ⚠️ Давхаргын горимд БАГЦЫН ДУГААРААР (2026-09-15, хэрэглэгчийн хүсэлт):
        5.1 → 5.2 → … → 6.1 → … → 14 → 15 → 18. Нэрийн мөрөөр эрэмбэлбэл
@@ -1209,7 +1264,7 @@ function TsPackList({
       collapsible
     >
       <List>
-        {rows.map(({ p, execPct, plan, given }) => {
+        {rows.map(({ p, execPct, plan, given, contract }) => {
           /* Сонгогдсон эсэх — мөрийг тодруулахад. Сонголтын үр дүн нь доод
              бүтэн график ба баруун картуудад гарна. */
           const open = p.key === sel;
@@ -1221,9 +1276,12 @@ function TsPackList({
                 ? (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))
                 : !planMap
                   ? (finFailed ? tr('санхүү уншигдсангүй') : '…')
-                  : plan > 0 || given > 0
-                    ? tr('{0} / {1}', mnt(given), mnt(plan))
-                    : tr('санхүү бүртгэлгүй')}
+                  /* ⚠️ 2026-10-01: хувийн ХУВААРЬ (гэрээлсэн дүн) — гэрээгүй бол төлөвлөгөө хэвээр */
+                  : contract > 0
+                    ? tr('{0} / {1}', mnt(given), mnt(contract))
+                    : plan > 0 || given > 0
+                      ? tr('{0} / {1}', mnt(given), mnt(plan))
+                      : tr('санхүү бүртгэлгүй')}
               value={
                 /* ⚠️ `flexWrap` — самбар хамгийн нарийн (180px) үедээ ч тэмдэг
                    картаас хальж гарахгүй: хувь дээрээ, тэмдэг доороо буна. */
@@ -1233,7 +1291,7 @@ function TsPackList({
                 }}>
                   {/* ⚠️ Давхаргын горимд ч хувь ХАРАГДАНА (2026-09-15, хэрэглэгч:
                       «ард байгаа хувийг оруул») — олгосон ÷ гэрээ. */}
-                  {!planMap ? '—' : execPct == null ? '—' : pct(execPct, 1)}
+                  {!planMap ? '—' : execPct == null ? '—' : <span title={tr('гэрээний дүнгийн %')}>{pct(execPct, 1)}</span>}
                   {/* ⚠️ 2026-09-06: хоцрогдлын ба «бүртгэл алга» тэмдгүүд
                       ХАСАГДСАН — хоёулаа сарын төлөвлөгөө дээр тогтдог
                       байсан бөгөөд тэр өгөгдөл шинэ cashflow-д байхгүй.
@@ -1297,10 +1355,11 @@ function TsPackList({
  * ⚠️ Гүйцэтгэгчийн нэр ҮЛДСЭН: тэр нь гэрээний тал, мөнгө ХЭНД очиж байгааг
  *    хэлдэг тул санхүүгийн асуултын нэг хэсэг.
  */
-function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number } | null }) {
+function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number; contract: number; givenContracted: number } | null }) {
   const contractor = p.blocks.map((b) => b.contractor).find((c) => c) ?? '—';
   const has = !!fin && (fin.plan > 0 || fin.given > 0);
-  const share = has && fin!.plan > 0 ? (fin!.given / fin!.plan) * 100 : null;
+  /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): олгосон ÷ ГЭРЭЭЛСЭН ДҮН (`paidPctOf`) */
+  const share = fin ? paidPctOf(fin.givenContracted, fin.contract) : null;
   return (
     <Section tone="primary" title={tr('{0} — санхүү', tr(p.name))}>
       {fin == null ? (
@@ -1313,7 +1372,7 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number } 
             { key: tr('Гүйцэтгэгч'), value: contractor },
             { key: tr('Төлөвлөгөөт санхүүжилт'), value: <span className="num">{mnt(fin.plan)}</span> },
             { key: tr('Олгосон санхүүжилт'), value: <span className="num">{mnt(fin.given)}</span> },
-            { key: tr('Олгосон хувь'), value: <span className="num">{share == null ? '—' : pct(share, 1)}</span> },
+            { key: tr('олгосон — гэрээний дүнгийн %'), value: <span className="num">{share == null ? '—' : pct(share, 1)}</span> },
             {
               key: tr('Олгогдоогүй үлдэгдэл'),
               value: <span className="num">{mnt(Math.max(0, fin.plan - fin.given))}</span>,
@@ -1627,13 +1686,15 @@ function PkgMonths({
 }
 
 function PkgFinList({
-  packs, givenMap, planMap,
+  packs, givenMap, planMap, contractMap,
 }: {
   packs: Pack[];
   /** Багц → олгосон нийт дүн, ₮ (`givenMap`) */
   givenMap: Map<string, number> | null;
   /** Багц → гэрээний нийт дүн, ₮ */
   planMap: Map<string, number> | null;
+  /** Багц → ГЭРЭЭЛСЭН ДҮН, ₮ — «олгосон хувь»-ийн хуваарь (2026-10-01, `paidPctOf`) */
+  contractMap: Map<string, number> | null;
 }) {
   const rows = useMemo(() => {
     if (!givenMap) return null;
@@ -1648,11 +1709,13 @@ function PkgFinList({
            энэ жагсаалт дээд `TsKpi` хавтантайгаа зөрдөг байв. */
         const given = givenMap.get(p.key) ?? 0;
         if (plan <= 0 && given <= 0) return null;
-        return { key: p.key, label: tr(p.name), plan, given, pct: plan > 0 ? (given / plan) * 100 : null };
+        /* ⚠️ 2026-10-01 (ШИЙДВЭР): олгосон ÷ ГЭРЭЭЛСЭН ДҮН — гэрээгүй бол «—» (саарал) */
+        const contract = contractMap?.get(p.key) ?? 0;
+        return { key: p.key, label: tr(p.name), plan, given, contract, pct: paidPctOf(given, contract) };
       })
       .filter((x): x is NonNullable<typeof x> => x != null)
       .sort((a, b) => b.given - a.given);
-  }, [packs, givenMap, planMap]);
+  }, [packs, givenMap, planMap, contractMap]);
 
   if (!rows) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Ачаалж байна…')} /></Section>;
   if (!rows.length) return <Section title={tr('Багц бүрийн санхүүжилт')}><Empty label={tr('Гэрээ бүртгэгдээгүй')} /></Section>;
@@ -1660,7 +1723,7 @@ function PkgFinList({
   return (
     <Section
       title={tr('Багц бүрийн санхүүжилт')}
-      note={tr('{0} багц · олгосон ₮', num(rows.length))}
+      note={tr('{0} багц · {1}', num(rows.length), tr('олгосон · гэрээний дүнгийн %'))}
     >
       <Bars
         color={HUE}
@@ -1674,7 +1737,8 @@ function PkgFinList({
           // ⚠️ 2026-09-01: мөнгөн дүн бүтнээр бичигдэх болсон тул энэ мөр ~37
           //    тэмдэгт. `Bars` нь нэр/утгыг БҮТЭН өргөний хоёр захад тавьдаг тул
           //    багтана; `.barVal` нь мөр таслахгүй (`ui.module.css`).
-          display: `${mnt(r.given)} / ${mnt(r.plan)}`,
+          /* ⚠️ 2026-10-01: хуваарь нь гэрээлсэн дүн (гэрээгүй бол төлөвлөгөө — хувь «—») */
+          display: `${mnt(r.given)} / ${mnt(r.contract > 0 ? r.contract : r.plan)}`,
         }))}
       />
     </Section>
@@ -1685,6 +1749,7 @@ function CatChart({
   packs,
   givenMap,
   planMap,
+  contractMap = null,
   finOnly = false,
 }: {
   packs: Pack[];
@@ -1692,6 +1757,11 @@ function CatChart({
   givenMap: Map<string, number> | null;
   /** Багц → гэрээний нийт дүн, ₮ */
   planMap: Map<string, number> | null;
+  /**
+   * Багц → ГЭРЭЭЛСЭН ДҮН, ₮ — санхүүгийн горимын хувийн хуваарь (2026-10-01, ШИЙДВЭР:
+   * «гэрээний дүнгийн %», удирдлагын тайлантай нэг — `paidPctOf`).
+   */
+  contractMap?: Map<string, number> | null;
   /**
    * САНХҮҮГИЙН хэл: багана бүр ОЛГОСОН / ТӨЛӨВЛӨГӨӨ хувь.
    *
@@ -1719,8 +1789,9 @@ function CatChart({
         continue;
       }
       if (!givenMap?.has(p.key)) continue;
-      /* ⚠️ 2026-09-06: «төлөвлөгөө» = ГЭРЭЭНИЙ дүн (сарын хуваарь алга) */
-      const plan = planMap?.get(p.key) ?? 0;
+      /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): хуваарь = ГЭРЭЭЛСЭН ДҮН
+         (`contractMap`); урьд нь төлөвлөгөө (гэрээ ЭСВЭЛ төсөв, `planMap`). Гэрээгүй багц орохгүй. */
+      const plan = contractMap ? contractMap.get(p.key) ?? 0 : planMap?.get(p.key) ?? 0;
       /* ⚠️ 2026-09-08 (аудит, CRITICAL): сарын цувааны нийлбэр БИШ, `givenMap` —
          огноогүй акт цуваанд ордоггүй (`givenMap`-ийн ⚠️-г үз). */
       const given = givenMap.get(p.key) ?? 0;
@@ -1743,7 +1814,7 @@ function CatChart({
     <Section
       tone="primary"
       title={tr('Төслийн төрөл')}
-      note={finOnly ? tr('олгосон хувь · {0} багц', num(packs.length)) : tr('{0} багц ажил', num(packs.length))}
+      note={finOnly ? tr('{0} багц · {1}', num(packs.length), tr('олгосон · гэрээний дүнгийн %')) : tr('{0} багц ажил', num(packs.length))}
     >
       <Bars
         color={HUE}

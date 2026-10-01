@@ -22,6 +22,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { toHtml, stripHtml } from './telegram-format.mjs';
+import { botFullViews } from './telegram-views.mjs';
 
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -70,15 +71,17 @@ const ADMINS = parseList(process.env.TELEGRAM_ALLOWED);
  * `view: 'pkgFin'` тул ИЛ жагсаалтаас `pkgFin` ба `finance` хоёрыг хасахад
  * л хаалт бодитоор үйлчилнэ.
  *
- * ⚠️ Энэ жагсаалт `services.ts`-ийн `ViewKey`-тэй ГАР АРГААР синк байна —
- * шинэ харагдац нэмэгдвэл энд бас нэмнэ (санхүүгийнх бол НЭМЭХГҮЙ).
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ГАР АРГААР синк (14 түлхүүр) БАЙХАА
+ *    БОЛИВ — `VIEWS`-ийн бүх түлхүүрээс санхүүгийнхийг (`FINANCE_VIEWS`) хасна
+ *    (`telegram-views.mjs`). ТУХ · Ерөнхий дашбоард · Дэд бүтэц · Чанар · QAQC зэрэг
+ *    шинэ харагдацууд автоматаар орно. Шинэ САНХҮҮГИЙН харагдац нэмэгдвэл
+ *    `FINANCE_VIEWS`-д нэмнэ (шалгуур нь эмзэг датасет алдагдвал унана).
  * ⚠️ Хуучин `telegram-users.json`-д `"views": "all"` гэж хадгалагдсан
- * бичлэгүүд ХЭВЭЭР үлдэнэ — шаардвал файлаас нь гараар засна.
+ * бичлэгүүд ХЭВЭЭР үлдэнэ — шаардвал файлаас нь гараар засна. Өмнө зөвшөөрсөн
+ * хэрэглэгчийн ИЛ жагсаалт ч хэвээр (шинэ харагдац авахын тулд дахин зөвшөөрнө).
  */
-const FULL_VIEWS = [
-  'dashboard', 'plan', 'pkgProg', 'gazar', 'analysis', 'huvaari',
-  'tailan', 'habea', 'irged', 'iot', 'ersdel', 'zovshoorol', 'guitsetgel', 'schem',
-];
+const { VIEWS } = await import('../src/lib/services/views.ts');
+const FULL_VIEWS = botFullViews(VIEWS.map((v) => v.key));
 
 /**
  * «🔵 Зөвхөн төлөвлөлт».

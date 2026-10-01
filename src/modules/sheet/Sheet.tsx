@@ -13,6 +13,8 @@ import st from "./sheet.module.css";
  * гурав (Pivot/Wbs/Level5) нь харах/экспортын хуудаснууд байсан. Тэдгээрийн код
  * ба ТООЦООЛОЛ (`bagtsSheet.ts → computeAll`, excel-ийн томъёонууд) ХЭВЭЭР —
  * FillNew дотор ажилладаг хэвээр, зөвхөн навигаци нь хасагдсан.
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): Pivot · Wbs · Level5 (+ `wbs.data.ts`) файлууд
+ *    УСТГАГДСАН — хаанаас ч импортлогддоггүй, хаалттай үйлчилгээ (499) рүү заадаг байв.
  */
 export function Sheet({ view }: { view?: SheetView } = {}) {
   return (

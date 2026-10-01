@@ -80,9 +80,25 @@ console.log('✅ хоосон шалгалт — бүх төлөвөөр');
    хэрэгслийн мөрөнд тоологдоно; хэрэггүй бол «ноорог устгах» товч. */
 const restore = between('const pickDraft = useCallback', 'const from = source ===');
 /* 2026-09-24: нэмсэн мөр сэргээгдэхгүй (`setAdds` байхгүй — дээрх шалгуур) */
-for (const setter of ['setPending(next)', 'setPendDate(nextDates)', 'setAsOf(draftAsOf)']) {
+/* ⚠️ 2026-10-01: `keepTyped(…)` — сэргээлтийн завсарт гараас бичсэн нүд дарагдахгүй (useDraftSync) */
+for (const setter of ['setPending(keepTyped(next))', 'setPendDate(keepTyped(nextDates))', 'setAsOf(draftAsOf)']) {
   assert.ok(restore.includes(setter), `шууд буулгалтад «${setter}» алга`);
 }
+{
+  /* Сэргээлтийн ЭХЭНД агшин тэмдэглэж, ТӨГСГӨЛД локалыг ДАХИН уншиж нийлүүлнэ */
+  assert.ok(SRC.includes('restoreSinceRef.current = stamp();'), 'сэргээлтийн эхлэх агшин тэмдэглэгдэхгүй');
+  assert.ok(SRC.includes('const localNow = readDraft(pkg.key);')
+    && SRC.includes('mergeDrafts(mergeDrafts(mergeDrafts(local, remote), localNow), migrated)'),
+    'сэргээлт эхэнд уншсан локалаар л нийлүүлж байна — завсарт бичсэн нүд дарагдана');
+  assert.ok(SRC.includes('if (restoring) return say(RO.restoring);'), 'сэргээлтийн үед нүд түгжигдэхгүй байна');
+  assert.ok(SRC.includes('if (restoring) { warn(RO.restoring); return true; }'), 'сэргээлтийн үед буулгалт түгжигдэхгүй байна');
+  /* Нүд нээлттэй үед хамтын төлөв шууд, нүдний утга хаагдмагц */
+  assert.ok(SRC.includes("pickDraftRef.current(mergedS, 'remote', { sharedOnly: true })"), 'нүд нээлттэй үед эзэмшил/«дуусгасан» буухгүй байна');
+  assert.ok(SRC.includes('if (editOpen) return;') && SRC.includes('deferredRef.current = null;'), 'нүд хаагдмагц хойшлуулсан нийлүүлэлт буухгүй');
+  /* flush нь optimistic lock-той */
+  assert.ok(SRC.includes('saveRemoteDraft(q.pkg, outDraft.t, outBody, { expectAt: at })'), 'flush expectAt-гүй — уншилт/бичилтийн завсарт бусдын нүд дарагдана');
+}
+console.log('✅ сэргээлтийн завсарт бичсэн нүд дарагдахгүй · нүд түгжигдэнэ · нүд нээлттэй үед хамтын төлөв · flush CAS');
 /* Юу сэргэснийг ИЛ хэлнэ — чимээгүй бууж болохгүй */
 assert.ok(restore.includes('say('), 'ноорог сэргэснийг хэрэглэгчид хэлэхгүй байна');
 /* Цонхны үлдэгдэл БАЙХГҮЙ байх ёстой */

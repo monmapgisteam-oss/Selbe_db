@@ -25,7 +25,8 @@
  *    · «Шинэ хувилбар» (батлагдсанаас ч) — шалтгаан ЗААВАЛ (`revNote`), түүх
  *      `body.revHistory`; буцаагдсанаас дахин илгээхэд ч шалтгаан заавал
  *    · «Хянахгүй буцаах» — Чанарын хэлтэс формат/бүрдэл дутууд (`bounce`)
- *    · «Хүлээн авлаа» — гүйцэтгэгч хариуг хүлээн авсан (`ackRep`)
+ *    · «Хүлээн авлаа» — гүйцэтгэгч хариуг хүлээн авсан (`ackRep`); ⚠️ 2026-10-01: NCR-д
+ *      нээгч биш ТУХАЙН БАГЦЫН ГҮЙЦЭТГЭГЧ (`canAct`-д `contractor: authorOk`)
  *    · «AN нөхцөл биелсэн — хаах» — AN нээлттэй баримт (`closeAn`), AN өгөхдөө хугацаа
  *    · NCR «Үл тохирлыг хаах» — гүйцэтгэгчийн хаасан мөр (`closeNcr`)
  *    · MA ижил нэртэй идэвхтэй баримт — анхааруулга (`activeSameTitle`), хориг биш
@@ -45,14 +46,14 @@ import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, history, kindLabel, latest, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
+  delayDays, emptyBodyOf, history, kindLabel, latest, myActionLabel, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
   statusLabel, verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
   type MsStatus, type NcrBody, type NcrCorrection, type Review, type Reviewer, type VerdictCode,
 } from '@/lib/chanarMs';
 import { MA_CATEGORIES, MS_GROUPS, maCategoryLabel, msGroupLabel, msRequiredProgress } from '@/lib/chanarTemplates';
 import {
-  ackRepDoc, actionableDocs, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
+  ackRepDoc, actionableItems, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
   loadAllDocs, loadBodyOf, loadNcrFlags, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
   submitCorrection, submitDoc, type Attachment, type NcrFlags, type TableState,
 } from '@/lib/chanarStore';
@@ -198,12 +199,15 @@ export function Chanar() {
   /* ⚠️ «МИНИЙ ХИЙХ» (2026-09-30): БҮХ багц, бүх төрлөөс энэ хэрэглэгчийн ОДОО хийх ёстой
      баримт (`chanarStore.actionableDocs` — товчны `canAct` дүрэмтэй ижил). `tickN` — ACL
      remote-оос ирэхэд үүрэг шинэчлэгдэнэ (`myRoles`-ийн ижил шалтгаан). */
-  const actionable = useMemo(
-    () => actionableDocs(docs, ncrFlags, me),
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): мөр бүр ЯАГААД жагсаалтад байгаа ба хэдэн хоног
+     хүлээсэн (`actionableItems` → `chanarMs.myAction`). Хоног мэдэгдэхгүй бол юу ч бичихгүй. */
+  const actionItems = useMemo(
+    () => actionableItems(docs, ncrFlags, me),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `tickN`: ACL шинэчлэгдэхэд дахин
     [docs, ncrFlags, me, tickN],
   );
-  const actionSet = useMemo(() => new Set(actionable.map((d) => d.oid)), [actionable]);
+  const actionable = useMemo(() => actionItems.map((x) => x.doc), [actionItems]);
+  const actionWhy = useMemo(() => new Map(actionItems.map((x) => [x.doc.oid, x])), [actionItems]);
   /* Таб дээрх тэмдэг — СОНГОСОН багц дахь төрөл бүрийн «миний хийх» тоо */
   const mineByKind = useMemo(() => {
     const out = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<DocKind, number>;
@@ -804,7 +808,7 @@ export function Chanar() {
             const p = progress(d.reviews, d.kind);
             const v = docVerdict(d);
             const dl = delayDays(d);
-            const todo = actionSet.has(d.oid);
+            const todo = actionWhy.get(d.oid) ?? null;
             return (
               <button
                 key={d.oid}
@@ -816,7 +820,12 @@ export function Chanar() {
                 <span className={s.cardNo}>{d.docNo}</span>
                 <span className={s.cardTitle}>{d.title || tr('(нэргүй)')}</span>
                 <span className={s.cardMeta}>
-                  {todo && <span className={`${s.tag} ${s.tagMine}`}>{tr('Таны ээлж')}</span>}
+                  {/* ⚠️ 2026-10-01: «Таны ээлж»-ийн оронд ШАЛТГААН + хүлээсэн хоног (мэдэгдэхгүй бол хоноггүй) */}
+                  {todo && (
+                    <span className={`${s.tag} ${s.tagMine}`} title={tr('Таны ээлж')}>
+                      {myActionLabel(todo.why)}{todo.days != null && ` · ${tr('{0} хоног', todo.days)}`}
+                    </span>
+                  )}
                   {mineOnly && <span>{kindLabel(d.kind)} · {d.bagts}</span>}
                   <span className={`${s.tag} ${tagCls(d.status)}`}>{statusLabel(d.kind, d.status)}</span>
                   {d.status === MS_STATUS.review && <span>{p.done}/{p.total}</span>}
@@ -986,7 +995,8 @@ export function Chanar() {
                           R{hist.find((h) => h.oid === a.parentOid)?.rev ?? '?'}
                         </span>
                       )}
-                      {attEdit && a.parentOid === doc.oid && (
+                      {/* ⚠️ 2026-09-30: NCR илгээсний дараа нотолгоо устгагдахгүй (`chanarStore.attachDeny`-ийн ⚠️) */}
+                      {attEdit && a.parentOid === doc.oid && (doc.kind !== 'NCR' || doc.status === MS_STATUS.draft) && (
                         <button
                           type="button" className={s.btn} disabled={busy} onClick={() => void removeAtt(a)}
                           aria-label={tr('«{0}» хавсралтыг устгах', a.name)} title={tr('«{0}» хавсралтыг устгах', a.name)}

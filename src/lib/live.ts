@@ -56,10 +56,23 @@ export function cached<T>(
   fn: () => Promise<T>,
   ttlMs?: number,
   reads: readonly DataKey[] = [],
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ.
+   * Өгвөл амжилттай ирсэн утга `keep(v) === false` (хэсэгчилсэн — аль нэг эх
+   * унасан) үед кэш ХАЯГДАНА: тэр утга нь одоогийн дуудагчдад хүрнэ (унасан эхийн
+   * нэрийг дэлгэц харуулна), харин ДАРААГИЙН дуудалт шинээр татна. Урьд нь
+   * хэсэгчилсэн үр дүн TTL (5 мин) турш «хуучин нөөц» болж үлддэг байв.
+   * Өгөөгүй бол хуучин зан (амжилттай бүхнийг кэшлэнэ).
+   */
+  keep?: (v: T) => boolean,
 ): () => Promise<T> {
   let p: Promise<T> | null = null;
   let at = 0;
-  if (reads.length) register(() => { p = null; }, reads);
+  /* ⚠️ 2026-09-30 (төслийн аудит): `reads` хоосон ч БҮРТГЭНЭ — хүснэгтийн бичилт
+     (`invalidate(key)`) тэднийг хөндөхгүй (хоосон `reads`), харин хэл солиход
+     (`dataBus.subscribeLocale → invalidateAll`) хаягдана. Урьд нь бүртгэгдээгүй 5 кэш
+     орчуулсан мөрөө сешн дуустал хуучин хэлээр барьдаг байв. */
+  register(() => { p = null; }, reads);
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
       at = Date.now();
@@ -71,6 +84,8 @@ export function cached<T>(
       const mine = fn();
       p = mine;
       mine.catch(() => { if (p === mine) p = null; });
+      /* ⚠️ 2026-10-01: хэсэгчилсэн үр дүн — мөн ӨӨРӨӨ идэвхтэй үед л хаяна (дээрх хаалт) */
+      if (keep) void mine.then((v) => { if (!keep(v) && p === mine) p = null; }, () => {});
     }
     return p;
   };
@@ -467,8 +482,9 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
  * Амьдаар хэмжихэд хоёр эх зөрдөг (2026-09-10): Багц 1 — 26.92 ↔ 26.14,
  * Багц 2 — 21.35 ↔ 27.60. Тиймээс аль эхийг сонгох нь ЧУХАЛ шийдвэр.
  *
- * ⚠️ `PkgProg`-ийн `Pack.progress`-ТАЙ ЯГ ИЖИЛ ТОМЬЁО байх ЁСТОЙ: блокуудын
- * ЭНГИЙН дундаж (`Bagts.tsx:128` `meanOf`), айлын тоо ч, обьём ч жин болохгүй.
+ * ⚠️ «Гүйцэтгэл»-ийн жагсаалт (`Finance.physLatest`) · `Pack.progress` · Тайлан
+ * §3-тай ЯГ ИЖИЛ ТОМЬЁО байх ЁСТОЙ (2026-09-30-аас `blockProgress.pkgProgressOf`):
+ * хэмжигдсэн блокуудын ЭНГИЙН дундаж, айлын тоо ч, обьём ч жин болохгүй.
  * Хэрэв тэнд өөрчлөгдвөл энд ч өөрчлөгдөх ёстой — эс бөгөөс нэг үзүүлэлт
  * хоёр самбарт хоёр өөр тоо харуулна (`gdash.chartTypeCost`-ийн ⚠️).
  *
@@ -480,39 +496,23 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
  *    (`FILL_FROM_CASHFLOW`) 2026-09-30-нд хасагдсан (`loadBlockProgress`-ийн ⚠️).
  */
 async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> {
-  const [{ loadBlockProgress, loadBlockProgressFresh }, { BUILDING, bagtsKey, buildingKey }] = await Promise.all([
-    import('@/lib/blockProgress'),
-    import('@/lib/services'),
-  ]);
-  const [prog, bld] = await Promise.all([
-    fresh ? loadBlockProgressFresh() : loadBlockProgress(),
-    queryFeatures(BUILDING.url, {
-      outFields: [BUILDING.fields.bagts, BUILDING.fields.block],
-      limit: 500,
-    }),
-  ]);
-  const F = BUILDING.fields;
-  /** багц → хэмжигдсэн блокуудын хувь */
-  const acc = new Map<string, number[]>();
-  for (const b of bld) {
-    const bagts = String(b[F.bagts] ?? '').trim();
-    const block = String(b[F.block] ?? '').trim();
-    if (!bagts) continue;
-    const cell = prog.get(buildingKey(bagts, block));
-    if (!cell) continue;                       // хэмжигдээгүй блок — алгасана
-    const key = bagtsKey(bagts);
-    if (!key) continue;
-    (acc.get(key) ?? acc.set(key, []).get(key) as number[]).push(cell.overall);
-  }
+  /* ⚠️ 2026-09-30: багцын хувь = `blockProgress.pkgProgressOf` — ХЭМЖИЛТИЙН нүднүүдийн
+     энгийн дундаж. Урьд нь барилгын давхаргын feature-ээр гүйлгэдэг байсан тул
+     давхардсан feature (29/1, 5/6) хоёр тоологдож, footprint-гүй хэмжилт (29/3, 5/8)
+     хасагдаж, Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт (`Finance.physLatest`) ба Тайлан
+     §3 (`loadOverall`)-аас зөрдөг байв. Давхарга ЭНД хэрэггүй болсон. */
+  const { loadBlockProgress, loadBlockProgressFresh, pkgProgressOf } = await import('@/lib/blockProgress');
+  const prog = fresh ? await loadBlockProgressFresh() : await loadBlockProgress();
   const out = new Map<string, number>();
-  for (const [k, v] of acc) if (v.length) out.set(k, v.reduce((a, x) => a + x, 0) / v.length);
+  for (const [k, v] of pkgProgressOf(prog)) out.set(k, v.pct);
   return out;
 }
 
 /* ⚠️ `CASHFLOW_NEW` ХАСАГДАВ (2026-09-30) — Багц 3.1-ийн cashflow солилт хасагдсан тул
    энэ ачаалагч cashflow-оос хамаарахаа больсон. */
+/* ⚠️ 2026-09-30: `BUILDING` ч хасагдав — давхаргаар гүйлгэхээ больсон (`fillPkgProgressRaw`). */
 export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProgressRaw(false),
-  undefined, ['BAGTS_SHEET', 'BUILDING']);
+  undefined, ['BAGTS_SHEET']);
 
 /**
  * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
@@ -537,12 +537,26 @@ export type HousingTotals = { blocks: number; ail: number };
 
 /** Нүүр/тайланд хөнгөн нийлбэр — гүйцэтгэлийн хүнд join-гүйгээр */
 export const loadHousing = cached<HousingTotals>(async () => {
-  const { BUILDING } = await import('@/lib/services');
-  const s = await queryStats(BUILDING.url, [
-    count(BUILDING.oid, 'n'),
-    sum(BUILDING.fields.households, 'ail'),
-  ]);
-  return { blocks: Number(s.n ?? 0), ail: Number(s.ail ?? 0) };
+  const { BUILDING, buildingKey } = await import('@/lib/services');
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДАВХАРДСАН feature (ижил `buildingKey` —
+     БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок. Урьд нь `count(OID)` + `sum(AIL_TOO)` серверээр
+     бодогдож давхардсан полигоны блок/өрх хоёр тоологддог байв — тоо газрын зургийн
+     өгөгдлийн алдаанаас хамаарах ёсгүй (`blockProgress.mapKeyIssues` — админ засна). */
+  const F = BUILDING.fields;
+  const rows = await queryFeatures(BUILDING.url, {
+    outFields: [BUILDING.oid, F.bagts, F.block, F.households],
+    orderBy: `${BUILDING.oid} ASC`,
+    limit: 4000,
+  });
+  const seen = new Set<string>();
+  let ail = 0;
+  for (const r of rows) {
+    const k = buildingKey(r[F.bagts], r[F.block]);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    ail += Number(r[F.households] ?? 0) || 0;
+  }
+  return { blocks: seen.size, ail };
 }, undefined, ['BUILDING']);
 
 /* ══════════════ Нийгмийн үйлчилгээний барилга ══════════════ */

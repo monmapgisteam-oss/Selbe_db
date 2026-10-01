@@ -114,7 +114,11 @@ export function ErhCellEditor({
       <span className={`${s.aclName} ${view ? s.mxView : ''}`} title={u}>
         {u}{view ? ` · ${tr('зөвхөн харна')}` : ''}
       </span>
-      {!known.has(u.toLowerCase()) && <span className={s.aclEmpty} title={tr('устгагдсан аккаунт')}>⚠️</span>}
+      {/* ⚠️ 2026-10-01: устгагдсан · админ тэмдэг ИЛ текстээр (матрицын `ErhMatrix.person`-той ижил) */}
+      {!known.has(u.toLowerCase()) && <span className={s.aclMarkTag} title={tr('устгагдсан аккаунт')}>{tr('устгагдсан')}</span>}
+      {known.has(u.toLowerCase()) && roleForUser(u) === 'super' && (
+        <span className={s.aclMarkTag} title={tr('админ — багцын хязгаар үйлчлэхгүй')}>{tr('админ')}</span>
+      )}
       <button
         type="button"
         className={s.aclX}

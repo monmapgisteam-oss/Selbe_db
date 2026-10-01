@@ -39,13 +39,16 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { km, num } from '@/lib/format';
+import { LAYER_BY_ID } from '@/lib/services';
 import type { Row } from '@/lib/query';
 import {
-  createRow, emptyPatch, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
-  saveRow, validateRow,
+  createRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
+  saveRow, validateChanged, validateRow,
   type FieldDef, type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
+import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } from '@/lib/butetsLen';
 
 /**
  * ХАДГАЛСНЫ ДАРАА БУЦААХАД хэрэгтэй мэдээлэл.
@@ -78,12 +81,37 @@ const GEOM_AREA = 'Shape__Area';
  * тавибал каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын
  * хохирлын үнэлгээ гурвуулаа дагаж зөрнө. Хэрэглэгч зөрүүг ХАРААД шийднэ.
  */
-const LEN_FIELD = /^(urt_m|urt_km|length_km)$/i;
+/* ⚠️ 2026-10-01: `LEN_FIELD` → `butetsLen.lenFieldUnit` (нэр + давхаргын `qty.field`, нэгжтэй нь) */
 
 const numOf = (v: unknown): number | null => {
   const x = Number(v);
   return v != null && v !== '' && Number.isFinite(x) ? x : null;
 };
+
+/** Маягтын УРТЫН талбар (эхнийх) ба нэгж — байхгүй бол `null` */
+const lenFieldOf = (meta: LayerMeta, layerId: string): { f: FieldDef; unit: 'm' | 'km' } | null => {
+  const qty = LAYER_BY_ID[layerId]?.qty ?? null;
+  for (const f of meta.fields) {
+    if (f.kind !== 'number') continue;
+    const unit = lenFieldUnit(f.name, qty);
+    if (unit) return { f, unit };
+  }
+  return null;
+};
+
+/**
+ * ОБЪЕКТЫН ГЕОМЕТРИЙН УРТ (м) — давхаргын SR-ээр (`butetsLen`-ийн дүрэм).
+ * Проекцолсон давхаргад серверийн `Shape__Length` (давхаргын SR-ийн хавтгай урт);
+ * Web Mercator/газарзүйнд геометрээс ГЕОДЕЗИЙН урт (`Shape__Length` хэтэрхий).
+ */
+async function serverLenM(meta: LayerMeta, oid: number, row: Row | null): Promise<number | null> {
+  if (measureKind(meta.wkid) === 'planar') {
+    const s = row ? numOf(row[GEOM_LEN]) : null;
+    if (s != null) return s;
+  }
+  const g = await loadGeometry(meta, oid);
+  return g ? geomLengthM(g) : null;
+}
 
 /**
  * НЭГ ТАЛБАРЫН ОРОЛТ — домэйнтэй бол `<select>`, үгүй бол `<input>`.
@@ -143,7 +171,7 @@ export function FieldInput({
 }
 
 export function DedButetsEdit({
-  layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra, geomRev = 0,
+  layerId, oid, geometry, canEdit, onDone, onCancel, docked = false, extra, geomRev = 0, onDirty,
 }: {
   layerId: string;
   /** БАЙГАА мөрийн дугаар. `null` бол ШИНЭ объект үүсгэх горим. */
@@ -179,6 +207,12 @@ export function DedButetsEdit({
    * ЗӨВХӨН `Shape__*` талбаруудыг дахин уншина (доорх эффект).
    */
   geomRev?: number;
+  /**
+   * ⚠️ 2026-10-01: маягт ӨӨРӨӨ утга бичсэн (хэлбэр засварын дараа уртыг геометрээс
+   *    бөглөсөн) — оролтын `onChange` дамжихгүй тул эцэг (`DedButets.formDirty`) мэдэхгүй
+   *    байх байв; «хадгалаагүй» асуулт ажиллахын тулд дуудна.
+   */
+  onDirty?: () => void;
 }) {
   /** Шинэ объект үүсгэж байна уу (эсвэл байгааг засаж байна уу) */
   const isNew = oid == null;
@@ -192,6 +226,17 @@ export function DedButetsEdit({
   const dirty = useRef(false);
   /** Амжилттай хадгалалтын тоолуур — маягт нээлттэй үлдвэл мөрийг дахин татна (2026-09-21) */
   const [saved, setSaved] = useState(0);
+  /**
+   * ⚠️ 2026-10-01: геометрээс АВТОМАТААР бөглөгдсөн уртын талбарын нэр — доор нь «геометрээс
+   *    бөглөв» гэж ил хэлнэ (хэрэглэгч гараар бичээгүй утгыг өөрийнх гэж андуурахгүй).
+   */
+  const [auto, setAuto] = useState('');
+  /** Геодезийн урт (м) — Web Mercator/газарзүйн давхаргад геометрээс (проекцолсонд `null`) */
+  const [geoLen, setGeoLen] = useState<number | null>(null);
+  /** Геодезийн талбай (м²) — `geoLen`-ийн ижил дүрэм */
+  const [geoArea, setGeoArea] = useState<number | null>(null);
+  const onDirtyRef = useRef(onDirty);
+  useSyncRef(onDirtyRef, onDirty);
 
   /**
    * ⚠️ СХЕМ БА МӨРИЙГ ЭНД ТАТНА. Газрын зургийн `onPick` нь давхаргын
@@ -212,6 +257,9 @@ export function DedButetsEdit({
      */
     setBefore(null);
     setP(null);
+    setAuto('');
+    setGeoLen(null);
+    setGeoArea(null);
     dirty.current = false;
     (async () => {
       const m = await loadLayerMeta(layerId);
@@ -225,7 +273,17 @@ export function DedButetsEdit({
         if (oid == null) {
           /* ⚠️ `before` нь `null` хэвээр — `diffRow` дуудагдахгүй, шинэ мөр
              нь `createRow`-оор бүтнээрээ бичигдэнэ. */
-          setP(emptyPatch(m));
+          const p0 = emptyPatch(m);
+          /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ШИНЭ ШУГАМЫН уртын талбарыг зурсан
+             геометрээс АВТОМАТААР бөглөнө (геодезийн — зурсан дүрс Web Mercator). Урьд нь
+             хоосон үлдэж, km-ийн KPI-д «уртгүй объект» болж ордог байв. Хэрэглэгч засаж болно. */
+          const lf = lenFieldOf(m, layerId);
+          const len = lf ? geomLengthM(geometry) : null;
+          if (lf && len != null) {
+            p0[lf.f.name] = lenFieldValue(len, lf.unit, !!lf.f.int);
+            setAuto(lf.f.name);
+          }
+          setP(p0);
           return;
         }
         if (!row) { setFail(tr('Объект олдсонгүй.')); return; }
@@ -235,7 +293,9 @@ export function DedButetsEdit({
       .catch((e) => alive && setFail(String((e as Error).message || e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
-  }, [layerId, oid, saved]);
+    /* ⚠️ 2026-10-01: `geometry` — ШИНЭ зурсан дүрс бүр шинэ маягт (уртыг тэр дүрсээс бөглөнө).
+       Байгаа объектод `undefined` тул нөлөөгүй; эцэг нь `pick`-ийг ижил лавлагаатай барина. */
+  }, [layerId, oid, saved, geometry]);
 
   /**
    * ⚠️ 2026-09-29 (аудит 10): ХЭЛБЭР хадгалсан / буцаасны дараа `before`-ийн
@@ -253,17 +313,50 @@ export function DedButetsEdit({
     if (oid == null) return;
     let alive = true;
     loadLayerMeta(layerId)
-      .then((m) => loadRow(m, oid))
-      .then((row) => {
+      .then(async (m) => ({ m, row: await loadRow(m, oid) }))
+      .then(async ({ m, row }) => {
         if (!alive || !row) return;
         setBefore((b) => (b ? { ...b, [GEOM_LEN]: row[GEOM_LEN], [GEOM_AREA]: row[GEOM_AREA] } : b));
+        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭЛБЭР өөрчлөгдсөний дараа уртын талбарыг
+           ШИНЭ геометрээс бөглөнө (хадгалахгүй — хэрэглэгч «Хадгалах» дарна). Урьд нь
+           `Urt_m` хуучин уртаараа үлдэж km-ийн KPI зөрдөг байв. Маягтыг «хадгалаагүй»
+           болгож эцэгт мэдэгдэнэ (`onDirty`). */
+        const lf = lenFieldOf(m, layerId);
+        if (!lf) return;
+        const len = await serverLenM(m, oid, row);
+        if (!alive || len == null) return;
+        if (measureKind(m.wkid) !== 'planar') setGeoLen(len);
+        const v = lenFieldValue(len, lf.unit, !!lf.f.int);
+        setP((x) => (x && x[lf.f.name] !== v ? { ...x, [lf.f.name]: v } : x));
+        setAuto(lf.f.name);
+        dirty.current = true;
+        onDirtyRef.current?.();
       })
       .catch(() => { /* хуучин урт үлдэнэ — маягтыг эвдэхгүй */ });
     return () => { alive = false; };
   }, [geomRev, layerId, oid]);
 
+  /**
+   * ⚠️ 2026-10-01: Web Mercator/газарзүйн давхаргад `Shape__Length` нь ХАВТГАЙ Web Mercator
+   *    урт (энэ өргөрөгт ~1.49 дахин их) — геометрийг татаж ГЕОДЕЗИЙН урт/талбайг бодно
+   *    (`Shape__Area` ч мөн ~2.2 дахин их). Проекцолсон (UTM) давхаргад сүлжээнд залгахгүй.
+   */
+  useEffect(() => {
+    if (!meta || oid == null || measureKind(meta.wkid) === 'planar') return;
+    let alive = true;
+    loadGeometry(meta, oid)
+      .then((g) => {
+        if (!alive || !g) return;
+        setGeoLen(geomLengthM(g));
+        setGeoArea(geomAreaM2(g));
+      })
+      .catch(() => { /* мэдэгдэхгүй — «—» */ });
+    return () => { alive = false; };
+  }, [meta, oid]);
+
   const set = (name: string, v: string) => {
     dirty.current = true;
+    if (name === auto) setAuto('');
     setP((x) => (x ? { ...x, [name]: v } : x));
     setErr((x) => ({ ...x, [name]: '' }));
     setFail('');
@@ -312,7 +405,8 @@ export function DedButetsEdit({
   const submit = async () => {
     if (!meta || !p) return;
     if (!isNew && !before) return;
-    const e = validateRow(meta, p);
+    /* ⚠️ 2026-09-30: байгаа мөрт ЗӨВХӨН өөрчилсөн талбар (`validateChanged`-ийн тайлбар) */
+    const e = isNew ? validateRow(meta, p) : validateChanged(meta, before as Row, p);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
     setBusy(true); setFail('');
@@ -347,12 +441,25 @@ export function DedButetsEdit({
     }
   };
 
-  /** Геометрийн урт (м) — уртын талбарын доор зөрүүг харуулахад */
-  const geomLen = before ? numOf(before[GEOM_LEN]) : null;
-  const geomArea = before ? numOf(before[GEOM_AREA]) : null;
+  /**
+   * Геометрийн урт (м) — уртын талбарын доор зөрүүг харуулахад.
+   * ⚠️ 2026-10-01: SR-ээр (`serverLenM`-ийн дүрэм): шинэ объектод зурсан геометрээс
+   *    (геодезийн), Web Mercator давхаргад геодезийн (`geoLen`), UTM-д `Shape__Length`.
+   */
+  const geomLen = isNew
+    ? geomLengthM(geometry)
+    : geoLen ?? (meta && measureKind(meta.wkid) !== 'planar' ? null : before ? numOf(before[GEOM_LEN]) : null);
+  const geomArea = geoArea ?? (meta && measureKind(meta.wkid) !== 'planar' ? null : before ? numOf(before[GEOM_AREA]) : null);
 
+  /* ⚠️ 2026-09-30: давхаргын УРТЫН талбар (`LayerDef.qty.field`) — `LEN_FIELD` нь зөвхөн
+     `urt_m`/`urt_km`/`length_km`-ийг таньдаг тул `Length_m`, `Length_metr`, `Shugam_Urt`
+     талбартай 12 шугам давхаргад «Геометрийн бодит урт» зөрүүний сануулга гардаггүй байв. */
+  const qtyDef = LAYER_BY_ID[layerId]?.qty ?? null;
   const field = (f: FieldDef) => {
-    const lenHint = LEN_FIELD.test(f.name) && geomLen != null;
+    /* ⚠️ 2026-10-01: уртын талбар ба нэгж — `butetsLen.lenFieldUnit` (км талбарт км-ээр бөглөнө) */
+    const unit = f.kind === 'number' ? lenFieldUnit(f.name, qtyDef) : null;
+    const lenHint = unit != null && geomLen != null;
+    const fromGeom = lenHint ? lenFieldValue(geomLen, unit, !!f.int) : '';
     return (
       <FieldInput
         key={f.name}
@@ -364,6 +471,22 @@ export function DedButetsEdit({
         hint={lenHint && (
           <span className={d.fHint}>
             {tr('Геометрийн бодит урт: {0} м', num(geomLen, 1))}
+            {auto === f.name && <> · <b>{tr('геометрээс бөглөв')}</b></>}
+            {/* ⚠️ «Урт ← геометр» — талбарыг геометрийн уртаар (талбарын нэгжээр) дарж бичнэ */}
+            {canEdit && (p?.[f.name] ?? '') !== fromGeom && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className={d.lenBtn}
+                  disabled={busy}
+                  onClick={() => { set(f.name, fromGeom); setAuto(f.name); }}
+                  title={tr('Уртын талбарыг геометрийн уртаар бөглөнө')}
+                >
+                  {tr('Урт ← геометр')}
+                </button>
+              </>
+            )}
           </span>
         )}
       />

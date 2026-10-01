@@ -124,10 +124,17 @@
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
 }
+/* ⚠️ 2026-10-01: шошго замынхаа дээр/хажууд (`schem.edgeLabelAt`) — дэвсгэрийн өнгөтэй
+   хүрээ (halo) нь шугамтай давхцахад үсгийг уншигдахуйц үлдээнэ. `text-anchor` нь
+   JSX-ийн style-оор ирнэ (энэ анхдагчийг дарна). */
 .edgeLab {
   font-size: 10px;
   fill: var(--bad-ink);
   text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* ── Зангилаа ── */

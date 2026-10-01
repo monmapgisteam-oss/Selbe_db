@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, getLocale, getServerLocale, subscribeLocale } from '@/lib/i18nCore';
 
 /**
  * ГАРААР УДИРДАХ АЛГАСАХ ХОЛБООС — Tab дархад хамгийн түрүүнд гарч, каталог,
@@ -25,6 +25,11 @@ export function SkipLink() {
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
   useEffect(() => setMounted(true), []);
+  /* ⚠️ 2026-09-30: ХЭЛНИЙ STORE-ЫГ ЗАХИАЛНА (утга нь зөвхөн дахин зурахад). SkipLink нь
+     `layout.tsx`-д `LocaleProvider`-ийн ГАДНА тул хэл солиход (2026-09-30-наас дахин
+     ачаалалтгүй, `key` remount) өмнөх хэлээрээ үлддэг байв — `DocumentTitle`-ийн хэв.
+     Hydration-д серверийн утга (mn) тул зөрчилгүй; текст нь `mounted`-оор хаалттай хэвээр. */
+  useSyncExternalStore(subscribeLocale, getLocale, getServerLocale);
 
   return (
     <a href="#panel" className="skip">

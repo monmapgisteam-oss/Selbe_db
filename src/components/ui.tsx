@@ -2013,6 +2013,7 @@ export function Ring({
   color,
   label,
   decimals,
+  text,
 }: {
   /** 0–100, эсвэл өгөгдөлгүй бол null */
   value: number | null | undefined;
@@ -2022,12 +2023,18 @@ export function Ring({
   label?: string;
   /** Аравтын орны тоог албадан заана; өгөөгүй бол <10 үед 1, эс бөгөөс 0 */
   decimals?: number;
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): голын «{v}%» бичвэрийг ДАРНА — цагираг
+   * нь 0–100 дүүргэлттэй ч харуулах утга нь хувь биш үед (жиш. Эрсдэлийн AQI оноо).
+   * Өгөгдөлгүй (`value` null) үед ҮЛ ХАМААРАН «—» — null ≠ 0 дүрэм хэвээр.
+   */
+  text?: string;
 }) {
   const has = value != null && Number.isFinite(value);
   const v = has ? Math.max(0, Math.min(100, value)) : 0;
   const r = (size - width) / 2;
   const c = 2 * Math.PI * r;
-  const text = has ? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%` : '—';
+  const shown = has ? (text ?? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%`) : '—';
 
   return (
     /**
@@ -2045,7 +2052,7 @@ export function Ring({
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      {...(has ? { 'aria-valuenow': v, 'aria-valuetext': text } : { 'aria-valuetext': tr('өгөгдөлгүй') })}
+      {...(has ? { 'aria-valuenow': v, 'aria-valuetext': shown } : { 'aria-valuetext': tr('өгөгдөлгүй') })}
     >
       <svg className={s.ringSvg} width={size} height={size} aria-hidden>
         <circle className={s.ringTrack} cx={size / 2} cy={size / 2} r={r} strokeWidth={width} />
@@ -2066,7 +2073,7 @@ export function Ring({
       </svg>
       <div className={s.ringCenter} aria-hidden>
         <span className={`${s.ringValue} num`} style={{ fontSize: size * 0.2 }}>
-          {text}
+          {shown}
         </span>
         {label && <span className={s.ringLabel}>{label}</span>}
       </div>

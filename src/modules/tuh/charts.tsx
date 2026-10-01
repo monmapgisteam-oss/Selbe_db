@@ -13,6 +13,7 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useChartWidth, fitLabels, textW } from '@/lib/chartFit';
+import { dayKey } from '@/lib/format';
 import s from '../tuh.module.css';
 
 /* ══════════════════════ Хэмжигч (meter) ══════════════════════ */
@@ -141,7 +142,10 @@ export type GanttRow = {
 };
 
 const MS_DAY = 86_400_000;
-const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/* ⚠️ 2026-09-30: ОРОН НУТГИЙН өдөр (`format.dayKey`-ийн ⚠️) — урьд нь `toISOString` (UTC)
+   тул УБ-ын шөнө дундын огноо (AGOL/Excel) гантын тайлбарт ӨМНӨХ өдөр болж, хажуугийн
+   хүснэгтийн `date()`-ээс нэг өдрөөр зөрдөг байв. */
+const ymd = (ms: number) => dayKey(ms);
 
 /**
  * Хугацааны гантт — HTML мөр + хувьт байрлал (SVG биш): мөр бүр нэг бар.

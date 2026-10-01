@@ -2,10 +2,60 @@
 
 import { useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { useFilter, type ActiveFilter } from '@/lib/filter';
 import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
-import type { Dim } from './MapCanvas';
+import { useMap, type Dim } from './MapCanvas';
 import s from './mapTools.module.css';
+
+/**
+ * ИДЭВХТЭЙ ШҮҮЛТИЙН ЧИП-ийн бичиглэл — шүүлт байхгүй бол `null`.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хоёр эх сурвалж —
+ *    · `useFilter().active` (самбарын ангиллын шүүлт) → «Бүлэг: Нэр»;
+ *    · `useMap().highlight` (`setHighlight`-ийг ШУУД дууддаг модулиуд — полигон,
+ *      хайлт г.м.) → ерөнхий «Газрын зургийн шүүлт».
+ *    Урьд нь шууд `setHighlight` хийсэн шүүлт зөвхөн тэр модулийн дотор цуцлагддаг
+ *    тул самбар солигдох/хаагдахад зураг БҮДЭГ хэвээр «гацдаг» байв.
+ */
+export function activeFilterLabel(
+  active: Pick<ActiveFilter, 'group' | 'label'> | null,
+  highlight: { where: string | null; geometry?: unknown },
+): string | null {
+  if (active) return active.group ? `${active.group}: ${active.label}` : active.label;
+  if (highlight.where || highlight.geometry) return tr('Газрын зургийн шүүлт');
+  return null;
+}
+
+/**
+ * Зургийн хэрэгслийн зурвасын ✕-тэй ЧИП — идэвхтэй шүүлтийг ҮРГЭЛЖ цуцлах боломж.
+ * ⚠️ Самбарын шүүлт байвал `filter.clear()` (төлөв + тодруулга + бүсийн хүрээ рүү
+ *    буцах); зөвхөн тодруулга бол `setHighlight(null)`.
+ */
+export function ActiveFilterChip() {
+  const filter = useFilter();
+  const { highlight, setHighlight } = useMap();
+  const label = activeFilterLabel(filter.active, highlight);
+  if (!label) return null;
+  const clear = () => {
+    if (filter.active) filter.clear();
+    if (highlight.where || highlight.geometry) setHighlight(null);
+  };
+  return (
+    <div className={`${s.filterChip} mapFilterChip`} role="status" title={label}>
+      <span className={s.filterChipText}>{label}</span>
+      <button
+        type="button"
+        className={s.filterChipX}
+        onClick={clear}
+        aria-label={tr('Шүүлтийг цуцлах')}
+        title={tr('Шүүлтийг цуцлах')}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 /**
  * ГАЗРЫН ЗУРГИЙН НЭГДСЭН ХЭРЭГСЛИЙН ЗУРВАС.
@@ -117,6 +167,10 @@ export function MapTools({
      байгааг олж мэддэггүй байв. Хураах боломж бариулаар үлдэнэ. */
   const [dimsOn, setDimsOn] = useState(true);
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
+  /* ⚠️ 2026-10-01: идэвхтэй шүүлт (`ActiveFilterChip`-тэй ижил дүрэм) — хураасан бариулын тэмдэгт */
+  const { active: activeFilter } = useFilter();
+  const { highlight } = useMap();
+  const filterOn = activeFilterLabel(activeFilter, highlight) != null;
 
   /**
    * Бүсийн хавтан ЖИНХЭНЭ ил үү.
@@ -189,10 +243,14 @@ export function MapTools({
       onClick={() => setBarOn((v) => !v)}
     >
       {barOn ? '◂' : '▸'}
+      {/* ⚠️ 2026-10-01: хураасан үед ч идэвхтэй шүүлт байгааг тэмдэглэнэ — дэлгэхэд ✕ чип гарна */}
+      {!barOn && filterOn && <span className={s.tabDot} aria-hidden />}
     </button>
 
     {barOn && (
     <div className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`} style={barStyle}>
+      {/* ⚠️ 2026-10-01: идэвхтэй шүүлт/тодруулга байвал ✕-тэй чип — ХАМГИЙН ДЭЭР */}
+      <ActiveFilterChip />
       {onLayers && (
         <button
           type="button"

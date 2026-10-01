@@ -6,9 +6,14 @@ on:
   workflow_dispatch:
 
 # Pages рүү нэг л удаа зэрэг deploy хийнэ
+# ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `cancel-in-progress: false` — ЯВЖ БУЙ
+#    deploy-г ТАСЛАХГҮЙ. Урьд `true` байсан тул ойр ойрхон push хийхэд Pages-ийн
+#    байршуулалт дундаа цуцлагдаж, сайт хуучин/хагас төлөвт үлдэх эрсдэлтэй байв.
+#    Одоо шинэ ажил дараалалд хүлээнэ; хүлээж буй ажлыг GitHub хамгийн сүүлийн
+#    push-оор солино — эцэст нь сүүлийн commit л байршина.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

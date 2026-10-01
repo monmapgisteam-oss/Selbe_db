@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam, authToken, ensureFreshToken, isTokenError, describeArcgisError } from '@/lib/authToken';
+import { tokenParam, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl } from '@/lib/authToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -159,6 +159,21 @@ const isOrgUrl = (url: string): boolean =>
   || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
 
 /**
+ * ⚠️ 2026-10-01: `token: 'always'` дуудлага org/портал БИШ хост руу явлаа — токен
+ *    залгаагүй. Зөвхөн dev-д, хост бүрд НЭГ удаа (консол дүүргэхгүй). Хаягийн
+ *    зөвхөн origin+замыг бичнэ — токен URL-д хэзээ ч ордоггүй (POST бие).
+ */
+const warnedHosts = new Set<string>();
+function warnForeignHost(url: string): void {
+  if (process.env.NODE_ENV === 'production') return;
+  let key = url;
+  try { const u = new URL(url); key = u.origin; } catch { /* харьцангуй хаяг — бүтнээр */ }
+  if (warnedHosts.has(key)) return;
+  warnedHosts.add(key);
+  console.warn(`[query] token:'always' — org/портал биш хост (${key}): хэрэглэгчийн токен залгасангүй`);
+}
+
+/**
  * НЭГ ХҮСЭЛТИЙН ЗАМ — `arcgisPost`/`request`-ийн хуваалцсан цөм (⚠️ 2026-09-30).
  *
  * ⚠️ ЯАГААД: урьд нь ~20 файл `fetch`-ийг шууд дуудаж, энд байгаа хамгаалалтыг
@@ -170,6 +185,10 @@ const isOrgUrl = (url: string): boolean =>
  *   · `token: 'always'` (анхдагч) — нэвтэрсэн хэрэглэгчийн ОДООГИЙН токен ҮРГЭЛЖ
  *     явна, дуудагчийн `params.token`-ийг ДАРНА (дуудагч эрт уншсан токен хуучирсан
  *     байж болно — `authToken.arcgisPost`-ын 2026-09-29-ний шийдвэр).
+ *     ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «үргэлж» нь ЗӨВХӨН байгууллагын
+ *     үйлчилгээ (`isOrgUrl`) эсвэл ПОРТАЛ (`authToken.isPortalUrl`) руу. Өөр хост руу
+ *     (гадны ArcGIS Server, нийтийн үйлчилгээ) хэрэглэгчийн токен ЯВАХГҮЙ — dev
+ *     орчинд нэг удаа анхааруулга бичнэ. Дуудагчийн өөрийн `params.token` хэвээр.
  *   · `token: 'org'` — зөвхөн байгууллагын URL-д (`isOrgUrl`), дуудагчийн `token`
  *     давамгайлна (`queryFeatures`/`queryExtent`-ийн хуучин зан).
  *   · `slot: false` — хязгаарлагчийн слот АВАХГҮЙ: дуудагч аль хэдийн `withSlot`
@@ -181,6 +200,9 @@ const isOrgUrl = (url: string): boolean =>
  * ⚠️ 498/499 (токен хүчингүй) → `ensureFreshToken(true)` → НЭГ удаа дахин. Дуудагч
  *    өөрөө `token` өгсөн (`'org'` горим) бол дахин оролдохгүй — тэр токен хэвээр
  *    явах тул утгагүй.
+ *    ⚠️ 2026-10-01: шинэчлэлт `authToken.refreshAfterTokenError(sent)`-ээр — олон
+ *    хүсэлт зэрэг 498 авахад НЭГ л шинэчлэлт; хүсэлт явснаас хойш токен аль хэдийн
+ *    солигдсон бол шинэчлэхгүй, шинэ токеноор шууд дахин илгээнэ.
  * ⚠️ Timeout нь `AbortSignal.timeout` биш, гараар удирдсан `AbortController`:
  *    дуудагчийн `signal` (хэрэглэгч цуцлах)-тай нэгтгэхэд `AbortSignal.any`
  *    бүх хөтөчид байхгүй. Шалтгаан нь `DOMException('TimeoutError')` хэвээр тул
@@ -207,16 +229,32 @@ async function attemptRequest(
   const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
   const always = o.token !== 'org';
   /* ⚠️ Нэвтэрсэн хэрэглэгчийн токен — org-only үйлчилгээнд (2026-09-17). `'org'`
-     горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ. */
+     горимд дуудагч өөрөө `token` өгсөн бол түүнийг эрхэмлэнэ.
+     ⚠️ 2026-10-01: `'always'` ч ЗӨВХӨН org/портал хост руу (дээрх `ArcgisReqOpts`-ийн ⚠️). */
+  const hostOk = always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full);
+  const userTok = hostOk ? tokenParam() : {};
+  if (always && !hostOk) warnForeignHost(full);
   const body = always
-    ? { f: 'json', ...params, ...tokenParam() }
-    : { f: 'json', ...(isOrgUrl(full) ? tokenParam() : {}), ...params };
+    ? { f: 'json', ...params, ...userTok }
+    : { f: 'json', ...userTok, ...params };
+  /** Энэ хүсэлтэд ЯВСАН хэрэглэгчийн токен — 498-ийн дараа «аль хэдийн солигдсон уу» */
+  const sentTok = userTok.token ?? null;
   const ac = new AbortController();
   const onAbort = () => ac.abort(o.signal?.reason);
   if (o.signal?.aborted) onAbort();
   else o.signal?.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(() => ac.abort(new DOMException(`timeout ${timeoutMs}ms`, 'TimeoutError')), timeoutMs);
+  /* ⚠️ 2026-09-30: timeout-ыг ЦУЦЛАЛТЫН ШАЛТГААНААР ялгана — зарим хөтөч цуцлагдсан
+     хүсэлтийг (ялангуяа биеийн уншилтыг) `reason`-оос үл хамааран `AbortError`-оор
+     няцаадаг тул зөвхөн шидэгдсэн алдааны нэрээр шалгавал timeout нь түүхий
+     `AbortError` болж UI-д хүрдэг. Хэрэглэгч өөрөө цуцалсан бол timeout БИШ. */
+  const timedOut = (): boolean =>
+    ac.signal.aborted && !o.signal?.aborted
+    && ac.signal.reason instanceof DOMException && ac.signal.reason.name === 'TimeoutError';
   let res: Response;
+  /** Биеийн JSON — `null` бол уншигдаагүй (HTTP алдаа) эсвэл JSON биш (`notJson`) */
+  let json: ArcgisBody | null = null;
+  let notJson = false;
   try {
     res = await fetch(full, {
       method: 'POST',
@@ -224,18 +262,39 @@ async function attemptRequest(
       body: new URLSearchParams(body),
       signal: ac.signal,
     });
+    /* ⚠️ 2026-09-30: БИЕИЙГ ч ИЖИЛ timeout/цуцлалтын ДОР уншина. Урьд нь цаг хэмжигч
+       ТОЛГОЙ ирмэгц (`fetch` resolve) цэвэрлэгддэг байсан тул сервер толгойгоо
+       илгээгээд биеэ гацаавал `res.json()` ҮҮРД хүлээж, энэ хүсэлт зэрэг хүсэлтийн
+       СЛОТОО хэзээ ч суллахгүй байв — дээрх `TIMEOUT_MS`-ийн ⚠️-д бичсэн «порталын
+       бүх асуулга дараалалд царцах» эвдрэлийн яг өөр зам. Хэрэглэгчийн цуцлалт ч
+       бие уншиж байхад хүрдэггүй байв. JSON биш хариуны зан (доор) ӨӨРЧЛӨГДӨӨГҮЙ:
+       цуцлалтаас бусад уншилтын алдаа дахин оролдлогогүй «JSON биш» хэвээр. */
+    if (res.ok) {
+      try {
+        json = (await res.json()) as ArcgisBody;
+      } catch (e) {
+        if (ac.signal.aborted) throw e; // timeout / хэрэглэгчийн цуцлалт — доорх catch
+        notJson = true;
+      }
+    }
   } catch (e) {
     // Түр зуурын сүлжээний тасалт (browser-т fetch-ийн network алдаа нь яг
     // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
     // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
     // Rate-limit retry-ээс ТУСДАА тоолуур (netRetried) тул давхардахгүй.
-    if (e instanceof TypeError && !netRetried && !o.signal?.aborted) {
+    /* ⚠️ 2026-09-30 (төслийн аудит): БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ.
+       Сервер хүсэлтийг хүлээн авч БИЧСЭНИЙ дараа хариу замдаа тасарвал (TypeError) давтан
+       илгээлт нь `addFeatures`/`applyEdits`-ийн мөрийг ХОЁР удаа нэмнэ (давхар илгээлт,
+       давхар хяналтын тойрог). Уншилт (query · statistics) аюулгүй тул хэвээр. 429/503 ба
+       498 нь сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн хариу тул тэдгээрийн давталт хэвээр. */
+    const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append)\/?$/i.test(full);
+    if (e instanceof TypeError && !netRetried && !isWrite && !o.signal?.aborted && !timedOut()) {
       await sleep(300 + Math.random() * 200);
       return attemptRequest(full, params, o, attempt, true, refreshed);
     }
     // Timeout-ыг ДАХИН оролдохгүй (аль хэдийн 30с хүлээсэн) — ArcGISError болгож
     // дуудагчид хүргэнэ: файлын дүрмээр алдаа UI-д харагдах ёстой.
-    if (e instanceof DOMException && e.name === 'TimeoutError') {
+    if (timedOut() || (e instanceof DOMException && e.name === 'TimeoutError')) {
       throw new ArcGISError(tr('Хүсэлтийн хугацаа хэтэрлээ ({0} сек)', timeoutMs / 1000), full);
     }
     throw e;
@@ -251,10 +310,7 @@ async function attemptRequest(
     }
     throw new ArcGISError(`HTTP ${res.status}`, full);
   }
-  let json: ArcgisBody;
-  try {
-    json = (await res.json()) as ArcgisBody;
-  } catch {
+  if (notJson || json == null) {
     /* ⚠️ Proxy/CDN-ийн HTML хариу «SyntaxError: Unexpected token <» болж улаан
        баннерт гардаг байв (`tableWrite`/`ags`-ийн 2026-09-21-ний дүрэм). */
     throw new ArcGISError(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'), full);
@@ -269,8 +325,11 @@ async function attemptRequest(
     }
     /* ⚠️ 2026-09-29 (хэрэглэгч: «илгээхэд Invalid token»): PKCE токен богино хугацаатай —
        хүчингүй болсон бол шинэчлээд НЭГ удаа дахин (`ensureFreshToken`-ийн ⚠️). */
-    if (!refreshed && isTokenError(code, message) && authToken() && (always || !('token' in params))) {
-      await ensureFreshToken(true);
+    /* ⚠️ 2026-10-01: токен ЗӨВХӨН org/портал хостод явдаг (`hostOk`) — бусад хостод
+       шинэчилээд ч токен явахгүй тул утгагүй. Шинэчлэлтийн шуурганаас сэргийлж
+       `refreshAfterTokenError` (хуваалцсан Promise · «аль хэдийн солигдсон» шалгалт). */
+    if (!refreshed && hostOk && isTokenError(code, message) && (always || !('token' in params))
+      && await refreshAfterTokenError(sentTok)) {
       return attemptRequest(full, params, o, attempt, netRetried, true);
     }
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
@@ -549,6 +608,30 @@ export async function queryExtent(
  *  ⚠️ `N'…'` угтвар (2026-09-17): кирилл утга угтваргүй бол ArcGIS 0 мөр буцаадаг
  *     (`Gazar.tsx`-д баримтжуулсан). Латин утгад ч аюулгүй. */
 export const sqlStr = (v: string) => `N'${v.replace(/'/g, "''")}'`;
+
+/**
+ * ГАДНААС ИРСЭН `where`-ийн ЮНИКОД ЛИТЕРАЛД `N'…'` УГТВАР НЭМНЭ (2026-09-30).
+ *
+ * ⚠️ ЯАГААД: дээрх `sqlStr`-ийн дүрэм (угтваргүй кирилл харьцуулалт зарим үйлчилгээнд
+ *    АЛДААГҮЙГЭЭР 0 мөр) — порталын код литералаа `sqlStr`-аар угсардаг ч AI туслахын
+ *    `query_feature`-ийн `where`-ийг ЗАГВАР өөрөө бичдэг бөгөөд зааврын жишээ нь
+ *    угтваргүй (`ZONE_ID = 'Багц-1'`) байсан; `zone_overview` ч `zoneWhere`-ийн
+ *    угтваргүй литералаар явдаг. Тэр үйлчилгээнүүд дээр агент «0 барилга» гэх мэт
+ *    ХУДАЛ тоог итгэлтэйгээр хэлэх эрсдэлтэй байв.
+ * ⚠️ Зөвхөн ASCII БУС тэмдэгттэй, угтваргүй литералд `N` нэмнэ: латин/огнооны литерал
+ *    (`timestamp '2026-09-01 00:00:00'`) ба аль хэдийн `N'…'`/`n'…'` ХЭВЭЭР. `''` (дотоод
+ *    хашилт) литералын нэг хэсэг. Угтвар нь латин утгад ч аюулгүй.
+ * ⚠️ Угтварын өмнөх тэмдэгт таних тэмдэг (үсэг/тоо/_) БИШ байх ёстой — `N` нь баганын
+ *    нэрийн төгсгөл байж болохгүй.
+ */
+export function nPrefixUnicode(where: string): string {
+  const unicode = (s: string) => [...s].some((c) => c.charCodeAt(0) > 0x7f);
+  return where.replace(
+    /(^|[^A-Za-z0-9_])([Nn]?)'((?:[^']|'')*)'/g,
+    (all: string, pre: string, n: string, body: string) =>
+      n || !unicode(body) ? all : `${pre}N'${body}'`,
+  );
+}
 
 /** ArcGIS-ийн хоосон утга: null, "" эсвэл зөвхөн зай (" ") */
 const isBlank = (v: unknown): boolean =>

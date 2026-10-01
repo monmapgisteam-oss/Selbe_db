@@ -213,6 +213,8 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
+/* ⚠️ 2026-10-01: АЧИ-ийн цагирагийн CSS заль (`.aqiRing`, `--aqi-text`) ХАСАГДАВ —
+   `Ring`-ийн `text` проп тоог шууд бичнэ (`Ersdel.tsx`). */
 .ringNote {
   margin: 0;
   font-size: 12px;
@@ -905,10 +907,38 @@
   background: linear-gradient(90deg,
     rgb(12,60,140) 0%, rgb(20,130,210) 33%, rgb(110,200,240) 67%, rgb(240,250,255) 100%);
 }
+/* ⚠️ 2026-10-01: аюул нь FD2321-ийн ДӨРВӨН ангилал (`uyr.ts` §HAZARD_HEX) — шатласан;
+   легенд нь одоо ангиллын хайрцгаар зурагддаг, энэ шатлал нь нөөц. */
 .rampHazard {
   background: linear-gradient(90deg,
-    rgb(22,163,74) 0%, rgb(250,204,21) 33%, rgb(249,115,22) 67%, rgb(153,27,27) 100%);
+    #16a34a 0 25%, #f59e0b 25% 50%, #dc2626 50% 75%, #7f1d1d 75% 100%);
 }
+/* ⚠️ 2026-10-01: ус ИРЭХ хугацаа — `uyr.ts` §ARRIVAL_STOPS-той ЯГ ижил (эрт = бараан) */
+.rampArrival {
+  background: linear-gradient(90deg,
+    rgb(68,1,84) 0%, rgb(59,82,139) 33%, rgb(33,145,140) 67%, rgb(253,231,37) 100%);
+}
+/* Голын оролтын тэмдэг — `Overlay` §inlet-ийн цэнхэр гурвалжинтай ижил */
+.legInlet {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 9px solid rgb(14,165,233);
+}
+/* Хүснэгтийн эрэмбэлэх толгой — товч боловч толгойн бичвэр шиг харагдана */
+.sortBtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.sortBtn:hover { color: var(--ink); }
 
 /**
  * «ЯАГААД ЭНД ҮЕРЛЭВ» — шалтгааны хайрцаг (мэдээллийн картад).

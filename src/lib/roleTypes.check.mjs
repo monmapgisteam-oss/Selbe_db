@@ -96,11 +96,51 @@ console.log('✅ roleAccess — зөвхөн views · docs · home; анхдаг
     assert.ok(!src.includes(banned), `roleTypeApply: «${banned}» буцаж ирэв — загвар засах эрх/хуваарилалт бичих ёсгүй`);
   }
   assert.ok(src.includes('setUser(u, { views, docs: acc.docs }, role)'), 'roleTypeApply: харагдацын бичилт setUser-ээр байх ёстой');
-  /* ⚠️ 2026-09-30: урсгалаар нээгдсэн хадгалагдсан харагдацыг загвар дарж хасахгүй */
-  assert.ok(src.includes('cur.filter((v) => WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хэвээр үлдээх ёстой');
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урсгалтай харагдац ЗӨВХӨН хуваарилалтаар
+     (`permissions.workflowViewsOf`) — «Төрлөөр тохируулах» тэдгээрийг БИЧИХГҮЙ (2026-09-30-ны
+     «хэвээр үлдээх» шийдвэрийг сольсон). */
+  assert.ok(!src.includes('cur.filter((v) => WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалж үлдээх замыг буцааж нэмэв');
+  assert.ok(src.includes('acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалахгүй байх ёстой');
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');
   assert.ok(!ui.includes('tt-scope-'), 'ErhTypes: «Багцын хамрах хүрээ» мөр буцаж ирэв');
 }
 console.log('✅ roleTypeApply — зөвхөн setUser; ErhTypes-д scope мөр алга');
+
+/* ── 5. «Шинэ хуудас — загварт тохируулаагүй» (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
+   ⚠️ `on` нь чеклэснийг л хадгалдаг тул загвар хадгалсны ДАРАА нэмэгдсэн хуудас («ТУХ»)
+      чимээгүй «хаалттай» болдог байв. `seen` (хадгалах агшны каталог) ба хуучин мөрийн
+      `LEGACY_SEEN` (ТУХ-аас бусад) нь тэр хуудсыг ялгана. */
+{
+  const { unseenViews, tplViewKeys, saveTpl, isStoredTpl, NEW_ACCOUNT_ROLE, isTypeRole } = await import('@/lib/roleTypes.ts');
+  /* cleanTpl — `seen` хадгалагдана, танигдахгүй түлхүүр хаягдана; массивгүй бол undefined (хуучин мөр) */
+  const c = cleanTpl('injener', { on: ['view:gdash'], home: 'gdash', seen: ['gdash', 'nope', 'tuh'] });
+  assert.deepEqual(c.seen, ['gdash', 'tuh'], `seen шүүлт: ${c.seen}`);
+  assert.equal(cleanTpl('injener', { on: [], home: 'gdash' }).seen, undefined, 'seen-гүй мөр → undefined');
+  /* хуучин (seen-гүй) хадгалсан загвар → ЗӨВХӨН «ТУХ» шинэ */
+  _syncRemoteTypes([
+    { role: 'injener', tpl: { on: ['view:gdash'], home: 'gdash' } },
+    { role: 'menejer', tpl: { on: ['view:gdash'], home: 'gdash', seen: tplViewKeys().filter((k) => k !== 'plan') } },
+    { role: 'eronhii', tpl: { on: ['view:gdash'], home: 'gdash', seen: tplViewKeys() } },
+  ]);
+  assert.ok(tplViewKeys().includes('tuh'), 'ТУХ загварын каталогт байх ёстой');
+  assert.deepEqual(unseenViews('injener'), ['tuh'], `хуучин загвар — зөвхөн ТУХ шинэ: ${unseenViews('injener')}`);
+  assert.deepEqual(unseenViews('menejer'), ['plan'], 'seen-д байхгүй харагдац шинэ');
+  assert.deepEqual(unseenViews('eronhii'), [], 'бүгдийг мэдсэн загварт тэмдэг алга');
+  assert.ok(!isStoredTpl('gazar') && unseenViews('gazar').length === 0, 'анхдагч (хадгалаагүй) загварт тэмдэг алга');
+  assert.deepEqual(unseenViews('super'), [], 'super — тэмдэг алга');
+  assert.deepEqual(tplOf('menejer').seen?.length, tplViewKeys().length - 1, 'tplOf seen-ийг хуулна');
+  /* saveTpl — сүлжээгүй тул унана (false), гэхдээ seen-ийг ЗААВАЛ бичих ёстой — эх кодоор */
+  assert.equal(await saveTpl('injener', { on: ['view:gdash'], home: 'gdash' }), false, 'сүлжээгүй — false');
+  const rt = fs.readFileSync('src/lib/roleTypes.ts', 'utf8');
+  assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: tplViewKeys() };'), 'saveTpl: seen = одоогийн каталог');
+  /* ErhTypes — баганын/мөрийн тэмдэг */
+  const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');
+  assert.ok(ui.includes("tr('шинэ хуудас — загварт тохируулаагүй')") && ui.includes('unseenOf(r)'), 'ErhTypes: «шинэ хуудас» тэмдэг алга');
+  /* Шинэ аккаунтын анхдагч — одоогийн төрөл (хуучин tolovlolt БИШ) */
+  assert.ok(isTypeRole(NEW_ACCOUNT_ROLE) && NEW_ACCOUNT_ROLE !== 'super', `NEW_ACCOUNT_ROLE төрлийн жагсаалтад байх ёстой: ${NEW_ACCOUNT_ROLE}`);
+  const ua = fs.readFileSync('src/components/UserAdmin.tsx', 'utf8');
+  assert.ok(ua.includes('role: NEW_ACCOUNT_ROLE, isNew: true') && !ua.includes("role: 'tolovlolt', isNew: true"), 'UserAdmin.add: шинэ аккаунт NEW_ACCOUNT_ROLE-тэй');
+}
+console.log('✅ шинэ хуудас — загварт тохируулаагүй (seen · LEGACY_SEEN) · шинэ аккаунтын төрөл');
 
 console.log('roleTypes.check: ok');

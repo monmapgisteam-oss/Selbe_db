@@ -749,6 +749,67 @@ export function markDuplicates(
   const tol = tolM * upm;
   // Урт ирмэгээс эхэлж шалгана — хамгийн урт нь хэзээ ч хаягдахгүй
   const order = net.edges.map((_, i) => i).sort((a, b) => net.edges[b].length - net.edges[a].length);
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ОРОН ЗАЙН ТОР (bbox grid).
+   *    Урьд нь ирмэг бүрийг БҮХ ирмэгтэй харьцуулдаг O(E²) байв — бодит сүлжээнд
+   *    (~4,000 ирмэг) 16 сая хос, сүлжээ ачаалах бүрд секунд гаруй гацаа. Одоо
+   *    ирмэг бүрийн хүрээг (`tol`-оор тэлсэн) торонд бүртгэж, A-гийн хүрээтэй
+   *    ДАВХЦАХ нүднүүдийн ирмэгийг л шалгана.
+   * ⚠️ ҮР ДҮН ӨӨРЧЛӨГДӨХГҮЙ: `covered(A, B) ≥ cover > 0` бол A-гийн дор хаяж нэг
+   *    орой B-ээс `tol` дотор → B-гийн тэлсэн хүрээ A-гийн хүрээтэй ЗААВАЛ
+   *    давхцана. Тор нь зөвхөн боломжгүй хосыг хасна; шалгах дараалал (`order`),
+   *    дунд цэгийн шүүлт, `dup`-ийн шалгалт хуучнаараа (`traffic.check` §markDuplicates
+   *    нь бүдүүлэг аргатай ЯГ тэнцүүлж шалгана).
+   */
+  const E = net.edges.length;
+  const bx0 = new Float64Array(E);
+  const by0 = new Float64Array(E);
+  const bx1 = new Float64Array(E);
+  const by1 = new Float64Array(E);
+  for (let i = 0; i < E; i++) {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    for (const p of net.edges[i].pts) {
+      if (p[0] < x0) x0 = p[0];
+      if (p[0] > x1) x1 = p[0];
+      if (p[1] < y0) y0 = p[1];
+      if (p[1] > y1) y1 = p[1];
+    }
+    bx0[i] = x0 - tol; by0[i] = y0 - tol; bx1[i] = x1 + tol; by1[i] = y1 + tol;
+  }
+  /** Торны нүд — ~50 бодит метр (богино ирмэг 1–4 нүдэнд, урт нь олон нүдэнд) */
+  const CELL = Math.max(tol * 4, 50 * upm);
+  const cellKey = (cx: number, cy: number) => `${cx}:${cy}`;
+  const grid = new Map<string, number[]>();
+  for (let i = 0; i < E; i++) {
+    if (!Number.isFinite(bx0[i])) continue;
+    for (let cx = Math.floor(bx0[i] / CELL); cx <= Math.floor(bx1[i] / CELL); cx++) {
+      for (let cy = Math.floor(by0[i] / CELL); cy <= Math.floor(by1[i] / CELL); cy++) {
+        const k = cellKey(cx, cy);
+        const l = grid.get(k);
+        if (l) l.push(i); else grid.set(k, [i]);
+      }
+    }
+  }
+  /** `order` дахь байр — нэр дэвшигчдийг хуучин дарааллаар шалгахад */
+  const rank = new Int32Array(E);
+  order.forEach((e, r) => { rank[e] = r; });
+  const stamp = new Int32Array(E).fill(-1);
+  /** A-гийн хүрээтэй давхцах ирмэгүүд — `order`-ийн дарааллаар */
+  const candidates = (i: number): number[] => {
+    const out: number[] = [];
+    if (!Number.isFinite(bx0[i])) return out;
+    for (let cx = Math.floor(bx0[i] / CELL); cx <= Math.floor(bx1[i] / CELL); cx++) {
+      for (let cy = Math.floor(by0[i] / CELL); cy <= Math.floor(by1[i] / CELL); cy++) {
+        for (const j of grid.get(cellKey(cx, cy)) ?? []) {
+          if (stamp[j] === i) continue;
+          stamp[j] = i;
+          if (bx0[j] > bx1[i] || bx1[j] < bx0[i] || by0[j] > by1[i] || by1[j] < by0[i]) continue;
+          out.push(j);
+        }
+      }
+    }
+    return out.sort((a, b) => rank[a] - rank[b]);
+  };
   /** A-гийн оройнуудын хэдэн хувь нь B-ээс `tol` дотор байна вэ */
   const covered = (A: NetEdge, B: NetEdge): number => {
     let hit = 0;
@@ -768,7 +829,7 @@ export function markDuplicates(
     const A = net.edges[i];
     if (A.dup) continue;
     const am = A.pts[Math.floor(A.pts.length / 2)];
-    for (const j of order) {
+    for (const j of candidates(i)) {
       if (j === i) continue;
       const B = net.edges[j];
       if (B.dup || B.length < A.length) continue;
@@ -1063,6 +1124,44 @@ export function compatPlan(
 }
 
 /**
+ * Уулзварын НЭРИЙГ хэвшүүлнэ — Юникод NFC, захын зай, дотоод олон зай, том/жижиг үсэг.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `byJunction`-ийн түлхүүр («1-р гэрлэн
+ *    дохио») ГАРААР бичигдсэн, харин `uulzwar_name` нь ArcGIS-ийн атрибут — «1-р
+ *    гэрлэн дохио » (захын зай), «1-Р ГЭРЛЭН ДОХИО», хоёр зайтай хувилбар ирэхэд
+ *    уулзварын хуваарь ЧИМЭЭГҮЙ алдагдаж, фоллбэк `stages` (өөр уулзварынх) асдаг
+ *    байв — буруу чиглэл ногоон болно.
+ */
+export const normJunction = (s: string): string =>
+  s.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('mn');
+
+/** Хөтөлбөр бүрийн «уулзвар → ээлж» кэш — `signalPhase` машин бүрд, фрейм бүрд дуудагдана */
+const junctionCache = new WeakMap<SignalPlan, Map<string, SignalCode[][] | null>>();
+
+/**
+ * Уулзварын ӨӨРИЙН ээлжүүд — эхлээд ЯГ нэрээр, дараа нь хэвшүүлсэн нэрээр; олдохгүй бол `null`.
+ * ⚠️ Үр дүнг хөтөлбөр × нэрээр кэшилнэ — хэвшүүлэлт (regex, normalize) нь фрейм
+ *    бүрд мянган машинд давтагдах ёсгүй.
+ */
+export function junctionStages(plan: SignalPlan, junction: string): SignalCode[][] | null {
+  const by = plan.byJunction;
+  if (!by) return null;
+  let m = junctionCache.get(plan);
+  if (!m) { m = new Map(); junctionCache.set(plan, m); }
+  const hit = m.get(junction);
+  if (hit !== undefined) return hit;
+  let st: SignalCode[][] | null = by[junction] ?? null;
+  if (!st) {
+    const k = normJunction(junction);
+    for (const [name, v] of Object.entries(by)) {
+      if (normJunction(name) === k) { st = v; break; }
+    }
+  }
+  m.set(junction, st);
+  return st;
+}
+
+/**
  * Код аль ээлжид ЭХЛЭЭД тохиолдох вэ (олдохгүй бол −1) — зөвхөн МЭДЭЭЛЛИЙН.
  * ⚠️ Фаз бодоход ХЭРЭГЛЭХГҮЙ: нэг код ОЛОН ээлжид орж болно (уулзварын хуваарьт
  * код 7 нь 6 ээлжид ногоон болдог), тиймээс «эхний ээлж»-ээр шүүвэл тэр
@@ -1099,7 +1198,8 @@ export function signalPhase(
   junction?: string,
 ): SignalPhase {
   // ⚠️ Уулзвартаа тусгай хуваарь байвал ТҮҮГЭЭР: код уулзвар хооронд давхардана
-  const stages = (junction != null && plan.byJunction?.[junction]) || plan.stages;
+  /* ⚠️ 2026-10-01: нэрийг ХЭВШҮҮЛЖ тааруулна (`junctionStages`) */
+  const stages = (junction != null && junctionStages(plan, junction)) || plan.stages;
   const n = stages.length;
   if (n <= 0) return 'red';
   const share = plan.cycle / n;
@@ -1467,11 +1567,29 @@ export function pickNext(
   return cand[cand.length - 1];
 }
 
+/** `stepCars`-ийн НЭГ алхмын дээд урт (сим-сек) — үүнээс урт алхамд машин урдахаа нэвт гарна */
+export const STEP_DT_MAX = 0.2;
+
+/**
+ * ФРЕЙМИЙН сим-хугацааг `STEP_DT_MAX`-аас хэтрэхгүй ДЭД АЛХМУУДАД хуваана.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `TrafficOverlay` нь `dtReal ≤ 0.12` ×
+ *    `paceOf(×60) ≈ 1.73` = 0.208 сек-ийг НЭГ алхмаар өгдөг байсан — ×60 хурдад
+ *    `stepCars`-ийн 0.2 сек-ийн баталгаа зөрчигдөнө. Одоо тэнцүү дэд алхмууд.
+ * @returns дэд алхмуудын урт (нийлбэр = `dt`); `dt ≤ 0` бол хоосон
+ */
+export function subSteps(dt: number, max = STEP_DT_MAX): number[] {
+  if (!(dt > 0)) return [];
+  const n = Math.max(1, Math.ceil(dt / max - 1e-9));
+  return Array.from({ length: n }, () => dt / n);
+}
+
 /**
  * БҮХ машиныг `dt` секундээр урагшлуулна (car-following + уулзварын сонголт).
  *
- * ⚠️ `dt`-г 0.2 сек-ээс дээш өгвөл машин урдахаа «нэвт өнгөрөх» магадлалтай тул
- * дуудагч тал ФРЕЙМИЙН dt-г таслах ёстой (`TrafficOverlay` тэгдэг).
+ * ⚠️ `dt`-г 0.2 сек-ээс (`STEP_DT_MAX`) дээш өгвөл машин урдахаа «нэвт өнгөрөх»
+ * магадлалтай тул дуудагч тал ФРЕЙМИЙН dt-г ДЭД АЛХАМД хуваана (`subSteps`,
+ * `TrafficOverlay`).
  */
 export function stepCars(
   net: Network,
@@ -2214,4 +2332,20 @@ export function carCapacity(net: Network, util = 0.5): number {
   const dirs = net.directed ? 1 : 2;
   const perCarM = CAR_LEN + MIN_GAP_M;
   return Math.max(10, Math.floor(((lenM * dirs) / perCarM) * util));
+}
+
+/**
+ * БҮХ СҮЛЖЭЭНД НЭГ МАШИНЫ ТАГ — эрэлт ба сүлжээ бүрийн багтаамжийн ХАМГИЙН БАГА.
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь таг нь ИДЭВХТЭЙ сүлжээний
+ *    `carCapacity`-аас (`TrafficOverlay`) бодогддог байсан тул «Бодит» ба
+ *    «Төлөвлөгөө» ӨӨР тооны машинтай гүйж, «аль сүлжээ ачааллыг дааж байна» гэсэн
+ *    харьцуулалт шударга бус байв (`netSources.ts`: «бүгд ИЖИЛ эрэлтээр»). Одоо
+ *    машинтай БҮХ сүлжээний хамгийн бага багтаамжаар НЭГ таг.
+ * @param caps мэдэгдэж буй сүлжээнүүдийн `carCapacity` (хоосон бол зөвхөн эрэлт)
+ */
+export function commonCarCap(demand: number, caps: readonly number[]): number {
+  let cap = Math.max(1, Math.round(demand));
+  for (const c of caps) if (Number.isFinite(c) && c > 0 && c < cap) cap = c;
+  return cap;
 }

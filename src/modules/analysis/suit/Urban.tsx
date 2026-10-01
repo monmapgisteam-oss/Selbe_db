@@ -305,12 +305,14 @@ export function Parking({
   const pct = need != null && need > 0 ? (supply / need) * 100 : null;
 
   const hh = rows.reduce((a, r) => a + r.households, 0);
-  const pop = rows.reduce((a, r) => a + r.population, 0);
+  /* ⚠️ 2026-10-01: ОРШИН СУУГЧ (`Population`) — `data.parkingNeedOf`-тэй ижил
+     (урьд нь `population` = оршин суугч + хүчин чадал байсан) */
+  const pop = rows.reduce((a, r) => a + r.residentPop, 0);
   /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
   const needExpr = parking.source === 'households'
     ? <>{nf(hh)} {tr('өрх ×')} {parking.perHousehold.toFixed(2)} {tr('зогсоол')}</>
     : parking.source === 'population'
-      ? <>{nf(pop)} {tr('хүн ×')} {parking.per1000} ÷ 1000</>
+      ? <>{nf(pop)} {tr('оршин суугч ×')} {parking.per1000} ÷ 1000</>
       : <>{tr('бүх бүсийн нормд заасан зогсоолын нийлбэр')}</>;
 
   return (

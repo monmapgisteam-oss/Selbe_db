@@ -107,4 +107,33 @@ assert.equal(OBYEM_STATUS.returned, 'Буцаагдсан');
 assert.equal(new Set(Object.values(OBYEM_STATUS)).size, 3, 'төлвүүд давхардав');
 console.log('✅ төлвийн утгууд');
 
+/* ══════════════ 6. ⚠️ 2026-09-30: ҮНДСЭН ӨГӨГДӨЛД БИЧИХЭЭС ӨМНӨ ДҮРЭМ ШАЛГАНА ══════════════
+ * Урьд нь `useObyem.decideObyemHere` нь `applyUpdates`-аар `Инженерийн_төлөвлөсөн_обьём`-д
+ * ЭХЛЭЭД бичиж, дараа нь л `decideObyem` өөрийгөө батлах · хүрээ · «аль хэдийн
+ * шийдвэрлэсэн» дүрмийг шалгадаг байв — татгалзсан ч утга нь үндсэн өгөгдөлд үлдэнэ. */
+fetched = 0;
+const dry = await decideObyem({ oid: 1, approve: true, approver: 'Bat', author: 'bat', dryRun: true });
+assert.equal(dry.ok, false, 'урьдчилсан шалгалт ч зохиогчийг татгалзах ёстой');
+assert.match(dry.error, /өөрөө батлах боломжгүй/);
+assert.equal(fetched, 0, 'урьдчилсан шалгалтын дүрэм сүлжээнээс ӨМНӨ');
+{
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('const decideObyemHere'));
+  const pre = fn.indexOf('dryRun: true');
+  const write = fn.indexOf('await applyUpdates(');
+  assert.ok(pre > 0, 'useObyem: `decideObyem({ dryRun: true })` урьдчилсан шалгалт АЛГА');
+  assert.ok(write > 0, 'useObyem: `applyUpdates` дуудлага олдсонгүй (шалгуурыг шинэчилнэ үү)');
+  assert.ok(pre < write, 'useObyem: урьдчилсан шалгалт `applyUpdates`-ээс ӨМНӨ байх ёстой');
+  /* ⚠️ Бичилтийн ДАРААХ жинхэнэ шийдвэр хэвээр (дараалал: бичээд → тэмдэглэх) */
+  assert.ok(fn.indexOf('const r = await decideObyem(') > write, 'useObyem: шийдвэрийн бичилт `applyUpdates`-ийн ДАРАА');
+  /* ⚠️ 2026-09-30: өдөр солигдоход хүлээгдэж буй илгээлт дахин уншигдана; батлагдсан утга мөрт тусна */
+  assert.ok(/useEffect\(\(\) => \{ void refreshObyem\(\); \}, \[refreshObyem, todayFillMs\]\)/.test(src),
+    'useObyem: өдөр солигдоход (`todayFillMs`) хүлээгдэж буй илгээлтийг дахин уншина');
+  assert.ok(fn.indexOf('setRows((rs) =>') > write, 'useObyem: батлагдсан утга хуудасны мөрт тусна');
+  const fill = fs.readFileSync(new URL('../modules/sheet/FillNew.tsx', import.meta.url), 'utf8');
+  assert.ok(/useObyem\(\{[^}]*todayFillMs, setRows \}\)/.test(fill), 'FillNew: useObyem-д `todayFillMs` · `setRows` дамжина');
+}
+console.log('✅ үндсэн өгөгдөлд бичихээс ӨМНӨ дүрэм шалгагдана · өдөр солигдоход баннер хэвээр');
+
 console.log('\nobyemBatlah.check: ok');

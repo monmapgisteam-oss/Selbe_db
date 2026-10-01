@@ -42,7 +42,7 @@ export function shortError(e: unknown): string {
   return first.length > 120 ? `${first.slice(0, 117)}…` : first;
 }
 import {
-  cell, table, worstOf, settled, daysBetween,
+  cell, table, worstOf, settled, daysBetween, kpiComplete,
   type KpiResult, type KpiIssue, type DetailTable,
 } from './kpi';
 
@@ -264,4 +264,5 @@ export const loadReviewKpi: () => Promise<KpiResult> = cached(async () => {
     fills: fh.status === 'fulfilled' ? fh.value : null,
     failedSources: failed,
   });
-}, 5 * 60_000, ['HYANALT', 'BAGTS_SHEET']);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): нэг эх унасан картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
+}, 5 * 60_000, ['HYANALT', 'BAGTS_SHEET'], kpiComplete);

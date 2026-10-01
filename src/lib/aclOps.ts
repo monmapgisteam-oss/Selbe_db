@@ -30,9 +30,9 @@ import { t as tr } from './i18nCore';
 import { listUsers, remoteReady, resolveAccess } from './permissions';
 import { roleForUser, VIEWS } from './services';
 import type { ErhSource } from './erhOverview';
-import { capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
+import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
-import { ROLE_CAPS, isDerivedCap, type ScopedSys } from './aclRoleCaps';
+import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
@@ -41,28 +41,30 @@ import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
 import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
 import {
-  flowAclReady, flowFailedUsers, listAssigns, removeAssign, setAssign, setViewOnly,
+  flowAclReady, flowFailedUsers, listAssigns, removeAssign, retryFlow, setAssign, setViewOnly,
 } from './guitsetgelAcl';
 import {
-  listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, setQaqcAssign,
+  listQaqcAssigns, qaqcAclReady, qaqcFailedUsers, removeQaqcAssign, retryQaqcAssign, setQaqcAssign,
 } from './qaqcAcl';
 import {
-  huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, setHuvaariGrants,
-  type PlanRole,
+  huvaariAclReady, huvaariFailedUsers, listHuvaariAssigns, removeHuvaariAssign, retryHuvaariAssign,
+  setHuvaariGrants, type PlanRole,
 } from './huvaariAcl';
 import {
-  listObyemAssigns, obyemAclReady, obyemFailedUsers, removeObyemAssign, setObyemGrants, type ObyemRole,
+  listObyemAssigns, obyemAclReady, obyemFailedUsers, removeObyemAssign, retryObyemAssign, setObyemGrants,
+  type ObyemRole,
 } from './obyemAcl';
 import {
-  ajilAclReady, ajilFailedUsers, listAjilAssigns, removeAjilAssign, setAjilGrants, type AjilRole,
+  ajilAclReady, ajilFailedUsers, listAjilAssigns, removeAjilAssign, retryAjilAssign, setAjilGrants,
+  type AjilRole,
 } from './ajilAcl';
 import {
-  chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign, setChanarGrants,
-  type ChanarRole,
+  chanarAclReady, chanarFailedUsers, listChanarAssigns, removeChanarAssign, retryChanarAssign,
+  setChanarGrants, type ChanarRole,
 } from './chanarAcl';
 import {
-  butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, setButetsGrants,
-  type ButetsRole,
+  butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, retryButetsAssign,
+  setButetsGrants, type ButetsRole,
 } from './butetsAcl';
 
 /** Бичилтийн үр дүн — `scopedAcl.AclWrite`-тай ижил хэлбэр */
@@ -189,7 +191,10 @@ function revokeGoneRoles(
   rr: Write,
   roleCaps: Readonly<Partial<Record<string, CapKey>>>,
 ): Write {
-  if (!rr.ok || !rr.sync) return rr;
+  /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ. Түүнд хуваарилалт үйлчилдэггүй тул эрх нь
+     ЗӨВХӨН шууд олголтоос (`PlainCapAcl superOnly` · `capDirectOp`) — хуучин (remote-д үлдсэн)
+     хуваарилалтын мөрийг хасахад тэр шууд олгосон эрхийг буцаадаг байв. */
+  if (!rr.ok || !rr.sync || roleForUser(u) === 'super') return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
     const caps = new Set<CapKey>();
@@ -218,6 +223,8 @@ export type SysSpec = {
   setGrants: (u: string, grants: Grant<string>[]) => Write;
   /** ⚠️ ЗААВАЛ `revoke=false` — эрхийг `removeRevokingRoles` буцаана */
   removeNoRevoke: (u: string) => Write;
+  /** Унасан бичилтийг дахин илгээх / эрхийг дахин олгох (2026-10-01, `scopedAcl.retry`) */
+  retry: (u: string, grant: boolean) => Write;
   roleCaps: Readonly<Partial<Record<string, CapKey>>>;
   roles: readonly string[];
   /** Багцын олонлог — `PKG_GROUPS`, дэд бүтцэд `BUTETS_PACKS` түлхүүр */
@@ -234,30 +241,35 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
     list: listHuvaariAssigns, failedUsers: huvaariFailedUsers, ready: huvaariAclReady,
     setGrants: (u, g) => setHuvaariGrants(u, g as Grant<PlanRole>[]),
     removeNoRevoke: (u) => removeHuvaariAssign(u, false),
+    retry: (u, g) => retryHuvaariAssign(u, g),
     roleCaps: ROLE_CAPS.huvaari, roles: Object.keys(ROLE_CAPS.huvaari), universe: () => PKG_GROUPS,
   },
   obyem: {
     list: listObyemAssigns, failedUsers: obyemFailedUsers, ready: obyemAclReady,
     setGrants: (u, g) => setObyemGrants(u, g as Grant<ObyemRole>[]),
     removeNoRevoke: (u) => removeObyemAssign(u, false),
+    retry: (u, g) => retryObyemAssign(u, g),
     roleCaps: ROLE_CAPS.obyem, roles: Object.keys(ROLE_CAPS.obyem), universe: () => PKG_GROUPS,
   },
   ajil: {
     list: listAjilAssigns, failedUsers: ajilFailedUsers, ready: ajilAclReady,
     setGrants: (u, g) => setAjilGrants(u, g as Grant<AjilRole>[]),
     removeNoRevoke: (u) => removeAjilAssign(u, false),
+    retry: (u, g) => retryAjilAssign(u, g),
     roleCaps: ROLE_CAPS.ajil, roles: Object.keys(ROLE_CAPS.ajil), universe: () => PKG_GROUPS,
   },
   chanar: {
     list: listChanarAssigns, failedUsers: chanarFailedUsers, ready: chanarAclReady,
     setGrants: (u, g) => setChanarGrants(u, g as Grant<ChanarRole>[]),
     removeNoRevoke: (u) => removeChanarAssign(u, false),
+    retry: (u, g) => retryChanarAssign(u, g),
     roleCaps: ROLE_CAPS.chanar, roles: Object.keys(ROLE_CAPS.chanar), universe: () => PKG_GROUPS,
   },
   butets: {
     list: listButetsAssigns, failedUsers: butetsFailedUsers, ready: butetsAclReady,
     setGrants: (u, g) => setButetsGrants(u, g as Grant<ButetsRole>[]),
     removeNoRevoke: (u) => removeButetsAssign(u, false),
+    retry: (u, g) => retryButetsAssign(u, g),
     /* ⚠️ Багц нь `BUTETS_PACKS` түлхүүр («БАГЦ51») — `PKG_GROUPS` БИШ (`butetsAcl.ts`) */
     roleCaps: ROLE_CAPS.butets, roles: Object.keys(ROLE_CAPS.butets),
     universe: () => BUTETS_PACKS.map((p) => p.key),
@@ -272,17 +284,29 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
  */
 export function liveErhSource(): ErhSource {
   const users = listUsers().map((u) => u.username);
+  const flow = listAssigns();
+  const qaqc = listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts }));
+  const huvaari = listHuvaariAssigns();
+  const obyem = listObyemAssigns();
+  const chanar = listChanarAssigns();
+  const ajil = listAjilAssigns();
+  const butets = listButetsAssigns();
+  /* ⚠️ 2026-09-30: хуваарилалттай атлаа порталд алга (устгагдсан) — гацааны шалгуурт тоологдохгүй (`ErhSource.gone`) */
+  const known = new Set(users.map((u) => u.toLowerCase()));
+  const rows: { user: string }[][] = [flow, qaqc, huvaari, obyem, chanar, ajil, butets];
+  const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))].filter((u) => !known.has(u.toLowerCase()));
   return {
     users,
     /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
     supers: users.filter((u) => roleForUser(u) === 'super'),
-    flow: listAssigns(),
-    qaqc: listQaqcAssigns().map((a) => ({ user: a.user, bagts: a.bagts })),
-    huvaari: listHuvaariAssigns(),
-    obyem: listObyemAssigns(),
-    chanar: listChanarAssigns(),
-    ajil: listAjilAssigns(),
-    butets: listButetsAssigns(),
+    gone,
+    flow,
+    qaqc,
+    huvaari,
+    obyem,
+    chanar,
+    ajil,
+    butets,
     caps: Object.fromEntries(users.map((u) => [u.toLowerCase(), capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
       const a = resolveAccess(u);
@@ -323,6 +347,20 @@ const norm = (user: string): string => user.trim().toLowerCase();
 
 /** Порталд БАЙГАА аккаунт уу — устгагдсаны өнчин мөрийг `revoke=false`-оор цэвэрлэнэ */
 const isKnown = (u: string): boolean => listUsers().some((x) => x.username.toLowerCase() === u);
+
+/**
+ * ЦЭВЭРЛЭХ МӨР (2026-09-30) — устгагдсан аккаунт (порталд алга) ЭСВЭЛ хатуу super-ийн хуучин
+ * (remote-д үлдсэн) мөр. Хэнд нь ч хуваарилалт үйлчилдэггүй тул нүдний ✕ нь МӨРИЙГ БҮХЭЛД НЬ,
+ * эрх хөндөхгүй (`revoke=false`), асуулгагүй арилгана — `qaqcDropOp`-ийн устгагдсан аккаунтын
+ * хуучин дүрмийг гурван систем (QAQC · урсгал · таван үүрэгтэй) бүгдэд.
+ * ⚠️ ЯАГААД:
+ *    · устгагдсан аккаунтын НЭГ багцыг хасахад `setGrants` (grant=true) нь түүнд `__cap__:` мөр
+ *      ДАХИН үүсгэдэг байв — ижил нэрийг дахин нэмэхэд «хуучин засах эрх үлдсэн» гэж түгжинэ;
+ *    · super-ийн мөрийн НЭГ багцыг хасахад `setGrants`/`setAssign` super-ийг татгалзаж ✕ ҮРГЭЛЖ
+ *      унадаг (мөрийг арилгах зам алга), сүүлийн багц → бүтэн хасалт нь super-т ШУУД олгосон
+ *      эрхийг (`plan` · `qaqc` г.м.) буцаадаг байв.
+ */
+const isCleanup = (u: string): boolean => !isKnown(u) || roleForUser(u) === 'super';
 
 /* ══════════════ Үүрэгтэй таван систем (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц) ══════════════ */
 
@@ -461,6 +499,8 @@ export function scopedCellOp(
   if (!u) return null;
   const cur = spec.list().find((a) => a.user === u)?.grants;
   const p = add ? planGrantAdd(cur, role, pkg) : planGrantRemove(cur, role, pkg, spec.universe());
+  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`) */
+  if (!add && p.kind !== 'none' && isCleanup(u)) return { user: u, run: () => spec.removeNoRevoke(u) };
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => spec.setGrants(u, p.grants) };
@@ -488,7 +528,8 @@ const qaqcRow = (u: string) => listQaqcAssigns().find((a) => a.user === u);
 export function qaqcDropOp(user: string): AclOp {
   const u = norm(user);
   if (!qaqcRow(u)) return null;
-  if (!isKnown(u)) return { user: u, run: () => removeQaqcAssign(u, false) };
+  /* ⚠️ 2026-09-30: super-ийн хуучин мөр ч (`isCleanup`) — `revoke=true` нь түүнд шууд олгосон `qaqc`-ийг буцаадаг байв */
+  if (isCleanup(u)) return { user: u, run: () => removeQaqcAssign(u, false) };
   return {
     user: u,
     confirm: [tr('«{0}»-г чанарын хуваарилалтаас хасах уу? «QAQC — Inspection Test Plan» эрх ба «Чанар (QAQC)» харагдац нь мөн буцаагдана.', u)],
@@ -544,6 +585,9 @@ export function qaqcCellOp(user: string, pkg: string, add: boolean): AclOp {
   if (!u) return null;
   const cur = qaqcRow(u)?.bagts;
   const p = add ? planListAdd(cur, pkg) : planListRemove(cur, pkg, PKG_GROUPS);
+  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`);
+     super-т `set` нь `setGrants`-ийн татгалзлаар ҮРГЭЛЖ унадаг байв */
+  if (!add && p.kind !== 'none' && isCleanup(u)) return qaqcDropOp(u);
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => setQaqcAssign(u, p.bagts) };
@@ -576,7 +620,8 @@ export function flowDropOp(user: string): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
   if (!cur) return null;
-  if (!isKnown(u)) return { user: u, run: () => asWrite(removeAssign(u, cur.stage, false)) };
+  /* ⚠️ 2026-09-30: super-ийн хуучин мөр ч (`isCleanup`) — түүний эрх кодоос, буцаах зүйлгүй */
+  if (isCleanup(u)) return { user: u, run: () => asWrite(removeAssign(u, cur.stage, false)) };
   return {
     user: u,
     confirm: [tr('«{0}»-г {1} шатнаас хасах уу? Олгогдсон үүрэг ба «Гүйцэтгэлийн хяналт» харагдац нь мөн буцаагдана.', u, STAGE_LABEL[cur.stage])],
@@ -684,6 +729,9 @@ export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean
   if (!u) return null;
   const cur = flowRow(u);
   const p = add ? planCellAdd(cur, stage, pkg) : planCellRemove(cur, stage, pkg, PKG_GROUPS);
+  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`);
+     super-т `set` нь `setAssign`-ийн татгалзлаар ҮРГЭЛЖ унаж мөр арилгах замгүй байв */
+  if (!add && p.kind !== 'none' && isCleanup(u)) return flowDropOp(u);
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => setAssign(u, p.stage, p.bagts) };
@@ -728,6 +776,148 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
       : tr('«{0}»-ийн «{1}» эрхийг хасах уу?', u, capLabelShort(cap)),
   ];
   return { user: u, confirm, run: () => ({ ok: true, sync: toggleCap(u, cap, on) }) };
+}
+
+/* ═══════════ Засвар: дахин илгээх · дахин олгох · устгагдсаны үлдэгдэл (2026-10-01) ═══════════ */
+
+/** Хуваарилалттай систем — урсгал · QAQC · үүрэгтэй тав */
+export type RepairSys = 'flow' | 'qaqc' | ScopedSys;
+
+/** Бүх `Write`-ыг нэгтгэнэ — аль нэг нь `ok:false` бол түүнийг; `sync`/`granted` бүгд үнэн бол үнэн */
+function combine(ws: Write[]): Write {
+  const bad = ws.find((w) => !w.ok);
+  if (bad) return bad;
+  const all = (ps: (Promise<boolean> | undefined)[]) =>
+    Promise.all(ps.map((p) => p ?? Promise.resolve(true))).then((rs) => rs.every(Boolean));
+  return { ok: true, sync: all(ws.map((w) => w.sync)), granted: all(ws.map((w) => w.granted)) };
+}
+
+/** Системийн дахин илгээх бичилт — `grant` бол эрхийг ч дахин олгоно */
+function retryWrite(sys: RepairSys, u: string, grant: boolean): Write {
+  if (sys === 'flow') return asWrite(retryFlow(u, grant));
+  if (sys === 'qaqc') return retryQaqcAssign(u, grant);
+  return SCOPED_SYS[sys].retry(u, grant);
+}
+
+/** ArcGIS бичилт нь унасан хэрэглэгчид (энэ сешн) — `failed` тэмдэг */
+export function failedUsersOf(sys: RepairSys): string[] {
+  if (sys === 'flow') return flowFailedUsers();
+  if (sys === 'qaqc') return qaqcFailedUsers();
+  return SCOPED_SYS[sys].failedUsers();
+}
+
+/**
+ * «ДАХИН ИЛГЭЭХ» — бичилт нь унасан хэрэглэгчийн ЛОКАЛ төлөвийг remote руу дахин бичнэ
+ * (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ ЯАГААД: урьд нь «!» тэмдэг ба «Холболтоо шалгаад дахин оролдоно уу» л байв — дахин
+ *    оролдох цорын ганц зам нь багцыг хасаад дахин нэмэх (эрх буцаах асуулттай).
+ * ⚠️ Асуулгагүй: шинэ шийдвэр БИШ, админы аль хэдийн хийсэн (локалд байгаа) өөрчлөлтийг л
+ *    илгээнэ. Устгагдсан аккаунт / хатуу super-ийн хуучин мөрт эрх үүсгэхгүй (`isCleanup`).
+ */
+export function retryOp(sys: RepairSys, user: string): AclOp {
+  const u = norm(user);
+  if (!u) return null;
+  return { user: u, run: () => retryWrite(sys, u, !isCleanup(u)) };
+}
+
+/**
+ * «ДАХИН ОЛГОХ» — хуваарилалт бий атлаа эрх нь алга (`erhOverview.missingCaps`) үед тэр
+ * эрхийн системүүдийн хуваарилалтыг ДАХИН хадгалж, үүргийн эрхийг олгоно (2026-10-01).
+ * ⚠️ ЯАГААД: урьд нь «багцыг хасаад дахин нэмж хуваарилалтыг дахин хадгална уу» гэсэн
+ *    заавар л байв — хасах нь эрх буцаах асуулттай, гацааны анхааруулга өдөөдөг.
+ * ⚠️ Хуваарилалтыг ӨӨРЧЛӨХГҮЙ — `retry(grant=true)`: мөрийг хэвээр нь дахин бичиж,
+ *    `syncCaps` зөвхөн ОЛГОНО (хасахгүй).
+ * ⚠️ Устгагдсан аккаунт / хатуу super-т татгалзана — эрх нь хуваарилалтаас гардаггүй.
+ */
+export function regrantOp(user: string, caps: readonly CapKey[]): AclOp {
+  const u = norm(user);
+  if (!u || !caps.length) return null;
+  if (isCleanup(u)) return { error: tr('Устгагдсан эсвэл админ аккаунт — эрх хуваарилалтаас олгогдохгүй.') };
+  const systems = new Set<RepairSys>();
+  for (const c of caps) {
+    const sys = capSystem(c);
+    if (!sys) continue;
+    const has = sys === 'qaqc' ? !!qaqcRow(u) : SCOPED_SYS[sys].list().some((a) => a.user === u);
+    if (has) systems.add(sys);
+  }
+  if (!systems.size) return null;
+  return { user: u, run: () => combine([...systems].map((sys) => retryWrite(sys, u, true))) };
+}
+
+/** Устгагдсан аккаунтын (порталд алга) нэг хуудсан дахь үлдэгдэл */
+export type GoneItem = {
+  user: string;
+  /** Тухайн системд хуваарилалтын мөр үлдсэн */
+  row: boolean;
+  /** Тухайн хуудасны эрхүүдээс үлдсэн нь (`__cap__:`) */
+  caps: CapKey[];
+};
+
+/** Системийн хуваарилалттай хэрэглэгчид */
+const rowUsers = (sys: RepairSys): string[] => (sys === 'flow' ? listAssigns().map((a) => a.user)
+  : sys === 'qaqc' ? listQaqcAssigns().map((a) => a.user)
+    : SCOPED_SYS[sys].list().map((a) => a.user));
+
+/**
+ * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — эрхийн хуудас бүрд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ ЯАГААД: аккаунт устгахад `purge*`/`setCaps(u, [])` унавал (эсвэл өөр клиент/гараар
+ *    устгасан) хуваарилалтын мөр ба `__cap__:` мөр ArcGIS дээр үлддэг. Хүснэгтэд тэд бүдэг
+ *    чипээр харагддаг ч энгийн эрхийн хуудас (Зөвшөөрөл · Санхүү · Газар) зөвхөн порталд
+ *    БАЙГАА аккаунтыг жагсаадаг тул тэдний эрх ХАРАГДАХ ГАЗАРГҮЙ байв; ижил нэрийг дахин
+ *    нэмэхэд «хуучин эрх үлдсэн» гэж түгждэг.
+ * ⚠️ «Устгагдсан» = порталын жагсаалтад (`listUsers`) алга — tombstone ч, мөргүй ч.
+ * ⚠️ Дуудагч `allAclReady()`-г шалгана — уншигдаагүй эх сурвалж `[]` тул худал «цэвэр».
+ * @param sys `null` — хуваарилалтгүй (энгийн эрхийн) хуудас
+ * @param caps тухайн хуудасны эрхүүд (`capText.PANE_CAPS`)
+ */
+export function goneRightsOf(sys: RepairSys | null, caps: readonly CapKey[]): GoneItem[] {
+  const out = new Map<string, GoneItem>();
+  if (sys) {
+    for (const u of rowUsers(sys)) if (!isKnown(norm(u))) out.set(norm(u), { user: norm(u), row: true, caps: [] });
+  }
+  for (const raw of capUsers()) {
+    const u = norm(raw);
+    if (isKnown(u)) continue;
+    const left = capsOf(u).filter((c) => caps.includes(c));
+    if (!left.length) continue;
+    out.set(u, { ...(out.get(u) ?? { user: u, row: false, caps: [] }), caps: left });
+  }
+  return [...out.values()].sort((a, b) => a.user.localeCompare(b.user));
+}
+
+/**
+ * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЛИЙГ ЦЭВЭРЛЭХ — тэр хуудасны мөр ба эрх (2026-10-01).
+ * ⚠️ Мөр нь `revoke=false`-оор (эрх буцаах бичилт tombstone-ыг хөндөхгүй — `isCleanup`-ийн
+ *    дүрэм), эрх нь дараа нь ИЛ жагсаалтаар (`toggleCap(off)`) — зөвхөн ЭНЭ хуудасных.
+ * ⚠️ Порталд БАЙГАА аккаунтад `null` — зөвхөн устгагдсаных.
+ * ⚠️ Асуулгагүй (нэг товшилт): тэр аккаунт нэвтэрч чадахгүй тул үйлчлэх эрх биш үлдэгдэл.
+ *    «Бүгдийг цэвэрлэх» нь дуудагчид НЭГ удаа асууна.
+ */
+export function goneCleanupOp(sys: RepairSys | null, caps: readonly CapKey[], user: string): AclOp {
+  const u = norm(user);
+  if (!u || isKnown(u)) return null;
+  const item = goneRightsOf(sys, caps).find((x) => x.user === u);
+  if (!item) return null;
+  return {
+    user: u,
+    run: () => {
+      let w: Write = { ok: true, sync: Promise.resolve(true) };
+      if (item.row && sys) {
+        if (sys === 'flow') {
+          const cur = flowRow(u);
+          if (cur) w = asWrite(removeAssign(u, cur.stage, false));
+        } else if (sys === 'qaqc') w = removeQaqcAssign(u, false);
+        else w = SCOPED_SYS[sys].removeNoRevoke(u);
+      }
+      if (!w.ok) return w;
+      const sync = (w.sync ?? Promise.resolve(true)).then(async (ok) => {
+        let all = ok;
+        for (const c of item.caps) all = (await toggleCap(u, c, false)) && all;
+        return all;
+      });
+      return { ok: true, sync };
+    },
+  };
 }
 
 /* ══════════════════════ Гүйцэтгэгч ══════════════════════ */

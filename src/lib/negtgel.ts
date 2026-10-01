@@ -526,6 +526,12 @@ export type NegtgelFull = {
    * ⚠️ Хэзээ ч reject хийхгүй (`syncNegtgel` алдааг `error` төлөв болгоно).
    */
   sync: Promise<NegSyncState> | null;
+  /**
+   * УНАСАН эсвэл ХЭСЭГЧЛЭН уншигдсан эх сурвалжийн нэрс (2026-10-01, «хэрэглэгч:
+   * бүгдийг зас»). Хоосон = бүрэн. Хоосон биш үр дүнг КЭШЛЭХГҮЙ (`loadNegtgelFull`) —
+   * таб нэрийг нь харуулж, дараагийн дуудалт дахин уншина.
+   */
+  failed: string[];
 };
 
 /**
@@ -544,13 +550,17 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   const stored = await A.loadNegRaw();
   let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
   let sync: Promise<NegSyncState> | null = null;
+  let failed: string[] = [];
   try {
     const src = await A.loadNegSources();
+    failed = src.partial ?? [];
     calcRows = A.computeNegAuto(stored, src);
     /* ⚠️ Дэлгэцийн `calcRows`-ийг ДАМЖУУЛАХГҮЙ — синк өөрөө шинээр уншина */
     sync = A.syncNegtgel();
   } catch (e) {
     console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
+    /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
+    failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
   }
   const use = calcRows ?? stored.map((r) => ({
     ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэлийн хүснэгтээс (Negtgel_guitsetgel)'),
@@ -580,7 +590,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
       how: r.how,
     });
   }
-  return { rows, calc, live: calcRows != null, sync };
+  return { rows, calc, live: calcRows != null, sync, failed };
 }
 
 /*
@@ -590,12 +600,19 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
  */
 let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
-register(() => { fullP = null; }, ['CASHFLOW_NEW', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT']);
+/* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — төлөвлөгөөт хувь хуваарийн муруйгаас (`loadNegSources` → `loadPlanCurveCached`) */
+register(() => { fullP = null; }, ['CASHFLOW_NEW', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HUVAARI_OBYEM']);
 
 /** ⚠️ «Системийн утгаар шинэчлэх» бичилтийн дараа — хүснэгтийг дахин уншуулна */
 export function dropNegtgelFull(): void {
   fullP = null;
 }
+
+/**
+ * БҮРЭН үр дүн мөн эсэх — `loadNegtgelFull` ЗӨВХӨН үүнийг кэшлэнэ (2026-10-01, «хэрэглэгч:
+ * бүгдийг зас»): системээс бодсон (`live`) ба хэсэгчлэн уншигдсан эхгүй (`failed` хоосон).
+ */
+export const negtgelComplete = (v: Pick<NegtgelFull, 'live' | 'failed'>): boolean => v.live && v.failed.length === 0;
 
 export function loadNegtgelFull(): Promise<NegtgelFull> {
   if (!fullP || Date.now() - fullAt > 5 * 60_000) {
@@ -603,6 +620,10 @@ export function loadNegtgelFull(): Promise<NegtgelFull> {
     const mine = loadNegtgelFullRaw();
     fullP = mine;
     mine.catch(() => { if (fullP === mine) fullP = null; });
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ. Эх унасан
+       (`live: false` — хадгалсан утга) эсвэл хэсэгчилсэн (`failed`) үр дүн урьд нь 5 минут
+       «хуучин нөөц» болж үлддэг байв — одоо энэ дэлгэцэд нэрээ хэлээд, дараагийн дуудалт дахин уншина. */
+    void mine.then((v) => { if (!negtgelComplete(v) && fullP === mine) fullP = null; }, () => {});
   }
   return fullP;
 }

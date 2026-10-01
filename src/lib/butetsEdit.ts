@@ -68,6 +68,14 @@ export type FieldDef = {
   nullable: boolean;
   /** Кодлогдсон домэйн — байвал сонголтын жагсаалт болно */
   codes: { code: string; label: string }[] | null;
+  /**
+   * БҮХЭЛ ТООН талбар — `esriFieldTypeSmallInteger` ('small', −32768…32767) /
+   * `esriFieldTypeInteger` ('int', −2³¹…2³¹−1); бутархай талбарт `null`/байхгүй.
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь бүхэл талбарт «2.5» эсвэл
+   *    хязгаараас хэтэрсэн тоо шалгуурыг давж, сервер дээр чимээгүй тайрагдах/
+   *    унах байв. `validateRow` одоо татгалзана.
+   */
+  int?: 'small' | 'int' | null;
 };
 
 export type LayerMeta = {
@@ -92,6 +100,19 @@ export type LayerMeta = {
    * `null` бол энэ давхаргад шинэ объект зурах боломжгүй (танигдахгүй геометр).
    */
   draw: 'point' | 'polyline' | 'polygon' | null;
+  /**
+   * Давхаргын ХАДГАЛАЛТЫН SR (`extent.spatialReference`) — урт/талбайг хавтгай эсвэл
+   * геодезийн аргаар бодохыг шийднэ (`butetsLen.measureKind`). Мэдэгдэхгүй бол `null`.
+   * ⚠️ 2026-10-01: инженерийн давхаргууд 32648 (UTM 48N, амьдаар баталсан).
+   */
+  wkid?: number | null;
+  /**
+   * `supportsRollbackOnFailureParameter` — `false` бол ОЛОН мөрийн бичилт атом БИШ:
+   * багц дундаа унахад зарим мөр бичигдсэн үлдэнэ. Тэр үед мөр бүрийн үр дүнг
+   * уншиж ХЭСЭГЧИЛСЭН алдааг ил мэдээлнэ (`saveRows`/`revertRows`, 2026-10-01).
+   * Өгөөгүй (хуучин кэш, тест) бол `true` гэж үзнэ.
+   */
+  rollback?: boolean;
   /** Засагдах талбарууд — маягтын оролтууд */
   fields: FieldDef[];
   /**
@@ -163,6 +184,7 @@ function toField(f: RawField): FieldDef | null {
     alias: f.alias || name,
     kind,
     length: typeof f.length === 'number' && kind === 'text' ? f.length : null,
+    int: f.type === 'esriFieldTypeSmallInteger' ? 'small' : f.type === 'esriFieldTypeInteger' ? 'int' : null,
     nullable: f.nullable !== false,
     codes: cv
       ? cv.map((c) => ({ code: String(c.code ?? ''), label: String(c.name ?? c.code ?? '') }))
@@ -216,6 +238,9 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
     capabilities?: string;
     geometryType?: string;
     objectIdField?: string;
+    extent?: { spatialReference?: { wkid?: number; latestWkid?: number } };
+    sourceSpatialReference?: { wkid?: number; latestWkid?: number };
+    supportsRollbackOnFailureParameter?: boolean;
   }>(url, {});
   if (!Array.isArray(j.fields)) throw new Error(tr('Талбарын жагсаалт ирсэнгүй'));
 
@@ -241,6 +266,12 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
     canCreate: /create/i.test(j.capabilities ?? ''),
     canDelete: /delete/i.test(j.capabilities ?? ''),
     draw: drawOf(j.geometryType ?? ''),
+    /* ⚠️ 2026-10-01: SR ба атом бичилтийн дэмжлэг — метадатаас (feature-detect) */
+    wkid: ((sr) => (typeof sr === 'number' ? sr : null))(
+      j.sourceSpatialReference?.latestWkid ?? j.sourceSpatialReference?.wkid
+      ?? j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid,
+    ),
+    rollback: j.supportsRollbackOnFailureParameter !== false,
     fields,
     readOnly,
   };
@@ -375,8 +406,18 @@ export function validateRow(meta: LayerMeta, patch: Patch): Record<string, strin
       continue;
     }
     if (f.kind === 'number') {
-      /* ⚠️ `Number('')` нь 0 — дээрх хоосон салаа үүнээс өмнө байх ЁСТОЙ */
-      if (!Number.isFinite(Number(v))) e[f.name] = tr('Тоо оруулна уу');
+      /* ⚠️ `Number('')` нь 0 — дээрх хоосон салаа үүнээс өмнө байх ЁСТОЙ.
+         ⚠️ 2026-09-30: ЗӨВХӨН ХООСОН ЗАЙ ('  ') ч мөн `Number`-т 0 — урьд нь шалгуур давж
+         тоон талбарт 0 бичигддэг байв (олноор засахад «— олон утга —» талбарт зай дарахад
+         БҮХ мөрөнд 0). Тоо биш гэж хэлнэ; хоослох бол талбарыг бүр хоосолно. */
+      if (v.trim() === '' || !Number.isFinite(Number(v))) { e[f.name] = tr('Тоо оруулна уу'); continue; }
+      /* ⚠️ 2026-10-01: БҮХЭЛ талбар — бутархай ба хязгаараас гарсныг татгалзана (`FieldDef.int`) */
+      if (f.int) {
+        const x = Number(v);
+        const [lo, hi] = f.int === 'small' ? [-32768, 32767] : [-2147483648, 2147483647];
+        if (!Number.isInteger(x)) e[f.name] = tr('Бүхэл тоо оруулна уу');
+        else if (x < lo || x > hi) e[f.name] = tr('{0}…{1} хооронд байна', String(lo), String(hi));
+      }
       continue;
     }
     if (f.length != null && v.length > f.length) {
@@ -387,6 +428,19 @@ export function validateRow(meta: LayerMeta, patch: Patch): Record<string, strin
     }
   }
   return e;
+}
+
+/**
+ * БАЙГАА МӨРИЙН ЗАСВАР — ЗӨВХӨН ӨӨРЧИЛСӨН талбарыг шалгана (2026-09-30).
+ *
+ * ⚠️ `diffRow` хөндөөгүй талбарыг ОГТ бичдэггүй тул тэдгээрийг шалгах утгагүй — харин
+ *    хуучин өгөгдөлд домэйнээс гарсан код эсвэл заавал талбарт хоосон утга байвал
+ *    хэрэглэгч огт хөндөөгүй талбарын алдаанаас болж ӨӨР талбараа хадгалж чаддаггүй
+ *    байв. Шинэ объектод (`createRow`) бүх талбарыг `validateRow`-оор хэвээр.
+ */
+export function validateChanged(meta: LayerMeta, before: Row, patch: Patch): Record<string, string> {
+  const changed = new Set(Object.keys(diffRow(meta, before, patch)));
+  return validateRow({ ...meta, fields: meta.fields.filter((f) => changed.has(f.name)) }, patch);
 }
 
 /* ══════════════════ Бичилт ══════════════════ */
@@ -603,6 +657,55 @@ export async function queryOidsIn(meta: LayerMeta, geometry: unknown): Promise<n
     .filter((n) => Number.isFinite(n));
 }
 
+/** Мөр бүрийн үр дүн — бичигдсэн ба унасан мөрүүд */
+export type RowsResult = { done: number[]; failed: { oid: number; msg: string }[] };
+
+/**
+ * МӨР БҮРИЙН ҮР ДҮНТЭЙ ЗАСВАР (2026-10-01, хэрэглэгч: бүгдийг зас).
+ *
+ * ⚠️ `supportsRollbackOnFailureParameter: false` давхаргад `rollbackOnFailure` ҮЙЛЧЛЭХГҮЙ —
+ *    `applyAll` нь эхний унасан мөрөөр бүхэл багцыг «бичигдээгүй» гэж шиддэг тул
+ *    үнэндээ БИЧИГДСЭН мөрүүд буцаалтгүй, мэдэгдэлгүй үлддэг байв.
+ * ⚠️ АРГА: эхлээд багцаар (`applyAll`); унавал ТЭР багцын мөр бүрийг ДАН хүсэлтээр дахин
+ *    бичиж, аль нь бичигдэх / аль нь унахыг ЯГ тогтооно. Бичих утга нь мөр бүрт ижил
+ *    (идемпотент) тул атом бус давхаргад хагас бичигдсэн мөрийг дахин бичих нь аюулгүй.
+ *    Атом давхаргад унасан багц юу ч бичээгүй тул мөрөөр дахин оролдох нь бичигдэх
+ *    боломжтой мөрүүдийг бичнэ (буцаалтад хамгийн ихийг сэргээнэ).
+ * ⚠️ Бичилт нь ЗӨВХӨН `tableWrite.applyAll`-аар (серверийн талбар хасах, HTTP-200 алдаа,
+ *    дутуу хариу — бүгд тэнд); кэшийг дуудагч (`DedButets` → `dropTotalsCache`) хаяна.
+ */
+async function writeUpdatesEach(
+  meta: LayerMeta,
+  updates: Record<string, unknown>[],
+): Promise<RowsResult> {
+  const oidOf = (u: Record<string, unknown>) => Math.trunc(Number(u[meta.oidField]));
+  try {
+    await applyAll(meta.url, meta.oidField, { updates });
+    return { done: updates.map(oidOf), failed: [] };
+  } catch {
+    /* багц унав — мөр бүрээр тогтооно (доор) */
+  }
+  const out: RowsResult = { done: [], failed: [] };
+  for (const u of updates) {
+    try {
+      await applyAll(meta.url, meta.oidField, { updates: [u] });
+      out.done.push(oidOf(u));
+    } catch (e) {
+      out.failed.push({ oid: oidOf(u), msg: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return out;
+}
+
+/** Хэсэгчилсэн бичилтийн алдаа — `done`/`failed` хавсарсан */
+const partialError = (res: RowsResult, cause?: unknown): Error => {
+  const first = res.failed[0]?.msg ?? (cause instanceof Error ? cause.message : String(cause ?? ''));
+  const err = new Error(first || tr('амжилтгүй')) as Error & Partial<RowsResult>;
+  err.done = res.done.slice();
+  err.failed = res.failed.slice();
+  return err;
+};
+
 /**
  * ИЖИЛ атрибутыг ОЛОН мөрөнд бичнэ.
  *
@@ -617,6 +720,18 @@ export async function saveRows(
   requireLayer(meta); // ⚠️ lib-түвшний эрх + багцын хүрээ
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length || !oids.length) return [];
+  /* ⚠️ 2026-10-01: АТОМ БУС давхарга — мөр бүрийн үр дүнгээр (`writeUpdatesEach`). Бүх
+     багцыг ДУУСТАЛ явуулж, унасныг цуглуулна; нэг ч унасан бол `done`/`failed`-тэй шиднэ. */
+  if (meta.rollback === false) {
+    const acc: RowsResult = { done: [], failed: [] };
+    for (const part of chunks(oids, BATCH)) {
+      const r = await writeUpdatesEach(meta, part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })));
+      acc.done.push(...r.done);
+      acc.failed.push(...r.failed);
+    }
+    if (acc.failed.length) throw partialError(acc);
+    return acc.done;
+  }
   const done: number[] = [];
   for (const part of chunks(oids, BATCH)) {
     try {
@@ -642,16 +757,26 @@ export async function saveRows(
  * ⚠️ Мөр бүр ӨӨР утгатай тул `saveRows` шиг нэг атрибут түгээхгүй —
  * `revertAttrs`-аар мөр тус бүрт бэлдсэн атрибутыг тэр мөрөнд л бичнэ.
  */
+/**
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭСЭГЧИЛСЭН УНАЛТЫГ МЭДЭЭЛНЭ. Урьд нь эхний
+ *    унасан багцаар шидэж, өмнөх багцууд буцаагдсан ч «Үйлдэл буцаах» бүхэлдээ алдаа
+ *    мэт харагдаж, дахин дарахад аль хэдийн буцаасан мөрүүдийг ДАХИН бичдэг байв.
+ *    Одоо бүх багцыг явуулж `{ done, failed }` БУЦААНА (шидэхгүй) — дуудагч зөвхөн
+ *    унасан мөрүүдийг дахин буцаах боломжтой үлдээнэ (`writeUpdatesEach`: багцаар, унавал
+ *    мөр бүрээр).
+ */
 export async function revertRows(
   meta: LayerMeta,
   rows: { oid: number; attrs: Record<string, unknown> }[],
-): Promise<void> {
+): Promise<RowsResult> {
   requireLayer(meta);
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   const live = rows.filter((r) => Object.keys(r.attrs).length);
+  const acc: RowsResult = { done: [], failed: [] };
   for (const part of chunks(live, BATCH)) {
-    await applyAll(meta.url, meta.oidField, {
-      updates: part.map((r) => ({ [meta.oidField]: Math.trunc(r.oid), ...r.attrs })),
-    });
+    const r = await writeUpdatesEach(meta, part.map((x) => ({ [meta.oidField]: Math.trunc(x.oid), ...x.attrs })));
+    acc.done.push(...r.done);
+    acc.failed.push(...r.failed);
   }
+  return acc;
 }

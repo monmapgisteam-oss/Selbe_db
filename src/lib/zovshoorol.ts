@@ -78,6 +78,20 @@ export type Zov = {
   baiguullaga: string;
   hariutsagch: string;
   tailbar: string;
+  /**
+   * БҮРТГЭГДСЭН ЦАГ (ms) — «хэдэн хоног хүлээгдэж байна»-ыг тоолох суурь.
+   *
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `ognoo` нь ШИЙДВЭРЛЭСЭН огноо тул
+   *    «Хүлээгдэж буй» мөрд ЗААВАЛ хоосон (`validateZov`) — хүлээлтийн насыг
+   *    түүгээр тоолж болохгүй. ArcGIS Editor Tracking-ийн `CreationDate`
+   *    (давхаргын `editFieldsInfo`-оос нэрийг нь уншина) байхгүй бол
+   *    `EditDate`, тэр ч алга бол `null` — нас нь МЭДЭГДЭХГҮЙ (0 хоног БИШ),
+   *    тэмдэглэгээ гарахгүй. Амьдаар (2026-10-01) хүснэгтэд асаалттай.
+   * ⚠️ СОНГОЛТОТ (`?`): маягтын ноорог (`ZovDraft`) ба бусад дуудагчийн
+   *    литералууд эвдрэхгүй; бичих замд (`zovAttrs`) ОГТ орохгүй — серверийн
+   *    талбар.
+   */
+  since?: number | null;
 };
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
@@ -118,6 +132,22 @@ export const oidKey = (a: Record<string, unknown>): string | null =>
   Object.keys(a).find((k) => /^objectid$/i.test(k)) ?? null;
 
 /**
+ * ДАВХАРГЫН МЕТАДАТА — НЭГ удаа татна (OID нэр ба Editor Tracking хоёул эндээс).
+ * ⚠️ 2026-10-01: урьд нь зөвхөн `oidField` метадата татдаг байв; одоо
+ *    `sinceFields` ч хэрэглэх тул ХОЁР хүсэлт болохоос сэргийлж хуваалцана.
+ *    Алдаа гарвал кэш цэвэрлэгдэж, дараагийн дуудлага дахин оролдоно.
+ */
+let metaP: Promise<Record<string, unknown>> | null = null;
+function zovMeta(): Promise<Record<string, unknown>> {
+  if (!metaP) {
+    const p: Promise<Record<string, unknown>> = agsFetch(URL, {});
+    metaP = p;
+    p.catch(() => { if (metaP === p) metaP = null; });
+  }
+  return metaP;
+}
+
+/**
  * Үйлчилгээний метадатагаас `objectIdField`-ыг унших (нэг удаа кэшлэнэ).
  * БИЧИХ зам (`applyEdits` → `updates`) энэ нэрийг хэрэглэнэ.
  *
@@ -128,7 +158,7 @@ export const oidKey = (a: Record<string, unknown>): string | null =>
 let oidFieldP: Promise<string> | null = null;
 export function oidField(): Promise<string> {
   if (!oidFieldP) {
-    oidFieldP = agsFetch(URL, {})
+    oidFieldP = zovMeta()
       .then((j) => {
         const meta = typeof j.objectIdField === 'string' ? j.objectIdField.trim() : '';
         if (meta) return meta;
@@ -147,6 +177,77 @@ export function oidField(): Promise<string> {
   return oidFieldP;
 }
 
+/* ═══════════════ ХҮЛЭЭЛТИЙН НАС — Editor Tracking (2026-10-01) ═══════════════ */
+
+/** Хүлээгдэж буй зөвшөөрлийг «удаж буй» гэж тэмдэглэх босго (хоног) */
+export const PENDING_STALE_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+/** Editor Tracking-ийн огнооны талбарууд — `null` бол тохиргоо унтраалттай */
+export type SinceFields = { created: string | null; edited: string | null };
+
+/**
+ * Метадатагийн `editFieldsInfo`-оос огнооны талбарын НЭРС (цэвэр функц).
+ * ⚠️ Нэрийг ХАТУУ бичихгүй (`parcelEdit.editFieldsOf`-ийн ижил шалтгаан).
+ */
+export function sinceFieldsOf(meta: unknown): SinceFields | null {
+  const e = (meta as { editFieldsInfo?: unknown } | null)?.editFieldsInfo;
+  if (!e || typeof e !== 'object') return null;
+  const pick = (k: string): string | null => {
+    const v = (e as Record<string, unknown>)[k];
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  };
+  const created = pick('creationDateField');
+  const edited = pick('editDateField');
+  return created || edited ? { created, edited } : null;
+}
+
+/** ⚠️ Хэзээ ч унахгүй — метадата татагдаагүй бол `null` (нас мэдэгдэхгүй) */
+const sinceFields = (): Promise<SinceFields | null> =>
+  zovMeta().then(sinceFieldsOf, () => null);
+
+/** Мөрийн бүртгэгдсэн цаг: үүсгэсэн → (байхгүй бол) сүүлд зассан → `null` */
+export function sinceOf(a: Record<string, unknown>, sf: SinceFields | null): number | null {
+  if (!sf) return null;
+  for (const k of [sf.created, sf.edited]) {
+    if (!k) continue;
+    const t = Number(a[k]);
+    if (a[k] != null && Number.isFinite(t) && t > 0) return t;
+  }
+  return null;
+}
+
+/**
+ * Хүлээгдэж буй зөвшөөрлийн НАС (бүтэн хоног). Хүлээгдэж буй биш, эсвэл
+ * бүртгэгдсэн цаг мэдэгдэхгүй бол `null` — 0 БИШ.
+ */
+export function pendingAgeDays(z: Pick<Zov, 'tolov' | 'since'>, now: number): number | null {
+  if (z.tolov !== TOLOV.wait || z.since == null) return null;
+  return Math.max(0, Math.floor((now - z.since) / DAY_MS));
+}
+
+/** `PENDING_STALE_DAYS`-аас ИЛҮҮ хоног хүлээгдэж буй эсэх */
+export function isStalePending(
+  z: Pick<Zov, 'tolov' | 'since'>, now: number, days = PENDING_STALE_DAYS,
+): boolean {
+  const age = pendingAgeDays(z, now);
+  return age != null && age > days;
+}
+
+/** Жагсаалтын төлөвийн шүүлт */
+export type ZovFilter = 'all' | 'wait' | 'stale' | 'ok' | 'no' | 'unknown';
+
+export function filterZov(rows: Zov[], f: ZovFilter, now: number): Zov[] {
+  switch (f) {
+    case 'all': return rows;
+    case 'stale': return rows.filter((r) => isStalePending(r, now));
+    case 'wait': return rows.filter((r) => r.tolov === TOLOV.wait);
+    case 'ok': return rows.filter((r) => r.tolov === TOLOV.ok);
+    case 'no': return rows.filter((r) => r.tolov === TOLOV.no);
+    case 'unknown': return rows.filter((r) => r.tolov === 'unknown');
+  }
+}
+
 /**
  * Бүх зөвшөөрлийг татна. Үйлчилгээ холбогдоогүй эсвэл унасан бол `null` —
  * ХООСОН МАССИВ БИШ. Хоосон массив нь «зөвшөөрөл байхгүй» гэсэн ХАРИУЛТ
@@ -156,6 +257,9 @@ export async function loadZov(): Promise<Zov[] | null> {
   if (!URL) return null;
   try {
     const out: Zov[] = [];
+    /* ⚠️ 2026-10-01: хүлээлтийн насны талбарууд (`since`) — метадата унасан ч
+       жагсаалт ачаалагдана, зөвхөн «удаж буй» тэмдэглэгээ гарахгүй. */
+    const sf = await sinceFields();
     for (let offset = 0; ; ) {
       const j = await agsFetch(`${URL}/query`, {
         where: '1=1',
@@ -200,6 +304,7 @@ export async function loadZov(): Promise<Zov[] | null> {
           baiguullaga: str(a[F.baiguullaga]),
           hariutsagch: str(a[F.hariutsagch]),
           tailbar: str(a[F.tailbar]),
+          since: sinceOf(a, sf),
         });
       }
       if (!j.exceededTransferLimit || fs.length === 0) break;
@@ -223,7 +328,7 @@ export async function loadZov(): Promise<Zov[] | null> {
  */
 export async function loadOneZov(oid: number): Promise<Zov | null> {
   if (!URL || !Number.isFinite(oid) || oid <= 0) return null;
-  const oidName = await oidField();
+  const [oidName, sf] = await Promise.all([oidField(), sinceFields()]);
   const j = await agsFetch(`${URL}/query`, {
     where: `${oidName} = ${Math.trunc(oid)}`,
     outFields: '*',
@@ -247,6 +352,7 @@ export async function loadOneZov(oid: number): Promise<Zov | null> {
     baiguullaga: str(a[F.baiguullaga]),
     hariutsagch: str(a[F.hariutsagch]),
     tailbar: str(a[F.tailbar]),
+    since: sinceOf(a, sf),
   };
 }
 
@@ -265,8 +371,14 @@ export function byBagts(rows: Zov[]): Map<string, Zov[]> {
  * Багцын НЭГДСЭН дүгнэлт — картын толгойд.
  * ⚠️ «Зөвшөөрөөгүй» нь ганц ч байвал тэр нь ЗОНХИЛНО: цөөнх нь эрсдэл юм.
  */
-export function summarize(list: Zov[]): {
+export function summarize(list: Zov[], now?: number): {
   ok: number; wait: number; no: number; unknown: number; total: number; alert: boolean;
+  /**
+   * `PENDING_STALE_DAYS`-аас удаж буй хүлээгдэж буй (2026-10-01). `wait`-ийн ДЭД
+   * олонлог — нийлбэрт давхар тоологдохгүй. `now` өгөөгүй бол 0 (тооцоогүй).
+   * ⚠️ `alert`-д ОРОХГҮЙ: хүлээлт нь хэвийн явц (файлын толгойн анивчих дүрэм).
+   */
+  stale: number;
 } {
   const ok = list.filter((r) => r.tolov === TOLOV.ok).length;
   const no = list.filter((r) => r.tolov === TOLOV.no).length;
@@ -278,7 +390,8 @@ export function summarize(list: Zov[]): {
    * ЗӨРНӨ. Ийм мөр нь засвар шаарддаг тул `alert`-д ч оруулна.
    */
   const unknown = list.filter((r) => r.tolov === 'unknown').length;
-  return { ok, wait, no, unknown, total: list.length, alert: no > 0 || unknown > 0 };
+  const stale = now == null ? 0 : list.filter((r) => isStalePending(r, now)).length;
+  return { ok, wait, no, unknown, total: list.length, alert: no > 0 || unknown > 0, stale };
 }
 
 /* ═══════════════════════ ЗАСВАР ═══════════════════════ */

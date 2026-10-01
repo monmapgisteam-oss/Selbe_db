@@ -280,6 +280,23 @@
   line-height: 1.25;
   color: var(--ink-3);
 }
+/* ⚠️ 2026-10-01: хуучирсан тайлангийн анхааруулга («Сүүлийн тайлан: … · N хоног») */
+.ktSubWarn {
+  color: var(--warn);
+  font-weight: 600;
+}
+/* ⚠️ 2026-10-01: Section-ийн тайлбар доторх холбоос маягийн товч («бүгдийг харах») */
+.linkBtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 
 /* ── Гүйцэтгэгчийн шүүлтүүрийн мөр — KPI-ийн ЯГ доор, зурагтай ижил өргөн ──

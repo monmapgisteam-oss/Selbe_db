@@ -96,7 +96,36 @@ export type IpcInput = {
   /** Гараар — системд байхгүй */
   annual: number | null;
   ipcNo: number;
+  /**
+   * Олон хуудастай багцын хуудас бүрийн ЭХНИЙ архивын агшин (`ipcDocLoad`). Сонголттой —
+   * өгвөл `lateSheets` бодогдоно (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   */
+  sheets?: IpcSheetStart[];
 };
+
+/** Хуудасны эхний агшин — «12F» · «2026-10-03» (`null` = огт бөглөөгүй) */
+export type IpcSheetStart = { label: string; first: string | null };
+
+/**
+ * ОРОЙТОЖ ЭХЭЛСЭН ХУУДАС — тухайн IPC сард АНХНЫ агшин нь буусан хуудсууд (2026-10-01,
+ * «хэрэглэгч: бүгдийг зас»).
+ *
+ * ⚠️ ЯАГААД. Олон хуудастай багцад (9F + 12F) аль нэг хуудас багцын анхны IPC сараас
+ *    ХОЙШ бөглөгдөж эхэлбэл өмнөх саруудад түүний блокууд `null` (0 гэж тооцогдоно), тэр
+ *    хуудас анх агшинтай болсон сард гэрээний ЭХНЭЭС хуримтлагдсан бүх ажил нь «тайлант
+ *    үеийн гүйцэтгэл» болж нэг IPC-д овоорно. Дүн нь буруу биш (хуримтлал зөв), харин
+ *    тайлант үе гажна — баримт болон цонхонд ИЛ анхааруулна.
+ * ⚠️ Багцын анхны сар (бүх хуудасны хамгийн эрт агшин) өөрөө `noPrev`-оор хамрагдсан тул
+ *    ЗӨВХӨН түүнээс ХОЙШИХ сард анхааруулна.
+ * @returns тухайн сард орой эхэлсэн хуудасны шошгууд (`[]` = алга)
+ */
+export function lateSheetsOf(sheets: readonly IpcSheetStart[] | undefined, month: string): string[] {
+  const firsts = (sheets ?? []).filter((x) => x.first && /^\d{4}-\d{2}/.test(x.first));
+  if (firsts.length < 2) return [];
+  const base = firsts.map((x) => x.first!.slice(0, 7)).sort()[0];
+  if (!(month > base)) return [];
+  return firsts.filter((x) => x.first!.slice(0, 7) === month).map((x) => x.label);
+}
 
 /* ══════════════════ ГАРАЛТ ══════════════════ */
 
@@ -157,6 +186,12 @@ export type IpcDoc = {
   h12Total: { planCost: number; cum: number; prev: number; now: number; remain: number };
   /** Анхааруулгын КОД — баримт (монгол маягт) ба цонх (`tr()`) өөр өөрөөр бичнэ */
   notes: IpcNote[];
+  /**
+   * ⚠️ 2026-10-01: энэ сард АНХ агшинтай болсон (орой эхэлсэн) хуудсууд — `lateSheetsOf`.
+   * `IpcNote`-д НЭМЭЭГҮЙ: тэр төрлийн кодын толь (цонх, PDF) бүгд `Record<IpcNote,…>` тул
+   * шинэ код нэмбэл тэдгээрийг зэрэг засах шаардлагатай; энэ нь шошготой тусдаа талбар.
+   */
+  lateSheets: string[];
 };
 
 /* ══════════════════ ТУСЛАХ ══════════════════ */
@@ -321,7 +356,11 @@ export function buildIpcDoc(inp: IpcInput): IpcDoc | null {
   const prevM = idx > 0 ? inp.months[idx - 1] : null;
   const wSum = inp.blocks.reduce((s, b) => s + (b.weight > 0 ? b.weight : 0), 0);
   const periodTo = dayMs(m.day);
-  const periodFrom = prevM ? dayMs(prevM.day) + DAY : monthStart(inp.month);
+  /* ⚠️ 2026-09-30: ЭХНИЙ баримт (өмнөх агшин алга) — тайлант үе ГЭРЭЭНИЙ ЭХЛЭЛЭЭС.
+     Дүн нь эхнээсээ хуримтлагдсан (`noPrev`) атал хугацаа нь «сарын 1-нээс» гэж
+     хэвлэгдэж (Хавсралт 12-ын Эхэлсэн/Өдөр ~27 хоног), жишиг скан IPC-1-ийн
+     «2025.10.08 – 2025.12.25 (78 өдөр)»-өөс зөрдөг байв. Гэрээний огноо алга бол сарын эхэн (хуучин зан). */
+  const periodFrom = prevM ? dayMs(prevM.day) + DAY : (inp.contractStart ?? monthStart(inp.month));
   const h12: H12Row[] = inp.blocks.map((b, i) => {
     const planCost = wSum > 0 ? C * (Math.max(0, b.weight) / wSum) : C / Math.max(1, inp.blocks.length);
     const cum = m.cum[i] == null ? null : m.cum[i]! * PERF_FACTOR;
@@ -361,6 +400,7 @@ export function buildIpcDoc(inp: IpcInput): IpcDoc | null {
     h12,
     h12Total,
     notes,
+    lateSheets: lateSheetsOf(inp.sheets, inp.month),
   };
 }
 const rn = (x: number | null) => (x == null ? null : r2(x));

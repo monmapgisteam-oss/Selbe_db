@@ -39,7 +39,10 @@
  * андуурч болохгүй.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+  type Dispatch, type SetStateAction,
+} from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -64,9 +67,12 @@ import {
   type Band, type DamageRow,
 } from '@/lib/ersdelGeom';
 import {
-  depthRisk, flowDeg, flowDir, HAZARD_CLASS, SATURATE_HAZ, SATURATE_MS,
+  depthRisk, flowDeg, flowDir, hazardRating, HAZARD_CLASS, HAZARD_LEGEND, SATURATE_MS,
   type FloodData, type FloodMode,
 } from '@/lib/uyr';
+import { damageCsv, damageGeoJSON, type ExportRow, type GeomLike } from '@/lib/ersdelExport';
+import { downloadText, fileDate } from '@/lib/csvFile';
+import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
 import { hhmmUB, loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
 import { MAX_V, rampCss } from '@/lib/salhiUrsgal';
@@ -74,7 +80,7 @@ import { simulateFlood, type SimArea } from '@/lib/uyrSim';
 import { flowPath, whyFlood } from '@/lib/uyrTailbar';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
-import { floodFootprint } from '@/lib/uyrSurface';
+import { floodFootprint, simplifyRings } from '@/lib/uyrSurface';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import { Overlay, type Pick } from './ersdel/Overlay';
@@ -105,6 +111,51 @@ const sameRings = (a: SimArea, b: SimArea): boolean =>
     const r2 = b[i];
     return ring.length === r2.length && ring.every((p, j) => p[0] === r2[j][0] && p[1] === r2[j][1]);
   });
+
+/**
+ * ЗАГВАРЧЛАХ ТАЛБАЙН ТҮЛХҮҮР — кэш ба харьцуулалтад (2026-10-01).
+ * ⚠️ Объектын ижилтэй биш, КООРДИНАТААР: 2D↔3D солиход ч, ижил полигоныг
+ *    дахин зурахад ч нэг түлхүүр гарна. Метрээр дугуйрна (дэд мм-ийн шуугиан).
+ */
+const areaKey = (a: SimArea | null): string =>
+  (a?.length ? a.map((r) => r.map((p) => `${Math.round(p[0])},${Math.round(p[1])}`).join(';')).join('|') : 'all');
+
+/** Загварчлалын кэшийн түлхүүр — (түвшин, талбай) */
+const simKey = (lv: LevelKey, a: SimArea | null): string => `${lv}#${areaKey(a)}`;
+
+/**
+ * Кэшлэх ДЭЭД загварчлал.
+ * ⚠️ Нэг загварчлал ~10 МБ (24 зүсмэл × 45,000 нүд × 6 байт + хуримтлалын тор +
+ *    хоёр canvas). 3 түвшин × 2 талбай = 6 нь санах ойд хүлцэхүйц.
+ */
+const SIM_CACHE_MAX = 6;
+
+/**
+ * ХОХИРЛЫН МУЖИЙН ОРОЙН ТӨСӨВ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Chaikin-ий гөлгөр мөр 10–20 мянган оройтой байдаг — давхарга бүрийн
+ *    асуулгын POST, сервер ба хөтчийн `intersect`-ийг удаашруулдаг байв
+ *    (`uyrSurface.simplifyRings`). 2,500 орой нь 1 нүдний нарийвчлалд хангалттай.
+ */
+const FOOTPRINT_BUDGET = 2500;
+
+/**
+ * ЗАГВАРЧЛАЛААС ХОХИРЛЫН МУЖ — мөр → төсөвт багтаасан → `simplify` (топологи засна).
+ * Хуурай (0.15 м-ээс гүн ус алга) бол `null`.
+ */
+function hazardPolygon(fd: FloodData): { poly: Polygon; rings: number[][][] } | null {
+  const rings = simplifyRings(floodFootprint(fd), { tol: fd.meta.cellM * 0.25, budget: FOOTPRINT_BUDGET });
+  if (!rings.length) return null;
+  const raw = new Polygon({ rings, spatialReference: { wkid: fd.meta.wkid } });
+  /* ⚠️ Цагираг бүрийг тусад нь хялбарчилсан тул хоорондоо шүргэлцэж болно —
+     `simplify` нь топологийг засна; унавал түүхийгээр нь */
+  let poly = raw;
+  try {
+    poly = (geometryEngine.simplify(raw) as unknown as Polygon | null) ?? raw;
+  } catch {
+    poly = raw;
+  }
+  return { poly, rings };
+}
 
 /**
  * ҮНЭЛГЭЭНИЙ ҮНДСЭН БАГЦ — зурагт НЭГ Ч давхарга асаагаагүй үед шинжилгээ юуг
@@ -283,8 +334,11 @@ function footprintDepth(fd: FloodData, geom: __esri.Geometry | null | undefined)
       }
       return on;
     };
-    /* Нүдний хагасаар алхана — жижиг барилга ч дор хаяж нэг дээж авна */
-    const st = cell / 2;
+    /* Нүдний хагасаар алхана — жижиг барилга ч дор хаяж нэг дээж авна.
+       ⚠️ 2026-10-01: ТОМ полигонд (ногоон байгууламж, 50 га) дээжийг ~2,500-д
+       хязгаарлана — хохирлын асуулга бүр 1,200 объектод үүнийг дууддаг болсон
+       (`damageOf` §depthOf); хагас нүдээр 7,000+ дээж × оройн тоо гацаана. */
+    const st = Math.max(cell / 2, Math.sqrt(((ext.xmax - ext.xmin) * (ext.ymax - ext.ymin)) / 2500));
     for (let y = ext.ymin; y <= ext.ymax + st; y += st) {
       for (let x = ext.xmin; x <= ext.xmax + st; x += st) {
         if (inside(x, y)) take(x, y);
@@ -389,6 +443,31 @@ type Result = {
    *   · `failed`   — алдаагаар унасан
    */
   simWhy?: 'notReady' | 'dry' | 'failed';
+  /**
+   * АЮУЛЫН МУЖИЙН цагирагууд (WM) — GeoJSON экспортод (2026-10-01).
+   * Үерт загварчлалын мөр (хялбарчилсан) эсвэл буфер, агаарт сэвсгэр.
+   */
+  zoneRings?: number[][][];
+};
+
+/**
+ * ТҮВШНҮҮДИЙН ХАРЬЦУУЛАЛТЫН мөр (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ `null` = бодогдоогүй/мэдэгдэхгүй, 0 БИШ.
+ */
+type CmpRow = {
+  level: LevelKey;
+  /** Бүх хугацаанд усанд автсан талбай (га) — `meta.totalWetHa` */
+  wetHa: number;
+  /** Дээд гүн (м) — `meta.peakDepthM` */
+  peakM: number;
+  /** Өртсөн объектын тоо */
+  n: number | null;
+  /** Хохирлын үнэлгээ (₮) — ТОДОРХОЙ өртөгтэй давхаргуудын нийлбэр */
+  cost: number | null;
+  /** Өртөг тодорхойгүй давхаргын тоо (нийтэд ороогүй) */
+  unknown: number;
+  /** Татагдаагүй давхаргын тоо */
+  failed: number;
 };
 
 /**
@@ -430,6 +509,23 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
   /* ── Газрын зургийн ерөнхий удирдлага (бусад харагдацтай ижил) ── */
   const [visible, setVisible] = useLayerPicks(INITIAL_IDS);
+  /**
+   * ⚠️ 2026-09-30: ШИНЖИЛГЭЭ ӨӨРӨӨ АСААСАН давхаргууд (`run` §ӨРТСӨН ДАВХАРГЫГ ЗУРАГТ
+   *    АСААНА). Урьд нь дараагийн шинжилгээ (өөр түвшин) тэдгээрийг «хэрэглэгчийн
+   *    идэвхтэй давхарга» гэж уншаад ЗӨВХӨН тэднээр тооцож, өндөр түвшинд анх
+   *    өртөх давхаргуудыг чимээгүй алгасдаг байв; «үндсэн багцаар тооцов»
+   *    тэмдэглэл ч алга болдог. `activeIds` эдгээрийг хасна; хэрэглэгч
+   *    каталогоос унтраавал жагсаалтаас гарна (дахин асаавал ӨӨРИЙНХ нь сонголт).
+   */
+  const autoOn = useRef<Set<string>>(new Set());
+  const setVisibleUser = useCallback<Dispatch<SetStateAction<string[]>>>((upd) => {
+    setVisible((prev) => {
+      const next = typeof upd === 'function' ? upd(prev) : upd;
+      const keep = new Set(next);
+      for (const id of [...autoOn.current]) if (!keep.has(id)) autoOn.current.delete(id);
+      return next;
+    });
+  }, [setVisible]);
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
@@ -501,6 +597,27 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const [floodErr, setFloodErr] = useState<string | null>(null);
   /** Загварчлалын явц (0..1) — хөтөч дээр бодогддог тул хүлээлт мэдэгдэнэ */
   const [simPct, setSimPct] = useState(0);
+  /**
+   * Үлдсэн хугацааны ТААМАГ (сек) — `null` = хараахан тооцох боломжгүй.
+   * ⚠️ 2026-10-01: явцын хувиас шугаман: өнгөрсөн × (1 − p) / p. Эхний 3%-д
+   *    тогтворгүй (DSM татах хугацаа орно) тул тэр хүртэл харуулахгүй.
+   */
+  const [simEta, setSimEta] = useState<number | null>(null);
+  /**
+   * ЗАГВАРЧЛАЛЫН КЭШ — (түвшин, талбай) → үр дүн (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ Урьд нь 1→2→1 түвшин солих БҮРД дахин бодогддог байв (2–5 сек). Одоо
+   *    дууссан загварчлал хадгалагдаж, буцахад ШУУД гарна. Хамгийн хуучин нь
+   *    `SIM_CACHE_MAX`-аас хэтрэхэд хасагдана.
+   */
+  const simCache = useRef(new Map<string, FloodData>());
+  const cachePut = useCallback((key: string, d: FloodData) => {
+    const m = simCache.current;
+    m.delete(key);
+    m.set(key, d);
+    while (m.size > SIM_CACHE_MAX) m.delete(m.keys().next().value as string);
+  }, []);
+  /** Явж буй үндсэн загварчлалын түлхүүр — харьцуулалт түүнийг давхар бодохгүй */
+  const simPromiseKey = useRef<string | null>(null);
   const [slice, setSlice] = useState(0);
   const [playing, setPlaying] = useState(false);
   /** Растерыг юугаар будах вэ — гүн · хурд · аюул */
@@ -521,11 +638,25 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   useEffect(() => {
     if (!wantFlood) return;
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: загварчлалын эффект — түвшин/талбай солигдоход өмнөх үр дүнг синхрон тэглээд шинээр бодно; render үед гаргавал бүтэц өөрчлөгдөнө
+    /* ⚠️ 2026-09-30: загварчлалын эффект — түвшин/талбай солигдоход өмнөх үр дүнг синхрон
+       тэглээд шинээр бодно; render үед гаргавал бүтэц өөрчлөгдөнө.
+       (2026-10-01: `react-hooks/set-state-in-effect` энд мэдэгдэл өгөхөө больсон тул
+       eslint-disable хасагдав — кэшийн эрт буцалттай болсон эффект.) */
     setFloodErr(null);
+    setSlice(0);
+    setSimEta(null);
+    /* ⚠️ 2026-10-01: КЭШ — энэ (түвшин, талбай) аль хэдийн бодогдсон бол ШУУД */
+    const key = simKey(level, area);
+    const hit = simCache.current.get(key);
+    if (hit) {
+      setFlood(hit);
+      setSimPct(1);
+      simPromise.current = Promise.resolve(hit);
+      simPromiseKey.current = key;
+      return;
+    }
     setSimPct(0);
     setFlood(null);
-    setSlice(0);
     /* ⚠️ Промисыг ref-д ХАДГАЛНА: «Шинжилгээ хийх» товч загварчлал дуусахаас
        ӨМНӨ дарагдвал хохирлыг буфер зурвасаар биш, БОДИТ үерээр бодохын тулд
        үүнийг хүлээнэ. */
@@ -534,20 +665,30 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        CPU булаалдан хоёулаа удааширдаг байв. Одоо `AbortController`-оор
        өмнөхийг ЗОГСООНО (`uyrSim.ts` §signal). */
     const ac = new AbortController();
+    const t0 = performance.now();
     const pr0 = simulateFlood(level, (pr) => {
       /* ⚠️ 2026-09-29 (аудит 10): явцыг СИМИЙН ХУГАЦААГААР. Давталт `t >= totalS`
          дээр дуусдаг тул `step / MAX_STEPS` (9000) нь 15–40%-д гацаад шууд
          дуусдаг байв. Алхмын хязгаар түрүүлж хүрэх тохиолдолд аль ИХИЙГ нь. */
-      if (alive) setSimPct(Math.min(0.99, Math.max(pr.minute / pr.totalMin, pr.step / pr.total)));
+      if (!alive) return;
+      const p = Math.min(0.99, Math.max(pr.minute / pr.totalMin, pr.step / pr.total));
+      setSimPct(p);
+      /* ⚠️ 2026-10-01: ҮЛДСЭН ХУГАЦАА — шугаман таамаг (`simEta`-ийн тайлбар) */
+      const el = (performance.now() - t0) / 1000;
+      setSimEta(p > 0.03 && el > 0.5 ? (el * (1 - p)) / p : null);
     }, area, ac.signal);
     simPromise.current = pr0;
+    simPromiseKey.current = key;
     pr0
-      .then((d) => { if (alive) { setFlood(d); setSimPct(1); } })
+      .then((d) => {
+        cachePut(key, d);
+        if (alive) { setFlood(d); setSimPct(1); setSimEta(null); }
+      })
       .catch((err: unknown) => {
         if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
       });
     return () => { alive = false; ac.abort(); };
-  }, [wantFlood, level, area]);
+  }, [wantFlood, level, area, cachePut]);
 
   /* ══════════════════ ЗАГВАРЧЛАХ ТАЛБАЙ ЗУРАХ ══════════════════
    *
@@ -878,6 +1019,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     const out: string[] = [];
     map?.layers.forEach((l) => {
       if (!l.visible || !LAYER_BY_ID[l.id]) return;
+      /* ⚠️ 2026-09-30: өмнөх шинжилгээ ӨӨРӨӨ асаасныг хэрэглэгчийн сонголт гэж үзэхгүй (`autoOn`) */
+      if (autoOn.current.has(l.id)) return;
       // Зөвхөн объектын давхарга — ортофото/меш/BIM-ээс объект тоолох боломжгүй
       if (typeof (l as { queryFeatures?: unknown }).queryFeatures !== 'function') return;
       out.push(l.id);
@@ -892,8 +1035,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
      * хоёрыг НЭГ «fallback» гэж нийлүүлж болохгүй — тэдгээр нь өөр өөр
      * олонлог тул самбарт өөр өөр өгүүлбэр бичигдэнэ.
      */
-    return visible.length
-      ? { ids: visible, src: 'catalog' }
+    const picked = visible.filter((id) => !autoOn.current.has(id));
+    return picked.length
+      ? { ids: picked, src: 'catalog' }
       : { ids: ASSESS_IDS, src: 'base' };
   }, [view, visible]);
 
@@ -981,9 +1125,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           }))
           ?? null;
         if (stale()) return;
-        const rings = fd ? floodFootprint(fd) : [];
-        if (rings.length) {
-          extent = new Polygon({ rings, spatialReference: { wkid: fd!.meta.wkid } });
+        /* ⚠️ 2026-10-01: мөрийг ОРОЙН ТӨСӨВТ багтааж хялбарчилна (`hazardPolygon`) —
+           Chaikin-ий 10–20 мянган оройтой полигон давхарга бүрийн асуулгыг удаашруулдаг байв */
+        const hp = fd ? hazardPolygon(fd) : null;
+        if (hp) {
+          extent = hp.poly;
           simFootprint = true;
         } else {
           if (fd) simWhy = 'dry';
@@ -997,13 +1143,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       if (hazard !== 'flood') {
         bands = airBands(stations, level, windNow, pm25ByOid);
       } else if (simFootprint) {
-        const lv = LEVELS.find((l2) => l2.key === level);
         bands = [{
           key: `flood-${level}`,
           label: tr('Загварчлалын үерийн мөр'),
           value: fd?.meta.peakDepthM ?? FLOOD_LEVELS[level].depth,
           height: FLOOD_LEVELS[level].depth,
-          hue: lv?.color ?? '#0284c7',
+          /* ⚠️ 2026-09-30: HEX ЗААВАЛ — `LEVELS[].color` нь 'var(--bad)' тул `Overlay.rgb()`
+             NaN болж муж 2D/3D-д ЦАГААН зурагддаг байв (легенд нь өөр өнгөтэй).
+             Үерийн аюулын муж = нэг улаан (`ersdelGeom.floodBands` 2026-09-03). */
+          hue: '#dc2626',
           geometry: extent,
         }];
       } else {
@@ -1014,7 +1162,11 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* ⚠️ `failed` — татагдаагүй давхарга. «Эрсдэлгүй» ба «мэдээлэлгүй»
          хоёрыг ялгах ёстой тул шинжилсэн давхаргын тоог УНАСНААР нь
          хасаж, дутууг хэрэглэгчид ил хэлнэ (2026-09-03-ны аудит). */
-      const { rows, failed, analyzed } = await damageOf(view, ids, extent, level, hazard);
+      /* ⚠️ 2026-10-01: объект бүрийн ДЭЭД ГҮН — загварчлалын `maxDepth`-ээс */
+      const fdD = hazard === 'flood' && fd?.maxDepth ? fd : null;
+      const { rows, failed, analyzed } = await damageOf(view, ids, extent, level, hazard, {
+        depthOf: fdD ? (g) => footprintDepth(fdD, g) : undefined,
+      });
       /* ⚠️ Хамгийн урт хүлээлт — ЭНД зөрвөл доорх бүх setState хуучин түвшнийх */
       if (stale()) return;
       setResult({
@@ -1024,6 +1176,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         layers: analyzed,
         failed,
         src,
+        zoneRings: extent.rings,
       });
       /**
        * ⚠️ ӨРТСӨН ДАВХАРГЫГ ЗУРАГТ АСААНА (2026-08-29, хүсэлт).
@@ -1037,7 +1190,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        * ⚠️ Хэрэглэгчийн асаасан давхаргыг УНТРААХГҮЙ — зөвхөн НЭМНЭ.
        */
       const hit = rows.filter((r) => r.n > 0).map((r) => r.layerId);
-      if (hit.length) setVisible((prev) => [...new Set([...prev, ...hit])]);
+      if (hit.length) {
+        setVisible((prev) => {
+          /* ⚠️ Урьд асаалттай байгаагүйг л «автомат» гэж тэмдэглэнэ (`autoOn`) */
+          for (const id of hit) if (!prev.includes(id)) autoOn.current.add(id);
+          return [...new Set([...prev, ...hit])];
+        });
+      }
       /**
        * ⚠️ ҮЕРИЙН шинжилгээ дуусмагц ус ӨӨРӨӨ УРСАЖ эхэлнэ (2026-08-29, хүсэлт).
        * Урьд нь `playing` нь `false`-ээр эхэлдэг байсан тул хэрэглэгч «▶»
@@ -1061,6 +1220,89 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     /* ⚠️ `windNow` нь deps-д — дараагийн ажиллуулалт ЗААВАЛ шинэ салхийг
        авах ёстой. Автоматаар дахин ажиллуулахгүй (хэрэглэгч «Шинжилгээ» дарна). */
   }, [view, hazard, level, stations, windNow, pm25ByOid, activeIds, setVisible]);
+
+  /* ══════════ ТҮВШНҮҮДИЙН ХАРЬЦУУЛАЛТ (2026-10-01, «хэрэглэгч: бүгдийг зас») ══════════
+   *
+   * 1–3-р түвшинг НЭГ дор: усанд автсан талбай · дээд гүн · өртсөн объект · хохирол.
+   * ⚠️ Гурвуулаа НЭГ нөхцөлөөр — ижил талбай (`area`), ижил давхаргын олонлог
+   *    (товч дарах агшны `activeIds()`). Эс бөгөөс түвшин хоорондын ялгаа нь
+   *    давхарга асаасан/унтраасны ялгаа болж хувирна.
+   * ⚠️ Загварчлал нь КЭШЭЭС (`simCache`), явж буй үндсэн загварчлалыг ДАВХАР бодохгүй.
+   */
+  const [cmp, setCmp] = useState<{
+    key: string;
+    rows: Partial<Record<LevelKey, CmpRow>>;
+    busy: LevelKey | null;
+    pct: number;
+    err: string | null;
+    src: Result['src'];
+  } | null>(null);
+  const cmpSeq = useRef(0);
+  const cmpAbort = useRef<AbortController | null>(null);
+  /* Талбай солигдох/харагдац хаагдахад явж буй харьцуулалтыг зогсооно */
+  useEffect(() => () => { cmpSeq.current++; cmpAbort.current?.abort(); }, [area]);
+
+  const getSim = useCallback(async (lv: LevelKey, a: SimArea | null, onPct: (p: number) => void): Promise<FloodData> => {
+    const key = simKey(lv, a);
+    const hit = simCache.current.get(key);
+    if (hit) return hit;
+    if (simPromiseKey.current === key && simPromise.current) {
+      const d = await simPromise.current.catch(() => null);
+      if (d) return d;
+    }
+    const ac = new AbortController();
+    cmpAbort.current = ac;
+    const d = await simulateFlood(lv, (pr) => onPct(Math.min(0.99, pr.minute / pr.totalMin)), a, ac.signal);
+    cachePut(key, d);
+    return d;
+  }, [cachePut]);
+
+  const compareAll = useCallback(async () => {
+    if (!view) return;
+    const seq = ++cmpSeq.current;
+    cmpAbort.current?.abort();
+    const aKey = areaKey(area);
+    const { ids, src } = activeIds();
+    setCmp({ key: aKey, rows: {}, busy: 1, pct: 0, err: null, src });
+    try {
+      for (const lv of [1, 2, 3] as LevelKey[]) {
+        if (seq !== cmpSeq.current) return;
+        setCmp((c) => (c ? { ...c, busy: lv, pct: 0 } : c));
+        const fd = await getSim(lv, area, (p) => {
+          if (seq === cmpSeq.current) setCmp((c) => (c ? { ...c, pct: p } : c));
+        });
+        if (seq !== cmpSeq.current) return;
+        const hp = hazardPolygon(fd);
+        let n = 0;
+        let cost = 0;
+        let unknown = 0;
+        let failedN = 0;
+        if (hp) {
+          const r = await damageOf(view, ids, hp.poly, lv, 'flood');
+          if (seq !== cmpSeq.current) return;
+          for (const row of r.rows) {
+            n += row.n;
+            if (row.cost == null) unknown++;
+            else cost += row.cost;
+          }
+          failedN = r.failed.length;
+        }
+        const row: CmpRow = {
+          level: lv, wetHa: fd.meta.totalWetHa, peakM: fd.meta.peakDepthM,
+          /* ⚠️ Бүх давхарга унасан бол «0 объект» БИШ — мэдэгдэхгүй */
+          n: hp && failedN && !n ? null : n,
+          cost: hp && failedN && !n ? null : cost,
+          unknown, failed: failedN,
+        };
+        setCmp((c) => (c ? { ...c, rows: { ...c.rows, [lv]: row } } : c));
+      }
+      if (seq === cmpSeq.current) setCmp((c) => (c ? { ...c, busy: null } : c));
+    } catch (err) {
+      if (seq !== cmpSeq.current) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setCmp((c) => (c ? { ...c, busy: null, err: err instanceof Error ? err.message : String(err) } : c));
+    }
+  }, [view, area, activeIds, getSim]);
 
   /* ══════════ Зурган дээрх мэдээлэл — «дарж юу вэ гэдгийг мэдэх» ══════════
    *
@@ -1133,6 +1375,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   /** Аюулын даралт — харуул / өртсөн объект / муж */
   const onMapPick = useCallback(async (p: Pick) => {
     const seq = ++pickSeq.current;
+    /* ⚠️ 2026-09-30: өмнөх үерийн нүдний УСНЫ ЗАМ зөвхөн шинэ үерийн нүдэнд солигдоно —
+       бусад даралтад (харуул, муж, объект, хоосон) урьд нь зурагт ҮЛДДЭГ байв */
+    if (!p || p.kind !== 'flood') setPath(null);
     if (!p) { setHazInfo(null); return; }
 
     if (p.kind === 'station') {
@@ -1160,10 +1405,19 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       const vv = fd.v(s, p.idx);
       const sp = Math.hypot(uu, vv);
       if (d < fd.meta.wetM) {
+        setPath(null);
+        /* ⚠️ 2026-09-30: `Overlay` энэ нүдийг БҮХ хугацааны дээд гүнээр (≥ `wetM`) сонгосон —
+           одоогийн агшинд хуурай ч ус ИРЭХ/ИРСЭН нүдэнд «ус ирээгүй» гэх нь ХУДАЛ байв */
+        const mx = fd.maxDepth ? fd.maxDepth(p.idx) : null;
+        const arr = fd.arrivalMin ? fd.arrivalMin(p.idx) : null;
+        const later = mx != null && mx >= fd.meta.wetM;
         setHazInfo({
-          title: tr('Энэ цэгт ус ирээгүй'),
+          title: later ? tr('Одоогоор ус алга') : tr('Энэ цэгт ус ирээгүй'),
           sub: tr('{0}-р минут', num(fd.minuteAt(s), 1)),
-          rows: [],
+          rows: later ? [
+            { k: tr('Дээд гүн (бүх хугацаа)'), v: tr('{0} м', num(mx, 2)) },
+            ...(arr != null ? [{ k: tr('Ус ирэх хугацаа'), v: tr('{0} мин', num(arr, 1)) }] : []),
+          ] : [],
         });
         return;
       }
@@ -1183,15 +1437,17 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           { k: tr('Урсгалын хурд'), v: tr('{0} м/с', num(sp, 2)) },
           { k: tr('Урсгалын чиглэл'), v: `${flowDir(uu, vv)} · ${num(flowDeg(uu, vv), 0)}°` },
           /**
-           * ⚠️ АЮУЛЫН ЗЭРЭГЛЭЛ = гүн × хурд. Гүн ганцаараа хангалтгүй:
-           * 0.4 м гүн, 2 м/с урсгал (=0.8) нь хүнийг унагадаг ч «гүн бага»
-           * гэж уншигдана. DEFRA/ArcGIS-ийн ангилалтай ижил.
+           * ⚠️ АЮУЛЫН ЗЭРЭГЛЭЛ — гүн ганцаараа хангалтгүй: 0.4 м гүн, 2 м/с
+           * урсгал нь хүнийг унагадаг ч «гүн бага» гэж уншигдана.
+           * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): DEFRA FD2321-ийн
+           *    HR = d·(v+0.5)+DF (`uyr.hazardRating`) — урьд нь `d × v` (м²/с)
+           *    байсан тул зогсонги гүн ус «Бага» гардаг байв.
            */
-          {
-            k: tr('Аюулын зэрэглэл'),
-            v: `${HAZARD_CLASS(d * sp).label} · ${tr('{0} м²/с', num(d * sp, 2))}`,
-            tone: HAZARD_CLASS(d * sp).color,
-          },
+          (() => {
+            const hr = hazardRating(d, sp);
+            const hc = HAZARD_CLASS(hr);
+            return { k: tr('Аюулын зэрэглэл'), v: `${hc.label} · ${tr('HR {0}', num(hr, 2))}`, tone: hc.color };
+          })(),
           /* ⚠️ Хуримтлагдсан утгууд — ЗҮСМЭЛЭЭС хамаарахгүй, БҮХ хугацаанаас */
           ...(fd.maxDepth ? [{
             k: tr('Дээд гүн (бүх хугацаа)'), v: tr('{0} м', num(fd.maxDepth(p.idx), 2)),
@@ -1214,8 +1470,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 ? tr('орчноосоо {0} м нам', num(why.reliefM, 1))
                 : tr('орчноосоо {0} м өндөр', num(-why.reliefM, 1)) },
             { k: tr('Налуу'), v: tr('{0}%', num(why.slopePct, 1)) },
+            /* ⚠️ 2026-10-01: маскгүй хуримтлал, өндрийн торны хүрээнд — «тооцооны мужид» */
             ...(why.accHa != null && why.accHa >= 0.5
-              ? [{ k: tr('Хураах талбай'), v: tr('{0} га', num(why.accHa, why.accHa >= 10 ? 0 : 1)) }]
+              ? [{ k: tr('Хураах талбай (тооцооны мужид)'), v: tr('≥ {0} га', num(why.accHa, why.accHa >= 10 ? 0 : 1)) }]
               : []),
           ] : []),
         ],
@@ -1353,7 +1610,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       n: rows.reduce((s, r) => s + r.n, 0),
       area: rows.reduce((s, r) => s + r.area, 0),
       length: rows.reduce((s, r) => s + r.length, 0),
-      cost: rows.reduce((s, r) => s + r.cost, 0),
+      /* ⚠️ 2026-10-01: ТОДОРХОЙГҮЙ өртөг (`null`) нийтэд ОРОХГҮЙ — тоо нь тусад нь */
+      cost: rows.reduce((s, r) => s + (r.cost ?? 0), 0),
+      unknownCost: rows.filter((r) => r.cost == null).length,
       /**
        * Өртөх оршин суугч — ⚠️ мөр бүрийн `people` нь ЗӨВХӨН барилгын ангиллаас
        * бодогддог (`ersdelGeom.ts`). Урьд нь энд БҮХ талбайн давхаргаас
@@ -1363,6 +1622,68 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       people: rows.reduce((s, r) => s + r.people, 0),
     };
   }, [result]);
+
+  /**
+   * ДАВХАРГЫН ХҮСНЭГТИЙН ЭРЭМБЭ — баганын толгой дарж солино (2026-10-01).
+   * ⚠️ `null` (тодорхойгүй өртөг, мэдэгдэхгүй гүн) нь чиглэлээс ҮЛ ХАМААРАН
+   *    ҮРГЭЛЖ доор — «0» гэж эрэмбэлбэл тодорхойгүй мөр «хамгийн бага» мэт харагдана.
+   */
+  const [sortBy, setSortBy] = useState<{ k: 'cost' | 'n' | 'depth'; desc: boolean }>({ k: 'cost', desc: true });
+  const sortedRows = useMemo(() => {
+    const rows = [...(result?.rows ?? [])];
+    const val = (r: DamageRow): number | null =>
+      (sortBy.k === 'cost' ? r.cost : sortBy.k === 'depth' ? r.maxDepth : r.n);
+    return rows.sort((a, b) => {
+      const va = val(a);
+      const vb = val(b);
+      if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+      return sortBy.desc ? vb - va : va - vb;
+    });
+  }, [result, sortBy]);
+  const toggleSort = (k: 'cost' | 'n' | 'depth') =>
+    setSortBy((s) => (s.k === k ? { k, desc: !s.desc } : { k, desc: true }));
+
+  /**
+   * ОБЪЕКТ ТУС БҮРИЙН ХҮСНЭГТ — гүнээр (анхдагч) эсвэл үнэлгээгээр (2026-10-01).
+   * ⚠️ Дэлгэцэнд эхний `OBJ_SHOW` мөр; бүгд CSV/GeoJSON-д.
+   */
+  const OBJ_SHOW = 60;
+  const [objSort, setObjSort] = useState<{ k: 'depth' | 'cost'; desc: boolean }>({ k: 'depth', desc: true });
+  const objects = useMemo(() => {
+    const out = (result?.rows ?? []).flatMap((r) => r.objects.map((o, i) => ({
+      key: `${r.layerId}:${o.oid ?? `i${i}`}`, title: r.title, geom: r.geom, ...o,
+    })));
+    return out.sort((a, b) => {
+      const va = objSort.k === 'depth' ? a.depth : a.cost;
+      const vb = objSort.k === 'depth' ? b.depth : b.cost;
+      if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
+      return objSort.desc ? vb - va : va - vb;
+    });
+  }, [result, objSort]);
+  const toggleObjSort = (k: 'depth' | 'cost') =>
+    setObjSort((s) => (s.k === k ? { k, desc: !s.desc } : { k, desc: true }));
+
+  /** Экспортын мөрүүд — `ersdelExport.ts`-ийн хэлбэрт */
+  const exportRows = useCallback((): ExportRow[] => (result?.rows ?? []).map((r) => ({
+    layerId: r.layerId,
+    title: r.title,
+    geom: r.geom,
+    clsLabel: DAMAGE_RATE[r.cls].label,
+    objects: r.objects.map((o) => ({ ...o, geometry: o.geometry as unknown as GeomLike })),
+  })), [result]);
+  const exportName = (ext: string) =>
+    `ersdel-${result?.hazard ?? 'x'}-${result?.level ?? 0}-${fileDate()}.${ext}`;
+  const exportCsv = () => downloadText(exportName('csv'), damageCsv(exportRows()), 'text/csv');
+  const exportGeo = () => downloadText(
+    exportName('geojson'),
+    damageGeoJSON(exportRows(), result?.zoneRings ?? null, {
+      hazard: result?.hazard, level: result?.level, sim_footprint: !!result?.simFootprint,
+    }),
+    'application/geo+json',
+  );
+
+  /** Харьцуулалт ОДООГИЙН талбайнх уу (талбай солигдвол хуучирна) */
+  const cmpLive = cmp && cmp.key === areaKey(area) ? cmp : null;
 
   /**
    * ШИНЖИЛГЭЭНИЙ БҮС нь ҮРГЭЛЖ зурагдана (хэрэглэгчийн хүсэлт, 2026-08-27).
@@ -1479,8 +1800,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                       <div className={e.ringBox}>
                         {/* ⚠️ АЧИ нь 0–500 хуваарьтай тул `Ring`-ийн хувийг
                             500-д харьцуулж бодов — тоо нь ӨӨРӨӨ доор гарна. */}
+                        {/* ⚠️ 2026-09-30: `Ring` утгаа ҮРГЭЛЖ «N%» гэж бичдэг тул АЧИ 60 нь «12%»
+                            гэж гардаг байв.
+                            ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): CSS-ийн `--aqi-text`
+                            заль (`::after`) ХАСАГДАВ — `Ring`-ийн шинэ `text` пропоор АЧИ-ийн
+                            тоог шууд бичнэ; дэлгэц уншигч ч «АЧИ 60» гэж уншина (урьд нь нуусан). */}
                         <Ring value={Math.min(100, (aqi / 500) * 100)} size={124} width={13}
-                          color={band.color} label={tr('АЧИ')} decimals={0} />
+                          color={band.color} label={tr('АЧИ')} decimals={0} text={num(aqi)} />
                         <p className={e.ringNote}>
                           <b className="num">{num(aqi)}</b> <span>{band.label}</span>
                           <span className={e.ringSub}>
@@ -1829,7 +2155,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   {floodErr ? (
                     <Note><span style={{ color: 'var(--bad-ink)' }}>{floodErr}</span></Note>
                   ) : !flood ? (
-                    <Loading label={tr('Үерийг бодож байна… {0}%', num(simPct * 100, 0))} />
+                    /* ⚠️ 2026-10-01: үлдсэн хугацааны таамаг (`simEta`) */
+                    <Loading label={simEta != null
+                      ? tr('Үерийг бодож байна… {0}% · ~{1} с үлдлээ', num(simPct * 100, 0), num(Math.ceil(simEta), 0))
+                      : tr('Үерийг бодож байна… {0}%', num(simPct * 100, 0))} />
                   ) : (
                     <>
                       <div className={e.timeRow}>
@@ -1871,10 +2200,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                           «хүнд аюултай юу». 2 м гүн ЗОГСОНГИ ус ба 0.4 м гүн
                           ХУРДАН урсгал хоёр өөр аюул тул нэг зураг хангахгүй. */}
                       <div className={e.flowBar}>
+                        {/* ⚠️ 2026-10-01: «Ирэх хугацаа» — ус ХЭЗЭЭ хүрэх вэ (`arrivalS`) */}
                         {([
                           ['depth', tr('Гүн')],
                           ['speed', tr('Хурд')],
                           ['hazard', tr('Аюул')],
+                          ...(flood.arrivalMin ? [['arrival', tr('Ирэх хугацаа')]] : []),
                         ] as [FloodMode, string][]).map(([k, lb]) => (
                           <button
                             key={k}
@@ -1936,7 +2267,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     type="button"
                     className={e.runBtn}
                     onClick={run}
-                    disabled={busy || !view || q.state !== 'ready'}
+                    /* ⚠️ 2026-09-30: харуулын давхарга ЗӨВХӨН агаарт хэрэгтэй — унасан үед үерийн
+                       шинжилгээ мөнхөд хаагддаг байв */
+                    disabled={busy || !view || (hazard === 'air' && q.state !== 'ready')}
                   >
                     <Icon name="target" size={15} />
                     {busy ? tr('Тооцоолж байна…') : tr('Шинжилгээ хийх')}
@@ -1950,6 +2283,73 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 {runErr && <Note><span style={{ color: 'var(--bad-ink)' }}>{runErr}</span></Note>}
               </div>
             </section>
+
+            {/* ── ТҮВШНҮҮДИЙН ХАРЬЦУУЛАЛТ (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
+                ⚠️ Зөвхөн үерт: агаарын хувилбар загварчлалгүй (сэвсгэр нь тогтмол
+                хэлбэр) тул «усанд автсан талбай», «дээд гүн» гэх багана утгагүй. */}
+            {hazard === 'flood' && (
+              <section className={e.panel} aria-label={tr('Түвшнүүдийн харьцуулалт')}>
+                <header className={e.panelHd}>
+                  <h3 className={e.panelTitle}>{tr('4 · Түвшнүүдийг харьцуулах')}</h3>
+                  <span className={e.panelNote}>{tr('ижил талбай · ижил давхарга')}</span>
+                </header>
+                <div className={e.panelBody}>
+                  <div className={e.runRow}>
+                    <button
+                      type="button"
+                      className={e.clearBtn}
+                      onClick={() => { void compareAll(); }}
+                      disabled={!view || cmpLive?.busy != null}
+                    >
+                      <Icon name="target" size={14} />
+                      {cmpLive?.busy != null
+                        ? tr('{0}-р түвшин… {1}%', cmpLive.busy, num(cmpLive.pct * 100, 0))
+                        : cmpLive ? tr('Дахин харьцуулах') : tr('1–3-р түвшинг харьцуулах')}
+                    </button>
+                  </div>
+                  {cmpLive?.err && <Note><span style={{ color: 'var(--bad-ink)' }}>{cmpLive.err}</span></Note>}
+                  {cmpLive && (
+                    <table className={e.table}>
+                      <thead>
+                        <tr>
+                          <th>{tr('Түвшин')}</th>
+                          <th className={e.tRight}>{tr('Усанд автсан')}</th>
+                          <th className={e.tRight}>{tr('Дээд гүн')}</th>
+                          <th className={e.tRight}>{tr('Объект')}</th>
+                          <th className={e.tRight}>{tr('Хохирол')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {([1, 2, 3] as LevelKey[]).map((lv) => {
+                          const r = cmpLive.rows[lv];
+                          return (
+                            <tr key={lv}>
+                              <td>{LEVELS.find((l) => l.key === lv)?.short}</td>
+                              <td className={`${e.tRight} num`}>{r ? tr('{0} га', num(r.wetHa, 1)) : '…'}</td>
+                              <td className={`${e.tRight} num`}>{r ? tr('{0} м', num(r.peakM, 2)) : '…'}</td>
+                              <td className={`${e.tRight} num`}>{r ? num(r.n) : '…'}</td>
+                              <td
+                                className={`${e.tRight} num`}
+                                title={r && r.unknown > 0
+                                  ? tr('{0} давхаргын өртөг тодорхойгүй — нийтэд ороогүй', num(r.unknown))
+                                  : undefined}
+                              >
+                                {r ? (r.cost == null ? '—' : `${mnt(r.cost)}${r.unknown > 0 ? ' *' : ''}`) : '…'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  {cmpLive && (
+                    <p className={e.hint}>
+                      {tr('Хохирлын муж нь загварчлалын {0} м-ээс гүн усны мөр. Хохирол нь ангиллын нэгж үнийн ТААМАГ; «*» — өртөг тодорхойгүй давхарга нийтэд ороогүй.', num(0.15, 2))}
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
           </>
         )}
       </div>
@@ -2003,7 +2403,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           {mode === 'model' && (
             /* ⚠️ 2026-09-25: самбарын «Шинжилгээ хийх»-тэй ИЖИЛ нөхцөл — харуул
                ачаалагдаагүй үед агаарын муж хоосон гарч «муж байгуулж чадсангүй» болно */
-            <MapToolBtn icon="target" onClick={run} disabled={busy || !view || q.state !== 'ready'}>
+            <MapToolBtn icon="target" onClick={run} disabled={busy || !view || (hazard === 'air' && q.state !== 'ready')}>
               {busy ? tr('Тооцоолж байна…') : tr('Шинжилгээ')}
             </MapToolBtn>
           )}
@@ -2016,7 +2416,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               view="ersdel"
               totals={catTotals}
               visible={visible}
-              setVisible={setVisible}
+              setVisible={setVisibleUser}
               selected={layerSel}
               onSelect={setLayerSel}
               onClose={() => setCatOpen(false)}
@@ -2036,7 +2436,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         )}
 
         {/* ── Тайлбар (легенд) — муж бүрийн өнгө ба ЮУГ хэлж буй ── */}
-        {(bands.length > 0 || mode === 'now' || windFlow) && (
+        {/* ⚠️ 2026-09-30: үерийн растер (`Overlay.flood = wantFlood ? flood : null`) загварчлал
+            дуусмагц зурагддаг бол легенд нь хохирлын шинжилгээ (`result`) хүлээдэг байв —
+            «Гүн/Хурд/Аюул» товч гарсан ч өнгө нь юу гэдгийг хэлэхгүй. */}
+        {(bands.length > 0 || mode === 'now' || windFlow || (wantFlood && !!flood)) && (
           <div className={e.legend}>
             {/* ── САЛХИНЫ ХУРДНЫ ХУВААРЬ ──
                 ⚠️ Урсгал АСААЛТТАЙ үед л гарна: унтраалттай байхад тууз нь
@@ -2055,7 +2458,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 зэрэглэл харуулна. */}
             {/* ⚠️ УРСГАЛЫН СҮЛЖЭЭ — байнгын доод давхарга, устай холилдох ёсгүй
                 тул тусдаа тайлбартай. Зөвхөн гүний горимд зурагдана. */}
-            {result?.hazard === 'flood' && flood && fmode === 'depth' && (
+            {wantFlood && flood && fmode === 'depth' && (
               <span
                 className={e.legItem}
                 title={tr('Ус ХААШАА урсахыг харуулах байнгын шугам (хураах талбай ≥ 0.5 га). Ус нимгэн (2–4 см) үед ч уулаас хот руу чиглэх зам харагдана.')}
@@ -2071,15 +2474,28 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 
             {/* ⚠️ Легенд нь ГОРИМЫГ дагана: растер хурдаар будагдаж байхад
                 гүний шатлал харуулбал тайлбар шууд ХУДАЛ болно. */}
-            {result?.hazard === 'flood' && flood && (
+            {/* ⚠️ 2026-10-01: АЮУЛ нь DEFRA FD2321-ийн ДӨРВӨН АНГИЛАЛ — тасралтгүй
+                шатлал биш, растер ч ангиллаар шатлан будагдана (`uyr.ts` §hazardColor). */}
+            {wantFlood && flood && fmode === 'hazard' && HAZARD_LEGEND().map((c) => (
+              <span
+                key={c.label}
+                className={e.legItem}
+                title={tr('Аюулын зэрэглэл HR = d × (v + 0.5) + DF (DEFRA FD2321). DF = 0 (d ≤ 0.25 м), 0.5 (0.25–0.75 м), 1 (d > 0.75 м).')}
+              >
+                <i className={e.legSwatch} style={{ background: c.color }} aria-hidden />
+                {c.label}
+                <b className="num">{tr('HR {0}', c.range)}</b>
+              </span>
+            ))}
+            {wantFlood && flood && fmode !== 'hazard' && (
               <span className={`${e.legItem} ${e.ramp}`}>
                 <i
                   className={`${e.rampBar} ${fmode === 'speed' ? e.rampSpeed
-                    : fmode === 'hazard' ? e.rampHazard : ''}`}
+                    : fmode === 'arrival' ? e.rampArrival : ''}`}
                   aria-hidden
                 />
                 {fmode === 'speed' ? tr('Урсгалын хурд')
-                  : fmode === 'hazard' ? tr('Аюулын зэрэглэл') : tr('Усны гүн')}
+                  : fmode === 'arrival' ? tr('Ус ирэх хугацаа') : tr('Усны гүн')}
                 {/* ⚠️ Градиентийн зах нь ӨНГӨ ХАНАХ утга, загварын дээд утга БИШ */}
                 <b
                   className="num"
@@ -2089,14 +2505,25 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                       num((flood.meta.drawM ?? 0.05) * 100, 0), num(flood.meta.wetM * 100, 0))
                     : fmode === 'speed'
                       ? tr('Өнгө {0} м/с-д ханана.', num(SATURATE_MS, 1))
-                      : tr('Гүн × хурд. {0} м²/с-ээс дээш нь онц аюултай.', num(SATURATE_HAZ, 1))}
+                      : tr('Нүд бүрд {0} см-ээс гүн ус АНХ хүрсэн минут. Бараан = эрт (нүүлгэн шилжүүлэх хугацаа бага).', num(flood.meta.wetM * 100, 0))}
                 >
                   {fmode === 'speed' ? tr('0 … {0}+ м/с', num(SATURATE_MS, 1))
-                    : fmode === 'hazard' ? tr('0 … {0}+ м²/с', num(SATURATE_HAZ, 1))
+                    : fmode === 'arrival' ? tr('0 … {0} мин', num(flood.meta.simMin ?? 60))
                       : tr('0 … {0}+ м', num(flood.meta.rampMaxM ?? RAMP_MAX_M, 1))}
                 </b>
               </span>
             )}
+            {/* ⚠️ 2026-10-01: ГОЛЫН ОРОЛТ — гидрограф эндээс цутгана (`Overlay` §inlet) */}
+            {wantFlood && flood?.meta.inlets?.length ? (
+              <span
+                className={e.legItem}
+                title={tr('Голын урсац судалгааны талбайд орж ирэх нүднүүд. Шошго нь тухайн агшны оролтын урсац.')}
+              >
+                <i className={e.legInlet} aria-hidden />
+                {tr('Голын оролт')}
+                <b className="num">{num(flood.meta.inlets.length)}</b>
+              </span>
+            ) : null}
             {bands.map((b) => (
               <span key={b.key} className={e.legItem}>
                 <i className={e.legSwatch} style={{ background: b.hue }} aria-hidden />
@@ -2422,9 +2849,25 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <section className={e.panel}>
                   <header className={e.panelHd}>
                     <h3 className={e.panelTitle}>{tr('Давхарга тус бүрээр')}</h3>
-                    <span className={e.panelNote}>{tr('үнэлгээгээр эрэмбэлэв')}</span>
+                    <span className={e.panelNote}>{tr('толгой дарж эрэмбэлнэ')}</span>
                   </header>
                   <div className={e.panelBody}>
+                    {/* ⚠️ 2026-10-01: ЭКСПОРТ — өртсөн объект тус бүр (CSV) ба мөр + объект (GeoJSON, WGS84) */}
+                    <div className={e.flowBar}>
+                      <button type="button" className={e.flowBtn} onClick={exportCsv}
+                        title={tr('Өртсөн объект тус бүр: давхарга, OID, мужид орсон хэмжээ, дээд гүн, үнэлгээ')}>
+                        {tr('CSV татах')}
+                      </button>
+                      <button type="button" className={e.flowBtn} onClick={exportGeo}
+                        title={tr('Аюулын муж ба өртсөн объектууд — GeoJSON (WGS84), QGIS/ArcGIS-д нээгдэнэ')}>
+                        {tr('GeoJSON татах')}
+                      </button>
+                    </div>
+                    {sum.unknownCost > 0 && (
+                      <Note>
+                        {tr('{0} давхаргын өртөг тодорхойгүй (нэгж үнэ баримтад алга, жишээ нь замын ирмэгийн шугам) — нийт үнэлгээнд ОРООГҮЙ.', num(sum.unknownCost))}
+                      </Note>
+                    )}
                     <Bars
                       items={result.rows.map((r) => ({
                         key: r.layerId,
@@ -2442,13 +2885,30 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         <tr>
                           <th>{tr('Давхарга')}</th>
                           <th>{tr('Ангилал')}</th>
-                          <th className={e.tRight}>{tr('Тоо')}</th>
+                          {/* ⚠️ 2026-10-01: эрэмбэлэх толгой — `aria-sort` нь дэлгэц уншигчид */}
+                          <th className={e.tRight} aria-sort={sortBy.k === 'n' ? (sortBy.desc ? 'descending' : 'ascending') : 'none'}>
+                            <button type="button" className={e.sortBtn} onClick={() => toggleSort('n')}>
+                              {tr('Тоо')}{sortBy.k === 'n' ? (sortBy.desc ? ' ▼' : ' ▲') : ''}
+                            </button>
+                          </th>
                           <th className={e.tRight}>{tr('Хэмжээ')}</th>
-                          <th className={e.tRight}>{tr('Үнэлгээ')}</th>
+                          {result.hazard === 'flood' && (
+                            <th className={e.tRight} aria-sort={sortBy.k === 'depth' ? (sortBy.desc ? 'descending' : 'ascending') : 'none'}>
+                              <button type="button" className={e.sortBtn} onClick={() => toggleSort('depth')}
+                                title={tr('Давхаргын өртсөн объектуудын хамгийн их гүн (загварчлалын бүх хугацаанд)')}>
+                                {tr('Дээд гүн')}{sortBy.k === 'depth' ? (sortBy.desc ? ' ▼' : ' ▲') : ''}
+                              </button>
+                            </th>
+                          )}
+                          <th className={e.tRight} aria-sort={sortBy.k === 'cost' ? (sortBy.desc ? 'descending' : 'ascending') : 'none'}>
+                            <button type="button" className={e.sortBtn} onClick={() => toggleSort('cost')}>
+                              {tr('Үнэлгээ')}{sortBy.k === 'cost' ? (sortBy.desc ? ' ▼' : ' ▲') : ''}
+                            </button>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {result.rows.map((r) => (
+                        {sortedRows.map((r) => (
                           <tr key={r.layerId}>
                             <td>
                               {r.title}
@@ -2476,13 +2936,74 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                                 : r.geom === 'line' ? tr('{0} км', num(r.length / 1000, 2))
                                   : '—'}
                             </td>
-                            <td className={`${e.tRight} num`}>{r.cost > 0 ? mnt(r.cost) : '—'}</td>
+                            {result.hazard === 'flood' && (
+                              <td className={`${e.tRight} num`}>{r.maxDepth == null ? '—' : tr('{0} м', num(r.maxDepth, 2))}</td>
+                            )}
+                            {/* ⚠️ 2026-10-01: `null` = ТОДОРХОЙГҮЙ (0 ₮ БИШ) */}
+                            <td className={`${e.tRight} num`}>
+                              {r.cost == null ? tr('тодорхойгүй') : r.cost > 0 ? mnt(r.cost) : '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 </section>
+
+                {/* ── ОБЪЕКТ ТУС БҮР (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
+                    ⚠️ Зөвхөн үерт — объект бүрийн ДЭЭД ГҮН загварчлалаас. Эхний
+                    `OBJ_SHOW` мөр; бүгд нь CSV/GeoJSON-д. */}
+                {result.hazard === 'flood' && objects.length > 0 && (
+                  <section className={e.panel}>
+                    <header className={e.panelHd}>
+                      <h3 className={e.panelTitle}>{tr('Өртсөн объект тус бүр')}</h3>
+                      <span className={e.panelNote}>
+                        {objects.length > OBJ_SHOW
+                          ? tr('эхний {0} / {1}', num(OBJ_SHOW), num(objects.length))
+                          : tr('{0} объект', num(objects.length))}
+                      </span>
+                    </header>
+                    <div className={e.panelBody}>
+                      <table className={e.table}>
+                        <thead>
+                          <tr>
+                            <th>{tr('Давхарга')}</th>
+                            <th className={e.tRight}>OID</th>
+                            <th className={e.tRight}>{tr('Хэмжээ')}</th>
+                            <th className={e.tRight} aria-sort={objSort.k === 'depth' ? (objSort.desc ? 'descending' : 'ascending') : 'none'}>
+                              <button type="button" className={e.sortBtn} onClick={() => toggleObjSort('depth')}>
+                                {tr('Дээд гүн')}{objSort.k === 'depth' ? (objSort.desc ? ' ▼' : ' ▲') : ''}
+                              </button>
+                            </th>
+                            <th className={e.tRight} aria-sort={objSort.k === 'cost' ? (objSort.desc ? 'descending' : 'ascending') : 'none'}>
+                              <button type="button" className={e.sortBtn} onClick={() => toggleObjSort('cost')}>
+                                {tr('Үнэлгээ')}{objSort.k === 'cost' ? (objSort.desc ? ' ▼' : ' ▲') : ''}
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {objects.slice(0, OBJ_SHOW).map((o) => (
+                            <tr key={o.key}>
+                              <td>{o.title}</td>
+                              <td className={`${e.tRight} num`}>{o.oid ?? '—'}</td>
+                              <td className={`${e.tRight} num`}>
+                                {o.geom === 'area' ? tr('{0} м²', num(o.measure, 0))
+                                  : o.geom === 'line' ? tr('{0} м', num(o.measure, 0)) : '—'}
+                              </td>
+                              <td className={`${e.tRight} num`} style={o.depth != null ? { color: depthRisk(o.depth).color } : undefined}>
+                                {o.depth == null ? '—' : tr('{0} м', num(o.depth, 2))}
+                              </td>
+                              <td className={`${e.tRight} num`}>
+                                {o.cost == null ? tr('тодорхойгүй') : mnt(o.cost)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
               </>
             )}
           </>

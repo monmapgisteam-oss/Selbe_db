@@ -73,6 +73,14 @@ export type ErhSource = {
    *    эх сурвалж нь энэгүй.
    */
   supers?: string[];
+  /**
+   * ⚠️ 2026-09-30: ПОРТАЛД БАЙХГҮЙ (устгагдсан) аккаунтууд — хуваарилалтын хуучин мөр нь
+   *    үлдсэн. СОНГОМОЛ (дуудагч `aclOps.liveErhSource` өгнө). Тэд нэвтэрч чадахгүй тул
+   *    гацааны шалгуурт (`pkgIssues`) ЭЗЭН гэж тоологдохгүй — урьд нь устгагдсан батлагчийн
+   *    мөр «батлагчгүй» · «урсгалын цоорхой» анхааруулгыг чимээгүй нууж, илгээлт тэнд
+   *    мөнхөд хүлээдэг байв. Нүдэнд харагдсаар (✕-ээр цэвэрлэхийн тулд).
+   */
+  gone?: string[];
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
   /** Аккаунт → нээлттэй харагдацын тоо ба нийт */
@@ -241,9 +249,16 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
   const chanar = byRole(src.chanar);
   const ajil = byRole(src.ajil ?? []);
 
+  /* ⚠️ 2026-09-30: гацааны шалгуурт устгагдсан аккаунтыг ЭЗЭН гэж тоолохгүй (`ErhSource.gone`);
+     харуулах жагсаалт (нүд) хэвээр */
+  const gone = new Set((src.gone ?? []).map(norm));
+  const live = <T extends Record<string, string[]>>(m: T): T => (gone.size
+    ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((x) => !gone.has(norm(x)))])) as T
+    : m);
+
   return {
     bagts, flow, flowViewers, qaqc, huvaari, obyem, chanar, ajil,
-    issues: pkgIssues(bagts, flow, huvaari, obyem, chanar, ajil),
+    issues: pkgIssues(bagts, live(flow), live(huvaari), live(obyem), live(chanar), live(ajil)),
   };
 }
 

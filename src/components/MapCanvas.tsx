@@ -6,7 +6,8 @@ import {
 } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import Map from '@arcgis/core/Map';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
+import { adoptView, parkView, shouldPark, mapStats } from './mapPark';
 import MapView from '@arcgis/core/views/MapView';
 import SceneView from '@arcgis/core/views/SceneView';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
@@ -848,6 +849,19 @@ let homeExtentCache: Extent | null = null;
  * бүрд шинэ хэвээр — handler-ууд props-той нь холбоотой.
  */
 const mapCache: Record<string, Map> = {};
+
+/**
+ * View-г КЭШИЙН Map-аас салгаж устгана.
+ * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг тул эхлээд
+ *    container ба map-ын холбоог тасална (view эффектийн cleanup-ийн ⚠️-тэй ижил).
+ *    ⚠️ 2026-10-01: `mapPark`-ийн устгагч ч энэ (хэл солилтоор хадгалсан view).
+ */
+function destroyDetached(v: AnyView): void {
+  if (v.destroyed) return;
+  v.container = null as unknown as HTMLDivElement;
+  (v as unknown as { map: Map | null }).map = null;
+  v.destroy();
+}
 
 /**
  * Web scene JSON-ы `elevationInfo.mode` нь camelCase (`onTheGround`) ирдэг ч
@@ -2070,8 +2084,21 @@ export const MapCanvas = memo(function MapCanvas({
     setReady(false);
     setInitError(null);
 
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХЭЛ СОЛИХ remount-оос хадгалсан view
+       (`mapPark`) — ижил dim + ижил кэшийн Map бол ДАХИН ҮҮСГЭХГҮЙ, `container`-оо л
+       солино: камер, ачаалсан tile, 3D меш хэвээр. Map өөр (кэш шинэчлэгдсэн) бол
+       хадгалсныг устгаад шинээр. `mountGen` — cleanup нь хэл солилтоос үүдсэн эсэхийг
+       ялгана (`shouldPark`). */
+    const mountGen = getLocaleGeneration();
+    const parkKey = `${dim}|${mapKey}`;
+    const parked = adoptView<AnyView>(parkKey);
+    const reused = parked && parked.map === map ? parked : null;
+    if (parked && !reused) { destroyDetached(parked); mapStats.destroyed += 1; }
+    if (reused) reused.container = el.current;
+    else mapStats.created += 1;
+
     const view: AnyView =
-      is3D(dim)
+      reused ?? (is3D(dim)
         ? new SceneView({
             container: el.current,
             map,
@@ -2091,9 +2118,19 @@ export const MapCanvas = memo(function MapCanvas({
             popupEnabled: false,
             constraints: { rotationEnabled: false },
             ui: { components: ['zoom', 'attribution'] },
-          });
+          }));
     viewRef.current = view;
+    /** Энэ эффектийн `view.ui`-д нэмсэн зүйлс — хадгалах (park) үед гараар хасна,
+        эс бөгөөс дахин авсан view дээр товчнууд давхардана (`view.destroy()` л цэвэрлэдэг байв) */
+    const ownUi: (__esri.Widget | HTMLElement)[] = [];
+    const addUi = (w: __esri.Widget | HTMLElement, pos?: string) => {
+      ownUi.push(w);
+      view.ui.add(w, pos);
+    };
     if (typeof window !== 'undefined') (window as unknown as { __dbgview: AnyView }).__dbgview = view;
+    /* ⚠️ 2026-10-01: ХЭМЖИЛТ — хэл солиход `created` өсөхгүй, `parked`/`adopted` өсвөл view
+       хадгалагдсан (DevTools: `__selbeMapStats`) */
+    if (typeof window !== 'undefined') (window as unknown as { __selbeMapStats: typeof mapStats }).__selbeMapStats = mapStats;
 
     /**
      * ⚠️ Давхаргын FADE TRANSITION-ыг унтраана — АСААХ/УНТРААХ ШУУД болно.
@@ -2164,14 +2201,15 @@ export const MapCanvas = memo(function MapCanvas({
         ],
       }),
     });
-    view.ui.add(new Expand({
+    const bmExpand = new Expand({
       view,
       content: bmPanel,
       expandIcon: 'basemap',
       expandTooltip: tr('Суурь зураг сонгох'),
       collapseTooltip: tr('Хаах'),
       mode: 'floating',
-    }), 'top-right');
+    });
+    addUi(bmExpand, 'top-right');
 
     /**
      * ⚠️ 2026-08-20: ArcGIS-ийн `LayerList` виджет ЭНДЭЭС ХАСАГДАВ.
@@ -2210,7 +2248,7 @@ export const MapCanvas = memo(function MapCanvas({
     fsBtn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFsRef.current(); }
     });
-    view.ui.add(fsBtn, 'top-right');
+    addUi(fsBtn, 'top-right');
 
     /**
      * ОРТОФОТО ХАРЬЦУУЛАХ (swipe) — ХУУЧИН `Selbe_ortho` ↔ ОДООГИЙН
@@ -2308,7 +2346,7 @@ export const MapCanvas = memo(function MapCanvas({
       swBtn.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwipe(); }
       });
-      view.ui.add(swBtn, 'top-right');
+      addUi(swBtn, 'top-right');
     }
 
     /**
@@ -2340,7 +2378,7 @@ export const MapCanvas = memo(function MapCanvas({
         + '<path d="M8 1.6v12.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
         + '<path d="M5.1 8H2.9M4.1 6.9 2.9 8l1.2 1.1M10.9 8h2.2M11.9 6.9 13.1 8l-1.2 1.1" '
         + 'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      view.ui.add(swBtn3, 'top-right');
+      addUi(swBtn3, 'top-right');
 
       /** Хүрээнээс хол давах зай (м) — олон өнцөгт харагдах талбайг бүрэн хаана */
       const FAR = 40000;
@@ -2536,8 +2574,11 @@ export const MapCanvas = memo(function MapCanvas({
        * болдог байв. Шууд үсрэхэд зөвхөн ЭЦСИЙН хүрээний зураг л татагдана.
        * Хүрээг модулийн кэшид хадгална — 2D↔3D солиход дахин query хийхгүй,
        * дахин үсрэхгүй (бүс өөрчлөгддөггүй статик хүрээ).
+       * ⚠️ 2026-10-01: ДАХИН АВСАН view (хэл солилт) — камер хэрэглэгчийнхээрээ үлдэнэ.
        */
-      if (homeExtentCache) {
+      if (reused) {
+        /* хэрэглэгчийн камер хэвээр */
+      } else if (homeExtentCache) {
         view.goTo(homeExtentCache, { animate: false }).catch(() => {});
       } else {
         extentOf(layerUrl(ZONE_LAYER), view)
@@ -2761,6 +2802,10 @@ export const MapCanvas = memo(function MapCanvas({
       leave.remove();
       fadeHandle.remove();
       if (!gallery.destroyed) gallery.destroy();
+      /* ⚠️ 2026-10-01: ХЭЛ СОЛИХ remount бол view-г УСТГАХГҮЙ — `mapPark`-д түр хадгална
+         (дээрх `mountGen`-ий ⚠️). Ердийн unmount · 2D↔3D · «Дахин оролдох» → урьдын адил устгана. */
+      const park = !view.destroyed && shouldPark(mountGen, getLocaleGeneration());
+      if (park && swipeRef.current) view.ui.remove(swipeRef.current);
       /* Ортофото харьцуулалт — view-тэй хамт дуусна (2D↔3D солиход ч).
          ⚠️ Давхаргыг мөн НУУНА: Map нь кэшлэгддэг тул ил үлдвэл 3D-д хуучин
          ортофото газарт наалдаж, мешийн дээр гарч ирнэ. */
@@ -2780,9 +2825,16 @@ export const MapCanvas = memo(function MapCanvas({
        * 2D↔3D солиход Map хэвээр үлдэх ёстой тул холбоог эхлээд тасална — эс
        * бөгөөс шинэ view «The provided map is already destroyed» гэж унана.
        */
-      view.container = null as unknown as HTMLDivElement;
-      (view as unknown as { map: Map | null }).map = null;
-      view.destroy();
+      if (park) {
+        /* Энэ эффектийн нэмсэн товч/виджетийг хасна — шинэ MapCanvas дахин нэмнэ */
+        for (const w of ownUi) view.ui.remove(w);
+        if (!bmExpand.destroyed) bmExpand.destroy();
+        view.container = null as unknown as HTMLDivElement;
+        parkView(view, parkKey, destroyDetached);
+      } else {
+        destroyDetached(view);
+        mapStats.destroyed += 1;
+      }
       viewRef.current = null;
       // eslint-disable-next-line react-hooks/exhaustive-deps -- ⚠️ 2026-09-30: cleanup нь view устах агшны ХАМГИЙН СҮҮЛИЙН `register`-ийг санаатай дуудна (ref нь DOM биш, callback)
       registerRef.current(null);

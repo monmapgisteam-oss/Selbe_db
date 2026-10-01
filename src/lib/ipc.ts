@@ -315,7 +315,10 @@ export type HoTotals = {
   paid: number | null;
   advance: number | null;
   work: number | null;
-  /** `paid / contract` × 100 — 0–100 */
+  /**
+   * (гэрээт дүн тодорхой гэрээнүүдийн олголт) / `contract` × 100 — 0–100.
+   * ⚠️ 2026-09-30: тоологч нь `paid` БИШ (`hoTotals`-ийн ⚠️) — хуваарьтай нэг хүрээ.
+   */
   paidPct: number | null;
 };
 
@@ -336,6 +339,12 @@ export function hoTotals(rows: readonly Row[]): HoTotals {
   };
   const contract = acc((c) => c.contractTotal);
   const paid = sumPaid(rows);
+  /* ⚠️ 2026-09-30: хувийн ТООЛОГЧ = гэрээт дүн (`contractTotal`) ТОДОРХОЙ гэрээнүүдийн
+     олголт — хуваарьтай НЭГ хүрээ (`ipcTable.ipcTotals`-ийн өнөөдрийн `paidContracted`
+     засвартай ижил дүрэм). Урьд нь БҮХ төлбөр (гэрээт дүнгүй гэрээнийх ч) хуваагддаг
+     тул хуваарьт ороогүй мөнгө «гэрээнд эзлэх X%»-ийг хөөргөдөг байв (CEO IPC картын
+     «HO хүснэгтээр» нөөц мөр, ТУХ). `paid` (нийт олгосон) нь хэвээр БҮХ мөр. */
+  const paidC = acc((c) => (c.contractTotal != null ? c.paidTotal : null));
   return {
     contracts: cs.length,
     pays: rows.length,
@@ -345,9 +354,9 @@ export function hoTotals(rows: readonly Row[]): HoTotals {
     paid,
     advance: sumPaidByKind(rows, HO_IPC.kinds.advance),
     work: sumPaidByKind(rows, HO_IPC.kinds.work),
-    paidPct: paid == null || contract == null || contract === 0
+    paidPct: paidC == null || contract == null || contract === 0
       ? null
-      : (paid / contract) * 100,
+      : (paidC / contract) * 100,
   };
 }
 

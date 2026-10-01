@@ -28,6 +28,7 @@ import { computeAll, firstFrame, lastFrame, loadRows, msToDay } from '@/modules/
 import { overlaySubmission } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
+import { rowSids } from '@/lib/hyanaltOkCells';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
@@ -91,6 +92,12 @@ export type Change = {
    */
   inc?: number | null;
   incPct?: number | null;
+  /**
+   * МӨРИЙН ТОГТВОРТОЙ ТАНИГЧ — `"<oid>|<sid>"` (`hyanaltOkCells.rowSids`).
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хянагчийн зөвшөөрлийг индексээр БИШ
+   *    үүгээр хадгална — жааз солигдох/мөр нэмэгдэхэд индекс гулсдаг.
+   */
+  rid?: string;
 };
 
 /** `to − (from ?? 0)`; шинэ утга `null` бол `null` (`null ≠ 0` — «мэдээлэлгүй»). */
@@ -186,6 +193,11 @@ export type Submission = {
    *    өөр) хуудас харна.
    */
   subOid?: number;
+  /**
+   * ⚠️ 2026-10-01: илгээлтийн мөрүүдийг шинэ жааз руу (№ ¦ Ажил)-аар ЗӨӨСӨН эсэх
+   *    (`sheetFrame.Overlay.remapped`). Хуучин индексийн зөвшөөрлийг энэ үед итгэхгүй.
+   */
+  remapped?: boolean;
 };
 
 /**
@@ -277,6 +289,8 @@ async function loadStaged(
   const loaded = await loadRows(pkg, sc);
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
   const asOf = ov.asOf ?? loaded.asOf;
+  /* ⚠️ 2026-10-01: мөр бүрийн тогтвортой танигч (`Change.rid`) — FillNew-ийн `rows`-той ИЖИЛ дараалал */
+  const sids = rowSids(ov.rows);
   /*
    * ⚠️ `asOf` нь `null` БАЙЖ БОЛНО (2026-09-06). Бөглөх (`FillNew`) ба архивлах
    *    (`hyanaltStore`) хоёулаа огноогүй хуудсыг зөвшөөрдөг болсон тул хянагч
@@ -303,7 +317,11 @@ async function loadStaged(
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    return m ? planPctFromMonths(m, asOf) : null;
+    /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
+         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
+         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
+         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
+    return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
   });
 
   /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
@@ -388,6 +406,7 @@ async function loadStaged(
           fromPct: fromA0,
           toPct: toA0,
           incPct: deltaOf(fromA0, toA0),
+          rid: `${r.oid}|${sids[i]}`,
         });
         continue;
       }
@@ -419,6 +438,7 @@ async function loadStaged(
         toPct: pctTo[k],
         inc: deltaOf(before[k], cells[k]),
         incPct: deltaOf(pctFrom[k], pctTo[k]),
+        rid: `${r.oid}|${sids[i]}`,
       });
     });
     return {
@@ -462,6 +482,7 @@ async function loadStaged(
     asOfChanged: ov.asOf != null && ov.asOf !== loaded.asOf,
     subOid,
     subAt: pl.at,
+    remapped: ov.remapped,
   };
 }
 
@@ -716,6 +737,11 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
 
           const tree = TREES[p.key] ?? '';
           const blkLabels = sc.bld.filter((_, i) => sc.obyem[i]);
+          /* ⚠️ 2026-10-01: тогтвортой танигч (`Change.rid`) — ТҮҮХИЙ №/ажил (trim), «—» БИШ */
+          const sidsA = rowSids((q.features ?? []).map((x) => ({
+            no: String(x.attributes[sc.f.no] ?? ''),
+            work: String(x.attributes[sc.f.work] ?? ''),
+          })));
           filled = (q.features ?? []).map((x, ri) => {
             const a = x.attributes;
             const prev = before.get(String(ri));
@@ -744,6 +770,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
                 block: blkLabels[k] ?? String(k + 1),
                 from: beforeVals[k],
                 to: cells[k],
+                rid: `${num(a[sc.f.oid]) ?? -1}|${sidsA[ri]}`,
               });
             });
             if ((num(a[sum]) ?? 0) > 0) filledCount += 1;

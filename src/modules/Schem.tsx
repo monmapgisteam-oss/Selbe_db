@@ -31,10 +31,13 @@ import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { useAsync } from '@/lib/useAsync';
 import { num, pct, mnt } from '@/lib/format';
-import type { ViewKey } from '@/lib/services';
+import { bagtsKey, type LayerDef, type ViewKey } from '@/lib/services';
+import { qtyText } from '@/lib/totals';
+import { readParam, writeParams } from '@/lib/urlState';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import {
-  NODES, NODE_BY_ID, EDGES, GEO, PROJECT_WIDE, buildSchem, edgePath, layoutOf, stageRail, topoOrder,
+  NODES, NODE_BY_ID, EDGES, GEO, PROJECT_WIDE, buildSchem, edgeLabelAt, edgePath, layoutOf, pkgRow,
+  stageRail, topoOrder,
   type Box, type EdgeKind, type Geo, type Health, type Metric, type SchemId,
   type SchemSources, type SchemState,
 } from '@/lib/schem';
@@ -76,6 +79,12 @@ const HEALTH_SWATCH: Record<Health, string> = {
 };
 
 /**
+ * `qtyText`-ийн нэгжийн тодорхойлолт — талбай м²-аар (1 га-аас бага бол «N м²»).
+ * ⚠️ `qtyText` зөвхөн `d.qty`-г уншина; бусад талбар хэрэггүй.
+ */
+const AREA_QTY = { qty: { field: '', unit: 'м²' } } as LayerDef;
+
+/**
  * Метрикийн бичиглэл.
  * ⚠️ `null` нь «—» болно, 0 БИШ. `pct()` нь 100-аар үржүүлдэггүй тул утга нь
  *    аль хэдийн 0–100 масштабтай ирсэн байх ёстой (`schem.ts`-ийн гэрээ).
@@ -85,10 +94,11 @@ function show(m: Metric): string {
   switch (m.kind) {
     case 'pct': return pct(m.value, 0);
     case 'mnt': return mnt(m.value);
-    /* ⚠️ `format.ts::ha()` нь м²-ыг га руу ХӨРВҮҮЛДЭГ. Энд ирж буй утга
-       (`areaHa`, `remainingHa`) АЛЬ ХЭДИЙН га тул дахин хуваавал 10,000
-       дахин жижигрэнэ. */
-    case 'ha': return `${num(m.value, 1)} ${tr('га')}`;
+    /* ⚠️ Энд ирж буй утга (`areaHa`, `remainingHa`) АЛЬ ХЭДИЙН га — `format.ts::ha()`
+       шууд өгвөл 10,000 дахин жижигрэнэ.
+       ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): жижиг үлдэгдэл «0.0 га» гэж хэмжилтгүй мэт
+       гардаг байв — `qtyText` (м² руу буцааж) 1 га-аас бага бол «N м²». */
+    case 'ha': return qtyText(AREA_QTY, m.value * 10_000) ?? '—';
     case 'day': return tr('{0} хоног', num(m.value));
     /* ⚠️ 2026-09-25: БУТАРХАЙ тоог 2 оронтой — «1000 ажилтанд ногдох осол» нь
        `count` төрөлтэй бөгөөд 1 осол / 2,500 ажилтан = 0.4-ийг `num(v)` «0» гэж
@@ -596,14 +606,17 @@ function Diagram({
           {edges.map((e) => {
             const d = edgePath(L.box[e.from], L.box[e.to], e.kind);
             const cls = e.kind === 'back' ? c.edgeBack : e.kind === 'feed' ? c.edgeFeed : c.edgeMain;
+            /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): шошго нь ӨӨРИЙН замынхаа орой/тохойд
+               (`edgeLabelAt`) — урьд нь хоёр картын доод ирмэгээс 34px доор тавьдаг тул
+               «Ерөнхий»-д сумнаасаа хол, «Дэлгэрэнгүй»-д доорх картын ард нуугддаг байв. */
+            const at = e.label ? edgeLabelAt(L.box[e.from], L.box[e.to], e.kind) : null;
             return (
               <g key={`${e.from}-${e.to}-${e.kind}`}>
                 <path d={d} className={cls}
                   markerEnd={`url(#${e.kind === 'back' ? 'schem-b' : 'schem-a'})`} />
-                {e.label && (
-                  <text className={c.edgeLab}
-                    x={(L.box[e.from].x + L.box[e.to].x) / 2 + geo.w / 2}
-                    y={Math.max(L.box[e.from].y + L.box[e.from].h, L.box[e.to].y + L.box[e.to].h) + 34}>
+                {at && (
+                  /* ⚠️ `textAnchor`-ыг style-оор — CSS класс (`.edgeLab`) атрибутыг дардаг */
+                  <text className={c.edgeLab} x={at.x} y={at.y} style={{ textAnchor: at.anchor }}>
                     {e.label}
                   </text>
                 )}
@@ -644,7 +657,14 @@ export function Schem({
   navScope?: 'all' | ViewKey[];
 }) {
   const q = useAsync<SchemSources>(loadSchemSources, []);
-  const [pkg, setPkg] = useState<string>('');
+  /**
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БАГЦ ба НАРИЙВЧЛАЛ URL-д (`?pkg=БАГЦ31&fine=0`) —
+   *    F5/холбоос хуваалцахад сонголт алдагдахгүй. `pkg` нь `Bagts`/`PkgProg`/`PkgFin`-тэй
+   *    НЭГ параметр, `bagtsKey` хэлбэрээр (тэдгээрийн уламжлал); бүх шүүлт `samePkg`-ээр тул
+   *    түлхүүр ч, шошго ч адил ажиллана — дэлгэцэнд шошгыг `pkgRow`-оор сэргээнэ.
+   *    `fine` нь анхдагч (дэлгэрэнгүй) үед URL-д бичигдэхгүй.
+   */
+  const [pkg, setPkg] = useState<string>(() => readParam('pkg') ?? '');
   /**
    * СОНГОГДСОН КАРТ ба түүний БҮЛЭГ — НЭГ төлөвт.
    *
@@ -660,7 +680,12 @@ export function Schem({
    * «Ерөнхий» нь танилцуулга, хэвлэлтэд зориулсан хураангуй хувилбар болж
    * үлдэнэ — устгаагүй, учир нь түүний тор ба шалтгаанууд баримтжуулагдсан.
    */
-  const [fine, setFine] = useState(true);
+  const [fine, setFine] = useState(() => readParam('fine') !== '0');
+
+  /* Сонголтыг URL-д тусгана (replace — түүх урсгахгүй) */
+  useEffect(() => {
+    writeParams({ pkg: pkg ? bagtsKey(pkg) : null, fine: fine ? null : '0' });
+  }, [pkg, fine]);
 
   const allowed = useCallback(
     (v: ViewKey | null) => !!v && (navScope === 'all' || navScope.includes(v)),
@@ -686,6 +711,13 @@ export function Schem({
     setPick((cur) => (cur?.card === cardId ? null : { card: cardId, group: g }));
   }, []);
 
+  /* ⚠️ 2026-10-01: URL-ын `bagtsKey` («БАГЦ31») → жагсаалтын шошго («Багц 3.1»). Жагсаалтад
+     алга (хэсэгчилсэн ачаалал — «багцын жагсаалт» унасан) бол сонголт ИЛ хэвээр үлдэж,
+     тоонууд «—» болно (`buildSchem`-ийн `lost`) — «Төслийн нийт» мэт харагдахгүй. */
+  const bagtsList = q.state === 'ready' ? q.data.bagts ?? [] : [];
+  const pkgHit = pkgRow(bagtsList, pkg);
+  const pkgSel = pkg ? pkgHit?.label ?? pkg : '';
+
   return (
     <div className={c.frame}>
       <header className={c.head}>
@@ -707,11 +739,12 @@ export function Schem({
         </span>
         <label className={c.field}>
           {tr('Багц')}{' '}
-          <select className={c.select} value={pkg} onChange={(e) => setPkg(e.target.value)}>
+          <select className={c.select} value={pkgSel} onChange={(e) => setPkg(e.target.value)}>
             <option value="">{tr('Төслийн нийт')}</option>
-            {q.state === 'ready' && (q.data.bagts ?? []).map((b) => (
+            {bagtsList.map((b) => (
               <option key={b.key} value={b.label}>{b.label}</option>
             ))}
+            {pkg && !pkgHit && <option value={pkg}>{pkg}</option>}
           </select>
         </label>
       </header>
@@ -787,7 +820,7 @@ export function Schem({
                   rail={rail} fine={fine} pkgOn={!!pkg} allowed={allowed}
                   openCard={pick?.card ?? null} onOpen={toggle} />
                 {pick && (
-                  <Panel id={pick.group} src={src} pkg={pkg}
+                  <Panel id={pick.group} src={src} pkg={pkgSel}
                     allowed={allowed(NODE_BY_ID[pick.group].view)}
                     onGo={go} onClose={() => setPick(null)} />
                 )}

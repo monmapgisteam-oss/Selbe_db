@@ -517,6 +517,46 @@ export const payCount = (rows: readonly PayRow[]): number =>
   rows.filter((r) => r.amount != null).length;
 
 /**
+ * ГҮЙЦЭТГЭЛЭЭС ҮҮССЭН (AUTO) IPC-ИЙН АНХДАГЧ ДУГААР — гэрээ бүрд ДАРААЛСАН (2026-10-01,
+ * «хэрэглэгч: бүгдийг зас»).
+ *
+ * ⚠️ ЯАГААД. Урьд нь картын дугаар нь `b.rows`-ийн харагдах дараалал дахь гүйцэтгэлийн
+ *    мөрийн тоо байсан: дугааргүй AUTO мөрүүд `payRows`-ийн эрэмбээр (OID) ирдэг тул сар
+ *    солигдож, гараар оруулсан IPC-ийн дугаарын цоорхой/дугааргүй мөр тооллыг гажааж,
+ *    дараагийн IPC «IPC-03» байх ёстой газар «IPC-02» гардаг байв.
+ * ДҮРЭМ:
+ *   · `ipc_dugaar`-тай мөр — ӨӨРИЙН дугаар (санхүүгийн газар нөхсөн бол түүнийг дагана);
+ *   · суурь = max(байгаа хамгийн их дугаар, ӨМНӨХ IPC-ийн тоо — дугааргүй гар мөр ч орно);
+ *   · дугааргүй AUTO мөр — өдрөөр (`dayOf`) ӨСӨХ дарааллаар суурь + 1, + 2, …
+ * ⚠️ Урьдчилгаа IPC биш — тоологдохгүй. Гараар оруулсан дугааргүй мөр Map-д ОРОХГҮЙ
+ *    (картад `code`-оороо гарна).
+ * @param dayOf AUTO мөрийн өдөр («YYYY-MM-DD»), AUTO биш бол `null`
+ */
+export function ipcNumbers(rows: readonly PayRow[], dayOf: (r: PayRow) => string | null): Map<PayRow, number> {
+  const out = new Map<PayRow, number>();
+  const work = rows.filter((r) => !r.advance);
+  let maxNo = 0;
+  let prior = 0;
+  const auto: { r: PayRow; day: string; i: number }[] = [];
+  work.forEach((r, i) => {
+    if (r.ipcNo != null) {
+      out.set(r, r.ipcNo);
+      maxNo = Math.max(maxNo, r.ipcNo);
+      prior += 1;
+      return;
+    }
+    const day = dayOf(r);
+    if (day == null) { prior += 1; return; } // гараар оруулсан, дугааргүй — өмнөх IPC
+    auto.push({ r, day, i });
+  });
+  let next = Math.max(maxNo, prior);
+  auto
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.i - b.i))
+    .forEach(({ r }) => { next += 1; out.set(r, next); });
+  return out;
+}
+
+/**
  * ⚠️ 2026-09-30: «олгосон (Y%)»-ийн ТООЛОГЧ ба ХУВААРЬ НЭГ хамрах хүрээтэй.
  *    Урьд нь тоологч нь БҮХ гэрээний олголт (гэрээт дүн `null` гэрээ ч), хуваарь
  *    нь зөвхөн дүн нь тодорхой гэрээнийх байсан тул хувь хөөрөгддөг байв.

@@ -146,7 +146,7 @@ export const NODES: readonly SchemNode[] = [
   {
     id: 'ersdel', col: 4, row: 3, view: 'ersdel', icon: 'waves',
     get title() { return tr('Эрсдэл'); },
-    get desc() { return tr('Зогссон блок, байгалийн аюулын нөлөө'); },
+    get desc() { return tr('Эхлээгүй блок (<1%), байгалийн аюулын нөлөө'); },
   },
   {
     id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
@@ -398,6 +398,53 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
   return `M ${x1} ${ay} C ${x1 + dx} ${ay}, ${x2 - dx} ${by}, ${x2} ${by}`;
 }
 
+/**
+ * ИРМЭГИЙН ШОШГОНЫ БАЙРЛАЛ («Буцаасан») — `edgePath`-ийн ЯГ тэр салбараар.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `Schem.tsx` шошгыг хоёр картын
+ *    ДООД ирмэгээс 34px доор (`max(y+h) + 34`) тавьдаг байв — ирмэг нь картын
+ *    ДЭЭГҮҮР эргэлддэг тул «Ерөнхий»-д шошго буцах сумнаасаа ~350px доор, ХАБЭА-гийн
+ *    дээр; «Дэлгэрэнгүй»-д (нэг баганын «Инженер → Гүйцэтгэгч») доорх «Багцын
+ *    менежер» картын ДОТОР (SVG нь картын ард тул нуугдана) гардаг байв. Одоо замын
+ *    өөрийн оройд/тохойд — мөр хоорондын хоосон зайд — буна.
+ * ⚠️ `anchor` — `text-anchor`. Нэг баганын тохойд шошго шугамын БАРУУН талд эхэлнэ
+ *    (`start`), бусад нь дундаа (`middle`).
+ */
+export function edgeLabelAt(
+  a: Box, b: Box, kind: EdgeKind,
+): { x: number; y: number; anchor: 'middle' | 'start' } {
+  if (kind === 'back') {
+    const x1 = a.x + a.w / 2;
+    const x2 = b.x + b.w / 2;
+    /* Тохой — мөр хоорондын зайн ДУНД (`g`) хэвтээ хэсэг */
+    if (b.y + b.h < a.y) {
+      const g = (b.y + b.h + a.y) / 2;
+      /* ⚠️ Нэг баганад тохой хэвтээ хэсэггүй — шошго босоо шугамын ХАЖУУД */
+      if (Math.abs(x2 - x1) < 24) return { x: Math.max(x1, x2) + 8, y: g + 3.5, anchor: 'start' };
+      return { x: (x1 + x2) / 2, y: g - 4, anchor: 'middle' };
+    }
+    /* Дээгүүр нуман — куб Безьегийн t=0.5 цэг, түүнээс 6px ДЭЭР */
+    const up = Math.min(a.y, b.y) - 22;
+    return { x: (x1 + x2) / 2, y: (a.y + b.y + 6 * up) / 8 - 6, anchor: 'middle' };
+  }
+  /* Босоо (нэг багана) — шугамын хажууд */
+  if (b.x + b.w > a.x && a.x + a.w > b.x) {
+    const down = b.y > a.y;
+    const y1 = down ? a.y + a.h : a.y;
+    const y2 = down ? b.y : b.y + b.h;
+    return { x: (a.x + b.x + a.w) / 2 + 8, y: (y1 + y2) / 2 + 3.5, anchor: 'start' };
+  }
+  /* Хэвтээ — Безьегийн дунд цэгээс дээш */
+  const ay = a.y + a.h / 2;
+  const by = b.y + b.h / 2;
+  const left = b.x + b.w <= a.x;
+  return {
+    x: left ? (a.x + b.x + b.w) / 2 : (a.x + a.w + b.x) / 2,
+    y: (ay + by) / 2 - 6,
+    anchor: 'middle',
+  };
+}
+
 /* ══════════════════ Амьд төлөв ══════════════════ */
 
 export type SchemState = {
@@ -519,6 +566,44 @@ const share = (a: number | null, b: number | null): number | null =>
   (a == null || b == null || b <= 0 ? null : (a / b) * 100);
 
 /**
+ * ТӨСВИЙН ЖИНГИЙН ХАМРАЛТ, 0–100 — гүйцэтгэл нь ХЭМЖИГДСЭН орон сууцны багцуудын
+ * төсөв ÷ БҮХ орон сууцны багцын төсөв.
+ *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `overall.weightSum`
+ *    (`reportData.loadOverall`) — түүний ХУВААРЬ нь ТӨСЛИЙН бүх багц, үүнд блокгүй
+ *    ДЭД БҮТЦИЙН багцууд (Багц 14 · … — хэзээ ч «бөглөгдөхгүй») орсон тул орон сууцны
+ *    багц бүгд тайлагнасан ч хувь 100-д хүрэхгүй, «Төсвийн жингийн N% л бүртгэгдсэн»
+ *    анхааруулга ҮРГЭЛЖ асдаг байв. Одоо хуваарь нь зөвхөн `bagts` (орон сууцны
+ *    багцууд — `execData.loadBagtsRows`, `building_GOL`-оос).
+ * ⚠️ Хэмжигдсэн = `progress != null` (null ≠ 0 — хэмжилтгүй багц хүртвэрт орохгүй).
+ * ⚠️ Жин нь ХО дүн (`finance.byBagts`); аль ч багцад алга (санхүү унасан г.м.) бол
+ *    БЛОКИЙН тоонд БҮРЭН шилжинэ — хагас хагасаар холихгүй (`gdash.housingPct`-ийн дүрэм).
+ * @returns `bagts` татагдаагүй/хоосон, эсвэл жин огт алга бол `null`
+ */
+export function housingWeight(src: Pick<SchemSources, 'bagts' | 'finance'>): number | null {
+  const rows = src.bagts;
+  if (!rows || !rows.length) return null;
+  const cost = (b: BagtsLite) => fin(src.finance?.byBagts[b.key]) ?? 0;
+  const byCost = rows.some((b) => cost(b) > 0);
+  let all = 0;
+  let got = 0;
+  for (const b of rows) {
+    const w = byCost ? cost(b) : b.blocks;
+    if (!(w > 0)) continue;
+    all += w;
+    if (fin(b.progress) != null) got += w;
+  }
+  return all > 0 ? (got / all) * 100 : null;
+}
+
+/**
+ * Сонгосон багцын мөр (`samePkg` — бичиглэлийн зөрүүг тэсвэрлэнэ).
+ * ⚠️ 2026-10-01: `pkg` нь URL-аас `bagtsKey` хэлбэрээр («БАГЦ31») ч ирнэ — `key`-ээр ч тааруулна.
+ */
+export const pkgRow = (bagts: readonly BagtsLite[] | null, pkg: string | null | undefined): BagtsLite | null =>
+  (pkg && bagts ? bagts.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null : null);
+
+/**
  * Багцын шүүлт — ЗӨВХӨН `bagtsKey()`-ээр.
  *
  * ⚠️ Багцын нэр эх сурвалж бүрд ӨӨР бичиглэлтэй: `building_GOL.BAGTS` нь
@@ -623,9 +708,14 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
      бичиглэлийн зөрүүтэй үед зөвшөөрөл/хяналт нь тэр багцаар шүүгдээд,
      барилга/санхүү нь `bagtsRow == null` болж ТӨСЛИЙН НИЙТ рүү унадаг байв —
      нэг схем дээр хоёр өөр хамрах хүрээ зэрэгцэнэ. */
-  const bagtsRow = pkg && src.bagts
-    ? src.bagts.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg))
-    : null;
+  const bagtsRow = pkgRow(src.bagts, pkg);
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БАГЦ СОНГОСОН атал мөр нь олдоогүй
+     (хэсэгчилсэн ачаалал — «багцын жагсаалт» унасан, эсвэл URL-аас ирсэн багц
+     жагсаалтад алга) бол барилга/санхүүгийн тоо «—». Урьд нь `bagtsRow == null`
+     үед ТӨСЛИЙН нийт гүйцэтгэл/төсөв/олголт тэр багцын нэрийн дор гардаг байв —
+     `schemDetail.cardStat`-ийн 2026-09-15-ны `proj`/`sum` дүрэмтэй ижил. */
+  const lost = !!pkg && !bagtsRow;
+  const lostWhy = lost ? tr('Энэ багцад мөр олдсонгүй.') : undefined;
 
   /* ── Төлөвлөгөө ── */
   const area = fin(src.headline?.areaHa);
@@ -700,28 +790,36 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   };
 
   /* ── Барилга угсралт ── */
-  const bPct = bagtsRow ? fin(bagtsRow.progress) : fin(src.overall?.pct);
-  const weightSum = fin(src.overall?.weightSum);
+  const bPct = bagtsRow ? fin(bagtsRow.progress) : lost ? null : fin(src.overall?.pct);
+  /* ⚠️ 2026-10-01: хуваарь нь ЗӨВХӨН орон сууцны багцууд (`housingWeight`) — дэд бүтэц орохгүй */
+  const weightSum = housingWeight(src);
   const barilga: SchemState = {
     health: grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
     metrics: [
-      { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct' },
+      { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct', why: lostWhy },
       /* ⚠️ 2026-09-25: «Блок» БИШ «Тайлагнасан блок» — `progress.blocks` нь зөвхөн
          нийт гүйцэтгэл нь тайлагнагдсан блокийн тоо (`blockProgress.ts` тайлангүйг
-         хасдаг). «Блок» гэж бичихэд нийт блок мэт уншигдаж, тайлангүй блок нуугддаг байв. */
+         хасдаг). «Блок» гэж бичихэд нийт блок мэт уншигдаж, тайлангүй блок нуугддаг байв.
+         ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БАГЦ сонгоход урьд нь «—» байв — одоо
+         блок − тайлангүй (нарийн схемийн `cardStat('barOk')`-тэй НЭГ дүрэм). */
       {
         label: tr('Тайлагнасан блок'),
-        value: bagtsRow ? null : fin(src.progress?.blocks),
+        value: bagtsRow ? bagtsRow.blocks - bagtsRow.missing : lost ? null : fin(src.progress?.blocks),
         kind: 'count',
+        why: lostWhy,
       },
+      /* ⚠️ 2026-10-01: ТӨСЛИЙН нийтэд урьд нь «—» байв — одоо Σ багцын тайлангүй блок
+         (`bagts` унасан бол null, 0 БИШ). */
       {
         label: tr('Тайлангүй блок'),
-        value: bagtsRow ? bagtsRow.missing : null,
+        value: bagtsRow ? bagtsRow.missing
+          : lost || !src.bagts ? null : src.bagts.reduce((a, b) => a + b.missing, 0),
         kind: 'count',
+        why: lostWhy,
       },
     ],
     /* ⚠️ Энэ тоо ЧИМЭЭГҮЙ хэтрэх гол шалтгаан: бөглөгдөөгүй багц дүнд ороогүй */
-    note: !bagtsRow && weightSum != null && weightSum < 100
+    note: !pkg && weightSum != null && weightSum < 100
       ? tr('Төсвийн жингийн {0}% л бүртгэгдсэн', weightSum.toFixed(0))
       : undefined,
   };
@@ -752,32 +850,36 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   };
 
   /* ── Эрсдэл ── */
+  /* ⚠️ 2026-09-30: «ЗОГССОН» БИШ — `progress.stalled` нь гүйцэтгэл < 1% (ажил бодитоор
+     ЭХЛЭЭГҮЙ) тайлагнасан блок (`reportData.loadOverall`). 50%-д гацсан блок ОРДОГГҮЙ, 0.5%-тай
+     эхлээгүй блок ОРДОГ тул «сүүлийн тайлангаас хойш ахиагүй» гэж уншуулах нь худал байв. */
   const stalled = fin(src.progress?.stalled);
   const ersdel: SchemState = {
     projectWide: true,
     health: stalled == null ? 'none' : stalled > 0 ? 'warn' : 'good',
     metrics: [
-      { label: tr('Зогссон блок'), value: stalled, kind: 'count' },
+      { label: tr('Эхлээгүй блок (<1%)'), value: stalled, kind: 'count' },
     ],
   };
 
   /* ── Санхүүжилт ── */
+  /* ⚠️ 2026-10-01: багц сонгосон атал мөр олдоогүй (`lost`) бол ТӨСЛИЙН төсөв/олголт БИШ — «—» */
   const budget = bagtsRow && src.finance
     ? fin(src.finance.byBagts[bagtsRow.key])
-    : fin(src.finance?.budget);
+    : lost ? null : fin(src.finance?.budget);
   /* ⚠️ Олголт нь БАГЦААР задардаггүй — багц сонгосон үед харьцаа гаргахгүй */
-  const paid = bagtsRow ? null : fin(src.finance?.paid);
+  const paid = pkg ? null : fin(src.finance?.paid);
   const sankhuu: SchemState = {
     health: grade(share(paid, budget), TH.paidPct.good, TH.paidPct.warn),
     metrics: [
-      { label: tr('Төсөвт өртөг'), value: budget, kind: 'mnt' },
+      { label: tr('Төсөвт өртөг'), value: budget, kind: 'mnt', why: lostWhy },
       {
         label: tr('Олгосон'),
         value: paid,
         kind: 'mnt',
-        why: bagtsRow ? tr('Олголт багцаар задардаггүй') : undefined,
+        why: pkg ? tr('Олголт багцаар задардаггүй') : undefined,
       },
-      { label: tr('Гэрээний дүн'), value: bagtsRow ? null : fin(src.finance?.contractAmount), kind: 'mnt' },
+      { label: tr('Гэрээний дүн'), value: pkg ? null : fin(src.finance?.contractAmount), kind: 'mnt' },
     ],
   };
 

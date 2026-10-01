@@ -178,11 +178,25 @@ export function computePermits(rows: Zov[] | null): KpiResult {
 /**
  * АЧААЛАГЧ — кэштэй, `ZOVSHOOROL` бичилтээр хүчингүй болно.
  *
- * ⚠️ `loadZov` ӨӨРӨӨ шиддэггүй (`null` буцаана) тул энд `try` хэрэггүй;
- *    уналт нь `computePermits(null)` → `unknown` + `failedSources`.
+ * ⚠️ 2026-09-30: УНАЛТЫГ КЭШЛЭХГҮЙ (`iot.loadIotKpiSafe`-ийн загвар). `loadZov`
+ *    ӨӨРӨӨ шиддэггүй (`null` буцаана) тул урьд нь `computePermits(null)` (unknown
+ *    карт) АМЖИЛТТАЙ амлалт болж `cached`-д 5 минут үлддэг байв — нэг удаагийн
+ *    429/timeout-ын дараа сүлжээ сэргэсэн ч «Зөвшөөрөл» карт «—» хэвээр, CeoBoard-ийн
+ *    «Дахин оролдох» зөвхөн `error` төлөвт гардаг тул сэргээх зам ч байгаагүй.
+ *    Одоо дотоод ачаалагч ШИДНЭ (`cached` унасан амлалтыг хаядаг), unknown картыг
+ *    гадна талын `loadPermitsKpiSafe` (registry-ийн дуудагч) зурна.
  */
 export const loadPermitsKpi = cached(
-  async (): Promise<KpiResult> => computePermits(await loadZov()),
+  async (): Promise<KpiResult> => {
+    const rows = await loadZov();
+    /* дотоод — дэлгэцэд гарахгүй (`loadPermitsKpiSafe` барина) */
+    if (rows == null) throw new Error('zovshoorol: load failed');
+    return computePermits(rows);
+  },
   PERMITS_TTL_MS,
   ['ZOVSHOOROL'],
 );
+
+/** Самбарын ачаалагч — унавал шидэхгүй, unknown карт (кэшлэгдэхгүй — дараагийн дуудалт дахин оролдоно) */
+export const loadPermitsKpiSafe = (): Promise<KpiResult> =>
+  loadPermitsKpi().catch(() => computePermits(null));

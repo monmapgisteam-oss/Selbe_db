@@ -9,7 +9,7 @@ import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/co
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
-import { loadNavBadges, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
+import { loadNavBadges, makeBadgeRefresher, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
 import { subscribeData } from '@/lib/dataBus';
 import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -44,6 +44,8 @@ import { readParam, writeParams } from '@/lib/urlState';
 import { planNavBusy } from '@/lib/huvaariBatlah';
 /* ⚠️ 2026-09-29 (аудит 10): импортгүй хөнгөн lib — `Finance` өөрөө `dynamic` */
 import { finNavDirty } from '@/lib/finEdit';
+/* ⚠️ 2026-09-30: харагдацын ерөнхий «хадгалаагүй засвар» туг — импортгүй lib (`confirmLeave`) */
+import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 /**
  * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
@@ -284,6 +286,18 @@ const initialView = (): ViewKey => {
 };
 
 /**
+ * URL-д ПОРТАЛЫН хүрээ байгаа юу — `false` бол `Root` нүүр хуудас руу шилжиж Portal-ыг
+ * unmount хийнэ (popstate-ийн «порталаас гарах» салаа).
+ * ⚠️ 2026-09-30: `Root.scopeFromUrl`-ийн «null биш» нөхцөлтэй ЯГ ИЖИЛ дүрэм (`all=1` ·
+ *    хуучин `g` · хүчинтэй `v`) — нэгийг өөрчилвөл нөгөөг ХАМТ засна. `Root`-ийг
+ *    импортлохгүй: тэр нь Portal-ыг `dynamic`-аар ачаалдаг (мөчлөг үүснэ).
+ */
+const inPortalUrl = (): boolean => {
+  const v = readParam('v');
+  return readParam('all') === '1' || !!readParam('g') || (!!v && Object.hasOwn(VIEW_BY_KEY, v));
+};
+
+/**
  * Харагдацыг эрхийн хүрээгээр хайчилна.
  * ⚠️ 2026-08-29: `?v=finance` гүн холбоос эрхгүй хэрэглэгчид ЭХНИЙ commit-д
  *    зурагдаж (өгөгдлийн effect ч ажиллаад) дараа нь л guard шилжүүлдэг байв —
@@ -417,10 +431,13 @@ function PortalContent(
     () => (scopeKey === 'all' ? 'all' : (scopeKey.split(',').filter(Boolean) as ViewKey[])),
     [scopeKey],
   );
+  /* ⚠️ 2026-10-01: ЗӨВХӨН СҮҮЛИЙН дуудлагын хариу (`makeBadgeRefresher`-ийн ⚠️) —
+     дараалалгүй ирсэн хуучин хариу шинэ тоог дарахгүй. */
+  const [badgeRefresher] = useState(() => makeBadgeRefresher(loadNavBadges));
   const refreshBadges = useCallback(() => {
     if (!badgeReady || document.visibilityState === 'hidden') return;
-    loadNavBadges(badgeUser, badgeScope).then(setBadges, () => { /* чимээгүй */ });
-  }, [badgeReady, badgeUser, badgeScope]);
+    badgeRefresher(badgeUser, badgeScope).then((b) => { if (b) setBadges(b); }, () => { /* чимээгүй */ });
+  }, [badgeReady, badgeUser, badgeScope, badgeRefresher]);
   useEffect(() => {
     refreshBadges();
     const iv = setInterval(refreshBadges, 3 * 60_000);
@@ -474,6 +491,12 @@ function PortalContent(
        байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
     if (finNavDirty()
       && !window.confirm(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'))) return false;
+    /* ⚠️ 2026-09-30: ЕРӨНХИЙ хамгаалалт (`navGuard.setNavDirty`) — «Дэд бүтэц», «Газар»,
+       «Зөвшөөрөл» зэрэг харагдацын засварын маягт урьд нь харагдац солих, лого,
+       «Гарах»-д асуултгүй алга болдог байв. Шинэ харагдац энд юу ч засахгүйгээр нэмэгдэнэ. */
+    const labels = navDirtyLabels();
+    if (labels.length
+      && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
     return true;
   }, []);
   const setView = useCallback((v: ViewKey): boolean => {
@@ -562,7 +585,30 @@ function PortalContent(
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
   useEffect(() => {
+    /** Татгалзсан Back — одоогийн төлөвийг URL-д PUSH-ээр буцааж бичнэ (доорх ⚠️ 2026-09-25) */
+    const restoreUrl = (extra: Record<string, string> = {}) => {
+      const cur = urlNowRef.current;
+      writeParams({
+        v: cur.view === DEFAULT_VIEW ? null : cur.view,
+        z: cur.zone,
+        l: cur.layer,
+        d: cur.dim === '2d' ? null : cur.dim,
+        ...extra,
+      }, { push: true });
+    };
     const onPop = () => {
+      /* ⚠️ 2026-09-30: НҮҮР ХУУДАС РУУ Back (URL-д порталын хүрээ үлдээгүй — `inPortalUrl`)
+         нь харагдац солих БИШ, ПОРТАЛААС ГАРАХ: `Root` Portal-ыг бүхэлд нь unmount хийнэ.
+         Урьд нь энд `setView(DEFAULT_VIEW)` л дуудагддаг тул одоогийн харагдац нь
+         анхдагч бол асуулт ОГТ гардаггүй, асуусан ч «Үгүй» гэхэд `Root`-ийн popstate
+         (эхэлж бүртгэгдсэн) аль хэдийн нүүр рүү шилжүүлчихсэн байж хадгалаагүй ажил
+         алга болдог байв. Одоо лого/«Гарах»-тай ИЖИЛ `confirmLeave()`; татгалзвал
+         `all=1`-тэй URL-ыг буцааж бичнэ — `Root` өөрийн сонсогчийг хойшлуулж
+         (`setTimeout`) ЭНЭ сэргээсэн URL-ыг уншина. */
+      if (!inPortalUrl()) {
+        if (!confirmLeave()) restoreUrl({ all: '1' });
+        return;
+      }
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
       // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
       //    (push хийвэл доорх guard-тай гогцоо үүснэ)
@@ -573,13 +619,7 @@ function PortalContent(
          харагдац). Татгалзвал юуг ч хөндөхгүй, одоогийн төлөвийг URL-д
          PUSH-ээр буцааж бичнэ — Back-ийн өмнөх бичлэг түүхэнд хэвээр. */
       if (!setView(next)) {
-        const cur = urlNowRef.current;
-        writeParams({
-          v: cur.view === DEFAULT_VIEW ? null : cur.view,
-          z: cur.zone,
-          l: cur.layer,
-          d: cur.dim === '2d' ? null : cur.dim,
-        }, { push: true });
+        restoreUrl();
         return;
       }
       if (next !== initialView()) lastViewRef.current = next;
@@ -589,7 +629,7 @@ function PortalContent(
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [setView, navScope]);
+  }, [setView, navScope, confirmLeave]);
 
   /**
    * ЭРХИЙН ХАМГААЛАЛТ — идэвхтэй `view` нь навигацийн хүрээнд ЗААВАЛ байна. Гүн

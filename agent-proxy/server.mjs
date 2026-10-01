@@ -19,6 +19,7 @@ import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
+import { createLimiter, LIMITS } from "./rateLimit.mjs";
 
 /**
  * АРЫН ХӨДӨЛГҮҮР (2026-09-17):
@@ -285,24 +286,9 @@ function readBody(req) {
  * хүсэлтээр Anthropic түлхүүрийг зарцуулж чадна — Origin байхгүй үед доорх
  * цагаан жагсаалтын шалгалт бүхэлдээ алгасагддаг.
  */
-const RATE_LIMIT = 40;
-const RATE_WINDOW = 60 * 1000;
-const hits = new Map();
-let lastSweep = 0;
-function rateLimited(key) {
-  const now = Date.now();
-  /* Хуучирсан түлхүүрийг цонх тутам нэг удаа цэвэрлэнэ — санах ой өсөхгүй */
-  if (now - lastSweep > RATE_WINDOW) {
-    for (const [k, a] of hits) {
-      if (!a.length || now - a[a.length - 1] >= RATE_WINDOW) hits.delete(k);
-    }
-    lastSweep = now;
-  }
-  const arr = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW);
-  arr.push(now);
-  hits.set(key, arr);
-  return arr.length > RATE_LIMIT;
-}
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тоолуур ба хязгаарууд `rateLimit.mjs`-д
+   (worker-тэй хуваалцана) — хэрэглэгч 40 · IP таг 300 · амжилтгүй нэвтрэлт IP-д 20. */
+const limiter = createLimiter();
 
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
@@ -329,7 +315,8 @@ const server = createServer(async (req, res) => {
     /* ⚠️ 2026-09-25 (аудит 8): түлхүүр нь IP (`clientIp`), origin БИШ — origin-гүй
        (curl/бот) бүх хүсэлт нэг «anon» саванд орж бие биенээ хаадаг, харин
        origin-оо зохиосон хэн ч хязгаарыг тойрдог байв. `/chat`-тай нэг дүрэм. */
-    if (rateLimited(`health:${clientIp(req)}`)) {
+    /* ⚠️ 2026-10-01: IP-ийн таг (300) — оффисын NAT-ын ард олон browser зэрэг шалгана */
+    if (limiter.hit(`health:${clientIp(req)}`, LIMITS.ip)) {
       json(res, 429, { error: "Хэт олон хүсэлт" });
       return;
     }
@@ -360,8 +347,10 @@ const server = createServer(async (req, res) => {
   /* ⚠️ Tailscale Funnel нь `x-forwarded-for`-оор дамжуулна — эс бөгөөс бүх
      хэрэглэгч 127.0.0.1 болж нэг хязгаар хуваалцана.
      ⚠️ 2026-09-25: толгойг зөвхөн `TRUSTED_PROXY` тохируулсан үед итгэнэ (`clientIp`). */
+  /* ⚠️ 2026-10-01: IP-ийн «урьдчилсан» хязгаар 40 → ТАГ 300 (`rateLimit.mjs`-ийн ⚠️) —
+     гол хязгаар нь доорх БАТАЛГААЖСАН хэрэглэгчийнх. */
   const ip = clientIp(req);
-  if (rateLimited(`pre:${ip}`)) {
+  if (limiter.hit(`ipcap:${ip}`, LIMITS.ip)) {
     json(res, 429, { error: "Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
     return;
   }
@@ -372,14 +361,20 @@ const server = createServer(async (req, res) => {
     /* ⚠️ Тогтмол түлхүүр — ботын бүх хэрэглэгч нэг хязгаар хуваалцана (worker-тэй ижил) */
     caller = "bot";
   } else if (ARCGIS_ORG_ID) {
+    /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
+    if (limiter.full(`authfail:${ip}`, LIMITS.authFail)) {
+      json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
+      return;
+    }
     const auth = await checkArcGIS(req.headers["x-arcgis-token"]);
     if (!auth.ok) {
+      limiter.hit(`authfail:${ip}`, LIMITS.authFail);
       json(res, 401, { error: auth.reason, retryable: false });
       return;
     }
-    caller = auth.username;
+    caller = `user:${auth.username}`;
   }
-  if (rateLimited(caller)) {
+  if (limiter.hit(caller, LIMITS.user)) {
     json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
     return;
   }

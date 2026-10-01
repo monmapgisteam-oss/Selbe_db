@@ -26,8 +26,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, type Role, type ViewKey } from '@/lib/services';
 import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
-  TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, typeLabel, typesReady,
-  type TypeTpl,
+  TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
+  unseenViews, type TypeTpl,
 } from '@/lib/roleTypes';
 import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
 import ua from '@/components/userAdmin.module.css';
@@ -35,8 +35,12 @@ import s from './erhTypes.module.css';
 
 type Drafts = Partial<Record<Role, TypeTpl>>;
 
+/* ⚠️ 2026-10-01: `seen`-ийг ч харьцуулна — «шинэ хуудас» тэмдгийг арилгах (хадгалж `seen` бичих)
+   нь бодит өөрчлөлт; `undefined` (хуучин/анхдагч) ба жагсаалт ӨӨР гэж тооцогдоно. */
+const sameSeen = (a?: readonly string[], b?: readonly string[]): boolean =>
+  (!a || !b) ? a === b : a.length === b.length && a.every((x) => b.includes(x));
 const eq = (a: TypeTpl, b: TypeTpl): boolean =>
-  a.home === b.home && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x));
+  a.home === b.home && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x)) && sameSeen(a.seen, b.seen);
 
 export function ErhTypes() {
   const [, setTick] = useState(0);
@@ -62,7 +66,22 @@ export function ErhTypes() {
   const isDirty = (r: Role): boolean => !!drafts[r] && !eq(drafts[r] as TypeTpl, tplOf(r));
   const dirtyRoles = TYPE_ORDER.filter(isDirty);
 
-  const put = (r: Role, t: TypeTpl) => { setMsg(''); setDrafts((d) => ({ ...d, [r]: t })); };
+  /*
+   * ⚠️ 2026-10-01: ХАДГАЛСАН баганыг засах нь админ тэр баганын бүх харагдацыг ХАРСАН гэсэн үг —
+   *    ноорог `seen` = одоогийн каталог (хадгалахад `saveTpl` ч мөн бичнэ), «шинэ хуудас» тэмдэг
+   *    арилна. Анхдагч (хадгалаагүй) баганад `seen` хөндөхгүй — бодит өөрчлөлтгүй бол ноорог үүсэхгүй.
+   */
+  const put = (r: Role, t: TypeTpl) => {
+    setMsg('');
+    const next = isStoredTpl(r) ? { ...t, seen: tplViewKeys() } : t;
+    setDrafts((d) => ({ ...d, [r]: next }));
+  };
+  /** Хадгалсан загварт тохируулаагүй (хадгалсны дараа нэмэгдсэн) харагдацууд — ноорог тооцно */
+  const unseenOf = (r: Role): ViewKey[] => {
+    const d = drafts[r];
+    return d?.seen ? tplViewKeys().filter((k) => !d.seen?.includes(k)) : unseenViews(r);
+  };
+  const viewTitle = (k: string): string => VIEWS.find((v) => v.key === k)?.title ?? k;
   const flip = (r: Role, id: string, v: boolean) => {
     const t = cur(r);
     put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) });
@@ -137,6 +156,19 @@ export function ErhTypes() {
                       {isStoredTpl(r) ? '' : ` · ${tr('анхдагч')}`}
                     </span>
                     {typeLabel(r)}
+                    {/* ⚠️ 2026-10-01: хадгалсны дараа нэмэгдсэн хуудас (жиш. «ТУХ») — `on` нь чеклэснийг л
+                        хадгалдаг тул «хаалттай» гэж чимээгүй үлдэх байв. Дарвал «тохируулсан» (ноорог). */}
+                    {unseenOf(r).length > 0 && (
+                      <button
+                        type="button"
+                        className={s.newBadge}
+                        disabled={busy}
+                        title={tr('Энэ загварыг хадгалсны дараа нэмэгдсэн хуудас: {0}. Чеклэх, эсвэл энд дарж «тохируулсан» гэж тэмдэглээд «Хадгалах» дарна уу.', unseenOf(r).map(viewTitle).join(', '))}
+                        onClick={() => put(r, cur(r))}
+                      >
+                        {tr('шинэ хуудас — загварт тохируулаагүй')}
+                      </button>
+                    )}
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
@@ -181,7 +213,8 @@ export function ErhTypes() {
               ))}
             </tr>
             {groups.map((g) => (
-              <Group key={g.title} title={g.title} rows={g.rows} cur={cur} flip={flip} allowed={allowed} busy={busy} />
+              <Group key={g.title} title={g.title} rows={g.rows} cur={cur} flip={flip} allowed={allowed} busy={busy}
+                isNew={(r, id) => id.startsWith('view:') && unseenOf(r).includes(id.slice(5) as ViewKey)} />
             ))}
           </tbody>
         </table>
@@ -206,7 +239,7 @@ export function ErhTypes() {
 }
 
 function Group({
-  title, rows, cur, flip, allowed, busy,
+  title, rows, cur, flip, allowed, busy, isNew,
 }: {
   title: string;
   rows: { id: string; label: string; hint?: string }[];
@@ -214,6 +247,8 @@ function Group({
   flip: (r: Role, id: string, v: boolean) => void;
   allowed: (r: Role, id: string) => boolean;
   busy: boolean;
+  /** ⚠️ 2026-10-01: тэр баганын хадгалсан загварт тохируулаагүй шинэ хуудас уу */
+  isNew: (r: Role, id: string) => boolean;
 }) {
   return (
     <>
@@ -222,10 +257,15 @@ function Group({
         <tr key={row.id}>
           <td className={s.lbl}>
             <span className={s.lblText}>{row.label}</span>
+            {TYPE_ORDER.some((r) => isNew(r, row.id)) && (
+              <span className={s.newBadge} title={tr('Зарим хадгалсан загварт энэ хуудас тохируулагдаагүй — шар нүдэнд чеклэх эсвэл баганын тэмдгийг дарна уу.')}>
+                {tr('шинэ хуудас — загварт тохируулаагүй')}
+              </span>
+            )}
             {row.hint && <span className={s.lblHint}>{row.hint}</span>}
           </td>
           {TYPE_ORDER.map((r) => (
-            <td key={r}>
+            <td key={r} className={isNew(r, row.id) ? s.cellNew : undefined}>
               <input
                 id={`tt-${r}-${row.id.replace(/[^a-zA-Z0-9]/g, '_')}`}
                 type="checkbox"

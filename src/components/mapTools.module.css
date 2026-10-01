@@ -361,3 +361,57 @@
 *:has(> .tabDock):has(:global(.mapCatalog), :global(.mapOpacity)) :global(.esri-ui-top-left) {
   left: min(var(--catalog, 360px), 92%);
 }
+
+/*
+ * ИДЭВХТЭЙ ШҮҮЛТИЙН ЧИП (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас») — зурвасын ДЭЭД мөр.
+ * Газрын зурагт тодруулга/шүүлт идэвхтэй үед ✕-ээр ҮРГЭЛЖ цуцлах боломж (`MapTools.tsx`
+ * `ActiveFilterChip`). Өнгө нь `--data` (идэвхтэй сонголтын өнгө) — товчнуудаас ялгарна.
+ */
+.filterChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 4px 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--data) 55%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--data) 14%, var(--surface));
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.filterChipText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filterChipX {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.filterChipX:hover { background: var(--surface-2); color: var(--ink); }
+.filterChipX:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+
+/* Хураасан бариул дээрх «шүүлт идэвхтэй» цэг */
+.tabDot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--data);
+  box-shadow: 0 0 0 2px var(--surface);
+}

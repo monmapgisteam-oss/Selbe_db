@@ -10,8 +10,8 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { Section, Col, Note, Stats, Stat, Bars, Rows, List, ListItem, Ring, Data, Empty } from '@/components/ui';
-import { useBuildings, MonitorBagts, type Block } from '@/modules/BuildingPanel';
-import { loadFinData, pkgMonthsMap, physLatest, type FinData } from '@/modules/Finance';
+import { useBuildings, MonitorBagts, uniqueBlocks, type Block } from '@/modules/BuildingPanel';
+import { loadFinData, pkgMonthsMap, physLatest, physNow, type FinData } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { layerTotals, qtyText, usePlanTotals } from '@/lib/totals';
 import {
@@ -57,6 +57,12 @@ const INFRA_HUE = '#0891b2';
 const BLANK_HUE = NO_DATA;
 // ⚠️ export — «Барилгын цогц хяналт» (Tsogts) мөн энэ давхаргаар ажиллана
 export const BLOCK_LAYER = 'mon:building';
+/**
+ * Багцын БЛОКИЙН тоо — давхардсан feature (ижил `buildingKey`) НЭГ блок (2026-10-01,
+ * «хэрэглэгч: бүгдийг зас»). `Pack.blocks` нь feature бүрийг хадгална (жагсаалт, OID);
+ * ТОО нь үүгээр — газрын зургийн давхардал тоонд орохгүй.
+ */
+export const blockCount = (p: Pick<Pack, 'blocks'>): number => uniqueBlocks(p.blocks).length;
 /** Газар чөлөөлөлтийн нэгж талбарын давхарга — давхцсан талбарыг зурахад. */
 const PARCEL_LAYER = 'land:left';
 
@@ -101,7 +107,20 @@ export type Pack = {
  * Цэвэр функц: эх сурвалжийн мөрүүдээс Pack[] бүтээнэ (дэлгэрэнгүй тайлбар нь
  * файлын толгойд).
  */
-export function buildPacks(rows: Block[] | null): Pack[] {
+export function buildPacks(
+  rows: Block[] | null,
+  /**
+   * `bagtsKey` → багцын гүйцэтгэл (0–100) — `loadBuildings().pkgPct`
+   * (`blockProgress.pkgProgressOf`). Өгвөл барилгын багцын `progress` ҮҮНЭЭС.
+   * ⚠️ 2026-09-30: урьд нь үргэлж давхаргын feature-ийн дундаж (`meanOf`) байсан тул
+   *    давхардсан feature (29/1, 5/6) хоёр тоологдож, footprint-гүй хэмжилт
+   *    (29/3, 5/8) хасагдаж — жагсаалтын «бодит гүйцэтгэл» (`physLatest`)
+   *    Багц 1 · 2-т KPI хавтан ба бөгжөөс зөрдөг байв. Map-д байхгүй = `null`
+   *    (feature-ийн дундаж руу БУЦАЖ УНАХГҮЙ — хоёр хэмжигдэхүүн холилдоно).
+   *    Өгөөгүй бол (хуучин дуудагч) урьдын `meanOf`.
+   */
+  pkgPct?: ReadonlyMap<string, number>,
+): Pack[] {
   /* ── Барилга угсралтын багц — эх нь БЛОКИЙН давхарга ── */
   const build: Pack[] = [];
   if (rows) {
@@ -112,15 +131,18 @@ export function buildPacks(rows: Block[] | null): Pack[] {
       if (arr) arr.push(b); else byName.set(k, [b]);
     }
     for (const [name, blocks] of byName) {
+      const key = bagtsKey(name);
+      /* ⚠️ 2026-10-01: айл ба нөөц дундаж түлхүүрээр (`uniqueBlocks`) — давхардсан полигон нэг блок */
+      const uniq = uniqueBlocks(blocks);
       build.push({
-        key: bagtsKey(name),
+        key,
         name,
         kind: 'build',
         layerIds: [BLOCK_LAYER],
         where: oidWhere(blocks.map((b) => b.oid)),
         blocks: blocks.slice().sort((a, b) => a.blok.localeCompare(b.blok, 'mn', { numeric: true })),
-        households: blocks.reduce((s, b) => s + b.ail, 0),
-        progress: meanOf(blocks.map((b) => b.progress)),
+        households: uniq.reduce((s, b) => s + b.ail, 0),
+        progress: pkgPct ? pkgPct.get(key) ?? null : meanOf(uniq.map((b) => b.progress)),
       });
     }
     build.sort((a, b) => a.name.localeCompare(b.name, 'mn', { numeric: true }));
@@ -167,6 +189,12 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }, [finQ]);
   /* Ачаалж байхад «…», алдаа эсвэл хэмжилтгүй бол «—» */
   const actualLoading = finQ.state === 'loading';
+  /* ⚠️ 2026-10-01 (ШИЙДВЭР): сонголтгүй үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны
+     тоо (`physNow`) — «Гүйцэтгэл»-ийн толгойтой нэг (`PackKpi.project`-ийн ⚠️) */
+  const project = useMemo(() => ({
+    pct: finQ.state === 'ready' ? physNow(finQ.data) : null,
+    loading: finQ.state === 'loading',
+  }), [finQ]);
   const { zoomToWhere, setHighlight } = useMap();
   /**
    * Сонгосон багц URL-ийн `pkg` параметрээс сэргэнэ — «Багц-3.1-ийн хуудсыг үз»
@@ -181,8 +209,11 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* Сонголтыг URL-д тусгана (replace — түүх урсгахгүй) */
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
+  /* ⚠️ 2026-09-30: `pkgPct` — багцын KPI хавтан ба бөгж жагсаалттай НЭГ эхээс
+     (`buildPacks`-ийн ⚠️). `q`-гийн өөрийн өгөгдөл тул `packs` нь `q`-ээс өөр
+     шалтгаанаар шинэчлэгдэхгүй (давхцлын эффектүүд дахин ажиллахгүй). */
   const packs = useMemo<Pack[]>(
-    () => buildPacks(q.state === 'ready' ? q.data.rows : null),
+    () => (q.state === 'ready' ? buildPacks(q.data.rows, q.data.pkgPct) : buildPacks(null)),
     [q],
   );
 
@@ -325,7 +356,7 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     <div className={o.pack}>
       <div className={o.kpi}>
         {/* ⚠️ Алдаатай үед KPI гаргахгүй — мөнгөн дүн нь худал 0 болно */}
-        {!errQ && <PackKpi active={active} packs={packs} overlap={overlap} />}
+        {!errQ && <PackKpi active={active} packs={packs} overlap={overlap} project={project} />}
       </div>
 
       {/* ЗҮҮН — багцын сонголт */}
@@ -488,7 +519,7 @@ export function PackList({
             key={p.key}
             title={tr(p.name)}
             sub={p.kind === 'build'
-              ? tr('{0} блок · {1} айл', num(p.blocks.length), num(p.households))
+              ? tr('{0} блок · {1} айл', num(blockCount(p)), num(p.households))
               : subInfra(p)}
             value={p.kind === 'build'
               ? (() => {
@@ -525,9 +556,19 @@ export function PackKpi({
   packs,
   overlap,
   fin,
+  project,
 }: {
   active: Pack | null;
   packs: Pack[];
+  /**
+   * ТӨСЛИЙН НЭГДСЭН орон сууцны гүйцэтгэл — багц СОНГООГҮЙ үеийн «гүйцэтгэл» хавтан.
+   * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): «Гүйцэтгэл»-ийн толгойн «бодит
+   *    гүйцэтгэлийн хувь»-тай ЯГ нэг тоо (`Finance.physNow` — ХО дүнгээр жигнэсэн,
+   *    `gdash.housingPct`). Урьд нь бүх блокийн ЭНГИЙН дундаж «гүйцэтгэл» нэрээр гарч,
+   *    хоёр харагдац нэг үзүүлэлтэд хоёр тоо харуулдаг байв. Өгөөгүй бол «—» (блокийн
+   *    дундаж руу БУЦАЖ УНАХГҮЙ).
+   */
+  project?: { pct: number | null; loading: boolean };
   /**
    * САНХҮҮГИЙН ИНДИКАТОР — өгвөл биет явцын оронд ЗӨВХӨН мөнгөний тоо гарна.
    *
@@ -538,7 +579,15 @@ export function PackKpi({
    *
    * `undefined` = гүйцэтгэлийн горим (хуучин зан төлөв), `null` = ачаалж байна.
    */
-  fin?: { plan: number; given: number } | null;
+  fin?: {
+    plan: number; given: number;
+    /**
+     * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): «олгосон хувь»-ийн хуваарь —
+     * ГЭРЭЭЛСЭН ДҮН (`gdash.contractedScope`) ба түүний тоологч (гэрээлсэн багцын олголт).
+     * Удирдлагын тайлантай нэг. Гэрээлсэн дүн 0 бол хувь «—».
+     */
+    contract: number; givenContracted: number;
+  } | null;
   /**
    * Багцтай давхцсан үлдсэн нэгж талбар — `null` бол хараахан ачаалж байна,
    * `'error'` бол тоолж ЧАДААГҮЙ (0-ээр орлуулбал «саад алга» гэсэн худал
@@ -547,9 +596,16 @@ export function PackKpi({
   overlap?: Overlap | 'error' | null;
 }) {
   const scope = active ? [active] : packs;
-  const blocks = scope.reduce((s, p) => s + p.blocks.length, 0);
+  /* ⚠️ 2026-10-01: давхардсан полигон нэг блок (`blockCount`) */
+  const blocks = scope.reduce((s, p) => s + blockCount(p), 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
-  const progress = meanOf(scope.flatMap((p) => p.blocks.map((b) => b.progress)));
+  /* ⚠️ 2026-09-30: СОНГОСОН багц → `active.progress` (`buildPacks`-ийн `pkgPct` —
+     жагсаалтын «бодит гүйцэтгэл»-тэй нэг тоо). Урьд нь энд блокийн feature-ээр
+     ДАХИН дундажладаг тул давхардсан/footprint-гүй блоктой Багц 1 · 2-т хавтан ба
+     жагсаалт өөр хувь харуулдаг байв. Сонголтгүй үеийн (бүх блок) дүрэм хэвээр. */
+  /* ⚠️ 2026-10-01: сонголтгүй үед ТӨСЛИЙН нэгдсэн тоо (`project`) — блокийн дундаж БИШ */
+  const progress = active ? active.progress : project?.pct ?? null;
+  const progressLoading = !active && !!project?.loading;
   const layers = scope.filter((p) => p.kind === 'infra').reduce((s, p) => s + p.layerIds.length, 0);
 
   /**
@@ -579,11 +635,12 @@ export function PackKpi({
      * байна» гэсэн утгатай тул мөнхөд эргэлдэж байгаа мэт харагдана.
      */
     const has = !!fin && (fin.plan > 0 || fin.given > 0);
-    const share = has && fin!.plan > 0 ? (fin!.given / fin!.plan) * 100 : null;
+    /* ⚠️ 2026-10-01 (ШИЙДВЭР): олгосон ÷ ГЭРЭЭЛСЭН ДҮН — «гэрээний дүнгийн %» */
+    const share = fin && fin.contract > 0 ? (fin.givenContracted / fin.contract) * 100 : null;
     const finItems = [
       { v: fin == null ? '…' : has ? mnt(fin.plan) : '—', l: tr('төлөвлөгөөт санхүүжилт'), c: 'var(--data)' },
       { v: fin == null ? '…' : has ? mnt(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
-      { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон хувь'), c: 'var(--data)' },
+      { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон — гэрээний дүнгийн %'), c: 'var(--data)' },
       {
         v: fin == null ? '…' : has ? mnt(Math.max(0, fin.plan - fin.given)) : '—',
         l: tr('олгогдоогүй үлдэгдэл'),
@@ -608,7 +665,12 @@ export function PackKpi({
       ...blockTile,
     ]
     : [
-      { v: progress == null ? '—' : pct(progress, 1), l: tr('гүйцэтгэл'), c: levelColor(progress) },
+      {
+        v: progress == null ? (progressLoading ? '…' : '—') : pct(progress, 1),
+        /* ⚠️ 2026-10-01: сонголтгүй үед «Гүйцэтгэл»-ийн толгойтой ИЖИЛ нэр ба тоо */
+        l: active ? tr('гүйцэтгэл') : tr('бодит гүйцэтгэлийн хувь'),
+        c: levelColor(progress),
+      },
       { v: num(blocks), l: tr('блок'), c: HUE },
       { v: num(households), l: tr('айл'), c: HUE },
       { v: num(layers), l: tr('дэд бүтцийн давхарга'), c: 'var(--data)' },
@@ -643,7 +705,7 @@ export function ContractCard({ p }: { p: Pack }) {
         <div className={o.packRing}>
           <Ring value={p.progress} size={86} color={levelColor(p.progress)} label={tr('гүйцэтгэл')} />
           <Stats cols={2}>
-            <Stat value={num(p.blocks.length)} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
+            <Stat value={num(blockCount(p))} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />
             <Stat value={num(p.households)} unit={tr('айл')} label={tr('Айл')} color={HUE} accent />
           </Stats>
         </div>
@@ -716,7 +778,8 @@ export function BlocksCard({
   sel?: string | null;
   onSel?: (v: string | null) => void;
 }) {
-  const withData = p.blocks.filter((b) => b.progress != null).length;
+  /* ⚠️ 2026-10-01: тоо түлхүүрээр (`blockCount`) — давхардсан полигон нэг блок */
+  const withData = uniqueBlocks(p.blocks).filter((b) => b.progress != null).length;
   const { zoomToWhere, setHighlight } = useMap();
   /** Сонгосон блок — дарахад зурагт тодруулж ойртоно, дахин дарахад болино */
   const [selInner, setSelInner] = useState<string | null>(null);
@@ -810,7 +873,7 @@ export function BlocksCard({
    * шийдвэр. Тэг үед ногоон: саадгүй нь сайн мэдээ.
    */
   const note = overlapN === undefined
-    ? tr('{0}/{1} бүртгэлтэй', num(withData), num(p.blocks.length))
+    ? tr('{0}/{1} бүртгэлтэй', num(withData), num(blockCount(p)))
     : overlapN == null
       ? tr('давхцал тоолж байна…')
       : overlapN === 'error'

@@ -33,12 +33,15 @@ import {
   laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
+import { latestRowPerDay, companyReported, laborStaleness } from '@/lib/ceo/workforce';
+import { isBlankIncident } from '@/lib/ceo/safety';
+import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK } from './habeaRate';
 import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
-  habeaPkgKey, habeaPkgLabel, loadWeekScores, weekScoreOf, weekScoreByCo, weekNcByPkg, UzSrcHead, stepNote,
-  UzlegPhotos,
+  habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByCo, weekNcByPkg, UzSrcHead, stepNote,
+  UzlegPhotos, photoSrc,
   SERIES_VISIBLE,
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
@@ -403,7 +406,7 @@ function companyTotals(rows: Row[]) {
  * орлуулбал өнөөдрийн огноогоор олон хоосон багана нэмэгдэнэ.
  */
 function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjiltan' | 'niitTehnik') {
-  const fields = (sfxs ? sfxs.map((sfx) => ({ sfx })) : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
+  const list = (sfxs ?? HABEA.labor.companies.map((c) => c.sfx)).map((sfx) => ({ sfx, f: laborCompanyFields(sfx) }));
   return rows
     .map((r) => {
       /**
@@ -415,8 +418,14 @@ function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjil
        * уншигдана») үүнийг хориглосон. Одоо БҮХ талбар хоосон бол мөр
        * `null` утгатай гарч, цувааны цоорхой хэвээр үлдэнэ.
        */
+      /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ТАЙЛАН ӨГӨӨГҮЙ гүйцэтгэгч АЛГАСНА.
+         `Niit_ajiltan_<SFX>` нь репитэд ороогүй үед ч 0 (null БИШ) бичигддэг тул нэг
+         гүйцэтгэгч сонгоход тэр тайлан өгөөгүй өдөр «0 ажилтан» гэсэн ХУДАЛ цэг
+         зурагддаг байв. «Тайлан өгсөн» = ажилтан эсвэл техник > 0
+         (`ceo/workforce.isReported` — CEO самбарын «тайлангүй» дүрэмтэй НЭГ). */
       let sum: number | null = null;
-      for (const f of fields) {
+      for (const { sfx, f } of list) {
+        if (!companyReported(r, sfx)) continue;
         const v = r[f[key]];
         if (v == null || v === '') continue;
         const x = Number(v);
@@ -428,10 +437,13 @@ function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjil
     .filter((x) => x.d > 0 && x.value != null)
     .sort((a, b) => a.d - b.d)
     /*
-     * ⚠️ НЭГ ӨДӨРТ ОЛОН БҮРТГЭЛ байж болно (компани тус бүр өөрөө илгээх,
-     *    эсвэл засвар). Мөр тус бүрийг ЦЭГ болговол нэг өдөр хэд хэдэн
-     *    багана болж, графикийн х тэнхлэг худал уртсаад зогсохгүй React-д
-     *    ижил түлхүүр давхардана. Тиймээс өдрөөр НЭГТГЭЖ нийлбэрийг авна.
+     * ⚠️ НЭГ ӨДӨРТ ОЛОН БҮРТГЭЛ байж болно (засвар, давхар илгээлт). Мөр тус
+     *    бүрийг ЦЭГ болговол нэг өдөр хэд хэдэн багана болж, React-д ижил
+     *    түлхүүр давхардана. ⚠️ 2026-09-30: давхар мөрийг НИЙЛБЭРЛЭХ нь буруу —
+     *    нэг маягт = өдрийн НЭГДСЭН тайлан (бүх гүйцэтгэгч), давхар мөр нь
+     *    засвар/дахин илгээлт (2026-08-21: 247 ба засварласан 389 → 636 гэж
+     *    зурагддаг байв). Дуудагч `latestRowPerDay`-ээр өдөрт НЭГ мөр өгнө;
+     *    доорх нэгтгэл нь зөвхөн түлхүүр давхардахаас сэргийлэх нөөц хамгаалалт.
      */
     .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
       /* ⚠️ ОРОН НУТГИЙН огноогоор бүлэглэнэ (`dayKey`). Урьд нь
@@ -496,15 +508,17 @@ const cmpPkg = (a: string, b: string): number => {
  * ⚠️ Шошгод ОН нь заавал: төсөл олон жил үргэлжлэх тул зөвхөн «08» гэвэл
  * өөр жилийн нэг сар нийлж, эсвэл дараалал эвдэрсэн мэт харагдана.
  */
-function byMonthSeries(daily: { key: string; value: number }[]) {
+/* ⚠️ 2026-10-01: `curYm` — ЯВАГДАЖ БУЙ сар «*»-тай (`habeaRate.markCurMonth`): сарын дунд
+   хүн-өдрийн нийлбэр ДУТУУ тул сүүлийн багана «унасан» мэт уншигддаг байв. */
+function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
   const m = new Map<string, number>();
   for (const x of daily) {
     const ym = x.key.slice(0, 7);
     m.set(ym, (m.get(ym) ?? 0) + x.value);
   }
-  return [...m.entries()]
+  return markCurMonth([...m.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, value]) => ({ key: ym, label: ym.replace('-', '.'), value, display: num(value) }));
+    .map(([ym, value]) => ({ key: ym, label: ym.replace('-', '.'), value, display: num(value) })), curYm);
 }
 
 /* ─────────── Туслах дүрслэл ─────────── */
@@ -523,8 +537,9 @@ function byMonthSeries(daily: { key: string; value: number }[]) {
  * ⚠️ `ratio` (0–1) — хувь/харьцаа утгатай нүдэнд (оноо, идэвхтэй кран) нимгэн
  * зурвас. Бусад нь (нийлбэр тоо) зурвасгүй: харьцуулах суурь байхгүй.
  */
+/* ⚠️ 2026-10-01: `subWarn` — доод мөрийг анхааруулгын өнгөөр (хуучирсан тайлан) */
 const kpiTile = (
-  val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null,
+  val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null, subWarn = false,
 ) => (
   <div className={h.kt}>
     <div className={h.ktLabel}>{label}</div>
@@ -534,7 +549,7 @@ const kpiTile = (
         <span style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }} />
       </div>
     )}
-    {sub && <div className={h.ktSub}>{sub}</div>}
+    {sub && <div className={`${h.ktSub} ${subWarn ? h.ktSubWarn : ''}`} role={subWarn ? 'alert' : undefined}>{sub}</div>}
   </div>
 );
 
@@ -571,10 +586,14 @@ const loadPhotos = (oid: number): Promise<Photo[]> => {
  * Олон бүртгэлийн хавсралтыг ЦУВРАЛ багцаар татна — 17 зэрэг хүсэлт ArcGIS-ийн
  * rate limit-д өртөж бүх ханыг унагадаг байв (query.ts-ийн limiter энд үйлчлэхгүй).
  */
-async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Promise<T[]> {
+async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Promise<{ items: T[]; failed: number }> {
   /* ⚠️ 2026-09-25: `allSettled` — урьд нь `Promise.all` тул НЭГ бүртгэлийн
      хавсралт унахад бусад бүх зураг хаягдаж хана бүхэлдээ алдаа болдог байв.
-     Унасныг алгасна; БҮГД унасан үед л алдаа шиднэ (дахин оролдох гарц). */
+     Унасныг алгасна; БҮГД унасан үед л алдаа шиднэ (дахин оролдох гарц).
+     ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): унасан тоог `failed`-ээр БУЦААНА — урьд нь
+     ЧИМЭЭГҮЙ алгасдаг тул «17 ослын 3-ынх нь зураг татагдаагүй» гэдгийг хэн ч мэддэггүй
+     байв. Хана «N бүртгэлийн зураг татагдсангүй» + «Дахин оролдох» гаргана (унасан
+     амлалт `photoCache`-ээс хасагддаг тул дахин оролдлого зөвхөн тэднийг татна). */
   const out: T[] = [];
   let failed = 0;
   let firstErr: unknown = null;
@@ -588,7 +607,7 @@ async function loadPhotoBatches<T>(list: Inc[], of: (i: Inc, p: Photo) => T): Pr
     }
   }
   if (list.length && failed === list.length) throw firstErr;
-  return out;
+  return { items: out, failed };
 }
 
 /** Бүртгэлийн хавсаргасан зургууд — дарахад бүтэн хэмжээгээр шинэ цонхонд */
@@ -637,11 +656,13 @@ function IncPhotos({ oid }: { oid: number }) {
 function PhotoWall({ list }: { list: Inc[] }) {
   const ids = list.map((x) => x.oid).join(',');
   const [idx, setIdx] = useState(0);
-  const q = useAsync<{ src: string; cap: string; tip: string }[]>(
+  const q = useAsync<{ items: { src: string; cap: string; tip: string }[]; failed: number }>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
-        /* ⚠️ 2026-09-30: `tokenQs` — `<img src>`-ийн онцгой тохиолдол (дээрх ⚠️) */
-        src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}?${tokenQs().slice(1)}`,
+        /* ⚠️ 2026-09-30: ТОКЕНГҮЙ хаяг — токеныг рендерт `photoSrc` залгана. Урьд нь
+           ачаалах агшны токен энд «шатаж», токен шинэчлэгдсэний дараа ‹ › дарахад
+           зураг 498-аар эвдэрдэг байв (`IncPhotos` рендер бүрд залгадаг тул зөв). */
+        src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
         cap: `${incDate(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
       })),
@@ -656,10 +677,17 @@ function PhotoWall({ list }: { list: Inc[] }) {
       </div>
     );
   }
-  const n = q.data.length;
-  if (!n) return <Empty label={tr('Хавсаргасан зураг алга')} />;
+  const n = q.data.items.length;
+  /* ⚠️ 2026-10-01: хэсэгчилсэн уналтын мөр — зураг байсан ч, үгүй ч ил */
+  const failNote = q.data.failed > 0 && (
+    <div className={h.photoNote} role="alert">
+      {tr('{0} бүртгэлийн зураг татагдсангүй', num(q.data.failed))}{' '}
+      {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
+    </div>
+  );
+  if (!n) return failNote || <Empty label={tr('Хавсаргасан зураг алга')} />;
   const cur = Math.min(idx, n - 1);
-  const p = q.data[cur];
+  const p = q.data.items[cur];
   return (
     <div>
       <div className={h.slide}>
@@ -672,11 +700,11 @@ function PhotoWall({ list }: { list: Inc[] }) {
         >
           ‹
         </button>
-        <a href={p.src} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
+        <a href={photoSrc(p.src)} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
           {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй.
               ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — карт нь доод зурваст, viewport-аас
               гадуур тул lazy-loader асалгүй зураг хоосон үлддэг. */}
-          <img src={p.src} alt={p.tip} />
+          <img src={photoSrc(p.src)} alt={p.tip} />
         </a>
         <button
           type="button"
@@ -692,6 +720,7 @@ function PhotoWall({ list }: { list: Inc[] }) {
         <span className={h.slideCapText}>{p.cap} · {p.tip}</span>
         <b className="num">{cur + 1}/{n}</b>
       </div>
+      {failNote}
     </div>
   );
 }
@@ -863,9 +892,41 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const totals = usePlanTotals(null, catOpen, CATALOG_IDS);
   /** Панелийн хэмжээ — чирж тохируулна, `localStorage`-д хадгалагдана */
   const panes = usePanes();
-  /* Өмнөх долоо хоногийн дундаж оноо — KPI (`loadWeekScore` нь 5 мин кэштэй) */
-  /* Өмнөх долоо хоногийн оноо — (талбай × компани) нүд, шүүлт нь санах ойд */
-  const weekScores = useAsync(loadWeekScores, []);
+  /**
+   * ЦАГ — «одоо» (минут тутам) ба ДАХИН ТАТАХ тоолуур (5 мин тутам, таб харагдах үед).
+   *
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): долоо хоногийн KPI нь хуудас нээгдэх
+   *    агшинд НЭГ удаа бодогддог тул Даваа гараг дамжсан ч таб нээлттэй бол ӨМНӨХ
+   *    долоо хоногийн оноо хэвээр үлддэг байв. Одоо `weekKey` (`prevWeek().start`)
+   *    солигдмогц шинэ долоо хоногийг татна; таб буцаж харагдахад шууд шалгана.
+   *    «Сүүлийн тайлан»-ы хуучирсан хоног, явагдаж буй сар ч энэ цагаас.
+   * ⚠️ `Date.now()` render дотор БИШ — зөвхөн анхны утга (lazy) ба эффект дотор
+   *    (react-hooks/purity; `Iot.tsx`-ийн ижил загвар).
+   */
+  const [now, setNow] = useState(() => Date.now());
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const clock = setInterval(() => setNow(Date.now()), 60_000);
+    const poll = setInterval(() => { if (!document.hidden) setTick((t) => t + 1); }, 5 * 60_000);
+    const onShow = () => {
+      if (document.hidden) return;
+      setNow(Date.now());
+      setTick((t) => t + 1);
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      clearInterval(clock);
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onShow);
+    };
+  }, []);
+  const weekKey = prevWeek(new Date(now)).start.getTime();
+  /* Өмнөх долоо хоногийн оноо — (талбай × компани) нүд, шүүлт нь санах ойд.
+     ⚠️ `keepOn: [tick]` — 5 минутын дахин таталтад хуучин оноо дэлгэцэд үлдэнэ
+     (анивчихгүй); долоо хоног солигдоход (`weekKey`) «…» гарч шинээр татна. */
+  const weekScores = useAsync(() => loadWeekScores(new Date(now)), [weekKey, tick], { keepOn: [tick] });
+  /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
+  const curYm = dayKey(now).slice(0, 7);
 
   /* Олон хэмжээст хөндлөн шүүлт + зурган дээрээс сонгосон объект */
   const [sel, setSel] = useState<Sel>(NO_SEL);
@@ -1081,9 +1142,27 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
 
   const all = q.state === 'ready' ? q.data : null;
-  const inc = useMemo(() => (all ? all.incident.map(normIncident) : []), [all]);
+  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХООСОН НООРОГ (төрөл · багц · огноо гурвуулаа
+     хоосон — Survey123-д эхлүүлээд бөглөөгүй) ОСОЛД ТООЛОГДОХГҮЙ (`ceo/safety.isBlankIncident`
+     — CEO самбартай НЭГ дүрэм). Урьд нь «—» төрөлтэй, огноогүй «осол» болж KPI-д ордог байв. */
+  const inc = useMemo(
+    () => (all ? all.incident.filter((r) => !isBlankIncident(r)).map(normIncident) : []),
+    [all],
+  );
+  /** «Ослын дэлгэрэнгүй мэдээлэл» — бүгдийг харуулах эсэх (анхдагч: сүүлийн 6) */
+  const [allInc, setAllInc] = useState(false);
+  /** Ослын давтамжийн алхам — багцаар / сараар */
+  const [rateStep, setRateStep] = useState<'pkg' | 'month'>('pkg');
   const cranes = useMemo(() => (all ? all.crane.map(normCrane) : []), [all]);
-  const labor = useMemo(() => laborState(all ? all.labor : []), [all]);
+  /**
+   * ⚠️ 2026-09-30: ӨДӨР БҮРЭЭС НЭГ ТАЙЛАН (`ceo/workforce.latestRowPerDay`). Нэг өдөрт
+   *    давхар илгээсэн/засварласан мөрүүд (амьдаар 228 өдрийн 3) урьд НИЙЛБЭРЛЭГДЭЖ
+   *    өдрийн цуваа, компанийн хүн-өдөр, «Нийт ажилтан/Хүн цаг/Техник» KPI давхар
+   *    тоолдог байв (2026-08-21: 247 + 389 = 636; CEO самбар ба «Тайлан» 389).
+   *    Хүн хүчний БҮХ дүрслэл ЭНЭ олонлогоос — `all.labor`-ийг шууд бүү хэрэглэ.
+   */
+  const laborRows = useMemo(() => latestRowPerDay(all ? all.labor : [], dayKey), [all]);
+  const labor = useMemo(() => laborState(laborRows), [laborRows]);
   /**
    * ОГНООНЫ ШҮҮЛТТЭЙ хүн хүчний мөрүүд — өдөр/сарын цувааг ЭС тооцвол бүх
    * хүн хүчний дүрслэл (монгол/гадаад, компаниар) эндээс.
@@ -1093,7 +1172,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * тогтвортой байх ёстой.
    */
   const laborDated = useMemo(() => {
-    const rows = all ? all.labor : [];
+    const rows = laborRows;
     if (!sel.day.length && !sel.month.length) return rows;
     return rows.filter((r) => {
       const d = nn(r[L.ognoo]);
@@ -1101,7 +1180,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       const k = dayKey(d);
       return inSet(sel.day, k) && inSet(sel.month, k.slice(0, 7));
     });
-  }, [all, sel.day, sel.month]);
+  }, [laborRows, sel.day, sel.month]);
 
   /**
    * Багц сонгоход давхарга бүрийн WHERE — график дээр тоолсон ЯГ тэр мөрүүдийг
@@ -1321,8 +1400,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   ].filter((x) => x.value > 0);
 
   /* Өдөр тутмын цувааnууд — сонгосон гүйцэтгэгчийг дагана */
-  const byDay = useMemo(() => byDaySeries(all ? all.labor : [], coEff, 'niitAjiltan'), [all, coEff]);
-  const techDay = useMemo(() => byDaySeries(all ? all.labor : [], coEff, 'niitTehnik'), [all, coEff]);
+  const byDay = useMemo(() => byDaySeries(laborRows, coEff, 'niitAjiltan'), [laborRows, coEff]);
+  const techDay = useMemo(() => byDaySeries(laborRows, coEff, 'niitTehnik'), [laborRows, coEff]);
   /**
    * Цуваа нь ХУУЧНААС шинэ рүү өснө. Гүйлгэгчийг ТӨГСГӨЛД нь тавьж хамгийн
    * сүүлийн өдрүүдийг шууд харуулна — хэрэглэгч эхлээд «одоо юу болж байна»-г
@@ -1387,7 +1466,32 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /* Хамгийн олон осол бүртгүүлсэн гүйцэтгэгч(ид) улаанаар — анхаарал татах
      ёстой тал нь эгнээг гүйлгэн уншихгүйгээр шууд харагдана. */
   const incByCompany = leadRed(countBy(inc.filter((x) => incPass(x, 'incCompany')), (x) => x.company));
-  const recent = [...fInc].sort((a, b) => b.d - a.d).slice(0, 6);
+  /* ⚠️ 2026-10-01: «6/17 · бүгдийг харах» — урьд нь сүүлийн 6-г л харуулж, бусад нь
+     хаана байгааг хэлдэггүй байв. */
+  const INC_LIST_N = 6;
+  const recentAll = [...fInc].sort((a, b) => b.d - a.d);
+  const recent = allInc ? recentAll : recentAll.slice(0, INC_LIST_N);
+
+  /**
+   * ОСЛЫН ДАВТАМЖ — 1 сая хүн-цагт (2026-10-01, `habeaRate`).
+   * ⚠️ Хүртвэр нь `fInc` (бүх шүүлт); хуваарь нь ИЖИЛ огнооны шүүлттэй хүн хүч
+   *    (`laborDated`). Багцаар нь «Багц» шүүлтгүй (өөрийн хэмжээс — ArcGIS зан).
+   */
+  const hourDays = useMemo(() => hoursByDay(laborDated), [laborDated]);
+  const ratePkg = useMemo(() => {
+    /* Шошго нь гүйцэтгэгчийн бүртгэлийн багцаас («Багц -3.1» → «Багц 3.1», `pkgOptions`-ийн дүрэм) */
+    const labelOf = (k: string) => {
+      const raw = HABEA.labor.companies.find((c) => c.bagts && habeaPkgKey(c.bagts) === k)?.bagts;
+      return raw ? tr(habeaPkgLabel(raw.replace(/\s*-\s*/, ' ').trim())) : k;
+    };
+    return rateByPkg(hourDays, inc.filter((x) => incPass(x, 'pkg')), PKG_OF_CO, labelOf);
+  }, [hourDays, inc, incPass]);
+  const rateMonth = useMemo(
+    () => rateByMonth(hourDays, fInc, {
+      ymOf: (ms) => dayKey(ms).slice(0, 7), pkgOfCo: PKG_OF_CO, pkgs: pkgEff,
+    }),
+    [hourDays, fInc, pkgEff],
+  );
   /* ⚠️ `lastInc` нь «Сүүлийн ослоос хойш» KPI-д хэрэглэгдэж байсныг
      2026-09-06-нд хэрэглэгчийн хүсэлтээр ХАСАВ. Сүүлийн ослын огноо нь
      ослын жагсаалтад хэвээр (эрэмбэ нь шинэ→хуучин) тул мэдээлэл
@@ -1429,7 +1533,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * удирдлага ТОГТВОРТОЙ байх ёстой.
    */
   /* ⚠️ Сонголтын жагсаалт ШҮҮГДЭЭГҮЙгээс (тогтвортой), чарт нь огноотойгоос */
-  const coBase = useMemo(() => companyTotals(all ? all.labor : []), [all]);
+  const coBase = useMemo(() => companyTotals(laborRows), [laborRows]);
   const coAll = useMemo(() => companyTotals(laborDated), [laborDated]);
   const coOptions = coBase
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0)
@@ -1488,8 +1592,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const totalTech = techDay.reduce((s, x) => s + x.value, 0);
 
   /* Сарын нийлбэр — өдрийн цуваанаас (шүүлтийг аль хэдийн дагасан) */
-  const byMonth = useMemo(() => byMonthSeries(byDay), [byDay]);
-  const techMonth = useMemo(() => byMonthSeries(techDay), [techDay]);
+  const byMonth = useMemo(() => byMonthSeries(byDay, curYm), [byDay, curYm]);
+  const techMonth = useMemo(() => byMonthSeries(techDay, curYm), [techDay, curYm]);
+  /** Сарын цуваанд явагдаж буй сар орсон уу — тайлбарт «* дутуу» */
+  const monthNote = (items: { key: string }[]) =>
+    (items.some((x) => x.key === curYm) ? ` · ${tr('{0} явагдаж буй сар (дутуу)', CUR_MONTH_MARK)}` : '');
 
   /**
    * БАГЦЫН СОНГОЛТУУД — гурван эх сурвалжийн НЭГДЭЛ, давхардалгүй.
@@ -1699,7 +1806,21 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             захиалагч шийдсэн — тоог өөрчлөхөөс өмнө үүнийг мэд.
 
             Толгойн талбар компаниар задардаггүй тул шүүлт идэвхтэй үед «—». */}
-        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan), tr('Нийт ажилтан'))}
+        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Сүүлийн тайлан: {огноо}» + хуучирсан
+            анхааруулга (`ceo/workforce.laborStaleness` — CEO самбарын `WORKFORCE_STALE_DAYS`
+            босготой НЭГ). Урьд нь тайлан хэдэн өдөр зогссон ч KPI хэвээр «шинэ» харагддаг байв. */}
+        {((st) => kpiTile(
+          pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
+          tr('Нийт ажилтан'),
+          undefined,
+          labor.asOf == null
+            ? undefined
+            : st.stale
+              ? tr('Сүүлийн тайлан: {0} · {1} хоног шинэчлэгдээгүй', date(labor.asOf), num(st.days ?? 0))
+              : tr('Сүүлийн тайлан: {0}', date(labor.asOf)),
+          undefined,
+          st.stale,
+        ))(laborStaleness(labor.asOf, now))}
         {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.hunTsag), tr('Хүн цаг'))}
         {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техник'))}
         {/**
@@ -1742,8 +1863,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
              чухал, учир нь гүйцэтгэгчийн маягтад оноо огт бүртгэгддэггүй. */
           tr('Захиалагчийн ажлын байрны үзлэг'),
           undefined,
+          /* ⚠️ 2026-10-01: ТҮҮВРИЙН ХЭМЖЭЭ (оноотой үзлэгийн тоо) — 1 үзлэгийн 100% ба 40
+             үзлэгийн 100% ижил жинтэй уншигдахаас сэргийлнэ. */
           weekScores.state === 'ready'
-            ? tr('{0}-р долоо хоногийн дундаж оноо', num(weekScores.data.no))
+            ? tr('{0}-р долоо хоногийн дундаж оноо · {1} үзлэг', num(weekScores.data.no),
+              num(weekScoreOf(weekScores.data.rows, pkgs, cos).ns))
             : weekScores.state === 'error'
               ? `${tr('Долоо хоногийн дундаж оноо')} — ${tr('татагдсангүй')}`
               : tr('Долоо хоногийн дундаж оноо'),
@@ -1880,6 +2004,48 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? <Donut items={causeSlices} stack size={110} center={num(causeTotal)} centerLabel={tr('нийт')}
                 selected={sel.cause} onSelect={(k) => toggleDim('cause', k)} />
             : <Empty label={tr('Шалтгаан тэмдэглэгдээгүй')} />}
+        </Section>
+        {/* ── ОСЛЫН ДАВТАМЖ — 1 сая хүн-цагт (2026-10-01, хэрэглэгч: бүгдийг зас) ──
+            ⚠️ Багцын хүн-цаг нь ТООЦОО (толгойн хүн-цагийг ажилтны тоогоор хуваарилсан —
+            `habeaRate`-ийн ⚠️) — тайлбарт ил. Хүн-цаггүй багц/сар ЗУРАГДАХГҮЙ (null ≠ 0). */}
+        <Section
+          title={tr('Ослын давтамж — 1 сая хүн-цагт')}
+          note={(
+            <span className={h.stepWrap}>
+              <span className={h.seg} role="group" aria-label={tr('Давтамжийн задаргаа')}>
+                <button type="button" className={`${h.segBtn} ${rateStep === 'pkg' ? h.segOn : ''}`}
+                  aria-pressed={rateStep === 'pkg'} onClick={() => setRateStep('pkg')}>{tr('Багц')}</button>
+                <button type="button" className={`${h.segBtn} ${rateStep === 'month' ? h.segOn : ''}`}
+                  aria-pressed={rateStep === 'month'} onClick={() => setRateStep('month')}>{tr('Сар')}</button>
+              </span>
+              <span className={h.stepNote}>
+                {rateStep === 'pkg'
+                  ? tr('хүн-цаг нь ажилтны тоогоор хуваарилсан тооцоо')
+                  : `${tr('осол / 1 сая хүн-цаг')}${monthNote(rateMonth.items)}`}
+              </span>
+            </span>
+          )}
+        >
+          {(() => {
+            const r = rateStep === 'pkg' ? ratePkg : rateMonth;
+            if (!r.items.length) return <Empty label={tr('Хүн-цагийн бүртгэл алга')} />;
+            const items = r.items.map((x) => ({
+              key: x.key, label: x.label, value: x.rate,
+              display: num(x.rate, 1),
+            }));
+            return (
+              <>
+                {rateStep === 'pkg'
+                  ? <Bars items={items} selected={pkgs} onSelect={togglePkg} />
+                  : <Series items={markCurMonth(items, curYm)} height={96} line showValues unit={tr('осол / 1 сая хүн-цаг')} />}
+                {r.unmatched > 0 && (
+                  <p className={h.photoNote}>
+                    {tr('{0} осол хүн-цагийн бүртгэлгүй багц/сард — давтамжид ороогүй', num(r.unmatched))}
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </Section>
         </>)}
       </div>
@@ -2089,7 +2255,19 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             байх ёстой: хажууд нь өөр карт тавибал хоёулаа хагасхан өндөртэй
             болж, аль нь ч уншигдахгүй. ── */}
         {incOpen && (
-        <Section title={tr('Ослын дэлгэрэнгүй мэдээлэл')} note={tr('дарж дэлгэрэнгүй')}>
+        <Section
+          title={tr('Ослын дэлгэрэнгүй мэдээлэл')}
+          note={recentAll.length > INC_LIST_N
+            ? (
+              <>
+                {tr('{0}/{1}', num(recent.length), num(recentAll.length))}{' · '}
+                <button type="button" className={h.linkBtn} onClick={() => setAllInc((v) => !v)}>
+                  {allInc ? tr('цөөнийг харах') : tr('бүгдийг харах')}
+                </button>
+              </>
+            )
+            : tr('дарж дэлгэрэнгүй')}
+        >
           {recent.length ? recent.map((x) => {
             // ⚠️ Давхцахгүй ОБЪЕКТ ИД-ээр таних — өмнө нь `огноо|төрөл` байсан тул
             //    нэг өдрийн ижил төрлийн 2 бүртгэл мөргөлдөж, нэгийг дарахад хоёул
@@ -2274,18 +2452,18 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         </>)}
 
-        {uzlegKind && !dual && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {uzlegKind && !dual && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />}
         {dual && (<>
           <div className={h.finHalf}>
             <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />
             <div className={h.finHalfGrid}>
-              <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} />
+              <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />
             </div>
           </div>
           <div className={h.finHalf}>
             <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
             <div className={h.finHalfGrid}>
-              <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} />
+              <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} curYm={curYm} />
             </div>
           </div>
         </>)}
@@ -2303,7 +2481,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           note={stepNote(aStep, setAjiltanStep,
             aStep === 'day'
               ? (byDay.length ? tr("{0} · {1} өдөр", coLabel ?? tr("бүх компани"), num(byDay.length)) : null)
-              : (byMonth.length ? tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(byMonth.length)) : null))}
+              : (byMonth.length ? `${tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(byMonth.length))}${monthNote(byMonth)}` : null))}
         >
           {(aStep === 'day' ? byDay : byMonth).length
             ? (
@@ -2329,8 +2507,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           title={tStep === 'day' ? tr("Техник — өдрөөр") : tr("Техник — сараар")}
           note={stepNote(tStep, setTehnikStep,
             tStep === 'day'
-              ? (techDay.length ? tr("{0} · {1}", coLabel ?? tr("бүх компани"), num(totalTech)) : null)
-              : (techMonth.length ? tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(techMonth.length)) : null))}
+              /* ⚠️ 2026-09-30: `totalTech` нь өдрүүдийн НИЙЛБЭР = нэгж-ӨДӨР (техникийн тоо биш);
+                 нэгжгүй бичвэл «12,000 техник» гэж уншигддаг байв. */
+              ? (techDay.length ? tr("{0} · {1} нэгж-өдөр", coLabel ?? tr("бүх компани"), num(totalTech)) : null)
+              : (techMonth.length ? `${tr("{0} · {1} сар", coLabel ?? tr("бүх компани"), num(techMonth.length))}${monthNote(techMonth)}` : null))}
         >
           {(tStep === 'day' ? techDay : techMonth).length
             ? (

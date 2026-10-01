@@ -34,13 +34,13 @@ import { t as tr } from '@/lib/i18nCore';
 import {
   MS_STATUS, ALL_REVIEWERS, REVIEWERS_OF, isMsStatus, isKind, isVerdict, emptyReviews, docNo, nextSeq, orgCode,
   repNo, repSeqFor, repFrom, parseBodyOf, normalizeNcr, normalizeInsp, normalizeMa, normalizeMeta, normalizeBounce,
-  parseCommon, ncrClosure, nextRevisionBody, applyRepToMaterials, canAct, needsMyAction, latest,
+  parseCommon, ncrClosure, nextRevisionBody, applyRepToMaterials, canAct, myAction, waitDays, latest, type MyActionWhy,
   review as reviewPure, submit as submitPure, submitCorrection as correctionPure, reopen as reopenPure,
   bounce as bouncePure, ackRep as ackPure, closeAn as closeAnPure, newRevision as newRevisionPure, closeNcr as closeNcrPure,
   type MsDoc, type MsBody, type Reviewer, type Review, type Reviews, type Rep, type Verdict, type VerdictCode,
   type DocKind, type AnyBody, type NcrCorrection, type InspBody, type InspCheck, type Meta, type Bounce, type BounceReason,
   type NcrCloser, type NcrClosure, type NcrClosureDocType, type NcrClosureResult, type NcrProposed, EMPTY_BODY,
-  type MaBody, type NcrBody, EMPTY_COMMON, DISCIPLINES, isInspCheck,
+  type MaBody, type NcrBody, EMPTY_COMMON, DISCIPLINES, isInspCheck, sameMaterialContent, closeAnMaterials,
 } from './chanarMs';
 import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from './chanarAcl';
 /* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
@@ -256,7 +256,8 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
 export async function deleteAttachment(oid: number, id: number): Promise<boolean> {
   const url = await tableUrl(false);
   if (!url) return false;
-  if (await attachDeny(oid)) return false;
+  /* ⚠️ 2026-09-30: `delete` — NCR илгээсний дараа нотолгоо устгагдахгүй (`attachDeny`-ийн ⚠️) */
+  if (await attachDeny(oid, 'delete')) return false;
   try {
     const j = await arcgisPost(`${url}/${Number(oid)}/deleteAttachments`, { attachmentIds: String(id) });
     const rs = (j.deleteAttachmentResults as { success?: boolean }[]) ?? [];
@@ -462,7 +463,7 @@ async function newerExists(kind: DocKind, bagts: string, seq: number, rev: numbe
  * тул батлагдсан баримтын хавсралтыг консолоос солих боломжтой байв. Зөвхөн
  * ноорог/буцаагдсан төлөвт, зөвхөн зохиогч. `null` = зөвшөөрнө.
  */
-async function attachDeny(oid: number): Promise<string | null> {
+async function attachDeny(oid: number, op: 'add' | 'delete' = 'add'): Promise<string | null> {
   const cur = await query(`${F.oid} = ${Number(oid)}`, HEAD);
   const doc = cur.length ? toDoc(cur[0]) : null;
   if (!doc) return tr('Баримт олдсонгүй — устгагдсан байж магадгүй.');
@@ -477,6 +478,11 @@ async function attachDeny(oid: number): Promise<string | null> {
       return null;
     }
     if (doc.status === MS_STATUS.review || doc.status === MS_STATUS.returned) {
+      /* ⚠️ 2026-09-30: ИЛГЭЭСНИЙ ДАРАА ЗӨВХӨН НЭМНЭ. Урьд нь нэмэх ба устгах ИЖИЛ дүрэмтэй
+         тул гүйцэтгэгч нээгчийн (захиалагчийн) ноорогт хавсаргасан ҮЛ ТОХИРЛЫН НОТОЛГОО
+         (гэмтлийн зураг) ч устгаж чаддаг байв — хянагчид нотолгоогүй «залруулга»
+         батлах зам. Буруу файл нэмсэн бол зөв файлаа нэмнэ. */
+      if (op === 'delete') return tr('Илгээсэн үл тохирлын хавсралт (нотолгоо) устгагдахгүй — шаардлагатай бол зөв файлаа нэмж хавсаргана уу.');
       try { requireCap('chanarAuthor'); } catch (e) { return String((e as Error).message || e); }
       if (strict && !isAuthorFor(me, doc.bagts)) return tr('Энэ багцад гүйцэтгэгчийн эрхгүй.');
       return null;
@@ -514,8 +520,10 @@ export async function loadAllDocs(): Promise<MsDoc[]> {
  *   correctionAt — гүйцэтгэгчийн залруулга ирсэн эсэх (хянагч дүгнэх боломж)
  *   ncrClosed    — гүйцэтгэгч «Хаасан» мөрөө бөглөсөн эсэх
  * ⚠️ NCR нь төслийн хэмжээнд цөөн тул НЭГ асуулгаар биетэй нь татна.
+ * ⚠️ 2026-10-01: `reopenedAt` — сүүлд ДАХИН НЭЭСЭН агшин (`body.rounds`-ийн `reopen`
+ *    тойрог; `sentAt` дахин нээхэд өөрчлөгддөггүй) — «Миний хийх»-ийн хүлээсэн хоног.
  */
-export type NcrFlags = Map<number, { correctionAt: number | null; ncrClosed: boolean }>;
+export type NcrFlags = Map<number, { correctionAt: number | null; ncrClosed: boolean; reopenedAt?: number | null }>;
 export async function loadNcrFlags(): Promise<NcrFlags> {
   const rows = await query(`${F.kind} = 'NCR'`, `${F.oid},${F.body}`);
   const out: NcrFlags = new Map();
@@ -523,10 +531,21 @@ export async function loadNcrFlags(): Promise<NcrFlags> {
     const oid = Number(r[F.oid]);
     if (!Number.isInteger(oid)) continue;
     const b = normalizeNcr(safeJson(r[F.body]));
-    out.set(oid, { correctionAt: b.correctionAt, ncrClosed: (b.closure?.closedByContractor.length ?? 0) > 0 });
+    const reopens = (b.rounds ?? []).filter((x) => x.end === 'reopen' && Number.isFinite(x.at)).map((x) => x.at);
+    out.set(oid, {
+      correctionAt: b.correctionAt, ncrClosed: (b.closure?.closedByContractor.length ?? 0) > 0,
+      reopenedAt: reopens.length ? Math.max(...reopens) : null,
+    });
   }
   return out;
 }
+
+/**
+ * «Миний хийх»-ийн нэг мөр (2026-10-01): баримт, ЯАГААД жагсаалтад байгаа (`why`),
+ * хэзээнээс (`since`) ба хэдэн хоног хүлээсэн (`days`). Агшин мэдэгдэхгүй бол хоёулаа
+ * `null` — 0 БИШ (`chanarMs.myAction`).
+ */
+export type ActionItem = { doc: MsDoc; why: MyActionWhy; since: number | null; days: number | null };
 
 /**
  * ХЭРЭГЛЭГЧ ОДОО ҮЙЛДЭЛ ХИЙХ ЁСТОЙ БАРИМТУУД — бүх багц, бүх төрөл, СҮҮЛИЙН хувилбар.
@@ -536,19 +555,30 @@ export async function loadNcrFlags(): Promise<NcrFlags> {
  *    мэдэхгүйгээр хянагч/гүйцэтгэгчийн аль нь хүлээж байгааг хэлж чадахгүй.
  * ⚠️ ACL remote уншигдаагүй (`chanarAclReady() === false`) үед үүрэг хоосон тул
  *    тоо дутуу гарна — дуудагч `subscribeChanarAcl`-аар дахин тоолно.
+ * ⚠️ 2026-10-01: шалтгаан ба хоногтой (`actionableItems`); `myAction` нь `needsMyAction`
+ *    үнэн үед л утгатай тул жагсаалт (`actionableDocs`) ӨМНӨХТЭЙГӨӨ ИЖИЛ.
  */
-export function actionableDocs(docs: readonly MsDoc[], ncr: NcrFlags | null, user: string | null | undefined): MsDoc[] {
+export function actionableItems(
+  docs: readonly MsDoc[], ncr: NcrFlags | null, user: string | null | undefined, now = Date.now(),
+): ActionItem[] {
   const u = (user ?? '').trim().toLowerCase();
   if (!u) return [];
-  return latest(docs).filter((d) => {
+  const out: ActionItem[] = [];
+  for (const d of latest(docs)) {
     const roles = reviewerRolesFor(u, d.bagts);
     const contractor = isAuthorFor(u, d.bagts);
-    if (!roles.length && !contractor && d.author !== u) return false;
+    if (!roles.length && !contractor && d.author !== u) continue;
     const f = d.kind === 'NCR' ? ncr?.get(d.oid) : undefined;
-    if (d.kind === 'NCR' && !f) return false;
+    if (d.kind === 'NCR' && !f) continue;
     const flow = { ...d, correctionAt: f?.correctionAt ?? null };
-    return needsMyAction(flow, canAct(flow, u, roles, { contractor, ncrClosed: f?.ncrClosed ?? false }));
-  });
+    const m = myAction(flow, canAct(flow, u, roles, { contractor, ncrClosed: f?.ncrClosed ?? false }), { reopenedAt: f?.reopenedAt ?? null });
+    if (m) out.push({ doc: d, why: m.why, since: m.since, days: waitDays(m.since, now) });
+  }
+  return out;
+}
+
+export function actionableDocs(docs: readonly MsDoc[], ncr: NcrFlags | null, user: string | null | undefined): MsDoc[] {
+  return actionableItems(docs, ncr, user).map((x) => x.doc);
 }
 
 /**
@@ -691,6 +721,10 @@ function ownClientBody(kind: DocKind, client: AnyBody, server: AnyBody | null): 
       if (j < 0) j = sm.findIndex((x, k) => x.locked && !used.has(k) && x.name.trim() === m.name.trim());
       if (j < 0) return { ...m, locked: false, verdict: null };
       used.add(j);
+      /* ⚠️ 2026-09-30: АГУУЛГА ӨӨРЧЛӨГДСӨН бол түгжихгүй — дахин хянагдана
+         (`chanarMs.sameMaterialContent`-ийн ⚠️). Урьд нь нэр таарвал л клиентийн
+         ШИНЭ агуулга «батлагдсан» хэвээр түгжигддэг байв. */
+      if (!sameMaterialContent(m, sm[j])) return { ...m, locked: false, verdict: null };
       return { ...m, locked: true, verdict: sm[j].verdict };
     });
   }
@@ -1077,12 +1111,26 @@ export async function reviewDoc(args: {
     const attrs: Attrs = {
       [F.oid]: args.oid,
       [F.status]: r.status,
-      [F.reviews]: reviewsJson(r.reviews, rep),
+      /* ⚠️ 2026-09-30: ЭЦСИЙН БУС шийдвэрт ӨМНӨХ хариуг (`doc.rep`) ХАДГАЛНА — `submitCorrection`/
+         `reopenDoc`-ийн 2026-09-29-ний ижил дүрэм. NCR нэг мөртэй тул 2-р тойргийн ЭХНИЙ
+         хянагчийн бичилт `rep`-ийг арилгаж, эцсийн шийдвэрт `repSeqFor` lineage-ээ алдан
+         0005-01-ийн оронд шинэ NNNN (эсвэл хуучин 0005-00-г ДАХИН) олгодог байв. Шинэ
+         хувилбарын (rev) мөрд `doc.rep` угаас null — нөлөөгүй. */
+      [F.reviews]: reviewsJson(r.reviews, rep ?? doc.rep ?? null),
       [F.decidedAt]: decided ? now : null,
     };
     if (ncrBody && r.status === MS_STATUS.approved) attrs[F.body] = JSON.stringify(ncrClosure(ncrBody, me, now));
     /* ⚠️ MA (2026-09-28): хариуг материал бүрд бичнэ — дараагийн хувилбарт A/AN түгжигдэнэ */
     if (maBody && rep) attrs[F.body] = JSON.stringify(applyRepToMaterials(maBody, rep));
+    /* ⚠️ 2026-09-30: БИЧИХИЙН ӨМНӨ ДАХИН УНШИНА (`unchanged`, `ackRepDoc`-ийн ижил хамгаалалт).
+       Доорх `mineSurvives` нь ЗӨВХӨН манай шийдвэр дарагдсаныг барина; харин уншсанаас
+       хойш (REP дугаарлалт `loadDocs` — бүх мөрийн уншилт) өөр хянагч «хянахгүй буцаах»
+       (bounce) эсвэл шийдвэр бичсэн бол манай бичилт түүнийг ЧИМЭЭГҮЙ дардаг байв —
+       баримт буцаж «хянагдаж байна» болж, bounce тэмдэг алга. Өөрчлөгдсөн бол шинээр. */
+    if (!(await unchanged(args.oid, cur[0], [F.status, F.reviews]))) {
+      last = { ok: false, error: RACE_MSG() };
+      continue;
+    }
     try {
       const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: attrs }]),
@@ -1303,18 +1351,25 @@ export async function bounceDoc(args: {
 }): Promise<Result> {
   const act = actor(args.who, 'chanarReview');
   if (!('who' in act)) return act;
-  const ld = await loadRow(args.oid);
-  if ('ok' in ld) return ld;
-  const { url, row, doc } = ld;
-  if (!reviewerRolesFor(act.who, doc.bagts).includes(args.as)) return { ok: false, error: tr('Энэ багцад «{0}» үүргээр хянах эрхгүй.', args.as) };
-  const r = bouncePure(doc, { as: args.as, who: act.who, reason: args.reason, note: args.note });
-  if (!r.ok) return r;
-  const body = parseBodyOf(doc.kind, row[F.body]) as AnyBody & { bounces?: Bounce[] };
-  const nb = { ...body, bounces: [...(body.bounces ?? []), r.bounce] };
-  return update(url, {
-    [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, null, r.bounce),
-    [F.decidedAt]: r.bounce.at, [F.body]: JSON.stringify(nb),
-  });
+  /* ⚠️ 2026-09-30: бичихийн өмнө дахин уншина (`unchanged`) — уншсанаас хойш хянагч шийдвэр
+     өгсөн бол «хянахгүй буцаах» түүнийг ЧИМЭЭГҮЙ арилгадаг байв (`bounce()`-ийн «шийдвэр
+     өгөгдсөн бол буцаахгүй» дүрэм ХУУЧИН уншилтаар шалгагддаг). Өөрчлөгдсөн бол шинэ мөрөөс дахин. */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const ld = await loadRow(args.oid);
+    if ('ok' in ld) return ld;
+    const { url, row, doc } = ld;
+    if (!reviewerRolesFor(act.who, doc.bagts).includes(args.as)) return { ok: false, error: tr('Энэ багцад «{0}» үүргээр хянах эрхгүй.', args.as) };
+    const r = bouncePure(doc, { as: args.as, who: act.who, reason: args.reason, note: args.note });
+    if (!r.ok) return r;
+    const body = parseBodyOf(doc.kind, row[F.body]) as AnyBody & { bounces?: Bounce[] };
+    const nb = { ...body, bounces: [...(body.bounces ?? []), r.bounce] };
+    if (!(await unchanged(args.oid, row, [F.status, F.reviews]))) continue;
+    return update(url, {
+      [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, null, r.bounce),
+      [F.decidedAt]: r.bounce.at, [F.body]: JSON.stringify(nb),
+    });
+  }
+  return { ok: false, error: RACE_MSG() };
 }
 
 /**
@@ -1334,18 +1389,29 @@ async function unchanged(oid: number, row: Attrs, fields: readonly string[]): Pr
 const RACE_TRIES = 3;
 const RACE_MSG = () => tr('Баримт өөр хэрэглэгчээр зэрэг өөрчлөгдөж байна — «Шинэчлэх» дараад дахин оролдоно уу.');
 
-/** ГҮЙЦЭТГЭГЧ «ХАРИУ ХҮЛЭЭН АВЛАА» — зохиогч, REP-тэй баримтад (`chanarMs.ackRep`) */
+/**
+ * ГҮЙЦЭТГЭГЧ «ХАРИУ ХҮЛЭЭН АВЛАА» — REP-тэй баримтад (`chanarMs.ackRep`): зохиогч;
+ * NCR-д ТУХАЙН БАГЦЫН ГҮЙЦЭТГЭГЧ (`chanarAuthor` + `isAuthorFor`), нээгч биш.
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь NCR-д `authorCap` (= `chanarReview`) ба
+ *    `authorDeny` (= NCR-ийн хянагчийн үүрэг) шалгадаг тул зөвхөн нээгч захиалагч хүлээн
+ *    авч, хариу очих гүйцэтгэгч консолоос ч хүлээн авч чаддаггүй байв.
+ */
 export async function ackRepDoc(args: { oid: number; who: string }): Promise<Result> {
   for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
     const ld = await loadRow(args.oid);
     if ('ok' in ld) return ld;
     const { url, row, doc } = ld;
-    const act = actor(args.who, authorCap(doc.kind));
+    const ncr = doc.kind === 'NCR';
+    const act = actor(args.who, ncr ? 'chanarAuthor' : authorCap(doc.kind));
     if (!('who' in act)) return act;
-    /* ⚠️ 2026-09-25: багцын эрх хасагдсан зохиогч хариу хүлээн авахгүй — `saveDraft`-ийн ижил */
-    const deny = authorDeny(doc.kind, act.who, doc.bagts);
+    /* ⚠️ 2026-09-25: багцын эрх хасагдсан зохиогч хариу хүлээн авахгүй — `saveDraft`-ийн ижил.
+       2026-10-01: NCR-д гүйцэтгэгчийн багцын эрх (`submitCorrection`/`closeNcrDoc`-ийн ижил). */
+    const contractor = isAuthorFor(act.who, doc.bagts);
+    const deny = ncr
+      ? (contractor ? null : tr('Энэ багцад гүйцэтгэгчийн эрхгүй.'))
+      : authorDeny(doc.kind, act.who, doc.bagts);
     if (deny) return { ok: false, error: deny };
-    const r = ackPure(doc, { who: act.who });
+    const r = ackPure(doc, { who: act.who, contractor });
     if (!r.ok) return r;
     /* ⚠️ 2026-09-30: бичихийн өмнө дахин уншина — өөрчлөгдсөн бол шинэ мөрөөс дахин */
     if (!(await unchanged(args.oid, row, [F.status, F.reviews]))) continue;
@@ -1372,7 +1438,8 @@ export async function closeAnDoc(args: { oid: number; who: string; as: Reviewer;
     const r = closeAnPure(doc, { as: args.as, who: act.who, note: args.note, no });
     if (!r.ok) return r;
     const attrs: Attrs = { [F.oid]: args.oid, [F.reviews]: reviewsJson(doc.reviews, r.rep, doc.bounce ?? null) };
-    if (doc.kind === 'MA') attrs[F.body] = JSON.stringify(applyRepToMaterials(normalizeMa(safeJson(row[F.body])), r.rep));
+    /* ⚠️ 2026-09-30: `closeAnMaterials` — түгжигдсэн AN материал ч A (тэр функцийн ⚠️) */
+    if (doc.kind === 'MA') attrs[F.body] = JSON.stringify(closeAnMaterials(normalizeMa(safeJson(row[F.body])), r.rep));
     /* ⚠️ 2026-09-30: бичихийн өмнө дахин уншина (MA-д биеийг ч дахин бичдэг тул бие ч) */
     const watch = doc.kind === 'MA' ? [F.status, F.reviews, F.body] : [F.status, F.reviews];
     if (!(await unchanged(args.oid, row, watch))) continue;

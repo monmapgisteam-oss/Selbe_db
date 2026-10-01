@@ -18,7 +18,24 @@ export type PastePlan = {
   skipped: number;
   /** Тоо болгож уншигдаагүй утга */
   bad: number;
+  /**
+   * ⚠️ 2026-09-30: БУРУУ утгын эхний хэдэн жишээ (мөр · блок · түүхий текст) —
+   *    дуудагч ИЛ анхааруулга гаргана. Урьд нь `bad` нь зөвхөн тоо байж ногоон
+   *    «… алгасав» мессежид хоосон нүдтэй нийлдэг тул «1,250» мэт няцаагдсан
+   *    утга «ИЛ мэдэгдэнэ» (`normCell`-ийн ⚠️) гэсэн дүрэм биелдэггүй байв.
+   */
+  badAt: { row: number; b: number; raw: string }[];
+  /**
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БИЧИГДЭХГҮЙ БҮХ нүдний байрлал ба шалтгаан —
+   *    буулгахаас ӨМНӨ урьдчилсан харагдацад УЛААНААР тодруулахад (`useCellEdit`).
+   *    `bad` — тоо биш/тодорхойгүй таслал; `neg` — сөрөг; `noWrite` — бүлгийн мөр эсвэл
+   *    талбаргүй блок (утга нь ХООСОН биш). Хоосон нүд ба хүснэгтээс хальсан нь ОРОХГҮЙ.
+   */
+  rejAt: { row: number; b: number; raw: string; why: 'bad' | 'neg' | 'noWrite' }[];
 };
+
+/** `badAt`-д хадгалах жишээний дээд тоо */
+const BAD_SAMPLES = 5;
 
 /**
  * Санамсаргүй асар том буулгалтаас хамгаална (жиш. бүтэн хуудас хуулах).
@@ -175,6 +192,13 @@ export function planPaste(
   let skipped = 0;
   let bad = 0;
   let seen = 0;
+  const badAt: PastePlan['badAt'] = [];
+  const rejAt: PastePlan['rejAt'] = [];
+  const noteBad = (row: number, b: number, raw: string, why: 'bad' | 'neg' = 'bad') => {
+    bad += 1;
+    if (badAt.length < BAD_SAMPLES) badAt.push({ row, b, raw: raw.trim() });
+    rejAt.push({ row, b, raw: raw.trim(), why });
+  };
 
   for (let gr = 0; gr < grid.length; gr++) {
     const vi = startVi + gr;
@@ -186,14 +210,19 @@ export function planPaste(
       /* Хүснэгтийн доод/баруун ирмэгээс хальсан */
       if (vi >= vis.length || b >= nBld) { skipped += 1; continue; }
       const row = vis[vi];
-      if (!canWrite(row, b)) { skipped += 1; continue; }
+      if (!canWrite(row, b)) {
+        skipped += 1;
+        /* 2026-10-01: утгатай нүд л «татгалзсан» — хоосон нь зүгээр байрлал */
+        if (grid[gr][gc].trim() !== '') rejAt.push({ row, b, raw: grid[gr][gc].trim(), why: 'noWrite' });
+        continue;
+      }
       const t = normCell(grid[gr][gc]);
       if (t === null) {
         /* ⚠️ ХООСОН нүд нь «устга» ГЭСЭН УТГАГҮЙ — алгасна. Excel-ийн блокт
            хоосон нүд элбэг тохиолддог тул устгал гэж үзвэл бөглөсөн өгөгдөл
            бөөнөөрөө арилна. Тоо биш утгыг тусад нь тоолно. */
         if (grid[gr][gc].trim() === '') skipped += 1;
-        else bad += 1;
+        else noteBad(row, b, grid[gr][gc]);
         continue;
       }
       /* ⚠️ СӨРӨГ утгыг ЧИМЭЭГҮЙ 0 болгохгүй (2026-09-03-ны аудит): урьд нь
@@ -207,9 +236,9 @@ export function planPaste(
          ч буулгалтад ХЭВЭЭР НЯЦААНА — Excel-ийн блокт сөрөг тоо ихэвчлэн
          зөрүүний багана (санамсаргүй хуулсан) байдаг бөгөөд олон нүдийг нэг дор
          бууруулах нь анзааралгүй өгөгдөл арчина. Залруулга нь нүд тус бүрээр. */
-      if (Number(t) < 0) { bad += 1; continue; }
+      if (Number(t) < 0) { noteBad(row, b, grid[gr][gc], 'neg'); continue; }
       hits.push({ row, b, v: String(Number(t)) });
     }
   }
-  return { hits, skipped, bad };
+  return { hits, skipped, bad, badAt, rejAt };
 }

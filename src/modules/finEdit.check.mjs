@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
    импортгүй тул цэвэр `node`-ийн төрөл хасалтаар ачаалагдана). Урьд нь энд
    `editText`/`parseCell`-ийн гар хуулбар байсан тул эх код өөрчлөгдөхөд (`DateOnly`
    салаа, орон нутгийн өдөр) тест хуучин дүрмийг «ногоон» гэж баталсаар байв. */
-import { editText, parseCell, SERVER_RO, NUMERIC_TYPES } from '../lib/finEdit.ts';
+import { editText, parseCell, SERVER_RO, NUMERIC_TYPES, awaitingReload } from '../lib/finEdit.ts';
 
 assert.ok(NUMERIC_TYPES.has('esriFieldTypeDouble'), 'тоон төрлийн жагсаалт');
 
@@ -49,6 +49,23 @@ check('мянгатын «1,234» → 1234 (аравт БИШ)', parseCell('1,23
 check('мянгат + бутархай «1,234.5» → 1234.5', parseCell('1,234.5', D, 'x') === 1234.5);
 assert.throws(() => parseCell('1234,5678', D, 'x'), /тоо буруу/);
 check('тодорхойгүй таслал «1234,5678» → алдаа', true);
+/* ⚠️ 2026-09-30: ХУВИЙН талбар (`pct`) — нэг таслал ҮРГЭЛЖ аравтын. Excel-ийн сарын хувь
+   «8,333» урьд нь 8333 болж `Cashflow_dun`-д гэрээний 83 дахин дүн бичигддэг байв;
+   «Cashflow хувиарлах» (`CashflowPlan.nOf`) ижил текстийг 8.333 гэж уншдаг. */
+check('хувь «8,333» → 8.333 (мянгат БИШ)', parseCell('8,333', D, 'x', undefined, true) === 8.333);
+check('хувь «12,5» → 12.5', parseCell('12,5', D, 'x', undefined, true) === 12.5);
+check('хувь «-0,125» → -0.125', parseCell('-0,125', D, 'x', undefined, true) === -0.125);
+check('хувь «8.333» → 8.333', parseCell('8.333', D, 'x', undefined, true) === 8.333);
+check('хувь БИШ талбарт «8,333» → 8333 (мянгатын дүрэм хэвээр)', parseCell('8,333', D, 'x') === 8333);
+{
+  /* Нийтлэх зам (`Finance.tsx`) хувийн талбарт `pct`-ийг ЗААВАЛ дамжуулна */
+  const fin = (await import('node:fs')).readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  const calls = [...fin.matchAll(/=\s*parseCell\(v, typeOf\(fld\), labelOf\(fld\)([^)]*)\)/g)];
+  check('Finance нийтлэлийн parseCell 2 газар хоёулаа isPctField дамжуулна',
+    calls.length === 2 && calls.every((m) => /,\s*isPctField\(fld$/.test(m[1])));
+  check('isPctField нь Cashflow_huwi ба FIN_XL_PCT-г хамарна',
+    /const isPctField = \(f: string\): boolean => f === 'Cashflow_huwi' \|\| FIN_XL_PCT\.includes\(f\)/.test(fin));
+}
 
 console.log('\n3. БУРУУ утга — ЧИМЭЭГҮЙ 0 болгохгүй, алдаа шиднэ');
 assert.throws(() => parseCell('гурав', D, 'Төсөв'), /тоо буруу/);
@@ -93,5 +110,24 @@ check('серверийн 6 талбар хаагдсан', true);
 for (const n of ['CF006', 'IPC35', 'bagts_ner'])
   assert.ok(!SERVER_RO.test(n), '✗ ' + n + ' буруу хаагдав');
 check('өгөгдлийн талбар нээлттэй хэвээр', true);
+
+console.log('\nX. ⚠️ 2026-10-01: нийтлэлийн дараах дахин ачаалалт дуустал ДАХИН нийтлэхгүй');
+{
+  const rowsA = [{ OBJECTID: 1 }];
+  const rowsB = [{ OBJECTID: 1 }];
+  check('нийтлээгүй үед хаалтгүй', awaitingReload(null, rowsA) === false);
+  check('нийтэлсний дараа ижил (хуучин) rows — хаалттай', awaitingReload(rowsA, rowsA) === true);
+  check('шинэ rows ирмэгц нээгдэнэ (агуулга ижил ч лавлагаа өөр)', awaitingReload(rowsA, rowsB) === false);
+}
+{
+  /* Finance.tsx-ийн «Гэрээний бүртгэл» товч хаалтыг ашиглаж, «Хадгалж байна…» гэж харуулна */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  check('publish нь awaitingReload-оор хаагдана', /if \(reloading \|\| awaitingReload\(pubFromRef\.current, rows\)\) return;/.test(src));
+  check('товч: saving (busy || reloading) үед идэвхгүй, «Хадгалж байна…»',
+    (src.match(/disabled=\{saving \|\| dirty === 0\}/g) ?? []).length === 2
+    && (src.match(/\{saving \? tr\('Хадгалж байна…'\)/g) ?? []).length === 2);
+  check('амжилттай нийтлэлийн дараа rows-ийг тэмдэглэнэ', src.includes('pubFromRef.current = rows;') && src.includes('setPubFrom(rows);'));
+}
 
 console.log('\n✅ Санхүүгийн засварын ' + ok + ' шалгуур давлаа');

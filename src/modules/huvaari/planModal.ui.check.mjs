@@ -51,4 +51,57 @@ assert.equal(o.disabled, false, 'гэрээ таб → сарын дүрэмгү
 // 8. no own span, parent span prefill; months empty → disabled (needs fill), but no crash
 o = render(row([null]), new Map(), { par: { ...row([span('2026-10-01', '2026-12-31')]), oid: 1, group: true, depth: 0 } });
 assert.equal(o.disabled, true, 'урьдчилан бөглөсөн муж, сар хоосон → хаалттай');
-console.log('✓ PlanModal SSR: 8 тохиолдол');
+
+/* ── 2026-09-30 РЕГРЕСС: «обьём зөв хуваасан ч болохгүй» ── */
+// 9. Нийлбэр ТЭНЦСЭН, нэг сар ХООСОН (10-01 → 2027-01-05 = 4 сар) → хаалттай, ГЭХДЭЭ шалтгаан нь
+//    хоосон сар; «-0.00 дутуу» / «нийлбэр тэнцээгүй» гэж ХУДАЛ хэлэхгүй.
+o = render(row([span('2026-10-01', '2027-01-05')]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 }));
+assert.equal(o.disabled, true, 'хоосон сартай → хаалттай (дүрэм хэвээр)');
+assert.ok(o.html.includes('хоосон сар: 2027-01'), `хоосон сарыг нэрлэнэ: ${o.html.slice(o.html.indexOf('Нийлбэр'), o.html.indexOf('Нийлбэр') + 300)}`);
+assert.ok(!o.html.includes('дутуу') && !o.html.includes('-аар илүү'), 'тэнцсэн нийлбэрт «дутуу/илүү» гэж бичихгүй');
+assert.ok(o.html.includes('нийт обьёмтой тэнцэв'), 'нийлбэр тэнцсэнийг үнэнээр хэлнэ');
+assert.ok(/Хоосон сар бий/.test(o.title) && !/тэнцээгүй/.test(o.title), `товчны тайлбар жинхэнэ шалтгаан: ${o.title}`);
+// 9б. Тэр сард 0 бичвэл нээгдэнэ
+o = render(row([span('2026-10-01', '2027-01-05')]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300, '2027-01': 0 }));
+assert.equal(o.disabled, false, '0 бичсэн → идэвхтэй');
+// 9в. Нийлбэр тэнцээгүй бол хуучин мессеж хэвээр
+o = render(row([span('2026-10-01', '2026-12-31')]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 200 }));
+assert.ok(o.html.includes('дутуу') && /тэнцээгүй/.test(o.title), 'дутуу нийлбэр → «дутуу» + «тэнцээгүй»');
+// 10. 3 оронтой x.xx5 нийт — харагдах бөөрөнхийлсөн утгаар бөглөхөд нээгдэнэ (balanced-ийн тэвчээр)
+o = render(row([span('2026-10-01', '2026-10-31')], 0.125), M({ '2026-10': 0.13 }));
+assert.equal(o.disabled, false, `0.125 → 0.13 идэвхтэй: ${o.btn}`);
+o = render(row([span('2026-10-01', '2026-11-30')], 1234.875), M({ '2026-10': 600, '2026-11': 634.88 }));
+assert.equal(o.disabled, false, '1234.875 → 600 + 634.88 идэвхтэй');
+// 11. ОБЬЁМТОЙ БҮЛЭГ — сарын нүд ГАРАХГҮЙ (бүлгийн «Тавих» сарыг бичдэггүй), шалтгаан харагдана
+o = render({ ...row([span('2026-10-01', '2026-12-31')]), group: true, depth: 0 }, M({}));
+assert.ok(!o.html.includes('mdMonthGrid') && !o.html.includes('mdMonthIn'), 'бүлэгт сарын нүд алга');
+assert.ok(o.html.includes('доторх ажил тус бүрийн цонхонд'), 'бүлэгт шалтгаан харагдана');
+console.log('✓ PlanModal SSR: 11 тохиолдол');
+
+/* ── 12. (2026-10-01, хэрэглэгч: бүгдийг зас) ТЭНЦЭЭГҮЙ БЛОКИЙН ЧИП УЛААН ──
+   Асуудалтай блок шууд олдоно: идэвхгүй блок — дуудагчийн `badBlks`; идэвхтэй блок —
+   цонхны одоогийн оролтоор (нийлбэр тэнцээгүй бол). Өнгө ганцаараа биш — «⚠» ба title. */
+{
+  const two = (spans, vol = 900) => ({ ...row(spans, vol), act: [null, null], aStart: [null, null], aEnd: [null, null] });
+  const chips = (html) => [...html.matchAll(/<button[^>]*class="mdChip[^"]*"[^>]*>([^<]*)<\/button>/g)].map((m) => ({ cls: /class="([^"]*)"/.exec(m[0])[1], txt: m[1] }));
+  const sp = span('2026-10-01', '2026-12-31');
+  // идэвхтэй B1 тэнцсэн, B2 (идэвхгүй) дуудагчийн хэлснээр тэнцээгүй
+  let h2 = render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 }), { blocks: ['B1', 'B2'], badBlks: new Set([1]) }).html;
+  let c = chips(h2);
+  assert.equal(c.length, 2, `2 чип: ${JSON.stringify(c)}`);
+  assert.ok(!/mdChipBad/.test(c[0].cls) && c[0].txt === 'B1', 'тэнцсэн идэвхтэй блок улаан биш');
+  assert.ok(/mdChipBad/.test(c[1].cls) && c[1].txt.includes('⚠') && c[1].txt.includes('B2'), `тэнцээгүй B2 улаан + ⚠: ${JSON.stringify(c[1])}`);
+  assert.ok(h2.includes('сарын задаргааны нийлбэр обьёмтой тэнцэхгүй'), 'улаан чипийн тайлбар');
+  // идэвхтэй блокийн ОДООГИЙН оролт тэнцээгүй → улаан (badBlks-ээс үл хамааран)
+  h2 = render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 200 }), { blocks: ['B1', 'B2'], badBlks: new Set() }).html;
+  c = chips(h2);
+  assert.ok(/mdChipBad/.test(c[0].cls), 'идэвхтэй блокийн тэнцээгүй нийлбэр улаан');
+  assert.ok(!/mdChipBad/.test(c[1].cls), 'B2 улаан биш');
+  // утга огт бичээгүй идэвхтэй блок — дуудагчийн дүгнэлтээр (хоосон = асуудалгүй)
+  h2 = render(two([sp, sp]), new Map(), { blocks: ['B1', 'B2'] }).html;
+  assert.ok(chips(h2).every((x) => !/mdChipBad/.test(x.cls)), 'задаргаагүй блок улаан биш');
+  // бүлэгт хэзээ ч улаан биш
+  h2 = render({ ...two([sp, sp]), group: true, depth: 0 }, M({ '2026-10': 1 }), { blocks: ['B1', 'B2'], badBlks: new Set() }).html;
+  assert.ok(chips(h2).every((x) => !/mdChipBad/.test(x.cls)), 'бүлгийн чип улаан биш');
+}
+console.log('✓ PlanModal SSR: тэнцээгүй блокийн улаан чип');

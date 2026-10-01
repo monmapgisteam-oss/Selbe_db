@@ -10,7 +10,7 @@ import { negjOf } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
-import type { useCellEdit } from "./useCellEdit";
+import type { useCellEdit, PastePrev } from "./useCellEdit";
 import { RO, cellKey, cls, dt, full, pc, qty, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
 import st from "../sheet.module.css";
 
@@ -21,7 +21,8 @@ export function FillRows({
   vis, winFrom, winTo, rowsAll, calc, addedOids, collapsed, toggle, ro, editing, canObyemEdit, pvSub, sc,
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
   locked, noEdit, say, canPerf, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
-  inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig,
+  inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
+  restoring = false, remainHint, pastePrev = null,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -38,6 +39,14 @@ export function FillRows({
   commit: CellT['commit']; nextEditable: CellT['nextEditable']; nextBlockEditable: CellT['nextBlockEditable'];
   pendDate: Record<string, string>; setPick: Dispatch<SetStateAction<PickState | null>>;
   asOf: number | null; asOfOrig: number | null;
+  /** ⚠️ 2026-09-30: хөвөгч шар анхааруулга — төлөвлөсөн обьёмын буруу утгад (`PvCell.onBad`) */
+  warn?: (msg: string) => void;
+  /** ⚠️ 2026-10-01: ноорог сэргэж дуустал нүд нээгдэхгүй (`RO.restoring`) */
+  restoring?: boolean;
+  /** ⚠️ 2026-10-01: «үлдэгдэл = Обьём − архив − хяналтад − ноорог» тайлбар */
+  remainHint?: CellT['remainHint'];
+  /** ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдац — бичигдэх (цэнхэр) / татгалзсан (улаан ✕) */
+  pastePrev?: PastePrev | null;
 }) {
   return (
     <>
@@ -124,6 +133,7 @@ export function FillRows({
                       cls={cls}
                       ro={ro}
                       negj={negjOf(r.work)}
+                      onBad={warn}
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
@@ -216,6 +226,8 @@ export function FillRows({
                          хянагчийн `view.changed`/`view.ok` индексээрээ хэвээр. */
                       const ck = `${i}:${b}`;
                       const bk = `${r.oid}:${b}`;
+                      /** 2026-10-01: «үлдэгдэл = Обьём − архив − хяналтад − ноорог» — засварлагдах нүдэнд */
+                      const remLine = canVol && !view && remainHint ? remainHint(r, bi, ovBase.get(r.oid)) : '';
                       const changed = !!view?.changed?.has(ck) || backChg.has(bk);
                       const okd = !!view?.ok?.has(ck) || (backChg.has(bk) && backOk.has(bk));
                       const open = () => {
@@ -236,6 +248,8 @@ export function FillRows({
                         if (!editing) return say(RO.notEditing);
                         /* ⚠️ Илгээлт явж байхад нүд нээхгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
                         if (busy) return say(RO.busy);
+                        /* ⚠️ 2026-10-01: ноорог сэргэж дуустал нээхгүй — бичсэн утга сэргээлтэд дарагдахгүй */
+                        if (restoring) return say(RO.restoring);
                         if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
                         /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
                            хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
@@ -276,7 +290,9 @@ export function FillRows({
                               (dirty ? " dirty" : "") +
                               (byOther ? " byOther" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
-                              (hitKey === `${i}:${b}` ? " chgHit" : ""),
+                              (hitKey === `${i}:${b}` ? " chgHit" : "") +
+                              /* 2026-10-01: буулгалтын урьдчилсан харагдац */
+                              (pastePrev?.rej.has(bk) ? " pasteBad" : pastePrev?.ok.has(bk) ? " pasteOk" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
@@ -304,9 +320,13 @@ export function FillRows({
                             }
                           }}
                           title={
+                            /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
+                            (pastePrev?.rej.has(bk) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(bk) ?? '') + '\n' : '') +
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
                                гэдгийг л хэлнэ, ХЭН гэдгийг энэ мөр хэлнэ. */
                             (byOther ? tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy ?? '') + '\n' : '') +
+                            /* 2026-10-01: үлдэгдэл (`remainHint`) */
+                            (remLine ? remLine + '\n' : '') +
                             /* ⚠️ 2026-09-25: нэмэлтийн мөр — илгээгээгүй ба өөрчлөгдсөн нүдэнд */
                             (incLine && (dirty || changed) ? incLine + '\n' : '') +
                             (changed
@@ -344,7 +364,8 @@ export function FillRows({
                                    ӨМНӨХ нийт нь энд харагдана («өмнөх: 40») — бичих тоо
                                    нь түүн дээр НЭМЭГДЭНЭ. Мөрийн «Обьём» нь `title`-д. */
                                 placeholder: prevHint(r, bi),
-                                title: tr('Өмнөх бөглөлтөөс хойш хийсэн хэмжээгээ бичнэ — нийт нь автоматаар нэмэгдэнэ. Залруулахдаа сөрөг тоо бичнэ.'),
+                                title: tr('Өмнөх бөглөлтөөс хойш хийсэн хэмжээгээ бичнэ — нийт нь автоматаар нэмэгдэнэ. Залруулахдаа сөрөг тоо бичнэ.')
+                                  + (remLine ? '\n' + remLine : ''),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) =>

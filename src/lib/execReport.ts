@@ -35,9 +35,9 @@ import { loadNegtgelPct } from '@/lib/negtgel';
 import { loadPlanCurveCached, planPctAt } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
-import { loadBuildings } from '@/modules/BuildingPanel';
-import { buildPacks } from '@/modules/Bagts';
-import { loadFinData } from '@/modules/Finance';
+import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
+import { buildPacks, blockCount } from '@/modules/Bagts';
+import { loadFinData, projectPlanOf } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
@@ -178,7 +178,8 @@ export type ExecReport = {
  *    сүлжээний хүсэлт ҮҮСЭХГҮЙ; энд зөвхөн нэгтгэлийн үр дүнг хадгална.
  */
 export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
-  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
+  /* ⚠️ 2026-10-01: `HUVAARI_OBYEM` — төлөвлөгөөт хувь хуваарийн муруйгаас (`loadPlanCurveCached`) */
+  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM']); // ⚠️ зөвшөөрлийн засвар шууд тусна (2026-09-17)
 
 async function loadExecReportRaw(): Promise<ExecReport> {
   const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbsPct] = await Promise.all([
@@ -203,7 +204,10 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   ]);
 
   /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
-  const packs = buildPacks(bld.rows);
+  /* ⚠️ 2026-09-30: `bld.pkgPct` — багцын мөрийн хувь «Гүйцэтгэл»-ийн жагсаалт
+     (`physLatest`) · Тайлан §2/§3-тай НЭГ (`blockProgress.pkgProgressOf`). Урьд нь
+     давхаргын feature-ээр дундажлагдаж Багц 1 · 2 05-аас зөрдөг байв. */
+  const packs = buildPacks(bld.rows, bld.pkgPct);
   const nowYm = monthKey();
   /* ⚠️ 2026-09-22: `physNow` — PkgProg `TsKpi` · Dashboard-тай НЭГ туслах (pkgShared.ts) */
   const actual = physNow(fin, nowYm);
@@ -223,7 +227,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      давхаргын ХАМГИЙН СҮҮЛИЙН огноо) байсан тул «хэмжилт {огноо}» шошго нь тоо
      гарсан хэмжилтээс өөр өдрийг заадаг байв. Хэмжилтгүй бол '' (шошго гарахгүй). */
   const physAsOf = lastM ? (lastM.physAt ?? lastM.label) : '';
-  const planned: number | null = plan.months.length ? planPctAt(plan.months, measAt) : null;
+  /* ⚠️ 2026-09-30: ТӨЛӨВЛӨГӨӨ = `projectPlanOf` — `actual` (`physNow`, ХО дүнгээр)-тай НЭГ
+     жин. Урьд нь `plan.months` (БЛОКИЙН тоогоор) тул «хуваариас N нэгж хувиар хоцорч
+     байна» өгүүлбэр хоёр өөр жинг хасдаг байв (`gdash.housingPlanSeries`-ийн ⚠️). */
+  const projPlan = projectPlanOf(fin, plan);
+  const planned: number | null = projPlan.length ? planPctAt(projPlan, measAt) : null;
   const gap = planned != null && actual != null ? planned - actual : null;
 
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ──
@@ -318,7 +326,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     };
   }
 
-  const withData = bld.rows.filter((b) => b.progress != null);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (ижил `buildingKey`) НЭГ блок */
+  const withData = uniqueBlocks(bld.rows).filter((b) => b.progress != null);
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
@@ -337,7 +346,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       actual, planned, gap,
       planFailed: plan.failed.length,
       packs: packs.map((p) => ({
-        key: p.key, name: p.name, kind: p.kind, blocks: p.blocks.length,
+        key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
         households: p.households, progress: p.progress,
       })),
       levels: PROGRESS_LEVELS.map((l) => ({

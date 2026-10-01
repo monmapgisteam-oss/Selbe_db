@@ -46,6 +46,16 @@ export const TYPE_ORDER: readonly Role[] = [
 
 export const isTypeRole = (r: Role | null | undefined): r is Role => !!r && TYPE_ORDER.includes(r);
 
+/**
+ * ШИНЭ АККАУНТЫН АНХДАГЧ ТӨРӨЛ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Урьд нь «Нэмэх» нь ХУУЧИН `tolovlolt`-ийг («Төлөвлөлт (хуучин)») өгдөг байв — 10 төрлийн
+ *    сонгогчид байхгүй тул идэвхгүй сонголтоор харагдаж, «Эрхийн төрөл»-ийн загвар (нүүр цонх ·
+ *    харагдац) хэзээ ч үйлчилдэггүй. Одоо ХАРАХ-ын хамгийн тайван төрөл — «Мэдээлэл танилцах»:
+ *    засах эрх, урсгалын шат ОГТ дагалддаггүй (`roleTypes` нь зөвхөн харах загвар); харагдац
+ *    нь загвараас (`roleAccess`). Админ хадгалахаас өмнө ноорогт өөр төрөл сонгож болно.
+ */
+export const NEW_ACCOUNT_ROLE: Role = 'taniltsah';
+
 /* ⚠️ Текстийг ЗУРАГДАХ агшинд — модулийн түвшинд `tr()` дуудвал хэл солиход хоцорно */
 export function typeLabel(r: Role): string {
   if (r === 'guitsetgegch') return tr('Гүйцэтгэгч компани');
@@ -105,6 +115,15 @@ export type TypeTpl = {
   on: string[];
   /** Нэвтрэхэд нээгдэх цонх */
   home: ViewKey;
+  /**
+   * ХАДГАЛАХ АГШИНД каталогт байсан харагдацууд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ ЯАГААД: `on` нь зөвхөн ЧЕКЛЭСЭН id-ыг хадгалдаг тул «чеклээгүй» ба «загвар хадгалсны
+   *    ДАРАА нэмэгдсэн шинэ хуудас» (жиш. 2026-09-30-ны «ТУХ») ялгагдахгүй — шинэ хуудас бүх
+   *    хадгалсан загварт чимээгүй «хаалттай» болж, админ мэдэхгүй. Энэ жагсаалтаас гадуурх
+   *    харагдацыг «Эрхийн төрөл» хүснэгт «шинэ хуудас — загварт тохируулаагүй» гэж тэмдэглэнэ
+   *    (`unseenViews`). `undefined` — энэ талбараас ӨМНӨ хадгалсан мөр (`LEGACY_SEEN`).
+   */
+  seen?: ViewKey[];
 };
 
 const V = (...k: string[]) => k.map((x) => `view:${x}`);
@@ -171,12 +190,43 @@ function narrowTpl(role: Role): TypeTpl {
  */
 export function cleanTpl(role: Role, raw: unknown): TypeTpl | null {
   if (!raw || typeof raw !== 'object') return null;
-  const r = raw as { on?: unknown; home?: unknown };
+  const r = raw as { on?: unknown; home?: unknown; seen?: unknown };
   if (!Array.isArray(r.on)) return null;
   const on = [...new Set(r.on.filter((x): x is string => typeof x === 'string' && KNOWN.has(x)))]
     .filter((x) => x !== 'admin' || role === 'super');
   const home = typeof r.home === 'string' && VIEW_KEYS.has(r.home) ? (r.home as ViewKey) : (DEFAULT_TPL[role]?.home ?? 'gdash');
-  return { on, home };
+  /* ⚠️ 2026-10-01: `seen` — танигдахгүй түлхүүр хаягдана; массив биш бол «хуучин мөр» (`undefined`) */
+  if (!Array.isArray(r.seen)) return { on, home };
+  const seen = [...new Set(r.seen.filter((x): x is ViewKey => typeof x === 'string' && VIEW_KEYS.has(x)))];
+  return { on, home, seen };
+}
+
+/* ══════════════════════ Шинэ хуудас — загварт тохируулаагүй (2026-10-01) ══════════════════════ */
+
+/** Загварт орох харагдацын түлхүүрүүд — ОДООГИЙН каталог (урсгалтай 6 хасагдсан) */
+export const tplViewKeys = (): ViewKey[] => TPL_VIEWS.map((v) => v.key);
+
+/**
+ * `seen`-гүй (2026-10-01-ээс ӨМНӨ хадгалсан) загварын «мэдэж байсан» каталог.
+ * ⚠️ Загварыг 2026-09-25-нд нэвтрүүлсэн; түүнээс ХОЙШ нэмэгдсэн загварын харагдац — ЗӨВХӨН
+ *    «ТУХ» (`tuh`, 2026-09-30). Шинэ харагдацыг ЭНД НЭМЭХГҮЙ: 2026-10-01-ээс хойш хадгалсан
+ *    загвар бүр `seen`-тэй тул шинэ хуудас автоматаар тэмдэглэгдэнэ.
+ */
+const VIEWS_AFTER_TEMPLATES: readonly string[] = ['tuh'];
+const LEGACY_SEEN = (): ViewKey[] => tplViewKeys().filter((k) => !VIEWS_AFTER_TEMPLATES.includes(k));
+
+/**
+ * ХАДГАЛСАН загвар «мэдээгүй» (хадгалах агшинд каталогт байгаагүй) харагдацууд.
+ * ⚠️ Зөвхөн ХАДГАЛСАН загварт — анхдагч загвар (`DEFAULT_TPL`) админы шийдвэр биш тул хоосон.
+ * ⚠️ Super нь үргэлж `'all'` (`roleAccess`) — тэмдэглэхгүй.
+ */
+export function unseenViews(role: Role): ViewKey[] {
+  loadCache();
+  if (role === 'super') return [];
+  const t = remote[role];
+  if (!t) return [];
+  const seen = new Set<string>(t.seen ?? LEGACY_SEEN());
+  return tplViewKeys().filter((k) => !seen.has(k));
 }
 
 /* ══════════════════════ Хүснэгтээс уншсан загвар ══════════════════════ */
@@ -291,13 +341,19 @@ export function tplOf(role: Role): TypeTpl {
   loadCache();
   const known = synced || cacheLoaded;
   const t = remote[role] ?? (known && !broken.has(role) ? DEFAULT_TPL[role] : undefined);
-  return t ? { on: [...t.on], home: t.home } : narrowTpl(role);
+  /* ⚠️ 2026-10-01: `seen` хуулбартай — `ErhTypes`-ийн «өөрчлөгдсөн эсэх» харьцуулалтад */
+  return t ? { on: [...t.on], home: t.home, ...(t.seen ? { seen: [...t.seen] } : {}) } : narrowTpl(role);
 }
 
-/** Загварыг хүснэгтэд бичнэ — амжилттай бол локал хуулбарыг шинэчилнэ */
+/**
+ * Загварыг хүснэгтэд бичнэ — амжилттай бол локал хуулбарыг шинэчилнэ.
+ * ⚠️ 2026-10-01: `seen` = ОДООГИЙН каталог — хадгалсан админ баганын бүх харагдацыг харсан
+ *    (чеклэсэн эсвэл санаатай орхисон); «шинэ хуудас» тэмдэг арилна (`unseenViews`).
+ */
 export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
-  const clean = cleanTpl(role, tpl);
-  if (!clean || !isTypeRole(role)) return false;
+  const cleaned = cleanTpl(role, tpl);
+  if (!cleaned || !isTypeRole(role)) return false;
+  const clean: TypeTpl = { ...cleaned, seen: tplViewKeys() };
   /* ⚠️ 2026-09-25: эхлэх ба дуусах агшинд тэмдэглэнэ — `_typesMark`-ийн тайлбар */
   const before = writtenAt.get(role);
   writtenAt.set(role, ++tick);

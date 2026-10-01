@@ -27,6 +27,7 @@ import type { UserPerm } from '@/lib/permissions';
 import type { CapKey } from '@/lib/caps';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
+import { typeLabel } from '@/lib/roleTypes';
 import s from './userAdmin.module.css';
 import type { Draft } from './UserAdmin';
 import { UserRights, type UserRightsProps } from './UserRights';
@@ -123,16 +124,27 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
     <div className={s.presets}>
       {/* ⚠️ 2026-09-30: 10 чип бүгд ил байхад мөр бүр 2 мөр зай эзэлдэг байв
           (хэрэглэгчийн хүсэлт) — нэрийн ард нэг сонгогч. Сонголт = өмнөх чип дарахтай ижил (`onRole`). */}
+      {/* ⚠️ 2026-09-30: хатуу super-т ИДЭВХГҮЙ — `UserAdmin.applyRole`-ийн дүрэм (кодонд бүртгэлтэй
+          админыг доошлуулахгүй). Хуучин override-той бол «Сэргээх» super руу буцаана. */}
       <select
         className={s.roleSelect}
         value={d.role ?? ''}
+        disabled={p.superUser}
         onChange={(e) => { if (e.target.value) onRole(e.target.value as Role); }}
         aria-label={tr('Үүрэг')}
-        title={d.role === 'super'
-          ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
-          : tr('Үүрэг')}
+        title={p.superUser
+          ? tr('Кодонд бүртгэлтэй админ')
+          : d.role === 'super'
+            ? tr('Бүх харагдац нээгдэнэ. ⚠️ Админ портал нээх эрх зөвхөн кодын хатуу тохиргооны супер админд бий.')
+            : tr('Үүрэг')}
       >
         {!d.role && <option value="">{tr('Үүрэг сонгох…')}</option>}
+        {/* ⚠️ 2026-09-30: ХУУЧИН үүрэг (`beginner` · `tolovlolt` — шинэ аккаунтын анхдагч ч) 10 төрлийн
+            жагсаалтад БАЙХГҮЙ тул сонгогч ЭХНИЙ сонголтыг («Гүйцэтгэгч компани») харуулж, хадгалагдах
+            бодит үүргийг нууж байв. Тэр үүргийг идэвхгүй сонголтоор ил харуулна (дахин сонгогдохгүй). */}
+        {d.role && !rolePresets.some((r) => r.key === d.role) && (
+          <option value={d.role} disabled>{typeLabel(d.role)}</option>
+        )}
         {rolePresets.map((r) => (
           <option key={r.key} value={r.key}>{r.label}</option>
         ))}

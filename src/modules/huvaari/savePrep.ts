@@ -27,6 +27,8 @@ export type SavePrep = {
   resDropped: number;
   rfUnknown: boolean;
   obLost: number;
+  /** Бүлгийн кодоор ирсэн сарын ноорог — бичигдээгүй, тэнцэлд тоологдоогүй (2026-10-01) */
+  grpSkipped: number;
 } | { ok: false; stale: number };
 
 export async function prepareSave({
@@ -195,6 +197,8 @@ export async function prepareSave({
   let rfUnknown = false;
   /** Ажил нь хуудсанд олдоогүй сарын ноорог (ажил·блок) — хаягдсан (2026-09-29 аудит) */
   let obLost = 0;
+  /** Бүлгийн сарын ноорог — алгассан (ажил·блок) (2026-10-01) */
+  let grpSkipped = 0;
   const fields = { hun: false, mashin: false };
   let obEdits: PlanEdits | null = null;
   if (obDraft.size || obResDraft.size) {
@@ -215,6 +219,11 @@ export async function prepareSave({
       /* ⚠️ 2026-09-29 аудит: ажил хуудсанд олдохгүй (шинэ жаазанд код солигдсон/устсан)
          бол ЧИМЭЭГҮЙ алгасахгүй — тоолж доор ил хэлнэ; ноорог нь цэвэрлэгдэнэ. */
       if (!r || !blok) { obLost += 1; continue; }
+      /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮЛГИЙН задаргааг БИЧИХГҮЙ, тэнцэлд
+         ТООЛОХГҮЙ — «Сарын обьём бүлэгт биш» (`util.unbalancedBlocks`-ийн ⚠️). Урьд нь
+         хүүхдийг чирэхэд бүлгийн хадгалагдсан задаргаа тайрагдаж `unbal` болж, батлалт
+         засах замгүй гацдаг байв. Серверийн бүлгийн мөрүүд ХӨНДӨГДӨХГҮЙ (тоолж хэлнэ). */
+      if (r.group) { grpSkipped += 1; continue; }
       /* Обьёмын ноорог байхгүй бол СЕРВЕРИЙН задаргаан дээр нөөц л өөрчлөгдсөн */
       const months = obDraft.get(key) ?? obPlan.get(des)?.get(blok) ?? new Map<string, number>();
       /**
@@ -328,5 +337,5 @@ export async function prepareSave({
     }
   }
 
-  return { ok: true, upd, obEdits, unbal, unbalKeys, resSkipped, resSkippedKeys, resDropped, rfUnknown, obLost };
+  return { ok: true, upd, obEdits, unbal, unbalKeys, resSkipped, resSkippedKeys, resDropped, rfUnknown, obLost, grpSkipped };
 }

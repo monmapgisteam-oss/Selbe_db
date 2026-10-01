@@ -68,6 +68,12 @@ export const fake = {
   unexpected: [],
   /** Хүснэгтийн эзэн — хатуу super байх ёстой (`permsRemote.findTableUrl`) */
   owner: '',
+  /**
+   * `true` бол хүснэгтийн хайлт ХООСОН буцаана — remote нэг ч удаа уншигдаагүй сешнийг
+   * дуурайна (`initRemote` → false). ⚠️ `permsRemote` зөвхөн ОЛДСОН URL-ыг кэшилдэг тул
+   * анхны амжилттай уншилтаас ӨМНӨ л утгатай (2026-09-30).
+   */
+  searchDown: false,
   seed(rows) {
     for (const r of rows) this.rows.push({ OBJECTID: this.oid++, role: null, docs: 0, ...r });
   },
@@ -172,7 +178,7 @@ g.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   if (/\/sharing\/rest\/search$/.test(url)) {
     const body = {
-      results: [{ title: 'Selbe_Permissions', url: TABLE, owner: fake.owner, access: 'org' }],
+      results: fake.searchDown ? [] : [{ title: 'Selbe_Permissions', url: TABLE, owner: fake.owner, access: 'org' }],
     };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }

@@ -8,6 +8,7 @@ if (process.env.SELBE_LIVE_SKIP) {
 }
 const rows = await loadZov();
 assert.ok(rows, 'татаж чадсангүй');
+const meta0 = await (await fetch(`${ZURL}?f=json`)).json();
 assert.ok(rows.length > 0, 'мөр алга');
 console.log(`✅ ${rows.length} мөр уншигдав`);
 
@@ -43,6 +44,17 @@ console.log('✅ oidKey — үсгийн 4 хувилбар таарч, ойро
 const bad = rows.filter((r) => r.tolov === 'unknown');
 assert.equal(bad.length, 0, `танихгүй төлөв: ${bad.map((b) => b.ner).join(', ')}`);
 console.log('✅ бүх төлөв танигдав');
+
+/* ⚠️ 2026-10-01: Editor Tracking асаалттай (`editFieldsInfo.creationDateField`) бол
+   бүртгэгдсэн цаг (`since`) уншигдах ёстой — «удаж буй хүлээлт»-ийн суурь. */
+if (meta0.editFieldsInfo?.creationDateField || meta0.editFieldsInfo?.editDateField) {
+  const withSince = rows.filter((r) => r.since != null).length;
+  assert.ok(withSince > 0, 'Editor Tracking асаалттай атал нэг ч мөрийн бүртгэгдсэн цаг уншигдсангүй');
+  console.log(`✅ ${withSince}/${rows.length} мөрийн бүртгэгдсэн цаг уншигдав`);
+} else {
+  assert.equal(rows.filter((r) => r.since != null).length, 0, 'тохиргоо унтраалттай үед `since` null байх ёстой');
+  console.log('ℹ Editor Tracking унтраалттай — «удаж буй» тэмдэглэгээ идэвхгүй');
+}
 
 const dated = rows.filter((r) => r.ognoo != null);
 assert.ok(dated.length > 0, 'нэг ч огноо уншигдсангүй — DateOnly хөрвүүлэлт ажиллаагүй');

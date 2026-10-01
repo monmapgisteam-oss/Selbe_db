@@ -89,5 +89,8 @@ export const removeQaqcAssign = (user: string, revoke = true) => acl.remove(user
 /** Аккаунт УСТГАХАД мөрийг бүрмөсөн арилгах (эрх буцаахгүй) */
 export const purgeQaqcAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryQaqcAssign = acl.retry;
+
 /** Тухайн хэрэглэгчийн ЧАНАРЫН багцууд (`null` = хязгааргүй) */
 export const qaqcScope = (user: string | null | undefined) => acl.scope(user);

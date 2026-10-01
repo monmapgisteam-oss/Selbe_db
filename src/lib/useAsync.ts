@@ -47,8 +47,53 @@ export type AsyncOpts = {
   keepOn?: unknown[];
 };
 
+/**
+ * `keepOn`-д ОРООГҮЙ dep (харуулах ЗҮЙЛИЙГ тодорхойлох ПАРАМЕТР) солигдсон уу.
+ * `prev == null` (анхны ачаалалт) → `true`. `keepOn`-ы утгууд ихэвчлэн `deps`-т мөн
+ * багтдаг (жиш. `[tick, range]` + `keepOn: [tick]`) тул тэдгээрийг хасаж үзнэ.
+ */
+export function paramsChanged(prev: readonly unknown[] | null, deps: readonly unknown[], keep: readonly unknown[] | undefined): boolean {
+  return prev == null
+    || prev.length !== deps.length
+    || deps.some(
+      (v, i) =>
+        !Object.is(v, prev[i])
+        && !(keep != null && keep.some((k) => Object.is(k, v))),
+    );
+}
+
+/**
+ * Дахин татахад ХУУЧИН утгыг дэлгэц дээр барих уу (stale-while-revalidate).
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): автобусын хувилбар (`fromBus`) эсвэл
+ *    `keepOn` өсөлт ПАРАМЕТРИЙН солилттой НЭГ эффектэд давхцвал урьд нь `fromBus`
+ *    дангаараа хуучин утгыг барьдаг байв — шинэ багц/хугацааны дэлгэц дээр ӨМНӨХ
+ *    параметрийн тоо шинэ нь иртэл харагдана. Одоо параметр ӨӨРЧЛӨГДСӨН бол ҮРГЭЛЖ
+ *    «Татаж байна…».
+ */
+export function keepStale(fromBus: boolean, keepChanged: boolean, paramsDiffer: boolean): boolean {
+  return (fromBus || keepChanged) && !paramsDiffer;
+}
+
+/**
+ * Хадгалсан үр дүн ОДООГИЙН параметрийнх мөн эсэхийг ЗУРАХ үед шалгана — биш бол
+ * `LOADING`. ⚠️ 2026-10-01: эффект `LOADING` тавихаас ӨМНӨХ нэг зурагдалтад (эффект
+ * зурсны ДАРАА ажилладаг) хуучин параметрийн тоо шинэ сонголтын дэргэд анивчдаг байв.
+ */
+export function visibleResult<R extends { state: string }>(
+  tagged: { r: R; forDeps: readonly unknown[] | null },
+  deps: readonly unknown[],
+  keep: readonly unknown[] | undefined,
+  loading: R,
+): R {
+  if (tagged.r.state === 'loading' || tagged.forDeps == null) return tagged.r;
+  return paramsChanged(tagged.forDeps, deps, keep) ? loading : tagged.r;
+}
+
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], opts?: AsyncOpts): Async<T> {
-  const [result, setResult] = useState<Async<T>>(LOADING);
+  /* ⚠️ 2026-10-01: үр дүн нь ӨӨРИЙГ НЬ гаргасан deps-ийн агшинтай хамт (`forDeps`) —
+     зурах үед `visibleResult` хуучин параметрийн утгыг нууна. */
+  const [tagged, setTagged] = useState<{ r: Async<T>; forDeps: unknown[] | null }>({ r: LOADING, forDeps: null });
+  const result = visibleResult<Async<T>>(tagged, deps, opts?.keepOn, LOADING);
   /**
    * ӨГӨГДЛИЙН АВТОБУСЫН хувилбар — хүснэгт рүү бичихэд өснө (`dataBus.ts`).
    *
@@ -143,29 +188,22 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], opts?: AsyncO
     /* ⚠️ `keepOn`-д ОРООГҮЙ deps-ийн аль нэг солигдсон эсэх. `keepOn`-ы утгууд
        ихэвчлэн `deps`-т мөн багтдаг (жиш. `[tick, range]` + `keepOn: [tick]`)
        тул тэдгээрийг хасаж үзнэ — үлдсэн нь харуулах ЗҮЙЛИЙГ тодорхойлно. */
-    const prevDeps = depsRef.current;
-    const otherDepsChanged =
-      prevDeps == null
-      || prevDeps.length !== deps.length
-      || deps.some(
-        (v, i) =>
-          !Object.is(v, prevDeps[i])
-          && !(keep != null && keep.some((k) => Object.is(k, v))),
-      );
-    depsRef.current = [...deps];
-    const fromKeep = keepChanged && !otherDepsChanged;
+    const otherDepsChanged = paramsChanged(depsRef.current, deps, keep);
+    const snap = [...deps];
+    depsRef.current = snap;
     keepRef.current = keep != null ? [...keep] : null;
-    if (!fromBus && !fromKeep) setResult(LOADING);
+    /* ⚠️ 2026-10-01: автобус + параметрийн солилт давхцвал ч `LOADING` (`keepStale`-ийн ⚠️) */
+    if (!keepStale(fromBus, keepChanged, otherDepsChanged)) setTagged({ r: LOADING, forDeps: snap });
     fnRef
       .current()
       .then((data) => {
-        if (alive) setResult({ state: 'ready', data, error: null });
+        if (alive) setTagged({ r: { state: 'ready', data, error: null }, forDeps: snap });
       })
       .catch((e: unknown) => {
         if (!alive) return;
         const error = e instanceof Error ? e : new Error(String(e));
         console.error('[selbe] өгөгдөл татахад алдаа:', error);
-        setResult({ state: 'error', data: null, error });
+        setTagged({ r: { state: 'error', data: null, error }, forDeps: snap });
       });
     return () => {
       alive = false;

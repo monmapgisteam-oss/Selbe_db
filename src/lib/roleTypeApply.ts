@@ -63,6 +63,12 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   /* ⚠️ 2026-09-25: синкээс өмнө `tplOf` нь нарийн нөөц — түүнийг тараавал хүний эрх хумигдана */
   if (!typesReady()) return { ok: false, errors: [tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')] };
   if (!remoteReady()) return { ok: false, errors: [tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.')] };
+  /* ⚠️ 2026-09-30: УСТГАГДСАН аккаунтад бичихгүй — `setUser` tombstone-ыг жирийн мөрөөр дарж
+     устгагдсан хүн дахин нэвтэрдэг (`guitsetgelAcl.grantFlowAccess`-ийн 2026-09-25 ⚠️). Бөөнөөр
+     хэрэгжүүлэлтийн явцад өөр админ устгасан, эсвэл хуучин жагсаалтаас дуудагдсан үед. */
+  if (!listUsers().some((x) => x.username.toLowerCase() === u)) {
+    return { ok: false, errors: [tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', u)] };
+  }
   const hard = roleForUser(u) === 'super';
   /* ⚠️ Хатуу super-ийг панелаас доошлуулахгүй — `permissions.hasAccess`-ийн ⚠️ */
   if (hard && role !== 'super') {
@@ -85,13 +91,14 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
     if (role === 'super') return { ok: true, errors: [] };
     const acc = roleAccess(role);
     /*
-     * ⚠️ УРСГАЛТАЙ ХАРАГДАЦ ХЭВЭЭР (2026-09-30): загвар зөвхөн харах хуудас олгодог
-     *    (`roleTypes.TPL_VIEWS`); урсгалын шатаар нээгдсэн «Гүйцэтгэл» зэрэг
-     *    хадгалагдсан утгыг загвар дарж хасах ёсгүй — хуваарилалт л хасна.
+     * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): УРСГАЛТАЙ ХАРАГДАЦ БИЧИГДЭХГҮЙ. Урьд нь
+     *    (2026-09-30) хадгалагдсан «Гүйцэтгэл» зэргийг ХЭВЭЭР үлдээдэг байв — тэр үед харагдац нь
+     *    хадгалалтаас нээгддэг байсан. Одоо урсгалтай 6 харагдац ЗӨВХӨН хуваарилалтаас
+     *    (`permissions.workflowViewsOf`) тул хадгалсан утга нь утгагүй үлдэгдэл — картын
+     *    «Хадгалах»-тай (`UserAdmin.saveAll`) ижил цэвэрлэнэ. Загвар өөрөө тэднийг агуулдаггүй
+     *    (`roleTypes.TPL_VIEWS`) — давхар шүүлт.
      */
-    const cur = listUsers().find((x) => x.username.toLowerCase() === u)?.views ?? [];
-    const held = (cur === 'all' ? [...WORKFLOW_VIEWS] : cur.filter((v) => WORKFLOW_VIEWS.includes(v)));
-    const views = acc.views === 'all' ? 'all' : [...acc.views, ...held.filter((v) => !acc.views.includes(v))];
+    const views = acc.views === 'all' ? 'all' : acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v));
     const ok = await setUser(u, { views, docs: acc.docs }, role);
     return ok ? { ok: true, errors: [] } : { ok: false, errors: [tr('Харагдац: ArcGIS-т хадгалагдсангүй')] };
   } finally {

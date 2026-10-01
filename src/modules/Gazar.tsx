@@ -25,12 +25,14 @@ import { loadPkgOverlaps, type PkgOverlap } from '@/lib/pkgSaad';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
-import { PARCEL_OID, parcelWhere } from '@/lib/parcelEdit';
+import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
+import { statusKey, isClearedStatus, parcelAltAreaWhere } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
 import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
+import { setNavDirty } from '@/lib/navGuard';
 import g from './gazar.module.css';
 
 /**
@@ -459,6 +461,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [editMode, setEditMode] = useState(false);
   const [editOid, setEditOid] = useState<number | null>(null);
   const [saved, setSaved] = useState('');
+  /**
+   * КАДАСТРЫН ДУГААРААР ХАЙХ (засварын горимд).
+   *
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь талбарыг ЗӨВХӨН зураг дээр
+   *    олж дарах замтай байв — 2,000 гаруй жижиг полигоны дундаас дугаараар нь
+   *    хайх арга байгаагүй. Дугаар бичээд Enter → олдвол зураг тэр рүү очиж,
+   *    тодруулж, маягтыг нээнэ. Амьдаар нэг дугаар ХОЁР мөрд байх тохиолдол бий
+   *    (2026-10-01: 3 дугаар × 2 мөр) тул олон олдвол ЖАГСААЖ сонгуулна —
+   *    эхнийхийг нь чимээгүй нээвэл буруу мөрийг засна.
+   */
+  const [findNo, setFindNo] = useState('');
+  const [finding, setFinding] = useState(false);
+  const [findMsg, setFindMsg] = useState('');
+  const [hits, setHits] = useState<ParcelHit[]>([]);
 
   const { user, status: authStatus } = useAuth();
   const [capN, setCapN] = useState(0);
@@ -674,12 +690,19 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    энд гурван замд (дахин товших · «Хаах» · өөр парсел) бүгдэд нь асууна.
    */
   const editDirty = useRef(false);
+  /* ⚠️ 2026-09-30: тугийг `navGuard`-д ч тэмдэглэнэ — харагдац солих, лого, «Гарах», F5
+     үед `Portal.confirmLeave` / хөтөч асууна (урьд нь зөвхөн энэ харагдац доторх 3 замд). */
+  const markDirty = useCallback((v: boolean) => {
+    editDirty.current = v;
+    setNavDirty('gazar', v, tr('Газар чөлөөлөлт'));
+  }, []);
+  useEffect(() => () => setNavDirty('gazar', false), []);
   const askDrop = useCallback((): boolean => {
     if (!editDirty.current) return true;
     if (!window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хаях уу?'))) return false;
-    editDirty.current = false;
+    markDirty(false);
     return true;
-  }, []);
+  }, [markDirty]);
 
   /**
    * ГАЗРЫН ЗУРАГ ДЭЭР ТАЛБАР ТОВШИХ.
@@ -701,11 +724,48 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
   }, [editMode, setHighlight, askDrop]);
 
+  /**
+   * ДУГААРААР ОЛСОН ТАЛБАРЫГ НЭЭНЭ — зураг дээр дарсантай ИЖИЛ үр дүн
+   * (тодруулга + маягт), нэмээд зураг тэр талбар руу очно.
+   * ⚠️ Хадгалаагүй маягт байвал `onMapPick`-ийн адил ЭХЛЭЭД асууна.
+   */
+  const openParcel = useCallback((oid: number) => {
+    if (!askDrop()) return;
+    setHits([]);
+    setFindMsg('');
+    setEditOid(oid);
+    setHighlight(parcelWhere(oid), PARCEL_LAYER_ID);
+    /* ⚠️ Анимацигүй — `pickOverlap`-ийн 2026-08-28-ны шийдвэртэй ижил */
+    zoomToWhere(PARCEL_LAYER_ID, parcelWhere(oid), { animate: false });
+  }, [askDrop, setHighlight, zoomToWhere]);
+
+  const findParcel = useCallback(async () => {
+    const no = findNo.trim();
+    if (!no) return;
+    setFinding(true);
+    setFindMsg('');
+    setHits([]);
+    try {
+      const list = await findParcelsByNo(no);
+      if (!list.length) setFindMsg(tr('«{0}» дугаартай нэгж талбар олдсонгүй', no));
+      else if (list.length === 1) openParcel(list[0].oid);
+      else {
+        setHits(list);
+        setFindMsg(tr('{0} нэгж талбар олдлоо — сонгоно уу', num(list.length)));
+      }
+    } catch (e) {
+      /* ⚠️ Алдааг НУУХГҮЙ — «олдсонгүй» гэж худал хэлэхгүй */
+      setFindMsg(String((e as Error).message || e));
+    } finally {
+      setFinding(false);
+    }
+  }, [findNo, openParcel]);
+
   const closeEdit = useCallback(() => {
-    editDirty.current = false;
+    markDirty(false);
     setEditOid(null);
     setHighlight(null);
-  }, [setHighlight]);
+  }, [setHighlight, markDirty]);
 
   /** Засварын горимоос бүрэн гарах — маягт, тодруулга хоёулаа цэвэрлэгдэнэ */
   const exitEdit = useCallback(() => {
@@ -713,6 +773,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setEditMode(false);
     setEditOid(null);
     setHighlight(null);
+    /* ⚠️ 2026-10-01: хайлтын үр дүн дараагийн удаа хуучирч харагдахгүй */
+    setFindMsg('');
+    setHits([]);
   }, [setHighlight, askDrop]);
 
   /**
@@ -755,6 +818,20 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setOvPick(null);
     setFlt(null);
     fltRef.current = null;
+    /* ⚠️ 2026-09-30: AOI-г ЖИНХЭНЭЭР хаяна — дээрх тайлбарын амлалт кодод
+       байгаагүй. Урьд нь зөвхөн `setHighlight(null)` дуудагдаж бүдгэрүүлэлт
+       алга болдог ч `aoi` ХЭВЭЭР үлддэг байв: горимоос гарахад самбарууд
+       «Сонгосон талбай · полигоноор шүүсэн» тоо харуулж байхад зураг БҮХ
+       талбайг тодоор харуулна (`pickFlt`-ийн ⚠️-д хориглосон зөрүү). Мөн
+       засварын горимд полигон зурагт үлдсэн тул түүн дотор товшиход
+       SketchViewModel полигоныг ЗАСАХ горимд оруулж, чирэлт нь AOI-г
+       чимээгүй өөрчилдөг байв. `clear()`-тэй ижил алхмууд (тэр нь доор
+       зарлагддаг тул энд давтав). */
+    keepAoiRef.current = false;
+    aoiGeomRef.current = null;
+    setAoi(null);
+    setDrawing(false);
+    setClearToken((t) => t + 1);
     setHighlight(null);
     setEditOid(null);
     setEditMode(true);
@@ -825,7 +902,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const L = PARCEL_LEFT;
     const B = GAZAR_BUILDING;
     const P = GAZAR_PARCEL;
-    const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse] = await Promise.all([
+    /* ⚠️ 2026-10-01: төлөв ба шалтгаан НЭГ талбар уу (`services.ts`-ийн 2026-09-06 шийдвэр) */
+    const sameField = L.fields.status === L.fields.progress;
+    const [lStat, lStatus, lReason, bStat, bType, bMat, pStat, pRight, pUse, lAlt, lAltReason] = await Promise.all([
       queryStats(L.url, [count(L.oid, 'n'), sum(L.fields.area, 'area')], '1=1', area),
       // ТӨЛӨВ (Tuluv) бүрд ТОО ба ТАЛБАЙ — нэгтгэсэн үйлчилгээний гол ангилал
       queryGroup(L.url, L.fields.status, [count(L.oid, 'n'), sum(L.fields.area, 'a')], '1=1', area),
@@ -847,20 +926,45 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       queryStats(P.url, [count(P.oid, 'n'), sum(P.fields.area, 'area')], '1=1', area),
       queryGroup(P.url, P.fields.right, [count(P.oid, 'n')], '1=1', area),
       queryGroup(P.url, P.fields.landuse, [count(P.oid, 'n')], '1=1', area),
+      /*
+       * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ТАЛБАЙН НӨХӨЛТ — `area_m2 ?? Талб_1`.
+       * Урьд нь энэ харагдац ЗӨВХӨН `SUM(area_m2)` авдаг байсан бол дашбоардын эх
+       * (`land.ts`) гараар бичсэн `Талб_1`-ийг НӨХДӨГ тул «Нийт талбай» хоёр газар
+       * ЗӨРӨХ замтай байв. Одоо ИЖИЛ нөхцөлөөр (`parcelAltAreaWhere`) нэмнэ —
+       * нийт, төлөв бүр, шалтгаан бүрд. Полигон (AOI) ч мөн адил хэрэглэгдэнэ.
+       */
+      queryGroup(L.url, L.fields.status, [sum(L.fields.areaAlt, 'a')], parcelAltAreaWhere(), area),
+      /* Шалтгаан нь ТУСДАА талбар бол л тусад нь асууна — нэг талбар бол дээрхээс */
+      sameField
+        ? Promise.resolve(null)
+        : queryGroup(
+          L.url, L.fields.progress, [sum(L.fields.areaAlt, 'a')],
+          `${parcelLeftWhere()} AND ${parcelAltAreaWhere()}`, area,
+        ),
     ]);
+    /** Нөхөлтийн талбайг ТӨЛӨВӨӨР — `smap`-д нэмэхэд */
+    const altArea = (r: Row) => Number(r.a ?? 0);
     // ТӨЛӨВ бүрийг ӨГӨГДЛӨӨС нэгтгэнэ (арын зай арилгаж, хоосон/null = «Тодорхойгүй»).
     // Хатуу 3 биш тул нэг ч талбар графикаас гээгдэхгүй — баганууд «Нийт»-тэй тэнцэнэ.
+    /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): түлхүүрийг `land.statusKey`-ээр —
+       «Бүрэн чөлөөлсөн»-ийн бүх бичиглэл («…лсөн.», давхар зай, жижиг үсэг) НЭГ
+       бүлэгт нийлж, `cleared`-д ТООЛОГДОНО. Дашбоардын эх (`land.ts`) ЯГ ижил
+       функцээр бүлэглэдэг тул хоёр газрын тоо зөрөхгүй. Түүхий утгууд `raws`-д
+       ХЭВЭЭР — чарт дарж шүүхэд бүх бичиглэл WHERE-д орно. */
     const smap = new Map<string, { n: number; a: number; raws: Set<string> }>();
-    for (const r of lStatus) {
+    const addStatus = (r: Row, n: number, a: number) => {
       const raw = String(r[L.fields.status] ?? ''); // түүхий утга — WHERE-д яг таарна
-      let k = text(r[L.fields.status]).trim();
-      if (!k || k === '—') k = 'Тодорхойгүй'; // түүхий түлхүүр — дэлгэцэд tr()
+      const k = statusKey(r[L.fields.status]) || 'Тодорхойгүй'; // түүхий түлхүүр — дэлгэцэд tr()
       const cur = smap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
-      cur.n += Number(r.n ?? 0);
-      cur.a += Number(r.a ?? 0);
+      cur.n += n;
+      cur.a += a;
       if (raw.trim() !== '') cur.raws.add(raw);
       smap.set(k, cur);
-    }
+    };
+    for (const r of lStatus) addStatus(r, Number(r.n ?? 0), Number(r.a ?? 0));
+    /* Нөхөлт: мөрийн тоо эхний асуулгаас (давхар тоолохгүй), зөвхөн талбай нэмэгдэнэ */
+    for (const r of lAlt) if (altArea(r)) addStatus(r, 0, altArea(r));
+    const altTotal = lAlt.reduce((s, r) => s + altArea(r), 0);
     const st = (value: string) => smap.get(value) ?? { n: 0, a: 0, raws: new Set<string>() };
     const cleared = st(PARCEL_CLEARED);
     /* ⚠️ «Цэвэрлэсэн нэгж талбар» ангилал шинэ эхэд БАЙХГҮЙ — 0 хэвээр
@@ -909,16 +1013,24 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     // Шалтгааны нэрийг цэвэрлэж (арын зай, төгсгөлийн «.») нэгтгэнэ.
     // ⚠️ Түүхий утгуудыг мөн хадгална — дарж шүүхэд WHERE яг таарах ёстой.
     const rmap = new Map<string, { n: number; a: number; raws: Set<string> }>();
-    for (const r of lReason) {
+    const addReason = (r: Row, n: number, a: number) => {
+      /* ⚠️ 2026-10-01: SQL-ийн `parcelLeftWhere` нь ЗӨВХӨН яг «Бүрэн чөлөөлсөн»-ийг
+         хасдаг — «…лсөн.» мэт бичиглэл энд «шалтгаан» болж орж ирэх тул НЭГ талбар
+         үед клиент талд хасна (`smap`-ийн `statusKey`-тэй нийцүүлэв). */
+      if (sameField && isClearedStatus(r[L.fields.progress])) return;
       const raw = String(r[L.fields.progress] ?? '');
       let k = text(r[L.fields.progress]).trim().replace(/\.$/, '').trim();
       if (!k || k === '—') k = 'Тодорхойгүй'; // түүхий түлхүүр — дэлгэцэд tr()
       const cur = rmap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
-      cur.n += Number(r.n ?? 0);
-      cur.a += Number(r.a ?? 0);
+      cur.n += n;
+      cur.a += a;
       cur.raws.add(raw);
       rmap.set(k, cur);
-    }
+    };
+    for (const r of lReason) addReason(r, Number(r.n ?? 0), Number(r.a ?? 0));
+    /* Нөхөлтийн талбай — шалтгаан нь төлөвтэй НЭГ талбар бол `lAlt`-аас (чөлөөлсөнийг
+       `addReason` хасна), эс бөгөөс тусдаа асуулгаас. */
+    for (const r of lAltReason ?? lAlt) if (altArea(r)) addReason(r, 0, altArea(r));
     const remN = remaining.n || 1;
     const reasons: ReasonItems = [...rmap.entries()]
       .sort((x, y) => y[1].n - x[1].n)
@@ -949,7 +1061,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return {
       left: {
         n: Number(lStat.n ?? 0),
-        area: Number(lStat.area ?? 0),
+        /* ⚠️ 2026-10-01: `area_m2` + нөхөлт (`altTotal`) — `land.ts`-ийн `areaM2`-тэй ИЖИЛ */
+        area: Number(lStat.area ?? 0) + altTotal,
         cleared: cleared.n,
         cleaned: cleaned.n,
         remaining: remaining.n,
@@ -1164,7 +1277,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             canEdit={canEdit}
             /* ⚠️ Маягтын «хадгалаагүй» төлөвийг энд барина — `exitEdit` ба
                `onMapPick` хоёул түүнийг шалгаж баталгаа асууна (дээрх ⚠️) */
-            onDirty={(v) => { editDirty.current = v; }}
+            onDirty={markDirty}
             onCancel={closeEdit}
             onDone={(n) => {
               closeEdit();
@@ -1174,9 +1287,13 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                * REST-ээр явсан тул зассан талбар ХУУЧИН ӨНГӨӨРӨӨ үлдэнэ.
                */
               if (n > 0) refreshLayer(PARCEL_LAYER_ID);
-              /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг. */
+              /* ⚠️ 0 нь АМЖИЛТГҮЙ биш — юу ч өөрчлөөгүй гэсэн үг.
+                 ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `n` нь НЭГЖ ТАЛБАРЫН тоо
+                 (`saveParcel`-ийн буцаалт). Урьд нь баганын тоо байсан тул нэг
+                 талбарын 3 багана засахад «3 талбар хадгалагдлаа» гэж бичиж, 3
+                 нэгж талбар засагдсан мэт уншигддаг байв. */
               setSaved(n > 0
-                ? tr('{0} талбар хадгалагдлаа', num(n))
+                ? tr('{0} нэгж талбар хадгалагдлаа', num(n))
                 : tr('Өөрчлөлт байсангүй'));
               window.setTimeout(() => setSaved(''), 4000);
             }}
@@ -1200,8 +1317,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <MapToolBtn
             icon="polygon"
             onClick={startDraw}
-            disabled={dim !== '2d'}
-            title={dim !== '2d' ? tr('Полигоныг зөвхөн 2D дээр зурна') : tr('Газар дээр полигон зурах')}
+            /* ⚠️ 2026-09-30: засварын горимд ИДЭВХГҮЙ — тэнд товшилт бүр маягт
+               нээдэг тул зурах цэг бүр нэгж талбарын цонх нээж, дуусмагц
+               AOI-ийн бүдгэрүүлэлт маягтын тодруулгаар дарагдаж зөрдөг байв
+               (`enterEdit`-ийн ⚠️). */
+            disabled={dim !== '2d' || editMode}
+            title={dim !== '2d'
+              ? tr('Полигоныг зөвхөн 2D дээр зурна')
+              : editMode
+                ? tr('Засварын горимоос гарсны дараа полигон зурна')
+                : tr('Газар дээр полигон зурах')}
           >
             {/* ⚠️ Зурж байх үед ЦУЦЛАХ гэж хэлнэ — тэр товшилт нь зурахыг
                 эхлүүлэхгүй, буцаана (`startDraw`-ийн тайлбарыг үз). */}
@@ -1234,9 +1359,39 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <span className={g.editHint}>
               {tr('Газрын зураг дээр нэгж талбар дарна уу')}
             </span>
+            {/* ⚠️ 2026-10-01: кадастрын дугаараар хайх (`findNo`-ийн тайлбарыг үз) */}
+            <form
+              className={g.editFind}
+              role="search"
+              onSubmit={(e) => { e.preventDefault(); void findParcel(); }}
+            >
+              <input
+                className={g.editFindInput}
+                value={findNo}
+                onChange={(e) => { setFindNo(e.target.value); setFindMsg(''); }}
+                placeholder={tr('Кадастрын дугаар')}
+                aria-label={tr('Кадастрын дугаараар хайх')}
+                maxLength={40}
+                disabled={finding}
+              />
+              <button type="submit" className={g.editClose} disabled={finding || !findNo.trim()}>
+                {finding ? tr('Хайж байна…') : tr('Хайх')}
+              </button>
+            </form>
             <button type="button" className={g.editClose} onClick={exitEdit}>
               {tr('Хаах')}
             </button>
+          </div>
+        )}
+        {editMode && (findMsg || hits.length > 0) && (
+          <div className={g.findPop} role="status">
+            {findMsg && <span className={g.findMsg}>{findMsg}</span>}
+            {hits.map((h) => (
+              <button key={h.oid} type="button" className={g.findHit} onClick={() => openParcel(h.oid)}>
+                <b>{h.parcelNo.trim() || `#${h.oid}`}</b>
+                <span>{[h.owner, h.status].filter((x) => x.trim()).join(' · ') || '—'}</span>
+              </button>
+            ))}
           </div>
         )}
         {saved && <p className={g.saved} role="status">{saved}</p>}
@@ -1268,11 +1423,16 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           />
         )}
 
+        {/* ⚠️ 2026-09-30: засварын горимд НУУНА — полигон тэнд зурагдахгүй (товч
+            идэвхгүй) тул «полигон зурж шүүнэ» зөвлөгөө худал болно; мөн ижил
+            байрлалтай «хадгалагдлаа» мэдэгдлийг (`.saved`) халхалж байв. */}
+        {!editMode && (
         <div className={`${g.scope} ${aoi ? g.scopeSel : ''}`}>
           <span className={g.scopeDot} aria-hidden />
           <span className={g.scopeText}>{aoi ? tr('Сонгосон талбай') : tr('Бүх талбай')}</span>
           <span className={g.scopeHint}>{aoi ? tr('полигоноор шүүсэн') : tr('полигон зурж шүүнэ')}</span>
         </div>
+        )}
 
         {/* Чарт-шүүлтийн чип — дашбоардтай ижил, ×-ээр цуцлана */}
         {flt && (

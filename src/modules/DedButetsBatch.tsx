@@ -33,10 +33,13 @@
  * гүйлгээний түүх байхгүй. Тоо, талбарын тоог ил хэлж асууна.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import type { Row } from '@/lib/query';
+import { LAYER_BY_ID } from '@/lib/services';
+import { lenFieldUnit } from '@/lib/butetsLen';
 import {
   loadLayerMeta, loadRows, saveRows, validateRow,
   type LayerMeta, type Patch,
@@ -67,7 +70,7 @@ const baseOf = (meta: LayerMeta, rows: Row[]): Base => {
 };
 
 export function DedButetsBatch({
-  layerId, oids, canEdit, onDone, onPartial,
+  layerId, oids, canEdit, onDone, onPartial, onDirty,
 }: {
   layerId: string;
   /** Сонгосон объектуудын дугаар — нэг давхаргынх */
@@ -85,6 +88,12 @@ export function DedButetsBatch({
    *    «Хадгалах» боломжтой) — дуудагч давхаргаа дахин уншуулж, буцаалт тавина.
    */
   onPartial?: (undo: UndoInfo | null) => void;
+  /**
+   * ⚠️ 2026-09-30: ХАДГАЛААГҮЙ бичсэн утга байгаа эсэх — эцэг тал хаах/горим солих
+   *    замдаа асууна (`DedButets.askDropUnsaved`) ба `navGuard`-д тэмдэглэнэ.
+   *    Салахад `false`.
+   */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const [meta, setMeta] = useState<LayerMeta | null>(null);
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -183,6 +192,13 @@ export function DedButetsBatch({
       .filter((k) => (p[k] ?? '') !== (base[k] ?? ''));
   }, [meta, p, base]);
 
+  /* ⚠️ 2026-09-30: бичсэн эсэхийг эцэгт мэдэгдэнэ (`onDirty`-ийн тайлбар) */
+  const isDirty = changed.length > 0;
+  const onDirtyRef = useRef(onDirty);
+  useSyncRef(onDirtyRef, onDirty);
+  useEffect(() => { onDirtyRef.current?.(isDirty); }, [isDirty]);
+  useEffect(() => () => onDirtyRef.current?.(false), []);
+
   /** Шалгуур давбал асуулт гарна; бичилт нь `write`-д («Тийм»-ээс) */
   /** Сонголт уншигдаж дуусаагүй/унасан үеийн мэдэгдэл (`loadedKey`-ийн тайлбар) */
   const staleMsg = () => tr('Сонгосон объектуудын утга уншигдаагүй байна. Сонголтоо шинэчлээд дахин оролдоно уу.');
@@ -198,6 +214,24 @@ export function DedButetsBatch({
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
     setAsk(true);
+  };
+
+  /**
+   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): УНШИГДСАН ↔ СОНГОСОН тоо. Сонголтын зарим
+   *    объект (устсан, өөр хэрэглэгч хасагдсан) уншигдахгүй бол бичилт нь ЗӨВХӨН уншигдсанд
+   *    явдаг (`writeOids`) атал товч ба асуулт сонгосон тоог хэлдэг байв.
+   */
+  const nRead = rows ? rows.filter((r) => Number.isFinite(Number(r[meta?.oidField ?? '']))).length : 0;
+  const missing = rows && !stale ? Math.max(0, oids.length - nRead) : 0;
+  /** Уртын талбарууд (`butetsLen.lenFieldUnit`) — олон объектод ИЖИЛ урт бичих нь ихэвчлэн алдаа */
+  const qty = LAYER_BY_ID[layerId]?.qty ?? null;
+  const isLen = (name: string) => lenFieldUnit(name, qty) != null;
+  /** Хуучин → шинэ (асуултад) — кодтой талбарт нэрээр */
+  const showVal = (name: string, v: string | null): string => {
+    if (v === null) return tr('— олон утга —');
+    if (v === '') return tr('(хоосон)');
+    const f = meta?.fields.find((x) => x.name === name);
+    return f?.codes?.find((c) => c.code === v)?.label ?? v;
   };
 
   const write = async () => {
@@ -253,9 +287,15 @@ export function DedButetsBatch({
       /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
          давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
       if (partial?.length) onPartial?.(undoOf(partial));
-      setFail(partial?.length
-        ? tr('Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.', partial.length, msg)
-        : msg);
+      /* ⚠️ 2026-10-01: АТОМ БУС давхарга (`supportsRollbackOnFailureParameter: false`) — мөр бүрийн
+         үр дүн (`failed`) ирнэ: аль нь бичигдээгүйг тоогоор хэлнэ («эхний N» биш — дунд нь ч унаж болно). */
+      const failedRows = (x as { failed?: { oid: number }[] }).failed;
+      setFail(failedRows?.length
+        ? tr('{0}/{1} мөр бичигдсэн, {2} мөрөнд алдаа: {3}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.',
+          num(partial?.length ?? 0), num(writeOids.length), num(failedRows.length), msg)
+        : partial?.length
+          ? tr('Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.', partial.length, msg)
+          : msg);
     } finally {
       setBusy(false);
     }
@@ -275,6 +315,13 @@ export function DedButetsBatch({
               ? tr('Сонгосон объектуудын утгыг уншиж байна…')
               : tr('Ижил утгатай талбар утгаараа, зөрүүтэй нь «— олон утга —» гэж гарна. Өөрчилсөн талбар л бүгдэд бичигдэнэ.')}
           </p>
+          {/* ⚠️ 2026-10-01: уншигдаагүй объект — бичилт зөвхөн уншигдсанд */}
+          {missing > 0 && (
+            <p className={d.fWarn} role="alert">
+              {tr('{0}/{1} объект уншигдсан — {2} нь олдсонгүй (устсан эсвэл хүрээнээс гарсан); зөвхөн уншигдсанд бичигдэнэ.',
+                num(nRead), num(oids.length), num(missing))}
+            </p>
+          )}
           {meta.fields.map((f) => {
             const mixed = base[f.name] === null;
             const dirty = changed.includes(f.name);
@@ -288,9 +335,18 @@ export function DedButetsBatch({
                 onChange={(v) => set(f.name, v)}
                 placeholder={mixed ? tr('— олон утга —') : undefined}
                 hint={dirty && (
-                  <span className={d.fHint}>
-                    {tr('{0} объектод бичигдэнэ', num(oids.length))}
-                  </span>
+                  <>
+                    <span className={d.fHint}>
+                      {tr('{0} объектод бичигдэнэ', num(nRead || oids.length))}
+                    </span>
+                    {/* ⚠️ 2026-10-01: УРТ нь объект бүрд өөр — олноор ижил урт бичих нь ихэвчлэн
+                        алдаа (km KPI бүхэлдээ худал болно). Хориглохгүй, ил анхааруулна. */}
+                    {isLen(f.name) && (
+                      <span className={d.fWarn}>
+                        {tr('Урт нь объект бүрд өөр — бүгдэд ИЖИЛ урт бичигдэнэ. Объект бүрийн уртыг дан маягтын «Урт ← геометр»-ээр бөглөнө үү.')}
+                      </span>
+                    )}
+                  </>
                 )}
               />
             );
@@ -307,8 +363,18 @@ export function DedButetsBatch({
           <span className={d.askMsg}>
             {tr(
               '{0} объектын {1} талбарыг бичих үү? Бүх сонгосон объектод ижил утга орно.',
-              num(oids.length), num(changed.length),
+              num(nRead || oids.length), num(changed.length),
             )}
+            {/* ⚠️ 2026-10-01: ХУУЧИН → ШИНЭ — юу өөрчлөгдөхийг бичихээс ӨМНӨ ил харуулна */}
+            <ul className={d.diffList}>
+              {changed.map((k) => (
+                <li key={k}>
+                  {meta.fields.find((x) => x.name === k)?.alias ?? k}:{' '}
+                  <del>{showVal(k, k in base ? base[k] : '')}</del> → <b>{showVal(k, p[k] ?? '')}</b>
+                  {isLen(k) && <span className={d.fWarn}> · {tr('урт')}</span>}
+                </li>
+              ))}
+            </ul>
           </span>
           {/* ⚠️ Дахин уншиж байх зуур / уншилт таараагүй үед хаалттай (`loadedKey`) */}
           <button type="button" className={d.primary} onClick={() => { void write(); }}
@@ -332,8 +398,8 @@ export function DedButetsBatch({
           {busy
             ? tr('Хадгалж байна…')
             : changed.length
-              ? tr('{0} талбарыг {1} объектод бичих', num(changed.length), num(oids.length))
-              : tr('{0} объектод бичих', num(oids.length))}
+              ? tr('{0} талбарыг {1} объектод бичих', num(changed.length), num(nRead || oids.length))
+              : tr('{0} объектод бичих', num(nRead || oids.length))}
         </button>
       </div>
     </div>

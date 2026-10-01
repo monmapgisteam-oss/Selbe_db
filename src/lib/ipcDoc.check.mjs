@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  buildIpcDoc, pkgCodeOf, monthEnds, daysIncl, PERF_FACTOR, CONTRACT_FACTOR, ADVANCE_TECH,
+  buildIpcDoc, pkgCodeOf, monthEnds, daysIncl, PERF_FACTOR, CONTRACT_FACTOR, ADVANCE_TECH, lateSheetsOf,
 } from './ipcDoc.ts';
 
 const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
@@ -83,7 +83,16 @@ assert.equal(doc.h12[0].actStart, null);
 near(doc.h12[3].now, 1049910713, 1, '5/4 блок (скан 1,049,910,713)');
 assert.equal(doc.h12[3].planDays, 630);
 near(doc.h12[3].remain, 15659203689.5 - 1049910713, 1, '5/4 үлдэгдэл (скан 14,609,292,976)');
-console.log('✅ Хавсралт 12 — блокоор хуваарилалт · тайлант · үлдэгдэл');
+/* ⚠️ 2026-09-30: ЭХНИЙ баримтын тайлант үе ГЭРЭЭНИЙ ЭХЛЭЛЭЭС (скан IPC-1: 2025.10.08 –
+   2025.12.25, 78 өдөр) — дүн нь эхнээсээ хуримтлагдсан тул «сарын 1-нээс» гэвэл худал. */
+assert.equal(doc.periodFrom, D('2025-10-08'), 'эхний баримтын тайлант үе гэрээний эхлэлээс');
+assert.equal(doc.h12[3].actStart, D('2025-10-08'), 'Хавсралт 12 · Эхэлсэн = гэрээний эхлэл');
+assert.equal(doc.h12[3].actDays, daysIncl(D('2025-10-08'), D('2025-12-28')), 'Хавсралт 12 · Өдөр');
+assert.ok(doc.notes.includes('noPrev'), 'эхний баримт «өмнөх агшин алга» тэмдэглэлтэй');
+/* Гэрээний огноо алга → сарын эхэн (хуучин зан) */
+assert.equal(buildIpcDoc({ ...base, contractStart: null, months: [m1], month: '2025-12', recoveryFrom: null }).periodFrom,
+  D('2025-12-01'));
+console.log('✅ Хавсралт 12 — блокоор хуваарилалт · тайлант · үлдэгдэл · эхний баримтын үе');
 
 /* ── 4. Хоёр дахь сар — эргэн төлөлт 25%, өмнөх сарын агшинаас хасна ── */
 const m2 = { month: '2026-01', day: '2026-01-30', cum: m1.cum.map((v) => (v == null ? 1e9 : v + 1e9)) };
@@ -104,5 +113,26 @@ assert.equal(t73['Урьдчилгаа эргэн төлөлт'].remain, 0);
 /* байхгүй сар → null */
 assert.equal(buildIpcDoc({ ...base, months: [m1], month: '2030-01', recoveryFrom: null }), null);
 console.log('✅ дараагийн сар — эргэн төлөлт · хязгаар · тайлант үе');
+
+/* ── 5. ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ОРОЙ ЭХЭЛСЭН ХУУДАС ──
+   9F нь 2026-09-өөс, 12F нь 2026-10-аас анх агшинтай → 2026-10-ын IPC-д 12F-ийн гэрээний
+   эхнээс хуримтлагдсан ажил «тайлант» болж овоорно — баримт/карт анхааруулах ёстой. */
+{
+  const sh = [{ label: '9F', first: '2026-09-03' }, { label: '12F', first: '2026-10-02' }];
+  assert.deepEqual(lateSheetsOf(sh, '2026-10'), ['12F'], '12F анх 2026-10-д — анхааруулна');
+  assert.deepEqual(lateSheetsOf(sh, '2026-09'), [], 'багцын анхны сар — noPrev хамарна, давхар анхааруулахгүй');
+  assert.deepEqual(lateSheetsOf(sh, '2026-11'), [], 'дараагийн сард 12F-ийн өмнөх агшин бий');
+  assert.deepEqual(lateSheetsOf([{ label: 'X', first: '2026-10-02' }], '2026-10'), [], 'ганц хуудас — орой эхлэх гэж байхгүй');
+  assert.deepEqual(lateSheetsOf([...sh, { label: '15F', first: null }], '2026-10'), ['12F'], 'огт бөглөөгүй хуудас (null) тооцогдохгүй');
+  assert.deepEqual(lateSheetsOf(undefined, '2026-10'), [], 'хуудасны мэдээлэлгүй (хуучин дуудагч)');
+  /* buildIpcDoc — `sheets` (ipcDocLoad-оос `...src`-ээр) дамжвал `lateSheets` бодогдоно */
+  const mA = { month: '2026-09', day: '2026-09-30', cum: m1.cum };
+  const mB = { month: '2026-10', day: '2026-10-29', cum: m1.cum.map((v) => (v == null ? 5e8 : v)) };
+  const late = buildIpcDoc({ ...base, sheets: sh, months: [mA, mB], month: '2026-10', recoveryFrom: null });
+  assert.deepEqual(late.lateSheets, ['12F'], 'баримтын lateSheets');
+  assert.deepEqual(buildIpcDoc({ ...base, sheets: sh, months: [mA, mB], month: '2026-09', recoveryFrom: null }).lateSheets, []);
+  assert.deepEqual(doc.lateSheets, [], 'хуудасны мэдээлэлгүй баримт — хоосон');
+}
+console.log('✅ орой эхэлсэн хуудасны анхааруулга (lateSheetsOf)');
 
 console.log('\nipcDoc.check: ok');

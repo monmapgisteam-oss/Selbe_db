@@ -99,6 +99,9 @@ export const removeObyemAssign = (user: string, revoke = true) => acl.remove(use
 /** Аккаунт УСТГАХАД мөрийг бүрмөсөн арилгах (эрх буцаахгүй) */
 export const purgeObyemAssign = acl.purge;
 
+/** Унасан бичилтийг дахин илгээх (2026-10-01) — `scopedAcl.retry` */
+export const retryObyemAssign = acl.retry;
+
 /** Тухайн хэрэглэгчийн ОБЬЁМЫН багцууд — ТУХАЙН ҮҮРГЭЭР */
 export const obyemScope = (user: string | null | undefined, role: ObyemRole) =>
   acl.scope(user, role);

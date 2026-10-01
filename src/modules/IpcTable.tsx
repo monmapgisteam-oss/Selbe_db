@@ -25,11 +25,11 @@
  * хоосон»). Одоогоор 45/45 хоосон тул харагдахгүй; бөглөгдмөгц
  * автоматаар нээгдэнэ.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
-  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount,
+  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcNumbers,
   type ContractBlock, type Detail, type PayRow, type SortKey,
 } from '@/lib/ipcTable';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
@@ -37,6 +37,8 @@ import type { HoContract } from '@/lib/ipc';
 import { pkgKeyOf } from '@/lib/services';
 import { AUTO_PREFIX } from '@/lib/ipcAuto';
 import { IpcDocDialog, hasIpcDoc } from '@/components/IpcDocDialog';
+import { loadSheetStarts, sheetsOf } from '@/lib/ipcDocLoad';
+import { lateSheetsOf, type IpcSheetStart } from '@/lib/ipcDoc';
 import s from './ipcTable.module.css';
 
 /**
@@ -258,12 +260,17 @@ function Line({ k, v, cls }: { k: string; v: string; cls?: string }) {
 /** Нээлттэй IPC баримтын цонх — картаас */
 type DocAsk = { packKey: string; packName: string; month: string; ipcNo: number };
 
-function PayCard({ r, ipcNo, onDoc }: {
+function PayCard({ r, ipcNo, onDoc, late }: {
   r: PayRow;
-  /** Гэрээний гүйцэтгэлийн төлбөрүүдийн дараалал — AUTO картын «IPC-NN» */
+  /** Гэрээний дараалсан IPC дугаар (`ipcTable.ipcNumbers`) — AUTO картын «IPC-NN» */
   ipcNo?: number;
   /** IPC баримт татах (2026-09-29) — AUTO картад л */
   onDoc?: () => void;
+  /**
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): энэ сард АНХ агшинтай болсон (орой эхэлсэн)
+   * хуудсууд (`ipcDoc.lateSheetsOf`) — тайлант үед гэрээний эхнээс хуримтлагдсан ажил орсон.
+   */
+  late?: string[];
 }) {
   return (
     <article className={`${s.card} ${r.advance ? s.cardAdv : ''}`}>
@@ -321,6 +328,11 @@ function PayCard({ r, ipcNo, onDoc }: {
       </div>
 
       <footer className={s.cardFt}>{r.id}</footer>
+      {late && late.length > 0 && (
+        <p className={s.lateNote} role="note">
+          {tr('⚠ {0} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', late.join(', '))}
+        </p>
+      )}
       {onDoc && (
         <button type="button" className={s.docBtn} onClick={onDoc}
           title={tr('Сар бүрийн гүйцэтгэлээс Хүснэгт 7 · Гүйцэтгэл-1 · Хавсралт 12-ыг PDF-ээр')}>
@@ -329,6 +341,29 @@ function PayCard({ r, ipcNo, onDoc }: {
       )}
     </article>
   );
+}
+
+/**
+ * ОЛОН ХУУДАСТАЙ багцуудын хуудас бүрийн ЭХНИЙ агшин (`ipcDocLoad.loadSheetStarts`) —
+ * орой эхэлсэн хуудсын анхааруулга (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Унасан багц Map-д орохгүй — анхааруулга гарахгүй ч картууд хэвийн (баримт нээхэд
+ *    `buildIpcDoc` өөрөө дахин шалгана).
+ */
+function useSheetStarts(packKeys: readonly string[]): Map<string, IpcSheetStart[]> {
+  const [m, setM] = useState<Map<string, IpcSheetStart[]>>(() => new Map());
+  const key = packKeys.join('|');
+  useEffect(() => {
+    let alive = true;
+    const keys = key ? key.split('|') : [];
+    void Promise.all(keys.map((k) => loadSheetStarts(k)
+      .then((v): [string, IpcSheetStart[]] => [k, v])
+      .catch(() => null)))
+      .then((xs) => {
+        if (alive) setM(new Map(xs.filter((x): x is [string, IpcSheetStart[]] => x != null)));
+      });
+    return () => { alive = false; };
+  }, [key]);
+  return m;
 }
 
 /* ─────────────────────── ҮНДСЭН ХАРАГДАЦ ─────────────────────── */
@@ -344,6 +379,12 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
   const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
   const t = useMemo(() => ipcTotals(blocks), [blocks]);
+  /* ⚠️ 2026-10-01: AUTO карттай ОЛОН хуудастай багцууд л (Багц 1 · 2 · 4.2) — бусдад асуулга явахгүй */
+  const multiPacks = useMemo(() => [...new Set(blocks
+    .filter((b) => b.rows.some((r) => autoDayOf(r) != null))
+    .map((b) => pkgKeyOf(b.code))
+    .filter((k) => k && sheetsOf(k).length > 1))].sort(), [blocks]);
+  const starts = useSheetStarts(multiPacks);
 
   /* ⚠️ Түлхүүр нь `code` — кодгүй гэрээ (амьдаар ХО-0045) `''` болно.
      Тиймээс индексийг ХАМТ хэрэглэнэ, эс бөгөөс хоёр кодгүй гэрээ
@@ -426,15 +467,19 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
                     {(() => {
                       const packKey = pkgKeyOf(b.code);
                       const docOk = hasIpcDoc(packKey);
-                      let n = 0;
+                      /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): IPC дугаар = гэрээ бүрд
+                         ДАРААЛСАН (`ipcTable.ipcNumbers` — байгаа дугаарын дараагийнх, AUTO нь
+                         өдрөөр). Урьд нь харагдах мөрийн тоолуур байсан тул дугааргүй AUTO
+                         мөрийн эрэмбэ ба гар мөрийн цоорхойгоос дугаар гаждаг байв. */
+                      const nos = ipcNumbers(b.rows, autoDayOf);
+                      const st = starts.get(packKey);
                       return b.rows.map((r) => {
-                        /* IPC дугаар = гэрээний гүйцэтгэлийн (урьдчилгаа биш) төлбөрийн дараалал */
-                        if (!r.advance) n += 1;
                         const day = docOk ? autoDayOf(r) : null;
-                        const no = n;
+                        const no = nos.get(r);
+                        const late = day && st ? lateSheetsOf(st, day.slice(0, 7)) : undefined;
                         return (
-                          <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} ipcNo={no}
-                            onDoc={day ? () => setDoc({ packKey, packName: b.title, month: day.slice(0, 7), ipcNo: no }) : undefined} />
+                          <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} ipcNo={no} late={late}
+                            onDoc={day ? () => setDoc({ packKey, packName: b.title, month: day.slice(0, 7), ipcNo: no ?? 1 }) : undefined} />
                         );
                       });
                     })()}

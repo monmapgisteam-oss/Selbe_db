@@ -17,8 +17,9 @@
  */
 import assert from 'node:assert/strict';
 import {
-  computeWorkforce, groupDays, ubDayKey, workforceLevel,
+  computeWorkforce, groupDays, latestRowPerDay, ubDayKey, workforceLevel,
   WORKFORCE_DROP_WARN, WORKFORCE_DROP_BAD, WORKFORCE_STALE_DAYS,
+  isReported, companyReported, laborStaleness,
 } from './workforce.ts';
 
 const SFX = ['HHDMGK', 'HBZIT', 'HBTIT', 'MSK', 'NBG', 'MK', 'P', 'MMSE', 'SC', 'OSNAAG', 'GUBB', 'CHHO'];
@@ -325,6 +326,73 @@ const ROWS = [
   ], ub(2026, 9, 4));
   assert.equal(k3.tables[1].rows.length, 1);
   assert.equal(k3.detail.days.length, 2);
+}
+
+/* ══════════ 9. latestRowPerDay — ХАБЭА хуудас давхар өдрийг НИЙЛБЭРЛЭХГҮЙ (2026-09-30) ══════════
+   `Habea.tsx` өдрийн цуваа · хүн-өдөр · «Нийт ажилтан» KPI энэ функцээр өдөрт НЭГ мөр
+   авна. Урьд нь 2026-08-21-ний 247 (oid255) + засварласан 389 (oid256) = 636 гэж зурагддаг
+   байв; CEO самбар (`groupDays`) ба «Тайлан» 389. */
+{
+  const day = Date.UTC(2026, 7, 21, 4);
+  const first = row(day, { MK: { w: 247 } }, {}, false, { oid: 255, edit: Date.UTC(2026, 7, 21, 2, 54) });
+  const fixed = row(day, { MK: { w: 389 } }, {}, false, { oid: 256, edit: Date.UTC(2026, 7, 21, 3, 32) });
+  const other = row(ub(2026, 8, 22, 12), { MK: { w: 300 } }, {}, false, { oid: 257 });
+  const draft = row(null, {}, {}, true, { oid: 258 });
+  for (const input of [[first, fixed, other, draft], [draft, other, fixed, first]]) {
+    const out = latestRowPerDay(input);
+    assert.equal(out.length, 3, 'өдөрт нэг мөр + огноогүй ноорог хэвээр');
+    assert.ok(out.includes(fixed) && !out.includes(first), 'EditDate их = засварласан');
+    assert.ok(out.includes(other) && out.includes(draft));
+    // оролтын дараалал хадгалагдана
+    assert.deepEqual(out, input.filter((r) => r !== first));
+    // нийлбэр 389 + 300 — 636 + 300 БИШ
+    const sum = out.reduce((s, r) => s + (Number(r.Niit_ajiltan_MK) || 0), 0);
+    assert.equal(sum, 689);
+  }
+  // groupDays-тай НЭГ дүрэм: сонгогдсон мөрийн oid ижил
+  const g = groupDays([first, fixed]);
+  assert.equal(latestRowPerDay([first, fixed])[0].objectid, g[0].oid);
+  // Түлхүүрийн функц дамжуулна (ХАБЭА хуудас `dayKey`) — өөр өдөр бол хоёулаа үлдэнэ
+  const a = row(Date.UTC(2026, 8, 3, 1), { MK: { w: 1 } }, {}, false, { oid: 1 });
+  const b = row(Date.UTC(2026, 8, 3, 20), { MK: { w: 2 } }, {}, false, { oid: 2 });
+  assert.equal(latestRowPerDay([a, b], (ms) => new Date(ms).toISOString().slice(0, 10)).length, 1);
+  assert.equal(latestRowPerDay([a, b]).length, 2, 'УБ-аар 09-03 09:00 ба 09-04 04:00 — өөр өдөр');
+  assert.deepEqual(latestRowPerDay([]), []);
+}
+
+/* ══════════ 10. Habea.tsx хүн хүчний дүрслэл давхар мөрийг ШУУД хэрэглэхгүй (эх кодын хамгаалалт) ══════════ */
+{
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
+  const direct = src.split('all ? all.labor').length - 1;
+  assert.equal(direct, 1, 'all.labor-ийг зөвхөн latestRowPerDay-ээр дамжуулна');
+  assert.ok(src.includes('latestRowPerDay(all ? all.labor : [], dayKey)'));
+}
+
+/* ══════════ 11. «Тайлан өгсөн» дүрэм ба хуучирсан тайлан (2026-10-01) ══════════ */
+/* ⚠️ `Niit_ajiltan_<SFX>` нь репитэд ороогүй үед ч 0 — «0 ажилтан + 0 техник» = ТАЙЛАНГҮЙ.
+   ХАБЭА хуудасны өдрийн цуваа үүгээр тайлангүй өдрийг цоорхой үлдээнэ (худал 0 цэг биш). */
+{
+  assert.equal(isReported({ workers: 0, technik: 0 }), false);
+  assert.equal(isReported({ workers: 5, technik: 0 }), true);
+  assert.equal(isReported({ workers: 0, technik: 2 }), true, 'зөвхөн техник өгсөн ч тайлантай');
+  const r = row(ub(2026, 9, 5), { MK: { w: 0, t: 0 }, NBG: { w: 0, m: 3, g: 1 }, P: { w: 0, t: 4 } });
+  assert.equal(companyReported(r, 'MK'), false, '0/0 — тайлангүй');
+  assert.equal(companyReported(r, 'NBG'), true, 'Niit 0 ч монгол+гадаад бөглөгдсөн');
+  assert.equal(companyReported(r, 'P'), true);
+  assert.equal(companyReported(r, 'HHDMGK'), false, 'ороогүй гүйцэтгэгч');
+
+  const now = ub(2026, 9, 10, 12);
+  assert.deepEqual(laborStaleness(null, now), { days: null, stale: false }, 'тайлангүй — «мэдэгдэхгүй», хуучирсан БИШ');
+  assert.deepEqual(laborStaleness(now - WORKFORCE_STALE_DAYS * DAY, now), { days: WORKFORCE_STALE_DAYS, stale: false });
+  assert.deepEqual(laborStaleness(now - (WORKFORCE_STALE_DAYS + 1) * DAY, now), { days: WORKFORCE_STALE_DAYS + 1, stale: true });
+
+  /* Habea.tsx-ийн өдрийн цуваа ЭНЭ дүрмийг хэрэглэнэ (эх кодын хамгаалалт) */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('function byDaySeries'), src.indexOf('const pkgOrder'));
+  assert.ok(body.includes('if (!companyReported(r, sfx)) continue;'), 'byDaySeries — тайлангүй гүйцэтгэгч алгасна');
+  assert.ok(src.includes('laborStaleness(labor.asOf, now)'), '«Сүүлийн тайлан» — CEO-тэй нэг босго');
 }
 
 console.log('workforce.check: OK');

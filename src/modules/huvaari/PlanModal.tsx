@@ -83,6 +83,12 @@ type PlanModalProps = {
   obyem?: boolean;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын задаргаа */
   months: Map<string, number>;
+  /**
+   * САРЫН ЗАДАРГАА ТЭНЦЭЭГҮЙ блокууд (индекс) — чип улаан (2026-10-01, хэрэглэгч: бүгдийг
+   * зас). Дуудагч `util.unbalancedBlocks`-ээр (илгээх хаалттай нэг дүрэм) бодно.
+   * ⚠️ ИДЭВХТЭЙ блок нь цонхны ОДООГИЙН оролтоор (бичих явцад шууд) — бусад нь энэ Set.
+   */
+  badBlks?: ReadonlySet<number>;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын НӨӨЦ (2026-09-24) */
   res: Map<string, MonthRes>;
   /** Сарын хүснэгтэд нөөцийн талбар бий эсэх — `false` бол анхааруулна (`null` = мэдэхгүй) */
@@ -144,6 +150,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
+  badBlks,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
@@ -315,7 +322,12 @@ function PlanModalBody({
    *    бөглөж, дараа нь бүгд дахин тарааж хаягдана.
    */
   /* ⚠️ `obyem=false` (гэрээ таб) — сарын хэсэг огт гарахгүй, `mvOk` үргэлж үнэн */
-  const total = obyem && r.vol != null && r.vol > 0 ? r.vol : null;
+  /* ⚠️ 2026-09-30: БҮЛГИЙН мөрд сарын хэсэг ГАРАХГҮЙ. Бүлгийн «Тавих» нь зөвхөн
+     уялдааг бичдэг (`apply`-ын `r.group` салаа) — обьёмтой бүлэгт сарын нүд
+     бичигддэг, нийлбэр нь «тэнцэв» гэж харагддаг атлаа «Тавих» хаалттай
+     (`!depsDirty`), дарсан ч сарууд ЧИМЭЭГҮЙ хаягддаг байв. Бүлгийн обьём нь
+     доторх ажлуудаар сараар хуваагдана (`monPct`-ийн «зөвхөн навч» дүрэм). */
+  const total = obyem && !r.group && r.vol != null && r.vol > 0 ? r.vol : null;
   /* ⚠️ 2026-09-30: `mvAll`/`mrAll` нь мужаас ГАДУУРХ сарыг ч ХАДГАЛНА — доорх
      `mv`/`mr` нь одоогийн мужаар шүүсэн ХАРАГДАЦ. Огноог бичиж байхад (завсрын
      утга) сарын утга устахгүй; «Тавих» нь зөвхөн шүүсэн `mv`/`mr`-ийг өгнө. */
@@ -427,9 +439,27 @@ function PlanModalBody({
   const mvSum = sumMonths(mv);
   /* ⚠️ БҮХ сар бөглөгдсөн байх ёстой: нэг сар хоосон атлаа нийлбэр таарвал
      тэр сарын төлөвлөгөө өгөгдөлд ОГТ үүсэхгүй. */
-  const mvFull = mKeys.every((k) => mv.get(k) != null);
-  const mvOk = total == null || (mvFull && balanced(mv, total));
+  /* ⚠️ 2026-09-30: ХООСОН САРУУДЫГ НЭРЛЭНЭ — нийлбэр тэнцсэн атлаа нэг сар хоосон
+     үед мөр «Нийлбэр: 900.00 · -0.00 дутуу», товчны тайлбар «нийлбэр тэнцээгүй»
+     гэж ХУДАЛ хэлдэг байв (хэрэглэгч: «обьём зөв хуваасан ч болохгүй»). Дүрэм
+     (хоосон ≠ 0, 0-ийг ил бичнэ) ХЭВЭЭР — зөвхөн шалтгааныг үнэнээр харуулна. */
+  const mvEmpty = mKeys.filter((k) => mv.get(k) == null);
+  const mvFull = mvEmpty.length === 0;
+  const mvBal = total == null || balanced(mv, total);
+  const mvOk = total == null || (mvFull && mvBal);
   const mvDiff = total == null ? 0 : mvSum - total;
+  /**
+   * БЛОКИЙН ЧИП УЛААН ЭСЭХ (2026-10-01, хэрэглэгч: бүгдийг зас).
+   * ⚠️ ИДЭВХТЭЙ блок — цонхны ОДООГИЙН оролтоор: утга бичигдсэн бөгөөд нийлбэр тэнцээгүй
+   *    (бичих явцад шууд улаан/саарал). Утга огт бичээгүй бол дуудагчийн дүгнэлт (`badBlks`:
+   *    серверт задаргаа байсан атлаа хоосорсон г.м.). Бусад блок — `badBlks`.
+   * ⚠️ «Хоосон сар» (`mvFull`) энд ОРОХГҮЙ — тэр нь «Тавих»-ын дүрэм, илгээх хаалт биш.
+   */
+  const chipBad = (k: number): boolean => {
+    if (k !== blk) return !!badBlks?.has(k);
+    if (total == null) return false;
+    return mvAll.size > 0 ? mKeys.length > 0 && !mvBal : !!badBlks?.has(k);
+  };
   /*
    * ⚠️ ФОКУСТАЙ САРЫГ ОРУУЛАХГҮЙ ҮЛДЭГДЭЛ (2026-09-24, хэрэглэгч: «сүүлийн сард 5
    *    гэж бичихэд тэр нь хасагдаад жинхэнэ үлдэгдэл харагдахгүй»). «Нийлбэр /
@@ -568,15 +598,22 @@ function PlanModalBody({
             огноо/сар суурь болно; сонгосон бүх блокт ижил тавигдана. */}
         <div className={h.mdBlks}>
           <span className={h.mdField}>{tr('Блокууд')}</span>
-          {blocks.map((b, k) => (
-            <button type="button" key={b}
-              className={`${h.mdChip} ${selB.has(k) ? h.mdChipOn : ''} ${k === blk ? h.mdChipAct : ''}`}
-              aria-pressed={selB.has(k)}
-              title={k === blk ? tr('Идэвхтэй блок — огноо, сарын суурь эндээс') : undefined}
-              onClick={() => toggleB(k)}>
-              {b}
-            </button>
-          ))}
+          {blocks.map((b, k) => {
+            /* ⚠️ 2026-10-01: тэнцээгүй блок — улаан + «⚠» + тайлбар (өнгө ганцаараа биш) */
+            const bad = chipBad(k);
+            return (
+              <button type="button" key={b}
+                className={`${h.mdChip} ${selB.has(k) ? h.mdChipOn : ''} ${k === blk ? h.mdChipAct : ''} ${bad ? h.mdChipBad : ''}`}
+                aria-pressed={selB.has(k)}
+                title={[
+                  k === blk ? tr('Идэвхтэй блок — огноо, сарын суурь эндээс') : '',
+                  bad ? tr('Энэ блокийн сарын задаргааны нийлбэр обьёмтой тэнцэхгүй') : '',
+                ].filter(Boolean).join(' · ') || undefined}
+                onClick={() => toggleB(k)}>
+                {bad ? `⚠ ${b}` : b}
+              </button>
+            );
+          })}
           {dEdit && blocks.length > 1 && (
             <>
               <button type="button" className={h.tlZoomB}
@@ -666,6 +703,12 @@ function PlanModalBody({
         {r.group && (
           <p className={h.mdPar}>
             {tr('Бүлгийн хугацаа нь доторх ажлуудынхаа хамгийн эрт эхлэх — хамгийн сүүл дуусахаар ӨӨРӨӨ бодогдоно. Гараар засахгүй: ажлуудаа зөөвөл бүлэг дагана.')}
+          </p>
+        )}
+        {/* ⚠️ 2026-09-30: обьёмтой бүлэгт сарын хэсэг яагаад алга болохыг хэлнэ (`total`-ийн ⚠️) */}
+        {r.group && obyem && r.vol != null && r.vol > 0 && (
+          <p className={h.mdPar}>
+            {tr('Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.')}
           </p>
         )}
 
@@ -797,10 +840,22 @@ function PlanModalBody({
                     <> · {tr('нийт обьёмтой тэнцэв')}</>
                   ) : (
                     <>
+                      {/* ⚠️ 2026-09-30: нийлбэр ТЭНЦСЭН бол «-0.00 дутуу» биш «тэнцэв» —
+                          хаалтын жинхэнэ шалтгаан нь доорх хоосон сарууд. */}
                       {' · '}
-                      <b className={h.mdBad}>
-                        {mvDiff > 0 ? tr('{0}-аар илүү', num(mvDiff, 2)) : tr('{0} дутуу', num(-mvDiff, 2))}
-                      </b>
+                      {mvBal ? tr('нийт обьёмтой тэнцэв') : (
+                        <b className={h.mdBad}>
+                          {mvDiff > 0 ? tr('{0}-аар илүү', num(mvDiff, 2)) : tr('{0} дутуу', num(-mvDiff, 2))}
+                        </b>
+                      )}
+                      {!mvFull && (
+                        <>
+                          {' · '}
+                          <b className={h.mdBad}>
+                            {tr('хоосон сар: {0} — ажил хийхгүй сард 0 бичнэ үү', mvEmpty.join(', '))}
+                          </b>
+                        </>
+                      )}
                       {/* ⚠️ «ТЭНЦҮҮЛЭХ» ТОВЧ ХАСАГДСАН (2026-09-06): автомат
                           тараалт хийхгүй гэсэн шийдвэрийн дагуу. */}
                     </>
@@ -925,7 +980,10 @@ function PlanModalBody({
                    сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
                 : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
                 : !mvOk}
-              title={mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined : tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')}>
+              title={mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
+                /* ⚠️ 2026-09-30: жинхэнэ шалтгаан — нийлбэр тэнцсэн ч хоосон сар бий бол түүнийг */
+                : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
+                : tr('Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү')}>
               {tr('Тавих')}
             </button>
           )}

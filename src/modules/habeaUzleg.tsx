@@ -25,11 +25,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
+import { tokenQs } from '@/lib/authToken';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
 import { Section, Bars, Series, Loading, Empty } from '@/components/ui';
 import { num, date, text, dayKey, pct } from '@/lib/format';
+import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
 import h from './habea.module.css';
 
 /* ═════════════════ Төрөл ═════════════════ */
@@ -284,7 +286,12 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
 const loadPrivate = async (url: string): Promise<Row[]> => {
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  return queryFeatures(url, { outFields: ['*'], token: auth.token });
+  /* ⚠️ 2026-09-30: `token: auth.token`-ийг ИЛГЭЭХГҮЙ — `getAuth()` нь зөвхөн нэвтэрсэн
+     эсэхийн шалгалт. Ил токен өгвөл `query.run` ('org' горим) ТҮҮНИЙГ эрхэмлэж, таб
+     унтсаны дараах хугацаа дууссан токеноор явж 498 авахад шинэчлээд ДАХИН
+     оролдохгүй → «Invalid token». Үзлэгийн үйлчилгээ байгууллагын URL тул цөм
+     ОДООГИЙН токеныг өөрөө залгаж, 498-д шинэчилнэ (`loadWeekScores`-той ижил). */
+  return queryFeatures(url, { outFields: ['*'] });
 };
 
 const loaders: Record<UzlegKind, () => Promise<Row[]>> = {
@@ -375,6 +382,11 @@ export type ScoreRow = {
   e: number;
   a: number;
   n: number;
+  /**
+   * ОНООТОЙ үзлэгийн тоо — `e/a`-д орсон мөрүүд (`sc_all_earned` бөглөгдсөн, `sc_all_appl > 0`).
+   * ⚠️ 2026-10-01: KPI-ийн «N үзлэг» (түүврийн хэмжээ) нь ЭНЭ — `n` нь оноогүй үзлэгийг ч тоолно.
+   */
+  ns: number;
   /** Үл нийцэл = ноцтой + бага зэргийн (`cnt_major + cnt_minor`) */
   nc: number;
 };
@@ -396,12 +408,42 @@ export type WeekScores = { no: number; rows: ScoreRow[] };
  * ⚠️ Жигнэсэн: Σавсан / Σболомжит — нүд бүрийн хувийг дундажлахгүй.
  * ⚠️ Кэшийн TTL 5 минут — Даваа гараг дамжихад шинэ долоо хоногоор бодогдоно.
  */
-export const loadWeekScores = cached(async (): Promise<WeekScores> => {
+/**
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ДОЛОО ХОНОГИЙГ `week` ТАЛБАРААР (чарттай НЭГ эх).
+ *    Урьд нь KPI нь үзлэгийн ОГНООНЫ хилээр (`insp_datetime`), харин «Үзлэг — долоо
+ *    хоногоор» чарт (`byWeek`) нь маягтын `week` кодоор бүлэглэдэг тул нэг долоо хоног
+ *    хоёр газар өөр оноо харуулж болдог байв. Одоо хоёулаа `week` (`weekNum` таних
+ *    дүрэм) ба ИЖИЛ онооны дүрэм (`sc_all_earned IS NOT NULL AND sc_all_appl > 0` —
+ *    `byWeek`-ийн `scA > 0 && scE != null`).
+ * ⚠️ Он солигдоход ижил дугаар (өмнөх жилийн 39) давхцахгүйн тулд серверт ОГНООНЫ
+ *    өргөн цонх (`WEEK_LOOKBACK_DAYS`) + огноогүй мөр; эцсийн шүүлт нь `week` дугаар.
+ * ⚠️ КЭШ ДОЛОО ХОНОГООР (`prevWeek().start`) — Даваа гараг дамжихад шинэ түлхүүр тул
+ *    хуучин долоо хоногийн дүн 5 минут ч үлдэхгүй (`Habea`-ийн цаг/visibility дэгээ).
+ */
+export const WEEK_LOOKBACK_DAYS = 28;
+const weekScoreLoaders = new Map<number, () => Promise<WeekScores>>();
+export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
+  const w = prevWeek(now);
+  const k = w.start.getTime();
+  let f = weekScoreLoaders.get(k);
+  if (!f) {
+    f = cached(() => fetchWeekScores(w), 5 * 60_000, ['HABEA']);
+    weekScoreLoaders.set(k, f);
+  }
+  return f();
+}
+
+/** `week` талбарын утга тухайн долоо хоногийн дугаартай таарах уу (`37` / `w37`) */
+export const isWeekNo = (v: unknown, no: number): boolean =>
+  v != null && weekNum(String(v)) === no;
+
+async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  const w = prevWeek();
-  const where = `${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)}`;
-  const groupBy = `${U.site},${U.company}`;
+  const from = new Date(w.start);
+  from.setDate(from.getDate() - WEEK_LOOKBACK_DAYS);
+  const where = `(${U.ognoo} >= ${sqlTs(from)} OR ${U.ognoo} IS NULL) AND ${U.week} IS NOT NULL`;
+  const groupBy = `${U.site},${U.company},${U.week}`;
   const parts = await Promise.all(SCORE_URLS.map((url) => Promise.all([
     queryGroup(
       url,
@@ -418,20 +460,47 @@ export const loadWeekScores = cached(async (): Promise<WeekScores> => {
     queryGroup(
       url,
       groupBy,
-      [sum(U.scEarned, 'e'), sum(U.scAppl, 'a')],
-      `(${where}) AND ${U.scEarned} IS NOT NULL`,
+      [sum(U.scEarned, 'e'), sum(U.scAppl, 'a'), count('objectid', 'ns')],
+      `(${where}) AND ${U.scEarned} IS NOT NULL AND ${U.scAppl} > 0`,
     ),
     loadDomains(url),
   ])));
+  /* ⚠️ (талбай × компани) нүдээр НИЙЛҮҮЛНЭ — серверээс `week`-ээр задарч ирдэг тул
+     зөвхөн тухайн долоо хоногийн мөрүүдийг аваад нүд бүрт нэмнэ. */
+  type Acc = { site: string; coCode: string; n: number; nc: number; e: number; a: number; ns: number };
   const rows: ScoreRow[] = [];
-  for (const [grp, scoreGrp, dom] of parts) {
+  for (const [grpAll, scoreAll, dom] of parts) {
     const keyOf = (r: Record<string, unknown>) =>
       `${r[U.site] == null ? '' : String(r[U.site])}|${r[U.company] == null ? '' : String(r[U.company])}`;
-    const scoreBy = new Map(scoreGrp.map((r) => [keyOf(r), r]));
-    for (const r of grp) {
-      const sc = scoreBy.get(keyOf(r));
-      const site = r[U.site] == null ? '' : String(r[U.site]);
-      const coCode = r[U.company] == null ? '' : String(r[U.company]);
+    const acc = new Map<string, Acc>();
+    const cell = (r: Record<string, unknown>): Acc => {
+      const key = keyOf(r);
+      let c = acc.get(key);
+      if (!c) {
+        c = {
+          site: r[U.site] == null ? '' : String(r[U.site]),
+          coCode: r[U.company] == null ? '' : String(r[U.company]),
+          n: 0, nc: 0, e: 0, a: 0, ns: 0,
+        };
+        acc.set(key, c);
+      }
+      return c;
+    };
+    for (const r of grpAll) {
+      if (!isWeekNo(r[U.week], w.no)) continue;
+      const c = cell(r);
+      c.n += Number(r.n ?? 0);
+      c.nc += Number(r.mj ?? 0) + Number(r.mn ?? 0);
+    }
+    for (const r of scoreAll) {
+      if (!isWeekNo(r[U.week], w.no)) continue;
+      const c = cell(r);
+      c.e += Number(r.e ?? 0);
+      c.a += Number(r.a ?? 0);
+      c.ns += Number(r.ns ?? 0);
+    }
+    for (const c of acc.values()) {
+      const { site, coCode } = c;
       const siteName = clean(dom[U.site]?.get(site) ?? site);
       rows.push({
         pkgK: !site || site === 'other' ? '' : habeaPkgKey(siteName),
@@ -439,15 +508,12 @@ export const loadWeekScores = cached(async (): Promise<WeekScores> => {
         coSfx: CO_SFX[coCode] ?? '',
         coCode,
         coLabel: coCode === 'other' ? tr('Бусад') : clean(dom[U.company]?.get(coCode) ?? coCode),
-        e: Number(sc?.e ?? 0),
-        a: Number(sc?.a ?? 0),
-        n: Number(r.n ?? 0),
-        nc: Number(r.mj ?? 0) + Number(r.mn ?? 0),
+        e: c.e, a: c.a, n: c.n, ns: c.ns, nc: c.nc,
       });
     }
   }
   return { no: w.no, rows };
-}, 5 * 60_000, ['HABEA']);
+}
 
 /** Хуудасны шүүлтээр нүднүүдийг шүүнэ — `filterUzleg`-тэй ижил «ба» дүрэм */
 const passScore = (r: ScoreRow, pkgs: readonly string[], cos: readonly string[]) =>
@@ -456,13 +522,14 @@ const passScore = (r: ScoreRow, pkgs: readonly string[], cos: readonly string[])
 /** Долоо хоногийн ДУНДАЖ ОНОО — багц ба компанийн шүүлтийг ДАГАНА */
 export function weekScoreOf(
   rows: readonly ScoreRow[], pkgs: readonly string[], cos: readonly string[],
-): { pct: number | null; n: number } {
-  let e = 0, a = 0, n = 0;
+): { pct: number | null; n: number; ns: number } {
+  let e = 0, a = 0, n = 0, ns = 0;
   for (const r of rows) {
     if (!passScore(r, pkgs, cos)) continue;
-    e += r.e; a += r.a; n += r.n;
+    e += r.e; a += r.a; n += r.n; ns += r.ns;
   }
-  return { pct: a > 0 ? (e / a) * 100 : null, n };
+  /* ⚠️ `ns` — онооны ТҮҮВРИЙН хэмжээ (2026-10-01): KPI-д «N үзлэг» гэж ил гарна */
+  return { pct: a > 0 ? (e / a) * 100 : null, n, ns };
 }
 
 /**
@@ -514,7 +581,8 @@ export function weekScoreByCo(rows: readonly ScoreRow[], pkgs: readonly string[]
 type State =
   | { state: 'idle' }
   | { state: 'loading' }
-  | { state: 'error'; message: string }
+  /** `retry` — 2026-09-30: алдааны дараа ДАХИН татах (`cached` алдааг кэшлэдэггүй) */
+  | { state: 'error'; message: string; retry?: () => void }
   | { state: 'ready'; rows: UzlegRow[] };
 
 /**
@@ -657,6 +725,9 @@ export function useUzleg(kind: UzlegKind | null): State {
      нэг агшин зурагдаж, газрын зургийн шүүлт буруу давхаргад IN-жагсаалт
      тавьдаг байв. Төлөвийн `kind` зөрвөл «ачаалж байна» гэж үзнэ. */
   const [st, setSt] = useState<{ kind: UzlegKind | null; st: State }>({ kind: null, st: { state: 'idle' } });
+  /* ⚠️ 2026-09-30: «Дахин оролдох» — урьд нь алдааны дараа хуудас дахин ачаалахаас
+     өөр гарцгүй байв. Тоолуур өсөхөд эффект дахин ажиллана. */
+  const [tries, setTries] = useState(0);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
@@ -668,10 +739,16 @@ export function useUzleg(kind: UzlegKind | null): State {
         if (alive) setSt({ kind, st: { state: 'ready', rows: rows.map((r) => norm(r, dom)) } });
       })
       .catch((e: unknown) => {
-        if (alive) setSt({ kind, st: { state: 'error', message: e instanceof Error ? e.message : String(e) } });
+        if (alive) {
+          setSt({ kind, st: {
+            state: 'error',
+            message: e instanceof Error ? e.message : String(e),
+            retry: () => setTries((n) => n + 1),
+          } });
+        }
       });
     return () => { alive = false; };
-  }, [kind]);
+  }, [kind, tries]);
 
   if (!kind) return UZ_IDLE;
   return st.kind === kind ? st.st : UZ_LOADING;
@@ -815,7 +892,7 @@ function byDay(rows: UzlegRow[]) {
  */
 export const SERIES_VISIBLE = 7;
 
-function byMonth(rows: UzlegRow[]) {
+function byMonth(rows: UzlegRow[], curYm = '') {
   const m = new Map<string, number>();
   for (const r of rows) {
     if (r.d <= 0) continue;
@@ -823,9 +900,11 @@ function byMonth(rows: UzlegRow[]) {
     const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     m.set(ym, (m.get(ym) ?? 0) + 1);
   }
-  return [...m.entries()]
+  /* ⚠️ 2026-10-01: ЯВАГДАЖ БУЙ сар «*»-тай (`habeaRate.markCurMonth`) — сарын дунд тоо
+     ДУТУУ тул «үзлэг буурсан» гэж уншигдахаас сэргийлнэ. */
+  return markCurMonth([...m.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, value]) => ({ key: ym, label: ym.replace('-', '.'), value, display: num(value) }));
+    .map(([ym, value]) => ({ key: ym, label: ym.replace('-', '.'), value, display: num(value) })), curYm);
 }
 
 /* ═════════════════ Самбар ═════════════════ */
@@ -839,7 +918,18 @@ function byMonth(rows: UzlegRow[]) {
  */
 /* ═════════════════ Хавсаргасан зураг ═════════════════ */
 
+/**
+ * ⚠️ 2026-09-30: `src` нь ТОКЕНГҮЙ хаяг — токеныг РЕНДЕРИЙН агшинд (`photoSrc`) залгана.
+ *    Урьд нь ачаалах агшны токен хаягт «шатаж» үлддэг тул хуудас удаан нээлттэй
+ *    байж токен шинэчлэгдсэний дараа ‹ › дарахад зураг 498-аар эвдэрдэг байв.
+ */
 type UzPhoto = { src: string; cap: string; tip: string };
+
+/** `<img src>`/`<a href>` — POST боломжгүй тул токен query string-ээр (`authToken.tokenQs`-ийн ⚠️) */
+export const photoSrc = (base: string): string => {
+  const q = tokenQs().slice(1);
+  return q ? `${base}?${q}` : base;
+};
 
 /**
  * ҮЗЛЭГИЙН ХАВСРАЛТ ЗУРГУУД — НЭГ хүсэлтээр (2026-09-15, хэрэглэгчийн
@@ -866,8 +956,15 @@ type UzPhoto = { src: string; cap: string; tip: string };
  * ⚠️ ЭРЭМБЭ: үзлэгийн огноогоор ШИНЭ нь эхэндээ. Хавсралтын өөрийн
  * огноо биш — хэрэглэгч «сүүлийн үзлэгийн зураг»-г хайдаг.
  */
-async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
-  if (!rows.length) return [];
+/**
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭСЭГЧИЛСЭН УНАЛТ — нэг багц (100 үзлэг)-ын
+ *    хүсэлт унавал БҮХ зураг алга болж «Зураг татагдсангүй» гардаг байв. Одоо унасан
+ *    багцыг алгасаж, хэдэн үзлэгийн зураг татагдсангүйг `failed`-д буцаана (самбарт
+ *    «N үзлэгийн зураг татагдсангүй» + «Дахин оролдох»). БҮГД унасан үед л шиднэ.
+ */
+type UzPhotoSet = { items: UzPhoto[]; failed: number };
+async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> {
+  if (!rows.length) return { items: [], failed: 0 };
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   /* ⚠️ БАГЦЛАН асууна (2026-09-16). Урьд нь БҮХ oid нэг хүсэлтэд орж байв:
@@ -880,20 +977,28 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
     parentObjectId: number;
     attachmentInfos?: { id: number; name?: string; contentType?: string }[];
   }[] = [];
+  let failed = 0;
+  let firstErr: unknown = null;
   for (let i = 0; i < rows.length; i += OID_BATCH) {
     const chunk = rows.slice(i, i + OID_BATCH);
-    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана: `arcgisPost`
-       (2026-09-30) үүнийг цөмдөө хийж `ArcGISError` шиднэ; timeout · слот · 429
-       backoff · `res.ok` нэмэгдэв. `token: 'org'` — дуудагч `getAuth()`-ын
-       токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ (`draftRemote`-той ижил). */
-    const j = await arcgisPost<{ attachmentGroups?: typeof groups }>(`${url}/queryAttachments`, {
-      f: 'json',
-      objectIds: chunk.map((x) => x.oid).join(','),
-      attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
-      token: auth.token,
-    }, { token: 'org' });
-    groups.push(...(j.attachmentGroups ?? []));
+    try {
+      /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана: `arcgisPost`
+         (2026-09-30) үүнийг цөмдөө хийж `ArcGISError` шиднэ; timeout · слот · 429
+         backoff · `res.ok` нэмэгдэв. `token: 'org'` — дуудагч `getAuth()`-ын
+         токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ (`draftRemote`-той ижил). */
+      /* ⚠️ 2026-09-30: ил `token` ХАСАВ (`loadPrivate`-ийн ⚠️) — цөм одоогийн токеныг залгаж 498-д шинэчилнэ */
+      const j = await arcgisPost<{ attachmentGroups?: typeof groups }>(`${url}/queryAttachments`, {
+        f: 'json',
+        objectIds: chunk.map((x) => x.oid).join(','),
+        attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
+      }, { token: 'org' });
+      groups.push(...(j.attachmentGroups ?? []));
+    } catch (e) {
+      failed += chunk.length;
+      firstErr ??= e;
+    }
   }
+  if (failed === rows.length) throw firstErr;
   const byOid = new Map(rows.map((x) => [x.oid, x]));
   const out: (UzPhoto & { d: number })[] = [];
   for (const g of groups) {
@@ -903,13 +1008,13 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
       if (!String(a.contentType ?? 'image/').startsWith('image/')) continue;
       out.push({
         d: r.d,
-        src: `${url}/${g.parentObjectId}/attachments/${a.id}?token=${encodeURIComponent(auth.token)}`,
+        src: `${url}/${g.parentObjectId}/attachments/${a.id}`,
         cap: `${r.d > 0 ? date(r.d) : '—'} · ${r.site}`,
         tip: r.company,
       });
     }
   }
-  return out.sort((a, b) => b.d - a.d).map(({ src, cap, tip }) => ({ src, cap, tip }));
+  return { items: out.sort((a, b) => b.d - a.d).map(({ src, cap, tip }) => ({ src, cap, tip })), failed };
 }
 
 /**
@@ -922,7 +1027,7 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhoto[]> {
 function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
   const ids = rows.map((x) => x.oid).join(',');
   const [idx, setIdx] = useState(0);
-  const q = useAsync<UzPhoto[]>(() => loadUzPhotos(url, rows), [url, ids]);
+  const q = useAsync<UzPhotoSet>(() => loadUzPhotos(url, rows), [url, ids]);
   if (q.state === 'loading') return <Loading label={tr('Зураг ачаалж байна…')} />;
   if (q.state === 'error') {
     return (
@@ -932,10 +1037,17 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
       </div>
     );
   }
-  const n = q.data.length;
-  if (!n) return <Empty label={tr('Хавсаргасан зураг алга')} />;
+  const n = q.data.items.length;
+  /* ⚠️ Хэсэгчилсэн уналтын мөр — зураг байсан ч, үгүй ч ил (`loadUzPhotos`-ийн ⚠️) */
+  const failNote = q.data.failed > 0 && (
+    <div className={h.photoNote} role="alert">
+      {tr('{0} үзлэгийн зураг татагдсангүй', num(q.data.failed))}{' '}
+      {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
+    </div>
+  );
+  if (!n) return failNote || <Empty label={tr('Хавсаргасан зураг алга')} />;
   const cur = Math.min(idx, n - 1);
-  const p = q.data[cur];
+  const p = q.data.items[cur];
   return (
     <div>
       <div className={h.slide}>
@@ -948,10 +1060,10 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
         >
           ‹
         </button>
-        <a href={p.src} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
+        <a href={photoSrc(p.src)} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
           {/* ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — ослын слайдерын ижил шалтгаан:
               багана гүйлгэгдэж харагдах хүртэл lazy-loader асахгүй. */}
-          <img src={p.src} alt={`${p.cap} · ${p.tip}`} />
+          <img src={photoSrc(p.src)} alt={`${p.cap} · ${p.tip}`} />
         </a>
         <button
           type="button"
@@ -967,6 +1079,7 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
         <span className={h.slideCapText}>{p.cap} · {p.tip}</span>
         <b className="num">{cur + 1}/{n}</b>
       </div>
+      {failNote}
     </div>
   );
 }
@@ -1018,6 +1131,7 @@ export function UzlegLeft({
     return (
       <Section title={tr('Үзлэг')}>
         <Empty label={tr('Татагдсангүй: {0}', st.message)} />
+        {st.retry && <button type="button" className={h.retry} onClick={st.retry}>{tr('Дахин оролдох')}</button>}
       </Section>
     );
   }
@@ -1167,7 +1281,11 @@ export const stepNote = (
   </span>
 );
 
-export function UzlegFin({ st, sel, onPick }: { st: State } & Pick) {
+/**
+ * ⚠️ 2026-10-01: `curYm` — явагдаж буй сар («YYYY-MM», `Habea`-ийн цагаас). Өгвөл сарын
+ *    цуваанд тэр сар «*»-тай, тайлбарт «дутуу» гэж гарна.
+ */
+export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: string } & Pick) {
   /* ⚠️ Hook-ууд эрт буцахаас ӨМНӨ — дараа нь байвал дуудлагын дараалал
      төлөв бүрд өөр болж React алдаа өгнө. */
   const scroll = useRef<HTMLDivElement>(null);
@@ -1182,7 +1300,8 @@ export function UzlegFin({ st, sel, onPick }: { st: State } & Pick) {
    */
   const [step, setStep] = useState<'day' | 'month'>('day');
   const days = st.state === 'ready' ? byDay(st.rows.filter((x) => uzPass(x, sel, 'day'))) : [];
-  const mon = st.state === 'ready' ? byMonth(st.rows.filter((x) => uzPass(x, sel, 'month'))) : [];
+  const mon = st.state === 'ready' ? byMonth(st.rows.filter((x) => uzPass(x, sel, 'month')), curYm) : [];
+  const monPartial = mon.some((x) => x.key === curYm);
   const series = step === 'day' ? days : mon;
   const seriesLen = series.length;
   /* ⚠️ Алхам солиход ч СҮҮЛИЙН үе рүү гүйлгэнэ — сарын цуваа өөр урттай тул
@@ -1215,7 +1334,9 @@ export function UzlegFin({ st, sel, onPick }: { st: State } & Pick) {
         note={stepNote(step, setStep,
           step === 'day'
             ? (days.length ? tr('{0} өдөр', num(days.length)) : null)
-            : (recent.length ? tr('сүүлийнх: {0}', date(recent[0].d)) : null))}
+            : (recent.length
+              ? `${tr('сүүлийнх: {0}', date(recent[0].d))}${monPartial ? ` · ${tr('{0} явагдаж буй сар (дутуу)', CUR_MONTH_MARK)}` : ''}`
+              : null))}
       >
         {series.length
           ? (

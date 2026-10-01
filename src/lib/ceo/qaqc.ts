@@ -49,7 +49,7 @@ import {
 } from '@/lib/qaqc';
 import { PKGS, loadSchema, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
-import { cell, settled, table, type KpiIssue, type KpiResult } from './kpi';
+import { cell, settled, table, kpiComplete, type KpiIssue, type KpiResult } from './kpi';
 
 /* ══════════════ Босго ══════════════ */
 
@@ -361,7 +361,9 @@ export const loadQaqcLoaded = cached(async (): Promise<{ ok: QaqcLoaded[]; faile
   /* Хуудасны түлхүүр → багцын бүлэг («b1_9f» → «Багц 1») — оноог Cashflow-ийн багцтай холбоно */
   const keys = Object.fromEntries(targets.map((p) => [p.key, p.group]));
   return { ok, failed, keys };
-}, 5 * 60_000, ['BAGTS_SHEET']);
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХЭСЭГЧИЛСЭН (`failed` хоосон биш) үр дүнг
+     КЭШЛЭХГҮЙ — одоогийн дэлгэц унасан багцын нэртэй гарна, дараагийн дуудалт дахин уншина. */
+}, 5 * 60_000, ['BAGTS_SHEET'], (x) => x.failed.length === 0);
 
 async function loadAll(): Promise<KpiResult> {
   const { ok, failed } = await loadQaqcLoaded();
@@ -373,4 +375,4 @@ async function loadAll(): Promise<KpiResult> {
  *    QAQC хүснэгтийн ӨӨРИЙН бичилтэд (`saveQaqc`) `DataKey` байхгүй тул түүнд
  *    зөвхөн 5 минутын TTL үйлчилнэ.
  */
-export const loadQaqcKpi: () => Promise<KpiResult> = cached(loadAll, 5 * 60_000, ['BAGTS_SHEET']);
+export const loadQaqcKpi: () => Promise<KpiResult> = cached(loadAll, 5 * 60_000, ['BAGTS_SHEET'], kpiComplete);

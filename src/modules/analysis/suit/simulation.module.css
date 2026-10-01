@@ -205,7 +205,8 @@
   accent-color: var(--sim);
 }
 
-.ctrl { display: flex; align-items: center; gap: 8px }
+/* ⚠️ 2026-10-01: оргил цагийн товч нэмэгдсэн — нарийн самбарт мөр ороно */
+.ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
 
 .play {
   flex: none;

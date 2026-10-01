@@ -24,6 +24,13 @@
  * «Батлагдсан · буулгаагүй» хэсэгт гарна — «Дахин буулгах» товч
  * `materializeAdds`-ыг дахин дуудна (идемпотент: давхардлыг хаяна).
  *
+ * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Батлагдсан · буулгаагүй» хэсэг
+ *    `ajilApply.classifyStuck`-ээр ангилагдана — `retry` (товчтой), `fresh`
+ *    (саяхан батлагдсан, батлагчийн цонх бичиж байж магадгүй — хүлээлгийн
+ *    дараа хуудас өөрөө шинэчлэгдэж товч нээгдэнэ), `orphan` (бүртгэлгүй багц —
+ *    урьд нь ЧИМЭЭГҮЙ нуугддаг байв). Товч нь батлагч ЭСВЭЛ админд
+ *    (`mayReapply`); унасан шалтгаан мөр дээрээ хадгалагдана.
+ *
  * ⚠️ УРЬД НЬ (2026-09-22 … 09-24) энэ хуудас эх өгөгдөлд ОГТ бичдэггүй байв:
  *    батлагдсан мөр зохиогчийн «Гүйцэтгэл бөглөх» хуудасны `adds` ноорогт
  *    орж, гүйцэтгэлийн 6 шат батлагдтал хүлээдэг байлаа. Хэрэглэгч тэр
@@ -44,7 +51,8 @@ import {
   ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
-import { materializeAdds } from '@/lib/ajilApply';
+import { classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
+import { hasCap, subscribeCaps } from '@/lib/caps';
 /**
  * ⚠️ `HuvaariBatlah` · `Guitsetgel` · `ErhOverview`-ТЭЙ ХУВААЛЦСАН CSS:
  *    батлах дарааллын зохиомж дөрвүүлэнгийнх ижил — нэг өөрчлөлт бүгдийг
@@ -54,6 +62,9 @@ import s from './guitsetgel.module.css';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
+
+/** ⚠️ 2026-09-30: обьём · нэгжийн үнэ — ≤3 бутархай орон, илүү тэггүй (0.4 → «0.4», 142.96 → «142.96») */
+const num3 = (v: number): string => (Number.isFinite(v) ? Number(v.toFixed(3)).toLocaleString('en-US') : '—');
 
 const ALL = '';
 
@@ -68,7 +79,11 @@ type State =
   | { k: 'loading' }
   | { k: 'blocked'; why: string }
   | { k: 'error'; msg: string }
-  | { k: 'ready'; rows: AjilSubmission[]; /** батлагдсан ч буугаагүй (2026-09-24) */ approved: AjilSubmission[] };
+  | {
+    k: 'ready'; rows: AjilSubmission[]; /** батлагдсан ч буугаагүй (2026-09-24) */ approved: AjilSubmission[];
+    /** ⚠️ 2026-10-01: татсан агшин — `classifyStuck`-ийн «одоо» (render дотор `Date.now()` дуудахгүй) */
+    at: number;
+  };
 
 /** `payload` задарсан эсэх — мөр дэлгэхэд л татагдана */
 type Detail =
@@ -83,6 +98,9 @@ export function AjilBatlah() {
      хуваарилалт энэ хуудсанд хүрэхгүй. */
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAjilAcl(() => setAclN((x) => x + 1)), []);
+  /* ⚠️ 2026-10-01: «Дахин буулгах» товч `ajilApprove` эрхээс хамаарна — эрх
+     ачаалагдмагц дахин зурна (эс бөгөөс анх `[]` үед нуугдсан хэвээр үлдэнэ). */
+  useEffect(() => subscribeCaps(() => setAclN((x) => x + 1)), []);
 
   const [st, setSt] = useState<State>({ k: 'loading' });
   const [tick, setTick] = useState(0);
@@ -95,6 +113,21 @@ export function AjilBatlah() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
+  /**
+   * ⚠️ 2026-10-01: энэ цонхонд буулгах оролдлого ДУУССАН илгээлтүүд — `fresh`
+   *    хүлээлгийг алгасна (батлагч алдааг хармагц шууд дахин буулгана).
+   */
+  const [settled, setSettled] = useState<ReadonlySet<number>>(new Set());
+  /** ⚠️ 2026-10-01: илгээлт бүрийн СҮҮЛИЙН буулгалтын алдаа — мөр дээрээ үлдэнэ (дээрх баннер дараагийн үйлдэлд арилдаг) */
+  const [applyErr, setApplyErr] = useState<ReadonlyMap<number, string>>(new Map());
+  const afterApply = useCallback((oid: number, error: string | null) => {
+    setSettled((x) => new Set(x).add(oid));
+    setApplyErr((m) => {
+      const n = new Map(m);
+      if (error) n.set(oid, error); else n.delete(oid);
+      return n;
+    });
+  }, []);
 
   const [q, setQ] = useState('');
   const [grp, setGrp] = useState(ALL);
@@ -172,7 +205,7 @@ export function AjilBatlah() {
            илгээлтүүд; хэвийн урсгалд хоосон. Хоёр query зэрэг. */
         const [rows, approved] = await Promise.all([loadAllPending(), loadAllApproved()]);
         if (!alive) return;
-        setSt({ k: 'ready', rows, approved });
+        setSt({ k: 'ready', rows, approved, at: Date.now() });
         resetDetail();
       } catch (e) {
         if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
@@ -211,11 +244,41 @@ export function AjilBatlah() {
     () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
     [all, scope],
   );
-  /** Батлагдсан ч буугаагүй — ХҮРЭЭГЭЭР шүүсэн; бүртгэлгүй багц нь `Pkg` алга тул буулгах боломжгүй */
+  /**
+   * Батлагдсан ч буугаагүй — ХҮРЭЭГЭЭР шүүж ангилсан (`classifyStuck`).
+   * ⚠️ 2026-10-01: бүртгэлгүй багцыг ХАЯХГҮЙ (`orphan` — тайлбартай, товчгүй);
+   *    урьд нь шүүгдэж батлагдсан ажил чимээгүй алга болдог байв.
+   */
   const stuck = useMemo(
-    () => (st.k === 'ready' ? st.approved : []).filter((x) => (scope == null || scope.includes(x.pkgGroup)) && PKG_BY_KEY.has(x.pkgKey)),
-    [st, scope],
+    () => (st.k === 'ready'
+      ? classifyStuck(st.approved, { now: st.at, scope, knownPkg: (k) => PKG_BY_KEY.has(k), settled })
+      : []),
+    [st, scope, settled],
   );
+  /**
+   * «Дахин буулгах» эрх — батлагч ЭСВЭЛ админ (`mayReapply`; lib-д ч ижил шалгуур).
+   * ⚠️ `aclN` — эрх ачаалагдахад дахин бодно (`subscribeCaps`).
+   */
+  const canReapply = useMemo(
+    () => mayReapply({ authOff: status === 'off', isSuper, hasApprove: hasCap(user?.username, 'ajilApprove') }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, isSuper, user?.username, aclN],
+  );
+  /**
+   * ⚠️ 2026-10-01: `fresh` мөрийн хүлээлэг дуусахад дарааллыг ӨӨРӨӨ дахин уншина —
+   *    тэр хооронд батлагчийн цонх буулгасан бол мөр алга болно, эс бөгөөс товч
+   *    нээгдэнэ. Хэрэглэгч хуудсаа гараар шинэчлэх шаардлагагүй.
+   */
+  const nextReady = useMemo(
+    () => stuck.reduce((t, x) => (x.kind === 'fresh' && x.readyAt != null && x.readyAt < t ? x.readyAt : t), Infinity),
+    [stuck],
+  );
+  const loadedAt = st.k === 'ready' ? st.at : null;
+  useEffect(() => {
+    if (loadedAt == null || !Number.isFinite(nextReady)) return;
+    const id = window.setTimeout(reload, Math.max(1_000, nextReady - loadedAt + 1_000));
+    return () => window.clearTimeout(id);
+  }, [nextReady, loadedAt, reload]);
   /** Хүрээнээс ГАДНА байгаа эсэх — хоосон төлвийг ялгахад л (ТООГ хэлэхгүй) */
   const outside = all.length > mine.length;
 
@@ -310,6 +373,9 @@ export function AjilBatlah() {
          солигдвол батлагчийн хараагүй мөрийг бичихгүй. */
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid, stamp: d.stamp });
       if (!alive.current) return;
+      /* ⚠️ 2026-10-01: оролдлого ДУУССАН — «Батлагдсан · буулгаагүй»-д хүлээлэггүй
+         шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
+      afterApply(x.oid, m.ok ? null : m.error);
       if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
@@ -320,6 +386,7 @@ export function AjilBatlah() {
       if (!alive.current) return;
       const msg = String((e as Error).message || e);
       if (decided) {
+        afterApply(x.oid, msg);
         setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', msg));
         setOpen(null);
         reload();
@@ -327,27 +394,35 @@ export function AjilBatlah() {
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [busy, user, reload, detail]);
+  }, [busy, user, reload, detail, afterApply]);
 
   /* ══════════════════════ ДАХИН БУУЛГАХ ══════════════════════
    * ⚠️ Зөвхөн `approved` (батлагдсан ч буугаагүй) мөрд. `materializeAdds` нь
    *    идемпотент — өмнөх оролдлого мөрийг бичээд тэмдэглэж амжаагүй бол
-   *    давхардлыг хаяж зөвхөн тэмдэглэнэ. */
+   *    давхардлыг хаяж зөвхөн тэмдэглэнэ.
+   * ⚠️ 2026-10-01: давхар дарах / өөр табын зэрэгцээ оролдлогыг lib өөрөө барина
+   *    (`inflight` + түгжээ → дараагийнх нь `applied`-ийг уншаад юу ч бичихгүй).
+   *    Алдаа мөр дээрээ үлдэнэ (`applyErr`). */
   const reapply = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
     setBusy(true); setErr(''); setNote('');
     try {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
+      afterApply(x.oid, m.ok ? null : m.error);
       if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
       else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      /* ⚠️ Эрхгүй (`requireCap`) зэрэг шидсэн алдаа — мөн мөр дээр */
+      if (!alive.current) return;
+      const msg = String((e as Error).message || e);
+      afterApply(x.oid, msg);
+      setErr(msg);
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [busy, reload]);
+  }, [busy, reload, afterApply]);
 
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: AjilSubmission) => {
@@ -513,13 +588,25 @@ export function AjilBatlah() {
                 <div className={s.note} role="status">
                   {tr('Эдгээр илгээлт батлагдсан боловч үндсэн хүснэгтэд бичигдээгүй (сүлжээ, зэрэгцээ батлалт). «Дахин буулгах» дарна уу — давхар мөр үүсэхгүй.')}
                 </div>
-                {stuck.map((x) => (
+                {/* ⚠️ 2026-10-01: ангилал бүрд ӨӨР тайлбар — товч зөвхөн `retry` ба
+                    эрхтэй (батлагч/админ) үед. `fresh` нь товчгүй: өөр компьютер
+                    дээрх батлагчийн цонх яг одоо бичиж байж магадгүй. */}
+                {stuck.map(({ sub: x, kind, readyAt }) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
                     detail={detail.get(x.oid)} busy={busy}
                     reason="" onReason={() => {}}
                     badge={tr('Батлагдсан')}
-                    onReapply={() => void reapply(x)}
+                    lastError={applyErr.get(x.oid)}
+                    onReapply={kind === 'retry' && canReapply ? () => void reapply(x) : undefined}
+                    ownWhy={kind === 'orphan'
+                      ? tr('Энэ багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй. Админд хандана уу.')
+                      : kind === 'fresh'
+                        ? tr('Саяхан батлагдсан — батлагчийн цонх яг одоо хуудсанд бичиж байж магадгүй. Давхар бичилтээс сэргийлж «Дахин буулгах» {0} минутын дараа нээгдэнэ (хуудас өөрөө шинэчлэгдэнэ).',
+                          num(Math.max(1, Math.ceil(((readyAt ?? st.at) - st.at) / 60_000))))
+                        : canReapply
+                          ? undefined
+                          : tr('Дахин буулгах эрхгүй — нэмэлт ажлын батлагч эсвэл админ буулгана.')}
                   />
                 ))}
               </div>
@@ -583,7 +670,7 @@ export function AjilBatlah() {
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, badge,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, badge, lastError,
 }: {
   sub: AjilSubmission;
   open: boolean;
@@ -602,6 +689,8 @@ function Row({
   onReapply?: () => void;
   /** Төлвийн тэмдэг — анхдагч «Хүлээгдэж буй» */
   badge?: string;
+  /** ⚠️ 2026-10-01: энэ цонхны СҮҮЛИЙН буулгалтын алдаа — «Батлагдсан · буулгаагүй»-д */
+  lastError?: string;
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
   const p = detail?.k === 'ok' ? detail.p : null;
@@ -673,9 +762,12 @@ function Row({
                       {tr('Эцэг: {0}', a.parentWork || '—')}
                     </span>
                     {/* ⚠️ `null` нь «хэмжилтгүй» — 0 гэж БИЧИХГҮЙ. */}
+                    {/* ⚠️ 2026-09-30: БУТАРХАЙГ ХАДГАЛНА (≤3 орон, бөглөх хуудасны `qty`-тэй ижил) —
+                        `num` анхдагчаар 0 оронтой тул 0.4 → «0», 142.96 → «143» гэж
+                        батлагчид БУРУУ тоо харагддаг байв. */}
                     <span className={s.chVal}>
-                      {a.vol == null ? '—' : num(a.vol)}
-                      {a.unit == null ? '' : ` × ${num(a.unit)}`}
+                      {a.vol == null ? '—' : num3(a.vol)}
+                      {a.unit == null ? '' : ` × ${num3(a.unit)}`}
                     </span>
                   </div>
                 ))}
@@ -687,6 +779,12 @@ function Row({
             /* ⚠️ ХАРАГДАХ мөр, `title` ганцаараа БИШ — хүрэлцэх төхөөрөмж
                дээр `title` хэзээ ч гарахгүй. */
             <div className={s.note} role="status">{ownWhy}</div>
+          )}
+
+          {lastError && (
+            /* ⚠️ 2026-10-01: дээд баннер дараагийн үйлдэлд арилдаг — шалтгаан
+               мөр дээрээ үлдэж, батлагч/админ юуг засахаа харна. */
+            <div className={s.error} role="alert">{tr('Сүүлийн буулгалт унав: {0}', lastError)}</div>
           )}
 
           {onReject && (
