@@ -6163,6 +6163,8 @@ const en: Record<string, string> = {
   "Санхүүгийн өгөгдөл татагдсангүй": "Financial data could not be loaded",
   "7 хоногт": "In 7 days",
   "Орон сууцны багц бүрийн хуваарийн төлөвлөгөө ба бодит гүйцэтгэл — «Багцын гүйцэтгэл» хэсгийн ижил график.": "Scheduled plan and actual progress for each housing package — the same chart as in “Package progress”.",
+  "Блок ({0}):": "Blocks ({0}):",
+  "Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).": "The dates were written to the source sheet but the monthly volumes were not — press “Approve” again to finish (returning is not possible; the written dates remain).",
 };
 
 export default en;

@@ -114,4 +114,39 @@ const row = (i, oid, des, vol, spans, extra = {}) => ({
   assert.deepEqual(monthsOf(sp), ['2026-10', '2026-11', '2026-12']);
 }
 
-console.log('✓ obyemGate: popup-ын шүүсэн задаргаа → хаалт → илгээлт → буулгалт');
+/* ── 5. ЗОХИОГЧ ХӨНДӨӨГҮЙ уялдаа · обьём (санал = суурь) — серверийнх үлдэнэ (2026-10-01) ──
+   Урьд нь ноорогт орж: сервер хооронд нь өөрчлөгдсөн бол батлахад худал «зэрэгцээ
+   өөрчлөлт» (strict), татах/буцаах (strict: false) замд хуучин утга серверийнхийг дардаг байв. */
+{
+  const sheet = (ham) => ({
+    oid: 7, no: '1.1', des: 11, work: 'Ажил 11', depth: 1, group: false, vol: 900, ham,
+    start: [null, null], end: [null, null], gStart: [null, null], gEnd: [null, null],
+    act: [null, null], aStart: [null, null], aEnd: [null, null], hun: null, mashin: null,
+  });
+  const k = obKey(11, 'B1');
+  const pay = {
+    kind: 'plan', spans: {}, actual: {}, res: {}, obres: {},
+    deps: { 7: '5FS' },
+    obyem: { [k]: { '2026-10': 900 } },
+    base: { spans: {}, deps: { 7: '5FS' }, obyem: { [k]: { '2026-10': 900 } } },
+  };
+  /* Сервер хооронд нь өөр утгатай болсон */
+  const rows = [sheet('9SS')];
+  const srvPlan = new Map([[11, new Map([['B1', M({ '2026-11': 900 })]])]]);
+  const strict = payloadToDrafts(pay, rows, true, srvPlan, new Map(), { kind: 'plan', n: 2 });
+  assert.equal(strict.ok, true, `хөндөөгүй утга зөрчил биш: ${JSON.stringify(strict)}`);
+  assert.equal(strict.conflicts, 0);
+  assert.equal(strict.maps.ham.has(7), false, 'хөндөөгүй уялдаа ноорогт ОРОХГҮЙ — серверийн 9SS үлдэнэ');
+  assert.equal(strict.maps.obDraft.has(k), false, 'хөндөөгүй обьём ноорогт ОРОХГҮЙ');
+  /* Зохиогч ЗАССАН бол хуучин дүрэм хэвээр — зөрчил тоологдоно */
+  const edited = { ...pay, deps: { 7: '6FS' } };
+  const e = payloadToDrafts(edited, rows, true, srvPlan, new Map(), { kind: 'plan', n: 2 });
+  assert.equal(e.ok, false, 'зассан + сервер өөрчлөгдсөн → зөрчил');
+  assert.equal(e.why, 'conflict');
+  /* Сервер өөрчлөгдөөгүй бол зассан нь ноорогт буунa */
+  const same = payloadToDrafts(edited, [sheet('5FS')], true, new Map([[11, new Map([['B1', M({ '2026-10': 900 })]])]]), new Map(), { kind: 'plan', n: 2 });
+  assert.equal(same.ok, true);
+  assert.equal(same.maps.ham.get(7), '6FS', 'зассан уялдаа ноорогт');
+}
+
+console.log('✓ obyemGate: popup-ын шүүсэн задаргаа → хаалт → илгээлт → буулгалт · хөндөөгүй утга серверийнхээр');

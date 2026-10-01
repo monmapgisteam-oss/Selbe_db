@@ -259,8 +259,13 @@ curRes: PkgRes,
   const hm = new Map<number, string>();
   for (const [k, v] of Object.entries(p.deps)) {
     if (!known(Number(k))) continue;
-    hm.set(Number(k), v);
     const bd = p.base?.deps;
+    /* ⚠️ ЗОХИОГЧ ХӨНДӨӨГҮЙ уялдаа (санал = суурь) — серверийн одоогийнх үлдэнэ (2026-10-01).
+       `spans`-ын «хөндөөгүй блок → сервер» дүрэмтэй ижил, `backMarkMapOf`-той нийцтэй.
+       Урьд нь ноорогт орж: батлахад сервер хооронд нь өөрчлөгдсөн бол худал «зэрэгцээ
+       өөрчлөлт», татах/буцаах (`strict: false`) замд хуучин утга серверийнхийг дарна. */
+    if (bd && k in bd && (bd[k] ?? '') === (v ?? '')) continue;
+    hm.set(Number(k), v);
     if (bd && k in bd) {
       const now = curSheet.get(Number(k));
       if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== v) conflicts += 1;
@@ -268,14 +273,17 @@ curRes: PkgRes,
   }
   const ob = new Map<string, Map<string, number>>();
   for (const [k, months] of Object.entries(p.obyem)) {
-    ob.set(k, new Map(Object.entries(months)));
+    const mine = new Map(Object.entries(months));
     const bo = p.base?.obyem;
     if (bo && k in bo) {
+      const was = new Map(Object.entries(bo[k]));
+      /* ⚠️ Зохиогч хөндөөгүй (санал = суурь) — серверийнх үлдэнэ (2026-10-01, уялдаатай ижил) */
+      if (sameMonths(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      const was = new Map(Object.entries(bo[k]));
-      if (!sameMonths(now, was) && !sameMonths(now, ob.get(k))) conflicts += 1;
+      if (!sameMonths(now, was) && !sameMonths(now, mine)) conflicts += 1;
     }
+    ob.set(k, mine);
   }
   /*
    * БОДИТ ОГНОО · НӨӨЦ (2026-09-23) — `spans`-ын ижил суурь-тулгалт:
@@ -317,14 +325,17 @@ curRes: PkgRes,
   /* САРЫН НӨӨЦ (2026-09-24) — обьёмын ижил суурь-тулгалт; хуучин илгээлтэд `{}` */
   const or = new Map<string, Map<string, MonthRes>>();
   for (const [k, months] of Object.entries(p.obres ?? {})) {
-    or.set(k, new Map(Object.entries(months).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }])));
+    const mine = new Map(Object.entries(months).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }]));
     const bo = p.base?.obres;
     if (bo && k in bo) {
+      const was = new Map(Object.entries(bo[k]).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }]));
+      /* ⚠️ Зохиогч хөндөөгүй (санал = суурь) — серверийнх үлдэнэ (2026-10-01) */
+      if (sameRes(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      const was = new Map(Object.entries(bo[k]).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }]));
-      if (!sameRes(now, was) && !sameRes(now, or.get(k))) conflicts += 1;
+      if (!sameRes(now, was) && !sameRes(now, mine)) conflicts += 1;
     }
+    or.set(k, mine);
   }
   const unknown = unk.size;
   if (strict && conflicts) return { ok: false, why: 'conflict', conflicts, unknown };
@@ -336,6 +347,12 @@ curRes: PkgRes,
 
 /** Зэрэгцээ өөрчлөлтийн алдааны текст — preview ба decide хоёуланд нэг */
 export const conflictMsg = (n0: number) => tr('{0} нүд илгээснээс хойш өөр замаар өөрчлөгдсөн байна (зэрэгцээ өөрчлөлт). Батлах боломжгүй — буцааж, зохиогч шинэ хуваарин дээр дахин илгээнэ.', num(n0));
+/**
+ * ХАГАС БИЧИГДСЭН БАТЛАЛТ (2026-10-01) — огноо эх хуудсанд орсон, сарын обьём унасан.
+ * `prev` — `save`-ийн тавьсан техникийн шалтгаан (сүлжээ г.м.); байвал хойно нь залгана.
+ */
+export const partialMsg = (prev: string) => tr('Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).')
+  + (prev ? ` (${prev})` : '');
 /** Илгээлтийн мөр одоогийн жаазад алга (2026-09-25 аудит) — preview ба decide хоёуланд нэг */
 export const unknownMsg = (n0: number) => tr('Илгээлтийн {0} мөр одоогийн хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Батлах боломжгүй — буцааж, зохиогч дахин илгээнэ.', num(n0));
 /**
