@@ -1357,16 +1357,17 @@ export function planCurve(
       if (kids[i].length) {
         const den = kids[i].reduce((s, k) => s + (D[k] ?? 0), 0);
         for (let b = 0; b < n; b++) {
-          let sp = 0; let cnt = 0;
+          let sp = 0; let cnt = 0; let anyKid = false;
           for (const k of kids[i]) {
             const w = den > 0 ? (D[k] ?? 0) : 1;
+            if (plan[k][b] != null) anyKid = true;
             sp += w * (plan[k][b] ?? 0);
             cnt += w;
           }
           p[b] = cnt > 0 ? sp / cnt : null;
-          /* ⚠️ Бүлэгт ӨӨРИЙНХ нь огноо бичигдсэн бол дундаж БИШ, огноогоор
-             интерполяци — `computeAll`-ийн ижил онцгой тохиолдол. */
-          if (own[i][b] && St[i][b] != null && En[i][b] != null) {
+          /* ⚠️ Бүлэгт ӨӨРИЙНХ нь огноо бичигдсэн БА дэд ажлуудын НЭГ Ч төлөвлөгөөт хувьгүй
+             бол л огноогоор интерполяци — `computeAll`-ийн ижил онцгой тохиолдол (2026-10-01). */
+          if (!anyKid && own[i][b] && St[i][b] != null && En[i][b] != null) {
             p[b] = planPct?.(rows[i], b, asOf) ?? planAt(asOf, St[i][b], En[i][b]);
           }
         }
@@ -1550,8 +1551,10 @@ export function computeAll(
            (саарал биш) харагдаж, `meanOf` дунджийг доош татдаг байв. J/E-д
            нөлөөгүй: `avg()` null-ыг аль хэдийн 0 гэж үздэг. */
         let anyAct = false;
+        let anyKidPlan = false;
         for (const k of kids[i]) {
           if (out[k].actAgg[b] != null) anyAct = true;
+          if (out[k].plan[b] != null) anyKidPlan = true;
           const w = den > 0 ? (D[k] ?? 0) : 1;
           sp += w * (out[k].plan[b] ?? 0);
           /* ⚠️ 2026-09-04: урьд нь `out[k].act[b]` (түүхий) байсан. Багц 2·12F
@@ -1571,7 +1574,13 @@ export function computeAll(
         //    үргэлж 0 болно. Эх `9F` хуудсанд ийм мөрүүд огноогоороо бодогддог:
         //    жишээ нь Багц 4.1-ийн «СУУРИЙН АЖИЛ» — 9F 93.8%, publish 0.0%.
         //    Эталон нь `9F` тул огноогоор нь интерполяци хийнэ.
+        // ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ЗӨВХӨН дэд ажлуудын НЭГ Ч төлөвлөгөөт хувьгүй
+        //    үед. Урьд нь бүлэг өөрийн огноотой бол дэд ажлууд хуваарьтай байсан ч ШУЛУУН
+        //    шугам авч, «Хуваарь»-т ажил бүрийн хуваарь/жин/сарын обьём бүлгийн хувьд огт
+        //    нөлөөлдөггүй байв (жиш. 80%-ийг эхний 2 сард тавьсан ч 2 сарын дараа 40%).
+        //    «Хуваарь» бүлгийн огноог хүүхдийн MIN/MAX-аар БИЧДЭГ тул бараг бүх бүлэг `own`.
         if (
+          !anyKidPlan &&
           startSrc[b] === "own" &&
           endSrc[b] === "own" &&
           start[b] != null &&
@@ -1940,15 +1949,18 @@ export async function applyUpdates(
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
+      /* ⚠️ 2026-10-01: бичигдсэн мөрийн тоог алдаанд хавсаргана — батлагч тал (`Huvaari.save`)
+         нэг ч мөр бичигдээгүй бол хагас бичилтийн тэмдгийг арилгана. */
+      if (e && typeof e === 'object') (e as { written?: number }).written = i;
       if (i > 0)
-        throw new Error(
+        throw Object.assign(new Error(
           tr(
             '{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
             i,
             updates.length,
             String((e as Error).message || e),
           ),
-        );
+        ), { written: i });
       throw e;
     }
   }

@@ -55,7 +55,7 @@ import {
 } from '@/lib/huvaariObyem';
 import {
   approveGuard, claimPlan, decidePlan, loadHistory, loadPayload, loadPending, loadSubmissionHead, planTableState, PLAN_STATUS,
-  markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
+  clearPlanPartial, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { hdKey } from '@/lib/huvaariDraft';
@@ -1850,7 +1850,17 @@ export function Huvaari({
         }
       }
       if (upd.length) {
-        await applyUpdates(pkg, upd);
+        try {
+          await applyUpdates(pkg, upd);
+        } catch (e) {
+          /* ⚠️ НЭГ Ч мөр бичигдээгүй (эхний 500-ийн багц бүтнээрээ буцсан) бол хагас бичилт
+             БИШ — тэмдгийг арилгана (2026-10-01): эс бөгөөс бичилт дахин дахин унахад санал
+             буцаах/татах боломжгүй мөнхөд түгжигддэг байв. Нэг ч мөр бичигдсэн бол тэмдэг ҮЛДЭНЭ. */
+          if (approvalMode && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
+            if (await clearPlanPartial(approving)) partialRef.current = null;
+          }
+          throw e;
+        }
       }
 
       /*

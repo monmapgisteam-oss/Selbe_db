@@ -1469,6 +1469,29 @@ export async function markPlanPartial(args: { oid: number; approver: string }): 
 }
 
 /**
+ * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ (2026-10-01) — эх хуудсанд НЭГ Ч мөр бичигдээгүй унасан үед.
+ * ⚠️ Зөвхөн тэмдэг байгаа үед (`partialBy`) — бодит буцаалтын шалтгааныг дарахгүй.
+ * ⚠️ Унавал чимээгүй: тэмдэг үлдэх нь аюулгүй тал (буцаах хаагдсан ч дахин батлаж болно).
+ */
+export async function clearPlanPartial(oid: number): Promise<boolean> {
+  const url = await tableUrl(false);
+  if (!url) return false;
+  try {
+    const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.reason}`);
+    if (!cur.length || partialBy(s(cur[0][F.status]), s(cur[0][F.reason])) == null) return false;
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: null } }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return false;
+    invalidate('HUVAARI_BATLAH');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч ӨӨРИЙН хүлээгдэж буй илгээлтийг буцааж авна
  * (2026-09-21).
  *
