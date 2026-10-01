@@ -191,7 +191,13 @@ const text = (node) => {
 };
 
 /** Бичилт дуустал хүлээнэ (UI `void run(op)` — амлалтгүй) */
-const idle = () => settle(() => fake.inflight > 0 || POOL.some((u) => OPS.aclPendingFor(u)));
+/* ⚠️ 2026-10-01: POOL-оос гадуурх аккаунтын (хатуу аккаунт, өнчин эрх «ui_orphan_caps» г.м.) бичилтийг ч
+   хүлээнэ — хүснэгтэд байгаа БҮХ нэрийг шалгана; эс бөгөөс удаан машинд (GitHub runner) бичилт
+   дуусахаас өмнө шалгагдаж CI-д л унадаг байв. */
+const baseName = (n) => String(n).replace(/^__[a-z]+__:/i, '');
+const idle = () => settle(() => fake.inflight > 0
+  || POOL.some((u) => OPS.aclPendingFor(u))
+  || fake.rows.some((r) => OPS.aclPendingFor(baseName(r.username))));
 
 /* ══════════ Аккаунтууд ба эхлэл ══════════ */
 const POOL = Array.from({ length: 80 }, (_, i) => `ui_u${String(i + 1).padStart(3, '0')}`);
