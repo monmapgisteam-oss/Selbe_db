@@ -107,9 +107,21 @@ await Promise.all(Array.from({ length: Math.min(jobs, files.length) }, worker));
 
 /* ── Дүн ── */
 const failed = results.filter((r) => r.code !== 0);
+/*
+ * ⚠️ 2026-10-01: GitHub Actions дээр унасан шалгуур бүрийг ANNOTATION болгож гаргана.
+ *    Ажлын лог зөвхөн репоны админд харагддаг тул «npm test унав» гэхээс өөр мэдээлэл
+ *    олдохгүй байв (локал дээр 157/157 давж, CI дээр л унаж байсан). Annotation нь
+ *    commit-ийн «checks» хэсэгт ба нийтийн API-д харагдана. Токен/нууц агуулахгүй —
+ *    шалгуурын гаралтын СҮҮЛИЙН мөрүүд л (assert-ийн мессеж).
+ */
+const ghEsc = (s) => s.replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A');
 for (const r of failed) {
   console.log(`\n══════════ ❌ ${r.file} (exit ${r.code}) ══════════`);
   console.log(r.out.trimEnd());
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const tail = r.out.trimEnd().split('\n').filter((l) => !/^\s+at /.test(l)).slice(-25).join('\n');
+    console.log(`::error file=${r.file},title=${ghEsc(`test-all: ${r.file} (exit ${r.code})`)}::${ghEsc(tail.slice(-3500))}`);
+  }
 }
 const total = results.reduce((s, r) => s + r.ms, 0);
 console.log(
