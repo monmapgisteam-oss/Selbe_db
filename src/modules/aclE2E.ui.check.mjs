@@ -616,6 +616,9 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   input.el.props.onChange({ target: { value: name } }); m.render();
   takeConfirms();
   findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'addBtn')[0].el.props.onClick({});
+  /* ⚠️ 2026-10-01: өнчин эрхийн устгал `caps`-ийн замаар (aclOps-ийн pending-гүй) явдаг — idle()
+     түүнийг хардаггүй тул удаан машинд (GitHub runner) устгал дуусахаас өмнө шалгагдаж байв. */
+  await settle(() => fake.find(`__cap__:${name}`).length > 0);
   await idle(); m.render();
   const cf = takeConfirms();
   ok(cf.length === 1 && cf[0].includes(name) && cf[0].includes('Санхүү — мөр'), `${tag}: өнчин эрхийг нэрээр нь асууна (${cf.join(' | ')})`);
