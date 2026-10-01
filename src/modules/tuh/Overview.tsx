@@ -135,11 +135,13 @@ export function GanttLegend() {
   );
 }
 
-export function Overview({ m, contractTotal, onOpen }: {
+export function Overview({ m, contractTotal, onOpen, onRetry }: {
   m: TuhModel;
   /** «Гэрээний нийт дүн» — `loadBudget().contract` (бусад харагдацтай ижил эх) */
   contractTotal: number | null;
   onOpen: (key: string) => void;
+  /** ⚠️ 2026-10-01: уншигдаагүй эх сурвалжийг дахин татах (`Tuh.retryFailed`) */
+  onRetry?: () => void;
 }) {
   const [grp, setGrp] = useState<TuhGroup | 'all'>('all');
   const [q, setQ] = useState('');
@@ -229,7 +231,7 @@ export function Overview({ m, contractTotal, onOpen }: {
           <span className={s.statNote}>
             {tr('{0} IPC · {1} гэрээний', num(m.paid.ipcCount), pct(m.paid.pct))}
             {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — «IPC» хуудастай ижил тусад нь (`ipcTotals.paidOther`) */}
-            {m.paid.other != null && m.paid.other !== 0 && <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(m.paid.other))}</>}
+            {m.paid.other != null && m.paid.other !== 0 && <> · {tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', mnt(m.paid.other))}</>}
           </span>
         </div>
         <div className={s.stat}>
@@ -248,7 +250,15 @@ export function Overview({ m, contractTotal, onOpen }: {
         </div>
       </div>
       {m.failed.length > 0 && (
-        <p className={s.failNote}>{tr('Уншигдаагүй эх сурвалж: {0} — холбогдох тоо «—» харагдана.', m.failed.join(', '))}</p>
+        <p className={s.failNote} role="alert">
+          {tr('Уншигдаагүй эх сурвалж: {0} — холбогдох тоо «—» харагдана.', m.failed.join(', '))}
+          {onRetry && (
+            <>
+              {' '}
+              <button type="button" className={s.retryBtn} onClick={onRetry}>{tr('Дахин оролдох')}</button>
+            </>
+          )}
+        </p>
       )}
 
       {/* ── Улсын комисст бэлэн байдал ── */}

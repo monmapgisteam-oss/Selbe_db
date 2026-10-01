@@ -64,9 +64,10 @@ import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
-  bagtsKey, pkgKeyOf, laborCompanyFields, hoAmount, CF_WORK_WHERE,
+  bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { paidShareOf, paidPctOf } from '@/lib/paidShare';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
 import {
@@ -681,11 +682,11 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    *    алдааны (хоосон дүнг 0 болгосноос нийлбэр чимээгүй гуйвсан) ЯГ
    *    тэр хэлбэр — эх сурвалж солигдсон ч эрсдэл хэвээр.
    */
-  const paid = ho.reduce((a, r) => {
-    const n = hoAmount(r);
-    return n == null ? a : a + n;
-  }, 0);
   /*
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `paid` · `paidContracted` · `contractAmount`-ийн
+   *    дүрэм `paidShare.paidShareOf`-д ШИЛЖСЭН (доорх 2026-09-21-ний тайлбар тэр дүрмийг
+   *    хэвээр баримтжуулна) — «IPC» хуудас · ТУХ · CEO карт · удирдлагын тайлан ЯГ энэ
+   *    функцээр бодно. Энд ДАХИН бүү бич: хоёр хуулбар = хоёр өөр хувь (26.47 ↔ 26.01).
    * ⚠️ 2026-09-21: ГЭРЭЭЛСЭН БАГЦЫН ТӨЛБӨР — `paidRate`-ийн тоологч. Хуваарь
    *    (`contractAmount`) нь `inTotal` ∧ CONTRACTED мөрийн гэрээний дүн тул
    *    тоологч ч ЯГ тэр мөрүүдийн багцад олгосон төлбөр байна. Түлхүүр нь
@@ -693,16 +694,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    *    `pkg` хоёулаа орно (`PkgFin.rowsByKey`-тэй ижил). Диапазон мөр (`''`)
    *    ба гэрээгүй багцын төлбөр `paidOther`-т үлдэнэ — `paid` ХЭВЭЭР бүх мөр.
    */
-  const contractedKeys = new Set<string>();
-  inTotal.filter((r) => str(r[F.amountNote]) === CONTRACTED).forEach((r) => {
-    [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])].forEach((k) => { if (k && k !== '0') contractedKeys.add(k); });
-  });
-  const paidContracted = ho.reduce((a, r) => {
-    const n = hoAmount(r);
-    if (n == null) return a;
-    const k = pkgKeyOf(r[HO_IPC.contractFields.pkg]);
-    return k && contractedKeys.has(k) ? a + n : a;
-  }, 0);
+  const share = paidShareOf(master, ho);
+  const { paid, paidContracted } = share;
 
   /*
    * Төрлөөр — ЗӨВХӨН мастер мөрөөс (эс тэгвээс нэг гэрээ 14 удаа тоологдоно).
@@ -778,9 +771,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * `paidRate` (`buildFindings`) хоёулаа тэр суурин дээр худал байв.
      * ⚠️ `inTotal` хүрээ ХЭВЭЭР — `budget`/`orderTotal`-тай нэг хуваарьтай.
      */
-    contractAmount: inTotal
-      .filter((r) => str(r[F.amountNote]) === CONTRACTED)
-      .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
+    contractAmount: share.contract,
     /**
      * ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ (6-р хэсэг) — НИЙТ дүнгээс
      * ГАДУУР тул тусад нь. Тайлангийн 4-р хэсэг үүнийг уншина: мөнгө
@@ -792,7 +783,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     paid,
     paidContracted,
-    paidOther: paid - paidContracted,
+    paidOther: share.paidOther,
     byType: [...typeMap.entries()]
       .map(([type, v]) => ({ type, ...v }))
       /* ⚠️ 2026-09-29 (аудит 10): «Төрөл тодорхойлоогүй» мөр үргэлж СҮҮЛД */
@@ -1126,8 +1117,8 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
     ? (x.finance.contractAmount / x.finance.orderTotal) * 100 : null;
   /* ⚠️ 2026-09-21: тоологч = ГЭРЭЭЛСЭН багцын төлбөр (`paidContracted`), хуваарь =
      гэрээлсэн дүн — нэг хүрээ. Урьд нь бүх төлбөр (`paid`) хуваагддаг байв. */
-  const paidRate = x.finance.contractAmount
-    ? (x.finance.paidContracted / x.finance.contractAmount) * 100 : null;
+  /* ⚠️ 2026-10-01: томьёо `paidShare.paidPctOf` — порталын бүх газар НЭГ функц */
+  const paidRate = paidPctOf(x.finance.paidContracted, x.finance.contractAmount);
 
   /* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ дээр тогтсон гурван дүгнэлт
      (оргил сар, сүүлийн гурван сарын эрчим) ХАСАГДСАН — хуучин

@@ -68,6 +68,7 @@ import {
   type Row, type HoContract, type HoTotals,
 } from '@/lib/ipc';
 import { mnt, pct, date, text, dayKey } from '@/lib/format';
+import { paidPctOf } from '@/lib/paidShare';
 import type { Level } from '@/lib/kpiLevels';
 import { cell, table, type KpiResult, type KpiIssue, type Cell } from './kpi';
 
@@ -226,7 +227,8 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
   void now;
   const s = summarize(rows);
   const cs = groupHo(rows);
-  const refPct = ref && ref.contract > 0 ? (ref.paidContracted / ref.contract) * 100 : null;
+  /* ⚠️ 2026-10-01: томьёо `paidShare.paidPctOf` — порталын бүх газар НЭГ функц */
+  const refPct = ref ? paidPctOf(ref.paidContracted, ref.contract) : null;
 
   /* ── Хүснэгт 1: ГЭРЭЭНИЙ САНХҮҮЖИЛТ — гэрээнд эзлэх хувь БАГА нь ЭХЭНД
         (эрсдэлийн эрэмбэ), хувь хэмжигдээгүй нь СҮҮЛД.

@@ -1475,7 +1475,6 @@ const en: Record<string, string> = {
   "Сэлбэ 20 минутын хотын ерөнхий тайлан": "Selbe 20-Minute City — General report",
   "Сэлбэ 20 минутын хотын ерөнхий тайлан · {0} / {1}": "Selbe 20-Minute City — General report · {0} / {1}",
   "Сэлбэ 20 минутын хотын ерөнхий тайлан ({0})": "Selbe 20-Minute City general report ({0})",
-  "Сэлбэ 20 минутын хот · тохиргоо": "Selbe 20-Minute City · settings",
   "Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар": "As of the report date, implementation of the Selbe 20-Minute City project stands at",
   "Сэлбэ дэд төв": "Selbe sub-centre",
   "Сэлбэ портал": "Selbe portal",
@@ -2599,7 +2598,6 @@ const en: Record<string, string> = {
   "зөвшөөрөл": "permits",
   "гүйцэтгэлийн хяналт": "performance review",
   "багцын жагсаалт": "package list",
-  "Өгөгдөл татагдсангүй — сүлжээгээ шалгана уу": "No data could be loaded — check your connection",
   "Үйл ажиллагааны схем": "Project flow diagram",
   "Төлөвлөхөөс тайлагнах хүртэлх урсгал — амьд тоогоор": "From planning to reporting — with live figures",
   "төслийн нийт": "project-wide",
@@ -6248,6 +6246,15 @@ const en: Record<string, string> = {
   "Сүүлийн буулгалт унав: {0}": "Last apply attempt failed: {0}",
   "Блок ({0}):": "Blocks ({0}):",
   "Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).": "The dates were written to the source sheet but the monthly volumes were not — press “Approve” again to finish (returning is not possible; the written dates remain).",
+  "Батлах урсгал уншигдсангүй: {0}": "Approval flow could not be loaded: {0}",
+  "Эрхийн төрлийн загвар уншигдсангүй — ArcGIS-ийн эрхийн хүснэгтэд хандаж чадсангүй. Сүлжээ эсвэл нэвтрэлтээ шалгаад дахин оролдоно уу.": "Role type templates could not be loaded — the ArcGIS permissions table is unreachable. Check your network or sign-in and try again.",
+  "Сэлбэ ухаалаг хот · тохиргоо": "Selbe Smart City · settings",
+  "Схемийн эх сурвалж бүгд татагдсангүй: {0}": "All schema sources failed to load: {0}",
+  "Схемийн эх сурвалж бүгд татагдсангүй": "All schema sources failed to load",
+  "Эрхийн түлхүүр": "Permission key",
+  "Мөрийн түлхүүр": "Row key",
+  "Зурж эхэлсэн дүрс дуусаагүй байна. Хаях уу?": "The shape you started drawing is not finished. Discard it?",
+  "гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)": "paid {0} outside contracted packages (not in %)"
 };
 
 export default en;

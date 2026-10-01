@@ -27,7 +27,7 @@
 
 import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Empty, Loading } from '@/components/ui';
+import { Section, Empty, Loading, Data, friendlyError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
@@ -448,6 +448,16 @@ export function Huvaari({
     return () => window.removeEventListener('keydown', esc);
   }, [isWide, isReview, escBlockRef, reviewCloseRef]);
   const [err, setErr] = useState('');
+  /**
+   * ХУВААРЬ АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ Урьд нь ачаалах алдааг `setErr(e.message)`-ээр түүхийгээр нь («Token Required»)
+   *    улаан баннерт тавьж, доор нь «мөр олдсонгүй» гэсэн худал хоосон төлөв гардаг байв.
+   *    Одоо `Data`-гийн алдааны блок (ойлгомжтой тайлбар · эвхмэл техникийн мөр ·
+   *    «Дахин оролдох») ГАНЦ удаа гарна.
+   */
+  const [loadErr, setLoadErr] = useState<Error | null>(null);
+  /** «Дахин оролдох» — ачаалах эффектийг дахин ажиллуулах тоолуур */
+  const [reloadN, setReloadN] = useState(0);
   const [note, setNote] = useState('');
   /** «Улсын комисс» автомат нэмэлтийн мэдэгдэл — `note`-оос ТУСДАА: ноорог сэргээх эффект `note`-ыг дардаг (2026-09-25 аудит) */
   const [komissNote, setKomissNote] = useState('');
@@ -632,7 +642,7 @@ export function Huvaari({
   useEffect(() => {
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: багц солигдоход ArcGIS-ээс дахин ачаалах эффект — ачаалахын өмнө төлөвийг тэглэх нь энэ файлын ⚠️-уудаар бэхлэгдсэн дараалал; дериваци/key-ээр солих нь бүх төлөвийг дахин зохион байгуулах том өөрчлөлт
-    setBusy(true); setErr(''); setRows([]); setSc(null);
+    setBusy(true); setErr(''); setLoadErr(null); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
     /* ⚠️ Бүлгийн шүүлт · холбох цонх ч багцынх (2026-09-25 аудит) */
     setFGrp('all'); setLinkAsk(null);
@@ -708,13 +718,14 @@ export function Huvaari({
         setSc(schema);
         setRows(r.rows);
       })
-      .catch((e) => alive && setErr(String((e as Error).message || e)))
+      /* ⚠️ 2026-10-01: түүхий мессежийг `err` баннерт БИШ — `loadErr`-д (дээрх ⚠️) */
+      .catch((e) => alive && setLoadErr(e instanceof Error ? e : new Error(String(e))))
       .finally(() => alive && setBusy(false));
     return () => { alive = false; };
     /* ⚠️ `review` санаатай ОРУУЛААГҮЙ — хянах горим солиход мөрийг дахин
-       татахгүй; зөвхөн багц солигдоход ачаална. */
+       татахгүй; зөвхөн багц солигдоход ачаална. `reloadN` — «Дахин оролдох». */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg]);
+  }, [pkg, reloadN]);
 
   /**
    * ТӨРӨЛ СОЛИГДОХОД НООРОГ ЦЭВЭРЛЭГДЭНЭ (2026-09-11).
@@ -1971,8 +1982,9 @@ export function Huvaari({
           ? tr('ArcGIS-д нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
           : st.why === 'owner'
             ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
+            /* ⚠️ 2026-10-01: түүхий дэлгэрэнгүйг («Token Required») ойлгомжтой болгоно */
             : st.why === 'error'
-              ? tr('Порталын хайлт амжилтгүй: {0}', st.detail ?? '')
+              ? tr('Порталын хайлт амжилтгүй: {0}', friendlyError({ message: st.detail ?? '' }))
               : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
       ));
       const p = ready ? await loadPending(pkg.key) : null;
@@ -2008,10 +2020,12 @@ export function Huvaari({
       const last = ready && !p ? ((await loadHistory(pkg.key, 1))[0] ?? null) : null;
       if (!live()) return;
       setLastDecision(last);
-    } catch {
+    } catch (e) {
       if (!live()) return;
       setFlowReady(false);
-      setFlowWhy(tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
+      /* ⚠️ 2026-10-01: шалтгааныг АНГИЛНА (эрх · нэвтрэлт · сүлжээ · хугацаа) — урьд нь ямар ч
+         алдааг «сүлжээгээ шалгана уу» гэдэг тул 499/403-д хэрэглэгч буруу зүйл шалгадаг байв. */
+      setFlowWhy(tr('Батлах урсгал уншигдсангүй: {0}', friendlyError(e)));
       /* ⚠️ 2026-09-29 аудит: ИЖИЛ багцын `pending`-ийг ҮЛДЭЭНЭ (дээрх эхлэлийн дүрэмтэй
          ижил) — урьд нь түр сүлжээний алдаанд `null` болгож `locked` тайлагдаж, засвар ·
          хуваалцсан ноорог нээгдээд, урсгал сэргэхэд гарах замгүй ноорог үлддэг байв. */
@@ -3966,7 +3980,9 @@ export function Huvaari({
       {/* ⚠️ ЯГ ШАЛТГААНЫГ бичнэ (2026-09-11). Урьд нь гурван огт өөр
           шалтгаан (нэвтрээгүй · эзэн танигдахгүй · порталын алдаа) нэг л
           «олдсонгүй» мессеж болж нийлдэг тул админ юу засахаа мэдэхгүй байв. */}
-      {flowReady === false && canEdit && (
+      {/* ⚠️ 2026-10-01: хуваарь өөрөө ачаалагдаагүй бол (`loadErr`) урсгалын баннер ДАВХАР
+          алдаа болж (ихэвчлэн ижил шалтгаан — эрх/токен) хоёр удаа гардаг байв — нэг л удаа. */}
+      {flowReady === false && canEdit && !loadErr && (
         <p className={h.err} role="alert">
           {flowWhy || tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')}
           {' '}
@@ -3976,6 +3992,9 @@ export function Huvaari({
 
       {busy && !rows.length ? (
         <Loading label={tr('Хуваарь ачаалж байна…')} />
+      ) : loadErr ? (
+        /* ⚠️ 2026-10-01: ачаалах алдаа — `Data`-гийн нэг загвар (тайлбар · техникийн мөр · дахин оролдох) */
+        <Data q={{ state: 'error', data: null, error: loadErr, retry: () => setReloadN((n) => n + 1) }}>{() => null}</Data>
       ) : !sc || !rows.length ? (
         <Empty label={tr('Энэ багцад мөр олдсонгүй.')} />
       ) : (

@@ -23,6 +23,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
+import { Data } from '@/components/ui';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { qaqcScope, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { roleForUser } from '@/lib/services';
@@ -273,6 +274,12 @@ export function Qaqc() {
   const [flat, setFlat] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /**
+   * АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ Урьд нь түүхий `e.message` («Token Required») шууд гардаг байв — одоо `Data`-гийн
+   *    алдааны блок: ойлгомжтой тайлбар · эвхмэл техникийн мөр · «Дахин оролдох».
+   */
+  const [loadErr, setLoadErr] = useState<Error | null>(null);
   /** Хадгалаагүй засвар — `${ObjectID}:${баганын индекс}` → текст */
   const [pend, setPend] = useState<Record<string, string>>({});
   /** Яг одоо засагдаж буй нүд — `${мөрийн индекс}:${багана}` */
@@ -355,6 +362,7 @@ export function Qaqc() {
     const live = () => seq === loadSeq.current;
     setBusy(true);
     setErr('');
+    setLoadErr(null);
     setRows([]);
     setFlat(false);
     loadedPkgRef.current = '';
@@ -384,7 +392,8 @@ export function Qaqc() {
       setFlat(withTree == null);
       loadedPkgRef.current = key;
     } catch (e) {
-      if (live()) setErr(String((e as Error).message || e));
+      /* ⚠️ 2026-10-01: `loadErr` — ойлгомжтой тайлбар + дахин оролдох (дээрх ⚠️) */
+      if (live()) setLoadErr(e instanceof Error ? e : new Error(String(e)));
     } finally {
       if (live()) setBusy(false);
     }
@@ -1419,6 +1428,9 @@ export function Qaqc() {
         </p>
       )}
       {err && <p className={st.error} role="alert">{err}</p>}
+      {!busy && loadErr && (
+        <Data q={{ state: 'error', data: null, error: loadErr, retry: () => { void load(pkg.key); } }}>{() => null}</Data>
+      )}
 
       {busy && rows.length === 0 && (
         <div className={st.scroll}>
@@ -1432,12 +1444,12 @@ export function Qaqc() {
         </div>
       )}
 
-      {!busy && !err && noTable && (
+      {!busy && !err && !loadErr && noTable && (
         <p className={st.muted}>
           {tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.')}
         </p>
       )}
-      {!busy && !err && !noTable && rows.length === 0 && (
+      {!busy && !err && !loadErr && !noTable && rows.length === 0 && (
         <p className={st.muted}>{tr('Энэ багцад мөр олдсонгүй.')}</p>
       )}
 

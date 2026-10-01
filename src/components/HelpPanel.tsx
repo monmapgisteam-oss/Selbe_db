@@ -69,6 +69,22 @@ export function HelpPanel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, open);
+  /*
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХААХАД ФОКУС «?» ТОВЧ РУУ.
+   *    `useFocusTrap` нь нээхийн өмнөх фокусыг буцаадаг ч анхны зөвлөмжөөс (`HelpTip`)
+   *    нээхэд тэр товч устсан байдаг тул фокус `<body>`-д унаж, гарын хэрэглэгч
+   *    «хаана байгаагаа» алддаг байв. Нээх товч нь `aria-haspopup="dialog"` +
+   *    `aria-expanded="true"` (Portal) — нээгдсэн агшинд түүнийг олж, хаахад
+   *    (Esc · ✕ · фон · хэсэг сонгох) тэр рүү буцаана. Олдохгүй бол `useFocusTrap`-ийнх хэвээр.
+   *    Энэ эффект `useFocusTrap`-ийн ДАРАА зарлагдсан тул цэвэрлэгээ нь сүүлд ажиллана.
+   */
+  useEffect(() => {
+    if (!open) return undefined;
+    const trigger = document.querySelector<HTMLElement>('button[aria-haspopup="dialog"][aria-expanded="true"]');
+    return () => {
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

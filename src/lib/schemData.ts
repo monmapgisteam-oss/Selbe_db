@@ -38,6 +38,23 @@ const NAME = SOURCE_NAME;
  *    дуудлага (эсвэл «Дахин оролдох») шинээр татна. Амжилттай эх сурвалжууд
  *    өөрсдийн `cached` ачаалагчтай тул дахин оролдох нь хямд.
  */
+/**
+ * БҮХ ЭХ СУРВАЛЖ УНАСАН үеийн алдаа (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ * ⚠️ Урьд нь шалтгаанаас үл хамааран «сүлжээгээ шалгана уу» гэдэг байв — 499 («Token
+ *    Required») · 403 · 498 (эрх/нэвтрэлт) ч «сүлжээ» болж, хэрэглэгч буруу зүйл
+ *    шалгадаг байлаа. Одоо ЭХНИЙ бодит шалтгааныг мессежид оруулж `name`-ийг
+ *    (`TimeoutError`) хадгална — `Data` → `friendlyError` эрх/сүлжээ/хугацааг ялгана,
+ *    техникийн мөр нь эвхмэл хэсэгт үлдэнэ.
+ */
+export function schemAllFailedError(reason: unknown): Error {
+  const why = reason instanceof Error ? reason.message : reason == null ? '' : String(reason);
+  const e = new Error(why
+    ? tr('Схемийн эх сурвалж бүгд татагдсангүй: {0}', why)
+    : tr('Схемийн эх сурвалж бүгд татагдсангүй'));
+  if (reason instanceof Error && reason.name && reason.name !== 'Error') e.name = reason.name;
+  return e;
+}
+
 class SchemPartial extends Error {
   constructor(readonly result: SchemSources) {
     super(tr('{0} эх сурвалж татагдсангүй', result.failed.join(', ')));
@@ -58,6 +75,8 @@ const schemSourcesFull = cached<SchemSources>(async () => {
   ]);
 
   const failed: string[] = [];
+  /** ⚠️ 2026-10-01: эхний бодит шалтгаан — бүгд унавал ангилахад (`schemAllFailedError`) */
+  let firstReason: unknown = null;
   const take = <T>(name: string, x: PromiseSettledResult<T>): T | null => {
     if (x.status === 'fulfilled') {
       /**
@@ -69,6 +88,7 @@ const schemSourcesFull = cached<SchemSources>(async () => {
       return x.value;
     }
     console.error(`[selbe] схем · ${name}:`, x.reason);
+    firstReason ??= x.reason;
     failed.push(name);
     return null;
   };
@@ -92,7 +112,7 @@ const schemSourcesFull = cached<SchemSources>(async () => {
    * оролдох» товчийг гаргана.
    */
   if (failed.length === 9) {
-    throw new Error(tr('Өгөгдөл татагдсангүй — сүлжээгээ шалгана уу'));
+    throw schemAllFailedError(firstReason);
   }
   if (failed.length) throw new SchemPartial(src);
   return src;

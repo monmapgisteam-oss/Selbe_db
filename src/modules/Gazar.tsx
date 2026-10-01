@@ -10,7 +10,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
-import { Stats, Stat, Donut, Bars, Ring, Empty, Loading } from '@/components/ui';
+import { Stats, Stat, Donut, Bars, Ring, Empty, Loading, Data } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg, sqlStr,
@@ -1097,9 +1097,12 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   };
 
   /** Панелийн агуулгыг ачаалал/алдаа/хоосонтой хамт зурна */
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): алдааны үед урьд нь шалтгаангүй «Алдаа
+     гарлаа» л гардаг байв — одоо `Data`-гийн алдааны блок (ойлгомжтой тайлбар · эвхмэл
+     техникийн мөр · «Дахин оролдох» = `useAsync`-ийн retry). */
   const guard = (ready: boolean, body: React.ReactNode) =>
     d ? (ready ? body : <Empty label={tr('Мэдээлэл алга')} />)
-      : err ? <Empty label={tr('Алдаа гарлаа')} /> : <Loading label={tr('Татаж байна…')} />;
+      : err ? <Data q={q}>{() => null}</Data> : <Loading label={tr('Татаж байна…')} />;
 
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */

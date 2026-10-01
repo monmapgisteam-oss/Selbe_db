@@ -520,6 +520,13 @@ button.ganttRow:hover { background: var(--surface-2); }
 .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .note { margin: 6px 0 0; font-size: 0.72rem; color: var(--ink-3); }
 .failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); border-radius: var(--r-sm); font-size: 0.76rem; color: var(--warn-ink); }
+/* ⚠️ 2026-10-01: «Дахин оролдох» — `ui.module.css`-ийн `.retryBtn`-тэй ижил дүр төрх */
+.retryBtn {
+  margin-left: 6px; padding: 3px 12px; font-size: 0.72rem; font-weight: 600;
+  color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer;
+}
+.retryBtn:hover { border-color: var(--line-strong); }
 .loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
 
 @media (max-width: 1400px) {

@@ -1093,6 +1093,25 @@ export function housingMoney(
   return out;
 }
 
+/**
+ * «YYYY-MM» түлхүүрүүдийг ЭХНИЙХЭЭС СҮҮЛИЙНХ хүртэл ТАСРАЛТГҮЙ сарын тэнхлэг болгоно
+ * (2026-10-01, «хэрэглэгч: бүгдийг зас»). Өгөгдөлгүй сар ч тэнхлэгт орно — утгыг нь
+ * дуудагч `null` (цоорхой) эсвэл хуримтлалын өмнөх түвшнээр бөглөнө.
+ * ⚠️ «YYYY-MM» биш түлхүүр байвал, эсвэл хүрээ 600 сараас (50 жил) урт бол (эвдэрсэн
+ *    огноо 1970 г.м.) зөвхөн эрэмбэлсэн олонлог буцаана — мянган хоосон цэг зурахгүй.
+ */
+export function fillMonths(keys: readonly string[]): string[] {
+  const ks = [...new Set(keys)].sort();
+  if (ks.length < 2 || !ks.every((k) => /^\d{4}-\d{2}$/.test(k))) return ks;
+  const idx = (k: string) => Number(k.slice(0, 4)) * 12 + Number(k.slice(5, 7)) - 1;
+  const a = idx(ks[0]);
+  const b = idx(ks[ks.length - 1]);
+  if (b - a > 600) return ks;
+  const out: string[] = [];
+  for (let i = a; i <= b; i++) out.push(`${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`);
+  return out;
+}
+
 export function cashflowCurve(
   plan: CfPlanRow[],
   total: number,
@@ -1166,9 +1185,16 @@ export function cashflowCurve(
    * ⚠️ `per.size === 0` шалгуур ХАСАГДСАН: төлөвлөгөө огт бөглөгдөөгүй ч
    * IPC эсвэл барилгажилтын муруй ганцаараа зурагдах ЁСТОЙ.
    */
-  const months = [...new Set([
+  /*
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тэнхлэг ТАСРАЛТГҮЙ — эхний сараас сүүлийн
+   *    сар хүртэл БҮХ сар (`fillMonths`). Урьд нь зөвхөн өгөгдөлтэй саруудаас угсардаг
+   *    тул 2025-05 → 2025-08 гэж 6, 7-р сар чимээгүй АЛГАСАГДАЖ, муруйн налуу худал
+   *    (хоёр сарын өсөлт нэг алхам мэт) харагддаг байв. Өгөгдөлгүй сар: хуримтлалууд
+   *    өөрийн хүрээнд ӨМНӨХ түвшнээ авч явна (доорх дүрэм), хүрээнээс гадуур `null`.
+   */
+  const months = fillMonths([...new Set([
     ...per.keys(), ...ipcByMonth.keys(), ...housingMoneyByMonth.keys(),
-  ])].sort();
+  ])]);
   if (months.length === 0) return [];
   /*
    * ТӨЛӨВЛӨГӨӨНИЙ ХУРИМТЛАЛ — ЗӨВХӨН ТӨЛӨВЛӨГӨӨНИЙ ӨӨРИЙН ХҮРЭЭНД

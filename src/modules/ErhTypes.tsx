@@ -42,7 +42,11 @@ const sameSeen = (a?: readonly string[], b?: readonly string[]): boolean =>
 const eq = (a: TypeTpl, b: TypeTpl): boolean =>
   a.home === b.home && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x)) && sameSeen(a.seen, b.seen);
 
-export function ErhTypes() {
+/**
+ * @param remote — дээд панелийн remote уншилтын төлөв (⚠️ 2026-10-01): уншилт ДУУССАН ч
+ *   загвар ирээгүй бол «уншигдаж байна…»-г ҮҮРД биш, алдаа + «Дахин оролдох» харуулна.
+ */
+export function ErhTypes({ remote }: { remote?: { busy: boolean; retry: () => void } } = {}) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const f = () => setTick((n) => n + 1);
@@ -137,6 +141,16 @@ export function ErhTypes() {
   ].join('\n');
 
   if (!typesReady()) {
+    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): уншилт унасан бол үүрд «уншигдаж байна…» биш */
+    if (remote && !remote.busy) {
+      return (
+        <div className={ua.addErr} role="alert">
+          {tr('Эрхийн төрлийн загвар уншигдсангүй — ArcGIS-ийн эрхийн хүснэгтэд хандаж чадсангүй. Сүлжээ эсвэл нэвтрэлтээ шалгаад дахин оролдоно уу.')}
+          {' '}
+          <button type="button" className={ua.linkBtn} onClick={remote.retry}>{tr('Дахин оролдох')}</button>
+        </div>
+      );
+    }
     return <div className={ua.capNote}>{tr('Эрхийн хүснэгт уншигдаж байна… Уншигдсаны дараа төрлийн загвар засах боломжтой.')}</div>;
   }
 

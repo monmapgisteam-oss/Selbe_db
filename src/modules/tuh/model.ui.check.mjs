@@ -63,14 +63,16 @@ const CR = (o) => ({
   OBJECTID: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
   ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
+  /* ⚠️ 2026-10-01: гэрээлсэн дүн — `paidShare.paidShareOf`-ийн хуваарь (Cashflow, CONTRACTED) */
+  geree_dun: o.contract ?? null,
   guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, Cashflow_ID: o.cf ?? null,
 });
 const HOUSING = 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт';
 const INFRA = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт';
 const contracts = [
-  CR({ oid: 11, pkg: 'БАГЦ-1', t2: HOUSING, cost: 1000, note: 'Гэрээлсэн дүн', cf: 7 }),
+  CR({ oid: 11, pkg: 'БАГЦ-1', t2: HOUSING, cost: 1000, note: 'Гэрээлсэн дүн', cf: 7, contract: 800 }),
   CR({ oid: 1, pkg: 'Багц 7.1', code: '1', cost: 50, note: 'Гэрээлсэн дүн' }),
-  CR({ oid: 56, pkg: 'БАГЦ-7.1', t2: INFRA, t3: 'Инженерийн бэлтгэл ажил', cost: 500, note: 'Гэрээлсэн дүн', prog: 10 }),
+  CR({ oid: 56, pkg: 'БАГЦ-7.1', t2: INFRA, t3: 'Инженерийн бэлтгэл ажил', cost: 500, note: 'Гэрээлсэн дүн', prog: 10, contract: 400 }),
 ];
 const PAY = (code, pkg, dun, date, no = null) => ({ geree_kod: code, bagts: pkg, dun, guilgee_ognoo: date, ipc_dugaar: no, tulult_turul: 'Гүйцэтгэл' });
 const HC = (o) => ({
@@ -167,8 +169,8 @@ ok('IPC-ийн хүснэгтэд гэрээ бүр ЯГ НЭГ удаа', () =>
   assert.deepEqual(codes.sort(), ['Багц-1', 'Багц-7.1']);
 });
 
-console.log('\n3. Нийт олголтын хувь — ipcTotals-тай нэг хүрээ');
-ok('(200 + 100) ÷ (800 + 400) = 25% — дүнгүй гэрээний 300 хувьд орохгүй', () => {
+console.log('\n3. Нийт олголтын хувь — paidShareOf (Тайлан/CEO-тэй нэг, 2026-10-01)');
+ok('(200 + 100) ÷ Cashflow гэрээлсэн (800 + 400) = 25% — гэрээлсэн багцаас гадуурх 300 хувьд орохгүй', () => {
   assert.equal(m.paid.total, 600, 'нийт олгосон — БҮХ гэрээ');
   near(m.paid.pct, 25, 'урьд нь 50%');
 });
@@ -238,7 +240,7 @@ console.log('\n8. Зурагдах (SSR)');
   console.log('\n11. Хувьд ороогүй олголт — тусад нь нэрлэнэ');
   ok('m.paid.other = 300; KPI-д бичигдэнэ', () => {
     assert.equal(m.paid.other, 300);
-    assert.ok(html.includes('гэрээт дүн тодорхойгүй гэрээнд олгосон 300 ₮ (хувьд ороогүй)'));
+    assert.ok(html.includes('гэрээлсэн багцаас гадуур олгосон 300 ₮ (хувьд ороогүй)'));
   });
 
   console.log('\n12. Хянагдаж буй IPC — AUTO, олгоогүй');

@@ -519,7 +519,11 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   await run(OPS.scopedCellOp('obyem', hard, 'editor', g, true));
   m.render();
   findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === hard).el.props.onFlipRemove(); m.render();
-  save().props.onClick({}); await idle(); m.render();
+  /* ⚠️ 2026-10-01 (CI-д л унадаг байсан): `idle()` зөвхөн POOL-ын бичилтийг хүлээдэг — хатуу аккаунт
+     POOL-д байхгүй тул удаан машинд (GitHub runner) устгал дуусахаас өмнө шалгагдаж байв. */
+  save().props.onClick({});
+  await settle(() => fake.inflight > 0 || OPS.aclPendingFor(hard) || !P.listRemoved().includes(hard));
+  await idle(); m.render();
   ok(P.listRemoved().includes(hard), `${tag}: хатуу аккаунт «Устгагдсан»-д`);
   const back = findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'reset')
     .find((x) => x.trail.includes(hard));

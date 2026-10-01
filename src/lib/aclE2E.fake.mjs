@@ -189,7 +189,10 @@ g.fetch = async (input, init) => {
 /** Бүх бичилт/уншилт ба ACL-ийн дараалал дуустал хүлээнэ */
 export async function settle(extra = () => false) {
   let idle = 0;
-  for (let i = 0; i < 2000 && idle < 6; i += 1) {
+  /* ⚠️ 2026-10-01: давталтын тоогоор биш ХУГАЦААГААР хязгаарлана (≤10 с) — GitHub runner дээр
+     2000 удаагийн 0мс хүлээлт бичилт дуусахаас ӨМНӨ дуусаж, тест л CI-д унадаг байв. */
+  const until = Date.now() + 10_000;
+  for (let i = 0; idle < 6 && (i < 2000 || Date.now() < until); i += 1) {
     await new Promise((r) => setTimeout(r, fake.latency ? 2 : 0));
     idle = fake.inflight === 0 && !extra() ? idle + 1 : 0;
   }

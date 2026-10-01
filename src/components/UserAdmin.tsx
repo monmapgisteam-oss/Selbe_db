@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
@@ -197,6 +197,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [sel, setSel] = useState<Set<string>>(new Set());
   /** Remote хүснэгт уншигдсан эсэх — унасан бол offline тэмдэг харуулна */
   const [remoteOk, setRemoteOk] = useState(true);
+  /**
+   * Remote уншилт ЯВЖ БАЙГАА эсэх (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ «Эрхийн төрөл» таб уншилт унасан үед «уншигдаж байна…» гэж ҮҮРД харуулдаг байв —
+   *    одоо уншилт дууссан ч загвар ирээгүй бол алдаа + «Дахин оролдох» (`ErhTypes`).
+   *    Анхны утга `true`: панел нээгдэхэд эффект шууд уншиж эхэлнэ.
+   */
+  const [remoteBusy, setRemoteBusy] = useState(true);
+  /** Remote-оос дахин унших — нээх бүрд ба «Дахин оролдох»-д */
+  const reloadRemote = useCallback(() => {
+    setRemoteBusy(true);
+    void initRemote(false, true)
+      .then((ok) => { setRemoteOk(ok); setUsers(listUsers()); })
+      .catch(() => setRemoteOk(false))
+      .finally(() => setRemoteBusy(false));
+  }, []);
   /** «Дахин синк» ажиллаж байгаа эсэх */
   const [syncing, setSyncing] = useState(false);
   /** username(жижиг үсгээр) → хадгалаагүй ноорог */
@@ -225,8 +240,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     // trusted=true — панел зөвхөн кодын хатуу super-т нээгддэг (Root.isSuper):
     // өөрийнх нь dirty-set дахин илгээгдэж, давхарлагдана
-    void initRemote(false, true).then((ok) => { setRemoteOk(ok); setUsers(listUsers()); });
-  }, [open]);
+    reloadRemote();
+  }, [open, reloadRemote]);
 
   const draftsRef = useRef(drafts);
 
@@ -300,14 +315,40 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // Нээгдэхэд фокусыг хайлтын талбарт — гараар шууд ажиллаж эхэлнэ
-    const t = setTimeout(() => searchRef.current?.focus(), 60);
     return () => {
-      clearTimeout(t);
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
   }, [open, onClose]);
+
+  /*
+   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ФОКУС — нээхэд портал ДОТОР, хаахад
+   *    нээсэн товч руу буцна (WCAG 2.4.3). Урьд нь зөвхөн хайлтын талбар руу шилждэг
+   *    байсан ч анхдагч таб «Тойм»-д хайлт байхгүй тул фокус ард үлдэж, Tab нь
+   *    порталын товчнуудаар явдаг байв. Хайлт байвал түүнд, үгүй бол хэсгийн гарчигт.
+   * ⚠️ ТУСДАА эффект, deps нь ЗӨВХӨН `open` — дээрхийнх `onClose`-оос хамаардаг (Portal
+   *    inline функц өгдөг тул зурагдалт бүрд шинэ), тэнд байвал Portal дахин зурагдах
+   *    бүрд фокус нээсэн товч руу үсэрнэ.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const ae = document.activeElement as (HTMLElement & { focus?: () => void }) | null;
+    /* ⚠️ `instanceof HTMLElement` БИШ — Node-ийн UI тестэд (DOM-гүй) `HTMLElement` тодорхойлогдоогүй */
+    const opener = ae && typeof ae.focus === 'function' ? ae : null;
+    const t = setTimeout(() => {
+      if (searchRef.current) { searchRef.current.focus(); return; }
+      const root = dialogRef.current;
+      const h = root?.querySelector<HTMLElement>('h2') ?? root;
+      if (!h) return;
+      if (!h.hasAttribute('tabindex')) h.tabIndex = -1;
+      h.focus();
+    }, 60);
+    return () => {
+      clearTimeout(t);
+      /* Нээсэн товч DOM-д хэвээр бол фокусыг буцаана */
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open]);
 
   useEffect(() => subscribe(() => setUsers(listUsers())), []);
   // Нэмэлт эрх ArcGIS-аас шинэчлэгдэхэд унтраалгууд дагаж шинэчлэгдэнэ
@@ -934,7 +975,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           <span className={s.pageBadge}><Icon name="users" size={15} /></span>
           <span className={s.pageBrandText}>
             <b>{tr('Админ портал')}</b>
-            <small>{tr('Сэлбэ 20 минутын хот · тохиргоо')}</small>
+            {/* ⚠️ 2026-10-01: брэнд «Ухаалаг хот» — Home/Landing/Portal-тай ижил (2026-09-25-ны нэр) */}
+            <small>{tr('Сэлбэ ухаалаг хот · тохиргоо')}</small>
           </span>
         </span>
         <button type="button" className={s.back} onClick={requestClose}>
@@ -1064,7 +1106,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 {tr('Төрөл бүрд юу харахыг (харагдац · ТЭЗҮ-БОНУ · нүүр цонх) чеклээд хадгална. Хэрэглэгчийн картад төрөл сонгож «Төрлөөр тохируулах» дарахад харагдац нь нэг дор бичигдэнэ. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
               </p>
             </header>
-            <ErhTypes />
+            <ErhTypes remote={{ busy: remoteBusy, retry: reloadRemote }} />
           </>
         ) : pane === 'guits' ? (
           <>

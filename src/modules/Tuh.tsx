@@ -117,6 +117,25 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     });
   }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ]);
 
+  /*
+   * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:
+   * бүгдийг зас»). Урьд нь зөвхөн шар мөр гардаг тул бүтэн хуудас refresh хийхээс өөр
+   * аргагүй байв (газрын зураг ч дахин ачаалагдана).
+   * ⚠️ Хагас уншигдсан (`data.failed`) хуваарь/комиссыг ч дахин татна — тэдгээр нь
+   *    кэшлэгддэггүй (хэсэгчлэн ачаалсныг кэшлэхгүй дүрэм).
+   */
+  const retryFailed = useCallback(() => {
+    if (finQ.state === 'error') finQ.retry?.();
+    if (planQ.state === 'error' || (planQ.state === 'ready' && planQ.data.failed.length)) planQ.retry?.();
+    if (cfPlanQ.state === 'error') cfPlanQ.retry?.();
+    if (histQ.state === 'error') histQ.retry?.();
+    if (comQ.state === 'error' || (comQ.state === 'ready' && comQ.data.failed.length)) comQ.retry?.();
+    if (wfQ.state === 'error') wfQ.retry?.();
+    if (docQ.state === 'error') docQ.retry?.();
+    if (bq.state === 'error') bq.retry?.();
+    if (budgetQ.state === 'error') budgetQ.retry?.();
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, budgetQ]);
+
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);
   const back = useCallback(() => setSel(null), []);
@@ -144,11 +163,16 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {finQ.state === 'loading' ? (
           <p className={s.loading}>{tr('Ачаалж байна…')}</p>
         ) : finQ.state === 'error' ? (
-          <p className={s.failNote}>{tr('Санхүүгийн өгөгдөл татагдсангүй')}: {friendlyError(finQ.error)}</p>
+          <p className={s.failNote} role="alert">
+            {tr('Санхүүгийн өгөгдөл татагдсангүй')}: {friendlyError(finQ.error)}
+            {' '}
+            {/* ⚠️ 2026-10-01: дахин оролдох (`retryFailed`-ийн ⚠️) */}
+            <button type="button" className={s.retryBtn} onClick={retryFailed}>{tr('Дахин оролдох')}</button>
+          </p>
         ) : !model ? null : row ? (
           <PkgDetail key={row.p.key} r={row} m={model} onBack={back} onOpen={open} />
         ) : (
-          <Overview m={model} contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null} onOpen={open} />
+          <Overview m={model} contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null} onOpen={open} onRetry={retryFailed} />
         )}
       </div>
       <div className={s.side}>

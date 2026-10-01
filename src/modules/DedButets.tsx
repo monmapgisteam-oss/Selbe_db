@@ -595,14 +595,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
    *    дүрс, чирсэн vertex, олноор засах маягтыг асуулгүй хаядаг байв — `navGuard`-д
    *    тэмдэглэж `Portal.confirmLeave` ба `beforeunload` асууна. Гарахад тугийг арилгана.
    */
+  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЭХЛЭСЭН Ч ДУУСААГҮЙ ЗУРААЛТ (`awaitDraw`,
+     тэмплэйт сонгогдсон, дүрс дуусаагүй) ч хадгалаагүй ажил — урьд нь харагдац солиход
+     чимээгүй алга болдог байв. Зураалт дуусмагц `pick` (oid == null) болж дээрх нөхцөлд орно. */
   useEffect(() => {
     navSync.current = () => setNavDirty(
       'butets',
-      formDirty.current || batchDirty.current || (pick != null && pick.oid == null) || reshaped != null,
+      formDirty.current || batchDirty.current || (pick != null && pick.oid == null) || reshaped != null
+        || (awaitDraw && pick == null),
       tr('Инженерийн дэд бүтэц'),
     );
     navSync.current();
-  }, [pick, reshaped]);
+  }, [pick, reshaped, awaitDraw]);
   useEffect(() => () => setNavDirty('butets', false), []);
 
   /**
@@ -621,6 +625,26 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setConfirmQ({ msg: tr('Хадгалаагүй маягт эсвэл зурсан дүрс байна. Хаях уу?'), onYes: run });
     return false;
   }, [askDropReshape]);
+
+  /**
+   * ДУУСААГҮЙ ЗУРААЛТЫГ Ч АСУУНА — горимоос гарах · «Шинэ объект» · «Олноор сонгох»
+   * (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
+   * ⚠️ `askDropUnsaved`-ийг ӨӨРИЙГ НЬ өргөтгөөгүй: тэр нь зургийн товшилтод ч
+   *    (`onMapPick`) дуудагддаг тул зураалтын явцын товшилт бүр асуулт гаргах эрсдэлтэй.
+   *    Энд зөвхөн ИЛ гарах товчнуудад. «Тийм» → зурж буй дүрсийг арилгана (`clearToken`).
+   */
+  const awaitDrawRef = useRef(awaitDraw);
+  useSyncRef(awaitDrawRef, awaitDraw);
+  const askDropAll = useCallback((run: () => void): boolean => {
+    if (awaitDrawRef.current && pickRef.current == null) {
+      setConfirmQ({
+        msg: tr('Зурж эхэлсэн дүрс дуусаагүй байна. Хаях уу?'),
+        onYes: () => { setClearToken((x) => x + 1); run(); },
+      });
+      return false;
+    }
+    return askDropUnsaved(run);
+  }, [askDropUnsaved]);
 
   /**
    * ГЕОМЕТР ТАТАХ ДАРААЛЛЫН ТОКЕН.
@@ -1413,8 +1437,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
 
   const exitEdit = useCallback(() => {
     /* ⚠️ Чирсэн ажил, бөглөсөн маягт, зурсан шинэ дүрсийг хаяхаас өмнө асууна
-       (`askDropUnsaved`-ийн тайлбар, 2026-09-25) */
-    askDropUnsaved(() => {
+       (`askDropUnsaved`-ийн тайлбар, 2026-09-25). ⚠️ 2026-10-01: дуусаагүй зураалтыг ч (`askDropAll`) */
+    askDropAll(() => {
       setEditMode(false);
       setConfirmQ(null);
       /* Алдааны мэдэгдэл горимтойгоо хамт арилна (`toast`-ийн тайлбар) */
@@ -1435,7 +1459,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       /* ⚠️ Хойшлуулсан нийлбэрийг ЭНД нэг удаа хаяна (`dropTotalsLater`) */
       flushTotals();
     });
-  }, [askDropUnsaved, setHighlight, flushTotals]);
+  }, [askDropAll, setHighlight, flushTotals]);
 
   /**
    * Сонгогдсон объектын геометрийг урьдчилж татна (`preGeom`-ийн тайлбар).
@@ -1650,8 +1674,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${tplOpen ? d.editAddOn : ''}`}
                 aria-pressed={tplOpen}
-                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25) */
-                onClick={() => askDropUnsaved(() => {
+                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25); 2026-10-01: дуусаагүй зураалт ч (`askDropAll`) */
+                onClick={() => askDropAll(() => {
                   cancelReshape();
                   setTplOpen((v) => !v);
                   setAwaitDraw(false);
@@ -1674,8 +1698,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${multi ? d.editAddOn : ''}`}
                 aria-pressed={multi}
-                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25) */
-                onClick={() => askDropUnsaved(() => {
+                /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25); 2026-10-01: дуусаагүй зураалт ч (`askDropAll`) */
+                onClick={() => askDropAll(() => {
                   cancelReshape();
                   const next = !multi;
                   setMulti(next);

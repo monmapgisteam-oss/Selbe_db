@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import {
   inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
-  cashflowCurve, housingMoney,
+  cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
 } from './gdash.ts';
 import { CASHFLOW_NEW } from './services.ts';
@@ -614,6 +614,28 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   if (off <= 0) {
     assert.deepEqual(cashflowCurve([{ id: 1, start: utcJun1, pct: null, amount: 100 }], 1000, 'month').map((p) => p.label), ['2026-06']);
   }
+}
+
+/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): S-муруйн тэнхлэг ТАСРАЛТГҮЙ. Урьд нь зөвхөн
+   өгөгдөлтэй саруудаас угсардаг тул 2025-05 → 2025-08 (6, 7-р сар алга) гэж үсэрдэг байв. */
+{
+  assert.deepEqual(fillMonths(['2025-08', '2025-05']), ['2025-05', '2025-06', '2025-07', '2025-08']);
+  assert.deepEqual(fillMonths(['2025-11', '2026-02']), ['2025-11', '2025-12', '2026-01', '2026-02'], 'оны заагаар');
+  assert.deepEqual(fillMonths(['2026-03']), ['2026-03']);
+  assert.deepEqual(fillMonths([]), []);
+  assert.deepEqual(fillMonths(['1970-01', '2026-01']), ['1970-01', '2026-01'], 'эвдэрсэн огноо — мянган хоосон цэг үүсгэхгүй');
+  /* Төлөвлөгөө 05 ба 08 (хуримтлал), IPC 05 ба 08 (хуримтлал), биет явц зөвхөн 08 */
+  const plan = [
+    { id: 1, start: new Date(2025, 4, 1).getTime(), pct: null, amount: 100 },
+    { id: 2, start: new Date(2025, 7, 1).getTime(), pct: null, amount: 100 },
+  ];
+  const c = cashflowCurve(plan, 1000, 'month', undefined,
+    new Map([['2025-05', 10], ['2025-08', 30]]), new Map([['2025-08', 200]]));
+  assert.deepEqual(c.map((p) => p.label), ['2025-05', '2025-06', '2025-07', '2025-08'], '6, 7-р сар тэнхлэгт алга');
+  assert.deepEqual(c.map((p) => p.pct), [10, 10, 10, 20], 'төлөвлөгөөний хуримтлал өөрийн хүрээнд урагш явна');
+  assert.deepEqual(c.map((p) => p.ipcPct), [1, 1, 1, 4], 'IPC хуримтлал өөрийн хүрээнд урагш явна');
+  assert.deepEqual(c.map((p) => p.amount), [100, 0, 0, 100], 'сарын мөнгө — хоосон сард нэмэгдэхгүй');
+  assert.deepEqual(c.map((p) => p.physPct), [null, null, null, 20], 'биет явц эхний хэмжилтээс ӨМНӨ null (0 биш)');
 }
 
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

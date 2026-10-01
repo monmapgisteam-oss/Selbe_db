@@ -300,7 +300,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     const c0 = H.indexOf('const refreshFlow = useCallback');
     const c1 = H.indexOf('useEffect(() => { void refreshFlow(); }', c0);
     const rf = H.slice(c0, c1);
-    const cat = rf.slice(rf.lastIndexOf('} catch {'));
+    /* ⚠️ 2026-10-01: `catch (e)` — алдааг ангилж бичнэ (friendlyError) */
+    const cat = rf.slice(rf.lastIndexOf('} catch'));
     assert.ok(!/setPending\(null\)/.test(cat) && /setPending\(\(p0\) => \(p0 && p0\.pkgKey === key \? p0 : null\)\)/.test(cat),
       'Huvaari.refreshFlow: сүлжээний алдаанд pending=null → түгжээ тайлагдана');
   }

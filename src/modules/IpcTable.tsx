@@ -29,10 +29,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
-  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcNumbers,
+  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcNumbers, ipcHeadShare,
   type ContractBlock, type Detail, type PayRow, type SortKey,
 } from '@/lib/ipcTable';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
+import { useAsync } from '@/lib/useAsync';
+import { loadFinance } from '@/lib/reportData';
+import { paidPctOf } from '@/lib/paidShare';
 import type { HoContract } from '@/lib/ipc';
 import { pkgKeyOf } from '@/lib/services';
 import { AUTO_PREFIX } from '@/lib/ipcAuto';
@@ -379,6 +382,17 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
   const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
   const t = useMemo(() => ipcTotals(blocks), [blocks]);
+  /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): толгойн хувь = порталын НЭГ
+     тодорхойлолт (`paidShare`, `reportData.loadFinance` — кэштэй, Тайлан/CEO-тэй нэг дуудлага).
+     Уншигдаагүй бол HO-ийн хувь «HO хүснэгтээр» гэж ил (`ipcHeadShare`-ийн ⚠️). */
+  const finQ = useAsync(() => loadFinance(), []);
+  const head = useMemo(() => ipcHeadShare(t, finQ.state === 'ready'
+    ? {
+      contract: finQ.data.contractAmount,
+      pct: paidPctOf(finQ.data.paidContracted, finQ.data.contractAmount),
+      paidOther: finQ.data.paidOther,
+    }
+    : null), [t, finQ.state, finQ.data]);
   /* ⚠️ 2026-10-01: AUTO карттай ОЛОН хуудастай багцууд л (Багц 1 · 2 · 4.2) — бусдад асуулга явахгүй */
   const multiPacks = useMemo(() => [...new Set(blocks
     .filter((b) => b.rows.some((r) => autoDayOf(r) != null))
@@ -414,12 +428,23 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
               money(t.contract),
               money(t.paid),
             )}
-            {t.paidPct != null && ` (${pct(t.paidPct)})`}
-            {/* ⚠️ 2026-09-30: хувь нь ЗӨВХӨН гэрээт дүн тодорхой гэрээний олголтоор
-                (`ipcTotals.paidContracted`). Бусад олголтыг хувьд хольж хөөрөгдөхгүй,
-                харин нуухгүй — тусад нь нэрлэнэ. */}
-            {t.paidOther != null && t.paidOther !== 0 && (
-              <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', money(t.paidOther))}</>
+            {/* ⚠️ 2026-10-01: хувь нь `paidShare` (Тайлан · CEO · ТУХ-тай нэг). Хувьд ороогүй
+                олголтыг хольж хөөрөгдөхгүй, харин нуухгүй — тусад нь нэрлэнэ. */}
+            {head.src === 'cashflow' ? (
+              <>
+                {' · '}{tr('гэрээлсэн дүн {0} (Cashflow)', money(head.contract))}
+                {head.pct != null && <> · {tr('гэрээнд эзлэх {0}', pct(head.pct))}</>}
+                {head.other != null && (
+                  <> · {tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', money(head.other))}</>
+                )}
+              </>
+            ) : (
+              <>
+                {head.pct != null && <> · {tr('гэрээнд эзлэх {0} (HO хүснэгтээр)', pct(head.pct))}</>}
+                {head.other != null && (
+                  <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', money(head.other))}</>
+                )}
+              </>
             )}
           </p>
         </div>

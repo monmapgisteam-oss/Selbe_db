@@ -100,25 +100,7 @@
 /* Ширээний шатлал `--bp-desk` — хажуугийн багана нарийсна (2026-09-07) */
 @media (max-width: 1400px) { .body { --side-l: 300px; --side-r: 300px; } }
 
-/* Нарийн дэлгэц — багана дараалан босоо болно (зураг дундаа хэвээр) */
-/* ⚠️ Нарийн дэлгэцэд чирэлт УТГАГҮЙ — багана дээр дээрээсээ доош өрөгдөнө.
-   `SplitGrip` өөрөө нуугдана (түүний module.css), тэнд `--side-*` уншигдахгүй. */
-@media (max-width: 1180px) {
-  .body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'main' 'right';
-    grid-template-rows: auto;
-    grid-auto-rows: auto;
-  }
-  /* Зураг ЭХЭНД — нарийн дэлгэцэд гол агуулга дээрээ байх ёстой */
-  .top {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'center' 'left';
-  }
-  .shell { overflow: auto; }
-  .left, .right, .center, .curve, .main, .top { overflow: visible; }
-  .hero { min-height: 420px; }
-}
+/* ⚠️ 2026-10-01: нарийн дэлгэцийн (≤1180px) дүрмүүд ФАЙЛЫН ТӨГСГӨЛД — доорх тайлбарыг үз */
 
 /*
  * ЗҮҮН + ТӨВ + МУРУЙ — НЭГ БАГАНА (2026-09-10).
@@ -1148,4 +1130,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * НАРИЙН ДЭЛГЭЦ (≤1180px) — багана дараалан босоо болно (зураг ЭХЭНД).
+ *
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): энэ блок ФАЙЛЫН ТӨГСГӨЛД БАЙХ ЁСТОЙ. Урьд нь
+ *    `.body`-ийн дараа, харин `.top` · `.left`/`.right` · `.center` · `.hero`-ийн СУУРЬ
+ *    дүрмээс ӨМНӨ бичигдсэн байсан тул ижил ялгаралттай (specificity) суурь дүрмүүд нь
+ *    дараа ирж ДАРДАГ байв: 390px дээр зүүн багана 300px хэвээр, зураг ~60px, бичвэр
+ *    үг бүрээр тасардаг. Шинэ дүрэм нэмэхдээ ЭНЭ блокийн ДЭЭР бич.
+ * ⚠️ Нарийн дэлгэцэд чирэлт УТГАГҮЙ — багана дээрээс доош өрөгдөнө. `SplitGrip` өөрөө
+ *    нуугддаггүй (түүний module.css-д media алга) тул ЭНД нууна: баруун бариул
+ *    (`right: --side-r`) ба зүүн бариул (`left: --side-l`) нь өрөгдсөн зураг дээгүүр
+ *    босоо саарал зураас болж гардаг байв (1024px).
+ */
+@media (max-width: 1180px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main' 'right';
+    grid-template-rows: auto;
+    grid-auto-rows: auto;
+  }
+  /* Зураг ЭХЭНД — нарийн дэлгэцэд гол агуулга дээрээ байх ёстой */
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'center' 'left';
+  }
+  .shell { overflow: auto; }
+  .left, .right, .center, .curve, .main, .top { overflow: visible; }
+  .hero { min-height: 420px; }
+  .body > [role='separator'],
+  .top > [role='separator'] { display: none; }
 }

@@ -563,6 +563,9 @@ export function ipcNumbers(rows: readonly PayRow[], dayOf: (r: PayRow) => string
  *    Одоо тоологч = `paidContracted` (дүн тодорхой гэрээ), бусад олголт
  *    `paidOther`-д тусад нь — `reportData.finance.paidContracted/paidOther`-той
  *    ижил дүрэм. `paid` (нийт олгосон) нь хэвээр БҮХ гэрээнийх.
+ * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `paidPct` нь HO-ийн гэрээт дүнгийн хүрээ — порталын
+ *    «олгосон ÷ гэрээлсэн» ҮЗҮҮЛЭЛТ БИШ. Дэлгэцэнд `paidShare` (`ipcHeadShare`) гарна; энэ
+ *    утга зөвхөн нөөц («HO хүснэгтээр» гэж ил шошготой).
  */
 export function ipcTotals(bs: readonly ContractBlock[]): IpcTotals {
   let contract: number | null = null;
@@ -591,4 +594,30 @@ export function ipcTotals(bs: readonly ContractBlock[]): IpcTotals {
       ? null
       : (paidContracted / contract) * 100,
   };
+}
+
+/**
+ * «Олгосон санхүүжилт — гэрээгээр» толгойн ХУВЬ ба хувьд ОРООГҮЙ олголт.
+ *
+ * ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): хувь нь `ipcTotals.paidPct` (HO-ийн
+ *    гэрээт дүн 2,005.71 → 26.47%) БИШ — порталын НЭГ тодорхойлолт `paidShare`
+ *    (гэрээлсэн багцын олголт ÷ Cashflow-ийн гэрээлсэн дүн 2,009.77 → 26.01%; Тайлан ·
+ *    удирдлагын тайлан · CEO карт · ТУХ ижил). Хувьд ороогүй олголт (`PaidShare.paidOther`)
+ *    тусад нь нэрлэгдэнэ.
+ *    `share` уншигдаагүй (уналт/ачаалж буй) бол HO-ийн хувь «HO хүснэгтээр» гэж ИЛ
+ *    шошготой гарна (`ceo/ipc.computeIpc`-ийн нөөцтэй ижил) — хоёр өөр тоо нэг нэрээр
+ *    харагдахгүй.
+ */
+export type IpcHeadShare =
+  | { src: 'cashflow'; contract: number; pct: number | null; other: number | null }
+  | { src: 'ho'; contract: null; pct: number | null; other: number | null };
+
+export function ipcHeadShare(
+  t: IpcTotals,
+  share: { contract: number; pct: number | null; paidOther: number } | null,
+): IpcHeadShare {
+  if (share) {
+    return { src: 'cashflow', contract: share.contract, pct: share.pct, other: share.paidOther !== 0 ? share.paidOther : null };
+  }
+  return { src: 'ho', contract: null, pct: t.paidPct, other: t.paidOther != null && t.paidOther !== 0 ? t.paidOther : null };
 }

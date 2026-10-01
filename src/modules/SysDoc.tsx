@@ -28,6 +28,11 @@ import s from './sysDoc.module.css';
 
 type Jump = (id: string) => void;
 
+/** ⚠️ 2026-10-01: «Техникийн дэлгэрэнгүй» эвхмэл хэсэгт харуулах код байгаа эсэх */
+export function hasTech(e: Pick<CatEntry, 'aliases' | 'styleSrc'>, editors: { cap?: string }[], rows: unknown[]): boolean {
+  return editors.some((x) => !!x.cap) || rows.length > 0 || e.aliases.length > 0 || e.styleSrc.length > 0;
+}
+
 /** Шатлалын нэг хэсэг — өөр мөр рүү заасан бол товч */
 function Part({ p, onJump, nameOf }: { p: StepPart; onJump: Jump; nameOf: (id: string) => string }) {
   if (!p.ref) return <span>{p.label}</span>;
@@ -100,15 +105,15 @@ function Entry({ e, domId, on, onJump, nameOf, go, canOpen }: {
             {!e.allMaps && !e.views.length && <span className={`${s.chip} ${s.dim}`}>{tr('Харагдац шууд уншдаггүй')}</span>}
           </dd>
         </div>
+        {/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДОТООД КОДЫГ (`__flow__`, `planApprove` …)
+            энгийн хэрэглэгчид ил гаргахгүй — зөвхөн хүний хэлээрх тайлбар. Кодууд нь доорх
+            «Техникийн дэлгэрэнгүй» эвхмэл хэсэгт (админ/хөгжүүлэгчид) хэвээр. */}
         <div className={s.metaRow}>
           <dt>{tr('Засах эрх')}</dt>
           <dd className={s.chips}>
             {editors.length
               ? editors.map((x, k) => (
-                <span key={k} className={s.chip}>
-                  {x.cap && <code className={s.mono}>{x.cap}</code>}
-                  {x.text}
-                </span>
+                <span key={k} className={s.chip}>{x.text}</span>
               ))
               : <span className={`${s.chip} ${s.dim}`}>{tr('Порталаас засахгүй (зөвхөн унших)')}</span>}
           </dd>
@@ -119,29 +124,60 @@ function Entry({ e, domId, on, onJump, nameOf, go, canOpen }: {
             <dd>
               <ul className={s.rows}>
                 {rows.map((r) => (
-                  <li key={r.key}><code className={s.mono}>{r.key}</code> {r.text}</li>
+                  <li key={r.key}>{r.text}</li>
                 ))}
               </ul>
             </dd>
           </div>
         )}
-        {e.aliases.length > 0 && (
-          <div className={s.metaRow}>
-            <dt>{tr('Порталын id')}</dt>
-            <dd className={s.chips}>
-              {e.aliases.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
-            </dd>
-          </div>
-        )}
-        {e.styleSrc.length > 0 && (
-          <div className={s.metaRow}>
-            <dt>{tr('Загварын түлхүүр')}</dt>
-            <dd className={s.chips}>
-              {e.styleSrc.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
-            </dd>
-          </div>
-        )}
       </dl>
+      {hasTech(e, editors, rows) && (
+        <details className={s.tech}>
+          <summary>{tr('Техникийн дэлгэрэнгүй')}</summary>
+          <dl className={s.meta}>
+            {editors.some((x) => x.cap) && (
+              <div className={s.metaRow}>
+                <dt>{tr('Эрхийн түлхүүр')}</dt>
+                <dd>
+                  <ul className={s.rows}>
+                    {editors.filter((x) => x.cap).map((x, k) => (
+                      <li key={k}><code className={s.mono}>{x.cap}</code> {x.text}</li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            )}
+            {rows.length > 0 && (
+              <div className={s.metaRow}>
+                <dt>{tr('Мөрийн түлхүүр')}</dt>
+                <dd>
+                  <ul className={s.rows}>
+                    {rows.map((r) => (
+                      <li key={r.key}><code className={s.mono}>{r.key}</code> {r.text}</li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            )}
+            {e.aliases.length > 0 && (
+              <div className={s.metaRow}>
+                <dt>{tr('Порталын id')}</dt>
+                <dd className={s.chips}>
+                  {e.aliases.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
+                </dd>
+              </div>
+            )}
+            {e.styleSrc.length > 0 && (
+              <div className={s.metaRow}>
+                <dt>{tr('Загварын түлхүүр')}</dt>
+                <dd className={s.chips}>
+                  {e.styleSrc.map((a) => <code key={a} className={`${s.mono} ${s.dim}`}>{a}</code>)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </details>
+      )}
       {note && <p className={s.note}>{note}</p>}
     </li>
   );

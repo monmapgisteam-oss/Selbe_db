@@ -42,6 +42,7 @@ import { physNow, aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
+import { paidPctOf } from '@/lib/paidShare';
 import { arcgisToken, relayFetch } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -361,7 +362,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       givenUnassigned: finGiven == null ? 0 : Math.max(0, finGiven - finAssigned),
       /* ⚠️ 2026-09-25: олголт уншигдаагүй (`finGiven == null`) бол `paidContracted`
          нь 0 ирдэг — «0.0% олгогдсон» гэж ХУДАЛ бичихгүй, хувь бодогдохгүй (null ≠ 0). */
-      share: csum > 0 && finGiven != null ? (finGivenContracted / csum) * 100 : null,
+      /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): томьёо ба оролт `paidShare` — Тайлан ·
+         CEO карт · «IPC» · ТУХ-тай ЯГ нэг (`finance.contractAmount` = `csum`, нэг дүрэм). */
+      share: finGiven != null ? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
       remain: Math.max(0, csum - finGivenContracted),
       rows: finRows,
     },

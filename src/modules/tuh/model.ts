@@ -9,6 +9,7 @@ import { monthKey } from '@/lib/format';
 import { housingPct, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
 import { contractBlocks, ipcTotals } from '@/lib/ipcTable';
+import { paidShareOf } from '@/lib/paidShare';
 import { planPctAt, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
@@ -104,7 +105,10 @@ export type TuhModel = {
     planContract: number | null;
     planContractor: number | null;
   };
-  /** `other` — гэрээт дүн тодорхойгүй гэрээнд олгосон (`ipcTotals.paidOther`) — хувьд ОРООГҮЙ */
+  /**
+   * `pct` — `paidShare.paidShareOf` (порталын нэг тодорхойлолт, 2026-10-01).
+   * `other` — гэрээлсэн багцаас гадуур олгосон (`PaidShare.paidOther`) — хувьд ОРООГҮЙ.
+   */
   paid: { total: number | null; pct: number | null; ipcCount: number; pays: number; other: number | null };
   statusCount: Map<TuhStatus, number>;
   /** Уншигдаагүй эх сурвалжууд — дэлгэц дээр ил хэлнэ */
@@ -280,7 +284,12 @@ export function buildModel(input: {
      хувийн тоологч = гэрээт дүн нь тодорхой гэрээний олголт (`paidContracted`). Урьд нь
      `hoTotals().paidPct` (БҮХ олголт ÷ тодорхой гэрээт дүн) — дүнгүй гэрээний олголт хувьд
      орж хөөрөгддөг байв. `paid` (нийт олгосон) нь хэвээр БҮХ гэрээнийх. */
+  /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): дээрх 2026-09-30-ны томьёо ХҮЧИНГҮЙ —
+     хувь = `paidShare.paidShareOf` (гэрээлсэн багцын олголт ÷ Cashflow-ийн гэрээлсэн дүн),
+     Тайлан · удирдлагын тайлан · CEO карт · «IPC»-тэй ЯГ нэг функц (26.47% → 26.01%).
+     `other` = гэрээлсэн багцаас гадуурх олголт (`share.paidOther`) — хувьд ОРООГҮЙ. */
   const tot = ipcTotals(contractBlocks(fin.contractsHo));
+  const share = paidShareOf(fin.contracts, fin.pays);
   const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays).length, 0);
   /* Төслийн хэмжилтийн өдөр — «Гүйцэтгэл» (`PkgProg.TsKpi`) · удирдлагын тайлантай ИЖИЛ */
   const measAll = measDayOf(aggregateMonths(fin), nowYm, `${nowYm}-31`);
@@ -305,7 +314,7 @@ export function buildModel(input: {
       planContractor: plan?.months.length ? planPctAt(projectPlanOf(fin, plan), measAll) : null,
     },
     /* ⚠️ 2026-10-01: `other` — «IPC» хуудастай ижил хувьд ороогүй олголтыг тусад нь нэрлэнэ */
-    paid: { total: tot.paid, pct: tot.paidPct, ipcCount, pays: tot.pays, other: tot.paidOther },
+    paid: { total: tot.paid, pct: share.pct, ipcCount, pays: tot.pays, other: fin.pays.length ? share.paidOther : null },
     statusCount,
     failed: input.failed,
     loading: input.loading ?? new Set<TuhSrc>(),
