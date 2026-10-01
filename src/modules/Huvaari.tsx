@@ -78,7 +78,7 @@ import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
 import { useAjil } from './huvaari/useAjil';
 import {
-  backMarkMapOf, buildPayloadOf, conflictMsg, payloadToDrafts, reviewOidsOf, unknownMsg,
+  backMarkMapOf, buildPayloadOf, conflictMsg, partialMsg, payloadToDrafts, reviewOidsOf, unknownMsg,
 } from './huvaari/payload';
 import { prepareSave } from './huvaari/savePrep';
 import { FlowBox } from './huvaari/FlowBox';
@@ -268,6 +268,18 @@ export function Huvaari({
    *    ref-ийг эффектэд бичихийг хориглодог); утга · дүрэм батлах эффектийн ⚠️-д.
    */
   const savedRef = useRef(false);
+  /**
+   * ХАГАС БИЧИГДСЭН БАТЛАЛТ — `oid` (2026-10-01).
+   * ⚠️ Батлах `save` нь эхлээд огноог (`applyUpdates`), ДАРАА нь сарын обьёмыг
+   *    (`applyPlanEdits`) бичдэг — хоёр тусдаа үйлчилгээ, нийтлэг транзакц алга.
+   *    Хоёр дахь нь унахад урьд нь түгжээ ТАЙЛАГДАЖ, санал `pending` хэвээр үлддэг
+   *    тул: зохиогч татах, эсвэл батлагч БУЦААХ боломжтой болж, татагдсан/буцаагдсан
+   *    саналын огноо эх хуудсанд үлддэг байв (эх хуваарь батлагдалгүй хөдөлсөн).
+   *    Одоо: түгжээ ҮЛДЭНЭ (`CLAIM_TTL` хүртэл татах/өөр батлагч хаалттай), энэ
+   *    сешнд буцаах хаагдана, «Батлах»-ыг дахин дарахад зөвхөн үлдсэн хэсэг
+   *    бичигдэнэ (огноо серверт таарсан тул диффд орохгүй).
+   */
+  const partialRef = useRef<number | null>(null);
   /**
    * ОЛОН БЛОК — ЕРӨНХИЙ СОНГОЛТ (2026-09-29, хэрэглэгч: «өмнө нь нэг ажил дээр блок сонгож
    * төлөвлөж болдог байсан бол төлөвлөгөөг бүхэлд нь олон блок сонгож төлөвлөх боломжтой
@@ -583,12 +595,18 @@ export function Huvaari({
   const lanesRef = useRef<HTMLDivElement | null>(null);
   /** Холбосны дараах цонх — төрөл (FS/SS) ба хоног асууна (2026-09-22, хэрэглэгч). `si` урд, `ti` хамаарагч. */
   /**
-   * ⚠️ `dblk` (2026-09-24) — уялдааны БЛОК: `number` = зөвхөн тэр блок, `null` =
-   *    бүх блок (блокгүй бичиглэл). Чирж холбоход ИДЭВХТЭЙ блок (синтетик ганц
+   * ⚠️ `dblks` (2026-09-24 → 2026-10-01) — уялдааны БЛОКУУД: `number[]` = зөвхөн тэдгээр
+   *    блок (тус бүрд `@N`), `null` = бүх блок (блокгүй бичиглэл). Чирж холбоход
+   *    ИДЭВХТЭЙ блок + «олон блокт зэрэг төлөвлөх» сонголт (`gBlks`) (синтетик ганц
    *    блоктой багцад `null` — `@` гарахгүй); сум дээр дарахад тэр сумны уялдааных.
+   * ⚠️ 2026-10-01 (хэрэглэгч: «олон блок дээр зэрэг төлөвлөхөд холбоос олон блок
+   *    тавигдахгүй байна»): урьд нь ганц `dblk` (идэвхтэй блок) байсан тул `gBlks`-ийн
+   *    огноо олон блокт ордог атлаа уялдаа нь ганц блокт л тавигддаг байв.
+   * ⚠️ `collapse` — БҮХ блок сонгогдсон тул блокгүй НЭГ уялдаа бичнэ; тэр кодын
+   *    `@N` уялдааг хасна (эс бөгөөс тэр блокт давхар шилжилт, 2026-09-25 аудит).
    */
   /* ⚠️ `so`/`to` — урд · хамаарагч мөрийн OID (2026-09-25 аудит, индекс шилжихээс) */
-  const [linkAsk, setLinkAsk] = useState<{ so: number; to: number; dblk: number | null } | null>(null);
+  const [linkAsk, setLinkAsk] = useState<{ so: number; to: number; dblks: number[] | null; collapse?: true } | null>(null);
   /** Popup/холбох цонх нээлттэй эсэх — async урсгалд (`refreshAjil`, 2026-09-25) */
   const uiOpenRef = useRef(false);
   useEffect(() => { uiOpenRef.current = modal != null || linkAsk != null; }, [modal, linkAsk]);
@@ -1391,7 +1409,17 @@ export function Huvaari({
         /* ⚠️ `rowsAll` (2026-09-24): `at` нь `plan`-ы индекс = `rowsAll`-ынх, `rows`-ынх БИШ */
         const keep = residualDeps(ham.get(oid) ?? rowsAll[at]?.ham ?? null);
         const text = [...keep, formatDeps(deps2)].filter(Boolean).join(',');
-        setHam((m) => new Map(m).set(oid, text));
+        /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ БОЛ НООРГООС ХАСНА (2026-10-01): уялдаа нэмээд буцааж устгахад
+           (эсвэл өөрчлөөд буцаахад) ноорогт серверийн утга үлдэж «хадгалаагүй» тоологдож,
+           илгээлтэд орж байв — тэр хооронд серверт өөр уялдаа батлагдвал батлахад худал
+           «зэрэгцээ өөрчлөлт» гарч, буцаах/татах замд хуучин утга серверийнхийг дарна.
+           Харьцуулалт `savePrep`-ийн бичих дүрэмтэй ижил (`trim() || null`). */
+        const same = (text.trim() || null) === (rowsAll[at]?.ham ?? null);
+        setHam((m) => {
+          const next = new Map(m);
+          if (same) next.delete(oid); else next.set(oid, text);
+          return next;
+        });
       }
     }
     const rows2 = deps2 ? plan.map((r, i) => (i === at ? { ...r, deps: deps2! } : r)) : plan;
@@ -1578,11 +1606,23 @@ export function Huvaari({
       /* ⚠️ 2026-09-25 аудит: энэ хосод БЛОКГҮЙ (бүх блок) уялдаа аль хэдийн байгаа
          бөгөөд `@N` уялдаа байхгүй бол ТЭРИЙГ засна — урьд нь `@N` нэмэгдэж, тэр
          блокт хоёр уялдаа (давхар шилжилт) үүсдэг байв. */
-      const dblk0 = sc?.synthetic || n === 1 ? null : blk;
+      /* ⚠️ ОЛОН БЛОК (2026-10-01): «олон блокт зэрэг төлөвлөх» асаалттай бол
+         идэвхтэй блок + `gBlks` бүгдэд — огноо (`PlanModal.initSel`)-той ижил хүрээ.
+         БҮХ блок сонгогдвол блокгүй НЭГ уялдаа (`collapse`) — 22 ширхэг `@N` биш. */
+      const tb = sc?.synthetic || n === 1
+        ? null
+        : [...new Set([blk, ...gBlks])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
+      const all = tb != null && tb.length >= n;
+      const dblks0 = tb == null || all ? null : tb;
       const rd = r.des as number;
-      const hasExact = dblk0 != null && t.deps.some((d) => sameDep(d, { code: rd, blk: dblk0 }));
+      const hasExact = dblks0 != null && dblks0.some((b) => t.deps.some((d) => sameDep(d, { code: rd, blk: b })));
       const hasAll = t.deps.some((d) => sameDep(d, { code: rd, blk: undefined }));
-      setLinkAsk({ so: r.oid, to: t.oid, dblk: dblk0 != null && !hasExact && hasAll ? null : dblk0 });
+      setLinkAsk({
+        so: r.oid,
+        to: t.oid,
+        dblks: dblks0 != null && !hasExact && hasAll ? null : dblks0,
+        ...(all ? { collapse: true as const } : {}),
+      });
     };
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
@@ -1752,7 +1792,12 @@ export function Huvaari({
         const why = approveGuard(head, approving, user?.username ?? '');
         if (why) { setErr(why); return false; }
       }
-      if (upd.length) await applyUpdates(pkg, upd);
+      if (upd.length) {
+        await applyUpdates(pkg, upd);
+        /* ⚠️ Батлах горимд огноо бичигдсэн — дараагийн алхам (сарын обьём) унавал
+           санал ХАГАС бичигдсэн гэж тэмдэглэнэ (`partialRef`-ийн ⚠️). */
+        if (approvalMode && obEdits) partialRef.current = approving;
+      }
 
       /*
        * ── САРЫН ОБЬЁМ — ТУСДАА ҮЙЛЧИЛГЭЭ (бичилт; бэлтгэл нь дээр) ─────
@@ -1784,6 +1829,8 @@ export function Huvaari({
         }
         obN = r2[0] + r2[1] + r2[2];
       }
+      /* Бүх хэсэг бичигдлээ — хагас биш */
+      if (approvalMode && partialRef.current === approving) partialRef.current = null;
 
       const r = await loadRows(pkg, sc);
       setRows(r.rows);
@@ -2581,6 +2628,12 @@ export function Huvaari({
           if (!handed) void release();
         }
       }
+      /* ⚠️ ХАГАС БИЧИГДСЭН саналыг БУЦААХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️) — огноо нь
+         эх хуудсанд аль хэдийн орсон тул буцаавал «буцаагдсан» санал хуваарьт үлдэнэ. */
+      if (partialRef.current === pending.oid) {
+        setErr(partialMsg(''));
+        return;
+      }
       const r = await decidePlan({
         oid: pending.oid, approve: false,
         approver: user?.username ?? '', author: pending.author, reason,
@@ -2707,11 +2760,13 @@ export function Huvaari({
       void save().then((ok) => {
         if (ok || !savedRef.current) return;
         savedRef.current = false;
-        /* ⚠️ Бичилт эхлээгүй/унасан — түгжээг тайлна (2026-09-25 аудит) */
-        void releasePlanClaim({ oid: claimOid, approver: user?.username ?? '' });
+        /* ⚠️ Бичилт эхлээгүй/унасан — түгжээг тайлна (2026-09-25 аудит).
+           ⚠️ ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️). */
+        const partial = partialRef.current === claimOid;
+        if (!partial) void releasePlanClaim({ oid: claimOid, approver: user?.username ?? '' });
         setApproving(null);
         setPreviewing(true);
-        setErr((cur) => cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
+        setErr((cur) => (partial ? partialMsg(cur) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       });
       return;
     }
@@ -2736,10 +2791,12 @@ export function Huvaari({
        *    `previewing` тул агуулгыг дахин татахгүй, энэ ноорогоо бичнэ.
        */
       setPreviewing(true);
-      /* ⚠️ Түгжээг тайлна (2026-09-25 аудит) — зохиогч татах/өөр батлагч шийдэх боломжтой болно */
-      void releasePlanClaim({ oid, approver: user?.username ?? '' });
+      /* ⚠️ Түгжээг тайлна (2026-09-25 аудит) — зохиогч татах/өөр батлагч шийдэх боломжтой болно.
+         ⚠️ ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️). */
+      const partial = partialRef.current === oid;
+      if (!partial) void releasePlanClaim({ oid, approver: user?.username ?? '' });
       /* ⚠️ `save()` өөрөө тодорхой шалтгаан (staleN г.м.) бичсэн бол ДАРАХГҮЙ (2026-09-17) */
-      setErr((cur) => cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.'));
+      setErr((cur) => (partial ? partialMsg(cur) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       return;
     }
     /* ⚠️ 2026-09-29 аудит: `previewing`-ийг `decidePlan` АМЖИЛТТАЙ болсны ДАРАА л
@@ -4404,7 +4461,7 @@ export function Huvaari({
                                 зурвасын дээрх даралт зурвасд очно; сум зөвхөн хоосон талбайд дарагдана. */}
                             {canEdit && !locked && kind === 'plan' && (
                               <path d={a2.d} className={h.depHit}
-                                onClick={(e) => { e.stopPropagation(); setLinkAsk({ so: plan[a2.si].oid, to: plan[a2.ti].oid, dblk: a2.dblk }); }}>
+                                onClick={(e) => { e.stopPropagation(); setLinkAsk({ so: plan[a2.si].oid, to: plan[a2.ti].oid, dblks: a2.dblk == null ? null : [a2.dblk] }); }}>
                                 <title>{tr('Дарж засах / устгах')}</title>
                               </path>
                             )}
@@ -4433,26 +4490,34 @@ export function Huvaari({
         <LinkModal
           src={linkRows.s}
           dst={linkRows.t}
-          blk={linkAsk.dblk}
+          blks={linkAsk.dblks}
           blocks={sc?.bld ?? []}
           onClose={() => setLinkAsk(null)}
           onRemove={() => {
             const { s, t } = linkRows;
             setLinkAsk(null);
             if (s.des == null) return;
-            /* ⚠️ Ялгах тэмдэг (код, блок) — 2026-09-24: ижил кодын өөр блокийн уялдаа хэвээр.
+            const code = s.des;
+            /* ⚠️ Ялгах тэмдэг (код, блок) — 2026-09-24: ижил кодын СОНГООГҮЙ блокийн уялдаа хэвээр.
+               Олон блок (2026-10-01) — сонгосон блок бүрийнхийг хасна.
                Хоосон болвол `[]` — «цэвэрлэ» гэсэн утга (`null` = хөндөхгүй). */
-            const id = { code: s.des, blk: linkAsk.dblk ?? undefined };
-            applyModal(t.oid, null, t.deps.filter((d) => !sameDep(d, id)), null);
+            const ids = linkAsk.dblks ?? [undefined];
+            applyModal(t.oid, null, t.deps.filter((d) => !ids.some((b) => sameDep(d, { code, blk: b }))), null);
           }}
           onApply={(type, lag) => {
             const { s, t } = linkRows;
             setLinkAsk(null);
             if (s.des == null) return;
-            /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа. */
-            const id = { code: s.des, blk: linkAsk.dblk ?? undefined };
-            const dep: Dep = { code: s.des, type, lag, ...(linkAsk.dblk != null ? { blk: linkAsk.dblk } : {}) };
-            applyModal(t.oid, null, [...t.deps.filter((d) => !sameDep(d, id)), dep], null);
+            const code = s.des;
+            /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа.
+               ⚠️ ОЛОН БЛОК (2026-10-01): сонгосон блок бүрд тусдаа `@N` уялдаа.
+               `collapse` (бүх блок) — тэр кодын бүх `@N`-ийг хасаад блокгүй нэгийг. */
+            const ids = linkAsk.dblks ?? [undefined];
+            const keep = t.deps.filter((d) => (linkAsk.collapse
+              ? d.code !== code
+              : !ids.some((b) => sameDep(d, { code, blk: b }))));
+            const add: Dep[] = ids.map((b) => ({ code, type, lag, ...(b != null ? { blk: b } : {}) }));
+            applyModal(t.oid, null, [...keep, ...add], null);
           }}
         />
       )}

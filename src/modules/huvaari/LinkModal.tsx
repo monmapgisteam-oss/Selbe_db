@@ -16,11 +16,15 @@ import h from '../huvaari.module.css';
  * (дугуй/шатлалын шалгуур тэнд). Урд ажил аль хэдийн уялдаанд байвал утгыг
  * нь урьдчилан дүүргэж ЗАСНА.
  */
-export function LinkModal({ src, dst, blk, blocks, onClose, onApply, onRemove }: {
+export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }: {
   src: PlanRow;
   dst: PlanRow;
-  /** Уялдааны блок — `null` = бүх блок (2026-09-24) */
-  blk: number | null;
+  /**
+   * Уялдааны блокууд — `null` = бүх блок (2026-09-24).
+   * ⚠️ 2026-10-01: ОЛОН блок — «олон блокт зэрэг төлөвлөх» сонголттой чирэхэд
+   *    сонгосон блок бүрд ижил уялдаа тавигдана (`Huvaari.tsx` `linkAsk.dblks`).
+   */
+  blks: number[] | null;
   blocks: string[];
   onClose: () => void;
   onApply: (type: DepType, lag: number) => void;
@@ -34,8 +38,13 @@ export function LinkModal({ src, dst, blk, blocks, onClose, onApply, onRemove }:
      ажиллаж, төрлийн сонгогч руу шилжүүлнэ. */
   const selRef = useRef<HTMLSelectElement>(null);
   useEffect(() => { selRef.current?.focus(); }, []);
-  /* ⚠️ (код, блок)-оор олно — ижил кодын өөр блокийн уялдаа энэ цонхных биш (2026-09-24) */
-  const cur = src.des != null ? dst.deps.find((d) => sameDep(d, { code: src.des as number, blk: blk ?? undefined })) : undefined;
+  /* ⚠️ (код, блок)-оор олно — ижил кодын СОНГООГҮЙ блокийн уялдаа энэ цонхных биш (2026-09-24).
+     Олон блок (2026-10-01): сонгосон блокуудаас ЭХНИЙ олдсоныхоор урьдчилан дүүргэнэ. */
+  const ids = blks ?? [undefined];
+  const cur = src.des != null
+    ? ids.map((b) => dst.deps.find((d) => sameDep(d, { code: src.des as number, blk: b }))).find((d) => d != null)
+    : undefined;
+  const blkName = (b: number) => blocks[b] ?? String(b + 1);
   const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
   const [lag, setLag] = useState<number>(cur?.lag ?? 0);
   const name = (r: PlanRow) => `${r.des ?? '—'} · ${r.work || r.no}`;
@@ -63,7 +72,10 @@ export function LinkModal({ src, dst, blk, blocks, onClose, onApply, onRemove }:
           {blocks.length > 1 && (
             <>
               <br />
-              <span>{tr('Блок:')} <b>{blk != null ? (blocks[blk] ?? String(blk + 1)) : tr('бүх блок')}</b></span>
+              <span>
+                {blks != null && blks.length > 1 ? tr('Блок ({0}):', String(blks.length)) : tr('Блок:')}{' '}
+                <b>{blks != null ? blks.map(blkName).join(', ') : tr('бүх блок')}</b>
+              </span>
             </>
           )}
         </div>

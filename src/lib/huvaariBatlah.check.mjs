@@ -476,7 +476,8 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   /* ЭХ КОД: `Huvaari.save` батлах горимд бичихийн ӨМНӨ дахин уншиж `approveGuard`-аар зогсоно */
   const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
   const si = H.indexOf('const save = useCallback(');
-  const se = H.indexOf('if (upd.length) await applyUpdates(pkg, upd);', si);
+  /* ⚠️ 2026-10-01 (merge tezu-bonu): `if (upd.length) { await applyUpdates(...); partialRef … }` блок болсон — хоёр хэлбэрийг таньна */
+  const se = H.indexOf('await applyUpdates(pkg, upd);', si);
   assert.ok(si > 0 && se > si, 'Huvaari.save олдсонгүй');
   const pre = H.slice(si, se);
   assert.ok(/if \(approvalMode\) \{\s*const head = await loadSubmissionHead\(approving\);\s*const why = approveGuard\(/.test(pre),

@@ -6245,7 +6245,9 @@ const en: Record<string, string> = {
   "Энэ багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй. Админд хандана уу.": "This package key is not registered — it cannot be applied to the sheet. Contact an admin.",
   "Саяхан батлагдсан — батлагчийн цонх яг одоо хуудсанд бичиж байж магадгүй. Давхар бичилтээс сэргийлж «Дахин буулгах» {0} минутын дараа нээгдэнэ (хуудас өөрөө шинэчлэгдэнэ).": "Recently approved — the approver’s window may be writing it to the sheet right now. To prevent duplicate writes, “Re-apply” unlocks in {0} min (the page refreshes itself).",
   "Дахин буулгах эрхгүй — нэмэлт ажлын батлагч эсвэл админ буулгана.": "No permission to re-apply — an additional-work approver or an admin must apply it.",
-  "Сүүлийн буулгалт унав: {0}": "Last apply attempt failed: {0}"
+  "Сүүлийн буулгалт унав: {0}": "Last apply attempt failed: {0}",
+  "Блок ({0}):": "Blocks ({0}):",
+  "Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).": "The dates were written to the source sheet but the monthly volumes were not — press “Approve” again to finish (returning is not possible; the written dates remain).",
 };
 
 export default en;
