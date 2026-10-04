@@ -22,17 +22,19 @@ import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
 import { statusOf as planStatus } from '@/lib/plan';
 import {
   groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
-  TUH_STATUS, statusOf as tuhStatus, firstFilled, rowProgress,
+  statusOf as tuhStatus, firstFilled, rowProgress,
 } from '@/lib/tuhData';
 import { lz, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
-import { Meter, Legend, BarChart, Gantt, type GanttRow } from './charts';
+import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
+/* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`) */
+import { Section as Card, Series } from '@/components/ui';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
 import { ComboChart, lagLevel } from '@/modules/Finance';
 import {
-  Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp,
+  Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp, barSt,
 } from './Overview';
 import s from '../tuh.module.css';
 
@@ -66,7 +68,6 @@ const NAV = (housing: boolean, hasDeps: boolean) => [
   ['issues', tr('Асуудал')],
 ] as [string, string][];
 
-const PLAN_TONE: Record<string, GanttRow['tone']> = { done: 'good', run: 'good', late: 'bad', todo: 'mute', none: 'mute' };
 
 export function PkgDetail({ r, m, onBack, onOpen }: {
   r: TuhRow;
@@ -115,7 +116,7 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           start: sp.start,
           end: sp.end,
           progress: act == null ? null : act * 100,
-          tone: PLAN_TONE[st],
+          st,
         });
       });
     }
@@ -265,21 +266,24 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           <li><b>L4</b>{tr('7 хоногийн төлөвлөгөө')}</li>
         </ol>
         <h3>{tr('Level 2 — Багцын хуваарь')}</h3>
+        <Card>
         <GanttLegend />
         <Gantt
           rows={[
             {
               key: 'main', label: <b>{r.p.code}</b>, start: r.p.start, end: r.p.end, progress: r.progress,
-              tone: TUH_STATUS.find((x) => x.key === r.status)?.tone,
+              st: barSt(r.status),
               thin: derived?.finish != null ? { start: r.p.start, end: derived.finish } : null,
               marks: r.commission != null ? [{ at: r.commission, kind: 'commission', label: tr('Улсын комисс') }] : [],
             },
             ...(derived?.milestones ?? []).map((ms, i) => ({
-              key: `ms${i}`, label: ms.name, start: ms.start, end: ms.end, progress: ms.act == null ? null : ms.act * 100, tone: 'mute' as const,
+              key: `ms${i}`, label: ms.name, start: ms.start, end: ms.end, progress: ms.act == null ? null : ms.act * 100,
+              st: ms.start != null && ms.end != null ? planStatus({ start: ms.start, end: ms.end }, ms.act, now) : 'none' as const,
             })),
           ]}
           from={dom.from} to={dom.to} now={now}
         />
+        </Card>
         <div className={s.tableWrap} style={{ marginTop: 8 }}>
           <table className={s.table}>
             <caption className={s.note} style={{ textAlign: 'left', padding: '6px 8px' }}>{tr('Дэд багцууд, гэрээт байгууллага')}</caption>
@@ -321,15 +325,10 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
             : schedQ.state === 'error' ? <p className={s.failNote}>{tr('Хуваарь уншигдсангүй')}</p>
               : derived && derived.l3.length ? (
-                <>
-                  <Legend items={[
-                    { key: 'g', label: tr('Хийгдэж байна / дууссан'), color: 'var(--good)', box: true },
-                    { key: 'b', label: tr('Хоцорсон'), color: 'var(--bad)', box: true },
-                    { key: 'm', label: tr('Эхлээгүй / огноогүй'), color: 'var(--ink-3)', box: true },
-                    { key: 't', label: tr('Гүйцэтгэгчийн төлөвлөгөөгөөр'), color: 'var(--ink-2)', box: true },
-                  ]} />
+                <Card>
+                  <Legend items={GANTT_LEGEND()} />
                   <Gantt rows={derived.l3} from={dom.from} to={dom.to} now={now} />
-                </>
+                </Card>
               ) : <p className={s.note}>—</p>}
         <h3>{tr('Level 4 — 7 хоногийн төлөвлөгөө')}</h3>
         <div className={s.chips} style={{ marginBottom: 6 }}>
@@ -343,19 +342,26 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           <div className={s.week}><b>{tr('+2 долоо хоног')}</b>—</div>
         </div>
         <h3>{tr('Level 1 — Мастер хуваарь')}</h3>
-        <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
+        <Card>
+          <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
+        </Card>
       </Section>
 
       {/* ── Гүйцэтгэл ── */}
       <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
         <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} />
-        <h3>{tr('Хүн хүч (хүн)')}</h3>
-        {r.workerDays.some((d) => d.value != null) ? (
-          <>
-            <BarChart items={r.workerDays.map((d) => ({ key: d.key, label: d.key, value: d.value }))} fmt={(v) => num(v)} />
-            <p className={s.note}>{tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(r.workerDays.length))}</p>
-          </>
-        ) : <p className={s.note}>—</p>}
+        {/* ⚠️ «ХАБЭА»-гийн «Ажилтан — өдрөөр»-тэй ИЖИЛ `ui.Series` (line + утга). Тайлангүй өдөр
+            цуваанд ОРОХГҮЙ (null ≠ 0) — 0 баганаар «ажилтангүй» гэж худал харуулахгүй. */}
+        {(() => {
+          const pts = r.workerDays
+            .filter((d): d is { key: string; value: number } => d.value != null)
+            .map((d) => ({ key: d.key, label: d.key.slice(5).replace('-', '.'), value: d.value, display: num(d.value) }));
+          return (
+            <Card title={tr('Ажилтан — өдрөөр')} note={pts.length ? tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(pts.length)) : undefined}>
+              {pts.length ? <Series items={pts} height={110} unit={tr('ажилтан')} line showValues /> : <p className={s.note}>—</p>}
+            </Card>
+          );
+        })()}
         <h3>{tr('EV ба PV')}</h3>
         <div className={s.stats}>
           {([

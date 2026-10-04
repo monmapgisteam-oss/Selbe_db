@@ -5866,11 +5866,8 @@ const en: Record<string, string> = {
   "Хоцорсон": "Behind",
   "Зогссон": "Stopped",
   "Гэрээлээгүй": "Not contracted",
-  "Гэрээний төлөвлөгөө": "Contract plan",
   "Улсын комисс": "State commission",
   "Гэрээт хугацаа": "Contract period",
-  "Дулаан авах": "Heating connection",
-  "Өвөл": "Winter",
   "Сүүлд тайлагнасан": "Last reported",
   "Сэлбэ дэд төвийн барилгажилтын төсөл": "Selbe sub-centre construction project",
   "Багцын хяналтын самбар": "Package control board",
@@ -5955,16 +5952,12 @@ const en: Record<string, string> = {
   "Level 2 — Багцын хуваарь": "Level 2 — Package schedule",
   "Дэд багцууд, гэрээт байгууллага": "Sub-packages and contractors",
   "Level 3 — Дэлгэрэнгүй хуваарь": "Level 3 — Detailed schedule",
-  "Хийгдэж байна / дууссан": "In progress / done",
-  "Эхлээгүй / огноогүй": "Not started / no date",
-  "Гүйцэтгэгчийн төлөвлөгөөгөөр": "Per contractor plan",
   "Level 4 — 7 хоногийн төлөвлөгөө": "Level 4 — 7-day plan",
   "Шийдэгдээгүй саад {0}": "Open constraints {0}",
   "Өнгөрсөн 7 хоног": "Last 7 days",
   "Энэ 7 хоног": "This week",
   "+1 долоо хоног": "Next week",
   "+2 долоо хоног": "Week after",
-  "Хүн хүч (хүн)": "Workforce (people)",
   "ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр": "HSE daily report — last {0} days",
   "EV ба PV": "EV and PV",
   "PV (гэрээ)": "PV (contract)",
@@ -6349,7 +6342,11 @@ const en: Record<string, string> = {
   "Обьёмын илгээлтийг татаж авлаа.": "The volume submission was withdrawn.",
   "Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.": "Resend the returned submission ({0}) for review UNCHANGED, as is? The reviewer will review the previous content again.",
   "Өөрчлөлтгүй дахин илгээв ({0})": "Resent unchanged ({0})",
-
+  /* ── ТУХ · графикийн загвар (2026-10-04) ── */
+  "Гэрээлээгүй / мэдээлэлгүй": "Not contracted / no data",
+  "{0} өнгөрсөн": "{0} elapsed",
+  "өнөөдөр": "today",
+  "{0} төлөвлөгөөнөөс": "{0} vs plan"
 };
 
 export default en;

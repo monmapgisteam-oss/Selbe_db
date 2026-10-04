@@ -292,13 +292,20 @@
 .cardTitle { margin: 0; font-size: 0.86rem; font-weight: 600; line-height: 1.3; }
 .cardProg { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
 .cardPct { font-size: 1.5rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.cardWeek { font-size: 0.74rem; color: var(--ink-2); white-space: nowrap; }
+.cardWeek { font-size: 0.72rem; color: var(--ink-2); white-space: nowrap; }
+.cardGap { font-size: 0.78rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Хугацаа ба гүйцэтгэлийн хоёр зурвас — шошго | зурвас | утга */
+.duo { display: flex; flex-direction: column; gap: 6px; }
+.duoRow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 0.72rem; }
+.duoLbl { color: var(--ink-3); }
+.duoVal { min-width: 72px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.duoTrack { position: relative; height: 8px; border-radius: 2px; background: var(--chart-track); overflow: hidden; }
+.duoTrack i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width 0.6s var(--ease); }
+.duoTime { background: color-mix(in srgb, var(--ink-3) 70%, transparent); }
+.duo_good { background: var(--good); }
+.duo_bad { background: var(--bad); }
+.duo_data { background: var(--data); }
 .cardWeek b { font-variant-numeric: tabular-nums; }
-/* Хэмжигчийн тайлбар — дүүргэлт = бодит, зураас = гэрээний төлөвлөгөө */
-.meterCap { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.68rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.meterCap span { display: inline-flex; align-items: center; gap: 5px; }
-.capFill { width: 12px; height: 6px; border-radius: 3px; background: var(--data); }
-.capTick { width: 2px; height: 10px; background: var(--ink); }
 /* Картын баримт — шошго ДЭЭР, утга ДООР: урт нэр/бүтэн мөнгөн дүн хуваагдаж эвдрэхгүй */
 .cardFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; font-size: 0.74rem; }
 .cardFacts > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -321,110 +328,147 @@
 }
 .ghostBtn:hover, .ghostBtn:focus-visible { color: var(--data); border-color: var(--data); }
 
-/* ── Хэмжигч ── */
+/* ── Хэмжигч — `ui.Bars`-ийн зурвас (`ui.module.css` `.barTrack`/`.barFill`) ──
+   ⚠️ 2px нимгэн зурвас + төлөвлөгөөний босоо зураас. Бүдүүн бөөрөнхий хэмжигч
+      системд байхгүй (2026-10-01, «үндсэн системээс зөрж байна»). */
 .meter {
   position: relative;
   display: block;
   width: 100%;
   min-width: 60px;
-  height: 6px;
-  border-radius: 3px;
+  height: 2px;
+  margin: 5px 0;
+  border-radius: 1px;
   background: var(--chart-track);
 }
-.meterWide { height: 8px; }
-.meterFill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--data); }
-.meter[data-tone='good'] .meterFill { background: var(--good); }
-.meter[data-tone='warn'] .meterFill { background: var(--warn); }
-.meter[data-tone='bad'] .meterFill { background: var(--bad); }
-.meter[data-tone='mute'] .meterFill { background: var(--ink-3); }
-.meterPlan { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); }
-
-/* ── Шугаман график ── */
-.chart { position: relative; width: 100%; min-width: 0; }
-.chart svg { display: block; }
-.chartEmpty { padding: 20px; text-align: center; color: var(--ink-3); font-size: 0.8rem; }
-.grid { stroke: var(--chart-grid); stroke-width: 1; }
-.axis { fill: var(--ink-3); font-size: 10px; font-variant-numeric: tabular-nums; }
-/* Цэгийн утга — цувааны өнгөөр, дэвсгэрээс ялгарах хүрээтэй */
-.ptLbl { font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; fill: var(--ink-2); }
-/* Төлөвлөгөө ба бодит хоорондын зөрүү */
-.barRect { fill: var(--data); opacity: 0.85; }
-.barRect[data-hi] { opacity: 1; }
-.tip {
+.meterFill {
   position: absolute;
-  top: 6px;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 150px;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  font-size: 0.7rem;
-  pointer-events: none;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--tone, var(--data));
+  transition: width 0.6s var(--ease);
 }
-.tip span { display: flex; align-items: center; gap: 5px; }
-.tip i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; font-size: 0.72rem; color: var(--ink-2); }
-.legendItem { display: inline-flex; align-items: center; gap: 6px; }
-.legLine, .legDash, .legBox, .legDiamond { display: inline-block; flex: none; }
-.legLine { width: 16px; height: 2px; background: var(--c); }
-.legDash { width: 16px; height: 0; border-top: 2px dashed var(--c); }
-.legBox { width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
-.legDiamond { width: 8px; height: 8px; transform: rotate(45deg); background: var(--c); }
+.meter[data-tone='good'] { --tone: var(--good); }
+.meter[data-tone='warn'] { --tone: var(--warn); }
+.meter[data-tone='bad'] { --tone: var(--bad); }
+.meter[data-tone='mute'] { --tone: var(--ink-3); }
+.meterPlan { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
 
+/* ── Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.module.css` `.progLegend`) ── */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.leg_line { width: 18px; height: 3px; border-radius: 2px; display: inline-block; flex: none; background: var(--c); }
+.leg_dash { width: 18px; height: 0; border-top: 2px dashed var(--c); display: inline-block; flex: none; opacity: 0.85; }
+.leg_box { width: 18px; height: 10px; border-radius: 2px; display: inline-block; flex: none; background: var(--c); }
+.leg_hatch {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--c) 28%, transparent) 0 3px, transparent 3px 6px);
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+}
+.leg_diamond { width: 8px; height: 8px; margin: 0 5px; transform: rotate(45deg); display: inline-block; flex: none; background: var(--c); }
 
-/* ── Гантт ── */
+/* ── Гантт — «Хуваарь»-ийн зурвас (`huvaari.module.css` `.plBar` · `.tl*` · `.plMonth`) ── */
 .gantt { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; }
-.ganttHead, .ganttRow {
+.ganttHead {
   display: grid;
-  grid-template-columns: minmax(140px, 28%) minmax(0, 1fr);
-  align-items: center;
-  min-height: 26px;
+  grid-template-columns: minmax(150px, 28%) minmax(0, 1fr);
+  height: 22px;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
-.ganttRow { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(140px, 28%) minmax(0, 1fr); align-items: center; min-height: 26px; border-bottom: 1px solid var(--line); }
+.ganttSide { border-right: 1px solid var(--line); }
+.ganttRow {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(150px, 28%) minmax(0, 1fr);
+  align-items: stretch;
+  height: 26px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
+}
 button.ganttRow { cursor: pointer; }
-button.ganttRow:hover { background: var(--surface-2); }
+button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in srgb, var(--data) 8%, transparent); }
 .ganttRow:last-child { border-bottom: 0; }
-.ganttActive { background: color-mix(in srgb, var(--data) 10%, transparent); }
-.ganttHeading { background: var(--surface-2); font-weight: 600; }
-.ganttLabel { padding: 3px 8px; font-size: 0.72rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ganttLabel small { margin-left: 6px; color: var(--ink-3); }
-.ganttScale { position: relative; height: 22px; }
-.ganttScale b { position: absolute; top: 4px; transform: translateX(3px); font-size: 0.66rem; font-weight: 600; color: var(--ink-3); }
-.ganttTrack { position: relative; height: 26px; }
-.ganttWinter { position: absolute; top: 0; bottom: 0; background: var(--sunken); opacity: 0.5; }
-.ganttYear { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.ganttAlt { background: color-mix(in srgb, var(--ink-3) 5%, transparent); }
+.ganttActive { background: color-mix(in srgb, var(--data) 12%, transparent); }
+.ganttHeading { font-weight: 600; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.ganttLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-right: 1px solid var(--line);
+  font-size: 11.5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ganttLabel small { color: var(--ink-3); }
+.ganttScale { position: relative; }
+.ganttScale b {
+  position: absolute;
+  top: 5px;
+  padding-left: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ganttScale b.ganttYearLbl { color: var(--ink-2); }
+.ganttTrack { position: relative; }
+.ganttTick { position: absolute; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--line) 50%, transparent); }
+.ganttYear { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
 .ganttBar {
   position: absolute;
-  top: 7px;
-  height: 12px;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--data) 28%, transparent);
-  border: 1px solid var(--data);
   overflow: hidden;
 }
-.ganttBar[data-tone='good'] { background: color-mix(in srgb, var(--good) 25%, transparent); border-color: var(--good); }
-.ganttBar[data-tone='warn'] { background: color-mix(in srgb, var(--warn) 25%, transparent); border-color: var(--warn); }
-.ganttBar[data-tone='bad'] { background: color-mix(in srgb, var(--bad) 25%, transparent); border-color: var(--bad); }
-.ganttBar[data-tone='mute'] { background: var(--chart-track); border-color: var(--line-strong); }
-/* Гүйцэтгэлийн дүүргэлт — барын өнгөөр, бүрэн тод (хоосон хэсэг цайвар) */
-.ganttBar i { display: block; height: 100%; background: var(--data); }
-.ganttBar[data-tone='good'] i { background: var(--good); }
-.ganttBar[data-tone='warn'] i { background: var(--warn); }
-.ganttBar[data-tone='bad'] i { background: var(--bad); }
-.ganttBar[data-tone='mute'] i { background: var(--ink-3); }
-.ganttPct { position: absolute; top: 6px; font-size: 0.64rem; font-style: normal; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ganttThin { position: absolute; top: 21px; height: 3px; border-radius: 2px; background: var(--ink-2); }
-.ganttNoDate { position: absolute; left: 6px; top: 6px; font-size: 0.66rem; color: var(--ink-3); }
-.ganttMark { position: absolute; top: 5px; transform: translateX(-50%); font-size: 0.8rem; line-height: 1; color: var(--data); }
+/* «Хуваарь»-ийн төлөвийн өнгө — `huvaari.module.css` `.tlDone/.tlRun/.tlLate/.tlTodo/.tlNone` */
+.st_done { background: var(--good); }
+.st_run { background: var(--data); }
+.st_late { background: var(--bad); }
+.st_todo { background: color-mix(in srgb, var(--ink-3) 45%, transparent); }
+.st_none {
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink-3) 28%, transparent) 0 3px, transparent 3px 6px);
+  border-color: color-mix(in srgb, var(--ink-3) 40%, transparent);
+}
+.ganttBarLab {
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--surface);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.st_todo .ganttBarLab, .st_none .ganttBarLab { color: var(--ink); }
+.ganttPct { position: absolute; top: 6px; font-size: 9.5px; font-style: normal; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ganttThin { position: absolute; bottom: 1px; height: 2px; border-radius: 1px; background: var(--ink-2); }
+.ganttNoDate { position: absolute; left: 6px; top: 6px; font-size: 10px; font-style: normal; color: var(--ink-3); }
+.ganttMark { position: absolute; z-index: 3; top: 5px; transform: translateX(-50%); font-size: 12px; line-height: 1; color: var(--ink); }
 .ganttMark[data-kind='heat'] { color: var(--bad); }
 .ganttMark[data-kind='milestone'] { color: var(--ink-2); }
-.ganttNow { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--bad); }
+/* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил улаан */
+.ganttNow { position: absolute; top: 0; bottom: 0; z-index: 2; width: 2px; margin-left: -1px; background: var(--bad); opacity: 0.85; }
 
 /* ── Жижиг олон график / IPC карт ── */
 /* ⚠️ НЭГ БАГАНА — системийн «Гүйцэтгэлийн явц» график бүтэн өргөнд зориулагдсан;

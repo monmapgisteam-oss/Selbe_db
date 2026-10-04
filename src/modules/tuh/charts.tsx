@@ -1,54 +1,54 @@
 'use client';
 
 /**
- * ТУХ — ГРАФИКИЙН ЖИЖИГ БҮРЭЛДЭХҮҮН (in-house SVG/HTML, гадны сангүй).
+ * ТУХ — ГРАФИКИЙН ЖИЖИГ БҮРЭЛДЭХҮҮН.
  *
- * ⚠️ Портал ганц ч график сан хэрэглэдэггүй (`ui.tsx` · `PkgProg.ProgChart`) —
- *    энд ч мөн адил. Өнгө нь ЗӨВХӨН глобал токен (`var(--data)`, `var(--cN)` …),
- *    гэрэл/харанхуй горимд өөрөө солигдоно.
- * ⚠️ `null` ≠ 0 — хэмжилтгүй цэг ЗУРАГДАХГҮЙ (шугам тасарна), 0 гэж унахгүй.
- * ⚠️ Графикт ЗӨВХӨН сүүлийн цэгийн шошго биш — хулганаар цэг бүрийн утга (tooltip)
- *    харагдана (CLAUDE.md: «дунд цэгүүд хамгийн их мэдээлэлтэй»).
+ * ⚠️ ЗАГВАР НЬ ҮНДСЭН СИСТЕМИЙНХ (2026-10-01, хэрэглэгч: «ТУХ хэсгийн бүх
+ *    чартуудын дизайныг зас, үндсэн системээс зөрж байна»):
+ *      · Хэмжигч — `ui.Bars`-ийн 2px зурвас (`barTrack`/`barFill`) + төлөвлөгөөний зураас;
+ *      · Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.progLegend`): 11px, 18px шугам;
+ *      · Гантт — «Хуваарь»-ийн зурвас (`huvaari.plBar` · `tlDone/Run/Late/Todo/None`):
+ *        төлвөөр БҮРЭН будагдсан 3px булантай зурвас, дотроо цагаан шошго,
+ *        сарын толгой, ээлжилсэн мөр.
+ *    S-муруй, санхүүжилтийн муруй, хүн хүч — системийн `ProgChart` · `ComboChart` ·
+ *    `ui.Series` ШУУД (ТУХ өөрийн хувилбар зурахгүй).
+ * ⚠️ Хэв маягийг CSS-ээр ХУУЛБАРЛАСАН (`tuh.module.css`) — харагдацууд CSS
+ *    хуваалцдаггүй (`layout.tsx`-ийн ⚠️). Тэдгээрийг өөрчилбөл ЭНДЭЭ ч өөрчил.
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { useChartWidth, fitLabels, textW } from '@/lib/chartFit';
 import { dayKey } from '@/lib/format';
 import s from '../tuh.module.css';
 
-/* ══════════════════════ Хэмжигч (meter) ══════════════════════ */
+/* ══════════════════════ Хэмжигч ══════════════════════ */
 
-/** Хэвтээ хэмжигч — дүүргэлт 0–100, `plan` нь төлөвлөгөөний зураас */
-export function Meter({ value, plan, tone = 'data', wide }: {
+/** Хэвтээ хэмжигч (`ui.Bars`-ийн зурвас) — дүүргэлт 0–100, `plan` нь төлөвлөгөөний зураас */
+export function Meter({ value, plan, tone = 'data' }: {
   value: number | null;
   plan?: number | null;
   tone?: 'data' | 'good' | 'warn' | 'bad' | 'mute';
-  wide?: boolean;
 }) {
   const v = value == null ? null : Math.max(0, Math.min(100, value));
   const p = plan == null ? null : Math.max(0, Math.min(100, plan));
   return (
-    <span className={`${s.meter} ${wide ? s.meterWide : ''}`} data-tone={tone}>
-      {v != null && <span className={s.meterFill} style={{ width: `${v}%` } as CSSProperties} />}
+    <span className={`${s.meter} chartTrack`} data-tone={tone}>
+      {v != null && <span className={`${s.meterFill} chartFill`} style={{ width: `${v}%` } as CSSProperties} />}
       {p != null && <span className={s.meterPlan} style={{ left: `${p}%` } as CSSProperties} />}
     </span>
   );
 }
 
-/** «2026-09» → «2026.09», «2026-09-28» → «09.28» */
-const shortLabel = (l: string) => (/^\d{4}-\d{2}-\d{2}$/.test(l) ? `${l.slice(5, 7)}.${l.slice(8, 10)}`
-  : /^\d{4}-\d{2}$/.test(l) ? `${l.slice(0, 4)}.${l.slice(5, 7)}` : l);
+/* ══════════════════════ Тайлбар ══════════════════════ */
 
-/** Графикийн тайлбар (legend) */
-export function Legend({ items }: { items: { key: string; label: string; color: string; dash?: boolean; diamond?: boolean; box?: boolean }[] }) {
+/** Графикийн тайлбар — «Гүйцэтгэлийн явц»-ийн легендтэй ижил хэлбэр */
+export function Legend({ items }: {
+  items: { key: string; label: string; color: string; kind?: 'line' | 'dash' | 'box' | 'hatch' | 'diamond' }[];
+}) {
   return (
     <div className={s.legend}>
       {items.map((it) => (
-        <span key={it.key} className={s.legendItem}>
-          <i
-            className={it.diamond ? s.legDiamond : it.box ? s.legBox : it.dash ? s.legDash : s.legLine}
-            style={{ '--c': it.color } as CSSProperties}
-          />
+        <span key={it.key}>
+          <i className={s[`leg_${it.kind ?? 'line'}`]} style={{ '--c': it.color } as CSSProperties} />
           {it.label}
         </span>
       ))}
@@ -56,73 +56,10 @@ export function Legend({ items }: { items: { key: string; label: string; color: 
   );
 }
 
-/* ══════════════════════ Багана график ══════════════════════ */
-
-/**
- * Баганан график — өдөр бүрийн тоо (хүн хүч).
- * ⚠️ Тэнхлэг, огноо, утга ЗААВАЛ — тэнхлэггүй баганыг хэрэглэгч уншиж чадахгүй
- *    байсан (2026-09-30). Утга нь багтаамжаар багана бүр дээр; `null` өдөр
- *    багана зурахгүй (0 биш).
- */
-export function BarChart({ items, height = 160, fmt }: {
-  items: { key: string; label: string; value: number | null }[];
-  height?: number;
-  fmt: (v: number) => string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const W = useChartWidth(ref, 600);
-  const [hi, setHi] = useState<number | null>(null);
-  const n = items.length;
-  if (!n) return <div ref={ref} className={s.chartEmpty}>—</div>;
-  const max = Math.max(1, ...items.map((x) => x.value ?? 0)) * 1.15;
-  const ticks = [0, 0.5, 1].map((f) => Math.round(f * max));
-  const padL = Math.max(30, Math.max(...ticks.map((t) => textW(fmt(t), 10))) + 10);
-  const padR = 8;
-  const padT = 16;
-  const padB = 26;
-  const iw = Math.max(10, W - padL - padR);
-  const ih = height - padT - padB;
-  const bw = iw / n;
-  const y = (v: number) => padT + ih - (v / max) * ih;
-  const cx = (i: number) => padL + bw * i + bw / 2;
-  const vLbl = new Set(fitLabels(items.map((it, i) => (it.value == null ? null : { i, x: cx(i), w: textW(fmt(it.value), 10), anchor: 'middle' as const }))
-    .filter((q): q is NonNullable<typeof q> => q != null), 4));
-  const dLbl = new Set(fitLabels(items.map((it, i) => ({ i, x: cx(i), w: textW(shortLabel(it.label), 10), anchor: 'middle' as const })), 10));
-  return (
-    <div ref={ref} className={s.chart} onMouseLeave={() => setHi(null)}>
-      <svg width={W} height={height} role="img">
-        {ticks.map((t) => (
-          <g key={t}>
-            <line className={s.grid} x1={padL} x2={padL + iw} y1={y(t)} y2={y(t)} />
-            <text className={s.axis} x={padL - 5} y={y(t) + 3} textAnchor="end">{fmt(t)}</text>
-          </g>
-        ))}
-        {items.map((it, i) => (
-          <g key={it.key} onMouseEnter={() => setHi(i)}>
-            <rect x={padL + bw * i} y={padT} width={bw} height={ih} fill="transparent" />
-            {it.value != null && (
-              <rect className={s.barRect} data-hi={hi === i ? '' : undefined}
-                x={padL + bw * i + Math.min(2, bw * 0.15)} y={y(it.value)}
-                width={Math.max(1, bw - Math.min(4, bw * 0.3))} height={Math.max(1, padT + ih - y(it.value))} rx={1.5} />
-            )}
-            {it.value != null && vLbl.has(i) && (
-              <text className={s.ptLbl} x={cx(i)} y={y(it.value) - 4} textAnchor="middle">{fmt(it.value)}</text>
-            )}
-            {dLbl.has(i) && <text className={s.axis} x={cx(i)} y={height - 8} textAnchor="middle">{shortLabel(it.label)}</text>}
-          </g>
-        ))}
-      </svg>
-      {hi != null && (
-        <div className={s.tip} style={{ left: Math.min(W - 160, Math.max(0, cx(hi) + 8)) } as CSSProperties}>
-          <b>{items[hi].label}</b>
-          <span>{items[hi].value == null ? '—' : fmt(items[hi].value!)}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ══════════════════════ Гантт ══════════════════════ */
+
+/** «Хуваарь»-ийн төлөвийн палитр (`plan.Status`) */
+export type BarSt = 'done' | 'run' | 'late' | 'todo' | 'none';
 
 export type GanttRow = {
   key: string;
@@ -131,10 +68,11 @@ export type GanttRow = {
   heading?: boolean;
   start?: number | null;
   end?: number | null;
-  /** Гүйцэтгэл 0–100 — бар дотор дүүргэлт */
+  /** Гүйцэтгэл 0–100 — зурвасын ДОТОР шошго (системийн `plBarLab`) */
   progress?: number | null;
-  tone?: 'good' | 'warn' | 'bad' | 'mute' | 'data';
-  /** Нимгэн хоёр дахь бар (таамаг / суурь) */
+  /** Зурвасын өнгө — «Хуваарь»-тай ижил (дууссан · явж буй · хоцорсон · эхлээгүй · огноогүй) */
+  st?: BarSt;
+  /** Нимгэн хоёр дахь зурвас (гүйцэтгэгчийн төлөвлөгөө / таамаг) */
   thin?: { start: number | null; end: number | null } | null;
   marks?: { at: number; kind: 'commission' | 'heat' | 'milestone'; label: string }[];
   onClick?: () => void;
@@ -147,40 +85,55 @@ const MS_DAY = 86_400_000;
    хүснэгтийн `date()`-ээс нэг өдрөөр зөрдөг байв. */
 const ymd = (ms: number) => dayKey(ms);
 
+/** Гантт-ын тайлбар — «Хуваарь»-ийн өнгөөр */
+export const GANTT_LEGEND = () => [
+  { key: 'done', label: tr('Дууссан'), color: 'var(--good)', kind: 'box' as const },
+  { key: 'run', label: tr('Хийгдэж байна'), color: 'var(--data)', kind: 'box' as const },
+  { key: 'late', label: tr('Хоцорсон'), color: 'var(--bad)', kind: 'box' as const },
+  { key: 'todo', label: tr('Эхлээгүй'), color: 'color-mix(in srgb, var(--ink-3) 45%, transparent)', kind: 'box' as const },
+  { key: 'none', label: tr('Гэрээлээгүй / мэдээлэлгүй'), color: 'var(--ink-3)', kind: 'hatch' as const },
+];
+
 /**
- * Хугацааны гантт — HTML мөр + хувьт байрлал (SVG биш): мөр бүр нэг бар.
- * ⚠️ Огноогүй мөр БАР ЗУРАХГҮЙ — «огноогүй» гэж бичнэ (0 эсвэл өнөөдөр гэж таамаглахгүй).
+ * Хугацааны гантт — «Хуваарь»-ийн зурвасын хэлээр (HTML мөр + хувьт байрлал).
+ * ⚠️ Огноогүй мөр ЗУРВАС ЗУРАХГҮЙ — «огноогүй» гэж бичнэ (өнөөдөр гэж таамаглахгүй).
  */
 export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number; to: number; now: number }) {
   const span = Math.max(MS_DAY, to - from);
   const pos = (ms: number) => Math.max(0, Math.min(100, ((ms - from) / span) * 100));
-  const years: { y: number; left: number }[] = [];
-  for (let y = new Date(from).getUTCFullYear(); y <= new Date(to).getUTCFullYear(); y += 1) {
-    const at = Date.UTC(y, 0, 1);
-    if (at >= from && at <= to) years.push({ y, left: pos(at) });
-  }
-  const winters: { left: number; width: number }[] = [];
-  for (let y = new Date(from).getUTCFullYear() - 1; y <= new Date(to).getUTCFullYear(); y += 1) {
-    const a = Math.max(from, Date.UTC(y, 10, 1));
-    const b = Math.min(to, Date.UTC(y + 1, 3, 1));
-    if (b > a) winters.push({ left: pos(a), width: pos(b) - pos(a) });
+  /* Сарын толгой — «Хуваарь»-ийн `plMonth`; 1-р сард оныг тодоор */
+  const months: { at: number; left: number; label: string; year: boolean }[] = [];
+  const a = new Date(from);
+  const stepM = span / MS_DAY > 900 ? 3 : 1;
+  const y0 = a.getUTCFullYear();
+  for (let m = a.getUTCMonth(); ; m += stepM) {
+    const at = Date.UTC(y0, m, 1);
+    if (at > to) break;
+    if (at >= from) {
+      const d = new Date(at);
+      const yr = d.getUTCMonth() === 0;
+      months.push({ at, left: pos(at), year: yr, label: yr ? String(d.getUTCFullYear()) : String(d.getUTCMonth() + 1).padStart(2, '0') });
+    }
   }
   return (
     <div className={s.gantt}>
       <div className={s.ganttHead}>
-        <span />
+        <span className={s.ganttSide} />
         <span className={s.ganttScale}>
-          {years.map((y) => <b key={y.y} style={{ left: `${y.left}%` } as CSSProperties}>{y.y}</b>)}
+          {months.map((mo) => (
+            <b key={mo.at} className={mo.year ? s.ganttYearLbl : ''} style={{ left: `${mo.left}%` } as CSSProperties}>{mo.label}</b>
+          ))}
         </span>
       </div>
-      {rows.map((r) => {
+      {rows.map((r, idx) => {
         const has = r.start != null && r.end != null && r.end >= r.start;
         const Tag = r.onClick ? 'button' : 'div';
+        const w = has ? Math.max(0.6, pos(r.end!) - pos(r.start!)) : 0;
         return (
           <Tag
             key={r.key}
             type={r.onClick ? 'button' : undefined}
-            className={`${s.ganttRow} ${r.heading ? s.ganttHeading : ''} ${r.active ? s.ganttActive : ''}`}
+            className={`${s.ganttRow} ${r.heading ? s.ganttHeading : ''} ${r.active ? s.ganttActive : ''} ${idx % 2 ? s.ganttAlt : ''}`}
             onClick={r.onClick}
           >
             <span className={s.ganttLabel}>
@@ -188,21 +141,18 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
               {r.sub && <small>{r.sub}</small>}
             </span>
             <span className={s.ganttTrack}>
-              {winters.map((w, i) => <i key={i} className={s.ganttWinter} style={{ left: `${w.left}%`, width: `${w.width}%` } as CSSProperties} />)}
-              {years.map((y) => <i key={y.y} className={s.ganttYear} style={{ left: `${y.left}%` } as CSSProperties} />)}
+              {months.map((mo) => <i key={mo.at} className={mo.year ? s.ganttYear : s.ganttTick} style={{ left: `${mo.left}%` } as CSSProperties} />)}
               {!r.heading && has && (
                 <span
-                  className={s.ganttBar}
-                  data-tone={r.tone ?? 'data'}
-                  style={{ left: `${pos(r.start!)}%`, width: `${Math.max(0.6, pos(r.end!) - pos(r.start!))}%` } as CSSProperties}
+                  className={`${s.ganttBar} ${s[`st_${r.st ?? 'run'}`]}`}
+                  style={{ left: `${pos(r.start!)}%`, width: `${w}%` } as CSSProperties}
                   title={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${r.progress.toFixed(1)}%` : ''}`}
                 >
-                  {r.progress != null && <i style={{ width: `${Math.max(0, Math.min(100, r.progress))}%` } as CSSProperties} />}
+                  {r.progress != null && w > 4 && <span className={s.ganttBarLab}>{`${r.progress.toFixed(r.progress < 10 ? 1 : 0)}%`}</span>}
                 </span>
               )}
-              {/* Гүйцэтгэлийн хувь — барын АРД (зөвхөн өнгөөр уншуулахгүй) */}
-              {!r.heading && has && r.progress != null && (
-                <em className={s.ganttPct} style={{ left: `min(calc(${pos(r.end!)}% + 4px), calc(100% - 44px))` } as CSSProperties}>
+              {!r.heading && has && r.progress != null && w <= 4 && (
+                <em className={s.ganttPct} style={{ left: `calc(${pos(r.end!)}% + 4px)` } as CSSProperties}>
                   {`${r.progress.toFixed(r.progress < 10 ? 1 : 0)}%`}
                 </em>
               )}
