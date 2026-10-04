@@ -5,30 +5,6 @@ import { LAYER_BY_ID } from './layers';
 
 /* ══════════════════════ Растр ба 3D ══════════════════════ */
 
-const UBHUB = req("NEXT_PUBLIC_UBHUB_IMAGERY", process.env.NEXT_PUBLIC_UBHUB_IMAGERY);
-
-/**
- * Агаарын зураг — НЭГ нэгтгэсэн ImageServer (`selbe_ortho_merged`). СУУРЬ тул
- * хэрэглэгчийн унтраалгагүй: газрын зураг хоёрхон төрөлтэй (2D = ортофото, 3D = меш).
- *
- * ⚠️ 2026-08-06: өмнөх 9 тусдаа ImageServer (`Selbe_mid_1…`, `Selbe_north_ortho1…`,
- * host `mapservice.ubhub.mn`) БҮГД «Service not started» болж унасан тул нэг
- * нэгтгэсэн үйлчилгээгээр солив. Шинэ host `imagery.ubhub.mn`, CORS дурын origin-д
- * нээлттэй (preflight + `X-Esri-Authorization` зөвшөөрнө).
- *
- * ⚠️ Проекц Web Mercator (3857/102100) — өмнөх UTM 48N БИШ. `tileInfo` (LERC2D,
- * 3см хүртэл) байгаа ч `capabilities` нь «Image, Metadata» тул тайл serving биш,
- * `exportImage`-аар үйлчилдэг → `ImageryTileLayer` БИШ, динамик `ImageryLayer`
- * хэвээр (одоогийн MapCanvas/SuitMap-ийн арга зөв). Массив нь нэг элементтэй ч
- * `.map()`-аар давхарга үүсгэдэг код өөрчлөлтгүй ажиллана.
- */
-export const IMAGERY = {
-  get title() { return tr('Агаарын зураг (ортофото)'); },
-  urls: [
-    `${UBHUB}/selbe_ortho_merged/ImageServer`,
-  ],
-} as const;
-
 /**
  * 3D бодит загвар (IntegratedMesh).
  *
@@ -41,24 +17,36 @@ export const IMAGERY = {
  * дээр эрүүл ажиллана. Гэрчилгээ хүчинтэй.
  */
 const UBHUB_SCENE = req("NEXT_PUBLIC_UBHUB_SCENE", process.env.NEXT_PUBLIC_UBHUB_SCENE);
-/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IRGED_ORTHO үүнээс. */
+/** UBHUB ArcGIS Server-ийн `…/rest/services` суурь (`Hosted`-гүй) — IMAGERY үүнээс. */
 const UBHUB_REST = UBHUB_SCENE.replace(/\/Hosted$/i, "");
 
 /**
- * «Иргэдэд хүрэх үр өгөөж» харагдацын 2D СУУРЬ ЗУРАГ — ортофото MapServer.
+ * АГААРЫН ЗУРАГ (ОРТОФОТО) — системийн ГАНЦ ортофото: `Selbe_September_tif`
+ * MapServer (2026 оны 9-р сарын «True Ortho»). 2D газрын зургийн СУУРЬ.
  *
- * ⚠️ `IMAGERY` (ImageServer, `selbe_ortho_merged`)-ЭЭС ӨӨР үйлчилгээ: энэ нь
- * динамик MapServer (`singleFusedMapCache: false`, capabilities «Map, Query,
- * Data») бөгөөд НЭГ растр давхаргатай (`Selbe_ortho_P.tif`). Тиймээс
- * `ImageryLayer` БИШ, `MapImageLayer`-ээр ачаална.
- *
- * ⚠️ Проекц UTM 48N (32648) — аппын суурь зураг Web Mercator (3857). MapServer
- * нь `exportMap`-даа гаралтын SR-ийг хүлээж авдаг тул сервер талдаа хөрвүүлнэ;
- * тайл кэш байхгүй тул зураг бүрэн ачаалахад ImageServer-ээс удаан байж болно.
- *
- * ⚠️ Каталогийн давхарга БИШ — `LAYERS`-д ороогүй, `MapCanvas.buildLayers` нь
- * тусад нь нэмнэ. Ил эсэхийг `visible` prop-оор (id-гаар) л удирдана.
+ * ⚠️ 2026-10-04: ХУУЧИН ОРТОФОТО БҮРМӨСӨН ХАСАГДСАН (хэрэглэгч: «системийн ортог
+ *    сольж, хуучин ортог бүр мөсөн хая»):
+ *      · `selbe_ortho_merged` ImageServer (`imagery.ubhub.mn`, env
+ *        `NEXT_PUBLIC_UBHUB_IMAGERY`) — үндсэн ортофото байсан;
+ *      · `Selbe_ortho` MapServer — «Иргэдэд хүрэх үр өгөөж»-ийн суурь
+ *        (`IRGED_ORTHO`) ба «Харьцуулах (swipe)» товчны хуучин зураг
+ *        (`ORTHO_SWIPE`). Харьцуулах товч ч хамт хасагдсан — харьцуулах
+ *        хуучин зураг үлдээгүй.
+ *    БУЦААЖ БҮҮ НЭМ. Бүх харагдац (Иргэд ч) энэ нэг ортофотог `ortho` төлөвөөр асаана.
+ * ⚠️ ТАЙЛ КЭШТЭЙ (`singleFusedMapCache: true`, 24 LOD) боловч проекц нь UTM 48N
+ *    (32648) — аппын газрын зураг Web Mercator (3857). Өөр проекцтой тайлыг
+ *    `TileLayer` ЗУРАХГҮЙ тул `MapImageLayer` (`export`) — сервер талдаа 3857
+ *    рүү хөрвүүлнэ (шалгав: 1024² PNG ~0.4 сек). `ImageryLayer` БИШ — MapServer.
+ * ⚠️ `png32` (тунгалаг) — зургийн хүрээнээс гадуурх хэсэг суурь зургийг
+ *    цагаан/хараар халхлахгүй.
+ * ⚠️ Хамрах хүрээ ~1.6 × 2.2 км (Сэлбэ орчим) — түүнээс гадна суурь зураг харагдана.
+ * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` / `SuitMap` тусад нь нэмнэ.
  */
+export const IMAGERY = {
+  get title() { return tr('Агаарын зураг (ортофото)'); },
+  url: `${UBHUB_REST}/Selbe_September_tif/MapServer`,
+} as const;
+
 /**
  * «Иргэдэд хүрэх үр өгөөж» харагдацын 3D БОДИТ ЗАГВАР — гурван IntegratedMesh.
  *
@@ -270,33 +258,7 @@ export const IRGED_ROAD = {
   url: `${UBHUB_SCENE}/Selbe_road/VectorTileServer`,
 } as const;
 
-export const IRGED_ORTHO = {
-  id: "irged:ortho",
-  get title() { return tr('Ортофото (Selbe_ortho)'); },
-  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — UBHUB_SCENE-тэй нэг сервер, `Hosted`-ын гадна. */
-  url: `${UBHUB_REST}/Selbe_ortho/MapServer`,
-} as const;
-
-/**
- * ОРТОФОТО ХАРЬЦУУЛАХ (swipe) — ХУУЧИН ортофото (`Selbe_ortho`, MapServer).
- *
- * Зурган дээрх «Харьцуулах» товч үүнийг ЗҮҮН талд, одоогийн нэгтгэсэн
- * ортофотог (`IMAGERY` → `selbe_ortho_merged`) БАРУУН талд тавьж, дундах
- * бариулыг чирэхэд хоёр хугацааны зураг солигдоно.
- *
- * ⚠️ `IRGED_ORTHO`-той ИЖИЛ үйлчилгээ ч ТУСДАА давхарга: тэр нь «Иргэдэд хүрэх
- * үр өгөөж» харагдацын суурь зураг бөгөөд тэр харагдацын `visible` жагсаалтаар
- * удирдагддаг. Хуваалцвал swipe асаахад тэр харагдацын суурь зураг санамсаргүй
- * асч/унтарна.
- * ⚠️ Каталогийн давхарга БИШ — `MapCanvas.buildLayers` тусад нь нэмнэ.
- */
-export const ORTHO_SWIPE = {
-  id: "ortho:swipe",
-  get title() { return tr('Ортофото — хуучин (Selbe_ortho)'); },
-  /* ⚠️ 2026-09-17: тусдаа env/fallback-гүй — `IRGED_ORTHO`-той ЯГ нэг хаяг,
-     UBHUB_REST суурийн дэд үйлчилгээ. Ялгаа нь зөвхөн давхаргын `id`. */
-  url: `${UBHUB_REST}/Selbe_ortho/MapServer`,
-} as const;
+/* ⚠️ 2026-10-04: `IRGED_ORTHO` ба `ORTHO_SWIPE` (хуучин `Selbe_ortho`) ХАСАГДСАН — `IMAGERY`-ийн ⚠️. */
 
 /**
  * ХАМРАХ ХҮРЭЭНИЙ БУФЕР — нийгмийн байгууламжийн нормативын үйлчилгээний

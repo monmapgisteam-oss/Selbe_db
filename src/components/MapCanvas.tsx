@@ -23,7 +23,6 @@ import Graphic from '@arcgis/core/Graphic';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Point from '@arcgis/core/geometry/Point';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
-import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
@@ -32,7 +31,6 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
-import Swipe from '@arcgis/core/widgets/Swipe';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -43,8 +41,8 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
-  ORTHO_SWIPE, MESH_VERSIONS, DEFAULT_MESH_VER, MESH_CMP_PREFIX, type MeshVer,
+  HOME, IMAGERY, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  MESH_VERSIONS, DEFAULT_MESH_VER, MESH_CMP_PREFIX, type MeshVer,
   IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
   ZONE_FIELD, ZONE_NONE, ZONE_TYPE_EMPTY_HUE, OID, BUILDING, PARCEL_LEFT, buildingKey,
@@ -693,21 +691,6 @@ const zoneTypeRenderer = (d: LayerDef) => ({
  * ⚠️ `uniform` горимд ч ажиллана — газар чөлөөлөлтийн зураг дээр `land:left`-ийг
  * `Tuluv` төлөвөөр (чөлөөлсөн/цэвэрлэсэн/үлдсэн) будахад хэрэгтэй.
  */
-/**
- * ОРТОФОТО ХАРЬЦУУЛАЛТЫН ХАЖУУГИЙН ДАВХАРГУУД.
- *
- * Swipe нь ортофотогоос гадна ДУРЫН давхаргыг тал руу нь тасалж чадна. Хоёр
- * ортофото нь ӨӨР ХУГАЦААНЫ зураг тул тэдэн дээр тохирох сэдвийн давхаргыг
- * тавибал харьцуулалт нь «зураг ↔ зураг» биш «БАЙДАЛ ↔ БАЙДАЛ» болно:
- *   · ЗҮҮН (хуучин ортофото) — ОДООГИЙН байдал: гэр хорооллын барилга, нүхэн жорлон
- *   · БАРУУН (шинэ ортофото) — БАРИГДАЖ буй: 113 блокийн гүйцэтгэл
- *
- * ⚠️ Таслалт нь зөвхөн ЗУРАГЛАЛД нөлөөлнө; давхаргыг swipe асаахад ИЛ болгож,
- * унтраахад өмнөх төлөвт нь буцаана (`swipeShownRef`).
- */
-const SWIPE_OLD_IDS = [IRGED_BUILT.id, IRGED_TOILET.id];
-const SWIPE_NEW_IDS = ['mon:building'];
-
 const paintRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint!.field,
@@ -1061,7 +1044,6 @@ const MESH_VER_IDS = Object.values(MESH_VERSIONS).flatMap((v) =>
 const PASSIVE = new Set<string>([
   'sketch',
   IMAGERY_ID,
-  IRGED_ORTHO.id,
   // Нүхэн жорлон — зөвхөн байршил харуулна; дарахад атрибут гарах ЁСГҮЙ
   IRGED_TOILET.id,
   TOILET_PIN_ID,
@@ -1096,7 +1078,6 @@ const PASSIVE = new Set<string>([
 const NO_HIGHLIGHT = new Set<string>([
   'sketch',
   IMAGERY_ID,
-  IRGED_ORTHO.id,
   IRGED_ROAD.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
@@ -1165,37 +1146,17 @@ function buildLayers(uniform = false): Layer[] {
      * агшинд эцгийнхээ `visible`-ыг шингээдэг бөгөөд конструкторын шинжүүд ямар
      * дарааллаар олгогдох нь баталгаагүй.
      */
-    layers: IMAGERY.urls.map((url, i) => new ImageryLayer({
-      id: `${IMAGERY_ID}:${i}`, url, visible: true,
-      format: 'jpgpng', popupEnabled: false, legendEnabled: false,
-    })),
+    /* ⚠️ 2026-10-04: `Selbe_September_tif` MapServer — UTM 48N тайлыг 3857 газрын
+       зурагт `TileLayer` зурахгүй тул `MapImageLayer` (сервер талын хөрвүүлэлт),
+       `png32` тунгалаг (`services/scene.ts` IMAGERY-ийн ⚠️). */
+    layers: [new MapImageLayer({
+      id: `${IMAGERY_ID}:0`, url: IMAGERY.url, visible: true,
+      imageFormat: 'png32', imageTransparency: true, legendEnabled: false,
+    })],
   }));
 
-  /* Ортофото ХАРЬЦУУЛАЛТ (swipe) — ХУУЧИН ортофото, одоогийнхын ЯГ ДЭЭР.
-     ⚠️ Дээр байх ёстой: swipe нь ЗӨВХӨН ҮҮНИЙГ тасалдаг (зүүн талд ил,
-     баруун талд алга). Ингэснээр баруун тал нь ЖИРИЙН зураг хэвээр — бусад
-     давхарга, суурь зураг, харагдацын логикт огт хүрэхгүй.
-     Эхлээд УНТРААЛТТАЙ; каталогт ОРОХГҮЙ (`listMode: 'hide'`). */
-  L.push(new MapImageLayer({
-    id: ORTHO_SWIPE.id,
-    title: ORTHO_SWIPE.title,
-    url: ORTHO_SWIPE.url,
-    visible: false,
-    listMode: 'hide',
-    legendEnabled: false,
-  }));
-
-  /* «Иргэдэд хүрэх үр өгөөж»-ийн ортофото (динамик MapServer) — вектор давхаргын
-     ДООР, эхэндээ УНТРААЛТТАЙ. Тэр харагдац `visible` жагсаалтдаа id-г нь өгч
-     асаана; бусад харагдацад жагсаалтад ороогүй тул унтраалттай хэвээр. */
-  L.push(new MapImageLayer({
-    id: IRGED_ORTHO.id,
-    title: IRGED_ORTHO.title,
-    url: IRGED_ORTHO.url,
-    visible: false,
-    listMode: 'hide',
-    legendEnabled: false,
-  }));
+  /* ⚠️ 2026-10-04: хуучин ортофотогийн хоёр давхарга (`ORTHO_SWIPE` · `IRGED_ORTHO`,
+     `Selbe_ortho`) ХАСАГДСАН — ортофото нь зөвхөн дээрх `IMAGERY_ID`. */
 
   /* Зам (вектор тайл) — ортофотогийн ДЭЭР, цэгүүдийн ДООР.
      ⚠️ Загварыг URL-ээс автоматаар уншина (`resources/styles`) тул renderer
@@ -2037,19 +1998,6 @@ export const MapCanvas = memo(function MapCanvas({
     if (orthoChkRef.current) orthoChkRef.current.checked = ortho;
   }, [ortho]);
 
-  /**
-   * Ортофото харьцуулах (swipe) виджет — асаалттай үед л утгатай.
-   * ⚠️ `useRef`: DOM callback-ууд closure тул төлвийг ref-ээр уншина; мөн
-   * view устахад cleanup эндээс устгана (2D↔3D солиход ч үлдэхгүй).
-   */
-  const swipeRef = useRef<__esri.Swipe | null>(null);
-
-  /**
-   * Swipe асаахад ИЛ болгосон сэдвийн давхаргууд ба тэдний ӨМНӨХ төлөв —
-   * унтраахад яг байснаар нь буцаана (каталогийн чагтыг эвдэхгүй).
-   */
-  const swipeShownRef = useRef<{ layer: __esri.Layer; was: boolean }[]>([]);
-
   /** 3D мешийн харьцуулалтыг унтраах функц (идэвхтэй үед л утгатай) */
   const mesh3dOffRef = useRef<(() => void) | null>(null);
 
@@ -2340,104 +2288,9 @@ export const MapCanvas = memo(function MapCanvas({
     });
     addUi(fsBtn, 'top-right');
 
-    /**
-     * ОРТОФОТО ХАРЬЦУУЛАХ (swipe) — ХУУЧИН `Selbe_ortho` ↔ ОДООГИЙН
-     * `selbe_ortho_merged`. Бариулыг чирэхэд хоёр хугацааны зураг солигдоно.
-     *
-     * ⚠️ ЗӨВХӨН 2D: `Swipe` виджет `MapView`-д л ажилладаг (SceneView-д
-     * давхаргыг хавтгайд таслах боломжгүй).
-     * ⚠️ Дизайн хөндөөгүй — бүтэн дэлгэцийн товчтой ЯГ ижил `esri-widget--button`
-     * загвар, ижил булан. Идэвхтэй үед зөвхөн өнгө нь `--hue` болно.
-     * ⚠️ Харьцуулалт нь каталогийн «Ортофото» чагтаас ХАМААРНА: одоогийн
-     * ортофото унтраалттай бол харьцуулах юм үлдэхгүй тул асаагаад эхэлнэ.
-     */
-    if (!is3D(dim)) {
-      const cmpLayer = map.findLayerById(ORTHO_SWIPE.id);
-      const swBtn = document.createElement('div');
-      swBtn.className = 'esri-widget--button esri-widget';
-      swBtn.setAttribute('role', 'button');
-      swBtn.setAttribute('tabindex', '0');
-      swBtn.setAttribute('aria-pressed', 'false');
-      swBtn.title = tr('Харьцуулах — зүүн: хуучин зураг + одоогийн барилга, баруун: шинэ зураг + баригдаж буй блок');
-      /* Дундуур нь босоо шугам татсан хоёр хагас — swipe-ийн бариулын дүрс */
-      swBtn.innerHTML =
-        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
-        + '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" '
-        + 'stroke="currentColor" stroke-width="1.5"/>'
-        + '<path d="M8 1.6v12.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-        + '<path d="M5.1 8H2.9M4.1 6.9 2.9 8l1.2 1.1M10.9 8h2.2M11.9 6.9 13.1 8l-1.2 1.1" '
-        + 'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      const markSwipe = (on: boolean) => {
-        swBtn.style.color = on ? 'var(--hue, #0d9488)' : '';
-        swBtn.setAttribute('aria-pressed', String(on));
-      };
-      const toggleSwipe = () => {
-        if (swipeRef.current) {
-          swipeRef.current.destroy();
-          swipeRef.current = null;
-          if (cmpLayer) cmpLayer.visible = false;
-          /* Сэдвийн давхаргуудыг swipe-аас ӨМНӨХ төлөвт нь буцаана */
-          for (const { layer, was } of swipeShownRef.current) layer.visible = was;
-          swipeShownRef.current = [];
-          markSwipe(false);
-          return;
-        }
-        if (!cmpLayer) return;
-        /**
-         * ⚠️ ЗӨВХӨН `leadingLayers` — `trailingLayers` ХООСОН.
-         *
-         * Урьд нь одоогийн ортофотог `trailingLayers`-т өгч байсан нь «Иргэдэд
-         * хүрэх үр өгөөж» мэтийн ӨӨРИЙН суурь зурагтай харагдацад бүх зургийг
-         * хоослож байв. Одоо баруун тал нь ЖИРИЙН зураг (юу ч таслагдахгүй),
-         * зүүн талд нь хуучин ортофото дээрээс нь наалдана — харьцуулалт ижил,
-         * гэхдээ бусад давхарга, харагдацын логикт огт хүрэхгүй.
-         */
-        cmpLayer.visible = true;
-        /**
-         * ⚠️ Харагдацын ӨӨРИЙН хуучин ортофотог (`irged:ortho` — ЯГ ИЖИЛ
-         * `Selbe_ortho` үйлчилгээ) мөн ЗҮҮН тийш таслана.
-         *
-         * Эс бөгөөс «Иргэдэд хүрэх үр өгөөж»-д тэр нь харьцуулах давхаргын
-         * ДЭЭР байрлаж, БАРУУН талд ч хуучин зураг гарах тул хоёр тал ЯГ ИЖИЛ
-         * харагддаг байв («ортофото өөрчлөгдөхгүй байна»). Таслалт нь зөвхөн
-         * ЗУРАГЛАЛД нөлөөлнө — давхаргын `visible` хөндөгдөхгүй тул тэр
-         * харагдацын логик хэвээр, swipe унтраахад бүрэн сэргэнэ.
-         */
-        const leading = [cmpLayer];
-        const viewOrtho = map.findLayerById(IRGED_ORTHO.id);
-        if (viewOrtho) leading.push(viewOrtho);
-
-        /* Сэдвийн давхаргууд — асаагаад өмнөх төлөвийг нь тэмдэглэнэ */
-        const trailing: __esri.Layer[] = [];
-        swipeShownRef.current = [];
-        const side = (ids: string[], into: __esri.Layer[]) => {
-          for (const id of ids) {
-            const l = map.findLayerById(id);
-            if (!l) continue;
-            swipeShownRef.current.push({ layer: l, was: l.visible });
-            l.visible = true;
-            into.push(l);
-          }
-        };
-        side(SWIPE_OLD_IDS, leading);
-        side(SWIPE_NEW_IDS, trailing);
-
-        swipeRef.current = new Swipe({
-          view: view as __esri.MapView,
-          leadingLayers: leading,
-          trailingLayers: trailing,
-          direction: 'horizontal',
-          position: 50,
-        });
-        view.ui.add(swipeRef.current);
-        markSwipe(true);
-      };
-      swBtn.addEventListener('click', toggleSwipe);
-      swBtn.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwipe(); }
-      });
-      addUi(swBtn, 'top-right');
-    }
+    /* ⚠️ 2026-10-04: «ОРТОФОТО ХАРЬЦУУЛАХ (swipe)» товч ХАСАГДСАН — хуучин ортофото
+       (`Selbe_ortho`) бүрмөсөн хасагдсан тул харьцуулах зураг үлдээгүй
+       (`services/scene.ts` IMAGERY-ийн ⚠️). 3D мешийн харьцуулалт (доор) ХЭВЭЭР. */
 
     /**
      * 3D МЕШ ХАРЬЦУУЛАХ — ХУУЧИН (Сэлбэ 1, 2) ↔ ШИНЭ (`Selbe_mesh_0917`).
@@ -2925,18 +2778,6 @@ export const MapCanvas = memo(function MapCanvas({
          ын солилт салалт БИШ (`unmountingRef` false) → урьдын адил устгана. */
       const tabPark3d = unmountingRef.current && is3D(dim);
       const park = !view.destroyed && (shouldPark(mountGen, getLocaleGeneration()) || tabPark3d);
-      if (park && swipeRef.current) view.ui.remove(swipeRef.current);
-      /* Ортофото харьцуулалт — view-тэй хамт дуусна (2D↔3D солиход ч).
-         ⚠️ Давхаргыг мөн НУУНА: Map нь кэшлэгддэг тул ил үлдвэл 3D-д хуучин
-         ортофото газарт наалдаж, мешийн дээр гарч ирнэ. */
-      swipeRef.current?.destroy();
-      swipeRef.current = null;
-      const cmpOff = map.findLayerById(ORTHO_SWIPE.id);
-      if (cmpOff) cmpOff.visible = false;
-      /* Swipe-ийн үед асаасан сэдвийн давхаргууд — Map кэшлэгддэг тул
-         view устахад ч өмнөх төлөвт нь буцаана */
-      for (const { layer, was } of swipeShownRef.current) layer.visible = was;
-      swipeShownRef.current = [];
       mesh3dOffRef.current?.();
       mesh3dOffRef.current = null;
       setTip(null);
@@ -4446,8 +4287,8 @@ export const MapCanvas = memo(function MapCanvas({
       // ⚠️ Полигон зурах GraphicsLayer нь каталогийн `visible` жагсаалтад ХЭЗЭЭ Ч
       //    орохгүй тул энэ шалгуургүй бол доорх мөр түүнийг нууж, зурсан полигон
       //    алга болно. Sketch widget өөрөө агуулгыг удирдана — үргэлж ил.
-      // Ортофото/меш харьцуулалт — ЗӨВХӨН «Харьцуулах» товч удирдана (каталогт үл хамаарна)
-      if (l.id === ORTHO_SWIPE.id || l.id.startsWith(MESH_CMP_PREFIX)) return;
+      // Меш харьцуулалт — ЗӨВХӨН «Харьцуулах» товч удирдана (каталогт үл хамаарна)
+      if (l.id.startsWith(MESH_CMP_PREFIX)) return;
       // Хамрах хүрээний буфер — өөрийн эффект удирдана (каталогт үл хамаарна)
       if (l.id === 'irged:reach') return;
       if (l.id === 'sketch') { l.visible = true; return; }

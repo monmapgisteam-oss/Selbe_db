@@ -30,7 +30,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import {
   LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF,
-  IMAGERY, IRGED_ORTHO, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM,
+  IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM,
   ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL,
   HABEA, HJ, layerUrl,
   type LayerDef, type ViewKey,
@@ -888,13 +888,11 @@ function otherEntries(): CatEntry[] {
 function imgEntries(): CatEntry[] {
   type Src = { id: string; title: string; url: string; kind: CatKind; views: ViewKey[]; allMaps?: true; purpose: () => string };
   const list: Src[] = [
-    ...IMAGERY.urls.map((u, i) => ({
-      id: `img:ortho${i || ''}`, title: IMAGERY.title, url: u, kind: 'image' as const, views: [], allMaps: true as const,
-      purpose: () => tr('Агаарын зураг (ортофото) — 2D газрын зургийн суурь.'),
-    })),
+    /* ⚠️ 2026-10-04: ГАНЦ ортофото — `Selbe_September_tif`. Хуучин «img:ortho-old»
+       (`Selbe_ortho`) хасагдсан (`services/scene.ts` IMAGERY-ийн ⚠️). */
     {
-      id: 'img:ortho-old', title: IRGED_ORTHO.title, url: IRGED_ORTHO.url, kind: 'image', views: ['irged'],
-      purpose: () => tr('Хуучин ортофото — «өмнө» байдал ба харьцуулах (swipe) зураг.'),
+      id: 'img:ortho', title: IMAGERY.title, url: IMAGERY.url, kind: 'image', views: [], allMaps: true,
+      purpose: () => tr('Агаарын зураг (ортофото) — 2D газрын зургийн суурь.'),
     },
     {
       id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image', views: ['irged'],
