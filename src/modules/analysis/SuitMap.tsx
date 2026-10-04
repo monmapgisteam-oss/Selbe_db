@@ -10,7 +10,7 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
-import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
+import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
 import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Basemap from '@arcgis/core/Basemap';
@@ -470,10 +470,11 @@ export function SuitMap({
         title: IMAGERY.title,
         visible: false,
         listMode: 'hide',
-        layers: IMAGERY.urls.map((url, i) => new ImageryLayer({
-          id: `imagery:${i}`, url, visible: true,
-          format: 'jpgpng', popupEnabled: false, legendEnabled: false,
-        })),
+        /* ⚠️ 2026-10-04: `Selbe_September_tif` MapServer — `MapImageLayer` (`services/scene.ts` IMAGERY-ийн ⚠️) */
+        layers: [new MapImageLayer({
+          id: 'imagery:0', url: IMAGERY.url, visible: true,
+          imageFormat: 'png32', imageTransparency: true, legendEnabled: false,
+        })],
       });
 
       /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн

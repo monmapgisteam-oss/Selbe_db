@@ -67,7 +67,7 @@ import {
   SLUDGE_M3_PER_PERSON, latrineLoad, stoveLoad,
 } from '@/lib/bohirdol';
 import {
-  IRGED_BUILT, IRGED_BUILT_MAP_HUE, IRGED_ORTHO, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
+  IRGED_BUILT, IRGED_BUILT_MAP_HUE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
   LAYER_BY_ID, LAYER_GROUPS, PKG_BY_FAMILY, groupOf,
 } from '@/lib/services';
 import { num } from '@/lib/format';
@@ -217,7 +217,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * (`filter.tsx`-ийн тайлбар). Хоёр карт зэрэг «сонгогдсон» харагдахгүй.
    */
 
-  const is2d = dim === '2d';
 
   /**
    * ЭНЭ ЦОНХНЫ СУУРЬ — ортофото, зам, ба сэдвийн хоёр давхарга. Каталогийн
@@ -231,15 +230,16 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * нь алга болно») арилсан: `MapCanvas` одоо 3D-д каталогийн давхаргыг
    * `relative-to-scene` өндрийн горимоор МЕШИЙН ГАДАРГУУ дээр байрлуулна.
    *
-   * ⚠️ Ортофото нь 2D-д ҮЛДЭНЭ: `MapCanvas` нь сонголт ХООСОН үед
-   * `BASE_MAP_IDS`-ийн 14 суурь давхаргыг бүгдийг асаадаг — бүх чагтыг авбал
-   * ортофотогийн оронд тэдгээр гарч ирнэ. 3D-д тэр нь мешийн ДООР үлдэх тул
-   * утгагүй (меш өөрөө газрын гадаргууг бүрэн орлоно).
+   * ⚠️ 2026-10-04: ЭНЭ ЦОНХНЫ ӨӨРИЙН ортофото (`IRGED_ORTHO`) хасагдсан — суурь
+   *    зураг нь бусад харагдацын адил `MapCanvas`-ийн `ortho` төлөв (системийн ганц
+   *    ортофото). Тиймээс 2D/3D ялгаагүй нэг жагсаалт.
    */
   const base = useMemo(() => {
     const own = [IRGED_TOILET.id, IRGED_BUILT.id, ...SOC_IDS];
-    return is2d ? [IRGED_ORTHO.id, ...ALWAYS, ...own] : [...ALWAYS, ...own];
-  }, [is2d]);
+    /* ⚠️ 2026-10-04: ӨӨРИЙН хуучин ортофото (`IRGED_ORTHO`, `Selbe_ortho`) ХАСАГДСАН —
+       бусад харагдацын адил системийн ганц ортофото (`IMAGERY`, `ortho` төлөв). */
+    return [...ALWAYS, ...own];
+  }, []);
 
   /**
    * ⚠️ 2026-08-20: Дээрх нь СУУРЬ (энэ цонхны түүх — ортофото, зам, чагтууд);
