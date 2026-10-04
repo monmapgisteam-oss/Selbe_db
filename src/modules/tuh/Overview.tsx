@@ -15,11 +15,13 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date } from '@/lib/format';
 import {
-  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, daysBetween,
+  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, daysBetween, elapsedPct,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
 import { lz, type TuhModel, type TuhRow } from './model';
-import { Meter, Legend, Gantt, type GanttRow } from './charts';
+import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
+/* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
+import { Section as Card } from '@/components/ui';
 /* ⚠️ Системийн «Гүйцэтгэлийн явц» график — ТУХ өөрийн график зурахгүй (2026-09-30,
    хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
@@ -84,6 +86,39 @@ export function ReportAge({ r }: { r: Pick<TuhRow, 'lastReport' | 'reportAge'> }
   );
 }
 
+/**
+ * ХУГАЦАА ба ГҮЙЦЭТГЭЛ — хоёр зурвасыг ДООР ДООРОО жишнэ (2026-10-01, хэрэглэгч:
+ * «жижиг картын чартыг ойлгомжтой болго»). Гүйцэтгэлийн зурвас хугацааныхаас
+ * БОГИНО бол хоцорч байна — тайлбаргүйгээр нэг хараад уншигдана.
+ *   · Хугацаа — гэрээт эхлэх/дуусах огнооноос өнгөрсөн хувь (`elapsedPct`);
+ *   · Гүйцэтгэл — биет гүйцэтгэл; хугацаанаас доогуур бол улаан, эс бөгөөс ногоон.
+ * ⚠️ Аль нэг нь `null` бол тэр мөр «—» (0 гэж зурахгүй); өнгө зөвхөн хоёулаа байхад.
+ */
+export function DuoBars({ elapsed, progress }: { elapsed: number | null; progress: number | null }) {
+  const tone = elapsed != null && progress != null ? (progress < elapsed ? 'bad' : 'good') : 'data';
+  const row = (label: string, v: number | null, cls: string, txt: string) => (
+    <div className={s.duoRow}>
+      <span className={s.duoLbl}>{label}</span>
+      <span className={s.duoTrack}>
+        {v != null && <i className={cls} style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />}
+      </span>
+      <span className={s.duoVal}>{txt}</span>
+    </div>
+  );
+  return (
+    <div className={s.duo}>
+      {row(tr('Хугацаа'), elapsed, s.duoTime, elapsed == null ? '—' : tr('{0} өнгөрсөн', pct(elapsed, 0)))}
+      {row(tr('Гүйцэтгэл'), progress, s[`duo_${tone}`], pct(progress))}
+    </div>
+  );
+}
+
+/**
+ * ТУХ-ын төлөв → «Хуваарь»-ийн зурвасын өнгө.
+ * ⚠️ «Зогссон» оноогддоггүй; оноогдвол улаан. «Мэдээлэлгүй» — зураасан (огноогүйтэй ижил).
+ */
+export const barSt = (st: TuhStatus): BarSt => (st === 'stopped' ? 'late' : st === 'unknown' ? 'none' : st);
+
 /** Level 1 гантт — багцын мөрүүд бүлгээр */
 export function level1Rows(rows: TuhRow[], onOpen: (k: string) => void, active?: string): GanttRow[] {
   const out: GanttRow[] = [];
@@ -98,7 +133,7 @@ export function level1Rows(rows: TuhRow[], onOpen: (k: string) => void, active?:
         start: r.p.start,
         end: r.p.end,
         progress: r.progress,
-        tone: statusMeta(r.status).tone,
+        st: barSt(r.status),
         marks: r.commission != null ? [{ at: r.commission, kind: 'commission', label: tr('Улсын комисс') }] : [],
         onClick: () => onOpen(r.p.key),
         active: active === r.p.key,
@@ -126,11 +161,9 @@ export function ganttDomain(rows: { start: number | null; end: number | null; ex
 export function GanttLegend() {
   return (
     <Legend items={[
-      { key: 'bar', label: tr('Гэрээт хугацаа'), color: 'var(--data)', box: true },
-      { key: 'fill', label: tr('Нийт гүйцэтгэл'), color: 'var(--ink-2)', box: true },
-      { key: 'com', label: tr('Улсын комисс'), color: 'var(--data)', diamond: true },
-      { key: 'heat', label: tr('Дулаан авах'), color: 'var(--bad)', diamond: true },
-      { key: 'win', label: tr('Өвөл'), color: 'var(--sunken)', box: true },
+      ...GANTT_LEGEND(),
+      { key: 'com', label: tr('Улсын комисс'), color: 'var(--ink)', kind: 'diamond' },
+      { key: 'now', label: tr('өнөөдөр'), color: 'var(--bad)', kind: 'line' },
     ]} />
   );
 }
@@ -192,7 +225,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
         <div className={s.heroFig}>
           <span className={s.eyebrow}>{tr('Орон сууцны гүйцэтгэл')}</span>
           <span className={s.heroNum}>{pct(m.hero.actual)}</span>
-          <Meter value={m.hero.actual} plan={m.hero.planContract} wide />
+          <Meter value={m.hero.actual} plan={m.hero.planContract} />
           <span className={s.heroNote}>
             {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
           </span>
@@ -403,18 +436,21 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
                       <StatusChip st={r.status} />
                     </div>
                     <h4 className={s.cardTitle}>{r.p.name || '—'}</h4>
+                    {/* ⚠️ 2026-10-01 (хэрэглэгч: «жижиг картын чартыг ойлгомжтой болго»):
+                        том хувь + ХОЦРОГДОЛ ТООГООР (гэрээний төлөвлөгөөнөөс, улаан/ногоон);
+                        «7 хоногт» нь зөвхөн ахиц 0-ээс ялгаатай үед (0.0 pp давтагдаж чимээ болдог байв). */}
                     <div className={s.cardProg}>
                       <span className={s.cardPct}>{pct(r.progress)}</span>
-                      <span className={s.cardWeek}>
-                        {tr('7 хоногт')} <b className={r.week != null && r.week > 0 ? s.good : ''}>{lz(m, 'hist')(pp(r.week))}</b>
-                      </span>
+                      {r.gapContract != null ? (
+                        <span className={`${s.cardGap} ${r.gapContract < 0 ? s.bad : s.good}`}>
+                          {tr('{0} төлөвлөгөөнөөс', pp(r.gapContract))}
+                        </span>
+                      ) : lz(m, 'cfPlan')('—') === '…' && <span className={s.cardGap}>…</span>}
                     </div>
-                    <Meter value={r.progress} plan={r.planContract} />
-                    {/* ⚠️ Хэмжигчийн ЗУРААС юуг заадгийг бичнэ — тайлбаргүй зураас уншигдахгүй */}
-                    <div className={s.meterCap}>
-                      <span><i className={s.capFill} />{tr('Бодит')} {pct(r.progress)}</span>
-                      <span><i className={s.capTick} />{tr('Гэрээний төлөвлөгөө')} {lz(m, 'cfPlan')(pct(r.planContract))}</span>
-                    </div>
+                    {r.week != null && Math.abs(r.week) >= 0.05 && (
+                      <span className={s.cardWeek}>{tr('7 хоногт')} <b className={r.week > 0 ? s.good : s.bad}>{pp(r.week)}</b></span>
+                    )}
+                    <DuoBars elapsed={elapsedPct(r.p.start, r.p.end, m.now)} progress={r.progress} />
                     <div className={s.cardFacts}>
                       <div className={s.wide}><span>{tr('Дүн')}</span><b>{mnt(r.p.cost)}</b></div>
                       <div><span>{tr('Дуусах')}</span><b>{date(r.p.end)}</b></div>
@@ -452,8 +488,10 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
       {/* ── Level 1 ── */}
       <Section id="level1" title={tr('Level 1 — Мастер хуваарь')}
         lead={tr('Багц бүрийн гэрээт хугацаа, гүйцэтгэл ба улсын комиссын огноо («Хуваарь»).')}>
-        <GanttLegend />
-        <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
+        <Card>
+          <GanttLegend />
+          <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
+        </Card>
       </Section>
 
       {/* ── Материал ── */}
