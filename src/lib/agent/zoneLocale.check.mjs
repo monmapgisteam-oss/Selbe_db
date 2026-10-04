@@ -10,7 +10,11 @@
 import assert from 'node:assert/strict';
 import { normalizeZone } from '@/lib/agent/overview';
 import { bagtsKey } from '@/lib/services';
-import { setLocale, getLocale } from '@/lib/i18nCore';
+import { setLocale, getLocale, loadLocaleDict } from '@/lib/i18nCore';
+
+/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
+   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
+await loadLocaleDict('en');
 
 let pass = 0;
 const eq = (name, got, want) => {

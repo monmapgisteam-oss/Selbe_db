@@ -41,7 +41,7 @@ import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
 import {
-  DAY, coverageOf, spanDays, statusOf,
+  DAY, spanDays, statusOf,
   type PlanRow, type Span, type Status,
 } from '@/lib/plan';
 import {
@@ -75,6 +75,7 @@ import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './h
 import { useLatest } from './huvaari/useLatest';
 import { actUnion, allBlockRows, blockSpan, plainRows, unionSpans, type DispRow } from './huvaari/allBlocks';
 import { useCalendar } from './huvaari/useCalendar';
+import { lazyCache } from '@/lib/lazyCache';
 import { useSideExtra } from './huvaari/useSideExtra';
 import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
 import { useDragPlan } from './huvaari/useDragPlan';
@@ -931,7 +932,29 @@ export function Huvaari({
     return s;
   }, [obDraft, obResDraft]);
 
-  const cov = useMemo(() => coverageOf(plan), [plan]);
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ЭНД ЗӨВХӨН `tasks` · `planned` · `reversed` уншигдана.
+     `coverageOf` нь навч бүрд 22 блокийн огноог мөр болгон нийлүүлж (`patterns`-ийн Set) чирэлтийн
+     кадр бүрд ~1,400 мөр үүсгэдэг байв — профайлын 2-р хүнд мөр. Гурван талбарыг ЯГ ИЖИЛ дүрмээр
+     (`plan.coverageOf`-ийн давталт) бодно; `patterns`/`from`/`to` хэрэгтэй бол `coverageOf`-ийг
+     дуудна уу. */
+  const cov = useMemo(() => {
+    let tasks = 0, planned = 0, reversed = 0, partial = 0;
+    for (const r of plan) {
+      if (r.group) continue;
+      tasks += 1;
+      let filled = 0, rev = false;
+      for (const s of r.spans) {
+        if (!s) continue;
+        filled += 1;
+        if (s.end < s.start) rev = true;
+      }
+      if (filled > 0) planned += 1;
+      if (rev) reversed += 1;
+      /* «Дутуу» шүүлтийн тоо — урьд нь toolbar-т зурагдалт БҮРД `plan.filter`-ээр (2026-10-04) */
+      if (filled > 0 && filled < r.spans.length) partial += 1;
+    }
+    return { tasks, planned, reversed, partial };
+  }, [plan]);
 
   /**
    * САРЫН ХУВАARЬ ХУВЬ — тэр сард төлөвлөсөн обьём нь БАГЦЫН НИЙТ обьёмын
@@ -985,6 +1008,11 @@ export function Huvaari({
     for (const r of plan) {
       if (r.group || r.des == null) continue;
       if (r.vol == null || !(r.vol > 0)) continue;
+      /* ⚠️ 2026-10-04 (гүйцэтгэл): мөрийн задаргааг блокийн давталтаас ӨМНӨ нэг удаа; ноорог
+         хоосон бол түлхүүрийн мөр (`${des}|${блок}`) огт үүсгэхгүй — чирэлтийн кадр бүрд
+         ~1,400 × 22 мөр үүсгэдэг байв. Дүрэм ХЭВЭЭР: ноорог нь хадгалагдсаныг дарна. */
+      const pm = obPlan.get(r.des);
+      const hasDraft = obDraft.size > 0;
       for (let b = 0; b < n; b += 1) {
         const blok = sc?.bld[b];
         if (!blok) continue;
@@ -993,7 +1021,7 @@ export function Huvaari({
            нэг ажил бөглөхөд шууд 100% болж, дутуу нь нуугдана. */
         if (!r.spans[b]) continue;
         tot += r.vol;
-        const md = obDraft.get(`${r.des}|${blok}`) ?? obPlan.get(r.des)?.get(blok);
+        const md = (hasDraft ? obDraft.get(`${r.des}|${blok}`) : undefined) ?? pm?.get(blok);
         if (!md || !md.size) continue;
         for (const [k, v] of md) {
           if (v == null) continue;
@@ -1159,8 +1187,10 @@ export function Huvaari({
       const sp = rowSpan(r);
       if (!sp) continue;
       /* ⚠️ 2026-10-01: мужийн ДАМЖСАН бүх жил (шүүлтийн давхцлын дүрэмтэй ижил) */
-      const y0 = Number(msToDay(sp.start).slice(0, 4));
-      const y1 = Number(msToDay(sp.end).slice(0, 4));
+      /* ⚠️ 2026-10-04 (гүйцэтгэл): `getUTCFullYear` ≡ `msToDay(..).slice(0, 4)` (ISO нь UTC) —
+         мөр бүрд 2 `toISOString` мөр үүсгэхгүй; чирэлтийн кадр бүрд ~1,400 мөрөөр гүйдэг. */
+      const y0 = new Date(sp.start).getUTCFullYear();
+      const y1 = new Date(sp.end).getUTCFullYear();
       for (let y = y0; y <= y1; y++) s.add(String(y));
     }
     return [...s].sort();
@@ -1713,9 +1743,14 @@ export function Huvaari({
    *    самбарын огноо нь зурвас ба «Бодит» баганаас (идэвхтэй `blk`) зөрдөг байв.
    *    Хуваарьгүй блок → `null` → «—» (0 БИШ) хэвээр.
    */
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ИДЭВХТЭЙ БЛОКИЙН `effSpan`-ыг `plan`×`blk`-д КЭШЛЭНЭ.
+     Нэг зурагдалтад ижил бүлгийн муж зүүн мөр (`rowSpanAt`) · баруун зурвас · уялдааны сум
+     (урд ба хамаарагч) гэж 3–4 удаа, тус бүр бүх дэд модоор бодогддог байв. Утга ЯГ ИЖИЛ
+     (`effSpan`-ийн цэвэр үр дүн), `plan`/`blk` солигдоход кэш шинээр. */
+  const effAt = useMemo(() => lazyCache((i: number): Span | null => effSpan(plan, i, blk)), [plan, blk]);
   const rowSpanAt = useCallback((r: PlanRow): Span | null => (
-    r.group ? effSpan(plan, r.i, blk) : (r.spans[blk] ?? null)
-  ), [plan, blk]);
+    r.group ? effAt(r.i) : (r.spans[blk] ?? null)
+  ), [effAt, blk]);
   /** Нөгөө төрлийн (гэрээ ↔ төлөвлөгөө) мөрийн идэвхтэй блокийн муж — дээрхтэй ижил дүрэм */
   const refSpanAt = useCallback((oid: number): Span | null => {
     const rr = refByOid.get(oid);
@@ -3220,10 +3255,42 @@ export function Huvaari({
    *    уншдаг тул хадгалагдсан ХУУЧИН огноог үзүүлбэл зурвас ба цонх хоёр
    *    өөр тоо хэлнэ. Бичихгүй — бүлэгт огноо засах хаалттай.
    */
-  const effRow = useCallback((r: PlanRow): PlanRow => (
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): БҮЛЭГ БҮРИЙН ҮР ДҮНГ `plan`-д КЭШЛЭНЭ. `effRow` нь
+     зүүн мөр (`TaskRow`) ба баруун эгнээ (бодит зурвас) ХОЁУЛАНГААС цонхны бүлэг бүрд, зурагдалт
+     БҮРД дуудагддаг; бүлэг бүр `n` блок × бүх дэд мод (`effSpan` + `aggExtra`) гүйдэг тул дээд
+     бүлэг ганцаараа ~1,400 мөр × 22 блок. Гүйлгэх/сонгох/чирэх зурагдалтын профайлд хамгийн
+     хүнд мөр байв. Кэш нь `plan`/`n` солигдоход шинээр (useMemo) — утга ЯГ ИЖИЛ, зөвхөн
+     ижил `plan`-д дахин бодохгүй. Мөрийн ОБЪЕКТООР түлхүүрлэнэ (индекс биш) — өөр массивын мөр
+     орж ирсэн ч андуурахгүй. */
+  const effRow = useMemo(() => {
+    const grp = lazyCache((r: PlanRow): PlanRow => {
+      /* ⚠️ `r.spans.map((_, b) => effSpan(plan, r.i, b))`-тэй ЯГ ИЖИЛ, гэхдээ дэд модыг НЭГ
+         удаа гүйнэ (блок бүрд `leafChildren` дахин үүсгэхгүй): навч хүүхдийн блок бүрийн MIN
+         эхлэх / MAX дуусах; хуваарьтай хүүхэдгүй блокт бүлгийн ӨӨРИЙН муж (`effSpan`-ийн дүрэм). */
+      const own = plan[r.i].spans;
+      const lo: (number | null)[] = own.map(() => null);
+      const hi: (number | null)[] = own.map(() => null);
+      const d0 = plan[r.i].depth;
+      for (let k = r.i + 1; k < plan.length && plan[k].depth > d0; k++) {
+        const c = plan[k];
+        if (c.group) continue;
+        for (let b = 0; b < own.length; b++) {
+          const s = c.spans[b];
+          if (!s) continue;
+          if (lo[b] == null || s.start < (lo[b] as number)) lo[b] = s.start;
+          if (hi[b] == null || s.end > (hi[b] as number)) hi[b] = s.end;
+        }
+      }
+      const spans = r.spans.map((_, b) => {
+        const a = lo[b] ?? null;
+        const z = hi[b] ?? null;
+        return a == null || z == null ? own[b] ?? null : { start: a, end: z };
+      });
+      return { ...r, spans, ...aggExtra(plan, r.i, n) };
+    });
     /* ⚠️ Бодит огноо · нөөц ч хүүхдээс (2026-09-23, `aggExtra`) — бичигдэхгүй. */
-    r.group ? { ...r, spans: r.spans.map((_, b) => effSpan(plan, r.i, b)), ...aggExtra(plan, r.i, n) } : r
-  ), [plan, n]);
+    return (r: PlanRow): PlanRow => (r.group ? grp(r) : r);
+  }, [plan, n]);
 
   /**
    * PDF ТАТАХ — дэлгэц дээрх хуваарийг ЯГ ЭНЭ загвараар (2026-09-30, хэрэглэгч).
@@ -3429,6 +3496,55 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     );
   };
 
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ХУАНЛИЙН ТОЛГОЙ (сар · хоногийн шошго) ба ТОР (сар/хоногийн
+     зураас · «өнөөдөр») — элементийг MEMO-д. Босоо гүйлгээний цонх солигдох, мөр сонгох бүрд Huvaari
+     бүтнээрээ зурагддаг ч эдгээр нь зөвхөн хуанлийн хүрээ/томруулалт (`months`·`ticks`·`xOf`)
+     ба сарын хувиас (`monLab`) хамаарна — ижил элемент буцахад React ~200 шошгыг дахин тулгахгүй.
+     Тэмдэглэгээ · зан төлөв ЯГ ИЖИЛ (доорх JSX-ээс механикаар зөөв). */
+  const calHead = useMemo(() => (
+    <div className={h.plHead}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        const el = scrollRef.current; if (!el) return;
+        const x0 = e.clientX, s0 = el.scrollLeft;
+        const t = e.currentTarget;
+        t.setPointerCapture?.(e.pointerId);
+        const mv = (ev: PointerEvent) => { el.scrollLeft = s0 - (ev.clientX - x0); };
+        const up = () => { t.removeEventListener('pointermove', mv); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); };
+        t.addEventListener('pointermove', mv); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up);
+      }}>
+      {months.map((m) => {
+        const pc = monLab(m.lab);
+        return (
+          <span key={m.at} className={h.plMonth} style={{ left: xOf(m.at) }}
+            title={pc?.tip}>
+            {m.lab}
+            {pc && <b className={h.plMonPct}>{pc.txt}</b>}
+          </span>
+        );
+      })}
+      {ticks.map((tk) => (
+        <span key={tk.at} className={`${h.plDay} ${tk.big ? h.plDayBig : ''}`}
+          style={{ left: xOf(tk.at) }}>
+          {tk.lab}
+        </span>
+      ))}
+    </div>
+  ), [months, ticks, monLab, xOf, scrollRef]);
+  const calGrid = useMemo(() => (
+    <>
+      {months.map((m) => (
+        <span key={m.at} className={`${h.tlGrid} ${h.tlGridBig}`} style={{ left: xOf(m.at) }} />
+      ))}
+      {zoom !== 'month' && ticks.filter((t2) => !t2.big).map((tk) => (
+        <span key={tk.at} className={h.tlGrid} style={{ left: xOf(tk.at) }} />
+      ))}
+      {now >= from && now <= to && (
+        <span className={h.tlNow} style={{ left: xOf(now) }} title={msToDay(now)} />
+      )}
+    </>
+  ), [months, ticks, zoom, xOf, now, from, to]);
+
   /* ── УЯЛДААНЫ СУМУУД — идэвхтэй блок дээр, харагдаж буй мөрүүдийн хооронд ──
      ⚠️ Memo БИШ: `visible`, `sel`, `blk`, `xOf` дөрвүүл байнга хөдөлдөг тул
      кэш бараг онохгүй; тооцоо нь уялдаатай мөрийн тоогоор шугаман — хямд. */
@@ -3443,7 +3559,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     for (let k = 0; k < visible.length; k++) {
       const r = visible[k];
       if (!r.deps.length) continue;
-      const ts = effSpan(plan, r.i, blk);
+      const ts = effAt(r.i);
       if (!ts) continue;
       const ty = k * PL_ROW + PL_ROW / 2;
       const tx = xOf(ts.start);
@@ -3454,7 +3570,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         if (pi == null || pi === r.i) return;
         const pk = visK.get(pi);
         if (pk == null) return;
-        const ps = effSpan(plan, pi, blk);
+        const ps = effAt(pi);
         if (!ps) return;
         const sy = pk * PL_ROW + PL_ROW / 2;
         let d: string;
@@ -3582,11 +3698,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               ['all', tr('Бүгд'), plan.filter((r) => !r.group).length],
               ['has', tr('Хуваарьтай'), cov.planned],
               ['none', tr('Хуваарьгүй'), cov.tasks - cov.planned],
-              ['partial', tr('Дутуу'), plan.filter((r) => {
-                if (r.group) return false;
-                const f = r.spans.filter(Boolean).length;
-                return f > 0 && f < r.spans.length;
-              }).length],
+              ['partial', tr('Дутуу'), cov.partial],
             ] as const).map(([k, label, cnt]) => (
               <button key={k} type="button"
                 className={`${h.tab} ${filter === k ? h.tabOn : ''}`}
@@ -4532,34 +4644,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       сарын толгойн зурвас дээр чирвэл хуанли хэвтээ гүйнэ — гүйлтийн
                       зурвас нарийн, харагдахгүй байсан. Ажлын мөр дээр чирэх нь
                       урьдын адил зурвас үүсгэнэ/зөөнө. */}
-                  <div className={h.plHead}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      const el = scrollRef.current; if (!el) return;
-                      const x0 = e.clientX, s0 = el.scrollLeft;
-                      const t = e.currentTarget;
-                      t.setPointerCapture?.(e.pointerId);
-                      const mv = (ev: PointerEvent) => { el.scrollLeft = s0 - (ev.clientX - x0); };
-                      const up = () => { t.removeEventListener('pointermove', mv); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); };
-                      t.addEventListener('pointermove', mv); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up);
-                    }}>
-                    {months.map((m) => {
-                      const pc = monLab(m.lab);
-                      return (
-                        <span key={m.at} className={h.plMonth} style={{ left: xOf(m.at) }}
-                          title={pc?.tip}>
-                          {m.lab}
-                          {pc && <b className={h.plMonPct}>{pc.txt}</b>}
-                        </span>
-                      );
-                    })}
-                    {ticks.map((tk) => (
-                      <span key={tk.at} className={`${h.plDay} ${tk.big ? h.plDayBig : ''}`}
-                        style={{ left: xOf(tk.at) }}>
-                        {tk.lab}
-                      </span>
-                    ))}
-                  </div>
+                  {calHead}
 
                   {/* ⚠️ 2026-10-01: `plLanesEdit` (touch-action: none) ЗӨВХӨН засах эрхтэй
                       үед — бусдад мэдрэгч дэлгэц дээр хуанли ердийнхөөрөө гүйнэ.
@@ -4572,15 +4657,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     onPointerUp={onUp}
                     onPointerCancel={onCancel}
                   >
-                    {months.map((m) => (
-                      <span key={m.at} className={`${h.tlGrid} ${h.tlGridBig}`} style={{ left: xOf(m.at) }} />
-                    ))}
-                    {zoom !== 'month' && ticks.filter((t2) => !t2.big).map((tk) => (
-                      <span key={tk.at} className={h.tlGrid} style={{ left: xOf(tk.at) }} />
-                    ))}
-                    {now >= from && now <= to && (
-                      <span className={h.tlNow} style={{ left: xOf(now) }} title={msToDay(now)} />
-                    )}
+                    {calGrid}
 
                     {slice.map(({ r: d, k }) => {
                       /* «БҮХ БЛОК» — зөвхөн харах эгнээ (`allLane`, 2026-10-04); энгийн горим ХЭВЭЭР доор */
@@ -4589,7 +4666,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       /* ⚠️ БҮЛГИЙН ЗУРВАС нь ХҮҮХДҮҮДЭЭСЭЭ бодогдоно
                          (`effSpan`) — хадгалагдсан хуучин огноо нь
                          тэдэнтэй зөрж байсан ч ЗӨВ мужийг харуулна. */
-                      const sp = r.group ? effSpan(plan, r.i, blk) : r.spans[blk];
+                      const sp = r.group ? effAt(r.i) : r.spans[blk];
                       const st = sp ? statusOf(sp, r.act?.[blk], now) : 'none';
                       /* Уялдааны зөрчил — шаардлагаас ӨМНӨ эхэлсэн зурвасыг
                          улаан хүрээгээр тэмдэглэнэ (хориглохгүй) */
@@ -4800,7 +4877,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                         {/* ТҮР ШУГАМ — холбох чирэлтийн үед урд ажлын баруун захаас курсор хүртэл */}
                         {link && (() => {
                           const k = visible.findIndex((v) => v.i === link.i);
-                          const ps = k >= 0 ? effSpan(plan, link.i, blk) : null;
+                          const ps = k >= 0 ? effAt(link.i) : null;
                           if (!ps) return null;
                           const sx = xOf(ps.end + DAY);
                           const sy = k * PL_ROW + PL_ROW / 2;
@@ -4968,6 +5045,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 }
 
 /* ⚠️ «ХУВААРИЙН ХАМРАЛТ» самбар 2026-09-02-нд ХАСАГДСАН (хэрэглэгч).
-   `coverageOf()` нь ХЭВЭЭР — шүүлтийн «Хуваарьтай / Хуваарьгүй» табууд
+   `coverageOf()`-ийн дүрэм ХЭВЭЭР (2026-10-04-нөөс `cov` дотор хөнгөн давталтаар) — шүүлтийн «Хуваарьтай / Хуваарьгүй» табууд
    түүний тоог уншсаар байна, зөвхөн толгойн үзүүлэлт л алга болов. */
 

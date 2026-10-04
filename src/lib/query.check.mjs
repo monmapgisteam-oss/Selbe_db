@@ -282,7 +282,8 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   /* Слот суллагдана: 14 гацсан хүсэлт (хязгаар ≤12) — бүгд timeout-оор дуусна */
   globalThis.fetch = stalledBody((s) => s.reason);
   const all = await race(Promise.all(
-    Array.from({ length: 14 }, () => arcgisPost(URL_, {}, { timeoutMs: 40 }).catch((x) => x)),
+    /* ⚠️ 2026-10-04: параметр ЯЛГААТАЙ — ижил мета хүсэлт одоо нэгтгэгддэг (`shared`) тул 14 слот эзлэхгүй */
+    Array.from({ length: 14 }, (_, i) => arcgisPost(URL_, { i: String(i) }, { timeoutMs: 40 }).catch((x) => x)),
   ), 5000);
   assert.notEqual(all, 'HANG', 'гацсан биетэй хүсэлтүүд слотоо суллаагүй — дараалал царцав');
   assert.ok(all.every((x) => x instanceof ArcGISError), 'бүгд timeout алдаа байх ёстой');
@@ -319,6 +320,56 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   assert.deepEqual(await arcgisPost(URL_.replace(/\/query$/, '') + '/addFeatures', {}, { slot: false }), { addResults: [] });
   assert.equal(calls, 2);
   console.log('✅ бичих endpoint: сүлжээний алдаанд дахин илгээхгүй · 429-д дахин оролдоно');
+}
+
+/* ── ЯВАГДАЖ БУЙ ИЖИЛ УНШИЛТЫН НЭГТГЭЛ — `arcgisPost` (2026-10-04, гүйцэтгэлийн аудит) ── */
+{
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; await new Promise((r) => setTimeout(r, 20)); return ok({ features: [{ attributes: { a: 1 } }] }); };
+  const Q = `${URL_}/query`;
+  const [x, y] = await Promise.all([arcgisPost(Q, { where: '1=1', outFields: 'a' }), arcgisPost(Q, { outFields: 'a', where: '1=1' })]);
+  assert.equal(calls, 1, 'ижил `/query` зэрэг явахад НЭГ л хүсэлт (параметрийн дараалал хамаагүй)');
+  assert.deepEqual(x, y);
+  assert.notEqual(x, y, 'хоёр дахь дуудагч ГҮН ХУУЛБАР авна — нэг обьект хуваалцахгүй');
+  /* Дууссаны дараа КЭШ БИШ — дахин дуудвал шинэ хүсэлт */
+  await arcgisPost(Q, { where: '1=1', outFields: 'a' });
+  assert.equal(calls, 2, 'нэгтгэл нь зөвхөн ЯВАГДАЖ БУЙ хүсэлтэд — кэш биш');
+  /* Мета (`?f=json`, параметргүй) ч нэгтгэгдэнэ */
+  calls = 0;
+  await Promise.all([arcgisPost(URL_, {}), arcgisPost(URL_, {})]);
+  assert.equal(calls, 1, 'давхаргын мета зэрэг — нэг хүсэлт');
+  /* Нэгтгэхгүй: бичих endpoint · `signal`-тай · `slot:false` · өөр горим (`token`) */
+  calls = 0;
+  await Promise.all([arcgisPost(`${URL_}/applyEdits`, { adds: '[]' }), arcgisPost(`${URL_}/applyEdits`, { adds: '[]' })]);
+  assert.equal(calls, 2, 'applyEdits ХЭЗЭЭ Ч нэгтгэгдэхгүй — хоёр бичилт хоёулаа явна');
+  calls = 0;
+  const ac = new AbortController();
+  await Promise.all([arcgisPost(Q, { where: 'w' }, { signal: ac.signal }), arcgisPost(Q, { where: 'w' })]);
+  assert.equal(calls, 2, '`signal`-тай хүсэлт нэгтгэгдэхгүй (цуцлалт бусдад тусахгүй)');
+  calls = 0;
+  await Promise.all([arcgisPost(Q, { where: 's' }, { slot: false }), arcgisPost(Q, { where: 's' }, { slot: false })]);
+  assert.equal(calls, 2, '`slot:false` нэгтгэгдэхгүй (слотын гацаа)');
+  calls = 0;
+  await Promise.all([arcgisPost(Q, { where: 't' }), arcgisPost(Q, { where: 't' }, { token: 'org' })]);
+  assert.equal(calls, 2, 'өөр токены горим — өөр түлхүүр');
+  /* `queryCount` (`request`) ба `arcgisPost(…/query, token:'org')` НЭГ нэгтгэлтэй */
+  calls = 0;
+  globalThis.fetch = async () => { calls += 1; await new Promise((r) => setTimeout(r, 20)); return ok({ count: 3 }); };
+  const [c1, c2] = await Promise.all([
+    queryCount(URL_, 'k=1'),
+    arcgisPost(Q, { where: 'k=1', returnCountOnly: 'true' }, { token: 'org' }),
+  ]);
+  assert.equal(c1, 3); assert.equal(c2.count, 3);
+  assert.equal(calls, 1, '`request()` ба `arcgisPost` ижил асуулгыг хуваалцана');
+  /* Алдаа хуваалцагдаж, түлхүүр устна */
+  calls = 0;
+  globalThis.fetch = async () => { calls += 1; await new Promise((r) => setTimeout(r, 20)); return ok({ error: { code: 400, message: 'bad' } }); };
+  const errs = await Promise.all([arcgisPost(Q, { where: 'e' }).catch((e) => e), arcgisPost(Q, { where: 'e' }).catch((e) => e)]);
+  assert.ok(errs.every((e) => e instanceof ArcGISError), 'алдаа бүх хүлээгчид');
+  assert.equal(calls, 1);
+  await arcgisPost(Q, { where: 'e' }).catch(() => {});
+  assert.equal(calls, 2, 'алдааны дараа дахин оролдлого шинэ хүсэлт');
+  console.log('✅ ижил уншилтын нэгтгэл: /query · мета · бичилт/signal/slot:false/горим нэгтгэгдэхгүй · алдаа хуваалцана');
 }
 
 globalThis.fetch = realFetch;

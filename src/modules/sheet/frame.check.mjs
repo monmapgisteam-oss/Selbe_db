@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { alignInsertions, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
+import { alignInsertions, firstDoneFrameAtLeast, firstFrame, lastFrame, numLoose } from './bagtsSheet.ts';
 
 const NO = 'dugaar';
 
@@ -349,4 +349,30 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   }
 
   console.log('✅ давхардсан суурь — loadBaseKeys нь lastFrame(expect)-ээр бүтэн лавлах авна');
+}
+
+/* ── ЛАВЛАХЫН ЭРТ ЗОГСОЛТ (2026-10-04, гүйцэтгэлийн аудит) ──
+ * `loadBaseKeys`-ийн нөөц зам архивыг хуудаслан уншихдаа `firstDoneFrameAtLeast` үнэн болмогц
+ * зогсоно. Баталгаа: тэр агшинд ЗОГССОН (хэсэгчилсэн) өгөгдлийн `firstFrame` нь БҮТЭН
+ * архивынхтай ЯГ ИЖИЛ байх ёстой — угтвар бүрээр шалгана. */
+{
+  const cases = [
+    { all: [...frame(5, 'a'), ...frame(5, 'b'), ...frame(6, 'c')], want: 5 },
+    { all: [...frame(3, 'h'), ...frame(5, 'a'), ...frame(5, 'b')], want: 5 },      // хагас эхний жааз
+    { all: [...frame(4, 'a'), ...frame(4, 'b'), ...frame(4, 'c')], want: 5 },      // 1470↔1471 — хэзээ ч зогсохгүй
+    { all: [...frame(5, 'a'), ...frame(6, 'b'), ...frame(7, 'c')], want: 6 },      // мөр нэмэгдсэн
+    { all: ['', ...frame(4, 'a').slice(1), ...frame(5, 'b')], want: 4 },           // эхний № хоосон
+  ];
+  for (const { all: nos, want } of cases) {
+    const all = feats(nos);
+    const full = nosOf(firstFrame(all, NO, want));
+    for (let n = 1; n <= all.length; n += 1) {
+      const part = all.slice(0, n);
+      if (!firstDoneFrameAtLeast(part, NO, want)) continue;
+      assert.deepEqual(nosOf(firstFrame(part, NO, want)), full, `эрт зогсолт (${n}/${all.length}, want ${want}) firstFrame-ийг өөрчлөхгүй`);
+    }
+  }
+  assert.equal(firstDoneFrameAtLeast(feats([...frame(4, 'a'), ...frame(4, 'b')]), NO, 5), false, '1470↔1471: зогсохгүй');
+  assert.equal(firstDoneFrameAtLeast(feats(frame(9, 'a')), NO, 5), false, 'дуусаагүй ганц жааз — зогсохгүй');
+  console.log('✅ лавлахын эрт зогсолт — firstFrame-ийн үр дүн өөрчлөгдөхгүй');
 }

@@ -646,7 +646,7 @@ export const laborCompanyFields = (sfx: string) => ({
  *    (давхар, хана, инженерийн систем) тул BIM горимд меш хасагдаж эдгээр
  *    оронд нь харагдана.
  *
- * ⚠️ ЗӨВХӨН НЭРГҮЙ НЭЭЛТТЭЙ 32 үйлчилгээ энд байна (2026-09-25-нд нэг бүрчлэн
+ * ⚠️ ЗӨВХӨН НЭРГҮЙ НЭЭЛТТЭЙ 58 үйлчилгээ энд байна (2026-09-25 · 10-04-нд нэг бүрчлэн
  *    шалгав). UBHUB нь ТУСДАА Enterprise портал — AGOL-ийн токен тэнд
  *    хүчингүй (498), тиймээс хаалттай үйлчилгээг нэмбэл BIM горимд орох бүрд
  *    UBHUB-ийн нэвтрэх цонх гарч, манай хэрэглэгчид түүнд аккаунтгүй.
@@ -655,7 +655,7 @@ export const laborCompanyFields = (sfx: string) => ({
  *      · Багц 3.1 — FID24…FID34 (11)
  *      · Багц 2   — 20 item (URL нь нэргүй хандалтад ч 403)
  *
- * ⚠️ Нэрлэлт: `Багц_<багц>_FID<n>[_<n>]_<айл>_<single|double>` — `double`
+ * ⚠️ Нэрлэлт: `Багц_<багц>_FID<n>[_<n>]_<айл>_<single|double|tower>` — `double`
  *    нь ХОЁР FID-тэй (хос блок) нэг загвар.
  */
 const BIM_SERVICES: { pkg: string; names: string[] }[] = [
@@ -686,11 +686,32 @@ const BIM_SERVICES: { pkg: string; names: string[] }[] = [
       'Багц_3_3_FID40_71_single', 'Багц_3_3_FID41_71_single',
     ],
   },
+  /* ⚠️ 2026-10-04 (хэрэглэгч): Багц 4.1 (12) · 4.2 (14) — 26 бүгд нэргүй нээлттэй,
+     `layerType: Building` гэж нэг бүрчлэн шалгав. `tower` — 4.2-ын цамхаг блокууд. */
+  {
+    pkg: '4.1',
+    names: [
+      'Багц_4_1_FID1_71_single', 'Багц_4_1_FID2_71_single', 'Багц_4_1_FID3_71_71_double',
+      'Багц_4_1_FID4_5_71_double', 'Багц_4_1_FID42_71_single', 'Багц_4_1_FID68_72_71_double',
+      'Багц_4_1_FID69_70_71_double', 'Багц_4_1_FID73_71_single', 'Багц_4_1_FID74_71_single',
+      'Багц_4_1_FID75_71_single', 'Багц_4_1_FID76_71_single', 'Багц_4_1_FID77_71_single',
+    ],
+  },
+  {
+    pkg: '4.2',
+    names: [
+      'Багц_4_2_FID43_71_single', 'Багц_4_2_FID44_71_single', 'Багц_4_2_FID45_71_single',
+      'Багц_4_2_FID46_71_single', 'Багц_4_2_FID47_71_single', 'Багц_4_2_FID48_71_single',
+      'Багц_4_2_FID104_71_tower', 'Багц_4_2_FID105_71_tower', 'Багц_4_2_FID106_71_tower',
+      'Багц_4_2_FID107_71_tower', 'Багц_4_2_FID108_71_tower', 'Багц_4_2_FID109_71_tower',
+      'Багц_4_2_FID110_71_tower', 'Багц_4_2_FID111_71_tower',
+    ],
+  },
 ];
 
-/** `Багц_1_FID62_63_71_double` → `62 · 63` */
+/** `Багц_1_FID62_63_71_double` → `62 · 63` · `Багц_4_2_FID104_71_tower` → `104` */
 const bimFids = (name: string): string =>
-  (name.match(/_FID([\d_]+?)_\d+_(?:single|double)$/)?.[1] ?? name).split('_').join(' · ');
+  (name.match(/_FID([\d_]+?)_\d+_(?:single|double|tower)$/)?.[1] ?? name).split('_').join(' · ');
 
 export const BIM = {
   layers: BIM_SERVICES.flatMap(({ pkg, names }) =>

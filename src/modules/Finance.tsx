@@ -89,6 +89,7 @@ import {
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
 import { mnt, num, text, cat, date, monthKey, dayKey } from '@/lib/format';
+import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
@@ -815,6 +816,9 @@ export function aggregateMonths(d: FinData): { label: string; given: number; phy
   });
 }
 
+/** `physNow`-ийн кэш (2026-10-04) — доорх ⚠️ */
+const PHYS_NOW = new WeakMap<FinData, Map<string, number | null>>();
+
 /**
  * ТӨСЛИЙН БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — `aggregateMonths`-ийн одоогийн сар хүртэлх СҮҮЛИЙН
  * хэмжигдсэн сарын ХО дүнгээр жигнэсэн % (`gdash.housingPct`). PkgProg `TsKpi` ·
@@ -822,11 +826,23 @@ export function aggregateMonths(d: FinData): { label: string; given: number; phy
  * Тайлагнаагүй бол `null` («мэдээлэлгүй», 0 биш).
  */
 export function physNow(d: FinData, nowYm: string = monthKey()): number | null {
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ҮР ДҮНГ `FinData` объект бүрд КЭШЛЭНЭ. Дашбоард нэг
+     зурагдалтад 12+ удаа дууддаг (хажуугийн 9 зурвас тус бүр `railStat` → энэ, IndStrip, хэсгүүд) бөгөөд
+     дуудлага бүр `aggregateMonths` (76 гэрээний ХО жин + багц × сарын цуваа)-ыг бүтнээр нь гүйдэг байв —
+     тунгалаг байдлын гулсуур/чартын товшилт бүрд. `FinData` нь ачааллын үр дүн, ХЭЗЭЭ Ч өөрчлөгддөггүй
+     (шинэ ачаалал = шинэ объект). Түлхүүрт тэнхлэгийн сар (`cfMonthAxis` нь ОДООГИЙН сараас) орно —
+     сар солигдоход дахин бодно. Утга ЯГ ИЖИЛ. */
+  const key = `${nowYm}|${monthKey()}`;
+  let byKey = PHYS_NOW.get(d);
+  if (!byKey) { byKey = new Map(); PHYS_NOW.set(d, byKey); }
+  const hit = byKey.get(key);
+  if (hit !== undefined) return hit;
   let actual: number | null = null;
   for (const m of aggregateMonths(d)) {
     if (m.label > nowYm) continue;
     if (m.phys != null) actual = m.phys;
   }
+  byKey.set(key, actual);
   return actual;
 }
 
@@ -2422,14 +2438,22 @@ function FullTable({
    *    нь харагдахгүй үлдэж, «Нийтлэх (3)» гэсэн тоо нь юуг заасныг мэдэхгүй
    *    болно.
    */
-  const keepOids = useMemo(() => {
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): OID-ын ОЛОНЛОГ өөрчлөгдсөн үед л шинэ `Set`. `pend` нь
+     товчлуур БҮРД шинэ объект тул урьд нь `keepOids` → `shown` (шүүлт идэвхтэй үед бүх мөр ×
+     ~38 баганыг `rowMatches`) → `packs` бүгд товчлуур бүрд дахин бодогддог байв. Ижил мөрийн
+     нүдийг бичих явцад түлхүүр (`keepKey`) хөдлөхгүй. Агуулга ЯГ ИЖИЛ. */
+  const keepKey = useMemo(() => {
     const s = new Set<number>();
     for (const k of Object.keys(pend)) {
       const oid = Number(k.slice(0, k.indexOf(':')));
       if (Number.isFinite(oid)) s.add(oid);
     }
-    return s;
+    return [...s].sort((a, b) => a - b).join(',');
   }, [pend]);
+  const keepOids = useMemo(
+    () => new Set<number>(keepKey ? keepKey.split(',').map(Number) : []),
+    [keepKey],
+  );
 
   const active = filterDirty(flt);
 
@@ -2636,8 +2660,21 @@ function FullTable({
     ? [f.xlFz, i === sc.frozen - 1 ? f.xlFzEdge : ''].filter(Boolean).join(' ')
     : '');
 
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): НҮДНИЙ STYLE ОБЪЕКТЫГ КЭШЛЭНЭ. `colSty` нь нүд БҮРД шинэ
+     объект буцаадаг тул товчлуур бүрд (засварын `pend` нь бүх хүснэгтийг дахин зурна) React ~1,600–16,000
+     нүдний style-ыг талбар бүрээр тулгаж байв (5-р түвшин: профайлын `setValueForStyles`/
+     `updateProperties` оройд). Объект нь зөвхөн (багана · индекс · толгой) ба өргөн/царцаалтаас
+     (`colStyle` · `frzLeft` · `sc.frozen` · `sc.wrap`) хамаарна — тэдгээр солигдоход кэш шинээр.
+     Дуудагчид объектыг ӨӨРЧЛӨХГҮЙ (`{ ...sty, … }` л хийдэг). Утга ЯГ ИЖИЛ. */
+  const styCache = useMemo(
+    () => keyedCache<CSSProperties>(),
+    /* ⚠️ Оролтууд нь кэшийн ХҮЧИНТЭЙ ХУГАЦАА — callback дотор уншигдахгүй ч солигдоход шинэ кэш */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [colStyle, frzLeft, sc.frozen, sc.wrap],
+  );
+
   /** Нүдний өргөн ба (царцсан бол) зүүн шилжилт */
-  const colSty = (c: FieldDef, i: number, head = false): CSSProperties => {
+  const colSty = (c: FieldDef, i: number, head = false): CSSProperties => styCache(`${c.name}|${i}|${head ? 1 : 0}`, () => {
     const on = i < sc.frozen;
     /* ⚠️ Царцсан бол өргөн нь ЗААВАЛ тодорхой (§`wOf`); эс бөгөөс агуулгаараа */
     const w = on ? wOf(c.name, i) : colW(c.name, defW(c.name, i));
@@ -2675,7 +2712,7 @@ function FullTable({
       if (!head) st.textAlign = 'justify';
     }
     return st;
-  };
+  });
 
   /* ═══════════ EXCEL-ИЙН БҮЛЭГЛЭСЭН ТОЛГОЙ (2026-09-08) ═══════════
    *

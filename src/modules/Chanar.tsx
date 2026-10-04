@@ -55,7 +55,7 @@ import {
 import { MA_CATEGORIES, MS_GROUPS, maCategoryLabel, msGroupLabel, msRequiredProgress } from '@/lib/chanarTemplates';
 import {
   ackRepDoc, actionableItems, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
-  loadAllDocs, loadBodyOf, loadNcrFlags, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
+  loadAllDocs, loadBodyOf, loadBodiesOf, loadNcrFlags, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
   submitCorrection, submitDoc, type Attachment, type NcrFlags, type TableState,
 } from '@/lib/chanarStore';
 import { chanarRoleLabel } from './ChanarAcl';
@@ -259,8 +259,8 @@ export function Chanar() {
   const hist = useMemo(() => (doc ? history(kindDocs, doc.bagts, doc.seq, doc.kind) : []), [kindDocs, doc]);
 
   /* Хураангуй — толгой бүрийн биеийг нэг удаа татна (MS: workType · MA: материал · NCR: reopened).
-     ⚠️ 2026-09-25: N зэрэгцээ хүсэлт биш — 4 ажилчинтай дараалал (`loadBodyOf` нэг
-     мөр тутам; lib-д багц уншигч байхгүй). Ирсэн бие нь REF-д, `gen` таарвал л. */
+     ⚠️ 2026-09-25: N зэрэгцээ хүсэлт биш — ажилчинтай дараалал (2026-10-04-нөөс багц
+     уншигч `loadBodiesOf`, доорх ⚠️). Ирсэн бие нь REF-д, `gen` таарвал л. */
   useEffect(() => {
     const gen = bodiesGen.current;
     const pending = bodiesPending.current;
@@ -268,17 +268,21 @@ export function Chanar() {
     if (!queue.length) return;
     for (const d of queue) pending.add(d.oid);
     let live = true;
+    /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): мөр тутам `loadBodyOf` (N хүсэлт) → 50-аар БАГЦЛАН
+       `loadBodiesOf` (`OBJECTID IN`), 2 ажилчин. Олдоогүй нь урьдын адил хоосон бие. */
+    const batches: (typeof queue)[] = [];
+    for (let i = 0; i < queue.length; i += 50) batches.push(queue.slice(i, i + 50));
     const worker = async () => {
-      for (let d = queue.shift(); d && live; d = queue.shift()) {
+      for (let b = batches.shift(); b && live; b = batches.shift()) {
         try {
-          const r = await loadBodyOf(d.oid);
-          if (bodiesGen.current === gen) bodiesRef.current.set(d.oid, r?.body ?? emptyBodyOf(d.kind));
+          const got = await loadBodiesOf(b.map((d) => d.oid));
+          if (bodiesGen.current === gen) for (const d of b) bodiesRef.current.set(d.oid, got.get(d.oid)?.body ?? emptyBodyOf(d.kind));
         } catch { /* хураангуй л — чимээгүй; дараагийн effect дахин оролдоно */ } finally {
-          pending.delete(d.oid);
+          for (const d of b) pending.delete(d.oid);
         }
       }
     };
-    void Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker))
+    void Promise.all(Array.from({ length: Math.min(2, batches.length) }, worker))
       /* ⚠️ `live`-ээс үл хамааран агшин авна — effect дахин эхэлсэн ч явж байсан
          хүсэлтийн үр дүн зурагдана (эс тэгвээс «ачаалж байна» гацна) */
       .then(() => { if (bodiesGen.current === gen) setBodies(new Map(bodiesRef.current)); });

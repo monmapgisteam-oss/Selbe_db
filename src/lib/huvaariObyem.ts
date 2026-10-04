@@ -526,17 +526,28 @@ const FIELDS = [
  *    тогтмолжино (`draftRemote.tableUrl`-ийн ижил дүрэм).
  */
 let resFieldsCache: { hun: boolean; mashin: boolean } | null = null;
+/* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): ЯВАГДАЖ БУЙ шалгалтыг хуваалцана — `loadPlanCurve` 10
+   хуудасны `loadPkgPlan`-ыг зэрэг эхлүүлэхэд кэш хоосон тул ижил `?f=json` 10 удаа явдаг байв.
+   Дууссаны дараа хаягдана — кэшлэх дүрэм (зөвхөн амжилт) ХЭВЭЭР. */
+let resFieldsFlight: Promise<{ hun: boolean | null; mashin: boolean | null }> | null = null;
 export async function obyemResFields(): Promise<{ hun: boolean | null; mashin: boolean | null }> {
   if (resFieldsCache) return resFieldsCache;
-  try {
-    const j = await agsFetch(HUVAARI_OBYEM, {}) as { fields?: { name: string }[] };
-    if (!Array.isArray(j.fields)) return { hun: null, mashin: null };
-    const names = new Set(j.fields.map((x) => x.name));
-    resFieldsCache = { hun: names.has('hun_huch'), mashin: names.has('mashin_mehanizm') };
-    return resFieldsCache;
-  } catch {
-    return { hun: null, mashin: null };
-  }
+  if (resFieldsFlight) return resFieldsFlight;
+  const p = (async () => {
+    try {
+      const j = await agsFetch(HUVAARI_OBYEM, {}) as { fields?: { name: string }[] };
+      if (!Array.isArray(j.fields)) return { hun: null, mashin: null };
+      const names = new Set(j.fields.map((x) => x.name));
+      resFieldsCache = { hun: names.has('hun_huch'), mashin: names.has('mashin_mehanizm') };
+      return resFieldsCache;
+    } catch {
+      return { hun: null, mashin: null };
+    } finally {
+      resFieldsFlight = null;
+    }
+  })();
+  resFieldsFlight = p;
+  return p;
 }
 
 /**

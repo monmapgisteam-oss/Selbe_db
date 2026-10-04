@@ -17,8 +17,6 @@
  * ⚠️ React-гүй, Node-д ч ачаалагдана (`agent.check.mjs` зэрэг тест `en.ts`-ийг
  * үүгээр уншдаг) — энд `react` импортлохгүй.
  */
-import en from '@/i18n/en';
-import enData from '@/i18n/enData';
 import { LOCALE_KEY, DEFAULT_LOCALE, asLocale, type Locale } from './localeKey';
 
 type Dict = Record<string, string>;
@@ -27,8 +25,20 @@ type Dict = Record<string, string>;
  * ⚠️ Хоёр эх нэгтгэгдэнэ: `en.ts` нь КОДЫН мөрүүд, `enData.ts` нь ArcGIS-ээс
  * ирдэг ӨГӨГДЛИЙН утгууд. Сүүлийнх нь кодод бичигдээгүй тул шалгагч түүнийг
  * «хэрэглэгдээгүй» гэж үзэхээс сэргийлж тусдаа файлд байдаг.
+ *
+ * ⚠️ 2026-10-04 (ачааллын аудит): толь СТАТИК импорт БИШ — `loadLocaleDict`-ээр
+ *    (доор) хэрэгтэй үед л татагдана. `en.ts` нь ~720 КБ эх код бөгөөд урьд нь
+ *    `layout`/`page`-ийн ЭХНИЙ chunk-д орж, хэрэглэгчдийн дийлэнх болох МОНГОЛ
+ *    хэрэглэгчид ч бүрэн татагдаж parse хийгддэг байв (эхний chunk-ийн эх кодын
+ *    ~49%). Одоо mn хэрэглэгч огт татахгүй.
+ * ⚠️ `t()` СИНХРОН хэвээр: англи горимд аппын үндэс (`page.tsx`-ийн `Root`)
+ *    толь ачаалагдтал ЗУРАГДАХГҮЙ (`loadLocaleDict`-ийг хүлээнэ), хэл солиход
+ *    (`setLocale`) толь эхлээд ачаалагдаад ДАРАА НЬ store солигдоно. Иймд
+ *    толь алга үед `tr()` дуудагдах цорын ганц газар нь `Root`-оос ГАДНАХ
+ *    жижиг хэсгүүд (ачаалах мэдэгдэл, `SkipLink`, `DocumentTitle`) — тэдгээр
+ *    `subscribeDict`-ээр толь ирэхэд дахин зурагдана.
  */
-const DICTS: Partial<Record<Locale, Dict>> = { en: { ...(en as Dict), ...(enData as Dict) } };
+const DICTS: Partial<Record<Locale, Dict>> = {};
 
 /**
  * ⚠️ ХЭЛИЙГ МОДУЛЬ АЧААЛАХ ҮЕД, СИНХРОНООР тогтооно.
@@ -57,7 +67,54 @@ function initial(): Locale {
  */
 let current: Locale = typeof window === 'undefined' ? DEFAULT_LOCALE : initial();
 let generation = 0;
+/** Хэрэглэгчийн СҮҮЛД сонгосон хэл — толь ачаалагдаж байх үед `current`-оос түрүүлж болно */
+let wanted: Locale = current;
 const listeners = new Set<() => void>();
+
+/* ══ ТОЛИЙН ХОЙШЛУУЛСАН АЧААЛАЛТ (⚠️ 2026-10-04, дээрх `DICTS`-ийн ⚠️) ══ */
+
+/** Хэлний толь бүрийн нэг л удаагийн ачаалалт (давхар хүсэлтгүй) */
+const dictLoads: Partial<Record<Locale, Promise<void>>> = {};
+/** Толь ачаалагдсан тоо — `useSyncExternalStore`-ийн snapshot (`subscribeDict`) */
+let dictEpoch = 0;
+const dictListeners = new Set<() => void>();
+
+/**
+ * Хэлний толийг ачаална (mn-д толь хэрэггүй — шууд шийднэ). Давхар дуудалт нэг
+ * хүсэлтийг хуваалцана; сүлжээний алдаанд дараагийн дуудалт дахин оролдоно.
+ *
+ * ⚠️ `dataBus`-ийн `subscribeLocale`-ийг МЭДЭГДЭХГҮЙ (кэш хаяхгүй) — толь ирэх
+ *    нь хэл СОЛИХ биш. Зөвхөн `subscribeDict`-ийн захиалагчид (Root-оос гадуурх
+ *    текст) дахин зурагдана.
+ * ⚠️ Webpack-д `import()` нь тусдаа chunk — монгол хэрэглэгч хэзээ ч татахгүй.
+ */
+export function loadLocaleDict(l: Locale = current): Promise<void> {
+  if (l === DEFAULT_LOCALE || DICTS[l]) return Promise.resolve();
+  const p = dictLoads[l] ?? Promise.all([import('@/i18n/en'), import('@/i18n/enData')]).then(([a, b]) => {
+    DICTS[l] = { ...(a.default as Dict), ...(b.default as Dict) };
+    dictEpoch += 1;
+    dictListeners.forEach((fn) => fn());
+  });
+  dictLoads[l] = p;
+  p.catch(() => { if (dictLoads[l] === p) delete dictLoads[l]; });
+  return p;
+}
+
+/** Толь ачаалагдахыг захиалах — `useSyncExternalStore`-ийн `subscribe` */
+export function subscribeDict(fn: () => void): () => void {
+  dictListeners.add(fn);
+  return () => { dictListeners.delete(fn); };
+}
+
+/** Ачаалагдсан толины тоо (snapshot) — prerender-д 0 */
+export const getDictEpoch = (): number => dictEpoch;
+
+/* ⚠️ Хөтөч дээр англи хэрэглэгчийн толийг МОДУЛЬ АЧААЛАХ ДАРУЙ эхлүүлнэ — `Root`
+   chunk-тэй зэрэгцэж татагдана (дараалсан хүлээлт үүсэхгүй). Алдааг энд залгина;
+   `Root`-ийн loader дахин оролдоно. */
+if (typeof window !== 'undefined' && current !== DEFAULT_LOCALE) {
+  loadLocaleDict(current).catch(() => { /* `page.tsx`-ийн loader дахин оролдоно */ });
+}
 
 /** Хэл/үеийн өөрчлөлтийг захиалах — `useSyncExternalStore`-ийн `subscribe` */
 export function subscribeLocale(fn: () => void): () => void {
@@ -151,7 +208,8 @@ export const LOCALE_SWITCH_RELOADS: boolean = false;
  * ачаална ЭСВЭЛ store-оо шинэчилж захиалагчдад мэдэгдэнэ.
  */
 export function setLocale(next: Locale): void {
-  if (next === current) return;
+  if (next === wanted) return;
+  wanted = next;
   try {
     localStorage.setItem(LOCALE_KEY, next);
   } catch {
@@ -161,6 +219,27 @@ export function setLocale(next: Locale): void {
     location.reload();
     return;
   }
+  /* ⚠️ 2026-10-04: толь бэлэн (эсвэл mn) бол урьдын адил СИНХРОН солино. Үгүй бол
+     эхлээд толийг ачаалаад ДАРАА НЬ солино — хагас орчуулагдсан дэлгэц гарахгүй.
+     Хүлээх хооронд хэрэглэгч буцааж сольсон бол (`wanted`) хуучин хүсэлтийг хэрэгжүүлэхгүй.
+     Толь татагдаж чадаагүй бол хэл СОЛИГДОХГҮЙ (монгол дэлгэц `lang=en`-тэй холилдохгүй). */
+  if (next !== DEFAULT_LOCALE && !DICTS[next]) {
+    loadLocaleDict(next).then(
+      () => { if (wanted === next) applyLocale(next); },
+      (e: unknown) => {
+        console.warn('[selbe] хэлний толь татагдсангүй:', e);
+        if (wanted !== next) return;
+        wanted = current;
+        try { localStorage.setItem(LOCALE_KEY, current); } catch { /* хувийн горим */ }
+      },
+    );
+    return;
+  }
+  applyLocale(next);
+}
+
+function applyLocale(next: Locale): void {
+  if (next === current) return;
   current = next;
   generation += 1;
   listeners.forEach((fn) => fn());

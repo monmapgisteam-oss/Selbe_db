@@ -277,6 +277,24 @@ export function firstFrame(all: Feature[], noField: string, expect = 0): Feature
   return all.slice(starts[k], endOf(k));
 }
 
+/**
+ * ДУУССАН (араас нь дараагийн жааз эхэлсэн) жаазуудын аль нэг нь `want`-аас богиногүй юу —
+ * `loadBaseKeys`-ийн эрт зогсолтын нөхцөл (2026-10-04). Жааз таних дүрэм `firstFrame`-тэй ИЖИЛ
+ * (эхний мөрийн №); эхний № хоосон бол `firstFrame` БҮХ мөрийг буцаадаг тул `false` (бүтнээр уншина).
+ */
+export function firstDoneFrameAtLeast(all: Feature[], noField: string, want: number): boolean {
+  if (all.length < 2 || want <= 0) return false;
+  const first = String(all[0].attributes[noField] ?? "").trim();
+  if (!first) return false;
+  let start = 0;
+  for (let i = 1; i < all.length; i += 1) {
+    if (String(all[i].attributes[noField] ?? "").trim() !== first) continue;
+    if (i - start >= want) return true;
+    start = i;
+  }
+  return false;
+}
+
 /** Мөрийн ТАНИХ ТҮЛХҮҮР — № ба Ажлын нэрийн хос. */
 function rowKey(f: Feature, sc: Schema): string {
   const no = String(f.attributes[sc.f.no] ?? "").trim();
@@ -411,6 +429,14 @@ function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
         out.push(...fs);
         if (!j.exceededTransferLimit || fs.length === 0) break;
         offset += fs.length;
+        /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): ЭРТ ЗОГСОЛТ. Урьд нь АРХИВЫГ БҮХЭЛД нь (~10 жааз ×
+           1.4 мянга = 7 хуудас, дараалсан) татаад зөвхөн ЭХНИЙ бүтэн жаазыг авдаг байв — энэ нь
+           `loadRows`-ийн эгзэгтэй замд. `firstFrame`-ийн үр дүн ӨӨРЧЛӨГДӨХГҮЙ үед л зогсоно:
+           ДУУССАН (араас нь шинэ жааз эхэлсэн) жаазуудын эхнийх нь `want`-аас богиногүй бол
+           `fullLen` = `want` (хамгийн урт ≥ тэр жааз ≥ `want`) тул `firstFrame` ЯГ тэр жаазыг
+           сонгоно — үлдсэн хуудас нөлөөлөхгүй. 1470↔1471 багц (`fullLen`-ийн ⚠️) энэ нөхцлийг
+           хангахгүй тул урьдын адил бүтнээр уншина. */
+        if (want > 0 && firstDoneFrameAtLeast(out, sc.f.no, want)) break;
       }
     }
     /* ⚠️ Нөөц замд ЭХНИЙ жааз — дээрх ⚠️. Суурь байвал урьдын адил сүүлийнх. */
@@ -420,6 +446,9 @@ function loadBaseKeys(pkg: Pkg, sc: Schema): Promise<string[]> {
     return ref.map((f) => rowKey(f, sc));
   })();
   baseKeyCache.set(pkg.key, p);
+  /* ⚠️ 2026-10-04: уналт кэшлэгдэхгүй — `loadRows` одоо үүнийг урьдчилан (зэрэг) эхлүүлдэг тул
+     нэг түр алдаа (429/timeout) сешн дуустал тэр багцыг хаах ёсгүй; дараагийн дуудалт дахин оролдоно. */
+  p.catch(() => { if (baseKeyCache.get(pkg.key) === p) baseKeyCache.delete(pkg.key); });
   return p;
 }
 
@@ -564,6 +593,16 @@ export async function loadRows(
   frameLen: number;
 }> {
   const tree = TREES[pkg.key] ?? "";
+  /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): суурь жаазны лавлахыг мөрийн уншилттай ЗЭРЭГ эхлүүлнэ.
+     Урьд нь мөр ирсний ДАРАА (`latestWhere` → хуудсууд → лавлах) дараалсан шат болж, багцын
+     эхний нээлтэд 1–7 нэмэлт дугуй аялал хүлээдэг байв. Лавлах нь зөвхөн `pkg`/`sc`-ээс хамаарна,
+     багц тутамд НЭГ удаа кэшлэгдэнэ (`baseKeyCache`); `gun` дүүрсэн (доорх `hasGun`) үед
+     ашиглагдахгүй ч сешнд нэг л хөнгөн (3 багана) уншилт. Уналтыг ЭНД залгина — хэрэгтэй үед
+     доорх `await` дахин дуудаж (кэшээс хаягдсан) алдааг урьдын адил шиднэ.
+     ⚠️ ЗӨВХӨН бүтэн (`fields`-гүй) уншилтад — засварлах харагдац (FillNew · Huvaari · хянагч), нээлтийн
+     хоцрол мэдрэгддэг газар. Дашбоардын олон багцын (`fields`-тэй) уншилтад `gun` дүүрсэн багцуудын
+     лавлахыг дэмий татахгүй (хэмжилт: 10 хуудсанд +6 хүсэлт, +1.2 МБ). */
+  if (tree.length > 0 && !fields?.length) loadBaseKeys(pkg, sc).catch(() => {});
   const where =
     atDay && sc.f.fillDate
       ? dayFilter(sc.f.fillDate, atDay)

@@ -577,12 +577,32 @@ export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
   const ck = opts.synthetic ? `${pkg.key}|synthetic` : pkg.key;
   const hit = cache.get(ck);
   if (hit) return hit;
-  const p = agsFetch(pkg.url, {})
-    .then((j) => resolveSchema((j.fields ?? []) as FieldMeta[], opts))
+  const p = fieldsOf(pkg)
+    .then((fields) => resolveSchema(fields, opts))
     .catch((e) => {
       cache.delete(ck);
       throw e;
     });
   cache.set(ck, p);
+  return p;
+}
+
+/**
+ * Үйлчилгээний ТҮҮХИЙ талбарын жагсаалт — багц тутамд НЭГ мета хүсэлт (2026-10-04, гүйцэтгэлийн аудит).
+ * ⚠️ Синтетик ба энгийн бүдүүвч (дээрх кэшийн ⚠️) ӨӨР обьект хэвээр — зөвхөн `?f=json` хуваалцагдана;
+ *    урьд нь Huvaari ↔ FillNew/дашбоард хооронд ижил мета хоёр удаа татагддаг байв.
+ * ⚠️ Уналт кэшлэгдэхгүй — дараагийн дуудалт дахин оролдоно (`loadSchema`-ийн дүрэм).
+ */
+const fieldCache = new Map<string, Promise<FieldMeta[]>>();
+function fieldsOf(pkg: Pkg): Promise<FieldMeta[]> {
+  const hit = fieldCache.get(pkg.key);
+  if (hit) return hit;
+  const p = agsFetch(pkg.url, {})
+    .then((j) => (j.fields ?? []) as FieldMeta[])
+    .catch((e) => {
+      fieldCache.delete(pkg.key);
+      throw e;
+    });
+  fieldCache.set(pkg.key, p);
   return p;
 }

@@ -46,6 +46,36 @@ const Portal = dynamic(() => import('./Portal'), {
   ),
 });
 
+/**
+ * Сүүлд ажилласан харагдац (Portal хадгалдаг) — өдөр бүр ижил хэсэгт ажилладаг
+ * хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно. Хүчингүй бол `DEFAULT_VIEW`.
+ * ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
+ *    Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
+ *    навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй.
+ * ⚠️ 2026-10-04: `openAll` ба урьдчилан татах (`prefetchView`) ХОЁУЛАА үүгээр —
+ *    таамаг ба жинхэнэ орох цэг зөрөхгүй.
+ */
+function lastOrDefaultView(): ViewKey {
+  let last: string | null = null;
+  try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
+  return last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
+    ? (last as ViewKey) : DEFAULT_VIEW;
+}
+
+/**
+ * Хөтөч СУЛ үед нэг удаа ажиллуулна (⚠️ 2026-10-04, урьдчилан татахад) — цэвэрлэх
+ * функц буцаана (`useEffect`-д шууд). `requestIdleCallback`-гүй хөтөчид (Safari)
+ * богино хоцроолттой `setTimeout`. `timeout` — завгүй хуудсанд ч эцэст нь ажиллана.
+ */
+function whenIdle(fn: () => void): () => void {
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(fn, { timeout: 2500 });
+    return () => window.cancelIdleCallback(id);
+  }
+  const t = setTimeout(fn, 1200);
+  return () => clearTimeout(t);
+}
+
 /** Нэвтрэлтээс буцаж ирэхэд орох цэгийг хадгалах түлхүүр (view key эсвэл `all:<id>`) */
 const PENDING_KEY = 'selbe-pending-view';
 
@@ -88,8 +118,16 @@ export default function Root() {
   /**
    * Нүүр хуудсан дээр байхад Portal (том ArcGIS chunk)-ыг ДЭВСГЭРТ урьдчилан
    * татна — «Орох» дарахад шилжилт шуурхай болно (chunk аль хэдийн ачаалагдсан).
+   *
+   * ⚠️ 2026-10-04 (ачааллын аудит): mount-ын ДАРУЙ биш, хөтөч СУЛ болоход
+   *    (`whenIdle`). `import()` нь chunk-ийг татаад ГҮЙЦЭТГЭДЭГ (ArcGIS-ийн
+   *    модулиуд ч) — урьд нь нүүр/нээлтийн хуудасны анхны зурах, нэвтрэлтийн
+   *    шалгалт, KPI-ийн хүсэлттэй зэрэг үндсэн thread-ийг эзэлдэг байв.
+   *    `?v=…` холбоосоор шууд орсон бол Portal өөрөө нэн даруй ачаалагдана.
    */
-  useEffect(() => { void import('./Portal'); }, []);
+  useEffect(() => whenIdle(() => {
+    import('./Portal').catch(() => { /* жинхэнэ нээлтэд `dynamic()` дахин оролдоно */ });
+  }), []);
 
   /**
    * ХЭРЭГЛЭГЧИЙН ЭРХ → навигацийн хүрээ. `permissions` store-оос (override эсвэл
@@ -127,15 +165,8 @@ export default function Root() {
 
   /** БҮХ сэдэв (Удирдлага) — бүх харагдац навигацид */
   const openAll = () => {
-    /* Сүүлд ажилласан харагдацыг сэргээнэ (Portal хадгалдаг) — өдөр бүр ижил
-       хэсэгт ажилладаг хэрэглэгч «Орох» дараад шууд ажлын цэгтээ очно.
-       ⚠️ localStorage нь гаднын утга: харагдацын түлхүүр мөн эсэхийг
-       Object.hasOwn-оор шалгана (`__proto__` г.м. prototype халдлагаас), мөн
-       навигациас нуугдсан (ALL_MODE_HIDE) харагдацад буцаахгүй. */
-    let last: string | null = null;
-    try { last = localStorage.getItem('selbe-last-view'); } catch { /* хаалттай орчин */ }
-    const v = last && Object.hasOwn(VIEW_BY_KEY, last) && !ALL_MODE_HIDE.includes(last as ViewKey)
-      ? (last as ViewKey) : DEFAULT_VIEW;
+    /* Сүүлд ажилласан харагдацыг сэргээнэ — `lastOrDefaultView`-ийн ⚠️ */
+    const v = lastOrDefaultView();
     const u = new URL(window.location.href);
     u.searchParams.set('v', v);
     u.searchParams.set('all', '1');
@@ -327,6 +358,28 @@ export default function Root() {
     const r = roleOf(user?.username);
     return r ? roleAccess(r).home : undefined;
   })();
+
+  /**
+   * ⚠️ 2026-10-04 (ачааллын аудит): нүүр хуудсан дээр байхад «Порталд орох»-ын
+   *    ОЧИХ харагдацын chunk-ийг ДЭВСГЭРТ татна (`openEntry`-тэй ИЖИЛ сонголт).
+   *    Урьд нь «Орох» дарахад Portal зурагдаад ДАРАА НЬ л харагдацын chunk
+   *    (жиш. «Ерөнхий дашбоард») хүсэгддэг тул хоёр дахь хүлээлт гардаг байв.
+   *    Таамаг буруу (хэрэглэгч өөр карт дарсан) бол зөвхөн нэмэлт татан авалт.
+   *    `allowed` массив рендер бүрт шинэ — агуулгын түлхүүрээр (`allowedSig`).
+   */
+  const onHome = authorized && !scope;
+  const allowedSig = allowed === 'all' ? 'all' : allowed.join(',');
+  useEffect(() => {
+    if (!onHome) return;
+    const list: 'all' | ViewKey[] = allowedSig === 'all' ? 'all' : (allowedSig ? (allowedSig.split(',') as ViewKey[]) : []);
+    const v = list === 'all'
+      ? lastOrDefaultView()
+      : list.length ? (roleHome && list.includes(roleHome) ? roleHome : list[0]) : null;
+    if (!v) return;
+    return whenIdle(() => {
+      import('./viewRegistry').then((r) => r.prefetchView(v)).catch(() => { /* жинхэнэ нээлтэд дахин оролдоно */ });
+    });
+  }, [onHome, allowedSig, roleHome]);
   /* ⚠️ Нэг ч харагдацгүй (админ бүгдийг унтраасан / шинэ бүртгэл) — «энэ хэсэг»
      биш «ерөөсөө» гэсэн ӨӨР мессеж (2026-09-21, `openEntry`-ийн тайлбар). */
   const noViews = Array.isArray(allowed) && !allowed.length;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale } from '@/lib/i18n';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, loadLocaleDict } from '@/lib/i18nCore';
 import s from './locale.module.css';
 
 /**
@@ -60,12 +60,18 @@ export function LocaleToggle({ className }: { className?: string }) {
   const { locale, setLocale } = useLocale();
   const next = locale === 'mn' ? 'en' : 'mn';
   const label = locale === 'mn' ? 'Switch to English' : tr('Монгол хэл рүү шилжих');
+  /* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — товч
+     руу заахад/фокуслахад урьдчилан татна, дарахад солилт шууд болно. Алдааг залгина:
+     дарахад `setLocale` өөрөө дахин оролдоно. */
+  const warm = () => { loadLocaleDict(next).catch(() => { /* setLocale дахин оролдоно */ }); };
 
   return (
     <button
       type="button"
       className={className ?? s.btn}
       onClick={() => { if (confirmLocaleSwitch()) setLocale(next); }}
+      onPointerEnter={warm}
+      onFocus={warm}
       aria-label={label}
       title={label}
     >

@@ -29,10 +29,25 @@ export function dateTime(v: number | string | null | undefined): string {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
+/* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `Number#toLocaleString(L, opts)` нь дуудлага БҮРД
+   шинэ `Intl.NumberFormat` үүсгэдэг (~30 мкс) — Санхүү/Дашбоард/Хуваарийн хүснэгт нэг
+   зурагдалтад мянга мянган удаа дууддаг тул энэ нь профайлын оройд гарч байв. Оронгийн
+   тоо (`d`) тус бүрд НЭГ форматлагч кэшлэнэ (~0.8 мкс). Гаралт ЯГ ИЖИЛ: спец ёсоор
+   `toLocaleString` нь ижил хэл+сонголттой `Intl.NumberFormat#format`-тай тэнцүү. */
+const NF = new Map<number, Intl.NumberFormat>();
+const nfOf = (d: number): Intl.NumberFormat => {
+  let f = NF.get(d);
+  if (!f) {
+    f = new Intl.NumberFormat(L, { minimumFractionDigits: d, maximumFractionDigits: d });
+    NF.set(d, f);
+  }
+  return f;
+};
+
 export const num = (v: number | null | undefined, d = 0): string =>
   v == null || !Number.isFinite(v)
     ? '—'
-    : v.toLocaleString(L, { minimumFractionDigits: d, maximumFractionDigits: d });
+    : nfOf(d).format(v);
 
 /** 13.4% */
 export const pct = (v: number | null | undefined, d = 1): string =>
@@ -70,7 +85,20 @@ export function date(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
   const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString(dateLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dfOf(dateLocale()).format(dt);
+}
+/* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `toLocaleDateString(loc, opts)` дуудлага бүрд шинэ
+   `Intl.DateTimeFormat` үүсгэдэг (~65 мкс) — Санхүүгийн 5-р түвшинд (~1,000 мөр) товчлуур бүрд
+   профайлын оройд гарч байв. Хэл бүрд НЭГ форматлагч (~3 мкс); хэл солигдвол өөр түлхүүр.
+   Гаралт ЯГ ИЖИЛ (en-US · mn-MN дээр 1990–2040 оноор тулгасан). */
+const DF = new Map<string, Intl.DateTimeFormat>();
+function dfOf(loc: string): Intl.DateTimeFormat {
+  let f = DF.get(loc);
+  if (!f) {
+    f = new Intl.DateTimeFormat(loc, { year: 'numeric', month: '2-digit', day: '2-digit' });
+    DF.set(loc, f);
+  }
+  return f;
 }
 
 /**

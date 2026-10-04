@@ -134,7 +134,10 @@ assert.ok(/export function perLocale</.test(core), 'perLocale helper алга');
 
 /* ── perLocale: хэл бүрд нэг удаа, identity тогтмол ── */
 {
-  const { perLocale, setLocale, getLocale, t } = await import('./i18nCore.ts');
+  const { perLocale, setLocale, getLocale, t, loadLocaleDict } = await import('./i18nCore.ts');
+  /* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
+     ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
+  await loadLocaleDict('en');
   let calls = 0;
   const arr = perLocale(() => { calls++; return [t('Хойд')]; });
   assert.equal(arr(), arr(), 'нэг хэл дотор identity тогтмол');

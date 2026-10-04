@@ -362,7 +362,44 @@ export async function arcgisPost<T extends ArcgisBody = ArcgisBody>(
   params: Record<string, string>,
   opts: ArcgisReqOpts = {},
 ): Promise<T> {
+  /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): УНШИХ асуулга (`…/query`) ба давхаргын мета (`params`
+     хоосон = `?f=json`) нь `request()`-ийн ижил ЯВАГДАЖ БУЙ хүсэлтийн нэгтгэлээр явна. Хэмжилт
+     (CEO самбар, хүйтэн): 346 хүсэлтийн 46 нь ЯГ ИЖИЛ — `bagtsSheet.latestWhere`-ийн max/count,
+     `loadSchema`/`obyemResFields`-ийн мета нь `agsFetch` → энд ирдэг тул урьд нэгтгэгддэггүй байв.
+     Бичих endpoint (`applyEdits` …) ХЭЗЭЭ Ч нэгтгэгдэхгүй (доорх `shareable`). */
+  if (shareable(url, params, opts)) return (await shared(url, params, opts)) as T;
   return (await run(url, params, opts)) as T;
+}
+
+/**
+ * НЭГТГЭЖ БОЛОХ хүсэлт мөн үү — `arcgisPost`-ын ⚠️ 2026-10-04.
+ * ⚠️ `signal`-тай бол ҮГҮЙ: эхний дуудагч цуцлахад бусад нь (цуцлаагүй) `AbortError` авна.
+ * ⚠️ `slot: false` бол ҮГҮЙ: дуудагч слот барьж байх үед слот ХҮЛЭЭЖ буй өөр хүсэлтэд
+ *    наалдвал бүх слот ийм дуудагчдад эзлэгдэхэд ГАЦНА (`ArcgisReqOpts.slot`-ийн ⚠️).
+ * ⚠️ Зөвхөн `/query` (уншилт) эсвэл параметргүй мета — `/applyEdits`, `addFeatures`,
+ *    `sharing/rest/*` (токен үүсгэх г.м.) нэгтгэгдэхгүй.
+ */
+const shareable = (url: string, params: Record<string, string>, o: ArcgisReqOpts): boolean =>
+  !o.signal && o.slot !== false
+  && (/\/query\/?$/i.test(url) || (Object.keys(params).length === 0 && /\/(FeatureServer|MapServer)(\/\d+)?\/?$/i.test(url)));
+
+/**
+ * ЯВАГДАЖ БУЙ ИЖИЛ ХҮСЭЛТИЙН НЭГТГЭЛ — `request()` ба `arcgisPost`-ын ХУВААЛЦСАН цөм.
+ * Дүрэм нь доорх `inflight`-ийн ⚠️-тэй ИЖИЛ (кэш биш · эхний дуудагч биеэ, бусад нь ГҮН
+ * ХУУЛБАР · алдаа хуваалцагдаж түлхүүр устна). Түлхүүрт горимын сонголтууд (`token` ·
+ * `describe` · `timeoutMs`) орно — өөр горимын хариуг хуваалцахгүй.
+ */
+async function shared(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
+  const key = `${o.token ?? 'always'}|${o.describe ? 'd' : ''}|${o.timeoutMs ?? ''}|${reqKey(full, params)}`;
+  const running = inflight.get(key);
+  if (running) return structuredClone(await running);
+  const p = run(full, params, o);
+  inflight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    inflight.delete(key);
+  }
 }
 
 /**
@@ -388,25 +425,16 @@ export async function arcgisPost<T extends ArcgisBody = ArcgisBody>(
  * ⚠️ Алдаа мөн хуваалцагдана: гарсан алдаа бүх хүлээгчид очих ба түлхүүр
  *    устдаг тул дараагийн оролдлого шинэ хүсэлт явуулна.
  */
-const inflight = new Map<string, Promise<Body>>();
+const inflight = new Map<string, Promise<ArcgisBody>>();
 
 /** Тогтвортой түлхүүр — параметрийн ДАРААЛАЛ ялгаатай ч агуулга ижил бол нэг */
 const reqKey = (url: string, params: Record<string, string>): string =>
   url + '|' + Object.keys(params).sort().map((k) => k + '=' + params[k]).join('&');
 
+/* ⚠️ 2026-10-04: нэгтгэл нь `shared()` (`arcgisPost`-той НЭГ `inflight`, нэг түлхүүрийн дүрэм) —
+   хоёр дахь ба цаашхи хүлээгч сүлжээ огт хөндөхгүй, гүн хуулбар авна. */
 async function request(url: string, params: Record<string, string>): Promise<Body> {
-  const key = reqKey(url, params);
-  const running = inflight.get(key);
-  /* Хоёр дахь ба цаашхи хүлээгч — сүлжээ огт хөндөхгүй, гүн хуулбар авна */
-  if (running) return structuredClone(await running);
-
-  const p = run(`${url}/query`, params, { token: 'org' }) as Promise<Body>;
-  inflight.set(key, p);
-  try {
-    return await p;
-  } finally {
-    inflight.delete(key);
-  }
+  return shared(`${url}/query`, params, { token: 'org' }) as Promise<Body>;
 }
 
 /* ── Орон зайн шүүлт ── */

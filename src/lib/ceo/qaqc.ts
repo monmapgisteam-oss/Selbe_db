@@ -336,8 +336,9 @@ async function loadTreeRows(pkg: Pkg): Promise<TreeRow[] | null> {
 
 /** Нэг багц: QAQC мөр (унавал багц унана) → мод (унавал хавтгай) */
 async function loadPkg(pkg: Pkg): Promise<QaqcLoaded> {
-  const rows = await loadQaqcRows(pkg.key);
-  const sheet = await loadTreeRows(pkg);
+  /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): хоёр БИЕ ДААСАН уншилт — дараалсан шат биш ЗЭРЭГ.
+     `loadTreeRows` ХЭЗЭЭ Ч шидэхгүй (`null`) тул QAQC мөрийн уналт урьдын адил багцыг унагана. */
+  const [rows, sheet] = await Promise.all([loadQaqcRows(pkg.key), loadTreeRows(pkg)]);
   return attachOrFlat({ key: pkg.key, label: pkg.label }, rows, sheet);
 }
 

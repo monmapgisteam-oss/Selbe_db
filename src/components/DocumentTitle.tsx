@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 
-import { t as tr, getLocale, getServerLocale, subscribeLocale } from '@/lib/i18nCore';
+import { t as tr, getDictEpoch, getLocale, getServerLocale, subscribeDict, subscribeLocale } from '@/lib/i18nCore';
 
 /**
  * ХӨТЧИЙН ТАБЫН ГАРЧГИЙГ ХЭЛЭЭР НЬ СОЛИХ (2026-08 аудит, олдвор #37).
@@ -22,10 +22,13 @@ import { t as tr, getLocale, getServerLocale, subscribeLocale } from '@/lib/i18n
  */
 export function DocumentTitle() {
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getServerLocale);
+  /* ⚠️ 2026-10-04: англи толь ХОЙШЛОГДОН ачаалагддаг (`i18nCore.loadLocaleDict`) — ирэхэд
+     гарчгийг дахин тавина (эс бөгөөс англи горимд монгол гарчиг үлдэнэ). */
+  const dictEpoch = useSyncExternalStore(subscribeDict, getDictEpoch, getDictEpoch);
   useEffect(() => {
     // mn хэлэнд tr() түлхүүрээ өөрийг нь буцаадаг тул нөхцөл шалгах шаардлагагүй
     const t = tr('Сэлбэ — Орон зайн мэдээллийн портал');
     if (document.title !== t) document.title = t;
-  }, [locale]);
+  }, [locale, dictEpoch]);
   return null;
 }

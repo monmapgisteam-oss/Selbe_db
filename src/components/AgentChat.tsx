@@ -18,6 +18,11 @@ import { AGENT_API, ask, relayAlive, type ApiMessage } from '@/lib/agent/client'
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
 import s from '@/components/agent.module.css';
+/* ⚠️ 2026-10-04 (ачааллын аудит): хөвөгч товч ба «оч» дүрс ТУСДАА файлд — `Portal` товчийг
+   статикаар, энэ цонхыг (агентын клиент · датасетийн бүртгэл · markdown, ~220 КБ эх код)
+   `dynamic`-аар, анх НЭЭХЭД л ачаална. Хуучин импортын зам ажилласаар байна. */
+import { Spark } from '@/components/AgentButton';
+export { AgentButton } from '@/components/AgentButton';
 
 type Bubble = { role: 'user' | 'bot'; text: string };
 
@@ -363,25 +368,6 @@ export function AgentChat({
   );
 }
 
-/** Нээх товч — цонх хаалттай үед харагдана */
-export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  /* ⚠️ 2026-09-29 (аудит 10): самбар хаагдахад фокус body дээр үлддэг байв — FAB
-     дахин гарч ирэхэд (нээлттэй → хаалттай шилжилт) өөр дээрээ фокус авна. */
-  const ref = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(open);
-  useEffect(() => {
-    if (wasOpen.current && !open) ref.current?.focus();
-    wasOpen.current = open;
-  }, [open]);
-  if (open) return null;
-  return (
-    <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
-      <Spark />
-      {tr('AI туслах')}
-    </button>
-  );
-}
-
 /**
  * Өргөтгөх / жижигрүүлэх дүрс — баруун талын самбарыг илэрхийлнэ.
  * ⚠️ Сумны чиглэл нь ҮЙЛДЛИЙГ заана: жижиг үед «зүүн тийш тат» (өргөтгөх),
@@ -399,19 +385,6 @@ function Expand({ wide }: { wide: boolean }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-/** Оч — `Icon`-д тохирох дүрс байхгүй тул энд шууд */
-function Spark() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"
-        fill="currentColor"
-      />
-      <path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z" fill="currentColor" opacity=".6" />
     </svg>
   );
 }

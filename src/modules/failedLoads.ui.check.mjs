@@ -13,7 +13,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { friendlyError, userError } from '@/components/ui';
 import { dateTime } from '@/lib/format';
-import { setLocale } from '@/lib/i18nCore';
+import { setLocale, loadLocaleDict } from '@/lib/i18nCore';
+
+/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
+   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
+await loadLocaleDict('en');
 
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 

@@ -25,9 +25,9 @@ import { ViewSlot, type PlanJump } from '@/components/viewRegistry';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
-import { UserAdmin } from '@/components/UserAdmin';
 import { LocaleToggle } from '@/components/LocaleToggle';
-import { AgentButton, AgentChat } from '@/components/AgentChat';
+/* ⚠️ 2026-10-04: товч нь тусдаа хөнгөн файлаас — `AgentChat` нь доор `dynamic` (`AgentButton.tsx`-ийн ⚠️) */
+import { AgentButton } from '@/components/AgentButton';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -54,6 +54,18 @@ import { num } from '@/lib/format';
  * ХЭРЭГГҮЙ — 2026-09-03-ны аудитаар динамик болгов.
  */
 const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
+/**
+ * ⚠️ 2026-10-04 (ачааллын аудит): хоёр том, ХОВОР цонх `dynamic` — урьд нь статик
+ *    байсан тул бүх хэрэглэгчийн Portal chunk-д орж байв:
+ *    · `UserAdmin` (~630 КБ эх код: эрхийн хүснэгтүүд, `ChanarAcl` → `chanarMs` …) —
+ *      ЗӨВХӨН super admin-д mount болдог. Mount-ын нөхцөл ӨӨРЧЛӨГДӨӨГҮЙ (`isSuper`)
+ *      тул super-ийн хувьд төлөв/эффектийн зан урьдын адил, зөвхөн дэвсгэрт татагдана;
+ *      бусад хэрэглэгч ОГТ татахгүй.
+ *    · `AgentChat` (~220 КБ: агентын клиент, датасетийн бүртгэл, markdown) — анх
+ *      НЭЭХЭД л mount (`agentMounted`).
+ */
+const UserAdmin = dynamic(() => import('@/components/UserAdmin').then((m) => m.UserAdmin), { ssr: false });
+const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.AgentChat), { ssr: false });
 
 import s from '@/app/shell.module.css';
 
@@ -417,6 +429,13 @@ function PortalContent(
    * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
    */
   const [agentOpen, setAgentOpen] = useState(false);
+  /**
+   * ⚠️ 2026-10-04 (ачааллын аудит): AI цонх (`AgentChat` — `dynamic`, ~220 КБ эх код)
+   *    анх НЭЭГДЭХЭД л mount болно. Хаалттай үед тэр юу ч зурдаггүй, реле шалгалт ч
+   *    зөвхөн `open` үед — тиймээс нээгээгүй хэрэглэгч chunk-ийг ОГТ татахгүй. Нэг
+   *    удаа нээсний дараа mount хэвээр (яриа, өргөн горим хадгалагдана — урьдын адил).
+   */
+  const [agentMounted, setAgentMounted] = useState(false);
   /** Порталын тусламжийн цонх (2026-09-30, `HelpPanel`) */
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
@@ -1053,8 +1072,10 @@ function PortalContent(
       {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
 
       {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
-      <AgentButton open={agentOpen} onToggle={() => setAgentOpen(true)} />
-      <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
+      <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />
+      {/* ⚠️ 2026-10-04: анх НЭЭХЭД л mount (дээрх `agentMounted`-ийн ⚠️) — дараа нь хаасан ч
+          mount хэвээр тул яриа хадгалагдана. */}
+      {agentMounted && <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />}
     </>
   );
 }

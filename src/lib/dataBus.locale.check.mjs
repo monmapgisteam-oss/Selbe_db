@@ -12,8 +12,12 @@
  */
 import assert from 'node:assert/strict';
 import { register, dataVersion, subscribeData } from '@/lib/dataBus';
-import { setLocale, getLocale, t as tr } from '@/lib/i18nCore';
+import { setLocale, getLocale, loadLocaleDict, t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
+
+/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
+   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
+await loadLocaleDict('en');
 
 let pass = 0;
 const ok = (name, cond, detail = '') => {

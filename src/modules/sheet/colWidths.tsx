@@ -12,7 +12,7 @@
 // багана бүгд нэг ангилалтай тул НЭГ дор өөрчлөгдөнө (нэгийг нь чирэхэд бүгд).
 // Тэдгээр нь ижил төрлийн утга агуулдаг тул үүнийг санаатай ингэв.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Бариулын tooltip/aria — 3 файлд давхардаж байсныг нэг эхээс (i18n-тэй).
 import { GRIP_ARIA, GRIP_TITLE } from "@/components/ResizableTable";
 import st from "./sheet.module.css";
@@ -145,9 +145,12 @@ export function useColWidths(key: string) {
   );
 
   /** `<table style={...}>`-д тавих CSS хувьсагчид. */
-  const style = Object.fromEntries(
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `w`-д MEMO — урьд нь зурагдалт бүрд шинэ объект тул
+     түүнээс хамаарах `useMemo` (`Finance.frzLeft` г.м.) ХЭЗЭЭ Ч онохгүй, `<table style>` ч
+     бүх CSS хувьсагчаа дахин тулгадаг байв. Утга ЯГ ИЖИЛ. */
+  const style = useMemo(() => Object.fromEntries(
     Object.entries(w).map(([k, v]) => [`--w-${k}`, `${v}px`]),
-  ) as React.CSSProperties;
+  ) as React.CSSProperties, [w]);
 
   /** Бүх баганыг анхны өргөнд нь буцаана. */
   const resetAll = useCallback(() => {

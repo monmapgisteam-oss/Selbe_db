@@ -152,6 +152,20 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     [visible, winFrom, winTo],
   );
   /* ── Хуанлийн шошго ── */
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `from`·`total`·`zoom`·`px`-д MEMO. Урьд нь зурагдалт
+     БҮРД (босоо гүйлгээний цонх солигдох, мөр сонгох, чирэлтийн кадр) ~1,000 хоногийг `Date`-ээр
+     гүйж шинэ массив үүсгэдэг тул толгойн ~200 шошго ба торын зураасыг React дахин тулгадаг байв.
+     Тооцоо ЯГ ИЖИЛ — зөвхөн ижил оролтод дахин бодохгүй. */
+  const { ticks, months } = useMemo(() => calTicks(from, total, zoom, px), [from, total, zoom, px]);
+
+  return {
+    now, from, to, px, total, W, xOf, dayAt, msAt,
+    trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
+  };
+}
+
+/** Хуанлийн толгойн сар · хоногийн шошго — `useCalendar`-аас (2026-10-04, memo-д зориулж салгав; логик ХЭВЭЭР) */
+function calTicks(from: number, total: number, zoom: Zoom, px: number) {
   const ticks: { at: number; lab: string; big: boolean }[] = [];
   const months: { at: number; lab: string }[] = [];
   for (let k = 0; k < total; k++) {
@@ -182,9 +196,5 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
       else lastLab = x;
     }
   }
-
-  return {
-    now, from, to, px, total, W, xOf, dayAt, msAt,
-    trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
-  };
+  return { ticks, months };
 }

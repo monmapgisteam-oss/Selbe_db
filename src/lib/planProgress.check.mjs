@@ -135,4 +135,23 @@ assert.ok(/planPctFromMonths\(m, asOf, sane\(s\) && sane\(e\) \? \{ start: s, en
 assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   '`planAt` нь `plan.spanFrac`-ийг дуудах ёстой — нэг томъёо');
 
+/* ── ТАЛБАРЫН ХЯЗГААРЛАЛТ (2026-10-04, гүйцэтгэлийн аудит) ──
+   `loadPlanCurve` мөрийг `planFields`-ээр (`*` биш) уншина. `planCurve` ШИНЭ мөрийн талбар
+   уншдаг болвол тэр нь `null` ирж муруй ЧИМЭЭГҮЙ өөрчлөгдөнө — энд барина. */
+{
+  const body = SHEET.slice(SHEET.indexOf('export function planCurve('), SHEET.indexOf('export function computeAll('));
+  const used = new Set([...body.matchAll(/\b(?:r|rows\[i\])\.(\w+)/g)].map((m) => m[1]));
+  assert.ok(used.has('money') && used.has('start'), 'planCurve-ийн биеийг олсон байх ёстой');
+  /* мөрийн шинж → `planFields`-д байх ёстой бүдүүвчийн талбар (`depth` нь `gun`/TREES-ээс) */
+  const covered = { vol: 'sc.f.vol', unit: 'sc.f.unit', money: 'sc.f.money', wD: 'sc.f.wD', start: '...sc.start', end: '...sc.end', depth: 'sc.f.gun', plannedVol: null };
+  const pf = SRC.slice(SRC.indexOf('export const planFields'), SRC.indexOf('export async function loadPlanCurve'));
+  for (const k of used) {
+    assert.ok(k in covered, `planCurve мөрийн «${k}» талбарыг уншдаг болжээ — planFields-д нэмээд энд бүртгэ`);
+    if (covered[k]) assert.ok(pf.includes(covered[k]), `planFields нь ${covered[k]}-ийг агуулах ёстой`);
+  }
+  for (const k of ['sc.f.des', 'sc.f.no', 'sc.f.work', 'sc.f.oid', 'sc.f.fillDate'])
+    assert.ok(pf.includes(k), `planFields нь ${k}-ийг агуулах ёстой (planPct · loadRows)`);
+  assert.match(SRC, /loadRows\(pkg, s, undefined, planFields\(s\)\)/, 'муруй мөрийг planFields-ээр уншина');
+}
+
 console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

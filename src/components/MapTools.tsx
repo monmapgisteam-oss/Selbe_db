@@ -6,6 +6,7 @@ import { useFilter, type ActiveFilter } from '@/lib/filter';
 import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
 import { useMap, type Dim } from './MapCanvas';
+import { prefetch3d } from './lazy3d';
 import s from './mapTools.module.css';
 
 /**
@@ -321,6 +322,11 @@ export function MapTools({
           aria-pressed={dim === d}
           className={`${s.dimBtn} mapDimBtn ${dim === d ? s.dimOn : ''}`}
           onClick={() => setDim(d)}
+          /* ⚠️ 2026-10-04: 3D/BIM-ийн модуль хоцорч ачаалагдана (`lazy3d`) — товч руу хулгана/фокус
+             очмогц урьдчилан татаж, дарах агшны хүлээлтийг багасгана (2D хэрэглэгч товч руу
+             очоогүй бол огт татахгүй). */
+          onPointerEnter={d === '2d' ? undefined : prefetch3d}
+          onFocus={d === '2d' ? undefined : prefetch3d}
         >
           {d.toUpperCase()}
         </button>

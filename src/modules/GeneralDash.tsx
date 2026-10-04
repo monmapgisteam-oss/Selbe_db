@@ -600,6 +600,18 @@ export function GeneralDash({
    * сонголт болгохгүй: сонговол бүх карт хоосорч, буцаах товч нь өөрөө
    * харагдахгүй болно.
    */
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `MapCanvas`-ийн `layerWhere`-ийг MEMO-д. Урьд нь JSX дотор
+     шинэ объект байсан тул GeneralDash-ийн ЗУРАГДАЛТ БҮРД (`useMap`-ийн тодруулга, чартын сонголт,
+     цэс нээх…) `memo(MapCanvas)` алгасагдахгүй бөгөөд `layerWhere`-ээс хамаарах ХОЁР эффект —
+     голын буфер (давхарга бүрд `queryFeatures` + `geodesicBuffer`) ба харагдац/шүүлтийн давталт —
+     дахин ажилладаг байв. Бусад дуудагч (Bagts · Gazar · PkgProg …) аль хэдийн memo хийдэг. Утга ИЖИЛ. */
+  const houseWhere = xsPick?.houseWhere ?? null;
+  const layerWhere = useMemo(() => ({
+    [PARCEL_LAYER]: parcelWhere,
+    /* ⚠️ Чартаас сонгосон орон сууцны багцын блокууд (2026-09-15) */
+    [BLOCK_LAYER]: houseWhere,
+  }), [parcelWhere, houseWhere]);
+
   const pick = useCallback((attrs: Record<string, unknown> | null) => {
     if (!attrs) return;
     const zid = String(attrs[ZONE_FIELD] ?? '').trim();
@@ -676,11 +688,7 @@ export function GeneralDash({
             visible={visible}
             opacity={opacity}
             zone={zone}
-            layerWhere={{
-              [PARCEL_LAYER]: parcelWhere,
-              /* ⚠️ Чартаас сонгосон орон сууцны багцын блокууд (2026-09-15) */
-              [BLOCK_LAYER]: xsPick?.houseWhere ?? null,
-            }}
+            layerWhere={layerWhere}
             uniform
             onPick={pick}
           />

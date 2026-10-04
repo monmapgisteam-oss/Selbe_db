@@ -2,14 +2,20 @@
 
 import {
   createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type CSSProperties, type ReactNode,
+  type CSSProperties, type ReactNode, type RefObject,
 } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import Map from '@arcgis/core/Map';
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
 import { adoptView, parkView, shouldPark, mapStats } from './mapPark';
+import { bimLayerFor } from './bimCache';
 import MapView from '@arcgis/core/views/MapView';
-import SceneView from '@arcgis/core/views/SceneView';
+/* ⚠️ 2026-10-04: 3D/BIM-ийн классууд СТАТИК БИШ — `lazy3d.ts` (2D хэрэглэгч татахгүй). Энд зөвхөн ТӨРӨЛ. */
+import type SceneView from '@arcgis/core/views/SceneView';
+import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
+import type BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import type Slide from '@arcgis/core/webscene/Slide';
+import { load3d, mods3d, loadTools3d, type ModsTools } from './lazy3d';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
@@ -20,26 +26,13 @@ import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
-import IntegratedMeshLayer from '@arcgis/core/layers/IntegratedMeshLayer';
-import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
-import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
-import ViewshedAnalysis from '@arcgis/core/analysis/ViewshedAnalysis';
-import AreaMeasurementAnalysis from '@arcgis/core/analysis/AreaMeasurementAnalysis';
-import DirectLineMeasurementAnalysis from '@arcgis/core/analysis/DirectLineMeasurementAnalysis';
-import LineOfSightAnalysis from '@arcgis/core/analysis/LineOfSightAnalysis';
-import DimensionAnalysis from '@arcgis/core/analysis/DimensionAnalysis';
-import SliceAnalysis from '@arcgis/core/analysis/SliceAnalysis';
-import VolumeMeasurementAnalysis from '@arcgis/core/analysis/VolumeMeasurementAnalysis';
-import Slide from '@arcgis/core/webscene/Slide';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery';
 import LocalBasemapsSource from '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource';
 import Expand from '@arcgis/core/widgets/Expand';
 import Swipe from '@arcgis/core/widgets/Swipe';
-import SceneModification from '@arcgis/core/layers/support/SceneModification';
-import SceneModifications from '@arcgis/core/layers/support/SceneModifications';
 import ElevationLayer from '@arcgis/core/layers/ElevationLayer';
 import Ground from '@arcgis/core/Ground';
 import type Layer from '@arcgis/core/layers/Layer';
@@ -81,6 +74,55 @@ export type Dim = '2d' | '3d' | 'bim';
 
 /** BIM загварын хүрээнд барилгын ХЭДЭН ХУВЬ орвол нуух вэ (0–1) — `MapCanvas`-ийн BIM эффект */
 const BIM_COVER = 0.5;
+
+/**
+ * ⚠️ 2026-10-04: BIM-ийн доорх барилгын нуултын СЕШНИЙ кэш ба явж буй асуулга (`MapCanvas`-ийн
+ * «BIM ЗАГВАРЫН ДООРХ БАРИЛГЫГ НУУНА» эффект). Түлхүүр — барилгын давхаргын url + BIM жагсаалт.
+ */
+let bimHideCache: { sig: string; where: string | null } | null = null;
+let bimHideFlight: { sig: string; p: Promise<{ where: string | null; complete: boolean }> } | null = null;
+
+/**
+ * BIM загварын хүрээнд `BIM_COVER`-оос их орсон барилгын OID-ийн `NOT IN` шүүлт.
+ * ⚠️ Дүрэм нь өмнөх эффектийнхтэй ЯГ ИЖИЛ (хүрээний талбайн харьцаа, төв цэгээр БИШ).
+ * `complete` — BIM бүгд уншигдсан эсэх (дутуу бол кэшлэхгүй).
+ */
+async function computeBimHide(map: Map, bld: FeatureLayer): Promise<{ where: string | null; complete: boolean }> {
+  const bims = BIM.layers
+    .map((b) => map.findLayerById(b.key))
+    .filter((l): l is Layer => l != null && l.type === 'building-scene');
+  const settled = await Promise.allSettled(bims.map(async (l) => { await l.load(); return l.fullExtent; }));
+  const exts = settled
+    .flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []))
+    .map((e) => (e.spatialReference?.isWebMercator ? webMercatorUtils.webMercatorToGeographic(e) as typeof e : e))
+    .filter((e) => e.spatialReference?.isWGS84);
+  const complete = bims.length === BIM.layers.length && exts.length === bims.length;
+  if (!exts.length) return { where: null, complete };
+  await bld.load();
+  const oid = bld.objectIdField;
+  const env = new Extent({
+    xmin: Math.min(...exts.map((e) => e.xmin)), ymin: Math.min(...exts.map((e) => e.ymin)),
+    xmax: Math.max(...exts.map((e) => e.xmax)), ymax: Math.max(...exts.map((e) => e.ymax)),
+    spatialReference: { wkid: 4326 },
+  });
+  const fs2 = await bld.queryFeatures({
+    where: '1=1', outFields: [oid], returnGeometry: true, outSpatialReference: { wkid: 4326 },
+    geometry: env, spatialRelationship: 'envelope-intersects',
+  });
+  const hide: number[] = [];
+  for (const ft of fs2.features) {
+    const b = (ft.geometry as Polygon | null)?.extent;
+    const own = b ? b.width * b.height : 0;
+    if (!b || own <= 0) continue;
+    const covered = exts.some((e) => {
+      const w = Math.min(b.xmax, e.xmax) - Math.max(b.xmin, e.xmin);
+      const h = Math.min(b.ymax, e.ymax) - Math.max(b.ymin, e.ymin);
+      return w > 0 && h > 0 && (w * h) / own > BIM_COVER;
+    });
+    if (covered) hide.push(Number(ft.attributes[oid]));
+  }
+  return { where: hide.length ? `${oid} NOT IN (${hide.join(',')})` : null, complete };
+}
 type AnyView = MapView | SceneView;
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
 
@@ -838,6 +880,15 @@ const toglPx = (scale: number) => Math.max(2.5, Math.min(90, 61000 / Math.max(sc
  */
 let homeExtentCache: Extent | null = null;
 
+/** ⚠️ 2026-10-04: ТАБ СОЛИХООР хадгалсан 3D view (`mapPark`-ийн слотод) — авахад камерыг буцаана */
+let tabParked3d: AnyView | null = null;
+
+/** SceneView-ийн анхны камер — шинэ view ба таб солихоор авсан view ХОЁУЛАНД ижил */
+const INITIAL_CAMERA_3D = () => ({
+  position: { longitude: HOME.lon, latitude: HOME.lat - 0.012, z: 2600 },
+  tilt: 62, heading: 0,
+});
+
 /**
  * Map-ын МОДУЛИЙН кэш — навбараас сэдэв солиход зураг дахин үүсэхээс сэргийлнэ.
  *
@@ -1444,9 +1495,20 @@ export function MapProvider({ children }: { children: ReactNode }) {
     });
   }, [view, hl, zoneMask]);
 
+  /* ⚠️ 2026-10-04 (гүйцэтгэл): ИЖИЛ утгаар дахин дуудахад ӨМНӨХ объектыг буцаана — урьд нь
+     дуудлага бүр шинэ `hl` үүсгэж, харагдацын эффект (бүх давхаргын шүүлт/renderer) болон
+     featureEffect-ийн эффект дэмий дахин ажилладаг байв. `only` массив бол агуулгаар нь харьцуулна;
+     `geometry` — лавлагаагаар (дуудагч шинэ геометр өгвөл шинэ гэж үзнэ, хуучин зан). */
   const setHighlight = useCallback(
     (where: string | null, only?: string | string[], geometry?: unknown) =>
-      setHl({ where, only, geometry }),
+      setHl((prev) => {
+        const sameOnly = Array.isArray(only) && Array.isArray(prev.only)
+          ? only.length === prev.only.length && only.every((x, i) => x === (prev.only as string[])[i])
+          : only === prev.only;
+        return prev.where === where && sameOnly && prev.geometry === geometry
+          ? prev
+          : { where, only, geometry };
+      }),
     [],
   );
 
@@ -1935,22 +1997,16 @@ export const MapCanvas = memo(function MapCanvas({
   const [initError, setInitError] = useState<{ name?: string; message?: string } | null>(null);
   /** «Дахин оролдох» — утга нэмэгдэхэд view-г бүхэлд нь дахин үүсгэнэ */
   const [initToken, setInitToken] = useState(0);
+  /** ⚠️ 2026-10-04: 3D/BIM модуль (`lazy3d`) анх ачаалагдаж дуусахад нэмэгдэнэ — view/давхаргын эффектийг сэрээнэ */
+  const [m3Tick, setM3Tick] = useState(0);
   /** Хулганы доорх объектын товч мэдээлэл */
-  const [tip, setTip] = useState<
-    {
-      x: number; y: number; id: string; attrs: Record<string, unknown>;
-      /**
-       * Давхаргын талбарын тодорхойлолт — ArcGIS-ийн popup шиг alias ба
-       * домэйны ШОШГЫГ гаргахад (2026-09-16, хэрэглэгчийн хүсэлт).
-       *
-       * ⚠️ ЗУРГИЙН FeatureLayer-ЭЭС авна — нэмэлт REST хүсэлт ЯВУУЛАХГҮЙ.
-       * `loadLayerMeta`-г дуудвал (а) сүлжээ хөндөнө, (б) `butetsEdit` модулийг
-       * БҮХ харагдацын зургийн багцад чирнэ. Давхарга ачаалагдсаны дараа
-       * `fields` нь аль хэдийн санах ойд бий.
-       */
-      fields: readonly __esri.Field[] | null;
-    } | null
-  >(null);
+  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ТӨЛӨВ НЬ `TipLayer`-Т. Урьд нь энд `useState` байсан тул
+     `pointer-move`-ийн hitTest бүр (объект дээр байхад хулгана хөдлөх БҮРД) ~3,200 мөрийн MapCanvas-ийг
+     бүтнээр нь дахин зурж, 12 `useSyncRef` layout effect · `JSON.stringify(opacity)` г.м. давтагддаг
+     байв. Одоо зөвхөн жижиг `TipLayer` зурагдана. `setTip` нь тогтмол функц — дуудах газар, утга,
+     зан төлөв ХЭВЭЭР. */
+  const tipSetRef = useRef<(t: TipState | null) => void>(() => {});
+  const setTip = useCallback((t: TipState | null) => { tipSetRef.current(t); }, []);
   /** Блок бүрийн нийт гүйцэтгэл — газрын зургийн өнгө ба tooltip-д хоёуланд нь */
   const [blockProg, setBlockProg] = useState<BlockProgressMap | null>(null);
   /** Гүйцэтгэлийн өнгө КЭШЭЭС будагдсан — амьд дүн ирмэгц false болно */
@@ -2060,6 +2116,17 @@ export const MapCanvas = memo(function MapCanvas({
 
 
   /**
+   * ⚠️ 2026-10-04: КОМПОНЕНТ САЛЖ БАЙГАА эсэх — доорх view эффектийн cleanup-аас ӨМНӨ ажиллахын
+   * тулд ТҮҮНЭЭС ӨМНӨ зарлагдсан (React салахдаа cleanup-уудыг зарласан дарааллаар дуудна).
+   * dim/`initToken` солигдоход зөвхөн view эффектийн cleanup ажиллах тул false хэвээр.
+   */
+  const unmountingRef = useRef(false);
+  useEffect(() => {
+    unmountingRef.current = false;
+    return () => { unmountingRef.current = true; };
+  }, []);
+
+  /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
    * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
    */
@@ -2084,6 +2151,28 @@ export const MapCanvas = memo(function MapCanvas({
     setReady(false);
     setInitError(null);
 
+    /* ⚠️ 2026-10-04 (3D/BIM гүйцэтгэл): SceneView-ийн модуль ХОЦРОЖ ачаалагдана (`lazy3d.ts`).
+       Анх 3D/BIM руу ороход татаж дуустал view ҮҮСГЭХГҮЙ («Газрын зураг ачаалж байна…» хэвээр),
+       дуусмагц `m3Tick`-ээр энэ эффект дахин ажиллана. Энэ хооронд `viewRef` хоосон, `ready`
+       false тул бусад эффект эрт буцна (урьдын адил view бэлэн болохыг хүлээдэг зам). Уналтад
+       (сүлжээ) алдааны карт + «Дахин оролдох» (`initToken`) — `load3d` дахин оролдоно. */
+    const m3 = is3D(dim) ? mods3d() : null;
+    if (is3D(dim) && !m3) {
+      let gone = false;
+      load3d()
+        .then(() => { if (!gone) setM3Tick((t) => t + 1); })
+        .catch((e: unknown) => {
+          if (gone) return;
+          console.error('[selbe] 3D модуль ачаалж чадсангүй:', e);
+          const er = e as { name?: unknown; message?: unknown } | null;
+          setInitError({
+            name: typeof er?.name === 'string' ? er.name : undefined,
+            message: typeof er?.message === 'string' ? er.message : undefined,
+          });
+        });
+      return () => { gone = true; };
+    }
+
     /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХЭЛ СОЛИХ remount-оос хадгалсан view
        (`mapPark`) — ижил dim + ижил кэшийн Map бол ДАХИН ҮҮСГЭХГҮЙ, `container`-оо л
        солино: камер, ачаалсан tile, 3D меш хэвээр. Map өөр (кэш шинэчлэгдсэн) бол
@@ -2093,19 +2182,20 @@ export const MapCanvas = memo(function MapCanvas({
     const parkKey = `${dim}|${mapKey}`;
     const parked = adoptView<AnyView>(parkKey);
     const reused = parked && parked.map === map ? parked : null;
+    /* ⚠️ 2026-10-04: ТАБ СОЛИХООР хадгалсан 3D view (доорх cleanup-ийн `tabPark3d`) — камерыг
+       ШИНЭ view-тэй ИЖИЛ эхлэх байрлалд буцаана (хэл солилтынх л хэрэглэгчийн камерыг үлдээнэ). */
+    const tabAdopt = reused != null && reused === tabParked3d;
+    if (parked) tabParked3d = null;
     if (parked && !reused) { destroyDetached(parked); mapStats.destroyed += 1; }
     if (reused) reused.container = el.current;
     else mapStats.created += 1;
 
     const view: AnyView =
-      reused ?? (is3D(dim)
-        ? new SceneView({
+      reused ?? (m3
+        ? new m3.SceneView({
             container: el.current,
             map,
-            camera: {
-              position: { longitude: HOME.lon, latitude: HOME.lat - 0.012, z: 2600 },
-              tilt: 62, heading: 0,
-            },
+            camera: INITIAL_CAMERA_3D() as never,
             popupEnabled: false,
             qualityProfile: 'high',
             ui: { components: ['zoom', 'navigation-toggle', 'compass', 'attribution'] },
@@ -2430,8 +2520,8 @@ export const MapCanvas = memo(function MapCanvas({
       };
 
       const clipTo = (ring: number[][], sr: __esri.SpatialReference) =>
-        new SceneModifications([
-          new SceneModification({
+        new m3!.SceneModifications([
+          new m3!.SceneModification({
             geometry: new Polygon({ rings: [ring], spatialReference: sr }),
             // ⚠️ `clip` — олон өнцөгтийн ДОТОРХ хэсгийг л үлдээнэ
             type: 'clip',
@@ -2501,7 +2591,7 @@ export const MapCanvas = memo(function MapCanvas({
          */
         const cmpVer: MeshVer = scene ? 'new' : (meshVerRef.current === 'new' ? 'old' : 'new');
         for (const m of MESH_VERSIONS[cmpVer].layers) {
-          map.add(new IntegratedMeshLayer({
+          map.add(new m3!.IntegratedMeshLayer({
             id: `${MESH_CMP_PREFIX}${m.key}`,
             url: m.url,
             title: m.title,
@@ -2576,7 +2666,12 @@ export const MapCanvas = memo(function MapCanvas({
        * дахин үсрэхгүй (бүс өөрчлөгддөггүй статик хүрээ).
        * ⚠️ 2026-10-01: ДАХИН АВСАН view (хэл солилт) — камер хэрэглэгчийнхээрээ үлдэнэ.
        */
-      if (reused) {
+      if (tabAdopt) {
+        /* ⚠️ 2026-10-04: шинэ SceneView-ийн анхны камер (heading/tilt) → дараа нь эхлэх хүрээ —
+           `goTo(extent)` нь одоогийн tilt/heading-ийг хадгалдаг тул эхлээд буцаана */
+        (view as __esri.SceneView).camera = INITIAL_CAMERA_3D() as never;
+      }
+      if (reused && !tabAdopt) {
         /* хэрэглэгчийн камер хэвээр */
       } else if (homeExtentCache) {
         view.goTo(homeExtentCache, { animate: false }).catch(() => {});
@@ -2728,6 +2823,23 @@ export const MapCanvas = memo(function MapCanvas({
       return null;
     };
 
+    /**
+     * ⚠️ 2026-10-04 (BIM гүйцэтгэл): СОНГОГДОХ давхарга НЭГ Ч ил биш бол `hitTest` ХИЙХГҮЙ —
+     * хоосон үр дүнтэй ЯГ ИЖИЛ зам (`pickHit` нь зөвхөн каталогт бүртгэлтэй, ил, PASSIVE биш
+     * давхаргаас л буцаадаг). BIM горимд каталогийн давхарга бүгд нуугддаг тул урьд нь хулгана
+     * хөдлөх БҮРД 58 BuildingSceneLayer-ийн гадаргуу дээр туяа шидэж, үр дүнг нь хаядаг байв.
+     * `allLayers` — бүлэг давхарга доторх FeatureLayer-ийг ч тооцно (`pickHit` давхаргын
+     * өөрийн `visible`-ийг л шалгадагтай ижил).
+     */
+    const NO_HITS = { results: [] } as unknown as __esri.HitTestResult;
+    const hitTestPickable = (e: __esri.ViewClickEvent | __esri.ViewPointerMoveEvent) => {
+      const any = view.map?.allLayers.some((l) => {
+        const id = String(l.id);
+        return l.visible && !PASSIVE.has(id) && LAYER_BY_ID[id] != null;
+      });
+      return any ? view.hitTest(e) : Promise.resolve(NO_HITS);
+    };
+
     // ⚠️ `e`-г ИЛ бичнэ: `view` нь MapView|SceneView нэгдэл тул `on()`-ийн
     // overload шийдэгдэхгүй бөгөөд параметр чимээгүй `any` болно.
     /**
@@ -2740,7 +2852,7 @@ export const MapCanvas = memo(function MapCanvas({
     let clickSeq = 0;
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
       const seq = ++clickSeq;
-      view.hitTest(e)
+      hitTestPickable(e)
         .then(async (r) => {
           // Хоцорсон hitTest — шинэ даралт аль хэдийн явж байна
           if (seq !== clickSeq) return;
@@ -2779,7 +2891,7 @@ export const MapCanvas = memo(function MapCanvas({
     const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       if (busy) return;
       busy = true;
-      view.hitTest(e)
+      hitTestPickable(e)
         .then((r) => {
           if (view.destroyed || !view.container) return;
           const hit = pickHit(r);
@@ -2804,7 +2916,15 @@ export const MapCanvas = memo(function MapCanvas({
       if (!gallery.destroyed) gallery.destroy();
       /* ⚠️ 2026-10-01: ХЭЛ СОЛИХ remount бол view-г УСТГАХГҮЙ — `mapPark`-д түр хадгална
          (дээрх `mountGen`-ий ⚠️). Ердийн unmount · 2D↔3D · «Дахин оролдох» → урьдын адил устгана. */
-      const park = !view.destroyed && shouldPark(mountGen, getLocaleGeneration());
+      /* ⚠️ 2026-10-04 (BIM гүйцэтгэл): ТАБ СОЛИХОД (компонент салах) 3D/BIM view-г мөн ХАДГАЛНА.
+         Урьд нь дараагийн харагдацын MapCanvas шинэ SceneView үүсгэж 58 BIM-ийн ~7,400 геометрийн
+         хүсэлтийг дахин боловсруулдаг (хэмжсэн: 180с+ дуусдаггүй, GPU 1.6 ГБ) байв. Ижил түлхүүртэй
+         (dim + Map кэш) MapCanvas `PARK_TTL_MS` дотор mount хийвэл view-г АВЧ, ачаалсан BIM/меш
+         хэвээр — камерыг эхлэх байрлалд буцаана (`tabAdopt`, шинэ view-тэй ижил харагдац). Хэн ч
+         авахгүй бол урьдын адил устна. 2D (MapView) — хуучин зан (устгана). dim/«Дахин оролдох»-
+         ын солилт салалт БИШ (`unmountingRef` false) → урьдын адил устгана. */
+      const tabPark3d = unmountingRef.current && is3D(dim);
+      const park = !view.destroyed && (shouldPark(mountGen, getLocaleGeneration()) || tabPark3d);
       if (park && swipeRef.current) view.ui.remove(swipeRef.current);
       /* Ортофото харьцуулалт — view-тэй хамт дуусна (2D↔3D солиход ч).
          ⚠️ Давхаргыг мөн НУУНА: Map нь кэшлэгддэг тул ил үлдвэл 3D-д хуучин
@@ -2831,6 +2951,7 @@ export const MapCanvas = memo(function MapCanvas({
         if (!bmExpand.destroyed) bmExpand.destroy();
         view.container = null as unknown as HTMLDivElement;
         parkView(view, parkKey, destroyDetached);
+        tabParked3d = tabPark3d && !shouldPark(mountGen, getLocaleGeneration()) ? view : null;
       } else {
         destroyDetached(view);
         mapStats.destroyed += 1;
@@ -2842,8 +2963,9 @@ export const MapCanvas = memo(function MapCanvas({
     // `initToken` — «Дахин оролдох» дарахад view-г дахин үүсгэнэ
     /* ⚠️ scene/setOrtho/uniform санаатай ОРУУЛААГҮЙ — тэдгээр солигдоход view-г
        устгаж дахин үүсгэвэл газрын зураг бүхэлдээ дахин ачаална. */
+    /* ⚠️ 2026-10-04: `m3Tick` — 3D модуль анх ачаалагдаж дуусахад (дээрх `lazy3d`-ийн ⚠️) */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dim, stylesReady, initToken]);
+  }, [dim, stylesReady, initToken, m3Tick]);
 
   /**
    * Компонент салахад Map-ыг УСТГАХГҮЙ — `mapCache`-д үлдэж дараагийн харагдацад
@@ -2910,21 +3032,28 @@ export const MapCanvas = memo(function MapCanvas({
       }
     }
 
-    if (dim === '3d') {
+    /* ⚠️ 2026-10-04: 3D классууд `lazy3d`-ээс — анх ороход модуль ачаалагдаж дуустал НЭМЭХГҮЙ
+       (хасах нь хэвээр), дуусмагц `m3Tick`-ээр дахин ажиллана. View нь тэр хүртэл үүсээгүй. */
+    const m3 = mods3d();
+    if (dim === '3d' && m3) {
       for (const { id, m } of want) {
         if (map.findLayerById(id)) continue;
         // Индекс 1 — ортофотогийн дараа, вектор давхаргуудын өмнө
-        map.add(new IntegratedMeshLayer({ id, url: m.url, title: m.title, visible: true }), 1);
+        map.add(new m3.IntegratedMeshLayer({ id, url: m.url, title: m.title, visible: true }), 1);
       }
     }
 
+    /* ⚠️ 2026-10-04 (BIM гүйцэтгэл): BIM-ээс гарахад давхаргыг Map-аас ХАСНА (дээрх ⚠️ —
+       MapView-д байж болохгүй) боловч `destroy()` ХИЙХГҮЙ — `bimCache`-д үлдэж буцаж ороход
+       ДАХИН НЭМЭГДЭНЭ. Урьд нь орох бүрд 58 давхарга шинээр үүсч ~712 метадатын хүсэлт
+       (service · layer · sublayer · statistics) давтагддаг байв (`bimCache.ts`-ийн ⚠️). */
     for (const b of BIM.layers) {
       const existing = map.findLayerById(b.key);
-      if (dim === 'bim' && !existing) {
-        map.add(new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true }));
+      if (dim === 'bim' && !existing && m3) {
+        map.add(bimLayerFor(map, b.key, () =>
+          new m3.BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
       } else if (dim !== 'bim' && existing) {
         map.remove(existing);
-        existing.destroy();
       }
     }
 
@@ -3038,7 +3167,7 @@ export const MapCanvas = memo(function MapCanvas({
     if (usan) { map.remove(usan); usan.destroy(); }
 
     // ⚠️ dep нь `sceneKey` (мөр) — `sceneList` массив рендер бүрт шинэ лавлагаатай.
-  }, [dim, ready, sceneKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dim, ready, sceneKey, m3Tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * BIM ЗАГВАРЫН ДООРХ БАРИЛГЫГ НУУНА (2026-09-25).
@@ -3063,41 +3192,37 @@ export const MapCanvas = memo(function MapCanvas({
    * ⚠️ `scene3d:*` нь бүсийн шүүлтийн `definitionExpression` бичигчид ХҮРДЭГГҮЙ
    *    (харагдалтын эффектэд эрт `return`) тул энд тавих нь зөрчилгүй.
    */
+  /* ⚠️ 2026-10-04 (BIM гүйцэтгэл): ГУРВАН ДАВХАР АСУУЛГА → НЭГ. BIM руу орох агшинд энэ эффект
+     3 удаа ажилладаг (dim солигдох коммитод `ready` хуучин true → view үүсэхэд false → бэлэн
+     болоход true) тул `scene3d:4`-ийн БҮХ барилгыг геометртэй нь 3 удаа татдаг байв. Одоо
+     (1) ижил түлхүүрийн явж буй асуулгыг ХУВААЛЦАНА (`bimHideFlight`), (2) BIM БҮГД уншигдсан
+     бүрэн үр дүнг сешнд КЭШЛЭНЭ (`bimHideCache`) — дахин ороход асуулгагүй, давхарга үүсэх
+     агшинд л шүүлт тавигдана (нуугдах барилгыг дэмий татахгүй). Уншигдаагүй BIM-тэй (дутуу)
+     үр дүнг КЭШЛЭХГҮЙ — дээрх «нуухгүй» дүрэм дараагийн оролтод засагдах ёстой.
+     ⚠️ `envelope-intersects` + BIM хүрээний НЭГДСЭН тэгш өнцөгт — «хүрээний талаас их»
+     шалгуурт тэнцэх барилгын хүрээ заавал түүнтэй огтлолцох тул ЯГ ИЖИЛ үр дүн, бага ачаалал. */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || dim !== 'bim') return;
     const bld = map.findLayerById('scene3d:4');
     if (!(bld instanceof FeatureLayer)) return;
+    const sig = `${bld.url}/${bld.layerId}|${BIM.layers.map((b) => b.key).join(',')}`;
+    if (bimHideCache?.sig === sig) {
+      bld.definitionExpression = bimHideCache.where as unknown as string;
+      return;
+    }
     let alive = true;
-    void (async () => {
-      const bims = BIM.layers
-        .map((b) => map.findLayerById(b.key))
-        .filter((l): l is BuildingSceneLayer => l instanceof BuildingSceneLayer);
-      const exts = (await Promise.allSettled(bims.map(async (l) => { await l.load(); return l.fullExtent; })))
-        .flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []))
-        .map((e) => (e.spatialReference?.isWebMercator ? webMercatorUtils.webMercatorToGeographic(e) as typeof e : e))
-        .filter((e) => e.spatialReference?.isWGS84);
-      if (!alive || !exts.length) return;
-      await bld.load();
-      const oid = bld.objectIdField;
-      const fs2 = await bld.queryFeatures({
-        where: '1=1', outFields: [oid], returnGeometry: true, outSpatialReference: { wkid: 4326 },
-      });
-      if (!alive) return;
-      const hide: number[] = [];
-      for (const ft of fs2.features) {
-        const b = (ft.geometry as Polygon | null)?.extent;
-        const own = b ? b.width * b.height : 0;
-        if (!b || own <= 0) continue;
-        const covered = exts.some((e) => {
-          const w = Math.min(b.xmax, e.xmax) - Math.max(b.xmin, e.xmin);
-          const h = Math.min(b.ymax, e.ymax) - Math.max(b.ymin, e.ymin);
-          return w > 0 && h > 0 && (w * h) / own > BIM_COVER;
-        });
-        if (covered) hide.push(Number(ft.attributes[oid]));
-      }
-      bld.definitionExpression = (hide.length ? `${oid} NOT IN (${hide.join(',')})` : null) as unknown as string;
-    })().catch((e) => console.warn('[selbe] BIM-ийн доорх барилгыг нууж чадсангүй:', e));
+    if (bimHideFlight?.sig !== sig) {
+      const flight = { sig, p: computeBimHide(map, bld) };
+      bimHideFlight = flight;
+      void flight.p
+        .then((r) => { if (r.complete) bimHideCache = { sig, where: r.where }; })
+        .catch(() => {})
+        .finally(() => { if (bimHideFlight === flight) bimHideFlight = null; });
+    }
+    bimHideFlight!.p
+      .then((r) => { if (alive && !bld.destroyed) bld.definitionExpression = r.where as unknown as string; })
+      .catch((e) => { if (alive) console.warn('[selbe] BIM-ийн доорх барилгыг нууж чадсангүй:', e); });
     return () => { alive = false; };
   }, [dim, ready, sceneKey]);
 
@@ -3283,13 +3408,15 @@ export const MapCanvas = memo(function MapCanvas({
 
     if (dim !== 'bim') { clear(); return; }
 
+    const m3 = mods3d();
+    if (!m3) return;
     const layers = BIM.layers
       .map((b) => map.findLayerById(b.key))
-      .filter((l): l is BuildingSceneLayer => l instanceof BuildingSceneLayer);
+      .filter((l): l is BuildingSceneLayer => l != null && l.type === 'building-scene');
     if (!layers.length) return;
 
     clear();
-    const widget = new BuildingExplorer({ view: view as SceneView, layers });
+    const widget = new m3.BuildingExplorer({ view: view as SceneView, layers });
     /**
      * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
      * баруун дээд буланд ЗАДГАЙ нэмэгддэг байсан тул 12 барилгын давхар,
@@ -3357,25 +3484,42 @@ export const MapCanvas = memo(function MapCanvas({
     const sv = view as SceneView;
 
     type AV = { interactive: boolean; place: (o?: { signal?: AbortSignal }) => Promise<unknown> };
-    type Tool = { name: string; type: string; icon: string; analysis: __esri.Analysis; av: AV | null; btn?: HTMLElement };
+    type Tool = {
+      name: string; type: string; icon: string;
+      make: (m: ModsTools) => __esri.Analysis; analysis: __esri.Analysis | null; av: AV | null; btn?: HTMLElement;
+    };
     const tools: Tool[] = [
-      { name: tr('Талбай'), type: 'area-measurement', icon: 'esri-icon-measure-area', analysis: new AreaMeasurementAnalysis(), av: null },
-      { name: tr('Зай'), type: 'direct-line-measurement', icon: 'esri-icon-measure-line', analysis: new DirectLineMeasurementAnalysis(), av: null },
-      { name: tr('Харах шугам'), type: 'line-of-sight', icon: 'esri-icon-line-of-sight', analysis: new LineOfSightAnalysis(), av: null },
-      { name: tr('Харагдац'), type: 'viewshed', icon: 'esri-icon-visible', analysis: new ViewshedAnalysis(), av: null },
-      { name: tr('Хэмжээс'), type: 'dimension', icon: 'esri-icon-measure', analysis: new DimensionAnalysis(), av: null },
-      { name: tr('Огтлол'), type: 'slice', icon: 'esri-icon-cursor-marquee', analysis: new SliceAnalysis(), av: null },
+      { name: tr('Талбай'), type: 'area-measurement', icon: 'esri-icon-measure-area', make: (m) => new m.AreaMeasurementAnalysis(), analysis: null, av: null },
+      { name: tr('Зай'), type: 'direct-line-measurement', icon: 'esri-icon-measure-line', make: (m) => new m.DirectLineMeasurementAnalysis(), analysis: null, av: null },
+      { name: tr('Харах шугам'), type: 'line-of-sight', icon: 'esri-icon-line-of-sight', make: (m) => new m.LineOfSightAnalysis(), analysis: null, av: null },
+      { name: tr('Харагдац'), type: 'viewshed', icon: 'esri-icon-visible', make: (m) => new m.ViewshedAnalysis(), analysis: null, av: null },
+      { name: tr('Хэмжээс'), type: 'dimension', icon: 'esri-icon-measure', make: (m) => new m.DimensionAnalysis(), analysis: null, av: null },
+      { name: tr('Огтлол'), type: 'slice', icon: 'esri-icon-cursor-marquee', make: (m) => new m.SliceAnalysis(), analysis: null, av: null },
     ];
-    tools.forEach((t) => sv.analyses.add(t.analysis));
-    void Promise.all(
-      tools.map(async (t) => {
-        t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
-      }),
-    ).catch((err) => {
+    /**
+     * ⚠️ 2026-10-04 (3D/BIM гүйцэтгэл): 6 шинжилгээг САМБАР НЭЭГДЭХЭД (эсвэл товч дарахад) л
+     * үүсгэнэ. Урьд нь 3D/BIM руу орох БҮРД 6 шинжилгээ + `whenAnalysisView` шууд ажиллаж,
+     * тус бүрийн analysis view-ийн модуль татагдан WebGL нөөц бэлтгэгддэг байв — BIM-ийн
+     * ачаалалттай зэрэг main thread-ийг эзэлнэ. Самбар, товч, бичвэр ЯГ ИЖИЛ. Товч дарахад
+     * view бэлэн болтол хүлээгээд байршуулалт эхэлнэ (урьд нь бэлэн болоогүй бол чимээгүй
+     * юу ч болдоггүй уралдаан байв). Ачаалалт унавал дараагийн нээлт дахин оролдоно.
+     */
+    let disposed = false;
+    let armed: Promise<void> | null = null;
+    const arm = (): Promise<void> => (armed ??= loadTools3d().then(async (m) => {
+      if (disposed || view.destroyed) return;
+      tools.forEach((t) => { t.analysis = t.make(m); sv.analyses.add(t.analysis); });
+      await Promise.all(
+        tools.map(async (t) => {
+          t.av = (await sv.whenAnalysisView(t.analysis as never)) as unknown as AV;
+        }),
+      );
+    }).catch((err) => {
       // ⚠️ dim хурдан солигдож view устахад reject ХЭВИЙН — чимээгүй; бусад нь
       //    жинхэнэ уналт тул unhandled rejection болгохгүй, ил тэмдэглэнэ.
-      if (!view.destroyed) console.error('[analysis]', err);
-    });
+      if (!tools.some((t) => t.analysis)) armed = null;
+      if (!view.destroyed && !disposed) console.error('[analysis]', err);
+    }));
 
     let active: Tool | null = null;
     let abort: AbortController | null = null;
@@ -3459,10 +3603,10 @@ export const MapCanvas = memo(function MapCanvas({
       stop();
       active = t;
       highlight();
-      void placeContinuous();
+      void arm().then(() => { if (!disposed && active === t) void placeContinuous(); });
     };
     const clearActive = () => {
-      if (!active) return;
+      if (!active?.analysis) return;
       const a = active.analysis as unknown as Record<string, unknown>;
       switch (active.type) {
         case 'direct-line-measurement': a.startPoint = null; a.endPoint = null; break;
@@ -3481,13 +3625,17 @@ export const MapCanvas = memo(function MapCanvas({
       expandTooltip: tr('Шинжилгээ'), collapseTooltip: tr('Хаах'), mode: 'floating',
     });
     view.ui.add(expand, 'top-right');
+    /* ⚠️ 2026-10-04: самбар нээгдэхэд шинжилгээг бэлтгэнэ (дээрх `arm`-ийн ⚠️) */
+    const openWatch = reactiveUtils.watch(() => expand.expanded, (x) => { if (x) void arm(); });
 
     return () => {
+      disposed = true;
+      openWatch.remove();
       abort?.abort();
       // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (харагдац солиход эвдрэхгүй)
       if (!view.destroyed) {
         view.ui.remove(expand);
-        tools.forEach((t) => sv.analyses.remove(t.analysis));
+        tools.forEach((t) => { if (t.analysis) sv.analyses.remove(t.analysis); });
       }
       expand.destroy();
     };
@@ -3516,11 +3664,12 @@ export const MapCanvas = memo(function MapCanvas({
     const rowCss = 'display:flex;justify-content:space-between;gap:10px;font-size:0.8rem';
 
     // ══════════ ЭЗЛЭХҮҮН ══════════
-    const vma = new VolumeMeasurementAnalysis({
-      measureType: 'stockpile',
-      displayUnits: { volume: 'metric', elevation: 'metric' },
-    });
-    sv.analyses.add(vma);
+    /* ⚠️ 2026-10-04 (3D/BIM гүйцэтгэл): `VolumeMeasurementAnalysis` (~1.3 МБ модуль) нь самбар
+       НЭЭГДЭХЭД эсвэл «Полигон зурж хэмжих» дарахад л үүснэ (`armV`) — урьд нь 3D/BIM руу орох
+       бүрд шууд үүсч analysis view нь бэлтгэгддэг байв. Самбар, нэгж, үр дүн ЯГ ИЖИЛ. */
+    type VMA = InstanceType<ModsTools['VolumeMeasurementAnalysis']>;
+    let vma: VMA | null = null;
+    let vArm: Promise<VMA | null> | null = null;
     let vAbort: AbortController | null = null;
     let vWatch: __esri.WatchHandle | null = null;
 
@@ -3541,7 +3690,7 @@ export const MapCanvas = memo(function MapCanvas({
     unitRow.append(volUnit);
     panelV.append(unitRow);
     volUnit.addEventListener('change', () => {
-      vma.displayUnits.volume = volUnit.value as unknown as typeof vma.displayUnits.volume;
+      if (vma) vma.displayUnits.volume = volUnit.value as unknown as VMA['displayUnits']['volume'];
     });
     // Үр дүн — тусгаарлах зураастай (Огтлол/Дүүргэлт/Цэвэр)
     const results = mk('div', 'display:flex;flex-direction:column;gap:8px;padding-top:11px;border-top:1px solid var(--line)');
@@ -3559,7 +3708,7 @@ export const MapCanvas = memo(function MapCanvas({
     const fmtVol = (v?: { value?: number; unit?: string } | null) =>
       v?.value != null ? `${num(Math.round(v.value))} ${v.unit ?? ''}`.trim() : '—';
 
-    void sv.whenAnalysisView(vma).then((av) => {
+    const watchVolume = (a: VMA) => void sv.whenAnalysisView(a).then((av) => {
       if (disposed) return;
       const avv = av as unknown as { result?: Record<string, { value?: number; unit?: string }> };
       vWatch = reactiveUtils.watch(
@@ -3575,12 +3724,30 @@ export const MapCanvas = memo(function MapCanvas({
       // dim солигдож view устахад reject хэвийн — зөвхөн амьд view-ийн уналтыг мэдээлнэ
       if (!disposed && !view.destroyed) console.error('[volume]', err);
     });
+    const armV = (): Promise<VMA | null> => (vArm ??= loadTools3d().then((m) => {
+      if (disposed || view.destroyed) return null;
+      const a = new m.VolumeMeasurementAnalysis({
+        measureType: 'stockpile',
+        /* ⚠️ нээхээс өмнө нэгж сольсон бол түүнийг авна (анхдагч 'metric' — урьдынх) */
+        displayUnits: { volume: volUnit.value as unknown as VMA['displayUnits']['volume'], elevation: 'metric' },
+      });
+      vma = a;
+      sv.analyses.add(a);
+      watchVolume(a);
+      return a;
+    }).catch((err: unknown) => {
+      vArm = null;
+      if (!disposed && !view.destroyed) console.error('[volume]', err);
+      return null;
+    }));
     vPlace.addEventListener('click', async () => {
       vAbort?.abort();
       vAbort = new AbortController();
       const signal = vAbort.signal;
       try {
-        const av = await sv.whenAnalysisView(vma);
+        const a = await armV();
+        if (!a || disposed || signal.aborted) return;
+        const av = await sv.whenAnalysisView(a);
         if (disposed) return;
         await av.place({ signal });
       } catch (err) {
@@ -3593,6 +3760,7 @@ export const MapCanvas = memo(function MapCanvas({
       expandTooltip: tr('Эзлэхүүн хэмжилт'), collapseTooltip: tr('Хаах'), mode: 'floating',
     });
     view.ui.add(expandV, 'top-right');
+    const openWatchV = reactiveUtils.watch(() => expandV.expanded, (x) => { if (x) void armV(); });
 
     // ══════════ СЛАЙД ══════════
     const slides: Slide[] = [];
@@ -3681,7 +3849,8 @@ export const MapCanvas = memo(function MapCanvas({
 
     createBtn.addEventListener('click', () => {
       slideErr.style.display = 'none';
-      void Slide.createFrom(sv).then((slide) => {
+      /* ⚠️ 2026-10-04: `Slide` модуль — дарахад л (`lazy3d`) */
+      void loadTools3d().then((m) => m.Slide.createFrom(sv)).then((slide) => {
         if (disposed) return;
         slide.title.text = nameInput.value.trim() || tr('Слайд {0}', slides.length + 1);
         slides.push(slide);
@@ -3703,12 +3872,13 @@ export const MapCanvas = memo(function MapCanvas({
 
     return () => {
       disposed = true;
+      openWatchV.remove();
       vAbort?.abort();
       vWatch?.remove();
       if (!view.destroyed) {
         view.ui.remove(expandV);
         view.ui.remove(expandS);
-        sv.analyses.remove(vma);
+        if (vma) sv.analyses.remove(vma);
       }
       expandV.destroy();
       expandS.destroy();
@@ -4388,7 +4558,14 @@ export const MapCanvas = memo(function MapCanvas({
          */
         const lid = String(l.id);
         if (LAYER_BY_ID[lid] && !lid.startsWith('infra:') && !lid.startsWith('iot:')) {
-          (l as FeatureLayer).elevationInfo = elev as never;
+          /* ⚠️ 2026-10-04 (3D гүйцэтгэл): горим ИЖИЛ бол ДАХИН ОНООХГҮЙ — autocast нь шинэ объект
+             үүсгэж 3D LayerView бүх объектын өндрийг ДАХИН бодуулдаг; энэ эффект давхарга/шүүлт/
+             тодруулга солигдох бүрд ажилладаг. Нэмэлт тохиргоотой (offset г.м.) бол урьдын адил дарна. */
+          const cur = (l as FeatureLayer).elevationInfo as { mode?: string; offset?: number | null; featureExpressionInfo?: unknown } | null;
+          const want = (elev as { mode: string }).mode;
+          if (!(cur && cur.mode === want && !cur.offset && !cur.featureExpressionInfo)) {
+            (l as FeatureLayer).elevationInfo = elev as never;
+          }
         }
       }
 
@@ -4740,12 +4917,7 @@ export const MapCanvas = memo(function MapCanvas({
 
       {/* Хулганы доорх объектын ТОВЧ мэдээлэл. Дэлгэрэнгүй нь дарахад
           баруун самбарт гарна — энд зөвхөн «энэ юу вэ» гэдгийг хэлнэ. */}
-      {tip && (
-        <MapTip
-          x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs}
-          fields={tip.fields} prog={blockProg}
-        />
-      )}
+      <TipLayer setRef={tipSetRef} prog={blockProg} />
 
       {/* ⚠️ Газрын зураг дээрх «Тайлбар» хайрцгийг ХАССАН: давхаргын каталог
           багана нь симбол, тоо, хэмжээг аль хэдийн хажууд нь харуулж байгаа тул
@@ -4896,6 +5068,45 @@ function MapTip({
   }
 
   return <TipBox x={x} y={y} hue={d.hue} title={d.title} rows={rows} />;
+}
+
+/** Хулганы доорх объектын товч мэдээллийн төлөв (`MapCanvas`-ийн `setTip`) */
+type TipState = {
+  x: number; y: number; id: string; attrs: Record<string, unknown>;
+  /**
+   * Давхаргын талбарын тодорхойлолт — ArcGIS-ийн popup шиг alias ба
+   * домэйны ШОШГЫГ гаргахад (2026-09-16, хэрэглэгчийн хүсэлт).
+   *
+   * ⚠️ ЗУРГИЙН FeatureLayer-ЭЭС авна — нэмэлт REST хүсэлт ЯВУУЛАХГҮЙ.
+   * `loadLayerMeta`-г дуудвал (а) сүлжээ хөндөнө, (б) `butetsEdit` модулийг
+   * БҮХ харагдацын зургийн багцад чирнэ. Давхарга ачаалагдсаны дараа
+   * `fields` нь аль хэдийн санах ойд бий.
+   */
+  fields: readonly __esri.Field[] | null;
+};
+
+/**
+ * TOOLTIP-ИЙН ТӨЛӨВ ЭЗЭМШИГЧ (2026-10-04, рендерийн гүйцэтгэл) — `MapCanvas`-ийн `setTip` нь
+ * `setRef`-ээр ЭНД дамжина: хулганы хөдөлгөөн зөвхөн энэ жижиг бүрэлдэхүүнийг зурна.
+ * ⚠️ Тэмдэглэгээ (`MapTip`) ба байрлал (MapCanvas-ийн DOM дахь газар) ӨМНӨХТЭЙ ЯГ ИЖИЛ.
+ * ⚠️ `useLayoutEffect` — эцгийн эффектүүдээс (view үүсгэх, сонсогч холбох) ӨМНӨ холбогдоно.
+ */
+function TipLayer({ setRef, prog }: {
+  setRef: RefObject<(t: TipState | null) => void>;
+  prog: BlockProgressMap | null;
+}) {
+  const [tip, setTip] = useState<TipState | null>(null);
+  useLayoutEffect(() => {
+    setRef.current = setTip;
+    return () => { setRef.current = () => {}; };
+  }, [setRef]);
+  if (!tip) return null;
+  return (
+    <MapTip
+      x={tip.x} y={tip.y} id={tip.id} attrs={tip.attrs}
+      fields={tip.fields} prog={prog}
+    />
+  );
 }
 
 /**

@@ -64,7 +64,7 @@
  * `Finance`-ийн модуль-түвшний кэшэд (`planCurveCache`) нэг удаа хадгалагдаж,
  * дашбоард, KPI, хоцрогдол бүгд түүнээс уншина.
  */
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve } from '@/modules/sheet/bagtsSheet';
 import { bagtsKey, isConstructionNo } from './services';
 import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
@@ -157,6 +157,23 @@ type Sheet = {
  * дүрэмтэй ИЖИЛ. Багцуудын дундаж авбал 4 блоктой багц 22 блоктойтой ижил
  * жинтэй болж гажуудна.
  */
+/**
+ * МУРУЙД ХЭРЭГТЭЙ БАГАНУУД — `loadRows`-ийн `fields` (2026-10-04, гүйцэтгэлийн аудит).
+ *
+ * ⚠️ Жагсаалтыг ДООРХ уншигчдаас гаргасан — шинэ талбар уншдаг болвол ЭНД нэмнэ, эс бөгөөс
+ *    тэр нь `null` ирж муруй ЧИМЭЭГҮЙ өөрчлөгдөнө (`planProgress.check` тулгана):
+ *    · `loadRows` өөрөө: `oid` (эрэмбэ), `no` (жаазны заагч · `isConstructionNo`), `work`
+ *      (хоосон мөр · зэрэгцүүлэлт), `gun` (гүн), `fillDate`/`asOf` (агшин);
+ *    · `planCurve` (`weigh: 'money'`): `vol`, `unit`, `money` (H), `wD` (D-ийн нөөц), `start`/`end`;
+ *    · `planPct` (сарын задаргаа): `des`, `start`/`end`.
+ * ⚠️ `plannedVol` ОРОХГҮЙ — зөвхөн `weigh: 'obyem'`-д (энд дуудагддаггүй).
+ */
+export const planFields = (sc: Schema): string[] => [...new Set([
+  sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.fillDate, sc.f.asOf, sc.f.des,
+  sc.f.wD, sc.f.vol, sc.f.unit, sc.f.money,
+  ...sc.start, ...sc.end,
+].filter((x): x is string => !!x))];
+
 export async function loadPlanCurve(): Promise<PlanCurve> {
   const sheets: Sheet[] = [];
   /** Уншигдаагүй хуудсууд — `PlanCurve.failed`-ийн ⚠️ */
@@ -175,6 +192,8 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   await Promise.all(PKGS.map(async (pkg) => {
     let sc: Awaited<ReturnType<typeof loadSchema>>;
     let r: Awaited<ReturnType<typeof loadRows>>;
+    /** Сарын обьёмын задаргаа — мөрийн уншилттай ЗЭРЭГ (доорх ⚠️ 2026-10-04) */
+    let obP: Promise<Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null> = Promise.resolve(null);
     try {
       sc = await retry(() => loadSchema(pkg));
       /* ⚠️ БЛОКГҮЙ хуудас (5.x · 6.x · 10) муруйд ОРОЛЦДОГГҮЙ — муж нь блокийн
@@ -182,7 +201,15 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
          Мөрийг нь дэмий татахгүй, түүний уналт муруйг «дутуу» болгохгүй. */
       if (!sc.bld.length) return;
       const s = sc;
-      r = await retry(() => loadRows(pkg, s));
+      /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): задаргааг мөрийн ДАРАА биш ЗЭРЭГ эхлүүлнэ —
+         хоёр бие даасан уншилт дараалсан шат (waterfall) болдог байв. Уналт нь урьдын адил
+         ЧИМЭЭГҮЙ `null` (доорх ⚠️); мөр унавал үр дүнг нь ашиглахгүй (хаягдана). */
+      obP = loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+      /* ⚠️ 2026-10-04 (гүйцэтгэлийн аудит): ЗӨВХӨН муруйд хэрэгтэй БАГАНУУД (`planFields`).
+         Урьд нь `*` (~60+ багана: блок бүрийн гүйцэтгэл · обьём · бодит огноо …) — 10 хуудас
+         нийлээд ~71 МБ JSON; одоо ~1/6. Тоо ӨӨРЧЛӨГДӨХГҮЙ: `planCurve`/`planPct`/муж нь зөвхөн
+         эдгээр талбарыг уншдаг (`planFields`-ийн ⚠️), бусад нь `loadRows`-д `null` болно. */
+      r = await retry(() => loadRows(pkg, s, undefined, planFields(s)));
     } catch (e) {
       failed.push({ key: pkg.key, group: bagtsKey(pkg.group) });
       console.warn(`[selbe] төлөвлөгөөт муруй: ${pkg.key} уншигдсангүй — багц/төслийн муруй гаргахгүй`, e);
@@ -212,7 +239,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
      * ⚠️ Уншилт УНАВАЛ ЧИМЭЭГҮЙ: задаргаа бол нэмэлт нарийвчлал, түүнгүйгээр
      *    муруй огнооны шугаман замаараа зурагдана.
      */
-    const obPlan = await loadPkgPlan(pkg.key).then((x) => x.plan).catch(() => null);
+    const obPlan = await obP;
     /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): сар доторх хувь АЖЛЫН эхлэх–дуусах
        өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) — `bagtsSheet.planAt`-тай нэг
        томъёо. Огноо эвдэрсэн (`sane` биш) бол бүтэн сараар (хуучин зам). */

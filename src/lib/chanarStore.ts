@@ -699,6 +699,30 @@ export async function loadBodyOf(oid: number): Promise<{ kind: DocKind; body: An
   return { kind, body: parseBodyOf(kind, rows[0][F.body]) };
 }
 
+/**
+ * ОЛОН баримтын БИЕ — НЭГ асуулгаар (`OBJECTID IN (…)`), `loadBodyOf`-ийн багц хувилбар (2026-10-04,
+ * гүйцэтгэлийн аудит). «Чанар»-ын хураангуй толгой БҮРИЙН биеийг `loadBodyOf`-оор нэг нэгээр
+ * (N хүсэлт, 4 ажилчинтай дараалал) татдаг байв — одоо `BODY_CHUNK` тутамд нэг хүсэлт.
+ * ⚠️ Олдоогүй OID нь Map-д ОРОХГҮЙ (`loadBodyOf`-ийн `null`-тай ижил утга) — дуудагч хоосон
+ *    биеэр нөхнө. Уналт ШИДНЭ (дуудагч дахин оролдоно).
+ * ⚠️ Задлал нь `loadBodyOf`-тэй ЯГ ИЖИЛ (`isKind` → `parseBodyOf`).
+ */
+const BODY_CHUNK = 50;
+export async function loadBodiesOf(oids: readonly number[]): Promise<Map<number, { kind: DocKind; body: AnyBody }>> {
+  const ids = [...new Set(oids.map(Number).filter(Number.isInteger))];
+  const out = new Map<number, { kind: DocKind; body: AnyBody }>();
+  for (let i = 0; i < ids.length; i += BODY_CHUNK) {
+    const part = ids.slice(i, i + BODY_CHUNK);
+    const rows = await query(`${F.oid} IN (${part.join(',')})`, `${F.oid},${F.kind},${F.body}`);
+    for (const r of rows) {
+      const k = s(r[F.kind]);
+      const kind: DocKind = isKind(k) ? k : 'MS';
+      out.set(Number(r[F.oid]), { kind, body: parseBodyOf(kind, r[F.body]) });
+    }
+  }
+  return out;
+}
+
 /** Аль ч баримтын `meta` — жагсаалтын карт (хариуцсан ажилтан, ангилал) */
 export async function loadMeta(oid: number): Promise<Meta | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.body}`);

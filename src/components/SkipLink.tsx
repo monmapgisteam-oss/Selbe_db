@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-import { t as tr, getLocale, getServerLocale, subscribeLocale } from '@/lib/i18nCore';
+import { t as tr, getDictEpoch, getLocale, getServerLocale, subscribeDict, subscribeLocale } from '@/lib/i18nCore';
 
 /**
  * ГАРААР УДИРДАХ АЛГАСАХ ХОЛБООС — Tab дархад хамгийн түрүүнд гарч, каталог,
@@ -30,6 +30,8 @@ export function SkipLink() {
      ачаалалтгүй, `key` remount) өмнөх хэлээрээ үлддэг байв — `DocumentTitle`-ийн хэв.
      Hydration-д серверийн утга (mn) тул зөрчилгүй; текст нь `mounted`-оор хаалттай хэвээр. */
   useSyncExternalStore(subscribeLocale, getLocale, getServerLocale);
+  /* ⚠️ 2026-10-04: англи толь ХОЙШЛОГДОН ачаалагддаг (`i18nCore.loadLocaleDict`) — ирэхэд дахин зурна */
+  useSyncExternalStore(subscribeDict, getDictEpoch, getDictEpoch);
 
   return (
     <a href="#panel" className="skip">

@@ -45,6 +45,7 @@ import type { TrafficStats } from './suit/TrafficOverlay';
 import type { TPaint } from './suit/transportModes';
 import type { HeatPoint } from './suit/heat';
 import s from './suitability.module.css';
+import { bimLayerFor, dropBimCache } from '@/components/bimCache';
 
 export type MapRow = Zone & {
   urban: number | null;
@@ -707,6 +708,8 @@ export function SuitMap({
 
   /** Map-ыг компонент бүрмөсөн салахад л устгана */
   useEffect(() => () => {
+    /* ⚠️ 2026-10-04: BIM кэш (`bimCache`) — Map-д БАЙХГҮЙ (2D/3D горимд хасагдсан) давхаргыг ч устгана */
+    if (mapRef.current) dropBimCache(mapRef.current);
     mapRef.current?.destroy();
     mapRef.current = null;
     zoneRef.current = null;
@@ -741,11 +744,13 @@ export function SuitMap({
 
     for (const b of BIM.layers) {
       const existing = map.findLayerById(b.key);
+      /* ⚠️ 2026-10-04: MapCanvas-тай ИЖИЛ — хасна, гэхдээ устгахгүй (`bimCache`): буцаж ороход
+         метадата (~712 хүсэлт) дахин татагдахгүй. */
       if (dim === 'bim' && !existing) {
-        map.add(new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true }));
+        map.add(bimLayerFor(map, b.key, () =>
+          new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
       } else if (dim !== 'bim' && existing) {
         map.remove(existing);
-        existing.destroy();
       }
     }
   }, [dim, ready]);
