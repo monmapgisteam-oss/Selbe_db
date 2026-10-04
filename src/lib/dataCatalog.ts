@@ -567,7 +567,7 @@ function finEntries(): CatEntry[] {
   const ipc = parseUrl(HO_IPC.url);
   const finEditors = (): Editor[] => [
     { cap: 'finEdit', text: tr('Санхүүгийн бүртгэл — утга засах') },
-    { cap: 'finRow', text: tr('Санхүүгийн бүртгэл — мөр нэмэх, устгах') },
+    { cap: 'finRow', text: tr('Санхүүгийн бүртгэл — мөр нэмэх') },
   ];
   return [
     {

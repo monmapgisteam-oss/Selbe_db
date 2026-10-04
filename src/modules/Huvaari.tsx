@@ -27,7 +27,7 @@
 
 import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { Section, Empty, Loading, Data, friendlyError } from '@/components/ui';
+import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
@@ -58,6 +58,7 @@ import {
   clearPlanPartial, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
+import { setNavDirty } from '@/lib/navGuard';
 import { hdKey } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
 /* ⚠️ 2026-09-30: 8.2k мөрийн нэг файлыг `src/modules/huvaari/`-д хуваав — туслах ·
@@ -72,7 +73,9 @@ import {
 } from './huvaari/util';
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
 import { useLatest } from './huvaari/useLatest';
+import { actUnion, allBlockRows, blockSpan, plainRows, unionSpans, type DispRow } from './huvaari/allBlocks';
 import { useCalendar } from './huvaari/useCalendar';
+import { useSideExtra } from './huvaari/useSideExtra';
 import { downloadHuvaariPdf, HV_PDF_DEFAULT, type HvPdfOpts, type HvPdfRow } from '@/lib/huvaariPdf';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
@@ -80,9 +83,9 @@ import { useAjil } from './huvaari/useAjil';
 import {
   backMarkMapOf, buildPayloadOf, conflictMsg, partialMsg, payloadToDrafts, reviewOidsOf, unknownMsg,
 } from './huvaari/payload';
-import { prepareSave } from './huvaari/savePrep';
+import { HAM_MAX, prepareSave } from './huvaari/savePrep';
 import { FlowBox } from './huvaari/FlowBox';
-import { AddBox, TaskRow } from './huvaari/TaskRow';
+import { AddBox, BlockRow, TaskRow } from './huvaari/TaskRow';
 import { PlanModal } from './huvaari/PlanModal';
 import { LinkModal } from './huvaari/LinkModal';
 
@@ -421,9 +424,23 @@ export function Huvaari({
   const [cols, setCols] = useState(() => {
     try { return localStorage.getItem('selbe-huvaari-cols') !== '0'; } catch { return true; }
   });
+  /** Зүүн жагсаалтыг чирж өргөсгөх нэмэлт пиксел (2026-10-04, `useSideExtra`) */
+  const { elRef: sideRef, style: sideStyle, grip: sideGrip } = useSideExtra();
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-cols', cols ? '1' : '0'); } catch { /* хаалттай орчин */ }
   }, [cols]);
+  /*
+   * «БҮХ БЛОК» ХАРАГДАЦ (2026-10-04, хэрэглэгч: «бүх блокийн хуваарийг зэрэг харах
+   * боломжтой болго»). Ажил бүрийн доор хуваарьтай блок бүрийн дэд мөр (`allBlocks.ts`).
+   * ⚠️ ЗӨВХӨН ХАРАХ: чирэлт · холбоос · popup · мөр нэмэх хаалттай, сум нуугдана;
+   *    ноорог/хадгалалт/батлалтад хүрэхгүй. Засах нь дэд мөр дээр дарж тэр блок руу.
+   * ⚠️ Бодит асаалт нь `allOn` (доор) — синтетик/ганц блоктой багц ба хяналтын
+   *    горимд хүчингүй.
+   * ⚠️ 2026-10-04 (шүүлт): САНАХГҮЙ — зөвхөн энэ нээлтэд. Урьд нь localStorage-д хадгалагдаж,
+   *    дараагийн сешн «зөвхөн харах» горимоор нээгдэн хэрэглэгч яагаад чирж болохгүйг ойлгодоггүй
+   *    байв (`selbe-huvaari-cols`-ийн ёсноос санаатай гажив).
+   */
+  const [allBlk, setAllBlk] = useState(false);
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-wide', wide ? '1' : '0'); } catch { /* хаалттай орчин */ }
   }, [wide]);
@@ -773,6 +790,11 @@ export function Huvaari({
    */
   const hasActual = !!sc && sc.aStart.some(Boolean);
   const hasRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
+  /** Олон блоктой (синтетик биш) багц — «Бүх блок» товч зөвхөн тэнд (2026-10-04) */
+  const multiBlk = !!sc && !sc.synthetic && n > 1;
+  /* ⚠️ Хяналтын горимд УНТРААЛТТАЙ: батлагчийн тэмдэглэгээ (`onMark`) · «дараагийн
+     зөрүү» гүйлгэлт нь идэвхтэй блокоор ажилладаг (2026-10-04). */
+  const allOn = allBlk && multiBlk && !isReview;
 
   /**
    * ХУУДАСНЫ БҮХ МӨР — серверийнх + хараахан батлагдаагүй нэмэлт (2026-09-24).
@@ -1099,9 +1121,9 @@ export function Huvaari({
   /**
    * ТҮВШИН СОНГОХ — `Finance.setLevel`-ийн ижил үүрэг.
    *
-   * ⚠️ `n` нь ТОВЧНЫ дугаар (1-ээс эхэлнэ), гүн нь `n - 1`. «Энэ түвшний
-   *    гарчгууд ХАРАГДАНА, доорх нь эвхэгдэнэ» гэсэн утгатай: гүн ≥ `n - 1`
-   *    бүх БҮЛЭГ мөрийг `collapsed`-д хийнэ.
+   * ⚠️ `n` нь ТОВЧНЫ дугаар (1-ээс эхэлнэ), гүн нь `n - 1`. «N-р түвшин ХҮРТЭЛ
+   *    дэлгэх» — N-р түвшний бүлгүүд ДЭЛГЭГДЭЖ доторх ажилбар харагдана, гүн ≥ `n`
+   *    бүлгүүдийг `collapsed`-д хийнэ (2026-10-04 засвар — доорх ⚠️).
    *
    * ⚠️ ХАМГИЙН ГҮН түвшин нь бүх мөрийг ДЭЛГЭНЭ (`Finance`-ийн 4·5-тай ижил
    *    зарчим): тэр түвшний бүлгүүд нь навчтай тул эвхэх юм үлдэхгүй.
@@ -1118,8 +1140,15 @@ export function Huvaari({
     const deepest = lvls.length ? lvls[lvls.length - 1] : 0;
     /* Хамгийн гүн түвшин = бүгдийг дэлгэх */
     if (n - 1 >= deepest) { setCollapsed(new Set()); return; }
+    /* ⚠️ 2026-10-04 (хэрэглэгч: «Level 3 руу хураахад ажилбарууд харагдах байтал зарим дэд
+       бүлгүүд бүтэн хураагдаж байна»): урьд нь гүн ≥ `n - 1` бүлгийг эвхдэг байв — N-р
+       түвшний бүлэг ӨӨРӨӨ эвхэгдэж, доторх ажилбар нуугддаг атлаа тэр түвшинд шууд байгаа
+       ажилбар (өөр салбарт) ил харагдаж зөрдөг байв; товчны тайлбар «N-р түвшин ХҮРТЭЛ
+       ДЭЛГЭХ»-тэй ч зөрчилдөж байв. Одоо N-р түвшний бүлгүүд ДЭЛГЭГДЭНЭ (доторх ажилбар
+       харагдана), зөвхөн түүнээс ДООШХ (гүн ≥ `n`) бүлгүүд эвхэгдэнэ. */
+    /* ⚠️ 2026-10-04: `n = -1` («0» товч) → гүн ≥ 0 буюу БҮХ бүлэг хураагдана */
     const s = new Set<number>();
-    for (const r of scoped) if (r.group && r.depth >= n - 1) s.add(r.oid);
+    for (const r of scoped) if (r.group && r.depth >= Math.max(0, n)) s.add(r.oid);
     setCollapsed(s);
   }, [scoped, lvls, setLvl, setCollapsed]);
 
@@ -1147,10 +1176,21 @@ export function Huvaari({
     return c;
   }, [plan, n]);
 
+  /**
+   * ДЭЛГЭЦИЙН МӨРҮҮД — цонхлолт · зүүн жагсаалт · баруун эгнээ ЭНЭ жагсаалтаар (2026-10-04).
+   * ⚠️ Энгийн горимд `visible`-тэй 1:1 (`plainRows`, дэд мөргүй) — зан төлөв ХЭВЭЭР.
+   *    «Бүх блок» горимд эх мөр бүрийн ард хуваарьтай блокийн дэд мөрүүд (`allBlockRows`).
+   * ⚠️ Индекс `k` (Y = k·PL_ROW) нь ЭНЭ жагсаалтынх — `visible`-ийнх биш; энгийн горимд
+   *    хоёр нь ижил тул `startLink`-ийн Y→мөр нөөц зам хэвээр зөв.
+   */
+  const disp = useMemo(
+    () => (allOn ? allBlockRows(visible, plan, n) : plainRows(visible)),
+    [allOn, visible, plan, n],
+  );
   /* ── ХУАНЛИЙН ГЕОМЕТР — «өнөөдөр» · хүрээ · хоног↔px · цонхлолт · шошго (`useCalendar`) ── */
   const {
     now, from, to, px, total, W, xOf, dayAt, msAt, trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
-  } = useCalendar({ plan, drag: !!drag, zoom, visible, sel, jumpedRef });
+  } = useCalendar({ plan, drag: !!drag, zoom, visible: disp, sel, jumpedRef });
 
   /* ── Ноорог ── */
 
@@ -1682,6 +1722,16 @@ export function Huvaari({
     if (!rr) return null;
     return rr.group ? effSpan(refBase, rr.i, blk) : (rr.spans[blk] ?? null);
   }, [refByOid, refBase, blk]);
+  /**
+   * «Бүх блок» горимын нөгөө төрлийн муж (2026-10-04): `b ≥ 0` — тэр блокийнх
+   * (`refSpanAt`-ийн дүрэм), `b < 0` — бүх блокийн НЭГДЭЛ (эх мөрд).
+   */
+  const refSpanOf = useCallback((oid: number, b: number): Span | null => {
+    const rr = refByOid.get(oid);
+    if (!rr) return null;
+    if (b >= 0) return blockSpan(refBase, rr, b);
+    return unionSpans(rr.spans.map((_, k) => blockSpan(refBase, rr, k)));
+  }, [refByOid, refBase]);
 
   const applyHamText = useCallback((oid: number, text: string) => {
     /* ⚠️ Хадгалалт явж байхад бичсэн уялдаа чимээгүй алга болдог байв (2026-09-23
@@ -1706,10 +1756,10 @@ export function Huvaari({
         энэ hook-ийн ref/функцүүдийг уншдаг. */
   const {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdTimerRef, hdFlushRef, hdClearRef, hdSkipUnlockOnceRef,
-    hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore,
+    hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced,
   } = useSharedDraft({
     kind, pkgKey: pkg.key, user, status, canEdit, locked, previewing, approving, pending,
-    sc, rows, base, n, obPlan, obRes, obState, flowReady, dirtyN,
+    sc, rows, base, n, obPlan, obRes, obState, flowReady, dirtyN, dragging: drag != null,
     draft, ham, aDraft, resDraft, obDraft, obResDraft,
     setDraft, setHam, setADraft, setResDraft, setObDraft, setObResDraft, setNote, pkgKeyRef, hdRemapRef,
   });
@@ -1752,6 +1802,11 @@ export function Huvaari({
     try {
       /* ⚠️ Бэлтгэл (`upd` · `obEdits` · тоолуурууд) — `huvaari/savePrep.ts`, ЮУ Ч БИЧИХГҮЙ */
       const prep = await prepareSave({ sc, kind, pkg, rows, base, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids });
+      if (!prep.ok && prep.hamLong) {
+        /* ⚠️ 2026-10-04 (шүүлт): уялдааны текст `Hamaaral`-д багтахгүй — тайрахгүй, бичихгүй */
+        setErr(tr('{0} мөрийн уялдааны бичиглэл {1} тэмдэгтээс урт тул хадгалагдсангүй. Блок тус бүрийн уялдааг цөөлөх эсвэл бүх блокт нэг уялдаа болгоно уу.', num(prep.hamLong), String(HAM_MAX)));
+        return false;
+      }
       if (!prep.ok) {
         setErr(tr('{0} мөр энэ хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Хуваарь бичигдсэнгүй; хуудсаа сэргээгээд дахин илгээнэ үү.', num(prep.stale)));
         return false;
@@ -1970,7 +2025,7 @@ export function Huvaari({
       if (errs.length) setErr(errs.join(' · '));
       return true;
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
       return false;
     } finally {
       setBusy(false);
@@ -2198,6 +2253,10 @@ export function Huvaari({
       }
     }
     setBusy(true); setErr(''); setNote('');
+    /* ⚠️ 2026-10-04 аудит (HIGH): хуваалцсан ноорогийн мөчлөг · бичилтийг ЗОГСООЖ, илгээлтэд
+       ОРОХ нүдний тэмдгийг `buildPayload`-тай НЭГ агшинд авна — цэвэрлэлт зөвхөн тэдгээрийг
+       хаана; илгээх завсарт хамтрагчийн нэмсэн нүд алсад хэвээр (`useSharedDraft.hdClear`). */
+    const hdMark = hdSubmitBegin();
     try {
       const r = await submitPlan({
         pkgKey: pkg.key,
@@ -2222,15 +2281,17 @@ export function Huvaari({
       /* ⚠️ ХУВААЛЦСАН НООРОГИЙГ ШУУД ЦЭВЭРЛЭНЭ (2026-09-24) — `refreshFlow`-оос
          ӨМНӨ: тэр `pending`-ийг тавьмагц бичих боломж хаагдаж, дифф→flush
          зам «цэвэрлэсэн» тэмдгийг хэзээ ч бичихгүй байв. */
-      await hdClearRef.current(hdKey(kind, pkg.key));
+      await hdClearRef.current(hdKey(kind, pkg.key), hdMark);
       await refreshFlow();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
+      /* `refreshFlow`-ийн ДАРАА — `pending` тавигдсан тул зогсоосон бичилт түгжээнд буцна */
+      hdSubmitEnd();
       setBusy(false);
     }
   }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef,
-    setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks]);
+    hdSubmitBegin, hdSubmitEnd, setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -2337,7 +2398,7 @@ export function Huvaari({
       setFlowBox(null);
       setNote(tr('Санал хуанли дээр урьдчилан харагдаж байна — батлах хүртэл эх хуудсанд бичигдэхгүй.'));
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -2421,7 +2482,7 @@ export function Huvaari({
         : tr('Илгээлт татагдлаа. Агуулга нь ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).')) + lostTxt);
       await refreshFlow();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -2481,7 +2542,7 @@ export function Huvaari({
           : tr('Татсан илгээлтийн агуулга ноорог болж буцлаа — засаад дахин илгээж болно.'))
         : tr('Агуулга ноорогт буусангүй (төрөл зөрсөн эсвэл уншигдсангүй).')) + lostTxt);
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -2561,7 +2622,7 @@ export function Huvaari({
         + (ap.conflicts ? ` ${tr('{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.', num(ap.conflicts))}` : '')
         + (ap.unknown ? ` ${tr('{0} мөр одоогийн хуудаснаас олдсонгүй тул ноорогт буусангүй.', num(ap.unknown))}` : ''));
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -2727,7 +2788,7 @@ export function Huvaari({
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.') + (r.warn ? ` ${r.warn}` : ''));
       await refreshFlow({ noRefetch: true });
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -3013,6 +3074,17 @@ export function Huvaari({
     setSel(r.oid);
     scrollToOid.current = r.oid;
   };
+  /**
+   * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
+   * хэрэглэгч шууд засах боломжтой. Мөр сонгогдож, доорх эффект түүн рүү гүйлгэнэ
+   * (энгийн горимын индексээр, блокийн зурвасын эхлэл рүү).
+   */
+  const pickBlk = (oid: number, b: number) => {
+    setBlk(b);
+    setAllBlk(false);
+    setSel(oid);
+    scrollToOid.current = oid;
+  };
   /* Хяналт нээгдмэгц ЭХНИЙ өөрчлөлт рүү гүйлгэнэ — эхний гүйлгэлт «өнөөдөр» рүү
      явдаг тул өөрчлөгдсөн зурвас дэлгэцээс гадуур үлдэж, «юу өөрчлөгдсөн бэ» гэж
      хайлгадаг байв (хөтчийн туршилт, 2026-09-25). */
@@ -3027,13 +3099,15 @@ export function Huvaari({
     const o = scrollToOid.current;
     const el = scrollRef.current;
     if (o == null || !el) return;
-    const k = visible.findIndex((v) => v.oid === o);
+    /* ⚠️ 2026-10-04: индекс ДЭЛГЭЦИЙН жагсаалтаас (`disp`) — «Бүх блок» горимд дэд мөрүүд
+       Y-г шилжүүлдэг; энгийн горимд `visible`-тэй ижил. Эх мөр (`b < 0`). */
+    const k = disp.findIndex((v) => v.oid === o && v.b < 0);
     if (k < 0) return;
     scrollToOid.current = null;
     el.scrollTop = Math.max(0, (k - 3) * PL_ROW);
-    const sp = visible[k].spans[blk];
+    const sp = disp[k].r.spans[blk];
     if (sp) el.scrollLeft = Math.max(0, xOf(sp.start) - 240);
-  }, [visible, sel, blk, xOf, scrollRef]);
+  }, [disp, sel, blk, xOf, scrollRef]);
   /** Мөрийн зөвшөөрлийг сэлгэнэ — зөвхөн өөрчлөгдсөн ажлын мөрд */
   const toggleOk = (oid: number) => {
     if (busy || approving != null) return;
@@ -3104,14 +3178,19 @@ export function Huvaari({
      ⚠️ БАГЦ/ТӨРӨЛ СОЛИХ нь ӨӨР зүйл: тэнд `askSwitch` асуудаг (2026-09-11).
      Хаах нь урьдчилан харалтыг үлдээнэ, солих нь ТАСАЛНА — батлагч юу харж
      байснаа алдаж, илгээлт нь хүлээгдсэн хэвээр үлдэнэ. */
+  /*
+   * ⚠️ 2026-10-04 аудит: `dirtyN > 0` БИШ — АЛСАД ХҮРЭЭГҮЙ засвар (`hdUnsynced`: товлогдсон/явж
+   *    буй/унасан бичилт; бичих боломжгүй үед урьдын `dirtyN`). Урьд нь ноорог бүрэн
+   *    хадгалагдсан ч анхааруулдаг байв. `navGuard`-аар — харагдац солих · лого · «Гарах»
+   *    (`Portal.confirmLeave`) ба F5/таб хаах (`beforeunload`) НЭГ газраас асууна; урьд нь
+   *    «Хуваарь» `navGuard`-д бүртгэлгүй байв. Unmount-д заавал `false` (`navGuard`-ийн ⚠️).
+   * ⚠️ 2026-09-29 аудит: зөвхөн ХАРАХ эрхтэйд бусдын хуваалцсан ноорог Map-д орж
+   *    `dirtyN > 0` болдог — түүнд «хадгалаагүй» анхааруулга худал (`hdUnsynced` `canEdit`-ээр).
+   */
   useEffect(() => {
-    /* ⚠️ 2026-09-29 аудит: зөвхөн ХАРАХ эрхтэйд бусдын хуваалцсан ноорог Map-д орж
-       `dirtyN > 0` болдог — түүнд «хадгалаагүй» анхааруулга худал. */
-    if (!dirtyN || previewing || !canEdit) return undefined;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirtyN, previewing, canEdit]);
+    setNavDirty('huvaari', hdUnsynced && !previewing, tr('Хуваарь'));
+    return () => setNavDirty('huvaari', false);
+  }, [hdUnsynced, previewing]);
   /*
    * ⚠️ ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ (2026-09-25 аудит #4): батлах явцад (`approving`)
    *    эсвэл бичилт/шийдвэр явж байхад (`busy`) өөр харагдац руу шилжих, таб
@@ -3277,13 +3356,88 @@ export function Huvaari({
     return out;
   }, [plan, modalRow]);
 
+  /**
+   * «БҮХ БЛОК» ГОРИМЫН ЭГНЭЭ (2026-10-04) — ЗӨВХӨН ХАРАХ.
+   * ⚠️ Эх мөр: бүх блокийн НЭГДЭЛ (`d.sp`) — ажилд саарал `plBarAll` (төлөв нь блок
+   *    тус бүрийнх тул нэгдэлд өнгөлөхгүй), бүлэгт урьдын `plBarG`.
+   * ⚠️ Дэд мөр: тэр блокийн муж — төлөвийн өнгө `statusOf(sp, act[b])` (энгийн зурвастай
+   *    ИЖИЛ дүрэм), бүлэгт `plBarG`. Бодит муж (`plAct`) мөн тэр блокийнх.
+   * ⚠️ `onDown`/`startLink`/бариул ОГТ ХОЛБОГДОХГҮЙ — чирэлт/холбоос/popup үүсэхгүй.
+   *    Дэд мөр дээр дарахад тэр блок руу орж засна (`pickBlk`), эх мөрд зөвхөн сонголт.
+   * ⚠️ Хуучин (батлагдсан) зурвас · «Зэрэг» лавлагаа ЭНД ЗУРАГДАХГҮЙ — хяналтын горимд
+   *    энэ горим унтардаг; лавлагаа нь зүүн самбарын огноонд (нэгдэл/блокийнх) бий.
+   */
+  const allLane = (d: DispRow, k: number) => {
+    const { r, b, sp } = d;
+    const sub = b >= 0;
+    const who = sub ? (sc?.bld[b] ?? '') : tr('Бүх блок');
+    const st: Status = sub && sp && !r.group ? statusOf(sp, r.act?.[b], now) : 'none';
+    const cls = r.group ? h.plBarG : sub ? ST_CLASS[st] : h.plBarAll;
+    let act: { start: number | null; end: number | null } | null = null;
+    if (hasActual) {
+      const x = r.group ? effRow(r) : r;
+      act = sub ? { start: x.aStart?.[b] ?? null, end: x.aEnd?.[b] ?? null } : actUnion(x.aStart, x.aEnd);
+    }
+    const w = sp ? spanDays(sp) * px : 0;
+    return (
+      <div key={sub ? `${r.oid}@${b}` : r.oid}
+        className={`${h.plLane} ${h.plLaneView} ${sub ? h.plLaneSub : ''} ${k % 2 ? h.plLaneAlt : ''} ${sel === r.oid && (!sub || b === blk) ? h.plLaneOn : ''}`}
+        style={{ top: k * PL_ROW, height: PL_ROW }}
+        title={sub ? tr('Дарж «{0}» блок руу орж засна', who) : undefined}
+        onClick={sub ? () => pickBlk(r.oid, b) : () => setSel(r.oid)}
+      >
+        {act?.start != null && (() => {
+          const as0 = act.start;
+          const ae0 = act.end;
+          const to2 = ae0 ?? Math.max(as0, now);
+          return (
+            <div
+              className={`${h.plAct} ${ae0 == null ? h.plActOpen : ''}`}
+              style={{ left: xOf(as0), width: Math.max(4, spanDays({ start: as0, end: to2 }) * px - 1) }}
+            />
+          );
+        })()}
+        {sp && (
+          <div
+            className={`${h.plBar} ${sub ? h.plBarSub : ''} ${cls} ${sel === r.oid && (!sub || b === blk) ? h.tlBarOn : ''}`}
+            style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
+            aria-label={`${r.work || r.no} · ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
+            title={`${r.work}
+${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))})${sub && !r.group ? ` · ${stText(st)}` : ''}`}
+          >
+            {w > 250 ? (
+              <span className={h.plBarLab}>
+                <span className={h.plBarName}>{who}</span>
+                <span className={h.plBarWhen}>
+                  {msToDay(sp.start)}→{msToDay(sp.end)} · {spanDays(sp)}{tr('х')}
+                </span>
+              </span>
+            ) : w > 178 ? (
+              <span className={h.plBarLab}>
+                {msToDay(sp.start)}→{msToDay(sp.end)} · {spanDays(sp)}{tr('х')}
+              </span>
+            ) : w > 118 ? (
+              <span className={h.plBarLab}>
+                {short(sp.start)}→{short(sp.end)} · {spanDays(sp)}{tr('х')}
+              </span>
+            ) : w > 40 ? (
+              <span className={h.plBarLab}>{spanDays(sp)}{tr('х')}</span>
+            ) : null}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /* ── УЯЛДААНЫ СУМУУД — идэвхтэй блок дээр, харагдаж буй мөрүүдийн хооронд ──
      ⚠️ Memo БИШ: `visible`, `sel`, `blk`, `xOf` дөрвүүл байнга хөдөлдөг тул
      кэш бараг онохгүй; тооцоо нь уялдаатай мөрийн тоогоор шугаман — хямд. */
   const arrows: { d: string; cls: string; mk: string; key: string; si: number; ti: number; dblk: number | null }[] = [];
   /* ⚠️ (2026-09-23) Сум ЗӨВХӨН төлөвлөгөө табд — уялдаа гэрээнд хамаарахгүй
      (`startLink`-ийн ижил дүрэм), гэрээ табд сум/зөрчил зурвал төөрөгдүүлнэ. */
-  if (kind === 'plan') {
+  /* ⚠️ «Бүх блок» горимд сум НУУГДАНА (2026-10-04): уялдаа нь блок тус бүрийнх, мөрийн
+     Y нь дэд мөрөөр шилжсэн тул идэвхтэй блокийн сум буруу мөр рүү заана. */
+  if (kind === 'plan' && !allOn) {
     const visK = new Map<number, number>();
     visible.forEach((r, k) => visK.set(r.i, k));
     for (let k = 0; k < visible.length; k++) {
@@ -3361,7 +3515,7 @@ export function Huvaari({
           {/* ⚠️ Хяналтын горимд багц ТОГТМОЛ (дарааллаас сонгосон илгээлтийнх) */}
           <select className={h.select} value={pkg.group} disabled={busy || !!review}
             onChange={(e) => { const v = e.target.value; void askSwitch().then((ok) => { if (ok) setPkg(pkgFloors(v)[0]); }); }}>
-            {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
+            {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
           </select>
         </label>
         {floors.length > 1 && (
@@ -3395,6 +3549,15 @@ export function Huvaari({
             {lvls.length > 1 && (
               <span className={h.lvBar}>
                 <span className={h.lvLbl}>{tr('Түвшин')}</span>
+                {/* ⚠️ 2026-10-04 (шүүлт, хэрэглэгчийн шийдвэр: сэргээх): N товч нь N-р түвшний бүлгийг
+                    ДЭЛГЭДЭГ болсны дараа «зөвхөн дээд түвшин» харах товч үлдээгүй байв. «0» = БҮХ
+                    бүлгийг хураана (гүн ≥ 0); `lvl` нь -1 — 0 нь «сонголтгүй» анхдагч төлөв. */}
+                <button
+                  type="button"
+                  className={lvl === -1 ? h.lvOn : ''}
+                  title={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
+                  onClick={() => setLevel(-1)}
+                >0</button>
                 {lvls.map((d) => {
                   const nn = d + 1;
                   const deepest = d === lvls[lvls.length - 1];
@@ -3432,6 +3595,15 @@ export function Huvaari({
               </button>
             ))}
 
+            {/* ⚠️ 2026-10-04: огноо УРВУУ ажил — төлөвлөгөөт хувь, муруйд хуваарьгүй гэж тооцогдоно
+                (`bagtsSheet.planAt`); урьд нь чимээгүй «100%» алхам болдог байв */}
+            {cov.reversed > 0 && (
+              <span role="status" style={{ color: 'var(--bad-ink)', fontWeight: 600, whiteSpace: 'nowrap' }}
+                title={tr('Эдгээр мужийг төлөвлөгөөт хувь ба муруйд хуваарьгүй гэж тооцно — огноог засна уу')}>
+                ⚠ {tr('{0} ажлын огноо урвуу (дуусах < эхлэх)', num(cov.reversed))}
+              </span>
+            )}
+
             {/* ⚠️ Сонголтууд ХОСЛОНО — «бүлэг · 2026» гэж давхарлаж шүүнэ.
                 Тиймээс таб биш, тус тусдаа талбар. */}
             {/* ⚠️ БҮЛГЭЭР ШҮҮХ нь бусад шүүлтээс ӨМНӨ ажиллана: эхлээд модны
@@ -3465,12 +3637,31 @@ export function Huvaari({
               {/* ⚠️ Блокийн нэрний хажууд ХУВААРЬТАЙ мөрийн тоо. Үүнгүй бол аль
                   блок дээр ажил хийгдсэн, аль нь хоосныг мэдэхийн тулд 22 блокийг
                   нэг бүрчлэн сонгож үзэхээс өөр арга байхгүй. */}
-              <select className={h.select} value={blk} onChange={(e) => setBlk(Number(e.target.value))}>
+              {/* ⚠️ «Бүх блок» горимд блок сонгох = тэр блок руу орж засах (дэд мөрийн
+                  товшилттой ижил) — горим унтарна (2026-10-04). */}
+              {/* ⚠️ 2026-10-04 (шүүлт): хяналтын горимд (`isReview`) «Бүх блок» хүчингүй — сонголтыг ХӨНДӨХГҮЙ */}
+              <select className={h.select} value={blk} onChange={(e) => { setBlk(Number(e.target.value)); if (!isReview) setAllBlk(false); }}>
                 {sc.bld.map((b, k) => (
                   <option key={b} value={k}>{b} · {num(blockFill[k])}</option>
                 ))}
               </select>
             </label>
+            {/*
+              * «БҮХ БЛОК» (2026-10-04) — бүх блокийн хуваарийг ажил бүрийн доор зэрэг харуулна.
+              * ⚠️ ЗӨВХӨН ХАРАХ (`tlZoomRef` — «Зэрэг»-ийн ижил «харах» өнгө, засах `tlZoomOn` биш).
+              * ⚠️ Синтетик/ганц блоктой багц ба хяналтын горимд товч ГАРАХГҮЙ (`allOn`-ийн ⚠️).
+              */}
+            {multiBlk && !isReview && (
+              <button type="button"
+                className={`${h.tlZoomB} ${allOn ? h.tlZoomRef : ''}`}
+                aria-pressed={allOn}
+                title={allOn
+                  ? tr('Блок бүрээр харах · засах горим руу буцна.')
+                  : tr('Бүх блокийн хуваарийг ажил бүрийн доор зэрэг харуулна (зөвхөн харах).')}
+                onClick={() => setAllBlk((v) => !v)}>
+                {tr('Бүх блок')}
+              </button>
+            )}
 
             {/*
               * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» / «Гэрээ» (2026-09-11).
@@ -3585,6 +3776,11 @@ export function Huvaari({
             {pdfOpen && (
               <span className={h.pdfPop} role="dialog" aria-label={tr('PDF татах')}
                 onKeyDown={(e) => { if (e.key === 'Escape') setPdfOpen(false); }}>
+                {/* ⚠️ 2026-10-04 (шүүлт): PDF нь блок тус бүрийн загвар (`savePdf` — `blk`) — «Бүх блок»
+                    горимд ч ЗӨВХӨН идэвхтэй блок орно; хэрэглэгчид ил хэлнэ */}
+                {allOn && (
+                  <span className={h.pdfRow}>{tr('«Бүх блок» горимд ч PDF зөвхөн идэвхтэй блокийг ({0}) агуулна.', sc.bld[blk] ?? '')}</span>
+                )}
                 <label className={h.pdfRow}>
                   <span>{tr('Хугацаа')}</span>
                   <select className={h.select} value={pdfOpts.months}
@@ -3656,6 +3852,9 @@ export function Huvaari({
                  өөрчлөгдсөн мөр). Урьд нь `dirtyN` (сарын нүд бүрийг тоолдог) байсан тул
                  товч «(3)» гэж байхад асуулт «12 өөрчлөлт» гэж зөрдөг байв. */
               if (!window.confirm(tr('Хадгалаагүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others))) return;
+              /* ⚠️ 2026-10-04 аудит: Map-уудыг хоослохоос ӨМНӨ — дэлгэц дээрх нүдийг локалд СИНХРОН
+                 tombstone болгож (шууд F5 дарвал амилахгүй), алсад read-merge-write-аар хаана. */
+              hdDiscard();
               setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
               /* ⚠️ Буцаасан тэмдэглэгээ ноорогтой хамт (2026-09-25 аудит) — үлдвэл дараагийн
                  ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана.
@@ -4128,7 +4327,12 @@ export function Huvaari({
               )}
             </div>
           )}
-          {canEdit && (
+          {allOn ? (
+            /* ⚠️ «Бүх блок» горим — зөвхөн харах; засах зам нь блокийн мөр (2026-10-04) */
+            <p className={h.plHint}>
+              {tr('Бүх блок — зөвхөн харах. Ажлын зурвас нь бүх блокийн нийт муж; доорх мөрүүд блок бүрийнх. Блокийн мөр дээр дарж тэр блок руу орж засна.')}
+            </p>
+          ) : canEdit && (
             <p className={h.plHint}>
               {tr('Ажлын нэр дээр дарж хуанлиар оруулна · мөрийн ард чирж муж татна · зурвасын голоос чирж зөөнө · ирмэгээс татаж уртасгана')}
               {kind === 'plan' && ` · ${tr('баруун цэгээс чирж холбоно · сум дээр дарж засна')}`}
@@ -4140,7 +4344,14 @@ export function Huvaari({
             <Empty label={tr('Мөр алга.')} />
           ) : (
             <div className={h.gWrap} ref={scrollRef} onScroll={onScroll}>
-              <div className={`${h.gSide} ${cols ? '' : h.gSideNarrow}`}>
+              <div ref={sideRef} style={sideStyle} className={`${h.gSide} ${cols ? '' : h.gSideNarrow}`}>
+                {/* ⚠️ 2026-10-04: баруун ирмэгийг чирж жагсаалтыг томруулна (`useSideExtra`) */}
+                <button type="button" className={`${h.sideGrip}${sideGrip.dragging ? ` ${h.sideGripOn}` : ''}`}
+                  role="separator" aria-orientation="vertical"
+                  aria-label={tr('Жагсаалтын өргөн')} aria-valuenow={sideGrip.extra}
+                  title={tr('Чирж жагсаалтыг өргөсгөнө · давхар дарвал анхны өргөн')}
+                  onPointerDown={sideGrip.onPointerDown} onKeyDown={sideGrip.onKeyDown}
+                  onDoubleClick={sideGrip.onDoubleClick} />
                 <div className={h.gSideHead} style={{ height: PL_ROW }}>
                   <span className={h.gHeadDes}>{tr('Ажлын код')}</span>
                   <span className={h.gHeadWork}>
@@ -4206,9 +4417,31 @@ export function Huvaari({
                     мөрүүдийн өндрийг орлуулахгүй бол гүйлтийн урт агшиж, зүүн
                     жагсаалт ба баруун зурвас хоорондоо гулсана. */}
                 {winFrom > 0 && <div aria-hidden style={{ height: winFrom * PL_ROW }} />}
-                {slice.map(({ r }) => {
+                {slice.map(({ r: d }) => {
+                  const r = d.r;
+                  /* «БҮХ БЛОК» — блокийн ДЭД МӨР (2026-10-04): зөвхөн харах; дарахад тэр блок руу */
+                  if (d.b >= 0) {
+                    const xb = r.group ? effRow(r) : r;
+                    return (
+                      <BlockRow
+                        key={`${r.oid}@${d.b}`}
+                        r={r}
+                        name={sc.bld[d.b] ?? ''}
+                        on={sel === r.oid && blk === d.b}
+                        hasActual={hasActual}
+                        hasRes={hasRes}
+                        aStart={xb.aStart?.[d.b] ?? null}
+                        aEnd={xb.aEnd?.[d.b] ?? null}
+                        geree={kind === 'geree' ? d.sp : refSpanOf(r.oid, d.b)}
+                        tolov={kind === 'geree' ? refSpanOf(r.oid, d.b) : d.sp}
+                        onPick={() => pickBlk(r.oid, d.b)}
+                      />
+                    );
+                  }
                   /* Бүлгийн бодит огноо · нөөц хүүхдээс (2026-09-23, `aggExtra`) */
                   const x = r.group ? effRow(r) : r;
+                  /* ⚠️ «Бүх блок» горимд эх мөрийн бодит огноо — бүх блокийн нэгдэл (`actUnion`) */
+                  const xa = allOn ? actUnion(x.aStart, x.aEnd) : null;
                   return (
                   <TaskRow
                     key={r.oid}
@@ -4223,8 +4456,8 @@ export function Huvaari({
                       || (r.des != null && obDirtyDes.has(r.des))}
                     hasActual={hasActual}
                     hasRes={hasRes}
-                    aStart={x.aStart?.[blk] ?? null}
-                    aEnd={x.aEnd?.[blk] ?? null}
+                    aStart={xa ? xa.start : x.aStart?.[blk] ?? null}
+                    aEnd={xa ? xa.end : x.aEnd?.[blk] ?? null}
                     hun={x.hun ?? null}
                     mashin={x.mashin ?? null}
                     collapsed={collapsed.has(r.oid)}
@@ -4239,7 +4472,8 @@ export function Huvaari({
                         return m;
                       });
                     }}
-                    onPick={() => { setSel(r.oid); setModal(r.oid); }}
+                    /* ⚠️ «Бүх блок» горимд popup НЭЭГДЭХГҮЙ — зөвхөн сонгоно (2026-10-04) */
+                    onPick={allOn ? () => setSel(r.oid) : () => { setSel(r.oid); setModal(r.oid); }}
                     /* ⚠️ ХОЁР ТӨРЛИЙН огноог зэрэг өгнө. `r` нь ИДЭВХТЭЙ
                        табынх, `refByOid` нь НӨГӨӨ табынх — аль нь гэрээ, аль
                        нь төлөвлөгөө болохыг `kind`-ээр шийднэ. */
@@ -4247,22 +4481,24 @@ export function Huvaari({
                        ИЖИЛ эх (2026-09-23 аудит). Урьд нь `rowSpan` (өөрийн хадгалсан
                        муж) байсан тул блокгүй багцын бүлэгт «—», хажууд нь бүтэн
                        зурвас гардаг байв. */
-                    geree={kind === 'geree' ? rowSpanAt(r) : refSpanAt(r.oid)}
-                    tolov={kind === 'geree' ? refSpanAt(r.oid) : rowSpanAt(r)}
+                    /* ⚠️ «Бүх блок» горимд — бүх блокийн НЭГДЭЛ (`d.sp` · `refSpanOf(…, -1)`), 2026-10-04 */
+                    geree={allOn ? (kind === 'geree' ? d.sp : refSpanOf(r.oid, -1)) : kind === 'geree' ? rowSpanAt(r) : refSpanAt(r.oid)}
+                    tolov={allOn ? (kind === 'geree' ? refSpanOf(r.oid, -1) : d.sp) : kind === 'geree' ? refSpanAt(r.oid) : rowSpanAt(r)}
                     /* ⚠️ Уялдааг нүдэнд ШУУД бичих зам (`HamCell`). Түгжээтэй
                        (батлагдахыг хүлээж буй илгээлт) үед ч засагдахгүй —
                        `applyHamText` дотор `locked` шалгагдана. */
                     /* ⚠️ 2026-09-29 аудит: уялдааны нүд ЗӨВХӨН төлөвлөгөө табд засагдана */
-                    canEdit={canEdit && !locked && kind === 'plan'}
+                    canEdit={canEdit && !locked && kind === 'plan' && !allOn}
                     onHamText={applyHamText}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
-                    onAdd={r.group && canAddRow && !locked
+                    /* ⚠️ «Бүх блок» горимд мөр нэмэх/засах/хасах хаалттай (зөвхөн харах, 2026-10-04) */
+                    onAdd={r.group && canAddRow && !locked && !allOn
                       ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setEditAdd(null); setAddForm(EMPTY_FORM); setAjErr(''); }
                       : undefined}
-                    onDrop={r.oid < 0 ? () => dropAdd(r.oid) : undefined}
+                    onDrop={r.oid < 0 && !allOn ? () => dropAdd(r.oid) : undefined}
                     /* НЭМЭЛТ МӨР ЗАСАХ (2026-09-29) — илгээгээгүй ба засварт нээсэн мөрд */
-                    onEditAdd={r.oid < 0 && canAddRow ? () => {
+                    onEditAdd={r.oid < 0 && canAddRow && !allOn ? () => {
                       const a0 = adds.find((x) => x.oid === r.oid);
                       if (!a0) return;
                       setAddFor(null); setAjErr('');
@@ -4274,19 +4510,19 @@ export function Huvaari({
                     mark={markOf(r)}
                     onMark={marking && markOf(r) ? () => toggleOk(r.oid) : undefined}
                   >
-                    {addFor === r.oid && (
+                    {addFor === r.oid && !allOn && (
                       <AddBox parent={r} form={addForm} onForm={setAddForm}
                         onOk={() => addRow(r)} onCancel={() => setAddFor(null)} />
                     )}
-                    {editAdd === r.oid && r.oid < 0 && (
+                    {editAdd === r.oid && r.oid < 0 && !allOn && (
                       <AddBox parent={r} form={addForm} onForm={setAddForm} edit
                         onOk={() => saveEditAdd(r.oid)} onCancel={() => setEditAdd(null)} />
                     )}
                   </TaskRow>
                   );
                 })}
-                {winTo < visible.length && (
-                  <div aria-hidden style={{ height: (visible.length - winTo) * PL_ROW }} />
+                {winTo < disp.length && (
+                  <div aria-hidden style={{ height: (disp.length - winTo) * PL_ROW }} />
                 )}
               </div>
 
@@ -4328,9 +4564,10 @@ export function Huvaari({
                   {/* ⚠️ 2026-10-01: `plLanesEdit` (touch-action: none) ЗӨВХӨН засах эрхтэй
                       үед — бусдад мэдрэгч дэлгэц дээр хуанли ердийнхөөрөө гүйнэ.
                       `pointercancel` нь `onCancel`: хагас чирэлтийг буцааж, popup нээхгүй. */}
-                  <div className={`${h.plLanes} ${canEdit && !locked ? h.plLanesEdit : ''}`}
+                  {/* ⚠️ «Бүх блок» горимд засахгүй тул `plLanesEdit` үгүй — мэдрэгчид ердийн гүйлгээ (2026-10-04) */}
+                  <div className={`${h.plLanes} ${canEdit && !locked && !allOn ? h.plLanesEdit : ''}`}
                     ref={lanesRef}
-                    style={{ height: visible.length * PL_ROW }}
+                    style={{ height: disp.length * PL_ROW }}
                     onPointerMove={onMove}
                     onPointerUp={onUp}
                     onPointerCancel={onCancel}
@@ -4345,7 +4582,10 @@ export function Huvaari({
                       <span className={h.tlNow} style={{ left: xOf(now) }} title={msToDay(now)} />
                     )}
 
-                    {slice.map(({ r, k }) => {
+                    {slice.map(({ r: d, k }) => {
+                      /* «БҮХ БЛОК» — зөвхөн харах эгнээ (`allLane`, 2026-10-04); энгийн горим ХЭВЭЭР доор */
+                      if (allOn) return allLane(d, k);
+                      const r = d.r;
                       /* ⚠️ БҮЛГИЙН ЗУРВАС нь ХҮҮХДҮҮДЭЭСЭЭ бодогдоно
                          (`effSpan`) — хадгалагдсан хуучин огноо нь
                          тэдэнтэй зөрж байсан ч ЗӨВ мужийг харуулна. */
@@ -4529,7 +4769,7 @@ export function Huvaari({
                       /* ⚠️ (2026-09-23) `depSvgLink` — холбох чирэлтийн үед `depHit`-ийн
                          pointer-events унтарна: эс бөгөөс сумны зурвас дээр суллахад
                          `elementFromPoint` сумыг онож, мөр олдохгүй. */
-                      <svg className={`${h.depSvg} ${link ? h.depSvgLink : ''}`} width={W} height={visible.length * PL_ROW} aria-hidden>
+                      <svg className={`${h.depSvg} ${link ? h.depSvgLink : ''}`} width={W} height={disp.length * PL_ROW} aria-hidden>
                         <defs>
                           {[h.depArrN, h.depArrH, h.depArrB].map((c, k) => (
                             <marker key={c} id={`hvDepArr${k}`} viewBox="0 0 6 6" refX="5" refY="3"
@@ -4630,6 +4870,8 @@ export function Huvaari({
              гэрээний огноонд `mvOk` (төлөвлөгөөний сарын нийлбэр) шаардаж, гинжээр
              гэрээг хөдөлгөдөг байв. */
           hasHam={!!sc.f.ham && kind === 'plan'}
+          /* ⚠️ 2026-10-04: `applyModal`-тай ижил эх (ноорог → сервер) — popup талбарын уртыг шалгана */
+          hamKeep={residualDeps(ham.get(modalRow.oid) ?? rowsAll.find((x) => x.oid === modalRow.oid)?.ham ?? null)}
           hasActual={hasActual}
           hasRes={hasRes}
           obyem={kind === 'plan'}

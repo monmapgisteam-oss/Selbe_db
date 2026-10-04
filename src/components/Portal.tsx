@@ -15,6 +15,7 @@ import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { MapTools } from '@/components/MapTools';
+import { zonesLabel } from '@/components/ZoneFilter';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
 /* ⚠️ 2026-09-30: харагдацын модулиуд (статик `Dashboard` + бүх `dynamic` chunk)
@@ -234,12 +235,20 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
     // ⚠️ Context дэх `view` нь dev StrictMode-ийн register(null) timing-ээс болж
     //    заримдаа хоцордог тул DOM-ийн `esri-view` бэлэн эсэхийг ч POLLING-оор
     //    шалгана. Аль нэг нь бэлэн болмогц (эсвэл дээд тал нь ~12с) хаана.
+    /* ⚠️ 2026-10-04: харагдацын ӨГӨГДӨЛ/ЗУРАГ унасан бол ШУУД хаана — урьд нь
+       ХАБЭА-ийн «ачаалахад алдаа гарлаа» 12с эргэлдэгчийн ард нуугддаг, iot-ийн
+       удаан 3D бүхэл 12с таглаж байв. Дохио (DOM): `[data-boot-fail]` (MapCanvas
+       initError, модулийн алдааны карт) эсвэл `role="alert"`; ~3с болоод DOM-д
+       нэг ч зураг (`[data-map-canvas]`) алга бол харагдац зураггүй — хүлээх
+       зүйл байхгүй. Дээд хязгаар 12с → ~8с. Overlay өөрөө `role="status"`. */
     let tries = 0;
     const iv = setInterval(() => {
       tries += 1;
       const el = document.querySelector('.esri-view') as (Element & { __esriView__?: { ready?: boolean } }) | null;
       const domReady = !!(el && el.__esriView__ && el.__esriView__.ready);
-      if (domReady || !!view || tries > 40) setDone(true);
+      const failed = !!document.querySelector('[data-boot-fail], [role="alert"]');
+      const noMap = tries >= 10 && !document.querySelector('[data-map-canvas]');
+      if (domReady || !!view || failed || noMap || tries > 26) setDone(true);
     }, 300);
     return () => clearInterval(iv);
   }, [view, done]);
@@ -1156,7 +1165,7 @@ function SummaryBar({ zone }: { zone: string | null }) {
 
   return (
     <div className={s.sumBar}>
-      {zone && <span className={s.sumZone}>{zone}</span>}
+      {zone && <span className={s.sumZone}>{zonesLabel(zone.split(',').filter(Boolean))}</span>}
       {items.map((i) => (
         <div key={i.l} className={s.sumStat}>
           <span className={`${s.sumValue} num`}>{i.v}</span>

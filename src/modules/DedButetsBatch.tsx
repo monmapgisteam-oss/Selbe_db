@@ -46,6 +46,7 @@ import {
 } from '@/lib/butetsEdit';
 import { FieldInput, type UndoInfo } from './DedButetsEdit';
 import d from './dedButets.module.css';
+import { userError } from '@/components/ui';
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
 
@@ -168,7 +169,7 @@ export function DedButetsBatch({
           return next;
         });
       })
-      .catch((e) => alive && setFail(String((e as Error).message || e)))
+      .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
     // ⚠️ `base` нь энд ЗӨВХӨН хуучин эхлэлийг харьцуулахад — deps-д авбал
@@ -283,7 +284,7 @@ export function DedButetsBatch({
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
       const partial = (x as { done?: number[] }).done;
-      const msg = String((x as Error).message || x);
+      const msg = userError(x);
       /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
          давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
       if (partial?.length) onPartial?.(undoOf(partial));

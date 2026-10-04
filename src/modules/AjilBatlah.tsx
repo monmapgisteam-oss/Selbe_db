@@ -48,7 +48,7 @@ import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, withdrawAjil,
+  NO_PARENT_REASON, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
@@ -59,6 +59,7 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
  *    хөндөнө. Өөрийн хуулбар үүсгэвэл дөрөв салж, нэг нь чимээгүй хоцорно.
  */
 import s from './guitsetgel.module.css';
+import { userError } from '@/components/ui';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -120,8 +121,16 @@ export function AjilBatlah() {
   const [settled, setSettled] = useState<ReadonlySet<number>>(new Set());
   /** ⚠️ 2026-10-01: илгээлт бүрийн СҮҮЛИЙН буулгалтын алдаа — мөр дээрээ үлдэнэ (дээрх баннер дараагийн үйлдэлд арилдаг) */
   const [applyErr, setApplyErr] = useState<ReadonlyMap<number, string>>(new Map());
-  const afterApply = useCallback((oid: number, error: string | null) => {
+  /** ⚠️ 2026-10-04: «эцэг бүлэг олдсонгүй»-ээр унасан илгээлтүүд → `classifyStuck` `orphan` (буцаах товчтой) */
+  const [noParent, setNoParent] = useState<ReadonlySet<number>>(new Set());
+  const afterApply = useCallback((oid: number, error: string | null, code?: string) => {
     setSettled((x) => new Set(x).add(oid));
+    setNoParent((x) => {
+      if ((code === 'no-parent') === x.has(oid)) return x;
+      const n = new Set(x);
+      if (code === 'no-parent') n.add(oid); else n.delete(oid);
+      return n;
+    });
     setApplyErr((m) => {
       const n = new Map(m);
       if (error) n.set(oid, error); else n.delete(oid);
@@ -208,7 +217,7 @@ export function AjilBatlah() {
         setSt({ k: 'ready', rows, approved, at: Date.now() });
         resetDetail();
       } catch (e) {
-        if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
+        if (alive) setSt({ k: 'error', msg: userError(e) });
       }
     })();
     return () => { alive = false; };
@@ -251,9 +260,9 @@ export function AjilBatlah() {
    */
   const stuck = useMemo(
     () => (st.k === 'ready'
-      ? classifyStuck(st.approved, { now: st.at, scope, knownPkg: (k) => PKG_BY_KEY.has(k), settled })
+      ? classifyStuck(st.approved, { now: st.at, scope, knownPkg: (k) => PKG_BY_KEY.has(k), settled, noParent })
       : []),
-    [st, scope, settled],
+    [st, scope, settled, noParent],
   );
   /**
    * «Дахин буулгах» эрх — батлагч ЭСВЭЛ админ (`mayReapply`; lib-д ч ижил шалгуур).
@@ -375,7 +384,7 @@ export function AjilBatlah() {
       if (!alive.current) return;
       /* ⚠️ 2026-10-01: оролдлого ДУУССАН — «Батлагдсан · буулгаагүй»-д хүлээлэггүй
          шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
-      afterApply(x.oid, m.ok ? null : m.error);
+      afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
       if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
@@ -384,7 +393,7 @@ export function AjilBatlah() {
       reload();
     } catch (e) {
       if (!alive.current) return;
-      const msg = String((e as Error).message || e);
+      const msg = userError(e);
       if (decided) {
         afterApply(x.oid, msg);
         setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', msg));
@@ -409,20 +418,40 @@ export function AjilBatlah() {
     try {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
-      afterApply(x.oid, m.ok ? null : m.error);
+      afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
       if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
       else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
       reload();
     } catch (e) {
       /* ⚠️ Эрхгүй (`requireCap`) зэрэг шидсэн алдаа — мөн мөр дээр */
       if (!alive.current) return;
-      const msg = String((e as Error).message || e);
+      const msg = userError(e);
       afterApply(x.oid, msg);
       setErr(msg);
     } finally {
       if (alive.current) setBusy(false);
     }
   }, [busy, reload, afterApply]);
+
+  /* ══════════════════════ ГАЦСАН БАТЛАЛТЫГ БУЦААХ (2026-10-04) ══════════════════════
+   * ⚠️ `orphan` (эцэг бүлэг алга / бүртгэлгүй багц) — дахин буулгах нь хэзээ ч бүтэхгүй тул
+   *    батлагч/админ илгээлтийг шалтгаантай нь нэмэгчид буцаана (`ajilBatlah.returnStuckAjil`). */
+  const returnStuck = useCallback(async (x: AjilSubmission, why: string) => {
+    if (busy) return;
+    if (!window.confirm(tr('Батлагдсан ч хуудсанд буулгах боломжгүй илгээлтийг нэмэгчид буцаах уу? Шалтгаан: {0}', why))) return;
+    setBusy(true); setErr(''); setNote('');
+    try {
+      const r = await returnStuckAjil({ oid: x.oid, me: user?.username ?? '', reason: why });
+      if (!alive.current) return;
+      if (r.ok) setNote(tr('Илгээлт нэмэгчид буцаагдлаа.'));
+      else setErr(r.error ?? tr('Буцааж чадсангүй.'));
+      reload();
+    } catch (e) {
+      if (alive.current) setErr(userError(e));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }, [busy, user, reload]);
 
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: AjilSubmission) => {
@@ -457,7 +486,7 @@ export function AjilBatlah() {
       setOpen(null);
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -482,7 +511,7 @@ export function AjilBatlah() {
       setOpen(null);
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -507,7 +536,7 @@ export function AjilBatlah() {
         />
         <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)}>
           <option value={ALL}>{tr('Бүх багц')}</option>
-          {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
+          {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
         </select>
         {dirty && (
           <button className={s.clear} onClick={() => { setQ(''); setGrp(ALL); }}>
@@ -599,8 +628,13 @@ export function AjilBatlah() {
                     badge={tr('Батлагдсан')}
                     lastError={applyErr.get(x.oid)}
                     onReapply={kind === 'retry' && canReapply ? () => void reapply(x) : undefined}
+                    onReturnStuck={kind === 'orphan' && canReapply
+                      ? () => void returnStuck(x, noParent.has(x.oid) ? NO_PARENT_REASON() : tr('Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.'))
+                      : undefined}
                     ownWhy={kind === 'orphan'
-                      ? tr('Энэ багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй. Админд хандана уу.')
+                      ? (noParent.has(x.oid)
+                        ? tr('Эцэг бүлэг хуудсанд олдсонгүй — дахин буулгах боломжгүй. Нэмэгчид буцаана уу.')
+                        : tr('Энэ багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй. Админд хандана уу.'))
                       : kind === 'fresh'
                         ? tr('Саяхан батлагдсан — батлагчийн цонх яг одоо хуудсанд бичиж байж магадгүй. Давхар бичилтээс сэргийлж «Дахин буулгах» {0} минутын дараа нээгдэнэ (хуудас өөрөө шинэчлэгдэнэ).',
                           num(Math.max(1, Math.ceil(((readyAt ?? st.at) - st.at) / 60_000))))
@@ -670,7 +704,7 @@ export function AjilBatlah() {
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, badge, lastError,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, onReturnStuck, badge, lastError,
 }: {
   sub: AjilSubmission;
   open: boolean;
@@ -687,6 +721,8 @@ function Row({
   onWithdraw?: () => void;
   /** Батлагдсан ч буугаагүй мөрийг дахин буулгана (2026-09-24) — зөвхөн «Батлагдсан · буулгаагүй» хэсэгт */
   onReapply?: () => void;
+  /** ⚠️ 2026-10-04: буулгах боломжгүй (`orphan`) батлагдсан илгээлтийг нэмэгчид буцаана */
+  onReturnStuck?: () => void;
   /** Төлвийн тэмдэг — анхдагч «Хүлээгдэж буй» */
   badge?: string;
   /** ⚠️ 2026-10-01: энэ цонхны СҮҮЛИЙН буулгалтын алдаа — «Батлагдсан · буулгаагүй»-д */
@@ -843,6 +879,17 @@ function Row({
                 onClick={onReapply}
               >
                 {tr('Дахин буулгах')}
+              </button>
+            )}
+            {onReturnStuck && (
+              <button
+                type="button"
+                className={`${s.btn} ${s.bad}`}
+                disabled={busy}
+                title={tr('Илгээлтийг шалтгаантай нь нэмэгчид буцаана — тэр засаад дахин илгээнэ')}
+                onClick={onReturnStuck}
+              >
+                {tr('Нэмэгчид буцаах')}
               </button>
             )}
             {onWithdraw && (

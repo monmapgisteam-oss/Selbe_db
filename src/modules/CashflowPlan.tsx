@@ -25,6 +25,7 @@ import { invalidate } from '@/lib/dataBus';
 import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
 import c from '@/modules/cfplan.module.css';
+import { userError } from '@/components/ui';
 
 type Row = Record<string, unknown>;
 
@@ -287,7 +288,7 @@ export function CashflowPlan({
         : tr('{0} сар хадгалагдав', n));
       onSaved();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }

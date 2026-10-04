@@ -12,6 +12,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent } from "react";
 import { t as tr, perLocale } from "@/lib/i18nCore";
+import { parseDayInput } from "@/lib/dateInput";
 import st from "./sheet.module.css";
 
 const DAY = 86_400_000;
@@ -71,8 +72,11 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
     const down = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) onClose();
     };
+    /* ⚠️ 2026-10-04: Esc нь ЗӨВХӨН календарыг хаана — `capture` + `stopPropagation`:
+       «Хуваарь»-ийн popup доторх огнооны талбараас нээгдэхэд popup-ын Esc (window)
+       түүнийг ч хаадаг байв. */
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
     };
     // ⚠️ `capture: true` — хүснэгтийн доторх гүйлт нь `window`-д хүрдэггүй.
     // ⚠️ Цонхны ДОТООД гүйлт (оны `select` жагсаалт г.м) хаахгүй (2026-09-23).
@@ -82,12 +86,12 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
     };
     const resize = () => onClose();
     window.addEventListener("mousedown", down);
-    window.addEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
     window.addEventListener("scroll", scroll, true);
     window.addEventListener("resize", resize);
     return () => {
       window.removeEventListener("mousedown", down);
-      window.removeEventListener("keydown", key);
+      window.removeEventListener("keydown", key, true);
       window.removeEventListener("scroll", scroll, true);
       window.removeEventListener("resize", resize);
     };
@@ -99,12 +103,69 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
    * ⚠️ Хулганагүй хэрэглэгч урьд нь 42 товчийг Tab-аар тойрдог байв.
    */
   const [focusMs, setFocusMs] = useState(base);
+  /* ⚠️ 2026-10-04: нээхэд фокус БИЧИХ талбарт (доор) — шууд «20261004» Enter. Өдрийн
+     товч руу зөвхөн сумаар явж эхэлсний дараа (`navRef`) шилжинэ; эс бөгөөс эффект
+     бичиж буй талбараас фокусыг булаана. */
+  const navRef = useRef(false);
+  const typeRef = useRef<HTMLInputElement>(null);
+  /* ⚠️ 2026-10-04 (шүүлт): эхний фокус + `select()` нь НЭГ Л УДАА (`didInit`). Урьд нь
+     эффект `focusMs` өөрчлөгдөх БҮРД талбарыг дахин сонгодог байв — бичих явцад
+     «2026-10-1» зөв огноо болмогц `focusMs` шилжиж, бүх текст сонгогдоод дараагийн
+     товч БҮГДИЙГ дарж бичдэг байв. Бичихээс үүдсэн `focusMs`-ийн өөрчлөлт фокусад
+     ХҮРЭХГҮЙ (`navRef` false) — зөвхөн календар хөдөлгөнө.
+     ⚠️ Мэдрэгч дэлгэцэнд (`pointer: coarse`) бичих талбарт автоматаар фокуслахгүй —
+     гарын товчлуур өөрөө гарч календарыг таглана; хүсвэл өөрөө товшоно. */
+  const didInit = useRef(false);
   useEffect(() => {
     if (!pos) return;
+    if (!didInit.current) {
+      didInit.current = true;
+      const coarse = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+      if (!coarse) { typeRef.current?.focus(); typeRef.current?.select(); }
+      return;
+    }
+    if (!navRef.current) return;
     const el = box.current?.querySelector<HTMLButtonElement>(`button[data-ms="${focusMs}"]`);
     el?.focus();
   }, [pos, focusMs]);
+  /**
+   * ГАРААР БИЧИХ (2026-10-04, хэрэглэгч: «календараас сонголгүй гараар бичиж өгөх»).
+   * Хэлбэр нь `parseDayInput` (2026-10-04 · 2026.10.04 · 20261004 …). Enter → тавина;
+   * буруу бол улаан + шалтгаан, ЮУ Ч ТАВИХГҮЙ. Хоосон Enter нь «Цэвэрлэх» биш (санамсаргүй
+   * арчихаас) — арилгах нь доорх «Цэвэрлэх» товч хэвээр.
+   */
+  const [typed, setTyped] = useState(value);
+  /* ⚠️ 2026-10-04: `value` нээлттэй үед ГАДНААС солигдвол (нөгөө нүд «Үргэлжлэх»-ээр
+     бодогдох, сервер шинэчлэл) бичих талбар хуучин утгаа барьдаг байв — render-ийн
+     үеийн тохируулга (effect биш) шинэ утгыг авна. */
+  const [typedOf, setTypedOf] = useState(value);
+  if (typedOf !== value) { setTypedOf(value); setTyped(value); }
+  /* ⚠️ 2026-10-04: сумаар өдөр хөдөлгөсөн (бичихээс хойш) — хоосон талбарт Enter нь
+     фокустай өдрийг тавина (өдрийн товч дээрх Enter-тэй ижил, регресс биш). */
+  const arrowedRef = useRef(false);
+  const typedDay = parseDayInput(typed);
+  const typedBad = typed.trim() !== '' && typedDay == null;
+  /* ⚠️ 2026-10-04 (шүүлт): нээгдэхэд фокус бичих талбарт байдаг тул сум өдөр
+     хөдөлгөдөггүй байв. Талбар ХООСОН эсвэл анхны утгаасаа ӨӨРЧЛӨГДӨӨГҮЙ үед
+     ←→↑↓ нь өдрийн хүснэгт рүү шилжиж алхана; бичиж эхэлсэн бол сум нь текст дотор
+     курсор хөдөлгөх ердийн үүргээ хийнэ. */
+  const typeKey = (e: RKeyboardEvent<HTMLInputElement>) => {
+    const arrow = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1
+      : e.key === "ArrowUp" ? -7 : e.key === "ArrowDown" ? 7 : 0;
+    if (arrow) {
+      if (typed.trim() !== "" && typed !== value) return;
+      e.preventDefault();
+      moveFocus(arrow);
+      return;
+    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (typedDay) onPick(typedDay);
+    else if (typed.trim() === "" && arrowedRef.current) onPick(ymd(focusMs));
+  };
   const moveFocus = (delta: number) => {
+    navRef.current = true;
+    arrowedRef.current = true;
     const ms = focusMs + delta * DAY;
     const d = new Date(ms);
     setFocusMs(ms);
@@ -193,6 +254,42 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
         <button className={st.calNav} onClick={() => step(1)} title={tr('Дараа сар')}>›</button>
         <button className={st.calNav} onClick={() => step(12)} title={tr('Дараа жил')}>»</button>
       </div>
+
+      <div className={st.calType}>
+        <input
+          ref={typeRef}
+          className={st.calTypeIn + (typedBad ? ` ${st.calTypeBad}` : "")}
+          value={typed}
+          /* ⚠️ 2026-10-04: `numeric` биш — iOS-ийн тоон гарт «-» «.» «/» байхгүй тул
+             «2026-10-04» бичих боломжгүй байв. */
+          inputMode="text"
+          autoComplete="off"
+          placeholder="2026-10-04"
+          aria-label={tr('Огноо гараар бичих')}
+          aria-invalid={typedBad}
+          title={tr('Огноо бичээд Enter дарна: 2026-10-04 · 2026.10.04 · 20261004')}
+          onFocus={() => { navRef.current = false; }}
+          onChange={(e) => {
+            /* ⚠️ Бичих нь фокусыг өдрийн товч руу ХЭЗЭЭ Ч булаахгүй */
+            navRef.current = false;
+            arrowedRef.current = false;
+            setTyped(e.target.value);
+            /* Зөв огноо бичигдмэгц календар тэр сар руу шилжинэ — юу тавих гэж буйгаа харна */
+            const d = parseDayInput(e.target.value);
+            if (d) {
+              const ms = Date.parse(`${d}T00:00:00Z`);
+              const dd = new Date(ms);
+              setFocusMs(ms);
+              setView({ y: dd.getUTCFullYear(), m: dd.getUTCMonth() });
+            }
+          }}
+          onKeyDown={typeKey}
+        />
+        <button className={st.calBtn} disabled={!typedDay} onClick={() => { if (typedDay) onPick(typedDay); }}>
+          {tr('Тавих')}
+        </button>
+      </div>
+      {typedBad && <div className={st.calTypeErr}>{tr('Огноо буруу — жишээ: 2026-10-04')}</div>}
 
       <div className={st.calGrid} onKeyDown={gridKey}>
         {WD().map((w) => (

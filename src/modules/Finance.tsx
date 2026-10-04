@@ -18,7 +18,7 @@ const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: fa
 
 /** Огнооны талбар мөн үү — календар зөвхөн эдгээрт нээгдэнэ */
 const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
-import { Data, Empty, Note } from '@/components/ui';
+import { Data, Empty, Note, userError } from '@/components/ui';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost } from '@/lib/query';
@@ -50,7 +50,7 @@ import { loadBlockHistory, loadBlockUniverse } from '@/lib/blockProgress';
  *    хасагдсан — шинэ cashflow-д сарын хуваарь БАЙХГҮЙ.
  *    Импортын мөчлөг үүсэхгүй: `planProgress` нь `Finance`-ээс юу ч авдаггүй.
  */
-import { loadPlanCurveCached, planPctAt, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 /* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
    Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
@@ -92,6 +92,7 @@ import { mnt, num, text, cat, date, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
 import { applyAll } from '@/lib/tableWrite';
+import { collidedIds, renumberPlan } from '@/lib/idUnique';
 import { invalidate, type DataKey } from '@/lib/dataBus';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
@@ -1216,35 +1217,81 @@ export function lagOf(months: MonthPt[]): { month: string; planned: number; actu
     if (m.label <= nowYm && m.phys != null) mi = i;
   });
   if (mi < 0) return null;
-  /*
-   * ⚠️ Хуваарийн муруй ирээгүй бол `null` — cashflow руу БУЦАЖ УНАХГҮЙ.
-   *    Тэр fallback нь яг л энэ согогийг (бүх багц улаан) авчирна; «хоцрогдол
-   *    мэдэгдэхгүй» нь «100% хоцорсон гэж худал хэлэх»-ээс дээр.
-   */
+  const series = lagSeriesCurve(months);
+  if (!series) return null;
+  return lagPointAt(months[mi], series);
+}
+
+/**
+ * `lagOf`-ийн ТӨЛӨВЛӨГӨӨТ МУРУЙ — `null` бол хоцрогдол мэдэгдэхгүй.
+ * ⚠️ Хуваарийн муруй ирээгүй бол `null` — cashflow руу БУЦАЖ УНАХГҮЙ. Тэр fallback нь
+ *    яг л «бүх багц улаан» согогийг авчирна; «мэдэгдэхгүй» нь «100% хоцорсон» гэж худал
+ *    хэлэхээс дээр.
+ * ⚠️ 2026-09-30: төслийн зам — ХО дүнгээр жигнэсэн (`planProjectCache`), бодит тал
+ *    (`aggregateMonths`)-тай нэг жин. Багцын зам хэвээр (багц дотор блокоор — бодит ч блокоор).
+ */
+function lagSeriesCurve(months: readonly MonthPt[]): PlanPoint[] | null {
   const pc = planCurveCache;
   if (!pc) return null;
   /* Багцын муруй (`pkg` тодорхой) эсвэл ТӨСЛИЙН нийт муруй (`aggregateMonths`) */
   const key = months.find((m) => m.pkg)?.pkg;
-  /* ⚠️ 2026-09-30: төслийн зам — ХО дүнгээр жигнэсэн (`planProjectCache`), бодит тал
-     (`aggregateMonths`)-тай нэг жин. Багцын зам хэвээр (багц дотор блокоор — бодит ч блокоор). */
   const series = key ? pc.byBagts.get(key) : (planProjectCache ?? pc.months);
-  if (!series?.length) return null;
-  /* Төлөвлөгөө: ХЭМЖИЛТ ХИЙГДСЭН тэр ӨДРИЙН байдлаар — цаг хугацаагаар тэнцүү
-     харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй).
-     ⚠️ 2026-09-25: урьд нь хэмжилтийн САРЫН ЭЦСИЙН төлөвлөгөө (сарын 5-нд
-     хэмжсэнийг 30-ны төлөвлөгөөтэй) жишдэг байв; одоо `physAt` өдрөөр
-     завсарлана (`planProgress.planPctAt` = `negtgelAuto.housingPlanOf`-ийн
-     дүрэм). `physAt` байхгүй бол сарын эцэс — хуучин зан төлөв. */
-  const m = months[mi];
-  const at = m.physAt && /^\d{4}-\d{2}-\d{2}$/.test(m.physAt) && m.physAt.slice(0, 7) === m.label
-    ? m.physAt
-    : `${m.label}-31`;
-  const planned = planPctAt(series, at);
-  /* ⚠️ `planned <= 0` → `null` нь ХУУЧИН гэрээ (дуудагчид `lag &&`-ээр шалгадаг):
-     хуваарь тэр сард хараахан эхлээгүй бол «хоцрогдол» гэж ярих утгагүй. */
+  return series?.length ? series : null;
+}
+
+/**
+ * НЭГ ХЭМЖИЛТИЙН ЦЭГИЙН ХОЦРОГДОЛ. Төлөвлөгөө нь ХЭМЖИЛТ ХИЙГДСЭН тэр ӨДРИЙН байдлаар —
+ * цаг хугацаагаар тэнцүү харьцуулалт (өнөөдрийн төлөвлөгөөг хуучин хэмжилтээс хасахгүй).
+ * ⚠️ 2026-09-25: урьд нь хэмжилтийн САРЫН ЭЦСИЙН төлөвлөгөө жишдэг байв; одоо `physAt`
+ *    өдрөөр завсарлана (`planProgress.planPctAt` = `negtgelAuto.housingPlanOf`-ийн дүрэм).
+ * ⚠️ 2026-10-04: `physAt` алга (ОГТ тайлагнаагүй багцын одоогийн сарын 0% цэг) бол
+ *    ӨНӨӨДӨР, сарын эцэс биш (`planProgress.measureDayOf`).
+ * ⚠️ `planned <= 0` → `null` нь ХУУЧИН гэрээ (дуудагчид `lag &&`-ээр шалгадаг): хуваарь тэр
+ *    өдөр хараахан эхлээгүй бол «хоцрогдол» гэж ярих утгагүй.
+ */
+function lagPointAt(m: MonthPt, series: readonly PlanPoint[]): { month: string; planned: number; actual: number; gap: number } | null {
+  const planned = planPctAt(series, measureDayOf(m.label, m.physAt, dayKey(Date.now())));
   if (planned == null || planned <= 0) return null;
-  const actual = months[mi].phys ?? 0;
-  return { month: months[mi].label, planned, actual, gap: planned - actual };
+  const actual = m.phys ?? 0;
+  return { month: m.label, planned, actual, gap: planned - actual };
+}
+
+/**
+ * ХОЦРОГДЛЫН САРЫН ЦУВАА — хэмжилттэй сар БҮРД `lagOf`-ийн ЯГ ижил дүрэм (муруй, өдөр,
+ * `planned <= 0` алгасна). Сүүлийн элемент == `lagOf(months)` (тэр сард хуваарь эхэлсэн бол).
+ * ⚠️ 2026-10-04: Дашбоард 02-ын «Төлөвлөгөө vs бодит — сараар» · «Хоцрогдлын өөрчлөлт —
+ *    сараар» урьд нь `selbe_bagts_guitsetgel_negtgel`-ийн ТУРШИЛТЫН мөрөөс зурагддаг байв
+ *    (сүүлийн мөр 09-09, Б3.1 алга, төлөвлөгөө буруу) — одоо PkgProg/ТУХ-тай нэг эх.
+ */
+export function lagSeriesOf(months: MonthPt[]): { month: string; planned: number; actual: number; gap: number }[] {
+  const series = lagSeriesCurve(months);
+  if (!series) return [];
+  const nowYm = monthKey();
+  const out: { month: string; planned: number; actual: number; gap: number }[] = [];
+  for (const m of months) {
+    if (m.label > nowYm || m.phys == null) continue;
+    const p = lagPointAt(m, series);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * `lagOf` `null` БУЦААСАН ШАЛТГААН — хоцрогдол тодорхой бол `'ok'`.
+ *   · `'no-phys'`    — биет хэмжилт алга;
+ *   · `'no-curve'`   — хуваарийн муруй уншигдаагүй (`planCurveMissing`);
+ *   · `'not-started'`— муруй уншигдсан ч энэ багцад хуваарь алга эсвэл хэмжилтийн өдөр
+ *                      хараахан эхлээгүй (`planned <= 0`).
+ * ⚠️ 2026-10-04: CEO-ийн оноо (`scorecardLoad`) «хуваарь эхлээгүй» мөрийг огнооны шугам +
+ *    Cashflow-ийн хувиар ЧИМЭЭГҮЙ оноолдог байв — одоо оноогүй, шалтгаантай.
+ */
+export function lagReasonOf(months: MonthPt[]): 'ok' | 'no-phys' | 'no-curve' | 'not-started' {
+  const nowYm = monthKey();
+  if (!months.some((m) => m.label <= nowYm && m.phys != null)) return 'no-phys';
+  if (lagOf(months)) return 'ok';
+  const key = months.find((m) => m.pkg)?.pkg;
+  if (!planCurveCache || planCurveMissing(key)) return 'no-curve';
+  return 'not-started';
 }
 
 /** Хоцрогдлын зэрэглэл: ≥10% улаан, 5–10% шар, бусад нь alert биш */
@@ -1493,6 +1540,8 @@ function FullTable({
 }) {
   /** Засварын горим асаалттай эсэх — эрхтэй хүнд л товч гарна */
   const [edit, setEdit] = useState(false);
+  /** ⚠️ 2026-10-04: БАЙГАА нүдний утга засах — `finEdit` (горим `finRow`-оор ч нээгддэг, тэр нь мөр нэмэх л) */
+  const valEdit = edit && canEdit;
   /** `oid:талбар` → шинэ ТЕКСТ. Хоосон мөр ('') нь «null болгоно» гэсэн үг. */
   const [pend, setPendRaw] = useState<Record<string, string>>({});
   /**
@@ -1895,6 +1944,9 @@ function FullTable({
       const monthAdds: Record<string, unknown>[] = [];
       const monthDels: number[] = [];
       let keptOut = 0;
+      /** ⚠️ 2026-10-04: энэ нийтлэлд ОНООСОН `Cashflow_ID`-ууд ба тэдгээрийг авсан ХУУЧИН мөрийн oid — бичсэний дараах давхардлын шалгалтад */
+      const cfAssigned = new Set<number>();
+      const cfAssignedOld: number[] = [];
       if (dataKey === 'CASHFLOW_NEW') {
         const rowByOid = new Map(rows.map((r) => [Number(r[oidField]), r]));
         /** Огнооны утга — засвартай бол ТҮҮНИЙГ, эс бөгөөс мөрийнхийг */
@@ -1954,8 +2006,8 @@ function FullTable({
             const all = await loadCashflowNewRows();
             let next = 1 + Math.max(0, ...[...all, ...rows, ...months, ...newRows]
               .map((r) => cfIdOf(r.Cashflow_ID) ?? 0));
-            for (const o of lackNew) { o.Cashflow_ID = next; next += 1; }
-            for (const [, a] of lackOld) { a.Cashflow_ID = next; next += 1; }
+            for (const o of lackNew) { o.Cashflow_ID = next; cfAssigned.add(next); next += 1; }
+            for (const [oid, a] of lackOld) { a.Cashflow_ID = next; cfAssigned.add(next); cfAssignedOld.push(oid); next += 1; }
           }
         }
 
@@ -2089,7 +2141,7 @@ function FullTable({
           }
         }
       }
-      const { n } = await applyAll(url, oidField, {
+      const { n, oids: addedOids } = await applyAll(url, oidField, {
         updates: [...upd.values()],
         adds: [...newRows, ...monthAdds],
         /* ⚠️ ГАНЦ ЗӨВШӨӨРӨГДСӨН УСТГАЛ: хугацаанаас гарсан ХООСОН сарын мөр
@@ -2106,6 +2158,41 @@ function FullTable({
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
       invalidate(dataKey);
+
+      /*
+       * ⚠️ 2026-10-04: `Cashflow_ID` max+1 УРАЛДААН. Дугаар клиентэд бодогддог (дээрх ⚠️) тул
+       *    хоёр хүн зэрэг нийтэлбэл ИЖИЛ дугаар авч, сарын мөрүүд хоёр ажилд наалддаг байв.
+       *    Бичсэний ДАРАА ажлын ба сарын мөрийг дахин уншиж, ӨӨРИЙН оноосон дугаар өөр мөрд бас
+       *    байвал ӨӨРИЙН мөрүүдийг (ажил + сар) max+1 рүү шилжүүлнэ (`idUnique`). Илрүүлсэн тал
+       *    л зөөнө; зэрэг илрүүлбэл санамсаргүй завсартай дахин шалгана (≤3 удаа).
+       *    Шалгалт унавал нийтлэл БҮТСЭН хэвээр — анхааруулга л.
+       */
+      let cfWarn = '';
+      if (cfAssigned.size && dataKey === 'CASHFLOW_NEW') {
+        const mine = new Set<number>([...addedOids, ...cfAssignedOld]);
+        try {
+          for (let round = 0; ; round += 1) {
+            const [w, m] = await Promise.all([loadCashflowNewRows(), loadCfMonthRows()]);
+            const idRows = [...w, ...m].map((r) => ({ oid: Number(r[oidField]), id: cfIdOf(r.Cashflow_ID) }));
+            const hit = collidedIds(idRows, mine, cfAssigned);
+            if (!hit.length) break;
+            if (round >= 2) {
+              cfWarn = tr('⚠ Cashflow_ID {0} өөр мөртэй давхцсан хэвээр — админд мэдэгдэнэ үү.', hit.join(', '));
+              break;
+            }
+            const plan = renumberPlan(idRows, hit);
+            const fix = idRows
+              .filter((r) => mine.has(r.oid) && r.id != null && plan.has(r.id))
+              .map((r) => ({ [oidField]: r.oid, Cashflow_ID: plan.get(r.id as number) }));
+            if (fix.length) await applyAll(url, oidField, { updates: fix }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+            for (const [a, b] of plan) { cfAssigned.delete(a); cfAssigned.add(b); }
+            invalidate(dataKey);
+            await new Promise((res) => setTimeout(res, 300 + Math.random() * 700));
+          }
+        } catch (e) {
+          cfWarn = tr('⚠ Нийтлэгдсэн, гэхдээ Cashflow_ID-ийн давхардлын шалгалт унав ({0}) — хуудсыг дахин ачаалж шалгана уу.', userError(e));
+        }
+      }
       /* ⚠️ `reset()`-ЭЭС ӨМНӨ зөөнө — тэр `pend`-ийг хоослоно. Устгасан
          мөрийн нүд тэмдэглэгдэхгүй: тэр мөр өөрөө алга болсон. */
       setSaved((prev) => {
@@ -2121,6 +2208,7 @@ function FullTable({
         /* ⚠️ Бөглөсөн сар мужаас гарсныг ЗААВАЛ хэлнэ — чимээгүй үлдээвэл
            хүн S-муруйд яагаад илүү сар байгааг олж чадахгүй. */
         keptOut ? tr('⚠ мужаас гарсан ч бөглөгдсөн тул үлдээсэн: {0}', keptOut) : '',
+        cfWarn,
       ].filter(Boolean).join(' · '));
       /* ⚠️ 2026-10-01: шинэ мөрүүд (`rows` өөр лавлагаа) ирэх хүртэл дахин нийтлэхгүй.
          Дахин ачаалалт унавал `Data` алдааны төлөвт орж энэ бүрэлдэхүүн unmount болно —
@@ -2129,7 +2217,7 @@ function FullTable({
       setPubFrom(rows);
       onSaved();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -2753,7 +2841,7 @@ function FullTable({
     cSpan?: number,
   ) => {
     const key = `${oid}:${c.name}`;
-    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
+    if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
       /*
        * ⚠️ ЗАССАН НҮД НОГООН. `pend`-д байгаа эсэхээр л шийднэ: `onChange` нь
@@ -2895,7 +2983,7 @@ function FullTable({
   /** Паспорт/дэлгэрэнгүйн нэг утга — унших эсвэл засах. `xCell`-тэй ИЖИЛ дүрэм. */
   const passVal = (r: Row, oid: number | null, dropped: boolean, c: FieldDef) => {
     const key = `${oid}:${c.name}`;
-    if (edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
+    if (valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name)) {
       const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
       const put = (v: string) => setPend((p) => {
         const nx = { ...p };
@@ -4103,7 +4191,7 @@ function FullTable({
         {edit && canRow && <td className={f.rowBtnCell} />}
         {cols.map((c) => {
           const key = `${oid}:${c.name}`;
-          const editable = edit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name);
+          const editable = valEdit && oid != null && !dropped && !SERVER_RO.test(c.name) && !CALC_RO.has(c.name);
           if (editable) {
             const cur = key in pend ? pend[key] : editText(r[c.name], c.type);
             return (
@@ -4169,12 +4257,15 @@ function FullTable({
             false) бол товч алга болсон нь «эрхгүй» биш «түр» гэдгийг ГАНЦ
             мөрөөр хэлнэ (2026-09-21, аудитын засвар) — эс бөгөөс эрхтэй хүн
             админ руу дэмий явна. Нэвтрэлт унтраалттай орчинд `hasCap` true. */}
-        {!canEdit && !capsRemoteReady() && (
+        {!canEdit && !canRow && !capsRemoteReady() && (
           <span className={f.finClear} title={tr('Эрхийн мэдээлэл уншигдаагүй — түр хүлээнэ үү.')}>
             {tr('Эрхийн мэдээлэл уншигдаагүй — түр хүлээнэ үү.')}
           </span>
         )}
-        {canEdit && isFlat && (
+        {/* ⚠️ 2026-10-04: зөвхөн `finRow`-той хүн ч засварын горимд орно — МӨР НЭМЭХ л
+            (нүдний утга `valEdit` = `finEdit`-ээр хаалттай). Урьд нь товч `canEdit`-ээр л
+            гардаг тул `finRow` эрх ганцаараа ямар ч үйлдэлгүй мухардал байв. */}
+        {(canEdit || canRow) && isFlat && (
           /*
            * ГЭРЭЭНИЙ БҮРТГЭЛИЙН ХЭРЭГСЛҮҮД — хоёр товч ҮРГЭЛЖ зэрэг харагдана.
            * ⚠️ «Нийтлэх» нь урд, ӨӨР ӨНГӨТЭЙ: хадгалах үйлдэл нь горим солихоос
@@ -4196,13 +4287,21 @@ function FullTable({
               className={`${f.editBtn} ${edit ? f.editBtnOn : ''}`}
               aria-pressed={edit}
               disabled={busy}
-              onClick={() => { if (edit) reset(); setEdit((v) => !v); }}
+              onClick={() => {
+                /* ⚠️ 2026-10-04: нийтлээгүй засвартай үед асуулгүй хаяхгүй — урьд нь «Засах»-ыг
+                   дахин дармагц бүх нүдний засвар чимээгүй алга болдог байв. */
+                if (edit) {
+                  if (dirty > 0 && !window.confirm(tr('Нийтлээгүй {0} засвар бий — хаяж засварын горимоос гарах уу?', dirty))) return;
+                  reset();
+                }
+                setEdit((v) => !v);
+              }}
             >
               {tr('Засах')}
             </button>
           </div>
         )}
-        {canEdit && !isFlat && (
+        {(canEdit || canRow) && !isFlat && (
           <div className={f.regAct}>
             {!edit ? (
               <button type="button" className={f.editBtn} onClick={() => setEdit(true)}>

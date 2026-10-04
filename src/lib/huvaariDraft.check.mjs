@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import {
   hdKey, kS, kH, kA, kR, kM, kN, parseKey, mapsToCells, cellsToMaps, resOfVal,
   serialize, parse, merge, sig, users, isEmpty, HD_DEL_TTL, remapDraft,
+  hlcNext, maxStamp, dropCleared, applyClear, hdClearMarkKey, serializeMark, parseMark, mergeMark, coversMark,
 } from './huvaariDraft.ts';
 
 /* ── 1. Түлхүүр ── */
@@ -280,5 +281,78 @@ console.log('✅ эвдэрсэн оролт');
   assert.equal(remapDraft(d, new Map()), d, 'хоосон зураглал — ижил объект');
 }
 console.log('✅ remapDraft');
+
+/* ── 7. HLC · нүд тус бүрийн `cleared` · хэсэгчилсэн цэвэрлэлт · тэмдэг (2026-10-04 аудит) ── */
+{
+  /* HLC: харсан дээдээс ХАТУУ ИХ, цаг урагшилбал цаг */
+  assert.equal(hlcNext(0, 100), 100);
+  assert.equal(hlcNext(500, 100), 501, 'цаг хоцорсон машин харсан нүднээс бага `at` авахгүй');
+  assert.equal(hlcNext(500.7, 100), 501);
+  assert.equal(hlcNext(50, 100), 100);
+  const seenD = mk([[kH(1), cell('x', 900, 'b')], [kH(2), cell('y', 10, 'b')]], [[kS(3, 0), 950]], 1);
+  assert.equal(maxStamp(seenD), 950, 'tombstone ч тоологдоно');
+  assert.equal(maxStamp({ ...seenD, cleared: 990 }), 990);
+  assert.equal(maxStamp(null), 0);
+  /* Хоцорсон цагтай А (Date.now()=100) Б-гийн 900-д бичсэн нүдийг харсны дараа засвал ялна */
+  const aEdit = mk([[kH(1), cell('A-шинэ', hlcNext(maxStamp(seenD), 100), 'a')]]);
+  assert.equal(merge(seenD, aEdit, 1000).entries.get(kH(1)).val, 'A-шинэ', 'HLC: дараа хийсэн засвар ялна');
+  /* Хоцорсон цагтай А-гийн tombstone Б-гийн нүдийг хаана */
+  const aDel = mk([], [[kH(2), hlcNext(maxStamp(seenD), 5)]]);
+  assert.equal(merge(seenD, aDel, 1000).entries.has(kH(2)), false, 'HLC tombstone хуучин нүдийг хаана');
+
+  /* dropCleared — нүд тус бүрээр: цэвэрлэлтээс хойшхи нүд ҮЛДЭНЭ (урьд нь хуулбар бүтнээрээ хаягддаг байв) */
+  const loc = { ...mk([[kH(1), cell('хуучин', 100, 'a')], [kH(2), cell('шинэ', 300, 'a')], [kH(3), cell('ижил', 200, 'a')]], [[kS(9, 0), 50]]), t: 150 };
+  const dc = dropCleared(loc, 200);
+  assert.deepEqual([...dc.entries.keys()], [kH(2)], 'at <= cleared хаягдана, шинэ нь үлдэнэ (t хуучин ч)');
+  assert.equal(dc.cleared, 200);
+  assert.equal(dc.del.get(kS(9, 0)), 50, 'tombstone хэвээр');
+  assert.equal(dropCleared(loc, 0), loc, 'cleared байхгүй — ижил объект');
+  assert.equal(loc.entries.size, 3, 'оролт хөндөгдөөгүй');
+
+  /* applyClear — ЗӨВХӨН тэмдгийн нүд; хувилбарын `at + 1` нь хамтрагчийн шинэ хувилбарыг хаахгүй */
+  const remote = mk([
+    [kH(1), cell('илгээсэн', 100, 'a')],
+    [kH(2), cell('хамтрагч-илгээлтэд-ороогүй', 150, 'b')],
+    [kH(3), cell('хамтрагч-дараа-нь-зассан', 120, 'b')],
+  ]);
+  const keys = new Map([[kH(1), 101], [kH(3), 111]]);
+  const cl = applyClear(remote, keys, 400);
+  assert.equal(cl.entries.has(kH(1)), false, 'илгээлтэд орсон нүд хаагдана');
+  assert.equal(cl.entries.get(kH(2)).val, 'хамтрагч-илгээлтэд-ороогүй', 'жагсаалтад ороогүй нүд ҮЛДЭНЭ');
+  assert.equal(cl.entries.get(kH(3)).val, 'хамтрагч-дараа-нь-зассан', 'илгээснээс ШИНЭ хувилбар ҮЛДЭНЭ');
+  assert.equal(cl.del.get(kH(1)), 101);
+  assert.equal(cl.del.has(kH(3)), false, 'амьд үлдсэн нүдний tombstone арилна');
+  assert.equal(cl.cleared, 400);
+  assert.equal(remote.entries.size, 3, 'оролт хөндөгдөөгүй');
+  assert.equal(sig(applyClear(cl, keys, 400)), sig(cl), 'идемпотент');
+  /* Цэвэрлэлтийн өмнө эхэлсэн бичилт (хуучин нүдтэй) дараа нь буувал — дахин хэрэглэхэд хаагдана */
+  const late = merge(cl, mk([[kH(1), cell('илгээсэн', 100, 'a')]]), 1000);
+  assert.equal(late.entries.has(kH(1)), false, 'tombstone хуучин хувилбарыг хаасаар');
+  /* Бусад машины хуучин локал хуулбар — `cleared`-ээр нүд бүрээр */
+  const otherLocal = mk([[kH(2), cell('хамтрагч-илгээлтэд-ороогүй', 150, 'b')], [kH(4), cell('хуучин-офлайн', 90, 'b')]]);
+  assert.deepEqual([...dropCleared(otherLocal, cl.cleared).entries.keys()], [], 'cleared-ээс хуучин бүх нүд хуулбараас хаагдана');
+
+  /* Тэмдэг: сериалчлал · нийлүүлэлт · хамрах */
+  assert.ok(!hdClearMarkKey('plan:plan:b32').includes('|'));
+  const m1 = { ts: 400, keys: new Map([[kH(1), 101]]) };
+  const m2 = { ts: 500, keys: new Map([[kH(1), 90], [kH(5), 480]]) };
+  const rt = parseMark(serializeMark(m1));
+  assert.equal(rt.ts, 400);
+  assert.deepEqual([...rt.keys], [[kH(1), 101]]);
+  assert.equal(parseMark('{'), null);
+  assert.equal(parseMark(null), null);
+  assert.equal(parseMark('{"ts":1,"keys":[["bad",3],["h:1","x"],["h:2",7]]}').keys.size, 1, 'эвдэрсэн мөр л орхигдоно');
+  const mm = mergeMark(m1, m2);
+  assert.equal(mm.ts, 500);
+  assert.equal(mm.keys.get(kH(1)), 101, 'түлхүүр бүрт ИХ агшин');
+  assert.equal(mm.keys.get(kH(5)), 480);
+  assert.equal(mergeMark(null, m1), m1);
+  assert.equal(coversMark(cl, m1), true, 'цэвэрлэсэн ноорог тэмдгийг хамарна');
+  assert.equal(coversMark(remote, m1), false, 'cleared-гүй/нүд амьд — хамрахгүй');
+  assert.equal(coversMark({ ...remote, cleared: 400 }, m1), false, 'хуучин хувилбар амьд — хамрахгүй');
+  assert.equal(coversMark(cl, mm), false, 'шинэ тэмдэг (ts 500) — хамрахгүй');
+  assert.equal(coversMark(null, m1), false);
+}
+console.log('✅ HLC · нүд тус бүрийн cleared · хэсэгчилсэн цэвэрлэлт');
 
 console.log('✅ huvaariDraft: бүх шалгуур давлаа');

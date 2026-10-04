@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
-  staleSubmissionKeys,
+  staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc,
 } from './sheetFrame.ts';
 import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
 
@@ -116,7 +116,66 @@ const rowKeys = old.map((r) => [r.oid, rowKeyOf(r)]);
   assert.equal(ms.get(103), 203, 'сийрэг rowKeys — эхний нэрийдэл');
   assert.equal(ms.get(106), 206, 'сийрэг rowKeys — ХОЁР ДАХЬ нэрийдэл (давхар буугаагүй)');
   assert.equal(new Set(ms.values()).size, 2, 'хоёр түлхүүр НЭГ мөрөнд буув');
+
+  /* ⚠️ 2026-10-04 аудит (#2): СИЙРЭГ жагсаалтад ЗӨВХӨН 2-р «Шороо» (106) — урьд нь `shift()` түүнийг
+     1-р нэрийдэлд (203, ӨӨР блок) буулгадаг байв. Давтамжийн дугааргүй бол ХОЁРДМОЛ (map-д орохгүй). */
+  const only2 = mapOldOids([[106, '1 ¦ Шороо']], fresh);
+  assert.equal(only2.map.has(106), false, 'хоёрдмол түлхүүр map-д орох ЁСГҮЙ (203 руу буух байсан)');
+  assert.deepEqual(only2.ambiguous, [106], 'хоёрдмол гэж мэдээлэгдэх ёстой');
+  assert.equal(buildOidMap([[106, '1 ¦ Шороо']], fresh).size, 0);
+  /* Давтамжийн дугаар (хуудасны БҮХ мөрөөр) — ЯГ 2-р нэрийдэл */
+  const occ = rowOccOf(old);
+  assert.deepEqual(occ.find(([o]) => o === 103), [103, 0, 2]);
+  assert.deepEqual(occ.find(([o]) => o === 106), [106, 1, 2]);
+  assert.deepEqual(rowOccOf(old, [106]), [[106, 1, 2]], 'сонгосон oid-д ч ХУУДАСНЫ БҮХ мөрөөр тоолно');
+  assert.equal(buildOidMap([[106, '1 ¦ Шороо']], fresh, rowOccOf(old, [106])).get(106), 206, 'давтамжаар ЯГ 206');
+  /* Шинэ жаазад ижил шошготой мөр НЭМЭГДСЭН (n зөрсөн) — давтамж гулссан байж болох тул ТААМАГЛАХГҮЙ */
+  const plus = [...fresh, row(207, '1', 'Шороо', 2, false)];
+  const mp = mapOldOids([[106, '1 ¦ Шороо']], plus, [[106, 1, 2]]);
+  assert.equal(mp.map.has(106), false, 'n зөрсөн — зөөх ёсгүй');
+  assert.deepEqual(mp.ambiguous, [106]);
+  /* Давхардаагүй шошго — давтамжгүй ч хоёрдмол биш */
+  assert.equal(mapOldOids([[104, '2 ¦ Бетон']], fresh).map.get(104), 204, 'ганц нэрийдэл — шууд');
+  /* Сөрөг (түр) oid тоологдохгүй, нэрийдэл эзлэхгүй */
+  assert.equal(mapOldOids([[-1, '1 ¦ Шороо'], [103, '1 ¦ Шороо'], [106, '1 ¦ Шороо']], fresh).map.size, 2);
 }
+console.log('✅ mapOldOids — сийрэг давхардсан шошго хоёрдмол, давтамжаар яг, n зөрвөл таамаглахгүй (2026-10-04 #2)');
+
+/* ═══ 1b. 2026-10-04 дахин аудит — хуучин payload-ын давтамжийг СУУРЬ жаазаас (#1) · ноорог олон жааз (#9) ═══ */
+{
+  /* хуучин (`rowOcc`-гүй) илгээлт ХУУЧИН жааз (old) дээр — зөвхөн 2-р «Шороо» засагдсан: урьд нь батлалт ч,
+     дахин илгээлт ч МӨНХӨД гацдаг байв (хоёрдмол → unmoved / stale) */
+  const legacy = { rowKeys: [[106, '1 ¦ Шороо'], [104, '2 ¦ Бетон']] };
+  assert.ok(needsFrameOcc(legacy, fresh), 'хуучин жаазын payload — нөхөх шаардлагатай');
+  assert.ok(!needsFrameOcc(legacy, old), 'ижил жааз — нөхөх хэрэггүй');
+  assert.equal(buildOidMap(legacy.rowKeys, fresh).has(106), false, '(нөхөхөөс өмнө) хоёрдмол');
+  const fixed = withFrameOcc(legacy, old);
+  assert.deepEqual(fixed.rowOcc, [[104, 0, 1], [106, 1, 2]], 'суурь жаазын БҮХ мөрөөр бодсон давтамж');
+  assert.equal(buildOidMap(fixed.rowKeys, fresh, fixed.rowOcc).get(106), 206, 'нөхсөн давтамжаар ЯГ 206 (203 биш)');
+  assert.ok(!needsFrameOcc(fixed, fresh), 'нөхсөний дараа дахин уншихгүй');
+  const ovL = overlaySubmission(fresh, {
+    v: 2, mode: 'inc', pkgKey: 'p', user: 'u', at: 1, fillMs: D('2026-09-04'), base: D('2026-09-01'), asOf: null,
+    cells: [['106:0', '3']], dates: [], adds: [], rowKeys: fixed.rowKeys, rowOcc: fixed.rowOcc,
+  }, sc, nBld);
+  assert.equal(ovL.unmoved, 0, 'батлалтын overlay тулгагдах ёстой');
+  /* суурь нь өөр жааз (oid таарахгүй) → нөхөхгүй, хоёрдмол хэвээр (буруу мөрөнд буулгахгүй) */
+  assert.equal(withFrameOcc(legacy, fresh), legacy, 'oid таарахгүй жаазаар нөхөх ёсгүй');
+  /* шошго зөрсөн (oid давхцсан ч өөр мөр) → нөхөхгүй */
+  assert.equal(withFrameOcc({ rowKeys: [[106, '9 ¦ Өөр']] }, old).rowOcc, undefined);
+  /* байгаа давтамж ДАРАГДАХГҮЙ */
+  const part = { rowKeys: [[106, '1 ¦ Шороо']], rowOcc: [[106, 1, 2]] };
+  assert.equal(withFrameOcc(part, old), part);
+  /* #9 НООРОГ (`sameFrame = false`): өөр жаазны хоёр хуучин түлхүүр (F0-ийн 2-р «Шороо» 106 + F1-ийн 1-р 303)
+     «бүх тохиолдол» мэт харагдаж oid-ын дарааллаар СОЛИГДОЖ буудаг байв */
+  const mixed = [[106, '1 ¦ Шороо'], [303, '1 ¦ Шороо']];
+  assert.equal(mapOldOids(mixed, fresh).map.get(106), 203, '(нэг жаазны дүрэм) дарааллаар — энэ тохиолдолд БУРУУ');
+  const mx = mapOldOids(mixed, fresh, undefined, false);
+  assert.equal(mx.map.size, 0, 'ноорогт дарааллын дүрэм хаалттай — таамаглахгүй');
+  assert.deepEqual([...mx.ambiguous].sort((a, b) => a - b), [106, 303]);
+  assert.equal(mapOldOids([[104, '2 ¦ Бетон']], fresh, undefined, false).map.get(104), 204, 'ганц нэрийдэл — ноорогт ч шууд');
+  assert.equal(mapOldOids(mixed, fresh, [[106, 1, 2], [303, 0, 2]], false).map.get(106), 206, 'давтамжтай бол ноорогт ч ЯГ');
+}
+console.log('✅ хуучин payload суурь жаазаас давтамж нөхнө (#1) · ноорогт дарааллын дүрэм хаалттай (#9)');
 
 /* ═══ 2. moveKeys ═══ */
 {
@@ -241,7 +300,9 @@ const sub = (over = {}) => ({
 {
   const ov = overlaySubmission(
     fresh,
-    sub({ rowKeys: [[103, '1 ¦ Шороо'], [150, '9 ¦ БАЙХГҮЙ']], cells: [['103:0', '1'], ['150:0', '2']], dates: [['150:0:s', '2026-01-01']] }),
+    /* ⚠️ 2026-10-04 (#2): «1 ¦ Шороо» давхардсан тул СИЙРЭГ түлхүүрт давтамжийн дугаар (`rowOcc`) заавал —
+       байхгүй бол хоёрдмол (доорх 4в-2) */
+    sub({ rowKeys: [[103, '1 ¦ Шороо'], [150, '9 ¦ БАЙХГҮЙ']], rowOcc: [[103, 0, 2]], cells: [['103:0', '1'], ['150:0', '2']], dates: [['150:0:s', '2026-01-01']] }),
     sc, nBld,
   );
   assert.equal(ov.unmoved, 2, 'олдохгүй oid-ийн нүд ба огноо хоёулаа unmoved');
@@ -251,6 +312,21 @@ const sub = (over = {}) => ({
   assert.equal(ov2.unmoved, 1, 'rowKeys-гүй, мөрд байхгүй oid → unmoved');
   assert.equal(ov2.cellKeys.length, 0);
 }
+
+/* ── 4в-2. ХОЁРДМОЛ ШОШГО — ӨӨР мөрөнд буулгахгүй (2026-10-04 аудит, #2) ──
+   «1 ¦ Шороо»-ийн ЗӨВХӨН 2-р тохиолдлыг (106) засаад илгээсэн. Урьд нь сийрэг жагсаалтын
+   1-р нь шинэ жаазны 1-р нэрийдэлд (203 — ӨӨР блокийн мөр) бууж, `unmoved = 0`-оор батлалт
+   өнгөрдөг байв. Одоо: давтамжгүй (хуучин) бол unmoved; давтамжтай бол ЯГ 206. */
+{
+  const legacy = overlaySubmission(fresh, sub({ rowKeys: [[106, '1 ¦ Шороо']], cells: [['106:0', '9']] }), sc, nBld);
+  assert.equal(legacy.unmoved, 1, 'давтамжгүй сийрэг түлхүүр — хоёрдмол тул unmoved байх ёстой');
+  assert.equal(legacy.rows.find((r) => r.oid === 203).obyem[0], 5, '203 (1-р «Шороо») ХӨНДӨГДӨХ ёсгүй');
+  const exact = overlaySubmission(fresh, sub({ rowKeys: [[106, '1 ¦ Шороо']], rowOcc: [[106, 1, 2]], cells: [['106:0', '9']] }), sc, nBld);
+  assert.equal(exact.unmoved, 0, 'давтамжтай — тулгагдана');
+  assert.equal(exact.rows.find((r) => r.oid === 206).obyem[0], 9, 'ЯГ 2-р «Шороо» (206)-д буув');
+  assert.equal(exact.rows.find((r) => r.oid === 203).obyem[0], 5, '1-р «Шороо» хөндөгдөөгүй');
+}
+console.log('✅ хоёрдмол шошго — давтамжгүй бол unmoved, давтамжтай бол яг мөрөнд (2026-10-04 #2)');
 
 /* ── 4г. ДАВХАР add — батлагдсаны дараа архивт орсон мөр дахин орохгүй ── */
 {

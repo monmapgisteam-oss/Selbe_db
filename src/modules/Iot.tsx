@@ -13,7 +13,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import {
-  loadSensors, RANGES, type RangeKey, type SensorLive, type MetricSeries,
+  loadSensors, RANGES, SENSOR_STALE_H, type RangeKey, type SensorLive, type MetricSeries,
 } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { VIEW_BY_KEY } from '@/lib/services';
@@ -68,14 +68,15 @@ const freshLabel = (h: number | null): string => {
 };
 
 /**
- * Насаар өнгө — 2 цаг хүртэл шинэ, 48 хүртэл анхаарах, цаашид хуучирсан.
+ * Насаар өнгө — 2 цаг хүртэл шинэ, `SENSOR_STALE_H` (24, 2026-10-04 — урьд нь 48) хүртэл анхаарах,
+ * цаашид хуучирсан (CEO самбарын `IOT_STALE_H`-тэй нэг).
  * ⚠️ ЗӨВХӨН текстэд хэрэглэгддэг тул `-ink` хувилбарууд: цайвар горимд
  * дүүргэлтийн токен цагаан дээр 4.5:1 хүрдэггүй (харанхуйд хоёулаа ижил).
  */
 const freshTone = (h: number | null): string => {
   if (h == null) return 'var(--ink-3)';
   if (h <= 2) return 'var(--good-ink)';
-  if (h <= 48) return 'var(--warn-ink)';
+  if (h <= SENSOR_STALE_H) return 'var(--warn-ink)';
   return 'var(--bad-ink)';
 };
 
@@ -160,6 +161,12 @@ function Cell({ c }: { c: Card }) {
         {has ? num(c.m.latest ?? 0, c.m.dp) : '—'}
         {has && c.m.unit && <span className={s.metricUnit}>{c.m.unit}</span>}
       </span>
+      {/* ⚠️ 2026-10-04: физик мужаас гадуур заалт (хөрсний чийг > 100%) — мэдрэгчийн гэмтэл, хэвийн БИШ */}
+      {has && c.m.fault && (
+        <span className={`${s.metricAge} num`} style={{ color: 'var(--bad-ink)' }} title={tr('боломжгүй утга — мэдрэгчийн гэмтэл')}>
+          {tr('мэдрэгчийн гэмтэл')}
+        </span>
+      )}
       {/* ⚠️ 2026-08-26 (хэрэглэгчийн шийдвэр): «доод … дээд» ба «24ц өөрчлөлт»
           мөр ХАСАГДАВ. Хоёулаа ЧАРТААС нүдээр уншигдана (муруйн хэлбэр нь
           өөрчлөлтийг, тэнхлэг нь хязгаарыг харуулна) тул нүдэнд давхардсан

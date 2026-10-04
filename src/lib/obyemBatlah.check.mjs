@@ -31,7 +31,7 @@ globalThis.dispatchEvent = () => true;
 let fetched = 0;
 globalThis.fetch = () => { fetched += 1; throw new Error('fetch дуудагдав'); };
 
-const { parsePayload, decideObyem, OBYEM_STATUS } = await import('@/lib/obyemBatlah.ts');
+const { parsePayload, decideObyem, OBYEM_STATUS, withdrawDeny } = await import('@/lib/obyemBatlah.ts');
 
 /* ══════════════ 1. parsePayload — ЭВДЭРСЭН агуулгыг ТАТГАЛЗАНА ══════════════ */
 assert.equal(parsePayload(''), null, 'хоосон мөр');
@@ -104,7 +104,9 @@ assert.equal(OBYEM_STATUS.pending, 'Хүлээгдэж буй');
 assert.equal(OBYEM_STATUS.approved, 'Батлагдсан');
 assert.equal(OBYEM_STATUS.returned, 'Буцаагдсан');
 /* ⚠️ Гурвуулаа ЯЛГААТАЙ байх ёстой — нийлбэл урсгал таних боломжгүй болно */
-assert.equal(new Set(Object.values(OBYEM_STATUS)).size, 3, 'төлвүүд давхардав');
+/* ⚠️ 2026-10-04: `withdrawn` нэмэгдэв — дөрвүүлээ ялгаатай */
+assert.equal(OBYEM_STATUS.withdrawn, 'Татаж авсан');
+assert.equal(new Set(Object.values(OBYEM_STATUS)).size, 4, 'төлвүүд давхардав');
 console.log('✅ төлвийн утгууд');
 
 /* ══════════════ 6. ⚠️ 2026-09-30: ҮНДСЭН ӨГӨГДӨЛД БИЧИХЭЭС ӨМНӨ ДҮРЭМ ШАЛГАНА ══════════════
@@ -135,5 +137,22 @@ assert.equal(fetched, 0, 'урьдчилсан шалгалтын дүрэм с�
   assert.ok(/useObyem\(\{[^}]*todayFillMs, setRows \}\)/.test(fill), 'FillNew: useObyem-д `todayFillMs` · `setRows` дамжина');
 }
 console.log('✅ үндсэн өгөгдөлд бичихээс ӨМНӨ дүрэм шалгагдана · өдөр солигдоход баннер хэвээр');
+
+/* ══════════════ 7. ⚠️ 2026-10-04: ТАТАН АВАХ — зөвхөн зохиогч, зөвхөн pending ══════════════ */
+assert.equal(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'Injener' }, 'injener'), null, 'зохиогч pending-ээ татна');
+assert.match(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, 'batlagch'), /Зөвхөн илгээсэн инженер/);
+for (const st of [OBYEM_STATUS.approved, OBYEM_STATUS.returned, OBYEM_STATUS.withdrawn]) {
+  assert.match(withdrawDeny({ status: st, author: 'injener' }, 'injener'), /аль хэдийн шийдвэрлэгдсэн/, st);
+}
+assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: null }, 'injener'), 'зохиогчгүй мөрийг хэн ч татахгүй');
+assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, '  '), 'нэвтрээгүй');
+{
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('wroteMain ? afterWrite('), 'useObyem: бичигдсэний дараах шийдвэрийн алдаа «аль хэдийн бичигдсэн» гэж хэлнэ');
+  const tb = fs.readFileSync(new URL('../modules/sheet/fill/toolbar.tsx', import.meta.url), 'utf8');
+  assert.ok(/window\.confirm\([^]*?decideObyemHere\(true\)/.test(tb), 'toolbar: «Обьём батлах» баталгаажуулалттай');
+}
+console.log('✅ татан авах дүрэм · батлах баталгаа · бичилтийн дараах алдааны мессеж');
 
 console.log('\nobyemBatlah.check: ok');

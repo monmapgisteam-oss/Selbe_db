@@ -71,8 +71,16 @@
 /* Тэмдэг — урьд нь good→fin→bad градиент байв; чимэглэлийн өнгө хасагдаж
    дата өнгөний нэг зурвас үлдэв */
 .brandMark { width: 9px; height: 26px; border-radius: var(--r-sm); background: var(--data) }
-.brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap; text-transform: uppercase }
-.brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--ink-3); white-space: nowrap }
+/* ⚠️ 2026-10-04: нарийн дэлгэцэд гарчиг табуудын ард ТАСАРЧ байв — бичвэрийн
+   боодол `min-width: 0`, гарчиг «…»-ээр тасарна (бүтэн нэр нь `title`-д). */
+.brand > div { min-width: 0 }
+.brand h1 { font-size: 13px; letter-spacing: .2px; white-space: nowrap; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis }
+.brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+@media (max-width: 600px) {
+  .topbar { gap: 10px }
+  .brand { flex: 1 1 auto }
+  .tabs { flex: none }
+}
 
 .tabs { display: flex; gap: 4px; background: var(--surface-2); padding: 3px; border-radius: var(--r-sm); border: 1px solid var(--line) }
 .tabs button {

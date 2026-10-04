@@ -64,6 +64,8 @@ export type RoadState = {
   cap?: number;
   /** Бусад сүлжээний багтаамж хараахан ачаалагдаагүй — таг түр зуурын */
   capPending?: boolean;
+  /** ⚠️ 2026-10-04: аль нэг сүлжээний багтаамж УНАСАН — «ачаалж байна» гэж мөнхөд бичихгүй */
+  capFailed?: boolean;
   /** Сүлжээнд наалдсан гэрлэн дохиотой уулзварын тоо (`signalLines`-ийн нэрээр) */
   signalJunctions?: number;
 };
@@ -491,7 +493,13 @@ function RoadStatus({ road }: { road?: RoadState }) {
   if (!road) return null;
 
   if (road.error) {
-    return <p className={c.err}>{tr('Замын сүлжээ ачаалж чадсангүй:')} {road.error}</p>;
+    /* ⚠️ 2026-10-04: «Дахин оролдох» — урьд нь алдааны дараа самбарыг хааж нээхээс өөр зам байгаагүй */
+    return (
+      <p className={c.err} role="alert">
+        {tr('Замын сүлжээ ачаалж чадсангүй:')} {road.error}
+        {road.onRetry && <>{' '}<button type="button" className={c.segBtn} onClick={road.onRetry}>{tr('Дахин оролдох')}</button></>}
+      </p>
+    );
   }
   /* ⚠️ Машингүй сүлжээ: line нь одоогийн замтай холбогдоогүй тул хөдөлгөөн
      үүсгэхгүй — үүнийг ХЭЛЖ өгнө, эс бөгөөс «эвдэрсэн» гэж ойлгогдоно. */
@@ -536,7 +544,7 @@ function RoadStatus({ road }: { road?: RoadState }) {
           title={tr('Эрэлт — бүсийн хүн амаас (Little-ийн хууль). Таг — машинтай бүх сүлжээний хамгийн бага багтаамж; бүх сүлжээ ИЖИЛ тагтай тул харьцуулалт шударга.')}
         >
           {tr('Машин: эрэлт {0} → таг {1}', nf0(road.demand), nf0(road.cap))}
-          {road.capPending ? ` ${tr('(бусад сүлжээ ачаалж байна)')}` : ''}
+          {road.capFailed ? ` ${tr('(бусад сүлжээний багтаамж татагдсангүй — таг нь мэдэгдэж буйгаас)')}` : road.capPending ? ` ${tr('(бусад сүлжээ ачаалж байна)')}` : ''}
         </p>
       )}
       {!road.signalsFailed && road.signalJunctions != null && (

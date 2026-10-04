@@ -29,7 +29,16 @@ export type SavePrep = {
   obLost: number;
   /** Бүлгийн кодоор ирсэн сарын ноорог — бичигдээгүй, тэнцэлд тоологдоогүй (2026-10-01) */
   grpSkipped: number;
-} | { ok: false; stale: number };
+} | { ok: false; stale: number; hamLong?: number };
+
+/**
+ * УЯЛДААНЫ ТАЛБАРЫН ДЭЭД УРТ (2026-10-04, шүүлт) — `Hamaaral` нь String 255 (`bagts.pkg.ts`).
+ * ⚠️ Олон блокт `@N` уялдаа хуулахад (PlanModal `dlOut`) текст 255-аас хэтэрч болно —
+ *    ArcGIS бичилтийг бүхэлд нь унагах эсвэл ЧИМЭЭГҮЙ тайрна (тайрсан уялдаа = худал хуваарь).
+ *    PlanModal «Тавих»-ыг хаадаг ч хуучин ноорог/гараар залгасан текст энд ирж болох тул
+ *    `prepareSave` ч ТАТГАЛЗАНА — ХЭЗЭЭ Ч тайрахгүй.
+ */
+export const HAM_MAX = 255;
 
 export async function prepareSave({
   sc, kind, pkg, rows, base, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids,
@@ -61,6 +70,12 @@ export async function prepareSave({
   const staleN = [...new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()])]
     .filter((oid) => !byOid.has(oid)).length;
   if (staleN) return { ok: false, stale: staleN };
+  /* ⚠️ 2026-10-04 (шүүлт): уялдааны текст талбарт багтахгүй бол ЮУ Ч БИЧИХГҮЙ (`HAM_MAX`-ийн ⚠️) */
+  if (sc.f.ham) {
+    let hamLong = 0;
+    for (const [oid, text] of ham) if (byOid.has(oid) && text.trim().length > HAM_MAX) hamLong += 1;
+    if (hamLong) return { ok: false, stale: 0, hamLong };
+  }
   const upd: Record<string, unknown>[] = [];
   for (const [oid, spans] of draft) {
     const orig = byOid.get(oid);

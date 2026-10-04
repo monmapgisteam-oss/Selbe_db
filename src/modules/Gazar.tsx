@@ -10,7 +10,7 @@ import { OpacityPanel } from '@/components/OpacityPanel';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { usePlanTotals } from '@/lib/totals';
-import { Stats, Stat, Donut, Bars, Ring, Empty, Loading, Data } from '@/components/ui';
+import { Stats, Stat, Donut, Bars, Ring, Empty, Loading, Data, userError } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
 import {
   queryStats, queryGroup, queryFeatures, groups, groupWhere, count, sum, avg, sqlStr,
@@ -755,7 +755,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       }
     } catch (e) {
       /* ⚠️ Алдааг НУУХГҮЙ — «олдсонгүй» гэж худал хэлэхгүй */
-      setFindMsg(String((e as Error).message || e));
+      setFindMsg(userError(e));
     } finally {
       setFinding(false);
     }

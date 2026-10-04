@@ -12,11 +12,16 @@ import { todayUtc } from './util';
  *    `zoom`, харагдах мөрүүд `visible`, сонгосон мөр `sel`. Гаралт нь Gantt-ын
  *    зурагдалт ба чирэлтийн хөдөлгүүрт хэрэгтэй бүх хэмжээ.
  */
-export function useCalendar({ plan, drag, zoom, visible, sel, jumpedRef }: {
+export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, jumpedRef }: {
   plan: readonly PlanRow[];
   drag: boolean;
   zoom: Zoom;
-  visible: readonly PlanRow[];
+  /**
+   * ⚠️ 2026-10-04: ерөнхий (`T`) — «Бүх блок» горимд эх мөр + блокийн дэд мөрийн хавтгай
+   * жагсаалт (`allBlocks.DispRow`) ЭНЭ цонхлолтоор явна. `oid` нь эх мөрийнх; эх мөр нь
+   * дэд мөрөөсөө өмнө тул `sel`-ийн хайлт эх мөрийг олно. Мөр бүр `PL_ROW` өндөртэй.
+   */
+  visible: readonly T[];
   sel: number | null;
   /** Эхний «өнөөдөр» рүү гүйлгэлт хийгдсэн үү — эцгийн `[pkg]` эффект тэглэдэг тул эцэгт зарлагдана */
   jumpedRef: React.RefObject<boolean>;

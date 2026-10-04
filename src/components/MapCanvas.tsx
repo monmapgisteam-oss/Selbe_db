@@ -4616,7 +4616,10 @@ export const MapCanvas = memo(function MapCanvas({
   const initWebgl = initError?.name?.startsWith('webgl:') === true;
 
   return (
-    <div className={`${s.wrap} ${fs ? s.fs : ''}`}>
+    /* ⚠️ 2026-10-04: `data-map-canvas` / `data-boot-fail` — порталын ачаалалтын
+       дэлгэц (Portal `Booting`) DOM-оос уншдаг дохио: зураг үүсч чадаагүй бол
+       12с хүлээлгүй ШУУД хаагдаж, доорх алдааны картыг харуулна. */
+    <div className={`${s.wrap} ${fs ? s.fs : ''}`} data-map-canvas="" data-boot-fail={!ready && initError ? '' : undefined}>
       <div ref={el} className={s.view} />
       {!ready && !initError && <div className={s.loading}>{tr('Газрын зураг ачаалж байна…')}</div>}
 

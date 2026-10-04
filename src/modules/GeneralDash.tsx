@@ -10,7 +10,7 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, monotonePath, TIP_RULE } from '@/components/ui';
+import { Section, Stats, Stat, Data, Empty, Bars, monotonePath, TIP_RULE, friendlyError } from '@/components/ui';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 /* ⚠️ `Async` төрөл нь `cfGate`-д хэрэгтэй — дөрвөн эхийг НЭГ синтетик
    төлөв болгож `Data`-д дамжуулна (`cfGate`-ийн тайлбарыг үз). */
@@ -2784,7 +2784,11 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
      `BUILT_LAYER`) БҮХ барилга — одоо байгаа + шинэ. `loadHeadline().byStatus`
      (кэштэй, нэмэлт хүсэлтгүй) задаргааг нэрэнд ил бичнэ: «одоо N · шинэ M». */
   const hq = useAsync(loadHeadline, []);
-  const byStatus = hq.state === 'ready' ? hq.data.byStatus : null;
+  /* ⚠️ 2026-10-04: `loadHeadline` нь `allSettled` — ЗӨВХӨН барилгын асуулга унахад
+     `byStatus = []` (NaN-тэй `usableM2`) ирж «одоо 0 · шинэ 0» гэж худал зурдаг байв.
+     Унасан бол «—» ба алдааны мөр. */
+  const builtFailed = hq.state === 'error' || (hq.state === 'ready' && Number.isNaN(hq.data.usableM2));
+  const byStatus = hq.state === 'ready' && !builtFailed ? hq.data.byStatus : null;
   const nOf = (label: string) => byStatus?.find((s) => s.label === label)?.n ?? 0;
   const existing = byStatus ? nOf(BUILT_STATUS[0].value) : null;
   const fresh = byStatus ? byStatus.reduce((a, s) => a + s.n, 0) - (existing ?? 0) : null;
@@ -2828,14 +2832,21 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
                   value={cnt('et:24') == null ? '—' : num(cnt('et:24')!)}
                   label={existing != null && fresh != null
                     ? tr('Нийт барилга (одоо {0} · шинэ {1})', num(existing), num(fresh))
-                    : tr('Нийт барилга (ЕТ)')}
+                    : builtFailed
+                      ? tr('Нийт барилга (одоо {0} · шинэ {1})', '—', '—')
+                      : tr('Нийт барилга (ЕТ)')}
                   accent
                 />
                 <Stat
-                  value={started.state === 'ready' ? num(started.data) : '…'}
+                  value={started.state === 'ready' ? num(started.data) : started.state === 'error' ? '—' : '…'}
                   label={tr('Баригдаж эхэлсэн блок')}
                 />
               </Stats>
+              {(builtFailed || started.state === 'error') && (
+                <p role="status" style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--bad-ink)' }}>
+                  {tr('Барилгын тоо татагдсангүй: {0}', friendlyError(hq.state === 'error' ? hq.error : started.state === 'error' ? started.error : null))}
+                </p>
+              )}
               {lines.length > 0 && (
                 <ul className={g.plain}>
                   {lines.map((l) => (

@@ -120,6 +120,8 @@ const enData: Record<string, string> = {
   "Том гулсууран тоглоом": "Large slide play set",
   "Багц 4-1": "Package 4-1",
   "Багц 4-2": "Package 4-2",
+  /* ⚠️ 2026-10-04: бүсийн ангилал (`ZONE_TYPES`) — `ZoneFilter` `tr(g.type)`-оор динамик */
+  "Х бүс": "Zone X",
 };
 
 export default enData;

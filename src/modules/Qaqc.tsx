@@ -23,7 +23,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
-import { Data } from '@/components/ui';
+import { Data, userError } from '@/components/ui';
 import { capsRemoteReady, hasCap, subscribeCaps } from '@/lib/caps';
 import { qaqcScope, subscribeQaqcAcl } from '@/lib/qaqcAcl';
 import { roleForUser } from '@/lib/services';
@@ -1176,7 +1176,7 @@ export function Qaqc() {
          ⚠️ ЭХЛЭЭД ачаална, ДАРАА нь алдааг тавина (2026-09-25-ны аудит, HIGH):
          `load` эхэндээ `setErr('')` дууддаг тул урьд нь алдаа тэр дор нь
          арчигдаж, хадгалалт унасныг хэрэглэгч огт харахгүй байв. */
-      const msg = String((e as Error).message || e);
+      const msg = userError(e);
       keepScroll(pkg.key);
       await load(pkg.key);
       setErr(msg);
@@ -1259,7 +1259,7 @@ export function Qaqc() {
             }}
           >
             {groupOpts.map((g) => (
-              <option key={g} value={g}>{g}</option>
+              <option key={g} value={g}>{tr(g)}</option>
             ))}
           </select>
         </label>

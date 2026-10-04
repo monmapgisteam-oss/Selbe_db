@@ -9,7 +9,7 @@ import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
 import {
   decideObyem, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
-  submitObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
+  submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
 
@@ -215,6 +215,10 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     setPvBusy(true); setPvErr(""); setPvNote("");
     /** Сүүлийн жаазад тулгагдаагүй тул бичигдээгүй нүдний тоо (доорх ⚠️) */
     let pvSkipped = 0;
+    /** ⚠️ 2026-10-04: үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн эсэх — шийдвэр унавал мессежид */
+    let wroteMain = false;
+    /** Бичигдсэний ДАРАА шийдвэр унасан үеийн тайлбар — юу болсон, яах вэ */
+    const afterWrite = (why: string) => tr('Утгууд үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн, гэхдээ илгээлтийг «Батлагдсан» болгож чадсангүй ({0}). Хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу — ижил утга дахин бичигдэх тул аюулгүй. Давтан унавал админд мэдэгдэнэ үү.', why);
     try {
       if (approve) {
         const fld = sc.f.plannedVol;
@@ -284,6 +288,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           return;
         }
         await applyUpdates(pkg, upd);
+        wroteMain = true;
         pvSkipped = skippedN;
         /* ⚠️ 2026-09-30: БИЧИГДСЭН утгыг хуудасны мөрт ч тусгана — урьд нь зөвхөн
            `refreshObyem` явдаг тул баннер алга болмогц багана ХУУЧИН утгаа харуулж,
@@ -301,21 +306,47 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         reason,
       });
       if (!here()) return;
-      if (!r.ok) { setPvErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      /* ⚠️ 2026-10-04: бичээд → тэмдэглэх дараалал (дээрх ⚠️) хэвээр; харин тэмдэглэл унавал
+         «хадгалагдсангүй» биш — утга АЛЬ ХЭДИЙН бичигдсэнийг ба яах ёстойг хэлнэ. */
+      if (!r.ok) { setPvErr(wroteMain ? afterWrite(r.error ?? '') : (r.error ?? tr('Шийдвэр хадгалагдсангүй.'))); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
           + (pvSkipped ? ' ' + tr('{0} мөр архивын сүүлийн жаазад тулгагдаагүй тул бичигдсэнгүй.', pvSkipped) : '')
         : tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
       await refreshObyem();
     } catch (e) {
-      pvErrHere(String((e as Error).message || e));
+      const m = String((e as Error).message || e);
+      pvErrHere(wroteMain ? afterWrite(m) : m);
     } finally {
       setPvBusy(false);
     }
   }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem, locked, pkgKeyRef, setRows, setPvBusy, setPvErr, setPvNote]);
+
+  /**
+   * ТАТАН АВАХ — инженер өөрийн хүлээгдэж буй обьёмын илгээлтийг цуцална (2026-10-04).
+   * ⚠️ Багцад нэг л хүлээгдэж буй илгээлт байдаг тул батлагч ирэхгүй бол инженер гацдаг байв.
+   *    Дүрэм (зөвхөн зохиогч · зөвхөн pending) нь lib-д (`withdrawObyem`).
+   */
+  const withdrawObyemHere = useCallback(async () => {
+    if (!pvSub || pvBusy) return;
+    if (!window.confirm(tr('Обьёмын илгээлтээ ({0} нүд) татаж авах уу? Батлагч үүнийг цаашид харахгүй; засаад дахин илгээж болно.', String(pvSub.cellCount)))) return;
+    const want = pkg.key;
+    setPvBusy(true); setPvErr(""); setPvNote("");
+    try {
+      const r = await withdrawObyem({ oid: pvSub.oid, me: user?.username ?? '' });
+      if (pkgKeyRef.current !== want) return;
+      if (!r.ok) { setPvErr(r.error ?? tr('Татаж авч чадсангүй.')); return; }
+      setPvNote(tr('Обьёмын илгээлтийг татаж авлаа.'));
+      await refreshObyem();
+    } catch (e) {
+      if (pkgKeyRef.current === want) setPvErr(String((e as Error).message || e));
+    } finally {
+      setPvBusy(false);
+    }
+  }, [pvSub, pvBusy, pkg.key, user, refreshObyem, pkgKeyRef, setPvBusy, setPvErr, setPvNote]);
   return {
     pvPend, setPvPend, pvSub, setPvSub, pvPreview, setPvPreview, pvBusy, pvErr, setPvErr, pvNote, setPvNote,
-    pvCells, sendObyem, decideObyemHere,
+    pvCells, sendObyem, decideObyemHere, withdrawObyemHere,
     /* 2026-10-01: ЗӨВХӨН энэ багцынх (уншилт унавал өмнөх багцын баннер наалдахгүй) */
     pvReturned: pvReturned && pvReturned.pkgKey === pkg.key ? pvReturned : null,
   };

@@ -69,7 +69,8 @@ import {
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { paidShareOf, paidPctOf } from '@/lib/paidShare';
 import { loadNegtgelPct } from '@/lib/negtgel';
-import { latestLaborRow, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
+import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
+import { isBlankIncident } from '@/lib/ceo/safety';
 import {
   finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
 } from '@/lib/finExcelLayout';
@@ -134,7 +135,10 @@ export type ReportExtra = {
     areaM2: number;
   };
   progress: {
+    /** ⚠️ 2026-10-04: бөглөх хуудасны БҮХ блок (хуваарь) — урьд нь зөвхөн тайлагнасан блок */
     blocks: number;
+    /** Гүйцэтгэл нь тайлагнасан блок (2026-10-04) */
+    reported: number;
     /**
      * Блокуудын гүйцэтгэлийн дундаж, % — дашбоардын толгойн тоотой нэг загвар.
      * ⚠️ 2026-09-29 (аудит 10): `null` = тайлагнасан блок алга — `mean([])`-ийн 0 нь
@@ -506,9 +510,11 @@ async function loadSocial(): Promise<ReportExtra['social']> {
 export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET']);
 
 async function loadProgressRaw(): Promise<ReportExtra['progress']> {
-  const { loadBlockProgress } = await import('@/lib/blockProgress');
-  const [map, labelOf] = await Promise.all([
+  const { loadBlockProgress, loadBlockUniverse, pkgProgressOf, universeKeys, latestMean } = await import('@/lib/blockProgress');
+  const [map, uni, labelOf] = await Promise.all([
     loadBlockProgress(),
+    /* ⚠️ 2026-10-04: блокийн хуваарь (тайлагнаагүй блок 0%) — `loadSchema` кэштэй */
+    loadBlockUniverse(),
     // ⚠️ Багцын УНШИГДАХ нэр («Багц 3.2») зөвхөн барилгын давхаргад бий:
     // гүйцэтгэлийн түлхүүр нь `bagtsKey`-ээр цэгээ алдсан («БАГЦ32») тул
     // буцааж сэргээх аргагүй. `loadOverall` ч мөн үүнийг хэрэглэдэг тул
@@ -519,13 +525,27 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
   const label = (k: string) => labelOf.get(k) ?? (k || '—');
 
   type Phase = { no: string; name: string; pct: number | null };
-  const rows: (BlockRow & { date: string; phases: readonly Phase[] })[] =
-    [...map.entries()].map(([key, v]) => ({
-      ...splitKey(key),
-      pct: nn(v.overall),
-      date: v.date ?? '',
-      phases: v.phases ?? [],
-    }));
+  /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): мөр нь бөглөх хуудасны
+     БҮХ блок (`universeKeys` — хуваарь ∪ хэмжилт), урьд нь ЗӨВХӨН хэмжигдсэн блок
+     (`map.entries()`) байсан тул §6/PDF 6.1-ийн дундаж, багцын хувь, «эхлээгүй блок»
+     Дашбоард · §2 · §3-аас (бүх блокоор) өөр гардаг байв. Тайлагнаагүй блок `pct: 0`,
+     `reported: false` — үе шатын дундажид ОРОХГҮЙ (үе шатын хэмжилт байхгүй). */
+  const keys = universeKeys(map, uni);
+  const rows: (BlockRow & { date: string; phases: readonly Phase[]; reported: boolean })[] =
+    keys.map((key) => {
+      const v = map.get(key);
+      return {
+        ...splitKey(key),
+        pct: v ? nn(v.overall) : 0,
+        date: v?.date ?? '',
+        phases: v?.phases ?? [],
+        reported: !!v,
+      };
+    });
+  /* багц бүрийн хувь — `pkgProgressOf` (§2 `joinBagts` · §3 `loadOverall` · Дашбоардтай НЭГ функц) */
+  const byPkg = pkgProgressOf(map, uni);
+  /* нийт — блокийн энгийн дундаж, тайлангүй 0% (`latestMean` — Дашбоардын бөгжтэй НЭГ) */
+  const mean0 = latestMean(map, keys);
 
   /*
    * Үе шатны дундаж — үе шатны дугаараар нэгтгэнэ (блок бүрт ижил 5 үе шат).
@@ -539,18 +559,12 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
     phaseMap.set(p.no, e);
   }));
 
-  /* Багцаар */
-  const bagtsMap = new Map<string, number[]>();
-  rows.forEach((r) => {
-    const a = bagtsMap.get(r.bagts) ?? [];
-    a.push(r.pct);
-    bagtsMap.set(r.bagts, a);
-  });
-
   return {
     blocks: rows.length,
-    /* ⚠️ 2026-09-29 (аудит 10): блок алга бол `null` — `mean([])` = 0 нь худал хэмжилт */
-    overall: rows.length ? mean(rows.map((r) => r.pct)) : null,
+    reported: rows.filter((r) => r.reported).length,
+    /* ⚠️ 2026-09-29 (аудит 10): блок алга бол `null` — `mean([])` = 0 нь худал хэмжилт.
+       ⚠️ 2026-10-04: хуваарь = БҮХ блок (тайлангүй 0%) — `latestMean` */
+    overall: mean0.pct,
     date: rows.map((r) => r.date).filter(Boolean).sort().pop() ?? '',
     /**
      * ⚠️ ХЭМЖИЛТГҮЙ ҮЕ ШАТЫГ ОРУУЛАХГҮЙ (2026-09-03-ны аудит).
@@ -565,14 +579,17 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
       .filter((p) => p.xs.length > 0)
       .sort((a, b) => a.no.localeCompare(b.no, 'mn'))
       .map((p) => ({ no: p.no, name: sentenceCase(p.name), pct: mean(p.xs) })),
-    byBagts: [...bagtsMap.entries()]
-      .map(([k, xs]) => ({ bagts: label(k), blocks: xs.length, pct: mean(xs) }))
+    /* ⚠️ 2026-10-04: `pkgProgressOf` — `blocks` нь багцын БҮХ блок (`total`) */
+    byBagts: [...byPkg.entries()]
+      .map(([k, m]) => ({ bagts: label(k), blocks: m.total, pct: m.pct }))
       .sort((a, b) => b.pct - a.pct),
     slowest: rows
       .slice()
       .sort((a, b) => a.pct - b.pct || a.block.localeCompare(b.block, 'mn'))
       .slice(0, 10)
       .map((r) => ({ block: r.block, bagts: label(r.bagts), pct: r.pct })),
+    /* ⚠️ 2026-10-04: тайлагнаагүй блок (0%) ч «эхлээгүй (<1%)»-д ОРНО — урьд нь зөвхөн
+       хэмжигдсэн блокоос тоологддог байв (2026-10-01-ний шийдвэр) */
     stalled: rows.filter((r) => r.pct < 1).length,
   };
 }
@@ -882,7 +899,11 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
         }),
       ],
     }),
-    queryFeatures(HABEA.incident.url, { outFields: [HABEA.incident.fields.ognoo] }),
+    /* ⚠️ 2026-10-04: хоосон ноорог (төрөл · багц · огноо гурвуулаа хоосон) осол БИШ —
+       `ceo/safety.isBlankIncident` (нүүр самбар · ХАБЭА хуудастай нэг дүрэм); шалгахад хэрэгтэй 3 талбар */
+    queryFeatures(HABEA.incident.url, {
+      outFields: [HABEA.incident.fields.ognoo, HABEA.incident.fields.turul, HABEA.incident.fields.bagts],
+    }),
   ]);
 
   /* Хамгийн сүүлийн бүртгэл — маягт нэг мөрөөр «өнөөдрийн байдал»-ыг илэрхийлнэ */
@@ -893,18 +914,20 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
      OID (урьд нь OID л) — CEO самбарын `groupDays`-тай НЭГ дүрэм (`latestLaborRow`):
      засварласан хуучин мөр (бага OID, шинэ EditDate) тайланд алгасагддаг байв. */
   const last = latestLaborRow(labor);
-  const day = last ? [last] : [];
-  const at = (f: string) => day.reduce((a, r) => a + nn(r[f]), 0);
+  /* ⚠️ 2026-10-04: компани бүрийн тоо `ceo/workforce.laborHeadOf`-оор (нийт хоосон/0 бол монгол +
+     гадаад — `Habea.tsx`-ийн дүрэм) — Дашбоардын «ХАБ өнөөдөр» (`gdash.loadHseNow`)-тэй НЭГ туслах.
+     Урьд нь `Niit_ajiltan_<SFX>`-ийг шууд нийлбэрлэдэг тул зөвхөн монгол/гадаад бөглөсөн компани 0 болдог байв. */
+  const head = last ? laborHeadOf(last) : null;
 
   const byCompany = HABEA.labor.companies.map((c) => {
-    const f = laborCompanyFields(c.sfx);
+    const d = head?.comp[c.sfx];
     return {
       label: c.label,
       bagts: c.bagts,
-      workers: at(f.niitAjiltan),
-      mongol: at(f.mongol),
-      gadaad: at(f.gadaad),
-      tehnik: at(f.niitTehnik),
+      workers: d?.workers ?? 0,
+      mongol: d?.mongol ?? 0,
+      gadaad: d?.gadaad ?? 0,
+      tehnik: d?.technik ?? 0,
     };
   }).filter((c) => c.workers > 0 || c.tehnik > 0)
     .sort((a, b) => b.workers - a.workers);
@@ -921,7 +944,7 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
     gadaad: byCompany.reduce((a, c) => a + c.gadaad, 0),
     tehnik: byCompany.reduce((a, c) => a + c.tehnik, 0),
     byCompany,
-    incidents: incident.length,
+    incidents: incident.filter((r) => !isBlankIncident(r)).length,
   };
 }
 
@@ -1049,8 +1072,8 @@ export type BagtsLike = { key: string; label: string; progress: number | null };
 
 /**
  * ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`;
- * 2026-09-30-аас тайлагнасан блокуудын дундаж — `loadOverall`-ийн `actual`-тай нэг,
- * урьд нь бүх блокоор хувааж тайлангүйг 0% гэдэг байв). Урьд нь дэлгэц (`Tailan`)
+ * ⚠️ 2026-10-01-нөөс ДАХИН бүх блокоор, тайлангүй блок 0% — `pkgProgressOf`; `loadOverall`-ийн
+ * `actual` ба `progress.byBagts`-тай нэг; 2026-09-30-ны «тайлагнасан блокийн дундаж» ХҮЧИНГҮЙ). Урьд нь дэлгэц (`Tailan`)
  * хүснэгтийн мөрөөс, PDF `progress.byBagts` (ЗӨВХӨН тайлантай блокийн дундаж)-аас
  * авдаг тул хоёр баримт өөр тоо, заримдаа өөр багц нэрлэдэг байв. Одоо ХОЁУЛАА
  * энд — нэг хэсэгт нэг дүрэм. `progress == null` (хэмжигдээгүй) багц эрэмбэд орохгүй.
@@ -1072,8 +1095,9 @@ export function bagtsExtremes(rows: readonly BagtsLike[]): {
 /**
  * @param bagtsRows ⚠️ 2026-09-21: багцын хүснэгтийн мөрүүд — өгвөл `bestBagts`/
  *   `worstBagts` ХҮСНЭГТИЙН дүрмээр (`bagtsExtremes`); дэлгэц ба PDF хоёулаа
- *   дамжуулна. Өгөөгүй бол хуучин `progress.byBagts` (тайлантай блокийн дундаж —
- *   2026-09-30-аас `joinBagts`-тай нэг дүрэм).
+ *   дамжуулна. Өгөөгүй бол `progress.byBagts` — ⚠️ 2026-10-04-нөөс `pkgProgressOf`
+ *   (БҮХ блокоор, тайлангүй блок 0% — `joinBagts`-тай ЯГ нэг функц; урьд нь энэ нь
+ *   «тайлантай блокийн дундаж» байсан).
  */
 export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]): Findings {
   /*

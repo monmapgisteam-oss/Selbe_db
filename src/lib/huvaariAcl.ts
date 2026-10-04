@@ -28,7 +28,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
-import { huvaariUpsert, huvaariRemove } from './permsRemote';
+import { huvaariUpsert, huvaariRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
@@ -47,6 +47,8 @@ const acl = makeAcl<PlanRole>({
   roleCaps: ROLE_CAPS.huvaari,
   push: (user, roles, bagts, grants) => huvaariUpsert(user, roles, bagts, grants),
   remove: huvaariRemove,
+  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
+  read: (user) => scopedRead('huvaari', user),
   msg: {
     noUser: 'Аккаунтын нэрээ бичнэ үү',
     superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',

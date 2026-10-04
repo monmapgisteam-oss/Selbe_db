@@ -213,7 +213,7 @@ const CASES = [
   { name: 'PlainCapAcl:finEdit', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'finEdit' }, map: false,
     expect: ['Санхүүгийн бүртгэл — утга засах'] },
   { name: 'PlainCapAcl:finRow', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'finRow' }, map: false,
-    expect: ['Санхүүгийн бүртгэл — мөр нэмэх, устгах'] },
+    expect: ['Санхүүгийн бүртгэл — мөр нэмэх'] },
   { name: 'PlainCapAcl:gazar', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'gazar' }, map: false,
     expect: ['Газрын төлөв засах'] },
   { name: 'PlainCapAcl:super', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'plan', superOnly: true }, map: false,

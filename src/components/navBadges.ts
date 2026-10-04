@@ -45,6 +45,9 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
   /* ✅ `countObyemPending(username)` — `src/lib/obyemBatlah.ts`.
      Обьёмыг «Гүйцэтгэл» (бөглөх хуудас) дотор батладаг тул тэр харагдацад. */
   { view: 'guitsetgel', load: () => probe(import('@/lib/obyemBatlah'), ['countObyemPending']) },
+  /* ✅ 2026-10-04: `hyanaltStore.countReviewPending` — таны шатанд хүлээгдэж буй
+     гүйцэтгэлийн хяналт (дээрх обьёмтой НИЙЛБЭР, нэг харагдац). */
+  { view: 'guitsetgel', load: () => probe(import('@/lib/hyanaltStore'), ['countReviewPending']) },
   /* ✅ `chanarStore.countChanarActionable` — чанарын баримтын «таны ээлж».
      ⚠️ ACL ачаалагдахаас өмнө бага тоолно — 3 минут тутмын шинэчлэлт засна. */
   {

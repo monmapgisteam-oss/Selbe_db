@@ -37,7 +37,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
-import { ajilUpsert, ajilRemove } from './permsRemote';
+import { ajilUpsert, ajilRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
@@ -57,6 +57,8 @@ const acl = makeAcl<AjilRole>({
   roleCaps: ROLE_CAPS.ajil,
   push: (user, roles, bagts, grants) => ajilUpsert(user, roles, bagts, grants),
   remove: ajilRemove,
+  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
+  read: (user) => scopedRead('ajil', user),
   msg: {
     noUser: 'Аккаунтын нэрээ бичнэ үү',
     superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',

@@ -53,6 +53,8 @@ export const OBYEM_STATUS = {
   pending: 'Хүлээгдэж буй',
   approved: 'Батлагдсан',
   returned: 'Буцаагдсан',
+  /** ⚠️ 2026-10-04: зохиогч өөрөө ТАТАЖ АВСАН (`withdrawObyem`) — батлагч хүлээж гацахгүй */
+  withdrawn: 'Татаж авсан',
 } as const;
 export type ObyemStatus = (typeof OBYEM_STATUS)[keyof typeof OBYEM_STATUS];
 
@@ -592,6 +594,51 @@ export async function decideObyem(args: {
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('OBYEM_BATLAH');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ТАТАН АВАХ ДҮРЭМ — цэвэр (`obyemBatlah.check.mjs`, 2026-10-04).
+ * ⚠️ ЗӨВХӨН зохиогч (серверийн `F.author`), ЗӨВХӨН `pending`. Багцад нэг л хүлээгдэж буй
+ *    илгээлт зөвшөөрөгддөг тул батлагч ирэхгүй бол инженер шинэ засвар ч илгээж чадахгүй
+ *    гацдаг байв.
+ * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах шалтгаан
+ */
+export function withdrawDeny(cur: { status: string | null; author: string | null }, me: string): string | null {
+  const u = me.trim().toLowerCase();
+  if (!u) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  if ((cur.author ?? '').trim().toLowerCase() !== u) return tr('Зөвхөн илгээсэн инженер өөрийн илгээлтээ татаж авна.');
+  if (cur.status !== OBYEM_STATUS.pending) return tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн тул татаж авах боломжгүй. Хуудсаа шинэчилнэ үү.');
+  return null;
+}
+
+/**
+ * ТАТАН АВАХ — зохиогч өөрийн хүлээгдэж буй обьёмын илгээлтийг цуцална (2026-10-04).
+ * ⚠️ Үндсэн өгөгдөлд ЮУ Ч бичихгүй (илгээлт нь угаас бичээгүй). Төлөв `withdrawn`;
+ *    мөр устгахгүй — түүх үлдэнэ. Дүрэм нь СЕРВЕРИЙН мөрөөр (`withdrawDeny`).
+ */
+export async function withdrawObyem(args: { oid: number; me: string }): Promise<{ ok: boolean; error?: string }> {
+  /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр — дуудагчийн `me`-д итгэхгүй (`submitObyem`-ийн адил) */
+  const meNow = AUTH.appId && typeof window !== 'undefined' ? currentUser() : null;
+  if (AUTH.appId && typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const me = (meNow ?? args.me).trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const url = await tableUrl(false);
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  try {
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author}`);
+    if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    const deny = withdrawDeny({ status: s(cur[0][F.status]), author: s(cur[0][F.author]) }, me);
+    if (deny) return { ok: false, error: deny };
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approverAt]: Date.now() } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };

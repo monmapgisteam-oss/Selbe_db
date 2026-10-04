@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, getLocale } from '@/lib/i18nCore';
 import { useMap } from './MapCanvas';
 import { Data } from './ui';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -37,6 +37,18 @@ import s from '@/modules/dashboard.module.css';
  * ТАСАРЧ, бүсүүд харагдахаа болих байв. Одоо хавтан нь зурвасаас ГАДУУР,
  * түүний баруун талд бие даан байрлана.
  */
+
+/**
+ * БҮСИЙН НЭРИЙГ ДЭЛГЭЦЭНД (⚠️ 2026-10-04) — англи горимд «Багц-1…4.2» мэт монгол бүсийн
+ * нэр орчуулагдалгүй гардаг байв. `enData`-д байгаа нэр `tr`-ээр; байхгүй «Багц…» угтварыг
+ * «Package…» болгоно. ⚠️ ЗӨВХӨН харуулалт — `zone` төлөв/URL/`zoneWhere` монгол эх хэвээр.
+ */
+export const zoneLabel = (z: string): string => {
+  const t = tr(z);
+  return getLocale() === 'en' ? t.replace(/^Багц/, 'Package') : t;
+};
+/** Олон бүс (таслалаар) — харуулах мөр */
+export const zonesLabel = (sel: string[]): string => sel.map(zoneLabel).join(', ');
 
 type ZoneGroups = { type: string; hue: string; zones: string[] }[];
 
@@ -97,7 +109,7 @@ function GroupedChips({
                       className={`${s.zoneChip} ${on ? s.zoneChipOn : ''}`}
                       onClick={() => toggle(z)}
                     >
-                      {z}
+                      {zoneLabel(z)}
                     </button>
                   );
                 })}
@@ -132,7 +144,7 @@ export function ZoneFilter({
     return (
       <>
         <div className={s.zoneToolHead}>
-          <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүх бүс')}</span>
+          <span className={s.zoneBarValue}>{sel.length ? zonesLabel(sel) : tr('Бүх бүс')}</span>
           {sel.length > 0 && (
             <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
           )}
@@ -149,7 +161,7 @@ export function ZoneFilter({
   return (
     <div className={s.zoneBar}>
       <span className={s.zoneBarLabel}>{tr('Бүс')}</span>
-      <span className={s.zoneBarValue}>{sel.length ? sel.join(', ') : tr('Бүгд')}</span>
+      <span className={s.zoneBarValue}>{sel.length ? zonesLabel(sel) : tr('Бүгд')}</span>
       {sel.length > 0 && (
         <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
       )}

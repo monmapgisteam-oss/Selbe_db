@@ -217,3 +217,14 @@
 
 # [const] IRGED_BUILT.types (Байшин · Гэр) — enData.ts
 @dyn modules/Irged.tsx  tr(t)
+
+# [const] PKG_GROUPS (Багц 1 … Багц 10) — en.ts / enData.ts (2026-10-04, багцын сонгогч англиар)
+@dyn modules/AjilBatlah.tsx  tr(g)
+@dyn modules/Chanar.tsx  tr(g)
+@dyn modules/Huvaari.tsx  tr(g)
+@dyn modules/HuvaariBatlah.tsx  tr(g)
+@dyn modules/Qaqc.tsx  tr(g)
+@dyn modules/sheet/fill/toolbar.tsx  tr(g)
+
+# [data] бүсийн нэр (zoneCanon) — «Багц-1…4.2» enData.ts, бусад нь латин код (D-8.1 …) (2026-10-04)
+@dyn components/ZoneFilter.tsx  tr(z)

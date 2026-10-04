@@ -1545,3 +1545,10 @@
   background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--ink);
 }
+
+/* ── Календарт гараар бичих (2026-10-04) ── */
+.calType { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.calTypeIn { flex: 1 1 auto; min-width: 0; padding: 3px 6px; font: inherit; font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.calTypeIn:focus { outline: 2px solid var(--data); outline-offset: -1px; }
+.calTypeBad { border-color: var(--bad-ink); color: var(--bad-ink); }
+.calTypeErr { margin: -2px 0 6px; font-size: 0.72rem; color: var(--bad-ink); }

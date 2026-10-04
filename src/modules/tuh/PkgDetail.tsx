@@ -36,6 +36,18 @@ import {
 } from './Overview';
 import s from '../tuh.module.css';
 
+/**
+ * ЗӨРҮҮНИЙ ӨНГӨ — (бодит − төлөвлөгөө), нэгж хувь; сөрөг = хоцролт.
+ * ⚠️ 2026-10-04: урьд нь `< 0` бол улаан, бусад (`null` ч) НОГООН байв — 0.1 нэгж хоцролт
+ *    улаан, «мэдэгдэхгүй» ногоон. Одоо порталын НЭГ босго (`Finance.lagLevel`: 5 шар · 10
+ *    улаан); `null` саармаг (өнгөгүй), хоцроогүй бол ногоон.
+ */
+const gapTone = (gap: number | null): string => {
+  if (gap == null) return '';
+  const lv = lagLevel(-gap);
+  return lv === 'red' ? s.bad : lv === 'yellow' ? s.warn : s.good;
+};
+
 type Row = Record<string, unknown>;
 const numOf = (v: unknown): number | null => {
   if (v == null || v === '') return null;
@@ -184,12 +196,12 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${r.gapContractor != null && r.gapContractor < 0 ? s.bad : s.good}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
+          <span className={`${s.statValue} ${gapTone(r.gapContractor)}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
           <span className={s.statNote}>{tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
-          <span className={`${s.statValue} ${r.gapContract != null && r.gapContract < 0 ? s.bad : s.good}`}>{lz(m, 'cfPlan')(pp(r.gapContract))}</span>
+          <span className={`${s.statValue} ${gapTone(r.gapContract)}`}>{lz(m, 'cfPlan')(pp(r.gapContract))}</span>
           <span className={s.statNote}>{tr('SPI (гэрээ) {0}', lz(m, 'cfPlan')(r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2)))}</span>
         </div>
         <div className={s.stat}>

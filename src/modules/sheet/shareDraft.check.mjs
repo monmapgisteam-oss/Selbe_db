@@ -177,9 +177,12 @@ console.log('✅ «Дахин засах» — буцаалт сэргэхгүй
   const after = { t: 2000, cells: [], done: [], marks: [['a', 0, 2, 1000]] };
   assert.deepEqual(mergeDrafts(before, after).done, [], 'ИЛ буцаалт `[]` хэвээр үлдэх ёстой');
   /* rowKeys — oid өсөхөөр (хуудасны дараалал) */
-  const r1 = { t: 1000, cells: [], rowKeys: [[30, 'x'], [10, 'x']] };
-  const r2 = { t: 2000, cells: [], rowKeys: [[20, 'x']] };
+  /* ⚠️ 2026-10-04 (#1 · #2): rowKeys нь ЗӨВХӨН нүд/огноонд үлдсэн oid-оор — тиймээс нүдтэй */
+  const r1 = { t: 1000, cells: [['30:0', '1'], ['10:0', '1']], rowKeys: [[30, 'x'], [10, 'x']] };
+  const r2 = { t: 2000, cells: [['20:0', '1']], rowKeys: [[20, 'x']] };
   assert.deepEqual(mergeDrafts(r1, r2).rowKeys.map(([o]) => o), [10, 20, 30]);
+  /* нүдгүй болсон (өмнөх жаазны) танигч хаягдана — `oidFix`-ийн нэрийдлийг эзлэхгүй */
+  assert.deepEqual(mergeDrafts({ ...r1, cells: [['10:0', '1']] }, r2).rowKeys.map(([o]) => o), [10, 20]);
 }
 console.log('✅ нүдний агшин ялна · хоосон done хадгалагдана · rowKeys хуудасны дарааллаар');
 
@@ -688,11 +691,12 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(!/if \(nCells\) setPending\(next\);/.test(FN), '#2: setPending болзолтой хэвээр');
   assert.ok(!/if \(nDates\) setPendDate\(nextDates\);/.test(FN), '#2: setPendDate болзолтой хэвээр');
   const ti = FN.indexOf('if (!total) {');
-  const tb = FN.slice(ti, ti + 2200);
+  const tb = FN.slice(ti, ti + 3200);
   /* ⚠️ 2026-10-01: `keepTyped({})` — сэргээлтийн завсарт гараас бичсэн нүдийг л үлдээж хоослоно */
   assert.ok((tb.includes('setPending({});') && tb.includes('setPendDate({});'))
     || (tb.includes('setPending(keepTyped({}));') && tb.includes('setPendDate(keepTyped({}));')), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
-  assert.ok(tb.includes('if (delRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
+  /* 2026-10-04: илгээлтийн баримт (`rcptRef`) ч tombstone-той адил — алсыг цэвэрлэхгүй */
+  assert.ok(tb.includes('if (delRef.current.size || rcptRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
   assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
   assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),
     '#2: pickDraft нийлбэрийн del-ийг delRef-д авахгүй байна');
@@ -720,7 +724,10 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok(FN.includes('const resumeReturned = useCallback(async (soid: number) => {'), '#8: буцаагдсан илгээлтийг сонгох зам алга (2026-09-24)');
   /* Илгээлт tombstone-ийг тэглэнэ — эс бөгөөс хоосон зам ноорог цэвэрлэхгүй */
   const pi = FN.indexOf('const nCells = Object.keys(pend2).length');
-  assert.ok(FN.slice(pi, pi + 700).includes('delRef.current = new Map();'), 'publish: delRef тэглэгдэхгүй — ноорог илгээсний дараа цэвэрлэгдэхгүй');
+  /* 2026-10-04: цонх 700 → 2000 (баримтын тайлбар нэмэгдсэн); tombstone + БАРИМТ илгээх агшнаар */
+  const pb = FN.slice(pi, pi + 2000);
+  assert.ok(pb.includes('delRef.current = new Map();'), 'publish: delRef тэглэгдэхгүй — ноорог илгээсний дараа цэвэрлэгдэхгүй');
+  assert.ok(pb.includes('const pubAt = stamp();') && pb.includes('rcptRef.current.set(k, [k, pubAt, v, sa || pubAt]);'), 'publish: илгээлтийн баримт логик цагаар тавигдахгүй байна (#4)');
 }
 console.log('✅ эх кодын гэрээ (дахин аудит) — мөр нэмэх код байхгүй · болзолгүй set · tombstone хадгалалт · waitingOn · хожуу давхарлалт · revert · буцаагдсан өдөр');
 
@@ -764,3 +771,211 @@ console.log('✅ эх кодын гэрээ (дахин аудит) — мөр �
 }
 console.log('✅ sent — илгээсэн нэмэлт мөр нийлүүлэлтээр сэргэхгүй · хожуу нэмсэн нь ялна · батлагдсан хөндөгдөхгүй');
 
+
+/* ══════════ 2026-10-04 АУДИТ — ДАВХАР ТООЛОЛТООС ХАМГААЛАХ (#1 · #3 · #4) ══════════
+ * Нэмэлтийн горимд илгээсэн нүд ДАХИН орох = албан тайланд ДАВХАР тоолол. Гурван зам:
+ *   #4 илгээлтийн уралдаан (Б илгээлтийн цонхонд засварласан) · #1 жааз солигдоход хуучин oid-той
+ *   хуулбар · #3 хариу тасарсан илгээлт. Бүгд `Draft.rcpt` (илгээсэн утга `sv` · түүний агшин `sa`
+ *   · илгээсэн агшин `a`) ба `rcptApply`-аар шийдэгдэнэ. */
+import { rcptApply, rebaseSent } from './fill/draft.ts';
+{
+  const T = Date.now() - 60_000;
+  const A = T + 100;               // илгээсэн агшин (логик цаг)
+  const rc = ['10:0', A, '5', T + 10];
+  /* А илгээсний дараах ноорог: хоосон + del + баримт */
+  const sentDoc = { t: T + 101, mode: 'inc', cells: [], del: [['10:0', A]], rcpt: [rc] };
+  const cell = (v, w, extra = {}) => ({ t: T + 50, mode: 'inc', cells: [['10:0', v]], byAt: [['10:0', w]], ...extra });
+
+  /* (а) #4 — Б илгээлтийн ЦОНХОНД засварласан (sa < w < a): урьд нь del-ийн агшин = sa тул 8 БҮТНЭЭРЭЭ
+         үлдэж 5 + 8 = 13 болдог байв; одоо ЗӨРҮҮ 3, анхааруулгатай (`conv`) */
+  for (const m of [mergeDrafts(cell('8', T + 50), sentDoc), mergeDrafts(sentDoc, cell('8', T + 50))]) {
+    assert.equal(new Map(m.cells).get('10:0'), '3', 'илгээлтийн цонхонд засварласан нүд ЗӨРҮҮ болох ёстой (8 − 5)');
+    assert.ok((m.conv ?? []).some(([k]) => k === '10:0'), 'зөрүү болсныг анхааруулах тэмдэг алга');
+  }
+  /* (б) илгээлтийн ДАРАА (w > a) гэвч баримтыг ХАРААГҮЙ (bt алга) Б-гийн засвар — мөн ЗӨРҮҮ (давхар биш) */
+  assert.equal(new Map(mergeDrafts(cell('8', T + 200), sentDoc).cells).get('10:0'), '3', 'баримт хараагүй хожуу засвар бүтнээрээ үлдэж байна — давхар тоолол');
+  /* (в) илгээсэн хувилбар өөрөө ба түүний ӨВӨГ (w ≤ sa) — ХАСНА (өвгийг −2 болгохгүй) */
+  assert.ok(!mergeDrafts(cell('5', T + 10), sentDoc).cells.length, 'илгээсэн хувилбар сэргэж байна');
+  assert.ok(!mergeDrafts(cell('3', T + 5), sentDoc).cells.length, 'илгээснээс ӨМНӨХ хувилбар зөрүү болсон — хасагдах ёстой');
+  /* (г) баримтыг ХАРСНЫ ДАРАА бичсэн шинэ нэмэлт (bt ≥ a) — ХӨНДӨХГҮЙ */
+  assert.equal(new Map(mergeDrafts(cell('4', T + 300, { bt: [['10:0', A]] }), sentDoc).cells).get('10:0'), '4', 'шинэ нэмэлт хөрвүүлэгдэж байна');
+  /* (д) ИДЕМПОТЕНТ — хөрвүүлсэн нийлбэрийг дахин нийлүүлэхэд 3 → −2 болохгүй */
+  const once = mergeDrafts(cell('8', T + 50), sentDoc);
+  const twice = mergeDrafts(once, { ...sentDoc, t: T + 400 });
+  assert.equal(new Map(twice.cells).get('10:0'), '3', 'хөрвүүлэлт давтагдаж байна');
+  assert.equal(new Map(mergeDrafts(cell('8', T + 50), twice).cells).get('10:0'), '3', 'хуучин хуулбар дахин ирэхэд давхар хөрвүүлж байна');
+  /* (е) огноо — ҮНЭМЛЭХҮЙ: илгээснээс хойшх засвар хүчинтэй утга (хөрвүүлэхгүй, хасахгүй) */
+  const dDoc = { t: T + 101, mode: 'inc', cells: [], dates: [], rcpt: [['10:0:s', A, '2026-01-01', T + 10]] };
+  const dCopy = { t: T + 50, mode: 'inc', cells: [], dates: [['10:0:s', '2026-01-05']], byAt: [['10:0:s', T + 50]] };
+  assert.equal(new Map(mergeDrafts(dCopy, dDoc).dates).get('10:0:s'), '2026-01-05');
+  /* (ё) хуучин (`rcpt`-гүй) клиентийн ердийн `del` дүрэм баримттай түлхүүрт ДАВХАР хэрэгжихгүй */
+  assert.equal(new Map(mergeDrafts(cell('8', T + 50), sentDoc).cells).get('10:0'), '3', 'del дүрэм баримтыг дарж нүдийг устгав');
+  /* rcptApply — цэвэр дүрэм */
+  assert.equal(rcptApply('8', T + 50, 0, rc, false), '3');
+  assert.equal(rcptApply('%15', T + 50, 0, ['k', A, '%10', T + 10], false), '%5');
+  assert.equal(rcptApply('=55', T + 50, 0, rc, false), '=55', 'хуучин НИЙТ (=) — суурьтай жишигдэх тул хэвээр');
+}
+console.log('✅ #4 илгээлтийн баримт — уралдааны засвар ЗӨРҮҮ, өвөг хасагдана, шинэ нэмэлт хөндөгдөхгүй, идемпотент');
+
+/* ── #1 — ЖААЗ СОЛИГДОХОД ХУУЧИН oid-той хуулбар ДАВХАР сэргэхгүй ── */
+{
+  const T = Date.now() - 60_000;
+  /* өөр төхөөрөмж/алсад ХУУЧИН жаазны түлхүүрээр (103) үлдсэн хуулбар */
+  const oldCopy = { t: T + 10, mode: 'inc', cells: [['103:0', '5']], byAt: [['103:0', T + 10]], rowKeys: [[103, '1 ¦ Шороо']], rowOcc: [[103, 0, 2]] };
+  /* `pickDraft` 103 → 203 зөөж, хуучин түлхүүрт логик цагийн tombstone тавьсан */
+  const moved = { t: T + 30, mode: 'inc', cells: [['203:0', '5']], byAt: [['203:0', T + 10]], del: [['103:0', T + 20]], rowKeys: [[203, '1 ¦ Шороо']], rowOcc: [[203, 0, 2]] };
+  for (const m of [mergeDrafts(oldCopy, moved), mergeDrafts(moved, oldCopy)]) {
+    const c = new Map(m.cells);
+    assert.ok(!c.has('103:0'), 'хуучин oid-той хуулбар нийлүүлэлтэд ҮЛДЭЖ байна — дахин зөөгдөж давхар тоологдоно');
+    assert.equal(c.get('203:0'), '5');
+    assert.deepEqual(m.rowKeys.map(([o]) => o), [203], 'нүдгүй болсон хуучин танигч хаягдах ёстой');
+  }
+  /* хуучин жааз дээр tombstone-оос ХОЖУУ бичсэн хуулбар ялна (дахин зөөгдөнө — алдагдахгүй) */
+  assert.ok(new Map(mergeDrafts({ ...oldCopy, byAt: [['103:0', T + 25]] }, moved).cells).has('103:0'), 'хожуу бичсэн хуучин жаазны хуулбар устав');
+  /* илгээсний дараа: шинэ ба ХУУЧИН түлхүүрийн баримт — 3 хоногийн локал хуулбар (103) ч сэргэхгүй */
+  const A = T + 100;
+  const afterSend = { t: T + 101, mode: 'inc', cells: [], del: [['203:0', A], ['103:0', A]], rcpt: [['203:0', A, '5', T + 10], ['103:0', A, '5', T + 10]] };
+  assert.ok(!mergeDrafts(oldCopy, afterSend).cells.length, 'илгээсэн мөрийн хуучин oid-той хуулбар сэргэж байна');
+}
+console.log('✅ #1 жааз солигдсон — хуучин түлхүүрт tombstone/баримт, танигч цэвэрлэгдэнэ');
+
+/* ── #3 — ХАРИУ ТАСАРСАН илгээлт сервер дээр буусан бол ноорогоос ХАСНА (өөрчлөгдсөн нь ЗӨРҮҮ) ── */
+{
+  const cur = { '1:0': '5', '2:0': '8', '3:0': '2', '4:0:s': '2026-01-02' };
+  const r = rebaseSent(cur, [['1:0', '5'], ['2:0', '5'], ['4:0:s', '2026-01-01'], ['9:0', '7']]);
+  assert.deepEqual(r.next, { '2:0': '3', '3:0': '2', '4:0:s': '2026-01-02' }, 'илгээсэн нүд хасагдаж, засагдсан нь зөрүү болох ёстой');
+  assert.deepEqual(r.conv, ['2:0']);
+  assert.deepEqual(cur['1:0'], '5', 'оролт өөрчлөгдөх ёсгүй');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes("(s2.payload.nonces ?? []).includes(inf.nonce)"), 'publish: өмнөх оролдлогын nonce-ийг шалгахгүй байна');
+  assert.ok(FN.includes('nonces: [nonce],'), 'publish: payload-д nonce алга');
+  assert.ok(FN.includes("setNavDirty('fillnew-send', true"), 'publish: илгээлт явж байхад гарахыг асуухгүй');
+  assert.ok(FN.indexOf('saveInflight(pkg.key,') < FN.indexOf('sv = await saveSubmission(pkg.key, payload, expectAt);'), 'тэмдэг хадгалалтаас ӨМНӨ бичигдэх ёстой');
+}
+console.log('✅ #3 хариу тасарсан илгээлт — nonce-оор таньж, ноорогоос хасна (давхар илгээхгүй)');
+
+/* ══════════ 2026-10-04 ДАХИН АУДИТ — #2 хэмжээ · #3 хуучин локал · #4 хүн бүрийн зорилт · #6 ижил утга · #7 тэмдэглэсэн ══════════ */
+import { packRcpt, unpackRcpt, compactDraft, holdStaleLocal, parseDraft, readDraft, rcptSilentDrop } from './fill/draft.ts';
+/* ── #2 — 1,500 нүдний илгээлтийн дараах ноорог REMOTE_MAX-д багтана (урьд нь баримт + del, жааз солигдсон бол ×2) ── */
+{
+  const REMOTE_MAX = Number((readSrc('src/lib/draftRemote.ts').match(/export const REMOTE_MAX = ([0-9_]+);/) ?? [])[1]?.replace(/_/g, ''));
+  assert.equal(REMOTE_MAX, 80_000);
+  const T = Date.now() - 60_000;
+  const A = T + 100;
+  const flat = [];
+  const del = [];
+  for (let i = 0; i < 300; i += 1) {
+    for (let b = 0; b < 5; b += 1) {
+      const v = `${10 + ((i * 7 + b) % 90)}.5`;
+      const sa = A - 1 - (i * 1000 + b);
+      /* жааз солигдсон: хуудасны (100000+) ба шинэ (200000+) түлхүүр хоёулаа */
+      for (const o of [100000 + i, 200000 + i]) { flat.push([`${o}:${b}`, A, v, sa]); del.push([`${o}:${b}`, A]); }
+    }
+  }
+  const tomb = { t: A + 1, mode: 'inc', cells: [], dates: [], rowKeys: [], del, rcpt: flat, marks: [] };
+  const naive = JSON.stringify(tomb).length;
+  assert.ok(naive > REMOTE_MAX, `хуучин хэлбэр (${naive}) REMOTE_MAX-аас хэтэрдэг байсан — тест хүчинтэй`);
+  const c = compactDraft(tomb, { max: REMOTE_MAX, minOid: 200000, now: A + 10 });
+  const size = JSON.stringify(c).length;
+  assert.ok(size < REMOTE_MAX * 0.55, `1,500 нүдний илгээлтийн дараах ноорог ${size} тэмдэгт — REMOTE_MAX-аас хол бага байх ёстой`);
+  /* АЛДАГДАЛГҮЙ — 3,000 баримт бүгд буцаж задарна */
+  const back = new Map(unpackRcpt(c.rcpt).map((r) => [r[0], r]));
+  assert.equal(back.size, 3000, 'шахалтад баримт алдагдав');
+  assert.deepEqual(back.get('100007:3'), flat.find((r) => r[0] === '100007:3'));
+  assert.deepEqual(back.get('200007:3'), flat.find((r) => r[0] === '200007:3'), 'нэрлэлт (alias) түлхүүр алдагдав');
+  /* баримтаар дарагдсан del том үед хаягдана — баримт өөрөө tombstone болж ажиллана */
+  assert.ok((c.del ?? []).length < 300, 'том илгээлтийн дараа давхар del (3,000) хаягдах ёстой — зөвхөн зай байгаа хэрээр (REMOTE_MAX-ын тал) шилжилтэд үлдэнэ');
+  const r7 = back.get('100007:3');
+  const stale = { t: T + 50, mode: 'inc', cells: [['100007:3', r7[2]]], byAt: [['100007:3', r7[3]]] };
+  assert.ok(!mergeDrafts(stale, c).cells.length, 'del-гүй ч баримт илгээсэн хуулбарыг хасах ёстой (давхар тоолохгүй)');
+  /* жижиг илгээлт — хуучин клиентийн шилжилтийн del үлдэнэ */
+  const small = compactDraft({ ...tomb, del: del.slice(0, 20), rcpt: flat.slice(0, 20) }, { max: REMOTE_MAX, now: A + 10 });
+  assert.equal((small.del ?? []).length, 20, 'зай байхад хуучин клиентийн del үлдэх ёстой');
+  /* хуучин жаазны баримт 1 хоногийн дараа хаягдана, шинэ жаазных үлдэнэ */
+  const later = unpackRcpt(compactDraft(tomb, { max: REMOTE_MAX, minOid: 200000, now: A + 25 * 3600 * 1000 }).rcpt);
+  assert.ok(later.length === 1500 && later.every((r) => Number(r[0].split(':')[0]) >= 200000), 'хуучин жаазны баримт хуучирсангүй');
+  /* хавтгай (хуучин) ба шахсан хэлбэр хоёулаа уншигдана, нийлүүлэлт шахсан хэлбэр гаргана */
+  assert.equal(unpackRcpt(parseDraft(JSON.stringify(c), 'remote').rcpt).length, 3000);
+  assert.equal(unpackRcpt(packRcpt(flat)).length, 3000);
+  assert.ok(typeof mergeDrafts(stale, c).rcpt[0][0] === 'number', 'нийлүүлэлт шахсан хэлбэрээр бичих ёстой');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes('compactDraft(mergeDrafts(remote, q.draft) ?? q.draft'), 'flush алсад бичихийн өмнө шахахгүй байна');
+}
+console.log('✅ #2 шахалт — 1,500 нүдний илгээлт REMOTE_MAX-д багтана, алдагдалгүй, del нь баримтаар орлогдоно');
+
+/* ── #3 — 7 хоногоос хуучин, алсад хуулагдаагүй локал нүд автоматаар СЭРГЭХГҮЙ (баримт хуучирсан байж болно) ── */
+{
+  const now = Date.now();
+  const day = 86_400_000;
+  const old = { t: now - 9 * day, mode: 'inc', cells: [['5:0', '3'], ['6:0', '2']], byAt: [['5:0', now - 9 * day], ['6:0', now - 2 * day]] };
+  const h = holdStaleLocal(old, now);
+  assert.deepEqual(h.hold.map(([k, , f]) => [k, f]), [['5:0', 1]], '7 хоногоос хуучин нүд л АЛБАДАН тэмдэглэгдэнэ');
+  const m = mergeDrafts(h, { t: now, mode: 'inc', cells: [] });
+  assert.ok(m.hold.some(([k, , f]) => k === '5:0' && f === 1), 'тэмдэг нийлүүлэлтэд хадгалагдах ёстой (бусад клиент ч сэргээхгүй)');
+  const edited = mergeDrafts(h, { t: now + 1, mode: 'inc', cells: [['5:0', '4']], byAt: [['5:0', now + 1]] });
+  assert.ok(!(edited.hold ?? []).some(([k]) => k === '5:0'), 'тэмдэглэснээс хойшх шинэ засвар тэмдгийг арилгах ёстой');
+  /* readDraft: 3 хоногоос хуучин локал зөвхөн «хуулагдаагүй» үед уншигдана — тэгэхдээ тэмдэглэгдэнэ */
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+  };
+  store.set('selbe-fillnew-draft:pk', JSON.stringify(old));
+  assert.equal(readDraft('pk'), null, '«хуулагдаагүй» тэмдэггүй хуучин локал хаягдана (хуучин зан)');
+  store.set('selbe-fillnew-draft:pk', JSON.stringify(old));
+  store.set('selbe-fillnew-unsynced:pk', String(old.t));
+  const rd = readDraft('pk');
+  assert.ok(rd && rd.hold.some(([k, , f]) => k === '5:0' && f === 1), 'чөлөөлөгдсөн хуучин локалын 9 хоногийн нүд тэмдэглэгдэх ёстой');
+  assert.ok(!rd.hold.some(([k]) => k === '6:0'), '2 хоногийн нүд тэмдэглэгдэх ёсгүй');
+  delete globalThis.localStorage;
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes("if (forced(key0)) { holdIt(key0, vRaw, 'old'); continue; }"), 'pickDraft албадан тэмдэгтэй нүдийг сэргээж байна');
+}
+console.log('✅ #3 хуучин «хуулагдаагүй» локал — 7 хоногоос хуучин нүд тэмдэглэгдэж, автоматаар сэргэхгүй');
+
+/* ── #4 — буцаагдсан тойргийн зорилт ХҮН ТУС БҮРЭЭР: нэг хүнийх бусдын «Илгээх»-ийг түгжихгүй ── */
+{
+  const a = { t: 100, mode: 'inc', cells: [], tgt: [['a', 55, 1000, 10]] };
+  const b = { t: 200, mode: 'inc', cells: [], tgt: [['b', 0, 0, 20]] };
+  const m = mergeDrafts(a, b);
+  assert.deepEqual(new Map(m.tgt.map((e) => [e[0], e[1]])), new Map([['a', 55], ['b', 0]]), 'шинэ тал нөгөө хүний зорилтыг дарж болохгүй');
+  /* нэг хүнийх — ноорогийн t биш, бичлэгийн агшин их нь ялна */
+  const m2 = mergeDrafts({ t: 300, mode: 'inc', cells: [], tgt: [['a', 0, 0, 5]] }, a);
+  assert.equal(m2.tgt.find((e) => e[0] === 'a')[1], 55);
+  /* хуучин ганц `[oid, fillMs]` хэлбэр хаягдана (хэнийх нь тодорхойгүй) */
+  assert.deepEqual(parseDraft(JSON.stringify({ t: 1, mode: 'inc', cells: [], tgt: [55, 1000] }), 'remote').tgt, []);
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes('const mine = meNow ? tgtsRef.current.get(meNow) : undefined;'), 'түгжээ ӨӨРИЙН бичлэгээс биш');
+  assert.ok(FN.includes('tgtsRef.current.set(me, [me, want[0], want[1], stamp()]);'), 'хадгалалт зөвхөн өөрийн зорилтыг бичих ёстой');
+  assert.ok(!/const tgtW = draftTgtRef\.current \?\? curTgt/.test(FN), 'хуучин «хадгалалт бүрд ганц зорилт» зам буцаж орсон');
+}
+console.log('✅ #4 зорилт хүн тус бүрээр — нэг хүний буцаагдсан тойрог бусдыг түгжихгүй');
+
+/* ── #6 — илгээсэн утгатай ИЖИЛ, баримт хараагүй хожуу бичилт хасагдана, гэвч ИЛ анхааруулна ── */
+{
+  const T = Date.now() - 60_000;
+  const A = T + 100;
+  const rc = ['10:0', A, '5', T + 10];
+  assert.ok(rcptSilentDrop('5', T + 50, 0, rc));
+  assert.ok(!rcptSilentDrop('5', T + 5, 0, rc), 'илгээсэн хувилбар/өвөг — анхааруулахгүй');
+  assert.ok(!rcptSilentDrop('5', T + 50, A, rc), 'баримт харсан бичилт — хамаарахгүй');
+  assert.ok(!rcptSilentDrop('8', T + 50, 0, rc), 'өөр утга — зөрүү (тусдаа зам)');
+  const m = mergeDrafts({ t: T + 50, mode: 'inc', cells: [['10:0', '5']], byAt: [['10:0', T + 50]] }, { t: T + 101, mode: 'inc', cells: [], rcpt: [rc] });
+  assert.ok(!m.cells.length, 'ижил утга — зөрүү 0 тул хасагдана (дүрэм хэвээр)');
+  assert.ok((m.conv ?? []).some(([k, a]) => k === '10:0' && a === A), 'ИЛ анхааруулах тэмдэг (conv) алга — чимээгүй хасагдаж байна');
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes('if (rc && rcptSilentDrop(v, w, bt0, rc)) rcDrop.push('), 'pickDraft (зөөсөн түлхүүр) ижил утгын хасалтыг анхааруулахгүй байна');
+}
+console.log('✅ #6 ижил утгын хасалт — дүрэм хэвээр, ил анхааруулна');
+
+/* ── #7 — тэмдэглэсэн нүд хугацаатай, ноорогт ТОГТВОРТОЙ, зөвхөн тэднийг хаях товчтой ── */
+{
+  const FN = readSrc('src/modules/sheet/FillNew.tsx');
+  assert.ok(FN.includes('if (holdNow - since > DEL_TTL_MS) { heldExpired.push(k); return; }'), 'тэмдэглэсэн нүд хугацаагүй');
+  assert.ok(FN.includes('const dropHeld = useCallback(() => {') && FN.includes('onClick={dropHeld}'), '«Тэмдэглэсэн нүдийг хаях» товч алга');
+  assert.ok(FN.includes('&& !heldRef.current.size'), 'тэмдэглэсэн нүд хадгалах эффектэд агуулга гэж тооцогдохгүй байна');
+  /* нийлүүлэлт: нүд алга бол тэмдэг арилна */
+  const m = mergeDrafts({ t: 1, mode: 'inc', cells: [['1:0', '2']], hold: [['1:0', 5, 0], ['9:0', 5, 0]] }, { t: 2, mode: 'inc', cells: [] });
+  assert.deepEqual(m.hold.map(([k]) => k), ['1:0'], 'нүдгүй тэмдэг үлдэх ёсгүй');
+}
+console.log('✅ #7 тэмдэглэсэн нүд — хугацаатай · ноорогт бичигдэнэ · хаях товч');

@@ -116,7 +116,9 @@ console.log('✅ ноорог шууд буудаг — цонх асуухгү�
    нь `say(...)` мөр, тэр нь утгын хувьд тогтвортой. */
 const dropFn = between('const dropDraft = useCallback', 'Ноорог устгагдлаа');
 assert.ok(dropFn.includes('clearDraftLS(pkg.key)'), 'ноорог устгахад локал хуулбар үлдэж байна');
-assert.ok(dropFn.includes('clearRemoteDraft(pkg.key)'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
+/* ⚠️ 2026-10-04 аудит (#10): сохор `clearRemoteDraft` → ТҮГЖЭЭТЭЙ `safeClearRemote` (уншсан хувилбартай таарвал л) */
+assert.ok(dropFn.includes('safeClearRemote(pkg.key'), 'ноорог устгахад АЛСЫН хуулбар үлдэж байна');
+assert.ok(dropFn.includes('const nowMs = stamp();'), 'ноорог устгахын tombstone логик цаггүй (Date.now) — цаг хоцорсон төхөөрөмж дээр ялагдана');
 for (const st of ['setPending({})', 'setPendDate({})']) {
   assert.ok(dropFn.includes(st), `ноорог устгахад «${st}» алга`);
 }
@@ -332,10 +334,23 @@ assert.ok(SRC.includes("document.addEventListener('visibilitychange'"), 'таб 
    алсад «зомби» мөр үлдэж, ачаалалт бүрд дахин шүүгдэнэ); дөрөв дэх нь мөн
    тэр өдөр — TTL дууссан, эвдэрсэн, эсвэл ШИНЭ ЭХЛЭЛЭЭС ӨМНӨХ ноорог
    (`DRAFT_FRESH_START`) алсад үлдвэл өөр төхөөрөмж дээр буцаж гарна. */
+/* ⚠️ 2026-10-04 аудит (#10): ГУРАВ нь (нийтлэх/болиулах · «Устгах» · хоосон ноорог) одоо ТҮГЖЭЭТЭЙ
+   `safeClearRemote` (алсын хувилбар уншсантай таарвал л `expectAt`-тай хоосон ноорог бичнэ) — сохор
+   устгалт уншсанаас хойш бичсэн БУСДЫН нүдийг арчдаг байв. Сохор `clearRemoteDraft` ЗӨВХӨН хүчингүй
+   (задрахгүй) алсын хуулбарт үлдэнэ. */
 assert.equal(
-  (SRC.match(/clearRemoteDraft\(pkg\.key\)/g) ?? []).length, 4,
-  'алсын цэвэрлэгээ дөрвөн газарт (нийтлэх · устгах · хоосон · хүчингүй) байх ёстой',
+  (SRC.match(/clearRemoteDraft\(pkg\.key\)/g) ?? []).length, 1,
+  'сохор алсын цэвэрлэгээ зөвхөн хүчингүй хуулбарт үлдэх ёстой',
 );
+assert.equal(
+  (SRC.match(/void safeClearRemote\(pkg\.key/g) ?? []).length, 3,
+  'түгжээтэй алсын цэвэрлэгээ гурван газарт (нийтлэх · устгах · хоосон) байх ёстой',
+);
+{
+  const sc0 = between('const safeClearRemote = useCallback(', '}, [stamp]);');
+  assert.ok(sc0.includes('expectAt: at0'), 'түгжээтэй цэвэрлэгээ expectAt-гүй — сохор хэвээр');
+  assert.ok(sc0.includes('at0 !== known'), 'түгжээтэй цэвэрлэгээ уншсан хувилбартай тулгадаггүй');
+}
 /* ── НООРОГИЙН ХУГАЦАА — ЛОКАЛ 3 ХОНОГ · АЛСЫН ХЯЗГААРГҮЙ (2026-09-08, хэрэглэгч) ──
    ТҮҮХ: 3 хоног (хоёуланд) → 14 хоног → хязгааргүй → локал 3 / алсын ∞.
    `DRAFT_FRESH_START` (2026-09-03-ны нэг удаагийн цэвэрлэлт) хасагдсан.
@@ -420,7 +435,8 @@ assert.ok(restore.includes('d.rowKeys'), 'зөөлт нь ноорогийн т�
 assert.ok(restore.includes('fixKey'), 'зөөлт түлхүүрт хэрэглэгдэхгүй байна');
 /* Чимээгүй устгал — ЗӨВХӨН ноорог үнэхээр хоосон (`!dropped`) үед */
 assert.ok(
-  SRC.includes('if (!dropped) {') && SRC.includes('clearDraftLS(pkg.key);'),
+  /* ⚠️ 2026-10-04: `kept` = хуучирсан + хоёрдмол (#2) + серверт өөрчлөгдсөн (#8) — бүгд «хадгалж, анхааруулна» */
+  SRC.includes('const kept = dropped + ambig + srvChanged;') && SRC.includes('if (!kept) {') && SRC.includes('clearDraftLS(pkg.key);'),
   'хоосон бус ноорог чимээгүй устаж байна',
 );
 console.log('✅ агшин солигдоход ноорог зөөгдөнө, чимээгүй устахгүй');
@@ -524,7 +540,8 @@ console.log('✅ илгээлтийн урсгал — суурийн тулга
    `sub|` мөр нь хэн ч харахгүй үүрд үлддэг байв. Одоо ӨГӨГДЛӨӨС таньдаг. */
 assert.ok(SRC.includes('registeredRef'), 'дөнгөж бүртгэгдсэн илгээлтийн хамгаалалт алга');
 assert.ok(
-  /hyRows\.some\(\(r\) => r\[HF\.sheetOid\] === staged\.oid\)/.test(SRC),
+  /* ⚠️ 2026-10-04: ижил sheetOid-тай ЯМАР Ч мөр биш — одоогийн тойрог (`hyanaltSubmit.needsRegistration`) */
+  /needsRegistration\(hyRows[^)]*, staged\.oid,/.test(SRC),
   'өнчин илгээлтийг өгөгдлөөс таних шалгуур алга',
 );
 console.log('✅ өнчин илгээлт хуудас дахин нээхэд ч илэрнэ');

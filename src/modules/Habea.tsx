@@ -46,7 +46,7 @@ import {
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
 import { MultiSelect } from '@/components/MultiSelect';
-import { Section, Bars, Donut, Series, Stack, Loading, Empty } from '@/components/ui';
+import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError } from '@/components/ui';
 import { num, date, text, dayKey, pct } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -1764,8 +1764,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   if (q.state === 'error') {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}>
-        <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
-          <Empty label={tr('ХАБЭА ачаалахад алдаа гарлаа')} />
+        {/* ⚠️ 2026-10-04: ШАЛТГААНЫГ хэлнэ (`friendlyError` — эрх/сүлжээ/хугацаа)
+            ба `data-boot-fail` нь порталын ачаалалтын дэлгэцийг (Booting) шууд
+            хаана — урьд нь энэ алдаа 12с эргэлдэгчийн АРД нуугддаг байв. */}
+        <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }} data-boot-fail="" role="alert">
+          <Empty label={tr('ХАБЭА ачаалахад алдаа гарлаа')} hint={friendlyError(q.error)} />
           {q.retry && (
             <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
           )}
@@ -2381,7 +2384,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {weekScores.state === 'loading'
             ? <Loading />
             : weekScores.state === 'error'
-              ? <Empty label={tr('Татагдсангүй: {0}', weekScores.error.message)} />
+              ? <Empty label={tr('Татагдсангүй: {0}', friendlyError(weekScores.error))} onRetry={weekScores.retry} />
               : weekScoreByCo(weekScores.data.rows, pkgs).length
                 ? (
                   <Bars
@@ -2407,7 +2410,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {weekScores.state === 'loading'
             ? <Loading />
             : weekScores.state === 'error'
-              ? <Empty label={tr('Татагдсангүй: {0}', weekScores.error.message)} />
+              ? <Empty label={tr('Татагдсангүй: {0}', friendlyError(weekScores.error))} onRetry={weekScores.retry} />
               : weekNcByPkg(weekScores.data.rows, cos).length
                 ? (
                   <Bars

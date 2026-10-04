@@ -2258,6 +2258,28 @@ export function friendlyError(e: unknown): string {
 }
 
 /**
+ * ДЭЛГЭЦЭНД гарах алдааны мөр (⚠️ 2026-10-04) — `catch`-ийн `setErr`/`toast`-д.
+ *
+ * ⚠️ `friendlyError`-оос ЗӨӨЛӨН: манай МОНГОЛ мессеж (эрхийн `requireCap`,
+ *    «Бичихийн өмнөх шалгалт унав: …», зөрчлийн тайлбар) агуулгаараа хэрэгтэй
+ *    тул ХЭВЭЭР — ерөнхий «Түр алдаа»-аар солибол хэрэглэгч юу буруу болсныг
+ *    мэдэхгүй. Харин кириллгүй түүхий серверийн мөр («Token Required», «Failed
+ *    to fetch», «HTTP 500») → `friendlyError`; монгол угтвартай ч СҮҮЛ нь
+ *    англи шалтгаан бол («…: Token Required») зөвхөн сүүлийг нь орчуулна.
+ * ⚠️ Давхардсан хэсэг нэг болно — `hyanalt.post` нь `message`-д `details`-ийг
+ *    залгадаг тул «Token Required · Token Required» гардаг байв.
+ */
+export function userError(e: unknown): string {
+  const raw = String((e as { message?: string } | null)?.message ?? e ?? '').trim();
+  const msg = [...new Set(raw.split(' · ').map((x) => x.trim()).filter(Boolean))].join(' · ');
+  const CYR = /[Ѐ-ӿ]/;
+  if (!msg || !CYR.test(msg)) return friendlyError(e);
+  const tail = /^(.*[Ѐ-ӿ][^:]*):\s*([^Ѐ-ӿ]+)$/.exec(msg);
+  if (tail && /[A-Za-z]{3,}/.test(tail[2])) return `${tail[1]}: ${friendlyError(tail[2])}`;
+  return msg;
+}
+
+/**
  * Async төлөвийг зурна.
  * Алдааг ҮРГЭЛЖ харуулна — өгөгдөл татагдаагүй үед хуучин/зохиомол тоо
  * дэлгэц дээр үлдэх боломжгүй.

@@ -64,6 +64,7 @@ export type UndoInfo =
   /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
   | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown> }[] };
 import d from './dedButets.module.css';
+import { userError } from '@/components/ui';
 
 /**
  * ГЕОМЕТРЭЭС ГАРАХ СИСТЕМИЙН ХЭМЖЭЭ — толгойн тодорхойлолтод.
@@ -290,7 +291,7 @@ export function DedButetsEdit({
         setBefore(row);
         setP(rowToPatch(m, row));
       })
-      .catch((e) => alive && setFail(String((e as Error).message || e)))
+      .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
     /* ⚠️ 2026-10-01: `geometry` — ШИНЭ зурсан дүрс бүр шинэ маягт (уртыг тэр дүрсээс бөглөнө).
@@ -435,7 +436,7 @@ export function DedButetsEdit({
       setSaved((x) => x + 1);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
-      setFail(String((x as Error).message || x));
+      setFail(userError(x));
     } finally {
       setBusy(false);
     }

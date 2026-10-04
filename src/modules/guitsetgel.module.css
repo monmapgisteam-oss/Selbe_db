@@ -95,6 +95,14 @@
   transition: background 0.12s;
 }
 .itemHead:hover { background: var(--surface-2); }
+/* ⚠️ 2026-10-04: УТАС (375px) — сум·нэр·Track·шошго нэг мөрөнд ажлын нэрийг
+   ~60px болтол шахдаг байв. Нэр бүтэн мөрийг авч, Track ба шошго 2-р мөрөнд
+   (нэрийн доор, 2-р баганаас) буух. 3-р хүүхэд = Track (эсвэл шошго). */
+@media (max-width: 480px) {
+  .itemHead { grid-template-columns: 18px 1fr auto; row-gap: 6px; }
+  .itemHead > .who { grid-column: 2 / -1; }
+  .itemHead > :nth-child(3) { grid-column: 2; justify-self: start; }
+}
 .chev { color: var(--ink-3); font-size: 0.75rem; }
 
 .who { min-width: 0; }
@@ -880,3 +888,14 @@
   text-decoration: none;
   display: inline-block;
 }
+
+/* ⚠️ 2026-10-04: шийдвэрийн анхааруулга — мөр дахин mount болсон ч үлдэнэ (`useApplyWarns`) */
+.warnBanner {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 0 0 10px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--warn, #c98a00);
+  background: color-mix(in srgb, var(--warn, #c98a00) 14%, transparent);
+  color: var(--warn-ink, #8a5a00); font-size: 0.85rem;
+}
+.warnBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.warnBanner b { display: block; margin-bottom: 2px; }

@@ -440,6 +440,14 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
  *    зөв: тэдэнд үүсгэх эрх байхгүй, super нэг удаа нэвтэрмэгц шийдэгдэнэ.
  */
 export type RemoteSave = { ok: true } | { ok: false; error: string; conflict?: boolean };
+/**
+ * ⚠️ 2026-10-04 аудит: `RemoteSave`-ийн ӨРГӨТГӨЛ (хуучин хэлбэр хэвээр — FillNew нийцтэй).
+ *    `written: true` = бидний `applyEdits` АМЖИЛТТАЙ буусан ч дараах шалгалтаар мөрийн `at`
+ *    өөр болсон (завсарт өөр хүн дарж бичсэн) → `conflict: true` хамт ирнэ. Дуудагч
+ *    дахин уншиж нийлүүлнэ; «бичилт буусан» гэдгийг мэдэх шаардлагатай (цэвэрлэлтийн үе
+ *    зөрсөн үед дахин цэвэрлэх эсэх — `useSharedDraft`) бол үүгээр ялгана.
+ */
+export type RemoteSaveResult = RemoteSave & { written?: boolean };
 
 /**
  * @param opt.expectAt — ХУВААЛЦСАН нооргийн optimistic lock (2026-09-29 аудит):
@@ -453,7 +461,7 @@ export async function saveRemoteDraft(
   at: number,
   payload: string,
   opt?: { expectAt?: number | null },
-): Promise<RemoteSave> {
+): Promise<RemoteSaveResult> {
   if (payload.length > REMOTE_MAX) {
     return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
   }
@@ -506,6 +514,32 @@ export async function saveRemoteDraft(
     if (bad) {
       const e = bad.error as { message?: string; description?: string } | undefined;
       return { ok: false, error: tr('ArcGIS татгалзав: {0}', e?.message ?? e?.description ?? String(bad.error)) };
+    }
+    /*
+     * ⚠️ БИЧСЭНИЙ ДАРААХ БАТАЛГАА (2026-10-04 аудит): дээрх `expectAt` шалгалт (query) ба
+     *    `applyEdits` хоёр ТУСДАА дуудлага — ArcGIS-д compare-and-swap байхгүй тул хоёр клиент
+     *    ижил `at` уншаад хоёулаа бичвэл сүүлийнх нь эхнийхийг чимээгүй дарна. Бүрэн хаах
+     *    аргагүй; харин бичсэний ДАРАА мөрийг дахин уншиж `at` нь БИДНИЙХ эсэхийг шалгана.
+     *    Өөр бол бидний бичилт дарагдсан → `conflict` (+ `written`) — дуудагч дахин уншиж
+     *    нийлүүлээд бичнэ (бидний нүд түүний санах ойд хэвээр тул алдагдахгүй).
+     * ⚠️ Зөвхөн `expectAt`-тай (хуваалцсан, read-merge-write) дуудлагад — blind overwrite
+     *    (`expectAt` байхгүй) хуучин зангаараа. Мөр АЛГА (устгагдсан) эсвэл шалгалт унасан
+     *    бол амжилт гэж үзнэ: FillNew нийтлэлийн `clearRemoteDraft`-ийн дараа «зөрчил» гэж
+     *    дахин бичвэл нийтэлсэн нооргийг амилуулна.
+     */
+    if (opt && opt.expectAt !== undefined) {
+      try {
+        const chk = await fl.queryFeatures({
+          where: `dkey = ${sqlStr(dkey)}`,
+          outFields: ['OBJECTID', 'at'],
+          returnGeometry: false,
+          orderByFields: ['OBJECTID ASC'],
+        });
+        const got = Number(chk.features[chk.features.length - 1]?.attributes?.at);
+        if (Number.isFinite(got) && got > 0 && got !== at) {
+          return { ok: false, conflict: true, written: true, error: tr('хооронд нь өөр хүн ноорог бичсэн — дахин уншиж нийлүүлнэ') };
+        }
+      } catch { /* шалгалт унасан — бичилт өөрөө амжилттай буусан */ }
     }
     return { ok: true };
   } catch (e) {

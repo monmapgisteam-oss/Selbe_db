@@ -1819,6 +1819,17 @@ export function ncrRound(
   };
 }
 
+/**
+ * ХЯНАГЧИЙН ХАРСАН ЗАЛРУУЛГА СЕРВЕРИЙНХЭЭС ЗӨРСӨН ҮҮ — цэвэр (2026-10-04, `chanarMs.check.mjs`).
+ * ⚠️ `submitCorrection` нь хянагчийн шийдвэр ОГТ үгүй үед дахин илгээхийг зөвшөөрдөг тул
+ *    хянагч хуучин залруулга уншиж байхад шинэ нь ирж болно. `seen === undefined` = шалгахгүй
+ *    (хуучин дуудагч); `null` ба `undefined`-ийг серверт ижил (залруулга алга) гэж үзнэ.
+ */
+export function correctionChanged(seen: number | null | undefined, cur: number | null | undefined): boolean {
+  if (seen === undefined) return false;
+  return (seen ?? null) !== (cur ?? null);
+}
+
 export function submitCorrection(
   doc: Pick<MsDoc, 'status'> & { kind?: DocKind; reviews?: Reviews; rep?: Rep | null },
   body: NcrBody,

@@ -171,7 +171,8 @@ console.log('✅ _syncRemote* (цөм + 2 модуль) — username бүгд tr
   const i = src.indexOf('export async function setCaps');
   assert.ok(i > 0, 'caps.ts: setCaps олдсонгүй');
   const body = src.slice(i, src.indexOf('export function toggleCap'));
-  assert.ok(/trackWrite\(u,\s*next,\s*ok\)/.test(body),
+  /* ⚠️ 2026-10-04: `out` — шинэ мөр дээр нэгтгэсэн жагсаалт (`mergeCapDelta`); dirty үед `next` */
+  assert.ok(/trackWrite\(u,\s*(next|out),\s*ok\)/.test(body),
     'caps.ts: setCaps нь trackWrite(u, next, ok) дуудах ёстой');
 
   /* ⚠️ ХООСОН жагсаалтыг АЛГАСАХГҮЙ: `c.length` шүүлтүүр буцаж ирвэл барина */
@@ -264,7 +265,11 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
      үүрэг×багцын ҮРЖВЭР эргэж ирж, «Багц 1-д зохиогч, Багц 5-д батлагч»
      гэсэн хүн Багц 1-д Ч БАТЛАГЧ болж, `decidePlan`-ийн зохиогч=батлагч
      татгалзалтаар тэр багц ГАЦДАГ байлаа. Гурван салаа ижил уншина. */
-  const grantsReads = (src.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
+  /* ⚠️ 2026-10-04: ЗӨВХӨН `fetchAll`-ийн биеэс — `scopedRead` (бичихийн өмнөх нэгтгэлийн уншилт) нь ижил задлалттай 6 дахь газар */
+  const fetchAllSrc = src.slice(src.indexOf('export async function fetchAll'), src.indexOf('async function findOids'));
+  const grantsReads = (fetchAllSrc.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
+  assert.ok(/export async function scopedRead[\s\S]*?Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/.test(src),
+    'scopedRead: grants-ыг fetchAll-тай ижил уншина');
   assert.equal(grantsReads, 5,
     `fetchAll: grants уншилт ЯГ 5 байх ёстой (huvaari · obyem · chanar · ajil · butets), олдсон: ${grantsReads}`);
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */

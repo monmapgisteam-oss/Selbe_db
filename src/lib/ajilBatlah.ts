@@ -40,7 +40,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
-import { AUTH, ROLE_BY_USER } from './services';
+import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -873,6 +873,70 @@ export async function withdrawAjil(args: {
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    invalidate('AJIL_BATLAH');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/** «Эцэг бүлэг олдсонгүй» буцаалтын стандарт шалтгаан (2026-10-04) */
+export const NO_PARENT_REASON = (): string => tr('Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.');
+
+/**
+ * ГАЦСАН БАТЛАЛТЫГ БУЦААХ ДҮРЭМ — цэвэр (`ajilApply.check.mjs`, 2026-10-04).
+ * ⚠️ ЗӨВХӨН `approved` (батлагдсан ч буугаагүй). `applied` нь хуудсанд аль хэдийн бичигдсэн —
+ *    буцаавал хуудас ба урсгал зөрнө; `pending`-ийг `decideAjil` шийднэ.
+ */
+export function returnStuckDeny(status: string | null, reason: string): string | null {
+  if (!reason.trim()) return tr('Буцаах шалтгааныг бичнэ үү.');
+  if (status !== AJIL_STATUS.approved) return tr('Зөвхөн «Батлагдсан · буулгаагүй» илгээлтийг буцаана. Хуудсаа шинэчилнэ үү.');
+  return null;
+}
+
+/**
+ * БАТЛАГДСАН Ч БУУЛГАХ БОЛОМЖГҮЙ ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл админ (2026-10-04).
+ * ⚠️ ЯАГААД: эцэг бүлэг нь хуудсанд алга (устсан/нэр солигдсон) бол `materializeAdds` ҮРГЭЛЖ
+ *    «эцэг бүлэг олдсонгүй» гэж унадаг; `decideAjil`/`withdrawAjil` зөвхөн `pending`-д ажилладаг
+ *    тул илгээлт «Батлагдсан · буулгаагүй»-д МӨНХӨД гацдаг байв. Одоо `returned` болж
+ *    шалтгаантайгаа нэмэгчид буцна — тэр засаад дахин илгээнэ.
+ * ⚠️ Эх хуудсанд ЮУ Ч бичихгүй (бичигдээгүй мөр). Хүрээ — серверийн багцаар.
+ */
+export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
+  const reason = (args.reason ?? NO_PARENT_REASON()).trim();
+  if (typeof window !== 'undefined' && AUTH.appId) {
+    const meNow = currentUser();
+    if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    if (roleForUser(meNow) !== 'super' && !hasCap(meNow, 'ajilApprove')) {
+      return { ok: false, error: tr('Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч эсвэл админ буцаана.') };
+    }
+  }
+  const me = args.me.trim().toLowerCase();
+  const url = await tableUrl();
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  try {
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.pkgGroup}`);
+    if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+    if (AUTH.appId) {
+      const meNow = currentUser() ?? me;
+      const sc = roleForUser(meNow) === 'super' ? null : ajilScope(meNow, 'approver');
+      if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? ''))) {
+        return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
+      }
+    }
+    const deny = returnStuckDeny(s(cur[0][F.status]), reason);
+    if (deny) return { ok: false, error: deny };
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: {
+        [F.oid]: args.oid,
+        [F.status]: AJIL_STATUS.returned,
+        [F.approver]: me || null,
+        [F.approverAt]: Date.now(),
+        [F.reason]: reason,
+      } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };

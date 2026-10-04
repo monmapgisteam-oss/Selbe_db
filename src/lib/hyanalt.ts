@@ -19,6 +19,7 @@ import { invalidate } from './dataBus';
 import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
+import { collidedIds, idNum, renumberPlan } from './idUnique';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -457,6 +458,32 @@ export async function queryAll(): Promise<Attrs[]> {
   return out;
 }
 
+/**
+ * ХЯМД ГАРЫН ҮСЭГ — `oid:төлөв` жагсаалт (2026-10-04). Хяналтын дараалал хуудас
+ * нээгдсэнээс хойш ХЭЗЭЭ Ч шинэчлэгддэггүй байв; `hyanaltStore`-ийн 60 с тутмын
+ * шалгалт эхлээд үүгээр (2 талбар) харьцуулж, зөрвөл л бүтэн `queryAll` татна.
+ * ⚠️ Шийдвэр бүр `Төлөв`-ийг, дахин шалгалт ШИНЭ мөрийг үүсгэдэг тул хангалттай.
+ */
+export async function queryStatusSig(): Promise<string> {
+  const parts: string[] = [];
+  let offset = 0;
+  for (;;) {
+    const j = (await post('/query', {
+      where: '1=1',
+      outFields: `${HYANALT.oid},${F.status}`,
+      returnGeometry: 'false',
+      orderByFields: `${HYANALT.oid} ASC`,
+      resultOffset: String(offset),
+      resultRecordCount: '2000',
+    })) as { features?: { attributes: Attrs }[]; exceededTransferLimit?: boolean };
+    const got = j.features ?? [];
+    for (const f of got) parts.push(`${Number(f.attributes[HYANALT.oid])}:${String(f.attributes[F.status] ?? '')}`);
+    if (!j.exceededTransferLimit || got.length === 0) break;
+    offset += got.length;
+  }
+  return parts.join(',');
+}
+
 const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
   /*
    * ⚠️ Мөрийг `{ attributes: … }` дотор ЗААВАЛ ороож өгнө. Ил задгай объект
@@ -510,3 +537,32 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
 
 export const addRows = (rows: Attrs[]) => edit('adds', rows);
 export const updateRows = (rows: Attrs[]) => edit('updates', rows);
+
+/**
+ * `Бүртгэлийн_дугаар` ДАВХАРДЛЫГ БИЧСЭНИЙ ДАРАА ЗАСНА (2026-10-04, `idUnique`).
+ * ⚠️ `nextId` нь клиентэд max+1 — хоёр хүн зэрэг илгээвэл ижил «G-…» авна. Шинэ мөрийг
+ *    (`oid`) дахин уншиж шалгаад давхцвал ӨӨРИЙНХИЙГ max+1 болгоно. Дэлгэцийн дугаар тул
+ *    алдаа нь шийдвэр/илгээлтийг УНАГАХГҮЙ (`console.warn`, анхны дугаар буцна).
+ * @returns эцсийн дугаар
+ */
+export async function ensureUniqueId(oid: number, id: string): Promise<string> {
+  const n = idNum(id);
+  if (!(oid > 0) || n == null) return id;
+  try {
+    const idRows = (await queryAll()).map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) }));
+    const hit = collidedIds(idRows, new Set([oid]), [n]);
+    if (!hit.length) return id;
+    const nid = `G-${String(renumberPlan(idRows, hit).get(n)).padStart(6, '0')}`;
+    await updateRows([{ [HYANALT.oid]: oid, [F.id]: nid }]);
+    return nid;
+  } catch (e) {
+    console.warn('[selbe] бүртгэлийн дугаарын давхардлын шалгалт унав:', e);
+    return id;
+  }
+}
+
+/** `addRows`-ийн үр дүнгээс шинэ мөрийн OBJECTID (байхгүй бол 0) */
+export const addedOid = (res: readonly unknown[], i = 0): number => {
+  const v = Number((res[i] as { objectId?: unknown } | undefined)?.objectId);
+  return Number.isInteger(v) && v > 0 ? v : 0;
+};

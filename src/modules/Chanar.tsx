@@ -39,6 +39,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { setNavDirty } from '@/lib/navGuard';
 import { useAuth } from '@/components/AuthGate';
 import { roleForUser } from '@/lib/services';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
@@ -66,6 +67,7 @@ import { MsForm, type MsFull } from './chanar/MsForm';
 import { MaForm } from './chanar/MaForm';
 import { InspForm } from './chanar/InspForm';
 import { NcrForm, emptyNcrClose, ncrCloseFrom, type NcrCloseDraft } from './chanar/NcrForm';
+import { userError } from '@/components/ui';
 import s from './chanar.module.css';
 
 const tagCls = (st: MsStatus): string => {
@@ -103,9 +105,17 @@ export function Chanar() {
   const [docs, setDocs] = useState<MsDoc[]>([]);
   /* «Миний хийх» (2026-09-30): NCR-ийн биеийн туг (залруулга ирсэн · хаасан) ба шүүлтүүр */
   const [ncrFlags, setNcrFlags] = useState<NcrFlags | null>(null);
+  /* ⚠️ 2026-10-04: NCR туг УНАСАН (`loadNcrFlags().catch`) — «Миний хийх»-ээс NCR чимээгүй
+     алга болдог байв; одоо жижиг анхааруулга. `ncrFlags == null` нь эхний ачаалалтад ч үнэн
+     тул тусдаа туг. */
+  const [ncrFlagsErr, setNcrFlagsErr] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  /* ⚠️ 2026-10-04: ЖАГСААЛТ АЧААЛАХ алдаа — `err`-ээс тусдаа (`err` нь үйлдлийн алдаанд ч
+     тавигдана). Унасан үед хураангуй, табын тоо, «Миний хийх (N)», хоосон төлөв 0 / «алга»
+     гэж ХУДАЛ хэлэхгүй — `docs` нь `[]` болохоос «баримт байхгүй» биш. */
+  const [loadErr, setLoadErr] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -166,10 +176,16 @@ export function Chanar() {
   const noOrg = kind !== 'NCR' && authorOk && orgCode(pkg) == null;
   const canCreate = kind === 'NCR' ? ncrOpener : authorOk && !noOrg;
 
+  /* ⚠️ 2026-10-04: хүснэгтийг ЗӨВХӨН админы ил үйлдлээр үүсгэнэ (`createTableNow`) — урьд нь
+     super хуудас нээхэд `chanarTableState(isSuper)` автоматаар үүсгэдэг тул ХУВИЙН (харагдахгүй)
+     амьд хүснэгт байхад давхар хүснэгт үүсэх эрсдэлтэй байв. */
+  const createReq = useRef(false);
   const refresh = useCallback(async () => {
-    setLoading(true); setErr('');
+    setLoading(true); setErr(''); setLoadErr(false);
     try {
-      const st = await chanarTableState(isSuper);
+      const wantCreate = createReq.current;
+      createReq.current = false;
+      const st = await chanarTableState(wantCreate);
       setTable(st);
       if (!st.ok) { setDocs([]); return; }
       /* ⚠️ Долоон төрлийг НЭГ асуулгаар — таб дээрх тоо, MIR→MA, NCR→MIR иш */
@@ -177,24 +193,35 @@ export function Chanar() {
       const [all, nf] = await Promise.all([loadAllDocs(), loadNcrFlags().catch(() => null)]);
       setDocs(all);
       setNcrFlags(nf);
+      setNcrFlagsErr(nf == null);
       /* ⚠️ 2026-09-25: хураангуйн биеийн кэш хүчингүй — «Шинэчлэх» бодит утга үзүүлнэ */
       bodiesGen.current += 1;
       bodiesRef.current = new Map();
       bodiesPending.current.clear();
       setBodies(new Map());
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
+      setLoadErr(true);
     } finally {
       setLoading(false);
     }
-  }, [isSuper]);
+  }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refresh` нь ачааллын төлөвийг синхрон тавиад татна
   useEffect(() => { void refresh(); }, [refresh]);
+  /* Админы ил үйлдэл — нэр байгууллагад эзлэгдсэн бол lib өөрөө татгалзана (`hidden`) */
+  const createTableNow = () => {
+    if (!window.confirm(tr('«Selbe_Chanar_Barimt» хүснэгт танд харагдахгүй байна. Хэрэв хүснэгт аль хэдийн байгаа ч танд хуваалцаагүй бол ШИНЭЭР ҮҮСГЭХГҮЙ — эзэмшигч нь байгууллагад хуваалцах хэрэгтэй. Шинэ хоосон хүснэгт үүсгэх үү?'))) return;
+    createReq.current = true;
+    void refresh();
+  };
 
   /* ⚠️ 2026-09-25: НООРОГ ЗӨВХӨН ЗОХИОГЧИД (эсвэл super) — `visibleInPkg` */
   const inPkg = useMemo(() => visibleInPkg(docs, pkg, me, isSuper), [docs, pkg, me, isSuper]);
   const counts = useMemo(() => kindCounts(inPkg), [inPkg]);
+  /* ⚠️ 2026-10-04: жагсаалт УНАСАН (ачаалал эсвэл хүснэгтийн auth/owner/error) — тоо «—»,
+     хоосон төлөв/хураангуй гарахгүй. `none` (хүснэгт үүсээгүй) нь жинхэнэ хоосон тул орохгүй. */
+  const listFailed = loadErr || (table != null && !table.ok && table.why !== 'none');
   const kindDocs = useMemo(() => inPkg.filter((d) => d.kind === kind), [inPkg, kind]);
   /* ⚠️ «МИНИЙ ХИЙХ» (2026-09-30): БҮХ багц, бүх төрлөөс энэ хэрэглэгчийн ОДОО хийх ёстой
      баримт (`chanarStore.actionableDocs` — товчны `canAct` дүрэмтэй ижил). `tickN` — ACL
@@ -296,7 +323,7 @@ export function Chanar() {
         const ma = b as MaBody;
         setPrEquipment(/лифт|өргөх|кран|lift|hoist|crane/i.test(`${ma.meta.category} ${ma.purpose} ${ma.materials.map((x) => x.name).join(' ')}`));
       }
-    }).catch((e) => live && setErr(String((e as Error).message || e)));
+    }).catch((e) => live && setErr(userError(e)));
     return () => { live = false; };
   }, [sel, reloadBody]);
 
@@ -315,7 +342,7 @@ export function Chanar() {
     let live = true;
     void Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))))
       .then((ls) => { if (live) setAtts(ls.flat()); })
-      .catch((e) => live && setErr(String((e as Error).message || e)));
+      .catch((e) => live && setErr(userError(e)));
     return () => { live = false; };
   }, [attIds]);
 
@@ -348,11 +375,12 @@ export function Chanar() {
         setBody(b);
         if (b) { bodiesRef.current.set(sel0, b); setBodies(new Map(bodiesRef.current)); }
         if (b && 'items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
-        if (b && 'correction' in b) setNcrClose(ncrCloseFrom((b as NcrBody).closure));
+        /* ⚠️ 2026-10-04: залруулгын ноорог ч хадгалсан утгаар — эс бөгөөс `sideDirty` худал асууна */
+        if (b && 'correction' in b) { setNcrClose(ncrCloseFrom((b as NcrBody).closure)); setCorr({ ...(b as NcrBody).correction }); }
       }
       return true;
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
       return false;
     } finally {
       setBusy(false);
@@ -372,9 +400,27 @@ export function Chanar() {
   /* MIR/FIC — захиалагчийн багана хадгалагдаагүй өөрчлөлттэй юу */
   const clientDirty = !!clientDraft && !!body && 'items' in body
     && (body as InspBody).items.some((it, i) => (clientDraft[i] ?? null) !== it.client);
+  /*
+   * ⚠️ 2026-10-04: ХЯНАГЧ/ГҮЙЦЭТГЭГЧИЙН ХАЖУУГИЙН МАЯГТ ч хадгалаагүй ажил — тайлбар (`rNote`),
+   *    материал бүрийн шийдвэр (`perMat`), хувилбарын шалтгаан (`revNote`), NCR залруулга
+   *    (`corr`) ба хаалт (`ncrClose`), AN хугацаа. Урьд нь сонголтын эффект эдгээрийг асуулгүй
+   *    тэглэдэг, `discardOk` зөвхөн засах горимыг харж, F5/харагдац солиход ч хамгаалалтгүй
+   *    байв. Суурь нь ачаалсан биеэс (`body`) — хоосон биш ч хадгалагдсан утга бол цэвэр.
+   */
+  const ncrBody = body && 'correction' in body ? (body as NcrBody) : null;
+  const revBase = body && doc && doc.status !== MS_STATUS.returned ? (commonOf(body).revNote ?? '') : '';
+  const sideDirty = rNote.trim() !== '' || anDeadline !== ''
+    || Object.keys(perMat).length > 0
+    || (revNote.trim() !== '' && revNote !== revBase)
+    || JSON.stringify(corr) !== JSON.stringify(ncrBody ? ncrBody.correction : { text: '', completedAt: null, steps: [] })
+    || JSON.stringify(ncrClose) !== JSON.stringify(ncrBody ? ncrCloseFrom(ncrBody.closure) : emptyNcrClose());
+  const anyDirty = (edit && dirty) || clientDirty || sideDirty;
+  /* ⚠️ `navGuard` — харагдац солих · лого · «Гарах» · F5 (`Portal.confirmLeave`) */
+  useEffect(() => { setNavDirty('chanar', anyDirty, tr('Чанарын баримт')); }, [anyDirty]);
+  useEffect(() => () => setNavDirty('chanar', false), []);
   /* ⚠️ 2026-09-25: багц/таб солих, өөр карт, «Болих» — хадгалаагүй өөрчлөлтийг асуулгүй хаяхгүй */
   const discardOk = (): boolean => {
-    if (!(edit && dirty) && !clientDirty) return true;
+    if (!anyDirty) return true;
     return window.confirm(tr('Хадгалаагүй өөрчлөлт бий — хаях уу?'));
   };
   const cancelEdit = () => { if (discardOk()) { setEdit(false); setDirty(false); } };
@@ -504,9 +550,13 @@ export function Chanar() {
           const r = await saveClientChecks({ oid: doc.oid, who: me, client: cd });
           if (!r.ok) return { ok: false, error: tr('Захиалагчийн багана хадгалагдсангүй — шийдвэр өгөгдөөгүй: {0}', r.error ?? '') };
         }
-        return reviewDoc({ oid: doc.oid, as, who: me, verdict, note: rNote, perMaterial: pm, anDeadline: dl });
+        /* ⚠️ 2026-10-04: NCR — хянагчийн ХАРСАН залруулгын агшин; зөрвөл store татгалзана */
+        const seenCorrectionAt = doc.kind === 'NCR' && body && 'correctionAt' in body ? (body as NcrBody).correctionAt : undefined;
+        return reviewDoc({ oid: doc.oid, as, who: me, verdict, note: rNote, perMaterial: pm, anDeadline: dl, seenCorrectionAt });
       },
-      code === 'R' ? tr('Татгалзаж, гүйцэтгэгч рүү буцаав.') : code === 'AN' ? tr('Санал бүхий зөвшөөрөв.') : tr('Зөвшөөрөв.'),
+      /* ⚠️ 2026-10-04: дарсан товч (`code`) БИШ, БОДИТ шийдвэр (`eff`) — MA-д материал бүрийн
+         шийдвэрээс нэгтгэгддэг тул «Зөвшөөрөв» дарсан ч «R» болж буцаагдсан байж болно. */
+      eff === 'R' ? tr('Татгалзаж, гүйцэтгэгч рүү буцаав.') : eff === 'AN' ? tr('Санал бүхий зөвшөөрөв.') : tr('Зөвшөөрөв.'),
     );
     if (ok) { setRNote(''); setPerMat({}); setAnDeadline(''); }
   };
@@ -609,7 +659,7 @@ export function Chanar() {
       if (errs.length) setErr(errs.join(' · '));
       await reloadAtts();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -621,7 +671,7 @@ export function Chanar() {
       if (!(await deleteAttachment(a.parentOid, a.id))) setErr(tr('Хавсралт устгагдсангүй.'));
       await reloadAtts();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -630,7 +680,9 @@ export function Chanar() {
   const tableMsg = (st: TableState): string => {
     if (st.why === 'auth') return tr('Нэвтрээгүй байна — чанарын баримт харахын тулд ArcGIS-ээр нэвтэрнэ үү.');
     if (st.why === 'owner') return tr('«Selbe_Chanar_Barimt» хүснэгтийн эзэн танигдсангүй — админд хандана уу.');
-    if (st.why === 'none') return tr('Чанарын баримтын хүснэгт хараахан үүсээгүй — super админ энэ хуудсыг нэг удаа нээхэд автоматаар үүснэ.');
+    /* ⚠️ 2026-10-04: «автоматаар үүснэ» гэхээ больсон — хүснэгт ХУВИЙН байж болно (`chanarStore.serviceNameTaken`) */
+    if (st.why === 'none') return tr('Чанарын баримтын хүснэгт олдсонгүй эсвэл хандах эрхгүй — эзэмшигч нь байгууллагад хуваалцах хэрэгтэй.');
+    if (st.why === 'hidden') return tr('«Selbe_Chanar_Barimt» нэртэй үйлчилгээ байгууллагад аль хэдийн бий (эсвэл шалгаж чадсангүй) — шинээр үүсгэсэнгүй. Хүснэгт олдсонгүй эсвэл хандах эрхгүй — эзэмшигч нь байгууллагад хуваалцах хэрэгтэй.');
     return st.detail ?? tr('Хүснэгт уншигдсангүй.');
   };
 
@@ -743,8 +795,8 @@ export function Chanar() {
             className={`${s.tab} ${k === kind ? s.tabOn : ''}`}
             onClick={() => switchKind(k)}
           >
-            {kindLabel(k)} <span className={s.tabK}>{k}</span> <span className={s.tabN}>{counts[k]}</span>
-            {mineByKind[k] > 0 && <> <span className={s.tabMine} title={tr('Таны хийх баримт')}>● {mineByKind[k]}</span></>}
+            {kindLabel(k)} <span className={s.tabK}>{k}</span> <span className={s.tabN}>{listFailed ? '—' : counts[k]}</span>
+            {!listFailed && mineByKind[k] > 0 && <> <span className={s.tabMine} title={tr('Таны хийх баримт')}>● {mineByKind[k]}</span></>}
           </button>
         ))}
       </div>
@@ -754,7 +806,7 @@ export function Chanar() {
           {tr('Багц')}
           <select className={s.select} value={pkg} disabled={busy}
             onChange={(e) => { if (!discardOk()) return; setPkg(e.target.value); setSel(null); setEdit(false); setDirty(false); }}>
-            {PKG_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+            {PKG_GROUPS.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
           </select>
         </label>
         <label className={s.field}>
@@ -772,8 +824,13 @@ export function Chanar() {
         <button type="button" className={`${s.btn} ${mineOnly ? s.btnOn : ''}`} aria-pressed={mineOnly}
           title={tr('Бүх багц, бүх төрлөөс таны одоо хийх ёстой баримт (хянах · илгээх · залруулах · хүлээн авах)')}
           onClick={() => setMineOnly((v) => !v)}>
-          {tr('Миний хийх')} ({actionable.length})
+          {tr('Миний хийх')} ({listFailed ? '—' : actionable.length})
         </button>
+        {ncrFlagsErr && !listFailed && (
+          <span className={s.hint} role="status" title={tr('NCR-ийн залруулга/хаалтын төлөв уншигдсангүй — «Миний хийх»-д NCR дутуу байж болно. «Шинэчлэх»-ээр дахин оролдоно уу.')}>
+            ⚠ {tr('NCR төлөв уншигдсангүй')}
+          </span>
+        )}
         <span className={s.grow} />
         {myRoles.length > 0 && (
           <span className={s.field} title={tr('Энэ багцад таны хянагчийн үүрэг')}>
@@ -790,18 +847,28 @@ export function Chanar() {
         )}
         {noOrg && table?.ok && <span className={s.hint}>{tr('«{0}» багцын гүйцэтгэгчийн код тодорхойгүй.', pkg)}</span>}
       </div>
-      <div className={s.summary} title={tr('Багцын хураангуй')}>
-        {summary().map((line, i) => <span key={i}>{line}</span>)}
-      </div>
+      {!listFailed && (
+        <div className={s.summary} title={tr('Багцын хураангуй')}>
+          {summary().map((line, i) => <span key={i}>{line}</span>)}
+        </div>
+      )}
 
       {aclLocked && <p className={s.err} role="alert">{LOCK_MSG}</p>}
       {err && <p className={s.err} role="alert">{err}</p>}
       {note && <p className={s.note}>{note}</p>}
-      {table && !table.ok && <p className={s.err} role="alert">{tableMsg(table)}</p>}
+      {table && !table.ok && (
+        <p className={s.err} role="alert">
+          {tableMsg(table)}
+          {/* ⚠️ 2026-10-04: үүсгэх нь ЗӨВХӨН админы ил товчоор */}
+          {isSuper && table.why === 'none' && (
+            <> <button type="button" disabled={loading} onClick={createTableNow}>{tr('Хүснэгт үүсгэх')}</button></>
+          )}
+        </p>
+      )}
 
       <div className={s.split} id="chanar-panel" role="tabpanel" aria-labelledby={`chanar-tab-${kind}`}>
         <div className={s.list}>
-          {heads.length === 0 && !loading && (
+          {heads.length === 0 && !loading && !listFailed && (
             <div className={s.empty}>{mineOnly ? tr('Таны хийх баримт алга.') : emptyLabel(kind)}</div>
           )}
           {heads.map((d) => {

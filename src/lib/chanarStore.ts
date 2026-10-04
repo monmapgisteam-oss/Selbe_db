@@ -35,6 +35,7 @@ import {
   MS_STATUS, ALL_REVIEWERS, REVIEWERS_OF, isMsStatus, isKind, isVerdict, emptyReviews, docNo, nextSeq, orgCode,
   repNo, repSeqFor, repFrom, parseBodyOf, normalizeNcr, normalizeInsp, normalizeMa, normalizeMeta, normalizeBounce,
   parseCommon, ncrClosure, nextRevisionBody, applyRepToMaterials, canAct, myAction, waitDays, latest, type MyActionWhy,
+  correctionChanged,
   review as reviewPure, submit as submitPure, submitCorrection as correctionPure, reopen as reopenPure,
   bounce as bouncePure, ackRep as ackPure, closeAn as closeAnPure, newRevision as newRevisionPure, closeNcr as closeNcrPure,
   type MsDoc, type MsBody, type Reviewer, type Review, type Reviews, type Rep, type Verdict, type VerdictCode,
@@ -176,13 +177,39 @@ async function createTable(token: string, user: string): Promise<string | null> 
   return `${serviceUrl}/0`;
 }
 
+/**
+ * НЭР БАЙГУУЛЛАГАД ЭЗЛЭГДСЭН ҮҮ — ЯМАР Ч эзэмшигчийн, ХУВИЙН зүйл ч (2026-10-04).
+ * ⚠️ `search` нь зөвхөн дуудагчид ХАРАГДАХ зүйлийг буцаадаг: амьд `Selbe_Chanar_Barimt`
+ *    нь ХУВИЙН (эзэн Munkhbaatar_selbe) тул super админд «олдсонгүй» гэж харагдаж,
+ *    `createTable` ХОЁР ДАХЬ хоосон хүснэгт үүсгэх эрсдэлтэй байв (баримтууд хуваагдана).
+ *    `isServiceNameAvailable` нь байгууллагын бүх үйлчилгээг шалгана.
+ * @returns `true` = эзлэгдсэн, `false` = чөлөөтэй, `null` = мэдэхгүй (алдаа → ҮҮСГЭХГҮЙ)
+ */
+async function serviceNameTaken(token: string): Promise<boolean | null> {
+  try {
+    const j = await arcgisPost(`${restBase()}/portals/self/isServiceNameAvailable`, {
+      name: TITLE, serviceType: 'Feature Service', token,
+    });
+    return j.available === false ? true : j.available === true ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Сүүлийн `tableUrl(true)`-д нэр эзлэгдсэн/шалгаж чадаагүй тул үүсгэсэнгүй */
+let createBlocked = false;
+
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
+  createBlocked = false;
   if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase())) {
-    url = await createTable(auth.token, auth.user);
+    /* ⚠️ 2026-10-04: харагдахгүй (хувийн/хуваалцаагүй) ижил нэртэй үйлчилгээ байвал
+       ҮҮСГЭХГҮЙ — давхардсан хүснэгт баримтуудыг хоёр хуваана. */
+    if ((await serviceNameTaken(auth.token)) !== false) createBlocked = true;
+    else url = await createTable(auth.token, auth.user);
   }
   if (url) tableUrlCache = url;
   return url;
@@ -190,17 +217,23 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 
 export type TableState = {
   ok: boolean;
-  /** auth · owner · none · error — `huvaariBatlah.PlanTableState`-тэй ижил утга */
-  why: 'ok' | 'auth' | 'owner' | 'none' | 'error';
+  /** auth · owner · none · hidden · error — `huvaariBatlah.PlanTableState`-тэй ижил утга.
+   *  ⚠️ 2026-10-04: `hidden` = үүсгэх гэхэд нэр байгууллагад эзлэгдсэн (эсвэл шалгаж
+   *  чадаагүй) — хүснэгт бий ч энэ дансанд хуваалцаагүй. */
+  why: 'ok' | 'auth' | 'owner' | 'none' | 'hidden' | 'error';
   detail?: string;
 };
 
+/**
+ * ⚠️ 2026-10-04: `canCreate` нь ЗӨВХӨН админы ил үйлдлээс («Хүснэгт үүсгэх» товч) —
+ *    хуудас нээхэд автоматаар үүсгэхгүй (`Chanar.tsx`).
+ */
 export async function chanarTableState(canCreate = false): Promise<TableState> {
   try {
     if (!(await getToken())) return { ok: false, why: 'auth' };
     const url = await tableUrl(canCreate);
     if (url) return { ok: true, why: 'ok' };
-    return { ok: false, why: ownerMismatch ? 'owner' : 'none' };
+    return { ok: false, why: ownerMismatch ? 'owner' : createBlocked ? 'hidden' : 'none' };
   } catch (e) {
     return { ok: false, why: 'error', detail: String((e as Error)?.message ?? e) };
   }
@@ -632,15 +665,18 @@ export function subscribeChanarActionable(cb: () => void): () => void {
  *    ирэхгүй бол урьдын адил байгаа үүргээр тоолно (дутуу байж болно).
  */
 const ACL_WAIT_MS = 5_000;
-export async function countChanarActionable(user: string | null | undefined): Promise<number> {
+/* ⚠️ 2026-10-04: хүснэгт уншигдаагүй / унасан бол `null` (0 БИШ) — `navBadges`-д `null` =
+   «мэдэхгүй» → тэмдэг гарахгүй, өмнөх тоо хэвээр. Урьд нь 0 буцааж хүлээгдэж буй баримтыг
+   «байхгүй» мэт нуудаг байв (null ≠ 0 дүрэм). */
+export async function countChanarActionable(user: string | null | undefined): Promise<number | null> {
   if (!(user ?? '').trim()) return 0;
   try {
     const st = await chanarTableState(false);
-    if (!st.ok) return 0;
+    if (!st.ok) return null;
     const [[docs, ncr]] = await Promise.all([loadBadgeDocs(), whenChanarAclReady(ACL_WAIT_MS)]);
     return actionableDocs(docs, ncr, user).length;
   } catch {
-    return 0;
+    return null;
   }
 }
 
@@ -1053,6 +1089,13 @@ export async function reviewDoc(args: {
   perMaterial?: Record<string, VerdictCode>;
   /** AN: нөхцөл биелэх хугацаа (epoch мс) — сонголтоор */
   anDeadline?: number | null;
+  /**
+   * NCR: хянагчийн ХАРСАН залруулгын агшин (`body.correctionAt`, 2026-10-04).
+   * ⚠️ Хянагч уншсанаас хойш гүйцэтгэгч залруулгаа дахин илгээж болно (шийдвэр
+   *    ОГТ үгүй үед `submitCorrection` зөвшөөрдөг) — тэр үед ХАРААГҮЙ залруулгад
+   *    дүгнэлт бичигдэнэ. Өгвөл серверийнхтэй зөрөхөд татгалзана; `undefined` = шалгахгүй.
+   */
+  seenCorrectionAt?: number | null;
 }): Promise<Result> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
@@ -1089,6 +1132,10 @@ export async function reviewDoc(args: {
     }
     const ncrBody = doc.kind === 'NCR' ? normalizeNcr(safeJson(cur[0][F.body])) : null;
     const maBody = doc.kind === 'MA' ? normalizeMa(safeJson(cur[0][F.body])) : null;
+    /* ⚠️ 2026-10-04: хянагчийн харсан залруулга серверийнхтэй ижил үү (`correctionChanged`) */
+    if (ncrBody && correctionChanged(args.seenCorrectionAt, ncrBody.correctionAt)) {
+      return { ok: false, error: tr('Гүйцэтгэгч залруулгаа таныг уншсанаас хойш дахин илгээсэн — баримтыг дахин ачаалж шинэ залруулгыг уншаад дүгнэнэ үү. Таны шийдвэр хадгалагдсангүй.') };
+    }
     const r = reviewPure(
       { ...doc, correctionAt: ncrBody?.correctionAt ?? null },
       {

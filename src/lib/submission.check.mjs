@@ -19,6 +19,7 @@
  *      payload ижил хүснэгтэд байдаг — `v !== 1` бол илгээлт БИШ.
  */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
@@ -503,6 +504,56 @@ const nextOf = (over = {}) => {
   assert.equal(rs.residual, true, 'residual туг задлалд алга болов');
   assert.equal(parseSubmission(JSON.stringify({ ...incP([['12:0', '5']]), residual: 'yes' })).residual, undefined, 'зөвхөн `true`');
   assert.equal(mergeSubmission(rs, next([['12:0', '1']])).residual, undefined, 'нэгтгэлд дамжихгүй (шинэ илгээлт өөрөө тойрог нээнэ)');
+}
+
+/* ── 2026-10-04 аудит. ДАВТАМЖИЙН ДУГААР (`rowOcc`, #2) · ИЛГЭЭЛТИЙН ТАНИГЧ (`nonces`, #3) ── */
+{
+  const incP = (cells, extra = {}) => ({ ...valid(), v: 2, mode: 'inc', adds: [], cells, dates: [], ...extra });
+  /* задлал — эвдэрсэн элементийг л хаяна */
+  const p = parseSubmission(JSON.stringify(incP([['12:0', '5']], {
+    rowKeys: [[12, '1 ¦ Шороо']], rowOcc: [[12, 1, 2], [13, 2, 2], ['x', 0, 1], [14, -1, 3]], nonces: ['abc', 7, ''],
+  })));
+  assert.deepEqual(p.rowOcc, [[12, 1, 2]], 'зөвхөн хүчинтэй давтамж (k < n, бүхэл) үлдэх ёстой');
+  assert.deepEqual(p.nonces, ['abc']);
+  /* нэгтгэл — танигч хуримтлагдана (дараагийн илгээлт өмнөхийнхийг агуулна → хариу тасарсан ч олдоно) */
+  const m = mergeSubmission(p, { ...incP([['13:0', '1']], { rowKeys: [[13, '2 ¦ Бетон']], rowOcc: [[13, 0, 1]], nonces: ['def'] }), at: 2000 });
+  assert.deepEqual(m.nonces, ['abc', 'def'], 'nonce хуримтлагдах ёстой');
+  assert.deepEqual(m.rowOcc, [[12, 1, 2], [13, 0, 1]]);
+  assert.equal(mergeSubmission(null, incP([['1:0', '1']])).nonces, undefined, 'танигчгүй бол талбар үүсэхгүй');
+  /* residual — давхардсан шошгыг давтамжаар ЯГ хослуулна; давтамжгүй, тоо зөрвөл ТААМАГЛАХГҮЙ (null) */
+  const archived = incP([['106:0', '5']], { rowKeys: [[106, '1 ¦ Шороо']], rowOcc: [[106, 1, 2]] });
+  const cur = incP([['203:0', '2'], ['206:0', '9']], { rowKeys: [[203, '1 ¦ Шороо'], [206, '1 ¦ Шороо']], rowOcc: [[203, 0, 2], [206, 1, 2]] });
+  assert.deepEqual(new Map(residualAfterArchive(cur, archived).cells), new Map([['203:0', '2'], ['206:0', '4']]), '2-р «Шороо»-оос хасах ёстой (1-р биш)');
+  const curLeg = { ...cur, rowOcc: undefined };
+  const archLeg = { ...archived, rowOcc: undefined };
+  assert.equal(residualAfterArchive(curLeg, archLeg), null, 'давтамжгүй сийрэг хослол — хоёрдмол тул null (дуудагч анхааруулна)');
+}
+
+/* ── 2026-10-04 дахин аудит. #1 хуучин payload-ын давтамж СУУРЬ жаазаас · #5 танигч алдагдахгүй ── */
+{
+  const incP = (cells, extra = {}) => ({ ...valid(), v: 2, mode: 'inc', adds: [], cells, dates: [], ...extra });
+  /* #5: олон оролдлоготой өдөр (50) ч АНХНЫ танигч хадгалагдана — урьд нь 20-иор тасарч «буугаагүй» гэж
+     дүгнэгдэн ДАХИН илгээгддэг байв; дээд хэмжээ (200) нь SUBMISSION_MAX-д багтана */
+  let acc = mergeSubmission(null, incP([['1:0', '1']], { nonces: ['n0'] }));
+  for (let i = 1; i < 50; i += 1) acc = mergeSubmission(acc, { ...incP([['1:0', '1']], { nonces: [`n${i}`] }), at: 1000 + i });
+  assert.equal(acc.nonces.length, 50);
+  assert.ok(acc.nonces.includes('n0'), '50 оролдлогын дараа ч эхний танигч алдагдах ёсгүй');
+  assert.equal(parseSubmission(JSON.stringify(acc)).nonces.length, 50, 'задлал танигчийг таслах ёсгүй');
+  for (let i = 50; i < 260; i += 1) acc = mergeSubmission(acc, { ...incP([['1:0', '1']], { nonces: [`n${i}x`.padEnd(24, 'f')] }), at: 1000 + i });
+  assert.equal(acc.nonces.length, 200, 'дээд хэмжээ 200');
+  assert.ok(JSON.stringify(acc).length < SUBMISSION_MAX / 10, 'танигчид илгээлтийн хэмжээг дүүргэх ёсгүй');
+  /* #1: хуучин (давтамжгүй) payload нь батлах (`hyanaltStore`) ба дахин илгээх (`FillNew`) замд СУУРЬ жаазаас
+     нөхөгдөнө — эх кодын гэрээ (жааз уншдаг тул нэгж шалгуур нь sheetFrame.check-д) */
+  const HY = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok(HY.includes('if (pl.base != null && needsFrameOcc(pl, loaded.rows)) {') && HY.includes('pl = withFrameOcc(pl, baseRows0);'),
+    'батлалт хуучин payload-ын давтамжийг суурь жаазаас нөхөхгүй байна — мөнхөд гацна');
+  const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
+  assert.ok(FN.includes('const mv = movePayload(await ensureFrameOcc(pkg, sc, staged.payload, freshRows));'), 'дахин илгээх зам суурь жаазаас нөхөхгүй');
+  assert.ok(FN.includes('if (mv.lost.length && !window.confirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
+  /* #5: батлагдсан (`done|`) мөрөөс ч хайна */
+  const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB.includes('export async function findNonce(') && /dkey LIKE \$\{sqlStr\(`\$\{DONE_PREFIX\}%`\)\}/.test(SB), 'танигчийг done| мөрөөс хайхгүй байна');
+  assert.ok((FN.match(/await findNonce\(pkg\.key, /g) ?? []).length >= 2, 'ачаалах ба илгээх замууд findNonce ашиглах ёстой');
 }
 
 console.log('submission.check ✓');

@@ -375,7 +375,8 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
       label: tr('Төсвийн жингийн хамралт'),
       value: weightSum,
       kind: 'pct',
-      why: tr('Гүйцэтгэл хэмжигдсэн орон сууцны багцуудын төсөв ÷ бүх орон сууцны багцын төсөв (дэд бүтэц орохгүй)'),
+      /* ⚠️ 2026-10-04: хүртвэр = багц бүрийн ТАЙЛАГНАСАН блокийн хувь × төсөв (`schem.housingWeight`) */
+      why: tr('Тайлагнасан блокийн хувиар жигнэсэн орон сууцны багцын төсөв ÷ бүх орон сууцны багцын төсөв (дэд бүтэц орохгүй)'),
     },
     { label: tr('Бүртгэгдсэн блок'), value: fin(src.overall?.rows), kind: 'count' },
   );
@@ -396,7 +397,7 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
         cell(b.contractor || '—'),
       ]),
     });
-    /* ⚠️ ТАЙЛАНГҮЙ БЛОК — гүйцэтгэл нь хэмжигдээгүй (2026-09-30-аас дунджид ОРОХГҮЙ, null ≠ 0) */
+    /* ⚠️ ТАЙЛАНГҮЙ БЛОК — гүйцэтгэл нь хэмжигдээгүй (2026-10-01-нөөс дунджид 0%-иар ОРНО) */
     for (const b of capped(rows.filter((x) => x.missing > 0)).shown) {
       p.issues.push({
         text: tr('«{0}» — {1} блок тайлангүй ({2} блокоос).', b.label, b.missing, b.blocks),
@@ -533,10 +534,10 @@ function ersdelPart(src: SchemSources): Part {
   const blocks = fin(src.progress?.blocks);
   p.metrics.push(
     { label: tr('Эхлээгүй блок (<1%)'), value: stalled, kind: 'count' },
-    /* ⚠️ 2026-09-25: «Нийт блок» БИШ — `progress.blocks` нь зөвхөн нийт гүйцэтгэл нь
-       тайлагнагдсан блок (`blockProgress.ts`), `stalled` ч тэдгээрээс тоологдоно.
-       Тиймээс харьцаа нь «тайлагнасан блокийн хэдэн хувь ЭХЛЭЭГҮЙ (<1%) вэ» (2026-09-30). */
-    { label: tr('Тайлагнасан блок'), value: blocks, kind: 'count' },
+    /* ⚠️ 2026-10-04: `progress.blocks` нь бөглөх хуудасны БҮХ блок, `stalled` ч тайлангүй блокийг
+       (0%) оруулж тоологдоно (`reportData.loadProgress`) — харьцаа нь «нийт блокийн хэдэн хувь
+       ЭХЛЭЭГҮЙ (<1%) вэ». Урьд нь хоёулаа зөвхөн тайлагнасан блокоос байв (2026-09-25/30). */
+    { label: tr('Нийт блок'), value: blocks, kind: 'count' },
     {
       label: tr('Эхлээгүйн эзлэх хувь'),
       value: stalled != null && blocks != null && blocks > 0 ? (stalled / blocks) * 100 : null,

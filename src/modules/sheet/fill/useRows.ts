@@ -15,7 +15,7 @@ import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
  *    `addedKeyOf`) үлдэнэ. `submitAjil`/`withdrawAjil`/`decideAjil` импортлохгүй.
  */
 import { loadAddedKeys as loadAjilAddedKeys, addedKeyOf, type AddedKey } from '@/lib/ajilBatlah';
-import { loadBlockProgress } from "@/lib/blockProgress";
+import { loadBlockProgress, loadBlockUniverse } from "@/lib/blockProgress";
 import { useAsync } from "@/lib/useAsync";
 import { bagtsKey, isConstructionNo } from "@/lib/services";
 import { inputToMs, type Calc, type SheetView } from "./util";
@@ -389,8 +389,10 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
    *
    * ⚠️ БЛОКУУДЫН ДУНДАЖ — «Багцын гүйцэтгэл» дэлгэцийн дүрэмтэй ИЖИЛ
    *    (`blockProgress`), тиймээс хоёр дэлгэц нэг тоо харуулна.
-   * ⚠️ Хэмжигдээгүй блок (`null`) тоологдохгүй — 0 гэж авбал бөглөж
-   *    эхлээгүй блокууд багцын хувийг зохиомлоор доошлуулна.
+   * ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): ХУВААРЬ = хуудасны
+   *    БҮХ блок (`nBld`), хэмжигдээгүй блок 0%. Урьд нь «Хэмжигдээгүй блок тоологдохгүй» байсан
+   *    тул 12 блокийн 1-д 100% бөглөхөд хуудас «100%» гэж харагдаж, «Багцын гүйцэтгэл»
+   *    (`pkgProgressOf` — бүх блокоор) дэлгэцээс зөрдөг байв. `blocks` нь шошгонд хэмжигдсэн тоо.
    */
   /**
    * НӨГӨӨ ХУВИЛБАРЫН (9F ↔ 12F) БАТЛАГДСАН ГҮЙЦЭТГЭЛ.
@@ -412,6 +414,9 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
   /* ⚠️ Кэшлэгдсэн: газрын зураг, дашбоард ижил дуудлагыг хуваалцана. */
   const bpQ = useAsync(loadBlockProgress, []);
   const bp = bpQ.state === 'ready' ? bpQ.data : null;
+  /* ⚠️ 2026-10-04: нөгөө хувилбарын БҮХ блок (тайлангүй 0%) — `pkgProgressOf`-ийн хуваарь */
+  const uniQ = useAsync(loadBlockUniverse, []);
+  const uni = uniQ.state === 'ready' ? uniQ.data : null;
 
   const otherPct = useMemo(() => {
     const others = pkgFloors(pkg.group).filter((x) => x.key !== pkg.key);
@@ -419,17 +424,23 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     const g = bagtsKey(pkg.group);
     /* ЭНЭ хуудасны блокууд — нөгөөгийнхийг ялгахад хэрэгтэй */
     const mine = new Set((sc?.bld ?? []).map((x) => String(x).trim()));
+    /* ⚠️ 2026-10-04: хуваарь = нөгөө хувилбарын БҮХ блок (бүдүүвч ∪ хэмжилт), тайлангүй 0% */
+    const keys = new Set<string>((uni?.get(g) ?? []).filter((k) => k.startsWith(`${g}|`)));
+    for (const key of bp.keys()) if (key.startsWith(`${g}|`)) keys.add(key);
     let sum = 0;
     let n = 0;
-    for (const [key, cell] of bp) {
-      if (!key.startsWith(`${g}|`)) continue;
+    let all = 0;
+    for (const key of keys) {
       const blok = key.slice(g.length + 1);
       if (mine.has(blok)) continue;
+      all += 1;
+      const cell = bp.get(key);
+      if (cell == null || !Number.isFinite(cell.overall)) continue;
       sum += cell.overall; n += 1;
     }
-    if (!n) return null;
-    return { pct: sum / n, blocks: n, label: `${others[0].floors}F` };
-  }, [bp, pkg.group, pkg.key, sc]);
+    if (!all) return null;
+    return { pct: sum / all, blocks: n, label: `${others[0].floors}F` };
+  }, [bp, uni, pkg.group, pkg.key, sc]);
 
   const pkgPct = useMemo(() => {
     if (!nBld || !rowsAll.length) return null;
@@ -437,13 +448,12 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     if (bi < 0) return null;
     const avg = (c: ReturnType<typeof computeAll>) => {
       let s = 0;
-      let n = 0;
       for (let b = 0; b < nBld; b += 1) {
         const v = c[bi]?.act[b];
-        if (v == null) continue;
-        s += v; n += 1;
+        if (v != null) s += v;
       }
-      return n ? (s / n) * 100 : null;
+      /* ⚠️ 2026-10-04: хуваарь = БҮХ блок (`nBld`) — тайлангүй блок 0% (дээрх ⚠️) */
+      return (s / nBld) * 100;
     };
     /** Хэмжигдсэн блокийн тоо — шошгонд «12 блок» гэж бичнэ */
     let blocks = 0;

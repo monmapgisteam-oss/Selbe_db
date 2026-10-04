@@ -29,7 +29,7 @@ import { tokenQs } from '@/lib/authToken';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
-import { Section, Bars, Series, Loading, Empty } from '@/components/ui';
+import { Section, Bars, Series, Loading, Empty, friendlyError } from '@/components/ui';
 import { num, date, text, dayKey, pct } from '@/lib/format';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
 import h from './habea.module.css';
@@ -742,7 +742,7 @@ export function useUzleg(kind: UzlegKind | null): State {
         if (alive) {
           setSt({ kind, st: {
             state: 'error',
-            message: e instanceof Error ? e.message : String(e),
+            message: friendlyError(e), // ⚠️ 2026-10-04: серверийн англи мөр монгол мессеж дотор гардаг байв
             retry: () => setTries((n) => n + 1),
           } });
         }
@@ -1032,7 +1032,7 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
   if (q.state === 'error') {
     return (
       <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
-        <Empty label={tr('Зураг татагдсангүй: {0}', q.error.message)} />
+        <Empty label={tr('Зураг татагдсангүй: {0}', friendlyError(q.error))} />
         {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
       </div>
     );

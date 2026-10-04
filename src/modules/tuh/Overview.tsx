@@ -230,7 +230,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
           <span className={s.statValue}>{mnt(m.paid.total)}</span>
           <span className={s.statNote}>
             {tr('{0} IPC · {1} гэрээний', num(m.paid.ipcCount), pct(m.paid.pct))}
-            {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — «IPC» хуудастай ижил тусад нь (`ipcTotals.paidOther`) */}
+            {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — `paidShare.paidOther` (олгосон − гэрээлсэн багцын олголт; 2026-10-04: удирдлагын тайлангийн `givenOther`-той нэг тодорхойлолт, нэг шошго) */}
             {m.paid.other != null && m.paid.other !== 0 && <> · {tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', mnt(m.paid.other))}</>}
           </span>
         </div>

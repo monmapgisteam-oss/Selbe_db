@@ -69,7 +69,7 @@ export function FilterBar({
             }}
           >
             {groupOpts.map((g) => (
-              <option key={g} value={g}>{g}</option>
+              <option key={g} value={g}>{tr(g)}</option>
             ))}
           </select>
         </label>
@@ -195,9 +195,11 @@ export function FilterBar({
 }
 
 /** «Илгээх» / «Дуусгасан» / «Дахин засах» — нэг байрлалд нэг товч */
-export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, dirtyCount, iAmDone, toggleDone, waitingOn }: {
+export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, dirtyCount, iAmDone, toggleDone, waitingOn, resendAsIs }: {
   locked: boolean; canSubmitNow: boolean; publish: () => Promise<void>; busy: boolean; noEdit: boolean;
   dirtyCount: number; iAmDone: boolean; toggleDone: () => Promise<void>; waitingOn: string[];
+  /** ⚠️ 2026-10-04: буцаагдсан илгээлтийг ӨӨРЧЛӨЛТГҮЙ дахин илгээх (`FillNew.resendAsIs`) — засваргүй үед л */
+  resendAsIs?: () => void;
 }) {
   return (
     <>
@@ -218,14 +220,16 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
           canSubmitNow ? (
         <button
           className={st.publishBtn}
-          onClick={publish}
+          /* ⚠️ 2026-10-04: засваргүй (`dirtyCount === 0`) ч БУЦААГДСАН илгээлтийг хэвээр нь дахин
+             илгээж болно (хянагч алдаатай буцаасан г.м.) — урьд нь товч саарал тул гацдаг байв. */
+          onClick={dirtyCount === 0 && resendAsIs ? resendAsIs : publish}
           /* ⚠️ `inReview` НЬ ЭНД БАЙХАА БОЛИВ (2026-09-07, хэрэглэгч: «хэдэн ч
              удаа илгээх боломжтой болго»). Хянагдаж байгаа нь товчийг
              ХААХГҮЙ; өдөр бүр тусдаа `sub|<pkg>|<fillMs>` мөртэй тул өөр
              өдрийн агуулга хөндөгдөх боломжгүй, ЯГ энэ өдрийнхийг дахин
              илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
              Мэдэгдэл нь доорх `lockNote`-оор гарна. */
-          disabled={busy || noEdit || dirtyCount === 0}
+          disabled={busy || noEdit || (dirtyCount === 0 && !resendAsIs)}
           title={tr('Илгээлтийг завсрын хадгалалтад хадгалж хяналтад оруулна — үндсэн өгөгдөлд газрын дарга баталсны дараа л орно (Ctrl+S)')}
         >
           {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
@@ -234,7 +238,7 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
               баталсны дараа л бичигдэнэ. «Нийтлэх» гэсэн нэр нь «тоо маань
               одоо албан ёсоор орлоо» гэж ойлгогдож, бөглөгч хяналтыг
               хүлээхгүй өнгөрөх төөрөгдөл үүсгэж байв. */}
-          {tr('Илгээх')}{dirtyCount ? ` (${dirtyCount})` : ""}
+          {dirtyCount === 0 && resendAsIs ? tr('Өөрчлөлтгүй дахин илгээх') : <>{tr('Илгээх')}{dirtyCount ? ` (${dirtyCount})` : ""}</>}
         </button>
           ) : (
         <button
@@ -286,12 +290,16 @@ export function Participants({ participants, byCount, doneBy }: {
 }
 
 /** Инженерийн төлөвлөсөн обьёмын товчнууд ба мэдэгдэл */
-export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote, pvReturned = null }: {
+export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote, pvReturned = null, withdrawObyemHere, me = '' }: {
   canObyemEdit: boolean; pvSub: ObyemT['pvSub']; pvCells: ObyemT['pvCells']; sendObyem: ObyemT['sendObyem'];
   pvBusy: boolean; canObyemApprove: boolean; locked: boolean; decideObyemHere: ObyemT['decideObyemHere'];
   pvErr: string; pvNote: string;
   /** ⚠️ 2026-10-01: сүүлийн шийдвэр нь БУЦААЛТ бол тэр илгээлт (`useObyem.pvReturned`) */
   pvReturned?: ObyemT['pvReturned'];
+  /** ⚠️ 2026-10-04: зохиогч өөрийн хүлээгдэж буй илгээлтийг татаж авна (`useObyem.withdrawObyemHere`) */
+  withdrawObyemHere?: ObyemT['withdrawObyemHere'];
+  /** Нэвтэрсэн хэрэглэгч — «Татаж авах» товчийг зөвхөн зохиогчид */
+  me?: string;
 }) {
   return (
     <>
@@ -327,6 +335,13 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             {tr('Обьём батлуулахаар илгээгдсэн: {0} нүд · {1}', String(pvSub.cellCount), pvSub.author)}
           </span>
         )}
+        {/* ⚠️ 2026-10-04: ӨӨРИЙН хүлээгдэж буй илгээлтээ татаж авах — батлагч ирэхгүй бол гацдаг байв.
+            Дүрэм (зөвхөн зохиогч · зөвхөн pending) lib-д дахин шалгагдана. */}
+        {pvSub && withdrawObyemHere && canObyemEdit && !locked && me && pvSub.author.trim().toLowerCase() === me.trim().toLowerCase() && (
+          <button className={st.layerBtn} onClick={() => void withdrawObyemHere()} disabled={pvBusy}>
+            {tr('Илгээлтээ татаж авах')}
+          </button>
+        )}
 
         {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд.
             ⚠️ ХЯНАЛТЫН ХАРАГДАЦАД (`locked`) ХАРАГДАХГҮЙ (2026-09-25-ны аудит):
@@ -337,7 +352,11 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
           <>
             <button
               className={st.publishBtn}
-              onClick={() => void decideObyemHere(true)}
+              onClick={() => {
+                /* ⚠️ 2026-10-04: баталгаажуулалт — батлахад утга ШУУД үндсэн өгөгдөлд бичигдэнэ */
+                if (!window.confirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', String(pvSub.cellCount)))) return;
+                void decideObyemHere(true);
+              }}
               disabled={pvBusy}
               title={tr('Батлаад үндсэн өгөгдөлд бичнэ')}
             >
@@ -427,12 +446,17 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
 }
 
 /** Нооргийн байдал — ногоон тоолуур · устгах · хадгалсан агшин · ArcGIS */
-export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false }: {
+export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false }: {
   locked: boolean; dirtyCount: number; noPerf: boolean; dropDraft: () => void; savedAt: number | null; remoteState: RemoteState;
   /** ⚠️ 2026-10-01: ноорог сэргээж байна — нүд түгжээтэй (`useDraftSync.restoringUi`) */
   restoring?: boolean;
   /** ⚠️ 2026-10-01: хөтөч сүлжээгүй — ноорог зөвхөн энэ төхөөрөмжид */
   offline?: boolean;
+  /**
+   * ⚠️ 2026-10-04 аудит (#9): ЛОКАЛ хадгалалт УНАСАН (сан дүүрсэн/хаалттай, `useDraftSync.localFail`) —
+   * урьд нь алдааг залгиж «ноорог хадгалагдав» гэж ХУДАЛ баталдаг байв.
+   */
+  localFail?: boolean;
 }) {
   return (
     <>
@@ -473,7 +497,12 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             байдгийг ил хэлнэ — «хадгалагдсан» гэдгийг «илгээгдсэн» гэж
             ойлговол хэрэглэгч Нийтлэх дарахгүй өнгөрч, ажил нь хянагчид
             хүрэхгүй үлдэнэ. */}
-        {!locked && savedAt != null && dirtyCount > 0 && (
+        {!locked && localFail && dirtyCount > 0 && (
+          <span className={st.autosaveWarn} role="alert">
+            {tr('Ноорог энэ хөтчид хадгалагдсангүй (сан дүүрсэн эсвэл хаалттай) — зөвхөн ArcGIS-д хуулагдана. Таб хаахаас өмнө «Илгээх» дарах эсвэл хөтчийн сан чөлөөлнө үү.')}
+          </span>
+        )}
+        {!locked && savedAt != null && dirtyCount > 0 && !localFail && (
           <span
             className={st.autosave}
             /* ⚠️ Тайлбар нь ҮНЭН байх ёстой: ноорог одоо ArcGIS руу ч

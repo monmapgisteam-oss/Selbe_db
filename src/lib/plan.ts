@@ -122,7 +122,9 @@ export const endOf = (start: number, days: number): number =>
  * ⚠️ ГУРВАН ГАДАРГУУ НЭГ ТОМЪЁО: `bagtsSheet.planAt` (огноогоор шугаман),
  *    `huvaariObyem.planPctFromMonths` (сарын цонх = сар ∩ ажлын муж) — хоёулаа
  *    үүнийг дууддаг. Тусад нь бичвэл бөглөх хуудас ба муруй чимээгүй зөрнө.
- * ⚠️ Урвуу муж (end < start) унагаахгүй — эхлэхийг давсан бол 1, эс бөгөөс 0.
+ * ⚠️ Урвуу муж (end < start) унагаахгүй — эхлэхийг давсан бол 1, эс бөгөөс 0 (математик
+ *    аюулгүй байдал). ⚠️ 2026-10-04: ТӨЛӨВЛӨГӨӨНИЙ зам (`bagtsSheet.planAt` → хуудас, муруй) урвуу
+ *    мужийг ЭНД ИРҮҮЛЭХГҮЙ — хуваарьгүй (`null`) гэж үзнэ; тоо нь `coverageOf().reversed`.
  */
 export function spanFrac(s: Span, asOf: number): number {
   const t = Math.floor(asOf / DAY) * DAY + DAY;
@@ -176,11 +178,16 @@ export type Coverage = {
    * хүнд үлдээнэ.
    */
   patterns: number;
+  /**
+   * ОГНОО УРВУУ (дуусах < эхлэх) блоктой АЖЛЫН тоо (2026-10-04). Ийм муж төлөвлөгөөт хувь ба
+   * муруйд ХУВААРЬГҮЙ гэж тооцогдоно (`bagtsSheet.planAt`) — «Хуваарь»-ийн toolbar анхааруулна.
+   */
+  reversed: number;
 };
 
 export function coverageOf(rows: readonly PlanRow[]): Coverage {
   const n = rows[0]?.spans.length ?? 0;
-  let tasks = 0, planned = 0, filled = 0;
+  let tasks = 0, planned = 0, filled = 0, reversed = 0;
   let from: number | null = null;
   let to: number | null = null;
   const sig = new Set<string>();
@@ -188,6 +195,7 @@ export function coverageOf(rows: readonly PlanRow[]): Coverage {
     if (r.group) continue;
     tasks += 1;
     let any = false;
+    if (r.spans.some((s) => s != null && s.end < s.start)) reversed += 1;
     for (const s of r.spans) {
       if (!s) continue;
       any = true;
@@ -200,5 +208,5 @@ export function coverageOf(rows: readonly PlanRow[]): Coverage {
       sig.add(r.spans.map((s) => (s ? `${s.start}:${s.end}` : '-')).join('|'));
     }
   }
-  return { tasks, planned, cells: tasks * n, filled, from, to, patterns: sig.size };
+  return { tasks, planned, cells: tasks * n, filled, from, to, patterns: sig.size, reversed };
 }

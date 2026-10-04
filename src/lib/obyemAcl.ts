@@ -38,7 +38,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
-import { obyemUpsert, obyemRemove } from './permsRemote';
+import { obyemUpsert, obyemRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 
 export { ALL_BAGTS };
@@ -57,6 +57,8 @@ const acl = makeAcl<ObyemRole>({
   roleCaps: ROLE_CAPS.obyem,
   push: (user, roles, bagts, grants) => obyemUpsert(user, roles, bagts, grants),
   remove: obyemRemove,
+  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
+  read: (user) => scopedRead('obyem', user),
   msg: {
     noUser: 'Аккаунтын нэрээ бичнэ үү',
     superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',

@@ -4,6 +4,7 @@
  *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
  */
 import type { NewRow } from "@/lib/submission";
+import { fmtInc, parseInc } from "../bagtsSheet";
 
 // ── Нийтлээгүй засварын НООРОГ (localStorage) ──
 // «Гүйцэтгэл бөглөх» (Pivot)-ын хамгаалалттай ижил зорилго: таб санамсаргүй
@@ -158,7 +159,292 @@ export type Draft = {
    *    хэвээр хэрэглэнэ (батлагдсан `ajilOid` мөр хөндөгдөхгүй, 7 хоног).
    */
   sent?: [number, number][];
+  /**
+   * МӨРИЙН ДАВТАМЖИЙН ДУГААР — `[oid, k, n]` (2026-10-04 аудит, #2; `sheetFrame.RowOcc`).
+   * ⚠️ `rowKeys`-ийн «№ ¦ Ажил» шошго жаазны 60.5%-д давхардсан тул ганцаараа мөрийг
+   *    ялгахгүй — сэргээх зөөлт (`pickDraft`-ийн `oidFix`) ХӨНДСӨН мөрүүдийн сийрэг
+   *    жагсаалтын k дахийг ХУУДАСНЫ k дахь нэрийдэлд буулгаж, ӨӨР мөрөнд бичдэг байв.
+   *    Хадгалах эффект ХУУДАСНЫ БҮХ мөрөөр бодож бичнэ. Сонголттой — хуучин ноорогт
+   *    байхгүй үед `mapOldOids` хоёрдмол түлхүүрийг ЗӨӨХГҮЙ (хадгалж, анхааруулна).
+   */
+  rowOcc?: [number, number, number][];
+  /**
+   * ИЛГЭЭЛТИЙН БАРИМТ (receipt) — `[түлхүүр, илгээсэн агшин a, илгээсэн утга sv,
+   * илгээсэн хуулбарын сүүлд хөндсөн агшин sa]` (2026-10-04 аудит, #4 · #1 · #3).
+   *
+   * ⚠️ ЯАГААД: нэмэлтийн горимд илгээсэн нүд нь ДАРААГИЙН илгээлтэд дахин орвол ДАВХАР
+   *    тоологдоно. Урьд нь `del`-ийн агшин = илгээсэн нүдний ӨӨРИЙН агшин байсан тул
+   *    тэрнээс хойш (илгээлтийн уралдааны цонхонд) засагдсан хуулбар (Б: 5 → 8) БҮТНЭЭРЭЭ
+   *    үлдэж, 5 + 8 = 13 болж батлагддаг байв; харин илгээх агшнаар tombstone тавибал Б-гийн
+   *    засвар (+3) чимээгүй алга болно. Баримт нь «юу илгээгдсэн»-ийг хадгалж, хуулбар
+   *    бүрийг ХАРЬЦУУЛЖ шийднэ (`rcptApply`): илгээсэн хувилбар/өвөг → хасна; илгээлтээс
+   *    ӨМНӨХ мөчрөөс үргэлжилсэн засвар → ЗӨРҮҮ (`v − sv`) болгож анхааруулна (`conv`);
+   *    баримтыг ХАРСНЫ ДАРАА бичсэн (`bt ≥ a`) → шинэ нэмэлт, хөндөхгүй.
+   * ⚠️ ЗӨРҮҮ нь ДУТУУ тоолох талдаа (давхардуулахгүй): хоёр хүн ижил нүдэнд хамт бичсэн
+   *    тохиолдолд ч хамгийн муудаа ДУТУУ — ил харагдаж засагдана; давхардал нь албан
+   *    тайланд чимээгүй орно.
+   * ⚠️ `del`-ийг ОРЛОХГҮЙ — хуучин клиент `del`-ээр л ажиллана; шинэ клиент тухайн
+   *    түлхүүрт баримт байвал ердийн `del` дүрмийг АЛГАСНА. 7 хоногт (`DEL_TTL_MS`) хуучирна.
+   * ⚠️ 2026-10-04 дахин аудит (#2, HIGH): ДАМЖУУЛАХ хэлбэр нь ШАХСАН (`RcptGroup` — илгээлт
+   *    бүр (`a`) → мөр бүр (oid, ижил агуулгатай НЭРЛЭЛТ oid-ууд) → `[дагавар, sv, a − sa]`).
+   *    Урьд нь түлхүүр бүрд `[түлхүүр, a, sv, sa]` (~45 тэмдэгт) + `del` (~27) бичигдэж, жааз
+   *    солигдсон бол ХОЁР ДАХИН (хуучин + шинэ түлхүүр) — 1,500 нүдний илгээлтийн дараах ноорог
+   *    `REMOTE_MAX`-аас хэтэрч алсад ОГТ бичигдэхгүй (`big`), алсад илгээлтээс ӨМНӨХ нүднүүд
+   *    баримтгүй үлдэж өөр оролцогч ДАХИН илгээх (давхар тоолол) байв. Хавтгай `Rcpt` (хуучин
+   *    хэлбэр) ч уншигдана (`unpackRcpt`); санах ойд үргэлж хавтгай.
+   */
+  rcpt?: RcptWire;
+  /**
+   * ТЭМДЭГЛЭСЭН (буулгаагүй) НҮД — `[түлхүүр, тэмдэглэсэн агшин, албадах 0|1]` (2026-10-04
+   * дахин аудит, #7 · #3).
+   * ⚠️ ЯАГААД: хоёрдмол (#2) · серверт өөрчлөгдсөн (#8) · хуучирсан нүдийг «устгахгүй,
+   *    анхааруулна» гэсэн шийдвэр нь урьд нь ЗӨВХӨН локалд (нийлүүлж бичих замаар) МӨНХӨД
+   *    үлдэж, хоосон ноорогийн цэвэрлэгээг хааж, анхааруулга нь давтагддаг; алсад нь
+   *    тогтворгүй (уншилтгүй бичилт дарж арчдаг) байв. Одоо ТАБЫН төлөвт (`heldRef`) хадгалагдаж
+   *    ноорогт (локал + алс) ТОГТВОРТОЙ бичигдэнэ; `DEL_TTL_MS`-ийн дараа (тэмдэглэснээс хойш)
+   *    tombstone-той хаягдана; «Тэмдэглэсэн нүдийг хаях» товч зөвхөн тэднийг хаяна.
+   * ⚠️ `албадах = 1` (#3): 7 хоногоос хуучин, АЛСАД ХУУЛАГДААГҮЙ локал хуулбарын нүд — баримт
+   *    (`rcpt`) нь аль хэдийн хуучирсан байж болох тул ЯМАР Ч клиент автоматаар сэргээхгүй
+   *    (илгээгдсэн бол ДАВХАР тоологдоно). Түүнээс хожуу хөндсөн хуулбар (`byAt` > агшин) тэмдгийг
+   *    дарна.
+   */
+  hold?: [string, number, 0 | 1][];
+  /**
+   * ХУУЛБАРЫН СУУРЬ БАРИМТ — `түлхүүр → тэр хуулбарыг бичихэд бичигчийн ХАРСАН хамгийн
+   * сүүлийн баримтын агшин` (2026-10-04, `rcpt`-ийн ⚠️). `bt ≥ a` = баримтаас ХОЙШ бичсэн.
+   * ⚠️ Нийлүүлэхэд ЯЛСАН хуулбарын `bt` дагана (`by`-тай ижил).
+   */
+  bt?: [string, number][];
+  /** Баримтаар ЗӨРҮҮ болгосон нүд — `[түлхүүр, баримтын агшин]` (зөвхөн анхааруулахад, `rcpt`-ийн ⚠️) */
+  conv?: [string, number][];
+  /**
+   * ЗАСВАРЫН ЗОРИЛТОТ ИЛГЭЭЛТ — `[буцаагдсан илгээлтийн OBJECTID, түүний fillMs]` эсвэл
+   * `null` (= өнөөдрийн илгээлт), 2026-10-04 аудит (#6).
+   * ⚠️ ЯАГААД: «буцаагдсан илгээлтийг засаж дахин илгээх» (`resumedOid`) нь ЗӨВХӨН React
+   *    төлөв байсан тул F5/багц солиход тэглэгдэж, засвар нь ӨНӨӨДРИЙН илгээлтэд нийлж
+   *    буруу өдрөөр (буцаагдсан илгээлт нээлттэй хэвээр) явдаг байв. Одоо зорилт ноорогт
+   *    хамт хадгалагдаж, таарахгүй бол «Илгээх» ТҮГЖИГДЭНЭ (хэрэглэгч сонгоно).
+   * ⚠️ 2026-10-04 дахин аудит (#4, MED-HIGH): ХЭРЭГЛЭГЧ ТУС БҮРЭЭР — `[нэр, OBJECTID, fillMs,
+   *    агшин]`, OBJECTID = 0 бол «цэвэрлэсэн». Урьд нь ганц `[OBJECTID, fillMs]` нь хадгалалт
+   *    бүрд (татаж авсан бусдын нүдээр ч) бичигдэж, нэг хүний буцаагдсан тойрог БҮХ оролцогчийн
+   *    «Илгээх»-ийг түгждэг байв. Одоо түгжээ зөвхөн ЭЗЭНД; нийлүүлэлт хүн бүрд агшин их нь ялна.
+   */
+  tgt?: [string, number, number, number][];
+  /**
+   * «ШИНЭЧЛЭГДСЭН ОГНОО»-НЫ СУУРЬ — `asOf`-ыг анх өөрчлөх үеийн СЕРВЕРИЙН утга
+   * (2026-10-04 аудит, #8). Сэргээхэд серверийн утга ӨӨР болсон бол (хооронд нь өөр хүн
+   * илгээж батлуулсан) ноорогийн хуучин ҮНЭМЛЭХҮЙ утгаар ДАРАХГҮЙ — анхааруулна.
+   */
+  asOfB?: number | null;
+  /** Хуваарийн огнооны СУУРЬ — `түлхүүр → анх засах үеийн серверийн 'YYYY-MM-DD'` (`asOfB`-тэй ижил, #8) */
+  datesB?: [string, string][];
 };
+
+/**
+ * БАРИМТЫН ДҮРЭМ — нэг хуулбар (`v` утга, `w` агшин, `bt` суурь баримт) ба илгээлтийн
+ * баримт `r` (`Draft.rcpt`-ийн ⚠️). Буцаана: `null` = хасах; мөр = үлдэх утга (хөрвүүлсэн
+ * байж болно). 2026-10-04 аудит (#4).
+ *   · `bt ≥ a` — баримтыг харсны дараа бичсэн → ХЭВЭЭР;
+ *   · агшингүй, `w ≤ sa` (илгээсэн хувилбар/өвөг) эсвэл `v === sv` → ХАСНА;
+ *   · огноо (ҮНЭМЛЭХҮЙ) — хожуу засвар нь хүчинтэй утга → ХЭВЭЭР;
+ *   · нэмэлт — `v − sv` (тэг бол хасна); `=` угтвартай (хуучин НИЙТ) утга нь `pickDraft`-д
+ *     ОДООГИЙН суурьтай (илгээлт давхарласан) жишигдэх тул ХЭВЭЭР; задрахгүй бол ХЭВЭЭР.
+ * ⚠️ ЦЭВЭР функц — `mergeDrafts` ба `pickDraft` (зөөсөн түлхүүр) НЭГ дүрмээр.
+ */
+/** Илгээлтийн баримт — `[түлхүүр, a, sv, sa]` (`Draft.rcpt`) */
+export type Rcpt = [string, number, string, number];
+export function rcptApply(
+  v: string, w: number | undefined, bt: number, r: Rcpt, isDate: boolean,
+): string | null {
+  const [, a, sv, sa] = r;
+  if (bt >= a) return v;
+  if (w == null || w <= sa || v === sv) return null;
+  if (isDate) return v;
+  if (v.startsWith('=')) return v;
+  const x = parseInc(v);
+  const y = parseInc(sv);
+  if (!x || !y) return v;
+  const s = fmtInc({ n: x.n - y.n, p: x.p - y.p });
+  return s === '' ? null : s;
+}
+/**
+ * ИЛГЭЭГДСЭН нүдийг ЭНЭ ТАБЫН төлөвөөс хасна (2026-10-04 аудит, #3 · #4) — `rcptApply`-ийн
+ * «баримтаас өмнөх мөчир» дүрэм: утга нь илгээснээс ялгаагүй → хасна; ялгаатай → ЗӨРҮҮ
+ * (`v − sv`, тэг бол хасна; огноо — хэвээр). `conv` — зөрүү болгосон түлхүүрүүд (анхааруулахад).
+ * ⚠️ ЦЭВЭР — оролтыг өөрчлөхгүй.
+ */
+export function rebaseSent(
+  cur: Record<string, string>, sent: readonly [string, string][],
+): { next: Record<string, string>; conv: string[] } {
+  const next = { ...cur };
+  const conv: string[] = [];
+  for (const [k, sv] of sent) {
+    const v = next[k];
+    if (v == null) continue;
+    const r = rcptApply(v, Number.POSITIVE_INFINITY, 0, [k, 1, sv, 0], isDateKey(k));
+    if (r == null) delete next[k];
+    else if (r !== v || !isDateKey(k)) { next[k] = r; conv.push(k); }
+  }
+  return { next, conv };
+}
+/** Түлхүүр огнооных уу (`${oid}:${b}:s|e`) */
+const isDateKey = (k: string) => /:[se]$/.test(k);
+/**
+ * БАРИМТЫН «ЧИМЭЭГҮЙ ХАСАЛТ» мөн үү (2026-10-04 дахин аудит, #6) — `rcptApply` `null` буцаасан
+ * атлаа хуулбар нь илгээсэн хувилбараас ХОЖУУ (`w > sa`) бөгөөд баримтыг ХАРААГҮЙ (`bt < a`)
+ * бичигчийнх, утга нь илгээсэнтэй ИЖИЛ. Хөрвүүлэх дүрэм хэвээр (зөрүү 0 → хасна), гэвч энэ нь
+ * «өөр хүн яг ижил тоо нэмж бичсэн» байж болох тул ИЛ анхааруулна (`conv`) — урьд нь
+ * `v2 !== v` үед л анхааруулдаг тул чимээгүй алга болдог байв.
+ */
+export const rcptSilentDrop = (v: string, w: number | undefined, bt: number, r: Rcpt): boolean =>
+  bt < r[1] && w != null && w > r[3] && v === r[2];
+
+/**
+ * ИЛГЭЭЛТИЙН БАРИМТЫН ШАХСАН БҮЛЭГ (дамжуулах хэлбэр, `Draft.rcpt`-ийн ⚠️ #2):
+ * `[a, [[oid, [нэрлэлт oid…], [[дагавар, sv, a − sa]…]]…]]`. Дагавар = түлхүүрийн `:`-ийн
+ * дараах хэсэг (`"3"`, `"3:s"`). Нэрлэлт oid — ИЖИЛ агуулгатай өөр мөр (жааз солигдоход
+ * хуучин + шинэ түлхүүр — урьд нь бүтэн давхар бичигддэг байв).
+ */
+export type RcptGroup = [number, [number, number[], [string, string, number][]][]];
+/** `Draft.rcpt`-ийн элемент — шахсан бүлэг эсвэл хуучин хавтгай `Rcpt` */
+export type RcptWire = (RcptGroup | Rcpt)[];
+/**
+ * Дамжуулах хэлбэр → хавтгай баримтууд. ⚠️ ТЭСВЭРТЭЙ: эвдэрсэн элементийг л хаяна (`parseDraft`-ийн
+ * дүрэм); хуучин хавтгай `[түлхүүр, a, sv, sa]` ч хүлээж авна.
+ */
+export function unpackRcpt(w: unknown): Rcpt[] {
+  const out: Rcpt[] = [];
+  if (!Array.isArray(w)) return out;
+  for (const e of w) {
+    if (!Array.isArray(e)) continue;
+    if (typeof e[0] === 'string') {
+      if (Number.isFinite(e[1]) && typeof e[2] === 'string' && Number.isFinite(e[3])) out.push([e[0], e[1], e[2], e[3]]);
+      continue;
+    }
+    const a = e[0];
+    if (!Number.isFinite(a) || !Array.isArray(e[1])) continue;
+    for (const g of e[1] as unknown[]) {
+      if (!Array.isArray(g) || !Number.isInteger(g[0]) || !Array.isArray(g[1]) || !Array.isArray(g[2])) continue;
+      const oids = [g[0] as number, ...(g[1] as unknown[]).filter((x): x is number => Number.isInteger(x))];
+      for (const it of g[2] as unknown[]) {
+        if (!Array.isArray(it) || typeof it[0] !== 'string' || typeof it[1] !== 'string' || !Number.isFinite(it[2])) continue;
+        for (const o of oids) out.push([`${o}:${it[0]}`, a, it[1], a - (it[2] as number)]);
+      }
+    }
+  }
+  return out;
+}
+/**
+ * Хавтгай баримтууд → дамжуулах хэлбэр (`RcptGroup`). ⚠️ АЛДАГДАЛГҮЙ: ижил илгээлтийн (`a`)
+ * доторх ЯГ ижил агуулгатай мөрүүдийг нэрлэлт болгон нэгтгэнэ — задлахад тэр хэвээр ижил
+ * баримтууд гарна (санамсаргүй давхцал ч ялгаагүй). `${oid}:`-гүй түлхүүр хавтгайгаараа үлдэнэ.
+ */
+export function packRcpt(list: Iterable<Rcpt>): RcptWire {
+  const byA = new Map<number, Map<number, [string, string, number][]>>();
+  const flat: Rcpt[] = [];
+  for (const r of list) {
+    const c = r[0].indexOf(':');
+    const o = c > 0 ? Number(r[0].slice(0, c)) : NaN;
+    if (!Number.isInteger(o)) { flat.push(r); continue; }
+    let m = byA.get(r[1]);
+    if (!m) { m = new Map(); byA.set(r[1], m); }
+    const items = m.get(o) ?? [];
+    items.push([r[0].slice(c + 1), r[2], r[1] - r[3]]);
+    m.set(o, items);
+  }
+  const out: RcptWire = [];
+  for (const a of [...byA.keys()].sort((x, y) => x - y)) {
+    const m = byA.get(a) ?? new Map<number, [string, string, number][]>();
+    const sig = new Map<string, [number, number[], [string, string, number][]]>();
+    const groups: [number, number[], [string, string, number][]][] = [];
+    for (const o of [...m.keys()].sort((x, y) => x - y)) {
+      const items = (m.get(o) ?? []).sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
+      const s = JSON.stringify(items);
+      const hit = sig.get(s);
+      if (hit) { hit[1].push(o); continue; }
+      const g: [number, number[], [string, string, number][]] = [o, [], items];
+      sig.set(s, g);
+      groups.push(g);
+    }
+    out.push([a, groups]);
+  }
+  out.push(...flat);
+  return out;
+}
+/** Хуучин жаазны баримтын хугацаа — шинэ жааз гарснаас хойш 1 хоног (`compactDraft`-ийн ⚠️) */
+export const OLD_FRAME_RCPT_TTL_MS = 24 * 3600 * 1000;
+/**
+ * Баримт АМЬД уу — `DEL_TTL_MS`-ээс хуучин бол үгүй; ХУУЧИН ЖААЗНЫ (oid < `minOid`) баримт нь
+ * `OLD_FRAME_RCPT_TTL_MS`-ээс хуучин бол үгүй (`compactDraft`-ийн ⚠️ 2). `minOid` = `null` — шалгахгүй.
+ */
+export function rcptAlive(r: Rcpt, now: number, minOid?: number | null): boolean {
+  if (now - r[1] > DEL_TTL_MS) return false;
+  if (minOid != null && now - r[1] > OLD_FRAME_RCPT_TTL_MS) {
+    const c = r[0].indexOf(':');
+    const o = c > 0 ? Number(r[0].slice(0, c)) : NaN;
+    if (Number.isInteger(o) && o >= 0 && o < minOid) return false;
+  }
+  return true;
+}
+/**
+ * АЛСАД БИЧИХИЙН ӨМНӨХ ШАХАЛТ (2026-10-04 дахин аудит, #2, HIGH) — ЦЭВЭР.
+ *   1) хуучирсан баримт (`DEL_TTL_MS`) хаягдана;
+ *   2) ХУУЧИН ЖААЗНЫ баримт (oid < одоогийн жаазны хамгийн бага oid — жааз бүр өсөх oid-той
+ *      хуулагддаг) `OLD_FRAME_RCPT_TTL_MS`-ээс хуучин бол хаягдана: тэр жааз дээрх хуулбарыг
+ *      `pickDraft` шинэ түлхүүр рүү зөөж, шинэ түлхүүрийн баримтаар шийднэ (`landMoved`);
+ *      1 хоног нь хуучин жааз дээр нээлттэй үлдсэн табын хамгаалалт;
+ *   3) БАРИМТААР ДАРАГДСАН `del` (ижил түлхүүр, баримтын `a` ≥ del-ийн агшин — шинэ клиентэд
+ *      баримт өөрөө tombstone) нь ЗӨВХӨН зай байвал (`max`-ын тал хүртэл, ШИНЭ нь эхэлж)
+ *      үлдэнэ — хуучин (баримт мэдэхгүй) клиентийн шилжилтийн хамгаалалт; том илгээлтийн
+ *      дараа хаягдана (урьд нь энэ давхардал ноорогийг `REMOTE_MAX`-аас хэтрүүлдэг байв).
+ * ⚠️ Нүд/огноог ХӨНДӨХГҮЙ — зөвхөн баримт/tombstone-ийн давхардал.
+ */
+export function compactDraft(d: Draft, opt: { max: number; minOid?: number | null; now?: number }): Draft {
+  const now = opt.now ?? Date.now();
+  const rc = unpackRcpt(d.rcpt).filter((r) => rcptAlive(r, now, opt.minOid));
+  const rcAt = new Map<string, number>();
+  for (const r of rc) if ((rcAt.get(r[0]) ?? 0) < r[1]) rcAt.set(r[0], r[1]);
+  const keep: [string, number][] = [];
+  const sup: [string, number][] = [];
+  for (const e of d.del ?? []) {
+    const a = rcAt.get(e[0]);
+    if (a != null && a >= e[1]) sup.push(e); else keep.push(e);
+  }
+  const base: Draft = { ...d, rcpt: rc.length ? packRcpt(rc) : undefined, del: keep.length ? keep : undefined };
+  if (!sup.length) return base;
+  let size = JSON.stringify(base).length + (keep.length ? 0 : 8);
+  const budget = Math.floor(opt.max / 2);
+  const add: [string, number][] = [];
+  for (const e of sup.sort((x, y) => y[1] - x[1])) {
+    const c = JSON.stringify(e).length + 1;
+    if (size + c > budget) break;
+    size += c;
+    add.push(e);
+  }
+  return add.length ? { ...base, del: [...keep, ...add] } : base;
+}
+/**
+ * 7 ХОНОГООС ХУУЧИН ЛОКАЛ НҮДИЙГ «АЛБАДАН ТЭМДЭГЛЭНЭ» (2026-10-04 дахин аудит, #3, HIGH/MED) — ЦЭВЭР.
+ * ⚠️ ЯАГААД: алсад хуулагдаагүй локал хуулбар 3 хоногийн хугацаанаас ЧӨЛӨӨЛӨГДСӨН (`readDraft`), харин
+ *    баримт/tombstone 7 хоногт хуучирдаг — 9 дэх өдөр нээхэд аль хэдийн ИЛГЭЭГДСЭН нүд «илгээгээгүй»
+ *    болж сэргэж, дахин дараалалд орж ДАВХАР тоологддог байв. Агшин (`byAt`, байхгүй бол `t`) нь
+ *    `DEL_TTL_MS`-ээс хуучин нүд ЯМАР Ч клиентэд автоматаар сэргэхгүй (`Draft.hold`, албадах = 1) —
+ *    хадгалагдаж анхааруулна, хэрэглэгч шалгаж гараар дахин бөглөнө.
+ */
+export function holdStaleLocal(d: Draft, now: number = Date.now()): Draft {
+  const at = new Map<string, number>(d.byAt ?? []);
+  const hold = new Map<string, [string, number, 0 | 1]>((d.hold ?? []).map((h): [string, [string, number, 0 | 1]] => [h[0], h]));
+  let n = 0;
+  for (const [k] of [...d.cells, ...(d.dates ?? [])]) {
+    const w = at.get(k) ?? d.t;
+    if (now - w <= DEL_TTL_MS) continue;
+    const h = hold.get(k);
+    if (h && h[2] === 1) continue;
+    hold.set(k, [k, now, 1]);
+    n += 1;
+  }
+  return n ? { ...d, hold: [...hold.values()] } : d;
+}
 /*
  * `NewRow` — нэмсэн мөрийн ГАНЦ хэлбэр `@/lib/submission`-д (2026-09-04): илгээлтийн
  * payload, `sheetFrame.insertAdds`, хянагчийн overlay бүгд түүнээс уншина. Энд
@@ -273,6 +559,31 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
     if (d.del != null && !Array.isArray(d.del)) d.del = undefined;
     /* 2026-09-24: илгээсэн тэмдэг — мөн адил, эвдэрсэн бол тэр хэсгийг л орхино. */
     if (d.sent != null && !Array.isArray(d.sent)) d.sent = undefined;
+    /* 2026-10-04 аудит: давтамж · баримт · суурь · зорилт — эвдэрсэн ЭЛЕМЕНТИЙГ л хаяна */
+    if (d.rowOcc != null) {
+      d.rowOcc = Array.isArray(d.rowOcc)
+        ? d.rowOcc.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && Number.isInteger(e[1]) && Number.isInteger(e[2]) && e[1] >= 0 && e[2] > e[1])
+        : undefined;
+    }
+    /* ⚠️ 2026-10-04 дахин аудит (#2): шахсан ба хавтгай хэлбэр хоёулаа — эвдэрсэн элементийг
+       `unpackRcpt` өөрөө алгасна; массив биш бол л хаяна. */
+    if (d.rcpt != null && !Array.isArray(d.rcpt)) d.rcpt = undefined;
+    if (d.hold != null) {
+      d.hold = Array.isArray(d.hold)
+        ? d.hold.filter((h) => Array.isArray(h) && typeof h[0] === 'string' && Number.isFinite(h[1]) && (h[2] === 0 || h[2] === 1))
+        : undefined;
+    }
+    if (d.bt != null && !Array.isArray(d.bt)) d.bt = undefined;
+    if (d.conv != null && !Array.isArray(d.conv)) d.conv = undefined;
+    if (d.datesB != null && !Array.isArray(d.datesB)) d.datesB = undefined;
+    if (d.asOfB != null && !Number.isFinite(d.asOfB)) d.asOfB = undefined;
+    /* ⚠️ 2026-10-04 дахин аудит (#4): хэрэглэгч тус бүрийн зорилт — хуучин ганц `[oid, fillMs]` хэлбэр хаягдана */
+    if (d.tgt != null) {
+      d.tgt = Array.isArray(d.tgt)
+        ? (d.tgt as unknown[]).filter((e): e is [string, number, number, number] => Array.isArray(e) && typeof e[0] === 'string'
+          && Number.isInteger(e[1]) && e[1] >= 0 && Number.isFinite(e[2]) && Number.isFinite(e[3]))
+        : undefined;
+    }
     /* ⚠️ `docs` нь хуучин ноорогийн үлдэгдэл — ЯМАР Ч хэлбэртэй байсан
        хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
     d.docs = undefined;
@@ -424,8 +735,20 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   const del = new Map<string, number>(older.del ?? []);
   for (const [k, a] of newer.del ?? []) if ((del.get(k) ?? 0) < a) del.set(k, a);
   const now = Date.now();
+  /* ⚠️ 2026-10-04 аудит (#4): ИЛГЭЭЛТИЙН БАРИМТ — хоёр талын нэгдэл (агшин их нь ялна).
+     Баримттай түлхүүрт доорх ердийн `del` дүрмийг АЛГАСНА (`rcptApply` шийднэ — `Draft.rcpt`-ийн ⚠️). */
+  const rcpt = new Map<string, [string, number, string, number]>();
+  for (const side of [older, newer]) {
+    /* ⚠️ 2026-10-04 дахин аудит (#2): шахсан/хавтгай хэлбэрийг задална (тал нь баримтгүй бол дуудахгүй — draft.check 4d) */
+    for (const r of side.rcpt ? unpackRcpt(side.rcpt) : []) {
+      const c = rcpt.get(r[0]);
+      if (!c || r[1] > c[1]) rcpt.set(r[0], r);
+    }
+  }
   for (const [k, a] of del) {
     if (now - a > 7 * 24 * 3600 * 1000) { del.delete(k); continue; }
+    const rc = rcpt.get(k);
+    if (rc && rc[1] >= a) continue;
     if (k.startsWith('a:')) {
       const o = Number(k.slice(2));
       if (!adds.has(o)) continue;
@@ -465,6 +788,94 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     for (const m of [cells, dates, by, byAt]) for (const kk of [...m.keys()]) if (kk.startsWith(pre)) m.delete(kk);
     byAt.delete(`a:${o}`);
   }
+  /*
+   * ⚠️ 2026-10-04 аудит (#4): ХУУЛБАРЫН СУУРЬ БАРИМТ (`bt`) — ЯЛСАН хуулбарынх (`by`-тай
+   *    ижил: шинэ талд түлхүүр байгаа ба хуучин тал ялаагүй бол шинийх).
+   */
+  const newHas = new Set([...newer.cells.map(([k]) => k), ...(newer.dates ?? []).map(([k]) => k)]);
+  const btO = new Map<string, number>(older.bt ?? []);
+  const btN = new Map<string, number>(newer.bt ?? []);
+  const bt = new Map<string, number>();
+  for (const k of [...cells.keys(), ...dates.keys()]) {
+    const x = newHas.has(k) && !keepOld.has(k) ? btN.get(k) : btO.get(k);
+    if (x) bt.set(k, x);
+  }
+  /* ⚠️ 2026-10-04 аудит (#4): БАРИМТЫГ ХЭРЭГЖҮҮЛНЭ — илгээсэн хувилбар хасагдана, илгээлтээс
+     өмнөх мөчрийн засвар ЗӨРҮҮ болно (`conv` — анхааруулга), хөрвүүлсэн/үлдсэн хуулбар баримтыг
+     «харсан» (`bt = a`) гэж тэмдэглэгдэнэ — дахин хөрвүүлэгдэхгүй (идемпотент). 7 хоногт хуучирна. */
+  const conv = new Map([...(older.conv ?? []), ...(newer.conv ?? [])]);
+  for (const [k, r] of rcpt) {
+    if (now - r[1] > 7 * 24 * 3600 * 1000) { rcpt.delete(k); continue; }
+    const dk = isDateKey(k);
+    const m = dk ? dates : cells;
+    const v0 = m.get(k);
+    if (v0 == null) continue;
+    const v = rcptApply(v0, byAt.get(k), bt.get(k) ?? 0, r, dk);
+    if (v == null) {
+      /* ⚠️ 2026-10-04 дахин аудит (#6): илгээснээс ХОЖУУ, баримт хараагүй, ИЖИЛ утга — хасна (зөрүү 0),
+         гэвч ИЛ анхааруулна (`conv`; нүд байхгүй тул `pickDraft` «хасав» гэж хэлнэ) */
+      if (rcptSilentDrop(v0, byAt.get(k), bt.get(k) ?? 0, r)) conv.set(k, r[1]);
+      m.delete(k); by.delete(k); byAt.delete(k); bt.delete(k); continue;
+    }
+    if (v !== v0) { m.set(k, v); conv.set(k, r[1]); }
+    if ((bt.get(k) ?? 0) < r[1]) bt.set(k, r[1]);
+  }
+  /* ⚠️ 2026-10-04 дахин аудит (#6): нүдгүй (хасагдсан) тэмдэг ч баримт нь амьд бол ҮЛДЭНЭ — анхааруулгад */
+  for (const [k, a] of conv) {
+    const r = rcpt.get(k);
+    if (!r || r[1] !== a) conv.delete(k);
+  }
+  /*
+   * ⚠️ 2026-10-04 дахин аудит (#7 · #3): ТЭМДЭГЛЭСЭН НҮД (`Draft.hold`) — хоёр талын нэгдэл (анх
+   *    тэмдэглэсэн агшин, албадах нь давамгай); нүд нь алга, эсвэл тэмдэглэснээс ХОЖУУ хөндсөн
+   *    (`byAt` > агшин — шинэ засвар) бол тэмдэг арилна.
+   */
+  const hold = new Map<string, [string, number, 0 | 1]>();
+  for (const side of [older, newer]) {
+    for (const h of side.hold ?? []) {
+      const c = hold.get(h[0]);
+      hold.set(h[0], c ? [h[0], Math.min(c[1], h[1]), c[2] === 1 || h[2] === 1 ? 1 : 0] : h);
+    }
+  }
+  for (const [k, h] of [...hold]) {
+    const w = byAt.get(k);
+    if (!(cells.has(k) || dates.has(k)) || (w != null && w > h[1])) hold.delete(k);
+  }
+  /*
+   * ⚠️ 2026-10-04 дахин аудит (#4): ЗОРИЛТ ХЭРЭГЛЭГЧ ТУС БҮРЭЭР — хүн бүрд агшин (`[3]`) их нь ялна;
+   *    нэг талд л байгаа хүнийх хэвээр. Урьд нь «шинэ тал ялна» ганц утга байв.
+   */
+  const tgt = new Map<string, [string, number, number, number]>();
+  for (const side of [older, newer]) {
+    for (const e of side.tgt ?? []) {
+      const c = tgt.get(e[0]);
+      if (!c || e[3] > c[3]) tgt.set(e[0], e);
+    }
+  }
+  /* ⚠️ 2026-10-04 аудит (#8): огнооны СУУРЬ — ялсан хуулбарынх */
+  const dbO = new Map<string, string>(older.datesB ?? []);
+  const dbN = new Map<string, string>(newer.datesB ?? []);
+  const datesB = new Map<string, string>();
+  for (const k of dates.keys()) {
+    const x = newHas.has(k) && !keepOld.has(k) ? dbN.get(k) : dbO.get(k);
+    if (x != null) datesB.set(k, x);
+  }
+  /*
+   * ⚠️ 2026-10-04 аудит (#1 · #2): `rowKeys`/`rowOcc` нь ЗӨВХӨН нүд/огноонд ҮЛДСЭН oid-оор.
+   *    Урьд нь нэгдэл мөнхөд өсдөг тул ӨМНӨХ жаазны (нүдгүй болсон) танигч `oidFix`-ийн
+   *    нэрийдлийг эзэлж, зөөлтийг гулсуулдаг байв. Давтамж нь oid-оор, шинэ тал ялна.
+   */
+  const occ = new Map<number, [number, number, number]>();
+  for (const e of older.rowOcc ?? []) occ.set(e[0], e);
+  for (const e of newer.rowOcc ?? []) occ.set(e[0], e);
+  /* (Map — `draft.check` 4d нь зөвхөн `new Map<…>`-ийн төрлийг хасдаг) */
+  const liveOid = new Map<number, boolean>();
+  for (const k of [...cells.keys(), ...dates.keys()]) {
+    const o = Number(k.slice(0, k.indexOf(':')));
+    if (Number.isFinite(o)) liveOid.set(o, true);
+  }
+  for (const o of [...rowKeys.keys()]) if (!liveOid.has(o)) rowKeys.delete(o);
+  for (const o of [...occ.keys()]) if (!rowKeys.has(o)) occ.delete(o);
   return {
     t: newer.t,
     /* ⚠️ Горим (2026-09-25) — дээрх тэмдэглэлийн дараа хоёр тал ИЖИЛ горимтой */
@@ -489,6 +900,16 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     byAt: byAt.size ? [...byAt] : undefined,
     del: del.size ? [...del] : undefined,
     sent: sent.size ? [...sent] : undefined,
+    /* 2026-10-04 аудит — давтамж · баримт · суурь · зорилт (тайлбар нь `Draft`-д) */
+    rowOcc: occ.size ? [...occ.values()].sort((x, y) => x[0] - y[0]) : undefined,
+    /* ⚠️ 2026-10-04 дахин аудит (#2): ШАХСАН хэлбэрээр (`packRcpt`) */
+    rcpt: rcpt.size ? packRcpt(rcpt.values()) : undefined,
+    bt: bt.size ? [...bt] : undefined,
+    conv: conv.size ? [...conv] : undefined,
+    hold: hold.size ? [...hold.values()] : undefined,
+    tgt: tgt.size ? [...tgt.values()] : undefined,
+    asOfB: newer.asOf !== undefined ? newer.asOfB : older.asOfB,
+    datesB: datesB.size ? [...datesB] : undefined,
   };
 };
 /** «Дуусгасан/дахин засах» тэмдэг — `[нэр, 1|0, seq, агшин]` (`Draft.marks`) */
@@ -521,11 +942,47 @@ export function marksOf(d: Draft): Map<string, Mark> {
 export const doneOfMarks = (m: Map<string, Mark>): [string, number][] =>
   [...m.values()].filter((x) => x[1] === 1).map((x): [string, number] => [x[0], x[3]]);
 
+/**
+ * «АЛСАД ХАРААХАН ХУУЛАГДААГҮЙ» ТЭМДЭГ — багц → локал ноорогийн `t` (2026-10-04 аудит, #5 · #9).
+ *
+ * ⚠️ ЯАГААД: (а) багц/харагдац солих, таб нуух үеийн сүүлийн бичилт (`flush(pkgKey)`) унавал
+ *    эсвэл мөргөлдвөл урьд нь ЧИМЭЭГҮЙ хаягддаг байв — илгээлтийн дараах цэвэрлэгээ (tombstone)
+ *    ч мөн; (б) 3 хоногийн локал хугацаа (`LOCAL_DRAFT_TTL_MS`) нь алс удаан унаж байхад ЦОРЫН
+ *    ГАНЦ хуулбарыг устгадаг байв. Одоо алсын дараалалд орох бүрд тэмдэглэж, АМЖИЛТТАЙ бичсний
+ *    дараа л арилгана; тэмдэгтэй багцыг дараагийн нээлтэд ДАХИН илгээнэ (`useDraftSync`),
+ *    локал хуулбарыг хугацаагаар УСТГАХГҮЙ.
+ * ⚠️ `t` нь тэмдэглэсэн ноорогийн агшин — ХУУЧИН бичилтийн амжилт ШИНЭ тэмдгийг арилгахгүй.
+ */
+const UNSYNC_PREFIX = "selbe-fillnew-unsynced:";
+export const markUnsynced = (pkgKey: string, t: number) => {
+  try {
+    const cur = Number(localStorage.getItem(UNSYNC_PREFIX + pkgKey) ?? 0);
+    if (!(cur >= t)) localStorage.setItem(UNSYNC_PREFIX + pkgKey, String(t));
+  } catch { /* хаалттай сан — тэмдэггүй (хуучин зан) */ }
+};
+export const clearUnsynced = (pkgKey: string, upTo: number) => {
+  try {
+    const cur = Number(localStorage.getItem(UNSYNC_PREFIX + pkgKey) ?? 0);
+    if (cur && cur <= upTo) localStorage.removeItem(UNSYNC_PREFIX + pkgKey);
+  } catch { /* хаалттай сан */ }
+};
+export const isUnsynced = (pkgKey: string): boolean => {
+  try { return !!localStorage.getItem(UNSYNC_PREFIX + pkgKey); } catch { return false; }
+};
+
 export const readDraft = (pkgKey: string): Draft | null => {
   try {
     const raw = localStorage.getItem(DRAFT_PREFIX + pkgKey);
     if (!raw) return null;
-    const d = parseDraft(raw, 'local');
+    /* ⚠️ 2026-10-04 аудит (#9): АЛСАД ХУУЛАГДААГҮЙ (`isUnsynced`) локал хуулбарыг хугацаагаар
+       ХАЯХГҮЙ — тэр нь цорын ганц хуулбар байж болно (`'remote'` = хугацааны шалгуургүй). */
+    /* ⚠️ 2026-10-04 дахин аудит (#3): ЧӨЛӨӨЛӨГДСӨН (3 хоногоос хуучин) хуулбарын 7 хоногоос хуучин нүдийг
+       АЛБАДАН тэмдэглэнэ (`holdStaleLocal`) — баримт нь хуучирсан байж болох тул автоматаар сэргээвэл
+       илгээгдсэн нүд ДАВХАР тоологдоно. Идэвхтэй (3 хоногт багтах) локалд ХАМААРАХГҮЙ — тэнд хуучин
+       нүд нь алсад ч байгаа илгээгээгүй ажил. */
+    const dl = parseDraft(raw, 'local');
+    const dr = !dl && isUnsynced(pkgKey) ? parseDraft(raw, 'remote') : null;
+    const d = dl ?? (dr ? holdStaleLocal(dr) : null);
     /* ⚠️ ХҮЧИНГҮЙ (эвдэрсэн эсвэл 3 хоногоос хуучин) локал бичлэгийг ШУУД
        УСТГАНА — үлдээвэл ачаалалт бүрд дахин задлагдаж, хөтчийн санд мөнхөд
        хуримтлагдана. Алсын хуулбар хөндөгдөхгүй (тэр нь `readRemoteDraft`-аар
@@ -536,11 +993,85 @@ export const readDraft = (pkgKey: string): Draft | null => {
     return null;
   }
 };
-export const saveDraftLS = (pkgKey: string, d: Draft) => {
+/**
+ * Локалд бичнэ — АМЖИЛТЫГ буцаана (2026-10-04 аудит, #9).
+ * ⚠️ Урьд нь сан дүүрсэн (quota)/хаалттай алдааг ЗАЛГИЖ, дэлгэц «ноорог хадгалагдав» гэж
+ *    ХУДАЛ баталдаг байв. Дуудагч `false`-ыг ил харуулна (`useDraftSync.localFail`).
+ */
+export const saveDraftLS = (pkgKey: string, d: Draft): boolean => {
   try {
     localStorage.setItem(DRAFT_PREFIX + pkgKey, JSON.stringify(d));
+    return true;
   } catch {
     /* дүүрсэн/private горим — зөвхөн энэ сешнд үйлчилнэ */
+    return false;
+  }
+};
+/**
+ * ЛОКАЛЫГ НИЙЛҮҮЛЖ БИЧНЭ — хоёр табын хамгаалалт (2026-10-04 аудит, #9).
+ * ⚠️ Урьд нь хадгалах эффект ЗӨВХӨН энэ табын төлөвөөр локалыг ДАРЖ бичдэг тул нэг
+ *    хөтчийн хоёр таб (эсвэл хоёр цонх) бие биеийн хуулбарыг арчдаг байв. Одоо байгааг
+ *    уншиж `mergeDrafts`-аар нийлүүлнэ; ЭНЭ табын төлөв ҮРГЭЛЖ «шинэ тал» (`t` нь
+ *    байгаагаас их) — нүд бүрийн агшин (`byAt`) ба tombstone/баримт нь шийднэ.
+ * Буцаах: бичсэн ноорог (нийлбэр) ба амжилт.
+ */
+export const writeDraftLS = (pkgKey: string, d: Draft): { draft: Draft; ok: boolean } => {
+  const cur = readDraft(pkgKey);
+  const mine: Draft = cur ? { ...d, t: Math.max(d.t, cur.t + 1) } : d;
+  const out = mergeDrafts(cur, mine) ?? mine;
+  return { draft: out, ok: saveDraftLS(pkgKey, out) };
+};
+/**
+ * ЯВЖ БУЙ ИЛГЭЭЛТИЙН ТЭМДЭГ (in-flight) — 2026-10-04 аудит (#3).
+ *
+ * ⚠️ ЯАГААД: `saveSubmission` сервер дээр бичигдсэний ДАРАА хариу тасарвал (сүлжээ/timeout/таб
+ *    хаагдсан) клиент «болсонгүй» гэж үзэж ноорогоо (илгээсэн нэмэлтүүд) үлдээдэг; дахин илгээх
+ *    эсвэл F5-ын дараа ижил нэмэлт ДАХИН нэгтгэгдэж ДАВХАР тоологдох байв. Илгээхээс ӨМНӨ энд
+ *    `nonce` + илгээх нүднүүдийг (утга · агшин) бичиж, амжилттай бол арилгана; дараагийн ачаалалт/
+ *    «Илгээх» серверийн илгээлтэд тэр `nonce` байгаа эсэхээр (`SubmissionPayload.nonces`) «буусан
+ *    уу» гэдгийг ЯГ мэднэ.
+ * ⚠️ `sent` — `[түлхүүр, илгээсэн утга, тэр хуулбарын агшин sa]` (хуудасны түлхүүрээр; зөөгдсөн бол
+ *    шинэ түлхүүр ч хамт). 7 хоногоос хуучин тэмдгийг үл тооно.
+ */
+export type Inflight = {
+  v: 1; nonce: string; fillMs: number; at: number; asOf: number | null; sent: [string, string, number][];
+  /**
+   * Илгээх нүдний мөрийн танигч ба давтамж (2026-10-04 дахин аудит, #5) — хариу тасарсны дараа жааз
+   * солигдсон бол `sent`-ийн түлхүүрийг ОДООГИЙН жаазад зөөж баримт тавина (`FillNew.inflightKeys`).
+   */
+  rk?: [number, string][];
+  occ?: [number, number, number][];
+};
+const INFLIGHT_PREFIX = "selbe-fillnew-inflight:";
+export const readInflight = (pkgKey: string): Inflight | null => {
+  try {
+    const raw = localStorage.getItem(INFLIGHT_PREFIX + pkgKey);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Inflight;
+    if (!o || o.v !== 1 || typeof o.nonce !== 'string' || !Number.isFinite(o.fillMs) || !Array.isArray(o.sent)) return null;
+    if (Date.now() - Number(o.at) > DEL_TTL_MS) { localStorage.removeItem(INFLIGHT_PREFIX + pkgKey); return null; }
+    o.sent = o.sent.filter((e) => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'string' && Number.isFinite(e[2]));
+    o.rk = Array.isArray(o.rk) ? o.rk.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && typeof e[1] === 'string') : undefined;
+    o.occ = Array.isArray(o.occ) ? o.occ.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && Number.isInteger(e[1]) && Number.isInteger(e[2])) : undefined;
+    return o;
+  } catch {
+    return null;
+  }
+};
+export const saveInflight = (pkgKey: string, o: Inflight): boolean => {
+  try { localStorage.setItem(INFLIGHT_PREFIX + pkgKey, JSON.stringify(o)); return true; } catch { return false; }
+};
+export const clearInflight = (pkgKey: string) => {
+  try { localStorage.removeItem(INFLIGHT_PREFIX + pkgKey); } catch { /* хаалттай сан */ }
+};
+/** Илгээх оролдлогын санамсаргүй танигч (`SubmissionPayload.nonces`) */
+export const newNonce = (): string => {
+  try {
+    const b = new Uint8Array(12);
+    crypto.getRandomValues(b);
+    return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   }
 };
 export const clearDraftLS = (pkgKey: string) => {

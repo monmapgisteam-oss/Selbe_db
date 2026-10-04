@@ -58,6 +58,7 @@ import {
  *    царцсан Gantt хүрээнд зориулагдсан, жагсаалтад тохирохгүй.
  */
 import s from './guitsetgel.module.css';
+import { userError } from '@/components/ui';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -176,7 +177,7 @@ export function HuvaariBatlah({
           if (alive) setBack(lastAll.filter((x) => x.status === PLAN_STATUS.returned));
         } catch { if (alive) setBack([]); }
       } catch (e) {
-        if (alive) setSt({ k: 'error', msg: String((e as Error).message || e) });
+        if (alive) setSt({ k: 'error', msg: userError(e) });
       }
     })();
     return () => { alive = false; };
@@ -308,7 +309,7 @@ export function HuvaariBatlah({
          мутациар дараалал хүснэгтээсээ чимээгүй зөрнө. */
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -333,7 +334,7 @@ export function HuvaariBatlah({
       /* ⚠️ Бүтэн дахин уншина (`reject`-тэй ижил шалтгаан). */
       reload();
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -387,7 +388,7 @@ export function HuvaariBatlah({
         />
         <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)} aria-label={tr('Бүх багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
-          {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
+          {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
         </select>
         {dirty && (
           <button className={s.clear} onClick={() => { setQ(''); setGrp(ALL); }}>

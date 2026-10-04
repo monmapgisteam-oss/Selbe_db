@@ -13,7 +13,7 @@ import { paidShareOf } from '@/lib/paidShare';
 import { planPctAt, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
-import { MS_STATUS, type MsDoc } from '@/lib/chanarMs';
+import { MS_STATUS, latest as latestRev, type MsDoc } from '@/lib/chanarMs';
 import { lagOf, pkgMonthsMap, physLatest, projectPlanOf, type FinData, type MonthPt } from '@/modules/Finance';
 import { aggregateMonths, physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
@@ -237,8 +237,11 @@ export function buildModel(input: {
       : [];
 
     const mine = own ? (docs ?? []).filter((d) => bagtsKey(d.bagts) === p.pkgKey) : [];
-    const ma = countDocs(mine.filter((d) => d.kind === 'MA'));
-    const mir = countDocs(mine.filter((d) => d.kind === 'MIR'));
+    /* ⚠️ 2026-10-04: ЗӨВХӨН СҮҮЛИЙН хувилбар (`chanarMs.latest` — «Чанар»-ын жагсаалтын дүрэм).
+       Урьд нь буцаагдаж дахин илгээсэн баримт хувилбар бүрээрээ (rev 0, 1, 2 …) тоологдож,
+       нэг аргачлал «3 баримт · 2 буцаагдсан» гэж хөөрөгддөг байв. */
+    const ma = countDocs(latestRev(mine.filter((d) => d.kind === 'MA')));
+    const mir = countDocs(latestRev(mine.filter((d) => d.kind === 'MIR')));
 
     /* ⚠️ Системийн «Гүйцэтгэлийн явц»-тай ЯГ ИЖИЛ цэгүүд (2026-09-30, хэрэглэгч:
        «чартуудыг үндсэн системтэй адилхан»). */

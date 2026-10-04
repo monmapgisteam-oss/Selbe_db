@@ -251,6 +251,12 @@ export function classifyStuck<T extends StuckLike>(
     knownPkg: (pkgKey: string) => boolean;
     /** Энэ цонхонд буулгах оролдлого ДУУССАН илгээлтүүд — хүлээлгүй */
     settled?: ReadonlySet<number>;
+    /**
+     * ⚠️ 2026-10-04: буулгалт «эцэг бүлэг олдсонгүй» (`ApplyResult.code: 'no-parent'`)-ээр
+     *    унасан илгээлтүүд → `orphan`. Дахин буулгах нь ХЭЗЭЭ Ч бүтэхгүй (эцэг мөр хуудсанд
+     *    алга) тул `retry` гэж харуулбал товч дарсаар мөнхөд гацдаг байв.
+     */
+    noParent?: ReadonlySet<number>;
     grace?: number;
   },
 ): StuckItem<T>[] {
@@ -259,7 +265,7 @@ export function classifyStuck<T extends StuckLike>(
   for (const x of subs) {
     if (x.status !== AJIL_STATUS.approved) continue;
     if (o.scope != null && !o.scope.includes(x.pkgGroup)) continue;
-    if (!o.knownPkg(x.pkgKey)) {
+    if (!o.knownPkg(x.pkgKey) || o.noParent?.has(x.oid)) {
       out.push({ sub: x, kind: 'orphan', readyAt: null });
       continue;
     }
@@ -290,7 +296,8 @@ export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: 
 
 export type ApplyResult =
   | { ok: true; /** Аль хэдийн `applied` байсан — юу ч бичээгүй */ already?: boolean; /** Энэ удаа бичигдсэн мөр */ added: number }
-  | { ok: false; error: string };
+  /** ⚠️ 2026-10-04: `code: 'no-parent'` — эцэг бүлэг хуудсанд алга (`classifyStuck.noParent`) */
+  | { ok: false; error: string; code?: 'no-parent' };
 
 /**
  * БАТЛАГДСАН ИЛГЭЭЛТИЙН МӨРҮҮДИЙГ ҮНДСЭН ХҮСНЭГТЭД БИЧНЭ.
@@ -385,7 +392,8 @@ async function withApplyLock(fn: () => Promise<ApplyResult>): Promise<ApplyResul
 }
 
 /** Жааз бичилтийн үр дүн — `added: 0` = бүх мөр аль хэдийн хуудсанд байна (юу ч бичээгүй) */
-export type FrameWrite = { ok: true; added: number } | { ok: false; error: string };
+/* ⚠️ 2026-10-04: `code: 'no-parent'` — `ApplyResult`-ийн адил (эцэг бүлэг хуудсанд алга) */
+export type FrameWrite = { ok: true; added: number } | { ok: false; error: string; code?: 'no-parent' };
 
 /**
  * СҮЛЖЭЭНИЙ ХАМААРАЛ — ⚠️ ЗӨВХӨН тест (`ajilReapply.check.mjs`) солино (2026-10-01).
@@ -500,6 +508,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     const missing = fresh.filter((a) => !present.has(a.oid)).map((a) => `${a.no} · ${a.work} (${tr('эцэг: {0}', a.parentWork || '—')})`);
     return {
       ok: false,
+      code: 'no-parent',
       error: tr('{0} мөрийн эцэг бүлэг хуудсанд олдсонгүй — юу ч бичсэнгүй: {1}', String(missing.length), missing.slice(0, 5).join('; ')),
     };
   }

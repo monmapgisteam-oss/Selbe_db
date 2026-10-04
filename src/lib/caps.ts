@@ -588,6 +588,9 @@ export function hasCap(username: string | null | undefined, cap: CapKey): boolea
 export async function setCaps(username: string, caps: CapKey[]): Promise<boolean> {
   const u = username.trim().toLowerCase();
   if (!u) return false;
+  /* ⚠️ 2026-10-04: энэ дуудлагын ӨӨРЧЛӨЛТ = `next` − суурь (кэш). Remote-д бичихдээ
+     ШИНЭЭР уншсан мөр дээр зөвхөн үүнийг давхарлана (`mergeCapDelta`). */
+  const base = capsStored(u);
   const next = sane(caps);
   cache = { ...cache, [u]: next };
   if (next.length === 0) delete cache[u];
@@ -596,17 +599,55 @@ export async function setCaps(username: string, caps: CapKey[]): Promise<boolean
   /* ⚠️ Хэрэглэгч бүрээр ДАРААЛНА (2026-09-25) — `capQueue`-ийн тайлбар */
   return enqueueCap(u, async () => {
     let ok = false;
+    let out = next;
     try {
       const r = await import('./permsRemote');
-      ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
+      /*
+       * ⚠️ БИЧИХИЙН ЯГ ӨМНӨ ДАХИН УНШИЖ НЭГТГЭНЭ (2026-10-04). Урьд нь ≤5 мин настай
+       *    кэшээс бүтэн жагсаалт бичдэг тул хоёр админ нэг хүнд зэрэг эрх олгоход
+       *    сүүлийнх нь эхнийхийн эрхийг ЧИМЭЭГҮЙ арчдаг байв. Уншиж чадаагүй бол
+       *    БИЧИХГҮЙ (`ok=false` → dirty, админд «бичигдсэнгүй»).
+       */
+      /* ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
+         БИШ. Тэр үед урьдын адил бүтэн жагсаалт (`retry`-ийн «Дахин илгээх» ч энэ замаар). */
+      if (u in loadDirty()) {
+        ok = next.length ? await r.capUpsert(u, next) : await r.capRemove(u);
+        await trackWrite(u, out, ok);
+        return ok;
+      }
+      const fresh = await r.capRead(u);
+      if (fresh) {
+        out = mergeCapDelta(base, next, sane(fresh));
+        ok = out.length ? await r.capUpsert(u, out) : await r.capRemove(u);
+        /* Нөгөө админы өөрчлөлтийг локал кэшид ч тусгана — дараагийн засвар түүн дээрээс */
+        if (ok && serCaps(out) !== serCaps(next)) {
+          cache = { ...cache, [u]: out };
+          if (out.length === 0) delete cache[u];
+          save(cache);
+          notify();
+        }
+      }
     } catch {
       ok = false;
     }
     /* ⚠️ Үр дүнг ЗААВАЛ тэмдэглэнэ — эс бөгөөс унасан бичилт дараагийн
        `_syncRemoteCaps`-д чимээгүй буцна (2026-09-08). */
-    await trackWrite(u, next, ok);
+    await trackWrite(u, out, ok);
     return ok;
   });
+}
+
+/**
+ * ЭРХИЙН ӨӨРЧЛӨЛТИЙГ ШИНЭ УТГА ДЭЭР ДАВХАРЛАНА — цэвэр (`caps.check.mjs`, 2026-10-04).
+ * `next − base` = нэмсэн, `base − next` = хассан; `fresh` (remote-оос дөнгөж уншсан) дээр
+ * хассаныг хасаж, нэмснийг нэмнэ — бусад админы завсрын өөрчлөлт хадгалагдана.
+ */
+export function mergeCapDelta(base: readonly string[], next: readonly string[], fresh: readonly string[]): CapKey[] {
+  const b = new Set(base);
+  const n = new Set(next);
+  const out = new Set(fresh.filter((c) => !(b.has(c) && !n.has(c))));
+  for (const c of next) if (!b.has(c)) out.add(c);
+  return sane([...out]);
 }
 
 /** Нэг эрхийг асаах/унтраах товчлол. */

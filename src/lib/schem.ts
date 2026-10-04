@@ -522,7 +522,8 @@ export type SchemSources = {
   /* ⚠️ 2026-09-29 (аудит 10): `pct`/`overall` нь null байж болно — блокийн мөргүй үед
      reportData 0 биш «мэдээлэлгүй» буцаана (null ≠ 0); энд бүгд `fin()`-ээр уншигдана. */
   overall: { pct: number | null; weightSum: number; rows: number } | null;
-  progress: { blocks: number; overall: number | null; date: string; stalled: number } | null;
+  /* ⚠️ 2026-10-04: `blocks` = бөглөх хуудасны БҮХ блок, `reported` = тайлагнасан (reportData.loadProgress) */
+  progress: { blocks: number; reported?: number; overall: number | null; date: string; stalled: number } | null;
   finance: { budget: number; contractAmount: number; paid: number; byBagts: Record<string, number> } | null;
   habea: { workers: number; tehnik: number; incidents: number } | null;
   /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
@@ -575,7 +576,10 @@ const share = (a: number | null, b: number | null): number | null =>
  *    багц бүгд тайлагнасан ч хувь 100-д хүрэхгүй, «Төсвийн жингийн N% л бүртгэгдсэн»
  *    анхааруулга ҮРГЭЛЖ асдаг байв. Одоо хуваарь нь зөвхөн `bagts` (орон сууцны
  *    багцууд — `execData.loadBagtsRows`, `building_GOL`-оос).
- * ⚠️ Хэмжигдсэн = `progress != null` (null ≠ 0 — хэмжилтгүй багц хүртвэрт орохгүй).
+ * ⚠️ 2026-10-04: ХҮРТВЭР = багц бүрийн ТАЙЛАГНАСАН БЛОКИЙН ХУВЬ × жин ((blocks − missing) ÷ blocks).
+ *    Урьд нь «хэмжигдсэн = `progress != null`» байсан — 2026-10-01-ний «тайлагнаагүй багц 0%»
+ *    дүрмээс хойш хуудастай багц бүр `progress`-тэй (0) тул хамралт ҮРГЭЛЖ 100% болж,
+ *    анхааруулга хэзээ ч асдаггүй байв. `blocks`/`missing` нь бөглөх хуудасны хуваарь (`joinBagts`).
  * ⚠️ Жин нь ХО дүн (`finance.byBagts`); аль ч багцад алга (санхүү унасан г.м.) бол
  *    БЛОКИЙН тоонд БҮРЭН шилжинэ — хагас хагасаар холихгүй (`gdash.housingPct`-ийн дүрэм).
  * @returns `bagts` татагдаагүй/хоосон, эсвэл жин огт алга бол `null`
@@ -591,7 +595,7 @@ export function housingWeight(src: Pick<SchemSources, 'bagts' | 'finance'>): num
     const w = byCost ? cost(b) : b.blocks;
     if (!(w > 0)) continue;
     all += w;
-    if (fin(b.progress) != null) got += w;
+    if (b.blocks > 0) got += w * (Math.max(0, b.blocks - b.missing) / b.blocks);
   }
   return all > 0 ? (got / all) * 100 : null;
 }
@@ -804,7 +808,10 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
          блок − тайлангүй (нарийн схемийн `cardStat('barOk')`-тэй НЭГ дүрэм). */
       {
         label: tr('Тайлагнасан блок'),
-        value: bagtsRow ? bagtsRow.blocks - bagtsRow.missing : lost ? null : fin(src.progress?.blocks),
+        /* ⚠️ 2026-10-04: `progress.blocks` нь одоо БҮХ блок — төсөлд Σ(блок − тайлангүй) (бөглөх
+           хуудасны хуваарь, «Тайлангүй блок»-той нэг ертөнц); багцын жагсаалт алга бол `reported` */
+        value: bagtsRow ? bagtsRow.blocks - bagtsRow.missing : lost ? null
+          : src.bagts ? src.bagts.reduce((a, b) => a + Math.max(0, b.blocks - b.missing), 0) : fin(src.progress?.reported),
         kind: 'count',
         why: lostWhy,
       },

@@ -1259,12 +1259,16 @@ function LevelsCard({
   let noData = 0;
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок */
   const uniq = uniqueBlocks(blocks);
+  /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): хэмжилтгүй блок «0–25%»-д
+     ТООЛОГДОНО — урьд нь «мэдээлэлгүй» гэж хасагддаг тул багцын хувь (`pkgProgressOf` — тайлангүй 0%)
+     ба энэ тархалт өөр хуваарьтай байв. Тайлангүйн тоо `note`-д ил хэвээр. */
   uniq.forEach((b) => {
-    if (b.progress == null) { noData++; return; }
-    counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(b.progress / 25))]++;
+    if (b.progress == null) noData++;
+    const v = b.progress ?? 0;
+    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(v / 25)))]++;
   });
   return (
-    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', uniq.length, noData ? tr(' · {0} мэдээлэлгүй', noData) : '')}>
+    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', uniq.length, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({

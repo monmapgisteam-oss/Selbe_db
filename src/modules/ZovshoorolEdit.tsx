@@ -21,6 +21,7 @@ import {
 } from '@/lib/zovshoorol';
 import { setNavDirty } from '@/lib/navGuard';
 import s from './zovshoorol.module.css';
+import { userError } from '@/components/ui';
 
 /** ms → YYYY-MM-DD (UTC). Огноогүй бол хоосон. */
 const toInput = (ms: number | null): string => {
@@ -177,7 +178,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() }, before);
       onDone();
     } catch (x) {
-      setFail(String((x as Error).message || x));
+      setFail(userError(x));
     } finally {
       setBusy(false);
     }
@@ -206,7 +207,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await deleteZov(d.oid);
       onDone();
     } catch (x) {
-      setFail(String((x as Error).message || x));
+      setFail(userError(x));
     } finally {
       setBusy(false);
     }

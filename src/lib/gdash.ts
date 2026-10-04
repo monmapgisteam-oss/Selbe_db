@@ -19,8 +19,9 @@ import { t as tr } from '@/lib/i18nCore';
 import { dayKey, monthKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
-  BUILDING,
+  BUILDING, laborCompanyFields,
 } from '@/lib/services';
+import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
 import { stageProjectPct } from '@/lib/negtgel';
 import {
   FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
@@ -1540,21 +1541,34 @@ export type HseNow = {
  */
 export const loadHseNow = cached<HseNow | null>(async () => {
   const f = HABEA.labor.fields;
+  /* ⚠️ 2026-10-04: (1) TIE-BREAK — нэг өдөрт ДАВХАР мөр бий (`ceo/workforce`-ийн ⚠️); урьд нь
+     `Ognoo DESC` + `limit 1` нь аль нэгийг санамсаргүй авдаг байв. Одоо `Ognoo DESC, EditDate DESC,
+     objectid DESC` эрэмбээр цөөн мөр татаж `latestLaborRow` (Тайлан · CEO самбартай НЭГ дүрэм)-аар
+     сонгоно. (2) ТОО — компани бүрийн нийлбэр (`laborHeadOf`, монгол+гадаад нөхөлттэй), маягтын
+     толгойн `Niit_ajiltan` БИШ — «Тайлан»-тай нэг тоо. Хүн-цаг толгойноос хэвээр (компаниар алга). */
   const rows = await queryFeatures(HABEA.labor.url, {
-    outFields: [f.ognoo, f.niitAjiltan, f.hunTsag, f.niitTehnik],
-    orderBy: `${f.ognoo} DESC`,
-    limit: 1,
+    where: `${f.ognoo} IS NOT NULL`,
+    outFields: [
+      f.ognoo, f.hunTsag, EDIT_DATE_FIELD, OID_FIELD,
+      ...HABEA.labor.companies.flatMap((c) => {
+        const cf = laborCompanyFields(c.sfx);
+        return [cf.mongol, cf.gadaad, cf.niitAjiltan, cf.niitTehnik];
+      }),
+    ],
+    orderBy: `${f.ognoo} DESC, ${EDIT_DATE_FIELD} DESC, ${OID_FIELD} DESC`,
+    limit: 10,
   });
-  const r = rows[0];
+  const r = latestLaborRow(rows);
   if (!r) return null;
+  const head = laborHeadOf(r);
   const ms = Number(r[f.ognoo]);
   return {
     /* ⚠️ ОРОН НУТГИЙН огноо — UTC slice нь +08 бүсэд өглөөний 08:00 хүртэл
        бүртгэгдсэн маягтыг ӨМНӨХ өдрөөр харуулдаг байв (2026-09-15). Энэ
        огноо нь дээрх ⚠️-ийн «тоо нь хэдийнх вэ» гэсэн зорилготой. */
     date: Number.isFinite(ms) ? dayKey(ms) : '',
-    workers: nnOf(r[f.niitAjiltan]),
-    equipment: nnOf(r[f.niitTehnik]),
+    workers: head.workers,
+    equipment: head.technik,
     manHours: nnOf(r[f.hunTsag]),
   };
 }, 5 * 60_000, ['HABEA']); // ⚠️ ХАБ маягт бичихэд шууд шинэчлэгдэнэ (2026-09-17)

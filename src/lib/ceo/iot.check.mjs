@@ -304,4 +304,27 @@ function sensor(key, label, series, error) {
   assert.equal(k.facts[1], '1 унасан · 0 дуугүй · 2 хуучирсан');
 }
 
+/* ══════════════ 2026-10-04: ФИЗИК МУЖААС ГАДУУР = ГЭМТЭЛ · хуучирсан босго 24ц ══════════════ */
+{
+  assert.equal(IOT_STALE_H, 24, 'хуучирсан босго 24 цаг (sensors.SENSOR_STALE_H)');
+  /* хөрсний чийг 6553.5% — «их нь сайн» боловч хэвийн/хуурай БИШ, гэмтэл */
+  const s = computeIot([
+    sensor('soil', 'Хөрс', [metric('moisture', 'Хөрсний чийг', '%r.h.', 1, 6553.5, 1, 15, { valid: { min: 0, max: 100 } })]),
+  ], NOW);
+  assert.equal(s.faults.length, 1, 'боломжгүй утга гэмтэл гэж тэмдэглэгдсэнгүй');
+  assert.equal(s.dry.length, 0);
+  assert.equal(s.exceed.length, 0);
+  assert.equal(s.states[0].state, 'fault');
+  assert.equal(iotLevel(s), 'warn', 'гэмтэлтэй мэдрэгч ногоон');
+  /* мужийн дотор — хэвийн хэвээр */
+  const ok = computeIot([
+    sensor('soil', 'Хөрс', [metric('moisture', 'Хөрсний чийг', '%r.h.', 1, 40, 1, 15, { valid: { min: 0, max: 100 } })]),
+  ], NOW);
+  assert.equal(ok.faults.length, 0);
+  assert.equal(ok.states[0].state, 'ok');
+  /* 25 цагийн өмнөх заалт — хуучирсан (урьд нь 48ц хүртэл «шинэ») */
+  const st = computeIot([sensor('air', 'Агаар', [metric('temperature', 'Темп', '°C', 1, 20, 25, 28)])], NOW);
+  assert.equal(st.states[0].state, 'stale');
+}
+
 console.log('iot.check: OK');

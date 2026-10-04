@@ -20,6 +20,7 @@ import { loadIpcSource, sheetsOf, type IpcSource } from '@/lib/ipcDocLoad';
 import { buildIpcDoc, type IpcNote } from '@/lib/ipcDoc';
 import { downloadIpcPdf, EMPTY_SIGNERS, type IpcSigners } from '@/lib/ipcPdf';
 import s from './ipcDoc.module.css';
+import { userError } from '@/components/ui';
 
 type Saved = {
   capacity: string;
@@ -100,7 +101,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
         setIpcNo(String(want && ipcNo0 ? ipcNo0 : x.months.indexOf(pick) + 1));
         if (month0 && !want) setErr(tr('{0} сард батлагдсан гүйцэтгэлийн агшин архивт алга — хамгийн сүүлийн сарыг сонголоо.', month0));
       })
-      .catch((e) => { if (alive) setErr(String((e as Error)?.message ?? e)); });
+      .catch((e) => { if (alive) setErr(userError(e)); });
     return () => { alive = false; };
   }, [packKey, month0, ipcNo0]);
 
@@ -138,7 +139,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
       writeSaved(packKey, { capacity, annual, rate, recoveryFrom, signers });
       await downloadIpcPdf(doc, { capacity, signers });
     } catch (e) {
-      setErr(String((e as Error)?.message ?? e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }

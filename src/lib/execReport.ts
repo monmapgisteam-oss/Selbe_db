@@ -139,8 +139,14 @@ export type ExecReport = {
      * `remain`-ийн тоологч; хуваарь `planTotal` (CONTRACTED) тул нэг хүрээ.
      */
     givenContracted: number;
-    /** Олгосон − Σ rows.given — багцад холбогдоогүй (диапазон) олголт, ₮ */
-    givenUnassigned: number;
+    /**
+     * ГЭРЭЭЛСЭН БАГЦААС ГАДУУРХ олголт, ₮ = `given − givenContracted` (`paidShare.paidOther`).
+     * ⚠️ 2026-10-04: урьд нь `givenUnassigned` = олгосон − Σ жагсаалтын мөр, «(хэд хэдэн багц
+     *    хамарсан)» гэж нэрлэгддэг байв — үнэндээ диапазон мөр (5.97) + гэрээлсэн дүнгийн
+     *    түлхүүрт таараагүй багц (Багц-7 1.87, Багц-8.1 0.32) орно. Одоо порталын НЭГ тодорхойлолт
+     *    (ТУХ · «IPC»-ийн «гэрээлсэн багцаас гадуур олгосон»), нэг шошго.
+     */
+    givenOther: number;
     /** `givenContracted ÷ planTotal` — «олгосон дүн гэрээлсэн дүнд эзлэх хувь» */
     share: number | null;
     /** `planTotal − givenContracted` */
@@ -301,7 +307,6 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     pct: r.contracted && r.contract > 0 ? (r.given / r.contract) * 100 : null,
     contracted: r.contracted,
   }));
-  const finAssigned = finRows.reduce((a, r) => a + r.given, 0);
   /* ⚠️ 2026-09-21: `share`/`remain`-ийн тоологч = ГЭРЭЭЛСЭН багцын олголт — хуваарь
      `csum` (CONTRACTED) тул нэг хүрээ. Урьд нь `finGiven` (бүх төлбөр) хуваагддаг байв. */
   /* ⚠️ 2026-09-22 (өгөгдлийн аудит): багцын Map-ийн нийлбэр (~26.1%) БИШ —
@@ -361,7 +366,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       /* ⚠️ `csum` = §1-ийн `gdash.contract` — нэг тайланд «гэрээний нийт дүн» нэг л тоо */
       planTotal: csum, given: finGiven,
       givenContracted: finGivenContracted,
-      givenUnassigned: finGiven == null ? 0 : Math.max(0, finGiven - finAssigned),
+      /* ⚠️ 2026-10-04: `paidOther` — олгосон − ГЭРЭЭЛСЭН багцын олголт (хувийн тоологч) */
+      givenOther: finGiven == null ? 0 : Math.max(0, finGiven - finGivenContracted),
       /* ⚠️ 2026-09-25: олголт уншигдаагүй (`finGiven == null`) бол `paidContracted`
          нь 0 ирдэг — «0.0% олгогдсон» гэж ХУДАЛ бичихгүй, хувь бодогдохгүй (null ≠ 0). */
       /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): томьёо ба оролт `paidShare` — Тайлан ·

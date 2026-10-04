@@ -24,6 +24,7 @@ import { useAsync } from '@/lib/useAsync';
 import { num } from '@/lib/format';
 import { loadLayerSummary, type LayerSummary } from '@/lib/layerSummary';
 import { subscribeTotals, totalsEpoch } from '@/lib/totals';
+import { friendlyError } from '@/components/ui';
 import s from './packLayers.module.css';
 
 export function PackLayers({
@@ -149,7 +150,7 @@ function LayerFields({ layerId }: { layerId: string }) {
   const q = useAsync<LayerSummary>(() => loadLayerSummary(layerId), [layerId, epoch]);
   if (q.state === 'loading') return <div className={s.note}>{tr('Ачаалж байна…')}</div>;
   if (q.state === 'error') {
-    return <div className={s.note}>{tr('Татагдсангүй: {0}', q.error.message)}</div>;
+    return <div className={s.note} role="alert">{tr('Татагдсангүй: {0}', friendlyError(q.error))}</div>;
   }
   if (q.state !== 'ready') return null;
   const { total, fields, empty } = q.data;

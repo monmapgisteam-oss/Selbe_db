@@ -29,7 +29,7 @@ import { BUILDING } from './services';
    шинэчилж 498-д нэг удаа дахин оролдоно; HTTP 200-аар ирсэн `error`-ыг шидэж
    доорх `catch`-д орно (урьдын адил кэшлэхгүй, `''` буцаана). */
 import { arcgisPost } from '@/lib/authToken';
-import { addRows, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
+import { addRows, addedOid, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -148,6 +148,44 @@ export function openReviewRow(
     if (OWNER[st] === 'company') return false;
     return true;
   }) ?? null;
+}
+
+/**
+ * ИЛГЭЭЛТ ХЯНАЛТАД БҮРТГҮҮЛЭХ ШААРДЛАГАТАЙ ЮУ? (2026-10-04, цэвэр — `hyanaltSubmit.check.mjs`)
+ *
+ * ⚠️ ЯАГААД: `FillNew`-ийн «өнчин илгээлт» ба «Хяналтад илгээх» нь ижил `sheetOid`-тай
+ *    ЯМАР Ч мөр байвал «бүртгэгдсэн» гэж үздэг байв. Буцаагдсан (компанийн гар дээрх)
+ *    ХУУЧИН тойрог үүрд таарч, засвараа дахин илгээхэд `submitForReview` унасан бол
+ *    засвар инженерт ХЭЗЭЭ Ч хүрэхгүй.
+ * Дүрэм (`openReviewRow`-ийн одоогийн тойрог · өдрийн шошго):
+ *    · одоогийн мөр байхгүй → ТИЙМ (өнчин);
+ *    · хянагчийн гар дээр нээлттэй мөр байна → ҮГҮЙ;
+ *    · бүгд «Шилжүүлсэн» → ҮГҮЙ (мөчлөг дууссан);
+ *    · буцаагдсан (компанийн гар дээр) → илгээлт (`subAt`) буцаалтаас ХОЙШ бол ТИЙМ.
+ * ⚠️ Огноо нь `Attrs` (epoch ms) ч, `hyanaltStore.Row` (ISO) ч байж болно.
+ */
+export function needsRegistration(
+  rows: readonly Attrs[],
+  sheetOid: number | null,
+  dayTag: string,
+  subAt: number,
+): boolean {
+  if (sheetOid == null || sheetOid <= 0) return false;
+  const cur = currentRows(rows, sheetOid, (r) => String(r[F.ajil] ?? '').startsWith(dayTag));
+  if (!cur.length) return true;
+  if (openReviewRow(rows, sheetOid, dayTag)) return false;
+  const ms = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    const t = typeof v === 'string' && v ? Date.parse(v) : NaN;
+    return Number.isFinite(t) ? t : 0;
+  };
+  const RET = [F.engineerReturned, F.managerReturned, F.directorReturned, F.headReturned, F.chiefReturned];
+  return cur.some((r) => {
+    const st = String(r[F.status] ?? '') as Status;
+    if (st === STATUS.transferred || OWNER[st] !== 'company') return false;
+    const back = Math.max(0, ...RET.map((k) => ms(r[k])));
+    return subAt > back;
+  });
 }
 
 /** Ажлын түлхүүр — `hyanaltGroup.workKey`-тэй ЯГ ИЖИЛ (`багц|ажил|компани`). */
@@ -357,8 +395,10 @@ export async function submitForReview(
       [F.status]: STATUS.engineerReview,
     };
 
-    await addRows([attrs]);
-    return { ok: true, id };
+    const res = await addRows([attrs]);
+    /* ⚠️ 2026-10-04: max+1 уралдаан — бичсэний дараа давхардлыг засна (`ensureUniqueId`) */
+    const fid = await ensureUniqueId(addedOid(res), id);
+    return { ok: true, id: fid };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }

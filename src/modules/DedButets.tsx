@@ -45,7 +45,7 @@ import {
   type LiveTotals, type Totals,
 } from '@/lib/totals';
 import { PackLayers, Swatch } from '@/components/PackLayers';
-import { List, ListItem, Note, Section, Stat, Stats } from '@/components/ui';
+import { List, ListItem, Note, Section, Stat, Stats, friendlyError, userError } from '@/components/ui';
 import {
   CATALOG_LAYER_IDS, DED_BUTETS_LAYER_IDS, INFRA_SYSTEMS, LAYER_BY_ID, OID,
   PKG_FAMILY_BY_BAGTS,
@@ -1120,7 +1120,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         setReshape({ layerId, oid, geometry: g });
         setReshapeToken((x) => x + 1);
       } catch (e) {
-        if (seq === geomSeq.current) toast(String((e as Error).message || e), 'err');
+        if (seq === geomSeq.current) toast(userError(e), 'err');
       }
     })();
   }, [pick, toast, setHighlight]);
@@ -1158,7 +1158,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             closeEdit();
             toast(tr('Объект устгагдлаа'));
           } catch (e) {
-            toast(String((e as Error).message || e), 'err');
+            toast(userError(e), 'err');
           } finally {
             setDelBusy(false);
           }
@@ -1202,7 +1202,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
       setReshaped(null);
       setClearToken((x) => x + 1);
     } catch (e) {
-      toast(String((e as Error).message || e), 'err');
+      toast(userError(e), 'err');
     } finally {
       setGeomBusy(false);
     }
@@ -1266,7 +1266,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         }
         toast(tr('Үйлдэл буцаагдлаа'));
       } catch (e) {
-        toast(String((e as Error).message || e), 'err');
+        toast(userError(e), 'err');
       } finally {
         setUndoBusy(false);
       }
@@ -1400,7 +1400,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           showMsel(layerId, oids);
           if (!found.length) toast(tr('Тэгш өнцөгт дотор энэ давхаргын объект олдсонгүй'));
         })
-        .catch((e) => toast(String((e as Error).message || e), 'err'))
+        .catch((e) => toast(userError(e), 'err'))
         .finally(() => setMselBusy(false));
       return;
     }
@@ -1566,7 +1566,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           )}
           {totals.error && (
             <p className={d.kpiWait} role="alert">
-              {tr('Тоо татагдсангүй: {0}', totals.error.message)}
+              {tr('Тоо татагдсангүй: {0}', friendlyError(totals.error))}
               {' '}
               <button type="button" className={d.kpiRetry} onClick={retryTotals}>
                 {tr('Дахин оролдох')}

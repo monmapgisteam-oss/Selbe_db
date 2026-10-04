@@ -33,10 +33,10 @@
  */
 
 import { dayKey } from '@/lib/format';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { t as tr } from './i18nCore';
 import {
-  addRows, hasHistoryField, hasOkCellsField, queryAll, updateRows,
+  addRows, addedOid, ensureUniqueId, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig, updateRows,
   DECISION, F, HYANALT, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview,
   type Attrs, type Decision, type ReviewStage, type Row, type Status,
@@ -83,7 +83,7 @@ async function historyPatch(base: unknown, e: HistEntry): Promise<Attrs> {
   return { [F.history]: appendHistory(base, e) };
 }
 import {
-  bagtsFor, isViewOnly, stageOfUser,
+  bagtsFor, flowAclReady, isViewOnly, stageOfUser,
 } from './guitsetgelAcl';
 import { appendHistory, type HistEntry } from './hyanaltHistory';
 import { encodeOkCells } from './hyanaltOkCells';
@@ -223,6 +223,36 @@ async function refreshQuiet(): Promise<void> {
 }
 
 /**
+ * ШИЙДВЭРИЙН АНХААРУУЛГА — илгээлтийн oid → шар мөр (2026-10-04).
+ * ⚠️ `Item`-ийн локал state-д БИШ: батлалтын дараах `refresh` мөрийг «минийх»-ээс
+ *    «бусад» руу зөөж бүрэлдэхүүнийг дахин mount хийдэг тул анхааруулга (алгассан
+ *    нүд · «ДАХИН БАТЛАХГҮЙ» · нэгтгэл/IPC · үлдэгдлийн тойрог · `okWarn`) нэг ч
+ *    удаа харагддаггүй байв. Модулийн түвшинд — хэрэглэгч өөрөө хаах хүртэл үлдэнэ.
+ */
+export type ApplyWarn = { text: string; ajil: string; bagts: string; at: number };
+const WARNS = new Map<number, ApplyWarn>();
+let warnSnap: [number, ApplyWarn][] = [];
+const warnSubs = new Set<() => void>();
+function putWarn(key: number, w: ApplyWarn): void {
+  WARNS.set(key, w);
+  warnSnap = [...WARNS.entries()].sort((x, y) => y[1].at - x[1].at);
+  warnSubs.forEach((f) => f());
+}
+export function dismissApplyWarn(key: number): void {
+  if (!WARNS.delete(key)) return;
+  warnSnap = [...WARNS.entries()].sort((x, y) => y[1].at - x[1].at);
+  warnSubs.forEach((f) => f());
+}
+/** Шинэ нь эхэндээ — `[илгээлтийн oid, анхааруулга]` */
+export function useApplyWarns(): [number, ApplyWarn][] {
+  return useSyncExternalStore(
+    (f) => { warnSubs.add(f); return () => { warnSubs.delete(f); }; },
+    () => warnSnap,
+    () => warnSnap,
+  );
+}
+
+/**
  * Мөрийг ШИНЭЭР уншиж буцаана (захиалагчдад мэдэгдэхгүй — дуудагч шийднэ).
  * ⚠️ 2026-08-29: хянагчийн шийдвэрийг хуучирсан `ROWS`-оос бичдэг байсан тул нэг
  *    багцад хоёр инженер томилогдсон үед А-гийн буцаалтыг Б-гийн «зөвшөөрөх»
@@ -305,10 +335,90 @@ export function useHyanaltRows(): {
        тэр `setError('')`-ийг эффект дотор синхроноор дууддаг байв. `error` анхнаасаа
        хоосон тул утга ижил; алдаа нь урьдын адил async `catch`-д. */
     if (!loaded) refresh().catch((e) => setError(String((e as Error)?.message ?? e)));
-    return () => { subs.delete(f); };
+    const offPoll = startPoll();
+    return () => { subs.delete(f); offPoll(); };
   }, []);
 
   return { rows: ROWS, loading: !loaded && !error, error, reload: load };
+}
+
+/**
+ * ДАРААЛЛЫН АВТОМАТ ШИНЭЧЛЭЛТ (2026-10-04).
+ * ⚠️ Урьд нь `ROWS` хуудас нээгдэхэд НЭГ л удаа ачаалагддаг тул өөр хянагчийн
+ *    шийдвэр, шинэ илгээлт гараар «Дахин оролдох» дарах хүртэл харагддаггүй байв.
+ *    Одоо: харагдаж байх үед 60 с тутам · таб/цонх идэвхжихэд. Эхлээд хямд
+ *    `queryStatusSig` (oid:төлөв) — зөрвөл л бүтэн `refresh`.
+ * ⚠️ Олон захиалагч (Guitsetgel + useFlow) нэг л таймер хуваалцана (ref-count).
+ * ⚠️ Алдаа ЧИМЭЭГҮЙ — энэ бол туслах шинэчлэлт; ачаалалтын алдааг `load` хэлнэ.
+ */
+const POLL_MS = 60_000;
+let pollUsers = 0;
+let pollOff: (() => void) | null = null;
+let polling = false;
+const rowsSig = () => ROWS.slice().sort((x, y) => x.__oid - y.__oid)
+  .map((r) => `${r.__oid}:${String(r[F.status] ?? '')}`).join(',');
+async function pollOnce(): Promise<void> {
+  if (polling || !loaded || typeof document === 'undefined' || document.visibilityState === 'hidden') return;
+  polling = true;
+  try {
+    const sig = await queryStatusSig();
+    if (sig !== rowsSig()) await refresh();
+  } catch (e) {
+    console.warn('[selbe] хяналтын дарааллын шинэчлэлт унав:', e);
+  } finally { polling = false; }
+}
+function startPoll(): () => void {
+  pollUsers += 1;
+  if (pollUsers === 1 && typeof window !== 'undefined') {
+    const iv = setInterval(() => { void pollOnce(); }, POLL_MS);
+    const onVis = () => { if (document.visibilityState === 'visible') void pollOnce(); };
+    const onFocus = () => { void pollOnce(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    pollOff = () => {
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
+  }
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    pollUsers -= 1;
+    if (pollUsers === 0) { pollOff?.(); pollOff = null; }
+  };
+}
+
+/**
+ * ТАНЫ ШАТАНД ХҮЛЭЭГДЭЖ БУЙ ХЯНАЛТЫН ТОО — цэсний тэмдэг (`navBadges`, 2026-10-04).
+ * ⚠️ `Guitsetgel`-ийн «минийх»-тэй ижил дүрэм: ажлын СҮҮЛИЙН тойрог (`groupWorks`)
+ *    энэ шатны эзэмшилд (`OWNER`) · «Шилжүүлсэн» биш · хэрэглэгчийн багцын хүрээнд.
+ * ⚠️ `null` ≠ 0: нэвтрээгүй · урсгалын ACL уншигдаагүй · томилгоогүй (админ гэх мэт) ·
+ *    сүлжээ унасан → `null` (тэмдэг гарахгүй). Зөвхөн харах томилгоо → 0.
+ * ⚠️ `ROWS` ачаалагдсан бол түүнийг (60 с-ийн шинэчлэлттэй), эс бөгөөс нэг `queryAll`
+ *    (22 орчим мөр, 60 с кэш).
+ */
+let badgeRows: { at: number; rows: Row[] } | null = null;
+export async function countReviewPending(username: string | null | undefined): Promise<number | null> {
+  try {
+    const me = (username ?? '').trim().toLowerCase();
+    if (!me || !flowAclReady()) return null;
+    const stage = stageOfUser(me);
+    if (!stage) return null;
+    if (isViewOnly(me)) return 0;
+    const sc = bagtsFor(me, stage);
+    if (Array.isArray(sc) && sc.length === 0) return 0;
+    let rows: Row[];
+    if (loaded) rows = ROWS;
+    else if (badgeRows && Date.now() - badgeRows.at < POLL_MS) rows = badgeRows.rows;
+    else { rows = (await queryAll()).map(toRow); badgeRows = { at: Date.now(), rows }; }
+    const { groupWorks } = await import('./hyanaltGroup');
+    return groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
+      && (sc == null || sc.includes(w.bagts))).length;
+  } catch {
+    return null;
+  }
 }
 
 /* ── Үйлдэл ── */
@@ -551,7 +661,9 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
     return { ok: true, archiveOid: seen.oid, day: seen.day, pkgKey: staged.payload.pkgKey };
   }
 
-  const pl = staged.payload;
+  /* ⚠️ `let` (2026-10-04 дахин аудит #1): хуучин (`rowOcc`-гүй) payload-ын давтамжийг суурь жаазаас
+     нөхсөн хувилбараар доор СОЛИГДОНО (`withFrameOcc`) — агуулга (нүд/огноо) хөндөгдөхгүй. */
+  let pl = staged.payload;
   const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey) };
@@ -568,7 +680,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys }, { sameFrame }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc }, { sameFrame }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -604,6 +716,20 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
    *    батлагдсан бол түүний тоог дарж бичихгүй.
    */
   const loaded = await loadRows(pkg, sc);
+  /*
+   * ⚠️ 2026-10-04 дахин аудит (#1, HIGH): ХУУЧИН (`rowOcc`-гүй) илгээлт ӨМНӨХ жааз дээр — давхардсан
+   *    шошготой мөрийг шинэ жаазад зөөж чадахгүй (`mapOldOids` хоёрдмол) тул батлалт МӨНХӨД
+   *    `unmoved`-оор зогсдог байв. Илгээлтийн СУУРЬ жаазыг (`pl.base`) уншиж давтамжийг ЯГ нөхнө
+   *    (`withFrameOcc`); доорх `staleSubmissionKeys` ч энэ жаазыг дахин ашиглана. Уншилт унавал
+   *    нөхөхгүй — хуучин дүрэм (хоёрдмол → ил зогсолт, хүн шалгана) хэвээр.
+   */
+  let baseRows0: Awaited<ReturnType<typeof loadRows>>['rows'] | null = null;
+  if (pl.base != null && needsFrameOcc(pl, loaded.rows)) {
+    try {
+      baseRows0 = (await loadRows(pkg, sc, msToDay(pl.base))).rows;
+      pl = withFrameOcc(pl, baseRows0);
+    } catch { baseRows0 = null; }
+  }
   /*
    * ⚠️ ДАРААЛАЛ АЛДАГДСАН БАТЛАЛТ ХУРИМТЛАЛЫГ БУЦААХГҮЙ (2026-09-25-ны аудит,
    *    HIGH). Өдөр бүр тусдаа `sub|` мөртэй тул Даваа, Мягмарын илгээлт хоёулаа
@@ -658,7 +784,7 @@ async function archiveSubmission(cur: Row): Promise<Archived> {
       };
     let baseRows: Awaited<ReturnType<typeof loadRows>>['rows'];
     try {
-      baseRows = (await loadRows(pkg, sc, msToDay(pl.base))).rows;
+      baseRows = baseRows0 ?? (await loadRows(pkg, sc, msToDay(pl.base))).rows;
     } catch (e) {
       return { ok: false, error: tr('Илгээлтийн суурь жаазыг уншиж чадсангүй — архивт юу ч бичсэнгүй: {0}', String((e as Error)?.message ?? e)) };
     }
@@ -1249,9 +1375,22 @@ export async function apply(a: {
     /* ⚠️ 2026-09-29 (аудит 10): шийдвэр · архив · нэгтгэл · IPC бүгд бүтсэний ДАРААХ
        дахин ачаалалт унавал `{ok:false}` буцаж хянагч улаан алдаа хараад дахин
        оролдож STALE авдаг байв — уншилтын алдаа батлалтыг унагахгүй. */
-    try { await refresh(); } catch (e) { console.warn('[selbe] шийдвэрийн дараах дахин ачаалалт унав:', e); }
     /* 2026-09-23 (#16): `Zovshoorson_nud` талбар алга байсан бол шар мөрөөр хэлнэ */
     if (okWarn) warns.push(okWarn);
+    /* ⚠️ 2026-10-04: анхааруулгыг `refresh`-ээс ӨМНӨ store-д тавина — `refresh` мөрийг
+       «минийх»-ээс «бусад» руу зөөж `Item`-ийг дахин mount хийдэг тул түүний локал
+       `warn` state алга болж, алгассан нүд · «ДАХИН БАТЛАХГҮЙ» · нэгтгэл/IPC-ийн
+       алдаа ХЭЗЭЭ Ч харагддаггүй байв. Одоо `useApplyWarns` хуудасны дээд хэсэгт. */
+    if (warns.length) {
+      const so = Number(cur[F.sheetOid]);
+      putWarn(Number.isInteger(so) && so > 0 ? so : a.oid, {
+        text: warns.join(' · '),
+        ajil: String(cur[F.ajil] ?? ''),
+        bagts: String(cur[F.bagts] ?? ''),
+        at: Date.now(),
+      });
+    }
+    try { await refresh(); } catch (e) { console.warn('[selbe] шийдвэрийн дараах дахин ачаалалт унав:', e); }
     return warns.length ? { ok: true, warn: warns.join(' · ') } : { ok: true };
   } catch (e) { return fail(e); }
 }
@@ -1486,7 +1625,9 @@ export async function recheck(
       ...(await historyPatch('', { stage: by, who, at: t, act: 'recheck-ok' })),
     };
     try {
-      await addRows([fresh]);
+      const res = await addRows([fresh]);
+      /* ⚠️ 2026-10-04: `nextId` max+1 уралдаан — бичсэний дараа давхардлыг засна (алдаа нь чимээгүй) */
+      await ensureUniqueId(addedOid(res), String(fresh[F.id]));
     } catch (e) { return fail(e); }
     /* ⚠️ 2026-09-30: бичилт БҮТСЭНИЙ ДАРААХ дахин ачаалалтын алдаа шийдвэрийг
        унагахгүй — `apply`-ийн 2026-09-29-ний (аудит 10) ижил засвар. Урьд нь энд

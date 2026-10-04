@@ -32,6 +32,16 @@
  *    үнэндээ тэр нь гэрээ БАЙГУУЛААГҮЙ ажил (өөр картын сэдэв). Гэрээгүй
  *    ажлын төсөв энэ картад ХАМААРАХГҮЙ. Үлдэх зөрүү = Σ diff + төсөвгүй
  *    гэрээний Σ дүн (тэдгээрийн тоо «N гэрээ төсөвт өртөггүй» баримтад ил).
+ *
+ * ⚠️ 2026-10-04 · ТӨСВИЙН ТАЛБАР СОЛИГДОВ (KPI ҮРГЭЛЖ 0 байв): урьд нь төсөв = `ho_dun_geree`
+ *    (`F.budget`). Тэр талбар нь «ХО дүн (ГЭРЭЭ болон урьдчилсан тооцоолол)» — ГЭРЭЭТЭЙ мөрд
+ *    `geree_dun`-тэй ЯГ тэнцүү (амьд 2026-10-04: 27/27 дүнтэй мөр), тиймээс зөрүү бүр 0 байв.
+ *    Одоо төсөв = `ho_dun_zahiramj` (`F.budgetOrder` — ЗАХИРАМЖИЙН ХО төсөв), гэрээ =
+ *    `geree_dun`; CEO IPC картын «хэмнэлт» (HO `tosov_niit − gereet_tosov_niit`, 84.49 тэрбум)
+ *    -тай НЭГ утга (Cashflow-оор 2,094.53 − 2,009.77 = 84.76 тэрбум).
+ *    · Хүрээ = Excel-ийн НИЙТ мөр (`finXlInTotal` — 5·6·7-р хэсэг орохгүй), «Гэрээлсэн дүн»
+ *      (`gdash.contractedScope`)-тэй нэг.
+ *    · `geree_dun` хоосон (БАГЦ-5.3/5.4) = ДУТУУ (жагсаалтад «—», нийлбэрт орохгүй), 0 БИШ.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -39,6 +49,7 @@ import { cached } from '@/lib/live';
 import { mnt } from '@/lib/format';
 import { CASHFLOW_NEW, CF_WORK_WHERE } from '@/lib/services';
 import { CONTRACTED } from '@/lib/gdash';
+import { finXlInTotal, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /**
@@ -70,7 +81,7 @@ export type ContractGapRow = {
   contractNo: string;
   /** Гэрээний огноо — мөр (`Geree_ognoo` нь String талбар) */
   contractDate: string;
-  /** Урьдчилсан төсөвт өртөг, ₮ — null = бөглөөгүй/0 */
+  /** Захирамжийн ХО төсөв (`ho_dun_zahiramj`), ₮ — null = бөглөөгүй/0 (2026-10-04, толгойн ⚠️) */
   budget: number | null;
   /** Гэрээний дүн (`geree_dun`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
   contract: number | null;
@@ -128,7 +139,10 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
   let noBudget = 0;
 
   for (const r of raw) {
-    const budget = money(r[F.budget]);
+    /* ⚠️ 2026-10-04: Excel-ийн НИЙТ хүрээ (5·6·7-р хэсэг орохгүй) — «Гэрээлсэн дүн»-тэй нэг */
+    if (!finXlInTotal(r)) continue;
+    /* ⚠️ 2026-10-04: ЗАХИРАМЖИЙН төсөв — `ho_dun_geree` гэрээтэй мөрд гэрээний дүнтэй ижил (толгойн ⚠️) */
+    const budget = money(r[F.budgetOrder]);
     const contract = money(r[F.contractAmount]);
     /* ⚠️ Гэрээгүй мөрийн төсөв ЭНД ХАЯГДАНА — `budgetTotal`-д орохгүй (толгойн ⚠️).
        ⚠️ 2026-09-25: гэрээтэй эсэх нь `note === CONTRACTED`-ээр (дүнгээр БИШ). */
@@ -169,7 +183,8 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     budgetTotal: sumOrNull(rows.flatMap((r) => (r.budget != null && r.contract != null ? [r.budget] : []))),
     noContract,
     noBudget,
-    total: raw.length,
+    /* ⚠️ 2026-10-04: НИЙТ хүрээний мөр (`finXlInTotal`) */
+    total: raw.filter((r) => finXlInTotal(r)).length,
   };
 }
 
@@ -261,8 +276,8 @@ export const loadContractGapKpi = cached<KpiResult>(async () => {
     rows = await queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
       outFields: [
-        F.detail, F.project, F.pkg, F.pkg2, F.budget, F.contractAmount,
-        F.contractor, F.contractNo, F.contractDate, F.amountNote,
+        F.detail, F.project, F.pkg, F.pkg2, F.budgetOrder, F.contractAmount,
+        F.contractor, F.contractNo, F.contractDate, F.amountNote, FIN_XL_TOTAL_CODE_FIELD,
       ],
       orderBy: `${CASHFLOW_NEW.oid} ASC`,
     }).catch(() => { throw e; });

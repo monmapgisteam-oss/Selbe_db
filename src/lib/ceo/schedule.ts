@@ -219,8 +219,10 @@ export const ymOf = (ms: number): string => monthKey(ms);
  * ⚠️ `given: 0` нь зөвхөн төрлийн шаардлага — `lagOf` мөнгийг огт уншдаггүй.
  * ⚠️ `label ≤ өнөөдөр` байх ёстой — `lagOf` ирээдүйн сарыг үл тоодог.
  */
+/* ⚠️ 2026-10-04: `physAt: '<сар>-31'` ИЛ өгнө — `lagOf` одоо `physAt`-гүй ОДООГИЙН сарын цэгийг
+   ӨНӨӨДРӨӨР жишдэг болсон (`planProgress.measureDayOf`); муруйг уншихад САРЫН ЭЦСИЙН % хэрэгтэй. */
 export const lagPoint = (label: string, pkg?: string): MonthPt[] => (
-  pkg == null ? [{ label, given: 0, phys: 0 }] : [{ label, given: 0, phys: 0, pkg }]
+  pkg == null ? [{ label, given: 0, phys: 0, physAt: `${label}-31` }] : [{ label, given: 0, phys: 0, physAt: `${label}-31`, pkg }]
 );
 
 /**

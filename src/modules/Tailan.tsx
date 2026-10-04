@@ -477,13 +477,14 @@ function TailanFull() {
                    гүйцэтгэл (`gdash.housingPct`: хэмжигдсэн багц, ХО дүнгээр жигнэсэн;
                    §3 «Нийт» · Dashboard · PkgProg · удирдлагын тайлантай нэг тоо).
                    Урьд нь (2026-09-24) энд блокийн тоогоор жигнэдэг тул §3-аас зөрдөг
-                   байв. Мөрийн `progress` (тайлагнасан блокийн дундаж, `joinBagts`)
-                   нь §3-ын багцын `actual`-тай нэг дүрэм — `execData.check` баталгаажуулна.
+                   байв. Мөрийн `progress` (`joinBagts` → `pkgProgressOf`: ⚠️ 2026-10-01-нөөс
+                   БҮХ блокоор, тайлангүй блок 0%; 6-р хэсгийн `progress.byBagts` ч 2026-10-04-нөөс
+                   ижил функц) нь §3-ын багцын `actual`-тай нэг дүрэм — `execData.check` баталгаажуулна.
                    Мэдэгдэх багц байхгүй бол `null` → «—». */
                 const bagtsAvg = x.overall.pct;
                 const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
                 /* ⚠️ 2026-09-21: ХАМГИЙН ӨНДӨР / БАГА БАГЦ — ХҮСНЭГТИЙН ДҮРМЭЭР (`joinBagts`:
-                   тайлагнасан блокуудын дундаж, 2026-09-30-аас). `rows`-ийг
+                   2026-10-01-нөөс БҮХ блокоор, тайлангүй блок 0% — `pkgProgressOf`). `rows`-ийг
                    `buildFindings`-д дамжуулснаар `d.bestBagts`/`d.worstBagts` ба дүгнэлтийн
                    өгүүлбэр (`reportData.bagtsExtremes`) дэлгэц · PDF хоёуланд НЭГ эх —
                    урьд нь энд тусдаа эрэмбэлж, PDF `progress.byBagts` (зөвхөн тайлантай
@@ -526,7 +527,8 @@ function TailanFull() {
                         {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
                         {d.contractRate != null && <> ({pct(d.contractRate, 1)})</>} {tr('нь гэрээгээр баталгаажиж,')}
                         {' '}<strong>{bn(x.finance.paid)} {tr('₮')}</strong>
-                        {d.paidRate != null && <> ({pct(d.paidRate, 1)})</>} {tr('нь бодитоор олгогдсон байна.')}
+                        {/* ⚠️ 2026-10-04: хувийн тоологч (гэрээлсэн багцын олголт)-ийг ил бичнэ — PDF-тэй нэг (`reportPdf` lead) */}
+                        {d.paidRate != null && <> ({tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', bn(x.finance.paidContracted), pct(d.paidRate, 1))})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
                       <p>
                         {tr('Барилгын талбайд')} <strong>{num(x.habea.workers)} {tr('ажилтан')}</strong>,

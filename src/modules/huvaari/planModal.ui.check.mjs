@@ -105,3 +105,30 @@ console.log('✓ PlanModal SSR: 11 тохиолдол');
   assert.ok(chips(h2).every((x) => !/mdChipBad/.test(x.cls)), 'бүлгийн чип улаан биш');
 }
 console.log('✓ PlanModal SSR: тэнцээгүй блокийн улаан чип');
+
+/* 2026-10-04 (шүүлт): олон блокт `@N` хуулахад `Hamaaral` (255) хэтэрвэл «Тавих» хаагдана */
+{
+  const B = Array.from({ length: 22 }, (_, i) => `B${i + 1}`);
+  const sel = new Set(Array.from({ length: 21 }, (_, i) => i)); // 22-оос 21 — блокгүй болгохгүй
+  const deps = [{ code: 5, type: 'FS', lag: 13, blk: 0 }, { code: 6, type: 'SS', lag: -12, blk: 0 }, { code: 8, type: 'FS', lag: 0, blk: 0 }];
+  const cands = [5, 6, 8].map((c) => ({ code: c, label: `w${c}` }));
+  const base = { ...row([span('2026-10-01', '2026-12-31')], null), deps };
+  let o = render(base, new Map(), { blocks: B, initSel: sel, hasHam: true, cands });
+  assert.equal(o.disabled, true, `хэт урт уялдаа → Тавих хаалттай: ${o.btn}`);
+  assert.ok(/талбарт багтахгүй/.test(o.title), `шалтгаан title-д: ${o.title}`);
+  // цөөн блок → багтана → идэвхтэй
+  o = render(base, new Map(), { blocks: B, initSel: new Set([0, 1, 2]), hasHam: true, cands });
+  assert.equal(o.disabled, false, `багтах уялдаа → Тавих идэвхтэй: ${o.btn}`);
+  // танигдаагүй токен (hamKeep) ч тоологдоно
+  o = render(base, new Map(), { blocks: B, initSel: new Set([0, 1, 2]), hasHam: true, cands, hamKeep: ['X'.repeat(240)] });
+  assert.equal(o.disabled, true, 'hamKeep + уялдаа > 255 → хаалттай');
+}
+console.log('✓ PlanModal SSR: Hamaaral 255 хамгаалалт');
+{
+  const fs = await import('node:fs');
+  const SP = fs.readFileSync('src/modules/huvaari/savePrep.ts', 'utf8');
+  assert.ok(/export const HAM_MAX = 255;/.test(SP), 'HAM_MAX алга');
+  assert.ok(/text\.trim\(\)\.length > HAM_MAX/.test(SP) && /return \{ ok: false, stale: 0, hamLong \}/.test(SP), 'savePrep урт уялдааг татгалзахгүй');
+  assert.ok(SP.indexOf('hamLong') < SP.indexOf('for (const [oid, text] of ham) {'), 'savePrep шалгалт бичилтийн бэлтгэлээс хойно');
+}
+console.log('✓ savePrep: урт уялдаа тайрахгүй, татгалзана');

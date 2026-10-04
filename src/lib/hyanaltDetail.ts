@@ -25,7 +25,7 @@ import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { computeAll, firstFrame, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
-import { overlaySubmission } from '@/modules/sheet/sheetFrame';
+import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
@@ -198,6 +198,11 @@ export type Submission = {
    *    (`sheetFrame.Overlay.remapped`). Хуучин индексийн зөвшөөрлийг энэ үед итгэхгүй.
    */
   remapped?: boolean;
+  /**
+   * ⚠️ 2026-10-04: одоогийн жаазын мөрөнд ТУЛГАГДААГҮЙ илгээлтийн нүдний тоо (`Overlay.unmoved`).
+   *    > 0 бол хянагчийн жагсаалтад тэдгээр нүд харагдахгүй — батлахад архивлалт ил зогсоно.
+   */
+  unmoved?: number;
 };
 
 /**
@@ -272,8 +277,9 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
 async function loadStaged(
   bagts: string,
   subOid: number,
-  pl: SubmissionPayload,
+  pl0: SubmissionPayload,
 ): Promise<Submission | null> {
+  let pl = pl0;
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) throw new Error(tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey));
   /*
@@ -287,6 +293,16 @@ async function loadStaged(
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   const loaded = await loadRows(pkg, sc);
+  /*
+   * ⚠️ 2026-10-04 (REGRESSION засвар): ХУУЧИН (`rowOcc`-гүй) илгээлт ӨМНӨХ жааз дээр бол давтамжийг
+   *    СУУРЬ жаазаас нөхнө — `hyanaltStore.archiveSubmission` (батлалт) ба `FillNew.ensureFrameOcc`-тэй
+   *    ИЖИЛ дүрэм. Урьд нь энд нөхдөггүй тул давхардсан шошготой мөрийн нүд хянагчийн жагсаалтаас
+   *    ХАСАГДАЖ, харин батлалт тэдгээрийг архивт бичдэг байв (хараагүй зүйл батлагдана).
+   *    Уншилт унавал payload ХЭВЭЭР — `unmoved`-оор ил хэлнэ.
+   */
+  if (pl.base != null && needsFrameOcc(pl, loaded.rows)) {
+    try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр — доорх `unmoved` */ }
+  }
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
   const asOf = ov.asOf ?? loaded.asOf;
   /* ⚠️ 2026-10-01: мөр бүрийн тогтвортой танигч (`Change.rid`) — FillNew-ийн `rows`-той ИЖИЛ дараалал */
@@ -483,6 +499,7 @@ async function loadStaged(
     subOid,
     subAt: pl.at,
     remapped: ov.remapped,
+    unmoved: ov.unmoved,
   };
 }
 

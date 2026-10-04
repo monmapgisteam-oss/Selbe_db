@@ -26,7 +26,7 @@
  *    (хэрэглэгчийн сонголт, 2026-09-30).
  */
 import { t as tr } from '@/lib/i18nCore';
-import { monthKey } from '@/lib/format';
+import { monthKey, dayKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, hoAmount, pkgKeyOf,
 } from '@/lib/services';
@@ -37,6 +37,7 @@ import type { HoContract } from '@/lib/ipc';
    гүйцэтгэлийн үнэлгээ (`guits_une`). Хоёулаа цэвэр модуль (сүлжээгүй). */
 import { autoDay, dayOf, isAuto } from '@/lib/ipcAuto';
 import { LINK_FIELDS } from '@/lib/ipcLink';
+import { hoPkgKey } from '@/lib/pkgAlias';
 
 type Row = Record<string, unknown>;
 
@@ -721,9 +722,14 @@ export function keyOwners(pkgs: readonly TuhPkg[]): { owner: Map<string, string>
  */
 export function assignHo(pkgs: readonly TuhPkg[], contracts: readonly HoContract[]): Map<string, HoContract[]> {
   const { owner, design } = keyOwners(pkgs);
+  /* ⚠️ 2026-10-04: ЗУРАГ ТӨСЛИЙН HO гэрээний түлхүүрийг Cashflow-ийн түлхүүр рүү (`pkgAlias.hoPkgKey` —
+     «Багц-8.1» ТЭЗҮ → «Багц 8» зураг төсөл), «Багцын санхүү»-тэй НЭГ хүснэгтээр; урьд нь зөвхөн эцэг
+     кодын таамаг (доорх 3-р шат) байв. ⚠️ ЗӨВХӨН зураг төслийн хайлтад — 8.1-ийн БАРИЛГЫН гэрээ өөрийн
+     түлхүүрийн эзэнд (`owner`) хэвээр очно. */
+  const keyOf = (c: HoContract) => (c.key ? hoPkgKey(c.key) : '');
   const designRows = pkgs.filter((p) => p.group === 'design').map((p) => ({ key: p.key, norm: searchNorm(p.code) }));
   const designFor = (c: HoContract): string | undefined => {
-    const byKey = c.key ? design.get(c.key) : undefined;
+    const byKey = keyOf(c) ? design.get(keyOf(c)) : undefined;
     if (byKey) return byKey;
     const cn = searchNorm(c.pkg || c.code);
     if (!cn) return undefined;
@@ -790,10 +796,18 @@ export function rowSpan(rows: readonly PlanLikeRow[], i: number): { start: numbe
   return { start, end };
 }
 
-/** Мөрийн бодит гүйцэтгэл (0–1) — хэмжигдсэн блокуудын дундаж; нэг ч алга бол `null` */
+/**
+ * Мөрийн бодит гүйцэтгэл (0–1) — хуудасны БҮХ блокоор хуваасан дундаж (тайлагнаагүй блок 0);
+ * нэг ч блок хэмжигдээгүй бол `null`.
+ * ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): урьд нь ЗӨВХӨН хэмжигдсэн
+ *    блокуудаар дундажладаг тул 20 блокийн 1-д 100% бөглөсөн ажил Gantt-д «дууссан» харагддаг
+ *    байв (`pkgProgressOf`-ийн жишээ). Хуваарь = `act.length` (хуудасны блокийн багана).
+ * ⚠️ Огт хэмжилтгүй мөр `null` ХЭВЭЭР — `plan.statusOf`-ийн «хэмжигдээгүй ≠ эхлээгүй» (⚠️):
+ *    0 гэвэл бөглөгдөөгүй бүх ажил Gantt-д «хоцорсон» улаанаар дүүрнэ.
+ */
 export function rowAct(r: PlanLikeRow): number | null {
   const xs = r.act.filter((x): x is number => x != null && Number.isFinite(x));
-  return xs.length ? Math.min(1, xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+  return xs.length ? Math.min(1, xs.reduce((a, b) => a + b, 0) / r.act.length) : null;
 }
 
 /**
@@ -942,12 +956,17 @@ export function measDayOf(
   months: readonly { label: string; phys: number | null; physAt?: string | null }[] | null | undefined,
   nowYm: string,
   fallback: string,
+  /* ⚠️ 2026-10-04: `physAt` алга ба сүүлийн хэмжигдсэн сар нь ОДООГИЙН сар (ОГТ тайлагнаагүй
+     багцын 0% цэг — `Finance.contractMonths`) бол ӨНӨӨДӨР, сарын эцэс БИШ —
+     `planProgress.measureDayOf`-тэй ЯГ ижил дүрэм (тэр модуль хуудас уншигч тул энд импортлохгүй). */
+  today: string = dayKey(Date.now()),
 ): string {
   let last: { label: string; physAt?: string | null } | null = null;
   for (const m of months ?? []) if (m.label <= nowYm && m.phys != null) last = m;
   if (!last) return fallback;
   const at = last.physAt;
-  return at && /^\d{4}-\d{2}-\d{2}$/.test(at) && at.slice(0, 7) === last.label ? at : `${last.label}-31`;
+  if (at && /^\d{4}-\d{2}-\d{2}$/.test(at) && at.slice(0, 7) === last.label) return at;
+  return last.label === today.slice(0, 7) ? today : `${last.label}-31`;
 }
 
 /**

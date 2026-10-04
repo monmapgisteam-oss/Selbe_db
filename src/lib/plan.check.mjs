@@ -129,5 +129,14 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
   for (const at of ['2026-03-01', '2026-03-20', '2026-03-24', '2026-03-29', '2026-04-10']) {
     assert.equal(planAt(d(at), sp.start, sp.end), spanFrac(sp, d(at)), `planAt ≡ spanFrac (${at})`);
   }
+  /* ⚠️ 2026-10-04: урвуу муж — төлөвлөгөөний замд ХУВААРЬГҮЙ (null), «100% алхам» БИШ */
+  assert.equal(planAt(d('2026-03-25'), d('2026-03-29'), d('2026-03-20')), null, 'урвуу муж хуваарьгүй биш');
+  const rev = coverageOf([
+    row(0, [span('2026-03-29', '2026-03-20'), span('2026-03-01', '2026-03-05'), null, null]),
+    row(1, [span('2026-03-01', '2026-03-05'), null, null, null]),
+    row(2, [span('2026-04-09', '2026-04-01'), null, null, null], { group: true, depth: 4 }),
+  ]);
+  assert.equal(rev.reversed, 1, 'урвуу огноотой АЖЛЫН тоо (бүлэг тоологдохгүй)');
+  assert.equal(cov.reversed, 0);
 }
 console.log('plan.check: ok — spanFrac ✓');

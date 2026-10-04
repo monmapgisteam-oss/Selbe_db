@@ -35,7 +35,9 @@ const row = (o) => ({
   /* ⚠️ Cashflow_0909-д багцын багана НЭГ (`bagts`) — `pkg` ба `pkg2` ижил
      талбарыг заана. Хоёуланг нь бичвэл сүүлийнх нь эхнийхийг ДАРНА. */
   [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
-  [F.budget]: o.b ?? null, [F.contractAmount]: o.c ?? null,
+  /* ⚠️ 2026-10-04: төсөв = захирамжийн ХО дүн (`budgetOrder`), `ho_dun_geree` БИШ */
+  [F.budgetOrder]: o.b ?? null, [F.contractAmount]: o.c ?? null,
+  bagts_tuvshin1: o.sec ?? '2',
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
   /* ⚠️ 2026-09-25: анхдагч нь дүнтэй мөр = CONTRACTED (хуучин шалгалтууд хэвээр);
      `note`-ыг ил өгч дүрмийг шалгана (8-р хэсэг) */
@@ -172,6 +174,19 @@ const row = (o) => ({
   assert.equal(g.contractTotal, 1200, 'магадласан 900 орохгүй');
   assert.equal(g.budgetTotal, 1000, 'дүнгүй гэрээний төсөв нийлбэрт орохгүй (нэг популяци)');
   assert.equal(g.over.sum, 200);
+}
+
+/* ══════ 9. 2026-10-04: НИЙТ хүрээ (finXlInTotal) · захирамжийн төсөв · ho_dun_geree үл тоогдоно ══════ */
+{
+  const g = computeContractGap([
+    { ...row({ work: 'гэрээ=geree', b: 1100, c: 1000 }), [F.budget]: 1000 },   // ho_dun_geree == geree_dun (амьд хэв)
+    row({ work: 'газар', b: 500, c: 900, sec: '6' }),                          // 6-р хэсэг — хүрээнээс гадуур
+  ]);
+  assert.equal(g.total, 1, '5·6·7-р хэсэг нийт мөрөнд орохгүй');
+  assert.equal(g.rows.length, 1);
+  assert.equal(g.rows[0].budget, 1100, 'төсөв = ho_dun_zahiramj (ho_dun_geree БИШ)');
+  assert.equal(g.under.sum, -100, 'хэмнэлт 100 — урьд нь ho_dun_geree-ээр 0 гардаг байв');
+  assert.equal(g.contractTotal, 1000, 'хүрээнээс гадуурх 900 орохгүй');
 }
 
 console.log('✅ contractGap.check: бүх шалгалт давлаа');

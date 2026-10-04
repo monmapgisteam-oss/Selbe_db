@@ -351,6 +351,18 @@ export function latestLaborRow(rows: readonly Row[]): Row | null {
   return best ? best.r : null;
 }
 
+/**
+ * НЭГ МӨРИЙН ХҮН ХҮЧ — компани бүрийн нийлбэр (`companyDay`: нийт хоосон/0 бол монгол + гадаад).
+ * ⚠️ 2026-10-04: «Тайлан»-гийн ХАБЭА (`reportData.loadHabeaSummary`) ба Дашбоардын «ХАБ өнөөдөр»
+ *    (`gdash.loadHseNow`) ЭНЭ ГАНЦ туслахаар. Урьд нь дашбоард маягтын ТОЛГОЙН `Niit_ajiltan`-ийг,
+ *    тайлан компанийн `Niit_ajiltan_<SFX>`-ийн нийлбэрийг (монгол+гадаад нөхөлтгүй) уншдаг тул нэг
+ *    өдрийн ажилтны тоо хоёр дэлгэцэд зөрдөг байв. `workers`/`technik` `null` = нэг ч компанийн
+ *    талбар бөглөөгүй (0 БИШ).
+ */
+export function laborHeadOf(r: Row): WorkforceDay {
+  return dayOf(r, numOrNull(r[F.ognoo]) ?? 0, numOrNull(r[OID_FIELD]), 1);
+}
+
 /** Бууралтын хувь ба тайлангийн шинэлэг байдлаас нэгдсэн түвшин */
 export function workforceLevel(deltaPct: number | null, staleDays: number | null): Level {
   /* ⚠️ Өмнөх тайлангүй (deltaPct null) бол дүгнэлтгүй — `neutral`, «сайн» биш */

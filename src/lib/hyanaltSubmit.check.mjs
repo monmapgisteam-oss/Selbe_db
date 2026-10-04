@@ -17,7 +17,8 @@
  *      болгож нийлүүлэн, өмнөх илгээлтүүд хянагчид ОГТ харагдахгүй болно.
  */
 import assert from 'node:assert/strict';
-import { dayTagOf, hasOpenLegacy, openReviewRow } from './hyanaltSubmit.ts';
+import { readFileSync } from 'node:fs';
+import { dayTagOf, hasOpenLegacy, needsRegistration, openReviewRow } from './hyanaltSubmit.ts';
 import { F, STATUS } from './hyanalt.ts';
 
 const DAY = Date.UTC(2026, 8, 7);      /* 2026-09-07 */
@@ -184,6 +185,32 @@ assert.equal(openReviewRow([], 500, TAG), null);
     cyc(11, 2, STATUS.managerReview, 'G-000021'),
   ], 500, TAG);
   assert.equal(hit?.[F.id], 'G-000021', 'хянагчийн гар дээрх ОДООГИЙН тойргийг л буцаана');
+}
+
+/* ── 2026-10-04: `needsRegistration` — ижил sheetOid-тай ЯМАР Ч мөр «бүртгэгдсэн» БИШ ── */
+{
+  const RET = Date.UTC(2026, 8, 7, 10);
+  const back = { ...row(700, STATUS.engineerReturned), [F.engineerReturned]: new Date(RET).toISOString(), [F.ergelt]: 1 };
+  /* Буцаалтаас ХОЙШ дахин илгээсэн, бүртгэл унасан → бүртгэх шаардлагатай */
+  assert.equal(needsRegistration([back], 700, TAG, RET + 60_000), true, 'буцаалтын дараах засвар инженерт хүрэх ёстой');
+  /* Буцаалтаас ӨМНӨХ илгээлт (засаагүй) → өнчин БИШ */
+  assert.equal(needsRegistration([back], 700, TAG, RET - 60_000), false, 'засаагүй буцаалт өнчин биш');
+  /* epoch ms (Attrs) хэлбэр ч ижил */
+  assert.equal(needsRegistration([{ ...back, [F.engineerReturned]: RET }], 700, TAG, RET + 1), true);
+  /* Хянагчийн гар дээр шинэ тойрог бий → бүртгэлтэй */
+  const open = { ...row(700, STATUS.engineerReview), [F.ergelt]: 2 };
+  assert.equal(needsRegistration([back, open], 700, TAG, RET + 60_000), false, 'шинэ тойрог нээлттэй');
+  /* Мөр огт алга → өнчин */
+  assert.equal(needsRegistration([], 700, TAG, RET), true, 'бүртгэлгүй');
+  /* Өчигдрийн шошготой мөр өнөөдрийн илгээлтийг «бүртгэгдсэн» болгохгүй */
+  assert.equal(needsRegistration([row(700, STATUS.engineerReview, PREV_TAG)], 700, TAG, RET), true, 'өөр өдрийн мөр');
+  /* Дууссан мөчлөг → бүртгэх шаардлагагүй */
+  assert.equal(needsRegistration([row(700, STATUS.transferred)], 700, TAG, RET), false, 'шилжүүлсэн');
+  assert.equal(needsRegistration([back], null, TAG, RET), false, 'sheetOid алга');
+  const fill = readFileSync(new URL('../modules/sheet/FillNew.tsx', import.meta.url), 'utf8');
+  assert.ok(!/fresh\?\.some\(\(r\) => Number\(r\[HF\.sheetOid\]\) === stagedOid\)/.test(fill), 'FillNew.resend: хуучин «ижил sheetOid» шалгуур үлдсэн');
+  assert.ok(fill.includes('needsRegistration('), 'FillNew: өнчин илгээлтийн шалгуур `needsRegistration`-ээр');
+  console.log('✅ needsRegistration — одоогийн тойрог · буцаалтын дараах засвар');
 }
 
 console.log('hyanaltSubmit.check.mjs — БҮГД ТЭНЦЛЭЭ');

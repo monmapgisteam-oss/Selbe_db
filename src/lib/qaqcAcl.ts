@@ -30,7 +30,7 @@
  */
 
 import { makeAcl, ALL_BAGTS } from './scopedAcl';
-import { qaqcUpsert, qaqcRemove } from './permsRemote';
+import { qaqcUpsert, qaqcRemove, scopedRead } from './permsRemote';
 import { QAQC_CAP } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
 
@@ -54,6 +54,8 @@ const acl = makeAcl<never>({
      хуучин хэлбэрийн `bagts` нь мэдээлэл алдахгүй, задлах шаардлагагүй. */
   push: (user, _roles, bagts) => qaqcUpsert(user, bagts),
   remove: qaqcRemove,
+  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
+  read: (user) => scopedRead('qaqc', user),
   /* ⚠️ GETTER (2026-09-25): `tr()`-ийг модуль ачаалах агшинд БИШ, мессеж
      уншигдах агшинд дуудна — хэл солиход англи хувилбар зөв гарна. */
   msg: {

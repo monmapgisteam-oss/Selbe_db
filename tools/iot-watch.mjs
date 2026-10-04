@@ -28,7 +28,8 @@ const TO = String(process.env.IOT_ALERT_CHATS ?? process.env.TELEGRAM_ALLOWED ??
 const STATE_FILE = process.env.IOT_STATE_FILE || 'iot-watch-state.json';
 
 /** Хэдэн цагийн дараа «хуучирсан» гэж үзэх вэ (порталын дүрэмтэй ИЖИЛ) */
-const STALE_H = Number(process.env.IOT_STALE_HOURS ?? 48);
+/* ⚠️ 2026-10-04: 48 → 24 — `sensors.SENSOR_STALE_H` / `ceo/iot.IOT_STALE_H`-тэй нэг */
+const STALE_H = Number(process.env.IOT_STALE_HOURS ?? 24);
 
 if (!TOKEN) {
   console.error('✗ TELEGRAM_BOT_TOKEN алга. `.env.local`-д тавина уу.');

@@ -79,10 +79,10 @@ assert.equal(slipMonthsOf(series.slice(0, 4), 15, '2026-04'), 0);
 assert.equal(slipMonthsOf(series.slice(2, 5), 15, '2026-05'), 1);
 
 /* ── lagPoint / curveProbe: lagOf-д өгөх зохиомол цэг ── */
-assert.deepEqual(lagPoint('2026-03'), [{ label: '2026-03', given: 0, phys: 0 }]);
+assert.deepEqual(lagPoint('2026-03'), [{ label: '2026-03', given: 0, phys: 0, physAt: '2026-03-31' }]);
 assert.equal(lagPoint('2026-03')[0].pkg, undefined, 'pkg байхгүй → төслийн муруй');
-assert.deepEqual(lagPoint('2026-03', 'БАГЦ1'), [{ label: '2026-03', given: 0, phys: 0, pkg: 'БАГЦ1' }]);
-assert.deepEqual(curveProbe(NOW_YM), [{ label: NOW_YM, given: 0, phys: 0 }]);
+assert.deepEqual(lagPoint('2026-03', 'БАГЦ1'), [{ label: '2026-03', given: 0, phys: 0, physAt: '2026-03-31', pkg: 'БАГЦ1' }]);
+assert.deepEqual(curveProbe(NOW_YM), [{ label: NOW_YM, given: 0, phys: 0, physAt: `${NOW_YM}-31` }]);
 
 /* ── Муруй (lagOfLike-ийн кэш) ── */
 const curve = {

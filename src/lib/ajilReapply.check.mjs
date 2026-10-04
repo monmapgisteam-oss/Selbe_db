@@ -57,7 +57,18 @@ const { AJIL_STATUS } = B;
     'retry',
     'энэ цонхонд оролдлого дууссан — хүлээхгүй',
   );
-  console.log('✅ илрүүлэлт (classifyStuck)');
+  /* ⚠️ 2026-10-04: «эцэг бүлэг олдсонгүй»-ээр унасан нь `retry` БИШ `orphan` (дахин буулгах нь бүтэхгүй) */
+  const np = A.classifyStuck(list, { now: NOW, scope: ['Багц 1'], knownPkg, noParent: new Set([1, 2]) });
+  assert.equal(np.find((x) => x.sub.oid === 1).kind, 'orphan', 'no-parent retry → orphan');
+  assert.equal(np.find((x) => x.sub.oid === 2).kind, 'orphan', 'no-parent fresh → orphan');
+  assert.equal(np.find((x) => x.sub.oid === 7).kind, 'retry', 'бусад нь хэвээр');
+  /* Буцаах дүрэм — зөвхөн approved, шалтгаан заавал */
+  assert.equal(B.returnStuckDeny(B.AJIL_STATUS.approved, B.NO_PARENT_REASON()), null);
+  assert.ok(B.returnStuckDeny(B.AJIL_STATUS.approved, '  '), 'шалтгаангүй');
+  for (const st of [B.AJIL_STATUS.pending, B.AJIL_STATUS.applied, B.AJIL_STATUS.returned, B.AJIL_STATUS.withdrawn, null]) {
+    assert.ok(B.returnStuckDeny(st, 'x'), `«${st}» буцаагдахгүй`);
+  }
+  console.log('✅ илрүүлэлт (classifyStuck) · эцэггүй → orphan · гацсан батлалтыг буцаах дүрэм');
 }
 
 /* ── 2. Эрх ── */

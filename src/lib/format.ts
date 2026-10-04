@@ -14,14 +14,19 @@ const L = 'en-US';
  */
 export const dateLocale = (): string => (getLocale() === 'en' ? 'en-US' : 'mn-MN');
 
-/** Огноо + цаг (YYYY-MM-DD HH:MM хэлбэр хэлээ дагана) — тайлангийн толгойд */
+/**
+ * Огноо + цаг — тайлангийн толгойд, ОРОН НУТГИЙН цагаар `YYYY-MM-DD HH:mm`.
+ * ⚠️ 2026-10-04: ХОЁР ХЭЛЭНД ИЖИЛ хэлбэр. Урьд нь `toLocaleString(dateLocale())` тул
+ *    англи горимд «10/04/2026, 02:30 PM» (MM/DD — монгол уншигчид 4-р сарын 10 мэт)
+ *    гарч, PDF/Excel тайлан хоёр хэлэнд өөр огноотой харагддаг байв. Тайлан бол
+ *    баримт — ISO-д ойр нэг хэлбэр.
+ */
 export function dateTime(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
   const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleString(dateLocale(), {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
 export const num = (v: number | null | undefined, d = 0): string =>

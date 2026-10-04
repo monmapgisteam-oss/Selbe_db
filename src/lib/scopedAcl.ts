@@ -131,6 +131,40 @@ const fromLegacy = <R extends string>(a: LegacyAssign, hasRoles: boolean): Grant
   return roles.map((role) => ({ role: role as R, bagts }));
 };
 
+/**
+ * ХУВААРИЛАЛТЫН ӨӨРЧЛӨЛТИЙГ ШИНЭ УТГА ДЭЭР ДАВХАРЛАНА — цэвэр (`scopedAcl.check.mjs`, 2026-10-04).
+ * Нэгж нь (үүрэг, багц) хос: `next − base` = нэмсэн, `base − next` = хассан. `fresh`
+ * (remote-оос дөнгөж уншсан) дээр хассаныг хасаж нэмснийг нэмнэ — завсарт өөр админы
+ * хийсэн өөрчлөлт хадгалагдана. Үүрэгт `ALL_BAGTS` байвал зөвхөн `[ALL_BAGTS]`.
+ * Үүргийн дараалал: `fresh`-ийнх, дараа нь шинэ.
+ */
+export function mergeGrantDelta<R extends string>(
+  base: readonly Grant<R>[], next: readonly Grant<R>[], fresh: readonly Grant<R>[],
+): Grant<R>[] {
+  const SEP = '\u0001';
+  const pairs = (gs: readonly Grant<R>[]) => new Set(gs.flatMap((g) => g.bagts.map((b) => `${g.role}${SEP}${b}`)));
+  const b = pairs(base);
+  const n = pairs(next);
+  const out = new Map<string, Set<string>>();
+  const add = (role: string, bag: string) => {
+    const s = out.get(role) ?? new Set<string>();
+    s.add(bag);
+    out.set(role, s);
+  };
+  for (const g of fresh) for (const bag of g.bagts) {
+    const k = `${g.role}${SEP}${bag}`;
+    if (b.has(k) && !n.has(k)) continue;
+    add(g.role, bag);
+  }
+  for (const g of next) for (const bag of g.bagts) {
+    if (!b.has(`${g.role}${SEP}${bag}`)) add(g.role, bag);
+  }
+  return [...out].filter(([, s]) => s.size > 0).map(([role, s]) => ({
+    role: role as R | '',
+    bagts: s.has(ALL_BAGTS) ? [ALL_BAGTS] : [...s],
+  }));
+}
+
 /** Бичилтийн үр дүн — `sync` нь мөр, `granted` нь эрхийн олголт */
 export type AclWrite = {
   ok: boolean;
@@ -162,6 +196,12 @@ export type AclSpec<R extends string> = {
    */
   push: (user: string, roles: R[], bagts: string[], grants: Grant<R>[]) => Promise<boolean>;
   remove: (user: string) => Promise<boolean>;
+  /**
+   * ⚠️ 2026-10-04: хэрэглэгчийн мөрийг ШИНЭЭР унших (`permsRemote.scopedRead`) — бичихийн
+   *    ӨМНӨ нэгтгэнэ (`pushRow`). `null` = уншиж чадсангүй (бичихгүй), `{row:null}` = мөр алга.
+   *    Өгөөгүй бол урьдын зан (локал бүтэн жагсаалт).
+   */
+  read?: (user: string) => Promise<{ row: { roles?: string[]; bagts?: string[]; grants?: Grant<string>[] } | null } | null>;
   /** Алдааны мессежүүд — систем бүр өөрийн үгтэй */
   msg: {
     noUser: string;
@@ -319,13 +359,48 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     return p;
   }
 
+  /** Remote мөр → цэвэр `grants` — `syncRemote`-ийн задлалтай ИЖИЛ дүрэм (хуучин хэлбэр · танигдахгүй үүрэг) */
+  function cleanGrants(user: string, r: { roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }): Grant<R>[] {
+    const raw: Grant<string>[] = Array.isArray(r.grants)
+      ? r.grants
+      : fromLegacy<R>({ user, roles: r.roles, bagts: r.bagts }, hasRoles);
+    return raw
+      .filter((g) => g && Array.isArray(g.bagts))
+      .map((g) => ({
+        role: (hasRoles ? (ROLES.has(String(g.role)) ? g.role : null) : '') as R | '',
+        bagts: g.bagts.filter((b) => typeof b === 'string'),
+      }))
+      .filter((g): g is Grant<R> => g.role !== null && g.bagts.length > 0);
+  }
+
   /**
    * Хуваарилалтыг remote руу бичих.
    * ⚠️ Жагсаалтыг ГҮЙЦЭТГЭХ агшиндаа уншина: дараалалд хүлээх хооронд
    *    хэрэглэгч хасагдсан/дахин нэмэгдсэн бол сүүлийн байдал нь бичигдэнэ.
    */
-  async function pushRow(user: string): Promise<boolean> {
+  async function pushRow(user: string, delta?: { base: Grant<R>[]; next: Grant<R>[] }): Promise<boolean> {
     try {
+      /*
+       * ⚠️ ШИНЭ МӨР ДЭЭР ӨӨРИЙН ӨӨРЧЛӨЛТИЙГ ДАВХАРЛАНА (2026-10-04). Урьд нь ≤5 мин настай
+       *    кэшээс бүтэн `grants` бичдэг тул хоёр админ нэг хүнд зэрэг багц нэмэхэд
+       *    сүүлийнх нь эхнийхийн багцыг ЧИМЭЭГҮЙ арчдаг байв. `delta` (энэ дуудлагын
+       *    өмнөх/дараах локал утга) өгөгдсөн бол remote мөрийг ДАХИН уншиж
+       *    `mergeGrantDelta`-аар нэгтгээд локалыг ч түүгээр шинэчилнэ. Уншиж чадаагүй
+       *    бол БИЧИХГҮЙ (`false` → «!» тэмдэг, «Дахин илгээх»). `retry`/`purge` нь delta-гүй
+       *    (зорьсон локал төлөвийг хэвээр бичнэ).
+       */
+      /* ⚠️ Өмнөх бичилт УНАСАН (`failed`) бол локал нь баталгаажаагүй зорилго — бүтнээр нь (урьдын зан) */
+      if (delta && spec.read && !failed.has(user)) {
+        const fresh = await spec.read(user);
+        if (!fresh) return false;
+        const freshGrants = fresh.row ? cleanGrants(user, fresh.row) : [];
+        const merged = mergeGrantDelta(delta.base, delta.next, freshGrants);
+        const cur = load();
+        const has = cur.some((x) => x.user === user);
+        save(merged.length
+          ? (has ? cur.map((x) => (x.user === user ? { user, grants: merged } : x)) : [...cur, { user, grants: merged }])
+          : cur.filter((x) => x.user !== user));
+      }
       const a = load().find((x) => x.user === user);
       if (!a) return spec.remove(user);
       /*
@@ -525,6 +600,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
     const cur = load();
     const exists = cur.some((a) => a.user === u);
+    /* ⚠️ 2026-10-04: энэ засварын СУУРЬ — `pushRow` шинэ мөр дээр зөвхөн ялгааг давхарлана */
+    const base = cur.find((a) => a.user === u)?.grants ?? [];
     const next = exists
       ? cur.map((a) => (a.user === u ? { user: u, grants: clean } : a))
       : [...cur, { user: u, grants: clean }];
@@ -533,7 +610,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     /* Эрхийг олгоход БҮХ үүргийн нэгдлийг өгнө */
     const rolesAll = [...new Set(clean.map((g) => g.role))].filter((r): r is R => r !== '');
     const run = enqueue(u, async () => {
-      const ok = await pushRow(u);
+      const ok = await pushRow(u, { base, next: clean as Grant<R>[] });
       const g = grant ? await syncCaps(u, rolesAll) : true;
       return { ok, g };
     });
@@ -560,9 +637,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     /* ⚠️ Хоосон нэр (2026-09-21): урьд нь `''` түлхүүрээр хоосон мөр устгах гэж
        remote руу явж, `syncCaps('')`-ийг ч дууддаг байв. `setGrants`-тай тэгш. */
     if (!u) return { ok: false, error: spec.msg.noUser };
+    /* ⚠️ 2026-10-04: хасалт ч ялгаагаар — завсарт өөр админы нэмсэн багц хадгалагдана */
+    const base = load().find((a) => a.user === u)?.grants ?? [];
     save(load().filter((a) => a.user !== u));
     const run = enqueue(u, async () => {
-      const ok = await pushRow(u);
+      const ok = await pushRow(u, { base, next: [] });
       /*
        * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Урьд нь `syncCaps`-ийн
        *    үр дүнг хаяж зөвхөн мөрийн бичилтийг буцаадаг байв: `__cap__:` мөр

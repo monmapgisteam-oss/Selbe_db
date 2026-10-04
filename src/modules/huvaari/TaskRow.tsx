@@ -211,6 +211,54 @@ export function TaskRow({
   );
 }
 
+/* ══════════════════ «БҮХ БЛОК»-ИЙН ДЭД МӨР (2026-10-04) ══════════════════ */
+
+/**
+ * Ажлын/бүлгийн мөрийн доорх НЭГ БЛОКИЙН мөр — зөвхөн харах.
+ * ⚠️ Нүднүүд `TaskRow`-тай ЯГ ижил дараалал/класстай (код · нэр · 6 огноо · бодит ·
+ *    нөөц · хамаарал) — толгой ба эх мөртэй эгнэнэ; хураасан (`gSideNarrow`) ба
+ *    нарийн дэлгэцийн CSS нуулт ч ижил үйлчилнэ. Өндөр `PL_ROW` хөдлөхгүй.
+ * ⚠️ Нөөц (хүн · техник) ба хамаарал нь МӨРИЙН түвшний (блокгүй) тул хоосон —
+ *    эх мөрд харагдана. `null` огноо → «—» (0 БИШ).
+ * ⚠️ Нэр дээр дарахад тэр блок идэвхжиж горим унтарна (`onPick`) — popup БИШ.
+ */
+export function BlockRow({
+  r, name, on, hasActual, hasRes, aStart, aEnd, geree, tolov, onPick,
+}: {
+  r: PlanRow; name: string; on: boolean;
+  hasActual: boolean; hasRes: boolean;
+  aStart: number | null; aEnd: number | null;
+  geree: Span | null; tolov: Span | null;
+  onPick: () => void;
+}) {
+  const cell = (cls: string, v: string | number | null, tip: string) => (
+    <span className={cls} title={v != null ? tip : undefined}>{v ?? '—'}</span>
+  );
+  return (
+    <div className={`${h.row} ${h.rowSub} ${on ? h.rowOn : ''}`} style={{ height: PL_ROW }}>
+      <span className={h.rowDes} />
+      <div className={h.rowTree} style={{ paddingLeft: `${(r.depth + 1) * 12}px` }}>
+        <span className={h.caretGap} />
+        <button type="button" className={h.rowMain} onClick={onPick}
+          title={`${r.work}\n${tr('Дарж «{0}» блок руу орж засна', name)}`}>
+          <span className={h.rowWork}>{name}</span>
+        </button>
+      </div>
+      {cell(h.rowDate, geree ? msToDay(geree.start) : null, tr('Гэрээний эхлэх огноо'))}
+      {cell(h.rowDate, geree ? msToDay(geree.end) : null, tr('Гэрээний дуусах огноо'))}
+      {cell(h.rowDays, geree ? spanDays(geree) : null, tr('Гэрээгээр үргэлжлэх хоног'))}
+      {cell(h.rowDate, tolov ? msToDay(tolov.start) : null, tr('Төлөвлөгөөт эхлэх огноо'))}
+      {cell(h.rowDate, tolov ? msToDay(tolov.end) : null, tr('Төлөвлөгөөт дуусах огноо'))}
+      {cell(h.rowDays, tolov ? spanDays(tolov) : null, tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))}
+      {hasActual && cell(h.rowDate, aStart != null ? msToDay(aStart) : null, tr('Бодит эхэлсэн огноо'))}
+      {hasActual && cell(h.rowDate, aEnd != null ? msToDay(aEnd) : null, tr('Бодит дууссан огноо'))}
+      {hasRes && <span className={h.rowRes}>{' '}</span>}
+      {hasRes && <span className={h.rowRes}>{' '}</span>}
+      <span className={h.rowHam} style={{ cursor: 'default' }}>{' '}</span>
+    </div>
+  );
+}
+
 /* ══════════════════ ШИНЭ АЖЛЫН МАЯГТ (2026-09-24) ══════════════════ */
 
 /**

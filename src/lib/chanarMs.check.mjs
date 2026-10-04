@@ -883,4 +883,21 @@ console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) �
 }
 console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр · түгжигдсэн агуулга · AN хаалт · NCR REP · нотолгоо');
 
+/* ── 2026-10-04: NCR — хянагчийн ХАРСАН залруулга серверийнхээс зөрвөл дүгнэлт бичихгүй ── */
+{
+  const { correctionChanged } = await import('./chanarMs.ts');
+  assert.equal(correctionChanged(undefined, 123), false, 'өгөөгүй — шалгахгүй (хуучин дуудагч)');
+  assert.equal(correctionChanged(123, 123), false);
+  assert.equal(correctionChanged(null, null), false);
+  assert.equal(correctionChanged(null, undefined), false, 'null ≡ залруулга алга');
+  assert.equal(correctionChanged(123, 456), true, 'гүйцэтгэгч дахин илгээсэн');
+  assert.equal(correctionChanged(null, 456), true, 'хянагч залруулгагүй үед нээсэн');
+  const { readFileSync } = await import('node:fs');
+  const st = readFileSync(new URL('./chanarStore.ts', import.meta.url), 'utf8');
+  const fn = st.slice(st.indexOf('export async function reviewDoc('));
+  assert.ok(fn.indexOf('correctionChanged(args.seenCorrectionAt') > 0
+    && fn.indexOf('correctionChanged(args.seenCorrectionAt') < fn.indexOf('reviewPure('), 'reviewDoc: залруулгын тулгалт шийдвэрээс ӨМНӨ');
+  console.log('✅ 2026-10-04 — NCR залруулгын тулгалт (correctionChanged)');
+}
+
 console.log('chanarMs.check ✓');

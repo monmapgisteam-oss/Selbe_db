@@ -51,6 +51,10 @@ export type HDDraft = {
    * ⚠️ Мөрийг устгавал tombstone ч устаж, өөр төхөөрөмжийн localStorage
    *    хуулбар (`t` < энэ агшин) илгээгдсэн нооргийг дахин амилуулдаг байв.
    *    Сэргээхэд `t < cleared` локал хуулбарыг үл тоомсорлоно.
+   * ⚠️ 2026-10-04 аудит: НҮД ТУС БҮРЭЭР (`dropCleared`) — локал хуулбарыг БҮХЛЭЭР нь
+   *    хаяхаа болив: цэвэрлэлтээс ХОЙШ бичсэн нүд (`at > cleared`) нь хуулбарын `t`
+   *    хуучин ч хэвээр үлдэнэ. Зөвхөн илгээх/«Ноорог хаях» тавина (`applyClear`),
+   *    энгийн буцаалтаар хоосорсон ноорог ТАВИХГҮЙ.
    */
   cleared?: number;
 };
@@ -556,6 +560,108 @@ export function remapDraft(d: HDDraft, map: ReadonlyMap<number, number>, now = D
     del.delete(nk);
   }
   return { ...d, entries, del };
+}
+
+/* ══════════════ Гибрид логик цаг · хэсэгчилсэн цэвэрлэлт (2026-10-04 аудит) ══════════════ */
+
+/**
+ * НООРОГТ ХАРАГДСАН ХАМГИЙН ИХ АГШИН — `t` · `cleared` · нүдний `at` · tombstone.
+ * ⚠️ HLC-ийн «харсан дээд» (`hlcNext`): бичигчийн `Date.now()` цагийн зөрүүтэй (хоцорсон)
+ *    машинд бусдын нүднээс БАГА `at` авч, нийлүүлэлтэд (шинэ `at` ялна) шинэ засвар нь
+ *    хуучинд ялагдаж, tombstone нь хуучин нүдийг хаяж чаддаггүй байв.
+ */
+export function maxStamp(d: HDDraft | null | undefined): number {
+  if (!d) return 0;
+  let m = Math.max(d.t || 0, d.cleared ?? 0);
+  for (const e of d.entries.values()) if (e.at > m) m = e.at;
+  for (const a of d.del.values()) if (a > m) m = a;
+  return m;
+}
+
+/**
+ * ГИБРИД ЛОГИК ЦАГ (HLC) — дараагийн агшин = max(одоо, харсан дээд + 1).
+ * ⚠️ Үр дүн нь харсан бүх агшнаас ХАТУУ ИХ — tombstone (`d > e.at`) харсан нүдээ заавал
+ *    хаана, шинэ засвар харсан нүднээс заавал ялна. Цаг нь урагшаа зөрсөн машины `at`
+ *    бусдыг өөрийн дээр «чирнэ» — HLC-ийн хүлээн зөвшөөрсөн зан (дараалал хадгалагдана).
+ */
+export const hlcNext = (seen: number, now = Date.now()): number => Math.max(now, Math.floor(seen) + 1);
+
+/**
+ * `cleared`-ЭЭС ӨМНӨХ НҮДИЙГ ХАСНА — нүд тус бүрээр (`at <= cleared`). Tombstone хэвээр.
+ * ⚠️ Сэргээхэд ЛОКАЛ хуулбарт л хэрэглэнэ — алсын мөр өөрөө эх сурвалж (2026-10-04).
+ */
+export function dropCleared(d: HDDraft, cleared: number): HDDraft {
+  if (!cleared) return d;
+  const entries: HDEntries = new Map();
+  for (const [k, e] of d.entries) if (e.at > cleared) entries.set(k, e);
+  return { ...d, entries, cleared: Math.max(d.cleared ?? 0, cleared) };
+}
+
+/**
+ * ХЭСЭГЧИЛСЭН ЦЭВЭРЛЭЛТ (2026-10-04 аудит) — ЗӨВХӨН `keys`-ийн нүдэнд tombstone (`түлхүүр →
+ * агшин`), `cleared` = `ts`. Илгээх (`keys` = илгээлтэд ОРСОН нүд) ба «Ноорог хаях» (`keys` =
+ * дэлгэц дээрх нүд) хоёулаа үүгээр.
+ * ⚠️ Урьд нь бүх нүдийг tombstone болгож алсыг blind overwrite хийдэг байсан тул илгээлтэд
+ *    ОРООГҮЙ (сүүлийн 3 с-д хамтрагчийн нэмсэн) нүд устдаг байв. Одоо tombstone-оос ШИНЭ
+ *    `at`-тай нүд (`at >= tombstone`) ба жагсаалтад ороогүй нүд хэвээр үлдэнэ.
+ * ⚠️ Оролтыг өөрчлөхгүй; давтан хэрэглэхэд идемпотент.
+ */
+export function applyClear(d: HDDraft, keys: ReadonlyMap<string, number>, ts: number): HDDraft {
+  const del = new Map(d.del);
+  for (const [k, a] of keys) if ((del.get(k) ?? -1) < a) del.set(k, a);
+  const entries: HDEntries = new Map();
+  for (const [k, e] of d.entries) {
+    const x = del.get(k);
+    if (x != null && x > e.at) continue;
+    entries.set(k, e);
+    del.delete(k);
+  }
+  return { ...d, entries, del, cleared: Math.max(d.cleared ?? 0, ts) };
+}
+
+/**
+ * ХҮЛЭЭГДЭЖ БУЙ ЦЭВЭРЛЭЛТИЙН ТЭМДЭГ (2026-10-04 аудит, localStorage) — илгээсний/хаясны
+ * дараах алсын цэвэрлэлт унасан бол дахин оролдох хүртэл хадгална.
+ * ⚠️ Урьд нь унасан цэвэрлэлт ДАХИН оролдогддоггүй тул буцаагдахад хуучин ноорог алсаас
+ *    сэргэж, буцаагдсан саналын автомат буулгалтыг (`dirtyN > 0`) хаадаг байв.
+ */
+export type HDClearMark = { ts: number; keys: Map<string, number> };
+export const hdClearMarkKey = (key: string) => `selbe-huvaari-clear:${key}`;
+export const serializeMark = (m: HDClearMark): string => JSON.stringify({ ts: m.ts, keys: [...m.keys] });
+export function parseMark(s: string | null | undefined): HDClearMark | null {
+  if (!s) return null;
+  try {
+    const w = JSON.parse(s) as { ts?: unknown; keys?: unknown };
+    const ts = ms(w?.ts);
+    if (ts == null || !Array.isArray(w.keys)) return null;
+    const keys = new Map<string, number>();
+    for (const x of w.keys) {
+      if (!Array.isArray(x) || typeof x[0] !== 'string' || !parseKey(x[0])) continue;
+      const a = ms(x[1]);
+      if (a != null) keys.set(x[0], a);
+    }
+    return { ts, keys };
+  } catch { return null; }
+}
+/** Хоёр тэмдэг → нэг: түлхүүр бүрт ИХ агшин, `ts` ИХ нь */
+export function mergeMark(a: HDClearMark | null, b: HDClearMark | null): HDClearMark | null {
+  if (!a) return b;
+  if (!b) return a;
+  const keys = new Map(a.keys);
+  for (const [k, t] of b.keys) if ((keys.get(k) ?? -1) < t) keys.set(k, t);
+  return { ts: Math.max(a.ts, b.ts), keys };
+}
+/**
+ * Ноорог тэмдгийг БҮРЭН агуулсан эсэх — алсад бичигдсэн бол тэмдгийг арилгаж болно.
+ * ⚠️ Нүд АЛГА бол хангалттай (tombstone 7 хоногт арилдаг; хуучин хуулбарыг `cleared` хаана).
+ */
+export function coversMark(d: HDDraft | null, m: HDClearMark): boolean {
+  if (!d || (d.cleared ?? 0) < m.ts) return false;
+  for (const [k, t] of m.keys) {
+    const e = d.entries.get(k);
+    if (e && e.at < t) return false;
+  }
+  return true;
 }
 
 /** Ноорогт нүд бичсэн ЯЛГААТАЙ хэрэглэгчид — толгойн «ноорогт: …» жагсаалт */

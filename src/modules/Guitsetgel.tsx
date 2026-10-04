@@ -31,12 +31,14 @@ import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
+import { navDirtyLabels } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, recheck, retryPendingRegistrations, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, dismissApplyWarn, recheck, retryPendingRegistrations, useApplyWarns, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
 import { TusulNegtgel } from '@/modules/TusulNegtgel';
+import { userError } from '@/components/ui';
 import s from './guitsetgel.module.css';
 
 /* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат) — энд давхар жагсаавал зөрнө */
@@ -536,7 +538,7 @@ function Submitted({
          (`Submission.prevError`-ийн ⚠️) — урьд нь `[]` дамжиж «Батлах» нүд
          харалгүй идэвхтэй болдог байв. */
       .then((d) => { if (alive) { setRes({ key: reqKey, data: d, err: '' }); onChanges?.(d && !d.prevError ? d.changes : null); onSubAt?.(d?.subAt); onRemapped?.(d ? d.remapped === true : undefined); } })
-      .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: String((e as Error)?.message ?? e) }); onChanges?.(null); } });
+      .catch((e) => { if (alive) { setRes({ key: reqKey, data: null, err: userError(e) }); onChanges?.(null); } });
     // ⚠️ Задлах бүрд БИШ, нэг л удаа — хамаарал нь зөвхөн бүртгэлийн түлхүүр
     //    (ба «Дахин оролдох» тоолуур) — бүгд `reqKey`-д
     return () => { alive = false; };
@@ -646,6 +648,12 @@ function Submitted({
             <div className={s.error} role="alert">
               {tr('Өмнөх агшныг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
               <button type="button" className={s.btn} onClick={() => setTryN((n) => n + 1)}>{tr('Дахин оролдох')}</button>
+            </div>
+          )}
+          {/* ⚠️ 2026-10-04: одоогийн жаазад тулгагдаагүй нүд — жагсаалтад харагдахгүй (`Submission.unmoved`) */}
+          {(data.unmoved ?? 0) > 0 && (
+            <div className={s.subWarn} role="alert">
+              {tr('Илгээлтийн {0} нүд одоогийн хуудасны мөрөнд тулгагдсангүй — доорх жагсаалтад харагдахгүй бөгөөд батлахад архивлалт зогсоно. Гүйцэтгэгчээр шалгуулж дахин илгээлгэнэ үү.', String(data.unmoved))}
             </div>
           )}
           {data.asOfChanged && (
@@ -1052,8 +1060,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     if (r.ok) setReason('');
   };
 
+  /* ⚠️ 2026-10-04: `apply`-ийн `warn`-ыг store (`useApplyWarns`) хуудасны дээд хэсэгт
+     харуулна — энд давхар гаргахгүй (мөр «бусад» руу шилжвэл энэ state алга болдог байв). */
   const review = (decision: (typeof DECISION)[keyof typeof DECISION]) =>
-    run(() => apply({
+    run(async () => ({ ...(await apply({
       oid: cur.__oid,
       /* ⚠️ `mine` (owner === stage) ба `reviewing` тул энд компани байхгүй */
       stage: stage as ReviewStage,
@@ -1078,7 +1088,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
       okCells: changes != null ? toOkRefs(okKeys, okRows) : [],
       /* ⚠️ Илгээлтийн агуулгын тулгалт (2026-09-24) — `hyanaltStore.apply`-ийн `subAt` */
       subAt,
-    }));
+    })), warn: undefined }));
 
   const reviewing = stage !== 'company' && st === REVIEW_STATUS[stage];
   /** ⚠️ 2026-09-30: батлах товч ХААЛТТАЙ байгаа шалтгаан — tooltip ба ил бичвэрт нэг эх */
@@ -1454,6 +1464,19 @@ export function Guitsetgel() {
    * гүйцэтгэгч өөрийн илгээлтийн явцыг хардаггүй байв.
    */
   const [tab, setTab] = useState<'fill' | 'sent' | 'negtgel'>('sent');
+  /**
+   * «Гүйцэтгэл бөглөх» табаас ГАРАХ хамгаалалт (2026-10-04 аудит, #7) — таб солиход FillNew
+   * unmount болж ноорогт ХАДГАЛАГДДАГГҮЙ засвар (инженерийн обьём · илгээлт явж буй) асуултгүй
+   * устдаг байв. `navGuard`-ийн туг (FillNew тавьдаг) — Portal-ийн `confirmLeave`-тэй ИЖИЛ асуулт.
+   */
+  const goTab = (t: 'fill' | 'sent' | 'negtgel') => {
+    if (tab === 'fill' && t !== 'fill') {
+      const labels = navDirtyLabels();
+      if (labels.length
+        && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return;
+    }
+    setTab(t);
+  };
   /** «Нэгтгэл гүйцэтгэл» таб — зөвхөн super (доорх табын тайлбарыг үз) */
   const isSuperRole = role === 'super';
   /* ⚠️ 2026-09-25: эрх буурсан (эрх дахин ачаалагдсан, хэрэглэгч солигдсон)
@@ -1467,6 +1490,13 @@ export function Guitsetgel() {
   const [status, setStatus] = useState(ALL);
 
   const { rows, loading, error, reload } = useHyanaltRows();
+  /* ⚠️ 2026-10-04: АЧААЛАЛ УНАСАН, нэг ч мөр алга — `useHyanaltRows` нь алдаанд `rows=[]`,
+     `loading=false` өгдөг тул доор «хүлээгдэж буй 0», «Хүлээгдэж буй ажил алга», «0 ажил»
+     гэж алдааны ДООР худал хэлдэг байв. Тоо/хоосон төлөвийг нууж зөвхөн алдаа үлдэнэ.
+     Өмнө нь ачаалагдсан мөр байвал (давтан шинэчлэлт унасан) хуучин жагсаалт хэвээр. */
+  const loadFailed = !!error && rows.length === 0;
+  /* ⚠️ 2026-10-04: шийдвэрийн анхааруулга store-оос — `Item` дахин mount болоход алдагддаг байв */
+  const applyWarns = useApplyWarns();
   /* ⚠️ ХҮЛЭЭГДЭЖ БУЙ БҮРТГЭЛИЙГ НӨХНӨ (2026-09-25 аудит): эцсийн батлалтын
      дараа таб хаагдаж нэгтгэл/IPC бичигдээгүй үлдсэн өдрүүдийг эцсийн шатны
      хянагч (эсвэл админ) хуудас нээхэд дахин ажиллуулна — бусдад эрх нь
@@ -1615,7 +1645,7 @@ export function Guitsetgel() {
             <button
               type="button"
               className={`${s.tab} ${tab === 'sent' ? s.tabOn : ''}`}
-              onClick={() => setTab('sent')}
+              onClick={() => goTab('sent')}
             >
               {tr('Илгээсэн ажил')}
               {countFor('company') > 0 && <span className={s.count}>{countFor('company')}</span>}
@@ -1635,7 +1665,7 @@ export function Guitsetgel() {
           <button
             type="button"
             className={`${s.tab} ${tab === 'negtgel' ? s.tabOn : ''}`}
-            onClick={() => setTab('negtgel')}
+            onClick={() => goTab('negtgel')}
           >
             {tr('Нэгтгэл гүйцэтгэл')}
           </button>
@@ -1681,20 +1711,31 @@ export function Guitsetgel() {
           </button>
         )}
         <span className={s.spacer} />
-        <span className={s.total}>{tr('{0} ажил', String(filtered.length))}</span>
+        {!loadFailed && <span className={s.total}>{tr('{0} ажил', String(filtered.length))}</span>}
       </div>
 
       <div className={s.body}>
         {error && (
-          <div className={s.note}>
-            {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй: {0}', error)}
+          <div className={s.note} role="alert">
+            {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй: {0}', userError(error))}
             <button className={s.clear} onClick={reload}>{tr('Дахин оролдох')}</button>
           </div>
         )}
 
+        {/* ⚠️ 2026-10-04: батлалт БҮТСЭН ч дагалдах алхам унасан — хаах хүртэл дээр үлдэнэ */}
+        {applyWarns.map(([key, w]) => (
+          <div key={key} className={s.warnBanner} role="status">
+            <div>
+              <b>{tr('Шийдвэр хадгалагдсан, гэхдээ анхаарах зүйл байна')}{w.ajil || w.bagts ? ` — ${[w.ajil, w.bagts].filter(Boolean).join(' · ')}` : ''}</b>
+              {w.text}
+            </div>
+            <button className={s.clear} onClick={() => dismissApplyWarn(key)}>{tr('Хаах')}</button>
+          </div>
+        ))}
+
         {loading ? (
           <div className={s.empty}>{tr('Ачаалж байна…')}</div>
-        ) : (
+        ) : loadFailed ? null : (
           <>
             <div className={s.list}>
               {/* ⚠️ Нэр ЗҮҮН, тоо БАРУУН — зураасаар холбохгүй */}

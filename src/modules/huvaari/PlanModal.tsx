@@ -5,10 +5,12 @@ import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
-import { formatDeps, type Dep, type DepType } from '@/lib/deps';
+import { formatDeps, sameDep, type Dep, type DepType } from '@/lib/deps';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { balanced, monthsOf, sumMonths, sumRes, type MonthRes } from '@/lib/huvaariObyem';
 import { dayToMs, sameRes } from './util';
+import { DateField } from './DateField';
+import { HAM_MAX } from './savePrep';
 import h from '../huvaari.module.css';
 
 /* ══════════════════ POPUP ХУАНЛИ ══════════════════ */
@@ -75,6 +77,8 @@ type PlanModalProps = {
   initSel?: ReadonlySet<number>;
   /** Үйлчилгээнд `Hamaaral` талбар бий эсэх — үгүй бол уялдааны хэсэг нуугдана */
   hasHam: boolean;
+  /** `Hamaaral`-ийн ТАНИГДААГҮЙ токенууд (`residualDeps`) — хадгалахад угтаж залгагдана; уртын шалгалтад (2026-10-04) */
+  hamKeep?: readonly string[];
   /** Бодит огноо · нөөцийн талбар үйлчилгээнд бий эсэх (2026-09-23) — үгүй бол хэсэг нуугдана */
   hasActual: boolean;
   /** ⚠️ Хадгалагдана — дуудагч дамжуулдаг; popup-д мөрийн нөөц засагдахгүй болсон (2026-09-24) */
@@ -149,7 +153,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 }
 
 function PlanModalBody({
-  r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hasActual, obyem = true, months, res, resFields, onClose, onApply,
+  r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
   badBlks,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
@@ -235,6 +239,15 @@ function PlanModalBody({
   const extraDirty = actDirty && !aBad;
   /** Popup-аас `onApply`-д өгөх бодит огноо · нөөц — хөндөөгүй бол `null` */
   const actArg = actDirty && !aBad ? { start: am1, end: am2 } : null;
+  /* ⚠️ 2026-10-04: ГАРААР бичсэн огноо задрахгүй байгаа талбарууд (`DateField.onBad`) —
+     байвал «Тавих» хаагдана: эцгийн утга ХУУЧИН хэвээр тул тэр нь чимээгүй тавигдах байв. */
+  const [badTxt, setBadTxt] = useState<ReadonlySet<string>>(() => new Set());
+  const markBad = (k: string) => (b: boolean) => setBadTxt((s) => {
+    if (s.has(k) === b) return s;
+    const n = new Set(s);
+    if (b) n.add(k); else n.delete(k);
+    return n;
+  });
 
   /**
    * Блок эсвэл мөр солигдвол талбарууд дагаж шинэчлэгдэнэ.
@@ -474,8 +487,57 @@ function PlanModalBody({
     ? (Math.round((total - (mvSum - (mv.get(mFocus) ?? 0))) * 100) / 100) || 0
     : null;
 
+  /**
+   * ОЛОН БЛОКТ УЯЛДАА ХУУЛАХ (2026-10-04, хэрэглэгч: «холбоос сонгож бусад блокуудыг
+   * давхар сонгож оруулахад бусад блок дээр холбоос хуулагдахгүй — нэг ажлыг дахин
+   * дахин хийх шаардлага үүсч байна»).
+   * ⚠️ ШАЛТГААН: хуанли дээр чирж холбосон уялдаа ИДЭВХТЭЙ блокт (`@N`) л тавигддаг;
+   *    дараа нь popup-д олон блок (`selB`) сонгож «Тавих» дарахад ОГНОО нь сонгосон бүх
+   *    блокт хуулагддаг атлаа тэр `@N` уялдаа хуулагддаггүй байв.
+   * Одоо: идэвхтэй блокийн `@N` уялдаа бүр сонгосон БҮХ блокт ижил төрөл/хоногтой.
+   *   · БҮХ блок сонгогдвол блокгүй НЭГ уялдаа (тэр кодын `@N`-ийг хасна) — чирж
+   *     холбох замын `collapse`-тай ижил (22 ширхэг `@N` биш, давхар шилжилтгүй).
+   *   · Тэр кодоор блокгүй (бүх блок) уялдаа аль хэдийн байвал `@N` НЭМЭХГҮЙ — тэр
+   *     блокт хоёр уялдаа болж давхар шилжинэ (2026-09-25 аудитын дүрэм).
+   *   · Блокгүй уялдаа хөндөгдөхгүй (аль хэдийн бүх блокт). Бүлгийн мөрд хамаарахгүй.
+   */
+  const dlOut = useMemo((): Dep[] => {
+    if (r.group || selB.size <= 1 || blocks.length <= 1) return dl;
+    const mine = dl.filter((d) => d.blk === blk);
+    if (!mine.length) return dl;
+    const allSel = [...Array(blocks.length).keys()].every((b) => selB.has(b));
+    let out = [...dl];
+    for (const d of mine) {
+      const base = { code: d.code, type: d.type, lag: d.lag };
+      if (allSel) {
+        out = out.filter((x) => !(x.code === d.code && x.blk != null));
+        const i = out.findIndex((x) => x.code === d.code && x.blk == null);
+        if (i >= 0) out[i] = base; else out.push(base);
+        continue;
+      }
+      if (out.some((x) => x.code === d.code && x.blk == null)) continue;
+      for (const b of [...selB].sort((x, y) => x - y)) {
+        if (b === blk) continue;
+        const i = out.findIndex((x) => sameDep(x, { code: d.code, blk: b }));
+        if (i >= 0) out[i] = { ...base, blk: b }; else out.push({ ...base, blk: b });
+      }
+    }
+    return out;
+  }, [dl, selB, blk, blocks.length, r.group]);
+  /** Хуулах замаар нэмэгдэх/өөрчлөгдөх уялдаа бий эсэх — хэрэглэгчид ил хэлнэ */
+  const depsCopied = formatDeps(dlOut) !== formatDeps(dl);
   /** Уялдаа өөрчлөгдсөн эсэх — бичиглэлээр нь харьцуулна (дараалал ч утгатай) */
-  const depsDirty = formatDeps(dl) !== formatDeps(r.deps);
+  const depsDirty = formatDeps(dlOut) !== formatDeps(r.deps);
+  /**
+   * ⚠️ ТАЛБАРТ БАГТАХ УУ (2026-10-04, шүүлт): олон блокт `@N` хуулахад (`dlOut`) `Hamaaral`
+   *    (String 255) хэтэрч, батлалтын хадгалалт унах эсвэл текст ТАЙРАГДАХ байв. Эцсийн текст =
+   *    танигдаагүй токен (`hamKeep`) + `formatDeps(dlOut)` — эцэг (`applyModal`) яг ингэж залгана.
+   *    Хэтэрвэл «Тавих» ХААГДАНА (ил шалтгаантай). Бүх блок сонговол `dlOut` аль хэдийн блокгүй
+   *    нэг уялдаа болдог; хэсэгчилсэн сонголтыг блокгүй болгох нь сонгоогүй блокт ч уялдаа
+   *    тавих тул ДУР МЭДЭН нийлүүлэхгүй. `savePrep` ч мөн татгалзана (`HAM_MAX`-ийн ⚠️).
+   */
+  const hamLen = [...(hamKeep ?? []), formatDeps(dlOut)].filter(Boolean).join(',').length;
+  const depsTooLong = hasHam && depsDirty && hamLen > HAM_MAX;
   /** Сарын задаргаа хөндөгдсөн үү — хадгалагдсан `months`-той харьцуулна */
   const mvDirty = mv.size !== months.size || [...mv].some(([k, v]) => months.get(k) !== v);
   /** Огноо хөндөгдсөн үү — энэ блокийн хадгалагдсан зурвастай харьцуулна */
@@ -531,23 +593,25 @@ function PlanModalBody({
   const actBlks = [...selB];
 
   const apply = () => {
+    /* ⚠️ 2026-10-04: талбарт багтахгүй уялдаа ХЭЗЭЭ Ч тавихгүй (`depsTooLong`) — Enter-ээр ч */
+    if (depsTooLong) return;
     /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа (бодит огноо · нөөц ч бүлэгт
        хаалттай: `aggExtra`-аар бодогдоно). */
     if (r.group) { if (depsDirty) onApply(null, dl, null, null, null, [blk], [blk]); onClose(); return; }
     if (ms1 == null || ms2 == null || bad) {
       /* Огноо буруу ч УЯЛДАА · бодит огноо · нөөцийг дангаар нь тавьж болно —
          төлөвлөгөөт огноог хөндөхгүй */
-      if (depsDirty || extraDirty) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); }
+      if (depsDirty || extraDirty) { onApply(null, depsDirty ? dlOut : null, null, actArg, resArg, obBlks, actBlks); onClose(); }
       return;
     }
-    if (depsOnly) { onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); return; }
+    if (depsOnly) { onApply(null, depsDirty ? dlOut : null, null, actArg, resArg, obBlks, actBlks); onClose(); return; }
     /* ⚠️ ЗӨВХӨН БОДИТ ОГНОО, ОЛОН БЛОК (2026-09-29): төлөвлөсөн муж · сар · нөөц хөндөгдөөгүй
        бол бодит огноог (ба уялдааг) л сонгосон блокуудад тавина. Урьд нь олон блок
        сонгосон үед бүтэн зам руу орж, (1) сарын нийлбэр таараагүй бол «Тавих» хаагдаж,
        (2) идэвхтэй блокийн ТӨЛӨВЛӨСӨН мужийг бусад блокт хуулдаг байв — хэрэглэгч
        зөвхөн бодит огноо бүртгэх гэсэн. Төлөвлөгөөг хуулах бол бодит огноог хөндөлгүй тавина. */
     if (extraOnly) {
-      onApply(null, depsDirty ? dl : null, null, actArg, resArg, obBlks, actBlks); onClose(); return;
+      onApply(null, depsDirty ? dlOut : null, null, actArg, resArg, obBlks, actBlks); onClose(); return;
     }
     /* ⚠️ НИЙЛБЭР ТААРААГҮЙ бол хуваарийг ОРУУЛАХГҮЙ (хэрэглэгчийн дүрэм №3).
        Товч нь аль хэдийн хаалттай ч Enter/гар хандалтаар энд ирж болно. */
@@ -561,7 +625,7 @@ function PlanModalBody({
       const shift = takt > 0 ? (b - blk) * takt * DAY : 0;
       next[b] = b === blk ? { start: ms1, end: ms2 } : { start: ms1 + shift, end: endOf(ms1 + shift, len) };
     }
-    onApply(next, depsDirty ? dl : null, obArg, actArg, resArg, obBlks, actBlks);
+    onApply(next, depsDirty ? dlOut : null, obArg, actArg, resArg, obBlks, actBlks);
     onClose();
   };
 
@@ -657,13 +721,13 @@ function PlanModalBody({
             <div className={h.mdColHead}>{tr('Төлөвлөгөөт')}</div>
             <label className={h.mdField}>
               {tr('Эхлэх')}
-              <input type="date" className={h.select} value={a} disabled={!dEdit}
-                onChange={(e) => onStart(e.target.value)} />
+              <DateField value={a} disabled={!dEdit} label={tr('Эхлэх')}
+                onChange={onStart} onBad={markBad('a')} />
             </label>
             <label className={h.mdField}>
               {tr('Дуусах')}
-              <input type="date" className={h.select} value={z} disabled={!dEdit}
-                onChange={(e) => setZ(e.target.value)} />
+              <DateField value={z} disabled={!dEdit} label={tr('Дуусах')}
+                onChange={setZ} onBad={markBad('z')} />
             </label>
             {/* ⚠️ Үргэлжлэх хоног — бичихэд дуусах огноо автоматаар (2026-09-17) */}
             <label className={h.mdField}>
@@ -685,19 +749,22 @@ function PlanModalBody({
               <div className={h.mdColHead}>{tr('Бодит')}</div>
               <label className={h.mdField}>
                 {tr('Эхэлсэн')}
-                <input type="date" className={h.select} value={aa} disabled={!dEdit}
-                  onChange={(e) => { setAa(e.target.value); setActTouched(true); }} />
+                <DateField value={aa} disabled={!dEdit} label={tr('Эхэлсэн')}
+                  onChange={(v) => { setAa(v); setActTouched(true); }} onBad={markBad('aa')} />
               </label>
               <label className={h.mdField}>
                 {tr('Дууссан')}
-                <input type="date" className={h.select} value={az} disabled={!dEdit}
-                  onChange={(e) => { setAz(e.target.value); setActTouched(true); }} />
+                <DateField value={az} disabled={!dEdit} label={tr('Дууссан')}
+                  onChange={(v) => { setAz(v); setActTouched(true); }} onBad={markBad('az')} />
               </label>
               {/* ⚠️ Бодит «үргэлжлэх хоног» ХАСАГДСАН (2026-09-24, хэрэглэгч) */}
               {aBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Бодит дууссан нь эхэлснээс өмнө')}</b></span>}
             </div>
           )}
         </div>
+        {badTxt.size > 0 && (
+          <span className={h.mdDays}><b className={h.mdBad}>{tr('Огноо буруу — жишээ: 2026-10-04')}</b></span>
+        )}
 
         {/* ⚠️ Мөрийн хүн/машин input ХАСАГДСАН (2026-09-24) — сар бүрийн сүлжээнд л
             төлөвлөнө; мөрийн талбар хадгалахад саруудын нийлбэрээр бичигдэнэ. */}
@@ -930,6 +997,13 @@ function PlanModalBody({
                 )}
               </div>
             ))}
+            {/* ⚠️ 2026-10-04: олон блок сонгосон үед идэвхтэй блокийн уялдаа бусад блокт хуулагдана — ил хэлнэ */}
+            {canEdit && depsCopied && (
+              <span className={h.mdParWork}>{tr('«Тавих» дарахад энэ блокийн уялдаа сонгосон {0} блокт хуулагдана', num(selB.size))}</span>
+            )}
+            {canEdit && depsTooLong && (
+              <span className={h.mdParWork} role="alert">{tr('Уялдааны бичиглэл {0} тэмдэгт — талбарт {1} хүртэл багтана. Блок цөөлөх эсвэл бүх блокийг сонгож нэг уялдаа болгоно уу.', num(hamLen), num(HAM_MAX))}</span>
+            )}
             {canEdit && (
               <button type="button" className={h.tlZoomB} disabled={!cands.length}
                 onClick={() => setDl((v) => [...v, { code: cands[0].code, type: 'FS', lag: 0 }])}>
@@ -974,15 +1048,17 @@ function PlanModalBody({
           <button type="button" className={h.tlZoomB} onClick={tryClose}>{tr('Хаах')}</button>
           {canEdit && (
             <button type="button" className={h.save} onClick={apply}
-              disabled={r.group
+              disabled={depsTooLong ? true
+                : r.group
                 ? !depsDirty
-                : aBad ? true
+                : aBad || badTxt.size > 0 ? true
                 : (depsOnly || extraOnly) ? false
                 /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
                    сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
                 : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
                 : !mvOk}
-              title={mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
+              title={depsTooLong ? tr('Уялдааны бичиглэл талбарт багтахгүй ({0} > {1} тэмдэгт)', num(hamLen), num(HAM_MAX))
+                : mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
                 /* ⚠️ 2026-09-30: жинхэнэ шалтгаан — нийлбэр тэнцсэн ч хоосон сар бий бол түүнийг */
                 : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
                 : tr('Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү')}>

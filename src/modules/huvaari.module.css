@@ -197,7 +197,8 @@
      Одоо: код 60 + огноо 6×72 + хоног 2×40 + нөөц 2×44 + уялдаа 100 = 760,
      зай 12×6 = 72, дүүргэлт 16, нэр ≥ 140 → 988px. Доод хязгаар нь ЯГ энэ
      нийлбэрээс багагүй байх ёстой — эс тэгвээс дахин эвдэрнэ. */
-  flex: 0 0 clamp(990px, 58%, 1150px);
+  /* ⚠️ 2026-10-04: + `--side-extra` — хэрэглэгч баруун ирмэгийг чирж томруулна (`useSideExtra`) */
+  flex: 0 0 calc(clamp(990px, 58%, 1150px) + var(--side-extra, 0px));
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -282,7 +283,22 @@
    хоёр зам нэг үр дүн өгнө. Самбар 360–480px: код 60 + нэр ≥ 140 + уялдаа 100. */
 .gSideNarrow .gHeadDate, .gSideNarrow .gHeadDays, .gSideNarrow .gHeadRes,
 .gSideNarrow .rowDate, .gSideNarrow .rowDays, .gSideNarrow .rowRes { display: none; }
-.gSideNarrow { flex-basis: clamp(360px, 30%, 480px); }
+.gSideNarrow { flex-basis: calc(clamp(360px, 30%, 480px) + var(--side-extra, 0px)); }
+/* ЗҮҮН ЖАГСААЛТЫН ӨРГӨН ЧИРЭХ БАРИУЛ (2026-10-04) — `.gSide` (sticky) нь агуулах блок */
+.sideGrip {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 6;
+  width: 8px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sideGrip:hover, .sideGrip:focus-visible, .sideGripOn { background: color-mix(in srgb, var(--data) 35%, transparent); }
 /* ⚠️ `align-self: flex-start` (2026-09-22) — `.gSide`-тэй ИЖИЛ шалтгаан: stretch-ээр
    эцгийн бүтэн өндрийг авбал доторх `.plHead` (sticky; top: 0) наалдах газраа
    олохгүй, он/сарын мөр гүйлттэй хамт дээш алга болно. Хэрэглэгч: «Header түгжих». */
@@ -451,8 +467,20 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* ⚠️ 2026-10-04 (хэрэглэгч: «ажлууд ... болж бүрэн харагдахгүй»): урт нэр 2 МӨРТ
+     ороно. Мөрийн өндөр `PL_ROW` (30) ХӨДЛӨХГҮЙ (хуанлийн эгнээтэй тэгшилнэ): агуулгын
+     хайрцаг = 30 − дүүргэлт 3+3 − доод хүрээ 1 = 23px → 2 × 11.5px = 23.
+     ⚠️ 2026-10-04 (шүүлт): урьд нь 2×12 = 24 — хүрээг тооцоогүй тул 1px илүү, хоёр дахь
+     мөрийн доод ирмэг тасардаг байв. Түүнээс урт нь «…»-оор, бүтэн нэр tooltip-д; илүү зай
+     хэрэгтэй бол жагсаалтын баруун ирмэгийг чирж томруулна (`.sideGrip`). */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+  line-height: 11.5px;
 }
 
 /* УЯЛДАА — «18FS3,22SS» бичиглэл; урт бол таслагдана, бүтэн нь tooltip-д.
@@ -969,6 +997,9 @@
   /* ⚠️ Багана нуугдсан үед хураах товч ч нуугдана (2026-09-23) — юу ч хийдэггүй товч үлдэж байв */
   .colsBtn { display: none; }
   .gSide { flex-basis: clamp(260px, 46%, 420px); }
+  /* ⚠️ 2026-10-04 (шүүлт): энд `--side-extra` ҮЙЛЧЛЭХГҮЙ (самбар аль хэдийн 46%) — бариул юу ч
+     хийхгүй атлаа утга хадгалдаг байсан тул НУУНА (`useSideExtra` ч энд хязгаар бодохгүй) */
+  .sideGrip { display: none; }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
 
@@ -1511,3 +1542,46 @@
 .pdfRow { display: flex; align-items: center; gap: 8px; justify-content: space-between; cursor: pointer; }
 .pdfRow:has(input[type="checkbox"]) { justify-content: flex-start; }
 .pdfBtns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
+
+/* ── Огнооны талбар: гараар бичих + 📅 (2026-10-04, `huvaari/DateField`) ── */
+.dateIn { display: inline-flex; align-items: center; gap: 2px; }
+.dateTxt { width: 104px; font-variant-numeric: tabular-nums; }
+.dateBad { border-color: var(--bad-ink); color: var(--bad-ink); }
+.dateCal {
+  flex: none;
+  padding: 2px 4px;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.dateCal:hover:not(:disabled) { opacity: 1; background: color-mix(in srgb, var(--data) 16%, transparent); }
+.dateCal:disabled { opacity: 0.35; cursor: default; }
+
+/*
+ * ── «БҮХ БЛОК» ХАРАГДАЦ (2026-10-04, `huvaari/allBlocks.ts`) — ЗӨВХӨН ХАРАХ ──
+ * ⚠️ Дэд мөр нь `PL_ROW` өндөртэй хэвээр (зүүн/баруун эгнэнэ) — зөвхөн өнгө/үсэг.
+ * ⚠️ Эгнээ чирэгдэхгүй тул `crosshair`/`grab` курсор худал — `default`; дэд мөр
+ *    дарагдана (тэр блок руу орно) тул `pointer`.
+ */
+.rowSub { font-size: 11px; color: var(--ink-2); background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
+.rowSub .rowWork { font-size: 11px; color: var(--ink-2); }
+.rowSub .rowDate, .rowSub .rowDays { color: var(--ink-3); }
+.plLaneView { cursor: default; }
+.plLaneView .plBar { cursor: inherit; }
+.plLaneSub { cursor: pointer; background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
+.plLaneSub:hover { background: color-mix(in srgb, var(--data) 8%, transparent); }
+/* Дэд мөрийн зурвас нарийн — эх мөрийн (нэгдлийн) зурвасаас ялгарна */
+.plBarSub { top: 7px; bottom: 7px; }
+/* Эх АЖЛЫН нэгдсэн муж — төлөвгүй (блок тус бүрд өөр), саарал хүрээ */
+.plBarAll {
+  background: color-mix(in srgb, var(--ink-3) 16%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--ink-2) 55%, transparent);
+}
+.plBarAll .plBarLab { color: var(--ink); }
+/* ⚠️ Дээрх дэвсгэр нь `.rowOn`/`.plLaneOn`-оос ХОЙНО тул сонголтыг дарна — буцааж тодруулна */
+.rowSub.rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
+.plLaneSub.plLaneOn { background: color-mix(in srgb, var(--data) 10%, transparent); }

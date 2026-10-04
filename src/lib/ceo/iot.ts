@@ -57,7 +57,7 @@
  */
 
 import { cached } from '@/lib/live';
-import { loadSensors, type MetricSeries, type SensorLive } from '@/lib/sensors';
+import { loadSensors, outOfRange, SENSOR_STALE_H, type MetricSeries, type SensorLive } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult, type Level } from './kpi';
@@ -69,7 +69,9 @@ import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult, typ
  * ⚠️ `loadSensors`-ийн хүрээ (168ц) энэ тооноос ИХ байх ёстой — эс бөгөөс
  *    «хуучирсан» төлөв хэзээ ч гарахгүй (дээрх '7d'-ийн тайлбар).
  */
-export const IOT_STALE_H = 48;
+/* ⚠️ 2026-10-04: 48 → 24 цаг — `sensors.SENSOR_STALE_H` (Iot хуудас)-тай НЭГ тоо; хоногоос дээш
+   дуугүй мэдрэгч «шинэхэн» гэж харагдахгүй. `tools/iot-watch.mjs`-ийн анхдагч ч 24. */
+export const IOT_STALE_H = SENSOR_STALE_H;
 
 /**
  * ⚠️ САНАЛ (2026-09-06): босгонд хүрэх таамаг (`trend.etaHours`) энэ цагаас
@@ -90,6 +92,8 @@ export const IOT_ETA_NEAR_H = 24;
  *    2026-08-21); энд ЗӨВХӨН дохионы утгыг урвуулна, чартыг хөндөхгүй.
  */
 export const IOT_HIGHER_IS_GOOD: ReadonlySet<string> = new Set(['soil:moisture']);
+/* ⚠️ 2026-10-04: «их нь сайн» хэмжигдэхүүн ч ФИЗИК мужаас гадуур (хөрсний чийг > 100%) бол
+   «хэвийн» БИШ — мэдрэгчийн гэмтэл (`faults`, `sensors.Metric.valid`). */
 
 /* ══════════════ Төрлүүд ══════════════ */
 
@@ -112,7 +116,11 @@ export type IotHit = {
   stale: boolean;
 };
 
-export type IotSensorState = 'down' | 'alert' | 'silent' | 'stale' | 'ok';
+/** ⚠️ 2026-10-04: `fault` — сүүлийн заалт физик мужаас гадуур (мэдрэгчийн гэмтэл) */
+export type IotSensorState = 'down' | 'alert' | 'fault' | 'silent' | 'stale' | 'ok';
+
+/** Физик мужаас гадуур заалт — мэдрэгчийн гэмтэл (2026-10-04) */
+export type IotFault = { sensor: string; metric: string; unit: string; dp: number; latest: number; latestAt: number | null };
 
 export type IotSensorRow = {
   sensor: string;
@@ -146,6 +154,8 @@ export type IotSummary = {
   approaching: IotHit[];
   /** Хөрс хуурай (босгоос ДООШ) — шар */
   dry: IotHit[];
+  /** Физик мужаас гадуур заалт — мэдрэгчийн гэмтэл, шар (2026-10-04) */
+  faults: IotFault[];
   /** Одоогийн хэтрэлттэй мэдрэгчийн тоо */
   sensorsExceeding: number;
   states: IotSensorRow[];
@@ -165,10 +175,10 @@ export type IotSummary = {
 
 /** Эрэмбэ — хүснэгт бүр ХАМГИЙН МУУГААС эхэлнэ */
 const RANK = {
-  exceed: 0, down: 1, staleExceed: 2, dry: 3, silent: 4, stale: 5, approaching: 6, ok: 7,
+  exceed: 0, down: 1, fault: 2, staleExceed: 3, dry: 4, silent: 5, stale: 6, approaching: 7, ok: 8,
 } as const;
 
-const SENSOR_RANK: Record<IotSensorState, number> = { down: 0, alert: 1, silent: 2, stale: 3, ok: 4 };
+const SENSOR_RANK: Record<IotSensorState, number> = { down: 0, alert: 1, fault: 2, silent: 3, stale: 4, ok: 5 };
 
 /**
  * Хэмжигдэхүүний нас — `latestAt`-аас `now`-оор бодно (кэшлэгдсэн `ageHours`
@@ -212,6 +222,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
   const staleExceed: IotHit[] = [];
   const approaching: IotHit[] = [];
   const dry: IotHit[] = [];
+  const faults: IotFault[] = [];
   const states: IotSensorRow[] = [];
   const metrics: IotMetricRow[] = [];
   let stale = 0;
@@ -244,6 +255,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     let hitFresh = false;
     let anyFresh = false;
     let anyReading = false;
+    let anyFault = false;
 
     for (const m of sn.series) {
       const age = ageOf(m, now);
@@ -259,7 +271,13 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
         anyReading = true;
         if (st) { stale++; rank = RANK.stale; } else anyFresh = true;
 
-        if (m.alert) {
+        /* ⚠️ 2026-10-04: физик мужаас гадуур — гэмтэл; босготой ЖИШИХГҮЙ (хөрсний чийг 6553% нь
+           «хангалттай чийглэг» биш). `m.fault` (ачаалагч) ба `outOfRange` (муж) хоёулаа нэг дүрэм. */
+        if (m.fault || outOfRange(m, m.latest)) {
+          anyFault = true;
+          faults.push({ sensor: sn.label, metric: m.label, unit: m.unit, dp: m.dp, latest: m.latest, latestAt: m.latestAt });
+          rank = RANK.fault;
+        } else if (m.alert) {
           const h = hitOf(sn, m, m.latest, m.alert.value, age, st);
           if (IOT_HIGHER_IS_GOOD.has(`${sn.key}:${m.key}`)) {
             // ⚠️ Урвуу чиглэл: босгоос ДООШ нь асуудал (хуурай); дээш нь хэвийн
@@ -286,7 +304,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     //    «Хуучирсан» = БҮХ утга нь хуучирсан (мэдрэгчийн `lastAt` > 48ц-тай тэнцүү).
     const state: IotSensorState = !anyReading ? 'silent'
       : !anyFresh ? 'stale'
-        : hitFresh ? 'alert' : 'ok';
+        : hitFresh ? 'alert' : anyFault ? 'fault' : 'ok';
     states.push({ sensor: sn.label, state, lastAt: sn.lastAt, error: null });
   }
 
@@ -304,6 +322,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     staleExceed,
     approaching,
     dry,
+    faults,
     sensorsExceeding,
     states,
     down: states.filter((s) => s.state === 'down').length,
@@ -329,7 +348,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
 export function iotLevel(s: IotSummary): Level {
   if (s.sensors === 0) return 'unknown';
   if (s.exceed.length > 0 || s.down > 0) return 'bad';
-  if (s.staleExceed.length > 0 || s.dry.length > 0 || s.silent > 0 || s.stale > 0) return 'warn';
+  if (s.staleExceed.length > 0 || s.dry.length > 0 || s.faults.length > 0 || s.silent > 0 || s.stale > 0) return 'warn';
   return 'good';
 }
 
@@ -358,6 +377,7 @@ const round1 = (v: number | null): number | null => (v == null ? null : Math.rou
 const STATE_WORD: Record<IotSensorState, () => string> = {
   down: () => tr('унасан'),
   alert: () => tr('босго давсан'),
+  fault: () => tr('мэдрэгчийн гэмтэл'),
   silent: () => tr('дуугүй'),
   stale: () => tr('хуучирсан'),
   ok: () => tr('ажиллаж байна'),
@@ -386,6 +406,7 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
     tr('{0} унасан · {1} дуугүй · {2} хуучирсан', s.down, s.silent, s.stale),
   ];
   if (s.dry.length) facts.push(tr('хөрс хуурай {0}', s.dry.length));
+  if (s.faults.length) facts.push(tr('мэдрэгчийн гэмтэл {0}', s.faults.length));
   const extra: string[] = [];
   if (s.staleExceed.length) extra.push(tr('{0} хуучирсан хэтрэлт', s.staleExceed.length));
   if (s.approaching.length) extra.push(tr('{0} дөхөж байна', s.approaching.length));
@@ -408,6 +429,9 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
   }
   for (const h of s.dry) {
     issues.push({ tone: 'warn', text: `${h.sensor} · ${h.metric} ${val(h.latest, h)} < ${val(h.threshold, h)} · ${tr('хуурай')}` });
+  }
+  for (const x of s.faults) {
+    issues.push({ tone: 'warn', text: `${x.sensor} · ${x.metric} ${val(x.latest, x)} · ${tr('боломжгүй утга — мэдрэгчийн гэмтэл')}` });
   }
 
   /* ── Хүснэгтүүд ── */

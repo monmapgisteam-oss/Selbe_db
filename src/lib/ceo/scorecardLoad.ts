@@ -31,7 +31,7 @@ import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import { loadQaqcLoaded, summarizePkg } from './qaqc';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import {
-  DIMS, scorePerf, perfNoCurve, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
+  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePlan, scorePermit, scoreHse, scoreQual, totalOf, blockZoneScores,
   type Dim, type DimScore, type WorkScore, type PlanInput, type Inspection,
 } from './scorecard';
 
@@ -110,6 +110,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
      хоцрогдлыг огт тооцох боломжгүй тул мөн адил. */
   const noCurve = new Set(pkgLags.filter((p) => !p.lag && p.hasPhys && F.planCurveMissing(p.curveKey)).map((p) => p.key));
   const curveFailed = !fin || noCurve.size > 0;
+  /* ⚠️ 2026-10-04: муруй уншигдсан, биет хэмжилттэй атлаа `lag` алга = ХУВААРЬ ЭХЛЭЭГҮЙ (`planned <= 0`
+     эсвэл багцад хуваарь алга) — `scorePerf`-ийн огнооны шугам + Cashflow-ийн хувь руу БУУХГҮЙ
+     (`perfNotStarted`, оноо `null`). `Finance.lagReasonOf`-ийн 'not-started'-тэй нэг ангилал. */
+  const notStarted = new Set(pkgLags.filter((p) => !p.lag && p.hasPhys && !noCurve.has(p.key)).map((p) => p.key));
   /* 04-ийн олголт — `PkgFin` хуудастай ЯГ ижил (`pkgFinRows`) */
   const packs = bld ? buildPacks(bld.rows) : [];
   const paid = new Map(fin && bld ? pkgFinRows(packs, fin).rows.map((r) => [r.key, r.pct]) : []);
@@ -156,6 +160,8 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     const lag = key && r.sec === FIN_XL_BUILD_CODE ? lags.get(key) ?? null : null;
     /* ⚠️ 2026-10-01: муруй уншигдаагүйгээс хоцрогдол тодорхойгүй барилгын мөр (дээрх `noCurve`) */
     const lagUnknown = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && (!fin || noCurve.has(key));
+    /* ⚠️ 2026-10-04: хуваарь эхлээгүй барилгын мөр (дээрх `notStarted`) */
+    const schedNotStarted = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && !lagUnknown && notStarted.has(key);
     const actual = lag ? lag.actual : r.progress;
     const contract = contracts?.get(r.oid) ?? null;
     return {
@@ -168,7 +174,9 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       contract: contracted && contract && contract > 0 ? contract : null,
       cancelled,
       isLandWork,
-      perf: cancelled ? { score: null, facts: [] } : lagUnknown ? perfNoCurve() : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
+      perf: cancelled ? { score: null, facts: [] } : lagUnknown ? perfNoCurve()
+        : schedNotStarted ? perfNotStarted()
+          : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
       /* ⚠️ Газрын мөр гэрээ байгуулах ажил БИШ — санхүүжилтийн «гэрээгүй» оноо
          хамаарахгүй (null, 0 биш); оноо нь `scoreLand`-ын газрын салаанд. */
       fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({

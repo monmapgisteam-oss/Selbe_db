@@ -698,6 +698,74 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
   }
 }
 
+/**
+ * НЭГ ТҮЛХҮҮРИЙН `views`-ИЙГ ШИНЭЭР УНШИНА — бичихийн ЯГ ӨМНӨ нэгтгэхэд (2026-10-04).
+ * ⚠️ ЯАГААД: `caps.setCaps` · `scopedAcl.pushRow` нь ≤5 мин настай кэшээс БҮТЭН жагсаалт
+ *    бичдэг тул хоёр админ нэг хэрэглэгчийг зэрэг засвал сүүлд бичсэн нь өмнөхийн
+ *    нэмсэн эрх/багцыг чимээгүй арчдаг байв. Одоо дуудагч энэ шинэ утга дээр ӨӨРИЙН
+ *    ганц өөрчлөлтийг (нэмсэн/хассан) давхарлаж бичнэ.
+ * @returns `undefined` = уншиж чадсангүй (дуудагч БИЧИХГҮЙ), `null` = мөр алга,
+ *   эс бөгөөс их OID-тай мөрийн `views` (`fetchAll`-ийн «их OID ялна» дүрэм).
+ */
+async function readViewsByKey(key: string): Promise<string | null | undefined> {
+  try {
+    const url = await tableUrl(false);
+    if (!url) return undefined;
+    const fl = await layer(url);
+    const rows = await queryAllRows(fl, `LOWER(username) = '${key.toLowerCase().replace(/'/g, "''")}'`);
+    const last = rows[rows.length - 1];
+    return last ? String(last.views ?? '') : null;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Хэрэглэгчийн нэмэлт эрхийг ШИНЭЭР уншина — `null` = уншиж чадсангүй, `[]` = мөр алга */
+export async function capRead(user: string): Promise<string[] | null> {
+  const v = await readViewsByKey(CAP_PREFIX + user.trim().toLowerCase());
+  if (v === undefined) return null;
+  if (v === null) return [];
+  try {
+    const d = JSON.parse(v || '[]') as unknown;
+    return Array.isArray(d) ? d.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    /* эвдэрсэн мөр — `fetchAll`-ийн адил эрхгүй гэж уншина (fail-closed) */
+    return [];
+  }
+}
+
+/** `scopedAcl`-ийн систем бүрийн угтвар */
+const SCOPED_PREFIX = {
+  huvaari: HUVAARI_PREFIX, obyem: OBYEM_PREFIX, chanar: CHANAR_PREFIX,
+  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX, qaqc: QAQC_PREFIX,
+} as const;
+export type ScopedKind = keyof typeof SCOPED_PREFIX;
+
+/**
+ * Багцын хуваарилалтын мөрийг ШИНЭЭР уншина (`scopedAcl.pushRow`-ийн нэгтгэлд).
+ * @returns `null` = уншиж чадсангүй; `{ row: null }` = мөр алга; эс бөгөөс `fetchAll`-тэй ижил задлалт.
+ */
+export async function scopedRead(
+  kind: ScopedKind, user: string,
+): Promise<{ row: { roles: string[]; bagts: string[]; grants?: Grant[] } | null } | null> {
+  const v = await readViewsByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase());
+  if (v === undefined) return null;
+  if (v === null) return { row: null };
+  try {
+    const d = JSON.parse(v || '{}') as ViewsJson;
+    return {
+      row: {
+        roles: Array.isArray(d.roles) ? d.roles : [],
+        bagts: Array.isArray(d.bagts) ? d.bagts : [],
+        ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
+      },
+    };
+  } catch {
+    /* эвдэрсэн мөр — `fetchAll`-ийн адил алгасна (хуваарилалтгүй) */
+    return { row: null };
+  }
+}
+
 /** Нэг хэрэглэгчийн эрхийн мөрийг нэмэх/шинэчлэх (upsert) */
 export function upsert(row: RemoteRow): Promise<boolean> {
   return upsertByKey(row.username, {

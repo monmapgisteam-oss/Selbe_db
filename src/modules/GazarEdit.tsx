@@ -30,6 +30,7 @@ import {
   type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
+import { userError } from '@/components/ui';
 
 /** Төлөв ба явцын мэдээ НЭГ талбар уу (2026-09-21, `services.ts` `PARCEL_LEFT.fields`) */
 const SAME_FIELD = PARCEL_LEFT.fields.status === PARCEL_LEFT.fields.progress;
@@ -98,7 +99,7 @@ export function GazarEdit({
            (арын зайтай) сонголтоос унавал хадгалахад чимээгүй өөрчлөгдөнө. */
         setOpts(p.progress && !list.includes(p.progress) ? [p.progress, ...list] : list);
       })
-      .catch((e) => alive && setFail(String((e as Error).message || e)))
+      .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
   }, [oid]);
@@ -162,7 +163,7 @@ export function GazarEdit({
       onDone(n);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
-      setFail(String((x as Error).message || x));
+      setFail(userError(x));
     } finally {
       setBusy(false);
     }

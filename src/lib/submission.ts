@@ -134,6 +134,24 @@ export type SubmissionPayload = {
   adds: NewRow[];
   /** oid → "№ ¦ Ажлын нэр" — ObjectID шилжилтэд */
   rowKeys: [number, string][];
+  /**
+   * МӨРИЙН ДАВТАМЖИЙН ДУГААР — `[oid, k, n]` (2026-10-04 аудит, #2; `sheetFrame.RowOcc`).
+   * ⚠️ «№ ¦ Ажил» шошго жаазны 60.5%-д давхардсан (Bagts_1_9f) тул `rowKeys` ганцаараа
+   *    мөрийг ялгахгүй: шинэ жааз руу зөөхөд ӨӨР мөрөнд буух байв. Сонголттой —
+   *    хуучин илгээлтэд байхгүй; тэр үед `mapOldOids` хоёрдмол түлхүүрийг ЗӨӨХГҮЙ.
+   */
+  rowOcc?: [number, number, number][];
+  /**
+   * ИЛГЭЭЛТИЙН ТАНИГЧУУД — илгээх оролдлого бүрийн санамсаргүй `nonce` (сүүлийн 20),
+   * 2026-10-04 аудит (#3).
+   * ⚠️ ЯАГААД: `saveSubmission` сервер дээр бичигдсэний ДАРАА хариу нь тасарвал
+   *    (сүлжээ, timeout) клиент «болсонгүй» гэж үзэж ноорогоо үлдээнэ; дахин дарахад
+   *    «өөр хэрэглэгч илгээсэн» гэж зогсох эсвэл (F5-ын дараа) ижил нэмэлтийг ДАХИН
+   *    нэгтгэж ДАВХАР тоолох байв. Одоо `FillNew.publish` өөрийн хадгалсан `nonce`-ыг
+   *    энд хайж «миний илгээлт аль хэдийн буусан» гэж таньна. `mergeSubmission` хуримтлуулна
+   *    (дараагийн илгээлт өмнөхийнхийг агуулна — өөр хүн дээр нь нэгтгэсэн ч олдоно).
+   */
+  nonces?: string[];
   /** Батлагдсаны дараа: архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID */
   archiveOid?: number;
   approvedAt?: number;
@@ -234,6 +252,18 @@ const isPair = (x: unknown): x is [string, string] =>
 /** `[number, string]` хос — мөрийн танигч */
 const isRowKey = (x: unknown): x is [number, string] =>
   Array.isArray(x) && x.length >= 2 && Number.isInteger(x[0]) && isStr(x[1]);
+/** `[oid, k, n]` — мөрийн давтамжийн дугаар (2026-10-04, `SubmissionPayload.rowOcc`) */
+const isOcc = (x: unknown): x is [number, number, number] =>
+  Array.isArray(x) && x.length >= 3 && Number.isInteger(x[0]) && Number.isInteger(x[1]) && Number.isInteger(x[2])
+  && (x[1] as number) >= 0 && (x[2] as number) > (x[1] as number);
+/**
+ * Хадгалах илгээлтийн танигчийн тоо (`SubmissionPayload.nonces`).
+ * ⚠️ 2026-10-04 дахин аудит (#5): 20 → 200. Мөр нь ӨДӨР бүр тусдаа (`sub|<pkg>|<fillMs>`) тул энэ нь
+ *    бараг «тэр өдрийн бүх оролдлого»; 20 үед олон оролцогчтой өдөр хариу тасарсан оролдлогын танигч
+ *    шахагдаж алга болоод «буугаагүй» гэж дүгнэгдэн ДАХИН илгээгдэх (давхар тоолол) байв. 200 × ~26
+ *    тэмдэгт ≈ 5KB — `SUBMISSION_MAX`-д багтана.
+ */
+const NONCE_KEEP = 200;
 
 /**
  * `fillMs`-ИЙН БОДИТ МУЖ — 2020-01-01-ээс өнөөдөр + 2 хоног.
@@ -328,6 +358,11 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     };
     if (Number.isInteger(d.archiveOid) && (d.archiveOid as number) > 0) out.archiveOid = d.archiveOid as number;
     if (isFin(d.approvedAt)) out.approvedAt = d.approvedAt;
+    /* ⚠️ 2026-10-04 (#2/#3): давтамжийн дугаар ба илгээлтийн танигч — эвдэрсэн бичлэгийг л хаяна */
+    const occ = Array.isArray(d.rowOcc) ? (d.rowOcc as unknown[]).filter(isOcc).map((e): [number, number, number] => [e[0], e[1], e[2]]) : [];
+    if (occ.length) out.rowOcc = occ;
+    const nonces = Array.isArray(d.nonces) ? (d.nonces as unknown[]).filter((x): x is string => isStr(x) && x.length > 0 && x.length <= 64) : [];
+    if (nonces.length) out.nonces = nonces.slice(-NONCE_KEEP);
     if (d.regPending === true) out.regPending = true;
     if (d.residual === true) out.residual = true;
     return out;
@@ -437,6 +472,13 @@ export function mergeSubmission(
   for (const [k, v] of next.dates) dates.set(fixKey(k), v);
   const rowKeys = new Map<number, string>(prev?.rowKeys ?? []);
   for (const [o, k] of next.rowKeys) rowKeys.set(remap.get(o) ?? o, k);
+  /* ⚠️ 2026-10-04 (#2): давтамжийн дугаар — oid-оор нэгтгэнэ, шинэ нь ялна. Хуучин талд
+     байгаагүй oid-д (хуучин илгээлт) дугаар зохиохгүй — `mapOldOids` хоёрдмол гэж үзнэ. */
+  const occ = new Map<number, [number, number, number]>();
+  for (const e of prev?.rowOcc ?? []) occ.set(e[0], [e[0], e[1], e[2]]);
+  for (const e of next.rowOcc ?? []) { const o = remap.get(e[0]) ?? e[0]; occ.set(o, [o, e[1], e[2]]); }
+  /* ⚠️ 2026-10-04 (#3): илгээлтийн танигчууд хуримтлагдана (сүүлийн `NONCE_KEEP`) */
+  const nonces = [...new Set([...(prev?.nonces ?? []), ...(next.nonces ?? [])])].slice(-NONCE_KEEP);
   return {
     v: inc ? 2 : 1,
     ...(inc ? { mode: 'inc' as const } : {}),
@@ -453,6 +495,8 @@ export function mergeSubmission(
     /* ⚠️ Хуудасны дарааллаар — `buildOidMap`-ийн `shift()` дараалалд тулгуурладаг
        (`byPageOrder`-ийн ⚠️). Map нь хуучны дарааллыг хадгалж шинийг төгсгөлд залгадаг. */
     rowKeys: byPageOrder(rowKeys),
+    ...(occ.size ? { rowOcc: [...occ.values()].filter(([o]) => rowKeys.has(o)).sort((a, b) => a[0] - b[0]) } : {}),
+    ...(nonces.length ? { nonces } : {}),
   };
 }
 
@@ -494,6 +538,33 @@ export function residualAfterArchive(
   const aLabelOf = new Map<number, [string, number]>();
   for (const [l, os] of aLab) os.forEach((o, i) => aLabelOf.set(o, [l, i]));
   const curOids = new Set<number>((cur.rowKeys ?? []).map(([o]) => o));
+  /*
+   * ⚠️ 2026-10-04 аудит (#2): СИЙРЭГ жагсаалтын i дэх ↔ i дэх хослол давхардсан шошгод
+   *    ӨӨР мөрийг хослуулж болно (`sheetFrame.buildOidMap`-ийн ⚠️). Хоёр payload-д
+   *    давтамжийн дугаар (`rowOcc` — `[oid, k, n]`) байвал (шошго, k, n)-ээр ЯГ
+   *    хослуулна; эс бөгөөс ЗӨВХӨН шошгын тоо хоёр талд ТЭНЦҮҮ (хоёрдмол биш) үед
+   *    дарааллаар — тэнцүү биш бол `null` (дуудагч ил анхааруулна).
+   */
+  const aOcc = new Map<number, [number, number]>((archived.rowOcc ?? []).map((e): [number, [number, number]] => [e[0], [e[1], e[2]]]));
+  const cByOcc = new Map<string, number>();
+  /* ⚠️ 2026-10-04 дахин аудит (#10): шошгыг Map-аар (урьд нь мөр бүрд `find` — O(n²)) */
+  const cLabel = new Map<number, string>(cur.rowKeys ?? []);
+  for (const e of cur.rowOcc ?? []) {
+    const l = cLabel.get(e[0]);
+    if (l != null) cByOcc.set(`${l}\u0000${e[1]}\u0000${e[2]}`, e[0]);
+  }
+  const pairTo = (oid: number): number | undefined => {
+    const hit = aLabelOf.get(oid);
+    if (!hit) return undefined;
+    const ao = aOcc.get(oid);
+    if (ao) {
+      const to = cByOcc.get(`${hit[0]}\u0000${ao[0]}\u0000${ao[1]}`);
+      if (to != null) return to;
+    }
+    const cs = cLab.get(hit[0]);
+    if (!cs || cs.length !== (aLab.get(hit[0])?.length ?? -1)) return undefined;
+    return cs[hit[1]];
+  };
   for (const [k, v] of archived.cells) {
     const at = k.indexOf(':');
     if (at <= 0) return null;
@@ -502,8 +573,7 @@ export function residualAfterArchive(
     /* ⚠️ Ижил жааз (`cur.rowKeys`-д тэр oid бий) эсвэл түр (сөрөг) oid → ижил
        түлхүүр. Эс бөгөөс шошгоор зөөнө; зөөж чадахгүй бол ЗОГСОНО. */
     if (oid >= 0 && !curOids.has(oid) && !cells.has(k)) {
-      const hit = aLabelOf.get(oid);
-      const to = hit ? cLab.get(hit[0])?.[hit[1]] : undefined;
+      const to = pairTo(oid);
       if (to == null) return null;
       key = `${to}${k.slice(at)}`;
     }
@@ -712,6 +782,46 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
     return out;
   } catch {
     return [];
+  }
+}
+
+/**
+ * ИЛГЭЭХ ОРОЛДЛОГЫН ТАНИГЧ (`nonce`) АЛЬ НЭГ МӨРӨНД БУУСАН УУ — АЛДААГ ЯЛГАДАГ (`SubRead`),
+ * 2026-10-04 дахин аудит (#5, MED).
+ *
+ * ⚠️ ЯАГААД: хариу тасарсан илгээлтийг урьд нь ЗӨВХӨН идэвхтэй (`sub|`) мөрөөс хайдаг байв. Илгээлт
+ *    буусны дараа хянагдаж БАТЛАГДСАН бол мөр нь `done|` болж олдохгүй → «буугаагүй» гэж дүгнэж,
+ *    ачаалах зам тэмдгийг арилгаж, «Илгээх» нь архивт аль хэдийн орсон нүднүүдийг ДАХИН илгээдэг
+ *    (давхар тоолол) байв. Одоо `sub|` ба `done|` ХОЁУЛАНГААС (тухайн багц, `since`-ээс хойш
+ *    хадгалагдсан) хайна; идэвхтэй мөр давамгай.
+ * ⚠️ `since` — оролдлогын агшнаас нэг хоногийн өмнө (цагийн зөрүүний нөөц): `done|` мөр бүр ~80KB
+ *    тул бүх түүхийг татахгүй (`listActiveSubmissions`-ийн ⚠️).
+ * ⚠️ Задраагүй мөрийг алгасна (шийдвэр нь «олдсон уу» — олдохгүй бол дуудагч «буугаагүй» биш,
+ *    уншилт амжилттай гэж үзнэ; задраагүй мөр ховор, ил алдаагаар батлалт өөрөө зогсдог).
+ */
+export async function findNonce(pkgKey: string, nonce: string, since: number): Promise<SubRead> {
+  try {
+    const u = await readUrl();
+    if (!u.ok) return u;
+    if (!u.url) return { ok: true, sub: null };
+    const fl = await layer(u.url);
+    const res = await fl.queryFeatures({
+      where: `pkg = ${sqlStr(pkgKey)} AND at >= ${Math.floor(since)} AND (dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} OR dkey LIKE ${sqlStr(`${DONE_PREFIX}%`)})`,
+      outFields: OUT_FIELDS,
+      returnGeometry: false,
+      orderByFields: ['OBJECTID DESC'],
+    });
+    let hit: StagedSubmission | null = null;
+    for (const f of res.features) {
+      const r = readRow(f.attributes as RowAttrs | undefined);
+      if (!r.ok || !r.sub || r.sub.payload.pkgKey !== pkgKey) continue;
+      if (!(r.sub.payload.nonces ?? []).includes(nonce)) continue;
+      if (!r.sub.done) return { ok: true, sub: r.sub };
+      hit ??= r.sub;
+    }
+    return { ok: true, sub: hit };
+  } catch (e) {
+    return { ok: false, error: tr('Илгээлтийн төлөвийг шалгаж чадсангүй: {0}', errMsg(e)) };
   }
 }
 

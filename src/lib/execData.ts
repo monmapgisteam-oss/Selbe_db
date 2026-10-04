@@ -184,6 +184,11 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: Block
       return {
         ...s,
         keys,
+        /* ⚠️ 2026-10-04: БЛОКИЙН ТОО ч бөглөх хуудасны хуваариас (`keys` = `total`) — урьд нь
+           газрын зургийн feature-ийн тоо (`s.blocks`) байсан тул «Барилгын блок» / «Тайлан ирээгүй»
+           / «N/M блок» хоёр өөр ертөнцийг хольж, footprint-гүй хэмжилт (29/3, 5/8) ба хуудсанд
+           байхгүй feature нэг самбарт зөрдөг байв. Хуваарьгүй багцад (хуудас уншигдаагүй) нөөц. */
+        blocks: universe.has(s.key) ? keys.length : s.blocks,
         missing: keys.filter((k) => !prog.get(k)).length,
         progress: m ? m.pct : null,
         measured: m ? m.blocks : 0,

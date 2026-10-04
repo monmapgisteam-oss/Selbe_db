@@ -27,7 +27,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
-import { butetsUpsert, butetsRemove } from './permsRemote';
+import { butetsUpsert, butetsRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { PACK_OF_LAYER } from './butetsPacks';
 import { AUTH } from './services';
@@ -46,6 +46,8 @@ const acl = makeAcl<ButetsRole>({
   roleCaps: ROLE_CAPS.butets,
   push: (user, roles, bagts, grants) => butetsUpsert(user, roles, bagts, grants),
   remove: butetsRemove,
+  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
+  read: (user) => scopedRead('butets', user),
   msg: {
     noUser: 'Аккаунтын нэрээ бичнэ үү',
     superUser: 'Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй',

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { PKGS, type Pkg, type Schema } from "../bagts.pkg";
 import { loadRows, msToDay, type SheetRow } from "../bagtsSheet";
-import { overlaySubmission } from "../sheetFrame";
+import { needsFrameOcc, overlaySubmission, withFrameOcc } from "../sheetFrame";
 import { readSubmissionByOid } from "@/lib/submission";
 import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows } from "@/lib/hyanaltStore";
@@ -319,7 +319,14 @@ export function useReviewInc({ view, sc, pkg, reviewSoidsKey, rows, loadedPkgRef
           if (!alive) return;
           const sub = rr.ok ? rr.sub : null;
           if (!sub || sub.done || sub.payload.pkgKey !== pkg.key || sub.payload.mode !== 'inc') continue;
-          const ov = overlaySubmission(base.rows, sub.payload, sc, sc.bld.length);
+          /* ⚠️ 2026-10-04: хуучин (`rowOcc`-гүй) илгээлтийн давтамжийг СУУРЬ жаазаас нөхнө — `hyanaltDetail.loadStaged` ·
+             `hyanaltStore.archiveSubmission`-тэй ИЖИЛ; эс бөгөөс давхардсан шошготой мөрийн нэмэлт тодруулагдахгүй. */
+          let pl = sub.payload;
+          if (pl.base != null && needsFrameOcc(pl, base.rows)) {
+            try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр */ }
+            if (!alive) return;
+          }
+          const ov = overlaySubmission(base.rows, pl, sc, sc.bld.length);
           const ovBy = new Map(ov.rows.map((x) => [x.oid, x] as const));
           for (const ck of ov.cellKeys) {
             const cut = ck.indexOf(':');

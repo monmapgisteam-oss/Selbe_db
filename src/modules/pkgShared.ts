@@ -13,7 +13,8 @@
 import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS } from '@/lib/services';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
 import type { ProgPt } from '@/modules/PkgProg';
-import { planPctAt, type PlanPoint } from '@/lib/planProgress';
+import { planPctAt, measureDayOf, type PlanPoint } from '@/lib/planProgress';
+import { dayKey } from '@/lib/format';
 
 /**
  * «ГҮЙЦЭТГЭЛИЙН ЯВЦ» ГРАФИКИЙН ЦЭГҮҮД — хуваарийн төлөвлөгөө (`PlanCurve`) + БИЕТ
@@ -29,6 +30,7 @@ export function progMonthsOf(
 ): ProgPt[] | null {
   if (!series?.length) return null;
   const phys = new Map((base ?? []).map((m) => [m.label, m]));
+  const today = dayKey(Date.now());
   return series.map((p) => {
     const m = phys.get(p.label);
     const act = m?.phys ?? null;
@@ -37,7 +39,9 @@ export function progMonthsOf(
       plan: p.pct,
       vol: p.vol,
       act,
-      planM: act == null ? null : planPctAt(series, m?.physAt ?? `${p.label}-31`),
+      /* ⚠️ 2026-10-04: хэмжилтийн өдөр — `lagOf`-тэй НЭГ дүрэм (`measureDayOf`: physAt алга бол
+         одоогийн сард ӨНӨӨДӨР, сарын эцэс биш — ОГТ тайлагнаагүй багцын 0% цэг) */
+      planM: act == null ? null : planPctAt(series, measureDayOf(p.label, m?.physAt, today)),
     };
   });
 }

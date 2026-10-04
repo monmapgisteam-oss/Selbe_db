@@ -8,7 +8,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import {
   Donut, Ring, Bars, Series, Data, Stats, Stat, Empty, Rows,
-  Trend,
+  Trend, Loading, friendlyError,
 } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -30,7 +30,7 @@ import {
 /* ⚠️ Модулиас модуль руу импорт: `loadFinData` нь Finance-д, `aggregateMonths`
    нь Tsogts-д. Хоёулаа `cached` тул давхар хүсэлт үүсэхгүй — «Багцын санхүү»
    харагдацын аль хэдийн уншсан үр дүнг хуваалцана. */
-import { loadFinData, lagOf, type FinData } from '@/modules/Finance';
+import { loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, type FinData, type MonthPt } from '@/modules/Finance';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean,
@@ -721,7 +721,7 @@ function Detail({ k, d, flt, onFlt }: {
   switch (k) {
     case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
     case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg });
-    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, flt, onFlt });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, fin: d.fin, flt, onFlt });
     case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
     case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, zone: d.zone, flt, onFlt });
     case 'power': return PowerDetail({ sources: d.sources, prog: d.prog, powTotals: d.powTotals, flt, onFlt });
@@ -1264,8 +1264,14 @@ function EnvRight({ d }: { d: DashData }) {
           {(h) => {
             // Хамрах хүрээ нь 7 багцын БҮХ блок (тайлангүйг нь 0%) — тайлагнасан
             // блокоор хуваавал муруй шинэ багц нэмэгдэх бүрд буурна.
-            const b = d.bagts.state === 'ready' ? d.bagts.data : null;
-            const pts = projTrendPoints(h, b ? b.flatMap((r) => r.keys) : h.keys());
+            /* ⚠️ 2026-10-04: багцын ачаалал унасан/дуусаагүй үед `h.keys()` (зөвхөн
+               ТАЙЛАГНАСАН блок) руу ЧИМЭЭГҮЙ буух нь хуваарийг сольж муруйг өөр
+               утгатай болгодог байв — алдааг хэлнэ, хүлээнэ. */
+            if (d.bagts.state === 'loading') return <Loading label={tr('Татаж байна…')} />;
+            if (d.bagts.state === 'error') {
+              return <Empty label={tr('Багцын блокийн жагсаалт татагдсангүй')} hint={friendlyError(d.bagts.error)} onRetry={d.bagts.retry} />;
+            }
+            const pts = projTrendPoints(h, d.bagts.data.flatMap((r) => r.keys));
             return pts.length >= 2 ? (
               <Trend color="var(--data)" unit="%" height={92} points={pts} />
             ) : (
@@ -1334,11 +1340,8 @@ function EnvRight({ d }: { d: DashData }) {
       <Panel title={tr('Блокийн гүйцэтгэл')} note={tr('түвшнээр · блок')}>
         <Data q={d.prog} loading={tr('Татаж байна…')}>
           {(pm) => {
-            const counts = PROGRESS_LEVELS.map(() => 0);
-            pm.forEach((p) => {
-              if (p.overall == null) return;
-              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(p.overall / 25))] += 1;
-            });
+            /* ⚠️ 2026-10-04: тайлагнаагүй блок 0%-д тоологдоно (`levelCounts`) */
+            const counts = levelCounts(pm, d.bagts.state === 'ready' ? d.bagts.data : null);
             const tot = counts.reduce((a, b) => a + b, 0);
             return tot ? (
               <Bars
@@ -1454,7 +1457,8 @@ export function HeadKpi({ bagts, extra }: {
     {
       /* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; утгагүй/унасан бол «—»
          (мөнхийн «…» биш) — `ScheduleDetail`-ийн 09-25-ны засвартай ижил */
-      v: p.actual != null ? num(p.actual, 2) : pq.state === 'loading' ? '…' : '—', unit: '%',
+      /* ⚠️ 2026-10-04: 1 оронтой — IndStrip (`pct(overall, 1)`) · 02 · rail-тай НЭГ бичлэг */
+      v: p.actual != null ? num(p.actual, 1) : pq.state === 'loading' ? '…' : '—', unit: '%',
       label: tr('Биет гүйцэтгэл (багцаар)'),
       title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, багцын ХО дүнгээр жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
@@ -1821,6 +1825,9 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
  *    шошгыг үнэн болгов. Устгасны дараа энэ шошгыг `SRC_NEGTGEL_REAL` болгож
  *    «туршилтын» гэсэн үгийг хасна.
  */
+/* ⚠️ 2026-10-04: гүйцэтгэл/төлөвлөгөө/хоцрогдлын бүх самбар (02 · 04) бөглөх хуудас + хуваарийн
+   муруй руу шилжсэн (`pkgLagRows`, `lagSeriesOf`); энэ шошго ЗӨВХӨН эзлэхүүний хоёр самбарт
+   (эзлэхүүн өөр эх сурвалжид алга) үлдэв. */
 const SRC_NEGTGEL = () => tr('⚠ туршилтын өгөгдөл · багцын нэгтгэл');
 /** Блокийн гүйцэтгэлийн («Гүйцэтгэл бөглөх» хуудас) эх сурвалжийн шошго */
 const SRC_SHEET = () => tr('эх: бөглөх хуудас');
@@ -1886,7 +1893,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
     <>
       <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0909 · HO_guitsetgel · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, 2))} unit="%" label={tr('Биет гүйцэтгэл')} />
+          {/* ⚠️ 2026-10-04: 1 оронтой — толгойн KPI/rail-тай нэг бичлэг */}
+          <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, 1))} unit="%" label={tr('Биет гүйцэтгэл')} />
           <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, 1))} unit="%" label={tr('Төлөвлөсөн гүйцэтгэл')} />
           <Stat
             accent
@@ -1928,14 +1936,11 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       </Panel>
 
       {/* БЛОКИЙН ГҮЙЦЭТГЭЛИЙН ТАРХАЛТ — «дундаж 27.65%» нь тархалтыг нуудаг */}
-      <Panel title={tr('Блокийн гүйцэтгэл')} note={tr('түвшнээр · блок')}>
+      <Panel title={tr('Блокийн гүйцэтгэл')} note={tr('түвшнээр · блок (тайлангүй блок 0%)')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
           {(pm) => {
-            const counts = PROGRESS_LEVELS.map(() => 0);
-            pm.forEach((x) => {
-              if (x.overall == null) return;
-              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x.overall / 25))] += 1;
-            });
+            /* ⚠️ 2026-10-04: тайлагнаагүй блок 0%-д тоологдоно (`levelCounts`) */
+            const counts = levelCounts(pm, bagts.state === 'ready' ? bagts.data : null);
             return counts.some((c) => c > 0) ? (
               <Bars
                 inline
@@ -1978,30 +1983,18 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       </Panel>
 
       {/* ХОЦОРСОН БЛОК — гүйцэтгэл 0 хэвээрх, айлын тоогоор жигнэсэн */}
-      <Panel title={tr('Хоцорсон блок')} note={tr('гүйцэтгэл 0%')}>
+      <Panel title={tr('Хоцорсон блок')} note={tr('гүйцэтгэл 0% (тайлангүй блок орно)')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
           {(pm) => {
             const b = bagts.state === 'ready' ? bagts.data : null;
-            const zero: { key: string; n: number }[] = [];
-            const byPkg = new Map<string, number>();
-            pm.forEach((x, k) => {
-              /* ⚠️ ХЭМЖИГДЭЭГҮЙ блокийг АЛГАСНА (2026-09-15-ны аудит).
-                 Урьд нь зөвхөн `> 0`-ыг шалгадаг байсан тул бөглөх хуудас
-                 нийтлэгдээгүй (`overall == null`) блок «0%-д гацсан» гэж
-                 CEO-д тайлагнагдаж, тайлагналын цоорхойтой багцын зурвас
-                 хөөрөгддөг байв. Хажуугийн бүх самбар энэ шалгуурыг хийдэг. */
-              if (x.overall == null || x.overall > 0) return;
-              const pkg = k.split('|')[0] ?? '';
-              byPkg.set(pkg, (byPkg.get(pkg) ?? 0) + 1);
-            });
-            byPkg.forEach((n, k) => {
-              const nm = b?.find((r) => r.key === k)?.label ?? k;
-              zero.push({ key: k, n, ...{ label: nm } } as { key: string; n: number });
-            });
+            /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): 2026-09-15-ны
+               «ХЭМЖИГДЭЭГҮЙ блокийг АЛГАСНА» дүрэм ХҮЧИНГҮЙ — тайлан ирээгүй блок 0%-иар
+               тоологдоно (хуваарь = бөглөх хуудасны блок, `BagtsRow.keys`). Багцын хувь
+               (`pkgProgressOf`) ч тэднийг 0% гэж хуваадаг тул энд алгасвал хоёр самбар зөрнө. */
+            const byPkg = zeroBlocksByPkg(pm, b);
             const list = [...byPkg.entries()]
               .map(([k, n]) => ({ key: k, label: b?.find((r) => r.key === k)?.label ?? k, n }))
               .sort((x, y) => y.n - x.n);
-            void zero;
             return list.length ? (
               <Bars
                 inline
@@ -2017,65 +2010,32 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
         </Data>
       </Panel>
 
-      {/* ══ БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛЭЭС — 02-ын ГУРВАН ШИНЭ КАРТ ══
+      {/* ══ ТӨЛӨВЛӨГӨӨ vs БОДИТ — 02-ын ХУВААРИЙН КАРТУУД ══
 
-          ⚠️ ЯАГААД: дээрх «Биет гүйцэтгэл — сараар» ба «Багцаар — биет
-          гүйцэтгэл» хоёр нь `Bagts_*` бөглөх хуудсаас уншдаг бөгөөд 10
-          хуудсын ЗӨВХӨН ХОЁРТ нь бүртгэл нийтлэгдсэн (2026-08-27). Тиймээс
-          хоёр багана бараг хоосон үлдэж байв. Багцын гүйцэтгэлийн нэгтгэл нь
-          7 багц × 12 сарын бүртгэлтэй бөгөөд ТӨЛӨВЛӨГӨӨГ агуулдаг цорын ганц
-          эх — хуваарийн хэсэгт яг тохирно.
+          ⚠️ 2026-10-04: доорх гурван карт урьд нь `selbe_bagts_guitsetgel_negtgel`-ийн
+          ТУРШИЛТЫН мөрөөс (`pkgProg` → `latestPkgProgress`; сүүлийн мөр 09-09, Багц 3.1 алга,
+          төлөвлөгөө нь хуваарийн муруйтай таарахгүй) зурагддаг байв. Одоо «Гүйцэтгэл» (PkgProg)
+          · «ТУХ»-тай ЯГ НЭГ эх: биет = бөглөх хуудас (`fin.phys`, тайлангүй блок 0%),
+          төлөвлөгөө = хуваарийн муруй хэмжилтийн өдрөөр (`Finance.lagOf` / `lagSeriesOf`).
+          Шинэ хүсэлтгүй — `fin` аль хэдийн ачаалагдсан. Эзлэхүүний карт л нэгтгэлээс (эзлэхүүн
+          өөр эх сурвалжид алга) — тэр нь `SRC_NEGTGEL` шошготой хэвээр. */}
 
-          ⚠️ ШИНЭ ХҮСЭЛТ ЯВУУЛАХГҮЙ: `pkgProg` нь 04-т аль хэдийн ачаалагдсан
-          `loadPkgProgress`-ийн ЯГ ижил `cached` үр дүн.
-
-          ⚠️ 2026-09-04 ШИНЭЧЛЭЛ: доорх бүлгийн самбар бүрийн `note`-д
-          `SRC_NEGTGEL` шошго нэмэгдэв. Учир нь энэ ХОЁР эх нэг дэлгэцэн дээр
-          61 нэгжээр зөрж зэрэгцэн зурагддаг: бөглөх хуудасны блокийн дундаж
-          0.013% ба нэгтгэлийн 61.06% (амьд, 2026-09-04). Дээрх `SRC_NEGTGEL`
-          тайлбарыг унш — нэгтгэлийн 84 мөр нь `tools/negtgel-seed.mjs`-ийн
-          ТУРШИЛТЫН өгөгдөл. Өгөгдлийг устгах/эх сурвалжийг солих нь
-          ХЭРЭГЛЭГЧИЙН шийдвэр тул энд зөвхөн шошго. */}
-
-      {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — САРААР. Нэг муруй: сар бүрийн БОДИТ дундаж.
-          Төлөвлөгөө нь hover-ийн `display`-д хамт гарна — хоёр өнгийн муруй
-          давхарлавал хэрэглэгч аль нь аль болохыг өнгөөр л таамаглана. */}
-      <Panel title={tr('Төлөвлөгөө vs бодит — сараар')} note={srcNote(tr('багцын дундаж %'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            /*
-             * ⚠️ 2026-09-25: сар бүрд БАГЦ БҮРИЙН СҮҮЛИЙН мөр → ТОГТВОРТОЙ олонлог.
-             * Урьд нь сарын БҮХ мөрийг дундажладаг байсан тул нэг сард олон
-             * бүртгэл хийсэн багц олон дахин жигнэгдэж, бодит ба төлөвлөгөө
-             * хоёр ӨӨР багцын олонлогоос дундажлагддаг байв (харьцуулалт хуурамч).
-             * Одоо: хоёулаа бөглөгдсөн багцуудаар (S) бодит/төлөвлөгөөг ИЖИЛ
-             * олонлогоор; S хоосон бол бодит нь бодит бүхий багцуудаар ганцаараа.
-             */
-            const last = new Map<string, Map<string, PkgProgressRow>>();
-            for (const r of list) {
-              const ym = r.date.slice(0, 7);
-              if (!ym) continue;
-              const byPkg = last.get(ym) ?? new Map<string, PkgProgressRow>();
-              const prev = byPkg.get(r.key);
-              if (!prev || r.date >= prev.date) byPkg.set(r.key, r);
-              last.set(ym, byPkg);
-            }
-            const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
-            const pts = [...last.entries()]
-              .sort((x, y) => x[0].localeCompare(y[0]))
-              .flatMap(([ym, byPkg]) => {
-                const rs = [...byPkg.values()];
-                const both = rs.filter((r) => r.actual != null && r.planned != null);
-                const act = rs.filter((r) => r.actual != null);
-                if (act.length === 0) return [];
-                if (both.length) {
-                  const a = avg(both.map((r) => r.actual as number));
-                  const p = avg(both.map((r) => r.planned as number));
-                  return [{ key: ym, label: ym.slice(2), value: a, display: tr('{0} / төл. {1}', pct(a, 1), pct(p, 1)) }];
-                }
-                const a = avg(act.map((r) => r.actual as number));
-                return [{ key: ym, label: ym.slice(2), value: a, display: pct(a, 1) }];
-              });
+      {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — САРААР. Нэг муруй: сар бүрийн ТӨСЛИЙН биет % (ХО жинтэй,
+          `aggregateMonths`). Төлөвлөгөө нь hover-ийн `display`-д хамт гарна — хоёр өнгийн
+          муруй давхарлавал хэрэглэгч аль нь аль болохыг өнгөөр л таамаглана. */}
+      <Panel title={tr('Төлөвлөгөө vs бодит — сараар')} note={srcNote(tr('төслийн биет % (ХО жинтэй)'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {() => {
+            const ms = (months ?? []).filter((m) => m.label <= nowYm && m.phys != null);
+            const plan = new Map((months ? lagSeriesOf(months) : []).map((x) => [x.month, x.planned]));
+            const pts = ms.map((m) => {
+              const a = m.phys as number;
+              const p = plan.get(m.label);
+              return {
+                key: m.label, label: m.label.slice(2), value: a,
+                display: p == null ? pct(a, 1) : tr('{0} / төл. {1}', pct(a, 1), pct(p, 1)),
+              };
+            });
             return pts.length >= 2
               ? <Series items={pts} height={120} unit="%" line />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
@@ -2085,17 +2045,18 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
 
       {/* ХОЦРОГДОЛ — багц бүрийн (төлөвлөгөө − бодит). «Хэн хоцорч байна»
           гэсэн асуултын шууд хариу; эерэг тоо нь хоцрогдол. */}
-      <Panel title={tr('Төлөвлөгөөний хоцрогдол — багцаар')} note={srcNote(tr('төл. − бодит, %'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const rows = latestPkgProgress(list)
+      <Panel title={tr('Төлөвлөгөөний хоцрогдол — багцаар')} note={srcNote(tr('төл. − бодит, %'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {(fd) => {
+            const b = bagts.state === 'ready' ? bagts.data : null;
+            const rows = pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? k)
               .filter((x) => x.actual != null && x.planned != null)
               .map((x) => ({
                 key: x.key, label: x.label,
                 planned: x.planned as number, actual: x.actual as number,
                 gap: (x.planned as number) - (x.actual as number),
               }))
-              .sort((a, b) => b.gap - a.gap);
+              .sort((a, b2) => b2.gap - a.gap);
             return rows.length ? (
               <Bars
                 inline
@@ -2112,32 +2073,22 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
         </Data>
       </Panel>
 
-      {/* СҮҮЛИЙН САРЫН ӨСӨЛТ — багц бүрийн сүүлийн хоёр бүртгэлийн зөрүү.
+      {/* СҮҮЛИЙН САРЫН ӨСӨЛТ — багц бүрийн сүүлийн хоёр хэмжилтийн САРЫН зөрүү.
           Нийт % нь «хэр хол явсан»-ыг хэлдэг ч «одоо хөдөлж байна уу»-г
-          хэлдэггүй: 80%-тай зогссон багц 40%-тай ажиллаж буйгаас муу. */}
-      <Panel title={tr('Сүүлийн сарын өсөлт — багцаар')} note={srcNote(tr('сүүлийн хоёр бүртгэлийн зөрүү'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            /** багц → огноогоор эрэмбэлэгдсэн бүртгэлүүд */
-            const by = new Map<string, PkgProgressRow[]>();
-            for (const r of list) {
-              /* ⚠️ 2026-09-29 (аудит 10): ОГНООГҮЙ мөр (`date: ''`) орохгүй — хоосон
-                 мөр эрэмбэд ХАМГИЙН ЭХЭНД гарч, «өмнөх бүртгэл» болж зөрүүг огноо нь
-                 мэдэгдэхгүй хэмжилттэй тулгадаг байв (дээрх цувааны `!ym` дүрэмтэй ижил). */
-              if (r.actual == null || !r.date) continue;
-              const arr = by.get(r.key) ?? [];
-              arr.push(r);
-              by.set(r.key, arr);
-            }
+          хэлдэггүй: 80%-тай зогссон багц 40%-тай ажиллаж буйгаас муу.
+          ⚠️ 2026-10-04: эх нь бөглөх хуудас (`pkgMonthsMap` — хэмжилттэй сар бүрийн сүүлийн %),
+          туршилтын нэгтгэл БИШ. */}
+      <Panel title={tr('Сүүлийн сарын өсөлт — багцаар')} note={srcNote(tr('сүүлийн хоёр хэмжилтийн зөрүү'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {(fd) => {
+            const b = bagts.state === 'ready' ? bagts.data : null;
             const rows: { key: string; label: string; d: number }[] = [];
-            by.forEach((arr, key) => {
-              if (arr.length < 2) return;
-              const s2 = [...arr].sort((a, b) => a.date.localeCompare(b.date));
-              const last = s2[s2.length - 1];
-              const prev = s2[s2.length - 2];
-              rows.push({ key, label: last.label, d: (last.actual as number) - (prev.actual as number) });
+            pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? k).forEach((x) => {
+              const ms = x.months.filter((m) => m.label <= nowYm && m.phys != null);
+              if (ms.length < 2) return;
+              rows.push({ key: x.key, label: x.label, d: (ms[ms.length - 1].phys as number) - (ms[ms.length - 2].phys as number) });
             });
-            rows.sort((a, b) => b.d - a.d);
+            rows.sort((a, b2) => b2.d - a.d);
             return rows.length ? (
               <Bars
                 inline
@@ -2163,18 +2114,15 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           бүрийн ард ХЭДЭН блокийн бүртгэл байгааг ил гаргана. */}
       <Panel title={tr('Тайлагнасан блок — багцаар')} note={tr('бүртгэлтэй / нийт блок')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
-          {(pm) => {
+          {() => {
             const b = bagts.state === 'ready' ? bagts.data : null;
             if (!b) return <Empty label={tr('Багцын бүртгэл алга')} />;
-            /** багц → бүртгэл ирсэн блокийн тоо */
-            const rep = new Map<string, number>();
-            pm.forEach((x, k) => {
-              if (x.overall == null) return;
-              const pkg = k.split('|')[0] ?? '';
-              rep.set(pkg, (rep.get(pkg) ?? 0) + 1);
-            });
+            /* ⚠️ 2026-10-04: ТООЛОГЧ ба ХУВААРЬ хоёулаа бөглөх хуудасны хуваариас
+               (`BagtsRow.measured` / `total` — `pkgProgressOf`). Урьд нь хуваарь нь газрын
+               зургийн feature (`r.blocks`), тоологч нь хэмжилтийн нүд байсан тул footprint-гүй
+               хэмжилт (29/3, 5/8) «N+1 / N блок» гэх мэт хоёр өөр ертөнцийг хольдог байв. */
             const rows = b
-              .map((r) => ({ key: r.key, label: r.label, n: rep.get(r.key) ?? 0, all: r.blocks }))
+              .map((r) => ({ key: r.key, label: r.label, n: r.measured, all: r.total }))
               .sort((x, y) => y.n / Math.max(1, y.all) - x.n / Math.max(1, x.all));
             return rows.length ? (
               <Bars
@@ -2274,30 +2222,20 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
           чухал асуулт нь «зөрүү ӨСӨЖ байна уу, буурч байна уу». Нэг агшны
           зөрүү нь чиглэлийг хэлдэггүй: 20% хоцрогдол буурч байгаа нь 10%
           хоцрогдол өсөж байгаагаас дээр. */}
-      <Panel title={tr('Хоцрогдлын өөрчлөлт — сараар')} note={srcNote(tr('төл. − бодит, багцын дундаж %'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            const m = new Map<string, { g: number; n: number }>();
-            for (const r of list) {
-              if (r.actual == null || r.planned == null) continue;
-              const ym = r.date.slice(0, 7);
-              if (!ym) continue;
-              const cur = m.get(ym) ?? { g: 0, n: 0 };
-              cur.g += r.planned - r.actual;
-              cur.n += 1;
-              m.set(ym, cur);
-            }
-            const pts = [...m.entries()]
-              .sort((x, y) => x[0].localeCompare(y[0]))
-              .map(([ym, v]) => ({
-                key: ym,
-                label: ym.slice(2),
-                /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
-                   байж чадахгүй тул тэмдгийг `display` барина. */
-                value: Math.max(0, v.g / v.n),
-                /* `v.g` нь аль хэдийн (төл. − бодит) нийлбэр тул бодитыг 0 дамжуулна */
-                display: gapLabel(v.g / v.n, 0),
-              }));
+      {/* ⚠️ 2026-10-04: ТӨСЛИЙН (ХО жинтэй) хоцрогдол сар бүрийн хэмжилтийн өдрөөр —
+          `Finance.lagSeriesOf` (`lagOf`-ийн дүрэм, сүүлийн цэг == 02-ын «Гүйцэтгэлийн зөрүү»).
+          Урьд нь туршилтын нэгтгэлийн мөрүүдийн (багцын энгийн дундаж) зөрүү байв. */}
+      <Panel title={tr('Хоцрогдлын өөрчлөлт — сараар')} note={srcNote(tr('төл. − бодит, төслийн % (ХО жинтэй)'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {() => {
+            const pts = (months ? lagSeriesOf(months) : []).map((x) => ({
+              key: x.month,
+              label: x.month.slice(2),
+              /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
+                 байж чадахгүй тул тэмдгийг `display` барина. */
+              value: Math.max(0, x.gap),
+              display: gapLabel(x.planned, x.actual),
+            }));
             return pts.length >= 2
               ? <Series items={pts} height={120} unit="%" />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
@@ -2350,17 +2288,18 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       {/* ТАЙЛАГНАЛЫН ИДЭВХ — сар бүр ХЭДЭН багц бүртгэл оруулсан бэ. Цуваа
           тасарвал дүн «тогтсон» мэт харагдана — үнэндээ хэн ч тайлагнаагүй
           байхад. Энэ карт тэр хоёрыг ялгана. */}
-      <Panel title={tr('Тайлагналын идэвх — сараар')} note={srcNote(tr('бүртгэл оруулсан багц'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
+      {/* ⚠️ 2026-10-04: эх нь бөглөх хуудас (`fin.phys` — сард ШИНЭ бичилттэй багц л цэгтэй,
+          `finPhys.buildPhys`-ийн дүрэм 2), туршилтын нэгтгэл БИШ. */}
+      <Panel title={tr('Тайлагналын идэвх — сараар')} note={srcNote(tr('бүртгэл оруулсан багц'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {(fd) => {
             const m = new Map<string, Set<string>>();
-            for (const r of list) {
-              const ym = r.date.slice(0, 7);
-              if (!ym) continue;
+            fd.phys.forEach((byMon, k) => byMon.forEach((_, ym) => {
+              if (ym > nowYm) return;
               const s2 = m.get(ym) ?? new Set<string>();
-              s2.add(r.key);
+              s2.add(k);
               m.set(ym, s2);
-            }
+            }));
             const pts = [...m.entries()]
               .sort((x, y) => x[0].localeCompare(y[0]))
               .map(([ym, s2]) => ({
@@ -2444,6 +2383,76 @@ function RingCard({ value, label, color = ACCENT, decimals }: {
  * ХАСАГДСАН. Гүйцэтгэлийн бүх дүн одоо TASK_SHEET («Гүйцэтгэл бөглөх»-ийн
  * нэгтгэл) дээр — тэр нь порталаас БӨГЛӨГДДӨГ тул дэлгэц бүрийн тоо таарна.
  */
+/**
+ * БЛОКИЙН ТҮВШНИЙ ТООЛОЛ (0–25 · 25–50 · …) — хуваарь нь бөглөх хуудасны БҮХ блок
+ * (`BagtsRow.keys`) ∪ хэмжигдсэн түлхүүр; тайлагнаагүй блок 0%-ийн түвшинд.
+ * ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): урьд нь гурван самбар
+ *    (тойм · 02 · 04) зөвхөн хэмжигдсэн блокийг (`overall == null` алгасна) тоолдог тул
+ *    «0–25%» багана багцын хувь (`pkgProgressOf` — тайлангүй блок 0%)-иас өөр хуваарьтай байв.
+ * @param rows багцын мөрүүд — уншигдаагүй (`null`) бол зөвхөн хэмжигдсэн блок (нөөц)
+ */
+function levelCounts(pm: BlockProgressMap, rows: readonly BagtsRow[] | null): number[] {
+  const counts = PROGRESS_LEVELS.map(() => 0);
+  const keys = new Set<string>(rows ? rows.flatMap((r) => r.keys) : []);
+  pm.forEach((_, k) => keys.add(k));
+  keys.forEach((k) => {
+    const v = pm.get(k)?.overall;
+    const x = v != null && Number.isFinite(v) ? v : 0;
+    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x / 25)))] += 1;
+  });
+  return counts;
+}
+
+/**
+ * БАГЦ БҮРИЙН 0%-ИЙН БЛОК — хэмжилт 0 ЭСВЭЛ огт тайлагнаагүй (2026-10-04, `levelCounts`-ийн ⚠️).
+ * `rows` уншигдаагүй бол зөвхөн хэмжигдсэн 0%-ийн блок.
+ */
+function zeroBlocksByPkg(pm: BlockProgressMap, rows: readonly BagtsRow[] | null): Map<string, number> {
+  const keys = new Set<string>(rows ? rows.flatMap((r) => r.keys) : []);
+  pm.forEach((_, k) => keys.add(k));
+  const byPkg = new Map<string, number>();
+  keys.forEach((k) => {
+    const v = pm.get(k)?.overall;
+    if (v != null && Number.isFinite(v) && v > 0) return;
+    const pkg = k.split('|')[0] ?? '';
+    byPkg.set(pkg, (byPkg.get(pkg) ?? 0) + 1);
+  });
+  return byPkg;
+}
+
+/** Багц бүрийн төлөвлөгөө / бодит / хоцрогдол — `pkgLagRows`-ийн мөр */
+type PkgLagRow = {
+  key: string;
+  label: string;
+  /** Сүүлийн биет % (`Finance.physLatest`) — хэмжилтгүй бол `null` */
+  actual: number | null;
+  /** Хэмжилтийн өдрийн төлөвлөгөө (`Finance.lagOf`) — хуваарь эхлээгүй/алга бол `null` */
+  planned: number | null;
+  /** Хэмжилтийн сарууд (`pkgMonthsMap`) — сүүлийн 2 хэмжилтийн өсөлтөд */
+  months: MonthPt[];
+};
+
+/**
+ * ОРОН СУУЦНЫ БАГЦ БҮРИЙН ТӨЛӨВЛӨГӨӨ vs БОДИТ — «Гүйцэтгэл» (PkgProg) · «ТУХ»-тай ЯГ НЭГ эх:
+ * `Finance.pkgMonthsMap` → `physLatest` (бодит, тайлангүй блок 0%) · `lagOf` (хуваарийн муруй,
+ * хэмжилтийн өдрөөр). Хамрах хүрээ = биет хэмжилттэй ∪ бөглөх хуудастай (`physN`) багц.
+ * ⚠️ 2026-10-04: 02/04-ийн «Төлөвлөгөөний хоцрогдол — багцаар», «Төлөвлөгөө vs бодит —
+ *    багцаар» урьд нь `selbe_bagts_guitsetgel_negtgel`-ийн ТУРШИЛТЫН мөрөөс
+ *    (`latestPkgProgress`, сүүлийн мөр 09-09, Б3.1 алга, төлөвлөгөө буруу) зурагддаг байв.
+ */
+function pkgLagRows(f: FinData, labelOf: (k: string) => string): PkgLagRow[] {
+  const mm = pkgMonthsMap(f);
+  const keys = new Set<string>([...f.phys.keys(), ...(f.physN?.keys() ?? [])]);
+  const out: PkgLagRow[] = [];
+  keys.forEach((k) => {
+    const months = mm.get(k);
+    if (!months) return;
+    const lag = lagOf(months);
+    out.push({ key: k, label: labelOf(k), actual: physLatest(months), planned: lag ? lag.planned : null, months });
+  });
+  return out.sort((a, b) => a.label.localeCompare(b.label, 'mn'));
+}
+
 function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
   /** Блокоор жигнэсэн дундаж % (тайлагнаагүй бол `null`) */
   actual: number | null;
@@ -2518,8 +2527,10 @@ const FAMILY_LABEL: Record<PkgFamily, string> = {
 const familyPacks = (f: PkgFamily): string[] =>
   [...new Set((PKG_BY_FAMILY[f] ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)))].filter(Boolean);
 
-function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
+function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
   q: Async<BagtsRow[]>;
+  /** 2026-10-04: «Төлөвлөгөө vs бодит — багцаар» — PkgProg/ТУХ-тай нэг эх (`pkgLagRows`) */
+  fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   hist: Async<BlockHistory>;
   pkgProg: Async<PkgProgressRow[]>;
@@ -2583,9 +2594,12 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
       </Panel>
 
       {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — хажуугийн баганын карт. */}
-      <Panel title={tr('Дундаж гүйцэтгэл')}
+      {/* ⚠️ 2026-10-04: бөгж нь БЛОКИЙН ЭНГИЙН дундаж (`latestMean`), толгойн «Биет гүйцэтгэл»
+          нь багцын ХО дүнгээр жигнэсэн (`buildProgressOf` → `housingPct`, 22.19 vs 21.76) — хоёр
+          өөр үзүүлэлт тул бөгжийг «блокийн дундаж» гэж ИЛ нэрлэв (цуваатай нэг дүрэм хэвээр). */}
+      <Panel title={tr('Блокийн дундаж гүйцэтгэл')}
              note={ring && ring.total ? tr('{0}/{1} блок тайлагнасан', num(ring.blocks), num(ring.total)) : undefined}>
-        <RingCard value={avg} label={tr('дундаж гүйцэтгэл')} color={cat(0)} />
+        <RingCard value={avg} label={tr('блокийн дундаж')} color={cat(0)} />
       </Panel>
 
       {/* ⚠️ 2026-09-04: `note` НЭМЭГДЭВ. Энэ карт нь блокийн гүйцэтгэлээс
@@ -2723,14 +2737,16 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
         * хоёр ӨӨР асуулт — нэг хайрцагт хамт байх нь хоёуланг нь бүдгэрүүлж
         * байлаа.
         */}
-      {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — багцын гүйцэтгэлийн нэгтгэлээс.
-          ⚠️ `Төсөл_Гүйцэтгэл_` хасагдсаны дараа төлөвлөгөө өгдөг ЦОРЫН ГАНЦ эх. */}
-      <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={srcNote(tr('гүйцэтгэлийн нэгтгэл'), SRC_NEGTGEL)}>
-        <Data q={pkgProg} loading={tr('Татаж байна…')}>
-          {(list) => {
-            /* ⚠️ `loadPkgProgress` нь БҮХ түүхийг буцаадаг болсон (02-ын цуваа
-               түүнээс зурагдана) тул энд багц бүрийн СҮҮЛИЙН мөрийг ил сонгоно. */
-            const withPlan = latestPkgProgress(list).filter((x) => x.actual != null || x.planned != null);
+      {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — багцаар. ⚠️ 2026-10-04: хуваарийн муруй (`lagOf`) + бөглөх
+          хуудасны биет % (`physLatest`) — «нэгтгэл бол төлөвлөгөөний ЦОРЫН ГАНЦ эх» гэсэн
+          хуучин тэмдэглэл ХҮЧИНГҮЙ (хуваарийн муруй 2026-09-04-нөөс бий). */}
+      <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={srcNote(tr('биет · хуваарийн төлөвлөгөө'), SRC_SHEET)}>
+        <Data q={fin} loading={tr('Татаж байна…')}>
+          {(fd) => {
+            /* ⚠️ 2026-10-04: эх нь `pkgLagRows` (бөглөх хуудас + хуваарийн муруй, `lagOf`) —
+               туршилтын нэгтгэл (`latestPkgProgress`) БИШ. PkgProg · ТУХ-тай нэг тоо. */
+            const withPlan = pkgLagRows(fd, (k) => rows.find((r) => r.key === k)?.label ?? k)
+              .filter((x) => x.actual != null || x.planned != null);
             if (!withPlan.length) return <Empty label={tr('Бүртгэл хоосон байна.')} />;
             return (
               <Bars
@@ -2795,14 +2811,11 @@ function BagtsDetail({ q, prog, hist, pkgProg, flt, onFlt }: {
 
       {/* БЛОКИЙН ТАРХАЛТ — «дундаж 27.6%» гэсэн нэг тоо нь 113 блок дунджаараа
           явж байгаа мэт сэтгэгдэл төрүүлдэг; бодит тархалт өөр. */}
-      <Panel title={tr('Блокийн гүйцэтгэл — түвшнээр')} note={tr('блокийн тоо')}>
+      <Panel title={tr('Блокийн гүйцэтгэл — түвшнээр')} note={tr('блокийн тоо (тайлангүй блок 0%)')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
           {(pm) => {
-            const counts = PROGRESS_LEVELS.map(() => 0);
-            pm.forEach((x) => {
-              if (x.overall == null) return;
-              counts[Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x.overall / 25))] += 1;
-            });
+            /* ⚠️ 2026-10-04: тайлагнаагүй блок 0%-д тоологдоно (`levelCounts`) */
+            const counts = levelCounts(pm, rows);
             return counts.some((c) => c > 0) ? (
               <Bars
                 inline

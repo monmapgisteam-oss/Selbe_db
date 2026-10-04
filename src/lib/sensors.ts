@@ -64,6 +64,13 @@ export type Metric = {
    */
   alert?: { value: number; note: string };
   /**
+   * ФИЗИК БОЛОМЖИТ МУЖ (харагдах утгаар, `derive`-ийн ДАРАА) — гадуурх сүүлийн заалт = МЭДРЭГЧИЙН
+   * ГЭМТЭЛ (`MetricSeries.fault`), «хэвийн» ч, «босго давсан» ч БИШ.
+   * ⚠️ 2026-10-04: хөрсний чийг (%) 0–100-аас гадуур (жиш. 6553.5 — decoder-ийн 0xFFFF) ирэхэд
+   *    босгоос (15%) дээш тул «хөрс хангалттай чийглэг» гэж НОГООН харагддаг байв.
+   */
+  valid?: { min: number; max: number };
+  /**
    * Түүхий заалтыг ХАРАГДАХ утга болгох хувиргалт.
    *
    * ⚠️ Зарим мэдрэгч хэрэгтэй зүйлийнхээ ЭСРЭГ хэмжигдэхүүнийг илгээдэг:
@@ -217,6 +224,8 @@ export const SENSORS: SensorDef[] = [
          * ЧИЙГЛЭГ гэсэн үг — бүх чартад нэг чиглэл хэрэглэж байгаагийн үр дүн.
          */
         alert: { value: 15, get note() { return tr('15%-аас дээш — хөрс хангалттай чийглэг'); } },
+        /* ⚠️ 2026-10-04: харьцангуй чийг % — 0–100-аас гадуур бол мэдрэгчийн гэмтэл (`valid`-ийн ⚠️) */
+        valid: { min: 0, max: 100 },
       },
       {
         key: 'temperature', get label() { return tr('Хөрсний температур'); }, field: 'payload_decoded_data_temperature',
@@ -399,6 +408,11 @@ export type MetricSeries = Metric & {
    * босгоос ХОЛДОЖ байгаа, эсвэл аль хэдийн давсан бол `null`.
    */
   trend: { perHour: number; etaHours: number | null } | null;
+  /**
+   * СҮҮЛИЙН заалт физик мужаас (`Metric.valid`) гадуур — мэдрэгчийн гэмтэл (2026-10-04).
+   * ⚠️ Ийм үед `latest`-ийг босготой жишихгүй (`ceo/iot` «гэмтэл» гэж тусад нь).
+   */
+  fault: boolean;
 };
 
 export type SensorLive = SensorDef & {
@@ -409,8 +423,21 @@ export type SensorLive = SensorDef & {
   ageHours: number | null;
   /** Задарсан заалттай мөрийн тоо */
   n: number;
+  /** Сүүлийн заалт `SENSOR_STALE_H`-аас хуучин (2026-10-04) — «шинэхэн» гэж харуулахгүй */
+  stale: boolean;
   error?: string;
 };
+
+/**
+ * МЭДРЭГЧ ХУУЧИРСАН гэж үзэх нас (цаг) — 2026-10-04: 24 цаг. Мэдрэгчүүд 30 мин–хэдэн цагийн
+ * давтамжтай илгээдэг тул хоногоос дээш дуугүй бол холболт/тэжээлийн асуудал.
+ * ⚠️ `ceo/iot.IOT_STALE_H` ба `tools/iot-watch.mjs`-ийн `STALE_H` ЭНЭ тоотой нэг.
+ */
+export const SENSOR_STALE_H = 24;
+
+/** Утга физик мужаас гадуур уу (`Metric.valid`) — муж тодорхойгүй бол `false` */
+export const outOfRange = (m: Pick<Metric, 'valid'>, v: number | null): boolean =>
+  v != null && m.valid != null && (v < m.valid.min || v > m.valid.max);
 
 /**
  * ISO-8601 (`+08:00`) эсвэл `dd/MM/yyyy HH:mm:ss` → epoch ms.
@@ -587,6 +614,7 @@ function summarize(m: Metric, pts: Reading[], total: number, all: Reading[] = pt
     max: vals.length ? Math.max(...vals) : null,
     avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
     trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert) } : null,
+    fault: outOfRange(m, last?.v ?? null),
   };
 }
 
@@ -665,6 +693,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       lastAt: null,
       ageHours: null,
       n: 0,
+      stale: false,
       error: typeof flat === 'string' && flat ? flat : tr('Сервис татагдсангүй'),
     };
   }
@@ -679,6 +708,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
     series: flat,
     lastAt,
     ageHours: lastAt == null ? null : (Date.now() - lastAt) / 3_600_000,
+    stale: lastAt != null && (Date.now() - lastAt) / 3_600_000 > SENSOR_STALE_H,
     // Мэдрэгчийн нийт заалт — хэмжигдэхүүнүүдийн ХАМГИЙН ИХ нь (нийлбэр биш:
     // ижил мөр олон утга агуулж болно тул нийлбэрлэвэл давхарлана).
     n: flat.length ? Math.max(...flat.map((m) => m.total)) : 0,

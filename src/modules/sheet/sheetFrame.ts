@@ -256,34 +256,169 @@ export const rowKeyOf = (r: Pick<SheetRow, "no" | "work">): string => `${r.no} �
  *    (`publish`: `freshRows[0].oid !== rows[0].oid`; `overlaySubmission`:
  *    rowKeys-ийн oid rows-д байхгүй). Хэрэггүй үед ХООСОН map дамжуулбал
  *    `moveKeys` түлхүүрийг хэвээр үлдээнэ.
+ *
+ * ⚠️ 2026-10-04 аудит (#2, CRITICAL/HIGH): «сийрэг rowKeys-ийн k дахь нь шинэ жаазны
+ *    k дахь нэрийдэл» гэсэн дээрх `shift()` дүрэм БУРУУ байв — `rowKeys` нь ЗӨВХӨН
+ *    хөндсөн мөрүүд тул «1 ¦ Шороо»-ийн 2-р тохиолдлыг л зассан бол (сийрэг жагсаалтын
+ *    1-р) шинэ жаазны 1-р тохиолдолд, ӨӨР БЛОКИЙН мөрөнд бууж, `unmoved = 0`-оор
+ *    хамгаалалт өнгөрдөг байв. Одоо `mapOldOids` (доор) — мөр бүрийн ХУУДАС ДАХЬ
+ *    давтамжийн дугаар (`rowOcc`, бичих агшинд ХУУДАСНЫ БҮХ мөрөөр бодсон)-оор яг
+ *    тулгана; тэр мэдээлэлгүй (хуучин) түлхүүрийг ЗӨВХӨН хоёрдмол утгагүй үед
+ *    (нэрийдэл ганц, эсвэл тухайн шошгын бүх тохиолдол жагсаалтад бий) зөөнө —
+ *    эс бөгөөс ЗӨӨХГҮЙ (`unmoved` → дуудагч ил анхааруулж зогсоно).
  */
 export function buildOidMap(
   rowKeys: [number, string][],
   freshRows: SheetRow[],
+  rowOcc?: readonly RowOcc[],
 ): Map<number, number> {
+  return mapOldOids(rowKeys, freshRows, rowOcc).map;
+}
+
+/**
+ * МӨРИЙН ДАВТАМЖИЙН ДУГААР — `[oid, k, n]` (2026-10-04 аудит, #2).
+ *   · `k` — ижил «№ ¦ Ажлын нэр» шошготой мөрүүдийн дотор ХУУДАСНЫ дарааллаарх
+ *     дугаар (0-ээс), ХУУДАСНЫ БҮХ (эерэг oid-той) мөрөөр тоолсон;
+ *   · `n` — тэр шошготой мөрийн НИЙТ тоо (бичих агшинд).
+ * ⚠️ ЯАГААД `n`: жааз хооронд ижил шошготой мөр нэмэгдсэн/хасагдсан бол `k` гулсана —
+ *    `n` зөрвөл `mapOldOids` ТААМАГЛАХГҮЙ (хоёрдмол → `unmoved`).
+ * ⚠️ Сөрөг (нэмсэн, түр) мөр ТООЛОГДОХГҮЙ — архивын суурь жаазад байхгүй тул
+ *    дэлгэц (overlay) ба `loadRows`-ийн тоо зөрөх байсан.
+ * ⚠️ Ноорог (`Draft.rowOcc`) ба илгээлт (`SubmissionPayload.rowOcc`) ХОЁУЛАА ЭНЭ хэлбэр;
+ *    `rowKeys`-ийн `[oid, шошго]` хэлбэр ХӨНДӨГДӨӨГҮЙ (хуучин клиент, `describeUnmoved`).
+ */
+export type RowOcc = [number, number, number];
+
+/** `rows`-ийн (сонгосон `oids`-ийн, өгөөгүй бол бүгдийн) давтамжийн дугаар — дээрх ⚠️ */
+export function rowOccOf(
+  rows: readonly Pick<SheetRow, "oid" | "no" | "work">[],
+  oids?: Iterable<number>,
+): RowOcc[] {
+  const want = oids ? new Set(oids) : null;
+  const cnt = new Map<string, number>();
+  const hit: [number, string, number][] = [];
+  for (const r of rows) {
+    if (!(r.oid >= 0)) continue;
+    const k = rowKeyOf(r);
+    const i = cnt.get(k) ?? 0;
+    cnt.set(k, i + 1);
+    if (!want || want.has(r.oid)) hit.push([r.oid, k, i]);
+  }
+  return hit.map(([o, k, i]): RowOcc => [o, i, cnt.get(k) ?? 0]);
+}
+
+/**
+ * ХУУЧИН oid → ШИНЭ жаазны oid, ХОЁРДМОЛ утгатайг ТУСАД НЬ (2026-10-04 аудит, #2).
+ *
+ * Шошго бүрээр:
+ *   1) `rowOcc` бүхий түлхүүр — `n` нь шинэ жаазны тоотой ТЭНЦҮҮ бол `k` дахь
+ *      нэрийдэлд яг буулгана; `n` зөрвөл → `ambiguous` (мөр нэмэгдсэн/хасагдсан —
+ *      `k` гулссан байж болно, ТААМАГЛАХГҮЙ);
+ *   2) `rowOcc`-гүй (хуучин) түлхүүр — нэрийдэл ГАНЦ бөгөөд түлхүүр ганц бол тэр;
+ *      хуучин түлхүүрийн тоо = нэрийдлийн тоо (бүх тохиолдол жагсаалтад — жиш.
+ *      хуудасны бүтэн жагсаалт) бол oid-ын (= хуудасны) дарааллаар; ЭС БӨГӨӨС
+ *      `ambiguous` — урьд нь энд `shift()` хамгийн эхний нэрийдлийг өгч ӨӨР мөрөнд
+ *      буулгадаг байв (`buildOidMap`-ийн ⚠️).
+ *   Шошго шинэ жаазад огт байхгүй → аль алинд нь орохгүй (`moveKeys` `unmoved`).
+ * ⚠️ `ambiguous` нь `map`-д ОРОХГҮЙ — дуудагч «аль мөр болохыг тодорхойлж чадсангүй»
+ *    гэж ил хэлж, утгыг ХАДГАЛСАН чигээр нь орхино (буруу мөрөнд буулгахгүй).
+ * ⚠️ Сөрөг (түр) oid-ыг ҮЛ ТООНО — `moveKeys` тэднийг хэвээр үлдээдэг.
+ * ⚠️ 2026-10-04 дахин аудит (#9): (2)-ын «oid-ын дарааллаар» дүрэм нь бүх хуучин oid НЭГ
+ *    жаазных байхад л зөв (жааз бүр хуудасны дарааллаар бичигддэг). НООРОГИЙН `rowKeys` нь
+ *    `mergeDrafts`-аар ӨӨР ӨӨР жаазны хуулбараас нэгддэг тул F0-ийн 103 ба F1-ийн 503 хоёр
+ *    «бүх тохиолдол» мэт харагдаж мөрүүд СОЛИГДОЖ буух байв. `sameFrame = false` (ноорог) үед
+ *    дарааллын дүрэм ХААЛТТАЙ — зөвхөн ганц хуучин түлхүүр ↔ ганц нэрийдэл; бусад нь хоёрдмол.
+ *    Илгээлтийн payload (`movePayload`-оор НЭГ жаазад зөөгддөг) ба хуудасны бүтэн жагсаалт — `true`.
+ */
+export function mapOldOids(
+  rowKeys: readonly [number, string][],
+  freshRows: readonly Pick<SheetRow, "oid" | "no" | "work">[],
+  rowOcc?: readonly RowOcc[],
+  sameFrame = true,
+): { map: Map<number, number>; ambiguous: number[] } {
   const map = new Map<number, number>();
-  if (!rowKeys.length || !freshRows.length) return map;
+  const ambiguous: number[] = [];
+  if (!rowKeys.length || !freshRows.length) return { map, ambiguous };
   /* Нэрийдлүүд — хуудасны дарааллаар (`freshRows` өөрөө тэр дараалалтай). */
   const free = new Map<string, number[]>();
-  freshRows.forEach((r) => {
+  for (const r of freshRows) {
+    if (!(r.oid >= 0)) continue;
     const k = rowKeyOf(r);
     const l = free.get(k);
     if (l) l.push(r.oid);
     else free.set(k, [r.oid]);
-  });
-  /* ⚠️ `rowKeys`-ийг ЭНД oid өсөхөөр эрэмбэлнэ (2026-09-25 аудит) — хуудас
-     `OBJECTID ASC`-ээр ачаалагддаг тул oid-ийн дараалал = хуудасны дараалал.
-     Урьд нь дуудагчийн дараалалд (дээрх ⚠️) ТУЛГУУРЛАДАГ байсан ч
-     `mergeDrafts`-ийн нэгдэл (хуучин тал + шинэ талын нэмэлт) тэр дарааллыг
-     эвддэг байв. Ижил түлхүүрийн эхнийхийг эхний нэрийдэлд, дараагийнхыг
-     дараагийнхад — нэг мөр хоёр удаа эзлэгдэхгүй тул давхардал ЧИМЭЭГҮЙ
-     холилдохгүй. */
-  for (const [oid, key] of [...rowKeys].sort((a, b) => a[0] - b[0])) {
-    const cand = free.get(key);
-    if (!cand?.length) continue;      // олдохгүй → `moveKeys` `unmoved`-д тоолно
-    map.set(oid, cand.shift() as number);
   }
-  return map;
+  const occ = new Map<number, [number, number]>();
+  for (const e of rowOcc ?? []) {
+    if (Array.isArray(e) && Number.isInteger(e[0]) && Number.isInteger(e[1]) && Number.isInteger(e[2]) && e[1] >= 0 && e[2] > e[1]) {
+      occ.set(e[0], [e[1], e[2]]);
+    }
+  }
+  /* Шошго → хуучин oid-ууд (давхардалгүй, oid өсөхөөр = хуудасны дараалал, 2026-09-25) */
+  const byLabel = new Map<string, number[]>();
+  const seen = new Set<number>();
+  for (const [oid, key] of [...rowKeys].sort((a, b) => a[0] - b[0])) {
+    if (!(oid >= 0) || seen.has(oid)) continue;
+    seen.add(oid);
+    const l = byLabel.get(key);
+    if (l) l.push(oid);
+    else byLabel.set(key, [oid]);
+  }
+  for (const [label, olds] of byLabel) {
+    const cand = free.get(label);
+    if (!cand?.length) continue;      // олдохгүй → `moveKeys` `unmoved`-д тоолно
+    const legacy: number[] = [];
+    for (const o of olds) {
+      const x = occ.get(o);
+      if (!x) { legacy.push(o); continue; }
+      if (x[1] === cand.length && x[0] < cand.length) map.set(o, cand[x[0]]);
+      else ambiguous.push(o);
+    }
+    if (!legacy.length) continue;
+    if (legacy.length === cand.length && (sameFrame || cand.length === 1)) legacy.forEach((o, i) => map.set(o, cand[i]));
+    else ambiguous.push(...legacy);
+  }
+  return { map, ambiguous };
+}
+
+/**
+ * ХУУЧИН (`rowOcc`-гүй) ИЛГЭЭЛТИЙН ДАВТАМЖИЙГ ӨӨРИЙН СУУРЬ ЖААЗААС НӨХНӨ (2026-10-04 дахин аудит, #1, HIGH).
+ *
+ * ⚠️ ЯАГААД: `rowOcc` нэмэгдэхээс өмнө хадгалагдсан, хуучин жааз дээрх хүлээгдэж буй илгээлт нь
+ *    (сийрэг `rowKeys`, давхардсан шошго) `mapOldOids`-д ХОЁРДМОЛ болж: батлалт
+ *    (`hyanaltStore` → `overlaySubmission` `unmoved`) ч, дахин илгээлт (`FillNew.movePayload`
+ *    → `stale`) ч МӨНХӨД гацдаг байв — payload хэзээ ч `rowOcc` олж авахгүй. Илгээлт нь
+ *    `base` (архивын агшин) дээр бичигдсэн тул тэр жаазыг уншиж `k`/`n`-ийг ЯГ бодно.
+ * ⚠️ oid-оор ТУЛГАНА: жааз бүр шинэ OBJECTID-тай тул oid + шошго хоёул таарсан мөр л тэр
+ *    жаазных — өдрөөр ачаалсан жааз өөр (нэг өдөрт хоёр жааз) байвал таарахгүй → нөхөхгүй,
+ *    хуучин дүрэм (хоёрдмол → ил зогсолт) хэвээр. Байгаа `rowOcc` ДАРАГДАХГҮЙ.
+ * Буцаах: нөхсөн payload (шинэ объект) — нөхөх зүйлгүй бол ОРОЛТ өөрөө.
+ */
+export function withFrameOcc<P extends { rowKeys: [number, string][]; rowOcc?: RowOcc[] }>(
+  p: P,
+  frameRows: readonly Pick<SheetRow, "oid" | "no" | "work">[],
+): P {
+  const have = new Set((p.rowOcc ?? []).map((e) => e[0]));
+  const label = new Map<number, string>();
+  for (const [o, k] of p.rowKeys ?? []) if (o >= 0 && !have.has(o)) label.set(o, k);
+  if (!label.size) return p;
+  const want: number[] = [];
+  for (const r of frameRows) if (label.get(r.oid) === rowKeyOf(r)) want.push(r.oid);
+  if (!want.length) return p;
+  const add = rowOccOf(frameRows, want);
+  return { ...p, rowOcc: [...(p.rowOcc ?? []), ...add].sort((a, b) => a[0] - b[0]) };
+}
+/**
+ * Суурь жаазаас нөхөх ШААРДЛАГАТАЙ юу — `rowKeys`-ийн эерэг oid `curRows`-д БАЙХГҮЙ (зөөх ёстой)
+ * бөгөөд түүнд `rowOcc` алга (`withFrameOcc`-ийн ⚠️). Хямд — дуудагч зөвхөн тэгвэл жааз уншина.
+ */
+export function needsFrameOcc(
+  p: { rowKeys?: [number, string][]; rowOcc?: RowOcc[] },
+  curRows: readonly Pick<SheetRow, "oid">[],
+): boolean {
+  const cur = new Set(curRows.map((r) => r.oid));
+  const have = new Set((p.rowOcc ?? []).map((e) => e[0]));
+  return (p.rowKeys ?? []).some(([o]) => o >= 0 && !cur.has(o) && !have.has(o));
 }
 
 /**
@@ -384,7 +519,9 @@ export function overlaySubmission(
      байна, зарим нь үгүй» гэдэг нь бодитоор гардаггүй; гарвал ч түлхүүрээр
      зөөх нь oid-г шууд итгэхээс аюулгүй. */
   const needMap = rowKeys.some(([oid]) => oid >= 0 && !baseOids.has(oid));
-  const map = needMap ? buildOidMap(rowKeys, rows) : new Map<number, number>();
+  /* ⚠️ 2026-10-04 (#2): давтамжийн дугаар (`rowOcc`)-аар яг тулгана; хоёрдмол утгатай
+     түлхүүр зөөгдөхгүй → `unmoved` (батлалт зогсож, хүн шалгана) — `buildOidMap`-ийн ⚠️ */
+  const map = needMap ? buildOidMap(rowKeys, rows, sub.rowOcc) : new Map<number, number>();
   const mc = moveKeys(map, Object.fromEntries(sub.cells ?? []));
   const md = moveKeys(map, Object.fromEntries(sub.dates ?? []));
   const unmovedKeys: string[] = [...mc.unmoved, ...md.unmoved];
@@ -549,7 +686,7 @@ export function overlaySubmission(
 export function staleSubmissionKeys(
   baseRows: SheetRow[],
   latestRows: SheetRow[],
-  sub: Pick<SubmissionPayload, "cells" | "dates" | "rowKeys"> & { mode?: SubmissionPayload["mode"] },
+  sub: Pick<SubmissionPayload, "cells" | "dates" | "rowKeys"> & { mode?: SubmissionPayload["mode"]; rowOcc?: SubmissionPayload["rowOcc"] },
   nBld: number,
 ): string[] {
   /* ⚠️ НЭМЭЛТИЙН ИЛГЭЭЛТИЙН НҮДИЙГ ШАЛГАХГҮЙ (2026-09-25): нэмэлт нь СҮҮЛИЙН
@@ -561,7 +698,7 @@ export function staleSubmissionKeys(
   const locate = (rows: SheetRow[]) => {
     const oids = new Set(rows.map((r) => r.oid));
     const need = rowKeys.some(([o]) => o >= 0 && !oids.has(o));
-    const map = need ? buildOidMap(rowKeys, rows) : new Map<number, number>();
+    const map = need ? buildOidMap(rowKeys, rows, sub.rowOcc) : new Map<number, number>();
     const byOid = new Map<number, SheetRow>();
     rows.forEach((r) => byOid.set(r.oid, r));
     return (oid: number): SheetRow | undefined => {

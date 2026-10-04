@@ -1734,7 +1734,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <h3 className={e.panelTitle}>
                   <Icon name="droplet" size={14} /> {tr('Голын ус')}
                 </h3>
-                <span className={e.panelNote}>{tr('{0} харуул', num(water.length))}</span>
+                {/* ⚠️ 2026-10-04: уншиж/унасан үед «0 харуул» биш — тоо зөвхөн бэлэн үед */}
+                {q.state === 'ready' && <span className={e.panelNote}>{tr('{0} харуул', num(water.length))}</span>}
               </header>
               <div className={e.panelBody}>
                 {q.state === 'loading' ? <Loading label={tr('Харуул уншиж байна…')} />
@@ -1779,7 +1780,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                 <h3 className={e.panelTitle}>
                   <Icon name="flame" size={14} /> {tr('Агаарын чанар')}
                 </h3>
-                <span className={e.panelNote}>{tr('{0} харуул', num(air.length))}</span>
+                {q.state === 'ready' && <span className={e.panelNote}>{tr('{0} харуул', num(air.length))}</span>}
               </header>
               <div className={e.panelBody}>
                 {/* ⚠️ Усны самбартай ИЖИЛ төлөв (2026-09-25 аудит): урьд нь уншиж байх
@@ -2643,7 +2644,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             {!current ? (
               <section className={e.panel}>
                 <div className={e.panelBody}>
-                  {q.state === 'loading' ? <Loading /> : <Empty label={tr('Харуул сонгоно уу')} />}
+                  {/* ⚠️ 2026-10-04: унасан үед «Харуул сонгоно уу» гэж урихгүй — алдааг хэлнэ */}
+                  {q.state === 'loading' ? <Loading />
+                    : q.state === 'error' ? <Empty label={tr('Харуулын давхарга татагдсангүй')} onRetry={q.retry} />
+                      : <Empty label={tr('Харуул сонгоно уу')} />}
                 </div>
               </section>
             ) : (

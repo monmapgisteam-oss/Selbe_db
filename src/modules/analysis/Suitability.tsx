@@ -52,6 +52,7 @@ import { assignRoadDemand } from './suit/roadDemand';
 import { loadBusStopsCached, busAccess, type BusStop } from './suit/busAccess';
 import { SuitLayerCatalog } from './suit/LayerCatalog';
 import { Icon } from '@/components/Icon';
+import { userError } from '@/components/ui';
 import { MapTools } from '@/components/MapTools';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { CategoryPie, IndicatorPicker, Weights, Parking, Green, Location } from './suit/Urban';
@@ -97,7 +98,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
-        if (alive) setError(e instanceof Error ? e.message : String(e));
+        if (alive) setError(userError(e));
       }
     })();
     return () => { alive = false; };
@@ -526,7 +527,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       })
       .catch((e: unknown) => {
         console.error('[selbe] замын сүлжээ:', e);
-        if (alive) setRoadErr(e instanceof Error ? e.message : String(e));
+        if (alive) setRoadErr(userError(e));
       });
     return () => { alive = false; };
   }, [needNet, roadNet, roadErr, rows, netLoad]);
@@ -541,21 +542,26 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    *    байна)» гэж хэлнэ.
    */
   const [netCaps, setNetCaps] = useState<Partial<Record<NetKind, number>>>({});
+  /* ⚠️ 2026-10-04: багтаамж УНАСАН сүлжээ — урьд нь `.catch(() => {})` тул самбар «(бусад
+     сүлжээ ачаалж байна)» гэж мөнхөд бичдэг байв. Унасныг тоолж «татагдсангүй» гэнэ;
+     «Дахин оролдох» (`road.onRetry`) цэвэрлэнэ. */
+  const [netCapErr, setNetCapErr] = useState<Partial<Record<NetKind, true>>>({});
   useEffect(() => {
     if (!roadMode) return;
     let alive = true;
     for (const k of NET_KINDS) {
-      if (!netHasCars(k) || !isNetReady(k) || netCaps[k] != null) continue;
+      if (!netHasCars(k) || !isNetReady(k) || netCaps[k] != null || netCapErr[k]) continue;
       loadNetworkCached(k)
         .then((net) => { if (alive) setNetCaps((c) => (c[k] != null ? c : { ...c, [k]: carCapacity(net) })); })
-        .catch(() => { /* тэр сүлжээ унасан — таг нь бусдаас; самбар «ачаалж байна» гэж хэлнэ */ });
+        .catch(() => { if (alive) setNetCapErr((m) => ({ ...m, [k]: true })); /* таг нь бусдаас; самбар «татагдсангүй» гэнэ */ });
     }
     return () => { alive = false; };
-  }, [roadMode, netCaps]);
+  }, [roadMode, netCaps, netCapErr]);
   const carKinds = NET_KINDS.filter((k) => netHasCars(k) && isNetReady(k));
   const knownCaps = carKinds.map((k) => netCaps[k]).filter((v): v is number => v != null);
   const carCap = commonCarCap(peakCars, knownCaps);
-  const capPending = knownCaps.length < carKinds.length;
+  const capFailed = carKinds.some((k) => netCapErr[k] && netCaps[k] == null);
+  const capPending = knownCaps.length + carKinds.filter((k) => netCapErr[k] && netCaps[k] == null).length < carKinds.length;
   /** Сүлжээнд наалдсан гэрлэн дохиотой уулзварын тоо — самбарт «дохио ачаалагдсан уу» */
   const signalJunctions = useMemo(
     () => (roadNet ? new Set(roadNet.signalLines.map((l) => l.j ?? '')).size : undefined),
@@ -573,7 +579,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       .then(([buildings, stops]) => { if (alive) setTData({ buildings, stops }); })
       .catch((e: unknown) => {
         console.error('[selbe] тээвэр-идэвх:', e);
-        if (alive) setTErr(e instanceof Error ? e.message : String(e));
+        if (alive) setTErr(userError(e));
       });
     return () => { alive = false; };
   }, [needBuildings, tData, tErr]);
@@ -867,7 +873,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       stats: trafficLive ? trafficStats : null,
       signalsFailed: !!roadNet?.signalsFailed,
       /* Дохиотой нь дахин — кэш нь дохиогүй сүлжээг хадгалдаггүй (`netSources`) */
-      onRetry: () => setRoadNet(null),
+      /* ⚠️ 2026-10-04: `roadErr`-ийг ч цэвэрлэнэ — эс бөгөөс эффект `roadErr`-ээр зогсож дахин татдаггүй */
+      onRetry: () => { setRoadErr(null); setRoadNet(null); setNetCapErr({}); },
       flat: dim !== '2d',
       /** «Шинэ зам» — машингүй, зөвхөн газрын зурагт харагдана */
       carsOff: !netCars,
@@ -883,6 +890,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       demand: peakCars,
       cap: carCap,
       capPending,
+      capFailed,
       signalJunctions,
     },
     // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
@@ -926,7 +934,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         <div className={s.brand}>
           <span className={s.brandMark} />
           <div>
-            <h1>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
+            <h1 title={tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
           </div>
         </div>
         <nav className={s.tabs}>
