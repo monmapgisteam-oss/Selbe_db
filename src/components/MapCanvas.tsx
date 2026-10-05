@@ -13,7 +13,7 @@ import MapView from '@arcgis/core/views/MapView';
 /* ⚠️ 2026-10-04: 3D/BIM-ийн классууд СТАТИК БИШ — `lazy3d.ts` (2D хэрэглэгч татахгүй). Энд зөвхөн ТӨРӨЛ. */
 import type SceneView from '@arcgis/core/views/SceneView';
 import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
-import type BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import { createBimPicker, type BimPicker } from './bimPicker';
 import type Slide from '@arcgis/core/webscene/Slide';
 import { load3d, mods3d, loadTools3d, type ModsTools } from './lazy3d';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
@@ -1793,7 +1793,8 @@ export const MapCanvas = memo(function MapCanvas({
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const viewRef = useRef<AnyView | null>(null);
-  const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  /** BIM сонгогч (барилга нэг нэгээр + BuildingExplorer) — `components/bimPicker` */
+  const bimWidgetRef = useRef<BimPicker | null>(null);
   /**
    * BIM удирдлагыг боосон `Expand` — виджет өөрөө нь `bimWidgetRef`-д.
    * ⚠️ ХОЁУЛАА хэрэгтэй: `Expand.destroy()` нь `content`-оо устгадаггүй тул
@@ -3234,7 +3235,10 @@ export const MapCanvas = memo(function MapCanvas({
     const view = viewRef.current;
     if (!map || !view || !ready) return;
 
+    let clickH: IHandle | null = null;
     const clear = () => {
+      clickH?.remove();
+      clickH = null;
       if (bimExpandRef.current) {
         // ⚠️ view устсан бол `view.ui` null — эхлээд шалгана (unmount-д эвдрэхгүй)
         if (!view.destroyed) view.ui.remove(bimExpandRef.current);
@@ -3257,7 +3261,15 @@ export const MapCanvas = memo(function MapCanvas({
     if (!layers.length) return;
 
     clear();
-    const widget = new m3.BuildingExplorer({ view: view as SceneView, layers });
+    /**
+     * ⚠️ 2026-10-04: BIM НЭГ НЭГЭЭР (хэрэглэгч: «бүх bim зэрэг ажиллаж байна … нэг
+     *    нэгээр сонгож ажиллуулдаг болго»). Урьд нь BuildingExplorer 58 давхаргыг
+     *    БҮГДИЙГ нь авч «Select Level» бүх барилгыг нэг дор таслах байв. Одоо дээр нь
+     *    барилга сонгох жагсаалт — шүүлт ЗӨВХӨН сонгосонд (`components/bimPicker`).
+     */
+    const widget = createBimPicker({
+      view: view as SceneView, layers, items: BIM.layers, Explorer: m3.BuildingExplorer,
+    });
     /**
      * ⚠️ 2026-08-23: `Expand`-д БООВ (хэрэглэгчийн хүсэлт). Урьд нь виджет
      * баруун дээд буланд ЗАДГАЙ нэмэгддэг байсан тул 12 барилгын давхар,
@@ -3267,7 +3279,7 @@ export const MapCanvas = memo(function MapCanvas({
      */
     const expand = new Expand({
       view,
-      content: widget,
+      content: widget.el,
       expandIcon: 'layers',
       expandTooltip: tr('BIM давхаргын удирдлага'),
       collapseTooltip: tr('Хаах'),
@@ -3277,6 +3289,10 @@ export const MapCanvas = memo(function MapCanvas({
        Шалтгааныг тэндхийн тайлбараас үз (виджетийн эрэмбэ). */
     bimWidgetRef.current = widget;
     bimExpandRef.current = expand;
+    /* 3D дээр BIM барилгыг ДАРЖ сонгоно — самбар хаалттай бол нээнэ */
+    clickH = view.on('click', (e: __esri.ViewClickEvent) => {
+      void widget.pickAt(e).then((ok) => { if (ok && !expand.expanded) expand.expanded = true; });
+    });
 
     /**
      * «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт).

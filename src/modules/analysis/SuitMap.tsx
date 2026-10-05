@@ -27,6 +27,7 @@ import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/
 
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
+import { createBimPicker, type BimPicker } from '@/components/bimPicker';
 import {
   IMAGERY, SCENE, BIM, ELEVATION_URL, HOME, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS, REFERENCE_IDS,
 } from '@/lib/services';
@@ -361,7 +362,8 @@ export function SuitMap({
   const heatRef = useRef<FeatureLayer | null>(null);
   /** Тээврийн будалт дахин зурагдах бүрд өснө — hover-ийн кэшийг хүчингүй болгоно */
   const paintVerRef = useRef(0);
-  const bimWidgetRef = useRef<BuildingExplorer | null>(null);
+  /** BIM сонгогч — MapCanvas-тай ижил (`components/bimPicker`) */
+  const bimWidgetRef = useRef<BimPicker | null>(null);
   // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
   //    ашиглах боломжгүй — энгийн объект хангалттай.
   const ctxRef = useRef<Record<string, Layer>>({});
@@ -762,12 +764,15 @@ export function SuitMap({
     const view = viewRef.current;
     if (!map || !view || !ready) return;
 
+    let clickH: IHandle | null = null;
     const clear = () => {
+      clickH?.remove();
+      clickH = null;
       if (bimWidgetRef.current) {
         /* ⚠️ `view`-ийн эффект (dim deps) энэ эффектээс ӨМНӨ зарлагдсан тул
            салахад түүний cleanup `view.destroy()`-г түрүүлж дуудна — устгасан
            view-ийн `ui.remove` алдаа шиддэг байв (2026-09-21). */
-        if (!view.destroyed) view.ui.remove(bimWidgetRef.current);
+        if (!view.destroyed) view.ui.remove(bimWidgetRef.current.el);
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
       }
@@ -781,9 +786,11 @@ export function SuitMap({
     if (!layers.length) return;
 
     clear();
-    const widget = new BuildingExplorer({ view: view as SceneView, layers });
-    view.ui.add(widget, 'top-right');
+    /* ⚠️ 2026-10-04: BIM НЭГ НЭГЭЭР — MapCanvas-ийн ⚠️-ийг үз */
+    const widget = createBimPicker({ view: view as SceneView, layers, items: BIM.layers, Explorer: BuildingExplorer });
+    view.ui.add(widget.el, 'top-right');
     bimWidgetRef.current = widget;
+    clickH = view.on('click', (e: __esri.ViewClickEvent) => { void widget.pickAt(e); });
 
     return clear;
   }, [dim, ready]);

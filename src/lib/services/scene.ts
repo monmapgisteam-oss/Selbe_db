@@ -679,6 +679,8 @@ export const BIM = {
   layers: BIM_SERVICES.flatMap(({ pkg, names }) =>
     names.map((name) => ({
       key: `bim:${name}`,
+      /** Багц — BIM сонгогчийн бүлэглэлт (`components/bimPicker`) */
+      pkg,
       get title() { return tr('Багц {0} · FID {1}', pkg, bimFids(name)); },
       /* ⚠️ Кирилл нэр — URL-д ЗААВАЛ кодлоно */
       url: `${UBHUB_SCENE}/${encodeURIComponent(name)}/SceneServer`,
