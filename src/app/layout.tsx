@@ -39,6 +39,7 @@ import '@/modules/finance.module.css';
 import '@/modules/pkgFin.module.css';
 import '@/modules/pkgProg.module.css';
 import '@/modules/tuh.module.css';
+import '@/modules/bagtsHamaaral.module.css';
 import '@/modules/habea.module.css';
 import '@/components/auth.module.css';
 import '@/components/locale.module.css';

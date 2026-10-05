@@ -66,6 +66,8 @@ const Zovshoorol = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.Zo
 const Tailan = dynamic(() => import('@/modules/Tailan').then((m) => m.Tailan), { ssr: false });
 /* ⚠️ ТУХ нь санхүү · хуваарь · чанар · ХАБЭА-гийн ачаалагчдыг дагуулдаг тул зөвхөн нээгдэх үедээ. */
 const Tuh = dynamic(() => import('@/modules/Tuh').then((m) => m.Tuh), { ssr: false });
+/* ⚠️ Багцын хамаарал — санхүүгийн ачаалагчийг (`loadFinData`) дагуулдаг тул нээгдэх үедээ. */
+const BagtsHamaaral = dynamic(() => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral), { ssr: false });
 /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
    нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
 const Huvaari = dynamic(() => import('@/modules/Huvaari').then((m) => m.Huvaari), { ssr: false });
@@ -127,8 +129,10 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
      мөр нь «Гүйцэтгэл бөглөх» нээгдэхэд тэнд өөрөө буудаг (`FillNew`-ийн
      `loadApproved` эффект). */
   ajilBatlah: () => <AjilBatlah />,
-  tailan: () => <Tailan />,
+  /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун талд газрын зураг тул `dim` хэрэгтэй */
+  tailan: ({ dim, setDim }) => <Tailan dim={dim} setDim={setDim} />,
   tuh: ({ dim, setDim }) => <Tuh dim={dim} setDim={setDim} />,
+  bagtsHamaaral: () => <BagtsHamaaral />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,
   habea: ({ dim, setDim }) => <Habea dim={dim} setDim={setDim} />,

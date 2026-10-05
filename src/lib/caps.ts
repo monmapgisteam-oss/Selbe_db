@@ -59,7 +59,8 @@ export type CapKey =
   | 'gazar'
   | 'butets'
   | 'chanarAuthor'
-  | 'chanarReview';
+  | 'chanarReview'
+  | 'hamaaral';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -186,6 +187,12 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'butets', icon: 'network' },
   /**
+   * БАГЦЫН ХАМААРАЛ (2026-10-04) — «Багцын хамаарал» харагдац дээр багц хоорондын
+   * холбоо нэмэх, устгах. ЗӨВХӨН холбоо — багцын жагсаалт системээс, батлагчгүй
+   * (`bagtsHamaaral.ts`-ийн ⚠️). Эрхгүй хүн харагдацыг ХАРНА, засахгүй.
+   */
+  { key: 'hamaaral', icon: 'network' },
+  /**
    * ЧАНАРЫН БАРИМТ — АРГАЧЛАЛ ИРҮҮЛЭХ (гүйцэтгэгч). Зураглалын 1 · 2 · 6 · 9
    * алхам: боловсруулж ирүүлнэ, буцаагдвал сайжруулж дахин ирүүлнэ.
    *
@@ -251,6 +258,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
      (tezu-bonu-гийн шинэ төрөл) нийцүүлэв. */
   chanarAuthor: ['chanar'],
   chanarReview: ['chanar'],
+  hamaaral: ['bagtsHamaaral'],
 };
 
 /**

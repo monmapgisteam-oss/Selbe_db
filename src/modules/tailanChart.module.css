@@ -11,16 +11,18 @@
    палитр (`--c1…--c8`, `format.ts`-ийн `cat()`) байсан. Хоёр систем зэрэг
    байвал тайлан нь дашбоард, «Багцын санхүү»-тэй өөр өнгөний хэлээр ярина.
    Тиймээс хэсэг-бүтэн зурвас нь `cat(i)`-ийг inline `background`-аар авна. */
-.fig { margin: 0 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-sm); break-inside: avoid; }
+/* ⚠️ 2026-10-04: ТУХ-ын `.multiple` самбар (хэрэглэгч: «ТУХ хэсэгтэй бүрэн адилхан») */
+.fig { margin: 0 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); break-inside: avoid; }
 
 /* ── Графикийн тайлбар — хүснэгтийн `Cap`-тай ижил хэмнэл ── */
+/* ТУХ-ын h3 хэмнэл */
 .cap {
-  margin: 20px 0 8px;
-  font-size: 12px;
+  margin: 18px 0 8px;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--ink-2);
+  color: var(--ink);
 }
-.cap span { font-weight: 400; color: var(--ink-3); }
+.cap span { font-weight: 400; color: var(--ink-2); }
 
 /* ══════════ Хэвтээ багана ══════════ */
 .bars { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(80px, 2fr) minmax(4.5rem, auto); gap: 10px 14px; }
@@ -31,7 +33,7 @@
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.74rem;
 }
 .barName {
   min-width: 0;
@@ -43,8 +45,8 @@
   position: relative;
   height: 12px;
   border-radius: 3px;
-  /* Суурь нь МАШ намуухан — зурвас өөрөө гол дүр */
-  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+  /* Суурь нь МАШ намуухан — зурвас өөрөө гол дүр (ТУХ-ын хэмжигчийн зам) */
+  background: var(--chart-track);
   overflow: hidden;
 }
 .bar {
@@ -57,13 +59,11 @@
   border-radius: 0 4px 4px 0;
   /* ⚠️ Нэг цуваа = НЭГ өнгө. Аппын өгөгдлийн өнгө (`--data`) намуухан
      хувилбараар; эмфазистай багана нь бүтэн тодоор ялгарна. */
-  background: color-mix(in srgb, var(--data) 62%, transparent);
+  background: var(--data);
+  opacity: 0.7;
 }
 /* ЭМФАЗИС — «энэ нэг нь гол» гэсэн түүх. Бусад нь намуухан хэвээр. */
-.barHot {
-  background: var(--data);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--data) 45%, transparent);
-}
+.barHot { opacity: 1; }
 .barVal {
   min-width: 4.5rem;
   text-align: right;
@@ -113,22 +113,23 @@
 
 /* ══════════ Хэмжүүр ══════════ */
 .meter { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+/* ТУХ-ын хэмжигч: дүүргэлт = бодит, хар зураас = төлөвлөгөө */
 .meterTrack {
   position: relative;
   flex: 1;
-  height: 10px;
+  height: 8px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+  background: var(--chart-track);
 }
 .meterFill { display: block; height: 100%; border-radius: 3px 0 0 3px; background: var(--data); }
 /* Төлөвлөгөөт хувийн лавлах зураас */
 .meterPlan {
   position: absolute;
   top: -3px;
+  bottom: -3px;
   width: 2px;
-  height: 16px;
-  background: var(--ink-2);
-  border-radius: 1px;
+  margin-left: -1px;
+  background: var(--ink);
 }
 .meterVal { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
 
@@ -137,36 +138,48 @@
    14.5px tabular фонтоор ~168px. 140px байхад тоо хоёр мөр болж, «₮» нь
    доор ганцаараа үлддэг байв. `format.ts`-ийн дүрмээр ТООГ БОГИНОСГОХГҮЙ —
    багтахгүй бол өргөн/фонтоор шийднэ. */
+/* ⚠️ 2026-10-04: ТУХ-ын KPI мөр (`.stats`/`.stat`) — нэг хүрээтэй тор, нүд бүр
+   баруун/доод зураасаар тусгаарлагдана. Минимум өргөн 210px+ хэвээр (дээрх ⚠️). */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
-  gap: 12px;
-  margin: 0 0 24px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
 }
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
-.kpiLabel { font-size: 12px; color: var(--ink-3); }
-.kpiVal {
-  font-size: 17px;
+.kpiLabel {
+  font-size: 0.66rem;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.kpiVal {
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   /* Мөнгөн дүн ба «₮» салж хоёр мөр болохгүй */
   white-space: nowrap;
 }
-.kpiSub { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.kpiSub { font-size: 0.72rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 /* ⚠️ ХЭВЛЭХ: график нь хүснэгтийн ДАВХАРДАЛ биш НЭМЭЛТ тул хэвлэлтэд ч
    үлдэнэ. Зөвхөн дэвсгэрийг цайруулж бэх хэмнэнэ. */
-.meterBlock { margin: 12px 0 24px; }
-.meterLegend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--ink-2); }
+.meterBlock { margin: 10px 0 12px; }
+.meterLegend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 0.74rem; color: var(--ink-2); }
 @media (max-width: 720px) {
   .fig { padding: 12px; }
   .bars { grid-template-columns: minmax(0, 1fr) minmax(4.5rem, auto); }
@@ -176,7 +189,7 @@
 @media print {
   .fig, .kpis { break-inside: avoid; }
   .meterLegend { color: #333; }
-  .kpi { background: none; }
+  .kpis, .fig { background: none; }
   .barTrack, .meterTrack { background: #e5e7eb; }
   /* ⚠️ 2026-09-08 — БЭХИЙГ ч хатуу нөхнө. Өмнө нь зөвхөн дэвсгэр сэргээгддэг
      байсан тул ХАРАНХУЙ горимд хэвлэхэд --ink (#f1f5f9) / --ink-2 / --ink-3
@@ -187,8 +200,8 @@
   .barName, .cap { color: #222; }
   .axis, .note, .na, .kpiSub, .kpiLabel, .cap span { color: #555; }
   /* Зурвас/шугам — өнгө хэвлэгдэхгүй тул саарал бэхээр (эмфазис нь тодоор) */
-  .bar { background: #767676; }
-  .barHot, .meterFill { background: #333; box-shadow: none; }
+  .bar { background: #767676; opacity: 1; }
+  .barHot, .meterFill { background: #333; }
   .meterPlan { background: #000; }
   .line { stroke: #333; }
   .area { fill: #d9d9d9; }

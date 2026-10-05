@@ -33,6 +33,7 @@ import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
 import { TOLOV } from '@/lib/zovshoorol';
+import { ReportContents, ReportHero } from './ReportContents';
 import r from './report.module.css';
 import e from './execReport.module.css';
 
@@ -144,7 +145,7 @@ export function ExecReport() {
 
   return (
     <>
-      <div className={`${r.toolbar} ${e.narrow}`}>
+      <div className={r.toolbar}>
         <div className={r.tools}>
           <button type="button" className={r.btn} disabled={!x || !!busy} onClick={() => run('pdf')}
             title={tr('Тайланг PDF хэлбэрээр татах')}>
@@ -172,21 +173,33 @@ export function ExecReport() {
         {fail && <p className={r.fail} role="alert">{fail}</p>}
       </div>
 
-      <article className={`${r.paper} ${e.paperA4}`}>
-        {/* ⚠️ Толгойн хэлбэр ЗӨВХӨН энэ тайланд (2026-09-17, хэрэглэгчийн
-            заавар): том үсэг, голлосон, арай жижиг фонт. `report.module.css`
-            нь ерөнхий тайлантай ХУВААЛЦДАГ тул тэнд биш, энд дарж бичив. */}
-        <header className={`${r.docHead} ${e.docHeadMid}`}>
-          {/* ⚠️ Төслийн нэр мэйлийн гарчиг, ерөнхий тайлантай НЭГ: «Сэлбэ 20 минутын хот» */}
-          <h1 className={`${r.title} ${e.titleUp}`}>{tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}</h1>
-          {/* ⚠️ 2026-09-30: өгөгдөл ХЭЗЭЭ татагдсан — `loadExecReport` 5 мин кэштэй тул
-              «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин (`Tailan`-ийн `fetchedAt`-тай ижил). */}
-          {date && <p className={`${r.sub} ${e.subMid}`}>{tr('Огноо:')} {date}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</p>}
-        </header>
+      <article className={r.paper}>
+        {/* ⚠️ 2026-10-04: толгой нь ТУХ-ын hero (`Tailan.ReportHero`) — урьдын голлосон
+            том үсгэн гарчиг (2026-09-17) ба A4 өргөнтэй цаас ХАСАГДСАН (хэрэглэгч: «ТУХ
+            хэсэгтэй бүрэн адилхан»). Гол хувь нь 2-р хэсгийн «Бодит»/«Төлөвлөсөн»-тэй НЭГ. */}
+        <ReportHero
+          /* ⚠️ 2026-09-30: өгөгдөл ХЭЗЭЭ татагдсан — `loadExecReport` 5 мин кэштэй тул
+             «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин (`Tailan`-ийн `fetchedAt`-тай ижил). */
+          meta={<>{date && <>{tr('Огноо:')} {date}</>}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</>}
+          /* ⚠️ Төслийн нэр мэйлийн гарчиг, ерөнхий тайлантай НЭГ: «Сэлбэ 20 минутын хот» */
+          title={tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}
+          sub={tr('Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл')}
+          figLabel={tr('Орон сууцны гүйцэтгэл')}
+          value={x?.prog.actual ?? null}
+          plan={x?.prog.planned ?? null}
+          loading={q.state === 'loading'}
+          note={x && <>
+            {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)} · {tr('Төслийн гүйцэтгэл')} {pct(x.gdash.progress, 1)}
+          </>}
+        />
 
         <Data q={q} loading={tr('Дөрвөн дашбоардын өгөгдлийг нэгтгэж байна…')}>
           {(x) => (
             <>
+              <ReportContents prefix="exec" titles={[
+                tr('Ерөнхий үзүүлэлт'), tr('Багцын гүйцэтгэл'), tr('Багцын санхүү'), tr('Зөвшөөрөл'), tr('Дүгнэлт'),
+                ...(appendix.length > 0 ? [tr('Хавсралт')] : []),
+              ]} />
 
               {/* ── 1. Ерөнхий үзүүлэлт ── */}
               <section id="exec-1" tabIndex={-1} className={r.section}>
@@ -238,7 +251,7 @@ export function ExecReport() {
                     <>
                       <KpiRow items={kpis} />
                       <Cap no="1.1">{tr('Үндсэн үзүүлэлт ба тайлбар')}</Cap>
-                      <table className={r.table}>
+                      <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                         <thead><tr>
                           <th>{tr('Үзүүлэлт')}</th><th className={r.num}>{tr('Утга')}</th><th>{tr('Тайлбар')}</th>
                         </tr></thead>
@@ -251,7 +264,7 @@ export function ExecReport() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                     </>
                   );
                 })()}
@@ -316,7 +329,7 @@ export function ExecReport() {
                         sub: tr('{0} · {1} ажил', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
                       }))} />
                       <Cap no="1.3">{tr('Захирамжийн эх үүсвэр')}</Cap>
-                      <table className={r.table}>
+                      <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                         <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Гэрээт')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                         <tbody>
                           {x.gdash.bySource.map((s) => (
@@ -330,7 +343,7 @@ export function ExecReport() {
                           ))}
                           <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td>{/* ⚠️ 2026-09-29 (аудит 10): дүн 0 бол мөрүүд «—» тул нийт ч «—» */}<td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
                         </tbody>
-                      </table>
+                      </table></div>
                       {/* ⚠️ Хувь нь НИЙТ ТӨСӨВТ эзлэх БИШ гэдгийг ил хэлнэ */}
                       <p className={r.note}>{tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага.')}</p>
                     </>
