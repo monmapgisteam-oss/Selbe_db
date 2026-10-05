@@ -6342,7 +6342,13 @@ const en: Record<string, string> = {
   "Гэрээлээгүй / мэдээлэлгүй": "Not contracted / no data",
   "{0} өнгөрсөн": "{0} elapsed",
   "өнөөдөр": "today",
-  "{0} төлөвлөгөөнөөс": "{0} vs plan"
+  "{0} төлөвлөгөөнөөс": "{0} vs plan",
+  /* ── 3D/BIM зураглалын горим (2026-10-04) ── */
+  "3D зураглалын чанар": "3D rendering quality",
+  "Хурдан": "Fast",
+  "Нарийн": "Detailed",
+  "Хурдан — гөлгөр хөдөлгөөн: BIM-ийн гадна бүрхүүл, ойрын барилга бүрэн, сүүдэр/тусгалгүй": "Fast — smooth navigation: BIM exterior shell, nearest buildings in full, no shadows/reflections",
+  "Нарийн — BIM-ийн бүх элемент, өндөр чанар (удаан ачаална)": "Detailed — every BIM element, high quality (loads slowly)"
 };
 
 export default en;

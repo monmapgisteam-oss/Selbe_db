@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 import { ZoneFilter } from './ZoneFilter';
 import { useMap, type Dim } from './MapCanvas';
 import { prefetch3d } from './lazy3d';
+import { setRender3d, useRender3d, type Render3d } from './render3d';
 import s from './mapTools.module.css';
 
 /**
@@ -19,6 +20,9 @@ import s from './mapTools.module.css';
  *    Урьд нь шууд `setHighlight` хийсэн шүүлт зөвхөн тэр модулийн дотор цуцлагддаг
  *    тул самбар солигдох/хаагдахад зураг БҮДЭГ хэвээр «гацдаг» байв.
  */
+/** 3D/BIM зураглалын горимын товчны дараалал */
+const R3: Render3d[] = ['fast', 'fine'];
+
 export function activeFilterLabel(
   active: Pick<ActiveFilter, 'group' | 'label'> | null,
   highlight: { where: string | null; geometry?: unknown },
@@ -167,6 +171,8 @@ export function MapTools({
      ижил шалтгаан: жижиг бариулын ард нуугдсан тул хэрэглэгч 3D/BIM горим
      байгааг олж мэддэггүй байв. Хураах боломж бариулаар үлдэнэ. */
   const [dimsOn, setDimsOn] = useState(true);
+  /* ⚠️ 2026-10-04: 3D/BIM зураглалын горим — MapCanvas ижил хадгалалтаас уншина (`render3d.ts`) */
+  const r3 = useRender3d();
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
   /* ⚠️ 2026-10-01: идэвхтэй шүүлт (`ActiveFilterChip`-тэй ижил дүрэм) — хураасан бариулын тэмдэгт */
   const { active: activeFilter } = useFilter();
@@ -331,6 +337,29 @@ export function MapTools({
           {d.toUpperCase()}
         </button>
       ))}
+      {/* ⚠️ 2026-10-04: 3D/BIM ЗУРАГЛАЛЫН ГОРИМ — «Хурдан» (анхдагч) / «Нарийн» (`render3d.ts`-ийн ⚠️).
+          ЗӨВХӨН 3D/BIM-д (2D-д утгагүй). Сонголт localStorage-д — дараагийн нээлтэд хэвээр. */}
+      {dim !== '2d' && (
+        <>
+          <span className={s.dimSep} aria-hidden="true" />
+          <span className={s.qGroup} role="group" aria-label={tr('3D зураглалын чанар')}>
+            {R3.map((q) => (
+              <button
+                key={q}
+                type="button"
+                aria-pressed={r3 === q}
+                className={`${s.dimBtn} ${s.qBtn} mapDimBtn ${r3 === q ? s.dimOn : ''}`}
+                title={q === 'fast'
+                  ? tr('Хурдан — гөлгөр хөдөлгөөн: BIM-ийн гадна бүрхүүл, ойрын барилга бүрэн, сүүдэр/тусгалгүй')
+                  : tr('Нарийн — BIM-ийн бүх элемент, өндөр чанар (удаан ачаална)')}
+                onClick={() => setRender3d(q)}
+              >
+                {q === 'fast' ? tr('Хурдан') : tr('Нарийн')}
+              </button>
+            ))}
+          </span>
+        </>
+      )}
     </div>
     )}
 

@@ -16,6 +16,8 @@ import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 import type BuildingExplorer from '@arcgis/core/widgets/BuildingExplorer';
 import type Slide from '@arcgis/core/webscene/Slide';
 import { load3d, mods3d, loadTools3d, type ModsTools } from './lazy3d';
+import { applyView3d, getRender3d, manageBim, profileFor, useRender3d } from './render3d';
+import FeatureFilter from '@arcgis/core/layers/support/FeatureFilter';
 import FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
@@ -77,30 +79,43 @@ const BIM_COVER = 0.5;
  * ⚠️ 2026-10-04: BIM-ийн доорх барилгын нуултын СЕШНИЙ кэш ба явж буй асуулга (`MapCanvas`-ийн
  * «BIM ЗАГВАРЫН ДООРХ БАРИЛГЫГ НУУНА» эффект). Түлхүүр — барилгын давхаргын url + BIM жагсаалт.
  */
-let bimHideCache: { sig: string; where: string | null } | null = null;
-let bimHideFlight: { sig: string; p: Promise<{ where: string | null; complete: boolean }> } | null = null;
+/** ⚠️ 2026-10-04: `byLayer` — BIM давхарга бүрийн доорх барилгын OID («Хурдан»-ы төсөвт Map-д БАЙГАА
+    BIM-ийн доорхыг л нуухад — `render3d.ts` `manageBim`-ийн ⚠️). `oid` — OID талбарын нэр. */
+type BimHide = { where: string | null; complete: boolean; oid: string; byLayer: Record<string, number[]> };
+let bimHideCache: { sig: string; r: BimHide } | null = null;
+let bimHideFlight: { sig: string; p: Promise<BimHide> } | null = null;
+
+/**
+ * Map-ын 58 BIM инстанц (`bimCache`) — Map-д БАЙГАА эсэхээс үл хамаарна (⚠️ 2026-10-04: «Хурдан»-д
+ * камерт ойр цөөн нь л Map-д байдаг — `manageBim`). 3D модуль ачаалагдаагүй бол хоосон.
+ */
+function bimAll(map: Map): BuildingSceneLayer[] {
+  const m3 = mods3d();
+  if (!m3) return [];
+  return BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
+    new m3.BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
+}
 
 /**
  * BIM загварын хүрээнд `BIM_COVER`-оос их орсон барилгын OID-ийн `NOT IN` шүүлт.
  * ⚠️ Дүрэм нь өмнөх эффектийнхтэй ЯГ ИЖИЛ (хүрээний талбайн харьцаа, төв цэгээр БИШ).
  * `complete` — BIM бүгд уншигдсан эсэх (дутуу бол кэшлэхгүй).
  */
-async function computeBimHide(map: Map, bld: FeatureLayer): Promise<{ where: string | null; complete: boolean }> {
-  const bims = BIM.layers
-    .map((b) => map.findLayerById(b.key))
-    .filter((l): l is Layer => l != null && l.type === 'building-scene');
-  const settled = await Promise.allSettled(bims.map(async (l) => { await l.load(); return l.fullExtent; }));
+/* ⚠️ 2026-10-04: BIM-ийг Map-аас БИШ кэшийн инстанцаас (`bimAll`) — «Хурдан»-д Map-д цөөн нь л байдаг */
+async function computeBimHide(map: Map, bld: FeatureLayer): Promise<BimHide> {
+  const bims = bimAll(map);
+  const settled = await Promise.allSettled(bims.map(async (l) => { await l.load(); return { id: String(l.id), e: l.fullExtent }; }));
   const exts = settled
-    .flatMap((r) => (r.status === 'fulfilled' && r.value ? [r.value] : []))
-    .map((e) => (e.spatialReference?.isWebMercator ? webMercatorUtils.webMercatorToGeographic(e) as typeof e : e))
-    .filter((e) => e.spatialReference?.isWGS84);
+    .flatMap((r) => (r.status === 'fulfilled' && r.value.e ? [{ id: r.value.id, e: r.value.e }] : []))
+    .map(({ id, e }) => ({ id, e: e.spatialReference?.isWebMercator ? webMercatorUtils.webMercatorToGeographic(e) as typeof e : e }))
+    .filter(({ e }) => e.spatialReference?.isWGS84);
   const complete = bims.length === BIM.layers.length && exts.length === bims.length;
-  if (!exts.length) return { where: null, complete };
   await bld.load();
   const oid = bld.objectIdField;
+  if (!exts.length) return { where: null, complete, oid, byLayer: {} };
   const env = new Extent({
-    xmin: Math.min(...exts.map((e) => e.xmin)), ymin: Math.min(...exts.map((e) => e.ymin)),
-    xmax: Math.max(...exts.map((e) => e.xmax)), ymax: Math.max(...exts.map((e) => e.ymax)),
+    xmin: Math.min(...exts.map(({ e }) => e.xmin)), ymin: Math.min(...exts.map(({ e }) => e.ymin)),
+    xmax: Math.max(...exts.map(({ e }) => e.xmax)), ymax: Math.max(...exts.map(({ e }) => e.ymax)),
     spatialReference: { wkid: 4326 },
   });
   const fs2 = await bld.queryFeatures({
@@ -108,18 +123,22 @@ async function computeBimHide(map: Map, bld: FeatureLayer): Promise<{ where: str
     geometry: env, spatialRelationship: 'envelope-intersects',
   });
   const hide: number[] = [];
+  const byLayer: Record<string, number[]> = {};
   for (const ft of fs2.features) {
     const b = (ft.geometry as Polygon | null)?.extent;
     const own = b ? b.width * b.height : 0;
     if (!b || own <= 0) continue;
-    const covered = exts.some((e) => {
+    const by = exts.filter(({ e }) => {
       const w = Math.min(b.xmax, e.xmax) - Math.max(b.xmin, e.xmin);
       const h = Math.min(b.ymax, e.ymax) - Math.max(b.ymin, e.ymin);
       return w > 0 && h > 0 && (w * h) / own > BIM_COVER;
     });
-    if (covered) hide.push(Number(ft.attributes[oid]));
+    if (!by.length) continue;
+    const id = Number(ft.attributes[oid]);
+    hide.push(id);
+    for (const x of by) (byLayer[x.id] ??= []).push(id);
   }
-  return { where: hide.length ? `${oid} NOT IN (${hide.join(',')})` : null, complete };
+  return { where: hide.length ? `${oid} NOT IN (${hide.join(',')})` : null, complete, oid, byLayer };
 }
 type AnyView = MapView | SceneView;
 const is3D = (d: Dim) => d === '3d' || d === 'bim';
@@ -2012,6 +2031,36 @@ export const MapCanvas = memo(function MapCanvas({
    * ⚠️ Солих нь view-г ДАХИН ҮҮСГЭХГҮЙ: `sceneKey` өөрчлөгдөж, меш нэмэх/хасах
    *    эффект л ажиллана (view-ийн deps нь `[dim, stylesReady, initToken]`).
    */
+  /* ⚠️ 2026-10-04: 3D/BIM зураглалын горим «Хурдан»/«Нарийн» (`render3d.ts`-ийн ⚠️) — MapTools-ийн сонгогч */
+  const r3 = useRender3d();
+  /** «Хурдан»-д Map-д БАЙГАА BIM-ийн id (`manageBim`-ийн `onShown`) ба BIM-ийн доорх барилгын OID (`computeBimHide`) */
+  const bimShownRef = useRef<ReadonlySet<string>>(new Set());
+  const bimHideRef = useRef<BimHide | null>(null);
+  /**
+   * `scene3d:4` (extrude барилга)-ын CLIENT-SIDE шүүлт (⚠️ 2026-10-04): «Хурдан»-д Map-д байгаа BIM-ийн
+   * доорхыг нууна; «Нарийн»-д `null` (тэнд `definitionExpression`). Камер зогсох бүрд биш —
+   * зөвхөн Map-ын BIM-ийн бүрэлдэхүүн өөрчлөгдөхөд (`onShown`) ба нуултын үр дүн ирэхэд.
+   */
+  const footFilter = useCallback(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    const bld = map?.findLayerById('scene3d:4');
+    if (!view || view.destroyed || !(bld instanceof FeatureLayer)) return;
+    const r = bimHideRef.current;
+    let where: string | null = null;
+    if (r && getRender3d() === 'fast') {
+      const ids = new Set([...bimShownRef.current].flatMap((id) => r.byLayer[id] ?? []));
+      if (ids.size) where = `${r.oid} NOT IN (${[...ids].join(',')})`;
+    }
+    view.whenLayerView(bld)
+      .then((lv) => {
+        const flv = lv as __esri.FeatureLayerView;
+        if ((flv.filter?.where ?? null) === where) return;
+        flv.filter = where ? new FeatureFilter({ where }) : null as unknown as FeatureFilter;
+      })
+      .catch(() => {});
+  }, []);
+
   const [meshVer, setMeshVer] = useState<MeshVer>(() => {
     try {
       const v = typeof window === 'undefined' ? null : window.localStorage.getItem(MESH_VER_KEY);
@@ -2145,7 +2194,9 @@ export const MapCanvas = memo(function MapCanvas({
             map,
             camera: INITIAL_CAMERA_3D() as never,
             popupEnabled: false,
-            qualityProfile: 'high',
+            /* ⚠️ 2026-10-04: «Хурдан» → 'medium', «Нарийн» → урьдын 'high' (`render3d.ts`). Үүсгэх агшинд
+               зөв профайлтай — дараа нь солих нь тохиргоог дахин хэрэглүүлнэ. */
+            qualityProfile: profileFor(getRender3d()),
             ui: { components: ['zoom', 'navigation-toggle', 'compass', 'attribution'] },
           })
         : new MapView({
@@ -2743,6 +2794,11 @@ export const MapCanvas = memo(function MapCanvas({
     let busy = false;
     const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       if (busy) return;
+      /* ⚠️ 2026-10-04 (3D/BIM гүйцэтгэл): ЧИРЖ/ЭРГҮҮЛЖ/ТОМРУУЛЖ БАЙХ ҮЕД hover-ийн hitTest ХИЙХГҮЙ.
+         Хулгана дарсаар чирэхэд `pointer-move` кадр бүрд ирдэг тул 3D-д (меш дээр каталогийн давхарга
+         ил) кадр бүрд GPU-ийн сонголтын дамжлага нэмэгдэж орбитыг гацаадаг байв. Чирэлтийн үеийн
+         tooltip утгагүй — хуучныг нь арилгана; камер зогсоод дараагийн хөдөлгөөнд урьдын адил. */
+      if (view.interacting) { setTip(null); return; }
       busy = true;
       hitTestPickable(e)
         .then((r) => {
@@ -2888,14 +2944,11 @@ export const MapCanvas = memo(function MapCanvas({
        MapView-д байж болохгүй) боловч `destroy()` ХИЙХГҮЙ — `bimCache`-д үлдэж буцаж ороход
        ДАХИН НЭМЭГДЭНЭ. Урьд нь орох бүрд 58 давхарга шинээр үүсч ~712 метадатын хүсэлт
        (service · layer · sublayer · statistics) давтагддаг байв (`bimCache.ts`-ийн ⚠️). */
+    /* ⚠️ 2026-10-04 («Хурдан»/«Нарийн»): BIM-д НЭМЭХ нь доорх `manageBim` эффектэд (горимоор —
+       «Нарийн» бүгдийг, «Хурдан» камерт ойр `BIM_BUDGET`-ийг). Энд зөвхөн BIM-ээс ГАРАХАД хасна. */
     for (const b of BIM.layers) {
       const existing = map.findLayerById(b.key);
-      if (dim === 'bim' && !existing && m3) {
-        map.add(bimLayerFor(map, b.key, () =>
-          new m3.BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
-      } else if (dim !== 'bim' && existing) {
-        map.remove(existing);
-      }
+      if (dim !== 'bim' && existing) map.remove(existing);
     }
 
     /**
@@ -3042,30 +3095,43 @@ export const MapCanvas = memo(function MapCanvas({
      үр дүнг КЭШЛЭХГҮЙ — дээрх «нуухгүй» дүрэм дараагийн оролтод засагдах ёстой.
      ⚠️ `envelope-intersects` + BIM хүрээний НЭГДСЭН тэгш өнцөгт — «хүрээний талаас их»
      шалгуурт тэнцэх барилгын хүрээ заавал түүнтэй огтлолцох тул ЯГ ИЖИЛ үр дүн, бага ачаалал. */
+  /* ⚠️ 2026-10-04 («Хурдан»/«Нарийн», `render3d.ts`): «Нарийн» — урьдын зан (58 BIM-ийн доорхыг
+     `definitionExpression`-ээр). «Хурдан» — Map-д зөвхөн камерт ойр `BIM_BUDGET` BIM байдаг тул
+     `definitionExpression` ХООСОН (бүх барилга татагдана) бөгөөд Map-д БАЙГАА BIM-ийн доорхыг л
+     CLIENT-SIDE `layerView.filter`-ээр нууна (`footFilter`) — алс BIM-ийн оронд extrude барилга
+     харагдана; камер хөдлөхөд дахин татахгүй (definitionExpression солих нь бүх барилгыг дахин
+     татаж анивчуулна). «Нарийн» руу буцахад шүүлт `null`. */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || dim !== 'bim') return;
     const bld = map.findLayerById('scene3d:4');
     if (!(bld instanceof FeatureLayer)) return;
     const sig = `${bld.url}/${bld.layerId}|${BIM.layers.map((b) => b.key).join(',')}`;
-    if (bimHideCache?.sig === sig) {
-      bld.definitionExpression = bimHideCache.where as unknown as string;
-      return;
-    }
     let alive = true;
+    const use = (r: BimHide) => {
+      if (!alive || bld.destroyed) return;
+      bimHideRef.current = r;
+      const where = r3 === 'fast' ? null : r.where;
+      if (bld.definitionExpression !== where) bld.definitionExpression = where as unknown as string;
+      footFilter();
+    };
+    if (bimHideCache?.sig === sig) {
+      use(bimHideCache.r);
+      return () => { alive = false; };
+    }
     if (bimHideFlight?.sig !== sig) {
       const flight = { sig, p: computeBimHide(map, bld) };
       bimHideFlight = flight;
       void flight.p
-        .then((r) => { if (r.complete) bimHideCache = { sig, where: r.where }; })
+        .then((r) => { if (r.complete) bimHideCache = { sig, r }; })
         .catch(() => {})
         .finally(() => { if (bimHideFlight === flight) bimHideFlight = null; });
     }
     bimHideFlight!.p
-      .then((r) => { if (alive && !bld.destroyed) bld.definitionExpression = r.where as unknown as string; })
+      .then(use)
       .catch((e) => { if (alive) console.warn('[selbe] BIM-ийн доорх барилгыг нууж чадсангүй:', e); });
     return () => { alive = false; };
-  }, [dim, ready, sceneKey]);
+  }, [dim, ready, sceneKey, r3, footFilter]);
 
   /**
    * IoT МЭДРЭГЧ — 3D-д газраас дээш өргөгдсөн радар тэмдэг, 2D-д энгийн цэг.
@@ -3251,9 +3317,9 @@ export const MapCanvas = memo(function MapCanvas({
 
     const m3 = mods3d();
     if (!m3) return;
-    const layers = BIM.layers
-      .map((b) => map.findLayerById(b.key))
-      .filter((l): l is BuildingSceneLayer => l != null && l.type === 'building-scene');
+    /* ⚠️ 2026-10-04: Map-аас БИШ кэшийн 58 инстанц (`bimAll`) — «Хурдан»-д Map-д цөөн нь л байдаг ч
+       виджет бүх барилгын давхар/категорийг харуулна (шүүлт нь давхарга дээр — Map-д нэмэгдэхэд үйлчилнэ) */
+    const layers = bimAll(map);
     if (!layers.length) return;
 
     clear();
@@ -3278,34 +3344,51 @@ export const MapCanvas = memo(function MapCanvas({
     bimWidgetRef.current = widget;
     bimExpandRef.current = expand;
 
-    /**
-     * «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт).
-     *
-     * ⚠️ Давхарга ачаалагдсаны ДАРАА л `allSublayers` дүүрдэг — `when()`-гүйгээр
-     * шууд уншвал жагсаалт ХООСОН байх бөгөөд алдаа ч өгөхгүй, зүгээр л юу ч
-     * болохгүй өнгөрнө.
-     *
-     * ⚠️ Бүлгийг асаахад ХАНГАЛТГҮЙ: бүлгийн `visible` нь зөвхөн хаалт бөгөөд
-     * доторх бүрэлдэхүүн давхарга бүр өөрийн `visible`-тэй. Тиймээс бүлэг ба
-     * хүүхдүүдийг нь ХОЁУЛАНГ нь асаана.
-     */
-    let stale = false;
-    for (const l of layers) {
-      l.when(() => {
-        if (stale) return;
-        const arch = l.allSublayers.find(
-          (sl) => /architectural/i.test(sl.modelName ?? ''),
-        );
-        if (!arch) return;
-        arch.visible = true;
-        const kids = (arch as __esri.BuildingGroupSublayer).sublayers;
-        kids?.forEach((k) => { k.visible = true; });
-        // ⚠️ Алдааг залгина — нэг барилга ачаалагдахгүй бол бусад нь хэвийн
-      }).catch(() => {});
-    }
-
-    return () => { stale = true; clear(); };
+    /* ⚠️ 2026-10-04: «Architectural үргэлж асаалттай» блок ДООРХ тусдаа эффект рүү шилжсэн
+       (горимоос хамаарна — `render3d.ts`). Виджетийг горим солигдоход дахин үүсгэхгүйн тулд. */
+    return clear;
   }, [dim, ready]);
+
+  /**
+   * BIM ДЭД ДАВХАРГЫН ИЛ БАЙДАЛ — зураглалын горимоор (⚠️ 2026-10-04, `render3d.ts`-ийн ⚠️).
+   *
+   * «НАРИЙН» = урьдын «ARCHITECTURAL» ДИСЦИПЛИН — ҮРГЭЛЖ АСААЛТТАЙ (хэрэглэгчийн хүсэлт):
+   * ⚠️ Давхарга ачаалагдсаны ДАРАА л `allSublayers` дүүрдэг — `when()`-гүйгээр
+   * шууд уншвал жагсаалт ХООСОН байх бөгөөд алдаа ч өгөхгүй, зүгээр л юу ч
+   * болохгүй өнгөрнө.
+   * ⚠️ Бүлгийг асаахад ХАНГАЛТГҮЙ: бүлгийн `visible` нь зөвхөн хаалт бөгөөд
+   * доторх бүрэлдэхүүн давхарга бүр өөрийн `visible`-тэй. Тиймээс бүлэг ба
+   * хүүхдүүдийг нь ХОЁУЛАНГ нь асаана (`applyBimMode`-ийн `archOn`).
+   *
+   * «ХУРДАН» = гадна бүрхүүл (хана · хавтан · цонх · фасадын хавтан) бүх барилгад + камерт ОЙР
+   * ≤3 барилгад бүрэн гадна төрх (фасадын өнгө/дээвэр — `GenericModel`). Ойрын жагсаалтыг камер
+   * ЗОГСОХОД л (`stationary`) дахин бодно — орбитын кадр бүрд ажил нэмэхгүй.
+   * ⚠️ BuildingExplorer-ээр гараар сольсон ил байдлыг горим солих үед дарж бичнэ (санаатай —
+   *    горим нь «юуг зурах»-ыг бүхэлд нь тодорхойлно).
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const view = viewRef.current;
+    if (!map || !view || !ready || dim !== 'bim' || view.type !== '3d') return;
+    const layers = bimAll(map);
+    if (!layers.length) return;
+    /* archOn: true — «Нарийн»-д урьдын «Architectural үргэлж асаалттай» (дээрх ⚠️).
+       «Хурдан»-д Map-д камерт ойр `BIM_BUDGET` л (`manageBim`-ийн ⚠️) — доорх extrude-ийг шүүнэ. */
+    return manageBim({
+      view: view as SceneView, map, all: layers, m: r3, archOn: true,
+      onShown: (ids) => { bimShownRef.current = ids; footFilter(); },
+    });
+  }, [dim, ready, r3, footFilter]);
+
+  /**
+   * SceneView-ийн ЧАНАРЫН ТОХИРГОО — «Хурдан»/«Нарийн» (⚠️ 2026-10-04, `render3d.ts`). 3D ба BIM
+   * хоёуланд; хадгалсан (`mapPark`) view-г дахин авахад ч тухайн горимоор тавина.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !ready || view.type !== '3d') return;
+    applyView3d(view as SceneView, r3);
+  }, [dim, ready, r3]);
 
   /**
    * ШИНЖИЛГЭЭНИЙ ЦОГЦ ХЭРЭГСЭЛ («Analysis objects») — ЗӨВХӨН 3D/BIM (SceneView).
@@ -4608,10 +4691,10 @@ export const MapCanvas = memo(function MapCanvas({
     // ⚠️ Меш нь харагдацаас хамаарна (`sceneList`) — үндсэн SCENE-ийг хатуу
     //    шалгавал «Иргэдэд хүрэх үр өгөөж» дээр байхгүй давхарга хайж, алдааны
     //    тэмдэг хэзээ ч гарахгүй болно.
-    const ids = dim === 'bim'
-      ? BIM.layers.map((b) => b.key)
-      : sceneList.map((m) => `scene:${m.key}`);
-    const layers = ids.map((id) => map.findLayerById(id)).filter((l): l is Layer => l != null);
+    /* ⚠️ 2026-10-04: BIM — кэшийн 58 инстанц (`bimAll`): «Хурдан»-д Map-д цөөн нь л байдаг ч уналтыг бүгдээр тоолно */
+    const layers: Layer[] = dim === 'bim'
+      ? bimAll(map)
+      : sceneList.map((m) => map.findLayerById(`scene:${m.key}`)).filter((l): l is Layer => l != null);
     if (!layers.length) { setMeshError(null); return; }
     let alive = true;
     Promise.allSettled(layers.map((l) => l.load())).then((rs) => {

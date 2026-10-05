@@ -128,6 +128,10 @@
 .dimBtn:hover { color: var(--ink); }
 .dimBtn:active { transform: scale(0.95); }
 .dimOn { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+/* ⚠️ 2026-10-04: 3D/BIM-ийн «Хурдан / Нарийн» — 2D/3D/BIM-тэй НЭГ зурваст, нимгэн зураасаар тусгаарлана */
+.dimSep { align-self: stretch; width: 1px; margin: 3px 4px; background: var(--line); }
+.qGroup { display: flex; gap: 2px; }
+.qBtn { letter-spacing: 0; font-weight: 600; }
 
 /* ⚠️ `.sep` ХАСАГДСАН — 2D/3D/BIM сегмент зурвасаас гарч голд шилжсэн тул
    «панель нээгч» ба «горим сонгогч»-ийг ялгах зураас хэрэггүй болов. */
