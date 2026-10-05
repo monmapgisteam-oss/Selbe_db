@@ -6,7 +6,8 @@ import { num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { formatDeps } from '@/lib/deps';
-import { PL_ROW } from './types';
+import { parseDayInput } from '@/lib/dateInput';
+import { PL_ROW, type PlanKind } from './types';
 import type { AddForm } from './adds';
 import h from '../huvaari.module.css';
 
@@ -15,6 +16,7 @@ import h from '../huvaari.module.css';
 export function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
   hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, onEditAdd, mark, onMark, children,
+  onDate, edKind,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   /**
@@ -53,13 +55,19 @@ export function TaskRow({
   /**
    * ГЭРЭЭНИЙ ба ТӨЛӨВЛӨГӨӨНИЙ нийт муж — дөрвөн огнооны багана.
    *
-   * ⚠️ Хоёулаа ЗАСАГДАХГҮЙ, зөвхөн уншина. Огноо засах зам нь хуанли дээр
-   *    чирэх ба popup хэвээр — хоёр өөр засварын зам үүсвэл аль нь үнэн
-   *    болох нь бүрхэг болно.
+   * ⚠️ 2026-10-05 (хэрэглэгч: «огноо дээр дарж бичиж төлөвлөх»): урьд нь
+   *    хоёулаа ЗӨВХӨН уншдаг байв. Одоо ИДЭВХТЭЙ табын (`edKind`) эхлэх/дуусах
+   *    нүдэнд дарж бичнэ (`onDate`) — нөгөө табынх уншина хэвээр. Засвар нь
+   *    чирэлт · popup-тай НЭГ юүлүүрээр (`applyModal`) явдаг тул «аль нь үнэн»
+   *    гэсэн хоёрдмол байдал үүсэхгүй.
    * ⚠️ `null` = тэр төрөлд хуваарь ОГТ байхгүй → «—» (0 БИШ).
    */
   geree: Span | null;
   tolov: Span | null;
+  /** Огноо бичих (`YYYY-MM-DD`) — `undefined` бол уншина (бүлэг · нэмэлт мөр · эрхгүй) */
+  onDate?: (which: 'start' | 'end', day: string) => void;
+  /** Аль төрлийн огноо засагдах вэ — идэвхтэй таб */
+  edKind?: PlanKind;
   /** Уялдааны нүд ЗАСАГДАХ уу — эрхгүй бол зөвхөн уншина */
   canEdit: boolean;
   /** Нүдэнд бичсэн текстийг хадгална () */
@@ -154,24 +162,20 @@ export function TaskRow({
         *    Өөр формат хэрэглэвэл нэг огноо хоёр газарт өөр харагдана.
         * ⚠️ Хуваарьгүй бол «—», 0 огноо БИШ.
         */}
-      <span className={h.rowDate} title={geree ? tr('Гэрээний эхлэх огноо') : undefined}>
-        {geree ? msToDay(geree.start) : '—'}
-      </span>
-      <span className={h.rowDate} title={geree ? tr('Гэрээний дуусах огноо') : undefined}>
-        {geree ? msToDay(geree.end) : '—'}
-      </span>
+      <DateCell v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')}
+        onSet={edKind === 'geree' && onDate ? (d) => onDate('start', d) : undefined} />
+      <DateCell v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')}
+        onSet={edKind === 'geree' && onDate ? (d) => onDate('end', d) : undefined} />
       {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
           `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
           хоёулаа ажлын өдөр) — хуанлийн зурвасын шошготой ЯГ ижил тоо. */}
       <span className={h.rowDays} title={geree ? tr('Гэрээгээр үргэлжлэх хоног') : undefined}>
         {geree ? spanDays(geree) : '—'}
       </span>
-      <span className={h.rowDate} title={tolov ? tr('Төлөвлөгөөт эхлэх огноо') : undefined}>
-        {tolov ? msToDay(tolov.start) : '—'}
-      </span>
-      <span className={h.rowDate} title={tolov ? tr('Төлөвлөгөөт дуусах огноо') : undefined}>
-        {tolov ? msToDay(tolov.end) : '—'}
-      </span>
+      <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')}
+        onSet={edKind === 'plan' && onDate ? (d) => onDate('start', d) : undefined} />
+      <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')}
+        onSet={edKind === 'plan' && onDate ? (d) => onDate('end', d) : undefined} />
       <span className={h.rowDays} title={tolov ? tr('Төлөвлөгөөгөөр үргэлжлэх хоног') : undefined}>
         {tolov ? spanDays(tolov) : '—'}
       </span>
@@ -303,6 +307,71 @@ export function AddBox({ parent, form, onForm, onOk, onCancel, edit = false }: {
         {tr('Обьём ба нэгж өртөг сонголттой — хоосон бол жин бодогдохгүй (—), бусад мөрийн жин хөдлөхгүй. Шинэ мөр бүлгийн эхэнд, улаанаар орно.')}
       </span>
     </div>
+  );
+}
+
+/* ══════════════════ ОГНООНЫ НҮД (2026-10-05) ══════════════════ */
+
+/**
+ * ОГНООНЫ НҮД — дарж бичнэ (хэрэглэгч: «огноо дээр дарж бичиж төлөвлөх»).
+ *
+ * ⚠️ `onSet` байхгүй бол ӨМНӨХ шигээ зөвхөн `span` (уншина).
+ * ⚠️ Бичих хэлбэр `parseDayInput` — 2026-10-04 · 2026.10.04 · 20261004 (`DateField`-тэй ижил).
+ * ⚠️ ХАДГАЛАХ нь `Enter`/`blur`-д, тэмдэгт бүрд БИШ (`HamCell`-ийн ижил шалтгаан:
+ *    `propagate` 1,400 мөрийн гинжийг дахин боддог). Хоосон/буруу текст → тавихгүй,
+ *    хуучин утга руу буцна (арилгах нь popup-ын «Арилгах»).
+ * ⚠️ `Escape` — цуцлах (`cancelRef`, `HamCell`-ийн 2026-09-17-ны занга).
+ * ⚠️ Мөрийн ӨНДӨР (`PL_ROW`) хөдлөхгүй — оролт нь нүдний хэмжээнд.
+ */
+function DateCell({ v, tip, onSet }: {
+  v: number | null;
+  tip: string;
+  onSet?: (day: string) => void;
+}) {
+  const [edit, setEdit] = useState(false);
+  const [txt, setTxt] = useState('');
+  const cancelRef = useRef(false);
+  const shown = v != null ? msToDay(v) : '—';
+
+  if (!onSet) {
+    return <span className={h.rowDate} title={v != null ? tip : undefined}>{shown}</span>;
+  }
+
+  if (!edit) {
+    return (
+      <button type="button" className={`${h.rowDate} ${h.rowDateEd}`}
+        title={`${tip}\n${tr('Дарж огноо бичнэ: 2026-10-04 · 20261004')}`}
+        onClick={() => { setTxt(v != null ? msToDay(v) : ''); setEdit(true); }}>
+        {shown}
+      </button>
+    );
+  }
+
+  const bad = parseDayInput(txt) == null;
+  return (
+    <input
+      className={`${h.rowDate} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      value={txt}
+      autoFocus
+      inputMode="numeric"
+      aria-label={tip}
+      aria-invalid={bad}
+      title={bad ? tr('Огноо буруу — жишээ: 2026-10-04') : tip}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setTxt(e.target.value)}
+      onBlur={() => {
+        setEdit(false);
+        const cancel = cancelRef.current;
+        cancelRef.current = false;
+        if (cancel) return;
+        const p = parseDayInput(txt);
+        if (p && p !== (v != null ? msToDay(v) : '')) onSet(p);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); }
+      }}
+    />
   );
 }
 

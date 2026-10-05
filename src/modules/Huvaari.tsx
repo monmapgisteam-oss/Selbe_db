@@ -41,7 +41,7 @@ import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
 import {
-  DAY, spanDays, statusOf,
+  DAY, endOf, spanDays, statusOf,
   type PlanRow, type Span, type Status,
 } from '@/lib/plan';
 import {
@@ -68,7 +68,7 @@ import {
   PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
 import {
-  aggExtra, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
+  aggExtra, dayToMs, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
   unbalancedBlocks, unbalancedObyem,
 } from './huvaari/util';
 import { backSeenGet, backSeenSet, EMPTY_ADDS, EMPTY_FORM, writeAdds } from './huvaari/adds';
@@ -1783,6 +1783,39 @@ export function Huvaari({
     setErr('');
     applyModal(oid, null, next, null);
   }, [busy, locked, canEdit, kind, plan, applyModal, setErr]);
+
+  /**
+   * ОГНООГ НҮДЭНД ШУУД БИЧИХ (2026-10-05, хэрэглэгч: «огноо дээр дарж бичиж
+   * төлөвлөх»). Идэвхтэй табын (`kind`) ИДЭВХТЭЙ блокийн (`blk`) эхлэх/дуусах.
+   *
+   * ⚠️ Дүрэм нь popup-ын `onStart`-тай ИЖИЛ: эхлэхийг бичихэд үргэлжлэх хоног
+   *    ХАДГАЛАГДАЖ дуусах дагаж шилжинэ; дуусахыг бичихэд эхлэх хэвээр. Хуваарьгүй
+   *    блокт аль нэгийг бичвэл 1 хоногийн муж (start = end).
+   * ⚠️ БҮХ үр дагавар `applyModal`-аар (гинж `propagate` · бүлгийн нэгтгэл · сарын
+   *    задаргаа · ноорог) — энд ДАВХАРДУУЛАХГҮЙ. Бүлэг/нэмэлт мөр тэнд ч хаалттай.
+   * ⚠️ Дуусах < эхлэх бол ТАВИХГҮЙ — чимээгүй солихгүй, мэдэгдэнэ.
+   */
+  const applyDate = useCallback((oid: number, which: 'start' | 'end', day: string) => {
+    if (busy) { setErr(tr('Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.')); return; }
+    if (locked || !canEdit) return;
+    const ms = dayToMs(day);
+    const cur = plan.find((x) => x.oid === oid);
+    if (ms == null || !cur || cur.group || oid < 0) return;
+    const old = cur.spans[blk] ?? null;
+    let next: Span;
+    if (!old) next = { start: ms, end: ms };
+    else if (which === 'start') next = { start: ms, end: endOf(ms, spanDays(old)) };
+    else {
+      if (ms < old.start) { setErr(tr('Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.')); return; }
+      next = { start: old.start, end: ms };
+    }
+    if (sameSpan(next, old)) return;
+    setErr('');
+    const spans = cur.spans.slice();
+    while (spans.length < n) spans.push(null);
+    spans[blk] = next;
+    applyModal(oid, spans, null, null);
+  }, [busy, locked, canEdit, plan, blk, n, applyModal, setErr]);
 
   /* ── Чирэлт ── */
 
@@ -4608,6 +4641,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     /* ⚠️ 2026-09-29 аудит: уялдааны нүд ЗӨВХӨН төлөвлөгөө табд засагдана */
                     canEdit={canEdit && !locked && kind === 'plan' && !allOn}
                     onHamText={applyHamText}
+                    /* ⚠️ ОГНОО ШУУД БИЧИХ (2026-10-05) — ажлын мөр л; бүлэг (хүүхдээс
+                       MIN/MAX), нэмэлт мөр, «Бүх блок» горимд засагдахгүй */
+                    onDate={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
+                      ? (w, dd) => applyDate(r.oid, w, dd) : undefined}
+                    edKind={kind}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
                     /* ⚠️ «Бүх блок» горимд мөр нэмэх/засах/хасах хаалттай (зөвхөн харах, 2026-10-04) */

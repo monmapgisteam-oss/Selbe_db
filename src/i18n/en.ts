@@ -6432,7 +6432,10 @@ const en: Record<string, string> = {
   "Өдөр солигдлоо ({0}). Инженерийн обьёмын илгээгээгүй {1} нүд дахин ачаалахад устах тул эхлээд «Обьём батлуулах» дарна уу (эсвэл тэр нүднүүдээ буцаана уу), дараа нь «Илгээх»-ийг дахин дарна уу.": "The day has changed ({0}). {1} unsent engineer-volume cells would be lost on reload — press «Submit volumes for approval» first (or revert those cells), then press «Submit» again.",
   "⚠️ илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хуулагдсангүй ({0}) — автоматаар дахин оролдоно. «Ноорог хуулагдав» гэж гартал энэ хуудсыг бүү хаа, өөр компьютер/хөтчөөс энэ багцыг бүү илгээ (нүд давхар тоологдож болзошгүй).": "⚠️ the sent-cell receipts were not copied to the ArcGIS draft ({0}) — retrying automatically. Until «draft copied» appears, do not close this page or submit this package from another computer/browser (cells could be counted twice).",
   "Шийдвэрлэсэн огноо ({0}) өнөөдрөөс ХОЙШ байна. Зөв үү?": "The decision date ({0}) is AFTER today. Is that correct?",
-  "«Хүлээгдэж буй» болсон тул огноог арилгав": "Date cleared because the status is now «Pending»"
+  "«Хүлээгдэж буй» болсон тул огноог арилгав": "Date cleared because the status is now «Pending»",
+  "Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.": "Saving — please wait and enter the date again.",
+  "Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.": "End date is before the start date — not applied.",
+  "Дарж огноо бичнэ: 2026-10-04 · 20261004": "Click to type a date: 2026-10-04 · 20261004"
 };
 
 export default en;
