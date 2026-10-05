@@ -694,20 +694,20 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
       `${f}: үүрэг → эрхийн гар зураглал үлдсэн — aclRoleCaps.ROLE_CAPS-ийг хэрэглэнэ`);
   }
 
-  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 4 */
+  /* Гаргалгаатай ∪ энгийн = CAPS, давхцалгүй, энгийн ЯГ 5 (2026-10-04: + hamaaral) */
   const { ROLE_CAPS, PLAIN_CAPS, QAQC_CAP, isDerivedCap } = await import('@/lib/aclRoleCaps.ts');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set([QAQC_CAP, ...Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))]);
-  assert.equal(PLAIN_CAPS.length, 4, `энгийн эрх ЯГ 4 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 5, `энгийн эрх ЯГ 5 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
   assert.equal(derived.size, 10, `гаргалгаатай эрх 10 байх ёстой, олдсон: ${derived.size}`);
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
-console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 4 = CAPS');
+console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 5 = CAPS');
 
 /* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
 /**
@@ -719,8 +719,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
 {
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
-  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar'],
-    'capText.ERH_PANES: хажуугийн цэсний 9 урсгалын хуудас, энэ дарааллаар');
+  assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'qaqc', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral'],
+    'capText.ERH_PANES: хажуугийн цэсний 10 хуудас (2026-10-04: + Багцын хамаарал), энэ дарааллаар');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);

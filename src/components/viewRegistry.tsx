@@ -82,6 +82,8 @@ const LOAD = {
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
   /* ⚠️ ТУХ нь санхүү · хуваарь · чанар · ХАБЭА-гийн ачаалагчдыг дагуулдаг тул зөвхөн нээгдэх үедээ. */
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
+  /* ⚠️ Багцын хамаарал — санхүүгийн ачаалагчийг (`loadFinData`) дагуулдаг тул нээгдэх үедээ (tezu-bonu). */
+  bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
   /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
      нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
   huvaari: () => import('@/modules/Huvaari').then((m) => m.Huvaari),
@@ -117,6 +119,7 @@ const Chanar = dynamic(() => LOAD.chanar(), { ssr: false });
 const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false });
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false });
+const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false });
 const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false });
 const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false });
 const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false });
@@ -182,8 +185,10 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
      мөр нь «Гүйцэтгэл бөглөх» нээгдэхэд тэнд өөрөө буудаг (`FillNew`-ийн
      `loadApproved` эффект). */
   ajilBatlah: () => <AjilBatlah />,
-  tailan: () => <Tailan />,
+  /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун талд газрын зураг тул `dim` хэрэгтэй */
+  tailan: ({ dim, setDim }) => <Tailan dim={dim} setDim={setDim} />,
   tuh: ({ dim, setDim }) => <Tuh dim={dim} setDim={setDim} />,
+  bagtsHamaaral: () => <BagtsHamaaral />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,
   habea: ({ dim, setDim }) => <Habea dim={dim} setDim={setDim} />,

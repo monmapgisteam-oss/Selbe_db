@@ -23,15 +23,17 @@ import s from '../tuh.module.css';
 /* ══════════════════════ Хэмжигч ══════════════════════ */
 
 /** Хэвтээ хэмжигч (`ui.Bars`-ийн зурвас) — дүүргэлт 0–100, `plan` нь төлөвлөгөөний зураас */
-export function Meter({ value, plan, tone = 'data' }: {
+export function Meter({ value, plan, tone = 'data', wide }: {
   value: number | null;
   plan?: number | null;
   tone?: 'data' | 'good' | 'warn' | 'bad' | 'mute';
+  /** ⚠️ 2026-10-05 (merge): Тайлангийн толгойн том хэмжигч (`ReportContents`, tezu-bonu) — өндөр 8px */
+  wide?: boolean;
 }) {
   const v = value == null ? null : Math.max(0, Math.min(100, value));
   const p = plan == null ? null : Math.max(0, Math.min(100, plan));
   return (
-    <span className={`${s.meter} chartTrack`} data-tone={tone}>
+    <span className={`${s.meter} chartTrack${wide ? ` ${s.meterWide}` : ''}`} data-tone={tone}>
       {v != null && <span className={`${s.meterFill} chartFill`} style={{ width: `${v}%` } as CSSProperties} />}
       {p != null && <span className={s.meterPlan} style={{ left: `${p}%` } as CSSProperties} />}
     </span>

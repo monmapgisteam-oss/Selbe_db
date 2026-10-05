@@ -23,7 +23,7 @@ import { VIEWS, type ViewKey } from '@/lib/services';
 
 /** Хажуугийн цэсний засах эрхийн хуудас — `UserAdmin`-ы `pane` id */
 export type ErhPane =
-  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'qaqc' | 'butets' | 'zovshoorol' | 'fin' | 'gazar';
+  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'qaqc' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral';
 
 /**
  * ХУУДАС → ЭРХҮҮД. Дараалал = хажуугийн цэсний дараалал («Гүйцэтгэлийн урсгалын
@@ -41,9 +41,11 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   zovshoorol: ['zovshoorol'],
   fin: ['finEdit', 'finRow'],
   gazar: ['gazar'],
+  /* ⚠️ 2026-10-04: бүрэн ТУСДАА хуудас (хэрэглэгчийн шийдвэр) — батлагчгүй, зөвхөн засах */
+  hamaaral: ['hamaaral'],
 };
 
-/** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 9 */
+/** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 10 */
 export const ERH_PANES: readonly ErhPane[] = (Object.keys(PANE_CAPS) as ErhPane[]).filter((p) => p !== 'guits');
 
 /** Эрх → түүнийг олгодог хуудас (Тоймын «Засах бол» · картын tooltip) */
@@ -79,6 +81,7 @@ export const paneLabel = (p: ErhPane): string => {
   if (p === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (p === 'fin') return tr('Санхүүгийн бүртгэлийн эрх');
   if (p === 'gazar') return tr('Газрын төлөв засах');
+  if (p === 'hamaaral') return tr('Багцын хамаарал засах');
   return p;
 };
 
@@ -102,6 +105,7 @@ export const capLabel = (k: CapKey): string => {
   /* ⚠️ 2026-10-04: мөр УСТГАХ товч хасагдсан (`Finance.renderRow`) — нэрнээс ч хасав */
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх');
   if (k === 'gazar') return tr('Газрын төлөв засах');
+  if (k === 'hamaaral') return tr('Багцын хамаарал засах');
   return k;
 };
 
@@ -124,6 +128,7 @@ const paneSummary = (p: ErhPane): string => {
   /* ⚠️ 2026-10-04: IPC нь гүйцэтгэлийн батлалтаас автоматаар (`ipcAutoWrite`) — эрхээр засагдахгүй */
   if (p === 'fin') return tr('Cashflow хүснэгтийн утга засах ба мөр нэмэх эрх — аккаунтаар, тус тусад нь олгоно.');
   if (p === 'gazar') return tr('Нэгж талбарын төлөв, явцын мэдээ, эзэмшигчийг засах эрх — аккаунтаар олгоно.');
+  if (p === 'hamaaral') return tr('Багц хоорондын хамаарлын холбоо нэмэх, устгах эрх — аккаунтаар олгоно.');
   return '';
 };
 
@@ -182,6 +187,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'gazar') {
     return tr('«Газар чөлөөлөлт» дээр нэгж талбарын төлөв, явцын мэдээ, эзэмшигч, тайлбарыг засах. Нэг талбарын төлөв солиход чөлөөлөлтийн хувь, давхцлын тооцоо, дашбоард, тайлан бүгд дагаж өөрчлөгдөнө.');
+  }
+  if (k === 'hamaaral') {
+    return tr('«Багцын хамаарал» дээр багц хоорондын холбоо нэмэх, устгах. Багц нэмэх, хасах боломжгүй; батлагч байхгүй — хадгалсан холбоо шууд бүх хүнд харагдана. Эрхгүй хүн зөвхөн харна.');
   }
   return '';
 };

@@ -604,3 +604,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: color-mix(in 
 @media (prefers-reduced-motion: reduce) {
   .content { scroll-behavior: auto; }
 }
+
+/* ⚠️ 2026-10-05 (merge): Тайлангийн толгойн том хэмжигч — `Meter wide` */
+.meterWide { height: 8px; }

@@ -1,222 +1,286 @@
-/* ТАЙЛАН — баримт маягийн харагдац (хэвлэх / PDF-д тохирсон).
-   ⚠️ Дэлгэц дээр аппын өнгө (var(--surface)…); ХЭВЛЭХ үед цагаан цаас, хар текст
-   болж, багажны зурвас нуугдана (@media print). */
+/* ══════════════════════════════════════════════════════════
+   ТАЙЛАН — «ТУХ» харагдацын бүтэц, хэв маягаар (2026-10-04).
 
-.wrap {
+     ┌──────────────── агуулга (гүйлгэнэ) ─────────────┬── ЗУРАГ ──┐
+     │ горим · hero · KPI · хэсгүүд · хүснэгт           │  байнга   │
+     └─────────────────────────────────────────────────┴───────────┘
+
+   ⚠️ ЯАГААД: хэрэглэгч «тайлан хэсгийг ТУХ хэсэгтэй бүрэн адилхан болгон
+      загварчил» гэсэн. Доорх утгууд нь `tuh.module.css`-ийн ХУУЛБАР — тэр
+      файлыг ИМПОРТЛОХГҮЙ (`layout.tsx`-ийн ⚠️: харагдацууд стайл хуваалцахгүй).
+      ТУХ-ын хэв маяг өөрчлөгдвөл энд ч дагуулж засна.
+   ⚠️ Урьдын «цаас» (1080px голлосон карт, 48/64px дотор зай) ДЭЛГЭЦЭЭС
+      хасагдсан; ХЭВЛЭХ үед (@media print) цагаан цаас, хар текст хэвээр,
+      газрын зураг ба багажны мөр нуугдана.
+   ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620 (ТУХ-тай ижил).
+   ══════════════════════════════════════════════════════════ */
+
+.tailan {
   height: 100%;
-  overflow-y: auto;
+  display: grid;
+  /* ⚠️ px-ээр (хувь биш): `SplitGrip` эхлэх өргөнөө `parseFloat`-аар уншдаг */
+  --side-r: 560px;
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) var(--side-r);
+  gap: 8px;
+  padding: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg);
-  padding: 28px 24px 72px;
+  color: var(--ink);
+}
+
+.content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 32px 4px;
+  scroll-padding-top: 48px;
   scroll-behavior: smooth;
 }
 
-/* Багажны зурвас — хэвлэхэд нуугдана */
-.toolbar {
-  max-width: 1080px;
-  margin: 0 auto 16px;
+.side {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
-.tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегмент ── */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.segBtn {
+  all: unset;
+  cursor: pointer;
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  font-size: 0.74rem;
+  color: var(--ink-2);
+}
+.segBtn[aria-pressed='true'] { background: var(--data); color: var(--bg); font-weight: 600; }
+.segBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+
+/* ── Багажны мөр — хэвлэхэд нуугдана ── */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0 0 4px;
+}
+.tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* ⚠️ ТУХ-ын `ghostBtn` — урьдын өнгөт дүүргэлттэй товч БИШ */
 .btn {
+  all: unset;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 15px;
-  border: 1px solid transparent;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--hue, var(--accent));
-  color: #fff;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  transition: filter 0.14s, transform 0.1s;
-}
-.btn:hover { filter: brightness(1.07); }
-.btn:active { transform: scale(0.97); }
-.btn svg { width: 15px; height: 15px; }
-
-.btn:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
-
-/* Цаас */
-.paper {
-  max-width: 1080px;
-  margin: 0 auto;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 48px 64px 64px;
-  box-shadow: 0 8px 32px #00000006;
-  color: var(--ink);
-  line-height: 1.7;
-}
-
-.docHead {
-  border-top: 3px solid var(--data, var(--accent));
-  border-bottom: 1px solid var(--line-strong);
-  padding: 24px 0;
-  margin-bottom: 28px;
-}
-.title {
-  font-size: clamp(23px, 2.4vw, 32px);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  color: var(--ink);
-}
-.sub { margin-top: 12px; font-size: 12px; color: var(--ink-3); }
-
-.section { margin-top: 40px; scroll-margin-top: 24px; }
-.section:first-of-type { margin-top: 0; }
-.h2 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-}
-.intro {
-  font-size: 14px;
   color: var(--ink-2);
-  margin-bottom: 18px;
 }
+.btn:hover:not(:disabled), .btn:focus-visible { color: var(--data); border-color: var(--data); }
+.btn svg { width: 13px; height: 13px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Хүснэгт */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.table th, .table td {
-  border: 1px solid var(--line);
-  padding: 9px 12px;
-  text-align: left;
-  vertical-align: top;
-}
-.table thead th {
-  background: var(--surface-2);
-  font-weight: 600;
-  color: var(--ink-3);
-  font-size: 10.5px;
+/* ── Баримт — дэлгэц дээр картгүй, ТУХ-ын агуулга шиг урсана ── */
+.paper {
+  color: var(--ink);
   line-height: 1.5;
 }
-.table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+
+/* ── Толгой: hero (ТУХ) ── */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: end;
+  padding: 12px 4px 16px;
+}
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.hero h1 { margin: 0; font-size: 1.45rem; line-height: 1.2; font-weight: 600; }
+.heroSub { margin: 6px 0 0; color: var(--ink-2); font-size: 0.85rem; }
+.heroFig { display: flex; flex-direction: column; gap: 6px; }
+.heroNum { font-size: 2.6rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.heroNote { font-size: 0.75rem; color: var(--ink-2); }
+.sub { margin: 0; font-size: 0.72rem; color: var(--ink-3); }
+
+/* ── Хэсэг (ТУХ) ── */
+.section { padding: 22px 0 6px; scroll-margin-top: 48px; }
+.section:focus { outline: none; }
+.h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.intro {
+  margin: 4px 0 10px;
+  max-width: 72ch;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+/* ── Хүснэгт (ТУХ) ── */
+.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.table th {
+  position: sticky;
+  top: 0;
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table tr:last-child td { border-bottom: 0; }
 /* Тоон багана — баруун зэрэгцүүлэлт */
 .table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Нийт мөр — тодотгол */
-.total td { font-weight: 600; background: color-mix(in srgb, var(--hue, var(--accent)) 8%, var(--surface)); }
-
-/* ══════════════ ХЭВЛЭХ ══════════════ */
-/* ══════════════════════════════════════════════════════════
-   АМЬД ТАЙЛАНГИЙН БҮРЭЛДЭХҮҮН — `tailan` салбараас (2026-08-13)
-   ══════════════════════════════════════════════════════════
-   ⚠️ Салбар нь энэ файлыг envhub рүү шилжихээс ӨМНӨ салсан тул эх кодод
-   `8px` радиус, `font-weight: 650` зэрэг хуучин утга байсныг ТОКЕН руу
-   буулгав (`--r`, 600). Бүтэц, зай, утга нь салбарынхаараа хэвээр. */
-
-/* Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд (албан тайлангийн журам) */
-.caption {
-  margin: 16px 0 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.caption:first-of-type { margin-top: 10px; }
-/* Дугаарын дараах тайлбар — нимгэн, ялгаатай */
-.caption span { font-weight: 400; color: var(--ink-3); }
-
-/* Товч танилцуулга — баримтын тэргүү хэсэг */
-.lead {
-  margin-bottom: 26px;
-  padding: 16px 18px;
+.total td { font-weight: 600; background: var(--surface-2); }
+/* Хүснэгтийн хүрээ — ТУХ-ын `tableWrap` (ResizableTable-ийн бүрхүүл ба `tableScroll`) */
+.tableScroll, .paper div:has(> .table) {
+  overflow-x: auto;
+  margin-bottom: 8px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--hue);
-  border-radius: var(--r);
-  background: var(--surface-2);
-  font-size: 0.87rem;
-  line-height: 1.6;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.tableScroll:focus-visible { outline: 2px solid var(--data); }
+
+/* Хүснэгтийн дугаартай тайлбар — ТУХ-ын h3 хэмнэл, ХҮСНЭГТИЙН ДЭЭД талд */
+.caption {
+  margin: 18px 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* Дугаарын дараах тайлбар — нимгэн, ялгаатай */
+.caption span { font-weight: 400; color: var(--ink-2); }
+
+/* Товч хураангуй — ТУХ-ын самбар, зүүн ирмэг нь өгөгдлийн өнгө */
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--data);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 0.8rem;
+  line-height: 1.55;
   color: var(--ink-2);
 }
-.lead p + p { margin-top: 9px; }
+.lead p { margin: 0; }
 .lead strong { color: var(--ink); font-weight: 600; }
-.summaryTitle { font-size: 15px; font-weight: 600; color: var(--ink); margin: 0 0 12px; }
+.summaryTitle { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--ink); }
 
 /* Дүгнэлт — жагсаалт */
-.findings { margin: 4px 0 0; padding-left: 18px; font-size: 0.86rem; color: var(--ink-2); }
-.findings li { margin-bottom: 7px; line-height: 1.55; }
+.findings { margin: 4px 0 0; padding-left: 18px; font-size: 0.8rem; color: var(--ink-2); }
+.findings li { margin-bottom: 6px; line-height: 1.5; }
 .findings strong { color: var(--ink); font-weight: 600; }
 
-.note {
-  margin-top: 8px;
-  font-size: 0.78rem;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
+.note { margin: 6px 0 0; font-size: 0.72rem; line-height: 1.5; color: var(--ink-3); }
 
-/* Тайлан үүсгэхэд гарсан алдаа — зурвасын доор, товчнуудын хажууд.
-   ⚠️ `alert()`-ийн оронд (2026-09-11). Өнгө нь `ui.module.css`-ийн `.error`-той
-   ижил `--bad-ink` — порталын алдаанууд НЭГ өнгөтэй байх ёстой.
-   ⚠️ `.toolbar` нь хэвлэхэд нуугддаг тул энэ мэдэгдэл цаасан дээр гарахгүй —
-   тайлангийн агуулгад хамаагүй, зөвхөн дэлгэцийн үйлдлийн эргэх холбоо. */
+/* Тайлан үүсгэхэд гарсан алдаа — ТУХ-ын `failNote`.
+   ⚠️ `alert()`-ийн оронд (2026-09-11). `.toolbar` нь хэвлэхэд нуугддаг тул
+   энэ мэдэгдэл цаасан дээр гарахгүй — зөвхөн дэлгэцийн үйлдлийн эргэх холбоо. */
 .fail {
-  margin: 8px 0 0;
-  font-size: 0.78rem;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent);
+  border-radius: var(--r-sm);
+  font-size: 0.76rem;
   line-height: 1.5;
   color: var(--bad-ink);
 }
 
-.contents { padding: 18px 0 24px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
-.contentsTitle { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 12px; }
-.contents ol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; list-style: none; padding: 0; margin: 0; }
-.contents a { display: flex; gap: 12px; color: var(--ink-2); font-size: 13px; text-decoration: none; }
-.contents a span { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.contents a:hover { color: var(--data); text-decoration: underline; }
-.contents a:focus-visible, .btn:focus-visible { outline: 2px solid var(--data); outline-offset: 4px; }
-.tableScroll { overflow-x: auto; margin-bottom: 16px; }
-.paper div:has(> .table) { overflow-x: auto; }
-.tableScroll:focus-visible { outline: 2px solid var(--data); }
-
-@media (max-width: 720px) {
-  .wrap { padding: 16px 10px 40px; }
-  .paper { padding: 24px 18px 36px; }
-  .contents ol { grid-template-columns: 1fr; }
-  .h2 { font-size: 16px; }
-  .section { margin-top: 32px; }
+/* ── Агуулга — ТУХ-ын багцын дэлгэрэнгүйн `secNav` (наалддаг мөр) ── */
+.contents {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: 4px 0 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
-@media (prefers-reduced-motion: reduce) { .wrap { scroll-behavior: auto; } }
+/* Харагдахгүй гарчиг — `nav`-ын `aria-label` нэрийг аль хэдийн хэлнэ */
+.contentsTitle { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.contents ol { display: flex; flex-wrap: wrap; gap: 2px; list-style: none; padding: 0; margin: 0; }
+.contents a {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.contents a span { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.contents a:hover, .contents a:focus-visible { background: var(--surface-2); color: var(--ink); }
+.contents a:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
 
-@media print {
-  .wrap { background: #fff; padding: 0; overflow: visible; }
-  .toolbar, .contents { display: none; }
-  .tableScroll { overflow: visible; }
-  .paper div:has(> .table) { overflow: visible; }
-  .paper {
-    max-width: none;
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    padding: 0;
-    color: #000;
-    background: #fff;
+@media (max-width: 1400px) {
+  .tailan { --side-r: 440px; }
+}
+@media (max-width: 1180px) {
+  .hero { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .tailan {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 300px minmax(0, 1fr);
   }
-  .title, .h2, .docHead, .caption, .summaryTitle { color: #000; }
+  .side { order: -1; }
+  /* Давхарласан байрлалд баганын өргөн чирэх утгагүй */
+  .tailan > [role='separator'] { display: none; }
+}
+@media (max-width: 620px) {
+  .tailan { padding: 4px; }
+  .content { padding: 4px 4px 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .content { scroll-behavior: auto; } }
+
+/* ══════════════ ХЭВЛЭХ ══════════════ */
+@media print {
+  /* Газрын зураг, чирэгч, горим, багаж — цаасан дээр утгагүй */
+  .tailan { display: block; height: auto; padding: 0; overflow: visible; background: #fff; }
+  .side, .tailan > [role='separator'], .filters, .toolbar, .contents { display: none; }
+  .content { overflow: visible; padding: 0; }
+  .tableScroll, .paper div:has(> .table) { overflow: visible; border-color: #999; background: #fff; }
+  .paper { color: #000; background: #fff; }
+  .hero h1, .h2, .caption, .summaryTitle, .heroNum { color: #000; }
   .lead strong, .findings strong { color: #000; }
   /* ⚠️ 2026-09-08 — .sub/.note/.findings нь --ink-2/--ink-3 дээр үлдсэн байв:
      харанхуй горимд хэвлэхэд цагаан цаасан дээр цагаанаар гарч алга болдог. */
-  .findings { color: #222; }
-  .sub, .note { color: #555; }
-  /* Тэргүү хэсэг — цаасан дээр саарал дэвсгэр, хар зааг (өнгө хэвлэгдэхгүй) */
-  .lead { background: #f6f6f6; border-color: #999; border-left-color: #000; color: #000; }
-  .docHead { border-bottom-color: #000; }
-  .h2 { border-bottom-color: #999; }
+  .findings, .intro, .heroSub, .heroNote, .caption span { color: #222; }
+  .sub, .note, .eyebrow { color: #555; }
+  /* Тэргүү хэсэг — цаасан дээр цагаан дэвсгэр, хар зааг (өнгө хэвлэгдэхгүй) */
+  .lead { background: #fff; border-color: #999; border-left-color: #000; color: #000; }
   .table th, .table td { border-color: #999; }
-  .table thead th { background: #eee; color: #000; }
-  .table tbody tr:nth-child(even) td { background: #f6f6f6; }
+  .table th { position: static; background: #eee; color: #000; }
+  .total td { background: #f6f6f6; }
   .section { break-inside: auto; }
   .h2, .caption { break-after: avoid; }
   .intro, .lead, .findings { orphans: 3; widows: 3; }

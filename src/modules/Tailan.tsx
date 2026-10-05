@@ -21,10 +21,25 @@
  *
  * ⚠️ Дэлгэц ба PDF (`@/lib/reportPdf`) хоёулаа ЯГ ЭНЭ өгөгдлийг хэрэглэнэ.
  * Хэсэг нэмэх/хасахдаа ХОЁУЛАНГ нь заавал хамт засна.
+ *
+ * ⚠️ 2026-10-04 (хэрэглэгч: «тайлан хэсгийг ТУХ хэсэгтэй бүрэн адилхан болгон
+ *    загварчил»): ДЭЛГЭЦИЙН бүтэц ТУХ-ынх (`Tuh.tsx`) —
+ *      ┌──────── агуулга (гүйлгэнэ) ────────┬── ЗУРАГ ──┐
+ *      │ горим · hero · KPI · хэсгүүд        │  байнга   │
+ *      └────────────────────────────────────┴───────────┘
+ *    Газрын зураг нь ТУХ-ын `TuhMap` (ШИНЭ зураг биш), агуулгын хэв маяг нь
+ *    `tuh.module.css`-ийн ХУУЛБАР (`report.module.css` — харагдацууд стайл
+ *    хуваалцахгүй). Тайлангийн ӨГӨГДӨЛ, хэсгийн дараалал, PDF/мэйл ӨӨРЧЛӨГДӨӨГҮЙ;
+ *    хэвлэхэд зураг нуугдаж, агуулга нь цаасан баримт хэвээр.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import type { Dim } from '@/components/MapCanvas';
+import { SplitGrip, useSideResize } from '@/components/SplitGrip';
+import { buildPacks, type Pack } from '@/modules/Bagts';
+import { useBuildings } from '@/modules/BuildingPanel';
+import { TuhMap } from '@/modules/tuh/TuhMap';
 import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
@@ -42,9 +57,8 @@ import {
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
-import { ReportContents } from './ReportContents';
+import { ReportContents, ReportHero } from './ReportContents';
 import r from './report.module.css';
-import e from './execReport.module.css';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
 const bn = (v: number) => num(v);
@@ -256,26 +270,34 @@ function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean 
  * ⚠️ Хоёр горим ТУСДАА компонент — ерөнхий тайлангийн 5 эх сурвалжийн
  *    ачаалалт нь удирдлагын горимд ОГТ эхлэхгүй (hook нь mount үед л ажиллана).
  */
-export function Tailan() {
+export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [mode, setMode] = useState<'full' | 'exec'>('exec');
-  const modes = (
-    <div className={r.toolbar} style={{ marginBottom: 10 }}>
-      <div className={e.modes} role="group" aria-label={tr('Тайлангийн горим')}>
-        <button type="button" aria-pressed={mode === 'exec'}
-          className={`${e.mode} ${mode === 'exec' ? e.modeOn : ''}`} onClick={() => setMode('exec')}>
-          {tr('Удирдлагын тайлан')}
-        </button>
-        <button type="button" aria-pressed={mode === 'full'}
-          className={`${e.mode} ${mode === 'full' ? e.modeOn : ''}`} onClick={() => setMode('full')}>
-          {tr('Дэлгэрэнгүй тайлан')}
-        </button>
-      </div>
-    </div>
-  );
+  /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун багана өргөнөө чирж өөрчилнө (`Tuh.tsx`-тэй ижил жор) */
+  const { hostRef, ...side } = useSideResize('tailan');
+  const bq = useBuildings();
+  const packs = useMemo<Pack[]>(() => buildPacks(bq.state === 'ready' ? bq.data.rows : null), [bq]);
+  /* Тайланд багцын дэлгэрэнгүй хуудас байхгүй — блок дарвал зөвхөн тодорно (`TuhMap` өөрөө) */
+  const onPickPkg = useCallback(() => {}, []);
   return (
-    <div className={r.wrap}>
-      {modes}
-      {mode === 'exec' ? <ExecReport /> : <TailanFull />}
+    <div ref={hostRef} className={`${r.tailan} ${side.hostClass}`} style={side.style}>
+      <SplitGrip {...side.right} />
+      <div className={r.content}>
+        {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр */}
+        <div className={r.filters}>
+          <div className={r.seg} role="group" aria-label={tr('Тайлангийн горим')}>
+            <button type="button" aria-pressed={mode === 'exec'} className={r.segBtn} onClick={() => setMode('exec')}>
+              {tr('Удирдлагын тайлан')}
+            </button>
+            <button type="button" aria-pressed={mode === 'full'} className={r.segBtn} onClick={() => setMode('full')}>
+              {tr('Дэлгэрэнгүй тайлан')}
+            </button>
+          </div>
+        </div>
+        {mode === 'exec' ? <ExecReport /> : <TailanFull />}
+      </div>
+      <div className={r.side}>
+        <TuhMap dim={dim} setDim={setDim} sel={null} packs={packs} onPickPkg={onPickPkg} />
+      </div>
     </div>
   );
 }
@@ -451,14 +473,22 @@ function TailanFull() {
       </div>
 
       <article className={r.paper}>
-        <header className={r.docHead}>
-          <h1 className={r.title}>{tr('Сэлбэ 20 минутын хотын ерөнхий тайлан')}</h1>
-          <p className={r.sub}>
-            {tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт')}{date && <> {tr('· Огноо:')} {date}</>}
+        <ReportHero
+          meta={<>
+            {date && <>{tr('Огноо:')} {date}</>}
             {/* ⚠️ Өгөгдөл ХЭЗЭЭ татагдсан — 5 мин кэш тул огноо ≠ өгөгдлийн агшин */}
             {extra && <> {tr('· Өгөгдөл:')} {dateTime(extra.fetchedAt)}</>}
-          </p>
-        </header>
+          </>}
+          title={tr('Сэлбэ 20 минутын хотын ерөнхий тайлан')}
+          sub={tr('Ерөнхий төлөвлөгөө ба төсвийн нэгдсэн үзүүлэлт')}
+          figLabel={tr('Төслийн нийт гүйцэтгэл')}
+          /* ⚠️ Товч хураангуйн «төслийн хэрэгжилт»-тэй НЭГ тоо (`x.projectPct`) */
+          value={extra?.projectPct ?? null}
+          loading={!extra && !failed}
+          note={extra && <>
+            {tr('Орон сууцны гүйцэтгэл')} {pct(extra.overall.pct, 2)} · {tr('Барилга угсралтын гүйцэтгэл (блокийн дундаж)')} {pct(extra.progress.overall, 2)}
+          </>}
+        />
 
         {waiting ? <ReportWaiting steps={steps} secs={secs} /> : (
         <Data q={bagts} loading={tr('Багцын өгөгдөл нэгтгэж байна…')}>

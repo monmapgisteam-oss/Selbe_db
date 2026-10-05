@@ -46,10 +46,11 @@ export const QAQC_CAP = 'qaqc' as const satisfies CapKey;
 export type DerivedSys = ScopedSys | 'qaqc';
 
 /**
- * ХУВААРИЛАЛТААС ГАРДАГГҮЙ дөрвөн эрх — зөвхөн нэрээр, унтраалгаар олгоно.
+ * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
  * ⚠️ `caps.CAPS` = гаргалгаатай ∪ энгийн, давхцалгүй (`aclParity.check.mjs` барина).
+ * ⚠️ 2026-10-04: `hamaaral` (багцын хамаарал) — батлагчгүй, багцаар хуваарилагдахгүй.
  */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar'];
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral'];
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {
