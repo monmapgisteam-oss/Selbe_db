@@ -164,12 +164,17 @@ const readDraft = (pkgKey: string): Draft | null => {
   }
 };
 /* ⚠️ 2026-10-01: ЗӨВХӨН шинэ формат бичигдэнэ (`serializeQaqcDraft`) */
-const saveDraftLS = (pkgKey: string, d: Draft) => {
+/* ⚠️ 2026-10-05: үр дүнг БУЦААНА (`false` = бичигдсэнгүй). Урьд нь алдааг залгиж, самбар
+   «ноорог хадгалагдав hh:mm» гэж ХУДАЛ харуулдаг байв (хувийн горим · дүүрсэн хадгалалт) —
+   таб хаагдахад ажил алга. Дуудагч (`persistLocal`) байдлыг ил харуулна. */
+const saveDraftLS = (pkgKey: string, d: Draft): boolean => {
   try {
     const s = serializeQaqcDraft(d, { now: Date.now() });
     if (s) localStorage.setItem(DRAFT_PREFIX + pkgKey, s);
+    return true;
   } catch {
     /* хувийн горим / дүүрсэн хадгалалт — алсын хуулбар үлдэнэ */
+    return false;
   }
 };
 const clearDraftLS = (pkgKey: string) => {
@@ -722,6 +727,17 @@ export function Qaqc() {
 
   /* ══════════════ НООРОГ — ХАДГАЛАХ ══════════════ */
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  /**
+   * ⚠️ 2026-10-05: ЛОКАЛ ноорог бичигдсэнгүй (`saveDraftLS` → `false`). `true` үед
+   *    «ноорог хадгалагдав hh:mm»-ийн ОРОНД анхааруулга гарна. Ref нь `persistLocal`-ийн
+   *    сүүлийн үр дүн (эффект дотроос уншина), state нь зурагдах хувь.
+   */
+  const localOkRef = useRef(true);
+  const [localFail, setLocalFail] = useState(false);
+  /** Унасан алсын бичилтийг дахин оролдуулах цаг хэмжигч (flush-ийн ⚠️ 2026-10-05) */
+  const remoteRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Хамгийн сүүлийн `flush` — салгахад (unmount) дараалалд үлдсэнийг илгээнэ */
+  const flushRef = useRef<(() => void) | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
   const [remoteTick, setRemoteTick] = useState(0);
@@ -790,8 +806,9 @@ export function Qaqc() {
     const mine = draftFromState(st, (o) => rk.get(o));
     const slot = dk(uname, pkgKey);
     const merged = mergeDraft(readDraft(slot), mine);
-    if (merged) saveDraftLS(slot, merged);
-    else clearDraftLS(slot);
+    /* ⚠️ 2026-10-05: бичилт унасан ч `merged`-ийг БУЦААНА — алсын хуулбар тэр үед цорын ганц */
+    if (merged) localOkRef.current = saveDraftLS(slot, merged);
+    else { clearDraftLS(slot); localOkRef.current = true; }
     return merged;
   }, [uname]);
 
@@ -843,6 +860,8 @@ export function Qaqc() {
     if (empty) setRemoteState(null);
     else setSavedAt(Date.now());
     const draft = persistLocal(pkg.key, rows);
+    /* ⚠️ 2026-10-05: локал бичилт унасныг ИЛ харуулна (`localFail`-ийн ⚠️) */
+    setLocalFail(!localOkRef.current);
     if (!draft) return;
     /* ⚠️ Алсад ЭНД ШУУД бичихгүй — нүд бүрийн товшилтод хүсэлт явбал
        сүлжээ дүүрч бөглөлт удаашрана. Доорх завсарлагатай эффект илгээнэ.
@@ -899,10 +918,26 @@ export function Qaqc() {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй */
         if (loadedPkgRef.current !== q.pkg) return;
         setRemoteState(res === 'ok' ? { kind: 'ok', at: Date.now() } : res === 'big' ? { kind: 'big' } : { kind: 'fail' });
+        /* ⚠️ 2026-10-05: УНАСАН бичилтийг ДАРААЛАЛД БУЦААНА. Урьд нь дараалал илгээхийн
+           өмнө цэвэрлэгддэг тул унасан ноорог дараагийн нүдний засвар хүртэл ХЭЗЭЭ Ч дахин
+           явдаггүй байв (заалтын tooltip «автоматаар үргэлжилнэ» гэдэг атал). Шинэ ноорог
+           аль хэдийн дараалалд орсон бол түүнийг ДАРАХГҮЙ. ~60 сек-ийн дараа дахин
+           (48 сек + эффектийн 12 сек завсарлага) — оффлайн үед хүсэлтийн шуурга үүсгэхгүй.
+           ⚠️ Ноорогийн бичилт нь «уншаад нэгтгээд бичих» (`writeQaqcDraft`) тул давтахад
+           аюулгүй; «big» давтагдахгүй (хэмжээ өөрөө багасахгүй). */
+        if (res === 'fail') {
+          if (!remoteQueue.current) remoteQueue.current = q;
+          if (remoteRetryTimer.current) clearTimeout(remoteRetryTimer.current);
+          remoteRetryTimer.current = setTimeout(() => {
+            remoteRetryTimer.current = null;
+            if (remoteQueue.current) setRemoteTick((n) => n + 1);
+          }, 48_000);
+        }
       });
       remoteInflight.current = inflight;
       void inflight.finally(() => { if (remoteInflight.current === inflight) remoteInflight.current = null; });
     };
+    flushRef.current = flush;
     const t = setTimeout(flush, 12_000);
     const since = Date.now() - lastRemoteRef.current;
     const cap = since >= 60_000
@@ -917,6 +952,15 @@ export function Qaqc() {
       window.removeEventListener('pagehide', flush);
     };
   }, [remoteTick, pkg.key]);
+
+  /* ⚠️ 2026-10-05: САЛГАХАД (харагдац солих) дараалалд үлдсэн ноорогийг ИЛГЭЭНЭ. Дээрх
+     эффектийн цэвэрлэгээ зөвхөн цаг хэмжигчийг зогсоодог тул сүүлийн ≤12 секундын бөглөлт
+     алсад хуулагдахгүй үлддэг байв (локалд бий, өөр компьютерт үгүй). Хоосон deps —
+     ЗӨВХӨН unmount; `flushRef` нь хамгийн сүүлийн багцын `flush`. */
+  useEffect(() => () => {
+    if (remoteRetryTimer.current) { clearTimeout(remoteRetryTimer.current); remoteRetryTimer.current = null; }
+    flushRef.current?.();
+  }, []);
 
   /* ══════════════ НООРОГ — СЭРГЭЭХ ══════════════ */
 
@@ -1372,7 +1416,14 @@ export function Qaqc() {
             засагдав): урьд нь «мөн ArcGIS-д хадгалагдана» гэж БАТАЛГАА өгдөг
             байсан ч алсын бичилтийн үр дүн огт уншигддаггүй байв. Алсын
             байдал одоо ДООР тусдаа заалтаар гарна. */}
-        {savedAt != null && dirtyCount > 0 && (
+        {/* ⚠️ 2026-10-05: локал бичилт УНАСАН бол «хадгалагдав hh:mm» гэж ХУДАЛ хэлэхгүй */}
+        {localFail && dirtyCount > 0 && (
+          <span className={st.autosaveWarn} role="alert"
+            title={tr('Хөтчийн хадгалалт дүүрсэн эсвэл хаалттай (хувийн горим) байна. Таб хаагдвал хадгалаагүй бөглөлт алдагдана — «Хадгалах» дарж үйлчилгээнд бичнэ үү.')}>
+            {tr('⚠ ноорог хадгалагдсангүй')}
+          </span>
+        )}
+        {savedAt != null && dirtyCount > 0 && !localFail && (
           <span
             className={st.autosave}
             title={tr('Ноорог ЭНЭ хөтөчид хадгалагдлаа. ArcGIS-д хуулагдсан эсэхийг хажуугийн заалт харуулна. Үйлчилгээнд бичихийн тулд «Хадгалах» дарна.')}

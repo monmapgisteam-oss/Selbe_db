@@ -1006,6 +1006,37 @@ export async function saveSubmission(
     }
     const badDel = (r.deleteFeatureResults ?? []).find((x) => x.error != null);
     if (badDel) console.warn('[selbe] илгээлтийн давхардсан мөр устсангүй:', errMsg(badDel.error));
+    /*
+     * ⚠️ 2026-10-05: БИЧСЭНИЙ ДАРААХ БАТАЛГАА. Дээрх `expect` тулгалт ба `applyEdits` хоёрын
+     *    завсарт (ArcGIS-д нөхцөлт бичилт байхгүй) өөр хэрэглэгч ЗЭРЭГ бичвэл:
+     *      · хоёулаа «мөр алга» гэж үзээд НЭМСЭН → хоёр мөр; уншигч сүүлийнхийг авч, нөгөөгийн
+     *        нүд дараагийн хадгалалтаар «давхардал» болж устдаг байв. Дүрэм: БАГА OBJECTID
+     *        (түрүүлж бичигдсэн) ялна — хожуу нь ӨӨРИЙН мөрөө устгаад `ok:false` буцаана
+     *        (дуудагч дахин ачаалж нөгөөгийн илгээлт дээр нэгтгэнэ). Устгал унавал урьдын зан төлөв.
+     *      · хоёулаа НЭГ мөрийг ШИНЭЧИЛСЭН → сүүлийнх нь ялна; дарагдсан тал мөрийн `at`/`usr`
+     *        өөрийнх биш болсныг эндээс мэдэж `ok:false` авна (урьд нь «амжилттай» гэж худал).
+     *    Цонхыг нарийсгана, тэг болгохгүй (баталгааны уншилтын ДАРАА дарагдвал мэдэгдэхгүй).
+     * ⚠️ Баталгааны УНШИЛТ унавал амжилт хэвээр — бичилт өөрөө `applyEdits`-ээр батлагдсан.
+     */
+    try {
+      const back = await fl.queryFeatures({
+        where: `dkey = ${sqlStr(dkey)}`,
+        outFields: ['OBJECTID', 'usr', 'at'],
+        returnGeometry: false,
+        orderByFields: ['OBJECTID ASC'],
+      });
+      const rowsB = back.features.filter((f) => typeof f.attributes?.OBJECTID === 'number');
+      const mineB = rowsB.find((f) => f.attributes.OBJECTID === oid);
+      const lost = tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.');
+      if (mineB && target == null && (rowsB[0].attributes.OBJECTID as number) < oid) {
+        const del = await fl.applyEdits({ deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0]);
+        const dr = del.deleteFeatureResults ?? [];
+        if (dr.length && dr.every((x) => x.error == null)) return { ok: false, error: lost };
+      } else if (mineB && isFin(mineB.attributes.at) && (Number(mineB.attributes.at) !== payload.at
+        || String(mineB.attributes.usr ?? '').toLowerCase() !== attrs.usr)) {
+        return { ok: false, error: lost };
+      }
+    } catch { /* баталгааны уншилт унасан — бичилт батлагдсан хэвээр */ }
     return { ok: true, oid };
   } catch (e) {
     return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)) };

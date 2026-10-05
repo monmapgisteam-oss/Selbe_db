@@ -610,23 +610,40 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
     return out;
   };
   let a = 0; let u = 0; let dl = 0;
-  const run = async (body: Record<string, string>) => {
-    const j = await agsFetch(`${HUVAARI_OBYEM}/applyEdits`, {
-      ...body, rollbackOnFailure: 'true',
-    });
-    for (const k of ['addResults', 'updateResults', 'deleteResults'] as const) {
-      const res = (j[k] ?? []) as { success?: boolean; error?: { description?: string } }[];
-      const bad = res.find((r) => r.success === false);
-      if (bad) {
-        throw new Error(
-          /* ⚠️ tr() (2026-09-25 аудит) — англи хувилбарт монгол текст гарч байв */
-          `${bad.error?.description || tr('Хуваарийн обьём хадгалагдсангүй')}`
-          + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
-        );
+  type Res = { success?: boolean; error?: { description?: string } };
+  /* ⚠️ 2026-10-05: `want` — илгээсэн мөрийн тоо. Хариуны тоог ТУЛГАНА (`bagtsSheet.applyUpdates`-ийн
+     ижил дүрэм): хоосон/дутуу `addResults` нь «хадгалагдлаа» гэж худал мэдээлдэг байв.
+     ⚠️ Тоолуурыг хүсэлтийн БҮХ төрөл шалгагдсаны ДАРАА л нэмнэ — нэг хүсэлт бүтнээрээ буцдаг
+        (`rollbackOnFailure`) тул «нэмсэн нь амжсан, шинэчлэл нь унасан» гэж тоолж болохгүй.
+     ⚠️ Алдаанд `written` (энэ хүсэлтээс ӨМНӨ бичигдсэн мөр) хавсаргана — батлагч тал
+        (`Huvaari.save`) нэг ч мөр бичигдээгүй бол хагас бичилтийн тэмдгийг арилгана. */
+  const run = async (body: Record<string, string>, want: [number, number, number]) => {
+    try {
+      const j = await agsFetch(`${HUVAARI_OBYEM}/applyEdits`, {
+        ...body, rollbackOnFailure: 'true',
+      });
+      const keys = ['addResults', 'updateResults', 'deleteResults'] as const;
+      for (let n = 0; n < keys.length; n += 1) {
+        const res = (j[keys[n]] ?? []) as Res[];
+        const bad = res.find((r) => r.success === false);
+        if (bad) {
+          throw new Error(
+            /* ⚠️ tr() (2026-09-25 аудит) — англи хувилбарт монгол текст гарч байв */
+            `${bad.error?.description || tr('Хуваарийн обьём хадгалагдсангүй')}`
+            + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
+          );
+        }
+        if (res.length !== want[n]) {
+          throw new Error(
+            `${tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', want[n], res.length)}`
+            + ` ${tr('({0} нэмсэн · {1} шинэчилсэн · {2} устгасан)', String(a), String(u), String(dl))}`,
+          );
+        }
       }
-      if (k === 'addResults') a += res.length;
-      if (k === 'updateResults') u += res.length;
-      if (k === 'deleteResults') dl += res.length;
+      a += want[0]; u += want[1]; dl += want[2];
+    } catch (err) {
+      if (err && typeof err === 'object') (err as { written?: number }).written = a + u + dl;
+      throw err;
     }
   };
   /*
@@ -639,9 +656,23 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
    *    бол дэмий дахин татахгүй.
    */
   try {
-    for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) });
-    for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) });
-    for (const c of chunk(e.deletes)) await run({ deletes: c.join(',') });
+    /* ⚠️ 2026-10-05: НИЙТ ≤500 мөр бол нэмэх · шинэчлэх · устгахыг НЭГ хүсэлтээр — `rollbackOnFailure`
+       нь зөвхөн нэг хүсэлт дотор үйлчилдэг тул гурван тусдаа хүсэлтээр явахад «нэмэлт орсон,
+       устгал унасан» хагас задаргаа үлдэж, дахин батлахад зөрчил, буцаах/татахад хагас бичилтийн
+       тэмдэг саад болж батлалт гацдаг байв. Нэг хүсэлт = бүгд эсвэл юу ч үгүй.
+       500-аас их бол хуучин багцлалт ХЭВЭЭР (тэнд хагас бичилт боломжтой — мессеж тоог хэлнэ). */
+    const total = e.adds.length + e.updates.length + e.deletes.length;
+    if (total > 0 && total <= 500) {
+      const body: Record<string, string> = {};
+      if (e.adds.length) body.adds = JSON.stringify(e.adds);
+      if (e.updates.length) body.updates = JSON.stringify(e.updates);
+      if (e.deletes.length) body.deletes = e.deletes.join(',');
+      await run(body, [e.adds.length, e.updates.length, e.deletes.length]);
+    } else {
+      for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) }, [c.length, 0, 0]);
+      for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) }, [0, c.length, 0]);
+      for (const c of chunk(e.deletes)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
+    }
   } finally {
     if (a + u + dl > 0) invalidate('HUVAARI_OBYEM');
   }

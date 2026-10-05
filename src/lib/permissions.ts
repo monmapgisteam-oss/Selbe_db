@@ -824,17 +824,107 @@ export function removeUser(username: string): Promise<boolean> {
  * бол өөрчлөлт зөвхөн энэ browser-т үлдсэн гэсэн үг: dirty-set-д тэмдэглэгдэж,
  * дараагийн `initRemote`/`retryDirty` дээр автоматаар дахин бичигдэнэ.
  */
-export function setUser(username: string, access: Access, role: Role | null = null): Promise<boolean> {
+export function setUser(
+  username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
+): Promise<boolean> {
   const key = username.toLowerCase();
   const entry: Entry = { views: sanitizeViews(access.views), docs: access.docs, role };
+  /*
+   * ⚠️ 2026-10-05: ЭНЭ ДУУДЛАГЫН ӨӨРЧЛӨЛТ = `entry` − суурь. Суурь нь дуудагчийн өгсөн
+   *    (`UserAdmin`-ы ноорог ҮҮСЭХ агшны утга — ноорог хэдэн минут настай байж болно) эсвэл
+   *    одоогийн кэш (override, үгүй бол хатуу суурь). Remote-д бичихдээ ШИНЭЭР уншсан мөр
+   *    дээр зөвхөн энэ ялгааг давхарлана (`mergeUserDelta`) — доорх ⚠️.
+   */
+  const prev = loadStore()[key];
+  const bl = baseline(username);
+  const base: Entry | null = baseOf
+    ? { views: sanitizeViews(baseOf.views), docs: baseOf.docs, role: baseOf.role }
+    : prev ?? (bl ? { views: bl.views, docs: bl.docs, role: roleForUser(username) } : null);
   const store = { ...loadStore() };
   store[key] = entry;
   saveStore(store);
   /* ⚠️ `serial` — retry ба бусад бичилттэй дараална (2026-09-25); `serialWrite` — агшны тэмдэг (2026-09-29) */
-  return serialWrite(key, () => import('./permsRemote')
-    .then((m) => m.upsert({ username, role, views: entry.views, docs: entry.docs }))
-    .catch(() => false)
-    .then((ok) => { trackWrite(key, entry, ok); return ok; }));
+  return serialWrite(key, async () => {
+    let out = entry;
+    let ok = false;
+    try {
+      const m = await import('./permsRemote');
+      /*
+       * ⚠️ 2026-10-05: БИЧИХИЙН ЯГ ӨМНӨ ДАХИН УНШИЖ НЭГТГЭНЭ (`caps.setCaps` · `scopedAcl.pushRow`-ийн
+       *    2026-10-04-ний ижил загвар — хэрэглэгчийн мөрд хуулагдаагүй байв). Урьд нь ноорогийн
+       *    БҮТЭН `views` жагсаалтыг бичдэг тул хоёр админ нэг хүний харагдацыг зэрэг засахад
+       *    сүүлд хадгалсан нь өмнөхийн нээсэн/хаасныг ЧИМЭЭГҮЙ буцаадаг байв. Уншиж чадаагүй
+       *    бол БИЧИХГҮЙ (`false` → dirty, «ArcGIS-т хадгалагдсангүй»).
+       * ⚠️ Өмнөх бичилт нь УНАСАН (dirty) бол кэш нь баталгаажаагүй ЗОРИЛГО — ялгаа бодох суурь
+       *    БИШ; тэр үед урьдын адил бүтнээр нь (`retryDirtyOnce` ч бүтнээр бичдэг).
+       */
+      if (!(key in loadDirty())) {
+        const fresh = await m.userRead(username);
+        if (!fresh) { trackWrite(key, entry, false); return false; }
+        const fr = fresh.row
+          ? sanitizeEntry({
+            views: fresh.row.views, docs: fresh.row.docs, role: fresh.row.role,
+            ...(fresh.row.removed ? { removed: true } : {}),
+          })
+          : null;
+        /*
+         * ⚠️ TOMBSTONE-ЫГ ДАРЖ БИЧИХГҮЙ (fail-closed). Нөгөө админ энэ аккаунтыг ДӨНГӨЖ устгасан
+         *    (remote-д `removed`, манай кэш хараахан мэдээгүй) бол жирийн мөрөөр дарвал устгагдсан
+         *    хүн дахин нэвтэрнэ — `UserAdmin.saveAll` · `grantFlowAccess` · `applyType`-ийн кэшид
+         *    тулгуурласан хамгаалалтын remote хувилбар. Локалд tombstone-ыг тусгаж `false`
+         *    буцаана (dirty-д ТЭМДЭГЛЭХГҮЙ — retry tombstone-ыг дарна). Сэргээх зам = «Буцаах».
+         *    Хатуу super-т tombstone үйлчилдэггүй (`hasAccess`) тул хамаарахгүй.
+         */
+        if (fr?.removed && !base?.removed && !isHardSuper(username)) {
+          const s = { ...loadStore() };
+          s[key] = fr;
+          saveStore(s);
+          return false;
+        }
+        out = mergeUserDelta(base, entry, fr);
+        /* Нөгөө админы өөрчлөлтийг локал кэшид ч тусгана — дараагийн засвар түүн дээрээс */
+        if (ser(out) !== ser(entry)) {
+          const s = { ...loadStore() };
+          s[key] = out;
+          saveStore(s);
+        }
+      }
+      ok = await m.upsert({ username, role: out.role, views: out.views, docs: out.docs });
+    } catch {
+      ok = false;
+    }
+    trackWrite(key, out, ok);
+    return ok;
+  });
+}
+
+/** `setUser`-ийн ялгаа бодох суурь — ноорог үүсэх агшны харагдац · баримт · үүрэг */
+export type UserBase = { views: ViewKey[] | 'all'; docs: boolean; role: Role | null };
+
+/**
+ * ХЭРЭГЛЭГЧИЙН МӨРИЙН ӨӨРЧЛӨЛТИЙГ ШИНЭ УТГА ДЭЭР ДАВХАРЛАНА — цэвэр (2026-10-05).
+ * `base` → `next` нь ЭНЭ админы өөрчлөлт; `fresh` нь remote-оос дөнгөж уншсан мөр (`null` = алга).
+ *   · Харагдац: `next − base` = нээсэн, `base − next` = хаасан → `fresh` дээр. Гурвын аль нэг нь
+ *     `'all'` бол ялгаа тодорхойгүй — `next`-ийг бүтнээр нь (урьдын зан).
+ *   · Баримт (`docs`) ба үүрэг (`role`): энэ админ ӨӨРЧИЛСӨН бол `next`-ийнх, үгүй бол `fresh`-ийнх.
+ *   · `fresh` алга, эсвэл суурь мэдэгдэхгүй (`base === null`, шинэ аккаунт) бол `next`.
+ * ⚠️ Эрхийг `fresh ∪ next`-ээс ХЭТРҮҮЛЭХГҮЙ: гарах харагдац бүр аль нэг админы ил шийдвэр.
+ */
+export function mergeUserDelta(base: UserBase | null, next: UserBase, fresh: UserBase | null): UserBase {
+  if (!fresh || !base) return next;
+  let views: ViewKey[] | 'all' = next.views;
+  if (next.views !== 'all' && base.views !== 'all' && fresh.views !== 'all') {
+    const b = new Set<ViewKey>(base.views);
+    const n = new Set<ViewKey>(next.views);
+    const out = fresh.views.filter((v) => !(b.has(v) && !n.has(v)));
+    for (const v of next.views) if (!b.has(v) && !out.includes(v)) out.push(v);
+    views = out;
+  }
+  return {
+    views,
+    docs: base.docs === next.docs ? fresh.docs : next.docs,
+    role: base.role === next.role ? fresh.role : next.role,
+  };
 }
 
 /** Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил. */

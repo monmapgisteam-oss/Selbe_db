@@ -1579,6 +1579,41 @@ export function review(
  * ⚠️ 2026-09-28 (2-р үе шат): rev > 0 илгээлтэд `revNote` (хувилбарын шалтгаан)
  *    ЗААВАЛ — «Өөрчлөлтийн түүх» хүснэгтийн мөр.
  */
+/**
+ * ХООСОН ГОЛ ХЭСГҮҮД — илгээхийн ӨМНӨХ асуултад жагсаана (нэрс).
+ *
+ * ⚠️ 2026-10-05: зөвхөн гарчигтай баримтыг хянуулахаар илгээж болдог, илгээсний дараа
+ *    засах боломжгүй байв. ХОРИГ БИШ, САНУУЛГА — `submit` хэвээр зөвшөөрнө (маягтын
+ *    хэсгүүд ажил бүрд өөр, зарим нь хоосон байх нь зөв тохиолдол бий); зохиогч юу дутууг
+ *    ХАРААД шийднэ. Хавсралтын тоог дуудагч (`Chanar.send`) нэмж хэлнэ.
+ */
+export function emptyKeySections(kind: DocKind, body: AnyBody | null | undefined): string[] {
+  if (!body) return [];
+  const out: string[] = [];
+  const blank = (v: unknown) => typeof v !== 'string' || v.trim() === '';
+  if (isMsLike(kind)) {
+    const b = body as MsBody;
+    if (blank(b.general)) out.push(tr('1. Ерөнхий мэдээлэл'));
+    if (blank(b.scope)) out.push(tr('2. Ажлын хамрах хүрээ'));
+    if (blank(b.materials)) out.push(tr('3. Материал · тоног төхөөрөмж · хүн хүч'));
+    if (blank(b.sequence)) out.push(tr('4. Ажлын дараалал, технологи'));
+    if (blank(b.quality)) out.push(tr('5. Чанарын хяналт, шалгалт'));
+    if (blank(b.safety)) out.push(tr('6. ХАБЭА арга хэмжээ'));
+  } else if (kind === 'MA') {
+    const b = body as MaBody;
+    if (!Array.isArray(b.materials) || b.materials.length === 0) out.push(tr('Материалын жагсаалт'));
+    if (blank(b.manufacturer)) out.push(tr('Үйлдвэрлэгч'));
+  } else if (kind === 'NCR') {
+    const b = body as NcrBody;
+    if (blank(b.description)) out.push(tr('Үл тохирлын тодорхойлолт'));
+    if (b.severity == null) out.push(tr('Ноцтой байдлын зэрэг'));
+  } else {
+    const b = body as InspBody;
+    if (!Array.isArray(b.items) || b.items.length === 0) out.push(tr('Шалгах мөрүүд'));
+  }
+  return out;
+}
+
 export function submit(
   doc: Pick<MsDoc, 'status' | 'rev' | 'author'> & { kind?: DocKind },
   args: { who: string; now?: number; revNote?: string | null },

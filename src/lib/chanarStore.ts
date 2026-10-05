@@ -159,7 +159,7 @@ async function createTable(token: string, user: string): Promise<string | null> 
         str(F.bagts, 128, false),
         { name: F.seq, type: 'esriFieldTypeInteger', nullable: false, editable: true },
         { name: F.rev, type: 'esriFieldTypeInteger', nullable: false, editable: true },
-        str(F.title, 512),
+        str(F.title, TITLE_MAX),
         str(F.status, 32, false),
         str(F.author, 256),
         { name: F.sentAt, type: 'esriFieldTypeDate', nullable: true, editable: true },
@@ -806,7 +806,28 @@ const editOk = (res: unknown): boolean => {
   return arr.length > 0 && arr.every((r) => r.success === true);
 };
 
-type Result = { ok: true; oid: number } | { ok: false; error: string };
+/* ⚠️ 2026-10-05: `unsure` — бичилтийн хариу алдагдсан (үр дүн тодорхойгүй); UI дахин илгээхээс өмнө асууна */
+type Result = { ok: true; oid: number } | { ok: false; error: string; unsure?: true };
+
+/**
+ * ГАРЧГИЙН ДЭЭД УРТ — хүснэгтийн `ner` талбарын урт (`createTable`).
+ * ⚠️ 2026-10-05: урт гарчиг зөвхөн ХАДГАЛАХ үед ArcGIS-ийн бүрхэг алдаагаар унадаг байв —
+ *    оролтод `maxLength`, энд ойлгомжтой мессеж.
+ */
+export const TITLE_MAX = 512;
+const titleTooLong = (title: string): string | null =>
+  title.trim().length > TITLE_MAX ? tr('Баримтын нэр хэт урт — хамгийн ихдээ {0} тэмдэгт.', String(TITLE_MAX)) : null;
+
+/**
+ * БИЧИЛТИЙН ХАРИУ АЛДАГДСАН уу (timeout · сүлжээ · HTTP 5xx/JSON биш) — үр дүн ТОДОРХОЙГҮЙ.
+ * ⚠️ ArcGIS-ийн тодорхой татгалзал (`error.code`-той) ЭНД орохгүй.
+ */
+const lostResponse = (e: unknown): boolean => {
+  if (e instanceof TypeError) return true;
+  const x = e as { name?: string; code?: number } | null;
+  if (x?.name === 'TimeoutError' || x?.name === 'AbortError') return true;
+  return x?.name === 'ArcGISError' && x.code == null;
+};
 
 /**
  * ⚠️ 2026-09-25: БИЧИГЧИЙГ СЕШНД УЯХ. Урьд нь `author`/`who`-г дуудагчаас
@@ -848,6 +869,8 @@ export async function createDraft(args: {
      гүйцэтгэгч (`chanarAuthor`) нээхгүй. Бусад төрөл гүйцэтгэгчийнх хэвээр. */
   const act = actor(args.author, authorCap(kind));
   if (!('who' in act)) return act;
+  const long = titleTooLong(args.title);
+  if (long) return { ok: false, error: long };
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй — админд хандана уу.') };
   /* ⚠️ NCR (2026-09-28): дугаар `STMCC-STMC-NCR-NNNN` — гүйцэтгэгчийн код ШААРДАХГҮЙ,
@@ -915,6 +938,24 @@ export async function createDraft(args: {
     }
     return { ok: true, oid };
   } catch (e) {
+    /* ⚠️ 2026-10-05: ХАРИУ АЛДАГДСАН — мөр сервер дээр үүссэн байж болно. Урьд нь «алдаа»
+       гэж буцааж, хэрэглэгч дахин дарахад ХОЁР ДАХЬ ноорог үүсдэг байв. Бичилтийг дахин
+       ИЛГЭЭХГҮЙ; харин дахин УНШИЖ яг энэ дугаар · зохиогч · нэртэй мөр байвал амжилт.
+       Олдоогүй ч хожуу бичигдэж магадгүй тул `unsure` — UI дахин илгээхээс өмнө асууна. */
+    if (lostResponse(e)) {
+      try {
+        const after = await loadDocs(kind);
+        const want = args.title.trim();
+        const hit = after
+          .filter((d) => d.docNo === no && d.rev === 0 && d.author === act.who && d.title.trim() === want)
+          .sort((a, b) => b.oid - a.oid)[0];
+        if (hit) { invalidate('CHANAR_BARIMT'); return { ok: true, oid: hit.oid }; }
+      } catch { /* уншиж чадсангүй — доорх мессеж */ }
+      return {
+        ok: false, unsure: true,
+        error: tr('Серверээс хариу ирсэнгүй — ноорог хадгалагдсан эсэх ТОДОРХОЙГҮЙ. Дахин хадгалахаас өмнө жагсаалтыг шалгана уу (давхардаж болзошгүй).'),
+      };
+    }
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
@@ -928,6 +969,8 @@ export async function saveDraft(args: {
   /** Буцаагдсанаас rev+1 ноорог үүсгэхэд ЗААВАЛ (`body.revNote` ч болно) */
   revNote?: string;
 }): Promise<Result> {
+  const long = titleTooLong(args.title); // ⚠️ 2026-10-05: `TITLE_MAX`
+  if (long) return { ok: false, error: long };
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');

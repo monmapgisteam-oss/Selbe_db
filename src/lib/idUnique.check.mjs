@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collidedIds, idNum, renumberPlan } from './idUnique.ts';
+import { collidedIds, collidesBelow, idNum, renumberPlan } from './idUnique.ts';
 
 /* idNum */
 assert.equal(idNum('G-000123'), 123);
@@ -32,11 +32,21 @@ assert.deepEqual(collidedIds(rows, mine, []), [], 'оноогоогүй бол �
 const plan = renumberPlan(rows, [11]);
 assert.equal(plan.get(11), 13, 'max(12)+1');
 assert.deepEqual([...renumberPlan(rows, [11, 12], [20]).entries()], [[11, 21], [12, 22]], 'extra-г ч тооцно, дараалан');
-console.log('✅ idUnique: илрүүлэлт · дахин дугаарлалт');
+/* ⚠️ 2026-10-05: тэнцүүлэгч — зөвхөн ИХ OBJECTID-тай тал шилжинэ (хоёулаа шилжвэл дахин давхцана) */
+{
+  const two = [{ oid: 1, id: 4 }, { oid: 10, id: 5 }, { oid: 11, id: 5 }];
+  assert.equal(collidesBelow(two, 10, 5), false, 'түрүүлж бичигдсэн мөр дугаараа хадгална');
+  assert.equal(collidesBelow(two, 11, 5), true, 'хожуу мөр шилжинэ');
+  assert.equal(collidesBelow(two, 1, 4), false, 'давхардалгүй');
+  assert.equal(collidesBelow([{ oid: 10, id: 5 }], 10, 5), false, 'өөрийн мөр давхардал биш');
+}
+console.log('✅ idUnique: илрүүлэлт · дахин дугаарлалт · тэнцүүлэгч');
 
 /* Эх код: бичсэний дараах шалгалт холбогдсон */
 const fin = readFileSync(new URL('../modules/Finance.tsx', import.meta.url), 'utf8');
 assert.ok(/collidedIds\(idRows, mine, cfAssigned\)/.test(fin), 'Finance.publish: Cashflow_ID-ийн бичсэний дараах шалгалт алга');
+const hy = readFileSync(new URL('./hyanalt.ts', import.meta.url), 'utf8');
+assert.ok(hy.includes("collidesBelow(idRows, oid, cur)"), 'hyanalt.ensureUniqueId: тэнцүүлэгч (бага OBJECTID ялна) алга');
 const sub = readFileSync(new URL('./hyanaltSubmit.ts', import.meta.url), 'utf8');
 assert.ok(sub.includes('ensureUniqueId(addedOid(res), id)'), 'hyanaltSubmit: дугаарын шалгалт алга');
 const store = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');

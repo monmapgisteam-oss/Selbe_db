@@ -768,6 +768,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     ds.resetHeldTgt();
     /* 2026-09-25: огнооны буцаалт ба «ноорог амьд» туг ч БАГЦЫН/ачааллын төлөв */
     ds.asOfRevRef.current = false;
+    /* ⚠️ 2026-10-05: огнооны логик агшин ч БАГЦЫН төлөв (`useDraftSync.asOfAtRef`) */
+    ds.asOfAtRef.current = null;
     ds.draftLiveRef.current = false;
     /* ⚠️ Нийлүүлэлтийн агшны тэмдэглэгээ ч БАГЦАД харьяалагдана (2026-09-08):
        Багц 1-ийн `t` нь Багц 2-ынхаас ИХ байвал шинэ багцын алсын ноорог
@@ -1330,6 +1332,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    *    тусдаа орно.
    */
   const pvDirty = Object.keys(pvPend).length;
+  /* ⚠️ 2026-10-05: өдөр солигдох шалгалт (интервал) хамгийн сүүлийн утгыг уншихад */
+  const pvDirtyRef = useRef(0);
+  useEffect(() => { pvDirtyRef.current = pvDirty; }, [pvDirty]);
   const unsavedCount = dirtyCount + pvDirty;
 
   /**
@@ -1371,6 +1376,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     rcptRef, btRef, datesBRef, asOfBRef, draftTgt, localFail, stamp,
     /* 2026-10-04 дахин аудит — тэмдэглэсэн нүд (#7) · өөрийн зорилт (#4) */
     heldN, dropHeld, clearMyTgt,
+    /* 2026-10-05 — илгээлтийн баримтыг шууд бичих */
+    pushReceipts,
   } = draftSync;
   /**
    * НООРОГИЙН ЗОРИЛТ ОДООГИЙНХООС ӨӨР (2026-10-04 аудит, #6) — ноорог нь буцаагдсан илгээлтийн
@@ -1421,9 +1428,35 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const origDay = (r: SheetRow, b: number, k: "s" | "e") =>
     dt(k === "s" ? r.start[b] : r.end[b]);
 
+  /**
+   * ⚠️ 2026-10-05: ДӨНГӨЖ бичсэн огноо (түлхүүр → утга) — `commitDate` «Эхлэх» · «Дуусах»-ыг
+   *    ДАРААЛАН дуудахад (`FillDatePicker`-ийн үргэлжлэх хоног) хоёр дахь дуудлага `pendDate`-ийн
+   *    ХУУЧИН төлөвийг хардаг тул хосын шалгалт худал анхааруулахаас сэргийлнэ. Нэг мөчлөгийн дараа
+   *    (`setTimeout 0`) цэвэрлэгдэнэ — цаашид `pendDate` үнэн эх.
+   */
+  const justDateRef = useRef<Map<string, string>>(new Map());
   const commitDate = (r: SheetRow, b: number, k: "s" | "e", raw: string) => {
     const key = `${r.oid}:${b}:${k}`;
     setEdit(null);
+    /*
+     * ⚠️ 2026-10-05: ЗӨӨЛӨН АНХААРУУЛГА (бичилтийг ЗОГСООХГҮЙ). Урьд нь «Дуусах» нь «Эхлэх»-ээс
+     *    ӨМНӨ, эсвэл он нь хол зөрсөн (2062 гэх мэт) огноо чимээгүй авагдаж, төлөвлөгөөт хувь зүгээр
+     *    л хоосон болдог байв — хэрэглэгч шалтгааныг мэдэхгүй. Хос нь урвуу БОЛОХ үед, эсвэл он
+     *    өнөөдрөөс 5-аас их жилээр зөрөхөд хэлнэ.
+     */
+    if (raw) {
+      justDateRef.current.set(key, raw);
+      setTimeout(() => { justDateRef.current.delete(key); }, 0);
+      const oKey = `${r.oid}:${b}:${k === "s" ? "e" : "s"}`;
+      const other = justDateRef.current.get(oKey) ?? pendDate[oKey] ?? origDay(r, b, k === "s" ? "e" : "s");
+      const sDay = k === "s" ? raw : other;
+      const eDay = k === "e" ? raw : other;
+      const notes: string[] = [];
+      if (sDay && eDay && eDay < sDay) notes.push(tr('«Дуусах» ({0}) нь «Эхлэх»-ээс ({1}) ӨМНӨ байна — төлөвлөгөөт хувь бодогдохгүй', eDay, sDay));
+      const yr = Number(raw.slice(0, 4));
+      if (Number.isFinite(yr) && Math.abs(yr - new Date().getFullYear()) > 5) notes.push(tr('он ({0}) өнөөдрөөс 5-аас их жилээр зөрж байна', String(yr)));
+      if (notes.length) warn(tr('{0} · {1}: {2}. Огноогоо шалгана уу.', sc?.bld[b] ?? "", r.work, notes.join('; ')));
+    }
     // Анхны утгадаа буцсан бол «нийтлээгүй» тэмдэглэгээг арилгана.
     const sameDate = raw === origDay(r, b, k);
     setPendDate((p) => {
@@ -1440,6 +1473,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        буцаалт БИШ — `revert`-ийн тайлбар. */
     if (sameDate) revert(key, key in pendDate);
     else { mineRef.current.add(key); touchMine(key); }
+  };
+
+  /**
+   * ⚠️ 2026-10-05: «Шинэчлэгдсэн огноо»-г ХЭРЭГЛЭГЧ сонгох зам (хэрэгслийн мөр · календар) —
+   *    ИРЭЭДҮЙН огноо бол зөөлөн анхааруулна (зогсоохгүй): төлөвлөгөөт хувь бүхэлдээ тэр
+   *    огноогоор бодогддог тул андуурсан сонголт бүх мөрийн хоцрогдлыг худал харуулна.
+   *    Ноорог сэргээх/ачаалах замууд түүхий `setAsOf`-оор хэвээр (анхааруулгагүй).
+   */
+  const setAsOfUser: typeof setAsOf = (v) => {
+    if (typeof v === "number" && v > nowFillMs()) {
+      warn(tr('«Шинэчлэгдсэн огноо» ({0}) нь ИРЭЭДҮЙН өдөр байна — төлөвлөгөөт хувь тэр өдрөөр бодогдоно. Санаатай биш бол засна уу.', dt(v)));
+    }
+    setAsOf(v);
   };
 
   /**
@@ -1530,6 +1576,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const d = nowFillMs();
       if (d === todayFillMs) return;
       if (busy || editRef.current || pickRef.current || remoteQueueRef.current) return;
+      /* ⚠️ 2026-10-05: ОБЬЁМЫН НООРОГ (`pvPend`) хаана ч хадгалагддаггүй — өдөр солигдох дахин ачаалалт
+         түүнийг ТЭГЛЭДЭГ тул инженерийн илгээгээгүй обьём чимээгүй арилдаг байв. Илгээх/цэвэрлэх
+         хүртэл хойшлуулна (дараагийн шалгалтаар) — `pvDirtyRef` (эффектийн хамаарал хэвээр). */
+      if (pvDirtyRef.current > 0) return;
       setTodayFillMs(d);
       say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачааллаа.', msToDay(d)));
     };
@@ -1596,6 +1646,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
        өдрөөр дахин ачаална — ноорог локал/алсаас сэргэнэ. */
     const dNow = nowFillMs();
     if (dNow !== todayFillMs) {
+      /* ⚠️ 2026-10-05: обьёмын ноорог (`pvPend`) дахин ачаалалтад УСТДАГ (хаана ч хадгалагддаггүй) —
+         эхлээд түүнийг илгээлгэнэ; хуудсыг дахин ачаалахгүй (өдөр солигдох шалгалтын ⚠️-тэй ижил). */
+      if (pvDirtyRef.current > 0) {
+        say(tr('Өдөр солигдлоо ({0}). Инженерийн обьёмын илгээгээгүй {1} нүд дахин ачаалахад устах тул эхлээд «Обьём батлуулах» дарна уу (эсвэл тэр нүднүүдээ буцаана уу), дараа нь «Илгээх»-ийг дахин дарна уу.', msToDay(dNow), pvDirtyRef.current));
+        return;
+      }
       setTodayFillMs(dNow);
       say(tr('Өдөр солигдлоо ({0}) — хуудас шинэ өдрөөр дахин ачаалагдаж байна. Ноорог сэргээгдсэний дараа «Илгээх»-ийг дахин дарна уу.', msToDay(dNow)));
       return;
@@ -2145,6 +2201,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       setResumedOid(null);
       setStagedOid(sv.oid);
       setStagedFillMs(fillMs);
+      /*
+       * ⚠️ 2026-10-05: БАРИМТЫГ АЛСЫН НООРОГТ ШУУД БИЧИЖ ХҮЛЭЭНЭ (`useDraftSync.pushReceipts`-ийн ⚠️).
+       *    Урьд нь баримт зөвхөн 3 сек-ийн хойшлуулсан `flush`-аар очдог тул тэр бичилт буугаагүй
+       *    бол өөр төхөөрөмж илгээсэн нүдийг «илгээгээгүй» гэж ДАХИН илгээж, нэмэлтийн горимд
+       *    хоёр дахин нэмэгддэг байв. `busy` хэвээр — засварын бүх зам хаалттай. Унавал илгээлт
+       *    УНАХГҮЙ (аль хэдийн хадгалагдсан): төгсгөлийн мэдэгдэлд ил анхааруулна (`rcWarn`), ердийн
+       *    `flush` цааш дахин оролдоно.
+       */
+      let rcWarn = '';
+      {
+        const rc = await pushReceipts(pkg.key);
+        if (!rc.ok) rcWarn = tr('⚠️ илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хуулагдсангүй ({0}) — автоматаар дахин оролдоно. «Ноорог хуулагдав» гэж гартал энэ хуудсыг бүү хаа, өөр компьютер/хөтчөөс энэ багцыг бүү илгээ (нүд давхар тоологдож болзошгүй).', rc.why);
+      }
 
       /*
        * ── ХЯНАЛТАД АВТОМАТААР ОРУУЛНА ──────────────────────────────────
@@ -2241,14 +2310,16 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          ИЛ ХЭЛНЭ (2026-09-07): хориг хасагдсан тул хэрэглэгч мэдэлгүй
          хянагчийн харж буй агуулгыг сольж болно. Шинэ ТОЙРОГ үүсээгүй —
          `submitForReview` тэр өдрийн нээлттэй бүртгэлийг л буцаана. */
-      done(!rv.ok
+      done((!rv.ok
         ? tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error)
         : rv.reused
           /* ⚠️ `rv.reused` — ХЯНАЛТЫН ХАРИУНААС, publish-ээс өмнөх `inReview`
              тугаас БИШ (2026-09-07-ны шалгалт): тэр туг нь хуучирсан төлөвөөс
              тооцогддог тул «шинэ тойрог үүсэв» гэж ХУДАЛ мэдэгдэж болзошгүй. */
           ? tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.', rv.id, nCells, reviewStage ? STAGE_LABEL[reviewStage] : '')
-          : tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells));
+          : tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells))
+        /* ⚠️ 2026-10-05: баримт алсад хуулагдаагүй бол ИЛ (дээрх `rcWarn`) */
+        + (rcWarn ? ' · ' + rcWarn : ''));
     } catch (e) {
       setErr(userError(e));
     } finally {
@@ -2256,7 +2327,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
   }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
-    stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn]);
+    stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -2409,7 +2480,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         <FilterBar
           locked={locked} busy={busy} noPerf={noPerf} fillMode={fillMode} toggleFill={toggleFill}
           pkg={pkg} setPkg={setPkg} confirmSwitch={confirmSwitch} groupOpts={groupOpts} floorOpts={floorOpts}
-          asOf={asOf} setAsOf={setAsOf} dateOpts={dateOpts}
+          asOf={asOf} setAsOf={setAsOfUser} dateOpts={dateOpts}
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
         />
@@ -2577,7 +2648,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         </div>
       )}
 
-      <FillDatePicker pick={pick} setPick={setPick} busy={busy} say={say} setAsOf={setAsOf} commitDate={commitDate} pendDate={pendDate} />
+      <FillDatePicker pick={pick} setPick={setPick} busy={busy} say={say} setAsOf={setAsOfUser} commitDate={commitDate} pendDate={pendDate} />
 
       <NoticeToast notice={notice} onClose={() => setNotice(null)} />
 

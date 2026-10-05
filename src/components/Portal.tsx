@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
   type CSSProperties, type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
@@ -10,7 +10,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
 import { loadNavBadges, makeBadgeRefresher, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
-import { subscribeData } from '@/lib/dataBus';
+import { subscribeData, invalidateAll, dataRefreshedAt } from '@/lib/dataBus';
+import { friendlyError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -201,6 +202,30 @@ function useColumnResize(
 
   return { width, dragging, onPointerDown, onDoubleClick, onKeyDown };
 }
+
+/**
+ * ⚠️ 2026-10-05: СҮЛЖЭЭНИЙ ТӨЛӨВ (`navigator.onLine` + online/offline үйл явдал) — толгойн
+ *    «Сүлжээний холболт тасарсан» туузад. `subscribe` нь модулийн түвшинд (тогтмол лавлагаа —
+ *    `useSyncExternalStore` рендер бүрд дахин бүртгэхгүй).
+ * ⚠️ `onLine === true` нь интернэт БАЙГАА гэсэн баталгаа биш (зөвхөн сүлжээний интерфейс) —
+ *    тиймээс тууз нь зөвхөн ТАСАРСАН-ыг хэлнэ; хүсэлтийн алдаа урьдын адил карт бүрд гарна.
+ */
+const subscribeOnline = (fn: () => void): (() => void) => {
+  window.addEventListener('online', fn);
+  window.addEventListener('offline', fn);
+  return () => {
+    window.removeEventListener('online', fn);
+    window.removeEventListener('offline', fn);
+  };
+};
+const isOnline = (): boolean => navigator.onLine;
+
+/** Таб ЭНЭ хугацаанаас удаан нуугдаад буцаж ирвэл бүх кэшийг хаяна (`live.SESSION_TTL_MS`-тэй ижил) */
+const AWAY_REFRESH_MS = 5 * 60_000;
+const hhmm = (ms: number): string => {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 /**
  * Гадна бүрхүүл — зөвхөн контекстүүдийг өгнө.
@@ -527,6 +552,36 @@ function PortalContent(
       && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
     return true;
   }, []);
+  /**
+   * ⚠️ 2026-10-05: ӨГӨГДЛИЙН ШИНЭЧЛЭЛ. Кэшийн TTL нь ДАРААГИЙН дуудалтад л шалгагддаг тул
+   *    нээлттэй харагдац өөрөө хэзээ ч дахин татдаггүй, `invalidateAll` зөвхөн хэл солиход
+   *    холбогдсон байв — өглөө нээсэн дашбоард оройн тоог F5 дартал харуулдаггүй.
+   *    (а) толгойн «Шинэчлэх» товч + «Өгөгдөл: HH:MM» (сүүлд БҮТНЭЭР шинэчилсэн / сешн эхэлсэн цаг);
+   *    (б) таб `AWAY_REFRESH_MS`-ээс удаан нуугдаад буцаж ирэхэд автоматаар.
+   * ⚠️ ХАДГАЛААГҮЙ ЗАСВАРТАЙ үед (б) АЖИЛЛАХГҮЙ, (а) асууна — дахин таталт засварын маягтын
+   *    суурь өгөгдлийг сольж болзошгүй. `confirmLeave`-тэй ИЖИЛ гурван туг.
+   */
+  const dataAt = useSyncExternalStore(subscribeData, dataRefreshedAt, () => 0);
+  const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
+  const refreshData = useCallback(() => {
+    const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0;
+    if (dirty && !window.confirm(tr('Хадгалаагүй засвар байна. Өгөгдлийг шинэчлэхэд засвар алдагдаж болзошгүй. Шинэчлэх үү?'))) return;
+    invalidateAll();
+  }, []);
+  useEffect(() => {
+    let hiddenAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const away = hiddenAt == null ? 0 : Date.now() - hiddenAt;
+      hiddenAt = null;
+      if (away <= AWAY_REFRESH_MS) return;
+      if (planNavBusy() || finNavDirty() || navDirtyLabels().length > 0) return;
+      invalidateAll();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
   const setView = useCallback((v: ViewKey): boolean => {
     if (v !== viewNowRef.current && !confirmLeave()) return false;
     setViewState(v);
@@ -791,6 +846,13 @@ function PortalContent(
 
   return (
     <>
+      {/* ⚠️ 2026-10-05: сүлжээ тасарсан тууз — `role="status"` (`alert` биш: `Booting` нь
+          `[role="alert"]`-ыг «харагдац унасан» дохио гэж уншдаг). Товшилтыг хаахгүй. */}
+      {!online && (
+        <div className={s.offline} role="status" aria-live="polite">
+          {tr('Сүлжээний холболт тасарсан')}
+        </div>
+      )}
       {/* ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДАВ — харагдац бүр өөр өнгөөр
           будагддаг байсныг байгууллагын НЭГ акцентад (globals.css) нэгтгэв.
           Мөн `shellCat` хасагдав: каталог багана биш, зурган дээрх popup боллоо. */}
@@ -835,6 +897,20 @@ function PortalContent(
               «СИСТЕМ» бүлэгт, хамгийн доод талд шилжив. Толгойд зөвхөн БҮХ
               хэрэглэгчид хамаатай хоёр солигч (хэл, гэрэлтүүлэг) үлдэнэ. */}
           <div className={s.headTools}>
+            {/* ⚠️ 2026-10-05: өгөгдлийн цаг + гараар шинэчлэх (дээрх `refreshData`-ийн ⚠️) */}
+            <span className={s.dataAt} title={tr('Өгөгдлийг сүүлд бүтнээр шинэчилсэн цаг')}>
+              {tr('Өгөгдөл: {0}', hhmm(dataAt))}
+            </span>
+            <button
+              type="button"
+              className={s.iconBtn}
+              onClick={refreshData}
+              aria-label={tr('Шинэчлэх')}
+              title={tr('Бүх өгөгдлийг дахин татах')}
+            >
+              <span aria-hidden style={{ fontSize: 17, lineHeight: 1 }}>↻</span>
+            </button>
+
             <LocaleToggle className={s.iconBtn} />
 
             <button
@@ -1172,7 +1248,18 @@ function SummaryBar({ zone }: { zone: string | null }) {
   }, [where]);
 
   if (q.state === 'error') {
-    return <div className={s.sumBar} role="alert"><span className={s.sumLabel}>{tr('Үзүүлэлт татагдсангүй')}</span></div>;
+    /* ⚠️ 2026-10-05: шалтгаан (`friendlyError`) + «Дахин оролдох». Урьд нь дөрвөн асуулгын аль нэг
+       унахад нүцгэн «Үзүүлэлт татагдсангүй» л гарч, F5-аас өөр гарцгүй байв. */
+    return (
+      <div className={s.sumBar} role="alert">
+        <span className={s.sumLabel} style={{ whiteSpace: 'normal' }} title={q.error.message}>
+          {tr('Үзүүлэлт татагдсангүй')} — {friendlyError(q.error)}
+        </span>
+        {q.retry && (
+          <button type="button" className={s.sumRetry} onClick={q.retry}>{tr('Дахин оролдох')}</button>
+        )}
+      </div>
+    );
   }
   if (q.state !== 'ready') return <div className={s.sumBar} />;
 

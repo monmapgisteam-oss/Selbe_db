@@ -19,7 +19,7 @@ import { invalidate } from './dataBus';
 import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
-import { collidedIds, idNum, renumberPlan } from './idUnique';
+import { collidesBelow, idNum, renumberPlan } from './idUnique';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -548,16 +548,44 @@ export const updateRows = (rows: Attrs[]) => edit('updates', rows);
 export async function ensureUniqueId(oid: number, id: string): Promise<string> {
   const n = idNum(id);
   if (!(oid > 0) || n == null) return id;
+  let cur = n;
+  let out = id;
   try {
-    const idRows = (await queryAll()).map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) }));
-    const hit = collidedIds(idRows, new Set([oid]), [n]);
-    if (!hit.length) return id;
-    const nid = `G-${String(renumberPlan(idRows, hit).get(n)).padStart(6, '0')}`;
-    await updateRows([{ [HYANALT.oid]: oid, [F.id]: nid }]);
-    return nid;
+    /* ⚠️ 2026-10-05: ТЭНЦҮҮЛЭГЧ — зөвхөн ИХ OBJECTID-тай тал шилжинэ (`collidesBelow`-ийн ⚠️).
+       Урьд нь хоёр тал хоёулаа max+1 рүү шилжиж дахин давхцдаг байв. Гурав ба түүнээс олон
+       зэрэг бичилтэд хожуу хоёр нь дахин давхцаж болох тул цөөн удаа давтана. */
+    for (let i = 0; i < 3; i += 1) {
+      const idRows = (await queryAll()).map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) }));
+      if (!collidesBelow(idRows, oid, cur)) return out;
+      const next = renumberPlan(idRows, [cur]).get(cur) as number;
+      const nid = `G-${String(next).padStart(6, '0')}`;
+      await updateRows([{ [HYANALT.oid]: oid, [F.id]: nid }]);
+      cur = next;
+      out = nid;
+    }
+    return out;
   } catch (e) {
     console.warn('[selbe] бүртгэлийн дугаарын давхардлын шалгалт унав:', e);
-    return id;
+    return out;
+  }
+}
+
+/**
+ * ӨӨРИЙН ДӨНГӨЖ НЭМСЭН давхар мөрийг устгана (2026-10-05, `hyanaltSubmit.submitForReview`).
+ * ⚠️ ArcGIS алдааг HTTP 200 · мөр бүрийн `success:false`-оор буцаадаг — хоёуланг шалгана.
+ * @returns устсан эсэх (шидэхгүй — дуудагч уналтыг өөрөө шийднэ)
+ */
+export async function deleteRow(oid: number): Promise<boolean> {
+  if (!(Number.isInteger(oid) && oid > 0)) return false;
+  try {
+    const j = (await post('/applyEdits', { deletes: String(oid) })) as { deleteResults?: { success?: boolean }[] };
+    const res = j.deleteResults ?? [];
+    const ok = res.length === 1 && res[0].success === true;
+    if (ok) invalidate('HYANALT');
+    return ok;
+  } catch (e) {
+    console.warn('[selbe] давхар хяналтын мөрийг устгаж чадсангүй:', e);
+    return false;
   }
 }
 

@@ -108,6 +108,10 @@ export type ParseMsg = {
   dateBad: (label: string, v: string) => string;
   /** «{label}» — тоо буруу: {v} */
   numBad: (label: string, v: string) => string;
+  /** «{label}» — таслал мянгатын уу, аравтын уу тодорхойгүй: {v} (2026-10-05) */
+  numAmbig: (label: string, v: string) => string;
+  /** «{label}» — хувь 0–100 хооронд байх ёстой: {v} (2026-10-05) */
+  pctRange: (label: string, v: string) => string;
 };
 
 /** Анхдагч (орчуулгагүй) текст — тест ба `msg`-гүй дуудалтад */
@@ -115,6 +119,8 @@ export const PARSE_MSG_MN: ParseMsg = {
   dateFmt: (l, v) => `«${l}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: ${v}`,
   dateBad: (l, v) => `«${l}» — огноо буруу: ${v}`,
   numBad: (l, v) => `«${l}» — тоо буруу: ${v}`,
+  numAmbig: (l, v) => `«${l}» — «${v}»: таслал мянгатын уу, аравтын уу тодорхойгүй. Таслалгүй (1250) эсвэл цэгтэй (1.25) бичнэ үү.`,
+  pctRange: (l, v) => `«${l}» — хувь 0–100 хооронд байх ёстой: ${v}`,
 };
 
 /** `YYYY-MM-DD` хэлбэр ба ХУАНЛИД байгаа эсэх (2026-02-30 → 03-02 руу гүйхгүй) */
@@ -170,11 +176,32 @@ export function parseCell(
        утгатай. Одоо: `12,5` / `12,50` → аравтын; `1,234` / `1,234.5` → мянгатын;
        бусад таслалтай хэлбэр → «тоо буруу» (чимээгүй таамаглахгүй). */
     const t = v.replace(/[\s ]/g, '');
-    const u = (pct ? /^-?\d+,\d+$/ : /^-?\d+,\d{1,2}$/).test(t)
-      ? t.replace(',', '.')
-      : /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) ? t.replace(/,/g, '') : t;
+    /* ⚠️ 2026-10-05: «Гүйцэтгэл бөглөх»-ийн дүрэмтэй (`sheet/paste.normCell` ·
+       `isAmbiguousComma`) НЭГ болгов — урьд нь «0,125» мянгатын хэвд таарч 125 болдог
+       байв (бөглөх хуудас ижил текстийг 0.125 гэж уншдаг). Одоо:
+         · `1,234,567` (2+ бүлэг) · `1,234.5` → мянгат; `1.234,5` → цэг мянгат, таслал аравтын;
+         · `0,125` · `12,5` · `1234,5` · `1234,5678` → аравтын (мянгатын бичлэг байж ЧАДАХГҮЙ);
+         · `1,250` (1–3 орон + яг 3 орон) → ТОДОРХОЙГҮЙ: таамаглахгүй, `numAmbig` алдаа;
+         · хувийн талбарт (`pct`) нэг таслал ҮРГЭЛЖ аравтын (2026-09-30-ны ⚠️ хэвээр).
+       ⚠️ `paste.ts`-ээс ИМПОРТЛООГҮЙ, дүрмийг давтав — энэ файл импортгүй байх ёстой
+          (файлын толгойн ⚠️). `paste.ts`-ийн дүрэм өөрчлөгдвөл ЭНД ч өөрчил. */
+    let u = t;
+    const hasComma = t.includes(',');
+    if (hasComma && t.includes('.')) {
+      if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(t)) u = t.replace(/,/g, '');
+      else if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) u = t.replace(/\./g, '').replace(',', '.');
+      else throw new Error(msg.numBad(label, v));
+    } else if (hasComma) {
+      if (/^-?\d{1,3}(,\d{3}){2,}$/.test(t)) u = t.replace(/,/g, '');
+      else if (!/^-?\d+,\d+$/.test(t)) throw new Error(msg.numBad(label, v));
+      else if (!pct && /^-?[1-9]\d{0,2},\d{3}$/.test(t)) throw new Error(msg.numAmbig(label, v));
+      else u = t.replace(',', '.');
+    }
     const x = Number(u);
     if (!Number.isFinite(x)) throw new Error(msg.numBad(label, v));
+    /* ⚠️ 2026-10-05: хувийн талбар (0–100) сөрөг эсвэл 100-аас их байж болохгүй — урьд нь
+       «-20» / «250» шууд бичигдэж `Cashflow_dun` сөрөг/гэрээнээс их болон S-муруйд ордог байв. */
+    if (pct && (x < 0 || x > 100)) throw new Error(msg.pctRange(label, v));
     return x;
   }
   return v;

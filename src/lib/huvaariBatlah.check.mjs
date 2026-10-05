@@ -538,7 +538,8 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
   const iOb = sv.indexOf('applyPlanEdits(obEdits)');
   assert.ok(iMark > 0 && iMark < iRef && iRef < iUpd && iUpd < iOb, 'Huvaari.save: хагас бичилтийн тэмдэг анхны бичилтээс ӨМНӨ биш');
   /* ⚠️ 2026-10-01: ЗӨВХӨН нэг ч мөр бичигдээгүй (`written === 0`) үед тэмдгийг арилгаж болно */
-  const svNo0 = sv.replace(/if \(await clearPlanPartial\(approving\)\) partialRef\.current = null;/, '');
+  /* ⚠️ 2026-10-05: `/g` — сарын обьёмын catch ч мөн `written === 0`-д тэмдгийг арилгана (хоёр газар) */
+  const svNo0 = sv.replace(/if \(await clearPlanPartial\(approving\)\) partialRef\.current = null;/g, '');
   assert.ok(/written\)?\s*===\s*0 && partialRef\.current === approving/.test(sv), 'Huvaari.save: тэмдэг арилгах нь written === 0-оор хамгаалагдаагүй');
   assert.ok(!/partialRef\.current = null/.test(svNo0), 'Huvaari.save: partialRef-ийг decidePlan-аас ӨМНӨ арилгаж байна');
   /* obLost нь батлах горимын «бүгд эсвэл юу ч үгүй» шалгуурт */

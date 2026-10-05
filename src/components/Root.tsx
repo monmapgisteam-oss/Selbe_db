@@ -10,7 +10,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
-import { resolveAccess, roleOf, subscribe } from '@/lib/permissions';
+import { remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import { roleAccess } from '@/lib/roleTypes';
 import {
   ALL_MODE_HIDE,
@@ -108,7 +108,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, signOut, status, user, accessLost } = useAuth();
+  const { authorized, signIn, signOut, status, user, accessLost, recheckPerms } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -383,6 +383,20 @@ export default function Root() {
   /* ⚠️ Нэг ч харагдацгүй (админ бүгдийг унтраасан / шинэ бүртгэл) — «энэ хэсэг»
      биш «ерөөсөө» гэсэн ӨӨР мессеж (2026-09-21, `openEntry`-ийн тайлбар). */
   const noViews = Array.isArray(allowed) && !allowed.length;
+  /*
+   * ⚠️ 2026-10-05: ЭРХИЙН ХҮСНЭГТ УНШИГДААГҮЙ бол ЖИНХЭНЭ шалтгааныг хэлнэ. Хатуу жагсаалтын
+   *    хэрэглэгч remote-гүй ч нэвтэрдэг (`AuthGate`: `permsRead = remoteOk || !!hard`), гэвч
+   *    урсгалтай харагдац ба override нь remote уншигдтал ХААЛТТАЙ (fail-closed —
+   *    `permissions.resolveAccess` · `workflowViewsOf`). Урьд нь тэр хүн «Танд харагдац
+   *    олгогдоогүй — админд хандана уу» гэсэн ХУДАЛ шалтгаан хардаг байв: эрх нь хасагдаагүй,
+   *    зөвхөн жагсаалт уншигдаагүй. «Уншиж чадсангүй» текст урьд нь зөвхөн татгалзлын
+   *    дэлгэцэд (`AuthNotice`) байсан.
+   * ⚠️ Эрх НЭЭГДЭХГҮЙ — зөвхөн мессеж ба «Дахин оролдох». Уншилт бүтмэгц store-ийн
+   *    мэдэгдлээр (`subscribe`) энэ компонент дахин зурагдаж Portal нээгдэнэ; 15 сек тутмын
+   *    автомат шалгалт ч хэвээр. `remoteReady()`-г рендерт шууд уншина (тэр store-ийн төлөв).
+   */
+  const permsDown = status === 'signed-in' && !remoteReady();
+  const [rechecking, setRechecking] = useState(false);
 
   return (
     <>
@@ -421,7 +435,26 @@ export default function Root() {
             }}
           >
             <div style={{ display: 'grid', gap: 14, justifyItems: 'center' }}>
-              {noViews ? (
+              {permsDown ? (
+                <>
+                  <p style={{ margin: 0 }}>{tr('Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.')}</p>
+                  <p style={{ margin: 0, fontSize: '0.8rem' }}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                  <button
+                    type="button"
+                    disabled={rechecking}
+                    onClick={() => {
+                      setRechecking(true);
+                      void recheckPerms().finally(() => setRechecking(false));
+                    }}
+                    style={{
+                      padding: '8px 18px', borderRadius: 8, border: '1px solid var(--line)',
+                      background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
+                    }}
+                  >
+                    {rechecking ? tr('Шалгаж байна…') : tr('Дахин оролдох')}
+                  </button>
+                </>
+              ) : noViews ? (
                 <>
                   <p style={{ margin: 0 }}>{tr('Танд харагдац олгогдоогүй байна — админд хандана уу.')}</p>
                   <p style={{ margin: 0, fontSize: '0.8rem' }}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>

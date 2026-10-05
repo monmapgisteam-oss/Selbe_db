@@ -2,7 +2,7 @@
 
 import {
   Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useState,
-  type ReactNode,
+  type CSSProperties, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
@@ -41,7 +41,7 @@ import { loadLandStatus, type LandStatus } from '@/lib/land';
 import { cat, mnt, num, pct, shade, shades, tint, CAT_LIGHT, NO_DATA, km, monthKey } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
-  loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress,
+  loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
   cached,
   type Headline, type SocialLive, type Budget, type PkgProgressRow,
 } from '@/lib/live';
@@ -242,7 +242,8 @@ const loadLeftParcels = cached<Row[]>(
   () => queryFeatures(PARCEL_LEFT.url, {
     outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.landuse, PL.note],
   }),
-  undefined,
+  /* ⚠️ 2026-10-05: бусад DashData ачаалагчтай ЖИГД 5 мин TTL (`live.SESSION_TTL_MS`-ийн ⚠️) */
+  SESSION_TTL_MS,
   /* ⚠️ `loadClearance` (live.ts) МӨН ЭНЭ хүснэгтээс уншдаг — хоёулаа ижил
      тагтай байх ёстой, эс бөгөөс нэг нь шинэчлэгдээд нөгөө нь хоцорно. */
   ['PARCEL_LEFT'],
@@ -392,8 +393,43 @@ const statusWhere = (label: string): string =>
  *    хэрэглэгч хүлээгээд л байдаг. 09-25-нд `schedule`/`bagts`/`network`-д
  *    зассантай ижил ангилал; энд нүүр хэсгийн үлдсэн нүднүүдэд.
  */
-const dots = (...qs: { state: string }[]): string =>
-  qs.some((q) => q.state === 'loading') ? '…' : '—';
+/**
+ * ⚠️ 2026-10-05: УНАСАН эх сурвалж «—» БИШ, «⚠». Урьд нь алдаа ба «мэдээлэлгүй» хоёулаа
+ *    «—» болж, хэрэглэгч «өгөгдөл алга» гэж уншдаг байв (унасан ачаалалт ≠ хоосон утга).
+ *    «—» одоо зөвхөн АЧААЛАГДСАН ч утгагүй үед. Тэмдгийг `FailVal` шалтгаан (title) ба
+ *    «дахин оролдох»-той зурна.
+ */
+const ERR_MARK = '⚠';
+type AsyncLike = { state: string; error?: Error | null; retry?: () => void };
+type Dots = (...qs: AsyncLike[]) => string;
+const dots: Dots = (...qs) =>
+  qs.some((q) => q.state === 'loading') ? '…' : qs.some((q) => q.state === 'error') ? ERR_MARK : '—';
+const failedOf = (...qs: AsyncLike[]): AsyncLike | null => qs.find((q) => q.state === 'error') ?? null;
+/**
+ * `Headline`-ийн тоон талбар → бичвэр. ⚠️ 2026-10-05: ХЭСЭГЧИЛСЭН үр дүнгийн (`h.partial` — аль
+ * нэг эх унасан) NaN нь «мэдээлэлгүй» БИШ «татагдсангүй» тул «⚠»; урьд нь `num(NaN)` → «—».
+ */
+const hVal = (h: Headline, v: number, fmt: (n: number) => string): string =>
+  h.partial && Number.isNaN(v) ? ERR_MARK : fmt(v);
+
+/** «⚠» — шалтгаан нь title-д; `retry` байвал дарж ЗӨВХӨН тэр хүсэлтийг дахин явуулна */
+function FailVal({ q }: { q: AsyncLike }) {
+  const why = friendlyError(q.error);
+  const style: CSSProperties = { color: 'var(--bad-ink)', font: 'inherit', background: 'none', border: 0, padding: 0 };
+  return q.retry ? (
+    <button
+      type="button"
+      onClick={q.retry}
+      title={`${why} · ${tr('Дахин оролдох')}`}
+      aria-label={`${why} · ${tr('Дахин оролдох')}`}
+      style={{ ...style, cursor: 'pointer' }}
+    >
+      {ERR_MARK}
+    </button>
+  ) : (
+    <span role="img" title={why} aria-label={why} style={style}>{ERR_MARK}</span>
+  );
+}
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -790,7 +826,18 @@ const infraPackList = (pred: (b: string) => boolean) =>
  * шаардлагагүй. Амьд өгөгдөл ирээгүй бол «…». (◆ pinned төлөв УСТСАН —
  * бүх утга амьд.)
  */
-function railStat(k: SecKey, d: DashData): {
+/* ⚠️ 2026-10-05: `railStatOf`-ийг ороож, «⚠» гаргасан УНАСАН хүсэлтийг (`failed`) хамт буцаана —
+   `SideRail` шалтгааныг нь title-д харуулна. Тооцоо (доорх бие) ӨӨРЧЛӨГДӨӨГҮЙ: `dots` нь параметр. */
+function railStat(k: SecKey, d: DashData): ReturnType<typeof railStatOf> & { failed: AsyncLike | null } {
+  let failed: AsyncLike | null = null;
+  const st = railStatOf(k, d, (...qs) => {
+    failed ??= failedOf(...qs);
+    return dots(...qs);
+  });
+  return { ...st, failed };
+}
+
+function railStatOf(k: SecKey, d: DashData, dots: Dots): {
   value: string;
   note: string;
   /** Байвал жагсаалтын мөрөнд нимгэн явцын зурвас зурна */
@@ -852,7 +899,7 @@ function railStat(k: SecKey, d: DashData): {
       // АМЬД — хилийн давхаргын Hec_area (урьд нь бэхлэгдсэн 158 га ◆)
       const h = d.headline.state === 'ready' ? d.headline.data : null;
       return {
-        value: h == null ? dots(d.headline) : tr('{0} га', num(h.areaHa, 1)),
+        value: h == null ? dots(d.headline) : hVal(h, h.areaHa, (n) => tr('{0} га', num(n, 1))),
         note: blocks == null ? dots(d.bagts) : tr('{0} блок · {1} өрх', num(blocks), num(ail)),
       };
     }
@@ -969,7 +1016,7 @@ function railStat(k: SecKey, d: DashData): {
       const h = d.headline.state === 'ready' ? d.headline.data : null;
       const soc = d.social.state === 'ready' ? d.social.data : null;
       return {
-        value: h == null ? dots(d.headline) : num(h.population),
+        value: h == null ? dots(d.headline) : hVal(h, h.population, (n) => num(n)),
         note: soc == null ? dots(d.social) : tr('{0} нийгмийн байгууламж', num(soc.totalN)),
       };
     }
@@ -1004,7 +1051,15 @@ function SideRail({ d, open, toggle }: {
             {/* ⚠️ 2026-08-17: Явцын зурвас ба тайлбар мөр ХАСАГДСАН
                 (хэрэглэгчийн хүсэлт) — нүд бүрд ЗӨВХӨН нэр ба утга. Дэлгэрэнгүй
                 нь хэсгийг дарж нээхэд баруун самбарт бүтнээрээ гарна. */}
-            <b className={`${o.railVal} num`}>{st.value}</b>
+            {/* ⚠️ 2026-10-05: «⚠» дээр шалтгаан (title). Нүд өөрөө товч тул дотор нь товч тавихгүй —
+                дарж хэсгийг нээхэд `Data`-гийн «Дахин оролдох» гарна. */}
+            <b
+              className={`${o.railVal} num`}
+              title={st.value === ERR_MARK ? (st.failed ? friendlyError(st.failed.error) : tr('Өгөгдөл татагдсангүй')) : undefined}
+              style={st.value === ERR_MARK ? { color: 'var(--bad-ink)' } : undefined}
+            >
+              {st.value}
+            </b>
           </button>
         );
       })}
@@ -1062,10 +1117,11 @@ function IndStrip({ d }: { d: DashData }) {
    * тайлбартай ижил зарчим) тул түүний `pct`-ийг ШУУД авна.
    */
   const clearedPct = l?.pct ?? null;
-  const cells = [
-    { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? tr('{0} га', num(h.areaHa, 1)) : dots(d.headline) },
-    { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? num(h.population) : dots(d.headline) },
-    { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : dots(d.bagts) },
+  /* ⚠️ 2026-10-05: `q` — нүдний эх хүсэлт; унасан бол «⚠» (`FailVal`: шалтгаан + дахин оролдох) */
+  const cells: { icon: string; label: string; v: string; q: AsyncLike }[] = [
+    { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? hVal(h, h.areaHa, (n) => tr('{0} га', num(n, 1))) : dots(d.headline), q: d.headline },
+    { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? hVal(h, h.population, (n) => num(n)) : dots(d.headline), q: d.headline },
+    { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : dots(d.bagts), q: d.bagts },
     /**
      * ⚠️ ШОШГЫГ ЯЛГАВ (2026-09-11): «Төслийн гүйцэтгэл» → «Биет гүйцэтгэл
      * (сарын тайлан)». Урьд нь ЭНЭ нүд ба `execData.buildProgressOf`-ийн
@@ -1089,8 +1145,8 @@ function IndStrip({ d }: { d: DashData }) {
     /* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)» — HeadKpi-тэй нэг нэр, нэг тоо */
     /* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; ачаалагдсан ч утгагүй
        (эсвэл унасан) бол «—» — `railStat`/`ScheduleDetail`-ийн 09-25-ны засвартай ижил */
-    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall != null ? pct(overall, 1) : d.fin.state === 'loading' ? '…' : '—' },
-    { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : dots(d.land) },
+    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall != null ? pct(overall, 1) : dots(d.fin), q: d.fin },
+    { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : dots(d.land), q: d.land },
   ];
   return (
     <div className={o.ind} aria-label={tr('Гол үзүүлэлт')}>
@@ -1099,7 +1155,7 @@ function IndStrip({ d }: { d: DashData }) {
           <span className={o.indLabel}>{c.label}</span>
           <span className={o.indBottom}>
             <span className={o.indIcon}><Icon name={c.icon} size={20} /></span>
-            <b className={`${o.indVal} num`}>{c.v}</b>
+            <b className={`${o.indVal} num`}>{c.v === ERR_MARK ? <FailVal q={c.q} /> : c.v}</b>
           </span>
         </div>
       ))}
@@ -1436,10 +1492,11 @@ export function HeadKpi({ bagts, extra }: {
    * болж, зурвасын доод ирмэг тасархай харагддаг байв. Мөн тэдгээр нь өөрсдөө
    * KPI биш ТАЙЛБАР — нүдний гол тоог сулруулж байлаа.
    */
-  const tiles: { v: string; unit?: string; label: string; lead?: true; title?: string }[] = [
-    { v: h == null ? dots(hq) : num(h.areaHa, 1), unit: tr('га'), label: tr('Төслийн талбай') },
-    { v: ail == null ? dots(bagts) : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц') },
-    { v: h == null ? dots(hq) : num(h.population), unit: tr('хүн'), label: tr('Хамрагдах хүн ам') },
+  /* ⚠️ 2026-10-05: `q` — нүдний эх хүсэлт; унасан бол «⚠» (`FailVal`), «—» биш */
+  const tiles: { v: string; unit?: string; label: string; lead?: true; title?: string; q?: AsyncLike }[] = [
+    { v: h == null ? dots(hq) : hVal(h, h.areaHa, (n) => num(n, 1)), unit: tr('га'), label: tr('Төслийн талбай'), q: hq },
+    { v: ail == null ? dots(bagts) : num(ail), unit: tr('өрх'), label: tr('Өрхийн орон сууц'), q: bagts },
+    { v: h == null ? dots(hq) : hVal(h, h.population, (n) => num(n)), unit: tr('хүн'), label: tr('Хамрагдах хүн ам'), q: hq },
     /* ⚠️ 2026-09-06: `bar` (гүйцэтгэлийн зурвас) ХАСАГДАВ. Гүйцэтгэл 4.18%
        үед дүүргэлт нь 2px өндөр замын 4% буюу үл үзэгдэх богино байсан тул
        нүдэн дээр «санамсаргүй зураас» мэт харагдаж, бусад ДӨРВӨН нүдэнд
@@ -1458,13 +1515,13 @@ export function HeadKpi({ bagts, extra }: {
       /* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; утгагүй/унасан бол «—»
          (мөнхийн «…» биш) — `ScheduleDetail`-ийн 09-25-ны засвартай ижил */
       /* ⚠️ 2026-10-04: 1 оронтой — IndStrip (`pct(overall, 1)`) · 02 · rail-тай НЭГ бичлэг */
-      v: p.actual != null ? num(p.actual, 1) : pq.state === 'loading' ? '…' : '—', unit: '%',
+      v: p.actual != null ? num(p.actual, 1) : dots(pq), unit: '%', q: pq,
       label: tr('Биет гүйцэтгэл (багцаар)'),
       title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, багцын ХО дүнгээр жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },
     {
-      v: h == null ? dots(hq) : num(h.investTotal), unit: tr('₮'), label: tr('Төслийн нийт төсөв'),
+      v: h == null ? dots(hq) : hVal(h, h.investTotal, (n) => num(n)), unit: tr('₮'), label: tr('Төслийн нийт төсөв'), q: hq,
       /* ⚠️ 2026-09-21: `investTotal` = `finXlInTotal` хүрээ (Excel-ийн НИЙТ мөр, 2,493 тэрбум) */
       title: tr('Орон сууцны хороолол ба ГИШС-ийн хүрээний төсөвт өртөг (Excel-ийн НИЙТ мөр); нийгмийн дэд бүтэц, газар чөлөөлөлт, бондын хүү ОРОХГҮЙ'),
     },
@@ -1484,7 +1541,9 @@ export function HeadKpi({ bagts, extra }: {
               * үлдэж, KPI зурвас бүхэлдээ уншигдахаа больсон байв. `Stat`-ийн
               * `statValueLong`-той ЯГ ижил зарчим: хэмжээг УТГЫН УРТААР шийднэ.
               */}
-            <b className={`${String(t.v).length >= 10 ? o.tileValLong : ''} num`}>{t.v}</b>
+            <b className={`${String(t.v).length >= 10 ? o.tileValLong : ''} num`}>
+              {t.v === ERR_MARK && t.q ? <FailVal q={t.q} /> : t.v}
+            </b>
             {t.unit && <i>{tr(t.unit)}</i>}
           </span>
           <span className={o.tileLabel}>{t.label}</span>

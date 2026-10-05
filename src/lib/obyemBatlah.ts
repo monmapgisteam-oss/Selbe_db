@@ -479,10 +479,165 @@ export async function submitObyem(args: {
     });
     if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('OBYEM_BATLAH');
+    /*
+     * ⚠️ 2026-10-05: ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (`huvaariBatlah.submitPlan`-ийн загвар). Дээрх
+     *    `loadPending` шалгалт ба `adds` хоёрын завсарт хоёр инженер зэрэг дарвал хоёулаа
+     *    шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв. Бичсэний ДАРАА дахин уншиж,
+     *    БАГА OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
+     *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно.
+     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`.
+     */
+    const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
+    if (Number.isFinite(mine)) try {
+      const rows = await query(
+        `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${OBYEM_STATUS.pending}'`,
+        `${F.oid},${F.author}`,
+      );
+      const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
+      if (first != null && first < mine) {
+        const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        if (!editOk(del?.deleteResults)) {
+          await arcgisPost(`${url}/applyEdits`, {
+            updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: OBYEM_STATUS.withdrawn, [F.approverAt]: Date.now() } }]),
+          }).catch(() => null);
+        }
+        invalidate('OBYEM_BATLAH');
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
+        return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
+      }
+    } catch { /* давхардлыг дараагийн уншилт шийднэ */ }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
+}
+
+/**
+ * БАТЛАХ ТҮГЖЭЭ (claim) — ⚠️ 2026-10-05, `huvaariBatlah`-ийн `claimPlan`/`casClaim`-ийн загвар.
+ *
+ * ⚠️ ЯАГААД: батлах гинж нь ЭХЛЭЭД үндсэн өгөгдөлд бичээд (`applyUpdates`), ДАРАА нь төлөвийг
+ *    `approved` болгодог (`decideObyem`-ийн ⚠️). Урьдчилсан шалгалт (`dryRun`) ба бичилтийн
+ *    завсарт зохиогч ТАТАХ, өөр батлагч БУЦААХ боломжтой байсан — утга нь үндсэн өгөгдөлд
+ *    орсон атлаа «батлагдсан» бичлэг үүсэхгүй, «дахин батлах» хэзээ ч амжилтгүй.
+ * ⚠️ ХЭЛБЭР: ШИНЭ ТӨЛӨВ НЭМЭЭГҮЙ — `pending` хэвээр, `approver` = түгжигч, `approverAt` =
+ *    түгжсэн агшин. `pending` мөрийн `approver`-ийг өөр хаана ч уншдаггүй.
+ * ⚠️ ХУГАЦААТАЙ (`CLAIM_TTL`): хөтөч батлах явцад хаагдвал түгжээ мөнхөд үлдэхгүй.
+ * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ — бичсэний дараа дахин уншиж өөрийнх эсэхийг шалгана.
+ *    Зэрэг хоёр түгжилтийн завсар маш богино болно, тэг биш.
+ */
+const CLAIM_TTL = 10 * 60_000;
+const CLAIM_FIELDS = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
+/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null` */
+function claimHolder(a: Attrs, now = Date.now()): string | null {
+  if (s(a[F.status]) !== OBYEM_STATUS.pending) return null;
+  const who = s(a[F.approver])?.toLowerCase() ?? null;
+  const at = Number(a[F.approverAt]);
+  if (!who || !Number.isFinite(at) || at <= 0) return null;
+  return now - at < CLAIM_TTL ? who : null;
+}
+const heldMsg = (holder: string) => tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder);
+const decidedMsg = (by: string | null, st: string | null) => (by
+  ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, st ?? '')
+  : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
+
+/**
+ * ТҮГЖЭЭГ АТОМААР АВАХ (CAS) — цэвэр (сүлжээг `io`-оор), `huvaariBatlah.casClaim`-ийн хуулбар:
+ * (1) дахин унш — `pending`, өөр хүний хүчинтэй түгжээгүй; (2) өөр дээрээ бич;
+ * (3) дахин уншиж баталгаажуул — зэрэг бичсэн хүн ялсан бол түүний нэрийг буцаана.
+ * @returns `null` = түгжээ минийх; мөр = яагаад авч чадаагүй
+ */
+export async function casObyemClaim(
+  io: { read: () => Promise<Attrs | null>; write: (at: number) => Promise<boolean>; now?: () => number },
+  me: string,
+): Promise<string | null> {
+  const now = io.now ?? Date.now;
+  const row = await io.read();
+  if (!row) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
+  const st = s(row[F.status]);
+  if (st !== OBYEM_STATUS.pending) return decidedMsg(s(row[F.approver]), st);
+  const h = claimHolder(row, now());
+  if (h && h !== me) return heldMsg(h);
+  const at = now();
+  if (!(await io.write(at))) return tr('ArcGIS-т хадгалагдсангүй.');
+  const back = await io.read();
+  const who = back ? s(back[F.approver])?.toLowerCase() ?? null : null;
+  const ok = !!back
+    && s(back[F.status]) === OBYEM_STATUS.pending
+    && who === me
+    /* Огнооны талбар секундээр тайрагдаж болзошгүй — 1 с-ийн хүлцэл */
+    && Math.abs(Number(back[F.approverAt]) - at) < 1000;
+  if (ok) return null;
+  if (back && s(back[F.status]) !== OBYEM_STATUS.pending) return decidedMsg(who, s(back[F.status]));
+  return who && who !== me ? heldMsg(who) : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.');
+}
+
+/**
+ * БАТЛАХААР ТҮГЖИХ — үндсэн өгөгдөлд бичихээс ӨМНӨ (`useObyem.decideObyemHere`), ⚠️ 2026-10-05.
+ * ⚠️ Дүрмүүд (өөрийгөө биш · хүрээ · `pending`)-ийг дуудагч ЯГ ӨМНӨ нь `decideObyem({ dryRun })`-аар
+ *    шалгасан байх ёстой — энд зөвхөн түгжээ. Амжилттай бол `withdrawObyem` ба өөр батлагчийн
+ *    `decideObyem` татгалзана.
+ */
+export async function claimObyem(args: { oid: number; approver: string }): Promise<{ ok: boolean; error?: string }> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const url = await tableUrl(false);
+  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  try {
+    const err = await casObyemClaim({
+      read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
+      write: async (at) => {
+        const j = await arcgisPost(`${url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: me, [F.approverAt]: at } }]),
+          rollbackOnFailure: 'true',
+        });
+        return editOk(j.updateResults);
+      },
+    }, me);
+    /* ⚠️ Түгжээ бичигдсэн бол кэш хуучирна (`dataBus.invariant`) */
+    if (!err) invalidate('OBYEM_BATLAH');
+    return err ? { ok: false, error: err } : { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/**
+ * ҮНДСЭН ӨГӨГДӨЛД БИЧИХИЙН ЯГ ӨМНӨХ ХАМГААЛАЛТ (⚠️ 2026-10-05, `huvaariBatlah.approveGuard`-ийн
+ * загвар): төлвийг ДАХИН уншина — `pending` хэвээр, түгжээ ӨӨРИЙНХ (хугацаа нь дуусаагүй) байх ёстой.
+ * ⚠️ Уншилт унавал ШИДНЭ (throw) — дуудагч бичихгүй (fail-closed).
+ * @returns `null` = бичиж болно; мөр = яагаад зогссон (үндсэн өгөгдөлд юу ч бичигдээгүй)
+ */
+export async function obyemApproveGuard(args: { oid: number; approver: string }): Promise<string | null> {
+  const me = args.approver.trim().toLowerCase();
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS);
+  if (!cur.length) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
+  const st = s(cur[0][F.status]);
+  if (st === OBYEM_STATUS.withdrawn) return tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.');
+  if (st !== OBYEM_STATUS.pending) return decidedMsg(s(cur[0][F.approver]), st);
+  const h = claimHolder(cur[0]);
+  if (h === me) return null;
+  if (h) return heldMsg(h);
+  return tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.');
+}
+
+/**
+ * ТҮГЖЭЭГ ТАЙЛАХ — бичилт эхлээгүй/унасан үед (⚠️ 2026-10-05). Зөвхөн ӨӨРИЙН, `pending` хэвээр
+ * мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
+ */
+export async function releaseObyemClaim(args: { oid: number; approver: string }): Promise<void> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return;
+  try {
+    const url = await tableUrl(false);
+    if (!url) return;
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS);
+    if (!cur.length || claimHolder(cur[0]) !== me) return;
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: null, [F.approverAt]: null } }]),
+      rollbackOnFailure: 'true',
+    });
+    if (editOk(j.updateResults)) invalidate('OBYEM_BATLAH');
+  } catch { /* CLAIM_TTL-ээр тайлагдана */ }
 }
 
 /**
@@ -553,7 +708,7 @@ export async function decideObyem(args: {
    *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
    *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
@@ -582,6 +737,11 @@ export async function decideObyem(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
+  /* ⚠️ 2026-10-05: ӨӨР батлагч түгжсэн (үндсэн өгөгдөлд бичиж буй — `claimObyem`) бол шийдвэр
+     гаргахгүй: хоёр дахь батлагчийн буцаалт/батлалт эхнийхийн бичилтийн дундуур орж, утга нь
+     бичигдсэн атлаа «буцаагдсан» болдог байв. Хугацаа нь дууссан түгжээ саад болохгүй. */
+  const holder = claimHolder(cur[0]);
+  if (holder && holder !== me) return { ok: false, error: heldMsg(holder) };
   /* ⚠️ 2026-09-30: урьдчилсан шалгалт — бүх дүрэм давсан, юу ч бичихгүй (`dryRun`-ийн ⚠️) */
   if (args.dryRun) return { ok: true };
   const attrs: Attrs = {
@@ -633,12 +793,16 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
-    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author}`);
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt}`);
     if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     const deny = withdrawDeny({ status: s(cur[0][F.status]), author: s(cur[0][F.author]) }, me);
     if (deny) return { ok: false, error: deny };
+    /* ⚠️ 2026-10-05: батлагч түгжсэн (үндсэн өгөгдөлд бичиж буй — `claimObyem`) үед татахгүй — эс
+       бөгөөс утга нь бичигдсэн атлаа илгээлт «татаж авсан» болж, батлагдсан бичлэг үүсэхгүй. */
+    const holder = claimHolder(cur[0]);
+    if (holder && holder !== me) return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.', holder) };
     const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approverAt]: Date.now() } }]),
+      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approver]: null, [F.approverAt]: Date.now() } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };

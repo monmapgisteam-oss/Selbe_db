@@ -53,6 +53,13 @@ export type Draft = {
   /** «Шинэчлэгдсэн огноо» (ms) — зөвхөн өөрчлөгдсөн бол */
   asOf?: number | null;
   /**
+   * `asOf`-ын ӨӨРИЙН логик агшин (⚠️ 2026-10-05) — нүдний `byAt`-тай ижил зорилго. Урьд нь
+   * `mergeDrafts` огноог НООРОГИЙН `t`-ээр шийддэг тул хамтран бөглөгчийн ХУУЧИН хуулбар (өөр
+   * нүд засаад `t` нь шинэ болсон) хожуу тавьсан огноог буцаадаг байв. Хоёр талд ХОЁУЛАНД нь
+   * байвал их нь ялна; аль нэгэнд БАЙХГҮЙ (хуучин ноорог) бол урьдын дүрэм (шинэ `t` ялна).
+   */
+  asOfAt?: number;
+  /**
    * ХУУЧИН ноорогийн нэмсэн мөрүүд (`NewRow`). 2026-09-24-өөс ЭНЭ ХУУДАС мөр
    * нэмэхгүй (Хуваарь руу шилжсэн) тул ШИНЭЭР БИЧИГДЭХГҮЙ, сэргээгдэхгүй.
    * ⚠️ ТЭСВЭРТЭЙ уншина (`parseDraft`, `mergeDrafts`): алсын/локал хуучин
@@ -588,6 +595,8 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
        хамаагүй, зүгээр л хаяна (шалгаад унагаах нь бүтэн ноорог устгана). */
     d.docs = undefined;
     if (d.asOf != null && !Number.isFinite(d.asOf)) d.asOf = undefined;
+    /* ⚠️ 2026-10-05: эвдэрсэн агшинг л хаяна — агшингүй бол хуучин дүрмээр нийлнэ */
+    if (d.asOfAt != null && !Number.isFinite(d.asOfAt)) d.asOfAt = undefined;
     /* ⚠️ ГОРИМЫН ТУГГҮЙ = ХУУЧИН (НИЙТ) НООРОГ (2026-09-25, `Draft.mode`-ийн ⚠️).
        Нүд бүрийг `=`-ээр тэмдэглэж `'inc'` болгоно — дараагийн бүх зам (нийлүүлэлт,
        `pickDraft`) нэг горимтой ажиллана; `pickDraft` «=55»-ыг ОДООГИЙН суурьтай
@@ -868,6 +877,14 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   const occ = new Map<number, [number, number, number]>();
   for (const e of older.rowOcc ?? []) occ.set(e[0], e);
   for (const e of newer.rowOcc ?? []) occ.set(e[0], e);
+  /*
+   * ⚠️ 2026-10-05: «ШИНЭЧЛЭГДСЭН ОГНОО» ӨӨРИЙН АГШНААР (`Draft.asOfAt`-ийн ⚠️). Хуучин тал ялах
+   *    нөхцөл: шинэ талд огноо байхгүй (урьдын дүрэм), ЭСВЭЛ хоёулаа агшинтай бөгөөд хуучин
+   *    талын огноо ХОЖУУ тавигдсан. Аль нэг тал агшингүй (хуучин ноорог) бол урьдын адил шинэ
+   *    `t` ялна. (TS тэмдэглэгээгүй — `draft.check` 4d.)
+   */
+  const asOfOld = older.asOf !== undefined
+    && (newer.asOf === undefined || (older.asOfAt != null && newer.asOfAt != null && older.asOfAt > newer.asOfAt));
   /* (Map — `draft.check` 4d нь зөвхөн `new Map<…>`-ийн төрлийг хасдаг) */
   const liveOid = new Map<number, boolean>();
   for (const k of [...cells.keys(), ...dates.keys()]) {
@@ -883,7 +900,8 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     cells: [...cells],
     dates: dates.size ? [...dates] : undefined,
     adds: adds.size ? [...adds.values()] : undefined,
-    asOf: newer.asOf !== undefined ? newer.asOf : older.asOf,
+    asOf: asOfOld ? older.asOf : newer.asOf,
+    asOfAt: asOfOld ? older.asOfAt : newer.asOfAt,
     /* ⚠️ ХУУДАСНЫ ДАРААЛЛААР (oid өсөхөөр, 2026-09-25 аудит): Map-ийн оруулсан
        дараалал нь хуучин талынх + шинэ талын нэмэлт тул нийлүүлсний дараа
        `pickDraft`-ийн `oidFix` (`cand.shift()`) давхардсан шошготой мөрүүдийг
@@ -908,7 +926,7 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     conv: conv.size ? [...conv] : undefined,
     hold: hold.size ? [...hold.values()] : undefined,
     tgt: tgt.size ? [...tgt.values()] : undefined,
-    asOfB: newer.asOf !== undefined ? newer.asOfB : older.asOfB,
+    asOfB: newer.asOf !== undefined && !asOfOld ? newer.asOfB : older.asOfB,
     datesB: datesB.size ? [...datesB] : undefined,
   };
 };

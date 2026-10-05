@@ -29,6 +29,7 @@
 
 import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { arcgisPost } from '@/lib/query';
+import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from './scopedAcl';
 
@@ -190,6 +191,12 @@ let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL �
 /** IdentityManager-аас идэвхтэй token авах (нэвтрээгүй бол null) */
 async function getToken(): Promise<{ token: string; user: string } | null> {
   try {
+    /* ⚠️ 2026-10-05: токеноо АВАХААС ӨМНӨ шинэчилнэ. `findTableUrl`/`createTable` нь токеноо
+       ӨӨРСДӨӨ `params`-д өгдөг (`token: 'org'`) тул `query.arcgisPost`-ын «498 → шинэчлээд
+       дахин» зам тэдэнд АЖИЛЛАХГҮЙ (дуудагчийн токен хэвээр явна). Таб удаан нуугдаад
+       сэрэхэд хугацаа дууссан токеноор хайлт унаж, `initRemote` → `false` → бүх эрх
+       15 сек–5 мин хаалттай үлддэг байв. Node (тест) орчинд шууд буцна. */
+    await ensureFreshToken();
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
     if (!cred?.token) return null;
@@ -222,11 +229,31 @@ const SUPER_OWNERS = new Set(
  * tombstone-оо алддаг байв. Super-ийг хасахдаа (а) ArcGIS дээр item-ыг одоогийн
  * super-т reassign хийнэ, ЭСВЭЛ (б) нэрийг нь энд үлдээнэ — super эрх БУЦАХГҮЙ,
  * зөвхөн хүснэгт олдох л зорилготой.
+ *
+ * ⚠️ 2026-10-05 — `ROLE_BY_USER`-ААС SUPER ХАСАХЫН ӨМНӨ ЗААВАЛ ШАЛГА:
+ *    `Selbe_Permissions` item-ийн ЭЗЭН тэр хүн мөн үү (AGOL → item → Overview → Owner).
+ *    Мөн бол хасмагц `findTableUrl` хүснэгтийг «танигдахгүй эзэнтэй» гэж татгалзаж,
+ *    БҮХ хэрэглэгчийн remote эрх унтарна: панелаас нэмсэн аккаунт нэвтрэхгүй, бүх
+ *    хуваарилалт/засах эрх хаагдана (fail-closed), админ панел түгжигдэнэ. Шинж тэмдэг:
+ *    консолд «хүснэгтийн эзэн танигдсангүй: <нэр>», админ панелд улаан зурвас
+ *    (`permsOwnerMismatch`). Засвар нь ХОЁРЫН НЭГ:
+ *      (а) AGOL дээр item-ийн эзнийг одоогийн super-т шилжүүлэх (Change owner) — кодгүй;
+ *      (б) хассан хүний нэрийг ДООРХ жагсаалтад нэмж дахин байршуулах.
+ *    Ижил дүрэм `Selbe_*` ноорог/батлах хүснэгтүүдэд (`draftRemote` · `qaqcDraftRemote`).
  */
 const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
+/** Танигдаагүй эздийн нэрс (сүүлийн хайлт) — админд ИЛ хэлэхэд */
+let mismatchOwners: string[] = [];
+/**
+ * ⚠️ 2026-10-05: ХҮСНЭГТИЙН ЭЗЭН ТАНИГДААГҮЙ бол эздийн нэрс (үгүй бол `[]`) — `UserAdmin`-ы
+ *    улаан зурвас. Урьд нь шалтгаан ЗӨВХӨН консолд гардаг байсан тул super-ийг кодоос
+ *    хассаны дараа «эрхийн хүснэгт уншигдсангүй» гэсэн ерөнхий түгжээнээс өөр дохио
+ *    байгаагүй — админ сүлжээгээ шалгаж, дахин ачаалж цаг алдана.
+ */
+export const permsOwnerMismatch = (): string[] => (ownerMismatch ? mismatchOwners : []);
 /**
  * ⚠️ ЭРХИЙН ХҮСНЭГТ НИЙТЭД (`access: public`) НЭЭЛТТЭЙ БАЙНА УУ (2026-09-08-ны
  * амьд шалгалт). `createTable` нь ЗӨВХӨН байгууллагад (`org:'true',
@@ -277,11 +304,13 @@ async function findTableUrl(token: string): Promise<string | null> {
   //    (нэр давхцаж унана, эсвэл салаа хүснэгт үүсэж өгөгдөл хуваагдана).
   //    Админ item-ыг reassign хийх хүртэл remote унтраалттай — шалтгааныг ил хэлнэ.
   ownerMismatch = !hit && same.length > 0;
+  mismatchOwners = ownerMismatch ? [...new Set(same.map((x) => String(x.owner ?? '?')))] : [];
   if (ownerMismatch) {
+    /* ⚠️ 2026-10-05: ЯГ юу хийхийг хэлнэ — эзний нэр, хоёр засвар (FORMER_TABLE_OWNERS-ийн ⚠️) */
     console.error(
-      '[selbe] Selbe_Permissions хүснэгтийн эзэн танигдсангүй:',
-      same.map((x) => x.owner).join(', '),
-      '— одоогийн super-т reassign хийнэ үү (permsRemote.FORMER_TABLE_OWNERS)',
+      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй: ${mismatchOwners.join(', ')}.`,
+      'Энэ нэр кодын super жагсаалтад (ROLE_BY_USER) алга тул БҮХ хэрэглэгчийн remote эрх унтарсан.',
+      `Засвар: (а) AGOL дээр item-ийн эзнийг одоогийн super-т шилжүүлэх (Change owner), ЭСВЭЛ (б) src/lib/permsRemote.ts-ийн FORMER_TABLE_OWNERS-д '${mismatchOwners.join("', '")}' нэмж дахин байршуулах.`,
     );
   }
   return hit?.url ? `${hit.url}/0` : null;
@@ -657,9 +686,44 @@ async function findOids(fl: FeatureLayerInst, username: string): Promise<number[
 const editOk = (r: { error?: unknown }[] | undefined): boolean =>
   (r ?? []).every((x) => x.error == null);
 
+/**
+ * ⚠️ 2026-10-05: `views` ТАЛБАРЫН УРТ — `createTable`-д 2048 тэмдэгт. Урьд нь шалгалтгүй
+ *    байсан тул олон багц × олон үүрэгтэй `grants` JSON (эсвэл том загвар) хязгаараас
+ *    хэтрэхэд ArcGIS бичилтийг ерөнхий алдаагаар татгалзаж (зарим үйлчилгээ ТАСЛААД
+ *    хадгалдаг — тэр үед JSON эвдэрч мөр fail-closed «эрхгүй» болно), админд зөвхөн
+ *    «ArcGIS-т хадгалагдсангүй» гэж харагддаг байв. Одоо бичихээс ӨМНӨ шалгаж, шалтгааныг
+ *    нэрлэсэн алдаа шиднэ; `upsertByKey` түүнийг барьж `false` буцаана (бүх дуудагчийн
+ *    `Promise<boolean>` гэрээ хэвээр), текстийг `takeWriteError` UI-д хүргэнэ.
+ */
+const VIEWS_MAX = 2048;
+let lastWriteErr = '';
+let lastWriteErrAt = 0;
+/**
+ * Сүүлийн бичилтийн ТОДОРХОЙ шалтгаан (уншмагц цэвэрлэгдэнэ) — `aclOps.runOp` · `UserAdmin`.
+ * ⚠️ 15 секундээс хуучныг буцаахгүй — өөр замаар (жиш. загвар хадгалах) үлдсэн хуучин
+ *    мессеж дараагийн, хамааралгүй уналтад гарч төөрөгдүүлэхгүй.
+ */
+export function takeWriteError(): string {
+  const m = Date.now() - lastWriteErrAt < 15_000 ? lastWriteErr : '';
+  lastWriteErr = '';
+  return m;
+}
+function assertViewsFit(usernameKey: string, attrs: Record<string, unknown>): void {
+  const v = attrs.views;
+  if (typeof v !== 'string' || v.length <= VIEWS_MAX) return;
+  const msg = tr('«{0}» мөрийн эрхийн өгөгдөл хэт урт ({1} тэмдэгт, дээд тал нь {2}) тул хадгалагдсангүй — багцын жагсаалтыг цөөлөх эсвэл «Бүх багц» болгоно уу.',
+    usernameKey, v.length, VIEWS_MAX);
+  lastWriteErr = msg;
+  lastWriteErrAt = Date.now();
+  console.error('[selbe]', msg);
+  throw new Error(msg);
+}
+
 /** Нэг түлхүүр (username)-д нэг мөр байлгаж upsert хийнэ; давхардлыг цэвэрлэнэ */
 async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>): Promise<boolean> {
   try {
+    /* ⚠️ 2026-10-05: уртын шалгалт — сүлжээний хүсэлтээс ӨМНӨ (`assertViewsFit`-ийн ⚠️) */
+    assertViewsFit(usernameKey, attrs);
     /* ⚠️ `false` — бичилт хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
     const url = await tableUrl(false);
     if (!url) return false;
@@ -708,16 +772,79 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
  *   эс бөгөөс их OID-тай мөрийн `views` (`fetchAll`-ийн «их OID ялна» дүрэм).
  */
 async function readViewsByKey(key: string): Promise<string | null | undefined> {
+  const r = await readRowByKey(key);
+  if (r === undefined) return undefined;
+  return r ? String(r.views ?? '') : null;
+}
+
+/** Нэг түлхүүрийн их OID-тай МӨРИЙГ бүтнээр — `undefined` = уншиж чадсангүй, `null` = мөр алга */
+async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
   try {
     const url = await tableUrl(false);
     if (!url) return undefined;
     const fl = await layer(url);
     const rows = await queryAllRows(fl, `LOWER(username) = '${key.toLowerCase().replace(/'/g, "''")}'`);
-    const last = rows[rows.length - 1];
-    return last ? String(last.views ?? '') : null;
+    return rows[rows.length - 1] ?? null;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Урсгалын томилгоог ШИНЭЭР уншина (`guitsetgelAcl.pushFlow`-ийн нэгтгэлд, 2026-10-05).
+ * ⚠️ `capRead`/`scopedRead`-ийн ижил зорилго: хоёр админ нэг хүний багцыг зэрэг засахад
+ *    сүүлд бичсэн нь өмнөхийнхийг арчихгүй. Задлалт `fetchAll`-тэй ИЖИЛ.
+ * @returns `null` = уншиж чадсангүй; `{ row: null }` = мөр алга / эвдэрсэн (томилгоогүй).
+ */
+export async function flowRead(user: string): Promise<{ row: FlowRow | null } | null> {
+  const u = user.trim().toLowerCase();
+  const v = await readViewsByKey(FLOW_PREFIX + u);
+  if (v === undefined) return null;
+  if (v === null) return { row: null };
+  try {
+    const d = JSON.parse(v || '{}') as { stage?: string; bagts?: string[]; viewOnly?: boolean };
+    if (!d.stage) return { row: null };
+    return {
+      row: {
+        user: u,
+        stage: d.stage,
+        bagts: Array.isArray(d.bagts) ? d.bagts : [],
+        ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
+      },
+    };
+  } catch {
+    /* эвдэрсэн мөр — `fetchAll`-ийн адил алгасна (томилгоогүй, fail-closed) */
+    return { row: null };
+  }
+}
+
+/**
+ * Хэрэглэгчийн ЭРХИЙН мөрийг ШИНЭЭР уншина (`permissions.setUser`-ийн нэгтгэлд, 2026-10-05).
+ * ⚠️ Задлалт `fetchAll`-ийн «Эрхийн мөр» хэсэгтэй ИЖИЛ (fail-closed: эвдэрсэн `views` → `[]`,
+ *    `docs` зөвхөн тодорхой 1).
+ * @returns `null` = уншиж чадсангүй; `{ row: null }` = мөр алга.
+ */
+export async function userRead(username: string): Promise<{ row: RemoteRow | null } | null> {
+  const a = await readRowByKey(username.trim());
+  if (a === undefined) return null;
+  if (a === null || !a.username) return { row: null };
+  const removed = a.views === 'removed';
+  let views: ViewKey[] | 'all' = [];
+  if (!removed) {
+    try {
+      const v = a.views ? JSON.parse(a.views) : [];
+      views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
+    } catch { views = []; }
+  }
+  return {
+    row: {
+      username: a.username,
+      role: (a.role as Role) || null,
+      views,
+      docs: a.docs === 1 || (a.docs as unknown) === true,
+      ...(removed ? { removed: true } : {}),
+    },
+  };
 }
 
 /** Хэрэглэгчийн нэмэлт эрхийг ШИНЭЭР уншина — `null` = уншиж чадсангүй, `[]` = мөр алга */

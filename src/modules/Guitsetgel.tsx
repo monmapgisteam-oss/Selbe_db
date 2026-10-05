@@ -23,7 +23,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { t as tr } from '@/lib/i18nCore';
 import {
   DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
-  REVIEW_STATUS, RETURNED_STATUS, nextReview,
+  REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, nextReview,
   type ReviewStage, type Row, type Stage, type Status,
 } from '@/lib/hyanalt';
 import { useAuth } from '@/components/AuthGate';
@@ -452,6 +452,7 @@ function Submitted({
   bagts,
   sheetOid,
   sentAt,
+  approvedAt,
   ok,
   onCell,
   onChanges,
@@ -463,6 +464,13 @@ function Submitted({
   bagts: string;
   sheetOid: number;
   sentAt: string | null;
+  /**
+   * ЭНЭ МӨРИЙН ХАМГИЙН СҮҮЛИЙН ЗӨВШӨӨРЛИЙН агшин (шатуудын `…_илгээсэн_огноо`-ны хамгийн их, ms).
+   * ⚠️ 2026-10-05: гүйцэтгэгч дээд шатанд байхад дахин илгээвэл (`reused`) мөр тэр шатандаа
+   *    доод шатны зөвшөөрөлтэй хэвээр үлддэг — тэр зөвшөөрөл шинэ агуулгыг ХАРААГҮЙ. Үүгээр
+   *    `subAt`-ийг тулгаж 15 минутын хүлцлээс ҮЛ ХАМААРАН анхааруулна.
+   */
+  approvedAt?: number | null;
   /**
    * ЭЦГЭЭС ДАХИН АЧААЛУУЛАХ тоолуур (2026-09-25-ны аудит).
    * ⚠️ Нэг `sub|` мөр дээр гүйцэтгэгч дахин илгээхэд `bagts`·`sheetOid`
@@ -691,7 +699,20 @@ function Submitted({
             *   хэлбэрт ирдэггүй тул хүлцлээр далдална: зөвхөн ИЛТ хожуу
             *   шинэчлэлтийг зааж байна.
             */}
-          {data.subAt != null && sentAt != null && data.subAt > Date.parse(sentAt) + 15 * 60_000 && (
+          {/*
+            * ⚠️ 2026-10-05: ЗӨВШӨӨРЛИЙН ДАРААХ ШИНЭЧЛЭЛТ — хүлцэлгүй. Шатны зөвшөөрөл нь
+            *   хянагч агуулгыг уншсаны ДАРАА бичигддэг (`apply` → `subAt` тулгалт) тул
+            *   `subAt` түүнээс хожуу бол тэр зөвшөөрөл ЭНЭ агуулгыг хараагүй нь баттай;
+            *   15 минутын доторх дахин илгээлт урьд нь ямар ч дохиогүй өнгөрдөг байв.
+            *   Мөрийг инженерт буцааж тэглэхгүй (2026-09-07-ны «шинэ тойрог үүсгэхгүй»
+            *   шийдвэр · «хуучин мөрийг засахгүй» дүрэм) — зөвхөн ил хэлнэ. Дээрх 15
+            *   минутын дүрэм зөвшөөрөлгүй (эхний шатны) мөрд хэвээр.
+            */}
+          {data.subAt != null && approvedAt != null && approvedAt > 0 && data.subAt > approvedAt ? (
+            <div className={s.subWarn} role="alert">
+              {tr('Энэ илгээлт өмнөх шатны зөвшөөрлөөс ХОЙШ ({0}) дахин шинэчлэгдсэн — өмнөх зөвшөөрөл энэ агуулгыг ХАРААГҮЙ. Өөрчлөгдсөн нүд бүрийг шинээр хянана уу.', stamp(new Date(data.subAt).toISOString()))}
+            </div>
+          ) : data.subAt != null && sentAt != null && data.subAt > Date.parse(sentAt) + 15 * 60_000 && (
             <div className={s.subWarn}>
               {tr('Энэ илгээлт {0}-нд ДАХИН шинэчлэгдсэн — доор харагдаж буй нь ХАМГИЙН СҮҮЛИЙН агуулга, энэ мөрөнд илгээгдсэн үеийнх БИШ.', stamp(new Date(data.subAt).toISOString()))}
             </div>
@@ -1313,6 +1334,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
             bagts={work.bagts}
             sheetOid={cur[F.sheetOid]}
             sentAt={cur[F.companySent]}
+            /* ⚠️ 2026-10-05: сүүлийн зөвшөөрлийн агшин — дахин илгээлтийн анхааруулгад (`Submitted.approvedAt`) */
+            approvedAt={Math.max(0, ...REVIEW_STAGES.map((rs) => Date.parse(String((cur as Record<string, unknown>)[SF[rs].sent] ?? ''))).filter(Number.isFinite)) || null}
             /* ⚠️ Дахин шалгалтад ч нүд тэмдэглэнэ (2026-09-24, дээрх `recheckSeed`-ийн ⚠️) */
             ok={reviewing || rechecking ? okKeys : undefined}
             onCell={reviewing || rechecking ? toggleOk : undefined}

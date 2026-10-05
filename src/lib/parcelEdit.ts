@@ -142,6 +142,46 @@ export function loadEditFields(): Promise<EditFields | null> {
   return editFieldsP;
 }
 
+/**
+ * ТЕКСТ ТАЛБАРЫН ДЭЭД УРТ — давхаргын метадатагийн `fields[].length`-ээс.
+ *
+ * ⚠️ 2026-10-05: «Овог, нэр» · «Хаяг» · «Тайлбар» оролтод хязгааргүй байсан тул урт текст
+ *    зөвхөн ХАДГАЛАХ үед ArcGIS-ийн бүрхэг алдаагаар унадаг байв. Уртыг ХАТУУ бичихгүй
+ *    (үйлчилгээ шилжихэд өөрчлөгдөнө, `editFieldsOf`-ийн зарчим) — метадата нь үнэн эх.
+ *    Уншигдаагүй талбарт хязгаар БАЙХГҮЙ (хуучин зан төлөв): таамгаар хязгаарлахгүй.
+ */
+export type TextKey = 'owner' | 'address' | 'note';
+export type FieldLens = Partial<Record<TextKey, number>>;
+const TEXT_KEYS: TextKey[] = ['owner', 'address', 'note'];
+
+export function fieldLensOf(meta: unknown): FieldLens {
+  const fs = (meta as { fields?: unknown } | null)?.fields;
+  const out: FieldLens = {};
+  if (!Array.isArray(fs)) return out;
+  for (const k of TEXT_KEYS) {
+    const name = String(F[k] ?? '').toLowerCase();
+    const f = fs.find((x) => String((x as { name?: unknown })?.name ?? '').toLowerCase() === name) as
+      { type?: unknown; length?: unknown } | undefined;
+    if (f && f.type === 'esriFieldTypeString' && typeof f.length === 'number' && f.length > 0) out[k] = f.length;
+  }
+  return out;
+}
+
+/** Метадатаг НЭГ удаа татаж кэшлэнэ — алдаа нь засварыг ХААХГҮЙ (`loadEditFields`-ийн дүрэм) */
+let fieldLensP: Promise<FieldLens> | null = null;
+export function loadFieldLens(): Promise<FieldLens> {
+  if (!fieldLensP) {
+    const p: Promise<FieldLens> = arcgisPost(PARCEL_LEFT.url, {})
+      .then((m) => fieldLensOf(m))
+      .catch(() => {
+        if (fieldLensP === p) fieldLensP = null;
+        return {};
+      });
+    fieldLensP = p;
+  }
+  return fieldLensP;
+}
+
 /** Мөрийг `Parcel` болгоно — талбарын нэрийг НЭГ газар зураглана */
 export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null {
   /* ⚠️ `Number(null)` нь 0 — `isFinite` дангаараа хоосон OID-г нэвтрүүлнэ */
@@ -272,9 +312,18 @@ export function validateParcel(p: ParcelPatch): Partial<Record<keyof ParcelPatch
 export function validateParcelChanged(
   before: Parcel,
   patch: ParcelPatch,
+  /** ⚠️ 2026-10-05: текст талбарын дээд урт (`loadFieldLens`) — өгөөгүй бол шалгахгүй */
+  lens: FieldLens = {},
 ): Partial<Record<keyof ParcelPatch, string>> {
-  if (patch.status === before.status) return {};
-  return validateParcel(patch);
+  const e: Partial<Record<keyof ParcelPatch, string>> = patch.status === before.status ? {} : validateParcel(patch);
+  /* ⚠️ ЗӨВХӨН өөрчилсөн талбар — хуучин хэт урт утга (байх ёсгүй ч) хөндөөгүй бол саад болохгүй */
+  for (const k of TEXT_KEYS) {
+    const max = lens[k];
+    if (max != null && patch[k] !== before[k] && patch[k].length > max) {
+      e[k] = tr('Хамгийн ихдээ {0} тэмдэгт', String(max));
+    }
+  }
+  return e;
 }
 
 /* ══════════════════ Бичилт ══════════════════ */

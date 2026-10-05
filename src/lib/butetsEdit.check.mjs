@@ -150,6 +150,14 @@ assert.ok(
   !validateRow(meta, { ...base, urt_m: '' }).urt_m,
   'хоосон тоон талбар нь «тоо биш» алдаа ӨГӨХГҮЙ — хоосон салаа эхэлж шалгагдана',
 );
+/* ⚠️ 2026-10-05: аравтын ТАСЛАЛ · мянгатын зай зөвшөөрөгдөнө (`paste.normCell`-ийн дүрэм);
+   `1e3`/`0x10` ба тоо хэмжээний талбарын СӨРӨГ утга татгалзагдана. */
+assert.ok(!validateRow(meta, { ...base, urt_m: '12,5' }).urt_m, '«12,5» — аравтын таслал зөв');
+assert.ok(!validateRow(meta, { ...base, urt_m: '1 250' }).urt_m, '«1 250» — мянгатын зай зөв');
+assert.equal(diffRow(meta, row, { ...base, urt_m: '12,5' }).urt_m, 12.5, '«12,5» нь 12.5 болж бичигдэнэ (NaN биш)');
+assert.ok(validateRow(meta, { ...base, urt_m: '1e3' }).urt_m, '«1e3» тоо биш');
+assert.ok(validateRow(meta, { ...base, urt_m: '0x10' }).urt_m, '«0x10» тоо биш');
+assert.ok(validateRow(meta, { ...base, urt_m: '-50' }).urt_m, 'уртын талбарт сөрөг тоо байж болохгүй');
 assert.ok(
   validateRow(meta, { ...base, ZONE_ID: 'x'.repeat(101) }).ZONE_ID,
   'уртаас хэтэрсэн текст — сервер унахаас өмнө барина',

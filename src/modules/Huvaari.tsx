@@ -1973,6 +1973,12 @@ export function Huvaari({
              500-ийн багц) — `rows`/`obOids` сэргээгээгүй бол дахин «Хадгалах»-д амжсан
              `adds` ДАХИН нэмэгдэж `dkey` давхардана (сангийн unique индекс алга).
              Эх мөр ба задаргааг серверээс дахин татаад л алдааг дамжуулна. */
+          /* ⚠️ 2026-10-05: огнооны замын (дээрх) ижил дүрэм — огноо БИЧИГДЭЭГҮЙ (`upd` хоосон) ба
+             сарын обьёмоос НЭГ Ч мөр бичигдээгүй (`written === 0`) бол хагас бичилт БИШ: тэмдгийг
+             арилгана, эс бөгөөс санал буцаах/татах боломжгүй түгжигддэг байв. */
+          if (approvalMode && !upd.length && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
+            if (await clearPlanPartial(approving)) partialRef.current = null;
+          }
           try {
             const r0 = await loadRows(pkg, sc);
             setRows(r0.rows);
@@ -4954,6 +4960,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           obyem={kind === 'plan'}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
           badBlks={modalBad}
+          /* ⚠️ 2026-10-05: гэрээний муж (аль хэдийн ачаалсан `refBase`) — popup зөөлөн анхааруулна; хаахгүй */
+          geree={kind === 'plan' ? refSpanOf(modalRow.oid, blk) : null}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
           resFields={obResFields}
           /*

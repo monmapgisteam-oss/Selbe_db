@@ -176,7 +176,13 @@ function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange }: {
                         <span key={k} className={s.chip}>
                           <button type="button" className={s.chipLink} title={x?.name} onClick={() => jump(k)}>{x?.code ?? k}</button>
                           {canEdit && (
-                            <button type="button" className={s.chipX} disabled={busy} onClick={() => onChange('remove', { from: p.key, to: k })}
+                            <button type="button" className={s.chipX} disabled={busy}
+                              /* ⚠️ 2026-10-05: УСТГАХЫН ӨМНӨ асууна — жижиг ✕ дээр андуурч дарахад холбоо
+                                 шууд (буцаах аргагүй) устдаг байв. Бусад модулийн устгалтай ижил `confirm`. */
+                              onClick={() => {
+                                if (!window.confirm(tr('«{0}» → «{1}» хамаарлыг устгах уу?', p.code, x?.code ?? k))) return;
+                                onChange('remove', { from: p.key, to: k });
+                              }}
                               title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}>✕</button>
                           )}
                         </span>

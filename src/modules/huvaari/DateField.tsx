@@ -61,7 +61,10 @@ export function DateField({ value, onChange, onBad, disabled, label }: {
         className={`${h.select} ${h.dateTxt}${bad ? ` ${h.dateBad}` : ''}`}
         value={txt}
         disabled={disabled}
-        inputMode="numeric"
+        /* ⚠️ 2026-10-05: `numeric` биш — iOS-ийн тоон гарт «-» «.» «/» байхгүй тул
+           «2026-10-04» бичих боломжгүй байв (`sheet/DatePicker`-ийн ижил засвар). */
+        inputMode="text"
+        autoComplete="off"
         placeholder="2026-10-04"
         aria-label={label}
         aria-invalid={bad}

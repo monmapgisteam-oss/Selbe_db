@@ -306,6 +306,14 @@ export function useDraftSync(p: {
    */
   const asOfRevRef = useRef(false);
   /**
+   * «ШИНЭЧЛЭГДСЭН ОГНОО»-НЫ ЛОГИК АГШИН (⚠️ 2026-10-05, `Draft.asOfAt`-ийн ⚠️). `v` = ноорогт
+   * бичигдэх утга (`null` = ил буцаалт), `at` = түүнийг ТАВЬСАН агшин: энэ табд хэрэглэгч
+   * өөрчилбөл `stamp()`, ноорогоос (бусдаас) буусан бол ТЭР ноорогийн агшин — ингэснээр бусдын
+   * тавьсан огноог дахин бичихдээ «шинэ» болгож хожуу засварыг дарахгүй. `at: undefined` =
+   * агшингүй хуучин ноорогоос буусан (хуучин дүрмээр нийлнэ). Багц солиход тэглэгдэнэ (FillNew).
+   */
+  const asOfAtRef = useRef<{ v: number | null; at: number | undefined } | null>(null);
+  /**
    * ЭНЭ СЕШНД ноорог ХООСОН БИШ байсан эсэх (2026-09-25-ны аудит). Хадгалах
    * эффектийн «хоосон → алсыг устга» зам ЗӨВХӨН хоосон биш → хоосон шилжилтэд
    * ажиллана. Урьд нь `pending` хоосон үед эффект ДАХИН ажиллах бүрд (жиш. `rows`
@@ -1114,6 +1122,9 @@ export function useDraftSync(p: {
        оролцогч/төхөөрөмж огноог анхны утгандаа буцаасан — энд үлдсэн X-ийг
        анхных руу буцаана, эс бөгөөс дараагийн хадгалалт X-ийг алсад сэргээнэ. */
     if (d.asOf === null) setAsOf(asOfOrig);
+    /* ⚠️ 2026-10-05: буусан огнооны АГШИНГ хамт авна (`asOfAtRef`-ийн ⚠️) — дахин бичихэд шинэчлэхгүй */
+    if (draftAsOf != null) asOfAtRef.current = { v: draftAsOf, at: d.asOfAt };
+    else if (d.asOf === null) asOfAtRef.current = { v: null, at: d.asOfAt };
 
     const nCells = Object.keys(next).length;
     const nDates = Object.keys(nextDates).length;
@@ -1512,6 +1523,8 @@ export function useDraftSync(p: {
       const tomb: Draft = {
         t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
         asOf: asOfRevRef.current ? null : undefined,
+        /* ⚠️ 2026-10-05: ил буцаалт — шинэ агшинтай (`Draft.asOfAt`) */
+        asOfAt: asOfRevRef.current ? (asOfAtRef.current = { v: null, at: nowMs }).at : undefined,
         done: [], marks: [...marksRef.current.values()], del: [...delRef.current],
         rcpt: rcptRef.current.size ? packRcpt(rcptRef.current.values()) : undefined,
         /* ⚠️ 2026-10-04 (#6): өөрийн зорилтыг ИЛ цэвэрлэнэ (`clearMyTgt` — OBJECTID 0, шинэ агшинтай нь
@@ -1546,6 +1559,19 @@ export function useDraftSync(p: {
        огноо/баримт засаад гүйцэтгэлийн нүд хөндөөгүй хэрэглэгчийн ноорог
        хадгалагдахын оронд УСТАНА. */
     const asOfChanged = asOf !== asOfOrig;
+    /**
+     * ⚠️ 2026-10-05: ноорогт бичигдэх `asOf`-ын агшин (`asOfAtRef`-ийн ⚠️). Утга нь сүүлд мэдсэнээс
+     *    ӨӨР бол энэ табд өөрчлөгдсөн — шинэ `stamp()`; ижил бол хуучин агшин хэвээр (бусдаас буусан
+     *    огноог «шинэ» болгож хожуу засварыг дарахгүй). `undefined` = огноо хөндөгдөөгүй.
+     */
+    const asOfStampOf = (val: number | null | undefined): number | undefined => {
+      if (val === undefined) return undefined;
+      const c = asOfAtRef.current;
+      if (c && c.v === val) return c.at;
+      const at1 = stamp();
+      asOfAtRef.current = { v: val, at: at1 };
+      return at1;
+    };
     if (
       !Object.keys(pending).length
       && !Object.keys(pendDate).length
@@ -1589,6 +1615,8 @@ export function useDraftSync(p: {
           const tomb: Draft = {
             t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
             asOf: asOfRevRef.current ? null : undefined,
+            /* ⚠️ 2026-10-05: огнооны өөрийн агшин (`asOfStampOf`) */
+            asOfAt: asOfStampOf(asOfRevRef.current ? null : undefined),
             done: doneRef.current, marks: [...marksRef.current.values()], del: liveDel,
             rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
             /* ⚠️ 2026-10-04 дахин аудит (#4): хүн бүрийн зорилт (ТАБЫН мэдэх бүгд — `tgtsRef`-ийн ⚠️) */
@@ -1801,6 +1829,8 @@ export function useDraftSync(p: {
       /* ⚠️ Анхны утгандаа БУЦСАН бол `null` (ил буцаалт) — `asOfRevRef`-ийн ⚠️
          (2026-09-25). `undefined` = огноо хөндөгдөөгүй. */
       asOf: asOfChanged ? asOf : asOfRevRef.current ? null : undefined,
+      /* ⚠️ 2026-10-05: огнооны өөрийн агшин (`asOfStampOf`) */
+      asOfAt: asOfStampOf(asOfChanged ? asOf : asOfRevRef.current ? null : undefined),
       /* ⚠️ `adds`/`sent` БИЧИГДЭХГҮЙ (2026-09-24) — энэ хуудас мөр нэмэхгүй;
          хуучин ноорогийнх `mergeDrafts`-аар л дамжина. */
       rowKeys,
@@ -2290,8 +2320,59 @@ export function useDraftSync(p: {
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [remoteTick, remoteState, pvDirty, pkg.key]);
+  /**
+   * ИЛГЭЭЛТИЙН БАРИМТЫГ АЛСЫН НООРОГТ ШУУД БИЧИЖ, ХҮЛЭЭНЭ (⚠️ 2026-10-05) — `FillNew.publish`
+   * «Илгээх» амжилттай болмогц, `busy` хэвээр байхад дуудна.
+   *
+   * ⚠️ ЯАГААД: баримт (`rcptRef`/`delRef`) урьд нь ЗӨВХӨН хадгалах эффект → 3 сек-ийн `flush`-аар
+   *    алсад очдог байв. Тэр бичилт хэзээ ч буугаагүй бол (таб хаагдсан · сүлжээ тасарсан) өөр
+   *    төхөөрөмж илгээсэн нүдийг «илгээгээгүй» гэж үзэж ДАХИН илгээнэ — нэмэлтийн горимд ХОЁР
+   *    ДАХИН нэмэгдэнэ. Одоо илгээлт хадгалагдсаны дараа шууд read-merge-write хийж хүлээнэ.
+   * ⚠️ `flush`-тай ИЖИЛ дүрэм: алсаас уншиж нийлүүлнэ (бусдын нүдийг дарахгүй), шахна
+   *    (`compactDraft`), `expectAt`-тай бичнэ; мөргөлдвөл дахин уншина (3 хүртэл). Унавал
+   *    шалтгааныг буцаана — дуудагч ИЛ анхааруулна; ердийн `flush` (дараалал) цааш дахин оролдоно.
+   * ⚠️ Төлөв/ref (`lastMergedRef` · `lastBodyRef`) ХӨНДӨХГҮЙ — хадгалах эффектийн ердийн tombstone
+   *    бичилт ба татах мөчлөг урьдын адил ажиллана (нийлүүлэлт идемпотент).
+   */
+  const pushReceipts = useCallback(async (want: string): Promise<{ ok: true } | { ok: false; why: string }> => {
+    const nowMs = stamp();
+    const liveDel: [string, number][] = [...delRef.current].filter(([, a]) => nowMs - a <= DEL_TTL_MS);
+    const liveRc = [...rcptRef.current.values()].filter((r) => rcptAlive(r, nowMs, minOidRef.current));
+    if (!liveDel.length && !liveRc.length) return { ok: true };
+    const tomb: Draft = {
+      t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
+      done: doneRef.current, marks: [...marksRef.current.values()], del: liveDel,
+      rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
+      tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
+    };
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        const at0 = await readRemoteDraftAt(want);
+        if (at0 === undefined) return { ok: false, why: tr('алсын ноорогийг шалгаж чадсангүй') };
+        let remote: Draft | null = null;
+        if (at0 !== null) {
+          const rr = await readRemoteDraft(want);
+          if (!rr.ok) return { ok: false, why: rr.error };
+          remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
+        }
+        const merged0 = compactDraft(mergeDrafts(remote, tomb) ?? tomb,
+          { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null });
+        const out: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at0 != null ? at0 + 1 : 0) };
+        const body = JSON.stringify(out);
+        if (body.length > REMOTE_MAX) return { ok: false, why: tr('ноорог хэт том') };
+        const r = await saveRemoteDraft(want, out.t, body, { expectAt: at0 });
+        if (r.ok) return { ok: true };
+        if (!('conflict' in r && r.conflict)) return { ok: false, why: r.error };
+      }
+      return { ok: false, why: tr('өөр хүн зэрэг бичиж байна') };
+    } catch (e) {
+      return { ok: false, why: String((e as Error).message || e) };
+    }
+  }, [stamp, pkgKeyRef]);
   return {
-    savedAt, keepDraft, remoteQueue, mineRef, mineAtRef, delRef, asOfRevRef, draftLiveRef, touchMine, revert,
+    /* ⚠️ 2026-10-05: илгээлтийн баримтыг шууд бичих (`pushReceipts`-ийн ⚠️) */
+    pushReceipts,
+    savedAt, keepDraft, remoteQueue, mineRef, mineAtRef, delRef, asOfRevRef, asOfAtRef, draftLiveRef, touchMine, revert,
     lastMergedRef, doneRef, doneBy, setDoneBy, byMap, setByMap, byAtMap, setByAtMap, byAtRef, lastBodyRef,
     remoteState, setRemoteState, promptedPkgRef, flushRef,
     meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,

@@ -1961,6 +1961,18 @@ export const MapCanvas = memo(function MapCanvas({
    */
   const [layerFail, setLayerFail] = useState<string[]>([]);
   /**
+   * ⚠️ 2026-10-05: ТОВШИЛТЫН АСУУЛГА УНАСАН. `pickByQuery` нь давхарга бүрийн алдааг `[]`
+   *    болгодог тул БҮХ асуулга унахад (сүлжээ · 499 · rate-limit) «энд юу ч алга» гэж худал
+   *    хариулж, самбар чимээгүй хаагддаг байв. Одоо бүгд унасан бол богино, саадгүй мэдэгдэл
+   *    (`role="status"`) гарч хэдэн секундийн дараа өөрөө арилна.
+   */
+  const [pickFail, setPickFail] = useState(false);
+  useEffect(() => {
+    if (!pickFail) return;
+    const t = setTimeout(() => setPickFail(false), 6000);
+    return () => clearTimeout(t);
+  }, [pickFail]);
+  /**
    * `view.when` унасан — «ачаалж байна…»-гийн оронд алдаа + «Дахин оролдох».
    *
    * ⚠️ 2026-09-04: ЭНЭ УРЬД `boolean` БАЙВ — барьсан алдааг зөвхөн
@@ -2703,6 +2715,9 @@ export const MapCanvas = memo(function MapCanvas({
         ? (await getAuth())?.token
         : undefined;
       const BATCH = 3;
+      /* ⚠️ 2026-10-05: унасан асуулгыг ТООЛНО — бүгд унасан бол «олдсонгүй» биш «асуулга унав» */
+      let asked = 0;
+      let failedN = 0;
       for (let i = 0; i < cand.length; i += BATCH) {
         const batch = cand.slice(i, i + BATCH);
         const rows = await Promise.all(batch.map(({ l, id }) =>
@@ -2711,8 +2726,9 @@ export const MapCanvas = memo(function MapCanvas({
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
             ...(LAYER_BY_ID[id]?.auth && authTok ? { token: authTok } : {}),
-          }).catch(() => [] as Record<string, unknown>[]),
+          }).catch(() => { failedN += 1; return [] as Record<string, unknown>[]; }),
         ));
+        asked += batch.length;
         for (let k = 0; k < batch.length; k++) {
           if (rows[k].length) {
             return {
@@ -2725,6 +2741,7 @@ export const MapCanvas = memo(function MapCanvas({
           }
         }
       }
+      if (asked > 0 && failedN === asked) setPickFail(true);
       return null;
     };
 
@@ -4833,6 +4850,13 @@ export const MapCanvas = memo(function MapCanvas({
             {' — '}
             {tr('Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.')}
           </span>
+        </div>
+      )}
+
+      {/* ⚠️ 2026-10-05: товшилтын асуулга БҮГД унасан — дээрх `pickFail`-ийн ⚠️ */}
+      {pickFail && (
+        <div className={`${s.float} ${s.floatBL} ${s.warn}`} role="status">
+          <span>{tr('Товшсон цэгийн асуулга амжилтгүй — сүлжээгээ шалгаад дахин товшино уу.')}</span>
         </div>
       )}
 

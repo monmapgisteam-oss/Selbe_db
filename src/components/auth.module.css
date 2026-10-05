@@ -33,6 +33,10 @@
 
 .title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
 .sub { font-size: 0.82rem; line-height: 1.55; color: var(--ink-3); margin-bottom: 24px; }
+/* ⚠️ 2026-10-05: «сешн дууссан» цонхны ХОЁР догол мөрийн эхнийх — завсар багатай */
+.subTight { margin-bottom: 10px; }
+/* ⚠️ 2026-10-05: идэвхгүй товч (шалгаж/чиглүүлж байхад) — давхар даралтаас */
+.btn:disabled, .btnGhost:disabled { opacity: 0.55; cursor: default; }
 
 /* ⚠️ Бэх нь `--hue-ink` — харанхуй горимд `--hue` нь ЦАЙВАР cyan (#67d7e4)
    тул цагаан бичиг 1.69:1 л өгч, нэвтрэх дэлгэцийн ЦОРЫН ГАНЦ товчны бичиг

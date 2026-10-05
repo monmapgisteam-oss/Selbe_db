@@ -366,8 +366,12 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
               className={st.layerBtn}
               onClick={() => {
                 /* ⚠️ Шалтгаан ЗААВАЛ — `decideObyem` ч мөн шалгана */
-                const why = window.prompt(tr('Буцаах шалтгаанаа бичнэ үү:')) ?? '';
-                if (!why.trim()) return;
+                const why0 = window.prompt(tr('Буцаах шалтгаанаа бичнэ үү:'));
+                /* ⚠️ 2026-10-05: «Болих» (null) = чимээгүй гарна. ХООСОН шалтгаанаар «OK» дарвал урьд нь юу ч
+                   болохгүй, юу ч хэлэхгүй байв — одоо `decideObyem` руу дамжуулна: тэр нь СҮЛЖЭЭНЭЭС ӨМНӨ
+                   «Буцаах шалтгааныг бичнэ үү.» гэж татгалзаж, мессеж нь энд (`pvErr`) ил гарна. */
+                if (why0 === null) return;
+                const why = why0;
                 void decideObyemHere(false, why);
               }}
               disabled={pvBusy}

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
-import { VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
+import { AUTH, VIEWS, roleForUser, type Role, type ViewKey } from '@/lib/services';
+import { arcgisPost } from '@/lib/query';
+import { authToken } from '@/lib/authToken';
 import {
   listUsers,
   listRemoved,
@@ -17,9 +19,10 @@ import {
   initRemote,
   remoteReady,
   workflowViewsOf,
+  type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
-import { permsTablePublic } from '@/lib/permsRemote';
+import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
@@ -123,11 +126,48 @@ const viewsEq = (a: ViewKey[] | 'all', b: ViewKey[] | 'all'): boolean =>
  * админ олон унтраалга дараад нэг удаа хадгалж, эсвэл «Болих»-оор бүгдийг
  * буцааж чадна.
  */
+/**
+ * ШИНЭ АККАУНТЫН НЭРИЙГ ArcGIS-ЭЭС ЛАВЛАНА (2026-10-05) — `community/users/<нэр>`.
+ *
+ * ⚠️ ЯАГААД: `add` нь зөвхөн ФОРМАТ шалгадаг байв. Формат зөв атлаа үсгийн алдаатай нэр
+ *    (`bat_erdene` ↔ `bat.erdene`) чимээгүй бүртгэгдэж, жинхэнэ хүн «эрх олгогдоогүй» дэлгэц
+ *    хардаг — админ эрхийг нь «олгосон» гэж итгэсээр хэдэн өдөр өнгөрнө.
+ * ⚠️ ЗӨВХӨН АНХААРУУЛНА, ХААХГҮЙ: лавлагаа нь туслах шалгалт. `unknown` (сүлжээ унасан,
+ *    токен хүчингүй, нэвтрэлт унтраалттай) үед юу ч хэлэхгүй — нэмэх зам хэвээр.
+ * ⚠️ ArcGIS алдаагаа HTTP 200-аар буцаадаг (амьд шалгасан: байхгүй нэр →
+ *    `{error:{code:400,messageCode:"COM_0018",message:"User does not exist or is inaccessible."}}`);
+ *    `arcgisPost` түүнийг `ArcGISError(code)` болгож шиддэг. Токен нь зөвхөн биеэр явна.
+ * ⚠️ Өөр байгууллагын бүртгэлд `orgId` өөр эсвэл огт ирэхгүй — хоёуланд нь `org`.
+ * ⚠️ ТОКЕНГҮЙ бол лавлахгүй (`unknown`): нэвтрээгүй хүсэлтэд байгууллагын хаалттай профайл
+ *    «байхгүй» гэж ирдэг тул ХУДАЛ анхааруулга гарна (нэвтрэлт унтраалттай дев, тест орчин).
+ */
+async function lookupArcgisUser(name: string): Promise<'ok' | 'missing' | 'org' | 'unknown'> {
+  if (!AUTH.appId || !authToken()) return 'unknown';
+  try {
+    const base = AUTH.portalUrl.replace(/\/+$/, '');
+    const j = await arcgisPost(`${base}/sharing/rest/community/users/${encodeURIComponent(name)}`, {});
+    if (!j || typeof j.username !== 'string' || !j.username) return 'missing';
+    if (AUTH.allowedOrgId && j.orgId !== AUTH.allowedOrgId) return 'org';
+    return 'ok';
+  } catch (e) {
+    const code = (e as { code?: unknown } | null)?.code;
+    const msg = e instanceof Error ? e.message : '';
+    if (code === 400 || code === 404 || /does not exist|inaccessible/i.test(msg)) return 'missing';
+    return 'unknown';
+  }
+}
+
 /** ⚠️ `UserRow.tsx` импортлодог тул ЭКСПОРТ (2026-09-10) */
 export type Draft = {
   views: ViewKey[] | 'all';
   docs: boolean;
   role: Role | null;
+  /**
+   * ⚠️ 2026-10-05: ноорог ҮҮСЭХ агшны хадгалагдсан утга — `setUser`-д ялгаа бодох суурь.
+   *    Ноорог хэдэн минут настай байж болох тул хадгалах агшны кэш (5 мин тутам шинэчлэгддэг)
+   *    суурь БИШ: тэгвэл өөр админы завсрын өөрчлөлт «энэ админ хассан» гэж уншигдана.
+   */
+  base?: UserBase;
   /** undefined = урсгалын шат хөндөгдөөгүй · null = шатгүй болгох */
   /** «Сэргээх» — хадгалахад override-ыг бүрмөсөн устгаж хатуу тохиргоонд буцаана */
   clear?: boolean;
@@ -495,7 +535,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
      */
     if (!remoteReady()) { setAddErr(LOCK_MSG); return; }
     const key = u.username.toLowerCase();
-    const next = { ...d };
+    /* ⚠️ 2026-10-05: суурийг ЭХНИЙ засварт л тогтооно (`Draft.base`) — `d` нь байгаа ноорогоос
+       ирсэн бол суурь нь аль хэдийн дотор нь; шинэ бол `u` (одоо хадгалагдсан утга). */
+    const next = { ...d, base: d.base ?? { views: u.views, docs: u.docs, role: u.role } };
     const same = !next.clear
       && !next.remove
       && !next.isNew
@@ -648,6 +690,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       && !window.confirm(tr('{0} аккаунт хадгалахад УСТГАГДАНА. Үргэлжлүүлэх үү?', String(removing)))) return;
     setSaving(true);
     setSaved(null);
+    /* ⚠️ 2026-10-05: өмнөх үйлдлээс үлдсэн тодорхой шалтгааныг цэвэрлэнэ (`permsRemote.takeWriteError`) */
+    takeWriteError();
     /*
      * ⚠️ SNAPSHOT: энэ closure-ийн `drafts` нь товч дарах агшны Map. Хадгалалт
      * олон remote бичилттэй тул хэдэн секунд үргэлжилж болно — тэр хооронд
@@ -764,7 +808,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         // ⚠️ Хөндөөгүй үүргийг ХАДГАЛАГДСАН утгаас — ноорог үүссэний дараа
         //    урсгалын хуудаснаас олгогдсон үүргийг snapshot дарж бичихгүй.
         const role = d.touchedRole || !u ? d.role : u.role;
-        const r = await setUser(uname, { views, docs: d.docs }, role);
+        /* ⚠️ 2026-10-05: `d.base` — remote-д зөвхөн ЭНЭ ноорогийн өөрчлөлт давхарлагдана
+           (`permissions.setUser` · `mergeUserDelta`); өөр админы зэрэг засвар арчигдахгүй. */
+        const r = await setUser(uname, { views, docs: d.docs }, role, d.base);
         /* ⚠️ ЗАСАХ ЭРХ энд БИЧИГДЭХГҮЙ — эрхийн өөрийн хуудсанд шууд
            хадгалагддаг (`__cap__:` ба хуваарилалтын мөрүүд, `aclOps`). */
         if (r) ok += 1; else { fail += 1; failed.push(uname); }
@@ -798,6 +844,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       return m;
     });
     setSaving(false);
+    /* ⚠️ 2026-10-05: бичилтийн ТОДОРХОЙ шалтгаан (жиш. `views` талбарын урт хэтэрсэн) байвал
+       нэрсийн хажууд — ерөнхий «N амжилтгүй» нь админыг сүлжээгээ шалгахад хүргэдэг. */
+    if (fail > 0 && !firstErr) firstErr = takeWriteError();
     setSaved({ ok, fail, failed, msg: firstErr || undefined });
     /* ⚠️ 2026-09-30: устгагдсан тул алгассаныг ИЛ хэлнэ (ноорог нь дээр арилсан) */
     if (gone.length) setAddErr(tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', gone.join(', ')));
@@ -898,6 +947,15 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setName('');
     setAddErr('');
     setSaved(null);
+    /* ⚠️ 2026-10-05: нэрийг ArcGIS-ээс лавлана (`lookupArcgisUser`-ийн ⚠️) — ноорог аль хэдийн
+       нэмэгдсэн, энэ нь зөвхөн АНХААРУУЛГА. Лавлагаа унавал (сүлжээ) чимээгүй. */
+    void lookupArcgisUser(n).then((res) => {
+      if (res === 'missing') {
+        setAddErr(tr('⚠️ «{0}» нэртэй ArcGIS хэрэглэгч олдсонгүй (эсвэл харагдахгүй). Нэрээ дахин шалгана уу — буруу бол хадгалахаас өмнө ноорогоос хасна уу.', n));
+      } else if (res === 'org') {
+        setAddErr(tr('⚠️ «{0}» нь манай байгууллагын ArcGIS бүртгэл биш — нэвтрэхэд татгалзагдана. Нэрээ дахин шалгана уу.', n));
+      }
+    });
   };
 
   /** Мөр ба картын props — НЭГ газар (хоёр газар бичвэл нэгд нь хоцорно) */
@@ -1142,6 +1200,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           {/* ⚠️ 2026-09-08-ны амьд шалгалт: хүснэгт AGOL дээр гараар «Everyone»
               болгогдсон байв — нэвтрээгүй хэн ч бүх эрхийг засаж чадна. Кодоор
               засах боломжгүй тул админд ИЛ, УЛААНААР хэлнэ (`permsTablePublic`). */}
+          {/* ⚠️ 2026-10-05: хүснэгтийн ЭЗЭН кодын super жагсаалтад алга (super-ийг `ROLE_BY_USER`-аас
+              хассан) — бүх хэрэглэгчийн remote эрх унтарна. Урьд нь шалтгаан зөвхөн консолд
+              гардаг байв; одоо эзний нэр ба хоёр засварыг ИЛ хэлнэ (`permsOwnerMismatch`). */}
+          {permsOwnerMismatch().length > 0 && (
+            <div className={s.addErr} role="alert">
+              {tr('🔴 Эрхийн хүснэгтийн (Selbe_Permissions) эзэн «{0}» нь кодын админ (super) жагсаалтад алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: ArcGIS дээр item-ийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчээр энэ нэрийг permsRemote.ts-ийн FORMER_TABLE_OWNERS жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
+            </div>
+          )}
           {permsTablePublic() && (
             <div className={s.addErr} role="alert">
               {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.')}

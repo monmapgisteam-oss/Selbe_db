@@ -4,6 +4,7 @@ import React, { Fragment, isValidElement, useCallback, useEffect, useId, useRef,
 import { t as tr } from '@/lib/i18nCore';
 import type { Async } from '@/lib/useAsync';
 import { Icon } from './Icon';
+import { chunkErrorText, isChunkLoadError } from './ErrorBoundary';
 import s from './ui.module.css';
 
 /* ⚠️ envhub-ийн гол дүрэм: чартын анхдагч өнгө нь МОДУЛИЙН биш, НЭГ өгөгдлийн
@@ -2242,6 +2243,17 @@ export function Empty({
 export function friendlyError(e: unknown): string {
   const name = (e as { name?: string } | null)?.name ?? '';
   const m = String((e as { message?: string } | null)?.message ?? e ?? '').toLowerCase();
+  /* ⚠️ 2026-10-05: chunk ачаалагдаагүй (шинэ хувилбар байршсан) — «Failed to fetch dynamically
+     imported module» нь доорх СҮЛЖЭЭНИЙ ангилалд орж «интернэтээ шалгана уу» гэж төөрөгдүүлдэг
+     байсан тул ТҮРҮҮЛЖ шалгана (`ErrorBoundary.isChunkLoadError`-ийн ⚠️). */
+  if (isChunkLoadError(e)) return chunkErrorText();
+  /* ⚠️ 2026-10-05: `query.ts` токеныг шинэчилж ЧАДААГҮЙ 498/499-ийг `sessionExpired`-ээр
+     тэмдэглэдэг. Урьд нь ийм 499 («Token Required») доорх «эрх алга — админд хандана уу»
+     болж, жинхэнэ шалтгаан (нэвтрэлтийн хугацаа дууссан) нуугддаг байв. Тэмдэггүй 499 нь
+     шинэ токеноор ч татгалзсан = жинхэнэ эрхгүй → хуучин мессеж хэвээр. */
+  if ((e as { sessionExpired?: boolean } | null)?.sessionExpired === true) {
+    return tr('Нэвтрэлтийн хугацаа дууссан байна. Хуудсыг дахин ачаалж нэвтэрнэ үү.');
+  }
   if (name === 'TimeoutError' || /timeout|timed out|хугацаа хэтэр/.test(m)) {
     return tr('Сервер удаан хариулж байна. Хэсэг хүлээгээд дахин оролдоно уу.');
   }

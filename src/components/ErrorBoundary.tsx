@@ -24,6 +24,36 @@ import { t as tr } from '@/lib/i18nCore';
  * (тэдгээр нь root layout-д үргэлж ачаалагдсан байдаг).
  */
 
+/**
+ * ⚠️ 2026-10-05: CHUNK АЧААЛАГДААГҮЙ алдаа мөн үү (JS/CSS). Портал нь GitHub Pages дээрх
+ *    статик экспорт — шинэ хувилбар байршуулахад хуучин chunk-ийн hash-тай файлууд УСТДАГ тул
+ *    нээлттэй таб дараагийн харагдацаа нээхэд 404 авна. «Дахин оролдох» (төлөв цэвэрлэх)
+ *    тусгүй: `next/dynamic` унасан амлалтаа хадгалдаг, файл ч сервер дээр байхгүй.
+ *    Цорын ганц засвар — хуудсыг дахин ачаалах. `ui.friendlyError` мөн үүнийг ашиглана.
+ * ⚠️ АВТОМАТААР reload ХИЙХГҮЙ — хадгалаагүй ажил алдагдана; товчийг хэрэглэгч өөрөө дарна
+ *    (`navGuard`-ийн `beforeunload` хамгаалалт хэвээр ажиллана).
+ */
+export function isChunkLoadError(e: unknown): boolean {
+  const name = (e as { name?: string } | null)?.name ?? '';
+  const m = String((e as { message?: string } | null)?.message ?? e ?? '');
+  return name === 'ChunkLoadError'
+    || /loading (css )?chunk \S+ failed|chunkloaderror|failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed/i.test(m);
+}
+
+/** Chunk-ийн алдааны хэрэглэгчийн мессеж — хашлага ба `friendlyError` НЭГ мөр хуваалцана */
+export const chunkErrorText = (): string => tr('Порталын шинэ хувилбар гарсан — хуудсыг дахин ачаална уу');
+
+const BTN_STYLE = {
+  padding: '6px 16px',
+  borderRadius: 8,
+  border: '1px solid var(--line-strong)',
+  background: 'var(--surface)',
+  color: 'var(--ink)',
+  font: 'inherit',
+  fontSize: 12,
+  cursor: 'pointer',
+} as const;
+
 type Props = {
   children: ReactNode;
   /**
@@ -56,6 +86,34 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    /* ⚠️ 2026-10-05: chunk-ийн алдаа — ХОЁР горимд ИЖИЛ: «шинэ хувилбар» + reload товч
+       (`isChunkLoadError`-ийн ⚠️). Харагдацын горимд бүтэн дэлгэц эзлэхгүй хэвээр. */
+    if (this.state.error && isChunkLoadError(this.state.error)) {
+      const view = this.props.scope === 'view';
+      return (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            minHeight: view ? 240 : '100dvh',
+            height: view ? '100%' : undefined,
+            padding: 24,
+            background: view ? undefined : 'var(--bg)',
+            color: 'var(--ink)',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: 14, fontWeight: 600 }}>{chunkErrorText()}</p>
+          <button type="button" onClick={() => location.reload()} style={BTN_STYLE}>
+            {tr('Хуудсыг дахин ачаалах')}
+          </button>
+        </div>
+      );
+    }
     if (this.state.error && this.props.scope === 'view') {
       /* ⚠️ ХАРАГДАЦЫН fallback: бүтэн дэлгэц ЭЗЛЭХГҮЙ, reload ч ХИЙХГҮЙ —
          навигац амьд үлддэг тул хэрэглэгч өөр харагдац руу шилжиж ажлаа

@@ -8,7 +8,7 @@ import type { Pkg, Schema } from "../bagts.pkg";
 import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
 import {
-  decideObyem, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
+  claimObyem, decideObyem, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
   submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
@@ -287,6 +287,17 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           pvErrHere(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
           return;
         }
+        /* ⚠️ 2026-10-05: БИЧИХИЙН ЯГ ӨМНӨ ТҮГЖИНЭ (`obyemBatlah.claimObyem`, `huvaariBatlah.claimPlan`-ийн
+           загвар). Дээрх `dryRun` шалгалт ба энэ бичилтийн завсарт (агуулга · сүүлийн жааз татах
+           хэдэн секунд) зохиогч ТАТАХ, өөр батлагч БУЦААХ боломжтой байсан — утга нь үндсэн өгөгдөлд
+           орсон атлаа «батлагдсан» бичлэг үүсэхгүй, «дахин батлах» хэзээ ч амжилтгүй. Түгжээ нь
+           төлвийг ДАХИН уншиж (`pending` хэвээр) өөр дээрээ тавиад, бичсэний дараа баталгаажуулна;
+           түгжээтэй үед `withdrawObyem` ба өөр батлагчийн `decideObyem` татгалзана.
+           ⚠️ Бичилт унасан ч түгжээг ТАЙЛАХГҮЙ: `applyUpdates` хэсэгчлэн бичсэн байж болох тул
+           тайлбал зохиогч хагас бичигдсэн илгээлтээ татна. Энэ батлагч шууд дахин дарж болно;
+           бусдад 10 минутын дараа өөрөө тайлагдана. */
+        const claim = await claimObyem({ oid: pvSub.oid, approver: user?.username ?? '' });
+        if (!claim.ok) { pvErrHere(claim.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
         await applyUpdates(pkg, upd);
         wroteMain = true;
         pvSkipped = skippedN;

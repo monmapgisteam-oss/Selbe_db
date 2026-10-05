@@ -99,6 +99,13 @@ export type LandStatus = {
 };
 
 let cache: Promise<LandStatus> | null = null;
+/**
+ * ⚠️ 2026-10-05: кэшийн НАС — `live.SESSION_TTL_MS`-тэй ИЖИЛ 5 мин (тэндээс импортлохгүй:
+ *    `live.loadClearance` энэ файлыг динамикаар ачаалдаг, мөчлөг үүсгэхгүй). Урьд нь TTL-гүй
+ *    тул өөр хэрэглэгчийн засвар хуудсаа refresh хийтэл харагддаггүй байв.
+ */
+const CACHE_TTL_MS = 5 * 60_000;
+let cacheAt = 0;
 
 /**
  * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ (2026-08-31). Энэ нь `cached()`-ээр
@@ -117,9 +124,10 @@ const cleanReason = (v: unknown): string => {
 
 /** Нэг удаа татаад кэшлэнэ — олон дашбоард зэрэг дуудахад нэг л багц хүсэлт явна */
 export function loadLandStatus(): Promise<LandStatus> {
-  if (!cache) {
+  if (!cache || Date.now() - cacheAt > CACHE_TTL_MS) {
     const L = PARCEL_LEFT;
-    cache = Promise.all([
+    cacheAt = Date.now();
+    const mine = Promise.all([
       queryGroup(
         L.url,
         L.fields.status,
@@ -139,8 +147,11 @@ export function loadLandStatus(): Promise<LandStatus> {
         parcelAltAreaWhere(),
       ),
     ]).then(([statusRows, altRows]) => buildLandStatus(statusRows, altRows));
+    cache = mine;
     // Амжилтгүй амлалтыг кэшлэхгүй — «дахин оролдох» сэргэх боломжтой байг
-    cache.catch(() => { cache = null; });
+    /* ⚠️ 2026-10-05: зөвхөн ӨӨРӨӨ идэвхтэй үед (`live.cached`-ийн `p === mine` хаалттай ижил) —
+       TTL-ээр шинэ хүсэлт эхэлсний дараа хуучин нь унахад шинэ кэшийг устгахгүй. */
+    mine.catch(() => { if (cache === mine) cache = null; });
   }
   return cache;
 }

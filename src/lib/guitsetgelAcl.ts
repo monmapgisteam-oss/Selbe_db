@@ -259,14 +259,81 @@ function enqueue<T>(u: string, fn: () => Promise<T>): Promise<T> {
  * ⚠️ Жагсаалтыг ГҮЙЦЭТГЭХ агшиндаа уншина: дараалалд хүлээж байх хооронд хэрэглэгч
  *    хасагдсан/дахин нэмэгдсэн бол сүүлийн байдал нь бичигдэнэ.
  */
-async function pushFlow(user: string): Promise<boolean> {
+async function pushFlow(user: string, delta?: FlowDelta): Promise<boolean> {
   try {
     const m = await import('./permsRemote');
+    /*
+     * ⚠️ 2026-10-05: ШИНЭ МӨР ДЭЭР ӨӨРИЙН ӨӨРЧЛӨЛТИЙГ ДАВХАРЛАНА (`scopedAcl.pushRow` ·
+     *    `caps.setCaps`-ийн 2026-10-04-ний ижил загвар — урсгалын мөрд хуулагдаагүй байв).
+     *    Урьд нь ≤5 мин настай кэшээс БҮТЭН мөр бичдэг тул хоёр админ нэг хүнд зэрэг багц
+     *    нэмэхэд сүүлийнх нь эхнийхийн багцыг ЧИМЭЭГҮЙ арчдаг байв. `delta` (энэ дуудлагын
+     *    өмнөх/дараах локал мөр) өгөгдсөн бол remote мөрийг ДАХИН уншиж `mergeFlowDelta`-аар
+     *    нэгтгээд локалыг ч түүгээр шинэчилнэ. Уншиж чадаагүй бол БИЧИХГҮЙ (`false` → «!»
+     *    тэмдэг, «Дахин илгээх»). `retryFlow`/`purgeAssign`/tombstone цэвэрлэгээ нь delta-гүй
+     *    (зорьсон локал төлөвийг хэвээр бичнэ).
+     */
+    /* ⚠️ Өмнөх бичилт УНАСАН (`failed`) бол локал нь баталгаажаагүй зорилго — бүтнээр нь (урьдын зан) */
+    if (delta && !failed.has(user)) {
+      const fresh = await m.flowRead(user);
+      if (!fresh) return false;
+      const fr = fresh.row && STAGES.has(fresh.row.stage)
+        ? {
+          user,
+          stage: fresh.row.stage as Stage,
+          bagts: fresh.row.bagts.filter((b) => typeof b === 'string'),
+          ...(fresh.row.viewOnly === true ? { viewOnly: true as const } : {}),
+        }
+        : null;
+      const merged = mergeFlowDelta(delta.base, delta.next, fr);
+      const cur = load();
+      /* Байрлалыг хадгална — нэгтгэсэн мөр жагсаалтын төгсгөл рүү үсрэхгүй */
+      save(merged
+        ? (cur.some((x) => x.user === user) ? cur.map((x) => (x.user === user ? merged : x)) : [...cur, merged])
+        : cur.filter((x) => x.user !== user));
+    }
     const a = load().find((x) => x.user === user);
     return a ? m.flowUpsert(a.user, a.stage, a.bagts, a.viewOnly === true) : m.flowRemove(user);
   } catch {
     return false;
   }
+}
+
+/** Нэг дуудлагын өмнөх/дараах локал мөр (`null` = мөр алга) — `pushFlow`-ийн нэгтгэлд */
+type FlowDelta = { base: Assign | null; next: Assign | null };
+
+/**
+ * УРСГАЛЫН ТОМИЛГООНЫ ӨӨРЧЛӨЛТИЙГ ШИНЭ МӨР ДЭЭР ДАВХАРЛАНА — цэвэр (2026-10-05).
+ * `base` → `next` нь ЭНЭ админы ганц өөрчлөлт; `fresh` нь remote-оос дөнгөж уншсан мөр.
+ *
+ *   · Хасалт (`next === null`): `fresh` ӨӨР шатанд байвал (нөгөө админ дөнгөж шилжүүлсэн)
+ *     түүнийг ХЭВЭЭР үлдээнэ — `removeAssign(u, stage)` зөвхөн ТЭР шатнаас хасдаг дүрэмтэй ижил.
+ *   · Шат СОЛИГДСОН / шинэ томилгоо, эсвэл `fresh` өөр шатанд: `next`-ийг БҮТНЭЭР нь —
+ *     «нэг аккаунт нэг шатанд» (шат солих нь хуучин багцыг САНААТАЙ арилгадаг).
+ *     ⚠️ Шинэ томилгоо (`base === null`) ба `fresh` ИЖИЛ шатанд бол багцыг НЭГТГЭНЭ
+ *        (хоёр админ нэг хүнийг зэрэг өөр багцад нэмсэн).
+ *   · Ижил шатанд багц солих: `next − base` = нэмсэн, `base − next` = хассан → `fresh` дээр.
+ *     «Бүх багц» байвал зөвхөн `[ALL_BAGTS]`. Үр дүн ХООСОН гарвал (`fresh`-д өөр багц
+ *     үлдээгүй) `next`-ийн багц — хоосон мөр бичихгүй.
+ *   · `viewOnly`: энэ админ ӨӨРЧИЛСӨН бол `next`-ийнх, үгүй бол `fresh`-ийнх (эрх нэмэхгүй тал).
+ */
+export function mergeFlowDelta(base: Assign | null, next: Assign | null, fresh: Assign | null): Assign | null {
+  if (!next) return fresh && base && fresh.stage !== base.stage ? fresh : null;
+  if (!fresh || fresh.stage !== next.stage || (base !== null && base.stage !== next.stage)) return next;
+  const b = new Set(base?.bagts ?? []);
+  const n = new Set(next.bagts);
+  const out = new Set(fresh.bagts.filter((x) => !(b.has(x) && !n.has(x))));
+  for (const x of next.bagts) if (!b.has(x)) out.add(x);
+  const bagts = out.has(ALL_BAGTS) ? [ALL_BAGTS] : [...out];
+  /* ⚠️ Шинэ томилгоо (`base === null`) нь тугийг ӨӨРЧЛӨӨГҮЙ гэж тооцогдоно — remote дээрх
+     «Зөвхөн харна»-г чимээгүй арилгаж шийдвэрлэх эрх НЭМЭХГҮЙ. */
+  const voChanged = base !== null && (base.viewOnly === true) !== (next.viewOnly === true);
+  const viewOnly = voChanged ? next.viewOnly === true : fresh.viewOnly === true;
+  return {
+    user: next.user,
+    stage: next.stage,
+    bagts: bagts.length ? bagts : next.bagts,
+    ...(viewOnly ? { viewOnly: true as const } : {}),
+  };
 }
 
 /**
@@ -295,6 +362,8 @@ export function setAssign(
   if (!bagts.length) return { ok: false, error: tr('Багц сонгоно уу') };
 
   const list = load();
+  /* ⚠️ 2026-10-05: энэ дуудлагын ӨМНӨХ мөр — remote бичилтэд зөвхөн ялгааг давхарлана (`pushFlow`) */
+  const base = list.find((a) => a.user === u) ?? null;
   const exists = list.some((a) => a.stage === stage && a.user === u);
   /*
    * ⚠️ НЭГ АККАУНТ ЗӨВХӨН НЭГ ШАТАНД. Нэг хүн бөглөгч ба хянагч хоёулаа
@@ -330,7 +399,7 @@ export function setAssign(
       await pushFlow(u);
       return { ok: false, g: false };
     }
-    const ok = await pushFlow(u);
+    const ok = await pushFlow(u, { base, next: next.find((a) => a.user === u) ?? null });
     const g = grant ? await grantFlowAccess(u, stage) : true;
     return { ok, g };
   });
@@ -366,10 +435,14 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
      хамгаалалт — урьд нь `''` түлхүүрээр `pushFlow('')` remote руу явж,
      `revokeFlowAccess('')`-ийг ч дууддаг байв. */
   if (!u) return { sync: Promise.resolve(false) };
-  save(load().filter((a) => !(a.stage === stage && a.user === u)));
+  /* ⚠️ 2026-10-05: ялгаа (`pushFlow`-ийн ⚠️) — нөгөө админ дөнгөж ӨӨР шатанд шилжүүлсэн мөрийг арчихгүй */
+  const before = load();
+  const base = before.find((a) => a.user === u) ?? null;
+  const after = before.filter((a) => !(a.stage === stage && a.user === u));
+  save(after);
   const sync = enqueue(u, async () => {
     // Жагсаалтад байхгүй → flowRemove; хооронд нь дахин нэмэгдсэн бол upsert
-    const ok = await pushFlow(u);
+    const ok = await pushFlow(u, { base, next: after.find((a) => a.user === u) ?? null });
     /*
      * ⚠️ ДАРААЛАЛД ХҮЛЭЭХ ХООРОНД ДАХИН ТОМИЛОГДСОН БОЛ ЭРХИЙГ БУЦААХГҮЙ
      *    (2026-09-08-ны аудит).
@@ -469,11 +542,13 @@ export function setViewOnly(
   if (!cur) {
     return { ok: false, error: tr('Эхлээд шатанд томилно уу — хөндлөнгийн хяналт нь томилгоон дээр тавигдана') };
   }
-  save(list.map((a) => (a.user === u
-    ? (viewOnly ? { ...a, viewOnly: true } : { user: a.user, stage: a.stage, bagts: a.bagts })
-    : a)));
+  const nextRow: Assign = viewOnly
+    ? { ...cur, viewOnly: true }
+    : { user: cur.user, stage: cur.stage, bagts: cur.bagts };
+  save(list.map((a) => (a.user === u ? nextRow : a)));
   const sync = enqueue(u, async () => {
-    const ok = await pushFlow(u);
+    /* ⚠️ 2026-10-05: ялгаа — тугийг л өөрчилнө, нөгөө админы багцын засварыг дарахгүй (`pushFlow`) */
+    const ok = await pushFlow(u, { base: cur, next: nextRow });
     markResult(u, ok);
     return ok;
   });

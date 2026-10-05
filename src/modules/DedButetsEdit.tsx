@@ -45,7 +45,7 @@ import { LAYER_BY_ID } from '@/lib/services';
 import type { Row } from '@/lib/query';
 import {
   createRow, emptyPatch, loadGeometry, loadLayerMeta, loadRow, revertAttrs, rowToPatch,
-  saveRow, validateChanged, validateRow,
+  isLostResponse, saveRow, validateChanged, validateRow,
   type FieldDef, type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
 import { geomAreaM2, geomLengthM, lenFieldUnit, lenFieldValue, measureKind } from '@/lib/butetsLen';
@@ -224,6 +224,12 @@ export function DedButetsEdit({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [fail, setFail] = useState('');
+  /**
+   * ⚠️ 2026-10-05: «Нэмэх»-ийн ХАРИУ АЛДАГДСАН (timeout/сүлжээ) — объект үүссэн эсэх
+   *    тодорхойгүй. Урьд нь маягт идэвхтэй үлдэж, дахин дарахад объект ДАВХАРДДАГ байв.
+   *    `true` үед «Нэмэх» хаалттай; хэрэглэгч газрын зураг дээр шалгаад өөрөө нээнэ.
+   */
+  const [unsure, setUnsure] = useState(false);
   const dirty = useRef(false);
   /** Амжилттай хадгалалтын тоолуур — маягт нээлттэй үлдвэл мөрийг дахин татна (2026-09-21) */
   const [saved, setSaved] = useState(0);
@@ -248,7 +254,7 @@ export function DedButetsEdit({
   useEffect(() => {
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
-    setLoad(true); setFail(''); setErr({});
+    setLoad(true); setFail(''); setErr({}); setUnsure(false);
     /**
      * ⚠️ ХУУЧИН МӨРИЙГ ЗААВАЛ ЦЭВЭРЛЭНЭ. `before` нь ЗӨВХӨН амжилттай
      * уншилтад бичигддэг тул цэвэрлэхгүй бол өмнөх объектын мөр үлдэнэ:
@@ -436,6 +442,12 @@ export function DedButetsEdit({
       setSaved((x) => x + 1);
     } catch (x) {
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
+      /* ⚠️ 2026-10-05: шинэ объектын хариу алдагдсан бол дахин илгээхийг хаана (`unsure`) */
+      if (isNew && isLostResponse(x)) {
+        setUnsure(true);
+        setFail('');
+        return;
+      }
       setFail(userError(x));
     } finally {
       setBusy(false);
@@ -569,6 +581,18 @@ export function DedButetsEdit({
                 объектод биш ЭНЭ мөрөнд үйлчилдэг тул маягтын үргэлжлэл. */}
             {extra}
 
+            {/* ⚠️ 2026-10-05: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
+            {unsure && (
+              <div className={d.askRow} role="alertdialog">
+                <span className={d.askMsg}>
+                  {tr('Серверээс хариу ирсэнгүй — объект нэмэгдсэн эсэх ТОДОРХОЙГҮЙ. Дахин нэмэхээс өмнө газрын зургийг шинэчилж, объект үүссэн эсэхийг шалгана уу.')}
+                </span>
+                <button type="button" className={d.btn} onClick={() => setUnsure(false)} disabled={busy}>
+                  {tr('Шалгасан — үүсээгүй, дахин нэмэх')}
+                </button>
+              </div>
+            )}
+
             {/* Самбарын асуулт — `askClose`-ийн тайлбар */}
             {askClose && (
               <div className={d.askRow} role="alertdialog">
@@ -591,7 +615,7 @@ export function DedButetsEdit({
                   давхаргад ч геометр нэмэх нь утгатай. Засах горимд харин
                   бөглөх зүйлгүй тул товч хаалттай. */}
               <button type="button" className={d.primary} onClick={submit}
-                disabled={busy || !canEdit
+                disabled={busy || !canEdit || unsure
                   || (isNew ? !meta.canCreate : !meta.canUpdate || meta.fields.length === 0)}>
                 {busy ? tr('Хадгалж байна…') : isNew ? tr('Нэмэх') : tr('Хадгалах')}
               </button>

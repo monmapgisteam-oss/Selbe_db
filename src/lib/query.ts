@@ -29,6 +29,12 @@ export class ArcGISError extends Error {
     readonly code?: number,
     /** ArcGIS-ийн `error.details` — `hyanalt.post` мессежид залгадаг */
     readonly details?: string[],
+    /**
+     * ⚠️ 2026-10-05: 498/499 ирээд токен ШИНЭЧЛЭГДЭЖ ЧАДААГҮЙ (нэвтрэлтийн хугацаа дууссан).
+     * Шинэчлэгдсэн токеноор ч 499 хэвээр бол жинхэнэ «эрх алга» — тэр үед `false`.
+     * `ui.friendlyError` үүгээр «дахин нэвтэрнэ үү» ба «админд хандана уу»-г ялгана.
+     */
+    readonly sessionExpired = false,
   ) {
     super(message);
     this.name = 'ArcGISError';
@@ -218,12 +224,28 @@ export type ArcgisReqOpts = {
 
 const backoff = (attempt: number) => sleep(400 * 2 ** attempt + Math.random() * 200);
 
+/**
+ * ⚠️ 2026-10-05: УНШИЛТЫН сүлжээний/5xx дахин оролдлого. Урьд нь сүлжээний алдаанд НЭГ л
+ *    удаа (300–500 мс) дахин оролддог, HTTP 500/502/504-ийг огт давтдаггүй байсан тул
+ *    барилгын талбайн тогтворгүй сүлжээнд харагдац бүхэлдээ алдаа болдог байв.
+ * ⚠️ ЗӨВХӨН баталгаатай УНШИЛТ (`…/query` · параметргүй давхаргын мета) — бичих endpoint,
+ *    `sharing/rest/*` ХЭЗЭЭ Ч нэмж давтагдахгүй (үр дүн тодорхойгүй → давхар бичилт).
+ *    Бичилт биш бусад хүсэлтийн хуучин НЭГ удаагийн сүлжээний давталт хэвээр.
+ */
+const NET_RETRIES = 3;
+const HTTP5_RETRIES = 2;
+const netBackoff = (n: number) => sleep(350 * 2 ** n + Math.random() * 200);
+const isReadReq = (url: string, params: Record<string, string>): boolean =>
+  /\/query\/?$/i.test(url)
+  || (Object.keys(params).length === 0 && /\/(FeatureServer|MapServer)(\/\d+)?\/?$/i.test(url));
+
 async function attemptRequest(
   full: string,
   params: Record<string, string>,
   o: ArcgisReqOpts,
   attempt: number,
-  netRetried = false,
+  /** Сүлжээ/5xx-ийн дахин оролдлогын тоо (⚠️ 2026-10-05: boolean → тоолуур) */
+  netTries = 0,
   refreshed = false,
 ): Promise<ArcgisBody> {
   const timeoutMs = o.timeoutMs ?? TIMEOUT_MS;
@@ -281,16 +303,19 @@ async function attemptRequest(
     // Түр зуурын сүлжээний тасалт (browser-т fetch-ийн network алдаа нь яг
     // TypeError) — НЭГ удаа богино хүлээгээд дахин оролдоно. Нэг view-ийн олон
     // асуулгын Promise.all-д ганц глитч бүтэн харагдацыг унагадаг байв.
-    // Rate-limit retry-ээс ТУСДАА тоолуур (netRetried) тул давхардахгүй.
+    // Rate-limit retry-ээс ТУСДАА тоолуур (netTries) тул давхардахгүй.
     /* ⚠️ 2026-09-30 (төслийн аудит): БИЧИХ endpoint-ийг сүлжээний алдаанд ДАХИН ИЛГЭЭХГҮЙ.
        Сервер хүсэлтийг хүлээн авч БИЧСЭНИЙ дараа хариу замдаа тасарвал (TypeError) давтан
        илгээлт нь `addFeatures`/`applyEdits`-ийн мөрийг ХОЁР удаа нэмнэ (давхар илгээлт,
        давхар хяналтын тойрог). Уншилт (query · statistics) аюулгүй тул хэвээр. 429/503 ба
        498 нь сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн хариу тул тэдгээрийн давталт хэвээр. */
     const isWrite = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|addAttachment|updateAttachment|deleteAttachments|calculate|append)\/?$/i.test(full);
-    if (e instanceof TypeError && !netRetried && !isWrite && !o.signal?.aborted && !timedOut()) {
-      await sleep(300 + Math.random() * 200);
-      return attemptRequest(full, params, o, attempt, true, refreshed);
+    /* ⚠️ 2026-10-05: уншилтад `NET_RETRIES` хүртэл backoff-той; бусад (бичилт биш) нь хуучнаараа 1 */
+    const netMax = isReadReq(full, params) ? NET_RETRIES : 1;
+    if (e instanceof TypeError && netTries < netMax && !isWrite && !o.signal?.aborted && !timedOut()) {
+      if (netTries === 0) await sleep(300 + Math.random() * 200);
+      else await netBackoff(netTries);
+      return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
     }
     // Timeout-ыг ДАХИН оролдохгүй (аль хэдийн 30с хүлээсэн) — ArcGISError болгож
     // дуудагчид хүргэнэ: файлын дүрмээр алдаа UI-д харагдах ёстой.
@@ -306,7 +331,14 @@ async function attemptRequest(
     if (res.status === 429 || res.status === 503) throttleDown();
     if ((res.status === 429 || res.status === 503) && attempt < RETRIES) {
       await backoff(attempt);
-      return attemptRequest(full, params, o, attempt + 1, netRetried, refreshed);
+      return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
+    }
+    /* ⚠️ 2026-10-05: 500/502/504 — ЗӨВХӨН уншилтад дахин (`isReadReq`-ийн ⚠️). Бичилтийн
+       5xx нь сервер аль хэдийн бичсэн байж болох тул ХЭЗЭЭ Ч давтахгүй. */
+    if ((res.status === 500 || res.status === 502 || res.status === 504)
+      && netTries < HTTP5_RETRIES && isReadReq(full, params) && !o.signal?.aborted) {
+      await netBackoff(netTries);
+      return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
     }
     throw new ArcGISError(`HTTP ${res.status}`, full);
   }
@@ -321,19 +353,24 @@ async function attemptRequest(
     if (isRateLimit(message ?? '')) throttleDown();
     if (isRateLimit(message ?? '') && attempt < RETRIES) {
       await backoff(attempt);
-      return attemptRequest(full, params, o, attempt + 1, netRetried, refreshed);
+      return attemptRequest(full, params, o, attempt + 1, netTries, refreshed);
     }
     /* ⚠️ 2026-09-29 (хэрэглэгч: «илгээхэд Invalid token»): PKCE токен богино хугацаатай —
        хүчингүй болсон бол шинэчлээд НЭГ удаа дахин (`ensureFreshToken`-ийн ⚠️). */
     /* ⚠️ 2026-10-01: токен ЗӨВХӨН org/портал хостод явдаг (`hostOk`) — бусад хостод
        шинэчилээд ч токен явахгүй тул утгагүй. Шинэчлэлтийн шуурганаас сэргийлж
        `refreshAfterTokenError` (хуваалцсан Promise · «аль хэдийн солигдсон» шалгалт). */
-    if (!refreshed && hostOk && isTokenError(code, message) && (always || !('token' in params))
-      && await refreshAfterTokenError(sentTok)) {
-      return attemptRequest(full, params, o, attempt, netRetried, true);
+    /* ⚠️ 2026-10-05: шинэчлэлт БҮТЭЭГҮЙ (илгээсэн токен байсан ч солигдсонгүй) → «нэвтрэлтийн
+       хугацаа дууссан» гэж ТЭМДЭГЛЭНЭ. Шинэ токеноор ч 499 (`refreshed`) бол жинхэнэ «эрх алга». */
+    let sessionExpired = false;
+    if (!refreshed && hostOk && isTokenError(code, message) && (always || !('token' in params))) {
+      if (await refreshAfterTokenError(sentTok)) {
+        return attemptRequest(full, params, o, attempt, netTries, true);
+      }
+      sessionExpired = sentTok != null;
     }
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
-    throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details);
+    throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details, sessionExpired);
   }
   return json;
 }

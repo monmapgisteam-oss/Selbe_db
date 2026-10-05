@@ -52,6 +52,16 @@ export const POPULATION_FIELD = 'Population'; // ⚠️ export (2026-09-22): Por
  * зөвхөн TTL-ээр л шинэчлэгдэнэ — өөрөөр хэлбэл тагийг МАРТВАЛ хуучин зан
  * хэвээр үлдэнэ, чимээгүй эвдрэхгүй.
  */
+/**
+ * ⚠️ 2026-10-05: «СЕШНИЙ» кэшүүдийн АНХДАГЧ TTL. Урьд нь `loadBudget` · `loadPkgProgress` ·
+ *    `loadFillPkgProgress` · `loadHousing` · `loadSocial` · `loadClearance` (мөн `gdash` ·
+ *    `land`-ийн ачаалагчид) TTL-гүй байсан тул өглөө нээсэн таб бусдын өдрийн бичилтийг
+ *    хуудсаа refresh хийтэл ХАРДАГГҮЙ байв. Одоо бүгд ИЖИЛ 5 мин (хуучрал нэг жигд хэвээр).
+ * ⚠️ TTL нь ДАРААГИЙН дуудалтад л шалгагдана — нээлттэй харагдацыг `Portal`-ын «Шинэчлэх»
+ *    товч ба таб буцаж ирэх үеийн `invalidateAll()` шинэчилнэ.
+ */
+export const SESSION_TTL_MS = 5 * 60_000;
+
 export function cached<T>(
   fn: () => Promise<T>,
   ttlMs?: number,
@@ -201,7 +211,7 @@ export const loadBudget = cached<Budget>(async () => {
   };
   // ⚠️ Хяналт (2026-09-21): Σ byType.value ≥ total — задаргаа БҮХ мөрөөр (5·6·7-р
   //    хэсэг ч орно), `total` нь зөвхөн `finXlInTotal` хүрээ. Тэнцэхгүй нь ЗӨВ.
-}, undefined, ['CASHFLOW_NEW']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 export type Headline = {
   /**
@@ -233,6 +243,11 @@ export type Headline = {
    *    (геометрийн `Shape__Area`, ≈21 га) БИШ. Өртгийн загвар үүн дээр үржинэ.
    */
   usableM2: number;
+  /**
+   * ⚠️ 2026-10-05: гол гурван эхийн (хил · барилга · төсөв) аль нэг нь УНАСАН — NaN талбарууд
+   *    «мэдээлэлгүй» биш «татагдсангүй». `cached`-ийн `keep` үүгээр хэсэгчилсэн үр дүнг кэшлэхгүй.
+   */
+  partial?: boolean;
 };
 
 export const loadHeadline = cached<Headline>(async () => {
@@ -295,13 +310,16 @@ export const loadHeadline = cached<Headline>(async () => {
     greenHa: gr && gr.a != null ? Number(gr.a) / 10_000 : null, // ⚠️ null ≠ 0 (2026-09-17)
     byStatus,
     usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
+    partial: !b || !built || !budget,
   };
   /* ⚠️ TTL (5 мин) — хэсэгчилсэн (NaN-тай) үр дүн session дуустал кэшлэгдэж
      «—» гацахаас сэргийлнэ: `cached` зөвхөн reject-ийг л хаядаг тул TTL-гүй
      бол түр доголдлын үлдэц хэзээ ч засрахгүй байв. */
   /* ⚠️ `reads` (2026-08-29): `loadBudget`-ыг нэгтгэдэг тул төсөв өөрчлөгдөхөд
      энэ ч хуучирна — эс бөгөөс толгойн тоо 5 минут хоцорно. */
-}, 5 * 60_000, ['CASHFLOW_NEW']);
+  /* ⚠️ 2026-10-05: `keep` — хэсэгчилсэн (аль нэг эх унасан) үр дүнг ОГТ кэшлэхгүй. Урьд нь
+     5 минутын турш «—» гацаж, эх сэргэсэн ч «дахин оролдох» кэшээс хуучныг авдаг байв. */
+}, SESSION_TTL_MS, ['CASHFLOW_NEW'], (h) => !h.partial);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 
@@ -388,7 +406,8 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   const F = BAGTS_NEGTGEL.fields;
   const rows = await queryFeatures(BAGTS_NEGTGEL.url, {
     outFields: [F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
-    limit: 4000,
+    /* ⚠️ 2026-10-05: `limit: 4000` ХАСАГДАВ — хүснэгт append-only (багц × огноо) тул хязгаараас
+       хэтэрмэгц ШИНЭ мөрүүд чимээгүй хаягдана. `queryFeatures` өөрөө хуудаслана (OID эрэмбээр). */
   });
 
   const nOrNull = (v: unknown): number | null => {
@@ -441,7 +460,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   /* ⚠️ Шүүсний дараа мөр үлдэхгүй бол ХООСОН массив — «0%» БИШ, «мэдээлэлгүй».
      Дуудагч самбарууд бүгд `list.length === 0`-д `<Empty …>` зурдаг. */
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
-}, undefined, ['BAGTS_NEGTGEL']);
+}, SESSION_TTL_MS, ['BAGTS_NEGTGEL']);
 
 /**
  * Багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр — «одоогийн байдал».
@@ -514,7 +533,7 @@ async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> 
    энэ ачаалагч cashflow-оос хамаарахаа больсон. */
 /* ⚠️ 2026-09-30: `BUILDING` ч хасагдав — давхаргаар гүйлгэхээ больсон (`fillPkgProgressRaw`). */
 export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProgressRaw(false),
-  undefined, ['BAGTS_SHEET']);
+  SESSION_TTL_MS, ['BAGTS_SHEET']);
 
 /**
  * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
@@ -548,7 +567,7 @@ export const loadHousing = cached<HousingTotals>(async () => {
   const rows = await queryFeatures(BUILDING.url, {
     outFields: [BUILDING.oid, F.bagts, F.block, F.households],
     orderBy: `${BUILDING.oid} ASC`,
-    limit: 4000,
+    /* ⚠️ 2026-10-05: `limit: 4000` хасагдав — хэтэрвэл шинэ блок чимээгүй тоологдохгүй; хуудаслалт OID эрэмбээр */
   });
   const seen = new Set<string>();
   let ail = 0;
@@ -559,7 +578,7 @@ export const loadHousing = cached<HousingTotals>(async () => {
     ail += Number(r[F.households] ?? 0) || 0;
   }
   return { blocks: seen.size, ail };
-}, undefined, ['BUILDING']);
+}, SESSION_TTL_MS, ['BUILDING']);
 
 /* ══════════════ Нийгмийн үйлчилгээний барилга ══════════════ */
 
@@ -638,7 +657,8 @@ export const loadSocial = cached<SocialLive>(async () => {
   );
   const kept = rows.filter((r) => r.n > 0);
   return { rows: kept, totalN: kept.reduce((s, r) => s + r.n, 0) };
-});
+  /* ⚠️ 2026-10-05: бусад DashData ачаалагчтай ЖИГД TTL (таг хэвээр хоосон — портал бичдэггүй) */
+}, SESSION_TTL_MS);
 
 /* ══════════════════ Газар чөлөөлөлт — нүүрийн KPI ══════════════════ */
 
@@ -689,4 +709,4 @@ export const loadClearance = cached<Clearance>(async () => {
     total: L.total,
     pct: L.pct,
   };
-}, undefined, ['PARCEL_LEFT']);
+}, SESSION_TTL_MS, ['PARCEL_LEFT']);

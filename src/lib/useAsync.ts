@@ -211,6 +211,19 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], opts?: AsyncO
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce, bus]);
 
+  /*
+   * ⚠️ 2026-10-05: СҮЛЖЭЭ СЭРГЭХЭД (`online`) АЛДААТАЙ байгаа дуудагч өөрөө дахин оролдоно.
+   * Урьд нь холболт тасарсны дараа карт бүрийн «Дахин оролдох»-ыг гараар дарах эсвэл
+   * хуудсаа refresh хийх шаардлагатай байв. Зөвхөн `error` төлөвт сонсоно — амжилттай
+   * өгөгдөл дэмий дахин татагдахгүй.
+   */
+  const failed = tagged.r.state === 'error';
+  useEffect(() => {
+    if (!failed) return;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [failed, retry]);
+
   /**
    * ⚠️ Тогтвортой лавлагаа: рендер бүрт шинэ объект буцаавал `q`-г deps-даа
    * авсан useMemo/useEffect (жиш. Bagts-ийн `packs`) бүр дэмий дахин ажиллана.

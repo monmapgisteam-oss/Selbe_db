@@ -14,7 +14,7 @@
  */
 
 import { queryFeatures, type Row } from '@/lib/query';
-import { cached } from '@/lib/live';
+import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey, monthKey } from '@/lib/format';
 import {
@@ -259,7 +259,8 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       ...CF_SOURCES.map((s) => s.field),
       ...Object.values(CASHFLOW_NEW.stages),
     ],
-    limit: 4000,
+    /* ⚠️ 2026-10-05: `limit` ХАСАГДАВ (энэ файлын бүх `queryFeatures`) — эрэмбэгүй хатуу хязгаар нь
+       хүснэгт өсөхөд шинэ мөрийг ЧИМЭЭГҮЙ хаядаг. `queryFeatures` өөрөө OID эрэмбээр хуудаслана. */
   });
   return rows.map((r: Row): CfRow => ({
     oid: nOf(r.OBJECTID),
@@ -289,7 +290,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     name: sOf(r[CF.detail]),
     sec: sOf(r[CF.code1]),
   }));
-}, undefined, ['CASHFLOW_NEW']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 /* ══════════════════════ САРЫН ТӨЛӨВЛӨГӨӨ (S-МУРУЙ) ══════════════════════ */
 
@@ -321,7 +322,7 @@ export const loadCfPlan = cached<CfPlanRow[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_MONTH_WHERE,
     outFields: [CF_MONTH.id, CF_MONTH.start, CF_MONTH.pct, CF_MONTH.amount],
-    limit: 8000,
+    /* ⚠️ 2026-10-05: `limit: 8000` хасагдав — сарын мөр ажил × сараар өсдөг (`loadGdashCf`-ийн ⚠️) */
   });
   return rows
     .map((r: Row): CfPlanRow => ({
@@ -335,7 +336,7 @@ export const loadCfPlan = cached<CfPlanRow[]>(async () => {
     /* ⚠️ `pct` ЭСВЭЛ `amount`-ийн аль нэг нь байхад л хангалттай: муруйд
        хувь, чартад мөнгө хэрэгтэй бөгөөд хоёулаа зэрэг бөглөгддөггүй. */
     .filter((r) => r.id > 0 && r.start != null && (r.pct != null || r.amount != null));
-}, undefined, ['CASHFLOW_NEW']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 
 /* ══════════════════════ ХУГАЦААНЫ ШҮҮЛТ ══════════════════════ */
@@ -1503,7 +1504,6 @@ export function kpisOf(
 export const loadBuildPkgs = cached<Map<string, string>>(async () => {
   const rows = await queryFeatures(BUILDING.url, {
     outFields: [BUILDING.fields.bagts],
-    limit: 4000,
   });
   const m = new Map<string, string>();
   for (const r of rows) {
@@ -1511,13 +1511,13 @@ export const loadBuildPkgs = cached<Map<string, string>>(async () => {
     if (v) m.set(bagtsKey(v), v);
   }
   return m;
-}, undefined, ['BUILDING']);
+}, SESSION_TTL_MS, ['BUILDING']);
 
 /** Гэрээний дүнгийн нийлбэр — шүүсэн мөрүүдээс (тусад нь: `CfRow`-д ороогүй) */
 export const loadContractSum = cached<Map<number, number>>(async () => {
-  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['OBJECTID', CF.contract], limit: 4000 });
+  const rows = await queryFeatures(CF.url, { where: CF_WORK_WHERE, outFields: ['OBJECTID', CF.contract] });
   return new Map(rows.map((r) => [nOf(r.OBJECTID), nOf(r[CF.contract])]));
-}, undefined, ['CASHFLOW_NEW']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 /* ══════════════════════ ХАБ — ӨНӨӨДРИЙН БАЙДЛААР ══════════════════════ */
 
@@ -1723,7 +1723,6 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
     outFields: [PARCEL_LEFT.oid, F.status],
-    limit: 4000,
   });
 
   const clean = (v: unknown): string => {
@@ -1741,7 +1740,7 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
     m.set(k, set);
   }
   return m;
-}, undefined, ['PARCEL_LEFT']);
+}, SESSION_TTL_MS, ['PARCEL_LEFT']);
 
 /**
  * ШҮҮГДСЭН мөрүүдэд БОДИТООР байгаа дэд багц → ажлын төрлүүд.
@@ -1809,7 +1808,6 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
   const rows = await queryFeatures(CF.url, {
     where: CF_WORK_WHERE,
     outFields: [CF.pkg2, ...FIN_XL_CHART_FIELDS],
-    limit: 4000,
   });
 
   const seen = new Map<string, string>();
@@ -1839,4 +1837,4 @@ export const loadSubPkgLayers = cached<SubPkg[]>(async () => {
       types: [...(types.get(key) ?? [])],
     }))
     .sort((a, b) => a.label.localeCompare(b.label, 'mn'));
-}, undefined, ['CASHFLOW_NEW']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW']);

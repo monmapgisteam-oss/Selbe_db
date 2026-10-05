@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { toDateInput, fromDateInput, ymd } from './chanarUi';
+import { DateField } from '@/modules/huvaari/DateField';
 import s from '../chanar.module.css';
 
 export type Mode = { edit: boolean; busy: boolean };
@@ -71,9 +72,13 @@ export function DateInp({
       <dt>{label}</dt>
       <dd>
         {m.edit ? (
-          <input
-            type="date" className={s.input} aria-label={label}
-            value={toDateInput(value)} onChange={(e) => onChange(fromDateInput(e.target.value))} disabled={m.busy}
+          /* ⚠️ 2026-10-05: `<input type="date">` → хуваалцсан `DateField` (YYYY-MM-DD текст + 📅).
+             Натив оролтын харагдах хэлбэр хөтөч/системийн хэлнээс хамаарч өдөр/сар солигдож
+             уншигддаг байв. ⚠️ ХАДГАЛАХ хэлбэр ХЭВЭЭР — орон нутгийн шөнө дундын epoch
+             (`chanarUi.fromDateInput`); хуучин баримтууд ийм тул UTC руу шилжүүлээгүй. */
+          <DateField
+            label={label} disabled={m.busy}
+            value={toDateInput(value)} onChange={(v) => onChange(fromDateInput(v))}
           />
         ) : ymd(value)}
       </dd>

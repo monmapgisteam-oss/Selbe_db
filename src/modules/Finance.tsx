@@ -21,7 +21,7 @@ const DATE_TYPES = new Set(['esriFieldTypeDate', 'esriFieldTypeDateOnly']);
 import { Data, Empty, Note, userError } from '@/components/ui';
 import { CashflowPlan } from '@/modules/CashflowPlan';
 import { useAsync } from '@/lib/useAsync';
-import { queryFeatures, arcgisPost } from '@/lib/query';
+import { queryFeatures, arcgisPost, ArcGISError } from '@/lib/query';
 import { cached } from '@/lib/live';
 
 /**
@@ -67,7 +67,7 @@ import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import {
-  NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, parseCell as parseCellRaw, type ParseMsg,
+  NUMERIC_TYPES, SERVER_RO, dateOnlyText, editText, localDay, parseCell as parseCellRaw, type ParseMsg,
   setFinNavDirty, awaitingReload,
 } from '@/lib/finEdit';
 import {
@@ -715,7 +715,9 @@ const loadCfMonthRows = cached(
     where: CF_MONTH_WHERE,
     outFields: ['*'],
     orderBy: `Cashflow_ID ASC, Cashflow_start ASC`,
-    limit: 8000,
+    /* ⚠️ 2026-10-05: `limit: 8000` ХАСАГДАВ — 8000-аас давсан сарын мөр ЧИМЭЭГҮЙ тайрагдаж,
+       тайрагдсан ажлын сарууд «байхгүй» мэт харагдан хугацаа засахад дахин нэмэгдэх
+       эрсдэлтэй байв. `queryFeatures` нь `orderBy`-той үед бүх хуудсыг өөрөө татна. */
   }),
   LIVE_TTL,
   ['CASHFLOW_NEW'],
@@ -1459,6 +1461,9 @@ const PARSE_MSG: ParseMsg = {
   dateFmt: (l, v) => tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', l, v),
   dateBad: (l, v) => tr('«{0}» — огноо буруу: {1}', l, v),
   numBad: (l, v) => tr('«{0}» — тоо буруу: {1}', l, v),
+  /* ⚠️ 2026-10-05: `finEdit.parseCell`-ийн шинэ хоёр алдаа */
+  numAmbig: (l, v) => tr('«{0}» — «{1}»: таслал мянгатын уу, аравтын уу тодорхойгүй. Таслалгүй (1250) эсвэл цэгтэй (1.25) бичнэ үү.', l, v),
+  pctRange: (l, v) => tr('«{0}» — хувь 0–100 хооронд байх ёстой: {1}', l, v),
 };
 /* ⚠️ 2026-09-30: `pct` — ХУВИЙН талбарт нэг таслал аравтын (`finEdit.parseCell`-ийн ⚠️) */
 const parseCell = (s: string, type: string, label: string, pct = false): unknown =>
@@ -1906,6 +1911,8 @@ function FullTable({
     setBusy(true);
     setErr(null);
     setMsg(null);
+    /** ⚠️ 2026-10-05: гол `applyAll` НЭМЭЛТТЭЙ явж буй эсэх — `catch`-ийн «үр дүн тодорхойгүй» салаанд */
+    let addsInFlight = false;
     try {
       const byName = new Map(fields.map((c) => [c.name, c]));
       const typeOf = (n: string) => byName.get(n)?.type ?? 'esriFieldTypeString';
@@ -1935,6 +1942,15 @@ function FullTable({
         return o;
       }).filter((o) => Object.keys(o).length > 0);
 
+      /* ⚠️ 2026-10-05: СӨРӨГ гэрээний дүн нийтлэгдэхгүй — сарын `Cashflow_dun` (хувь × ХО дүн)
+         сөрөг болж S-муруйг доош татдаг. (Хувийн 0–100 мужийг `parseCell` шалгана.) */
+      for (const a of [...upd.values(), ...newRows]) {
+        const hv = a.ho_dun_geree;
+        if (typeof hv === 'number' && hv < 0) {
+          throw new Error(tr('«{0}» — сөрөг дүн байж болохгүй: {1}', labelOf('ho_dun_geree'), hv));
+        }
+      }
+
       /* ⚠️ ГУРВЫГ НЭГ ХҮСЭЛТЭЭР — атомаар. Салгаж явуулбал нэмэлт амжилттай
          болоод устгал уначихад хэрэглэгч дахин дарж, нэмсэн мөр ДАВХАРДАНА. */
       /*
@@ -1960,6 +1976,11 @@ function FullTable({
       const monthAdds: Record<string, unknown>[] = [];
       const monthDels: number[] = [];
       let keptOut = 0;
+      /** ⚠️ 2026-10-05: нийтлэхийн өмнөх ДАХИН уншилтаар хасагдсан устгал / нэмэлт (доорх ⚠️) */
+      let skipDel = 0;
+      let skipAdd = 0;
+      /** Сарын мөр нь нийцүүлэгдэж буй (байгаа) ажлуудын `Cashflow_ID` */
+      const affected = new Set<number>();
       /** ⚠️ 2026-10-04: энэ нийтлэлд ОНООСОН `Cashflow_ID`-ууд ба тэдгээрийг авсан ХУУЧИН мөрийн oid — бичсэний дараах давхардлын шалгалтад */
       const cfAssigned = new Set<number>();
       const cfAssignedOld: number[] = [];
@@ -2014,6 +2035,24 @@ function FullTable({
            ⚠️ max-ийг БҮТЭН хүснэгтээс (`loadCashflowNewRows` — «БОНДЫН ХҮҮ» шүүгдээгүй)
            ба сарын мөрөөс авна: зөвхөн харагдаж буй `rows`-оор бодвол нуусан
            мөрийн дугаартай давхцана. Талбар хүснэгтэд байхгүй бол огт хөндөхгүй. */
+        /* ⚠️ 2026-10-05: ДУУСАХ огноо ЭХЛЭХ-ээс өмнө бол НИЙТЛЭХГҮЙ. Урьд нь `monthsOf`-ийн
+           `Math.max(1, …)` мужийг ГАНЦ сар болгож, ажлын бусад ХООСОН сарын мөрийг устгадаг
+           байв — үсэг андуурсан огноо хуваарийг чимээгүй нураана. Өдрөөр (`localDay`) харьцуулна. */
+        const rangeCheck = (a: Record<string, unknown>, r: Row | undefined) => {
+          const st = dateOf(a, r, 'ehleh_ognoo');
+          const en = dateOf(a, r, 'duusah_ognoo');
+          if (st == null || en == null) return;
+          const sd = localDay(st.getTime());
+          const ed = localDay(en.getTime());
+          if (ed >= sd) return;
+          const nm = String(a.ajil_uilchilgee ?? r?.ajil_uilchilgee ?? '').trim() || tr('нэргүй мөр');
+          throw new Error(tr('«{0}» — дуусах огноо ({1}) эхлэх огнооноос ({2}) өмнө байна. Огноог засаад дахин нийтэлнэ үү.', nm, ed, sd));
+        };
+        for (const [oid, a] of upd) {
+          if ('ehleh_ognoo' in a || 'duusah_ognoo' in a) rangeCheck(a, rowByOid.get(oid));
+        }
+        for (const o of newRows) rangeCheck(o, undefined);
+
         if (byName.has('Cashflow_ID')) {
           const lackNew = newRows.filter((o) => cfIdOf(o.Cashflow_ID) == null);
           const lackOld = [...upd.entries()].filter(([oid, a]) => ('ehleh_ognoo' in a || 'duusah_ognoo' in a)
@@ -2042,6 +2081,7 @@ function FullTable({
 
           /* Шинэ мужийн сарууд */
           const want = monthsOf(st, en);
+          affected.add(id);
 
           const have = new Map<string, Row>();
           for (const mr of monthBy.get(id) ?? []) {
@@ -2090,6 +2130,44 @@ function FullTable({
           for (const v of monthsOf(st, en).values()) {
             monthAdds.push({ Cashflow_ID: id, Cashflow_start: v.s, Cashflow_end: v.e });
           }
+        }
+
+        /* ⚠️ 2026-10-05: ХУУЧИРСАН АГШНЫ ХАМГААЛАЛТ. Дээрх шийдвэр (аль сарыг устгах/нэмэх)
+           нь АЧААЛСАН үеийн `months`-оор гарсан. Тэр хооронд өөр хүн «Cashflow хувиарлах»-д
+           тухайн сарын хувийг бөглөсөн бол түүний мөр устдаг, эсвэл хоёр хүн ижил сарыг зэрэг
+           нэмдэг байв. Бичихийн ЯГ ӨМНӨ нөлөөлөгдөх ажлуудын сарыг серверээс ДАХИН уншиж:
+             · одоо хувь/дүнтэй болсон (эсвэл аль хэдийн устсан) мөрийг устгалаас ХАСНА;
+             · аль хэдийн үүссэн сарыг нэмэлтээс ХАСНА.
+           Уншилт унавал нийтлэл ЗОГСОНО (таамгаар устгахгүй). Хассаныг мэдэгдэлд хэлнэ. */
+        if (affected.size && (monthAdds.length || monthDels.length)) {
+          const fresh = await queryFeatures(url, {
+            where: `(${CF_MONTH_WHERE}) AND Cashflow_ID IN (${[...affected].join(',')})`,
+            outFields: [oidField, 'Cashflow_ID', 'Cashflow_start', 'Cashflow_huwi', 'Cashflow_dun'],
+            orderBy: `${oidField} ASC`,
+          });
+          const freshByOid = new Map(fresh.map((r) => [Number(r[oidField]), r]));
+          const freshKeys = new Set<string>();
+          for (const r of fresh) {
+            const fid = cfIdOf(r.Cashflow_ID);
+            const t = Number(r.Cashflow_start);
+            if (fid != null && r.Cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${keyOf(new Date(t))}`);
+          }
+          const has = (v: unknown) => v != null && String(v).trim() !== '';
+          const dels = monthDels.filter((moid) => {
+            const fr = freshByOid.get(moid);
+            if (!fr) return false; // өөр хүн аль хэдийн устгасан — дахин устгахгүй
+            if (has(fr.Cashflow_huwi) || has(fr.Cashflow_dun)) { skipDel += 1; return false; }
+            return true;
+          });
+          monthDels.length = 0;
+          monthDels.push(...dels);
+          const addsKept = monthAdds.filter((a) => {
+            const k = `${Number(a.Cashflow_ID)}|${keyOf(new Date(Number(a.Cashflow_start)))}`;
+            if (freshKeys.has(k)) { skipAdd += 1; return false; }
+            return true;
+          });
+          monthAdds.length = 0;
+          monthAdds.push(...addsKept);
         }
 
         /* ══════ САРЫН ДҮНГ ХУВИАС БОДОХ ══════
@@ -2157,6 +2235,7 @@ function FullTable({
           }
         }
       }
+      addsInFlight = newRows.length + monthAdds.length > 0;
       const { n, oids: addedOids } = await applyAll(url, oidField, {
         updates: [...upd.values()],
         adds: [...newRows, ...monthAdds],
@@ -2171,6 +2250,7 @@ function FullTable({
          (устгал нь зөвхөн ХООСОН сар). Урьд нь `finEdit`-тэй хүн огноо засахад
          сар нэмэгдэх тул `finRow` шаардаж, огноо хэзээ ч нийтэлж чаддаггүй байв. */
       }, { cap: newRows.length > 0 ? 'finRow' : 'finEdit' });
+      addsInFlight = false;
 
       /* ⚠️ Кэшийг зөвхөн АМЖИЛТТАЙ бичилтийн дараа хаяна */
       invalidate(dataKey);
@@ -2224,6 +2304,9 @@ function FullTable({
         /* ⚠️ Бөглөсөн сар мужаас гарсныг ЗААВАЛ хэлнэ — чимээгүй үлдээвэл
            хүн S-муруйд яагаад илүү сар байгааг олж чадахгүй. */
         keptOut ? tr('⚠ мужаас гарсан ч бөглөгдсөн тул үлдээсэн: {0}', keptOut) : '',
+        /* ⚠️ 2026-10-05: дахин уншилтаар хасагдсаныг ЗААВАЛ хэлнэ */
+        skipDel ? tr('⚠ өөр хэрэглэгч энэ хооронд бөглөсөн тул устгаагүй сар: {0}', skipDel) : '',
+        skipAdd ? tr('⚠ аль хэдийн үүссэн тул нэмээгүй сар: {0}', skipAdd) : '',
         cfWarn,
       ].filter(Boolean).join(' · '));
       /* ⚠️ 2026-10-01: шинэ мөрүүд (`rows` өөр лавлагаа) ирэх хүртэл дахин нийтлэхгүй.
@@ -2233,7 +2316,24 @@ function FullTable({
       setPubFrom(rows);
       onSaved();
     } catch (e) {
-      setErr(userError(e));
+      /* ⚠️ 2026-10-05: НЭМЭЛТТЭЙ бичилт сүлжээ/хугацааны алдаагаар унавал ҮР ДҮН ТОДОРХОЙГҮЙ —
+         сервер бичсэн хойно хариу замдаа алдагдсан байж болно (`query.ts` бичих хүсэлтийг
+         дахин илгээдэггүй). Урьд нь зөвхөн алдаа харуулж, засвар «зэвсэглэсэн» хэвээр үлдэн
+         хоёр дахь товшилт мөрийг ДАВХАРДУУЛДАГ байв. Одоо: кэшийг хаяж хүснэгтийг ДАХИН
+         татна, шинэ мөрүүд ирэх хүртэл нийтлэхийг хаана (`awaitingReload`), хэрэглэгчид
+         шалгахыг хэлнэ. Серверийн ИЛ татгалзал (`code`-той `ArcGISError`, мөрийн
+         `success:false`) бол бичигдээгүй нь тодорхой — хуучин зан төлөв. */
+      const unknown = addsInFlight && (e instanceof TypeError || e instanceof DOMException
+        || (e instanceof ArcGISError && e.code == null));
+      if (unknown) {
+        invalidate(dataKey);
+        pubFromRef.current = rows;
+        setPubFrom(rows);
+        setErr(tr('{0} — хариу ирээгүй тул мөр НЭМЭГДСЭН эсэх тодорхойгүй. Хүснэгтийг дахин ачаалж байна: шинэ мөр/сар аль хэдийн хадгалагдсан эсэхийг ШАЛГААД, хадгалагдсан бол засвараа болиулна уу — дахин нийтэлбэл давхардана.', userError(e)));
+        onSaved();
+      } else {
+        setErr(userError(e));
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);

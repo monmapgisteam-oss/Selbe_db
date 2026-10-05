@@ -22,6 +22,7 @@ import {
 import { setNavDirty } from '@/lib/navGuard';
 import s from './zovshoorol.module.css';
 import { userError } from '@/components/ui';
+import { DateField } from '@/modules/huvaari/DateField';
 
 /** ms → YYYY-MM-DD (UTC). Огноогүй бол хоосон. */
 const toInput = (ms: number | null): string => {
@@ -153,6 +154,33 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setFail('');
   };
 
+  /** Огнооны талбарт бичсэн текст огноо болж задрахгүй байна (`DateField.onBad`) */
+  const [badDate, setBadDate] = useState(false);
+  /**
+   * ⚠️ 2026-10-05: ТӨЛӨВ СОЛИХ. «Хүлээгдэж буй» руу шилжихэд огноог ЭНД (товшилтын
+   *    хариуд, сануулгатай) арилгана — урьд нь `validateZov` «огноо байх ёсгүй» гэж
+   *    унаж, хэрэглэгч огноог гараар хоослох хүртэл хадгалагддаггүй байв. Арилгасан
+   *    огноог санаж, буцаад «Зөвшөөрсөн/Зөвшөөрөөгүй» болгоход сэргээнэ (андуурч дарсан
+   *    товшилт огноог алдагдуулахгүй). `validateZov` хэвээр — тэр засдаггүй, зөвхөн хэлдэг.
+   */
+  const stashOgnoo = useRef<number | null>(null);
+  const [ognooCleared, setOgnooCleared] = useState(false);
+  const setTolov = (t: ZovDraft['tolov']) => {
+    markDirty();
+    let ognoo = d.ognoo;
+    if (t === TOLOV.wait && d.ognoo != null) {
+      stashOgnoo.current = d.ognoo;
+      ognoo = null;
+      setOgnooCleared(true);
+    } else if (t !== TOLOV.wait) {
+      if (d.tolov === TOLOV.wait && d.ognoo == null && stashOgnoo.current != null) ognoo = stashOgnoo.current;
+      setOgnooCleared(false);
+    }
+    setD((p) => ({ ...p, tolov: t, ognoo }));
+    setErr((p) => ({ ...p, tolov: undefined, ognoo: undefined }));
+    setFail('');
+  };
+
   const submit = async () => {
     /*
      * ⚠️ 2026-09-08: ЗАСВАРЫН зам нь `remove`-тэй ИЖИЛ хамгаалалттай болов.
@@ -170,8 +198,20 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       return;
     }
     const e = validateZov(d, all);
+    /* ⚠️ 2026-10-05: буруу бичсэн огноо эцгийн утгыг ХӨНДДӨГГҮЙ (`DateField`) — хуучин
+       огноо чимээгүй хадгалагдахаас сэргийлж хадгалалтыг хаана. */
+    if (badDate) e.ognoo = tr('Огноо буруу — жишээ: 2026-10-04');
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
+    /* ⚠️ 2026-10-05: ИРЭЭДҮЙН шийдвэрийн огноо — ихэвчлэн он/сарын гарын алдаа. Хориг биш
+       (цагийн бүс, урьдчилж бүртгэх тохиолдол), асууна. Өнөөдөр = хэрэглэгчийн хуанлийн өдөр,
+       харьцуулалт хадгалалтын хэлбэрээр (UTC шөнө дунд). */
+    if (d.ognoo != null) {
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      if (d.ognoo > today
+        && !window.confirm(tr('Шийдвэрлэсэн огноо ({0}) өнөөдрөөс ХОЙШ байна. Зөв үү?', toInput(d.ognoo)))) return;
+    }
     setBusy(true);
     setFail('');
     try {
@@ -231,7 +271,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     if (!step) return;
     e.preventDefault();
     const next = TOLOV_LIST[(tolovIdx + step + TOLOV_LIST.length) % TOLOV_LIST.length];
-    set('tolov', next);
+    setTolov(next);
     const grp = e.currentTarget as HTMLElement;
     requestAnimationFrame(() => grp.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
   };
@@ -298,7 +338,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                     aria-checked={d.tolov === t}
                     tabIndex={t === TOLOV_LIST[tolovIdx] ? 0 : -1}
                     className={s.radio + ' ' + (d.tolov === t ? s.radioOn : '')}
-                    onClick={() => set('tolov', t)}
+                    onClick={() => setTolov(t)}
                   >
                     {TOLOV_LABEL[t]()}
                   </button>
@@ -306,14 +346,24 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
               </div>
               {err.tolov ? <span className={s.fErr}>{err.tolov}</span> : null}
             </div>
-            {field('ognoo', tr('Шийдвэрлэсэн огноо'), (
-              <input
-                className={s.input}
-                type="date"
+            {/* ⚠️ 2026-10-05: `<input type="date">` → хуваалцсан `DateField` (YYYY-MM-DD текст +
+                📅) — натив оролтын хэлбэр хөтчийн хэлнээс хамаарч өдөр/сар андуурагддаг байв.
+                Хадгалах хэлбэр ХЭВЭЭР (UTC шөнө дунд, `fromInput`).
+                ⚠️ `<label>` ДОТОР БИШ (`field()` биш) — календарийн товч/цонхны товшилт
+                label-ээр дамжиж оролтыг идэвхжүүлэхгүй (Төлөвийн ижил шалтгаан). */}
+            <div className={s.f}>
+              <span className={s.fLabel}>{tr('Шийдвэрлэсэн огноо')}</span>
+              <DateField
+                label={tr('Шийдвэрлэсэн огноо')}
                 value={toInput(d.ognoo)}
-                onChange={(e) => set('ognoo', fromInput(e.target.value))}
+                disabled={busy}
+                onBad={setBadDate}
+                onChange={(v) => { setOgnooCleared(false); set('ognoo', fromInput(v)); }}
               />
-            ), d.tolov === TOLOV.wait ? tr('Хүлээгдэж буй үед хоосон') : undefined)}
+              {err.ognoo ? <span className={s.fErr}>{err.ognoo}</span>
+                : ognooCleared ? <span className={s.fHint}>{tr('«Хүлээгдэж буй» болсон тул огноог арилгав')}</span>
+                  : d.tolov === TOLOV.wait ? <span className={s.fHint}>{tr('Хүлээгдэж буй үед хоосон')}</span> : null}
+            </div>
           </div>
 
           <div className={s.grid2}>

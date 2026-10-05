@@ -26,8 +26,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { dateTime, num } from '@/lib/format';
 import { PARCEL_LEFT, PARCEL_STATUS_HUES } from '@/lib/services';
 import {
-  STATUS_LIST, loadParcel, loadProgressValues, saveParcel, validateParcelChanged,
-  type Parcel, type ParcelPatch,
+  STATUS_LIST, loadFieldLens, loadParcel, loadProgressValues, saveParcel, validateParcelChanged,
+  type FieldLens, type Parcel, type ParcelPatch,
 } from '@/lib/parcelEdit';
 import g from './gazar.module.css';
 import { userError } from '@/components/ui';
@@ -69,6 +69,8 @@ export function GazarEdit({
   const [before, setBefore] = useState<Parcel | null>(null);
   const [d, setD] = useState<ParcelPatch | null>(null);
   const [opts, setOpts] = useState<string[]>([]);
+  /* ⚠️ 2026-10-05: текст талбарын дээд урт — метадатагаас (`parcelEdit.loadFieldLens`) */
+  const [lens, setLens] = useState<FieldLens>({});
   const [load, setLoad] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Partial<Record<keyof ParcelPatch, string>>>({});
@@ -89,9 +91,10 @@ export function GazarEdit({
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setLoad(true); setFail('');
-    Promise.all([loadParcel(oid), loadProgressValues().catch(() => [] as string[])])
-      .then(([p, list]) => {
+    Promise.all([loadParcel(oid), loadProgressValues().catch(() => [] as string[]), loadFieldLens()])
+      .then(([p, list, ln]) => {
         if (!alive) return;
+        setLens(ln);
         if (!p) { setFail(tr('Нэгж талбар олдсонгүй.')); return; }
         setBefore(p);
         setD(patchOf(p));
@@ -150,7 +153,7 @@ export function GazarEdit({
     /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ЗӨВХӨН өөрчилсөн талбар шалгагдана —
        хуучин/танигдахгүй төлөвтэй мөрийн эзэмшигч, хаягийг засахад хөндөөгүй
        төлөвөөс болж хадгалалт хаагддаг байв (`validateParcelChanged`). */
-    const e = validateParcelChanged(before, d);
+    const e = validateParcelChanged(before, d, lens);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
     setBusy(true); setFail('');
@@ -210,7 +213,9 @@ export function GazarEdit({
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Овог, нэр')}</span>
                 <input className={g.input} value={d.owner} disabled={!canEdit || busy}
+                  maxLength={lens.owner}
                   onChange={(e) => set('owner', e.target.value)} />
+                {err.owner && <span className={g.fErr}>{err.owner}</span>}
               </label>
 
               <div className={g.f}>
@@ -258,14 +263,18 @@ export function GazarEdit({
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Хаяг')}</span>
                 <input className={g.input} value={d.address} disabled={!canEdit || busy}
+                  maxLength={lens.address}
                   onChange={(e) => set('address', e.target.value)} />
+                {err.address && <span className={g.fErr}>{err.address}</span>}
               </label>
 
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Тайлбар (дэлгэрэнгүй)')}</span>
                 <textarea className={`${g.input} ${g.area}`} value={d.note}
                   disabled={!canEdit || busy}
+                  maxLength={lens.note}
                   onChange={(e) => set('note', e.target.value)} />
+                {err.note && <span className={g.fErr}>{err.note}</span>}
               </label>
 
               {fail && <div className={g.formErr} role="alert">{fail}</div>}

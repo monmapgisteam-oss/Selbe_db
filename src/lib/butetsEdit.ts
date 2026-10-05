@@ -29,7 +29,7 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, LAYER_BY_ID, layerUrl, OID, type LayerDef } from '@/lib/services';
-import { arcgisPost, queryFeatures, type Row } from '@/lib/query';
+import { ArcGISError, arcgisPost, queryFeatures, type Row } from '@/lib/query';
 import { currentUser, requireCap } from '@/lib/who';
 import { canEditButetsLayer } from '@/lib/butetsAcl';
 
@@ -52,6 +52,8 @@ function requireLayer(meta: LayerMeta): void {
   throw new Error(tr('«{0}» давхарга таны багцын хүрээнд байхгүй — засах эрхгүй.', meta.title));
 }
 import { applyAll } from '@/lib/tableWrite';
+import { normCell } from '@/modules/sheet/paste';
+import { lenFieldUnit } from '@/lib/butetsLen';
 
 /* ══════════════════ Схем ══════════════════ */
 
@@ -393,6 +395,41 @@ export function emptyPatch(meta: LayerMeta): Patch {
 /* ══════════════════ Шалгуур ══════════════════ */
 
 /**
+ * МАЯГТЫН ТООН ТЕКСТИЙГ задлана — тоо биш бол `null`.
+ *
+ * ⚠️ 2026-10-05: `inputMode="decimal"` нь mn/ru утасны гарт ТАСЛАЛ товч гаргадаг атал
+ *    `Number('12,5')` нь NaN — «Тоо оруулна уу» гэдгээс өөр тайлбаргүй унадаг байв.
+ *    Бөглөх хуудастай НЭГ дүрэм (`paste.normCell`): «12,5» → 12.5, «1 250» → 1250,
+ *    «1,250» нь тодорхойгүй тул тоо БИШ.
+ * ⚠️ `1e3` · `0x10` · `Infinity` — `Number` тоо гэж уншдаг ч хэрэглэгч ингэж тоо
+ *    бичдэггүй (үсэг андуурч дарсан) тул татгалзана. Хувийн тэмдэг ч мөн (`normCell`
+ *    хасдаг, энд утгагүй).
+ */
+export function parseNum(raw: string): number | null {
+  if (/%/.test(raw)) return null;
+  const t = normCell(raw);
+  if (t == null || !/^-?(\d+\.?\d*|\.\d+)$/.test(t)) return null;
+  const x = Number(t);
+  return Number.isFinite(x) ? x : null;
+}
+
+/** Бичихэд — шалгуур давсан текст; задрахгүй бол хуучин `Number` (шалгуургүй дуудагчид) */
+const toNum = (v: string): number => parseNum(v) ?? Number(v);
+
+/**
+ * ТОО ХЭМЖЭЭНИЙ талбар (урт · голч · тоо ширхэг · талбай…) — сөрөг утга УТГАГҮЙ.
+ * ⚠️ 2026-10-05: «-50» урт/голч хадгалагддаг байв. Схем давхарга бүрд өөр тул нэр/alias-аар
+ *    таана; өндөржилт · координат зэрэг сөрөг байж БОЛОХ талбарыг санаатай хамруулаагүй.
+ */
+const QTY_NAME = /(urt|length|diam|golch|shirheg|count|talbai|area|urgun|width|zuzaan|thick|(^|_)too$)/i;
+const QTY_ALIAS = /(урт|голч|диаметр|ширхэг|тоо хэмжээ|талбай|өргөн|зузаан)/i;
+export function isQtyField(meta: LayerMeta, f: FieldDef): boolean {
+  if (f.kind !== 'number') return false;
+  if (lenFieldUnit(f.name, LAYER_BY_ID[meta.layerId]?.qty) != null) return true;
+  return QTY_NAME.test(f.name) || QTY_ALIAS.test(f.alias);
+}
+
+/**
  * ⚠️ МЭДЭЭЛНЭ, ЗАСАХГҮЙ — хэрэглэгчийн бичсэнийг чимээгүй өөрчлөхгүй, зөвхөн
  * буруу гэдгийг хэлнэ (`validateParcel`-ийн зарчим).
  */
@@ -410,10 +447,12 @@ export function validateRow(meta: LayerMeta, patch: Patch): Record<string, strin
          ⚠️ 2026-09-30: ЗӨВХӨН ХООСОН ЗАЙ ('  ') ч мөн `Number`-т 0 — урьд нь шалгуур давж
          тоон талбарт 0 бичигддэг байв (олноор засахад «— олон утга —» талбарт зай дарахад
          БҮХ мөрөнд 0). Тоо биш гэж хэлнэ; хоослох бол талбарыг бүр хоосолно. */
-      if (v.trim() === '' || !Number.isFinite(Number(v))) { e[f.name] = tr('Тоо оруулна уу'); continue; }
+      /* ⚠️ 2026-10-05: `parseNum` (таслал · мянгатын зай зөвшөөрнө; `1e3`/`0x10` үгүй) + жишээтэй мессеж */
+      const x = v.trim() === '' ? null : parseNum(v);
+      if (x == null) { e[f.name] = tr('Тоо оруулна уу — 12.5 гэж бичнэ үү'); continue; }
+      if (x < 0 && isQtyField(meta, f)) { e[f.name] = tr('Сөрөг тоо байж болохгүй'); continue; }
       /* ⚠️ 2026-10-01: БҮХЭЛ талбар — бутархай ба хязгаараас гарсныг татгалзана (`FieldDef.int`) */
       if (f.int) {
-        const x = Number(v);
         const [lo, hi] = f.int === 'small' ? [-32768, 32767] : [-2147483648, 2147483647];
         if (!Number.isInteger(x)) e[f.name] = tr('Бүхэл тоо оруулна уу');
         else if (x < lo || x > hi) e[f.name] = tr('{0}…{1} хооронд байна', String(lo), String(hi));
@@ -464,7 +503,7 @@ export function diffRow(meta: LayerMeta, before: Row, patch: Patch): Record<stri
     const now = patch[f.name] ?? '';
     if (was === now) continue;
     if (now === '') { out[f.name] = null; continue; }
-    out[f.name] = f.kind === 'number' ? Number(now) : now;
+    out[f.name] = f.kind === 'number' ? toNum(now) : now;
   }
   return out;
 }
@@ -528,6 +567,23 @@ export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
 }
 
 /**
+ * БИЧИЛТИЙН ХАРИУ АЛДАГДСАН уу — үр дүн ТОДОРХОЙГҮЙ алдаа (timeout · сүлжээ тасрах ·
+ * HTTP 5xx/JSON биш хариу). Серверийн ТОДОРХОЙ татгалзал (ArcGIS `error.code`, мөрийн
+ * `success:false`, эрхийн алдаа) нь ЭНД орохгүй — тэр үед юу ч бичигдээгүй.
+ *
+ * ⚠️ 2026-10-05: `applyEdits` сервер дээр БИЧИГДЭЭД хариу нь замдаа алдагдвал маягт
+ *    «алдаа» гэж үлдэж, «Нэмэх»-ийг дахин дарахад объект ДАВХАРДАЖ үүсдэг байв.
+ *    Дуудагч энэ үед дахин илгээхийг хааж, хэрэглэгчээр шалгуулна (бичилтийг АВТОМАТААР
+ *    дахин оролдохгүй — `query.attemptRequest`-ийн дүрэм).
+ */
+export function isLostResponse(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  const name = (e as { name?: string } | null)?.name ?? '';
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
+  return e instanceof ArcGISError && e.code == null;
+}
+
+/**
  * ШИНЭ ОБЪЕКТ нэмнэ — геометр ба атрибутаар.
  *
  * ⚠️ ГЕОМЕТР нь `__esri.Geometry.toJSON()`-ы үр дүн: `spatialReference`-ээ
@@ -554,7 +610,7 @@ export async function createRow(
   for (const f of meta.fields) {
     const v = patch[f.name] ?? '';
     if (v === '') continue;
-    attrs[f.name] = f.kind === 'number' ? Number(v) : v;
+    attrs[f.name] = f.kind === 'number' ? toNum(v) : v;
   }
 
   const r = await applyAll(meta.url, meta.oidField, {
@@ -720,6 +776,12 @@ export async function saveRows(
   requireLayer(meta); // ⚠️ lib-түвшний эрх + багцын хүрээ
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   if (!Object.keys(attrs).length || !oids.length) return [];
+  /* ⚠️ 2026-10-05: NaN/Infinity нь JSON-д `null` болж талбарыг ЧИМЭЭГҮЙ хоосолно. Шалгуур
+     одоо «12,5»-ыг зөвшөөрдөг тул дуудагч `Number(v)`-ээр хөрвүүлбэл NaN гарна —
+     дуудагч `parseNum` хэрэглэх ёстой; энд сүүлчийн хамгаалалт. */
+  for (const [k, v] of Object.entries(attrs)) {
+    if (typeof v === 'number' && !Number.isFinite(v)) throw new Error(tr('«{0}» талбарын тоо буруу — 12.5 гэж бичнэ үү', k));
+  }
   /* ⚠️ 2026-10-01: АТОМ БУС давхарга — мөр бүрийн үр дүнгээр (`writeUpdatesEach`). Бүх
      багцыг ДУУСТАЛ явуулж, унасныг цуглуулна; нэг ч унасан бол `done`/`failed`-тэй шиднэ. */
   if (meta.rollback === false) {

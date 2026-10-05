@@ -29,7 +29,7 @@ import { BUILDING } from './services';
    шинэчилж 498-д нэг удаа дахин оролдоно; HTTP 200-аар ирсэн `error`-ыг шидэж
    доорх `catch`-д орно (урьдын адил кэшлэхгүй, `''` буцаана). */
 import { arcgisPost } from '@/lib/authToken';
-import { addRows, addedOid, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
+import { addRows, addedOid, deleteRow, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Status } from './hyanalt';
 
 /* ── Багц → гүйцэтгэгч компани ── */
 
@@ -161,6 +161,14 @@ export function openReviewRow(
  *    · одоогийн мөр байхгүй → ТИЙМ (өнчин);
  *    · хянагчийн гар дээр нээлттэй мөр байна → ҮГҮЙ;
  *    · бүгд «Шилжүүлсэн» → ҮГҮЙ (мөчлөг дууссан);
+ *      ⚠️ 2026-10-05 ҮЛ ХАМААРАХ НЬ: илгээлт (`subAt`) эцсийн зөвшөөрлөөс ХОЙШ бол ТИЙМ.
+ *      `archiveSubmission` «батлах явцад дахин илгээсэн»-ий ҮЛДЭГДЛИЙГ `sub|` мөрд
+ *      (`residual`, `at` = архивлалтын агшин) бичээд, `apply` мөрийг «Шилжүүлсэн» болгосны
+ *      ДАРАА шинэ тойрог нээдэг — завсарт нь таб хаагдвал үлдэгдэл хяналтын тойроггүй,
+ *      «Хяналтад илгээх» товчгүй өнчирдөг байв. Эцсийн шатны огноо (`t`) нь архивлалтаас
+ *      ӨМНӨ, үлдэгдлийн `at` нь ДАРАА (нэг машины цаг) тул харьцуулалт найдвартай;
+ *      хэвийн хаагдсан илгээлт `done|` болдог тул энд огт ирэхгүй, хаалт унасан (агуулга
+ *      архивт орсон) мөрийн `at` нь зөвшөөрлөөс ӨМНӨХ тул таарахгүй.
  *    · буцаагдсан (компанийн гар дээр) → илгээлт (`subAt`) буцаалтаас ХОЙШ бол ТИЙМ.
  * ⚠️ Огноо нь `Attrs` (epoch ms) ч, `hyanaltStore.Row` (ISO) ч байж болно.
  */
@@ -180,9 +188,15 @@ export function needsRegistration(
     return Number.isFinite(t) ? t : 0;
   };
   const RET = [F.engineerReturned, F.managerReturned, F.directorReturned, F.headReturned, F.chiefReturned];
+  /* ⚠️ 2026-10-05: «Шилжүүлсэн» мөрийн эцсийн зөвшөөрлийн агшин — огноогүй (0) бол дүгнэхгүй */
+  const SENT = [F.engineerSent, F.managerSent, F.directorSent, F.headSent, F.chiefSent];
   return cur.some((r) => {
     const st = String(r[F.status] ?? '') as Status;
-    if (st === STATUS.transferred || OWNER[st] !== 'company') return false;
+    if (st === STATUS.transferred) {
+      const fin = Math.max(0, ...SENT.map((k) => ms(r[k])));
+      return fin > 0 && subAt > fin;
+    }
+    if (OWNER[st] !== 'company') return false;
     const back = Math.max(0, ...RET.map((k) => ms(r[k])));
     return subAt > back;
   });
@@ -396,6 +410,32 @@ export async function submitForReview(
     };
 
     const res = await addRows([attrs]);
+    /*
+     * ⚠️ 2026-10-05: ДАВХАР ТОЙРОГ АРИЛГАХ (`huvaariBatlah.submitPlan`-ийн загвар). Дээрх
+     *    `openReviewRow` шалгалт ба `adds` хоёрын завсарт хоёр хамтран бөглөгч / хоёр таб
+     *    буцаагдсан илгээлтийг зэрэг дахин илгээвэл хоёулаа шалгалтыг давж ИЖИЛ тойргийн
+     *    хоёр мөр үүсдэг байв — `groupWorks` их OBJECTID-тайг «одоогийн» болгодог тул нөгөө нь
+     *    мөнхөд «Инженер хянаж байна» төлөвт үлдэнэ. Бичсэний ДАРАА дахин уншиж, ижил
+     *    (илгээлт · ажил · тойрог)-той БАГА OBJECTID-тай мөр байвал ӨӨРИЙНХӨӨ мөрийг устгана —
+     *    хоёр тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ (түрүүлж бичигдсэн нь).
+     * ⚠️ Шалгалт/устгал унавал илгээлтийг УНАГАХГҮЙ — мөр аль хэдийн бичигдсэн (урьдын зан төлөв).
+     */
+    const mine = addedOid(res);
+    if (mine > 0 && sheetOid != null && sheetOid > 0) {
+      try {
+        const wk = workKeyOf(attrs);
+        const twin = (await queryAll())
+          .filter((r) => {
+            const o = num0(r[HYANALT.oid]);
+            return o > 0 && o < mine && Number(r[F.sheetOid]) === sheetOid
+              && workKeyOf(r) === wk && num0(r[F.ergelt]) === ergelt;
+          })
+          .sort((a, b) => num0(a[HYANALT.oid]) - num0(b[HYANALT.oid]))[0];
+        if (twin && (await deleteRow(mine))) return { ok: true, id: String(twin[F.id] ?? ''), reused: true };
+      } catch (e) {
+        console.warn('[selbe] давхар хяналтын мөрийн шалгалт унав:', e);
+      }
+    }
     /* ⚠️ 2026-10-04: max+1 уралдаан — бичсэний дараа давхардлыг засна (`ensureUniqueId`) */
     const fid = await ensureUniqueId(addedOid(res), id);
     return { ok: true, id: fid };

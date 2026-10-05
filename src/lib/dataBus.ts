@@ -99,9 +99,23 @@ export function invalidate(...keys: DataKey[]): void {
   for (const fn of subs) fn();
 }
 
-/** БҮХ кэшийг хаяна — зөвхөн нэвтрэлт солигдох зэрэг ховор тохиолдолд. */
+/**
+ * ⚠️ 2026-10-05: БҮХ өгөгдөл сүүлд БҮТНЭЭР шинэчлэгдсэн агшин (epoch мс) — эхэндээ сешн
+ *    эхэлсэн цаг. `Portal`-ын толгойн «Өгөгдөл: HH:MM» үүнийг харуулна; `invalidateAll` л өсгөнө
+ *    (нэг хүснэгтийн `invalidate` нь бусад кэшийг хөндөхгүй тул «бүгд шинэ» гэж хэлэхгүй).
+ */
+let refreshedAt = Date.now();
+export function dataRefreshedAt(): number {
+  return refreshedAt;
+}
+
+/**
+ * БҮХ кэшийг хаяна — нэвтрэлт/хэл солигдох, мөн (⚠️ 2026-10-05) хэрэглэгчийн «Шинэчлэх»
+ * товч ба таб удаан нуугдаад буцаж ирэх үед (`Portal`).
+ */
 export function invalidateAll(): void {
   for (const s of SLOTS) s.drop();
+  refreshedAt = Date.now();
   version += 1;
   for (const fn of subs) fn();
 }

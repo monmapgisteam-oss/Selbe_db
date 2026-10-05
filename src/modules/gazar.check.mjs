@@ -117,7 +117,8 @@ console.log('✅ Кадастрын дугаараар хайж, олдсон т
 /* ── 8. GazarEdit — зөвхөн өөрчилсөн төлөвийг шалгана · сүүлд засварласан ── */
 {
   const ed = strip(fs.readFileSync('src/modules/GazarEdit.tsx', 'utf8'));
-  assert.match(ed, /validateParcelChanged\(before, d\)/, 'GazarEdit: `validateParcelChanged` ашиглах ёстой');
+  /* ⚠️ 2026-10-05: 3 дахь аргумент `lens` (текст талбарын дээд урт) нэмэгдсэн */
+  assert.match(ed, /validateParcelChanged\(before, d(, lens)?\)/, 'GazarEdit: `validateParcelChanged` ашиглах ёстой');
   assert.doesNotMatch(ed, /validateParcel\(d\)/, 'GazarEdit: бүтэн шалгуур хөндөөгүй төлөвөөр хадгалалтыг хаана');
   assert.match(ed, /before\.editedBy/, 'GazarEdit: «сүүлд засварласан» мөр алга');
   assert.match(ed, /tr\('Сүүлд засварласан'\)/);

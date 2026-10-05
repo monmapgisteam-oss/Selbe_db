@@ -93,6 +93,11 @@ type PlanModalProps = {
    * ⚠️ ИДЭВХТЭЙ блок нь цонхны ОДООГИЙН оролтоор (бичих явцад шууд) — бусад нь энэ Set.
    */
   badBlks?: ReadonlySet<number>;
+  /**
+   * ИДЭВХТЭЙ блокийн ГЭРЭЭНИЙ муж (2026-10-05) — зөвхөн төлөвлөгөө табд; төлөвлөсөн огноо
+   * түүнээс гарвал ЗӨӨЛӨН анхааруулна. ⚠️ ХЭЗЭЭ Ч хаахгүй, хавчихгүй.
+   */
+  geree?: Span | null;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын НӨӨЦ (2026-09-24) */
   res: Map<string, MonthRes>;
   /** Сарын хүснэгтэд нөөцийн талбар бий эсэх — `false` бол анхааруулна (`null` = мэдэхгүй) */
@@ -154,7 +159,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks,
+  badBlks, geree,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
@@ -347,6 +352,9 @@ function PlanModalBody({
   const [mvAll, setMv] = useState<Map<string, number>>(months);
   /** Сарын НӨӨЦ (хүн хүч · машин) — `mv`-тэй зэрэгцээ (2026-09-24) */
   const [mrAll, setMr] = useState<Map<string, MonthRes>>(res);
+  /* ⚠️ 2026-10-05: сөрөг/буруу обьём бичсэн САР — нүд хоосорсон шалтгааныг ил хэлнэ (доорх
+     `onChange`). Хоослох дүрэм (2026-09-29) ХЭВЭЭР; энэ нь зөвхөн мэдээлэл. */
+  const [mvBadK, setMvBadK] = useState<string | null>(null);
   /**
    * Мөр/блок солигдоход ХАДГАЛАГДСАНАА суурь болгоно.
    *
@@ -381,6 +389,7 @@ function PlanModalBody({
     const pi = initPlanDates(r, par, blk);
     setA(pi.a); setZ(pi.z);
     setMv(months); setMr(res);
+    setMvBadK(null);
   }
   if ((par?.oid ?? null) !== prevParOid) {
     setPrevParOid(par?.oid ?? null);
@@ -642,6 +651,14 @@ function PlanModalBody({
     onClose();
   };
 
+  /* ⚠️ 2026-10-05: «Тавих» хаалттайн шалтгаан — товчны `title` ба доорх ил бичвэр ХОЁУЛАА эндээс
+     (урьд нь `title`-д шууд бичигддэг байсан нөхцөл, өөрчлөгдөөгүй). */
+  const applyWhy: string | undefined = depsTooLong ? tr('Уялдааны бичиглэл талбарт багтахгүй ({0} > {1} тэмдэгт)', num(hamLen), num(HAM_MAX))
+    : mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
+    /* ⚠️ 2026-09-30: жинхэнэ шалтгаан — нийлбэр тэнцсэн ч хоосон сар бий бол түүнийг */
+    : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
+    : tr('Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү');
+
   return (
     <div className={h.mdBack} role="presentation"
       onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
@@ -743,6 +760,13 @@ function PlanModalBody({
               </span>
             </label>
             {bad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b></span>}
+            {/* ⚠️ 2026-10-05: гэрээний хугацаанаас ГАРСАН төлөвлөгөө — ЗӨВХӨН анхааруулга. «Тавих»-ыг
+                хаахгүй, огноог хавчихгүй (бүлгийн мужийн хавчилт 2026-09-06-нд хасагдсантай ижил зарчим). */}
+            {!r.group && geree && ms1 != null && ms2 != null && !bad && (ms1 < geree.start || ms2 > geree.end) && (
+              <span className={h.mdWarn} role="status">
+                {tr('Гэрээний хугацаанаас ({0} — {1}) гарч байна', msToDay(geree.start), msToDay(geree.end))}
+              </span>
+            )}
           </div>
           {hasActual && (
             <div className={h.mdCol}>
@@ -840,6 +864,8 @@ function PlanModalBody({
                         onBlur={() => setMFocus((f) => (f === k ? null : f))}
                         onChange={(e) => {
                           const t = e.target.value.trim();
+                          /* ⚠️ 2026-10-05: нүд чимээгүй хоосордог байв — шалтгааныг сүлжээний доор харуулна */
+                          setMvBadK(t !== '' && (!Number.isFinite(Number(t)) || Number(t) < 0) ? k : null);
                           setMv((m) => {
                             const out = new Map(m);
                             if (t === '') out.delete(k);
@@ -869,6 +895,11 @@ function PlanModalBody({
                   <span className={`${h.mdMonthTot} num`}>{mrSum.hun != null ? num(mrSum.hun) : '—'}</span>
                   <span className={`${h.mdMonthTot} num`}>{mrSum.mashin != null ? num(mrSum.mashin) : '—'}</span>
                 </div>
+                {mvBadK != null && mKeys.includes(mvBadK) && mv.get(mvBadK) == null && (
+                  <p className={h.mdWarn} role="alert">
+                    {tr('{0}: сөрөг эсвэл буруу утга — нүд хоосон үлдлээ. 0 эсвэл эерэг тоо бичнэ үү.', mvBadK)}
+                  </p>
+                )}
                 {(resFields.hun === false || resFields.mashin === false) && mrHas && (
                   <p className={h.mdWarn}>
                     {tr('Сарын хүснэгтэд хүн хүч/машин механизмын талбар алга — сарын нөөц хадгалагдахгүй, админ AGOL дээр нэмнэ.')}
@@ -1037,6 +1068,9 @@ function PlanModalBody({
           </label>
         )}
 
+        {/* ⚠️ 2026-10-05: «Тавих» хаалттай байгаа ШАЛТГААН ил бичвэрээр — урьд нь зөвхөн `title`
+            (хулганы tooltip) байсан тул мэдрэгчтэй дэлгэцэд огт харагддаггүй байв. */}
+        {canEdit && applyWhy && <p className={h.mdWarn} role="status">{tr('«Тавих» хаалттай')}: {applyWhy}</p>}
         <footer className={h.mdFoot}>
           {dEdit && (
             <button type="button" className={h.tlZoomB} onClick={clear}
@@ -1057,11 +1091,7 @@ function PlanModalBody({
                    сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
                 : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
                 : !mvOk}
-              title={depsTooLong ? tr('Уялдааны бичиглэл талбарт багтахгүй ({0} > {1} тэмдэгт)', num(hamLen), num(HAM_MAX))
-                : mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
-                /* ⚠️ 2026-09-30: жинхэнэ шалтгаан — нийлбэр тэнцсэн ч хоосон сар бий бол түүнийг */
-                : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
-                : tr('Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү')}>
+              title={applyWhy}>
               {tr('Тавих')}
             </button>
           )}

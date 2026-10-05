@@ -602,5 +602,12 @@ export function validateZov(
   if (d.tolov === TOLOV.wait && d.ognoo != null) {
     e.ognoo = tr('«Хүлээгдэж буй» төлөвт огноо байх ёсгүй.');
   }
+  /* ⚠️ 2026-10-05: УТГАГҮЙ ОН («20226», «0202» г.м. гарын алдаа) хадгалагддаг байв.
+     Төсөл 2020-иод онд тул 2000–2100-аас гадуурхыг татгалзана. Өнөөдрөөс ХОЙШХИ огноо нь
+     хориг биш — маягт (`ZovshoorolEdit.submit`) баталгаажуулж асууна. */
+  if (d.ognoo != null && !e.ognoo) {
+    const y = new Date(d.ognoo).getUTCFullYear();
+    if (!Number.isFinite(y) || y < 2000 || y > 2100) e.ognoo = tr('Огнооны он буруу байна (2000–2100).');
+  }
   return e;
 }

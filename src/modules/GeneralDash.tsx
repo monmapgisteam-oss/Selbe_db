@@ -1035,6 +1035,29 @@ function PeriodBar({
 
 /* ══════════════════════ ЗУРГИЙН ДЭЭРХ ИНДИКАТОР ══════════════════════ */
 
+/**
+ * ⚠️ 2026-10-05: УНАСАН эх сурвалжийн тэмдэг. Урьд нь алдаа «—» болж «мэдээлэлгүй»-тэй
+ *    ялгагдахгүй байв (унасан ачаалалт ≠ хоосон утга). Шалтгаан нь title-д (`friendlyError`);
+ *    `retry` байвал дарж зөвхөн тэр хүсэлтийг дахин явуулна.
+ */
+function FailMark({ error, retry }: { error?: unknown; retry?: () => void }) {
+  const why = error == null ? tr('Өгөгдөл татагдсангүй') : friendlyError(error);
+  const style = { color: 'var(--bad-ink)', font: 'inherit', background: 'none', border: 0, padding: 0 } as const;
+  return retry ? (
+    <button
+      type="button"
+      onClick={retry}
+      title={`${why} · ${tr('Дахин оролдох')}`}
+      aria-label={`${why} · ${tr('Дахин оролдох')}`}
+      style={{ ...style, cursor: 'pointer' }}
+    >
+      ⚠
+    </button>
+  ) : (
+    <span role="img" title={why} aria-label={why} style={style}>⚠</span>
+  );
+}
+
 function KpiStrip({
   rows, period, contracts, contractsErr, xs,
 }: {
@@ -1106,7 +1129,8 @@ function KpiStrip({
         <Stat icon="calc" value={mntShort(k.budget)} label={tr('Нийт төсөв')} />
         {/* ⚠️ 2026-09-25: алдаа ≠ ачаалалт — унасан бол «—», эс бөгөөс «…»
             үүрд эргэлдэж «удахгүй ирнэ» гэж худал хэлдэг байв. */}
-        <Stat icon="file" value={contracts ? mntShort(k.contract) : contractsErr ? '—' : '…'} label={tr('Нийт гэрээлсэн дүн')} />
+        {/* ⚠️ 2026-10-05: унасан бол «—» (мэдээлэлгүйтэй ижил) биш «⚠» — `FailMark`-ийн ⚠️ */}
+        <Stat icon="file" value={contracts ? mntShort(k.contract) : contractsErr ? <FailMark /> : '…'} label={tr('Нийт гэрээлсэн дүн')} />
         {/*
           * ⚠️ МӨНГӨН ДҮН ТҮР ХАСАГДСАН (2026-09-08, хэрэглэгчийн заавар:
           * «851.0 тэрбум ₮ — үүнийг IPC-ээс авна, одоохондоо hide хий»).
@@ -1133,7 +1157,13 @@ function KpiStrip({
         />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажил (гэрээний мөр)')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
-        <Stat icon="polygon" value={land.state === 'loading' ? '…' : landPct == null ? '—' : pct(landPct)} label={tr('Газар чөлөөлөлт')} />
+        <Stat
+          icon="polygon"
+          value={land.state === 'loading' ? '…'
+            : land.state === 'error' ? <FailMark error={land.error} retry={land.retry} />
+              : landPct == null ? '—' : pct(landPct)}
+          label={tr('Газар чөлөөлөлт')}
+        />
       </Stats>
     </div>
   );

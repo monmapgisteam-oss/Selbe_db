@@ -207,6 +207,11 @@ assert.equal(openReviewRow([], 500, TAG), null);
   /* Дууссан мөчлөг → бүртгэх шаардлагагүй */
   assert.equal(needsRegistration([row(700, STATUS.transferred)], 700, TAG, RET), false, 'шилжүүлсэн');
   assert.equal(needsRegistration([back], null, TAG, RET), false, 'sheetOid алга');
+  /* ⚠️ 2026-10-05: эцсийн зөвшөөрлөөс ХОЙШ бичигдсэн үлдэгдэл (`residual`) — тойроггүй өнчин */
+  const fin = { ...row(700, STATUS.transferred), [F.chiefSent]: new Date(RET).toISOString() };
+  assert.equal(needsRegistration([fin], 700, TAG, RET + 5_000), true, 'үлдэгдэл нэмэлт шинэ тойрогт орох ёстой');
+  assert.equal(needsRegistration([fin], 700, TAG, RET - 5_000), false, 'архивлагдсан (хаалт унасан) илгээлт өнчин биш');
+  assert.equal(needsRegistration([fin, { ...row(700, STATUS.engineerReview), [F.ergelt]: 2 }], 700, TAG, RET + 5_000), false, 'үлдэгдлийн тойрог аль хэдийн нээлттэй');
   const fill = readFileSync(new URL('../modules/sheet/FillNew.tsx', import.meta.url), 'utf8');
   assert.ok(!/fresh\?\.some\(\(r\) => Number\(r\[HF\.sheetOid\]\) === stagedOid\)/.test(fill), 'FillNew.resend: хуучин «ижил sheetOid» шалгуур үлдсэн');
   assert.ok(fill.includes('needsRegistration('), 'FillNew: өнчин илгээлтийн шалгуур `needsRegistration`-ээр');

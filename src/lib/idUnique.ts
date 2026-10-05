@@ -47,3 +47,14 @@ export function renumberPlan(rows: readonly IdRow[], collided: readonly number[]
   for (const id of collided) { out.set(id, next); next += 1; }
   return out;
 }
+
+/**
+ * ТЭНЦҮҮЛЭГЧ (2026-10-05): миний мөрөөс (`oid`) БАГА OBJECTID-тай өөр мөр ижил дугаартай юу.
+ * ⚠️ ЯАГААД: `collidedIds` нь тэгш хэмтэй — зэрэг бичсэн хоёр тал бие биеэ хараад ХОЁУЛАА
+ *    max+1 рүү шилжиж, дахин ИЖИЛ дугаартай болдог байв (`G-000005` × 2 → `G-000006` × 2).
+ *    Түрүүлж бичигдсэн (бага OBJECTID) мөр дугаараа ХАДГАЛНА, зөвхөн хожуух нь шилжинэ —
+ *    хоёр тал ижил дүрмээр шийддэг тул яг нэг нь л хөдөлнө.
+ */
+export function collidesBelow(rows: readonly IdRow[], oid: number, id: number): boolean {
+  return rows.some((r) => r.id === id && r.oid !== oid && r.oid < oid);
+}

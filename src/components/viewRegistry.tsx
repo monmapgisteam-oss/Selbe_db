@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import type { ReactElement } from 'react';
 import type { Dim } from '@/components/MapCanvas';
 import type { ViewKey } from '@/lib/services';
+import { t as tr } from '@/lib/i18nCore';
 
 /**
  * ХАРАГДАЦЫН БҮРТГЭЛ — `ViewKey` → бүтэн дэлгэцийн (`standalone`) модуль.
@@ -101,30 +102,51 @@ const LOAD = {
 /* Шинэ харагдацын ачаалагчийг мартвал энд `tsc` унана (`satisfies` БИШ — тэр нь `.then`-ий төрлийн дүгнэлтийг эвддэг) */
 const LOAD_ALL: Record<Exclude<ViewKey, MapOnlyViewKey>, Loader> = LOAD;
 
-const GeneralDash = dynamic(() => LOAD.gdash(), { ssr: false });
-const Dashboard = dynamic(() => LOAD.dashboard(), { ssr: false });
-const PkgFin = dynamic(() => LOAD.pkgFin(), { ssr: false });
-const PkgProg = dynamic(() => LOAD.pkgProg(), { ssr: false });
-const Gazar = dynamic(() => LOAD.gazar(), { ssr: false });
-const Habea = dynamic(() => LOAD.habea(), { ssr: false });
-const Irged = dynamic(() => LOAD.irged(), { ssr: false });
-const Iot = dynamic(() => LOAD.iot(), { ssr: false });
-const Ersdel = dynamic(() => LOAD.ersdel(), { ssr: false });
-const DedButets = dynamic(() => LOAD.dedButets(), { ssr: false });
-const Suitability = dynamic(() => LOAD.analysis(), { ssr: false });
-const Finance = dynamic(() => LOAD.finance(), { ssr: false });
-const Guitsetgel = dynamic(() => LOAD.guitsetgel(), { ssr: false });
-const Qaqc = dynamic(() => LOAD.qaqc(), { ssr: false });
-const Chanar = dynamic(() => LOAD.chanar(), { ssr: false });
-const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false });
-const Tailan = dynamic(() => LOAD.tailan(), { ssr: false });
-const Tuh = dynamic(() => LOAD.tuh(), { ssr: false });
-const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false });
-const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false });
-const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false });
-const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false });
-const Schem = dynamic(() => LOAD.schem(), { ssr: false });
-const SysDoc = dynamic(() => LOAD.sysdoc(), { ssr: false });
+/**
+ * ⚠️ 2026-10-05: харагдацын chunk ТАТАГДАЖ байх үеийн төлөв. Урьд нь `dynamic()`-ууд
+ *    `loading`-гүй тул chunk ирэх хүртэл (удаан сүлжээнд хэдэн секунд) талбай ХООСОН цагаан
+ *    байж, «гацсан» мэт харагддаг байв. `Root`-ын Portal ачаалалтын мөртэй ижил дүр төрх.
+ * ⚠️ Chunk УНАВАЛ (шинэ хувилбар байршсан — хуучин hash устсан) алдаа нь харагдацын
+ *    `ErrorBoundary`-д хүрч «шинэ хувилбар гарсан — дахин ачаална уу» гарна (`isChunkLoadError`).
+ * ⚠️ Сонголтыг дуудлага бүрд ИЛ объектоор бичнэ — `next/dynamic` нь хувьсагчаар дамжуулсан
+ *    сонголтыг хүлээж авдаггүй (хөрвүүлэлтийн шаардлага).
+ */
+function ViewLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{ height: '100%', minHeight: 240, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: '0.85rem' }}
+    >
+      {tr('Ачаалж байна…')}
+    </div>
+  );
+}
+
+const GeneralDash = dynamic(() => LOAD.gdash(), { ssr: false, loading: ViewLoading });
+const Dashboard = dynamic(() => LOAD.dashboard(), { ssr: false, loading: ViewLoading });
+const PkgFin = dynamic(() => LOAD.pkgFin(), { ssr: false, loading: ViewLoading });
+const PkgProg = dynamic(() => LOAD.pkgProg(), { ssr: false, loading: ViewLoading });
+const Gazar = dynamic(() => LOAD.gazar(), { ssr: false, loading: ViewLoading });
+const Habea = dynamic(() => LOAD.habea(), { ssr: false, loading: ViewLoading });
+const Irged = dynamic(() => LOAD.irged(), { ssr: false, loading: ViewLoading });
+const Iot = dynamic(() => LOAD.iot(), { ssr: false, loading: ViewLoading });
+const Ersdel = dynamic(() => LOAD.ersdel(), { ssr: false, loading: ViewLoading });
+const DedButets = dynamic(() => LOAD.dedButets(), { ssr: false, loading: ViewLoading });
+const Suitability = dynamic(() => LOAD.analysis(), { ssr: false, loading: ViewLoading });
+const Finance = dynamic(() => LOAD.finance(), { ssr: false, loading: ViewLoading });
+const Guitsetgel = dynamic(() => LOAD.guitsetgel(), { ssr: false, loading: ViewLoading });
+const Qaqc = dynamic(() => LOAD.qaqc(), { ssr: false, loading: ViewLoading });
+const Chanar = dynamic(() => LOAD.chanar(), { ssr: false, loading: ViewLoading });
+const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewLoading });
+const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
+const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
+const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false, loading: ViewLoading });
+const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false, loading: ViewLoading });
+const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading: ViewLoading });
+const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false, loading: ViewLoading });
+const Schem = dynamic(() => LOAD.schem(), { ssr: false, loading: ViewLoading });
+const SysDoc = dynamic(() => LOAD.sysdoc(), { ssr: false, loading: ViewLoading });
 
 /**
  * Харагдацын chunk-ийг ДЭВСГЭРТ урьдчилан татах (⚠️ 2026-10-04) — `Root` нүүр

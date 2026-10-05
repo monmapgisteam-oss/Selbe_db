@@ -44,7 +44,7 @@ import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
-import { invalidate } from '@/lib/dataBus';
+import { invalidateAll } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
 import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } from '@/lib/emailReport';
 import {
@@ -391,10 +391,11 @@ function TailanFull() {
    * ба `useBagtsTable`-ийн уншдаг хүснэгтүүдийн тагийг хүчингүй болгоход
    * `useAsync` дахин татна.
    */
-  const refresh = useCallback(
-    () => invalidate('BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL'),
-    [],
-  );
+  /* ⚠️ 2026-10-05: зургаан тагийн `invalidate` → `invalidateAll()`. Тайлан нь тэр зургаагаас
+     ГАДУУРХ кэшээс ч уншдаг (`loadSocial` — таггүй; `loadPkgLabels` — BUILDING; `loadExecReport` —
+     BUILDING · ZOVSHOOROL · HUVAARI_OBYEM) тул «Өгөгдөл: …» цаг шинэчлэгдсэн атал тэдгээр нь
+     хуучин хэвээр үлддэг байв. Тагийн жагсаалтыг гараар хөтлөх нь дахин хоцорно. */
+  const refresh = useCallback(() => invalidateAll(), []);
 
   /* ⚠️ Алдаа гарсан бол хүлээлтийн араг ясыг ХАРУУЛАХГҮЙ — `Data` нь нэрлэсэн
      алдаа ба «Дахин оролдох» товчийг гаргах ёстой. Эс бөгөөс унасан эх

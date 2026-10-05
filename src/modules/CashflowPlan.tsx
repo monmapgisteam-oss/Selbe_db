@@ -263,6 +263,37 @@ export function CashflowPlan({
         return;
       }
 
+      /* ⚠️ 2026-10-05: СӨРӨГ эсвэл 100-аас ИХ сарын хувь хадгалагдахгүй — урьд нь «-20» /
+         «250» шууд бичигдэж, `Cashflow_dun` сөрөг эсвэл гэрээний дүнгээс их болон S-муруйд
+         ордог байв. (ХО дүн `costOf`-оор > 0 тул хувь ≥ 0 бол дүн сөрөг гарахгүй.) */
+      const outOfRange = Object.entries(pend)
+        .filter(([, v]) => { const x = nOf(v); return x != null && (x < 0 || x > 100); })
+        .map(([k]) => monthKey(mById.get(Number(k))?.[CF_MONTH.start]));
+      if (outOfRange.length) {
+        setErr(tr('Сарын хувь 0–100 хооронд байх ёстой: {0}.', outOfRange.join(', ')));
+        return;
+      }
+
+      /* ⚠️ 2026-10-05: засагдсан ажлын нийлбэр 100% БИШ бол хадгалахын өмнө АСУУНА.
+         Дэлгэцийн анхааруулга (доорх `c.warn`) ХЭВЭЭР — гэхдээ тэр нь зөвхөн СОНГОСОН
+         ажлынхыг харуулдаг тул өөр ажлын дутуу/илүү нийлбэр чимээгүй хадгалагддаг байв.
+         Бүх сарыг цэвэрлэсэн (нийлбэр `null`) ажил асуухгүй — «бөглөөгүй» нь зөв төлөв. */
+      const offIds = new Set<number>();
+      for (const k of Object.keys(pend)) {
+        const wid = idOf(mById.get(Number(k))?.[CF_MONTH.id]);
+        if (wid == null) continue;
+        const s = sumOf(wid);
+        if (s != null && fillOf(s) !== 'done') offIds.add(wid);
+      }
+      if (offIds.size) {
+        const names = [...offIds].slice(0, 5).map((wid) => {
+          const w = works.find((r) => idOf(r[CF_MONTH.id]) === wid);
+          return `${sOf(w?.ajil_uilchilgee) || wid} — ${num(sumOf(wid) ?? 0, 2)}%`;
+        });
+        if (offIds.size > names.length) names.push('…');
+        if (!window.confirm(tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')))) return;
+      }
+
       /* Гэрээний дүнгүй ажлын сарууд — хувь бичигдэнэ, дүн `null` (0 БИШ) */
       let noCost = 0;
       const updates = Object.entries(pend).map(([k, v]) => {

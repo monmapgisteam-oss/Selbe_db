@@ -41,7 +41,7 @@ import type { Row } from '@/lib/query';
 import { LAYER_BY_ID } from '@/lib/services';
 import { lenFieldUnit } from '@/lib/butetsLen';
 import {
-  loadLayerMeta, loadRows, saveRows, validateRow,
+  loadLayerMeta, loadRows, parseNum, saveRows, validateRow,
   type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
 import { FieldInput, type UndoInfo } from './DedButetsEdit';
@@ -245,7 +245,9 @@ export function DedButetsBatch({
     for (const k of changed) {
       const v = p[k] ?? '';
       /* ⚠️ Хоосон → `null` (`diffRow`-ийн дүрэм) — ижил утгыг хоослох зам */
-      attrs[k] = v === '' ? null : fieldOf.get(k)?.kind === 'number' ? Number(v) : v;
+      /* ⚠️ 2026-10-05: `validateRow` одоо «12,5»-ыг зөвшөөрдөг тул ижил задлагчаар
+         (`parseNum`) хөрвүүлнэ — `Number('12,5')` нь NaN. */
+      attrs[k] = v === '' ? null : fieldOf.get(k)?.kind === 'number' ? (parseNum(v) ?? Number(v)) : v;
     }
 
     /* Буцаалт — мөр бүрийн өөрийн хуучин утга (аль хэдийн татагдсан `rows`).

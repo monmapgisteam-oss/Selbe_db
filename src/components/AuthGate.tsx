@@ -1,11 +1,14 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
-import { registerIdentity } from '@/lib/authToken';
+import {
+  dismissSessionDead, ensureFreshToken, noteSignOut, registerIdentity, retrySession, sessionDead,
+  subscribeSessionDead,
+} from '@/lib/authToken';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './auth.module.css';
 
@@ -44,6 +47,14 @@ type AuthCtx = {
    * УСТГАЛГҮЙ үлдээж, дээр нь хаалтын цонх (`AuthNotice`) гаргана.
    */
   accessLost: boolean;
+  /**
+   * ⚠️ 2026-10-05: ArcGIS-ийн токены шинэчлэлт ЭЦЭСЛЭН унасан (`authToken.sessionDead`) —
+   *    `status` нь `signed-in` ХЭВЭЭР (Portal амьд), `AuthNotice` дээр нь «дахин нэвтрэх»
+   *    цонх гаргана. Сүлжээний түр тасалдалд ХЭЗЭЭ Ч үнэн болохгүй.
+   */
+  sessionExpired: boolean;
+  /** Эрхийн хүснэгтийг ОДОО дахин уншина (15 с / 5 мин хүлээлгүй) — «Дахин оролдох» товч */
+  recheckPerms: () => Promise<void>;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Алдааны мэдэгдлийг хаах — signed-out+error дэлгэцээс гарах гарц */
@@ -58,6 +69,8 @@ const Ctx = createContext<AuthCtx>({
   error: null,
   permsRead: true,
   accessLost: false,
+  sessionExpired: false,
+  recheckPerms: async () => {},
   signIn: async () => {},
   signOut: async () => {},
   clearError: () => {},
@@ -133,6 +146,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const oauthReadyRef = useRef<Promise<void> | null>(null);
   /** Нэвтрэх үеийн байгууллагын шалгалтын дүн — revocation дахин ашиглана */
   const orgOkRef = useRef(true);
+  /** Үечилсэн шалгалтын одоогийн функц — `recheckPerms` гараар дуудна (2026-10-05) */
+  const checkRef = useRef<(() => Promise<void>) | null>(null);
+  /*
+   * ⚠️ 2026-10-05: СЕШН ДУУССАН төлөв (`AuthCtx.sessionExpired`-ийн тайлбар). Эх сурвалж нь
+   *    `authToken` (хүсэлтийн давхарга) — энд зөвхөн React руу дамжуулна.
+   */
+  const sessionExpired = useSyncExternalStore(subscribeSessionDead, sessionDead, () => false);
 
   useEffect(() => {
     // Тохируулаагүй бол нэвтрэлтгүйгээр ажиллана
@@ -296,6 +316,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
       try {
+        /* ⚠️ 2026-10-05: шалгалтын ӨМНӨ токеныг шинэчилж үзнэ. Урьд нь энэ шалгалт «токен
+           үхсэн» ба «сүлжээ тасарсан» хоёрыг ялгадаггүй — хоёулаа `rok === false`. Одоо
+           шинэчлэлт ЭЦЭСЛЭН унавал `authToken` сешн дууссаныг тэмдэглэж (`sessionExpired`),
+           сүлжээний саатал бол урьдын адил чимээгүй (эрх хэвээр). */
+        await ensureFreshToken();
         // ⚠️ canCreate=false (poll-д хүснэгт үүсгэхгүй), trusted=хатуу super
         const rok = await initRemote(false, roleForUser(user.username) === 'super');
         if (!alive) return;
@@ -343,6 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      *    кодтой зөрж байлаа. Хугацааг оролдлого БҮРИЙН дараа дахин сонгоно
      *    (`setTimeout` гинж): remote уншигдмагц 5 мин руу буцна.
      */
+    checkRef.current = check;
     const period = () => (status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
@@ -355,10 +381,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
+      if (checkRef.current === check) checkRef.current = null;
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [status, user?.username]);
+
+  const recheckPerms = async () => { await checkRef.current?.(); };
 
   const signIn = async () => {
     setError(null);
@@ -396,6 +425,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const signOut = async () => {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+    /* ⚠️ 2026-10-05: итгэмжлэл устахыг «сешн дууссан» гэж тэмдэглэхгүй (`authToken.noteSignOut`) */
+    noteSignOut();
     esriId.destroyCredentials();
     const back = encodeURIComponent(location.origin + location.pathname);
     /* ⚠️ Энэ бол ArcGIS-ийн ГАДААД гарах хаяг — Next.js-ийн дотоод хуудас БИШ
@@ -411,7 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authorized = status === 'signed-in' || status === 'off';
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, accessLost, signIn, signOut, clearError: () => setError(null) }}>
+    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError: () => setError(null) }}>
       {children}
     </Ctx.Provider>
   );
@@ -422,7 +453,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, accessLost, signIn, signOut, clearError } = useAuth();
+  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError } = useAuth();
+  /*
+   * ⚠️ 2026-10-05: СЕШН ДУУССАН — Portal доор нь АМЬД (`status` нь `signed-in` хэвээр тул
+   *    `Root` юу ч солихгүй). `AccessLost`-ийн ижил хаалтын цонх; дахин нэвтрэх нь хуудсыг
+   *    ArcGIS руу чиглүүлдэг (доорх `SessionExpired`-ийн ⚠️) тул хэрэглэгч эхлээд ажлаа
+   *    хуулж авах боломжтой.
+   */
+  if (sessionExpired && status === 'signed-in') return <SessionExpired username={user?.username} onSignOut={signOut} />;
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
 
   /*
@@ -530,6 +568,83 @@ export function AuthNotice() {
  *    эрт `return`-үүдийн дараа дуудаж болохгүй. Урхигүй бол Tab нь доорх
  *    порталын товчнууд руу гарна.
  */
+/**
+ * НЭВТРЭЛТИЙН ХУГАЦАА ДУУССАН — хаалтын цонх (2026-10-05, `authToken`-ийн «СЕШН ДУУССАН» ⚠️).
+ *
+ * ⚠️ ХУУДСЫГ ДАХИН АЧААЛАЛГҮЙ НЭВТРЭХ БОЛОМЖГҮЙ (одоогийн OAuth тохиргоонд): `OAuthInfo` нь
+ *    `popup: false` (бүтэн хуудсаар чиглүүлнэ) — popup нэвтрэлтэд тусдаа callback хуудас
+ *    ба ArcGIS апп дээр түүний redirect URI бүртгэл хэрэгтэй (төслийн эзний шийдвэр). Тиймээс:
+ *      · «Дахин шалгах» — токеныг дахин шинэчилж үзнэ; сэргэвэл цонх хаагдаж ажил ХЭВЭЭР.
+ *      · «Түр хаах» — цонхыг хааж хадгалаагүй ажлаа хуулж авах боломж; дараагийн хүсэлт
+ *        дахин татгалзагдахад цонх БУЦАЖ гарна. Эрх нэмэгдэхгүй — сервер токеныг аль хэдийн
+ *        татгалзаж байгаа тул ард нь юу ч хадгалагдахгүй, уншигдахгүй.
+ *      · «Дахин нэвтрэх» — итгэмжлэлийг устгаад ArcGIS руу чиглүүлнэ; буцаж ирэхэд ИЖИЛ
+ *        харагдац (`?v=`) нээгдэнэ, гэхдээ хадгалаагүй өөрчлөлт АЛГА болно — текстэд ИЛ хэлнэ.
+ * ⚠️ «Ноорог локалд хадгалагдсан» гэж ХЭЛЭХГҮЙ: энэ нь зөвхөн зарим хуудсанд үнэн.
+ * ⚠️ Тусдаа компонент — `AccessLost`-ийн адил фокусын урхи hook-той.
+ */
+function SessionExpired({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const retry = async () => {
+    setBusy(true);
+    setNote('');
+    const ok = await retrySession();
+    setBusy(false);
+    /* Сэргэвэл `sessionDead` худал болж цонх өөрөө хаагдана */
+    if (!ok) setNote(tr('Нэвтрэлт сэргэсэнгүй — холболтоо шалгах эсвэл дахин нэвтэрнэ үү.'));
+  };
+  const reauth = async () => {
+    setBusy(true);
+    setNote('');
+    try {
+      const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
+      /* Хуучин (үхсэн) итгэмжлэлийг устгана — эс бөгөөс `getCredential` түүнийг буцаагаад чиглүүлэхгүй.
+         ⚠️ `noteSignOut` ДУУДАХГҮЙ: тэр нь цонхыг хаадаг — чиглүүлэлт унавал (offline) алдаа
+            харагдах газаргүй болно. Цонх чиглүүлэх хүртэл нээлттэй үлдэнэ. */
+      esriId.destroyCredentials();
+      attemptSet();
+      await esriId.getCredential(sharingUrl());
+      /* Чиглүүлэлгүй хүрсэн бол (хүчинтэй итгэмжлэл олдсон) шалгалтыг эхнээс нь */
+      window.location.reload();
+    } catch (e) {
+      attemptClear();
+      setBusy(false);
+      setNote(describe(e));
+    }
+  };
+  return (
+    <div ref={ref} className={`${s.screen} ${s.screenOver}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-session-expired">
+      <div className={s.card}>
+        <img src="/logo.svg" alt="" className={s.logo} />
+        <div className={s.title} id="selbe-session-expired">{tr('Нэвтрэлтийн хугацаа дууссан')}</div>
+        <p className={`${s.sub} ${s.subTight}`}>
+          {tr('ArcGIS-ийн нэвтрэлтийн хугацаа дууссан тул өгөгдөл унших, хадгалах боломжгүй боллоо. Нээлттэй ажил тань энэ цонхны ард хэвээр байна.')}
+        </p>
+        <p className={s.sub}>
+          {tr('Дахин нэвтрэхэд хуудас дахин ачаалагдаж, ХАДГАЛААГҮЙ өөрчлөлт алга болно. Хэрэгтэй бол эхлээд энэ цонхыг түр хааж, хадгалаагүй ажлаа хуулж авна уу.')}
+        </p>
+        <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
+        {note && <p className={s.error} role="status">{note}</p>}
+        <button type="button" className={s.btn} onClick={reauth} disabled={busy} style={{ marginTop: 16 }}>
+          {tr('Дахин нэвтрэх')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={retry} disabled={busy}>
+          {busy ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={dismissSessionDead} disabled={busy}>
+          {tr('Түр хаах — хадгалаагүй ажлаа хуулж авах')}
+        </button>
+        <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
+          {tr('Гарах')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AccessLost({ username, onSignOut }: { username?: string; onSignOut: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);

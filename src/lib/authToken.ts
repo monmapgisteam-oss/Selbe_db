@@ -33,14 +33,117 @@ export function registerIdentity(mgr: Esri, sharingUrl: string): void {
   esri = mgr;
   sharing = sharingUrl;
   lastForced = null; // шинэ сешн — өмнөх шинэчлэлтийн тэмдэглэл хамаарахгүй
+  /* ⚠️ 2026-10-05: шинэ сешн — «сешн дууссан» төлөв ба гарах тэмдэг цэвэр эхэлнэ */
+  seenToken = false;
+  ending = false;
+  lastFail = null;
+  setDead(false);
 }
 
 export function authToken(): string | null {
   if (!esri || !sharing) return null;
   try {
-    return esri.findCredential(sharing)?.token ?? null;
+    const t = esri.findCredential(sharing)?.token ?? null;
+    /* ⚠️ 2026-10-05: энэ сешнд токен НЭГ удаа харагдсан — «итгэмжлэл алга болсон»-ыг
+       «хэзээ ч нэвтрээгүй»-гээс ялгана (`markDead`). */
+    if (t) seenToken = true;
+    return t;
   } catch {
     return null;
+  }
+}
+
+/* ══════════════════ СЕШН ДУУССАН (2026-10-05) ══════════════════ */
+/**
+ * ⚠️ 2026-10-05 (аудит): ТОКЕНЫ ШИНЭЧЛЭЛТ ЭЦЭСЛЭН УНАСНЫГ ИЛ БОЛГОНО.
+ *    Урьд нь `ensureFreshToken` шинэчлэлтийн алдааг чимээгүй залгидаг, `AuthGate`-ийн
+ *    5 минутын шалгалт «токен үхсэн» ба «сүлжээ тасарсан» хоёрыг ялгадаггүй байв:
+ *    refresh token-ы хугацаа дууссан (эсвэл админ сешнийг хүчингүй болгосон) хэрэглэгч
+ *    бүх хүсэлт дээр «Invalid token» аваад, гарц нь зөвхөн F5 — хадгалаагүй ажил алга.
+ *    Одоо ЭЦЭСЛЭСЭН уналтыг (`classifyRefreshError` → `dead`) тэмдэглэж, `AuthGate`
+ *    Portal-ыг УСТГАЛГҮЙ дээр нь «дахин нэвтрэх» цонх гаргана.
+ * ⚠️ СҮЛЖЭЭНИЙ тасалдлыг (offline · fetch унах · timeout · 5xx/429) ХЭЗЭЭ Ч «дууссан»
+ *    гэж үзэхгүй — тэр үед хүсэлт өөрөө алдаагаа хэлнэ, сүлжээ сэргэхэд үргэлжилнэ.
+ * ⚠️ Энэ нь эрхийг НЭЭДЭГГҮЙ: токен үхсэн үед сервер бүх хүсэлтийг аль хэдийн
+ *    татгалздаг — энд зөвхөн шалтгааныг хэрэглэгчид хэлнэ (fail-closed хэвээр).
+ */
+let seenToken = false;
+/** Хэрэглэгч ӨӨРӨӨ гарч/дахин нэвтэрч байна — итгэмжлэл устах нь «дууссан» БИШ */
+let ending = false;
+let dead = false;
+type RefreshFail = 'network' | 'dead' | 'unknown';
+/** Сүүлийн шинэчлэлтийн уналтын ангилал (`null` = амжилттай / оролдоогүй) */
+let lastFail: RefreshFail | null = null;
+const deadSubs = new Set<() => void>();
+
+function setDead(v: boolean): void {
+  if (dead === v) return;
+  dead = v;
+  for (const fn of [...deadSubs]) { try { fn(); } catch { /* захиалагчийн алдаа бусдыг зогсоохгүй */ } }
+}
+function markDead(): void {
+  if (ending || !seenToken) return;
+  setDead(true);
+}
+
+/** Нэвтрэлтийн хугацаа дууссан (шинэчлэлт эцэслэн унасан) уу — `AuthGate`-ийн хаалтын цонх */
+export const sessionDead = (): boolean => dead;
+export function subscribeSessionDead(fn: () => void): () => void {
+  deadSubs.add(fn);
+  return () => { deadSubs.delete(fn); };
+}
+/**
+ * Цонхыг ТҮР хаах — хэрэглэгч хадгалаагүй ажлаа хуулж авна. ⚠️ Дараагийн токены
+ * алдаа (`refreshAfterTokenError` · `ensureFreshToken`) цонхыг ДАХИН гаргана.
+ */
+export function dismissSessionDead(): void { setDead(false); }
+/** Хэрэглэгч гарах / дахин нэвтрэх гэж байна — итгэмжлэл устахыг «дууссан» гэж тэмдэглэхгүй */
+export function noteSignOut(): void {
+  ending = true;
+  setDead(false);
+}
+
+/**
+ * Шинэчлэлтийн алдааг ангилна — цэвэр функц.
+ *   · `network` — offline · fetch унах · timeout · 5xx/429 (түр саатал, сешн ХЭВЭЭР)
+ *   · `dead`    — сервер токеныг ТАТГАЛЗСАН (498/499/400/401 · invalid_grant · expired)
+ *   · `unknown` — тодорхойгүй; дангаараа «дууссан» гэж үзэхгүй
+ * ⚠️ JS API-ийн алдаа: `name` (`identity-manager:*` · `request:server`), `details.httpStatus`
+ *    (ArcGIS-ийн 200-аар ирсэн `error.code` ч энд бууна), `details.messageCode`.
+ */
+export function classifyRefreshError(e: unknown): RefreshFail {
+  const o = (e ?? {}) as {
+    name?: string; message?: string; code?: unknown;
+    details?: { httpStatus?: number; messageCode?: string; error?: unknown };
+  };
+  const st = Number(o.details?.httpStatus ?? 0) || 0;
+  const text = `${o.name ?? ''} ${o.message ?? ''} ${o.details?.messageCode ?? ''} ${typeof o.details?.error === 'string' ? o.details.error : ''}`;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'network';
+  if (o.name === 'AbortError' || /failed to fetch|networkerror|network request|load failed|timeout|timed out|abort/i.test(text)) return 'network';
+  if (st >= 500 || st === 429) return 'network';
+  if (isTokenError(o.code, text) || st === 400 || st === 401 || st === 498 || st === 499
+    || /invalid[_ ]grant|invalid[_ ]refresh|expired|not-authenticated|authentication-failed/i.test(text)) return 'dead';
+  return 'unknown';
+}
+
+/**
+ * «Дахин шалгах» — токеныг ХҮЧЭЭР шинэчилж үзнэ. `true` = сешн сэргэсэн (цонх хаагдана).
+ * ⚠️ Сүлжээний/тодорхойгүй уналтад `false` — цонх хэвээр, хэрэглэгч дахин оролдоно.
+ */
+export async function retrySession(): Promise<boolean> {
+  if (!esri || !sharing) return false;
+  let c: Cred | null | undefined;
+  try { c = esri.findCredential(sharing) as Cred | null | undefined; } catch { c = null; }
+  if (!c || typeof c.refreshToken !== 'function') return false;
+  try {
+    await c.refreshToken();
+    lastFail = null;
+    lastForced = null;
+    setDead(false);
+    return true;
+  } catch (e) {
+    lastFail = classifyRefreshError(e);
+    return false;
   }
 }
 
@@ -78,13 +181,26 @@ export function ensureFreshToken(force = false): Promise<void> {
   if (!esri || !sharing) return Promise.resolve();
   let c: Cred | null | undefined;
   try { c = esri.findCredential(sharing) as Cred | null | undefined; } catch { c = null; }
-  if (!c || typeof c.refreshToken !== 'function') return Promise.resolve();
+  /* ⚠️ 2026-10-05: токен харагдсаны ДАРАА итгэмжлэл алга болсон (JS API шинэчлэлт
+     унахад өөрөө устгадаг) — сешн дууссан. Гарах үед (`noteSignOut`) тэмдэглэхгүй. */
+  if (!c) { markDead(); return Promise.resolve(); }
+  if (typeof c.refreshToken !== 'function') return Promise.resolve();
   const left = typeof c.expires === 'number' && c.expires > 0 ? c.expires - Date.now() : Number.POSITIVE_INFINITY;
   if (!force && left > 90_000) return Promise.resolve();
   if (refreshing) return refreshing;
   const cred = c;
   refreshing = (async () => {
-    try { await cred.refreshToken!(); } catch { /* хүсэлт өөрөө алдаагаа хэлнэ */ }
+    /* ⚠️ 2026-10-05: уналтыг АНГИЛНА — сервер токеныг татгалзсан (`dead`) бол сешн
+       дууссаныг тэмдэглэнэ (`sessionDead`); сүлжээний саатал бол урьдын адил чимээгүй,
+       хүсэлт өөрөө алдаагаа хэлнэ. */
+    try {
+      await cred.refreshToken!();
+      lastFail = null;
+      setDead(false);
+    } catch (e) {
+      lastFail = classifyRefreshError(e);
+      if (lastFail === 'dead') markDead();
+    }
   })().finally(() => { refreshing = null; });
   return refreshing;
 }
@@ -107,7 +223,8 @@ let lastForced: { from: string; at: number } | null = null;
 const FORCED_COOLDOWN_MS = 30_000;
 export async function refreshAfterTokenError(sent: string | null): Promise<boolean> {
   const cur = authToken();
-  if (!cur) return false;
+  /* ⚠️ 2026-10-05: сервер 498/499 хэлсэн атал итгэмжлэл алга (өмнө нь байсан) — сешн дууссан */
+  if (!cur) { markDead(); return false; }
   if (sent !== cur) return true;
   if (refreshing) {
     await refreshing;
@@ -116,7 +233,12 @@ export async function refreshAfterTokenError(sent: string | null): Promise<boole
   if (lastForced && lastForced.from === sent && Date.now() - lastForced.at < FORCED_COOLDOWN_MS) return false;
   lastForced = { from: sent, at: Date.now() };
   await ensureFreshToken(true);
-  return authToken() !== sent;
+  const changed = authToken() !== sent;
+  /* ⚠️ 2026-10-05: сервер токеныг ТАТГАЛЗСАН (498/499) БА шинэчлэлт сүлжээнийх БИШ
+     шалтгаанаар унасан → сешн дууссан. Шинэчлэлт бүтсэн (`lastFail === null`) атал
+     дахин 499 бол тэр нь эрхийн асуудал (хаалттай үйлчилгээ) — сешн ХЭВЭЭР. */
+  if (!changed && lastFail && lastFail !== 'network') markDead();
+  return changed;
 }
 
 /**

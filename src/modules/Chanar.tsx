@@ -47,7 +47,7 @@ import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
   activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, history, kindLabel, latest, myActionLabel, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
+  delayDays, emptyBodyOf, emptyKeySections, history, kindLabel, latest, myActionLabel, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
   statusLabel, verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
   type MsStatus, type NcrBody, type NcrCorrection, type Review, type Reviewer, type VerdictCode,
@@ -56,7 +56,7 @@ import { MA_CATEGORIES, MS_GROUPS, maCategoryLabel, msGroupLabel, msRequiredProg
 import {
   ackRepDoc, actionableItems, addAttachment, bounceDoc, chanarTableState, closeAnDoc, closeNcrDoc, createDraft, deleteAttachment, listAttachments,
   loadAllDocs, loadBodyOf, loadBodiesOf, loadNcrFlags, newRevisionDoc, reopenDoc, reviewDoc, saveClientChecks, saveDraft, saveMeta,
-  submitCorrection, submitDoc, type Attachment, type NcrFlags, type TableState,
+  submitCorrection, submitDoc, TITLE_MAX, type Attachment, type NcrFlags, type TableState,
 } from '@/lib/chanarStore';
 import { chanarRoleLabel } from './ChanarAcl';
 import {
@@ -452,16 +452,26 @@ export function Chanar() {
     setEdit(true); setDirty(false); setDTitle(doc.title); setDBody(b);
   };
   const titleErr = () => (isMsLike(kind) ? tr('Аргачлалын нэрийг бичнэ үү.') : tr('Баримтын нэрийг бичнэ үү.'));
+  /* ⚠️ 2026-10-05: өмнөх «шинэ ноорог»-ийн хариу алдагдсан (`createDraft` → `unsure`) —
+     мөр үүссэн байж болох тул ДАРААГИЙН хадгалалтын өмнө асууна (давхар ноорогоос сэргийлнэ). */
+  const newUnsure = useRef(false);
   const saveNew = async () => {
     if (!dTitle.trim()) { setErr(titleErr()); return; }
+    if (newUnsure.current && !window.confirm(tr('Өмнөх хадгалалтын хариу ирээгүй — ноорог аль хэдийн үүссэн байж болно. Жагсаалтаас шалгасан уу? Дахин хадгалбал давхардаж болзошгүй. Үргэлжлүүлэх үү?'))) return;
     if (!sameTitleOk(kind, dTitle)) return;
     let oid = 0;
+    let unsure = '';
     const ok = await run(async () => {
       const r = await createDraft({ kind, bagts: pkg, title: dTitle, author: me, body: dBody });
       if (r.ok) oid = r.oid;
+      else if (r.unsure) unsure = r.error;
       return r;
     }, tr('Ноорог хадгалагдлаа — дугаар автоматаар олгогдов.'));
+    newUnsure.current = !!unsure;
     if (ok) { setEdit(false); setDirty(false); setSel(oid); }
+    /* Жагсаалтыг шинэчилнэ — хожуу бичигдсэн мөр харагдана. `refresh` алдааны мөрийг
+       цэвэрлэдэг тул дараа нь БУЦААЖ тавина. */
+    else if (unsure) void refresh().then(() => setErr(unsure), () => setErr(unsure));
   };
   /* Засах горимд хувилбарын шалтгаан шаардлагатай юу — буцаагдсан (rev+1 үүснэ) эсвэл rev>0 ноорог */
   const needRevNote = !!doc && doc.kind !== 'NCR' && (doc.status === MS_STATUS.returned || doc.rev > 0);
@@ -491,7 +501,15 @@ export function Chanar() {
       : doc.kind === 'NCR'
         ? tr('«{0}» үл тохирлыг гүйцэтгэгчид илгээх үү? Илгээсний дараа засах боломжгүй.', doc.docNo)
         : tr('«{0}» баримтыг хянуулахаар илгээх үү? Илгээсний дараа засах боломжгүй.', doc.docNo);
-    if (!window.confirm(q)) return;
+    /* ⚠️ 2026-10-05: ДУТУУГ илгээхийн ӨМНӨ хэлнэ (`chanarMs.emptyKeySections`) — зөвхөн
+       гарчигтай баримт хянуулахаар явж, дараа нь засагдахгүй болдог байв. Хориг биш, сануулга. */
+    const missing = emptyKeySections(doc.kind, body);
+    const nAtt = atts.filter((a) => a.parentOid === doc.oid).length;
+    const warn = [
+      missing.length ? tr('⚠ Хоосон хэсэг: {0}', missing.join(' · ')) : '',
+      nAtt === 0 ? tr('⚠ Хавсралт: 0 — энэ хувилбарт файл хавсаргаагүй') : '',
+    ].filter(Boolean).join('\n');
+    if (!window.confirm(warn ? `${q}\n\n${warn}` : q)) return;
     let oid = doc.oid;
     const ok = await run(async () => {
       const r = await submitDoc({ oid: doc.oid, who: me, revNote: rn || undefined });
@@ -1403,6 +1421,8 @@ function FormHead({ head, kind, title, onTitle, busy }: { head: string; kind: Do
         placeholder={hint}
         aria-label={tr('Баримтын нэр')}
         value={title}
+        /* ⚠️ 2026-10-05: `ner` талбарын урт (`chanarStore.TITLE_MAX`) — урьд нь хадгалахад л унадаг байв */
+        maxLength={TITLE_MAX}
         onChange={(e) => onTitle(e.target.value)}
         disabled={busy}
       />

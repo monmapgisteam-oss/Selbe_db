@@ -29,14 +29,14 @@
 import { t as tr } from './i18nCore';
 import { listUsers, remoteReady, resolveAccess } from './permissions';
 import { roleForUser, VIEWS } from './services';
-import type { ErhSource } from './erhOverview';
+import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, toggleCap, type CapKey } from './caps';
 import { ALL_BAGTS, type Grant } from './scopedAcl';
 import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
 import type { Stage } from './hyanalt';
-import { capLabelShort } from '@/modules/erhLabels';
+import { capLabelShort, issueText } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
 import { planGrantAdd, planGrantRemove, planListAdd, planListRemove } from './aclGrid';
@@ -77,7 +77,30 @@ type Row<R extends string = string> = { user: string; grants: Grant<R>[] };
  * Нэг бичих үйлдэл. `confirm` — дарааллаар асуух асуултууд (аль нэгд нь
  * «Цуцлах» бол юу ч бичихгүй). `error` — бичихээс өмнө татгалзсан.
  */
-export type AclOp = { confirm?: string[]; run: () => Write; user?: string } | { error: string } | null;
+export type AclOp = {
+  confirm?: string[]; run: () => Write; user?: string;
+  /**
+   * ⚠️ 2026-10-05: бичилтийн ДАРААХ эрхийн зураг (цэвэр, юу ч бичихгүй) — `runOp` үүгээр
+   *    «энэ хасалт ямар ШИНЭ гацаа үүсгэх вэ»-г асуултын текстэд нэмнэ (`newBlockingText`).
+   *    Зөвхөн АСУУЛТТАЙ хасах/шилжүүлэх op-д; нэмэх op-д байхгүй.
+   */
+  after?: After;
+} | { error: string } | null;
+
+/** Эрхийн зургийг op-ын дараах байдал руу хувиргана — цэвэр */
+type After = (src: ErhSource) => ErhSource;
+
+/** Үүрэгтэй системийн мөрийг сольсон/хассан зураг (`grants` хоосон/`null` = мөр алга) */
+const afterGrants = (sys: ScopedSys, u: string, grants: Grant<string>[] | null): After => (src) => {
+  const rows = ((src[sys] ?? []) as ScopedRow[]).filter((r) => r.user.trim().toLowerCase() !== u);
+  return { ...src, [sys]: grants && grants.length ? [...rows, { user: u, grants }] : rows } as ErhSource;
+};
+
+/** Урсгалын мөрийг сольсон/хассан зураг (`null` = томилгоогүй) */
+const afterFlow = (u: string, row: { stage: Stage; bagts: string[]; viewOnly?: boolean } | null): After => (src) => {
+  const rows = src.flow.filter((r) => r.user.trim().toLowerCase() !== u);
+  return { ...src, flow: row ? [...rows, { user: u, ...row }] : rows };
+};
 
 /* ══════════════════════ Явагдаж буй бичилт (2026-09-25) ══════════════════════ */
 
@@ -425,9 +448,9 @@ export function removePkgOp(sys: ScopedSys, user: string, role: string, pkg: str
 
   if (!grants.length) {
     confirm.push(removeAllMsg(sys, u));
-    return { user: u, confirm, run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps) };
+    return { user: u, confirm, after: afterGrants(sys, u, null), run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps) };
   }
-  return { user: u, confirm, run: () => setGrantsRevokingRoles(u, grants, spec.list, spec.setGrants, spec.roleCaps) };
+  return { user: u, confirm, after: afterGrants(sys, u, grants), run: () => setGrantsRevokingRoles(u, grants, spec.list, spec.setGrants, spec.roleCaps) };
 }
 
 /**
@@ -459,12 +482,14 @@ export function dropRoleOp(sys: ScopedSys, user: string, role: string): AclOp {
     return {
       user: u,
       confirm: [removeAllMsg(sys, u)],
+      after: afterGrants(sys, u, null),
       run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps),
     };
   }
   return {
     user: u,
     confirm: [tr('«{0}»-ийн энэ үүргийг БҮХ багцаас хасах уу? Өөр үүрэг түүн рүү заагаагүй бол харгалзах эрх нь мөн буцаагдана.', u)],
+    after: afterGrants(sys, u, grants),
     run: () => setGrantsRevokingRoles(u, grants, spec.list, spec.setGrants, spec.roleCaps),
   };
 }
@@ -510,11 +535,13 @@ export function scopedCellOp(
     case 'narrow': return {
       user: u,
       confirm: sys === 'butets' ? [] : [narrowMsg(u, label, p.left.length)],
+      after: afterGrants(sys, u, p.grants),
       run: () => setGrantsRevokingRoles(u, p.grants, spec.list, spec.setGrants, spec.roleCaps),
     };
     case 'drop': return {
       user: u,
       confirm: [removeAllMsg(sys, u)],
+      after: afterGrants(sys, u, null),
       run: () => removeRevokingRoles(u, spec.list, spec.removeNoRevoke, spec.roleCaps),
     };
   }
@@ -625,6 +652,7 @@ export function flowDropOp(user: string): AclOp {
   return {
     user: u,
     confirm: [tr('«{0}»-г {1} шатнаас хасах уу? Олгогдсон үүрэг ба «Гүйцэтгэлийн хяналт» харагдац нь мөн буцаагдана.', u, STAGE_LABEL[cur.stage])],
+    after: afterFlow(u, null),
     run: () => asWrite(removeAssign(u, cur.stage)),
   };
 }
@@ -640,7 +668,11 @@ export function flowStageOp(user: string, stage: Stage | null): AclOp {
   if (stage === null) return cur ? flowDropOp(u) : null;
   if (!cur) return { user: u, run: () => setAssign(u, stage, [ALL_BAGTS]) };
   if (cur.stage === stage) return null;
-  return { user: u, confirm: [moveMsg(u, cur.stage, stage, ALL_BAGTS)], run: () => setAssign(u, stage, [ALL_BAGTS]) };
+  return {
+    user: u, confirm: [moveMsg(u, cur.stage, stage, ALL_BAGTS)],
+    after: afterFlow(u, { stage, bagts: [ALL_BAGTS] }),
+    run: () => setAssign(u, stage, [ALL_BAGTS]),
+  };
 }
 
 /**
@@ -653,7 +685,11 @@ export function flowAddOp(user: string, stage: Stage, pkg: string): AclOp {
   const cur = flowRow(u);
   if (!cur) return { user: u, run: () => setAssign(u, stage, [pkg]) };
   if (cur.stage !== stage) {
-    return { user: u, confirm: [moveMsg(u, cur.stage, stage, pkg)], run: () => setAssign(u, stage, [pkg]) };
+    return {
+      user: u, confirm: [moveMsg(u, cur.stage, stage, pkg)],
+      after: afterFlow(u, { stage, bagts: [pkg] }),
+      run: () => setAssign(u, stage, [pkg]),
+    };
   }
   if (cur.bagts.includes(ALL_BAGTS) || cur.bagts.includes(pkg)) return null;
   return { user: u, run: () => setAssign(u, stage, [...cur.bagts, pkg], false) };
@@ -677,7 +713,7 @@ export function flowRemoveOp(user: string, pkg: string): AclOp {
   if (left.length) return { user: u, run: () => setAssign(u, cur.stage, left, false) };
   const drop = flowDropOp(u);
   if (!drop || 'error' in drop || !all) return drop;
-  return { user: u, confirm: [allRoleMsg(u), ...(drop.confirm ?? [])], run: drop.run };
+  return { user: u, confirm: [allRoleMsg(u), ...(drop.confirm ?? [])], after: drop.after, run: drop.run };
 }
 
 /** «Бүх багц» (карт) — багц солих тул `grant=false` */
@@ -735,12 +771,17 @@ export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => setAssign(u, p.stage, p.bagts) };
-    case 'move': return { user: u, confirm: [moveMsg(u, p.from, p.stage, pkg)], run: () => setAssign(u, p.stage, p.bagts) };
+    case 'move': return {
+      user: u, confirm: [moveMsg(u, p.from, p.stage, pkg)],
+      after: afterFlow(u, { stage: p.stage, bagts: p.bagts }),
+      run: () => setAssign(u, p.stage, p.bagts),
+    };
     case 'set': return { user: u, run: () => setAssign(u, p.stage, p.bagts, false) };
     case 'narrow': return {
       user: u,
       confirm: [tr('«{0}» нь {1} шатанд БҮХ багцад томилогдсон. «{2}»-оос хасвал бусад {3} багцын ил жагсаалт болно (шинэ багц нэмэгдэхэд автоматаар хамрахгүй). Үргэлжлүүлэх үү?',
         u, STAGE_LABEL[p.stage], pkg, p.bagts.length)],
+      after: afterFlow(u, { stage: p.stage, bagts: p.bagts, viewOnly: cur?.viewOnly === true }),
       run: () => setAssign(u, p.stage, p.bagts, false),
     };
     case 'drop': return flowDropOp(u);
@@ -922,6 +963,33 @@ export function goneCleanupOp(sys: RepairSys | null, caps: readonly CapKey[], us
 
 /* ══════════════════════ Гүйцэтгэгч ══════════════════════ */
 
+/** `bad` цоорхойн таних түлхүүр — төрөл + багц + утгууд (шатны тоо өсвөл ч «шинэ») */
+const badKeys = (src: ErhSource): Map<string, PkgIssue> => new Map(
+  allPkgErh(src).flatMap((p) => p.issues
+    .filter((i) => i.tone === 'bad')
+    .map((i) => [`${i.key}|${i.args.join('|')}`, i] as const)),
+);
+
+/**
+ * Op-ын ДАРАА шинээр үүсэх АЖИЛ ГАЦААХ цоорхойн текст (хоосон = үгүй) — 2026-10-05.
+ * ⚠️ Дүрэм ЭНД ДАХИН БИЧИГДЭЭГҮЙ: `erhOverview.pkgIssues` (тойм · матрицын ижил эх),
+ *    текст нь `erhLabels.issueText`. Зөвхөн `bad` — `warn` (дутуу ч ажиллана) орохгүй.
+ * ⚠️ Тооцоо унавал хоосон буцна — анхааруулга нь бичилтийг хэзээ ч зогсоохгүй.
+ */
+function newBlockingText(after: After): string {
+  try {
+    const src = liveErhSource();
+    const before = badKeys(src);
+    const fresh = [...badKeys(after(src))].filter(([k]) => !before.has(k)).map(([, i]) => i);
+    if (!fresh.length) return '';
+    const lines = fresh.slice(0, 6).map((i) => `• ${issueText(i)}`);
+    if (fresh.length > lines.length) lines.push(tr('… ба өөр {0} цоорхой', fresh.length - lines.length));
+    return `${tr('⚠️ Энэ өөрчлөлтөөр ажил ГАЦААХ шинэ цоорхой үүснэ:')}\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Op-ыг гүйцэтгэнэ: түгжээ → асуултууд → бичилт → `sync` (+`granted`) хүлээнэ.
  *
@@ -939,7 +1007,20 @@ export async function runOp(
   if (!op) return false;
   if (!ready()) { setErr(lockMsg()); return false; }
   if ('error' in op) { setErr(op.error); return false; }
-  for (const c of op.confirm ?? []) if (!window.confirm(c)) return false;
+  /*
+   * ⚠️ 2026-10-05: ГАЦААГ АСУУЛТАД НЬ ХЭЛНЭ. Урьд нь «батлагчгүй» · «өөрөө өөрийгөө батална» ·
+   *    «урсгалын шат хоосон» анхааруулга зөвхөн ХАССАНЫ ДАРАА «Тойм»-д улайж гардаг байв —
+   *    админ сүүлийн батлагчийг хасахдаа илгээсэн хуваарь/обьём мөнхөд хүлээхийг мэдэхгүй.
+   *    Одоо op-ын дараах зургаас (`op.after`) ШИНЭЭР үүсэх `bad` цоорхойг бодож, СҮҮЛИЙН
+   *    асуултын текстэд залгана. Шийдвэр админых хэвээр — хориглохгүй, зөвхөн хэлнэ.
+   * ⚠️ Асуултын ТОО өөрчлөгдөхгүй (шинэ асуулт нэмэхгүй): асуулгагүй op асуулгагүй хэвээр.
+   */
+  const confirms = [...(op.confirm ?? [])];
+  if (confirms.length && op.after) {
+    const warn = newBlockingText(op.after);
+    if (warn) confirms[confirms.length - 1] += `\n\n${warn}`;
+  }
+  for (const c of confirms) if (!window.confirm(c)) return false;
   const who = op.user ? norm(op.user) : '';
   /* ⚠️ `run`-аас ӨМНӨ тэмдэглэнэ — локал бичилтийн notify-аар дахин зурахад
      аль хэдийн «явагдаж буй» байх ёстой (эс бөгөөс нэг рендер худал өнчин). */
@@ -950,7 +1031,10 @@ export async function runOp(
     setErr('');
     const [a, b] = await Promise.all([r.sync ?? Promise.resolve(true), r.granted ?? Promise.resolve(true)]);
     if (a === false || b === false) {
-      setErr(tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
+      /* ⚠️ 2026-10-05: ТОДОРХОЙ шалтгаан байвал (`views` талбарын урт хэтэрсэн г.м.) түүнийг —
+         ерөнхий «хадгалагдсангүй» нь админыг сүлжээгээ шалгахад хүргэдэг байв. */
+      const why = await import('./permsRemote').then((m) => m.takeWriteError()).catch(() => '');
+      setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ browser-т'));
       return false;
     }
     return true;
