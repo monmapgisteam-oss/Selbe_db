@@ -6373,7 +6373,10 @@ const en: Record<string, string> = {
   "Аль багц аль багцаас хамаардгийг харуулна.": "Shows which package depends on which.",
   "Багцын хамаарал засах": "Edit package dependencies",
   "Багц хоорондын хамаарлын холбоо нэмэх, устгах эрх — аккаунтаар олгоно.": "Permission to add and remove links between packages — granted per account.",
-  "«Багцын хамаарал» дээр багц хоорондын холбоо нэмэх, устгах. Багц нэмэх, хасах боломжгүй; батлагч байхгүй — хадгалсан холбоо шууд бүх хүнд харагдана. Эрхгүй хүн зөвхөн харна.": "Add and remove links between packages in «Package dependencies». Packages cannot be added or removed; there is no approver — saved links are immediately visible to everyone. Users without the permission can only view."
+  "«Багцын хамаарал» дээр багц хоорондын холбоо нэмэх, устгах. Багц нэмэх, хасах боломжгүй; батлагч байхгүй — хадгалсан холбоо шууд бүх хүнд харагдана. Эрхгүй хүн зөвхөн харна.": "Add and remove links between packages in «Package dependencies». Packages cannot be added or removed; there is no approver — saved links are immediately visible to everyone. Users without the permission can only view.",
+  "Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.": "Saving — please wait and enter the date again.",
+  "Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.": "End date is before the start date — not applied.",
+  "Дарж огноо бичнэ: 2026-10-04 · 20261004": "Click to type a date: 2026-10-04 · 20261004"
 };
 
 export default en;

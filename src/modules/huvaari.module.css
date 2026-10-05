@@ -1303,6 +1303,35 @@
 .rowGroup .rowDate { color: var(--ink); font-weight: 600; }
 
 /*
+ * ДАРЖ БИЧИХ ОГНОО (2026-10-05, `TaskRow.DateCell`).
+ * ⚠️ Товч ба оролт хоёулаа `.rowDate`-ийн өргөн/зэрэгцүүлэлтийг өвлөнө — багана
+ *    гулсахгүй, мөрийн өндөр (`PL_ROW`) хөдлөхгүй. Хүрээ нь ил тунгалаг, hover-т л.
+ */
+.rowDateEd {
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px 0 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: text;
+}
+.rowDateEd:hover { border-color: var(--line); color: var(--ink); }
+.rowDateIn {
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 3px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--data);
+  border-radius: var(--r-sm);
+  outline: none;
+}
+.rowDateBad { border-color: var(--bad-ink); color: var(--bad-ink); }
+
+/*
  * ҮРГЭЛЖЛЭХ ХОНОГ — огнооны хосын ард, ТУСДАА багана (2026-09-15, хэрэглэгч).
  *
  * ⚠️ Огнооны нүдэнд шигтгэхгүй: нэг нүд хоёр утга агуулбал эрэмбэлэх,
