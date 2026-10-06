@@ -6435,7 +6435,9 @@ const en: Record<string, string> = {
   "«Хүлээгдэж буй» болсон тул огноог арилгав": "Date cleared because the status is now «Pending»",
   "Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.": "Saving — please wait and enter the date again.",
   "Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.": "End date is before the start date — not applied.",
-  "Дарж огноо бичнэ: 2026-10-04 · 20261004": "Click to type a date: 2026-10-04 · 20261004"
+  "Дарж огноо бичнэ: 2026-10-04 · 20261004": "Click to type a date: 2026-10-04 · 20261004",
+  "Өмнөх ортофото (бүтээн байгуулалтаас өмнө)": "Earlier orthophoto (before construction)",
+  "Өмнөх ортофото": "Earlier orthophoto"
 };
 
 export default en;

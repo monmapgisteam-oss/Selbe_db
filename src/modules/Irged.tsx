@@ -49,7 +49,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { t as tr, perLocale } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
-import { MapTools } from '@/components/MapTools';
+import { MapTools, MapToolBtn } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { LayerCatalog } from '@/components/LayerCatalog';
@@ -67,7 +67,7 @@ import {
   SLUDGE_M3_PER_PERSON, latrineLoad, stoveLoad,
 } from '@/lib/bohirdol';
 import {
-  IRGED_BUILT, IRGED_BUILT_MAP_HUE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
+  IRGED_BUILT, IRGED_BUILT_MAP_HUE, IRGED_ORTHO_PRE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET,
   LAYER_BY_ID, LAYER_GROUPS, PKG_BY_FAMILY, groupOf,
 } from '@/lib/services';
 import { num } from '@/lib/format';
@@ -577,7 +577,22 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             onOpacity={() => setOpOpen((v) => !v)}
             zone={zone}
             setZone={setZone}
-          />
+          >
+            {/* ⚠️ 2026-10-05: БҮТЭЭН БАЙГУУЛАЛТЫН ӨМНӨХ ортофото — асаах/унтраах товч.
+                Анхдагч нь УНТРААЛТТАЙ (системийн одоогийн ортофотог чимээгүй халхлахгүй).
+                Хаяг (env) тохируулаагүй бол товч ОГТ гарахгүй (`IRGED_ORTHO_PRE`-ийн ⚠️). */}
+            {IRGED_ORTHO_PRE.url && (
+              <MapToolBtn
+                icon="layers"
+                on={visible.includes(IRGED_ORTHO_PRE.id)}
+                title={IRGED_ORTHO_PRE.title}
+                onClick={() => setVisible((v) => (v.includes(IRGED_ORTHO_PRE.id)
+                  ? v.filter((x) => x !== IRGED_ORTHO_PRE.id) : [...v, IRGED_ORTHO_PRE.id]))}
+              >
+                {tr('Өмнөх ортофото')}
+              </MapToolBtn>
+            )}
+          </MapTools>
 
           {layerOpen && (
             <div className={`${o.catPanel} ${i.catPanel}`}>

@@ -26,6 +26,7 @@ import Polygon from '@arcgis/core/geometry/Polygon';
 import Point from '@arcgis/core/geometry/Point';
 import GroupLayer from '@arcgis/core/layers/GroupLayer';
 import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
+import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 import VectorTileLayer from '@arcgis/core/layers/VectorTileLayer';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
@@ -43,7 +44,7 @@ import '@arcgis/core/assets/esri/themes/light/main.css';
 
 import {
   LAYERS, LAYER_BY_ID, layerUrl, oidOf, drawOrder, DASH_PATTERN, ALWAYS_ON_IDS, REFERENCE_IDS,
-  HOME, IMAGERY, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
+  HOME, IMAGERY, IRGED_ORTHO_PRE, IRGED_ROAD, IRGED_SCENE, IRGED_TOILET, IRGED_BUILT, IRGED_BUILT_DEF,
   MESH_VERSIONS, DEFAULT_MESH_VER, MESH_CMP_PREFIX, type MeshVer,
   IRGED_BUILT_MAP_HUE, REACH_BUFFERS,
   SCENE, BIM, USAN_SAN, ELEVATION_URL, ZONE_LAYER, zoneWhere,
@@ -1069,6 +1070,7 @@ const PASSIVE = new Set<string>([
   // Гэр хорооллын барилга — зөвхөн байршил/төрөл; атрибут ил гаргахгүй
   IRGED_BUILT.id,
   IRGED_ROAD.id,
+  IRGED_ORTHO_PRE.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
@@ -1098,6 +1100,7 @@ const NO_HIGHLIGHT = new Set<string>([
   'sketch',
   IMAGERY_ID,
   IRGED_ROAD.id,
+  IRGED_ORTHO_PRE.id,
   ...SCENE.layers.map((l) => `scene:${l.key}`),
   ...IRGED_SCENE.layers.map((l) => `scene:${l.key}`),
   ...BIM.layers.map((l) => l.key),
@@ -1176,6 +1179,23 @@ function buildLayers(uniform = false): Layer[] {
 
   /* ⚠️ 2026-10-04: хуучин ортофотогийн хоёр давхарга (`ORTHO_SWIPE` · `IRGED_ORTHO`,
      `Selbe_ortho`) ХАСАГДСАН — ортофото нь зөвхөн дээрх `IMAGERY_ID`. */
+
+  /* ⚠️ 2026-10-05: БҮТЭЭН БАЙГУУЛАЛТЫН ӨМНӨХ ортофото («Иргэдэд хүрэх үр өгөөж»-ийн
+     товч) — системийн ортофотогийн ДЭЭР, зам ба бусад давхаргын ДООР. Хаяг (env)
+     тохируулаагүй бол давхарга үүсэхгүй (`services/scene.ts` IRGED_ORTHO_PRE-ийн ⚠️).
+     Эхэндээ унтраалттай; `visible` жагсаалтаар асна. */
+  if (IRGED_ORTHO_PRE.url) {
+    L.push(new ImageryLayer({
+      id: IRGED_ORTHO_PRE.id,
+      title: IRGED_ORTHO_PRE.title,
+      url: IRGED_ORTHO_PRE.url,
+      visible: false,
+      listMode: 'hide',
+      format: 'jpgpng',
+      popupEnabled: false,
+      legendEnabled: false,
+    }));
+  }
 
   /* Зам (вектор тайл) — ортофотогийн ДЭЭР, цэгүүдийн ДООР.
      ⚠️ Загварыг URL-ээс автоматаар уншина (`resources/styles`) тул renderer

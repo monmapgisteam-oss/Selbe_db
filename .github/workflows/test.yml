@@ -52,6 +52,7 @@ jobs:
           #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
           ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
           NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
+          NEXT_PUBLIC_IRGED_ORTHO_PRE: ${{ vars.NEXT_PUBLIC_IRGED_ORTHO_PRE }}
           NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
           NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
           NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
