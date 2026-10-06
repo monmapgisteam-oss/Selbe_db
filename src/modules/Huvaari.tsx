@@ -1798,6 +1798,21 @@ export function Huvaari({
    *    хэвээр, дуусах = эхлэх + N − 1 (`endOf`). Хуваарьгүй блокт эхлэх огноо байхгүй
    *    тул тавихгүй, мэдэгдэнэ.
    */
+  /**
+   * ОГНОО ТАВИСНЫ ДАРАА ЗАСВАРЫН ЦОНХ ӨӨРӨӨ НЭЭГДЭНЭ (2026-10-06, хэрэглэгч: «start end
+   * тавихад обьём болон хүн хүч бөглөх цонх автоматаар нээгддэг болго»). Чирэлтийн
+   * дараа цонх аль хэдийн нээгддэг (`useDragPlan`); энэ нь нүдэнд бичих замынх.
+   * ⚠️ ХОЁР табд — гэрээний табд ч нээнэ (хэрэглэгч: «Enter дархад цонх автоматаар
+   *    нээгдэх ёстой»); тэнд сарын обьём байхгүй ч огноо · блок · үргэлжлэх хоногоо тэндээ
+   *    шалгаж, «Тавих»-аар баталгаажуулна.
+   * ⚠️ `undoRef` хөндөхгүй — бичсэн огноо ноорогт аль хэдийн орсон; цонхыг хаахад
+   *    (`undoDragOnClose`) буцаах агшин байхгүй тул огноо ХЭВЭЭР үлдэнэ (чирэлтээс ялгаатай).
+   */
+  const openAfterDate = useCallback((oid: number) => {
+    setSel(oid);
+    setModal(oid);
+  }, []);
+
   const applyDate = useCallback((oid: number, which: 'start' | 'end' | 'days', day: string) => {
     if (busy) { setErr(tr('Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.')); return; }
     if (locked || !canEdit) return;
@@ -1816,6 +1831,7 @@ export function Huvaari({
       while (sp.length < n) sp.push(null);
       sp[blk] = next;
       applyModal(oid, sp, null, null);
+      openAfterDate(oid);
       return;
     }
     const ms = dayToMs(day);
@@ -1832,7 +1848,8 @@ export function Huvaari({
     while (spans.length < n) spans.push(null);
     spans[blk] = next;
     applyModal(oid, spans, null, null);
-  }, [busy, locked, canEdit, plan, blk, n, applyModal, setErr]);
+    openAfterDate(oid);
+  }, [busy, locked, canEdit, plan, blk, n, applyModal, setErr, openAfterDate]);
 
   /* ── Чирэлт ── */
 
