@@ -1794,15 +1794,32 @@ export function Huvaari({
    * ⚠️ БҮХ үр дагавар `applyModal`-аар (гинж `propagate` · бүлгийн нэгтгэл · сарын
    *    задаргаа · ноорог) — энд ДАВХАРДУУЛАХГҮЙ. Бүлэг/нэмэлт мөр тэнд ч хаалттай.
    * ⚠️ Дуусах < эхлэх бол ТАВИХГҮЙ — чимээгүй солихгүй, мэдэгдэнэ.
+   * ⚠️ 2026-10-06: `which === 'days'` — ҮРГЭЛЖЛЭХ ХОНОГ бичих (`day` = тоо): эхлэх
+   *    хэвээр, дуусах = эхлэх + N − 1 (`endOf`). Хуваарьгүй блокт эхлэх огноо байхгүй
+   *    тул тавихгүй, мэдэгдэнэ.
    */
-  const applyDate = useCallback((oid: number, which: 'start' | 'end', day: string) => {
+  const applyDate = useCallback((oid: number, which: 'start' | 'end' | 'days', day: string) => {
     if (busy) { setErr(tr('Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.')); return; }
     if (locked || !canEdit) return;
-    const ms = dayToMs(day);
     const cur = plan.find((x) => x.oid === oid);
-    if (ms == null || !cur || cur.group || oid < 0) return;
+    if (!cur || cur.group || oid < 0) return;
     const old = cur.spans[blk] ?? null;
     let next: Span;
+    if (which === 'days') {
+      const d = Number(day);
+      if (!Number.isInteger(d) || d < 1) return;
+      if (!old) { setErr(tr('Эхлэх огноо байхгүй — эхлээд эхлэх огноог бичнэ үү.')); return; }
+      next = { start: old.start, end: endOf(old.start, d) };
+      if (sameSpan(next, old)) return;
+      setErr('');
+      const sp = cur.spans.slice();
+      while (sp.length < n) sp.push(null);
+      sp[blk] = next;
+      applyModal(oid, sp, null, null);
+      return;
+    }
+    const ms = dayToMs(day);
+    if (ms == null) return;
     if (!old) next = { start: ms, end: ms };
     else if (which === 'start') next = { start: ms, end: endOf(ms, spanDays(old)) };
     else {
@@ -4645,6 +4662,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                        MIN/MAX), нэмэлт мөр, «Бүх блок» горимд засагдахгүй */
                     onDate={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
                       ? (w, dd) => applyDate(r.oid, w, dd) : undefined}
+                    /* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ бичих (2026-10-06) — огноотой ижил нөхцөл */
+                    onDays={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
+                      ? (d) => applyDate(r.oid, 'days', String(d)) : undefined}
                     edKind={kind}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}

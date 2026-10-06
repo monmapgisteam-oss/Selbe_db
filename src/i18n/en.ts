@@ -6437,7 +6437,10 @@ const en: Record<string, string> = {
   "Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.": "End date is before the start date — not applied.",
   "Дарж огноо бичнэ: 2026-10-04 · 20261004": "Click to type a date: 2026-10-04 · 20261004",
   "Өмнөх ортофото (бүтээн байгуулалтаас өмнө)": "Earlier orthophoto (before construction)",
-  "Өмнөх ортофото": "Earlier orthophoto"
+  "Өмнөх ортофото": "Earlier orthophoto",
+  "Дарж хоногийн тоог бичнэ — дуусах огноо дагаж шилжинэ": "Click to type the number of days — the end date follows",
+  "Хоног буруу — 1-ээс их бүхэл тоо": "Invalid days — a whole number of 1 or more",
+  "Эхлэх огноо байхгүй — эхлээд эхлэх огноог бичнэ үү.": "No start date — enter the start date first."
 };
 
 export default en;

@@ -16,7 +16,7 @@ import h from '../huvaari.module.css';
 export function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
   hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, onEditAdd, mark, onMark, children,
-  onDate, edKind,
+  onDate, onDays, edKind,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   /**
@@ -66,6 +66,8 @@ export function TaskRow({
   tolov: Span | null;
   /** Огноо бичих (`YYYY-MM-DD`) — `undefined` бол уншина (бүлэг · нэмэлт мөр · эрхгүй) */
   onDate?: (which: 'start' | 'end', day: string) => void;
+  /** ⚠️ 2026-10-06: үргэлжлэх ХОНОГИЙГ бичиж төлөвлөх — эхлэх хэвээр, дуусах = эхлэх + N − 1 */
+  onDays?: (days: number) => void;
   /** Аль төрлийн огноо засагдах вэ — идэвхтэй таб */
   edKind?: PlanKind;
   /** Уялдааны нүд ЗАСАГДАХ уу — эрхгүй бол зөвхөн уншина */
@@ -169,16 +171,14 @@ export function TaskRow({
       {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
           `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
           хоёулаа ажлын өдөр) — хуанлийн зурвасын шошготой ЯГ ижил тоо. */}
-      <span className={h.rowDays} title={geree ? tr('Гэрээгээр үргэлжлэх хоног') : undefined}>
-        {geree ? spanDays(geree) : '—'}
-      </span>
+      <DaysCell v={geree} tip={tr('Гэрээгээр үргэлжлэх хоног')}
+        onSet={edKind === 'geree' && onDays ? onDays : undefined} />
       <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')}
         onSet={edKind === 'plan' && onDate ? (d) => onDate('start', d) : undefined} />
       <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')}
         onSet={edKind === 'plan' && onDate ? (d) => onDate('end', d) : undefined} />
-      <span className={h.rowDays} title={tolov ? tr('Төлөвлөгөөгөөр үргэлжлэх хоног') : undefined}>
-        {tolov ? spanDays(tolov) : '—'}
-      </span>
+      <DaysCell v={tolov} tip={tr('Төлөвлөгөөгөөр үргэлжлэх хоног')}
+        onSet={edKind === 'plan' && onDays ? onDays : undefined} />
       {/* БОДИТ ЭХЭЛСЭН · ДУУССАН (2026-09-23) — идэвхтэй блок; «—» = бүртгэлгүй */}
       {hasActual && (
         <span className={h.rowDate} title={aStart != null ? tr('Бодит эхэлсэн огноо') : undefined}>
@@ -366,6 +366,69 @@ function DateCell({ v, tip, onSet }: {
         if (cancel) return;
         const p = parseDayInput(txt);
         if (p && p !== (v != null ? msToDay(v) : '')) onSet(p);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); }
+      }}
+    />
+  );
+}
+
+/**
+ * ҮРГЭЛЖЛЭХ ХОНОГИЙН НҮД — ШУУД БИЧНЭ (2026-10-06, хэрэглэгч: «үргэлжлэх хоногийг
+ * мөн бичиж хугацаа төлөвлөх боломжтой болго»). `DateCell`-тэй ижил зан төлөв:
+ * дарж бичнэ, `Enter`/`blur` хадгална, `Escape` цуцална.
+ *
+ * ⚠️ Хуваарьгүй (`v == null`) блокт бичих боломжгүй — эхлэх огноогүй бол хоног
+ *    юунаас эхлэхээ мэдэхгүй. Эхлээд эхлэх огноог бичнэ (`applyDate`-ийн мэдэгдэл).
+ * ⚠️ Зөвхөн ЭЕРЭГ БҮХЭЛ тоо (1 = эхлэх өдөр = дуусах өдөр — `spanDays` хоёр захыг
+ *    оруулж тоолдог). 0, сөрөг, бутархай → улаан, тавихгүй.
+ */
+function DaysCell({ v, tip, onSet }: {
+  v: Span | null;
+  tip: string;
+  onSet?: (days: number) => void;
+}) {
+  const [edit, setEdit] = useState(false);
+  const [txt, setTxt] = useState('');
+  const cancelRef = useRef(false);
+  const cur = v ? spanDays(v) : null;
+  const shown = cur != null ? String(cur) : '—';
+
+  if (!onSet || !v) {
+    return <span className={h.rowDays} title={v ? tip : undefined}>{shown}</span>;
+  }
+
+  if (!edit) {
+    return (
+      <button type="button" className={`${h.rowDays} ${h.rowDateEd}`}
+        title={`${tip}\n${tr('Дарж хоногийн тоог бичнэ — дуусах огноо дагаж шилжинэ')}`}
+        onClick={() => { setTxt(shown); setEdit(true); }}>
+        {shown}
+      </button>
+    );
+  }
+
+  const n = /^\d{1,4}$/.test(txt.trim()) ? Number(txt.trim()) : NaN;
+  const bad = !(n >= 1);
+  return (
+    <input
+      className={`${h.rowDays} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      value={txt}
+      autoFocus
+      inputMode="numeric"
+      aria-label={tip}
+      aria-invalid={bad}
+      title={bad ? tr('Хоног буруу — 1-ээс их бүхэл тоо') : tip}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setTxt(e.target.value)}
+      onBlur={() => {
+        setEdit(false);
+        const cancel = cancelRef.current;
+        cancelRef.current = false;
+        if (cancel || bad) return;
+        if (n !== cur) onSet(n);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.currentTarget.blur(); return; }
