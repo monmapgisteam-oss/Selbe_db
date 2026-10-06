@@ -358,6 +358,45 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
   useEffect(() => () => {
     if (hitT.current) window.clearTimeout(hitT.current);
   }, []);
+  /**
+   * ХӨНДЛӨН ГҮЙЛГЭЛТ — үссэн нүд рүү (⚠️ 2026-10-06, хэрэглэгч: «өөрчлөгдсөн нүд дээр дарахад
+   * zoom to хийхгүй»). Дээрх эффект зөвхөн БОСОО гүйлгэдэг байв: 14 блоктой хуудсанд 5/8-аас
+   * хойших багана дэлгэцийн гадна тул мөр нь харагдаад нүд нь харагдахгүй, анивчилт ч алга.
+   * ⚠️ Нүд нь цонхлолтоор (`winFrom/winTo`) ЗУРАГДСАНЫ дараа л DOM-д байна — зөөлөн гүйлгэлт
+   *    дуустал `onScroll` цонхыг шинэчлэхгүй тул `td.chgHit`-ийг богино давтамжаар хүлээнэ.
+   * ⚠️ Царцаасан (`.fz`) баганууд зүүн/баруун талд дарж байдаг тул «харагдах зурвас» нь
+   *    тэдгээрийн өргөнөөр нарийсна — нүдийг тэр зурвасын ДУНД тавина. Аль хэдийн зурваст
+   *    бүтэн байвал хөдөлгөхгүй (хэрэглэгчийн хөндлөн байрлалыг дэмий алдахгүй).
+   */
+  useEffect(() => {
+    if (!hitKey) return;
+    const el = scrollRef.current;
+    const tb = tbodyRef.current;
+    if (!el || !tb) return;
+    let tries = 0;
+    let t: number | null = null;
+    const go = () => {
+      const td = tb.querySelector<HTMLElement>("td.chgHit");
+      if (!td) { if (tries++ < 40) t = window.setTimeout(go, 50); return; }
+      let fzL = 0;
+      let fzR = 0;
+      td.parentElement?.querySelectorAll<HTMLElement>("td.fz").forEach((c) => {
+        const st = getComputedStyle(c);
+        if (st.position !== "sticky") return;
+        if (st.left !== "auto") fzL += c.offsetWidth;
+        else if (st.right !== "auto") fzR += c.offsetWidth;
+      });
+      const er = el.getBoundingClientRect();
+      const tr = td.getBoundingClientRect();
+      const bandL = er.left + fzL;
+      const bandR = er.right - fzR;
+      if (tr.left >= bandL && tr.right <= bandR) return;
+      const target = bandL + (bandR - bandL) / 2 - tr.width / 2;
+      el.scrollTo({ left: Math.max(0, el.scrollLeft + (tr.left - target)), behavior: "smooth" });
+    };
+    go();
+    return () => { if (t) window.clearTimeout(t); };
+  }, [hitKey]);
 
   const editVis = edit ? vis.indexOf(edit.i) : -1;
   const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
