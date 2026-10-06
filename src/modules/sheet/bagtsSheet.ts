@@ -1859,6 +1859,9 @@ export async function applyAdds(
   // ⚠️ ЭХНИЙ мөрийн OBJECTID — хяналтын бүртгэл эх өгөгдөл рүүгээ буцаж
   //    холбогдоход хэрэгтэй (`hyanaltSubmit`).
   let firstOid: number | null = null;
+  /* ⚠️ 2026-10-06 аудит: УНАСАН багц дотор ч серверт бичигдсэн мөрийн тоо — `finally`-ийн зарлалд */
+  let touched = 0;
+  try {
   for (let i = 0; i < features.length; i += 500) {
     const chunk = features.slice(i, i + 500).map((attributes) => {
       const a: Record<string, unknown> = {};
@@ -1878,8 +1881,10 @@ export async function applyAdds(
          `throw` ажиллах ба амжилттай мөрүүд нь СЕРВЕРТ БИЧИГДСЭН хэвээр
          үлдэнэ (`rollbackOnFailure` нь бүтэн chunk унасан үед л буцаана).
          Цэвэрлэгээнд тэдгээр нь ч хэрэгтэй. */
-      if (written) {
-        for (const r of res) if (r.success !== false && typeof r.objectId === "number") written.push(r.objectId);
+      for (const r of res) {
+        if (r.success === false || typeof r.objectId !== "number") continue;
+        touched += 1;
+        written?.push(r.objectId);
       }
       const bad = res.find((r) => r.success === false);
       if (bad) throw new Error(bad.error?.description || tr('Нэмэх амжилтгүй'));
@@ -1894,10 +1899,13 @@ export async function applyAdds(
     } catch (e) {
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх
       //    chunk-ууд аль хэдийн бичигдсэн тул хагас амжилтыг тодруулна.
+      /* ⚠️ 2026-10-06 аудит: «дахин Нийтлэх дарж гүйцээнэ үү» гэсэн заавар ХАСАГДСАН — дуудагч бүр
+         (`hyanaltStore` · `ajilApply` · `ulsiinKomiss`) хагас жаазыг `written`-ээр БУЦААЖ устгадаг тул
+         «гүйцээ» гэх нь худал байв (тэр нэртэй товч ч алга). Юу хийхийг дуудагч өөрөө нэмж хэлнэ. */
       if (added > 0)
         throw new Error(
           tr(
-            '{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            '{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2})',
             added,
             features.length,
             String((e as Error).message || e),
@@ -1906,6 +1914,7 @@ export async function applyAdds(
       throw e;
     }
   }
+  } finally {
   /*
    * ⚠️ БИЧСЭНИЙ ДАРАА ДАШБОАРДЫГ ХУУЧИРСАН ГЭЖ ЗАРЛАНА (`dataBus.ts`).
    *
@@ -1914,8 +1923,12 @@ export async function applyAdds(
    * тоо ХУУЧИН хэвээр үлддэг байв — хуудсыг бүтнээр нь refresh хийж байж л
    * шинэчлэгдэнэ. Хэрэглэгч өөрийн бичсэн тоог дэлгэц дээр харахгүй бол
    * бичигдсэн эсэхэд эргэлзэж дахин дардаг — архивт давхардсан агшин үүснэ.
+   *
+   * ⚠️ 2026-10-06 аудит: `finally` дотор (`applyUpdates`-тай ижил) — урьд нь хагас бичээд
+   *    `throw` хийхэд зарлал ОГТ явдаггүй байв (бичигдсэн мөр кэшэд харагдахгүй).
    */
-  if (added > 0) invalidate('BAGTS_SHEET');
+  if (added > 0 || touched > 0) invalidate('BAGTS_SHEET');
+  }
   return { added, firstOid };
 }
 
@@ -1998,7 +2011,9 @@ export async function applyUpdates(
       if (i > 0)
         throw Object.assign(new Error(
           tr(
-            '{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй ({2}) — дахин Нийтлэх дарж гүйцээнэ үү',
+            /* ⚠️ 2026-10-06 аудит: «Нийтлэх» товч алга (дуудагч нь «Хадгалах» · «Обьём батлах») —
+               `updates` нь давтахад аюулгүй (ижил утга дахин бичигдэнэ) тул ерөнхий «дахин хадгалж». */
+            '{0}/{1} мөр хадгалагдав; үлдсэн нь амжилтгүй ({2}) — дахин хадгалж гүйцээнэ үү',
             i,
             updates.length,
             String((e as Error).message || e),

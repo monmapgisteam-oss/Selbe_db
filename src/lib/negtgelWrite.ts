@@ -171,8 +171,13 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
    *    олон таарвал санамсаргүй нэгийг СОНГОХГҮЙ.
    */
   const hits: Hit[] = [];
+  /* ⚠️ 2026-10-06 аудит: `loadSchema` нь ЗӨВХӨН сүлжээ/үйлчилгээний алдаагаар унадаг («олдсонгүй»
+     гэсэн хувилбар байхгүй) — урьд нь `.catch(() => null)` нь түүнийг «Бөглөх хуудаснаас агшин
+     олдсонгүй» болгож, ДАХИН ОРОЛДВОЛ болох түр алдааг өгөгдлийн асуудал мэт харуулдаг байв.
+     Нөгөө хуудас (9F/12F) таарвал хэвээр үргэлжилнэ; ЮУ Ч таараагүй бол алдааг шиднэ. */
+  let schemaErr = null as unknown;
   for (const p of group.filter((x) => !pkgKey || x.key === pkgKey)) {
-    const sc = await loadSchema(p).catch(() => null);
+    const sc = await loadSchema(p).catch((e: unknown) => { schemaErr = e; return null; });
     if (!sc?.f.fillDate) continue;
 
     const head = (await post(`${p.url}/query`, {
@@ -185,6 +190,8 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
     if (typeof at !== 'number') continue;      // энэ хуудсанд тэр мөр алга
     hits.push({ p, sc, at, fill: sc.f.fillDate, no: String(ha?.[sc.f.no] ?? '').trim() });
   }
+  if (!hits.length && schemaErr != null)
+    throw new Error(tr('Бөглөх хуудасны бүдүүвч уншигдсангүй: {0}', String((schemaErr as Error)?.message ?? schemaErr)));
   if (!hits.length) return null;
 
   let one = hits[0];

@@ -13,7 +13,7 @@ import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
 import { qtyText, whereFor, layerStats } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
-import { queryGroup, groups, groupWhere } from '@/lib/query';
+import { queryGroupEx, groups, groupWhere } from '@/lib/query';
 import {
   catalogGroups, INITIAL_MAP_LAYERS, LAYER_BY_ID, layerUrl, ALWAYS_ON_IDS,
   type CatalogView, type LayerDef,
@@ -533,10 +533,14 @@ function FacetRows({
   const f = d.facets![0];
   const where = whereFor(d, zone);
 
+  /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — сервер бүлгийн тоог `maxRecordCount`-оор ЧИМЭЭГҮЙ
+     тайрвал (`exceededTransferLimit`) жагсаалт БҮРЭН мэт харагддаг байв. Тайрагдсан бол доор
+     «дутуу» тэмдэг. */
   const q = useAsync(async () => {
-    const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
-    return groups(rows, f.field, tr('Бүртгэгдээгүй'), ['n', 'q'])
+    const { rows, truncated } = await queryGroupEx(layerUrl(d), f.field, layerStats(d), where);
+    const items = groups(rows, f.field, tr('Бүртгэгдээгүй'), ['n', 'q'])
       .sort((a, b) => b.values.n - a.values.n);
+    return { items, truncated };
   }, [d.id, where]);
 
   // ⚠️ Алдааг ЧИМЭЭГҮЙ null болгохгүй (query.ts-ийн дүрэм) — дэд мөрүүд дуугүй
@@ -552,11 +556,11 @@ function FacetRows({
     );
   }
 
-  if (q.state !== 'ready' || q.data.length < 2) return null;
+  if (q.state !== 'ready' || q.data.items.length < 2) return null;
 
   return (
     <div className={s.facetRows}>
-      {q.data.map((item) => {
+      {q.data.items.map((item) => {
         const key = `cat:${d.id}:${item.label}`;
         const on = isOn(key);
         const qty = qtyText(d, item.values.q);
@@ -593,6 +597,11 @@ function FacetRows({
           </button>
         );
       })}
+      {q.data.truncated && (
+        <div className={s.facetRow} role="note" title={tr('Ангиллын тоо серверийн хязгаараас хэтэрсэн тул зарим ангилал харагдахгүй байна.')}>
+          <span className={s.facetName}>{tr('⚠ Жагсаалт дутуу — зарим ангилал орхигдсон')}</span>
+        </div>
+      )}
     </div>
   );
 }

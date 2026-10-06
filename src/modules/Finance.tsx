@@ -714,7 +714,9 @@ const loadCfMonthRows = cached(
   () => queryFeatures(CASHFLOW_NEW.url, {
     where: CF_MONTH_WHERE,
     outFields: ['*'],
-    orderBy: `Cashflow_ID ASC, Cashflow_start ASC`,
+    /* ⚠️ 2026-10-06 (аудит): oid-ийн tiebreak ЗААВАЛ — ижил (ID, start)-тай мөр (давхардсан
+       сар) хуудас хооронд дараалал нь тогтворгүй тул давхардах/алгасагдах эрхтэй. */
+    orderBy: `Cashflow_ID ASC, Cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
     /* ⚠️ 2026-10-05: `limit: 8000` ХАСАГДАВ — 8000-аас давсан сарын мөр ЧИМЭЭГҮЙ тайрагдаж,
        тайрагдсан ажлын сарууд «байхгүй» мэт харагдан хугацаа засахад дахин нэмэгдэх
        эрсдэлтэй байв. `queryFeatures` нь `orderBy`-той үед бүх хуудсыг өөрөө татна. */
@@ -1888,9 +1890,60 @@ function FullTable({
   }, [dirty, onDirty]);
   useEffect(() => () => onDirty?.(false), [onDirty]);
 
+  /*
+   * ⚠️ 2026-10-06 (аудит): НИЙТЛЭЭГҮЙ ЗАСВАРЫН НӨӨЦ — `pend`/`adds` ЗӨВХӨН санах ойд байсан тул
+   *    таб унах, F5 (beforeunload-ийг үл тоовол), сешн дуусахад 200 нүдний ажил алга болдог байв.
+   *    Хэрэглэгч + хүснэгтээр түлхүүрлэн 800мс-ийн debounce-оор localStorage-д бичнэ; дахин
+   *    нээхэд «сэргээх / хаях» самбар гарна — АВТОМАТААР сэргээхгүй (хооронд өгөгдөл өөрчлөгдсөн
+   *    байж болно, сэргээсэн нүд ногоон «хадгалаагүй» харагдаж нийтлэхээс өмнө шалгагдана).
+   *    `reset()` (амжилттай нийтлэл · «Болих» · хаяж горимоос гарах) нөөцийг арилгана; үр дүн
+   *    ТОДОРХОЙГҮЙ алдааны салаанд `reset` дуудагддаггүй тул нөөц үлдэнэ.
+   *    localStorage хаалттай/дүүрсэн бол чимээгүй — нөөцгүй ч засвар явна.
+   */
+  const { user: me } = useAuth();
+  const draftKey = me?.username ? `selbe.fin.draft:${me.username}:${dataKey}` : null;
+  type FinDraft = { pend: Record<string, string>; adds: Record<string, string>[]; at: number };
+  const [offer, setOffer] = useState<FinDraft | null>(null);
+  useEffect(() => {
+    let d: FinDraft | null = null;
+    if (draftKey) {
+      try {
+        const raw = localStorage.getItem(draftKey);
+        const j = raw ? (JSON.parse(raw) as Partial<FinDraft>) : null;
+        if (j && typeof j.pend === 'object' && j.pend && Array.isArray(j.adds)
+          && (Object.keys(j.pend).length + j.adds.length) > 0) d = { pend: j.pend, adds: j.adds, at: Number(j.at) || 0 };
+      } catch { d = null; }
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-06: нээгдэх агшинд нөөцийг НЭГ удаа уншина (localStorage — гадаад эх сурвалж)
+    setOffer(d);
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftKey || dirty === 0) return;
+    const t = window.setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify({ pend, adds, at: Date.now() } satisfies FinDraft)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
+      /* ⚠️ Санал болгосныг үл тоож шинээр засаж эхэлсэн — хуучин нөөц дарагдсан тул самбар хуучирна */
+      setOffer(null);
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [draftKey, dirty, pend, adds]);
+  const dropDraft = () => {
+    if (draftKey) { try { localStorage.removeItem(draftKey); } catch { /* хаалттай — чимээгүй */ } }
+    setOffer(null);
+  };
+  const restoreDraft = () => {
+    if (!offer) return;
+    /* ⚠️ Эрхээр шүүнэ — нүдний утга `finEdit`, шинэ мөр `finRow` (`valEdit`-ийн ⚠️) */
+    if (canEdit) setPendRaw(offer.pend);
+    if (canRow) setAddsRaw(offer.adds);
+    setEdit(true);
+    setOffer(null);
+  };
+
   /* ⚠️ `saved`-ыг ЦЭВЭРЛЭХГҮЙ: энэ нь «болих» үйлдэл бөгөөд аль хэдийн
      нийтлэгдсэн засварыг үгүй хийхгүй — тэмдэглэгээ нь мөн үлдэх ёстой. */
-  const reset = () => { setPendRaw({}); setAddsRaw([]); setErr(null); };
+  /* ⚠️ 2026-10-06: нөөцийг ЗӨВХӨН хаях/нийтлэх засвар байсан үед арилгана — эс бөгөөс засваргүй
+     «Засах»-ыг унтраахад сэргээгээгүй нөөц чимээгүй устна. */
+  const reset = () => { setPendRaw({}); setAddsRaw([]); setErr(null); if (dirty > 0) dropDraft(); };
 
   const publish = async () => {
     if (busy || busyRef.current || !dirty) return;
@@ -4502,6 +4555,13 @@ function FullTable({
       )}
       {err && <p className={f.editErr} role="alert">{err}</p>}
       {msg && !err && <p className={f.editOk} role="status" aria-live="polite">{msg}</p>}
+      {offer && dirty === 0 && (canEdit || canRow) && (
+        <p className={f.editOk} role="status">
+          {tr('Энэ хүснэгтэд өмнө нийтлээгүй {0} засвар үлдсэн байна.', Object.keys(offer.pend).length + offer.adds.length)}{' '}
+          <button type="button" className={f.editBtn} disabled={busy} onClick={restoreDraft}>{tr('Хадгалаагүй засвар сэргээх')}</button>{' '}
+          <button type="button" className={f.editBtn} disabled={busy} onClick={dropDraft}>{tr('Хаях')}</button>
+        </p>
+      )}
 
       {/* ══════════ ШҮҮЛТИЙН ЗУРВАС ══════════
           ⚠️ Тоолол ҮРГЭЛЖ харагдана («209 → 34 мөр»): шүүлт асаалттай гэдгээ

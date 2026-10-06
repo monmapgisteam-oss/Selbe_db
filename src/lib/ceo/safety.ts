@@ -276,7 +276,9 @@ export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const raw = await queryFeatures(HABEA.incident.url, {
     /* ⚠️ `CreationDate` заавал — огноогүй мөрийн нөөц зам (толгойн тайлбар) */
     outFields: [...Object.values(I), 'objectid', CREATED_FIELD],
-    orderBy: `${I.ognoo} DESC`,
+    /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
+       дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
+    orderBy: `${I.ognoo} DESC, objectid DESC`,
   });
   /* ⚠️ 2026-10-01: хоосон ноорог хасагдана (`isBlankIncident`) */
   return raw.filter((r) => !isBlankIncident(r)).map(toSafetyRow);

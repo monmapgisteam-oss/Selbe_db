@@ -101,6 +101,15 @@ const ST_CLASS: Record<Status, string> = {
   done: h.tlDone, run: h.tlRun, todo: h.tlTodo, late: h.tlLate, none: h.tlNone,
 };
 
+/**
+ * ⚠️ 2026-10-06 аудит: хяналтыг ШИЙДВЭРГҮЙ хаахад (Esc · «✕ Хаах») батлагчийн
+ * ногоон тэмдэглэгээ (`okRows`) зөвхөн санах ойд тул ЧИМЭЭГҮЙ устдаг байв.
+ * Тэмдэглэгээ байвал хаахаас өмнө асууна; байхгүй бол шууд хаана.
+ */
+function confirmDropMarks(n: number): boolean {
+  return n === 0 || window.confirm(tr('Зөвшөөрсөн {0} мөрийн тэмдэглэгээ хадгалагдахгүй. Шийдвэргүй хаах уу?', num(n)));
+}
+
 export function Huvaari({
   jump, onJumpDone, review,
 }: {
@@ -456,15 +465,19 @@ export function Huvaari({
      бичигдсэн атлаа илгээлт `pending` хэвээр үлдэнэ. Ref-ээр — эс бөгөөс
      сонсогч `busy` хөдлөх бүрд дахин бүртгэгдэж диалогийнхаас ХОЙНО орно. */
   const escBlockRef = useLatest(busy || approving != null);
+  /* ⚠️ 2026-10-06 аудит: ногоон тэмдэглэгээтэй бол Esc ч асууна (`confirmDropMarks`) */
+  const okNRef = useLatest(okRows.size);
   useEffect(() => {
     if (!isWide) return;
     const esc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || document.querySelector('[role="dialog"]')) return;
-      if (isReview) { if (!escBlockRef.current) reviewCloseRef.current?.(); } else setWide(false);
+      if (isReview) {
+        if (!escBlockRef.current && confirmDropMarks(okNRef.current)) reviewCloseRef.current?.();
+      } else setWide(false);
     };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [isWide, isReview, escBlockRef, reviewCloseRef]);
+  }, [isWide, isReview, escBlockRef, reviewCloseRef, okNRef]);
   const [err, setErr] = useState('');
   /**
    * ХУВААРЬ АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
@@ -2377,7 +2390,7 @@ export function Huvaari({
         payload: buildPayload(),
       });
       /* ⚠️ Унасан ч урсгалыг сэргээнэ (2026-10-01) — өөр хүн түрүүлж илгээсэн бол түгжээ харагдана */
-      if (!r.ok) { setErr(r.error ?? tr('Илгээгдсэнгүй.')); await refreshFlow(); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); await refreshFlow(); return; }
       /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
          локалд үлдээвэл гүйцэтгэгч дахин илгээх, эсвэл батлагдсаны дараа
          хуучин ноорог дахин бичигдэх эрсдэлтэй. */
@@ -2559,7 +2572,7 @@ export function Huvaari({
         return;
       }
       const r = await withdrawPlan({ oid, me: user?.username ?? '' });
-      if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
       /* ⚠️ УРСГАЛЫГ ЭХЛЭЭД шинэчилнэ (2026-09-24): `pending` → null болоход
          хуваалцсан ноорогийн «түгжээ тайлагдав» зам Map-уудыг хоосолдог тул
          буулгасны ДАРАА дуудвал буцаасан агуулга тэр даруй арчигдаж байв.
@@ -2881,7 +2894,7 @@ export function Huvaari({
         /* ⚠️ Зөвшөөрсөн мөрүүд (2026-09-25) — гүйцэтгэгч улаан/ногоон харна */
         okRows: okList,
       });
-      if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
       /* ⚠️ Урьдчилан харсан ноорогийг ЗААВАЛ цэвэрлэнэ: буцаасан саналын
          агуулга дэлгэц дээр үлдвэл дараагийн «Хадгалах» түүнийг эх хуудсанд
          бичиж, БУЦААСАН хуваарь батлагдсан мэт болно. */
@@ -2982,7 +2995,7 @@ export function Huvaari({
             setNote(r.ok
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
               : '');
-            if (!r.ok) setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+            if (!r.ok) setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
             await refreshFlow({ noRefetch: true });
           } finally {
             setBusy(false);
@@ -3061,7 +3074,7 @@ export function Huvaari({
         if (!r.ok) {
           /* ⚠️ 2026-10-01: `partialRef` (ба сервер тэмдэг) ҮЛДЭНЭ — санал эх хуудсанд суусан тул
              буцаах/татах хаалттай; «Батлах»-ыг дахин дарахад «бичих зүйлгүй» салаагаар гүйцнэ. */
-          setErr((r.error ?? tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'))
+          setErr((r.error ? userError(r.error) : tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'))
             + ` ${tr('Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.')}`);
         } else {
           if (partialRef.current === oid) partialRef.current = null;
@@ -3295,10 +3308,13 @@ export function Huvaari({
    * ⚠️ 2026-09-29 аудит: зөвхөн ХАРАХ эрхтэйд бусдын хуваалцсан ноорог Map-д орж
    *    `dirtyN > 0` болдог — түүнд «хадгалаагүй» анхааруулга худал (`hdUnsynced` `canEdit`-ээр).
    */
+  /* ⚠️ 2026-10-06 аудит: батлагчийн ногоон тэмдэглэгээ (`okRows`) зөвхөн санах ойд —
+     харагдац солих/таб хаахад ч устах тул «хадгалаагүй» гэж тооцно. */
+  const hasOkMarks = okRows.size > 0;
   useEffect(() => {
-    setNavDirty('huvaari', hdUnsynced && !previewing, tr('Хуваарь'));
+    setNavDirty('huvaari', (hdUnsynced && !previewing) || hasOkMarks, tr('Хуваарь'));
     return () => setNavDirty('huvaari', false);
-  }, [hdUnsynced, previewing]);
+  }, [hdUnsynced, previewing, hasOkMarks]);
   /*
    * ⚠️ ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ (2026-09-25 аудит #4): батлах явцад (`approving`)
    *    эсвэл бичилт/шийдвэр явж байхад (`busy`) өөр харагдац руу шилжих, таб
@@ -3425,7 +3441,7 @@ export function Huvaari({
          УБ-д 00:00–07:59-д өчигдрийн огноо өгдөг байв (`format.dayKey`-ийн ⚠️). */
       }, `Huvaari_${pkg.key}_${kind}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${dayKey(Date.now())}.pdf`);
     } catch (e) {
-      setErr(tr('PDF үүсгэж чадсангүй: {0}', e instanceof Error ? e.message : String(e)));
+      setErr(tr('PDF үүсгэж чадсангүй: {0}', userError(e)));
     } finally {
       setPdfBusy(false);
     }
@@ -4151,7 +4167,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 нь «эрхгүй» гэж нэгтгэвэл тусдаа эрх тохируулсан хүн юу дутуу
                 байгааг олохгүй. `hasPlanRole` нь багцаас ҮЛ ХАМААРНА. */}
             {hasPlanRole(user?.username, 'approver')
-              ? tr('Танд батлах эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна. Админ «Хуваарийн эрх» → {0} → «Батлагч» хэсэгт таныг нэмнэ.', pkg.group)
+              ? tr('Танд батлах эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна. Админ «Хуваарийн эрх» → {0} → «Батлагч» хэсэгт таныг нэмнэ.', tr(pkg.group))
               : tr('Батлах эрхгүй — энэ багцад батлагчаар томилогдсон хүн шийдвэрлэнэ. Админ «Хуваарийн эрх» хэсгээс томилно.')}
           </span>
         )}
@@ -4208,7 +4224,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </button>
             <button type="button" className={h.discard} disabled={busy || approving != null}
               title={tr('Шийдвэргүй хаана (Esc)')}
-              onClick={() => review.onClose()}>
+              onClick={() => { if (confirmDropMarks(okRows.size)) review.onClose(); }}>
               ✕ {tr('Хаах')}
             </button>
             {/* ⚠️ 2026-09-30: «Батлах»/«Буцаах» хаалттай ШАЛТГААН ИЛ мөрөөр (5784-ийн

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
@@ -187,20 +187,28 @@ function PlanModalBody({
   /* ⚠️ 2026-09-29: ерөнхий сонголт (`initSel`) + идэвхтэй блок; бүлгийн мөрд хамаарахгүй */
   const selInit = () => new Set([blk, ...(initSel ?? []).values()].filter((k) => k >= 0 && k < blocks.length));
   const [selB, setSelB] = useState<Set<number>>(selInit);
+  /**
+   * ИДЭВХТЭЙ БЛОКИЙГ ХАССАНААС үүдсэн блок солилт (⚠️ 2026-10-06 аудит).
+   * ⚠️ Урьд нь идэвхтэй чипийг хасахад `onBlk` нь `setSelB`-ийн updater ДОТРООС
+   *    дуудагдаж (updater цэвэр байх ёстой — StrictMode-д хоёр удаа), доорх `blk`
+   *    тулгалт бичсэн огноо · бодит огноо · сар/нөөцийг ЧИМЭЭГҮЙ тэглэдэг байв.
+   *    Хэрэглэгч блок СОЛИХООР биш, сонголтоос ХАСАХААР дарсан тул оруулсан утга нь
+   *    үлдсэн сонгосон блокуудад тавигдах ёстой. Оруулсан зүйлгүй бол урьдын адил
+   *    шинэ идэвхтэй блокийн хадгалагдсан утгаар бөглөнө.
+   */
+  const [keepOnBlk, setKeepOnBlk] = useState(false);
   const toggleB = (k: number) => {
     if (!dEdit) { onBlk(k); return; }
-    setSelB((s) => {
-      const next = new Set(s);
-      if (next.has(k)) {
-        /* Сүүлчийнхийг хасахгүй — хоосон сонголтод «Тавих» утгагүй */
-        if (next.size === 1) return s;
-        next.delete(k);
-        if (k === blk) onBlk(Math.min(...next));
-      } else {
-        next.add(k);
-      }
-      return next;
-    });
+    if (!selB.has(k)) { setSelB(new Set([...selB, k])); return; }
+    /* Сүүлчийнхийг хасахгүй — хоосон сонголтод «Тавих» утгагүй */
+    if (selB.size === 1) return;
+    const next = new Set(selB);
+    next.delete(k);
+    setSelB(next);
+    if (k === blk) {
+      setKeepOnBlk(mdDirtyRef.current);
+      onBlk(Math.min(...next));
+    }
   };
   /** Уялдааны түр жагсаалт — «Тавих» дартал эх мөрөө хөндөхгүй */
   const [dl, setDl] = useState<Dep[]>(r.deps);
@@ -312,16 +320,25 @@ function PlanModalBody({
     setPrevDays(days);
     setDurTxt(days != null ? String(days) : '');
   }
+  /* ⚠️ 2026-10-06 аудит: 0 · сөрөг · бутархай хоног ЧИМЭЭГҮЙ хүлээн авагддаг байв — дуусах
+     огноо хөдлөөгүй (эсвэл бутархайг таслаж) атлаа талбарт буруу тоо үлдэж, «Тавих» нь
+     ХУУЧИН дуусах огноог тавьдаг. Одоо ЗӨВХӨН бүхэл ≥ 1 нь дуусахыг хөдөлгөнө; бусад нь
+     улаан + «Тавих» хаалттай (`durBad`). Хоосон нь буруу биш (бичиж байх үе). */
+  const durOk = (v: string): number | null => {
+    const n = Number(v);
+    return v.trim() !== '' && Number.isInteger(n) && n >= 1 ? n : null;
+  };
+  const durBad = dEdit && ms1 != null && durTxt.trim() !== '' && durOk(durTxt) == null;
   const onDur = (v: string) => {
     setDurTxt(v);
-    const n = Math.floor(Number(v));
-    if (n >= 1 && ms1 != null) setZ(msToDay(endOf(ms1, n)));
+    const n = durOk(v);
+    if (n != null && ms1 != null) setZ(msToDay(endOf(ms1, n)));
   };
   const onStart = (v: string) => {
     setA(v);
     const s = dayToMs(v);
-    const n = Math.floor(Number(durTxt));
-    if (s != null && n >= 1) setZ(msToDay(endOf(s, n)));
+    const n = durOk(durTxt);
+    if (s != null && n != null) setZ(msToDay(endOf(s, n)));
   };
 
   /**
@@ -384,12 +401,18 @@ function PlanModalBody({
   if (blk !== prevBlk) {
     setPrevBlk(blk);
     setSelB((s) => (s.has(blk) ? s : new Set([...s, blk])));
-    const ai = initActual(r, blk);
-    setAa(ai.aa); setAz(ai.az); setActTouched(false);
-    const pi = initPlanDates(r, par, blk);
-    setA(pi.a); setZ(pi.z);
-    setMv(months); setMr(res);
-    setMvBadK(null);
+    /* ⚠️ 2026-10-06 аудит: идэвхтэй чипийг ХАССАНААС болсон солилт + оруулсан утгатай →
+       талбаруудыг ТЭГЛЭХГҮЙ (`keepOnBlk`-ийн ⚠️). Бусад үед урьдын дүрэм. */
+    if (keepOnBlk) {
+      setKeepOnBlk(false);
+    } else {
+      const ai = initActual(r, blk);
+      setAa(ai.aa); setAz(ai.az); setActTouched(false);
+      const pi = initPlanDates(r, par, blk);
+      setA(pi.a); setZ(pi.z);
+      setMv(months); setMr(res);
+      setMvBadK(null);
+    }
   }
   if ((par?.oid ?? null) !== prevParOid) {
     setPrevParOid(par?.oid ?? null);
@@ -659,6 +682,31 @@ function PlanModalBody({
     : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
     : tr('Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү');
 
+  /* ⚠️ 2026-10-06 аудит: «Тавих»-ын хаалт НЭГ газарт — товч ба Enter (`onEnter`) хоёул эндээс.
+     Нөхцөл нь урьдын товчны `disabled`-тай ижил + буруу хоног (`durBad`). */
+  const applyOff = depsTooLong ? true
+    : r.group
+    ? !depsDirty
+    : aBad || badTxt.size > 0 || durBad ? true
+    : (depsOnly || extraOnly) ? false
+    /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
+       сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
+    : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
+    : !mvOk;
+  /* ⚠️ 2026-10-06 аудит: Enter нь «Тавих» (идэвхтэй үед л). Олон мөрт талбар · товч ·
+     сонгогч дээрх Enter нь өөрийн үйлдлээ хийнэ (`textarea` шинэ мөр, товч дарагдана). */
+  const onEnter = (e: KEvt<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('textarea, button, select, a')) return;
+    /* ⚠️ Дотор нээгдсэн календарь (`DatePicker`, өөрийн `role="dialog"`) — түүний Enter
+       огноо тавина; React-ийн бөмбөлөг энд ирдэг тул «Тавих» болгохгүй. */
+    if (el.closest('[role="dialog"]') !== mdRef.current) return;
+    if (!canEdit || applyOff) return;
+    e.preventDefault();
+    apply();
+  };
+
   return (
     <div className={h.mdBack} role="presentation"
       onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
@@ -668,6 +716,7 @@ function PlanModalBody({
         if (ok) tryClose();
       }}>
       <div ref={mdRef} className={h.md} role="dialog" aria-modal="true"
+        onKeyDown={onEnter}
         onClick={(e) => e.stopPropagation()}>
         <header className={h.mdHead}>
           <span className={h.mdNo}>{r.no}</span>
@@ -750,7 +799,9 @@ function PlanModalBody({
             <label className={h.mdField}>
               {tr('Үргэлжлэх')}
               <span className={h.mdDays}>
-                <input type="number" min={1} max={3650} className={h.numIn} value={durTxt}
+                <input type="number" min={1} max={3650} step={1}
+                  className={`${h.numIn}${durBad ? ` ${h.dateBad}` : ''}`} value={durTxt}
+                  aria-invalid={durBad}
                   disabled={!dEdit || ms1 == null}
                   placeholder={ms1 == null ? '—' : ''}
                   aria-label={tr('Үргэлжлэх хоног')}
@@ -760,6 +811,8 @@ function PlanModalBody({
               </span>
             </label>
             {bad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b></span>}
+            {/* ⚠️ 2026-10-06 аудит: буруу хоног (`durBad`) — ил шалтгаан */}
+            {durBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Үргэлжлэх хоног 1-ээс багагүй бүхэл тоо байна')}</b></span>}
             {/* ⚠️ 2026-10-05: гэрээний хугацаанаас ГАРСАН төлөвлөгөө — ЗӨВХӨН анхааруулга. «Тавих»-ыг
                 хаахгүй, огноог хавчихгүй (бүлгийн мужийн хавчилт 2026-09-06-нд хасагдсантай ижил зарчим). */}
             {!r.group && geree && ms1 != null && ms2 != null && !bad && (ms1 < geree.start || ms2 > geree.end) && (
@@ -1063,7 +1116,9 @@ function PlanModalBody({
             <input type="number" min={0} max={365} className={h.numIn} value={takt}
               aria-label={tr('Алхам')}
               title={tr('0 — сонгосон бүх блокт ижил огноо; N — идэвхтэй блокоос дараагийн блок бүр N хоногоор хойшилно')}
-              onChange={(e) => onTakt(Math.min(365, Math.max(0, Number(e.target.value) || 0)))} />
+              /* ⚠️ 2026-10-06 аудит: бүхэл хоног (`Math.trunc`) — бутархай алхам (жиш. 1.5) нь
+                 блокуудыг ӨДРИЙН ДУНД (12:00) огноо руу шилжүүлж, хоногийн тоолол эвдэрдэг байв. */
+              onChange={(e) => onTakt(Math.min(365, Math.max(0, Math.trunc(Number(e.target.value)) || 0)))} />
             <span className={h.mdParWork}>{takt > 0 ? tr('блок бүр {0} хоногоор хойшилно', num(takt)) : tr('сонгосон блокт ижил огноо')}</span>
           </label>
         )}
@@ -1082,15 +1137,7 @@ function PlanModalBody({
           <button type="button" className={h.tlZoomB} onClick={tryClose}>{tr('Хаах')}</button>
           {canEdit && (
             <button type="button" className={h.save} onClick={apply}
-              disabled={depsTooLong ? true
-                : r.group
-                ? !depsDirty
-                : aBad || badTxt.size > 0 ? true
-                : (depsOnly || extraOnly) ? false
-                /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
-                   сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
-                : (ms1 == null || ms2 == null || bad) ? (!depsDirty && !extraDirty)
-                : !mvOk}
+              disabled={applyOff}
               title={applyWhy}>
               {tr('Тавих')}
             </button>

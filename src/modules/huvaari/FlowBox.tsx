@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { type KeyboardEvent as KEvt, useEffect, useRef } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { REASON_MAX } from '@/lib/huvaariBatlah';
+import { useLatest } from './useLatest';
 import h from '../huvaari.module.css';
 
 /* ══════════════════ Батлах урсгалын цонх ══════════════════ */
@@ -42,18 +43,33 @@ export function FlowBox({
   const setTxt = onText;
   /* ⚠️ Esc → хаах (2026-09-23), `PlanModal`-тай ижил. Хуудасны нийтлэг Esc нь
      `[role=dialog]` нээлттэй үед юу ч хийдэггүй тул энд өөрөө барина. */
+  /* ⚠️ 2026-10-06 аудит: ЯВЦЫН ДУНД (`busy`) ХААХГҮЙ — Esc · ард товших · «×» гурвуулаа.
+     Урьд нь илгээх/шийдвэрлэх хүсэлт явж байхад цонх хаагдаж, алдаа гарвал түүнийг
+     харуулах цонх (`err`) алга болсон байдаг байв. Ref-ээр — сонсогч `busy` бүрд
+     дахин бүртгэгдэхгүй. */
+  const busyRef = useLatest(busy);
+  const close = () => { if (!busyRef.current) onClose(); };
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busyRef.current) onClose(); };
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onClose]);
+  }, [onClose, busyRef]);
+  /* ⚠️ 2026-10-06 аудит: Enter → үндсэн товч (`onOk`), `PlanModal`-тай ижил. Тайлбарын
+     `textarea` дотор Enter нь ШИНЭ МӨР хэвээр; товч дээрх Enter нь тэр товчийг дарна. */
+  const onEnter = (e: KEvt<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.defaultPrevented || e.nativeEvent.isComposing || busy) return;
+    if ((e.target as HTMLElement).closest('textarea, button, select, a, input')) return;
+    e.preventDefault();
+    onOk(txt);
+  };
   return (
-    <div className={h.mdBack} role="presentation" onClick={onClose}>
+    <div className={h.mdBack} role="presentation" onClick={close}>
       <div ref={ref} className={h.md} role="dialog" aria-modal="true"
+        onKeyDown={onEnter}
         onClick={(e) => e.stopPropagation()}>
         <header className={h.mdHead}>
           <b className={h.mdWork}>{title}</b>
-          <button type="button" className={h.mdX} onClick={onClose} aria-label={tr('Хаах')}>×</button>
+          <button type="button" className={h.mdX} onClick={close} disabled={busy} aria-label={tr('Хаах')}>×</button>
         </header>
         <p className={h.note}>{desc}</p>
         {err && <p className={h.err} role="alert">{err}</p>}

@@ -23,11 +23,11 @@ import { CONTRACTED } from '@/lib/gdash';
 import { TUH_GROUPS, matchesSearch, buildTuhPkgs, progressOf, type TuhGroup, type TuhPkg } from '@/lib/tuhData';
 import { loadDeps, saveChange, linkError, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
-import { friendlyError } from '@/components/ui';
+import { friendlyError, userError } from '@/components/ui';
 import { loadFinData, pkgMonthsMap, physLatest } from '@/modules/Finance';
 import s from './bagtsHamaaral.module.css';
 
-type OnChange = (op: 'add' | 'remove', dep: Dep) => void;
+type OnChange = (op: 'add' | 'remove', dep: Dep) => Promise<boolean>;
 
 export function BagtsHamaaral() {
   const finQ = useAsync(loadFinData, []);
@@ -74,17 +74,25 @@ export function BagtsHamaaral() {
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
     && matchesSearch(q, p.code, [p.name, p.contractor])), [pkgs, grp, q]);
 
+  /* ⚠️ 2026-10-06 (аудит): `true` = хадгалагдсан — нэмэх мөр ЗӨВХӨН үүнд хаагдана (урьд нь
+     хариу ирэхээс өмнө хаагдаж, унасан бол сонголт алга болдог байв). Шидсэн алдааг барина
+     (`catch` байгаагүй — unhandled rejection). Амжилтгүй бол («аль хэдийн байна», зэрэг засвар)
+     бүртгэлийг ДАХИН уншина — эс тэгвээс хуучин жагсаалт дээр дахин дахин оролдоно. */
   const change = useCallback<OnChange>(async (op, dep) => {
-    if (busy) return;
+    if (busy) return false;
     setErr('');
     setBusy(true);
     try {
       const res = await saveChange({ op, dep });
-      if (res.ok) setSaved(res.state.deps);
-      else setErr(res.error);
+      if (res.ok) { setSaved(res.state.deps); return true; }
+      setErr(userError(res.error));
+    } catch (e) {
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
+    try { setSaved((await loadDeps()).deps); } catch { /* дахин уншилт унавал хуучнаараа — алдаа дээр харагдсан */ }
+    return false;
   }, [busy]);
 
   if (finQ.state === 'loading') return <div className={s.wrap}><p className={s.loading}>{tr('Ачаалж байна…')}</p></div>;
@@ -181,7 +189,7 @@ function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange }: {
                                  шууд (буцаах аргагүй) устдаг байв. Бусад модулийн устгалтай ижил `confirm`. */
                               onClick={() => {
                                 if (!window.confirm(tr('«{0}» → «{1}» хамаарлыг устгах уу?', p.code, x?.code ?? k))) return;
-                                onChange('remove', { from: p.key, to: k });
+                                void onChange('remove', { from: p.key, to: k });
                               }}
                               title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}>✕</button>
                           )}
@@ -195,7 +203,7 @@ function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange }: {
                   {canEdit && addFor === p.key && (
                     <AddLink pkgs={all} self={p.key} busy={busy} label={tr('Ард багц нэмэх')}
                       errOf={(k) => linkError(deps, p.key, k)}
-                      onAdd={(k) => { onChange('add', { from: p.key, to: k }); setAddFor(null); }}
+                      onAdd={(k) => { void onChange('add', { from: p.key, to: k }).then((ok) => { if (ok) setAddFor(null); }); }}
                       onCancel={() => setAddFor(null)} />
                   )}
                 </td>

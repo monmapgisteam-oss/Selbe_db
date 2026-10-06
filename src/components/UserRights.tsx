@@ -89,8 +89,11 @@ export function UserRights(props: UserRightsProps) {
         {shownViews.map((v) => {
           const base = hasView(d.views, v.key);
           /* ⚠️ Засах эрхийн гэр харагдац (CAP_HOST_VIEW) runtime дээр
-             НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна (толгойн ⚠️). Дарвал
-             суурь жагсаалтад ил орно (эрх хасагдсан ч үлдэнэ). */
+             НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна (толгойн ⚠️). */
+          /* ⚠️ 2026-10-06 (аудит): бүдэг (implied) унтраалга ДАРАГДАХГҮЙ. Урьд нь дарахад
+             харагдац СУУРЬ жагсаалтад ил бичигдэж, засах эрхийг хассаны дараа ч харагдац
+             нээлттэй үлддэг байв (tooltip «тэр хуудсанд хасна» гэж хэлдэг атлаа). Хаах зам =
+             тухайн эрхийн хуудас; `UserAdmin.flipView` ч мөн хамгаална. */
           const implied = !base && capViews.includes(v.key);
           const vOn = base || implied;
           return (
@@ -103,12 +106,14 @@ export function UserRights(props: UserRightsProps) {
                 type="button"
                 role="switch"
                 aria-checked={vOn}
+                aria-disabled={implied || undefined}
                 aria-label={v.title}
                 title={implied
-                  ? tr('Засах эрхээр нээлттэй ({0}) — хаахын тулд тэр эрхийн хуудсанд эрхийг нь хасна', impliedBy(v.key))
+                  ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
                   : undefined}
                 className={`${s.sw} ${vOn ? s.swOn : ''} ${implied ? s.swImplied : ''}`}
-                onClick={() => onFlipView(v.key)}
+                style={implied ? { cursor: 'not-allowed' } : undefined}
+                onClick={implied ? undefined : () => onFlipView(v.key)}
               >
                 <span className={s.swKnob} />
               </button>

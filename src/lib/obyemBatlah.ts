@@ -46,6 +46,7 @@ import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
+import { REASON_MAX } from './huvaariBatlah';
 
 /** Илгээлтийн төлөв */
 export const OBYEM_STATUS = {
@@ -318,7 +319,10 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl(false);
   if (!url) return [];
   const out: Attrs[] = [];
-  for (let off = 0; ; off += 1000) {
+  /* ⚠️ 2026-10-06 аудит: `off += 1000` · `fs.length < 1000` нь серверийн `maxRecordCount` 1000-аас
+     бага үед эхний хуудсаар зогсож, үлдсэн мөрийг ЧИМЭЭГҮЙ хаядаг байв — `ajilBatlah`-ийн загвар:
+     ирсэн тоогоор шилжиж, `exceededTransferLimit`-ээр зогсоно. */
+  for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
@@ -331,7 +335,8 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
     });
     const fs = (j.features as { attributes: Attrs }[]) ?? [];
     out.push(...fs.map((f) => f.attributes));
-    if (fs.length < 1000) break;
+    off += fs.length;
+    if (!j.exceededTransferLimit || !fs.length) break;
   }
   return out;
 }
@@ -699,6 +704,11 @@ export async function decideObyem(args: {
   }
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
+  }
+  /* ⚠️ 2026-10-06 аудит: талбар 2048 — урт шалтгаан `applyEdits`-ийг бүхэлд нь унагадаг байв
+     (UI нь `maxLength={REASON_MAX}`-тэй ч энэ функцийг өөр замаас дуудаж болно). СҮЛЖЭЭНЭЭС ӨМНӨ. */
+  if (!args.approve && (args.reason?.trim().length ?? 0) > REASON_MAX) {
+    return { ok: false, error: tr('Шалтгаан хэт урт ({0} тэмдэгтээс ихгүй).', String(REASON_MAX)) };
   }
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore, type MouseEvent } from 'react';
 
 import { t as tr, getDictEpoch, getLocale, getServerLocale, subscribeDict, subscribeLocale } from '@/lib/i18nCore';
 
@@ -33,8 +33,20 @@ export function SkipLink() {
   /* ⚠️ 2026-10-04: англи толь ХОЙШЛОГДОН ачаалагддаг (`i18nCore.loadLocaleDict`) — ирэхэд дахин зурна */
   useSyncExternalStore(subscribeDict, getDictEpoch, getDictEpoch);
 
+  /* ⚠️ 2026-10-06 (аудит): зорилт `#panel` нь ЗӨВХӨН самбартай (plan г.м.) харагдацад байсан —
+     дашбоард, standalone харагдац, нүүр хуудсанд холбоос юу ч хийдэггүй байв. Одоо Portal-ын
+     агуулгын хэсэг (`id="main"`); тэр алга бол (нүүр/нээлтийн хуудас) эхний `<main>`.
+     Фокусыг ШУУД шилжүүлнэ — `tabIndex`-гүй элемент рүү hash үсрэлт фокус авдаггүй. */
+  const jump = (e: MouseEvent<HTMLAnchorElement>) => {
+    const el = document.getElementById('main') ?? document.querySelector('main');
+    if (!(el instanceof HTMLElement)) return;
+    e.preventDefault();
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus();
+    el.scrollIntoView({ block: 'start' });
+  };
   return (
-    <a href="#panel" className="skip">
+    <a href="#main" className="skip" onClick={jump}>
       {mounted ? tr('Дашбоард руу үсрэх') : 'Дашбоард руу үсрэх'}
     </a>
   );

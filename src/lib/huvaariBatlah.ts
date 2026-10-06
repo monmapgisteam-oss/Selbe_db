@@ -656,6 +656,20 @@ async function okRowsFieldLen(): Promise<number> {
 }
 
 /**
+ * `catch`-ийн алдааг `{ ok: false, error }`-д ТЕКСТ болгоно (⚠️ 2026-10-06 аудит).
+ * ⚠️ `String(e.message)` нь `query.ts`-ийн `sessionExpired` тэмдгийг ХАЯДАГ тул UI-ийн
+ *    `userError` 499-ийг «эрх алга» гэж буруу ангилдаг байв — тэмдэгтэйг энд нэвтрэлтийн
+ *    мессеж болгоно. Бусад нь түүхий хэвээр; дэлгэцэнд `userError`-оор орчуулагдана
+ *    (lib нь `components/ui`-г импортлохгүй).
+ */
+function errText(e: unknown): string {
+  if ((e as { sessionExpired?: boolean } | null)?.sessionExpired === true) {
+    return tr('Нэвтрэлтийн хугацаа дууссан байна. Хуудсыг дахин ачаалж нэвтэрнэ үү.');
+  }
+  return String((e as Error | null)?.message || e);
+}
+
+/**
  * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед).
  * ⚠️ 2026-09-29 аудит: `submitPlan`/`decidePlan`/`claimPlan` хүрээг `currentUser`-оор
  *    шалгаад НЭРИЙГ args-аас бичдэг байсан тул консолоос өөр нэр дамжуулж
@@ -684,7 +698,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl(false);
   if (!url) return [];
   const out: Attrs[] = [];
-  for (let off = 0; ; off += 1000) {
+  for (let off = 0; ;) {
     const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
@@ -697,7 +711,12 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
     });
     const fs = (j.features as { attributes: Attrs }[]) ?? [];
     out.push(...fs.map((f) => f.attributes));
-    if (fs.length < 1000) break;
+    /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, `fs.length < 1000`-ААР БИШ (2026-10-06 аудит,
+       `ajilBatlah.query`-ийн 2026-09-24-ний дүрэм): үйлчилгээний `maxRecordCount` 1000-аас
+       бага бол эхний хуудас цөөн мөр буцаад давталт зогсож, үлдсэн илгээлт чимээгүй алга
+       болдог байв. Шилжилт нь ИРСЭН мөрийн тоогоор, тогтмол 1000 БИШ. */
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    off += fs.length;
   }
   return out;
 }
@@ -1020,7 +1039,7 @@ export async function submitPlan(args: {
     } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -1172,7 +1191,7 @@ export async function decidePlan(args: {
       }, me, { requireEmpty: args.approve });
       if (!got.ok) return { ok: false, error: claimError(got) };
     } catch (e) {
-      return { ok: false, error: String((e as Error).message || e) };
+      return { ok: false, error: errText(e) };
     }
     tookClaim = true;
   }
@@ -1211,7 +1230,7 @@ export async function decidePlan(args: {
     return { ok: true, warn };
   } catch (e) {
     undo();
-    return { ok: false, error: String((e as Error).message || e) };
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -1416,7 +1435,7 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
     }, me, { requireEmpty: false });
     if (!got.ok) return { ok: false, error: claimError(got) };
   } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+    return { ok: false, error: errText(e) };
   }
   return { ok: true };
 }
@@ -1464,7 +1483,7 @@ export async function markPlanPartial(args: { oid: number; approver: string }): 
     invalidate('HUVAARI_BATLAH');
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -1567,7 +1586,7 @@ export async function withdrawPlan(args: {
     invalidate('HUVAARI_BATLAH');
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
+    return { ok: false, error: errText(e) };
   }
 }
 

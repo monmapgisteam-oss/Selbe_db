@@ -1,5 +1,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { tokenParam, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl } from '@/lib/authToken';
+/* ⚠️ 2026-10-06: бичилтийн үе (`shared`-ийн ⚠️). `dataBus` нь зөвхөн `i18nCore`-ийг импортлодог — мөчлөггүй. */
+import { writeEpoch } from '@/lib/dataBus';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -427,7 +429,11 @@ const shareable = (url: string, params: Record<string, string>, o: ArcgisReqOpts
  * `describe` · `timeoutMs`) орно — өөр горимын хариуг хуваалцахгүй.
  */
 async function shared(full: string, params: Record<string, string>, o: ArcgisReqOpts): Promise<ArcgisBody> {
-  const key = `${o.token ?? 'always'}|${o.describe ? 'd' : ''}|${o.timeoutMs ?? ''}|${reqKey(full, params)}`;
+  /* ⚠️ 2026-10-06 (аудит): түлхүүрт БИЧИЛТИЙН ҮЕ (`dataBus.writeEpoch`) орно. Урьд нь бичилтийн
+     өмнө эхэлсэн уншилт явж байхад `invalidate()` → кэш хаягдаж дахин татсан дуудагч ЯГ ТЭР
+     хуучин хүсэлтэд наалдаж бичилтийн ӨМНӨХ өгөгдлийг авдаг байв (шинэ кэш хуучин утгаар
+     дүүрнэ). Одоо зөвхөн ОДООГИЙН үед эхэлсэн хүсэлтийг хуваалцана. */
+  const key = `${writeEpoch()}|${o.token ?? 'always'}|${o.describe ? 'd' : ''}|${o.timeoutMs ?? ''}|${reqKey(full, params)}`;
   const running = inflight.get(key);
   if (running) return structuredClone(await running);
   const p = run(full, params, o);

@@ -1417,6 +1417,19 @@ export function MapProvider({ children }: { children: ReactNode }) {
    */
   const [ortho, setOrtho] = useState(true);
 
+  /**
+   * ⚠️ 2026-10-06 (аудит): ОБЪЕКТ РУУ ОЙРТОЛТ УНАСАН (`zoomToWhere`). Урьд нь зөвхөн
+   *    console-д бичигддэг тул хүснэгтийн мөр дээр дарахад зураг ХӨДЛӨХГҮЙ, шалтгаангүй
+   *    үлддэг байв. Богино мэдэгдэл (`role="status"`) 6 сек-ийн дараа өөрөө арилна —
+   *    `MapCanvas.pickFail`-ийн ижил хэв (энэ нь Provider-т тул тусдаа).
+   */
+  const [zoomFail, setZoomFail] = useState(false);
+  useEffect(() => {
+    if (!zoomFail) return;
+    const t = setTimeout(() => setZoomFail(false), 6000);
+    return () => clearTimeout(t);
+  }, [zoomFail]);
+
   /** Бүсийн орон зайн маск — noZone давхаргуудын 2D бүдгэрүүлэлтэд (доорх эффект) */
   const [zoneMask, setZoneMask] = useState<unknown>(null);
 
@@ -1567,8 +1580,11 @@ export function MapProvider({ children }: { children: ReactNode }) {
     try {
       /* ⚠️ Нэвтрэлт шаардлагатай давхарга — токенгүй бол хүрээ ХООСОН ирж
          зураг огт хөдлөхгүй (`LayerDef.auth`). */
-      const token = d.auth ? (await getAuth())?.token : undefined;
-      const e = await extentOf(layerUrl(d), view, where, token);
+      /* ⚠️ 2026-10-06 (аудит): ил `token` ХАСАВ — `query.ts`-ийн хуваалцсан зам (`'org'` горим)
+         одоогийн токеныг өөрөө залгаж, 498-д шинэчлээд дахин илгээнэ. Ил токен өгвөл тэр
+         дахин оролдлого УНТАРДАГ байв (`attemptRequest`: `!('token' in params)`) —
+         `HabeaUzleg`-ийн 2026-09-30-ны ижил засвар. */
+      const e = await extentOf(layerUrl(d), view, where);
       if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
@@ -1594,6 +1610,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
       view.goTo(box, opts?.animate === false ? { animate: false } : undefined).catch(() => {});
     } catch (err) {
       console.error('[selbe] объектын хүрээг тодорхойлж чадсангүй:', err);
+      /* ⚠️ 2026-10-06: хэрэглэгчид ч хэлнэ (`zoomFail`-ийн ⚠️) — шинэ нислэгээр солигдоогүй бол л */
+      if (flyToken.current === t) setZoomFail(true);
     }
   }, [view]);
 
@@ -1620,6 +1638,15 @@ export function MapProvider({ children }: { children: ReactNode }) {
   return (
     <RegisterCtx.Provider value={register}>
       <Ctx.Provider value={api}>{children}</Ctx.Provider>
+      {zoomFail && (
+        <div
+          className={`${s.float} ${s.warn}`}
+          role="status"
+          style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000 }}
+        >
+          <span>{tr('Объект руу ойртож чадсангүй — сүлжээгээ шалгаад дахин оролдоно уу.')}</span>
+        </div>
+      )}
     </RegisterCtx.Provider>
   );
 }
@@ -2730,10 +2757,8 @@ export const MapCanvas = memo(function MapCanvas({
        * ихэнхдээ эхний багцаар шийдэгдэнэ; бүрэн хоосон газар л бүх давхаргыг
        * туулна (бүрхэлт хэвээр — гүнзгий давхарга ч сонгогдоно).
        */
-      /* ⚠️ Нэвтрэлт шаардлагатай давхарга байвал токеныг НЭГ удаа авна */
-      const authTok = cand.some(({ id }) => LAYER_BY_ID[id]?.auth)
-        ? (await getAuth())?.token
-        : undefined;
+      /* ⚠️ 2026-10-06 (аудит): нэвтрэлт шаардлагатай давхаргын ил токен (`getAuth`) ХАСАВ —
+         `query.ts` одоогийн токеныг өөрөө залгаж 498-д шинэчилнэ (`zoomToWhere`-ийн ⚠️). */
       const BATCH = 3;
       /* ⚠️ 2026-10-05: унасан асуулгыг ТООЛНО — бүгд унасан бол «олдсонгүй» биш «асуулга унав» */
       let asked = 0;
@@ -2745,7 +2770,6 @@ export const MapCanvas = memo(function MapCanvas({
             aoi,
             limit: 1,
             where: (l as __esri.FeatureLayer).definitionExpression || '1=1',
-            ...(LAYER_BY_ID[id]?.auth && authTok ? { token: authTok } : {}),
           }).catch(() => { failedN += 1; return [] as Record<string, unknown>[]; }),
         ));
         asked += batch.length;

@@ -70,6 +70,19 @@ let version = 0;
 const subs = new Set<() => void>();
 
 /**
+ * ⚠️ 2026-10-06 (аудит): БИЧИЛТИЙН ҮЕ — `invalidate` (хүснэгт тааралгүй ч) ба `invalidateAll`
+ *    бүрд өснө. `query.ts`-ийн явагдаж буй ижил хүсэлтийн нэгтгэл (`shared`) түлхүүртээ үүнийг
+ *    оруулдаг: бичилтээс ӨМНӨ эхэлсэн уншилт (хуучин өгөгдөл) бичилтийн ДАРАА ирсэн дуудагчид
+ *    хуваалцагдахгүй. `version`-оос ТУСДАА: тэр нь зөвхөн кэш хаягдсан үед өсөж React-ийг
+ *    дахин зуруулдаг; энэ нь зөвхөн хүсэлтийн нэгтгэлд (мэдэгдэлгүй).
+ */
+let writes = 0;
+/** Одоогийн бичилтийн үе — `query.shared` */
+export function writeEpoch(): number {
+  return writes;
+}
+
+/**
  * Кэшийг бүртгэнэ. `cached()` дуудна — дуудагч кодод хэрэггүй.
  *
  * ⚠️ `reads` хоосон бол тэр кэш ХЭЗЭЭ Ч хүчингүй болохгүй (жишээ нь давхаргын
@@ -89,6 +102,7 @@ export function register(drop: () => void, reads: readonly DataKey[]): void {
  */
 export function invalidate(...keys: DataKey[]): void {
   if (!keys.length) return;
+  writes += 1;
   const want = new Set<string>(keys);
   let hit = 0;
   for (const s of SLOTS) {
@@ -114,6 +128,7 @@ export function dataRefreshedAt(): number {
  * товч ба таб удаан нуугдаад буцаж ирэх үед (`Portal`).
  */
 export function invalidateAll(): void {
+  writes += 1;
   for (const s of SLOTS) s.drop();
   refreshedAt = Date.now();
   version += 1;

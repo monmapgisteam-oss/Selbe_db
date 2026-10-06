@@ -47,7 +47,7 @@ import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { Huvaari } from '@/modules/Huvaari';
 import {
-  claimHolderOf, decidePlan, loadAllPending, loadLastPerPkg, loadPayload, planTableState, withdrawPlan, PLAN_STATUS, REASON_MAX,
+  claimHolderOf, decidePlan, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, withdrawPlan, PLAN_STATUS, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /**
@@ -160,7 +160,7 @@ export function HuvaariBatlah({
               : t.why === 'owner'
                 ? tr('Батлах хүснэгт БАЙНА, гэвч түүнийг үүсгэсэн хэрэглэгч танигдахгүй байна. AGOL дээр item-ийн эзнийг super админ руу шилжүүлнэ үү.')
                 : t.why === 'error'
-                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ?? '')
+                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
                   : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
           return;
         }
@@ -300,7 +300,7 @@ export function HuvaariBatlah({
         author: x.author,
         reason: why,
       });
-      if (!r.ok) { setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.'));
       setReason((m) => { const n = new Map(m); n.delete(x.oid); return n; });
       setOpen(null);
@@ -328,7 +328,7 @@ export function HuvaariBatlah({
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawPlan({ oid: x.oid, me: user?.username ?? '' });
-      if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
       setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд «Ноорогт буцаах»-аар сэргээж, засаад дахин илгээж болно.'));
       setOpen(null);
       /* ⚠️ Бүтэн дахин уншина (`reject`-тэй ижил шалтгаан). */
@@ -396,6 +396,13 @@ export function HuvaariBatlah({
           </button>
         )}
         <span className={s.spacer} />
+        {/* ⚠️ 2026-10-06 аудит: ачаалсны дараа дарааллыг шинэчлэх зам байгаагүй — өөр
+            батлагчийн шийдвэр/шинэ илгээлтийг харахын тулд бүх хуудсыг сэргээдэг байв. */}
+        {st.k === 'ready' && (
+          <button className={s.clear} disabled={busy} onClick={reload}>
+            {tr('Шинэчлэх')}
+          </button>
+        )}
         <span className={s.total}>{tr('{0} илгээлт', num(filtered.length))}</span>
       </div>
 
@@ -552,7 +559,7 @@ export function HuvaariBatlah({
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, holder,
+  sub, open, onToggle, detail, busy, reason: reasonIn, onReason, onReject, onApprove, ownWhy, onWithdraw, holder,
 }: {
   sub: PlanSubmission;
   /** ӨӨР батлагч түгжсэн (эх хуудсанд бичиж буй) — нэр; товчнууд хаалттай (2026-09-29) */
@@ -572,6 +579,14 @@ function Row({
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
   const p = detail?.k === 'ok' ? detail.p : null;
+  /* ⚠️ 2026-10-06 аудит: ХАГАС БИЧИГДСЭН санал (`PARTIAL_MARK`) — жагсаалтад харагддаггүй,
+     «Буцаах»/«Татах» нь шалтгаанаа бичсэний ДАРАА серверээс татгалздаг байв. Тэмдэгийг
+     толгойд ил гаргаж, хоёр товчийг урьдчилан хаана (жинхэнэ гэйт `decidePlan`/`withdrawPlan`-д). */
+  const partial = partialBy(sub.status, sub.reason);
+  const partialWhy = partial == null ? null : tr('{0} хагас бичсэн — Батлах-аар гүйцээнэ', partial || '—');
+  /* ⚠️ Хагас бичсэн үед шалтгааныг ХООСОН гэж үзнэ — «Буцаах» нь `!reason.trim()`-ээр
+     хаагдана (`huvaariBatlah.view.check`-ийн товчны хаалтын хэлбэр хэвээр). */
+  const reason = partialWhy ? '' : reasonIn;
 
   /* ── `payload`-ийн тоонууд. ⚠️ `kind` нь payload ДОТОР байна (толгойд
      БИШ) тул мөр дэлгэтэл харагдахгүй: `parsePayload` нь байхгүй ба
@@ -622,7 +637,9 @@ function Row({
             {tr('{0} мөр', num(sub.rowCount))}
           </span>
         </span>
-        <span className={`${s.badge} ${s.bWait}`}>{holder ? tr('{0} батлаж байна', holder) : tr('Хүлээгдэж буй')}</span>
+        {partialWhy
+          ? <span className={`${s.badge} ${s.bBack}`}>{partialWhy}</span>
+          : <span className={`${s.badge} ${s.bWait}`}>{holder ? tr('{0} батлаж байна', holder) : tr('Хүлээгдэж буй')}</span>}
       </button>
 
       {open && (
@@ -702,11 +719,15 @@ function Row({
                 rows={2}
                 value={reason}
                 onChange={(e) => onReason(e.target.value)}
-                disabled={busy}
+                disabled={busy || partialWhy != null}
                 /* ⚠️ Талбар 2048 — хэтэрвэл `applyEdits` бүхэлдээ унана (2026-09-29) */
                 maxLength={REASON_MAX}
               />
             </>
+          )}
+          {/* ⚠️ 2026-10-06: хагас бичсэн шалтгаан ИЛ мөрөөр — `title` мэдрэгч дэлгэцэд гарахгүй */}
+          {partialWhy && (onReject || onWithdraw) && (
+            <p className={s.reasonBox} role="status">{partialWhy}</p>
           )}
           {holder && (
             <p className={s.reasonBox} role="status">
@@ -739,8 +760,8 @@ function Row({
               <button
                 type="button"
                 className={`${s.btn} ${s.bad}`}
-                disabled={busy}
-                title={tr('Хүлээгдэж буй илгээлтээ буцааж авна — батлагч шийдвэрлэхээ болино')}
+                disabled={busy || partialWhy != null}
+                title={partialWhy ?? tr('Хүлээгдэж буй илгээлтээ буцааж авна — батлагч шийдвэрлэхээ болино')}
                 onClick={onWithdraw}
               >
                 {tr('Илгээлтээ татах')}
@@ -753,9 +774,11 @@ function Row({
                 disabled={busy || !reason.trim() || !!holder}
                 /* ⚠️ 2026-09-30: Шалтгааныг ЖИНХЭНЭ хаалтаар нь — өөр батлагч түгжсэн
                    үед «шалтгаан бичнэ үү» гэж худал хэлдэг байв. */
-                title={holder
-                  ? tr('{0} энэ илгээлтийг яг одоо батлаж байна.', holder)
-                  : reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
+                title={partialWhy
+                  ? partialWhy
+                  : holder
+                    ? tr('{0} энэ илгээлтийг яг одоо батлаж байна.', holder)
+                    : reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
                 onClick={onReject}
               >
                 {tr('Буцаах')}
@@ -764,7 +787,7 @@ function Row({
           </div>
           {/* ⚠️ 2026-09-30: Хаалтын шалтгаан ИЛ мөрөөр — `title` мэдрэгч дэлгэцэд
               гарахгүй. `holder`-ийн шалтгаан дээрх `reasonBox`-д аль хэдийн бий. */}
-          {onReject && !holder && !busy && !reason.trim() && (
+          {onReject && !holder && !busy && !partialWhy && !reason.trim() && (
             <div className={s.meta} role="status">{tr('Буцаахын тулд дээрх талбарт шалтгаанаа бичнэ үү.')}</div>
           )}
         </div>

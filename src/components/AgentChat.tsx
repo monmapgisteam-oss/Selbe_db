@@ -316,7 +316,7 @@ export function AgentChat({
         {!log.length && (
           <div className={s.chips}>
             {STARTERS().map((q) => (
-              <button key={q} type="button" className={s.chip} onClick={() => void send(q)}>
+              <button key={q} type="button" className={s.chip} disabled={alive === false} onClick={() => void send(q)}>
                 {q}
               </button>
             ))}
@@ -351,14 +351,18 @@ export function AgentChat({
             // Enter — илгээх, Shift+Enter — шинэ мөр
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
+              if (alive === false) return;
               void send(input);
             }
           }}
         />
+        {/* ⚠️ 2026-10-06 (аудит): реле унтарсан (`alive === false`) үед илгээх товч идэвхгүй —
+            урьд нь асуулт илгээгдээд л алдаа буцдаг байв. Шалгаж байх (`null`) үед хаахгүй. */}
         <button
           type="button"
           className={s.send}
-          disabled={busy || !input.trim()}
+          disabled={busy || !input.trim() || alive === false}
+          title={alive === false ? tr('AI туслахын сервер одоогоор холбогдохгүй байна — дараа дахин оролдоно уу.') : undefined}
           onClick={() => void send(input)}
         >
           {tr('Илгээх')}

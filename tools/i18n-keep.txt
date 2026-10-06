@@ -222,6 +222,7 @@
 @dyn modules/AjilBatlah.tsx  tr(g)
 @dyn modules/Chanar.tsx  tr(g)
 @dyn modules/Huvaari.tsx  tr(g)
+@dyn modules/Huvaari.tsx  tr(pkg.group)
 @dyn modules/HuvaariBatlah.tsx  tr(g)
 @dyn modules/Qaqc.tsx  tr(g)
 @dyn modules/sheet/fill/toolbar.tsx  tr(g)

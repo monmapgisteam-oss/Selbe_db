@@ -1,8 +1,8 @@
 'use client';
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
-  type CSSProperties, type PointerEvent as ReactPointerEvent,
+  Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  type CSSProperties, type ErrorInfo, type ReactNode, type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/components/MapCanvas';
@@ -23,12 +23,12 @@ import dynamic from 'next/dynamic';
    ба тэдгээрийн ⚠️ шийдвэрүүд `viewRegistry.tsx`-д — шинэ харагдац нэмэхэд
    энд ЮУ Ч засахгүй. */
 import { ViewSlot, type PlanJump } from '@/components/viewRegistry';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary, chunkErrorText, isChunkLoadError } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
-import { LocaleToggle } from '@/components/LocaleToggle';
+import { LocaleToggle, hasUnsavedWork } from '@/components/LocaleToggle';
 /* ⚠️ 2026-10-04: товч нь тусдаа хөнгөн файлаас — `AgentChat` нь доор `dynamic` (`AgentButton.tsx`-ийн ⚠️) */
-import { AgentButton } from '@/components/AgentButton';
+import { AgentButton, AgentLoading } from '@/components/AgentButton';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -65,8 +65,93 @@ const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.View
  *    · `AgentChat` (~220 КБ: агентын клиент, датасетийн бүртгэл, markdown) — анх
  *      НЭЭХЭД л mount (`agentMounted`).
  */
-const UserAdmin = dynamic(() => import('@/components/UserAdmin').then((m) => m.UserAdmin), { ssr: false });
-const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.AgentChat), { ssr: false });
+/* ⚠️ 2026-10-06 (аудит): `loading` — chunk татагдах хооронд хоосон дэлгэц биш мэдэгдэл.
+   `UserAdmin` нь super-т ХААЛТТАЙ байхад ч mount болдог (дээрх ⚠️) тул түүний мэдэгдэл
+   ЗӨВХӨН цонх нээгдсэн үед (`AdminOpenCtx`) — эхлэлд super-т анивчихгүй. */
+const AdminOpenCtx = createContext(false);
+function AdminLoading() {
+  const open = useContext(AdminOpenCtx);
+  if (!open) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 3000, display: 'grid', placeItems: 'center',
+        background: 'rgba(0,0,0,0.25)', color: 'var(--ink)', fontSize: 13,
+      }}
+    >
+      <span style={{ padding: '10px 18px', borderRadius: 10, background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>
+        {tr('Ачаалж байна…')}
+      </span>
+    </div>
+  );
+}
+/**
+ * ХӨВӨГЧ ЦОНХНЫ ХАШЛАГА (⚠️ 2026-10-06, аудит).
+ * ⚠️ `ErrorBoundary scope="view"` нь fallback-аа УРСГАЛД (`minHeight: 240`) зурдаг — харагдацын
+ *    саванд зөв, харин Portal-ын төгсгөлийн хөвөгч цонхнуудад (DocViewer · UserAdmin · HelpPanel ·
+ *    AgentChat — бүгд `position: fixed`) тэр нь 100dvh-ийн shell-ийн ДООР, дэлгэцээс гадна гарна.
+ *    Энд fallback нь баруун доод буланд ТОГТМОЛ мэдэгдэл: chunk-ийн алдаа (шинэ хувилбар) →
+ *    «Хуудсыг дахин ачаалах» (`ErrorBoundary.isChunkLoadError`-ийн ⚠️ — автоматаар reload ХИЙХГҮЙ);
+ *    бусад → «Хаах» (цонхыг хааж хашлагыг цэвэрлэнэ, дахин нээж болно).
+ */
+class OverlayBoundary extends Component<
+  { children: ReactNode; label: string; onReset: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('OverlayBoundary:', error, info.componentStack);
+  }
+
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    const chunk = isChunkLoadError(error);
+    const btn: CSSProperties = {
+      padding: '5px 12px', borderRadius: 8, border: '1px solid var(--line-strong)',
+      background: 'var(--surface)', color: 'var(--ink)', font: 'inherit', cursor: 'pointer',
+    };
+    return (
+      <div
+        role="alert"
+        style={{
+          position: 'fixed', right: 16, bottom: 16, zIndex: 3600, display: 'grid', gap: 8,
+          maxWidth: 'min(360px, calc(100vw - 32px))', padding: '12px 14px', borderRadius: 10,
+          background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line-strong)',
+          boxShadow: 'var(--shadow)', fontSize: 12.5,
+        }}
+      >
+        <b>{this.props.label}</b>
+        {chunk && <span>{chunkErrorText()}</span>}
+        <div>
+          {chunk ? (
+            <button type="button" style={btn} onClick={() => location.reload()}>{tr('Хуудсыг дахин ачаалах')}</button>
+          ) : (
+            <button type="button" style={btn} onClick={() => { this.props.onReset(); this.setState({ error: null }); }}>
+              {tr('Хаах')}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+}
+
+const UserAdmin = dynamic(() => import('@/components/UserAdmin').then((m) => m.UserAdmin), {
+  ssr: false,
+  loading: () => <AdminLoading />,
+});
+const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.AgentChat), {
+  ssr: false,
+  loading: () => <AgentLoading />,
+});
 
 import s from '@/app/shell.module.css';
 
@@ -412,11 +497,13 @@ function PortalContent(
   /* ⚠️ 2026-08-25 (хэрэглэгчийн шийдвэр): анх орж ирэхэд зүүн цэс ХУРААСТАЙ —
      зөвхөн дүрс (54px) харагдаж, газрын зурагт илүү зай өгнө. Товчоор дэлгэнэ. */
   /* ⚠️ 2026-09-30: initializer-т уншина (эффект дотор setState байсан) — Portal
-     `ssr:false` тул хөтөч дээр л ажиллана. Дүрэм ХЭВЭЭР: хадгалсан `'1'` л
-     хураана; хадгалалт хаалттай (шидвэл) бол анхдагч ХУРААСТАЙ. */
+     `ssr:false` тул хөтөч дээр л ажиллана. Хадгалалт хаалттай (шидвэл) бол анхдагч ХУРААСТАЙ. */
+  /* ⚠️ 2026-10-06 (аудит): `=== '1'` нь 2026-08-25-ны шийдвэртэй ЗӨРЖ байв — шинэ
+     хэрэглэгчид (утга алга) цэс ДЭЛГЭЭТЭЙ нээгддэг байлаа. Одоо зөвхөн хэрэглэгч өөрөө
+     дэлгэсэн (`'0'`, `toggleNav`) үед дэлгэнэ; бусад бүх тохиолдолд ХУРААСТАЙ. */
   const [navMin, setNavMin] = useState(() => {
     if (typeof window === 'undefined') return true;
-    try { return localStorage.getItem('selbe-nav-min') === '1'; } catch { return true; /* private */ }
+    try { return localStorage.getItem('selbe-nav-min') !== '0'; } catch { return true; /* private */ }
   });
   const toggleNav = useCallback(() => {
     setNavMin((v) => {
@@ -527,6 +614,8 @@ function PortalContent(
   /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
      (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
+  /** Эрх хумигдаж харагдац солигдсон тухай мэдэгдэл (доорх эрхийн guard-ийн ⚠️ 2026-10-06) */
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
   /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
      react-hooks/refs). Уншигч нь зөвхөн үйл явдлын хариулагч ба доорх guard
      эффект — хоёулаа энэ эффектийн ДАРАА ажиллана (зарлалтын дараалал). */
@@ -550,6 +639,13 @@ function PortalContent(
     const labels = navDirtyLabels();
     if (labels.length
       && !window.confirm(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')))) return false;
+    /* ⚠️ 2026-10-06 (аудит): дээрх гурван тугт ОРООГҮЙ модулиуд (QAQC-ийн хадгалаагүй нүд,
+       `useDraftSync`, CashflowPlan …) — тэдний `beforeunload` сонсогчоос асууна
+       (`LocaleToggle.hasUnsavedWork`-ийн ⚠️). Дээр аль хэдийн асууж зөвшөөрсөн бол ДАХИН
+       асуухгүй (тэр модулиуд ч `beforeunload` бүртгэдэг тул давхар асуулт гарна). */
+    const asked = planNavBusy() || finNavDirty() || labels.length > 0;
+    if (!asked && hasUnsavedWork()
+      && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'))) return false;
     return true;
   }, []);
   /**
@@ -729,8 +825,14 @@ function PortalContent(
       //    push — гарах аргагүй гогцоо. lastViewRef-ыг урьдчилан оноож URL
       //    эффектийн push-ыг дарна: redirect нь replace байх ёстой.
       lastViewRef.current = navScope[0];
+      /* ⚠️ 2026-10-06 (аудит): шилжвэл ШАЛТГААНЫГ хэлнэ — урьд нь хадгалаагүй засваргүй үед
+         харагдац чимээгүй солигддог тул хэрэглэгч юу болсныг ойлгодоггүй байв. Татгалзвал
+         (хадгалаагүй ажлаа хадгалахаар) `lastViewRef`-ийг буцаана. `navScope` нь `Root`-д
+         агуулгын түлхүүрээр тогтворжсон тул энэ эффект рендер бүрт дахин асуухгүй. */
+      const from = VIEW_BY_KEY[view].title;
+      const to = VIEW_BY_KEY[navScope[0]].title;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
-      setView(navScope[0]);
+      if (setView(navScope[0])) setScopeNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
     }
   }, [navScope, view, setView]);
 
@@ -801,6 +903,12 @@ function PortalContent(
    */
   const [planJump, setPlanJump] = useState<PlanJump | null>(null);
   const clearPlanJump = useCallback(() => setPlanJump(null), []);
+  /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): `ViewSlot`-ын контекст рендер бүрт ШИНЭ объект байсан тул
+     харагдацын модуль Portal-ын рендер бүрд (тэмдэг, сүлжээ, өгөгдлийн цаг) дахин зурагддаг байв. */
+  const slotCtx = useMemo(
+    () => ({ dim, setDim, zone, setZone, navScope, setView, planJump, setPlanJump, clearPlanJump }),
+    [dim, zone, navScope, setView, planJump, clearPlanJump],
+  );
   // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
   /**
@@ -851,6 +959,30 @@ function PortalContent(
       {!online && (
         <div className={s.offline} role="status" aria-live="polite">
           {tr('Сүлжээний холболт тасарсан')}
+        </div>
+      )}
+      {/* ⚠️ 2026-10-06: эрх хумигдаж харагдац солигдсон — `role="status"` (`offline`-ийн ⚠️) */}
+      {scopeNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed', top: 52, left: '50%', transform: 'translateX(-50%)', zIndex: 3500,
+            display: 'flex', alignItems: 'center', gap: 10, maxWidth: 'min(560px, calc(100vw - 32px))',
+            padding: '8px 10px 8px 14px', borderRadius: 10, background: 'var(--surface)', color: 'var(--ink)',
+            border: '1px solid var(--line-strong)', boxShadow: 'var(--shadow)', fontSize: 12.5,
+          }}
+        >
+          <span>{scopeNotice}</span>
+          <button
+            type="button"
+            onClick={() => setScopeNotice(null)}
+            aria-label={tr('Хаах')}
+            title={tr('Хаах')}
+            style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 14 }}
+          >
+            ✕
+          </button>
         </div>
       )}
       {/* ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДАВ — харагдац бүр өөр өнгөөр
@@ -956,6 +1088,8 @@ function PortalContent(
             <span className={s.navFoldArrow} aria-hidden>{navMin ? '»' : '«'}</span>
             {!navMin && <span>{tr('Хураах')}</span>}
           </button>
+          {/* ⚠️ 2026-10-06 (аудит): цэс ч ТУСДАА хашлагад — уналт нь бүх порталыг үхүүлэхгүй */}
+          <ErrorBoundary scope="view" label={tr('Цэс нээгдсэнгүй')}>
           <ViewRail
             view={view}
             setView={setView}
@@ -972,11 +1106,14 @@ function PortalContent(
             onSignOut={auth.status === 'signed-in' ? () => { if (confirmLeave()) void auth.signOut(); } : undefined}
             badges={badges}
           />
+          </ErrorBoundary>
         </aside>
 
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
         {isFull && (
-          <div className={s.suit}>
+          /* ⚠️ 2026-10-06 (аудит): `id="main"` — `SkipLink`-ийн зорилт (урьд нь `#panel` зөвхөн
+             самбартай харагдацад байв). `<main>` БИШ: модулиуд өөрсдөө `<main>` зурдаг (давхар main). */
+          <div className={s.suit} id="main" tabIndex={-1}>
             {/* ⚠️ ХАРАГДАЦ БҮР ТУСДАА ХАШЛАГАД (2026-09-03-ны аудит): нэг
                 модулийн рендерийн throw бүх порталыг үхүүлдэг байв — навигац,
                 каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
@@ -987,7 +1124,7 @@ function PortalContent(
                   Модуль бүр контекстоос зөвхөн өөрт хэрэгтэй пропоо авна. */}
               <ViewSlot
                 view={view}
-                ctx={{ dim, setDim, zone, setZone, navScope, setView, planJump, setPlanJump, clearPlanJump }}
+                ctx={slotCtx}
               />
             </ErrorBoundary>
           </div>
@@ -995,7 +1132,9 @@ function PortalContent(
 
         {!isFull && (
           <>
-            <div className={s.map}>
+            <div className={s.map} id="main" tabIndex={-1}>
+              {/* ⚠️ 2026-10-06 (аудит): зураг, каталог ТУСДАА хашлагад (харагдацын модулиудын адил) */}
+              <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
               <MapCanvas
                 dim={dim}
                 visible={visible}
@@ -1006,6 +1145,7 @@ function PortalContent(
                 alwaysOn={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
                 onPick={pick}
               />
+              </ErrorBoundary>
 
               {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
                   (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
@@ -1047,6 +1187,7 @@ function PortalContent(
                 */}
               {catOpen && (
                 <div className={s.catPop}>
+                  <ErrorBoundary scope="view" label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
                   <LayerCatalog
                     view="plan"
                     totals={totals}
@@ -1064,6 +1205,7 @@ function PortalContent(
                     onResizeKey={catSize.onKeyDown}
                     zone={zone}
                   />
+                  </ErrorBoundary>
                 </div>
               )}
 
@@ -1138,20 +1280,38 @@ function PortalContent(
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
       {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
           байх үед super admin панелаас буурвал нээлттэй цонх өөрөө хаагдана. */}
-      <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
+      {/* ⚠️ 2026-10-06 (аудит): ХӨВӨГЧ ЦОНХ БҮР ТУСДАА ХАШЛАГАД — `dynamic` chunk-ийн 404 (шинэ
+          хувилбар байршсан) эсвэл рендерийн throw нь урьд нь root хашлага хүртэл хөөрч БҮХ
+          порталыг (хадгалаагүй ажилтай нь) унагадаг байв. `OverlayBoundary` — буланд мэдэгдэл
+          («Хуудсыг дахин ачаалах» / «Хаах»), бусад хэсэг ажиллана. */}
+      <OverlayBoundary label={tr('Баримт бичгийн цонх нээгдсэнгүй')} onReset={() => setDocsOpen(false)}>
+        <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
+      </OverlayBoundary>
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
-      {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
+      {isSuper && (
+        <OverlayBoundary label={tr('Эрхийн удирдлага нээгдсэнгүй')} onReset={() => setAdminOpen(false)}>
+          <AdminOpenCtx.Provider value={adminOpen}>
+            <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />
+          </AdminOpenCtx.Provider>
+        </OverlayBoundary>
+      )}
 
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
-      <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
-      {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
+      <OverlayBoundary label={tr('Тусламж нээгдсэнгүй')} onReset={closeHelp}>
+        <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
+        {!helpOpen && <HelpTip onOpen={() => setHelpOpen(true)} />}
+      </OverlayBoundary>
 
       {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
       <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />
       {/* ⚠️ 2026-10-04: анх НЭЭХЭД л mount (дээрх `agentMounted`-ийн ⚠️) — дараа нь хаасан ч
           mount хэвээр тул яриа хадгалагдана. */}
-      {agentMounted && <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />}
+      {agentMounted && (
+        <OverlayBoundary label={tr('AI туслах нээгдсэнгүй')} onReset={() => setAgentOpen(false)}>
+          <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
+        </OverlayBoundary>
+      )}
     </>
   );
 }

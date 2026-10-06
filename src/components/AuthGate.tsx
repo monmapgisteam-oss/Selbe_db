@@ -1,6 +1,8 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode,
+} from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
@@ -333,6 +335,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            биш — зөвхөн «мэдэхгүй». Урьд нь ийм үед ч `denied` болж, Portal
            устгагдаж хадгалаагүй ажил алга болдог байв. Хаахыг ЗӨВХӨН амжилттай
            уншилтын дараа. Нээх (`ok`) нь хэвээр шууд. */
+        /* ⚠️ 2026-10-06: энд үлдэх `cache` нь remote уншигдсаны дараа localStorage-оор
+           ӨРГӨСӨХГҮЙ (`permissions.subscribe` → `narrowOnly`) — эрт буцалт хуурамч эрх хадгалахгүй. */
         if (!ok && !rok) return;
         /* ⚠️ lib-түвшний эрхийн шалгуур (`who.requireCap`) ч мөн дагана (2026-09-17):
            урьд нь зөвхөн анхны нэвтрэлтэд бичигдэж, denied→signed-in сэргэлтэд
@@ -387,9 +391,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [status, user?.username]);
 
-  const recheckPerms = async () => { await checkRef.current?.(); };
+  /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): контекстын функцууд ТОГТМОЛ лавлагаатай (`useCallback`) —
+     доорх `value`-ийн `useMemo`-тай хамт `useAuth()`-ын хэрэглэгчид рендер бүрт дахин зурагдахгүй. */
+  const recheckPerms = useCallback(async () => { await checkRef.current?.(); }, []);
 
-  const signIn = async () => {
+  const signIn = useCallback(async () => {
     setError(null);
     attemptSet();
     try {
@@ -408,7 +414,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       attemptClear();
       setError(describe(e));
     }
-  };
+  }, []);
 
   /**
    * ГАРАХ — ЗӨВХӨН локал итгэмжлэлийг устгаад зогсохгүй, ArcGIS-ийн SSO сешнийг ч
@@ -423,11 +429,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * ⚠️ `redirect_uri` нь query-гүй ЦЭВЭР зам: буцаж ирээд `?v=…` үлдвэл хэрэглэгч
    * дөнгөж гарсан харагдац руугаа шууд эргэж ордог.
    */
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     /* ⚠️ 2026-10-05: итгэмжлэл устахыг «сешн дууссан» гэж тэмдэглэхгүй (`authToken.noteSignOut`) */
     noteSignOut();
     esriId.destroyCredentials();
+    /* ⚠️ 2026-10-06 (аудит): эрхийн КЭШИЙГ устгана — хуваалцсан компьютер дээр дараагийн хүнд
+       өмнөх хэрэглэгчийн эрхийн хүснэгт (хэн ямар эрхтэй) үлдэхгүй. ЗӨВХӨН кэш: dirty-set
+       (`*-dirty-v1` — админы ArcGIS-т хүрээгүй засвар)-ийг ХӨНДӨХГҮЙ, «Дахин синк»-ийн эх. */
+    for (const k of ['selbe-perms-v1', 'selbe-caps-v1']) {
+      try { localStorage.removeItem(k); } catch { /* хувийн горим */ }
+    }
     const back = encodeURIComponent(location.origin + location.pathname);
     /* ⚠️ Энэ бол ArcGIS-ийн ГАДААД гарах хаяг — Next.js-ийн дотоод хуудас БИШ
        тул `router.push` тохирохгүй: бүтэн навигаци ЗААВАЛ хэрэгтэй (ArcGIS
@@ -437,12 +449,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.assign(
       `${sharingUrl()}/rest/oauth2/signout?client_id=${encodeURIComponent(AUTH.appId)}&redirect_uri=${back}`,
     );
-  };
+  }, []);
 
+  const clearError = useCallback(() => setError(null), []);
   const authorized = status === 'signed-in' || status === 'off';
+  const value = useMemo<AuthCtx>(() => ({
+    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError,
+  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError]);
 
   return (
-    <Ctx.Provider value={{ status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError: () => setError(null) }}>
+    <Ctx.Provider value={value}>
       {children}
     </Ctx.Provider>
   );
@@ -453,7 +469,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError } = useAuth();
+  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError, recheckPerms } = useAuth();
   /*
    * ⚠️ 2026-10-05: СЕШН ДУУССАН — Portal доор нь АМЬД (`status` нь `signed-in` хэвээр тул
    *    `Root` юу ч солихгүй). `AccessLost`-ийн ижил хаалтын цонх; дахин нэвтрэх нь хуудсыг
@@ -486,10 +502,10 @@ export function AuthNotice() {
   const reason: 'org' | 'perms' | 'noAccess' = orgMismatch ? 'org' : !permsRead ? 'perms' : 'noAccess';
 
   return (
-    <div className={s.screen}>
+    <NoticeDialog>
       <div className={s.card}>
         <img src="/logo.svg" alt="" className={s.logo} />
-        <div className={s.title}>{tr('Сэлбэ портал')}</div>
+        <div className={s.title} id="selbe-auth-notice">{tr('Сэлбэ портал')}</div>
 
         {status === 'denied' && (
           <>
@@ -529,6 +545,9 @@ export function AuthNotice() {
                   {tr('Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.')}
                 </p>
                 <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                {/* ⚠️ 2026-10-06 (аудит): урьд нь цорын ганц гарц нь БҮТЭН гарах байв — уншилт
+                    түр унасан бол эрхийн хүснэгтийг шууд дахин уншина (15 сек хүлээлгүй). */}
+                <RecheckButton recheck={recheckPerms} />
               </>
             ) : (
               <>
@@ -558,7 +577,42 @@ export function AuthNotice() {
           </>
         )}
       </div>
+    </NoticeDialog>
+  );
+}
+
+/**
+ * ⚠️ 2026-10-06 (аудит, хүртээмж): татгалзал / нэвтрэлтийн алдааны карт нь бүтэн дэлгэцийн
+ *    хаалт атлаа `role="dialog"`, фокусын урхигүй байв — Tab ард нь харагдахгүй товчнууд
+ *    руу гардаг. `AccessLost` · `SessionExpired`-тэй ижил: тусдаа компонент (hook нь
+ *    `AuthNotice`-ийн эрт `return`-үүдийн дараа дуудагдах ёсгүй).
+ */
+function NoticeDialog({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, true);
+  return (
+    <div ref={ref} className={s.screen} role="dialog" aria-modal="true" aria-labelledby="selbe-auth-notice">
+      {children}
     </div>
+  );
+}
+
+/** «Дахин оролдох» — эрхийн хүснэгтийг дахин уншина (`recheckPerms`); амжилттай бол карт өөрөө хаагдана */
+function RecheckButton({ recheck }: { recheck: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className={s.btn}
+      disabled={busy}
+      style={{ marginTop: 16 }}
+      onClick={() => {
+        setBusy(true);
+        void recheck().finally(() => setBusy(false));
+      }}
+    >
+      {busy ? tr('Шалгаж байна…') : tr('Дахин оролдох')}
+    </button>
   );
 }
 

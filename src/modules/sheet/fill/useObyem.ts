@@ -12,6 +12,8 @@ import {
   submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
+/* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
+import { userError } from '@/components/ui';
 
 /**
  * ОБЬЁМЫН ТӨЛӨВ (зөвхөн `useState`) — 2026-10-01: `useObyem`-ээс САЛГАВ.
@@ -181,7 +183,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
          мэдэгдэл/алдаа Б дээр гарах байв. А-гийн ноорог багц солиход аль хэдийн
          цэвэрлэгдсэн тул энд хийх зүйлгүй. */
       if (pkgKeyRef.current !== payload.pkgKey) return;
-      if (!r.ok) { setPvErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      if (!r.ok) { setPvErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return; }
       /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
          локалд үлдээвэл дахин илгээх эсвэл батлагдсаны дараа хуучин
          ноорог дахин бичигдэх эрсдэлтэй. */
@@ -189,7 +191,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       setPvNote(tr('Инженерийн обьём батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshObyem();
     } catch (e) {
-      if (pkgKeyRef.current === pkg.key) setPvErr(String((e as Error).message || e));
+      if (pkgKeyRef.current === pkg.key) setPvErr(userError(e));
     } finally {
       setPvBusy(false);
     }
@@ -240,7 +242,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           author: pvSub.author,
           dryRun: true,
         });
-        if (!pre.ok) { pvErrHere(pre.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+        if (!pre.ok) { pvErrHere(pre.error ? userError(pre.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
         const pl = await loadObyemPayload(pvSub.oid);
         if (!pl) { pvErrHere(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
         /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
@@ -297,7 +299,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            тайлбал зохиогч хагас бичигдсэн илгээлтээ татна. Энэ батлагч шууд дахин дарж болно;
            бусдад 10 минутын дараа өөрөө тайлагдана. */
         const claim = await claimObyem({ oid: pvSub.oid, approver: user?.username ?? '' });
-        if (!claim.ok) { pvErrHere(claim.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
+        if (!claim.ok) { pvErrHere(claim.error ? userError(claim.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
         await applyUpdates(pkg, upd);
         wroteMain = true;
         pvSkipped = skippedN;
@@ -319,14 +321,14 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       if (!here()) return;
       /* ⚠️ 2026-10-04: бичээд → тэмдэглэх дараалал (дээрх ⚠️) хэвээр; харин тэмдэглэл унавал
          «хадгалагдсангүй» биш — утга АЛЬ ХЭДИЙН бичигдсэнийг ба яах ёстойг хэлнэ. */
-      if (!r.ok) { setPvErr(wroteMain ? afterWrite(r.error ?? '') : (r.error ?? tr('Шийдвэр хадгалагдсангүй.'))); return; }
+      if (!r.ok) { setPvErr(wroteMain ? afterWrite(userError(r.error ?? '')) : (r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'))); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
           + (pvSkipped ? ' ' + tr('{0} мөр архивын сүүлийн жаазад тулгагдаагүй тул бичигдсэнгүй.', pvSkipped) : '')
         : tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
       await refreshObyem();
     } catch (e) {
-      const m = String((e as Error).message || e);
+      const m = userError(e);
       pvErrHere(wroteMain ? afterWrite(m) : m);
     } finally {
       setPvBusy(false);
@@ -346,11 +348,11 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     try {
       const r = await withdrawObyem({ oid: pvSub.oid, me: user?.username ?? '' });
       if (pkgKeyRef.current !== want) return;
-      if (!r.ok) { setPvErr(r.error ?? tr('Татаж авч чадсангүй.')); return; }
+      if (!r.ok) { setPvErr(r.error ? userError(r.error) : tr('Татаж авч чадсангүй.')); return; }
       setPvNote(tr('Обьёмын илгээлтийг татаж авлаа.'));
       await refreshObyem();
     } catch (e) {
-      if (pkgKeyRef.current === want) setPvErr(String((e as Error).message || e));
+      if (pkgKeyRef.current === want) setPvErr(userError(e));
     } finally {
       setPvBusy(false);
     }

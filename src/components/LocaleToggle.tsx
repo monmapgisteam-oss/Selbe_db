@@ -1,7 +1,10 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import { useLocale } from '@/lib/i18n';
-import { t as tr, loadLocaleDict } from '@/lib/i18nCore';
+import {
+  t as tr, loadLocaleDict, subscribeDict, getLocaleSwitchState, getServerLocaleSwitchState, clearLocaleSwitchError,
+} from '@/lib/i18nCore';
 import s from './locale.module.css';
 
 /**
@@ -64,20 +67,35 @@ export function LocaleToggle({ className }: { className?: string }) {
      руу заахад/фокуслахад урьдчилан татна, дарахад солилт шууд болно. Алдааг залгина:
      дарахад `setLocale` өөрөө дахин оролдоно. */
   const warm = () => { loadLocaleDict(next).catch(() => { /* setLocale дахин оролдоно */ }); };
+  /* ⚠️ 2026-10-06 (аудит): толь татагдах явц ба уналт ИЛ (`i18nCore.getLocaleSwitchState`) —
+     урьд нь товч ямар ч дохиогүй, уналт нь зөвхөн console-д. Завгүй үед товч идэвхгүй (давхар
+     дарахгүй); алдаа гарвал товчны доор мэдэгдэл, дахин дарахад дахин оролдоно. */
+  const sw = useSyncExternalStore(subscribeDict, getLocaleSwitchState, getServerLocaleSwitchState);
+  const busy = sw === 'loading';
 
   return (
-    <button
-      type="button"
-      className={className ?? s.btn}
-      onClick={() => { if (confirmLocaleSwitch()) setLocale(next); }}
-      onPointerEnter={warm}
-      onFocus={warm}
-      aria-label={label}
-      title={label}
-    >
-      <span className={s.code} aria-hidden>
-        {next.toUpperCase()}
-      </span>
-    </button>
+    <span className={s.wrap}>
+      <button
+        type="button"
+        className={className ?? s.btn}
+        onClick={() => { if (confirmLocaleSwitch()) setLocale(next); }}
+        onPointerEnter={warm}
+        onFocus={warm}
+        disabled={busy}
+        aria-busy={busy}
+        aria-label={label}
+        title={busy ? tr('Хэлний толь ачаалж байна…') : label}
+      >
+        <span className={s.code} aria-hidden>
+          {busy ? '…' : next.toUpperCase()}
+        </span>
+      </button>
+      {sw === 'error' && (
+        <span className={s.err} role="status">
+          {tr('Хэлний толь татагдсангүй — холболтоо шалгаад дахин дарна уу.')}
+          <button type="button" className={s.errClose} onClick={clearLocaleSwitchError} aria-label={tr('Хаах')}>✕</button>
+        </span>
+      )}
+    </span>
   );
 }

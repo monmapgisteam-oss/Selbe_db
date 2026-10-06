@@ -940,6 +940,46 @@ export function clearOverride(username: string): Promise<boolean> {
     .then((ok) => { trackWrite(key, null, ok); return ok; }));
 }
 
+/**
+ * ⚠️ 2026-10-06 (аудит): ӨӨР ТАБЫН localStorage-ийг remote уншигдсаны ДАРАА зөвхөн ХУМИХ
+ *    чиглэлд авна. Урьд нь `storage` сонсогч `cache = loadLocal()` хийдэг тул хэрэглэгч
+ *    өөр табаас (эсвэл devtools-оор) `selbe-perms-v1`-д өөртөө `views:'all'` / `role:'super'`
+ *    бичихэд ЭНЭ таб тэр утгыг «remote-оор баталгаажсан» (`remoteLoaded === true`) гэж үзэж
+ *    эрх олгодог байв — `resolveBaseAccess`-ийн fail-closed ⚠️-тэй зөрчилдөнө.
+ *    Одоо: tombstone ба харагдац/баримтын ХАСАЛТ шууд (хор хөнөөлгүй — зөвхөн хумина),
+ *    шинэ мөр · өргөтгөл · үүргийн солилтыг ҮЛ ТООЦНО; оронд нь remote-оос дахин уншина
+ *    (`scheduleRemoteRefresh`) — бодит админы засвар тэр замаар ирнэ.
+ */
+function narrowOnly(cur: Store, loc: Store): Store {
+  const out: Store = { ...cur };
+  for (const [k, l] of Object.entries(loc)) {
+    const c = cur[k];
+    if (!c) continue; // шинэ мөр — нэмэхгүй (remote-оос л)
+    if (l.removed) { out[k] = l; continue; } // tombstone — зөвхөн хумина
+    if (c.removed) continue; // локал нь tombstone-ыг арилгах гэсэн — үл тооцно
+    const views: Entry['views'] = l.views === 'all'
+      ? c.views
+      : c.views === 'all' ? l.views : c.views.filter((v) => (l.views as ViewKey[]).includes(v));
+    out[k] = { views, docs: c.docs && l.docs, role: c.role };
+  }
+  return out;
+}
+
+/** Өөр табын өөрчлөлтийн дараах remote дахин уншилт — 30 сек-д ДЭЭД ТАЛ нь нэг (табууд хооронд ping-pong-гүй) */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let lastRefresh = 0;
+function scheduleRemoteRefresh(): void {
+  if (refreshTimer) return;
+  const wait = Math.max(2_000, lastRefresh + 30_000 - Date.now());
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    lastRefresh = Date.now();
+    const u = currentUser();
+    /* ⚠️ trusted = зөвхөн хатуу super (AuthGate-ийн poll-той ижил дүрэм) */
+    initRemote(false, !!u && isHardSuper(u)).catch(() => { /* дараагийн poll дахин уншина */ });
+  }, wait);
+}
+
 /** localStorage/өөр таб дахь өөрчлөлтөд захиалах — цэвэрлэх функц буцаана */
 export function subscribe(fn: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -948,7 +988,17 @@ export function subscribe(fn: () => void): () => void {
     // ⚠️ Өөр табын бичилтийг cache-д ЗААВАЛ татна — урьд нь зөвхөн fn()
     //    дуудаад cache хуучнаараа үлдэж, дахин зурсан UI хуучин эрхийг
     //    харуулсаар байв.
-    cache = loadLocal();
+    /* ⚠️ 2026-10-06: remote уншигдсан бол зөвхөн хумина + remote дахин уншина (`narrowOnly`-ийн ⚠️).
+       Remote-гүй сешнд override нь `resolveBaseAccess`/`hasAccess`-д аль хэдийн зөвхөн хумидаг. */
+    if (!remoteLoaded) {
+      cache = loadLocal();
+    } else {
+      const loc = loadLocal();
+      if (JSON.stringify(loc) !== JSON.stringify(cache)) {
+        cache = narrowOnly(cache, loc);
+        scheduleRemoteRefresh();
+      }
+    }
     fn();
   };
   window.addEventListener(EVENT, fn);
