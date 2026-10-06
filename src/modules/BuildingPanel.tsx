@@ -6,7 +6,7 @@ import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Split, Tabs, 
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
+import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
 import {
   loadBlockProgress, loadBlockHistory, loadBlockUniverse, progressSeries, pkgProgressOf, universeKeys,
   latestMean, mapKeyIssues, type BlockHistory,
@@ -266,12 +266,9 @@ export async function loadBuildings() {
       /** Бүх блокийн түлхүүр (цувааны анхдагч хамрах хүрээ) — 2026-10-01-ээс бөглөх хуудасны хуваарь */
       keys: allKeys,
 
-      levels: PROGRESS_LEVELS.map((l) => {
-        const hit = withData.filter((b) => b.progress! >= l.min && b.progress! < l.max);
-        const hitKeys = new Set(hit.map((b) => b.key));
-        /* ⚠️ OID — давхардсан полигоныг ч хамруулна (зурагт тодорно), тоо нь түлхүүрээр */
-        return { ...l, value: hit.length, oids: blocks.filter((b) => hitKeys.has(b.key)).map((b) => b.oid), keys: hit.map((b) => b.key) };
-      }),
+      /* ⚠️ 2026-10-06 (аудит): `levels` (блокийн 4 түвшин) УСТГАВ — дуудагчгүй байсан бөгөөд
+         хуучин дүрэмтэй (зөвхөн утгатай блок) байв. Түвшний тархалт → `pkgShared.blockLevelCounts`
+         (тайлагнаагүй блок 0%, PkgProg · удирдлагын тайлан). */
 
       /* ⚠️ 2026-09-30: багцын `progress` = `pkgPct` (дээрх ⚠️) — feature-ийн дундаж БИШ */
       /* ⚠️ 2026-10-01: цувааны `keys` — тэр багцын бөглөх хуудасны хуваарь (хувьтай нэг) */

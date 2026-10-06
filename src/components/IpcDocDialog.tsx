@@ -21,6 +21,7 @@ import { buildIpcDoc, type IpcNote } from '@/lib/ipcDoc';
 import { downloadIpcPdf, EMPTY_SIGNERS, type IpcSigners } from '@/lib/ipcPdf';
 import s from './ipcDoc.module.css';
 import { userError } from '@/components/ui';
+import { parseCell, type ParseMsg } from '@/lib/finEdit';
 
 type Saved = {
   capacity: string;
@@ -56,6 +57,28 @@ const SIGNER_LABELS = (): [keyof IpcSigners, string][] => [
   ['cAcc', tr('Гүйцэтгэгч — нягтлан бодогч')],
   ['cEng', tr('Гүйцэтгэгч — инженер')],
 ];
+
+/**
+ * ⚠️ 2026-10-06 (аудит): `finEdit.parseCell`-ийн алдааны текст — `Finance.PARSE_MSG`-тэй ИЖИЛ
+ *    түлхүүр (`Finance`-ийг импортлохгүй: dynamic ачаалалттай том модуль).
+ */
+const PARSE_MSG: ParseMsg = {
+  dateFmt: (l, v) => tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', l, v),
+  dateBad: (l, v) => tr('«{0}» — огноо буруу: {1}', l, v),
+  numBad: (l, v) => tr('«{0}» — тоо буруу: {1}', l, v),
+  numAmbig: (l, v) => tr('«{0}» — «{1}»: таслал мянгатын уу, аравтын уу тодорхойгүй. Таслалгүй (1250) эсвэл цэгтэй (1.25) бичнэ үү.', l, v),
+  pctRange: (l, v) => tr('«{0}» — хувь 0–100 хооронд байх ёстой: {1}', l, v),
+};
+
+/** Тоон талбар — утга (хоосон бол `null`) эсвэл алдааны текст */
+type NumField = { v: number | null; err: string };
+const parseNum = (raw: string, label: string, pct = false): NumField => {
+  try {
+    return { v: parseCell(raw, 'esriFieldTypeDouble', label, PARSE_MSG, pct) as number | null, err: '' };
+  } catch (e) {
+    return { v: null, err: e instanceof Error ? e.message : String(e) };
+  }
+};
 
 /** Бөглөх хуудастай (барилгын) багц мөн үү — IPC баримт зөвхөн эдгээрт */
 export const hasIpcDoc = (packKey: string): boolean => !!packKey && sheetsOf(packKey).length > 0;
@@ -111,29 +134,43 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
     return () => window.removeEventListener('keydown', k);
   }, [busy, onClose]);
 
-  const parseNum = (v: string): number | null => {
-    const t = v.replace(/[\s,]/g, '');
-    if (!t) return null;
-    const x = Number(t);
-    return Number.isFinite(x) ? x : null;
-  };
+  /* ⚠️ 2026-10-06 (аудит): урьд нь бүх таслалыг хасаж, буруу/хязгаараас гарсан утгыг ЧИМЭЭГҮЙ
+     анхдагч руу унагадаг байв («12,5»% → 125 → анхдагч 25%; тоо биш IPC дугаар → 1), буруу утга
+     localStorage-д ч хадгалагддаг. Одоо `finEdit.parseCell`-ийн дүрэм (тодорхойгүй таслал →
+     алдаа; хувь 0–100, нэг таслал аравтын) — алдаатай бол талбарын доор хэлж «PDF татах» хаалттай.
+     Хоосон хувь → `buildIpcDoc`-ийн анхдагч (хуучнаараа); хоосон санхүүжилт → «системд алга». */
+  const rateF = useMemo(() => parseNum(rate, tr('Эргэн төлөлтийн хувь (%)'), true), [rate]);
+  const annualF = useMemo((): NumField => {
+    const label = tr('Тухайн онд батлагдсан санхүүжилт');
+    const f = parseNum(annual, label);
+    return !f.err && f.v != null && f.v < 0 ? { v: null, err: tr('«{0}» — тоо буруу: {1}', label, annual.trim()) } : f;
+  }, [annual]);
+  const ipcNoF = useMemo((): NumField => {
+    const label = tr('IPC дугаар');
+    const f = parseNum(ipcNo, label);
+    if (f.err) return f;
+    return f.v != null && Number.isInteger(f.v) && f.v >= 1
+      ? f
+      : { v: null, err: tr('«{0}» — 1-ээс багагүй бүхэл тоо байх ёстой: {1}', label, ipcNo.trim()) };
+  }, [ipcNo]);
+  const invalid = !!(rateF.err || annualF.err || ipcNoF.err);
 
   const doc = useMemo(() => {
-    if (!src || !month || src.contract == null) return null;
-    const r = parseNum(rate);
+    if (!src || !month || src.contract == null || invalid || ipcNoF.v == null) return null;
     return buildIpcDoc({
       ...src,
       contract: src.contract,
       month,
       recoveryFrom: recoveryFrom || null,
-      recoveryRate: r != null && r >= 0 && r <= 100 ? r / 100 : undefined,
-      annual: parseNum(annual),
-      ipcNo: Math.max(1, Math.round(parseNum(ipcNo) ?? 1)),
+      recoveryRate: rateF.v != null ? rateF.v / 100 : undefined,
+      annual: annualF.v,
+      ipcNo: ipcNoF.v,
     });
-  }, [src, month, recoveryFrom, rate, annual, ipcNo]);
+  }, [src, month, recoveryFrom, rateF, annualF, ipcNoF, invalid]);
 
   const download = async () => {
-    if (!doc || busy) return;
+    /* ⚠️ 2026-10-06: алдаатай утгыг localStorage-д ХАДГАЛАХГҮЙ (`invalid` үед `doc` нь null) */
+    if (!doc || busy || invalid) return;
     setBusy(true); setErr('');
     try {
       writeSaved(packKey, { capacity, annual, rate, recoveryFrom, signers });
@@ -148,6 +185,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
   const monthsDesc = src ? [...src.months].reverse() : [];
   const nowRow = doc?.t7.find((r) => r.label === 'Гүйцэтгэгчид төлөх дүн') ?? null;
   const gross = doc?.g1[doc.g1.length - 1]?.now ?? null;
+  const fundNow = doc?.t7[0]?.now ?? null;
 
   return (
     <div className={s.back} role="presentation" onClick={() => { if (!busy) onClose(); }}>
@@ -186,12 +224,15 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
             </label>
             <label className={s.field}>
               {tr('IPC дугаар')}
-              <input inputMode="numeric" value={ipcNo} onChange={(e) => setIpcNo(e.target.value)} />
+              <input inputMode="numeric" value={ipcNo} onChange={(e) => setIpcNo(e.target.value)}
+                aria-invalid={!!ipcNoF.err || undefined} />
+              {ipcNoF.err && <span className={s.err} role="alert">{ipcNoF.err}</span>}
             </label>
             <label className={s.field}>
               {tr('Тухайн онд батлагдсан санхүүжилт')}
               <input inputMode="decimal" value={annual} placeholder={tr('системд алга — сонголттой')}
-                onChange={(e) => setAnnual(e.target.value)} />
+                onChange={(e) => setAnnual(e.target.value)} aria-invalid={!!annualF.err || undefined} />
+              {annualF.err && <span className={s.err} role="alert">{annualF.err}</span>}
             </label>
             <label className={s.field}>
               {tr('Хүчин чадал')}
@@ -207,16 +248,19 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
             </label>
             <label className={s.field}>
               {tr('Эргэн төлөлтийн хувь (%)')}
-              <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+              <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)}
+                aria-invalid={!!rateF.err || undefined} />
+              {rateF.err && <span className={s.err} role="alert">{rateF.err}</span>}
             </label>
           </div>
         )}
 
         {doc && (
           <div className={s.sum}>
-            <span>{tr('Тайлант үеийн гүйцэтгэл')}<b>{num(gross ?? 0, 0)}</b></span>
-            <span>{tr('Одоо санхүүжих')}<b>{num(doc.t7[0].now ?? 0, 0)}</b></span>
-            <span>{tr('Гүйцэтгэгчид төлөх')}<b>{num(nowRow?.now ?? 0, 0)}</b></span>
+            {/* ⚠️ 2026-10-06 (аудит): null ≠ 0 — мэдээлэлгүй дүнг «0» биш «—» */}
+            <span>{tr('Тайлант үеийн гүйцэтгэл')}<b>{gross == null ? '—' : num(gross, 0)}</b></span>
+            <span>{tr('Одоо санхүүжих')}<b>{fundNow == null ? '—' : num(fundNow, 0)}</b></span>
+            <span>{tr('Гүйцэтгэгчид төлөх')}<b>{nowRow?.now == null ? '—' : num(nowRow.now, 0)}</b></span>
           </div>
         )}
         {doc?.notes.map((n) => <p key={n} className={s.note}>⚠ {NOTE_UI(n)}</p>)}
@@ -244,7 +288,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
 
         <div className={s.foot}>
           <button type="button" className={s.btn} onClick={onClose} disabled={busy}>{tr('Хаах')}</button>
-          <button type="button" className={`${s.btn} ${s.pri}`} disabled={!doc || busy} onClick={() => void download()}>
+          <button type="button" className={`${s.btn} ${s.pri}`} disabled={!doc || busy || invalid} onClick={() => void download()}>
             {busy ? tr('Бэлтгэж байна…') : tr('PDF татах')}
           </button>
         </div>

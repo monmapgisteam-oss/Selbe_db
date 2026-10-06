@@ -209,7 +209,14 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   ajilBatlah: () => <AjilBatlah />,
   /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун талд газрын зураг тул `dim` хэрэгтэй */
   tailan: ({ dim, setDim }) => <Tailan dim={dim} setDim={setDim} />,
-  tuh: ({ dim, setDim }) => <Tuh dim={dim} setDim={setDim} />,
+  /* ⚠️ 2026-10-06: «Багцын хамаарал →» холбоос — эрхгүй хэрэглэгчид харагдахгүй */
+  tuh: ({ dim, setDim, setView, navScope }) => (
+    <Tuh
+      dim={dim}
+      setDim={setDim}
+      onOpenDeps={navScope === 'all' || navScope.includes('bagtsHamaaral') ? () => { setView('bagtsHamaaral'); } : undefined}
+    />
+  ),
   bagtsHamaaral: () => <BagtsHamaaral />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,

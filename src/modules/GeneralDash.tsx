@@ -379,9 +379,17 @@ export function GeneralDash({
    *
    * ⚠️ `data` нь `true` (утга биш): `Data`-гийн хүүхэд `cfCurve`-ийг ГАДНААС
    *    уншдаг тул дамжуулах өгөгдөл шаардлагагүй — хаалга нь зөвхөн ТӨЛӨВ.
+   *
+   * ⚠️ 2026-10-06: `finD` ХААЛГААС ХАСАГДАВ (аудит). Түүний цорын ганц
+   *    хэрэглэгч `housingMoneyByMonth` → `physPct` муруй бөгөөд тэр нь
+   *    НУУГДСАН (2026-09-10). `loadFinData` нь блокийн хуудасны түүх татдаг
+   *    удаан ачаалал тул хаалганд байхад ХАРАГДАХГҮЙ муруйн төлөө бүхэл
+   *    картыг удаашруулж, уначихвал картыг алдаагаар хаадаг байв.
+   *    `housingMoneyByMonth` нь `finD` бэлэн болтол ХООСОН Map буцаадаг тул
+   *    муруй түүнгүйгээр хэвийн зурагдана.
    */
   const cfGate = useMemo((): Async<true> => {
-    const srcs = [cfPlan, cf, hoQ, finD];
+    const srcs = [cfPlan, cf, hoQ];
     const bad = srcs.find((q) => q.state === 'error');
     if (bad && bad.state === 'error') {
       return { state: 'error', data: null, error: bad.error, retry: bad.retry };
@@ -389,7 +397,7 @@ export function GeneralDash({
     const wait = srcs.find((q) => q.state === 'loading');
     if (wait) return { state: 'loading', data: null, error: null };
     return { state: 'ready', data: true, error: null };
-  }, [cfPlan, cf, hoQ, finD]);
+  }, [cfPlan, cf, hoQ]);
   /* ⚠️ ТУСДАА сэлгүүр: хоёр чарт өөр өөр асуултад хариулдаг тул нэгийг
      хүснэгтээр харах нь нөгөөг ч сэлгэх ёсгүй. */
   const [cfMode, setCfMode] = useState<'chart' | 'table'>('chart');
@@ -805,6 +813,7 @@ export function GeneralDash({
             *     `cfTotal`       ← `cf`       (нийт төсвийн хуваарь)
             *     `ipcByMonth`    ← `hoQ`      (олгосон IPC)
             *     `housingMoneyByMonth` ← `finD` (орон сууцны биет явц)
+            *       ⚠️ 2026-10-06: `finD` хаалганд ОРОХГҮЙ — `cfGate`-ийн тайлбарыг үз.
             * `cf` ирээгүй байхад `cfTotal` нь 0 бөгөөд `cashflowCurve` нь
             * `total <= 0` үед `[]` буцаадаг (`gdash.ts:945`). Тиймээс `cfPlan`
             * түрүүлж ирэхэд хэрэглэгч «Сарын хуваарилалт бөглөгдөөгүй — Cashflow
@@ -2151,7 +2160,8 @@ function Timeline({
   return (
     <div className={g.tl}>
       {/* Уншилтын мөр — заасан (эсвэл сүүлийн) үеийн хоёр тоо НЭГ газар */}
-      <div className={g.tlHead}>
+      {/* ⚠️ 2026-10-06 (аудит): `aria-live` — гараар (←/→) үе солиход дэлгэц уншигч энэ мөрийг уншина */}
+      <div className={g.tlHead} aria-live="polite" aria-atomic="true">
         <span className={g.tlHeadLbl}>{cur.label}</span>
         {/* ⚠️ Төлөвлөгөө хэмжигдээгүй үед «0%» БИШ «—» (`null ≠ 0`) */}
         <b className={g.tlHeadPct}>{cur.pct == null ? '—' : pct(cur.pct)}</b>
@@ -2229,7 +2239,24 @@ function Timeline({
           )}
         </div>
 
-      <div className={g.tlPlot}>
+      {/* ⚠️ 2026-10-06 (аудит): ГАРААР ч уншигдана — урьд нь үеийн утга зөвхөн хулганы hover-оор
+          (`.tlCol`) солигддог байв. Tab-аар фокуслоод ←/→ үе, Home/End эхлэл/төгсгөл; утга нь
+          дээрх `aria-live` уншилтын мөрөнд. Фокус алдахад заагуур арилна (hover-тэй ижил). */}
+      <div
+        className={g.tlPlot}
+        tabIndex={0}
+        role="group"
+        aria-label={tr('Хугацааны график — үе сонгохдоо ← → товч')}
+        onBlur={() => setHov(null)}
+        onKeyDown={(e) => {
+          const c = hov != null && hov < n ? hov : n - 1;
+          const next = e.key === 'ArrowLeft' ? c - 1 : e.key === 'ArrowRight' ? c + 1
+            : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+          if (next == null) return;
+          e.preventDefault();
+          setHov(Math.max(0, Math.min(n - 1, next)));
+        }}
+      >
         <div className={g.tlBars}>
           {pts.map((p, i) => (
             <div

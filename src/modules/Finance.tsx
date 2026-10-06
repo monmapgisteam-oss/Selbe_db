@@ -1057,7 +1057,11 @@ async function loadFields(url: string): Promise<FieldDef[]> {
  * 4 хүсэлт (метадата ×2 + бүтэн хүснэгт ×2) кэшгүй дахин явдаг байв; мөрүүд нь
  * одоо `loadCashflowRows`/`loadIpcRows`-оор `loadFinData`-тай хуваалцагдана.
  */
-const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW']);
+/* ⚠️ 2026-10-06 (аудит): `keep` — хэсэгчилсэн үр дүн (метадата/сарын задаргаа унасан) КЭШЛЭГДЭХГҮЙ.
+   Урьд нь доорх «хоосон жагсаалтыг амжилт гэж кэшлэхгүй» тайлбартай зөрж `fieldsError` ·
+   `cfMonthsError`-той утга TTL турш үлдэж, дахин нээхэд ч алдааны мөр арилдаггүй байв. */
+const loadFinRegister = cached(loadFinRegisterRaw, LIVE_TTL, ['HO_IPC', 'CASHFLOW_NEW'],
+  (v) => !v.fieldsError && !v.cfMonthsError);
 
 async function loadFinRegisterRaw(): Promise<FinTables> {
   const [cfFields, ipcFields, cashflow, ipc, cfMonths] = await Promise.all([

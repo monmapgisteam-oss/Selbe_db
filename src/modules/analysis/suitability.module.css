@@ -60,6 +60,13 @@
 .loaderSub { color: var(--ink-3); margin: 4px 0 22px; font-size: 12px }
 .loaderMsg { margin-top: 10px; color: var(--ink-3); font-size: 11px }
 .loaderErr { color: var(--bad-ink) }
+/* ⚠️ 2026-10-06 (аудит): алдааны дэлгэцийн «Дахин оролдох» — урьд нь гарцгүй байв */
+.loaderRetry {
+  margin-top: 14px; padding: 6px 14px; font-size: 12px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.loaderRetry:hover { border-color: var(--data) }
 
 /* ---------- Topbar (горимын таб) ---------- */
 .topbar {

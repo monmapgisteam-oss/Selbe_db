@@ -26,6 +26,7 @@ import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
 import { progressSub } from '@/lib/gdash';
 import { renderPdfBase64, download } from '@/lib/emailReport';
+import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
 
 /* ══════════════════════ Өнгөний палитр ══════════════════════
  *
@@ -74,9 +75,12 @@ const td = (t: string | number, right = false, color?: string): TableCell =>
 const tdBold = (t: string | number, right = false): TableCell =>
   ({ text: T(String(t)), alignment: right ? 'right' : 'left', bold: true });
 
-/** Бүлгийн гарчиг — дугаар, нэр, доор нь нэг мөрийн тодорхойлолт */
-const h2 = (no: string, title: string, sub?: string): Content[] => [
-  { text: T(`${no}. ${title}`), style: 'h2' },
+/**
+ * Бүлгийн гарчиг — дугаар, нэр, доор нь нэг мөрийн тодорхойлолт.
+ * ⚠️ 2026-10-06 (аудит): дугаар ба нэр `execSections`-ээс — дэлгэцтэй (`ExecReport.tsx`) ГАНЦ эх.
+ */
+const h2 = (k: ExecSectionKey, sub?: string): Content[] => [
+  { text: T(`${execSectionNo(k)}. ${execSectionTitle(k)}`), style: 'h2' },
   ...(sub ? [{ text: T(sub), style: 'h2sub' } as Content] : []),
 ];
 /** Хүснэгт/зургийн дээрх нэр */
@@ -381,17 +385,11 @@ export async function buildExecDoc(
             width: 180,
             stack: [
               { text: tr('Тайлангийн бүтэц'), style: 'h3', margin: [0, 0, 0, 6] },
-              ...[
-                tr('Төслийн ерөнхий байдал'),
-                tr('Газар чөлөөлөлт ба талбайн бэлтгэл'),
-                tr('Орон сууцны багцуудын биет гүйцэтгэл'),
-                tr('Багцуудын санхүүжилт'), /* ⚠️ 2026-09-21: §4-ийн гарчигтай ижил */
-                tr('Зөвшөөрөл ба тусгай зөвшөөрлүүд'),
-                tr('Дүгнэлт ба зөвлөмж'),
-              ].map((t, i): Content => ({
+              /* ⚠️ 2026-10-06: `execSections` — бүлгийн гарчиг ба дэлгэцийн агуулгатай ГАНЦ эх */
+              ...execSections().map((sec): Content => ({
                 columns: [
-                  { width: 14, text: String(i + 1), fontSize: 9, color: BLUE, bold: true },
-                  { width: '*', text: T(t), style: 'tocItem' },
+                  { width: 14, text: String(sec.no), fontSize: 9, color: BLUE, bold: true },
+                  { width: '*', text: T(sec.title), style: 'tocItem' },
                 ],
               })),
               { text: tr('Хавсралт'), style: 'tocItem', color: MUTED, margin: [14, 2, 0, 0] },
@@ -403,7 +401,7 @@ export async function buildExecDoc(
 
       /* ══════════ 1. ТӨСЛИЙН ЕРӨНХИЙ БАЙДАЛ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('1', tr('Төслийн ерөнхий байдал'),
+      ...h2('overview',
         tr('Ажлын төрлөөр төсөв, гэрээлэлт, гүйцэтгэл ба захирамжийн эх үүсвэрийн бүтэц')),
       lead(tr('Төслийн нийт {0} төсвийн {1}-тай тэнцэх дүнгээр гэрээ байгуулагдсан бөгөөд ажлын хэмжээгээрээ {2} төрөлд хуваагдана.{3}',
         money(g.budget),
@@ -453,7 +451,7 @@ export async function buildExecDoc(
 
       /* ══════════ 2. ГАЗАР ЧӨЛӨӨЛӨЛТ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('2', tr('Газар чөлөөлөлт ба талбайн бэлтгэл'),
+      ...h2('land',
         tr('{0} нэгж талбар, {1} м² нийт талбай', num(g.land.total), num(g.land.areaM2))),
       lead(tr('Газар чөлөөлөлт {0}-д хүрсэн ({1} / {2} нэгж талбар бүрэн чөлөөлөгдсөн).{3}',
         g.landPct == null ? '—' : pct(g.landPct, 1), num(g.land.cleared), num(g.land.total),
@@ -492,7 +490,7 @@ export async function buildExecDoc(
 
       /* ══════════ 3. БИЕТ ГҮЙЦЭТГЭЛ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('3', tr('Орон сууцны багцуудын биет гүйцэтгэл'),
+      ...h2('prog',
         tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), num(p.households))),
       lead(tr('Барилга угсралтын нийт биет гүйцэтгэл {0}, төлөвлөсөн {1}-тэй харьцуулахад {2} нэгж хувийн зөрүүтэй байна.{3}',
         p.actual == null ? '—' : pct(p.actual, 1),
@@ -532,7 +530,7 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'before' },
       /* ⚠️ 2026-09-21: «гэрээт багц» гэж БҮХ мөрийг нэрлэхээ болив — `f.rows` нь
          гэрээгүй (зөвхөн төсөвтэй) багцыг ч агуулна; гэрээт тоо = `contracted`. */
-      ...h2('4', tr('Багцуудын санхүүжилт'),
+      ...h2('fin',
         tr('{0} багц ({1} гэрээт) — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна',
           num(f.rows.length), num(f.rows.filter((r) => r.contracted).length))),
       lead(tr('Гэрээлсэн нийт дүнгийн {0}-д санхүүжилт олгогдсон байна.{1}{2}',
@@ -589,7 +587,7 @@ export async function buildExecDoc(
 
       /* ══════════ 5. ЗӨВШӨӨРӨЛ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('5', tr('Зөвшөөрөл ба тусгай зөвшөөрлүүд'),
+      ...h2('zov',
         z ? tr('{0} багцад хамаарах {1} зөвшөөрлийн явц', num(z.byBagts.length), num(z.total)) : undefined),
       ...(!z ? [note(tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ хэсэг мэдээлэлгүй.'))] : [
         lead(tr('Нийт {0} зөвшөөрлийн {1} нь олгогдсон, {2} нь хариу хүлээгдэж байгаа бөгөөд {3} зөвшөөрөл татгалзагдсан байна.',
@@ -625,9 +623,13 @@ export async function buildExecDoc(
 
       /* ══════════ 6. ДҮГНЭЛТ БА ЗӨВЛӨМЖ ══════════ */
       { text: '', pageBreak: 'before' },
-      ...h2('6', summary ? tr('AI дүгнэлт') : tr('Дүгнэлт ба зөвлөмж'),
+      ...h2('summary',
         tr('Тайланд илэрсэн гол асуудал бүрт харгалзах үйл ажиллагааны зөвлөмж')),
-      ...(summary ? summaryBlocks(summary) : findingBlocks(findings, true, appendix)),
+      /* ⚠️ 2026-10-06 (аудит): AI дүгнэлт тооцоолсон дүгнэлтийг ОРЛОХГҮЙ, НЭМЭГДЭНЭ — урьд нь
+         AI дүгнэлттэй PDF-д хүндрэлийн өнгөт дүгнэлт, зөвлөмж ба «хавсралт N» заалт алга болдог
+         байв (дэлгэцтэй ижил: дүгнэлт үргэлж, AI дүгнэлт түүний ДАРАА). */
+      ...findingBlocks(findings, true, appendix),
+      ...(summary ? [{ text: tr('AI дүгнэлт'), style: 'h3', margin: [0, 16, 0, 4] } as Content, ...summaryBlocks(summary)] : []),
 
       /* ══════════ ХАВСРАЛТ ══════════
          ⚠️ 2026-09-21: дараалал ба дугаар `execAppendix`-ээс — дүгнэлт дэх

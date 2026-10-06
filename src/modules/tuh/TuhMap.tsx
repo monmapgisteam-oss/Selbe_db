@@ -35,12 +35,19 @@ export type MapSel = {
   housing: boolean;
 } | null;
 
-export function TuhMap({ dim, setDim, sel, packs, onPickPkg }: {
+export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPkg }: {
   dim: Dim;
   setDim: (d: Dim) => void;
   sel: MapSel;
   /** `buildPacks`-ийн үр дүн — орон сууцны блокийн шүүлт (OID) эндээс */
   packs: Pack[];
+  /**
+   * Барилгын давхаргын (`useBuildings`) төлөв — `packs` нь `loading`/`error` үед ХООСОН.
+   * ⚠️ 2026-10-06 (аудит): урьд нь энэ үед орон сууцны багц сонговол «Энэ багц газрын
+   *    зурагт давхаргагүй» гэж ХУДАЛ бичээд БҮХ блок руу нисдэг байв. Одоо «…» / алдаа,
+   *    нисэлт блок ирэх хүртэл хүлээнэ. Өгөөгүй бол `ready` (хуучин зан).
+   */
+  packsState?: 'loading' | 'ready' | 'error';
   /** Блок дээр товшиход тэр блокийн багц (`bagtsKey`); хоосон газар → `null` */
   onPickPkg: (pkgKey: string | null) => void;
 }) {
@@ -91,10 +98,14 @@ export function TuhMap({ dim, setDim, sel, packs, onPickPkg }: {
      Одоо зөвхөн давхарга/шүүлт өөрчлөгдөхөд л нисэнэ. */
   const zoomLayer = target?.layerIds[0] ?? '';
   const zoomWhere = target ? (target.where ?? '1=1') : '';
+  /** Орон сууцны багц сонгосон ч блокууд хараахан ирээгүй/унасан — бай тодорхойгүй (`packsState`-ийн ⚠️) */
+  const pending = !!sel?.housing && !!sel.pkgKey && packsState !== 'ready';
   useEffect(() => {
+    /* ⚠️ 2026-10-06: бай тодорхойгүй үед БҮХ блок руу нисэхгүй — блок ирмэгц `zoomWhere` солигдож нисэнэ */
+    if (pending) return;
     if (zoomLayer) zoomToWhere(zoomLayer, zoomWhere);
     else zoomToWhere(BLOCK_LAYER, '1=1');
-  }, [zoomLayer, zoomWhere, zoomToWhere]);
+  }, [zoomLayer, zoomWhere, zoomToWhere, pending]);
 
   const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);
@@ -156,7 +167,11 @@ export function TuhMap({ dim, setDim, sel, packs, onPickPkg }: {
               {l.label} <b>{l.range}</b>
             </span>
           ))}
-        {sel && !target && <span className={s.mapLegendItem}>{tr('Энэ багц газрын зурагт давхаргагүй')}</span>}
+        {sel && !target && (pending
+          ? <span className={s.mapLegendItem} role={packsState === 'error' ? 'alert' : undefined}>
+            {packsState === 'error' ? tr('Барилгын блок уншигдсангүй') : '…'}
+          </span>
+          : <span className={s.mapLegendItem}>{tr('Энэ багц газрын зурагт давхаргагүй')}</span>)}
       </div>
     </div>
   );

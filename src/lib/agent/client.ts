@@ -17,6 +17,7 @@ import { AGENT_TOOLS, describeCall, runTool } from './tools';
 import { t as tr } from '@/lib/i18nCore';
 import { buildSystemPrompt, type AgentScope } from './registry';
 import { AUTH } from '@/lib/services';
+import { ensureFreshToken } from '@/lib/authToken';
 
 /* ── Anthropic-ийн агуулгын блокууд (реле дамжуулдаг хэлбэр) ── */
 
@@ -86,6 +87,38 @@ const HEALTH_TIMEOUT_MS = 8_000;
  */
 const RELAY_TIMEOUT_MS = 240_000;
 
+/**
+ * ⚠️ 2026-10-06 (аудит): НӨӨЦ ХОСТ руу ШИЛЖИХЭЭС ӨМНӨХ БОГИНО ШАЛГАЛТ. Урьд нь унжсан
+ *    (хариугүй) хост дээр `RELAY_TIMEOUT_MS` (240с) бүтэн хүлээгээд л дараагийнх руу
+ *    шилждэг байв — хоёр хосттой үед хэрэглэгч 4 минут «Бодож байна…» хардаг. `/chat` нь
+ *    хариугаа бүрэн бэлдсэний ДАРАА л толгойгоо илгээдэг тул түүнд богино timeout тавих
+ *    БОЛОМЖГҮЙ (хууль ёсны удаан хариу тасарна). Тиймээс олон хосттой үед хүсэлтийн
+ *    ӨМНӨ `/health`-ийг `HEALTH_TIMEOUT_MS`-ээр шалгаж, хариугүй бол шууд дараагийнх руу;
+ *    сүүлд амьд гэж батлагдсан хост (`HEALTH_FRESH_MS` дотор) шалгалтгүй явна.
+ *    Жинхэнэ хариуны хүлээлт урт хэвээр (240с).
+ */
+const HEALTH_FRESH_MS = 60_000;
+const aliveAt = new Map<string, number>();
+
+/** Нэг хостын `/health` — `HEALTH_TIMEOUT_MS`-ээр хязгаарлагдсан; амьд бол `aliveAt` тэмдэглэнэ */
+async function probeHealth(base: string, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
+  const ac = new AbortController();
+  const stop = () => ac.abort();
+  const tm = setTimeout(stop, HEALTH_TIMEOUT_MS);
+  signal?.addEventListener('abort', stop, { once: true });
+  try {
+    const res = await fetch(`${base}/health`, { signal: ac.signal });
+    if (res.ok) aliveAt.set(base, Date.now());
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(tm);
+    signal?.removeEventListener('abort', stop);
+  }
+}
+
 export async function relayFetch(path: string, init: RequestInit): Promise<Response> {
   if (!AGENT_APIS.length) throw new Error(tr('AI үйлчилгээний хаяг тохируулагдаагүй байна.'));
   const n = Math.max(AGENT_APIS.length, 1);
@@ -93,18 +126,27 @@ export async function relayFetch(path: string, init: RequestInit): Promise<Respo
   for (let k = 0; k < n; k++) {
     const i = (active + k) % n;
     const last = k === n - 1;
+    const base = AGENT_APIS[i] ?? '';
+    /* ⚠️ 2026-10-06: шилжих боломжтой (сүүлийнх биш) хостыг эхлээд богино шалгана (дээрх ⚠️) */
+    if (!last && Date.now() - (aliveAt.get(base) ?? 0) > HEALTH_FRESH_MS) {
+      const ok = await probeHealth(base, init.signal ?? undefined);
+      if (init.signal?.aborted) throw init.signal.reason ?? new DOMException('aborted', 'AbortError');
+      if (!ok) { lastErr = new Error(`relay ${base} /health`); continue; }
+    }
     const ac = new AbortController();
     const stop = () => ac.abort(init.signal?.reason);
     if (init.signal?.aborted) stop();
     else init.signal?.addEventListener('abort', stop, { once: true });
     const tm = setTimeout(() => ac.abort(new DOMException(`timeout ${RELAY_TIMEOUT_MS}ms`, 'TimeoutError')), RELAY_TIMEOUT_MS);
     try {
-      const res = await fetch(`${AGENT_APIS[i] ?? ''}${path}`, { ...init, signal: ac.signal });
-      if (!last && FAILOVER_STATUS.has(res.status)) continue;
+      const res = await fetch(`${base}${path}`, { ...init, signal: ac.signal });
+      if (!last && FAILOVER_STATUS.has(res.status)) { aliveAt.delete(base); continue; }
       active = i;
+      aliveAt.set(base, Date.now());
       return res;
     } catch (e) {
       if (init.signal?.aborted) throw e;
+      aliveAt.delete(base);
       lastErr = e;
     } finally {
       clearTimeout(tm);
@@ -147,9 +189,14 @@ const BOT_SECRET = process.env.AGENT_BOT_SECRET;
 /* ⚠️ 2026-09-17: экспортлогдсон — «Удирдлагын тайлан»-гийн AI дүгнэлт
    (`execReport.askExecSummary`) хэрэгсэлгүй ГАНЦ хүсэлтээр реле рүү явдаг
    тул `ask()`-ийн гогцоог хэрэглэхгүй, харин ижил нэвтрэлтийн толгой хэрэгтэй. */
-export async function arcgisToken(): Promise<string | null> {
+export async function arcgisToken(force = false): Promise<string | null> {
   if (!AUTH.appId) return null;
   try {
+    /* ⚠️ 2026-10-06 (аудит): токеныг ШИНЭЧИЛЖ уншина — таб нуугдах/компьютер унтахад JS API-ийн
+       цаг хэмжигч хоцорч `findCredential().token` ХУГАЦАА ДУУССАН токен буцаадаг
+       (`authToken.ensureFreshToken`-ийн ⚠️). Урьд нь реле 401 буцааж асуулт унадаг байв.
+       Шинэчлэлт унавал чимээгүй — реле өөрөө татгалзаж, доорх 401-ийн давталт нэг удаа оролдоно. */
+    await ensureFreshToken(force);
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const url = `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
     return esriId.findCredential(url)?.token ?? null;
@@ -173,8 +220,8 @@ async function callRelay(
   body: { system: string; messages: ApiMessage[]; tools: typeof AGENT_TOOLS },
   signal?: AbortSignal,
 ): Promise<RelayReply> {
-  const token = await arcgisToken();
-  const res = await relayFetch('/chat', {
+  const json = JSON.stringify(body);
+  const post = (token: string | null) => relayFetch('/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -185,9 +232,18 @@ async function callRelay(
       //    батална. Browser build-д `BOT_SECRET` нь `undefined` — толгой алга.
       ...(BOT_SECRET ? { 'x-bot-secret': BOT_SECRET } : {}),
     },
-    body: JSON.stringify(body),
+    body: json,
     signal,
   });
+  const token = await arcgisToken();
+  let res = await post(token);
+  /* ⚠️ 2026-10-06 (аудит): реле 401 — токен хуучирсан байж болно: ХҮЧЭЭР шинэчилж, токен
+     СОЛИГДСОН бол НЭГ удаа дахин илгээнэ (`query.ts`-ийн 498-ийн давталттай ижил зарчим).
+     Токен өөрчлөгдөөгүй бол давтах нь утгагүй — доорх алдаа хэвээр. */
+  if (res.status === 401 && token && !signal?.aborted) {
+    const fresh = await arcgisToken(true);
+    if (fresh && fresh !== token) res = await post(fresh);
+  }
   const reply = (await res.json().catch(() => ({}))) as RelayReply;
   if (!res.ok) {
     throw new Error(
@@ -209,21 +265,10 @@ async function callRelay(
 export async function relayAlive(signal?: AbortSignal): Promise<boolean> {
   for (let i = 0; i < AGENT_APIS.length; i++) {
     if (signal?.aborted) return false;
-    const ac = new AbortController();
-    const stop = () => ac.abort();
-    const tm = setTimeout(stop, HEALTH_TIMEOUT_MS);
-    signal?.addEventListener('abort', stop, { once: true });
-    try {
-      const res = await fetch(`${AGENT_APIS[i]}/health`, { signal: ac.signal });
-      if (res.ok) {
-        active = i;
-        return true;
-      }
-    } catch {
-      // Дараагийн хост
-    } finally {
-      clearTimeout(tm);
-      signal?.removeEventListener('abort', stop);
+    /* ⚠️ 2026-10-06: `probeHealth` — `relayFetch`-ийн урьдчилсан шалгалттай НЭГ биелэлт */
+    if (await probeHealth(AGENT_APIS[i], signal)) {
+      active = i;
+      return true;
     }
   }
   return false;

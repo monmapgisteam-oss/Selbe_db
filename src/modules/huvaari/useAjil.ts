@@ -17,6 +17,7 @@ import {
 } from './adds';
 import type { ADraft, Draft, ResDraft } from './types';
 import { remapOids } from './util';
+import { normCell } from '@/modules/sheet/paste';
 
 /**
  * НЭМЭЛТ АЖИЛ — локал ноорог (`adds`) · илгээх · засах · татах · буцаагдсаныг буулгах
@@ -436,9 +437,15 @@ export function useAjil({
   const readForm = useCallback((): { no: string; work: string; vol: number | null; unit: number | null } | null => {
     const no = addForm.no.trim();
     const work = addForm.work.trim();
+    /* ⚠️ 2026-10-06 аудит: гүйцэтгэлийн нүд · `PvCell`-тэй ИЖИЛ задлагч (`paste.normCell`). Урьд нь
+       `.replace(',', '.')` → `Number()` тул «1,250» ЧИМЭЭГҮЙ 1.25 болж (1000 дахин бага), сөрөг
+       обьём/өртөг батлуулахаар илгээгддэг байв. Тодорхойгүй (`1,250`) · тоо биш · сөрөг → `NaN`
+       (доор ИЛ мэдэгдэнэ); хоосон → `null` (мэдээлэлгүй, 0 биш). */
     const nn = (v: string) => {
-      const t = v.trim().replace(',', '.');
-      return t === '' ? null : Number.isFinite(Number(t)) ? Number(t) : NaN;
+      const t0 = v.trim();
+      if (t0 === '') return null;
+      const t = normCell(t0);
+      return t === null || Number(t) < 0 ? NaN : Number(t);
     };
     const vol = nn(addForm.vol);
     const unit = nn(addForm.unit);
@@ -447,7 +454,10 @@ export function useAjil({
       setAjErr(tr('№ нь бүхэл тоо байх ёстой (жишээ «12») — бутархай дугаар нь бүлгийн мөрийг заадаг тул ажлын тоололд орохгүй.'));
       return null;
     }
-    if (Number.isNaN(vol) || Number.isNaN(unit)) { setAjErr(tr('Обьём ба Нэгж өртөг нь тоон утга байх ёстой.')); return null; }
+    if (Number.isNaN(vol) || Number.isNaN(unit)) {
+      setAjErr(tr('Обьём ба Нэгж өртөг нь сөрөг биш тоо байх ёстой — «1,250» мэтийг тодорхойгүй тул 1250 эсвэл 1.25 гэж бичнэ үү.'));
+      return null;
+    }
     setAjErr('');
     return { no, work, vol, unit };
   }, [addForm]);

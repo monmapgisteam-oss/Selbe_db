@@ -18,16 +18,16 @@ import {
   TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, daysBetween, elapsedPct,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
-import { lz, type TuhModel, type TuhRow } from './model';
+import { lz, depRows, type TuhModel, type TuhRow } from './model';
 import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
 /* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
 import { Section as Card } from '@/components/ui';
 /* ⚠️ Системийн «Гүйцэтгэлийн явц» график — ТУХ өөрийн график зурахгүй (2026-09-30,
    хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
+/* ⚠️ 2026-10-06 (аудит): pp-ийн хэлбэр нь «Гүйцэтгэл» (PkgProg)-тэй НЭГ функц — `pkgShared.pp` */
+import { pp } from '@/modules/pkgShared';
 import s from '../tuh.module.css';
-
-const pp = (v: number | null) => (v == null ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)} pp`);
 
 export function StatusChip({ st }: { st: TuhStatus }) {
   const m = statusMeta(st);
@@ -158,6 +158,37 @@ export function ganttDomain(rows: { start: number | null; end: number | null; ex
   return { from: Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1), to: Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + 1, 1) };
 }
 
+/**
+ * «Улсын комисст бэлэн байдал»-ын урьдчилсан нөхцөлийн 4 эгнээ — ТУХ-ын бүлэг.
+ * ⚠️ 2026-10-06 (аудит): эгнээ бүр = тэр бүлгийн, орон сууцны багцын УРД талын (`depRows(…, 'up')`)
+ *    багцууд — «Багцын хамаарал»-д бүртгэсэн холбоосоос. Урьд нь хатуу «—» байв.
+ */
+export const PREREQ_LANES: { group: TuhGroup; label: () => string }[] = [
+  { group: 'networks', label: () => tr('Инженерийн шугам сүлжээ') },
+  { group: 'energy', label: () => tr('Эрчим хүч, холбоо') },
+  { group: 'heat', label: () => tr('Дулааны эх үүсвэр') },
+  { group: 'external', label: () => tr('Гадна тохижилт, өндөржилт') },
+];
+
+/**
+ * Хамааралтай багцуудын жагсаалт — код (дарахад нээгдэнэ) + гүйцэтгэл.
+ * `rows === null` — хамаарал ирээгүй: ачаалж буй бол «…», эс бөгөөс «—» (уншигдаагүй).
+ * Хоосон жагсаалт — холбоо БҮРТГЭГДЭЭГҮЙ («—»).
+ */
+export function DepList({ rows, loading, onOpen }: { rows: TuhRow[] | null; loading: boolean; onOpen: (k: string) => void }) {
+  if (rows == null) return <>{loading ? '…' : '—'}</>;
+  if (!rows.length) return <>—</>;
+  return (
+    <span className={s.chips}>
+      {rows.map((x) => (
+        <button key={x.p.key} type="button" className={s.rowLink} onClick={() => onOpen(x.p.key)}>
+          {x.p.code} <small>{pct(x.progress)}</small>
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export function GanttLegend() {
   return (
     <Legend items={[
@@ -168,13 +199,15 @@ export function GanttLegend() {
   );
 }
 
-export function Overview({ m, contractTotal, onOpen, onRetry }: {
+export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
   m: TuhModel;
   /** «Гэрээний нийт дүн» — `loadBudget().contract` (бусад харагдацтай ижил эх) */
   contractTotal: number | null;
   onOpen: (key: string) => void;
   /** ⚠️ 2026-10-01: уншигдаагүй эх сурвалжийг дахин татах (`Tuh.retryFailed`) */
   onRetry?: () => void;
+  /** ⚠️ 2026-10-06: «Багцын хамаарал» харагдац руу (`Tuh.onOpenDeps`) — өгөөгүй бол холбоосгүй */
+  onOpenDeps?: () => void;
 }) {
   const [grp, setGrp] = useState<TuhGroup | 'all'>('all');
   const [q, setQ] = useState('');
@@ -240,7 +273,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
           <span className={s.statNote}>{tr('{0} багц', num(m.rows.length))}</span>
         </div>
         <div className={s.stat}>
-          <span className={s.statLabel}>{tr('Орон сууцны гүйцэтгэл')}</span>
+          {/* ⚠️ 2026-10-06 (аудит): утга нь ЗӨРҮҮ (pp) тул шошго ч тийм — урьд нь «Орон сууцны
+              гүйцэтгэл» гэж бичээд хувь биш зөрүү харуулдаг байв. Хоёр тал нэг жинтэй (`model.hero`-ийн ⚠️). */}
+          <span className={s.statLabel}>{tr('Орон сууцны гүйцэтгэл төлөвлөгөөнөөс (pp)')}</span>
           {(() => {
             const d = m.hero.actual != null && m.hero.planContract != null ? m.hero.actual - m.hero.planContract : null;
             return <span className={`${s.statValue} ${d != null && d < 0 ? s.bad : ''}`}>{lz(m, 'cfPlan')(pp(d))}</span>;
@@ -323,14 +358,32 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
                   <td className={`${s.num} ${r.delay != null && r.delay > 0 ? s.bad : ''}`}>
                     {lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}
                   </td>
-                  <td>—</td><td>—</td><td>—</td><td>—</td>
+                  {(() => {
+                    /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-аас (`PREREQ_LANES`-ийн ⚠️) */
+                    const up = depRows(m, r.p.key, 'up');
+                    return PREREQ_LANES.map((l) => (
+                      <td key={l.group}>
+                        <DepList rows={up && up.filter((x) => x.p.group === l.group)} loading={m.loading.has('deps')} onOpen={onOpen} />
+                      </td>
+                    ));
+                  })()}
                 </tr>
               ))}
               {!housing.length && <EmptyRow cols={8} />}
             </tbody>
           </table>
         </div>
-        <p className={s.note}>{tr('Салбар багцын хамаарал системд бүртгэгдээгүй тул нүднүүд хоосон. Мөр дээр дарж дэлгэрэнгүйг нээнэ.')}</p>
+        {/* ⚠️ 2026-10-06 (аудит): урьд нь «хамаарал системд бүртгэгдээгүй» гэж ХУДАЛ бичдэг байв —
+            одоо «Багцын хамаарал»-ын бүртгэлээс; «—» = холбоо бүртгээгүй. */}
+        <p className={s.note}>
+          {tr('Салбар багцууд «Багцын хамаарал» хэсэгт бүртгэсэн холбоосоос; «—» — холбоо бүртгээгүй. Код дээр дарж дэлгэрэнгүйг нээнэ.')}
+          {onOpenDeps && (
+            <>
+              {' '}
+              <button type="button" className={s.rowLink} onClick={onOpenDeps}>{tr('Багцын хамаарал')} →</button>
+            </>
+          )}
+        </p>
       </Section>
 
       {/* ── IPC-ийн явц, санхүүжилт ── */}
@@ -447,6 +500,14 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
                         </span>
                       ) : lz(m, 'cfPlan')('—') === '…' && <span className={s.cardGap}>…</span>}
                     </div>
+                    {/* ⚠️ 2026-10-06 (аудит): төлөв (чип) нь гүйцэтгэгчийн хуваариар тогтсон бол ТЭР
+                        зөрүүг ч харуулна — урьд нь чип «Хоцорсон» атал карт зөвхөн гэрээний зөрүүг
+                        (ногоон байж болно) харуулж, хоёр нь зөрдөг байв (`TuhRow.statusBasis`). */}
+                    {r.statusBasis === 'contractor' && r.gapContractor != null && (
+                      <span className={s.cardWeek}>
+                        {tr('Гүйцэтгэгчийн хуваариас')} <b className={r.gapContractor < 0 ? s.bad : s.good}>{pp(r.gapContractor)}</b>
+                      </span>
+                    )}
                     {r.week != null && Math.abs(r.week) >= 0.05 && (
                       <span className={s.cardWeek}>{tr('7 хоногт')} <b className={r.week > 0 ? s.good : s.bad}>{pp(r.week)}</b></span>
                     )}

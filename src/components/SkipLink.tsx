@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore, type MouseEvent } from 'react';
 
 import { t as tr, getDictEpoch, getLocale, getServerLocale, subscribeDict, subscribeLocale } from '@/lib/i18nCore';
 
@@ -34,8 +34,29 @@ export function SkipLink() {
   useSyncExternalStore(subscribeDict, getDictEpoch, getDictEpoch);
 
   return (
-    <a href="#panel" className="skip">
+    <a href="#main" className="skip" onClick={jump}>
       {mounted ? tr('Дашбоард руу үсрэх') : 'Дашбоард руу үсрэх'}
     </a>
   );
+}
+
+/**
+ * ⚠️ 2026-10-06 (аудит): ЗОРИЛТ ҮРГЭЛЖ БАЙНА, `#` НАВИГАЦИ ХИЙХГҮЙ.
+ *    Урьд нь `href="#panel"` — тэр нь зөвхөн «Ерөнхий төлөвлөгөө» маягийн самбартай
+ *    харагдацад байсан тул бусад хуудсанд холбоос ЮУ Ч хийдэггүй байв. Мөн `#` навигаци
+ *    `popstate` үүсгэж `Portal.onPop` харагдацыг «дахин сонгож» хэрэглэгчийн давхарга,
+ *    сонголт, шүүлтийг арилгадаг байв. Одоо: `#main` (Portal-ын бүтэн дэлгэцийн хүрээ)
+ *    → `#panel` (самбартай харагдац) → анхны `<main>` (нүүр, модулиуд) дарааллаар олж,
+ *    түүхэнд бичилгүй ФОКУСЛОНО. Модулиуд өөрсдийн `<main>`-тэй тул давхар `<main>` нэмэхгүй.
+ */
+function jump(e: MouseEvent<HTMLAnchorElement>): void {
+  const el = document.getElementById('main') ?? document.getElementById('panel') ?? document.querySelector('main');
+  if (!(el instanceof HTMLElement)) return; // зорилтгүй — хөтчийн анхдагч (хор хөнөөлгүй)
+  e.preventDefault();
+  if (!el.hasAttribute('tabindex')) {
+    el.setAttribute('tabindex', '-1');
+    el.addEventListener('blur', () => el.removeAttribute('tabindex'), { once: true });
+  }
+  el.focus();
+  el.scrollIntoView({ block: 'start' });
 }

@@ -39,6 +39,7 @@ import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
 import { buildPacks, blockCount } from '@/modules/Bagts';
 import { loadFinData, projectPlanOf } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
+import { blockLevelCounts } from '@/modules/pkgShared';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
@@ -335,7 +336,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   }
 
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (ижил `buildingKey`) НЭГ блок */
-  const withData = uniqueBlocks(bld.rows).filter((b) => b.progress != null);
+  /* ⚠️ 2026-10-06 (аудит): түвшний тархалт — «Гүйцэтгэл»-ийн «Блокийн төлөв»-тэй НЭГ функц
+     (`pkgShared.blockLevelCounts`): тайлагнаагүй блок 0–25%-д ТООЛОГДОНО (2026-10-01-ний
+     «тайлагнаагүй блок = 0%» шийдвэр). Урьд нь энд зөвхөн утгатай блок тоологдож, хоёр
+     дэлгэц нэг 113 блокийг өөр тархалтаар харуулдаг байв. Тайлангүйн тоо `prog.noData`-д ил. */
+  const lvl = blockLevelCounts(uniqueBlocks(bld.rows));
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
@@ -357,9 +362,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
         key: p.key, name: p.name, kind: p.kind, blocks: blockCount(p),
         households: p.households, progress: p.progress,
       })),
-      levels: PROGRESS_LEVELS.map((l) => ({
+      levels: PROGRESS_LEVELS.map((l, i) => ({
         label: l.label, range: l.range, color: l.color,
-        n: withData.filter((b) => b.progress! >= l.min && b.progress! < l.max).length,
+        n: lvl.counts[i],
       })),
     },
     fin: {

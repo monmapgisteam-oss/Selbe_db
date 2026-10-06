@@ -206,9 +206,18 @@ export const LOCALE_SWITCH_RELOADS: boolean = false;
 /**
  * Хэл солих. Сонголтыг хадгалаад, дээрх тугаас хамааран хуудсыг дахин
  * ачаална ЭСВЭЛ store-оо шинэчилж захиалагчдад мэдэгдэнэ.
+ *
+ * ⚠️ 2026-10-06 (аудит): ҮР ДҮНГЭЭ БУЦААНА — `true` = хэл солигдсон (эсвэл аль хэдийн тэр
+ *    хэл), `false` = толь татагдсангүй ЭСВЭЛ хүлээх хооронд өөр хэл хүсэгдсэн. Урьд нь
+ *    `void` байсан тул англи толины chunk унахад товч ЮУ Ч болоогүй мэт чимээгүй үлдэж,
+ *    хэрэглэгч шалтгааныг мэдэхгүй байв (`LocaleToggle` одоо ачаалж буй/унасан төлөв
+ *    харуулна). Синхрон замын зан ӨӨРЧЛӨГДӨӨГҮЙ: толь бэлэн бол дуудалт дотроо солино.
  */
-export function setLocale(next: Locale): void {
-  if (next === wanted) return;
+export function setLocale(next: Locale): Promise<boolean> {
+  if (next === wanted) {
+    /* Ижил хүсэлт ачаалж байгаа бол түүнийг хүлээнэ */
+    return pendingSwitch && pendingSwitch.to === next ? pendingSwitch.p : Promise.resolve(current === next);
+  }
   wanted = next;
   try {
     localStorage.setItem(LOCALE_KEY, next);
@@ -217,26 +226,37 @@ export function setLocale(next: Locale): void {
   }
   if (LOCALE_SWITCH_RELOADS) {
     location.reload();
-    return;
+    return Promise.resolve(true);
   }
   /* ⚠️ 2026-10-04: толь бэлэн (эсвэл mn) бол урьдын адил СИНХРОН солино. Үгүй бол
      эхлээд толийг ачаалаад ДАРАА НЬ солино — хагас орчуулагдсан дэлгэц гарахгүй.
      Хүлээх хооронд хэрэглэгч буцааж сольсон бол (`wanted`) хуучин хүсэлтийг хэрэгжүүлэхгүй.
      Толь татагдаж чадаагүй бол хэл СОЛИГДОХГҮЙ (монгол дэлгэц `lang=en`-тэй холилдохгүй). */
   if (next !== DEFAULT_LOCALE && !DICTS[next]) {
-    loadLocaleDict(next).then(
-      () => { if (wanted === next) applyLocale(next); },
+    const p = loadLocaleDict(next).then(
+      () => {
+        if (wanted !== next) return false;
+        applyLocale(next);
+        return true;
+      },
       (e: unknown) => {
         console.warn('[selbe] хэлний толь татагдсангүй:', e);
-        if (wanted !== next) return;
+        if (wanted !== next) return false;
         wanted = current;
         try { localStorage.setItem(LOCALE_KEY, current); } catch { /* хувийн горим */ }
+        return false;
       },
-    );
-    return;
+    ).finally(() => { if (pendingSwitch?.p === p) pendingSwitch = null; });
+    pendingSwitch = { to: next, p };
+    return p;
   }
+  pendingSwitch = null;
   applyLocale(next);
+  return Promise.resolve(true);
 }
+
+/** Ачаалж буй хэл солилт — ижил хэлийг дахин дарахад шинэ хүсэлт эхлүүлэхгүй */
+let pendingSwitch: { to: Locale; p: Promise<boolean> } | null = null;
 
 function applyLocale(next: Locale): void {
   if (next === current) return;

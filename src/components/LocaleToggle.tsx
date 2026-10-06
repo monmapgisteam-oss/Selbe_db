@@ -1,7 +1,9 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import { useLocale } from '@/lib/i18n';
-import { t as tr, loadLocaleDict } from '@/lib/i18nCore';
+import { t as tr, loadLocaleDict, getLocale } from '@/lib/i18nCore';
+import type { Locale } from '@/lib/localeKey';
 import s from './locale.module.css';
 
 /**
@@ -57,9 +59,26 @@ export function confirmLocaleSwitch(): boolean {
  * ⚠️ 2026-09-30: `confirmLocaleSwitch` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️).
  */
 export function LocaleToggle({ className }: { className?: string }) {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale: switchLocale } = useLocale();
   const next = locale === 'mn' ? 'en' : 'mn';
-  const label = locale === 'mn' ? 'Switch to English' : tr('Монгол хэл рүү шилжих');
+  /* ⚠️ 2026-10-06 (аудит): толь ачаалж буй / татагдаагүй төлөв — урьд нь chunk унахад
+     товч ЮУ Ч болоогүй мэт чимээгүй үлддэг байв (`i18nCore.setLocale`-ийн ⚠️). */
+  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const seq = useRef(0);
+  /* ⚠️ Нэр нь `setLocale` хэвээр — `LocaleToggle.ui.check.mjs` товчны `onClick`-ийг
+     «confirmLocaleSwitch()-ийн ДАРАА setLocale(next)» хэлбэрээр шалгадаг. */
+  const setLocale = (to: Locale) => {
+    const my = ++seq.current;
+    setState('busy');
+    void switchLocale(to).then(
+      (ok) => { if (my === seq.current) setState(ok || getLocale() === to ? 'idle' : 'failed'); },
+      () => { if (my === seq.current) setState('failed'); },
+    );
+  };
+  /* Унах боломжтой нь ЗӨВХӨН англи толь (монгол нь үндсэн, ачаалалтгүй) */
+  const label = state === 'failed'
+    ? tr('Англи хэлний толь татагдсангүй — холболтоо шалгаад дахин дарна уу')
+    : locale === 'mn' ? 'Switch to English' : tr('Монгол хэл рүү шилжих');
   /* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — товч
      руу заахад/фокуслахад урьдчилан татна, дарахад солилт шууд болно. Алдааг залгина:
      дарахад `setLocale` өөрөө дахин оролдоно. */
@@ -73,10 +92,11 @@ export function LocaleToggle({ className }: { className?: string }) {
       onPointerEnter={warm}
       onFocus={warm}
       aria-label={label}
+      aria-busy={state === 'busy' || undefined}
       title={label}
     >
-      <span className={s.code} aria-hidden>
-        {next.toUpperCase()}
+      <span className={s.code} aria-hidden style={state === 'failed' ? { color: 'var(--danger, #c0392b)' } : undefined}>
+        {state === 'busy' ? '…' : state === 'failed' ? `${next.toUpperCase()}!` : next.toUpperCase()}
       </span>
     </button>
   );

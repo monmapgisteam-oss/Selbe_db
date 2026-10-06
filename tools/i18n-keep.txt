@@ -203,7 +203,7 @@
 @dyn modules/ExecReport.tsx  tr(s)
 
 # [const] Dashboard хавтангийн нэгж (га · өрх · хүн · ₮ · %) — тодорхойлолтдоо tr()
-@dyn modules/Dashboard.tsx  tr(t.unit)
+@dyn modules/HeadKpi.tsx  tr(t.unit)
 # [data] гүйцэтгэгчийн харьяалал (Гадаад · Үндэсний) + газрын төлөв/шалтгаан — enData.ts
 @dyn modules/Dashboard.tsx  tr(label)
 @dyn modules/Dashboard.tsx  tr(r.origin)

@@ -52,6 +52,7 @@ import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
+import { REASON_MAX } from './huvaariBatlah';
 
 /** Илгээлтийн төлөв */
 export const AJIL_STATUS = {
@@ -807,7 +808,8 @@ export async function decideAjil(args: {
     [F.status]: args.approve ? AJIL_STATUS.approved : AJIL_STATUS.returned,
     [F.approver]: args.approver.toLowerCase(),
     [F.approverAt]: Date.now(),
-    [F.reason]: args.approve ? null : (args.reason?.trim() ?? null),
+    /* ⚠️ 2026-10-06 аудит: `decidePlan`-ийн ижил — UI-г тойрсон урт шалтгааныг тайрна */
+    [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {

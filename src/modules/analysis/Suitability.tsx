@@ -77,6 +77,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ⚠️ 2026-09-30: проекцолсон геометр нь STATE (урьд нь ref + `projected` туг) —
      `rows` нь render дунд бодогддог тул ref уншиж болохгүй. `null` = хараахан үгүй. */
   const [geoms, setGeoms] = useState<Map<string, Polygon | null> | null>(null);
+  /* ⚠️ 2026-10-06 (аудит): ДАХИН ОРОЛДЛОГЫН тоолуур. Урьд нь ачаалалт нэг удаа
+     унахад `.loader` (inset:0 · z-index:99) бүх аппыг хааж, товч ч, сүлжээ
+     сэргэхэд дахин оролдлого ч байхгүй — цорын ганц гарц нь хуудсыг бүтнээр нь
+     refresh хийх байв. `loadAnalysisCached` нь алдааг кэшлэдэггүй тул энэ
+     тоолуурыг өсгөхөд шинээр татна. */
+  const [loadNonce, setLoadNonce] = useState(0);
+  const retryLoad = useCallback(() => {
+    setError(null);
+    setLoadNonce((n) => n + 1);
+  }, []);
+  /* Сүлжээ сэргэхэд (`online`) — ЗӨВХӨН алдаатай үед өөрөө дахин оролдоно
+     (`useAsync`-ийн 2026-10-05-ны ⚠️-тэй ижил загвар). */
+  const loadFailed = error != null;
+  useEffect(() => {
+    if (!loadFailed) return;
+    window.addEventListener('online', retryLoad);
+    return () => window.removeEventListener('online', retryLoad);
+  }, [loadFailed, retryLoad]);
 
   useEffect(() => {
     let alive = true;
@@ -102,7 +120,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [loadNonce]);
 
   /* ── Загварын төлөв ── */
   // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
@@ -913,6 +931,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <div className={`${s.loaderMsg} ${s.loaderErr}`}>
               {tr('Алдаа гарлаа:')} {error}
             </div>
+            {/* ⚠️ 2026-10-06 (аудит): дахин оролдох товч — урьд нь гарцгүй бүтэн дэлгэц */}
+            <button type="button" className={s.loaderRetry} onClick={retryLoad}>
+              {tr('Дахин оролдох')}
+            </button>
           </div>
         </div>
       )}

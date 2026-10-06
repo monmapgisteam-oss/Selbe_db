@@ -994,7 +994,8 @@ function TailanFull() {
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{bn(srcTotal)}</td>
-                            <td className={r.num}>100%</td>
+                            {/* ⚠️ 2026-10-06 (аудит): дүн 0 бол мөрүүд «—» тул нийт ч «—» (`ExecReport` 1.3-тай ижил) */}
+                            <td className={r.num}>{srcTotal ? pct(100, 1) : '—'}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>

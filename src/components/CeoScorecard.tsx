@@ -16,7 +16,7 @@
  *    ачаална — ArcGIS «Too many requests»-ээс сэргийлнэ (`useKpis`-ийн дүрэм).
  *    Ирээгүй бүлэг «…», өгөгдөлгүй бүлэг «—»; аль нь ч нийт дунджид ордоггүй.
  */
-import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
@@ -322,8 +322,30 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const active = filterActive(filter);
   /* ⚠️ Анхдагч сонголт БАЙХГҮЙ — «Сонгосон багц ажил» хэсэг зөвхөн сонгосон үед гарна */
   const sel = pick == null ? null : (works ?? []).find((w) => w.oid === pick) ?? null;
+  /** Задаргааны самбар — нарийн дэлгэцэд сонголтын дараа тийш гүйлгэнэ (`togglePick`-ийн ⚠️) */
+  const asideRef = useRef<HTMLElement>(null);
+  const focusReq = useRef(false);
   /** Сонгосон ажлыг ДАХИН дарвал сонголт цуцлагдана (2026-09-17, «deselect») */
-  const togglePick = (oid: number) => setPick((p) => (p === oid ? null : oid));
+  const togglePick = (oid: number) => {
+    focusReq.current = pick !== oid;
+    setPick((p) => (p === oid ? null : oid));
+  };
+  /*
+   * ⚠️ 2026-10-06 (аудит): НАРИЙН дэлгэцэнд (≤1100px, `.stage` нэг багана) задаргаа нь хүснэгтийн
+   *    ДООР гардаг тул мөр сонгоход юу ч өөрчлөгдөөгүй мэт харагддаг байв (урт хүснэгтийн доор).
+   *    Сонгомогц задаргаа руу гүйлгэж, фокусыг тийш шилжүүлнэ (гараар/дэлгэц уншигчаар ч).
+   *    Өргөн дэлгэцэд задаргаа хажууд нь тул гүйлгэхгүй. Зөвхөн ХЭРЭГЛЭГЧ сонгоход
+   *    (`focusReq`) — Esc/цуцлалт, өгөгдөл шинэчлэгдэх үед үсрэхгүй.
+   */
+  useEffect(() => {
+    if (pick == null || !focusReq.current) return;
+    focusReq.current = false;
+    if (!window.matchMedia('(max-width: 1100px)').matches) return;
+    const el = asideRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.focus({ preventScroll: true });
+  }, [pick]);
   /* Esc — сонголт цуцлах. ⚠️ Зөвхөн сонголттой үед сонсоно; setState нь callback-д (эффектийн биед биш) */
   useEffect(() => {
     if (pick == null) return undefined;
@@ -538,7 +560,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
 
         {/* ── Баруун: сонгосон ажлын задаргаа — ЗӨВХӨН сонгосон үед ── */}
         {sel && (
-        <aside className={s.detail}>
+        <aside className={s.detail} ref={asideRef} tabIndex={-1} aria-label={tr('Сонгосон багц ажил')}>
             <>
               <header className={s.dHead}>
                 <div className={s.dTitleBox}>

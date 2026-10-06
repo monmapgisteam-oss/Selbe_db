@@ -16,12 +16,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  URL as ZOV_URL, TOLOV, PENDING_STALE_DAYS, byBagts, filterZov, isStalePending, loadZov,
+  URL as ZOV_URL, TOLOV, PENDING_STALE_DAYS, byBagts, filterZov, isStalePending, loadZovResult,
   pendingAgeDays, summarize, type Zov, type ZovDraft, type ZovFilter,
 } from '@/lib/zovshoorol';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { date } from '@/lib/format';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
+import { userError } from '@/components/ui';
 import { ZovshoorolEdit } from './ZovshoorolEdit';
 import s from './zovshoorol.module.css';
 
@@ -109,37 +111,24 @@ function Detail({ z, canEdit, onEdit, onClose }: {
   z: Zov; canEdit: boolean; onEdit: () => void; onClose: () => void;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
 
   /*
-   * ⚠️ Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй.
-   *
-   * ⚠️ Мөн Tab-ыг модал дотор БАРИНА, нээгдэхэд фокусыг модал руу ЗӨӨНӨ.
+   * ⚠️ Tab-ыг модал дотор БАРИНА, нээгдэхэд фокусыг модал руу ЗӨӨНӨ.
    *    `aria-modal="true"` нь ард байгаа БҮХ агуулгыг хүртээмжийн модноос
    *    хасдаг: фокус нь дуудсан chip товчин дээрээ (ард, нуугдсан мужид)
    *    үлдэхэд дэлгэц уншигч «диалог» гэж зарлаад цааш уншиж юу ч олдоггүй,
    *    Tab нь харагдахгүй элементүүд рүү явдаг байв (WCAG 2.4.3).
-   *    Загвар: `UserAdmin.tsx`.
+   * ⚠️ 2026-10-06 (аудит): өөрийн гар урхины оронд төслийн `useFocusTrap` —
+   *    хуучин урхи хаахад фокусыг ДУУДСАН chip руу БУЦААДАГГҮЙ байсан тул фокус
+   *    `<body>`-д унаж, Tab хуудасны эхнээс эхэлдэг байв. `useFocusTrap` нь
+   *    нээхэд эхний товч (✕) руу оруулж, хаахад өмнөх элемент рүү буцаана.
    */
+  useFocusTrap(modalRef);
+  /* ⚠️ Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return; }
-      const root = modalRef.current;
-      if (e.key !== 'Tab' || !root) return;
-      const f = [...root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )].filter((el) => el.offsetParent !== null);
-      if (!f.length) return;
-      const first = f[0]; const last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    const t = setTimeout(() => closeRef.current?.focus(), 60);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener('keydown', onKey);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   const rows: [string, string][] = [
@@ -170,7 +159,7 @@ function Detail({ z, canEdit, onEdit, onClose }: {
       <div ref={modalRef} className={s.modal} onClick={(e) => e.stopPropagation()}>
         <div className={s.modalHead}>
           <span id={`zov-title-${z.oid}`} className={s.modalTitle}>{z.ner}</span>
-          <button ref={closeRef} type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
+          <button type="button" className={s.close} onClick={onClose} aria-label={tr('Хаах')}>✕</button>
         </div>
         <dl className={s.dl}>
           {rows.map(([k, v]) => (
@@ -194,6 +183,8 @@ function Detail({ z, canEdit, onEdit, onClose }: {
 export function Zovshoorol() {
   const [rows, setRows] = useState<Zov[] | null>(null);
   const [busy, setBusy] = useState(true);
+  /** Сүүлийн ачаалалт унасан шалтгаан (`loadZovResult`) — амжилттай бол `null` */
+  const [loadErr, setLoadErr] = useState<Error | null>(null);
   const [pick, setPick] = useState<Zov | null>(null);
   /* ⚠️ 2026-09-29 (аудит 10): ТОГТВОРТОЙ заалт — `Detail`-ийн эффект `[onClose]`-оос
      хамаардаг тул рендер бүрд шинэ функц өгөхөд сонсогч дахин бүртгэгдэж, фокус
@@ -231,9 +222,11 @@ export function Zovshoorol() {
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setBusy(true);
-    void loadZov().then((r) => {
+    void loadZovResult().then((r) => {
       if (!alive) return;
-      setRows(r);
+      setRows(r.rows);
+      /* ⚠️ 2026-10-06 (аудит): унасан ШАЛТГААН — ерөнхий мөрийн доор харуулна */
+      setLoadErr(r.error);
       setNow(Date.now());
       setBusy(false);
     });
@@ -258,13 +251,21 @@ export function Zovshoorol() {
     );
   }
 
-  if (busy) return <div className={s.wrap}><div className={s.notice}>{tr('Ачаалж байна…')}</div></div>;
+  /* ⚠️ 2026-10-06 (аудит): БҮТЭН «Ачаалж байна…» ЗӨВХӨН жагсаалт хараахан алга үед
+     (анхны ачаалалт · алдааны дараах дахин оролдлого). Урьд нь ↻ болон хадгалсны
+     дараах `done()` бүрд жагсаалт бүхэлдээ салж (unmount), гүйлгэсэн байрлал
+     алдагдаж, дэлгэц анивчдаг байв. Дахин татах зуур хуучин жагсаалт үлдэж,
+     толгойд жижиг «Ачаалж байна…» гарна; унавал доорх алдааны дэлгэц рүү шилжинэ
+     («хуучин тоо чимээгүй үлдэхгүй»). */
+  if (busy && rows == null) return <div className={s.wrap}><div className={s.notice}>{tr('Ачаалж байна…')}</div></div>;
 
   if (rows == null) {
     return (
       <div className={s.wrap}>
         <div className={`${s.notice} ${s.bad}`}>
           {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй. Холболт эсвэл хандах эрхээ шалгана уу.')}
+          {/* ⚠️ 2026-10-06 (аудит): ЖИНХЭНЭ шалтгаан — 499 · сүлжээ · талбар алгыг ялгана */}
+          {loadErr && <p>{tr('Шалтгаан:')} {userError(loadErr)}</p>}
           {/* ⚠️ Дахин татах зам (2026-09-23): урьд нь зөвхөн F5. `n` нь ачаалах
               эффектийн хамаарал тул өсгөхөд л дахин татна. */}
           <div className={s.actions}>
@@ -307,6 +308,12 @@ export function Zovshoorol() {
         <div className={s.headRow}>
           <h1 className={s.h1}>{tr('Зөвшөөрлийн хяналт')}</h1>
           <span className={s.spacer} />
+          {/* ⚠️ 2026-10-06: дахин татах зуурын жижиг заалт (жагсаалт ХЭВЭЭР үлдэнэ) */}
+          {busy && (
+            <span role="status" style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              {tr('Ачаалж байна…')}
+            </span>
+          )}
           {/* ⚠️ ДАХИН АЧААЛАХ — өөр хүн зэрэг засаж болно. Товчгүй бол
               хуудсаа шинэчлэхийн тулд харагдац солих шаардлагатай болно. */}
           <button

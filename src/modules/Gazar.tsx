@@ -1276,6 +1276,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             сэргээгдсэн (дээрх `editMode`-ийн тайлбарыг үз). */}
         {editOid != null && (
           <GazarEdit
+            /* ⚠️ 2026-10-06 (аудит): парсел солигдоход маягтыг ШИНЭЭР mount
+               хийнэ — өмнөх парселийн ноорог/`dirty` үлдэхгүй (`GazarEdit`-ийн ⚠️) */
+            key={editOid}
             oid={editOid}
             canEdit={canEdit}
             /* ⚠️ Маягтын «хадгалаагүй» төлөвийг энд барина — `exitEdit` ба

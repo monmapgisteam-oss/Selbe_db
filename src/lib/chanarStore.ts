@@ -48,7 +48,7 @@ import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } fro
    Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
    хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). Алдаа HTTP
    200-аар ирдэг — `error` биеийг тэр шалгана. */
-import { authToken, arcgisPost } from '@/lib/authToken';
+import { authToken, arcgisPost, ensureFreshToken, isTokenError, refreshAfterTokenError } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { CapKey } from './caps';
 import { invalidate } from './dataBus';
@@ -268,15 +268,34 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const deny = await attachDeny(oid);
   if (deny) return { ok: false, error: deny };
-  try {
+  /*
+   * ⚠️ 2026-10-06 аудит: multipart тул `arcgisPost`-ын цөмөөр явахгүй — тэр цөмийн хамгаалалтыг
+   *    ЭНД өгнө: (1) хүсэлтийн ӨМНӨ токеныг шинэчилнэ (`ensureFreshToken` — удаан нээлттэй таб
+   *    хуучирсан токеноор 498 авдаг байв); (2) 120с timeout (`ags.addAttachment`-ийн ижил — урьд нь
+   *    хязгааргүй тул тасарсан сүлжээнд «busy» үүрд гацдаг); (3) ТОКЕНЫ алдаанд (498/499) НЭГ удаа
+   *    дахин илгээнэ — тэр үед сервер юу ч бичээгүй тул давхардахгүй. Бусад алдаанд ДАВТАХГҮЙ
+   *    (хавсралт аль хэдийн бичигдсэн байж болно).
+   */
+  const send = async () => {
+    await ensureFreshToken();
     const fd = new FormData();
     fd.append('f', 'json');
     const tok = authToken();
     if (tok) fd.append('token', tok); // ⚠️ org-only хүснэгт (2026-09-17)
     fd.append('attachment', file, file.name);
-    const r = await fetch(`${url}/${Number(oid)}/addAttachment`, { method: 'POST', body: fd });
+    const r = await fetch(`${url}/${Number(oid)}/addAttachment`, { method: 'POST', body: fd, signal: AbortSignal.timeout(120_000) });
+    return { r, tok };
+  };
+  try {
+    let { r, tok } = await send();
     if (!r.ok) return { ok: false, error: `ArcGIS HTTP ${r.status}` };
-    const j = (await r.json()) as { error?: { message?: string }; addAttachmentResult?: { success?: boolean } };
+    type AddRes = { error?: { code?: number; message?: string }; addAttachmentResult?: { success?: boolean } };
+    let j = (await r.json()) as AddRes;
+    if (j.error && isTokenError(j.error.code, j.error.message) && (await refreshAfterTokenError(tok))) {
+      ({ r, tok } = await send());
+      if (!r.ok) return { ok: false, error: `ArcGIS HTTP ${r.status}` };
+      j = (await r.json()) as AddRes;
+    }
     if (j.error) return { ok: false, error: j.error.message || 'ArcGIS error' };
     if (!j.addAttachmentResult?.success) return { ok: false, error: tr('Хавсралт хадгалагдсангүй.') };
     invalidate('CHANAR_BARIMT');

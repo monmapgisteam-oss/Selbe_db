@@ -17,6 +17,7 @@ import { t as tr, perLocale } from '@/lib/i18nCore';
 import { AGENT_API, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
+import { userError } from '@/components/ui';
 import s from '@/components/agent.module.css';
 /* ⚠️ 2026-10-04 (ачааллын аудит): хөвөгч товч ба «оч» дүрс ТУСДАА файлд — `Portal` товчийг
    статикаар, энэ цонхыг (агентын клиент · датасетийн бүртгэл · markdown, ~220 КБ эх код)
@@ -133,6 +134,14 @@ export function AgentChat({
   const logRef = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
 
+  /**
+   * «Дахин шалгах» товчны тоолуур — өөрчлөгдөхөд доорх эффект `/health`-ийг ДАХИН шалгана.
+   * ⚠️ 2026-10-06 (аудит): урьд нь `alive === false` үед ч эхлэх асуултууд ба «Илгээх»
+   *    идэвхтэй байж, асуулт бүр реле хүлээгээд унадаг байв; дахин шалгах цорын ганц зам нь
+   *    цонхыг хаагаад нээх байв.
+   */
+  const [recheck, setRecheck] = useState(0);
+  const [checking, setChecking] = useState(false);
   /** Реле асаалттай эсэхийг цонх нээгдэх бүрд шалгана */
   useEffect(() => {
     if (!open) return;
@@ -141,9 +150,16 @@ export function AgentChat({
        `false`-г хадгалахгүй — дахин нээхэд «ажиллахгүй байна» худал гардаг байв. */
     void relayAlive(c.signal)
       .then((ok) => { if (!c.signal.aborted) setAlive(ok); })
-      .catch(() => { if (!c.signal.aborted) setAlive(false); });
+      .catch(() => { if (!c.signal.aborted) setAlive(false); })
+      .finally(() => { if (!c.signal.aborted) setChecking(false); });
     return () => c.abort();
-  }, [open]);
+  }, [open, recheck]);
+  const recheckRelay = () => {
+    setChecking(true);
+    setRecheck((n) => n + 1);
+  };
+  /** Реле унтарсан гэж БАТЛАГДСАН үед илгээх боломжгүй (`null` = шалгаж байна — хориглохгүй) */
+  const offline = alive === false;
 
   /* ⚠️ 2026-09-29 (аудит 10): нээхэд фокустай FAB unmount болж фокус алга болдог байв
      — оролтын талбарт шилжүүлнэ (хаахад FAB өөрөө буцааж авна, `AgentButton`). */
@@ -172,7 +188,7 @@ export function AgentChat({
   const send = useCallback(
     async (raw: string) => {
       const q = raw.trim();
-      if (!q || busy) return;
+      if (!q || busy || offline) return;
 
       setInput('');
       setError(null);
@@ -218,14 +234,19 @@ export function AgentChat({
         if (controller.signal.aborted) return;
         // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хуучин хариултыг шинэ гэж
         //    андуурвал буруу шийдвэр гаргана.
-        setError(e instanceof Error ? e.message : String(e));
+        /* ⚠️ 2026-10-06 (аудит): хэрэглэгчийн хэлээр (`userError`) — урьд нь «Failed to fetch»,
+           «HTTP 502» зэрэг түүхий мөр гардаг байв. Монгол мессеж (релегийн тайлбар) хэвээр. */
+        setError(userError(e));
+        /* ⚠️ 2026-10-06: бичсэн асуулт АЛГА БОЛОХГҮЙ — талбар хоосон бол буцааж тавина
+           (хэрэглэгч хооронд нь шинээр бичсэн бол дарахгүй). Дахин илгээхэд бэлэн. */
+        setInput((cur) => (cur.trim() ? cur : q));
       } finally {
         setBusy(false);
         setProgress('');
         abort.current = null;
       }
     },
-    [busy, scope],
+    [busy, scope, offline],
   );
 
   const clear = () => {
@@ -291,9 +312,19 @@ export function AgentChat({
       {/* ⚠️ 2026-09-30: эцсийн хэрэглэгчид хөгжүүлэгчийн команд (npm install,
           ANTHROPIC_API_KEY) харуулдаг байв — тэдэнд утгагүй, айдас төрүүлнэ.
           Одоо энгийн мессеж; асаах заавар ЗӨВХӨН `development` build-д. */}
-      {alive === false && (
+      {offline && (
         <div className={s.offline} role="status">
           {tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.')}
+          {' '}
+          <button
+            type="button"
+            className={s.chip}
+            onClick={recheckRelay}
+            disabled={checking}
+            aria-busy={checking || undefined}
+          >
+            {checking ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
+          </button>
           {process.env.NODE_ENV === 'development' && (
             <>
               <br />
@@ -316,7 +347,7 @@ export function AgentChat({
         {!log.length && (
           <div className={s.chips}>
             {STARTERS().map((q) => (
-              <button key={q} type="button" className={s.chip} onClick={() => void send(q)}>
+              <button key={q} type="button" className={s.chip} onClick={() => void send(q)} disabled={offline || busy}>
                 {q}
               </button>
             ))}
@@ -358,7 +389,8 @@ export function AgentChat({
         <button
           type="button"
           className={s.send}
-          disabled={busy || !input.trim()}
+          disabled={busy || offline || !input.trim()}
+          title={offline ? tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.') : undefined}
           onClick={() => void send(input)}
         >
           {tr('Илгээх')}

@@ -91,6 +91,16 @@ export function GazarEdit({
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
     setLoad(true); setFail('');
+    /* ⚠️ 2026-10-06 (аудит): ӨМНӨХ ПАРСЕЛИЙН ноорог/тугийг ТЭГЛЭНЭ
+       (`DedButetsEdit`-ийн адил). Урьд нь `oid` солигдоход `before`/`d`/`dirty`
+       үлдэж, Б парсел ачаалагдаж чадаагүй бол маягт А-г харуулсаар
+       «Хадгалах» нь А руу бичдэг, хуучин `dirty=true` нь хуурамч «хадгалаагүй»
+       асуулт гаргадаг байв. Эцэг (`Gazar`) нь `key={editOid}`-ээр мөн дахин
+       mount хийдэг — энэ нь давхар хамгаалалт. Эцгийн туг (`onDirty`) нь
+       `Gazar.askDrop`/`closeEdit` дотор `markDirty(false)`-ээр аль хэдийн
+       унтардаг тул энд дахин дуудахгүй. */
+    setBefore(null); setD(null); setErr({});
+    dirty.current = false;
     Promise.all([loadParcel(oid), loadProgressValues().catch(() => [] as string[]), loadFieldLens()])
       .then(([p, list, ln]) => {
         if (!alive) return;

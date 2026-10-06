@@ -1,5 +1,8 @@
 import { t as tr } from '@/lib/i18nCore';
-import { tokenParam, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl } from '@/lib/authToken';
+import {
+  tokenParam, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl,
+  lastRefreshFail, sessionDead,
+} from '@/lib/authToken';
 /**
  * ArcGIS REST асуулгын давхарга.
  *
@@ -367,7 +370,17 @@ async function attemptRequest(
       if (await refreshAfterTokenError(sentTok)) {
         return attemptRequest(full, params, o, attempt, netTries, true);
       }
-      sessionExpired = sentTok != null;
+      /* ⚠️ 2026-10-06 (аудит): «дууссан» гэж ЗӨВХӨН шинэчлэлтийг сервер ТАТГАЛЗСАН (`dead`)
+         эсвэл итгэмжлэл алга болсон (`sessionDead`) үед. Урьд нь `sentTok != null` л байхад
+         үнэн болдог тул шинэчлэлт СҮЛЖЭЭНЭЭС болж унасан ч «нэвтрэлтийн хугацаа дууссан
+         — дахин ачаалж нэвтэрнэ үү» гэж хэлж, хэрэглэгч хадгалаагүй ажлаа дэмий хаядаг байв.
+         Сүлжээний уналт → сүлжээний алдаа (`ui.friendlyError`-ийн «Failed to fetch» ангилал);
+         техникийн мөрөнд серверийн мессеж хэвээр. */
+      const fail = lastRefreshFail();
+      if (sentTok != null && fail === 'network' && !sessionDead()) {
+        throw new ArcGISError(message ? `Failed to fetch (token refresh) · ${message}` : 'Failed to fetch (token refresh)', full, code, details, false);
+      }
+      sessionExpired = sentTok != null && (fail === 'dead' || sessionDead());
     }
     const msg = message || details?.[0] || tr('ArcGIS алдаа');
     throw new ArcGISError(o.describe ? describeArcgisError(full, code, msg) : msg, full, code, details, sessionExpired);

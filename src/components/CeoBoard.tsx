@@ -29,7 +29,7 @@
  * хэлбэрээр ирнэ. Босго, дүрэм өөрчлөх бол тэнд.
  */
 import {
-  useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties,
+  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
@@ -77,7 +77,13 @@ function useKpis(): { slots: Record<string, Slot>; retry: (key: string) => void 
     Object.fromEntries(CEO_KPIS.map((d) => [d.key, LOADING]))
   ));
   const bus = useSyncExternalStore(subscribeData, dataVersion, () => 0);
-  const [nonce, setNonce] = useState<Record<string, number>>({});
+  /* ⚠️ 2026-10-06 (аудит): `retry`-ийн үе (түлхүүр бүрд) ба mount-ийн төлөв — доорх `retry`-ийн ⚠️ */
+  const gen = useRef<Record<string, number>>({});
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -114,17 +120,34 @@ function useKpis(): { slots: Record<string, Slot>; retry: (key: string) => void 
       timers.forEach((t) => window.clearTimeout(t));
       if (idle != null && typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idle);
     };
-  }, [bus, nonce]);
+  }, [bus]);
 
   /**
    * Нэг үзүүлэлтийг дахин татна.
    * ⚠️ `cached()` алдааг кэшлэдэггүй (`live.ts`) тул `load()`-ыг дахин дуудахад
    *    шинээр татна; амжилттай кэш хэвээр — бусад карт хөдлөхгүй.
    */
-  const retry = (key: string) => {
+  /* ⚠️ 2026-10-06 (аудит): ЗӨВХӨН ЭНЭ ТҮЛХҮҮРИЙН ачаалагч. Урьд нь `nonce` нь дээрх нийтлэг
+     эффектийн deps-т байсан тул нэг картын «Дахин оролдох» БҮХ 13 ачаалагчийг (хүнд 4-ийг ч)
+     дахин эхлүүлж, бусад картуудын ажиллаж буй хүсэлтийг `alive = false`-оор хаядаг байв.
+     Түлхүүр бүрийн үе (`gen`) — хуучин оролдлогын хожуу хариу шинийг дарахгүй. */
+  const retry = useCallback((key: string) => {
+    const d = CEO_KPIS.find((x) => x.key === key);
+    if (!d) return;
+    const g = (gen.current[key] ?? 0) + 1;
+    gen.current[key] = g;
     setSlots((r) => ({ ...r, [key]: LOADING }));
-    setNonce((n) => ({ ...n, [key]: (n[key] ?? 0) + 1 }));
-  };
+    d.load().then(
+      (data) => {
+        if (mounted.current && gen.current[key] === g) setSlots((r) => ({ ...r, [key]: { state: 'ready', data, error: null } }));
+      },
+      (e: unknown) => {
+        if (!mounted.current || gen.current[key] !== g) return;
+        const error = e instanceof Error ? e : new Error(String(e));
+        setSlots((r) => ({ ...r, [key]: { state: 'error', data: null, error } }));
+      },
+    );
+  }, []);
   return { slots, retry };
 }
 
@@ -580,8 +603,11 @@ export function CeoBoard({ onView }: { onView: (key: ViewKey) => void }) {
 
   const toggle = (id: FineId) => {
     setTouched(true);
-    setOpenId(shownId === id ? null : id);
-    for (const k of kpisAt(id)) if (slots[k]?.state === 'error') retry(k);
+    const opening = shownId !== id;
+    setOpenId(opening ? id : null);
+    /* ⚠️ 2026-10-06 (аудит): алдаатай KPI-г ЗӨВХӨН НЭЭХЭД дахин татна — урьд нь хаахад ч
+       (харагдахгүй болох үед) сүлжээний хүсэлт явдаг байв. */
+    if (opening) for (const k of kpisAt(id)) if (slots[k]?.state === 'error') retry(k);
   };
 
   return (

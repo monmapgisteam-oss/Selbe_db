@@ -9,7 +9,7 @@ import { MapCanvas, MapProvider, applyViewBasemap, useMap, type Dim } from '@/co
 import { t as tr } from '@/lib/i18nCore';
 import { ViewRail, type NavBadges } from '@/components/ViewRail';
 import { HelpPanel, HelpTip } from '@/components/HelpPanel';
-import { loadNavBadges, makeBadgeRefresher, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
+import { loadNavBadges, makeBadgeRefresher, mergeNavBadges, subscribeNavBadges, BADGE_VIEWS } from '@/components/navBadges';
 import { subscribeData, invalidateAll, dataRefreshedAt } from '@/lib/dataBus';
 import { friendlyError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
@@ -42,7 +42,7 @@ import {
   PLAN_ALWAYS_ON_IDS,
   type ViewKey,
 } from '@/lib/services';
-import { readParam, writeParams } from '@/lib/urlState';
+import { readParam, writeParams, foreignViewParams } from '@/lib/urlState';
 import { planNavBusy } from '@/lib/huvaariBatlah';
 /* ⚠️ 2026-09-29 (аудит 10): импортгүй хөнгөн lib — `Finance` өөрөө `dynamic` */
 import { finNavDirty } from '@/lib/finEdit';
@@ -69,6 +69,9 @@ const UserAdmin = dynamic(() => import('@/components/UserAdmin').then((m) => m.U
 const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.AgentChat), { ssr: false });
 
 import s from '@/app/shell.module.css';
+
+/** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
+const EMPTY_BADGES: NavBadges = {};
 
 /** Баруун самбарын өргөний хязгаар ба анхны утга (px) */
 const PANEL_MIN = 300;
@@ -473,8 +476,11 @@ function PortalContent(
    *    хуучин хэвээр үлдэхгүй). Алдаа чимээгүй — өмнөх тоо хэвээр.
    * ⚠️ Таб нуугдсан үед хүсэлт явуулахгүй.
    */
-  const [badges, setBadges] = useState<NavBadges>({});
+  /* ⚠️ 2026-10-06 (аудит): тэмдэг ХЭНИЙХ болохыг хамт хадгална — уналтад өмнөх тоо хэвээр
+     үлдэх (`mergeNavBadges`) тул хэрэглэгч солигдоход өмнөх хүний тоо нөгөөд гарахгүй. */
+  const [badgeState, setBadgeState] = useState<{ who: string | null; b: NavBadges }>({ who: null, b: {} });
   const badgeUser = auth.user?.username ?? null;
+  const badges = badgeState.who === badgeUser ? badgeState.b : EMPTY_BADGES;
   const badgeReady = auth.status === 'signed-in' || auth.status === 'off';
   /* ⚠️ `navScope` массив нь `Root`-ийн рендер бүрт ШИНЭ лавлагаа (эрхийн poll
      15 с–5 мин тутам рендерлэдэг) — шууд deps-д тавибал тэр бүрд дахин татна.
@@ -489,7 +495,12 @@ function PortalContent(
   const [badgeRefresher] = useState(() => makeBadgeRefresher(loadNavBadges));
   const refreshBadges = useCallback(() => {
     if (!badgeReady || document.visibilityState === 'hidden') return;
-    badgeRefresher(badgeUser, badgeScope).then((b) => { if (b) setBadges(b); }, () => { /* чимээгүй */ });
+    /* ⚠️ 2026-10-06 (аудит): БҮХ газрыг солихгүй, НИЙЛҮҮЛНЭ — унасан эх сурвалжтай харагдацад
+       (`null`) өмнөх тоо хэвээр (дээрх «Алдаа чимээгүй — өмнөх тоо хэвээр»). Урьд нь «Гүйцэтгэл»-ийн
+       нийлбэр (обьём + хяналт) нэг нь унахад ХАГАС дүн харуулдаг байв (`navBadges.mergeNavBadges`). */
+    badgeRefresher(badgeUser, badgeScope).then((b) => {
+      if (b) setBadgeState((prev) => ({ who: badgeUser, b: mergeNavBadges(prev.who === badgeUser ? prev.b : {}, b) }));
+    }, () => { /* чимээгүй */ });
   }, [badgeReady, badgeUser, badgeScope, badgeRefresher]);
   useEffect(() => {
     refreshBadges();
@@ -583,7 +594,13 @@ function PortalContent(
   }, []);
 
   const setView = useCallback((v: ViewKey): boolean => {
-    if (v !== viewNowRef.current && !confirmLeave()) return false;
+    /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
+       шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин
+       дарах (`ViewRail`-ийн ⚠️ «жагсаалт хумигдана/дэлгэгдэнэ»), алгасах холбоосын `#` навигаци
+       ба `Tuh`-ийн түүхийн бичлэг дээрх Back (popstate) хэрэглэгчийн ажлыг чимээгүй арилгадаг
+       байв. Каталогийг сэлгэх нь ЗӨВХӨН цэсний даралтад (`railSelect`). */
+    if (v === viewNowRef.current) return true;
+    if (!confirmLeave()) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
@@ -626,6 +643,11 @@ function PortalContent(
     if (v === 'dedButets') setDim('2d');
     return true;
   }, [clearFilter, confirmLeave]);
+  /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`-ийн ⚠️) */
+  const railSelect = useCallback((v: ViewKey) => {
+    if (v === viewNowRef.current) { setCatalog((c) => !c); return; }
+    setView(v);
+  }, [setView]);
 
   const badgeViewRef = useRef(view);
   useEffect(() => {
@@ -648,8 +670,16 @@ function PortalContent(
   useEffect(() => {
     const push = view !== lastViewRef.current;
     lastViewRef.current = view;
+    const v = view === DEFAULT_VIEW ? null : view;
+    /* ⚠️ 2026-10-06 (аудит): ХАРАГДАЦ СОЛИХОД (`push`) бусад харагдацын параметрийг
+       (`tuh`, `pkg`, `fine` — `urlState.VIEW_PARAMS`) арилгана. Урьд нь `writeParams` танихгүй
+       түлхүүрийг хөнддөггүй тул `?v=tuh&tuh=…` нь бусад харагдацад ч үлдэж, хуваалцсан
+       холбоос/буцаж ороход хуучин сонголт сэргэдэг байв. URL аль хэдийн ЭНЭ харагдацыг заасан
+       бол (popstate-ийн сэргээлт) хөндөхгүй — Back/Forward-ийн түүх бохирдохгүй. */
+    const stale = push && readParam('v') !== v ? foreignViewParams(view) : {};
     writeParams({
-      v: view === DEFAULT_VIEW ? null : view,
+      ...stale,
+      v,
       z: zone,
       l: layer,
       d: dim === '2d' ? null : dim,
@@ -696,6 +726,16 @@ function PortalContent(
       // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
       //    (push хийвэл доорх guard-тай гогцоо үүснэ)
       const next = clampView(initialView(), navScope);
+      /* ⚠️ 2026-10-06 (аудит): харагдац ӨӨРЧЛӨГДӨӨГҮЙ popstate (алгасах холбоосын `#`,
+         `Tuh`-ийн дотоод түүх) — харагдацын шинэчлэлийг ОГТ ажиллуулахгүй (`setView`-ийн ⚠️).
+         Бүс/давхаргыг л URL-аас уншина (ижил бол no-op). Горимыг (`dim`) ХӨНДӨХГҮЙ:
+         `initialDim` нь `?d=` байхгүй үед харагдацын анхдагчийг (IoT → 3D) өгдөг тул
+         хэрэглэгчийн сонгосон 2D-г `#` навигаци 3D болгоно. */
+      if (next === viewNowRef.current) {
+        setZone(readParam('z'));
+        setLayer(initialLayer());
+        return;
+      }
       /* ⚠️ 2026-09-25: Хэрэглэгч «Гарах уу?»-д ҮГҮЙ гэвэл харагдац хэвээр ч
          урьд нь доорх бүс/давхарга/горимыг ӨМНӨХ бичлэгээс тавьж, URL нь өөр
          харагдацыг заасан хэвээр үлддэг байв (төлөв ≠ URL, F5 → буруу
@@ -958,7 +998,7 @@ function PortalContent(
           </button>
           <ViewRail
             view={view}
-            setView={setView}
+            setView={railSelect}
             catalogOpen={catOpen}
             navScope={navScope}
             collapsed={navMin}
@@ -975,8 +1015,10 @@ function PortalContent(
         </aside>
 
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
+        {/* ⚠️ 2026-10-06: `id="main"` — алгасах холбоосын (`SkipLink`) ЗОРИЛТ. Модулиуд өөрсдийн
+            `<main>`-тэй тул энд ДАХИН `<main>` нэмэхгүй (давхар landmark). */}
         {isFull && (
-          <div className={s.suit}>
+          <div className={s.suit} id="main">
             {/* ⚠️ ХАРАГДАЦ БҮР ТУСДАА ХАШЛАГАД (2026-09-03-ны аудит): нэг
                 модулийн рендерийн throw бүх порталыг үхүүлдэг байв — навигац,
                 каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
@@ -996,6 +1038,12 @@ function PortalContent(
         {!isFull && (
           <>
             <div className={s.map}>
+              {/* ⚠️ 2026-10-06 (аудит): зураг, хэрэгслийн зурвас, тунгалаг, каталог, нэгтгэлийн
+                  зурвас ТУС БҮР өөрийн хашлагад — урьд нь `scope="view"`-ийн ГАДНА байсан тул
+                  тэдгээрийн рендерийн алдаа (эсвэл байршуулалтын дараах chunk 404) root
+                  хашлагад (layout.tsx) хүрч ПОРТАЛЫГ БҮХЭЛД нь сольдог байв. Зургийн хашлага
+                  `key`-гүй: харагдац солих бүрд ArcGIS зургийг дахин үүсгэхгүй. */}
+              <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
               <MapCanvas
                 dim={dim}
                 visible={visible}
@@ -1006,9 +1054,11 @@ function PortalContent(
                 alwaysOn={planPanel ? PLAN_ALWAYS_ON_IDS : undefined}
                 onPick={pick}
               />
+              </ErrorBoundary>
 
               {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
                   (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
+              <ErrorBoundary scope="view" floating label={tr('Зургийн хэрэгслүүд нээгдсэнгүй')}>
               <MapTools
                 dim={dim}
                 setDim={setDim}
@@ -1027,9 +1077,11 @@ function PortalContent(
                    хэрэглэгчийн заавар). Бусад зураг хуучин зохиомжтой. */
                 dock
               />
+              </ErrorBoundary>
 
               {/* Тунгалаг тохируулах хөвөгч цонх */}
               {opacityOpen && (
+                <ErrorBoundary scope="view" floating label={tr('Тунгалаг тохируулах цонх нээгдсэнгүй')} onClose={closeOpacity}>
                 <OpacityPanel
                   visible={visible}
                   opacity={opacity}
@@ -1037,6 +1089,7 @@ function PortalContent(
                   onClose={closeOpacity}
                   dock
                 />
+                </ErrorBoundary>
               )}
 
               {/**
@@ -1047,6 +1100,7 @@ function PortalContent(
                 */}
               {catOpen && (
                 <div className={s.catPop}>
+                  <ErrorBoundary scope="view" label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
                   <LayerCatalog
                     view="plan"
                     totals={totals}
@@ -1064,6 +1118,7 @@ function PortalContent(
                     onResizeKey={catSize.onKeyDown}
                     zone={zone}
                   />
+                  </ErrorBoundary>
                 </div>
               )}
 
@@ -1102,7 +1157,11 @@ function PortalContent(
                 * үлдэнэ — тэр харагдацын зохион байгуулалтыг зөвшөөрөлгүй
                 * өөрчлөхгүй.
                 */}
-              {planPanel && <SummaryBar zone={zone} />}
+              {planPanel && (
+                <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
+                  <SummaryBar zone={zone} />
+                </ErrorBoundary>
+              )}
 
               {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
                   түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
@@ -1128,7 +1187,9 @@ function PortalContent(
             {/* «Барилгын хяналт» — нэгтгэсэн үзүүлэлт хуучнаараа доод хүрээнд */}
             {!planPanel && (
               <footer className={s.dashFoot} aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
-                <SummaryBar zone={zone} />
+                <ErrorBoundary scope="view" compact label={tr('Нэгтгэсэн үзүүлэлт нээгдсэнгүй')}>
+                  <SummaryBar zone={zone} />
+                </ErrorBoundary>
               </footer>
             )}
           </>
@@ -1141,7 +1202,13 @@ function PortalContent(
       <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
 
       {/* Хэрэглэгчийн эрх удирдлага — зөвхөн super admin нээж чадна */}
-      {isSuper && <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />}
+      {/* ⚠️ 2026-10-06 (аудит): `dynamic` modal-ууд ӨӨРИЙН хашлагад (дээрх зургийн ⚠️) — хаалттай
+          үед (`quiet`) алдаа ч дуугүй, нээхэд л хөвөгч мэдэгдэл. */}
+      {isSuper && (
+        <ErrorBoundary scope="view" floating quiet={!adminOpen} label={tr('Хэрэглэгчийн эрхийн цонх нээгдсэнгүй')} onClose={() => setAdminOpen(false)}>
+          <UserAdmin open={adminOpen} onClose={() => setAdminOpen(false)} />
+        </ErrorBoundary>
+      )}
 
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
       <HelpPanel open={helpOpen} onClose={closeHelp} navScope={navScope} view={view} onGo={setView} />
@@ -1151,7 +1218,11 @@ function PortalContent(
       <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />
       {/* ⚠️ 2026-10-04: анх НЭЭХЭД л mount (дээрх `agentMounted`-ийн ⚠️) — дараа нь хаасан ч
           mount хэвээр тул яриа хадгалагдана. */}
-      {agentMounted && <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />}
+      {agentMounted && (
+        <ErrorBoundary scope="view" floating quiet={!agentOpen} label={tr('AI туслах нээгдсэнгүй')} onClose={() => setAgentOpen(false)}>
+          <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
+        </ErrorBoundary>
+      )}
     </>
   );
 }

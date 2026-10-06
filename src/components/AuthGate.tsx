@@ -6,9 +6,10 @@ import { AUTH, roleForUser, type Role } from '@/lib/services';
 import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
 import { setCurrentUser } from '@/lib/who';
 import {
-  dismissSessionDead, ensureFreshToken, noteSignOut, registerIdentity, retrySession, sessionDead,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, noteSignOut, registerIdentity, retrySession, sessionDead,
   subscribeSessionDead,
 } from '@/lib/authToken';
+import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './auth.module.css';
 
@@ -125,6 +126,46 @@ const describe = (e: unknown): string => {
   }
   return String(e);
 };
+
+/**
+ * ХУУДАС ЧИГЛҮҮЛЭЛТ ЦУЦЛАГДСАНЫГ ИЛРҮҮЛНЭ (2026-10-06 аудит).
+ *
+ * ⚠️ ЯАГААД: `location.assign`/`getCredential` (popup:false) нь хуудсыг ArcGIS руу
+ *    чиглүүлдэг. Хадгалаагүй ажилтай модуль `beforeunload`-оор «Хуудаснаас гарах уу?»
+ *    асуудаг — хэрэглэгч «Үлдэх» дарвал ЯМАР Ч үйл явдал ирэхгүй, амлалт үүрд хүлээнэ.
+ *    Урьд нь «Дахин нэвтрэх» цонхны 4 товч ҮҮРД идэвхгүй, фокус урхинд гацдаг байв.
+ * ⚠️ Дохио: хуудас харагдсаар (`pagehide` ирээгүй) БАЙХАД хэрэглэгчийн оролт
+ *    (pointerdown/keydown/focus/visibilitychange) эсвэл `ms` хугацаа өнгөрсөн → цуцлагдсан.
+ *    Удаан навигацид хуурамч эерэг гарч болно — тиймээс `cb` нь ЗӨВХӨН хор хөнөөлгүй
+ *    зүйл хийнэ (товч идэвхжүүлэх, төлөв буцаах). Буцаах функц нь хяналтыг зогсооно.
+ */
+function watchNavCancel(cb: () => void, ms: number): () => void {
+  let done = false;
+  const evs = ['pointerdown', 'keydown', 'focus'] as const;
+  const fire = () => {
+    if (done || document.visibilityState !== 'visible') return;
+    stop();
+    cb();
+  };
+  const onVis = () => { if (document.visibilityState === 'visible') fire(); };
+  const onHide = () => stop();
+  /* Эхний 400 мс-д ирсэн оролт нь товч дарсан үйлдлийн өөрийнх — тоолохгүй */
+  const arm = setTimeout(() => {
+    for (const ev of evs) window.addEventListener(ev, fire, true);
+    document.addEventListener('visibilitychange', onVis);
+  }, 400);
+  const timer = setTimeout(fire, ms);
+  window.addEventListener('pagehide', onHide);
+  function stop() {
+    done = true;
+    clearTimeout(arm);
+    clearTimeout(timer);
+    for (const ev of evs) window.removeEventListener(ev, fire, true);
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('pagehide', onHide);
+  }
+  return stop;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(() => (AUTH.appId ? 'checking' : 'off'));
@@ -427,7 +468,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     /* ⚠️ 2026-10-05: итгэмжлэл устахыг «сешн дууссан» гэж тэмдэглэхгүй (`authToken.noteSignOut`) */
     noteSignOut();
-    esriId.destroyCredentials();
+    /* ⚠️ 2026-10-06 (аудит): ХАДГАЛААГҮЙ АЖИЛТАЙ үед итгэмжлэлийг навигацийн ӨМНӨ устгахгүй.
+       Модулийн `beforeunload` «Хуудаснаас гарах уу?» асуухад «Үлдэх» дарвал портал нээлттэй
+       ч токенгүй үлдэж, хадгалалт бүр 499 → «эрх алга» болдог, `ending` үүрд үнэн тул «сешн
+       дууссан» цонх ч гардаггүй байв. Одоо: итгэмжлэл ЗӨВХӨН хуудас үнэхээр гарахад
+       (`pagehide`) устана; цуцлагдсан бол `ending`-ийг буцаана (`cancelSignOut`).
+       ⚠️ `pagehide` сонсогчийг цуцлалтын дараа ч ҮЛДЭЭНЭ: удаан навигацийг цуцлалт гэж
+       андуурвал итгэмжлэл үлдэж, ArcGIS-ээс буцаж ирэхэд ИЖИЛ хэрэглэгчээр дуугүй нэвтэрнэ
+       (дээрх 2026-08-19-ний ⚠️). Хэрэглэгч гарахыг аль хэдийн хүссэн тул дараагийн F5-д
+       гарсан байх нь зөв.
+       Хадгалаагүй ажилгүй үед асуулт гарахгүй — урьдын адил шууд устгана. */
+    if (hasUnsavedWork()) {
+      window.addEventListener('pagehide', () => {
+        try { esriId.destroyCredentials(); } catch { /* хуудас гарч байна */ }
+      }, { once: true });
+      watchNavCancel(cancelSignOut, 2_000);
+    } else {
+      esriId.destroyCredentials();
+    }
     const back = encodeURIComponent(location.origin + location.pathname);
     /* ⚠️ Энэ бол ArcGIS-ийн ГАДААД гарах хаяг — Next.js-ийн дотоод хуудас БИШ
        тул `router.push` тохирохгүй: бүтэн навигаци ЗААВАЛ хэрэгтэй (ArcGIS
@@ -596,20 +654,48 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
     /* Сэргэвэл `sessionDead` худал болж цонх өөрөө хаагдана */
     if (!ok) setNote(tr('Нэвтрэлт сэргэсэнгүй — холболтоо шалгах эсвэл дахин нэвтэрнэ үү.'));
   };
+  /* ⚠️ 2026-10-06: хадгалаагүй ажилтай үед ЭХНИЙ даралт зөвхөн анхааруулна, ХОЁР ДАХЬ нь чиглүүлнэ */
+  const [armed, setArmed] = useState(false);
   const reauth = async () => {
+    /* ⚠️ 2026-10-06 (аудит): ХАДГАЛААГҮЙ АЖИЛ байвал эхлээд «Түр хаах»-ыг санал болгоно —
+       чиглүүлэлтэд модулийн `beforeunload` «Гарах уу?» асуух бөгөөд «Үлдэх» дарвал урьд нь
+       цонхны 4 товч ҮҮРД идэвхгүй (`busy`), фокус урхинд гацдаг байв. */
+    if (!armed && hasUnsavedWork()) {
+      setArmed(true);
+      setNote(tr('Хадгалаагүй ажил байна — дахин нэвтрэхэд алдагдана. Эхлээд «Түр хаах» дарж ажлаа хуулж авна уу. Үргэлжлүүлэх бол «Дахин нэвтрэх»-ийг дахин дарна уу.'));
+      return;
+    }
     setBusy(true);
     setNote('');
+    let stopWatch: (() => void) | null = null;
     try {
       const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
       /* Хуучин (үхсэн) итгэмжлэлийг устгана — эс бөгөөс `getCredential` түүнийг буцаагаад чиглүүлэхгүй.
          ⚠️ `noteSignOut` ДУУДАХГҮЙ: тэр нь цонхыг хаадаг — чиглүүлэлт унавал (offline) алдаа
-            харагдах газаргүй болно. Цонх чиглүүлэх хүртэл нээлттэй үлдэнэ. */
+            харагдах газаргүй болно. Цонх чиглүүлэх хүртэл нээлттэй үлдэнэ.
+         ⚠️ 2026-10-06: устгахаас ӨМНӨ хуулбарлана — чиглүүлэлт ЦУЦЛАГДВАЛ («Үлдэх») сэргээж,
+            «Дахин шалгах» (`retrySession`) дахин ажиллах боломжтой үлдэнэ. `getCredential`-д
+            хуучин итгэмжлэл БАЙХ ёсгүй тул устгалтыг `pagehide` хүртэл хойшлуулах боломжгүй. */
+      let saved: unknown = null;
+      try { saved = esriId.toJSON(); } catch { saved = null; }
       esriId.destroyCredentials();
       attemptSet();
+      /* ⚠️ 2026-10-06: «Үлдэх» дарсан (хуудас хэвээр) бол цонхыг ДАХИН идэвхжүүлнэ — `busy` хэзээ ч гацахгүй */
+      stopWatch = watchNavCancel(() => {
+        try {
+          if (saved && !esriId.findCredential(sharingUrl())) esriId.initialize(saved);
+        } catch { /* сэргээгээгүй ч цонх ажиллана — «Дахин нэвтрэх» дахин оролдоно */ }
+        attemptClear();
+        setArmed(false);
+        setBusy(false);
+        setNote(tr('Дахин нэвтрэлт цуцлагдлаа. Ажлаа хуулж аваад дахин оролдоно уу.'));
+      }, 6_000);
       await esriId.getCredential(sharingUrl());
+      stopWatch();
       /* Чиглүүлэлгүй хүрсэн бол (хүчинтэй итгэмжлэл олдсон) шалгалтыг эхнээс нь */
       window.location.reload();
     } catch (e) {
+      stopWatch?.();
       attemptClear();
       setBusy(false);
       setNote(describe(e));
