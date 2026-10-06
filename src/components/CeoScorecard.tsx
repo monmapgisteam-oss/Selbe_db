@@ -363,6 +363,9 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
         <h2 className={s.title}>{tr('Багц ажлын оноо')}</h2>
         <span className={s.legend}>
           {tr('≥{0} хэвийн · {1}–{2} анхааруулга · <{1} эрсдэлтэй (ХАБЭА: ≥{3} · {4}–{5} · <{4}) · «хүлээгдэж» дата ороогүй · «—» хамааралгүй', SCORE_GOOD, SCORE_WARN, SCORE_GOOD - 1, HSE_GOOD, HSE_WARN, HSE_GOOD - 1)}
+          {/* ⚠️ 2026-10-06: газар (`pctLevel` 95/80) ба ерөнхий төлөвлөгөө (`scoreLevel` 65/45)
+              CEO карттай ижил босготой болсон (`scorecard.ts` `dimLevel`) — тайлбарт ил бичнэ */}
+          {' · '}{tr('Газар: ≥{0} · {1}–{2} · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}', 95, 80, 94, 65, 45, 64)}
         </span>
       </header>
 

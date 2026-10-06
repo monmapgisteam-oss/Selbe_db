@@ -48,10 +48,10 @@ import o from './bagtsOv.module.css';
 
 const HUE = LAYER_BY_ID['mon:building'].hue;
 
-/* Даралт хэрэглэдэггүй тул no-op — ГЭХДЭЭ inline () => {} бичвэл render бүрд
-   шинэ лавлагаа үүсч memo(MapCanvas)-ыг эвдэж зураг дэмий дахин зурагддаг.
-   Модулийн түвшний тогтмол тул үргэлж ижил. */
-const noopPick = () => {};
+/* ⚠️ 2026-10-06: `noopPick` ХАССАН — `onPick` өгөгдсөн бол MapCanvas товшилтын
+   атрибутын хайрцгийг (tipOnly) унтраадаг тул мэдрэгчтэй дэлгэцэд атрибут
+   уншигдахгүй байв. Даралт хэрэглэдэггүй тул prop-ыг ОГТ дамжуулахгүй
+   (inline () => {} ч бүү бич — memo(MapCanvas)-ыг эвдэнэ). */
 const INFRA_HUE = '#0891b2';
 /** «Тодорхойгүй / задраагүй» бүлэг — жинхэнэ ангилал мэт өнгөтэй байх ёсгүй */
 const BLANK_HUE = NO_DATA;
@@ -402,7 +402,6 @@ export function Bagts({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           zone={zone}
           layerWhere={layerWhere}
           layerStyle={parcelStyle}
-          onPick={noopPick}
         />
 
         <MapTools

@@ -11,7 +11,7 @@ import { LayerSwatch } from './LayerSwatch';
 import { useMap } from './MapCanvas';
 import { useAsync, type Async } from '@/lib/useAsync';
 import type { Totals } from '@/lib/totals';
-import { qtyText, whereFor, layerStats } from '@/lib/totals';
+import { qtyText, whereFor, layerStats, totalsFailedOf, retryTotals } from '@/lib/totals';
 import { useFilter } from '@/lib/filter';
 import { queryGroup, groups, groupWhere } from '@/lib/query';
 import {
@@ -271,6 +271,27 @@ export const LayerCatalog = memo(function LayerCatalog({
                 )}
               </>
             )}
+            {/* ⚠️ 2026-10-06: ХЭСЭГЧИЛСЭН уналт — `usePlanTotals` зарим давхарга унахад дутуу Map-ыг
+                «бэлэн» гэж буцаадаг тул унасан мөрүүд ЧИМЭЭГҮЙ «—» (мэдээлэлгүй мэт) харагддаг байв.
+                Тоог ил хэлж, дахин татах гарц өгнө (`totals.totalsFailedOf` · `retryTotals`). */}
+            {(() => {
+              if (totals.state !== 'ready') return null;
+              const n = totalsFailedOf(totals.data).length;
+              if (!n) return null;
+              return (
+                <>
+                  {' · '}<em className={s.rowWarn}>{tr('{0} давхарга татагдсангүй', num(n))}</em>
+                  {' '}
+                  <button
+                    type="button"
+                    onClick={retryTotals}
+                    style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {tr('дахин оролдох')}
+                  </button>
+                </>
+              );
+            })()}
             {zone && <> · {zone}</>}
           </span>
         </div>

@@ -53,7 +53,9 @@ const base = (all, failedPkgs = 0) => ({
   /* ⚠️ `measurable` (2026-09-17): блокгүй 8 багц хэмжигдэхгүй тул хэмжигдэх 10
      бүгд унасан ч `failedPkgs (10) < PKG_N (18)` → урьд нь худал 'good' байв. */
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 10, measurable: 10 }, PKG_N), 'unknown', 'measurable нь pkgCount-аас эрхэм');
-  assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 3, measurable: 10 }, PKG_N), 'good');
+  /* ⚠️ 2026-10-06: хэсэгчилсэн уналт + хэтрэлтгүй → «warn» (урьд нь худал 'good') */
+  assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 3, measurable: 10 }, PKG_N), 'warn');
+  assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 0, measurable: 10 }, PKG_N), 'good');
 }
 
 /* ── 3. Бодит мөрүүд — bad, эрэмбэ, хэтрэлт, багцын бүлэглэл ── */

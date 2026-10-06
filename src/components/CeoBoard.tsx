@@ -170,13 +170,25 @@ function cellText(c: Cell): string {
  * ⚠️ Хоосон хүснэгт ЗУРАГДАХГҮЙ — «Хэтэрсэн ажлууд: (хоосон)» гэдэг нь
  *    мэдээлэл биш; тоо нь картан дээр аль хэдийн 0 гэж бичигдсэн.
  */
+/**
+ * ТАСАЛСАН ТООНЫ МӨР мөн үү — `ceo/kpi.capRows` · `schemDetail`-ийн «… бас N мөр/ажил»:
+ * эхний нүд «…»-ээр эхэлсэн текст, бусад нь хоосон.
+ */
+const isCapRow = (r: readonly Cell[] | undefined): boolean => {
+  const head = r?.[0]?.v;
+  return !!r && typeof head === 'string' && head.startsWith('…') && r.slice(1).every((c) => c.v === '' || c.v == null);
+};
+
 function Table({ t }: { t: DetailTable }) {
   if (t.rows.length === 0) return null;
+  /* ⚠️ 2026-10-06: толгойн ТОО — «… бас N мөр» мөрийг ӨГӨГДӨЛ гэж тоолохгүй (урьд нь 300 + 1 = 301 гэж
+     гардаг байв). Таслагдсан бол бүтэн тоо (`rowsFull`); багцаар шүүгдсэн (rowsFull-гүй) үед харагдах өгөгдлийн мөр. */
+  const count = t.rowsFull?.length ?? (isCapRow(t.rows[t.rows.length - 1]) ? t.rows.length - 1 : t.rows.length);
   return (
     <div className={s.tBox}>
       <div className={s.tTitle}>
         {t.title}
-        <span className={`${s.tCount} num`}>{num(t.rows.length)}</span>
+        <span className={`${s.tCount} num`}>{num(count)}</span>
       </div>
       <div className={s.tWrap}>
         <table className={s.tbl}>

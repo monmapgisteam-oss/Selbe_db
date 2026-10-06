@@ -162,21 +162,62 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   if (!sameFrame(loaded, now)) return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
   if ((await maxOidOf()) > maxOid0) return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
 
+  /* ⚠️ 2026-10-06: 500-аар ӨӨРӨӨ хувааж дуудна. `applyAdds` нь олон багцын дунд тасарвал
+     алдааг «… — дахин Нийтлэх дарж гүйцээнэ үү» гэж ороодог — «Хуваарь»-т ийм товч
+     БАЙХГҮЙ, доор хагас жааз аль хэдийн буцаагддаг тул мессеж зөрчилтэй байв. Нэг
+     дуудлага = нэг багц үед `applyAdds` анхны шалтгааныг ороолгүй шиднэ. */
   const written: number[] = [];
   try {
-    await applyAdds(pkg, frame, written);
+    for (let i = 0; i < frame.length; i += 500) await applyAdds(pkg, frame.slice(i, i + 500), written);
   } catch (e) {
     const why = String((e as Error)?.message ?? e);
-    if (written.length) {
-      const gone = await applyDeletes(pkg, written);
-      const left = written.length - gone;
+    const ids = new Set(written);
+    /* ⚠️ 2026-10-06: ХАРИУ АЛДАГДСАН (timeout/сүлжээ) бол сүүлийн багц сервер дээр
+       бичигдсэн байж болох ч OID нь `written`-д ороогүй — хагас жааз үлдэж `loadRows`-ыг
+       хаана. `maxOid0`-оос хойших мөрүүдийг серверээс асууж, ЭНЭ жаазын бөглөсөн огноотой
+       (`fillMs`) мөрийг буцаана. Тоо нь жаазаас ИХ бол өөр хүний бичилт холилдсон —
+       устгахгүй, гараар цэвэрлүүлнэ. */
+    let foreign = false;
+    const { isLostResponse } = await import('./butetsEdit');
+    if (isLostResponse(e) && sc.f.fillDate) {
+      try {
+        const extra: number[] = [];
+        for (let off = 0; off <= frame.length; off += 2000) {
+          const j = await agsFetch(`${pkg.url}/query`, {
+            where: `${sc.f.oid} > ${maxOid0}`,
+            outFields: `${sc.f.oid},${sc.f.fillDate}`,
+            orderByFields: `${sc.f.oid} ASC`,
+            resultOffset: String(off),
+            resultRecordCount: '2000',
+            returnGeometry: 'false',
+          });
+          const feats = (j?.features ?? []) as { attributes?: Record<string, unknown> }[];
+          for (const f of feats) {
+            const oid = Number(f.attributes?.[sc.f.oid]);
+            if (!Number.isInteger(oid)) continue;
+            if (Number(f.attributes?.[sc.f.fillDate]) === fillMs) extra.push(oid);
+            else foreign = true;
+          }
+          if (feats.length < 2000) break;
+        }
+        if (extra.length > frame.length) foreign = true;
+        if (!foreign) for (const x of extra) ids.add(x);
+      } catch {
+        foreign = true;
+      }
+    }
+    if (ids.size) {
+      const gone = await applyDeletes(pkg, [...ids]);
+      const left = ids.size - gone;
       return {
         ok: false,
         error: left > 0
-          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
-          : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`,
+          ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', ids.size, left)}`
+          : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', ids.size)}`
+            + (foreign ? ` · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — AGOL дээр шалгана уу')}` : ''),
       };
     }
+    if (foreign) return { ok: false, error: `${why} · ${tr('Хариу алдагдсан тул бусад шинэ мөрийг шалгаж чадсангүй — AGOL дээр шалгана уу')}` };
     return { ok: false, error: why };
   }
 

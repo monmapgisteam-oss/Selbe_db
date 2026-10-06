@@ -22,6 +22,7 @@ import {
   loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
 import { HUE, catOf, aggregateMonths, physNow, progMonthsOf, type PackCat } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
@@ -811,7 +812,8 @@ export function PkgProg({ dim, setDim }: {
           <>
             {/* ⚠️ 2026-09-30: орон сууцны багана = `physNow` (TsKpi-тай нэг тоо); ачаалж байхад `undefined` */}
             <CatChart packs={packs} housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined} />
-            {allPack && <LevelsCard blocks={allPack.blocks} ovByCat={ovByCat} />}
+            {/* ⚠️ 2026-10-06: хуваарь = бөглөх хуудасны блок (`q.data.keys`), газрын зургийн блок БИШ */}
+            {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
                 хассан нэгдсэн тоо. Багц бүрийн задаргаа нь доорх «Багц N —
@@ -1245,30 +1247,33 @@ function CatChart({ packs, housing }: {
 
 /** Блокийн ТӨЛӨВИЙН тоолол — 113 блок гүйцэтгэлийн 4 түвшнээр (сонгоогүй үед) */
 function LevelsCard({
-  blocks,
+  pm,
+  keys,
   ovByCat,
 }: {
-  blocks: Pack['blocks'];
+  /** Блок бүрийн хэмжилт (`loadBuildings().prog`) */
+  pm: BlockProgressMap;
+  /** Хуваарь — бөглөх хуудасны БҮХ блок (`loadBuildings().keys` = `universeKeys`) */
+  keys: readonly string[];
   /**
    * Ангилал бүрийн асуудалтай (давхцсан үлдсэн) нэгж талбар — null = ачаалж
    * байна, `'error'` = тухайн ангиллын тоолол унасан («0» гэж худлахгүй).
    */
   ovByCat: Map<PackCat, number | 'error'> | null;
 }) {
-  const counts = PROGRESS_LEVELS.map(() => 0);
-  let noData = 0;
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок */
-  const uniq = uniqueBlocks(blocks);
   /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): хэмжилтгүй блок «0–25%»-д
-     ТООЛОГДОНО — урьд нь «мэдээлэлгүй» гэж хасагддаг тул багцын хувь (`pkgProgressOf` — тайлангүй 0%)
-     ба энэ тархалт өөр хуваарьтай байв. Тайлангүйн тоо `note`-д ил хэвээр. */
-  uniq.forEach((b) => {
-    if (b.progress == null) noData++;
-    const v = b.progress ?? 0;
-    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(v / 25)))]++;
-  });
+     ТООЛОГДОНО. Тайлангүйн тоо `note`-д ил хэвээр.
+     ⚠️ 2026-10-06: Дашбоард · Удирдлагын тайлантай НЭГ дүрэм (`blockProgress.levelCounts`) — урьд нь
+     газрын зургийн давхаргын блокоор (`allPack.blocks`) тоолдог тул footprint-гүй (29/3, 5/8) блок
+     орохгүй, хуваарь Дашбоардын тархалтаас зөрдөг байв. */
+  const counts = levelCounts(pm, keys);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const all = new Set<string>(keys);
+  pm.forEach((_, k) => all.add(k));
+  let noData = 0;
+  all.forEach((k) => { const v = pm.get(k)?.overall; if (v == null || !Number.isFinite(v)) noData++; });
   return (
-    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', uniq.length, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
+    <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', total, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({

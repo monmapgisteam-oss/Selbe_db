@@ -494,7 +494,7 @@ async function newerExists(kind: DocKind, bagts: string, seq: number, rev: numbe
 /**
  * ХАВСРАЛТ засах эрх — СЕРВЕРИЙН мөрөөр (2026-09-17): урьд нь зөвхөн UI (`canAct.edit`)
  * тул батлагдсан баримтын хавсралтыг консолоос солих боломжтой байв. Зөвхөн
- * ноорог/буцаагдсан төлөвт, зөвхөн зохиогч. `null` = зөвшөөрнө.
+ * ноорог төлөвт (⚠️ 2026-10-06: буцаагдсан ХАСАГДСАН — доорх ⚠️), зөвхөн зохиогч. `null` = зөвшөөрнө.
  */
 async function attachDeny(oid: number, op: 'add' | 'delete' = 'add'): Promise<string | null> {
   const cur = await query(`${F.oid} = ${Number(oid)}`, HEAD);
@@ -518,13 +518,26 @@ async function attachDeny(oid: number, op: 'add' | 'delete' = 'add'): Promise<st
       if (op === 'delete') return tr('Илгээсэн үл тохирлын хавсралт (нотолгоо) устгагдахгүй — шаардлагатай бол зөв файлаа нэмж хавсаргана уу.');
       try { requireCap('chanarAuthor'); } catch (e) { return String((e as Error).message || e); }
       if (strict && !isAuthorFor(me, doc.bagts)) return tr('Энэ багцад гүйцэтгэгчийн эрхгүй.');
+      /* ⚠️ 2026-10-06: ҮҮРГИЙН ТУСГААРЛАЛТ — нээгч (захиалагч) гүйцэтгэгчийн эрхтэй байсан ч
+         залруулгын нотолгоо хавсаргахгүй (`submitCorrection`-ийн ижил). */
+      if (strict && doc.author.trim().toLowerCase() === me) return NCR_OPENER_DENY();
+      /* ⚠️ 2026-10-06: хянагч дүгнэлт өгч ЭХЭЛСЭН бол нэмэхгүй — урьд нь дүгнэлтийн дараа
+         нотолгоо нэмэгдэж, хянагчийн ХАРААГҮЙ файл «дүгнэсэн» залруулгад наалддаг байв.
+         `chanarMs.submitCorrection`-ийн ижил дүрэм (шийдвэр нь зөвхөн залруулга ирсний дараа). */
+      if (doc.status === MS_STATUS.review && Object.values(doc.reviews).some((r) => r != null)) {
+        return tr('Хянагч дүгнэлт өгч эхэлсэн — нотолгоо нэмэхгүй, дүгнэлтийг хүлээнэ үү.');
+      }
       return null;
     }
     return tr('Хаагдсан үл тохирлын хавсралтыг өөрчлөхгүй.');
   }
   /* ⚠️ 2026-09-25: хавсралт ч зохиогчийн бичилт — `actor`-ийн ижил эрх. */
   try { requireCap('chanarAuthor'); } catch (e) { return String((e as Error).message || e); }
-  if (doc.status !== MS_STATUS.draft && doc.status !== MS_STATUS.returned) return tr('Зөвхөн ноорог эсвэл буцаагдсан баримтын хавсралтыг өөрчилнө.');
+  /* ⚠️ 2026-10-06: ЗӨВХӨН НООРОГ — буцаагдсан мөр нь хянагчдын ТАТГАЛЗСАН агуулга (`saveDraft`-ийн
+     2026-09-16 ⚠️). Урьд нь буцаагдсан мөрд хавсралт нэмэх/устгах боломжтой тул татгалзсан
+     хувилбарын нотолгоо чимээгүй өөрчлөгдөж, «Дахин илгээх»-ийн rev+1 мөрд тэр файл
+     ОРДОГГҮЙ байв. Зохиогч эхлээд «Засах» (rev+1 ноорог) дарна. */
+  if (doc.status !== MS_STATUS.draft) return tr('Зөвхөн ноорог баримтын хавсралтыг өөрчилнө — буцаагдсан бол эхлээд «Засах» дарж шинэ хувилбарын ноорог үүсгэнэ үү.');
   if (strict && doc.author.trim().toLowerCase() !== me) return tr('Зөвхөн зохиогч хавсралт өөрчилнө.');
   /* ⚠️ ХУУЧИН ХУВИЛБАР ХААЛТТАЙ (2026-09-25 аудит): `Chanar.tsx` хавсралтыг
      БҮХ хувилбараас цуглуулж харуулдаг тул rev0 (буцаагдсан) дээрх гэрчилгээг
@@ -556,7 +569,7 @@ export async function loadAllDocs(): Promise<MsDoc[]> {
  * ⚠️ 2026-10-01: `reopenedAt` — сүүлд ДАХИН НЭЭСЭН агшин (`body.rounds`-ийн `reopen`
  *    тойрог; `sentAt` дахин нээхэд өөрчлөгддөггүй) — «Миний хийх»-ийн хүлээсэн хоног.
  */
-export type NcrFlags = Map<number, { correctionAt: number | null; ncrClosed: boolean; reopenedAt?: number | null }>;
+export type NcrFlags = Map<number, { correctionAt: number | null; ncrClosed: boolean; reopenedAt?: number | null; correctionBy?: string }>;
 export async function loadNcrFlags(): Promise<NcrFlags> {
   const rows = await query(`${F.kind} = 'NCR'`, `${F.oid},${F.body}`);
   const out: NcrFlags = new Map();
@@ -566,7 +579,7 @@ export async function loadNcrFlags(): Promise<NcrFlags> {
     const b = normalizeNcr(safeJson(r[F.body]));
     const reopens = (b.rounds ?? []).filter((x) => x.end === 'reopen' && Number.isFinite(x.at)).map((x) => x.at);
     out.set(oid, {
-      correctionAt: b.correctionAt, ncrClosed: (b.closure?.closedByContractor.length ?? 0) > 0,
+      correctionAt: b.correctionAt, correctionBy: b.correctionBy, ncrClosed: (b.closure?.closedByContractor.length ?? 0) > 0,
       reopenedAt: reopens.length ? Math.max(...reopens) : null,
     });
   }
@@ -603,7 +616,7 @@ export function actionableItems(
     if (!roles.length && !contractor && d.author !== u) continue;
     const f = d.kind === 'NCR' ? ncr?.get(d.oid) : undefined;
     if (d.kind === 'NCR' && !f) continue;
-    const flow = { ...d, correctionAt: f?.correctionAt ?? null };
+    const flow = { ...d, correctionAt: f?.correctionAt ?? null, correctionBy: f?.correctionBy ?? null }; // ⚠️ 2026-10-06: илгээгч өөрөө дүгнэхгүй
     const m = myAction(flow, canAct(flow, u, roles, { contractor, ncrClosed: f?.ncrClosed ?? false }), { reopenedAt: f?.reopenedAt ?? null });
     if (m) out.push({ doc: d, why: m.why, since: m.since, days: waitDays(m.since, now) });
   }
@@ -741,6 +754,13 @@ const authorCap = (kind: DocKind): CapKey => (kind === 'NCR' ? 'chanarReview' : 
  *    «+ Шинэ үл тохирол» товч гарч, хадгалахад татгалздаг байв. Нэг эх сурвалж.
  */
 const NCR_OPEN_DENY = () => tr('Энэ багцад үл тохирол нээх эрхгүй — ТУХ, Чанарын хянагч эсвэл ТУГ л нээнэ.');
+/**
+ * ⚠️ 2026-10-06: ҮҮРГИЙН ТУСГААРЛАЛТ — NCR-ийг НЭЭГЧ (захиалагч, `doc.author`) гүйцэтгэгчийн
+ *    эрхтэй (`isAuthorFor`) байсан ч залруулга илгээх · нотолгоо хавсаргах · «Хаасан» мөр
+ *    бөглөхгүй. Урьд нь `isAuthorFor` л шалгадаг тул нэг аккаунт нээж, залруулж, дүгнэж,
+ *    хааж — бүх урсгалыг ганцаараа явуулж чаддаг байв (`submitCorrection` · `closeNcrDoc` · `attachDeny`).
+ */
+const NCR_OPENER_DENY = () => tr('Үл тохирлыг нээгч гүйцэтгэгчийн үйлдэл (залруулга · нотолгоо · хаалт) хийхгүй — үүргийн тусгаарлалт.');
 function authorDeny(kind: DocKind, who: string, bagts: string): string | null {
   if (kind === 'NCR') {
     const roles = reviewerRolesFor(who, bagts);
@@ -793,6 +813,7 @@ function ownClientBody(kind: DocKind, client: AnyBody, server: AnyBody | null): 
     const n = out as NcrBody;
     n.correction = sn?.correction ?? { text: '', completedAt: null, steps: [] };
     n.correctionAt = sn?.correctionAt ?? null;
+    n.correctionBy = sn?.correctionBy ?? ''; // ⚠️ 2026-10-06: илгээгч — зөвхөн серверээс
     n.closure = sn?.closure ?? null;
     n.reopened = sn?.reopened ?? 0;
     /* ⚠️ 2026-09-30: тойргийн түүх — append-only, зөвхөн серверээс */
@@ -1080,6 +1101,11 @@ export async function submitDoc(args: {
   const r = submitPure(doc, { who: act.who, revNote });
   if (!r.ok) return r;
 
+  /* ⚠️ 2026-10-06: ХАРИУ АЛДАГДСАН бичилт (`lostResponse`) — `createDraft`-ийн ижил: дахин
+     ИЛГЭЭХГҮЙ, дахин уншиж зорьсон төлөв (төлөв + `sentAt`) байвал амжилт, үгүй бол `unsure`.
+     Урьд нь «алдаа» гэж буцааж, дахин дарахад rev+1 ДАВХАР үүсэх эсвэл илгээсэн баримтыг
+     «илгээгдээгүй» гэж харуулдаг байв. Бичилтийн ӨМНӨХӨН л тавигдана (уншилтын алдаанд биш). */
+  let onLost: (() => Promise<Result>) | null = null;
   try {
     /* Ноорог (rev>0) дээр шалтгаан өгсөн бол биед хадгална — түүхийн мөр аль хэдийн
        `saveDraft`/`newRevisionDoc`-оос; байхгүй бол энд нэмнэ */
@@ -1096,6 +1122,7 @@ export async function submitDoc(args: {
     }
     if (r.rev === doc.rev) {
       /* Анхны илгээлт — ижил мөрийг шинэчилнэ (NCR: үргэлж энэ зам, rev үгүй) */
+      onLost = () => lostResult(args.oid, { [F.oid]: args.oid, [F.status]: r.status, [F.sentAt]: r.sentAt });
       const j = await arcgisPost(`${url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: {
           [F.oid]: args.oid, [F.status]: r.status, [F.sentAt]: r.sentAt,
@@ -1119,6 +1146,15 @@ export async function submitDoc(args: {
       [F.status]: r.status, [F.author]: doc.author, [F.sentAt]: r.sentAt,
       [F.reviews]: JSON.stringify(r.reviews), [F.body]: JSON.stringify(nextBody),
     };
+    onLost = async () => {
+      try {
+        const hit = (await loadDocs(kind))
+          .filter((d) => d.docNo === no && d.rev === r.rev && d.sentAt === r.sentAt)
+          .sort((x, y) => y.oid - x.oid)[0];
+        if (hit) { invalidate('CHANAR_BARIMT'); return { ok: true, oid: hit.oid }; }
+      } catch { /* уншиж чадсангүй — `unsure` */ }
+      return { ok: false, unsure: true, error: UNSURE_MSG() };
+    };
     const j = await arcgisPost(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true',
     });
@@ -1127,6 +1163,7 @@ export async function submitDoc(args: {
     invalidate('CHANAR_BARIMT');
     return { ok: true, oid: a.objectId };
   } catch (e) {
+    if (onLost && lostResponse(e)) return onLost();
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
@@ -1204,7 +1241,8 @@ export async function reviewDoc(args: {
       return { ok: false, error: tr('Гүйцэтгэгч залруулгаа таныг уншсанаас хойш дахин илгээсэн — баримтыг дахин ачаалж шинэ залруулгыг уншаад дүгнэнэ үү. Таны шийдвэр хадгалагдсангүй.') };
     }
     const r = reviewPure(
-      { ...doc, correctionAt: ncrBody?.correctionAt ?? null },
+      /* ⚠️ 2026-10-06: `correctionBy` — залруулга илгээгч өөрөө дүгнэхгүй (`review` дүрэм 7б) */
+      { ...doc, correctionAt: ncrBody?.correctionAt ?? null, correctionBy: ncrBody?.correctionBy ?? null },
       {
         as: args.as, who: me, verdict: args.verdict, note: args.note, perMaterial: args.perMaterial,
         materials: maBody?.materials, anDeadline: args.anDeadline,
@@ -1241,7 +1279,13 @@ export async function reviewDoc(args: {
        хойш (REP дугаарлалт `loadDocs` — бүх мөрийн уншилт) өөр хянагч «хянахгүй буцаах»
        (bounce) эсвэл шийдвэр бичсэн бол манай бичилт түүнийг ЧИМЭЭГҮЙ дардаг байв —
        баримт буцаж «хянагдаж байна» болж, bounce тэмдэг алга. Өөрчлөгдсөн бол шинээр. */
-    if (!(await unchanged(args.oid, cur[0], [F.status, F.reviews]))) {
+    /* ⚠️ 2026-10-06: БИЕ ч ажиглана — NCR (бие ч бичигдэх эсэхээс үл хамаарч; залруулга дахин
+       илгээгдэхэд төлөв/хянагчид ИЖИЛ хэвээр үлдэж болно) ба биеийг бичих бусад зам. Урьд нь
+       зөвхөн төлөв/хянагчид ажиглагдаж, уншсанаас хойш ирсэн залруулгыг (`correctionAt`) хуучин
+       биеэр дарж, хараагүй залруулгад дүгнэлт бичдэг байв. Өөрчлөгдсөн бол дараагийн оролдлого
+       ШИНЭ мөрөөс `correctionChanged`-ийг дахин ажиллуулна (дээр). */
+    const watch = (ncrBody || F.body in attrs) ? [F.status, F.reviews, F.body] : [F.status, F.reviews];
+    if (!(await unchanged(args.oid, cur[0], watch))) {
       last = { ok: false, error: RACE_MSG() };
       continue;
     }
@@ -1253,7 +1297,14 @@ export async function reviewDoc(args: {
       if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
       invalidate('CHANAR_BARIMT');
     } catch (e) {
-      return { ok: false, error: String((e as Error).message || e) };
+      /* ⚠️ 2026-10-06: ХАРИУ АЛДАГДСАН — дахин ИЛГЭЭХГҮЙ (`createDraft`-ийн ижил). Манай шийдвэр
+         слотод байвал бичигдсэн гэж үзээд доорх тулгалт руу; үгүй бол хожуу бичигдэж магадгүй
+         тул `unsure` (давтан бичвэл хожуу ирсэн хуучин бичилт дарж болзошгүй). */
+      if (!lostResponse(e)) return { ok: false, error: String((e as Error).message || e) };
+      let there = false;
+      try { there = await mineSurvives(args.oid, args.as, me); } catch { /* уншиж чадсангүй */ }
+      if (!there) return { ok: false, unsure: true, error: UNSURE_MSG() };
+      invalidate('CHANAR_BARIMT');
     }
     /* Бичсэний дараа тулгах */
     if (await mineSurvives(args.oid, args.as, me)) {
@@ -1363,37 +1414,32 @@ export async function saveClientChecks(args: {
 export async function submitCorrection(args: {
   oid: number; who: string; correction: NcrCorrection;
 }): Promise<Result> {
-  const url = await tableUrl(false);
-  if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const act = actor(args.who, 'chanarAuthor');
   if (!('who' in act)) return act;
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
-  if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
-  const doc = toDoc(cur[0]);
-  if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
-  if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад гүйцэтгэгчийн эрхгүй.') };
-  const body = normalizeNcr(safeJson(cur[0][F.body]));
-  const r = correctionPure(doc, body, { who: act.who, correction: args.correction });
-  if (!r.ok) return r;
-  try {
+  /* ⚠️ 2026-10-06: БИЧИХИЙН ӨМНӨ ДАХИН УНШИНА (`unchanged`, `bounceDoc`-ийн ижил) — уншсанаас
+     хойш хянагч дүгнэлт өгсөн бол залруулгын дахин илгээлт тэр шийдвэрийг ЧИМЭЭГҮЙ арилгадаг
+     байв (`chanarMs.submitCorrection`-ийн «дүгнэлт өгч эхэлсэн» дүрэм ХУУЧИН уншилтаар шалгагддаг). */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const ld = await loadRow(args.oid);
+    if ('ok' in ld) return ld;
+    const { url, row, doc } = ld;
+    if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад гүйцэтгэгчийн эрхгүй.') };
+    if (doc.author.trim().toLowerCase() === act.who) return { ok: false, error: NCR_OPENER_DENY() }; // ⚠️ 2026-10-06
+    const body = normalizeNcr(safeJson(row[F.body]));
+    const r = correctionPure(doc, body, { who: act.who, correction: args.correction });
+    if (!r.ok) return r;
+    if (!(await unchanged(args.oid, row, [F.status, F.reviews, F.body]))) continue;
     /* ⚠️ 2026-09-29 (аудит 10): ӨМНӨХ ХАРИУГ (`rep`) ХАДГАЛНА. NCR нь НЭГ мөртэй (rev үгүй)
        тул `JSON.stringify(r.reviews)` нь өмнөх REP дугаарыг арилгадаг байв → `nextRepNo`
        тэр NNNN-ийг өөр баримтад ДАХИН олгож (төслийн хэмжээнд давхардал), `repSeqFor`
        lineage-ээ алдана (0005-01 байх ёстой нь 0006-00). Хянагдаж буй төлөвт шийдвэрийн
        тэмдэг гаргахгүй байх нь `chanarUi.docVerdict`-д. */
-    const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
-        [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
-      } }]),
-      rollbackOnFailure: 'true',
+    return update(url, {
+      [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
+      [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: args.oid };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
   }
+  return { ok: false, error: RACE_MSG() };
 }
 
 /**
@@ -1401,34 +1447,27 @@ export async function submitCorrection(args: {
  * ⚠️ 2026-09-30: `reason` ЗААВАЛ (`chanarMs.reopen`); хаалтын бүртгэл `body.rounds`-д.
  */
 export async function reopenDoc(args: { oid: number; who: string; reason: string }): Promise<Result> {
-  const url = await tableUrl(false);
-  if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const act = actor(args.who, 'chanarReview');
   if (!('who' in act)) return act;
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
-  if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
-  const doc = toDoc(cur[0]);
-  if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
-  const roles = reviewerRolesFor(act.who, doc.bagts);
-  if (!REVIEWERS_OF.NCR.some((r) => roles.includes(r))) return { ok: false, error: NCR_OPEN_DENY() };
-  const body = normalizeNcr(safeJson(cur[0][F.body]));
-  const r = reopenPure(doc, body, { who: act.who, reason: args.reason });
-  if (!r.ok) return r;
-  try {
+  /* ⚠️ 2026-10-06: бичихийн өмнө дахин уншина (`unchanged`) — уншсанаас хойш гүйцэтгэгч
+     «Хаасан» мөрөө бөглөсөн (бие) эсвэл өөр хянагч дахин нээсэн бол хуучин биеэр дардаг байв. */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const ld = await loadRow(args.oid);
+    if ('ok' in ld) return ld;
+    const { url, row, doc } = ld;
+    const roles = reviewerRolesFor(act.who, doc.bagts);
+    if (!REVIEWERS_OF.NCR.some((r) => roles.includes(r))) return { ok: false, error: NCR_OPEN_DENY() };
+    const body = normalizeNcr(safeJson(row[F.body]));
+    const r = reopenPure(doc, body, { who: act.who, reason: args.reason });
+    if (!r.ok) return r;
+    if (!(await unchanged(args.oid, row, [F.status, F.reviews, F.body]))) continue;
     /* ⚠️ 2026-09-29 (аудит 10): өмнөх хариуг (`rep`) хадгална — `submitCorrection`-ийн тайлбар */
-    const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: {
-        [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
-        [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
-      } }]),
-      rollbackOnFailure: 'true',
+    return update(url, {
+      [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, doc.rep),
+      [F.decidedAt]: null, [F.body]: JSON.stringify(r.body),
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: args.oid };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
   }
+  return { ok: false, error: RACE_MSG() };
 }
 
 /* ══════════════ 2-р үе шат (2026-09-28): буцаах · хүлээн авах · AN хаах · шинэ хувилбар · NCR хаах ══════════════ */
@@ -1451,9 +1490,30 @@ async function update(url: string, attrs: Attrs): Promise<Result> {
     invalidate('CHANAR_BARIMT');
     return { ok: true, oid: Number(attrs[F.oid]) };
   } catch (e) {
+    /* ⚠️ 2026-10-06: хариу алдагдсан бол дахин уншиж шалгана (`lostResult`) */
+    if (lostResponse(e)) return lostResult(Number(attrs[F.oid]), attrs);
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
+
+/**
+ * ХАРИУ АЛДАГДСАН ШИНЭЧЛЭЛТ (2026-10-06) — `createDraft`-ийн 2026-10-05 загвар. Бичилтийг дахин
+ * ИЛГЭЭХГҮЙ; мөрийг дахин уншиж `attrs`-ийн БҮХ талбар (oid-оос бусад) сервер дээр ижил бол
+ * амжилт. Үгүй бол хожуу бичигдэж магадгүй тул `unsure` — урьд нь «алдаа» гэж хэлээд
+ * хэрэглэгч дахин дарахад давхар бичилт (тойрог, хаалт) үүсдэг байв.
+ */
+async function lostResult(oid: number, attrs: Attrs): Promise<Result> {
+  try {
+    const fields = Object.keys(attrs).filter((f) => f !== F.oid);
+    const fresh = await query(`${F.oid} = ${Number(oid)}`, [F.oid, ...fields].join(','));
+    if (fresh.length && fields.every((f) => String(fresh[0][f] ?? '') === String(attrs[f] ?? ''))) {
+      invalidate('CHANAR_BARIMT');
+      return { ok: true, oid };
+    }
+  } catch { /* уншиж чадсангүй — `unsure` */ }
+  return { ok: false, unsure: true, error: UNSURE_MSG() };
+}
+const UNSURE_MSG = () => tr('Серверээс хариу ирсэнгүй — өөрчлөлт хадгалагдсан эсэх ТОДОРХОЙГҮЙ. «Шинэчлэх» дарж баримтыг шалгаад шаардлагатай бол дахин оролдоно уу.');
 
 /**
  * «ХЯНАХГҮЙ БУЦААХ» — Чанарын хэлтсийн хянагч (`chanar`/`cheng`, тухайн багцад),
@@ -1605,14 +1665,21 @@ export async function closeNcrDoc(args: {
 }): Promise<Result> {
   const act = actor(args.who, 'chanarAuthor');
   if (!('who' in act)) return act;
-  const ld = await loadRow(args.oid);
-  if ('ok' in ld) return ld;
-  const { url, row, doc } = ld;
-  if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад гүйцэтгэгчийн эрхгүй.') };
-  const body = normalizeNcr(safeJson(row[F.body]));
-  const r = closeNcrPure(doc, body, { who: act.who, closedByContractor: args.closedByContractor, docType: args.docType, action: args.action, result: args.result, archive: args.archive });
-  if (!r.ok) return r;
-  return update(url, { [F.oid]: args.oid, [F.body]: JSON.stringify(r.body) });
+  /* ⚠️ 2026-10-06: бичихийн өмнө дахин уншина (`unchanged`) — уншсанаас хойш хянагч дахин нээсэн
+     (бие тэглэгдэж, төлөв review) бол хуучин approved биеийг (хаалттай) буцааж бичдэг байв. */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const ld = await loadRow(args.oid);
+    if ('ok' in ld) return ld;
+    const { url, row, doc } = ld;
+    if (!isAuthorFor(act.who, doc.bagts)) return { ok: false, error: tr('Энэ багцад гүйцэтгэгчийн эрхгүй.') };
+    if (doc.author.trim().toLowerCase() === act.who) return { ok: false, error: NCR_OPENER_DENY() }; // ⚠️ 2026-10-06
+    const body = normalizeNcr(safeJson(row[F.body]));
+    const r = closeNcrPure(doc, body, { who: act.who, closedByContractor: args.closedByContractor, docType: args.docType, action: args.action, result: args.result, archive: args.archive });
+    if (!r.ok) return r;
+    if (!(await unchanged(args.oid, row, [F.status, F.reviews, F.body]))) continue;
+    return update(url, { [F.oid]: args.oid, [F.body]: JSON.stringify(r.body) });
+  }
+  return { ok: false, error: RACE_MSG() };
 }
 
 /* ══════════════════════ Мета — хариуцсан ажилтан ══════════════════════ */

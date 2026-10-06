@@ -8,7 +8,7 @@ import type { Pkg, Schema } from "../bagts.pkg";
 import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
 import {
-  claimObyem, decideObyem, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
+  claimObyem, clearObyemPartial, decideObyem, markObyemPartial, obyemApproveGuard, releaseObyemClaim, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
   submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
@@ -217,6 +217,8 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     let pvSkipped = 0;
     /** ⚠️ 2026-10-04: үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн эсэх — шийдвэр унавал мессежид */
     let wroteMain = false;
+    /** ⚠️ 2026-10-06: түгжсэн атлаа үндсэн өгөгдөлд НЭГ Ч мөр бичээгүй — `finally`-д түгжээг тайлна */
+    let holdClaim = false;
     /** Бичигдсэний ДАРАА шийдвэр унасан үеийн тайлбар — юу болсон, яах вэ */
     const afterWrite = (why: string) => tr('Утгууд үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн, гэхдээ илгээлтийг «Батлагдсан» болгож чадсангүй ({0}). Хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу — ижил утга дахин бичигдэх тул аюулгүй. Давтан унавал админд мэдэгдэнэ үү.', why);
     try {
@@ -293,12 +295,33 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            орсон атлаа «батлагдсан» бичлэг үүсэхгүй, «дахин батлах» хэзээ ч амжилтгүй. Түгжээ нь
            төлвийг ДАХИН уншиж (`pending` хэвээр) өөр дээрээ тавиад, бичсэний дараа баталгаажуулна;
            түгжээтэй үед `withdrawObyem` ба өөр батлагчийн `decideObyem` татгалзана.
-           ⚠️ Бичилт унасан ч түгжээг ТАЙЛАХГҮЙ: `applyUpdates` хэсэгчлэн бичсэн байж болох тул
-           тайлбал зохиогч хагас бичигдсэн илгээлтээ татна. Энэ батлагч шууд дахин дарж болно;
-           бусдад 10 минутын дараа өөрөө тайлагдана. */
-        const claim = await claimObyem({ oid: pvSub.oid, approver: user?.username ?? '' });
+           ⚠️ 2026-10-06: хагас бичилтийг ТҮГЖЭЭ БИШ, сервер дээрх ХУГАЦААГҮЙ тэмдэг
+           (`markObyemPartial`, `obyemBatlah.PARTIAL_MARK`-ийн ⚠️) хамгаална. Урьд нь зөвхөн
+           `CLAIM_TTL` (10 мин) түгжээ байсан тул `decideObyem` унасны дараа 10 минутад зохиогч
+           ТАТАЖ, өөр батлагч БУЦААЖ, батлагдаагүй обьём үндсэн өгөгдөлд үлддэг байв. Одоо:
+           түгжих → `obyemApproveGuard` (бичихийн ЯГ өмнө дахин уншина) → тэмдэг (fail-closed) →
+           бичих. Тэмдэг нь ЗӨВХӨН `decideObyem(approve)` амжилттай болоход арилна. НЭГ Ч мөр
+           бичигдээгүй унасан (`written === 0`) бол тэмдгийг арилгаж түгжээг тайлна
+           (`releaseObyemClaim`); нэг ч мөр бичигдсэн бол хоёулаа ҮЛДЭНЭ. */
+        const me = user?.username ?? '';
+        const claim = await claimObyem({ oid: pvSub.oid, approver: me });
         if (!claim.ok) { pvErrHere(claim.error ?? tr('Шийдвэр хадгалагдсангүй.')); return; }
-        await applyUpdates(pkg, upd);
+        holdClaim = true;
+        const why = await obyemApproveGuard({ oid: pvSub.oid, approver: me });
+        if (why) { pvErrHere(why); return; }
+        const mk = await markObyemPartial({ oid: pvSub.oid, approver: me });
+        if (!mk.ok) {
+          pvErrHere(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — үндсэн өгөгдөлд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
+          return;
+        }
+        try {
+          await applyUpdates(pkg, upd);
+        } catch (e) {
+          if ((e as { written?: number })?.written === 0) await clearObyemPartial(pvSub.oid);
+          else { holdClaim = false; wroteMain = true; }
+          throw e;
+        }
+        holdClaim = false;
         wroteMain = true;
         pvSkipped = skippedN;
         /* ⚠️ 2026-09-30: БИЧИГДСЭН утгыг хуудасны мөрт ч тусгана — урьд нь зөвхөн
@@ -329,6 +352,9 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       const m = String((e as Error).message || e);
       pvErrHere(wroteMain ? afterWrite(m) : m);
     } finally {
+      /* ⚠️ 2026-10-06: бичилт эхлээгүй/НЭГ Ч мөр бичигдээгүй үед түгжээг тайлна — эс бөгөөс 10 минут
+         зохиогч татаж, өөр батлагч шийдэж чадахгүй (зөвхөн ӨӨРИЙН `pending` түгжээг тайлна). */
+      if (holdClaim) void releaseObyemClaim({ oid: pvSub.oid, approver: user?.username ?? '' });
       setPvBusy(false);
     }
   }, [pvSub, pvBusy, sc, rows, pkg, user, refreshObyem, locked, pkgKeyRef, setRows, setPvBusy, setPvErr, setPvNote]);

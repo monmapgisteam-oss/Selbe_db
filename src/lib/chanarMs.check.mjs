@@ -875,8 +875,10 @@ console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) �
   assert.ok(/sameMaterialContent\(m, sm\[j\]\)/.test(store), '⚠️ ownClientBody: агуулга өөрчлөгдсөн материал түгжигдэхгүй');
   /* A9 — хянах · хянахгүй буцаах бичихийн өмнө дахин уншина (өөр хүний шийдвэр/bounce-ийг дарахгүй) */
   const w = rd.indexOf("arcgisPost(`${url}/applyEdits`");
-  assert.ok(rd.indexOf('await unchanged(args.oid, cur[0], [F.status, F.reviews])') > 0
-    && rd.indexOf('await unchanged(args.oid, cur[0], [F.status, F.reviews])') < w, '⚠️ reviewDoc: бичихийн өмнө `unchanged`');
+  /* ⚠️ 2026-10-06: ажиглах талбар `watch` — NCR ба биеийг бичих замд `F.body` ч (хуучин зөвхөн төлөв/хянагчид) */
+  assert.ok(rd.indexOf('await unchanged(args.oid, cur[0], watch)') > 0
+    && rd.indexOf('await unchanged(args.oid, cur[0], watch)') < w, '⚠️ reviewDoc: бичихийн өмнө `unchanged`');
+  assert.ok(/const watch = \(ncrBody \|\| F\.body in attrs\) \? \[F\.status, F\.reviews, F\.body\]/.test(rd), '⚠️ reviewDoc: NCR/бие бичихэд биеийг ч ажиглана');
   const bd = store.slice(store.indexOf('export async function bounceDoc'), store.indexOf('async function unchanged'));
   assert.ok(bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') > 0
     && bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') < bd.indexOf('return update(url'), '⚠️ bounceDoc: бичихийн өмнө `unchanged`');

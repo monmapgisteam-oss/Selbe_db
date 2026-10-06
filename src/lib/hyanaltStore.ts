@@ -38,7 +38,7 @@ import { t as tr } from './i18nCore';
 import {
   addRows, addedOid, ensureUniqueId, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig, updateRows,
   DECISION, F, HYANALT, STATUS,
-  REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview,
+  REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, SF, nextReview, prevReview,
   type Attrs, type Decision, type ReviewStage, type Row, type Status,
 } from './hyanalt';
 
@@ -77,16 +77,74 @@ async function okCellsPatch(okCells: string[] | undefined): Promise<{ patch: Att
  *    тулгадаг тул завсарт өөр хүн нэмсэн бол бичилт зогсож, лог дарагдахгүй.
  * ⚠️ `false`/`null` (алга/мэдэхгүй) → `{}` — шийдвэр урьдын адил, логгүй.
  */
-async function historyPatch(base: unknown, e: HistEntry): Promise<Attrs> {
+/* ⚠️ 2026-10-06 (аудит #6): `user` — ArcGIS ХЭРЭГЛЭГЧИЙН НЭР (`u`) логийн үйл явдалд
+   хадгалагдана; дараалсан хоёр шатыг нэг хүн шийдэхээс сэргийлэх (`authz`) түлхүүр. */
+async function historyPatch(base: unknown, e: HistEntry, user?: string): Promise<Attrs> {
   const has = await hasHistoryField();
   if (has !== true) return {};
-  return { [F.history]: appendHistory(base, e) };
+  return { [F.history]: withUsers(base, appendHistory(base, e), user) };
+}
+
+/** Логийн түүхий үйл явдал — `u` талбарыг уншихад (`parseHistory` үүнийг хаядаг) */
+type RawHist = { stage?: unknown; at?: unknown; act?: unknown; u?: unknown; [k: string]: unknown };
+function rawHist(raw: unknown): RawHist[] {
+  try {
+    const a: unknown = JSON.parse(String(raw ?? ''));
+    return Array.isArray(a) ? a.filter((x): x is RawHist => !!x && typeof x === 'object') : [];
+  } catch { return []; }
+}
+
+/**
+ * ЛОГИЙН ҮЙЛ ЯВДАЛД ХЭРЭГЛЭГЧИЙН НЭР (`u`) НЭМНЭ (2026-10-06, аудит #6).
+ * ⚠️ `hyanaltHistory.appendHistory` нь танихгүй талбарыг ХАЯДАГ (цэвэр модуль, өөрчлөхгүй) —
+ *    тиймээс өмнөх үйл явдлын `u`-г `base`-аас (шат·агшин·үйлдлээр) сэргээж, ШИНЭ (сүүлийн)
+ *    үйл явдалд `user`-ийг тавина. Хуучин уншигч (`parseHistory`) `u`-г үл тоомсорлоно.
+ * ⚠️ Хэмжээний нөөц (65536): `u` нэмэгдсэн тул хэтэрвэл хамгийн хуучнаас хасна.
+ */
+function withUsers(base: unknown, out: string, user?: string): string {
+  const key = (e: RawHist) => `${String(e.stage)}|${Number(e.at)}|${String(e.act)}`;
+  const us = new Map<string, string>();
+  for (const e of rawHist(base)) if (typeof e.u === 'string' && e.u) us.set(key(e), e.u);
+  let list = rawHist(out).map((e) => {
+    const u = us.get(key(e));
+    return u ? { ...e, u } : e;
+  });
+  const u0 = (user ?? '').trim().toLowerCase();
+  if (u0 && list.length) list[list.length - 1] = { ...list[list.length - 1], u: u0 };
+  let s = JSON.stringify(list);
+  while (s.length > 65_000 && list.length > 1) { list = list.slice(1); s = JSON.stringify(list); }
+  return s;
+}
+
+/** Тухайн шатыг хамгийн сүүлд ЗӨВШӨӨРСӨН хүний ArcGIS нэр (`u`) — мэдэхгүй бол `''` */
+function lastApprover(raw: unknown, stage: ReviewStage): string {
+  let best = '';
+  let bestAt = -Infinity;
+  for (const e of rawHist(raw)) {
+    if (e.stage !== stage || (e.act !== 'approve' && e.act !== 'recheck-ok')) continue;
+    const at = Number(e.at);
+    if (!Number.isFinite(at) || at < bestAt) continue;
+    bestAt = at;
+    best = typeof e.u === 'string' ? e.u.trim().toLowerCase() : '';
+  }
+  return best;
+}
+
+/**
+ * ЭРХИЙН ШАЛГУУРЫН ХЭРЭГЛЭГЧ (2026-10-06, аудит #2).
+ * ⚠️ ХӨТӨЧИД дуудагчийн `me`-д ИТГЭХГҮЙ — `currentUser()` (AuthGate бичнэ). Node (тест,
+ *    `tools/`) нь хөтчийн сешн биш тул дамжуулсан утга (`who.requireCap`-ийн загвар).
+ */
+function meOf(passed: string | undefined): string {
+  return (typeof window !== 'undefined' ? currentUser() ?? '' : passed ?? '').trim().toLowerCase();
 }
 import {
   bagtsFor, flowAclReady, isViewOnly, stageOfUser,
 } from './guitsetgelAcl';
 import { appendHistory, type HistEntry } from './hyanaltHistory';
 import { encodeOkCells } from './hyanaltOkCells';
+import { AUTH, roleForUser } from './services';
+import { currentUser } from './who';
 
 /**
  * ДОМЭЙН ТҮВШНИЙ ЭРХИЙН ХАМГААЛАЛТ (2026-09-16-ны аудит).
@@ -122,15 +180,34 @@ import { encodeOkCells } from './hyanaltOkCells';
  *
  * ⚠️ `null` = ХЯЗГААРГҮЙ хүрээ, `[]` = ЮУ Ч БИШ (`bagtsFor`-ийн гэрээ).
  *    Хоёрыг андуурвал эрх гоожих эсвэл бүх хүн түгжигдэнэ.
+ *
+ * ⚠️ 2026-10-06 (аудит #2): `me` ба `bypass` нь ДУУДАГЧААС ирдэг байсан тул консолоос
+ *    super-ийн нэр эсвэл `bypass: true` дамжуулж шалгуурыг бүхэлд нь тойрч болдог байв.
+ *    Одоо хөтөчид: хэрэглэгч = `currentUser()` (дамжуулсан `me` зөрвөл ТАТГАЛЗАНА),
+ *    `bypass` = хүссэн БӨГӨӨД зөвшөөрөгдсөн (нэвтрэлт унтраалттай эсвэл кодын хатуу
+ *    `super` — `resolveFlowStage.canPick`-тэй ижил дүрэм). Node-д хуучин гэрээ (`meOf`).
+ * ⚠️ 2026-10-06 (аудит #6): `hist` өгвөл ӨМНӨХ шатыг хамгийн сүүлд зөвшөөрсөн хүн
+ *    (логийн `u`) энэ хэрэглэгч бол ТАТГАЛЗАНА — нэг хүн дараалсан хоёр шат. Хатуу
+ *    super / дев нь `bypass`-аар чөлөөлөгдөнө (бүх урсгалыг турших — одоогийн бодлого,
+ *    `Guitsetgel` «шат солигдоно» ⚠️). `u`-гүй (хуучин) лог → шалгахгүй.
  */
 function authz(
   stage: ReviewStage,
   me: string | undefined,
   bagts: string,
   bypass: boolean,
+  hist?: unknown,
 ): string | null {
-  if (bypass) return null;
-  const u = (me ?? '').trim();
+  const u = meOf(me);
+  let by = bypass;
+  if (typeof window !== 'undefined') {
+    const passed = (me ?? '').trim().toLowerCase();
+    if (AUTH.appId && passed && passed !== u) {
+      return tr('Дамжуулсан хэрэглэгч нэвтэрсэн хэрэглэгчтэй таарахгүй — шийдвэр бүртгэгдэхгүй.');
+    }
+    by = bypass && (!AUTH.appId || roleForUser(u) === 'super');
+  }
+  if (by) return null;
   if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
   if (isViewOnly(u)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — шийдвэр гаргах боломжгүй.');
   if (stageOfUser(u) !== stage) {
@@ -139,6 +216,12 @@ function authz(
   const sc = bagtsFor(u, stage);
   if (sc !== null && !sc.includes(bagts)) {
     return tr('Энэ багц танд хуваарилагдаагүй байна.');
+  }
+  if (hist !== undefined) {
+    const pv = prevReview(stage);
+    if (pv && lastApprover(hist, pv) === u) {
+      return tr('Өмнөх шатыг та өөрөө зөвшөөрсөн — дараалсан хоёр шатыг нэг хүн шийдвэрлэх боломжгүй.');
+    }
   }
   return null;
 }
@@ -456,6 +539,9 @@ export type Result = {
 };
 
 const fail = (e: unknown): Result => ({ ok: false, error: String((e as Error)?.message ?? e) });
+
+/** ⚠️ 2026-10-06 (аудит #1): эцсийн шатанд архив бичигдсэний дараах мессеж — буцаалтыг хориглоно */
+const ARCHIVED_NO_RETURN = () => tr('Архивт аль хэдийн бичигдсэн — дахин Батлах дарна уу, буцааж болохгүй');
 
 /** Архивлалтын үр дүн — амжилттай бол нэгтгэлд бүртгэх АРХИВЫН OBJECTID. */
 /**
@@ -1099,12 +1185,15 @@ export async function apply(a: {
    * ЭРХИЙН ШАЛГУУРТ хэрэглэгдэх ArcGIS-ийн ХЭРЭГЛЭГЧИЙН НЭР.
    * ⚠️ `who`-гоос ТУСДАА: тэр нь бүтэн нэр (давхардаж, солигдож болно),
    *    энэ нь ACL-ийн түлхүүр. Хоёрыг хольвол эрх нэрээр гоожино.
+   * ⚠️ 2026-10-06: хөтөчид `currentUser()`-тэй ЗӨРВӨЛ татгалзана (`authz`-ийн ⚠️).
    */
   me?: string;
   /**
    * ЭРХИЙН ШАЛГУУРЫГ ТОЙРУУЛАХ — ЗӨВХӨН нэвтрэлт унтраалттай (хөгжүүлэлт)
    * эсвэл админ шатаа ил сонгосон үед (`resolveFlowStage.canPick`).
    * ⚠️ Анхдагч нь `false` (fail-closed): дуудагч ил хүсэх ёстой.
+   * ⚠️ 2026-10-06: хүссэн ч хөтөчид ЗӨВХӨН нэвтрэлт унтраалттай / хатуу `super` үед
+   *    үйлчилнэ (`authz` өөрөө тооцно).
    */
   bypass?: boolean;
 }): Promise<Result> {
@@ -1173,8 +1262,30 @@ export async function apply(a: {
      *    таслах ёстой.
      */
     {
-      const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true);
+      /* ⚠️ 2026-10-06 (аудит #6): зөвхөн ЗӨВШӨӨРӨХ чиглэлд өмнөх шатны хүнийг тулгана —
+         буцаалт ажлыг батлалтаас ХОЛДУУЛДАГ тул давхар үүргийн эрсдэлгүй. */
+      const deny = authz(a.stage, a.me, String(cur[F.bagts] ?? ''), a.bypass === true, returning ? undefined : cur[F.history]);
       if (deny) { emit(); return { ok: false, error: deny }; }
+    }
+    /*
+     * ⚠️ 2026-10-06 (аудит #1): ЭЦСИЙН ШАТНЫ БУЦААЛТ — АРХИВ АЛЬ ХЭДИЙН БИЧИГДСЭН БОЛ ХОРИГЛОНО.
+     *    Батлалтад архив (`archiveSubmission`) → илгээлт `done|` хаагдсаны ДАРАА хяналтын
+     *    мөрийн `updateRows` унавал мөр «Газрын дарга хянаж байна» хэвээр үлдэж, дарга
+     *    «Буцаах» дарвал ажил хэлтсийн даргад буцдаг атлаа тоо нь `Bagts_*` архивт сууж
+     *    үлддэг байв (`retryPendingRegistrations` зөвхөн «Шилжүүлсэн»-ийг хардаг). Одоо
+     *    илгээлт `done|` / `archiveOid`-тай эсвэл энэ хөтчид архивлагдсан бол БУЦААХГҮЙ —
+     *    дахин «Батлах» нь `done|` замаар idempotent тул зөвхөн мөрийг «Шилжүүлсэн» болгоно.
+     * ⚠️ Уншиж чадаагүй бол буцаахгүй (fail-closed) — дахин оролдоно.
+     */
+    if (returning && !nextReview(a.stage)) {
+      const { readSubmissionByOid } = await import('./submission');
+      const sr = await readSubmissionByOid(Number(cur[F.sheetOid]));
+      if (!sr.ok) return { ok: false, error: sr.error };
+      const s0 = sr.sub;
+      if (s0 && (s0.done || s0.payload.archiveOid != null || archivedGet(`${cur[F.sheetOid]}:${s0.at}`) != null)) {
+        emit();
+        return { ok: false, error: ARCHIVED_NO_RETURN() };
+      }
     }
     /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ (дээрх `subAt`-ийн ⚠️) — нэг хямд
        уншилт; илгээлт олдохгүй/уншигдахгүй бол ХАДГАЛАХГҮЙ (fail-closed). */
@@ -1221,10 +1332,35 @@ export async function apply(a: {
     /* ⚠️ 2026-10-01: ШИЙДВЭРИЙН ЛОГ — талбар байвал энэ шийдвэрийг `cur`-ийн лог дээр
        НЭМНЭ (`historyPatch`). Агшин нь шатны огнооны талбартай ЯГ ижил `t` — түүх
        тэр хоёрыг тулгаж дарагдсан нэрийг сэргээнэ (`Guitsetgel.stepsOf`). */
-    Object.assign(attrs, await historyPatch(cur[F.history], {
+    /*
+     * ⚠️ 2026-10-06 (аудит #5): ЭЦСИЙН ШАТАНД мөрийг `updateRows`-ийн ЯГ ӨМНӨ ДАХИН уншина.
+     *    Урьд нь лог архивлалтаас ӨМНӨХ `cur`-аас бодогддог тул архив бичигдэх хооронд өөр
+     *    дарга «Буцаах» дарсан бол түүний буцаалт (лог · шалтгаан · огноо) ЧИМЭЭГҮЙ дарагддаг
+     *    байв. Архив бичигдсэн тул мөр түүнийг ЗААВАЛ дагана (дээрх ⚠️) — гэхдээ логийг шинэ
+     *    хуулбараас бодож, шатны буцаалтын шалтгаан/огноог цэвэрлэж, ИЛ анхааруулна.
+     *    Уншилт унавал `cur` (хуучин зан төлөв).
+     */
+    let histBase: unknown = cur[F.history];
+    let overrideWarn = '';
+    if (registerNow) {
+      try {
+        const fresh = await liveRow(a.oid);
+        if (fresh) {
+          histBase = fresh[F.history];
+          const fs0 = String(fresh[F.status] ?? '');
+          if (fs0 !== REVIEW_STATUS[a.stage] && fs0 !== STATUS.transferred) {
+            const nm = String((fresh as Record<string, unknown>)[sf.who] ?? '').trim();
+            overrideWarn = tr('Таныг батлах хооронд {0} энэ ажлыг буцаасан байсан — архив аль хэдийн бичигдсэн тул буцаалт дарагдаж, ажил «Шилжүүлсэн» боллоо.', nm || tr('өөр хянагч'));
+          }
+        }
+      } catch (e) { console.warn('[selbe] эцсийн батлалтын өмнөх дахин уншилт унав:', e); }
+      attrs[sf.reason] = '';
+      attrs[sf.returned] = null;
+    }
+    Object.assign(attrs, await historyPatch(histBase, {
       stage: a.stage, who: a.who, at: t, act: returning ? 'return' : 'approve',
       ...(returning ? { reason } : {}),
-    }));
+    }, meOf(a.me)));
 
     /* ⚠️ 2026-09-30: ДУНД ШАТАНД бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️).
        Эцсийн шатанд ХИЙХГҮЙ — архив аль хэдийн бичигдсэн бол мөр түүнийг ЗААВАЛ
@@ -1254,11 +1390,18 @@ export async function apply(a: {
       if (!registerNow) throw e;
       let landed = false;
       try { landed = (await liveRow(a.oid))?.[F.status] === STATUS.transferred; } catch { landed = false; }
-      if (!landed) throw e;
+      /* ⚠️ 2026-10-06 (аудит #1): архив бичигдсэн тул ерөнхий алдаа БИШ — «дахин Батлах,
+         буцаахгүй» гэж ил хэлнэ (буцаалт нь дээрх шалгуураар хаалттай). */
+      if (!landed) {
+        emit();
+        return { ok: false, error: `${ARCHIVED_NO_RETURN()} (${String((e as Error)?.message ?? e)})` };
+      }
     }
     /** Хагас амжилтын анхааруулгууд — нэгтгэл · IPC · `Zovshoorson_nud` */
     const warns: string[] = [];
     if (archWarn) warns.push(archWarn);
+    /* ⚠️ 2026-10-06 (аудит #5): өөр хянагчийн буцаалт дарагдсан бол ил хэлнэ */
+    if (overrideWarn) warns.push(overrideWarn);
     /*
      * ⚠️ ҮЛДЭГДЭЛ НЭМЭЛТИЙН ШИНЭ ТОЙРОГ (2026-09-25 аудит). Мөр «Шилжүүлсэн» болсны
      *    ДАРАА л — `openReviewRow` тэр `sheetOid`-ийн нээлттэй мөрийг олохгүй тул
@@ -1428,6 +1571,7 @@ export async function retryPendingRegistrations(
     for (const sub of pend) {
       const cur = ROWS.find((r) => Number(r[F.sheetOid]) === sub.oid && r[F.status] === STATUS.transferred);
       if (!cur) continue;
+      /* ⚠️ 2026-10-06 (аудит #2): `me`/`bypass` нь `authz` дотор `currentUser()`-ээр тулгагдана */
       if (authz(final, me, String(cur[F.bagts] ?? ''), bypass)) continue;
       SWEPT.add(sub.oid);
       try {
@@ -1523,7 +1667,8 @@ export async function recheck(
   /* ⚠️ `apply`-тай ИЖИЛ шалгуур — дахин шалгалт нь мөрийг дээд шат руу
      дахин илгээдэг тул эрхийн ижил жинтэй (`hyanaltStore`-ийн authz). */
   {
-    const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true);
+    /* ⚠️ 2026-10-06 (аудит #6): «ok» (дээш илгээх) үед л өмнөх шатны хүнийг тулгана — `apply`-тай ижил */
+    const deny = authz(by, me, String(prev[F.bagts] ?? ''), bypass === true, verdict === 'ok' ? prev[F.history] : undefined);
     if (deny) { emit(); return { ok: false, error: deny }; }
   }
   /* ⚠️ ИЛГЭЭЛТИЙН АГУУЛГЫН ТУЛГАЛТ — `apply`-тай ИЖИЛ (дээрх `subAt`) */
@@ -1622,7 +1767,7 @@ export async function recheck(
       [F.status]: nextStatus,
       /* ⚠️ 2026-10-01: ШИНЭ тойргийн лог нь ЭНЭ дахин шалгалтаас эхэлнэ — өмнөх
          үйл явдлууд хуучин мөрийн логт хэвээр (түүх тойрог бүрээр харуулдаг). */
-      ...(await historyPatch('', { stage: by, who, at: t, act: 'recheck-ok' })),
+      ...(await historyPatch('', { stage: by, who, at: t, act: 'recheck-ok' }, meOf(me))),
     };
     try {
       const res = await addRows([fresh]);
@@ -1663,7 +1808,7 @@ export async function recheck(
     ...okPatch,
     /* ⚠️ 2026-10-01: ЭНЭ мөрөнд `by` шат 2 дахь удаагаа шийдэж байна (нэр дарагдана) —
        лог нь өмнөх нэрийг хадгална. */
-    ...(await historyPatch(prev[F.history], { stage: by, who, at: t, act: 'recheck-back', reason: why })),
+    ...(await historyPatch(prev[F.history], { stage: by, who, at: t, act: 'recheck-back', reason: why }, meOf(me))),
   };
 
   /* ⚠️ 2026-09-30: бичихийн ЯГ ӨМНӨ дахин шалгана (`movedSince`-ийн ⚠️) — нөгөө данс

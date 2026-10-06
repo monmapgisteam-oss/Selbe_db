@@ -8,6 +8,7 @@ import { PKGS, pkgFloors, type Pkg } from "../bagts.pkg";
 import { num, pct } from "@/lib/format";
 import { t as tr } from "@/lib/i18nCore";
 import type { useObyem } from "./useObyem";
+import { REASON_MAX as OBYEM_REASON_MAX } from "@/lib/obyemBatlah";
 import type { useDraftSync } from "./useDraftSync";
 import type { useRowFilter, usePkgPct } from "./useRows";
 import { cls, dt, inputToMs, type RemoteState } from "./util";
@@ -371,7 +372,13 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
                    болохгүй, юу ч хэлэхгүй байв — одоо `decideObyem` руу дамжуулна: тэр нь СҮЛЖЭЭНЭЭС ӨМНӨ
                    «Буцаах шалтгааныг бичнэ үү.» гэж татгалзаж, мессеж нь энд (`pvErr`) ил гарна. */
                 if (why0 === null) return;
-                const why = why0;
+                /* ⚠️ 2026-10-06: `REASON_MAX`-аас урт бол ИЛ хэлж таслана (талбар 2048) — урьд нь
+                   таслагдаагүй урт шалтгаан хадгалалтыг унагадаг байв (`decideObyem` ч мөн таслана). */
+                let why = why0;
+                if (why.trim().length > OBYEM_REASON_MAX) {
+                  if (!window.confirm(tr('Шалтгаан хэт урт ({0} тэмдэгт) — эхний {1} тэмдэгт л хадгалагдана. Үргэлжлүүлэх үү?', String(why.trim().length), String(OBYEM_REASON_MAX)))) return;
+                  why = why.trim().slice(0, OBYEM_REASON_MAX);
+                }
                 void decideObyemHere(false, why);
               }}
               disabled={pvBusy}

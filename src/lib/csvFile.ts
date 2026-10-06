@@ -12,7 +12,11 @@
 export function csvCell(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
-  const s = String(v);
+  let s = String(v);
+  /* ⚠️ 2026-10-06: CSV ТОМЬЁОНЫ ТАРИЛГА — «=», «+», «-», «@», таб, CR-ээр эхэлсэн текстийг Excel томьёо
+     болгож ажиллуулдаг (`=HYPERLINK(…)` г.м.). Урд нь «'» залгаж текст болгоно. ЦЭВЭР ТОО («-12.5»,
+     «+3») хэвээр — сөрөг дүн текст болж эвдрэхгүй. Тоон төрлийн утга дээр огт хүрэхгүй. */
+  if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

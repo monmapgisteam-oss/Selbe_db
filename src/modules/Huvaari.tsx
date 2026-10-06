@@ -1533,7 +1533,12 @@ export function Huvaari({
     const rows2 = deps2 ? plan.map((r, i) => (i === at ? { ...r, deps: deps2! } : r)) : plan;
     const overrides = new Map<number, (Span | null)[]>();
     if (spans) overrides.set(at, spans);
-    applyChanges(propagate(rows2, n, overrides, deps2 ? [at] : []));
+    /* ⚠️ 2026-10-06: ГЭРЭЭ табд ГИНЖ ҮГҮЙ — уялдаа нь зөвхөн төлөвлөгөөнд (сум ·
+       зөрчил · `applyHamText`-ийн ижил хаалт). Урьд нь гэрээний огноог засахад
+       төлөвлөгөөний `Hamaaral`-аар хамаарагч ажлуудын ГЭРЭЭНИЙ огноо чимээгүй
+       шилждэг байв. `deps`-ийг `toPlanRows`-д хоослохгүй: гэрээ табын «Уялдаа»
+       нүд (`HamCell`) түүнийг харуулсаар. */
+    applyChanges(kind === 'plan' ? propagate(rows2, n, overrides, deps2 ? [at] : []) : overrides);
     /**
      * ⚠️ САРЫН ЗАДАРГАА нь `applyChanges`-ийн ДАРАА — тэр нь огноо
      * өөрчлөгдсөн блокуудыг АВТОМАТААР дахин тараадаг тул урьд нь тавьбал
@@ -1776,6 +1781,14 @@ export function Huvaari({
     if (locked || !canEdit || kind !== 'plan') return;
     const cur = plan.find((x) => x.oid === oid);
     if (!cur) return;
+    /* ⚠️ 2026-10-06: ТАНИГДААГҮЙ токен байвал ТАВИХГҮЙ, ил хэлнэ. Урьд нь `parseDeps`
+       түүнийг чимээгүй алгасаж, үлдсэнээр нь (хоосон бол юу ч үгүйгээр) хуучин уялдааг
+       ДАРЖ устгадаг байв («11FS+2» → хуучин «11FS2» алга). Нүд хадгалсан утга руугаа буцна. */
+    const bad = residualDeps(text);
+    if (bad.length) {
+      setErr(tr('Уялдааны бичиглэл танигдсангүй: {0} — жишээ нь «18FS3,22SS-5». Уялдаа өөрчлөгдсөнгүй.', bad.join(', ')));
+      return;
+    }
     const next = parseDeps(text);
     /* Өөрчлөгдөөгүй бол дэмий тархалт хийхгүй — 1,400 мөрийн `propagate`
        нь хямд биш, мөн «хадгалаагүй» тэмдэг худал асахгүй. */
@@ -1793,6 +1806,7 @@ export function Huvaari({
    *    блокт аль нэгийг бичвэл 1 хоногийн муж (start = end).
    * ⚠️ БҮХ үр дагавар `applyModal`-аар (гинж `propagate` · бүлгийн нэгтгэл · сарын
    *    задаргаа · ноорог) — энд ДАВХАРДУУЛАХГҮЙ. Бүлэг/нэмэлт мөр тэнд ч хаалттай.
+   *    (2026-10-06: гинж нь ЗӨВХӨН төлөвлөгөө табд — гэрээнд `applyModal` алгасна.)
    * ⚠️ Дуусах < эхлэх бол ТАВИХГҮЙ — чимээгүй солихгүй, мэдэгдэнэ.
    */
   const applyDate = useCallback((oid: number, which: 'start' | 'end', day: string) => {
@@ -1832,10 +1846,24 @@ export function Huvaari({
     setDraft, setHam, setADraft, setResDraft, setObDraft, setObResDraft, setNote, pkgKeyRef, hdRemapRef,
   });
 
+  /**
+   * ⚠️ БАГЦ/ХУВИЛБАР/ТӨРӨЛ СОЛИЛТ ЯВЖ БАЙНА (2026-10-06). `askSwitch` нь ноорогоо
+   *    хуваалцсан мөрөнд бичиж дуустал хэдэн секунд болж болдог — тэр зуур сонгогчид
+   *    идэвхтэй үлдэж, дахин сонгоход хоёр солилт зэрэг явж хожуу ирсэн нь ялдаг байв.
+   *    Явж байхад сонгогчдыг түгжиж, богино шошго харуулна.
+   */
+  const [switching, setSwitching] = useState(false);
+  const runSwitch = (apply: () => void) => {
+    if (switching) return;
+    setSwitching(true);
+    void askSwitch().then((ok) => { if (ok) apply(); }).finally(() => setSwitching(false));
+  };
+
   /* ── Чирэлтийн хөдөлгүүр (`useDragPlan`) ── */
   const { undoRef, onDown, onMove, onUp, onCancel, undoDragOnClose } = useDragPlan({
     plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
     setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
+    chain: kind === 'plan',
   });
 
   /*
@@ -1919,6 +1947,8 @@ export function Huvaari({
       const fresh = await loadRows(pkg, sc);
       let remapped = 0;
       let lost = 0;
+      /* ⚠️ 2026-10-06: алдагдсан мөрийн ХУУЧИН oid — тэдний ноорог ЦЭВЭРЛЭГДЭХГҮЙ (доорх ⚠️) */
+      const lostOids = new Set<number>();
       /* ⚠️ Жааз солигдсоныг ЭХНИЙ мөрөөр ЭСВЭЛ бичих oid-ын аль нэг нь шинэ агшинд
          алга болсноор мэднэ (2026-09-25 аудит). */
       const freshOids = new Set(fresh.rows.map((r) => r.oid));
@@ -1930,7 +1960,7 @@ export function Huvaari({
         const moved2: Record<string, unknown>[] = [];
         for (const a of upd) {
           const nk = map.get(a[sc.f.oid] as number);
-          if (nk == null) { lost += 1; continue; }
+          if (nk == null) { lost += 1; lostOids.add(a[sc.f.oid] as number); continue; }
           moved2.push({ ...a, [sc.f.oid]: nk });
           remapped += 1;
         }
@@ -2026,12 +2056,22 @@ export function Huvaari({
          унавал санал эх хуудсанд суусан атлаа `pending` хэвээр; батлах эффект `decidePlan`
          амжилттай болсны ДАРАА л арилгана. */
 
-      const r = await loadRows(pkg, sc);
-      setRows(r.rows);
-      setDraft((m0) => { const m = new Map(m0); for (const k of tookD) m.delete(k); return m; });
-      setHam((m0) => { const m = new Map(m0); for (const k of tookH) m.delete(k); return m; });
-      setADraft((m0) => { const m = new Map(m0); for (const k of tookA) m.delete(k); return m; });
-      setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) m.delete(k); return m; });
+      /* ⚠️ 2026-10-06: БИЧИЛТИЙН ДАРААХ дахин уншилт ӨӨРИЙН `try`-д. Урьд нь энд унавал гадна
+         `catch` нь `save()`-ийг `false` болгож, бүх зүйл АЛЬ ХЭДИЙН бичигдсэн атлаа ноорог
+         үлдэж, батлах эффект «эх хуудсанд бичигдсэнгүй» гэж худал мэдээлдэг байв. Одоо
+         ноорог цэвэрлэгдэж `true` буцна; хуудас хуучирсныг л ил хэлнэ. */
+      let reloadFail = false;
+      try {
+        const r = await loadRows(pkg, sc);
+        setRows(r.rows);
+      } catch { reloadFail = true; }
+      /* ⚠️ 2026-10-06: ШИНЭ АГШИНД ОЛДООГҮЙ мөрийн (`lostOids`) ноорог ҮЛДЭНЭ — бичигдээгүй
+         ажлыг устгавал хүн юуг дахин оруулахаа мэдэхгүй (урьд нь `took*`-оор хамт арилдаг байв). */
+      const clearable = (k: number) => !lostOids.has(k);
+      setDraft((m0) => { const m = new Map(m0); for (const k of tookD) if (clearable(k)) m.delete(k); return m; });
+      setHam((m0) => { const m = new Map(m0); for (const k of tookH) if (clearable(k)) m.delete(k); return m; });
+      setADraft((m0) => { const m = new Map(m0); for (const k of tookA) if (clearable(k)) m.delete(k); return m; });
+      setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) if (clearable(k)) m.delete(k); return m; });
       /* ⚠️ Обьёмын ноорогийг ЦЭВЭРЛЭЖ, задаргааг СЕРВЕРЭЭС дахин татна —
          бичилтийн дараа ObjectID шинээр үүссэн тул хуучин `obOids` хуучирсан.
          ⚠️ ТЭНЦЭЭГҮЙ задаргааг ҮЛДЭЭНЭ (2026-09-08): бичигдээгүй атлаа
@@ -2073,7 +2113,15 @@ export function Huvaari({
       /* ⚠️ Алдаануудыг НЭГТГЭЖ нэг удаа (2026-09-24 аудит) — дараалсан `setErr`-д
          сүүлийнх л үлдэж, өмнөх (алдагдсан мөр, тэнцээгүй задаргаа) далдлагддаг байв. */
       const errs: string[] = [];
-      if (lost) errs.push(tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)));
+      if (lost) {
+        /* ⚠️ 2026-10-06: аль мөр гэдгийг «№ · ажил»-аар нэрлэнэ — ноорог нь үлдсэн (дээрх ⚠️) */
+        const names = [...lostOids].map((o) => {
+          const r0 = rows.find((x) => x.oid === o);
+          return r0 ? `${r0.no ?? '—'} · ${r0.work ?? ''}` : String(o);
+        });
+        errs.push(`${tr('{0} мөр шинэ агшинд олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost))} ${tr('Ноорогт үлдсэн: {0}', names.join('; '))}`);
+      }
+      if (reloadFail) errs.push(tr('Хадгалагдсан боловч хуудсыг дахин уншиж чадсангүй — хуудсаа сэргээнэ үү.'));
       /* ⚠️ Тэнцээгүй задаргааг ИЛ хэлнэ — эс бөгөөс «хадгалагдлаа» гэсэн
          мэдэгдэл нь бичигдээгүй обьёмыг далдална. */
       if (unbal) {
@@ -2935,11 +2983,15 @@ export function Huvaari({
            наалддаг байв. Сонгогчууд `busy`-д түгжигдэнэ. */
         setBusy(true);
         void (async () => {
+          /** ⚠️ 2026-10-06: `decidePlan` хариу өгсөн эсэх — тэгвэл түгжээг доор аль хэдийн
+              шийдсэн тул дараагийн `refreshFlow` унахад дахин тайлахгүй */
+          let answered = false;
           try {
             const r = await decidePlan({
               oid: approving, approve: true,
               approver: user?.username ?? '', author: pending?.author ?? '',
             });
+            answered = true;
             if (r.ok) {
               setPreviewing(false); setOkRows(new Set());
               /* ⚠️ 2026-10-01: өмнөх хагас бичилтийг энэ батлалт гүйцээв (сервер тэмдгийг `decidePlan` арилгасан) */
@@ -2948,8 +3000,20 @@ export function Huvaari({
             setNote(r.ok
               ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
               : '');
-            if (!r.ok) setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+            if (!r.ok) {
+              setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+              /* ⚠️ 2026-10-06: `claimPlan`-ийн түгжээг ТАЙЛНА (бусад салааны адил) — урьд нь
+                 энд үлдэж илгээлт өөр батлагч/зохиогчид хаалттай гацдаг байв. Хагас бол үгүй. */
+              if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
+            }
             await refreshFlow({ noRefetch: true });
+          } catch (e) {
+            /* ⚠️ 2026-10-06: `catch`-гүй байсан тул сүлжээний уналт амлалтыг чимээгүй
+               татгалзуулж, хэрэглэгч юу ч мэдэхгүй үлддэг байв. Түгжээг тайлж (хагас бол
+               үгүй), шалтгааныг хэлж, төлөвийг дахин уншина. */
+            if (!answered && partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
+            setErr(partialRef.current === approving ? partialMsg(userError(e)) : userError(e));
+            await refreshFlow({ noRefetch: true }).catch(() => {});
           } finally {
             setBusy(false);
           }
@@ -3019,11 +3083,14 @@ export function Huvaari({
     /* ⚠️ `busy` гинж ДУУСТАЛ (2026-09-21) — дээрх салаатай ижил шалтгаан. */
     setBusy(true);
     void (async () => {
+      /** ⚠️ 2026-10-06: шийдвэр бүртгэгдсэн бол дараагийн `refreshFlow`-ийн уналтад «дахин Батлах» гэхгүй */
+      let decided = false;
       try {
         const r = await decidePlan({
           oid, approve: true,
           approver: user?.username ?? '', author: pending?.author ?? '',
         });
+        decided = r.ok;
         if (!r.ok) {
           /* ⚠️ 2026-10-01: `partialRef` (ба сервер тэмдэг) ҮЛДЭНЭ — санал эх хуудсанд суусан тул
              буцаах/татах хаалттай; «Батлах»-ыг дахин дарахад «бичих зүйлгүй» салаагаар гүйцнэ. */
@@ -3036,6 +3103,16 @@ export function Huvaari({
           setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
         }
         await refreshFlow({ noRefetch: true });
+      } catch (e) {
+        /* ⚠️ 2026-10-06: `catch`-гүй байсан — `decidePlan`/`refreshFlow` шидвэл алдаа
+           чимээгүй алга болдог байв. Хуваарь АЛЬ ХЭДИЙН бичигдсэн тул түгжээг ТАЙЛАХГҮЙ,
+           `!r.ok` салаатай ижил «дахин Батлах» зааврыг өгнө. */
+        setErr(decided
+          ? userError(e)
+          : partialRef.current === oid
+            ? partialMsg(userError(e))
+            : `${userError(e)} ${tr('Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.')}`);
+        await refreshFlow({ noRefetch: true }).catch(() => {});
       } finally {
         setBusy(false);
       }
@@ -3668,23 +3745,25 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         <label className={h.field}>
           {tr('Багц')}{' '}
           {/* ⚠️ Хяналтын горимд багц ТОГТМОЛ (дарааллаас сонгосон илгээлтийнх) */}
-          <select className={h.select} value={pkg.group} disabled={busy || !!review}
-            onChange={(e) => { const v = e.target.value; void askSwitch().then((ok) => { if (ok) setPkg(pkgFloors(v)[0]); }); }}>
+          <select className={h.select} value={pkg.group} disabled={busy || switching || !!review}
+            onChange={(e) => { const v = e.target.value; runSwitch(() => setPkg(pkgFloors(v)[0])); }}>
             {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
           </select>
         </label>
         {floors.length > 1 && (
           <label className={h.field}>
             {tr('Хувилбар')}{' '}
-            <select className={h.select} value={pkg.key} disabled={busy || !!review}
+            <select className={h.select} value={pkg.key} disabled={busy || switching || !!review}
               onChange={(e) => {
                 const v = e.target.value;
-                void askSwitch().then((ok) => { if (ok) setPkg(PKGS.find((x) => x.key === v) ?? pkg); });
+                runSwitch(() => setPkg(PKGS.find((x) => x.key === v) ?? pkg));
               }}>
               {floors.map((p) => <option key={p.key} value={p.key}>{p.floors}F</option>)}
             </select>
           </label>
         )}
+        {/* ⚠️ `askSwitch` явж байна (2026-10-06, `switching`-ийн ⚠️) */}
+        {switching && <span className={h.muted} role="status">{tr('Ноорог хадгалж байна…')}</span>}
 
         {sc && rows.length > 0 && (
           <>
@@ -3840,8 +3919,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                      төрлийн хуанли дээр гарна. Багцын сонгогч аль хэдийн
                      ингэж түгжигддэг. */
                   /* ⚠️ Хяналтын горимд төрөл нь илгээлтийнх — солиход санал цэвэрлэгдэнэ */
-                  disabled={busy || !!review}
-                  onClick={() => { if (kind !== k) void askSwitch().then((ok) => { if (ok) setKind(k); }); }}>
+                  disabled={busy || switching || !!review}
+                  onClick={() => { if (kind !== k) runSwitch(() => setKind(k)); }}>
                   {label}
                 </button>
               ))}
@@ -4799,6 +4878,17 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               className={`${h.plBar} ${half ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
+                              /* ⚠️ 2026-10-06 (a11y): `aria-label`-тай ч гараар хүрэх замгүй байв —
+                                 Enter/Space нь зурвас дээр товшсонтой (нэрээс нээсэнтэй) ижил цонх.
+                                 Батлагдаагүй нэмэлт мөрд (сөрөг oid) цонх гарахгүй (`openBar`-ийн дүрэм). */
+                              role={r.oid < 0 ? undefined : 'button'}
+                              tabIndex={r.oid < 0 ? undefined : 0}
+                              onKeyDown={r.oid < 0 ? undefined : (e) => {
+                                if (e.key !== 'Enter' && e.key !== ' ') return;
+                                e.preventDefault();
+                                setSel(r.oid);
+                                setModal(r.oid);
+                              }}
                               aria-label={`${r.work || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
                               title={`${r.work}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
                             >

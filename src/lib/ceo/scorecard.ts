@@ -33,7 +33,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, date } from '@/lib/format';
-import type { Level } from '@/lib/kpiLevels';
+import { pctLevel, scoreLevel as urbanScoreLevel, type Level } from '@/lib/kpiLevels';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
@@ -156,12 +156,28 @@ export const scoreLevel = (v: number | null): Level =>
 export const HSE_GOOD = 90;
 export const HSE_WARN = 70;
 
-/** Бүлгийн түвшин — ХАБЭА өөрийн босготой */
+/**
+ * Бүлгийн түвшин — ХАБЭА өөрийн босготой.
+ * ⚠️ 2026-10-06: ИЖИЛ үзүүлэлт CEO картад өөр босготой байсан тул (газар: `land.ts` 95/80
+ *    `pctLevel`; ерөнхий төлөвлөгөө: `suitability.ts` 65/45) нэг багцын газар 85% нь
+ *    картад «шар», оноонд «ногоон» гардаг байв. Одоо бүлэг бүр ӨӨРИЙН KPI-гийн
+ *    түвшний функцтэй (`DIM_LEVEL`); бусад бүлэг ба нийт оноо 80/50 хэвээр.
+ */
+const hseLevel = (v: number | null): Level =>
+  v == null ? 'unknown' : v >= HSE_GOOD ? 'good' : v >= HSE_WARN ? 'warn' : 'bad';
+const DIM_LEVEL: Partial<Record<Dim, (v: number | null) => Level>> = {
+  hse: hseLevel,
+  land: pctLevel,
+  plan: urbanScoreLevel,
+};
 export const dimLevel = (d: Dim | null | undefined, v: number | null): Level => (
-  d === 'hse'
-    ? (v == null ? 'unknown' : v >= HSE_GOOD ? 'good' : v >= HSE_WARN ? 'warn' : 'bad')
-    : scoreLevel(v)
-);
+  (d && DIM_LEVEL[d]) || scoreLevel
+)(v);
+/** Бүлгийн оноо → асуудлын зэрэг (`dimLevel`-ээр) — 2026-10-06 */
+const dimToneOf = (d: Dim, score: number): IssueTone | null => {
+  const lv = dimLevel(d, score);
+  return lv === 'bad' || lv === 'warn' ? lv : null;
+};
 
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
@@ -255,7 +271,12 @@ export type FinInput = {
   contracted: boolean;
   start: number | null;
   now: number;
-  /** Урьдчилсан төсөвт өртөг, ₮ */
+  /**
+   * Гэрээтэй харьцуулах ТӨСӨВ, ₮ — ЗАХИРАМЖИЙН ХО төсөв (`ho_dun_zahiramj`); 0 = мэдэхгүй.
+   * ⚠️ 2026-10-06: урьд нь `ho_dun_geree` (`CfRow.cost`) дамжуулдаг байв — тэр нь гэрээтэй
+   *    мөрд `geree_dun`-тэй ЯГ тэнцүү тул «Гэрээ ба төсвийн зөрүү» ҮРГЭЛЖ 0 байв.
+   *    `contractGap.computeContractGap`-тэй нэг талбар (`scorecardLoad` → `CfRow.budgetOrder`).
+   */
   cost: number;
   /** Гэрээний дүн, ₮ — гэрээгүй бол null */
   contract: number | null;
@@ -341,7 +362,8 @@ export function scoreLand(i: LandInput): DimScore {
   if (i.isLandWork) {
     if (i.landPct == null) return NONE;
     const score = clamp(i.landPct);
-    const tone = toneOf(score);
+    /* ⚠️ 2026-10-06: газрын босго 95/80 (`dimLevel` → `pctLevel`) */
+    const tone = dimToneOf('land', score);
     return {
       score,
       facts: [fact(tr('Төслийн газар чөлөөлөлт'), pct(i.landPct, 1))],
@@ -352,7 +374,7 @@ export function scoreLand(i: LandInput): DimScore {
   const n = i.overlap ?? 0;
   const score = clamp(100 - n * RULE.landPerParcel);
   /* ⚠️ Давхцал нь ажил эхлүүлэхэд шууд саад — нэг ч байвал анхааруулга */
-  const tone = n > 0 ? toneOf(score) ?? 'warn' : null;
+  const tone = n > 0 ? dimToneOf('land', score) ?? 'warn' : null;
   return {
     score,
     issues: tone ? [{ tone, text: tr('Багцын талбайд {0} чөлөөлөгдөөгүй нэгж талбар давхцсан', num(n)) }] : [],
@@ -373,7 +395,8 @@ export function scorePlan(i: PlanInput): DimScore {
   const s = meanOf(i.blockScores);
   if (s == null) return NONE;
   const issues: DimIssue[] = [];
-  const tone = toneOf(clamp(s));
+  /* ⚠️ 2026-10-06: тохиромжтой байдлын босго 65/45 (`dimLevel` → `kpiLevels.scoreLevel`) */
+  const tone = dimToneOf('plan', clamp(s));
   if (tone) issues.push({ tone, text: tr('Блокууд байрлах бүсийн тохиромжтой байдлын оноо {0}', num(s)) });
   if (i.failingZones.length) {
     issues.push({ tone: 'warn', text: tr('Норм зөрчсөн бүс: {0}', i.failingZones.slice(0, 5).join(', ')) });

@@ -162,7 +162,10 @@ export function normCell(raw: string): string | null {
     else if (isAmbiguousComma(t)) return null;
     else t = t.replace(',', '.');
   }
-  return Number.isFinite(Number(t)) ? t : null;
+  /* ⚠️ 2026-10-06: ЗӨВХӨН энгийн аравтын бичлэг — урьд нь `Number.isFinite(Number(t))` нь «0x10» (16),
+     «1E3» (1000), «0b11» зэргийг тоо гэж хүлээн авч хэрэглэгчийн санаагүй утга бичдэг байв.
+     «.5» ба «5.» (Excel/гар бичлэгт түгээмэл) зөвшөөрөгдөнө. */
+  return /^-?(\d+(\.\d*)?|\.\d+)$/.test(t) && Number.isFinite(Number(t)) ? t : null;
 }
 
 /**

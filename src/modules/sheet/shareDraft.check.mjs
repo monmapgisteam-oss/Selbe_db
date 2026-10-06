@@ -711,7 +711,8 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   /* #7 ижил утга — pending-д байгаагүй бол tombstone үгүй */
   assert.ok(FN.includes('const revert = useCallback((key: string, wasPending: boolean) => {'), '#7: revert алга');
   /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ: обьём/хувь нэг зам (`incN === 0` → буцаалт) */
-  const ci = FN.indexOf('const commit = (r: SheetRow, b: number, raw: string): boolean => {');
+  /* ⚠️ 2026-10-06: шалгалт `commitInner`-д шилжсэн (`commit` нь зөвхөн амжилтад засварыг хаадаг бүрхүүл) */
+  const ci = FN.indexOf('const commitInner = (r: SheetRow, b: number, raw: string): boolean => {');
   const cb = FN.slice(ci, ci + 6000);
   assert.ok(cb.includes('if (incN === 0) {') && cb.includes('revert(key, key in pending);'), '#7: обьём/хувь (нэмэлт 0 = буцаалт)');
   assert.ok(FN.includes('if (sameDate) revert(key, key in pendDate);'), '#7: огноо');

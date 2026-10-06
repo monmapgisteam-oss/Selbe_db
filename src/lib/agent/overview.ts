@@ -48,6 +48,13 @@ export type Overview = {
   emptyCount: number;
   /** Бүсээр шүүх боломжгүй (талбаргүй) эх сурвалжийн тоо */
   skippedCount: number;
+  /**
+   * Алдаа өгсөн (ArcGIS унасан) эх сурвалжийн тоо.
+   * ⚠️ 2026-10-06: `runTool` үүгээр «бүх эх сурвалж унасан»-ыг «өгөгдөл олдсонгүй»-
+   *    гээс ялгана — урьд нь ArcGIS бүхэлдээ унахад «бүсийн нэрээ шалгана уу» гэж
+   *    хэрэглэгчийг төөрөгдүүлдэг байв.
+   */
+  failedCount: number;
   note: string;
 };
 
@@ -223,6 +230,7 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
     sources,
     emptyCount: empty,
     skippedCount: skipped,
+    failedCount: failed,
     note: notes.join(' '),
   };
 }

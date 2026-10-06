@@ -22,7 +22,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
 import { loadLayerMeta } from '@/lib/butetsEdit';
-import { subscribeTotals } from '@/lib/totals';
+import { subscribeTotals, withLayerWhere } from '@/lib/totals';
 
 export type FieldSummary = {
   name: string;
@@ -67,6 +67,8 @@ const cache = new Map<string, Promise<LayerSummary>>();
  * (маягт, хэлбэр хадгалах, үйлдэл буцаах, устгах) түүнийг дууддаг. Шинэ
  * түлхүүр зохиовол бичигч талд хоёр дахь дуудлага нэмэх шаардлага гарч,
  * аль нэгийг нь мартах өдөр ирнэ.
+ * ⚠️ 2026-10-06: `totals.ts` нь `dropTotalsCache`-ийг `dataBus`-д (хоосон `reads`) бүртгэсэн тул
+ *    порталын «↻ Шинэчлэх» (`invalidateAll`) ч энэ кэшийг `subscribeTotals`-аар хаяна.
  */
 subscribeTotals(() => { cache.clear(); });
 
@@ -86,7 +88,10 @@ async function build(layerId: string): Promise<LayerSummary> {
 
   const [meta, rows] = await Promise.all([
     loadLayerMeta(layerId),
-    queryFeatures(layerUrl(L), { outFields: ['*'] }),
+    /* ⚠️ 2026-10-06: давхаргын тогтмол шүүлт (`d.where`) — каталогийн тоо/зурагтай НЭГ хүрээ
+       (`totals.withLayerWhere`-ийн ⚠️). Урьд нь шүүлтгүй тул `where`-тэй давхаргад «N объект»
+       ба бөглөлт каталогоос ӨӨР олонлогоос бодогдох байв. */
+    queryFeatures(layerUrl(L), { where: withLayerWhere(L, null), outFields: ['*'] }),
   ]);
 
   const defs = [...meta.fields, ...meta.readOnly].filter((f) => !HIDE.test(f.name));

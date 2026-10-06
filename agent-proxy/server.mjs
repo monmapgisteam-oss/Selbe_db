@@ -397,6 +397,14 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /* ⚠️ 2026-10-06: КЛИЕНТ ХААСАН үед (чат хаасан, ⟲, Esc, табаа хаасан) загварын дуудлагыг
+     цуцална. Урьд нь `res.on('close')`-ыг сонсдоггүй тул процесс/API дуудлага 180с хүртэл
+     слот барьж, бусад хэрэглэгч 429 авдаг байв. ⚠️ `res` нь хариу ДУУССАНЫ дараа ч 'close'
+     өгдөг — `writableEnded` бол цуцлахгүй. `req.on('close')` БИШ: Node ≥16-д бие уншигдмагц
+     өгдөг тул хүсэлт бүр шууд цуцлагдана. */
+  const ac = new AbortController();
+  res.on("close", () => { if (!res.writableEnded) ac.abort(); });
+
   /* ── Claude Code горим ── */
   if (BACKEND === "claude-code") {
     const bin = claudeBin();
@@ -406,12 +414,17 @@ const server = createServer(async (req, res) => {
     }
     try {
       const t0 = Date.now();
-      const out = await callClaudeCode({ system, messages, tools, model: MODEL, effort: EFFORT, bin });
+      const out = await callClaudeCode({ system, messages, tools, model: MODEL, effort: EFFORT, bin, signal: ac.signal });
       const st = stats();
       console.log(`[agent-proxy:claude-code] ${caller} ${out.cached ? "кэш" : `${Date.now() - t0}мс`} ${out.stop_reason} · ажиллаж ${st.running} · дараалал ${st.queued}`);
       if (!out.cached) ready = { ok: true };
       json(res, 200, out);
     } catch (err) {
+      /* ⚠️ 2026-10-06: клиент хаасан — бичих socket алга, зөвхөн лог */
+      if (ac.signal.aborted) {
+        console.log(`[agent-proxy:claude-code] ${caller} цуцлагдсан (клиент хаасан)`);
+        return;
+      }
       const e = err instanceof ClaudeCodeError ? err : new ClaudeCodeError(err?.message ?? "Тодорхойгүй алдаа", { status: 500 });
       console.error("[agent-proxy:claude-code]", caller, e.message);
       if (e.status === 401) ready = { ok: false, reason: e.message };
@@ -434,7 +447,7 @@ const server = createServer(async (req, res) => {
         : undefined,
       tools,
       messages,
-    });
+    }, { signal: ac.signal });
 
     // ⚠️ Аюулгүйн ангилагч татгалзвал HTTP 200 боловч `content` хоосон/дутуу
     //    ирнэ — `content[0]`-ыг шууд уншвал эвдэрнэ.
@@ -453,6 +466,11 @@ const server = createServer(async (req, res) => {
       usage: response.usage,
     });
   } catch (err) {
+    /* ⚠️ 2026-10-06: клиент хаасан (`APIUserAbortError`) — бичих socket алга, зөвхөн лог */
+    if (ac.signal.aborted) {
+      console.log(`[agent-proxy] ${caller} цуцлагдсан (клиент хаасан)`);
+      return;
+    }
     const msg = err?.message ?? "Тодорхойгүй алдаа";
     console.error("[agent-proxy]", msg);
 

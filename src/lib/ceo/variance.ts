@@ -40,7 +40,10 @@ export function varianceLevel(
   /* Хэмжигдэх багц огт байхгүй (бүгд блокгүй) — «зөрүүгүй» гэж хэлж болохгүй. */
   if (n === 0 && v.measurable != null) return 'unknown';
   if (n > 0 && v.failedPkgs >= n) return 'unknown';
-  if (v.works === 0) return 'good';
+  /* ⚠️ 2026-10-06: ХЭСЭГЧЛЭН унасан (жишээ нь 10-аас 9) атлаа уншигдсан багцад хэтрэлт алга бол
+     урьд нь «good» (ногоон) гардаг байв — уншигдаагүй багцад хэтрэлт байж болно. Одоо «warn»
+     (дүн дутуу — issue/failedSources-д ил); «зөрүүгүй» гэж зөвхөн БҮХ багц уншигдсан үед. */
+  if (v.works === 0) return v.failedPkgs > 0 ? 'warn' : 'good';
   return v.totalMnt >= VAR_BAD_MNT ? 'bad' : 'warn';
 }
 

@@ -48,9 +48,10 @@ import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  NO_PARENT_REASON, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
+  NO_PARENT_REASON, REASON_MAX, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
+import { roleOf } from '@/lib/permissions';
 import { classifyStuck, materializeAdds, mayReapply } from '@/lib/ajilApply';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 /**
@@ -247,6 +248,12 @@ export function AjilBatlah() {
   const noScope = Array.isArray(scope) && scope.length === 0;
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
   const noRole = status !== 'off' && !isSuper && !hasAjilRole(user?.username, 'approver');
+  /**
+   * ⚠️ 2026-10-06: ПАНЕЛИЙН «super» (override) — харагдац нээлттэй ч БАТЛАХ ХҮРЭЭ нь
+   *    хуваарилалтаас (`permissions.roleOf`-ийн ⚠️). Урьд нь тийм хүн хоосон дараалал /
+   *    хаалттай товчийг тайлбаргүй хардаг байв — доор ИЛ хэлнэ. Хүрээг энд ӨРГӨТГӨХГҮЙ.
+   */
+  const panelSuper = status !== 'off' && !isSuper && roleOf(user?.username) === 'super';
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
@@ -550,6 +557,12 @@ export function AjilBatlah() {
       <div className={s.body}>
         {err && <div className={s.error} role="alert">{err}</div>}
         {note && <div className={s.note} role="status">{note}</div>}
+        {/* ⚠️ 2026-10-06: панелийн super-т хүрээ хуваарилалтаас гэдгийг ИЛ хэлнэ (`panelSuper`) */}
+        {st.k === 'ready' && panelSuper && (noRole || noScope || outside) && (
+          <div className={s.note} role="note">
+            {tr('Хүрээ нь хуваарилалтаас — танд энэ багц хуваарилагдаагүй. Панелийн «super» үүрэг зөвхөн харагдацыг нээнэ; батлахын тулд «Нэмэлт ажлын эрх» хэсэгт багц хуваарилна уу.')}
+          </div>
+        )}
 
         {st.k === 'blocked' && (
           <div className={s.note} role="alert">
@@ -832,6 +845,8 @@ function Row({
                 id={`why-${sub.oid}`}
                 className={s.field}
                 rows={2}
+                /* ⚠️ 2026-10-06: `REASON_MAX` — lib ч мөн таслана (`decideAjil`) */
+                maxLength={REASON_MAX}
                 value={reason}
                 onChange={(e) => onReason(e.target.value)}
                 disabled={busy}

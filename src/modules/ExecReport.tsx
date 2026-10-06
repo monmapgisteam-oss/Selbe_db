@@ -243,7 +243,10 @@ export function ExecReport() {
                     {
                       label: tr('Олгосон санхүүжилт'),
                       value: money(x.fin.given),
-                      sub: x.fin.share == null ? undefined : tr('гэрээний {0}', pct(x.fin.share, 1)),
+                      /* ⚠️ 2026-10-06: `value` = БҮХ олголт, хувь = ГЭРЭЭЛСЭН багцын олголт ÷ гэрээлсэн
+                         дүн — тоологчийг нэрлэнэ (Тайлан/`reportPdf`-тэй ижил загвар). Урьд нь «гэрээний
+                         X%» нь `given`-ийн хувь мэт уншигддаг байв. */
+                      sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)),
                       desc: tr('Гүйцэтгэгчид бодитоор олгосон урьдчилгаа ба гүйцэтгэлийн төлбөрийн нийлбэр.'),
                     },
                   ];
@@ -447,7 +450,8 @@ export function ExecReport() {
                       (зөвхөн «Гэрээлсэн дүн» мөр); `given` = HO-ийн бүх төлбөр (`execReport.fin` ⚠️). */}
                   <KpiRow items={[
                     { label: tr('Гэрээлсэн нийт дүн'), value: money(x.fin.planTotal), sub: tr('1-р хэсэгтэй ижил') },
-                    { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : pct(x.fin.share, 1) },
+                    /* ⚠️ 2026-10-06: хувийн тоологч (гэрээлсэн багцын олголт)-ийг нэрлэнэ — §1-ийн ⚠️ */
+                    { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)) },
                     { label: tr('Үлдэгдэл'), value: money(x.fin.remain) },
                   ]} />
                   <Fig no="3">{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээлсэн дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>

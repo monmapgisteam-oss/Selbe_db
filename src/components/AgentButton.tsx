@@ -14,6 +14,14 @@ import { useEffect, useRef } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import s from '@/components/agent.module.css';
 
+/**
+ * Реле хаяг тохируулсан эсэх — `client.ts`-ийн `AGENT_APIS`-тэй ИЖИЛ дүрэм.
+ * ⚠️ 2026-10-06: `@/lib/agent/client`-ээс ИМПОРТЛОХГҮЙ (дээрх салгалтын ⚠️) — env-ийг
+ *    шууд уншина (build үед орлуулагдана). Хаяггүй build-д товч ОГТ гарахгүй; урьд нь
+ *    харагдаж, нээхэд оролт идэвхтэй байсан тул асуулт бүр алдаагаар буцдаг байв.
+ */
+const CONFIGURED = (process.env.NEXT_PUBLIC_AGENT_API ?? '').split(',').some((u) => u.trim());
+
 /** Нээх товч — цонх хаалттай үед харагдана */
 export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   /* ⚠️ 2026-09-29 (аудит 10): самбар хаагдахад фокус body дээр үлддэг байв — FAB
@@ -24,7 +32,7 @@ export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () =>
     if (wasOpen.current && !open) ref.current?.focus();
     wasOpen.current = open;
   }, [open]);
-  if (open) return null;
+  if (open || !CONFIGURED) return null;
   return (
     <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />

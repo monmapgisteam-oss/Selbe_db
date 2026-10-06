@@ -220,6 +220,13 @@ export type CfRow = {
    *    мөрүүд багцын давхаргагүй ч НЭГЖ ТАЛБАРЫН давхаргатай.
    */
   sec: string;
+  /**
+   * ЗАХИРАМЖИЙН ХО ТӨСӨВ (`ho_dun_zahiramj`, `CASHFLOW_NEW.fields.budgetOrder`), ₮ — хоосон бол null.
+   * ⚠️ 2026-10-06: `cost` (`ho_dun_geree`) нь гэрээтэй мөрд гэрээний дүнтэй ЯГ тэнцүү тул
+   *    гэрээ ↔ төсвийн харьцуулалтад (`scorecard.scoreFin`) ЭНЭ талбарыг хэрэглэнэ —
+   *    `contractGap.computeContractGap`-тэй нэг эх.
+   */
+  budgetOrder: number | null;
 };
 
 const nOf = (v: unknown): number => {
@@ -255,7 +262,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       /* ⚠️ «Төслийн гүйцэтгэл» чартын нэг мөр 3-р түвшнээс бодогдоно */
       'ajil_tuvshin3',
       CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.progress, CF.pkg2,
-      CF.code1, CF.cfId,
+      CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
       ...CF_SOURCES.map((s) => s.field),
       ...Object.values(CASHFLOW_NEW.stages),
     ],
@@ -289,6 +296,8 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
     name: sOf(r[CF.detail]),
     sec: sOf(r[CF.code1]),
+    /* ⚠️ 2026-10-06: хоосон → null (0 БИШ) — гэрээ ↔ төсвийн харьцуулалтад */
+    budgetOrder: nnOf(r[CASHFLOW_NEW.fields.budgetOrder]),
   }));
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
@@ -388,10 +397,13 @@ export function inPeriod(r: CfRow, p: Period): boolean {
 
   const s = new Date(a);
   const e = new Date(b);
-  let y = s.getUTCFullYear();
-  let m = s.getUTCMonth();
-  const ey = e.getUTCFullYear();
-  const em = e.getUTCMonth();
+  /* ⚠️ 2026-10-06: ОРОН НУТГИЙН жил/сар (`monthKey`-ийн дүрэм, `cashflowCurve`-тэй нэг) — УБ-ын шөнө
+     дунд (= өмнөх өдрийн 16:00Z) хадгалагдсан сарын 1-ний огноо UTC-ээр ӨМНӨХ сард (1-р сарын 1 бол
+     өмнөх ЖИЛД) буудаг байв. */
+  let y = s.getFullYear();
+  let m = s.getMonth();
+  const ey = e.getFullYear();
+  const em = e.getMonth();
 
   /* ⚠️ 480 = 40 жилийн хамгаалалт: өгөгдлийн алдаанаас болж хөлдөхөөс
      сэргийлнэ (бодит муж 2024–2029). */
@@ -410,8 +422,9 @@ export function yearsOf(rows: CfRow[]): number[] {
   const set = new Set<number>();
   for (const r of rows) {
     if (r.start == null) continue;
-    const a = new Date(r.start).getUTCFullYear();
-    const b = new Date(r.end ?? r.start).getUTCFullYear();
+    /* ⚠️ 2026-10-06: ОРОН НУТГИЙН жил — `inPeriod`-ийн ⚠️ */
+    const a = new Date(r.start).getFullYear();
+    const b = new Date(r.end ?? r.start).getFullYear();
     for (let y = a; y <= b && y - a < 40; y += 1) set.add(y);
   }
   return [...set].sort((a, b) => a - b);
@@ -741,10 +754,11 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
     if (r.share <= 0 || r.start == null) continue;
     const s = new Date(r.start);
     const e = new Date(r.end ?? r.start);
-    let y = s.getUTCFullYear();
-    let m = s.getUTCMonth();
-    const ey = e.getUTCFullYear();
-    const em = e.getUTCMonth();
+    /* ⚠️ 2026-10-06: ОРОН НУТГИЙН жил/сар — `inPeriod`-ийн ⚠️ (UTC нь сарын 1-ний огноог өмнөх сард буулгадаг) */
+    let y = s.getFullYear();
+    let m = s.getMonth();
+    const ey = e.getFullYear();
+    const em = e.getMonth();
 
     const n = Math.min(480, Math.max(1, (ey - y) * 12 + (em - m) + 1));
     const step = r.share / n;
@@ -1651,10 +1665,11 @@ export function decreeSeries(
     if (r.decree <= 0 || r.start == null) continue;
     const s = new Date(r.start);
     const e = new Date(r.end ?? r.start);
-    let y = s.getUTCFullYear();
-    let m = s.getUTCMonth();
-    const ey = e.getUTCFullYear();
-    const em = e.getUTCMonth();
+    /* ⚠️ 2026-10-06: ОРОН НУТГИЙН жил/сар — `inPeriod`-ийн ⚠️ (UTC нь сарын 1-ний огноог өмнөх сард буулгадаг) */
+    let y = s.getFullYear();
+    let m = s.getMonth();
+    const ey = e.getFullYear();
+    const em = e.getMonth();
 
     const n = Math.min(480, Math.max(1, (ey - y) * 12 + (em - m) + 1));
     const step = r.decree / n;

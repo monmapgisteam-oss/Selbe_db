@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t as tr, perLocale } from '@/lib/i18nCore';
-import { AGENT_API, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
+import { AGENT_API, agentErrorText, ask, relayAlive, type ApiMessage } from '@/lib/agent/client';
 import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
 import s from '@/components/agent.module.css';
@@ -91,7 +91,8 @@ export function AgentChat({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  /* ⚠️ 2026-10-06: `detail` — серверийн/сүлжээний түүхий мөр, гол мөрийн доор жижгээр */
+  const [error, setError] = useState<{ text: string; detail?: string } | null>(null);
   const [alive, setAlive] = useState<boolean | null>(null);
 
   /**
@@ -172,7 +173,9 @@ export function AgentChat({
   const send = useCallback(
     async (raw: string) => {
       const q = raw.trim();
-      if (!q || busy) return;
+      /* ⚠️ 2026-10-06: реле унтарсан (`alive === false`) үед илгээхгүй — урьд нь оролт
+         идэвхтэй тул асуулт бүр алдаагаар буцдаг байв. */
+      if (!q || busy || alive === false) return;
 
       setInput('');
       setError(null);
@@ -218,14 +221,16 @@ export function AgentChat({
         if (controller.signal.aborted) return;
         // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хуучин хариултыг шинэ гэж
         //    андуурвал буруу шийдвэр гаргана.
-        setError(e instanceof Error ? e.message : String(e));
+        /* ⚠️ 2026-10-06: түүхий «Failed to fetch»/серверийн монгол текстийн оронд
+           `tr()`-тэй мөр; техникийн мөр зөвхөн `detail`-д (`agentErrorText`). */
+        setError(agentErrorText(e));
       } finally {
         setBusy(false);
         setProgress('');
         abort.current = null;
       }
     },
-    [busy, scope],
+    [busy, scope, alive],
   );
 
   const clear = () => {
@@ -316,7 +321,7 @@ export function AgentChat({
         {!log.length && (
           <div className={s.chips}>
             {STARTERS().map((q) => (
-              <button key={q} type="button" className={s.chip} onClick={() => void send(q)}>
+              <button key={q} type="button" className={s.chip} disabled={alive === false} onClick={() => void send(q)}>
                 {q}
               </button>
             ))}
@@ -336,9 +341,18 @@ export function AgentChat({
           </div>
         )}
 
-        {error && <div className={s.error} role="alert">{error}</div>}
+        {error && (
+          <div className={s.error} role="alert">
+            {error.text}
+            {error.detail && error.detail !== error.text && (
+              <span className={s.errorDetail}>{error.detail}</span>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* ⚠️ 2026-10-06: `alive === false` үед оролт/илгээх/жишээ асуулт ИДЭВХГҮЙ — дээрх
+          offline мэдэгдэл шалтгааныг хэлнэ (`client.ts`-ийн `AGENT_APIS` ⚠️). */}
       <div className={s.foot}>
         <textarea
           ref={inputRef}
@@ -346,6 +360,7 @@ export function AgentChat({
           value={input}
           placeholder={tr('Асуултаа бичнэ үү…')}
           rows={1}
+          disabled={alive === false}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             // Enter — илгээх, Shift+Enter — шинэ мөр
@@ -358,7 +373,7 @@ export function AgentChat({
         <button
           type="button"
           className={s.send}
-          disabled={busy || !input.trim()}
+          disabled={busy || !input.trim() || alive === false}
           onClick={() => void send(input)}
         >
           {tr('Илгээх')}

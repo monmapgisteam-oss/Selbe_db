@@ -353,14 +353,24 @@ export function Chanar() {
   const ncrClosed = !!body && 'closure' in body && ((body as NcrBody).closure?.closedByContractor.length ?? 0) > 0;
   const act = doc
     /* ⚠️ 2026-09-29 (аудит 10): `superseded` — түүхээс нээсэн хуучин хувилбарт засах/илгээх товч гарахгүй */
-    ? canAct({ ...doc, correctionAt: body && 'correctionAt' in body ? (body as NcrBody).correctionAt : null }, me || null, myRoles, { contractor: authorOk, ncrClosed, superseded: hist.some((h) => h.rev > doc.rev) })
+    /* ⚠️ 2026-10-06: `correctionBy` — залруулга илгээгчид дүгнэх товч гарахгүй (`review` дүрэм 7б) */
+    ? canAct({
+      ...doc,
+      correctionAt: body && 'correctionAt' in body ? (body as NcrBody).correctionAt : null,
+      correctionBy: body && 'correctionBy' in body ? (body as NcrBody).correctionBy : null,
+    }, me || null, myRoles, { contractor: authorOk, ncrClosed, superseded: hist.some((h) => h.rev > doc.rev) })
     : {
       edit: false, submit: false, review: [] as Reviewer[], correction: false, reopen: false, clientChecks: false,
       bounce: false, ack: false, closeAn: false, newRevision: false, closeNcr: false,
     };
   /* ⚠️ Хавсралтыг зөвхөн СҮҮЛИЙН хувилбар дээр засна (2026-09-25 аудит); NCR-д
-     гүйцэтгэгч залруулгын нотолгоо хавсаргана (`attachDeny`-тэй ижил). */
-  const attEdit = !!doc && (doc.kind === 'NCR' ? (act.edit || act.correction) : act.edit && !hist.some((h) => h.rev > doc.rev));
+     гүйцэтгэгч залруулгын нотолгоо хавсаргана (`attachDeny`-тэй ижил).
+     ⚠️ 2026-10-06: NCR-ээс бусадд ЗӨВХӨН НООРОГ — `act.edit` буцаагдсан мөрд ч үнэн («Засах»
+     rev+1 ноорог үүсгэдэг) тул хавсралт буцаагдсан (татгалзсан) мөрд нэмэгдэж, «Дахин илгээх»-ийн
+     rev+1-д ордоггүй байв. `attachDeny` ч татгалзана — эхлээд «Засах». */
+  const attEdit = !!doc && (doc.kind === 'NCR'
+    ? (act.edit || act.correction)
+    : act.edit && doc.status === MS_STATUS.draft && !hist.some((h) => h.rev > doc.rev));
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
     if (busy) return false;
@@ -504,7 +514,9 @@ export function Chanar() {
     /* ⚠️ 2026-10-05: ДУТУУГ илгээхийн ӨМНӨ хэлнэ (`chanarMs.emptyKeySections`) — зөвхөн
        гарчигтай баримт хянуулахаар явж, дараа нь засагдахгүй болдог байв. Хориг биш, сануулга. */
     const missing = emptyKeySections(doc.kind, body);
-    const nAtt = atts.filter((a) => a.parentOid === doc.oid).length;
+    /* ⚠️ 2026-10-06: буцаагдсанаас шууд дахин илгээвэл `submitDoc` rev+1 ШИНЭ мөр үүсгэнэ — хуучин
+       (татгалзсан) мөрийн хавсралт тэнд ОРОХГҮЙ тул 0. Урьд нь хуучин мөрийнхийг тоолж сануулга гаргадаггүй байв. */
+    const nAtt = doc.kind !== 'NCR' && doc.status === MS_STATUS.returned ? 0 : atts.filter((a) => a.parentOid === doc.oid).length;
     const warn = [
       missing.length ? tr('⚠ Хоосон хэсэг: {0}', missing.join(' · ')) : '',
       nAtt === 0 ? tr('⚠ Хавсралт: 0 — энэ хувилбарт файл хавсаргаагүй') : '',

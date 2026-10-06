@@ -117,6 +117,17 @@ export type { SheetView } from "./fill/util";
  * илгээх агшны хуудасны түлхүүрээр л баримт тавьдаг тул шинэ жааз дээрх хуулбар (`pending`, `landMoved`)
  * олдохгүй, илгээгдсэн нүд ДАХИН илгээгдэх байв. Тулгаж чадаагүй (хоёрдмол) түлхүүр хуучнаараа л үлдэнэ.
  */
+/**
+ * ⚠️ 2026-10-06: ЯВЖ БУЙ ИЛГЭЭЛТИЙН ТЭМДГИЙГ (`readInflight`) АЧААЛАЛТ ЗӨВХӨН ӨӨРИЙНХИЙГ эсвэл ХУУЧИРСНЫГ
+ *    арилгана. Урьд нь өөр табын хуудас ачаалахад серверт `nonce` ХАРААХАН олдоогүй (1-р табын
+ *    `saveSubmission` явж байгаа) үед тэмдгийг арчиж, 1-р табын хариу тасарвал дахин илгээхэд ижил
+ *    нэмэлт ДАВХАР тоологдох боломжтой байв. `myNonces` — энэ табын (модулийн санах ой) оролдлогууд.
+ */
+const myNonces = new Set<string>();
+const INFLIGHT_STALE_MS = 2 * 60_000;
+const mayClearInflight = (inf: Inflight): boolean =>
+  myNonces.has(inf.nonce) || Date.now() - inf.at > INFLIGHT_STALE_MS;
+
 function inflightKeys(inf: Inflight, rows: readonly SheetRow[]): [string, string, number][] {
   const out: [string, string, number][] = [...inf.sent];
   if (!inf.rk?.length) return out;
@@ -738,6 +749,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setStaged(null);
     setStagedOid(null);
     setStagedFillMs(null);
+    /* ⚠️ 2026-10-06: ГАРААР СОНГОСОН буцаалт (`resumedOid`) ч энэ ачааллын төлөв — `useFlow` зөвхөн
+       багц солиход тэглэдэг тул өдөр солигдоход (`todayFillMs`) үлдэж, `staged` тэглэгдсэн ч мэдэгдлийн
+       «давхарлах» товч `resumedOid === soid`-оор ТҮГЖИГДЭЖ F5 хүртэл гацдаг байв. */
+    setResumedOid(null);
     /* ⚠️ Тулгагдаагүй нүдний анхааруулга нь НЭГ багцынх — үлдээвэл шинэ багцад
        худал заалт болно. */
     setUnmovedWarn([]);
@@ -970,7 +985,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               }
               say(tr('Өмнөх «Илгээх» сервер дээр АМЖИЛТТАЙ хадгалагдсан байсан (хариу нь тасарсан) — илгээгдсэн нүдийг ноорогоос хасав, давхар илгээгдэхгүй.'));
               clearInflight(pkg.key);
-            } else if (fr.ok) {
+            } else if (fr.ok && mayClearInflight(inf)) {
+              /* ⚠️ 2026-10-06: өөр табын ЯВЖ БУЙ илгээлтийн тэмдгийг арчихгүй (`mayClearInflight`-ийн ⚠️) */
               clearInflight(pkg.key);
             }
           }
@@ -2008,6 +2024,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const datesOut = Object.entries(pendDate2).filter(([k]) => notOrphan(k));
       /* ⚠️ 2026-10-04 аудит (#3): энэ илгээх оролдлогын танигч (`SubmissionPayload.nonces`) */
       const nonce = newNonce();
+      /* ⚠️ 2026-10-06: энэ табынх гэж тэмдэглэнэ (`mayClearInflight`) */
+      myNonces.add(nonce);
       /**
        * ИЛГЭЭЖ БУЙ НҮД — `[түлхүүр, НООРОГИЙН утга (нэмэлт), sa]` (2026-10-04 аудит, #3 · #4).
        * Хуудасны түлхүүр ба (жааз солигдсон бол) зөөгдсөн түлхүүр ХОЁУЛАА — бусад хуулбар аль
@@ -2339,7 +2357,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ⚠️ Нэмэлт тайлбар ХАДГАЛАХГҮЙ — хяналтын хүснэгтэд гүйцэтгэгчийн тайлбарын талбар алга.
    */
   const resendAsIs = useCallback(async () => {
-    if (busy || !staged || staged.done || !curTgtOn || dirtyCount > 0 || locked) return;
+    if (busy || !sc || !staged || staged.done || !curTgtOn || dirtyCount > 0 || locked) return;
     if (noEdit) { setErr(RO.viewOnly); return; }
     if (!window.confirm(tr('Буцаагдсан илгээлтийг ({0}) ӨӨРЧЛӨЛТГҮЙ, хэвээр нь дахин хяналтад илгээх үү? Хянагч өмнөх агуулгыг дахин хянана.', msToDay(staged.payload.fillMs)))) return;
     setBusy(true);
@@ -2350,11 +2368,48 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       registeredRef.current.add(staged.oid);
       setSubmitFailed(false);
       reloadHy();
+      /* ⚠️ 2026-10-06: ГАРААР СОНГОСОН буцаалт ДУУСЛАА — `publish`-ийн `setResumedOid(null)`-тэй ИЖИЛ
+         шалтгаан (тэнд ⚠️ 2026-09-25). Урьд нь энд тэглэгддэггүй тул дараа нь өнөөдрийн ажлыг бөглөөд
+         «Илгээх» дарахад `curTgtOn` үнэн хэвээр, `fillMs` = `staged`-ийн өдөр болж өнөөдрийн нэмэлт
+         ХЯНАГДАЖ БУЙ тэр өдрийн илгээлтэд нийлдэг байв. Буцаалтын улаан тэмдэглэгээ ч дууслаа. */
+      setResumedOid(null);
+      setBackChg(new Set());
+      /* ⚠️ 2026-10-06: `staged` өөр өдрийнх бол ӨНӨӨДРИЙН идэвхтэй илгээлтийг дахин ачаалж давхарлана —
+         `publish`-ийн илгээсний дараах дахин ачаалалттай ИЖИЛ (өнөөдрийн түлхүүр). Уншилт унавал
+         `staged`-ыг тэглэнэ (өөр өдрийнхийг суурь болгож үлдээхгүй), алдааг `subReadErr`-ээр ил хэлнэ. */
+      if (staged.payload.fillMs !== todayFillMs) {
+        try {
+          const next = await loadRows(pkg, sc);
+          const ar = await readActiveSubmission(pkg.key, todayFillMs);
+          setSubReadErr(ar.ok ? null : ar.error);
+          let act = ar.ok && ar.sub && !ar.sub.done && ar.sub.payload.pkgKey === pkg.key ? ar.sub : null;
+          if (act) {
+            const p2 = await ensureFrameOcc(pkg, sc, act.payload, next.rows);
+            if (p2 !== act.payload) act = { ...act, payload: p2 };
+          }
+          const ov2 = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
+          setUnmovedWarn(ov2 && ov2.unmoved > 0 && act
+            ? describeUnmoved(ov2.unmovedKeys, act.payload.rowKeys, sc.bld)
+            : []);
+          setStaged(act);
+          setRows(ov2 ? ov2.rows : next.rows);
+          setOvBase(ov2 ? new Map(next.rows.map((x) => [x.oid, x] as const)) : new Map());
+          /* `null ≠ 0` — илгээлт огноог хөндөөгүй бол архивынх; засваргүй (`dirtyCount === 0`) тул хоёулаа */
+          const asOfNext = ov2?.asOf ?? next.asOf ?? asOf;
+          setAsOf(asOfNext);
+          setAsOfOrig(asOfNext);
+          setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
+          setSnapMs(next.snapshot ?? null);
+        } catch (e2) {
+          setStaged(null);
+          setSubReadErr(userError(e2));
+        }
+      }
       done(rv.reused ? tr('Энэ илгээлт хяналтад аль хэдийн бүртгэгдсэн байна') : tr('Өөрчлөлтгүй дахин илгээв ({0})', rv.id));
     } finally {
       setBusy(false);
     }
-  }, [busy, staged, curTgtOn, dirtyCount, locked, noEdit, pkg.group, pkg.name, reloadHy, done]);
+  }, [busy, sc, staged, curTgtOn, dirtyCount, locked, noEdit, pkg, nBld, asOf, todayFillMs, setResumedOid, reloadHy, done]);
 
   // Ctrl+S — «Гүйцэтгэл бөглөх»-тэй ижил.
   // ⚠️ Нээлттэй нүдний бичиж буй утгыг ЭХЛЭЖ commit хийнэ — эс тэгвэл хуучин

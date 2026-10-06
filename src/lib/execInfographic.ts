@@ -251,7 +251,8 @@ export function buildInfographic(
     /* ⚠️ 2026-09-25: дэд шошго нь эхээс (`progressSrc`) — урьд нь нэгтгэлийн тоог ч «6 шатны» гэж хэвлэдэг байв */
     [tr('Төслийн гүйцэтгэл'), g.progress == null ? '—' : pct(g.progress, 1), progressSub(g.progressSrc)],
     /* ⚠️ 2026-09-21: «гэрээлсэн» — §1-ийн «Нийт гэрээлсэн дүн»-тэй нэг нэр («гэрээний» биш) */
-    [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээлсэн дүнгийн {0}', pct(x.fin.share, 1))],
+    /* ⚠️ 2026-10-06: хувийн тоологч = ГЭРЭЭЛСЭН багцын олголт (`givenContracted`), `given` БИШ — нэрлэнэ */
+    [tr('Олгосон санхүүжилт'), money(x.fin.given), x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1))],
     [tr('Газар чөлөөлөлт'), g.landPct == null ? '—' : pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(x.prog.blocks), num(x.prog.households))],
   ];

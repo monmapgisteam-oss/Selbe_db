@@ -6,7 +6,7 @@ import { Section, Stats, Stat, Bars, Ring, Data, Empty, Col, Note, Split, Tabs, 
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { BUILDING, PROGRESS_LEVELS, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
+import { BUILDING, TASK_SHEET, LAYER_BY_ID, bagtsKey, buildingKey, isConstructionNo } from '@/lib/services';
 import {
   loadBlockProgress, loadBlockHistory, loadBlockUniverse, progressSeries, pkgProgressOf, universeKeys,
   latestMean, mapKeyIssues, type BlockHistory,
@@ -101,7 +101,8 @@ type Agg = {
   keys: string[];
   blocks: number;
   ail: number;
-  progress: number | null;
+  /* ⚠️ 2026-10-06: `progress` (`meanOf` — зөвхөн хэмжигдсэн блокийн дундаж, ХУУЧИН дүрэм)
+     ХАСАГДСАН — хаана ч уншигддаггүй байв; багцын хувь `pkgPct`-ээс (`loadBuildings`). */
 };
 
 /** Дундаж — бөглөгдөөгүй блокийг ОРУУЛАХГҮЙ (0 гэж тоовол дундаж худал буурна) */
@@ -137,7 +138,6 @@ function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
       keys: u.map((b) => b.key),
       blocks: u.length,
       ail: u.reduce((s, b) => s + b.ail, 0),
-      progress: meanOf(u.map((b) => b.progress)),
     };
   });
 }
@@ -266,12 +266,13 @@ export async function loadBuildings() {
       /** Бүх блокийн түлхүүр (цувааны анхдагч хамрах хүрээ) — 2026-10-01-ээс бөглөх хуудасны хуваарь */
       keys: allKeys,
 
-      levels: PROGRESS_LEVELS.map((l) => {
-        const hit = withData.filter((b) => b.progress! >= l.min && b.progress! < l.max);
-        const hitKeys = new Set(hit.map((b) => b.key));
-        /* ⚠️ OID — давхардсан полигоныг ч хамруулна (зурагт тодорно), тоо нь түлхүүрээр */
-        return { ...l, value: hit.length, oids: blocks.filter((b) => hitKeys.has(b.key)).map((b) => b.oid), keys: hit.map((b) => b.key) };
-      }),
+      /**
+       * Блок бүрийн хэмжилт — түвшний тоолол (`blockProgress.levelCounts(prog, keys)`).
+       * ⚠️ 2026-10-06: урьдын `levels` (зөвхөн хэмжигдсэн, газрын зургийн блокоор — ХУУЧИН
+       *    дүрэм) хэрэглэгддэггүй байсан тул УСТГАВ; Удирдлагын тайлан ба 05 «Блокийн төлөв»
+       *    Дашбоардтай нэг дүрмээр үүгээр тоолно.
+       */
+      prog,
 
       /* ⚠️ 2026-09-30: багцын `progress` = `pkgPct` (дээрх ⚠️) — feature-ийн дундаж БИШ */
       /* ⚠️ 2026-10-01: цувааны `keys` — тэр багцын бөглөх хуудасны хуваарь (хувьтай нэг) */

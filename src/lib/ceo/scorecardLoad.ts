@@ -44,6 +44,8 @@ export type BaseWork = Omit<WorkScore, 'dims' | 'total'> & {
   permit: DimScore;
   /** Тайлангийн 6-р хэсэг — газар чөлөөлөлтийн өөрийнх нь ажил */
   isLandWork: boolean;
+  /** ⚠️ 2026-10-06: багцын түвшний бүлгүүдийг (зөвшөөрөл · ХАБЭА · чанар · төлөвлөгөө) бодох ТӨЛӨӨЛӨГЧ мөр */
+  pkgRep: boolean;
 };
 
 export type ScoreBase = {
@@ -143,6 +145,21 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
    *    салаа) ба `perf` бодогдоно; `fin`·`permit`·`hse`·`qual`·`plan` = null.
    */
   const scored = cf.filter((r) => r.isWork || r.sec === FIN_XL_LAND_CODE);
+  /* ⚠️ 2026-10-06: БАГЦЫН ТҮВШНИЙ бүлгүүд (зөвшөөрөл · ХАБЭА · чанар · ерөнхий төлөвлөгөө) нь
+     багцын түлхүүрээр нэг л утгатай. Урьд нь ИЖИЛ түлхүүртэй БҮХ мөрд (ТЭЗҮ, зураг төсөл,
+     угсралт…) хуулагдаж, нэг багцын зөвшөөрөл/ХАБЭА нь жигнэсэн дунджид олон дахин орж,
+     зураг төслийн гэрээ угсралтын талбайн үзлэгээр «улаан» гардаг байв (2026-09-21-ний
+     `perf`-ийн засвартай ижил асуудал). Одоо түлхүүр бүрд НЭГ ТӨЛӨӨЛӨГЧ мөр —
+     `collectPkgLags`-ийн сонголттой нэг дүрэм: барилга угсралтын (`sec === '2'`) эхний мөр,
+     байхгүй бол эхний мөр (хасагдсан ба газрын мөр оролцохгүй). Бусад мөрд `null` («—», 0 биш). */
+  const pkgRep = new Map<string, { oid: number; build: boolean }>();
+  for (const r of scored) {
+    const k = pkgKeyOf(r.pkg2) || pkgKeyOf(r.pkg);
+    if (!k || r.sec === FIN_XL_LAND_CODE || CANCELLED_NOTE_RE.test(r.note)) continue;
+    const build = r.sec === FIN_XL_BUILD_CODE;
+    const cur = pkgRep.get(k);
+    if (!cur || (build && !cur.build)) pkgRep.set(k, { oid: r.oid, build });
+  }
   const works: BaseWork[] = scored.map((r) => {
     const key = pkgKeyOf(r.pkg2) || pkgKeyOf(r.pkg);
     const cancelled = CANCELLED_NOTE_RE.test(r.note);
@@ -164,6 +181,8 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     const schedNotStarted = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && !lagUnknown && notStarted.has(key);
     const actual = lag ? lag.actual : r.progress;
     const contract = contracts?.get(r.oid) ?? null;
+    /* ⚠️ 2026-10-06: багцын түвшний бүлгийг ЭНЭ мөрд бодох уу (дээрх `pkgRep`) */
+    const isRep = !!key && pkgRep.get(key)?.oid === r.oid;
     return {
       oid: r.oid,
       name: r.name || r.project,
@@ -174,6 +193,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       contract: contracted && contract && contract > 0 ? contract : null,
       cancelled,
       isLandWork,
+      pkgRep: isRep,
       perf: cancelled ? { score: null, facts: [] } : lagUnknown ? perfNoCurve()
         : schedNotStarted ? perfNotStarted()
           : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
@@ -184,7 +204,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
         contracted,
         start: r.start,
         now,
-        cost: r.cost,
+        /* ⚠️ 2026-10-06: ЗАХИРАМЖИЙН ХО төсөв (`ho_dun_zahiramj`) — `r.cost` (`ho_dun_geree`) нь
+           гэрээтэй мөрд гэрээний дүнтэй ЯГ тэнцүү тул зөрүү ҮРГЭЛЖ 0 байв (`contractGap`-тэй нэг).
+           Бөглөөгүй бол 0 → `scoreFin` харьцуулахгүй (null ≠ 0: оноонд орохгүй). */
+        cost: r.budgetOrder ?? 0,
         contract: contracted && contract && contract > 0 ? contract : null,
         /* ⚠️ 2026-09-25: ОЛГОЛТ vs БИЕТ — ЗӨВХӨН ИЖИЛ ХҮРЭЭТЭЙ үед. `paid` нь
            БАГЦЫН нийт олголт ÷ багцын нийт гэрээ (`pkgFinRows`); `lag`-гүй мөрийн
@@ -198,12 +221,12 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       }),
       /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ.
          ⚠️ 2026-09-21: газрын мөрд зөвшөөрөл/ХАБЭА оноо АВАХГҮЙ (багц ажил биш). */
-      permit: cancelled || isLandWork || !key || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
+      permit: cancelled || isLandWork || !isRep || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
       /* ⚠️ 2026-09-29 (аудит 10): ХОЁР маягтын нэг нь унавал `active` тавихгүй — эс
          бөгөөс зөвхөн унасан маягтад үзлэгтэй багц «үзлэг хийж бүртгэх» (хүлээгдэж)
          гэж татах алдааг гүйцэтгэгчийн дутагдал мэт харуулдаг байв; унасан маягт
          `failed`-д аль хэдийн жагсаадаг, багц «—» болно. */
-      hse: cancelled || isLandWork || !key || uzFailed ? { score: null, facts: [] } : scoreHse({
+      hse: cancelled || isLandWork || !isRep || uzFailed ?{ score: null, facts: [] } : scoreHse({
         active: active.has(key) && !!uzV11 && !!uzCo, inspections: inspections.get(key) ?? [],
       }),
     };
@@ -371,13 +394,14 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
         overlapFailed: ov != null && ov < 0,
       }),
       /* ⚠️ 2026-09-21: газрын мөрд ерөнхий төлөвлөгөө/чанарын оноо АВАХГҮЙ (багц ажил биш) */
-      plan: w.cancelled || w.isLandWork || !x.plan || !w.key ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
+      /* ⚠️ 2026-10-06: plan · qual — ЗӨВХӨН багцын төлөөлөгч мөрд (`BaseWork.pkgRep`) */
+      plan: w.cancelled || w.isLandWork || !x.plan || !w.key || !w.pkgRep ? none : scorePlan(x.plan.get(w.key) ?? { blockScores: [], failingZones: [] }),
       permit: w.permit,
       hse: w.hse,
-      qual: w.cancelled || w.isLandWork || !x.qual || !w.key ? none : scoreQual({ qaqc: x.qual.get(w.key) ?? null }),
+      qual: w.cancelled || w.isLandWork || !x.qual || !w.key || !w.pkgRep ? none : scoreQual({ qaqc: x.qual.get(w.key) ?? null }),
     };
     /* ⚠️ `isLandWork` `WorkScore`-д ҮЛДЭНЭ — `CeoScorecard` жагсаалт/тоололоос хасахад хэрэгтэй */
-    const { perf: _p, fin: _f, hse: _h, permit: _z, ...rest } = w;
+    const { perf: _p, fin: _f, hse: _h, permit: _z, pkgRep: _r, ...rest } = w;
     return { ...rest, dims, total: totalOf(dims) };
   });
 }

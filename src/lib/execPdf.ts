@@ -364,7 +364,8 @@ export async function buildExecDoc(
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },
-        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээний {0}', pct(f.share, 1)) },
+        /* ⚠️ 2026-10-06: хувийн тоологч = ГЭРЭЭЛСЭН багцын олголт (`givenContracted`), `given` БИШ — нэрлэнэ */
+        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Ажлын багц'), value: num(g.packages), sub: tr('{0} төрөл ажил', num(g.types)) },
       ]),
       {
@@ -547,7 +548,8 @@ export async function buildExecDoc(
       kpiRow([
         /* ⚠️ `planTotal` = §1-ийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ тоо (CONTRACTED мөр) */
         { label: tr('Гэрээлсэн нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
-        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн дүнгээс {0}', pct(f.share, 1)) },
+        /* ⚠️ 2026-10-06: хувийн тоологч (гэрээлсэн багцын олголт)-ийг нэрлэнэ — §1-ийн ⚠️ */
+        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain), sub: tr('гэрээт боловч санхүүжилт хүлээгдэж буй') },
       ]),
       ...(finStarted.length ? [

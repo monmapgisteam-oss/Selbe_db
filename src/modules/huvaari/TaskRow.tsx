@@ -447,8 +447,10 @@ function HamCell({
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.currentTarget.blur(); return; }
           /* ⚠️ Escape = ЦУЦЛАХ: `blur()` синхрон тул `onBlur` хуучин `txt`-ээр хадгалдаг
-             байв (2026-09-17). Тугаар хаана. */
-          if (e.key === 'Escape') { cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); }
+             байв (2026-09-17). Тугаар хаана.
+             ⚠️ 2026-10-06: `stopPropagation` — `DateCell`-ийн адил; урьд нь Esc өргөн горимоос
+             ч зэрэг гаргадаг байв. */
+          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); }
         }}
       />
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}

@@ -74,6 +74,7 @@ export function BagtsHamaaral() {
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
     && matchesSearch(q, p.code, [p.name, p.contractor])), [pkgs, grp, q]);
 
+  const retryDeps = depQ.retry;
   const change = useCallback<OnChange>(async (op, dep) => {
     if (busy) return;
     setErr('');
@@ -81,11 +82,18 @@ export function BagtsHamaaral() {
     try {
       const res = await saveChange({ op, dep });
       if (res.ok) setSaved(res.state.deps);
-      else setErr(res.error);
+      else {
+        setErr(res.error);
+        /* ⚠️ 2026-10-06: бүтэлгүй хадгалалтын дараа харагдацыг ШИНЭЧИЛНЭ — `saveChange`
+           завсарт өөр хүний бичсэнийг уншсан байж болох ч `saved` хуучин жагсаалтыг
+           барьсаар байв. `saved`-ийг арилгаж серверээс дахин татна. */
+        setSaved(null);
+        retryDeps?.();
+      }
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, retryDeps]);
 
   if (finQ.state === 'loading') return <div className={s.wrap}><p className={s.loading}>{tr('Ачаалж байна…')}</p></div>;
   if (finQ.state === 'error') {

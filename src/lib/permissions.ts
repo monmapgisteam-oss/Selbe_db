@@ -741,6 +741,15 @@ export function resolveBaseAccess(username?: string | null): Access | null {
  * үлдэж, «Гүйцэтгэлийн хяналт» дээр ШАТ СОНГОГЧ нээлттэй болдог байв — тэр
  * хүн инженер/менежер/ерөнхий шатыг дураараа сольж ӨӨРИЙН ажлаа ӨӨРӨӨ
  * батлах боломжтой. Одоо энэ функц үүргийн ГАНЦ эх сурвалж.
+ *
+ * ⚠️ 2026-10-06: ПАНЕЛИЙН «super» (override `role:'super'`) нь ЗӨВХӨН
+ *    харагдац/нүүр/шат сонголтод нөлөөлнө — БАТЛАХ ХҮРЭЭ БИШ. Батлах урсгалын
+ *    хүрээ (`scopedAcl.scope`/`hasRole`, `ajilScope`, `huvaariScope` …) ба
+ *    lib-ийн хамгаалалтууд ЗӨВХӨН хатуу super-ийг (`roleForUser`) хязгааргүй
+ *    гэж үздэг; панелийн super-т багц хуваарилалт тусад нь хэрэгтэй. Үүнийг
+ *    `roleOf`-оор «хязгааргүй» болгож болохгүй — панелийн нэг товчоор бүх
+ *    багцын батлах эрх нээгдэнэ. Батлах хуудсууд тийм хэрэглэгчид «хүрээ нь
+ *    хуваарилалтаас» гэж ИЛ хэлнэ (`AjilBatlah`).
  */
 export function roleOf(username?: string | null): Role | null {
   if (!username) return null;
@@ -948,7 +957,15 @@ export function subscribe(fn: () => void): () => void {
     // ⚠️ Өөр табын бичилтийг cache-д ЗААВАЛ татна — урьд нь зөвхөн fn()
     //    дуудаад cache хуучнаараа үлдэж, дахин зурсан UI хуучин эрхийг
     //    харуулсаар байв.
-    cache = loadLocal();
+    // ⚠️ 2026-10-06: ГЭХДЭЭ ЗӨВХӨН remote уншигдахаас ӨМНӨ. Урьд нь үргэлж
+    //    `cache = loadLocal()` хийдэг тул хэрэглэгч өөр табад `selbe-perms-v1`-д
+    //    өөртөө `role:'super'`, `views:'all'` гэж ГАРААР бичихэд энэ таб түүнийг
+    //    кэшэд авч, `remoteLoaded=true` тул `resolveBaseAccess`/`roleOf` ҮНЭН
+    //    гэж итгэдэг байв (`guitsetgelAcl.subscribeAcl`-ийн 2026-09-25-ны ижил
+    //    цоорхой). Remote-ын дараа өөр табын ЖИНХЭНЭ өөрчлөлт remote-д бичигддэг
+    //    тул `initRemote` (нэвтрэх · polling · visibilitychange) авчирна — энд
+    //    зөвхөн дахин зурна.
+    if (!remoteLoaded) cache = loadLocal();
     fn();
   };
   window.addEventListener(EVENT, fn);
