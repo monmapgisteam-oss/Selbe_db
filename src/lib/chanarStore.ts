@@ -48,7 +48,7 @@ import { chanarAclReady, isAuthorFor, reviewerRolesFor, subscribeChanarAcl } fro
    Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
    хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). Алдаа HTTP
    200-аар ирдэг — `error` биеийг тэр шалгана. */
-import { authToken, arcgisPost } from '@/lib/authToken';
+import { authToken, arcgisPost, ensureFreshToken, isTokenError, refreshAfterTokenError } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { CapKey } from './caps';
 import { invalidate } from './dataBus';
@@ -268,37 +268,57 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const deny = await attachDeny(oid);
   if (deny) return { ok: false, error: deny };
-  try {
+  /* ⚠️ 2026-10-06 (аудит): FormData тул `arcgisPost` ашиглах боломжгүй — урьд нь түүхий
+     `fetch` хугацаагүй (сүлжээ гацвал «Хуулж байна…» мөнх үлдэнэ), токеныг шинэчлэхгүй,
+     498-д дахин оролдохгүй байв. Одоо: илгээхийн ӨМНӨ `ensureFreshToken`, 120 секундын
+     `AbortSignal.timeout` (том PDF-д хангалттай), токены алдаанд НЭГ удаа дахин. */
+  type AddRes = { error?: { code?: number; message?: string }; addAttachmentResult?: { success?: boolean } };
+  const send = async (): Promise<{ sent: string | null; j: AddRes }> => {
+    await ensureFreshToken();
     const fd = new FormData();
     fd.append('f', 'json');
     const tok = authToken();
     if (tok) fd.append('token', tok); // ⚠️ org-only хүснэгт (2026-09-17)
     fd.append('attachment', file, file.name);
-    const r = await fetch(`${url}/${Number(oid)}/addAttachment`, { method: 'POST', body: fd });
-    if (!r.ok) return { ok: false, error: `ArcGIS HTTP ${r.status}` };
-    const j = (await r.json()) as { error?: { message?: string }; addAttachmentResult?: { success?: boolean } };
+    const r = await fetch(`${url}/${Number(oid)}/addAttachment`, {
+      method: 'POST', body: fd, signal: AbortSignal.timeout(120_000),
+    });
+    if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
+    return { sent: tok || null, j: (await r.json()) as AddRes };
+  };
+  try {
+    let res = await send();
+    const e0 = res.j.error;
+    if (e0 && isTokenError(e0.code, e0.message) && (await refreshAfterTokenError(res.sent))) res = await send();
+    const { j } = res;
     if (j.error) return { ok: false, error: j.error.message || 'ArcGIS error' };
     if (!j.addAttachmentResult?.success) return { ok: false, error: tr('Хавсралт хадгалагдсангүй.') };
     invalidate('CHANAR_BARIMT');
     return { ok: true };
   } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') {
+      return { ok: false, error: tr('Хавсралт илгээх хугацаа хэтэрлээ (2 минут) — сүлжээгээ шалгаад дахин оролдоно уу.') };
+    }
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
 
-export async function deleteAttachment(oid: number, id: number): Promise<boolean> {
+/* ⚠️ 2026-10-06 (аудит): `{ ok, error }` буцаана — урьд нь хоосон `false` тул UI зөвхөн
+   ерөнхий «устгагдсангүй» гэж хэлж, эрх/түгжээ/сүлжээний шалтгаан алга болдог байв. */
+export async function deleteAttachment(oid: number, id: number): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl(false);
-  if (!url) return false;
+  if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   /* ⚠️ 2026-09-30: `delete` — NCR илгээсний дараа нотолгоо устгагдахгүй (`attachDeny`-ийн ⚠️) */
-  if (await attachDeny(oid, 'delete')) return false;
+  const deny = await attachDeny(oid, 'delete');
+  if (deny) return { ok: false, error: deny };
   try {
     const j = await arcgisPost(`${url}/${Number(oid)}/deleteAttachments`, { attachmentIds: String(id) });
     const rs = (j.deleteAttachmentResults as { success?: boolean }[]) ?? [];
     const ok = rs.length > 0 && rs.every((x) => x.success === true);
     if (ok) invalidate('CHANAR_BARIMT');
-    return ok;
-  } catch {
-    return false;
+    return ok ? { ok: true } : { ok: false, error: tr('Хавсралт устгагдсангүй.') };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
   }
 }
 
@@ -454,7 +474,7 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl(false);
   if (!url) return [];
   const out: Attrs[] = [];
-  for (let off = 0; ; off += 1000) {
+  for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
@@ -466,7 +486,12 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
     });
     const fs = (j.features as { attributes: Attrs }[]) ?? [];
     out.push(...fs.map((f) => f.attributes));
-    if (fs.length < 1000) break;
+    /* ⚠️ 2026-10-06: `exceededTransferLimit`-ЭЭР таслана, `fs.length < 1000`-ААР БИШ
+       (`ajilBatlah.ts`-ийн ижил дүрэм) — үйлчилгээний `maxRecordCount` 1000-аас бага
+       бол эхний хуудас цөөн мөр буцаад давталт зогсож, үлдсэн баримт чимээгүй алга
+       болдог; `off += 1000` нь ч тэр үед мөр алгасна. */
+    if (!j.exceededTransferLimit || fs.length === 0) break;
+    off += fs.length;
   }
   return out;
 }

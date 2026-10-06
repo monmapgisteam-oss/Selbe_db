@@ -3,9 +3,12 @@
  *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
  *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
  */
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { PKGS, pkgFloors, type Pkg } from "../bagts.pkg";
-import { num, pct } from "@/lib/format";
+import { date as fmtDate, dateLocale, num, pct } from "@/lib/format";
+import { REASON_MAX } from "@/lib/huvaariBatlah";
+import { useFocusTrap } from "@/lib/useFocusTrap";
+import { LOCAL_DRAFT_TTL_MS } from "./draft";
 import { t as tr } from "@/lib/i18nCore";
 import type { useObyem } from "./useObyem";
 import type { useDraftSync } from "./useDraftSync";
@@ -195,9 +198,11 @@ export function FilterBar({
 }
 
 /** «Илгээх» / «Дуусгасан» / «Дахин засах» — нэг байрлалд нэг товч */
-export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, dirtyCount, iAmDone, toggleDone, waitingOn, resendAsIs }: {
+export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, dirtyCount, iAmDone, toggleDone, waitingOn, waitingLast, resendAsIs }: {
   locked: boolean; canSubmitNow: boolean; publish: () => Promise<void>; busy: boolean; noEdit: boolean;
   dirtyCount: number; iAmDone: boolean; toggleDone: () => Promise<void>; waitingOn: string[];
+  /** ⚠️ 2026-10-06 аудит: түгжиж буй хүн бүрийн сүүлийн идэвх (мс) — `useDraftSync.waitingLast` */
+  waitingLast?: Map<string, number>;
   /** ⚠️ 2026-10-04: буцаагдсан илгээлтийг ӨӨРЧЛӨЛТГҮЙ дахин илгээх (`FillNew.resendAsIs`) — засваргүй үед л */
   resendAsIs?: () => void;
 }) {
@@ -255,9 +260,17 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
         )}
         {/* ⚠️ ЯАГААД ТҮГЖЭЭТЭЙГ ИЛ ХЭЛНЭ: шалтгаангүй саарал товч нь
             «эвдэрсэн» гэж ойлгогдоно. Хэнийг хүлээж байгааг нэрээр нь. */}
+        {/* ⚠️ 2026-10-06 аудит: ХЭЗЭЭНЭЭС хойш хүлээж буйг ба АВТОМАТ чөлөөлөлтийг хэлнэ —
+            урьд нь сүүлийн хүн 3 хоног хүртэл шалтгаангүй гацдаг байв (`waitingOn`-ийн ⚠️).
+            Агшингүй (хуучин ноорог) хүний нэрийг огноогүй бичнэ — «мэдээлэлгүй» ≠ «идэвхгүй». */}
         {!locked && !canSubmitNow && (
           <span className={st.muted} role="status">
-            {tr('Илгээх — {0} дуусгаагүй байна', waitingOn.join(', '))}
+            {tr('Илгээх — {0} дуусгаагүй байна', waitingOn.map((u) => {
+              const a = waitingLast?.get(u);
+              return a != null ? tr('{0} (сүүлд {1})', u, fmtDate(a)) : u;
+            }).join(', '))}
+            {' · '}
+            {tr('{0} хоног идэвхгүй бол автоматаар чөлөөлөгдөнө', String(Math.round(LOCAL_DRAFT_TTL_MS / 86_400_000)))}
           </span>
         )}
     </>
@@ -301,6 +314,8 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
   /** Нэвтэрсэн хэрэглэгч — «Татаж авах» товчийг зөвхөн зохиогчид */
   me?: string;
 }) {
+  /** ⚠️ 2026-10-06 аудит: буцаах шалтгааны цонх — `null` = хаалттай */
+  const [rej, setRej] = useState<string | null>(null);
   return (
     <>
         {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУЦААГДСАН обьёмын илгээлт ба ШАЛТГААН —
@@ -309,7 +324,8 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
           <span className={st.lockNote} role="status">
             {tr('Обьёмын илгээлт буцаагдсан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
               String(pvReturned.cellCount),
-              [pvReturned.approver ?? '', pvReturned.approverAt ? new Date(pvReturned.approverAt).toLocaleDateString('mn-MN') : ''].filter(Boolean).join(' · ') || '—',
+              /* ⚠️ 2026-10-06 аудит: `'mn-MN'` хатуу байсан — англи горимд ч монгол огноо гардаг байв */
+              [pvReturned.approver ?? '', pvReturned.approverAt ? fmtDate(pvReturned.approverAt) : ''].filter(Boolean).join(' · ') || '—',
               pvReturned.reason ?? '—')}
           </span>
         )}
@@ -365,14 +381,12 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             <button
               className={st.layerBtn}
               onClick={() => {
-                /* ⚠️ Шалтгаан ЗААВАЛ — `decideObyem` ч мөн шалгана */
-                const why0 = window.prompt(tr('Буцаах шалтгаанаа бичнэ үү:'));
-                /* ⚠️ 2026-10-05: «Болих» (null) = чимээгүй гарна. ХООСОН шалтгаанаар «OK» дарвал урьд нь юу ч
-                   болохгүй, юу ч хэлэхгүй байв — одоо `decideObyem` руу дамжуулна: тэр нь СҮЛЖЭЭНЭЭС ӨМНӨ
-                   «Буцаах шалтгааныг бичнэ үү.» гэж татгалзаж, мессеж нь энд (`pvErr`) ил гарна. */
-                if (why0 === null) return;
-                const why = why0;
-                void decideObyemHere(false, why);
+                /* ⚠️ Шалтгаан ЗААВАЛ — `decideObyem` ч мөн шалгана.
+                   ⚠️ 2026-10-06 аудит: `window.prompt` → өөрийн цонх (`RejectDialog`) — prompt нь уртын
+                   хязгааргүй тул 2048-аас урт шалтгаан `applyEdits`-ийг бүхэлд нь унагадаг байв.
+                   «Болих»/Esc = чимээгүй гарна (2026-10-05-ны зан хэвээр); ХООСОН шалтгаанд цонхны
+                   товч идэвхгүй, `decideObyem` ч СҮЛЖЭЭНЭЭС ӨМНӨ татгалзана (мессеж нь `pvErr`-д). */
+                setRej('');
               }}
               disabled={pvBusy}
             >
@@ -380,9 +394,65 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             </button>
           </>
         )}
+        {rej !== null && pvSub && canObyemApprove && !locked && (
+          <RejectDialog
+            text={rej}
+            onText={setRej}
+            busy={pvBusy}
+            onClose={() => setRej(null)}
+            onOk={(why) => { setRej(null); void decideObyemHere(false, why); }}
+          />
+        )}
         {pvErr && <span className={st.error}>{pvErr}</span>}
         {pvNote && <span className={st.muted}>{pvNote}</span>}
     </>
+  );
+}
+
+/**
+ * ОБЬЁМ БУЦААХ ШАЛТГААНЫ ЦОНХ (2026-10-06 аудит) — `window.prompt`-ийн оронд.
+ * ⚠️ `maxLength={REASON_MAX}` — талбар 2048; хэтэрвэл `applyEdits` бүхэлдээ унана
+ *    (`huvaari/FlowBox`-той ижил хязгаар). Esc / арын дэвсгэр / «Болих» = чимээгүй хаана.
+ */
+function RejectDialog({ text, onText, busy, onClose, onOk }: {
+  text: string; onText: (v: string) => void; busy: boolean;
+  onClose: () => void; onOk: (why: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
+  /* ⚠️ `autoFocus` биш — `useFocusTrap` эхний товч (×) руу фокуслодог (`huvaari/LinkModal`-ийн ⚠️) */
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { taRef.current?.focus(); }, []);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+  return (
+    <div className={st.overlay} role="presentation" onClick={onClose}>
+      <div ref={ref} className={st.modal} role="dialog" aria-modal="true" aria-label={tr('Обьём буцаах')}
+        style={{ maxWidth: '32rem' }} onClick={(e) => e.stopPropagation()}>
+        <div className={st.modalHead}>
+          <b className={st.modalTitle}>{tr('Буцаах шалтгаанаа бичнэ үү:')}</b>
+          <button type="button" className={st.closeBtn} onClick={onClose} aria-label={tr('Хаах')}>×</button>
+        </div>
+        <textarea
+          rows={4}
+          ref={taRef}
+          value={text}
+          onChange={(e) => onText(e.target.value)}
+          disabled={busy}
+          maxLength={REASON_MAX}
+          style={{ width: '100%', resize: 'vertical', font: 'inherit' }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className={st.layerBtn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
+          <button type="button" className={st.publishBtn} onClick={() => onOk(text)} disabled={busy || !text.trim()}>
+            {tr('Обьём буцаах')}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -513,7 +583,7 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
                хуулагддаг тул «зөвхөн энэ компьютерт» гэдэг нь худал болов. */
             title={tr('Ноорог энэ хөтөчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
           >
-            {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
+            {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
         {/* ⚠️ ХЭТ ТОМ ноорог алсад ЯВААГҮЙГ ил хэлнэ — «хадгалагдсан» гэж
@@ -540,7 +610,7 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             «өөр компьютероос үргэлжлүүлж болно» гэдэгт итгэнэ. */}
         {remoteState?.kind === 'ok' && !locked && dirtyCount > 0 && (
           <span className={st.autosave} title={tr('Энэ агшны байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
-            {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString('mn-MN', { hour: '2-digit', minute: '2-digit' }))}
+            {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
     </>

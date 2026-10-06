@@ -1162,7 +1162,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         return;
       }
       if (!rr.ok) {
-        setSubReadErr(rr.error);
+        /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) шууд харуулахгүй */
+        setSubReadErr(userError(rr.error));
         lateOverlayRef.current = NaN;
         setTimeout(() => setLateRetry((n) => n + 1), REMOTE_RETRY_MS);
         return;
@@ -1371,7 +1372,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     savedAt, keepDraft: keepDraftRef, remoteQueue: remoteQueueRef, mineRef, mineAtRef, delRef, touchMine, revert,
     doneBy, byMap, setByMap, setByAtMap, byAtRef,
     remoteState,
-    meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,
+    meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft, waitingLast,
     undoAllMarks, restoringUi, offline,
     rcptRef, btRef, datesBRef, asOfBRef, draftTgt, localFail, stamp,
     /* 2026-10-04 дахин аудит — тэмдэглэсэн нүд (#7) · өөрийн зорилт (#4) */
@@ -2484,11 +2485,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
         />
-        <SubmitControls
-          locked={locked} canSubmitNow={canSubmitNow} publish={publish} busy={busy} noEdit={noEdit}
-          dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
-          resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
-        />
+        {/* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүнд «Илгээх»/«Дуусгасан» ОГТ гарахгүй —
+            урьд нь «Дуусгасан» дарж оролцогч болж бусдын «Илгээх»-ийг түгждэг байв. Шалтгааныг ил хэлнэ. */}
+        {canPerf ? (
+          <SubmitControls
+            locked={locked} canSubmitNow={canSubmitNow} publish={publish} busy={busy} noEdit={noEdit}
+            dirtyCount={dirtyCount} iAmDone={iAmDone} toggleDone={toggleDone} waitingOn={waitingOn}
+            waitingLast={waitingLast}
+            resendAsIs={curTgtOn && !tgtMismatch ? () => void resendAsIs() : undefined}
+          />
+        ) : !locked && (
+          <span className={st.muted} role="status">{tr('Танд энэ багцыг бөглөх эрхгүй')}</span>
+        )}
         <Participants participants={participants} byCount={byCount} doneBy={doneBy} />
         <ObyemToolbar
           canObyemEdit={canObyemEdit} pvSub={pvSub} pvCells={pvCells} sendObyem={sendObyem} pvBusy={pvBusy}

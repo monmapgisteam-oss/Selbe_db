@@ -6,7 +6,7 @@ import '@/lib/silenceOrthoLogs';
 import { t as tr } from '@/lib/i18nCore';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Home } from './Home';
 import { Landing } from './Landing';
 import { AuthNotice, useAuth } from './AuthGate';
@@ -325,7 +325,18 @@ export default function Root() {
    * (жиш. эрх нь зөвхөн `plan`-тай хэрэглэгчийн эрхийг бүрмөсөн хассан бол)
    * эндээс шүүж «эрх хүрэлцэхгүй» мэдэгдэл харуулна.
    */
-  const clamped = clamp(scope);
+  const clampedNow = clamp(scope);
+  /* ⚠️ 2026-10-06 (аудит): `clamp()` рендер бүрт ШИНЭ массив буцаадаг (эрхийн poll 15 с–5 мин
+     тутам рендерлэнэ) — Portal-ын эрхийн guard эффект (`navScope` deps) дахин дахин ажиллаж
+     «Гарах уу?» асуулт давтагдах / чимээгүй шилжих эрсдэлтэй байв. АГУУЛГЫН түлхүүрээр л
+     шинэ лавлагаа үүсгэнэ. */
+  const clampedKey = clampedNow == null ? '' : clampedNow === 'all' ? 'all' : `[${clampedNow.join(',')}]`;
+  const clamped = useMemo<NavScope>(
+    () => (clampedKey === '' ? null
+      : clampedKey === 'all' ? 'all'
+        : (clampedKey.slice(1, -1).split(',').filter(Boolean) as ViewKey[])),
+    [clampedKey],
+  );
   const noAccess = Array.isArray(clamped) && !clamped.length;
 
   /**

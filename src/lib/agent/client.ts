@@ -150,6 +150,12 @@ const BOT_SECRET = process.env.AGENT_BOT_SECRET;
 export async function arcgisToken(): Promise<string | null> {
   if (!AUTH.appId) return null;
   try {
+    /* ⚠️ 2026-10-06 (аудит): дамжуулахаас ӨМНӨ токеныг шинэчилж үзнэ (`authToken.ensureFreshToken`
+       — хугацаа дуусах дөхсөн бол). Таб унтсаны дараа `findCredential().token` нь ХУГАЦАА
+       ДУУССАН токен буцааж, реле 401 өгдөг байв. Динамик импорт — `authToken` → `query`-г
+       бот/Node-ийн замд (`AUTH.appId` хоосон тул энд хүрэхгүй ч) статикаар чирэхгүй. */
+    const { ensureFreshToken } = await import('@/lib/authToken');
+    await ensureFreshToken();
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const url = `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`;
     return esriId.findCredential(url)?.token ?? null;
@@ -189,15 +195,24 @@ async function callRelay(
     signal,
   });
   const reply = (await res.json().catch(() => ({}))) as RelayReply;
-  if (!res.ok) {
-    throw new Error(
-      reply.error ??
-        (res.status === 401
-          ? tr('AI үйлчилгээний түлхүүр буруу байна.')
-          : tr('Реле алдаа (HTTP {0})', res.status)),
-    );
-  }
+  if (!res.ok) throw new Error(relayErrorText(res.status));
   return reply;
+}
+
+/**
+ * ⚠️ 2026-10-06 (аудит): РЕЛЕГИЙН АЛДААГ КЛИЕНТ ТАЛД ОРЧУУЛНА. Урьд нь релегийн `error`
+ *    текстийг (монголоор хатуу бичигдсэн, заримдаа дотоод дэлгэрэнгүйтэй — `claude
+ *    алдаатай дууслаа (код …)`) шууд харуулдаг тул англи горимд монголоор гардаг, 401 нь
+ *    «түлхүүр буруу» гэсэн худал шалтгаантай байв (бодит шалтгаан нь ихэвчлэн ArcGIS
+ *    токен хүчингүй). Статусаар ангилж `tr()`-ээр.
+ */
+function relayErrorText(status: number): string {
+  if (status === 401) return tr('AI туслахад нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж, дахин нэвтэрнэ үү.');
+  if (status === 403) return tr('AI туслахад хандах зөвшөөрөл алга байна.');
+  if (status === 413) return tr('Яриа хэт урт болсон — ⟲ дарж шинээр эхлүүлнэ үү.');
+  if (status === 429) return tr('AI туслах завгүй байна — түр хүлээгээд дахин оролдоно уу.');
+  if (status >= 500) return tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.');
+  return tr('Реле алдаа (HTTP {0})', status);
 }
 
 /**

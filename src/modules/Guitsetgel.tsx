@@ -33,7 +33,7 @@ import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
-import { apply, dismissApplyWarn, recheck, retryPendingRegistrations, useApplyWarns, useHyanaltRows } from '@/lib/hyanaltStore';
+import { apply, dismissApplyWarn, recheck, resetRegSweep, retryPendingRegistrations, useApplyWarns, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
 import { attachHistory, isApproveAct, parseHistory } from '@/lib/hyanaltHistory';
 import { parseOkCells, resolveOk, toOkRefs } from '@/lib/hyanaltOkCells';
@@ -1076,7 +1076,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
     if (r.contentChanged) setSubReload((n) => n + 1);
     /* ⚠️ Анхааруулга (`warn`) нь АЛДАА БИШ — тусдаа шар мөрөөр (2026-09-23);
        урьд нь улаан `error` ангилалд орж «бүтсэнгүй» гэж уншигддаг байв. */
-    setErr(r.ok ? '' : (r.error ?? tr('Алдаа гарлаа')));
+    /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг `userError`-оор */
+    setErr(r.ok ? '' : (r.error ? userError(r.error) : tr('Алдаа гарлаа')));
     setWarn(r.ok ? (r.warn ?? '') : '');
     if (r.ok) setReason('');
   };
@@ -1525,15 +1526,27 @@ export function Guitsetgel() {
      хянагч (эсвэл админ) хуудас нээхэд дахин ажиллуулна — бусдад эрх нь
      хүрэхгүй тул дуудахгүй. Сешнд илгээлт бүрийг нэг л удаа оролдоно. */
   const sweepBypass = authStatus === 'off' || flow.canPick;
+  /* ⚠️ 2026-10-06 аудит: `r.failed`-ийг урьд нь ХАЯДАГ байв — нөхөлт унасан өдөр нэгтгэл/IPC-гүй
+     үлдсэнийг хэн ч мэддэггүй. Одоо шар мөр + «Дахин оролдох» (`resetRegSweep` → `sweepTick`).
+     ⚠️ Зөвхөн `failed > 0` эсвэл ДАХИН оролдлогын үр дүнгээр шинэчилнэ: дараагийн ердийн дуудлага
+     `SWEPT`-ээр бүгдийг алгасаж `failed: 0` буцаадаг тул түүгээр шар мөрийг худал арилгахгүй. */
+  const [sweepFailed, setSweepFailed] = useState(0);
+  const [sweepTick, setSweepTick] = useState(0);
+  /** «Дахин оролдох» дарагдсан — дараагийн НЭГ дуудлагын үр дүн шар мөрийг шинэчилнэ (тэг ч) */
+  const sweepRetryRef = useRef(false);
   useEffect(() => {
     if (loading || !canReview) return;
     if (stage !== 'chief' && !sweepBypass) return;
     let alive = true;
+    const isRetry = sweepRetryRef.current;
+    sweepRetryRef.current = false;
     void retryPendingRegistrations(user?.username, sweepBypass).then((r) => {
-      if (alive && r.done > 0) reload();
+      if (!alive) return;
+      if (r.failed > 0 || isRetry) setSweepFailed(r.failed);
+      if (r.done > 0) reload();
     });
     return () => { alive = false; };
-  }, [loading, canReview, stage, sweepBypass, user?.username, reload]);
+  }, [loading, canReview, stage, sweepBypass, user?.username, reload, sweepTick]);
   /**
    * БАГЦААР ХУВААРИЛАХ — хэн юуг хариуцахыг эрхийн панелаас (`flow.scope`).
    *
@@ -1742,6 +1755,16 @@ export function Guitsetgel() {
           <div className={s.note} role="alert">
             {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй: {0}', userError(error))}
             <button className={s.clear} onClick={reload}>{tr('Дахин оролдох')}</button>
+          </div>
+        )}
+
+        {/* ⚠️ 2026-10-06 аудит: хүлээгдэж буй бүртгэлийн нөхөлт унасан — шар мөр, дахин оролдох */}
+        {sweepFailed > 0 && (
+          <div className={s.warnBanner} role="status">
+            <div>
+              {tr('Батлагдсан {0} илгээлтийг нэгтгэл/IPC-д нөхөж бүртгэж чадсангүй — тэдгээр өдөр нэгтгэлд ороогүй байна.', String(sweepFailed))}
+            </div>
+            <button className={s.clear} onClick={() => { resetRegSweep(); sweepRetryRef.current = true; setSweepTick((n) => n + 1); }}>{tr('Дахин оролдох')}</button>
           </div>
         )}
 

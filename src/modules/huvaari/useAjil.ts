@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
+/* ⚠️ 2026-10-06 аудит: алдааг ТҮҮХИЙГЭЭР нь («Token Required» г.м.) харуулахгүй — `userError` */
+import { userError } from '@/components/ui';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { Pkg } from '@/modules/sheet/bagts.pkg';
 import type { NewRow } from '@/modules/sheet/sheetFrame';
@@ -257,7 +259,7 @@ export function useAjil({
         ? tr('Хуудас шинэчлэгдлээ — {0} мөрийн хадгалаагүй ноорог шинэ мөрөнд олдсонгүй тул хаягдав.', num(lost))
         : tr('Хуудас шинэчлэгдлээ — хадгалаагүй ноорог шинэ мөрүүд рүү зөөгдөв.'));
     } catch (e) {
-      setErr(String((e as Error).message || e));
+      setErr(userError(e));
     } finally {
       setBusy(false);
     }
@@ -297,7 +299,7 @@ export function useAjil({
         pkgKey: want, pkgGroup: pkg.group, author: user?.username ?? '',
         payload: { v: 1, pkgKey: want, adds },
       });
-      if (!r.ok) { setAjErr(r.error ?? tr('Илгээгдсэнгүй.')); return; }
+      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); return; }
       const st = addsStRef.current;
       writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
       setAddsSt((s) => (s.key === want ? { key: want, list: s.list.filter((a) => !sent.has(a.oid)) } : s));
@@ -305,7 +307,7 @@ export function useAjil({
       setAjNote(tr('Нэмэлт ажил батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(String((e as Error).message || e));
+      setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
@@ -337,7 +339,7 @@ export function useAjil({
       setAjEdit({ oid: ajSub.oid, rows: merged.filter((a) => !had.has(a.oid)).map((a) => a.oid) });
       setAjNote(tr('Илгээсэн нэмэлт ажил засварт нээгдлээ — улаан мөрүүдийг засаад «Засварыг хадгалах» дарна уу. Батлагч шийдээгүй хэвээр.'));
     } catch (e) {
-      setAjErr(String((e as Error).message || e));
+      setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
@@ -351,7 +353,7 @@ export function useAjil({
     setAjBusy(true); setAjErr(''); setAjNote('');
     try {
       const r = await updateAjil({ oid: ajSub.oid, me: user?.username ?? '', payload: { v: 1, pkgKey: want, adds } });
-      if (!r.ok) { setAjErr(r.error ?? tr('Засвар хадгалагдсангүй.')); return; }
+      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Засвар хадгалагдсангүй.')); return; }
       const st = addsStRef.current;
       writeAdds(want, (st.key === want ? st.list : readAdds(want)).filter((a) => !sent.has(a.oid)));
       setAddsSt((s0) => (s0.key === want ? { key: want, list: s0.list.filter((a) => !sent.has(a.oid)) } : s0));
@@ -360,7 +362,7 @@ export function useAjil({
       setAjNote(tr('Нэмэлт ажлын засвар хадгалагдлаа — батлагч шинэ хувилбарыг харна.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(String((e as Error).message || e));
+      setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }
@@ -403,7 +405,7 @@ export function useAjil({
     try {
       const pl = editing ? null : await loadAjilPayload(ajSub.oid);
       const r = await withdrawAjil({ oid: ajSub.oid, me: user?.username ?? '' });
-      if (!r.ok) { setAjErr(r.error ?? tr('Татагдсангүй.')); return; }
+      if (!r.ok) { setAjErr(r.error ? userError(r.error) : tr('Татагдсангүй.')); return; }
       /* ⚠️ Татсан мөрүүдийг `adds` руу БУЦААНА — эс бөгөөс хийсэн ажил чимээгүй алга болно */
       /* ⚠️ LS-д СИНХРОН (`refreshAjil`-ийн #5 дүрэм) — багц солигдсон ч А-д хадгалагдана */
       if (pl?.adds.length) {
@@ -419,7 +421,7 @@ export function useAjil({
       setAjNote(tr('Илгээлт татагдлаа — мөрүүд хуудсанд буцаж орлоо.'));
       await refreshAjil(null);
     } catch (e) {
-      setAjErr(String((e as Error).message || e));
+      setAjErr(userError(e));
     } finally {
       setAjBusy(false);
     }

@@ -568,6 +568,26 @@ export function useDraftSync(p: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, doneBy, meKey, byMap, byAtMap, pending, pendDate]);
   /**
+   * ТҮГЖИЖ БУЙ ХҮН БҮРИЙН СҮҮЛИЙН ИДЭВХ (мс) — 2026-10-06 аудит.
+   *
+   * ⚠️ ЯАГААД: «Илгээх — Б дуусгаагүй байна» гэдэг нь Б 3 хоногийн өмнө алга болсон
+   *    эсэхийг хэлдэггүй тул сүүлийн хүн 3 хоног хүртэл ШАЛТГААНГҮЙ гацдаг байв. Одоо
+   *    зурвас (`SubmitControls`) хүн бүрийн сүүлийн идэвхийг ба `LOCAL_DRAFT_TTL_MS`-ийн
+   *    дараа автоматаар чөлөөлөгдөхийг хэлнэ.
+   * ⚠️ Агшингүй (хуучин ноорог) хүн толинд ОРОХГҮЙ — «мэдээлэлгүй» ≠ «идэвхгүй»
+   *    (`waitingOn`-ийн ⚠️); зурвас огноогүй нэрийг л бичнэ.
+   */
+  const waitingLast = useMemo(() => {
+    const w = new Set(waitingOn);
+    const m = new Map<string, number>();
+    for (const [k, u] of byMap) {
+      if (!w.has(u)) continue;
+      const a = byAtMap.get(k);
+      if (a != null && (m.get(u) ?? 0) < a) m.set(u, a);
+    }
+    return m;
+  }, [waitingOn, byMap, byAtMap]);
+  /**
    * ХҮН ТУС БҮРИЙН ИЛГЭЭГЭЭГҮЙ НҮДНИЙ ТОО (2026-09-10).
    *
    * ⚠️ ЯАГААД: оролцогчийн зурвас нь ХЭН гэдгийг хэлдэг ч ХИЧНЭЭН
@@ -607,7 +627,9 @@ export function useDraftSync(p: {
    * харагдана; дараагийн нийлүүлэлтээр алсад очно.
    */
   const toggleDone = useCallback(async () => {
-    if (!meKey) return;
+    /* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүн «Дуусгасан» дарж ОРОЛЦОГЧ болж
+       бусдын «Илгээх»-ийг түгжиж чаддаг байв — товч ч нуугдсан (FillNew), энд ч хаана. */
+    if (!meKey || !canPerf) return;
     /* ⚠️ БАГЦЫН ХАМГААЛАЛТ (2026-09-25-ны аудит): доорх хоёр `await`-ийн завсарт
        багц солигдвол А-гийн нийлүүлсэн `done` жагсаалт Б-гийн `doneRef`/`doneBy`-д
        бууж, Б-гийн «Илгээх» түгжээ худал түгжигдэх/нээгдэх байв. Бичилт нь
@@ -669,7 +691,7 @@ export function useDraftSync(p: {
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
         iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), r.error));
     }
-  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp]);
+  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp, canPerf]);
 
   /**
    * Сонгосон ноорогийг ШҮҮЖ, сэргээх цонхонд бэлдэнэ.
@@ -2376,6 +2398,8 @@ export function useDraftSync(p: {
     lastMergedRef, doneRef, doneBy, setDoneBy, byMap, setByMap, byAtMap, setByAtMap, byAtRef, lastBodyRef,
     remoteState, setRemoteState, promptedPkgRef, flushRef,
     meKey, participants, waitingOn, byCount, iAmDone, canSubmitNow, toggleDone, dropDraft,
+    /* 2026-10-06 аудит — түгжиж буй хүний сүүлийн идэвх */
+    waitingLast,
     /* 2026-10-01 */
     undoAllMarks, resetMarks, stamp, restoringUi, offline,
     /* 2026-10-04 аудит — баримт · суурь · зорилт · локал алдаа */

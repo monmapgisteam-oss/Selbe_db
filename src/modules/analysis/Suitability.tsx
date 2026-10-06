@@ -77,6 +77,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ⚠️ 2026-09-30: проекцолсон геометр нь STATE (урьд нь ref + `projected` туг) —
      `rows` нь render дунд бодогддог тул ref уншиж болохгүй. `null` = хараахан үгүй. */
   const [geoms, setGeoms] = useState<Map<string, Polygon | null> | null>(null);
+  /* ⚠️ 2026-10-06 (аудит): «Дахин оролдох» — урьд нь бүтэн дэлгэцийн алдаанаас гарах зам
+     байгаагүй (хуудсыг бүхэлд нь дахин ачаална). `loadAnalysisCached` алдааг кэшлэхгүй тул
+     `loadTick`-ээр эффектийг дахин ажиллуулахад шинээр татна. */
+  const [loadTick, setLoadTick] = useState(0);
+  const retryLoad = () => { setError(null); setLoadTick((n) => n + 1); };
 
   useEffect(() => {
     let alive = true;
@@ -102,7 +107,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [loadTick]);
 
   /* ── Загварын төлөв ── */
   // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
@@ -913,6 +918,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <div className={`${s.loaderMsg} ${s.loaderErr}`}>
               {tr('Алдаа гарлаа:')} {error}
             </div>
+            <button
+              type="button"
+              onClick={retryLoad}
+              style={{
+                marginTop: 14, padding: '6px 14px', fontSize: 12, borderRadius: 6,
+                border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)',
+              }}
+            >
+              {tr('Дахин оролдох')}
+            </button>
           </div>
         </div>
       )}

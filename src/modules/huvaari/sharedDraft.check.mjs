@@ -82,7 +82,8 @@ const body = (src, name) => {
 /* 6. navGuard */
 {
   assert.ok(H.includes("import { setNavDirty } from '@/lib/navGuard';"), 'Huvaari navGuard импортлохгүй');
-  assert.ok(/setNavDirty\('huvaari', hdUnsynced && !previewing/.test(H), 'navGuard hdUnsynced-ээр биш');
+  /* ⚠️ 2026-10-06: батлагчийн тэмдэглэгээ (`hasOkMarks`) ч хамгаалагдана — `(…) || hasOkMarks` */
+  assert.ok(/setNavDirty\('huvaari', \(?hdUnsynced && !previewing/.test(H), 'navGuard hdUnsynced-ээр биш');
   assert.ok(/return \(\) => setNavDirty\('huvaari', false\)/.test(H), 'unmount-д navGuard цэвэрлэхгүй');
   assert.ok(!/if \(!dirtyN \|\| previewing \|\| !canEdit\) return undefined;/.test(H), 'хуучин dirtyN beforeunload үлдсэн');
 }

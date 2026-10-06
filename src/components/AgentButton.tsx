@@ -14,6 +14,14 @@ import { useEffect, useRef } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import s from '@/components/agent.module.css';
 
+/**
+ * ⚠️ 2026-10-06 (аудит): AI-ийн реле хаяг тохируулагдсан эсэх. `NEXT_PUBLIC_AGENT_API`
+ *    хоосон бол товч ОГТ гарахгүй — урьд нь товч гарч, дарахад «ажиллахгүй байна» л
+ *    харуулдаг байв. `agent/client.AGENT_APIS`-тай ИЖИЛ задлал (таслал, хоосон зай) —
+ *    энэ файл `@/lib/agent/*`-ийг импортлохгүй тул (дээрх ⚠️) энд давтав.
+ */
+const HAS_AGENT = (process.env.NEXT_PUBLIC_AGENT_API ?? '').split(',').some((u) => u.trim() !== '');
+
 /** Нээх товч — цонх хаалттай үед харагдана */
 export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   /* ⚠️ 2026-09-29 (аудит 10): самбар хаагдахад фокус body дээр үлддэг байв — FAB
@@ -24,12 +32,28 @@ export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () =>
     if (wasOpen.current && !open) ref.current?.focus();
     wasOpen.current = open;
   }, [open]);
-  if (open) return null;
+  if (open || !HAS_AGENT) return null;
   return (
     <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />
       {tr('AI туслах')}
     </button>
+  );
+}
+
+/**
+ * ⚠️ 2026-10-06 (аудит): AI цонхны chunk (`AgentChat`, `dynamic`) ачаалагдах хооронд —
+ *    товч дармагц алга болж (`open`) цонх хэдэн секунд гарахгүй, хэрэглэгч дахин дарах
+ *    гэж товчоо хайдаг байв. Ижил байрлалд (`.panel`) эргэлдэгчтэй түр самбар.
+ */
+export function AgentLoading() {
+  return (
+    <div className={s.panel} role="status" aria-live="polite">
+      <div className={s.progress} style={{ gridRow: '1 / -1', placeSelf: 'center' }}>
+        <span className={s.dot} />
+        {tr('AI туслах ачаалж байна…')}
+      </div>
+    </div>
   );
 }
 

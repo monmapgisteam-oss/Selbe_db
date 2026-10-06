@@ -489,10 +489,19 @@ export async function saveQaqc(
   let done = 0;
   for (let i = 0; i < updates.length; i += 500) {
     const chunk = updates.slice(i, i + 500);
-    const j = await agsFetch(url, {
-      updates: qaqcPayload(chunk),
-      rollbackOnFailure: 'true',
-    });
+    /* ⚠️ 2026-10-06 аудит: СҮЛЖЭЭНИЙ алдаа (2+ дахь багц) урьд нь түүхийгээр шидэгддэг тул өмнөх
+       багцууд аль хэдийн бичигдсэнийг хэрэглэгч мэддэггүй байв — `bad`-ийн мессежтэй ижил хэлбэрээр
+       хадгалагдсан мөрийн тоог хавсаргана. Эхний багц (`done === 0`) бол түүхий хэвээр — юу ч бичигдээгүй. */
+    let j: Record<string, unknown>;
+    try {
+      j = await agsFetch(url, {
+        updates: qaqcPayload(chunk),
+        rollbackOnFailure: 'true',
+      });
+    } catch (e) {
+      if (done > 0) throw new Error(tr('{0} ({1} мөр хадгалагдсан)', String((e as Error)?.message || e), done));
+      throw e;
+    }
     const res = (j.updateResults ?? []) as {
       success?: boolean;
       error?: { description?: string };

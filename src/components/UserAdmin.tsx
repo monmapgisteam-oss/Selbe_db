@@ -23,6 +23,7 @@ import {
   type UserPerm,
 } from '@/lib/permissions';
 import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
+import { userError } from '@/components/ui';
 import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
@@ -586,6 +587,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ Урсгалтай харагдац картаас засагдахгүй (2026-09-30) — хуваарилалтын хуудсаар */
     if (WORKFLOW_VIEWS.includes(k)) return;
     const d = draftOf(u);
+    /* ⚠️ 2026-10-06 (аудит): засах эрхээс үүссэн (implied) харагдацыг суурь жагсаалтад
+       ОРУУЛАХГҮЙ — `UserRights`-ийн бүдэг унтраалгын ⚠️. Хаах зам = тухайн эрхийн хуудас. */
+    if (!hasView(d.views, k) && capViewsOf(u.username).includes(k)) return;
     const next = toggled(d.views, k);
     if (dropsGuits(u, d.views, next) && !confirmDropGuits()) return;
     const touched = k === 'guitsetgel' ? { touchedGuits: true } : null;
@@ -847,7 +851,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     /* ⚠️ 2026-10-05: бичилтийн ТОДОРХОЙ шалтгаан (жиш. `views` талбарын урт хэтэрсэн) байвал
        нэрсийн хажууд — ерөнхий «N амжилтгүй» нь админыг сүлжээгээ шалгахад хүргэдэг. */
     if (fail > 0 && !firstErr) firstErr = takeWriteError();
-    setSaved({ ok, fail, failed, msg: firstErr || undefined });
+    /* ⚠️ 2026-10-06 (аудит): түүхий ArcGIS/сүлжээний текстийг ойлгомжтой болгоно (`userError`) —
+       `permsRemote` одоо БҮХ уналтын шалтгааныг `takeWriteError`-д тэмдэглэдэг. */
+    setSaved({ ok, fail, failed, msg: firstErr ? userError(firstErr) : undefined });
     /* ⚠️ 2026-09-30: устгагдсан тул алгассаныг ИЛ хэлнэ (ноорог нь дээр арилсан) */
     if (gone.length) setAddErr(tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', gone.join(', ')));
   };

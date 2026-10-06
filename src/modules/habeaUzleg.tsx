@@ -58,6 +58,11 @@ const domainCache = new Map<string, Promise<Domains>>();
  * ⚠️ Метадата нь ӨГӨГДӨЛ биш тул автобусын тагт хамаарахгүй; url бүрд нэг
  *    л удаа татна (`domainCache`).
  */
+/* ⚠️ 2026-10-06 (аудит): уналтын ТЭМДЭГ (лавлагаагаар танина) — урьд нь хоосон `{}` буцаад
+   самбар түүхий кодыг («w3», «co_2») чимээгүй харуулдаг байв. Одоо `useUzleg` үүнийг
+   `domFail` болгож, `UzlegLeft` «Кодын тайлбар уншигдсангүй» гэж хэлнэ. Хоосон толь
+   хэвээр — самбар унахгүй. */
+const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
 function loadDomains(url: string): Promise<Domains> {
   let p = domainCache.get(url);
   if (!p) {
@@ -87,7 +92,7 @@ function loadDomains(url: string): Promise<Domains> {
       })
       .catch(() => {
         domainCache.delete(url);
-        return {} as Domains;
+        return FAILED_DOMAINS;
       });
     domainCache.set(url, p);
   }
@@ -583,7 +588,8 @@ type State =
   | { state: 'loading' }
   /** `retry` — 2026-09-30: алдааны дараа ДАХИН татах (`cached` алдааг кэшлэдэггүй) */
   | { state: 'error'; message: string; retry?: () => void }
-  | { state: 'ready'; rows: UzlegRow[] };
+  /** `domFail` — 2026-10-06: кодын тайлбар (domain) уншигдсангүй, утга кодоор харагдана */
+  | { state: 'ready'; rows: UzlegRow[]; domFail?: boolean };
 
 /**
  * Сонгосон маягтыг татна. `kind` нь `null` бол юу ч татахгүй.
@@ -736,7 +742,7 @@ export function useUzleg(kind: UzlegKind | null): State {
     setSt({ kind, st: { state: 'loading' } });
     Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)])
       .then(([rows, dom]) => {
-        if (alive) setSt({ kind, st: { state: 'ready', rows: rows.map((r) => norm(r, dom)) } });
+        if (alive) setSt({ kind, st: { state: 'ready', rows: rows.map((r) => norm(r, dom)), domFail: dom === FAILED_DOMAINS } });
       })
       .catch((e: unknown) => {
         if (alive) {
@@ -1147,6 +1153,11 @@ export function UzlegLeft({
 
   return (
     <>
+      {st.domFail && (
+        <p className={h.photoNote} role="status">
+          ⚠ {tr('Кодын тайлбар уншигдсангүй — зарим утга кодоор харагдана.')}
+        </p>
+      )}
       {/*
         * ⚠️ ДУГУЙ ДИАГРАМ → SERIAL (баганан) ЧАРТ (2026-09-17, хэрэглэгчийн
         * хүсэлт; өнгө ХЭВЭЭР — `severity()`-ийн `color`).

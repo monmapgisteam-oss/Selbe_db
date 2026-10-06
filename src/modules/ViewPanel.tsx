@@ -9,7 +9,7 @@ import { LayerSwatch } from '@/components/LayerSwatch';
 import { useMap } from '@/components/MapCanvas';
 import { useFilter } from '@/lib/filter';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { queryGroup, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
+import { queryGroup, queryGroupEx, count, sum, groups, groupWhere, sqlStr, type Group } from '@/lib/query';
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
@@ -735,8 +735,10 @@ function LayerTypeCharts({
   /** Задаргаа нь БҮСЭЭР үү, ангиллаар уу — нэгж үг ба хоосон шошго үүнээс */
   const byZone = f.field === ZONE_FIELD || f.field === ZONE_LAYER.zoneField;
 
+  /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — серверийн `maxRecordCount`-оор тайрагдсан бүлгийн
+     жагсаалт БҮРЭН мэт (донатын нийлбэр, «N төрөл») харагддаг байв. Тайрагдсан бол «дутуу». */
   const q = useAsync(async () => {
-    const rows = await queryGroup(layerUrl(d), f.field, layerStats(d), where);
+    const { rows, truncated } = await queryGroupEx(layerUrl(d), f.field, layerStats(d), where);
     const g = groups(rows, f.field, byZone ? tr('Тодорхойгүй') : tr('Бүртгэгдээгүй'), ['n', 'q']);
     /**
      * ⚠️ «Бүсийн мэдээлэл байхгүй» мөрийг ХАСАХГҮЙ, ЗӨВХӨН нэрийг нь солино.
@@ -744,25 +746,28 @@ function LayerTypeCharts({
      * «45.9 км» чарт дээр) — хэрэглэгч алдаа гэж уншина. Бүсийн гадна байгаа
      * объект нь ч бас өгөгдөл тул өөрийн мөртэй байх ёстой.
      */
-    return g
+    const list = g
       .map((x) => (byZone && x.label.trim() === ZONE_NONE.trim()
         ? { ...x, label: tr('Бүсэд хамаарахгүй') }
         : x))
       .sort((a, b) => b.values.n - a.values.n);
+    return { list, truncated };
   }, [d.id, f.field, where]);
 
   /* ⚠️ 2026-09-29 (аудит 10): унасан асуулга чартыг ЧИМЭЭГҮЙ алга болгодог байв —
      «ангилалгүй давхарга»-аас ялгагдахгүй. Алдааг дахин оролдох товчтой харуулна. */
   if (q.state === 'error') return <Empty label={tr('Задаргаа татагдсангүй.')} onRetry={q.retry} />;
   // ⚠️ Ганц ангилалтай бол задаргаа биш — давхарга өөрөө. Чарт нэмэхгүй.
-  if (q.state !== 'ready' || q.data.length < 2) return null;
+  if (q.state !== 'ready' || q.data.list.length < 2) return null;
+  const data = q.data.list;
+  const truncated = q.data.truncated;
 
-  const total = q.data.reduce((a, x) => a + x.values.n, 0);
+  const total = data.reduce((a, x) => a + x.values.n, 0);
   // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт (олон өнгө биш)
-  const shade = monoShades(d, q.data);
+  const shade = monoShades(d, data);
   const colorOf = (label: string) => shade.get(label) ?? BLANK_HUE;
 
-  const items = q.data.map((x) => ({
+  const items = data.map((x) => ({
     key: `${d.id}:${x.label}`,
     label: x.label,
     value: x.values.n,
@@ -778,7 +783,7 @@ function LayerTypeCharts({
    * ажиллана — аль нэгийг нь дарахад нөгөө нь ч тодорно.
    */
   const pickType = (key: string) => {
-    const item = q.data.find((x) => `${d.id}:${x.label}` === key);
+    const item = data.find((x) => `${d.id}:${x.label}` === key);
     if (!item) return;
     toggle({
       key,
@@ -795,7 +800,7 @@ function LayerTypeCharts({
 
   /** Хэмжээгээр — «Барилга» дээр төрөл бүрийн талбай, шугамд урт */
   const sized = d.qty
-    ? q.data
+    ? data
       .filter((x) => x.values.q > 0)
       .map((x) => ({
         key: `${d.id}:q:${x.label}`,
@@ -819,7 +824,8 @@ function LayerTypeCharts({
         <div className={s.facetHead}>
           {d.title}
           <span className={s.facetNote}>
-            {f.label} · {q.data.length} {byZone ? tr('бүс') : tr('төрөл')}
+            {f.label} · {data.length} {byZone ? tr('бүс') : tr('төрөл')}
+            {truncated && <> · <b title={tr('Бүлгийн тоо серверийн хязгаараас хэтэрсэн тул зарим нь орхигдсон.')}>{tr('дутуу')}</b></>}
           </span>
         </div>
 
@@ -845,7 +851,7 @@ function LayerTypeCharts({
             {d.qty!.unit === 'м²'
               ? (byZone ? tr('Талбай бүсээр') : tr('Талбай төрлөөр'))
               : (byZone ? tr('Урт бүсээр') : tr('Урт төрлөөр'))}
-            <span className={s.facetNote}>{qtyText(d, q.data.reduce((a, x) => a + x.values.q, 0))}</span>
+            <span className={s.facetNote}>{qtyText(d, data.reduce((a, x) => a + x.values.q, 0))}</span>
           </div>
           {/* ⚠️ Хэмжээний багана нь ӨӨР түлхүүртэй (`:q:`) — шүүлт нь ижил тул
               тоонийх рүү буулгаж, хоёр график нэг сонголтыг хуваалцана. */}
@@ -929,23 +935,26 @@ function LayerDashboard({
     const stats = layerStats(d);
     const KEYS = ['n', 'q'];
 
+    /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — тайрагдсан (`exceededTransferLimit`) задаргаа
+       «дутуу» тэмдэгтэй (`LayerTypeCharts`-ийн ⚠️). */
     const [facetRaw, zoneRaw] = await Promise.all([
-      Promise.all((d.facets ?? []).map((f) => queryGroup(url, f.field, stats, where))),
-      d.noZone || zone ? Promise.resolve(null) : queryGroup(url, d.zoneField ?? ZONE_FIELD, stats, where),
+      Promise.all((d.facets ?? []).map((f) => queryGroupEx(url, f.field, stats, where))),
+      d.noZone || zone ? Promise.resolve(null) : queryGroupEx(url, d.zoneField ?? ZONE_FIELD, stats, where),
     ]);
 
     const facets = (d.facets ?? []).map((f, i) => ({
       ...f,
-      items: groups(facetRaw[i], f.field, tr('Бүртгэгдээгүй'), KEYS),
+      items: groups(facetRaw[i].rows, f.field, tr('Бүртгэгдээгүй'), KEYS),
+      truncated: facetRaw[i].truncated,
     }));
 
     const byZone = zoneRaw
-      ? groups(zoneRaw, d.zoneField ?? ZONE_FIELD, tr('Тодорхойгүй'), KEYS)
+      ? groups(zoneRaw.rows, d.zoneField ?? ZONE_FIELD, tr('Тодорхойгүй'), KEYS)
         .filter((x) => x.label.trim() !== ZONE_NONE.trim())
         .sort((a, b) => b.values.n - a.values.n)
       : null;
 
-    return { facets, byZone };
+    return { facets, byZone, zoneTruncated: !!zoneRaw?.truncated };
   }, [d.id, where]);
 
   /**
@@ -1070,7 +1079,7 @@ function LayerDashboard({
                   <Section
                     key={f.label}
                     title={f.label}
-                    note={tr('{0} ангилал · дарж зурагт шүүнэ', f.items.length)}
+                    note={tr('{0} ангилал · дарж зурагт шүүнэ', f.items.length) + (f.truncated ? ` · ${tr('дутуу')}` : '')}
                   >
                     {/* Эхний ангиллыг дугуй диаграмаар — эзлэх хувийг нэг дор */}
                     {idx === 0 && f.items.length <= 8 && (
@@ -1100,7 +1109,7 @@ function LayerDashboard({
               {hasZone && (
                 <Section
                   title={tr('Бүсээр')}
-                  note={tr('{0} бүс · дарж зурагт шүүнэ', x.byZone!.length)}
+                  note={tr('{0} бүс · дарж зурагт шүүнэ', x.byZone!.length) + (x.zoneTruncated ? ` · ${tr('дутуу')}` : '')}
                 >
                   <Bars
                     color={d.hue}

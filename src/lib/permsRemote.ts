@@ -708,6 +708,28 @@ export function takeWriteError(): string {
   lastWriteErr = '';
   return m;
 }
+/**
+ * ⚠️ 2026-10-06 (аудит): БҮХ уналтын замын шалтгааныг тэмдэглэнэ (урьд нь зөвхөн уртын
+ *    шалгалт). `upsertByKey` · `removeByKey` нь нүцгэн `false` буцаадаг тул UI зөвхөн ерөнхий
+ *    «хадгалагдсангүй» харуулдаг байв. `Promise<boolean>` гэрээг ӨӨРЧЛӨХГҮЙ (20+ дуудагч) —
+ *    шалтгаан нь `takeWriteError()`-ээр; дэлгэцэнд `ui.userError`-оор (дуудагч тал).
+ *    Эхний (хамгийн тодорхой) шалтгааныг дарахгүй.
+ */
+function noteWriteError(e: unknown): void {
+  if (lastWriteErr && Date.now() - lastWriteErrAt < 15_000) return;
+  const m = e instanceof Error ? e.message : typeof e === 'string' ? e
+    : String((e as { message?: string } | null)?.message ?? e ?? '');
+  if (!m) return;
+  /* ⚠️ «ArcGIS-т хадгалагдсангүй» угтвар ЗААВАЛ — түүхий шалтгаан («fake failure», «Failed
+     to fetch») дангаараа юу болсныг хэлэхгүй (aclE2E §7b) */
+  lastWriteErr = tr('ArcGIS-т хадгалагдсангүй: {0}', m);
+  lastWriteErrAt = Date.now();
+}
+/** applyEdits-ийн үр дүнгийн ЭХНИЙ алдааны текст */
+const editErr = (r: { error?: unknown }[] | undefined): string => {
+  const x = (r ?? []).find((y) => y.error != null)?.error as { message?: string; description?: string } | undefined;
+  return x ? String(x.message ?? x.description ?? '') : '';
+};
 function assertViewsFit(usernameKey: string, attrs: Record<string, unknown>): void {
   const v = attrs.views;
   if (typeof v !== 'string' || v.length <= VIEWS_MAX) return;
@@ -726,7 +748,7 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
     assertViewsFit(usernameKey, attrs);
     /* ⚠️ `false` — бичилт хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
     const url = await tableUrl(false);
-    if (!url) return false;
+    if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);
     const target = oids.length ? oids[oids.length - 1] : null;
@@ -739,8 +761,11 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     const ok = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
-    return ok.length > 0 && ok.every((x) => x.error == null) && editOk(r.deleteFeatureResults);
-  } catch {
+    const good = ok.length > 0 && ok.every((x) => x.error == null) && editOk(r.deleteFeatureResults);
+    if (!good) noteWriteError(editErr(ok) || editErr(r.deleteFeatureResults) || tr('ArcGIS бичилтийг хүлээж авсангүй.'));
+    return good;
+  } catch (e) {
+    noteWriteError(e);
     return false;
   }
 }
@@ -750,14 +775,17 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
     /* ⚠️ `false` — устгал хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
     const url = await tableUrl(false);
-    if (!url) return false;
+    if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);
     if (!oids.length) return true;
     const del = { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0];
     const r = await fl.applyEdits(del);
-    return editOk(r.deleteFeatureResults);
-  } catch {
+    const good = editOk(r.deleteFeatureResults);
+    if (!good) noteWriteError(editErr(r.deleteFeatureResults) || tr('ArcGIS бичилтийг хүлээж авсангүй.'));
+    return good;
+  } catch (e) {
+    noteWriteError(e);
     return false;
   }
 }

@@ -271,7 +271,10 @@ function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean 
  *    ачаалалт нь удирдлагын горимд ОГТ эхлэхгүй (hook нь mount үед л ажиллана).
  */
 export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  const [mode, setMode] = useState<'full' | 'exec'>('exec');
+  const [mode, setModeRaw] = useState<'full' | 'exec'>('exec');
+  /** Ерөнхий тайлан нэг удаа нээгдсэн эсэх — тэр хойно mount хэвээр (доорх ⚠️ 2026-10-06) */
+  const [fullSeen, setFullSeen] = useState(false);
+  const setMode = (m: 'full' | 'exec') => { if (m === 'full') setFullSeen(true); setModeRaw(m); };
   /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун багана өргөнөө чирж өөрчилнө (`Tuh.tsx`-тэй ижил жор) */
   const { hostRef, ...side } = useSideResize('tailan');
   const bq = useBuildings();
@@ -293,7 +296,13 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
             </button>
           </div>
         </div>
-        {mode === 'exec' ? <ExecReport /> : <TailanFull />}
+        {/* ⚠️ 2026-10-06 (аудит): горим солиход `ExecReport` unmount болж AI дүгнэлт (минут
+            шаардсан) алга болдог байв. Одоо НЭГ УДАА нээгдсэн горим mount хэвээр, идэвхгүй нь
+            `display: none`. ⚠️ Дээрх «тусдаа компонент» шийдвэр ХЭВЭЭР: ерөнхий тайлан
+            ЗӨВХӨН анх сонгоход mount болно — удирдлагын горимд түүний ачаалалт эхлэхгүй.
+            `contents` — бүрхүүл нь `.content`-ийн байрлалд нөлөөлөхгүй. */}
+        <div style={{ display: mode === 'exec' ? 'contents' : 'none' }}><ExecReport /></div>
+        {fullSeen && <div style={{ display: mode === 'full' ? 'contents' : 'none' }}><TailanFull /></div>}
       </div>
       <div className={r.side}>
         <TuhMap dim={dim} setDim={setDim} sel={null} packs={packs} onPickPkg={onPickPkg} />

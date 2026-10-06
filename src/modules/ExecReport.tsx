@@ -24,6 +24,7 @@ import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
+import { invalidateAll } from '@/lib/dataBus';
 import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP } from '@/lib/execReport';
 /* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
    зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
@@ -169,6 +170,14 @@ export function ExecReport() {
               {tr('AI дүгнэлт арилгах')}
             </button>
           )}
+          {/* ⚠️ 2026-10-06 (аудит): «Шинэчлэх» — ерөнхий тайлангийнхтай (`Tailan.refresh`) ИЖИЛ
+              `invalidateAll()`; урьд нь энэ горимд 5 минутын кэшийг хаях зам байгаагүй. Өгөгдөл
+              солигдоход AI дүгнэлт цэвэрлэгдэнэ (дээрх 2026-09-23-ны ⚠️). */}
+          <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={() => invalidateAll()}
+            title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}>
+            <Icon name="chart" size={15} />
+            {tr('Шинэчлэх')}
+          </button>
         </div>
         {fail && <p className={r.fail} role="alert">{fail}</p>}
       </div>

@@ -224,18 +224,47 @@ export function setLocale(next: Locale): void {
      Хүлээх хооронд хэрэглэгч буцааж сольсон бол (`wanted`) хуучин хүсэлтийг хэрэгжүүлэхгүй.
      Толь татагдаж чадаагүй бол хэл СОЛИГДОХГҮЙ (монгол дэлгэц `lang=en`-тэй холилдохгүй). */
   if (next !== DEFAULT_LOCALE && !DICTS[next]) {
+    setSwitchState('loading');
     loadLocaleDict(next).then(
-      () => { if (wanted === next) applyLocale(next); },
+      () => {
+        if (wanted === next) applyLocale(next);
+        setSwitchState('idle');
+      },
       (e: unknown) => {
         console.warn('[selbe] хэлний толь татагдсангүй:', e);
-        if (wanted !== next) return;
+        if (wanted !== next) { setSwitchState('idle'); return; }
         wanted = current;
         try { localStorage.setItem(LOCALE_KEY, current); } catch { /* хувийн горим */ }
+        setSwitchState('error');
       },
     );
     return;
   }
+  setSwitchState('idle');
   applyLocale(next);
+}
+
+/* ══ ХЭЛ СОЛИХ ЯВЦ (⚠️ 2026-10-06, аудит) ══
+ *
+ * Англи толь (~720 КБ) татагдах хооронд товч ямар ч дохиогүй, уналт нь зөвхөн
+ * `console.warn` байв — хэрэглэгч «товч ажиллахгүй байна» гэж дахин дахин дардаг.
+ * `LocaleToggle` энэ төлөвийг `subscribeDict`-ээр (тусдаа сонсогчгүй) уншиж
+ * завгүй/алдааны тэмдэг харуулна. Snapshot нь primitive — `useSyncExternalStore`-д аюулгүй.
+ */
+export type LocaleSwitchState = 'idle' | 'loading' | 'error';
+let switchState: LocaleSwitchState = 'idle';
+function setSwitchState(s: LocaleSwitchState): void {
+  if (switchState === s) return;
+  switchState = s;
+  dictListeners.forEach((fn) => fn());
+}
+/** Хэл солих явц — `useSyncExternalStore(subscribeDict, getLocaleSwitchState, …)` */
+export const getLocaleSwitchState = (): LocaleSwitchState => switchState;
+/** Prerender-ийн snapshot — үргэлж `idle` */
+export const getServerLocaleSwitchState = (): LocaleSwitchState => 'idle';
+/** Алдааны мэдэгдлийг хаах */
+export function clearLocaleSwitchError(): void {
+  if (switchState === 'error') setSwitchState('idle');
 }
 
 function applyLocale(next: Locale): void {

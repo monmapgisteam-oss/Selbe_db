@@ -29,3 +29,37 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+
+/* ⚠️ 2026-10-06 (аудит): толь татагдаагүй мэдэгдэл — товчны ДООР хөвнө (толгойн зохиомжийг шахахгүй) */
+.wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.err {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 3600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong, var(--line));
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+}
+
+.errClose {
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font: inherit;
+}

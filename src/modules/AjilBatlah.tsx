@@ -371,7 +371,8 @@ export function AjilBatlah() {
         stamp: d.stamp,
       });
       if (!r.ok) {
-        setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+        /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг `userError`-оор */
+        setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
         /* ⚠️ Хуучирсан бол дараалал + агуулгыг дахин уншиж ШИНЭ хувилбарыг харуулна */
         if (r.stale) reload();
         return;
@@ -444,7 +445,7 @@ export function AjilBatlah() {
       const r = await returnStuckAjil({ oid: x.oid, me: user?.username ?? '', reason: why });
       if (!alive.current) return;
       if (r.ok) setNote(tr('Илгээлт нэмэгчид буцаагдлаа.'));
-      else setErr(r.error ?? tr('Буцааж чадсангүй.'));
+      else setErr(r.error ? userError(r.error) : tr('Буцааж чадсангүй.'));
       reload();
     } catch (e) {
       if (alive.current) setErr(userError(e));
@@ -477,7 +478,7 @@ export function AjilBatlah() {
         stamp: d?.k === 'ok' ? d.stamp : undefined,
       });
       if (!r.ok) {
-        setErr(r.error ?? tr('Шийдвэр хадгалагдсангүй.'));
+        setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
         if (r.stale) reload();
         return;
       }
@@ -506,7 +507,7 @@ export function AjilBatlah() {
     setBusy(true); setErr(''); setNote('');
     try {
       const r = await withdrawAjil({ oid: x.oid, me: user?.username ?? '' });
-      if (!r.ok) { setErr(r.error ?? tr('Илгээлт татагдсангүй.')); return; }
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
       setNote(tr('Илгээлт татагдлаа — «Хуваарь» хуудсанд дахин нэмж илгээнэ үү.'));
       setOpen(null);
       reload();

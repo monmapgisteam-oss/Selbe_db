@@ -525,8 +525,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry }: {
                   <td className={s.num}>{r.ma ? num(r.ma.total - r.ma.approved) : '—'}</td>
                   <td className={s.num}>{r.mir ? num(r.mir.total - r.mir.approved) : '—'}</td>
                   <td className={s.num}>—</td>
-                  <td className={s.num}>{num((r.ma?.approved ?? 0) + (r.mir?.approved ?? 0))}</td>
-                  <td className={s.num}>{num((r.ma?.review ?? 0) + (r.mir?.review ?? 0))}</td>
+                  {/* ⚠️ 2026-10-06 (аудит): MA, MIR хоёулаа `null` (бүртгэлгүй) бол «0» биш «—» — null ≠ 0 */}
+                  <td className={s.num}>{r.ma || r.mir ? num((r.ma?.approved ?? 0) + (r.mir?.approved ?? 0)) : '—'}</td>
+                  <td className={s.num}>{r.ma || r.mir ? num((r.ma?.review ?? 0) + (r.mir?.review ?? 0)) : '—'}</td>
                   <td className={s.num}>—</td>
                 </tr>
               ))}

@@ -68,6 +68,7 @@ import { MaForm } from './chanar/MaForm';
 import { InspForm } from './chanar/InspForm';
 import { NcrForm, emptyNcrClose, ncrCloseFrom, type NcrCloseDraft } from './chanar/NcrForm';
 import { userError } from '@/components/ui';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './chanar.module.css';
 
 const tagCls = (st: MsStatus): string => {
@@ -88,6 +89,28 @@ const metaOf = (b: AnyBody | null | undefined): Meta | undefined => (b as { meta
 
 /** Хавсралт + аль хувилбарын мөрөнд байгаа нь (№6 аудит, 2026-09-16) */
 type Att = Attachment & { parentOid: number };
+
+/*
+ * ⚠️ 2026-10-06 (аудит): ХАДГАЛААГҮЙ ЗАСВАРЫН НӨӨЦ — localStorage. Түлхүүр нь хэрэглэгч +
+ *    баримт (шинэ ноорог бол төрөл + багц) + хэсэг (`edit` маягт · `corr` NCR залруулга).
+ *    localStorage хаалттай/дүүрсэн (хувийн цонх) үед чимээгүй — нөөцгүй ч ажил явна.
+ */
+type EditDraft = { kind: DocKind; title: string; body: AnyBody; at: number };
+type CorrDraft = { corr: NcrCorrection; at: number };
+const draftKeyOf = (me: string, ctx: string | null, part: 'edit' | 'corr'): string | null =>
+  (me && ctx ? `selbe.chanar.draft:${me}:${ctx}:${part}` : null);
+function lsGet<T>(k: string | null): T | null {
+  if (!k) return null;
+  try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : null; } catch { return null; }
+}
+function lsSet(k: string | null, v: unknown): void {
+  if (!k) return;
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* хаалттай/дүүрсэн — чимээгүй */ }
+}
+function lsDel(k: string | null): void {
+  if (!k) return;
+  try { localStorage.removeItem(k); } catch { /* хаалттай — чимээгүй */ }
+}
 
 export function Chanar() {
   const { user } = useAuth();
@@ -368,7 +391,8 @@ export function Chanar() {
     const sel0 = sel;
     try {
       const r = await fn();
-      if (!r.ok) { setErr(r.error ?? tr('Амжилтгүй.')); return false; }
+      /* ⚠️ 2026-10-06 (аудит): store-ийн `error` нь түүхий ArcGIS мөр байж болно («Token Required») — `userError` */
+      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Амжилтгүй.')); return false; }
       setNote(okMsg);
       await refresh();
       /* ⚠️ 2026-09-25: хүлээх хооронд сонголт солигдсон бол (жагсаалт/таб busy үед
@@ -422,10 +446,46 @@ export function Chanar() {
   /* ⚠️ `navGuard` — харагдац солих · лого · «Гарах» · F5 (`Portal.confirmLeave`) */
   useEffect(() => { setNavDirty('chanar', anyDirty, tr('Чанарын баримт')); }, [anyDirty]);
   useEffect(() => () => setNavDirty('chanar', false), []);
+
+  /*
+   * ⚠️ 2026-10-06 (аудит): маягт (`dTitle`/`dBody` — MA-ийн материалын хүснэгт ч энд) ба NCR
+   *    залруулга (`corr`) ЗӨВХӨН санах ойд байсан тул таб унах, F5, сешн дуусахад бүгд алга
+   *    болдог байв. Одоо 800мс-ийн debounce-оор localStorage-д бичнэ; баримтыг дахин нээхэд
+   *    «сэргээх / хаях» самбар гарна — АВТОМАТААР сэргээхгүй (хадгалсан хувилбар шинэ байж
+   *    болно). Амжилттай хадгалах · илгээх, «хаях уу?»-д зөвшөөрөхөд арилна.
+   */
+  const draftCtx = sel != null ? String(sel) : edit ? `new:${kind}:${pkg}` : null;
+  const corrDirty = !!ncrBody && act.correction && JSON.stringify(corr) !== JSON.stringify(ncrBody.correction);
+  const [offer, setOffer] = useState<{ edit: EditDraft | null; corr: CorrDraft | null } | null>(null);
+  const bodyReady = sel == null || body != null;
+  useEffect(() => {
+    const ready = !!draftCtx && bodyReady;
+    const e = ready ? lsGet<EditDraft>(draftKeyOf(me, draftCtx, 'edit')) : null;
+    const c = ready ? lsGet<CorrDraft>(draftKeyOf(me, draftCtx, 'corr')) : null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-06: баримт нээгдэх агшинд нөөцийг НЭГ удаа уншина (localStorage — гадаад эх сурвалж)
+    setOffer(e || c ? { edit: e, corr: c } : null);
+  }, [me, draftCtx, bodyReady]);
+  useEffect(() => {
+    const editDirty = edit && dirty;
+    if (!draftCtx || !me || (!editDirty && !corrDirty)) return;
+    const t = window.setTimeout(() => {
+      if (editDirty) lsSet(draftKeyOf(me, draftCtx, 'edit'), { kind, title: dTitle, body: dBody, at: Date.now() } satisfies EditDraft);
+      if (corrDirty) lsSet(draftKeyOf(me, draftCtx, 'corr'), { corr, at: Date.now() } satisfies CorrDraft);
+      /* ⚠️ Санал болгоогүйгээр шинээр засаж эхэлсэн — хуучин нөөц дарагдсан тул самбар хуучирна */
+      setOffer(null);
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [me, draftCtx, edit, dirty, corrDirty, kind, dTitle, dBody, corr]);
+  const clearDraft = (part: 'edit' | 'corr', ctx: string | null = draftCtx) => lsDel(draftKeyOf(me, ctx, part));
+
   /* ⚠️ 2026-09-25: багц/таб солих, өөр карт, «Болих» — хадгалаагүй өөрчлөлтийг асуулгүй хаяхгүй */
   const discardOk = (): boolean => {
     if (!anyDirty) return true;
-    return window.confirm(tr('Хадгалаагүй өөрчлөлт бий — хаях уу?'));
+    if (!window.confirm(tr('Хадгалаагүй өөрчлөлт бий — хаях уу?'))) return false;
+    /* ⚠️ 2026-10-06: хаяхыг зөвшөөрсөн — тэр хэсгийн нөөцийг ч арилгана */
+    if (edit && dirty) clearDraft('edit');
+    if (corrDirty) clearDraft('corr');
+    return true;
   };
   const cancelEdit = () => { if (discardOk()) { setEdit(false); setDirty(false); } };
   const select = (oid: number | null) => { if (oid === sel && !edit) return; if (!discardOk()) return; setSel(oid); setEdit(false); setDirty(false); };
@@ -461,6 +521,7 @@ export function Chanar() {
     if (!sameTitleOk(kind, dTitle)) return;
     let oid = 0;
     let unsure = '';
+    const ctx0 = draftCtx;
     const ok = await run(async () => {
       const r = await createDraft({ kind, bagts: pkg, title: dTitle, author: me, body: dBody });
       if (r.ok) oid = r.oid;
@@ -468,10 +529,13 @@ export function Chanar() {
       return r;
     }, tr('Ноорог хадгалагдлаа — дугаар автоматаар олгогдов.'));
     newUnsure.current = !!unsure;
-    if (ok) { setEdit(false); setDirty(false); setSel(oid); }
+    if (ok) { clearDraft('edit', ctx0); setEdit(false); setDirty(false); setSel(oid); }
     /* Жагсаалтыг шинэчилнэ — хожуу бичигдсэн мөр харагдана. `refresh` алдааны мөрийг
        цэвэрлэдэг тул дараа нь БУЦААЖ тавина. */
-    else if (unsure) void refresh().then(() => setErr(unsure), () => setErr(unsure));
+    else if (unsure) {
+      const msg = userError(unsure);
+      void refresh().then(() => setErr(msg), () => setErr(msg));
+    }
   };
   /* Засах горимд хувилбарын шалтгаан шаардлагатай юу — буцаагдсан (rev+1 үүснэ) эсвэл rev>0 ноорог */
   const needRevNote = !!doc && doc.kind !== 'NCR' && (doc.status === MS_STATUS.returned || doc.rev > 0);
@@ -487,7 +551,24 @@ export function Chanar() {
       return r;
     }, tr('Ноорог хадгалагдлаа.'));
     /* ⚠️ Буцаагдсан баримтыг засахад `saveDraft` rev+1 ШИНЭ мөр үүсгэнэ — түүн рүү шилжинэ. */
-    if (ok) { setEdit(false); setDirty(false); if (oid !== doc.oid) setSel(oid); }
+    if (ok) { clearDraft('edit', String(doc.oid)); setEdit(false); setDirty(false); if (oid !== doc.oid) setSel(oid); }
+  };
+
+  /* ⚠️ 2026-10-06: нөөцийн самбар — тухайн хэсэг ОДОО засагдах боломжтой үед л санал болгоно */
+  const offerEdit = offer?.edit && offer.edit.kind === kind && (sel == null ? edit : act.edit && !!body) ? offer.edit : null;
+  const offerCorr = offer?.corr && act.correction && !!ncrBody ? offer.corr : null;
+  const restoreDraft = () => {
+    if (offerEdit) {
+      if (sel != null && !edit) startEdit();
+      setDTitle(offerEdit.title); setDBody(offerEdit.body); setDirty(true);
+    }
+    if (offerCorr) setCorr(offerCorr.corr);
+    setOffer(null);
+  };
+  const dropDraft = () => {
+    if (offerEdit) clearDraft('edit');
+    if (offerCorr) clearDraft('corr');
+    setOffer(null);
   };
 
   /* ── 2-р алхам: ирүүлэх ── */
@@ -521,10 +602,12 @@ export function Chanar() {
   };
 
   /* ── Шинэ хувилбар — батлагдсан/буцаагдсанаас rev+1 ноорог, шалтгаан заавал ── */
-  const newRevision = async () => {
+  /* ⚠️ 2026-10-06 (аудит): `window.prompt` → `ReasonDialog` (олон мөр, 2000 тэмдэгт, Esc болих) —
+     prompt нэг мөртэй, уртын хязгааргүй (`hyanalt` 8000-д багтахгүй байж болно) байв. */
+  const [ask, setAsk] = useState<'rev' | 'reopen' | null>(null);
+  const newRevision = () => { if (doc) setAsk('rev'); };
+  const doNewRevision = async (reason: string) => {
     if (!doc) return;
-    const reason = window.prompt(tr('Шинэ хувилбарын шалтгаан (rev {0}):', doc.rev + 1), '');
-    if (reason == null) return;
     if (!reason.trim()) { setErr(tr('Хувилбарын шалтгаанаа бичнэ үү.')); return; }
     let oid = doc.oid;
     const ok = await run(async () => {
@@ -621,13 +704,13 @@ export function Chanar() {
     if (!doc) return;
     if (!corr.text.trim()) { setErr(tr('Залруулгын тайлбараа бичнэ үү.')); return; }
     if (!window.confirm(tr('Залруулгын тайланг захиалагчид илгээх үү?'))) return;
-    await run(() => submitCorrection({ oid: doc.oid, who: me, correction: corr }), tr('Залруулгын тайлан илгээгдлээ — захиалагч дүгнэнэ.'));
+    const ok = await run(() => submitCorrection({ oid: doc.oid, who: me, correction: corr }), tr('Залруулгын тайлан илгээгдлээ — захиалагч дүгнэнэ.'));
+    if (ok) clearDraft('corr', String(doc.oid));
   };
   /* ⚠️ 2026-09-30: шалтгаан ЗААВАЛ (`chanarMs.reopen`) — хаалтын бүртгэл `rounds`-д үлдэнэ */
-  const reopen = async () => {
+  const reopen = () => { if (doc) setAsk('reopen'); };
+  const doReopen = async (reason: string) => {
     if (!doc) return;
-    const reason = window.prompt(tr('«{0}» үл тохирлыг дахин нээх шалтгаан (заавал) — гүйцэтгэгч дахин залруулна:', doc.docNo), '');
-    if (reason == null) return;
     if (!reason.trim()) { setErr(tr('Дахин нээх шалтгаанаа бичнэ үү.')); return; }
     await run(() => reopenDoc({ oid: doc.oid, who: me, reason }), tr('Дахин нээгдлээ.'));
   };
@@ -676,7 +759,8 @@ export function Chanar() {
       for (const f of Array.from(files)) {
         if (f.size > MAX_ATT) { errs.push(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); continue; }
         const r = await addAttachment(doc.oid, f);
-        if (!r.ok) errs.push(`${f.name}: ${r.error ?? tr('Хавсралт хадгалагдсангүй.')}`);
+        /* ⚠️ 2026-10-06 (аудит): түүхий ArcGIS/сүлжээний мөр («TimeoutError», «HTTP 500») → `userError` */
+        if (!r.ok) errs.push(`${f.name}: ${r.error ? userError(r.error) : tr('Хавсралт хадгалагдсангүй.')}`);
       }
       if (errs.length) setErr(errs.join(' · '));
       await reloadAtts();
@@ -690,7 +774,9 @@ export function Chanar() {
     if (!doc || !window.confirm(tr('«{0}» хавсралтыг устгах уу?', a.name))) return;
     setBusy(true);
     try {
-      if (!(await deleteAttachment(a.parentOid, a.id))) setErr(tr('Хавсралт устгагдсангүй.'));
+      /* ⚠️ 2026-10-06 (аудит): шалтгаантай (`{ ok, error }`) — урьд нь зөвхөн ерөнхий мессеж */
+      const r = await deleteAttachment(a.parentOid, a.id);
+      if (!r.ok) setErr(r.error ? userError(r.error) : tr('Хавсралт устгагдсангүй.'));
       await reloadAtts();
     } catch (e) {
       setErr(userError(e));
@@ -878,6 +964,26 @@ export function Chanar() {
       {aclLocked && <p className={s.err} role="alert">{LOCK_MSG}</p>}
       {err && <p className={s.err} role="alert">{err}</p>}
       {note && <p className={s.note}>{note}</p>}
+      {(offerEdit || offerCorr) && (
+        <p className={s.note} role="status">
+          {tr('Энэ баримтад өмнө хадгалаагүй засвар үлдсэн байна ({0}).', ymd(Math.max(offerEdit?.at ?? 0, offerCorr?.at ?? 0)))}{' '}
+          <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={restoreDraft}>{tr('Хадгалаагүй засвар сэргээх')}</button>{' '}
+          <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={dropDraft}>{tr('Хаях')}</button>
+        </p>
+      )}
+      {ask && doc && (
+        <ReasonDialog
+          title={ask === 'rev'
+            ? tr('Шинэ хувилбарын шалтгаан (rev {0}):', doc.rev + 1)
+            : tr('«{0}» үл тохирлыг дахин нээх шалтгаан (заавал) — гүйцэтгэгч дахин залруулна:', doc.docNo)}
+          onCancel={() => setAsk(null)}
+          onOk={(reason) => {
+            const a = ask;
+            setAsk(null);
+            if (a === 'rev') void doNewRevision(reason); else void doReopen(reason);
+          }}
+        />
+      )}
       {table && !table.ok && (
         <p className={s.err} role="alert">
           {tableMsg(table)}
@@ -1426,6 +1532,39 @@ function FormHead({ head, kind, title, onTitle, busy }: { head: string; kind: Do
         onChange={(e) => onTitle(e.target.value)}
         disabled={busy}
       />
+    </div>
+  );
+}
+
+/**
+ * ШАЛТГААНЫ ЦОНХ — `window.prompt`-ын оронд (⚠️ 2026-10-06 аудит). Олон мөрт талбар (2000
+ * тэмдэгт), Esc → болих, Ctrl+Enter → батлах; хоосон шалтгаанд «Батлах» хаалттай.
+ * `useFocusTrap` — фокус цонхонд түгжигдэж, хаахад өмнөх товч руу буцна.
+ */
+function ReasonDialog({ title, onOk, onCancel }: { title: string; onOk: (reason: string) => void; onCancel: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
+  /* ⚠️ Урхи эхний фокус авагч руу шилжүүлдэг — энэ эффект ДАРАА нь ажиллаж талбар руу оруулна (`LinkModal`-ын ⚠️) */
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { taRef.current?.focus(); }, []);
+  const [text, setText] = useState('');
+  const ok = text.trim() !== '';
+  return (
+    <div className={s.dlgBack} role="presentation" onClick={onCancel}>
+      <div ref={ref} className={s.dlg} role="dialog" aria-modal="true" aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return; }
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && ok) { e.preventDefault(); onOk(text); }
+        }}>
+        <p className={s.dlgTitle}>{title}</p>
+        <textarea ref={taRef} className={s.textarea} aria-label={title} value={text} maxLength={2000}
+          onChange={(e) => setText(e.target.value)} />
+        <div className={s.dlgActs}>
+          <button type="button" className={s.btn} onClick={onCancel}>{tr('Болих')}</button>
+          <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={!ok} onClick={() => onOk(text)}>{tr('Батлах')}</button>
+        </div>
+      </div>
     </div>
   );
 }
