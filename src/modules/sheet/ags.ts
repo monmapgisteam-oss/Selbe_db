@@ -24,7 +24,8 @@
 //    Энэ мөрийг АРХИВЫН зорилгоор л үлдээв — дээрх «ХОЙШЛУУЛСАН» функцууд
 //    навигациас хасагдсан хуудсуудад л хэрэглэгддэг. Тэр үйлчилгээ 499
 //    буцаадаг тул дуудвал алдаа гарна: ШИНЭ КОДОД ОГТ ХЭРЭГЛЭХГҮЙ.
-import { tokenQs, authToken } from '@/lib/authToken';
+import { tokenQs, authToken, ensureFreshToken, refreshAfterTokenError } from '@/lib/authToken';
+import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/query';
 import { HJ } from '@/lib/services';
 export const base = `${HJ}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
@@ -266,21 +267,54 @@ export async function listAttachments(oid: number): Promise<AttachInfo[]> {
 
 // Multipart upload — can't reuse agsFetch (urlencoded).
 export async function addAttachment(oid: number, file: File) {
-  const fd = new FormData();
-  fd.append("attachment", file);
-  fd.append("f", "json");
-  { const tok = authToken(); if (tok) fd.append("token", tok); } // ⚠️ org-only (2026-09-17)
   /* ⚠️ 2026-09-30: multipart тул цөмөөр явахгүй — timeout (файл том байж болно: 120с)
-     ба `res.ok`-ийг энд өгнө. */
-  const res = await fetch(`${base}/${oid}/addAttachment`, {
-    method: "POST",
-    body: fd,
-    signal: AbortSignal.timeout(120_000),
-  });
-  if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
-  const j = await res.json();
-  if (j.error || j.addAttachmentResult?.success === false)
-    throw new Error(j.error?.message || "add attachment failed");
+     ба `res.ok`-ийг энд өгнө.
+     ⚠️ 2026-10-06: цөмийн (`query.attemptRequest`) хамгаалалтыг ЭНД давтав — урьд нь
+     (1) токеныг хүсэлтийн ӨМНӨ шинэчилдэггүй, 498 «Invalid token»-д дахин оролддоггүй;
+     (2) HTML хариу (proxy/CDN) түүхий `SyntaxError: Unexpected token <` болж UI-д гардаг;
+     (3) timeout нь түүхий `TimeoutError` байв. Одоо: `ensureFreshToken` → илгээх → 498-д
+     `refreshAfterTokenError`-оор НЭГ удаа дахин (сервер хүсэлтийг гүйцэтгээгүй тул давхар
+     хавсралт үүсэхгүй). 499 (хаалттай үйлчилгээ) дээр дахин оролдохгүй — сешнийг «дууссан»
+     гэж андуурч тэмдэглэхгүйн тулд. `FormData`-г оролдлого бүрд ШИНЭЭР (шинэ токентой). */
+  await ensureFreshToken();
+  for (let attempt = 0; ; attempt++) {
+    const fd = new FormData();
+    fd.append("attachment", file);
+    fd.append("f", "json");
+    const tok = authToken();
+    if (tok) fd.append("token", tok); // ⚠️ org-only (2026-09-17)
+    let res: Response;
+    try {
+      res = await fetch(`${base}/${oid}/addAttachment`, {
+        method: "POST",
+        body: fd,
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (e) {
+      if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError'))
+        throw new Error(tr('Хавсралт илгээх хугацаа хэтэрлээ (120 сек) — сүлжээгээ шалгаад дахин оролдоно уу.'));
+      throw e;
+    }
+    if (!res.ok) throw new Error(`ArcGIS HTTP ${res.status}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let j: any;
+    try {
+      j = await res.json();
+    } catch {
+      throw new Error(tr('Үйлчилгээ JSON биш хариу буцаав — сүлжээгээ шалгана уу'));
+    }
+    /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — `{error}` биеийг ЗААВАЛ шалгана */
+    if (j?.error) {
+      const code = Number(j.error.code);
+      const msg = String(j.error.message ?? '');
+      if (attempt === 0 && (code === 498 || /invalid token/i.test(msg)) && (await refreshAfterTokenError(tok)))
+        continue;
+      throw new Error(msg || j.error.details?.[0] || tr('Хавсралт нэмэгдсэнгүй.'));
+    }
+    if (j?.addAttachmentResult?.success !== true)
+      throw new Error(j?.addAttachmentResult?.error?.description || tr('Хавсралт нэмэгдсэнгүй.'));
+    return;
+  }
 }
 
 export async function deleteAttachment(oid: number, id: number) {

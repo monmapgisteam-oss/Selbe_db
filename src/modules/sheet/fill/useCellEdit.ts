@@ -189,7 +189,7 @@ export function useCellEdit(p: {
 
   /** ⚠️ `true` = утга хүлээн авагдсан (2026-09-24): Enter/Tab нь ЗӨВХӨН тэр үед шилжинэ —
    *  урьд нь буруу/сөрөг/татгалзсан (confirm) утга дээр ч дараагийн нүд рүү гүйдэг байв. */
-  const commit = (r: SheetRow, b: number, raw: string): boolean => {
+  const commitInner = (r: SheetRow, b: number, raw: string): boolean => {
     const key = cellKey(r.oid, b);
     /* ⚠️ БУУЛГАЛТТАЙ НЭГ ДҮРЭМ — `paste.normCell` (2026-09-25-ны аудит). Урьд нь
        энд эхний таслалыг ҮРГЭЛЖ аравтын цэг болгодог тул «1,250» (en-US
@@ -197,7 +197,7 @@ export function useCellEdit(p: {
        `1 234` зөв уншигдаж, `1,250` шиг ТОДОРХОЙГҮЙ бичлэгийг ил асууна.
        `null` = тоо биш (эсвэл тодорхойгүй); хоосон бол `""` (цэвэрлэх). */
     const t0 = raw.trim() === "" ? "" : normCell(raw);
-    setEdit(null);
+    /* ⚠️ 2026-10-06: `setEdit(null)` ЭНДЭЭС `commit` руу зөөгдсөн (дээрх ⚠️) */
     if (r.group) return false;
     if (t0 === null && isAmbiguousComma(raw)) {
       warn(tr('{0} · {1}: «{2}» — таслал мянгатын эсвэл аравтын тэмдэг болох нь тодорхойгүй. 1250 эсвэл 1.25 гэж бичнэ үү.', sc?.bld[b] ?? "", r.work, raw.trim()));
@@ -397,6 +397,15 @@ export function useCellEdit(p: {
     mineRef.current.add(key);
     touchMine(key);
     return true;
+  };
+  /* ⚠️ 2026-10-06: нүдийг ЗӨВХӨН утга хүлээн авагдсан (`true`) үед хаана. Урьд нь `setEdit(null)`
+     шалгалтаас ӨМНӨ дуудагдаж, татгалзсан оролт («1,250» · тоо биш · асуултад «Цуцлах») дээр нүд
+     хаагдаж бичсэн текст алдагддаг байв — одоо оролт текстээрээ нээлттэй үлдэж засна. Бүлгийн мөр
+     (засагдахгүй) урьдын адил хаагдана. */
+  const commit = (r: SheetRow, b: number, raw: string): boolean => {
+    const ok = commitInner(r, b, raw);
+    if (ok || r.group) setEdit(null);
+    return ok;
   };
 
   /** Enter/Tab — дараагийн засварлаж болох мөр рүү (баганадаа доошоо). */

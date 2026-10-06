@@ -13,6 +13,7 @@ import { layerUrl, OID, oidOf, CATALOG_LAYER_IDS, LAYER_BY_ID, ZONE_LAYER, zoneW
 import { num, ha, km } from './format';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
+import { register } from './dataBus';
 
 /**
  * ⚠️ `q` нь `null` байж болно (2026-09-24): хэмжээний багана ХҮСЭЭГҮЙ (`d.qty`
@@ -82,6 +83,45 @@ export const avgQty = (t: Totals | undefined | null): number | null =>
  */
 export const missingQty = (t: Totals | undefined | null): number | null =>
   (t && t.nq != null ? Math.max(0, t.n - t.nq) : null);
+
+/**
+ * ТАТАГДААГҮЙ давхаргууд — `ids`-ээс `map`-д БАЙХГҮЙ нь (`usePlanTotals`-ын дутуу Map).
+ * ⚠️ 2026-10-06: `usePlanTotals` нь зарим давхарга унахад ДУТУУ Map-ыг «бэлэн» гэж буцаадаг
+ *    (бүгд унавал л алдаа). Амжилттай бол `ids`-ийн БҮГД Map-д ордог тул дутуу id = унасан.
+ *    Дуудагч «N давхарга татагдсангүй» гэж ил хэлж, `retryTotals`-оор дахин оролдуулна.
+ */
+export const failedTotals = (map: ReadonlyMap<string, Totals>, ids: readonly string[]): string[] =>
+  ids.filter((id) => !map.has(id));
+
+/**
+ * `usePlanTotals`-ын буцаасан Map-ын УНАСАН id-ууд — хүссэн `ids` нь дуудагчид үл мэдэгдэх
+ * үед (каталог — `LayerCatalog`). ⚠️ 2026-10-06: Map-ыг өөрийг нь түлхүүр болгосон WeakMap —
+ * Map-ын төрөл/дуудагчдын гэрээ ӨӨРЧЛӨГДӨХГҮЙ; бүрэн Map-д хоосон жагсаалт.
+ */
+const PARTIAL = new WeakMap<ReadonlyMap<string, Totals>, readonly string[]>();
+export const totalsFailedOf = (map: ReadonlyMap<string, Totals>): readonly string[] => PARTIAL.get(map) ?? [];
+
+/**
+ * БҮРЭН НИЙЛБЭР — `ids`-ийн БҮГД татагдсан бөгөөд утгатай үед л тоо, эс бөгөөс `null` («—»).
+ * ⚠️ 2026-10-06: Дашбоардын сүлжээ/эрчим хүч/үр өгөөжийн дүн унасан (Map-д байхгүй) эсвэл
+ *    `q == null` давхаргыг АЛГАСАЖ нийлбэрлэдэг тул нэг давхарга унахад нийт ЧИМЭЭГҮЙ бага
+ *    гардаг байв (null ≠ 0). Дутуу нийлбэрийг бодит тоо гэж харуулахгүй.
+ * @param pick давхаргын утга — анхдагч нь хэмжээ (`q`); тоо ширхэгт `(t) => t.n`
+ */
+export function completeSum(
+  map: ReadonlyMap<string, Totals>,
+  ids: readonly string[],
+  pick: (t: Totals) => number | null = (t) => t.q,
+): number | null {
+  let s = 0;
+  for (const id of ids) {
+    const t = map.get(id);
+    const v = t ? pick(t) : null;
+    if (v == null || !Number.isFinite(v)) return null;
+    s += v;
+  }
+  return s;
+}
 
 
 /**
@@ -277,6 +317,12 @@ export function dropTotalsCache(): void {
   for (const fn of totalsSubs) fn();
 }
 
+/* ⚠️ 2026-10-06: Порталын «↻ Шинэчлэх» / таб руу буцах (`dataBus.invalidateAll`) энэ кэшийг
+   ХӨНДДӨГГҮЙ байв — бусад бүх тоо шинэчлэгдэхэд давхаргын тоо/урт сешн дуустал хуучин үлддэг.
+   Хоосон `reads` — зөвхөн `invalidateAll` (хүснэгтийн түлхүүр байхгүй; бичих зам нь өөрөө
+   `dropTotalsCache` дууддаг). `subscribeTotals`-аар `layerSummary` ч хамт хаягдана. */
+register(() => dropTotalsCache(), []);
+
 /** `useSyncExternalStore`-д — ЗААВАЛ модулийн түвшний тогтмол лавлагаа байна */
 export function subscribeTotals(fn: () => void): () => void {
   totalsSubs.add(fn);
@@ -342,6 +388,10 @@ export function usePlanTotals(
       if (failed.length === ids.length) throw (settled[0] as PromiseRejectedResult).reason;
       // ⚠️ Дутуу Map-ыг КЭШЛЭХГҮЙ — дараагийн mount/бүс солиход унасан
       //    давхаргууд дахин татагдаж, өөрөө эдгэрнэ
+      // ⚠️ 2026-10-06: дутуу Map «бэлэн» гэж ирнэ — дуудагч `failedTotals(map, ids)`-аар
+      //    унасныг тоолж, нийлбэрийг `completeSum`-аар (дутуу бол `null` → «—») бодно.
+      //    Хүссэн `ids`-ээ мэдэхгүй дуудагчид — `totalsFailedOf(map)`.
+      PARTIAL.set(map, failed);
       return map;
     }
     totalsCache.set(key, map);

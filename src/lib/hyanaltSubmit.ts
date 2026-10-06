@@ -308,6 +308,14 @@ export async function submitForReview(
   sheet = '',
 ): Promise<{ ok: true; id: string; reused?: true } | { ok: false; error: string }> {
   try {
+    /* ⚠️ 2026-10-06 (аудит #2): ИЛГЭЭХ ЭРХ lib-д — `company` шатанд энэ багцад томилогдсон
+       (эсвэл дев/хатуу super). Газрын дарга ч болно: `hyanaltStore.apply` үлдэгдэл нэмэлтийн
+       шинэ тойргийг өөрийн нэрээр нээдэг (`companyDeny`-ийн ⚠️). Урьд нь хэн ч дуудаж болдог байв. */
+    if (typeof window !== 'undefined') {
+      const { companyDeny } = await import('./submission');
+      const deny = await companyDeny(bagts, true);
+      if (deny) return { ok: false, error: deny };
+    }
     const [rows, company] = await Promise.all([queryAll(), companyOf(bagts)]);
     const id = nextId(rows);
     /*

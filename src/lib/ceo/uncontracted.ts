@@ -63,6 +63,7 @@ import { cached } from '@/lib/live';
 import { CASHFLOW_NEW } from '@/lib/services';
 import { blank, date, mnt, num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
+import { FIN_XL_LAND_CODE, FIN_XL_TOTAL_CODE_FIELD, finXlRowHidden } from '@/lib/finExcelLayout';
 import {
   cell, daysBetween, table,
   type Cell, type DetailTable, type KpiIssue, type KpiResult, type Level,
@@ -208,6 +209,12 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): KpiRes
   const partial: CfContract[] = [];
   const cancelled: CfContract[] = [];
   for (const r of rows) {
+    /* ⚠️ 2026-10-06: ГАЗАР ЧӨЛӨӨЛӨЛТ (6-р хэсэг — нөхөн олговор, гүйцэтгэгчтэй байгуулах гэрээ БИШ,
+       «78 биш 74») ба НУУГДСАН «7 БОНДЫН ХҮҮ» (OID 78, ажил биш) мөр «гэрээгүй ажил»/«дутуу
+       бүртгэл»-д тоологдож, Σ төсвийг хөөрөгддөг байв. КОДООР шүүнэ (`finXlRowHidden`,
+       `FIN_XL_LAND_CODE`). ⚠️ 5-р хэсэг (нийгмийн дэд бүтэц) нь ЖИНХЭНЭ ажил тул ХЭВЭЭР —
+       `finXlInTotal` (5·6·7) хэрэглэвэл гэрээгүй сургууль/цэцэрлэг чимээгүй алга болно. */
+    if (finXlRowHidden(r) || String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim() === FIN_XL_LAND_CODE) continue;
     const inScope = isUncontracted(r) ? none : isInconsistent(r) ? partial : null;
     if (!inScope) continue;
     (isCancelled(r) ? cancelled : inScope).push(contractOf(r));

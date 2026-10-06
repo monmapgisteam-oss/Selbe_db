@@ -31,6 +31,7 @@ import {
 import { cat, shade, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 import { CONTRACTED } from '@/lib/gdash';
 import { hoTotals } from '@/lib/ipc';
+import { paidShareOf, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -453,6 +454,17 @@ export function PkgFin({ dim, setDim }: {
     () => (finAliased && finRaw.state === 'ready' ? { ...finRaw, data: finAliased } : finRaw),
     [finRaw, finAliased],
   );
+  /**
+   * ⚠️ 2026-10-06: ТӨСЛИЙН «олгосон хувь» ба «олгогдоогүй үлдэгдэл» — ХОЛБООСГҮЙ (түүхий) мөрөөр
+   *    `paidShare.paidShareOf` (Тайлан · удирдлагын тайлан · CEO-тай НЭГ). Холбоос (`aliasFin`) нь
+   *    HO-ийн «Багц-7»/«Багц-8.1»-ийн олголтыг гэрээлсэн түлхүүр рүү зөөдөг тул холбоостой
+   *    өгөгдлөөр бодоход тоологч өсөж 26.1% (бусад газар 26.0%) гардаг байв. Багцын түвшинд
+   *    холбоос хэвээр (`activeFin`/`FinCard` багц сонгосон салаа).
+   */
+  const projShare = useMemo<PaidShare | null>(
+    () => (finRawData ? paidShareOf(finRawData.contracts, finRawData.pays) : null),
+    [finRawData],
+  );
   const { zoomToWhere, setHighlight } = useMap();
 
   /** Сонгосон багц — Bagts-тай ижил `?pkg=` параметрээр хуваалцагдана */
@@ -713,11 +725,9 @@ export function PkgFin({ dim, setDim }: {
     d.givenTotal.forEach((v) => { given += v; });
     /* ⚠️ 2026-10-01: ТӨСЛИЙН «олгосон хувь» — гэрээлсэн дүн ба ГЭРЭЭЛСЭН багцын олголт
        (`gdash.contractedScope`, Дашбоардын «Санхүүжилтийн хуримтлал»-тай нэг тоологч/хуваарь) */
-    const sc = contractedScope(d.contracts);
-    let givenContracted = 0;
-    sc.keys.forEach((k) => { givenContracted += d.givenTotal.get(k) ?? 0; });
-    return { plan, given, contract: sc.amount, givenContracted };
-  }, [givenMap, contractMap, active, finQ]);
+    /* ⚠️ 2026-10-06: түүхий мөрөөр (`projShare`, дээрх ⚠️) — холбоостой `givenTotal` БИШ */
+    return { plan, given, contract: projShare?.contract ?? 0, givenContracted: projShare?.paidContracted ?? 0 };
+  }, [givenMap, contractMap, active, finQ, projShare]);
 
   /**
    * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
@@ -904,7 +914,7 @@ export function PkgFin({ dim, setDim }: {
              гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} fin={activeFin} />
         ) : (
-          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} />
+          <TsKpi packs={packs} fin={finQ.state === 'ready' ? finQ.data : null} share={projShare} />
         )}
       </div>
 
@@ -1098,7 +1108,7 @@ export function PkgFin({ dim, setDim }: {
           onPointerDown={finGripDown}
           onDoubleClick={finGripReset}
         />
-        <FinCard p={active} finQ={finQ} chartH={finH} finOnly />
+        <FinCard p={active} finQ={finQ} projShare={projShare} chartH={finH} finOnly />
       </div>
     </div>
   );
@@ -1116,9 +1126,14 @@ export function PkgFin({ dim, setDim }: {
  * үеийн төслийн нэгдсэн 6 үзүүлэлт. Хувиуд нь доод графиктай ИЖИЛ аргачлал
  * (`aggregateMonths`) тул хоёр газрын тоо зөрөхгүй.
  */
-function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
+function TsKpi({ packs, fin, share }: {
+  packs: Pack[];
+  fin: FinData | null;
+  /** ⚠️ 2026-10-06: ТӨСЛИЙН хувь/үлдэгдэл — холбоосгүй мөрөөр (`PkgFin`-ийн `projShare`) */
+  share: PaidShare | null;
+}) {
   const t = useMemo(() => {
-    if (!fin) return null;
+    if (!fin || !share) return null;
     const months = aggregateMonths(fin);
     const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
     /* ⚠️ 2026-09-06: ТӨЛӨВЛӨГӨӨТ хувь нь `cumPct` (cashflow-ийн өссөн
@@ -1146,17 +1161,17 @@ function TsKpi({ packs, fin }: { packs: Pack[]; fin: FinData | null }) {
        олголт ÷ ГЭРЭЭЛСЭН ДҮН (`gdash.contractedScope`) — удирдлагын тайлан (`fin.share`) ·
        Дашбоардын «Санхүүжилтийн хуримтлал»-тай нэг. Урьд нь `planTotal` (гэрээ ЭСВЭЛ төсөв,
        5·6·7-р хэсэг ч орсон)-оор хуваадаг тул хэдэн нэгж хувиар доогуур гардаг байв. */
-    const sc = contractedScope(fin.contracts);
-    let givenContracted = 0;
-    sc.keys.forEach((k) => { givenContracted += fin.givenTotal.get(k) ?? 0; });
+    /* ⚠️ 2026-10-06: тоологч/хуваарь нь ХОЛБООСГҮЙ мөрөөр (`paidShareOf`, `projShare`-ийн ⚠️) —
+       холбоостой `fin.givenTotal` нь «Багц-7»/«Багц-8.1»-ийн олголтыг гэрээлсэн түлхүүрт нэмдэг */
+    const givenContracted = share.paidContracted;
     return {
       planned, actual, gap, given,
-      share: paidPctOf(givenContracted, sc.amount),
+      share: share.pct,
       /** Олгогдоогүй үлдэгдэл ₮ — ⚠️ 2026-10-04: ГЭРЭЭЛСЭН − гэрээлсэн багцын олголт (удирдлагын
           тайлангийн `fin.remain`-тэй нэг); урьд нь төлөвлөгөө (гэрээ ЭСВЭЛ төсөв) − багцын олголт */
-      remain: Math.max(0, sc.amount - givenContracted),
+      remain: Math.max(0, share.contract - givenContracted),
     };
-  }, [fin]);
+  }, [fin, share]);
   /**
    * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
    * контекст (хэдэн багцын тухай ярьж байна) бөгөөд аль ч асуултад хэрэгтэй.
@@ -1882,11 +1897,14 @@ const FIN_H_LS = 'selbe.finh.pkgfin';
 function FinCard({
   p,
   finQ,
+  projShare = null,
   chartH = FIN_H0,
   finOnly = false,
 }: {
   p: Pack | null;
   finQ: Async<FinData>;
+  /** ⚠️ 2026-10-06: багц сонгоогүй үеийн хувь/үлдэгдэл — холбоосгүй мөрөөр (`PkgFin.projShare`) */
+  projShare?: PaidShare | null;
   /** Комбо графикийн өндөр (px) — дээд ирмэгийн чирэх бариулаас (2026-08-21) */
   chartH?: number;
   /**
@@ -1971,9 +1989,9 @@ function FinCard({
       d.planTotal.forEach((v) => { total += v; });
       d.givenTotal.forEach((v) => { givenTotal += v; });
       givenShown = hoTotals(d.pays).paid;
-      const sc = contractedScope(d.contracts);
-      contractAmt = sc.amount;
-      sc.keys.forEach((k) => { givenContracted += d.givenTotal.get(k) ?? 0; });
+      /* ⚠️ 2026-10-06: холбоосгүй мөрөөр (`projShare`) — `TsKpi`-тай НЭГ тоо */
+      contractAmt = projShare?.contract ?? 0;
+      givenContracted = projShare?.paidContracted ?? 0;
     }
   }
   const lag = months ? lagOf(months) : null;
@@ -2090,7 +2108,10 @@ function FinCard({
             {[
               /* ⚠️ 2026-09-06: «төлөвлөсөн» нь одоо ГЭРЭЭНИЙ дүн (сарын
                  хуваарийн нийлбэр БИШ) тул шошгыг нь ч тохируулав. */
-              { v: mnt(total), l: tr('Гэрээний нийт дүн'), c: 'var(--ink)' },
+              /* ⚠️ 2026-10-06: ГЭРЭЭЛСЭН дүн (`contractAmt`) — хувь/үлдэгдэлтэй НЭГ хүрээ. Урьд нь
+                 `total` (`planTotal`: гэрээ ЭСВЭЛ төсөв, 5·6·7-р хэсэг орсон) харагдаж, доорх хувь
+                 ба «Олгогдоогүй үлдэгдэл»-ээс өөр хүрээтэй байв. Гэрээгүй бол «—» (0 биш). */
+              { v: contractAmt > 0 ? mnt(contractAmt) : '—', l: tr('Гэрээний нийт дүн'), c: 'var(--ink)' },
               {
                 v: (
                   <>

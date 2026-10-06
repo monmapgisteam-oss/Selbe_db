@@ -46,7 +46,7 @@
  * `leadingLayers`-т оруулахад газрын зураг бүхэлдээ хоосон болдог байв.
  */
 
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr, perLocale } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools, MapToolBtn } from '@/components/MapTools';
@@ -344,8 +344,6 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }, [visible]);
   const legendHidden = Math.max(0, legend.length - 8);
 
-  const noop = useCallback(() => {}, []);
-
   return (
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
@@ -567,8 +565,10 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             zone={zone}
             uniform
             scene={IRGED_SCENE.layers}
-            onPick={noop}
           />
+          {/* ⚠️ 2026-10-06: `onPick={noop}` ХАССАН — өгөгдсөн бол MapCanvas товшилтын
+              атрибутын хайрцгийг (tipOnly) унтраадаг тул мэдрэгчтэй дэлгэцэд
+              атрибут уншигдах зам огт байхгүй байв. */}
 
           {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ (нэгдсэн `MapTools`) */}
           <MapTools

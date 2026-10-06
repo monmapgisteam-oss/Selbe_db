@@ -331,6 +331,14 @@ export async function runTool(
       const zone = (input as { zone?: string })?.zone?.trim();
       if (!zone) return fail(tr('`zone` заагаагүй байна.'));
       const ov = await zoneOverview(zone, scope);
+      /* ⚠️ 2026-10-06: эх сурвалж хоосон БОЛОВЧ алдаа өгсөн нь байвал энэ нь ArcGIS-ийн
+         алдаа — «нэрээ шалгана уу» гэвэл хэрэглэгч зөв нэрээ дахин дахин солиж төөрдөг байв. */
+      if (!ov.sources.length && ov.failedCount > 0) {
+        return fail(
+          tr('ArcGIS алдаа: «{0}» бүсийн {1} эх сурвалж хариу өгсөнгүй — өгөгдөл байхгүй гэсэн үг БИШ. Түр хүлээгээд дахин оролдоно уу.', zone, ov.failedCount) +
+            (ov.note ? ` ${ov.note}` : ''),
+        );
+      }
       if (!ov.sources.length) {
         return fail(
           tr('«{0}» бүсээс өгөгдөл олдсонгүй. Бүсийн нэр зөв эсэхийг шалгана уу ', zone) +

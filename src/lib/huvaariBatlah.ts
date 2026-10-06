@@ -1109,17 +1109,27 @@ export async function decidePlan(args: {
      `args.approver`-т өөр нэр дамжуулж «өөрийгөө батлахгүй» дүрмийг тойрдог байв. */
   const own = sameAsLogin(me);
   if (own) return own;
-  const url = await tableUrl(false);
-  if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+  /* ⚠️ 2026-10-06: УНШИЛТЫГ `try` дотор — урьд нь `tableUrl`/`query` (сүлжээ · токен) шидвэл
+     `decidePlan` амлалтаа татгалзуулж, дуудагч (`Huvaari`-ийн батлах эффект) `catch`-гүй тул
+     алдаа чимээгүй алга болдог байв. Одоо бусад алдааны адил `{ ok: false, error }`. */
+  let url: string;
+  let cur: Attrs[];
+  try {
+    const u = await tableUrl(false);
+    if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+    url = u;
+    cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
   /*
    * ⚠️ ШИЙДВЭР ГАРСАН ЭСЭХИЙГ ДАХИН ШАЛГАНА (2026-09-07-ны шалгалт).
    *    Хоёр батлагч хуудсаа зэрэг нээгээд нэг нь баталчихвал нөгөөгийн
    *    дэлгэц ХУУЧИН хэвээр («Шийдвэрлэх» товч харагдсаар) үлдэнэ. Түүнийг
    *    дарахад ижил огноо ХОЁР ДАХЬ УДАА бичигдэж, шийдвэр гаргасан хүний
    *    нэр чимээгүй дарагдана. Мөр нь ганц тул `applyEdits` алдаа өгөхгүй —
-   *    ЗӨВХӨН энэ шалгуур л барина.
+   *    ЗӨВХӨН энэ шалгуур л барина. (`cur` — дээрх `try` дотор уншигдсан, 2026-10-06)
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
@@ -1205,7 +1215,8 @@ export async function decidePlan(args: {
   let warn: string | undefined;
   if (args.okRows) {
     const js = JSON.stringify(args.okRows.filter((x) => Number.isInteger(x)));
-    const len = await okRowsFieldLen();
+    /* ⚠️ 2026-10-06: шидвэл «уншигдсангүй» (−1) — түгжээ авсны ДАРАА тул унагавал түгжээ үлдэнэ */
+    const len = await okRowsFieldLen().catch(() => -1);
     /* ⚠️ 2026-09-29 аудит: «уншигдсангүй» (−1) ≠ «алга» (0) — сүлжээний алдаанд
        «AGOL дээр талбар нэмнэ үү» гэсэн худал заавар өгдөг байв. */
     if (len < 0) warn = tr('«{0}» талбарын урт уншигдсангүй (сүлжээ) — зөвшөөрсөн мөрийн тэмдэглэгээ хадгалагдсангүй (шийдвэр хадгалагдсан).', F.okRows);

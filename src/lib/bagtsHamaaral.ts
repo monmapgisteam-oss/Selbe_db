@@ -110,7 +110,16 @@ export type DepState = { deps: Dep[]; at: number | null };
 
 /** Сүүлийн хадгалсан холбоосууд. ⚠️ Уншилт унавал ШИДНЭ (хоосон гэж худал харуулахгүй) */
 export async function loadDeps(): Promise<DepState> {
-  const { readRemoteDraft } = await import('./draftRemote');
+  const { readRemoteDraft, getAuth, tableUrl } = await import('./draftRemote');
+  /* ⚠️ 2026-10-06: `readRemoteDraft` нь нэвтрээгүй · хүснэгт олдоогүй · эзэн танигдаагүй
+     үед `{ ok: true, draft: null }` буцаадаг (ноорогт «зөвхөн локалд» гэсэн утгатай).
+     Энд тэр нь «хамаарал БАЙХГҮЙ» гэж ХУДАЛ харагдаж байв — хамаарал зөвхөн алсад
+     хадгалагддаг тул эдгээрийг АЛДАА болгож шиднэ. `tableUrl(false)` — уншилт хүснэгт
+     ҮҮСГЭХГҮЙ (`readRemoteDraftRaw`-тай ижил); олдсон URL кэшлэгдэх тул дахин хайхгүй. */
+  if (!(await getAuth())) throw new Error(tr('нэвтрээгүй эсвэл токен дууссан'));
+  if (!(await tableUrl(false))) {
+    throw new Error(tr('«{0}» хүснэгт олдсонгүй эсвэл эзэн нь танигдсангүй — багцын хамаарлыг уншиж чадсангүй', 'Selbe_Guitsetgel_Draft'));
+  }
   const r = await readRemoteDraft(HAMAARAL_KEY);
   if (!r.ok) throw new Error(r.error);
   return { deps: parseDeps(r.draft?.payload), at: r.draft?.at ?? null };

@@ -42,6 +42,8 @@ const MAX_TURNS = 6;
  */
 /* ⚠️ 2026-09-17: fallback (localhost) ХАСАГДАВ — хаяг зөвхөн env-ээс (Variables `AGENT_API` / `.env`).
    Хоосон бол `relayAlive()` false → AI товч идэвхгүй, бусад хэсэг хэвийн. */
+/* ⚠️ 2026-10-06: дээрх «товч идэвхгүй» нь урьд ХЭРЭГЖЭЭГҮЙ байв — одоо хаяг хоосон бол
+   `AgentButton` огт зурагдахгүй, `alive === false` үед `AgentChat` оролт/илгээхийг хаана. */
 /* ⚠️ 2026-09-28: НӨӨЦ ХОСТ — `AGENT_API` таслалаар хэд хэдэн хаяг авна
    (`https://pc1….ts.net,https://pc2….ts.net`). Tailscale Funnel нь машин бүрд ТУСДАА
    хаяг өгдөг бөгөөд хооронд нь өөрөө шилжүүлдэггүй тул нэг хост унтарвал
@@ -246,25 +248,65 @@ async function callRelay(
     const fresh = await arcgisToken(true);
     if (fresh && fresh !== token) res = await post(fresh);
   }
-  const reply = (await res.json().catch(() => ({}))) as RelayReply;
-  if (!res.ok) throw new Error(relayErrorText(res.status));
+  /* ⚠️ 2026-10-06: JSON биш хариу `null` болно (урьд нь `{}`) — 200 атал уншигдахгүй бол
+     хоосон хариу мэт түүхэд `{content: []}` орж дараагийн хүсэлт 400 болдог байв. */
+  const reply = (await res.json().catch(() => null)) as RelayReply | null;
+  if (!res.ok) {
+    /* ⚠️ 2026-10-06: релейн `error` (хатуу монгол, серверийн) зөвхөн ДЭЛГЭРЭНГҮЙ — гол
+       мөр нь статусаас `tr()`-ээр (`RelayError`). Урьд нь `reply.error ?? …` байсан тул
+       реле ямагт `error` буцаадаг учраас орчуулга хэзээ ч ажилладаггүй байв. */
+    throw new RelayError(res.status, reply?.error);
+  }
+  if (!reply || typeof reply !== 'object') throw new RelayError(res.status, tr('Уншигдахгүй хариу'));
   return reply;
 }
 
 /**
- * ⚠️ 2026-10-06 (аудит): РЕЛЕГИЙН АЛДААГ КЛИЕНТ ТАЛД ОРЧУУЛНА. Урьд нь релегийн `error`
- *    текстийг (монголоор хатуу бичигдсэн, заримдаа дотоод дэлгэрэнгүйтэй — `claude
- *    алдаатай дууслаа (код …)`) шууд харуулдаг тул англи горимд монголоор гардаг, 401 нь
- *    «түлхүүр буруу» гэсэн худал шалтгаантай байв (бодит шалтгаан нь ихэвчлэн ArcGIS
- *    токен хүчингүй). Статусаар ангилж `tr()`-ээр.
+ * Реле HTTP алдаа — `message` нь хэрэглэгчид ойлгомжтой (`tr()`), `detail` нь
+ * серверийн түүхий мөр (зөвхөн дэлгэрэнгүйд).
+ * ⚠️ 2026-10-06: параметрийн шинж (`constructor(readonly …)`) ХЭРЭГЛЭХГҮЙ — тестүүд
+ *    `.ts`-ийг Node-ийн төрөл хасагчаар ажиллуулдаг, тэр нь үүнийг дэмждэггүй.
  */
-function relayErrorText(status: number): string {
-  if (status === 401) return tr('AI туслахад нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж, дахин нэвтэрнэ үү.');
-  if (status === 403) return tr('AI туслахад хандах зөвшөөрөл алга байна.');
-  if (status === 413) return tr('Яриа хэт урт болсон — ⟲ дарж шинээр эхлүүлнэ үү.');
-  if (status === 429) return tr('AI туслах завгүй байна — түр хүлээгээд дахин оролдоно уу.');
-  if (status >= 500) return tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.');
+export class RelayError extends Error {
+  status: number;
+  detail?: string;
+  constructor(status: number, detail?: string) {
+    super(relayStatusText(status));
+    this.name = 'RelayError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+function relayStatusText(status: number): string {
+  if (status === 401) return tr('AI туслахын нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж нэвтэрнэ үү.');
+  if (status === 403) return tr('AI туслах руу хандах зөвшөөрөл алга.');
+  if (status === 413) return tr('Яриа хэт урт боллоо — ⟲ дарж шинээр эхлүүлнэ үү.');
+  if (status === 429) return tr('AI туслах завгүй байна — хэсэг хүлээгээд дахин оролдоно уу.');
+  if (status === 504) return tr('AI туслах хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.');
+  if (FAILOVER_STATUS.has(status)) return tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.');
   return tr('Реле алдаа (HTTP {0})', status);
+}
+
+/**
+ * Агентын алдааг дэлгэцийн мөр болгоно: `text` — `tr()`-ээр, `detail` — техникийн мөр.
+ * ⚠️ 2026-10-06: урьд нь түүхий «Failed to fetch», «timeout 240000ms»,
+ *    серверийн хатуу монгол текст шууд гардаг байв (англи горимд ч).
+ */
+export function agentErrorText(e: unknown): { text: string; detail?: string } {
+  if (e instanceof RelayError) return { text: e.message, ...(e.detail ? { detail: e.detail } : {}) };
+  const name = (e as { name?: string } | null)?.name ?? '';
+  const raw = e instanceof Error ? e.message : String(e ?? '');
+  if (name === 'TimeoutError') {
+    return { text: tr('AI туслах хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'), detail: raw };
+  }
+  if (name === 'AbortError') return { text: tr('Хүсэлт цуцлагдлаа.') };
+  /* `fetch`-ийн сүлжээний алдаа (CORS, DNS, тунель унтарсан) нь ямагт TypeError */
+  if (e instanceof TypeError) {
+    return { text: tr('AI туслахтай холбогдож чадсангүй — сүлжээгээ шалгаад дахин оролдоно уу.'), detail: raw };
+  }
+  /* Манай өөрийн `tr()`-тэй алдаа (хаяг тохируулаагүй г.м.) — хэвээр */
+  return { text: raw || tr('Тодорхойгүй алдаа') };
 }
 
 /**
@@ -323,16 +365,33 @@ export async function ask(opts: {
       return { text: msg, turns: turn };
     }
 
-    const blocks = reply.content ?? [];
+    const blocks = Array.isArray(reply.content) ? reply.content : [];
+    const calls = blocks.filter((b): b is ToolUseBlock => b.type === 'tool_use');
+    const text = textOf(blocks);
+
+    /* ⚠️ 2026-10-06: `max_tokens` — хариу ТАСАРСАН. Урьд нь бүтэн мэт харагддаг байв.
+       Тасарсан tool_use-ийн оролт дутуу байж болох тул ГҮЙЦЭТГЭХГҮЙ; түүхэд зөвхөн
+       текстийг (tool_result-гүй tool_use үлдвэл дараагийн хүсэлт 400) хийнэ. */
+    if (reply.stop_reason === 'max_tokens') {
+      const note = tr('⚠️ Хариу тасарсан (хэт урт болсон) — асуултаа хувааж эсвэл товчлон асууна уу.');
+      const msg = text ? `${text}\n\n${note}` : note;
+      history.push({ role: 'assistant', content: [{ type: 'text', text: msg }] });
+      return { text: msg, turns: turn };
+    }
+
+    if (!calls.length && !text) {
+      /* ⚠️ 2026-10-06: ХООСОН assistant агуулгыг түүхэд ХЭЗЭЭ Ч хийхгүй — `{content: []}`
+         нь дараагийн бүх хүсэлтийг 400 болгодог байв. Татгалзлын адил текстээр орлуулна. */
+      const msg = tr('Хариулт хоосон ирлээ.');
+      history.push({ role: 'assistant', content: [{ type: 'text', text: msg }] });
+      return { text: msg, turns: turn };
+    }
+
     // ⚠️ Блокуудыг ЯГ ИРСЭН ХЭВЭЭР нь буцааж хийнэ (бодолтын блок орсон байж
     //    болзошгүй) — засвал дараагийн хүсэлт татгалзагдана.
     history.push({ role: 'assistant', content: blocks });
 
-    const calls = blocks.filter((b): b is ToolUseBlock => b.type === 'tool_use');
-    if (!calls.length) {
-      const text = textOf(blocks);
-      return { text: text || tr('Хариулт хоосон ирлээ.'), turns: turn };
-    }
+    if (!calls.length) return { text, turns: turn };
 
     onProgress?.(describeCall(calls[0].name, calls[0].input));
 

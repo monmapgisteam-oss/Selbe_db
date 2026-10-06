@@ -822,6 +822,14 @@ export type NcrBody = BodyCommon & {
   correction: NcrCorrection;
   /** Залруулгын тайлан илгээгдсэн агшин — `null` бол хянагч үйлдэл хийж ЧАДАХГҮЙ */
   correctionAt: number | null;
+  /**
+   * Залруулгыг ИЛГЭЭСЭН хэрэглэгч (жижиг үсгээр; хуучин мөрд `''`).
+   * ⚠️ 2026-10-06: ҮҮРГИЙН ТУСГААРЛАЛТ — залруулга илгээсэн хүн өөрөө түүнийг дүгнэхгүй
+   *    (`review` дүрэм 7б). Урьд нь `{text, completedAt, steps}` л хадгалагдаж, хэн
+   *    илгээсэн нь мэдэгдэхгүй тул нэг аккаунт (гүйцэтгэгч + хянагчийн үүрэгтэй) өөрийн
+   *    залруулгыг өөрөө баталж чаддаг байв.
+   */
+  correctionBy: string;
   /** Хаалт — approved болмогц автоматаар */
   closure: NcrClosure | null;
   /** Дахин нээсэн тоо */
@@ -840,7 +848,7 @@ export const EMPTY_NCR: NcrBody = {
   initialVerdict: 'R', initialReviewedBy: '',
   contractName: '', generalContractor: '', subcontractor: '', toWhom: '', fromWhom: '', photos: [],
   correction: { text: '', completedAt: null, steps: [] },
-  correctionAt: null, closure: null, reopened: 0, rounds: [],
+  correctionAt: null, correctionBy: '', closure: null, reopened: 0, rounds: [],
 };
 
 /** Аль ч төрлийн бие — `chanarStore` бичихдээ ийм авна */
@@ -1112,6 +1120,7 @@ export function normalizeNcr(raw: unknown): NcrBody {
     }),
     correction: { text: str(c.text), completedAt: numOrNull(c.completedAt), steps: strArr(c.steps) },
     correctionAt: numOrNull(j.correctionAt),
+    correctionBy: str(j.correctionBy).trim().toLowerCase(), // ⚠️ 2026-10-06
     closure: normalizeClosure(j.closure),
     reopened: Number.isInteger(reopened) && reopened > 0 ? reopened : 0,
     rounds: normalizeRounds(j.rounds),
@@ -1424,6 +1433,8 @@ type FlowDoc = Pick<MsDoc, 'status' | 'author' | 'reviews'> & {
   kind?: DocKind;
   /** NCR: гүйцэтгэгчийн залруулгын тайлан илгээгдсэн агшин (`body.correctionAt`) */
   correctionAt?: number | null;
+  /** NCR: залруулга илгээсэн хэрэглэгч (`body.correctionBy`, 2026-10-06) — өөрөө дүгнэхгүй */
+  correctionBy?: string | null;
   rep?: Rep | null;
 };
 
@@ -1467,6 +1478,8 @@ function maxPerMaterial(pm: Record<string, VerdictCode> | undefined): VerdictCod
  *      Хуучин MA мөрд (cheng-гүй эхэлсэн) `requiredReviewers` алгасна.
  *   7. (2026-09-28) NCR: гүйцэтгэгчийн залруулгын тайлан (`correctionAt`)
  *      ирээгүй бол шийдвэр ҮГҮЙ — дүгнэх зүйл байхгүй.
+ *   7б. ⚠️ (2026-10-06) NCR: залруулгыг ИЛГЭЭСЭН хүн (`correctionBy`) өөрөө дүгнэхгүй —
+ *      дүрэм 2-ын NCR-ийн хувилбар (NCR-д хянаж буй зүйл нь залруулга, зохиогч нь нээгч).
  *   8. (2026-09-28, 2-р үе шат) MA материал бүрийн шийдвэр: `perMaterial`-д R
  *      байвал хянагчийн шийдвэр R, AN байвал дор хаяж AN болж ӨСНӨ (шалтгаан/
  *      санал заавал хэвээр). Түгжигдсэн (`locked`) материалын индекс ХАЯГДАНА.
@@ -1502,6 +1515,9 @@ export function review(
   }
   if (kind === 'NCR' && !doc.correctionAt) {
     return { ok: false, error: tr('Гүйцэтгэгчийн залруулгын тайлан ирээгүй — дүгнэлт өгөх боломжгүй') };
+  }
+  if (kind === 'NCR' && (doc.correctionBy ?? '').trim().toLowerCase() === me) {
+    return { ok: false, error: tr('Залруулгыг илгээсэн хүн өөрөө дүгнэх боломжгүй') };
   }
   if (doc.reviews[args.as]) {
     return { ok: false, error: tr('Энэ үүргээр шийдвэр аль хэдийн өгөгдсөн') };
@@ -1899,7 +1915,8 @@ export function submitCorrection(
     : (body.rounds ?? []);
   return {
     ok: true,
-    body: { ...body, correction, correctionAt: now, closure: null, rounds },
+    /* ⚠️ 2026-10-06: `correctionBy` — илгээгч өөрөө дүгнэхгүй (`review` дүрэм 7б) */
+    body: { ...body, correction, correctionAt: now, correctionBy: args.who.trim().toLowerCase(), closure: null, rounds },
     status: MS_STATUS.review,
     reviews: emptyReviews(),
   };
@@ -1927,7 +1944,7 @@ export function reopen(
   const round = ncrRound(doc, body, { end: 'reopen', by: who, at: args.now ?? Date.now(), reason });
   return {
     ok: true,
-    body: { ...body, correctionAt: null, closure: null, reopened: body.reopened + 1, rounds: [...(body.rounds ?? []), round] },
+    body: { ...body, correctionAt: null, correctionBy: '', closure: null, reopened: body.reopened + 1, rounds: [...(body.rounds ?? []), round] },
     status: MS_STATUS.review,
     reviews: emptyReviews(),
   };
@@ -2040,7 +2057,10 @@ export function canAct(
   const already = !!u && (Object.values(doc.reviews) as (Review | null)[])
     .some((r) => r != null && r.who.trim().toLowerCase() === u);
   const need = REVIEWERS_OF[kind];
-  const gate = kind === 'NCR' ? !!doc.correctionAt : !mine;
+  /* ⚠️ 2026-10-06: NCR — залруулга илгээсэн хүнд дүгнэх товч гарахгүй (`review` дүрэм 7б) */
+  const gate = kind === 'NCR'
+    ? !!doc.correctionAt && !(!!u && (doc.correctionBy ?? '').trim().toLowerCase() === u)
+    : !mine;
   let reviewable: Reviewer[] = !!u && doc.status === MS_STATUS.review && gate && !already
     ? roles.filter((r) => need.includes(r) && !doc.reviews[r])
     : [];
@@ -2048,8 +2068,14 @@ export function canAct(
     const order = requiredReviewers(doc.reviews, kind);
     reviewable = reviewable.filter((r) => order.includes(r) && order.slice(0, order.indexOf(r)).every((p) => !!doc.reviews[p]));
   }
-  const contractor = kind === 'NCR' && !!u && extra.contractor === true
-    && (doc.status === MS_STATUS.review || doc.status === MS_STATUS.returned);
+  /* ⚠️ 2026-10-06: (а) НЭЭГЧ (`mine`) өөрийн NCR-ийн залруулгыг илгээхгүй — `chanarStore.submitCorrection`
+     ч татгалзана (үүргийн тусгаарлалт); (б) `submitCorrection`-ийн «хянагч дүгнэлт өгч эхэлсэн»
+     дүрмийг давтана — урьд нь review + correctionAt + шийдвэртэй үед товч харагдаж, дарахад л
+     татгалзагддаг байв. */
+  const decidedAny = Object.values(doc.reviews).some((r) => r != null);
+  const contractor = kind === 'NCR' && !!u && extra.contractor === true && !mine
+    && (doc.status === MS_STATUS.returned
+      || (doc.status === MS_STATUS.review && !(doc.correctionAt && decidedAny)));
   const reopenable = kind === 'NCR' && !!u && doc.status === MS_STATUS.approved
     && roles.some((r) => need.includes(r));
   const clientChecks = SEQUENTIAL_KINDS.includes(kind) && need.includes('tuh') && !!u && !mine && doc.status === MS_STATUS.review
@@ -2070,7 +2096,8 @@ export function canAct(
   /* ⚠️ 2026-09-29 (аудит 10): `superseded` — `newRevisionDoc` ч `newerExists`-ээр татгалздаг */
   const newRev = kind !== 'NCR' && mine && extra.superseded !== true
     && (doc.status === MS_STATUS.approved || doc.status === MS_STATUS.returned);
-  const closeNcrOk = kind === 'NCR' && !!u && extra.contractor === true && doc.status === MS_STATUS.approved && !extra.ncrClosed;
+  /* ⚠️ 2026-10-06: нээгч (`mine`) гүйцэтгэгчийн «Хаасан» мөрийг бөглөхгүй — `closeNcrDoc`-ийн ижил */
+  const closeNcrOk = kind === 'NCR' && !!u && extra.contractor === true && !mine && doc.status === MS_STATUS.approved && !extra.ncrClosed;
   return {
     edit: mine && editable, submit: mine && editable, review: reviewable,
     correction: contractor, reopen: reopenable, clientChecks,

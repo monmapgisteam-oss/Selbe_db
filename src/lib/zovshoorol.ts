@@ -425,7 +425,11 @@ const toDateOnly = (ms: number | null): string | null => {
 /** Маягтаас ирэх утга — `oid` байвал ЗАСВАР, эс бөгөөс НЭМЭЛТ. */
 export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
   oid?: number;
-  tolov: Exclude<Tolov, 'unknown'>;
+  /* ⚠️ 2026-10-06: `null` = төлөв СОНГОГДООГҮЙ — серверийн утга танигдаагүй мөрийг
+     засахаар нээхэд. Урьд нь «Хүлээгдэж буй» болгож нээдэг тул буруу бичсэн
+     «зөвшөөрсөн» мөр хадгалахад чимээгүй «хүлээгдэж буй» болдог байв.
+     `validateZov` нь сонголтыг ЗААВАЛ шаардана, `diffZov` нь `null`-ыг бичихгүй. */
+  tolov: Exclude<Tolov, 'unknown'> | null;
 };
 
 /**
@@ -483,6 +487,10 @@ export function diffZov(before: Zov, d: ZovDraft): Record<string, unknown> {
   for (const k of Object.keys(next)) {
     if (norm(prev[k]) !== norm(next[k])) out[k] = next[k];
   }
+  /* ⚠️ 2026-10-06: хэрэглэгч төлөв СОНГООГҮЙ (`null`) бол төлөвийг ОГТ бичихгүй —
+     танигдаагүй серверийн утгыг таамгаар дарахгүй (`validateZov` үүнийг аль хэдийн
+     хаадаг; энэ нь хоёрдугаар хамгаалалт). */
+  if (d.tolov == null) delete out[F.tolov];
   return out;
 }
 
@@ -531,7 +539,18 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
     edit.adds = JSON.stringify([{ attributes }]);
   }
 
-  const j = await agsFetch(`${URL}/applyEdits`, edit);
+  /* ⚠️ 2026-10-06: ШИНЭ мөрийн хариу алдагдвал (timeout, сүлжээ) сервер БИЧСЭН байж
+     магадгүй. Кэшийг хүчингүй болгоод алдааг ДАМЖУУЛНА — дуудагч (`ZovshoorolEdit.submit`,
+     `isLostResponse`) дахин илгээхийг хааж, хэрэглэгчээр шалгуулна. Эс бөгөөс «Хадгалах»-ыг
+     дахин дарахад ДАВХАРДСАН зөвшөөрөл үүснэ. Шидэгдсэн бүх алдаанд хүчингүй болгох нь
+     хор хөнөөлгүй (дараагийн уншилт л шинэ) — `butetsEdit`-ийг энд импортлохгүй. */
+  let j: Awaited<ReturnType<typeof agsFetch>>;
+  try {
+    j = await agsFetch(`${URL}/applyEdits`, edit);
+  } catch (x) {
+    if (!d.oid) invalidate('ZOVSHOOROL');
+    throw x;
+  }
   const res = [...(j.addResults ?? []), ...(j.updateResults ?? [])] as {
     success?: boolean; objectId?: number; error?: { description?: string };
   }[];
@@ -612,9 +631,12 @@ export function validateZov(
     );
     if (dup) e.shat = tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), dup.ner);
   }
+  /* ⚠️ 2026-10-06: танигдаагүй төлөвтэй мөрд хэрэглэгч төлөвийг ӨӨРӨӨ сонгоно —
+     анхдагч утга тавихгүй (`ZovDraft.tolov`-ийн тайлбар). */
+  if (d.tolov == null) e.tolov = tr('Төлөвийг сонгоно уу — одоогийн утга танигдаагүй.');
   /* ⚠️ Төлөв ба огноо ЗААВАЛ нийцнэ: огноогүй «Зөвшөөрсөн» нь хэзээ
      зөвшөөрөгдснийг мэдэгдэхгүй, огноотой «Хүлээгдэж буй» нь худал. */
-  if (d.tolov !== TOLOV.wait && d.ognoo == null) {
+  if (d.tolov != null && d.tolov !== TOLOV.wait && d.ognoo == null) {
     e.ognoo = tr('«{0}» төлөвт шийдвэрлэсэн огноо заавал шаардлагатай.', d.tolov);
   }
   if (d.tolov === TOLOV.wait && d.ognoo != null) {

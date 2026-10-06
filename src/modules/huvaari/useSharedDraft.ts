@@ -651,7 +651,10 @@ export function useSharedDraft({
       const del = new Map(hdDel.current);
       for (const [k, a] of mark.keys) if ((del.get(k) ?? -1) < a) del.set(k, a);
       hdMeta.current = new Map(); hdDel.current = del; hdPrev.current = new Map();
-      hdExpectEmpty.current = true;
+      /* ⚠️ 2026-10-06: ЗӨВХӨН сэргээгдсэн (`hdReady === key`) үед — сэргээлт явж байхад хаявал диффийн
+         эффект эрт буцаж (`hdReady !== key`), хоосон ноорогт `hdApply` ч дуудагдахгүй тул туг мөнхөд
+         true үлдэж, дараагийн бүх засвар диффлэгдэхгүй/хадгалагдахгүй, шошго «хадгалагдсан» байв. */
+      hdExpectEmpty.current = hdReady.current === key;
       hdCleared.current = Math.max(hdCleared.current, mark.ts);
       hdLastSig.current = '';
       hdWriteLocal(key, hdLocal(), mark);
@@ -890,6 +893,9 @@ export function useSharedDraft({
         if (merged) merged = hdRemapDraft(merged, rm.map);
       }
       hdReady.current = key;
+      /* ⚠️ 2026-10-06: сэргээлт шинэ суурь — хоосролтын хүлээлт энд дуусна (хоосон ноорогт `hdApply`
+         дуудагдахгүй тул туг гацахгүй; `hdClear`-ийн ⚠️) */
+      hdExpectEmpty.current = false;
       /* ⚠️ `hdApply`-тай НЭГ багцад (React 18) — автомат буулгалт ноорогтой зурагдалтыг харна */
       setHdReadyKey(key);
       hdPrevW.current = hdWritableRef.current;
@@ -999,11 +1005,22 @@ export function useSharedDraft({
         if (cs !== hdClearSeq.current) return;
         /* ⚠️ 2026-10-04: `hdLocal` ОДООГИЙН Map-аар дифф хийнэ (`hdDiff`-ийн ⚠️) — сүүлийн
            чирэлтийн алхам нийлүүлэлтээр буцахгүй */
-        const merged = hdMerge(rr.draft ? hdParse(rr.draft.payload) : null, hdLocal());
+        const remote = rr.draft ? hdParse(rr.draft.payload) : null;
+        const merged = hdMerge(remote, hdLocal());
         hdLastSeenAt.current = at0 ?? 0;
         if (!merged) return;
         hdApply(merged);
-        if (hdWritableRef.current && hdSig(merged) !== hdLastSig.current) hdAgain.current = true;
+        /* ⚠️ 2026-10-06: нийлүүлсний дараах ЛОКАЛ-ыг АЛСЫН гарын үсэгтэй харьцуулна. Урьд нь өөрийн
+           сүүлд бичсэн `hdLastSig`-тэй харьцуулдаг тул хамтрагчийн бичилт бүр цуурай бичилт,
+           худал «алсад хараахан хадгалагдаагүй» шошго, гарах анхааруулга үүсгэдэг байв.
+           Ижил бол дахин бичихгүй — `hdLastSig`-ийг локалынхаар тавина (flush · flushNow алгасна).
+           `base.n`-ийг алсынхаар тулгана — мөрийн тоо зөрсөн хоёр клиент ээлжлэн бичиж тойрог үүсгэхгүй. */
+        if (hdWritableRef.current) {
+          const loc = hdLocal();
+          const ls = hdSig(remote ? { ...loc, base: remote.base } : loc);
+          if (remote ? hdSig(remote) === ls : hdIsEmpty(loc)) { if (remote) hdLastSig.current = hdSig(loc); }
+          else hdAgain.current = true;
+        }
       } finally {
         hdBusy.current = false;
         if (hdAgain.current) { hdAgain.current = false; hdSchedule(1500); }

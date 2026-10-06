@@ -174,14 +174,53 @@ export function parseReply(text) {
 
 /* ═══════════════ Дараалал ═══════════════ */
 
+/**
+ * Дараалалд ХҮЛЭЭХ дээд хугацаа.
+ * ⚠️ 2026-10-06: урьд нь хязгааргүй — 3 слот удаан хүсэлтэд (180с хүртэл) эзлэгдвэл
+ *    дараалсан хүсэлт клиентийн 240с-ийн таслалт хүртэл унжиж, хэрэглэгч «гацсан»
+ *    гэж ойлгодог байв. Хэтэрвэл 429 «завгүй».
+ */
+const QUEUE_WAIT_MS = Number(process.env.CLAUDE_QUEUE_WAIT_MS || 60_000);
+
+/** Клиент холболтоо хаасан (цуцалсан) — хариу бичих газаргүй тул статус нь зөвхөн лог */
+const abortError = () =>
+  Object.assign(new ClaudeCodeError("Хүсэлт цуцлагдсан (клиент холболтоо хаасан)", { status: 499 }), { aborted: true });
+
 let running = 0;
 const waiters = [];
-const acquire = () => {
+/**
+ * @param {AbortSignal} [signal] — цуцлагдвал дарааллаас ХАСАГДАНА (слот эзлэхгүй)
+ * @param {number} [waitMs] — дараалалд хүлээх дээд хугацаа (`Infinity` = хязгааргүй)
+ */
+const acquire = (signal, waitMs = QUEUE_WAIT_MS) => {
+  if (signal?.aborted) return Promise.reject(abortError());
   if (running < MAX_PARALLEL) { running++; return Promise.resolve(); }
   if (waiters.length >= MAX_QUEUE) {
     return Promise.reject(new ClaudeCodeError("AI туслах завгүй байна — хэдэн секундийн дараа дахин оролдоно уу.", { status: 429, retryable: true }));
   }
-  return new Promise((r) => waiters.push(r));
+  return new Promise((resolve, reject) => {
+    /* ⚠️ `release()` нь `grant`-ыг дуудаж слотыг ШУУД шилжүүлнэ (`running` хэвээр). Цуцлалт/
+       хугацаа хэтрэлт нь `grant`-ыг жагсаалтаас хасаж слотод хүрэхгүй — синхрон тул уралдаангүй. */
+    let timer = null;
+    const cleanup = () => { if (timer) clearTimeout(timer); signal?.removeEventListener("abort", onAbort); };
+    const grant = () => { cleanup(); resolve(); };
+    const drop = (e) => {
+      const i = waiters.indexOf(grant);
+      if (i >= 0) waiters.splice(i, 1);
+      cleanup();
+      reject(e);
+    };
+    const onAbort = () => drop(abortError());
+    /* ⚠️ `setTimeout(Infinity)` нь ШУУД (1мс) ажилладаг — хязгааргүй үед таймер тавихгүй */
+    if (Number.isFinite(waitMs)) {
+      timer = setTimeout(
+        () => drop(new ClaudeCodeError("AI туслах завгүй байна — хэдэн секундийн дараа дахин оролдоно уу.", { status: 429, retryable: true })),
+        waitMs,
+      );
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    waiters.push(grant);
+  });
 };
 const release = () => {
   const next = waiters.shift();
@@ -216,6 +255,9 @@ export async function selfTest() {
     await callRaw({
       system: "Reply with OK.", messages: [{ role: "user", content: "ping" }],
       tools: [], model: process.env.CLAUDE_SELFTEST_MODEL || "claude-haiku-4-5", bin,
+      /* ⚠️ 2026-10-06: өөрийгөө шалгах нь дарааллын хугацаагаар УНАХГҮЙ — завгүй үед 429
+         авбал `/health` 503 болж AI товч хаагддаг. Урьдын адил хязгааргүй хүлээнэ. */
+      queueWaitMs: Infinity,
     });
     return { ok: true };
   } catch (e) {
@@ -232,25 +274,51 @@ export class ClaudeCodeError extends Error {
 }
 
 /**
- * @param {{system?: string, messages: any[], tools?: any[], model: string, effort?: string, bin: string}} opts
+ * @param {{system?: string, messages: any[], tools?: any[], model: string, effort?: string, bin: string, signal?: AbortSignal}} opts
  * @returns {Promise<{stop_reason: string, content: any[], usage?: any}>}
  */
 export async function callClaudeCode(opts) {
+  const { signal, ...rest } = opts;
+  if (signal?.aborted) throw abortError();
   const key = createHash("sha256")
-    .update(JSON.stringify([opts.model, opts.effort, opts.system ?? "", opts.tools ?? [], opts.messages]))
+    .update(JSON.stringify([rest.model, rest.effort, rest.system ?? "", rest.tools ?? [], rest.messages]))
     .digest("hex");
   const hit = cache.get(key);
   if (hit && hit.until > Date.now()) return { ...hit.value, cached: true };
-  /* ⚠️ Зэрэг ирсэн ИЖИЛ хүсэлт нэг процесс хуваалцана */
-  const pending = inflight.get(key);
-  if (pending) return pending;
-  const p = callRaw(opts).then((value) => {
-    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-    cache.set(key, { value, until: Date.now() + CACHE_TTL });
-    return value;
-  }).finally(() => inflight.delete(key));
-  inflight.set(key, p);
-  return p;
+  /* ⚠️ Зэрэг ирсэн ИЖИЛ хүсэлт нэг процесс хуваалцана.
+     ⚠️ 2026-10-06: ЦУЦЛАЛТ — процесс нь ДОТООД `ctrl`-тэй; хуваалцагч БҮГД цуцалсан үед л
+        алагдана (нэг хэрэглэгч хаасан нь нөгөөгийнхийг таслахгүй). `signal`-гүй дуудагч
+        (`pinned`) байвал хэзээ ч цуцлахгүй. Цуцалсан оруулгыг `inflight`-аас шууд хасна —
+        шинэ ижил хүсэлт үхэж буй процесст наалдахгүй. */
+  let entry = inflight.get(key);
+  if (!entry) {
+    const ctrl = new AbortController();
+    const e = { ctrl, refs: 0, pinned: false, promise: null };
+    e.promise = callRaw({ ...rest, signal: ctrl.signal }).then((value) => {
+      if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+      cache.set(key, { value, until: Date.now() + CACHE_TTL });
+      return value;
+    }).finally(() => { if (inflight.get(key) === e) inflight.delete(key); });
+    inflight.set(key, e);
+    entry = e;
+  }
+  if (!signal) {
+    entry.pinned = true;
+    return entry.promise;
+  }
+  const e = entry;
+  e.refs++;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      reject(abortError());
+      if (--e.refs === 0 && !e.pinned) {
+        if (inflight.get(key) === e) inflight.delete(key);
+        e.ctrl.abort();
+      }
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    e.promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 /** Ачааллын агшин — `/health` ба лог */
@@ -316,8 +384,8 @@ function killTree(child) {
   child.kill();
 }
 
-async function callRaw({ system, messages, tools, model, effort, bin }) {
-  await acquire();
+async function callRaw({ system, messages, tools, model, effort, bin, signal, queueWaitMs }) {
+  await acquire(signal, queueWaitMs);
   /* ⚠️ Хүсэлт бүрд ТУСДАА хоосон хавтас — CLAUDE.md, .claude/ тохиргоо олдохгүй,
      зэрэг хүсэлтүүд бие биеийнхээ файлыг хөндөхгүй. */
   const dir = join(tmpdir(), "selbe-agent-cc", randomUUID());
@@ -366,14 +434,32 @@ async function callRaw({ system, messages, tools, model, effort, bin }) {
         killTree(child);
         reject(new ClaudeCodeError(`Claude Code ${Math.round(TIMEOUT_MS / 1000)} секундэд хариу өгсөнгүй`, { status: 504, retryable: true }));
       }, TIMEOUT_MS);
+      /* ⚠️ 2026-10-06: клиент хаасан (`server.mjs`-ийн `res.on('close')`) — процессын МОДЫГ
+         алж слотыг шууд чөлөөлнө. Урьд нь чат хаагдсан ч процесс 180с хүртэл слот барьж,
+         бусад хэрэглэгч 429 авдаг байв. */
+      const onAbort = () => {
+        clearTimeout(timer);
+        killTree(child);
+        reject(abortError());
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
       child.stdout.on("data", (d) => { out += d; });
       child.stderr.on("data", (d) => { err += d; });
-      child.on("error", (e) => { clearTimeout(timer); reject(new ClaudeCodeError(`claude ажиллуулж чадсангүй: ${e.message}`, { status: 500 })); });
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new ClaudeCodeError(`claude ажиллуулж чадсангүй: ${e.message}`, { status: 500 }));
+      });
       child.on("close", (code) => {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
         if (out.trim()) resolve(out);
         else reject(new ClaudeCodeError(`claude алдаатай дууслаа (код ${code}): ${err.trim().slice(0, 400)}`, { status: 502, retryable: true }));
       });
+      /* ⚠️ 2026-10-06: цуцлалтаар алагдсан процесс руу бичихэд EPIPE — сонсогчгүй 'error'
+         нь релег бүхэлд нь унагана. */
+      child.stdin.on("error", () => {});
       child.stdin.end(transcript(messages), "utf8");
     });
 

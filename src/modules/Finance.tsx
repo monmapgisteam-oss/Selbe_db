@@ -88,7 +88,7 @@ import {
   buildGroups, type FinKind, type GroupRow,
 } from '@/lib/finGroup';
 import { HO_MAIN_FIELDS, sumOrNull } from '@/lib/finCard';
-import { mnt, num, text, cat, date, monthKey, dayKey } from '@/lib/format';
+import { mnt, num, pct, text, cat, date, monthKey, dayKey } from '@/lib/format';
 import { keyedCache } from '@/lib/lazyCache';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { ResizableTable } from '@/components/ResizableTable';
@@ -1443,6 +1443,10 @@ function fmtCell(v: unknown, type: string, name = ''): { text: string; num: bool
      *    нарийвчлалаараа буцаж бичигдэнэ.
      */
     if (PLAIN_INT.has(name)) return { text: String(Math.trunc(x)), num: true };
+    /* ⚠️ 2026-10-06: «Үнэт цаас %» (`zahiramj_unet_tsaas_huvi`) нь 0–1 БУТАРХАЙ (`fields.ts`) — урьд нь
+       «0.09» гэж түүхийгээр гардаг байв. `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул энд ×100. Зурвас/НИЙТ мөрд
+       хоосон хэвээр (`sumText`-ийн ⚠️). Засварын талбар (`editText`) түүхий утгаа хадгална. */
+    if (name === CASHFLOW_NEW.fields.share) return { text: pct(x * 100, 1), num: true };
     const raw = String(x).split('.')[1]?.length ?? 0;
     const dec = Math.abs(x) >= 1000 ? 0 : Math.min(2, raw);
     return { text: num(x, dec), num: true };

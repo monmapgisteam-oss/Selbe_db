@@ -867,6 +867,38 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
 }
 
 /**
+ * ГҮЙЦЭТГЭЛ ИЛГЭЭХ ЭРХ — `company` шатанд тэр багцад томилогдсон эсэх (2026-10-06, аудит #2).
+ *
+ * ⚠️ Урьд нь `saveSubmission`/`submitForReview` хэн ч дуудаж болдог байв — эрх ЗӨВХӨН
+ *    `FillNew.canPerf` (зурагдалт)-д байсан тул консолоос өөр багцад илгээлт үүсгэж/дарж,
+ *    хяналтын тойрог нээж болдог. Дүрэм нь `canPerf`-тэй ЯГ ижил: нэвтрэлт унтраалттай
+ *    эсвэл кодын хатуу `super` → хязгааргүй; эс бөгөөс `bagtsFor(me, 'company')`.
+ * ⚠️ `allowChief`: газрын дарга (эцсийн шат) батлалтын дотор үлдэгдэл нэмэлтийг
+ *    (`hyanaltStore.archiveSubmission` → `residual`, `apply` → шинэ тойрог) өөрийн нэрээр
+ *    бичдэг — тэр багцын `chief` томилгоотой бол зөвшөөрнө.
+ * ⚠️ Node (тест, `tools/`) — хөтчийн сешн биш тул шалгахгүй (`who.requireCap`-ийн загвар).
+ * ⚠️ Хэрэглэгч нь `currentUser()` — дуудагчийн өгсөн нэрт итгэхгүй.
+ * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах мессеж
+ */
+export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor }] = await Promise.all([
+    import('./services'), import('./who'), import('./guitsetgelAcl'),
+  ]);
+  if (!AUTH.appId) return null;
+  const me = currentUser();
+  if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  if (roleForUser(me) === 'super') return null;
+  const cb = bagtsFor(me, 'company');
+  if (cb === null || cb.includes(group)) return null;
+  if (allowChief) {
+    const ch = bagtsFor(me, 'chief');
+    if (ch === null || ch.includes(group)) return null;
+  }
+  return tr('Та «{0}» багцын гүйцэтгэгчээр томилогдоогүй тул гүйцэтгэл илгээх эрхгүй.', group);
+}
+
+/**
  * ИЛГЭЭЛТИЙГ ХАДГАЛНА (upsert `sub|<pkgKey>|<payload.fillMs>`).
  *
  * ⚠️ ТҮЛХҮҮРИЙН ӨДӨР НЬ `payload.fillMs` (2026-09-07) — дуудагчаас ТУСДАА
@@ -932,6 +964,15 @@ export async function saveSubmission(
       ok: false,
       error: tr('Илгээлт хэт том ({0} тэмдэгт, дээд {1}). Хэсэгчлэн илгээх нь ТУСЛАХГҮЙ — дараагийн илгээлт өмнөхтэйгээ нэгтгэгддэг тул хэмжээ буурахгүй. Одоо илгээсэн хэсгээ хянагчаар батлуулсны дараа шинэ илгээлт цэвэр эхэлнэ.', raw.length, SUBMISSION_MAX),
     };
+  }
+  /* ⚠️ 2026-10-06 (аудит #2): ГҮЙЦЭТГЭГЧИЙН ЭРХ lib-д — `FillNew.canPerf`-тэй ижил дүрэм.
+     Үлдэгдэл (`residual`) мөрийг `hyanaltStore.archiveSubmission` газрын даргын нэрээр бичдэг. */
+  if (typeof window !== 'undefined') {
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const grp = PKGS.find((p) => p.key === pkgKey)?.group;
+    if (!grp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
+    const deny = await companyDeny(grp, payload.residual === true);
+    if (deny) return { ok: false, error: deny };
   }
   try {
     const auth = await getAuth();

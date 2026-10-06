@@ -28,7 +28,7 @@ import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { bagtsKey } from '@/lib/services';
 import { TH } from '@/lib/schem';
 import { REVIEW_STALE_DAYS, reviewAgeLevel, type Level } from '@/lib/kpiLevels';
-import { num } from '@/lib/format';
+import { num, dayKey } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 
 /**
@@ -117,10 +117,14 @@ export function fillAgeByPkg(history: BlockHistory, now: number): FillAge[] {
     }
   }
   const out: FillAge[] = [];
+  /* ⚠️ 2026-10-06: ӨДРИЙН ТҮЛХҮҮРЭЭР харьцуулна — бөглөлтийн огноо нь ЛОКАЛ (УБ) өдөр, урьд нь
+     `dayMs` (UTC шөнө дунд) ↔ `now` (одоогийн агшин) хооронд бодож УБ-ын 00:00–08:00-д нас 1 хоногоор
+     ДУТУУ гардаг байв. Одоо өнөөдрийн ЛОКАЛ өдрийг (`dayKey`) мөн `dayMs`-ээр — хоёр тал нэг тэнхлэгт. */
+  const todayMs = dayMs(dayKey(now)) ?? now;
   for (const [pkg, lastFill] of last) {
     const ms = dayMs(lastFill);
     if (ms == null) continue;
-    out.push({ pkg, lastFill, ageDays: daysBetween(ms, now) });
+    out.push({ pkg, lastFill, ageDays: daysBetween(ms, todayMs) });
   }
   return out.sort((a, b) => b.ageDays - a.ageDays || a.pkg.localeCompare(b.pkg, 'mn'));
 }

@@ -210,6 +210,14 @@
   color: var(--bad-ink);
   font-size: 12.5px;
 }
+/* ⚠️ 2026-10-06: серверийн/сүлжээний түүхий мөр — гол (`tr()`) мөрийн доор, жижиг */
+.errorDetail {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  word-break: break-word;
+}
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
@@ -224,12 +232,16 @@
   text-align: left;
 }
 .chip:hover { border-color: var(--hue); color: var(--ink); }
+.chip:disabled { opacity: 0.45; cursor: default; }
 
 .foot {
   display: flex;
   gap: 8px;
   align-items: flex-end;
   padding: 10px 12px;
+  /* ⚠️ 2026-10-06: өргөн горимд самбар `bottom: 0` тул iPhone-ийн гэрийн заагч оролтыг
+     далдалдаг байв — аюулгүй бүсийн доод зай (хуучин 10px-ээс багагүй). */
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -243,11 +255,14 @@
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  /* ⚠️ 2026-10-06: 16px-ээс БАГА байж болохгүй — iOS Safari 16px-ээс жижиг талбарт
+     фокуслахад (нээхэд autofocus) хуудсыг томруулдаг байв. */
+  font-size: max(16px, 1em);
   line-height: 1.4;
   resize: none;
 }
 .input:focus { outline: none; border-color: var(--hue); }
+.input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .send {
   padding: 9px 14px;

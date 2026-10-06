@@ -122,6 +122,46 @@ export type AjilSubmission = {
   payload: string;
 };
 
+/**
+ * Буцаах шалтгааны дээд урт (тэмдэгт) — UI `maxLength` үүнтэй ижил (2026-10-06).
+ * ⚠️ 2026-10-06: урьд нь хязгааргүй — урт шалтгаан `butsaasan_shaltgaan` талбарын уртаас
+ *    хэтэрч `applyEdits` шалтгаангүй унадаг байв. Талбарын бодит урт кодоос мэдэгдэхгүй
+ *    (CSV-ээс AGOL дээр нийтлэгдсэн) тул `huvaariBatlah.REASON_MAX`-тай ИЖИЛ 2000.
+ * ⚠️ merge 2026-10-06: утга нь `huvaariBatlah.REASON_MAX`-аас (дээрх импорт) — хоёр газар тогтмол байхгүй.
+ */
+
+/**
+ * ДАВХАР ИЛГЭЭЛТИЙН ЦУЦЛАЛТЫН ТЭМДЭГ (2026-10-06, `huvaariBatlah.DUP_MARK`-ийн загвар) —
+ * `submitAjil`-ийн давхардал арилгах зам устгал унахад ялагдсан мөрийг `withdrawn`
+ * болгохдоо `butsaasan_shaltgaan`-д бичнэ.
+ * ⚠️ Шийдвэр БИШ — `loadHistory`-оос хасна (`isDupCancel`), эс бөгөөс багцын түүхэнд
+ *    «татсан» мэт харагдаж жинхэнэ шийдвэрийг дарна.
+ */
+export const DUP_MARK = '__davhar_tsutslagdsan__';
+/**
+ * Давхардлын улмаас цуцлагдсан мөр мөн эсэх.
+ * ⚠️ `approverAt == null` нөөц шалгуур: жинхэнэ `withdrawAjil` ҮРГЭЛЖ `approverAt`-ийг бичдэг.
+ */
+export function isDupCancel(x: Pick<AjilSubmission, 'status' | 'reason' | 'approverAt'>): boolean {
+  if (x.status !== AJIL_STATUS.withdrawn) return false;
+  return (x.reason ?? '').trim() === DUP_MARK || x.approverAt == null;
+}
+
+/**
+ * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед).
+ * ⚠️ 2026-10-06 (`huvaariBatlah.sameAsLogin`-ийн хуулбар): `submitAjil`/`decideAjil`/
+ *    `returnStuckAjil` хүрээг `currentUser`-оор шалгаад НЭРИЙГ args-аас бичдэг байсан тул
+ *    консолоос өөр нэр дамжуулж түүхэнд өөр зохиогч/батлагч үлдээх, зохиогч=батлагч
+ *    шалгуурыг тойрох боломжтой байв. Зөрвөл алдаа, эс бөгөөс `null`.
+ */
+function sameAsLogin(name: string): { ok: false; error: string } | null {
+  if (typeof window === 'undefined' || !AUTH.appId) return null;
+  const meNow = currentUser();
+  if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  if (meNow.toLowerCase() !== name.trim().toLowerCase()) return { ok: false, error: tr('Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.') };
+  return null;
+}
+
 const TITLE = 'Selbe_Ajil_Batlah_csv';
 
 /**
@@ -367,8 +407,12 @@ export async function loadPending(pkgKey: string): Promise<AjilSubmission | null
     HEAD_FIELDS,
   );
   const list = rows.map(toSubmission).filter((x): x is AjilSubmission => x != null);
-  /* ⚠️ Хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) СҮҮЛИЙНХ ялна */
-  return list.length ? list[list.length - 1] : null;
+  /* ⚠️ 2026-10-06: хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) ЭХНИЙХ (бага
+     OBJECTID) ялна — `submitAjil`-ийн давхардал арилгах дүрэмтэй ИЖИЛ (`huvaariBatlah.
+     loadPending`-ийн загвар). Урьд «сүүлийнх ялна» байсан тул цуцлагдах ёстой илгээлт
+     хүлээгдэж буй мэт харагдаж, зохиогч түүнийг засаж/татаж байв. */
+  list.sort((a, b) => a.oid - b.oid);
+  return list[0] ?? null;
 }
 
 /** Батлагчийн жагсаалт — хүлээгдэж буй БҮХ илгээлт */
@@ -391,7 +435,8 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<AjilSubmi
     `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${AJIL_STATUS.pending}'`,
     HEAD_FIELDS,
   );
-  const list = rows.map(toSubmission).filter((x): x is AjilSubmission => x != null);
+  /* ⚠️ 2026-10-06: давхардлын цуцлалтыг хасна (`isDupCancel`) — `limit` хасалтын ДАРАА */
+  const list = rows.map(toSubmission).filter((x): x is AjilSubmission => x != null && !isDupCancel(x));
   return list.slice(-limit).reverse();
 }
 
@@ -653,6 +698,10 @@ export async function submitAjil(args: {
        super-ийн нэр дамжуулж алгасахаас. Хөтөчид нэвтрээгүй бол хаана. */
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    /* ⚠️ 2026-10-06: хадгалагдах ЗОХИОГЧ = нэвтэрсэн хүн (`sameAsLogin`) — урьд нь
+       `args.author`-ыг шалгалтгүй бичдэг тул өөр нэрээр илгээгээд ӨӨРӨӨ батлах боломжтой. */
+    const own = sameAsLogin(args.author);
+    if (own) return own;
     const sc = ajilScope(meNow ?? args.author, 'editor');
     if (sc !== null && !sc.includes(args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
@@ -680,6 +729,37 @@ export async function submitAjil(args: {
     });
     if (!editOk(j.addResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('AJIL_BATLAH');
+    /*
+     * ⚠️ ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (2026-10-06, `huvaariBatlah.submitPlan`-ийн 2026-10-01-ний
+     *    загвар). Дээрх `loadPending` шалгалт ба `adds` хоёрын завсарт хоёр хүн/таб зэрэг
+     *    дарвал хоёулаа шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв — хоёулаа
+     *    батлагдвал ижил мөр ХОЁР УДАА буух эрсдэлтэй. Бичсэний ДАРАА дахин уншиж, БАГА
+     *    OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
+     *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ (`loadPending` ч бага нь ялна).
+     *    Устгал унавал `withdrawn` + `DUP_MARK` болгоно (pending-ээс гарна, түүхэнд орохгүй).
+     * ⚠️ `ok:false` буцаахад `useAjil.sendAjil` локал `adds`-ийг ЦЭВЭРЛЭХГҮЙ — мөрүүд
+     *    зохиогчийн хуудсанд үлдэнэ.
+     */
+    const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
+    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — `ok:true`. */
+    if (Number.isFinite(mine)) try {
+      const rows = await query(
+        `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${AJIL_STATUS.pending}'`,
+        `${F.oid},${F.author}`,
+      );
+      const first = rows.map((a) => Number(a[F.oid])).filter(Number.isFinite).sort((a, b) => a - b)[0];
+      if (first != null && first < mine) {
+        const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
+        if (!editOk(del?.deleteResults)) {
+          await arcgisPost(`${url}/applyEdits`, {
+            updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: AJIL_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
+          }).catch(() => null);
+        }
+        invalidate('AJIL_BATLAH');
+        const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
+        return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
+      }
+    } catch { /* давхардлыг `loadPending` (бага OBJECTID ялна) шийднэ */ }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
@@ -741,6 +821,12 @@ export async function decideAjil(args: {
    *          нь дуудагчийн утгад найддаг тул хуурамчлах боломжтой.
    */
   requireCap('ajilApprove');
+  /* ⚠️ 2026-10-06: хадгалагдах БАТЛАГЧ = нэвтэрсэн хүн (`sameAsLogin`). Урьд нь хүрээг
+     `currentUser`-оор шалгаад `F.approver`-т `args.approver`-ыг бичдэг тул консолоос
+     өөр нэр дамжуулж түүхэнд худал батлагч үлдээх, зохиогч=батлагч шалгуурыг
+     (`me === author`) тойрох боломжтой байв. */
+  const own = sameAsLogin(args.approver);
+  if (own) return own;
   const me = args.approver.trim().toLowerCase();
   const claimed = (args.author ?? '').trim().toLowerCase();
   if (me && claimed && me === claimed) {
@@ -908,10 +994,14 @@ export function returnStuckDeny(status: string | null, reason: string): string |
  * ⚠️ Эх хуудсанд ЮУ Ч бичихгүй (бичигдээгүй мөр). Хүрээ — серверийн багцаар.
  */
 export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
-  const reason = (args.reason ?? NO_PARENT_REASON()).trim();
+  /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (`decideAjil`-тай ижил) */
+  const reason = (args.reason ?? NO_PARENT_REASON()).trim().slice(0, REASON_MAX);
   if (typeof window !== 'undefined' && AUTH.appId) {
     const meNow = currentUser();
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    /* ⚠️ 2026-10-06: `F.approver`-т бичигдэх нэр = нэвтэрсэн хүн (`sameAsLogin`) */
+    const own = sameAsLogin(args.me);
+    if (own) return own;
     if (roleForUser(meNow) !== 'super' && !hasCap(meNow, 'ajilApprove')) {
       return { ok: false, error: tr('Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч эсвэл админ буцаана.') };
     }
@@ -984,13 +1074,21 @@ export async function updateAjil(args: {
   }
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const fields = `${F.oid},${F.status},${F.author},${F.approver},${F.pkgKey}`;
+  const fields = `${F.oid},${F.status},${F.author},${F.approver},${F.pkgKey},${F.pkgGroup}`;
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, fields);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ засна.') };
   if (s(cur[0][F.pkgKey]) !== args.payload.pkgKey) {
     return { ok: false, error: tr('Илгээлт өөр багцынх байна — хуудсаа шинэчилнэ үү.') };
+  }
+  /* ⚠️ 2026-10-06: НЭМЭГЧИЙН ХҮРЭЭ — СЕРВЕРИЙН мөрийн багцаар (`submitAjil`-ийн дүрэм,
+     `decideAjil`-ийн «серверийн багцаар» загвар). Урьд нь зөвхөн зохиогч + `addRow`
+     шалгадаг тул хуваарилалтаас хасагдсан зохиогч хуучин илгээлтээ засаж чаддаг байв. */
+  if (AUTH.appId) {
+    const sc = ajilScope(currentUser() ?? me, 'editor');
+    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+      return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
   }
   const gone = (st: string | null, by: string | null) => (by
     ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, st ?? '')

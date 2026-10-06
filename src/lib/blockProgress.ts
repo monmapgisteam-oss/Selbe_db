@@ -22,7 +22,7 @@
  * Нүд бүрээр ХАМГИЙН СҮҮЛИЙН огноог авна: бөглөх хуудас нь өөрчилсөн нүдээ
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
-import { TASK_SHEET, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
+import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, normalizeTaskNo, isConstructionNo } from './services';
 import { loadSheetRows, sheetBlockKeys } from '@/modules/sheet/sheetRows';
 import { register, type DataKey } from './dataBus';
 import { dayKey } from './format';
@@ -327,6 +327,28 @@ export function universeKeys(
     }
   }
   return [...out];
+}
+
+/**
+ * БЛОКИЙН ТҮВШНИЙ ТООЛОЛ (`PROGRESS_LEVELS`: 0–25 · 25–50 · …) — хуваарь нь `keys`
+ * (бөглөх хуудасны блок) ∪ хэмжигдсэн түлхүүр; тайлагнаагүй блок 0%-ийн түвшинд.
+ * ⚠️ 2026-10-06: ГАНЦ дүрэм — Дашбоард (тойм · 02 · 04), Удирдлагын тайлан (дэлгэц ·
+ *    PDF · инфографик · AI — `prog.levels`) ба 05 «Блокийн төлөв» (PkgProg) ЭНЭ функцээр.
+ *    Урьд нь Дашбоард бөглөх хуудасны хуваариар (тайлангүй = 0%), Удирдлагын тайлан
+ *    зөвхөн хэмжигдсэн блокоор, PkgProg газрын зургийн давхаргын блокоор тоолдог тул
+ *    нэг тархалт гурван өөр тоо өгдөг байв. Давхардсан түлхүүрийг НЭГ удаа тоолно.
+ * @param keys хуваарийн түлхүүр (`universeKeys` / `BagtsRow.keys`); хоосон бол зөвхөн хэмжигдсэн блок
+ */
+export function levelCounts(pm: BlockProgressMap, keys: Iterable<string>): number[] {
+  const counts = PROGRESS_LEVELS.map(() => 0);
+  const all = new Set<string>(keys);
+  pm.forEach((_, k) => all.add(k));
+  all.forEach((k) => {
+    const v = pm.get(k)?.overall;
+    const x = v != null && Number.isFinite(v) ? v : 0;
+    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x / 25)))] += 1;
+  });
+  return counts;
 }
 
 /**

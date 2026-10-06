@@ -422,7 +422,10 @@ export function Zovshoorol() {
         <Detail
           z={pick}
           canEdit={canEdit}
-          onEdit={() => { setEdit({ ...pick, tolov: pick.tolov === 'unknown' ? TOLOV.wait : pick.tolov }); setPick(null); }}
+          /* ⚠️ 2026-10-06: танигдаагүй төлөв → `null` (СОНГОГДООГҮЙ). Урьд нь
+             «Хүлээгдэж буй» болгож нээдэг тул буруу бичсэн «зөвшөөрсөн» мөр хадгалахад
+             чимээгүй хүлээгдэж буй болдог байв (`ZovDraft.tolov`-ийн тайлбар). */
+          onEdit={() => { setEdit({ ...pick, tolov: pick.tolov === 'unknown' ? null : pick.tolov }); setPick(null); }}
           onClose={closePick}
         />
       )}

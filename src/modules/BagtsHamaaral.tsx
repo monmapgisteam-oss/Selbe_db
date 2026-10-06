@@ -84,7 +84,10 @@ export function BagtsHamaaral() {
   /* ⚠️ 2026-10-06 (аудит): `true` = хадгалагдсан — нэмэх мөр ЗӨВХӨН үүнд хаагдана (урьд нь
      хариу ирэхээс өмнө хаагдаж, унасан бол сонголт алга болдог байв). Шидсэн алдааг барина
      (`catch` байгаагүй — unhandled rejection). Амжилтгүй бол («аль хэдийн байна», зэрэг засвар)
-     бүртгэлийг ДАХИН уншина — эс тэгвээс хуучин жагсаалт дээр дахин дахин оролдоно. */
+     бүртгэлийг ДАХИН уншина — эс тэгвээс хуучин жагсаалт дээр дахин дахин оролдоно.
+     ⚠️ merge 2026-10-06: `saved`-ийг арилгаж `depQ.retry`-гаар ч дахин татна (tezu-bonu) —
+        `loadDeps` унавал ч хуучин жагсаалт үлдэхгүй. */
+  const retryDeps = depQ.retry;
   const change = useCallback<OnChange>(async (op, dep) => {
     if (busy) return false;
     setErr('');
@@ -98,9 +101,9 @@ export function BagtsHamaaral() {
     } finally {
       setBusy(false);
     }
-    try { setSaved(await loadDeps()); } catch { /* дахин уншилт унавал хуучнаараа — алдаа дээр харагдсан */ }
+    try { setSaved(await loadDeps()); } catch { setSaved(null); retryDeps?.(); }
     return false;
-  }, [busy]);
+  }, [busy, retryDeps]);
 
   if (finQ.state === 'loading') return <div className={s.wrap}><p className={s.loading}>{tr('Ачаалж байна…')}</p></div>;
   if (finQ.state === 'error') {

@@ -20,7 +20,7 @@ const TAP_PX = 8;
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
-  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
+  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain,
 }: {
   plan: PlanRow[];
   blk: number;
@@ -47,6 +47,8 @@ export function useDragPlan({
   /** Хуваалцсан нооргийн нүд → хэн бичсэн (бусдын нүдийг агшнаар дарахгүй) */
   hdMeta: React.RefObject<Map<string, { at: number; user: string }>>;
   meRef: React.RefObject<string>;
+  /** ⚠️ Уялдааны гинж (`propagate`) — ЗӨВХӨН төлөвлөгөө табд (`kind === 'plan'`, 2026-10-06) */
+  chain: boolean;
 }) {
   /**
    * ЧИРЭЛТИЙГ БУЦААХ мэдээлэл — popup-ыг ЦУЦЛАХАД сэргээнэ.
@@ -86,6 +88,12 @@ export function useDragPlan({
   const far = useRef(false);
   const scroll = useRef(false);
   /**
+   * ⚠️ ЧИРЭХГҮЙ ЗУРВАСЫН ДАРАЛТ (2026-10-06) — эрхгүй · түгжээтэй · бичиж байгаа ·
+   * бүлгийн зурвас. Цонхыг `onUp`-д л (хөдөлгөөн ≤ `TAP_PX`) нээнэ (`onDown`-ийн ⚠️).
+   * `ev` — эгнээ рүү дэвжсэн ИЖИЛ `pointerdown`-ийг таних.
+   */
+  const press = useRef<{ oid: number; x: number; y: number; ev: Event } | null>(null);
+  /**
    * ЭНЭ ЧИРЭЛТИЙН ХӨДӨЛГӨСӨН мөрүүд (oid) — цуцлахад ЗӨВХӨН эдгээрийг буцаана
    * (2026-09-24). Урьд нь агшин (`snap`)-аас зөрсөн БҮХ мөрийг буцаадаг тул
    * чирэлт/цонхны хооронд хамт ажиллагчийн алсаас нийлсэн нүд ч «цуцлагдаж»
@@ -106,11 +114,15 @@ export function useDragPlan({
     const next = r.spans.slice();
     next[blk] = span;
     /* ⚠️ ГИНЖ: чирсэн мөрөөс хамаарах бүх ажил (урагш ч, хойш ч) дагана.
-       Хамаарал байхгүй бол `propagate` нь зөвхөн энэ мөрийг л буцаана. */
-    const ch = propagate(plan, n, new Map([[at, next]]));
+       Хамаарал байхгүй бол `propagate` нь зөвхөн энэ мөрийг л буцаана.
+       ⚠️ 2026-10-06: ГЭРЭЭ табд (`!chain`) гинж ҮГҮЙ — уялдаа нь зөвхөн
+       төлөвлөгөөнд; урьд нь гэрээний зурвас чирэхэд хамаарагчдын ГЭРЭЭНИЙ огноо
+       чимээгүй шилждэг байв. Зөвхөн чирсэн мөр. */
+    const ov = new Map([[at, next]]);
+    const ch = chain ? propagate(plan, n, ov) : ov;
     for (const i of ch.keys()) if (plan[i]) dragTouched.current.add(plan[i].oid);
     applyChanges(ch);
-  }, [plan, blk, n, applyChanges]);
+  }, [plan, blk, n, applyChanges, chain]);
 
   /**
    * ⚠️ ДАРАХАД ШУУД БИЧИХГҮЙ. Урьд нь `pointerdown` дээр 1 хоногийн муж
@@ -131,13 +143,17 @@ export function useDragPlan({
        байгаа · бүлэг) зурвас (`mode !== 'new'`) дээр дарвал нэр дээр дарсантай
        (`onPick`) ИЖИЛ цонх нээгдэнэ — эрхгүй бол цонх нь зөвхөн харуулна.
        Батлагдаагүй нэмэлт мөрд (сөрөг oid) нэрийнх шиг цонх ГАРАХГҮЙ.
-       `pointerdown` дээр нээх нь аюулгүй: цонхны ар тал зөвхөн өөр дээрээ
-       ЭХЭЛСЭН даралтаар хаагдана (`PlanModal`-ийн `downOnBack`). */
+       ⚠️ 2026-10-06: `pointerdown` дээр НЭЭХГҮЙ — мэдрэгч дэлгэцэд хуанлийг
+       гүйлгэх гэж шудрахад л цонх үсрэн гардаг байв. Одоо даралтыг (`press`)
+       тэмдэглээд `onUp`-д хөдөлгөөн ≤ `TAP_PX` бол л нээнэ; гүйлгээ эхэлбэл хөтөч
+       `pointercancel` илгээж `onCancel` даралтыг цэвэрлэнэ. */
     const openBar = () => {
       if (mode === 'new' || r.oid < 0) return;
-      setSel(r.oid);
-      setModal(r.oid);
+      press.current = { oid: r.oid, x: e.clientX, y: e.clientY, ev: e.nativeEvent };
     };
+    /* ⚠️ Зурвасын даралт эгнээ (`mode === 'new'`) рүү ДЭВЖИНЭ — тэр нь ИЖИЛ үйл
+       явдал бол даралтыг арилгахгүй; шинэ даралт бол хуучин үлдэгдлийг цэвэрлэнэ. */
+    if (press.current?.ev !== e.nativeEvent) press.current = null;
     if (!canEdit || locked || busy) { openBar(); return; }
     /* ⚠️ БҮЛГИЙН МУЖ ГАРААР ЗАСАГДАХГҮЙ (2026-09-06, хэрэглэгч: «бүлгийн
        range өөрчлөх боломжгүй, ажлын range-ээс хамаарч автоматаар»).
@@ -203,7 +219,15 @@ export function useDragPlan({
     }
   };
 
-  const onUp = () => {
+  const onUp = (e?: PEvt<HTMLElement>) => {
+    /* ⚠️ Чирэхгүй зурвасын ТОВШИЛТ → цонх (2026-10-06, `press`-ийн ⚠️) */
+    const p = press.current;
+    press.current = null;
+    if (p && e && Math.max(Math.abs(e.clientX - p.x), Math.abs(e.clientY - p.y)) <= TAP_PX) {
+      undoRef.current = null;
+      setSel(p.oid);
+      setModal(p.oid);
+    }
     /* Хөдөлгөөнгүй товшилт: хоосон мөрд 1 хоногийн муж, эсрэг тохиолдолд
        зөвхөн сонголт (дээрх тайлбар). */
     const blank = !!drag && !moved.current && !far.current && !scroll.current && drag.mode === 'new' && !drag.orig;
@@ -271,6 +295,7 @@ export function useDragPlan({
    * popup НЭЭХГҮЙ, «Хаах»-тай ижил агшнаар (`rollback`) буцаана.
    */
   const onCancel = () => {
+    press.current = null; // ⚠️ гүйлгээ эхэлсэн — зурвасын цонх нээхгүй (2026-10-06)
     if (drag && moved.current && !busy && !locked) {
       rollback({
         oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,

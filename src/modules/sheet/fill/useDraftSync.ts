@@ -165,6 +165,11 @@ export function useDraftSync(p: {
     for (const [, a] of d.byAt ?? []) see(a);
     for (const [, a] of d.del ?? []) see(a);
     for (const mk of d.marks ?? []) see(mk[3]);
+    /* ⚠️ 2026-10-06: «Шинэчлэгдсэн огноо»-ны агшин (`asOfAt`) ба хүн бүрийн зорилтын агшин
+       (`tgt[3]`) ч ЭНЭ цагаар тамгалагдаж `mergeDrafts`-д харьцуулагддаг — урьд нь цаг тэднээр
+       урагшлахгүй тул цаг нь хоцорсон төхөөрөмжийн ХОЖУУ өөрчлөлт «эрт» болж ялагддаг байв. */
+    see(d.asOfAt);
+    for (const e of d.tgt ?? []) see(e[3]);
     clockRef.current = m;
   }, []);
   /**
@@ -672,8 +677,11 @@ export function useDraftSync(p: {
       ? compactDraft(mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew,
         { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null })
       : null;
+    /* ⚠️ 2026-10-06: локалд НИЙЛҮҮЛЖ бичнэ (`writeDraftLS`) — `merged` нь `await`-аас ӨМНӨХ `cur`-аас
+       угсрагдсан тул урьд нь `saveDraftLS`-ээр дарж бичихэд завсарт бичсэн нүд локалаас арилдаг байв. */
+    let mergedLS: Draft | null = null;
     if (merged) {
-      saveDraftLS(want, merged);
+      mergedLS = writeDraftLS(want, merged).draft;
       /* ⚠️ Багц солигдсон бол ТӨЛӨВТ буулгахгүй (дээрх ⚠️) */
       if (pkgKeyRef.current === want) applyMarks(marksOf(merged));
     }
@@ -683,7 +691,12 @@ export function useDraftSync(p: {
       ? await saveRemoteDraft(want, merged.t, JSON.stringify(merged), { expectAt: at0 ?? null })
       : { ok: false as const, error: rr.ok ? '' : rr.error };
     if (!r.ok && 'conflict' in r && r.conflict && merged) {
-      if (!remoteQueue.current || remoteQueue.current.pkg === want) remoteQueue.current = { pkg: want, draft: merged };
+      /* ⚠️ 2026-10-06: ИЖИЛ багцын дараалал байвал ДАРАХГҮЙ — тэр нь завсарт бичсэн нүдтэй шинэ
+         ноорог (урьд нь хуучин `merged`-ээр солигдож тэр нүд алсад очдоггүй байв). Тэмдэг алдагдахгүйн
+         тулд дарааллыг ШИНЭ тал болгож нийлүүлнэ. Дараалалгүй бол локалын НИЙЛБЭР (`mergedLS`). */
+      const q0 = remoteQueue.current;
+      if (!q0) remoteQueue.current = { pkg: want, draft: mergedLS ?? merged };
+      else if (q0.pkg === want) remoteQueue.current = { pkg: want, draft: mergeDrafts(merged, q0.draft) ?? q0.draft };
       setRemoteTick((n) => n + 1);
       return;
     }
@@ -1986,7 +1999,11 @@ export function useDraftSync(p: {
          * хувилбарын хурдтай ЯГ ТЭНЦҮҮ болно.
          */
         const at = await readRemoteDraftAt(q.pkg);
-        if (!live() && !allowStale) return;
+        /* ⚠️ 2026-10-06: `await`-ийн завсарт багц солигдсон бол (`!live()`) ХАЯХГҮЙ — дараалал аль хэдийн
+           хоосон (`q` нь энд л үлдсэн) тул урьд нь `if (!live() && !allowStale) return` ноорогийг
+           ЧИМЭЭГҮЙ алдагдуулдаг байв (FillNew-ийн солих эффект зөвхөн хоосон бус дараалал илгээнэ).
+           Одоо ХУУЧИН багцад read-merge-write-ийг гүйцээнэ (`allowStale`-тэй ижил горим) — төлөв/ref
+           зөвхөн `live()` үед шинэчлэгдэнэ, унавал `staleWarn`. */
         if (at === undefined) {
           /* Уншиж чадсангүй — бичихгүй: алсын агуулга үл мэдэгдэх тул бичих нь
              бусдын ажлыг устгах эрсдэлтэй. Локал бүрэн бүтэн. */
@@ -2004,9 +2021,10 @@ export function useDraftSync(p: {
            нь бусад клиентийн цагаар бичигддэг тул БАГА болж ч болно (мөр дахин
            үүссэн, цаг хоцорсон бичигч) — тэр үед `>` уншилтыг алгасаж, бусдын
            нүдийг дарж бичдэг байв. Сүүлд ӨӨРӨӨ тусгасан хувилбараас ӨӨР л бол уншина. */
-        if (at !== null && (allowStale || at !== lastMergedRef.current)) {
+        /* ⚠️ 2026-10-06: завсарт солигдсон (`!live()`) бол ч `lastMergedRef` шинэ багцынх — заавал уншина */
+        if (at !== null && (allowStale || !live() || at !== lastMergedRef.current)) {
           const rr = await readRemoteDraft(q.pkg);
-          if (!live() && !allowStale) return;
+          /* ⚠️ 2026-10-06: энд ч солигдсон бол хаяхгүй — дээрх ⚠️ */
           if (!rr.ok) {
             if (!live()) { staleWarn(q.pkg, rr.error); return; }
             setRemoteState({ kind: 'fail', why: rr.error });
@@ -2033,7 +2051,8 @@ export function useDraftSync(p: {
          */
         const outDraft: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at != null ? at + 1 : 0) };
         const outBody = JSON.stringify(outDraft);
-        if (outBody.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); return; }
+        /* ⚠️ 2026-10-06: солигдсон багцад ч чимээгүй биш — `staleWarn` */
+        if (outBody.length > REMOTE_MAX) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
         /*
          * ⚠️ ӨӨРЧЛӨГДӨӨГҮЙ БОЛ ОГТ БИЧИХГҮЙ (2026-09-08, гүйцэтгэл).
          * Хадгалах эффект нь `pending` ижил байхад ч дахин ажиллаж болно

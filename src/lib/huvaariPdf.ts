@@ -415,8 +415,15 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   })();
   /* ⚠️ Огноотой өвөг ч үгүй мөр (жинхэнэ хуваарьгүй) л хасагдана */
   const hasDate = (r: HvPdfRow) => !!(r.bar || r.inh || r.ref || (x.hasActual && r.aStart != null));
+  /*
+   * ⚠️ 2026-10-06: «ОДОО» ТЭНХЛЭГ ДЭЭР — ОРОН НУТГИЙН ханын цаг (UTC-шөнө-дундын тэнхлэгт).
+   *    Тэнхлэг/зурвас нь UTC-шөнө-дундын огноо; урьд нь `dayStart(x.now)` (UTC өдөр) тул
+   *    Улаанбаатарт 00:00–08:00 хооронд «Өнөөдөр» шугам, «ирэх N сар» цонх ӨЧИГДӨР дээр
+   *    буудаг байв (хэвлэсэн огнооны `dayKey`-ийн ⚠️-тэй ижил дүрэм). Цагийн бутархай хадгалагдана.
+   */
+  const nowAx = x.now - new Date(x.now).getTimezoneOffset() * 60_000;
   /* Хугацааны цонх — өнөөдрөөс ирэх N сар (календарийн сар) */
-  const today = dayStart(x.now);
+  const today = dayStart(nowAx);
   const win: [number, number] | null = opts.months
     ? (() => {
       const d = new Date(today);
@@ -425,13 +432,13 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     : null;
   const inWin = (r: HvPdfRow) => {
     if (!win) return true;
-    const rg = rangeOf([r], x.now, x.hasActual);
+    const rg = rangeOf([r], nowAx, x.hasActual);
     return !!rg && rg[0] <= win[1] && rg[1] >= win[0];
   };
   /* ⚠️ Өвлөсөн мужтай мөр өөрийн төлөвгүй — «зөвхөн идэвхтэй» шүүлтэд орохгүй */
   const isActive = (r: HvPdfRow) => !opts.active || (!!r.bar && (r.st === 'late' || r.st === 'run'));
   const dated = select(rowsIn, (r) => hasDate(r) && inWin(r) && isActive(r), hasDate);
-  const all0 = rangeOf(dated, x.now, x.hasActual);
+  const all0 = rangeOf(dated, nowAx, x.hasActual);
   /* Цонхтой бол муж нь цонхоор хязгаарлагдана */
   const clampR = (rg: [number, number] | null): [number, number] | null =>
     rg && win ? [Math.max(rg[0], win[0]), Math.min(rg[1], win[1])] : rg;
@@ -452,7 +459,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     const parts: Part[] = [];
     split(dated, [], parts, G.split);
     for (const p of pack(parts, G.perPage)) {
-      const rg = clampR(rangeOf(p.rows, x.now, x.hasActual));
+      const rg = clampR(rangeOf(p.rows, nowAx, x.hasActual));
       if (!rg) continue;
       sections.push({ title: p.path.filter(Boolean).join('  ›  ') || x.pkg, rows: p.rows, axis: makeAxis(rg[0], rg[1], GW) });
     }
@@ -499,8 +506,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     }
     /* ⚠️ «Өнөөдөр» шошготой давхцах сар/оны шошгыг түүний АРД шилжүүлнэ —
        цонхтой PDF-д өнөөдөр нь тэнхлэгийн эхлэл тул эхний сартай яг давхцдаг. */
-    const nowIn = x.now >= ax.from && x.now < ax.from + ax.days * DAY;
-    const nowX = nowIn ? xOf(ax, x.now) : -1e9;
+    const nowIn = nowAx >= ax.from && nowAx < ax.from + ax.days * DAY;
+    const nowX = nowIn ? xOf(ax, nowAx) : -1e9;
     for (const l of topLabels(ax)) {
       const lx = l.x + 2 > nowX - 30 && l.x + 2 < nowX + 34 ? nowX + 34 : l.x + 2;
       txt.push({ text: l.lab, fontSize: 8, bold: true, color: C.ink, relativePosition: { x: lx, y: -HEAD_H + 3 } });
@@ -508,7 +515,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     if (nowIn) {
       txt.push({
         text: tr('Өнөөдөр'), fontSize: 6.5, bold: true, color: C.bad,
-        relativePosition: { x: xOf(ax, x.now) + 2, y: -HEAD_H + 3 },
+        relativePosition: { x: xOf(ax, nowAx) + 2, y: -HEAD_H + 3 },
       });
     }
     return [...left, { stack: [{ canvas: cv }, ...txt, ...gridOf(ax, nRows)] }];
@@ -547,8 +554,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
         lineColor: t.kind === 'minor' ? C.grid : C.gridBig,
       });
     }
-    if (x.now >= ax.from && x.now < ax.from + ax.days * DAY) {
-      const lx = xOf(ax, x.now);
+    if (nowAx >= ax.from && nowAx < ax.from + ax.days * DAY) {
+      const lx = xOf(ax, nowAx);
       g.push({ type: 'line', x1: lx, y1: -len, x2: lx, y2: 0, lineWidth: 0.9, lineColor: C.bad, dash: { length: 3, space: 2 } });
     }
     return g.length ? [{ canvas: g, relativePosition: { x: 0, y: 0.7 + len } }] : [];
@@ -574,7 +581,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       });
     }
     if (x.hasActual && r.aStart != null) {
-      const s = clip(ax, { start: r.aStart, end: r.aEnd ?? Math.max(r.aStart, x.now) }) ?? { start: ax.from, end: ax.from - DAY };
+      const s = clip(ax, { start: r.aStart, end: r.aEnd ?? Math.max(r.aStart, nowAx) }) ?? { start: ax.from, end: ax.from - DAY };
       if (s.end < s.start) { /* цонхноос гадуур — зурахгүй */ } else if (r.aEnd != null) {
         cv.push({ type: 'rect', x: xOf(ax, s.start), y: ROW_H - 1.6, w: wOf(ax, s), h: 1.6, color: C.data });
       } else {
@@ -618,7 +625,10 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
        * нэр ч), үгүй бол зурвасын ГАДНА баруун, зай үгүй бол зүүн талд.
        */
       const d = spanDays(r.bar);
-      const pc = act != null ? ` · ${Math.round(act * 100)}%` : '';
+      /* ⚠️ 2026-10-06: 0 < act < 1 бол 1..99 — урьд нь `Math.round` 0.996-г «100%», 0.004-ийг «0%» гэж
+         харуулж, дуусаагүй ажлыг дууссан / эхэлсэн ажлыг эхлээгүй мэт харагдуулдаг байв. */
+      const pv = act == null ? null : act > 0 && act < 1 ? Math.min(99, Math.max(1, Math.round(act * 100))) : Math.round(act * 100);
+      const pc = pv != null ? ` · ${pv}%` : '';
       const full = `${iso(r.bar.start)} – ${iso(r.bar.end)} · ${d}${tr('х')}${pc}`;
       const cw = LAB_FS * 0.52;
       const fullW = full.length * cw;

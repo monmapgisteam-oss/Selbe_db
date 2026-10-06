@@ -15,12 +15,12 @@ import { t as tr } from '@/lib/i18nCore';
 import s from '@/components/agent.module.css';
 
 /**
- * ⚠️ 2026-10-06 (аудит): AI-ийн реле хаяг тохируулагдсан эсэх. `NEXT_PUBLIC_AGENT_API`
- *    хоосон бол товч ОГТ гарахгүй — урьд нь товч гарч, дарахад «ажиллахгүй байна» л
- *    харуулдаг байв. `agent/client.AGENT_APIS`-тай ИЖИЛ задлал (таслал, хоосон зай) —
- *    энэ файл `@/lib/agent/*`-ийг импортлохгүй тул (дээрх ⚠️) энд давтав.
+ * Реле хаяг тохируулсан эсэх — `client.ts`-ийн `AGENT_APIS`-тэй ИЖИЛ дүрэм.
+ * ⚠️ 2026-10-06: `@/lib/agent/client`-ээс ИМПОРТЛОХГҮЙ (дээрх салгалтын ⚠️) — env-ийг
+ *    шууд уншина (build үед орлуулагдана). Хаяггүй build-д товч ОГТ гарахгүй; урьд нь
+ *    харагдаж, нээхэд оролт идэвхтэй байсан тул асуулт бүр алдаагаар буцдаг байв.
  */
-const HAS_AGENT = (process.env.NEXT_PUBLIC_AGENT_API ?? '').split(',').some((u) => u.trim() !== '');
+const CONFIGURED = (process.env.NEXT_PUBLIC_AGENT_API ?? '').split(',').some((u) => u.trim());
 
 /** Нээх товч — цонх хаалттай үед харагдана */
 export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -32,7 +32,7 @@ export function AgentButton({ open, onToggle }: { open: boolean; onToggle: () =>
     if (wasOpen.current && !open) ref.current?.focus();
     wasOpen.current = open;
   }, [open]);
-  if (open || !HAS_AGENT) return null;
+  if (open || !CONFIGURED) return null;
   return (
     <button ref={ref} type="button" className={s.fab} onClick={onToggle} aria-pressed={open} title={tr('AI туслах')}>
       <Spark />

@@ -994,9 +994,18 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
    *    буруу нүдийг ногоон болгохгүй, доор «дахин хянана уу» гэж хэлнэ.
    *    Агуулга татагдтал (`changes == null`) хоосон.
    */
+  /*
+   * ⚠️ 2026-10-06 (аудит #4): ХУУЧИРСАН ЭСЭХ (`subAt ≤ okWrittenAt`) ШИНЭ (v2) хэлбэрт Ч
+   *    үйлчилнэ. Урьд нь зөвхөн хуучин индексийн хэлбэрт шалгагддаг тул мөрийн ID-аар
+   *    бичигдсэн зөвшөөрөл агуулга дахин илгээгдсэний ДАРАА ч ногоон суудаг байв — доорх
+   *    «Дахин шалгалтад ч ХООСНООС … ХУУЧИН агуулгын зөвшөөрөл» ⚠️-тэй зөрчилтэй. Одоо
+   *    агуулга зөвшөөрөл бичигдсэнээс хойш шинэчлэгдсэн (эсвэл мэдэхгүй) бол ХООСНООС.
+   */
   const seedRes = useMemo(() => {
     if (!recheckSeed || changes == null) return { keys: new Set<string>(), unknown: 0 };
-    const trusted = remapped === false && subAt != null && Number.isFinite(okWrittenAt) && subAt <= okWrittenAt;
+    const fresh = subAt != null && Number.isFinite(okWrittenAt) && subAt <= okWrittenAt;
+    if (!fresh) return { keys: new Set<string>(), unknown: 0 };
+    const trusted = remapped === false && fresh;
     return resolveOk(parseOkCells(curOkRaw), okRows, trusted);
   }, [recheckSeed, curOkRaw, changes, okRows, remapped, subAt, okWrittenAt]);
   const seed = seedRes.keys;
@@ -1295,10 +1304,14 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                       *    явдаг байв (`hyanaltStore.recheck`-ийн fail-closed зорилгын
                       *    эсрэг). Батлах товчны `changes == null` дүрэмтэй ижил.
                       */}
-                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null}
-                      title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : undefined}
+                    {/* ⚠️ 2026-10-06 (аудит #3): ДЭЭШ ИЛГЭЭХ нь ердийн батлалттай ИЖИЛ «нүд бүрийг
+                        гараар» дүрэмтэй — урьд нь `allOk` шалгагддаггүй тул дахин илгээгдсэн
+                        (хараагүй) агуулга нэг ч нүд тэмдэглэлгүй дээш явдаг байв. */}
+                    <button className={`${s.btn} ${s.ok}`} disabled={busy || lackBlocks || changes == null || (changes.length > 0 && !allOk)}
+                      title={changes == null ? tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй') : approveWhy}
                       onClick={() => run(() => recheck(cur.__oid, 'ok', '', who, reBy, me, bypass, undefined, subAt))}>
                       {RECHECK_UP[reBy]}
+                      {changes != null && changes.length > 0 && !allOk && ` (${bad.length})`}
                     </button>
                     {/* ⚠️ ДООШ БУЦААХ нь `changes == null`-ээр ХААГДАХГҮЙ — ердийн
                         «Буцаах» товчтой ижил: агуулга олдохгүй (хуучин мөр, архивын
@@ -1320,6 +1333,10 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                     <div className={s.blockedWhy} role="note">
                       {tr('Илгээлтийн агуулга татагдаагүй тул шийдвэр гаргах боломжгүй')}
                     </div>
+                  )}
+                  {/* ⚠️ 2026-10-06 (аудит #3): нүд дутуу тул хаалттай шалтгаан ил */}
+                  {!busy && !lackBlocks && changes != null && approveWhy && (
+                    <div className={s.blockedWhy} role="note">{approveWhy}</div>
                   )}
                   {/* ⚠️ 2026-10-01: өмнөх зөвшөөрлийг мөртэй тулгаж чадаагүй — ногоон болгохгүй,
                       ил «дахин хянах» (`hyanaltOkCells.resolveOk`) */}

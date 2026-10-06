@@ -17,7 +17,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import { OpacityPanel } from '@/components/OpacityPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { usePlanTotals, type Totals } from '@/lib/totals';
+import { usePlanTotals, failedTotals, completeSum, retryTotals, type Totals } from '@/lib/totals';
 import { queryFeatures, type Row } from '@/lib/query';
 import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
@@ -33,7 +33,7 @@ import {
 import { loadFinData, lagOf, lagSeriesOf, pkgMonthsMap, physLatest, type FinData, type MonthPt } from '@/modules/Finance';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
 import {
-  loadBlockProgress, loadBlockHistory, progressSeries, latestMean,
+  loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
@@ -391,6 +391,55 @@ const statusWhere = (label: string): string =>
 /* ⚠️ 2026-10-06: `ERR_MARK` · `AsyncLike` · `dots` · `hVal` · `FailVal` нь `./HeadKpi.tsx`-д
    (HeadKpi-тэй хамт нүүв) — дээд импортыг үз. */
 const failedOf = (...qs: AsyncLike[]): AsyncLike | null => qs.find((q) => q.state === 'error') ?? null;
+
+/**
+ * ДУТУУ НИЙЛБЭР ГАРГАХГҮЙ — `usePlanTotals`-ын хэсэгчилсэн Map (зарим давхарга унасан).
+ * ⚠️ 2026-10-06: `usePlanTotals` нь БҮГД унавал л алдаа, ЗАРИМ нь унавал дутуу Map-ыг «бэлэн»
+ *    гэж буцаадаг. 05 · 06 · 09-ийн нийлбэр унасан давхаргыг АЛГАСЧ бодогддог тул нэг давхарга
+ *    унахад нийт урт/тоо/талбай ЧИМЭЭГҮЙ бага гардаг байв. Одоо дутуу Map нь алдааны төлөв
+ *    (`Data` «Дахин оролдох» → `retryTotals`), толгойн тоо «⚠» + «N давхарга татагдсангүй».
+ */
+const knownIds = (ids: readonly string[]) => ids.filter((id) => LAYER_BY_ID[id]);
+function completeTotals(q: Async<Map<string, Totals>>, ids: readonly string[]): Async<Map<string, Totals>> {
+  if (q.state !== 'ready') return q;
+  /* ХООСОН Map = хүсэлт УНТРААЛТТАЙ (`enabled: false`, хэсэг хаалттай) — бүгд унавал `usePlanTotals`
+     алдаа шиддэг тул хоосон бэлэн Map нь уналт БИШ; ачаалж байгаа мэт харуулна. */
+  if (q.data.size === 0) return { state: 'loading', data: null, error: null, retry: q.retry };
+  const miss = failedTotals(q.data, knownIds(ids));
+  if (!miss.length) return q;
+  return { state: 'error', data: null, error: new Error(tr('{0} давхарга татагдсангүй', num(miss.length))), retry: retryTotals };
+}
+/** Унасан давхаргын тоо — толгойн тэмдэглэлд (`TotalsFailNote`) */
+const totalsFailN = (q: Async<Map<string, Totals>>, ids: readonly string[]): number =>
+  (q.state === 'ready' && q.data.size > 0 ? failedTotals(q.data, knownIds(ids)).length : 0);
+/**
+ * Шугамын НИЙТ урт (м) — `ids`-ийн м/км нэгжтэй БҮХ давхарга утгатай үед л (`completeSum`).
+ * ⚠️ 2026-10-06: `q == null` (SUM мэдээлэлгүй) нь объекттой давхаргад «—» (0 БИШ); объектгүй
+ *    (бүсийн шүүлтэд 0 мөр) давхарга жинхэнэ 0.
+ */
+function lenOf(tot: ReadonlyMap<string, Totals>, ids: readonly string[]): number | null {
+  const qOf = (t: Totals) => (t.q != null ? t.q : t.n === 0 ? 0 : null);
+  const ks = knownIds(ids);
+  const m = completeSum(tot, ks.filter((id) => LAYER_BY_ID[id].qty?.unit === 'м'), qOf);
+  const k = completeSum(tot, ks.filter((id) => LAYER_BY_ID[id].qty?.unit === 'км'), qOf);
+  return m == null || k == null ? null : m + k * 1000;
+}
+/** «N давхарга татагдсангүй · Дахин оролдох» — 0 бол юу ч зурахгүй */
+function TotalsFailNote({ n }: { n: number }) {
+  if (!n) return null;
+  return (
+    <p className={o.note} role="alert" style={{ color: 'var(--bad-ink)' }}>
+      {tr('{0} давхарга татагдсангүй', num(n))}{' '}
+      <button
+        type="button"
+        onClick={retryTotals}
+        style={{ color: 'inherit', font: 'inherit', background: 'none', border: 0, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}
+      >
+        {tr('Дахин оролдох')}
+      </button>
+    </p>
+  );
+}
 
 /* ══════════════════ Үндсэн компонент ══════════════════ */
 
@@ -869,7 +918,8 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
          бөглөх»-ийн нэгтгэл) — багц бүрийн биет %, блокоор жигнэсэн. */
       return {
         /* ⚠️ 2026-09-25: ачаалагдсан ч утгагүй бол «—» (мөнхийн «…» биш) */
-        value: overall != null ? pct(overall, 2) : d.fin.state === 'loading' ? '…' : '—',
+        /* ⚠️ 2026-10-06: 1 оронтой — бусад биет %-тай ижил (2 орон нь «өөр тоо» мэт харагддаг байв) */
+        value: overall != null ? pct(overall, 1) : d.fin.state === 'loading' ? '…' : '—',
         note: f == null ? dots(d.fin) : tr('{0} багц тайлагнасан', num(f.phys.size)),
         pct: overall ?? undefined, tone: o.active,
       };
@@ -1425,6 +1475,19 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
   const packs = b
     ? new Set([...b.map((x) => x.key), ...Object.keys(PKG_BY_BAGTS)]).size
     : null;
+  /**
+   * Харьцаа — хоёр тал бэлэн үед л. ⚠️ 2026-10-06: урьд нь `a && b ? … : '…'` (үнэн/худал) тул
+   * унасан ачаалал мөнхөд «…», 0 утга ч «…» гэж харагддаг байв. Одоо «…» зөвхөн ачаалж байхад,
+   * унасан бол «⚠», хуваарь 0 бол «—»; хэсэгчилсэн headline-ийн NaN нь «⚠» (`hVal`-ийн дүрэм).
+   */
+  const ratio = (
+    a: number | null | undefined, den: number | null | undefined,
+    fmt: (v: number) => string, ...qs: AsyncLike[]
+  ): string => {
+    if (a == null || den == null) return dots(...qs);
+    if (!Number.isFinite(a) || !Number.isFinite(den)) return h?.partial ? ERR_MARK : '—';
+    return den > 0 ? fmt(a / den) : '—';
+  };
 
   return (
     <>
@@ -1436,7 +1499,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
         */}
       <Panel title={tr('Төслийн цар хүрээ')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={h == null ? '…' : num(h.areaHa, 1)} unit={tr('га')} label={tr('Төслийн талбай')} />
+          {/* ⚠️ 2026-10-06: «…» ЗӨВХӨН ачаалж байхад — унасан бол «⚠» (`dots`), хэсэгчилсэн NaN нь `hVal` */}
+          <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.areaHa, (v) => num(v, 1))} unit={tr('га')} label={tr('Төслийн талбай')} />
           {/* ⚠️ 2026-09-11: «Нийт гүйцэтгэл» → «Биет гүйцэтгэл (сарын тайлан)».
               Эх нь `pkgPhys` = TASK_SHEET-ийн САРЫН цуваа (`IndStrip`-ийн нүдтэй
               ЯГ ижил тоо), `execData.buildProgressOf`-ийн албан ёсны
@@ -1444,17 +1508,18 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
               Дэлгэрэнгүйг `IndStrip`-ийн ⚠️-ээс үз. */}
           {/* ⚠️ 2026-09-22: нэр «(сарын тайлан)» → «(багцаар)», эх `physNow` — HeadKpi-тэй нэг */}
           {/* ⚠️ 2026-09-29 (аудит 10): «…» ЗӨВХӨН ачаалж байхад; утгагүй/унасан бол «—» */}
-          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 2) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
-          <Stat accent color={HUE[2]} value={h == null ? '…' : num(h.investTotal)} unit={tr('₮')} label={tr('Нийт төсөв')} />
-          <Stat accent color={HUE[3]} value={blocks == null ? '…' : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
-          <Stat accent color={HUE[4]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
+          {/* ⚠️ 2026-10-06: 1 оронтой (урьд 2) — бусад биет %-тай ижил */}
+          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
+          <Stat accent color={HUE[2]} value={h == null ? dots(d.headline) : hVal(h, h.investTotal, (v) => num(v))} unit={tr('₮')} label={tr('Нийт төсөв')} />
+          <Stat accent color={HUE[3]} value={blocks == null ? dots(bagts) : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
+          <Stat accent color={HUE[4]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
           {/* ⚠️ 2026-09-22: «Нийт багц» (зураг дээрх багц, 55) ба Ерөнхий дашбоардын
               «Багц ажил (гэрээний мөр)» (74) ӨӨР ойлголт — нэрээр нь ил ялгав. */}
-          <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? '…' : num(packs)} unit={tr('багц')} label={tr('Багц (газрын зураг)')} />
-          <Stat accent color={HUE[6 % HUE.length]} value={h == null ? '…' : num(h.population)} unit={tr('хүн')} label={tr('Хамрагдах хүн ам')} />
+          <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? dots(bagts) : num(packs)} unit={tr('багц')} label={tr('Багц (газрын зураг)')} />
+          <Stat accent color={HUE[6 % HUE.length]} value={h == null ? dots(d.headline) : hVal(h, h.population, (v) => num(v))} unit={tr('хүн')} label={tr('Хамрагдах хүн ам')} />
           {/* ⚠️ 2026-09-22: амьд давхаргын ШИНЭ байгууламж (10) — Irged-ийн илтгэлийн
               «одоо 9 + шинэ 12 = 21»-ээс өөр ойлголт; нэрээр ялгав. */}
-          <Stat accent color={HUE[7 % HUE.length]} value={soc == null ? '…' : num(soc.totalN)} unit={tr('ш')} label={tr('Шинэ нийгмийн байгууламж (зурагт)')} />
+          <Stat accent color={HUE[7 % HUE.length]} value={soc == null ? dots(d.social) : num(soc.totalN)} unit={tr('ш')} label={tr('Шинэ нийгмийн байгууламж (зурагт)')} />
           <Stat accent color={HUE[0]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit={tr('га')} label={tr('Ногоон байгууламж')} />
         </Stats>
       </Panel>
@@ -1468,16 +1533,16 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Нягтрал — нэгжид ногдох үзүүлэлт')}>
         <Rows
           items={[
-            { key: tr('Нэг блокт ногдох өрх'), value: blocks && ail ? num(ail / blocks, 1) : '…' },
-            { key: tr('Нэг өрхөд ногдох хүн'), value: h && ail ? num(h.population / ail, 1) : '…' },
-            { key: tr('1 га-д ногдох өрх'), value: h?.areaHa && ail ? num(ail / h.areaHa, 1) : '…' },
+            { key: tr('Нэг блокт ногдох өрх'), value: ratio(ail, blocks, (v) => num(v, 1), bagts) },
+            { key: tr('Нэг өрхөд ногдох хүн'), value: ratio(h?.population, ail, (v) => num(v, 1), d.headline, bagts) },
+            { key: tr('1 га-д ногдох өрх'), value: ratio(ail, h?.areaHa, (v) => num(v, 1), d.headline, bagts) },
             {
               key: tr('1 өрхөд ногдох төсөв'),
-              value: h && ail ? mnt(h.investTotal / ail) : '…',
+              value: ratio(h?.investTotal, ail, (v) => mnt(v), d.headline, bagts),
             },
             {
               key: tr('1 га-д ногдох төсөв'),
-              value: h?.areaHa ? mnt(h.investTotal / h.areaHa) : '…',
+              value: ratio(h?.investTotal, h?.areaHa, (v) => mnt(v), d.headline),
             },
             {
               key: tr('Ногоон байгууламжийн эзлэх хувь'),
@@ -1485,7 +1550,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
             },
             {
               key: tr('Нэг нийгмийн байгууламжид ногдох хүн'),
-              value: h && soc?.totalN ? num(h.population / soc.totalN) : '…',
+              value: ratio(h?.population, soc?.totalN, (v) => num(v), d.headline, d.social),
             },
           ]}
         />
@@ -2303,17 +2368,11 @@ function RingCard({ value, label, color = ACCENT, decimals }: {
  *    (тойм · 02 · 04) зөвхөн хэмжигдсэн блокийг (`overall == null` алгасна) тоолдог тул
  *    «0–25%» багана багцын хувь (`pkgProgressOf` — тайлангүй блок 0%)-иас өөр хуваарьтай байв.
  * @param rows багцын мөрүүд — уншигдаагүй (`null`) бол зөвхөн хэмжигдсэн блок (нөөц)
+ * ⚠️ 2026-10-06: тоолох дүрэм `blockProgress.levelCounts`-д ШИЛЖСЭН — Удирдлагын тайлан ба
+ *    05 «Блокийн төлөв» ч мөн түүгээр (нэг тархалт, нэг тоо). Энд зөвхөн хуваарь өгнө.
  */
 function levelCounts(pm: BlockProgressMap, rows: readonly BagtsRow[] | null): number[] {
-  const counts = PROGRESS_LEVELS.map(() => 0);
-  const keys = new Set<string>(rows ? rows.flatMap((r) => r.keys) : []);
-  pm.forEach((_, k) => keys.add(k));
-  keys.forEach((k) => {
-    const v = pm.get(k)?.overall;
-    const x = v != null && Number.isFinite(v) ? v : 0;
-    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(x / 25)))] += 1;
-  });
-  return counts;
+  return levelCountsOf(pm, rows ? rows.flatMap((r) => r.keys) : []);
 }
 
 /**
@@ -3334,8 +3393,12 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
    * баганад нийлүүлэхгүй — `qtyText` давхарга бүрийн нэгжээр бичнэ, урттай
    * багцууд л «Шугамын урт» баганад орно.
    */
+  /* ⚠️ 2026-10-06: дутуу Map (зарим давхарга унасан) — алдааны төлөв (`completeTotals`);
+     доорх бүх `Data` нь `netTotals` биш `netQ`-ээр. */
+  const failN = totalsFailN(netTotals, NET_PACK_IDS);
+  const netQ = completeTotals(netTotals, NET_PACK_IDS);
+  const tot = netQ.state === 'ready' ? netQ.data : null;
   const packs = infraPackList(isNetworkPack).map((p) => {
-    const tot = netTotals.state === 'ready' ? netTotals.data : null;
     let n = 0;
     let len = 0;
     let area = 0;
@@ -3352,9 +3415,9 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
     }
     return { ...p, n, len, area };
   });
-  const ready = netTotals.state === 'ready';
-  const totalLen = packs.reduce((a, p) => a + p.len, 0);
-  const totalObj = packs.reduce((a, p) => a + p.n, 0);
+  /* ⚠️ 2026-10-06: нийт урт/тоо — БҮХ давхарга утгатай үед л (`completeSum`), эс бөгөөс «—»/«⚠» */
+  const totalLen = tot ? lenOf(tot, NET_PACK_IDS) : null;
+  const totalObj = tot ? completeSum(tot, knownIds(NET_PACK_IDS), (t) => t.n) : null;
 
   return (
     <>
@@ -3363,14 +3426,14 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
       <Panel title={tr('Шугам сүлжээний нэгдсэн үзүүлэлт')}>
         <Stats cols={3}>
           <Stat accent color={cat(0)} value={num(packs.length)} unit={tr('багц')} label={tr('Шугам сүлжээний багц')} />
-          <Stat accent color={cat(1)} value={ready ? km(totalLen, 1) : '…'} unit={tr('км')} label={tr('Шугамын нийт урт')} />
-          <Stat accent color={cat(2)} value={ready ? num(totalObj) : '…'} unit={tr('ш')} label={tr('Сүлжээний объект')} />
+          <Stat accent color={cat(1)} value={tot ? (totalLen != null ? km(totalLen, 1) : '—') : dots(netQ)} unit={tr('км')} label={tr('Шугамын нийт урт')} />
+          <Stat accent color={cat(2)} value={tot ? (totalObj != null ? num(totalObj) : '—') : dots(netQ)} unit={tr('ш')} label={tr('Сүлжээний объект')} />
           <Stat
             accent
             color={cat(3)}
             value={(() => {
               const rows = bagts.state === 'ready' ? bagts.data : null;
-              if (!rows) return '…';
+              if (!rows) return dots(bagts);
               const ks = NET_SERVES.flatMap((s) => s.bagts);
               return num(sumBy(rows.filter((r) => ks.includes(r.key)), (r) => r.ail));
             })()}
@@ -3382,7 +3445,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             color={cat(4)}
             value={(() => {
               const rows = sources.state === 'ready' ? sources.data : null;
-              if (!rows) return '…';
+              if (!rows) return dots(sources);
               const F = SOURCE_FS.fields;
               /* ⚠️ 2026-09-08: ТҮҮХИЙ угтвараар жишнэ. `torol` нь ArcGIS-ийн монгол
                  утга («Дулааны эх үүсвэр»); `tr('Дулаан')` нь EN-д «Heating» болж
@@ -3397,7 +3460,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             color={cat(5)}
             value={(() => {
               const rows = sources.state === 'ready' ? sources.data : null;
-              if (!rows) return '…';
+              if (!rows) return dots(sources);
               const F = SOURCE_FS.fields;
               return num(sumBy(rows.filter((r) => srcStr(r[F.type]).startsWith('Ус')), (r) => srcNum(r[F.total])));
             })()}
@@ -3405,12 +3468,13 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
             label={tr('Ус хангамжийн чадал')}
           />
         </Stats>
+        <TotalsFailNote n={failN} />
       </Panel>
 
       {/* ШУГАМЫН УРТ — багцаар. Энэ нь хэсгийн ГОЛ хэмжигдэхүүн: сүлжээний
           багцын «хэмжээ» гэдэг нь блокийн тоо биш, тавих шугамын урт. */}
       <Panel title={tr('Шугамын урт — багцаар')} note={tr('км')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs.filter((p) => p.len > 0).sort((a, b) => b.len - a.len);
             if (!rows.length) return <Empty label={tr('Уртын бүртгэл алга.')} />;
@@ -3443,7 +3507,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           (`NET_SERVES`). Багц 7, 10–15 нь бүх төслийг хамардаг магистраль тул
           өрхөд хуваах нь утгагүй. */}
       <Panel title={tr('Нэг өрхөд ногдох шугамын урт')} note={tr('м / өрх')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             /* ⚠️ 2026-09-25: урт нь бүсээр шүүгдсэн, өрх нь төслийн нийт — харьцаа худал */
             if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
@@ -3512,7 +3576,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           ⚠️ Багц 13 (усан сан) ба Багц 15 (насос станц) нь ШУГАМ БИШ,
           БАЙГУУЛАМЖ — уртын баганад гарахгүй тул зөвхөн энд харагдана. */}
       <Panel title={tr('Сүлжээний объектын тоо — багцаар')} note={tr('ширхэг')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs.filter((p) => p.n > 0).sort((a, b) => b.n - a.n);
             if (!rows.length) return <Empty label={tr('Багцын давхарга алга.')} />;
@@ -3657,7 +3721,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           гэсэн дүгнэлт гарах ч тэр нь зөвхөн хорооллын шугамуудын дунд үнэн.
           Хоёрхон бүлэг тул донат (≤3 дүрэм), нэг өнгөний сүүдрээр. */}
       <Panel title={tr('Хороолол vs магистраль')} note={tr('шугамын урт, км')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             const isLocal = (k: string) => /^БАГЦ5[1-4]$/.test(k);
             const groups = [
@@ -3699,7 +3763,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           худаг, хаалт, холболт нягт — өөрөөр хэлбэл угсралт нь урт шугам
           татахаас илүү ажиллагаатай гэсэн үг. */}
       <Panel title={tr('Объектын нягтрал — багцаар')} note={tr('ш / км')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs
               .filter((p) => p.len > 0 && p.n > 0)
@@ -3729,7 +3793,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           хэмжинэ: блокууд хол зайтай байрласан багц өндөр гарна. Хоёр
           үзүүлэлт өөр өөр асуултад хариулна. */}
       <Panel title={tr('Нэг блокт ногдох шугамын урт')} note={tr('м / блок')}>
-        <Data q={netTotals} loading={tr('Татаж байна…')}>
+        <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             /* ⚠️ 2026-09-25: урт нь бүсээр шүүгдсэн, блок нь төслийн нийт — харьцаа худал */
             if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
@@ -3812,8 +3876,11 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
    * цэг (байгууламж, уртгүй). Хоёуланг нэмнэ — урт нь трассаас, объектын тоо
    * нь хоёулангаас.
    */
+  /* ⚠️ 2026-10-06: дутуу Map — алдааны төлөв (`completeTotals`, 05-ын ⚠️); `Data` нь `powQ`-ээр */
+  const failN = totalsFailN(powTotals, POW_PACK_IDS);
+  const powQ = completeTotals(powTotals, POW_PACK_IDS);
+  const tot = powQ.state === 'ready' ? powQ.data : null;
   const packs = items.map((p) => {
-    const tot = powTotals.state === 'ready' ? powTotals.data : null;
     let n = 0;
     let len = 0;
     for (const id of p.ids) {
@@ -3828,9 +3895,9 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
     }
     return { ...p, n, len };
   });
-  const ready = powTotals.state === 'ready';
-  const totalLen = packs.reduce((a, p) => a + p.len, 0);
-  const totalObj = packs.reduce((a, p) => a + p.n, 0);
+  /* ⚠️ 2026-10-06: нийт урт/тоо — БҮХ давхарга утгатай үед л (`completeSum`) */
+  const totalLen = tot ? lenOf(tot, POW_PACK_IDS) : null;
+  const totalObj = tot ? completeSum(tot, knownIds(POW_PACK_IDS), (t) => t.n) : null;
   return (
     <>
       {/* 07 хэсэг цахилгааны Donut-аа `хангах_хувь`-аар зурж, төвд нь
@@ -3868,12 +3935,13 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
                   <Stat accent color={cat(2)} value={num(plannedMw, 1)} unit={tr('МВт')}
                         label={newOne ? shortSrc(newOne.name) : tr('Төлөвлөж буй дэд станц')} />
                   <Stat accent color={cat(3)} value={num(packs.length)} unit={tr('багц')} label={tr('Цахилгааны багц')} />
-                  <Stat accent color={cat(4)} value={ready ? km(totalLen, 1) : '…'} unit={tr('км')} label={tr('Кабелийн нийт урт')} />
-                  <Stat accent color={cat(5)} value={ready ? num(totalObj) : '…'} unit={tr('ш')} label={tr('Сүлжээний объект')} />
+                  <Stat accent color={cat(4)} value={tot ? (totalLen != null ? km(totalLen, 1) : '—') : dots(powQ)} unit={tr('км')} label={tr('Кабелийн нийт урт')} />
+                  <Stat accent color={cat(5)} value={tot ? (totalObj != null ? num(totalObj) : '—') : dots(powQ)} unit={tr('ш')} label={tr('Сүлжээний объект')} />
                 </Stats>
             );
           }}
         </Data>
+        <TotalsFailNote n={failN} />
       </Panel>
 
       {/* ⚠️ Бөгж тоонуудын зурвасаас САЛСАН — утга нь render-prop-ийн дотоод
@@ -3909,7 +3977,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           Оронд нь ХЭМЖЭЭ: кабелийн трассын урт нь 8 багц дээр БҮГД
           бөглөгдсөн (Багц 6.3 10.2 км … Багц 6.7 0.6 км). */}
       <Panel title={tr('Кабелийн урт — багцаар')} note={tr('км')}>
-        <Data q={powTotals} loading={tr('Татаж байна…')}>
+        <Data q={powQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs.filter((p) => p.len > 0).sort((a, b) => b.len - a.len);
             if (!rows.length) return <Empty label={tr('Уртын бүртгэл алга.')} />;
@@ -3996,7 +4064,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           тайлбар өөрөө «физик хэмжээ БИШ» гэж уучлалт гуйж байв. Хэмжээ нь
           `powTotals`-аар одоо БОДИТООР татагдана — уучлалт хэрэггүй болов. */}
       <Panel title={tr('Гадна цахилгаан (БАГЦ-6)')} note={tr('ширхэг')}>
-        <Data q={powTotals} loading={tr('Татаж байна…')}>
+        <Data q={powQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs.filter((p) => p.n > 0).sort((a, b) => b.n - a.n);
             if (!rows.length) return <Empty label={tr('Багцын давхарга алга.')} />;
@@ -4064,7 +4132,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           дүгнэлт гарах ч тэр нь өөр төрлийн ажлуудыг жишсэн хэрэг.
           Хоёрхон бүлэг тул донат (≤3 дүрэм), нэг өнгөний сүүдрээр. */}
       <Panel title={tr('Кабелийн шугам vs ХТП/РП')} note={tr('объектын тоо')}>
-        <Data q={powTotals} loading={tr('Татаж байна…')}>
+        <Data q={powQ} loading={tr('Татаж байна…')}>
           {() => {
             const isLine = (k: string) => /^БАГЦ6[1-4]$/.test(k);
             const groups = [
@@ -4105,7 +4173,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           байгууламж байдаг тул эрс өндөр гарна. Тэр ялгаа нь өөрөө хоёр
           төрлийн ажил байгааг тоогоор баталгаажуулна. */}
       <Panel title={tr('Объектын нягтрал — цахилгаан')} note={tr('ш / км')}>
-        <Data q={powTotals} loading={tr('Татаж байна…')}>
+        <Data q={powQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows = packs
               .filter((p) => p.len > 0 && p.n > 0)
@@ -4795,8 +4863,12 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
 
           ⚠️ Завсрын мөрийг («БАГЦ 1-4» гэх мэт) ОРУУЛНА — тэдгээр нь зурагт
           холбогдохгүй ч ТӨСВИЙН дүн нь бодит бөгөөд нийлбэрээс хасвал хувь
-          худал болно. */}
-      <Panel title={tr('Төсвийн төвлөрөл — багцаар')} note={tr('нийт төсвөөс')}>
+          худал болно.
+          ⚠️ 2026-10-06: шошго «нийт төсвөөс» → «багцын задаргааны нийлбэрээс». Хуваарь нь
+          `bg.byPkg`-ийн нийлбэр — Cashflow-ийн БҮХ мөр (5–7-р хэсэг ОРНО), «Нийт төсөв»
+          (`bg.total` = `finXlInTotal` хүрээ) БИШ. `byPkg` нь мөрийн кодгүй (`live.loadBudget`)
+          тул энд `finXlInTotal`-ээр шүүх боломжгүй — нэрийг нь зөв болгов. */}
+      <Panel title={tr('Төсвийн төвлөрөл — багцаар')} note={tr('багцын задаргааны нийлбэрээс')}>
         {bg.byPkg.length < 3 ? <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} /> : (() => {
           const sorted = [...bg.byPkg].sort((a2, b2) => b2.value - a2.value);
           const tot = sumBy(sorted, (x) => x.value);
@@ -4867,8 +4939,12 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
     key: bagtsKey(LAYER_BY_ID[id]?.note),
     label: LAYER_BY_ID[id]?.title ?? id,
   }));
+  /* ⚠️ 2026-10-06: дутуу Map — алдааны төлөв (`completeTotals`, 05-ын ⚠️); `Data` нь `socQ`-ээр */
+  const socFailN = totalsFailN(d.socTotals, SOC_PACK_IDS);
+  const socQ = completeTotals(d.socTotals, SOC_PACK_IDS);
+  const socTot = socQ.state === 'ready' ? socQ.data : null;
   const socPacks = socLayers.map((l) => {
-    const q = d.socTotals.state === 'ready' ? d.socTotals.data.get(l.id) : null;
+    const q = socTot ? socTot.get(l.id) : null;
     return {
       ...l,
       n: q?.n ?? 0,
@@ -4876,8 +4952,14 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       m2: q?.q ?? null,
     };
   }).filter((x) => x.n > 0);
-  const socM2Known = socPacks.filter((x) => x.m2 != null);
-  const socM2 = socM2Known.length ? socM2Known.reduce((a2, x) => a2 + (x.m2 as number), 0) : null;
+  /* ⚠️ 2026-10-06: нийт талбай — БҮХ давхарга утгатай үед л (`completeSum`). Урьд нь `m2 == null`
+     давхаргыг алгасаж нийлбэрлэдэг тул дутуу нийлбэр бүрэн мэт гардаг байв. Объектгүй давхарга 0. */
+  const socM2 = socTot
+    ? completeSum(socTot, knownIds(SOC_PACK_IDS), (t) => (t.q != null ? t.q : t.n === 0 ? 0 : null))
+    : null;
+  /** ⚠️ 2026-10-06: хүчин чадлын талбар НЭГ ч ангилалд бөглөгдөөгүй бол «—» (0 БИШ) */
+  const capKnown = soc != null && soc.rows.some((r) => r.capacity != null);
+  const capTotal = soc != null && capKnown ? sumBy(soc.rows, (r) => r.capacity ?? 0) : null;
 
   /**
    * Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ.
@@ -4895,18 +4977,21 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
     <>
       <Panel title={tr('Иргэдийн амьдралын чанар')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={h == null ? '…' : num(h.population)} unit={tr('хүн')} label={tr('Шинэ орон сууцанд амьдрах хүн ам')} />
-          <Stat accent color={HUE[1]} value={ail == null ? '…' : num(ail)} unit={tr('өрх')} label={tr('Айл өрх шинэ орон сууцтай')} />
-          <Stat accent color={HUE[2]} value={soc == null ? '…' : num(soc.totalN)} unit={tr('ш')} label={tr('Нийгмийн үйлчилгээний барилга')} />
+          {/* ⚠️ 2026-10-06: ачаалал УНАСАН бол «…» мөнхөд биш «⚠» (`dots`), хэсэгчилсэн NaN нь `hVal` */}
+          <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.population, (v) => num(v))} unit={tr('хүн')} label={tr('Шинэ орон сууцанд амьдрах хүн ам')} />
+          <Stat accent color={HUE[1]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх шинэ орон сууцтай')} />
+          <Stat accent color={HUE[2]} value={soc == null ? dots(d.social) : num(soc.totalN)} unit={tr('ш')} label={tr('Нийгмийн үйлчилгээний барилга')} />
           <Stat accent color={HUE[3]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit={tr('га')} label={tr('Ногоон байгууламж')} />
           {/* ХОЁР «үр өгөөж»-ийн харьцаа — шинэ хүсэлт ШААРДАХГҮЙ, `soc`/`headline`
               аль хэдийн татагдсан. «Хэдэн барилга» гэдгээс «хэдэн хүүхэд суух вэ»
               нь иргэдэд утга учиртай тоо. */}
+          {/* ⚠️ 2026-10-06: хүчин чадал бүртгэлгүй бол «—» (`capTotal` null), 0 БИШ */}
           <Stat accent color={HUE[4]}
-                value={soc == null ? '…' : num(sumBy(soc.rows, (r) => r.capacity ?? 0))}
+                value={soc == null ? dots(d.social) : capTotal == null ? '—' : num(capTotal)}
                 unit={tr('хүчин чадал')} label={tr('Нийгмийн байгууламжийн багтаамж')} />
+          {/* ⚠️ 2026-10-06: `ail` 0 үед үнэн/худлаар «…» мөнхөд гардаг байв — `!= null` + «—» */}
           <Stat accent color={HUE[5]}
-                value={h && ail ? num(h.investTotal / ail) : '…'}
+                value={h != null && ail != null ? (ail > 0 ? hVal(h, h.investTotal, (v) => num(v / ail)) : '—') : dots(d.headline, bagts)}
                 unit={tr('₮')} label={tr('1 өрхөд ногдох төсөв')} />
           {/* ⚠️ СУУРИЙН ТАЛБАЙ — «хэдэн барилга» гэсэн тоо нь БАРИЛГЫН ХЭМЖЭЭГ
               хэлдэггүй: 960 хүүхдийн сургууль ба 240 ортой цэцэрлэг хоёулаа
@@ -4914,12 +4999,15 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           {/* ⚠️ 2026-09-23: төлөвөөр салгана — урьд нь 0/алдаанд «…» мөнхөд
               харагддаг байв. Ачаалж байгаа үед л «…», бусад үед «—». */}
           <Stat accent color={cat(6)}
-                value={d.socTotals.state === 'loading' ? '…' : socM2 != null && socM2 > 0 ? num(socM2) : '—'}
+                value={socTot == null ? dots(socQ) : socM2 != null && socM2 > 0 ? num(socM2) : '—'}
                 unit={tr('м²')} label={tr('Барилгын суурийн талбай')} />
           <Stat accent color={cat(7)}
-                value={h?.population && soc ? num((sumBy(soc.rows, (r) => r.capacity ?? 0) / h.population) * 1000) : '…'}
+                value={h != null && soc != null
+                  ? (capTotal != null && Number.isFinite(h.population) && h.population > 0 ? num((capTotal / h.population) * 1000) : hVal(h, h.population, () => '—'))
+                  : dots(d.headline, d.social)}
                 unit={tr('/ 1,000 хүн')} label={tr('Хүчин чадлын хангамж')} />
         </Stats>
+        <TotalsFailNote n={socFailN} />
       </Panel>
 
       {/* Хоёр талбар хоёул `d.headline`-д БИЙ — эзлэх ХУВЬ (1-р картын үнэмлэхүй
@@ -5006,7 +5094,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           126 м²). Нийгмийн багцын гүйцэтгэлийг бүртгэдэг эх сурвалж гарвал
           явцын картыг энд буцааж нэмнэ. */}
       <Panel title={tr('Барилгын суурийн талбай — багцаар')} note={tr('м²')}>
-        <Data q={d.socTotals} loading={tr('Татаж байна…')}>
+        <Data q={socQ} loading={tr('Татаж байна…')}>
           {() => {
             const rows2 = [...socPacks].sort((a2, b2) => (b2.m2 ?? -1) - (a2.m2 ?? -1));
             if (!rows2.length) return <Empty label={tr('Барилгын давхарга алга.')} />;
@@ -5048,7 +5136,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           бөглөгдөөгүй хоёр ангилал (урлан бүтээх төв, төрийн үйлчилгээ) энд
           орохгүй, тэдгээрт «суудал» гэсэн ойлголт ч байхгүй. */}
       <Panel title={tr('Нэг суудалд ногдох суурийн талбай')} note={tr('м² / суудал')}>
-        <Data q={d.socTotals} loading={tr('Татаж байна…')}>
+        <Data q={socQ} loading={tr('Татаж байна…')}>
           {() => {
             if (soc == null) return <Empty label={tr('Татаж байна…')} />;
             /** Давхаргын гарчиг → хүчин чадал (`SocialRow.per`-ээс) */

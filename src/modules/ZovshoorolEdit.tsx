@@ -23,6 +23,7 @@ import { setNavDirty } from '@/lib/navGuard';
 import s from './zovshoorol.module.css';
 import { userError } from '@/components/ui';
 import { DateField } from '@/modules/huvaari/DateField';
+import { isLostResponse } from '@/lib/butetsEdit';
 
 /** ms → YYYY-MM-DD (UTC). Огноогүй бол хоосон. */
 const toInput = (ms: number | null): string => {
@@ -82,6 +83,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   const [err, setErr] = useState<Partial<Record<keyof ZovDraft, string>>>({});
   const [fail, setFail] = useState('');
   const [busy, setBusy] = useState(false);
+  /* ⚠️ 2026-10-06: ШИНЭ зөвшөөрлийн хариу алдагдсан (timeout/сүлжээ) — сервер бичсэн эсэх
+     ТОДОРХОЙГҮЙ. Хэрэглэгч шалгаж баталгаажуулах хүртэл «Хадгалах» хаалттай; эс бөгөөс
+     дахин дарахад ДАВХАРДСАН зөвшөөрөл үүсдэг байв (`DedButetsEdit`-ийн `unsure` загвар). */
+  const [unsure, setUnsure] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const editing = init.oid != null;
 
@@ -218,6 +223,12 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() }, before);
       onDone();
     } catch (x) {
+      /* ⚠️ 2026-10-06: шинэ мөрийн хариу алдагдсан бол дахин илгээхийг хаана (`unsure`) */
+      if (!editing && isLostResponse(x)) {
+        setUnsure(true);
+        setFail('');
+        return;
+      }
       setFail(userError(x));
     } finally {
       setBusy(false);
@@ -264,13 +275,17 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   /* ⚠️ 2026-09-25: ТӨЛӨВ `<label>` ДОТОР БИШ — label доторх товчийн аль ч хэсэгт
      (эсвэл шошгон дээр) дарахад хөтөч label-ийн ЭХНИЙ товчийг (`Хүлээгдэж буй`)
      идэвхжүүлж, сонголт чимээгүй «хүлээгдэж буй» руу үсэрдэг байв. */
-  const tolovIdx = Math.max(0, TOLOV_LIST.indexOf(d.tolov));
+  /* ⚠️ 2026-10-06: `d.tolov = null` (танигдаагүй, сонгоогүй) үед аль ч товч идэвхгүй —
+     Tab-ын фокус эхний товчинд, сум нь эхний/сүүлчийн товчийг сонгоно. */
+  const tolovIdx = Math.max(0, d.tolov ? TOLOV_LIST.indexOf(d.tolov) : -1);
   const tolovKey = (e: ReactKeyboardEvent) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
       : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = TOLOV_LIST[(tolovIdx + step + TOLOV_LIST.length) % TOLOV_LIST.length];
+    const next = d.tolov == null
+      ? TOLOV_LIST[step > 0 ? 0 : TOLOV_LIST.length - 1]
+      : TOLOV_LIST[(tolovIdx + step + TOLOV_LIST.length) % TOLOV_LIST.length];
     setTolov(next);
     const grp = e.currentTarget as HTMLElement;
     requestAnimationFrame(() => grp.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
@@ -344,7 +359,8 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                   </button>
                 ))}
               </div>
-              {err.tolov ? <span className={s.fErr}>{err.tolov}</span> : null}
+              {err.tolov ? <span className={s.fErr}>{err.tolov}</span>
+                : d.tolov == null ? <span className={s.fHint}>{tr('Одоогийн төлөв танигдаагүй — сонгоно уу')}</span> : null}
             </div>
             {/* ⚠️ 2026-10-05: `<input type="date">` → хуваалцсан `DateField` (YYYY-MM-DD текст +
                 📅) — натив оролтын хэлбэр хөтчийн хэлнээс хамаарч өдөр/сар андуурагддаг байв.
@@ -396,6 +412,16 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           ))}
 
           {fail && <div className={s.formErr} role="alert">{fail}</div>}
+          {/* ⚠️ 2026-10-06: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
+          {unsure && (
+            <div className={s.formErr} role="alertdialog">
+              {tr('Серверээс хариу ирсэнгүй — зөвшөөрөл нэмэгдсэн эсэх ТОДОРХОЙГҮЙ. Дахин хадгалахаас өмнө хуудсыг дахин ачаалж, зөвшөөрөл үүссэн эсэхийг шалгана уу.')}
+              {' '}
+              <button type="button" className={s.btn} onClick={() => setUnsure(false)} disabled={busy}>
+                {tr('Шалгасан — үүсээгүй, дахин нэмэх')}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className={s.actions}>
@@ -408,7 +434,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           <button type="button" className={s.btn} onClick={tryClose} disabled={busy}>
             {tr('Болих')}
           </button>
-          <button type="button" className={s.primary} onClick={submit} disabled={busy}>
+          <button type="button" className={s.primary} onClick={submit} disabled={busy || unsure}>
             {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
           </button>
         </div>

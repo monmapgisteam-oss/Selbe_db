@@ -35,11 +35,11 @@ import { loadNegtgelPct } from '@/lib/negtgel';
 import { loadPlanCurveCached, planPctAt } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
-import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
+import { loadBuildings } from '@/modules/BuildingPanel';
+import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
 import { loadFinData, projectPlanOf } from '@/modules/Finance';
 import { physNow, aggregateMonths } from '@/modules/PkgProg';
-import { blockLevelCounts } from '@/modules/pkgShared';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
@@ -335,12 +335,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     };
   }
 
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (ижил `buildingKey`) НЭГ блок */
-  /* ⚠️ 2026-10-06 (аудит): түвшний тархалт — «Гүйцэтгэл»-ийн «Блокийн төлөв»-тэй НЭГ функц
-     (`pkgShared.blockLevelCounts`): тайлагнаагүй блок 0–25%-д ТООЛОГДОНО (2026-10-01-ний
-     «тайлагнаагүй блок = 0%» шийдвэр). Урьд нь энд зөвхөн утгатай блок тоологдож, хоёр
-     дэлгэц нэг 113 блокийг өөр тархалтаар харуулдаг байв. Тайлангүйн тоо `prog.noData`-д ил. */
-  const lvl = blockLevelCounts(uniqueBlocks(bld.rows));
+  /* ⚠️ 2026-10-06: блокийн түвшний тархалт Дашбоардтай НЭГ дүрмээр (`blockProgress.levelCounts`) —
+     хуваарь нь бөглөх хуудасны БҮХ блок (`bld.keys` = `universeKeys`), тайлагнаагүй блок 0–25%-д.
+     Урьд нь зөвхөн хэмжигдсэн, газрын зургийн блок (`uniqueBlocks(bld.rows)`)-оор тоолдог тул
+     дэлгэц · PDF · инфографик · AI-ийн тархалт Дашбоардаас зөрдөг байв. */
+  const lvCounts = levelCounts(bld.prog, bld.keys);
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
@@ -364,7 +363,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       })),
       levels: PROGRESS_LEVELS.map((l, i) => ({
         label: l.label, range: l.range, color: l.color,
-        n: lvl.counts[i],
+        n: lvCounts[i],
       })),
     },
     fin: {
@@ -546,7 +545,9 @@ export function execFindings(x: ExecReport): ExecFinding[] {
     out.push({
       sev: 'info',
       area: A_DATA,
-      text: tr('{0} блокийн гүйцэтгэл хараахан бөглөгдөөгүй, тайлангийн биет хувь тэдгээрийг агуулахгүй.', num(x.prog.noData)),
+      /* ⚠️ 2026-10-06: тайлагнаагүй блок биет хувьд 0%-иар ОРДОГ (2026-10-01-ний шийдвэр) —
+         урьд нь «тэдгээрийг агуулахгүй» гэж эсрэгээр бичигдсэн байв. */
+      text: tr('{0} блокийн гүйцэтгэл хараахан бөглөгдөөгүй тул биет хувьд 0%-иар тооцогдсон.', num(x.prog.noData)),
     });
   }
   if (!x.gdash.hse) {

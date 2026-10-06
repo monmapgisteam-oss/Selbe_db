@@ -63,7 +63,7 @@ import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { layerTotals } from '@/lib/totals';
 import {
-  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT,
+  BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID, PARCEL_LEFT,
   bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
@@ -71,6 +71,7 @@ import { paidShareOf, paidPctOf } from '@/lib/paidShare';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
+import { isClearedStatus, statusKey } from '@/lib/land';
 import {
   finXlInTotal, FIN_XL_WORK_SKIP, FIN_XL_TOTAL_CODE_FIELD, FIN_XL_LAND_CODE,
 } from '@/lib/finExcelLayout';
@@ -132,7 +133,8 @@ export type ReportExtra = {
   social: {
     rows: { title: string; n: number; areaM2: number }[];
     n: number;
-    areaM2: number;
+    /** ⚠️ 2026-10-06: `null` = аль нэг давхаргын талбай (`q`) уншигдаагүй — дутуу нийлбэрийг хэвлэхгүй («—») */
+    areaM2: number | null;
   };
   progress: {
     /** ⚠️ 2026-10-04: бөглөх хуудасны БҮХ блок (хуваарь) — урьд нь зөвхөн тайлагнасан блок */
@@ -209,14 +211,16 @@ export type ReportExtra = {
       key: string; title: string; layers: number;
       n: number; len: number; area: number;
     }[];
-    totals: { layers: number; n: number; len: number; area: number };
+    /** ⚠️ 2026-10-06: `len`/`area` `null` = аль нэг давхаргын хэмжээ (`q`) уншигдаагүй — «—» (0 биш) */
+    totals: { layers: number; n: number; len: number | null; area: number | null };
   };
   habea: {
     date: string;
-    workers: number; mongol: number; gadaad: number; tehnik: number;
+    /** ⚠️ 2026-10-06: `mongol`/`gadaad` — `null` = задаргаа бөглөгдөөгүй (0 биш, «—») */
+    workers: number; mongol: number | null; gadaad: number | null; tehnik: number;
     byCompany: {
       label: string; bagts: string | null;
-      workers: number; mongol: number; gadaad: number; tehnik: number;
+      workers: number; mongol: number | null; gadaad: number | null; tehnik: number;
     }[];
     incidents: number;
   };
@@ -242,6 +246,12 @@ export type ReportExtra = {
 const nn = (v: unknown): number => {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
+};
+
+/** ⚠️ 2026-10-06: `null`-ийг АЛГАСАН нийлбэр; бүгд `null` бол `null` (0 биш) */
+const sumOrNull = (xs: readonly (number | null)[]): number | null => {
+  const v = xs.filter((x): x is number => x != null && Number.isFinite(x));
+  return v.length ? v.reduce((a, b) => a + b, 0) : null;
 };
 
 /**
@@ -421,7 +431,10 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
  * ⚠️ ЗӨВХӨН тайлбар бичвэрийн «үлдсэн талбарын ТОО»-нд (2026-08-29). Чөлөөлөлтийн
  * ХУВЬ үүгээр бодогдохоо больсон — тэр нь дашбоардтай нэг эх `loadClearance`.
  */
-const isLeftParcel = (label: string) => label.trim() !== PARCEL_CLEARED;
+/* ⚠️ 2026-10-06: `land.isClearedStatus`-аар (том/жижиг үсэг, зай, бичиглэлийн хувилбар) — урьд нь
+   `label.trim() !== PARCEL_CLEARED` тул «бүрэн чөлөөлсөн» гэх мэт бичиглэл «үлдсэн» гэж тоологдож,
+   `land.ts`/дашбоардаас зөрөх боломжтой байв (одоогоор далд). */
+const isLeftParcel = (label: string) => !isClearedStatus(label);
 
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ.
@@ -455,7 +468,9 @@ async function loadLandRaw(): Promise<ReportExtra['land']> {
   const tally = (field: string, skipEmpty: boolean) => {
     const m = new Map<string, number>();
     rows.forEach((r) => {
-      const k = str(r[field]);
+      /* ⚠️ 2026-10-06: `land.statusKey` — «Бүрэн чөлөөлсөн»-ийн бүх бичиглэл НЭГ бүлэг, хоосон/«—» →
+         «Тодорхойгүй» (`land.ts`-ийн бүлэглэлтэй нэг). Урьд нь `str()` тул хувилбар бүр тусдаа мөр. */
+      const k = statusKey(r[field]);
       if (!k && skipEmpty) return;
       m.set(k || tr('Тодорхойгүй'), (m.get(k || tr('Тодорхойгүй')) ?? 0) + 1);
     });
@@ -494,14 +509,17 @@ async function loadSocial(): Promise<ReportExtra['social']> {
        PDF-д гардаг байв — файлын «хэсэгчилсэн тайлан ГАРГАХГҮЙ» дүрэмтэй зөрчил. */
     try {
       const t = await layerTotals(d, '1=1');
-      return { title: d.title, n: t.n, areaM2: d.qty?.unit === 'м²' ? (t.q ?? 0) : 0 };
+      /* ⚠️ 2026-10-06: `q: null` (хэмжээ уншигдаагүй) — мөрөнд 0 («—» харагдана), харин НИЙТ `null` (доор) */
+      const isM2 = d.qty?.unit === 'м²';
+      return { title: d.title, n: t.n, areaM2: isM2 ? (t.q ?? 0) : 0, missing: isM2 && t.q == null };
     } catch (e) { throw new Error(tr('{0}: давхарга уншигдсангүй ({1})', d.title, String((e as Error)?.message ?? e))); }
   }))).filter((r): r is NonNullable<typeof r> => !!r);
 
   return {
-    rows,
+    rows: rows.map(({ missing: _m, ...r }) => r),
     n: rows.reduce((a, r) => a + r.n, 0),
-    areaM2: rows.reduce((a, r) => a + r.areaM2, 0),
+    /* ⚠️ 2026-10-06: аль нэг давхаргын талбай уншигдаагүй бол нийт `null` — дутуу нийлбэрийг бүтэн мэт хэвлэхгүй */
+    areaM2: rows.some((r) => r.missing) ? null : rows.reduce((a, r) => a + r.areaM2, 0),
   };
 }
 
@@ -852,6 +870,9 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       key: g.key,
       title: g.title,
       layers: ids.length,
+      /* ⚠️ 2026-10-06: `q: null` хэсэгтэй эсэх — НИЙТ мөрийг `null` («—») болгоход (доор) */
+      lenMissing: ok.some((p) => p.unit === 'м' && p.q == null),
+      areaMissing: ok.some((p) => p.unit === 'м²' && p.q == null),
       n: ok.reduce((a, p) => a + p.n, 0),
       // ⚠️ Нэг бүлэгт «м» ба «м²» ХОЛИЛДОНО — нийлбэрлэвэл утгагүй тул тусад нь
       len: ok.filter((p) => p.unit === 'м').reduce((a, p) => a + (p.q ?? 0), 0),
@@ -860,12 +881,15 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
   }));
 
   return {
-    groups,
+    groups: groups.map(({ lenMissing: _l, areaMissing: _a, ...g }) => g),
     totals: {
       layers: groups.reduce((a, g) => a + g.layers, 0),
       n: groups.reduce((a, g) => a + g.n, 0),
-      len: groups.reduce((a, g) => a + g.len, 0),
-      area: groups.reduce((a, g) => a + g.area, 0),
+      /* ⚠️ 2026-10-06: аль нэг хэсгийн хэмжээ `null` бол нийт `null` («—») — урьд нь `q ?? 0` нь
+         уншигдаагүй давхаргыг 0 гэж нэмж, дутуу нийлбэрийг бүтэн мэт хэвлэдэг байв (null ≠ 0).
+         ⚠️ Бүлгийн мөр (`g.len`/`g.area`) тоо хэвээр — дэлгэц `> 0` шалгадаг (Tailan/reportPdf). */
+      len: groups.some((g) => g.lenMissing) ? null : groups.reduce((a, g) => a + g.len, 0),
+      area: groups.some((g) => g.areaMissing) ? null : groups.reduce((a, g) => a + g.area, 0),
     },
   };
 }
@@ -925,8 +949,10 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
       label: c.label,
       bagts: c.bagts,
       workers: d?.workers ?? 0,
-      mongol: d?.mongol ?? 0,
-      gadaad: d?.gadaad ?? 0,
+      /* ⚠️ 2026-10-06: задаргаа бөглөгдөөгүй → `null` («—»), 0 БИШ — урьд нь `?? 0` тул
+         «дотоодын 0» гэж хэвлэгдэж, `mongolShare` задаргаагүй компанийн ажилтныг хуваарьт оруулдаг байв */
+      mongol: d?.mongol ?? null,
+      gadaad: d?.gadaad ?? null,
       tehnik: d?.technik ?? 0,
     };
   }).filter((c) => c.workers > 0 || c.tehnik > 0)
@@ -940,8 +966,9 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
        дээрх өдрөөс нэг хоногоор зөрдөг байв. */
     date: ts ? dayKey(ts) : '',
     workers: byCompany.reduce((a, c) => a + c.workers, 0),
-    mongol: byCompany.reduce((a, c) => a + c.mongol, 0),
-    gadaad: byCompany.reduce((a, c) => a + c.gadaad, 0),
+    /* ⚠️ 2026-10-06: бөглөгдсөн утгуудын нийлбэр; нэг ч компанид алга бол `null` */
+    mongol: sumOrNull(byCompany.map((c) => c.mongol)),
+    gadaad: sumOrNull(byCompany.map((c) => c.gadaad)),
     tehnik: byCompany.reduce((a, c) => a + c.tehnik, 0),
     byCompany,
     incidents: incident.filter((r) => !isBlankIncident(r)).length,
@@ -1154,7 +1181,14 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
      `Findings`-д `null` болж үлдэнэ (хэрэглэгч талд «—»). */
   const peakMonth = null;
 
-  const mongolShare = x.habea.workers ? (x.habea.mongol / x.habea.workers) * 100 : null;
+  /* ⚠️ 2026-10-06: ЗӨВХӨН монгол ба гадаад ХОЁУЛАА бөглөгдсөн компаниудаар — урьд нь задаргаагүй
+     компанийн ажилтан хуваарьт (`workers`) орж, тоологчид 0-ээр орж хувийг доошлуулдаг байв.
+     Тийм компани алга бол `null` («—»). Хувь 0–100 (`pct()` үржүүлдэггүй). */
+  const split = x.habea.byCompany.filter((c) => c.mongol != null && c.gadaad != null);
+  const splitWorkers = split.reduce((a, c) => a + c.workers, 0);
+  const mongolShare = splitWorkers > 0
+    ? (split.reduce((a, c) => a + (c.mongol ?? 0), 0) / splitWorkers) * 100
+    : null;
 
   /*
    * ⚠️ Тайлангийн ТАЙЛБАР ӨГҮҮЛБЭРТ «бэлтгэлийн ажил дууссан», «инженерийн
@@ -1203,7 +1237,9 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
 
   if (contractRate != null && paidRate != null) {
     /* ⚠️ 2026-09-21: үлдэгдэл = гэрээлсэн дүн − гэрээлсэн багцын төлбөр (хувьтай нэг хүрээ) */
-    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(x.finance.contractAmount - x.finance.paidContracted)));
+    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(Math.max(0, x.finance.contractAmount - x.finance.paidContracted))));
+    /* ⚠️ 2026-10-06: «Олгогдоогүй үлдэгдэл» 0-оор ТАСЛАНА — PkgFin/удирдлагын тайлангийн `remain`-тай нэг
+       дүрэм; хэт олгосон үед сөрөг үлдэгдэл хэвлэгддэг байв. */
     if (x.finance.paidOther > 0) {
       f.push(tr('Нийт олгосон {0} ₮-ийн {1} ₮ нь гэрээлсэн багцад холбогдоогүй (олон багц хамарсан эсвэл гэрээ баталгаажаагүй багцын) төлбөр тул дээрх хувь, үлдэгдэлд ороогүй.', num(x.finance.paid), num(x.finance.paidOther)));
     }

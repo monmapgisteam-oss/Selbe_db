@@ -1955,8 +1955,10 @@ export const MapCanvas = memo(function MapCanvas({
       }
     })();
   }, [zone, ready, dim, setZoneMask]);
-  /* Unmount үед маскыг цэвэрлэнэ — дараагийн харагдац хуучин бүдгэрүүлэлт өвлөхгүй */
-  useEffect(() => () => setZoneMask(null), [setZoneMask]);
+  /* Unmount үед маскыг цэвэрлэнэ — дараагийн харагдац хуучин бүдгэрүүлэлт өвлөхгүй.
+     ⚠️ 2026-10-06: token-ийг мөн нэмэгдүүлнэ — эс тэгвээс unmount-ын дараа
+     ирсэн хоцорсон хариу дараагийн табын газрын зургийг бүдгэрүүлдэг байв. */
+  useEffect(() => () => { zoneMaskToken.current++; setZoneMask(null); }, [setZoneMask]);
 
   /**
    * `tgl` (Хүүхдийн тоглоом) — төрөл бүрд ЭГЦ ДЭЭРЭЭС харсан icon renderer.
@@ -2006,7 +2008,10 @@ export const MapCanvas = memo(function MapCanvas({
    *    тасрах, үйлчилгээ 499 буцаах нь энэ төсөлд БОДИТООР тохиолддог
    *    (`Selbe_guitsetgel_consolidated`, `Selbe_ET_20260721` хаалттай).
    */
-  const [layerFail, setLayerFail] = useState<string[]>([]);
+  /* ⚠️ 2026-10-06: [id, гарчиг] хос — гарчгийг РЕНДЕРТ `LAYER_BY_ID[id].title`-ээр
+     (getter → tr) дахин уншина. Map кэшлэгддэг тул ArcGIS давхаргын `title` нь
+     үүссэн үеийн хэлээрээ үлдэж, хэл солиход самбар хуучин хэлээр гардаг байв. */
+  const [layerFail, setLayerFail] = useState<[string, string][]>([]);
   /**
    * ⚠️ 2026-10-05: ТОВШИЛТЫН АСУУЛГА УНАСАН. `pickByQuery` нь давхарга бүрийн алдааг `[]`
    *    болгодог тул БҮХ асуулга унахад (сүлжээ · 499 · rate-limit) «энд юу ч алга» гэж худал
@@ -2533,11 +2538,16 @@ export const MapCanvas = memo(function MapCanvas({
       /* Бариул — 2D-гийн Esri swipe-тэй ИЖИЛ харагдац (цагаан шугам + бариул) */
       let divider: HTMLDivElement | null = null;
       let camWatch: __esri.WatchHandle | null = null;
+      /* ⚠️ 2026-10-06: чирэлтийн window сонсогчдыг салгагч — харьцуулалтыг чирэх
+         ДУНД унтраавал (эсвэл pointerup ирээгүй бол) урьд нь window дээр үлддэг байв. */
+      let detachDrag: (() => void) | null = null;
 
       const stopMesh = () => {
         if (timer) { clearTimeout(timer); timer = null; }
         camWatch?.remove();
         camWatch = null;
+        detachDrag?.();
+        detachDrag = null;
         divider?.remove();
         divider = null;
         for (const l of oldMeshes()) l.modifications = null;
@@ -2567,7 +2577,18 @@ export const MapCanvas = memo(function MapCanvas({
         divider.style.cssText =
           'position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;z-index:2;'
           + 'background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);cursor:ew-resize;'
+          /* ⚠️ 2026-10-06: touch-action:none — мэдрэгчтэй дэлгэцэд хөтөч чирэлтийг
+             гүйлгэлт гэж авч pointercancel илгээдэг тул бариул хөдлөхгүй байв. */
+          + 'touch-action:none;'
           + `left:${frac * 100}%`;
+        /* ⚠️ 2026-10-06: гараар ч зөөгдөнө — Tab-аар очоод ←/→ */
+        divider.tabIndex = 0;
+        divider.setAttribute('role', 'slider');
+        divider.setAttribute('aria-orientation', 'horizontal');
+        divider.setAttribute('aria-valuemin', '2');
+        divider.setAttribute('aria-valuemax', '98');
+        divider.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+        divider.setAttribute('aria-label', tr('Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн'));
         const grip = document.createElement('div');
         grip.style.cssText =
           'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
@@ -2582,20 +2603,44 @@ export const MapCanvas = memo(function MapCanvas({
         const onMove = (e: PointerEvent) => {
           const box = (sv.container as HTMLElement).getBoundingClientRect();
           frac = Math.min(0.98, Math.max(0.02, (e.clientX - box.left) / box.width));
-          if (divider) divider.style.left = `${frac * 100}%`;
+          if (divider) {
+            divider.style.left = `${frac * 100}%`;
+            divider.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+          }
           applySoon();
         };
-        const onUp = (e: PointerEvent) => {
-          divider?.releasePointerCapture?.(e.pointerId);
+        const detach = () => {
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          detachDrag = null;
+        };
+        /* ⚠️ 2026-10-06: pointercancel-ийг pointerup-тай адил барина */
+        const onUp = (e: PointerEvent) => {
+          divider?.releasePointerCapture?.(e.pointerId);
+          detach();
           applyNow(); // гараа авмагц эцсийн байрлалаар яг таарна
         };
         divider.addEventListener('pointerdown', (e) => {
           e.preventDefault();
           divider?.setPointerCapture?.(e.pointerId);
+          detachDrag?.();
           window.addEventListener('pointermove', onMove);
           window.addEventListener('pointerup', onUp);
+          window.addEventListener('pointercancel', onUp);
+          detachDrag = detach;
+        });
+        divider.addEventListener('keydown', (e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+          e.preventDefault();
+          e.stopPropagation(); // SceneView-ийн сумтай навигацид хүрэхгүй
+          const step = e.shiftKey ? 0.1 : 0.02;
+          frac = Math.min(0.98, Math.max(0.02, frac + (e.key === 'ArrowLeft' ? -step : step)));
+          if (divider) {
+            divider.style.left = `${frac * 100}%`;
+            divider.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+          }
+          applySoon();
         });
 
         /* Камер хөдлөхөд олон өнцөгт хуучирна — зогсмогц дахин бодно */
@@ -2616,8 +2661,12 @@ export const MapCanvas = memo(function MapCanvas({
       });
     }
 
+    /* ⚠️ 2026-10-06: БЭЛЭН БОЛООГҮЙ view-г хадгалсан (park) бол `when` нь unmount-ын
+       ДАРАА шийдэгдэж хадгалсан view-г Provider-т бүртгэдэг байв — дараа нь тэр view
+       устахад Provider устсан view-тэй үлдэнэ. Cleanup `alive`-ийг унтраана. */
+    let alive = true;
     view.when(() => {
-      if (view.destroyed) return;
+      if (view.destroyed || !alive) return;
       setReady(true);
       registerRef.current(view);
       /**
@@ -2880,6 +2929,7 @@ export const MapCanvas = memo(function MapCanvas({
     const leave = view.on('pointer-leave', () => setTip(null));
 
     return () => {
+      alive = false;
       click.remove();
       move.remove();
       leave.remove();
@@ -3650,6 +3700,11 @@ export const MapCanvas = memo(function MapCanvas({
    *   · Слайд (`Slide.createFrom`) — одоогийн 3D харагдацыг снапшот болгож хадгалж,
    *     дарж буцаж очно (session-д хадгална).
    */
+  /* ⚠️ 2026-10-06: слайдууд КОМПОНЕНТЫН ref-д — урьд нь эффект доторх массив байсан тул
+     3D↔BIM солих · «Дахин оролдох» ([dim, ready] эффект дахин ажиллах) үед хадгалсан слайд
+     бүгд алга болдог байв. Эффект ажиллах бүрд мөрүүдийг эндээс дахин барина.
+     (Хэл солилт нь `LocaleRemount`-аар компонентыг бүхэлд нь remount хийдэг тул ref ч шинэчлэгдэнэ.) */
+  const slidesRef = useRef<Slide[]>([]);
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !ready || !is3D(dim)) return;
@@ -3764,7 +3819,7 @@ export const MapCanvas = memo(function MapCanvas({
     const openWatchV = reactiveUtils.watch(() => expandV.expanded, (x) => { if (x) void armV(); });
 
     // ══════════ СЛАЙД ══════════
-    const slides: Slide[] = [];
+    const slides = slidesRef.current;
     /* ⚠️ `min(…, 92vw)` — дээрх «Шинжилгээ» панелийн ижил шалтгаан. */
     const panelS = mk('div', 'width:min(262px, 92vw);padding:15px;display:flex;flex-direction:column;gap:11px;'
       + 'max-height:72vh;overflow:auto;background:var(--surface);color:var(--ink)');
@@ -3831,6 +3886,7 @@ export const MapCanvas = memo(function MapCanvas({
       });
       listDiv.append(row);
     };
+    for (const sl of slides) addSlideRow(sl);
 
     // Доод хэсэг: «Слайд нэмэх» — нэр + Үүсгэх
     const addWrap = mk('div', 'display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid var(--line)');
@@ -4696,8 +4752,10 @@ export const MapCanvas = memo(function MapCanvas({
     if (!map || !ready) return;
     const on = new Set(visibleKey ? visibleKey.split(',') : []);
     // Давхарга унтрахад алдааны тэмдгийг хамт нууна — хамааралгүй сануулга үлдэхгүй
+    /* ⚠️ 2026-10-06: «шинэчилж байна…» (progStale)-ийг мөн нууна — амьд дүн ирэхээс
+       ӨМНӨ давхаргыг унтраавал `alive=false` болж тэмдэг үүрд үлддэг байв. */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: давхарга унтрахад алдааны тэмдгийг синхрон нууна — ArcGIS давхаргын амьдралын мөчлөгтэй нэг эффектэд
-    if (!on.has('mon:building')) { setProgError(false); return; }
+    if (!on.has('mon:building')) { setProgError(false); setProgStale(false); return; }
     const layer = map.findLayerById('mon:building') as FeatureLayer | null;
     if (!layer) return;
     let alive = true;
@@ -4752,10 +4810,11 @@ export const MapCanvas = memo(function MapCanvas({
     const handle = reactiveUtils.watch(
       () => map.allLayers
         .filter((l) => l.loadStatus === 'failed')
-        .map((l) => l.title || l.id)
+        .map((l) => [String(l.id), l.title || String(l.id)])
         .toArray()
-        .join('|'),
-      (joined) => setLayerFail(joined ? joined.split('|') : []),
+        .map((p) => JSON.stringify(p))
+        .join('\n'),
+      (joined) => setLayerFail(joined ? joined.split('\n').map((x) => JSON.parse(x) as [string, string]) : []),
       { initial: true },
     );
     return () => handle.remove();
@@ -4889,7 +4948,7 @@ export const MapCanvas = memo(function MapCanvas({
             {tr('{0} давхарга ачаалагдсангүй', String(layerFail.length))}
           </b>
           <span>
-            {layerFail.slice(0, 4).join(' · ')}
+            {layerFail.slice(0, 4).map(([id, t]) => LAYER_BY_ID[id]?.title ?? t).join(' · ')}
             {layerFail.length > 4 && tr(' …+{0}', String(layerFail.length - 4))}
             {' — '}
             {tr('Эдгээрийн өгөгдөл зурагт ХАРАГДАХГҮЙ. Сүлжээ эсвэл үйлчилгээний хандалтыг шалгана уу.')}

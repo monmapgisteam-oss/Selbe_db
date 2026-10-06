@@ -270,13 +270,23 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       }
     }
 
+    const bi = rows.findIndex((x) => isConstructionNo(x.no));
+    /* ⚠️ 2026-10-06: «Б.» мөр олдоогүй хуудас (хуваарьтай атлаа) — урьд нь доорх давталтад
+       `if (sh.bi < 0) continue` гэж ЧИМЭЭГҮЙ алгасагддаг тул багц/төслийн муруй тэр хуудасгүйгээр
+       «бүрэн» мэт гардаг байв. Одоо `failed`-д орж «дутуу нэгтгэл» дүрэм (`failedGroups`) үйлчилнэ. */
+    if (bi < 0) {
+      failed.push({ key: pkg.key, group: bagtsKey(pkg.group) });
+      console.warn(`[selbe] төлөвлөгөөт муруй: ${pkg.key} — «Б.» мөр олдсонгүй, багц/төслийн муруй гаргахгүй`);
+      return;
+    }
+
     sheets.push({
       key: pkg.key,
       volByMonth,
       group: bagtsKey(pkg.group),
       rows,
       nBld: sc.bld.length,
-      bi: rows.findIndex((x) => isConstructionNo(x.no)),
+      bi,
       planPct,
       from,
       to,
@@ -312,7 +322,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   const tAcc: { s: number; n: number }[] = axis.map(() => ({ s: 0, n: 0 }));
 
   for (const sh of sheets) {
-    if (sh.bi < 0) continue;
+    /* ⚠️ 2026-10-06: `bi < 0` хуудас энд ирэхгүй — дээр `failed`-д орсон */
     /*
      * ⚠️ ХУУДАСТАЙ ЯГ ИЖИЛ ТООЦОО. `planCurve` нь `computeAll`-ийн дүрмийг
      *    давтдаг (`planCurve.check` тулгана) тул график ба бөглөх хуудас нэг
