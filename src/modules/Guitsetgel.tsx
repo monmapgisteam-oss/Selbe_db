@@ -31,7 +31,7 @@ import { resolveFlowStage, subscribeAcl } from '@/lib/guitsetgelAcl';
 import { hasCap } from '@/lib/caps';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
-import { navDirtyLabels } from '@/lib/navGuard';
+import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
 import { groupWorks, optionsOf, STAGE_LABEL, type Work } from '@/lib/hyanaltGroup';
 import { apply, dismissApplyWarn, recheck, resetRegSweep, retryPendingRegistrations, useApplyWarns, useHyanaltRows } from '@/lib/hyanaltStore';
 import { loadSubmission, type Change, type Submission } from '@/lib/hyanaltDetail';
@@ -43,6 +43,8 @@ import s from './guitsetgel.module.css';
 
 /* ⚠️ `STAGE_ORDER`-оос (2026-09-23, 6 шат) — энд давхар жагсаавал зөрнө */
 const STAGES: Stage[] = STAGE_ORDER;
+/** ⚠️ 2026-10-06: буцаалт хүрэх ДООД шатны нэр (баталгаажуулах асуултад) — `STAGE_ORDER`-оос */
+const lowerLabel = (x: Stage): string => STAGE_LABEL[STAGE_ORDER[Math.max(0, STAGE_ORDER.indexOf(x) - 1)]];
 
 /** Буцаасан төлөв → буцаасан ШАТ (компанид буцаасан = инженер) */
 const RETURNER: Partial<Record<Status, ReviewStage>> = Object.fromEntries(
@@ -1070,8 +1072,24 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
   const run = async (fn: () => Promise<{ ok: boolean; error?: string; warn?: string; contentChanged?: true }>) => {
     if (busy) return;
     setBusy(true);
-    const r = await fn();
-    setBusy(false);
+    /* ⚠️ 2026-10-06 аудит: (1) ЭЦСИЙН батлалт архивт БҮТЭН ЖААЗ бичдэг (≈1,400 мөр, 500-аар
+       багцлан `applyAdds`) — бичилт явж байхад F5/таб хаах/харагдац солихыг АСУУНА (`navGuard` →
+       `beforeunload` · Portal), FillNew-ийн 'fillnew-send'-ийн ижил; урьд нь хамгаалалтгүй тул
+       тасарвал хагас жааз үлдэж багцыг түгжинэ. Бусад шийдвэр (буцаах · дахин шалгах) мөн бичилт
+       тул бүгдийг хамгаална. (2) `fn()` шидвэл урьд нь `busy` үүрд үнэн үлдэж, алдаа огт
+       харагддаггүй байв — `catch`-д харуулж `finally`-д ЗААВАЛ суллана. */
+    setNavDirty('hyanalt-apply', true, tr('Гүйцэтгэлийн шийдвэр хадгалж байна'));
+    let r: Awaited<ReturnType<typeof fn>>;
+    try {
+      r = await fn();
+    } catch (e) {
+      setErr(userError(e));
+      setWarn('');
+      return;
+    } finally {
+      setNavDirty('hyanalt-apply', false);
+      setBusy(false);
+    }
     /* ⚠️ Агуулга өөрчлөгдсөн бол ШИНЭЭР татна (дээрх `reloadKey`-ийн ⚠️) */
     if (r.contentChanged) setSubReload((n) => n + 1);
     /* ⚠️ Анхааруулга (`warn`) нь АЛДАА БИШ — тусдаа шар мөрөөр (2026-09-23);
@@ -1215,7 +1233,12 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                             ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана')
                             : undefined
                       }
-                      onClick={() => review(DECISION.return)}>
+                      onClick={() => {
+                        /* ⚠️ 2026-10-06 аудит: БАТАЛГААЖУУЛНА — AjilBatlah/HuvaariBatlah-ийн буцаалтын
+                           асуулттай (2026-09-30) ижил; буцаалт нь буцаах замгүй, шат нэрлэнэ. */
+                        if (!window.confirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(stage)))) return;
+                        review(DECISION.return);
+                      }}>
                       {tr('Буцаах')}
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>
@@ -1283,7 +1306,11 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper }: {
                         доошоо явах нь хараагүй агуулгыг БАТЛАХГҮЙ. */}
                     <button className={`${s.btn} ${s.bad}`} disabled={busy || lackBlocks}
                       title={bad.length ? tr('Зөвшөөрөгдөөгүй нүднүүд шалтгаанд өөрсдөө жагсаана') : undefined}
-                      onClick={() => run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : undefined, subAt))}>
+                      onClick={() => {
+                        /* ⚠️ 2026-10-06 аудит: доош буцаалтыг баталгаажуулна (дээрх «Буцаах»-ын ⚠️) */
+                        if (!window.confirm(tr('Гүйцэтгэлийг «{0}» руу буцаах уу? Шалтгаан тэдэнд харагдана — засаад дахин илгээнэ.', lowerLabel(reBy)))) return;
+                        void run(() => recheck(cur.__oid, 'back', badText(), who, reBy, me, bypass, changes != null ? toOkRefs(okKeys, okRows) : undefined, subAt));
+                      }}>
                       {RECHECK_DOWN[reBy]}
                       {bad.length > 0 && ` (${bad.length})`}
                     </button>
@@ -1442,7 +1469,7 @@ export function Guitsetgel() {
    *    ӨГӨГДӨЛ (төлөвийн утгуудтай ижил дүрэм). Нэвтрэлт унтраалттай (дев)
    *    үед user байхгүй тул худал хүний нэрийн оронд ерөнхий «Хянагч» орно.
    */
-  const who = user?.fullName || user?.username || 'Хянагч';
+  const who = user?.fullName || user?.username || tr('Хянагч');
   /** Томилгоо өөрчлөгдөхөд (5 мин poll, өөр таб) дахин бодно */
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);

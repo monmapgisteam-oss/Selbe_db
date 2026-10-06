@@ -254,7 +254,23 @@ export function filterZov(rows: Zov[], f: ZovFilter, now: number): Zov[] {
  * болж уншигддаг тул «мэдэхгүй»-гээс заавал ялгана.
  */
 export async function loadZov(): Promise<Zov[] | null> {
-  if (!URL) return null;
+  return (await loadZovResult()).rows;
+}
+
+/**
+ * `loadZov` + УНАЛТЫН ШАЛТГААН.
+ *
+ * ⚠️ 2026-10-06 (аудит): урьд нь `catch { return null; }` шалтгааныг бүрмөсөн
+ *    хаядаг байсан тул «Зөвшөөрөл» харагдац 499 (эрх) · сүлжээ · талбар
+ *    байхгүй гурвыг ялгах аргагүй, консолд ч юу ч үлддэггүй байв. Одоо
+ *    консолд бичиж, `error`-оор дуудагчид өгнө.
+ * ⚠️ `loadZov`-ийн `null` гэрээг ӨӨРЧЛӨХГҮЙ — `ceo/permits` · `scorecardLoad` ·
+ *    `execReport` · `schemData` бүгд «унавал null, шиддэггүй» гэдэгт
+ *    тулгуурладаг. Шалтгаан хэрэгтэй дуудагч (`Zovshoorol.tsx`) ЭНИЙГ дуудна.
+ * ⚠️ `URL` хоосон (холбогдоогүй) үед `error: null` — тэр нь алдаа биш, тохиргоо.
+ */
+export async function loadZovResult(): Promise<{ rows: Zov[] | null; error: Error | null }> {
+  if (!URL) return { rows: null, error: null };
   try {
     const out: Zov[] = [];
     /* ⚠️ 2026-10-01: хүлээлтийн насны талбарууд (`since`) — метадата унасан ч
@@ -310,9 +326,11 @@ export async function loadZov(): Promise<Zov[] | null> {
       if (!j.exceededTransferLimit || fs.length === 0) break;
       offset += fs.length;
     }
-    return out;
-  } catch {
-    return null;
+    return { rows: out, error: null };
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e : new Error(String(e));
+    console.error('[zovshoorol] жагсаалт татахад алдаа:', error);
+    return { rows: null, error };
   }
 }
 

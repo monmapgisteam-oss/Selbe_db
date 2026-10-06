@@ -878,8 +878,6 @@ const DIM_LABEL: Record<Dim2, string> = {
 /* ═══════════════════════ Үндсэн компонент ═══════════════════════ */
 
 export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  const q = useAsync<HabeaData>(loadHabea, []);
-
   /* Газрын зургийн төлөв — бүтэц «Ерөнхий мэдээлэл»-тэй ИЖИЛ */
   const [visible, setVisible] = useState<string[]>([...HABEA_LAYER_IDS]);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
@@ -920,6 +918,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       document.removeEventListener('visibilitychange', onShow);
     };
   }, []);
+  /* ⚠️ 2026-10-06 (аудит): үндсэн 3 хүснэгт мөн `tick`-ээр ДАХИН татагдана — урьд нь
+     `useAsync(loadHabea, [])` хуудас нээгдэх агшинд НЭГ л удаа ажилладаг байсан тул
+     дээрх «5 мин тутам дахин татна» гэсэн тайлбартай зөрж, нээлттэй таб өдөржин хуучин
+     осол/ажиллах хүчийг харуулдаг байв. `loadHabea`-ийн кэшийн TTL (5 мин) нь poll-той
+     ижил тул 5 минутын tick бүр сүлжээнд хүрнэ; таб буцаж харагдах үеийн tick нь TTL
+     дотор бол кэшээс шууд (дэмий хүсэлтгүй). `keepOn: [tick]` — хуучин утга дэлгэцэд
+     үлдэж анивчихгүй, алдвал `error` руу шилжинэ. */
+  const q = useAsync<HabeaData>(loadHabea, [tick], { keepOn: [tick] });
   const weekKey = prevWeek(new Date(now)).start.getTime();
   /* Өмнөх долоо хоногийн оноо — (талбай × компани) нүд, шүүлт нь санах ойд.
      ⚠️ `keepOn: [tick]` — 5 минутын дахин таталтад хуучин оноо дэлгэцэд үлдэнэ

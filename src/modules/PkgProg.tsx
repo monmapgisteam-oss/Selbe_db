@@ -22,7 +22,9 @@ import {
   loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevel, projectPlanOf, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { HUE, catOf, aggregateMonths, physNow, progMonthsOf, type PackCat } from '@/modules/pkgShared';
+import {
+  HUE, catOf, aggregateMonths, physNow, progMonthsOf, blockLevelCounts, pp, ppAbs, SR_ONLY, type PackCat,
+} from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
 import { loadPlanCurveCached, planPctAt, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
@@ -997,7 +999,9 @@ function TsKpi(
       { v: t?.actual == null ? none : pct(t.actual, 1), l: tr('бодит гүйцэтгэлийн хувь') },
       { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') },
       {
-        v: t?.gap == null ? none : `${t.gap >= 0 ? '−' : '+'}${Math.abs(t.gap).toFixed(1)}%`,
+        /* ⚠️ 2026-10-06 (аудит): нэгж pp, `num()` — ТУХ-тай нэг хэлбэр (`pkgShared.pp`).
+           `gap` = төлөвлөгөө − бодит (эерэг = хоцорсон) тул тэмдгийг эргүүлнэ: хоцорсон → «-5.0 pp». */
+        v: t?.gap == null ? none : pp(-t.gap),
         l: tr('гүйцэтгэлийн зөрүүгийн хувь'),
     },
   ];
@@ -1125,7 +1129,8 @@ function TsPackList({
                       title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      <span className="num">−{lag.gap.toFixed(1)}%</span>
+                      {/* ⚠️ 2026-10-06 (аудит): pp — `pkgShared.pp` (ТУХ-тай нэг хэлбэр) */}
+                      <span className="num">{pp(-lag.gap)}</span>
                       <small className="num">
                         {lag.planned.toFixed(1)}/{lag.actual.toFixed(1)}
                       </small>
@@ -1255,18 +1260,13 @@ function LevelsCard({
    */
   ovByCat: Map<PackCat, number | 'error'> | null;
 }) {
-  const counts = PROGRESS_LEVELS.map(() => 0);
-  let noData = 0;
   /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон (БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок */
   const uniq = uniqueBlocks(blocks);
   /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): хэмжилтгүй блок «0–25%»-д
      ТООЛОГДОНО — урьд нь «мэдээлэлгүй» гэж хасагддаг тул багцын хувь (`pkgProgressOf` — тайлангүй 0%)
      ба энэ тархалт өөр хуваарьтай байв. Тайлангүйн тоо `note`-д ил хэвээр. */
-  uniq.forEach((b) => {
-    if (b.progress == null) noData++;
-    const v = b.progress ?? 0;
-    counts[Math.max(0, Math.min(PROGRESS_LEVELS.length - 1, Math.floor(v / 25)))]++;
-  });
+  /* ⚠️ 2026-10-06 (аудит): дүрэм `pkgShared.blockLevelCounts`-д — удирдлагын тайлантай НЭГ функц */
+  const { counts, noData } = blockLevelCounts(uniq);
   return (
     <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', uniq.length, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
       <Bars
@@ -1491,7 +1491,8 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
       note={
         curGap == null ? undefined : (
           <span className={behind ? ts.progBad : ts.progGood}>
-            {behind ? tr('хоцрогдол') : tr('түрүүлсэн')} {Math.abs(curGap).toFixed(1)}%
+            {/* ⚠️ 2026-10-06 (аудит): «5.0 pp» — `pkgShared.ppAbs` (хувь биш, хувийн нэгж) */}
+            {behind ? tr('хоцрогдол') : tr('түрүүлсэн')} {ppAbs(curGap)}
           </span>
         )
       }
@@ -1532,7 +1533,29 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
         }}
         onMouseLeave={() => setHi(null)}
+        /* ⚠️ 2026-10-06 (аудит): ГАРААР ч уншигдана — урьд нь сарын утга зөвхөн хулганы
+           hover-оор гардаг байв. Tab-аар фокуслоход сүүлийн хэмжилт (эсвэл сүүлийн сар) дээр
+           зогсож, ←/→ сараар, Home/End эхлэл/төгсгөл рүү; уншилт нь доорх `aria-live` мөрөнд. */
+        tabIndex={0}
+        role="group"
+        aria-label={tr('{0} — сар сонгохдоо ← → товч', title)}
+        onFocus={() => setHi((h) => h ?? (lastAct >= 0 ? lastAct : N - 1))}
+        onBlur={() => setHi(null)}
+        onKeyDown={(e) => {
+          const cur = hv ?? (lastAct >= 0 ? lastAct : N - 1);
+          const next = e.key === 'ArrowLeft' ? cur - 1 : e.key === 'ArrowRight' ? cur + 1
+            : e.key === 'Home' ? 0 : e.key === 'End' ? N - 1 : null;
+          if (next == null) return;
+          e.preventDefault();
+          setHi(Math.max(0, Math.min(N - 1, next)));
+        }}
       >
+        {/* Дэлгэц уншигчийн уншилт — фокус/hover-ийн сарын утгууд (tooltip-тэй ижил тоо) */}
+        <span aria-live="polite" style={SR_ONLY}>
+          {pt ? tr('{0}: төлөвлөсөн {1}, бодит {2}, зөрүү {3}',
+            pt.label, pct(ptPlan, 1), pt.act == null ? '—' : pct(pt.act, 1),
+            pt.act == null ? '—' : pp(pt.act - ptPlan)) : ''}
+        </span>
         {/* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН — `viewBox` нь бодит
             пикселтэй тэнцүү тул үсэг гажихаа болив. */}
         <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
@@ -1659,7 +1682,8 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             <p className={`${ts.progTipRow} ${ts.progTipGap}`}>
               {tr('Зөрүү')}
               <b className="num">
-                {pt.act == null ? '—' : `${ptPlan - pt.act >= 0 ? '−' : '+'}${Math.abs(ptPlan - pt.act).toFixed(1)}%`}
+                {/* ⚠️ 2026-10-06 (аудит): pp — `pkgShared.pp` (бодит − төлөвлөгөө) */}
+                {pt.act == null ? '—' : pp(pt.act - ptPlan)}
               </b>
             </p>
           </div>

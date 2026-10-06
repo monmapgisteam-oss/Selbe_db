@@ -34,6 +34,7 @@ import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import { relayAlive } from '@/lib/agent/client';
 import { TOLOV } from '@/lib/zovshoorol';
+import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
 import { ReportContents, ReportHero } from './ReportContents';
 import r from './report.module.css';
 import e from './execReport.module.css';
@@ -41,6 +42,14 @@ import e from './execReport.module.css';
 /** Хүснэгтийн дугаартай тайлбар */
 function Cap({ no, children }: { no: string; children: React.ReactNode }) {
   return <p className={r.caption}>{tr('Хүснэгт')} {no}. <span>{children}</span></p>;
+}
+
+/**
+ * Хэсгийн гарчиг — дугаар ба нэр `execSections`-ээс (PDF-тэй ГАНЦ эх, 2026-10-06 аудит).
+ * ⚠️ `id`-ийн дугаар = хэсгийн дугаар (`ReportContents` нь `exec-{i+1}` руу үсэрнэ).
+ */
+function SecHead({ k }: { k: ExecSectionKey }) {
+  return <h2 className={r.h2}>{`${execSectionNo(k)}. ${execSectionTitle(k)}`}</h2>;
 }
 
 /**
@@ -121,7 +130,10 @@ export function ExecReport() {
        нь өөр (дууссан/цуцлагдсан) хүсэлтийнх байж болох тул pdf/png алдааг залгихгүй. */
     let ac: AbortController | null = null;
     try {
-      const d = date || dateTime(Date.now());
+      /* ⚠️ 2026-10-06 (аудит): огноог ҮҮСГЭХ агшинд авна (`Tailan.run`-ий 2026-09-29-ний ижил
+         засвар). Урьд нь mount-ын `date` дамждаг тул хэдэн цагийн дараа гаргасан PDF/PNG хуучин
+         цагаар тамгалагддаг байв (`||`-ийн нөөц хэзээ ч ажилладаггүй). */
+      const d = dateTime(Date.now());
       if (what === 'pdf') await downloadExecPdf(x, d, summary);
       else if (what === 'png') await downloadInfographic(x, d, summary);
       else {
@@ -142,7 +154,14 @@ export function ExecReport() {
     } finally {
       setBusy('');
     }
-  }, [x, busy, date, summary]);
+  }, [x, busy, summary]);
+  /**
+   * ШИНЭЧЛЭХ — `loadExecReport`-ийн 5 минутын кэш (ба түүний уншдаг бүх кэш)-ийг хаяна.
+   * ⚠️ 2026-10-06 (аудит): `Tailan.refresh`-тэй ижил `invalidateAll()` — тагийн жагсаалтыг
+   *    гараар хөтлөхгүй (`Tailan`-ий 2026-10-05-ны ⚠️). `useAsync` нь `dataBus`-аар дахин татна;
+   *    хуучин AI дүгнэлт `[x]` эффектээр цэвэрлэгдэнэ.
+   */
+  const refresh = useCallback(() => invalidateAll(), []);
 
   return (
     <>
@@ -173,7 +192,7 @@ export function ExecReport() {
           {/* ⚠️ 2026-10-06 (аудит): «Шинэчлэх» — ерөнхий тайлангийнхтай (`Tailan.refresh`) ИЖИЛ
               `invalidateAll()`; урьд нь энэ горимд 5 минутын кэшийг хаях зам байгаагүй. Өгөгдөл
               солигдоход AI дүгнэлт цэвэрлэгдэнэ (дээрх 2026-09-23-ны ⚠️). */}
-          <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={() => invalidateAll()}
+          <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={refresh}
             title={tr('Тайлангийн кэшийг хаяж өгөгдлийг дахин татна')}>
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
@@ -205,14 +224,17 @@ export function ExecReport() {
         <Data q={q} loading={tr('Дөрвөн дашбоардын өгөгдлийг нэгтгэж байна…')}>
           {(x) => (
             <>
+              {/* ⚠️ 2026-10-06 (аудит): хэсгийн дугаар/гарчиг `execSections`-ээс — PDF-тэй ГАНЦ эх
+                  (урьд нь дэлгэц 1–5, PDF 1–6 өөр гарчигтай байв). Газар чөлөөлөлт · ХАБ нь PDF-тэй
+                  адил ТУСДАА 2-р хэсэг болов. */}
               <ReportContents prefix="exec" titles={[
-                tr('Ерөнхий үзүүлэлт'), tr('Багцын гүйцэтгэл'), tr('Багцын санхүү'), tr('Зөвшөөрөл'), tr('Дүгнэлт'),
+                ...execSections().map((sec) => sec.title),
                 ...(appendix.length > 0 ? [tr('Хавсралт')] : []),
               ]} />
 
-              {/* ── 1. Ерөнхий үзүүлэлт ── */}
-              <section id="exec-1" tabIndex={-1} className={r.section}>
-                <h2 className={r.h2}>{tr('1. Ерөнхий үзүүлэлт')}</h2>
+              {/* ── 1. Төслийн ерөнхий байдал ── */}
+              <section id={`exec-${execSectionNo('overview')}`} tabIndex={-1} className={r.section}>
+                <SecHead k="overview" />
                 {(() => {
                   /* ⚠️ НЭГ МАССИВ — карт ба хүснэгт хоёулаа эндээс (§тайлбар) */
                   const kpis = [
@@ -358,11 +380,15 @@ export function ExecReport() {
                     </>
                   );
                 })()}
+              </section>
 
+              {/* ── 2. Газар чөлөөлөлт ба талбайн бэлтгэл (ХАБ-тай хамт — PDF-ийн §2-тай ижил) ── */}
+              <section id={`exec-${execSectionNo('land')}`} tabIndex={-1} className={r.section}>
+                <SecHead k="land" />
                 <div className={e.one}>
                   {/* ── Газар чөлөөлөлт — 01-ийн карт ── */}
                   <div>
-                    <Cap no="1.4">{tr('Газар чөлөөлөлтийн нэгж талбарын төлөв')}</Cap>
+                    <Cap no={`${execSectionNo('land')}.1`}>{tr('Газар чөлөөлөлтийн нэгж талбарын төлөв')}</Cap>
                     <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                       <thead><tr><th>{tr('Төлөв')}</th><th className={r.num}>{tr('Талбар')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                       <tbody>
@@ -379,7 +405,7 @@ export function ExecReport() {
                     </table></div>
                     {x.gdash.land.reasons.length > 0 && (
                       <>
-                        <Fig no="1.3">{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
+                        <Fig no={`${execSectionNo('land')}.1`}>{tr('Чөлөөгдөөгүй шалтгаанаар ({0} нэгж талбар)', num(x.gdash.land.remaining))}</Fig>
                         <RankBars
                           title={tr('Чөлөөгдөөгүй талбарын шалтгаан')}
                           items={x.gdash.land.reasons.map((rs, i) => ({ label: tr(rs.label), value: rs.n, hot: i === 0 }))}
@@ -389,7 +415,7 @@ export function ExecReport() {
                   </div>
                   {/* ── ХАБ — 01-ийн карт ── */}
                   <div>
-                    <Cap no="1.5">{tr('ХАБ-ын талбайн хүн хүч')}{x.gdash.hse?.date ? ` · ${x.gdash.hse.date}` : ''}</Cap>
+                    <Cap no={`${execSectionNo('land')}.2`}>{tr('ХАБ-ын талбайн хүн хүч')}{x.gdash.hse?.date ? ` · ${x.gdash.hse.date}` : ''}</Cap>
                     {x.gdash.hse ? (
                       <>
                         <KpiRow items={[
@@ -416,11 +442,11 @@ export function ExecReport() {
                 * ⚠️ PDF нь ХЭЗЭЭ Ч хоёр баганагүй — дараалсан хэсгүүд. Дэлгэц
                 * зэрэгцүүлбэл «дэлгэц = PDF» дүрэм эвдэрнэ (`execPdf.ts`).
                 * Зэрэгцүүлэлт нь ЗӨВХӨН нэг хэсэг доторх хоёр ЖИЖИГ картад
-                * зөв (1-р хэсгийн газар чөлөөлөлт ↔ ХАБ).
+                * зөв (2-р хэсгийн газар чөлөөлөлт ↔ ХАБ).
                 */}
-              {/* ── 2. Багцын гүйцэтгэл ── */}
-                <section id="exec-2" tabIndex={-1} className={r.section}>
-                  <h2 className={r.h2}>{tr('2. Багцын гүйцэтгэл')}</h2>
+              {/* ── 3. Биет гүйцэтгэл ── */}
+                <section id={`exec-${execSectionNo('prog')}`} tabIndex={-1} className={r.section}>
+                  <SecHead k="prog" />
                   <KpiRow items={[
                     /* ⚠️ 2026-09-30: `prog.asOf` нь одоо «Бодит» гарсан ХЭМЖИЛТИЙН огноо
                        (`execReport` — `aggregateMonths().physAt`), барилгын сүүлийн огноо биш */
@@ -430,7 +456,7 @@ export function ExecReport() {
                     { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <Meter value={x.prog.actual} plan={x.prog.planned} label={tr('Орон сууцны барилга угсралт')} />
-                  <Fig no="2">{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
+                  <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
                   <RankBars
                     title={tr('Багц тус бүрийн биет гүйцэтгэл')}
                     max={100}
@@ -438,7 +464,7 @@ export function ExecReport() {
                     items={x.prog.packs.filter((p) => p.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
                       .map((p, i) => ({ label: p.name, value: p.progress, hot: i === 0 && p.progress != null }))}
                   />
-                  <Cap no="2">{tr('Блокийн гүйцэтгэлийн түвшин')}</Cap>
+                  <Cap no={String(execSectionNo('prog'))}>{tr('Блокийн гүйцэтгэлийн түвшин')}</Cap>
                   <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                     <thead><tr><th>{tr('Түвшин')}</th><th>{tr('Хувь')}</th><th className={r.num}>{tr('Блок')}</th></tr></thead>
                     <tbody>
@@ -449,9 +475,9 @@ export function ExecReport() {
                   </table></div>
                 </section>
 
-                {/* ── 3. Багцын санхүү ── */}
-                <section id="exec-3" tabIndex={-1} className={r.section}>
-                  <h2 className={r.h2}>{tr('3. Багцын санхүү')}</h2>
+                {/* ── 4. Санхүүжилт ── */}
+                <section id={`exec-${execSectionNo('fin')}`} tabIndex={-1} className={r.section}>
+                  <SecHead k="fin" />
                   {/* ⚠️ 2026-09-21: `planTotal` = 1-р хэсгийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ
                       (зөвхөн «Гэрээлсэн дүн» мөр); `given` = HO-ийн бүх төлбөр (`execReport.fin` ⚠️). */}
                   <KpiRow items={[
@@ -459,7 +485,7 @@ export function ExecReport() {
                     { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : pct(x.fin.share, 1) },
                     { label: tr('Үлдэгдэл'), value: money(x.fin.remain) },
                   ]} />
-                  <Fig no="3">{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээлсэн дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>
+                  <Fig no={String(execSectionNo('fin'))}>{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээлсэн дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>
                   <RankBars
                     title={tr('Багц тус бүрийн санхүүжилтийн хувь')}
                     fmt={(v) => pct(v, 1)}
@@ -469,7 +495,7 @@ export function ExecReport() {
                       text: f.pct == null ? '—' : pct(f.pct, 1),
                     }))}
                   />
-                  <Cap no="3">{tr('Багц тус бүрийн санхүүжилт (олгосон ба гэрээлсэн дүн)')}</Cap>
+                  <Cap no={String(execSectionNo('fin'))}>{tr('Багц тус бүрийн санхүүжилт (олгосон ба гэрээлсэн дүн)')}</Cap>
                   <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                     <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Гэрээлсэн (₮)')}</th><th className={r.num}>{tr('Олгосон (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                     <tbody>
@@ -523,9 +549,9 @@ export function ExecReport() {
                   )}
                 </section>
 
-              {/* ── 4. Зөвшөөрөл ── */}
-              <section id="exec-4" tabIndex={-1} className={r.section}>
-                <h2 className={r.h2}>{tr('4. Зөвшөөрөл')}</h2>
+              {/* ── 5. Зөвшөөрөл ── */}
+              <section id={`exec-${execSectionNo('zov')}`} tabIndex={-1} className={r.section}>
+                <SecHead k="zov" />
                 {!x.zov ? (
                   <p className={r.note}>{tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ хэсэг мэдээлэлгүй.')}</p>
                 ) : (
@@ -535,7 +561,7 @@ export function ExecReport() {
                       { label: tr('Хүлээгдэж буй'), value: num(x.zov.wait) },
                       { label: tr('Зөвшөөрөөгүй'), value: num(x.zov.no), sub: x.zov.unknown ? tr('танигдаагүй {0}', num(x.zov.unknown)) : undefined },
                     ]} />
-                    <Cap no="4.1">{tr('Багц тус бүрийн зөвшөөрлийн төлөв')}</Cap>
+                    <Cap no={`${execSectionNo('zov')}.1`}>{tr('Багц тус бүрийн зөвшөөрлийн төлөв')}</Cap>
                     <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                       <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Нийт')}</th><th className={r.num}>{tr('Зөвшөөрсөн')}</th><th className={r.num}>{tr('Хүлээгдэж')}</th><th className={r.num}>{tr('Зөвшөөрөөгүй')}</th></tr></thead>
                       <tbody>
@@ -552,7 +578,7 @@ export function ExecReport() {
                     </table></div>
                     {x.zov.issues.length > 0 && (
                       <>
-                        <Cap no="4.2">{tr('Анхаарал шаардах зөвшөөрлүүд')}</Cap>
+                        <Cap no={`${execSectionNo('zov')}.2`}>{tr('Анхаарал шаардах зөвшөөрлүүд')}</Cap>
                         <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                           <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Шат')}</th><th>{tr('Зөвшөөрөл')}</th><th>{tr('Байгууллага')}</th><th>{tr('Төлөв')}</th></tr></thead>
                           <tbody>
@@ -580,14 +606,17 @@ export function ExecReport() {
                 * ⚠️ Урт нэрсийн жагсаалт ЭНД БИШ, ХАВСРАЛТАД — доорх
                 * `appendix`-ийг үз.
                 */}
-              <section id="exec-5" tabIndex={-1} className={r.section}>
-                <h2 className={r.h2}>{tr('5. Дүгнэлт')}</h2>
+              {/* ⚠️ 2026-10-06 (аудит): AI дүгнэлт тооцоолсон дүгнэлтийг ОРЛОХГҮЙ, НЭМЭГДЭНЭ. Урьд нь
+                  AI дүгнэлт үүсмэгц хүндрэлийн өнгөт дүгнэлтүүд ба «хавсралт N» заалт дэлгэц/PDF-ээс
+                  алга болдог тул хавсралт ямар дүгнэлтэд хамаарах нь тодорхойгүй болдог байв. Одоо
+                  дүгнэлт (зөвлөмжтэй — PDF §6-тай ижил) үргэлж, AI дүгнэлт түүний ДАРАА тусдаа блок. */}
+              <section id={`exec-${execSectionNo('summary')}`} tabIndex={-1} className={r.section}>
+                <SecHead k="summary" />
                 <div className={e.ai}>
                   <div className={e.aiHead}>
-                    <span>{summary ? tr('AI дүгнэлт') : tr('Гол дүгнэлт')}</span>
+                    <span>{tr('Гол дүгнэлт')}</span>
                   </div>
-                  {summary ? <p className={e.aiText}>{summary}</p> : (
-                    <ul className={e.findings}>
+                  <ul className={e.findings}>
                       {findings.map((f, i) => (
                         <li key={`${f.area}-${i}`} className={`${e.finding} ${e[`sev_${f.sev}`]}`}>
                           <p className={e.findingTop}>
@@ -602,11 +631,19 @@ export function ExecReport() {
                               )}
                             </span>
                           </p>
+                          {f.advice && <p className={`${e.findingTop} ${e.findingRef}`}>{tr('Зөвлөмж:')} {f.advice}</p>}
                         </li>
                       ))}
-                    </ul>
-                  )}
+                  </ul>
                 </div>
+                {summary && (
+                  <div className={e.ai}>
+                    <div className={e.aiHead}>
+                      <span>{tr('AI дүгнэлт')}</span>
+                    </div>
+                    <p className={e.aiText}>{summary}</p>
+                  </div>
+                )}
               </section>
 
               {/*
@@ -617,7 +654,7 @@ export function ExecReport() {
                 * (тайлан бүгдийг харуулна). Зөвхөн байрлал нь өөрчлөгдсөн.
                 */}
               {appendix.length > 0 && (
-                <section id="exec-6" tabIndex={-1} className={r.section}>
+                <section id={`exec-${execSections().length + 1}`} tabIndex={-1} className={r.section}>
                   <h2 className={r.h2}>{tr('Хавсралт')}</h2>
                   {/* ⚠️ Дараалал ба дугаар `execAppendix`-ээс — PDF-тэй ижил (2026-09-21) */}
                   {appendix.map((a) => (

@@ -21,7 +21,7 @@ import { useAsync } from '@/lib/useAsync';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { CONTRACTED } from '@/lib/gdash';
 import { TUH_GROUPS, matchesSearch, buildTuhPkgs, progressOf, type TuhGroup, type TuhPkg } from '@/lib/tuhData';
-import { loadDeps, saveChange, linkError, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
+import { loadDeps, saveChange, linkError, downstreamOf, type Dep, type DepState } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError } from '@/components/ui';
 import { loadFinData, pkgMonthsMap, physLatest } from '@/modules/Finance';
@@ -40,8 +40,14 @@ export function BagtsHamaaral() {
 
   const [grp, setGrp] = useState<TuhGroup | 'all'>('all');
   const [q, setQ] = useState('');
-  /** Хадгалсны дараах жагсаалт — `depQ`-ийг дарна (дахин татахгүй) */
-  const [saved, setSaved] = useState<Dep[] | null>(null);
+  /**
+   * Хадгалсны дараах жагсаалт (`at`-тай) — `depQ`-ээс ШИНЭ үедээ л түүнийг дарна (дахин татахгүй).
+   * ⚠️ 2026-10-06 (аудит): урьд нь анхны хадгалалтын дараа `saved` нь `depQ`-ийг ҮҮРД дардаг тул
+   *    data-bus-ийн шинэчлэл ба «Дахин оролдох» бусдын өөрчлөлтийг ХЭЗЭЭ Ч харуулдаггүй байв.
+   *    Одоо `at` (optimistic lock-ийн агшин)-аар жишиж ШИНЭ нь ялна — `depQ` дахин ирээд
+   *    манай бичлэгээс хойшхи (эсвэл тэнцүү) бол түүнийг харуулна.
+   */
+  const [saved, setSaved] = useState<DepState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -68,7 +74,8 @@ export function BagtsHamaaral() {
   }, [finQ, pkgs]);
   /* ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга болсон) — ХАРУУЛАХГҮЙ, хадгалалтад үлдэнэ */
   const deps = useMemo(() => {
-    const all = saved ?? (depQ.state === 'ready' ? depQ.data.deps : []);
+    const fresh = depQ.state === 'ready' ? depQ.data : null;
+    const all = saved && (!fresh || (fresh.at ?? 0) < (saved.at ?? 0)) ? saved.deps : (fresh?.deps ?? []);
     return all.filter((d) => byKey.has(d.from) && byKey.has(d.to));
   }, [saved, depQ, byKey]);
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
@@ -84,14 +91,14 @@ export function BagtsHamaaral() {
     setBusy(true);
     try {
       const res = await saveChange({ op, dep });
-      if (res.ok) { setSaved(res.state.deps); return true; }
+      if (res.ok) { setSaved(res.state); return true; }
       setErr(userError(res.error));
     } catch (e) {
       setErr(userError(e));
     } finally {
       setBusy(false);
     }
-    try { setSaved((await loadDeps()).deps); } catch { /* дахин уншилт унавал хуучнаараа — алдаа дээр харагдсан */ }
+    try { setSaved(await loadDeps()); } catch { /* дахин уншилт унавал хуучнаараа — алдаа дээр харагдсан */ }
     return false;
   }, [busy]);
 

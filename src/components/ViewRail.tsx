@@ -9,8 +9,12 @@ import { Icon } from './Icon';
 import { VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, NAV_GROUPS, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
 
-/** Цэсний тэмдэгт — харагдац → хүлээгдэж буй зүйлийн тоо (`navBadges.ts`) */
-export type NavBadges = Partial<Record<ViewKey, number>>;
+/**
+ * Цэсний тэмдэгт — харагдац → хүлээгдэж буй зүйлийн тоо (`navBadges.ts`).
+ * ⚠️ 2026-10-06: `null` = эх сурвалж(ууд) уншигдсангүй («мэдэхгүй») — тэмдэг ЗУРАХГҮЙ
+ *    (`badgeOf`), `navBadges.mergeNavBadges` өмнөх тоог хадгалахад ялгана.
+ */
+export type NavBadges = Partial<Record<ViewKey, number | null>>;
 
 /**
  * Зүүн багана — ХОЁР харагдац.

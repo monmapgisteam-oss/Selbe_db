@@ -71,7 +71,7 @@ let seenToken = false;
 /** Хэрэглэгч ӨӨРӨӨ гарч/дахин нэвтэрч байна — итгэмжлэл устах нь «дууссан» БИШ */
 let ending = false;
 let dead = false;
-type RefreshFail = 'network' | 'dead' | 'unknown';
+export type RefreshFail = 'network' | 'dead' | 'unknown';
 /** Сүүлийн шинэчлэлтийн уналтын ангилал (`null` = амжилттай / оролдоогүй) */
 let lastFail: RefreshFail | null = null;
 const deadSubs = new Set<() => void>();
@@ -88,6 +88,13 @@ function markDead(): void {
 
 /** Нэвтрэлтийн хугацаа дууссан (шинэчлэлт эцэслэн унасан) уу — `AuthGate`-ийн хаалтын цонх */
 export const sessionDead = (): boolean => dead;
+/**
+ * Сүүлийн токены шинэчлэлтийн уналтын ангилал (`null` = амжилттай / оролдоогүй).
+ * ⚠️ 2026-10-06: `query.ts` 498/499-ийн дараа шинэчлэлт бүтээгүй үед «нэвтрэлт дууссан»
+ *    (`dead`) ба «сүлжээ тасарсан» (`network`)-ыг ЯЛГАНА — урьд нь шинэчлэлт сүлжээнээс
+ *    болж унасан ч хэрэглэгчид «нэвтрэлтийн хугацаа дууссан» гэж худал хэлдэг байв.
+ */
+export const lastRefreshFail = (): RefreshFail | null => lastFail;
 export function subscribeSessionDead(fn: () => void): () => void {
   deadSubs.add(fn);
   return () => { deadSubs.delete(fn); };
@@ -101,6 +108,14 @@ export function dismissSessionDead(): void { setDead(false); }
 export function noteSignOut(): void {
   ending = true;
   setDead(false);
+}
+/**
+ * Гарах/дахин нэвтрэх навигаци ЦУЦЛАГДСАН («Хуудаснаас гарах уу?» → Үлдэх) — `noteSignOut`-ыг
+ * буцаана. ⚠️ 2026-10-06: урьд нь `ending` үүрд `true` үлдэж, жинхэнэ сешн дуусахад ч
+ * (`markDead`) цонх ХЭЗЭЭ Ч гардаггүй байв (`AuthGate.signOut`-ийн ⚠️).
+ */
+export function cancelSignOut(): void {
+  ending = false;
 }
 
 /**

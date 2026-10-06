@@ -57,7 +57,10 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { Empty, Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { HeadKpi, useBagtsTable } from '@/modules/Dashboard';
+/* ⚠️ 2026-10-06 (аудит): `@/modules/Dashboard`-аас БИШ — тэр нь Dashboard-ын бүх графыг (~1.8 МБ,
+   `viewRegistry.tsx`-ийн 2026-10-04-ний ⚠️) энэ chunk руу чирдэг байв. */
+import { HeadKpi } from '@/modules/HeadKpi';
+import { useBagtsTable } from '@/lib/execData';
 import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
 import { SOCIAL } from '@/lib/brief';

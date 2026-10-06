@@ -150,11 +150,26 @@
   display: block;
 }
 
+/*
+ * ⚠️ 2026-10-06 (аудит): нарийн дэлгэцэд жагсаалт ДЭЭР овоологдоно — урьд нь 168px жагсаалт
+ *    хажууд үлдэж PDF ~150px өргөнтэй болдог байв. Хил нь `DocViewer.NARROW`-тэй ИЖИЛ (720px):
+ *    тэнд iframe-ийн оронд «шинэ таб-д нээх» товч гарна.
+ */
 @media (max-width: 720px) {
-  .side { width: 168px; }
+  .body { flex-direction: column; }
+  .side {
+    width: auto;
+    max-height: 55%;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .openNew { margin-top: 4px; }
   .modal { width: 96vw; height: 94vh; }
   .modal { height: 94dvh; }
 }
+
+/* Баримт сонгоогүй үеийн заавар */
+.pick { margin: 0; font-size: 0.85rem; color: var(--ink-3); }
 
 /*
  * ГАДААД БАРИМТЫН ХАВТАН (2026-09-10) — `<iframe>`-ийн ОРОНД.

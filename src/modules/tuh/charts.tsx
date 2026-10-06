@@ -108,7 +108,12 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
   const a = new Date(from);
   const stepM = span / MS_DAY > 900 ? 3 : 1;
   const y0 = a.getUTCFullYear();
-  for (let m = a.getUTCMonth(); ; m += stepM) {
+  /* ⚠️ 2026-10-06 (аудит): алхам 3 сар үед эхлэлийг 1·4·7·10-р сард ТЭГШЛЭНЭ.
+     Урьд нь домэйны эхний сараас (жишээ нь 2-р сар) 3-аар алхдаг тул 1-р сар
+     ХЭЗЭЭ Ч таарахгүй — оны шошго, оны зураас огт гардаггүй байв. Тэгшилсэн
+     эхлэл `from`-оос өмнө байж болно — доорх `at >= from` шүүлт түүнийг алгасна. */
+  const m0 = a.getUTCMonth();
+  for (let m = m0 - (m0 % stepM); ; m += stepM) {
     const at = Date.UTC(y0, m, 1);
     if (at > to) break;
     if (at >= from) {
@@ -149,6 +154,10 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
                   className={`${s.ganttBar} ${s[`st_${r.st ?? 'run'}`]}`}
                   style={{ left: `${pos(r.start!)}%`, width: `${w}%` } as CSSProperties}
                   title={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${r.progress.toFixed(1)}%` : ''}`}
+                  /* ⚠️ 2026-10-06 (аудит): огноо нь ЗӨВХӨН `title`-д байсан тул гараар /
+                     дэлгэц уншигчаар хүрэх аргагүй байв — `role="img"` + `aria-label`. */
+                  role="img"
+                  aria-label={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${r.progress.toFixed(1)}%` : ''}`}
                 >
                   {r.progress != null && w > 4 && <span className={s.ganttBarLab}>{`${r.progress.toFixed(r.progress < 10 ? 1 : 0)}%`}</span>}
                 </span>
@@ -165,7 +174,8 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
               {!r.heading && !has && !(r.marks?.length) && <em className={s.ganttNoDate}>{tr('огноогүй')}</em>}
               {r.marks?.map((m) => (
                 <span key={`${m.kind}${m.at}`} className={s.ganttMark} data-kind={m.kind}
-                  style={{ left: `${pos(m.at)}%` } as CSSProperties} title={`${m.label} · ${ymd(m.at)}`}>◆</span>
+                  style={{ left: `${pos(m.at)}%` } as CSSProperties} title={`${m.label} · ${ymd(m.at)}`}
+                  role="img" aria-label={`${m.label} · ${ymd(m.at)}`}>◆</span>
               ))}
               {now >= from && now <= to && <i className={s.ganttNow} style={{ left: `${pos(now)}%` } as CSSProperties} />}
             </span>

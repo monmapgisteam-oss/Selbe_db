@@ -353,7 +353,8 @@ function DateCell({ v, tip, onSet }: {
       className={`${h.rowDate} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
       value={txt}
       autoFocus
-      inputMode="numeric"
+      /* ⚠️ 2026-10-06 аудит: "text" — DateField-ийн ижил; iOS-ийн тоон гарт «-»/«.» байхгүй тул огноо бичих боломжгүй */
+      inputMode="text"
       aria-label={tip}
       aria-invalid={bad}
       title={bad ? tr('Огноо буруу — жишээ: 2026-10-04') : tip}

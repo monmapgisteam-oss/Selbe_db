@@ -27,6 +27,7 @@ import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
 import { loadAllDocs } from '@/lib/chanarStore';
+import { loadDeps } from '@/lib/bagtsHamaaral';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import { loadFinData } from '@/modules/Finance';
@@ -38,7 +39,15 @@ import { PkgDetail } from './tuh/PkgDetail';
 import { TuhMap, type MapSel } from './tuh/TuhMap';
 import s from './tuh.module.css';
 
-export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
+export function Tuh({ dim, setDim, onOpenDeps }: {
+  dim: Dim;
+  setDim: (d: Dim) => void;
+  /**
+   * «Багцын хамаарал» харагдац руу шилжих (`Portal.setView`) — эрхгүй/өгөөгүй бол холбоос гарахгүй.
+   * ⚠️ 2026-10-06: URL-аар тойрч болохгүй (`ViewCtx.setView`-ийн ⚠️) тул дуудагчаас ирнэ.
+   */
+  onOpenDeps?: () => void;
+}) {
   const { hostRef, ...side } = useSideResize('tuh');
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +60,10 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const wfQ = useAsync(loadWorkforceKpi, []);
   const docQ = useAsync(loadAllDocs, []);
   const budgetQ = useAsync(loadBudget, []);
+  /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь ТУХ огт уншдаггүй тул
+     «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
+     ХУДАЛ бичигтэй байв. */
+  const depQ = useAsync(loadDeps, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
   /*
@@ -89,6 +102,7 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
        төлөвлөгөө «—» болно; шалтгааныг нэрлэнэ («Гүйцэтгэл»-ийн `TsKpi`-тэй ижил) */
     if (planQ.state === 'ready' && planQ.data.failed.length) failed.push(`${tr('Хуваарийн төлөвлөгөө')} (${planQ.data.failed.join(', ')})`);
     if (budgetQ.state === 'error') failed.push(tr('Гэрээний нийт дүн'));
+    if (depQ.state === 'error') failed.push(tr('Багцын хамаарал'));
     /* ⚠️ 2026-10-01: ачаалж буй эх сурвалж — тэдгээрийн тоо «—» биш «…» (`model.lz`-ийн ⚠️) */
     const loading = new Set<TuhSrc>();
     if (planQ.state === 'loading') loading.add('plan');
@@ -99,6 +113,7 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     if (docQ.state === 'loading') loading.add('docs');
     if (bq.state === 'loading') loading.add('packs');
     if (budgetQ.state === 'loading') loading.add('budget');
+    if (depQ.state === 'loading') loading.add('deps');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
     return buildModel({
       fin: finQ.data,
@@ -111,11 +126,12 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
       workforce: wf,
       docs: docQ.state === 'ready' ? docQ.data : null,
+      deps: depQ.state === 'ready' ? depQ.data.deps : null,
       contractedNote: CONTRACTED,
       failed,
       loading,
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ, depQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:
@@ -134,7 +150,8 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     if (docQ.state === 'error') docQ.retry?.();
     if (bq.state === 'error') bq.retry?.();
     if (budgetQ.state === 'error') budgetQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, budgetQ]);
+    if (depQ.state === 'error') depQ.retry?.();
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, budgetQ, depQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);
@@ -170,13 +187,15 @@ export function Tuh({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             <button type="button" className={s.retryBtn} onClick={retryFailed}>{tr('Дахин оролдох')}</button>
           </p>
         ) : !model ? null : row ? (
-          <PkgDetail key={row.p.key} r={row} m={model} onBack={back} onOpen={open} />
+          <PkgDetail key={row.p.key} r={row} m={model} onBack={back} onOpen={open} onOpenDeps={onOpenDeps} />
         ) : (
-          <Overview m={model} contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null} onOpen={open} onRetry={retryFailed} />
+          <Overview m={model} contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null} onOpen={open} onRetry={retryFailed} onOpenDeps={onOpenDeps} />
         )}
       </div>
       <div className={s.side}>
-        <TuhMap dim={dim} setDim={setDim} sel={mapSel} packs={packs} onPickPkg={onPickPkg} />
+        {/* ⚠️ 2026-10-06 (аудит): `packsState` — блок ирээгүй/унасан үед «давхаргагүй» гэж худал
+            бичихгүй, бүх блок руу нисэхгүй (`TuhMap`-ийн ⚠️) */}
+        <TuhMap dim={dim} setDim={setDim} sel={mapSel} packs={packs} packsState={bq.state} onPickPkg={onPickPkg} />
       </div>
     </div>
   );

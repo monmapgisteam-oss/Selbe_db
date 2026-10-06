@@ -10,6 +10,36 @@
  * шууд — query param нь ямар ч серверийн дэмжлэг шаардахгүй.
  */
 
+/**
+ * ХАРАГДАЦЫН ӨМЧЛӨЛТЭЙ ПАРАМЕТРҮҮД — түлхүүр → түүнийг уншдаг/бичдэг харагдацууд.
+ *
+ * ⚠️ 2026-10-06 (аудит): `writeParams` танихгүй түлхүүрийг хөнддөггүй тул харагдац
+ *    солиход `?tuh=…`/`?pkg=…`/`?fine=0` URL-д ҮЛДЭЖ, хуваалцсан холбоосыг бохирдуулж,
+ *    тэр харагдац руу буцаж ороход хуучин сонголт сэргэдэг байв. `Portal` харагдац
+ *    солихдоо (push) шинэ харагдацын ЭЗЭМШДЭГГҮЙ түлхүүрүүдийг арилгана.
+ * ⚠️ ШИНЭ модуль `readParam`/`writeParams`-аар өөрийн түлхүүр нэмбэл ЭНД бүртгэ —
+ *    эс бөгөөс өөр харагдацад үлдэнэ (эвдрэхгүй, зөвхөн бохирдол). Порталын ерөнхий
+ *    түлхүүр (`v` · `z` · `l` · `d` · `all` · `g`) энд ОРОХГҮЙ.
+ * ⚠️ `pkg`-ийг гурван харагдац хуваалцана — хооронд нь шилжихэд багцын сонголт хадгалагдана.
+ */
+export const VIEW_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  /* `Tuh.tsx` */
+  tuh: ['tuh'],
+  /* `PkgFin.tsx` · `PkgProg.tsx` · `Schem.tsx` (`Bagts.tsx` харагдацад холбогдоогүй) */
+  pkg: ['pkgFin', 'pkgProg', 'schem'],
+  /* `Schem.tsx` */
+  fine: ['schem'],
+};
+
+/** `view`-ийн эзэмшдэггүй харагдацын параметрүүд — `writeParams`-д `null` (устгах) */
+export function foreignViewParams(view: string): Record<string, null> {
+  const out: Record<string, null> = {};
+  for (const [k, owners] of Object.entries(VIEW_PARAMS)) {
+    if (!owners.includes(view)) out[k] = null;
+  }
+  return out;
+}
+
 /** Нэг параметр уншина — сервер талд (байхгүй window) үргэлж null */
 export function readParam(key: string): string | null {
   if (typeof window === 'undefined') return null;

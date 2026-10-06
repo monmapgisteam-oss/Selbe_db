@@ -639,8 +639,15 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
         queryFeatures(def.url, {
           where,
           outFields: ['received_datetime', m.field],
-          // String талбар боловч ISO-8601 тул мөрийн эрэмбэ = хугацааны эрэмбэ
-          orderBy: 'received_datetime DESC, OBJECTID DESC', // ⚠️ OID tie-break — хуудасны заагт давхардахгүй
+          /* ⚠️ 2026-10-06 (аудит): OBJECTID DESC (ОРУУЛСАН дараалал) — `received_datetime`
+             БИШ. Тэр нь String талбар бөгөөд `parseTs`-ийн 2026-09-15-ны ⚠️-ийн дагуу
+             `dd/MM/yyyy HH:mm:ss` утга ч ирдэг: мөрийн эрэмбээр «31/01/2026» нь
+             «2026-09-…»-ээс ӨМНӨ/ХОЙНО санамсаргүй эрэмбэлэгдэж, хатуу `limit`-тэй
+             таталт ХАМГИЙН СҮҮЛИЙН заалтуудыг огтолж орхих эрсдэлтэй байв. Мэдрэгч
+             заалтаа ирэх дарааллаар бичдэг тул OID нь хугацаатай нэг чиглэлтэй;
+             жинхэнэ хугацааны эрэмбийг доор `parseTs`-ээр КЛИЕНТ дээр гаргана
+             (`pts.sort`). OID нь давхцалгүй тул хуудасны заагт давхардахгүй. */
+          orderBy: 'OBJECTID DESC',
           limit,
         }),
         // ⚠️ `limit` нь ХАТУУ таг тул татсан мөрийн тоо ≠ нийт. Жинхэнэ тоог

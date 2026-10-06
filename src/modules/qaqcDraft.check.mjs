@@ -203,7 +203,8 @@ console.log('✅ арилгасан нүд ноорог болж буцахгү�
 /* ── 10. ⚠️ 2026-09-30: ХАДГАЛАХ ЯВЦАД ЗАСВАР ХААЛТТАЙ ──
    `save` дуусахдаа `setPend({})` хийдэг тул тэр хооронд бичсэн нүд (ноорогтой нь) арилдаг байв. */
 {
-  const click = between('onClick={() => {', 'setEditCell(ekey);');
+  /* ⚠️ 2026-10-06: товшилт ба Enter/F2 нэг `openCell`-ийг дууддаг болсон */
+  const click = between('const openCell = () => {', 'setEditCell(ekey);');
   assert.ok(click.includes('if (busy) return say(RO_BUSY())'), '⚠️ хадгалах явцад нүд нээгдэх ёсгүй');
   const paste = between('const pasteBlock', 'planQaqcPaste(');
   assert.ok(paste.includes('if (busy) { say(RO_BUSY()); return true; }'), '⚠️ хадгалах явцад буулгах ёсгүй');

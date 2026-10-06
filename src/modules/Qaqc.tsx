@@ -1592,6 +1592,13 @@ export function Qaqc() {
                           const editing = editCell === ekey;
                           const val = key in pend ? pend[key] : (r.docs[di] ?? '');
                           const hit = editing ? null : approvedHit(di, val);
+                          const openCell = () => {
+                            if (!canEdit) return say(RO_CAP);
+                            /* ⚠️ 2026-09-30: ХАДГАЛАЖ БАЙХ ҮЕД нүд нээхгүй — `save` дуусахдаа
+                               `setPend({})`-ээр тэр хооронд бичсэн нүдийг (ноорогтой нь) арчдаг байв. */
+                            if (busy) return say(RO_BUSY());
+                            setEditCell(ekey);
+                          };
                           return (
                             <td
                               key={dc.name}
@@ -1602,6 +1609,16 @@ export function Qaqc() {
                                 + (key in pend ? ' dirty' : ''),
                               )}
                               title={canEdit ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO_CAP}
+                              /* ⚠️ 2026-10-06 аудит: ГАРААР хүрэх боломжтой (FillRows-ийн ижил) — урьд нь
+                                 `tabIndex`-гүй тул нүд фокус авдаггүй: гарын хэрэглэгч хүрэхгүй, доорх
+                                 «нүд сонгоод Ctrl+V» (`onPaste`) хэзээ ч ажилладаггүй байв. Enter/F2 → нээнэ. */
+                              tabIndex={canEdit ? 0 : undefined}
+                              onKeyDown={(e) => {
+                                if (!editing && (e.key === 'Enter' || e.key === 'F2')) {
+                                  e.preventDefault();
+                                  openCell();
+                                }
+                              }}
                               /* ⚠️ Нүдийг НЭЭЛГҮЙГЭЭР буулгаж болно — Excel-ийн
                                  зуршил: нүд сонгоод шууд Ctrl+V. */
                               onPaste={(e) => {
@@ -1609,13 +1626,7 @@ export function Qaqc() {
                                   e.preventDefault();
                                 }
                               }}
-                              onClick={() => {
-                                if (!canEdit) return say(RO_CAP);
-                                /* ⚠️ 2026-09-30: ХАДГАЛАЖ БАЙХ ҮЕД нүд нээхгүй — `save` дуусахдаа
-                                   `setPend({})`-ээр тэр хооронд бичсэн нүдийг (ноорогтой нь) арчдаг байв. */
-                                if (busy) return say(RO_BUSY());
-                                setEditCell(ekey);
-                              }}
+                              onClick={openCell}
                             >
                               {editing ? (
                                 <input

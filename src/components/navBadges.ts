@@ -11,6 +11,7 @@
  *
  * ⚠️ `null` ≠ 0: тоолуур «мэдэхгүй» (`null`) буцаавал ЭСВЭЛ шидвэл тэмдэг
  *    ГАРАХГҮЙ (чимээгүй) — худал «0» ч, айдас төрүүлэх алдаа ч харуулахгүй.
+ *    ⚠️ 2026-10-06: өмнө нь ТОО байсан бол тэр нь хэвээр үлдэнэ (`mergeNavBadges`).
  *
  * ⚠️ DYNAMIC import — тоолуурын модулиуд (ArcGIS хүсэлт, ACL) порталын
  *    үндсэн chunk-д орохгүй; анх нэвтэрсний ДАРАА л татагдана.
@@ -62,20 +63,47 @@ const SOURCES: { view: ViewKey; load: () => Promise<Counter | null> }[] = [
  * Хүрээнд байгаа харагдацуудын тэмдгийг ачаална.
  * ⚠️ Алдаа ЧИМЭЭГҮЙ — тэмдэг бол туслах мэдээлэл, порталын ажилд саад болохгүй.
  */
+/**
+ * ⚠️ 2026-10-06 (аудит): УНАСАН эх сурвалжтай харагдац `null` («мэдэхгүй») болно — урьд нь
+ *    уналт ЧИМЭЭГҮЙ хаягдаж, нийлбэр харагдацын («Гүйцэтгэл» = обьём + хяналт) тэмдэг нэг
+ *    эх сурвалжийн ХАГАС дүнг бүтэн мэт харуулдаг байв. Нэг эх сурвалж унахад тэр харагдацын
+ *    нийлбэр БҮХЭЛДЭЭ `null` — `mergeNavBadges` өмнөх тоог үлдээнэ.
+ * ⚠️ Тоолуур модульд ХАРААХАН байхгүй (`probe` → `null`) нь уналт БИШ — алгасна (толгойн ⚠️).
+ */
 export async function loadNavBadges(username: string | null, scope: 'all' | ViewKey[]): Promise<NavBadges> {
   const inScope = (k: ViewKey) => scope === 'all' || scope.includes(k);
+  const srcs = SOURCES.filter((src) => inScope(src.view));
   const results = await Promise.allSettled(
-    SOURCES.filter((src) => inScope(src.view)).map(async (src) => {
+    srcs.map(async (src): Promise<number | 'skip' | null> => {
       const f = await src.load();
-      if (!f) return null;
+      if (!f) return 'skip';
       const n = await f(username);
-      return typeof n === 'number' && Number.isFinite(n) ? { view: src.view, n } : null;
+      return typeof n === 'number' && Number.isFinite(n) ? n : null;
     }),
   );
   const out: NavBadges = {};
-  for (const r of results) {
-    if (r.status !== 'fulfilled' || !r.value) continue;
-    out[r.value.view] = (out[r.value.view] ?? 0) + r.value.n;
+  const failed = new Set<ViewKey>();
+  results.forEach((r, i) => {
+    const view = srcs[i].view;
+    if (r.status !== 'fulfilled' || r.value === null) { failed.add(view); return; }
+    if (r.value === 'skip') return;
+    out[view] = (out[view] ?? 0) + r.value;
+  });
+  for (const v of failed) out[v] = null;
+  return out;
+}
+
+/**
+ * Шинэ тэмдгийг өмнөхтэй НИЙЛҮҮЛНЭ — `null` (эх сурвалж унасан) харагдацад өмнөх ТОО хэвээр,
+ * өмнө нь тоо байгаагүй бол `null` (тэмдэггүй). Хүрээнээс гарсан харагдац (шинэд түлхүүргүй)
+ * хасагдана. ⚠️ 2026-10-06: `Portal`-ын «Алдаа чимээгүй — өмнөх тоо хэвээр» дүрмийн биелэлт.
+ */
+export function mergeNavBadges(prev: NavBadges, next: NavBadges): NavBadges {
+  const out: NavBadges = { ...next };
+  for (const k of Object.keys(next) as ViewKey[]) {
+    if (next[k] !== null) continue;
+    const p = prev[k];
+    out[k] = typeof p === 'number' ? p : null;
   }
   return out;
 }

@@ -6,7 +6,7 @@
  *    `tuhData`-ийн шалгагдсан цэвэр функцээс. Энд зөвхөн холбоно.
  */
 import { monthKey } from '@/lib/format';
-import { housingPct, type CfPlanRow } from '@/lib/gdash';
+import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
 import { contractBlocks, ipcTotals } from '@/lib/ipcTable';
 import { paidShareOf } from '@/lib/paidShare';
@@ -18,6 +18,7 @@ import { lagOf, pkgMonthsMap, physLatest, projectPlanOf, type FinData, type Mont
 import { aggregateMonths, physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
+import { upstreamOf, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
 import {
   buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, daysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
@@ -31,7 +32,7 @@ export type DocCount = { total: number; approved: number; review: number; return
  * ТУХ-ын эх сурвалжууд — `Tuh.tsx`-ийн ачаалагч бүр. Санхүү (`loadFinData`) энд ОРОХГҮЙ:
  * түүнгүйгээр загвар огт бүрдэхгүй.
  */
-export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget';
+export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps';
 
 /**
  * «—» → «…» — тухайн эх сурвалж ХАРААХАН АЧААЛАГДАЖ БАЙГАА бол.
@@ -59,6 +60,12 @@ export type TuhRow = {
   planContract: number | null;
   gapContract: number | null;
   status: TuhStatus;
+  /**
+   * «Хоцорсон» төлвийг аль зөрүүгээр тогтоосон — `contractor` = гүйцэтгэгчийн хуваарь
+   * (`lag.gap`), `contract` = гэрээний төлөвлөгөө (`gapContract`), `null` = зөрүүгүй.
+   * ⚠️ 2026-10-06 (аудит): карт энэ зөрүүг ил харуулна — чип ба тоо зөрөхгүй.
+   */
+  statusBasis: 'contractor' | 'contract' | null;
   /** Өнгөрсөн 7 хоногийн ахиц (pp) */
   week: number | null;
   ipc: TuhIpc | null;
@@ -115,7 +122,28 @@ export type TuhModel = {
   failed: string[];
   /** Ачаалж буй эх сурвалжууд — `lz` «…» харуулна */
   loading: ReadonlySet<TuhSrc>;
+  /**
+   * Багц хоорондын хамаарал («Багцын хамаарал», `bagtsHamaaral.loadDeps`) — `null` = ирээгүй/унасан.
+   * ⚠️ 2026-10-06 (аудит): урьд нь ТУХ огт уншдаггүй байв (`depRows`-ийг үз).
+   */
+  deps: readonly Dep[] | null;
 };
+
+/**
+ * Багцын урд (`up` — энэ багц ХАМААРДАГ) эсвэл ард (`down` — энэ багцаас хамаардаг) талын мөрүүд.
+ * ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга) АЛГАСАГДАНА — «Багцын хамаарал»-ын дүрэмтэй ижил.
+ * Хамаарал ирээгүй бол `null` (хоосон жагсаалт = «холбоогүй» гэж худал хэлэхгүй).
+ */
+export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'up' | 'down'): TuhRow[] | null {
+  if (!m.deps) return null;
+  const keys = dir === 'up' ? upstreamOf(m.deps, key) : downstreamOf(m.deps, key);
+  const out: TuhRow[] = [];
+  for (const k of keys) {
+    const r = m.rows.find((x) => x.p.key === k);
+    if (r) out.push(r);
+  }
+  return out;
+}
 
 const countDocs = (docs: MsDoc[]): DocCount | null => {
   if (!docs.length) return null;
@@ -144,6 +172,8 @@ export function buildModel(input: {
   commission: ReadonlyMap<string, number | null> | null;
   workforce: WorkforceDetail | null;
   docs: MsDoc[] | null;
+  /** «Багцын хамаарал»-ын холбоосууд — `null` = ирээгүй/унасан */
+  deps?: readonly Dep[] | null;
   contractedNote: string;
   failed: string[];
   /** Ачаалж буй эх сурвалжууд (байхгүй бол хоосон) */
@@ -260,7 +290,18 @@ export function buildModel(input: {
       planContract,
       gapContract,
       /* ⚠️ 2026-10-01: зураг төслийн мөрийн хэмжигдээгүй гүйцэтгэл = «Мэдээлэлгүй» (`statusOf`-ийн ⚠️) */
-      status: statusOf({ contracted: p.contracted, progress, gap: lag?.gap ?? null, nullAs: p.group === 'design' ? 'unknown' : 'todo' }),
+      /* ⚠️ 2026-10-06 (аудит): гүйцэтгэгчийн хуваарь (`lag`) алга бол ГЭРЭЭНИЙ төлөвлөгөөний
+         зөрүүгээр (`gapContract`, тэмдэг эсрэг: `statusOf.gap` эерэг = хоцорсон) — урьд нь `lag`
+         зөвхөн орон сууцанд байдаг тул бусад багц ХЭЗЭЭ Ч «Хоцорсон» болдоггүй, харин карт нь
+         `gapContract`-ыг улаанаар харуулдаг тул чип ба тоо хоорондоо зөрдөг байв.
+         Аль зөрүү төлвийг тодорхойлсныг `statusBasis`-д тэмдэглэнэ (картад ил харуулна). */
+      status: statusOf({
+        contracted: p.contracted,
+        progress,
+        gap: lag ? lag.gap : gapContract != null ? -gapContract : null,
+        nullAs: p.group === 'design' ? 'unknown' : 'todo',
+      }),
+      statusBasis: lag ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
       week,
       ipc,
       commission: comm,
@@ -300,6 +341,10 @@ export function buildModel(input: {
   /* Төслийн хэмжилтийн өдөр — «Гүйцэтгэл» (`PkgProg.TsKpi`) · удирдлагын тайлантай ИЖИЛ */
   const measAll = measDayOf(aggregateMonths(fin), nowYm, `${nowYm}-31`);
 
+  /* Hero-гийн төлөвлөгөөний жин ба багцын олонлог — `physNow`-тэй нэг (доорх ⚠️ 2026-10-06) */
+  const costW = pkgCostWeight(fin.contracts.map(cfWeightRow));
+  const physKeys = new Set<string>([...fin.phys.keys(), ...(fin.physN?.keys() ?? [])]);
+
   let lastReport: string | null = null;
   fin.physAt.forEach((byMon) => byMon.forEach((d) => { if (d && (!lastReport || d > lastReport)) lastReport = d; }));
 
@@ -311,7 +356,14 @@ export function buildModel(input: {
     lastReport,
     hero: {
       actual: physNow(fin, nowYm),
-      planContract: housingPct(housing.map((r) => ({ pct: r.planContract, cost: r.p.cost ?? 0, blocks: r.blocks ?? 0 }))),
+      /* ⚠️ 2026-10-06 (аудит): бодит тал (`physNow`)-тай ЯГ НЭГ жин ба НЭГ багцын олонлог.
+         Урьд нь жин нь `TuhPkg.cost` (бүх мөрийн ХО дүн, `inTotal` шүүлтгүй, `pkg2`-гүй), олонлог
+         нь `planContract`-тай орон сууцны бүх мөр байсан тул «гүйцэтгэл − төлөвлөгөө» (pp) хоёр
+         өөр жинг хасдаг байв. Одоо: жин `pkgCostWeight(contracts → cfWeightRow)` (`physNow` ←
+         `aggregateMonths`-тай нэг), олонлог нь `physNow`-д орсон багцууд (`phys` ∪ `physN`). */
+      planContract: housingPct(housing
+        .filter((r) => physKeys.has(r.p.pkgKey))
+        .map((r) => ({ pct: r.planContract, cost: costW.get(r.p.pkgKey) ?? 0, blocks: r.blocks ?? 0 }))),
       /* ⚠️ 2026-09-30: ХЭМЖИЛТИЙН өдрөөр — урьд нь ӨНӨӨДРӨӨР бодогдож «Гүйцэтгэл»-ийн
          «төлөвлөсөн гүйцэтгэлийн хувь»-аас өөр тоо гардаг байв (нэг үзүүлэлт, хоёр тоо). */
       /* ⚠️ 2026-09-30 (төслийн аудит): төлөвлөгөө ч ХО-оор жигнэсэн (`Finance.projectPlanOf`) —
@@ -324,5 +376,6 @@ export function buildModel(input: {
     statusCount,
     failed: input.failed,
     loading: input.loading ?? new Set<TuhSrc>(),
+    deps: input.deps ?? null,
   };
 }

@@ -144,7 +144,15 @@ export function Chanar() {
 
   const [sel, setSel] = useState<number | null>(null);
   const [body, setBody] = useState<AnyBody | null>(null);
-  const [atts, setAtts] = useState<Att[]>([]);
+  /* ⚠️ 2026-10-06 аудит: биеийн уналт ИЛ — урьд нь `body` `null` хэвээр үлдэж «Уншиж байна…»
+     үүрд харагддаг, ижил карт дээр дарахад буцдаг тул дахин оролдох зам байгаагүй.
+     `bodyTry` — «Дахин оролдох»/«Шинэчлэх»-ийн тоолуур (сонголтын эффектийн хамаарал). */
+  const [bodyErr, setBodyErr] = useState('');
+  const [bodyTry, setBodyTry] = useState(0);
+  /* ⚠️ 2026-10-06 аудит: `null` = хавсралтын жагсаалт УНШИГДААГҮЙ («хавсралтгүй» биш) —
+     урьд нь уналт `[]` болж «хавсралтгүй» гэж, илгээхэд «Хавсралт: 0» гэж ХУДАЛ сануулдаг байв. */
+  const [atts, setAtts] = useState<Att[] | null>([]);
+  const [attTry, setAttTry] = useState(0);
   /* Засварын ноорог — зөвхөн `edit` горимд */
   const [edit, setEdit] = useState(false);
   const [dTitle, setDTitle] = useState('');
@@ -327,7 +335,7 @@ export function Chanar() {
        `setSel(null); setEdit(true)` дуудахад энэ салбар шинэ маягтыг хаадаг байв. */
     /* ⚠️ Хянагчийн тайлбар баримт бүрд ТУСДАА (2026-09-25 аудит). */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
-    setRNote(''); setPerMat({}); setClientDraft(null); setAnDeadline(''); setRevNote('');
+    setRNote(''); setPerMat({}); setClientDraft(null); setAnDeadline(''); setRevNote(''); setBodyErr('');
     setCorr({ text: '', completedAt: null, steps: [] });
     setNcrClose(emptyNcrClose());
     setPrConsultant(false);
@@ -337,6 +345,8 @@ export function Chanar() {
     setBody(null); setEdit(false);
     void reloadBody(sel).then((b) => {
       if (!live) return;
+      /* ⚠️ 2026-10-06: мөр олдоогүй (`null`) ч мөн уналт — «Уншиж байна…»-д гацахгүй */
+      if (b == null) setBodyErr(tr('Баримтын агуулга олдсонгүй.'));
       setBody(b);
       const meta = metaOf(b);
       setMOwners(meta?.owners ?? []); setMCat(meta?.category ?? '');
@@ -350,9 +360,9 @@ export function Chanar() {
         const ma = b as MaBody;
         setPrEquipment(/лифт|өргөх|кран|lift|hoist|crane/i.test(`${ma.meta.category} ${ma.purpose} ${ma.materials.map((x) => x.name).join(' ')}`));
       }
-    }).catch((e) => live && setErr(userError(e)));
+    }).catch((e) => { if (live) setBodyErr(userError(e)); });
     return () => { live = false; };
-  }, [sel, reloadBody]);
+  }, [sel, reloadBody, bodyTry]);
 
   /* ⚠️ ХАВСРАЛТ БҮХ ХУВИЛБАРААС (2026-09-16 аудит) — устгах нь зөвхөн ОДООГИЙН мөрийнхөд. */
   const attIds = useMemo(
@@ -360,8 +370,14 @@ export function Chanar() {
     [sel, hist],
   );
   const reloadAtts = useCallback(async () => {
-    const ls = await Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))));
-    setAtts(ls.flat());
+    try {
+      const ls = await Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))));
+      setAtts(ls.flat());
+    } catch (e) {
+      /* ⚠️ 2026-10-06: уншигдаагүйг «хавсралтгүй»-тэй нэгтгэхгүй (`atts`-ийн ⚠️) */
+      setAtts(null);
+      throw e;
+    }
   }, [attIds]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
@@ -369,9 +385,9 @@ export function Chanar() {
     let live = true;
     void Promise.all(attIds.map(async (id) => (await listAttachments(id)).map((a) => ({ ...a, parentOid: id }))))
       .then((ls) => { if (live) setAtts(ls.flat()); })
-      .catch((e) => live && setErr(userError(e)));
+      .catch((e) => { if (live) { setAtts(null); setErr(userError(e)); } });
     return () => { live = false; };
-  }, [attIds]);
+  }, [attIds, attTry]);
 
   const ncrClosed = !!body && 'closure' in body && ((body as NcrBody).closure?.closedByContractor.length ?? 0) > 0;
   const act = doc
@@ -488,6 +504,8 @@ export function Chanar() {
     return true;
   };
   const cancelEdit = () => { if (discardOk()) { setEdit(false); setDirty(false); } };
+  /* ⚠️ 2026-10-06 аудит: унасан биеийг дахин татна — сонголтын эффект хажуугийн маягтыг тэглэдэг тул асууна */
+  const retryBody = () => { if (discardOk()) setBodyTry((n) => n + 1); };
   const select = (oid: number | null) => { if (oid === sel && !edit) return; if (!discardOk()) return; setSel(oid); setEdit(false); setDirty(false); };
   /* «Миний хийх» жагсаалтаас — өөр багц/төрлийн баримт бол тэр багц, таб руу шилжинэ
      (`doc` нь `kindDocs`-оос олддог тул) */
@@ -585,7 +603,8 @@ export function Chanar() {
     /* ⚠️ 2026-10-05: ДУТУУГ илгээхийн ӨМНӨ хэлнэ (`chanarMs.emptyKeySections`) — зөвхөн
        гарчигтай баримт хянуулахаар явж, дараа нь засагдахгүй болдог байв. Хориг биш, сануулга. */
     const missing = emptyKeySections(doc.kind, body);
-    const nAtt = atts.filter((a) => a.parentOid === doc.oid).length;
+    /* ⚠️ 2026-10-06: жагсаалт уншигдаагүй (`null`) бол «0» гэж ХУДАЛ сануулахгүй */
+    const nAtt = atts == null ? null : atts.filter((a) => a.parentOid === doc.oid).length;
     const warn = [
       missing.length ? tr('⚠ Хоосон хэсэг: {0}', missing.join(' · ')) : '',
       nAtt === 0 ? tr('⚠ Хавсралт: 0 — энэ хувилбарт файл хавсаргаагүй') : '',
@@ -945,7 +964,12 @@ export function Chanar() {
             {myRoles.map(chanarRoleLabel).join(' · ')}
           </span>
         )}
-        <button type="button" className={s.btn} disabled={loading || busy} onClick={() => void refresh()}>
+        <button type="button" className={s.btn} disabled={loading || busy} onClick={() => {
+          void refresh();
+          /* ⚠️ 2026-10-06 аудит: унасан бие/хавсралтыг мөн дахин татна (ажиллаж буйг хөндөхгүй) */
+          if (bodyErr) retryBody();
+          if (atts == null) setAttTry((n) => n + 1);
+        }}>
           {loading ? tr('Уншиж байна…') : tr('Шинэчлэх')}
         </button>
         {canCreate && table?.ok && (
@@ -1174,14 +1198,24 @@ export function Chanar() {
               )}
 
               {body == null ? (
-                <div className={s.empty}>{tr('Уншиж байна…')}</div>
+                bodyErr ? (
+                  <div className={s.empty} role="alert">
+                    {tr('Баримтын агуулга уншигдсангүй: {0}', bodyErr)}{' '}
+                    <button type="button" className={s.btn} disabled={busy} onClick={retryBody}>{tr('Дахин оролдох')}</button>
+                  </div>
+                ) : <div className={s.empty}>{tr('Уншиж байна…')}</div>
               ) : renderBody(body, false, () => { /* харах горимд өөрчлөлт үгүй */ })}
 
               <div className={s.sec}>
                 <div className={s.secHead}>{tr('Хавсралт — гэрчилгээ · лаборатори · зураг')}</div>
                 <div className={s.atts}>
-                  {atts.length === 0 && <span className={s.secEmpty}>{tr('хавсралтгүй')}</span>}
-                  {atts.map((a) => (
+                  {atts == null ? (
+                    <span className={s.secEmpty} role="alert">
+                      {tr('хавсралт уншигдсангүй')}{' '}
+                      <button type="button" className={s.btn} disabled={busy} onClick={() => setAttTry((n) => n + 1)}>{tr('Дахин оролдох')}</button>
+                    </span>
+                  ) : atts.length === 0 && <span className={s.secEmpty}>{tr('хавсралтгүй')}</span>}
+                  {(atts ?? []).map((a) => (
                     <div key={a.id} className={s.att}>
                       <a href={a.url} target="_blank" rel="noreferrer">{a.name}</a>
                       <span className={s.attSize}>{kb(a.size)}</span>

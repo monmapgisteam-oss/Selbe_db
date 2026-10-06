@@ -341,8 +341,20 @@ export function tplOf(role: Role): TypeTpl {
   loadCache();
   const known = synced || cacheLoaded;
   const t = remote[role] ?? (known && !broken.has(role) ? DEFAULT_TPL[role] : undefined);
+  if (!t) return narrowTpl(role);
   /* ⚠️ 2026-10-01: `seen` хуулбартай — `ErhTypes`-ийн «өөрчлөгдсөн эсэх» харьцуулалтад */
-  return t ? { on: [...t.on], home: t.home, ...(t.seen ? { seen: [...t.seen] } : {}) } : narrowTpl(role);
+  const copy: TypeTpl = { on: [...t.on], home: t.home, ...(t.seen ? { seen: [...t.seen] } : {}) };
+  if (synced) return copy;
+  /* ⚠️ 2026-10-06 (аудит): СИНКЭЭС ӨМНӨ кэш (localStorage) зөвхөн ХУМЬЖ чадна —
+     `narrowTpl` ∩ кэш. Урьд нь `cleanTpl` зөвхөн танигдахгүй id ба `admin`-ыг хаядаг тул
+     `selbe-roletypes-cache-v1`-д өөрийн төрөлд бүх `view:*` бичих (эсвэл мөрийг устгаж
+     өргөн `DEFAULT_TPL` руу унагах) замаар эрх ӨРГӨСДӨГ байв — `resolveBaseAccess`-ийн
+     `selbe-perms-v1` дээрх fail-closed дүрэмтэй (суурь ∩ override) ижил зарчим.
+     Админ загварыг ӨРГӨСГӨСӨН бол синк хүртэл нарийн харагдана — синкийн дараа засагдана.
+     `home` хэвээр — эрх олгодоггүй (`Root.openEntry` нь `allowed`-д байгаа эсэхийг шалгана;
+     урсгалын нүүр `guitsetgel` · `chanar` нь `on`-д ОРДОГГҮЙ тул шүүж болохгүй). */
+  const allowed = new Set(narrowTpl(role).on);
+  return { ...copy, on: copy.on.filter((x) => allowed.has(x)) };
 }
 
 /**

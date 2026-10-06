@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { DOCS, docUrl, isExternalDoc } from '@/lib/docs';
 import { useFocusTrap } from '@/lib/useFocusTrap';
@@ -15,8 +15,30 @@ import s from './docviewer.module.css';
  * сонгосон PDF-ийг браузерын уугуул харагчаар (`<iframe>`) бүрэн үзүүлнэ —
  * томруулах, хуудсаар алхах, татах, хэвлэх бүгд бэлэн.
  */
+
+/**
+ * НАРИЙН ДЭЛГЭЦ (≤720px) — CSS-ийн `@media (max-width: 720px)`-тэй ИЖИЛ хил.
+ * ⚠️ 2026-10-06 (аудит): гар утсанд 168px жагсаалт iframe-ийн хажууд үлдэж PDF ~150px өргөнтэй
+ *    болдог, мөн гар утасны хөтчүүд PDF iframe-ийг муу (эхний хуудас л, эсвэл хоосон) зурдаг.
+ *    Тиймээс нарийн дэлгэцэд жагсаалт ДЭЭР овоологдож, iframe-ийн ОРОНД «шинэ таб-д нээх» товч.
+ * ⚠️ Сервер/тест (window-гүй) дээр `false` — hydration зөрөхгүй (эхний зураг iframe-гүй тул).
+ */
+const NARROW = '(max-width: 720px)';
+const subNarrow = (fn: () => void): (() => void) => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const m = window.matchMedia(NARROW);
+  m.addEventListener('change', fn);
+  return () => m.removeEventListener('change', fn);
+};
+const isNarrow = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches;
+
 export function DocViewer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [active, setActive] = useState(DOCS[0].key);
+  /* ⚠️ 2026-10-06 (аудит): анхдагч СОНГОЛТГҮЙ (`null`). Урьд нь `DOCS[0]` сонгогдсон байдлаар нээгдэж
+     iframe нь 22 MB `tezu-rev-01.pdf`-ийг шууд татдаг байв (зөвхөн жагсаалт харах гэсэн ч, гар утсанд
+     ч). Одоо iframe-ийн `src` нь хэрэглэгч баримт СОНГОСНЫ дараа л тавигдана. */
+  const [active, setActive] = useState<string | null>(null);
+  const narrow = useSyncExternalStore(subNarrow, isNarrow, () => false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   /* ⚠️ ФОКУСЫН УРХИ (`useFocusTrap`) — `aria-modal="true"` нь зөвхөн дэлгэц
@@ -42,7 +64,7 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
 
   if (!open) return null;
 
-  const doc = DOCS.find((d) => d.key === active) ?? DOCS[0];
+  const doc = active == null ? null : (DOCS.find((d) => d.key === active) ?? null);
 
   return (
     <div className={s.overlay} onClick={onClose} role="presentation">
@@ -82,14 +104,16 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               );
             })}
 
-            <a
-              className={s.openNew}
-              href={docUrl(doc)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {tr('Шинэ таб-д нээх ↗')}
-            </a>
+            {doc && (
+              <a
+                className={s.openNew}
+                href={docUrl(doc)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {tr('Шинэ таб-д нээх ↗')}
+              </a>
+            )}
           </nav>
 
           {/* Баруун — сонгосон PDF (уугуул харагч). `key` нь баримт солиход
@@ -101,7 +125,11 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               * хаадаг тул хоосон цагаан талбай л гарна. Оронд нь шинэ таб-д
               * нээх ТОВЧ — юу болсныг ил хэлж, нэг товшилтоор нээгдэнэ.
               */}
-            {isExternalDoc(doc) ? (
+            {!doc ? (
+              <div className={s.ext}>
+                <p className={s.pick}>{tr('Үзэх баримтаа жагсаалтаас сонгоно уу.')}</p>
+              </div>
+            ) : isExternalDoc(doc) || narrow ? (
               <div className={s.ext}>
                 {/* ⚠️ Тайлбар мөр ХАСАГДСАН (2026-09-10, хэрэглэгчийн заавар):
                     товч өөрөө юу болохыг хэлж байгаа тул дээрх өгүүлбэр нь
@@ -112,7 +140,8 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {doc.cta ?? tr('{0} — шинэ таб-д нээх ↗', doc.title)}
+                  {/* ⚠️ 2026-10-06: нарийн дэлгэцийн дотоод PDF-д `cta` (гадаад холбоосын текст) хамаарахгүй */}
+                  {(isExternalDoc(doc) ? doc.cta : undefined) ?? tr('{0} — шинэ таб-д нээх ↗', doc.title)}
                 </a>
               </div>
             ) : (

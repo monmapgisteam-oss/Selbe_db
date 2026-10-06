@@ -139,7 +139,10 @@
   background: var(--surface);
   min-width: 0;
 }
-@media (max-width: 1100px) { .detail { position: static; } }
+@media (max-width: 1100px) { .detail { position: static; scroll-margin-top: 8px; } }
+/* ⚠️ 2026-10-06 (аудит): сонголтын дараа фокус тийш шилждэг (`togglePick`) — гараар ирсэн үед л хүрээ */
+.detail:focus { outline: none; }
+.detail:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .note { margin: 0; font-size: 0.78rem; color: var(--ink-3); }
 .dHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
 .dTitleBox { flex: 1; min-width: 0; display: grid; gap: 2px; }

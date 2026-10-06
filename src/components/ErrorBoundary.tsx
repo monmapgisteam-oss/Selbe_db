@@ -70,6 +70,22 @@ type Props = {
   scope?: 'view';
   /** Дэлгэцэд харагдах нэр — «Санхүүжилт нээгдсэнгүй» гэх мэт */
   label?: string;
+  /**
+   * ⚠️ 2026-10-06 (аудит): ХӨВӨГЧ fallback — modal/хөвөгч хэрэгслийн (`UserAdmin`, `AgentChat`,
+   *    `MapTools`, `OpacityPanel`) хашлагад. Энгийн харагдацын fallback (240px өндөр, урсгалд)
+   *    нь тэдгээрийн байранд байрлалгүй гарч, бүтэн дэлгэцийн grid-ийг эвддэг. Хөвөгч нь
+   *    баруун доод буланд жижиг карт.
+   */
+  floating?: boolean;
+  /** Жижиг мөрийн fallback (нэгтгэлийн зурвас г.м.) — 240px өндөр эзлэхгүй */
+  compact?: boolean;
+  /**
+   * `true` бол алдаатай үед ЮУ Ч зурахгүй (алдаа хадгалагдана) — хаалттай modal-ийн
+   * chunk унасан ч хэрэглэгч нээгээгүй байхад мэдэгдэл гаргахгүй.
+   */
+  quiet?: boolean;
+  /** Fallback-ийн «Хаах» — өгвөл товч гарна (хөвөгч цонхыг хаах) */
+  onClose?: () => void;
 };
 type State = { error: Error | null };
 
@@ -86,6 +102,61 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    if (this.state.error && this.props.scope === 'view' && this.props.quiet) return null;
+    /* ⚠️ 2026-10-06: ХӨВӨГЧ / ЖИЖИГ fallback (`floating`/`compact`-ийн ⚠️) — chunk-ийн алдаанд
+       reload, бусдад «Дахин оролдох»; `onClose` өгвөл «Хаах». */
+    if (this.state.error && this.props.scope === 'view' && (this.props.floating || this.props.compact)) {
+      const chunk = isChunkLoadError(this.state.error);
+      const { floating, onClose } = this.props;
+      return (
+        <div
+          role="alert"
+          style={floating ? {
+            position: 'fixed',
+            right: 16,
+            bottom: 16,
+            zIndex: 1000,
+            maxWidth: 340,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 14,
+            borderRadius: 10,
+            border: '1px solid var(--line-strong)',
+            background: 'var(--surface)',
+            color: 'var(--ink)',
+            boxShadow: '0 6px 24px rgba(0,0,0,.18)',
+          } : {
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+            padding: 8,
+            color: 'var(--ink)',
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600 }}>
+            {chunk ? chunkErrorText() : (this.props.label ?? tr('Энэ хэсэг нээгдсэнгүй'))}
+          </span>
+          <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {chunk ? (
+              <button type="button" onClick={() => location.reload()} style={BTN_STYLE}>
+                {tr('Хуудсыг дахин ачаалах')}
+              </button>
+            ) : (
+              <button type="button" onClick={() => this.setState({ error: null })} style={BTN_STYLE}>
+                {tr('Дахин оролдох')}
+              </button>
+            )}
+            {onClose && (
+              <button type="button" onClick={() => { this.setState({ error: null }); onClose(); }} style={BTN_STYLE}>
+                {tr('Хаах')}
+              </button>
+            )}
+          </span>
+        </div>
+      );
+    }
     /* ⚠️ 2026-10-05: chunk-ийн алдаа — ХОЁР горимд ИЖИЛ: «шинэ хувилбар» + reload товч
        (`isChunkLoadError`-ийн ⚠️). Харагдацын горимд бүтэн дэлгэц эзлэхгүй хэвээр. */
     if (this.state.error && isChunkLoadError(this.state.error)) {

@@ -247,6 +247,8 @@ function Node({
       /* ⚠️ ЭРХГҮЙ ХЭРЭГЛЭГЧИД Ч ДАРАГДАНА. Самбар нь ЗӨВХӨН уншина — эрх нь
          зөвхөн ХАРАГДАЦ РУУ ШИЛЖИХИЙГ хаана (самбар доторх товч). */
       aria-expanded={selected}
+      /* ⚠️ 2026-10-06 (аудит): самбар хаагдахад фокусыг ЭНЭ карт руу буцаана (`Schem`-ийн `pick` эффект) */
+      data-schem-card={card.id}
       title={tip}
       onClick={() => onOpen(card.id, card.group)}
     >
@@ -383,12 +385,17 @@ function Panel({
      ТӨСЛИЙН тоо харуулдаг (`nodeDetail`) — гарчигт багцын нэр бичвэл «Багц 3.2»
      дор төслийн 2,088 талбарын чөлөөлөлтийг тэр багцынх мэт уншуулна. */
   const wide = PROJECT_WIDE.has(id);
+  /* ⚠️ 2026-10-06 (аудит): самбар DOM-д 26 картын ДАРАА тул нээгдэхэд фокус картад үлдэж,
+     гарын хэрэглэгч/дэлгэц уншигч самбарыг олохын тулд бүх картыг Tab-аар туулдаг байв. Нээгдэх
+     (эсвэл өөр карт сонгох — `key`) агшинд гарчиг руу фокус шилжинэ. */
+  const headRef = useRef<HTMLHeadingElement | null>(null);
+  useEffect(() => { headRef.current?.focus(); }, []);
 
   return (
     <aside className={c.panel} role="complementary" aria-label={n.title}>
       <div className={c.panelHead}>
         <span className={c.nodeIcon}><Icon name={n.icon} size={14} /></span>
-        <h3 className={c.panelTitle}>{n.title}</h3>
+        <h3 ref={headRef} tabIndex={-1} className={c.panelTitle}>{n.title}</h3>
         <span className={c.spacer} />
         <button type="button" className={c.xBtn} onClick={onClose}
           title={tr('Хаах')} aria-label={tr('Хаах')}>✕</button>
@@ -698,6 +705,21 @@ export function Schem({
    */
   const go = useCallback((v: ViewKey) => setView(v), [setView]);
 
+  /**
+   * САМБАР ХААГДАХАД ФОКУС КАРТ РУУ БУЦНА (2026-10-06, аудит).
+   * ⚠️ Урьд нь Esc/✕-ийн дараа фокус устсан самбартай хамт алга болж (body руу унаж) Tab
+   *    хуудасны эхнээс эхэлдэг байв. Сүүлд нээсэн картын `data-schem-card`-ыг фокуслана.
+   */
+  const lastCard = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = lastCard.current;
+    lastCard.current = pick?.card ?? null;
+    if (pick || !prev) return;
+    const el = Array.from(document.querySelectorAll<HTMLElement>('[data-schem-card]'))
+      .find((x) => x.dataset.schemCard === prev);
+    el?.focus();
+  }, [pick]);
+
   /** Esc — самбар хаана. Хулганагүй хэрэглэгч зөвхөн ✕ хайх шаардлагагүй. */
   useEffect(() => {
     if (pick == null) return undefined;
@@ -820,7 +842,7 @@ export function Schem({
                   rail={rail} fine={fine} pkgOn={!!pkg} allowed={allowed}
                   openCard={pick?.card ?? null} onOpen={toggle} />
                 {pick && (
-                  <Panel id={pick.group} src={src} pkg={pkgSel}
+                  <Panel key={pick.card} id={pick.group} src={src} pkg={pkgSel}
                     allowed={allowed(NODE_BY_ID[pick.group].view)}
                     onGo={go} onClose={() => setPick(null)} />
                 )}

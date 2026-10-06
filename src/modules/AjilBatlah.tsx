@@ -60,6 +60,8 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
  */
 import s from './guitsetgel.module.css';
 import { userError } from '@/components/ui';
+import { setNavDirty } from '@/lib/navGuard';
+import { REASON_MAX } from '@/lib/huvaariBatlah';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
@@ -381,7 +383,17 @@ export function AjilBatlah() {
       /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`).
          ⚠️ 2026-09-30: `stamp` — шийдвэр ба бичилтийн завсарт агуулга
          солигдвол батлагчийн хараагүй мөрийг бичихгүй. */
-      const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid, stamp: d.stamp });
+      /* ⚠️ 2026-10-06 аудит: БҮТЭН ЖААЗ бичиж байхад (≈1,400 мөр, 500-аар багцлан `applyAdds`)
+         F5/таб хаах/харагдац солихыг АСУУНА (`navGuard` → `beforeunload` · Portal) — FillNew-ийн
+         'fillnew-send'-ийн ижил. Урьд нь хамгаалалтгүй тул дунд нь тасарвал хагас жааз үлдэж
+         багцыг түгжинэ. `finally`-д ЗААВАЛ цэвэрлэнэ. */
+      setNavDirty('ajil-apply', true, tr('Нэмэлт ажлыг хуудсанд буулгаж байна'));
+      let m: Awaited<ReturnType<typeof materializeAdds>>;
+      try {
+        m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid, stamp: d.stamp });
+      } finally {
+        setNavDirty('ajil-apply', false);
+      }
       if (!alive.current) return;
       /* ⚠️ 2026-10-01: оролдлого ДУУССАН — «Батлагдсан · буулгаагүй»-д хүлээлэггүй
          шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
@@ -416,6 +428,8 @@ export function AjilBatlah() {
   const reapply = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
     setBusy(true); setErr(''); setNote('');
+    /* ⚠️ 2026-10-06 аудит: бичилт явж байхад гарахыг асууна (`approve`-ийн ⚠️) */
+    setNavDirty('ajil-apply', true, tr('Нэмэлт ажлыг хуудсанд буулгаж байна'));
     try {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
@@ -430,6 +444,7 @@ export function AjilBatlah() {
       afterApply(x.oid, msg);
       setErr(msg);
     } finally {
+      setNavDirty('ajil-apply', false);
       if (alive.current) setBusy(false);
     }
   }, [busy, reload, afterApply]);
@@ -532,10 +547,11 @@ export function AjilBatlah() {
         <input
           className={s.search}
           placeholder={tr('Багц, илгээгч, тайлбараар хайх…')}
+          aria-label={tr('Багц, илгээгч, тайлбараар хайх…')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)}>
+        <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)} aria-label={tr('Бүх багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
           {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}</option>)}
         </select>
@@ -834,6 +850,8 @@ function Row({
                 className={s.field}
                 rows={2}
                 value={reason}
+                /* ⚠️ 2026-10-06 аудит: HuvaariBatlah-ийн ижил дээд хязгаар — `decideAjil` мөн тайрна */
+                maxLength={REASON_MAX}
                 onChange={(e) => onReason(e.target.value)}
                 disabled={busy}
               />

@@ -24,7 +24,7 @@ import {
   groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
   statusOf as tuhStatus, firstFilled, rowProgress,
 } from '@/lib/tuhData';
-import { lz, type TuhModel, type TuhRow } from './model';
+import { lz, depRows, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
 /* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`) */
@@ -35,6 +35,7 @@ import { ProgChart } from '@/modules/PkgProg';
 import { ComboChart, lagLevel } from '@/modules/Finance';
 import {
   Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp, barSt,
+  PREREQ_LANES, DepList,
 } from './Overview';
 import s from '../tuh.module.css';
 
@@ -69,11 +70,13 @@ const NAV = (housing: boolean, hasDeps: boolean) => [
 ] as [string, string][];
 
 
-export function PkgDetail({ r, m, onBack, onOpen }: {
+export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   r: TuhRow;
   m: TuhModel;
   onBack: () => void;
   onOpen: (key: string) => void;
+  /** ⚠️ 2026-10-06: «Багцын хамаарал» харагдац руу (`Tuh.onOpenDeps`) — өгөөгүй бол холбоосгүй */
+  onOpenDeps?: () => void;
 }) {
   const housing = r.p.group === 'housing';
   const now = m.now;
@@ -87,6 +90,8 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
   const sched = schedQ.state === 'ready' ? schedQ.data : null;
   /** Хуваарь ачаалж байхад «—» → «…» (`model.lz`-ийн ⚠️) */
   const schedWait = (t: string): string => (t === '—' && hasSheets && schedQ.state === 'loading' ? '…' : t);
+  /** ХАБЭА (хүн хүч) ачаалж байна — бодит тоо ирэх хүртэл «…» (доорх «Хүн хүч»-ийн ⚠️) */
+  const wfWait = m.loading.has('workforce');
 
   const derived = useMemo(() => {
     if (!sched) return null;
@@ -126,7 +131,17 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
   const elapsed = elapsedPct(r.p.start, r.p.end, now);
   const left = daysBetween(now, r.p.end);
   const layerTitles = (PKG_BY_BAGTS[r.p.pkgKey] ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
-  const nav = NAV(housing, false);
+  /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь `hasDeps` хатуу `false`,
+     урьдчилсан нөхцөлийн эгнээ «—», «хамаарал бүртгэгдээгүй» гэсэн ХУДАЛ бичигтэй байв.
+     `null` = хамаарал ирээгүй (ачаалж/унасан). */
+  const upRows = depRows(m, r.p.key, 'up');
+  const downRows = depRows(m, r.p.key, 'down');
+  const depsWait = m.loading.has('deps');
+  const nav = NAV(housing, !!downRows?.length || depsWait);
+  /** «Багцын хамаарал» руу холбоос (эрх/дуудагч өгсөн үед) */
+  const depsLink = onOpenDeps ? (
+    <>{' '}<button type="button" className={s.rowLink} onClick={onOpenDeps}>{tr('Багцын хамаарал')} →</button></>
+  ) : null;
   const go = (id: string) => document.getElementById(`tuh-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   /* IPC */
@@ -209,12 +224,21 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
           <span className={s.statLabel}>{tr('Хүн хүч')}</span>
           {/* ⚠️ 2026-09-30: багц ХАБЭА-д холбоотой бол ЗӨВХӨН ХАБЭА (тайлангүй → «—»); хуваарийн
               ТӨЛӨВЛӨСӨН нөөцийн нийлбэрийг (`resourcesOf`) бодит тоо мэт орлуулахгүй */}
-          <span className={s.statValue}>{r.workerDays.length ? num(r.workers) : schedWait(lz(m, 'workforce')(num(derived?.hun ?? null)))}<small>{tr('хүн')}</small></span>
+          {/* ⚠️ 2026-10-06 (аудит): ХАБЭА ачаалж байхад «…» — урьд нь энэ хооронд ТӨЛӨВЛӨСӨН
+              нөөц (`resourcesOf`) бодит мэт гараад, ХАБЭА ирэхэд өөр тоо руу үсэрдэг байв. ХАБЭА-д
+              холбоогүй багцад хуваарийн нөөц рүү буцна — тэр үед «төлөвлөсөн» гэж ИЛ шошголно. */}
+          <span className={s.statValue}>
+            {r.workerDays.length ? num(r.workers) : wfWait ? '…' : schedWait(num(derived?.hun ?? null))}
+            <small>{tr('хүн')}{!r.workerDays.length && !wfWait && derived?.hun != null ? ` · ${tr('төлөвлөсөн')}` : ''}</small>
+          </span>
           <span className={s.statNote}>{tr('шууд / шууд бус: {0}', '—')}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Машин, техник')}</span>
-          <span className={s.statValue}>{r.workerDays.length ? num(r.technik) : schedWait(lz(m, 'workforce')(num(derived?.mashin ?? null)))}<small>{tr('нэгж')}</small></span>
+          <span className={s.statValue}>
+            {r.workerDays.length ? num(r.technik) : wfWait ? '…' : schedWait(num(derived?.mashin ?? null))}
+            <small>{tr('нэгж')}{!r.workerDays.length && !wfWait && derived?.mashin != null ? ` · ${tr('төлөвлөсөн')}` : ''}</small>
+          </span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээт хугацаа')}</span>
@@ -385,9 +409,19 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
             <div>
               <span className={s.stepNo}>{tr('1 · Урьдчилсан нөхцөл')}</span>
               <div className={s.lanes}>
-                {[tr('Инженерийн шугам сүлжээ'), tr('Эрчим хүч, холбоо'), tr('Дулааны эх үүсвэр'), tr('Гадна тохижилт, өндөржилт')].map((l) => (
-                  <div key={l} className={s.lane}><b>{l}</b>—</div>
+                {PREREQ_LANES.map((l) => (
+                  <div key={l.group} className={s.lane}>
+                    <b>{l.label()}</b>
+                    <DepList rows={upRows && upRows.filter((x) => x.p.group === l.group)} loading={depsWait} onOpen={onOpen} />
+                  </div>
                 ))}
+                {/* Дөрвөн эгнээнд багтаагүй бүлгийн урд талын багц (нийгмийн дэд бүтэц, бусад, зураг төсөл) */}
+                {(() => {
+                  const rest = upRows?.filter((x) => !PREREQ_LANES.some((l) => l.group === x.p.group)) ?? [];
+                  return rest.length ? (
+                    <div className={s.lane}><b>{tr('Бусад')}</b><DepList rows={rest} loading={false} onOpen={onOpen} /></div>
+                  ) : null;
+                })()}
               </div>
             </div>
             <div className={s.flowArrow}>→</div>
@@ -410,12 +444,24 @@ export function PkgDetail({ r, m, onBack, onOpen }: {
               <dt>{tr('Хоцролт')}</dt><dd className={r.delay != null && r.delay > 0 ? s.bad : ''}>{lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}</dd>
             </dl>
           </div>
-          <p className={s.note}>{tr('Огноо нь «Хуваарь» хэсгийн «Улсын комисс» мөрөөс. Салбар багцын хамаарал системд бүртгэгдээгүй.')}</p>
+          <p className={s.note}>
+            {tr('Огноо нь «Хуваарь» хэсгийн «Улсын комисс» мөрөөс. Салбар багцууд «Багцын хамаарал» хэсэгт бүртгэсэн холбоосоос; «—» — холбоо бүртгээгүй.')}
+            {depsLink}
+          </p>
         </Section>
       ) : (
         /* ⚠️ 2026-10-01: эх сурвалжгүй — хураагдсан (`Section empty`) */
-        <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')} empty>
-          <p className={s.note}>—</p>
+        /* ⚠️ 2026-10-06 (аудит): эх нь «Багцын хамаарал» — энэ багцаас ХАМААРДАГ (ард талын)
+           багцууд (орон сууц эхэнд). Холбоогүй бол хураагдсан хэвээр. */
+        <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')} empty={!downRows?.length && !depsWait}>
+          <p className={s.note}>
+            <DepList
+              rows={downRows && [...downRows].sort((a, b) => Number(b.p.group === 'housing') - Number(a.p.group === 'housing'))}
+              loading={depsWait}
+              onOpen={onOpen}
+            />
+          </p>
+          <p className={s.note}>{tr('«Багцын хамаарал» хэсэгт бүртгэсэн холбоосоос.')}{depsLink}</p>
         </Section>
       )}
 
