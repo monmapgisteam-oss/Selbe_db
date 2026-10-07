@@ -235,6 +235,8 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
+/* Товчлол шошго (LTI) — бусдаас том */
+.ktLabelBig { font-size: 14px; letter-spacing: 0.06em; }
 .ktVal {
   display: flex;
   align-items: baseline;
@@ -369,6 +371,10 @@
    Мөр бүр: нэр · 100% зурвас · гадаадын хувь. Зурвасууд НЭГ баганад
    эгнэдэг тул компаниудыг нүдээр шууд харьцуулна (`Bars` нь хоёр
    утгыг нэг мөрөнд зурж чаддаггүй тул энд түүнийг хэрэглээгүй). */
+/* «Компаниар — монгол, гадаад»-ын тайлбар (2026-10-07) */
+.mixLegend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); }
+.mixLegend span { display: inline-flex; align-items: center; gap: 5px; }
+.mixLegend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .mixList {
   display: flex;
   flex-direction: column;
@@ -655,6 +661,8 @@
 
 .list {
   grid-area: list;
+  /* ⚠️ 2026-10-07: карт хоорондын бариул (`HabeaCardGrips`) ЭНЭ баганаас байрлана */
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -676,6 +684,7 @@
    гэсэн шаардлага эвдэрнэ. */
 .r {
   grid-area: r;
+  position: relative;
   min-width: 0;
   min-height: 0;
   /**
@@ -740,15 +749,23 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  min-height: 0;
 }
 .finHalfGrid {
   display: grid;
-  /* 2026-09-17: өдөр/сар нэг картад нэгдсэн тул хагас бүрд ХОЁР карт */
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 2026-09-17: өдөр/сар нэг картад нэгдсэн тул хагас бүрд ХОЁР карт.
+     ⚠️ 2026-10-06: эхний трек хувьсагчаар (`--fh`) — бариул `fhL`/`fhR` чирнэ;
+     тавиагүй үед ТЭНЦҮҮ (1fr · 1fr). */
+  position: relative;
+  grid-template-columns: var(--fh, minmax(0, 1fr)) minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
+  /* ⚠️ 2026-10-06: хагасын үлдсэн өндрийг ДҮҮРГЭНЭ — урьд нь картууд агуулгынхаа
+     өндөртэй үлдэж, доор нь хоосон зай гарч, хүн хүчний картуудаас жижиг харагддаг байв. */
+  flex: 1;
+  min-height: 0;
 }
-.finHalfGrid > section { min-width: 0; }
+.finHalfGrid > section { min-width: 0; min-height: 0; }
 
 /* Газрын зураг — карттай ижил hairline хүрээ, сүүдэргүй (envhub) */
 .map {

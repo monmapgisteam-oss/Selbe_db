@@ -23,9 +23,11 @@ console.log('✅ activeFilterLabel: самбарын шүүлт · шууд то
 /* ── Шүүлтгүй үед юу ч зурахгүй; MapTools хэвийн зурагдана ── */
 assert.equal(renderToStaticMarkup(h(ActiveFilterChip)), '');
 const html = renderToStaticMarkup(h(MapTools, { dim: '2d', setDim: () => {} }));
-assert.ok(html.includes('mapToolsBar'), 'зурвас зурагдсангүй');
+/* ⚠️ 2026-10-07: зурвас АНХДАГЧ ХУРААГДСАН (хэрэглэгчийн хүсэлт) — «харуулах» бариул л зурагдана */
+assert.ok(!html.includes('mapToolsBar'), 'зурвас анхдагчаар хураагдсан байх ёстой');
+assert.ok(html.includes('Товчнуудыг харуулах'), 'хураасан зурвасын бариул зурагдсангүй');
 assert.ok(!html.includes('mapFilterChip'), 'шүүлтгүй үед чип гарав');
-console.log('✅ шүүлтгүй: чип алга · зурвас хэвийн');
+console.log('✅ шүүлтгүй: чип алга · зурвас анхдагч хураагдсан, бариул бий');
 
 /* ── Холболт: цуцлах нь хоёр эх сурвалжийг хоёуланг нь цэвэрлэнэ ── */
 const src = readFileSync(new URL('./MapTools.tsx', import.meta.url), 'utf8');

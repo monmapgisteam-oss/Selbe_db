@@ -292,6 +292,10 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
   ['src/lib/webmapStyle.ts',
     'Вэб зургийн ХЭВ ЗАГВАР (symbology) — ArcGIS-ийн webmap тодорхойлолт, '
     + 'өгөгдлийн хүснэгт БИШ.'],
+  ['src/lib/uzlegReport.ts',
+    '`metaCache` нь ЗӨВХӨН үзлэгийн маягтын ТАЛБАРЫН жагсаалт (alias, домэйн — бүдүүвчийн '
+    + 'метадата, мөр БИШ; 2026-10-06). Мөрүүд нь `habeaUzleg`-ийн автобусад бүртгэлтэй '
+    + 'ачаалагчаас (`HABEA`) ирнэ; портал маягтад бичдэггүй.'],
   ['src/lib/zovshoorol.ts',
     '`oidFieldP` нь ЗӨВХӨН OID талбарын НЭРийг кэшилдэг (бүдүүвчийн метадата, '
     + 'мөр БИШ). Файл өөрөө `invalidate(\'ZOVSHOOROL\')` дууддаг (мөр 309·338).'],

@@ -27,7 +27,7 @@ import { t as tr } from '@/lib/i18nCore';
  */
 const PANE = {
   // `.shell` — багана ба доод зурвасын өндөр
-  /* ⚠️ `l` ба `r` ХОЛБООТОЙ (`LINKED`) — хязгаар нь ИЖИЛ байх ёстой, эс бөгөөс
+  /* ⚠️ 2026-10-07: `l`·`r` холбоо ХАСАГДСАН (`LINKED`-ийн тайлбар). Хязгаар нь ИЖИЛ хэвээр — урьд нь
      нэг нь хязгаартаа тулахад нөгөө нь цааш явж өргөн зөрнө. */
   l: { css: '--col-l', axis: 'x', track: 0, min: 240, max: 560, sign: 1 },
   r: { css: '--col-r', axis: 'x', track: 2, min: 240, max: 560, sign: -1 },
@@ -40,6 +40,11 @@ const PANE = {
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fin2: { css: '--fin-2', axis: 'x', track: 1, min: 150, max: 900, sign: 1 },
   fin3: { css: '--fin-3', axis: 'x', track: 2, min: 200, max: 1100, sign: 1 },
+  /* ⚠️ 2026-10-06: ХОЁР МАЯГТЫН горимд (захиалагчийн үзлэг) хагас бүрийн ДОТОРХ хоёр
+     картын зааг. Хагас бүр БИЕ ДААСАН (2026-10-07, `LINKED`-ийн тайлбар). Хувьсагч
+     нь тус тусын `.finHalfGrid` дээр (`--fh`), трек 0 = эхний карт. */
+  fhL: { css: '--fh', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
+  fhR: { css: '--fh', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   /* ⚠️ `rp1` (донатын хосын зааг) ХАСАГДЛАА 2026-09-06-нд: «Монгол,
      гадаад» донат зургийн зүүн талд гарч, `.rPair` хос задарсан.
      Хэрэглэгчийн хадгалсан хуучин утга үлдсэн ч ямар ч элементэд
@@ -53,9 +58,20 @@ export type PaneKey = keyof typeof PANE;
  * зэрэгцэх горимд зүүн (V1.1) ба баруун (захиалагч) ИЖИЛ чартуудтай тул
  * өргөн зөрвөл ижил тоо өөр хэлбэртэй харагдаж харьцуулалт гажна.
  */
-const LINKED: Partial<Record<PaneKey, PaneKey>> = { l: 'r', r: 'l' };
+/* ⚠️ 2026-10-07 (хэрэглэгч: «resize нь тухайн панел дээрээ үйлчилнэ, өөр газар үйлчлэхгүй»):
+   ХОЛБООС ХАСАГДАВ. Урьд нь зүүн баганыг чирэхэд баруун нь, нэг хагасыг чирэхэд нөгөө
+   хагас дагадаг байв. Одоо бариул бүр ЗӨВХӨН өөрийн трекийг өөрчилнө. Хоосон map-ийг
+   хадгалсан нь доорх `LINKED[k]` дуудлагууд хэвээр ажиллахын тулд. */
+const LINKED: Partial<Record<PaneKey, PaneKey>> = {};
 
-const LS = 'selbe.habea.panes';
+/* ⚠️ 2026-10-07: `.v2` — өмнө чирж хадгалсан ЗӨРҮҮТЭЙ хэмжээнүүдийг хаяж, бүх панел ТЭНЦҮҮ
+   хуваалттай эхэлнэ (хэрэглэгч: «картын хэмжээ зөрүүтэй байна, тэнцүүл»). */
+/* ⚠️ 2026-10-07: `.v3` — хэрэглэгч «дэлгэцээ тэнцүү хуваа»: доод зурвасын КАРТЫН хуваалтыг
+   (`fin1` · `fhL` · `fhR`) тэглэж бүх карт ТЭНЦҮҮ эхэлнэ. Баганын өргөн (`l`/`r`) ба зурвасын
+   өндөр (`fin`) нь `.v2`-оос ШИЛЖИНЭ (`LS_PREV`) — тэдгээрийг хэрэглэгч санаатай тохируулсан. */
+const LS = 'selbe.habea.panes.v3';
+const LS_PREV = 'selbe.habea.panes.v2';
+const EQUALISE: PaneKey[] = ['fin1', 'fin2', 'fin3', 'fhL', 'fhR'];
 const STEP = 12;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -68,13 +84,19 @@ export function usePanes() {
   //    байхгүй бол hydration зөрнө.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LS);
+      let raw = localStorage.getItem(LS);
+      if (!raw) {
+        const prev = localStorage.getItem(LS_PREV);
+        if (prev) {
+          const p = JSON.parse(prev) as Sizes;
+          for (const k of EQUALISE) delete p[k];
+          raw = JSON.stringify(p);
+          localStorage.setItem(LS, raw);
+        }
+      }
       if (raw) {
         const s = JSON.parse(raw) as Sizes;
-        /* ⚠️ Холбоо нэмэгдэхээс ӨМНӨ хадгалсан зөрүүтэй өргөнийг нэг болгоно —
-           эс бөгөөс хуучин хэрэглэгчид багана тэгш бус хэвээр үлдэнэ. */
-        const v = s.l ?? s.r;
-        if (v != null) { s.l = v; s.r = v; }
+        /* ⚠️ 2026-10-07: l/r-ийг албадан тэнцүүлэхээ больсон — бариул бүр бие даасан */
         // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
         setSize(s);
       }
