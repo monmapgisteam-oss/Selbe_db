@@ -1293,6 +1293,96 @@ function SeriesLine({
   );
 }
 
+/** Олон муруйн нэг шугам — `Series.lines` */
+export type SeriesLineDef = {
+  key: string;
+  label: string;
+  color: string;
+  /** `items`-тэй ИЖИЛ урт, ижил дараалал. `null` = тэр үед хэмжилтгүй (цоорхой). */
+  values: (number | null)[];
+};
+
+/**
+ * ОЛОН ЗӨӨЛӨН МУРУЙ — нэг тэнхлэг, нэг масштаб (2026-10-06, ХАБЭА «Ажилтан —
+ * өдрөөр»-ийн Монгол · Гадаад).
+ *
+ * ⚠️ `null` нь ЦООРХОЙ — 0 гэж зурахгүй. Муруй нь тасралтгүй хэсэг бүрээр
+ *    тусдаа зурагдана (нэг цэгтэй хэсэг нь зөвхөн цэг).
+ * ⚠️ Шугам БҮР өөрийн өнгөөр бүдэг талбайтай (2026-10-06, хэрэглэгч: «доод талын fill»).
+ *    Давхцахад өнгө холилдохгүйн тулд тунгалаг багатай (0.22 → 0.02).
+ */
+function SeriesLines({
+  lines, n, max, selected, keys, showValues,
+}: {
+  lines: SeriesLineDef[];
+  n: number;
+  max: number;
+  selected?: string | readonly string[] | null;
+  keys: string[];
+  showValues?: boolean;
+}) {
+  const gid = `seriesAreas${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  if (n < 1) return null;
+  const pad = showValues ? 20 : 0;
+  const px = (i: number) => ((i + 0.5) / n) * 100;
+  const py = (v: number) => pad + (100 - pad) * (1 - fin(v) / max);
+  return (
+    <>
+      {lines.map((ln, li) => {
+        /* Тасралтгүй хэсгүүд */
+        const segs: { x: number; y: number }[][] = [];
+        let cur: { x: number; y: number }[] = [];
+        ln.values.forEach((v, i) => {
+          if (v == null || !Number.isFinite(v)) {
+            if (cur.length) segs.push(cur);
+            cur = [];
+            return;
+          }
+          cur.push({ x: px(i), y: py(v) });
+        });
+        if (cur.length) segs.push(cur);
+        return (
+          <div key={ln.key} style={{ display: 'contents', ...tone(ln.color) }}>
+            <svg className={s.seriesLineSvg} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              {(
+                <defs>
+                  <linearGradient id={`${gid}-${li}`} x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="var(--tone, var(--data))" stopOpacity="0.22" />
+                    <stop offset="100%" stopColor="var(--tone, var(--data))" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+              )}
+              {segs.filter((p) => p.length > 1).map((p, si) => {
+                const d = smoothPath(p);
+                return (
+                  <Fragment key={si}>
+                    <path d={`${d} L${p[p.length - 1].x},100 L${p[0].x},100 Z`} fill={`url(#${gid}-${li})`} />
+                    <path className={s.seriesLinePath} d={d} />
+                  </Fragment>
+                );
+              })}
+            </svg>
+            {ln.values.map((v, i) => {
+              if (v == null || !Number.isFinite(v)) return null;
+              const dim = selAny(selected) && !selHas(selected, keys[i]) ? 0.22 : 1;
+              return (
+                <Fragment key={keys[i]}>
+                  <span className={s.seriesLineDot} style={{ left: `${px(i)}%`, top: `${py(v)}%`, opacity: dim }} />
+                  {showValues && (
+                    <span className={s.seriesLineVal} style={{ left: `${px(i)}%`, top: `${py(v)}%`, opacity: dim }}>
+                      {v.toLocaleString('en-US')}
+                    </span>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function Series({
   items,
   color,
@@ -1304,6 +1394,7 @@ export function Series({
   showValues = false,
   outline = false,
   line = false,
+  lines,
 }: {
   items: { key: string; label: string; value: number; display?: string }[];
   color?: string;
@@ -1338,8 +1429,17 @@ export function Series({
    *    цэгтэй цуваанд давхцана. Утга нь hover-т гарсаар байна.
    */
   line?: boolean;
+  /**
+   * ОЛОН МУРУЙ (2026-10-06) — `line`-тай хамт. Өгвөл `items[].value`-ийн НЭГ
+   * муруйн оронд эдгээр муруйг ижил тэнхлэгт зурна; `items` нь тэнхлэг, шошго,
+   * дарах талбай хэвээр. Хоосон/өгөөгүй бол ердийн нэг муруй.
+   */
+  lines?: SeriesLineDef[] | null;
 }) {
-  const max = Math.max(1, ...items.map((i) => fin(i.value)));
+  const multi = line && !!lines && lines.length > 0;
+  const max = multi
+    ? Math.max(1, ...lines!.flatMap((l) => l.values.map((v) => (v == null ? 0 : fin(v)))))
+    : Math.max(1, ...items.map((i) => fin(i.value)));
   const tip = useTip();
   const [ticksRef, ticksW] = useWidth<HTMLDivElement>();
 
@@ -1373,13 +1473,32 @@ export function Series({
         * ХАБЭА-гийн «Ажилтан — гүйцэтгэгчээр» дээр «ажилтан» гэдэг нь сүүлийн
         * баганын («МСК») нэрийн ХОЁР ДАХЬ МӨР мэт уншигдаж байлаа.
         */}
-      {unit && <div className={s.seriesUnit}>{unit}</div>}
+      {(unit || multi) && (
+        <div className={s.seriesUnit}>
+          {multi && lines!.map((l) => (
+            <span key={l.key} className={s.seriesLegend}>
+              <i style={{ background: l.color }} aria-hidden />{l.label}
+            </span>
+          ))}
+          {unit}
+        </div>
+      )}
       <div
         className={s.seriesPlot}
         style={grow ? { flex: 1, minHeight: height } : { height }}
       >
-        {line && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
-        {items.map((it) => {
+        {line && !multi && <SeriesLine items={items} max={max} selected={selected} showValues={showValues} />}
+        {multi && (
+          <SeriesLines
+            lines={lines!}
+            n={items.length}
+            max={max}
+            selected={selected}
+            keys={items.map((it) => it.key)}
+            showValues={showValues}
+          />
+        )}
+        {items.map((it, idx) => {
           const on = selHas(selected, it.key);
           const dim = selAny(selected) && !on;
           // ⚠️ Баганын хамгийн бага өндөр 1.5%: утга 0 байсан ч багана нь БАЙГАА
@@ -1388,10 +1507,16 @@ export function Series({
           /* ⚠️ 2026-09-25: нэгжийг `display` өөрөө агуулаагүй үед л залгана —
              «61.1% / төл. 70.0% %», «5 багц багц» гэж давхардаж байв. Habea-ийн
              `display: num(v)` (нэгжгүй) нь «25 ажилтан» хэвээр. */
-          const disp = String(it.display ?? it.value);
+          /* ⚠️ Олон муруйд tooltip нь шугам бүрийн утгыг жагсаана («Монгол 1,200 · Гадаад 180») */
+          const disp = multi
+            ? lines!.map((l) => {
+              const v = l.values[idx];
+              return `${l.label} ${v == null ? '—' : v.toLocaleString('en-US')}`;
+            }).join(' · ')
+            : String(it.display ?? it.value);
           const tipData = {
             label: it.label,
-            value: unit && !disp.includes(unit) ? `${disp} ${unit}` : disp,
+            value: unit && !multi && !disp.includes(unit) ? `${disp} ${unit}` : disp,
             color,
             hint: onSelect ? tr('Дарж шүүнэ') : undefined,
           };

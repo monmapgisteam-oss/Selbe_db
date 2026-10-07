@@ -46,7 +46,9 @@ import {
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
 import { MultiSelect } from '@/components/MultiSelect';
-import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError } from '@/components/ui';
+import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
+import { UzlegExportButton } from './UzlegExport';
+import { HabeaCardGrips } from './HabeaCardGrips';
 import { num, date, text, dayKey, pct } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -332,28 +334,6 @@ function laborState(rows: Row[]): {
   return { rows: comp, asOf, hunTsag: nn(latest[L.hunTsag]), cum };
 }
 
-/**
- * Монгол/гадаад харьцааны хандлага — өдрийн бүртгэл БҮРЭЭС.
- *
- * ⚠️ ХАМРАХ ХҮРЭЭ: маягтад монгол/гадаадын задаргаа 2026-08-06-наас ХОЙШ л
- * бөглөгдөж эхэлсэн. Өмнөх бүртгэлүүд `Niit_ajiltan`-тай ч задаргаагүй тул
- * цуваа нь БҮХ түүхийг биш, ЗАДАРГАА БҮХИЙ өдрүүдийг л хамарна (одоогоор ~12
- * өдөр) — шинэ тайлан ирэх бүрд өөрөө уртсана. Задаргаагүй өдрийг 0%-иар
- * зурвал «монгол ажилтан байгаагүй» гэж ХУДАЛ уншигдана тул хасна.
- *
- * `sfxs` өгвөл ЗӨВХӨН тэдгээр гүйцэтгэгчийн баганын бүлгүүдээс, эс бөгөөс бүгдийн
- * нийлбэрээс тооцно.
- */
-function mixTotals(rows: Row[], sfxs: readonly string[] | null): { mongol: number; gadaad: number } {
-  const fields = (sfxs ? sfxs.map((sfx) => ({ sfx })) : HABEA.labor.companies).map((c) => laborCompanyFields(c.sfx));
-  return rows.reduce<{ mongol: number; gadaad: number }>(
-    (a, r) => ({
-      mongol: a.mongol + fields.reduce((s, f) => s + nn(r[f.mongol]), 0),
-      gadaad: a.gadaad + fields.reduce((s, f) => s + nn(r[f.gadaad]), 0),
-    }),
-    { mongol: 0, gadaad: 0 },
-  );
-}
 
 /**
  * Гүйцэтгэгч бүрийн өдөр тутмын ажилтны тоо — ОГНООГООР.
@@ -510,6 +490,80 @@ const cmpPkg = (a: string, b: string): number => {
  */
 /* ⚠️ 2026-10-01: `curYm` — ЯВАГДАЖ БУЙ сар «*»-тай (`habeaRate.markCurMonth`): сарын дунд
    хүн-өдрийн нийлбэр ДУТУУ тул сүүлийн багана «унасан» мэт уншигддаг байв. */
+/**
+ * МОНГОЛ · ГАДААД — ӨДӨР БҮРИЙН задаргаа (2026-10-06, хэрэглэгчийн хүсэлт:
+ * «Ажилтан — өдрөөр»-ийг задаргаа орж ирсэн өдрөөс хойш хоёр муруйгаар).
+ *
+ * ⚠️ `byDaySeries`-ийн ИЖИЛ дүрэм: тайлан өгөөгүй гүйцэтгэгчийг алгасна
+ *    (`companyReported`), орон нутгийн өдрийн түлхүүр (`dayKey`). Хоёул 0 бол
+ *    тэр өдөр задаргаагүй — Map-д ОРОХГҮЙ (0 гэж зурахгүй, цоорхой).
+ */
+function mixByDay(rows: Row[], sfxs: readonly string[] | null): Map<string, { mongol: number; gadaad: number }> {
+  const list = (sfxs ?? HABEA.labor.companies.map((c) => c.sfx)).map((sfx) => ({ sfx, f: laborCompanyFields(sfx) }));
+  const out = new Map<string, { mongol: number; gadaad: number }>();
+  for (const r of rows) {
+    const d = nn(r[L.ognoo]);
+    if (!(d > 0)) continue;
+    let mongol = 0;
+    let gadaad = 0;
+    for (const { sfx, f } of list) {
+      if (!companyReported(r, sfx)) continue;
+      mongol += nn(r[f.mongol]);
+      gadaad += nn(r[f.gadaad]);
+    }
+    if (mongol + gadaad <= 0) continue;
+    const k = dayKey(d);
+    const cur = out.get(k);
+    if (cur) { cur.mongol += mongol; cur.gadaad += gadaad; } else out.set(k, { mongol, gadaad });
+  }
+  return out;
+}
+
+/**
+ * Өдрийн задаргааг САР руу нэгтгэнэ (хүн-өдөр — `byMonthSeries`-ийн ижил нэгж).
+ * ⚠️ Сарын ЗАРИМ өдөр задаргаагүй бол тэр сарыг задаргаатай гэж ҮЗЭХГҮЙ — Монгол +
+ *    Гадаадын нийлбэр нь сарын нийт хүн-өдрөөс ДУТУУ болж, худал бууралт харагдана.
+ *    Тэр сар «Нийт» муруйгаар гарна.
+ */
+function mixByMonth(mix: Map<string, { mongol: number; gadaad: number }>, days: { key: string }[]) {
+  const partial = new Set(days.filter((x) => !mix.has(x.key)).map((x) => x.key.slice(0, 7)));
+  const out = new Map<string, { mongol: number; gadaad: number }>();
+  for (const [k, v] of mix) {
+    if (partial.has(k.slice(0, 7))) continue;
+    const ym = k.slice(0, 7);
+    const cur = out.get(ym);
+    if (cur) { cur.mongol += v.mongol; cur.gadaad += v.gadaad; } else out.set(ym, { ...v });
+  }
+  return out;
+}
+
+/**
+ * Монгол · Гадаад хоёр муруй + задаргаагүй үед НИЙТ муруй (2026-10-06).
+ *
+ * ⚠️ Хэрэглэгч: «монгол гадаад төрөл байхгүй бол нийтээр нь харуул». Тиймээс
+ *    цувааг ТАЙРАХГҮЙ: задаргаатай өдөр Монгол · Гадаад, задаргаагүй өдөр
+ *    Нийт (одоогийн утга). Шугам бүр өөрт хамаарахгүй өдөр `null` (цоорхой).
+ * ⚠️ Задаргаа огт байхгүй бол `null` — дуудагч ОДООГИЙН нэг муруйгаар зурна.
+ * ⚠️ Өнгө нь «Компаниар — монгол, гадаад»-тай ИЖИЛ (`--c1` · `--c2`); Нийт нь
+ *    анхдагч өгөгдлийн өнгө (`--data`) — өмнөх нэг муруйтай ижил.
+ */
+function mixLines<T extends { key: string; value: number }>(
+  items: T[], mix: Map<string, { mongol: number; gadaad: number }>,
+): SeriesLineDef[] | null {
+  if (!mix.size || !items.some((x) => mix.has(x.key))) return null;
+  const pick = (k: 'mongol' | 'gadaad') => items.map((x) => mix.get(x.key)?.[k] ?? null);
+  const total = items.map((x) => (mix.has(x.key) ? null : x.value));
+  const out: SeriesLineDef[] = [];
+  if (total.some((v) => v != null)) {
+    out.push({ key: 'all', label: tr('Нийт'), color: 'var(--data)', values: total });
+  }
+  out.push(
+    { key: 'mn', label: tr('Монгол'), color: 'var(--c1)', values: pick('mongol') },
+    { key: 'fr', label: tr('Гадаад'), color: 'var(--c2)', values: pick('gadaad') },
+  );
+  return out;
+}
+
 function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
   const m = new Map<string, number>();
   for (const x of daily) {
@@ -540,9 +594,11 @@ function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
 /* ⚠️ 2026-10-01: `subWarn` — доод мөрийг анхааруулгын өнгөөр (хуучирсан тайлан) */
 const kpiTile = (
   val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null, subWarn = false,
+  /* ⚠️ 2026-10-06: товчлол шошго (LTI) — том үсгээр (хэрэглэгчийн хүсэлт) */
+  bigLabel = false,
 ) => (
   <div className={h.kt}>
-    <div className={h.ktLabel}>{label}</div>
+    <div className={`${h.ktLabel} ${bigLabel ? h.ktLabelBig : ""}`}>{label}</div>
     <div className={h.ktVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
     {ratio != null && Number.isFinite(ratio) && (
       <div className={h.ktBar} aria-hidden>
@@ -1389,22 +1445,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return out;
   }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2]);
 
-  /**
-   * Монгол/гадаад — БҮХ бүртгэлийн нийлбэр (сонгосон гүйцэтгэгчийг дагана).
-   * ⚠️ Задаргаа бөглөгдсөн өдрүүдээс Л хуримтлагдана (маягтад өдөр бүр
-   * бөглөгддөггүй) тул нийт нь «Нийт ажилтан» KPI-тай тэнцэхгүй.
-   */
-  const mixSum = useMemo(() => mixTotals(laborDated, coEff), [laborDated, coEff]);
-  /* ⚠️ Шошгыг `tr()`-ээр боож бичнэ. `Donut` нь `tr(sl.label)` гэж
-     ДИНАМИКААР орчуулдаг тул түүхий мөр ч ажиллах МЭТ санагддаг — гэвч
-     `i18n-extract` нь ЗӨВХӨН статик `tr('…')` дуудлагыг олдог тул толинд
-     түлхүүр нь ороогүй үлдэж, англи хувилбарт «Монгол / Foreign» гэсэн холимог
-     тайлбар гардаг байв. */
-  const mixSlices = [
-    { key: 'mn', label: tr('Монгол'), value: mixSum.mongol, color: 'var(--c1)' },
-    { key: 'fr', label: tr('Гадаад'), value: mixSum.gadaad, color: 'var(--c2)' },
-  ].filter((x) => x.value > 0);
-
   /* Өдөр тутмын цувааnууд — сонгосон гүйцэтгэгчийг дагана */
   const byDay = useMemo(() => byDaySeries(laborRows, coEff, 'niitAjiltan'), [laborRows, coEff]);
   const techDay = useMemo(() => byDaySeries(laborRows, coEff, 'niitTehnik'), [laborRows, coEff]);
@@ -1417,6 +1457,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * Гүйцэтгэгч солиход цувааны урт өөрчлөгддөг тул хамаарал нь түүний урт.
    */
   const dayScroll = useRef<HTMLDivElement>(null);
+  /* Баганын карт хоорондын хэвтээ бариул (`HabeaCardGrips`) */
+  const listRef = useRef<HTMLDivElement>(null);
+  const rRef = useRef<HTMLDivElement>(null);
   const techScroll = useRef<HTMLDivElement>(null);
   useEffect(() => {
     for (const el of [dayScroll.current, techScroll.current]) {
@@ -1599,6 +1642,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /* Сарын нийлбэр — өдрийн цуваанаас (шүүлтийг аль хэдийн дагасан) */
   const byMonth = useMemo(() => byMonthSeries(byDay, curYm), [byDay, curYm]);
+  /* Монгол · Гадаад — задаргаа орж ирсэн үеэс хойш хоёр муруй (байхгүй бол null → нэг муруй) */
+  const mixDay = useMemo(() => mixByDay(laborRows, coEff), [laborRows, coEff]);
+  const dayMix = useMemo(() => mixLines(byDay, mixDay), [byDay, mixDay]);
+  const monthMix = useMemo(() => mixLines(byMonth, mixByMonth(mixDay, byDay)), [byMonth, mixDay, byDay]);
+  const ajLines = ajiltanStep === 'day' ? dayMix : monthMix;
+  const ajItems = ajiltanStep === 'day' ? byDay : byMonth;
   const techMonth = useMemo(() => byMonthSeries(techDay, curYm), [techDay, curYm]);
   /** Сарын цуваанд явагдаж буй сар орсон уу — тайлбарт «* дутуу» */
   const monthNote = (items: { key: string }[]) =>
@@ -1820,7 +1869,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             босготой НЭГ). Урьд нь тайлан хэдэн өдөр зогссон ч KPI хэвээр «шинэ» харагддаг байв. */}
         {((st) => kpiTile(
           pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
-          tr('Нийт ажилтан'),
+          tr('Нийт ажилласан хүн хүч'),
           undefined,
           labor.asOf == null
             ? undefined
@@ -1830,8 +1879,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           st.stale,
         ))(laborStaleness(labor.asOf, now))}
-        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.hunTsag), tr('Хүн цаг'))}
-        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техник'))}
+        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.hunTsag), tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'))}
+        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
         {/**
           * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
           * хураасан шалтгаан нь ЭХ СУРВАЛЖИД байсан: test_data-гийн хуулбар
@@ -1898,7 +1947,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           картуудынхаа дотор алхмын шилжүүлэгчээр гардаг. Энэ зай нь
           хэрэглэгчийн өгөх ХОЁР шинэ эх сурвалжид зориулж ХООСОН
           үлдээгдсэн — түр дүүргэлт БҮҮ нэм. ── */}
-      <div className={h.list}>
+      <div className={h.list} ref={listRef}>
+        {/* ⚠️ 2026-10-07: карт хоорондын хэвтээ бариул — дээд картын өндрийг томруулна, байгалийнхаас
+            доош жижигрэхгүй (чарт бүтэн). Горим (`focus`) бүр өөрийн хадгалалттай. */}
+        <HabeaCardGrips target={listRef} id={`l-${focus ?? 'all'}`} />
         {/* ── ЗҮҮН БАГАНЫН ХҮН ХҮЧНИЙ ХОС — бүрэлдэхүүн ба түүний задаргаа ──
 
             АНХНЫ харагдац ба «Техник болон хүн цаг» фокус ХОЁУЛАНД гарна
@@ -1913,26 +1965,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ⚠️ Донат урьд нь баруун талын краны баганад байсныг 2026-09-06-нд
             ЭНД зөөв; тэнд одоо БАЙХГҮЙ тул давхардал үүсэхгүй. ── */}
         {(focus === null || laborFocus) && (<>
-        <Section
-          title={tr("Монгол, гадаад")}
-          /* ⚠️ 2026-09-25: «хүн-өдөр» — `mixSum` нь ӨДӨР БҮРИЙН бүртгэлийн НИЙЛБЭР
-             (`mixTotals`) тул «ажилтан» гэвэл 12 өдрийн 300 хүнийг 3,600 ажилтан
-             гэж уншуулна. */
-          note={tr("{0} хүн-өдөр", num(mixSum.mongol + mixSum.gadaad))}
-          fill
-        >
-          {mixSlices.length
-            ? (
-              <Donut
-                items={mixSlices}
-                stack
-                size={132}
-                center={num(mixSum.mongol + mixSum.gadaad)}
-                centerLabel={tr("хүн-өдөр")}
-              />
-            )
-            : <Empty label={tr("Задаргаа бүртгэгдээгүй")} />}
-        </Section>
+        {/* ⚠️ «Монгол, гадаад» донат 2026-10-07-нд ХАСАГДАВ (хэрэглэгчийн хүсэлт) — задаргаа нь
+            «Компаниар — монгол, гадаад» ба «Ажилтан — өдрөөр»-ийн муруйд бий. */}
         <Section
           title={tr("Компаниар — монгол, гадаад")}
           note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}
@@ -1941,6 +1975,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {mixByCo.length
             ? (
               <div className={h.mixList}>
+                {/* ⚠️ 2026-10-07: тайлбар (хэрэглэгчийн хүсэлт) — мөрийн зурвасын өнгө ДОНАТТАЙ ижил */}
+                <div className={h.mixLegend} aria-hidden>
+                  <span><i style={{ background: 'var(--c1)' }} />{tr('Монгол')}</span>
+                  <span><i style={{ background: 'var(--c2)' }} />{tr('Гадаад')}</span>
+                </div>
                 {mixByCo.map((x) => (
                   /* ⚠️ `<button>` БИШ, `role="button"`: дотор нь `Stack`-ийн блок
                      элементүүд суудаг бөгөөд товч нь зөвхөн phrasing агуулга
@@ -2191,7 +2230,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           ⚠️ Краны гурван карт нь ЗӨВХӨН анхны харагдацад — тэр нь ӨӨР эх
           сурвалж тул шүүлтүүр сонгосон үед үлдэх ёсгүй (2026-09-06). ── */}
       {rOpen && (
-      <div className={h.r}>
+      <div className={h.r} ref={rRef}>
+        <HabeaCardGrips target={rRef} id={`r-${focus ?? 'all'}`} />
         {/* ⚠️ ШҮҮЛТҮҮРИЙН МӨР — БАРУУН БАГАНЫН ОРОЙД (2026-09-17, хэрэглэгчийн
             хүсэлт: «Үзлэг — гүйцэтгэгчээр» чартын ДЭЭР). Урьд нь зургийн
             дээгүүр бүтэн өргөнөөр (`flt` мөр) байв. Одоо баганын эхний хүүхэд
@@ -2252,6 +2292,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             );
           })}
           </div>
+          {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel */}
+          <UzlegExportButton kind={uzlegKind} />
           </div>
 
           {/* ⚠️ «ШҮҮЛТ» БҮЛЭГ (Багц · Компани) ЭНДЭЭС ХАСАГДАВ (2026-09-17,
@@ -2465,14 +2507,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {dual && (<>
           <div className={h.finHalf}>
             <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />
-            <div className={h.finHalfGrid}>
+            <div className={h.finHalfGrid} style={panes.styleFor('fhL')}>
               <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />
+              {/* ⚠️ Хоёр картын зааг — `grip` нь ЭЭЖИЙНХЭЭ (`.finHalfGrid`) трекийг хэмждэг тул ШУУД хүүхэд */}
+              <div className={h.gripCol} style={{ gridColumn: '1 / 2', gridRow: '1 / 2', right: -8 }} {...panes.grip('fhL')} />
             </div>
           </div>
           <div className={h.finHalf}>
             <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
-            <div className={h.finHalfGrid}>
+            <div className={h.finHalfGrid} style={panes.styleFor('fhR')}>
               <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} curYm={curYm} />
+              <div className={h.gripCol} style={{ gridColumn: '1 / 2', gridRow: '1 / 2', right: -8 }} {...panes.grip('fhR')} />
             </div>
           </div>
         </>)}
@@ -2495,9 +2540,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {(aStep === 'day' ? byDay : byMonth).length
             ? (
               <div className={h.dayScroll} ref={dayScroll}>
-                <div style={{ minWidth: `${Math.max(100, ((aStep === 'day' ? byDay : byMonth).length / SERIES_VISIBLE) * 100)}%` }}>
+                <div style={{ minWidth: `${Math.max(100, (ajItems.length / SERIES_VISIBLE) * 100)}%` }}>
                   <Series
-                    items={aStep === 'day' ? byDay : byMonth}
+                    items={ajItems}
+                    lines={ajLines}
                     height={110}
                     unit={aStep === 'day' ? tr("ажилтан") : tr("хүн-өдөр")}
                     line
@@ -2550,7 +2596,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             Илүү бариул зурвал хоосон баганы ирмэгийг чирч, юу ч хөдлөхгүй
             байдалд хүргэнэ. */}
         {/* ⚠️ Бариулын тоо = багана − 1 — бүх горим ХОЁР багана. */}
-        <div className={h.gripCol} style={{ gridColumn: 1, gridRow: 1, right: -8 }} {...panes.grip('fin1')} />
+        {/* ⚠️ 2026-10-07: `gridColumn: '1 / 2'` — ЗААВАЛ ТӨГСГӨЛТЭЙ. Абсолют байрлалтай хүүхдэд `1` гэвэл
+            төгсгөл нь `auto` = контейнерийн ирмэг болж, бариул картын завсар биш ЗУРВАСЫН БАРУУН
+            ЗАХАД очиж харагдахгүй байв (хэрэглэгч: «чартуудын голд бариул нэм»). */}
+        <div className={h.gripCol} style={{ gridColumn: '1 / 2', gridRow: '1 / 2', right: -8 }} {...panes.grip('fin1')} />
         {/* ⚠️ Үзлэгийн горим ч 2 карттай болсон (2026-09-17: өдөр ба сар НЭГ
             картад шилжүүлэгчтэй нэгдсэн) тул хоёр дахь бариул хэрэггүй. */}
       </div>

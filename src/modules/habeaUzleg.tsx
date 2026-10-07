@@ -721,6 +721,16 @@ export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
   return rows.map((r) => norm(r, dom));
 }
 
+/**
+ * ТҮҮХИЙ мөр + хэвийн болгосон мөр ИЖИЛ дараалалтай — үзлэгийн тайлан татахад
+ * (`UzlegExport`). Түүхий мөрөнд асуулт бүрийн хариулт, хэвийн болгосонд огноо,
+ * багц, компанийн нэр. ⚠️ Хуудастай НЭГ ачаалагч (кэш хуваалцана).
+ */
+export async function loadUzlegBoth(kind: UzlegKind): Promise<{ raw: Row[]; rows: UzlegRow[] }> {
+  const [raw, dom] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
+  return { raw, rows: raw.map((r) => norm(r, dom)) };
+}
+
 /** Тогтмол лавлагаа — рендер бүрд шинэ объект үүсгэж deps-ийг хөдөлгөхгүй */
 const UZ_IDLE: State = { state: 'idle' };
 const UZ_LOADING: State = { state: 'loading' };
@@ -881,7 +891,9 @@ function byDay(rows: UzlegRow[]) {
   }
   return [...m.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([k, value]) => ({ key: k, label: k, value, display: num(value) }));
+    /* ⚠️ 2026-10-06: шошго «MM.DD» — «Ажилтан — өдрөөр»-тэй ИЖИЛ. Бүтэн «2026-08-21» нь
+       нарийн картад багтахгүй, тэнхлэгийн шошгыг цөөлж график шахагддаг байв. */
+    .map(([k, value]) => ({ key: k, label: k.slice(5).replace('-', '.'), value, display: num(value) }));
 }
 
 /**
@@ -1147,7 +1159,6 @@ export function UzlegLeft({
      зураг нь БҮХ шүүлттэй олонлогоос. */
   const all = st.rows.filter((x) => uzPass(x, sel));
   const sev = severity(st.rows.filter((x) => uzPass(x, sel, 'sev')));
-  const shift = countBy(st.rows.filter((x) => uzPass(x, sel, 'shift')), (x) => x.shift);
   const total = sev.reduce((s, x) => s + x.value, 0);
   const byPkg = pkgSt?.state === 'ready' ? byPkgNc(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
 
@@ -1189,11 +1200,7 @@ export function UzlegLeft({
             : <Empty label={tr('Үл нийцэл бүртгэгдээгүй')} />}
         </Section>
       )}
-      <Section title={tr('Ээлжээр')}>
-        {shift.length
-          ? <Bars items={shift} selected={sel.shift} onSelect={(k) => onPick('shift', k)} />
-          : <Empty label={tr('Бүртгэл алга')} />}
-      </Section>
+      {/* ⚠️ «Ээлжээр» чарт 2026-10-07-нд ХАСАГДАВ (хэрэглэгчийн хүсэлт) — бараг бүх үзлэг өдрийн ээлжинд */}
       {photos && <UzlegPhotos st={st} url={url} sel={sel} />}
     </>
   );
