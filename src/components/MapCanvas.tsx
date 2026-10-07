@@ -1869,6 +1869,10 @@ export const MapCanvas = memo(function MapCanvas({
    */
   const bimExpandRef = useRef<Expand | null>(null);
   const sketchVMRef = useRef<SketchViewModel | null>(null);
+  /* ⚠️ 2026-10-07: SketchViewModel хараахан үүсээгүй (зураг бэлэн биш / 3D) байхад
+     ирсэн `drawToken` — SVM үүсмэгц ДАХИН тоглуулна. Урьд нь чимээгүй хаягддаг тул
+     «Полигон зурах» нь «зурж байна» төлөвт орсон ч зурагт хэрэгсэл гардаггүй байв. */
+  const pendingDrawRef = useRef(0);
   /* ⚠️ Зурах төрлийг REF-ээр — deps-д оруулбал төрөл солих бүрд зураалт эхэлнэ */
   const drawKindRef = useRef(drawKind);
   useSyncRef(drawKindRef, drawKind);
@@ -2144,7 +2148,7 @@ export const MapCanvas = memo(function MapCanvas({
   /**
    * БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн хүсэлт, 2026-08-18) — зурган дээрх товч дарахад
    * апп бүхэлдээ browser-ийн бүтэн дэлгэцэд орж, зураг viewport-ыг дүүргэнэ
-   * (`.fs` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
+   * (эзэн хашлагад `.mapFsHost` → position: fixed inset 0; ArcGIS view хэмжээгээ өөрөө дагана).
    * Давхарга (LayerList) ба суурь зургийн widget хоёулаа зурган дээрээ байгаа
    * тул бүтэн дэлгэцэд ч бүрэн ажиллана.
    *
@@ -2152,6 +2156,23 @@ export const MapCanvas = memo(function MapCanvas({
    * шаарддаг). Esc-ээр гарахад `fullscreenchange` сонсогч төлвийг буцаана.
    */
   const [fs, setFs] = useState(false);
+  /**
+   * ⚠️ 2026-10-07: `.fs`-ийг ЭЗЭН хашлагад (`[data-map-host]`, байхгүй бол эцэг
+   * элемент) тавина, `.wrap`-д БИШ. Зургийн хэрэгслийн зурвас · бүсийн хавтан ·
+   * тунгалаг · каталог бүгд `.wrap`-ийн ХАЖУУД (эзэн хашлага дотор) зурагддаг тул
+   * `.wrap` өөрөө fixed+z-index 2500 болоход тэд бүгд зургийн ДООР дарагдаж,
+   * бүтэн дэлгэцэд нэг ч хэрэгсэл үлддэггүй байв. Fullscreen API-г `documentElement`
+   * дээр хэвээр дуудна — хашлагын гадуурх модаль, мэдэгдэл урьдынхаараа харагдана.
+   */
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const host = (wrap.closest('[data-map-host]') as HTMLElement | null) ?? wrap.parentElement ?? wrap;
+    if (!fs) return;
+    host.classList.add('mapFsHost');
+    return () => host.classList.remove('mapFsHost');
+  }, [fs]);
   const toggleFs = useCallback(() => {
     setFs((cur) => {
       const next = !cur;
@@ -4027,6 +4048,11 @@ export const MapCanvas = memo(function MapCanvas({
     if (typeof window !== 'undefined') {
       (window as unknown as { __dbgsketch: SketchViewModel }).__dbgsketch = svm;
     }
+    /* ⚠️ 2026-10-07: хүлээгдэж байсан зураалтыг эхлүүлнэ (`pendingDrawRef`) */
+    if (pendingDrawRef.current) {
+      pendingDrawRef.current = 0;
+      svm.create(drawKindRef.current);
+    }
 
     const emit = (g: __esri.Geometry | null) => onSketchRef.current?.(g);
 
@@ -4096,7 +4122,9 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => {
     if (!drawToken) return;
     const svm = sketchVMRef.current;
-    if (!svm) return;
+    /* ⚠️ 2026-10-07: SVM алга — хаяхгүй, үүсмэгц тоглуулна (`pendingDrawRef`) */
+    if (!svm) { pendingDrawRef.current = drawToken; return; }
+    pendingDrawRef.current = 0;
     quietCancel(svm, selfCancelRef);
     svm.create(drawKindRef.current);
   }, [drawToken]);
@@ -4149,6 +4177,7 @@ export const MapCanvas = memo(function MapCanvas({
   /** Гадны «Цэвэрлэх» товч — зурсан полигоныг арилгаж, шүүлтийг цуцлана */
   useEffect(() => {
     if (!clearToken) return;
+    pendingDrawRef.current = 0; // ⚠️ 2026-10-07: хүлээгдэж байсан зураалт ч цуцлагдана
     quietCancel(sketchVMRef.current, selfCancelRef);
     const gl = mapRef.current?.findLayerById('sketch') as GraphicsLayer | null;
     gl?.removeAll();
@@ -4856,7 +4885,7 @@ export const MapCanvas = memo(function MapCanvas({
     /* ⚠️ 2026-10-04: `data-map-canvas` / `data-boot-fail` — порталын ачаалалтын
        дэлгэц (Portal `Booting`) DOM-оос уншдаг дохио: зураг үүсч чадаагүй бол
        12с хүлээлгүй ШУУД хаагдаж, доорх алдааны картыг харуулна. */
-    <div className={`${s.wrap} ${fs ? s.fs : ''}`} data-map-canvas="" data-boot-fail={!ready && initError ? '' : undefined}>
+    <div ref={wrapRef} className={s.wrap} data-map-canvas="" data-boot-fail={!ready && initError ? '' : undefined}>
       <div ref={el} className={s.view} />
       {!ready && !initError && <div className={s.loading}>{tr('Газрын зураг ачаалж байна…')}</div>}
 

@@ -190,8 +190,14 @@ export function Home({
                     className={`${s.menuBtn} ${on ? s.menuBtnOn : ''}`}
                     aria-expanded={on}
                     aria-controls={`home-menu-${g.id}`}
-                    /* Хүрэлт ба ГАР (Enter/Space)-т — hover байхгүй тул товшилт хэвээр */
-                    onClick={() => setOpen(on ? null : g.id)}
+                    /* Хүрэлт ба ГАР (Enter/Space)-т — hover байхгүй тул товшилт хэвээр
+                       ⚠️ 2026-10-07: ХУЛГАНААР hover нь аль хэдийн нээсэн бол товшилт ХААХГҮЙ —
+                       урьд нь хулганы хэрэглэгч гарчиг дээр дарахад цэс нь нүдэн дээр нь хаагддаг
+                       байв. Хулгана цэснээс холдоход `onPointerLeave` хаана. */
+                    onClick={(e) => {
+                      if (on && (e.nativeEvent as PointerEvent).pointerType === 'mouse') return;
+                      setOpen(on ? null : g.id);
+                    }}
                   >
                     {g.title}
                     <span className={`${s.caret} ${on ? s.caretOn : ''}`} aria-hidden>▾</span>

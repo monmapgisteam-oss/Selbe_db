@@ -144,6 +144,11 @@ export function PkgProg({ dim, setDim }: {
   const perfQ = useTaskPerf(pb);
 
   useEffect(() => { setHighlight(null); }, [setHighlight]);
+  /* ⚠️ 2026-10-07: харагдац ХААГДАХАД ч тодруулгыг арилгана — `MapProvider.hl` порталын
+     хэмжээнд амьдардаг тул зурагт дарсан барилгын тодруулга (`onMapPick`) дараагийн
+     харагдацын зурагт үлддэг байв. `Dashboard`-ын 2026-09-29-ний unmount-цэвэрлэлттэй
+     ижил зарчим. */
+  useEffect(() => () => { setHighlight(null); }, [setHighlight]);
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(

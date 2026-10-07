@@ -290,7 +290,14 @@ export function MapTools({
           type="button"
           aria-pressed={zoneShown}
           className={`${s.btn} mapToolsBtn ${dock ? s.btnDock : ''} ${zoneShown ? s.btnOn : ''}`}
-          onClick={() => setZoneOpen((v) => !v)}
+          /* ⚠️ 2026-10-07: каталог/тунгалаг нээлттэй үед «Бүс» ҮХМЭЛ байв — `zoneShown`-ийн
+             нуух дүрэм (дээрх ⚠️) ХЭВЭЭР, харин товшилт нөгөө хоёрыг хаагаад бүсийнхийг гаргана. */
+          onClick={() => {
+            if (zoneShown) { setZoneOpen(false); return; }
+            if (layersOpen) onLayers?.();
+            if (opacityOpen) onOpacity?.();
+            setZoneOpen(true);
+          }}
           title={tr('Бүсээр шүүх')}
         >
           <Icon name="frame" size={15} />

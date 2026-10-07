@@ -4060,7 +4060,6 @@ const en: Record<string, string> = {
   "Удирдлагын үзүүлэлтүүд нэвтэрсний дараа харагдана.": "Executive indicators appear after you sign in.",
   "Хуваарийг бүтэн дэлгэцээр": "Schedule in full screen",
   "өөрчлөлт": "changes",
-  "Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал үлдсэнийг бичнэ.": "The first {0} rows were written, then an error occurred: {1}. Press Save again to write the rest.",
   "Үргэлжлэх хоног": "Duration in days",
   "Эхлэх огноог эхлээд сонгоно": "Choose the start date first",
   "Хоног бичихэд дуусах огноо автоматаар бодогдоно": "Type the number of days and the end date is computed automatically",
@@ -6522,7 +6521,10 @@ const en: Record<string, string> = {
   "Та «{0}» багцын гүйцэтгэгчээр томилогдоогүй тул гүйцэтгэл илгээх эрхгүй.": "You are not assigned as the contractor for package «{0}», so you cannot submit progress.",
   "Газар: ≥{0} · {1}–{2} · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}": "Land: ≥{0} · {1}–{2} · General plan: ≥{3} · {4}–{5}",
   "{0} блокийн гүйцэтгэл хараахан бөглөгдөөгүй тул биет хувьд 0%-иар тооцогдсон.": "{0} blocks have no progress entered yet, so they are counted as 0% in the physical percentage.",
-  "багцын задаргааны нийлбэрээс": "of the package breakdown total"
+  "багцын задаргааны нийлбэрээс": "of the package breakdown total",
+  "Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?": "The permission-type templates have unsaved changes. Switch without saving?",
+  "Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.": "First {0} rows were written, then an error: {1}. Pressing «Save» again rewrites all rows.",
+  "Зөвхөн «Инж. төлөвлөсөн обьём» баганыг засах горимыг нээнэ — гүйцэтгэлийн нүд таны эрхэд хаалттай.": "Opens edit mode for the «Eng. planned volume» column only — performance cells are locked for your role."
 };
 
 export default en;

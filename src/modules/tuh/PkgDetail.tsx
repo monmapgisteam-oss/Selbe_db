@@ -90,6 +90,15 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   const sched = schedQ.state === 'ready' ? schedQ.data : null;
   /** Хуваарь ачаалж байхад «—» → «…» (`model.lz`-ийн ⚠️) */
   const schedWait = (t: string): string => (t === '—' && hasSheets && schedQ.state === 'loading' ? '…' : t);
+  /* ⚠️ 2026-10-07: хуваарь унахад «Дахин оролдох» — урьд нь `schedQ.retry` холбогдоогүй тул
+     зөвхөн бүтэн хуудас refresh-ээр л дахин татдаг байв (газрын зураг ч дахин ачаалагдана). */
+  const schedFail = (
+    <p className={s.failNote}>
+      {tr('Хуваарь уншигдсангүй')}
+      {' '}
+      <button type="button" className={s.retryBtn} onClick={schedQ.retry}>{tr('Дахин оролдох')}</button>
+    </p>
+  );
   /** ХАБЭА (хүн хүч) ачаалж байна — бодит тоо ирэх хүртэл «…» (доорх «Хүн хүч»-ийн ⚠️) */
   const wfWait = m.loading.has('workforce');
 
@@ -259,7 +268,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           <div className={s.panel}>
             <h3>{tr('Гол үе шат')}</h3>
             {!hasSheets ? <p className={s.note}>—</p> : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
-              : schedQ.state === 'error' ? <p className={s.failNote}>{tr('Хуваарь уншигдсангүй')}</p>
+              : schedQ.state === 'error' ? schedFail
                 : derived && derived.milestones.length ? (
                   <ol className={s.milestones}>
                     {derived.milestones.map((ms, i) => (
@@ -347,7 +356,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <h3>{tr('Level 3 — Дэлгэрэнгүй хуваарь')}</h3>
         {!hasSheets ? <p className={s.note}>—</p>
           : schedQ.state === 'loading' ? <p className={s.note}>{tr('Ачаалж байна…')}</p>
-            : schedQ.state === 'error' ? <p className={s.failNote}>{tr('Хуваарь уншигдсангүй')}</p>
+            : schedQ.state === 'error' ? schedFail
               : derived && derived.l3.length ? (
                 <Card>
                   <Legend items={GANTT_LEGEND()} />

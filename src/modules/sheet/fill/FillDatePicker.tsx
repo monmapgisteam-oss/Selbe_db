@@ -24,6 +24,8 @@ export function FillDatePicker({ pick, setPick, busy, say, setAsOf, commitDate, 
           value={pick.value}
           anchor={pick.rect}
           onClose={() => setPick(null)}
+          /* ⚠️ 2026-10-07: «Шинэчлэгдсэн огноо» хоосон болж болохгүй (доорх ⚠️) — «Цэвэрлэх» гарахгүй */
+          noClear={pick.kind === "asOf"}
           onPick={(v) => {
             /* ⚠️ Илгээлт явж байхад бичихгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
             if (busy) { say(RO.busy); return; }

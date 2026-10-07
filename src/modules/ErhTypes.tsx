@@ -46,7 +46,12 @@ const eq = (a: TypeTpl, b: TypeTpl): boolean =>
  * @param remote — дээд панелийн remote уншилтын төлөв (⚠️ 2026-10-01): уншилт ДУУССАН ч
  *   загвар ирээгүй бол «уншигдаж байна…»-г ҮҮРД биш, алдаа + «Дахин оролдох» харуулна.
  */
-export function ErhTypes({ remote }: { remote?: { busy: boolean; retry: () => void } } = {}) {
+export function ErhTypes({ remote, onDirty }: {
+  remote?: { busy: boolean; retry: () => void };
+  /** ⚠️ 2026-10-07: хадгалаагүй ноорог байгаа эсэхийг эцэгт (`UserAdmin`) мэдэгдэнэ — хуудас
+      солих · Esc · «← Портал руу буцах» · F5-д асуулгүй арчигдахгүй. ТОГТВОРТОЙ callback өгнө. */
+  onDirty?: (dirty: boolean) => void;
+} = {}) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const f = () => setTick((n) => n + 1);
@@ -69,6 +74,12 @@ export function ErhTypes({ remote }: { remote?: { busy: boolean; retry: () => vo
   const cur = (r: Role): TypeTpl => drafts[r] ?? tplOf(r);
   const isDirty = (r: Role): boolean => !!drafts[r] && !eq(drafts[r] as TypeTpl, tplOf(r));
   const dirtyRoles = TYPE_ORDER.filter(isDirty);
+  const hasDirty = dirtyRoles.length > 0;
+  /* ⚠️ 2026-10-07: unmount-д (хуудас солигдоход) ноорог алга болдог тул `false` буцаана */
+  useEffect(() => {
+    onDirty?.(hasDirty);
+    return () => onDirty?.(false);
+  }, [hasDirty, onDirty]);
 
   /*
    * ⚠️ 2026-10-01: ХАДГАЛСАН баганыг засах нь админ тэр баганын бүх харагдацыг ХАРСАН гэсэн үг —

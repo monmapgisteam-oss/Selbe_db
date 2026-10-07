@@ -22,7 +22,7 @@ import st from "../sheet.module.css";
  * blur/Enter үед `onSet` рүү очно.
  */
 export function PvCell({
-  r, canEdit, draft, preview, hasField, locked, onSet, cls, ro, negj, onBad,
+  r, canEdit, draft, preview, hasField, locked, onSet, cls, ro, negj, onBad, notEditing = false,
 }: {
   r: SheetRow;
   canEdit: boolean;
@@ -36,6 +36,8 @@ export function PvCell({
   negj: string | null;
   /** ⚠️ 2026-09-30: буруу утгын анхааруулга (хөвөгч `warn`) */
   onBad?: (msg: string) => void;
+  /** ⚠️ 2026-10-07: засах эрхтэй ч «Бөглөх» дараагүй — шалтгааныг нэрлэнэ (`RO.notEditing`) */
+  notEditing?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -80,8 +82,13 @@ export function PvCell({
             setOpen(false);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") { setOpen(false); return; }
-            if (e.key === "Enter" || e.key === "Tab") e.currentTarget.blur();
+            /* ⚠️ 2026-10-07: оролт унтармагц фокус `body` руу унадаг байв — эзэн `<td>`-д буцаана
+               (DOM зангилаа нь хаалттай хэлбэрт ч ИЖИЛ тул оролт алга болсны дараа л фокуслана). */
+            const td = e.currentTarget.closest("td");
+            const back = () => requestAnimationFrame(() => td?.focus());
+            if (e.key === "Escape") { setOpen(false); back(); return; }
+            if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); back(); return; }
+            if (e.key === "Tab") e.currentTarget.blur();
           }}
         />
       </td>
@@ -97,7 +104,11 @@ export function PvCell({
         ? RO.plannedVolNewRow
         : locked
           ? RO.plannedVolLocked
-          : RO.plannedVol;
+          /* ⚠️ 2026-10-07: эрхтэй ч «Бөглөх» дараагүй — урьд нь ерөнхий тайлбар л гарч, яагаад
+             нээгдэхгүйг хэлдэггүй байв */
+          : notEditing
+            ? RO.notEditing
+            : RO.plannedVol;
 
   return (
     <td

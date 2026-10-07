@@ -532,7 +532,10 @@ function PortalContent(
   const { theme, toggle } = useTheme();
   /* Зүүн цэсний «Гарах» мөрөнд (`ViewRail.onSignOut`) */
   const auth = useAuth();
-  const { clear: clearFilter } = useFilter();
+  const { clear: clearFilter, active: filterActive } = useFilter();
+  /* ⚠️ 2026-10-07: `setView`-д ref-ээр — deps-д оруулбал шүүлт солигдох бүрд `setView` шинэчлэгдэнэ */
+  const filterActiveRef = useRef(filterActive != null);
+  useEffect(() => { filterActiveRef.current = filterActive != null; }, [filterActive]);
 
   /** ТЭЗҮ ба судалгааны баримт бичгийн глобал popup нээлттэй эсэх */
   const [docsOpen, setDocsOpen] = useState(false);
@@ -709,8 +712,11 @@ function PortalContent(
      * Шүүлт нь өмнөх харагдацын давхаргын талбарын нэрээр бичигдсэн SQL. Үлдвэл
      * шинэ харагдацын давхаргад тэр талбар байхгүй тул ArcGIS хүсэлт бүхэлдээ
      * унаж, зураг чимээгүй хоосорно.
+     * ⚠️ 2026-10-07: ЗӨВХӨН шүүлт идэвхтэй үед — урьд нь харагдац солих бүрд
+     * дуудагдаж, зураг сонгосон бүсээ орхиод төслийн бүтэн хүрээ рүү нисдэг байв.
+     * Самбарын шууд тодруулгыг самбар өөрөө unmount-даа цэвэрлэнэ.
      */
-    clearFilter();
+    if (filterActiveRef.current) clearFilter();
     // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
     //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
     setCatalog(v === 'plan');
@@ -1174,7 +1180,8 @@ function PortalContent(
 
         {!isFull && (
           <>
-            <div className={s.map} id="main" tabIndex={-1}>
+            {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц энэ хашлагыг бүхэлд нь авна (`MapCanvas.toggleFs`) */}
+            <div className={s.map} id="main" tabIndex={-1} data-map-host="">
               {/* ⚠️ 2026-10-06 (аудит): зураг, хэрэгслийн зурвас, тунгалаг, каталог, нэгтгэлийн
                   зурвас ТУС БҮР өөрийн хашлагад — урьд нь `scope="view"`-ийн ГАДНА байсан тул
                   тэдгээрийн рендерийн алдаа (эсвэл байршуулалтын дараах chunk 404) root

@@ -55,15 +55,28 @@ export function FlowBox({
     return () => window.removeEventListener('keydown', esc);
   }, [onClose, busyRef]);
   /* ⚠️ 2026-10-06 аудит: Enter → үндсэн товч (`onOk`), `PlanModal`-тай ижил. Тайлбарын
-     `textarea` дотор Enter нь ШИНЭ МӨР хэвээр; товч дээрх Enter нь тэр товчийг дарна. */
+     `textarea` дотор Enter нь ШИНЭ МӨР хэвээр; товч дээрх Enter нь тэр товчийг дарна.
+     ⚠️ 2026-10-07: цонхонд `textarea` ба товчноос өөр фокус авагч байхгүй тул энгийн Enter
+        хэзээ ч энд хүрэхгүй байв — `textarea` дотор Ctrl/⌘+Enter үндсэн товчийг дарна. */
   const onEnter = (e: KEvt<HTMLDivElement>) => {
     if (e.key !== 'Enter' || e.shiftKey || e.defaultPrevented || e.nativeEvent.isComposing || busy) return;
-    if ((e.target as HTMLElement).closest('textarea, button, select, a, input')) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('button, select, a, input')) return;
+    if (el.closest('textarea') && !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     onOk(txt);
   };
+  /* ⚠️ 2026-10-07: Дотор дараад (текст сонголт) АРД суллахад `click` нь дэвсгэр дээр буудаг
+     тул цонх санамсаргүй хаагддаг байв — `PlanModal`-ийн адил дарах нь ч ард эхэлсэн үед л. */
+  const downOnBack = useRef(false);
   return (
-    <div className={h.mdBack} role="presentation" onClick={close}>
+    <div className={h.mdBack} role="presentation"
+      onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const ok = downOnBack.current && e.target === e.currentTarget;
+        downOnBack.current = false;
+        if (ok) close();
+      }}>
       <div ref={ref} className={h.md} role="dialog" aria-modal="true"
         onKeyDown={onEnter}
         onClick={(e) => e.stopPropagation()}>

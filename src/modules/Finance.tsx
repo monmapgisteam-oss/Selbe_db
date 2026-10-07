@@ -634,7 +634,9 @@ export function ComboChart({
       {pt && (
         <div
           className={f.tip}
-          style={{ left: `${(hi! / Math.max(1, N - 1)) * 100}%`, transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
+          /* ⚠️ 2026-10-07: `xFor(hi)` пикселээр — `viewBox` = бодит өргөн (`W` = wrap) тул
+             муруйн цэгтэй яг давхцана; урьд нь wrap-ийн %-оор тул `padL`-ийн хэрээр зүүн тийш зөрдөг байв. */
+          style={{ left: xFor(hi!), transform: `translateX(${hi! < N / 2 ? '10px' : 'calc(-100% - 10px)'})` }}
         >
           <p className={`num ${f.tipHd}`}>{pt.label}</p>
           <p className={f.tipRow}><i style={{ background: ACT }} />{tr('Олгосон санхүүжилт')}<b className="num">{pt.givenCum > 0 ? mnt(pt.givenCum) : '—'}</b></p>

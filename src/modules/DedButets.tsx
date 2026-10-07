@@ -1419,6 +1419,18 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setRectDraw(false);
     setAwaitDraw(false);
   }, []);
+  /* ⚠️ 2026-10-07: 3D/BIM РУУ ШИЛЖИХЭД зураалт/хэлбэр засварыг ЦУЦАЛНА — `MapCanvas`
+     2D-ээс гарахад SketchViewModel-ийг устгадаг ба тэр үед `cancel` үйл явдал
+     ИРЭХГҮЙ (`Gazar`-ын ижил засвар). Урьд нь засварын горим 3D-д хэвээр үлдэж,
+     «Шинэ объект» / «Хэлбэр засах» нь токен өсгөөд чимээгүй юу ч хийдэггүй, хүлээлтийн
+     самбар ба vertex бариулын төлөв гацдаг байв. Горим өөрөө ХЭВЭЭР (товч 3D-д идэвхгүй). */
+  useEffect(() => {
+    if (dim === '2d' || !editModeRef.current) return;
+    setAwaitDraw(false);
+    setRectDraw(false);
+    setTplOpen(false);
+    cancelReshape();
+  }, [dim, cancelReshape]);
 
   /**
    * ЗАСВАРЫН ГОРИМД ОРОХ — идэвхтэй тодруулга, сонголтыг цэвэрлэнэ.
@@ -1588,7 +1600,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         </div>
         )}
 
-        <div className={d.mapBox}>
+        {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц хэрэгслийн зурвастай хамт (`MapCanvas.toggleFs`) */}
+        <div className={d.mapBox} data-map-host="">
           <MapCanvas
             dim={dim}
             visible={mapVisible}
@@ -1674,6 +1687,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                 type="button"
                 className={`${d.editAdd} ${tplOpen ? d.editAddOn : ''}`}
                 aria-pressed={tplOpen}
+                /* ⚠️ 2026-10-07: 3D/BIM-д идэвхгүй — зураалт зөвхөн 2D-д (`dim` эффектийн ⚠️) */
+                disabled={dim !== '2d'}
+                title={dim !== '2d' ? tr('Засварыг зөвхөн 2D дээр хийнэ') : undefined}
                 /* ⚠️ Нээлттэй маягтыг хаадаг тул `askDropUnsaved` (2026-09-25); 2026-10-01: дуусаагүй зураалт ч (`askDropAll`) */
                 onClick={() => askDropAll(() => {
                   cancelReshape();
@@ -2052,8 +2068,11 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                       onClick={startReshape}
                       /* ⚠️ Давхаргын хүрээгээр (2026-09-23 аудит) — багц хасагдсан
                          ч нээлттэй үлдсэн маягтаас хэлбэр/устгал явахгүй */
-                      disabled={!canEdit || !canEditLayer(pick.layerId) || geomBusy || delBusy}
-                      title={tr('Цэгүүдийг чирж зөөнө. Шинэ цэг нэмэхдээ ирмэгийн дунд дарна.')}
+                      /* ⚠️ 2026-10-07: 3D/BIM-д идэвхгүй — sketch зөвхөн 2D-д (дээрх `dim` эффектийн ⚠️) */
+                      disabled={!canEdit || !canEditLayer(pick.layerId) || geomBusy || delBusy || dim !== '2d'}
+                      title={dim !== '2d'
+                        ? tr('Засварыг зөвхөн 2D дээр хийнэ')
+                        : tr('Цэгүүдийг чирж зөөнө. Шинэ цэг нэмэхдээ ирмэгийн дунд дарна.')}
                     >
                       {tr('Хэлбэр засах')}
                     </button>

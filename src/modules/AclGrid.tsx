@@ -19,7 +19,7 @@
  *    `onRemove`-оор (түгжээ, асуулт, op тэнд).
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import s from './guitsetgel.module.css';
 
@@ -85,6 +85,22 @@ export function AclGrid({
 }: AclGridProps) {
   /** Нээлттэй «+» сонгогч — `мөр|багана` (нэг л удаад нэг) */
   const [open, setOpen] = useState<string | null>(null);
+  /*
+   * ⚠️ 2026-10-07: Esc — CAPTURE фазад, нүд нээлттэй үед л (`ErhMatrix`-тэй ижил).
+   *    `UserAdmin`-ы `window` keydown (bubble) Esc-ээр БҮХ админ порталыг хаадаг
+   *    тул select дээрх Esc сонголтыг хаахын оронд порталыг хаадаг байв.
+   */
+  useEffect(() => {
+    if (open == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      setOpen(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open]);
 
   const tableStyle: CSSProperties = { minWidth: rowWidth + cols.length * COL_MIN };
   /* ⚠️ 1–2 баганатай (QAQC · Дэд бүтэц · Хуваарь г.м.) хүснэгт бүтэн өргөнд сунвал чип
@@ -117,7 +133,6 @@ export function AclGrid({
               value=""
               disabled={off}
               onBlur={() => setOpen(null)}
-              onKeyDown={(e) => { if (e.key === 'Escape') setOpen(null); }}
               onChange={(e) => {
                 const u = e.target.value;
                 setOpen(null);

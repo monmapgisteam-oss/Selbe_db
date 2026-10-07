@@ -39,9 +39,15 @@ export type PickerProps = {
    * нүдэнд «Тавих» дарахад эхлэхээс тооцно. Өгөөгүй бол мөр гарахгүй (asOf).
    */
   days?: { value: string; onChange: (v: string) => void; onApply: () => void; canApply: boolean };
+  /**
+   * ⚠️ 2026-10-07: «Цэвэрлэх» товчийг НУУНА — огноогүй байж болохгүй талбарт («Шинэчлэгдсэн
+   *    огноо»: хоосон бол `calc = []`, бүх мөр алга). Урьд нь товч гарч, дарахад `onPick("")`
+   *    чимээгүй хаягдаж зөвхөн цонх хаагддаг байв — хэрэглэгч «цэвэрлэгдсэн» гэж андуурна.
+   */
+  noClear?: boolean;
 };
 
-export default function DatePicker({ value, anchor, onPick, onClose, days }: PickerProps) {
+export default function DatePicker({ value, anchor, onPick, onClose, days, noClear = false }: PickerProps) {
   const cur = value ? Date.parse(`${value}T00:00:00Z`) : null;
   const base = cur ?? todayMs();
   const [view, setView] = useState(() => {
@@ -344,7 +350,8 @@ export default function DatePicker({ value, anchor, onPick, onClose, days }: Pic
         </div>
       )}
       <div className={st.calFoot}>
-        <button className={st.calBtn} onClick={() => onPick("")}>{tr('Цэвэрлэх')}</button>
+        {/* ⚠️ 2026-10-07: `noClear` — огноогүй байж болохгүй талбарт товч гарахгүй */}
+        {!noClear && <button className={st.calBtn} onClick={() => onPick("")}>{tr('Цэвэрлэх')}</button>}
         <button className={st.calBtn} onClick={() => onPick(ymd(today))}>{tr('Өнөөдөр')}</button>
       </div>
     </div>

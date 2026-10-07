@@ -80,11 +80,23 @@ export function ExecReport() {
   const [summary, setSummary] = useState<string | null>(null);
   /** Реле амьд эсэх — AI товчийг зөвхөн боломжтой үед идэвхжүүлнэ */
   const [ai, setAi] = useState<boolean | null>(null);
-  useEffect(() => {
+  /* ⚠️ 2026-10-07: релег mount-д НЭГ л удаа шалгадаг байсан тул тэр агшинд унтарсан бол AI товч
+     сешн дуустал идэвхгүй үлддэг байв — одоо «Шинэчлэх» ба сүлжээ сэргэхэд (`online`) дахин шалгана. */
+  const aiProbe = useRef<AbortController | null>(null);
+  const probeAi = useCallback(() => {
+    aiProbe.current?.abort();
     const ac = new AbortController();
-    relayAlive(ac.signal).then(setAi, () => setAi(false));
-    return () => ac.abort();
+    aiProbe.current = ac;
+    relayAlive(ac.signal).then(
+      (ok) => { if (!ac.signal.aborted) setAi(ok); },
+      () => { if (!ac.signal.aborted) setAi(false); },
+    );
   }, []);
+  useEffect(() => {
+    probeAi();
+    window.addEventListener('online', probeAi);
+    return () => { window.removeEventListener('online', probeAi); aiProbe.current?.abort(); };
+  }, [probeAi]);
 
   const x = q.state === 'ready' ? q.data : null;
   /* ⚠️ 2026-09-24: AI хүсэлтийн AbortController — unmount-д цуцална, эс тэгвээс
@@ -161,7 +173,7 @@ export function ExecReport() {
    *    гараар хөтлөхгүй (`Tailan`-ий 2026-10-05-ны ⚠️). `useAsync` нь `dataBus`-аар дахин татна;
    *    хуучин AI дүгнэлт `[x]` эффектээр цэвэрлэгдэнэ.
    */
-  const refresh = useCallback(() => invalidateAll(), []);
+  const refresh = useCallback(() => { invalidateAll(); probeAi(); }, [probeAi]);
 
   return (
     <>

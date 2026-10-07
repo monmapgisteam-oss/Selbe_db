@@ -99,7 +99,9 @@ export const loadCommissionDates = cached<CommissionDates>(async () => {
     }
   }));
   return mergeCommission(res);
-}, 5 * 60_000, ['BAGTS_SHEET']);
+  /* ⚠️ 2026-10-07: ХАГАС үр дүн (`failed.length`) КЭШЛЭГДЭХГҮЙ — урьд нь `keep` байхгүй тул
+     «Дахин оролдох» 5 минутын турш тэр л дутуу хуулбарыг буцаадаг байв. */
+}, 5 * 60_000, ['BAGTS_SHEET'], (v) => v.failed.length === 0);
 
 /** Сонгосон багцын хуваарийн хуудсууд (9F/12F) */
 export const sheetsOf = (pkgKey: string): Pkg[] => PKGS.filter((p) => bagtsKey(p.group) === pkgKey);

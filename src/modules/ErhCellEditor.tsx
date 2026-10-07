@@ -56,7 +56,12 @@ export function ErhCellEditor({
 }) {
   const [add, setAdd] = useState('');
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { box.current?.querySelector<HTMLElement>('select, button')?.focus(); }, []);
+  /* ⚠️ 2026-10-07: ЭХЛЭЭД select — `'select, button'` нь баримтын дарааллаар толгойн ✕-г
+     олдог тул Enter дарахад засварлагч шууд хаагддаг байв. */
+  useEffect(() => {
+    const b = box.current;
+    (b?.querySelector<HTMLElement>('select') ?? b?.querySelector<HTMLElement>('button'))?.focus();
+  }, []);
 
   const all = listUsers().map((u) => u.username);
   const known = new Set(all.map((a) => a.toLowerCase()));

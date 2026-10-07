@@ -523,6 +523,8 @@ function Submitted({
    * ⚠️ 1,370 мөрөөс өөрчлөгдсөн хэдэн нүдийг гараар олох боломжгүй.
    */
   const [jump, setJump] = useState<{ row: number; block: string; n: number } | null>(null);
+  /** ⚠️ 2026-10-07: хүснэгтийн хайрцаг — өөрчлөгдсөн нүд дээр дарахад ЭНЭ ч дэлгэцэд орно (доорх ⚠️) */
+  const subSheetRef = useRef<HTMLDivElement>(null);
   /** Өөрчлөгдсөн нүд: `${мөр}:${блок}` — бөглөх хуудсанд улаанаар тэмдэглэнэ. */
   /** Хэдийг нь зөвшөөрсөн — толгойд харуулна. */
   const okCount = (data?.changes ?? []).filter((c) => ok?.has(`${c.row}:${c.block}`)).length;
@@ -735,9 +737,12 @@ function Submitted({
                     type="button"
                     className={`${s.chItem} ${ok?.has(`${c.row}:${c.block}`) ? s.chOk : ''}`}
                     title={`${c.no} · ${c.work}`}
-                    onClick={() =>
-                      setJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }))
-                    }
+                    onClick={() => {
+                      setJump((j) => ({ row: c.row, block: c.block, n: (j?.n ?? 0) + 1 }));
+                      /* ⚠️ 2026-10-07: хүснэгт (`.subSheet`) урт жагсаалтын ДООР — дотоод гүйлгээ биелсэн ч
+                         хайрцаг нь дэлгэцийн гадна үлдэж, хянагч «юу ч болсонгүй» гэж хардаг байв. */
+                      subSheetRef.current?.scrollIntoView({ block: "nearest" });
+                    }}
                   >
                     <span className={s.chBlk}>{c.block}</span>
                     <span className={s.chWork}>{c.work}</span>
@@ -762,7 +767,7 @@ function Submitted({
             *    нэг томъёо, нэг толгойг хардаг. Ялгаа нь ЗӨВХӨН нэг нөхцөл:
             *    `view` өгөгдсөн бол нүд засагдахгүй.
             */}
-          <div className={s.subSheet}>
+          <div className={s.subSheet} ref={subSheetRef}>
             <Sheet
               view={{
                 pkgKey: data.pkgKey,

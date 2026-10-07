@@ -2565,9 +2565,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       {listOpen && (
         <div className={h.gripCol} style={{ gridArea: 'list', right: -8 }} {...panes.grip('l')} />
       )}
-      {focus === null && (
-        <div className={h.gripCol} style={{ gridArea: 'r', left: -8 }} {...panes.grip('r')} />
-      )}
+      {/* ⚠️ 2026-10-07: `.r` багана бүх focus горимд зурагддаг тул баруун бариулыг
+          `focus === null`-ээр хязгаарлахгүй — урьд нь товлосон горимд өргөн тохируулагдахгүй байв. */}
+      <div className={h.gripCol} style={{ gridArea: 'r', left: -8 }} {...panes.grip('r')} />
       <div className={h.gripRow} style={{ gridArea: 'fin', top: -8 }} {...panes.grip('fin')} />
     </div>
   );

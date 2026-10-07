@@ -310,8 +310,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                 onChange={(e) => {
                   const b = e.target.value;
                   markDirty();
-                  setD((p) => ({ ...p, bagts: b, shat: p.oid ? p.shat : nextShat(b) }));
-                  setErr({});
+                  /* ⚠️ 2026-10-07: багцыг ЦЭВЭРЛЭХЭД дараалал 1-д үлдэнэ (0 руу унадаггүй), бусад
+                     талбарын алдаа арилахгүй — зөвхөн `bagts`-ийнх. */
+                  setD((p) => ({ ...p, bagts: b, shat: p.oid || !b ? p.shat : nextShat(b) }));
+                  setErr((p) => ({ ...p, bagts: undefined }));
                 }}
               >
                 <option value="">{tr('— сонгох —')}</option>
@@ -324,8 +326,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                 type="number"
                 min={1}
                 step={1}
-                value={String(d.shat)}
-                onChange={(e) => set('shat', Number(e.target.value))}
+                /* ⚠️ 2026-10-07: талбарыг цэвэрлэхэд 0 руу унадаггүй — хоосон (`NaN`) хэвээр,
+                   `validateZov` «1-ээс эхлэх бүхэл тоо» гэж барина */
+                value={Number.isNaN(d.shat) ? '' : String(d.shat)}
+                onChange={(e) => set('shat', e.target.value === '' ? NaN : Number(e.target.value))}
               />
             ), tr('Гинжин дэх байрлал — 1-ээс эхэлнэ'))}
           </div>

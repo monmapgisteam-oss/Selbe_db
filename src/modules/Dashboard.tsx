@@ -505,7 +505,15 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * шүүлтийн зорилтот давхарга, `flt.where` нь SQL. Хоёулаа байвал зураг ЯГ тэр
    * объектууд руу; эс бөгөөс сонгосон бүс рүү; юу ч байхгүй бол бүтэн хүрээ рүү.
    */
-  useZoomToFilter({ zone, layerId: flt?.only?.[0] ?? null, where: flt?.where ?? null });
+  /* ⚠️ 2026-10-07: ЗӨВХӨН ДАВХАРГЫН шүүлт (`layers`, `where`/`only`-гүй — 05/06/08/09-ийн
+     багц) ч зургийг хөдөлгөнө: `useZoomToFilter` нь `layerId`-г ганцаараа ч тооцдог
+     (2026-09-21-ний тайлбар). Урьд нь `only` л дамждаг тул багц дарахад зураг огт
+     нисдэггүй байв. */
+  useZoomToFilter({
+    zone,
+    layerId: flt?.only?.[0] ?? flt?.layers?.[0] ?? null,
+    where: flt?.where ?? null,
+  });
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const totals = usePlanTotals(zone, layerOpen, CATALOG_IDS);
 
@@ -2854,6 +2862,13 @@ function LandDetail({ parcels, land, flt, onFlt }: {
   parcels: Async<Row[]>; land: Async<LandStatus>;
 } & FltProps) {
   const sel = flt?.sec === 'land' ? flt.key : null;
+  /* ⚠️ 2026-10-07: гурван чарт НЭГ `sec` хуваалцдаг ч түлхүүрийн угтвар нь өөр
+     (`st:` · `ha:` · шалтгаан угтваргүй). `Bars` нь `selected` таарахгүй бол БҮХ мөрөө
+     бүдгэрүүлдэг тул нэг чартын сонголт бусад хоёрыг бүхэлд нь бүдгэрүүлж байв —
+     чарт бүрд ЗӨВХӨН өөрийн угтвартай түлхүүрийг дамжуулна. */
+  const selSt = sel?.startsWith('st:') ? sel : null;
+  const selHa = sel?.startsWith('ha:') ? sel : null;
+  const selReason = sel && !/^(st|ha):/.test(sel) ? sel : null;
 
   return (
     <>
@@ -2889,7 +2904,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
           {(ls) => (
             <Bars
               inline
-              selected={flt?.sec === 'land' ? flt.key : null}
+              selected={selSt}
               /* ⚠️ 2026-09-29 (аудит 10): мөрийн `key` нь `flt.key`-тэй ИЖИЛ угтвартай
                  (`st:`) — урьд нь item нь түүхий шошго, `flt.key` нь угтвартай тул
                  `Bars`-ын `sel.includes(it.key)` хэзээ ч таарахгүй, дарсны дараа БҮХ
@@ -2971,7 +2986,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                 </p>
                 <Bars
                   inline
-                  selected={sel}
+                  selected={selReason}
                   onSelect={(label) => {
                     /* ⚠️ `land.ts` шошгыг ЦЭВЭРЛЭДЭГ (арын зай, төгсгөлийн «.»)
                        тул `=` биш `LIKE 'нэр%'`.
@@ -3026,7 +3041,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   /* ⚠️ Дээрх «Нэгж талбар — төлөвөөр»-тэй ИЖИЛ шүүлт (нэг эх
                      сурвалж, нэг талбар) тул түлхүүрийн угтвар нь ялгаатай —
                      хоёр чарт бие биенийхээ сонголтыг цуцлахгүй. */
-                  selected={flt?.sec === 'land' ? flt.key : null}
+                  selected={selHa}
                   /* ⚠️ 2026-09-29 (аудит 10): `key` нь `ha:` угтвартай — дээрх
                      «төлөвөөр» чарттай ижил засвар (сонголт таарахгүй бүгд бүдгэрдэг байв) */
                   onSelect={(k) => {
@@ -4920,6 +4935,12 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;
   const sel = flt?.sec === 'benefit' ? flt.key : null;
+  /* ⚠️ 2026-10-07: дөрвөн чарт НЭГ `sec` хуваалцдаг ч түлхүүр нь хоёр төрөл —
+     ангиллын гурван чарт `SocialRow.key` ('school'…), «суурийн талбай» чарт
+     ДАВХАРГЫН id. `Bars` таарахгүй `selected`-д бүх мөрөө бүдгэрүүлдэг тул нэг
+     чартын сонголт нөгөө төрлийн чартыг бүхэлд нь бүдгэрүүлж байв — төрлөөр салгана. */
+  const selLayer = sel != null && LAYER_BY_ID[sel] != null ? sel : null;
+  const selCat = sel != null && LAYER_BY_ID[sel] == null ? sel : null;
   /**
    * Нийгмийн барилга тус бүрийн СУУРИЙН ТАЛБАЙ (м²) — давхаргын геометрээс.
    *
@@ -5039,7 +5060,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
         {soc == null ? <Empty label={tr('Татаж байна…')} /> : (
           <Bars
             inline
-            selected={sel}
+            selected={selCat}
             onSelect={pick}
             items={soc.rows.map((r, i) => ({
               key: r.key,                          // ⚠️ `pick` нь SocialRow.key-ээр жишдэг
@@ -5064,7 +5085,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             <>
               <Bars
                 inline
-                selected={sel}
+                selected={selCat}
                 onSelect={pick}                        // ⚠️ 3-р картын `pick`-тэй ИЖИЛ
                 items={heatBars(withCap, (r) => ({
                   key: r.key,                          // ⚠️ `pick` нь SocialRow.key-ээр жишдэг
@@ -5101,7 +5122,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             return (
               <Bars
                 inline
-                selected={flt?.sec === 'benefit' ? flt.key : null}
+                selected={selLayer}
                 /* ⚠️ Түлхүүр нь ДАВХАРГЫН id — `bagtsKey` БИШ. «Багц 21» хоёр
                    давхаргатай тул багцын түлхүүр давхардаж, React «two children
                    with the same key» гэж анхааруулдаг байв. */
@@ -5243,7 +5264,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           return (
             <Bars
               inline
-              selected={sel}
+              selected={selCat}
               onSelect={pick}
               items={heatBars(rows2, (x) => ({
                 key: x.key,

@@ -104,6 +104,12 @@ type PlanModalProps = {
   resFields: { hun: boolean | null; mashin: boolean | null };
   onClose: () => void;
   /**
+   * ⚠️ 2026-10-07: хаахад фокус буцаах элемент (`useFocusTrap`-ийн нөөц зам) — нүднээс
+   *    (`DateCell`-д Enter) нээгдэхэд оролт аль хэдийн салсан тул «өмнөх фокус» `<body>`
+   *    байдаг байв. Хаах агшинд дуудагдана (виртуал мөр дахин зурагдсан байж болно).
+   */
+  returnFocus?: () => HTMLElement | null;
+  /**
    * «Тавих»/«Арилгах» — огноо · уялдаа · сарын обьём+нөөц · бодит огноо · нөөц
    * НЭГ алхамд (null = хөндөхгүй). `blks` — сонгосон блокууд (2026-09-24):
    * `spans` тэдгээрт аль хэдийн тавигдсан; `ob` тэдгээрт хуулагдана;
@@ -159,13 +165,13 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree,
+  badBlks, geree, returnFocus,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
      цонхноос гарч ард байгаа 1,400 мөрт төөрдөг байв. */
   const mdRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(mdRef);
+  useFocusTrap(mdRef, true, returnFocus);
 
   /* ⚠️ ТАЛБАР ТАВИХ ЭФФЕКТҮҮД `r.oid`/`blk`-ЭЭР (2026-09-24): хуваалцсан ноорогийн
      3 с мөчлөг `setDraft(new Map)` хийхэд `r` объект дахин үүсч, бичиж байх

@@ -1240,7 +1240,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   const cmpSeq = useRef(0);
   const cmpAbort = useRef<AbortController | null>(null);
   /* Талбай солигдох/харагдац хаагдахад явж буй харьцуулалтыг зогсооно */
-  useEffect(() => () => { cmpSeq.current++; cmpAbort.current?.abort(); }, [area]);
+  /* ⚠️ 2026-10-07: цуцлахад `busy`-г ч тэглэнэ — seq зөрсөн салбарууд state-д хүрдэггүй тул
+     талбай солиход «…%» гацаж, «Харьцуулах» товч мөнхөд идэвхгүй үлддэг байв. */
+  useEffect(() => () => {
+    cmpSeq.current++;
+    cmpAbort.current?.abort();
+    setCmp((c) => (c && c.busy != null ? { ...c, busy: null } : c));
+  }, [area]);
 
   const getSim = useCallback(async (lv: LevelKey, a: SimArea | null, onPct: (p: number) => void): Promise<FloodData> => {
     const key = simKey(lv, a);
@@ -2282,6 +2288,15 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   )}
                 </div>
                 {runErr && <Note><span style={{ color: 'var(--bad-ink)' }}>{runErr}</span></Note>}
+                {/* ⚠️ 2026-10-07: харуул унасан үед товч идэвхгүй боловч ШАЛТГААН, «Дахин оролдох»
+                    байдаггүй байв — зөвхөн «Харуулууд» таб руу орж л дахин татаж болдог байв. */}
+                {hazard === 'air' && q.state === 'error' && (
+                  <Note>
+                    <span style={{ color: 'var(--bad-ink)' }}>{tr('Харуулын давхарга татагдсангүй')}</span>
+                    {' '}
+                    <button type="button" className={e.clearBtn} onClick={q.retry}>{tr('Дахин оролдох')}</button>
+                  </Note>
+                )}
               </div>
             </section>
 

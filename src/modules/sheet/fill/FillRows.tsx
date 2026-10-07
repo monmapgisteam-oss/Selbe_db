@@ -134,6 +134,8 @@ export function FillRows({
                       ro={ro}
                       negj={negjOf(r.work)}
                       onBad={warn}
+                      /* ⚠️ 2026-10-07: засах эрхтэй ч «Бөглөх» дараагүй — PvCell шалтгааныг нэрлэнэ */
+                      notEditing={!locked && canObyemEdit && !editing}
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
                         ИЖИЛ нэгжтэй. */}
@@ -290,9 +292,12 @@ export function FillRows({
                               (dirty ? " dirty" : "") +
                               (byOther ? " byOther" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
-                              (hitKey === `${i}:${b}` ? " chgHit" : "") +
-                              /* 2026-10-01: буулгалтын урьдчилсан харагдац */
-                              (pastePrev?.rej.has(bk) ? " pasteBad" : pastePrev?.ok.has(bk) ? " pasteOk" : ""),
+                              /* ⚠️ 2026-10-07: `${мөр}:${блок}:${үсрэлтийн №}` — угтвараар (`useVirtualWindow`-ийн ⚠️) */
+                              (hitKey?.startsWith(`${i}:${b}:`) ? " chgHit" : "") +
+                              /* 2026-10-01: буулгалтын урьдчилсан харагдац
+                                 ⚠️ 2026-10-07: түлхүүр нь `key` (`cellKey(oid, ИНДЕКС)`) — урьд нь `bk` (`oid:ШОШГО`)
+                                    хайдаг тул цэнхэр/улаан тодруулга ХЭЗЭЭ Ч гардаггүй байв. */
+                              (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
                              хооронд/ирмэг дээр таарсан товшилт үрэгдэхгүй
@@ -321,7 +326,7 @@ export function FillRows({
                           }}
                           title={
                             /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
-                            (pastePrev?.rej.has(bk) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(bk) ?? '') + '\n' : '') +
+                            (pastePrev?.rej.has(key) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(key) ?? '') + '\n' : '') +
                             /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
                                гэдгийг л хэлнэ, ХЭН гэдгийг энэ мөр хэлнэ. */
                             (byOther ? tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy ?? '') + '\n' : '') +
@@ -368,8 +373,13 @@ export function FillRows({
                                   + (remLine ? '\n' + remLine : ''),
                                 // Удирдлагагүй: бичихэд re-render гарахгүй.
                                 defaultValue: val,
-                                onBlur: (e: React.FocusEvent<HTMLInputElement>) =>
-                                  commit(r, bi, e.target.value),
+                                onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+                                  const el = e.target;
+                                  /* ⚠️ 2026-10-07: blur-ийн commit НЯЦААГДВАЛ (асуултад «Цуцлах» · тоо биш) нүд
+                                     нээлттэй үлддэг (`commit`-ийн 2026-10-06 ⚠️) ч фокус нь алга болж, дараагийн
+                                     товшилт бичсэн текстийг арчдаг байв — оролтод буцааж фокуслана. */
+                                  if (!commit(r, bi, el.value) && el.isConnected) el.focus();
+                                },
                                 /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
                                    нь нэг мөр текст л авдаг тул таслан авна. */
                                 onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -380,7 +390,12 @@ export function FillRows({
                                   if (pasteBlock(i, bi, t)) e.preventDefault();
                                 },
                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                                  if (e.key === "Escape") return setEdit(null);
+                                  /* ⚠️ 2026-10-07: оролт унтрахад фокус `body` руу унадаг байв (Escape · сүүлийн
+                                     мөрийн Enter/Tab) — эзэн `<td>`-д буцаана. Оролт АЛГА БОЛСНЫ ДАРАА (rAF):
+                                     өмнө нь фокусолбол blur → commit дуудагдаж Escape утгыг бичих болно. */
+                                  const td = e.currentTarget.closest("td");
+                                  const back = () => requestAnimationFrame(() => td?.focus());
+                                  if (e.key === "Escape") { setEdit(null); back(); return; }
                                   if (e.key === "Enter" || e.key === "Tab") {
                                     e.preventDefault();
                                     /* ⚠️ Утга хүлээн аваагүй бол ШИЛЖИХГҮЙ (`commit`-ийн ⚠️, 2026-09-24) */
@@ -396,7 +411,7 @@ export function FillRows({
                                       const nr = rowsAll[t.i];
                                       setVal(cellSeed(nr, t.b));
                                       setEdit(t);
-                                    }
+                                    } else back();
                                   }
                                 },
                               }}
@@ -482,6 +497,32 @@ export function FillRows({
                         // Талбар нь үйлчилгээнд байхгүй блок бий (толгой нь
                         // эвдэрсэн) — тэнд хадгалах газаргүй тул засагдахгүй.
                         const editable = !noPerf && src !== "agg" && !!fld;
+                        /* ⚠️ 2026-10-07: ЗАСАГДАХГҮЙ ШАЛТГААН — гүйцэтгэлийн нүдний `open()`-той ИЖИЛ
+                           дараалал. Урьд нь `editable` худал бол бүгдийг «огнооны багана байхгүй» гэж
+                           хэлдэг тул «Бөглөх» дараагүй / эрхгүй хүн худал шалтгаан уншдаг байв. */
+                        const dateWhy = editable
+                          ? ""
+                          : noEdit
+                            ? RO.viewOnly
+                            : !canPerf
+                              ? RO.noPerf
+                              : !editing
+                                ? RO.notEditing
+                                : src === "agg"
+                                  ? RO.groupDate
+                                  : RO.noDateField;
+                        const pickHere = (el: HTMLElement) => {
+                          if (!editable) return say(dateWhy);
+                          if (busy) return say(RO.busy);
+                          setPick({
+                            kind: k,
+                            row: r,
+                            b: bi,
+                            value: pendDate[key] ?? dt(ms),
+                            rect: el.getBoundingClientRect(),
+                            days: "",
+                          });
+                        };
                         return (
                           <td
                             key={`${k}${b}`}
@@ -490,26 +531,14 @@ export function FillRows({
                                 (editable ? " cursor-cell" : "") +
                                 (key in pendDate ? " dirty" : ""),
                             )}
-                            title={
-                              editable
-                                ? tr('Дарж календараар сонгоно')
-                                : src === "agg"
-                                  ? RO.groupDate
-                                  : RO.noDateField
-                            }
-                            onClick={(e) => {
-                              if (!editable)
-                                return say(src === "agg" ? RO.groupDate : RO.noDateField);
-                              if (busy) return say(RO.busy);
-                              setPick({
-                                kind: k,
-                                row: r,
-                                b: bi,
-                                value: pendDate[key] ?? dt(ms),
-                                rect: e.currentTarget.getBoundingClientRect(),
-                                days: "",
-                              });
-                            }}
+                            title={editable ? tr('Дарж календараар сонгоно') : dateWhy}
+                            /* ⚠️ 2026-10-07: гараас (Tab → Enter) ч нээгдэнэ — урьд нь `tabIndex`-гүй тул
+                               огнооны нүдэнд гараар хүрэх зам огт байгаагүй */
+                            tabIndex={editable ? 0 : undefined}
+                            onClick={(e) => pickHere(e.currentTarget)}
+                            onKeyDown={editable ? (e) => {
+                              if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); pickHere(e.currentTarget); }
+                            } : undefined}
                           >
                             {dt(ms)}
                           </td>
@@ -525,9 +554,15 @@ export function FillRows({
                             (i === 0 && !noPerf ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        title={i === 0 ? tr('Дарж календараар сонгоно') : RO.asOfRow}
+                        /* ⚠️ 2026-10-07: засагдахгүй үед `title` «Дарж календараар сонгоно» гэж худал хэлж,
+                           товшилт ЧИМЭЭГҮЙ өнгөрдөг байв — шалтгааныг огнооны нүдтэй ижил дарааллаар. */
+                        title={i !== 0
+                          ? RO.asOfRow
+                          : !noPerf
+                            ? tr('Дарж календараар сонгоно')
+                            : noEdit ? RO.viewOnly : !canPerf ? RO.noPerf : RO.notEditing}
                         onClick={(e) => {
-                          if (noPerf) return;
+                          if (noPerf) return i === 0 ? say(noEdit ? RO.viewOnly : !canPerf ? RO.noPerf : RO.notEditing) : undefined;
                           if (i !== 0) return say(RO.asOfRow);
                           if (busy) return say(RO.busy);
                           setPick({

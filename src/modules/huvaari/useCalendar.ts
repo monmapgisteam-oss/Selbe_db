@@ -12,9 +12,16 @@ import { todayUtc } from './util';
  *    `zoom`, харагдах мөрүүд `visible`, сонгосон мөр `sel`. Гаралт нь Gantt-ын
  *    зурагдалт ба чирэлтийн хөдөлгүүрт хэрэгтэй бүх хэмжээ.
  */
-export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, jumpedRef }: {
+export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, pin, jumpedRef }: {
   plan: readonly PlanRow[];
   drag: boolean;
+  /**
+   * ⚠️ 2026-10-07: `sel` мөрийг цонхлолтод ХҮЧЭЭР багтаах уу — зөвхөн чирэлт ба нүдэнд
+   *    бичиж байх үед (`drag || cellEdit`). Урьд нь сонгосон мөр ҮРГЭЛЖ багтдаг тул
+   *    сонгоод хол гүйлгэхэд дунд нь байгаа БҮХ мөр (хэдэн зуу) зурагдаж виртуалчлал
+   *    алдагддаг байв. Чирэлт/бичилт дуусмагц ердийн цонх руу буцна.
+   */
+  pin: boolean;
   zoom: Zoom;
   /**
    * ⚠️ 2026-10-04: ерөнхий (`T`) — «Бүх блок» горимд эх мөр + блокийн дэд мөрийн хавтгай
@@ -140,10 +147,11 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
    * дээрх pointer capture-д тулгуурладаг тул зурагдахаа больвол `pointermove`
    * тасарч, чирэлт дундуураа «өлгөгдөнө». Тиймээс сонгосон/чирж буй мөрийг
    * цонхонд хүчээр багтаана.
+   * ⚠️ 2026-10-07: ЗӨВХӨН `pin` үед (чирэлт · нүдэнд бичилт) — дээрх ⚠️.
    */
   const selVis = useMemo(
-    () => (sel == null ? -1 : visible.findIndex((r) => r.oid === sel)),
-    [visible, sel],
+    () => (!pin || sel == null ? -1 : visible.findIndex((r) => r.oid === sel)),
+    [visible, sel, pin],
   );
   const winFrom = selVis >= 0 ? Math.min(win.from, selVis) : win.from;
   const winTo = selVis >= 0 ? Math.max(win.to, selVis + 1) : win.to;

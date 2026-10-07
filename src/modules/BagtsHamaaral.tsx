@@ -14,7 +14,7 @@
  *    KPI мөр ХАСАГДСАН — хэрэглэгч «ойлгомжгүй», «схем ч хэрэггүй» гэсэн. Буцааж бүү нэм.
  * ⚠️ Загвар нь ТУХ-ынх (`tuh.module.css`-ийн ХУУЛБАР — харагдацууд стайл хуваалцахгүй).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
@@ -80,6 +80,19 @@ export function BagtsHamaaral() {
   }, [saved, depQ, byKey]);
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
     && matchesSearch(q, p.code, [p.name, p.contractor])), [pkgs, grp, q]);
+  /* ⚠️ 2026-10-07: ард багцын чип дээр дарахад зорилтот мөр шүүлтүүрээр нуугдсан бол урьд нь
+     чимээгүй юу ч болдоггүй байв — шүүлтүүрийг тайлаад, мөр зурагдсаны ДАРАА гүйлгэнэ (ref —
+     эффектэд setState хийхгүй). */
+  const jumpRef = useRef<string | null>(null);
+  const jumpHidden = useCallback((k: string) => { jumpRef.current = k; setGrp('all'); setQ(''); }, []);
+  useEffect(() => {
+    const k = jumpRef.current;
+    if (!k) return;
+    const el = document.getElementById(`hm-row-${k}`);
+    if (!el) return;
+    jumpRef.current = null;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [shown]);
 
   /* ⚠️ 2026-10-06 (аудит): `true` = хадгалагдсан — нэмэх мөр ЗӨВХӨН үүнд хаагдана (урьд нь
      хариу ирэхээс өмнө хаагдаж, унасан бол сонголт алга болдог байв). Шидсэн алдааг барина
@@ -147,22 +160,28 @@ export function BagtsHamaaral() {
       </div>
 
       <List pkgs={shown} all={pkgs} deps={deps} byKey={byKey} progress={progress} canEdit={canEdit}
-        busy={busy || depQ.state !== 'ready'} onChange={change} />
+        busy={busy || depQ.state !== 'ready'} onChange={change} onJumpHidden={jumpHidden} />
     </div>
   );
 }
 
 /* ══════════════ ЖАГСААЛТ — багц → ард багцууд ══════════════ */
 
-function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange }: {
+function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange, onJumpHidden }: {
   pkgs: TuhPkg[]; all: TuhPkg[]; deps: Dep[]; byKey: Map<string, TuhPkg>;
   /** Багц → бодит гүйцэтгэл (0–100), хэмжилтгүй бол `null` */
   progress: ReadonlyMap<string, number | null>;
   canEdit: boolean; busy: boolean; onChange: OnChange;
+  /** Зорилтот мөр шүүлтүүрээр нуугдсан — эцэг шүүлтүүрийг тайлаад гүйлгэнэ (⚠️ 2026-10-07) */
+  onJumpHidden: (k: string) => void;
 }) {
   const [addFor, setAddFor] = useState<string | null>(null);
   /* Ард багц дээр дарвал тэр багцын МӨР рүү гүйлгэнэ */
-  const jump = (k: string) => document.getElementById(`hm-row-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const jump = (k: string) => {
+    const el = document.getElementById(`hm-row-${k}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else onJumpHidden(k);
+  };
   return (
     <div className={s.tableWrap}>
       <table className={s.table}>
@@ -213,7 +232,7 @@ function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange }: {
                   {canEdit && addFor === p.key && (
                     <AddLink pkgs={all} self={p.key} busy={busy} label={tr('Ард багц нэмэх')}
                       errOf={(k) => linkError(deps, p.key, k)}
-                      onAdd={(k) => { void onChange('add', { from: p.key, to: k }).then((ok) => { if (ok) setAddFor(null); }); }}
+                      onAdd={(k) => onChange('add', { from: p.key, to: k }).then((ok) => { if (ok) setAddFor(null); return ok; })}
                       onCancel={() => setAddFor(null)} />
                   )}
                 </td>
@@ -232,7 +251,9 @@ function AddLink({ pkgs, self, busy, label, errOf, onAdd, onCancel }: {
   pkgs: TuhPkg[]; self: string; busy: boolean; label: string;
   /** Нэмэх боломжгүй бол шалтгаан — сонголтод идэвхгүй харагдана */
   errOf: (k: string) => string | null;
-  onAdd: (k: string) => void;
+  /** `true` = хадгалагдсан — зөвхөн тэр үед сонголт цэвэрлэгдэнэ (⚠️ 2026-10-07: урьд нь
+      унасан ч шууд арчигдаж, сонгосон багц алга болдог байв) */
+  onAdd: (k: string) => Promise<boolean>;
   onCancel?: () => void;
 }) {
   const [v, setV] = useState('');
@@ -251,7 +272,7 @@ function AddLink({ pkgs, self, busy, label, errOf, onAdd, onCancel }: {
           );
         })}
       </select>
-      <button type="button" className={s.ghostBtn} disabled={!v || !!err || busy} onClick={() => { onAdd(v); setV(''); }}>
+      <button type="button" className={s.ghostBtn} disabled={!v || !!err || busy} onClick={() => { void onAdd(v).then((ok) => { if (ok) setV(''); }); }}>
         {busy ? tr('Хадгалж байна…') : tr('Нэмэх')}
       </button>
       {onCancel && <button type="button" className={s.ghostBtn} onClick={onCancel}>{tr('Болих')}</button>}

@@ -306,6 +306,15 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
   // Мөр/шүүлтүүр солигдоход цонхыг шинэчилнэ.
   useEffect(() => {
     recalcWin();
+    /* ⚠️ 2026-10-07: гүйлгэгчийн ХЭМЖЭЭ солигдоход (цонх томруулах · бүтэн дэлгэц · dev-tools) ч
+       дахин бодно — урьд нь зөвхөн гүйлгэх/мөр солигдоход тул өндөрссөн дэлгэцийн доод хэсэг
+       хоосон чигжээс хэвээр үлддэг байв. `vis`-тэй нэг эффектэд: хүснэгт хожуу зурагддаг
+       (`rows.length > 0 && sc && calc.length > 0`) тул ref нь эхний render-д хоосон байж болно. */
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(() => recalcWin());
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [vis, recalcWin]);
 
   /**
@@ -332,6 +341,8 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
    */
   const doneJumpRef = useRef(-1);
   const hitT = useRef<number | null>(null);
+  /** ⚠️ 2026-10-07: үсрэлтийн БОСОО зорилт — хөндлөн гүйлгэхэд хамт дамжуулна (доорх эффектийн ⚠️) */
+  const jumpTopRef = useRef<number | null>(null);
   useEffect(() => {
     const j = view?.jump;
     const el = scrollRef.current;
@@ -342,15 +353,22 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
     // ⚠️ Олдоогүй бол ТЭМДЭГЛЭХГҮЙ — мөр зурагдмагц үсрэлт биелэх ёстой.
     if (at < 0) return;
     doneJumpRef.current = jumpN;
-    el.scrollTo({
-      top: Math.max(0, tb.offsetTop + at * rowHRef.current - el.clientHeight / 2),
-      behavior: "smooth",
-    });
-    const key = `${j.row}:${j.block}`;
+    /* ⚠️ 2026-10-07: гүйлгэгч ӨӨРӨӨ дэлгэцийн гадна байж болно — Гүйцэтгэл (хяналт)-д хүснэгт
+       (`.subSheet`) урт өөрчлөлтийн жагсаалтын ДООР тул дотоод гүйлгээ биелсэн ч хэрэглэгч юу ч
+       харахгүй байв. Эцэг гүйлгэгчдийг «хамгийн ойр» (`nearest`) зарчмаар л хөдөлгөнө. */
+    el.scrollIntoView({ block: "nearest" });
+    const top = Math.max(0, tb.offsetTop + at * rowHRef.current - el.clientHeight / 2);
+    jumpTopRef.current = top;
+    el.scrollTo({ top, behavior: "smooth" });
+    /* ⚠️ 2026-10-07: түлхүүрт үсрэлтийн ДУГААР (`jumpN`) орно — нэг нүд рүү 1.8 секундийн дотор
+       ДАХИН дарахад `setHitKey` ижил утгаар дуудагдаж доорх `[hitKey]` эффект ажиллахгүй,
+       хөндлөн гүйлгээ ч, анивчилт ч гардаггүй байв. FillRows `${i}:${b}:` угтвараар тулгана.
+       Анивчилтыг арилгах 1.8 с таймер нүд ОЛДСОНЫ дараа (доорх эффектэд) эхэлнэ — урьд нь эндээс
+       эхэлдэг тул нүдийг хүлээх (2 с хүртэл) хугацаанд дуусч тэмдэглэгээ зурагдахаас өмнө арилдаг байв. */
+    const key = `${j.row}:${j.block}:${jumpN}`;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `view.jump` нь ГАДНЫ нэг удаагийн хүсэлт (үйл явдал) — гүйлгээд анивчих тэмдэглэгээг ЭНД л асаана; төлөв болгож задлах нь зан төлөв өөрчилнө
     setHitKey(key);
     if (hitT.current) window.clearTimeout(hitT.current);
-    hitT.current = window.setTimeout(() => setHitKey((h) => (h === key ? null : h)), 1800);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpN, vis]);
   // Анивчилтын таймерыг зөвхөн салахад цэвэрлэнэ (эффект бүрд БИШ — эс бөгөөс
@@ -375,9 +393,15 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
     if (!el || !tb) return;
     let tries = 0;
     let t: number | null = null;
+    /* ⚠️ 2026-10-07: анивчилтыг арилгах таймер — нүд олдсон (эсвэл хүлээлт дууссан) үед л */
+    const armClear = () => {
+      if (hitT.current) window.clearTimeout(hitT.current);
+      hitT.current = window.setTimeout(() => setHitKey((h) => (h === hitKey ? null : h)), 1800);
+    };
     const go = () => {
       const td = tb.querySelector<HTMLElement>("td.chgHit");
-      if (!td) { if (tries++ < 40) t = window.setTimeout(go, 50); return; }
+      if (!td) { if (tries++ < 40) t = window.setTimeout(go, 50); else armClear(); return; }
+      armClear();
       let fzL = 0;
       let fzR = 0;
       td.parentElement?.querySelectorAll<HTMLElement>("td.fz").forEach((c) => {
@@ -392,7 +416,14 @@ export function useVirtualWindow({ vis, edit, view }: { vis: number[]; edit: { i
       const bandR = er.right - fzR;
       if (tr.left >= bandL && tr.right <= bandR) return;
       const target = bandL + (bandR - bandL) / 2 - tr.width / 2;
-      el.scrollTo({ left: Math.max(0, el.scrollLeft + (tr.left - target)), behavior: "smooth" });
+      /* ⚠️ 2026-10-07: БОСОО зорилтыг (`jumpTopRef`) хамт өгнө — `scrollTo({ left })` ганцаараа
+         дуудагдвал дээрх эффектийн явж буй зөөлөн босоо гүйлгээг ТАСАЛЖ, мөр нь дэлгэцийн
+         дунд хүрэлгүй зогсдог байв. Хоёр тэнхлэг нэг дуудлагаар. */
+      el.scrollTo({
+        top: jumpTopRef.current ?? el.scrollTop,
+        left: Math.max(0, el.scrollLeft + (tr.left - target)),
+        behavior: "smooth",
+      });
     };
     go();
     return () => { if (t) window.clearTimeout(t); };

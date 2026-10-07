@@ -468,7 +468,11 @@ export function Chanar() {
     || (revNote.trim() !== '' && revNote !== revBase)
     || JSON.stringify(corr) !== JSON.stringify(ncrBody ? ncrBody.correction : { text: '', completedAt: null, steps: [] })
     || JSON.stringify(ncrClose) !== JSON.stringify(ncrBody ? ncrCloseFrom(ncrBody.closure) : emptyNcrClose());
-  const anyDirty = (edit && dirty) || clientDirty || sideDirty;
+  /* ⚠️ 2026-10-07: хянагчийн мета (хариуцсан ажилтан · ангилал) ч хадгалаагүй ажил —
+     урьд нь `anyDirty`-д ороогүй тул өөр карт сонгоход асуулгүй арчигддаг байв. */
+  const bodyMeta = metaOf(body);
+  const metaDirty = !!body && ((bodyMeta?.owners ?? []).join('|') !== mOwners.join('|') || (bodyMeta?.category ?? '') !== mCat);
+  const anyDirty = (edit && dirty) || clientDirty || sideDirty || metaDirty;
   /* ⚠️ `navGuard` — харагдац солих · лого · «Гарах» · F5 (`Portal.confirmLeave`) */
   useEffect(() => { setNavDirty('chanar', anyDirty, tr('Чанарын баримт')); }, [anyDirty]);
   useEffect(() => () => setNavDirty('chanar', false), []);
@@ -768,8 +772,6 @@ export function Chanar() {
     return [...out].sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `tickN`: ACL шинэчлэгдэхэд дахин
   }, [kind, pkg, mOwners, tickN]);
-  const bodyMeta = metaOf(body);
-  const metaDirty = !!body && ((bodyMeta?.owners ?? []).join('|') !== mOwners.join('|') || (bodyMeta?.category ?? '') !== mCat);
   const setOwnerAt = (i: number, v: string) => {
     const next = [...mOwners];
     if (v) next[i] = v; else next.splice(i, 1);
@@ -863,9 +865,11 @@ export function Chanar() {
     return [tr('Нийт {0} · батлагдсан {1}', allHeads.length, ap)];
   };
 
-  const switchKind = (k: DocKind) => {
-    if (k === kind || busy || !discardOk()) return;
+  /* ⚠️ 2026-10-07: boolean буцаана — сумаар шилжихэд солигдоогүй (busy · хаяхаас татгалзсан) таб руу фокус зөөхгүй */
+  const switchKind = (k: DocKind): boolean => {
+    if (k === kind || busy || !discardOk()) return false;
     setKind(k); setSel(null); setEdit(false); setDirty(false); setFilter('all');
+    return true;
   };
   /* Таб — ← → сумаар шилжинэ (WAI-ARIA tablist) */
   const tabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -873,8 +877,7 @@ export function Chanar() {
     e.preventDefault();
     const i = KINDS.indexOf(kind);
     const k = KINDS[(i + (e.key === 'ArrowRight' ? 1 : KINDS.length - 1)) % KINDS.length];
-    switchKind(k);
-    document.getElementById(`chanar-tab-${k}`)?.focus();
+    if (switchKind(k)) document.getElementById(`chanar-tab-${k}`)?.focus();
   };
 
   /* ── Төрлийн маягт — харах/засах ── */
@@ -981,6 +984,10 @@ export function Chanar() {
           void refresh();
           /* ⚠️ 2026-10-06 аудит: унасан бие/хавсралтыг мөн дахин татна (ажиллаж буйг хөндөхгүй) */
           if (bodyErr) retryBody();
+          /* ⚠️ 2026-10-07: нээлттэй баримтын биеийг ч дахин татна — урьд нь зөвхөн унасан үед
+             татдаг тул гүйцэтгэгч залруулга илгээсний дараа хянагчид A/AN/R товч гардаггүй байв
+             (`canAct` хуучин биеэс). Засаж буй/хадгалаагүй үед хөндөхгүй (эффект `setEdit(false)` хийдэг). */
+          else if (sel != null && !edit && !anyDirty) setBodyTry((n) => n + 1);
           if (atts == null) setAttTry((n) => n + 1);
         }}>
           {loading ? tr('Уншиж байна…') : tr('Шинэчлэх')}

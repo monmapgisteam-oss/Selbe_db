@@ -287,11 +287,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const draftsRef = useRef(drafts);
 
   useSyncRef(draftsRef, drafts);
+  /* ⚠️ 2026-10-07: «Эрхийн төрөл» хуудасны (`ErhTypes`, зөвхөн `pane === 'types'`-д mount)
+     хадгалаагүй загварын ноорог — урьд нь хуудас солих · Esc · «← Портал руу буцах» · F5-д
+     асуулгүй алга болдог байв. `onDirty` тогтвортой (useCallback) — `ErhTypes`-ийн эффектийн хамаарал. */
+  const typesDirtyRef = useRef(false);
+  const onTypesDirty = useCallback((d: boolean) => { typesDirtyRef.current = d; }, []);
+  const anyUnsaved = () => draftsRef.current.size > 0 || typesDirtyRef.current;
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
   useEffect(() => {
     if (!open) return;
     const onBefore = (e: BeforeUnloadEvent) => {
-      if (draftsRef.current.size === 0) return;
+      if (draftsRef.current.size === 0 && !typesDirtyRef.current) return;
       e.preventDefault();
     };
     window.addEventListener('beforeunload', onBefore);
@@ -301,7 +307,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /** Хадгалаагүй ноорогтой үед санамсаргүй хаагдахаас хамгаална */
   const requestClose = () => {
     if (saving) return; // хадгалалт дуустал хүлээнэ — дундуур гарвал төлөв төөрнө
-    if (draftsRef.current.size > 0
+    if (anyUnsaved()
       && !window.confirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'))) return;
     setDrafts(new Map());
     /*
@@ -321,6 +327,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setCard(null);
     onClose();
   };
+  /** ⚠️ 2026-10-07: хуудас солих — «Эрхийн төрөл»-өөс гарахад хадгалаагүй загвар байвал асууна
+      (`ErhTypes` unmount болж ноорог нь алга болно) */
+  const goPane = (k: typeof pane) => {
+    if (k !== pane && pane === 'types' && typesDirtyRef.current
+      && !window.confirm(tr('Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?'))) return;
+    setPane(k);
+  };
 
   /*
    * ⚠️ Escape-ээр хаах · фоны гүйлгэлт түгжих · Ctrl/Cmd+S-ээр хадгалах ·
@@ -338,7 +351,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (!open) return;
     const root = dialogRef.current;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { closeRef.current(); return; }
+      /* ⚠️ 2026-10-07: дотоод сонголт (AclGrid · ErhMatrix) Esc-ийг аль хэдийн
+         барьсан бол (`defaultPrevented`) порталыг хаахгүй */
+      if (e.key === 'Escape') { if (!e.defaultPrevented) closeRef.current(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveRef.current();
@@ -858,7 +873,13 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     if (gone.length) setAddErr(tr('«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.', gone.join(', ')));
   };
   // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-09-30: `if (!open) return null`-ийн ДАРАА тул хук (useSyncRef) дуудах боломжгүй; `saveAll` нь тэр салбарын дараах төлөвүүдээс хамаардаг — render дунд оноох нь санаатай
-  saveRef.current = () => { void saveAll(); };
+  /* ⚠️ 2026-10-07: Ctrl+S өөр хуудсанд (тойм · эрхийн хуудас) дарахад хадгалалтын үр дүн/алдаа
+     зөвхөн «Хэрэглэгчид» салбарт зурагддаг тул чимээгүй байв — ноорогтой бол тийш шилжинэ.
+     «Эрхийн төрөл»-д тэндхийн ноорог байвал шилжихгүй (ErhTypes-ийн өөрийн хадгалах). */
+  saveRef.current = () => {
+    if (pane !== 'users' && draftsRef.current.size > 0 && !typesDirtyRef.current) { setPane('users'); setCard(null); }
+    void saveAll();
+  };
 
   /**
    * ШИНЭ АККАУНТ — ноорогт нэмнэ (шууд бичихгүй).
@@ -953,6 +974,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setName('');
     setAddErr('');
     setSaved(null);
+    /* ⚠️ 2026-10-07: идэвхтэй хайлт шинэ мөрийг нууж «нэмэгдээгүй» мэт харагдуулдаг байв */
+    setQ('');
     /* ⚠️ 2026-10-05: нэрийг ArcGIS-ээс лавлана (`lookupArcgisUser`-ийн ⚠️) — ноорог аль хэдийн
        нэмэгдсэн, энэ нь зөвхөн АНХААРУУЛГА. Лавлагаа унавал (сүлжээ) чимээгүй. */
     void lookupArcgisUser(n).then((res) => {
@@ -1018,7 +1041,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onFlipDocs: () => flipDocs(u),
       onFlipRemove: () => flipRemove(u),
       onClear: () => markClear(u),
-      onGoFlow: () => setPane('guits'),
+      onGoFlow: () => goPane('guits'),
       superUser: roleForUser(u.username) === 'super',
       onOpenCard: () => setCard({ user: key }),
     };
@@ -1058,7 +1081,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           type="button"
           className={`${s.sideItem} ${pane === 'ovw' ? s.sideItemOn : ''}`}
           aria-current={pane === 'ovw'}
-          onClick={() => setPane('ovw')}
+          onClick={() => goPane('ovw')}
         >
           <Icon name="target" size={14} />
           {tr('Тойм')}
@@ -1068,7 +1091,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           className={`${s.sideItem} ${pane === 'users' ? s.sideItemOn : ''}`}
           aria-current={pane === 'users'}
           /* ⚠️ Цэснээс орох бүрд жагсаалтаас эхэлнэ — нээлттэй карт хаагдана (2026-09-25) */
-          onClick={() => { setPane('users'); setCard(null); }}
+          onClick={() => { goPane('users'); setCard(null); }}
         >
           <Icon name="users" size={14} />
           {tr('Хэрэглэгчдийн эрх удирдах')}
@@ -1078,7 +1101,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           type="button"
           className={`${s.sideItem} ${pane === 'types' ? s.sideItemOn : ''}`}
           aria-current={pane === 'types'}
-          onClick={() => setPane('types')}
+          onClick={() => goPane('types')}
         >
           <Icon name="layers" size={14} />
           {tr('Эрхийн төрөл')}
@@ -1091,7 +1114,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           type="button"
           className={`${s.sideItem} ${pane === 'guits' ? s.sideItemOn : ''}`}
           aria-current={pane === 'guits'}
-          onClick={() => setPane('guits')}
+          onClick={() => goPane('guits')}
         >
           <Icon name="pen" size={14} />
           {tr('Гүйцэтгэлийн урсгалын эрх')}
@@ -1113,7 +1136,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
             type="button"
             className={`${s.sideItem} ${pane === k ? s.sideItemOn : ''}`}
             aria-current={pane === k}
-            onClick={() => setPane(k)}
+            onClick={() => goPane(k)}
           >
             <Icon name={paneIcon(k)} size={14} />
             {paneLabel(k)}
@@ -1134,10 +1157,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               </p>
             </header>
             <ErhOverview
-              onGo={(x) => setPane(x as typeof pane)}
+              /* ⚠️ 2026-10-07: хажуугийн цэстэй ижил — нээлттэй хуучин карт хаагдана */
+              onGo={(x) => { goPane(x as typeof pane); setCard(null); }}
               drafts={drafts}
               /* ⚠️ Хүний хөзөр → хэрэглэгчийн карт (2026-09-25) */
-              onOpenUser={(user) => { setPane('users'); setCard({ user: user.toLowerCase() }); }}
+              onOpenUser={(user) => { goPane('users'); setCard({ user: user.toLowerCase() }); }}
             />
           </>
         ) : pane !== 'types' && pane !== 'guits' && pane !== 'users' ? (
@@ -1170,7 +1194,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 {tr('Төрөл бүрд юу харахыг (харагдац · ТЭЗҮ-БОНУ · нүүр цонх) чеклээд хадгална. Хэрэглэгчийн картад төрөл сонгож «Төрлөөр тохируулах» дарахад харагдац нь нэг дор бичигдэнэ. Засах эрх энд ОРОХГҮЙ — хажуугийн цэсний тухайн хуудсанд.')}
               </p>
             </header>
-            <ErhTypes remote={{ busy: remoteBusy, retry: reloadRemote }} />
+            <ErhTypes remote={{ busy: remoteBusy, retry: reloadRemote }} onDirty={onTypesDirty} />
           </>
         ) : pane === 'guits' ? (
           <>
@@ -1233,7 +1257,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               hasDraft={drafts.has(cardRow.username.toLowerCase())}
               onBack={() => setCard(null)}
               /* ⚠️ 2026-10-01: урсгалтай хуудасны эх сурвалж → тэр эрхийн хуудас */
-              onGo={(p) => setPane(p)}
+              onGo={(p) => goPane(p)}
             />
           </>
         ) : (

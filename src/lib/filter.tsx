@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMap } from '@/components/MapCanvas';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { ZONE_LAYER, type FilterScope } from '@/lib/services';
 
 /**
@@ -65,8 +66,23 @@ const Ctx = createContext<FilterApi>({
 export const useFilter = () => useContext(Ctx);
 
 export function FilterProvider({ children }: { children: ReactNode }) {
-  const { setHighlight, zoomToWhere, zoomToLayer } = useMap();
+  const { setHighlight, zoomToWhere, zoomToLayer, highlight } = useMap();
   const [active, setActive] = useState<ActiveFilter | null>(null);
+  const activeRef = useRef(active);
+  useSyncRef(activeRef, active);
+
+  /**
+   * ⚠️ 2026-10-07: ТОДРУУЛГЫН ХОЁР ЭЗЭН. Самбарын зарим сонгогч (`ViewPanel`-ийн
+   * давхаргын ангилал, бүсийн төлөв, сонгосон объектын атрибут) `setHighlight`-ийг
+   * ШУУД дууддаг — тэд энэ төлөвийг мэддэггүй. Тэгэхэд зураг тэдний WHERE-ээр
+   * шүүгдэж, толгойн чип харин өмнөх шүүлтээ «идэвхтэй» гэж худал харуулсаар;
+   * дараагийн ижил товшилт нь `toggle` тул дахин тавихын оронд ЦУЦАЛДАГ байв.
+   * Зурган дээрх WHERE энэ шүүлтийнхтэй таарахаа болимогц төлвийг тэглэнэ —
+   * чип ба зураг нэг зүйл хэлнэ (`zoomToLayer`-гүй: зураг тэр эзэнд нь нисэнэ).
+   */
+  useEffect(() => {
+    if (active && highlight.where !== active.where) setActive(null);
+  }, [highlight.where, active]);
 
   /**
    * Төлөв ба газрын зураг ХАМТ өөрчлөгдөнө.
@@ -87,10 +103,14 @@ export function FilterProvider({ children }: { children: ReactNode }) {
    */
   const apply = useCallback(
     (f: ActiveFilter | null) => {
+      const had = activeRef.current != null;
       setActive(f);
       setHighlight(f?.where ?? null, f?.layerIds);
 
-      if (!f) { zoomToLayer(ZONE_LAYER.id); return; }
+      /* ⚠️ 2026-10-07: ЦУЦЛАХ ЗҮЙЛГҮЙ бол НИСЭХГҮЙ — `Portal.setView` харагдац солих
+         бүрд `clear()` дууддаг тул шүүлтгүй байсан ч зураг сонгосон бүсээ орхиод
+         төслийн бүтэн хүрээ рүү холддог байв. Бүсийн нислэгийг `useZoomToFilter` эзэмшинэ. */
+      if (!f) { if (had) zoomToLayer(ZONE_LAYER.id); return; }
       const lid = Array.isArray(f.layerIds) ? f.layerIds[0] : f.layerIds;
       if (lid && f.where) zoomToWhere(lid, f.where);
     },

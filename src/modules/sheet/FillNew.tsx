@@ -7,6 +7,7 @@ import {
   computeAll,
   dayToMs,
   incCell,
+  parentIndexes,
   parseInc,
   loadRows,
   msToDay,
@@ -207,8 +208,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   /** Нээлттэй календарын толь — `editRef`-тэй ижил зорилго (Escape, 2026-09-24) */
   const pickRef = useRef<unknown>(null);
   const { wide, setWide, editing, setEditing } = useWideMode({ editRef, pickRef });
-  /** Энэ таб яг одоо нуугдсан уу (`display: none` → `offsetParent` нь null). */
-  const hiddenNow = () => !wrapRef.current?.offsetParent;
+  /** Энэ таб яг одоо нуугдсан уу (`display: none` → хайрцаг нэг ч байхгүй).
+   *  ⚠️ 2026-10-07: `offsetParent` БИШ — бүтэн дэлгэцэд (`.wrapFull { position: fixed }`) тэр нь
+   *     ҮРГЭЛЖ null тул Ctrl+S яг бөглөж байгаа горимд ажилладаггүй байв. `getClientRects()`
+   *     нь `display: none`-д хоосон, fixed-д хоосон биш. */
+  const hiddenNow = () => !wrapRef.current?.getClientRects().length;
   /** «Засаад дахин илгээх»-ийн хүсэлт (`requestFillOpen`-ийн ⚠️, 2026-09-30) */
   const [fixReq, setFixReq] = useState<{ pkgKey: string; soid: number | null } | null>(() => {
     if (view || !openReq) return null;
@@ -1315,6 +1319,35 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       else n.add(oid);
       return n;
     });
+
+  /**
+   * ⚠️ 2026-10-07: ҮСРЭХ МӨР НУУГДСАН бол ил гаргана. Хяналтын харагдацад ч `byPlan`
+   *    анхнаасаа асаалттай (ачаалах бүрд `setByPlan(true)`) тул «Хуваарийн дагуу» өнөөдөр
+   *    идэвхгүй ажлын өөрчлөгдсөн нүд рүү дарахад `useVirtualWindow`-ийн үсрэлт `vis`-ээс
+   *    олохгүй ЧИМЭЭГҮЙ зогсдог байв; бүлгийн шүүлт ба эвхээстэй бүлэг мөн адил. Шүүлтийг
+   *    тайлж, эцэг бүлгүүдийг дэлгэмэгц `vis` шинэчлэгдэж тэр эффект өөрөө биелнэ.
+   *    Нэг хүсэлтэд нэг л удаа (`jumpN`); харагдаж байгаа мөрд юу ч хөндөхгүй.
+   */
+  const jumpN = view?.jump?.n ?? -1;
+  const unhideJumpRef = useRef(-1);
+  useEffect(() => {
+    const j = view?.jump;
+    if (!j || unhideJumpRef.current === jumpN) return;
+    unhideJumpRef.current = jumpN;
+    if (!hidden[j.row] || !rowsAll[j.row]) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- ⚠️ 2026-10-07: `view.jump` нь ГАДНЫ нэг удаагийн хүсэлт (үйл явдал) — шүүлтийг эндээс л тайлна */
+    setByPlan(false);
+    setGrpA(0);
+    setGrpB(0);
+    const par = parentIndexes(rowsAll);
+    setCollapsed((s) => {
+      const n = new Set(s);
+      for (let p = par[j.row]; p >= 0; p = par[p]) n.delete(rowsAll[p].oid);
+      return n;
+    });
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpN]);
 
   /** n давхарга харуулна: гүн n−1 дэх бүх бүлгийг хаана. n≥5 = бүрэн дэлгэх. */
 
@@ -2518,8 +2551,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           * ⚠️ ЗАСВАР НЭЭХ товч — бүтэн дэлгэцээс ТУСДАА. Хяналтын
           *    горимд (`locked`) ба эрхгүй үед (`!canPerf`) огт гарахгүй:
           *    дарж болдоггүй товч нь эвдэрсэн мэт мэдрэгдэнэ.
+          * ⚠️ 2026-10-07: ЗӨВХӨН `obyemEdit` эрхтэй (гүйцэтгэл бөглөх эрхгүй) хүнд ч ГАРНА —
+          *    «Инж. төлөвлөсөн обьём» нүд `editing`-ийг шаарддаг (`PvCell.canEdit`) атлаа товч
+          *    `canPerf`-гүйд гардаггүй тул тэр хүн тэр баганыг ХЭЗЭЭ Ч засаж чаддаггүй байв.
+          *    Гүйцэтгэлийн нүд `noPerf = … || !canPerf` хэвээр түгжээтэй.
           */}
-        {!locked && canPerf && (
+        {!locked && (canPerf || canObyemEdit) && (
           <button
             type="button"
             className={editing ? st.editBtnOn : st.editBtn}
@@ -2527,7 +2564,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             aria-pressed={editing}
             title={editing
               ? tr('Засварыг хаана — нүд дахин түгжигдэнэ')
-              : tr('Нүд засах горимыг нээнэ. Хаалттай үед санамсаргүй товшилтоор тоо өөрчлөгдөхгүй.')}
+              : canPerf
+                ? tr('Нүд засах горимыг нээнэ. Хаалттай үед санамсаргүй товшилтоор тоо өөрчлөгдөхгүй.')
+                : tr('Зөвхөн «Инж. төлөвлөсөн обьём» баганыг засах горимыг нээнэ — гүйцэтгэлийн нүд таны эрхэд хаалттай.')}
           >
             <span aria-hidden>{editing ? '🔓' : '✎'}</span>
             {editing ? tr('Засаж байна') : tr('Бөглөх')}

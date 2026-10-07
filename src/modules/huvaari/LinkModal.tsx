@@ -48,12 +48,25 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
   const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
   const [lag, setLag] = useState<number>(cur?.lag ?? 0);
   const name = (r: PlanRow) => `${r.des ?? '—'} · ${r.work || r.no}`;
+  /* ⚠️ 2026-10-07: Дотор дараад (сонголт/чирэлт) АРД суллахад `click` нь дэвсгэр дээр
+     буудаг тул цонх санамсаргүй хаагддаг байв — `PlanModal`-ийн адил дарах нь ч ард
+     эхэлсэн үед л хаана. */
+  const downOnBack = useRef(false);
   return (
-    <div className={h.mdBack} role="presentation" onClick={onClose}>
+    <div className={h.mdBack} role="presentation"
+      onPointerDown={(e) => { downOnBack.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const ok = downOnBack.current && e.target === e.currentTarget;
+        downOnBack.current = false;
+        if (ok) onClose();
+      }}>
       <div ref={ref} className={h.md} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') { onClose(); return; }
+          /* ⚠️ 2026-10-07: `preventDefault`+`stopPropagation` — React цонхыг `window`-д
+             хүрэхээс өмнө салгадаг тул хуудасны нийтлэг Esc (`Huvaari` — бүтэн дэлгэц/
+             хяналт хаах) `[role=dialog]`-ийг олохгүй, нэг Esc хоёуланг хаадаг байв. */
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
           if (e.key !== 'Enter') return;
           /* ⚠️ (2026-09-23) Enter нь ЗӨВХӨН сонгогч/тоон талбар дээр «Тавих» —
              товч дээр (Болих · × · Уялдаа устгах) байхад товчны өөрийн click

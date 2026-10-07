@@ -17,7 +17,7 @@
  * (кэшлэхгүй): модалын агуулга динамик — «Уялдаа нэмэх» дарахад шинэ сонгогч
  * үүсдэг тул нэг удаа тогтоосон жагсаалт хуучирна.
  */
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
 /** Фокус авах чадвартай, ИДЭВХТЭЙ (disabled/нуугдаагүй) элементүүд */
 const SEL = [
@@ -40,8 +40,19 @@ function focusable(root: HTMLElement): HTMLElement[] {
 /**
  * @param ref     модалын гадна хүрээ (`role="dialog"` элемент)
  * @param active  урхи идэвхтэй эсэх — модал хаагдсан үед `false`
+ * @param fallback ⚠️ 2026-10-07: «өмнөх фокус» `<body>`/алга бол (нээгч элемент нээхээс
+ *                ӨМНӨ салсан — жиш. хүснэгтийн нүдний оролтоос Enter-ээр нээгдсэн цонх)
+ *                хаах агшинд дуудаж фокус буцаах элементийг авна. Ref-ээр — урхи дахин
+ *                бүртгэгдэхгүй.
  */
-export function useFocusTrap(ref: RefObject<HTMLElement | null>, active = true): void {
+export function useFocusTrap(
+  ref: RefObject<HTMLElement | null>,
+  active = true,
+  fallback?: () => HTMLElement | null,
+): void {
+  const fbRef = useRef(fallback);
+  /* ⚠️ Зурагдалтын дунд ref бичихгүй (react-hooks/refs) — `useLatest`-ийн адил layout effect-ээр */
+  useLayoutEffect(() => { fbRef.current = fallback; });
   useEffect(() => {
     const root = ref.current;
     if (!active || !root) return undefined;
@@ -78,7 +89,9 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active = true):
       document.removeEventListener('keydown', onKey, true);
       // ⚠️ Элемент DOM-оос хасагдсан бол `focus()` чимээгүй бүтэлгүйтнэ —
       //    `isConnected`-оор шалгаж, эс бөгөөс фокус `<body>`-д унана.
-      if (prev && prev.isConnected) prev.focus();
+      // ⚠️ 2026-10-07: өмнөх фокус `<body>` эсвэл салсан бол `fallback`-ийн элемент рүү.
+      if (prev && prev.isConnected && prev !== document.body) prev.focus();
+      else fbRef.current?.()?.focus();
     };
   }, [ref, active]);
 }

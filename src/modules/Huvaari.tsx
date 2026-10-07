@@ -470,7 +470,11 @@ export function Huvaari({
   useEffect(() => {
     if (!isWide) return;
     const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || document.querySelector('[role="dialog"]')) return;
+      /* ⚠️ 2026-10-07: `defaultPrevented` — React-ийн `onKeyDown`-оор хаагддаг дэд цонх
+         (`LinkModal` · `AddBox` · PDF popover) Esc-ээ `preventDefault`+`stopPropagation` хийнэ.
+         Урьд нь React тэдгээрийг `window`-д хүрэхээс ӨМНӨ салгаж амжсан тул
+         `[role=dialog]` олдохгүй, Esc нэг даралтаар дэд цонхыг ч, хяналтыг ч хаадаг байв. */
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('[role="dialog"]')) return;
       if (isReview) {
         if (!escBlockRef.current && confirmDropMarks(okNRef.current)) reviewCloseRef.current?.();
       } else setWide(false);
@@ -510,6 +514,12 @@ export function Huvaari({
   /* ⚠️ Сонгосон мөрийн OID (2026-09-25 аудит) — `PlanRow.i` БИШ: нэмэлт мөр орох/гарах,
      шинэ жааз татагдахад индекс шилжиж өөр мөр тодордог байв. */
   const [sel, setSel] = useState<number | null>(null);
+  /**
+   * ⚠️ 2026-10-07: НҮДЭНД БИЧИЖ БУЙ мөрийн oid (`TaskRow.onEditing`) — `useCalendar`-ийн
+   *    `pin`: бичиж байх зуур мөрийг цонхлолтод хүчээр багтаана, эс бөгөөс хүрдээр
+   *    `PL_OVER`-оос цааш гүйлгэхэд мөр салж бичсэн текст алга болдог байв.
+   */
+  const [cellEdit, setCellEdit] = useState<number | null>(null);
 
   /* ══════ САРЫН ОБЬЁМ (тусдаа үйлчилгээ, `huvaariObyem.ts`) ══════ */
   /** Хадгалагдсан задаргаа — ажлын код → блок → сар → обьём */
@@ -573,6 +583,12 @@ export function Huvaari({
    *    батлагдсан нэмэлт мөрийг оруулахад индекс шилжиж, «Тавих» ӨӨР ажилд бичдэг байв.
    */
   const [modal, setModal] = useState<number | null>(null);
+  /**
+   * ⚠️ 2026-10-07: НҮДНЭЭС (`DateCell`/`DaysCell`-д Enter) нээгдсэн popup-ын мөр — хаахад
+   *    фокус тэр мөрийн нэрийн товч руу буцна (`PlanModal.returnFocus`). Нээгдэх үед
+   *    оролт аль хэдийн салсан тул `useFocusTrap`-ийн «өмнөх фокус» нь `<body>` байдаг байв.
+   */
+  const [modalFrom, setModalFrom] = useState<number | null>(null);
 
   /**
    * ШҮҮЛТҮҮР. `filter` нь түргэн таб, бусад нь сонголт.
@@ -1233,7 +1249,7 @@ export function Huvaari({
   /* ── ХУАНЛИЙН ГЕОМЕТР — «өнөөдөр» · хүрээ · хоног↔px · цонхлолт · шошго (`useCalendar`) ── */
   const {
     now, from, to, px, total, W, xOf, dayAt, msAt, trackRef, scrollRef, onScroll, winFrom, winTo, slice, ticks, months,
-  } = useCalendar({ plan, drag: !!drag, zoom, visible: disp, sel, jumpedRef });
+  } = useCalendar({ plan, drag: !!drag, zoom, visible: disp, sel, pin: !!drag || (cellEdit != null && cellEdit === sel), jumpedRef });
 
   /* ── Ноорог ── */
 
@@ -1838,6 +1854,7 @@ export function Huvaari({
   const openAfterDate = useCallback((oid: number) => {
     setSel(oid);
     setModal(oid);
+    setModalFrom(oid);
   }, []);
 
   const applyDate = useCallback((oid: number, which: 'start' | 'end' | 'days', day: string) => {
@@ -3255,7 +3272,10 @@ export function Huvaari({
    *    одоогийн блок дээр ялгаа харагдахгүй.
    * ⚠️ Шүүлт/эвхэлтэд нуугдсан бол шүүлтийг цэвэрлэж модыг дэлгэнэ.
    */
-  const scrollToOid = useRef<number | null>(null);
+  /* ⚠️ 2026-10-07: `blk`-ийг ХАМТ санана — `setBlk(bch)` ба энэ ref нэг агшинд тавигддаг тул
+     доорх эффект мөн зурагдалтад ХУУЧИН `blk`-ээр ажиллаж, хөндлөн гүйлгээ буруу блокийн
+     зурвас руу очдог байв. Эффект `blk` тэр блок болтол хүлээнэ. */
+  const scrollToOid = useRef<{ oid: number; blk: number } | null>(null);
   const jumpNextBad = () => {
     const idxs = reviewOids.filter((o) => !okRows.has(o))
       .map((o) => plan.findIndex((r) => r.oid === o)).filter((i) => i >= 0).sort((a, b) => a - b);
@@ -3270,7 +3290,7 @@ export function Huvaari({
       setFilter('all'); setFYear('all'); setFGrp('all'); setCollapsed(new Set()); setLvl(0);
     }
     setSel(r.oid);
-    scrollToOid.current = r.oid;
+    scrollToOid.current = { oid: r.oid, blk: bch >= 0 ? bch : blk };
   };
   /**
    * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
@@ -3281,7 +3301,7 @@ export function Huvaari({
     setBlk(b);
     setAllBlk(false);
     setSel(oid);
-    scrollToOid.current = oid;
+    scrollToOid.current = { oid, blk: b };
   };
   /* Хяналт нээгдмэгц ЭХНИЙ өөрчлөлт рүү гүйлгэнэ — эхний гүйлгэлт «өнөөдөр» рүү
      явдаг тул өөрчлөгдсөн зурвас дэлгэцээс гадуур үлдэж, «юу өөрчлөгдсөн бэ» гэж
@@ -3297,13 +3317,15 @@ export function Huvaari({
     const o = scrollToOid.current;
     const el = scrollRef.current;
     if (o == null || !el) return;
+    /* ⚠️ 2026-10-07: блок хараахан солигдоогүй бол хүлээнэ (`blk` deps-д) */
+    if (o.blk !== blk) return;
     /* ⚠️ 2026-10-04: индекс ДЭЛГЭЦИЙН жагсаалтаас (`disp`) — «Бүх блок» горимд дэд мөрүүд
        Y-г шилжүүлдэг; энгийн горимд `visible`-тэй ижил. Эх мөр (`b < 0`). */
-    const k = disp.findIndex((v) => v.oid === o && v.b < 0);
+    const k = disp.findIndex((v) => v.oid === o.oid && v.b < 0);
     if (k < 0) return;
     scrollToOid.current = null;
     el.scrollTop = Math.max(0, (k - 3) * PL_ROW);
-    const sp = disp[k].r.spans[blk];
+    const sp = disp[k].r.spans[o.blk];
     if (sp) el.scrollLeft = Math.max(0, xOf(sp.start) - 240);
   }, [disp, sel, blk, xOf, scrollRef]);
   /** Мөрийн зөвшөөрлийг сэлгэнэ — зөвхөн өөрчлөгдсөн ажлын мөрд */
@@ -3477,6 +3499,24 @@ export function Huvaari({
    */
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfOpts, setPdfOpts] = useState<HvPdfOpts>(HV_PDF_DEFAULT);
+  /* ⚠️ 2026-10-07: popover ГАДНА дарахад (`DatePicker`-ийн адил `mousedown`) ба фокус ХААНА ч
+     байсан Esc-д хаагдана. Урьд нь гаднаас хаах зам байхгүй; `role="dialog"` нь хуудасны
+     нийтлэг Esc-ийг зогсоодог тул фокус гадна байхад Esc юу ч хийдэггүй байв. Popover
+     доторх Esc нь React `onKeyDown`-д `stopPropagation` тул энд давхар ирэхгүй. */
+  const pdfRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!pdfOpen) return;
+    const down = (e: MouseEvent) => {
+      if (!pdfRef.current?.contains(e.target as Node)) setPdfOpen(false);
+    };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setPdfOpen(false); };
+    window.addEventListener('mousedown', down);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('mousedown', down);
+      window.removeEventListener('keydown', key);
+    };
+  }, [pdfOpen]);
   const savePdf = useCallback(async () => {
     if (!sc || pdfBusy) return;
     setPdfBusy(true);
@@ -4046,7 +4086,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         )}
         {/* PDF ТАТАХ (2026-09-30) — дэлгэц дээрх хуваарийг ижил загвараар (`savePdf`) */}
         {sc && visible.length > 0 && (
-          <span className={h.pdfWrap}>
+          <span className={h.pdfWrap} ref={pdfRef}>
             <button type="button" className={h.discard} disabled={pdfBusy}
               aria-expanded={pdfOpen}
               title={tr('Дэлгэц дээрх хуваарийг (нээлттэй мөр · таб · блок · багана) PDF болгож татна')}
@@ -4055,7 +4095,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </button>
             {pdfOpen && (
               <span className={h.pdfPop} role="dialog" aria-label={tr('PDF татах')}
-                onKeyDown={(e) => { if (e.key === 'Escape') setPdfOpen(false); }}>
+                /* ⚠️ 2026-10-07: `preventDefault`+`stopPropagation` — эс бөгөөс нэг Esc popover-ыг ч,
+                   бүтэн дэлгэц/хяналтыг ч хаадаг байв (`Huvaari`-ийн Esc сонсогчийн ⚠️) */
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setPdfOpen(false); } }}>
                 {/* ⚠️ 2026-10-04 (шүүлт): PDF нь блок тус бүрийн загвар (`savePdf` — `blk`) — «Бүх блок»
                     горимд ч ЗӨВХӨН идэвхтэй блок орно; хэрэглэгчид ил хэлнэ */}
                 {allOn && (
@@ -4778,6 +4820,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     onDays={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
                       ? (d) => applyDate(r.oid, 'days', String(d)) : undefined}
                     edKind={kind}
+                    /* ⚠️ 2026-10-07: нүдэнд бичиж байх зуур мөрийг цонхлолтод багтаана (`cellEdit` → `pin`) */
+                    onEditing={(on) => { setCellEdit(on ? r.oid : null); if (on) setSel(r.oid); }}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
                     /* ⚠️ «Бүх блок» горимд мөр нэмэх/засах/хасах хаалттай (зөвхөн харах, 2026-10-04) */
@@ -5152,6 +5196,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
            *    хэрэглэгч цуцалсан гэж бодоод хуваарь нь үлдэнэ.
            */
           onClose={undoDragOnClose}
+          /* ⚠️ 2026-10-07: нүднээс нээгдсэн бол хаахад фокус тэр мөрийн нэрийн товч руу (`modalFrom`) */
+          returnFocus={modalFrom === modalRow.oid
+            ? () => document.querySelector<HTMLElement>(`[data-oid="${modalRow.oid}"] .${h.rowMain}`)
+            : undefined}
           onApply={(spans, deps, ob, actual, res, blks, actBlks) => {
             /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
                эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */

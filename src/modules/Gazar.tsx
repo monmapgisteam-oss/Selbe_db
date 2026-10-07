@@ -1255,7 +1255,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       )}
 
       {/* ── ТӨВ: Газрын зураг + Полигон ── */}
-      <main className={g.map}>
+      {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц хэрэгслийн зурвастай хамт (`MapCanvas.toggleFs`) */}
+      <main className={g.map} data-map-host="">
         <MapCanvas
           dim={dim}
           visible={mapLayers}
@@ -1269,7 +1270,11 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           onSketchCancel={onSketchCancel}
           drawToken={drawToken}
           clearToken={clearToken}
-          onPick={onMapPick}
+          /* ⚠️ 2026-10-07: засварын горимоос гадуур `undefined` — `MapCanvas` тэгэхэд
+             товшилтоор атрибутын хайрцаг (`MapTip`) гаргана; `onMapPick` нь
+             `editMode`-гүйд шууд буцдаг тул урьд нь хүрэлтэнд юу ч гардаггүй байв
+             (`DedButets`-ийн ижил шийдэл). */
+          onPick={editMode ? onMapPick : undefined}
         />
 
         {/* ⚠️ ТАЛБАР ЗАСАХ ОРОХ ЦЭГ — 2026-09-15-нд хасагдаж, 2026-09-30-нд

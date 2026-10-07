@@ -518,6 +518,12 @@ export function GeneralDash({
   const beforeXs = useRef<string[] | null>(null);
   const visRef = useRef<string[]>(visible);
   useSyncRef(visRef, visible);
+  /* ⚠️ 2026-10-07: шалтгаан (`reason`) идэвхтэй үед `xsPick` дахин бодогдох (хугацаа
+     солих) нь давхаргыг ДАРЖ бичихгүй — эс бөгөөс шалтгааны `[PARCEL_LAYER]` алга болж,
+     шүүсэн нэгж талбар зурагнаас хасагддаг байв. Ref — эффектийн хамаарал `[xsPick]`
+     хэвээр (доорх ⚠️). */
+  const reasonRef = useRef(reason);
+  useSyncRef(reasonRef, reason);
   useEffect(() => {
     if (xsPick == null) {
       if (beforeXs.current) {
@@ -526,6 +532,7 @@ export function GeneralDash({
       }
       return;
     }
+    if (reasonRef.current != null) return;
     if (beforeXs.current == null) beforeXs.current = visRef.current;
     /* ⚠️ БУСАД ДАВХАРГЫГ НУУНА (2026-09-15, хэрэглэгчийн заавар: «хуучин
        харагдаж байсан давхаргууд hide гэсэн зарчмаар ажиллана»). Нэмэх
@@ -584,6 +591,10 @@ export function GeneralDash({
     /* ⚠️ Багцын сэргээх цэгийг ХҮЧИНГҮЙ болгоно: шалтгаан солигдоход тэр нь
        өөр шалтгааны давхаргын жагсаалт руу заасан хуучин утга болно. */
     beforePkg.current = null;
+    /* ⚠️ 2026-10-07: хөндлөн сонголтын сэргээх цэгийг ч ХҮЧИНГҮЙ болгоно — эс бөгөөс
+       шалтгаан идэвхтэй байхад хөндлөн сонголт тайлагдахад `beforeXs` нь шалтгааны
+       `[PARCEL_LAYER]`-ийг дарж хуучин давхаргуудыг сэргээдэг байв. */
+    beforeXs.current = null;
     setVisible([PARCEL_LAYER]);
 
     const where = `${PARCEL_LEFT.oid} IN (${[...oids].join(',')})`;
