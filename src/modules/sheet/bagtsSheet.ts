@@ -2000,9 +2000,12 @@ export function computeAll(
           const res = incCell(r, b, edits[`${r.oid}:${b}`], hasField);
           const cumI = hasField ? (res ? res.obyem : r.obyem[b]) : null;
           obyem[b] = cumI;
+          /* ⚠️ 2026-10-09 (хэрэглэгч: хоосон нүдэнд «0%»): блокгүй багцын (`synthetic`) хадгалсан
+             `Ажил_гүйцэтгэл` нь Excel-ийн загвараас ирсэн 0 — хэмжилт биш. Хэмжилт = `obyem_sum`
+             (архив хоёуланг ХАМТ бичдэг), тиймээс нийлбэргүй бол `null` (null ≠ 0). */
           act[b] = res
             ? res.act
-            : cumI != null && rVol != null && rVol > 0 ? cumI / rVol : r.act[b];
+            : cumI != null && rVol != null && rVol > 0 ? cumI / rVol : synthetic && cumI == null ? null : r.act[b];
           /* ⚠️ 2026-09-30: хөвөгч цэгийн хүлцэл (`ACT_OVER`-ийн ⚠️) */
           actOver[b] = act[b] != null && act[b]! > ACT_OVER;
           actAgg[b] = clamp1(act[b]);
@@ -2039,7 +2042,7 @@ export function computeAll(
           ? null
           : pctEdit != null
             ? pctEdit
-            : cum != null && rVol != null && rVol > 0 ? cum / rVol : r.act[b];
+            : cum != null && rVol != null && rVol > 0 ? cum / rVol : synthetic && cum == null ? null : r.act[b]; /* ⚠️ 2026-10-09: дээрх синтетик дүрэм */
 
         /* ⚠️ 100%-ИАС ИХ ГҮЙЦЭТГЭЛ (2026-09-04) — НУУХГҮЙ, харин ТАРААХГҮЙ.
          *    Амьд жишээ: Багц 1·9F oid 31534 блок «5/3» → 443 ÷ 142.96 =

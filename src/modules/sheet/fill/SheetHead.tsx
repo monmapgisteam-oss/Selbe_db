@@ -8,9 +8,12 @@ import type { seriesBands } from "../bagts.bands";
 import type { useColWidths } from "../colWidths";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cls } from "./util";
+import { extraCls, type ExtraCol } from "./extraCols";
 
-export function SheetHead({ sc, nBld, bands, grip }: {
+export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
   sc: Schema; nBld: number; bands: ReturnType<typeof seriesBands>; grip: ReturnType<typeof useColWidths>['grip'];
+  /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн бүлэг (`extraCols.ts`); нуусан бол `[]` */
+  extra?: ExtraCol[];
 }) {
   /* ⚠️ 2026-10-09: блокгүй багцын синтетик блок — 2-р/3-р мөрийн блокийн нүд алга (1-р мөрөөс хамарсан) */
   const syn = sc.synthetic && nBld === 1;
@@ -55,14 +58,19 @@ export function SheetHead({ sc, nBld, bands, grip }: {
                     гэсэн үг утгагүй (дээрх 2026-09-23-ны шалтгаан) тул 3 мөрийг хамарсан энгийн
                     толгой: бөглөх «Обьём (энэ удаа)» (нүдэнд нийлбэр + хувь), төлөвлөгөөт хувь,
                     хуваарийн Эхлэх/Дуусах (4-р мөр). Баганын тоо барилгын n = 1-тэй ЯГ ижил. */}
-                {sc.synthetic && nBld === 1 && (
+                {/* ⚠️ 2026-10-09 (хэрэглэгч: «хүснэгт эвдрэлтэй»): эхний хувилбар rowSpan=4 ба rowSpan=3-ыг
+                    холиод 2-р/3-р мөрийг ХООСОН <tr> үлдээдэг байв — sticky толгойн мөр бүр тогтмол
+                    өндөр/`top`-той тул хоосон мөр 0 өндөртэй болж «Эхлэх/Дуусах» биеийн мөр дээр унаж,
+                    «Төлөвлөгөөт гүйцэтгэл» багана шахагдав. Одоо барилгын n = 1-тэй ЯГ ИЖИЛ 4 мөрийн
+                    бүтэц (бүлэг → хоосон 2-р мөр → баганын нэр → Эхлэх/Дуусах), зөвхөн шошго өөр. */}
+                {syn && (
                   <>
-                    <th rowSpan={4} className={cls("bld")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
-                    <th rowSpan={4} className={cls("bld")} title={RO.blockPlan}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("bld")} /></th>
-                    <th rowSpan={3} colSpan={2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь')}</th>
+                    <th className={cls("band")}>{tr('Ажил гүйцэтгэл')}</th>
+                    <th className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл')}</th>
+                    <th colSpan={2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь')}</th>
                   </>
                 )}
-                {nBld > 0 && !(sc.synthetic && nBld === 1) && (
+                {nBld > 0 && !syn && (
                   <>
                     <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
                     <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
@@ -72,9 +80,22 @@ export function SheetHead({ sc, nBld, bands, grip }: {
                 <th rowSpan={4} className={cls("c-date")}>{tr('Шинэчлэгдсэн огноо')}<i {...grip("date")} /></th>
                 {/* ⚠️ Inspection Test Plan-ийн 9 багана ЭНД БАЙХГҮЙ
                     (2026-09-03) — «Чанар (QAQC)» тусдаа харагдацад. */}
+                {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — 1-р мөрөнд бүлгийн гарчиг, 2-р мөрөөс баганын нэр
+                    3 мөр хамарна (`rowSpan=3`, CSS `.xh`). Ингэснээр 2-р мөр ХЭЗЭЭ Ч хоосон үлдэхгүй
+                    (хоосон <tr> sticky толгойг эвдсэн — дээрх 2026-10-09-ний ⚠️). */}
+                {extra.length > 0 && (
+                  <th colSpan={extra.length} className={cls("band xFirst")}>{tr('Бусад талбар')}</th>
+                )}
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
+                {syn && (
+                  <>
+                    <th className={cls("band2")} aria-hidden="true" />
+                    <th className={cls("band2")} aria-hidden="true" />
+                    <th colSpan={2} className={cls("band2")} aria-hidden="true" />
+                  </>
+                )}
                 {!syn && bands.map((g, gi) => (
                   <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
                 ))}
@@ -84,10 +105,22 @@ export function SheetHead({ sc, nBld, bands, grip }: {
                 {!syn && bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
+                {extra.map((x, xi) => (
+                  <th key={`x${x.key}`} rowSpan={3} className={cls(`xh ${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)} title={x.field}>
+                    {x.label()}<i {...grip(extraCls(x.kind).slice(2))} />
+                  </th>
+                ))}
 
               </tr>
               {/* 3-р мөр — блокийн код */}
               <tr>
+                {syn && (
+                  <>
+                    <th rowSpan={2} className={cls("bld")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
+                    <th rowSpan={2} className={cls("bld")} title={RO.blockPlan}>%<i {...grip("bld")} /></th>
+                    <th colSpan={2} className={cls("c-date2")} aria-hidden="true" />
+                  </>
+                )}
                 {!syn && sc.bld.map((b) => (
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
