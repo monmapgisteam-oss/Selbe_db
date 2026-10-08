@@ -101,6 +101,7 @@ import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, Submit
 import { FillNotices, NoticeToast } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
 import { FillRows } from "./fill/FillRows";
+import { extraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
 import { FillDatePicker } from "./fill/FillDatePicker";
 
 /* `SheetView` — `Sheet.tsx` энэ файлаас импортолдог (2026-09-30: `fill/util`-д зөөгдсөн, re-export) */
@@ -583,6 +584,25 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const [byPlan, setByPlan] = useState(true);
   const { style: colStyle, grip, resetAll, resized } = useColWidths("fillnew");
+  /**
+   * «БУСАД ТАЛБАР» (2026-10-09, хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга») —
+   * урьд нь зурагддаггүй мөрийн түвшний талбарууд ЗӨВХӨН УНШИХ төгсгөлийн бүлгээр (`fill/extraCols.ts`).
+   * ⚠️ Анхдагч АСААЛТТАЙ; барилгын өргөн хүснэгтэд нуух товч (`FilterBar`) — хэрэглэгч тус бүрд хөтөчид
+   *    санана (`selbe-fill-extra:<нэр>`, localStorage нь try/catch-тай). Нэвтрэлт хожуу ирэхэд түлхүүр
+   *    солигдож тэр хэрэглэгчийн сонголт уншигдана (`extraSet.k` таарахгүй бол хадгалснаас).
+   */
+  const extraKey = extraPrefKey(user?.username);
+  const extraSaved = useMemo(() => readExtraPref(extraKey), [extraKey]);
+  const [extraSet, setExtraSet] = useState<{ k: string; on: boolean } | null>(null);
+  const showExtra = extraSet?.k === extraKey ? extraSet.on : extraSaved;
+  const toggleExtra = useCallback(() => {
+    const on = !showExtra;
+    setExtraSet({ k: extraKey, on });
+    writeExtraPref(extraKey, on);
+  }, [showExtra, extraKey]);
+  /** Энэ үйлчилгээнд БАЙГАА баганууд л (талбаргүй бол алгасна) */
+  const extraAll = useMemo(() => extraCols(sc), [sc]);
+  const extra = useMemo(() => (showExtra ? extraAll : []), [showExtra, extraAll]);
 
   // ── Crosshair — React state БИШ ──
   // Урьд нь нүд бүрийн mouseenter hover state солиж «Бүгд» горимд ~80k нүдийг
@@ -2735,6 +2755,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           asOf={asOf} setAsOf={setAsOfUser} dateOpts={dateOpts}
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
+          extraN={extraAll.length} showExtra={showExtra} toggleExtra={toggleExtra}
         />
         {/* ⚠️ 2026-10-06 аудит: бөглөх эрхгүй (`!canPerf`) хүнд «Илгээх»/«Дуусгасан» ОГТ гарахгүй —
             урьд нь «Дуусгасан» дарж оролцогч болж бусдын «Илгээх»-ийг түгждэг байв. Шалтгааныг ил хэлнэ. */}
@@ -2863,14 +2884,14 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             onMouseOver={moveColHl}
             onMouseLeave={hideColHl}
           >
-            <SheetHead sc={sc} nBld={nBld} bands={bands} grip={grip} />
+            <SheetHead sc={sc} nBld={nBld} bands={bands} grip={grip} extra={extra} />
             <tbody ref={tbodyRef}>
               {/* ⚠️ ХООСОН ТӨЛӨВ. Хуваарийн шүүлт нэг өдөрт 4 мөр үлдээж
                   болно (Багц 2·9F) — тайлбаргүй бол «хүснэгт эвдэрсэн» гэж
                   уншигдаж, хэрэглэгч товчийг унтраахаа мэдэхгүй. */}
               {vis.length === 0 && byPlan && (
                 <tr>
-                  <td colSpan={14 + nBld * 4} className={st.hint} style={{ padding: "14px 10px" }}>
+                  <td colSpan={14 + nBld * 4 + extra.length} className={st.hint} style={{ padding: "14px 10px" }}>
                     {tr("Өнөөдөр ({0}) хуваарьтай ажил алга. Бүх ажлыг харах бол «Хуваарийн дагуу»-г унтраа.", today)}
                   </td>
                 </tr>
@@ -2878,7 +2899,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
               {/* Дээд ЧИГЖЭЭС — зурагдаагүй мөрүүдийн өндрийг орлоно. */}
               {winFrom > 0 && (
                 <tr aria-hidden="true" style={{ height: winFrom * rowH }}>
-                  <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={14 + nBld * 4 + extra.length} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
               <FillRows
@@ -2891,7 +2912,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 inputRef={inputRef} prevHint={prevHint} val={val} commit={commit} nextEditable={nextEditable}
                 nextBlockEditable={nextBlockEditable} pendDate={pendDate} setPick={setPick} asOf={asOf} asOfOrig={asOfOrig}
                 warn={warn}
-                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev}
+                restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (
@@ -2899,7 +2920,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                   aria-hidden="true"
                   style={{ height: (vis.length - winTo) * rowH }}
                 >
-                  <td colSpan={14 + nBld * 4} style={{ padding: 0, border: 0 }} />
+                  <td colSpan={14 + nBld * 4 + extra.length} style={{ padding: 0, border: 0 }} />
                 </tr>
               )}
             </tbody>

@@ -13,6 +13,7 @@ import type { useObyem } from "./useObyem";
 import type { useCellEdit, PastePrev } from "./useCellEdit";
 import { RO, cellKey, cls, dt, full, pc, qty, synNoVol, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
 import st from "../sheet.module.css";
+import { extraCls, extraVal, type ExtraCol } from "./extraCols";
 
 type ObyemT = ReturnType<typeof useObyem>;
 type CellT = ReturnType<typeof useCellEdit>;
@@ -22,7 +23,7 @@ export function FillRows({
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
   locked, noEdit, say, canPerf, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null,
+  restoring = false, remainHint, pastePrev = null, extra = [],
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -47,6 +48,8 @@ export function FillRows({
   remainHint?: CellT['remainHint'];
   /** ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдац — бичигдэх (цэнхэр) / татгалзсан (улаан ✕) */
   pastePrev?: PastePrev | null;
+  /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн баганууд (`extraCols.ts`); `SheetHead`-тэй ИЖИЛ массив */
+  extra?: ExtraCol[];
 }) {
   return (
     <>
@@ -56,18 +59,25 @@ export function FillRows({
                 if (!c) return null;
                 /* ⚠️ Нийтлэгдээгүй (oid < 0) ЭСВЭЛ батлагдаж нийтлэгдсэн нэмэлт (addedOids) — хоёулаа улаан. */
                 const isNew = r.oid < 0 || addedOids.has(r.oid);
+                /* ⚠️ 2026-10-09: № нь бүтэн гарчиг (зайтай) бөгөөд Ажил хоосон бол нэрийг «Ажил» нүдэнд (доорх ⚠️) */
+                const noTitle = /\s/.test(r.no);
+                const workTxt = r.work || (noTitle ? r.no : "");
                 return (
                   <Fragment key={r.oid}>
                   <tr
                     data-r={i}
                     className={`${r.group ? st.cat : ""}${isNew ? ` ${st.newRow}` : ""}`.trim() || undefined}
                   >
-                    <td className={cls("num fz c-no")} {...ro(RO.no)}>{r.no}</td>
+                    {/* ⚠️ 2026-10-09 (хөтөч дээрх хэмжилт): барилгын 8 багцын дээд бүлгийн № нь бүтэн гарчиг
+                        («A. Бэлтгэл ажил», «Б. Барилга угсралтын ажил»), Ажил нь ХООСОН — 40px-ийн № нүднээс
+                        халиж царцсан «Ажил» нүдний доор тайрагдаж («A. Бэлтг») уншигдахгүй байв. № нүд «…»-аар
+                        тайрна (`.b32 td.c-no`, бүтэн нь `title`-д), нэр нь «Ажил» нүдэнд (`workTxt` — № зайтай үед л; «1.1» зэрэг код давхардахгүй). */}
+                    <td className={cls("num fz c-no")} {...ro(RO.no)} title={noTitle ? r.no : RO.no}>{r.no}</td>
                     <td
                       className={cls("fz c-ajil")}
                       style={{ paddingLeft: `${r.depth * 14 + 6}px` }}
                       {...ro(RO.no)}
-                      title={r.work}
+                      title={workTxt}
                     >
                       {r.group && (
                         /* button — гараар (Enter/Space) эвхэж дэлгэх боломжтой;
@@ -85,7 +95,7 @@ export function FillRows({
                           {collapsed.has(r.oid) ? "▸" : "▾"}
                         </button>
                       )}
-                      {r.work}
+                      {workTxt}
                       {/* ⚠️ Бүлгийн «+» ба шинэ мөрийн «×» ХАСАГДАВ (2026-09-24) — «Хуваарь»-д. */}
                     </td>
                     <td className={cls("right c-w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
@@ -582,6 +592,21 @@ export function FillRows({
                         {i === 0 ? dt(asOf) : ""}
                       </td>
                     }
+                    {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — ЗӨВХӨН УНШИХ (засах зам ҮГҮЙ), сүүлийн жаазны ЭНЭ мөрийн
+                        хадгалсан утга (`r.raw`). Хоосон бол хоосон (null ≠ 0). Товшвол шалтгааныг хэлнэ. */}
+                    {extra.map((x, xi) => {
+                      const v = extraVal(x, r);
+                      return (
+                        <td
+                          key={`x${x.key}`}
+                          className={cls(`${x.kind === "int" || x.kind === "pct" ? "num " : ""}${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
+                          {...ro(RO.extra)}
+                          title={v.title ?? RO.extra}
+                        >
+                          {v.text}
+                        </td>
+                      );
+                    })}
                   </tr>
                   </Fragment>
                 );

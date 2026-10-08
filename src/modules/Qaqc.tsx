@@ -1783,12 +1783,15 @@ export function Qaqc() {
                   return (
                     <Fragment key={r.oid}>
                       <tr data-r={i} className={r.group ? st.cat : undefined}>
-                        <td className={cls('num fz c-no')} {...ro(RO_NO)}>{r.no}</td>
+                        {/* ⚠️ 2026-10-09: «Гүйцэтгэл бөглөх»-тэй ИЖИЛ (`FillRows`-ийн ⚠️) — дээд бүлгийн № нь бүтэн
+                            гарчиг («A. Бэлтгэл ажил»), Ажил хоосон: № нүд «…»-аар тайрагдана (`.b32 td.c-no`),
+                            нэр нь «Ажил» нүдэнд. */}
+                        <td className={cls('num fz c-no')} {...ro(RO_NO)} {...(/\s/.test(r.no) ? { title: r.no } : {})}>{r.no}</td>
                         <td
                           className={cls('fz c-ajil')}
                           style={{ paddingLeft: `${r.depth * 14 + 6}px` }}
                           {...ro(RO_NO)}
-                          title={r.des ? `${r.work} · ${r.des}` : r.work}
+                          title={r.des ? `${r.work || r.no} · ${r.des}` : (r.work || r.no)}
                         >
                           {r.group && (
                             <button
@@ -1804,7 +1807,7 @@ export function Qaqc() {
                               {collapsed.has(r.oid) ? '▸' : '▾'}
                             </button>
                           )}
-                          {r.work}
+                          {r.work || (/\s/.test(r.no) ? r.no : '')}
                         </td>
                         {/* ── БАРИМТ БИЧИГ — дарж текст бичнэ ──
                             ⚠️ Бүлгийн мөрд ч засагдана: М-акт, FIC зэрэг нь

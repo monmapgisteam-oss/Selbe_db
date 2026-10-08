@@ -432,4 +432,73 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
 }
 console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act→Ажил_гүйцэтгэл · Excel roll-up · түгжээ · жааз · илгээлт · блоктойд нөлөөгүй');
 
+/* ══════════ 6. «БУСАД ТАЛБАР» (2026-10-09) — мөрийн түвшний бүх талбар ил ══════════
+ * ⚠️ Хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга». Бөглөх хүснэгтэд урьд нь
+ *    зурагддаггүй талбарууд (`Des_dugaar` · `Hamaaral` · `gun` · `hun_huch` · `mashin_mehanizm` ·
+ *    `geree_*` · `bodit_*` · `buglusun_ognoo` · хадгалсан L/M · Editor Tracking) ЗӨВХӨН УНШИХ баганаар.
+ *    Гэрээ: (а) `Schema.f` мөрийн түвшний ЯГ нэрийг олно, барилгын блокийн `F…_geree_*`-д ТААРАХГҮЙ;
+ *    (б) талбаргүй үйлчилгээнд багана гарахгүй; (в) утга `raw`-аас, null ≠ 0, хувь 0–1. */
+{
+  const { resolveSchema } = await import('./bagts.pkg.ts');
+  const { extraCols, extraVal, readExtraPref, writeExtraPref, extraPrefKey } = await import('./fill/extraCols.ts');
+  const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
+  const base = [F('ObjectID', 'esriFieldTypeOID'), F('GlobalID', 'esriFieldTypeGlobalID'), F('F_', 'esriFieldTypeString'),
+    F('Ажил', 'esriFieldTypeString'), F('Обьём'), F('Мөнгөн_дүн')];
+  const blokgui6 = [...base, F('des_dugaar', 'esriFieldTypeInteger'), F('hamaaral', 'esriFieldTypeString'),
+    F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
+    F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'), F('bodit_ehleh', 'esriFieldTypeDate'),
+    F('bodit_duusah', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'), F('Ажил_гүйцэтгэл'),
+    F('Төлөвлөгөөт_гүйцэтгэл1'), F('CreationDate', 'esriFieldTypeDate'), F('Creator', 'esriFieldTypeString'),
+    F('EditDate', 'esriFieldTypeDate'), F('Editor', 'esriFieldTypeString')];
+  const sc = resolveSchema(blokgui6, { fill: true });
+  assert.equal(sc.f.rowAct, 'Ажил_гүйцэтгэл');
+  assert.equal(sc.f.rowPlan1, 'Төлөвлөгөөт_гүйцэтгэл1');
+  assert.deepEqual([sc.f.rowGS, sc.f.rowGE, sc.f.rowAS, sc.f.rowAE], ['geree_ehleh', 'geree_duusah', 'bodit_ehleh', 'bodit_duusah']);
+  assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['CreationDate', 'Creator', 'EditDate', 'Editor']);
+  const cols = extraCols(sc);
+  assert.deepEqual(cols.map((c) => c.field), ['des_dugaar', 'hamaaral', 'gun', 'hun_huch', 'mashin_mehanizm', 'geree_ehleh',
+    'geree_duusah', 'bodit_ehleh', 'bodit_duusah', 'buglusun_ognoo', 'Ажил_гүйцэтгэл', 'Төлөвлөгөөт_гүйцэтгэл1',
+    'CreationDate', 'Creator', 'EditDate', 'Editor'], 'заасан дараалал, ObjectID/GlobalID-гүй');
+  assert.ok(cols.every((c) => typeof c.label() === 'string' && c.label().length > 0), 'шошго бүр tr()-ээр');
+
+  /* (а)(б) барилгын: блокийн нэр ТААРАХГҮЙ, мөрийн түвшний талбаргүй бол багана алга */
+  const bld = resolveSchema([...base, F('F5_1_гүйцэтгэл'), F('F5_1_obyem'), F('F5_1_geree_ehleh', 'esriFieldTypeDate'),
+    F('F5_1_bodit_ehleh', 'esriFieldTypeDate'), F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate')], { fill: true });
+  assert.deepEqual([bld.f.rowAct, bld.f.rowGS, bld.f.rowAS, bld.f.created], [null, null, null, null], 'блокийн F…_* мөрийн түвшинд ТААРАХГҮЙ');
+  assert.deepEqual(extraCols(bld), [], 'талбаргүй үйлчилгээ — «Бусад талбар» хоосон (товч ч гарахгүй)');
+  assert.deepEqual(extraCols(null), []);
+
+  /* (в) утга — `raw`-аас, null ≠ 0 */
+  const col = (k) => cols.find((c) => c.key === k);
+  const r = (raw) => ({ raw });
+  assert.deepEqual(extraVal(col('hun'), r({ hun_huch: 0 })), { text: '0' }, 'хэмжсэн тэг «0»');
+  assert.deepEqual(extraVal(col('hun'), r({ hun_huch: null })), { text: '' }, 'null хоосон (0 БИШ)');
+  assert.deepEqual(extraVal(col('hun'), r({})), { text: '' }, 'талбар ирээгүй — хоосон');
+  assert.equal(extraVal(col('des'), r({ des_dugaar: '1,234' })).text, '1234', 'мөрөн тоо (numLoose)');
+  assert.equal(extraVal(col('L'), r({ 'Ажил_гүйцэтгэл': 0.253 })).text, '25.3%', 'хадгалсан L 0–1 → %');
+  assert.equal(extraVal(col('M'), r({ 'Төлөвлөгөөт_гүйцэтгэл1': 1 })).text, '100%');
+  assert.equal(extraVal(col('M'), r({ 'Төлөвлөгөөт_гүйцэтгэл1': 0 })).text, '0%', 'хадгалсан 0 — «0%» (null биш)');
+  assert.equal(extraVal(col('L'), r({ 'Ажил_гүйцэтгэл': null })).text, '', 'L null — хоосон');
+  assert.equal(extraVal(col('gS'), r({ geree_ehleh: Date.UTC(2026, 2, 1) })).text, '2026-03-01');
+  assert.equal(extraVal(col('fill'), r({ buglusun_ognoo: Date.UTC(2026, 9, 7, 16) })).text, '2026-10-08', 'локал шөнө дунд (UTC+8) → тэр өдөр (normDayMs)');
+  assert.deepEqual(extraVal(col('ham'), r({ hamaaral: '  18FS3,22SS-5 ' })), { text: '18FS3,22SS-5', title: '18FS3,22SS-5' });
+  assert.equal(extraVal(col('edBy'), r({ Editor: 'tumenjargal.g' })).text, 'tumenjargal.g');
+  const st = extraVal(col('cre'), r({ CreationDate: Date.UTC(2026, 9, 8, 3, 7) }));
+  assert.match(st.text, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(st.title, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, 'бүтэн цаг tooltip-д');
+
+  /* Сонголт — localStorage алга/шидэх үед анхдагч АСААЛТТАЙ, унахгүй */
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('blocked'); } });
+  assert.equal(readExtraPref(extraPrefKey('a')), true, 'хаалттай localStorage — анхдагч true');
+  writeExtraPref(extraPrefKey('a'), false); // шидэхгүй
+  const m = new Map();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) } });
+  writeExtraPref(extraPrefKey('a'), false);
+  assert.equal(readExtraPref(extraPrefKey('a')), false, 'хэрэглэгч А нуусан');
+  assert.equal(readExtraPref(extraPrefKey('b')), true, 'хэрэглэгч Б — өөрийн (анхдагч) сонголт');
+  if (had) Object.defineProperty(globalThis, 'localStorage', had); else delete globalThis.localStorage;
+}
+console.log('✅ «Бусад талбар» — мөрийн түвшний бүх талбар · блокийн нэр таарахгүй · null ≠ 0 · хувь 0–1 · сонголт хэрэглэгч тус бүрд');
+
 console.log('\nblokgui.check: ok — блокгүй багц ажиллана, блоктой нь хөндөгдөөгүй');

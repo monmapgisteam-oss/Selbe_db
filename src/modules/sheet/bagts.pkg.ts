@@ -307,6 +307,27 @@ export type Schema = {
      */
     hunHuch: string | null;
     mashin: string | null;
+    /**
+     * ⚠️ 2026-10-09 (хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга»): «БУСАД
+     *    ТАЛБАР» — бөглөх хүснэгтэд ЗӨВХӨН ХАРАГДАХ мөрийн түвшний талбарууд (`fill/extraCols.ts`).
+     *    Ямар ч тооцоо/бичих замд ОРОХГҮЙ — утга нь `SheetRow.raw`-аас (`loadRows` нь `*` татдаг).
+     *    Талбар тухайн үйлчилгээнд байхгүй бол `null` → багана зурагдахгүй.
+     * ⚠️ Заавал биш (`?`) — шалгуурын гар бүдүүвчүүд (`sheetFrame.check` г.м.) хэвээр хүчинтэй.
+     * ⚠️ Мөрийн ТҮВШНИЙ нэр л: барилгын блокийн `F<цуваа>_<блок>_geree_ehleh` г.м. ЭНД ОРОХГҮЙ
+     *    (тэдгээр нь «Хуваарь»-д). Блокгүй багцад эдгээр нь синтетик блокийн баганатай ИЖИЛ нэр —
+     *    энд хадгалсан ТҮҮХИЙ утгыг (бодогдсоныг биш) харуулна.
+     */
+    rowAct?: string | null;
+    rowPlan1?: string | null;
+    rowGS?: string | null;
+    rowGE?: string | null;
+    rowAS?: string | null;
+    rowAE?: string | null;
+    /** Editor Tracking-ийн 4 талбар (сервер оноодог — архивын хуулбарт дамжихгүй, `SERVER_FIELDS`) */
+    created?: string | null;
+    creator?: string | null;
+    edited?: string | null;
+    editor?: string | null;
     oid: string;
   };
 };
@@ -611,6 +632,18 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
     /* Хүн хүч · машин механизм (2026-09-23) — латин, шууд нэрээр. */
     hunHuch: names.find((n) => /^hun_huch$/i.test(n)) ?? null,
     mashin: names.find((n) => /^mashin_mehanizm$/i.test(n)) ?? null,
+    /* ⚠️ 2026-10-09: «Бусад талбар» — ЯГ нэрээр (`Schema.f.rowAct`-ийн ⚠️). Барилгын багцад
+       мөрийн түвшний ийм нэр байхгүй бол `null` (блокийн `F…_гүйцэтгэл` г.м. ТААРАХГҮЙ). */
+    rowAct: exactCI('Ажил_гүйцэтгэл'),
+    rowPlan1: exactCI('Төлөвлөгөөт_гүйцэтгэл1'),
+    rowGS: exactCI('geree_ehleh'),
+    rowGE: exactCI('geree_duusah'),
+    rowAS: exactCI('bodit_ehleh'),
+    rowAE: exactCI('bodit_duusah'),
+    created: exactCI('CreationDate'),
+    creator: exactCI('Creator'),
+    edited: exactCI('EditDate'),
+    editor: exactCI('Editor'),
     oid: names.find((n) => /^objectid$/i.test(n)) ?? "ObjectID",
   };
 

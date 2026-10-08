@@ -24,7 +24,7 @@ type RowsT = ReturnType<typeof useRowFilter> & ReturnType<typeof usePkgPct>;
 export function FilterBar({
   locked, busy, noPerf, fillMode, toggleFill, pkg, setPkg, confirmSwitch, groupOpts, floorOpts,
   asOf, setAsOf, dateOpts, grpA, setGrpA, grpAOpts, grpBEff, setGrpB, grpBOpts, byPlan, setByPlan,
-  today, planCount, resized, resetAll,
+  today, planCount, resized, resetAll, extraN = 0, showExtra = true, toggleExtra,
 }: {
   locked: boolean; busy: boolean; noPerf: boolean;
   fillMode: "obyem" | "pct"; toggleFill: () => void;
@@ -36,6 +36,8 @@ export function FilterBar({
   byPlan: boolean; setByPlan: Dispatch<SetStateAction<boolean>>;
   today: string; planCount: RowsT['planCount'];
   resized: boolean; resetAll: () => void;
+  /** ⚠️ 2026-10-09: «Бусад талбар» — энэ үйлчилгээнд байгаа баганын тоо · харагдах эсэх · солих (`extraCols.ts`) */
+  extraN?: number; showExtra?: boolean; toggleExtra?: () => void;
 }) {
   return (
     <>
@@ -183,6 +185,22 @@ export function FilterBar({
             {planCount.on.toLocaleString()} / {planCount.all.toLocaleString()}
           </span>
         </button>
+
+        {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» нуух/харуулах — барилгын өргөн хүснэгтэд (60+ багана) төгсгөлийн
+            зөвхөн унших бүлгийг хураана. Хяналтын горимд (`locked`) ч ажиллана — зөвхөн харагдац.
+            Энэ үйлчилгээнд нэг ч ийм талбар байхгүй бол товч гарахгүй. */}
+        {extraN > 0 && toggleExtra && (
+          <button
+            type="button"
+            className={cls(showExtra ? "layerBtn layerBtnOn" : "layerBtn")}
+            aria-pressed={showExtra}
+            onClick={toggleExtra}
+            title={tr('Хүснэгтийн төгсгөлд үйлчилгээний бусад талбарыг (дэс дугаар, хамаарал, нөөц, огноо, засварласан хүн…) зөвхөн унших баганаар харуулна/нууна.')}
+          >
+            {tr('Бусад талбар')}{" "}
+            <span className={st.layerBtnN}>{extraN}</span>
+          </button>
+        )}
 
         {resized && (
           <button
