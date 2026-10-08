@@ -615,6 +615,19 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const [pick, setPick] = useState<PickState | null>(null);
 
   const { notice, setNotice, show, say, done, warn, ro } = useNotice();
+  /**
+   * ⚠️ 2026-10-09: САЛАА МЭДЭГДЭЛ (`useDraftSync`-ийн `soft`) — «Ноорог сэргээв…» ба «Хамтын ноорог
+   *    шинэчлэгдлээ». Урьд нь `say` («Энэ нүд засагдахгүй.» гарчигтай, ХУДАЛ) татах мөчлөг бүрд дуудагдаж
+   *    ЧУХАЛ (шар/амжилтын) мэдэгдлийг 3–6 сек тутам дардаг байв. Одоо төвийг сахисан (✓) төрлөөр, харагдаж
+   *    буй `warn`/`ok` мэдэгдлийг ДАРАХГҮЙ (`ro` — товшилтын түр тайлбарыг л солино).
+   */
+  const noticeRef = useRef(notice);
+  useSyncRef(noticeRef, notice);
+  const soft = useCallback((msg: string) => {
+    const n = noticeRef.current;
+    if (n && n.kind !== 'ro') return;
+    show('ok', msg);
+  }, [show]);
 
 /*
    * Тайлангийн огнооны жагсаалт — нэг л удаа. Алдаа гарвал чимээгүй өнгөрнө:
@@ -1361,6 +1374,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const {
     pvPend, pvSub, pvPreview, pvBusy, pvErr, pvNote,
     pvCells, sendObyem, decideObyemHere, withdrawObyemHere, pvReturned,
+    /* ⚠️ 2026-10-09: гацсан (хэсэгчлэн бичигдсэн) илгээлт — тэмдэг · буцаах; батлагдсан илгээлтийн алгассан нүд */
+    partial: pvPartial, returnStuck: pvReturnStuck, note: pvApprovedNote,
   } = useObyem({ st: obyemSt, pkg, pkgKeyRef, rows, sc, user, locked, todayFillMs, setRows });
 
   /**
@@ -1402,6 +1417,44 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     () => (curTgtOid ? [curTgtOid, curTgtMs] : null),
     [curTgtOid, curTgtMs],
   );
+  /**
+   * ⚠️ 2026-10-09: НҮДНИЙ DOM ЭЛЕМЕНТҮҮД (`${oid}:${блок}` → `td`) — ЗӨВХӨН одоо зурагдсан мөрүүд (виртуал
+   *    цонх). Огнооны түлхүүр (`:s|e`) тооцохгүй. `useDraftSync`-ийн «харагдаж буй нүд өөрчлөгдсөн»
+   *    мэдэгдэл ба «өөр хүн өөрчилсөн өөрийн нүд»-ийн богино тодруулгад.
+   */
+  const cellTds = useCallback((keys: string[]): [string, HTMLElement][] => {
+    const tb = tbodyRef.current;
+    if (!tb || !keys.length) return [];
+    const idx = new Map(rows.map((r, i) => [r.oid, i] as const));
+    const out: [string, HTMLElement][] = [];
+    for (const k of keys) {
+      const c = k.indexOf(':');
+      const b = k.slice(c + 1);
+      const i = idx.get(Number(k.slice(0, c)));
+      if (c < 0 || i == null || !/^\d+$/.test(b)) continue;
+      const td = tb.querySelector<HTMLElement>(`tr[data-r="${i}"] td[data-bi="${b}"]`);
+      if (td) out.push([k, td]);
+    }
+    return out;
+  }, [rows, tbodyRef]);
+  const visibleKeys = useCallback((keys: string[]) => cellTds(keys).map(([k]) => k), [cellTds]);
+  /* ⚠️ Анивчилт (`chgHit`, 1.8 сек) — React className-ийг дараагийн өөрчлөлтөөр солих тул класс ТҮР л үлдэнэ */
+  const flashCells = useCallback((keys: string[]) => {
+    const hit = st.chgHit;
+    if (!hit) return;
+    for (const [, td] of cellTds(keys)) {
+      td.classList.remove(hit);
+      void td.offsetWidth;
+      td.classList.add(hit);
+      window.setTimeout(() => td.classList.remove(hit), 1800);
+    }
+  }, [cellTds]);
+  /**
+   * ⚠️ 2026-10-09: ӨӨР ХҮН ИЛГЭЭСЭН (шинэ баримт) — `refreshStaged` (доор, `publish`-ийн өмнө) REF-ээр дуудагдана:
+   *    тэр нь `useDraftSync`-ээс ХОЙШ зарлагдах төлөв/функцээс хамаарна.
+   */
+  const refreshStagedRef = useRef<(at: number) => void>(() => {});
+  const onReceipts = useCallback((at: number) => refreshStagedRef.current(at), []);
   /* ══════════ НООРОГИЙН СИНК (`fill/useDraftSync`) — эффектүүд нь энд, өмнөх байрлалдаа ══════════ */
   const draftSync = useDraftSync({
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
@@ -1410,6 +1463,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     editOpen: !!edit,
     curTgt,
     show, say,
+    /* ⚠️ 2026-10-09: хоёр хүн зэрэг бөглөх — салаа мэдэгдэл · шинэ баримт · тодруулга · харагдаж буй нүд */
+    soft, onReceipts, flashCells, visibleKeys,
   });
   /* ⚠️ 2026-10-01: ачаалах эффектийн толь (`draftSyncRef`-ийн ⚠️) */
   useSyncRef(draftSyncRef, draftSync);
@@ -1428,6 +1483,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     heldN, dropHeld, clearMyTgt,
     /* 2026-10-05 — илгээлтийн баримтыг шууд бичих */
     pushReceipts,
+    /* 2026-10-09 — «Илгээх»-ийн өмнөх алсын ноорогийн шалгалт */
+    pullNow,
   } = draftSync;
   /**
    * НООРОГИЙН ЗОРИЛТ ОДООГИЙНХООС ӨӨР (2026-10-04 аудит, #6) — ноорог нь буцаагдсан илгээлтийн
@@ -1641,6 +1698,87 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   }, [busy, todayFillMs, view]);
 
   /**
+   * ӨӨР ХЭРЭГЛЭГЧ ИЛГЭЭСНИЙ ДАРАА ИЛГЭЭЛТ/ДАВХАРЛАЛТЫГ ДАХИН УНШИНА (⚠️ 2026-10-09) — `useDraftSync`-ийн
+   * татах мөчлөг ШИНЭ илгээлтийн баримт нийлүүлмэгц (`onReceipts`).
+   * ⚠️ ЯАГААД: А илгээхэд Б-гийн татах мөчлөг А-гийн баримтыг нийлүүлж Б-гийн `pending`-ээс тэр нүднүүдийг
+   *    ЧИМЭЭГҮЙ хасдаг байв, харин Б-гийн `staged`/мөрүүд (ачаалах эффект — `[pkg, view, todayFillMs]`)
+   *    хэзээ ч дахин уншигддаггүй тул тоо нь ХУУЧИН нийт рүү «үсэрч» мэдэгдэлгүй; Б дахин бичвэл ДАВХАР
+   *    тоологдоно, «Илгээх» нь «өөр хэрэглэгч илгээсэн — F5» алдаагаар гацна. Одоо `publish`-ийн илгээсний
+   *    дараах дахин ачаалалттай ИЖИЛ дүрмээр (өнөөдрийн түлхүүр · `useSub` нөхцөл · `ensureFrameOcc`) суурь
+   *    жааз + илгээлтийг дахин давхарлаж «{0} илгээв — таны дэлгэц шинэчлэгдлээ» гэж хэлнэ (нэр — илгээлтийн
+   *    `payload.user`: баримт өөрөө зохиогчгүй).
+   * ⚠️ ХӨНДӨХГҮЙ тохиолдол: (а) буцаагдсан ӨӨР ӨДРИЙН илгээлтийг засаж буй (`staged.fillMs ≠ өнөөдөр`) —
+   *    зорилтыг солихгүй, зөвхөн хэлнэ; (б) архивт ШИНЭ жааз (oid солигдсон) — ноорогийн түлхүүр хуучин
+   *    жаазных тул энд угсрахгүй, F5 хийхийг хэлнэ (`publish` жааз солигдохыг өөрөө зохицуулдаг).
+   * ⚠️ Давхар дуудлагыг нэгтгэнэ (`refreshRunRef`); багц солигдсон бол хариуг хаяна.
+   */
+  const refreshRunRef = useRef<{ on: boolean; again: number }>({ on: false, again: 0 });
+  const refreshStaged = useCallback(async (at: number) => {
+    if (view || !sc) return;
+    const run = refreshRunRef.current;
+    if (run.on) { run.again = Math.max(run.again, at); return; }
+    run.on = true;
+    const want = pkg.key;
+    const live = () => pkgKeyRef.current === want && loadedPkgRef.current === want;
+    /* Харагдаж буй ШАР анхааруулгыг (жиш. «Ноорог шинэчлэгдлээ — …») дарахгүй — нэгтгэнэ */
+    const tell = (kind: 'ok' | 'warn', msg: string) => {
+      const n = noticeRef.current;
+      if (n && n.kind === 'warn') show('warn', `${n.msg} · ${msg}`);
+      else show(kind, msg);
+    };
+    try {
+      const next = await loadRows(pkg, sc);
+      const ar = await readActiveSubmission(want, todayFillMs);
+      if (!live()) return;
+      setSubReadErr(ar.ok ? null : ar.error);
+      if (!ar.ok) return;
+      reloadHy();
+      const who = ar.sub?.payload.user?.trim() || tr('Өөр хэрэглэгч');
+      if (staged && !staged.done && staged.payload.fillMs !== todayFillMs) {
+        tell('ok', tr('{0} илгээв — таны дэлгэц шинэчлэгдлээ', who));
+        return;
+      }
+      const r0 = rows.find((r) => r.oid >= 0);
+      const n0 = next.rows.find((r) => r.oid >= 0);
+      if (r0 && n0 && r0.oid !== n0.oid) {
+        tell('warn', tr('{0} илгээв — хүснэгт шинэчлэгдсэн тул хуудсыг дахин ачаална уу (F5).', who));
+        return;
+      }
+      const f = flowRef.current;
+      let act = ar.sub && !ar.sub.done && ar.sub.payload.pkgKey === want
+        && (!f || f[HF.status] !== STATUS.transferred || ar.sub.payload.residual === true) ? ar.sub : null;
+      if (act) {
+        const p2 = await ensureFrameOcc(pkg, sc, act.payload, next.rows);
+        if (!live()) return;
+        if (p2 !== act.payload) act = { ...act, payload: p2 };
+      }
+      const ov = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
+      setUnmovedWarn(ov && ov.unmoved > 0 && act ? describeUnmoved(ov.unmovedKeys, act.payload.rowKeys, sc.bld) : []);
+      /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
+      setStaged(act);
+      setRows(ov ? ov.rows : next.rows);
+      setOvBase(ov ? new Map(next.rows.map((x) => [x.oid, x] as const)) : new Map());
+      const asOfNext = ov?.asOf ?? next.asOf;
+      /* ⚠️ `null ≠ 0`; хэрэглэгч «Шинэчлэгдсэн огноо»-г өөрөө өөрчилсөн бол (`asOf ≠ asOfOrig`) ДАРАХГҮЙ */
+      if (asOf === asOfOrig) setAsOf(asOfNext);
+      setAsOfOrig(asOfNext);
+      setSnapDay(next.snapshot != null ? msToDay(next.snapshot) : "");
+      setSnapMs(next.snapshot ?? null);
+      tell('ok', tr('{0} илгээв — таны дэлгэц шинэчлэгдлээ', who));
+    } catch (e) {
+      if (live()) setSubReadErr(userError(e));
+    } finally {
+      run.on = false;
+      if (run.again) {
+        const a = run.again;
+        run.again = 0;
+        refreshStagedRef.current(a);
+      }
+    }
+  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef]);
+  useSyncRef(refreshStagedRef, (a: number) => { void refreshStaged(a); });
+
+  /**
    * «НИЙТЛЭХ» = ИЛГЭЭХ (2026-09-04-нөөс).
    *
    * ⚠️ ЭНЭ ФУНКЦ ҮНДСЭН ӨГӨГДӨЛ РҮҮ БИЧИХГҮЙ. Урьд нь энд `computeAll`-оор
@@ -1781,6 +1919,18 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setBusy(true);
     setErr("");
     try {
+      /*
+       * ⚠️ 2026-10-09: ХУВААЛЦСАН НООРОГИЙГ ДАХИН УНШИНА (`useDraftSync.pullNow`-ийн ⚠️). Урьд нь `publish`
+       *    алсын ноорогийг огт уншдаггүй тул татах мөчлөг алгассан (нуугдсан/хуучирсан) таб А аль хэдийн
+       *    илгээсэн нүд, Б-гийн хожуу засвар эсвэл «Дахин засах»-ыг мэдэлгүй ИЛГЭЭЖ болзошгүй байв. Алсын
+       *    хувилбар өөр бөгөөд нийлүүлэлт ЮУ НЭГ зүйл өөрчилсөн бол дэлгэц шинэчлэгдэж ЗОГСОНО — хэрэглэгч
+       *    шалгаад дахин дарна. Уншиж чадаагүй (`'fail'`) бол доорх CAS (`act.at > staged.at` · `expectAt`)
+       *    хамгаалсаар үргэлжилнэ.
+       */
+      if ((await pullNow(pkg.key)) === 'changed') {
+        warn(tr('Ноорог шинэчлэгдлээ — шалгаад дахин илгээнэ үү'));
+        return;
+      }
       /* ── СУУРЬ ЖААЗ ─────────────────────────────────────────────────────
        * ⚠️ `rows` нь хуудсыг НЭЭХ үеийн хуулбар тул илгээхийн өмнө архивын
        *    СҮҮЛИЙН жаазыг дахин татна. Ингэснээр хооронд нь батлагдсан
@@ -2379,7 +2529,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     }
   }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, todayFillMs, canSubmitNow, waitingOn, say, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
-    stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts]);
+    stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
+    /* 2026-10-09 */
+    pullNow]);
 
   /**
    * БУЦААГДСАН ИЛГЭЭЛТИЙГ ӨӨРЧЛӨЛТГҮЙ ДАХИН ИЛГЭЭХ (2026-10-04).
@@ -2596,6 +2748,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           canObyemEdit={canObyemEdit} pvSub={pvSub} pvCells={pvCells} sendObyem={sendObyem} pvBusy={pvBusy}
           canObyemApprove={canObyemApprove} locked={locked} decideObyemHere={decideObyemHere} pvErr={pvErr} pvNote={pvNote}
           pvReturned={pvReturned} withdrawObyemHere={withdrawObyemHere} me={user?.username ?? ''}
+          partial={pvPartial} returnStuck={pvReturnStuck} note={pvApprovedNote}
         />
         {/* ⚠️ «Нэмэлт ажил батлуулах»/буцаагдсан/хүлээгдэж буй/«Илгээлтээ татах»
             баннерууд ЭНД БАЙХГҮЙ (2026-09-24) — нэмэлт ажлын урсгал «Хуваарь»-д. */}

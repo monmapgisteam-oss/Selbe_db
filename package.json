@@ -2,12 +2,15 @@
   "name": "selbe",
   "version": "2.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <23"
+  },
   "description": "Сэлбэ — Орон зайн хяналтын систем (GIS × IoT дашбоард)",
   "scripts": {
     "dev": "next dev -p 8123",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint src",
+    "lint": "eslint src tools",
     "typecheck": "tsc --noEmit",
     "test": "node tools/test-all.mjs",
     "test:obyem": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/obyem.check.mjs",
@@ -24,7 +27,7 @@
     "test:ui": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/smoke.ui.check.mjs",
     "iot:watch": "node --env-file-if-exists=.env.local --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-watch.mjs",
     "iot:verify": "node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs tools/iot-verify2.mjs",
-    "test:live": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/filters.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgress.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/transport.check.mjs && npm run test:agent && npm run test:drift",
+    "test:live": "node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/filters.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgress.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/monitor.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/transport.check.mjs && node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/butetsInfra.check.mjs && npm run test:agent && npm run test:drift",
     "test:all": "node tools/test-all.mjs --live",
     "docs:build": "node tools/sysdocs-build.mjs"
   },

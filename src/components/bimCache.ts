@@ -13,16 +13,24 @@
  * ⚠️ React/ArcGIS-ийн импортгүй — үүсгэгчийг дуудагч өгнө (SceneView-ийн модуль lazy).
  */
 
-export type Destroyable = { destroyed: boolean; destroy: () => void };
+export type Destroyable = { destroyed: boolean; destroy: () => void; loadStatus?: string };
 
 const cache = new WeakMap<object, Record<string, Destroyable>>();
 
-/** `map`-ийн `key` давхаргыг кэшээс буцаана; байхгүй/устсан бол `make()`-ээр үүсгэж хадгална */
+/** `map`-ийн `key` давхаргыг кэшээс буцаана; байхгүй/устсан/ачаалал УНАСАН бол `make()`-ээр үүсгэж хадгална */
 export function bimLayerFor<L extends Destroyable>(map: object, key: string, make: () => L): L {
   let rec = cache.get(map);
   if (!rec) { rec = {}; cache.set(map, rec); }
   const hit = rec[key];
-  if (hit && !hit.destroyed) return hit as L;
+  /* ⚠️ 2026-10-09: ачаалал УНАСАН (`loadStatus === 'failed'`) инстанцыг кэшийн ОНОО гэж үзэхгүй.
+     ArcGIS-ийн давхарга нэг удаа унавал `load()` нь ҮРГЭЛЖ татгалзана (дахин оролдохгүй) тул
+     сүлжээний түр тасалдал тэр барилгыг СЕШН ДУУСТАЛ нуудаг байв (`manageBim` Map-аас хасна).
+     Хуучныг Map-аас хасаж устгаад шинээр үүсгэнэ — дараагийн `bimAll` дуудалт (эффект) дахин оролдоно. */
+  if (hit && !hit.destroyed && hit.loadStatus !== 'failed') return hit as L;
+  if (hit && !hit.destroyed) {
+    (map as { remove?: (l: unknown) => void }).remove?.(hit);
+    hit.destroy();
+  }
   const l = make();
   rec[key] = l;
   return l;

@@ -12,17 +12,26 @@
  *    сольж болно — олон үзлэгийг ч НЭГ PDF-д (тайлан бүр шинэ хуудаснаас) гаргана.
  * ⚠️ PDF-д зураг ОРНО тул олон үзлэгийн PDF удаан (зураг бүр татагдана) — анхааруулна.
  * ⚠️ Өгөгдөл нь ХАБЭА хуудастай НЭГ ачаалагчаас (`loadUzlegBoth`) — кэш хуваалцана.
+ * ⚠️ 2026-10-09: «Цуцлах» — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
+ *    fetch) цонхыг МӨНХӨД хаагдахгүй үлдээдэг байв. Одоо хавсралт бүр 30с (`ATT_TIMEOUT_MS`),
+ *    «Цуцлах» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
+ * ⚠️ 2026-10-09: «Зураггүй» сонголт ба `UZ_IMG_WARN`-ээс олон зурагт баталгаажуулалт —
+ *    мянга мянган зураг хөтчийн санах ойг дүүргэдэг.
+ * ⚠️ 2026-10-09: фокусын урхи (`useFocusTrap`) — нээхэд фокус цонхонд, хаахад буцна.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { useFocusTrap } from '@/lib/useFocusTrap';
+import { ubDayKey } from '@/lib/ceo/workforce';
 import { HABEA, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID } from '@/lib/services';
 import { num } from '@/lib/format';
 import { friendlyError } from '@/components/ui';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import {
   loadUzFields, loadUzAttachments, loadUzLocations, attUrl, buildUzReport, loadReportImages,
-  buildUzPdf, buildUzXlsx, companyShort, fmtDate, reportTitle, type UzReport,
+  buildUzPdf, buildUzXlsx, companyShort, countReportImages, fmtDate, reportTitle, UZ_IMG_WARN,
+  type UzImg, type UzReport,
 } from '@/lib/uzlegReport';
 import { loadUzlegBoth, type UzlegKind, type UzlegRow } from './habeaUzleg';
 import type { Row } from '@/lib/query';
@@ -37,10 +46,15 @@ const FORM_SHORT: Record<UzlegKind, string> = {
 };
 const PDF_MANY_WARN = 15;
 
-const dayStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-/** «YYYY-MM-DD» → орон нутгийн өдрийн эхлэл/төгсгөл (ms) */
-const dayStart = (v: string) => new Date(`${v}T00:00:00`).getTime();
-const dayEnd = (v: string) => new Date(`${v}T23:59:59.999`).getTime();
+/**
+ * ⚠️ 2026-10-09: ӨДРИЙН ХИЛ УЛААНБААТАРЫН цагаар (UTC+8, `ubDayKey`) — урьд нь хөтчийн
+ *    локал цагаар тул өөр бүсээс татахад өдрийн хил гулсаж, хуудасны өдрийн цуваанд
+ *    (`ubDayKey`) байгаа үзлэг тайланд орохгүй/өөр өдөрт орж болдог байв.
+ */
+const dayStr = (d: Date | number) => ubDayKey(typeof d === 'number' ? d : d.getTime());
+/** «YYYY-MM-DD» → Улаанбаатарын өдрийн эхлэл/төгсгөл (ms) */
+const dayStart = (v: string) => Date.parse(`${v}T00:00:00+08:00`);
+const dayEnd = (v: string) => Date.parse(`${v}T23:59:59.999+08:00`);
 
 /** Хугацааны бэлэн сонголт — эхлэх огноог өнөөдрөөс тооцно */
 /* ⚠️ 2026-10-06: «Нэг өдөр» — хэрэглэгчийн хүсэлт («нэг өдрийн дата зааж татах»).
@@ -50,7 +64,7 @@ const presetFrom = (p: Preset, today: Date): string => {
   if (p === 'day') return dayStr(today);
   if (p === 'w') return dayStr(new Date(today.getTime() - 6 * 86400000));
   if (p === 'm30') return dayStr(new Date(today.getTime() - 29 * 86400000));
-  if (p === 'month') return dayStr(new Date(today.getFullYear(), today.getMonth(), 1));
+  if (p === 'month') return `${dayStr(today).slice(0, 8)}01`;
   return '2020-01-01';
 };
 const presetLabel = (p: Preset) => (p === 'day' ? tr('Өдрөөр') : p === 'w' ? tr('7 хоног') : p === 'm30' ? tr('30 хоног') : p === 'month' ? tr('Энэ сар') : tr('Бүгд'));
@@ -95,6 +109,14 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   const [done, setDone] = useState('');
   /** ⚠️ 2026-10-09: татагдаагүй зургийн анхааруулга — файл үүссэн ч ИЛ (чимээгүй хаягддаг байв) */
   const [warn, setWarn] = useState('');
+  /** ⚠️ 2026-10-09: «Зураггүй» — зураг татахгүй (хурдан, санах ой бага) */
+  const [noPhotos, setNoPhotos] = useState(false);
+  /** Явж буй татлагын цуцлагч — «Цуцлах», Escape, цонх хаагдахад */
+  const ctlRef = useRef<AbortController | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(boxRef, true);
+  /* Цонх хаагдахад (unmount) явж буй татлагыг зогсооно — хаагдсан цонхонд setState хийхгүй */
+  useEffect(() => () => { ctlRef.current?.abort(); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -104,8 +126,24 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
     return () => { alive = false; };
   }, [kind]);
 
+  /** ⚠️ 2026-10-09: татлагыг цуцална — дараа нь цонх хаагдаж болно */
+  const cancel = () => {
+    ctlRef.current?.abort();
+    ctlRef.current = null;
+    setBusy(''); setProg(null); setErr(''); setWarn('');
+    setDone(tr('Татах цуцлагдлаа'));
+  };
+
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    /* ⚠️ 2026-10-09: татаж байхад Escape = «Цуцлах» (урьд нь юу ч хийдэггүй — гацахад гарцгүй) */
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (!busy) { onClose(); return; }
+      ctlRef.current?.abort();
+      ctlRef.current = null;
+      setBusy(''); setProg(null); setErr(''); setWarn('');
+      setDone(tr('Татах цуцлагдлаа'));
+    };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [busy, onClose]);
@@ -157,17 +195,24 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
 
   const run = async () => {
     if (!ready || !chosen.length) return;
+    ctlRef.current?.abort();
+    const ctl = new AbortController();
+    ctlRef.current = ctl;
+    /* ⚠️ Цуцлагдсан/хаагдсан бол дараагийн await-ийн дараа ЮУ Ч хийхгүй (setState, татах) */
+    const live = () => !ctl.signal.aborted;
     setErr(''); setDone(''); setWarn(''); setProg(null);
     try {
       const url = HABEA.uzleg[kind].url;
       const form = HABEA.uzleg[kind].title;
       setBusy(tr('Маягтын бүтцийг уншиж байна…'));
       const fields = await loadUzFields(url);
+      if (!live()) return;
       const oids = chosen.map((i) => ready.rows[i].oid);
       /* ⚠️ Excel ч ЗУРАГТАЙ (жишээ файлын «ObjectID N» хуудсанд нүдэнд шигтгэсэн) тул хавсралт,
          байршлыг хоёр форматад хоёуланд нь татна. */
       setBusy(tr('Хавсралтын жагсаалтыг уншиж байна…'));
       const [atts, locs] = await Promise.all([loadUzAttachments(url, oids), loadUzLocations(url, oids)]);
+      if (!live()) return;
       const reports: UzReport[] = chosen.map((i) => {
         const r = ready.rows[i];
         return buildUzReport(form, fields, ready.raw[i], r.oid, atts.get(r.oid) ?? [], (id) => attUrl(url, r.oid, id), {
@@ -181,13 +226,30 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       const days = [...new Set(reports.map((r) => (r.date > 0 ? fmtDate(r.date) : '')).filter(Boolean))].sort();
       const span = days.length <= 1 ? (days[0] ?? from) : `${days[0]}–${days[days.length - 1]}`;
       const xlsBase = one ? reportTitle(one) : `${coSet.length === 1 ? coSet[0] : 'Олон компани'} - ${FORM_SHORT[kind]} ${span}`;
+      /* ⚠️ 2026-10-09: `companyShort` «—»-г хоосон болгодог тул нөөц (багц → «Үзлэг») ажиллана */
       const base = one
-        ? `${one.date > 0 ? fmtDate(one.date) : 'огноогүй'} ${companyShort(one.company) || one.pkg}`
+        ? `${one.date > 0 ? fmtDate(one.date) : 'огноогүй'} ${companyShort(one.company) || companyShort(one.pkg) || 'Үзлэг'}`
         : xlsBase;
-      const { images: img, failed } = await loadReportImages(reports, (d, t) => {
-        setBusy(tr('Зураг татаж байна… {0}/{1}', num(d), num(t)));
-        setProg(t > 0 ? d / t : null);
-      });
+      /* ⚠️ 2026-10-09: олон зураг — санах ой/хугацааны анхааруулга, «Зураггүй»-г санал болгоно */
+      const nImg = noPhotos ? 0 : countReportImages(reports);
+      if (nImg > UZ_IMG_WARN
+        && !window.confirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)))) {
+        ctlRef.current = null;
+        setBusy(''); setProg(null);
+        return;
+      }
+      const { images: img, failed, heic } = noPhotos
+        ? { images: new Map<string, UzImg>(), failed: [] as string[], heic: [] as string[] }
+        : await loadReportImages(reports, {
+          mode: effFmt,
+          signal: ctl.signal,
+          onProgress: (d, t) => {
+            if (!live()) return;
+            setBusy(tr('Зураг татаж байна… {0}/{1}', num(d), num(t)));
+            setProg(t > 0 ? d / t : null);
+          },
+        });
+      if (!live()) return;
       setProg(null);
       let file: string;
       if (effFmt === 'pdf') {
@@ -195,19 +257,29 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
         let logo: string | null = null;
         try { const res = await fetch('/logo.svg'); if (res.ok) logo = await res.text(); } catch { logo = null; }
         const b64 = await renderPdfBase64(buildUzPdf(reports, img, logo));
+        if (!live()) return;
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         file = `${base}.pdf`;
         download(file, new Blob([bytes], { type: 'application/pdf' }));
       } else {
         setBusy(tr('Excel үүсгэж байна…'));
-        const bytes = buildUzXlsx(reports, img, new Set(failed));
+        /* HEIC ч Excel-ийн тоонд «татагдсангүй» гэж ил */
+        const bytes = buildUzXlsx(reports, img, new Set([...failed, ...heic]));
         file = `${xlsBase}.xlsx`;
         download(file, new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       }
+      ctlRef.current = null;
       setBusy(''); setProg(null);
       setDone(tr('Татагдлаа: {0}', file));
-      setWarn(failed.length ? tr('{0} зураг татагдсангүй', num(failed.length)) : '');
+      /* ⚠️ 2026-10-09: HEIC (формат) ба татагдаагүй (сүлжээ) ТУСДАА — шалтгаан нь өөр */
+      setWarn([
+        failed.length ? tr('{0} зураг татагдсангүй', num(failed.length)) : '',
+        heic.length ? tr('{0} зураг HEIC — хөрвүүлэх боломжгүй', num(heic.length)) : '',
+      ].filter(Boolean).join(' · '));
     } catch (e) {
+      /* Цуцлагдсан — `cancel`/unmount төлвийг аль хэдийн цэвэрлэсэн */
+      if (!live()) return;
+      ctlRef.current = null;
       setBusy(''); setProg(null);
       setErr(friendlyError(e));
     }
@@ -216,12 +288,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   const lock = !!busy;
   return (
     <div className={x.back} role="presentation" onClick={() => { if (!lock) onClose(); }}>
-      <div className={x.box} role="dialog" aria-modal="true" aria-labelledby="uz-exp-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={boxRef} className={x.box} role="dialog" aria-modal="true" aria-labelledby="uz-exp-title" onClick={(e) => e.stopPropagation()}>
         <header className={x.head}>
           <div>
             <h2 id="uz-exp-title" className={x.title}>{tr('Үзлэгийн тайлан татах')}</h2>
           </div>
-          <button type="button" className={x.close} onClick={onClose} aria-label={tr('Хаах')} disabled={lock}>
+          {/* ⚠️ 2026-10-09: татаж байхад ч хаана — unmount нь татлагыг цуцална */}
+          <button type="button" className={x.close} onClick={onClose} aria-label={tr('Хаах')}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>
         </header>
@@ -382,7 +455,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
               ))}
             </div>
           )}
-          {chosen.length > PDF_MANY_WARN && (
+          {ready && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={noPhotos} disabled={lock} onChange={(e) => setNoPhotos(e.target.checked)} />
+              {tr('Зураггүй')}
+            </label>
+          )}
+          {chosen.length > PDF_MANY_WARN && !noPhotos && (
             <p className={x.note}>{tr('{0} үзлэгийн зургийг татах тул файл удаан үүснэ.', num(chosen.length))}</p>
           )}
           {err && <p className={x.err} role="alert">{err}</p>}
@@ -395,7 +474,9 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
           {done && !busy && <p className={x.done} role="status">{done}</p>}
           {warn && !busy && <p className={x.err} role="alert">⚠ {warn}</p>}
           <div className={x.actions}>
-            <button type="button" className={x.btn} onClick={onClose} disabled={lock}>{tr('Болих')}</button>
+            {lock
+              ? <button type="button" className={x.btn} onClick={cancel}>{tr('Цуцлах')}</button>
+              : <button type="button" className={x.btn} onClick={onClose}>{tr('Болих')}</button>}
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void run(); }}
               disabled={lock || !ready || !chosen.length}>
               {effFmt === 'pdf' ? tr('PDF татах') : tr('Excel татах')}

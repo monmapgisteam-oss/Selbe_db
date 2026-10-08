@@ -455,10 +455,13 @@ export async function queryAll(): Promise<Attrs[]> {
     if (!j.exceededTransferLimit || got.length === 0) break;
     offset += got.length;
   }
-  /* ⚠️ 2026-10-09 (R6): сешнд НЭГ удаа — үлдсэн давхар дугаарыг цэвэрлэнэ (`sweepDupIds`) */
+  /* ⚠️ 2026-10-09 (R6): сешнд НЭГ удаа — үлдсэн давхар дугаарыг цэвэрлэнэ (`sweepDupIds`).
+     ⚠️ 2026-10-09: ЭНЭ АЧААЛАЛТ АМЖИЛТТАЙ ДУУССАНЫ ДАРАА л (энд хүрсэн = бүх хуудас ирсэн), `ensureUniqueId`-тэй
+     ЗЭРЭГ БИШ — хоёул `withIdLock`-ийн дараалалд (`sweepDupIds`-ийн ⚠️). Хуулбар дээр давхардал
+     олдвол л дараалалд орно (хэвийн үед хүсэлтгүй). */
   if (!dupSweepDone && typeof window !== 'undefined') {
     dupSweepDone = true;
-    void sweepDupIds(out);
+    if (dupIdPlan(idRowsOf(out)).size) void withIdLock(() => sweepDupIds());
   }
   return out;
 }
@@ -492,9 +495,25 @@ export function dupIdPlan(rows: readonly IdRow[]): Map<number, number> {
  *    уншилтыг унагахгүй; дараагийн сешн дахин оролдоно.
  */
 let dupSweepDone = false;
-async function sweepDupIds(all: readonly Attrs[]): Promise<void> {
+const idRowsOf = (all: readonly Attrs[]): IdRow[] => all.map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) }));
+
+/**
+ * ДУГААР ЗАСАХ ҮЙЛДЛҮҮДИЙН ДАРААЛАЛ (2026-10-09) — `sweepDupIds` ба `ensureUniqueId` ХЭЗЭЭ Ч зэрэг явахгүй.
+ * ⚠️ Урьд нь цэвэрлэгээ ачаалалтын ХУУЧИН хуулбараар (`out`) max+1-ээс дугаар онооход зэрэг явсан
+ *    `ensureUniqueId` мөн max+1-ийг авч, хоёр мөр ДАХИН ижил дугаартай болж болох байв. Сешн доторх
+ *    уралдааныг л хаана (өөр хөтчийнхийг `collidesBelow`-ийн тэнцүүлэгч зохицуулна).
+ */
+let idChain: Promise<unknown> = Promise.resolve();
+function withIdLock<T>(fn: () => Promise<T>): Promise<T> {
+  const p = idChain.then(fn, fn);
+  idChain = p.catch(() => undefined);
+  return p;
+}
+
+async function sweepDupIds(): Promise<void> {
   try {
-    const plan = dupIdPlan(all.map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) })));
+    /* ⚠️ 2026-10-09: дараалал дотор ШИНЭЭР уншина — хуулбар нь `ensureUniqueId`-ийн засварын өмнөх байж болно */
+    const plan = dupIdPlan(idRowsOf(await queryAll()));
     if (!plan.size) return;
     await updateRows([...plan].map(([oid, n]) => ({ [HYANALT.oid]: oid, [F.id]: `G-${String(n).padStart(6, '0')}` })));
   } catch (e) {
@@ -592,6 +611,10 @@ export const updateRows = (rows: Attrs[]) => edit('updates', rows);
 export async function ensureUniqueId(oid: number, id: string): Promise<string> {
   const n = idNum(id);
   if (!(oid > 0) || n == null) return id;
+  /* ⚠️ 2026-10-09: `sweepDupIds`-тэй зэрэг явахгүй (`withIdLock`-ийн ⚠️) */
+  return withIdLock(() => ensureUniqueIdLocked(oid, id, n));
+}
+async function ensureUniqueIdLocked(oid: number, id: string, n: number): Promise<string> {
   let cur = n;
   let out = id;
   try {

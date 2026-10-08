@@ -274,11 +274,19 @@ export function rankBim(view: SceneView, layers: { id: string | number; fullExte
   const wm = vsr == null || vsr.isWebMercator;
   const kx = geo ? 111_320 * Math.cos(lat) : (wm ? Math.cos(lat) : 1);
   const ky = geo ? 110_574 : (wm ? Math.cos(lat) : 1);
-  const toView = (c: __esri.Point): __esri.Point => {
+  /* ⚠️ 2026-10-09 (2): SR алга эсвэл буулгах боломжгүй бол `null` — түүхий координатаар (жиш.
+     градусыг метртэй) зай БОДОХГҮЙ: тэр зай утгагүй тул санамсаргүй барилга төсвийг эзэлдэг байв.
+     Дээрх «хуучин зан»-ыг сольсон ч «ХЭЗЭЭ Ч харагдахгүй» болгохгүй: тийм давхарга эрэмбийн ТӨГСГӨЛД
+     (`d = Infinity`, дэлгэцэнд биш) орж, төсөвт сул зай үлдвэл (эсвэл дэлгэцэнд нэг ч барилга
+     байхгүй үед) Map-д орно; «Нарийн»-д үргэлж харагдана. Харагдацын SR алга (`vsr == null`) бол
+     бүх цэг нэг SR-д гэж үзэж хэвээр жишнэ. */
+  const toView = (c: __esri.Point): __esri.Point | null => {
     const sr = c.spatialReference;
-    if (!sr || !vsr || sr.equals(vsr)) return c;
-    if (webMercatorUtils.canProject(sr, vsr)) return (webMercatorUtils.project(c, vsr) as __esri.Point | null) ?? c;
-    return c;
+    if (!vsr) return c;
+    if (!sr) return null;
+    if (sr.equals(vsr)) return c;
+    if (webMercatorUtils.canProject(sr, vsr)) return (webMercatorUtils.project(c, vsr) as __esri.Point | null) ?? null;
+    return null;
   };
   const w = view.width || 0;
   const h = view.height || 0;
@@ -292,6 +300,7 @@ export function rankBim(view: SceneView, layers: { id: string | number; fullExte
     const c0 = l.fullExtent?.center;
     if (!c0) continue;
     const c = toView(c0);
+    if (!c) { all.push({ id: String(l.id), d: Infinity, inView: false }); continue; }
     const dx = (c.x - p.x) * kx;
     const dy = (c.y - p.y) * ky;
     const dz = c.z != null && p.z != null ? c.z - p.z : 0;
@@ -396,7 +405,12 @@ export function manageBim(o: {
     const id = String(l.id);
     if (lvWatched.has(id)) return;
     lvWatched.add(id);
-    view.whenLayerView(l as never).catch(() => { if (!stale) { lvFailed.add(id); soon(); } });
+    /* ⚠️ 2026-10-09: LayerView ҮҮСМЭГЦ ч дахин эрэмбэлнэ — урьд нь зөвхөн татгалзалд `soon()` дуудагддаг
+       тул хойшлуулсан хасалт `RETRY_MAX`-ийн 800 мс-ийн оролдлогыг хүлээж (эсвэл хязгаарт хүрвэл
+       дараагийн `stationary` хүртэл) барилга төсвөөс илүү Map-д үлддэг байв. */
+    view.whenLayerView(l as never)
+      .then(() => { if (!stale) soon(); })
+      .catch(() => { if (!stale) { lvFailed.add(id); soon(); } });
   };
   /* Метадата ачаалагдах бүрд биш — 120 мс-ээр багцалж нэг удаа эрэмбэлнэ */
   let t: ReturnType<typeof setTimeout> | null = null;

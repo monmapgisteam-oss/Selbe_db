@@ -348,7 +348,9 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
   const SRC = fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8');
   const i = SRC.indexOf('export async function applyPlanEdits(');
   const body = SRC.slice(i);
-  assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body), 'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
+  /* ⚠️ 2026-10-09: хариу алдагдсан (`isLostWrite`) үед ч хүчингүй болгоно */
+  assert.ok(/if \(isLostWrite\(err\)\) lost = true;/.test(body), 'applyPlanEdits: хариу алдагдсан үед HUVAARI_OBYEM хүчингүй болгохгүй');
+  assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0 \|\| lost\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body),'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
 }
 console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй ✓');
 

@@ -11,6 +11,7 @@ import { balanced, monthsOf, sumMonths, sumRes, type MonthRes } from '@/lib/huva
 import { dayToMs, sameRes } from './util';
 import { DateField } from './DateField';
 import { HAM_MAX } from './savePrep';
+import { MAX_DAYS } from './types';
 import h from '../huvaari.module.css';
 
 /* ══════════════════ POPUP ХУАНЛИ ══════════════════ */
@@ -138,11 +139,16 @@ function DepPicker({ value, cands, disabled, onPick }: {
         }}
       />
       {open && (
-        <ul id={lbId} className={h.cboxList} role="listbox">
+        /* ⚠️ 2026-10-09: жагсаалтын ХООСОН зай / гүйлгэх зурвас дээр дарахад оролт blur болж жагсаалт
+           хаагддаг байв (зөвхөн `<li>` `preventDefault` хийдэг) — жагсаалт өөрөө фокус авахгүй. */
+        <ul id={lbId} className={h.cboxList} role="listbox" onMouseDown={(e) => e.preventDefault()}>
           {list.length === 0 ? (
             <li className={h.cboxEmpty}>{tr('Олдсонгүй')}</li>
           ) : list.map((c, i) => (
-            <li key={c.code} id={optId(i)} role="option" aria-selected={c.code === value}
+            /* ⚠️ 2026-10-09 (a11y): `aria-selected` = ТОДРУУЛСАН (`aria-activedescendant`) сонголт — урьд нь
+               хадгалагдсан утга байсан тул ↑↓-оор шилжихэд дэлгэц уншигч «сонгогдоогүй» гэж уншдаг байв.
+               Хадгалагдсан утга нь `cboxItemOn` (харагдац) хэвээр. */
+            <li key={c.code} id={optId(i)} role="option" aria-selected={i === hi}
               className={`${h.cboxItem}${i === hi ? ` ${h.cboxItemHi}` : ''}${c.code === value ? ` ${h.cboxItemOn}` : ''}`}
               onMouseDown={(e) => { e.preventDefault(); pick(c.code); }}
               onMouseEnter={() => setHi(i)}>
@@ -195,6 +201,12 @@ type PlanModalProps = {
   geree?: Span | null;
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын НӨӨЦ (2026-09-24) */
   res: Map<string, MonthRes>;
+  /**
+   * ⚠️ 2026-10-09: БОДИТ ОГНОО · НӨӨЦ ТҮГЖЭЭТЭЙ шалтгаан — НӨГӨӨ табын хүлээгдэж буй илгээлт энэ мөрийн
+   *    бодит огноо/нөөцийг агуулж байна (түгжээ төрөл тус бүрд, `Huvaari.xLockWhy`). Өгвөл «Бодит» талбар ба
+   *    сарын хүн/машин засагдахгүй, шалтгаан ил; «Тавих» тэдгээрийг бичихгүй. Огноо · обьём хэвээр.
+   */
+  xLock?: string;
   /** Сарын хүснэгтэд нөөцийн талбар бий эсэх — `false` бол анхааруулна (`null` = мэдэхгүй) */
   resFields: { hun: boolean | null; mashin: boolean | null };
   onClose: () => void;
@@ -260,7 +272,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus,
+  badBlks, geree, returnFocus, xLock,
 }: PlanModalProps) {
   /* ⚠️ ФОКУСЫН УРХИ (2026-09-03-ны аудит): `aria-modal` нь дэлгэц уншигчид л
      хэлдэг, хөтчийн Tab-д нөлөөгүй — урхигүй үед Tab дарсаар байхад фокус
@@ -346,7 +358,8 @@ function PlanModalBody({
      блокийн бодит огноо хоосон, сонгосон өөр блок бүртгэлтэй бол төлөвлөсөн огноог олон
      блокт тавихад `actArg = {null, null}` болж тэр блокийн БҮРТГЭГДСЭН бодит огноо
      чимээгүй арчигддаг байв (`applyExtra` → `save`). Бодит нь бүртгэл — таамаглаж хуулахгүй. */
-  const actDirty = actTouched && [...selB].some((b) => (am1 ?? null) !== (r.aStart?.[b] ?? null) || (am2 ?? null) !== (r.aEnd?.[b] ?? null));
+  /* ⚠️ 2026-10-09: `xLock` — бодит огноо огт бичигдэхгүй (талбар ч хаалттай) */
+  const actDirty = !xLock && actTouched && [...selB].some((b) => (am1 ?? null) !== (r.aStart?.[b] ?? null) || (am2 ?? null) !== (r.aEnd?.[b] ?? null));
   /* ⚠️ МӨРИЙН хүн/машин popup-аас ЗАСАГДАХГҮЙ (2026-09-24, хэрэглэгч: «дээд талын
      үндсэн хүн хүч машин механизм бөглөлт хэрэггүй, сар сард төлөвлөнө») — мөрийн
      утга нь хадгалахад саруудын нийлбэрээр бичигдэнэ (`save`). */
@@ -425,11 +438,16 @@ function PlanModalBody({
      огноо хөдлөөгүй (эсвэл бутархайг таслаж) атлаа талбарт буруу тоо үлдэж, «Тавих» нь
      ХУУЧИН дуусах огноог тавьдаг. Одоо ЗӨВХӨН бүхэл ≥ 1 нь дуусахыг хөдөлгөнө; бусад нь
      улаан + «Тавих» хаалттай (`durBad`). Хоосон нь буруу биш (бичиж байх үе). */
+  /* ⚠️ 2026-10-09: дээд хязгаар `MAX_DAYS` — нүд (`DaysCell`) · `applyDate`-тэй НЭГ дүрэм; урьд нь энд хязгааргүй
+     (`max` атрибут зөвхөн сумны товчинд) тул 99999 бичихэд дуусах огноо олон жилээр шилждэг байв. */
   const durOk = (v: string): number | null => {
     const n = Number(v);
-    return v.trim() !== '' && Number.isInteger(n) && n >= 1 ? n : null;
+    return v.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_DAYS ? n : null;
   };
   const durBad = dEdit && ms1 != null && durTxt.trim() !== '' && durOk(durTxt) == null;
+  /* ⚠️ 2026-10-09: ОГНООГООР (эхлэх/дуусах) бичсэн муж ч `MAX_DAYS`-аас урт байж болохгүй — хоногийн
+     талбарын дүрэм огноо бичих замаар тойрогддог байв. Бүлэгт огноо бичигддэггүй тул хамаарахгүй. */
+  const spanLong = dEdit && days != null && days > MAX_DAYS;
   const onDur = (v: string) => {
     setDurTxt(v);
     const n = durOk(v);
@@ -723,7 +741,8 @@ function PlanModalBody({
   /* ⚠️ 2026-09-29 (аудит 10): гэрээ табд (`obyem=false`) сарын нөөцийг ХЭЗЭЭ Ч өгөхгүй —
      сарын хэсэг харагдахгүй атлаа `mr` нь төлөвлөгөөний нөөцөөр бөглөгддөг тул гэрээний
      огноо тавихад бусад сонгосон блокийн төлөвлөсөн хүн/машин дарагддаг байв. */
-  const obArg = { months: total == null ? null : mv, res: obyem && (mrDirty || mrHas) ? mr : null };
+  /* ⚠️ 2026-10-09: `xLock` — сарын нөөц (мөрийн хүн/машины эх) бичигдэхгүй */
+  const obArg = { months: total == null ? null : mv, res: obyem && !xLock && (mrDirty || mrHas) ? mr : null };
   /* ⚠️ Алхам 0 → сар/нөөц/бодит огноо СОНГОСОН БҮХ блокт (мужууд ижил);
      алхам >0 → зөвхөн идэвхтэй блокт (бусдын муж шилжсэн тул сарууд зөрнө,
      `applyChanges` тэднийг `keepMonths`/`keepRes`-ээр өөрөө бэлтгэнэ). */
@@ -734,6 +753,8 @@ function PlanModalBody({
   const apply = () => {
     /* ⚠️ 2026-10-04: талбарт багтахгүй уялдаа ХЭЗЭЭ Ч тавихгүй (`depsTooLong`) — Enter-ээр ч */
     if (depsTooLong) return;
+    /* ⚠️ 2026-10-09: `MAX_DAYS`-аас урт муж ХЭЗЭЭ Ч тавихгүй (`applyOff`-ийн ижил хаалт, Enter-ээр ч) */
+    if (spanLong) return;
     /* ⚠️ Бүлэгт огноо ОГТ бичихгүй — зөвхөн уялдаа (бодит огноо · нөөц ч бүлэгт
        хаалттай: `aggExtra`-аар бодогдоно). */
     if (r.group) { if (depsDirty) onApply(null, dl, null, null, null, [blk], [blk]); onClose(); return; }
@@ -784,7 +805,7 @@ function PlanModalBody({
    *    задаргааг тэр блокийн ноорогт бичнэ; цонх ХААГДАХГҮЙ, идэвхтэй блок хэвээр «Тавих»-аар.
    */
   const copyTargets = takt > 0 ? [...selB].filter((b) => b !== blk).sort((x, y) => x - y) : [];
-  const copyOff = !mvOk || ms1 == null || ms2 == null || bad || mv.size === 0;
+  const copyOff = !mvOk || ms1 == null || ms2 == null || bad || spanLong || mv.size === 0;
   const copyShifted = () => {
     if (copyOff || !copyTargets.length || ms1 == null || ms2 == null) return;
     if (!window.confirm(tr('Идэвхтэй блокийн сарын задаргааг сонгосон {0} блокт алхмаар шилжүүлж хуулах уу? Тэдгээр блокийн одоогийн задаргаа дарагдана.', num(copyTargets.length)))) return;
@@ -820,6 +841,7 @@ function PlanModalBody({
   /* ⚠️ 2026-10-05: «Тавих» хаалттайн шалтгаан — товчны `title` ба доорх ил бичвэр ХОЁУЛАА эндээс
      (урьд нь `title`-д шууд бичигддэг байсан нөхцөл, өөрчлөгдөөгүй). */
   const applyWhy: string | undefined = depsTooLong ? tr('Уялдааны бичиглэл талбарт багтахгүй ({0} > {1} тэмдэгт)', num(hamLen), num(HAM_MAX))
+    : spanLong ? tr('Үргэлжлэх хугацаа {0} хоногоос урт байж болохгүй', num(MAX_DAYS))
     : mvOk || depsOnly || extraOnly || ms1 == null || ms2 == null || bad ? undefined
     /* ⚠️ 2026-09-30: жинхэнэ шалтгаан — нийлбэр тэнцсэн ч хоосон сар бий бол түүнийг */
     : !mvBal ? tr('Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй')
@@ -830,7 +852,7 @@ function PlanModalBody({
   const applyOff = depsTooLong ? true
     : r.group
     ? !depsDirty
-    : aBad || badTxt.size > 0 || durBad ? true
+    : aBad || badTxt.size > 0 || durBad || spanLong ? true
     : (depsOnly || extraOnly) ? false
     /* ⚠️ Огноо хоосон/буруу бол `apply` зөвхөн уялдаа · бодит огноог тавина —
        сарын нийлбэр тэр замд хамаарахгүй (2026-09-25 аудит) */
@@ -942,7 +964,7 @@ function PlanModalBody({
             <label className={h.mdField}>
               {tr('Үргэлжлэх')}
               <span className={h.mdDays}>
-                <input type="number" min={1} max={3650} step={1}
+                <input type="number" min={1} max={MAX_DAYS} step={1}
                   className={`${h.numIn}${durBad ? ` ${h.dateBad}` : ''}`} value={durTxt}
                   aria-invalid={durBad}
                   disabled={!dEdit || ms1 == null}
@@ -955,7 +977,9 @@ function PlanModalBody({
             </label>
             {bad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Дуусах нь эхлэхээс өмнө')}</b></span>}
             {/* ⚠️ 2026-10-06 аудит: буруу хоног (`durBad`) — ил шалтгаан */}
-            {durBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Үргэлжлэх хоног 1-ээс багагүй бүхэл тоо байна')}</b></span>}
+            {/* ⚠️ 2026-10-09: дээд хязгаарыг ч нэрлэнэ (`MAX_DAYS`) */}
+            {durBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Үргэлжлэх хоног 1-ээс {0} хүртэлх бүхэл тоо байна', num(MAX_DAYS))}</b></span>}
+            {spanLong && !durBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Үргэлжлэх хугацаа {0} хоногоос урт байж болохгүй', num(MAX_DAYS))}</b></span>}
             {/* ⚠️ 2026-10-05: гэрээний хугацаанаас ГАРСАН төлөвлөгөө — ЗӨВХӨН анхааруулга. «Тавих»-ыг
                 хаахгүй, огноог хавчихгүй (бүлгийн мужийн хавчилт 2026-09-06-нд хасагдсантай ижил зарчим). */}
             {!r.group && geree && ms1 != null && ms2 != null && !bad && (ms1 < geree.start || ms2 > geree.end) && (
@@ -969,16 +993,18 @@ function PlanModalBody({
               <div className={h.mdColHead}>{tr('Бодит')}</div>
               <label className={h.mdField}>
                 {tr('Эхэлсэн')}
-                <DateField value={aa} disabled={!dEdit} label={tr('Эхэлсэн')}
+                <DateField value={aa} disabled={!dEdit || !!xLock} label={tr('Эхэлсэн')}
                   onChange={(v) => { setAa(v); setActTouched(true); }} onBad={markBad('aa')} />
               </label>
               <label className={h.mdField}>
                 {tr('Дууссан')}
-                <DateField value={az} disabled={!dEdit} label={tr('Дууссан')}
+                <DateField value={az} disabled={!dEdit || !!xLock} label={tr('Дууссан')}
                   onChange={(v) => { setAz(v); setActTouched(true); }} onBad={markBad('az')} />
               </label>
               {/* ⚠️ Бодит «үргэлжлэх хоног» ХАСАГДСАН (2026-09-24, хэрэглэгч) */}
               {aBad && <span className={h.mdDays}><b className={h.mdBad}>{tr('Бодит дууссан нь эхэлснээс өмнө')}</b></span>}
+              {/* ⚠️ 2026-10-09: нөгөө табын илгээлтийн түгжээ — ЯАГААД хаалттайг ил хэлнэ */}
+              {xLock && canEdit && <span className={h.mdWarn} role="status">{xLock}</span>}
             </div>
           )}
         </div>
@@ -1077,11 +1103,11 @@ function PlanModalBody({
                         }}
                       />
                       <input type="number" className={`${h.numIn} ${h.mdMonthIn}`} min={0} step={1}
-                        value={mr.get(k)?.hun ?? ''} disabled={!canEdit}
+                        value={mr.get(k)?.hun ?? ''} disabled={!canEdit || !!xLock}
                         aria-label={tr('{0}-ны хүн хүч', k)}
                         onChange={(e) => setMrCell(k, 'hun', e.target.value)} />
                       <input type="number" className={`${h.numIn} ${h.mdMonthIn}`} min={0} step={1}
-                        value={mr.get(k)?.mashin ?? ''} disabled={!canEdit}
+                        value={mr.get(k)?.mashin ?? ''} disabled={!canEdit || !!xLock}
                         aria-label={tr('{0}-ны машин механизм', k)}
                         onChange={(e) => setMrCell(k, 'mashin', e.target.value)} />
                     </Fragment>
@@ -1096,6 +1122,8 @@ function PlanModalBody({
                     {tr('{0}: сөрөг эсвэл буруу утга — нүд хоосон үлдлээ. 0 эсвэл эерэг тоо бичнэ үү.', mvBadK)}
                   </p>
                 )}
+                {/* ⚠️ 2026-10-09: сарын хүн/машин түгжээтэй (`xLock`) — «Бодит» баганагүй багцад ч шалтгаан харагдана */}
+                {xLock && canEdit && !hasActual && <p className={h.mdWarn} role="status">{xLock}</p>}
                 {(resFields.hun === false || resFields.mashin === false) && mrHas && (
                   <p className={h.mdWarn}>
                     {tr('Сарын хүснэгтэд хүн хүч/машин механизмын талбар алга — сарын нөөц хадгалагдахгүй, админ AGOL дээр нэмнэ.')}

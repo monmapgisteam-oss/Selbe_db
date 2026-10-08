@@ -303,7 +303,7 @@ export function Participants({ participants, byCount, doneBy }: {
 }
 
 /** Инженерийн төлөвлөсөн обьёмын товчнууд ба мэдэгдэл */
-export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote, pvReturned = null, withdrawObyemHere, me = '' }: {
+export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, canObyemApprove, locked, decideObyemHere, pvErr, pvNote, pvReturned = null, withdrawObyemHere, me = '', partial = null, returnStuck, note = null }: {
   canObyemEdit: boolean; pvSub: ObyemT['pvSub']; pvCells: ObyemT['pvCells']; sendObyem: ObyemT['sendObyem'];
   pvBusy: boolean; canObyemApprove: boolean; locked: boolean; decideObyemHere: ObyemT['decideObyemHere'];
   pvErr: string; pvNote: string;
@@ -313,9 +313,22 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
   withdrawObyemHere?: ObyemT['withdrawObyemHere'];
   /** Нэвтэрсэн хэрэглэгч — «Татаж авах» товчийг зөвхөн зохиогчид */
   me?: string;
+  /**
+   * ⚠️ 2026-10-09: хүлээгдэж буй илгээлтийг ХЭСЭГЧЛЭН бичсэн батлагч (`useObyem.partial`, `''` = нэргүй) — `null`
+   *    бол тэмдэггүй. Тэмдэгтэй илгээлтийг жирийн «Обьём буцаах» lib-д татгалздаг тул батлагчид «Гацсаныг буцаах».
+   */
+  partial?: string | null;
+  /** ⚠️ 2026-10-09: гацсан илгээлтийг шалтгаантай буцаана (`useObyem.returnStuck`) */
+  returnStuck?: (reason: string) => Promise<void>;
+  /** ⚠️ 2026-10-09: сүүлийн БАТЛАГДСАН илгээлтийн тайлбар — «Алгассан нүд (N): …» (`useObyem.note`) */
+  note?: string | null;
 }) {
   /** ⚠️ 2026-10-06 аудит: буцаах шалтгааны цонх — `null` = хаалттай */
   const [rej, setRej] = useState<string | null>(null);
+  /** ⚠️ 2026-10-09: «Гацсаныг буцаах» шалтгааны цонх — `null` = хаалттай */
+  const [stuck, setStuck] = useState<string | null>(null);
+  /** Гацсан (хэсэгчлэн бичигдсэн) — батлагчид «Обьём буцаах»-ын оронд «Гацсаныг буцаах» */
+  const isStuck = partial != null && !!returnStuck;
   return (
     <>
         {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУЦААГДСАН обьёмын илгээлт ба ШАЛТГААН —
@@ -378,6 +391,19 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             >
               {tr('Обьём батлах')}
             </button>
+            {/* ⚠️ 2026-10-09: ХЭСЭГЧЛЭН бичигдсэн илгээлт — жирийн буцаалт lib-д татгалзагдана; гүйцээх
+                («Обьём батлах») эсвэл шалтгаантай «Гацсаныг буцаах». Тэмдэггүй бол урьдын «Обьём буцаах». */}
+            {isStuck && (
+              <span className={st.lockNote} role="status">
+                {tr('{0} хагас бичсэн — Батлах-аар гүйцээнэ, эсвэл шалтгаан бичээд «Гацсаныг буцаах»', partial || '—')}
+              </span>
+            )}
+            {isStuck && (
+              <button className={st.layerBtn} onClick={() => setStuck('')} disabled={pvBusy}>
+                {tr('Гацсаныг буцаах')}
+              </button>
+            )}
+            {!isStuck && (
             <button
               className={st.layerBtn}
               onClick={() => {
@@ -392,7 +418,19 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             >
               {tr('Обьём буцаах')}
             </button>
+            )}
           </>
+        )}
+        {stuck !== null && pvSub && canObyemApprove && !locked && returnStuck && (
+          <RejectDialog
+            text={stuck}
+            onText={setStuck}
+            busy={pvBusy}
+            onClose={() => setStuck(null)}
+            onOk={(why) => { setStuck(null); void returnStuck(why); }}
+            title={tr('Гацсаныг буцаах шалтгаан (заавал)')}
+            okLabel={tr('Гацсаныг буцаах')}
+          />
         )}
         {rej !== null && pvSub && canObyemApprove && !locked && (
           <RejectDialog
@@ -405,6 +443,8 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
         )}
         {pvErr && <span className={st.error}>{pvErr}</span>}
         {pvNote && <span className={st.muted}>{pvNote}</span>}
+        {/* ⚠️ 2026-10-09: сүүлийн батлагдсан илгээлтэд батлагчийн АЛГАССАН нүд (хадгалагдсан тайлбар — өгөгдөл, орчуулахгүй) */}
+        {note && <span className={st.muted} role="status">{note}</span>}
     </>
   );
 }
@@ -414,9 +454,11 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
  * ⚠️ `maxLength={REASON_MAX}` — талбар 2048; хэтэрвэл `applyEdits` бүхэлдээ унана
  *    (`huvaari/FlowBox`-той ижил хязгаар). Esc / арын дэвсгэр / «Болих» = чимээгүй хаана.
  */
-function RejectDialog({ text, onText, busy, onClose, onOk }: {
+function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
   text: string; onText: (v: string) => void; busy: boolean;
   onClose: () => void; onOk: (why: string) => void;
+  /** ⚠️ 2026-10-09: «Гацсаныг буцаах»-д гарчиг/товчны бичвэр (байхгүй бол «Обьём буцаах») */
+  title?: string; okLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
@@ -430,10 +472,10 @@ function RejectDialog({ text, onText, busy, onClose, onOk }: {
   }, [onClose]);
   return (
     <div className={st.overlay} role="presentation" onClick={onClose}>
-      <div ref={ref} className={st.modal} role="dialog" aria-modal="true" aria-label={tr('Обьём буцаах')}
+      <div ref={ref} className={st.modal} role="dialog" aria-modal="true" aria-label={okLabel ?? tr('Обьём буцаах')}
         style={{ maxWidth: '32rem' }} onClick={(e) => e.stopPropagation()}>
         <div className={st.modalHead}>
-          <b className={st.modalTitle}>{tr('Буцаах шалтгаанаа бичнэ үү:')}</b>
+          <b className={st.modalTitle}>{title ?? tr('Буцаах шалтгаанаа бичнэ үү:')}</b>
           <button type="button" className={st.closeBtn} onClick={onClose} aria-label={tr('Хаах')}>×</button>
         </div>
         <textarea
@@ -448,7 +490,7 @@ function RejectDialog({ text, onText, busy, onClose, onOk }: {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" className={st.layerBtn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
           <button type="button" className={st.publishBtn} onClick={() => onOk(text)} disabled={busy || !text.trim()}>
-            {tr('Обьём буцаах')}
+            {okLabel ?? tr('Обьём буцаах')}
           </button>
         </div>
       </div>

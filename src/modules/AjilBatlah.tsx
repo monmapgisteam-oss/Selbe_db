@@ -151,6 +151,21 @@ export function AjilBatlah() {
      үйлдлүүдийн `finally` хоёулаа энэ тугийг шалгана. */
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
+  /**
+   * ⚠️ 2026-10-09: ТҮГЖЭЭНИЙ ЦАГИЙН ТИК (`HuvaariBatlah`-ийн загвар, 45 с) — урьд нь түгжигчийг татсан
+   *    агшнаар (`st.at`) бодож, `AJIL_CLAIM_TTL` (10 мин) дууссан түгжээ хуудас сэргээтэл «X ажиллаж
+   *    байна» гэж үлддэг байв. `Date.now()` render-ийн гадна (react-hooks/purity).
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 45_000);
+    return () => window.clearInterval(id);
+  }, []);
+  /** Түгжигч — ӨӨРӨӨ биш (`h !== me`); өөрийн өөр табын түгжээг «ажиллаж байна» гэж харуулахгүй */
+  const holderOf = (x: AjilSubmission, at: number): string | null => {
+    const h = ajilClaimHolder(x, Math.max(now, at));
+    return h && h !== me ? h : null;
+  };
   /** Одоо дэлгэгдсэн мөр — дараалал дахин уншигдахад түүний агуулгыг шинэчилнэ */
   const openRef = useRef<number | null>(null);
   useEffect(() => { openRef.current = open; }, [open]);
@@ -406,7 +421,9 @@ export function AjilBatlah() {
          шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
       /* ⚠️ 2026-10-08: `materializeAdds`-ийн `warn` (хуваарийн илгээлт хүлээгдэж байна) — мэдэгдлийн ард залгана */
-      if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)) + (m.warn ? ' ' + m.warn : ''));
+      /* ⚠️ 2026-10-09: `already` (мөрүүд аль хэдийн хуудсанд / өөр таб буулгасан) бол «0 мөр бичигдэв» биш —
+         `reapply`-ийн ижил салаалалт */
+      if (m.ok) setNote((m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added))) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
       /* ⚠️ БҮТЭН ДАХИН УНШИНА, локал хасалт БИШ: өөр батлагч зуур шийдсэн
@@ -626,7 +643,7 @@ export function AjilBatlah() {
               ) : todo.map((x) => (
                 <Row
                   key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                  detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
+                  detail={detail.get(x.oid)} busy={busy} holder={holderOf(x, st.at)}
                   reason={reason.get(x.oid) ?? ''}
                   onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                   onReject={() => void reject(x)}
@@ -655,7 +672,7 @@ export function AjilBatlah() {
                 {stuck.map(({ sub: x, kind, readyAt }) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
+                    detail={detail.get(x.oid)} busy={busy} holder={holderOf(x, st.at)}
                     reason="" onReason={() => {}}
                     badge={tr('Батлагдсан')}
                     lastError={applyErr.get(x.oid)}
@@ -691,7 +708,7 @@ export function AjilBatlah() {
                 {own.map((x) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
+                    detail={detail.get(x.oid)} busy={busy} holder={holderOf(x, st.at)}
                     reason="" onReason={() => {}}
                     ownWhy={tr('Өөрийн илгээсэн нэмэлт ажлыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')}
                     onWithdraw={() => void withdraw(x)}
@@ -714,7 +731,7 @@ export function AjilBatlah() {
                 {orphan.map((x) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
+                    detail={detail.get(x.oid)} busy={busy} holder={holderOf(x, st.at)}
                     reason={reason.get(x.oid) ?? ''}
                     onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                     /* ⚠️ Өөрийн илгээлт бол товч ГАРАХГҮЙ — дарахад

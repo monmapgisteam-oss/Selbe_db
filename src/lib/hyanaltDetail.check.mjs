@@ -34,7 +34,8 @@ assert.ok(g.includes('data.unmoved'), 'Guitsetgel: тулгагдаагүй нү
 console.log('✅ hyanaltDetail · useFlow — батлалттай ижил withFrameOcc · unmoved харагдана');
 
 /* ── 2026-10-09: F2 огноогүй хэлтэрхийн нэг дүрэм · F4 гүн `gun`-аас ── */
-assert.ok(det.includes('nullFragmentFits(nRows, nNull, nExpect)') && !det.includes('nRows + nNull === nExpect'),
+/* 2026-10-09 (F3): доод хязгаарт зураглалын хоосон мөрийг хасна — latestWhere-тэй ижил baseBlankCount */
+assert.ok(det.includes('nullFragmentFits(nRows, nNull, nExpect, await baseBlankCount(p, sc))') && !det.includes('nRows + nNull === nExpect'),
   'hyanaltDetail: огноогүй хэлтэрхийг bagtsSheet-тэй НЭГ туслахаар (nullFragmentFits) шалгана');
 assert.ok(/sc.f.ratio, sc.f.gun,/.test(det) && det.includes('depth: gunDepth ? gunDepth[ri]'),
   'hyanaltDetail: гүнийг эхлээд gun баганаас уншина');

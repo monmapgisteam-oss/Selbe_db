@@ -34,11 +34,17 @@ const files = [];
 const read = (f) => readFileSync(f, 'utf8');
 
 /* ── 1. `DataKey` нэгдмэл төрлийг ЭХ ФАЙЛААС уншина ── */
-const busSrc = read('src/lib/dataBus.ts');
+/* ⚠️ 2026-10-09: ТАЙЛБАРЫГ ХАСААД уншина. Нэгдлийн дотор «'IPC_LOG' … ХАСАГДАВ» гэсэн
+   тайлбар байдаг тул түүхий текстээс устгагдсан `IPC_LOG` ч түлхүүр мэт уншигддаг байв
+   (ХАМААРАЛ 3 хуурамч ногоон); тайлбар дахь `;` нь блокийг дутуу тасалж ч болно.
+   `stripNoise` (доор, hoisted) нь мөрийн литералыг хадгалж зөвхөн тайлбарыг арилгана.
+   Давхардлыг `Set`-ээр арилгана. */
+const busSrc = stripNoise(read('src/lib/dataBus.ts'));
 const unionAt = busSrc.indexOf('export type DataKey');
 assert.ok(unionAt > 0, 'DataKey нэгдэл олдсонгүй');
 const unionBlock = busSrc.slice(unionAt, busSrc.indexOf(';', unionAt));
-const KEYS = [...unionBlock.matchAll(/'([A-Z_0-9]+)'/g)].map((m) => m[1]);
+const KEYS = [...new Set([...unionBlock.matchAll(/'([A-Z_0-9]+)'/g)].map((m) => m[1]))];
+assert.ok(!KEYS.includes('IPC_LOG'), 'DataKey: тайлбар дахь хасагдсан IPC_LOG түлхүүр болж уншигдав — stripNoise ажиллахгүй байна');
 assert.ok(KEYS.length >= 5, 'DataKey нэгдэл уншигдсангүй');
 
 /* ── Хаалтын балансаар дуудлагын БҮТЭН текстийг авах туслах ── */
@@ -216,20 +222,54 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
      автобусын түлхүүртэй болж (`CHANAR_BARIMT` · `HUVAARI_BATLAH` · `OBYEM_BATLAH`
      · `AJIL_BATLAH` · `QAQC_DRAFT`), бичих зам бүр `invalidate()` дууддаг.
      ХАМААРАЛ 5 (доор) функц бүрээр нь шалгана. */
+  /* ── ⚠️ 2026-10-09: ТУСЛАХ БИЧИГЧИЙН ДУУДАГЧИД (`applyAll(` · `applyUpdates(` · `applyAdds(` ·
+     `addRows(`) — доорх WRITER_TOKEN-оор бичигч гэж тоологдоно. Тус бүр ЯАГААД өөрөө
+     `invalidate()` дуудахгүй байж болохыг тэмдэглэв. ── */
+  ['src/lib/ajilApply.ts',
+    '`bagtsSheet.applyAdds`-аар бичдэг — тэр функц өөрөө `invalidate(\'BAGTS_SHEET\')` дууддаг '
+    + '(bagtsSheet.ts, `added > 0 || touched > 0`).'],
+  ['src/lib/ulsiinKomiss.ts',
+    '`bagtsSheet.applyAdds`-аар (500-аар хувааж) бичдэг — тэр өөрөө BAGTS_SHEET-ийг хүчингүй болгоно.'],
+  ['src/lib/hyanaltStore.ts',
+    'Архив руу `bagtsSheet.applyAdds` (өөрөө BAGTS_SHEET хүчингүй болгоно), хяналтын хүснэгт рүү '
+    + '`hyanalt.addRows` (`hyanalt.edit` нь амжилттай үед `invalidate(\'HYANALT\')`) — хоёулаа дотроо.'],
+  ['src/lib/hyanaltSubmit.ts',
+    '`hyanalt.addRows`-аар бичдэг — `hyanalt.edit` өөрөө `invalidate(\'HYANALT\')` дууддаг.'],
+  ['src/modules/Huvaari.tsx',
+    '`bagtsSheet.applyUpdates`-аар бичдэг — тэр өөрөө `written > 0` үед BAGTS_SHEET-ийг хүчингүй болгоно.'],
+  ['src/modules/sheet/fill/useObyem.ts',
+    '`bagtsSheet.applyUpdates`-аар бичдэг — тэр өөрөө BAGTS_SHEET-ийг хүчингүй болгоно.'],
+  ['src/lib/butetsEdit.ts',
+    '`tableWrite.applyAll`-аар дэд бүтцийн давхаргад бичдэг — автобусын түлхүүр байхгүй; кэшийг '
+    + 'дуудагч (`DedButets` → `dropTotalsCache`) хаяна (`layerSummary.ts`-ийн зөвшөөрөлтэй ижил).'],
+  ['src/lib/negtgelAuto.ts',
+    '`tableWrite.applyAll`-аар TUSUL_NEGTGEL рүү бичих синк нь `loadNegtgelFull`-ийн КЭШ ХООСОН '
+    + 'үед (ачаалагч дотроос) дуудагддаг; дэлгэц нь хүснэгтийн бус БОДСОН утгыг харуулдаг. '
+    + 'Ачаалагч дотроос `invalidate` хийвэл дахин ачаалал → дахин синкийн давталт үүснэ.'],
+  ['src/modules/ErhTypes.tsx',
+    '`applyAll` нь ЛОКАЛ React үйлдэл (эрхийн загварыг хэрэглэгчдэд тараах) — ArcGIS-ийн '
+    + 'туслах бичигч БИШ; эрх нь `permsRemote`-ийн өөрийн store-оор тархана.'],
   /* ⚠️ 2026-10-01: `src/modules/sheet/Pivot.tsx` УСТГАГДСАН (хэрэглэгч: бүгдийг зас — Pivot ·
      Level5 · Wbs нь хаанаас ч импортлогддоггүй үхмэл хуудас байв) — эндээс хасав. */
 ]);
 
+/**
+ * ⚠️ 2026-10-09: `applyEdits`-ийн ГАДНА туслах бичигчийн дуудлагууд ч бичилт — урьд нь
+ *    зөвхөн `applyEdits` текстийг хайдаг тул `bagtsSheet.applyUpdates` / `tableWrite.applyAll` /
+ *    `hyanalt.addRows`-ийг дууддаг файл (Huvaari · useObyem · negtgelAuto …) торноос гулсдаг байв.
+ *    Одоо эдгээр токены аль нэг нь байвал бичигч; `invalidate` эсвэл ил зөвшөөрөл шаардана.
+ */
+const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows)\s*\(/m;
 const bichigchid = [];
 for (const f of files) {
   /* ⚠️ Тайлбарыг ЗААВАЛ хасна: `MapCanvas.tsx:113` ба `FillNew.tsx:43` нь
      «applyEdits» гэдгийг зөвхөн ПРОЗООР дурдсан — түүхий текстээр хайвал
      бичдэггүй файлыг бичигч гэж андуурна. */
   const src = stripNoise(read(f));
-  if (!/applyEdits/.test(src)) continue;
+  if (!/applyEdits/.test(src) && !WRITER_TOKEN.test(src)) continue;
   bichigchid.push({ f, huchingui: /[^\w.]invalidate\s*\(/.test(src) });
 }
-console.log(`applyEdits хэрэглэгч файл: ${bichigchid.length}`);
+console.log(`applyEdits / туслах бичигч хэрэглэгч файл: ${bichigchid.length}`);
 
 const huchinguiBolgoogui = bichigchid
   .filter((b) => !b.huchingui && !BICHEED_DUUDAGCH_HUCHINGUI.has(b.f));
@@ -354,6 +394,17 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
   ['src/modules/sheet/bagtsSheet.ts',
     '`baseKeyCache` нь СУУРЬ ТҮЛХҮҮРИЙН жагсаалт (бүтцийн туслах). Энэ файл '
     + 'өөрөө `invalidate(\'BAGTS_SHEET\')` дууддаг (мөр 1604·1641·1694).'],
+  /* ⚠️ 2026-10-09: CACHE_PATTERNS нэрээр өргөссөний дараа илэрсэн гурав — шалтгаантай зөвшөөрөл. */
+  ['src/lib/hyanaltSubmit.ts',
+    '`COMPANY` нь багц → гүйцэтгэгч компанийн ЛАВЛАХ (барилгын үйлчилгээ/багцын каталог) — '
+    + 'портал тэр талбарт бичдэггүй, хяналтын мөр БИШ.'],
+  ['src/lib/hyanaltStore.ts',
+    '`badgeRows` нь цэсний тэмдгийн 60 с TTL-тэй (`at`) хөнгөн уншилт; `ROWS` ачаалагдсан бол '
+    + 'түүнийг ашигладаг. HYANALT-ийн бичилт (`hyanalt.edit`) `invalidate(\'HYANALT\')` дууддаг '
+    + 'ч энэ тэмдэг хамгийн ихдээ 60 с хоцорно — санаатай (тэмдэг, тоо биш).'],
+  ['src/lib/negtgelAuto.ts',
+    '`lastState` нь энэ хөтчийн СҮҮЛИЙН СИНКИЙН ТӨЛӨВ (UI-ийн мэдэгдэл) — өгөгдлийн кэш БИШ; '
+    + 'синк бүр өөрөө дарж бичнэ.'],
   ['src/lib/layerSummary.ts',
     'Инженерийн дэд бүтцийн давхаргын хураангуй. Портал эдгээрт БИЧДЭГ ч '
     + 'автобусын түлхүүр байхгүй — хүчингүй болгох зам нь `dropTotalsCache()` '
@@ -367,8 +418,11 @@ const GARAAR_ZOVSHOOROGDSON = new Map([
  * ⚠️ ЗӨВХӨН МӨРИЙН ЭХЛЭЛД (`^`): функц дотор зарлагдсан түр хувьсагч нь
  *    модулийн кэш БИШ — тэдгээрийг оруулбал шалгуур хуурамч улаанаар дүүрнэ.
  */
+/* ⚠️ 2026-10-09: `COMPANY` (hyanaltSubmit) · `badgeRows` (hyanaltStore) · `lastState` (negtgelAuto) —
+   нэрэнд «cache» ороогүй тул торноос гулсдаг байв; нэрээр нь нэмэв (гурвуулаа одоо
+   GARAAR_ZOVSHOOROGDSON-д шалтгаантай). Шинэ ийм кэшийг энд нэрээр нь нэмнэ. */
 const CACHE_PATTERNS = [
-  /^let\s+(\w*[Cc]ache\w*|pending|oidFieldP)\s*(?::[^=\n]*)?=\s*null\s*;/gm,
+  /^let\s+(\w*[Cc]ache\w*|pending|oidFieldP|COMPANY|badgeRows|lastState)\s*(?::[^=\n]*)?=\s*null\s*;/gm,
   /^const\s+(\w*[Cc]ache\w*)\s*(?::[^=\n]*)?=\s*new\s+Map\s*[<(]/gm,
 ];
 

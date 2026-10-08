@@ -846,9 +846,10 @@ export function cardStat(
     }
     case 'finPaid': {
       const paid = pkg ? null : fin(fi?.paid);
-      const budget = pkg ? null : fin(fi?.budget);
-      /* ⚠️ Олголтыг ТӨСӨВТЭЙГӨӨ харьцуулж дүгнэнэ — дан тоо ганцаараа сайн ч муу ч биш */
-      const share = paid != null && budget != null && budget > 0 ? (paid / budget) * 100 : null;
+      /* ⚠️ Олголтыг хуваарьтайгаа харьцуулж дүгнэнэ — дан тоо ганцаараа сайн ч муу ч биш.
+         ⚠️ 2026-10-09: хувь = `finance.paidPct` (гэрээлсэн багцын олголт ÷ гэрээлсэн дүн — `paidShare`,
+         `schem.ts` «Санхүүжилт»-тэй нэг). Урьд нь НИЙТ олголт ÷ төсөвт өртөг байв. */
+      const share = pkg ? null : fin(fi?.paidPct);
       return {
         ...statOf(tr('Олгосон'), paid, 'mnt', grade(share, TH.paidPct.good, TH.paidPct.warn)),
         ...(pkg ? { why: tr('Олголт багцаар задардаггүй') } : {}),

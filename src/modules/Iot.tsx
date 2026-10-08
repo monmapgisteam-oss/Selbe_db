@@ -14,6 +14,7 @@ import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import {
   loadSensors, RANGES, SENSOR_STALE_H, withGaps, type RangeKey, type SensorLive, type MetricSeries,
+  UB_OFFSET_MS,
 } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { VIEW_BY_KEY } from '@/lib/services';
@@ -81,10 +82,13 @@ const freshTone = (h: number | null): string => {
 };
 
 /** `Trend` нь `label`-ыг ШУУД хэвлэдэг тул богино байлгана */
+/* ⚠️ 2026-10-09: УБ-ын цагаар (`+8ц` + UTC getter) — хөтчийн бүсээр биш. Заалтыг `parseTs`
+   УБ-ын (+08:00) цагаар уншдаг ч шошго нь хөтчийн локал бүсээр хэвлэгддэг байсан тул УБ-аас
+   гадуурх машин дээр тэнхлэг ба хоногийн хэрэглээний цэг (`ubDay`) зөрдөг байв. */
 const axisLabel = (t: number): string => {
-  const d = new Date(t);
+  const d = new Date(t + UB_OFFSET_MS);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 };
 
 /* ⚠️ 2026-08-26: `delta` / `deltaLabel` / `pctLabel` ХАСАГДАВ — «24ц

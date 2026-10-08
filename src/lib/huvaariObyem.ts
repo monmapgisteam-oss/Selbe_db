@@ -29,6 +29,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
 import { spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
+/* ⚠️ 2026-10-09: хариу алдагдсан бичилтийг ялгах (`lostWrite`-ийн ⚠️) */
+import { isLostWrite } from './lostWrite';
 
 /**
  * Үйлчилгээ — ГАНЦ хүснэгт, геометргүй.
@@ -620,6 +622,8 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
     return out;
   };
   let a = 0; let u = 0; let dl = 0;
+  /** ⚠️ 2026-10-09: хариу алдагдсан бичилт — үр дүн тодорхойгүй (доорх `catch`) */
+  let lost = false;
   type Res = { success?: boolean; error?: { description?: string } };
   /* ⚠️ 2026-10-05: `want` — илгээсэн мөрийн тоо. Хариуны тоог ТУЛГАНА (`bagtsSheet.applyUpdates`-ийн
      ижил дүрэм): хоосон/дутуу `addResults` нь «хадгалагдлаа» гэж худал мэдээлдэг байв.
@@ -701,8 +705,14 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
       for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) }, [0, c.length, 0]);
       for (const c of chunk(rest)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
     }
+  } catch (err) {
+    /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`isLostWrite`) бол `a + u + dl` (баталгаажсан тоо) 0 байсан ч сүүлийн
+       хүсэлт серверт хүрч бичигдсэн байж болно — кэшийг хүчингүй болгоно (дэмий дахин татах нь хуучин
+       муруй харуулахаас хямд). Тодорхой татгалзалд (`rollbackOnFailure`) хуучин дүрэм. */
+    if (isLostWrite(err)) lost = true;
+    throw err;
   } finally {
-    if (a + u + dl > 0) invalidate('HUVAARI_OBYEM');
+    if (a + u + dl > 0 || lost) invalidate('HUVAARI_OBYEM');
   }
   return [a, u, dl];
 }

@@ -575,6 +575,8 @@ export function HuvaariBatlah({
                           {x.approverAt == null ? '—' : dayKey(x.approverAt)}
                           {' · '}
                           {tr('{0} мөр', num(x.rowCount))}
+                          {/* ⚠️ 2026-10-09: `loadLastPerPkg` төрөл тус бүрд сүүлийнхийг өгдөг — нэг багцын хоёр мөрийг ялгана */}
+                          {x.kind && <>{' · '}{x.kind === 'geree' ? tr('Төрөл: Гэрээ') : tr('Төрөл: Төлөвлөгөө')}</>}
                         </span>
                       </span>
                       <div className={s.reasonBox} style={{ whiteSpace: 'pre-line' }}>

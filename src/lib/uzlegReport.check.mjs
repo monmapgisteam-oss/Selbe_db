@@ -12,7 +12,9 @@ import assert from 'node:assert/strict';
 globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 
-const { buildUzReport, buildUzXlsx, ansCls, companyShort, attUrl } = await import('@/lib/uzlegReport.ts');
+const {
+  buildUzReport, buildUzXlsx, buildUzPdf, ansCls, companyShort, attUrl, reportTitle, fmtDateTime, countReportImages,
+} = await import('@/lib/uzlegReport.ts');
 
 const ANS = new Map([
   ['conf', 'Conformance / Нийцсэн'],
@@ -132,4 +134,32 @@ assert.equal(attUrl('https://x/FeatureServer/0', 5, 7), 'https://x/FeatureServer
   assert.ok(xf.includes('0 (1 татагдсангүй)'), 'татагдаагүй тоо бичигдэнэ');
 }
 console.log('✅ мэдэгдэхгүй тоо null · токенгүй хавсралтын хаяг · татагдаагүй зургийн тоо');
+
+/* ── 2026-10-09 (2-р ээлж) ── */
+/* Огноо Улаанбаатарын цагаар — хөтчийн бүсээс үл хамаарна */
+assert.equal(fmtDateTime(Date.parse('2026-09-28T23:30:00Z')), '2026-09-29 07:30', 'UTC 23:30 = UB дараагийн өдөр 07:30');
+/* «—» (хоосон утгын орлуулга) → '' — файлын нэрийн нөөц ажиллана */
+assert.equal(companyShort('—'), '');
+assert.equal(reportTitle({ ...rep, company: '—', pkg: 'Багц 3.2' }).startsWith('Багц 3.2 - '), true, 'компанигүй → багц');
+assert.equal(reportTitle({ ...rep, company: '—', pkg: '—' }).startsWith('Үзлэг - '), true, 'компани/багцгүй → «Үзлэг»');
+/* Огноогүй тайлан — PDF гарчиг/хөлд «—» (1970-01-01 биш) */
+{
+  const pdf = buildUzPdf([{ ...rep, date: 0 }], new Map(), null);
+  assert.ok(pdf.info.title.endsWith('— —'), 'гарчиг «—»');
+  assert.ok(!JSON.stringify(pdf.footer(1)).includes('1970'), 'хөл 1970 биш');
+}
+/* Зургийн тоо (давхардалгүй) — «Зураггүй»/анхааруулгын суурь */
+assert.equal(countReportImages([rep, rep]), 4, 'ижил тайлангийн зураг давхар тоологдохгүй');
+/* Excel — байтгүй (PDF хэлбэрийн) зураг шигтгэгдэхгүй, унахгүй */
+{
+  const pdfOnly = new Map([['u/1', { data: 'data:image/jpeg;base64,AA==', bytes: null, w: 10, h: 10, png: false }]]);
+  const xb = new TextDecoder().decode(buildUzXlsx([rep], pdfOnly));
+  assert.ok(!xb.includes('xl/media/'), 'байтгүй зураг Excel-д орохгүй');
+}
+/* HEIC хавсралт — лавлагаанд тэмдэглэгдэнэ */
+{
+  const rh = buildUzReport('X', fields, row, 7, [{ id: 9, keywords: 'out_01_img', contentType: 'image/heic' }], (id) => `u/${id}`, { pkg: '', company: '', date: 0 });
+  assert.equal(rh.sections[0].items[0].photos[0].heic, true);
+}
+console.log('✅ UB огноо · файлын нэрийн нөөц · огноогүй PDF · зургийн тоо · байтгүй зураг · HEIC');
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

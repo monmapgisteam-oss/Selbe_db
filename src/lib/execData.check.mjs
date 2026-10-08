@@ -19,7 +19,7 @@
  *    нөөц жин нь багцын бүх блок (`total`). Доорх хүлээгдэж буй утгууд шинэ дүрмээр.
  */
 import assert from 'node:assert/strict';
-import { joinBagts, buildProgressOf } from './execData.ts';
+import { joinBagts, buildProgressOf, ailTotal } from './execData.ts';
 import { housingPct } from './gdash.ts';
 import { buildingKey } from './services.ts';
 import { pkgProgressOf } from './blockProgress.ts';
@@ -157,6 +157,22 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(buildProgressOf(rows2).pct, 44, 'нөөц жин total-аар биш байна');
   /* ХО жинтэй: 100·60 + 300·20 ÷ 400 = 30 (урьд нь 45) */
   assert.equal(buildProgressOf(rows2, new Map([[b1.key, 100], [b2.key, 300]])).pct, 30);
+}
+
+/* ⚠️ 2026-10-09: хоосон `AIL_TOO` нь 0 өрх БИШ — `ailMissing`, нийт нь `ailTotal` (null ≠ 0) */
+{
+  const u = uniOf({ 'Багц 1': ['1', '2'], 'Багц 2': ['1'] });
+  const rs = joinBagts([row('Багц 1', '1', 10), row('Багц 1', '2', null), row('Багц 2', '1', '')], new Map(), u);
+  const b1 = rs.find((x) => x.label === 'Багц 1');
+  assert.equal(b1.ail, 10);
+  assert.equal(b1.ailMissing, 1, 'хоосон AIL_TOO тоологдсонгүй');
+  const t = ailTotal(rs);
+  assert.equal(t.ail, 10);
+  assert.equal(t.partial, true, 'дутуу өрхийн нийлбэр «бүрэн» гэж гарав');
+  const none = ailTotal(joinBagts([row('Багц 1', '1', null)], new Map(), uniOf({ 'Багц 1': ['1'] })));
+  assert.equal(none.ail, null, 'бүх AIL_TOO хоосон — 0 биш null');
+  assert.equal(ailTotal(rows).partial, false);
+  assert.equal(ailTotal(rows).ail, 155);
 }
 
 console.log('execData.check.mjs — БҮГД ТЭНЦЛЭЭ');

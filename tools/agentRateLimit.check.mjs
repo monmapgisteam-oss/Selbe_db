@@ -11,9 +11,12 @@ import { readFileSync } from 'node:fs';
 import {
   createLimiter, LIMITS, WINDOW_MS,
   createBudget, budgetFromEnv, usageTokens, budgetDay, DAILY_TOKEN_BUDGET_DEFAULT, upstreamErrorText,
+  createConcurrency, estimateInputTokens, reserveTokens, settleTokens, utf8Bytes, botCaller,
+  sanitizeChat, sanitizeTools, sanitizeMessages,
 } from '../agent-proxy/rateLimit.mjs';
 
-assert.deepEqual({ ...LIMITS }, { user: 40, ip: 300, authFail: 20 });
+/* ⚠️ 2026-10-09: + authFailIp (IP-ийн амжилтгүй нэвтрэлтийн таг) · concurrent (дуудагчийн зэрэг хүсэлт) · botConcurrent */
+assert.deepEqual({ ...LIMITS }, { user: 40, ip: 300, authFail: 20, authFailIp: 100, concurrent: 2, botConcurrent: 6 });
 assert.equal(WINDOW_MS, 60_000);
 
 let t = 1_000_000;
@@ -145,7 +148,8 @@ console.log('✅ server.mjs · worker.mjs: хэрэглэгч 40 · IP 300 · au
   for (const f of ['server.mjs', 'worker.mjs']) {
     const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
     assert.match(src, /code: ['"]daily_budget['"]/, `${f}: төсвийн 429 алга`);
-    assert.match(src, /usageTokens\(/, `${f}: хэрэглээ төсөвт нэмэгдэхгүй`);
+    /* ⚠️ 2026-10-09: бодит хэрэглээ `settleTokens`-оор (урьдчилсан тооцоог тааруулна) */
+    assert.match(src, /settleTokens\(/, `${f}: хэрэглээ төсөвт нэмэгдэхгүй`);
     assert.match(src, /x-prompt-sig/, `${f}: PROMPT_HMAC толгой CORS/шалгалтад алга`);
     /* ⚠️ аудит №7: түүхий алдааны мессеж клиентэд очихгүй */
     assert.ok(!/error: `Биеийг уншиж чадсангүй: \$\{e\.message\}`/.test(src), `${f}: задлагчийн мессеж клиентэд`);
@@ -153,3 +157,107 @@ console.log('✅ server.mjs · worker.mjs: хэрэглэгч 40 · IP 300 · au
   assert.ok(/AI үйлчилгээ/.test(upstreamErrorText(500)) && !/undefined/.test(upstreamErrorText(undefined)));
   console.log('✅ server.mjs · worker.mjs: төсөв · гарын үсгийн толгой · ерөнхий алдааны мессеж холбогдсон');
 }
+
+/* ── ⚠️ 2026-10-09 (2-р ээлж): зэрэг хүсэлтийн таг ── */
+{
+  const c = createConcurrency();
+  const r1 = c.acquire('user:bat', LIMITS.concurrent);
+  const r2 = c.acquire('user:bat', LIMITS.concurrent);
+  assert.ok(r1 && r2, '2 зэрэг хүсэлт зөвшөөрөгдөх ёстой');
+  assert.equal(c.acquire('user:bat', LIMITS.concurrent), null, '3 дахь нь хаагдах ёстой');
+  assert.ok(c.acquire('user:dorj', LIMITS.concurrent), 'өөр хэрэглэгч нөлөөлөх ёсгүй');
+  r1(); r1();
+  assert.equal(c.active('user:bat'), 1, 'суллах нь давтан дуудагдахад нэг л удаа хасна');
+  assert.ok(c.acquire('user:bat', LIMITS.concurrent), 'суллагдсаны дараа дахин авна');
+  console.log('✅ зэрэг хүсэлт: дуудагчид 2 · суллах idempotent');
+}
+
+/* ── ⚠️ 2026-10-09: төсвийн урьдчилсан тооцоо ── */
+{
+  assert.equal(estimateInputTokens(1000), 500, 'байт / 2');
+  assert.equal(estimateInputTokens(1000, 400), 320, 'системийн хэсэг 1/10 жинтэй: 600/2 + 400/20');
+  assert.equal(estimateInputTokens(100, 999), 5, 'систем биеэс урт байж болохгүй');
+  assert.equal(reserveTokens(500, 10000), 10500);
+  assert.equal(settleTokens({ input_tokens: 10, output_tokens: 5 }, 999), 15, 'usage байвал бодитоор');
+  assert.equal(settleTokens(undefined, 999), 999, 'usage алга → оролтын тооцоо');
+  assert.equal(utf8Bytes('аб'), 4);
+  const bt = Date.UTC(2026, 9, 8, 3, 0);
+  const b = createBudget({ now: () => bt });
+  b.add('user:bat', reserveTokens(500, 10000));
+  assert.equal(b.over('user:bat', 10000), true, 'урьдчилсан тооцоо зэрэг хүсэлтэд харагдана');
+  b.adjust('user:bat', 15 - 10500);
+  assert.equal(b.used('user:bat'), 15, 'бодит хэрэглээгээр тааруулна');
+  b.adjust('user:bat', -100000);
+  assert.equal(b.used('user:bat'), 0, '0-ээс доош орохгүй');
+  console.log('✅ төсөв: урьдчилан хасна · бодитоор тааруулна · usage алга бол оролтын тооцоо');
+}
+
+/* ── ⚠️ 2026-10-09: ботын дуудагч (`x-bot-user`) ── */
+assert.equal(botCaller('123456'), 'bot:123456');
+assert.equal(botCaller(undefined), 'bot');
+assert.equal(botCaller('1; DROP'), 'bot');
+assert.equal(botCaller('9'.repeat(30)), 'bot');
+
+/* ── ⚠️ 2026-10-09: дээд үйлчилгээ рүү явах хүсэлтийн цагаан жагсаалт ── */
+{
+  const schema = { type: 'object', properties: { id: { type: 'string' } } };
+  const t = sanitizeTools([{ name: 'query_feature', description: 'd', input_schema: schema, cache_control: { type: 'ephemeral' }, extra: 1 }]);
+  assert.ok(t.ok);
+  assert.deepEqual(t.tools, [{ name: 'query_feature', description: 'd', input_schema: schema }], 'зөвхөн name/description/input_schema');
+  assert.equal(sanitizeTools([{ type: 'web_search_20250305', name: 'web_search' }]).ok, false, 'серверийн хэрэгсэл');
+  assert.equal(sanitizeTools([{ type: 'custom', name: 'x', input_schema: schema }]).ok, false, '`type` талбар ямар ч утгатай');
+  assert.equal(sanitizeTools([{ name: 'bad name', input_schema: schema }]).ok, false);
+  assert.equal(sanitizeTools([{ name: 'x' }]).ok, false, 'input_schema заавал');
+  assert.equal(sanitizeTools(undefined).tools, undefined);
+
+  const good = [
+    { role: 'user', content: 'Сайн уу' },
+    { role: 'assistant', content: [
+      { type: 'thinking', thinking: '…', signature: 'sig' },
+      { type: 'text', text: 'шалгая', citations: null },
+      { type: 'tool_use', id: 'tu1', name: 'query_feature', input: { id: 'et:1' } },
+    ] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'data', is_error: true, cache_control: { type: 'ephemeral' } }] },
+  ];
+  const m = sanitizeMessages(good);
+  assert.ok(m.ok, m.error);
+  assert.deepEqual(m.messages[1].content[1], { type: 'text', text: 'шалгая' }, 'мэдэгдэх талбар л үлдэнэ');
+  assert.deepEqual(m.messages[2].content[0], { type: 'tool_result', tool_use_id: 'tu1', content: 'data', is_error: true });
+  const accepted = (content, role = 'user') => sanitizeMessages([{ role, content }]).ok;
+  assert.equal(accepted([{ type: 'image', source: { type: 'url', url: 'https://x' } }]), false, 'зураг');
+  assert.equal(accepted([{ type: 'document', source: {} }]), false, 'документ');
+  assert.equal(accepted([{ type: 'thinking', thinking: 'x', signature: 's' }]), false, 'user-ийн thinking');
+  assert.equal(accepted([{ type: 'tool_use', id: 'a', name: 'b', input: {} }]), false, 'user-ийн tool_use');
+  assert.equal(accepted([{ type: 'tool_result', tool_use_id: 'a', content: [{ type: 'image', source: {} }] }]), false, 'tool_result доторх зураг');
+  assert.equal(accepted([{ type: 'server_tool_use', id: 'a', name: 'web_search', input: {} }], 'assistant'), false);
+  assert.equal(sanitizeMessages([{ role: 'system', content: 'x' }]).ok, false, 'role');
+  assert.equal(sanitizeChat({ messages: [] }).ok, false);
+  console.log('✅ хүсэлтийн шалгалт: серверийн хэрэгсэл · зураг/документ татгалзана · талбаруудыг дахин угсарна');
+}
+
+/* ── ⚠️ 2026-10-09: хоёр реле шинэ хамгаалалтуудыг хэрэглэнэ ── */
+for (const f of ['server.mjs', 'worker.mjs']) {
+  const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
+  assert.match(src, /sanitizeChat\(payload/, `${f}: tools/messages шалгагдахгүй`);
+  assert.ok(!/const \{ system, messages, tools \} = payload/.test(src), `${f}: түүхий tools/messages дамжуулж байна`);
+  assert.match(src, /inflight\.acquire\(caller/, `${f}: зэрэг хүсэлтийн таг алга`);
+  assert.match(src, /code: ['"]concurrent['"]/, `${f}: зэрэг хүсэлтийн 429 алга`);
+  assert.match(src, /reserveTokens\(inputEst/, `${f}: төсөв урьдчилан хасагдахгүй`);
+  assert.match(src, /botCaller\(/, `${f}: x-bot-user алга`);
+  /* татгалзалт (refusal) төсөвт тоологдоно — settleTokens нь refusal шалгалтаас ӨМНӨ */
+  const settle = Math.max(src.indexOf('settleTokens(response.usage'), src.indexOf('settleTokens(body?.usage'));
+  const refusal = src.search(/stop_reason === ["']refusal["']/);
+  assert.ok(settle > 0 && refusal > settle, `${f}: татгалзсан хариу төсөвт тоологдохгүй`);
+  /* баталгаажсан токены кэш authfail шалгалтаас ӨМНӨ */
+  const callIdx = src.indexOf('const cachedUser');
+  const failIdx = src.indexOf('limiter.full(failKey');
+  assert.ok(callIdx > 0 && failIdx > callIdx, `${f}: кэш authfail-аас өмнө шалгагдахгүй`);
+  assert.match(src, /authfailip:\$\{ip\}/, `${f}: IP-ийн амжилтгүй нэвтрэлтийн таг алга`);
+}
+{
+  const src = readFileSync(new URL('../agent-proxy/worker.mjs', import.meta.url), 'utf8');
+  assert.match(src, /const failKey = `authfail:\$\{ip\}:\$\{hash\.slice\(0, 16\)\}`/, 'worker.mjs: authfail IP+токены хэшээр биш');
+  assert.ok(!/await request\.text\(\)/.test(src), 'worker.mjs: биеийг бүтнээр уншиж байна (chunked хязгааргүй)');
+  assert.match(src, /readBodyCapped\(request, MAX_BODY\)/, 'worker.mjs: урсгалаар тоолж уншихгүй');
+}
+console.log('✅ server.mjs · worker.mjs: шалгалт · зэрэг таг · урьдчилсан төсөв · татгалзалт тоологдоно · кэш эхлээд · chunked таслана');

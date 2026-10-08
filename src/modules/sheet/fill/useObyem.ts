@@ -3,7 +3,7 @@
  *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
  *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
  */
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Pkg, Schema } from "../bagts.pkg";
 import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
@@ -11,7 +11,10 @@ import {
   claimObyem, clearObyemPartial, decideObyem, markObyemPartial, obyemApproveGuard, releaseObyemClaim, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
   loadHead as loadObyemHead,
   submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
+  partialBy as obyemPartialBy, returnStuckObyem,
 } from '@/lib/obyemBatlah';
+/* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
+import { isLostWrite } from '@/lib/lostWrite';
 import { t as tr } from "@/lib/i18nCore";
 /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
 import { userError } from '@/components/ui';
@@ -50,6 +53,11 @@ export function useObyemState() {
    *    түүнд дарагдана.
    */
   const [pvReturned, setPvReturned] = useState<ObyemSubmission | null>(null);
+  /**
+   * ⚠️ 2026-10-09: СҮҮЛИЙН ШИЙДВЭР НЬ БАТЛАЛТ бол тэр илгээлт — түүний `tailbar`-д батлагчийн алгассан
+   *    нүд (`decideObyem.skipped`, «Алгассан нүд …») хадгалагддаг; `useObyem` `note`-оор гаргана.
+   */
+  const [pvApproved, setPvApproved] = useState<ObyemSubmission | null>(null);
   /** Батлагчийн урьдчилан харах агуулга (`oid` → утга) */
   const [pvPreview, setPvPreview] = useState<Map<number, number | null> | null>(null);
   const [pvBusy, setPvBusy] = useState(false);
@@ -57,7 +65,7 @@ export function useObyemState() {
   const [pvNote, setPvNote] = useState("");
   return {
     pvPend, setPvPend, pvSub, setPvSub, pvReturned, setPvReturned, pvPreview, setPvPreview,
-    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote,
+    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote, pvApproved, setPvApproved,
   };
 }
 export type ObyemState = ReturnType<typeof useObyemState>;
@@ -84,7 +92,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
   /* ⚠️ 2026-10-01: төлөвийн зарлалт `useObyemState`-д (дээрх ⚠️) — нэрс урьдынхаараа */
   const {
     pvPend, setPvPend, pvSub, setPvSub, pvReturned, setPvReturned, pvPreview, setPvPreview,
-    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote,
+    pvBusy, setPvBusy, pvErr, setPvErr, pvNote, setPvNote, pvApproved, setPvApproved,
   } = st;
 
   /* ══════════ ИНЖЕНЕРИЙН ОБЬЁМЫН УРСГАЛ ══════════ */
@@ -106,25 +114,34 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
    *    ачаалагдтал `""` тул энэ жижиг query үргэлж түрүүлж ирээд хаягдаж,
    *    хүлээгдэж буй илгээлт багц нээхэд ХЭЗЭЭ Ч харагдахгүй байв.
    */
+  /**
+   * ⚠️ 2026-10-09: ДУУДЛАГЫН ДАРААЛАЛ — ижил багцад `refreshObyem` зэрэг хоёр удаа явбал (эффект + шийдвэрийн
+   *    дараах дуудлага) ХУУЧИН дуудлагын хоцорсон хариу шинийхийг дарж, шийдвэрлэгдсэн илгээлтийн баннер
+   *    буцаж гардаг байв. Сүүлийн дуудлагын хариу л төлөвт бичигдэнэ (багцын хамгаалалтаас гадна).
+   */
+  const refreshSeq = useRef(0);
   const refreshObyem = useCallback(async () => {
     const want = pkg.key;
+    const seq = ++refreshSeq.current;
+    const stale = () => pkgKeyRef.current !== want || refreshSeq.current !== seq;
     try {
       const sub = await loadObyemPending(want);
-      if (pkgKeyRef.current !== want) return;
+      if (stale()) return;
       setPvSub(sub);
       /* ⚠️ 2026-10-01: хүлээгдэж буй илгээлт БАЙХГҮЙ бол сүүлийн шийдвэрийг шалгана —
          буцаалт бол шалтгааныг инженерт харуулна (`pvReturned`-ийн ⚠️). Уншилт унавал
          хуучин төлөв хэвээр (доорх `catch`). */
-      if (sub) setPvReturned(null);
+      if (sub) { setPvReturned(null); setPvApproved(null); }
       else {
         const last = (await loadObyemHistory(want, 1))[0] ?? null;
-        if (pkgKeyRef.current !== want) return;
+        if (stale()) return;
         setPvReturned(last && last.status === OBYEM_STATUS.returned ? last : null);
+        setPvApproved(last && last.status === OBYEM_STATUS.approved ? last : null);
       }
       /* Батлагч бол агуулгыг нь урьдчилан харуулна */
       if (sub) {
         const pl = await loadObyemPayload(sub.oid);
-        if (pkgKeyRef.current !== want) return;
+        if (stale()) return;
         setPvPreview(pl ? new Map(pl.cells) : null);
       } else {
         setPvPreview(null);
@@ -135,7 +152,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
          дахин засвар эхэлнэ. */
     }
     /* ⚠️ 2026-10-01: setter-үүд `st`-ээс (тогтвортой useState) — хамаарлын жагсаалтад нэмсэн нь утга өөрчлөхгүй */
-  }, [pkg.key, pkgKeyRef, setPvSub, setPvReturned, setPvPreview]);
+  }, [pkg.key, pkgKeyRef, setPvSub, setPvReturned, setPvPreview, setPvApproved]);
 
   /* ⚠️ 2026-09-30: `todayFillMs` — өдөр солигдоход ч дахин уншина (параметрийн ⚠️) */
   /* ⚠️ 2026-10-01: `set-state-in-effect` disable ХАСАГДАВ — setter-үүд `st`-ээс ирдэг тул шалгуур
@@ -299,7 +316,7 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
                жаазад ДАВХАРДСАН шошготой мөрийг ЗӨӨХГҮЙ (буруу мөрөнд бичихээс
                алгасах нь дээр — дээрх ⚠️).
            Зөөгдөөгүй нүдийг тоолж ил хэлнэ. */
-        const base = await loadRows(pkg, sc);
+        const base = await loadRows(pkg, sc, undefined, undefined, { strict: true }); // ⚠️ 2026-10-09: бичих зам — strict
         const freshOids = new Set(base.rows.map((r) => r.oid));
         const pageOids = new Set(rows.map((r) => r.oid));
         let map = new Map<number, number>();
@@ -361,11 +378,27 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
            бичигдээгүй унасан (`written === 0`) бол тэмдгийг арилгаж түгжээг тайлна
            (`releaseObyemClaim`); нэг ч мөр бичигдсэн бол хоёулаа ҮЛДЭНЭ. */
         const me = user?.username ?? '';
+        /* ⚠️ 2026-10-09: түгжээ/гэйт унасан нь нөгөө таб (ижил батлагч) аль хэдийн баталсных байж болно —
+           алдаа харуулахаас ӨМНӨ `doneByMe` (dryRun-ий адил). */
+        const alreadyMine = async (): Promise<boolean> => {
+          if (!(await doneByMe())) return false;
+          if (here()) setPvNote(tr('Энэ илгээлтийг та өөр цонхноос аль хэдийн баталсан байна — үндсэн өгөгдөлд бичигдсэн.'));
+          await refreshObyem();
+          return true;
+        };
         const claim = await claimObyem({ oid: pvSub.oid, approver: me });
-        if (!claim.ok) { pvErrHere(claim.error ? userError(claim.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+        if (!claim.ok) {
+          if (await alreadyMine()) return;
+          pvErrHere(claim.error ? userError(claim.error) : tr('Шийдвэр хадгалагдсангүй.'));
+          return;
+        }
         holdClaim = true;
         const why = await obyemApproveGuard({ oid: pvSub.oid, approver: me });
-        if (why) { pvErrHere(why); return; }
+        if (why) {
+          if (await alreadyMine()) return;
+          pvErrHere(why);
+          return;
+        }
         const mk = await markObyemPartial({ oid: pvSub.oid, approver: me });
         if (!mk.ok) {
           pvErrHere(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — үндсэн өгөгдөлд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
@@ -375,7 +408,10 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         try {
           await applyUpdates(pkg, upd);
         } catch (e) {
-          if ((e as { written?: number })?.written === 0) await clearObyemPartial(pvSub.oid);
+          /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`isLostWrite`) бол `written === 0` нь «юу ч бичигдээгүй» гэсэн
+             үг БИШ — эхний хүсэлт серверт хүрч бичигдсэн байж болно. Тэр үед тэмдэг ба түгжээ ХОЁУЛАА
+             үлдэнэ (`clearObyemPartial` · `releaseObyemClaim` дуудахгүй); зөвхөн тодорхой татгалзалд арилгана. */
+          if ((e as { written?: number })?.written === 0 && !isLostWrite(e)) await clearObyemPartial(pvSub.oid);
           else { holdClaim = false; wroteMain = true; }
           throw e;
         }
@@ -461,9 +497,38 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
       setPvBusy(false);
     }
   }, [pvSub, pvBusy, pkg.key, user, refreshObyem, pkgKeyRef, setPvBusy, setPvErr, setPvNote]);
+  /**
+   * ГАЦСАН (ХАГАС БИЧИГДСЭН) ИЛГЭЭЛТИЙГ БУЦААХ — ⚠️ 2026-10-09 (`obyemBatlah.returnStuckObyem`).
+   * `PARTIAL_MARK`-тай илгээлтийг жирийн «Буцаах» татгалздаг тул батлагч бичилтийг гүйцээж чадахгүй бол
+   * илгээлт мөнхөд `pending` үлдэж багц (обьём · нэмэлт ажил) түгжигддэг байв. Дүрэм (хүрээ · өөр
+   * батлагчийн түгжээ · CAS) lib-д. Товч нь `partial != null` үед л.
+   */
+  const returnStuck = useCallback(async (reason: string) => {
+    if (!pvSub || pvBusy || locked) return;
+    const want = pkg.key;
+    setPvBusy(true); setPvErr(""); setPvNote("");
+    try {
+      const r = await returnStuckObyem({ oid: pvSub.oid, approver: user?.username ?? '', reason });
+      if (pkgKeyRef.current !== want) return;
+      if (!r.ok) { setPvErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+      setPvNote(tr('Буцаагдлаа — инженер засаад дахин илгээнэ.'));
+      await refreshObyem();
+    } catch (e) {
+      if (pkgKeyRef.current === want) setPvErr(userError(e));
+    } finally {
+      setPvBusy(false);
+    }
+  }, [pvSub, pvBusy, locked, pkg.key, user, refreshObyem, pkgKeyRef, setPvBusy, setPvErr, setPvNote]);
   return {
     pvPend, setPvPend, pvSub, setPvSub, pvPreview, setPvPreview, pvBusy, pvErr, setPvErr, pvNote, setPvNote,
-    pvCells, sendObyem, decideObyemHere, withdrawObyemHere,
+    pvCells, sendObyem, decideObyemHere, withdrawObyemHere, returnStuck,
+    /** ⚠️ 2026-10-09: хүлээгдэж буй илгээлтийг ХЭСЭГЧЛЭН бичсэн батлагч (`''` = нэргүй), тэмдэггүй бол `null` — «Гацсаныг буцаах» товчны нөхцөл */
+    partial: pvSub ? obyemPartialBy(pvSub.status, pvSub.reason) : null,
+    /**
+     * ⚠️ 2026-10-09: СҮҮЛИЙН БАТЛАГДСАН илгээлтийн хадгалагдсан тайлбар (`tailbar`) — батлагчийн алгассан нүд
+     *    («Алгассан нүд (N): …», `decideObyem.skipped`) энд. Хүлээгдэж буй илгээлт байвал эсвэл өөр багцынх бол `null`.
+     */
+    note: !pvSub && pvApproved && pvApproved.pkgKey === pkg.key ? pvApproved.note : null,
     /* 2026-10-01: ЗӨВХӨН энэ багцынх (уншилт унавал өмнөх багцын баннер наалдахгүй) */
     pvReturned: pvReturned && pvReturned.pkgKey === pkg.key ? pvReturned : null,
   };

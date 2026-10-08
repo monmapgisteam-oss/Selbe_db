@@ -106,7 +106,8 @@ const cleanScoreAlias = (s: string) => s.replace(/\s*[:：—-]?\s*(авсан|�
 
 /* ═════════════════ Тайлангийн загвар ═════════════════ */
 
-export type UzPhotoRef = { url: string; png: boolean };
+/** ⚠️ 2026-10-09: `heic` — хавсралтын төрөл image/heic|heif (хөтөч ихэвчлэн задалж чаддаггүй) */
+export type UzPhotoRef = { url: string; png: boolean; heic?: boolean };
 
 export type UzItem = {
   /** Талбарын нэр (`g01`) — Excel-ийн «№» (`G01`) ба багануудын угтвар */
@@ -149,9 +150,16 @@ export type UzReport = {
 export type UzAttachment = { id: number; keywords: string; contentType: string };
 
 const two = (n: number) => String(n).padStart(2, '0');
+/** Улаанбаатарын цагийн бүс (UTC+8, зуны цаггүй) — `ceo/workforce.ubDayKey`-ийн дүрэм */
+const UB_OFFSET_MS = 8 * 3_600_000;
+/**
+ * ⚠️ 2026-10-09: УЛААНБААТАРЫН цагаар — урьд нь хөтчийн локал цагаар (`getHours`) тул
+ *    гадаадаас (эсвэл UTC-тэй машинаас) татахад тайлангийн огноо/өдрийн хил гулсдаг байв
+ *    (UB 00:00–07:59-ийн үзлэг өмнөх өдөрт). Хуудасны `ubDayKey`/`uzWeekKey`-тэй НЭГ.
+ */
 export const fmtDateTime = (ms: number): string => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+  const d = new Date(ms + UB_OFFSET_MS);
+  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
 };
 export const fmtDate = (ms: number): string => fmtDateTime(ms).slice(0, 10);
 
@@ -229,7 +237,7 @@ export function buildUzReport(
   const loose = new Map<string, UzPhotoRef[]>();
   for (const a of atts) {
     if (!a.contentType.startsWith('image/')) continue;
-    const ref = { url: photoUrl(a.id), png: /png/i.test(a.contentType) };
+    const ref: UzPhotoRef = { url: photoUrl(a.id), png: /png/i.test(a.contentType), ...(/hei[cf]/i.test(a.contentType) ? { heic: true } : {}) };
     const kw = a.keywords.trim();
     let best: string | null = null;
     for (const q of answers) {
@@ -415,65 +423,124 @@ export const attUrl = (layerUrl: string, oid: number, id: number): string =>
 const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
 const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
 const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`) ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '' : '';
-const isOrgUrl = (url: string): boolean =>
+/** ⚠️ 2026-10-09: экспортлогдсон — хуудасны зургийн слайдер ч (blob URL) энэ шалгуураар токен илгээнэ */
+export const isOrgUrl = (url: string): boolean =>
   (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
   || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+
+/** Нэг хавсралтын хугацааны дээд хязгаар — гацсан хүсэлт тайланг мөнхөд түгжихгүй */
+export const ATT_TIMEOUT_MS = 30_000;
+
+const abortErr = () => new DOMException('Aborted', 'AbortError');
 
 /**
  * ХАВСРАЛТЫН БАЙТ — POST, токен БИЕЭР (2026-10-09).
  * ⚠️ Татахын ӨМНӨ `ensureFreshToken` — олон зурагтай тайлан минут гаруй татагдана.
- * ⚠️ ArcGIS алдааг HTTP 200-аар JSON биетэй буцаадаг тул `content-type`-ийг шалгана;
+ * ⚠️ ArcGIS алдааг HTTP 200-аар JSON биетэй буцаадаг тул `content-type`-ийг шалгана
+ *    (токенгүй GET нь HTML нэвтрэх хуудас буцаадаг — амьдаар баталсан);
  *    498/499 бол `refreshAfterTokenError` → НЭГ удаа дахин. Бусад алдаа → `null`
  *    (дуудагч «татагдсангүй»-д тоолно).
  * ⚠️ `URLSearchParams` бие = энгийн CORS хүсэлт (preflight-гүй).
+ * ⚠️ 2026-10-09: оролдлого бүр `ATT_TIMEOUT_MS` (30с) — урьд нь хугацаагүй тул нэг гацсан
+ *    хавсралт тайлан татахыг МӨНХӨД «Зураг татаж байна… 41/42»-д түгжиж, цонх хаагдахгүй
+ *    байв. Timeout → `null` (татагдсангүйд тоологдоно). `signal` (хэрэглэгч цуцлах) бол
+ *    `AbortError` ШИДНЭ. `AbortSignal.any` бүх хөтөчид байхгүй (`query.ts`-ийн ⚠️) — гараар.
+ * ⚠️ Токеныг ЗӨВХӨН байгууллагын хост руу (`isOrgUrl`).
  */
-async function fetchAttachment(url: string): Promise<Blob | null> {
+export async function fetchAttachment(url: string, signal?: AbortSignal): Promise<Blob | null> {
   await ensureFreshToken();
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal?.aborted) throw abortErr();
     const sent = isOrgUrl(url) ? authToken() : null;
     const body = new URLSearchParams();
     if (sent) body.set('token', sent);
-    const res = await fetch(url, { method: 'POST', body });
-    let code = res.ok ? 0 : res.status;
-    if (res.ok && /json|text\/(plain|html)/i.test(res.headers.get('content-type') ?? '')) {
-      try {
-        const j = (await res.json()) as { error?: { code?: unknown } };
-        code = Number(j?.error?.code ?? 500) || 500;
-      } catch { code = 500; }
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ATT_TIMEOUT_MS);
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      const res = await fetch(url, { method: 'POST', body, signal: ctl.signal });
+      let code = res.ok ? 0 : res.status;
+      if (res.ok && /json|text\/(plain|html)/i.test(res.headers.get('content-type') ?? '')) {
+        try {
+          const j = (await res.json()) as { error?: { code?: unknown } };
+          code = Number(j?.error?.code ?? 500) || 500;
+        } catch { code = 500; }
+      }
+      if (!code) return await res.blob();
+      if ((code === 498 || code === 499) && attempt === 0 && sent && await refreshAfterTokenError(sent)) continue;
+      return null;
+    } catch {
+      if (signal?.aborted) throw abortErr();
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
     }
-    if (!code) return res.blob();
-    if ((code === 498 || code === 499) && attempt === 0 && sent && await refreshAfterTokenError(sent)) continue;
-    return null;
   }
   return null;
 }
 
-/** Татсан, жижигрүүлсэн зураг — PDF-д `data`, Excel-д `bytes` ба хэмжээ */
-export type UzImg = { data: string; bytes: Uint8Array; w: number; h: number; png: boolean };
+/**
+ * Татсан, жижигрүүлсэн зураг — PDF-д `data` (data URL), Excel-д `bytes` ба хэмжээ.
+ * ⚠️ 2026-10-09 (санах ой): ЗӨВХӨН сонгосон форматын хэлбэр үүснэ — нөгөө нь `null`.
+ *    Урьд нь зураг бүрд data URL + байт ХОЁУЛАА (≈2.3× санах ой) хадгалагддаг тул олон
+ *    зурагтай тайлан хөтчийг унагадаг байв.
+ */
+export type UzImg = { data: string | null; bytes: Uint8Array | null; w: number; h: number; png: boolean };
+/** Тайлангийн зургийн хэлбэр — `pdf` → data URL, `xlsx` → байт */
+export type UzImgMode = 'pdf' | 'xlsx';
+
+/** Үүнээс олон зураг бол цонх анхааруулна («Зураггүй» сонголт санал болгоно) */
+export const UZ_IMG_WARN = 1500;
+
+/** Бүх тайлангийн зургийн лавлагаа (давхардалгүй) — хэмжээний дээд хязгаартай */
+function reportRefs(reports: UzReport[]): { ref: UzPhotoRef; max: number }[] {
+  const refs: { ref: UzPhotoRef; max: number }[] = [];
+  const seen = new Set<string>();
+  const add = (r: UzPhotoRef, max: number) => { if (!seen.has(r.url)) { seen.add(r.url); refs.push({ ref: r, max }); } };
+  for (const rep of reports) {
+    rep.sections.forEach((s) => s.items.forEach((it) => it.photos.forEach((p) => add(p, 900))));
+    rep.signatures.forEach((s) => s.photos.forEach((p) => add(p, 420)));
+    rep.extraPhotos.forEach((p) => add(p, 900));
+  }
+  return refs;
+}
+/** Татагдах зургийн тоо (давхардалгүй) */
+export const countReportImages = (reports: UzReport[]): number => reportRefs(reports).length;
 
 /**
  * Зургийг татаж ЖИЖИГРҮҮЛНЭ — файлын хэмжээг барина.
  * ⚠️ Гарын үсэг PNG хэвээр (тунгалаг дэвсгэр); бусад нь JPEG 0.72.
+ * ⚠️ 2026-10-09: `'heic'` — татагдсан ч хөтөч HEIC-ийг задалж чадсангүй (Chrome/Firefox-д
+ *    `createImageBitmap` image/heic-д унадаг). «Татагдсангүй»-гээс ТУСАД нь тоологдоно —
+ *    сүлжээ биш формат асуудал тул «дахин оролдох» нь тусалдаггүй.
  */
-async function toImg(ref: UzPhotoRef, max: number): Promise<UzImg | null> {
+async function toImg(ref: UzPhotoRef, max: number, mode: UzImgMode, signal?: AbortSignal): Promise<UzImg | 'heic' | null> {
+  const blob = await fetchAttachment(ref.url, signal);
+  if (!blob) return null;
   try {
-    const blob = await fetchAttachment(ref.url);
-    if (!blob) return null;
-    const bmp = await createImageBitmap(blob);
+    let bmp: ImageBitmap;
+    try {
+      bmp = await createImageBitmap(blob);
+    } catch {
+      return ref.heic || /hei[cf]/i.test(blob.type) ? 'heic' : null;
+    }
     const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const cv = document.createElement('canvas');
     cv.width = Math.max(1, Math.round(bmp.width * k));
     cv.height = Math.max(1, Math.round(bmp.height * k));
     const ctx = cv.getContext('2d');
-    if (!ctx) return null;
+    if (!ctx) { bmp.close(); return null; }
     if (!ref.png) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); }
     ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
     bmp.close();
-    const data = cv.toDataURL(ref.png ? 'image/png' : 'image/jpeg', 0.72);
-    const bin = atob(data.slice(data.indexOf(',') + 1));
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return { data, bytes, w: cv.width, h: cv.height, png: ref.png };
+    const type = ref.png ? 'image/png' : 'image/jpeg';
+    const base = { w: cv.width, h: cv.height, png: ref.png };
+    if (mode === 'pdf') return { ...base, data: cv.toDataURL(type, 0.72), bytes: null };
+    const out = await new Promise<Blob | null>((res) => cv.toBlob(res, type, 0.72));
+    if (!out) return null;
+    return { ...base, data: null, bytes: new Uint8Array(await out.arrayBuffer()) };
   } catch {
     return null;
   }
@@ -484,35 +551,36 @@ async function toImg(ref: UzPhotoRef, max: number): Promise<UzImg | null> {
  * ⚠️ 2026-10-09: `failed` — татагдаагүй зургийн хаягууд. Урьд нь чимээгүй хаягддаг тул
  *    PDF/Excel-д зураг дутуу атал Excel-ийн «зураг» тоо бүтнээрээ үлддэг байв. Цонх
  *    «N зураг татагдсангүй» гэж хэлж, Excel татагдсан (ба татагдаагүй) тоог бичнэ.
+ * ⚠️ 2026-10-09: `heic` — задлах боломжгүй HEIC (тусдаа тоо, `failed`-д ОРОХГҮЙ — цонх хоёрыг
+ *    тусад нь хэлнэ; Excel-ийн тоонд хоёулаа «татагдсангүй»). `signal` цуцлагдвал `AbortError`.
  */
 export async function loadReportImages(
   reports: UzReport[],
-  onProgress?: (done: number, total: number) => void,
-): Promise<{ images: Map<string, UzImg>; failed: string[] }> {
-  const refs: { ref: UzPhotoRef; max: number }[] = [];
-  const seen = new Set<string>();
-  const add = (r: UzPhotoRef, max: number) => { if (!seen.has(r.url)) { seen.add(r.url); refs.push({ ref: r, max }); } };
-  for (const rep of reports) {
-    rep.sections.forEach((s) => s.items.forEach((it) => it.photos.forEach((p) => add(p, 900))));
-    rep.signatures.forEach((s) => s.photos.forEach((p) => add(p, 420)));
-    rep.extraPhotos.forEach((p) => add(p, 900));
-  }
+  opts: { mode: UzImgMode; signal?: AbortSignal; onProgress?: (done: number, total: number) => void },
+): Promise<{ images: Map<string, UzImg>; failed: string[]; heic: string[] }> {
+  const { mode, signal, onProgress } = opts;
+  const refs = reportRefs(reports);
   const out = new Map<string, UzImg>();
   const failed: string[] = [];
+  const heic: string[] = [];
   let next = 0;
   let done = 0;
   onProgress?.(0, refs.length);
   const worker = async () => {
     while (next < refs.length) {
+      if (signal?.aborted) throw abortErr();
       const { ref, max } = refs[next++];
-      const d = await toImg(ref, max);
-      if (d) out.set(ref.url, d); else failed.push(ref.url);
+      const d = await toImg(ref, max, mode, signal);
+      if (d === 'heic') heic.push(ref.url);
+      else if (d) out.set(ref.url, d);
+      else failed.push(ref.url);
       done += 1;
-      onProgress?.(done, refs.length);
+      if (!signal?.aborted) onProgress?.(done, refs.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, refs.length) }, worker));
-  return { images: out, failed };
+  if (signal?.aborted) throw abortErr();
+  return { images: out, failed, heic };
 }
 
 /* ═════════════════ PDF ═════════════════ */
@@ -649,10 +717,11 @@ export function buildUzPdf(reports: UzReport[], img: Map<string, UzImg>, logo: s
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 50],
     defaultStyle: { font: 'Roboto', fontSize: 10, color: INK },
-    info: { title: one ? `${one.form} — ${one.pkg} — ${fmtDate(one.date)}` : 'Ажлын байрны үзлэг' },
+    /* ⚠️ 2026-10-09: огноогүй (`date = 0`) бол «—» — урьд нь «1970-01-01» гэж бичигддэг байв */
+    info: { title: one ? `${one.form} — ${one.pkg} — ${one.date > 0 ? fmtDate(one.date) : '—'}` : 'Ажлын байрны үзлэг' },
     footer: (page: number) => ({
       text: [
-        one ? `${one.form}  |  ${one.pkg}  |  ${fmtDate(one.date)}  |  Хуудас ` : 'Ажлын байрны үзлэг  |  Хуудас ',
+        one ? `${one.form}  |  ${one.pkg}  |  ${one.date > 0 ? fmtDate(one.date) : '—'}  |  Хуудас ` : 'Ажлын байрны үзлэг  |  Хуудас ',
         { text: String(page), fontSize: 10, color: INK },
       ],
       alignment: 'right',
@@ -761,7 +830,10 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 
 type XCell = { v: string | number | null; s?: number };
 type XRow = { cells: XCell[]; ht?: number };
-type XPic = { col: number; row: number; img: UzImg; hPt: number };
+type XImg = UzImg & { bytes: Uint8Array };
+type XPic = { col: number; row: number; img: XImg; hPt: number };
+/** Excel-д шигтгэх боломжтой (байттай) зураг */
+const xlsImg = (x: UzImg | undefined): x is XImg => !!x?.bytes;
 type XSheet = { name: string; rows: XRow[]; widths: number[]; freezeRow?: boolean; pics: XPic[]; merges?: string[] };
 
 const EMU_PER_PX = 9525;
@@ -819,8 +891,10 @@ const sheetName = (s: string, used: Set<string>) => {
 };
 
 /** «Морин сувд - Захиалагчийн үзлэг 2026-09-29» */
+/* ⚠️ 2026-10-09: компани/багц нь хэвийн болголтоос «—» (`habeaUzleg.clean`) ирж болно —
+   `companyShort` түүнийг хоосон болгодог тул `||` нөөц одоо ажиллана (урьд нь «— - …»). */
 export const reportTitle = (r: UzReport): string =>
-  `${companyShort(r.company) || r.pkg || 'Үзлэг'} - ${r.formShort} ${r.date > 0 ? fmtDate(r.date) : ''}`.trim();
+  `${companyShort(r.company) || companyShort(r.pkg) || 'Үзлэг'} - ${r.formShort} ${r.date > 0 ? fmtDate(r.date) : ''}`.trim();
 
 /**
  * Зургийн тоо — ТАТАГДСАН (эсвэл татаагүй) нь; татагдаагүй байвал «2 (1 татагдсангүй)».
@@ -856,7 +930,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, fai
   for (const s of r.sections) {
     rows.push(band(s.title));
     for (const it of s.items) {
-      const ph = it.photos.map((p) => img.get(p.url)).filter((x): x is UzImg => !!x);
+      const ph = it.photos.map((p) => img.get(p.url)).filter(xlsImg);
       const row = rows.length;
       ph.forEach((im, k) => pics.push({ col: 6 + k, row, img: im, hPt: PHOTO_PT - 6 }));
       maxPhotos = Math.max(maxPhotos, ph.length);
@@ -877,7 +951,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, fai
   if (r.signatures.length) {
     rows.push(band('Баталгаажуулах хэсэг'));
     for (const s of r.signatures) {
-      const ph = s.photos.map((p) => img.get(p.url)).filter((x): x is UzImg => !!x);
+      const ph = s.photos.map((p) => img.get(p.url)).filter(xlsImg);
       const row = rows.length;
       ph.forEach((im, k) => pics.push({ col: 6 + k, row, img: im, hPt: SIG_PT - 6 }));
       maxPhotos = Math.max(maxPhotos, ph.length);
@@ -991,9 +1065,14 @@ export function buildUzXlsx(
   return zipStore([...head, ...files]);
 }
 
-/** Файлын нэрэнд тохиромжгүй тэмдэгт ба «ХХК», хашилтыг арилгана — «"Морин сувд" ХХК» → «Морин сувд» */
+/**
+ * Файлын нэрэнд тохиромжгүй тэмдэгт ба «ХХК», хашилтыг арилгана — «"Морин сувд" ХХК» → «Морин сувд».
+ * ⚠️ 2026-10-09: дан «—» (хоосон утгын орлуулга, `habeaUzleg.clean`) → '' — дуудагчийн `||`
+ *    нөөц (багц, «Үзлэг») ажиллана. Урьд нь файлын нэр «2026-09-29 —» болдог байв.
+ */
 export const companyShort = (s: string): string => s
   .replace(/["“”«»']/g, '')
   .replace(/\s*(ХХК|LLC|ХК|ТӨХК)\s*$/i, '')
   .replace(/[\\/:*?<>|]+/g, ' ')
-  .trim();
+  .trim()
+  .replace(/^[—–-]+$/, '');

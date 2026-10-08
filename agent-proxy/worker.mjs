@@ -24,7 +24,9 @@
 
 /* ⚠️ 2026-10-01: хурдны хязгаар `server.mjs`-тэй ХУВААЛЦСАН модуль — wrangler багцлахдаа оруулна */
 import {
-  createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, usageTokens, BUDGET_MSG, upstreamErrorText,
+  createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, BUDGET_MSG, upstreamErrorText,
+  createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
+  estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
 } from './rateLimit.mjs';
 
 const API = 'https://api.anthropic.com/v1/messages';
@@ -67,6 +69,11 @@ const VERIFIED_MAX = 500;
 /* ⚠️ 2026-10-09 (аудит №4, `server.mjs`-ийн толин): кэшийн ТҮЛХҮҮР нь токены SHA-256 хэш —
    isolate-ийн санах ойд түүхий амьд токен хадгалахгүй; зөвхөн хэш + хэрэглэгчийн нэр. */
 const verified = new Map();
+/** ⚠️ 2026-10-09: кэшээс л (ArcGIS руу явахгүй) — хүчинтэй бол хэрэглэгчийн нэр, эс бөгөөс `null` */
+function verifiedUser(key) {
+  const hit = verified.get(key);
+  return hit && hit.until > Date.now() ? hit.username : null;
+}
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 /** Мөрийн SHA-256 (hex) — Web Crypto (Worker ба Node ≥19-д ижил) */
@@ -110,6 +117,8 @@ function secretMatches(given, expected) {
    ба хязгаарууд `rateLimit.mjs`-д — `server.mjs`-тэй ХУВААЛЦСАН: баталгаажсан
    хэрэглэгч минутад 40 · IP таг 300 (оффисын NAT) · амжилтгүй нэвтрэлт IP-д 20. */
 const limiter = createLimiter();
+/* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг — isolate тус бүрд (`relayChat`-ийн өмнөх ⚠️) */
+const inflight = createConcurrency();
 
 /**
  * ⚠️ 2026-10-09 (аудит №5): ISOLATE ХООРОНДЫН ТООЛУУР — `RL_KV` KV холбосон үед л
@@ -168,17 +177,21 @@ async function budgetOver(env, caller, limit) {
   if (env.RL_KV) return (await kvNum(env, budgetKey(caller))) >= limit;
   return memBudget.over(caller, limit);
 }
-function budgetAdd(env, ctx, caller, n) {
-  if (!(n > 0)) return;
+/* ⚠️ 2026-10-09: `n` СӨРӨГ байж болно — урьдчилсан тооцоог (`reserveTokens`) бодит хэрэглээгээр
+   тааруулах; 0-ээс доош орохгүй. Promise буцаана: урьдчилсан хасалтыг `await` хийснээр дараагийн
+   хүсэлтийн KV уншилт түүнийг харах магадлал өснө (KV ойролцоо, дээрх ⚠️). */
+async function budgetAdd(env, ctx, caller, n) {
+  if (!Number.isFinite(n) || !n) return;
   if (!env.RL_KV) {
-    memBudget.add(caller, n);
+    memBudget.adjust(caller, n);
     return;
   }
   const p = (async () => {
     const k = budgetKey(caller);
-    await kvPut(env, null, k, (await kvNum(env, k)) + n, 2 * 86400);
+    await kvPut(env, null, k, Math.max(0, (await kvNum(env, k)) + n), 2 * 86400);
   })().catch(() => {});
   if (ctx?.waitUntil) ctx.waitUntil(p);
+  return p;
 }
 
 const json = (code, body, headers = {}) =>
@@ -216,12 +229,13 @@ function corsHeaders(origin, env) {
  *
  * @returns {Promise<{ok: true, username: string} | {ok: false, reason: string}>}
  */
-async function checkArcGIS(token, env) {
+/* ⚠️ 2026-10-09: `key` (токены SHA-256) — дуудагч кэшийг шалгахдаа аль хэдийн бодсон бол дахин бодохгүй */
+async function checkArcGIS(token, env, key) {
   if (!token) return { ok: false, reason: 'Нэвтрэлтийн мэдээлэл алга' };
 
-  const key = await sha256Hex(token);
-  const hit = verified.get(key);
-  if (hit && hit.until > Date.now()) return { ok: true, username: hit.username };
+  key ||= await sha256Hex(token);
+  const cachedUser = verifiedUser(key);
+  if (cachedUser) return { ok: true, username: cachedUser };
 
   const portal = (env.ARCGIS_PORTAL || DEFAULTS.PORTAL).replace(/\/+$/, '');
   let data;
@@ -328,20 +342,39 @@ export default {
     if (limiter.hit(`ipcap:${ip}`, LIMITS.ip)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
-    let caller = isBot ? 'bot' : `origin:${origin || 'anon'}`;
+    /* ⚠️ 2026-10-09: бот `x-bot-user` (Telegram ID) илгээвэл `bot:<id>` (`rateLimit.botCaller`-ийн ⚠️) —
+       толгойг НУУЦ ТААРСНЫ ДАРАА л уншина. */
+    let caller = isBot ? botCaller(request.headers.get('x-bot-user')) : `origin:${origin || 'anon'}`;
     if (env.ARCGIS_ORG_ID && !isBot) {
-      /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
-      /* ⚠️ 2026-10-09: + KV (isolate хооронд, дээрх KV-ийн ⚠️) */
-      if (limiter.full(`authfail:${ip}`, LIMITS.authFail) || await kvFull(env, `authfail:${ip}`, LIMITS.authFail)) {
-        return json(429, { error: 'Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
+      const token = request.headers.get('x-arcgis-token');
+      const hash = token ? await sha256Hex(token) : '';
+      /* ⚠️ 2026-10-09: БАТАЛГААЖСАН ТОКЕНЫ КЭШ ЭХЛЭЭД (`server.mjs`-ийн толин) — урьд амжилтгүй
+         нэвтрэлтийн хязгаар кэшээс ӨМНӨ шалгагддаг байсан тул нэг IP-ийн ард (оффисын NAT) хэн нэг
+         нь хуучирсан токеноор 20 удаа унахад ХҮЧИНТЭЙ токентой бүх ажилтан 429 авдаг байв. */
+      const cachedUser = hash ? verifiedUser(hash) : null;
+      if (cachedUser) {
+        caller = `user:${cachedUser}`;
+      } else {
+        /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
+        /* ⚠️ 2026-10-09: түлхүүр нь IP + ТОКЕНЫ ХЭШ (`server.mjs`-ийн аудит №3-тай ижил) — хүчингүй
+           токен бүр өөрийн 20-той; санамсаргүй токенуудын үерийг IP-ийн тусдаа, ӨНДӨР таг
+           (`LIMITS.authFailIp` = 100) барина. + KV (isolate хооронд, дээрх KV-ийн ⚠️) */
+        const failKey = `authfail:${ip}:${hash.slice(0, 16)}`;
+        const ipFailKey = `authfailip:${ip}`;
+        if (limiter.full(failKey, LIMITS.authFail) || limiter.full(ipFailKey, LIMITS.authFailIp)
+          || await kvFull(env, failKey, LIMITS.authFail) || await kvFull(env, ipFailKey, LIMITS.authFailIp)) {
+          return json(429, { error: 'Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
+        }
+        const auth = await checkArcGIS(token, env, hash);
+        if (!auth.ok) {
+          limiter.hit(failKey, LIMITS.authFail);
+          limiter.hit(ipFailKey, LIMITS.authFailIp);
+          await kvHit(env, ctx, failKey, LIMITS.authFail);
+          await kvHit(env, ctx, ipFailKey, LIMITS.authFailIp);
+          return json(401, { error: auth.reason, retryable: false }, cors);
+        }
+        caller = `user:${auth.username}`;
       }
-      const auth = await checkArcGIS(request.headers.get('x-arcgis-token'), env);
-      if (!auth.ok) {
-        limiter.hit(`authfail:${ip}`, LIMITS.authFail);
-        await kvHit(env, ctx, `authfail:${ip}`, LIMITS.authFail);
-        return json(401, { error: auth.reason, retryable: false }, cors);
-      }
-      caller = `user:${auth.username}`;
     }
 
     // ⚠️ Дуудагч тус бүрд хурдны хязгаар — түлхүүр барих реле рүү үер хийхээс сэргийлнэ
@@ -349,10 +382,11 @@ export default {
     if (limiter.hit(caller, LIMITS.user) || await kvHit(env, ctx, caller, LIMITS.user)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
-    /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — бот ЧӨЛӨӨТ (`server.mjs`-ийн ⚠️: бүх ботын хэрэглэгч
-       нэг `bot` түлхүүр хуваалцана, хандалтыг ботын цагаан жагсаалт барина) */
+    /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — нийтлэг `bot` түлхүүр (хуучин, `x-bot-user`-гүй бот) ЧӨЛӨӨТ
+       (`server.mjs`-ийн ⚠️: бүх ботын хэрэглэгч нэг түлхүүр хуваалцана); `bot:<id>` төсөвтэй. */
     const dailyBudget = budgetFromEnv(env.DAILY_TOKEN_BUDGET);
-    if (!isBot && await budgetOver(env, caller, dailyBudget)) {
+    const budgeted = caller !== 'bot';
+    if (budgeted && await budgetOver(env, caller, dailyBudget)) {
       return json(429, { error: BUDGET_MSG, code: 'daily_budget', retryable: false }, cors);
     }
 
@@ -363,46 +397,114 @@ export default {
       }, cors);
     }
 
-    // ⚠️ Биеийг бүтэн уншихаас ӨМНӨ зарласан хэмжээгээр (content-length, БАЙТ)
-    //    таслана — эс бөгөөс том ачаалал бүхэлдээ санах ойд буусны ДАРАА л
-    //    шалгагдана. (raw.length нь UTF-16 нэгж тул байтын хязгаартай яг таарахгүй.)
-    const declared = Number(request.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > MAX_BODY) {
-      return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
+    /* ⚠️ 2026-10-09: ЗЭРЭГ ХҮСЭЛТИЙН ТАГ (`LIMITS.concurrent` = 2). ⚠️ ISOLATE ТУС БҮРД — Cloudflare
+       нэг хэрэглэгчийн зэрэг хүсэлтүүдийг өөр isolate руу чиглүүлж болох тул энэ нь БҮРЭН хил биш,
+       ихэнх тохиолдлын (нэг байршил, халуун isolate) үерийг л барина. Бүрэн хил хэрэгтэй бол
+       Durable Object (`README.md` → «Хязгаарлалтын хил»). */
+    const release = inflight.acquire(caller, caller === 'bot' ? LIMITS.botConcurrent : LIMITS.concurrent);
+    if (!release) {
+      return json(429, { error: CONCURRENT_MSG, code: 'concurrent', retryable: true }, cors);
     }
-    const raw = await request.text();
-    if (raw.length > MAX_BODY) return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
-
-    let payload;
     try {
-      payload = JSON.parse(raw);
-    } catch (e) {
-      /* ⚠️ 2026-10-09 (аудит №7): задлагчийн мессеж зөвхөн логт */
-      console.warn('[agent] бие уншигдсангүй:', caller, e?.message);
-      return json(400, { error: 'Хүсэлтийн биеийг уншиж чадсангүй (JSON биш).' }, cors);
+      return await relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MODEL, EFFORT, withEffort });
+    } finally {
+      release();
     }
+  },
+};
 
-    const { system, messages, tools } = payload ?? {};
-    if (!Array.isArray(messages) || !messages.length) {
-      return json(400, { error: '`messages` хоосон байна' }, cors);
+/**
+ * ⚠️ 2026-10-09: биеийг УРСГАЛААР уншиж байт тоолно — `MAX_BODY` давмагц уншихаа зогсооно.
+ *    Урьд `content-length`-гүй (chunked) хүсэлтийн биеийг `request.text()`-ээр БҮТНЭЭР санах
+ *    ойд буулгасны ДАРАА л хэмжээг шалгадаг (бас UTF-16 нэгжээр) байсан тул хэдэн зуун МБ-ийн
+ *    бие isolate-ийн санах ойг дүүргэж чаддаг байв.
+ * @returns {Promise<{text: string, bytes: number} | null>} `null` — хэтэрсэн
+ */
+async function readBodyCapped(request, max) {
+  if (!request.body) return { text: '', bytes: 0 };
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      try { await reader.cancel(); } catch { /* хаягдсан урсгал */ }
+      return null;
     }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
+  return { text: new TextDecoder().decode(buf), bytes: size };
+}
 
-    /*
-     * ⚠️ 2026-10-09 (аудит №1): СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ — `PROMPT_HMAC` (нууц) тохируулсан
-     * үед л. `server.mjs`-ийн ⚠️-ийг үз: browser-т түлхүүр ИЛ тул энэ нь зөвхөн саад, хил биш; бот чөлөөт.
-     * Тохируулаагүй бол зан огт өөрчлөгдөхгүй.
-     */
-    const promptKey = typeof env.PROMPT_HMAC === 'string' ? env.PROMPT_HMAC.trim() : '';
-    if (promptKey && !isBot) {
-      const sysText = system == null ? '' : system;
-      const good = typeof sysText === 'string'
-        && secretMatches(request.headers.get('x-prompt-sig'), await hmacHex(promptKey, sysText));
-      if (!good) {
-        console.warn('[agent] системийн зааврын гарын үсэг таарсангүй:', caller);
-        return json(403, { error: 'Системийн зааврын гарын үсэг таарсангүй — хуудсыг дахин ачаална уу.', retryable: false }, cors);
-      }
+/**
+ * `/chat`-ийн үлдсэн хэсэг (бие унших → шалгах → төсөв урьдчилан хасах → Anthropic).
+ * ⚠️ 2026-10-09: тусдаа функц — дуудагч зэрэг хүсэлтийн слотыг `finally`-д ЗААВАЛ суллана.
+ */
+async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MODEL, EFFORT, withEffort }) {
+  // ⚠️ Биеийг бүтэн уншихаас ӨМНӨ зарласан хэмжээгээр (content-length, БАЙТ)
+  //    таслана — эс бөгөөс том ачаалал бүхэлдээ санах ойд буусны ДАРАА л
+  //    шалгагдана.
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY) {
+    return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
+  }
+  /* ⚠️ 2026-10-09: зарласан хэмжээгүй (chunked) биеийг ч байтаар тоолж таслана (`readBodyCapped`) */
+  const read = await readBodyCapped(request, MAX_BODY);
+  if (!read) return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
+
+  let payload;
+  try {
+    payload = JSON.parse(read.text);
+  } catch (e) {
+    /* ⚠️ 2026-10-09 (аудит №7): задлагчийн мессеж зөвхөн логт */
+    console.warn('[agent] бие уншигдсангүй:', caller, e?.message);
+    return json(400, { error: 'Хүсэлтийн биеийг уншиж чадсангүй (JSON биш).' }, cors);
+  }
+
+  const { system } = payload ?? {};
+  if (system != null && typeof system !== 'string') {
+    return json(400, { error: '`system` мөр байх ёстой', retryable: false }, cors);
+  }
+  /* ⚠️ 2026-10-09: `tools`/`messages`-ийг ЦАГААН ЖАГСААЛТААР дахин угсарна (`rateLimit.sanitizeChat`-ийн ⚠️) —
+     серверийн хэрэгсэл, зураг/документ блок Anthropic руу ХҮРЭХГҮЙ. */
+  const clean = sanitizeChat(payload ?? {});
+  if (!clean.ok) {
+    console.warn('[agent] хүсэлт шалгалтад унав:', caller, clean.error);
+    return json(400, { error: clean.error, retryable: false }, cors);
+  }
+  const { messages, tools } = clean;
+
+  /*
+   * ⚠️ 2026-10-09 (аудит №1): СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ — `PROMPT_HMAC` (нууц) тохируулсан
+   * үед л. `server.mjs`-ийн ⚠️-ийг үз: browser-т түлхүүр ИЛ тул энэ нь зөвхөн саад, хил биш; бот чөлөөт.
+   * Тохируулаагүй бол зан огт өөрчлөгдөхгүй.
+   */
+  const promptKey = typeof env.PROMPT_HMAC === 'string' ? env.PROMPT_HMAC.trim() : '';
+  if (promptKey && !isBot) {
+    const sysText = system == null ? '' : system;
+    const good = typeof sysText === 'string'
+      && secretMatches(request.headers.get('x-prompt-sig'), await hmacHex(promptKey, sysText));
+    if (!good) {
+      console.warn('[agent] системийн зааврын гарын үсэг таарсангүй:', caller);
+      return json(403, { error: 'Системийн зааврын гарын үсэг таарсангүй — хуудсыг дахин ачаална уу.', retryable: false }, cors);
     }
+  }
 
+  /* ⚠️ 2026-10-09: ТӨСВИЙГ УРЬДЧИЛАН ХАСНА (`server.mjs`-ийн толин, `rateLimit.estimateInputTokens`-ийн ⚠️) —
+     оролтын тооцоо + `MAX_TOKENS`; доорх `finally` нь `charge`-аар тааруулна:
+       · амжилттай / татгалзсан → бодит `usage`;
+       · холболт тасарсан / хариу уншигдаагүй → ОРОЛТЫН тооцоо;
+       · Anthropic HTTP алдаагаар татгалзсан → 0 (төлбөр авдаггүй). */
+  const inputEst = estimateInputTokens(read.bytes, utf8Bytes(system));
+  const reserved = budgeted ? reserveTokens(inputEst, DEFAULTS.MAX_TOKENS) : 0;
+  if (reserved) await budgetAdd(env, ctx, caller, reserved);
+  let charge = inputEst;
+  try {
     let res;
     let body;
     try {
@@ -441,6 +543,8 @@ export default {
     }
 
     if (!res.ok) {
+      /* ⚠️ 2026-10-09: Anthropic HTTP алдаагаар татгалзсан — төлбөр авдаггүй тул төсвөөс хасахгүй */
+      charge = 0;
       const msg = body?.error?.message ?? `AI үйлчилгээний алдаа (HTTP ${res.status})`;
       /* ⚠️ 2026-10-09 (аудит №7): API-ийн түүхий мессеж (`msg`) зөвхөн логт — клиентэд
          статусаас ЕРӨНХИЙ мөр (`server.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
@@ -455,9 +559,13 @@ export default {
       }, cors);
     }
 
+    /* ⚠️ 2026-10-09: ТАТГАЛЗСАН хариу ч токен зарцуулсан — урьд нь төсөвт нэмэхээс ӨМНӨ буцдаг
+       байсан тул татгалзуулах хүсэлтээр төсвийг тойрох боломжтой байв. */
+    charge = settleTokens(body?.usage, inputEst);
+
     // ⚠️ Аюулгүйн ангилагч татгалзвал HTTP 200 боловч `content` хоосон/дутуу
     //    ирнэ — `content[0]`-ыг шууд уншвал эвдэрнэ.
-    if (body.stop_reason === 'refusal') {
+    if (body?.stop_reason === 'refusal') {
       return json(200, {
         stop_reason: 'refusal',
         content: [],
@@ -465,11 +573,13 @@ export default {
       }, cors);
     }
 
-    if (!isBot) budgetAdd(env, ctx, caller, usageTokens(body.usage));
     return json(200, {
-      stop_reason: body.stop_reason,
-      content: body.content,
-      usage: body.usage,
+      stop_reason: body?.stop_reason,
+      content: body?.content,
+      usage: body?.usage,
     }, cors);
-  },
-};
+  } finally {
+    /* ⚠️ `waitUntil` (KV) — хариуг бичилтээр саатуулахгүй */
+    if (reserved) void budgetAdd(env, ctx, caller, charge - reserved);
+  }
+}

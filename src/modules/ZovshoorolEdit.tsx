@@ -17,7 +17,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { buildPacks } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import {
-  TOLOV, deleteZov, loadOneZov, loadZovFieldLens, saveZov, validateZov,
+  TOLOV, ZovClashError, deleteZov, loadOneZov, loadZovFieldLens, saveZov, validateZov,
   type Tolov, type Zov, type ZovDraft, type ZovFieldLens,
 } from '@/lib/zovshoorol';
 import { setNavDirty } from '@/lib/navGuard';
@@ -233,6 +233,18 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() }, before);
       onDone();
     } catch (x) {
+      /* ⚠️ 2026-10-09: бичсэний ДАРАА давхардал илэрсэн (`saveZov` → `resolveAddClash`). Манай мөр
+         серверт ҮЛДСЭН бол маягтыг хаана — дахин «Хадгалах» дарвал урьдчилсан шалгалт өөрийн
+         мөртэй нь давхацна; мессежийг заавал харуулна. Устгагдсан бол маягт нээлттэй (шат солих). */
+      if (x instanceof ZovClashError) {
+        if (x.kept) {
+          window.alert(x.message);
+          onDone();
+          return;
+        }
+        setFail(x.message);
+        return;
+      }
       /* ⚠️ 2026-10-06: шинэ мөрийн хариу алдагдсан бол дахин илгээхийг хаана (`unsure`) */
       if (!editing && isLostResponse(x)) {
         setUnsure(true);
@@ -284,6 +296,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           setFail(tr('Серверээс хариу ирсэнгүй — зөвшөөрөл устгагдсан эсэх ТОДОРХОЙГҮЙ. Хуудсыг дахин ачаалж шалгана уу.'));
           return;
         }
+        /* ⚠️ 2026-10-09: мөр ХЭВЭЭР байна — гэхдээ сервер устгалыг одоо ч боловсруулж байж болох
+           тул «алдаа» биш «тодорхойгүй». Түүхий timeout мессеж хэрэглэгчийг төөрөгдүүлдэг байв. */
+        setFail(tr('Серверээс хариу ирсэнгүй — үр дүн тодорхойгүй: зөвшөөрөл одоогоор устгагдаагүй харагдаж байна. Хуудсыг дахин ачаалж шалгаад шаардлагатай бол дахин устгана уу.'));
+        return;
       }
       setFail(userError(x));
     } finally {

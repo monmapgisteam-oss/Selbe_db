@@ -20,7 +20,7 @@
  * Ажиллуулах:  npm run bot
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, copyFileSync } from 'node:fs';
 import { toHtml, stripHtml } from './telegram-format.mjs';
 import { botFullViews } from './telegram-views.mjs';
 
@@ -103,18 +103,59 @@ if (!ADMINS.size) {
 
 /* ── Зөвшөөрөгдсөн хэрэглэгчид (файлд хадгалагдана) ── */
 
+/**
+ * ⚠️ 2026-10-09: АТОМ БИЧИЛТ — эхлээд түр файлд бичээд `rename`-ээр солино. Урьд шууд
+ *    `writeFileSync` хийдэг байсан тул бичих дундуур процесс унавал (контейнер зогсох, диск
+ *    дүүрэх) файл ХАГАС үлдэж, дараагийн асалтад зөвшөөрөгдсөн бүх хэрэглэгч алдагддаг байв.
+ */
+function writeAtomic(file, text) {
+  const tmp = `${file}.tmp-${process.pid}`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, file);
+}
+
+/**
+ * Файл эвдэрсэн үед (уншигдсан ч задлагдаагүй) ДАРЖ БИЧИХГҮЙ — `true` бол `saveUsers` татгалзана.
+ * ⚠️ 2026-10-09: урьд задлагдахгүй файлыг `{}` гэж эхлүүлээд дараагийн зөвшөөрөлд ХООСОН
+ *    жагсаалтаар дарж бичдэг байсан тул бүх зөвшөөрөгдсөн хэрэглэгч чимээгүй устдаг байв.
+ *    Одоо нөөц хуулбар (`*.corrupt-<агшин>`) үлдээж, логт хэлээд файлд хүрэхгүй.
+ */
+let usersFileBroken = false;
+
 /** `{ "<id>": { views: 'all'|string[], name: string, at: string } }` */
 function loadUsers() {
   if (!existsSync(USERS_FILE)) return {};
   try {
-    return JSON.parse(readFileSync(USERS_FILE, 'utf8'));
+    const data = JSON.parse(readFileSync(USERS_FILE, 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('объект биш');
+    return data;
   } catch (e) {
-    console.error(`[bot] ${USERS_FILE} уншигдсангүй: ${e.message} — хоосноор эхэлнэ`);
+    usersFileBroken = true;
+    const backup = `${USERS_FILE}.corrupt-${Date.now()}`;
+    try {
+      copyFileSync(USERS_FILE, backup);
+      console.error(`[bot] ⛔ ${USERS_FILE} уншигдсангүй: ${e.message} — нөөц: ${backup}. Файлыг ДАРЖ БИЧИХГҮЙ; засаад ботыг дахин асаана уу.`);
+    } catch (e2) {
+      console.error(`[bot] ⛔ ${USERS_FILE} уншигдсангүй: ${e.message}; нөөц хуулж чадсангүй: ${e2.message}. Файлыг ДАРЖ БИЧИХГҮЙ.`);
+    }
     return {};
   }
 }
 const users = loadUsers();
-const saveUsers = () => writeFileSync(USERS_FILE, JSON.stringify(users, null, 2) + '\n');
+/** `false` — хадгалсангүй (файл эвдэрсэн эсвэл бичих алдаа) */
+function saveUsers() {
+  if (usersFileBroken) {
+    console.error(`[bot] ⛔ ${USERS_FILE} эвдэрсэн тул хадгалсангүй (өөрчлөлт зөвхөн санах ойд).`);
+    return false;
+  }
+  try {
+    writeAtomic(USERS_FILE, JSON.stringify(users, null, 2) + '\n');
+    return true;
+  } catch (e) {
+    console.error(`[bot] ${USERS_FILE} бичигдсэнгүй: ${e.message}`);
+    return false;
+  }
+}
 
 /** Эцсийн эрх: админ (env) эсвэл зөвшөөрөгдсөн хэрэглэгч (файл) */
 const scopeOf = (id) => ADMINS.get(id) ?? users[id]?.views ?? null;
@@ -132,13 +173,21 @@ async function tg(method, body) {
   return json.result;
 }
 
+/**
+ * ⚠️ 2026-10-09: ХОЛБООСНЫ УРЬДЧИЛСАН ХАРАГДАЦ УНТРААЛТТАЙ — бүх илгээлтэд. Урьдчилсан харагдац
+ *    асаалттай үед Telegram-ийн сервер мессеж доторх хаяг руу ӨӨРӨӨ хандаж (хариулт/нэр доторх
+ *    ArcGIS-ийн эсвэл хэрэглэгчийн зохиосон URL), хаягийг гуравдагчид ил болгодог; мөн танихгүй
+ *    хэрэглэгчийн нэрэнд шигтгэсэн холбоос админы чатад «карт» болж харагддаг.
+ */
+const NO_PREVIEW = { link_preview_options: { is_disabled: true } };
+
 /** ⚠️ Telegram-ийн мессеж 4096 тэмдэгтээр хязгаартай — урт хариултыг хуваана */
 async function reply(chatId, text, extra = {}) {
   const html = toHtml(text);
   for (let i = 0; i < html.length; i += 3800) {
     const chunk = html.slice(i, i + 3800);
     try {
-      await tg('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'HTML', ...extra });
+      await tg('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'HTML', ...NO_PREVIEW, ...extra });
     } catch (e) {
       // ⚠️ Хуваалт таг дундуур таарвал HTML эвдэрнэ — тэр үед цэвэр текстээр
       //    дахин илгээнэ. Хэрэглэгч хариултаа авахгүй үлдэхээс сэргийлнэ.
@@ -146,6 +195,7 @@ async function reply(chatId, text, extra = {}) {
       await tg('sendMessage', {
         chat_id: chatId,
         text: stripHtml(chunk),
+        ...NO_PREVIEW,
         ...extra,
       });
     }
@@ -191,9 +241,12 @@ function trimCut(history, max) {
 
 /**
  * ⚠️ Нэг хүн олон удаа бичихэд админ руу дахин дахин мэдэгдэхгүй.
- * id → нэр (зөвшөөрөх үед бүртгэлд нэрийг нь хадгалахад ашиглана).
+ * id → `{ name, at }` (зөвшөөрөх үед бүртгэлд нэрийг нь хадгалахад ашиглана).
+ * ⚠️ 2026-10-09: `ACCESS_FILE`-д хадгалагдана (доор) — бот дахин асахад хүсэлтүүд ба цагийн
+ *    хязгаар тэглэгдэж, нэг хүн дахин мэдэгдэл үүсгэдэг байв. `PENDING_TTL`-ээс хуучин нь хасагдана.
  */
 const pending = new Map();
+const PENDING_TTL = 14 * 24 * 3600 * 1000;
 
 /**
  * ⚠️ 2026-10-09 (аудит №10): ХАНДАЛТЫН ХҮСЭЛТИЙН ХУРДНЫ ХЯЗГААР.
@@ -207,17 +260,126 @@ const REQ_PER_ID_MS = 60 * 60 * 1000;
 const REQ_GLOBAL_MAX = 20;
 /** id → сүүлд админд мэдэгдсэн агшин */
 const notifiedAt = new Map();
+/**
+ * id → сүүлд ЗӨВШӨӨРӨГДӨӨГҮЙ хэрэглэгчид ХАРИУЛСАН агшин.
+ * ⚠️ 2026-10-09: урьд зөвшөөрөгдөөгүй хүний мессеж БҮРД хариулдаг байсан тул нэг хүн (эсвэл олон
+ *    шинэ бүртгэл) ботыг Telegram-ийн илгээлтийн хязгаарт хүргэж, бусдын хариуг саатуулж чаддаг
+ *    байв. Одоо ID бүрд цагт НЭГ хариу; бусад нь чимээгүй.
+ */
+const repliedAt = new Map();
 /** Сүүлийн цагийн бүх мэдэгдлийн агшин */
 let notifyLog = [];
-function mayNotify(id) {
-  const now = Date.now();
+
+/**
+ * ⚠️ 2026-10-09: хандалтын хүсэлтийн төлөв (`pending` · `notifiedAt` · `repliedAt` · `notifyLog`)
+ *    `USERS_FILE`-ийн ХАЖУУД жижиг JSON-д (`TELEGRAM_ACCESS_FILE`-ээр солино). Эвдэрсэн бол хоосноор
+ *    эхэлнэ — энэ нь ЭРХ БИШ, зөвхөн түр төлөв (эрхийн файлаас ялгаатай, `loadUsers`-ийн ⚠️).
+ */
+const ACCESS_FILE = process.env.TELEGRAM_ACCESS_FILE || `${USERS_FILE.replace(/\.json$/i, '')}.access.json`;
+function loadAccess() {
+  if (!existsSync(ACCESS_FILE)) return;
+  try {
+    const d = JSON.parse(readFileSync(ACCESS_FILE, 'utf8')) ?? {};
+    const ids = (o) => (o && typeof o === 'object' && !Array.isArray(o)
+      ? Object.entries(o).filter(([k]) => /^\d+$/.test(k))
+      : []);
+    for (const [k, v] of ids(d.pending)) {
+      if (v && typeof v === 'object') pending.set(k, { name: String(v.name ?? ''), at: Number(v.at) || Date.now() });
+    }
+    for (const [k, v] of ids(d.notifiedAt)) if (Number.isFinite(Number(v))) notifiedAt.set(k, Number(v));
+    for (const [k, v] of ids(d.repliedAt)) if (Number.isFinite(Number(v))) repliedAt.set(k, Number(v));
+    if (Array.isArray(d.notifyLog)) notifyLog = d.notifyLog.map(Number).filter(Number.isFinite);
+  } catch (e) {
+    console.error(`[bot] ${ACCESS_FILE} уншигдсангүй: ${e.message} — хүсэлтийн төлөв хоосноор эхэлнэ`);
+  }
+}
+function saveAccess() {
+  try {
+    writeAtomic(ACCESS_FILE, JSON.stringify({
+      pending: Object.fromEntries(pending),
+      notifiedAt: Object.fromEntries(notifiedAt),
+      repliedAt: Object.fromEntries(repliedAt),
+      notifyLog,
+    }) + '\n');
+  } catch (e) {
+    console.error(`[bot] ${ACCESS_FILE} бичигдсэнгүй: ${e.message}`);
+  }
+}
+/** Хуучирсан төлөвийг хасна (Map өсөхгүй) */
+function pruneAccess(now) {
   for (const [k, t] of notifiedAt) if (now - t >= REQ_PER_ID_MS) notifiedAt.delete(k);
+  for (const [k, t] of repliedAt) if (now - t >= REQ_PER_ID_MS) repliedAt.delete(k);
+  for (const [k, p] of pending) if (now - p.at >= PENDING_TTL) pending.delete(k);
   notifyLog = notifyLog.filter((t) => now - t < REQ_PER_ID_MS);
-  if (notifiedAt.has(id)) return false;
-  if (notifyLog.length >= REQ_GLOBAL_MAX) return false;
+}
+loadAccess();
+
+/** `'ok'` — мэдэгдэнэ (тоолсон); `'id'` — энэ ID цагт нэгээ авсан; `'global'` — нийт квот дүүрсэн */
+function mayNotify(id, now = Date.now()) {
+  pruneAccess(now);
+  if (notifiedAt.has(id)) return 'id';
+  if (notifyLog.length >= REQ_GLOBAL_MAX) return 'global';
   notifiedAt.set(id, now);
   notifyLog.push(now);
-  return true;
+  return 'ok';
+}
+
+/* ── ⚠️ 2026-10-09: Telegram хэрэглэгч бүрийн асуултын хязгаар ── */
+
+/**
+ * Зөвшөөрөгдсөн хэрэглэгч ч ботыг хязгааргүй ашиглаж чаддаг байв (реле дээр бүх ботын хэрэглэгч
+ * нэг `bot` түлхүүр хуваалцаж, өдрийн төсвөөс чөлөөт байсан) — нэг хүн бусдын хурдны хязгаарыг
+ * идэж, AI зардлыг хязгааргүй өсгөж чадна.
+ *   · минутад `TELEGRAM_USER_PER_MIN` (анхдагч 10) асуулт;
+ *   · өдөрт (УБ цаг) `TELEGRAM_USER_PER_DAY` (анхдагч 150) асуулт — токены төсвийн ОЙРОЛЦОО орлуулагч
+ *     (асуулт бүр ~2–5 реле хүсэлт). АДМИН өдрийн хязгаараас чөлөөт.
+ *   · реле рүү `x-bot-user` илгээгддэг тул релейн хэрэглэгч тус бүрийн хурд/төсөв мөн үйлчилнэ.
+ * ⚠️ Санах ойд — бот дахин асахад өдрийн тоо тэглэгдэнэ (хүлээн зөвшөөрсөн нарийвчлал).
+ */
+const posInt = (raw, dflt) => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : dflt;
+};
+const Q_PER_MIN = posInt(process.env.TELEGRAM_USER_PER_MIN, 10);
+const Q_PER_DAY = posInt(process.env.TELEGRAM_USER_PER_DAY, 150);
+const qMinute = new Map();
+const qDay = new Map();
+let qDayKey = '';
+const ubDay = (t) => new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10);
+/** `'ok'` (тоолсон) · `'minute'` · `'day'` */
+function questionAllowed(userId, isAdmin) {
+  const now = Date.now();
+  const d = ubDay(now);
+  if (d !== qDayKey) { qDayKey = d; qDay.clear(); }
+  const recent = (qMinute.get(userId) || []).filter((t) => now - t < 60_000);
+  if (recent.length >= Q_PER_MIN) { qMinute.set(userId, recent); return 'minute'; }
+  if (!isAdmin && (qDay.get(userId) || 0) >= Q_PER_DAY) return 'day';
+  recent.push(now);
+  qMinute.set(userId, recent);
+  qDay.set(userId, (qDay.get(userId) || 0) + 1);
+  /* хуучирсан минутын түлхүүрийг үе үе хасна */
+  if (qMinute.size > 1000) for (const [k, arr] of qMinute) if (!arr.length || now - arr[arr.length - 1] >= 60_000) qMinute.delete(k);
+  return 'ok';
+}
+
+/**
+ * ⚠️ 2026-10-09: РЕЛЕ РҮҮ ЗЭРЭГ ЯВАХ АСУУЛТЫН ТАГ (`TELEGRAM_MAX_PARALLEL`, анхдагч 4) — чат бүр
+ *    зэрэгцэн боловсруулагддаг болсон тул олон хэрэглэгч зэрэг асуухад реле/ArcGIS-ийг дарахгүй.
+ *    Слотыг ШУУД дамжуулна (суллах үед хүлээгч байвал тоолуур буурахгүй) — уралдаанд таг давахгүй.
+ */
+const MAX_PARALLEL = posInt(process.env.TELEGRAM_MAX_PARALLEL, 4);
+let running = 0;
+const waiters = [];
+async function withSlot(fn) {
+  if (running < MAX_PARALLEL) running++;
+  else await new Promise((r) => waiters.push(r));
+  try {
+    return await fn();
+  } finally {
+    const next = waiters.shift();
+    if (next) next();
+    else running--;
+  }
 }
 
 /**
@@ -255,26 +417,38 @@ const HELP = [
 
 async function requestAccess(from, chatId) {
   const id = String(from.id);
-  await reply(
-    chatId,
+  const now = Date.now();
+  pruneAccess(now);
+  /* ⚠️ 2026-10-09: ID бүрд цагт НЭГ хариу (`repliedAt`-ийн ⚠️) — бусад нь чимээгүй */
+  if (repliedAt.has(id)) return;
+  repliedAt.set(id, now);
+  const hello =
     `Сайн байна уу, ${from.first_name ?? ''}!\n\n` +
-      `Танд энэ ботыг ашиглах эрх хараахан нээгдээгүй байна.\n` +
-      `Админд хүсэлт илгээлээ — зөвшөөрөгдмөгц мэдэгдэнэ.\n\n` +
-      `Таны ID: ${id}`,
-  );
+    `Танд энэ ботыг ашиглах эрх хараахан нээгдээгүй байна.\n`;
 
-  if (pending.has(id)) return;
-  /* ⚠️ 2026-10-09: хурдны хязгаар (`mayNotify`-ийн ⚠️) — хэтэрвэл админд мэдэгдэхгүй */
-  if (!mayNotify(id)) {
-    console.warn(`[bot] хандалтын хүсэлт хязгаарлагдав (цагт 1/ID · нийт ${REQ_GLOBAL_MAX}): ${id}`);
+  if (pending.has(id)) {
+    saveAccess();
+    await reply(chatId, `${hello}Таны хүсэлт админд илгээгдсэн — зөвшөөрөгдмөгц мэдэгдэнэ.\n\nТаны ID: ${id}`);
     return;
   }
-  pending.set(id, nameOf(from));
+  /* ⚠️ 2026-10-09: хурдны хязгаар (`mayNotify`-ийн ⚠️) — хэтэрвэл админд мэдэгдэхгүй. Урьд энэ үед
+     ч хэрэглэгчид «Админд хүсэлт илгээлээ» гэж ХУДАЛ хэлдэг байв — одоо дараалалд байгааг ил хэлнэ. */
+  const verdict = mayNotify(id, now);
+  if (verdict !== 'ok') {
+    saveAccess();
+    console.warn(`[bot] хандалтын хүсэлт хязгаарлагдав (${verdict}; цагт 1/ID · нийт ${REQ_GLOBAL_MAX}): ${id}`);
+    await reply(chatId, `${hello}Хүсэлт дараалалд байна — дараа дахин оролдоно уу.\n\nТаны ID: ${id}`);
+    return;
+  }
+  pending.set(id, { name: nameOf(from), at: now });
+  saveAccess();
+  await reply(chatId, `${hello}Админд хүсэлт илгээлээ — зөвшөөрөгдмөгц мэдэгдэнэ.\n\nТаны ID: ${id}`);
 
   // ⚠️ Хүсэлтийг БҮХ админд илгээнэ — нэг нь л хариулахад хангалттай
   for (const adminId of ADMINS.keys()) {
     try {
       await tg('sendMessage', {
+        ...NO_PREVIEW,
         chat_id: adminId,
         text:
           `🔔 Шинэ хандалтын хүсэлт\n\n` +
@@ -316,16 +490,21 @@ async function handleCallback(cb) {
   let note;
   if (action === 'no') {
     pending.delete(targetId);
+    saveAccess();
     note = 'Татгалзлаа';
     await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
   } else {
     const views = action === 'plan' ? PLAN_VIEWS : FULL_VIEWS;
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
     // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
-    users[targetId] = { views, name: pending.get(targetId) ?? '', at: new Date().toISOString() };
-    saveUsers();
+    users[targetId] = { views, name: pending.get(targetId)?.name ?? '', at: new Date().toISOString() };
+    const saved = saveUsers();
     pending.delete(targetId);
+    repliedAt.delete(targetId);
+    saveAccess();
     note = action === 'plan' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө';
+    /* ⚠️ 2026-10-09: файлд хадгалагдаагүй бол админд ил хэлнэ (`saveUsers`-ийн ⚠️) — дахин асахад алга болно */
+    if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
     await reply(
       targetId,
       'Хандалт нээгдлээ! 🎉\n\nАсуултаа монголоор бичнэ үү.\n/help — заавар',
@@ -334,6 +513,7 @@ async function handleCallback(cb) {
 
   await tg('answerCallbackQuery', { callback_query_id: cb.id, text: note });
   await tg('editMessageText', {
+    ...NO_PREVIEW,
     chat_id: cb.message.chat.id,
     message_id: cb.message.message_id,
     text: `${cb.message.text}\n\n➡️ ${note} (${adminId})`,
@@ -397,6 +577,17 @@ async function handle(msg) {
     return;
   }
 
+  /* ⚠️ 2026-10-09: хэрэглэгч бүрийн асуултын хязгаар (`questionAllowed`-ийн ⚠️) */
+  const verdict = questionAllowed(userId, ADMINS.has(userId));
+  if (verdict === 'minute') {
+    await reply(chatId, `Хэт олон асуулт — минутад ${Q_PER_MIN}. Түр хүлээгээд дахин асууна уу.`);
+    return;
+  }
+  if (verdict === 'day') {
+    await reply(chatId, `Өнөөдрийн асуултын хязгаар (${Q_PER_DAY}) дууслаа — маргааш дахин асууна уу.`);
+    return;
+  }
+
   const scopeKey = JSON.stringify(scope);
   let chat = chats.get(chatKey);
   if (!chat || chat.scopeKey !== scopeKey) {
@@ -416,7 +607,8 @@ async function handle(msg) {
 
   try {
     const t0 = Date.now();
-    const res = await ask({ question: text, history, scope });
+    /* ⚠️ 2026-10-09: `botUser` → реле `bot:<id>` (хэрэглэгч бүрийн хурд/төсөв); `withSlot` — нийт зэрэг таг */
+    const res = await withSlot(() => ask({ question: text, history, scope, botUser: userId }));
     console.log(`[bot] ${userId}: "${text.slice(0, 60)}" → ${((Date.now() - t0) / 1000).toFixed(1)}с, ${res.turns} эргэлт`);
     await reply(chatId, res.text);
   } catch (e) {
@@ -431,6 +623,49 @@ async function handle(msg) {
     clearInterval(typing);
     if (history.length > MAX_HISTORY) history.splice(0, trimCut(history, MAX_HISTORY));
   }
+}
+
+/* ── ⚠️ 2026-10-09: чат бүрийн дараалал ── */
+
+/**
+ * Урьд update бүрийг `await`-аар ДАРААЛАН боловсруулдаг байсан тул нэг удаан асуулт (10–60 с)
+ * БҮХ хэрэглэгчийн мессеж, тэр байтугай админы «✅ Зөвшөөрөх» товшилтыг ч хүлээлгэдэг байв.
+ * Одоо:
+ *   · админы товшилт (`callback_query`) ШУУД, дараалалгүй;
+ *   · мессеж — ЧАТ БҮРД тусдаа дараалал (нэг чат дотор дараалал хадгалагдана — түүх эвдрэхгүй),
+ *     өөр чатууд зэрэгцэн явна (реле рүү нийт `MAX_PARALLEL`, `withSlot`);
+ *   · нэг чатад `MAX_QUEUE`-ээс олон хүлээгдэж буй мессеж бол шинийг хаяж, минутад нэг удаа сануулна.
+ */
+const MAX_QUEUE = 3;
+const queues = new Map();
+const queueWarned = new Map();
+function enqueue(chatId, fn) {
+  const key = String(chatId);
+  let q = queues.get(key);
+  if (!q) {
+    q = { tail: Promise.resolve(), depth: 0 };
+    queues.set(key, q);
+  }
+  if (q.depth >= MAX_QUEUE) return false;
+  q.depth++;
+  q.tail = q.tail
+    .then(fn)
+    .catch((e) => console.error(`[bot] чат ${key}: ${e?.message ?? e}`))
+    .finally(() => {
+      q.depth--;
+      if (!q.depth && queues.get(key) === q) queues.delete(key);
+    });
+  return true;
+}
+function dispatchMessage(msg) {
+  const chatId = msg.chat?.id;
+  if (!chatId) return;
+  if (enqueue(chatId, () => handle(msg))) return;
+  const now = Date.now();
+  if (now - (queueWarned.get(chatId) ?? 0) < 60_000) return;
+  queueWarned.set(chatId, now);
+  if (queueWarned.size > 1000) for (const [k, t] of queueWarned) if (now - t >= 60_000) queueWarned.delete(k);
+  void reply(chatId, 'Өмнөх асуултууд боловсруулагдаж байна — хариуг хүлээгээд дахин бичнэ үү.').catch(() => {});
 }
 
 /* ── Урт татах гогцоо (long polling) ── */
@@ -463,13 +698,14 @@ async function main() {
         timeout: 30,
         allowed_updates: ['message', 'callback_query'],
       });
+      /* ⚠️ 2026-10-09: `await` ХИЙХГҮЙ — чат бүрийн дараалал / товшилт шууд (`enqueue`-ийн ⚠️) */
       for (const u of updates) {
         offset = u.update_id + 1;
-        try {
-          if (u.message) await handle(u.message);
-          else if (u.callback_query) await handleCallback(u.callback_query);
-        } catch (e) {
-          console.error(`[bot] update ${u.update_id}: ${e?.message ?? e}`);
+        if (u.message) dispatchMessage(u.message);
+        else if (u.callback_query) {
+          void handleCallback(u.callback_query).catch((e) => {
+            console.error(`[bot] update ${u.update_id}: ${e?.message ?? e}`);
+          });
         }
       }
     } catch (e) {

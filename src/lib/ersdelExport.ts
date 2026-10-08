@@ -119,8 +119,12 @@ export type ExportRow = {
    *    `undefined` = мэдэгдэхгүй (хуучин дуудагч) — нүд хоосон.
    */
   truncated?: boolean;
-  /** ⚠️ 2026-10-09: мужид орсон объектын БҮТЭН тоо (`DamageRow.n`) — `objects.length`-ээс их байж болно */
-  totalN?: number;
+  /**
+   * ⚠️ 2026-10-09: мужид орсон объектын БҮТЭН тоо (`DamageRow.n`) — `objects.length`-ээс их байж болно.
+   *    `null` = тоолох асуулга унасан (`DamageRow.countFailed`) — бүтэн тоо мэдэгдэхгүй (CSV хоосон,
+   *    GeoJSON `null`); `undefined` = өгөөгүй (хуучин дуудагч).
+   */
+  totalN?: number | null;
 };
 
 /** Хэмжээний нэгж — геометрээс */
@@ -147,6 +151,15 @@ export function damageCsv(rows: ExportRow[]): string {
         o.cost == null ? null : Math.round(o.cost),
         r.truncated == null ? null : r.truncated ? 1 : 0,
         r.totalN ?? null,
+      ]);
+    }
+    /* ⚠️ 2026-10-09 (аудит): ТАЙРАГДСАН давхарга НЭГ Ч объектгүй (геометр татагдаагүй) бол давхаргын
+       ГАНЦ мөр (oid/хэмжээ хоосон) — урьд нь CSV-д огт гардаггүй тул давхарга өртөөгүй мэт харагддаг
+       байв (GeoJSON нь `truncated_layers`-ээр аль хэдийн хэлдэг). */
+    if (r.truncated && !r.objects.length) {
+      out.push([
+        r.title, r.layerId, null, r.clsLabel, null, unitOf(r.geom), null, null,
+        1, r.totalN ?? null,
       ]);
     }
   }

@@ -41,7 +41,7 @@ import type { Row } from '@/lib/query';
 import { LAYER_BY_ID } from '@/lib/services';
 import { lenFieldUnit } from '@/lib/butetsLen';
 import {
-  loadLayerMeta, loadRows, parseNum, saveRows, validateRow,
+  isLostResponse, loadLayerMeta, loadRows, parseNum, saveRows, validateRow,
   type LayerMeta, type Patch,
 } from '@/lib/butetsEdit';
 import { FieldInput, type UndoInfo } from './DedButetsEdit';
@@ -291,12 +291,23 @@ export function DedButetsBatch({
       /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
       const partial = (x as { done?: number[] }).done;
       const msg = userError(x);
+      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН мөрүүд (`unknown`) бичигдсэн байж магадгүй тул буцаалтад
+         оруулна (хуучин утгаа дахин бичих нь идемпотент). */
+      const unknownRows = (x as { unknown?: number[] }).unknown ?? [];
+      const undoable = [...(partial ?? []), ...unknownRows];
       /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
          давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
-      if (partial?.length) onPartial?.(undoOf(partial));
+      if (undoable.length) onPartial?.(undoOf(undoable));
       /* ⚠️ 2026-10-01: АТОМ БУС давхарга (`supportsRollbackOnFailureParameter: false`) — мөр бүрийн
          үр дүн (`failed`) ирнэ: аль нь бичигдээгүйг тоогоор хэлнэ («эхний N» биш — дунд нь ч унаж болно). */
       const failedRows = (x as { failed?: { oid: number }[] }).failed;
+      /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (timeout · сүлжээ · 5xx) — «алдаа» биш «үр дүн тодорхойгүй».
+         Урьд нь түүхий алдаа гарч, хэрэглэгч юу ч бичигдээгүй гэж ойлгодог байв. */
+      if (isLostResponse(x) || unknownRows.length) {
+        setFail(tr('Серверийн хариу алдагдсан — үр дүн тодорхойгүй: {0}/{1} мөр бичигдсэн нь баталгаатай, {2} мөрийнх тодорхойгүй. Давхаргыг дахин ачаалж шалгана уу; дахин «Хадгалах» дарвал бүгдэд ижил утгыг дахин бичнэ.',
+          num(partial?.length ?? 0), num(writeOids.length), num(unknownRows.length || Math.max(0, writeOids.length - (partial?.length ?? 0)))));
+        return;
+      }
       setFail(failedRows?.length
         ? tr('{0}/{1} мөр бичигдсэн, {2} мөрөнд алдаа: {3}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.',
           num(partial?.length ?? 0), num(writeOids.length), num(failedRows.length), msg)

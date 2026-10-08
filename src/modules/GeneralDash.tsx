@@ -58,7 +58,7 @@ import {
   type XDim,
   grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes,
   type Grain,
-  NO_PERIOD, CONTRACTED,
+  NO_PERIOD, isContracted,
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -1125,7 +1125,9 @@ function KpiStrip({
        `execReport.csum` бүгд ижил шүүлт. Урьд нь энд `inTotal`-гүй тул гэрээлсэн
        дүн нь төсвийн хүрээнээс гадуурх мөрийг ч агуулж, тайлан/дашбоард зөрдөг байв. */
     const csum = contracts
-      ? sel.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0)
+      /* ⚠️ 2026-10-09: `isContracted` (зай/мөр шилжилтийг хэвшүүлдэг) — түүхий `=== CONTRACTED` нь
+         «Гэрээлсэн  дүн» (давхар зай) мөрийг алгасаж `live.loadBudget.contract`-аас зөрдөг байв. */
+      ? sel.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0)
       : 0;
     const whole = !periodActive(period) && xs == null;
     return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole };

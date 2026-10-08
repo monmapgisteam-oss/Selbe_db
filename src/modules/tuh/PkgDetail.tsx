@@ -17,11 +17,11 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { CASHFLOW_NEW, HO_IPC, PKG_BY_BAGTS, LAYER_BY_ID } from '@/lib/services';
-import { CONTRACTED } from '@/lib/gdash';
+import { isContracted } from '@/lib/gdash';
 import { MS_STATUS, statusLabel } from '@/lib/chanarMs';
 import { statusOf as planStatus } from '@/lib/plan';
 import {
-  groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
+  groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, HO_PENDING,
   statusOf as tuhStatus, firstFilled, rowProgress,
 } from '@/lib/tuhData';
 import { payRows } from '@/lib/ipcTable';
@@ -36,7 +36,7 @@ import { ProgChart } from '@/modules/PkgProg';
 import { ComboChart, lagLevel } from '@/modules/Finance';
 import {
   Section, StatusChip, EmptyRow, GanttLegend, ReportAge, ganttDomain, level1Rows, pp, barSt,
-  PREREQ_LANES, DepList,
+  PREREQ_LANES, DepList, calDaysBetween,
 } from './Overview';
 import s from '../tuh.module.css';
 
@@ -80,6 +80,11 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
 }) {
   const housing = r.p.group === 'housing';
   const now = m.now;
+  /* ⚠️ 2026-10-09 (аудит): хуваарийн огноо (`rowSpan`, гол үе шат) нь UTC шөнө дундын ms — «Хуваарь»
+     (`huvaari/util.todayUtc`)-тай ижил ЛОКАЛ өдрийн UTC шөнө дундаар жишнэ. Урьд нь `Date.now()`
+     (`m.now`) тул өнөөдөр дуусах ажил тэр өдрийн турш «Хоцорсон» болж, гол үе шат «өнгөрсөн» гэж
+     тэмдэглэгддэг байв. */
+  const today = useMemo(() => { const d = new Date(now); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); }, [now]);
   /* ⚠️ 2026-09-30: хуваарь нь түлхүүрийн ЭЗЭН мөрийнх (`TuhRow.own`) — зураг төслийн мөр барилгын
      хуваарийг (гол үе шат, Level 3, нөөц) өөрийнх мэт харуулахгүй (`tuhData.keyOwners`-ийн ⚠️) */
   const hasSheets = r.own && sheetsOf(r.p.pkgKey).length > 0;
@@ -123,7 +128,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         const sp = rowSpan(x.rows, i);
         if (sp.end != null && (finish == null || sp.end > finish)) finish = sp.end;
         const act = rowAct(q);
-        const st = sp.start != null && sp.end != null ? planStatus({ start: sp.start, end: sp.end }, act, now) : 'none';
+        const st = sp.start != null && sp.end != null ? planStatus({ start: sp.start, end: sp.end }, act, today) : 'none';
         l3.push({
           key: `${x.sheet.key}:${i}`,
           label: q.depth === top ? <b>{q.work}</b> : q.work,
@@ -135,10 +140,11 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
       });
     }
     return { milestones, hun, mashin, finish, l3 };
-  }, [sched, now]);
+  }, [sched, today]);
 
   const elapsed = elapsedPct(r.p.start, r.p.end, now);
-  const left = daysBetween(now, r.p.end);
+  /* ⚠️ 2026-10-09: үлдсэн хоног хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
+  const left = calDaysBetween(now, r.p.end);
   const layerTitles = (PKG_BY_BAGTS[r.p.pkgKey] ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
   /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь `hasDeps` хатуу `false`,
      урьдчилсан нөхцөлийн эгнээ «—», «хамаарал бүртгэгдээгүй» гэсэн ХУДАЛ бичигтэй байв.
@@ -164,16 +170,25 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
    */
   /*
    * ⚠️ 2026-10-09: ГЭРЭЭ БҮРЭЭР `ipcTable.payRows`-ийн КАНОНИК дараалал (урьдчилгаа эхэнд, дараа нь
-   *    IPC № өсөх) ба ТҮҮНИЙ хуримтлал (`PayRow.cum` — зөвхөн гүйцэтгэлийн мөр, урьдчилгаанд `null`).
-   *    Урьд нь `guilgee_ognoo` МӨРӨӨР эрэмбэлдэг байв — огноогүй мөр (45-ийн 5) ЭХЭНД орж, хуримтлал
-   *    буруу мөрд наалдана (`payRows`-ийн ⚠️); бас багцын бүх гэрээг нэг хуримтлалд холино.
+   *    IPC № өсөх). Урьд нь `guilgee_ognoo` МӨРӨӨР эрэмбэлдэг байв — огноогүй мөр (45-ийн 5) ЭХЭНД
+   *    орж, хуримтлал буруу мөрд наалдана (`payRows`-ийн ⚠️); бас багцын бүх гэрээг нэг хуримтлалд холино.
+   * ⚠️ 2026-10-09 (аудит): «Хуримтлагдсан» ба «гэрээний %» нь УРЬДЧИЛГААГ ОРУУЛСАН хуримтлал — гэрээний
+   *    «олгосон %» (`ipcOf.paidPct` · CEO · IPC-ийн `paidTotal`) урьдчилгааг багтаадаг. Урьд нь
+   *    `PayRow.cum` (зөвхөн гүйцэтгэлийн мөр, урьдчилгаанд `null`) хэрэглэдэг тул бүртгэлийн сүүлийн %
+   *    гэрээний олгосон %-иас урьдчилгааны хэмжээгээр бага гардаг байв. Одоо дараалал дагуу бүх дүнтэй
+   *    мөрийг нэмнэ (урьдчилгаа эхэнд тул гүйцэтгэлийн мөрийн хуримтлал = урьдчилгаа + `PayRow.cum`);
+   *    урьдчилгааны мөр ч ӨӨРИЙН хуримтлалтай. `PayRow.cum`-ийг ӨӨРЧЛӨХГҮЙ (`ipcLink`-ийн зөрүү үүнээс).
    *    «гэрээний %» = тухайн мөрийн хуримтлал ÷ ТУХАЙН гэрээний гэрээт дүн (тодорхой, > 0 үед).
    */
   const payLog = useMemo(() => (r.ipc?.contracts ?? []).flatMap((c) => {
     const tot = c.contractTotal != null && c.contractTotal > 0 ? c.contractTotal : null;
+    let acc = 0;
     return payRows(c.pays)
       .filter((x) => x.amount != null)
-      .map((x) => ({ x, contract: c.code, ofContract: tot != null && x.cum != null ? (x.cum / tot) * 100 : null }));
+      .map((x) => {
+        acc += x.amount ?? 0;
+        return { x, cum: acc, contract: c.code, ofContract: tot != null ? (acc / tot) * 100 : null };
+      });
   }), [r.ipc]);
   const l1 = useMemo(() => level1Rows(m.rows.filter((x) => x.p.key === r.p.key), onOpen, r.p.key), [m.rows, r.p.key, onOpen]);
   const dom = ganttDomain([
@@ -273,7 +288,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                 : derived && derived.milestones.length ? (
                   <ol className={s.milestones}>
                     {derived.milestones.map((ms, i) => (
-                      <li key={i} data-past={ms.end != null && ms.end < now}><span>{date(ms.end)}</span><span>{ms.name}</span></li>
+                      <li key={i} data-past={ms.end != null && ms.end < today}><span>{date(ms.end)}</span><span>{ms.name}</span></li>
                     ))}
                   </ol>
                 ) : <p className={s.note}>—</p>}
@@ -312,7 +327,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             },
             ...(derived?.milestones ?? []).map((ms, i) => ({
               key: `ms${i}`, label: ms.name, start: ms.start, end: ms.end, progress: ms.act == null ? null : ms.act * 100,
-              st: ms.start != null && ms.end != null ? planStatus({ start: ms.start, end: ms.end }, ms.act, now) : 'none' as const,
+              st: ms.start != null && ms.end != null ? planStatus({ start: ms.start, end: ms.end }, ms.act, today) : 'none' as const,
             })),
           ]}
           from={dom.from} to={dom.to} now={now}
@@ -336,7 +351,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                    `guitsetgel_huvi` биш; хоосон бол «Мэдээлэлгүй» (`statusOf`-ийн `nullAs`) */
                 const pr = one ? r.progress : rowProgress(r.p.group, c);
                 const st = one ? r.status : tuhStatus({
-                  contracted: String(c[F.note] ?? '').trim() === CONTRACTED, progress: pr, gap: null,
+                  /* ⚠️ 2026-10-09: порталын НЭГ дүрэм (`gdash.isContracted` — дотоод зай нэгтгэнэ) */
+                  contracted: isContracted(c), progress: pr, gap: null,
                   nullAs: r.p.group === 'design' ? 'unknown' : 'todo',
                 });
                 return (
@@ -383,8 +399,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
 
       {/* ── Гүйцэтгэл ── */}
       <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
-        {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhModel.planFailed`) */}
-        <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} loading={m.loading.has('plan')} planFailed={m.planFailed} />
+        {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhRow.planFailed` — ЗӨВХӨН энэ багцынх) */}
+        <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} loading={m.loading.has('plan')} planFailed={r.planFailed} />
         {/* ⚠️ «ХАБЭА»-гийн «Ажилтан — өдрөөр»-тэй ИЖИЛ `ui.Series` (line + утга). Тайлангүй өдөр
             0 БИШ (null ≠ 0) — 0 цэгээр «ажилтангүй» гэж худал харуулахгүй. */}
         {/* ⚠️ 2026-10-09: тайлангүй өдрийг ХАСАХГҮЙ — ЦООРХОЙ (`Series.lines`-ийн `null`). Урьд нь шүүгдэж
@@ -586,13 +602,13 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
               <th className={s.num}>{tr('Хуримтлагдсан')}</th><th className={s.num}>{tr('гэрээний %')}</th>
             </tr></thead>
             <tbody>
-              {payLog.map(({ x, contract, ofContract }, i) => (
+              {payLog.map(({ x, cum, contract, ofContract }, i) => (
                 <tr key={i}>
                   {(r.ipc?.contracts.length ?? 0) > 1 && <td>{contract || '—'}</td>}
                   <td><span className={s.chip} data-tone={x.advance ? 'mute' : 'good'}>{x.code}</span></td>
                   <td>{String(x.date ?? '').slice(0, 10) || '—'}</td>
                   <td className={s.num}>{mnt(x.amount)}</td>
-                  <td className={s.num}>{mnt(x.cum)}</td>
+                  <td className={s.num}>{mnt(cum)}</td>
                   <td className={s.num}>{pct(ofContract)}</td>
                 </tr>
               ))}

@@ -39,12 +39,14 @@ const files = [];
 })('src');
 for (const e of readdirSync('tools')) if (/\.mjs$/.test(e) && !/\.check\.mjs$/.test(e)) files.push(`tools/${e}`);
 
-/** (3)-ын үл хамаарал — файл → шалтгаан. Энд нэмэхээс өмнө хаяг fetch-д ОРОХГҮЙ гэдгийг батал. */
-const IMG_ALLOW = new Map([
-  ['src/modules/Habea.tsx', 'IncPhotos — рендерт <img src>/<a href>'],
-  ['src/modules/habeaUzleg.tsx', '`photoSrc` — рендерт <img src>/<a href>'],
-  ['src/modules/sheet/ags.ts', '`attachmentUrl` — <img src>'],
-]);
+/**
+ * (3)-ын үл хамаарал — файл → шалтгаан. Энд нэмэхээс өмнө хаяг fetch-д ОРОХГҮЙ гэдгийг батал.
+ * ⚠️ 2026-10-09: ХООСОН — ХАБЭА-гийн зураг (`Habea.tsx` IncPhotos/PhotoWall, `habeaUzleg`
+ *    слайдер) blob URL-аар (`habeaUzleg.AttPhoto` → `uzlegReport.fetchAttachment`, POST биеэр),
+ *    `sheet/ags.attachmentUrl` УСТГАГДСАН. Файл бүхэлдээ чөлөөлөх үл хамаарал БҮҮ нэм —
+ *    зураг хэрэгтэй бол `AttPhoto` ашигла.
+ */
+const IMG_ALLOW = new Map();
 const IMG_PATTERNS = [
   /tokenQs\(\)\.slice\(1\)/,  // const q = tokenQs().slice(1)
   /\?\$\{q\}/,                // `${url}?${q}`
@@ -77,5 +79,14 @@ for (const f of IMG_ALLOW.keys()) assert.ok(files.includes(f), `✗ IMG_ALLOW-д
   const rep = readFileSync('src/lib/uzlegReport.ts', 'utf8');
   assert.ok(!/tokenQs/.test(rep), '✗ uzlegReport: tokenQs буцаж орсон — хавсралтын токен POST биеэр л');
   assert.ok(/method: 'POST'/.test(rep) && /body\.set\('token'/.test(rep), '✗ uzlegReport: хавсралт POST + токен биеэр');
+  assert.ok(/isOrgUrl\(url\) \? authToken\(\)/.test(rep), '✗ uzlegReport: токен ЗӨВХӨН байгууллагын хост руу');
 }
-console.log('✓ токен зөвхөн POST биеэр (img/a хавсралтын ил үл хамаарлууд — ALLOW · IMG_ALLOW)');
+/* ⚠️ 2026-10-09: ХАБЭА-гийн зураг blob URL-аар — `tokenQs`/`photoSrc` буцаж орохгүй */
+for (const f of ['src/modules/Habea.tsx', 'src/modules/habeaUzleg.tsx', 'src/modules/sheet/ags.ts']) {
+  const src = readFileSync(f, 'utf8').split(/\r?\n/).filter((l) => !isComment(l)).join('\n');
+  assert.ok(!/tokenQs\s*\(/.test(src), `✗ ${f}: tokenQs() — зургийг AttPhoto (blob URL)-оор`);
+  assert.ok(!/photoSrc\s*\(/.test(src), `✗ ${f}: photoSrc() — токентой хаяг`);
+}
+assert.ok(!/attachmentUrl|listAttachments|addAttachment|deleteAttachment/.test(readFileSync('src/modules/sheet/ags.ts', 'utf8').split(/\r?\n/).filter((l) => !isComment(l)).join('\n')),
+  '✗ sheet/ags: хаалттай (499) үйлчилгээний хавсралтын функц буцаж орсон');
+console.log('✓ токен зөвхөн POST биеэр (img/a хавсралтын ил үл хамаарлууд — ALLOW; IMG_ALLOW хоосон)');

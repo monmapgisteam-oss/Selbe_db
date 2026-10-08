@@ -220,7 +220,9 @@ export function MaForm({
                             ) : <span>{String(mat[d.k] ?? '') || '—'}</span>}
                           </label>
                         ))}
-                        <label className={s.matFld}>
+                        {/* ⚠️ 2026-10-09: `<label>` → `<div>` (Chanar.tsx-ийн ижил) — label дотор товч/олон оролт байвал
+                            товшилт эхний удирдлага руу шилжиж, `DateField`-ийн 📅 товч санамсаргүй нээгддэг; оролт бүр `aria-label`-тай. */}
+                        <div className={s.matFld}>
                           <span className={s.matLbl}>{tr('Гарал')}</span>
                           {m.edit && !mat.locked ? (
                             <select className={s.select} aria-label={`${tr('Гарал')} ${i + 1}`} value={mat.origin ?? ''} disabled={m.busy}
@@ -230,8 +232,8 @@ export function MaForm({
                               <option value="foreign">{tr('Импортын')}</option>
                             </select>
                           ) : <span>{mat.origin === 'domestic' ? tr('Дотоодын') : mat.origin === 'foreign' ? tr('Импортын') : '—'}</span>}
-                        </label>
-                        <label className={s.matFld}>
+                        </div>
+                        <div className={s.matFld}>
                           <span className={s.matLbl}>{tr('Шаардлага хангаж буй эсэх')}</span>
                           {m.edit && !mat.locked ? (
                             <select className={s.select} aria-label={`${tr('Шаардлага хангаж буй эсэх')} ${i + 1}`} value={mat.meets === null ? '' : mat.meets ? '1' : '0'} disabled={m.busy}
@@ -241,15 +243,17 @@ export function MaForm({
                               <option value="0">{tr('Үгүй')}</option>
                             </select>
                           ) : <span>{mat.meets === null ? '—' : mat.meets ? tr('Тийм') : tr('Үгүй')}</span>}
-                        </label>
-                        <label className={s.matFld}>
+                        </div>
+                        <div className={s.matFld}>
                           <span className={s.matLbl}>{tr('Талбайд ирсэн огноо')}</span>
                           {m.edit && !mat.locked ? (
                             /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
                             <DateField label={`${tr('Талбайд ирсэн огноо')} ${i + 1}`} value={toDateInput(mat.arrivedAt)} disabled={m.busy}
-                              onChange={(v) => setMat(i, { arrivedAt: fromDateInput(v) })} />
+                              onChange={(v) => setMat(i, { arrivedAt: fromDateInput(v) })}
+                              /* ⚠️ 2026-10-09: задрахгүй огноо → эцэг бичихийг хаана (`fields.Mode.onBadDate`) */
+                              onBad={(b) => m.onBadDate?.(`ma-arrived-${uid}`, b)} />
                           ) : <span>{ymd(mat.arrivedAt)}</span>}
-                        </label>
+                        </div>
                       </div>
                     )}
                   >
@@ -430,7 +434,8 @@ export function MaForm({
                       {m.edit ? (
                         /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
                         <DateField label={`${r.label()} — ${tr('Огноо')}`} value={toDateInput(sg.date)} disabled={m.busy}
-                          onChange={(v) => setSig(r.k, { date: fromDateInput(v) })} />
+                          onChange={(v) => setSig(r.k, { date: fromDateInput(v) })}
+                          onBad={(b) => m.onBadDate?.(`ma-sig-${r.k}`, b)} />
                       ) : ymd(sg.date)}
                     </td>
                   </tr>

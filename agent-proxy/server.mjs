@@ -20,7 +20,9 @@ import { timingSafeEqual, createHash, createHmac } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
 import {
-  createLimiter, LIMITS, createBudget, budgetFromEnv, usageTokens, BUDGET_MSG, upstreamErrorText,
+  createLimiter, LIMITS, createBudget, budgetFromEnv, BUDGET_MSG, upstreamErrorText,
+  createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
+  estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
 } from "./rateLimit.mjs";
 
 /**
@@ -125,6 +127,11 @@ const VERIFIED_MAX = 500;
  */
 const tokenHash = (token) => createHash("sha256").update(String(token ?? "")).digest("hex");
 const verified = new Map();
+/** ⚠️ 2026-10-09: кэшээс л (ArcGIS руу явахгүй) — хүчинтэй бол хэрэглэгчийн нэр, эс бөгөөс `null` */
+function verifiedUser(key) {
+  const hit = verified.get(key);
+  return hit && hit.until > Date.now() ? hit.username : null;
+}
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
   const key = tokenHash(token);
@@ -319,6 +326,8 @@ function readBody(req) {
 /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тоолуур ба хязгаарууд `rateLimit.mjs`-д
    (worker-тэй хуваалцана) — хэрэглэгч 40 · IP таг 300 · амжилтгүй нэвтрэлт IP-д 20. */
 const limiter = createLimiter();
+/* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг (`LIMITS.concurrent` = 2) — нэг процесс тул бүрэн */
+const inflight = createConcurrency();
 
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
@@ -389,43 +398,78 @@ const server = createServer(async (req, res) => {
   let caller = `ip:${ip}`;
   if (isBot) {
     /* ⚠️ Тогтмол түлхүүр — ботын бүх хэрэглэгч нэг хязгаар хуваалцана (worker-тэй ижил) */
-    caller = "bot";
+    /* ⚠️ 2026-10-09: бот `x-bot-user` (Telegram ID) илгээвэл `bot:<id>` — хязгаар, зэрэг хүсэлт,
+       өдрийн төсөв хэрэглэгч тус бүрд (`rateLimit.botCaller`). Толгойг НУУЦ ТААРСНЫ ДАРАА л уншина. */
+    caller = botCaller(req.headers["x-bot-user"]);
   } else if (ARCGIS_ORG_ID) {
-    /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
-    /* ⚠️ 2026-10-09 (аудит №3): `TRUSTED_PROXY` АЛГА бол тунелийн БҮХ хэрэглэгч нэг IP
-       (127.0.0.1) хуваалцдаг тул нэг муу клиент (хуучирсан токентой таб) 20 удаа унахад
-       бүх хүн 429 авдаг байв. Тэр үед түлхүүрт ТОКЕНЫ ХЭШ нэмнэ — хүчингүй токен бүр
-       өөрийн 20-той. Санамсаргүй токенуудаар үерлэх нь IP-ийн тагаар (300) хязгаарлагдана. */
-    const failKey = TRUSTED_PROXY
-      ? `authfail:${ip}`
-      : `authfail:${ip}:${tokenHash(req.headers["x-arcgis-token"]).slice(0, 16)}`;
-    if (limiter.full(failKey, LIMITS.authFail)) {
-      json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
-      return;
+    const token = req.headers["x-arcgis-token"];
+    /* ⚠️ 2026-10-09: БАТАЛГААЖСАН ТОКЕНЫ КЭШ ЭХЛЭЭД — урьд амжилтгүй нэвтрэлтийн хязгаар кэшээс
+       ӨМНӨ шалгагддаг байсан тул нэг IP-ийн ард (TRUSTED_PROXY-тэй үед) хэн нэг нь хүчингүй
+       токеноор 20 удаа унахад ХҮЧИНТЭЙ токентой бүх хэрэглэгч 429 авдаг байв. */
+    const cachedUser = token ? verifiedUser(tokenHash(token)) : null;
+    if (cachedUser) {
+      caller = `user:${cachedUser}`;
+    } else {
+      /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
+      /* ⚠️ 2026-10-09 (аудит №3): `TRUSTED_PROXY` АЛГА бол тунелийн БҮХ хэрэглэгч нэг IP
+         (127.0.0.1) хуваалцдаг тул нэг муу клиент (хуучирсан токентой таб) 20 удаа унахад
+         бүх хүн 429 авдаг байв. Тэр үед түлхүүрт ТОКЕНЫ ХЭШ нэмнэ — хүчингүй токен бүр
+         өөрийн 20-той. Санамсаргүй токенуудаар үерлэх нь доорх `authfailip` таг (100) ба IP-ийн
+         тагаар (300) хязгаарлагдана. */
+      const failKey = TRUSTED_PROXY
+        ? `authfail:${ip}`
+        : `authfail:${ip}:${tokenHash(token).slice(0, 16)}`;
+      /* ⚠️ 2026-10-09: IP-ийн амжилтгүй нэвтрэлтийн ТАГ (`LIMITS.authFailIp`, `worker.mjs`-тэй ижил) */
+      if (limiter.full(failKey, LIMITS.authFail) || limiter.full(`authfailip:${ip}`, LIMITS.authFailIp)) {
+        json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
+        return;
+      }
+      const auth = await checkArcGIS(token);
+      if (!auth.ok) {
+        limiter.hit(failKey, LIMITS.authFail);
+        limiter.hit(`authfailip:${ip}`, LIMITS.authFailIp);
+        json(res, 401, { error: auth.reason, retryable: false });
+        return;
+      }
+      caller = `user:${auth.username}`;
     }
-    const auth = await checkArcGIS(req.headers["x-arcgis-token"]);
-    if (!auth.ok) {
-      limiter.hit(failKey, LIMITS.authFail);
-      json(res, 401, { error: auth.reason, retryable: false });
-      return;
-    }
-    caller = `user:${auth.username}`;
   }
   if (limiter.hit(caller, LIMITS.user)) {
     json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
     return;
   }
-  /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`rateLimit.mjs`-ийн ⚠️). Бот ЧӨЛӨӨТ — бүх ботын
-     хэрэглэгч нэг `bot` түлхүүр хуваалцдаг тул нэг төсөв бүгдийг хаана; ботын хандалтыг
-     өөрийн цагаан жагсаалт барина. */
-  if (!isBot && budget.over(caller, DAILY_TOKEN_BUDGET)) {
+  /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`rateLimit.mjs`-ийн ⚠️). Нийтлэг `bot` түлхүүр (хуучин,
+     `x-bot-user`-гүй бот) ЧӨЛӨӨТ — бүх ботын хэрэглэгч нэг түлхүүр хуваалцдаг тул нэг төсөв бүгдийг
+     хаана; `bot:<id>` нь хэрэглэгч бүрийн төсөвтэй. */
+  const budgeted = caller !== "bot";
+  if (budgeted && budget.over(caller, DAILY_TOKEN_BUDGET)) {
     json(res, 429, { error: BUDGET_MSG, code: "daily_budget", retryable: false });
     return;
   }
+  /* ⚠️ 2026-10-09: ЗЭРЭГ ХҮСЭЛТИЙН ТАГ (`LIMITS.concurrent`, `rateLimit.createConcurrency`-ийн ⚠️) —
+     слотыг хариу бүрэн дуусах (эсвэл цуцлагдах) хүртэл барина. */
+  const release = inflight.acquire(caller, caller === "bot" ? LIMITS.botConcurrent : LIMITS.concurrent);
+  if (!release) {
+    json(res, 429, { error: CONCURRENT_MSG, code: "concurrent", retryable: true });
+    return;
+  }
+  try {
+    await relayChat(req, res, { caller, isBot, budgeted });
+  } finally {
+    release();
+  }
+});
 
+/**
+ * `/chat`-ийн үлдсэн хэсэг (бие унших → шалгах → төсөв урьдчилан хасах → дээд үйлчилгээ).
+ * ⚠️ 2026-10-09: тусдаа функц — дуудагч зэрэг хүсэлтийн слотыг `finally`-д ЗААВАЛ суллана.
+ */
+async function relayChat(req, res, { caller, isBot, budgeted }) {
+  let raw;
   let payload;
   try {
-    payload = JSON.parse(await readBody(req));
+    raw = await readBody(req);
+    payload = JSON.parse(raw);
   } catch (e) {
     if (e?.status === 413) {
       json(res, 413, { error: e.message, retryable: false });
@@ -437,11 +481,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const { system, messages, tools } = payload ?? {};
-  if (!Array.isArray(messages) || !messages.length) {
-    json(res, 400, { error: "`messages` хоосон байна" });
+  const { system } = payload ?? {};
+  if (system != null && typeof system !== "string") {
+    json(res, 400, { error: "`system` мөр байх ёстой", retryable: false });
     return;
   }
+  /* ⚠️ 2026-10-09: `tools`/`messages`-ийг ЦАГААН ЖАГСААЛТААР дахин угсарна (`rateLimit.sanitizeChat`-ийн ⚠️) —
+     серверийн хэрэгсэл, зураг/документ блок дээд үйлчилгээ рүү ХҮРЭХГҮЙ. */
+  const clean = sanitizeChat(payload ?? {});
+  if (!clean.ok) {
+    console.warn("[agent-proxy] хүсэлт шалгалтад унав:", caller, clean.error);
+    json(res, 400, { error: clean.error, retryable: false });
+    return;
+  }
+  const { messages, tools } = clean;
   /* ⚠️ 2026-10-09: `PROMPT_HMAC` (дээрх ⚠️) — `system` нь мөр (эсвэл алга) байх ёстой; гарын
      үсгийг ТОГТМОЛ ХУГАЦААНД харьцуулна. */
   if (PROMPT_HMAC && !isBot) {
@@ -453,6 +506,24 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  /* ⚠️ 2026-10-09: ТӨСВИЙГ УРЬДЧИЛАН ХАСНА (`rateLimit.estimateInputTokens`-ийн ⚠️) — оролтын тооцоо +
+     `MAX_TOKENS`. Доорх `finally` нь `charge`-аар тааруулна:
+       · амжилттай / татгалзсан → бодит `usage` (`settleTokens`);
+       · цуцлагдсан, холболт тасарсан, Claude Code унасан → ОРОЛТЫН тооцоо (боловсруулагдсан байж болзошгүй);
+       · Anthropic HTTP алдаагаар татгалзсан, кэшийн хариу, claude олдоогүй → 0. */
+  const inputEst = estimateInputTokens(Buffer.byteLength(raw, "utf8"), utf8Bytes(system));
+  const reserved = budgeted ? reserveTokens(inputEst, MAX_TOKENS) : 0;
+  if (reserved) budget.add(caller, reserved);
+  let charge = inputEst;
+  try {
+    await callUpstream(res, { caller, system, messages, tools, inputEst, setCharge: (n) => { charge = n; } });
+  } finally {
+    if (reserved) budget.adjust(caller, charge - reserved);
+  }
+}
+
+/** Дээд үйлчилгээ (Claude Code эсвэл Messages API) — `setCharge` нь төсвийн эцсийн дүнг өгнө */
+async function callUpstream(res, { caller, system, messages, tools, inputEst, setCharge }) {
   /* ⚠️ 2026-10-06: КЛИЕНТ ХААСАН үед (чат хаасан, ⟲, Esc, табаа хаасан) загварын дуудлагыг
      цуцална. Урьд нь `res.on('close')`-ыг сонсдоггүй тул процесс/API дуудлага 180с хүртэл
      слот барьж, бусад хэрэглэгч 429 авдаг байв. ⚠️ `res` нь хариу ДУУССАНЫ дараа ч 'close'
@@ -465,6 +536,7 @@ const server = createServer(async (req, res) => {
   if (BACKEND === "claude-code") {
     const bin = claudeBin();
     if (!bin) {
+      setCharge(0);
       json(res, 500, { error: "Энэ PC дээр Claude Code олдсонгүй — `CLAUDE_BIN` орчны хувьсагчид claude.exe-ийн замыг заана уу.", retryable: false });
       return;
     }
@@ -473,14 +545,16 @@ const server = createServer(async (req, res) => {
       const out = await callClaudeCode({ system, messages, tools, model: MODEL, effort: EFFORT, bin, signal: ac.signal });
       const st = stats();
       console.log(`[agent-proxy:claude-code] ${caller} ${out.cached ? "кэш" : `${Date.now() - t0}мс`} ${out.stop_reason} · ажиллаж ${st.running} · дараалал ${st.queued}`);
-      if (!out.cached) {
-        ready = { ok: true };
+      if (out.cached) {
         /* ⚠️ 2026-10-09: кэшээс ирсэн хариу бүртгэлийг зарцуулаагүй — төсөвт тоолохгүй */
-        if (!isBot) budget.add(caller, usageTokens(out.usage));
+        setCharge(0);
+      } else {
+        ready = { ok: true };
+        setCharge(settleTokens(out.usage, inputEst));
       }
       json(res, 200, out);
     } catch (err) {
-      /* ⚠️ 2026-10-06: клиент хаасан — бичих socket алга, зөвхөн лог */
+      /* ⚠️ 2026-10-06: клиент хаасан — бичих socket алга, зөвхөн лог (төсөвт оролтын тооцоо үлдэнэ) */
       if (ac.signal.aborted) {
         console.log(`[agent-proxy:claude-code] ${caller} цуцлагдсан (клиент хаасан)`);
         return;
@@ -513,6 +587,10 @@ const server = createServer(async (req, res) => {
       messages,
     }, { signal: ac.signal });
 
+    /* ⚠️ 2026-10-09: ТАТГАЛЗСАН хариу ч токен зарцуулсан — урьд нь төсөвт нэмэхээс ӨМНӨ буцдаг
+       байсан тул татгалзуулах хүсэлтээр төсвийг тойрох боломжтой байв. */
+    setCharge(settleTokens(response.usage, inputEst));
+
     // ⚠️ Аюулгүйн ангилагч татгалзвал HTTP 200 боловч `content` хоосон/дутуу
     //    ирнэ — `content[0]`-ыг шууд уншвал эвдэрнэ.
     if (response.stop_reason === "refusal") {
@@ -524,7 +602,6 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (!isBot) budget.add(caller, usageTokens(response.usage));
     json(res, 200, {
       stop_reason: response.stop_reason,
       content: response.content,
@@ -536,6 +613,9 @@ const server = createServer(async (req, res) => {
       console.log(`[agent-proxy] ${caller} цуцлагдсан (клиент хаасан)`);
       return;
     }
+    /* ⚠️ 2026-10-09: Anthropic HTTP СТАТУСТАЙ алдаагаар татгалзсан бол төлбөр авдаггүй — төсвөөс
+       хасахгүй. Холболтын алдаа (`APIConnectionError`, статусгүй) — оролтын тооцоо үлдэнэ. */
+    if (err instanceof Anthropic.APIError && err.status) setCharge(0);
     const msg = err?.message ?? "Тодорхойгүй алдаа";
     console.error("[agent-proxy]", caller, msg);
 
@@ -549,6 +629,7 @@ const server = createServer(async (req, res) => {
       err instanceof Anthropic.AuthenticationError ||
       /could not resolve authentication|api key|authentication/i.test(msg)
     ) {
+      setCharge(0);
       json(res, 401, {
         error:
           "AI үйлчилгээний түлхүүр тохируулагдаагүй эсвэл буруу байна. " +
@@ -570,7 +651,7 @@ const server = createServer(async (req, res) => {
       retryable,
     });
   }
-});
+}
 
 // ⚠️ ЗӨВХӨН loopback (127.0.0.1) — энэ реле API түлхүүр барьдаг ба токен
 //    шалгадаггүй тул бүх интерфейс (0.0.0.0)-д сонсвол LAN-ийн хэн ч Origin-гүй

@@ -104,6 +104,19 @@ import { simplifyRings } from '@/lib/uyrSurface';
   assert.deepEqual(tfc.properties.truncated_layers, [{ layer_id: 'et:24', layer: 'Барилга', exported_n: 2, total_n: 1611 }]);
   assert.equal(tfc.features[0].properties.layer_truncated, true);
   assert.equal(tfc.features[0].properties.layer_total_n, 1611);
+
+  /* 4c. ⚠️ 2026-10-09: тоолох асуулга унасан (`totalN: null`) → CSV хоосон, GeoJSON null */
+  const cf = [{ ...rows[0], truncated: true, totalN: null }];
+  assert.ok(damageCsv(cf).split('\r\n')[1].endsWith(',1,'), 'total_n хоосон');
+  assert.equal(JSON.parse(damageGeoJSON(cf, null)).properties.truncated_layers[0].total_n, null);
+
+  /* 4d. ⚠️ 2026-10-09: тайрагдсан, НЭГ Ч объектгүй давхарга → давхаргын ганц мөр (oid хоосон) */
+  const empty = damageCsv([{ ...rows[0], objects: [], truncated: true, totalN: 42 }]).split('\r\n');
+  assert.equal(empty.length, 2, empty.join('|'));
+  assert.ok(empty[1].endsWith(',1,42'), empty[1]);
+  assert.ok(empty[1].includes(',et:24,,'), 'oid хоосон');
+  /* Тайрагдаагүй хоосон давхарга мөр гаргахгүй */
+  assert.equal(damageCsv([{ ...rows[0], objects: [], truncated: false }]).split('\r\n').length, 1);
 }
 
 /* 5. Оройн төсөв */

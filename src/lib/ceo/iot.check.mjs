@@ -24,9 +24,9 @@
 
 import assert from 'node:assert/strict';
 import {
-  computeIot, buildIotKpi, iotLevel, IOT_STALE_H, IOT_ETA_NEAR_H,
+  computeIot, buildIotKpi, iotLevel, IOT_STALE_H, IOT_ETA_NEAR_H, IOT_HIGHER_IS_GOOD,
 } from './iot.ts';
-import { RANGES } from '@/lib/sensors';
+import { RANGES, thin, parseTs, HIGHER_IS_GOOD, SENSORS, UB_OFFSET_MS } from '@/lib/sensors';
 
 const H = 3_600_000;
 const NOW = Date.UTC(2026, 8, 6, 9, 0, 0);
@@ -340,6 +340,57 @@ function sensor(key, label, series, error) {
   assert.equal(iotLevel(s), 'warn');
   const k = buildIotKpi(s, []);
   assert.ok(k.issues.some((x) => x.text.includes('—') && !x.text.includes('null')), 'анхааруулгад «null» бичигдэв');
+}
+
+/* ══════════════ 2026-10-09: `sensors.thin` — хатуу өсөх, үзүүр, БҮХ оргил ══════════════ */
+{
+  for (let n = 91; n <= 4000; n += (n < 300 ? 1 : 37)) {
+    const base = Array.from({ length: n }, (_, i) => ({ t: i, v: 10 }));
+    /* оргилууд: хэсгийн өргөнөөс 2 дахин холуур (хэсэг бүрт ≤1) */
+    const gap = Math.max(2, Math.ceil((2 * (n - 2)) / 88));
+    const peaks = [];
+    for (let i = 1 + (n % 7); i < n - 1; i += gap) { base[i] = { t: i, v: 100 + i }; peaks.push(i); }
+    for (const low of [false, true]) {
+      const arr = low ? base.map((x) => ({ t: x.t, v: x.v >= 100 ? -x.v : x.v })) : base;
+      const keep = low ? (x) => x.v < 0 : (x) => x.v >= 100;
+      const out = thin(arr, 90, keep, low);
+      assert.ok(out.length <= 90, `n=${n}: ${out.length} цэг > 90`);
+      for (let i = 1; i < out.length; i++) assert.ok(out[i].t > out[i - 1].t, `n=${n}: t хатуу өсөхгүй (${out[i - 1].t} → ${out[i].t})`);
+      assert.equal(out[0].t, 0, `n=${n}: эхний цэг алга`);
+      assert.equal(out[out.length - 1].t, n - 1, `n=${n}: сүүлийн цэг алга`);
+      const got = new Set(out.map((x) => x.t));
+      for (const p of peaks) assert.ok(got.has(p), `n=${n} low=${low}: оргил t=${p} алдагдав`);
+    }
+    /* keep-гүй сийрэгжүүлэлт ч хатуу өснө (урьд n=91: t=79 давхар, t=80 алга) */
+    const plain = thin(base, 90);
+    for (let i = 1; i < plain.length; i++) assert.ok(plain[i].t > plain[i - 1].t, `n=${n}: keep-гүй t хатуу өсөхгүй`);
+  }
+  /* «их нь сайн» жагсаалт ceo/iot-той ижил (мөчлөгөөс зайлсхийж хоёр газар) */
+  assert.deepEqual([...HIGHER_IS_GOOD].sort(), [...IOT_HIGHER_IS_GOOD].sort(), 'sensors.HIGHER_IS_GOOD ≠ ceo/iot.IOT_HIGHER_IS_GOOD');
+}
+
+/* ══════════════ 2026-10-09: `sensors.parseTs` — огноо л, epoch, d/M/yyyy ══════════════ */
+{
+  assert.equal(parseTs('2026-09-01'), Date.UTC(2026, 8, 1) - UB_OFFSET_MS, 'огноо л → УБ-ын шөнө дунд');
+  assert.equal(parseTs(1759999999000), 1759999999000, 'тоон epoch');
+  assert.equal(parseTs('1759999999000'), 1759999999000, 'мөр epoch');
+  assert.equal(parseTs(new Date(5000)), 5000, 'Date');
+  assert.equal(parseTs('9/1/2026 10:00:00'), Date.UTC(2026, 0, 9, 10) - UB_OFFSET_MS, 'd/M/yyyy — өдөр ЭХЭНД');
+  assert.equal(parseTs('09/01/2026 10:00:00'), Date.UTC(2026, 0, 9, 10) - UB_OFFSET_MS);
+  assert.equal(parseTs('9/1/2026'), Date.UTC(2026, 0, 9) - UB_OFFSET_MS);
+  assert.equal(parseTs('1/13/2026 10:00'), null, 'сар 13 → null (MM/DD гэж таахгүй)');
+  assert.equal(parseTs('2026-09-01T10:00:00'), Date.UTC(2026, 8, 1, 10) - UB_OFFSET_MS);
+  assert.equal(parseTs(''), null);
+}
+
+/* ══════════════ 2026-10-09: 0xFFFF гэмтлийн мужууд ══════════════ */
+{
+  const mt = (sk, mk) => SENSORS.find((x) => x.key === sk).metrics.find((x) => x.key === mk);
+  for (const [sk, mk] of [['soil', 'electricity'], ['soil', 'temperature'], ['air', 'temperature'], ['soil', 'moisture'], ['air', 'humidity']]) {
+    const m = mt(sk, mk);
+    assert.ok(m.valid && (6553.5 > m.valid.max || 65535 > m.valid.max), `${sk}:${mk} — 0xFFFF мужид багтав`);
+  }
+  assert.ok(mt('waste', 'fill').rawValid.min > 0, 'хогийн сав 0мм нь «100%» биш — гэмтэл');
 }
 
 console.log('iot.check: OK');

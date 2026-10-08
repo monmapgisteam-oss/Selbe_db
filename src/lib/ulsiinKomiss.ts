@@ -122,7 +122,7 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     return mx;
   };
   const maxOid0 = await maxOidOf();
-  const loaded = await loadRows(pkg, sc);
+  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true }); // ⚠️ 2026-10-09: бичих зам — strict
   {
     const have = findKomissRow(loaded.rows);
     if (have) {

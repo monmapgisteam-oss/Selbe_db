@@ -127,14 +127,18 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
   const calls = [];
   let reply = {};
   let dupRows = [];
+  /* 2026-10-09: дараалсан асуулгын хариу (урьдчилсан → бичсэний дараах тоолол) — хоосон бол `dupRows` */
+  const queryQueue = [];
+  let lose = false;
   const realF = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const u = String(url);
     const p = Object.fromEntries(new URLSearchParams(String(init?.body ?? '')));
     calls.push({ u, p });
     let body;
-    if (u.endsWith('/applyEdits')) body = reply;
-    else if (u.endsWith('/query')) body = { features: dupRows.map((a) => ({ attributes: a })) };
+    if (u.endsWith('/applyEdits') && lose && !p.deletes) throw new TypeError('fetch failed');
+    if (u.endsWith('/applyEdits')) body = p.deletes ? { deleteResults: [{ success: true }] } : reply;
+    else if (u.endsWith('/query')) body = { features: (queryQueue.length ? queryQueue.shift() : dupRows).map((a) => ({ attributes: a })) };
     else body = { objectIdField: 'OBJECTID', fields: [] };
     return { ok: true, status: 200, json: async () => structuredClone(body), text: async () => JSON.stringify(body) };
   };
@@ -177,6 +181,45 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
     assert.equal(await saveZov({ ...draft, oid: 7, dugaar: 'Z-9' }, before), 7);
     const ups = JSON.parse(edits()[0].p.updates);
     assert.deepEqual(ups[0].attributes, { OBJECTID: 7, [F.dugaar]: 'Z-9' });
+    assert.equal(calls.filter((c) => c.u.endsWith('/query')).length, 0, 'багц/шат өөрчлөгдөөгүй — давхардлын асуулга алга');
+
+    /* 2026-10-09: засвараар шатыг солиход давхардлыг ӨӨРИЙГӨӨ хасаж асууна */
+    calls.length = 0;
+    dupRows = [{ OBJECTID: 9, [F.ner]: 'Бусад' }];
+    await assert.rejects(() => saveZov({ ...draft, oid: 7, shat: 4 }, before), /Бусад/);
+    assert.match(calls.find((c) => c.u.endsWith('/query')).p.where, /OBJECTID <> 7/);
+    assert.equal(edits().length, 0);
+    dupRows = [];
+
+    /* 2026-10-09: бичсэний ДАРАА зэрэгцээ давхардал — манай OID их → өөрийгөө устгаад мэдээлнэ */
+    calls.length = 0;
+    reply = { addResults: [{ success: true, objectId: 50 }] };
+    queryQueue.push([], [{ OBJECTID: 49, [F.ner]: 'Зэрэг' }, { OBJECTID: 50, [F.ner]: 'Шинэ' }]);
+    await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === false && /Зэрэг/.test(e.message));
+    assert.deepEqual(JSON.parse(edits().find((c) => c.p.deletes).p.deletes), [50], 'өөрийн мөрийг устгав');
+    /* манай OID бага → үлдээнэ, kept=true */
+    calls.length = 0;
+    reply = { addResults: [{ success: true, objectId: 48 }] };
+    queryQueue.push([], [{ OBJECTID: 48, [F.ner]: 'Шинэ' }, { OBJECTID: 49, [F.ner]: 'Зэрэг' }]);
+    await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === true && e.oid === 48);
+    assert.equal(edits().filter((c) => c.p.deletes).length, 0, 'бага OID-тэй мөрийг устгахгүй');
+
+    /* 2026-10-09: хариу АЛДАГДСАН нэмэлт — дахин илгээхгүй, уншиж тогтооно */
+    calls.length = 0;
+    lose = true;
+    queryQueue.push([], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }]);
+    assert.equal(await saveZov(draft), 61, 'бичигдсэн мөрийг нэрээр нь таньж амжилт');
+    assert.equal(edits().length, 1, 'бичилтийг ДАХИН илгээгээгүй');
+    /* шалгах асуулга ч унавал анхны (алдагдсан) алдаа дамжина */
+    calls.length = 0;
+    const realQ = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/query') && calls.some((c) => c.u.endsWith('/applyEdits'))) throw new Error('down');
+      return realQ(url, init);
+    };
+    await assert.rejects(() => saveZov(draft), (e) => e instanceof TypeError);
+    globalThis.fetch = realQ;
+    lose = false;
   } finally {
     globalThis.fetch = realF;
   }

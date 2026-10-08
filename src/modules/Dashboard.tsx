@@ -216,7 +216,7 @@ const PL = PARCEL_LEFT.fields;
    тулд дамжуулан экспортолж, дотооддоо мөн хэрэглэнэ. */
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
-import { useBagtsTable, buildProgressOf, type BagtsRow } from '@/lib/execData';
+import { useBagtsTable, buildProgressOf, ailTotal, type BagtsRow } from '@/lib/execData';
 import { pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
@@ -1498,7 +1498,11 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
   // −7.7% агаар · 16,000 ажлын байр) — эх сурвалжгүй мөрүүд ХАСАГДАВ.
   const b = bagts.state === 'ready' ? bagts.data : null;
   const blocks = b ? sumBy(b, (x) => x.blocks) : null;
-  const ail = b ? sumBy(b, (x) => x.ail) : null;
+  /* ⚠️ 2026-10-09: `AIL_TOO` бүгд хоосон → null («—»); заримд нь хоосон → `ailPartial` (`ailTotal`) */
+  const ailT = b ? ailTotal(b) : null;
+  const ail = ailT?.ail ?? null;
+  /** Харьцаанд (1 өрхөд ногдох …) — ДУТУУ нийлбэрээр хуваавал худал өндөр гарна → null («—») */
+  const ailFull = ailT?.partial ? null : ail;
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;
   // Нийт гүйцэтгэл — `physNow` (2026-09-22): 05 · ExecReport · IndStrip · HeadKpi-тэй нэг тоо
@@ -1570,7 +1574,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
             { key: tr('1 га-д ногдох өрх'), value: ratio(ail, h?.areaHa, (v) => num(v, 1), d.headline, bagts) },
             {
               key: tr('1 өрхөд ногдох төсөв'),
-              value: ratio(h?.investTotal, ail, (v) => mnt(v), d.headline, bagts),
+              value: ratio(h?.investTotal, ailFull, (v) => mnt(v), d.headline, bagts), // ⚠️ 2026-10-09: дутуу өрх → «—»
             },
             {
               key: tr('1 га-д ногдох төсөв'),
@@ -2465,7 +2469,7 @@ function pkgLagRows(f: FinData, labelOf: (k: string) => string): PkgLagRow[] {
 function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
   /** Блокоор жигнэсэн дундаж % (тайлагнаагүй бол `null`) */
   actual: number | null;
-  /** Тайлагнасан багцын тоо */
+  /** ЖИГНЭСЭН дунджид орсон багцын тоо (жинтэй тайлагнасан + тайлагнаагүй 0%) — 2026-10-09 */
   packs: number;
   /** Багц бүрийн сүүлийн % — жагсаалтад */
   rows: { key: string; pct: number }[];
@@ -2474,6 +2478,8 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
   const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
   const rows: { key: string; pct: number }[] = [];
   let w = 0; let n = 0;
+  /** Жинтэй ТАЙЛАГНАСАН багцын тоо ба дунджид орсон бүх багцын тоо (2026-10-09) */
+  let wPacks = 0; let packs = 0;
   f.phys.forEach((byMon, k) => {
     if (!match(k)) return;
     let last: number | null = null;
@@ -2490,6 +2496,7 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
     const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
     if (cnt == null) return;
     w += last * cnt; n += cnt;
+    wPacks += 1; packs += 1;
   });
   /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`-д л байгаа) 0% —
      жагсаалтад ГАРНА, дунджид блокийн тоогоороо 0-ээр орно. */
@@ -2497,8 +2504,16 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
     if (!match(k) || f.phys.get(k)?.size) return;
     rows.push({ key: k, pct: 0 });
     n += cnt;
+    packs += 1;
   });
-  return { actual: n ? w / n : null, packs: rows.length, rows: rows.sort((a, b) => b.pct - a.pct) };
+  /* ⚠️ 2026-10-09: жинтэй ТАЙЛАГНАСАН багц НЭГ Ч байхгүй бол `null` («мэдээлэлгүй») — урьд нь зөвхөн
+     тайлагнаагүй багцын 0-ээс (эсвэл жингүй тайлангаас) «0%» гардаг байв (null ≠ 0). `packs` нь
+     жагсаалтын мөр БИШ, дунджид БОДИТООР орсон багцын тоо (жингүй тайлан жагсаалтад л гарна). */
+  return {
+    actual: wPacks > 0 && n > 0 ? w / n : null,
+    packs: wPacks > 0 ? packs : 0,
+    rows: rows.sort((a, b) => b.pct - a.pct),
+  };
 }
 
 /**
@@ -2515,13 +2530,16 @@ const gapLabel = (planned: number, actual: number, d = 1): string => {
   return g > 0 ? tr('{0}% хоцролт', s) : tr('{0}% түрүүлсэн', s);
 };
 
+/* ⚠️ 2026-10-09: `value: null` (мэдээлэлгүй) — өнгө нь `NO_DATA` (саарал), зурвас 0 урттай, хамгийн
+   ихийг тооцоход ОРОХГҮЙ. Урьд нь дуудагчид `?? 0` гэж өгдөг тул «мэдээлэлгүй» нь «0» шиг
+   хамгийн цайвар өнгөөр будагддаг байв (null ≠ 0). */
 function heatBars<T>(
   rows: readonly T[],
-  m: (r: T) => { key: string; label: string; value: number; display?: string },
-): { key: string; label: string; value: number; display?: string; color: string }[] {
+  m: (r: T) => { key: string; label: string; value: number | null; display?: string },
+): { key: string; label: string; value: number | null; display?: string; color: string }[] {
   const items = rows.map(m);
-  const mx = maxOf(items.map((i) => i.value));
-  return items.map((i) => ({ ...i, color: heat(i.value, mx) }));
+  const mx = maxOf(items.flatMap((i) => (i.value != null && Number.isFinite(i.value) ? [i.value] : [])));
+  return items.map((i) => ({ ...i, color: i.value == null || !Number.isFinite(i.value) ? NO_DATA : heat(i.value, mx) }));
 }
 
 
@@ -2767,7 +2785,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
                 items={heatBars(withPlan, (x) => ({
                   key: x.key,
                   label: tr(x.label),
-                  value: x.actual ?? 0,
+                  value: x.actual, // ⚠️ 2026-10-09: null → NO_DATA (`heatBars`), 0 БИШ
                   display: x.planned == null
                     ? pct(x.actual, 1)
                     : tr('{0} / төл. {1}', pct(x.actual, 1), pct(x.planned, 1)),
@@ -4503,7 +4521,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                 items={heatBars(facs, (f) => ({
                   key: srcStr(f[F.name]) || tr('Нэргүй'),
                   label: srcStr(f[F.name]),
-                  value: valOf(f) ?? 0,
+                  value: valOf(f), // ⚠️ 2026-10-09: null → NO_DATA (`heatBars`), 0 БИШ
                   display: valOf(f) == null ? tr('мэдээлэлгүй') : srcStr(f[metric]),
                 }))}
               />
@@ -4672,7 +4690,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
               items={heatBars(list, (x) => ({
                 key: x.key,
                 label: x.label,
-                value: x.heat ?? 0,
+                value: x.heat ?? null, // ⚠️ 2026-10-09: дулааны хувь алга → NO_DATA (`heatBars`), 0 БИШ
                 display: tr('дул. {0} · цах. {1} · ус {2}', pct(x.heat, 1), pct(x.pow, 1), pct(x.wat, 1)),
               }))}
             />
@@ -4963,7 +4981,9 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
  * ⚠️ EXPORT — «Иргэдэд хүрэх үр өгөөж» (`Irged.tsx`) дахин ашиглаж болохоор.
  */
 export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[]>; d: DashData } & FltProps) {
-  const ail = bagts.state === 'ready' ? sumBy(bagts.data, (x) => x.ail) : null;
+  /* ⚠️ 2026-10-09: `AIL_TOO` бүгд хоосон → null («—»), заримд нь → «(дутуу)» (`ailTotal`) */
+  const ailT = bagts.state === 'ready' ? ailTotal(bagts.data) : null;
+  const ail = ailT?.ail ?? null;
   const h = d.headline.state === 'ready' ? d.headline.data : null;
   const soc = d.social.state === 'ready' ? d.social.data : null;
   const sel = flt?.sec === 'benefit' ? flt.key : null;
@@ -5013,6 +5033,11 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
   /** ⚠️ 2026-10-06: хүчин чадлын талбар НЭГ ч ангилалд бөглөгдөөгүй бол «—» (0 БИШ) */
   const capKnown = soc != null && soc.rows.some((r) => r.capacity != null);
   const capTotal = soc != null && capKnown ? sumBy(soc.rows, (r) => r.capacity ?? 0) : null;
+  /* ⚠️ 2026-10-09: БҮРЭН нийлбэр = ангилал БҮР (барилгатай давхарга бүр) хүчин чадалтай (`completeSum`-ийн
+     дүрэм). Урьд нь `some` хангалттай байсан тул хүчин чадалгүй ангилал/давхарга чимээгүй алгасагдаж
+     дутуу нийлбэр бүрэн мэт гардаг байв. Дутуу бол тоо нь «(дутуу)» тэмдэгтэй, 1,000 хүнд ногдох нь «—». */
+  const capPartial = capTotal != null && !!soc && !soc.rows.every((r) => r.capacity != null && !r.capPartial);
+  const capFull = capPartial ? null : capTotal;
 
   /**
    * Ангилал дарахад — зурагт тэр төрлийн барилгын давхаргууд л үлдэнэ.
@@ -5032,7 +5057,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
         <Stats cols={2}>
           {/* ⚠️ 2026-10-06: ачаалал УНАСАН бол «…» мөнхөд биш «⚠» (`dots`), хэсэгчилсэн NaN нь `hVal` */}
           <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.population, (v) => num(v))} unit={tr('хүн')} label={tr('Шинэ орон сууцанд амьдрах хүн ам')} />
-          <Stat accent color={HUE[1]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх шинэ орон сууцтай')} />
+          <Stat accent color={HUE[1]} value={ail == null ? dots(bagts) : ailT?.partial ? `${num(ail)} (${tr('дутуу')})` : num(ail)} unit={tr('өрх')} label={tr('Айл өрх шинэ орон сууцтай')} />
           <Stat accent color={HUE[2]} value={soc == null ? dots(d.social) : num(soc.totalN)} unit={tr('ш')} label={tr('Нийгмийн үйлчилгээний барилга')} />
           <Stat accent color={HUE[3]} value={h?.greenHa == null ? '—' : num(h.greenHa, 1)} unit={tr('га')} label={tr('Ногоон байгууламж')} />
           {/* ХОЁР «үр өгөөж»-ийн харьцаа — шинэ хүсэлт ШААРДАХГҮЙ, `soc`/`headline`
@@ -5040,11 +5065,14 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               нь иргэдэд утга учиртай тоо. */}
           {/* ⚠️ 2026-10-06: хүчин чадал бүртгэлгүй бол «—» (`capTotal` null), 0 БИШ */}
           <Stat accent color={HUE[4]}
-                value={soc == null ? dots(d.social) : capTotal == null ? '—' : num(capTotal)}
+                value={soc == null ? dots(d.social) : capTotal == null ? '—' : capPartial ? `${num(capTotal)} (${tr('дутуу')})` : num(capTotal)}
                 unit={tr('хүчин чадал')} label={tr('Нийгмийн байгууламжийн багтаамж')} />
           {/* ⚠️ 2026-10-06: `ail` 0 үед үнэн/худлаар «…» мөнхөд гардаг байв — `!= null` + «—» */}
           <Stat accent color={HUE[5]}
-                value={h != null && ail != null ? (ail > 0 ? hVal(h, h.investTotal, (v) => num(v / ail)) : '—') : dots(d.headline, bagts)}
+                value={h != null && ail != null
+                  /* ⚠️ 2026-10-09: дутуу өрхөөр хуваавал худал өндөр — «—» */
+                  ? (ail > 0 && !ailT?.partial ? hVal(h, h.investTotal, (v) => num(v / ail)) : '—')
+                  : dots(d.headline, bagts)}
                 unit={tr('₮')} label={tr('1 өрхөд ногдох төсөв')} />
           {/* ⚠️ СУУРИЙН ТАЛБАЙ — «хэдэн барилга» гэсэн тоо нь БАРИЛГЫН ХЭМЖЭЭГ
               хэлдэггүй: 960 хүүхдийн сургууль ба 240 ортой цэцэрлэг хоёулаа
@@ -5056,7 +5084,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                 unit={tr('м²')} label={tr('Барилгын суурийн талбай')} />
           <Stat accent color={cat(7)}
                 value={h != null && soc != null
-                  ? (capTotal != null && Number.isFinite(h.population) && h.population > 0 ? num((capTotal / h.population) * 1000) : hVal(h, h.population, () => '—'))
+                  ? (capFull != null && Number.isFinite(h.population) && h.population > 0 ? num((capFull / h.population) * 1000) : hVal(h, h.population, () => '—'))
                   : dots(d.headline, d.social)}
                 unit={tr('/ 1,000 хүн')} label={tr('Хүчин чадлын хангамж')} />
         </Stats>
@@ -5099,7 +5127,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
               label: r.label,
               value: r.n,
               display: r.capacity != null
-                ? tr('{0} ш · {1} хүчин чадал', num(r.n), num(r.capacity))
+                ? `${tr('{0} ш · {1} хүчин чадал', num(r.n), num(r.capacity))}${r.capPartial ? ` (${tr('дутуу')})` : ''}`
                 : tr('{0} ш', num(r.n)),
               color: HUE[i % HUE.length],
             }))}

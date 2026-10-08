@@ -24,7 +24,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { tokenQs } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
@@ -44,7 +43,7 @@ import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
   habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByCo, weekNcByPkg, UzSrcHead, stepNote,
-  UzlegPhotos, photoSrc,
+  UzlegPhotos, AttPhoto,
   SERIES_VISIBLE,
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
@@ -689,17 +688,12 @@ function IncPhotos({ oid }: { oid: number }) {
   if (!q.data.length) return null;
   return (
     <div className={h.photos}>
-      {q.data.map((p) => {
-        /* ⚠️ 2026-09-30: `tokenQs` ЗӨВХӨН энд — `<img src>`/`<a href>` POST хийж
-           чадахгүй тул токен query string-ээр явахаас өөр аргагүй (`authToken.tokenQs`-ийн ⚠️). */
-        const src = `${HABEA.incident.url}/${oid}/attachments/${p.id}?${tokenQs().slice(1)}`;
-        return (
-          <a key={p.id} href={src} target="_blank" rel="noreferrer" title={p.name}>
-            {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй */}
-            <img src={src} alt={p.name} />
-          </a>
-        );
-      })}
+      {/* ⚠️ 2026-10-09 (аюулгүй байдал): `?token=`-тэй `<img src>`/`<a href>` → blob URL
+          (`habeaUzleg.AttPhoto`: POST, токен БИЕЭР, зөвхөн байгууллагын хост). Урьд нь токен
+          access log, хөтчийн түүх, Referer-ээр алдагддаг байв (CWE-598). */}
+      {q.data.map((p) => (
+        <AttPhoto key={p.id} url={`${HABEA.incident.url}/${oid}/attachments/${p.id}`} alt={p.name} title={p.name} />
+      ))}
     </div>
   );
 }
@@ -718,9 +712,8 @@ function PhotoWall({ list }: { list: Inc[] }) {
   const q = useAsync<{ items: { src: string; cap: string; tip: string }[]; failed: number }>(
     () =>
       loadPhotoBatches(list, (i, p) => ({
-        /* ⚠️ 2026-09-30: ТОКЕНГҮЙ хаяг — токеныг рендерт `photoSrc` залгана. Урьд нь
-           ачаалах агшны токен энд «шатаж», токен шинэчлэгдсэний дараа ‹ › дарахад
-           зураг 498-аар эвдэрдэг байв (`IncPhotos` рендер бүрд залгадаг тул зөв). */
+        /* ⚠️ 2026-09-30: ТОКЕНГҮЙ хаяг. ⚠️ 2026-10-09: токен URL-д ОГТ орохгүй — `AttPhoto`
+           татах агшинд POST биеэр (одоогийн токен) илгээж blob URL-аар харуулна. */
         src: `${HABEA.incident.url}/${i.oid}/attachments/${p.id}`,
         cap: `${incDate(i.d)} · ${tr(i.bagtsRaw)}`,
         tip: `${tr(i.type)} — ${tr(i.company)}`,
@@ -759,12 +752,9 @@ function PhotoWall({ list }: { list: Inc[] }) {
         >
           ‹
         </button>
-        <a href={photoSrc(p.src)} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
-          {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй.
-              ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — карт нь доод зурваст, viewport-аас
-              гадуур тул lazy-loader асалгүй зураг хоосон үлддэг. */}
-          <img src={photoSrc(p.src)} alt={p.tip} />
-        </a>
+        {/* Хөндлөнгийн ArcGIS хавсралт тул next/image-ийн оновчлол хамаагүй.
+            ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — карт нь доод зурваст (`AttPhoto`-д ч хэрэглээгүй). */}
+        <AttPhoto url={p.src} alt={p.tip} title={p.tip} className={h.slideImg} />
         <button
           type="button"
           className={h.slideNav}
@@ -1890,9 +1880,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),
           tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
           undefined,
-          ltiFree.undatedLti
-            ? tr('Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй')
-            : ltiFree.since != null ? tr('Сүүлийн ХЧТА осол: {0}', date(ltiFree.since)) : undefined,
+          /* ⚠️ 2026-10-09: ирээдүйн огноотой ХЧТА (`futureLti`) тооцоонд ороогүйг ил хэлнэ */
+          [
+            ltiFree.undatedLti
+              ? tr('Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй')
+              : ltiFree.since != null ? tr('Сүүлийн ХЧТА осол: {0}', date(ltiFree.since)) : '',
+            ltiFree.futureLti > 0 ? tr('{0} ХЧТА осол ирээдүйн огноотой — тооцоонд ороогүй', num(ltiFree.futureLti)) : '',
+          ].filter(Boolean).join(' · ') || undefined,
           undefined,
           ltiFree.undatedLti,
         )}
@@ -2102,15 +2096,22 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {(() => {
             const r = rateStep === 'pkg' ? ratePkg : rateMonth;
             if (!r.items.length) return <Empty label={tr('Хүн-цагийн бүртгэл алга')} />;
+            /* ⚠️ 2026-10-09: сарын тэнхлэг ТАСРАЛТГҮЙ (`rateByMonth`) — хүн-цаггүй сар `rate: null`.
+               `lines`-аар дамжуулж ЦООРХОЙ болгоно (`items[].value` нь зөвхөн тэнхлэг/шошго —
+               null-ийг 0 гэж зурахгүй, null ≠ 0). */
             const items = r.items.map((x) => ({
-              key: x.key, label: x.label, value: x.rate,
-              display: num(x.rate, 1),
+              key: x.key, label: x.label, value: x.rate ?? 0,
+              display: x.rate == null ? '—' : num(x.rate, 1),
             }));
+            const rateLines: SeriesLineDef[] = [{
+              key: 'rate', label: tr('осол / 1 сая хүн-цаг'), color: 'var(--data)',
+              values: rateMonth.items.map((x) => x.rate),
+            }];
             return (
               <>
                 {rateStep === 'pkg'
                   ? <Bars items={items} selected={pkgs} onSelect={togglePkg} />
-                  : <Series items={markCurMonth(items, curYm)} height={96} line showValues unit={tr('осол / 1 сая хүн-цаг')} />}
+                  : <Series items={markCurMonth(items, curYm)} height={96} line lines={rateLines} />}
                 {r.unmatched > 0 && (
                   <p className={h.photoNote}>
                     {tr('{0} осол хүн-цагийн бүртгэлгүй багц/сард — давтамжид ороогүй', num(r.unmatched))}

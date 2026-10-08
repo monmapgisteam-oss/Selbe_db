@@ -18,11 +18,11 @@
  */
 
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
-import { loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { loadRows, msToDay, normDayMs, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { agsFetch } from '@/modules/sheet/ags';
 import { bagtsKey } from '@/lib/services';
 import { loadHoRows, groupHo } from '@/lib/ipc';
-import { pickContract } from '@/lib/ipcAuto';
+import { autoContractFor, pickContract } from '@/lib/ipcAuto';
 import { monthEnds, pkgCodeOf, type IpcBlock, type IpcMonth, type IpcSheetStart } from '@/lib/ipcDoc';
 import { register } from '@/lib/dataBus';
 
@@ -56,11 +56,24 @@ const sheetLabel = (pkg: Pkg): string => (pkg.floors ? `${pkg.floors}F` : pkg.la
 /** Багцын түлхүүр (`bagtsKey`, «БАГЦ32») → бөглөх хуудсууд */
 export const sheetsOf = (packKey: string): Pkg[] => PKGS.filter((p) => bagtsKey(p.group) === packKey);
 
-/** Хуудасны архивын өдрүүд — `returnDistinctValues` (нэг хүсэлт) */
+/** Нормчилсон өдөр → `dayFilter`-т олдох түүхий өдөр (зөвхөн зөрсөн үед) — `fillDays`-ийн ⚠️ */
+const rawDay = new Map<string, string>();
+const rawOf = (pkg: Pkg, day: string): string => rawDay.get(`${pkg.key}|${day}`) ?? day;
+
+/**
+ * Хуудасны архивын өдрүүд — `returnDistinctValues` (нэг хүсэлт).
+ * ⚠️ 2026-10-09: өдрийг `msToDay(normDayMs(v))`-ээр бүлэглэнэ/шошголно — ЛОКАЛ шөнө дундаар (16:00Z)
+ *    тамгалсан хуучин жааз урьд нь ӨМНӨХ өдөр (сарын эхэнд бол өмнөх САР) болж бүлэглэгддэг байв.
+ *    Харин жаазыг `loadRows(pkg, sc, day)`-ийн ХАТУУ `dayFilter` (00:00–23:59 UTC)-ээр татдаг тул 16:00Z
+ *    тамгатай жааз нормчилсон өдрийн мужид ОРОХГҮЙ — тийм өдөрт түүхий өдрийг (`rawOf`) хадгалж татахдаа
+ *    түүгээр асууна. Тэр өдөр ЯГ (00:00Z) тамгатай жааз ч байвал нормчилсон өдрөөрөө (шинэ дүрэм).
+ */
 async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
   const f = sc.f.fillDate;
   if (!f) return [];
   const days = new Set<string>();
+  const exact = new Set<string>();
+  const shifted = new Map<string, string>();
   /* ⚠️ Хуудаслалт + `orderByFields` (CLAUDE.md-ийн ArcGIS занга) */
   for (let off = 0; ; off += 2000) {
     const j = await agsFetch(`${pkg.url}/query`, {
@@ -70,9 +83,20 @@ async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
     const fs = (j.features ?? []) as { attributes: Record<string, unknown> }[];
     for (const x of fs) {
       const v = x.attributes[f];
-      if (typeof v === 'number') days.add(msToDay(v));
+      if (typeof v !== 'number') continue;
+      const d = msToDay(normDayMs(v));
+      days.add(d);
+      /* түүхий өдөр нь өөр бол (16:00Z) хатуу шүүлтэд олдох өдрийг тэмдэглэнэ; тэр өдөр ЯГ (00:00Z)
+         тамгатай жааз бас байвал түүнийг (шинэ дүрмийн) хэвээр */
+      const raw = msToDay(v);
+      if (raw === d) exact.add(d);
+      else if (!shifted.has(d)) shifted.set(d, raw);
     }
     if (fs.length < 2000) break;
+  }
+  for (const [d, raw] of shifted) {
+    if (exact.has(d)) rawDay.delete(`${pkg.key}|${d}`);
+    else rawDay.set(`${pkg.key}|${d}`, raw);
   }
   return [...days].sort();
 }
@@ -108,12 +132,19 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
   ]);
   /* ⚠️ 2026-10-09: багцад ОЛОН гэрээ таарвал ЭХНИЙХ биш — `ipcAuto.pickContract` (барилга угсралт →
      «Гүйцэтгэл» төлбөртэй → кодоор); ялгагдахгүй үлдвэл `warn` (баримтын цонх ил харуулна). */
-  const picked = pickContract(
-    groupHo(hoRows)
-      .filter((c) => c.key === packKey)
-      .map((c) => ({ c, code: c.code, workType: c.workType, hasWork: c.workTotal != null && c.workTotal > 0 })),
-    packKey,
-  );
+  /* ⚠️ 2026-10-09 (F6): AUTO мөр бичигддэг гэрээтэй (`ipcAutoWrite.syncIpcFromFill` → `autoContractFor`) ЯГ
+     ижил гэрээг сонгоно. Урьд нь `groupHo`-ийн бүлгүүдээс (кодгүй '' бүлэг эрэмбээр ЭХЭНД, `hasWork` нь
+     төлсөн дүнгээр — `contractFor`-оос өөр) сонгодог тул баримт ӨӨР гэрээний толгойтой гарч болдог байв.
+     Код олдохгүй бол хуучин сонголт (`pickContract`). */
+  const cands = groupHo(hoRows).filter((c) => c.key === packKey);
+  const cf = autoContractFor(hoRows, packKey);
+  const byCode = cf.code ? cands.find((c) => c.code === cf.code) ?? null : null;
+  const picked = byCode
+    ? { pick: { c: byCode }, warn: cf.warn }
+    : pickContract(
+      cands.map((c) => ({ c, code: c.code, workType: c.workType, hasWork: c.workTotal != null && c.workTotal > 0 })),
+      packKey,
+    );
   const ho = picked.pick?.c ?? null;
 
   /* Сарууд — аль нэг хуудсанд агшинтай сар бүр */
@@ -124,7 +155,8 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
   const rowsAt = (pkg: Pkg, sc: Schema, day: string) => {
     const k = `${pkg.key}|${day}`;
     let p = cache.get(k);
-    if (!p) { p = loadRows(pkg, sc, day).then((r) => r.rows); cache.set(k, p); }
+    /* ⚠️ 2026-10-09: хатуу `dayFilter`-т ТҮҮХИЙ өдрөөр (`fillDays`-ийн ⚠️) */
+    if (!p) { p = loadRows(pkg, sc, rawOf(pkg, day)).then((r) => r.rows); cache.set(k, p); }
     return p;
   };
 

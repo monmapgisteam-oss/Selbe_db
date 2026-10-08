@@ -40,6 +40,12 @@ export class ArcGISError extends Error {
      * `ui.friendlyError` үүгээр «дахин нэвтэрнэ үү» ба «админд хандана уу»-г ялгана.
      */
     readonly sessionExpired = false,
+    /**
+     * ⚠️ 2026-10-09: HTTP-ийн статус (ЗӨВХӨН `!res.ok` үед мэдэгдэнэ; бусад үед `undefined`).
+     * Бичилтийн дуудагч 400/401/403/404 (тодорхой татгалзал) ба 5xx/сүлжээ (хариу алдагдсан
+     * — үр дүн тодорхойгүй)-г ялгахад хэрэглэнэ (`butetsEdit.isLostResponse`).
+     */
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'ArcGISError';
@@ -345,7 +351,7 @@ async function attemptRequest(
       await netBackoff(netTries);
       return attemptRequest(full, params, o, attempt, netTries + 1, refreshed);
     }
-    throw new ArcGISError(`HTTP ${res.status}`, full);
+    throw new ArcGISError(`HTTP ${res.status}`, full, undefined, undefined, false, res.status);
   }
   if (notJson || json == null) {
     /* ⚠️ Proxy/CDN-ийн HTML хариу «SyntaxError: Unexpected token <» болж улаан

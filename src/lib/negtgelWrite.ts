@@ -371,14 +371,21 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
  *    Хэмжээсийн алдаа (0–1 бичигдсэн) хуудас бүрийг 100 дахин багасгадаг тул
  *    дэд олонлогоор ч баригдана — хамгаалалтын гол зорилго хэвээр.
  */
-async function comparablePct(parts: Part[], lastAt: number | null): Promise<number | null | 'same'> {
+async function comparablePct(parts: Part[], lastAt: number | null): Promise<number | null | 'same' | { scale: string }> {
   if (parts.length < 2 || lastAt == null) return 'same';
   const [dayStart] = dayRange(lastAt);
   const kept: Part[] = [];
   for (const x of parts) {
     if (!x.real || !x.sc.f.fillDate) continue;
     const r = await bRowOf(x.p, x.sc, x.sc.f.fillDate, `${x.sc.f.fillDate} < ${ts(dayStart)}`);
-    if (r && r.act != null) kept.push(x);
+    if (r && r.act != null) {
+      /* ⚠️ 2026-10-09 (F12): ХУУДАС БҮРИЙН хэмжээсийн шалгалт — дэд олонлогоор жишихэд шинээр нэмэгдсэн
+         хуудас хасагддаг тул түүний хэмжээсийн алдаа ±20-оос мултардаг байв; хуучин хуудас өмнө нь >1%
+         байгаад одоо ≤1% болсон бол (0–1 ↔ 0–100 гулсалт) жишилтгүйгээр татгалзана. */
+      const cur = x.r.act == null ? null : x.r.act * 100;
+      if (cur != null && cur <= 1 && r.act * 100 > 1) return { scale: x.p.label };
+      kept.push(x);
+    }
   }
   if (kept.length === parts.length) return 'same';
   if (!kept.length) return null;
@@ -419,11 +426,21 @@ export async function registerApproved(
   sheetOid: number,
   pkgKey?: string,
 ): Promise<NegtgelResult> {
+  /* ⚠️ 2026-10-09 (R6): бичилт ОРОЛДСОН (хариу алдагдсан ч бичигдсэн байж магадгүй) бол `finally`-д НЭГ
+     удаа зарлана — урьд нь нэмсний дараах давхардлын уншилт/шинэчлэлт шидэхэд зарлал явдаггүй байв. */
+  let wrote = false;
   try {
     const s = await summaryOf(bagts, sheetOid, pkgKey);
     /* ⚠️ 2026-10-09: блокгүй багцад бичих тоо байхгүй — алдаа биш (`NegtgelResult`-ийн ⚠️) */
     if ((!s || s.progress == null) && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };
     if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };
+    /* ⚠️ 2026-10-09 (F12): ХУУДАС БҮРИЙН хувь 0–100-д (`toPct` нь 0–1 хүлээдэг — 0–100 бичигдсэн хуудас
+       2,600% болно). Шинэ хуудас ±20-ийн жишилтээс хасагддаг тул энд, бичихээс ӨМНӨ. */
+    for (const x of s.parts) {
+      const v = x.real && x.r.act != null ? x.r.act * 100 : null;
+      if (v != null && (v < -0.5 || v > 100.5))
+        return { ok: false, error: tr('«{0}» хуудасны «Б.» гүйцэтгэл {1}% — 0–100-гийн гадна тул нэгтгэлд бичсэнгүй. Хуудасны хэмжээсийг (0–1 эсэх) шалгана уу.', x.p.label, v.toFixed(2)) };
+    }
 
     const nameSql = bagts.replace(/'/g, "''");
 
@@ -466,6 +483,8 @@ export async function registerApproved(
     if (last != null && s.progress < last - 20) {
       /* ⚠️ 2026-10-09: хуудсын олонлог өөрчлөгдсөн бол ЖИШИГДЭХҮЙЦ хэсгээр (`comparablePct`) */
       const cmp = await comparablePct(s.parts, num(prevA?.[F.date]));
+      if (cmp != null && typeof cmp === 'object')
+        return { ok: false, error: tr('«{0}» хуудасны «Б.» гүйцэтгэл өмнө 1%-иас их байсан бол одоо ≤1% — хэмжээсийн алдаа (0–1 ↔ 0–100) байж болзошгүй тул нэгтгэлд бичсэнгүй.', cmp.scale) };
       const shown = cmp === 'same' ? s.progress : cmp;
       if (shown != null && shown < last - 20)
         return {
@@ -529,6 +548,7 @@ export async function registerApproved(
       if (s.planned != null) attrs[F.planned] = s.planned;
       if (s.volume != null) attrs[F.volume] = s.volume;
       if (s.volumePlan != null) attrs[F.volumePlan] = s.volumePlan;
+      wrote = true;
       const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
         updates: JSON.stringify([{ attributes: attrs }]),
         rollbackOnFailure: 'true',
@@ -536,10 +556,10 @@ export async function registerApproved(
       const ur = upd.updateResults?.[0];
       if (!ur || ur.success !== true)
         throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
-      invalidate('BAGTS_NEGTGEL');
       return { ok: true };
     }
 
+    wrote = true;
     const res = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
       adds: JSON.stringify([{
         attributes: {
@@ -591,21 +611,19 @@ export async function registerApproved(
         if (s.planned != null) attrs[F.planned] = s.planned;
         if (s.volume != null) attrs[F.volume] = s.volume;
         if (s.volumePlan != null) attrs[F.volumePlan] = s.volumePlan;
+        wrote = true;
         const u = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
           updates: JSON.stringify([{ attributes: attrs }]),
           rollbackOnFailure: 'true',
         })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
         const ur = u.updateResults?.[0];
-        if (!ur || ur.success !== true) {
-          invalidate('BAGTS_NEGTGEL');
+        if (!ur || ur.success !== true)
           throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
-        }
         const d = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
           deletes: String(newOid),
           rollbackOnFailure: 'true',
         })) as { deleteResults?: { success?: boolean; error?: { description?: string } }[] };
         const dr = d.deleteResults?.[0];
-        invalidate('BAGTS_NEGTGEL');
         if (!dr || dr.success !== true)
           return {
             ok: false,
@@ -615,10 +633,11 @@ export async function registerApproved(
       }
     }
     /* ⚠️ Нэгтгэлд шинэ мөр орсон тул `loadPkgProgress` хуучирлаа: 02/04
-       дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ. */
-    invalidate('BAGTS_NEGTGEL');
+       дашбоардын төлөвлөгөө-vs-бодит цуваа шууд шинэчлэгдэнэ (`finally`). */
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
+  } finally {
+    if (wrote) invalidate('BAGTS_NEGTGEL');
   }
 }

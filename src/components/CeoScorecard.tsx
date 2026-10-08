@@ -22,7 +22,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { num, mnt } from '@/lib/format';
-import { LEVEL_TONE, levelLabel } from '@/lib/kpiLevels';
+import { LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
 import type { ViewKey } from '@/lib/services';
 import { CEO_KPIS } from '@/lib/ceo/registry';
 import type { KpiResult } from '@/lib/ceo/kpi';
@@ -180,9 +180,12 @@ const never = <T,>() => new Promise<T>(() => {});
  *   · `pending` → «хүлээгдэж» (бүртгэл бий, дата хараахан ороогүй — 0 БИШ)
  *   · null → «—» (энэ багцад хамаарах өгөгдөл алга)
  */
-function Score({ v, loading, pending, big, dim }: { v: number | null; loading?: boolean; pending?: boolean; big?: boolean; dim?: Dim }) {
+function Score({ v, loading, pending, big, dim, level }: { v: number | null; loading?: boolean; pending?: boolean; big?: boolean; dim?: Dim; level?: Level }) {
   /* ⚠️ ХАБЭА өөрийн босготой (90/70) — `dimLevel` */
-  const lv = loading ? 'loading' : dimLevel(dim, v);
+  /* ⚠️ 2026-10-09: `DimScore.level` (газар — давхцлын тоогоор, `overlapLevel`) оноонос ДАВАМГАЙЛНА.
+     Урьд нь чип нь `dimLevel`-ээр (оноо 95 → good) будагдаж, 1 давхцалтай ажил ногоон харагдаж,
+     хажуугийн карт улаан байв. */
+  const lv = loading ? 'loading' : v == null ? dimLevel(dim, v) : level ?? dimLevel(dim, v);
   if (!loading && v == null && pending) {
     return (
       <span className={`${s.score} ${s.pending} ${big ? s.scoreBig : ''}`} title={tr('Бүртгэл бий, дата хараахан оруулаагүй')}>
@@ -387,7 +390,10 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
           {tr('≥{0} хэвийн · {1}–{2} анхааруулга · <{1} эрсдэлтэй (ХАБЭА: ≥{3} · {4}–{5} · <{4}) · «хүлээгдэж» дата ороогүй · «—» хамааралгүй', SCORE_GOOD, SCORE_WARN, SCORE_GOOD - 1, HSE_GOOD, HSE_WARN, HSE_GOOD - 1)}
           {/* ⚠️ 2026-10-06: газар (`pctLevel` 95/80) ба ерөнхий төлөвлөгөө (`scoreLevel` 65/45)
               CEO карттай ижил босготой болсон (`scorecard.ts` `dimLevel`) — тайлбарт ил бичнэ */}
-          {' · '}{tr('Газар: ≥{0} · {1}–{2} · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}', 95, 80, 94, 65, 45, 64)}
+          {/* ⚠️ 2026-10-09: газрын түвшин 2 дүрэмтэй — газар чөлөөлөлтийн өөрийн ажилд хувиар (95/80),
+              бусад ажилд давхцлын ТООГООР (`overlapLevel`: 0 = хэвийн, ≥1 = эрсдэлтэй; дунд түвшингүй).
+              Урьд тайлбар нь зөвхөн 95/80-г бичдэг тул 95 оноотой улаан чип ойлгомжгүй байв. */}
+          {' · '}{tr('Газар: чөлөөлөлтийн ажилд ≥{0} · {1}–{2}; бусад ажилд давхцал 0 хэвийн · ≥1 эрсдэлтэй · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}', 95, 80, 94, 65, 45, 64)}
         </span>
       </header>
 
@@ -548,7 +554,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         </td>
                         {DIMS.map((d) => (
                           <td key={d} className={s.cell}>
-                            <Score v={w.dims[d].score} pending={w.dims[d].pending} loading={!w.cancelled && loadingDims.has(d)} dim={d} />
+                            <Score v={w.dims[d].score} pending={w.dims[d].pending} loading={!w.cancelled && loadingDims.has(d)} dim={d} level={w.dims[d].level} />
                           </td>
                         ))}
                         <td className={s.cell}><Score v={w.total} loading={!w.cancelled && loadingDims.size > 0} /></td>
@@ -637,7 +643,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         <span className={s.dimHead}>
                           <Icon name={defs[d].icon} size={12} />
                           <b>{defs[d].title}</b>
-                          <Score v={sc.score} pending={sc.pending} loading={loading} dim={d} />
+                          <Score v={sc.score} pending={sc.pending} loading={loading} dim={d} level={sc.level} />
                         </span>
                         {sc.score != null && (
                           <span className={s.bar} aria-hidden><i style={{ width: `${sc.score}%` }} /></span>

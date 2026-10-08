@@ -186,9 +186,94 @@ export type SubmissionPayload = {
    *    дахин бичигддэг байв. Тэмдэг байвал `OBJECTID > maxOid0 AND өдөр = fillMs` жааз архивт
    *    бүтэн байгаа эсэхийг шалгаж, байвал бичихгүй шууд хаана.
    * ⚠️ `mergeSubmission` ДАМЖУУЛАХГҮЙ (шинэ агуулга = шинэ `at`); `closeSubmission` арилгана.
+   * ⚠️ 2026-10-09 (R2-c): «≥ n мөр» нь ЭНЭ илгээлтийн жааз гэдгийг батлахгүй (тэр өдөр ӨӨР жааз бичигдэж
+   *    болно) — `rootNo` (жаазны эхний мөрийн №) ба `probe` (илгээлтээр өөрчлөгдсөн нүднүүдийн дээж:
+   *    [жаазан дахь индекс, талбар, бичсэн утга]) хадгалж `matchArchivedFrame`-ээр ЯГ таньна. Хуучин
+   *    (тэдгээргүй) тэмдэгт ЯГ `n` мөр + эхний № л шалгагдана.
    */
-  archiving?: { at: number; startedAt: number; maxOid0: number; fillMs: number; n: number };
+  archiving?: ArchivingMark;
 };
+
+/** «Архивлаж байна» тэмдэг — `SubmissionPayload.archiving`-ийн ⚠️ */
+export type ArchivingMark = {
+  at: number; startedAt: number; maxOid0: number; fillMs: number; n: number;
+  rootNo?: string;
+  probe?: [number, string, number | string | null][];
+};
+
+/** `ArchivingMark.probe`-ийн дээд урт (payload-ыг дүүргэхгүй) */
+export const PROBE_MAX = 8;
+
+/** Архивт бичсэн утга ба буцаж уншсан утга ижил үү (тоо — харьцангуй 1e-6; хоосон = null) */
+function sameArchVal(a: unknown, b: number | string | null): boolean {
+  if (b == null || b === '') return a == null || a === '';
+  if (typeof b === 'number') {
+    const x = typeof a === 'number' ? a : typeof a === 'string' && a.trim() ? Number(a) : NaN;
+    return Number.isFinite(x) && Math.abs(x - b) <= 1e-6 * Math.max(1, Math.abs(b));
+  }
+  return String(a ?? '').trim() === b.trim();
+}
+
+/**
+ * ТАНИХ ДЭЭЖ — бичих гэж буй жааз (`frame`) ӨМНӨХ жаазаас (`prev(i)`) ялгарах нүднүүдээс жигд
+ * тархсан ≤ `max` ширхэг [индекс, талбар, утга] (2026-10-09, R2-c). Өөрчлөлтгүй бол хоосон —
+ * тэр үед `matchArchivedFrame` зөвхөн урт + эхний №-ээр таньна.
+ */
+export function frameProbe(
+  frame: Record<string, unknown>[],
+  prev: (i: number) => Record<string, unknown> | undefined,
+  fields: string[],
+  max = PROBE_MAX,
+): [number, string, number | string | null][] {
+  const diffs: [number, string, number | string | null][] = [];
+  for (let i = 0; i < frame.length; i += 1) {
+    const p = prev(i);
+    for (const f of fields) {
+      const v = frame[i][f];
+      if (v === undefined) continue;
+      const val: number | string | null = typeof v === 'number' && Number.isFinite(v) ? v
+        : typeof v === 'string' ? v.slice(0, 256) : v == null ? null : NaN;
+      if (typeof val === 'number' && !Number.isFinite(val)) continue;
+      if (p && sameArchVal(p[f], val)) continue;
+      diffs.push([i, f, val]);
+    }
+  }
+  if (diffs.length <= max) return diffs;
+  const out: [number, string, number | string | null][] = [];
+  for (let k = 0; k < max; k += 1) out.push(diffs[Math.round((k * (diffs.length - 1)) / (max - 1))]);
+  return out;
+}
+
+/**
+ * АРХИВТ ОЛДСОН МӨРҮҮДЭЭС (`OID > maxOid0`, тэмдгийн өдөр, OID-оор эрэмбэлсэн) ЭНЭ ТЭМДГИЙН жаазыг
+ * таньж эхний OID-г буцаана; олдохгүй бол `null` (2026-10-09, R2-c).
+ * ⚠️ Жааз = эхний № (`rootNo`, хуучин тэмдэгт эхний мөрийнх) -ээр эхэлж, дараагийн тийм мөр (эсвэл
+ *    төгсгөл) хүртэл ЯГ `n` мөр; `probe`-ийн нүд бүр бичсэн утгатай тэнцүү. «≥ n мөр» хангалтгүй:
+ *    тэр өдөр өөр жааз (ажил нэмэх · Улсын комисс) бичигдсэн бол андуурч, батлагдсан гүйцэтгэлийг
+ *    архивт оруулалгүй илгээлтийг хаадаг байв.
+ */
+export function matchArchivedFrame(
+  rows: Record<string, unknown>[],
+  mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
+  oidField: string,
+  noField: string,
+): number | null {
+  if (!rows.length || mark.n <= 0) return null;
+  const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
+  const root = mark.rootNo ?? noOf(rows[0]);
+  const starts: number[] = [];
+  if (root) rows.forEach((r, i) => { if (noOf(r) === root) starts.push(i); });
+  else starts.push(0);
+  for (let k = 0; k < starts.length; k += 1) {
+    const s = starts[k];
+    const end = root ? (k + 1 < starts.length ? starts[k + 1] : rows.length) : rows.length;
+    if (end - s !== mark.n) continue;
+    if (!(mark.probe ?? []).every(([i, f, v]) => i < mark.n && sameArchVal(rows[s + i]?.[f], v))) continue;
+    const oid = Number(rows[s][oidField]);
+    if (Number.isInteger(oid) && oid > 0) return oid;
+  }
+  return null;
+}
 
 /** Хүснэгтээс уншсан илгээлт — мөрийн дугаар ба төлөвтэй */
 export type StagedSubmission = { oid: number; at: number; done: boolean; payload: SubmissionPayload };
@@ -384,7 +469,17 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     const ar = d.archiving as Record<string, unknown> | undefined;
     if (ar && typeof ar === 'object' && isFin(ar.at) && isFin(ar.startedAt) && Number.isInteger(ar.maxOid0)
       && (ar.maxOid0 as number) >= 0 && isFin(ar.fillMs) && Number.isInteger(ar.n) && (ar.n as number) > 0) {
-      out.archiving = { at: ar.at, startedAt: ar.startedAt, maxOid0: ar.maxOid0 as number, fillMs: ar.fillMs, n: ar.n as number };
+      const mk: ArchivingMark = { at: ar.at, startedAt: ar.startedAt, maxOid0: ar.maxOid0 as number, fillMs: ar.fillMs, n: ar.n as number };
+      /* ⚠️ 2026-10-09 (R2-c): таних дээж — эвдэрсэн бичлэгийг л хаяна (тэмдэг өөрөө хүчинтэй хэвээр) */
+      if (isStr(ar.rootNo) && ar.rootNo.length <= 64) mk.rootNo = ar.rootNo;
+      const pr = Array.isArray(ar.probe)
+        ? (ar.probe as unknown[]).filter((e): e is [number, string, number | string | null] =>
+          Array.isArray(e) && e.length === 3 && Number.isInteger(e[0]) && (e[0] as number) >= 0 && (e[0] as number) < (ar.n as number)
+          && isStr(e[1]) && e[1].length > 0 && e[1].length <= 128
+          && (e[2] === null || isFin(e[2]) || (isStr(e[2]) && e[2].length <= 256)))
+        : [];
+      if (pr.length) mk.probe = pr.slice(0, PROBE_MAX).map((e): [number, string, number | string | null] => [e[0], e[1], e[2]]);
+      out.archiving = mk;
     }
     return out;
   } catch {
@@ -1225,11 +1320,26 @@ export async function markArchiving(
       return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
     const next: SubmissionPayload = { ...payload };
     if (mark) next.archiving = mark; else delete next.archiving;
+    /* ⚠️ 2026-10-09 (R2/7): `at` талбарыг payload-тай НЭГ бичилтээр (атом) бичнэ, дараа нь ДАХИН уншиж
+       батална. Урьд нь зөвхөн payload бичдэг байв: унших → бичих завсарт гүйцэтгэгч дахин илгээвэл мөрийн
+       `at` нь ШИНЭ, payload нь ХУУЧИН (+тэмдэг) болж зөрдөг — уншигч (`readRow`) мөрийн `at`-ийг түрүүлж
+       авдаг тул хуучин агуулга шинэ хувилбарын нэрээр харагдана. Одоо мөр үргэлж өөртөө нийцтэй
+       (`at` = payload.at). Бичсэний дараах уншилтаар `at` өөрчлөгдсөн эсвэл тэмдэг алга бол (манай
+       бичилтийн ДАРАА өөр бичилт орсон) `changed` — дуудагч архивлахгүй. ArcGIS-д CAS байхгүй тул
+       унших → бичих хоорондох мс-ийн цонх хэвээр (`closeSubmission`-ийн ⚠️). */
     const r = await fl.applyEdits({
-      updateFeatures: [{ attributes: { OBJECTID: oid, payload: JSON.stringify(next) } }],
+      updateFeatures: [{ attributes: { OBJECTID: oid, at: curAt, payload: JSON.stringify(next) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
     const err = updOk(r);
-    return err ? { ok: false, error: err } : { ok: true };
+    if (err) return { ok: false, error: err };
+    const res2 = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const a2 = res2.features[0]?.attributes as RowAttrs | undefined;
+    const p2 = a2 ? parseSubmission(String(a2.payload ?? '')) : null;
+    const at2 = a2 && isFin(a2.at) ? Number(a2.at) : p2?.at;
+    if (!a2 || !p2 || !String(a2.dkey ?? '').startsWith(SUB_PREFIX) || at2 !== expectAt || p2.at !== expectAt
+      || (mark ? p2.archiving?.at !== mark.at || p2.archiving?.startedAt !== mark.startedAt : p2.archiving != null))
+      return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }

@@ -24,7 +24,7 @@
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
+import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
 import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
@@ -571,7 +571,9 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
         const nNull = await cntOf(`${fill} IS NULL`);
         /* ⚠️ 2026-10-09 (F2): `bagtsSheet.latestWhere`-тэй НЭГ туслах — ЯГ тэнцүүгээр шалгавал мөр
            нэмэгдсэн жаазад (1,460 ≠ 1,459) хэзээ ч нэгтгэгдэхгүй. */
-        if (nullFragmentFits(nRows, nNull, nExpect)) {
+        /* ⚠️ 2026-10-09 (F3): доод хязгаарт зураглалын хоосон мөрийг хасна — `latestWhere`-тэй ЯГ ижил
+           (`baseBlankCount`); эс бөгөөс 1470↔1471 багцад хэзээ ч нэгтгэгдэхгүй */
+        if (nullFragmentFits(nRows, nNull, nExpect, await baseBlankCount(p, sc))) {
           where = `((${exact}) OR ${fill} IS NULL)`;
           nRows += nNull;
         }
@@ -691,8 +693,10 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
            *    Мөр олдохгүй бол (OID ирээгүй г.м.) хуучин дүрэм (`lastFrame`).
            */
           const si = feats.findIndex((x) => Number(x.attributes[sc.f.oid]) === sheetOid);
-          const feats2 = si >= 0 ? firstFrame(feats.slice(si), sc.f.no, expect) : lastFrame(feats, sc.f.no, expect);
-          const samePrev0 = si > 0 ? lastFrame(feats.slice(0, si), sc.f.no, expect) : [];
+          /* ⚠️ 2026-10-09 (F5): `sc.f.work` — хоосон мөргүй/хоосон мөртэй жааз хоёрыг `loadRows`-тэй ижил
+             (хоосон мөрийг хассан) уртаар жишнэ */
+          const feats2 = si >= 0 ? firstFrame(feats.slice(si), sc.f.no, expect, sc.f.work) : lastFrame(feats, sc.f.no, expect, sc.f.work);
+          const samePrev0 = si > 0 ? lastFrame(feats.slice(0, si), sc.f.no, expect, sc.f.work) : [];
           /* ⚠️ Зөвхөн БҮТЭН жааз суурь болно — унасан нийтлэлийн үлдэгдэл (богино)
              бол байрлалаар жишихэд зохиомол «өөрчлөлт» гарна; тэр үед өмнөх өдөр. */
           const samePrev = expect <= 0 || samePrev0.length >= expect ? samePrev0 : [];
@@ -749,7 +753,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               //    бөгөөс жишилт нь өөр хуулбартай харьцуулж, байхгүй
               //    өөрчлөлт «олдоно» (дээрх ⚠️).
               const pExpect = (TREES[p.key] ?? '').length;
-              const prev2 = lastFrame(prevFeats, sc.f.no, pExpect);
+              const prev2 = lastFrame(prevFeats, sc.f.no, pExpect, sc.f.work);
               prev2.forEach((x, i) => before.set(String(i), x.attributes));
             }
           }

@@ -72,7 +72,8 @@ export function BagtsHamaaral() {
     for (const p of pkgs) out.set(p.key, progressOf(p, actual));
     return out;
   }, [finQ, pkgs]);
-  /* ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга болсон) — ХАРУУЛАХГҮЙ, хадгалалтад үлдэнэ */
+  /* ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга болсон) — үндсэн жагсаалтад ХАРУУЛАХГҮЙ, хадгалалтад
+     үлдэнэ; ⚠️ 2026-10-09: доор тусдаа «өнчин холбоо» хэсэгт устгах товчтой жагсаана (`orphans`). */
   /* ⚠️ 2026-10-09: ШҮҮГЭЭГҮЙ жагсаалт (`allDeps`) — дугуй хамаарлын шалгалт (`linkError`) нь
      серверийн `saveChange`-тэй ИЖИЛ бүтэн жагсаалтаар явна. Урьд нь өнчин холбоог хассан
      жагсаалтаар шалгадаг тул UI «болно» гэж харуулсан холбоог сервер татгалздаг байв. */
@@ -83,6 +84,14 @@ export function BagtsHamaaral() {
   const deps = useMemo(
     () => allDeps.filter((d) => byKey.has(d.from) && byKey.has(d.to)),
     [allDeps, byKey],
+  );
+  /* ⚠️ 2026-10-09: ӨНЧИН ХОЛБООГ ИЛ ЖАГСААНА (устгах товчтой). Урьд нь нуугддаг атал дугуйн
+     шалгалтад (`linkError(allDeps)`) оролцдог тул «Дугуй хамаарал үүснэ» гэж татгалзсан холбоог
+     хэрэглэгч ХЭЗЭЭ Ч засаж чаддаггүй байв (шалтгаан нь харагддаггүй). Багцын жагсаалт
+     татагдаагүй (`pkgs` хоосон) үед бүх холбоо өнчин мэт харагдах тул тэр үед харуулахгүй. */
+  const orphans = useMemo(
+    () => (pkgs.length ? allDeps.filter((d) => !byKey.has(d.from) || !byKey.has(d.to)) : []),
+    [allDeps, byKey, pkgs.length],
   );
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
     && matchesSearch(q, p.code, [p.name, p.contractor])), [pkgs, grp, q]);
@@ -172,6 +181,32 @@ export function BagtsHamaaral() {
 
       <List pkgs={shown} all={pkgs} deps={deps} allDeps={allDeps} byKey={byKey} progress={progress} canEdit={canEdit}
         busy={busy || depQ.state !== 'ready'} onChange={change} onJumpHidden={jumpHidden} />
+
+      {orphans.length > 0 && (
+        <div className={s.note} role="note">
+          <p>
+            {tr('Өнчин холбоо {0} — багц нь жагсаалтаас алга болсон. Дугуй хамаарлын шалгалтад оролцдог тул шаардлагагүй бол устгана уу.', num(orphans.length))}
+          </p>
+          <span className={s.chips}>
+            {orphans.map((o) => {
+              const label = `${byKey.get(o.from)?.code ?? o.from} → ${byKey.get(o.to)?.code ?? o.to}`;
+              return (
+                <span key={`${o.from}>${o.to}`} className={s.chip}>
+                  <span className={s.mute}>{label}</span>
+                  {canEdit && (
+                    <button type="button" className={s.chipX} disabled={busy || depQ.state !== 'ready'}
+                      onClick={() => {
+                        if (!window.confirm(tr('«{0}» хамаарлыг устгах уу?', label))) return;
+                        void change('remove', o);
+                      }}
+                      title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}>✕</button>
+                  )}
+                </span>
+              );
+            })}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

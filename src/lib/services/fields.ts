@@ -509,8 +509,11 @@ export function cfMonthAxis(now: Date = new Date()): string[] {
   const span = (now.getFullYear() - fy) * 12 + (now.getMonth() + 1 - fm) + 1;
   const limit = Math.min(120, Math.max(1, span));
   if (span > 120) console.warn(`[cfMonthAxis] ${MONTH_AXIS_FROM}…${nowYm} = ${span} сар > 120 — тэнхлэг таслагдав`);
-  let y = fy;
-  let mo = fm;
+  /* ⚠️ 2026-10-09: хэтэрвэл СҮҮЛИЙН 120 сарыг үлдээнэ (төгсгөл = одоо). Урьд нь эхнээс нь 120 сар авч
+     `nowYm`-д хүрэлгүй тасардаг тул хамгийн шинэ олголт/хэмжилт тэнхлэгээс гадна үлддэг байв. */
+  const skip = Math.max(0, span - limit);
+  let y = fy + Math.floor((fm - 1 + skip) / 12);
+  let mo = ((fm - 1 + skip) % 12) + 1;
   for (let guard = 0; guard < limit; guard += 1) {
     const label = `${y}-${String(mo).padStart(2, "0")}`;
     out.push(label);

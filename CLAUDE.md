@@ -89,8 +89,16 @@ npm test
 node tools/i18n-extract.mjs    # дутуу 0, илүүдэл 0
 ```
 
-Том UI өөрчлөлтийн дараа `npm run build` нэмж ажиллуул — `tsc` барьдаггүй
-JSX/CSS алдааг статик export барина.
+CSS-модулийн pure шалгалт (`tools/cssModulePurity.check.mjs`) `npm test` дотор
+явна — `next build`-ийн css-loader-тэй ижил дүрмээр ~1 с-д. Жинхэнэ build-ийг
+РЕПОД хэзээ ч биш (доорх «Dev сервер»-ийг үз): зөвхөн тусгаарласан хуулбарт
+(`git archive HEAD` → scratchpad) Node 22-оор; CI (`test.yml`, салбарын push/PR)
+ч Node 22-оор build хийнэ.
+
+**`*.module.css`-д сонгогч БҮР локал класс агуулна.** `:global(.x) {…}`,
+`:root`, `body` ганцаараа `next build`-ийг «is not pure» гэж унагана
+(2026-10-08-ны deploy-ийн уналт; dev/tsc/eslint барьдаггүй). Глобал дүрэм
+`globals.css` руу, хангалттай тодорхой сонгогчтой (жиш. `.mapFsHost` 0,3,0).
 
 **Why:** Төсөл нь `output: 'export'` статик тул build алдаа зөвхөн байршуулах
 үед илэрдэг. i18n нь тусдаа шалгуур — `tr()`-ээр ороогүй монгол текст эсвэл

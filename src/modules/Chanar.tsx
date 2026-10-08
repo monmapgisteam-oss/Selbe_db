@@ -70,6 +70,7 @@ import { NcrForm, emptyNcrClose, ncrCloseFrom, type NcrCloseDraft } from './chan
 import { userError } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { DateField } from '@/modules/huvaari/DateField';
+import { fetchAttachment, isOrgUrl } from '@/lib/uzlegReport';
 import s from './chanar.module.css';
 
 const tagCls = (st: MsStatus): string => {
@@ -90,6 +91,21 @@ const metaOf = (b: AnyBody | null | undefined): Meta | undefined => (b as { meta
 
 /** Хавсралт + аль хувилбарын мөрөнд байгаа нь (№6 аудит, 2026-09-16) */
 type Att = Attachment & { parentOid: number };
+
+/** ⚠️ 2026-10-09: задрахгүй огноотой үед бичих товчны тайлбар (`badDates`-ийн ⚠️) */
+const BAD_DATE_HINT = () => tr('Огнооны талбарт танигдахгүй утга байна (YYYY-MM-DD) — засах эсвэл арилгаад дахин оролдоно уу.');
+
+/**
+ * ⚠️ 2026-10-09: ХӨТӨЧ ДОТОР ШУУД НЭЭХ хавсралтын төрөл (өргөтгөлөөр) — blob нь МАНАЙ origin-оос
+ *    үйлчлэгдэх тул HTML/SVG/XML-ийг нээвэл хэрэглэгчийн хавсаргасан скрипт порталын эрхээр
+ *    ажиллана. Тиймээс төрлийг серверийн `content-type`-аас БИШ өргөтгөлөөс тогтоож, зөвхөн
+ *    аюулгүй (PDF · зураг · энгийн текст) төрлийг нээнэ; бусад нь татагдана (`download`).
+ */
+const INLINE_TYPES: Readonly<Record<string, string>> = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', bmp: 'image/bmp', txt: 'text/plain;charset=utf-8',
+};
+const inlineTypeOf = (name: string): string | null => INLINE_TYPES[(name.split('.').pop() ?? '').toLowerCase()] ?? null;
 
 /*
  * ⚠️ 2026-10-06 (аудит): ХАДГАЛААГҮЙ ЗАСВАРЫН НӨӨЦ — localStorage. Түлхүүр нь хэрэглэгч +
@@ -162,6 +178,17 @@ export function Chanar() {
   const [rNote, setRNote] = useState('');
   const [perMat, setPerMat] = useState<Record<string, VerdictCode>>({});
   const [anDeadline, setAnDeadline] = useState('');
+  /* ⚠️ 2026-10-09: ЗАДРАХГҮЙ огноотой талбарууд (`DateField.onBad`, Huvaari `PlanModal`-ын ижил) — урьд нь
+     `onBad` дамжуулдаггүй тул «2026-13-45» гэж бичихэд эцгийн утга ХУУЧИН (эсвэл хоосон) хэвээр
+     үлдэж, «Хадгалах» нь түүнийг чимээгүй бичдэг байв. Байвал бичих товчнууд хаалттай (`run` ч барина). */
+  const [badDates, setBadDates] = useState<ReadonlySet<string>>(() => new Set());
+  const onBadDate = useCallback((k: string, bad: boolean) => setBadDates((s0) => {
+    if (s0.has(k) === bad) return s0;
+    const n = new Set(s0);
+    if (bad) n.add(k); else n.delete(k);
+    return n;
+  }), []);
+  const dateBlock = badDates.size ? BAD_DATE_HINT() : '';
   const [bounceReason, setBounceReason] = useState<BounceReason>('incomplete');
   /* Зохиогч — хувилбарын шалтгаан (буцаагдсанаас дахин илгээхэд) */
   const [revNote, setRevNote] = useState('');
@@ -429,8 +456,11 @@ export function Chanar() {
     ? (act.edit || act.correction)
     : act.edit && doc.status === MS_STATUS.draft && !hist.some((h) => h.rev > doc.rev));
 
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string; unsure?: boolean }>, okMsg: string) => {
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; unsure?: boolean; warn?: string }>, okMsg: string) => {
     if (busy) return false;
+    /* ⚠️ 2026-10-09: ГАРААР бичсэн огноо задрахгүй байна (`DateField.onBad`) — эцгийн утга ХУУЧИН
+       (эсвэл хоосон) хэвээр тул бичвэл тэр нь чимээгүй хадгалагдана (Huvaari `PlanModal`-ын ижил). */
+    if (badDates.size) { setErr(BAD_DATE_HINT()); return false; }
     setBusy(true); setErr(''); setNote('');
     const sel0 = sel;
     try {
@@ -447,6 +477,9 @@ export function Chanar() {
       }
       setNote(okMsg);
       await refresh();
+      /* ⚠️ 2026-10-09: АМЖИЛТТАЙ ч анхааруулгатай (`Result.warn` — давхар дугаар/хувилбар, хасагдсан
+         материалын задаргаа). `refresh` алдааны мөрийг цэвэрлэдэг тул ДАРАА нь тавина. */
+      if (r.warn) setErr(r.warn);
       /* ⚠️ 2026-09-25: хүлээх хооронд сонголт солигдсон бол (жагсаалт/таб busy үед
          хаалттай ч гэсэн) хуучин баримтын биеийг шинэ сонголт дээр БИЧИХГҮЙ. */
       /* ⚠️ 2026-10-09: бичилт АМЖИЛТТАЙ болсны дараах дахин уншилт унавал «амжилтгүй» гэж
@@ -720,7 +753,10 @@ export function Chanar() {
       async () => {
         if (cd) {
           const r = await saveClientChecks({ oid: doc.oid, who: me, client: cd });
-          if (!r.ok) return { ok: false, error: tr('Захиалагчийн багана хадгалагдсангүй — шийдвэр өгөгдөөгүй: {0}', r.error ?? '') };
+          /* ⚠️ 2026-10-09: `unsure`-г ДАМЖУУЛНА — хариу алдагдсан бол багана хадгалагдсан байж болох тул
+             `run` жагсаалт/биеийг шинэчилнэ; урьд нь ердийн алдаа болж хуучин багана дэлгэцэнд үлддэг байв. */
+          if (!r.ok && r.unsure) cdSaved = true; // доорх биеийн дахин уншилт (хадгалагдсан байж болно)
+          if (!r.ok) return { ok: false, unsure: r.unsure, error: tr('Захиалагчийн багана хадгалагдсангүй — шийдвэр өгөгдөөгүй: {0}', r.error ?? '') };
           cdSaved = true;
         }
         /* ⚠️ 2026-10-04: NCR — хянагчийн ХАРСАН залруулгын агшин; зөрвөл store татгалзана */
@@ -839,7 +875,9 @@ export function Chanar() {
       for (const f of Array.from(files)) {
         if (f.size > MAX_ATT) { errs.push(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); continue; }
         /* ⚠️ 2026-10-09: нэг файлын шидэлт (сүлжээ) бусад файлын алдааг арчихгүй — файл тус бүрд */
-        let r: { ok: boolean; error?: string };
+        /* ⚠️ 2026-10-09 (R6): `unsure` — хариу алдагдсан; `error` нь «орсон эсэх тодорхойгүй — жагсаалтаа
+           шалгана уу» бөгөөд доорх `reloadAtts` жагсаалтыг дахин уншина (давхар хавсаргахаас сэргийлнэ). */
+        let r: { ok: boolean; error?: string; unsure?: boolean };
         try { r = await addAttachment(doc.oid, f); } catch (e) { errs.push(`${f.name}: ${userError(e)}`); continue; }
         /* ⚠️ 2026-10-06 (аудит): түүхий ArcGIS/сүлжээний мөр («TimeoutError», «HTTP 500») → `userError` */
         if (!r.ok) errs.push(`${f.name}: ${r.error ? userError(r.error) : tr('Хавсралт хадгалагдсангүй.')}`);
@@ -851,6 +889,37 @@ export function Chanar() {
       setErr(userError(e));
     } finally {
       setBusy(false);
+    }
+  };
+  /*
+   * ⚠️ 2026-10-09 (аюулгүй байдал): ХАВСРАЛТ НЭЭХ — POST (токен БИЕЭР) → blob URL. Урьд нь
+   *    `listAttachments` URL-д `?token=` шингээж `<a href>`-ээр нээдэг байв (токен түүх/лог/Referer-т).
+   *    · Токен ЗӨВХӨН байгууллагын хост руу (`isOrgUrl`); өөр хост бол токенгүй шууд нээнэ.
+   *    · Popup хоригдохгүйн тулд цонхыг ТОВШИЛТЫН агшинд (await-ээс өмнө) нээнэ.
+   *    · Аюулгүй төрөл (`inlineTypeOf`) л хөтөчид нээгдэнэ, бусад нь татагдана — `INLINE_TYPES`-ийн ⚠️.
+   *    · blob URL-ууд салгахад (unmount) хүчингүй болно.
+   */
+  const blobUrls = useRef<string[]>([]);
+  useEffect(() => {
+    const list = blobUrls.current; // нэг массив — `openAtt` түүн рүү push хийнэ
+    return () => { for (const u of list) URL.revokeObjectURL(u); list.length = 0; };
+  }, []);
+  const openAtt = async (a: Att) => {
+    if (!isOrgUrl(a.url)) { window.open(a.url, '_blank', 'noopener,noreferrer'); return; }
+    const type = inlineTypeOf(a.name);
+    const w = type ? window.open('', '_blank') : null;
+    try {
+      const blob = await fetchAttachment(a.url);
+      if (!blob) { w?.close(); setErr(tr('«{0}» хавсралтыг татаж чадсангүй — дахин оролдоно уу.', a.name)); return; }
+      const u = URL.createObjectURL(new Blob([blob], { type: type ?? 'application/octet-stream' }));
+      blobUrls.current.push(u);
+      if (w) { w.opener = null; w.location.href = u; return; }
+      const link = document.createElement('a');
+      link.href = u; link.download = a.name; link.rel = 'noopener';
+      document.body.appendChild(link); link.click(); link.remove();
+    } catch (e) {
+      w?.close();
+      setErr(userError(e));
     }
   };
   const removeAtt = async (a: Att) => {
@@ -938,7 +1007,7 @@ export function Chanar() {
 
   /* ── Төрлийн маягт — харах/засах ── */
   const renderBody = (b: AnyBody, editing: boolean, onChange: (v: AnyBody) => void) => {
-    const m = { edit: editing, busy };
+    const m = { edit: editing, busy, onBadDate }; // ⚠️ 2026-10-09: `onBadDate` — `badDates`-ийн ⚠️
     const k = editing && !doc ? kind : (doc?.kind ?? kind);
     if (k === 'MA') {
       return (
@@ -1107,7 +1176,7 @@ export function Chanar() {
             <div className={s.empty}>{mineOnly ? tr('Таны хийх баримт алга.') : emptyLabel(kind)}</div>
           )}
           {heads.map((d) => {
-            const p = progress(d.reviews, d.kind);
+            const p = progress(d.reviews, d.kind, d.status); // ⚠️ 2026-10-09: шийдвэрлэгдсэнд зөвхөн шийдвэртэй слот
             const v = docVerdict(d);
             const dl = delayDays(d);
             const todo = actionWhy.get(d.oid) ?? null;
@@ -1150,7 +1219,7 @@ export function Chanar() {
             <>
               <FormHead head={tr('Шинэ {0} — {1}', kindLabel(kind), pkg)} kind={kind} title={dTitle} onTitle={changeTitle} busy={busy} />
               {renderBody(dBody, true, changeBody)}
-              <FormActs busy={busy} onSave={() => void saveNew()} onCancel={cancelEdit} />
+              <FormActs busy={busy} blocked={dateBlock} onSave={() => void saveNew()} onCancel={cancelEdit} />
             </>
           ) : !doc ? (
             <div className={s.empty}>{tr('Зүүн жагсаалтаас баримт сонгоно уу.')}</div>
@@ -1166,7 +1235,7 @@ export function Chanar() {
                 </div>
               )}
               {renderBody(dBody, true, changeBody)}
-              <FormActs busy={busy} onSave={() => void saveEdit()} onCancel={cancelEdit} />
+              <FormActs busy={busy} blocked={dateBlock} onSave={() => void saveEdit()} onCancel={cancelEdit} />
             </>
           ) : (
             <>
@@ -1224,12 +1293,12 @@ export function Chanar() {
                   <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy} onClick={() => void ack()}>{tr('Хүлээн авлаа')}</button>
                 )}
                 {act.correction && (
-                  <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={busy || !body} onClick={() => void sendCorrection()}>
+                  <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={busy || !body || !!dateBlock} title={dateBlock || undefined} onClick={() => void sendCorrection()}>
                     {doc.status === MS_STATUS.returned ? tr('Залруулгын тайлан дахин илгээх') : tr('Залруулгын тайлан илгээх')}
                   </button>
                 )}
                 {act.closeNcr && (
-                  <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || !body} onClick={() => void closeNcr()}>{tr('Үл тохирлыг хаах')}</button>
+                  <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || !body || !!dateBlock} title={dateBlock || undefined} onClick={() => void closeNcr()}>{tr('Үл тохирлыг хаах')}</button>
                 )}
                 {act.clientChecks && (
                   <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={busy || !clientDraft} onClick={() => void saveClient()}>
@@ -1300,7 +1369,11 @@ export function Chanar() {
                   ) : atts.length === 0 && <span className={s.secEmpty}>{tr('хавсралтгүй')}</span>}
                   {(atts ?? []).map((a) => (
                     <div key={a.id} className={s.att}>
-                      <a href={a.url} target="_blank" rel="noreferrer">{a.name}</a>
+                      {/* ⚠️ 2026-10-09: токенгүй URL — `openAtt` POST-оор татаж нээнэ (`openAtt`-ийн ⚠️) */}
+                      <a href={a.url} target="_blank" rel="noreferrer"
+                        onClick={(e) => { if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); void openAtt(a); }}>
+                        {a.name}
+                      </a>
                       <span className={s.attSize}>{kb(a.size)}</span>
                       {a.parentOid !== doc.oid && (
                         <span className={s.attSize} title={tr('Өмнөх хувилбарын хавсралт')}>
@@ -1381,14 +1454,14 @@ export function Chanar() {
                         {whyMe && <span className={s.hint}>{whyMe}</span>}
                         {mine && (
                           <div className={s.revActs}>
-                            <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || pmBlocksA} onClick={() => void decide(r, 'A')}
-                              title={pmBlocksA ? tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.') : undefined}>
+                            <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy || pmBlocksA || !!dateBlock} onClick={() => void decide(r, 'A')}
+                              title={pmBlocksA ? tr('Материалын шийдвэрт AN/R байгаа тул нийт шийдвэр A байж болохгүй — AN эсвэл R сонгоно уу.') : dateBlock || undefined}>
                               {verdictLabel('A', doc.kind)}
                             </button>
-                            <button type="button" className={`${s.btn} ${s.btnWarn}`} disabled={busy} onClick={() => void decide(r, 'AN')}>
+                            <button type="button" className={`${s.btn} ${s.btnWarn}`} disabled={busy || !!dateBlock} title={dateBlock || undefined} onClick={() => void decide(r, 'AN')}>
                               {verdictLabel('AN', doc.kind)}
                             </button>
-                            <button type="button" className={`${s.btn} ${s.btnBad}`} disabled={busy} onClick={() => void decide(r, 'R')}>
+                            <button type="button" className={`${s.btn} ${s.btnBad}`} disabled={busy || !!dateBlock} title={dateBlock || undefined} onClick={() => void decide(r, 'R')}>
                               {verdictLabel('R', doc.kind)}
                             </button>
                           </div>
@@ -1417,9 +1490,11 @@ export function Chanar() {
                          Хадгалах хэлбэр ХЭВЭЭР — `YYYY-MM-DD` мөр, `decide` дотор `fromDateInput`. */
                       <div className={s.field}>
                         {tr('AN нөхцөл биелэх хугацаа (сонголт)')}
-                        <DateField label={tr('AN нөхцөл биелэх хугацаа (сонголт)')} value={anDeadline} disabled={busy} onChange={setAnDeadline} />
+                        <DateField label={tr('AN нөхцөл биелэх хугацаа (сонголт)')} value={anDeadline} disabled={busy} onChange={setAnDeadline}
+                          onBad={(b) => onBadDate('anDeadline', b)} />
                       </div>
                     )}
+                    {dateBlock && <p className={s.warnText} role="alert">{dateBlock}</p>}
                   </>
                 )}
                 {act.bounce && bounceAs && (
@@ -1668,7 +1743,10 @@ function ReasonDialog({ title, busy = false, error = '', onOk, onCancel }: {
   useFocusTrap(ref);
   /* ⚠️ Урхи эхний фокус авагч руу шилжүүлдэг — энэ эффект ДАРАА нь ажиллаж талбар руу оруулна (`LinkModal`-ын ⚠️) */
   const taRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { taRef.current?.focus(); }, []);
+  /* ⚠️ 2026-10-09: бичилт дуусахад (`busy` → false) эсвэл алдаа гарахад ДАХИН фокуслана — «Батлах»
+     дарахад фокус товч дээр үлдэж, бичилтийн явцад товч хаалттай болоход `body` руу унадаг тул
+     алдааг засах гэж буцаад талбар руу хулганаар орох шаардлагатай байв (гарын хэрэглэгч гацна). */
+  useEffect(() => { if (!busy) taRef.current?.focus(); }, [busy, error]);
   const [text, setText] = useState('');
   const ok = text.trim() !== '' && !busy;
   /* ⚠️ 2026-10-09: бичилт явж байхад хаахгүй (Esc · гадна товшилт · «Болих») — үр дүнг цонх дотор харуулна */
@@ -1695,11 +1773,13 @@ function ReasonDialog({ title, busy = false, error = '', onOk, onCancel }: {
   );
 }
 
-function FormActs({ busy, onSave, onCancel }: { busy: boolean; onSave: () => void; onCancel: () => void }) {
+/* ⚠️ 2026-10-09: `blocked` — задрахгүй огноо (`badDates`-ийн ⚠️); товч хаалттай + шалтгаан харагдана */
+function FormActs({ busy, blocked = '', onSave, onCancel }: { busy: boolean; blocked?: string; onSave: () => void; onCancel: () => void }) {
   return (
     <div className={s.acts}>
-      <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={busy} onClick={onSave}>{tr('Ноорог хадгалах')}</button>
+      <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={busy || !!blocked} title={blocked || undefined} onClick={onSave}>{tr('Ноорог хадгалах')}</button>
       <button type="button" className={s.btn} disabled={busy} onClick={onCancel}>{tr('Болих')}</button>
+      {blocked && <span className={s.warnText} role="alert">{blocked}</span>}
     </div>
   );
 }

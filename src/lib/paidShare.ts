@@ -6,6 +6,8 @@
  *      `ipcTable.ipcTotals` / `ipc.hoTotals`);
  *    · Тайлан · удирдлагын тайлан · CEO карт: 26.01% (гэрээлсэн багцын олголт 522.71 ÷
  *      Cashflow-ийн гэрээлсэн дүн 2,009.77, `reportData.finance`).
+ *    ⚠️ 2026-10-09: дээрх 26.01% / 522.71 нь холбоосоос (`pkgAlias.FIN_PKG_ALIAS`) ӨМНӨХ тоо —
+ *      одоо Багц-7 · Багц-8.1-ийн олголт тоологчид орох тул хувь өндөр. Тогтмол тоог бүү иш тат.
  *    ДҮРЭМ: бүх газар ЭНЭ файлын `paidShareOf` (тоологч/хуваарь) ба `paidPctOf` (томьёо)-г
  *    хэрэглэнэ — Тайлан/CEO-гийн тодорхойлолт. Учир нь «гэрээлсэн нийт дүн» 2,009.77-д
  *    өөр 7 эх сурвалж санал нийлдэг; HO-ийн 2,005.71 нь зөвхөн 22 гэрээ хамарна.
@@ -39,6 +41,8 @@ export type PaidShare = {
   paidOther: number;
   /** `paidPctOf(paidContracted, contract)` — 0–100, эсвэл `null` */
   pct: number | null;
+  /** ⚠️ 2026-10-09: дүн (`dun`) нь бөглөгдсөн HO мөрийн тоо — 0 бол `paid` «мэдээлэлгүй» (0 ₮ биш) */
+  paidKnown: number;
 };
 
 /* ⚠️ `reportData`-ийн туслахуудтай ЯГ ижил — шилжүүлэхэд тоо өөрчлөгдөхгүй */
@@ -78,9 +82,11 @@ export function paidShareOf(
   }
   let paid = 0;
   let paidContracted = 0;
+  let paidKnown = 0;
   for (const r of hoRows) {
     const n = hoAmount(r as Row);
     if (n == null) continue;
+    paidKnown += 1;
     paid += n;
     const k = pkgKeyOf(r[HO_IPC.contractFields.pkg]);
     if (k && keys.has(finPkgKey(k))) paidContracted += n;
@@ -90,6 +96,9 @@ export function paidShareOf(
     paid,
     paidContracted,
     paidOther: paid - paidContracted,
-    pct: hoRows.length ? paidPctOf(paidContracted, contract) : null,
+    /* ⚠️ 2026-10-09: «мэдээлэлгүй» = НЭГ Ч бөглөгдсөн дүн алга (`paidKnown`), `hoRows.length` биш —
+       бүх `dun` хоосон HO мөрүүд «0% олгосон» гэж гардаг байв (null ≠ 0). */
+    pct: paidKnown ? paidPctOf(paidContracted, contract) : null,
+    paidKnown,
   };
 }

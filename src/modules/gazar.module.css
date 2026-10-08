@@ -270,7 +270,7 @@
 /* ── Responsive — нарийн дэлгэцэд frame нурж БОСОО өрөгдөж, гүйнэ ── */
 /* Босго 1180 = `--bp-split` (globals.css) — `shell.module.css` нь ЯГ тэр цэгт бүх аппыг нэг багана болгодог тул модуль ч тэндээ нурна. Өмнө нь 1100 байсан: 1101–1180-д бүрхүүл нарийсчихсан атал модуль ХОЁР баганаа барьж, самбарууд шахагдаж байв (2026-09-07 медиа аудит). Бариул мөн нуугдана. */
 @media (max-width: 1180px) {
-  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame > button[data-split-grip] { display: none; }
   .frame {
     grid-template-areas:
       "map"
@@ -292,27 +292,27 @@
    absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
    ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
    өөрийнх нь 10px завсарт төвлөнө — картанд огт хүрэхгүй. ══ */
-.frame > :global(button[class*='splitGrip_grip']) {
+.frame > button[data-split-grip] {
   position: relative;
   grid-row: 1 / -1;
   top: auto;
   bottom: auto;
   z-index: 6;
 }
-.frame > :global(button[class*='splitGrip_left']) {
+.frame > button[data-split-grip='left'] {
   grid-column: 1 / 2;
   justify-self: end;
   left: auto;
   margin-right: -10.5px;
 }
-.frame > :global(button[class*='splitGrip_right']) {
+.frame > button[data-split-grip='right'] {
   grid-column: 3 / 4;
   justify-self: start;
   right: auto;
   margin-left: -10.5px;
 }
 @media (max-width: 1180px) {
-  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame > button[data-split-grip] { display: none; }
 }
 
 /* ══════════════ НЭГЖ ТАЛБАР ЗАСАХ — модал ══════════════
@@ -558,7 +558,7 @@ div.catPanelRight:has(> :global(.mapCatalog)) {
   grid-template-rows: minmax(0, 1fr);
 }
 /* Чирэх бариулууд засварын горимд утгагүй */
-.frameEdit > :global(button[class*='splitGrip_grip']) { display: none; }
+.frameEdit > button[data-split-grip] { display: none; }
 
 /* Зургийн дээд ирмэг дэх ажлын зурвас — «энэ бол тусдаа цонх» гэдгийг хэлнэ */
 .editBar {
@@ -645,4 +645,6 @@ div.catPanelRight:has(> :global(.mapCatalog)) {
 
 /* ⚠️ Хэрэгслийн зурвасыг ажлын зурвасын ДООГУУР буулгана — эс тэгвээс
    2D/3D товчнууд гарчгийн доор нуугдана. */
-.frameEdit .map > :global(div[class*='mapTools_bar']) { top: 46px; }
+/* ⚠️ 2026-10-09: урьдах `.frameEdit .map > :global(div[class*='mapTools_bar']) { top: 46px; }` ХАСАВ —
+   `mapTools.module.css`-д `bar`-аар эхэлсэн класс БАЙХГҮЙ тул юутай ч таардаггүй үхмэл дүрэм
+   байв (зан төлөв өөрчлөгдөөгүй). Хэрэгтэй бол `:global(.mapToolsBar)` / `:global(.mapDims)`. */

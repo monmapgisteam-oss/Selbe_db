@@ -32,6 +32,7 @@ import { arcgisPost } from '@/lib/query';
 import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from './scopedAcl';
+import { UNSAFE_KEY } from './caps';
 
 export type RemoteRow = {
   username: string;
@@ -626,6 +627,10 @@ export async function fetchAll(
           views = v === 'all' ? 'all' : Array.isArray(v) ? (v as ViewKey[]) : [];
         } catch { views = []; }
       }
+      /* ⚠️ 2026-10-09: `__proto__` · `constructor` · `prototype` нэртэй мөрийг АЛГАСНА — хүснэгтэд
+         бичих эрхтэй хүн ийм `username` бичвэл `perms[k] = …` нь энгийн объектын прототипыг солиж,
+         бүртгэлгүй бүх нэрэнд «эрх» харагдах боломжтой байв (`caps.UNSAFE_KEY`). */
+      if (UNSAFE_KEY.has(a.username.toLowerCase())) continue;
       perms[a.username.toLowerCase()] = {
         username: a.username,
         role: (a.role as Role) || null,

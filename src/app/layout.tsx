@@ -83,6 +83,11 @@ export const metadata: Metadata = {
   // favicon.ico байхгүйгээс 404 гарч байсан — SVG лого нь бүх орчин үеийн browser-т favicon болно
   icons: { icon: '/logo.svg' },
   manifest: '/manifest.json',
+  /* ⚠️ 2026-10-09: `<meta name="referrer">` — гадаад холбоос (хавсралт, ArcGIS-ийн бус хаяг) руу
+     хуудасны БҮТЭН URL (`?v=…`, багц/мөрийн id) задрахгүй, зөвхөн эх (origin). Статик export тул HTTP
+     толгой тавих боломжгүй — meta-аар. `no-referrer` БИШ: ArcGIS-ийн referrer-хязгаартай
+     токен/үйлчилгээ эхийг (Referer: https://smart.selbecity.mn/) шаарддаг. */
+  referrer: 'strict-origin-when-cross-origin',
   openGraph: {
     type: 'website',
     title: 'Сэлбэ — Орон зайн мэдээллийн портал',

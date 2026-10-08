@@ -99,14 +99,14 @@ export function NcrForm({
   onCloseDraft?: (c: NcrCloseDraft) => void;
 }) {
   const att = body.attachments;
-  const cm: Mode = { edit: !!correctionEdit, busy };
+  const cm: Mode = { edit: !!correctionEdit, busy, onBadDate: m.onBadDate }; // ⚠️ 2026-10-09: `Mode.onBadDate`
   const corr = correctionEdit && correction ? correction : body.correction;
   const setCorr = (p: Partial<NcrCorrection>) => onCorrection?.({ ...corr, ...p });
   const setPhoto = (i: number, p: Partial<NcrBody['photos'][number]>) =>
     onChange({ ...body, photos: body.photos.map((x, k) => (k === i ? { ...x, ...p } : x)) });
   const setMeta = (p: Partial<NcrBody['meta']>) => onChange({ ...body, meta: { ...body.meta, ...p } });
 
-  const km: Mode = { edit: !!closeEdit, busy };
+  const km: Mode = { edit: !!closeEdit, busy, onBadDate: m.onBadDate };
   const cd = closeEdit && closeDraft ? closeDraft : ncrCloseFrom(body.closure);
   const setCd = (p: Partial<NcrCloseDraft>) => onCloseDraft?.({ ...cd, ...p });
   const setCloser = (i: number, p: Partial<NcrCloser>) =>
@@ -274,7 +274,9 @@ export function NcrForm({
                       {km.edit ? (
                         /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
                         <DateField label={`${closerLabel(i)} — ${tr('Огноо')}`} value={toDateInput(c.date)} disabled={busy}
-                          onChange={(v) => setCloser(i, { date: fromDateInput(v) })} />
+                          onChange={(v) => setCloser(i, { date: fromDateInput(v) })}
+                          /* ⚠️ 2026-10-09: задрахгүй огноо → эцэг «Үл тохирлыг хаах»-ыг хаана (`fields.Mode.onBadDate`) */
+                          onBad={(b) => km.onBadDate?.(`ncr-closer-${i}`, b)} />
                       ) : ymd(c.date)}
                     </td>
                   </tr>

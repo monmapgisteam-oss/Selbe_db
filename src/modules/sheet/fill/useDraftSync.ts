@@ -18,6 +18,8 @@ import {
   writeDraftLS, markUnsynced, clearUnsynced, isUnsynced, rcptApply, type Rcpt,
   /* 2026-10-04 дахин аудит — шахсан баримт · тэмдэглэсэн нүд · ЧИМЭЭГҮЙ хасалтын анхааруулга */
   packRcpt, unpackRcpt, compactDraft, rcptSilentDrop, rcptAlive,
+  /* 2026-10-09 — хоёр хүн зэрэг бөглөх (шинэ баримт · эзэмшил · HLC · өөрчлөгдсөн өөрийн нүд) */
+  newReceipts, claimMine, editStamp, lostMine,
 } from "./draft";
 import { mapOldOids, rowOccOf } from "../sheetFrame";
 import { dt, type NoticeKind, type RemoteState } from "./util";
@@ -34,6 +36,8 @@ type Held = {
   /** Огнооны суурь (`Draft.datesB`, #8) — серверт өөрчлөгдсөн огноонд */
   b?: string;
 };
+/** ⚠️ 2026-10-09: `pickDraft`-ийн үр дүн (`pullNow` — «Илгээх»-ийн өмнөх алсын шалгалт) */
+type PickRes = { changed: boolean; rcpt: number };
 
 /**
  * Ноорогийн бүх төлөв (ref · state) ЭНД зарлагдана — FillNew-ийн ачаалах эффект, `publish`,
@@ -77,11 +81,42 @@ export function useDraftSync(p: {
   curTgt: [number, number] | null;
   show: (kind: NoticeKind, msg: string) => void;
   say: (msg: string) => void;
+  /**
+   * ⚠️ 2026-10-09: САЛАА (ЧУХАЛ БИШ) МЭДЭГДЭЛ — «Ноорог сэргээв…». Урьд нь `say` («Энэ нүд засагдахгүй.»
+   *    гарчигтай) татах мөчлөг бүрд (3–6 сек) дуудагдаж, ЧУХАЛ анхааруулгыг дардаг байв. Дуудагч
+   *    (FillNew) одоо харагдаж буй ЧУХАЛ мэдэгдлийг дарахгүй; байхгүй бол `say`.
+   */
+  soft?: (msg: string) => void;
+  /**
+   * ⚠️ 2026-10-09: татах мөчлөгийн нийлүүлэлт ШИНЭ илгээлтийн баримт авчирсан (`draft.newReceipts`) —
+   *    дуудагч илгээлтийг (`staged`) ба давхарлалтыг дахин уншина. `at` = хамгийн шинэ баримтын агшин.
+   */
+  onReceipts?: (at: number) => void;
+  /** ⚠️ 2026-10-09: нүдийг богино хугацаанд тодруулна (өөр хүн өөрчилсөн өөрийн нүд) */
+  flashCells?: (keys: string[]) => void;
+  /** ⚠️ 2026-10-09: түлхүүрүүдээс ОДОО дэлгэцэнд зурагдсан нь (харагдаж буй нүд) */
+  visibleKeys?: (keys: string[]) => string[];
 }) {
   const {
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
     pending, setPending, pendDate, setPendDate, dirtyCount, pvDirty, fillMode, loadedPkgRef, pkgKeyRef, editRef, editOpen, curTgt, show, say,
   } = p;
+  /**
+   * ⚠️ 2026-10-09: дуудагчийн callback-ууд REF-д — `pickDraft` (тогтвортой хамааралтай) ба татах мөчлөг
+   *    тэдгээрийг хамааралгүйгээр дуудна (тоолуур дахин эхлэхгүй).
+   */
+  const cbRef = useRef({ soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys });
+  useEffect(() => {
+    cbRef.current = { soft: p.soft, onReceipts: p.onReceipts, flashCells: p.flashCells, visibleKeys: p.visibleKeys };
+  }, [p.soft, p.onReceipts, p.flashCells, p.visibleKeys]);
+  /**
+   * ⚠️ 2026-10-09: ДЭЛГЭЦ ДЭЭРХ утга (нийлүүлэхээс ӨМНӨ) — `pickDraft` юу өөрчлөгдснийг (`lostMine` ·
+   *    «харагдаж буй нүд өөрчлөгдсөн» · `pullNow`) харьцуулахад. Уншигчид нь бүгд async/үйл явдал.
+   */
+  const pendingRef = useRef(pending);
+  const pendDateRef = useRef(pendDate);
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  useEffect(() => { pendDateRef.current = pendDate; }, [pendDate]);
   /* ⚠️ 2026-09-30: `useCellEdit`-ийн `volMode`-той ИЖИЛ дүрэм (тэр hook энэ hook-ийн ДАРАА дуудагддаг
      тул сэргээлтэд (`pickDraft`) эндээ давтав — хаалтын зан төлөв урьдын адил). */
   const volMode = (r: { group: boolean }, b: number) =>
@@ -172,6 +207,21 @@ export function useDraftSync(p: {
     for (const e of d.tgt ?? []) see(e[3]);
     clockRef.current = m;
   }, []);
+  /**
+   * ⚠️ 2026-10-09: ТҮЛХҮҮР БҮРД ХАРСАН хамгийн их алсын агшин (`byAt` · `del` · баримтын `a`) — `pickDraft`
+   *    дүүргэнэ, багц солиход тэглэгдэнэ (`resetHeldTgt`). `stampKey` = `draft.editStamp`-ийн ⚠️ (HLC):
+   *    гараар засвар нь тэр түлхүүрт харсан алсын бичилт/tombstone-оос ҮРГЭЛЖ хожуу.
+   * ⚠️ `seeClock`-ийн «366 хоногоос хол ирээдүй» хамгаалалт энд ч — эс бөгөөс эвдэрсэн агшин өөрийн
+   *    `mineAtRef`-ийг (→ `waitingOn`-ийн идэвхийн лавлах) ирээдүй рүү түлхэнэ.
+   */
+  const seenAtRef = useRef<Map<string, number>>(new Map());
+  const stampKey = useCallback((key: string) => {
+    const s = seenAtRef.current.get(key);
+    const ok = s != null && s < Date.now() + 366 * 86_400_000 ? s : undefined;
+    const t = editStamp(stamp(), ok);
+    if (t > clockRef.current) clockRef.current = t;
+    return t;
+  }, [stamp]);
   /**
    * «ДУУСГАСАН/ДАХИН ЗАСАХ» ИЛ ТЭМДГҮҮД — нэр → `[нэр, 1|0, seq, агшин]` (2026-10-01,
    * `Draft.marks`-ийн ⚠️). `doneRef`/`doneBy` нь эндээс ГАРГАСАН хуулбар.
@@ -274,11 +324,16 @@ export function useDraftSync(p: {
     /* Хадгалах эффектийг дахин ажиллуулна — tombstone ноорогт (локал + алс) бичигдэнэ */
     setPending((p) => ({ ...p }));
   }, [stamp, setPending]);
+  /** ⚠️ 2026-10-09: «{0} таны бөглөсөн нүдийг өөрчиллөө» — нүд бүрд НЭГ удаа (`${түлхүүр}@${агшин}`) */
+  const lostSeenRef = useRef<Set<string>>(new Set());
   /** Багц солиход — тэмдэглэсэн нүд ба зорилт БАГЦЫН төлөв (FillNew-ийн цэвэрлэгээ) */
   const resetHeldTgt = useCallback(() => {
     heldRef.current = new Map();
     setHeldN(0);
     tgtsRef.current = new Map();
+    /* ⚠️ 2026-10-09: түлхүүрийн харсан агшин (HLC) ба «өөрийн нүд өөрчлөгдсөн» мэдэгдсэн нь ч БАГЦЫН төлөв */
+    seenAtRef.current = new Map();
+    lostSeenRef.current = new Set();
   }, []);
   /**
    * ОДООГИЙН ЖААЗНЫ хамгийн бага эерэг OBJECTID — `compactDraft`-ийн «хуучин жаазны баримт»-ыг таних
@@ -331,13 +386,14 @@ export function useDraftSync(p: {
      «impure during render» шалгуур энгийн функцийг ялгадаггүй (2026-09-21). */
   const touchMine = useCallback((key: string) => {
     /* ⚠️ 2026-10-01: логик цаг (`stamp`) — цагийн зөрүүнд тэсвэртэй */
-    mineAtRef.current.set(key, stamp());
+    /* ⚠️ 2026-10-09: тухайн түлхүүрт ХАРСАН алсын агшнаас ч хожуу (`stampKey` — HLC) */
+    mineAtRef.current.set(key, stampKey(key));
     delRef.current.delete(key);
     /* ⚠️ 2026-10-04 (#4): энэ бичилт ХАРСАН хамгийн сүүлийн баримтаас ХОЙШ — `rcptApply`
        түүнийг «шинэ нэмэлт» гэж үзнэ (илгээлтээс өмнөх мөчир биш). */
     const rc = rcptRef.current.get(key);
     if (rc) btRef.current.set(key, rc[1]);
-  }, [stamp]);
+  }, [stampKey]);
   /* ⚠️ `tombstone()` туслах ХАСАГДАВ (2026-09-24): ганц дуудагч нь `dropAdd` байсан
      (мөр нэмэх Хуваарь руу шилжсэн); нүдний буцаалт `delRef`-д шууд бичнэ (доор). */
   /**
@@ -357,11 +413,12 @@ export function useDraftSync(p: {
   const revert = useCallback((key: string, wasPending: boolean) => {
     if (wasPending) {
       mineRef.current.add(key);
-      delRef.current.set(key, stamp());
+      /* ⚠️ 2026-10-09: буцаалт ч гараар засвар — тухайн түлхүүрт харсан алсын агшнаас хожуу (`stampKey`) */
+      delRef.current.set(key, stampKey(key));
     } else {
-      mineAtRef.current.set(key, stamp());
+      mineAtRef.current.set(key, stampKey(key));
     }
-  }, [stamp]);
+  }, [stampKey]);
   /**
    * СҮҮЛД НИЙЛҮҮЛСЭН алсын ноорогийн агшин — давхар нийлүүлэлтээс сэргийлнэ.
    * ⚠️ Өөрийн сая бичсэн хуулбар эргэж ирэхэд дахин суулгавал бичиж байгаа
@@ -717,11 +774,22 @@ export function useDraftSync(p: {
      *    буулгана, нүдний утгыг (`pending`) ХӨНДӨХГҮЙ — нүд нээлттэй үед (`deferredRef`).
      */
     sharedOnly?: boolean;
-  }) => {
+    /**
+     * ⚠️ 2026-10-09: ТАТАХ МӨЧЛӨГИЙН нийлүүлэлт (сэргээлт БИШ) — «Ноорог сэргээв…» мэдэгдэл ГАРАХГҮЙ
+     *    (урьд нь 3–6 сек тутам `say`-аар давтагдаж чухал анхааруулгыг дардаг байв); оронд нь харагдаж
+     *    буй нүд өөрчлөгдсөн бол л товч мэдэгдэнэ. Шинэ илгээлтийн баримт ирвэл `onReceipts`.
+     */
+    poll?: boolean;
+  }): PickRes => {
+    /**
+     * ⚠️ 2026-10-09: ЭНЭ БУУЛГАЛТ ЮУ ӨӨРЧИЛСӨН — `pullNow` («Илгээх»-ийн өмнөх шалгалт) үүгээр шийднэ:
+     *    `changed` = нүд/огнооны утга эсвэл «дуусгасан» тэмдэг өөрчлөгдсөн · `rcpt` = шинэ баримтын тоо.
+     */
+    const res: PickRes = { changed: false, rcpt: 0 };
     /* ⚠️ ЭРХГҮЙ бол ЮУ Ч ХӨНДӨХГҮЙ (2026-09-25-ны аудит, HIGH) — сэргээх
        эффектийн `canPerf` ⚠️. Урьд нь доорх `canPerf ? … : []` нь бүх нүдийг
        алгасаад «хоосон ноорог» гэж дүгнэж хуваалцсан ноорогийг УСТГАДАГ байв. */
-    if (!sc || !canPerf) return;
+    if (!sc || !canPerf) return res;
     /* ⚠️ 2026-10-01: нийлүүлэлтээр ирсэн агшнаар логик цагийг урагшлуулна (`stamp`-ийн ⚠️) */
     seeClock(d);
     /* ⚠️ Ноорогийн `adds` СЭРГЭЭГДЭХГҮЙ (2026-09-24) — мөр нэмэх «Хуваарь» руу
@@ -996,20 +1064,80 @@ export function useDraftSync(p: {
      * `mineRef` нь ЭНЭ БАГЦЫН, ЭНЭ СЕШНИЙ бодит үнэн тул алсынхаас ДЭЭГҮҮР.
      */
     const meNow = user?.username?.trim().toLowerCase() ?? '';
+    /** ⚠️ 2026-10-09: өөр хүн өөрчилсөн/буцаасан ӨӨРИЙН нүд — `[түлхүүр, эзэн ('' = мэдэгдэхгүй)]` (`lostMine`) */
+    const lost: [string, string][] = [];
     if (meNow) {
       /* ⚠️ `mineRef`-ийн түлхүүрүүд ч ObjectID зөөлтөд ДАГАНА (`fixKey`) —
          архивын шинэ жааз үүсэхэд хуучин oid-тай үлдвэл `byOid`-д таарахгүй
          болж эзэмшил тасарна. Зөөсөн хувилбарыг `mineRef`-д БУЦААЖ бичнэ. */
       const moved = new Set<string>();
+      /*
+       * ⚠️ 2026-10-09: ЭЗЭМШИЛ НИЙЛБЭРИЙН АГШНААР (`draft.claimMine`-ийн ⚠️). Урьд нь `mineRef`-ийн БҮХ
+       *    түлхүүрийг минийх гэж тамгалдаг тул Б миний нүдийг ХОЖУУ дарж бичсэн ч «минийх» хэвээр —
+       *    тайлбар («{0} бөглөсөн») ба `waitingOn` худал болдог байв. Одоо Б-гийн агшин энэ табын сүүлийн
+       *    хөндөлтөөс (бичилт ба өөрийн буцаалтын их нь) ХОЖУУ бол нүд Б-гийнх (`mineRef`-ээс хасагдана;
+       *    дахин бичвэл `touchMine` буцааж нэмнэ). Тэр үед ба Б буцаасан (tombstone) үед хэрэглэгчид
+       *    НЭГ удаа ИЛ хэлнэ (`lostMine`) — LWW дүрэм ӨӨРЧЛӨГДӨӨГҮЙ.
+       */
+      const dAtF = new Map<string, number>();
+      for (const [k0, a] of d.byAt ?? []) { const k = fixKey(k0); if (Number.isFinite(a) && (dAtF.get(k) ?? 0) < a) dAtF.set(k, a); }
+      const dDelF = new Map<string, number>();
+      for (const [k0, a] of d.del ?? []) { const k = fixKey(k0); if (Number.isFinite(a) && (dDelF.get(k) ?? 0) < a) dDelF.set(k, a); }
+      const prevP = pendingRef.current;
+      const prevD = pendDateRef.current;
       for (const k0 of mineRef.current) {
         const k = fixKey(k0);
         const oid = Number(k.slice(0, k.indexOf(":")));
         if (byOid.has(oid)) {
+          const isD = /:[se]$/.test(k);
+          const mineAt = Math.max(mineAtRef.current.get(k0) ?? 0, delRef.current.get(k0) ?? 0);
+          const at = dAtF.get(k);
+          const u = nextBy.get(k);
+          const rc = dRc.get(k0) ?? dRc.get(k) ?? rcptRef.current.get(k);
+          const why = lostMine({
+            prev: isD ? prevD[k0] : prevP[k0], next: isD ? nextDates[k] : next[k], mineAt,
+            at, by: u, del: dDelF.get(k), rcptA: rc?.[1], me: meNow,
+          });
+          if (why) {
+            const id = `${k}@${why === 'over' ? at : dDelF.get(k)}`;
+            if (!lostSeenRef.current.has(id)) { lostSeenRef.current.add(id); lost.push([k, why === 'over' ? (u ?? '') : '']); }
+          }
+          if (!claimMine(mineAt, at, u, meNow)) continue;
           nextBy.set(k, meNow);
           moved.add(k);
         }
       }
       mineRef.current = moved;
+    }
+    /* ⚠️ 2026-10-09: «{0} таны бөглөсөн нүдийг өөрчиллөө: {1}» — нүд бүрд НЭГ удаа, ≤5 нэрлэж үлдсэнийг тоолно;
+       нүдийг богино тодруулна. Бүтэн буулгалтад бусад анхааруулгатай НЭГ мэдэгдлээр (`warns`), нүд нээлттэй
+       (`sharedOnly`) үед шууд. */
+    let lostMsg = '';
+    if (lost.length) {
+      const who = [...new Set(lost.map(([, u]) => u || tr('Өөр хэрэглэгч')))].join(', ');
+      const label = (k: string) => {
+        const [o, bS] = k.split(':');
+        const r = byOid.get(Number(o));
+        const blk = sc.bld[Number(bS)] ?? bS;
+        const w = r ? (r.work.length > 28 ? r.work.slice(0, 27) + '…' : r.work) : o;
+        return r ? `№${r.no} ${w} · ${blk}` : `${w} · ${blk}`;
+      };
+      const names = lost.slice(0, 5).map(([k]) => label(k)).join('; ');
+      lostMsg = tr('{0} таны бөглөсөн нүдийг өөрчиллөө: {1}', who, names)
+        + (lost.length > 5 ? ' ' + tr('… бас {0}', lost.length - 5) : '');
+      cbRef.current.flashCells?.(lost.map(([k]) => k).filter((k) => !/:[se]$/.test(k)));
+      if (opts?.sharedOnly) show('warn', lostMsg);
+    }
+    /* ⚠️ 2026-10-09: түлхүүр бүрд ХАРСАН алсын агшин (`stampKey` — HLC) */
+    {
+      const see = (k0: string, a: number) => {
+        if (!Number.isFinite(a)) return;
+        const k = fixKey(k0);
+        if ((seenAtRef.current.get(k) ?? 0) < a) seenAtRef.current.set(k, a);
+      };
+      for (const [k0, a] of d.byAt ?? []) see(k0, a);
+      for (const [k0, a] of d.del ?? []) see(k0, a);
+      for (const r of dRc.values()) see(r[0], r[1]);
     }
     /* ⚠️ `mineAtRef` — `mineRef`-ээс ТУСДАА зөөнө (2026-09-21-ний дахин аудит):
        (а) `a:${oid}` (нэмсэн агшин) түлхүүр нь `mineRef`-д байдаггүй — энэ
@@ -1058,7 +1186,13 @@ export function useDraftSync(p: {
     }
     /* ⚠️ 2026-10-01: «дуусгасан» нь ИЛ ТЭМДГЭЭС (`Draft.marks`, `marksOf`) — нэр алга
        байх нь «буцаасан» гэсэн үг БИШ (`mergeDrafts`-ийн ⚠️). */
-    applyMarks(marksOf(d));
+    {
+      /* ⚠️ 2026-10-09: «дуусгасан» хүмүүс өөрчлөгдсөн эсэх — `waitingOn` (Илгээх түгжээ) түүнээс (`PickRes`) */
+      const doneKey = (m: Map<string, Mark>) => doneOfMarks(m).map(([u]) => u).sort().join('|');
+      const m1 = marksOf(d);
+      if (doneKey(marksRef.current) !== doneKey(m1)) res.changed = true;
+      applyMarks(m1);
+    }
     /*
      * ⚠️ 2026-10-04 дахин аудит (#4): ЗОРИЛТ ХҮН ТУС БҮРЭЭР (`Draft.tgt`) — хамтын төлөв тул нүд нээлттэй
      *    үед ч буулгана. Түгжээ (`draftTgt`) нь ЗӨВХӨН ӨӨРИЙН бичлэгээс: урьд нь ганц зорилт байсан тул
@@ -1076,7 +1210,7 @@ export function useDraftSync(p: {
     }
     /* ⚠️ 2026-10-01: нүд НЭЭЛТТЭЙ үед — хамтын төлөв ЭНД хүртэл буусан; нүдний утга,
        огноо нь нүд хаагдмагц (`deferredRef` эффект) буулгагдана. */
-    if (opts?.sharedOnly) return;
+    if (opts?.sharedOnly) return res;
     /*
      * ⚠️ 2026-10-04 аудит (#1, CRITICAL): ЗӨӨСӨН ХУУЧИН ТҮЛХҮҮРТ TOMBSTONE. Урьд нь зөөлт нь
      *    зөвхөн `pending`-д шинэ түлхүүрээр бичдэг тул нийлүүлэлт (`mergeDrafts`) ХУУЧИН oid-той
@@ -1095,6 +1229,17 @@ export function useDraftSync(p: {
     /* ⚠️ 2026-10-04 дахин аудит (#7): тэмдэглэсэн нүд — ТАБЫН төлөв (хадгалах эффект ноорогт бичнэ) */
     heldRef.current = heldNext;
     setHeldN(heldNext.size);
+    /*
+     * ⚠️ 2026-10-09: ШИНЭ ИЛГЭЭЛТИЙН БАРИМТ (`draft.newReceipts`-ийн ⚠️) — `rcptRef`-д нийлүүлэхээс ӨМНӨ таньна.
+     *    Татах мөчлөгийн нийлүүлэлтэд (`poll`) л дуудагчид мэдэгдэнэ: сэргээлтэд (багц нээх) илгээлт ачаалах
+     *    эффектээр аль хэдийн шинээр уншигдсан. Дуудагч (FillNew) `staged`/давхарлалтыг дахин уншиж «{0} илгээв»
+     *    гэж хэлнэ — урьд нь илгээгдсэн нүд `pending`-ээс ЧИМЭЭГҮЙ алга болж тоо нь хуучин нийт рүү үсэрдэг байв.
+     */
+    {
+      const fresh = newReceipts(rcptRef.current, d);
+      res.rcpt = fresh.length;
+      if (fresh.length && opts?.poll) cbRef.current.onReceipts?.(Math.max(...fresh.map((r) => r[1])));
+    }
     /* ⚠️ 2026-10-04 (#4): баримт ба нүдний суурь баримт — ЗӨВХӨН бүтэн буулгалтад (`rcptRef`-ийн ⚠️) */
     for (const r of dRc.values()) {
       const c = rcptRef.current.get(r[0]);
@@ -1113,7 +1258,8 @@ export function useDraftSync(p: {
     }
     datesBRef.current = nextDatesB;
     /** Энэ буулгалтын анхааруулгууд — НЭГ мэдэгдлээр (дараалсан `show` нь өмнөхөө дарна) */
-    const warns: string[] = [];
+    /* ⚠️ 2026-10-09: өөр хүн өөрчилсөн ӨӨРИЙН нүд (`lostMsg`) — эхэнд */
+    const warns: string[] = lostMsg ? [lostMsg] : [];
     /* ⚠️ 2026-10-04 (#4): илгээлтээс хойш засагдсан нүдийг ЗӨРҮҮ болгосныг ил хэлнэ (нэг удаа) */
     /* ⚠️ 2026-10-04 дахин аудит (#6): `d.conv`-ийн нүд ноорогт БАЙХГҮЙ бол тэр нь ИЖИЛ утгаар хасагдсан
        (`rcptSilentDrop`) — «зөрүү үлдээв» биш «хасав» гэж тусад нь хэлнэ. */
@@ -1188,6 +1334,32 @@ export function useDraftSync(p: {
       if (warns.length) show('warn', warns.join(' '));
     }
     const kept = dropped + ambig + srvChanged;
+    /*
+     * ⚠️ 2026-10-09: ДЭЛГЭЦ ДЭЭРХ утгаас ӨӨРЧЛӨГДСӨН нүд/огноо (`PickRes.changed` · татах мөчлөгийн мэдэгдэл).
+     *    Хадгалах `keepTyped` нь сэргээлтийн завсарт л үйлчилнэ — энд нийлүүлэлтийн үр дүнг харьцуулна.
+     */
+    const chg: string[] = [];
+    {
+      const cmp = (a: Record<string, string>, b: Record<string, string>) => {
+        for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (a[k] !== b[k]) chg.push(k);
+      };
+      cmp(pendingRef.current, next);
+      cmp(pendDateRef.current, nextDates);
+      if (chg.length) res.changed = true;
+    }
+    /**
+     * ⚠️ 2026-10-09: «Ноорог сэргээв…» нь ЗӨВХӨН сэргээлтэд (багц нээх — `poll` биш), салаа (`soft`) мэдэгдлээр.
+     *    Урьд нь татах мөчлөг бүрд (3–6 сек) `say` («Энэ нүд засагдахгүй.» гарчигтай) дуудагдаж ЧУХАЛ
+     *    анхааруулгыг дардаг байв. Татах мөчлөгт — ДЭЛГЭЦЭНД ХАРАГДАЖ буй нүд өөрчлөгдсөн бол л товч хэлнэ
+     *    (шинэ баримт ирсэн бол FillNew «{0} илгээв» гэж хэлнэ — давхарлахгүй).
+     */
+    const soft = (msg: string) => (cbRef.current.soft ?? say)(msg);
+    const pollNote = () => {
+      if (!opts?.poll || warns.length || res.rcpt || !chg.length) return;
+      const vis = cbRef.current.visibleKeys?.(chg) ?? [];
+      if (vis.length) soft(tr('Хамтын ноорог шинэчлэгдлээ: {0} нүд өөрчлөгдөв.', chg.length));
+    };
+    pollNote();
     if (!total) {
       /**
        * ⚠️ ЧИМЭЭГҮЙ УСТГАХГҮЙ (2026-09-03-ны аудитын олдвор).
@@ -1216,16 +1388,16 @@ export function useDraftSync(p: {
            (өөр төхөөрөмжийн 3 хоногийн локал) нүдийг сэргээнэ. `delRef`-д
            дээр нийлүүлсэн тул хадгалах эффект хоосон нүд + del-тэй ноорог бичнэ.
            2026-10-04: илгээлтийн баримт (`rcptRef`) ч мөн адил. */
-        if (delRef.current.size || rcptRef.current.size) return;
+        if (delRef.current.size || rcptRef.current.size) return res;
         /* ⚠️ ЗӨВХӨН ноорог ҮНЭХЭЭР хоосон бол ЭНД устгана (2026-09-25-ны аудит):
            хадгалагдсантай ижил (`sameN`) нүд байвал ноорог хоосон биш — шийдвэрийг
            хадгалах эффектийн ердийн «хоосон төлөв» замд үлдээнэ. */
-        if (sameN || d.cells.length || (d.dates ?? []).length) return;
+        if (sameN || d.cells.length || (d.dates ?? []).length) return res;
         clearDraftLS(pkg.key);
         /* ⚠️ 2026-10-04 аудит (#10): сохор `clearRemoteDraft` БИШ — уншсан хувилбартай таарвал л
            (`safeClearRemote`); завсарт өөр хүн бичсэн бол хөндөхгүй. */
         void safeClearRemote(pkg.key, restoreSinceRef.current ? (restoreAtRef.current || undefined) : undefined);
-        return;
+        return res;
       }
       /* ⚠️ ХУУЧИРСАН НҮДТЭЙ НООРОГИЙГ АВТОМАТААР УСТГАХГҮЙ (2026-09-25-ны аудит):
          `pending` хоосон болсноор хадгалах эффектийн «хоосон → устга» зам
@@ -1236,8 +1408,9 @@ export function useDraftSync(p: {
       /* ⚠️ Сэргээх зүйл алга АТЛАА хуучирсан нүд байна — ЧИМЭЭГҮЙ өнгөрөхгүй,
          харин цонх нээхгүй (2026-09-06): зөвхөн мэдэгдэнэ. */
       /* (анхааруулга гарсан бол түүнийг дарахгүй — нэг мэдэгдэл, `warns`-ийн ⚠️) */
-      if (dropped && !warns.length) say(tr('Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).', dropped));
-      return;
+      /* ⚠️ 2026-10-09: зөвхөн сэргээлтэд, салаа мэдэгдлээр (`soft`-ийн ⚠️) */
+      if (dropped && !warns.length && !opts?.poll) soft(tr('Ноорогийн {0} нүд хуучирсан тул сэргээгдсэнгүй (агшин солигдсон).', dropped));
+      return res;
     }
     /* ⚠️ Юу сэргээхийг ЗҮЙЛЧЛЭН хэлнэ — «12 засвар» гэдэг юу байсныг
        хэлдэггүй тул хэрэглэгч шийдэж чадахгүй. */
@@ -1281,9 +1454,11 @@ export function useDraftSync(p: {
         ? tr('энэ ба өөр төхөөрөмжөөс нийлүүлж')
         : tr('энэ компьютерээс');
     /* (анхааруулга гарсан бол түүнийг дарахгүй — `warns`-ийн ⚠️) */
-    if (!warns.length) say(dropped
+    /* ⚠️ 2026-10-09: ЗӨВХӨН сэргээлтэд (`poll` биш), салаа мэдэгдлээр — дээрх `soft`-ийн ⚠️ */
+    if (!warns.length && !opts?.poll) soft(dropped
       ? tr('Ноорог сэргээв ({0}): {1}. {2} нүд хуучирсан тул орхигдов.', from, parts.join(' · '), dropped)
       : tr('Ноорог сэргээв ({0}): {1}. Ногоон нүд = илгээгээгүй.', from, parts.join(' · ')));
+    return res;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sc, nBld, pkg.key, asOfOrig, canPerf]);
 
@@ -2285,7 +2460,8 @@ export function useDraftSync(p: {
             lastMergedRef.current = remote.t;
             const local = readDraft(pkg.key);
             const merged = mergeDrafts(local, remote);
-            if (merged) pickDraftRef.current(merged, 'remote');
+            /* ⚠️ 2026-10-09: `poll` — «Ноорог сэргээв» давтагдахгүй, шинэ баримт → `onReceipts` */
+            if (merged) pickDraftRef.current(merged, 'remote', { poll: true });
           }
         }
       }
@@ -2309,7 +2485,8 @@ export function useDraftSync(p: {
     if (q.pkg !== pkg.key || loadedPkgRef.current !== pkg.key) return;
     const merged = mergeDrafts(readDraft(pkg.key), q.d);
     if (!merged) return;
-    pickDraftRef.current(merged, 'remote');
+    /* ⚠️ 2026-10-09: татах мөчлөгийн хойшлуулсан нийлүүлэлт — `poll` (дээрх тойргийн ⚠️) */
+    pickDraftRef.current(merged, 'remote', { poll: true });
     /* Одоо `pending`-д буусан — татах мөчлөгийн ердийн замтай ижил тэмдэглэнэ */
     if (q.d.t > lastMergedRef.current) lastMergedRef.current = q.d.t;
   }, [editOpen, pkg.key, loadedPkgRef]);
@@ -2410,7 +2587,37 @@ export function useDraftSync(p: {
       return { ok: false, why: String((e as Error).message || e) };
     }
   }, [stamp, pkgKeyRef]);
+  /**
+   * «ИЛГЭЭХ»-ИЙН ӨМНӨ ХУВААЛЦСАН НООРОГИЙГ ДАХИН УНШИНА (⚠️ 2026-10-09) — `FillNew.publish`-ийн эхэнд.
+   * ⚠️ ЯАГААД: `publish` нь алсын ноорогийг огт уншдаггүй байв. Татах мөчлөг нуугдсан табд/өөрийн бичилт
+   *    дараалалд байхад АЛГАСДАГ тул хуучирсан таб (А аль хэдийн илгээсэн нүд · Б-гийн хожуу засвар ·
+   *    «Дахин засах») мэдэлгүй дахин илгээж болзошгүй. Одоо алсын хувилбар (`at`) сүүлд тусгаснаас
+   *    (`lastMergedRef`) ӨӨР бол нийлүүлж (`pickDraft`, `poll` — шинэ баримт → `onReceipts`) дэлгэцийг
+   *    шинэчилнэ; ЯМАР НЭГ зүйл өөрчлөгдсөн бол `'changed'` — дуудагч ЗОГСООЖ хэрэглэгчээр шалгуулна.
+   * ⚠️ Уншиж ЧАДААГҮЙ бол `'fail'` — дуудагч ердийн замаар үргэлжилнэ (илгээлтийн CAS — `act.at > staged.at`,
+   *    `expectAt` — хамгаалсаар); сүлжээний түр алдаа «Илгээх»-ийг мөнхөд хаахгүй.
+   * ⚠️ `lastMergedRef`-ийг татах мөчлөгтэй ИЖИЛ дүрмээр урагшлуулна (`remote.t > …`).
+   */
+  const pullNow = useCallback(async (want: string): Promise<'same' | 'changed' | 'fail'> => {
+    const at = await readRemoteDraftAt(want);
+    if (at === undefined) return 'fail';
+    if (at === null || at === lastMergedRef.current) return 'same';
+    const rr = await readRemoteDraft(want);
+    if (!rr.ok) return 'fail';
+    if (pkgKeyRef.current !== want || loadedPkgRef.current !== want) return 'fail';
+    const remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
+    if (!remote) return 'same';
+    if (at < lastMergedRef.current) lastMergedRef.current = 0;
+    if (remote.t <= lastMergedRef.current) return 'same';
+    const merged = mergeDrafts(readDraft(want), remote);
+    deferredRef.current = null;
+    lastMergedRef.current = remote.t;
+    const r = merged ? pickDraftRef.current(merged, 'remote', { poll: true }) : null;
+    return r && (r.changed || r.rcpt > 0) ? 'changed' : 'same';
+  }, [pkgKeyRef, loadedPkgRef]);
   return {
+    /* ⚠️ 2026-10-09: «Илгээх»-ийн өмнөх алсын шалгалт (`pullNow`-ийн ⚠️) */
+    pullNow,
     /* ⚠️ 2026-10-05: илгээлтийн баримтыг шууд бичих (`pushReceipts`-ийн ⚠️) */
     pushReceipts,
     savedAt, keepDraft, remoteQueue, mineRef, mineAtRef, delRef, asOfRevRef, asOfAtRef, draftLiveRef, touchMine, revert,

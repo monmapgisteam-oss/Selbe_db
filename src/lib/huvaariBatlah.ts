@@ -703,9 +703,21 @@ export async function okRowsField(): Promise<boolean> {
   return (await okRowsFieldLen()) > 0;
 }
 
-async function query(where: string, outFields: string): Promise<Attrs[]> {
+/**
+ * ⚠️ 2026-10-09: `strict` — ТҮГЖЭЭ/ХҮЛЭЭГДЭЖ БУЙ шалгалтад (`loadPending` → `ajilApply`) хүснэгт
+ *    ОЛДОХГҮЙ ба «шалгаж ЧАДАХГҮЙ» хоёрыг ялгана (fail-closed). Эзэн танигдахгүй (`ownerMismatch`)
+ *    эсвэл нэвтрэлттэй горимд токен алга бол ШИДНЭ — урьд нь `[]` буцааж «хүлээгдэж буй илгээлт
+ *    алга» гэж үзэн хагас бичигдсэн хуваарийн дээгүүр жааз солигддог байв. Токентой, эзэн
+ *    танигдсан атлаа хүснэгт ҮНЭХЭЭР алга (хэн ч илгээгээгүй) бол `[]` хэвээр — эс бөгөөс шинэ
+ *    орчинд нэмэлт ажил хэзээ ч буулгагдахгүй. Нэвтрэлтгүй горимд (`!AUTH.appId`) урсгал байхгүй.
+ */
+async function query(where: string, outFields: string, strict = false): Promise<Attrs[]> {
   const url = await tableUrl(false);
-  if (!url) return [];
+  if (!url) {
+    if (strict && (ownerMismatch || (AUTH.appId && !(await getToken()))))
+      throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
+    return [];
+  }
   const out: Attrs[] = [];
   for (let off = 0; ;) {
     const j = await arcgisPost(`${url}/query`, {
@@ -787,17 +799,17 @@ export async function loadPending(pkgKey: string, kind?: PlanPayloadKind): Promi
   let list: PlanSubmission[];
   if (kind) {
     try {
-      const rows = await query(`${base} AND ${KIND_SQL(kind)}`, HEAD_FIELDS);
+      const rows = await query(`${base} AND ${KIND_SQL(kind)}`, HEAD_FIELDS, true);
       list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null).map((x) => ({ ...x, kind }));
     } catch {
       /* `LIKE` унавал: бүх pending → агуулгаар шүүнэ (`pendingKinds`-ийн нөөц зам) */
-      const rows = await query(base, HEAD_FIELDS);
+      const rows = await query(base, HEAD_FIELDS, true);
       const all = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
       const kinds = await pendingKinds(all.map((x) => x.oid));
       list = all.filter((x) => kinds.get(x.oid) === kind).map((x) => ({ ...x, kind }));
     }
   } else {
-    const rows = await query(base, HEAD_FIELDS);
+    const rows = await query(base, HEAD_FIELDS, true);
     list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
   }
   /* ⚠️ Хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) ЭХНИЙХ (бага OBJECTID) ялна —
@@ -838,29 +850,58 @@ export async function loadAllPending(): Promise<PlanSubmission[]> {
  *    буцаалт нь тухайн багцын СҮҮЛИЙН илгээлт байх үед л хүчинтэй (дараа нь дахин
  *    илгээсэн бол хуучин шалтгаан хамааралгүй). «Их OBJECTID ялна» (`loadPending`-тэй ижил).
  */
+/**
+ * ⚠️ 2026-10-09: СҮҮЛИЙН илгээлт (багц · ТӨРӨЛ) тус бүрд — гэрээний ба төлөвлөгөөний санал бие
+ *    биеэ дардаггүй (`submitPlan`/`loadPending`-ийн давхардал ч (багц · төрөл)-өөр). Урьд нь багцаар
+ *    нэг л «сүүлийн» байсан тул буцаагдсан төлөвлөгөөг дараа нь илгээсэн ГЭРЭЭНИЙ санал нууж, зохиогч
+ *    буцаалтаа (ба `countPlanReturned`-ийн тэмдэг) алддаг байв. Төрлийг `KIND_SQL('geree')`-ийн НЭГ
+ *    query-гээр; `LIKE` унавал хуучин дүрэм (багцаар, `kind`-гүй).
+ */
 export async function loadLastPerPkg(): Promise<PlanSubmission[]> {
   const rows = await query('1=1', await headFields());
+  let geree: Set<number> | null = null;
+  try {
+    geree = new Set((await query(KIND_SQL('geree'), F.oid)).map((a) => Number(a[F.oid])));
+  } catch { geree = null; }
   const last = new Map<string, PlanSubmission>();
   for (const a of rows) {
     const x = toSubmission(a);
     /* ⚠️ 2026-10-01: давхардлын цуцлалт шийдвэр биш (`isDupCancel`) — буцаалтыг нуухгүй */
-    if (x && !isDupCancel(x)) last.set(x.pkgKey, x);
+    if (!x || isDupCancel(x)) continue;
+    if (geree) x.kind = geree.has(x.oid) ? 'geree' : 'plan';
+    last.set(`${x.pkgKey}|${x.kind ?? ''}`, x);
   }
   return [...last.values()];
 }
 
-/** Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан ба буцаагдсан) */
-export async function loadHistory(pkgKey: string, limit = 20): Promise<PlanSubmission[]> {
+/**
+ * Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан ба буцаагдсан).
+ * ⚠️ 2026-10-09: `kind` өгвөл ЗӨВХӨН тэр төрлийнх (`loadPending(pkg, kind)`-ийн `KIND_SQL` арга) —
+ *    «Хуваарь» хуудас идэвхтэй төрлийн сүүлийн шийдвэрийг (`loadHistory(pkg, 1, kind)`) харуулахад;
+ *    урьд нь өөр төрлийн шинэ шийдвэр буцаалтыг нууж байв. `LIKE` унавал шинээс нь агуулгыг нэг
+ *    нэгээр задлан `limit` хүртэл шүүнэ (агуулга уншигдаагүй мөр алгасагдана).
+ */
+export async function loadHistory(pkgKey: string, limit = 20, kind?: PlanPayloadKind): Promise<PlanSubmission[]> {
   const esc = pkgKey.replace(/'/g, "''");
-  const rows = await query(
-    `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${PLAN_STATUS.pending}'`,
-    /* ⚠️ Түүхэнд л зөвшөөрсөн мөр хэрэгтэй (буцаагдсаныг гүйцэтгэгч харна) —
-       хүлээгдэж буй жагсаалт хөнгөн хэвээр (`HEAD_FIELDS`). */
-    await headFields(),
-  );
+  const base = `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${PLAN_STATUS.pending}'`;
+  /* ⚠️ Түүхэнд л зөвшөөрсөн мөр хэрэгтэй (буцаагдсаныг гүйцэтгэгч харна) —
+     хүлээгдэж буй жагсаалт хөнгөн хэвээр (`HEAD_FIELDS`). */
+  const fields = await headFields();
   /* ⚠️ 2026-10-01: давхардлын цуцлалтыг хасна (`isDupCancel`) — `limit` хасалтын ДАРАА */
-  const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null && !isDupCancel(x));
-  return list.slice(-limit).reverse();
+  const keep = (rows: Attrs[]): PlanSubmission[] =>
+    rows.map(toSubmission).filter((x): x is PlanSubmission => x != null && !isDupCancel(x));
+  if (!kind) return keep(await query(base, fields)).slice(-limit).reverse();
+  try {
+    return keep(await query(`${base} AND ${KIND_SQL(kind)}`, fields)).map((x) => ({ ...x, kind })).slice(-limit).reverse();
+  } catch { /* доорх нөөц зам */ }
+  const all = keep(await query(base, fields)).reverse();
+  const out: PlanSubmission[] = [];
+  for (const x of all) {
+    if (out.length >= limit) break;
+    const p = await loadPayload(x.oid).catch(() => null);
+    if (p?.kind === kind) out.push({ ...x, kind });
+  }
+  return out;
 }
 
 /** Нэг илгээлтийн АГУУЛГА — батлахад л хэрэгтэй тул тусад нь татна */
@@ -1704,6 +1745,24 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
   if (holder && holder !== me) {
     return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder) };
   }
+  /* ⚠️ 2026-10-09: УНШААД-ШАЛГААД-БИЧИХ завсарт өөр батлагч түгжиж бичилтээ гүйцээж эхэлж болох
+     байсан — одоо буцаалтын ӨМНӨ `casClaim`-аар түгжээг АТОМААР авна (`claimPlan`-тай НЭГ зам;
+     эхний уншилт нь дээрх `cur`). Хугацаа нь дууссан түгжээг авч болно (`requireEmpty: false`).
+     Буцаалт бичигдээгүй бол өөрийн түгжээг тайлна. */
+  const claimFields = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
+  let first: Attrs | null = cur[0];
+  try {
+    const got = await casClaim({
+      read: async () => {
+        if (first) { const f = first; first = null; return f; }
+        return (await query(`${F.oid} = ${Number(args.oid)}`, claimFields))[0] ?? null;
+      },
+      write: (at) => writeClaim(url, args.oid, me, at),
+    }, me, { requireEmpty: false });
+    if (!got.ok) return { ok: false, error: claimError(got) };
+  } catch (e) {
+    return { ok: false, error: errText(e) };
+  }
   const reason = `${STUCK_PREFIX()}\n${why}`.slice(0, REASON_MAX);
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
@@ -1716,10 +1775,15 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
       } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) {
+      await releasePlanClaim({ oid: args.oid, approver: me });
+      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    }
     invalidate('HUVAARI_BATLAH');
     return { ok: true };
   } catch (e) {
+    /* ⚠️ 2026-10-09: хариу алдагдсан ч аюулгүй — `releasePlanClaim` зөвхөн `pending` + өөрийн түгжээг тайлна */
+    await releasePlanClaim({ oid: args.oid, approver: me });
     return { ok: false, error: errText(e) };
   }
 }
@@ -1855,6 +1919,9 @@ export async function countPlanPending(username: string | null | undefined): Pro
  * `HuvaariBatlah`-ийн «Буцаагдсан — засаад дахин илгээнэ» хэсэгтэй ИЖИЛ дүрэм: багцын СҮҮЛИЙН
  * илгээлт (`loadLastPerPkg`) `returned` · зохиогч нь би · зохиогчийн хүрээнд (`huvaariScope(…,
  * 'author')`). Дахин илгээсэн бол сүүлийнх нь `pending`/өөр тул тоологдохгүй.
+ * ⚠️ 2026-10-09: ТӨРӨЛ тус бүрд — `loadLastPerPkg` нь (багц · төрөл)-өөр сүүлийнхийг өгдөг тул
+ *    буцаагдсан төлөвлөгөө нь ИЖИЛ ТӨРЛИЙН шинэ шийдвэр/илгээлт гартал тоологдсоор; гэрээний шинэ
+ *    илгээлт төлөвлөгөөний буцаалтыг арилгахгүй (ба эсрэгээр).
  * ⚠️ `null` ≠ 0 — `countPlanPending`-тэй ижил: мэдэхгүй бол `null`, `plan` эрхгүй бол 0.
  * ⚠️ `cached` — `HUVAARI_BATLAH` тагтай: илгээх/буцаах бүр хүчингүй болгодог тул өөрийн үйлдлийн
  *    дараа шууд шинэ тоо; бусдын буцаалтыг TTL барина.

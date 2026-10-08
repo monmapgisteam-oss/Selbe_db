@@ -392,7 +392,7 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
     'Huvaari: ерөнхий олон блокийн сонголт ажлын цонхонд дамжихгүй');
   /* 3. Бодит огноо сонгосон БҮХ блокт */
   assert.ok(/applyExtra\(modalRow\.oid, actBlks, actual, res\);/.test(H), 'Huvaari: бодит огноо зөвхөн идэвхтэй блокт орж байна');
-  assert.ok(/const actDirty = actTouched && \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
+  assert.ok(/const actDirty = (?:!xLock && )?actTouched && \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
   /* ⚠️ 2026-09-29 (аудит 10): талбарыг ХӨНДӨӨГҮЙ бол бусад сонгосон блокийн бодит огноог дарахгүй */
   assert.ok(/setActTouched\(true\)/.test(H), 'Huvaari: бодит огнооны талбарыг хөндсөн тэмдэг алга — бусад блокийн бодит огноо арчигдана');
   /* 5. Сольж харах — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ (strict бус харалтаас батлах зам хаалттай) */
@@ -403,7 +403,7 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
   /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — идэвхтэй төрлийнх л (`loadPending(key, kind)`) */
-  assert.ok(/void loadPending\(key, kind\)\.then\(\(p\) => \{[\s\S]{0,400}void refreshFlow\(\);/.test(H),
+  assert.ok(/void loadPending\(key, kind\)\.then\(\(p\) => \{[\s\S]{0,900}void refreshFlow\(\);/.test(H),
     'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй');
 }
 console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон блок · бодит огноо · сольж харах · буцаасан шалтгаан');

@@ -5,6 +5,7 @@ import {
   type MouseEvent as RMouseEvent, type FocusEvent as RFocusEvent, type PointerEvent as RPointerEvent,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { num } from '@/lib/format';
 import { Icon } from './Icon';
 import { VIEWS, VIEW_BY_KEY, ALL_MODE_HIDE, NAV_GROUPS, type ViewKey } from '@/lib/services';
 import s from './tree.module.css';
@@ -189,8 +190,9 @@ export function ViewRail({
   };
   /* ⚠️ 2026-10-08: харагдац тус бүрийн тэмдгийн утга — «Хуваарь» дээрх тоо нь зохиогчид БУЦААГДСАН
      илгээлт (`navBadges` → `countPlanReturned`), «хүлээгдэж байна» биш. Бусад харагдац хуучнаараа. */
+  /* ⚠️ 2026-10-09: тоо `num()`-аар (мянгатын тусгаарлагч · хэл) — урьд нь түүхий тоо */
   const badgeLabel = (n: number, k?: ViewKey) => (n
-    ? (k === 'huvaari' ? tr('буцаагдсан {0}', n) : tr('{0} хүлээгдэж байна', n))
+    ? (k === 'huvaari' ? tr('буцаагдсан {0}', num(n)) : tr('{0} хүлээгдэж байна', num(n)))
     : '');
 
   {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
@@ -307,6 +309,10 @@ export function ViewRail({
   );
 
   const totalBadges = shown.reduce((a, v) => a + badgeOf(v.key), 0);
+  /* ⚠️ 2026-10-09: цэсний товчны нийт тэмдгийн `aria-label` — «Хуваарь»-ын тоо нь БУЦААГДСАН илгээлт
+     (`badgeLabel`-ийн ⚠️) тул «N хүлээгдэж байна» гэж нийлүүлбэл худал; хоёр хэсгээр нэрлэнэ. */
+  const retBadges = shown.some((v) => v.key === 'huvaari') ? badgeOf('huvaari') : 0;
+  const totalLabel = [badgeLabel(totalBadges - retBadges), badgeLabel(retBadges, 'huvaari')].filter(Boolean).join(' · ');
   const current = VIEW_BY_KEY[view];
 
   return (
@@ -326,7 +332,7 @@ export function ViewRail({
         <span className={s.menuBurger} aria-hidden>☰</span>
         <span className={s.menuCurrent}>{current?.title ?? tr('Цэс')}</span>
         {totalBadges > 0 && (
-          <span className={`${s.badge} ${s.badgeInline} num`} aria-label={badgeLabel(totalBadges)}>
+          <span className={`${s.badge} ${s.badgeInline} num`} aria-label={totalLabel}>
             {totalBadges > 99 ? '99+' : totalBadges}
           </span>
         )}

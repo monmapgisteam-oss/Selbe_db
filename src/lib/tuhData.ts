@@ -26,12 +26,12 @@
  *    (хэрэглэгчийн сонголт, 2026-09-30).
  */
 import { t as tr } from '@/lib/i18nCore';
-import { monthKey, dayKey } from '@/lib/format';
+import { dayKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, hoAmount, pkgKeyOf,
 } from '@/lib/services';
 import { finXlChartCat, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
-import type { CfPlanRow } from '@/lib/gdash';
+import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import type { HoContract } from '@/lib/ipc';
 /* ⚠️ 2026-10-01: ЗӨВХӨН УНШИНА — AUTO IPC мөрийг таних (`isAuto`, `autoDay`) ба
    гүйцэтгэлийн үнэлгээ (`guits_une`). Хоёулаа цэвэр модуль (сүлжээгүй). */
@@ -329,7 +329,9 @@ export const rowProgress = (group: TuhGroup, row: Row): number | null =>
  *    харин AGOL/Excel-ээс орсон УБ-ын шөнө дунд нь UTC-ээр ӨМНӨХ өдрийн 16:00 тул
  *    UTC-ээр уншвал БҮТЭН САРААР ухардаг («2026-06-01» мөр → «2026-05»).
  */
-const ymOf = (ms: number) => monthKey(ms);
+/* ⚠️ 2026-10-09: `gdash.cfStartKeyOf` — ХУУЧИН UTC шөнө дундын `Cashflow_start`-ийг UTC сараар
+   (Finance/CashflowPlan/gdash-тай НЭГ дүрэм); урьд нь зөвхөн локал `monthKey` байв. */
+const ymOf = (ms: number) => cfStartKeyOf(ms);
 
 /**
  * ГЭРЭЭНИЙ ТӨЛӨВЛӨГӨӨТ ГҮЙЦЭТГЭЛ (0–100) — CASHFLOW_NEW-ийн сарын мөрүүдийн

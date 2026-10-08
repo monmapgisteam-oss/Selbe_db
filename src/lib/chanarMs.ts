@@ -1368,9 +1368,15 @@ export function resolve(reviews: Reviews, kind: DocKind = 'MS'): MsStatus {
 }
 
 /** Хэдэн хянагч шийдсэн — дэлгэцэд «2/3» */
-export function progress(reviews: Reviews, kind: DocKind = 'MS'): { done: number; total: number } {
+export function progress(reviews: Reviews, kind: DocKind = 'MS', status?: MsStatus): { done: number; total: number } {
   const need = requiredReviewers(reviews, kind);
-  return { done: need.filter((r) => reviews[r] != null).length, total: need.length };
+  const done = need.filter((r) => reviews[r] != null).length;
+  /* ⚠️ 2026-10-09: ШИЙДВЭРЛЭГДСЭН (approved/returned) баримтад зөвхөн ШИЙДВЭРТЭЙ слотыг тоолно.
+     `requiredReviewers` 2026-10-09-өөс хуучин MA-д `tug`-ийг шаарддаг болсон тул тэр өдрөөс өмнө
+     chanar ганцаараа баталсан мөр «1/2» гэж ДУТУУ мэт харагддаг байв; буцаагдсан баримт ч
+     (нэг R хангалттай) «1/3» гэж хүлээгдэж буй мэт. Төлөв хаагдсан тул хүлээх слот үгүй. */
+  if (status === MS_STATUS.approved || status === MS_STATUS.returned) return { done, total: done };
+  return { done, total: need.length };
 }
 
 /**

@@ -60,6 +60,11 @@ assert.equal(parcels[8].areaM2, null, 'хоёулаа хоосон → null');
 assert.equal(parcels[8].reason, NO_STATUS(), 'төлөвгүй мөр тусдаа шалтгаантай');
 assert.equal(parcels[0].landuse, null, '" " зориулалт → null («—»)');
 assert.equal(parcels[0].parcelNo, '1461801');
+/* 2026-10-09: «Бүрэн чөлөөлсөн»-ийн ХУВИЛБАР бичиглэл саад БИШ (`land.isClearedStatus`-тэй ижил) */
+assert.deepEqual(
+  parseParcels([raw(20, 'Бүрэн чөлөөлсөн.', 1), raw(21, ' бүрэн  чөлөөлсөн ', 1), raw(22, 'зөвшилцөх', 1)]).map((p) => p.oid),
+  [22],
+);
 
 /* ══════════ 2. null ≠ 0 — нийлбэр ══════════ */
 

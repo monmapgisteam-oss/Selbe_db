@@ -388,6 +388,14 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   assert.equal(nullFragmentFits(1459, 3, 1459), false, 'өдрийн жааз дутуу биш — асуухгүй');
   assert.equal(nullFragmentFits(1000, 100, 1459), false, 'нийлбэр дутуу — нэгтгэхгүй');
   assert.equal(nullFragmentFits(0, 1459, 1459), false);
+  /* 2026-10-09 (F3): 1470↔1471 (b31_9f) — зураглалын 1 хоосон мөрийг доод хязгаараас хасна */
+  assert.equal(nullFragmentFits(1300, 170, 1471), false, 'blank-гүй: 1,470 < 1,471 — хуучин дүрэм');
+  assert.equal(nullFragmentFits(1300, 170, 1471, 1), true, '1470↔1471: хоосон мөрийг хасаад нэгтгэгдэнэ');
+  assert.equal(nullFragmentFits(1300, 169, 1471, 1), false, 'хоосныг хассан ч дутуу — нэгтгэхгүй');
+  /* 2026-10-09 (F9): хүлцэл 2 — огноогүй хэсэг өдрийн жаазны дутуугаас ердөө 2-оор илүү байж болно */
+  assert.equal(nullFragmentFits(1239, 222, 1459), true, '+2 илүү — зөвшөөрнө');
+  assert.equal(nullFragmentFits(1239, 223, 1459), false, '+3 илүү — нэгтгэхгүй (урьд нь +50 хүртэл)');
+  assert.equal(nullFragmentFits(1000, 500, 1459), false, '41 мөр илүү огноогүй — өөр жааз, нэгтгэхгүй');
 
   /* F3 — зураглал «AB22B2»: лавлах нь зураглалтай ижил байрлалтай бол нийцнэ */
   const tree = 'AB22B2';
@@ -404,4 +412,38 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   assert.ok(/garbageHead/.test(SRC2) && /findIndex\(\(f\) => noOf\(f\) === rootNo\)/.test(SRC2),
     'loadBaseKeys нь rootNo-оор хог хэлтэрхийг алгасах ёстой');
   console.log('✅ огноогүй хэлтэрхий (нэмэлт мөртэй) · зураглалын нийцэл');
+}
+
+/* ── 2026-10-09: F5 хоосон мөртэй/мөргүй жааз · F4 strict · F11 эрт зогсолт · R6 ── */
+{
+  const WK = 'ajil';
+  /* №, ажил хос — '' '' нь хоосон мөр */
+  const fw = (pairs) => pairs.map(([n, w]) => ({ attributes: { [NO]: n, [WK]: w } }));
+  const body = (tag, n) => Array.from({ length: n }, (_, i) => [`${tag}${i + 1}`, `w${i + 1}`]);
+  /* Нэг өдөр: хуучин жааз (5 мөр + 1 хоосон дүүргэлт = 6), дараа нь шинэ жааз (хоосон мөргүй 5) */
+  const padded = [['A', 'root'], ...body('a', 4), ['', '']];
+  const bare = [['A', 'root'], ...body('b', 4)];
+  const all = fw([...padded, ...bare]);
+  assert.equal(lastFrame(all, NO, 6)[1].attributes[NO], 'a1', 'түүхий уртаар (хуучин): шинэ жааз «тасарсан» гэж алгасагддаг байв');
+  const got = lastFrame(all, NO, 6, WK);
+  assert.equal(got.length, 5, 'хоосон мөрийг хассан уртаар — шинэ (хоосон мөргүй) жааз');
+  assert.equal(got[1].attributes[NO], 'b1', 'шинэ жааз сонгогдоно');
+  /* Эсрэг дараалал (хоосон мөргүй → хоосон мөртэй) ч сүүлийнх */
+  assert.equal(lastFrame(fw([...bare, ...padded]), NO, 6, WK)[1].attributes[NO], 'a1', 'дүүргэлттэй сүүлийн жааз');
+  /* Жинхэнэ тасралт хэвээр баригдана */
+  const cut = fw([...bare, ['A', 'root'], ...body('c', 2)]);
+  assert.equal(lastFrame(cut, NO, 6, WK)[1].attributes[NO], 'b1', 'хоосон биш мөр дутсан жааз алгасагдана');
+  assert.equal(firstFrame(fw([...padded, ...bare]), NO, 6, WK)[1].attributes[NO], 'a1', 'firstFrame ижил дүрмээр');
+
+  const SRC3 = readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
+  /* F4: strict үед лавлах унавал шиднэ; өмнөх жаазтай жишилт 500-ийн үржвэрт */
+  assert.ok(SRC3.includes('opts?: { strict?: boolean }') && /if \(opts\?\.strict\)\s*throw/.test(SRC3), 'loadRows strict алга');
+  assert.ok(SRC3.includes('feats2.length % 500 === 0') && SRC3.includes('prevFrameLen(pkg, sc, feats2, expect)'), 'өмнөх бүтэн жаазтай жишилт алга');
+  const HY = readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok((HY.match(/loadRows\(pkg, sc, undefined, undefined, \{ strict: true \}\)/g) ?? []).length >= 2, 'archiveSubmission strict-ээр уншихгүй байна');
+  /* F11: эрт зогсолт rootNo-оор тайрсан жагсаалтаар */
+  assert.ok(SRC3.includes('firstDoneFrameAtLeast(i0 > 0 ? out.slice(i0) : out, sc.f.no, want)'), 'эрт зогсолт тайрсан жагсаалтаар биш');
+  /* R6: хариу алдагдсан бичилт кэшийг хүчингүй болгоно */
+  assert.ok((SRC3.match(/if \(isLostWrite\(e\)\) invalidate\('BAGTS_SHEET'\);/g) ?? []).length === 2, 'applyAdds/applyUpdates lost → invalidate алга');
+  console.log('✅ F5 хоосон мөр · F4 strict · F11 · R6');
 }

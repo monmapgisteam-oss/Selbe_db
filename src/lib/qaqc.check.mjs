@@ -279,6 +279,13 @@ assert.equal(qaqcPayload([]), '[]');
   assert.deepEqual([c2.base, c2.live, c2.gone], [null, 'X', false]);
   assert.equal(c.find((x) => x.key === '5:0').gone, true, 'серверт мөр алга → зөрчил');
   assert.deepEqual(qaqcConflicts({}, base, live), []);
+  /* ⚠️ 2026-10-09: нүдний өөрийн суурь (ноорог) ачааллын агшнаас давамгайлна; undefined → ачааллын агшин */
+  const own = { '1:0': 'M-1', '3:0': 'A' };
+  const c3 = qaqcConflicts({ '1:0': 'M-2', '3:0': 'Q' }, base, live, (k) => own[k] === undefined ? undefined : (k === '3:0' ? 'A' : 'M-0'));
+  assert.deepEqual(c3.map((x) => x.key).sort(), ['1:0', '3:0'], 'хуучин ноорогийн суурь (M-0) ≠ сервер (M-1) → зөрчил; A→Z → зөрчил');
+  assert.equal(c3.find((x) => x.key === '1:0').base, 'M-0');
+  const c4 = qaqcConflicts({ '2:0': 'Y' }, base, live, (k) => (k === '2:0' ? 'X' : undefined));
+  assert.deepEqual(c4, [], 'суурь = одоогийн сервер → зөрчил биш (rebase-ийн дараах санаатай дарах)');
 }
 
 console.log('qaqc.check ✓ (наалт ✓ · урт ✓ · зөрчил ✓)');

@@ -20,6 +20,7 @@ import { aggregateMonths, physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
 import { upstreamOf, downstreamOf, type Dep } from '@/lib/bagtsHamaaral';
+import { sheetsOf } from './tuhSchedule';
 import {
   buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, daysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
@@ -103,6 +104,13 @@ export type TuhRow = {
   lastReport: string | null;
   /** Сүүлийн тайлангаас хойш хоног (`reportAge`) — `TUH_STALE_DAYS`-ээс удвал тодруулна */
   reportAge: number | null;
+  /**
+   * ЭНЭ багцын төлөвлөгөөт муруйн уналт — `ProgChart.planFailed`-ийн утга: `-1` = муруй бүхэлдээ
+   * унасан, `> 0` = энэ багцад (`sheetsOf(pkgKey)`) хамаарах `PlanCurve.failed` хуудасны тоо, `0` = бүрэн.
+   * ⚠️ 2026-10-09 (аудит): урьд нь төслийн НИЙТ `TuhModel.planFailed`-ийг багц бүрийн графикт өгдөг
+   *    тул нэг багцын хуудас унахад БҮХ багцын график «N хуудас уншигдсангүй» гэж бичдэг байв.
+   */
+  planFailed: number;
 };
 
 export type TuhModel = {
@@ -134,6 +142,7 @@ export type TuhModel = {
    * ⚠️ 2026-10-09: урьд нь ТУХ-ын `ProgChart` энэ ба `loading`-гүй дуудагддаг тул муруй ачаалж/унасан
    *    үед «Гүйцэтгэлийн дата алга.» гэж ХАРИУЛТ мэт бичдэг байв (TUH ⚠️ 2026-10-01: ачаалал → «…»,
    *    уналт → нэрлэнэ).
+   * ⚠️ 2026-10-09 (аудит): ТӨСЛИЙН нийт тоо — багц бүрийн графикт `TuhRow.planFailed` (зөвхөн тэр багцынх).
    */
   planFailed: number;
   /**
@@ -244,6 +253,18 @@ export function buildModel(input: {
   /* ХАБЭА-гийн өдрийн нүд ХООСОН (нийт · монгол · гадаад бүгд бөглөөгүй) — компани тэр
      өдрийн тайланд ороогүй; `ceo/workforce` үүнийг 0 болгодог тул энд ялгана (null ≠ 0) */
   const blankDay = (v: CompanyDay) => v.workers === 0 && v.mongol == null && v.gadaad == null;
+  /* ⚠️ 2026-10-09: уншигдаагүй хуудас (`Pkg.key`) → тоо. `failed`-ийн мөр нь `key` эсвэл
+     «key: тайлбар» (тэнхлэгээс гадуур, `loadPlanCurve`) — түлхүүрийг «: »-ээс өмнөх хэсгээр авна. */
+  const failedSheets = new Map<string, number>();
+  for (const f of plan?.failed ?? []) {
+    const k = f.split(': ')[0];
+    failedSheets.set(k, (failedSheets.get(k) ?? 0) + 1);
+  }
+  const planFailedOf = (pkgKey: string): number => {
+    if (input.planError) return -1;
+    if (!pkgKey || !failedSheets.size) return 0;
+    return sheetsOf(pkgKey).reduce((a, sh) => a + (failedSheets.get(sh.key) ?? 0), 0);
+  };
 
   const rows: TuhRow[] = pkgs.map((p) => {
     const progress = progressOf(p, actual);
@@ -356,6 +377,7 @@ export function buildModel(input: {
       lag,
       lastReport,
       reportAge: reportAge(lastReport, today),
+      planFailed: planFailedOf(p.pkgKey),
     };
   });
 

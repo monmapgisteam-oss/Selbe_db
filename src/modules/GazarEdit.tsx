@@ -223,7 +223,10 @@ export function GazarEdit({
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Овог, нэр')}</span>
                 <input className={g.input} value={d.owner} disabled={!canEdit || busy}
-                  maxLength={lens.owner}
+                  /* ⚠️ 2026-10-09: метадата унавал (`lens` хоосон) урт хязгааргүй болж, сервер урт
+                     мөрийг HTTP 200 доторх алдаагаар татгалздаг байв — `ZovshoorolEdit`-ийн ижил нөөц
+                     (200/100/2000). Одоо байгаа урт утгыг таслахгүй (зөвхөн шинэ бичилтийг хязгаарлана). */
+                  maxLength={lens.owner ?? 200}
                   onChange={(e) => set('owner', e.target.value)} />
                 {err.owner && <span className={g.fErr}>{err.owner}</span>}
               </label>
@@ -273,7 +276,7 @@ export function GazarEdit({
               <label className={g.f}>
                 <span className={g.fLabel}>{tr('Хаяг')}</span>
                 <input className={g.input} value={d.address} disabled={!canEdit || busy}
-                  maxLength={lens.address}
+                  maxLength={lens.address ?? 100}
                   onChange={(e) => set('address', e.target.value)} />
                 {err.address && <span className={g.fErr}>{err.address}</span>}
               </label>
@@ -282,7 +285,7 @@ export function GazarEdit({
                 <span className={g.fLabel}>{tr('Тайлбар (дэлгэрэнгүй)')}</span>
                 <textarea className={`${g.input} ${g.area}`} value={d.note}
                   disabled={!canEdit || busy}
-                  maxLength={lens.note}
+                  maxLength={lens.note ?? 2000}
                   onChange={(e) => set('note', e.target.value)} />
                 {err.note && <span className={g.fErr}>{err.note}</span>}
               </label>

@@ -56,8 +56,16 @@ export type QaqcDraft = {
   v: 2;
   /** Хамгийн сүүлийн агшин (нүд ба булшны дээд) — локал TTL ба ArcGIS-ийн `at` */
   t: number;
-  /** Амьд нүд — [`${ObjectID}:${баганын индекс}`, утга, засварын агшин] */
-  cells: [string, string, number][];
+  /**
+   * Амьд нүд — [`${ObjectID}:${баганын индекс}`, утга, засварын агшин, суурь?]
+   * ⚠️ 2026-10-09: 4 дэх элемент `суурь` — засах ҮЕД харсан СЕРВЕРИЙН утга (`null` =
+   *    хоосон). Хадгалахдаа зөрчлийн суурь болно (`Qaqc.tsx` `save`, `qaqcConflicts`):
+   *    урьд нь суурь нь ЭНЭ ачааллын агшин байсан тул өчигдрийн ноорог сэргээгдээд
+   *    хооронд нь серверт орсон ШИНЭ утгыг зөрчилгүйгээр ХУУЧНААР дардаг байв.
+   *    Байхгүй (хуучин ноорог) бол дуудагч ачааллын агшин руу буцна. Хуучин уншигч
+   *    эхний 3 элементийг л уншина — нийцтэй.
+   */
+  cells: [string, string, number, (string | null)?][];
   /** Булш — [түлхүүр, арилгасан агшин] */
   gone: [string, number][];
   /**
@@ -70,17 +78,22 @@ export type QaqcDraft = {
 
 /** Энэ табын засварын төлөв — `pend`-ийн нүд бүрийн агшин ба булш */
 export type QaqcDraftState = {
-  cells: Map<string, { v: string; t: number }>;
+  /** `b` — засах үед харсан серверийн утга (⚠️ 2026-10-09, `QaqcDraft.cells`-ийн ⚠️); `undefined` = мэдэгдэхгүй */
+  cells: Map<string, { v: string; t: number; b?: string | null }>;
   gone: Map<string, number>;
 };
+
+/** Суурь: `undefined` = мэдэгдэхгүй (хуучин ноорог); `null` = сервер хоосон байсан */
+const baseOf = (x: unknown): string | null | undefined =>
+  (typeof x === 'string' || x === null ? x : undefined);
 
 export const emptyQaqcDraftState = (): QaqcDraftState => ({ cells: new Map(), gone: new Map() });
 
 /** Булшны амьдрах хугацаа — толгойн ⚠️ «БУЛШНЫ ХЯЗГААР» */
 export const TOMB_TTL_MS = 30 * 24 * 3600 * 1000;
 
-/** `v == null` = булш; `r` = тухайн нүдийг дагуулсан мөрийн танигч */
-type Entry = { v: string | null; t: number; r?: string };
+/** `v == null` = булш; `r` = тухайн нүдийг дагуулсан мөрийн танигч; `b` = суурь (⚠️ 2026-10-09) */
+type Entry = { v: string | null; t: number; r?: string; b?: string | null };
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const oidOf = (k: string) => Number(k.slice(0, k.lastIndexOf(':')));
@@ -100,7 +113,7 @@ const put = (m: Map<string, Entry>, k: string, e: Entry) => {
 
 /** Нүд/булшны зураглалаас баримт; хоосон бол `null` */
 function build(m: Map<string, Entry>): QaqcDraft | null {
-  const cells: [string, string, number][] = [];
+  const cells: [string, string, number, (string | null)?][] = [];
   const gone: [string, number][] = [];
   /* Мөр бүрийн танигч — тухайн мөрийн ХАМГИЙН ШИНЭ амьд нүдийг дагуулсных */
   const rk = new Map<number, { r: string; t: number }>();
@@ -111,7 +124,9 @@ function build(m: Map<string, Entry>): QaqcDraft | null {
       gone.push([k, e.t]);
       continue;
     }
-    cells.push([k, e.v, e.t]);
+    /* ⚠️ 2026-10-09: суурь мэдэгдэхгүй бол 3 элемент хэвээр — `undefined`-ийг массивт
+       бичвэл JSON-д `null` («сервер хоосон байсан») болж утга нь өөрчлөгдөнө. */
+    cells.push(e.b === undefined ? [k, e.v, e.t] : [k, e.v, e.t, e.b]);
     if (e.r != null) {
       const o = oidOf(k);
       const cur = rk.get(o);
@@ -126,7 +141,7 @@ function build(m: Map<string, Entry>): QaqcDraft | null {
 function entriesOf(d: QaqcDraft): Map<string, Entry> {
   const rk = new Map(d.rowKeys ?? []);
   const m = new Map<string, Entry>();
-  for (const [k, v, t] of d.cells) put(m, k, { v, t, r: rk.get(oidOf(k)) });
+  for (const [k, v, t, b] of d.cells) put(m, k, { v, t, r: rk.get(oidOf(k)), b: baseOf(b) });
   for (const [k, t] of d.gone) put(m, k, { v: null, t });
   return m;
 }
@@ -164,7 +179,7 @@ export function parseQaqcDraft(
   for (const e of o.cells) {
     if (!Array.isArray(e) || typeof e[0] !== 'string' || typeof e[1] !== 'string') continue;
     /* ⚠️ ХУУЧИН ФОРМАТ: нүдний агшин байхгүй → ноорогийн ерөнхий агшин */
-    put(m, e[0], { v: e[1], t: isNum(e[2]) ? e[2] : t0, r: rk.get(oidOf(e[0])) });
+    put(m, e[0], { v: e[1], t: isNum(e[2]) ? e[2] : t0, r: rk.get(oidOf(e[0])), b: baseOf(e[3]) });
   }
   if (Array.isArray(o.gone)) {
     for (const e of o.gone) {
@@ -269,6 +284,8 @@ export function applyPendDiff(
   prev: Readonly<Record<string, string>>,
   next: Readonly<Record<string, string>>,
   stamp: () => number,
+  /** ⚠️ 2026-10-09: засах агшинд харагдаж буй СЕРВЕРИЙН утга — нүдний суурь (`QaqcDraft.cells`-ийн ⚠️) */
+  seenOf?: (key: string) => string | null | undefined,
 ): { st: QaqcDraftState; changed: boolean } {
   const cells = new Map(st.cells);
   const gone = new Map(st.gone);
@@ -282,7 +299,8 @@ export function applyPendDiff(
   for (const [k, v] of Object.entries(next)) {
     const c = cells.get(k);
     if (c && c.v === v) continue;
-    cells.set(k, { v, t: stamp() });
+    const b = seenOf?.(k);
+    cells.set(k, b === undefined ? { v, t: stamp() } : { v, t: stamp(), b });
     gone.delete(k);
     changed = true;
   }
@@ -295,9 +313,29 @@ export function draftFromState(
   rowKeyOf: (oid: number) => string | undefined,
 ): QaqcDraft | null {
   const m = new Map<string, Entry>();
-  for (const [k, c] of st.cells) put(m, k, { v: c.v, t: c.t, r: rowKeyOf(oidOf(k)) });
+  for (const [k, c] of st.cells) put(m, k, { v: c.v, t: c.t, r: rowKeyOf(oidOf(k)), b: c.b });
   for (const [k, t] of st.gone) put(m, k, { v: null, t });
   return build(m);
+}
+
+/**
+ * ЗӨРЧЛИЙН ДАРАА СУУРИЙГ ШИНЭЧИЛНЭ (⚠️ 2026-10-09). Хадгалахад зөрчилтэй гарсан нүдийг
+ * хэрэглэгч шинэ серверийн утгыг ХАРСАН тул суурь нь тэр утга болно — эс бөгөөс дараагийн
+ * «Хадгалах» нь мөн л хуучин суурьтай жишиж зөрчил гэсээр, санаатай дарах зам хаагдана.
+ * Агшин хөндөгдөхгүй (утга өөрчлөгдөөгүй).
+ */
+export function rebaseQaqcCells(
+  st: QaqcDraftState,
+  bases: ReadonlyMap<string, string | null>,
+): QaqcDraftState {
+  let cells: QaqcDraftState['cells'] | null = null;
+  for (const [k, b] of bases) {
+    const c = st.cells.get(k);
+    if (!c || c.b === b) continue;
+    cells ??= new Map(st.cells);
+    cells.set(k, { ...c, b });
+  }
+  return cells ? { cells, gone: st.gone } : st;
 }
 
 /**
@@ -346,10 +384,10 @@ export function adoptQaqcDraft(
   let same = 0;
   const over = (t: number) => Math.max(stamp(), t + 1);
 
-  for (const [k, v, t] of stored.cells) {
+  for (const [k, v, t, b0] of stored.cells) {
     const sc = st.cells.get(k);
     if (sc) {
-      if (beats({ v, t }, { v: sc.v, t: sc.t })) cells.set(k, { v: sc.v, t: over(t) });
+      if (beats({ v, t }, { v: sc.v, t: sc.t })) cells.set(k, { ...sc, t: over(t) });
       continue;
     }
     /* Табад арилгасан нүд — агшин их нь ялна (дэлгэцэнд зөрөх зүйлгүй: хадгалсан нь
@@ -367,14 +405,16 @@ export function adoptQaqcDraft(
       continue;
     }
     gone.delete(k);
-    cells.set(k, { v, t });
+    /* ⚠️ 2026-10-09: хадгалсан суурийг дагуулна (`QaqcDraft.cells`-ийн ⚠️) */
+    const b = baseOf(b0);
+    cells.set(k, b === undefined ? { v, t } : { v, t, b });
     out[k] = v;
     count += 1;
   }
   for (const [k, t] of stored.gone) {
     const sc = st.cells.get(k);
     if (sc) {
-      if (beats({ v: null, t }, { v: sc.v, t: sc.t })) cells.set(k, { v: sc.v, t: over(t) });
+      if (beats({ v: null, t }, { v: sc.v, t: sc.t })) cells.set(k, { ...sc, t: over(t) });
       continue;
     }
     if (t > (gone.get(k) ?? -Infinity)) gone.set(k, t);

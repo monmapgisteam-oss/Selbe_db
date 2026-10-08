@@ -119,25 +119,9 @@ export const pctLevel = (v: number | null | undefined): Level =>
    байсан. Санхүү ↔ биетийн зөрүүг онооны самбар `scorecard.RULE` (30/10/−2 пп)-ээр, гэрээ ↔ төсвийг
    `ceo/contractGap` (1 тэрбум)-ээр хэмждэг — CEO_KPI_PROMPT §5.1. */
 
-/**
- * ТАЙЛАН ИРЭЭГҮЙ БЛОК (⭐ шинэ) — блокийн эзлэх ХУВИАР.
- * ⚠️ Абсолют тоогоор биш: 5 блок нь 20 блоктой багцад ноцтой, 200 блоктой
- *    төсөлд ердийн. 10% нь «арав тутмын нэг тайлагнаагүй» гэсэн уншилт.
- */
-export const MISSING_WARN_SHARE = 0.10;
-export const missingLevel = (missing: number, total: number): Level =>
-  total <= 0 ? 'unknown'
-    : missing === 0 ? 'good'
-      : missing / total <= MISSING_WARN_SHARE ? 'warn' : 'bad';
-
-/**
- * УНШИГДААГҮЙ БАГЦ (⭐ шинэ) — системийн эрүүл мэнд.
- * ⚠️ Энэ нь төслийн БИШ, ПОРТАЛЫН асуудал: 2+ багц уншигдахгүй бол доорх
- *    бүх тоо дутуу суурин дээр бодогдож байна гэсэн үг.
- */
-export const FAILED_PKG_BAD = 2;
-export const failedPkgLevel = (n: number | null): Level =>
-  n == null ? 'unknown' : n === 0 ? 'good' : n < FAILED_PKG_BAD ? 'warn' : 'bad';
+/* ⚠️ 2026-10-09: `missingLevel`/`MISSING_WARN_SHARE` (тайлан ирээгүй блок, 10%) ба
+   `failedPkgLevel`/`FAILED_PKG_BAD` (уншигдаагүй багц, 2) УСТСАН — нэг ч дуудагчгүй байв
+   (`ExecKpi.tsx` устсанаас хойш). Хэрэгтэй бол git түүхээс сэргээнэ. */
 
 /**
  * ХАБЭА ОСОЛ — тоогоор.

@@ -100,7 +100,8 @@ for (const setter of ['setPending(keepTyped(next))', 'setPendDate(keepTyped(next
 }
 console.log('✅ сэргээлтийн завсарт бичсэн нүд дарагдахгүй · нүд түгжигдэнэ · нүд нээлттэй үед хамтын төлөв · flush CAS');
 /* Юу сэргэснийг ИЛ хэлнэ — чимээгүй бууж болохгүй */
-assert.ok(restore.includes('say('), 'ноорог сэргэснийг хэрэглэгчид хэлэхгүй байна');
+/* ⚠️ 2026-10-09: «Ноорог сэргээв» нь салаа мэдэгдлээр (`soft` — `say` нь «Энэ нүд засагдахгүй.» гарчигтай байв) */
+assert.ok(restore.includes('say(') || restore.includes('soft('), 'ноорог сэргэснийг хэрэглэгчид хэлэхгүй байна');
 /* Цонхны үлдэгдэл БАЙХГҮЙ байх ёстой */
 for (const gone of ['RestoreModal', 'setRestore', 'applyRestore', 'laterRestore', 'dropRestore']) {
   assert.ok(!SRC.includes(gone), `сэргээх цонхны үлдэгдэл «${gone}» хэвээр байна`);

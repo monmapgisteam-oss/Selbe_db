@@ -28,6 +28,27 @@
 import { queryFeatures, queryCount } from '@/lib/query';
 import { IOT_BASE as IOT } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
+import { register } from '@/lib/dataBus';
+
+/**
+ * Утга ИХ байх нь САЙН хэмжигдэхүүнүүд — `sensor.key:metric.key`.
+ * ⚠️ 2026-10-09: `ceo/iot.IOT_HIGHER_IS_GOOD`-тэй ЯГ ИЖИЛ байх ёстой (`ceo/iot.check.mjs`
+ *    тулгана). Тэндээс импортлохгүй: `ceo/iot` нь энэ файлаас импортолдог тул мөчлөг үүсч
+ *    `IOT_STALE_H = SENSOR_STALE_H` TDZ-д унана. Сийрэгжүүлэлт (`thin`) энд ХУУРАЙ уналтыг
+ *    (босгоос ДООШ) хадгалахад хэрэглэнэ.
+ */
+export const HIGHER_IS_GOOD: ReadonlySet<string> = new Set(['soil:moisture']);
+
+/**
+ * Объектыг getter-ийг нь АМЬДААР нь хадгалж хуулна (`{...x}` нь getter-ийг ДУУДААД тухайн
+ * агшны утгыг хөлдөөдөг).
+ * ⚠️ 2026-10-09: `label`/`note` нь `tr()`-ийн getter — spread-ээр хуулсан цуваа кэшэд
+ *    хадгалагдаж, хэл солиход хуучин хэлээрээ үлддэг байв.
+ */
+function liveCopy<A extends object, B extends object>(src: A, extra: B): A & B {
+  const o = Object.defineProperties({}, Object.getOwnPropertyDescriptors(src)) as A & B;
+  return Object.assign(o, extra);
+}
 
 /** Нэг хэмжигдэхүүн — давхарга дээрх нэг тоон талбар */
 export type Metric = {
@@ -184,8 +205,11 @@ export const SENSORS: SensorDef[] = [
         /** дүүрэлт % = (гүн − зай) / гүн; 0…100-д хумина (гажуу заалтаас хамгаална) */
         derive: (mm) => Math.max(0, Math.min(100, ((BIN_DEPTH_MM - mm) / BIN_DEPTH_MM) * 100)),
         /* ⚠️ 2026-10-09: түүхий зай 0…гүний 1.5 дахин — түүнээс хол цуурай савны ёроолоос
-           ирэх боломжгүй (65535 = decoder-ийн 0xFFFF). Мужийн дотор бол дээрх хумилт хэвээр. */
-        rawValid: { min: 0, max: BIN_DEPTH_MM * 1.5 },
+           ирэх боломжгүй (65535 = decoder-ийн 0xFFFF). Мужийн дотор бол дээрх хумилт хэвээр.
+           ⚠️ 2026-10-09: ДООД хил 30мм — ультрасоник мэдрэгчийн «сохор бүс» (Milesight
+           EM400-UDL: 3 см). Түүнээс ойр зайг мэдрэгч ФИЗИКООР хэмжиж чадахгүй тул 0мм нь
+           «100% дүүрсэн» БИШ, гэмтэл/хаалттай мэдрэгч (`fault`). */
+        rawValid: { min: 30, max: BIN_DEPTH_MM * 1.5 },
         /**
          * ⚠️ СТАНДАРТ БАЙХГҮЙ (шалгасан) — ухаалаг хог цуглуулалтын салбарын
          * ПРАКТИК нь 80%-ийг дуудлагын цэг болгодог (сав бүрэн дүүртэл
@@ -250,6 +274,9 @@ export const SENSORS: SensorDef[] = [
          * Бүртгэгдсэн дээд 28.5°C тул босго нь бодитоор ажиллана.
          */
         alert: { value: 25, get note() { return tr('Үндэсний бүс хэт халсан'); } },
+        /* ⚠️ 2026-10-09: хөрсний температур −40…+80°C-аас гадуур = гэмтэл (0xFFFF → 6553.5
+           нь тэнхлэгийг сунгаж бодит муруйг ёроолд шахдаг байв) */
+        valid: { min: -40, max: 80 },
       },
       {
         /**
@@ -279,6 +306,9 @@ export const SENSORS: SensorDef[] = [
          * Тиймээс шугам ОГТ зурахгүй: «давсжилтын асуудал алга» гэдэг нь
          * улаан зураасаар биш, шугамгүй байдлаараа л зөв илэрхийлэгдэнэ.
          */
+        /* ⚠️ 2026-10-09: EC 0…20,000 µS/cm (USDA-гийн «хүчтэй давсжсан» 16 dS/m-ээс дээш нөөцтэй) —
+           түүнээс дээш (65535 = 0xFFFF) нь гэмтэл, тэнхлэгт орохгүй */
+        valid: { min: 0, max: 20000 },
       },
     ],
   },
@@ -300,6 +330,9 @@ export const SENSORS: SensorDef[] = [
          * төлөв байхгүй. Зохиомол шугам зурвал шөнө бүр улаан дохио өгч,
          * бусад чартын жинхэнэ анхааруулгын үнэ цэнийг бууруулна.
          */
+        /* ⚠️ 2026-10-09: 0…200,000 lux — шууд нарны гэрэл ≈120,000 lux; 65535 нь өдрийн гэрэлд
+           БОДИТ утга байж болох тул хил нь түүнээс дээгүүр, зөвхөн сөрөг/хэт их нь гэмтэл */
+        valid: { min: 0, max: 200000 },
       },
     ],
   },
@@ -327,6 +360,8 @@ export const SENSORS: SensorDef[] = [
          * дээд нь 30°C тул хамгийн халуун өдрүүдийг л тэмдэглэнэ.
          */
         alert: { value: 28, get note() { return tr('Халуун — гадна ажлын нөхцөл хүндэрнэ'); } },
+        /* ⚠️ 2026-10-09: Улаанбаатарын агаар −60…+60°C-аас гадуур = гэмтэл (0xFFFF → 6553.5) */
+        valid: { min: -60, max: 60 },
       },
       {
         key: 'humidity', get label() { return tr('Гадна орчны чийгшил'); }, field: 'payload_decoded_data_humidity',
@@ -482,12 +517,31 @@ export const outOfRange = (m: Pick<Metric, 'valid'>, v: number | null): boolean 
 export const UB_OFFSET_MS = 8 * 3_600_000;
 
 export function parseTs(v: unknown): number | null {
+  /* ⚠️ 2026-10-09: ТООН epoch (ArcGIS Date талбар мс-ээр) ба Date объект — урьд нь `String()`
+     хийгээд `Date.parse('1759999999000')` NaN өгч заалт чимээгүй хаягддаг байв. */
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (v instanceof Date) { const ms = v.getTime(); return Number.isFinite(ms) ? ms : null; }
   const s = String(v ?? '').trim();
   if (!s) return null;
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (/^\d{12,13}$/.test(s)) return Number(s);
+  /* ⚠️ 2026-10-09: `d/M/yyyy` (нэг оронтой өдөр/сар, цаг заавал биш) — ӨДӨР ЭХЭНД гэж ИЛ уншина.
+     Урьд нь зөвхөн `dd/MM/yyyy HH:mm:ss` таардаг тул «9/1/2026 10:00:00» нь `Date.parse` руу
+     унаж АМЕРИК дүрмээр (9-р сарын 1) уншигддаг байв (дээрх 2026-09-15-ны ⚠️-ийн яг ижил алдаа). */
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m) {
-    const [, dd, MM, yyyy, hh, mi, ss] = m;
+    const [, dd, MM, yyyy, hh = '0', mi = '0', ss = '0'] = m;
+    if (+MM < 1 || +MM > 12 || +dd < 1 || +dd > 31 || +hh > 23 || +mi > 59 || +ss > 59) return null;
     return Date.UTC(+yyyy, +MM - 1, +dd, +hh, +mi, +ss) - UB_OFFSET_MS;
+  }
+  /* Ташуу зураастай бусад хэлбэрийг `Date.parse`-д ӨГӨХГҮЙ — тэр нь MM/DD гэж таана */
+  if (s.includes('/')) return null;
+  /* ⚠️ 2026-10-09: ЗӨВХӨН ОГНОО («2026-09-01») — `Date.parse` нь ҮҮНИЙГ UTC шөнө дунд гэж
+     уншдаг (УБ-ын 08:00) тул хоногийн заагийн тооцоо (`ubDay`) 8 цагаар шилждэг байв.
+     УБ-ын шөнө дунд (`+08:00`) гэж уншина. */
+  const dOnly = s.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dOnly) {
+    const ms = Date.parse(`${dOnly[1]}T00:00:00+08:00`);
+    return Number.isFinite(ms) ? ms : null;
   }
   /* ⚠️ Бүсгүй ISO («2026-09-01T10:00:00» / «2026-09-01 10:00:00») — `Date.parse` нь
      хостын бүсээр уншдаг тул `+08:00` залгана. Бүстэй (Z / ±hh:mm) бол хэвээр. */
@@ -511,21 +565,42 @@ export const ubDay = (ms: number): number => Math.floor((ms + UB_OFFSET_MS) / 86
  *    `keep` (босго давсан) цэг байгаа бөгөөд төв цэг нь тийм биш бол хэсгийн ХАМГИЙН ӨНДӨР
  *    `keep` цэгийг авна. Тоо нь `max` хэвээр, эхний/сүүлийн цэг үргэлж үлдэнэ.
  */
-function thin<T extends Reading>(arr: T[], max: number, keep?: (x: T) => boolean): T[] {
-  if (arr.length <= max) return arr;
-  const step = (arr.length - 1) / (max - 1);
-  const out: T[] = [];
-  for (let i = 0; i < max; i++) {
-    const c = Math.round(i * step);
-    if (!keep || i === 0 || i === max - 1 || keep(arr[c])) { out.push(arr[c]); continue; }
-    const lo = Math.max(1, Math.round((i - 0.5) * step));
-    const hi = Math.min(arr.length - 2, Math.round((i + 0.5) * step) - 1);
-    let pick = c;
-    for (let j = lo; j <= hi; j++) {
-      if (keep(arr[j]) && (!keep(arr[pick]) || arr[j].v > arr[pick].v)) pick = j;
+/*
+ * ⚠️ 2026-10-09: ХЭСГҮҮД ДАВХЦАЖ/ЦООРХОЙТОЙ байсныг засав. Урьд нь хэсэг нь төвийн ±0.5 алхам
+ *    (`round`-оор) тул хөрш хоёр хэсэг нэг индексийг хуваалцаж, сонголт нь өмнөхөөсөө ӨМНӨ ч
+ *    унадаг байв (n=91: t=79 хоёр удаа, t=80 алга → `Trend` буцаж зурдаг). Одоо: эхний/сүүлийн
+ *    цэг тус тусдаа, ДОТООД `max − 2` хэсэг нь [1, n−2]-ийг ДАВХЦАЛГҮЙ, ЦООРХОЙГҮЙ хуваана;
+ *    сонголт бүр өмнөхөөсөө ХАТУУ ИХ индекстэй (гаралт хугацаагаар хатуу өснө). Хэсэгт `keep`
+ *    цэг байвал хамгийн «муу»-г (`low` бол хамгийн БАГА, эс бол хамгийн ИХ) авна — хэсэг бүрт
+ *    нэгээс олон оргилгүй бол БҮХ оргил үлдэнэ (`ceo/iot.check.mjs` n=91…4000 шалгана).
+ * ⚠️ `low` — «их нь сайн» хэмжигдэхүүн (`HIGHER_IS_GOOD`, хөрсний чийг): эрсдэл нь босгоос
+ *    ДООШ уналт (хуурай) тул тэр уналтыг хадгална.
+ */
+export function thin<T extends Reading>(arr: T[], max: number, keep?: (x: T) => boolean, low = false): T[] {
+  const n = arr.length;
+  if (n <= max) return arr;
+  if (max < 3) return max <= 0 ? [] : max === 1 ? [arr[n - 1]] : [arr[0], arr[n - 1]];
+  const inner = max - 2;
+  const span = n - 2; // [1, n−2] — дотоод индексүүд (span > inner)
+  const out: T[] = [arr[0]];
+  let prev = 0;
+  for (let k = 0; k < inner; k++) {
+    const lo = Math.max(prev + 1, 1 + Math.floor((k * span) / inner));
+    const hi = Math.min(Math.floor(((k + 1) * span) / inner), n - 2);
+    if (hi < lo) continue; // span > inner тул гарахгүй — хамгаалалт
+    let pick = (lo + hi) >> 1; // хэсгийн ТӨВ (keep-гүй үед тэнцүү алхмын сийрэгжүүлэлт)
+    if (keep) {
+      let best = -1;
+      for (let j = lo; j <= hi; j++) {
+        if (!keep(arr[j])) continue;
+        if (best < 0 || (low ? arr[j].v < arr[best].v : arr[j].v > arr[best].v)) best = j;
+      }
+      if (best >= 0) pick = best;
     }
     out.push(arr[pick]);
+    prev = pick;
   }
+  out.push(arr[n - 1]);
   return out;
 }
 
@@ -663,6 +738,7 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
    «сүүлийн заалт» болон `fault`-д хэвээр — гэмтлийг нуухгүй. */
 function summarize(
   m: Metric, pts: Reading[], total: number | null, all: Reading[] = pts, badAt: number | null = null,
+  higherIsGood = false,
 ): MetricSeries {
   const clean = m.valid ? pts.filter((x) => !outOfRange(m, x.v)) : pts;
   const vals = clean.map((x) => x.v);
@@ -674,10 +750,15 @@ function summarize(
      тоо гаргах ч утга нь ХУДАЛ (дээрх `forecast`-ийн тайлбарыг үз). */
   const f = m.forecast && !badLast ? fit(clean) : null;
   const a = m.alert;
-  return {
-    ...m,
-    /* ⚠️ 2026-10-09: босго давсан оргил сийрэгжүүлэлтэд алдагдахгүй (`thin`-ийн ⚠️) */
-    points: thin(clean, 90, a ? (x) => x.v >= a.value : undefined),
+  /* ⚠️ 2026-10-09: `{...m}` БИШ — `label`/`note` getter-ийг амьдаар нь хадгална (`liveCopy`) */
+  return liveCopy(m, {
+    /* ⚠️ 2026-10-09: босго давсан оргил сийрэгжүүлэлтэд алдагдахгүй (`thin`-ийн ⚠️).
+       «Их нь сайн» (хөрсний чийг) бол эрсдэл нь босгоос ДООШ уналт — тэрийг хадгална. */
+    points: thin(
+      clean, 90,
+      a ? (higherIsGood ? (x: Reading) => x.v < a.value : (x: Reading) => x.v >= a.value) : undefined,
+      higherIsGood,
+    ),
     latest: last?.v ?? null,
     latestAt: lastAt,
     ageHours: lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null,
@@ -687,7 +768,7 @@ function summarize(
     avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
     trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert) } : null,
     fault: badLast || outOfRange(m, last?.v ?? null),
-  };
+  });
 }
 
 /**
@@ -750,7 +831,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       // ⚠️ ХҮРЭЭГЭЭР огтолно (сервер талд БИШ — дээрх `RangeKey`-ийн тайлбарыг үз)
       const inRange = pts.filter((x) => x.t >= from);
 
-      const out = [summarize(m, inRange, total, pts, badAt)];
+      const out = [summarize(m, inRange, total, pts, badAt, HIGHER_IS_GOOD.has(`${def.key}:${m.key}`))];
       // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
       if (m.dailyDiff) {
         /* ⚠️ 2026-09-21: БҮТЭН цуваанаас бодоод дараа нь хүрээгээр огтолно —
@@ -759,7 +840,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
         const dpAll = dailyDiffPoints(pts);
         const dp = dpAll.filter((x) => x.t >= from);
         out.push(summarize(
-          { ...m.dailyDiff, field: m.field },
+          liveCopy(m.dailyDiff, { field: m.field }), // ⚠️ 2026-10-09: getter амьд (`liveCopy`)
           dp,
           dp.length,
           dpAll, // ⚠️ сүүлийн заалт хүрээнээс хамаарахгүй (2026-09-17)
@@ -774,15 +855,14 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
 
   const flat = Array.isArray(per) ? per.flat() : per;
   if (typeof flat === 'string' || !flat) {
-    return {
-      ...def,
+    return liveCopy(def, { // ⚠️ 2026-10-09: getter амьд (`liveCopy`)
       series: [],
       lastAt: null,
       ageHours: null,
       n: null,
       stale: false,
       error: typeof flat === 'string' && flat ? flat : tr('Сервис татагдсангүй'),
-    };
+    });
   }
 
   const lastAt = flat.reduce<number | null>(
@@ -790,8 +870,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
     null,
   );
 
-  return {
-    ...def,
+  return liveCopy(def, { // ⚠️ 2026-10-09: getter амьд (`liveCopy`)
     series: flat,
     lastAt,
     ageHours: lastAt == null ? null : (Date.now() - lastAt) / 3_600_000,
@@ -800,7 +879,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
     // ижил мөр олон утга агуулж болно тул нийлбэрлэвэл давхарлана).
     /* ⚠️ 2026-10-09: тооллого унасан хэмжигдэхүүн (`total = null`) тооцоонд орохгүй; бүгд унавал null */
     n: ((xs) => (xs.length ? Math.max(...xs) : null))(flat.map((m) => m.total).filter((x): x is number => x != null)),
-  };
+  });
 }
 
 /**
@@ -816,6 +895,10 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
 function cached<T>(fn: () => Promise<T>, ttlMs = 5 * 60_000): () => Promise<T> {
   let p: Promise<T> | null = null;
   let at = 0;
+  /* ⚠️ 2026-10-09: автобусад БҮРТГЭНЭ (хоосон `reads` — хүснэгтийн бичилт хөндөхгүй), тэгснээр
+     хэл солих (`dataBus.subscribeLocale → invalidateAll`) ба «Шинэчлэх» товч энэ кэшийг ч хаяна.
+     Урьд нь бүртгэлгүй тул алдааны мөр («Сервис татагдсангүй») TTL дуустал хуучин хэлээр үлддэг байв. */
+  register(() => { p = null; }, []);
   return () => {
     if (!p || Date.now() - at > ttlMs) {
       at = Date.now();

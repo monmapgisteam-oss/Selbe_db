@@ -326,6 +326,13 @@ type Store = Record<string, CapKey[]>;
 type DirtyCaps = Record<string, { by: string; caps: CapKey[] }>;
 
 /**
+ * Объектын түлхүүр болгож болохгүй нэрс (prototype pollution).
+ * ⚠️ 2026-10-09: `permissions.ts` · `permsRemote.ts` ЭНДЭЭС импортлоно (нэг жагсаалт). `caps.ts` нь
+ *    тэр хоёроос RUNTIME импортгүй тул тойрог үүсэхгүй, модуль ачаалахад (`loadLocal`) бэлэн байна.
+ */
+export const UNSAFE_KEY: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
  * ЭНЭ runtime-д бичилт нь унаж dirty-д орсон түлхүүр → жагсаалтын JSON.
  * ⚠️ АВТОМАТ retry/overlay ЗӨВХӨН эдгээрт (2026-09-25) — `permissions.mine`-ийн
  *    тайлбар: localStorage-д `{"me":["finRow",…]}` тарьсныг дараа нэвтэрсэн
@@ -427,6 +434,9 @@ function loadDirty(): DirtyCaps {
     if (!raw || typeof raw !== 'object') return {};
     const out: DirtyCaps = {};
     for (const [k, v] of Object.entries(raw)) {
+      /* ⚠️ 2026-10-09: `__proto__` г.м. түлхүүрийг АЛГАСНА — localStorage-ийг гараар засаж
+         `{"__proto__": …}` бичвэл `out[k] = …` нь прототипыг солих байв (`UNSAFE_KEY`-ийн ⚠️) */
+      if (UNSAFE_KEY.has(k.toLowerCase())) continue;
       /* ⚠️ Хуучин хэлбэр (массив шууд) — бичсэн хүн тодорхойгүй */
       if (Array.isArray(v)) { out[k.toLowerCase()] = { by: '', caps: sane(v) }; continue; }
       const o = (v ?? {}) as { by?: unknown; caps?: unknown };

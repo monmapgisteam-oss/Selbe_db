@@ -587,24 +587,29 @@ assert.equal(
 }
 
 /* ── 2026-10-09: loadLayerMeta — `supportsRollbackOnFailureParameter` алга → атом БИШ;
-   `extent.spatialReference` нь `sourceSpatialReference`-ээс ЭХЭНД ── */
+   `sourceSpatialReference` (хадгалалтын SR — Shape__Length үүгээр) нь extent-ээс ЭХЭНД,
+   source алга бол extent нөөц ── */
 {
   const realF = globalThis.fetch;
+  let withSource = true;
   globalThis.fetch = async () => ({
     ok: true,
     json: async () => ({
       objectIdField: 'OBJECTID',
       geometryType: 'esriGeometryPolyline',
       capabilities: 'Query,Update',
-      extent: { spatialReference: { wkid: 32648, latestWkid: 32648 } },
-      sourceSpatialReference: { wkid: 4326, latestWkid: 4326 },
+      extent: { spatialReference: { wkid: 102100, latestWkid: 3857 } },
+      ...(withSource ? { sourceSpatialReference: { wkid: 32648, latestWkid: 32648 } } : {}),
       fields: [{ name: 'OBJECTID', type: 'esriFieldTypeOID' }],
     }),
   });
   try {
     const m = await loadLayerMeta('infra:7');
     assert.equal(m.rollback, false, 'дэмжлэг нотлогдоогүй → атом гэж таамаглахгүй');
-    assert.equal(m.wkid, 32648, 'extent-ийн SR давамгайлна');
+    assert.equal(m.wkid, 32648, 'source (хадгалалтын) SR давамгайлна');
+    withSource = false;
+    const m2 = await loadLayerMeta('infra:12');
+    assert.equal(m2.wkid, 3857, 'source алга → extent нөөц');
   } finally {
     globalThis.fetch = realF;
   }
@@ -620,6 +625,42 @@ assert.equal(
     const r = await revertRows(meta, [{ oid: 7, attrs: { DocName: 'z' } }]);
     assert.deepEqual(r.done, []);
     assert.deepEqual(r.failed.map((x) => x.oid), [7]);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+
+/* ── 2026-10-09: isLostResponse — HTTP 400/401/403/404 нь ТОДОРХОЙ татгалзал, 5xx/статусгүй нь алдагдсан ── */
+{
+  const { ArcGISError } = await import('./query.ts');
+  assert.equal(isLostResponse(new ArcGISError('HTTP 404', 'u', undefined, undefined, false, 404)), false);
+  assert.equal(isLostResponse(new ArcGISError('HTTP 403', 'u', undefined, undefined, false, 403)), false);
+  assert.equal(isLostResponse(new ArcGISError('HTTP 502', 'u', undefined, undefined, false, 502)), true);
+  assert.equal(isLostResponse(new ArcGISError('timeout', 'u')), true, 'статусгүй (timeout · JSON биш) = алдагдсан');
+  assert.equal(isLostResponse(new ArcGISError('x', 'u', 400)), false, 'ArcGIS error.code = тодорхой');
+}
+
+/* ── 2026-10-09: АТОМ БУС — мөрийн түвшинд хариу алдагдвал ЗОГСОНО; тэр мөр «тодорхойгүй» (unknown) ──
+   Багц тодорхой татгалзсан → мөрөөр: 1 амжилт, 2 timeout(HTTP 502) → 3 илгээгдэхгүй. */
+{
+  const nm = { ...meta, rollback: false };
+  const sent = [];
+  const realF = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const ups = JSON.parse(new URLSearchParams(String(init.body)).get('updates'));
+    sent.push(ups.map((u) => u.attributes.OBJECTID));
+    if (ups.length > 1) return { ok: true, json: async () => ({ error: { code: 400, message: 'bad' } }) };
+    if (ups[0].attributes.OBJECTID === 2) return { ok: false, status: 502, json: async () => ({}) };
+    return { ok: true, json: async () => ({ updateResults: [{ objectId: ups[0].attributes.OBJECTID, success: true }] }) };
+  };
+  try {
+    await assert.rejects(() => saveRows(nm, [1, 2, 3], { DocName: 'x' }), (e) => {
+      assert.deepEqual(e.done, [1]);
+      assert.deepEqual(e.unknown, [2], 'алдагдсан мөр буцаалтад орно');
+      assert.deepEqual(e.failed.map((f) => f.oid), [2, 3]);
+      return true;
+    });
+    assert.deepEqual(sent, [[1, 2, 3], [1], [2]], '3-р мөрийг илгээгээгүй');
   } finally {
     globalThis.fetch = realF;
   }

@@ -790,6 +790,21 @@ export async function claimAjil(args: { oid: number; me: string; want: AjilStatu
 }
 
 /**
+ * ӨӨР ХЭН НЭГЭН (өөр хүн ЭСВЭЛ өөр таб) хүчинтэй түгжээ барьж байна уу — ⚠️ 2026-10-09
+ * (`ajilApply` → `markApplied`-ийн ӨМНӨ). Манай түгжээ хугацаа нь дуусч өөр хүн авсан бол
+ * `markApplied` (`reason: null`) түүний тэмдгийг арчиж, бичиж буй жааз нь хамгаалалтгүй болно.
+ * @returns бусдын нэр, эсвэл `null` (түгжээ минийх / хэнийх ч биш). ⚠️ Уншилт унавал ШИДНЭ.
+ */
+export async function ajilClaimOther(oid: number, me: string): Promise<string | null> {
+  const u = me.trim().toLowerCase();
+  const cur = (await query(`${F.oid} = ${Number(oid)}`, CLAIM_FIELDS))[0];
+  if (!cur) return null;
+  const h = ajilClaimOf(s(cur[F.status]), s(cur[F.reason]));
+  if (!h || (h.who === u && h.tab === TAB)) return null;
+  return h.who;
+}
+
+/**
  * ТҮГЖЭЭГ ТАЙЛАХ — зөвхөн ЭНЭ табын, төлөв нь хэвээр (`pending`/`approved`) мөрийн тэмдгийг.
  * Алдааг залгина: ямар ч байсан `AJIL_CLAIM_TTL`-ээр тайлагдана.
  */
@@ -1195,6 +1210,16 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
        хуудсанд бичигдсэн атлаа илгээлт «буцаагдсан» болно (`AJIL_CLAIM_MARK`-ийн ⚠️). */
     const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
     if (held) return { ok: false, error: ajilHeldMsg(held.who) };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+  /* ⚠️ 2026-10-09: УНШААД-ШАЛГААД-БИЧИХ завсарт өөр хүн буулгалтын түгжээ (`claimAjil`) авч жааз бичиж
+     эхэлж болох байсан — одоо буцаалтын ӨМНӨ `casAjilClaim`-аар (`approved` мөрд) түгжээг АТОМААР авна.
+     Нэвтрэлтгүй горимд `anon` (`ajilApply`-ийн адил). Буцаалт бичигдээгүй бол түгжээгээ тайлна. */
+  const claimer = me || 'anon';
+  const claimErr = await claimAjil({ oid: args.oid, me: claimer, want: AJIL_STATUS.approved });
+  if (claimErr) return { ok: false, error: claimErr };
+  try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
         [F.oid]: args.oid,
@@ -1205,10 +1230,15 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
       } }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) {
+      await releaseAjilClaim({ oid: args.oid, me: claimer });
+      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    }
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
+    /* хариу алдагдсан ч аюулгүй — `releaseAjilClaim` зөвхөн `approved` хэвээр, ЭНЭ табын тэмдгийг тайлна */
+    await releaseAjilClaim({ oid: args.oid, me: claimer });
     return { ok: false, error: String((e as Error).message || e) };
   }
 }

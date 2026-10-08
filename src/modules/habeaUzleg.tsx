@@ -25,7 +25,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
-import { tokenQs } from '@/lib/authToken';
+import { fetchAttachment } from '@/lib/uzlegReport';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
@@ -69,9 +69,14 @@ type Domains = Record<string, Map<string, string>>;
  *    `missing`-д буцаана → `useUzleg` `schemaMissing`, `UzlegLeft` ил анхааруулга.
  *    Маягт бүрд байх албагүй талбарууд (`UZ_OPTIONAL`: V1.1-д `site_block`/`company_other`
  *    байхгүй, гүйцэтгэгчийн маягтад оноо байхгүй — `services`-ийн ⚠️) тооцогдохгүй.
+ * ⚠️ 2026-10-09: `week` ба `shift` мөн ЗААВАЛ БИШ — долоо хоног огнооноос (`uzWeekKey`) тул
+ *    `week` талбар тооцоонд ОРОХГҮЙ; ээлж зөвхөн газрын зургийн картад. Тэдгээр алга бол
+ *    «Маягтын талбар олдсонгүй» гэж ХУДАЛ сануулдаг байв.
  */
 type UzMeta = { dom: Domains; missing: readonly string[]; failed: boolean };
-const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([U.siteOther, U.companyOther, U.block, U.scEarned, U.scAppl]);
+const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([
+  U.siteOther, U.companyOther, U.block, U.scEarned, U.scAppl, U.week, U.shift,
+]);
 const UZ_FIELDS: readonly string[] = [...new Set(Object.values(U))];
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
 const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
@@ -124,7 +129,11 @@ export type UzlegRow = {
    * ⚠️ 2026-10-09: ҮЗЛЭГИЙН ОГНООНООС (`insp_datetime`) ISO-8601 долоо хоног, Улаанбаатарын
    *    хуанлиар — «2026-W37». Урьд нь маягтын `week` кодыг (`w1`…, «37») шууд авдаг тул
    *    бөглөгч/маягтын тооцоо ISO долоо хоногоос зөрөхөд KPI (огнооны хил) ба чарт өөр
-   *    долоо хоногт тоолдог байв. Огноогүй мөрөнд л маягтын `week` утга (нөөц).
+   *    долоо хоногт тоолдог байв.
+   * ⚠️ 2026-10-09: ОГНООГҮЙ мөрөнд ХООСОН (''). Урьд нь маягтын жилгүй `week` код («37»)
+   *    нөөц болж ISO түлхүүрүүдийн дунд ТУСДАА багана үүсгэж (жилгүй, ISO-оос зөрөх) байв.
+   *    Одоо долоо хоногийн чарт ба KPI (`fetchWeekScores`) ХОЁУЛАА огноогүйг хасна —
+   *    өдөр/сарын цуваатай ижил дүрэм.
    */
   week: string;
   /**
@@ -144,17 +153,28 @@ export type UzlegRow = {
   /** Үзлэг хийсэн огноо (epoch ms) — байхгүй бол 0 */
   d: number;
   /**
-   * ⚠️ 2026-10-09: `cnt_*` талбарууд мөрөнд БАЙГАА эсэх. `false` бол доорх тоонууд
-   *    МЭДЭГДЭХГҮЙ (0 нь орлуулга) — нийлбэрт оруулахгүй, «—» гэж харуулна. Төрлийг
-   *    `number | null` болгоогүй: `ceo/scorecardLoad` тоо хүлээдэг.
+   * ⚠️ 2026-10-09: ҮЛ НИЙЦЛИЙН ҮНДСЭН 4 тоо (ноцтой · бага · ажиглалт · нийцсэн) БҮГД бөглөгдсөн
+   *    эсэх. `false` бол доорх тоонууд (0 нь орлуулга) МЭДЭГДЭХГҮЙ — `ceo/scorecardLoad`
+   *    тэр мөрийг алгасна. Төрлийг `number | null` болгоогүй: `scorecardLoad` тоо хүлээдэг.
+   *    `cnt_na` ОРОХГҮЙ — «Хамааралгүй» дутуу нь бусад 4 зэргийг хаяхгүй.
    */
   sevKnown: boolean;
+  /**
+   * ⚠️ 2026-10-09: ТАЛБАР БҮРИЙН мэдэгдэх эсэх (`r[f] != null && r[f] !== ''`). Урьд нь таван
+   *    талбарыг НЭГ тугаар (`every(f in r)`) шалгадаг тул `cnt_na` алга бол бусад 4 зэргийн
+   *    бодит тоо ч нийлбэрээс хаягддаг байв. `severity()` зэрэг бүрийг өөрийн тугаар нийлүүлнэ.
+   */
+  sevHas: Readonly<Record<SevKey, boolean>>;
   major: number;
   minor: number;
   obs: number;
   conf: number;
   na: number;
 };
+
+/** Үл нийцлийн зэргийн түлхүүр — `cnt_*` таван талбар */
+type SevKey = 'major' | 'minor' | 'obs' | 'conf' | 'na';
+const SEV_KEYS: readonly SevKey[] = ['major', 'minor', 'obs', 'conf', 'na'];
 
 const nn = (v: unknown): number => {
   const x = Number(v);
@@ -201,9 +221,18 @@ export const uzWeekKey = (ms: number): string => {
   return `${w.year}-W${String(w.no).padStart(2, '0')}`;
 };
 
-/** Долоо хоногийн шошго — `37` / `w37` → «37-р долоо хоног» */
-export const weekLabel = (k: string): string => {
+/** «2026-W37» → 2026; жилгүй түлхүүрт `null` */
+const weekYear = (k: string): string | null => /^(\d{4})-/.exec(k.trim())?.[1] ?? null;
+
+/**
+ * Долоо хоногийн шошго — `37` / `w37` → «37-р долоо хоног».
+ * ⚠️ 2026-10-09: `withYear` — цуваа ХОЁР ОН дамжвал «2026 оны 52-р долоо хоног»: урьд нь
+ *    «52-р» ба «1-р» хоёр он нэг тэнхлэгт жилгүй гарч, аль оных нь мэдэгдэхгүй байв.
+ */
+export const weekLabel = (k: string, withYear = false): string => {
   const n = weekNum(k);
+  const y = withYear ? weekYear(k) : null;
+  if (n != null && y) return tr('{0} оны {1}-р долоо хоног', y, String(n));
   return n != null ? tr('{0}-р долоо хоног', String(n)) : k === 'other' ? tr('Бусад') : k;
 };
 
@@ -285,14 +314,18 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
   };
   const site = named(U.site, U.siteOther);
   const d = nn(r[U.ognoo]);
-  /* ⚠️ 2026-10-09: `outFields: *` тул БАЙГАА талбар бүр мөрөнд түлхүүртэй (утга нь null ч) —
-     түлхүүргүй бол талбар өөрөө алга (нэр солигдсон). Тэр үед 0 биш «мэдэгдэхгүй». */
-  const sevKnown = [U.major, U.minor, U.obs, U.conf, U.na].every((f) => f in r);
+  /* ⚠️ 2026-10-09: ТАЛБАР БҮРЭЭР — утга бөглөгдсөн (`null`/'' биш) бол мэдэгдэнэ. Урьд нь
+     `every(f in r)` нэг туг тул `cnt_na` алга/хоосон бол бусад 4 зэргийн тоо ч хаягддаг байв. */
+  const known = (f: string) => r[f] != null && r[f] !== '';
+  const sevHas: Record<SevKey, boolean> = {
+    major: known(U.major), minor: known(U.minor), obs: known(U.obs), conf: known(U.conf), na: known(U.na),
+  };
+  const sevKnown = sevHas.major && sevHas.minor && sevHas.obs && sevHas.conf;
   return {
     oid: nn(r.objectid ?? r.OBJECTID),
     site,
-    /* ⚠️ 2026-10-09: огнооноос (ISO, UB) — огноогүй бол маягтын `week` (нөөц) */
-    week: d > 0 ? uzWeekKey(d) : r[U.week] == null ? '' : String(r[U.week]),
+    /* ⚠️ 2026-10-09: огнооноос (ISO, UB); огноогүй бол '' — чарт/KPI-д ОРОХГҮЙ (`UzlegRow.week`) */
+    week: d > 0 ? uzWeekKey(d) : '',
     scE: nnull(r[U.scEarned]),
     scA: nnull(r[U.scAppl]),
     company: named(U.company, U.companyOther),
@@ -303,6 +336,7 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
     shift: named(U.shift),
     d,
     sevKnown,
+    sevHas,
     major: nn(r[U.major]),
     minor: nn(r[U.minor]),
     obs: nn(r[U.obs]),
@@ -386,11 +420,12 @@ export function UzSrcHead({ title, hue }: { title: string; hue: string }) {
 
 /* ═════════════════ Өмнөх долоо хоногийн дундаж оноо (KPI) ═════════════════ */
 
-/** ISO-8601 долоо хоногийн дугаар — Даваа гарагаас эхэлнэ, 1-р долоо хоног нь Пүрэв агуулсан */
-const isoWeek = (d: Date): number => isoWeekOf(d.getFullYear(), d.getMonth(), d.getDate()).no;
+/** Улаанбаатарын цагийн бүс (UTC+8, зуны цаггүй) — `ubDayKey`-ийн дүрэм */
+const UB_OFFSET_MS = 8 * 3_600_000;
+const DAY_MS = 86_400_000;
 
 /**
- * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГ — Даваа 00:00-оос Даваа 00:00 хүртэл, ЛОКАЛ цагаар.
+ * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГ — Даваа 00:00-оос Даваа 00:00 хүртэл, УЛААНБААТАРЫН цагаар.
  *
  * ⚠️ Хэрэглэгчийн дүрэм (2026-09-17): «37-р долоо хоног дуусаад мэдээлэл нь
  * 38 дахь долоо хоногтоо харагдана, 38 дуусахад 38-ийн дундажаар солигдоно».
@@ -398,18 +433,27 @@ const isoWeek = (d: Date): number => isoWeekOf(d.getFullYear(), d.getMonth(), d.
  * явагдаж буй долоо хоногийн дундаж Даваа гарагт ганц үзлэгээс бүрдэж,
  * өдөр бүр үсэрч савлана.
  *
- * ⚠️ ЛОКАЛ цаг (Улаанбаатар UTC+8): `toISOString`-ийн UTC хил нь Даваа
- * 00:00–08:00-ийн үзлэгийг ӨМНӨХ долоо хоногт хийх байлаа.
+ * ⚠️ Улаанбаатар UTC+8: `toISOString`-ийн UTC хил нь Даваа 00:00–08:00-ийн үзлэгийг
+ * ӨМНӨХ долоо хоногт хийх байлаа.
+ * ⚠️ 2026-10-09: хөтчийн ЛОКАЛ цаг БИШ, UB (`ubDayKey`) — урьд нь `getDay()`/`setDate()`
+ *    локал байсан тул гадаадаас (эсвэл UTC-тэй машинаас) нээхэд KPI-ийн долоо хоногийн хил
+ *    чартын (`uzWeekKey`, UB) хилээс 8 цагаар зөрдөг байв. `start`/`end` нь UB-ийн Даваа
+ *    00:00-ийн ЖИНХЭНЭ агшин (UTC-ээр Ням 16:00).
  */
 export function prevWeek(now = new Date()): { start: Date; end: Date; no: number } {
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  end.setDate(end.getDate() - ((end.getDay() + 6) % 7));
-  const start = new Date(end);
-  start.setDate(start.getDate() - 7);
-  return { start, end, no: isoWeek(start) };
+  const [y, m, d] = ubDayKey(now.getTime()).split('-').map(Number);
+  /* UB-ийн хуанлийн өдрийг UTC-ийн «шошго» болгож гарагийг тооцно */
+  const day = Date.UTC(y, m - 1, d);
+  const mon = day - ((new Date(day).getUTCDay() + 6) % 7) * DAY_MS;
+  const prevMon = new Date(mon - 7 * DAY_MS);
+  return {
+    start: new Date(mon - 7 * DAY_MS - UB_OFFSET_MS),
+    end: new Date(mon - UB_OFFSET_MS),
+    no: isoWeekOf(prevMon.getUTCFullYear(), prevMon.getUTCMonth(), prevMon.getUTCDate()).no,
+  };
 };
 
-/** ArcGIS SQL-ийн огноо — сервер UTC-ээр хадгалдаг тул локал хилийг UTC болгоно */
+/** ArcGIS SQL-ийн огноо — сервер UTC-ээр хадгалдаг; `prevWeek`-ийн хил аль хэдийн ЖИНХЭНЭ агшин (UB) */
 const sqlTs = (d: Date) => `timestamp '${d.toISOString().slice(0, 19).replace('T', ' ')}'`;
 
 /**
@@ -469,8 +513,14 @@ export type WeekScores = { no: number; rows: ScoreRow[] };
  * ⚠️ 2026-10-09: ДОЛОО ХОНОГ ОДОО ОГНООНООС (ISO) — чарт (`UzlegRow.week` = `uzWeekKey`) ч
  *    мөн огнооноос тул «чарттай НЭГ эх» дүрэм хэвээр. Урьд нь маягтын `week` кодоор
  *    (бөглөгчийн/маягтын тооцоо) тааруулдаг тул ISO долоо хоногоос зөрсөн мөр буруу долоо
- *    хоногт ордог байв. Сервер: `[Даваа, дараа Даваа)` огнооны хил; ОГНООГҮЙ мөр л
- *    маягтын `week` кодоор (`weekCodes`) — нөөц.
+ *    хоногт ордог байв. Сервер: `[Даваа, дараа Даваа)` огнооны хил (UB).
+ * ⚠️ 2026-10-09: ОГНООГҮЙ мөр ОРОХГҮЙ — урьд нь маягтын `week` кодоор (`OR … IS NULL AND
+ *    week IN …`) нөөц болгодог байсан ч чарт тэр мөрүүдийг ISO долоо хоногт оруулдаггүй тул
+ *    KPI ба чарт зөрдөг, мөн маягтад `week` талбар алга бол бүх хүсэлт SQL алдаагаар унадаг
+ *    байв. Одоо хоёулаа ЗӨВХӨН огноотой мөрөөр — нэг эх.
+ * ⚠️ 2026-10-09: метадата (`loadDomains`) УНАВАЛ ШИДНЭ — урьд нь хоосон толиор талбайн кодыг
+ *    нэрлэж чадалгүй багцын түлхүүр хоосон болж, тэр БУРУУ дүн 5 минут кэшлэгддэг байв.
+ *    `cached` алдааг кэшлэдэггүй тул дараагийн дуудалт дахин оролдоно.
  * ⚠️ КЭШ ДОЛОО ХОНОГООР (`prevWeek().start`) — Даваа гараг дамжихад шинэ түлхүүр тул
  *    хуучин долоо хоногийн дүн 5 минут ч үлдэхгүй (`Habea`-ийн цаг/visibility дэгээ).
  */
@@ -486,18 +536,15 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   return f();
 }
 
-/** Огноогүй мөрийн нөөц — маягтын `week` кодын хувилбарууд (`37` · `037` биш · `w37`) */
-export const weekCodes = (no: number): string[] =>
-  [...new Set([String(no), String(no).padStart(2, '0'), `w${no}`, `W${no}`])];
-
 async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  const codes = weekCodes(w.no).map((c) => `'${c}'`).join(',');
-  const where = `((${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`
-    + ` OR (${U.ognoo} IS NULL AND ${U.week} IN (${codes})))`;
+  const where = `(${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`;
   const groupBy = `${U.site},${U.company}`;
-  const parts = await Promise.all(SCORE_URLS.map((url) => Promise.all([
+  /* ⚠️ 2026-10-09: метадата ЭХЛЭЭД — унавал шиднэ (дээрх ⚠️); кэштэй тул хурдан */
+  const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url)));
+  if (metas.some((m) => m.failed)) throw new Error(tr('Маягтын кодын тайлбар уншигдсангүй — дахин оролдоно уу.'));
+  const parts = await Promise.all(SCORE_URLS.map((url, ui) => Promise.all([
     queryGroup(
       url,
       groupBy,
@@ -516,8 +563,8 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
       [sum(U.scEarned, 'e'), sum(U.scAppl, 'a'), count('objectid', 'ns')],
       `(${where}) AND ${U.scEarned} IS NOT NULL AND ${U.scAppl} > 0`,
     ),
-    loadDomains(url),
-  ])));
+    metas[ui],
+  ] as const)));
   /* ⚠️ (талбай × компани) нүдээр НИЙЛҮҮЛНЭ — `where` аль хэдийн тухайн долоо хоногийн
      мөрүүдийг л буцаана (2026-10-09). */
   type Acc = { site: string; coCode: string; n: number; nc: number; e: number; a: number; ns: number };
@@ -697,8 +744,9 @@ export function uzPickRows(r: UzlegRow): [string, string][] {
 }
 
 export const uzValueLabel = (d: UzDim, v: string): string => {
-  /* Долоо хоног нь КОДООР (`w3`) хадгалагдана — чипэнд хүний нэрээр */
-  if (d === 'week') return weekLabel(v);
+  /* Долоо хоног нь КОДООР (`w3`) хадгалагдана — чипэнд хүний нэрээр.
+     ⚠️ 2026-10-09: жилтэй («2026 оны 52-р долоо хоног») — он дамжсан сонголт андуурагдахгүй */
+  if (d === 'week') return weekLabel(v, true);
   if (d !== 'sev') return v;
   const m: Record<string, string> = {
     major: tr('Ноцтой үл нийцэл'),
@@ -844,7 +892,8 @@ function byWeek(rows: UzlegRow[]) {
   /* `d0` — тухайн долоо хоногийн ХАМГИЙН ЭРТ үзлэгийн огноо (эрэмбэд) */
   const m = new Map<string, { n: number; e: number; a: number; d0: number }>();
   for (const r of rows) {
-    if (!r.week) continue;
+    /* ⚠️ 2026-10-09: огноогүй мөр (`week` хоосон) ОРОХГҮЙ — KPI-тэй нэг дүрэм (`UzlegRow.week`) */
+    if (!r.week || !(r.d > 0)) continue;
     const cur = m.get(r.week) ?? { n: 0, e: 0, a: 0, d0: Infinity };
     cur.n += 1;
     /* ⚠️ 2026-09-25: «авсан оноо» хоосон мөрийг ОНООНООС хасна — урьд нь
@@ -853,6 +902,8 @@ function byWeek(rows: UzlegRow[]) {
     if (r.d > 0 && r.d < cur.d0) cur.d0 = r.d;
     m.set(r.week, cur);
   }
+  /* ⚠️ 2026-10-09: цуваа ХОЁР ОН дамжвал шошгонд он — «2026·52-р», «2027·1-р» */
+  const multiYear = new Set([...m.keys()].map(weekYear).filter(Boolean)).size > 1;
   const items = [...m.entries()]
     /**
      * ⚠️ ЦАГ ХУГАЦААНЫ ДАРААЛЛААР — долоо хоногийн ЖИНХЭНЭ огноогоор, дугаараар
@@ -874,7 +925,8 @@ function byWeek(rows: UzlegRow[]) {
       /* Шошго нь ТОВЧ («37-р») — нарийн баганад багтах ёстой;
          бүтэн нэр нь hover-ийн гарчиг ба шүүлтийн чипэнд гарна. */
       const wn = weekNum(k);
-      const short = wn != null ? tr('{0}-р', String(wn)) : weekLabel(k);
+      const yr = multiYear ? weekYear(k) : null;
+      const short = wn != null ? `${yr ? `${yr}·` : ''}${tr('{0}-р', String(wn))}` : weekLabel(k);
       if (!score) return [{ key: k, label: short, value: v.n, display: num(v.n) }];
       if (v.a <= 0) return [];
       const p = (v.e / v.a) * 100;
@@ -906,14 +958,15 @@ function countBy(rows: UzlegRow[], of: (x: UzlegRow) => string) {
  * «Хамааралгүй» нь саарал — тэр нь үнэлгээ БИШ.
  */
 function severity(rows: UzlegRow[]) {
-  /* ⚠️ 2026-10-09: `cnt_*` талбаргүй мөр (`sevKnown: false`) нийлбэрт ОРОХГҮЙ — 0 биш мэдэгдэхгүй */
-  const sum = (of: (x: UzlegRow) => number) => rows.reduce((s, x) => (x.sevKnown ? s + of(x) : s), 0);
+  /* ⚠️ 2026-10-09: зэрэг БҮРИЙГ өөрийн тугаар (`sevHas[k]`) — бөглөгдөөгүй талбар нийлбэрт
+     ОРОХГҮЙ (0 биш мэдэгдэхгүй), гэхдээ бусад зэргийн бодит тоог хаяхгүй. */
+  const sum = (k: SevKey) => rows.reduce((s, x) => (x.sevHas[k] ? s + x[k] : s), 0);
   return [
-    { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum((x) => x.major), color: '#dc2626' },
-    { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum((x) => x.minor), color: '#f97316' },
-    { key: 'obs', label: tr('Ажиглалт'), value: sum((x) => x.obs), color: '#eab308' },
-    { key: 'conf', label: tr('Нийцсэн'), value: sum((x) => x.conf), color: '#16a34a' },
-    { key: 'na', label: tr('Хамааралгүй'), value: sum((x) => x.na), color: 'var(--ink-3)' },
+    { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum('major'), color: '#dc2626' },
+    { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum('minor'), color: '#f97316' },
+    { key: 'obs', label: tr('Ажиглалт'), value: sum('obs'), color: '#eab308' },
+    { key: 'conf', label: tr('Нийцсэн'), value: sum('conf'), color: '#16a34a' },
+    { key: 'na', label: tr('Хамааралгүй'), value: sum('na'), color: 'var(--ink-3)' },
   ]
     .filter((x) => x.value > 0)
     .map((x) => ({ ...x, display: num(x.value) }));
@@ -1003,11 +1056,88 @@ function byMonth(rows: UzlegRow[], curYm = '') {
  */
 type UzPhoto = { src: string; cap: string; tip: string };
 
-/** `<img src>`/`<a href>` — POST боломжгүй тул токен query string-ээр (`authToken.tokenQs`-ийн ⚠️) */
-export const photoSrc = (base: string): string => {
-  const q = tokenQs().slice(1);
-  return q ? `${base}?${q}` : base;
-};
+/**
+ * ХАВСРАЛТЫН ЗУРАГ — BLOB URL (2026-10-09, аюулгүй байдал).
+ * ⚠️ Урьд нь `photoSrc` `<img src>`/`<a href>`-д `?token=` залгадаг байв — токен ArcGIS/
+ *    прокси/CDN-ийн access log, хөтчийн түүх, Referer-ээр алдагддаг (CWE-598). Одоо зургийг
+ *    `uzlegReport.fetchAttachment` (POST, токен БИЕЭР, ЗӨВХӨН байгууллагын хост — `isOrgUrl`,
+ *    30с timeout) татаж `URL.createObjectURL` болгоно; солигдох/unmount үед revoke.
+ *    Амьдаар баталсан: POST + токен биеэр → зураг; токенгүй GET → HTML нэвтрэх хуудас.
+ * ⚠️ Жижиг LRU кэш (сүүлийн `BLOB_CACHE_MAX` Blob) — слайдерыг буцааж гүйлгэхэд дахин
+ *    татахгүй; Blob санах ой эзэлдэг тул хязгаартай. Алдаа/`null` кэшлэгдэхгүй.
+ * ⚠️ Таб дээр нээх (`openAttachment`) нь ӨӨРИЙН object URL үүсгэж 60с-ийн дараа revoke —
+ *    слайдер солигдоход зурагны URL хүчингүй болсон ч нээгдсэн таб эвдрэхгүй.
+ */
+const BLOB_CACHE_MAX = 12;
+const blobCache = new Map<string, Promise<Blob | null>>();
+function attBlob(url: string): Promise<Blob | null> {
+  const hit = blobCache.get(url);
+  if (hit) { blobCache.delete(url); blobCache.set(url, hit); return hit; }
+  const p = fetchAttachment(url);
+  const drop = () => { if (blobCache.get(url) === p) blobCache.delete(url); };
+  p.then((b) => { if (!b) drop(); }, drop);
+  blobCache.set(url, p);
+  while (blobCache.size > BLOB_CACHE_MAX) {
+    const oldest = blobCache.keys().next().value;
+    if (oldest == null) break;
+    blobCache.delete(oldest);
+  }
+  return p;
+}
+
+/** Хавсралтын blob URL — `null` = ачаалж буй, `''` = татагдсангүй */
+function useAttachmentUrl(url: string): string | null {
+  const [st, setSt] = useState<{ url: string; obj: string }>({ url: '', obj: '' });
+  useEffect(() => {
+    let alive = true;
+    let obj = '';
+    attBlob(url).then(
+      (b) => {
+        if (!alive) return;
+        obj = b ? URL.createObjectURL(b) : '';
+        setSt({ url, obj });
+      },
+      () => { if (alive) setSt({ url, obj: '' }); },
+    );
+    return () => {
+      alive = false;
+      if (obj) URL.revokeObjectURL(obj);
+    };
+  }, [url]);
+  return st.url === url ? st.obj : null;
+}
+
+/** Хавсралтыг шинэ табад — токенгүй, blob URL-аар (60с-ийн дараа revoke) */
+export async function openAttachment(url: string): Promise<void> {
+  const b = await attBlob(url).catch(() => null);
+  if (!b) return;
+  const obj = URL.createObjectURL(b);
+  window.open(obj, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(obj), 60_000);
+}
+
+/**
+ * ХАВСРАЛТЫН ЗУРАГ + ХОЛБООС — `<a><img/></a>` бүтэц (CSS хэвээр), хаяг нь blob URL.
+ * ⚠️ `url` нь ТОКЕНГҮЙ ArcGIS хавсралтын хаяг (`…/attachments/<id>`).
+ */
+export function AttPhoto({ url, alt, title, className }: { url: string; alt: string; title?: string; className?: string }) {
+  const src = useAttachmentUrl(url);
+  return (
+    <a
+      href={src || undefined}
+      target="_blank"
+      rel="noreferrer"
+      title={title}
+      className={className}
+      onClick={(e) => { e.preventDefault(); if (src) void openAttachment(url); }}
+    >
+      {/* ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — слайдер доод зурваст, lazy-loader асахгүй үлддэг */}
+      {src
+        ? <img src={src} alt={alt} />
+        : <span className={h.photoNote}>{src === '' ? tr('Зураг татагдсангүй') : tr('Зураг ачаалж байна…')}</span>}
+    </a>
+  );
+}
 
 /**
  * ҮЗЛЭГИЙН ХАВСРАЛТ ЗУРГУУД — НЭГ хүсэлтээр (2026-09-15, хэрэглэгчийн
@@ -1022,10 +1152,8 @@ export const photoSrc = (base: string): string => {
  * ⚠️ ТОКЕН ХОЁР ГАЗАР ХЭРЭГТЭЙ. Маягтууд нэргүй хэрэглэгчид хаалттай тул
  * (1) жагсаалтын хүсэлт нь токенгүй бол алдаа БИШ ХООСОН хариу өгнө,
  * (2) `<img src>` ч токенгүй бол зураг ачаалагдахгүй. Жагсаалтыг POST
- * биеэр, зургийн хаягийг `?token=`-тэй угсарна — ArcGIS JS SDK хаалттай
- * хавсралтад ЯГ ингэдэг. ⚠️ Токен нь тухайн хэрэглэгчийн өөрийн богино
- * хугацаат OAuth токен; зургийг шинэ цонхонд нээхэд хөтчийн түүхэнд
- * үлдэнэ — хугацаа нь дуусахаар хүчингүй болно.
+ * биеэр асууна. ⚠️ 2026-10-09: зургийг `?token=`-тэй хаягаар БИШ — `AttPhoto`
+ * POST биеэр татаж blob URL-аар харуулна (токен түүх/лог/Referer-т үлдэхгүй).
  *
  * ⚠️ КЭШГҮЙ. Шүүлтүүр солигдоход ганц хүсэлт дахин явна — модулийн кэш
  * нэмбэл өгөгдлийн автобусад бүртгэх шаардлага гарч, хуучирсан зураг
@@ -1139,11 +1267,8 @@ function UzPhotoSlider({ url, rows }: { url: string; rows: UzlegRow[] }) {
         >
           ‹
         </button>
-        <a href={photoSrc(p.src)} target="_blank" rel="noreferrer" title={p.tip} className={h.slideImg}>
-          {/* ⚠️ loading="lazy" ХЭРЭГЛЭХГҮЙ — ослын слайдерын ижил шалтгаан:
-              багана гүйлгэгдэж харагдах хүртэл lazy-loader асахгүй. */}
-          <img src={photoSrc(p.src)} alt={`${p.cap} · ${p.tip}`} />
-        </a>
+        {/* ⚠️ 2026-10-09: blob URL (`AttPhoto`) — токен URL-д ОРОХГҮЙ */}
+        <AttPhoto url={p.src} alt={`${p.cap} · ${p.tip}`} title={p.tip} className={h.slideImg} />
         <button
           type="button"
           className={h.slideNav}
@@ -1222,8 +1347,13 @@ export function UzlegLeft({
   const sevRows = st.rows.filter((x) => uzPass(x, sel, 'sev'));
   const sev = severity(sevRows);
   const total = sev.reduce((s, x) => s + x.value, 0);
-  /* ⚠️ 2026-10-09: `cnt_*` талбаргүй (нэр солигдсон) бол заалтын тоо «—» — «0 заалт» гэж ХУДАЛ хэлэхгүй */
-  const sevKnown = sevRows.some((x) => x.sevKnown) || !sevRows.length;
+  /* ⚠️ 2026-10-09: `cnt_*` тоогүй үзлэг — БҮГД тоогүй бол «Заалтын тоо мэдэгдэхгүй», ХОЛИМОГ бол
+     «(N үзлэг тоогүй)». Урьд нь ганц мөр тоотой бол бусдыг чимээгүй 0 гэж нийлүүлдэг байв. */
+  const noCnt = sevRows.filter((x) => !SEV_KEYS.some((k) => x.sevHas[k])).length;
+  const cntUnknown = sevRows.length > 0 && noCnt === sevRows.length;
+  const sevNote = cntUnknown
+    ? `${tr('{0} үзлэг', num(all.length))} · ${tr('Заалтын тоо мэдэгдэхгүй')}`
+    : `${tr('{0} үзлэг · {1} заалт', num(all.length), num(total))}${noCnt ? ` ${tr('({0} үзлэг тоогүй)', num(noCnt))}` : ''}`;
   const byPkg = pkgSt?.state === 'ready' ? byPkgNc(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
 
   return (
@@ -1252,12 +1382,12 @@ export function UzlegLeft({
         */}
       <Section
         title={tr('Үл нийцлийн зэрэг')}
-        note={tr('{0} үзлэг · {1} заалт', num(all.length), sevKnown ? num(total) : '—')}
+        note={sevNote}
         tone="primary"
       >
         {sev.length
           ? <Bars items={sev} selected={sel.sev} onSelect={(k) => onPick('sev', k)} />
-          : <Empty label={tr('Бүртгэл алга')} />}
+          : <Empty label={cntUnknown ? tr('Заалтын тоо мэдэгдэхгүй') : tr('Бүртгэл алга')} />}
       </Section>
       {pkgSt && (
         <Section

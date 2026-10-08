@@ -192,9 +192,11 @@ console.log('✓ PlanModal SSR: combobox · алхмаар хуулах товч
   // onOtherTab өгөөгүй → энгийн span
   html = rend();
   assert.ok(!/rowDateOther/.test(html), 'onOtherTab-гүй бол нөгөө таб товч биш');
-  // бүлэг/засагдахгүй мөрд нөгөө табын товч ч гарахгүй
+  // ⚠️ 2026-10-09: идэвхтэй таб ТҮГЖЭЭТЭЙ (onDate/onDays алга) ч нөгөө таб засагдана (түгжээ төрөл тус бүрд) — товч ГАРНА;
+  // бүлэг/нэмэлт мөр/эрхгүй мөрд дуудагч (`Huvaari`) `onOtherTab`-ийг өгөхгүй (дээрх «onOtherTab-гүй» тохиолдол)
   html = rend({ onOtherTab: noop, onDate: undefined, onDays: undefined });
-  assert.ok(!/rowDateOther/.test(html), 'засагдахгүй мөрд нөгөө табын товч гарахгүй');
+  assert.equal((html.match(/rowDateOther/g) ?? []).length, 3, 'идэвхтэй таб түгжээтэй үед ч нөгөө табын 3 нүд товч');
+  assert.ok(!/data-col=/.test(html.replace(/data-col="ham"/g, '')), 'түгжээтэй идэвхтэй табын огнооны нүд засагдахгүй');
   // өөрчлөгдсөн блокийн чип + идэвхтэй; хамтран засагчийн цэг
   html = rend({ changedBlks: [1, 4, 6], onPickBlk: noop, blkOn: 4, editedBy: { user: 'Бат', at: Date.UTC(2026, 9, 8, 6, 2) } });
   const chips = [...html.matchAll(/<button[^>]*class="blkChip[^"]*"[^>]*>(\d+)<\/button>/g)];

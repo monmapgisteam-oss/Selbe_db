@@ -82,7 +82,19 @@ export type RateItem = {
   rate: number;
 };
 
+/**
+ * САРЫН давтамж — ⚠️ 2026-10-09: хүн-цаггүй (тэнхлэгийн завсрын) сард `hours`/`rate` нь
+ * `null` (цоорхой, 0 БИШ).
+ */
+export type RateMonthItem = Omit<RateItem, 'hours' | 'rate'> & { hours: number | null; rate: number | null };
+
 type IncLike = { d: number; bagtsK: string };
+
+/** «YYYY-MM» → дараагийн сар */
+const nextYm = (ym: string): string => {
+  const [y, m] = ym.split('-').map(Number);
+  return m >= 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
 
 /** Багцын хуваарилсан хүн-цаг — тухайн өдрийн, сонгосон багцуудын */
 const pkgHours = (
@@ -100,8 +112,11 @@ const pkgHours = (
 /**
  * САРААР. `pkgs` өгвөл (багцын шүүлт) хүн-цаг нь тэдгээр багцын ХУВААРИЛСАН утга.
  * Осол нь дуудагчийн шүүсэн олонлог (огноогүй осол тоологдохгүй).
- * @returns `items` — хүн-цагтай сарууд (хуучнаас шинэ), `unmatched` — хүн-цаггүй
- *          сард эсвэл огноогүй унасан ослын тоо.
+ * @returns `items` — эхний хүн-цагтай сараас сүүлийнх хүртэл ТАСРАЛТГҮЙ сарын тэнхлэг
+ *          (хуучнаас шинэ), `unmatched` — хүн-цаггүй сард эсвэл огноогүй унасан ослын тоо.
+ * ⚠️ 2026-10-09: ТАСРАЛТГҮЙ ТЭНХЛЭГ — урьд нь зөвхөн хүн-цагтай сарууд гардаг тул завсрын
+ *    сар алга болж муруй 2026.06 → 2026.09 руу шууд үсэрч, хоёр сарын хоорондох «тасралт»
+ *    харагддаггүй байв. Завсрын сар `rate: null` — дуудагч цоорхой болгож зурна (`Series lines`).
  */
 export function rateByMonth(
   days: readonly HourDay[],
@@ -111,7 +126,7 @@ export function rateByMonth(
     pkgOfCo: ReadonlyMap<string, string>;
     pkgs: ReadonlySet<string> | null;
   },
-): { items: RateItem[]; unmatched: number } {
+): { items: RateMonthItem[]; unmatched: number } {
   const hours = new Map<string, number>();
   for (const day of days) {
     const h = opts.pkgs ? pkgHours(day, opts.pkgOfCo, opts.pkgs) : day.total;
@@ -126,12 +141,20 @@ export function rateByMonth(
     if (!ym || !hours.has(ym)) { unmatched += 1; continue; }
     n.set(ym, (n.get(ym) ?? 0) + 1);
   }
-  const items = [...hours.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, h]) => {
+  const keys = [...hours.keys()].sort();
+  const items: RateMonthItem[] = [];
+  if (keys.length) {
+    const last = keys[keys.length - 1];
+    /* ⚠️ Хамгаалалт: буруу формат (`ymOf`) мөнхийн давталт үүсгэхгүй — 1200 сар (100 жил) */
+    for (let ym = keys[0], i = 0; i < 1200; ym = nextYm(ym), i += 1) {
+      const h = hours.get(ym);
       const k = n.get(ym) ?? 0;
-      return { key: ym, label: ym.replace('-', '.'), incidents: k, hours: h, rate: (k / h) * RATE_BASE };
-    });
+      items.push(h == null
+        ? { key: ym, label: ym.replace('-', '.'), incidents: k, hours: null, rate: null }
+        : { key: ym, label: ym.replace('-', '.'), incidents: k, hours: h, rate: (k / h) * RATE_BASE });
+      if (ym >= last) break;
+    }
+  }
   return { items, unmatched };
 }
 
@@ -202,7 +225,22 @@ export const markCurMonth = <T extends { key: string; label: string }>(items: T[
  */
 export const LTI_RE = /чадвар[^,;.]*алд|ноцтой\s*осол|үйлдвэрлэлийн\s*осол|нас\s*барс|амь\s*нас(аа)?\s*алд|lost[\s-]*time|\bLTI\b/i;
 const NOT_LTI_RE = /болзошгүй|дөхсөн|near[\s-]*miss|хохирол/i;
-export const isLtiType = (type: string): boolean => LTI_RE.test(type) && !NOT_LTI_RE.test(type);
+/** Төрлийн ҮНДСЭН хэсэг — эхний хаалт/таслал/зураас хүртэл («Ноцтой осол (эд хөрөнгийн хохиролтой)» → «Ноцтой осол») */
+const mainPart = (t: string): string => t.split(/[(,;/]|\s[—–-]\s/)[0] ?? t;
+/**
+ * ⚠️ 2026-10-09: ЭРЭМБЭ — «LTI биш» үг нь ҮНДСЭН төрөлд байвал л хасна. Урьд нь мөрийн ХААНА ч
+ *    «хохирол» гарвал хасдаг тул «Үйлдвэрлэлийн осол, эд хөрөнгийн хохиролтой» LTI-ээс унах
+ *    байв. Үндсэн хэсэг LTI бол дагалдах тайлбар хасахгүй; LTI үг зөвхөн дагалдах хэсэгт
+ *    байвал (жиш. «Осол дөхсөн (ноцтой осол болох байсан)») хуучин дүрмээр бүтэн мөрийг шалгана.
+ *    Амьд 14 төрлийн ангилал ӨӨРЧЛӨГДӨӨГҮЙ (`habeaRate.check`): LTI = «Ноцтой осол»,
+ *    «Үйлдвэрлэлийн осол».
+ */
+export const isLtiType = (type: string): boolean => {
+  if (!LTI_RE.test(type)) return false;
+  const main = mainPart(type);
+  if (LTI_RE.test(main)) return !NOT_LTI_RE.test(main);
+  return !NOT_LTI_RE.test(type);
+};
 
 /**
  * СҮҮЛИЙН LTI-ЭЭС ХОЙШ ажилласан хүн-цаг — Σ `Hun_tsag`, `Ognoo` > сүүлийн LTI-ийн ӨДӨР.
@@ -210,15 +248,21 @@ export const isLtiType = (type: string): boolean => LTI_RE.test(type) && !NOT_LT
  * ⚠️ Огноогүй LTI байвал хил тодорхойгүй → `hours: null` («—», 0 БИШ).
  * ⚠️ Өдрийг `dayOf`-оор (Улаанбаатарын `ubDayKey`) — LTI гарсан өдрийн хүн-цаг ОРОХГҮЙ.
  * ⚠️ Дуудагч өдөрт НЭГ мөр өгнө (`latestRowPerDay`).
+ * ⚠️ 2026-10-09: ИРЭЭДҮЙН огноотой LTI (`d > now` — бөглөхдөө оныг/сарыг андуурсан) ХИЛ
+ *    БОЛОХГҮЙ — урьд нь «сүүлийн LTI» нь ирээдүйд гарч KPI 0 хэвээр гацдаг байв. Тоог
+ *    `futureLti`-д буцаана — дуудагч ил тэмдэглэнэ.
  */
 export function ltiFreeHours(
   labor: readonly Row[],
   incidents: readonly { d: number; type: string }[],
   dayOf: (ms: number) => string,
-): { hours: number | null; since: number | null; undatedLti: boolean } {
+  now: number = Date.now(),
+): { hours: number | null; since: number | null; undatedLti: boolean; futureLti: number } {
   const L = HABEA.labor.fields;
-  const lti = incidents.filter((x) => isLtiType(x.type));
-  if (lti.some((x) => !(x.d > 0))) return { hours: null, since: null, undatedLti: true };
+  const all = incidents.filter((x) => isLtiType(x.type));
+  const futureLti = all.filter((x) => x.d > now).length;
+  const lti = all.filter((x) => !(x.d > now));
+  if (lti.some((x) => !(x.d > 0))) return { hours: null, since: null, undatedLti: true, futureLti };
   const since = lti.length ? Math.max(...lti.map((x) => x.d)) : null;
   const cut = since == null ? null : dayOf(since);
   let hours = 0;
@@ -231,5 +275,5 @@ export function ltiFreeHours(
     }
     hours += h;
   }
-  return { hours, since, undatedLti: false };
+  return { hours, since, undatedLti: false, futureLti };
 }

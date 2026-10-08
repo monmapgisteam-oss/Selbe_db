@@ -23,6 +23,7 @@ import Expand from '@arcgis/core/widgets/Expand';
 import type Layer from '@arcgis/core/layers/Layer';
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import esriConfig from '@arcgis/core/config';
+import { version as arcgisVersion } from '@arcgis/core/kernel';
 import { createRenderer as createHeatRenderer } from '@arcgis/core/smartMapping/renderers/heatmap';
 
 import BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
@@ -411,7 +412,10 @@ export function SuitMap({
     if (!el.current) return;
 
     if (!mapRef.current) {
-      esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
+      /* ⚠️ 2026-10-09: хувилбарыг СУУЛГАСАН багцаас (`kernel.version` = «4.34.8» → «4.34») — урьд
+         «4.34» гараар бичигдсэн тул `@arcgis/core`-ийг шинэчлэхэд CDN-ийн asset (worker, шрифт)
+         хуучин хувилбараас ачаалагдаж зөрөх эрсдэлтэй байв. MapCanvas-тай ИЖИЛ томъёо. */
+      esriConfig.assetsPath = `https://js.arcgis.com/${String(arcgisVersion).split('.').slice(0, 2).join('.')}/@arcgis/core/assets`;
 
       const zoneLayer = new GraphicsLayer({ title: tr('Тохиромжтой байдал'), elevationInfo: ON_GROUND });
       const labelLayer = new GraphicsLayer({ title: tr('Шошго'), elevationInfo: ON_GROUND });

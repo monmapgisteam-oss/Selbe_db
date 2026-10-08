@@ -52,3 +52,12 @@ assert.ok(sub.includes('ensureUniqueId(addedOid(res), id)'), 'hyanaltSubmit: д�
 const store = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
 assert.ok(store.includes('ensureUniqueId(addedOid(res)'), 'hyanaltStore.recheck: дугаарын шалгалт алга');
 console.log('✅ idUnique: Finance · hyanaltSubmit · hyanaltStore холбогдсон');
+
+/* ── 2026-10-09: sweepDupIds ↔ ensureUniqueId — нэг дараалал, ачаалалт дууссаны дараа ── */
+{
+  const hy2 = readFileSync('src/lib/hyanalt.ts', 'utf8');
+  assert.ok(hy2.includes('return withIdLock(() => ensureUniqueIdLocked(oid, id, n));'), 'ensureUniqueId нь withIdLock-оор явах ёстой');
+  assert.ok(hy2.includes('void withIdLock(() => sweepDupIds())'), 'sweepDupIds нь withIdLock-оор явах ёстой');
+  assert.ok(hy2.includes('const plan = dupIdPlan(idRowsOf(await queryAll()));'), 'цэвэрлэгээ дараалал дотор ШИНЭЭР уншина');
+  console.log('✅ idUnique: цэвэрлэгээ ба ensureUniqueId зэрэг явахгүй');
+}

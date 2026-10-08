@@ -8,15 +8,18 @@
 
 ## 0. Хамрах хүрээ ба ХОРИГЛОХ зүйл
 
-**Хамрах хүрээ:** зөвхөн нүүр хуудасны удирдлагын самбар — `Home.tsx` ба `ExecKpi.tsx`.
+**Хамрах хүрээ:** зөвхөн нүүр хуудасны удирдлагын самбар — `Home.tsx`, `CeoBoard.tsx`, `CeoScorecard.tsx` (картууд `src/lib/ceo/registry.ts`).
+
+> ⚠️ 2026-10-09: `src/components/ExecKpi.tsx` 2026-09-06-нд УСТСАН (`Home.tsx`-ийн тайлбар) — түүнийг
+> орлосон нь `CeoBoard` (13 карт, `CEO_KPIS`). Доорх иш татлагыг тэр файлуудаар уншина.
 Газрын зураг, давхаргын каталог, бусад view (`plan`, `tsogts`, `gazar`, `analysis` г.м.)-д хүрэхгүй.
 
 **ХОРИГЛОХ:**
 
 1. **Шинэ ArcGIS хүсэлт НЭМЭХГҮЙ.** Одоо байгаа loader-ууд (`live.ts`, `execData.ts`, `execTriage.ts`, `Finance.tsx`) хангалттай. Самбарын бүтэц өөрчлөгдөж байгаа болохоос өгөгдлийн эх сурвалж өөрчлөгдөхгүй.
-2. **Одоо байгаа гүйцэтгэлийн ачаалалтын оновчлолыг эвдэхгүй.** `ExecKpi` нь `dynamic(..., { ssr: false })`-ээр ачаалагддаг, `loadOverlaps`/`loadVariance` нь `afterIdle`-ээр хойшлогддог, `execTriage`-ийн ачаалагчид модулийн түвшинд кэшлэгддэг. Эдгээр нь бүгд гүйцэтгэлийн аудитын үр дүн — хэвээр үлдэнэ.
+2. **Одоо байгаа гүйцэтгэлийн ачаалалтын оновчлолыг эвдэхгүй.** `CeoScorecard` нь `dynamic(..., { ssr: false })`-ээр ачаалагддаг (`Home.tsx`), хүнд картууд `registry.ts`-д `heavy: true`-аар тэмдэглэгдсэн, `execTriage`-ийн ачаалагчид модулийн түвшинд кэшлэгддэг. Эдгээр нь бүгд гүйцэтгэлийн аудитын үр дүн — хэвээр үлдэнэ.
 3. **Hex өнгө ШУУД бичихгүй.** Зөвхөн CSS хувьсагч: `var(--good)`, `var(--warn)`, `var(--bad)`, `var(--ink-3)`, `var(--hue)`. Тогтмол hex нь гэрэл/харанхуй горимд дагадаггүй.
-4. **Хиймэл өгөгдөл, чимэглэлийн график зохиохгүй.** Бодит цуваа/харьцаа байхгүй бол графикийг ОРХИНО (`ExecKpi.tsx`-ийн `CardData.chart` дээрх дүрэм хэвээр).
+4. **Хиймэл өгөгдөл, чимэглэлийн график зохиохгүй.** Бодит цуваа/харьцаа байхгүй бол графикийг ОРХИНО (2026-10-09: урьдах `ExecKpi.tsx`-ийн `CardData.chart` устсан; CEO карт `src/lib/ceo/kpi.ts`-ийн `KpiResult` — график зурдаггүй, тоо ба хүснэгт).
 5. **Гүйцэтгэлийн тооцооны логикт хүрэхгүй.** `loadBlockProgress`, `joinBagts`, `loadProjectProgress`-ын томьёог энэ даалгаварт өөрчлөхгүй (§7-г үз).
 6. **i18n алгасахгүй.** Бүх шинэ мөрийг `tr('…')`-ээр дамжуулж, `src/i18n/en.ts`-д англи орчуулгыг нэмнэ.
 
@@ -27,7 +30,8 @@
 | Файл | Юу байгаа |
 |---|---|
 | `src/components/Home.tsx` | «Төслийн ерөнхий үзүүлэлтүүд» — `useHomeKpis()` нь `main[4]` (том нүд) + `more[6]` (жижиг нүд) буцаана. Ангилалгүй, гэрлэн дохиогүй. `isSuper` эрхээр л харагдана. |
-| `src/components/ExecKpi.tsx` | «Гүйцэтгэлийн үнэлгээ» — 9 карт. `TIERS` массиваар good/warn/bad гэж БҮЛЭГЛЭДЭГ; `info`/`idle` нь доод «Лавлагаа» эгнээнд. |
+| `src/components/CeoBoard.tsx` | CEO самбар — `src/lib/ceo/registry.ts`-ийн `CEO_KPIS` (13 карт, сэдэвчилсэн бүлэг); карт бүрийн тооцоо `src/lib/ceo/*.ts`. ⚠️ 2026-10-09: урьдах `ExecKpi.tsx` (9 карт, `TIERS`) УСТСАН. |
+| `src/components/CeoScorecard.tsx` | «Багц ажлын оноо» — `src/lib/ceo/scorecard.ts` (+ `scorecardLoad.ts`); `dynamic(ssr:false)`. |
 | `src/lib/live.ts` | `loadBudget` (CF006/012/023/028, sources, byType, byPkg, months) · `loadHeadline` (areaHa, population, greenHa) · `loadProjectProgress` (actual, coverage, byStage, rows) · `loadHousing` (blocks, ail) · `loadSocial` (rows, totalN) · `loadClearance` (pct, remaining, remainingHa, cleared) |
 | `src/lib/execData.ts` | `useBagtsTable()` → `BagtsRow[]` (blocks, ail, contractor, progress, missing) · `useSuitability()` → `SuitSummary` |
 | `src/lib/execTriage.ts` | `loadVariance` (works, totalMnt, top, failedPkgs) · `loadOverlaps` (total, byPkg) · `loadDamage` (n, last, sample) · `VAR_BAD_MNT = 100_000_000` · `DMG_BAD_N = 3` |
@@ -145,8 +149,6 @@ CEO-д хамгийн үнэ цэнтэй ангилал. Бусад дөрөв 
 
 | Үзүүлэлт | 🟢 good | 🟡 warn | 🔴 bad |
 |---|---|---|---|
-| Санхүүжилт vs биет зөрүү | \|зөрүү\| ≤ 5пп | ≤ 15пп | > 15пп |
-| ⭐ Гэрээлэлт vs биет | гэрээлсэн% − биет% ≥ 0 | −10…0 | < −10 (гэрээгүй ажил) |
 | Обьёмын зөрүү | зөрүүгүй | > 0, < 100 сая ₮ | ≥ 100 сая ₮ (`VAR_BAD_MNT`) |
 | Хуваарийн биелэлт | хоцрогдолгүй | шар багц бий (gap ≥ 5) | улаан багц бий (gap ≥ 10) |
 | ⭐ Тайлангийн хамрах хүрээ | ≥ 95% | 80–95% | < 80% |
@@ -159,6 +161,9 @@ CEO-д хамгийн үнэ цэнтэй ангилал. Бусад дөрөв 
 | Хот төлөвлөлтийн оноо | ≥ 65 | 45–65 | < 45 |
 | QAQC — баримтгүй ажлын эзлэх хувь | < 50% | ≥ 50% (`QAQC_EMPTY_WARN_SHARE` 0.5) | ≥ 90% (`QAQC_EMPTY_BAD_SHARE` 0.9) |
 | Гэрээ − төсөв давалт (`contractGap`) | давалтгүй | > 0 ₮ | ≥ 1 тэрбум ₮ (`CONTRACT_OVER_BAD_MNT`) |
+
+> ⚠️ 2026-10-09: «Санхүүжилт vs биет зөрүү (5/15пп)» ба «Гэрээлэлт vs биет» мөрүүд ХАСАГДСАН —
+> тэдгээрийг бодох функц кодоос устсан. Олголт ↔ биет харьцуулалт одоо зөвхөн онооны самбарт (§5.1 «Санхүү»).
 
 > ⚠️ 2026-10-09: «ХАБЭА осол» картын гол тоо, шошго, түвшин нь **сүүлийн 30 хоногийн** бүртгэл
 > (`safety.ts` → `incidentLevel(agg.recent)`); нийт (бүх хугацааны) тоо нь баримт «нийт N»-д.
@@ -189,7 +194,7 @@ CEO-д хамгийн үнэ цэнтэй ангилал. Бусад дөрөв 
 ```
 src/lib/kpiLevels.ts     ← ШИНЭ: Level төрөл, босгын тогтмол, levelOf() туслах
 src/lib/kpiModel.ts      ← ШИНЭ: 5 ангилал, үзүүлэлт бүрийн тодорхойлолт (өгөгдлөөс ТУСГААРЛАСАН)
-src/components/ExecKpi.tsx  ← TIERS устаж, CATEGORIES-ээр зурна
+src/components/CeoBoard.tsx ← (2026-10-09: ExecKpi.tsx-ийг орлосон) карт `src/lib/ceo/registry.ts`-ээс
 src/components/Home.tsx     ← useHomeKpis() нь 1-р ангилалд шингэнэ; давхардсан нүд устана
 src/components/execKpi.module.css ← ангиллын гарчиг, түвшингийн зурвас, дүрсний хэв маяг
 ```

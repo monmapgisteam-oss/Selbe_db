@@ -12,6 +12,7 @@ import { HJ } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
+import { isLostWrite } from '@/lib/lostWrite';
 
 /**
  * ⚠️ Давхаргын дугаар нь 0 БИШ — 171. Нэг үйлчилгээнд олон хүснэгт
@@ -537,6 +538,105 @@ export function diffZov(before: Zov, d: ZovDraft): Record<string, unknown> {
 }
 
 /**
+ * Багц+шатын байрыг эзэлсэн мөрүүд (OID өсөхөөр) — давхардлын шалгалтад.
+ * ⚠️ 2026-10-09: `exceptOid` — засварын үед өөрийгөө хасна (`<> oid`).
+ */
+async function slotRows(
+  oidName: string, bagts: string, shat: number, exceptOid?: number,
+): Promise<{ oid: number; ner: string }[]> {
+  const q = (s: string) => `N'${s.replace(/'/g, "''")}'`;
+  let where = `${F.bagts} = ${q(bagts.trim())} AND ${F.shat} = ${Math.trunc(shat)}`;
+  if (exceptOid) where += ` AND ${oidName} <> ${Math.trunc(exceptOid)}`;
+  const j = await agsFetch(`${URL}/query`, {
+    where,
+    outFields: `${oidName},${F.ner}`,
+    orderByFields: `${oidName} ASC`,
+    returnGeometry: 'false',
+    resultRecordCount: '50',
+  });
+  /* ⚠️ OID уншигдаагүй мөрийг ХАСАХГҮЙ — давхардал нь давхардал (`oid` нь NaN байж болно) */
+  return ((j.features ?? []) as { attributes?: Record<string, unknown> }[])
+    .map((f) => ({ oid: Number(f.attributes?.[oidName]), ner: str(f.attributes?.[F.ner]) }));
+}
+
+/**
+ * ⚠️ 2026-10-09: ЗЭРЭГЦЭЭ НЭМЭЛТИЙН ДАВХАРДАЛ (бичсэний дараа илэрсэн).
+ * `kept` — манай мөр серверт ҮЛДСЭН эсэх (үлдсэн бол маягтыг дахин «Хадгалах»-гүй хаах ёстой —
+ * дахин дарахад урьдчилсан шалгалт өөрийн мөртэй нь давхацна).
+ */
+export class ZovClashError extends Error {
+  constructor(message: string, readonly kept: boolean, readonly oid?: number) {
+    super(message);
+    this.name = 'ZovClashError';
+  }
+}
+
+/**
+ * Шинэ мөр бичигдсэний ДАРАА багц+шатыг дахин тоолно. Ганцаараа бол юу ч хийхгүй.
+ * Давхардсан бол OID нь ХАМГИЙН БАГА мөр үлдэнэ: манайх их бол өөрийгөө УСТГАНА (нэг удаа,
+ * давталтгүй) — `ZovClashError(kept=false)`; манайх бага бол `ZovClashError(kept=true)`.
+ * Шалгах асуулга унавал чимээгүй буцна — бичилт өөрөө амжилттай.
+ */
+async function resolveAddClash(d: ZovDraft, ours: number): Promise<void> {
+  let rows: { oid: number; ner: string }[];
+  try {
+    rows = await slotRows(await oidField(), d.bagts, d.shat);
+  } catch {
+    return;
+  }
+  if (rows.length <= 1) return;
+  const other = rows.find((r) => r.oid !== ours);
+  const otherNer = other?.ner ?? '';
+  /* OID уншигдаагүй мөр байвал хэн нь эхэлснийг тогтоохгүй — устгахгүй, зөвхөн мэдээлнэ */
+  const known = rows.every((r) => Number.isFinite(r.oid));
+  const lowest = known ? Math.min(...rows.map((r) => r.oid)) : ours;
+  if (ours !== lowest) {
+    try {
+      await deleteZov(ours);
+    } catch (e) {
+      throw new ZovClashError(tr('{0}-д {1}-р дараалал «{2}»-тэй давхардсан. Таны нэмсэн мөрийг буцааж устгаж чадсангүй ({3}) — жагсаалтаас гараар устгана уу.',
+        d.bagts, String(d.shat), otherNer, e instanceof Error ? e.message : String(e)), true, ours);
+    }
+    throw new ZovClashError(tr('{0}-д {1}-р дараалал «{2}»-д зэрэг эзлэгдсэн — таны нэмсэн мөрийг буцааж устгалаа. Өөр дараалал сонгоно уу.',
+      d.bagts, String(d.shat), otherNer), false);
+  }
+  throw new ZovClashError(tr('{0}-д {1}-р дараалалд өөр хэрэглэгч «{2}»-г зэрэг нэмсэн. Таны мөр хадгалагдсан (эхэлж бичигдсэн); нөгөө мөрийг шалгана уу.',
+    d.bagts, String(d.shat), otherNer), true, ours);
+}
+
+/**
+ * ⚠️ 2026-10-09: ШИНЭ мөрийн хариу АЛДАГДСАН — багц+шатын мөрүүдийг уншиж бичигдсэн эсэхийг
+ * тогтооно (бичилтийг ДАХИН ИЛГЭЭХГҮЙ). Нэрээр нь манай мөрийг таньна. Олдоогүй бол сервер
+ * хүсэлтээ удаан боловсруулж байж болох тул НЭГ удаа 3с хүлээж дахин уншина. Унших өөрөө
+ * унавал анхны алдааг (`x`, «тодорхойгүй») дамжуулна.
+ */
+async function verifyLostAdd(d: ZovDraft, x: unknown): Promise<number> {
+  const oidName = await oidField();
+  const look = async () => {
+    try { return await slotRows(oidName, d.bagts, d.shat); } catch { return null; }
+  };
+  const ner = d.ner.trim();
+  let rows = await look();
+  if (rows && !rows.some((r) => r.ner === ner)) {
+    await new Promise((r) => setTimeout(r, 3000));
+    rows = await look();
+  }
+  if (rows == null) throw x;
+  const own = rows.filter((r) => r.ner === ner);
+  if (own.length === 0) {
+    if (rows.length) {
+      throw new Error(tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), rows[0].ner));
+    }
+    throw new Error(tr('Серверийн хариу алдагдсан ч шалгахад зөвшөөрөл бичигдээгүй байна — дахин «Хадгалах» дарж болно.'));
+  }
+  const ids = own.map((r) => r.oid).filter((n) => Number.isFinite(n));
+  if (!ids.length) return 0;
+  const ours = Math.max(...ids);
+  await resolveAddClash(d, ours);
+  return ours;
+}
+
+/**
  * Нэмэх эсвэл засах.
  *
  * ⚠️ Амжилтгүй бол ЗААВАЛ шалтгаантай `Error` шиднэ — `false` буцаавал
@@ -576,22 +676,22 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
     const delta = diffZov(base, d);
     /* ⚠️ Өөрчлөлтгүй бол сүлжээ ОГТ хөндөхгүй — «хадгаллаа» гэж хаагдана. */
     if (Object.keys(delta).length === 0) return d.oid;
+    /* ⚠️ 2026-10-09: ЗАСВАРААР багц/шатыг өөрчлөхөд ч давхардлыг серверээс шалгана — урьд нь
+       зөвхөн нэмэлтийн замд байсан тул засвараар өөр зөвшөөрлийн байранд «нүүж» болдог байв.
+       Өөрийгөө (`<> oid`) хасна, эс бөгөөс багцаа солиогүй ч өөртэйгөө давхацна. */
+    if (F.bagts in delta || F.shat in delta) {
+      const dup = (await slotRows(oidName, d.bagts, d.shat, d.oid))[0];
+      if (dup) throw new Error(tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), dup.ner));
+    }
     edit.updates = JSON.stringify([{ attributes: { [oidName]: d.oid, ...delta } }]);
   } else {
     /* ⚠️ 2026-10-09: ДАВХАРДСАН ДАРААЛАЛ (зэрэгцээ нэмэлт). `validateZov` нь маягт нээгдэх
        үеийн `all` жагсаалтаар л шалгадаг тул хоёр хүн нэг багцад нэг `shat`-ыг зэрэг нэмэхэд
        хоёул өнгөрч, гинжинд хоёр зөвшөөрөл нэг байранд зурагддаг байв. Бичихийн ЯГ ӨМНӨ
        серверээс дахин асууна. Асуулга унавал шиднэ — бичилт явахаас өмнө тул аюулгүй. */
-    const q = (s: string) => `N'${s.replace(/'/g, "''")}'`;
-    const dupQ = await agsFetch(`${URL}/query`, {
-      where: `${F.bagts} = ${q(d.bagts.trim())} AND ${F.shat} = ${Math.trunc(d.shat)}`,
-      outFields: F.ner,
-      returnGeometry: 'false',
-      resultRecordCount: '1',
-    });
-    const dup = ((dupQ.features ?? []) as { attributes?: Record<string, unknown> }[])[0];
+    const dup = (await slotRows(await oidField(), d.bagts, d.shat))[0];
     if (dup) {
-      throw new Error(tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), str(dup.attributes?.[F.ner])));
+      throw new Error(tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), dup.ner));
     }
     edit.adds = JSON.stringify([{ attributes }]);
   }
@@ -606,6 +706,10 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
     j = await agsFetch(`${URL}/applyEdits`, edit);
   } catch (x) {
     if (!d.oid) invalidate('ZOVSHOOROL');
+    /* ⚠️ 2026-10-09: ШИНЭ мөрийн хариу алдагдвал хэрэглэгчээр «дахин ачаалж шалга» гэлгүй
+       ЯГ тэр шалгалтыг (багц+шатын мөрүүд) автоматаар хийнэ — бичилтийг ДАХИН ИЛГЭЭХГҮЙ,
+       зөвхөн УНШИНА. Шалгалт өөрөө унавал анхны (алдагдсан) алдааг дамжуулна → «тодорхойгүй». */
+    if (!d.oid && isLostWrite(x)) return verifyLostAdd(d, x);
     throw x;
   }
   const res = [...(j.addResults ?? []), ...(j.updateResults ?? [])] as {
@@ -614,6 +718,13 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
   if (res.length === 0) throw new Error(tr('Үйлчилгээ хариу буцаасангүй.'));
   const bad = res.find((r) => r.success === false);
   if (bad) throw new Error(bad.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+  /* ⚠️ 2026-10-09: ЗЭРЭГЦЭЭ НЭМЭЛТИЙН УРАЛДААН — урьдчилсан шалгалт ба бичилтийн хооронд өөр
+     хүн ижил багц+шатад нэмж болно. Бичсэний ДАРАА дахин тоолно: >1 бол давхардал. OID нь
+     ХАМГИЙН БАГА мөр үлдэнэ (хоёр талын клиент ижил дүрмээр шийдэх тул нэг нь л үлдэнэ). */
+  if (!d.oid && res[0].objectId != null) {
+    invalidate('ZOVSHOOROL');
+    await resolveAddClash(d, Math.trunc(res[0].objectId));
+  }
   /*
    * ⚠️ Урьд нь энэ дуудлага БАЙГААГҮЙ: зөвшөөрөл хадгалахад «Үйл
    * ажиллагааны схем» (`schemData` нь `loadZov`-ыг 5 минут кэшэлдэг)

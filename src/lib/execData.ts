@@ -39,7 +39,16 @@ export type BagtsRow = {
   key: string;
   label: string;
   blocks: number;
+  /** Өрхийн тоо — МЭДЭГДЭЖ буй блокуудын нийлбэр (хоосон `AIL_TOO` орохгүй — `ailMissing`) */
   ail: number;
+  /**
+   * ⚠️ 2026-10-09: давхаргын блокоос `AIL_TOO` ХООСОН нь (null ≠ 0). Урьд нь `?? 0`-ээр 0 өрх болж
+   * дутуу нийлбэр бүрэн мэт гардаг байв. Нийт дүнг `ailTotal()`-оор ав — бүгд хоосон бол `null`,
+   * заримд нь бол `partial`. Сонголттой: гараар зохиосон мөрүүд (тест) 0 гэж үзнэ.
+   */
+  ailMissing?: number;
+  /** ⚠️ 2026-10-09: `ail`/`ailMissing`-ийн хуваарь — давхаргын давхардалгүй блокийн тоо */
+  ailBlocks?: number;
   contractor: string;
   /** Гадаад / Үндэсний — илтгэлээс бэхлэгдсэн */
   origin: string;
@@ -125,6 +134,18 @@ export const loadBagtsRows = cached<BagtsRow[]>(async () => {
  */
 }, 5 * 60_000, ['BAGTS_SHEET']);
 
+/**
+ * ӨРХИЙН НИЙТ — багцын мөрүүдээс (2026-10-09).
+ * `ail: null` — бүх блокийн `AIL_TOO` хоосон («—»); `partial` — заримынх нь хоосон (нийлбэр нь
+ * мэдэгдэж буй хэсгийнх, «дутуу» гэж тэмдэглэ; 1 өрхөд ногдох дүн гэх мэт ХАРЬЦААГ бодохгүй).
+ */
+export function ailTotal(rows: readonly BagtsRow[]): { ail: number | null; partial: boolean; missing: number } {
+  let ail = 0; let missing = 0; let seen = 0;
+  for (const r of rows) { ail += r.ail; missing += r.ailMissing ?? 0; seen += r.ailBlocks ?? 0; }
+  if (seen > 0 && missing >= seen) return { ail: null, partial: false, missing };
+  return { ail, partial: missing > 0, missing };
+}
+
 export function useBagtsTable(): Async<BagtsRow[]> {
   return useAsync(loadBagtsRows, []);
 }
@@ -141,7 +162,7 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: Block
   const slot = (name: string) => {
     const k = bagtsKey(name);
     const cur = by.get(k) ?? {
-      key: k, label: name, blocks: 0, ail: 0, contractor: '—',
+      key: k, label: name, blocks: 0, ail: 0, ailMissing: 0, ailBlocks: 0, contractor: '—',
       origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, measured: 0, total: 0, missing: 0,
       keys: [],
     };
@@ -163,7 +184,10 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: Block
     seen.add(bk);
     const s = slot(name);
     s.blocks += 1;
-    s.ail += Number(b[BF.households] ?? 0);
+    /* ⚠️ 2026-10-09: хоосон `AIL_TOO` — 0 БИШ, `ailMissing` (`BagtsRow.ailMissing`-ийн ⚠️) */
+    const hh = b[BF.households] == null || b[BF.households] === '' ? NaN : Number(b[BF.households]);
+    s.ailBlocks = (s.ailBlocks ?? 0) + 1;
+    if (Number.isFinite(hh)) s.ail += hh; else s.ailMissing = (s.ailMissing ?? 0) + 1;
     // Гүйцэтгэгч — блокийн давхаргын BAR_COMP (багцын бүх блок нэг гүйцэтгэгчтэй)
     const comp = text(b[BF.contractor], '').trim();
     if (comp) s.contractor = comp;

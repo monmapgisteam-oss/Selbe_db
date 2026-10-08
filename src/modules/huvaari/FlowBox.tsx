@@ -69,6 +69,13 @@ export function FlowBox({
     if (el.closest('button, select, a, input')) return;
     if (el.closest('textarea') && !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
+    /* ⚠️ 2026-10-09: «Буцаах» товчтой цонхонд (шийдвэрлэх) текст нь БУЦААХ ШАЛТГААН — урьд нь шалтгаан
+       бичээд Ctrl+Enter дарахад «Батлах» (`onOk`) ажиллаж, буцаах гэсэн санал БАТЛАГДДАГ байв. Одоо
+       тексттэй бол «Буцаах», хоосон бол юу ч хийхгүй (батлах нь зөвхөн товчоор). */
+    if (onReject) {
+      if (txt.trim()) onReject(txt);
+      return;
+    }
     onOk(txt);
   };
   /* ⚠️ 2026-10-07: Дотор дараад (текст сонголт) АРД суллахад `click` нь дэвсгэр дээр буудаг

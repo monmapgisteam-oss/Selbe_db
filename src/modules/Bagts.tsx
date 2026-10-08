@@ -704,7 +704,7 @@ export function ContractCard({ p }: { p: Pack }) {
   return (
     <Section tone="primary" title={tr('{0} — гүйцэтгэл', p.name)}>
       <Col gap="sm">
-        <div className={o.packRing}>
+        <div className={o.packRing} data-ui="pack-ring">
           <Ring value={p.progress} size={86} color={levelColor(p.progress)} label={tr('гүйцэтгэл')} />
           <Stats cols={2}>
             <Stat value={num(blockCount(p))} unit={tr('блок')} label={tr('Блок')} color={HUE} accent />

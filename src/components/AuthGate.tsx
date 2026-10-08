@@ -477,8 +477,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     /* ⚠️ 2026-10-06 (аудит): эрхийн КЭШИЙГ устгана — хуваалцсан компьютер дээр дараагийн хүнд
        өмнөх хэрэглэгчийн эрхийн хүснэгт (хэн ямар эрхтэй) үлдэхгүй. ЗӨВХӨН кэш: dirty-set
        (`*-dirty-v1` — админы ArcGIS-т хүрээгүй засвар)-ийг ХӨНДӨХГҮЙ, «Дахин синк»-ийн эх. */
+    /* ⚠️ 2026-10-09: урсгалын ACL-ийн кэшүүд (`*-acl-v1` — хэн аль шатанд батлах эрхтэй) ба эрхийн
+       төрлийн кэш (`selbe-roletypes-cache-v1`) мөн устна — урьд зөвхөн perms/caps устдаг тул
+       дараагийн хүнд өмнөх хэрэглэгчийн байгууллагын эрхийн бүтэц үлддэг байв. */
     const clearPermsCache = () => {
-      for (const k of ['selbe-perms-v1', 'selbe-caps-v1']) {
+      for (const k of [
+        'selbe-perms-v1', 'selbe-caps-v1', 'selbe-roletypes-cache-v1',
+        'selbe-guitsetgel-acl-v1', 'selbe-huvaari-acl-v1', 'selbe-obyem-acl-v1', 'selbe-ajil-acl-v1',
+        'selbe-chanar-acl-v1', 'selbe-qaqc-acl-v1', 'selbe-butets-acl-v1',
+      ]) {
         try { localStorage.removeItem(k); } catch { /* хувийн горим */ }
       }
     };

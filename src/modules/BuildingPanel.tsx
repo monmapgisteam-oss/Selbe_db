@@ -85,7 +85,13 @@ export type Block = {
   /** Блокийн нэр («5/1») — багц дотор л давтагдашгүй */
   blok: string;
   contractor: string;
+  /** Өрхийн тоо — `AIL_TOO` хоосон бол 0 БОЛОВЧ `ailMissing = true` (нийлбэрт «дутуу» гэж тэмдэглэ) */
   ail: number;
+  /**
+   * ⚠️ 2026-10-09: `AIL_TOO` ХООСОН (null ≠ 0). `ail`-ийг `number` хэвээр үлдээв — `Bagts.tsx`,
+   * `execReport` г.м. нийлбэрлэгчид тоо хүлээдэг; хоосныг энэ тугаар (мөн `householdsMissing`) ялгана.
+   */
+  ailMissing?: boolean;
   floors: number | null;
   /** «Б.» мөрийн гүйцэтгэл 0–100; бөглөгдөөгүй бол null */
   progress: number | null;
@@ -216,7 +222,12 @@ export async function loadBuildings() {
         key,
         bagts: text(r[F.bagts], '').trim(),
         blok: text(r[F.block], '').trim(),
-        ail: Number(r[F.households] ?? 0) || 0,
+        /* ⚠️ 2026-10-09: хоосон нүдийг 0 гэж НУУХГҮЙ — `ailMissing` (`Block.ailMissing`-ийн ⚠️) */
+        ...((): { ail: number; ailMissing: boolean } => {
+          const raw = r[F.households];
+          const v = raw == null || raw === '' ? NaN : Number(raw);
+          return Number.isFinite(v) ? { ail: v, ailMissing: false } : { ail: 0, ailMissing: true };
+        })(),
         contractor: text(r[F.contractor], '').trim(),
         floors: Number.isFinite(dav) && dav > 0 ? dav : null,
         progress: cell?.overall ?? null,
@@ -253,6 +264,12 @@ export async function loadBuildings() {
       pkgPct,
       blocks: uniq.length,
       households: uniq.reduce((s, b) => s + b.ail, 0),
+      /**
+       * ⚠️ 2026-10-09: `AIL_TOO` хоосон блокийн тоо — > 0 бол `households` ДУТУУ нийлбэр; `=== blocks`
+       * бол өрхийн мэдээлэл огт алга («—»). `households` нь `execReport`-ийн `number` төрлийг
+       * хадгалахын тулд тоо хэвээр — харуулагч энэ тоогоор ялгана.
+       */
+      householdsMissing: uniq.filter((b) => b.ailMissing).length,
       /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бүх блокийн дундаж (тайлагнаагүй 0%) —
          урьд нь зөвхөн утгатай блокийн дундаж (`meanOf`) байв. */
       progress: latestMean(prog, allKeys).pct,

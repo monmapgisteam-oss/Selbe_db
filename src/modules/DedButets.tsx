@@ -397,6 +397,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
      уншина (`editModeRef`-тэй ижил) — хариу ирэхэд горим аль хэдийн унтарсан байж болно. */
   const multiRef = useRef(false);
   useSyncRef(multiRef, multi);
+  /* ⚠️ 2026-10-09: тэгш өнцөгтийн хариу ирэх зуур 3D/BIM руу шилжсэн бол хариуг ХАЯНА —
+     3D-д сонголт/зураалт хаалттай (`dim` эффектийн ⚠️) атал хоцорсон хариу сонголт тавьдаг байв. */
+  const dimRef = useRef(dim);
+  useSyncRef(dimRef, dim);
   /**
    * Сонголт — НЭГ давхаргын объектууд (хэрэглэгчийн сонголт: давхарга бүр
    * өөр схемтэй тул нэг маягт нэг давхаргыг л зурна). `layerId` нь сонголт
@@ -1394,7 +1398,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
              сонголтын горимоос ГАРСАН бол хариуг хаяна — эс бөгөөс хоцорсон
              `featureEffect` бүх объектыг бүдгэрүүлж (арилгах UI байхгүй), хуучин
              `msel.oids` дараагийн нээлтэд дахин гарч ирдэг байв. */
-          if (!editModeRef.current || !multiRef.current || m.layerId !== layerId) return;
+          if (!editModeRef.current || !multiRef.current || m.layerId !== layerId || dimRef.current !== '2d') return;
           const oids = [...new Set([...m.oids, ...found])];
           setMsel({ layerId, oids });
           showMsel(layerId, oids);

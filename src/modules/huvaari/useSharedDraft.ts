@@ -40,7 +40,7 @@ export function useSharedDraft({
   kind, pkgKey, user, status, canEdit, locked, previewing, approving, pending,
   sc, rows, base, n, obPlan, obRes, obState, flowReady, dirtyN, dragging = false,
   draft, ham, aDraft, resDraft, obDraft, obResDraft,
-  setDraft, setHam, setADraft, setResDraft, setObDraft, setObResDraft, setNote, pkgKeyRef, hdRemapRef,
+  setDraft, setHam, setADraft, setResDraft, setObDraft, setObResDraft, setNote, pkgKeyRef, hdRemapRef, onRemote,
 }: {
   kind: PlanKind;
   pkgKey: string;
@@ -79,7 +79,15 @@ export function useSharedDraft({
   pkgKeyRef: React.RefObject<string>;
   /** «Улсын комисс» шинэ жаазын oid зураглал — эцгийн `[pkg]` эффект тавьдаг, сэргээх эффект нэг удаа хэрэглэнэ */
   hdRemapRef: React.RefObject<{ pkg: string; map: Map<number, number> } | null>;
+  /**
+   * ⚠️ 2026-10-09: ХАМТРАГЧИЙН нүд нийлүүлэлтээр (`hdApply`) ӨӨРЧЛӨГДСӨН түлхүүрүүд (`s:`/`h:`/`a:`/`r:`/`m:`/`n:`) —
+   *    эцэг буцаалтын агшинг (`Huvaari.undoSnap`) хүчингүй болгоно: тэр агшин нь нийлүүлэлтээс ӨМНӨХ утга
+   *    тул Ctrl+Z хамтрагчийн шинэ утгыг хуучнаар дарах байв. Өөрийн нүд тоологдохгүй.
+   */
+  onRemote?: (keys: ReadonlySet<string>) => void;
 }) {
+  /* ⚠️ 2026-10-09: `hdApply`-ийн deps-ийг хөдөлгөхгүйн тулд ref-ээр */
+  const onRemoteRef = useLatest(onRemote);
   /**
    * Хуваалцсан нооргийн СЭРГЭЭЛТ ДУУССАН түлхүүр (2026-09-29) — `hdReady` ref-ийн
    * зурагдалтад харагдах хуулбар. Буцаагдсан саналыг автоматаар буулгах эффект үүнийг
@@ -571,6 +579,16 @@ export function useSharedDraft({
     }
     /* ⚠️ 2026-10-08: зөөлөн мэдэгдэл (`hdSoftNote`) — залуу мэдэгдлийг дарахгүй */
     if (lost.size) hdSoftNote(tr('{0} таны саяхан зассан нүдийг хожуу утгаараа дарлаа', [...lost].join(', ')));
+    /* ⚠️ 2026-10-09: хамтрагчийн өөрчилсөн нүд (утга нь сүүлийн нийлүүлэлтийн суурьтай зөрсөн) — эцгийн
+       буцаалтын агшинд (`onRemote`-ийн ⚠️). Сэргээлтэд (`hdPrev` хоосон) бүгд «өөрчлөгдсөн» — тэр үед агшин алга. */
+    {
+      const remote = new Set<string>();
+      for (const [k, e] of d.entries) {
+        if (dropped.has(k) || e.user === meRef.current) continue;
+        if (!sameVal(hdPrev.current.get(k)?.val, e.val)) remote.add(k);
+      }
+      if (remote.size) onRemoteRef.current?.(remote);
+    }
     hdSeen.current = seen;
     hdMeta.current = meta;
     hdDel.current = del;
@@ -589,7 +607,7 @@ export function useSharedDraft({
     /* Устгасан хуучирсан нүдийг алсад хүргэнэ — дуудагчийн товлолтоос үл хамааран */
     if (tomb) hdSchedule(1500);
     return ap;
-  }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft, hdSoftNote]);
+  }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft, hdSoftNote, onRemoteRef]);
 
   /**
    * ЦЭВЭРЛЭХ НҮДНИЙ ТЭМДЭГ (2026-10-04 аудит) — одоо Map-д (дэлгэц дээр) байгаа нүд бүрт

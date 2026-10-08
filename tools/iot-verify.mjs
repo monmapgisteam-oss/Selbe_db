@@ -3,7 +3,7 @@
  * Порталын кодыг ашиглахгүй — түүхий REST асуулгаар өөрөө тоолж, дараа нь
  * `loadSensors`-ийн гаргасантай харьцуулна.
  */
-import { SENSORS, loadSensors, parseTs, ubDay, outOfRange } from '../src/lib/sensors.ts';
+import { SENSORS, loadSensors, parseTs, ubDay, outOfRange, HIGHER_IS_GOOD } from '../src/lib/sensors.ts';
 
 const ok = (b) => (b ? '✅' : '❌');
 let bad = 0;
@@ -66,6 +66,9 @@ for (const def of SENSORS) {
 
     /* 2. Түүхий мөрөөс хүрээн дэх утгуудыг ӨӨРӨӨ бодно */
     const rows = await rawRows(def.url, m.field);
+    /* ⚠️ 2026-10-09: мужууд (`rawValid` — хогийн сав 30мм…1.5×гүн; `valid` — EC 0…20000 µS/cm,
+       гэрэл 0…200000 lux, хөрсний темп −40…80°C, агаарын темп −60…60°C, чийг 0…100%) нь
+       sensors.ts-ийн МЕТРИК тодорхойлолтоос шууд уншигдана — энд давтаж бичихгүй. */
     /* ⚠️ 2026-10-09: ТҮҮХИЙ муж (`rawValid`) нь `derive`-ээс ӨМНӨ шүүгдэнэ; физик мужаас
        (`valid`) гадуурх цэг доод/дээд/дундаж/цуваанд орохгүй ч «сүүлийн заалт»-д орно;
        «сүүлийн заалт» нь хүрээгээр огтлоогүй БҮТЭН таталтаас (2026-09-17). */
@@ -109,12 +112,20 @@ for (const def of SENSORS) {
         r2(series.points[0].v) === r2(inR[0].v)
         && r2(series.points[series.points.length - 1].v) === r2(inR[inR.length - 1].v));
       /* ⚠️ 2026-10-09: босго давсан оргил сийрэгжүүлэлтэд алдагдахгүй (sensors.thin) */
-      if (m.alert) {
+      /* ⚠️ 2026-10-09: «их нь сайн» (хөрсний чийг) бол босгоос ДООШ хамгийн гүн уналт үлдэнэ */
+      if (m.alert && HIGHER_IS_GOOD.has(`${def.key}:${m.key}`)) {
+        const dip = Math.min(...vals);
+        chk(`${m.label} · босгоос доош уналт цуваанд үлдэв`,
+          dip >= m.alert.value || series.points.some((p) => r2(p.v) === r2(dip)),
+          `уналт ${r2(dip)}`);
+      } else if (m.alert) {
         const peak = Math.max(...vals);
         chk(`${m.label} · босго давсан оргил цуваанд үлдэв`,
           peak < m.alert.value || series.points.some((p) => r2(p.v) === r2(peak)),
           `оргил ${r2(peak)}`);
       }
+      /* ⚠️ 2026-10-09: сийрэгжүүлсэн цуваа хугацаагаар ХАТУУ өснө (sensors.thin) */
+      chk(`${m.label} · цуваа хатуу өсөх`, series.points.every((p, i, a) => i === 0 || p.t > a[i - 1].t));
     }
 
     /* 3. Хогийн савны ХӨРВҮҮЛЭЛТ — түүхий мм → дүүрэлт % */

@@ -7,25 +7,17 @@
  *     `query.run` ('org' горим) тэр токеныг эрхэмлэж, таб унтсаны дараах хугацаа
  *     дууссан токеноор 498 авахад шинэчлээд дахин оролдохгүй «Invalid token».
  *  2. Зургийн хаягт (`<img src>`) ачаалах агшны токен «шатаж» үлддэг байв —
- *     токен шинэчлэгдсэний дараа слайдер эвдэрнэ. Одоо рендерт `photoSrc` залгана.
+ *     токен шинэчлэгдсэний дараа слайдер эвдэрнэ.
  *  3. Ослын слайдер (`Habea.tsx` `PhotoWall`) мөн адил.
+ *  ⚠️ 2026-10-09: `photoSrc` (`?token=` залгадаг) УСТГАГДСАН — зураг `AttPhoto`-оор blob URL
+ *     (POST биеэр татна, токен URL-д огт орохгүй — CWE-598).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { registerIdentity } from '../lib/authToken.ts';
 
-const { photoSrc, weekCodes, uzWeekKey, weekLabel, weekScoreOf, prevWeek } = await import('./habeaUzleg.tsx');
+const { uzWeekKey, weekLabel, weekScoreOf, prevWeek } = await import('./habeaUzleg.tsx');
 
-/* 1. Нэвтрээгүй (identity бүртгэгдээгүй) — токенгүй хаяг, «?» үлдэхгүй */
-assert.equal(photoSrc('https://x/FeatureServer/0/5/attachments/7'), 'https://x/FeatureServer/0/5/attachments/7');
-
-/* 2. Токен РЕНДЕР бүрд шинээр уншигдана — шинэчлэгдсэн токен дараагийн зурагт орно */
-let tok = 'T1';
-registerIdentity({ findCredential: () => ({ token: tok }) }, 'https://portal/sharing');
-assert.equal(photoSrc('u'), 'u?token=T1');
-tok = 'T2 /+';
-assert.equal(photoSrc('u'), `u?token=${encodeURIComponent('T2 /+')}`);
-
+/* 1–2. Зураг blob URL-аар — токентой хаяг угсрахгүй */
 /* 3. Эх кодын хамгаалалт — ил токен ба ачаалах агшны токен буцаж орохгүй */
 const uz = readFileSync(new URL('./habeaUzleg.tsx', import.meta.url), 'utf8');
 assert.ok(!/token:\s*auth\.token\s*[,}]/.test(uz),'habeaUzleg: getAuth()-ын токеныг хүсэлтэд илгээхгүй');
@@ -34,7 +26,14 @@ const habea = readFileSync(new URL('./Habea.tsx', import.meta.url), 'utf8');
 const wall = habea.slice(habea.indexOf('function PhotoWall'), habea.indexOf('function pickRows'));
 assert.ok(wall.length > 100, 'PhotoWall олдсон');
 assert.ok(!wall.includes('tokenQs()'), 'PhotoWall: токеныг ачаалагчид биш рендерт залгана');
-assert.ok(wall.includes('photoSrc(p.src)'));
+assert.ok(wall.includes('<AttPhoto url={p.src}'), 'PhotoWall: blob URL (AttPhoto)');
+{
+  const inc = habea.slice(habea.indexOf('function IncPhotos'), habea.indexOf('function PhotoWall'));
+  assert.ok(inc.includes('<AttPhoto') && !inc.includes('tokenQs'), 'IncPhotos: blob URL (AttPhoto)');
+  assert.ok(uz.includes('<AttPhoto url={p.src}'), 'Үзлэгийн слайдер: blob URL (AttPhoto)');
+  assert.ok(!/export const photoSrc/.test(uz), 'photoSrc буцаж орохгүй');
+  assert.ok(uz.includes('URL.revokeObjectURL(obj)'), 'blob URL revoke хийгдэнэ');
+}
 
 /* ══════════ 4. ДОЛОО ХОНОГИЙН KPI — чарттай НЭГ эх (2026-10-01) ══════════ */
 /* ⚠️ KPI нь урьд ОГНООНЫ хилээр, чарт нь `week` кодоор бүлэглэдэг тул нэг долоо хоног
@@ -44,8 +43,9 @@ assert.equal(uzWeekKey(Date.parse('2026-09-14T00:30:00+08:00')), '2026-W38', 'Д
 assert.equal(uzWeekKey(Date.parse('2026-09-13T23:59:00+08:00')), '2026-W37', 'Ням — 37');
 assert.equal(uzWeekKey(Date.parse('2027-01-01T12:00:00+08:00')), '2026-W53', 'ISO жил: 2027-01-01 нь 2026-W53');
 assert.equal(weekLabel('2026-W38'), weekLabel('38'), 'шошго жилгүй ижил');
-assert.deepEqual(weekCodes(7), ['7', '07', 'w7', 'W7']);
-assert.deepEqual(weekCodes(37), ['37', 'w37', 'W37']);
+/* ⚠️ 2026-10-09: он дамжих үед жилтэй шошго; жилгүй түлхүүрт он нэмэгдэхгүй */
+assert.notEqual(weekLabel('2026-W52', true), weekLabel('2027-W52', true), 'жилтэй шошго ялгагдана');
+assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүүр — жилгүй шошго');
 {
   const rows = [
     { pkgK: 'A', coSfx: 'MK', e: 80, a: 100, n: 3, ns: 2, nc: 1 },
@@ -58,20 +58,35 @@ assert.deepEqual(weekCodes(37), ['37', 'w37', 'W37']);
   assert.equal(weekScoreOf(rows, ['B'], []).ns, 1, 'багцын шүүлтийг дагана');
   assert.equal(weekScoreOf([], [], []).pct, null, 'оноогүй — null (0% БИШ)');
 }
-/* Даваа гарагаас шинэ долоо хоног — өмнөх БҮТЭН долоо хоног солигдоно */
+/* Даваа гарагаас шинэ долоо хоног — өмнөх БҮТЭН долоо хоног солигдоно.
+   ⚠️ 2026-10-09: Улаанбаатарын цагаар (хөтчийн бүсээс үл хамаарна) — агшныг +08:00-оор өгнө */
 {
-  const sun = prevWeek(new Date(2026, 8, 27, 23, 0));   // Ням
-  const mon = prevWeek(new Date(2026, 8, 28, 0, 30));   // Даваа
+  const sun = prevWeek(new Date(Date.parse('2026-09-27T23:00:00+08:00')));   // Ням
+  const mon = prevWeek(new Date(Date.parse('2026-09-28T00:30:00+08:00')));   // Даваа (UTC-ээр Ням)
   assert.equal(mon.no, sun.no + 1, 'Даваа гараг дамжихад KPI-ийн долоо хоног шилжинэ');
+  assert.equal(mon.no, 39, 'UB Даваа 00:30 — өмнөх долоо хоног 39');
+  assert.equal(mon.end.toISOString(), '2026-09-27T16:00:00.000Z', 'хил = UB Даваа 00:00');
+  assert.equal(mon.start.toISOString(), '2026-09-20T16:00:00.000Z');
+  const ny = prevWeek(new Date(Date.parse('2027-01-05T09:00:00+08:00')));
+  assert.equal(ny.no, 53, 'он дамжих: 2026-12-28 эхэлсэн долоо хоног 2026-W53');
 }
 {
   const fetchSrc = uz.slice(uz.indexOf('async function fetchWeekScores'), uz.indexOf('/** Хуудасны шүүлтээр нүднүүдийг'));
   assert.ok(fetchSrc.includes('${U.ognoo} < ${sqlTs(w.end)}'), 'KPI огнооны хилээр (ISO долоо хоног)');
-  assert.ok(fetchSrc.includes('${U.ognoo} IS NULL AND ${U.week} IN'), 'огноогүй мөр л `week` кодоор');
+  /* ⚠️ 2026-10-09: огноогүй мөр KPI-д ч, чартад ч ОРОХГҮЙ — нэг эх (`week` талбар хэрэглэхгүй) */
+  assert.ok(!fetchSrc.includes('${U.week}'), 'огноогүй мөрийг `week` кодоор нөөцлөхгүй (чарттай зөрөхгүй)');
+  assert.ok(/if \(metas\.some\(\(m\) => m\.failed\)\) throw/.test(fetchSrc), 'метадата унавал шиднэ (буруу дүн кэшлэхгүй)');
   assert.ok(fetchSrc.includes('${U.scAppl} > 0'), 'онооны дүрэм: appl > 0 (byWeek-тэй ижил)');
   assert.ok(!fetchSrc.includes('isWeekNo('), 'хадгалсан долоо хоногийн дугаараар тааруулахгүй');
   assert.ok(habea.includes('[weekKey, tick]'), 'Habea: долоо хоног/таб харагдахад дахин татна');
 }
+
+/* ══════════ 4b. Зэрэг талбар бүрээр · огноогүй долоо хоног (2026-10-09) ══════════ */
+assert.ok(uz.includes("const known = (f: string) => r[f] != null && r[f] !== ''"), 'sevHas: талбар бүрээр');
+assert.ok(uz.includes('x.sevHas[k] ? s + x[k] : s'), 'severity: зэрэг бүр өөрийн тугаар');
+assert.ok(uz.includes("week: d > 0 ? uzWeekKey(d) : ''"), 'огноогүй мөр долоо хоноггүй');
+assert.ok(uz.includes("tr('Заалтын тоо мэдэгдэхгүй')") && uz.includes("tr('({0} үзлэг тоогүй)'"), 'тоогүй үзлэг ил');
+assert.ok(/UZ_OPTIONAL[^;]*U\.week, U\.shift/s.test(uz), 'week/shift — заавал биш');
 
 /* ══════════ 5. Зургийн хэсэгчилсэн уналт ил (2026-10-01) ══════════ */
 assert.ok(wall.includes("tr('{0} бүртгэлийн зураг татагдсангүй'"), 'PhotoWall: N бүртгэлийн зураг татагдсангүй');

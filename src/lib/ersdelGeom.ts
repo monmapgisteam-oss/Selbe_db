@@ -495,6 +495,12 @@ export type DamageRow = {
    * ⚠️ UI-д «зөвхөн зураг дутуу» гэж ойлгуулах шошго тавьж БОЛОХГҮЙ.
    */
   truncated: boolean;
+  /**
+   * ⚠️ 2026-10-09 (аудит): `queryFeatureCount` УНАСАН — `n` нь зөвхөн татагдсан объектын тоо (доод
+   *    хязгаар), бүтэн тоо МЭДЭГДЭХГҮЙ. Экспорт `total_n`-ийг хоосон (`null`) бичнэ — урьд нь татагдсан
+   *    тоог бүтэн тоо мэт бичдэг байв.
+   */
+  countFailed: boolean;
 };
 
 /** Нэг өртсөн объект — хүснэгт ба экспортын мөр */
@@ -706,6 +712,7 @@ export async function damageOf(
         layerId: id, title: def.title, geom, cls, n, area, length, people, cost, graphics,
         maxDepth, objects,
         truncated: countFailed || n > fetched,
+        countFailed,
       });
     } catch {
       /**

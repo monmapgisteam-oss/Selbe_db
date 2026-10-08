@@ -17,7 +17,8 @@ import { agsFetch } from '@/modules/sheet/ags';
 import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { snapshotOf, LINK_FIELDS } from '@/lib/ipcLink';
-import { dayOf, planAuto, contractCodeOf, isAuto, autoZoruu, type AutoPlan } from '@/lib/ipcAuto';
+import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, type AutoPlan } from '@/lib/ipcAuto';
+import { isBlocklessBagts } from '@/lib/negtgelWrite';
 import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
@@ -26,7 +27,8 @@ const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
 
 export type AutoResult =
-  | { ok: true; op: AutoPlan['op']; why?: string }
+  /** ⚠️ 2026-10-09 (F6): `warn` — гэрээний сонголтын анхааруулга (`autoContractFor`); дуудагч ил харуулна */
+  | { ok: true; op: AutoPlan['op']; why?: string; warn?: string }
   | { ok: false; error: string };
 
 /**
@@ -48,18 +50,24 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        ⚠️ Багц бүр 1–2 хуудастай (9F + 12F) бөгөөд гэрээ нь НЭГ. */
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
+    /* ⚠️ 2026-10-09 (F2): БЛОКГҮЙ багц (5.x · 6.x · 10) — обьёмын багана огт байхгүй тул IPC-д бичих тоо
+       байхгүй нь ХЭВИЙН (`negtgelWrite.registerApproved`-ийн `blockless`-тэй ижил). Урьд нь доорх
+       `missing`-ээр `ok:false` болж илгээлт «бүртгэл хүлээгдэж буй» хэвээр мөнхөд дахин оролддог байв. */
+    if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };
 
     let obyem: number | null = null;
     let une: number | null = null;
     let read = 0;
     /* ⚠️ ХУУДАС ДУТУУ эсэхийг ТУСАД НЬ тоолно (2026-09-15-ны аудит) */
     let missing = 0;
+    /* ⚠️ 2026-10-09 (F2): обьёмын баганагүй хуудас — «дутуу» биш, IPC-д оролцох тоо байхгүй */
+    let noObyem = 0;
 
     for (const pkg of wanted) {
       const sc: Schema | null = await loadSchema(pkg).catch(() => null);
       if (!sc?.f.fillDate) { missing += 1; continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
-      if (!cols.length) { missing += 1; continue; }
+      if (!cols.length) { noObyem += 1; continue; }
       /*
        * ⚠️ `work` ба `gun` ЗААВАЛ (2026-09-25-ны аудит). Урьд нь орхигдсон тул
        *    `loadRows` дотор мөр бүрийн түлхүүр «№ ¦ » болж суурь агшны «№ ¦ Ажил»-тай
@@ -95,6 +103,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 
     /* ⚠️ НЭГ Ч ХУУДАС УНШИГДААГҮЙ бол «гүйцэтгэл 0» ГЭЖ БҮҮ БИЧ — энэ нь
        сүлжээний/бүдүүвчийн асуудал байж болно. Алдаа буцаана. */
+    /* ⚠️ 2026-10-09 (F2): БҮХ хуудас обьёмын баганагүй (уншигдах ч зүйлгүй) — бичих тоо байхгүй, алдаа биш */
+    if (!read && !missing && noObyem === wanted.length) return { ok: true, op: 'skip', why: 'no-data' };
     if (!read) return { ok: false, error: tr('Бөглөх хуудаснаас агшин уншигдсангүй') };
     /*
      * ⚠️ БАГЦЫН ХУУДАС ДУТУУ бол ч БИЧИХГҮЙ (2026-09-15-ны аудит). Урьд нь
@@ -120,14 +130,17 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ── 3. Шийдвэр ── */
     /* ⚠️ Гэрээний кодыг БАЙГАА мөрөөс авна — таамаглавал мөр буруу
        бүлэгт очно (2026-09-10-ний бодит алдаа). */
-    const code = contractCodeOf(rows, pkgKeyOf(bagts));
+    /* ⚠️ 2026-10-09 (F6): `autoContractFor` — өмнөх AUTO мөрийн гэрээг хадгалж (түүх хуваагдахгүй),
+       олон гэрээний анхааруулгыг (`warn`) ХАЯХГҮЙ буцаана. `ipcDocLoad` ЯГ энэ функцээр сонгоно. */
+    const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
+    const wx = cw ? { warn: cw } : {};
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
     /* ⚠️ 2026-09-25: ЗӨВХӨН `no-data` (хэмжилтгүй бөглөлт — хэвийн) нь амжилт.
        Бусад шалтгаан (гэрээний код олдоогүй, багц/огноо танигдаагүй) нь IPC мөр
        ҮҮСЭЭГҮЙ гэсэн үг — урьд нь `ok: true` буцааж, дуудагч «бүртгэгдсэн» гэж
        тэмдэглэдэг тул мөр нь хэзээ ч нөхөгдөхгүй, алдаа ч харагддаггүй байв. */
     if (plan.op === 'skip') {
-      if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why };
+      if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why, ...wx };
       const error = plan.why === 'no-code'
         ? tr('IPC мөр бичсэнгүй: {0} багцын гэрээний код HO хүснэгтэд олдсонгүй', bagts)
         : plan.why === 'no-pkg'
@@ -159,6 +172,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       const newOid = Number(res[0].objectId);
       const dd = await dedupeAuto(rows, String(plan.attrs[P.id] ?? ''), newOid, { pkg: bagts, day: at, code, obyem, une });
       if (!dd.ok) return dd;
+      if (dd.why === 'dedup') return { ...dd, ...wx };
     }
 
     /* ── 6. Гэрээний AUTO мөрүүдийн зөрүүг шинэчилнэ (`refreshAutoZoruu`) ──
@@ -166,9 +180,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     const rz = await refreshAutoZoruu(code);
     if (!rz.ok) {
       console.warn('[selbe] IPC зөрүүг дахин бодож чадсангүй:', rz.error);
-      return { ok: true, op: plan.op, why: rz.error };
+      return { ok: true, op: plan.op, why: rz.error, ...wx };
     }
-    return { ok: true, op: plan.op };
+    return { ok: true, op: plan.op, ...wx };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }
@@ -285,6 +299,8 @@ export async function refreshAutoZoruu(
 ): Promise<{ ok: true; n: number } | { ok: false; error: string }> {
   const want = code === undefined ? null : String(code).trim();
   if (want === '') return { ok: true, n: 0 };
+  let n = 0;
+  let tried = false;
   try {
     /* ⚠️ `queryFeatures` БИШ: түүний in-flight хуваалцалт нь бидний бичилтээс
        ӨМНӨ эхэлсэн ижил асуулгын хариуг өгч болох ба тэр хуучин `une`-ээр
@@ -316,9 +332,10 @@ export async function refreshAutoZoruu(
       if (same(z, num(r[Z]))) continue;
       upd.push({ [HO_IPC.oid]: oid, [Z]: z });
     }
-    let n = 0;
     for (let i = 0; i < upd.length; i += 500) {
       const part = upd.slice(i, i + 500);
+      /* ⚠️ 2026-10-09 (R6): ОРОЛДЛОГО — хариу алдагдсан ч бичигдсэн байж магадгүй (`finally`) */
+      tried = true;
       const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
         updates: JSON.stringify(part.map((attributes) => ({ attributes }))),
         rollbackOnFailure: 'true',
@@ -327,14 +344,15 @@ export async function refreshAutoZoruu(
       const okN = res.filter((x) => x.success === true).length;
       n += okN;
       if (res.length !== part.length || okN !== part.length) {
-        if (n) invalidate('HO_IPC');
         const bad = res.find((x) => x.success !== true);
         return { ok: false, error: bad?.error?.description || tr('IPC зөрүү {0}/{1} мөрд бичигдсэнгүй', part.length - okN, part.length) };
       }
     }
-    if (n) invalidate('HO_IPC');
     return { ok: true, n };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
+  } finally {
+    /* ⚠️ 2026-10-09 (R6): `finally` — урьд нь дунд нь шидсэн (сүлжээ) үед бичигдсэн багцын зарлал явдаггүй байв */
+    if (tried) invalidate('HO_IPC');
   }
 }

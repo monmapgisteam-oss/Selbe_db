@@ -68,6 +68,12 @@ ok('null ≠ 0: хуваарь 0 / тоологч уншигдаагүй / HO м
   assert.equal(paidShareOf(cf, []).pct, null);
   assert.equal(paidShareOf([], ho).pct, null);
 });
+ok('2026-10-09: бүх `dun` хоосон HO мөр → pct null, paidKnown 0 («0%» биш)', () => {
+  const blank = paidShareOf(cf, [HO({ oid: 9, code: 'Багц-1', pkg: 'Багц-1', dun: null })]);
+  assert.equal(blank.paidKnown, 0);
+  assert.equal(blank.pct, null);
+  assert.equal(s.paidKnown, 5);
+});
 
 ok('2026-10-09: холбоостой багц (HO «Багц-8.1» → «Багц 8», HO «Багц-7» ↔ Cashflow «БАГЦ-7.1») гэрээлсэнд тоологдоно', () => {
   const cfA = [

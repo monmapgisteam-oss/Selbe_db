@@ -312,6 +312,10 @@ const base = () => ({
   assert.deepEqual([...requiredReviewers(legacy.reviews, 'MA')], ['chanar', 'tug']);
   assert.equal(resolve(legacy.reviews, 'MA'), MS_STATUS.review);
   assert.deepEqual(progress(legacy.reviews, 'MA'), { done: 1, total: 2 });
+  /* ⚠️ 2026-10-09: chanar ганцаараа баталсан хуучин MA (approved) — «1/2» биш «1/1»; буцаагдсан ч мөн */
+  assert.deepEqual(progress(legacy.reviews, 'MA', MS_STATUS.approved), { done: 1, total: 1 });
+  assert.deepEqual(progress(legacy.reviews, 'MA', MS_STATUS.returned), { done: 1, total: 1 });
+  assert.deepEqual(progress(legacy.reviews, 'MA', MS_STATUS.review), { done: 1, total: 2 });
   assert.deepEqual(canAct(legacy, 'x', ['cheng', 'tug']).review, ['tug'], 'хуучин мөрд cheng товч гарахгүй, tug шууд');
   const lt = review(legacy, { as: 'tug', who: 'tm', verdict: VERDICT.approve });
   assert.ok(lt.ok, lt.error); assert.equal(lt.status, MS_STATUS.approved, 'хуучин мөр 2/2 → батлагдсан');
@@ -878,7 +882,7 @@ console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) �
   const fs = await import('node:fs');
   const store = fs.readFileSync(new URL('./chanarStore.ts', import.meta.url), 'utf8');
   const rd = store.slice(store.indexOf('export async function reviewDoc'), store.indexOf('const safeJson'));
-  assert.ok(/reviewsJson\(r\.reviews, rep \?\? doc\.rep \?\? null\)/.test(rd), '⚠️ reviewDoc: эцсийн бус шийдвэр өмнөх REP-ийг хадгална (NCR 2-р тойрог)');
+  assert.ok(/reviewsJsonEx\(r\.reviews, rep \?\? doc\.rep \?\? null, null, args\.as\)/.test(rd), '⚠️ reviewDoc: эцсийн бус шийдвэр өмнөх REP-ийг хадгална (NCR 2-р тойрог)');
   assert.ok(/attachDeny\(oid, 'delete'\)/.test(store), '⚠️ deleteAttachment нь устгалын дүрмээр шалгана');
   const ad = store.slice(store.indexOf('async function attachDeny'), store.indexOf('export async function loadDocs'));
   assert.ok(/op === 'delete'/.test(ad), '⚠️ NCR илгээсний дараа нотолгоо устгагдахгүй');

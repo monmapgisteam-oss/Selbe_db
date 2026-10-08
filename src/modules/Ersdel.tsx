@@ -76,7 +76,8 @@ import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import { dirName, dispersionOf, loadWind, nowHour } from '@/lib/salhi';
 import { hhmmUB, loadWindField, nowIndex, ymd } from '@/lib/salhiTor';
 import { MAX_V, rampCss } from '@/lib/salhiUrsgal';
-import { simulateFlood, type SimArea } from '@/lib/uyrSim';
+import { simulateFlood, type SimArea, type SimProgress } from '@/lib/uyrSim';
+import { abortError } from '@/lib/uyrSimCore';
 import { flowPath, whyFlood } from '@/lib/uyrTailbar';
 import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
@@ -84,6 +85,7 @@ import { floodFootprint, simplifyRings } from '@/lib/uyrSurface';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
+import * as projectOperator from '@arcgis/core/geometry/operators/projectOperator';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
@@ -386,17 +388,34 @@ function footprintDepthEx(
  * Зурсан полигоны цагирагууд → Web Mercator (2026-10-09).
  * ⚠️ Загварчлал (`inRings`) нь цагирагийг WM координат гэж уншдаг. Харагдацын
  *    SR нь 102100/3857 биш (жишээ нь SceneView-ийн WGS84) бол урьд нь градусаар
- *    дамждаг тул зурсан талбай торонд огт тусахгүй байв. WM руу хөрвүүлж
- *    чадахгүй SR бол хуучнаар нь (өөр гарцгүй).
+ *    дамждаг тул зурсан талбай торонд огт тусахгүй байв.
+ * ⚠️ 2026-10-09 (аудит): WGS84/WM-ээс ӨӨР SR (`webMercatorUtils` чадахгүй) бол `projectOperator`-оор
+ *    (ачаалж) хөрвүүлнэ; хөрвөхгүй бол ИЛ АЛДАА шиднэ. Урьд нь хуучнаар нь (WM биш координатаар) дамжуулдаг
+ *    тул загварчлал торонд тусахгүй, `areaHa` (WM-ийн `cos²φ` залруулгатай) ч буруу гардаг байв. Одоо
+ *    буцах цагираг ҮРГЭЛЖ WM → `areaHa` зөв.
  */
-function areaToWm(g: __esri.Polygon): { rings: SimArea; wkid: number } {
+let projLoad: Promise<unknown> | null = null;
+const ensureProj = (): Promise<unknown> => {
+  projLoad ??= projectOperator.load().catch((err: unknown) => { projLoad = null; throw err; });
+  return projLoad;
+};
+async function areaToWm(g: __esri.Polygon): Promise<{ rings: SimArea; wkid: number }> {
   const sr = g.spatialReference;
   const wk = sr?.wkid ?? 3857;
   let src: __esri.Polygon = g;
-  if (sr && !sr.isWebMercator && wk !== 102100 && wk !== 3857
-    && webMercatorUtils.canProject(sr, WM_SR)) {
-    const p = webMercatorUtils.project(g, WM_SR) as __esri.Polygon | null;
-    if (p?.rings?.length) src = p;
+  if (sr && !sr.isWebMercator && wk !== 102100 && wk !== 3857) {
+    let p: __esri.Polygon | null = null;
+    if (webMercatorUtils.canProject(sr, WM_SR)) {
+      p = webMercatorUtils.project(g, WM_SR) as __esri.Polygon | null;
+    } else {
+      await ensureProj().catch(() => null);
+      if (projectOperator.isLoaded()) p = (projectOperator.execute(g, WM_SR) as __esri.Polygon | null | undefined) ?? null;
+    }
+    if (!p?.rings?.length) {
+      throw new Error(tr('Зурсан талбайн координатын систем ({0}) Web Mercator руу хөрвөсөнгүй — загварчлах боломжгүй.',
+        sr.wkid != null ? `wkid ${sr.wkid}` : sr.wkt ? 'WKT' : '—'));
+    }
+    src = p;
   }
   /* ⚠️ ЗӨВХӨН x, y — `hasZ`-тэй бол гурав дахь утга орж ирнэ (`inRings` 2D) */
   return {
@@ -671,8 +690,49 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     m.set(key, d);
     while (m.size > SIM_CACHE_MAX) m.delete(m.keys().next().value as string);
   }, []);
-  /** Явж буй үндсэн загварчлалын түлхүүр — харьцуулалт түүнийг давхар бодохгүй */
-  const simPromiseKey = useRef<string | null>(null);
+  /**
+   * ЯВЖ БУЙ ЗАГВАРЧЛАЛУУД — (түвшин, талбай) → нэг промис (үндсэн эффект ба харьцуулалт ХУВААЛЦАНА).
+   * ⚠️ 2026-10-09 (аудит): урьд нь зөвхөн «үндсэн загварчлалын түлхүүр»-ийг (`simPromiseKey`) харьцуулалт
+   *    харж, эсрэг чиглэлд (харьцуулалт 2-р түвшинг бодож байхад хэрэглэгч 2-р түвшин сонгох) ИЖИЛ
+   *    загварчлал ХОЁР удаа зэрэг гүйж CPU булаалддаг байв. Одоо хэрэглэгч тоолно (`users`): нэг нь
+   *    цуцлахад нөгөө нь хэрэглэж байвал ЗОГСООХГҮЙ; сүүлчийнх нь цуцлахад л `abort`.
+   */
+  const simInflight = useRef(new Map<string, {
+    p: Promise<FloodData>;
+    subs: Set<(pr: SimProgress) => void>;
+    ac: AbortController;
+    users: number;
+  }>());
+  const runSim = useCallback((lv: LevelKey, a: SimArea | null, onPr: (pr: SimProgress) => void) => {
+    const key = simKey(lv, a);
+    const map = simInflight.current;
+    let ent = map.get(key);
+    if (!ent) {
+      const subs = new Set<(pr: SimProgress) => void>();
+      const ac = new AbortController();
+      const p = simulateFlood(lv, (pr) => subs.forEach((f) => f(pr)), a, ac.signal);
+      const fresh = { p, subs, ac, users: 0 };
+      map.set(key, fresh);
+      p.then((d) => cachePut(key, d), () => {})
+        .finally(() => { if (map.get(key) === fresh) map.delete(key); });
+      ent = fresh;
+    }
+    const cur = ent;
+    cur.users += 1;
+    cur.subs.add(onPr);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      cur.subs.delete(onPr);
+      cur.users -= 1;
+      if (cur.users <= 0) {
+        cur.ac.abort();
+        if (map.get(key) === cur) map.delete(key);
+      }
+    };
+    return { p: cur.p, release };
+  }, [cachePut]);
   const [slice, setSlice] = useState(0);
   const [playing, setPlaying] = useState(false);
   /** Растерыг юугаар будах вэ — гүн · хурд · аюул */
@@ -707,7 +767,6 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       setFlood(hit);
       setSimPct(1);
       simPromise.current = Promise.resolve(hit);
-      simPromiseKey.current = key;
       return;
     }
     setSimPct(0);
@@ -719,9 +778,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        байсан тул түвшин/талбай хурдан солиход хуучин сим ЦААШАА гүйж, шинэтэй
        CPU булаалдан хоёулаа удааширдаг байв. Одоо `AbortController`-оор
        өмнөхийг ЗОГСООНО (`uyrSim.ts` §signal). */
-    const ac = new AbortController();
+    /* ⚠️ 2026-10-09: `runSim` — харьцуулалт ИЖИЛ (түвшин, талбай)-г бодож байвал түүнд нэгдэнэ;
+       цуцлахад (`release`) өөр хэрэглэгч үлдсэн бол загварчлал үргэлжилнэ (`simInflight`-ийн ⚠️). */
     const t0 = performance.now();
-    const pr0 = simulateFlood(level, (pr) => {
+    const { p: pr0, release } = runSim(level, area, (pr) => {
       /* ⚠️ 2026-09-29 (аудит 10): явцыг СИМИЙН ХУГАЦААГААР. Давталт `t >= totalS`
          дээр дуусдаг тул `step / MAX_STEPS` (9000) нь 15–40%-д гацаад шууд
          дуусдаг байв. Алхмын хязгаар түрүүлж хүрэх тохиолдолд аль ИХИЙГ нь. */
@@ -731,19 +791,17 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* ⚠️ 2026-10-01: ҮЛДСЭН ХУГАЦАА — шугаман таамаг (`simEta`-ийн тайлбар) */
       const el = (performance.now() - t0) / 1000;
       setSimEta(p > 0.03 && el > 0.5 ? (el * (1 - p)) / p : null);
-    }, area, ac.signal);
+    });
     simPromise.current = pr0;
-    simPromiseKey.current = key;
     pr0
       .then((d) => {
-        cachePut(key, d);
         if (alive) { setFlood(d); setSimPct(1); setSimEta(null); }
       })
       .catch((err: unknown) => {
         if (alive) setFloodErr(err instanceof Error ? err.message : String(err));
       });
-    return () => { alive = false; ac.abort(); };
-  }, [wantFlood, level, area, cachePut]);
+    return () => { alive = false; release(); };
+  }, [wantFlood, level, area, runSim]);
 
   /* ══════════════════ ЗАГВАРЧЛАХ ТАЛБАЙ ЗУРАХ ══════════════════
    *
@@ -792,6 +850,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         symbol: svm.polygonSymbol,
       }));
     }
+    /** Сүүлийн хөрвүүлэлт л хүчинтэй — асинхрон `areaToWm` хариу эрэмбээ алдаж ирэхэд */
+    let areaSeq = 0;
     svm.on('create', (ev) => {
       /* ⚠️ 2026-09-25: Esc/цуцлалт (`cancel`) — урьд нь үл тоогдож `drawing`
          үнэн хэвээр гацаж, товч «зурж байна» төлөвт үлддэг байв. Өмнөх
@@ -802,36 +862,51 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       setDrawing(false);
       const g = ev.graphic?.geometry as __esri.Polygon | undefined;
       if (!g?.rings?.length) return;
-      /* Шинэ полигон БЭЛЭН болсон тул л өмнөхийг арилгана */
-      const old = gl.graphics.filter((x) => x !== ev.graphic).toArray();
-      if (old.length) gl.removeMany(old);
+      const mine = ++areaSeq;
       /* ⚠️ ЗӨВХӨН x, y — `hasZ` асаалттай бол гурав дахь утга орж ирэх ба
          цэгэн доторх шалгалт (`inRings`) хоёр хэмжээст ажилладаг.
-         ⚠️ 2026-10-09: WM руу хөрвүүлнэ (`areaToWm`) — загварчлал WM координат хүлээнэ */
-      const wa = areaToWm(g);
-      areaWkidRef.current = wa.wkid;
-      setArea(wa.rings);
-      /* ⚠️ Зурсан талбай руу ойртоно — загварчлал зөвхөн тэнд ажиллах тул
-         хэрэглэгч бусад газрыг хайж «ус алга» гэж эргэлзэх ёсгүй. */
-      if (!view.destroyed && g.extent) {
-        view.goTo(g.extent.clone().expand(1.2), { animate: true, duration: 700 })
-          .catch(() => {});
-      }
+         ⚠️ 2026-10-09: WM руу хөрвүүлнэ (`areaToWm`) — загварчлал WM координат хүлээнэ.
+         ⚠️ 2026-10-09 (аудит): хөрвүүлэлт асинхрон (`projectOperator` ачаална) ба УНАЖ болно — тэгвэл
+         шинэ полигоныг хаяж, өмнөх талбай хэвээр, алдааг ил хэлнэ. Өмнөхийг ЗӨВХӨН амжилттай үед арилгана. */
+      areaToWm(g).then((wa) => {
+        if (mine !== areaSeq || view.destroyed) return;
+        /* Шинэ полигон БЭЛЭН болсон тул л өмнөхийг арилгана */
+        const old = gl.graphics.filter((x) => x !== ev.graphic).toArray();
+        if (old.length) gl.removeMany(old);
+        areaWkidRef.current = wa.wkid;
+        setArea(wa.rings);
+        /* ⚠️ Зурсан талбай руу ойртоно — загварчлал зөвхөн тэнд ажиллах тул
+           хэрэглэгч бусад газрыг хайж «ус алга» гэж эргэлзэх ёсгүй. */
+        if (g.extent) {
+          view.goTo(g.extent.clone().expand(1.2), { animate: true, duration: 700 })
+            .catch(() => {});
+        }
+      }, (err: unknown) => {
+        if (mine !== areaSeq || view.destroyed) return;
+        if (ev.graphic) gl.remove(ev.graphic);
+        setFloodErr(err instanceof Error ? err.message : String(err));
+      });
     });
     svm.on('update', (ev) => {
       /* Зурсны дараа чирж засварлавал домэйныг дагуулна */
       if (ev.state !== 'complete') return;
       const g = ev.graphics[0]?.geometry as __esri.Polygon | undefined;
       if (!g?.rings?.length) return;
-      /* ⚠️ 2026-10-09: WM руу (`areaToWm`) — `create`-тэй ижил */
-      const wa = areaToWm(g);
-      areaWkidRef.current = wa.wkid;
-      const next: SimArea = wa.rings;
-      /* ⚠️ 2026-09-25 (аудит 8): `update … complete` нь полигон дээр ЗҮГЭЭР ДАРААД
-         (сонгоод) гарахад ч ирдэг — цагираг өөрчлөгдөөгүй атлаа шинэ массив өгвөл
-         доорх `area` эффект үр дүнг арилгаж, хэрэглэгч бодсон загварчлалаа алддаг
-         байв. Ижил бол хуучин объектоо хадгална (эффект хөдлөхгүй). */
-      setArea((prev) => (prev && sameRings(prev, next) ? prev : next));
+      /* ⚠️ 2026-10-09: WM руу (`areaToWm`) — `create`-тэй ижил (асинхрон, унавал талбай хэвээр + алдаа) */
+      const mine = ++areaSeq;
+      areaToWm(g).then((wa) => {
+        if (mine !== areaSeq || view.destroyed) return;
+        areaWkidRef.current = wa.wkid;
+        const next: SimArea = wa.rings;
+        /* ⚠️ 2026-09-25 (аудит 8): `update … complete` нь полигон дээр ЗҮГЭЭР ДАРААД
+           (сонгоод) гарахад ч ирдэг — цагираг өөрчлөгдөөгүй атлаа шинэ массив өгвөл
+           доорх `area` эффект үр дүнг арилгаж, хэрэглэгч бодсон загварчлалаа алддаг
+           байв. Ижил бол хуучин объектоо хадгална (эффект хөдлөхгүй). */
+        setArea((prev) => (prev && sameRings(prev, next) ? prev : next));
+      }, (err: unknown) => {
+        if (mine !== areaSeq || view.destroyed) return;
+        setFloodErr(err instanceof Error ? err.message : String(err));
+      });
     });
     areaLayerRef.current = gl;
     svmRef.current = svm;
@@ -1314,16 +1389,22 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     const key = simKey(lv, a);
     const hit = simCache.current.get(key);
     if (hit) return hit;
-    if (simPromiseKey.current === key && simPromise.current) {
-      const d = await simPromise.current.catch(() => null);
-      if (d) return d;
-    }
+    /* ⚠️ 2026-10-09: явж буй загварчлалыг (үндсэн эффектийнх ч) `runSim`-ээр ХУВААЛЦАНА — давхар бодохгүй.
+       Харьцуулалтыг цуцлахад (`cmpAbort`) зөвхөн ӨӨРИЙН хэрэглээг суллана: үндсэн эффект ижил
+       загварчлалыг хүлээж байвал зогсохгүй. Кэшлэх нь `runSim` дотор. */
     const ac = new AbortController();
     cmpAbort.current = ac;
-    const d = await simulateFlood(lv, (pr) => onPct(Math.min(0.99, pr.minute / pr.totalMin)), a, ac.signal);
-    cachePut(key, d);
-    return d;
-  }, [cachePut]);
+    const { p, release } = runSim(lv, a, (pr) => onPct(Math.min(0.99, pr.minute / pr.totalMin)));
+    try {
+      return await new Promise<FloodData>((res, rej) => {
+        if (ac.signal.aborted) { rej(abortError()); return; }
+        ac.signal.addEventListener('abort', () => rej(abortError()), { once: true });
+        p.then(res, rej);
+      });
+    } finally {
+      release();
+    }
+  }, [runSim]);
 
   const compareAll = useCallback(async () => {
     if (!view) return;
@@ -1562,15 +1643,21 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        */
       const fdB = floodRef.current;
       const isFloodB = (resultRef.current?.hazard ?? hazardRef.current) === 'flood';
-      const own = isFloodB && fdB?.maxDepth && p.idx != null ? fdB.maxDepth(p.idx) : null;
+      /* ⚠️ 2026-10-09 (аудит): тооцооны МУЖААС ГАДНА (`FloodData.inDomain` = false) нүдний `maxDepth` нь
+         0 (бодогдоогүй) — урьд нь «0 м» гэж «ус хүрээгүй» мэт харагддаг байв. Одоо «тооцоогүй» (null ≠ 0;
+         `uyrTailbar`-ийн `computed`-тэй ижил дүрэм). */
+      const outB = isFloodB && p.idx != null && fdB?.inDomain?.(p.idx) === false;
+      const own = isFloodB && !outB && fdB?.maxDepth && p.idx != null ? fdB.maxDepth(p.idx) : null;
       setHazInfo({
         title: p.band.label,
         sub: tr('Аюулын муж'),
         rows: [
           bandRow(p.band),
-          ...(own != null
-            ? [{ k: tr('Энэ цэгт (дээд гүн)'), v: tr('{0} м', num(own, 2)) }]
-            : []),
+          ...(outB
+            ? [{ k: tr('Энэ цэгт (дээд гүн)'), v: tr('тооцоогүй') }]
+            : own != null
+              ? [{ k: tr('Энэ цэгт (дээд гүн)'), v: tr('{0} м', num(own, 2)) }]
+              : []),
           { k: tr('3D өндөр'), v: tr('{0} м', num(p.band.height, 1)) },
         ],
       });
@@ -1746,7 +1833,8 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     objects: r.objects.map((o) => ({ ...o, geometry: o.geometry as unknown as GeomLike })),
     /* ⚠️ 2026-10-09: тайрагдсаныг ЭКСПОРТОД дамжуулна — урьд нь хаягдаж дутуу файл бүтэн мэт харагддаг байв */
     truncated: r.truncated,
-    totalN: r.n,
+    /* ⚠️ 2026-10-09 (аудит): тоолох асуулга унасан бол `r.n` = татагдсан тоо (бүтэн биш) → `null` */
+    totalN: r.countFailed ? null : r.n,
   })), [result]);
   const exportName = (ext: string) =>
     `ersdel-${result?.hazard ?? 'x'}-${result?.level ?? 0}-${fileDate()}.${ext}`;
@@ -2318,11 +2406,17 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                           num(flood.meta.slices))}
                       </p>
                       {/* ⚠️ 2026-10-09: алхмын хязгаарт тасарсан бол ИЛ — сүүлийн агшнууд нь давталт */}
+                      {/* ⚠️ 2026-10-09 (аудит): зүсмэлийн дугаар нь «агшин» (тооцооны «алхам» биш — алхам нь
+                          мянга мянгаар). Нэг ч агшин бодогдоогүй (`simulatedSlices === 0`) бол «давталт» биш —
+                          бүх агшин хоосон (`uyrSimCore`-ийн ⚠️). */}
                       {flood.meta.truncated && (
                         <Note>
-                          {tr('Тооцоо алхмын дээд хязгаарт хүрч {0}-р минутад зогссон ({1} минутаас). {2}-р алхмаас хойших агшнууд нь сүүлийн бодогдсон агшны давталт — шинэ мэдээлэл биш.',
-                            num(flood.meta.simulatedMin ?? 0, 1), num(flood.meta.simMin ?? 60),
-                            num(Math.min(flood.meta.slices, (flood.meta.simulatedSlices ?? flood.meta.slices) + 1)))}
+                          {flood.meta.simulatedSlices === 0
+                            ? tr('Тооцоо алхмын дээд хязгаарт хүрч {0}-р минутад зогссон ({1} минутаас) — агшин бодогдоогүй: харагдаж буй агшнууд хоосон, үерийн үр дүн биш.',
+                              num(flood.meta.simulatedMin ?? 0, 1), num(flood.meta.simMin ?? 60))
+                            : tr('Тооцоо алхмын дээд хязгаарт хүрч {0}-р минутад зогссон ({1} минутаас). {2}-р агшнаас хойших агшнууд нь сүүлийн бодогдсон агшны давталт — шинэ мэдээлэл биш.',
+                              num(flood.meta.simulatedMin ?? 0, 1), num(flood.meta.simMin ?? 60),
+                              num(Math.min(flood.meta.slices, (flood.meta.simulatedSlices ?? flood.meta.slices) + 1)))}
                         </Note>
                       )}
                       {/* ⚠️ ХОЁР ЭХ СУРВАЛЖ — нарийвчлал эрс өөр тул ил хэлнэ */}

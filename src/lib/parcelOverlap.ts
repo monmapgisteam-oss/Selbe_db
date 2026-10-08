@@ -85,7 +85,6 @@ function parcelSR(): Promise<number> {
   return srCache;
 }
 
-type Geoms = { rings: number[][][]; paths: number[][][]; points: number[][] };
 /**
  * НЭГ ОБЪЕКТЫН геометр (2026-10-01). Урьд нь давхаргын геометр шууд `Geoms` болж
  * хавтгайрдаг байв; одоо объект бүр тусдаа — (1) OID-оор дэд олонлог гаргах, (2) клиент
@@ -93,16 +92,6 @@ type Geoms = { rings: number[][][]; paths: number[][][]; points: number[][] };
  * `oid` нь зөвхөн OID-той татсан үед (`withOid`), бусад үед `null`.
  */
 type Feat = { oid: number | null; rings?: number[][][]; paths?: number[][][]; pt?: number[] };
-
-const toGeoms = (fs: readonly Feat[]): Geoms => {
-  const g: Geoms = { rings: [], paths: [], points: [] };
-  for (const f of fs) {
-    if (f.rings) g.rings.push(...f.rings);
-    else if (f.paths) g.paths.push(...f.paths);
-    else if (f.pt) g.points.push(f.pt);
-  }
-  return g;
-};
 
 /* ⚠️ 2026-09-25: хуудаслалтын `orderByFields`-д давхаргын ЖИНХЭНЭ OID талбар
    хэрэгтэй (`objectid`/`FID` байж болно — `ceo/workforce.ts`-ийн сургамж).
@@ -126,7 +115,14 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
         oid: m?.objectIdField || m?.fields?.find((f) => f.type === 'esriFieldTypeOID')?.name || 'OBJECTID',
         paging: m?.advancedQueryCapabilities?.supportsPagination !== false,
       }))
-      .catch(() => ({ oid: 'OBJECTID', paging: true }));
+      .catch(() => {
+        /* ⚠️ 2026-10-09: унасан метадатаг КЭШЛЭХГҮЙ — урьд нь түр зуурын уналтын fallback
+           (`OBJECTID`) хуудас дахин ачаалтал үлдэж, OID нь `objectid`/`FID` давхарга байнга
+           `failed` болдог байв. Энэ амлалт өөрөө кэшэд байгаа үед л устгана (дараагийн
+           дуудлага шинээр асууна); энэ удаад fallback-аар үргэлжилнэ. */
+        if (oidCache.get(url) === p) oidCache.delete(url);
+        return { oid: 'OBJECTID', paging: true };
+      });
     oidCache.set(url, p);
   }
   return p;
@@ -399,20 +395,43 @@ async function gather(sources: Src[], wkid: number): Promise<{ parts: Array<[str
  * нь ЗӨВХӨН энд байсан.
  */
 const CHUNK = 400;
-function shapesOf(g: Geoms, wkid: number): Array<[string, string]> {
-  const cut = <T,>(a: T[]): T[][] => {
-    const out: T[][] = [];
-    for (let i = 0; i < a.length; i += CHUNK) out.push(a.slice(i, i + CHUNK));
-    return out;
-  };
+/* ⚠️ 2026-10-09: ОБЪЕКТООР хэсэглэнэ — нэг объектын БҮХ цагираг/хэсэг НЭГ хэсэгт. Урьд нь
+   хавтгай цагиргуудыг 400-аар таслахад нүхтэй полигоны гадна хүрээ ба нүх нь хоёр хэсэгт
+   салж, нүх нь бие даасан «полигон» болж (цагийн зүүний эсрэг → сервер өөрөөр тайлбарлана)
+   нүхэн доторх нэгж талбарыг давхцалтай гэж худал гаргах боломжтой байв. 400-аас олон
+   цагирагтай ганц объект өөрөө нэг хэсэг болно (таслахгүй). */
+const cutByFeat = (parts: number[][][][]): number[][][][] => {
+  const out: number[][][][] = [];
+  let cur: number[][][] = [];
+  for (const p of parts) {
+    if (cur.length && cur.length + p.length > CHUNK) {
+      out.push(cur);
+      cur = [];
+    }
+    cur.push(...p);
+  }
+  if (cur.length) out.push(cur);
+  return out;
+};
+function shapesOf(fs: readonly Feat[], wkid: number): Array<[string, string]> {
+  const ringFeats: number[][][][] = [];
+  const pathFeats: number[][][][] = [];
+  const pts: number[][] = [];
+  for (const f of fs) {
+    if (f.rings) ringFeats.push(f.rings);
+    else if (f.paths) pathFeats.push(f.paths);
+    else if (f.pt) pts.push(f.pt);
+  }
+  const ptChunks: number[][][] = [];
+  for (let i = 0; i < pts.length; i += CHUNK) ptChunks.push(pts.slice(i, i + CHUNK));
   return [
-    ...cut(g.rings).map(
+    ...cutByFeat(ringFeats).map(
       (c) => ['esriGeometryPolygon', JSON.stringify({ rings: c, spatialReference: { wkid } })] as [string, string],
     ),
-    ...cut(g.paths).map(
+    ...cutByFeat(pathFeats).map(
       (c) => ['esriGeometryPolyline', JSON.stringify({ paths: c, spatialReference: { wkid } })] as [string, string],
     ),
-    ...cut(g.points).map(
+    ...ptChunks.map(
       (c) => ['esriGeometryMultipoint', JSON.stringify({ points: c, spatialReference: { wkid } })] as [string, string],
     ),
   ];
@@ -480,7 +499,7 @@ async function overlapSingle(sources: Src[]): Promise<Overlap> {
   /* ⚠️ БҮГД унасан бол энэ нь үр дүн БИШ, АЛДАА — хоосон `oids` нь «саад
      алга» гэж уншигдах тул шидэж, дуудагчийн `catch` замд оруулна. */
   if (failed.length === sources.length) throw allFailed(failed.length);
-  const shapes = shapesOf(toGeoms(parts.flatMap(([, fs]) => fs)), wkid);
+  const shapes = shapesOf(parts.flatMap(([, fs]) => fs), wkid);
   /* ⚠️ Геометр огт гараагүй ч УНАСАН давхарга байвал түүнийг дамжуулна —
      эс бөгөөс «хэлбэр алга» нь «саад алга» гэж ХУДАЛ уншигдана. */
   if (!shapes.length) return withFailed([], failed);
@@ -527,7 +546,7 @@ async function overlapBatch(b: Ask[]): Promise<Array<{ ok: Overlap } | { err: un
   /* НЭГДЭЛ — ижил давхарга/шүүлт олон дуудлагад байвал нэг л удаа */
   const uniq = new Map<string, Feat[]>();
   for (const p of per) for (const [k, fs] of p.parts) uniq.set(k, fs);
-  const shapes = shapesOf(toGeoms([...uniq.values()].flat()), wkid);
+  const shapes = shapesOf([...uniq.values()].flat(), wkid);
   const cand = shapes.length ? await askLeft(shapes, wkid) : new Set<number>();
   const parcels = cand.size ? await parcelRings([...cand], wkid) : new Map<number, number[][][]>();
   const pList = [...parcels].map(([id, rings]) => ({ id, rings, bb: bboxOf(rings) }));

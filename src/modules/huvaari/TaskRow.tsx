@@ -7,9 +7,16 @@ import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { formatDeps } from '@/lib/deps';
 import { parseDayInput } from '@/lib/dateInput';
-import { PL_ROW, type PlanKind } from './types';
+import { MAX_DAYS, PL_ROW, type PlanKind } from './types';
 import type { AddForm } from './adds';
 import h from '../huvaari.module.css';
+
+/**
+ * ⚠️ 2026-10-09: НҮДНИЙ ХАДГАЛАЛТ ЯМАР ТОВЧООР — `enter` (Enter) · `nav` (↓/↑) · `blur` (Tab · гадна дарах).
+ *    Дуудагч (`Huvaari.applyDate`) засварын цонхыг ЗӨВХӨН `enter`-д нээнэ: урьд нь ↓/↑/Tab-аар
+ *    дараагийн мөр рүү шилжих бүрд цонх нээгдэж, гараар мөр мөрөөр бөглөх урсгалыг тасалдаг байв.
+ */
+export type CellVia = 'enter' | 'blur' | 'nav';
 
 /* ══════════════════ Ажлын мөр (зүүн багана) ══════════════════ */
 
@@ -66,9 +73,9 @@ export function TaskRow({
   geree: Span | null;
   tolov: Span | null;
   /** Огноо бичих (`YYYY-MM-DD`) — `undefined` бол уншина (бүлэг · нэмэлт мөр · эрхгүй) */
-  onDate?: (which: 'start' | 'end', day: string) => void;
+  onDate?: (which: 'start' | 'end', day: string, via: CellVia) => void;
   /** ⚠️ 2026-10-06: үргэлжлэх ХОНОГИЙГ бичиж төлөвлөх — эхлэх хэвээр, дуусах = эхлэх + N − 1 */
-  onDays?: (days: number) => void;
+  onDays?: (days: number, via: CellVia) => void;
   /** Аль төрлийн огноо засагдах вэ — идэвхтэй таб */
   edKind?: PlanKind;
   /**
@@ -108,8 +115,11 @@ export function TaskRow({
   /** ⚠️ 2026-10-08: хамтран засагч — өнгөт цэг + «Нэр · 14:02» (хуваалцсан ноорог) */
   editedBy?: { user: string; at: number } | null;
 }) {
-  /* ⚠️ 2026-10-08: нөгөө табын нүд дарагдах эсэх — засагдах мөрд л (бүлэг · нэмэлт мөр · эрхгүй → үгүй) */
-  const otherOk = !!onOtherTab && !!(onDate || onDays);
+  /* ⚠️ 2026-10-08: нөгөө табын нүд дарагдах эсэх — засагдах мөрд л (бүлэг · нэмэлт мөр · эрхгүй → үгүй).
+     ⚠️ 2026-10-09: `onDate`/`onDays`-аас САЛГАВ — түгжээ төрөл тус бүрд тул ИДЭВХТЭЙ таб түгжээтэй (огноо
+        засагдахгүй) үед ч нөгөө таб засагдана; урьд нь яг тэр үед товч алга болдог байв. Нөхцөлийг
+        дуудагч (`Huvaari`: бүлэг/нэмэлт мөр/эрх/нөгөө табын түгжээ) шийднэ. */
+  const otherOk = !!onOtherTab;
   const otherTip = edKind === 'geree' ? tr('Төлөвлөгөө табд засна — дарж шилжинэ') : tr('Гэрээ табд засна — дарж шилжинэ');
   const onOtherG = otherOk && edKind === 'plan' ? onOtherTab : undefined;
   const onOtherP = otherOk && edKind === 'geree' ? onOtherTab : undefined;
@@ -233,10 +243,10 @@ export function TaskRow({
       {/* ⚠️ 2026-10-08: `col`/`onNext` — ↓/↑-аар мөр шилжих (`onNextRow`); `onOther`/`otherTip` — нөгөө
           табын нүд дарахад таб солигдоно (`onOtherTab`). `data-col` зөвхөн ЗАСАГДАХ нүдэнд. */}
       <DateCell v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')} onEditing={onEditing} col="start"
-        onSet={edKind === 'geree' && onDate ? (d) => onDate('start', d) : undefined}
+        onSet={edKind === 'geree' && onDate ? (d, via) => onDate('start', d, via) : undefined}
         onNext={edKind === 'geree' ? next?.('start') : undefined} onOther={onOtherG} otherTip={otherTip} />
       <DateCell v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')} onEditing={onEditing} col="end"
-        onSet={edKind === 'geree' && onDate ? (d) => onDate('end', d) : undefined}
+        onSet={edKind === 'geree' && onDate ? (d, via) => onDate('end', d, via) : undefined}
         onNext={edKind === 'geree' ? next?.('end') : undefined} onOther={onOtherG} otherTip={otherTip} />
       {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
           `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
@@ -245,10 +255,10 @@ export function TaskRow({
         onSet={edKind === 'geree' && onDays ? onDays : undefined}
         onNext={edKind === 'geree' ? next?.('days') : undefined} onOther={onOtherG} otherTip={otherTip} />
       <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')} onEditing={onEditing} col="start"
-        onSet={edKind === 'plan' && onDate ? (d) => onDate('start', d) : undefined}
+        onSet={edKind === 'plan' && onDate ? (d, via) => onDate('start', d, via) : undefined}
         onNext={edKind === 'plan' ? next?.('start') : undefined} onOther={onOtherP} otherTip={otherTip} />
       <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')} onEditing={onEditing} col="end"
-        onSet={edKind === 'plan' && onDate ? (d) => onDate('end', d) : undefined}
+        onSet={edKind === 'plan' && onDate ? (d, via) => onDate('end', d, via) : undefined}
         onNext={edKind === 'plan' ? next?.('end') : undefined} onOther={onOtherP} otherTip={otherTip} />
       <DaysCell v={tolov} tip={tr('Төлөвлөгөөгөөр үргэлжлэх хоног')} onEditing={onEditing}
         onSet={edKind === 'plan' && onDays ? onDays : undefined}
@@ -406,7 +416,8 @@ const navDir = (key: string): 1 | -1 | 0 => (key === 'ArrowDown' ? 1 : key === '
 function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: {
   v: number | null;
   tip: string;
-  onSet?: (day: string) => void;
+  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
+  onSet?: (day: string, via: CellVia) => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
   /** ⚠️ 2026-10-08: `data-col` — дуудагч `[data-oid] [data-col]`-оор фокуслоно (зөвхөн засагдах нүдэнд) */
@@ -421,6 +432,8 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
   const navRef = useRef<1 | -1 | 0>(0);
+  /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
+  const enterRef = useRef(false);
   const shown = v != null ? msToDay(v) : '—';
 
   if (!onSet) {
@@ -467,16 +480,18 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
         cancelRef.current = false;
         const nav = navRef.current;
         navRef.current = 0;
+        const ent = enterRef.current;
+        enterRef.current = false;
         if (!cancel) {
           const p = parseDayInput(txt);
-          if (p && p !== (v != null ? msToDay(v) : '')) onSet(p);
+          if (p && p !== (v != null ? msToDay(v) : '')) onSet(p, nav ? 'nav' : ent ? 'enter' : 'blur');
         }
         /* ⚠️ 2026-10-08: хадгалалтын ДАРАА мөр шилжинэ — огноо өөрчлөгдсөн бол дуудагч цонх нээж
            болно (`openAfterDate`); тэр үед фокус цонхонд үлдэх нь дуудагчийн шийдвэр. */
         if (nav && onNext) onNext(nav);
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+        if (e.key === 'Enter') { enterRef.current = true; e.currentTarget.blur(); return; }
         if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
         const d = navDir(e.key);
         if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
@@ -498,7 +513,8 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
 function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   v: Span | null;
   tip: string;
-  onSet?: (days: number) => void;
+  /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
+  onSet?: (days: number, via: CellVia) => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
   /** ⚠️ 2026-10-08: ↓/↑ — мөр шилжих (`TaskRow.onNextRow`, `data-col="days"`) */
@@ -511,6 +527,8 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
   const navRef = useRef<1 | -1 | 0>(0);
+  /** ⚠️ 2026-10-09: Enter-ээр хадгалсан уу (`CellVia`) */
+  const enterRef = useRef(false);
   const cur = v ? spanDays(v) : null;
   const shown = cur != null ? String(cur) : '—';
 
@@ -539,8 +557,9 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
 
   const n = /^\d{1,4}$/.test(txt.trim()) ? Number(txt.trim()) : NaN;
   /* ⚠️ 2026-10-08: дээд хязгаар 3650 (10 жил) — popup-ын талбартай (`max={3650}`) ИЖИЛ; урьд нь 9999
-     хүртэл зөвшөөрч зурвасыг хуанлиас хол гаргадаг байв. */
-  const bad = !(n >= 1 && n <= 3650);
+     хүртэл зөвшөөрч зурвасыг хуанлиас хол гаргадаг байв.
+     ⚠️ 2026-10-09: нэг тогтмол `MAX_DAYS` (`types.ts`) — мессежид тоо орлуулгаар. */
+  const bad = !(n >= 1 && n <= MAX_DAYS);
   return (
     <input
       className={`${h.rowDays} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
@@ -550,7 +569,7 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
       inputMode="numeric"
       aria-label={tip}
       aria-invalid={bad}
-      title={bad ? tr('Хоног буруу — 1-ээс 3650 хүртэлх бүхэл тоо') : tip}
+      title={bad ? tr('Хоног буруу — 1-ээс {0} хүртэлх бүхэл тоо', num(MAX_DAYS)) : tip}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setTxt(e.target.value)}
       onBlur={() => {
@@ -560,12 +579,14 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
         cancelRef.current = false;
         const nav = navRef.current;
         navRef.current = 0;
-        if (!cancel && !bad && n !== cur) onSet(n);
+        const ent = enterRef.current;
+        enterRef.current = false;
+        if (!cancel && !bad && n !== cur) onSet(n, nav ? 'nav' : ent ? 'enter' : 'blur');
         /* ⚠️ 2026-10-08: хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
         if (nav && onNext) onNext(nav);
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.currentTarget.blur(); return; }
+        if (e.key === 'Enter') { enterRef.current = true; e.currentTarget.blur(); return; }
         if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
         const d = navDir(e.key);
         if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
@@ -696,6 +717,9 @@ const HOWTO_LS = 'selbe-huvaari-howto';
  *    модуль `dynamic(ssr:false)` доор ачаалагддаг тул hydration зөрөхгүй; эффектээр setState
  *    хийхгүй (react-hooks/set-state-in-effect). localStorage хаалттай бол заавар гарахгүй (чимээгүй).
  * ⚠️ Esc нь ЗӨВХӨН энэ popover-ыг хаана (`stopPropagation`, `AddBox`-ийн 2026-10-07-ны ⚠️).
+ * ⚠️ 2026-10-09: `role="dialog"` → `role="note"` (модал БИШ тайлбар). Урьд нь анх нээгдэхэд өөрөө гардаг
+ *    энэ заавар `[role="dialog"]` хаалтыг идэвхжүүлж, Ctrl+Z · `]` · Space товчлуур ба ↓/↑-ын фокус шилжилт
+ *    «Ойлголоо» дартал ажилладаггүй байв. `Huvaari`-ийн хаалтууд одоо зөвхөн `[aria-modal="true"]`-г шалгана.
  */
 export function HowtoHint() {
   const [open, setOpen] = useState<boolean>(() => {
@@ -711,7 +735,7 @@ export function HowtoHint() {
         aria-expanded={open} aria-label={tr('Хэрхэн ашиглах')} title={tr('Хэрхэн ашиглах')}
         onClick={() => (open ? dismiss() : setOpen(true))}>?</button>
       {open && (
-        <div className={h.howtoPop} role="dialog" aria-label={tr('Хэрхэн')}
+        <div className={h.howtoPop} role="note" aria-label={tr('Хэрхэн')}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); } }}>
           <b>{tr('Хэрхэн')}</b>
           <ul className={h.howtoList}>

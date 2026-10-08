@@ -56,6 +56,10 @@ export function SplitGrip({
       className={`${st.grip} ${side === 'left' ? st.left : st.right}${
         dragging ? ` ${st.gripOn}` : ''
       }`}
+      /* ⚠️ 2026-10-09: `data-split-grip` — модулиудын CSS энэ товчийг webpack-ийн класс НЭРЭЭР
+         (`[class*='splitGrip_grip']`) барьдаг байв; хэш/нэрлэх дүрэм солигдвол чимээгүй тасарна.
+         Одоо тогтвортой атрибутаар (`button[data-split-grip='left']`). */
+      data-split-grip={side}
       role="separator"
       aria-orientation="vertical"
       aria-label={label}

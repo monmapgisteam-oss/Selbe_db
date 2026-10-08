@@ -16,17 +16,33 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey, monthKey } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
   BUILDING, laborCompanyFields,
 } from '@/lib/services';
-import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
+import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
+import { isClearedStatus } from '@/lib/land';
 import { stageProjectPct } from '@/lib/negtgel';
 import {
   FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
   FIN_XL_WORK_SKIP,
 } from '@/lib/finExcelLayout';
+
+/**
+ * `Cashflow_start` (сарын мөрийн эхлэл, epoch мс) → «YYYY-MM» — порталын НЭГ дүрэм.
+ * ⚠️ 2026-10-09: `Finance.publish` · `CashflowPlan` · `gdash.cashflowCurve` · `tuhData` ЭНЭ функцээр.
+ *    ЯГ UTC шөнө дунд (ХУУЧИН `Date.UTC(y, m, 1)` бичилт) бол UTC сар — UTC-ээс баруун бүсэд
+ *    локалаар уншвал ӨМНӨХ сар болдог. Бусад (шинэ мөр UTC үд дундаар, AGOL/Excel-ийн УБ шөнө дунд
+ *    = өмнөх өдрийн 16:00Z) орон нутгийн сар. УБ (UTC+8)-д хоёр зам ижил сар.
+ *    Урьд нь Finance/CashflowPlan энэ дүрэмтэй, gdash/tuhData зөвхөн локал `monthKey` байв.
+ */
+export const cfStartKeyOf = (ms: unknown): string => {
+  const t = Number(ms);
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  if (t % 86_400_000 === 0) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 /* ══════════════════════ CASHFLOW — талбарууд ══════════════════════ */
 
@@ -1210,8 +1226,9 @@ export function cashflowCurve(
     /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ОРОН НУТГИЙН сар (`monthKey`), UTC БИШ —
        ТУХ · `Finance.publish` (`keyOf`) · `CashflowPlan`-тай нэг дүрэм. AGOL/Excel-ээс орсон
        УБ-ын шөнө дунд (= өмнөх өдрийн 16:00Z) сарын 1-ний мөр UTC-ээр ӨМНӨХ сард буудаг байв.
-       Порталаас бичсэн `Date.UTC(y, m, 1)` нь УБ-д ЯГ тэр сар — хуучин өгөгдөл хөдлөхгүй. */
-    const k = monthKey(p.start);
+       ⚠️ 2026-10-09: порталаас сарын мөр одоо UTC ҮД ДУНДААР бичигдэнэ (`Finance.publish`); ХУУЧИН
+       UTC шөнө дундын мөрийг `cfStartKeyOf` UTC сараар уншина — Finance/CashflowPlan-тай НЭГ дүрэм. */
+    const k = cfStartKeyOf(p.start);
     per.set(k, (per.get(k) ?? 0) + p.amount);
   }
   if (total <= 0) return [];
@@ -1591,8 +1608,10 @@ export const loadHseNow = cached<HseNow | null>(async () => {
   return {
     /* ⚠️ ОРОН НУТГИЙН огноо — UTC slice нь +08 бүсэд өглөөний 08:00 хүртэл
        бүртгэгдсэн маягтыг ӨМНӨХ өдрөөр харуулдаг байв (2026-09-15). Энэ
-       огноо нь дээрх ⚠️-ийн «тоо нь хэдийнх вэ» гэсэн зорилготой. */
-    date: Number.isFinite(ms) ? dayKey(ms) : '',
+       огноо нь дээрх ⚠️-ийн «тоо нь хэдийнх вэ» гэсэн зорилготой.
+       ⚠️ 2026-10-09: `ubDayKey` (Улаанбаатарын хуанли) — `latestLaborRow` өдрийг ЯГ түүгээр сонгодог;
+       `dayKey` нь хөтчийн бүсээр тул УБ-аас гадна өөр өдөр харуулдаг байв. */
+    date: Number.isFinite(ms) ? ubDayKey(ms) : '',
     workers: head.workers,
     equipment: head.technik,
     manHours: nnOf(r[f.hunTsag]),
@@ -1759,6 +1778,9 @@ export const loadReasonOids = cached<Map<string, Set<number>>>(async () => {
 
   const m = new Map<string, Set<number>>();
   for (const r of rows) {
+    /* ⚠️ 2026-10-09: `parcelLeftWhere` нь ЯГ таарцын SQL — «Бүрэн чөлөөлсөн.» мэт бичиглэлийн хувилбар
+       «үлдсэн»-д орж ирдэг. `land.isClearedStatus`-аар хасна (Газар дашбоард · `ceo/land`-тай нэг). */
+    if (isClearedStatus(r[F.status])) continue;
     const k = clean(r[F.status]);
     const oid = nOf(r[PARCEL_LEFT.oid]);
     if (!oid) continue;

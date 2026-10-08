@@ -425,6 +425,9 @@ export function planQaqcPaste(
  * ⚠️ Үл мэдэх багана/мөрийг ЧИМЭЭГҮЙ алгасахгүй — `skipped` болгож буцаана,
  *    дуудагч нь хадгалалтыг зогсооно. Байхгүй мөр рүү бичвэл сервер алдаа
  *    буцаана, эсвэл хуудсыг бохирдуулна.
+ * ⚠️ 2026-10-09: дуудагч (`Qaqc.tsx` `save`) `skipped`-ийг ЗОГСООХГҮЙ — анхааруулгатай
+ *    ХАСНА (булшилна). Урьд нь ганц үл мэдэх түлхүүр (устгагдсан мөр) бүх хадгалалтыг
+ *    мөнхөд хаадаг байв: дахин ачаалсан ч тэр мөр буцаж ирэхгүй.
  */
 export function qaqcUpdates(
   pend: Record<string, string>,
@@ -502,11 +505,17 @@ export type QaqcConflict = {
  * ⚠️ Сервер аль хэдийн ЯГ энэ утгатай бол зөрчил БИШ (бичсэн ч үр дүн ижил).
  * ⚠️ Мөр нь серверт алга (`live`-д байхгүй) бол зөрчил — устгагдсан мөр рүү бичихгүй.
  * ⚠️ Буруу түлхүүрийг энд алгасна — тэднийг `qaqcUpdates`-ийн `skipped` барина.
+ * ⚠️ 2026-10-09: `gone` зөрчлийг дуудагч ХАДГАЛАХГҮЙ — булшилж хасна (`Qaqc.tsx` `save`):
+ *    устгагдсан мөр хэзээ ч буцаж ирэхгүй тул «хадгалаагүй» хэвээр үлдээвэл дараагийн
+ *    хадгалалт бүр мөн л зөрчил гэж зогсох байв.
  */
 export function qaqcConflicts(
   pend: Readonly<Record<string, string>>,
   base: ReadonlyMap<number, readonly (string | null)[]>,
   live: ReadonlyMap<number, readonly (string | null)[]>,
+  /** ⚠️ 2026-10-09: нүдний ӨӨРИЙН суурь (ноорогт хадгалсан, засах үед харсан серверийн утга);
+      `undefined` (хуучин ноорог) бол `base` (ачааллын агшин) руу буцна. */
+  cellBase?: (key: string) => string | null | undefined,
 ): QaqcConflict[] {
   const norm = (v: string | null | undefined) => (v ?? '').trim();
   const out: QaqcConflict[] = [];
@@ -514,7 +523,8 @@ export function qaqcConflicts(
     const kd = splitKey(key);
     if (!kd) continue;
     const [oid, di] = kd;
-    const b = base.get(oid)?.[di] ?? null;
+    const own = cellBase?.(key);
+    const b = own !== undefined ? own : (base.get(oid)?.[di] ?? null);
     const lr = live.get(oid);
     if (!lr) { out.push({ key, oid, di, base: b, live: null, gone: true }); continue; }
     const l = lr[di] ?? null;
@@ -543,15 +553,24 @@ export async function fetchQaqcDocs(
   if (!ids.length) return out;
   const have = await fieldsOf(url);
   const cols = QAQC_COLS.map((c) => c.name).filter((f) => have.has(f));
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
+  /* ⚠️ 2026-10-09: `exceededTransferLimit` ирвэл ШУУД шидэхгүй — багцыг ХАГАСЛААД дахин асууна.
+     Урьд нь тогтмол 500-аар хуваадаг тул `maxRecordCount` нь 500-аас бага үйлчилгээн дээр
+     (эсвэл 500+ мөр зэрэг засахад) хадгалалт БҮР «бүрэн уншиж чадсангүй»-гаар унадаг байв.
+     Ганц мөрийн хүсэлт хүртэл тасарвал (бодитоор боломжгүй) дутуу зураглал үүсгэхгүйн тулд шиднэ. */
+  const readChunk = async (chunk: readonly number[]): Promise<void> => {
     const j = await agsFetch(`${url}/query`, {
       objectIds: chunk.join(','),
       outFields: [OID, ...cols].join(','),
       returnGeometry: 'false',
     });
     if (j.exceededTransferLimit) {
-      throw new Error(tr('QAQC-ийн одоогийн утгыг бүрэн уншиж чадсангүй — засвар хадгалагдаагүй. Дахин оролдоно уу.'));
+      if (chunk.length <= 1) {
+        throw new Error(tr('QAQC-ийн одоогийн утгыг бүрэн уншиж чадсангүй — засвар хадгалагдаагүй. Дахин оролдоно уу.'));
+      }
+      const mid = Math.ceil(chunk.length / 2);
+      await readChunk(chunk.slice(0, mid));
+      await readChunk(chunk.slice(mid));
+      return;
     }
     for (const f of (j.features ?? []) as Feat[]) {
       const a = f.attributes;
@@ -559,6 +578,9 @@ export async function fetchQaqcDocs(
       const oid = Number(a[OID]);
       if (Number.isInteger(oid)) out.set(oid, docsOf(a));
     }
+  };
+  for (let i = 0; i < ids.length; i += 500) {
+    await readChunk(ids.slice(i, i + 500));
   }
   return out;
 }

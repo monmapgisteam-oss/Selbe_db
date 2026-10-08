@@ -46,6 +46,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, text } from '@/lib/format';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { PARCEL_LEFT, parcelLeftWhere } from '@/lib/services';
+import { isClearedStatus } from '@/lib/land';
 import { cached, loadClearance, type Clearance } from '@/lib/live';
 import { loadOverlaps, type Overlaps } from '@/lib/execTriage';
 import { overlapLevel, pctLevel } from '@/lib/kpiLevels';
@@ -134,7 +135,11 @@ const strOrNull = (v: unknown): string | null => {
 /** `PARCEL_LEFT`-ийн түүхий мөрүүд → нэртэй талбарууд */
 export function parseParcels(rows: readonly Row[]): LandParcel[] {
   const F = PARCEL_LEFT.fields;
-  return rows.map((r) => {
+  /* ⚠️ 2026-10-09: «Бүрэн чөлөөлсөн.» гэх мэт ХУВИЛБАР бичиглэлийг ХАСНА. `parcelLeftWhere()` нь
+     ЯГ таарцын SQL тул тэдгээр мөр «үлдсэн саад»-д тоологдож, «Газар» дашбоард (`land.isClearedStatus`)
+     ба давхцал (`parcelOverlap.dropCleared`) чөлөөлсөн гэж үздэг атал CEO KPI-д саад болж ЗӨРДӨГ
+     байв. SQL-ээр хэвийншүүлэх найдваргүй тул клиент талд ИЖИЛ дүрмээр шүүнэ. */
+  return rows.filter((r) => !isClearedStatus(r[F.status])).map((r) => {
     const area = numOrNull(r[F.area]);
     return {
       oid: Number(r[PARCEL_LEFT.oid]),

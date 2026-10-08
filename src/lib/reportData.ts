@@ -68,6 +68,7 @@ import {
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { paidShareOf, paidPctOf } from '@/lib/paidShare';
+import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
@@ -785,11 +786,15 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    *    бүгд нэг түлхүүрт нийлж, багцын хүснэгт нэг мөр болж хумигдана.
    * ⚠️ ЗӨВХӨН мастер мөрөөс — үеийн мөр багцаа давтдаг тул нэг гэрээний төсөв
    *    14 дахин нэмэгдэнэ (мөнгөн багана NULL тул НИЙТ дүнд илрэхгүй!).
+   * ⚠️ 2026-10-09: түлхүүр нь `finPkgKey` (`pkgAlias.FIN_PKG_ALIAS`) — уншигч нь газрын зургийн
+   *    `BagtsRow.key`-ээр хайдаг тул Cashflow-ийн «Багц 8» мэт холбоостой түлхүүр өөрөөр нь
+   *    үлдвэл «Багц 8.2»-ийн төсөв олдохгүй (тайлан · PDF · схемд «—»/0) байв.
    */
   const byBagts: Record<string, number> = {};
   master.forEach((r) => {
-    const k = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
-    if (!k || k === '0') return;
+    const k0 = pkgKeyOf(r[F.pkg2]) || pkgKeyOf(r[F.pkg]);
+    if (!k0 || k0 === '0') return;
+    const k = finPkgKey(k0);
     byBagts[k] = (byBagts[k] ?? 0) + nn(r[F.budget]);
   });
 
@@ -827,7 +832,9 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       .reduce((a, r) => a + nn(r[F.budget]), 0),
     sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
     /* ⚠️ 2026-10-09: HO мөргүй → `null` (мэдээлэлгүй), 0 биш; хувь нь `share.pct` (тэр ч null) */
-    paid: ho.length ? paid : null,
+    /* ⚠️ 2026-10-09: «мэдээлэлгүй» нь бөглөгдсөн `dun` БАЙХГҮЙ үед (`share.paidKnown`), `ho.length`
+       биш — бүх дүн хоосон мөрүүд «0 ₮ олгосон» гэж гардаг байв. */
+    paid: share.paidKnown ? paid : null,
     paidPct: share.pct,
     paidContracted,
     paidOther: share.paidOther,

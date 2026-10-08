@@ -5,10 +5,12 @@
 #        docker build -f deploy/telegram-bot/Dockerfile -t selbe-telegram-bot .
 #    эсвэл энэ хавтсаас `docker compose up -d --build` (context нь ../..).
 #
-# ⚠️ Node 24 — хөгжүүлэлтийн орчинтой ижил. `--experimental-transform-types`
-#    (bot script) энэ хувилбарт дэмжигдэнэ.
+# ⚠️ 2026-10-09: Node 22 — репогийн `.nvmrc`-тэй (22) ИЖИЛ. Урьд 24 байсан тул контейнер ба
+#    CI/хөгжүүлэлтийн хувилбар зөрж, зөвхөн контейнерт гардаг алдааг локалд давтаж чаддаггүй байв.
+#    `--experimental-transform-types` (≥22.7) ба `--env-file-if-exists` (≥22.9) — `node:22-slim`
+#    нь 22-ын хамгийн сүүлийн хувилбар тул хоёулаа дэмжигдэнэ.
 
-FROM node:24-slim
+FROM node:22-slim
 
 WORKDIR /app
 

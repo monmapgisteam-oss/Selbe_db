@@ -82,6 +82,17 @@ const inc = [
   const r2 = rateByPkg(days, [{ d: day('2026-08-01'), bagtsK: 'P21' }], PKG_OF_CO, (k) => k);
   assert.equal(r2.unmatched, 1);
 }
+/* ── 2026-10-09: ТАСРАЛТГҮЙ сарын тэнхлэг — хүн-цаггүй завсрын сар `rate: null` (цоорхой, 0 биш) ── */
+{
+  const d2 = hoursByDay([row('2026-06-10', 1000, 1, 1), row('2026-09-02', 2000, 1, 1)]);
+  const r = rateByMonth(d2, [{ d: day('2026-06-12'), bagtsK: 'P1' }], { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null });
+  assert.deepEqual(r.items.map((x) => x.key), ['2026-06', '2026-07', '2026-08', '2026-09'], 'завсрын сар алга болохгүй');
+  assert.deepEqual(r.items.map((x) => x.rate), [(1 / 1000) * RATE_BASE, null, null, 0], 'хүн-цаггүй сар null, осолгүй сар 0');
+  assert.equal(r.items[1].hours, null);
+  /* Он дамжих */
+  const d3 = hoursByDay([row('2026-12-10', 1000, 1, 1), row('2027-02-02', 1000, 1, 1)]);
+  assert.deepEqual(rateByMonth(d3, [], { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).items.map((x) => x.key), ['2026-12', '2027-01', '2027-02']);
+}
 /* ── Хүн-цаг огт алга — хоосон (0 давтамж зурахгүй) ── */
 assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).items, []);
 
@@ -110,11 +121,47 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
     { Ognoo: day('2026-08-13'), Hun_tsag: 300 },
   ];
   assert.deepEqual(ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Эд хөрөнгийн хохирол' }], ub),
-    { hours: 1800, since: null, undatedLti: false }, 'LTI алга — бүх хүн-цаг');
+    { hours: 1800, since: null, undatedLti: false, futureLti: 0 }, 'LTI алга — бүх хүн-цаг');
   const r = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }], ub);
   assert.equal(r.hours, 300, 'LTI-ийн ӨДРИЙН дараах хүн-цаг л (тэр өдөр ороогүй, null 0 биш алгасна)');
   assert.equal(r.since, day('2026-08-11'));
   assert.equal(ltiFreeHours(lab, [{ d: 0, type: 'Ноцтой осол' }], ub).hours, null, 'огноогүй LTI — мэдэгдэхгүй (0 биш)');
+  /* ⚠️ 2026-10-09: ирээдүйн огноотой LTI хил болохгүй — тоолж ил буцаана */
+  {
+    const now = day('2026-08-20');
+    const f = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }, { d: day('2027-08-11'), type: 'Ноцтой осол' }], ub, now);
+    assert.equal(f.hours, 300, 'ирээдүйн LTI үл тооцогдоно — сүүлийн БОДИТ LTI-ээс');
+    assert.equal(f.futureLti, 1);
+    assert.equal(ltiFreeHours(lab, [{ d: day('2027-01-01'), type: 'Үйлдвэрлэлийн осол' }], ub, now).hours, 1800, 'зөвхөн ирээдүйн LTI — бүх хүн-цаг');
+  }
+}
+
+/* ══════════ 6. Амьд ослын төрлүүд — ангилал (2026-10-09) ══════════
+   ⚠️ Амьд `field_7` домэйн + бодит утгуудаас (кодын тайлбар, enData-аас сэргээсэн; давхарга токен
+   шаарддаг тул шалгуур нь сүлжээгүй). LTI ЗӨВХӨН «Ноцтой осол», «Үйлдвэрлэлийн осол». */
+{
+  const LIVE = [
+    'Ноцтой осол',
+    'Үйлдвэрлэлийн осол',
+    'Амь нас эрсдэж болзошгүй байсан',
+    'Хүний амь эрсдэж болзошгүй байсан',
+    'Ноцтой байдалд хүргэж болзошгүй',
+    'Осол дөхсөн тохиолдол',
+    'Эд хөрөнгийн хохирол',
+    'Эд хөрөнгө, өмчийн хохирол',
+    'Галын тохиолдол',
+    'Бусад',
+    'Эмнэлгийн тусламж авсан гэмтэл',
+    'Эмнэлэгийн тусламж авсан',
+    'Анхны тусламж авсан осол зөрчил',
+    'Моторт тээврийн хэрэгсэлийн осо',
+  ];
+  assert.equal(LIVE.length, 14);
+  assert.deepEqual(LIVE.filter(isLtiType), ['Ноцтой осол', 'Үйлдвэрлэлийн осол'], 'амьд 14 төрлийн ангилал өөрчлөгдөхгүй');
+  /* Эрэмбэ: «LTI биш» үг ҮНДСЭН төрөлд байвал л хасна */
+  assert.equal(isLtiType('Үйлдвэрлэлийн осол (эд хөрөнгийн хохиролтой)'), true, 'дагалдах «хохирол» LTI-г хасахгүй');
+  assert.equal(isLtiType('Ноцтой осолд хүргэж болзошгүй'), false, 'үндсэн төрөл «болзошгүй»');
+  assert.equal(isLtiType('Осол дөхсөн тохиолдол (ноцтой осол болох байсан)'), false, 'LTI үг зөвхөн дагалдах хэсэгт');
 }
 
 console.log('habeaRate.check: OK');

@@ -88,7 +88,7 @@
   gap: 8px;
 }
 /* Гүйцэтгэлийн Ring — дээд KPI зурвастай ДАВХАРДДАГ тул нуана */
-.r [class*='packRing'] { display: none; }
+.r [data-ui='pack-ring'] { display: none; }
 
 /* ── Төв: зураг — hairline хүрээтэй үүр ── */
 .map {
@@ -161,7 +161,7 @@
   .list { max-height: none; }
   .fin { max-height: none; }
   /* Нэг баганад зааг байхгүй — бүх бариул нуугдана */
-  .pack > :global(button[class*='splitGrip_grip']) { display: none; }
+  .pack > button[data-split-grip] { display: none; }
   .finGrip { display: none; }
 }
 
@@ -231,27 +231,27 @@
    absolute давхарга байхдаа left: calc(var(--side-l) - 5px) гэж баганын
    ДОТОР тооцогдож картуудын ирмэг дээр давхардаг байв. Одоо grid-ийн
    өөрийнх нь 8px завсарт төвлөнө — картанд огт хүрэхгүй. ══ */
-.pack > :global(button[class*='splitGrip_grip']) {
+.pack > button[data-split-grip] {
   position: relative;
   grid-row: 1 / -1;
   top: auto;
   bottom: auto;
   z-index: 6;
 }
-.pack > :global(button[class*='splitGrip_left']) {
+.pack > button[data-split-grip='left'] {
   grid-column: 1 / 2;
   justify-self: end;
   left: auto;
   margin-right: -9.5px;
 }
-.pack > :global(button[class*='splitGrip_right']) {
+.pack > button[data-split-grip='right'] {
   grid-column: 3 / 4;
   justify-self: start;
   right: auto;
   margin-left: -9.5px;
 }
 @media (max-width: 1180px) {
-  .pack > :global(button[class*='splitGrip_grip']) { display: none; }
+  .pack > button[data-split-grip] { display: none; }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -279,21 +279,21 @@
 }
 
 /* Хаалттай карт — зөвхөн гарчиг үлдэх тул доод зай хэрэггүй */
-.list section[class*='sectionClosed'] > header { margin-bottom: 0; }
-.list section[class*='sectionClosed'] {
+.list section[data-closed] > header { margin-bottom: 0; }
+.list section[data-closed] {
   padding-top: 8px;
   padding-bottom: 8px;
 }
 
 /* Сумыг томсгож, эргэлтийг зөөлрүүлэв — хаалттай/нээлттэй нь холоос танигдана */
-.list [class*='secCaret'] {
+.list [data-ui='sec-caret'] {
   font-size: 11px;
   color: var(--hue);
   transition: transform 0.18s var(--ease, ease);
 }
 
 /* «N багц · тайлбар» — гарчгийн баруун талд тоо нь ялгарч зогсоно */
-.list [class*='sectionNote'] {
+.list [data-ui='section-note'] {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -331,17 +331,17 @@
    Тиймээс ЭНЭ БАГАНАД зөвхөн: текст мөр дамжина, тоо nowrap хэвээр.
    Глобал дүрмийг хөндөхгүй — бусад самбарын зан төлөв хэвээр.
    ══════════════════════════════════════════════════════════ */
-.r [class*='rowVal'] {
+.r [data-ui='row-val'] {
   flex: 1 1 auto;
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 /* Тоо нь ТАСРАХГҮЙ — `className="num"` глобал класстай утгууд */
-.r [class*='rowVal'] :global(.num) { white-space: nowrap; }
+.r [data-ui='row-val'] :global(.num) { white-space: nowrap; }
 
 /* Түлхүүр хэт нарийсахаас хамгаална: 40%-иас доош хумигдахгүй */
-.r [class*='rowKey'] { flex: 0 1 auto; max-width: 52%; overflow-wrap: anywhere; }
+.r [data-ui='row-key'] { flex: 0 1 auto; max-width: 52%; overflow-wrap: anywhere; }
 
 /* Картын аль ч элемент баганаас ХӨНДЛӨН халихгүй.
    ⚠️ `overflow: hidden` БАЙЖ БОЛОХГҮЙ: тэр нь картаас өндөр агуулгыг
@@ -352,9 +352,9 @@
 .r section { overflow-x: clip; }
 
 /* Цагирагийн тайлбар — урт нэр мөр дамжиж багтана */
-.r [class*='donutLegend'] { max-width: 100%; }
-.r [class*='donutName'],
-.r [class*='legendLabel'] { overflow-wrap: anywhere; }
+.r [data-ui='donut-legend'] { max-width: 100%; }
+/* ⚠️ 2026-10-09: `[class*='legendLabel']` хасав — ийм класс аль ч модульд БАЙХГҮЙ (үхмэл). */
+.r [data-ui='donut-name'] { overflow-wrap: anywhere; }
 
 /* ══════════ ГҮЙЦЭТГЭЛИЙН МУРУЙ — төлөвлөсөн vs бодит ══════════
    ⚠️ Мөнгө энд ОГТ гарахгүй — тэр нь «Багцын санхүү» цонхны хариулт. */

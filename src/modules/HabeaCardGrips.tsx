@@ -22,7 +22,7 @@
  *    тэр баганаас тоологдоно.
  */
 
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import h from './habea.module.css';
 
@@ -52,9 +52,22 @@ const natural = (c: HTMLElement) => {
   return n;
 };
 
+/**
+ * Бариулын байрлал + a11y утгууд (2026-10-09): `now` — дээд картын одоогийн өндөр,
+ * `min` — байгалийн өндөр (доош жижигрүүлэхгүй), `cid` — `aria-controls`-ийн картын id.
+ */
+type Bar = { top: number; now: number; min: number; cid: string };
+/** `aria-valuemax` — картын өндрийн дээд хязгаар (байгалийн өндрийн 4 дахин, ядаж 1200px) */
+const maxOf = (min: number) => Math.max(1200, min * 4);
+
 export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement | null>; id: string }) {
-  const [bars, setBars] = useState<number[]>([]);
+  const [bars, setBars] = useState<Bar[]>([]);
   const dragging = useRef(false);
+  /** ⚠️ 2026-10-09: идэвхтэй чирэлтийн `up` — unmount үед дуудаж `user-select`/`dragging`-ийг сэргээнэ */
+  const upRef = useRef<(() => void) | null>(null);
+  /** Чирэх үед байгалийн өндрийг дахин хэмжихгүй (layout thrash) — сүүлийн утгыг ашиглана */
+  const minRef = useRef<number[]>([]);
+  const idBase = useId();
   const keyOf = useCallback((n: number) => `${LS}${id}.${n}`, [id]);
 
   /** Хадгалсан өндрийг тавина — байгалийнхаас бага бол ҮЛ ТООМСОРЛОНО (агуулга өссөн байж болно) */
@@ -70,9 +83,22 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
 
   const measure = useCallback((el: HTMLElement) => {
     const xs = cards(el);
-    const next = xs.slice(0, -1).map((c, i) => Math.round((c.offsetTop + c.offsetHeight + xs[i + 1].offsetTop) / 2));
-    setBars((prev) => (prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next));
-  }, []);
+    /* ⚠️ 2026-10-09: `aria-controls`-д картын id — байхгүй бол тогтвортой id оноож өгнө */
+    const next: Bar[] = xs.slice(0, -1).map((c, i) => {
+      if (!c.id) c.id = `${idBase}-card-${i}`;
+      const min = dragging.current && minRef.current[i] != null ? minRef.current[i] : natural(c);
+      minRef.current[i] = min;
+      return {
+        top: Math.round((c.offsetTop + c.offsetHeight + xs[i + 1].offsetTop) / 2),
+        now: c.offsetHeight,
+        min,
+        cid: c.id,
+      };
+    });
+    setBars((prev) => (prev.length === next.length
+      && prev.every((v, i) => v.top === next[i].top && v.now === next[i].now && v.min === next[i].min && v.cid === next[i].cid)
+      ? prev : next));
+  }, [idBase]);
 
   useLayoutEffect(() => {
     const el = target.current;
@@ -96,6 +122,10 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
     return () => { mo.disconnect(); ro.disconnect(); cancelAnimationFrame(raf); };
   }, [target, apply, measure]);
 
+  /* ⚠️ 2026-10-09: чирэлтийн дунд unmount (горим солих, хуудас шилжих) — урьд нь `up` хэзээ ч
+     дуудагдахгүй тул `body { user-select: none }` бүх порталд ГАЦАЖ үлддэг байв. */
+  useEffect(() => () => { upRef.current?.(); }, []);
+
   const setHeight = (el: HTMLElement, i: number, px: number | null) => {
     const xs = cards(el);
     const sv = load(keyOf(xs.length));
@@ -109,9 +139,12 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
   const onDown = (i: number) => (e: React.PointerEvent<HTMLDivElement>) => {
     const el = target.current;
     if (!el) return;
+    /* ⚠️ 2026-10-09: зөвхөн үндсэн товч — баруун товч (контекст цэс) / дунд товч чирэлт эхлүүлэхгүй */
+    if (e.button !== 0) return;
     e.preventDefault();
     const c = cards(el)[i];
     if (!c) return;
+    upRef.current?.();
     const start = e.clientY;
     const h0 = c.offsetHeight;
     const nat = natural(c);
@@ -135,6 +168,7 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
     const up = () => {
       if (ended) return;
       ended = true;
+      if (upRef.current === up) upRef.current = null;
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
@@ -149,6 +183,7 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
     grip.addEventListener('pointerup', up);
     grip.addEventListener('pointercancel', up);
     grip.addEventListener('lostpointercapture', up);
+    upRef.current = up;
   };
 
   const onKey = (i: number) => (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -173,14 +208,19 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
 
   return (
     <>
-      {bars.map((top, i) => (
+      {bars.map((b, i) => (
         <div
           key={i}
           className={h.gripRow}
-          style={{ top: top - 4 }}
+          style={{ top: b.top - 4 }}
           role="separator"
           aria-orientation="horizontal"
           aria-label={tr('Хэмжээ тохируулах')}
+          /* ⚠️ 2026-10-09: фокуслогдох separator-т утга заавал (ARIA) — дээд картын өндөр, px */
+          aria-controls={b.cid}
+          aria-valuenow={b.now}
+          aria-valuemin={b.min}
+          aria-valuemax={maxOf(b.min)}
           title={tr('Чирж хэмжээг тохируулна · давхар товшвол анхны хэмжээ')}
           tabIndex={0}
           onPointerDown={onDown(i)}

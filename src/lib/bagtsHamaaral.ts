@@ -20,6 +20,8 @@
  * ⚠️ Түлхүүр нь `TuhPkg.key` (орон сууц «БАГЦ1», бусад «energy:БАГЦ61»). Зураг төсөл
  *    (`d:`) ба диапазон мөр (`cf:`) нь OBJECTID-оос хамаарна — мөр дахин үүсвэл тэр
  *    холбоо «өнчин» болж харагдахгүй (устгагдахгүй, хадгалагдсан хэвээр).
+ *    ⚠️ 2026-10-09: өнчин холбоо дугуйн шалгалтад (`linkError`) оролцдог тул харагдахгүй дугуй
+ *    үүсгэж болно — UI (`BagtsHamaaral`) тэдгээрийг тусдаа хэсэгт устгах товчтой жагсаана.
  * ⚠️ Энэ файл React-гүй; алсын IO нь ДИНАМИК import — `bagtsHamaaral.check.mjs` нь
  *    ArcGIS-гүйгээр цэвэр логикийг шалгана.
  */
@@ -141,6 +143,10 @@ export async function saveChange(c: DepChange): Promise<{ ok: true; state: DepSt
   for (let i = 0; i < 3; i++) {
     let cur: DepState;
     try { cur = await loadDeps(); } catch (e) { return { ok: false, error: (e as Error).message }; }
+    /* ⚠️ 2026-10-09: АЛЬ ХЭДИЙН БАЙГАА холбоог «нэмэх» = IDEMPOTENT амжилт. Өөр хүн зэрэг ижил
+       холбоо нэмсэн эсвэл өмнөх бичилтийн хариу алдагдсан үед урьд нь «Энэ холбоо аль хэдийн
+       байна» алдаа гарч, хэрэглэгч бүтэлгүйтсэн гэж ойлгодог байв. Сервер хүссэн төлөвт. */
+    if (c.op === 'add' && cur.deps.some((d) => sameDep(d, c.dep))) return { ok: true, state: cur };
     const next = applyChange(cur.deps, c);
     if (typeof next === 'string') return { ok: false, error: next };
     /* ⚠️ 2026-10-09: ӨӨРЧЛӨЛТГҮЙ (жиш. өөр хүн аль хэдийн устгасан холбоог «устгах») — урьд нь

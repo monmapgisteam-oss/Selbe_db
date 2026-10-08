@@ -34,6 +34,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { t as tr } from './i18nCore';
+import { isLostWrite } from './lostWrite';
 import {
   addRows, addedOid, ensureUniqueId, hasHistoryField, hasOkCellsField, queryAll, queryStatusSig, updateRows,
   DECISION, F, HYANALT, STATUS,
@@ -718,7 +719,7 @@ async function archiveSubmission(
   const subOid = cur[F.sheetOid];
   /* ⚠️ `ARCHIVED`-ийн шалгуур нь ЭНД БИШ, илгээлтийг УНШСАНЫ ДАРАА (доор) —
      түлхүүрт `staged.at` (агуулгын хувилбар) орох ёстой. */
-  const { readSubmissionByOid, closeSubmission, markArchiving } = await import('./submission');
+  const { readSubmissionByOid, closeSubmission, markArchiving, frameProbe, matchArchivedFrame } = await import('./submission');
   /*
    * ⚠️ АЛДААГ ЯЛГАДАГ ХУВИЛБАР (2026-09-04-ний аудитын CRITICAL олдвор).
    *    Урьд нь энд `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь
@@ -779,14 +780,16 @@ async function archiveSubmission(
       : undefined;
     if (aOid > 0) {
       try {
-        const [{ PKGS, loadSchema }, { agsFetch }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags')]);
+        const [{ PKGS, loadSchema }, { agsFetch }, { msToDay: m2d, normDayMs: ndm }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags'), import('@/modules/sheet/bagtsSheet')]);
         const pkg = PKGS.find((p) => p.key === staged.payload.pkgKey);
         if (pkg) {
           const sc = await loadSchema(pkg);
           if (sc.f.fillDate) {
             const j = await agsFetch(`${pkg.url}/query`, { where: `${sc.f.oid} = ${aOid}`, outFields: sc.f.fillDate, returnGeometry: 'false' });
             const v = j.features?.[0]?.attributes?.[sc.f.fillDate];
-            if (typeof v === 'number') day = new Date(v).toISOString().slice(0, 10);
+            /* ⚠️ 2026-10-09: `normDayMs` — ЛОКАЛ шөнө дундаар (16:00Z) тамгалсан хуучин жааз өмнөх өдөрт
+               гулсахгүй (нөөц `fillMs`-ийн дээрх R7 дүрэмтэй НЭГ) */
+            if (typeof v === 'number') day = m2d(ndm(v)) || day;
           }
         }
       } catch { /* нөөц `fillMs` хэвээр */ }
@@ -862,32 +865,43 @@ async function archiveSubmission(
    *    батлалт (`archivedGet` харагдахгүй) бүтэн жаазыг ДАХИН бичдэг байв. Бүтэн биш (буцаагдсан
    *    хагас жааз) бол урьдын адил бичнэ. Шалгаж ЧАДАХГҮЙ бол бичихгүй (fail-closed).
    */
+  /* ⚠️ 2026-10-09 (R2-c): урьд нь «OID > maxOid0, тэр өдөр ≥ n мөр» л шалгадаг байв — тэмдэг тавигдаад
+     бичилт ТОДОРХОЙ татгалзагдсан (юу ч бичигдээгүй) ч тэр өдөр ӨӨР жааз (ажил нэмэх · Улсын комисс)
+     бичигдсэн бол «аль хэдийн архивлагдсан» гэж андуурч, батлагдсан гүйцэтгэл архивт ОГТ орохгүйгээр
+     илгээлт хаагддаг байв. Одоо ОЛДСОН ЖААЗ НЬ ЭНЭ ИЛГЭЭЛТИЙНХ болохыг батална (`submission.matchArchivedFrame`):
+     ЯГ `n` мөр, эхний мөрийн № = `rootNo`, илгээлтээр өөрчлөгдсөн нүднүүдийн дээж (`probe`) архивтай
+     тэнцүү. Шалгаж ЧАДАХГҮЙ бол бичихгүй (fail-closed) — хуучин дүрэм хэвээр. */
   {
     const am = staged.payload.archiving;
     if (am && am.at === staged.at && sc.f.fillDate) {
-      let hit: { n: number; mn: number } | null = null;
+      let hitOid: number | null = null;
       try {
-        const j = await agsFetch(`${pkg.url}/query`, {
-          where: `${sc.f.oid} > ${am.maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(am.fillMs))}`,
-          outStatistics: JSON.stringify([
-            { statisticType: 'count', onStatisticField: sc.f.oid, outStatisticFieldName: 'n' },
-            { statisticType: 'min', onStatisticField: sc.f.oid, outStatisticFieldName: 'mn' },
-          ]),
-          returnGeometry: 'false',
-        });
-        const at0 = j?.features?.[0]?.attributes ?? {};
-        const n = Number(at0.n ?? at0.N ?? 0);
-        const mn = Number(at0.mn ?? at0.MN);
-        hit = { n: Number.isFinite(n) ? n : 0, mn: Number.isFinite(mn) ? mn : 0 };
+        const outFields = [...new Set([sc.f.oid, sc.f.no, ...(am.probe ?? []).map((p) => p[1])])].join(',');
+        const rows: Record<string, unknown>[] = [];
+        for (let offset = 0; ; ) {
+          const j = await agsFetch(`${pkg.url}/query`, {
+            where: `${sc.f.oid} > ${am.maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(am.fillMs))}`,
+            outFields,
+            orderByFields: `${sc.f.oid} ASC`,
+            resultRecordCount: '2000',
+            resultOffset: String(offset),
+            returnGeometry: 'false',
+          });
+          const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
+          rows.push(...fs.map((f) => f.attributes));
+          if (!j?.exceededTransferLimit || fs.length === 0) break;
+          offset += fs.length;
+        }
+        hitOid = matchArchivedFrame(rows, am, sc.f.oid, sc.f.no);
       } catch (e) {
         return { ok: false, error: tr('Өмнөх архивлалтыг шалгаж чадсангүй — архивт юу ч бичсэнгүй, дахин оролдоно уу ({0})', String((e as Error)?.message ?? e)) };
       }
-      if (hit.n >= am.n && hit.mn > 0) {
+      if (hitOid != null && hitOid > 0) {
         const day = msToDay(am.fillMs);
-        archivedSet(seenKey, { oid: hit.mn, day });
-        const fin = await closeAfterArchive(subOid, staged, pl, hit.mn, pkg.name);
+        archivedSet(seenKey, { oid: hitOid, day });
+        const fin = await closeAfterArchive(subOid, staged, pl, hitOid, pkg.name);
         const warns = [tr('Энэ илгээлт өмнө нь архивт бичигдсэн байсан — дахин бичсэнгүй, илгээлтийг хаав.'), ...fin.warns];
-        return { ok: true, archiveOid: hit.mn, day, pkgKey: pkg.key, warn: warns.join(' · '), ...(fin.reopen ? { reopen: fin.reopen } : {}) };
+        return { ok: true, archiveOid: hitOid, day, pkgKey: pkg.key, warn: warns.join(' · '), ...(fin.reopen ? { reopen: fin.reopen } : {}) };
       }
     }
   }
@@ -917,7 +931,13 @@ async function archiveSubmission(
    *    БАТЛАХ агшны хамгийн сүүлийн архив байх ёстой: хооронд нь өөр илгээлт
    *    батлагдсан бол түүний тоог дарж бичихгүй.
    */
-  const loaded = await loadRows(pkg, sc);
+  /* ⚠️ 2026-10-09 (F4): `strict` — жаазны бүтэн эсэхийг шалгаж ЧАДАХГҮЙ бол бичихгүй (дутуу жааз дээр угсрахгүй) */
+  let loaded: Awaited<ReturnType<typeof loadRows>>;
+  try {
+    loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true });
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
   /*
    * ⚠️ 2026-10-04 дахин аудит (#1, HIGH): ХУУЧИН (`rowOcc`-гүй) илгээлт ӨМНӨХ жааз дээр — давхардсан
    *    шошготой мөрийг шинэ жаазад зөөж чадахгүй (`mapOldOids` хоёрдмол) тул батлалт МӨНХӨД
@@ -1139,7 +1159,7 @@ async function archiveSubmission(
   /* ⚠️ A.8/A.8а — жааз ба MAX OID-ийн уралдаа (дээрх `maxOidOf`-ийн ⚠️, 2026-09-25 аудит).
      Шалгаж ЧАДААГҮЙ нь «уралдаагүй» гэсэн үг биш — бичихгүй. Менежер дахин дарна. */
   try {
-    const now2 = await loadRows(pkg, sc);
+    const now2 = await loadRows(pkg, sc, undefined, undefined, { strict: true });
     if (!sameFrame(loaded, now2))
       return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
     if ((await maxOidOf()) > maxOid0)
@@ -1152,8 +1172,16 @@ async function archiveSubmission(
      энэ тэмдгээр бичигдсэн жаазыг олж, БҮТЭН жаазыг дахин бичихгүй (доод `alreadyArchived`).
      Тэмдэг бичигдээгүй бол юу ч бичихгүй зогсоно — архивт өөрчлөлтгүй, менежер дахин дарна. */
   {
+    /* ⚠️ 2026-10-09 (R2-c): жаазыг ДАРАА нь ЯГ таних дээж — эхний мөрийн № ба илгээлтээр өөрчлөгдсөн
+       нүднүүд (`frameProbe`, ачаалсан жаазтай OID-оор тулгана; шинэ мөр бүхэлдээ «өөрчлөгдсөн»). */
+    const prevByOid = new Map(loaded.rows.map((r) => [r.oid, r.raw]));
+    const probeFields = [...sc.act, ...sc.obyem, ...sc.start, ...sc.end].filter((f): f is string => !!f);
+    const probe = frameProbe(frame, (i) => prevByOid.get(ov.rows[i]?.oid ?? -1), probeFields);
+    const rootNo = String(frame[0]?.[sc.f.no] ?? '').trim();
     const mr = await markArchiving(staged.oid, staged.at, {
       at: staged.at, startedAt: Date.now(), maxOid0, fillMs, n: frame.length,
+      ...(rootNo ? { rootNo: rootNo.slice(0, 64) } : {}),
+      ...(probe.length ? { probe } : {}),
     });
     if (!mr.ok)
       return mr.changed
@@ -1181,21 +1209,33 @@ async function archiveSubmission(
      * ⚠️ Хяналтын мөр ӨӨРЧЛӨГДӨХГҮЙ — менежер дахин дарж болно.
      */
     const why = String((e as Error)?.message ?? e);
+    /* ⚠️ 2026-10-09 (R2-b): тэмдэг арилгалтын үр дүнг ШАЛГАНА — урьд нь `.catch(() => undefined)`
+       `{ok:false}`-г чимээгүй залгидаг байв. Үлдсэн тэмдэг аюултай биш (дахин батлалт жаазыг ЯГ таньна,
+       R2-c) ч менежерт ил хэлнэ. */
+    const clearMark = async (): Promise<string> => {
+      const r = await markArchiving(staged.oid, staged.at, null)
+        .catch((x: unknown) => ({ ok: false as const, error: String((x as Error)?.message ?? x) }));
+      return r.ok ? '' : ` · ${tr('«Архивлаж байна» тэмдгийг арилгаж чадсангүй ({0})', r.error ?? '')}`;
+    };
     if (written.length) {
       const gone = await applyDeletes(pkg, written);
       const left = written.length - gone;
       /* ⚠️ 2026-10-09 (R2): БҮРЭН буцаагдсан нь баталгаатай үед л «архивлаж байна» тэмдгийг арилгана
          (чадвал) — үлдвэл тэр өдөр өөр жааз бичигдсэний дараа дахин батлахад «аль хэдийн архивлагдсан»
-         гэж андуурах эрсдэлтэй. Хариу алдагдсан (`written` хоосон) үед мөр суусан эсэх тодорхойгүй тул
-         тэмдэг ҮЛДЭНЭ — дахин батлалт архивын жаазаар шалгана. */
-      if (left === 0) await markArchiving(staged.oid, staged.at, null).catch(() => undefined);
+         гэж андуурах эрсдэлтэй. Хариу алдагдсан үед мөр суусан эсэх тодорхойгүй тул тэмдэг ҮЛДЭНЭ —
+         дахин батлалт архивын жаазаар шалгана. */
+      const markMsg = left === 0 ? await clearMark() : '';
       return {
         ok: false,
-        error: left > 0
+        error: (left > 0
           ? `${why} · ${tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', written.length, left)}`
-          : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`,
+          : `${why} · ${tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', written.length)}`) + markMsg,
       };
     }
+    /* ⚠️ 2026-10-09 (R2-a): ЭХНИЙ багц ТОДОРХОЙ татгалзагдсан (серверийн `error.code` / `success:false` —
+       `rollbackOnFailure` буцаасан) бөгөөд нэг ч мөр бичигдээгүй бол архив өөрчлөгдөөгүй нь баталгаатай —
+       тэмдгийг арилгана. Хариу АЛДАГДСАН (`isLostWrite`) бол мөр суусан эсэх тодорхойгүй тул ҮЛДЭНЭ. */
+    if (!isLostWrite(e)) return { ok: false, error: why + (await clearMark()) };
     return { ok: false, error: why };
   }
   /*
@@ -1664,6 +1704,8 @@ export async function apply(a: {
             console.warn('[selbe] IPC мөр алгасагдлаа:', ipc.why);
             ipcErr = tr('IPC алгасагдлаа: {0}', String(ipc.why ?? ''));
           }
+          /* ⚠️ 2026-10-09 (F6): олон гэрээ ялгагдахгүй таарсан — аль гэрээнд холбосныг ИЛ хэлнэ */
+          if (ipc.ok && ipc.warn) warns.push(ipc.warn);
         } catch (e) {
           console.warn('[selbe] IPC мөр үүсгэх алдаа:', e);
           ipcErr = String((e as Error)?.message ?? e);

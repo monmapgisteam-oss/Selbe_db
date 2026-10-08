@@ -268,4 +268,42 @@ const P = HO_IPC.payFields;
     `⚠️ зөрүү ≈ 0 байх ёстой (хуримтлал − une), гарсан: ${z}`);
 }
 
+/* ── 2026-10-09 (F6 · F2 · R6): AUTO гэрээ тогтвортой · warn дамжина · блокгүй багц · finally ── */
+{
+  const { autoContractFor } = await import('./ipcAuto.ts');
+  const two = [
+    { [P.id]: 'ХО-0003', [C.pkg]: 'Багц-5', [C.code]: 'Багц-5Б', [C.workType]: 'Барилга угсралт', [P.kind]: 'Урьдчилгаа төлбөр' },
+    { [P.id]: 'ХО-0004', [C.pkg]: 'Багц-5', [C.code]: 'Багц-5А', [C.workType]: 'Барилга угсралт', [P.kind]: 'Гүйцэтгэл' },
+  ];
+  assert.deepEqual(autoContractFor(two, 'БАГЦ5'), { code: 'Багц-5А', warn: null }, 'AUTO мөргүй — contractFor');
+  /* өмнөх AUTO мөрүүд «Багц-5Б»-д — түүх хуваагдахгүй, тэндээ үргэлжилнэ, анхааруулгатай */
+  const withAuto = [...two,
+    { [P.id]: autoId('БАГЦ5', '2026-09-01'), [C.pkg]: 'Багц-5', [C.code]: 'Багц-5А' },
+    { [P.id]: autoId('БАГЦ5', '2026-09-20'), [C.pkg]: 'Багц-5', [C.code]: 'Багц-5Б' },
+  ];
+  const a = autoContractFor(withAuto, 'БАГЦ5');
+  assert.equal(a.code, 'Багц-5Б', 'хамгийн сүүлийн AUTO мөрийн гэрээ');
+  assert.ok(a.warn && a.warn.includes('Багц-5Б'), 'гэрээ сонголт зөрсөн — анхааруулга');
+  /* AUTO мөрийн код ГАРААР оруулсан гэрээнд байхгүй (буруу) бол хэрэглэхгүй */
+  const stale = [...two, { [P.id]: autoId('БАГЦ5', '2026-09-20'), [C.pkg]: 'Багц-5', [C.code]: 'БУРУУ' }];
+  assert.equal(autoContractFor(stale, 'БАГЦ5').code, 'Багц-5А', 'гэрээгүй AUTO код — үл тооно');
+  /* олон гэрээний warn ДАМЖИНА */
+  const tie = [
+    { [P.id]: 'ХО-0005', [C.pkg]: 'Багц-6', [C.code]: 'Багц-6Б', [C.workType]: 'Барилга угсралт' },
+    { [P.id]: 'ХО-0006', [C.pkg]: 'Багц-6', [C.code]: 'Багц-6А', [C.workType]: 'Барилга угсралт' },
+  ];
+  assert.ok(autoContractFor(tie, 'БАГЦ6').warn, 'warn хаягдахгүй');
+
+  const { readFileSync } = await import('node:fs');
+  const W = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
+  assert.ok(W.includes("const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
+  assert.ok(W.includes("if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };"), 'блокгүй багц — no-data (F2)');
+  assert.ok(W.includes('if (!cols.length) { noObyem += 1; continue; }'), 'обьёмгүй хуудас «дутуу» биш (F2)');
+  assert.ok(/\} finally \{\s*\/\*[^]*?\*\/\s*if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
+  const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
+  assert.ok(L.includes('const cf = autoContractFor(hoRows, packKey);') && L.includes('cands.find((c) => c.code === cf.code)'), 'ipcDocLoad AUTO-той ижил гэрээ сонгоно (F6)');
+  assert.ok(L.includes('msToDay(normDayMs(v))'), 'ipcDocLoad өдрийг normDayMs-ээр (8)');
+  console.log('✅ ipcAuto 2026-10-09: AUTO гэрээ · warn · блокгүй · finally');
+}
+
 console.log('ipcAuto.check ✓');

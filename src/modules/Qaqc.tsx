@@ -61,6 +61,7 @@ import {
   mergeQaqcDrafts,
   nextStamp,
   parseQaqcDraft,
+  rebaseQaqcCells,
   serializeQaqcDraft,
   type QaqcDraft,
   type QaqcDraftState,
@@ -825,13 +826,22 @@ export function Qaqc() {
    * завсарлага) — flush-ийн ⚠️ 2026-10-05. Дараалал хоосон бол юу ч хийхгүй.
    * ⚠️ 2026-10-09: нэг газар — «алсыг уншиж чадаагүй» салаа ч ашиглана (flush-ийн ⚠️).
    */
-  const armRemoteRetry = useCallback(() => {
+  /* ⚠️ 2026-10-09: «алсыг уншиж чадаагүй» салааны ДАХИН ОРОЛДЛОГО ӨСӨХ завсарлагатай
+     (48 сек → ×2 → дээд 10 мин). Урьд нь тогтмол 48 сек тул сүлжээ/эрх удаан тасарсан үед
+     хүсэлт (ба уншилтын toast) мөнхөд ~1 минут тутам давтагддаг байв. Уншилт амжилттай
+     болмогц (`rr.ok`) 48 сек рүү буцна. */
+  const retryDelayRef = useRef(48_000);
+  const armRemoteRetry = useCallback((backoff = false) => {
     if (remoteRetryTimer.current) clearTimeout(remoteRetryTimer.current);
+    const ms = backoff ? retryDelayRef.current : 48_000;
+    if (backoff) retryDelayRef.current = Math.min(retryDelayRef.current * 2, 600_000);
     remoteRetryTimer.current = setTimeout(() => {
       remoteRetryTimer.current = null;
       if (remoteQueue.current) setRemoteTick((n) => n + 1);
-    }, 48_000);
+    }, ms);
   }, []);
+  /** Алсын уншилтын анхааруулгыг сүүлд харуулсан багц/агшин — 10 мин-д нэгээс олонгүй (⚠️ 2026-10-09) */
+  const readWarnRef = useRef<{ pkg: string; at: number }>({ pkg: '', at: 0 });
 
   /** Одоогийн багц — асинхрон дуусгалт (булшны дахин дараалал) багц солигдсоныг мэдэх */
   const pkgKeyRef = useRef(pkg.key);
@@ -931,7 +941,16 @@ export function Qaqc() {
      *    нь булшнууд хуучрах хүртэл (30 хоног) үлдэнэ, эсвэл нэгтгэл хоосон
      *    болмогц `saveQaqcDraft` устгана.
      */
-    const { st, changed } = applyPendDiff(draftStRef.current, prevPendRef.current, pend, stamp);
+    /* ⚠️ 2026-10-09: нүдний СУУРЬ — засах агшинд дэлгэцэнд ачаалагдсан серверийн утга
+       (`QaqcDraft.cells`-ийн ⚠️). Хадгалахдаа зөрчлийг ачааллын агшнаар биш үүгээр жишнэ —
+       хуучин ноорог сэргээгдсэн ч хооронд нь серверт орсон шинэ утгыг чимээгүй дарахгүй. */
+    const rowOf = new Map(rows.map((r) => [r.oid, r]));
+    const seenOf = (k: string): string | null | undefined => {
+      const cut = k.lastIndexOf(':');
+      const r = rowOf.get(Number(k.slice(0, cut)));
+      return r ? (r.docs[Number(k.slice(cut + 1))] ?? null) : undefined;
+    };
+    const { st, changed } = applyPendDiff(draftStRef.current, prevPendRef.current, pend, stamp, seenOf);
     draftStRef.current = st;
     prevPendRef.current = pend;
     const empty = !Object.keys(pend).length;
@@ -986,7 +1005,7 @@ export function Qaqc() {
            эсвэл амжилттай ч сэргээлт шинэ дараалал үүсгээгүй бол) — заалтын tooltip
            «автоматаар үргэлжилнэ» гэж амладаг атал. Уншилт явж байх үед ч армлана:
            тэр уншилт унавал дахин flush хийх өөр дохио байхгүй. */
-        armRemoteRetry();
+        armRemoteRetry(true);
         /* Уншилт явж байгаа бол (тэмдэг тавигдсан) зүгээр хүлээнэ — дараалал үлдэнэ */
         if (promptedPkgRef.current === q.pkg) return;
         setRemoteState({ kind: 'fail' });
@@ -1093,13 +1112,19 @@ export function Qaqc() {
          АМЖИЛТТАЙ уншсаны дараа л алс руу бичих/устгахыг зөвшөөрнө. Урьд нь
          уншилт унасан ч локал ноорог буугаад завсарлагатай эффект түүнийг
          алсад бичиж, өөр компьютерийн (уншиж чадаагүй) ноорогийг ДАРДАГ байв. */
-      if (rr.ok) remoteVerifiedRef.current = key;
+      if (rr.ok) { remoteVerifiedRef.current = key; retryDelayRef.current = 48_000; }
       if (!rr.ok) {
         promptedPkgRef.current = '';
-        show('warn', tr(
-          'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
-          rr.error,
-        ));
+        /* ⚠️ 2026-10-09: дахин оролдлого бүрд toast гаргахгүй — багц бүрд 10 мин-д нэг удаа
+           (`retryDelayRef`-ийн ⚠️). Байдлын заалт (`remoteState: fail`) байнга ил хэвээр. */
+        const w = readWarnRef.current;
+        if (w.pkg !== key || Date.now() - w.at >= 600_000) {
+          readWarnRef.current = { pkg: key, at: Date.now() };
+          show('warn', tr(
+            'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал сүлжээ сэргэсний дараа хуудсыг дахин ачаална уу.',
+            rr.error,
+          ));
+        }
       }
       const rem = rr.ok ? rr.draft : null;
       const remD = rem ? parseDraft(rem.payload, 'remote') : null;
@@ -1317,13 +1342,11 @@ export function Qaqc() {
     try {
       const known = new Set(rows.map((r) => r.oid));
       const { skipped } = qaqcUpdates(pend, known);
-      /* ⚠️ Нэг ч түлхүүр таарахгүй бол ЗОГСООНО. Чимээгүй алгасвал
-         «хадгаллаа» гэж худал мэдээлж, бөглөсөн акт алга болно. */
-      if (skipped.length) {
-        throw new Error(
-          tr('{0} нүд хуудасны мөрүүдэд таарсангүй (хүснэгт хооронд нь шинэчлэгдсэн байж магадгүй). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй.', skipped.length),
-        );
-      }
+      /* ⚠️ Таарахгүй түлхүүрийг ЧИМЭЭГҮЙ алгасахгүй — нэрлэнэ.
+         ⚠️ 2026-10-09: гэхдээ ЗОГСООХГҮЙ, ХАСНА (булшилна). Урьд нь шиддэг байсан тул устгагдсан
+         мөрийн ганц нүд хадгалалт БҮРИЙГ мөнхөд хаадаг байв — дахин ачаалсан ч тэр мөр
+         буцаж ирэхгүй, ноорог нь түлхүүрээ хадгалсаар. Бусад нүд ердийнхөөрөө бичигдэнэ. */
+      const drop = new Set(skipped);
       /*
        * ⚠️ 2026-10-09: ЗЭРЭГ ЗАСВАРЫН ХАМГААЛАЛТ (`qaqcConflicts`-ийн ⚠️). Бичихийн ӨМНӨ
        *    хөндөх мөрүүдийн 9 баганыг серверээс дахин уншиж, ачаалах үед харсан утгаас
@@ -1335,17 +1358,34 @@ export function Qaqc() {
        * ⚠️ Уншилт ба бичилтийн хоорондох миллисекундын цонх үлдэнэ (ArcGIS-д нөхцөлт
        *    `applyEdits` байхгүй) — гэхдээ «ачаалснаас хойш минут/цаг» гэсэн гол эрсдэл хаагдана.
        */
-      const touched = [...new Set(Object.keys(pend).map((k) => Number(k.slice(0, k.lastIndexOf(':')))))];
+      const check: Record<string, string> = {};
+      for (const [k, v] of Object.entries(pend)) if (!drop.has(k)) check[k] = v;
+      const touched = [...new Set(Object.keys(check).map((k) => Number(k.slice(0, k.lastIndexOf(':')))))];
       const live = await fetchQaqcDocs(pkg.key, touched);
-      const conflicts = qaqcConflicts(pend, new Map(rows.map((r) => [r.oid, r.docs])), live);
+      /* ⚠️ 2026-10-09: суурь нь НҮДНИЙ өөрийнх (засах үед харсан утга, `QaqcDraft.cells`-ийн ⚠️);
+         хуучин ноорогт байхгүй бол ачааллын агшин (`rows[].docs`). */
+      const stNow = draftStRef.current;
+      const all = qaqcConflicts(check, new Map(rows.map((r) => [r.oid, r.docs])), live, (k) => stNow.cells.get(k)?.b);
+      /* ⚠️ 2026-10-09: УСТГАГДСАН МӨР (`gone`) — `pend`-д ҮЛДЭЭХГҮЙ, булшилж хасна (`qaqcConflicts`-ийн ⚠️) */
+      const goneKeys = all.filter((c) => c.gone);
+      for (const c of goneKeys) drop.add(c.key);
+      const conflicts = all.filter((c) => !c.gone);
       const held = new Set(conflicts.map((c) => c.key));
       const keep: Record<string, string> = {};
       const write: Record<string, string> = {};
-      for (const [k, v] of Object.entries(pend)) (held.has(k) ? keep : write)[k] = v;
+      for (const [k, v] of Object.entries(pend)) {
+        if (drop.has(k)) continue;
+        (held.has(k) ? keep : write)[k] = v;
+      }
       const { updates } = qaqcUpdates(write, known);
       const n = updates.length ? await saveQaqc(pkg.key, updates) : 0;
       setPend(keep);
       setEditCell(null);
+      /* ⚠️ 2026-10-09: зөрчилтэй нүдний суурь = ОДООГИЙН серверийн утга — хэрэглэгч түүнийг
+         харсан тул дахин «Хадгалах» нь санаатай дарах болно (`rebaseQaqcCells`-ийн ⚠️). */
+      if (conflicts.length) {
+        draftStRef.current = rebaseQaqcCells(draftStRef.current, new Map(conflicts.map((c) => [c.key, c.live])));
+      }
       /* ⚠️ 2026-10-01: ХАДГАЛСАН НҮД → БУЛШ (устгал биш). Урьд нь ArcGIS-ийн ноорогийг
          устгадаг байсан тул (а) өөр төхөөрөмжийн хуучин локал ноорог хадгалсан нүдийг
          «хадгалаагүй засвар» болгож буцааж амилуулдаг — дараа нь «Хадгалах» дарвал
@@ -1371,15 +1411,33 @@ export function Qaqc() {
       await load(pkg.key);
       if (n) done(tr('{0} мөр хадгалагдлаа.', n));
       /* ⚠️ 2026-10-09: зөрчлийг `load`-ын ДАРАА тавина (`load` нь `err`-ийг арчдаг — catch-ийн ⚠️) */
+      const notes: string[] = [];
       if (conflicts.length) {
-        setErr(tr(
+        notes.push(tr(
           '{0} нүдийг ачаалснаас хойш өөр хэрэглэгч өөрчилсөн тул бичсэнгүй — таны засвар хадгалаагүй хэвээр үлдэв: {1}. Шинэ утгыг шалгаад дахин «Хадгалах» дарвал таны утгаар солигдоно.',
           conflicts.length,
-          listOf(conflicts.map((c) => `${cellName(c.oid, c.di)} (${
-            c.gone ? tr('мөр устгагдсан') : tr('одоо: «{0}»', (c.live ?? '').trim() || '—')
-          })`)),
+          listOf(conflicts.map((c) => `${cellName(c.oid, c.di)} (${tr('одоо: «{0}»', (c.live ?? '').trim() || '—')})`)),
         ));
       }
+      /* ⚠️ 2026-10-09: хасагдсан нүдийг НЭРЛЭНЭ — чимээгүй алгасахгүй */
+      if (goneKeys.length) {
+        notes.push(tr(
+          '{0} нүдний мөр серверээс устгагдсан — засвар хасагдлаа: {1}',
+          goneKeys.length,
+          listOf(goneKeys.map((c) => cellName(c.oid, c.di))),
+        ));
+      }
+      if (skipped.length) {
+        notes.push(tr(
+          '{0} нүд хуудасны мөрүүдэд таарсангүй (хүснэгт хооронд нь шинэчлэгдсэн байж магадгүй) — засвар хасагдлаа: {1}',
+          skipped.length,
+          listOf(skipped.map((k) => {
+            const cut = k.lastIndexOf(':');
+            return cellName(Number(k.slice(0, cut)), Number(k.slice(cut + 1)));
+          })),
+        ));
+      }
+      if (notes.length) setErr(notes.join(' '));
     } catch (e) {
       /* ⚠️ Хагас бичигдсэн байж болзошгүй тул дэлгэцийг СЕРВЕРЭЭС сэргээнэ.
          ⚠️ ЭХЛЭЭД ачаална, ДАРАА нь алдааг тавина (2026-09-25-ны аудит, HIGH):
@@ -1757,6 +1815,8 @@ export function Qaqc() {
                           const editing = editCell === ekey;
                           const val = key in pend ? pend[key] : (r.docs[di] ?? '');
                           const hit = editing ? null : approvedHit(di, val);
+                          /* ⚠️ 2026-10-09: талбараас УРТ засвар — улаанаар (оролт `maxLength`-гүй, доорх ⚠️) */
+                          const over = key in pend && maxLen[di] != null && val.trim().length > (maxLen[di] ?? Infinity);
                           const openCell = () => {
                             if (!canEdit) return say(RO_CAP);
                             /* ⚠️ 2026-09-30: ХАДГАЛАЖ БАЙХ ҮЕД нүд нээхгүй — `save` дуусахдаа
@@ -1773,7 +1833,10 @@ export function Qaqc() {
                                 + (canEdit ? ' cursor-cell' : '')
                                 + (key in pend ? ' dirty' : ''),
                               )}
-                              title={canEdit ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO_CAP}
+                              style={over ? { outline: '2px solid var(--bad)', outlineOffset: -2 } : undefined}
+                              title={over
+                                ? tr('Талбарын дээд уртаас хэтэрсэн ({0}/{1}) — богиносгоно уу', val.trim().length, maxLen[di] ?? 0)
+                                : canEdit ? tr('{0} — дарж бичнэ', tr(dc.label)) : RO_CAP}
                               /* ⚠️ 2026-10-06 аудит: ГАРААР хүрэх боломжтой (FillRows-ийн ижил) — урьд нь
                                  `tabIndex`-гүй тул нүд фокус авдаггүй: гарын хэрэглэгч хүрэхгүй, доорх
                                  «нүд сонгоод Ctrl+V» (`onPaste`) хэзээ ч ажилладаггүй байв. Enter/F2 → нээнэ. */
@@ -1797,9 +1860,10 @@ export function Qaqc() {
                                 <input
                                   autoFocus
                                   type="text"
-                                  /* ⚠️ 2026-10-09: талбарын БОДИТ урт (`fields[].length`) — урьд нь
-                                     дурын 4000; мэдэгдэхгүй бол хязгааргүй, хадгалахад сервер шийднэ */
-                                  maxLength={maxLen[di] ?? undefined}
+                                  /* ⚠️ 2026-10-09: `maxLength` ТАВИХГҮЙ — хөтөч ганц нүдний буулгалтыг
+                                     ЧИМЭЭГҮЙ тасалдаг (таслагдсан акт/баримтын дугаар = худал утга).
+                                     Урт утга нүдэнд бүтнээр орж, нүд улаан болно; «Хадгалах» нь
+                                     `qaqcTooLong`-оор нүдээр нь нэрлэж зогсооно. */
                                   className={st.cellInputLine}
                                   defaultValue={val}
                                   /* ⚠️ Дугаарын нүд — батлагдсан баримтын жагсаалт (толгойн ⚠️) */

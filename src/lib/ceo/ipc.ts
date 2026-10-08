@@ -69,6 +69,7 @@ import {
 } from '@/lib/ipc';
 import { mnt, pct, date, text, dayKey } from '@/lib/format';
 import { paidPctOf } from '@/lib/paidShare';
+import { isAuto } from '@/lib/ipcAuto';
 import type { Level } from '@/lib/kpiLevels';
 import { cell, table, type KpiResult, type KpiIssue, type Cell } from './kpi';
 
@@ -158,7 +159,9 @@ export function summarize(rows: readonly Row[]): IpcSummary {
   }
   return {
     ...hoTotals(rows),
-    noAmount: rows.filter((r) => hoAmount(r) == null).length,
+    /* ⚠️ 2026-10-09: AUTO мөр (`ipcAuto.isAuto`) дүнгүй байх нь ХЭВИЙН — санхүүгийн газрын хяналт
+       хүлээж буй IPC (`tuhData` «хянагдаж буй»). Өгөгдлийн цоорхой биш тул тоолохгүй. */
+    noAmount: rows.filter((r) => !isAuto(r) && hoAmount(r) == null).length,
     noCode: cs.filter((c) => !c.code).length,
     unlinked: un.length,
     unlinkedPaid,
@@ -220,6 +223,8 @@ const payWho = (r: Row): string => (
  *    paidContracted }) — Тайлан · ExecReport-той НЭГ тодорхойлолт. HO-ийн
  *    гэрээт дүн хүснэгтэд хэвээр, «HO хүснэгтээр» гэж ИЛ нэрлэгдэнэ.
  *    `ref` байхгүй (тест, уналт) бол HO-ийн хувийг «HO хүснэгтээр» гэж ил бичнэ.
+ * ⚠️ 2026-10-09: дээрх «26.0%» нь холбоосоос (`pkgAlias.FIN_PKG_ALIAS`) ӨМНӨХ тоо — Багц-7 ·
+ *    Багц-8.1-ийн олголт гэрээлсэн багцад тоологдох болсон тул одоо өндөр. Тогтмол хувийг бүү иш тат.
  */
 export type IpcContractRef = {
   contract: number;
@@ -296,7 +301,8 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
         IPC дугаарын цоорхой ── */
   const issues: KpiIssue[] = [];
   for (const r of rows) {
-    if (hoAmount(r) == null) {
+    /* ⚠️ 2026-10-09: AUTO мөр дүнгүй = хянагдаж буй (`noAmount`-тэй нэг дүрэм) — анхааруулга биш */
+    if (!isAuto(r) && hoAmount(r) == null) {
       issues.push({
         tone: 'warn',
         text: tr('{0} · {1} — төлбөрийн дүн бүртгэгдээгүй',

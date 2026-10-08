@@ -524,7 +524,9 @@ export type SchemSources = {
   overall: { pct: number | null; weightSum: number; rows: number } | null;
   /* ⚠️ 2026-10-04: `blocks` = бөглөх хуудасны БҮХ блок, `reported` = тайлагнасан (reportData.loadProgress) */
   progress: { blocks: number; reported?: number; overall: number | null; date: string; stalled: number } | null;
-  finance: { budget: number; contractAmount: number; paid: number | null; byBagts: Record<string, number> } | null;
+  /* ⚠️ 2026-10-09: `paidPct` = `reportData.finance.paidPct` (`paidShare` — гэрээлсэн багцын олголт ÷
+     гэрээлсэн дүн, 0–100; мэдээлэлгүй бол null) — «Санхүүжилт»-ийн эрүүл байдлын ЦОРЫН ГАНЦ хувь */
+  finance: { budget: number; contractAmount: number; paid: number | null; paidPct?: number | null; byBagts: Record<string, number> } | null;
   habea: { workers: number; tehnik: number; incidents: number } | null;
   /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
   zov: Zov[] | null;
@@ -562,9 +564,7 @@ export const TH = {
   reportAgeD: { warn: 14, bad: 30 },
 } as const;
 
-/** Хуваалт — хуваарь нь эерэг байж л утгатай, эс бөгөөс `null` (0 БИШ) */
-const share = (a: number | null, b: number | null): number | null =>
-  (a == null || b == null || b <= 0 ? null : (a / b) * 100);
+/* ⚠️ 2026-10-09: `share` (олголт ÷ төсөв) туслах ХАСАГДАВ — «Санхүүжилт» `finance.paidPct`-ээр дүгнэнэ */
 
 /**
  * ТӨСВИЙН ЖИНГИЙН ХАМРАЛТ, 0–100 — гүйцэтгэл нь ХЭМЖИГДСЭН орон сууцны багцуудын
@@ -876,8 +876,12 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     : lost ? null : fin(src.finance?.budget);
   /* ⚠️ Олголт нь БАГЦААР задардаггүй — багц сонгосон үед харьцаа гаргахгүй */
   const paid = pkg ? null : fin(src.finance?.paid);
+  /* ⚠️ 2026-10-09: эрүүл байдал = порталын НЭГ «олгосон хувь» (`finance.paidPct` — гэрээлсэн багцын
+     олголт ÷ гэрээлсэн дүн). Урьд нь НИЙТ олголт ÷ ТӨСӨВТ ӨРТӨГ (өөр хуваарь) тул Тайлан · CEO-оос
+     өөр хувиар дүгнэгдэж байв. Багц сонгосон үед задардаггүй тул «none». */
+  const paidPct = pkg ? null : fin(src.finance?.paidPct);
   const sankhuu: SchemState = {
-    health: grade(share(paid, budget), TH.paidPct.good, TH.paidPct.warn),
+    health: grade(paidPct, TH.paidPct.good, TH.paidPct.warn),
     metrics: [
       { label: tr('Төсөвт өртөг'), value: budget, kind: 'mnt', why: lostWhy },
       {

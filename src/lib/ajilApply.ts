@@ -66,11 +66,11 @@ import { ajilScope } from './ajilAcl';
 import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser, requireCap } from './who';
-import { AJIL_STATUS, claimAjil, loadHead, loadPayloadStamped, markApplied, releaseAjilClaim } from './ajilBatlah';
+import { AJIL_STATUS, ajilClaimOther, claimAjil, loadHead, loadPayloadStamped, markApplied, releaseAjilClaim } from './ajilBatlah';
 /* ⚠️ 2026-10-09: обьёмын батлагч түгжсэн/хэсэгчлэн бичсэн бол буулгахгүй (`obyemBusyFor`-ийн ⚠️) */
 import { obyemBusyFor } from './obyemBatlah';
 /* ⚠️ 2026-10-08: хуваарийн хүлээгдэж буй илгээлт (хагас бичигдсэн бол буулгахгүй) — `huvaariBatlah` энэ файлыг импортлодоггүй */
-import { loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
+import { claimHolderOf as planClaimHolderOf, loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
@@ -414,8 +414,17 @@ export const _io: {
    * ⚠️ 2026-10-08: багцын хүлээгдэж буй ХУВААРИЙН илгээлт.
    * ⚠️ 2026-10-09: уншигдахгүй бол ШИДНЭ (урьд нь `null` — fail-open): хагас бичигдсэн хуваарийн
    *    илгээлтийг харж чадаагүй атлаа жааз солих нь A.8-ийн «шалгаж чадаагүй ≠ уралдаагүй» дүрмийг зөрчинө.
+   * ⚠️ 2026-10-09: ХОЁР ТӨРЛИЙГ ТУС ТУСАД НЬ (`loadPending(k, 'plan')` + `loadPending(k, 'geree')`) —
+   *    урьд нь `loadPending(k)` бүх төрлийн ХАМГИЙН БАГА OID-той ганц мөрийг л өгдөг тул гэрээний
+   *    тэмдэггүй санал хүлээж байхад ТӨЛӨВЛӨГӨӨНИЙ хагас бичигдсэн илгээлт харагдахгүй байв.
+   *    Тест ганц мөр/`null` өгч болно (`planList`).
    */
-  loadPlanPending: (pkgKey: string) => Promise<PlanSubmission | null>;
+  loadPlanPending: (pkgKey: string) => Promise<PlanSubmission[] | PlanSubmission | null>;
+  /**
+   * ⚠️ 2026-10-09: `markApplied`-ийн ӨМНӨ — буулгалтын түгжээг ӨӨР хүн/таб барьж байна уу
+   *    (`ajilBatlah.ajilClaimOther`). Манайх хугацаа нь дуусч бусдад шилжсэн бол тэмдгийг нь арчихгүй.
+   */
+  claimOther: (ajilOid: number, me: string) => Promise<string | null>;
   /** ⚠️ 2026-10-09: багцын обьёмын батлалт явж буй эсэх (`obyemBatlah.obyemBusyFor`) — унавал ШИДНЭ */
   obyemBusy: (pkgKey: string) => Promise<{ who: string; partial: boolean } | null>;
   /** ⚠️ 2026-10-09: илгээлтийн мөрийг СЕРВЕР дээр түгжих (`ajilBatlah.claimAjil`) — `null` = минийх */
@@ -426,12 +435,74 @@ export const _io: {
   lockWaitMs: number;
 } = {
   loadHead, loadPayloadStamped, markApplied, writeFrame: writeFrameLive,
-  loadPlanPending: (k) => loadPlanPending(k),
+  loadPlanPending: async (k) => {
+    const [p, g] = await Promise.all([loadPlanPending(k, 'plan'), loadPlanPending(k, 'geree')]);
+    return [p, g].filter((x): x is PlanSubmission => x != null);
+  },
+  claimOther: (oid, me) => ajilClaimOther(oid, me),
   obyemBusy: (k) => obyemBusyFor(k),
   claimApply: (oid, me) => claimAjil({ oid, me, want: AJIL_STATUS.approved }),
   releaseApply: (oid, me) => releaseAjilClaim({ oid, me }),
   lockWaitMs: 120_000,
 };
+
+/** `_io.loadPlanPending`-ийн хариуг жагсаалт болгоно (тест ганц мөр/`null` өгч болно) */
+const planList = (v: PlanSubmission[] | PlanSubmission | null): PlanSubmission[] =>
+  (v == null ? [] : Array.isArray(v) ? v : [v]);
+
+/**
+ * ЖААЗ СОЛИХЫГ ХААХ НӨХЦӨЛ — хуваарь (ХОЁР төрөл) ба обьёмын батлалт (2026-10-09 тусгаарлав).
+ * `materializeInner` эхэнд нь, `writeFrameLive` A.8-ийн ДАРАА `applyAdds`-ийн ЯГ ӨМНӨ (засвар 5) дуудна —
+ * урьд нь хаалт ганцхан удаа, жааз ачаалж угсрахаас (хэдэн секунд) ӨМНӨ шалгагддаг тул тэр завсарт
+ * хуваарийн/обьёмын батлагч түгжиж бичиж эхэлбэл жааз тэдний доороос солигддог байв.
+ * @returns `{ error }` = ХААНА (юу ч бичихгүй); эс бөгөөс `{ warn? }`
+ */
+async function busyGate(pkgKey: string): Promise<{ error: string } | { warn?: string }> {
+  /* ⚠️ 2026-10-08: ХУВААРИЙН ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ БАЙХАД — нэмэлт ажил буулгавал хуудасны жааз шинэ
+     хуулбараар солигдож бүх OID шинэчлэгдэнэ. Батлагч ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) бол
+     хагас бичилтийн үлдсэн хэсэг шинэ агшинд тулгагдахгүй — ХААНА. Тэмдэггүй `pending` бол
+     үргэлжилнэ (`remapPayload` кодоор зөөнө), гэхдээ `warn`-аар ил хэлнэ. */
+  /* ⚠️ 2026-10-09: FAIL-CLOSED — уншилт унавал «хуваарийн илгээлт алга» гэж ҮЗЭХГҮЙ (A.8-ийн дүрэм) */
+  let pps: PlanSubmission[];
+  try {
+    pps = planList(await _io.loadPlanPending(pkgKey));
+  } catch (e) {
+    return { error: tr('Энэ багцын хуваарийн илгээлтийн төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
+  }
+  for (const pp of pps) {
+    const pb = planPartialBy(pp.status, pp.reason);
+    if (pb != null) {
+      return { error: tr('Энэ багцын хуваарийн илгээлтийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх (эсвэл буцаагдах) хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол хагас бичилт алдагдана.', pb || '—') };
+    }
+  }
+  /* ⚠️ 2026-10-09: хуваарийн батлагч ТҮГЖСЭН (`claimPlan` — эх хуудсанд бичихэд бэлтгэж буй) үед ч хаана:
+     тэмдэг (`markPlanPartial`) нь бичилтийн ЯГ өмнө л суудаг тул түгжээ ба тэмдгийн завсарт жааз солигдвол
+     батлагч хуучин OID-оор бичнэ. */
+  for (const pp of pps) {
+    const h = planClaimHolderOf(pp);
+    if (h) return { error: tr('{0} энэ багцын хуваарийг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', h) };
+  }
+  const warn = pps.length
+    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны агшин шинэчлэгдэж, батлагч саналыг шинэ агшинд тулгана.', pps.map((p) => p.author).join(', '))
+    : undefined;
+  /* ⚠️ 2026-10-09: ОБЬЁМЫН БАТЛАЛТ ЯВЖ БАЙХАД — батлагч одоогийн жаазын мөрүүдэд OID-оор бичиж байна
+     (түгжээ) эсвэл ХЭСЭГЧЛЭН бичсэн (тэмдэг). Жааз солигдвол обьём архивласан жаазад үлдэнэ — ХААНА.
+     Уншилт унавал мөн хаана (fail-closed). */
+  let ob: { who: string; partial: boolean } | null;
+  try {
+    ob = await _io.obyemBusy(pkgKey);
+  } catch (e) {
+    return { error: tr('Энэ багцын обьёмын батлалтын төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
+  }
+  if (ob) {
+    return {
+      error: ob.partial
+        ? tr('Энэ багцын инженерийн обьёмыг батлагч ({0}) үндсэн өгөгдөлд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол обьём хуучин жаазад үлдэнэ.', ob.who || '—')
+        : tr('{0} энэ багцын инженерийн обьёмыг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', ob.who),
+    };
+  }
+  return warn ? { warn } : {};
+}
 
 /** `materializeAdds`-ийн бие — эрхийн шалгалтын ДАРАА л дуудагдана. */
 async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
@@ -450,43 +521,11 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (head.status === AJIL_STATUS.applied) return { ok: true, already: true, added: 0 };
   if (head.status !== AJIL_STATUS.approved)
     return { ok: false, error: tr('Илгээлт батлагдаагүй ({0}) — хуудсанд буулгах боломжгүй.', head.status) };
-  /* ⚠️ 2026-10-08: ХУВААРИЙН ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ БАЙХАД — нэмэлт ажил буулгавал хуудасны жааз шинэ
-     хуулбараар солигдож бүх OID шинэчлэгдэнэ. Батлагч ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) бол
-     хагас бичилтийн үлдсэн хэсэг шинэ агшинд тулгагдахгүй — ХААНА. Тэмдэггүй `pending` бол
-     үргэлжилнэ (`remapPayload` кодоор зөөнө), гэхдээ `warn`-аар ил хэлнэ. */
-  /* ⚠️ 2026-10-09: FAIL-CLOSED — уншилт унавал «хуваарийн илгээлт алга» гэж ҮЗЭХГҮЙ (A.8-ийн дүрэм) */
-  let pp: PlanSubmission | null;
-  try {
-    pp = await _io.loadPlanPending(head.pkgKey);
-  } catch (e) {
-    return { ok: false, error: tr('Энэ багцын хуваарийн илгээлтийн төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
-  }
-  if (pp) {
-    const pb = planPartialBy(pp.status, pp.reason);
-    if (pb != null) {
-      return { ok: false, error: tr('Энэ багцын хуваарийн илгээлтийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх (эсвэл буцаагдах) хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол хагас бичилт алдагдана.', pb || '—') };
-    }
-  }
-  const warn = pp
-    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны агшин шинэчлэгдэж, батлагч саналыг шинэ агшинд тулгана.', pp.author)
-    : undefined;
-  /* ⚠️ 2026-10-09: ОБЬЁМЫН БАТЛАЛТ ЯВЖ БАЙХАД — батлагч одоогийн жаазын мөрүүдэд OID-оор бичиж байна
-     (түгжээ) эсвэл ХЭСЭГЧЛЭН бичсэн (тэмдэг). Жааз солигдвол обьём архивласан жаазад үлдэнэ — ХААНА.
-     Уншилт унавал мөн хаана (fail-closed). */
-  let ob: { who: string; partial: boolean } | null;
-  try {
-    ob = await _io.obyemBusy(head.pkgKey);
-  } catch (e) {
-    return { ok: false, error: tr('Энэ багцын обьёмын батлалтын төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
-  }
-  if (ob) {
-    return {
-      ok: false,
-      error: ob.partial
-        ? tr('Энэ багцын инженерийн обьёмыг батлагч ({0}) үндсэн өгөгдөлд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол обьём хуучин жаазад үлдэнэ.', ob.who || '—')
-        : tr('{0} энэ багцын инженерийн обьёмыг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', ob.who),
-    };
-  }
+  /* ⚠️ 2026-10-09: хуваарь (хоёр төрөл) · обьёмын батлалтын хаалт — `busyGate`-д тусгаарлав (A.8-ийн
+     дараа, `applyAdds`-ийн ЯГ ӨМНӨ дахин дуудагдана); мессеж, дараалал өөрчлөгдөөгүй. */
+  const gate = await busyGate(head.pkgKey);
+  if ('error' in gate) return { ok: false, error: gate.error };
+  const warn = gate.warn;
 
   const st = await _io.loadPayloadStamped(args.ajilOid);
   const pl = st?.p ?? null;
@@ -519,6 +558,19 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     /* A.11 — зөвхөн амжилтын дараа.
        ⚠️ `added: 0` = бүх мөр аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч
        тэмдэглэж амжаагүй) — юу ч бичээгүй, зөвхөн тэмдэглэнэ. */
+    /* ⚠️ 2026-10-09: ТҮГЖЭЭГ ДАХИН УНШИНА — бичилт удаан үргэлжилж манай түгжээ (`AJIL_CLAIM_TTL`) дуусаад
+       ӨӨР хүн/таб авсан бол `markApplied` (`reason: null`) түүний тэмдгийг арчиж, бичиж буй жааз нь
+       хамгаалалтгүй болно — тэмдэглэхгүй, «Дахин буулгах» нь `dedupeAdds`-аар зөвхөн тэмдэглэнэ.
+       Уншилт унавал мөн тэмдэглэхгүй (хэнийх болохыг мэдэхгүй). */
+    let other: string | null;
+    try {
+      other = await _io.claimOther(args.ajilOid, claimer);
+    } catch (e) {
+      other = String((e as Error)?.message ?? e);
+    }
+    if (other) {
+      return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', other) };
+    }
     const m = await _io.markApplied(args.ajilOid);
     done = m.ok;
     if (w.added === 0)
@@ -574,7 +626,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
   try { maxOid0 = await maxOidOf(); } catch (e) {
     return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
   }
-  const loaded = await loadRows(pkg, sc);
+  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true }); // ⚠️ 2026-10-09: бичих зам — лавлах татагдахгүй бол тасарсан жаазыг хүлээж авахгүй
   /* A.4 — давхардал хасах */
   const { fresh } = dedupeAdds(loaded.rows, adds);
   /* Бүгд аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч тэмдэглэж
@@ -623,20 +675,13 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }
 
-  /* A.7б — ⚠️ 2026-10-09: ШИНЭ ЖААЗ СҮҮЛИЙН ТҮҮХИЙ ЖААЗААС БОГИНО БАЙЖ БОЛОХГҮЙ. `loadRows` № ба Ажил
-     хоёул хоосон мөрийг алгасдаг тул (`rows`-д байхгүй) сүүлийн жаазад хоосон мөр байсан бол манай жааз
-     түүнээс БОГИНО болно — `bagtsSheet.lastFrame` «өмнөхөөсөө богино = тасарсан» гэж түүнийг МӨНХӨД
-     алгасаж, нэмэлт ажил хуудсанд хэзээ ч гарахгүй (`applied` гэж тэмдэглэгдсэн атлаа). Түүхий уртыг
-     `loadRows`-ийн `rawFrameLen`-ээс (`lastFrame`-ийн буцаасан түүхий мөрийн тоо) авч, дутуу бол хоосон
-     мөрөөр (№/Ажилгүй — `loadRows` алгасна) жаазын ТӨГСГӨЛД нөхнө. */
-  const rawLen = Number.isFinite(loaded.rawFrameLen) ? loaded.rawFrameLen : 0;
-  if (frame.length < rawLen) {
-    const blank: Record<string, unknown> = {};
-    if (sc.f.fillDate) blank[sc.f.fillDate] = fillMs;
-    if (sc.f.asOf) blank[sc.f.asOf] = null;
-    /* ⚠️ `gun` нь жаазын БҮХ мөрд байх ёстой (`loadRows.hasGun` — нэг нь хоосон бол TREES зам руу унана) */
-    if (sc.f.gun) blank[sc.f.gun] = 0;
-    while (frame.length < rawLen) frame.push({ ...blank });
+  /* A.7б — ⚠️ 2026-10-09 (ДАХИН ЗАССАН): ХООСОН МӨРӨӨР НӨХӨХГҮЙ. Өмнөх засвар жаазыг `rawFrameLen` хүртэл
+     хоосон мөрөөр сунгадаг байв — тэгвэл тухайн өдрийн ДАРААГИЙН (хоосон мөргүй, `hyanaltStore`-ийн) жааз
+     манайхаас БОГИНО харагдаж `lastFrame` түүнийг «тасарсан» гэж алгасна. `bagtsSheet.lastFrame` одоо
+     ХООСОН БИШ мөрийн тоогоор харьцуулдаг тул хоосон мөр шаардлагагүй. Үлдэх хамгаалалт: шинэ жааз
+     ачаалсан жаазын хоосон бус мөрийн тооноос (`loaded.frameLen`) богино бол ЮУ Ч бичихгүй. */
+  if (frame.length < loaded.frameLen) {
+    return { ok: false, error: tr('Шинэ жааз ачаалсан жаазаас богино ({0} < {1} мөр) — юу ч бичсэнгүй, дахин оролдоно уу.', String(frame.length), String(loaded.frameLen)) };
   }
 
   /* A.8 — уралдаа: ачаалснаас хойш үйлчилгээний MAX OID өссөн бол (шинэ жааз
@@ -660,6 +705,13 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     /* ⚠️ Шалгаж ЧАДААГҮЙ нь «уралдаагүй» гэсэн үг БИШ — бичихгүй. */
     return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
   }
+
+  /* A.8б — ⚠️ 2026-10-09: ХУВААРЬ/ОБЬЁМЫН ХААЛТЫГ ДАХИН (`busyGate`, `applyAdds`-ийн ЯГ ӨМНӨ). Хуваарийн
+     батлагчийн бичилт (`applyUpdates`) нь бичсэний ДАРАА жаазыг шалгадаггүй тул A.8а-гийн `sameFrame`-ээс
+     хойш түгжиж бичиж эхэлбэл манай шинэ жааз түүний OID-уудыг архивт үлдээнэ. Эхний шалгалт ачааллаас
+     хэдэн секундын өмнө байсан — завсрыг хамгийн бага болгоно (тэг биш: серверт транзакц байхгүй). */
+  const gate2 = await busyGate(pkgKey);
+  if ('error' in gate2) return { ok: false, error: gate2.error };
 
   /* A.9 — бичих; унавал хагас жаазыг буцаах */
   const written: number[] = [];

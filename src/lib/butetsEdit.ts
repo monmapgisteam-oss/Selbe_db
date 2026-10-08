@@ -272,12 +272,15 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
     canDelete: /delete/i.test(j.capabilities ?? ''),
     draw: drawOf(j.geometryType ?? ''),
     /* ⚠️ 2026-10-01: SR ба атом бичилтийн дэмжлэг — метадатаас (feature-detect) */
-    /* ⚠️ 2026-10-09: `extent.spatialReference` ЭХЭНД — `wkid`-ийн тайлбарын дагуу энэ нь
-       геометрийн БУЦААХ SR (`butetsLen.measureKind`-ийн суурь); `sourceSpatialReference` нь
-       эх өгөгдлийн SR бөгөөд ялгаатай байж болно — зөвхөн нөөц. */
+    /* ⚠️ 2026-10-09 (БУЦААВ): `sourceSpatialReference` ЭХЭНД — энэ нь ХАДГАЛАЛТЫН SR бөгөөд
+       `Shape__Length`/`Shape__Area`-г сервер ЯГ үүгээр боддог (`butetsLen.measureKind` нь
+       «энэ талбар хавтгай метр үү» гэдгийг шийднэ). `extent.spatialReference` нь зөвхөн
+       хамрах хүрээний харагдацын SR — хадгалалтаас ялгаатай байж болох (жишээ: 4326-д
+       хадгалсан ч extent 102100) тул ЗӨВХӨН source алга үед нөөц. Өглөөний (extent эхэнд)
+       өөрчлөлт 4326-д хадгалсан давхаргыг «хавтгай» гэж үзэж градусыг метр болгох эрсдэлтэй. */
     wkid: ((sr) => (typeof sr === 'number' ? sr : null))(
-      j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid
-      ?? j.sourceSpatialReference?.latestWkid ?? j.sourceSpatialReference?.wkid,
+      j.sourceSpatialReference?.latestWkid ?? j.sourceSpatialReference?.wkid
+      ?? j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid,
     ),
     /* ⚠️ 2026-10-09: ЗӨВХӨН ил `true` үед атом — `LayerMeta.rollback`-ийн тайлбар */
     rollback: j.supportsRollbackOnFailureParameter === true,
@@ -583,11 +586,17 @@ export async function deleteRow(meta: LayerMeta, oid: number): Promise<void> {
  *    Дуудагч энэ үед дахин илгээхийг хааж, хэрэглэгчээр шалгуулна (бичилтийг АВТОМАТААР
  *    дахин оролдохгүй — `query.attemptRequest`-ийн дүрэм).
  */
+/* ⚠️ 2026-10-09: HTTP 400/401/403/404 бол сервер хүсэлтийг ГҮЙЦЭТГЭЭГҮЙ гэсэн ТОДОРХОЙ
+   татгалзал (буруу URL · эрхгүй · давхарга алга) — урьд нь `code == null` тул «хариу алдагдсан»
+   гэж тооцогдож, хэрэглэгчийг дэмий «шалгаад дахин ачаал» гэж зовоодог байв. Үлдсэн нь
+   (5xx · сүлжээ · timeout · JSON биш хариу) үр дүн тодорхойгүй хэвээр. */
+const DEFINITE_HTTP = new Set([400, 401, 403, 404]);
 export function isLostResponse(e: unknown): boolean {
   if (e instanceof TypeError) return true;
   const name = (e as { name?: string } | null)?.name ?? '';
   if (name === 'TimeoutError' || name === 'AbortError') return true;
-  return e instanceof ArcGISError && e.code == null;
+  if (!(e instanceof ArcGISError) || e.code != null) return false;
+  return e.status == null || !DEFINITE_HTTP.has(e.status);
 }
 
 /**
@@ -721,7 +730,15 @@ export async function queryOidsIn(meta: LayerMeta, geometry: unknown): Promise<n
 }
 
 /** Мөр бүрийн үр дүн — бичигдсэн ба унасан мөрүүд */
-export type RowsResult = { done: number[]; failed: { oid: number; msg: string }[] };
+export type RowsResult = {
+  done: number[];
+  failed: { oid: number; msg: string }[];
+  /**
+   * ⚠️ 2026-10-09: хариу АЛДАГДСАН мөрүүд (`failed`-д ч бий) — бичигдсэн эсэх нь тодорхойгүй тул
+   * дуудагч буцаалтад (`undo`) оруулна. Хуучин дуудагчид үл тоож болно (сонголттой).
+   */
+  unknown?: number[];
+};
 
 /**
  * МӨР БҮРИЙН ҮР ДҮНТЭЙ ЗАСВАР (2026-10-01, хэрэглэгч: бүгдийг зас).
@@ -740,7 +757,7 @@ export type RowsResult = { done: number[]; failed: { oid: number; msg: string }[
 async function writeUpdatesEach(
   meta: LayerMeta,
   updates: Record<string, unknown>[],
-): Promise<RowsResult> {
+): Promise<RowsResult & { stopped?: string }> {
   const oidOf = (u: Record<string, unknown>) => Math.trunc(Number(u[meta.oidField]));
   try {
     await applyAll(meta.url, meta.oidField, { updates });
@@ -753,13 +770,33 @@ async function writeUpdatesEach(
     if (isLostResponse(e) || (e as ArcGISError | null)?.sessionExpired === true) throw e;
     /* багц унав — мөр бүрээр тогтооно (доор) */
   }
-  const out: RowsResult = { done: [], failed: [] };
-  for (const u of updates) {
+  const out: RowsResult = { done: [], failed: [], unknown: [] };
+  for (let i = 0; i < updates.length; i += 1) {
+    const u = updates[i];
     try {
       await applyAll(meta.url, meta.oidField, { updates: [u] });
       out.done.push(oidOf(u));
     } catch (e) {
-      out.failed.push({ oid: oidOf(u), msg: e instanceof Error ? e.message : String(e) });
+      const msg = e instanceof Error ? e.message : String(e);
+      /* ⚠️ 2026-10-09: мөрийн хариу АЛДАГДСАН (timeout · сүлжээ · 5xx) эсвэл нэвтрэлт ДУУССАН —
+         урьд нь дараагийн мөр бүрийг үргэлжлүүлэн илгээж (мөр бүр 30с timeout хүлээх · хугацаа
+         дууссан токеноор дэмий хүсэлт) байв. ЭНД ЗОГСОНО: энэ ба ҮЛДСЭН мөрүүд `failed`.
+         Хариу алдагдсан мөр БИЧИГДСЭН байж магадгүй тул «тодорхойгүй» гэж тэмдэглээд `unknown`-д
+         нэмнэ — дуудагч буцаалтад (`undo`) оруулна (хуучин утгаа дахин бичих нь идемпотент). */
+      const lost = isLostResponse(e);
+      if (lost || (e as ArcGISError | null)?.sessionExpired === true) {
+        if (lost) {
+          out.failed.push({ oid: oidOf(u), msg: tr('үр дүн тодорхойгүй — {0}', msg) });
+          out.unknown?.push(oidOf(u));
+        } else {
+          out.failed.push({ oid: oidOf(u), msg });
+        }
+        for (const rest of updates.slice(i + 1)) {
+          out.failed.push({ oid: oidOf(rest), msg: tr('илгээгдээгүй — {0}', msg) });
+        }
+        return { ...out, stopped: msg };
+      }
+      out.failed.push({ oid: oidOf(u), msg });
     }
   }
   return out;
@@ -771,6 +808,7 @@ const partialError = (res: RowsResult, cause?: unknown): Error => {
   const err = new Error(first || tr('амжилтгүй')) as Error & Partial<RowsResult>;
   err.done = res.done.slice();
   err.failed = res.failed.slice();
+  err.unknown = (res.unknown ?? []).slice();
   return err;
 };
 
@@ -797,20 +835,40 @@ export async function saveRows(
   /* ⚠️ 2026-10-01: АТОМ БУС давхарга — мөр бүрийн үр дүнгээр (`writeUpdatesEach`). Бүх
      багцыг ДУУСТАЛ явуулж, унасныг цуглуулна; нэг ч унасан бол `done`/`failed`-тэй шиднэ. */
   if (meta.rollback === false) {
-    const acc: RowsResult = { done: [], failed: [] };
-    for (const part of chunks(oids, BATCH)) {
-      let r: RowsResult;
+    const acc: RowsResult = { done: [], failed: [], unknown: [] };
+    const parts = chunks(oids, BATCH);
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      let r: Awaited<ReturnType<typeof writeUpdatesEach>>;
       try {
         r = await writeUpdatesEach(meta, part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })));
       } catch (e) {
         /* ⚠️ 2026-10-09: хариу алдагдсан/нэвтрэлт дууссан (`writeUpdatesEach` шиднэ) — өмнөх
-           багцуудын `done`-г атом замын ижлээр алдаанд хавсарна (алдааны төрөл хэвээр). */
-        const err = e instanceof Error ? e : new Error(String(e));
-        (err as Error & { done?: number[] }).done = acc.done.slice();
+           багцуудын `done`-г атом замын ижлээр алдаанд хавсарна (алдааны төрөл хэвээр).
+           ⚠️ 2026-10-09 (2): `failed` ба `unknown`-г МӨН хавсарна — урьд нь зөвхөн `done` ирж,
+           дуудагч энэ ба үлдсэн багцын мөрүүдийг «бичигдсэн/бичигдээгүй»-гээр ялгаж чаддаггүй
+           байв. Хариу алдагдсан бол ЭНЭ багц тодорхойгүй (`unknown` → буцаалтад орно), үлдсэн
+           багцууд илгээгдээгүй. Нэвтрэлт дууссан бол энэ багц ч бичигдээгүй. */
+        const msg = e instanceof Error ? e.message : String(e);
+        const lost = isLostResponse(e);
+        const failed = acc.failed.slice();
+        for (const oid of part) failed.push({ oid: Math.trunc(oid), msg: lost ? tr('үр дүн тодорхойгүй — {0}', msg) : msg });
+        for (const rest of parts.slice(i + 1)) for (const oid of rest) failed.push({ oid: Math.trunc(oid), msg: tr('илгээгдээгүй — {0}', msg) });
+        const err = (e instanceof Error ? e : new Error(String(e))) as Error & Partial<RowsResult>;
+        err.done = acc.done.slice();
+        err.failed = failed;
+        err.unknown = [...(acc.unknown ?? []), ...(lost ? part.map((o) => Math.trunc(o)) : [])];
         throw err;
       }
       acc.done.push(...r.done);
       acc.failed.push(...r.failed);
+      acc.unknown?.push(...(r.unknown ?? []));
+      /* ⚠️ 2026-10-09: мөрийн түвшинд хариу алдагдсан/нэвтрэлт дууссан (`writeUpdatesEach` ЗОГССОН)
+         бол ҮЛДСЭН багцыг илгээхгүй — тэдгээр нь «илгээгдээгүй». */
+      if (r.stopped != null) {
+        for (const rest of parts.slice(i + 1)) for (const oid of rest) acc.failed.push({ oid: Math.trunc(oid), msg: tr('илгээгдээгүй — {0}', r.stopped) });
+        break;
+      }
     }
     if (acc.failed.length) throw partialError(acc);
     return acc.done;
@@ -827,6 +885,8 @@ export async function saveRows(
          дарахад ижил утга дахин бичигдэх тул аюулгүй. */
       const err = e instanceof Error ? e : new Error(String(e));
       (err as Error & { done?: number[] }).done = done.slice();
+      /* ⚠️ 2026-10-09: хариу алдагдсан бол ЭНЭ багц тодорхойгүй — буцаалтад оруулна (`unknown`) */
+      if (isLostResponse(e)) (err as Error & { unknown?: number[] }).unknown = part.map((o) => Math.trunc(o));
       throw err;
     }
     done.push(...part);
@@ -859,7 +919,7 @@ export async function revertRows(
   const parts = chunks(live, BATCH);
   for (let i = 0; i < parts.length; i += 1) {
     const part = parts[i];
-    let r: RowsResult;
+    let r: Awaited<ReturnType<typeof writeUpdatesEach>>;
     try {
       r = await writeUpdatesEach(meta, part.map((x) => ({ [meta.oidField]: Math.trunc(x.oid), ...x.attrs })));
     } catch (e) {
@@ -872,6 +932,12 @@ export async function revertRows(
     }
     acc.done.push(...r.done);
     acc.failed.push(...r.failed);
+    /* ⚠️ 2026-10-09: мөрийн түвшинд зогссон (хариу алдагдсан/нэвтрэлт дууссан) — үлдсэн багцыг
+       илгээхгүй, `failed` болгоно (дахин «Үйлдэл буцаах»-аар оролдоно). */
+    if (r.stopped != null) {
+      for (const rest of parts.slice(i + 1)) for (const x of rest) acc.failed.push({ oid: Math.trunc(x.oid), msg: tr('илгээгдээгүй — {0}', r.stopped) });
+      break;
+    }
   }
   return acc;
 }

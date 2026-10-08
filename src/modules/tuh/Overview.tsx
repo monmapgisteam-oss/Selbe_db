@@ -15,7 +15,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date } from '@/lib/format';
 import {
-  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, daysBetween, elapsedPct,
+  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, elapsedPct,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
@@ -112,6 +112,18 @@ export function DuoBars({ elapsed, progress }: { elapsed: number | null; progres
     </div>
   );
 }
+
+/**
+ * ХУАНЛИЙН ӨДРИЙН ЗӨРҮҮ (b − a) — хоёр агшны ЛОКАЛ огноогоор (цагийг үл тооно); аль нэг нь `null` бол `null`.
+ * ⚠️ 2026-10-09 (аудит): урьд нь `tuhData.daysBetween` (`Math.round` мс-ийн зөрүү) — өчигдөр 08:00-д
+ *    илгээсэн IPC өнөөдөр 21:00-д «2 хоног», гэрээ маргааш дуусахад үдээс хойш «0 хоног» гэж гардаг
+ *    байв. Энд хуанлийн өдрийн тоо (Date.UTC-ээр — DST/цагийн бүсийн шилжилтэд бүхэл тоо).
+ */
+export const calDaysBetween = (a: number | null, b: number | null): number | null => {
+  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const day = (ms: number) => { const d = new Date(ms); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+  return Math.round((day(b) - day(a)) / 86_400_000);
+};
 
 /**
  * ТУХ-ын төлөв → «Хуваарь»-ийн зурвасын өнгө.
@@ -413,7 +425,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                 /* ⚠️ 2026-10-01: хянагдаж буй IPC — гүйцэтгэлээс үүссэн, олгоогүй AUTO мөр
                    (`tuhData.pendingAutoOf`); «хоног» — хамгийн эртнийх нь хүлээгдсэн хугацаа */
                 const rv = ipc.review;
-                const wait = rv?.oldest ? daysBetween(Date.parse(`${rv.oldest}T00:00:00`), now) : null;
+                /* ⚠️ 2026-10-09: хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
+                const wait = rv?.oldest ? calDaysBetween(Date.parse(`${rv.oldest}T00:00:00`), now) : null;
                 return (
                   <tr key={r.p.key}>
                     <td><button type="button" className={s.rowLink} onClick={() => onOpen(r.p.key)}>{r.p.code}</button></td>
@@ -542,8 +555,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.multiples}>
           {housing.map((r) => (
             <div key={r.p.key} className={s.progCell}>
-              {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhModel.planFailed`) */}
-              <ProgChart months={r.prog} title={`${r.p.code} · ${tr('Гүйцэтгэлийн явц')}`} loading={m.loading.has('plan')} planFailed={m.planFailed} />
+              {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhRow.planFailed` — ЗӨВХӨН энэ багцынх) */}
+              <ProgChart months={r.prog} title={`${r.p.code} · ${tr('Гүйцэтгэлийн явц')}`} loading={m.loading.has('plan')} planFailed={r.planFailed} />
               <button type="button" className={s.ghostBtn} onClick={() => onOpen(r.p.key)}>{tr('Энд нээх')}</button>
             </div>
           ))}

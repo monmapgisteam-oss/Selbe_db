@@ -9,13 +9,18 @@
  *    туг нэг л газар шийднэ. Харах горимд ИНПУТ БИШ — текст (хэвлэхэд цэвэр).
  */
 
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { toDateInput, fromDateInput, ymd } from './chanarUi';
 import { DateField } from '@/modules/huvaari/DateField';
 import s from '../chanar.module.css';
 
-export type Mode = { edit: boolean; busy: boolean };
+/**
+ * `onBadDate` — ⚠️ 2026-10-09: огнооны талбар задрахгүй утгатай болох/засагдах үед (`DateField.onBad`)
+ * түлхүүрээр мэдэгдэнэ; эцэг (`Chanar.tsx` `badDates`) байвал бичих товчийг хаана. Урьд нь дамжуулдаггүй
+ * тул буруу бичсэн огнооны ХУУЧИН утга чимээгүй хадгалагддаг байв.
+ */
+export type Mode = { edit: boolean; busy: boolean; onBadDate?: (key: string, bad: boolean) => void };
 
 /** Хэсгийн гарчигтай хайрцаг */
 export function Sec({ title, children }: { title: string; children: ReactNode }) {
@@ -67,6 +72,8 @@ export function Inp({
 export function DateInp({
   m, label, value, onChange,
 }: { m: Mode; label: string; value: number | null; onChange: (v: number | null) => void }) {
+  /* ⚠️ 2026-10-09: талбар бүрийн тогтвортой түлхүүр (`Mode.onBadDate`) */
+  const id = useId();
   return (
     <div>
       <dt>{label}</dt>
@@ -79,6 +86,7 @@ export function DateInp({
           <DateField
             label={label} disabled={m.busy}
             value={toDateInput(value)} onChange={(v) => onChange(fromDateInput(v))}
+            onBad={(b) => m.onBadDate?.(id, b)}
           />
         ) : ymd(value)}
       </dd>

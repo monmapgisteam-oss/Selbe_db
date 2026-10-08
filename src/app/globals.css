@@ -479,7 +479,11 @@ ul, ol { list-style: none; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    /* ⚠️ 2026-10-09: CSS-ийн `scroll-behavior: smooth` (модуль бүрд) ч дарагдана. JS-ийн
+       `scrollIntoView({ behavior: 'smooth' })`-ийг энэ дардаггүй — дуудагч өөрөө шалгана. */
+    scroll-behavior: auto !important;
   }
+  html { scroll-behavior: auto !important; }
 }
 
 /* ── ГАЗРЫН ЗУРАГ — БҮТЭН ДЭЛГЭЦ (MapCanvas.toggleFs, 2026-10-07) ──

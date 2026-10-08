@@ -593,6 +593,11 @@ console.log('✅ хагас бичилтийн сервер тэмдэг · да
   assert.ok(sp.includes('AND ${KIND_SQL(args.payload.kind)}'), 'submitPlan: бичсэний дараах давхардал төрлөөр биш');
   const la = part('export async function loadAllPending(', 'export async function loadLastPerPkg(');
   assert.ok(la.includes('`${x.pkgKey}|${k ?? \'\'}`'), 'loadAllPending: (багц · төрөл)-өөр давхардал хасахгүй байна');
+  /* ⚠️ 2026-10-09: returnStuckPlan — бичихээс ӨМНӨ `casClaim` · loadHistory(kind) · loadLastPerPkg (багц · төрөл) · loadPending strict */
+  assert.ok(rs.indexOf('await casClaim(') > 0 && rs.indexOf('await casClaim(') < rs.indexOf('[F.status]: PLAN_STATUS.returned'), 'returnStuckPlan: бичихээс өмнө casClaim алга');
+  assert.ok(L.includes('export async function loadHistory(pkgKey: string, limit = 20, kind?: PlanPayloadKind)'), 'loadHistory: kind параметр алга');
+  assert.ok(part('export async function loadLastPerPkg(', 'export async function loadHistory(').includes('`${x.pkgKey}|${x.kind ?? \'\'}`'), 'loadLastPerPkg: (багц · төрөл)-өөр биш');
+  assert.ok(part('export async function loadPending(', 'export async function loadAllPending(').includes('HEAD_FIELDS, true)'), 'loadPending: strict query биш (fail-open)');
   /* UI: «Гацсаныг буцаах» товч өөр батлагчийн түгжээнд хаалттай */
   const V = strip(fs.readFileSync('src/modules/HuvaariBatlah.tsx', 'utf8'));
   const iBtn = V.indexOf('{onReturnStuck && partialWhy && (');

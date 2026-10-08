@@ -198,7 +198,9 @@
      зай 12×6 = 72, дүүргэлт 16, нэр ≥ 140 → 988px. Доод хязгаар нь ЯГ энэ
      нийлбэрээс багагүй байх ёстой — эс тэгвээс дахин эвдэрнэ. */
   /* ⚠️ 2026-10-04: + `--side-extra` — хэрэглэгч баруун ирмэгийг чирж томруулна (`useSideExtra`) */
-  flex: 0 0 calc(clamp(990px, 58%, 1150px) + var(--side-extra, 0px));
+  /* ⚠️ 2026-10-09: + `--col-extra` — баганын өргөнийг анхдагчаас өөрчилсөн нийлбэр (`useColWidths`-ийн ⚠️);
+     урьд нь самбар тогтмол тул өргөсгөсөн багана самбараас хальж хуанли дээр давхарладаг байв. */
+  flex: 0 0 calc(clamp(990px, 58%, 1150px) + var(--side-extra, 0px) + var(--col-extra, 0px));
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
@@ -296,7 +298,7 @@
    хоёр зам нэг үр дүн өгнө. Самбар 360–480px: код 60 + нэр ≥ 140 + уялдаа 100. */
 .gSideNarrow .gHeadDate, .gSideNarrow .gHeadDays, .gSideNarrow .gHeadRes,
 .gSideNarrow .rowDate, .gSideNarrow .rowDays, .gSideNarrow .rowRes { display: none; }
-.gSideNarrow { flex-basis: calc(clamp(360px, 30%, 480px) + var(--side-extra, 0px)); }
+.gSideNarrow { flex-basis: calc(clamp(360px, 30%, 480px) + var(--side-extra, 0px) + var(--col-extra, 0px)); }
 /* ЗҮҮН ЖАГСААЛТЫН ӨРГӨН ЧИРЭХ БАРИУЛ (2026-10-04) — `.gSide` (sticky) нь агуулах блок */
 .sideGrip {
   position: absolute;
@@ -1033,7 +1035,8 @@
   .gHeadDate, .gHeadDays, .rowDate, .rowDays, .gHeadRes, .rowRes { display: none; }
   /* ⚠️ Багана нуугдсан үед хураах товч ч нуугдана (2026-09-23) — юу ч хийдэггүй товч үлдэж байв */
   .colsBtn { display: none; }
-  .gSide { flex-basis: clamp(260px, 46%, 420px); }
+  /* ⚠️ 2026-10-09: огноо · хоног · нөөц энд нуугддаг тул зөвхөн код · нэр · уялдааны нэмэлт (`--col-extra-n`) */
+  .gSide { flex-basis: calc(clamp(260px, 46%, 420px) + var(--col-extra-n, 0px)); }
   /* ⚠️ 2026-10-04 (шүүлт): энд `--side-extra` ҮЙЛЧЛЭХГҮЙ (самбар аль хэдийн 46%) — бариул юу ч
      хийхгүй атлаа утга хадгалдаг байсан тул НУУНА (`useSideExtra` ч энд хязгаар бодохгүй) */
   .sideGrip { display: none; }

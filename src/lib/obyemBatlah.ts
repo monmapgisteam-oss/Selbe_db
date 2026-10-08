@@ -35,7 +35,7 @@
  * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
-import { AUTH, ROLE_BY_USER } from './services';
+import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -373,9 +373,19 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
   return null;
 }
 
-async function query(where: string, outFields: string): Promise<Attrs[]> {
+/**
+ * ⚠️ 2026-10-09: `strict` — ЗАВГҮЙ ЭСЭХИЙН шалгалтад (`obyemBusyFor` → `ajilApply`) хүснэгт ОЛДОХГҮЙ ба
+ *    «шалгаж ЧАДАХГҮЙ» хоёрыг ялгана (fail-closed, `huvaariBatlah.query`-ийн ижил дүрэм). Эзэн танигдахгүй
+ *    (`ownerMismatch`) эсвэл нэвтрэлттэй горимд токен алга бол ШИДНЭ; токентой, эзэн танигдсан атлаа
+ *    хүснэгт ҮНЭХЭЭР алга (хэн ч илгээгээгүй) бол `[]` — эс бөгөөс шинэ орчинд нэмэлт ажил буухгүй.
+ */
+async function query(where: string, outFields: string, strict = false): Promise<Attrs[]> {
   const url = await tableUrl(false);
-  if (!url) return [];
+  if (!url) {
+    if (strict && (ownerMismatch || (AUTH.appId && !(await getToken()))))
+      throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
+    return [];
+  }
   const out: Attrs[] = [];
   /* ⚠️ 2026-10-06 аудит: `off += 1000` · `fs.length < 1000` нь серверийн `maxRecordCount` 1000-аас
      бага үед эхний хуудсаар зогсож, үлдсэн мөрийг ЧИМЭЭГҮЙ хаядаг байв — `ajilBatlah`-ийн загвар:
@@ -716,7 +726,9 @@ export async function obyemApproveGuard(args: { oid: number; approver: string })
  *    (`useObyem.decideObyemHere` → `applyUpdates`). Тэр хооронд нэмэлт ажил буулгавал хуудас ШИНЭ
  *    жаазаар солигдож, обьём ХУУЧИН (архивласан) жаазад бууна — «батлагдсан» атлаа хуудсанд харагдахгүй.
  *    Тиймээс батлагч түгжсэн (`claimHolder`) эсвэл ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) үед буулгалтыг хаана.
- * ⚠️ Уншилт унавал ШИДНЭ — дуудагч бичихгүй (fail-closed). Хүснэгт алга бол `null` (урсгал байхгүй).
+ * ⚠️ Уншилт унавал ШИДНЭ — дуудагч бичихгүй (fail-closed). Хүснэгт ҮНЭХЭЭР алга бол `null` (урсгал байхгүй).
+ * ⚠️ 2026-10-09: хүснэгтийн URL олдоогүй нь «шалгаж чадахгүй» (эзэн танигдахгүй / токен алга) бол ч ШИДНЭ
+ *    (`query(…, strict)`) — урьд нь `[]` буцааж «чөлөөтэй» гэж үздэг байв.
  * @returns `{ who, partial }` — хэн, хэсэгчлэн бичсэн эсэх; эсвэл `null` = чөлөөтэй
  */
 export async function obyemBusyFor(pkgKey: string): Promise<{ who: string; partial: boolean } | null> {
@@ -724,6 +736,7 @@ export async function obyemBusyFor(pkgKey: string): Promise<{ who: string; parti
   const rows = await query(
     `${F.pkgKey} = '${esc}' AND ${F.status} = N'${OBYEM_STATUS.pending}'`,
     `${CLAIM_FIELDS},${F.reason}`,
+    true,
   );
   for (const a of rows) {
     const pb = partialBy(s(a[F.status]), s(a[F.reason]));
@@ -987,6 +1000,106 @@ export async function decideObyem(args: {
     return { ok: true };
   } catch (e) {
     undo();
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+}
+
+/** `returnStuckObyem`-ийн шалтгааны угтвар — инженер «бичигдсэн обьём хэвээр» гэдгийг харна (2026-10-09) */
+export const OBYEM_STUCK_PREFIX = (): string => tr('Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.');
+
+/**
+ * ГАЦСАН (ХАГАС БИЧИГДСЭН) ОБЬЁМЫН ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (⚠️ 2026-10-09,
+ * `huvaariBatlah.returnStuckPlan`-ийн ЯГ загвар).
+ * ⚠️ ЯАГААД: `PARTIAL_MARK`-тай `pending` мөрийг `decideObyem(approve:false)` ч, `withdrawObyem` ч
+ *    татгалздаг — батлагч бичилтийг гүйцээж чадахгүй бол (жааз солигдсон, мөр алга, эрх хасагдсан)
+ *    илгээлт МӨНХӨД `pending` үлдэж, багцын обьём (ба `ajilApply`-ийн нэмэлт ажил — `obyemBusyFor`)
+ *    түгжигддэг байв. Одоо тэмдэгтэй ч `returned` болж, шалтгаан нь `OBYEM_STUCK_PREFIX`-ээр
+ *    угтуулагдана: инженер үндсэн өгөгдөлд ОРСОН утгыг мэдэж засна. `reason` дарагдах тул
+ *    `PARTIAL_MARK` арилна; түгжээ (`approver`/`approverAt`) шийдвэрийн утгаар дарагдана.
+ * ⚠️ Үндсэн өгөгдөлд ЮУ Ч бичихгүй (суусан хэсгийг буцааж татахгүй — мэдэхгүй). Хүрээ — серверийн
+ *    багцаар; зохиогч өөрөө буцаахгүй. Тэмдэггүй `pending`-д ЭНЭ зам хаалттай — жирийн «Буцаах».
+ * ⚠️ ӨӨР батлагчийн ХҮЧИНТЭЙ түгжээтэй бол буцаахгүй (бичилтээ гүйцээж байж магадгүй); бичихийн ӨМНӨ
+ *    `casObyemClaim`-аар түгжээг АТОМААР авна (унш-шалга-бич завсаргүй).
+ */
+export async function returnStuckObyem(args: { oid: number; approver: string; reason: string }): Promise<{ ok: boolean; error?: string }> {
+  const me = args.approver.trim().toLowerCase();
+  if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+  const why = args.reason.trim();
+  if (!why) return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
+  const own = sameAsLogin(me);
+  if (own) return own;
+  let url: string;
+  let cur: Attrs[];
+  try {
+    const u = await tableUrl(false);
+    if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
+    url = u;
+    cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup},${F.reason},${F.approver},${F.approverAt}`);
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+  if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  if (AUTH.appId) {
+    const meNow = currentUser();
+    if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
+    const who = meNow ?? me;
+    const sc = roleForUser(who) === 'super' ? null : obyemScope(who, 'approver');
+    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+      return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
+  }
+  const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
+  if (author && me === author) {
+    return { ok: false, error: tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
+  }
+  const curStatus = s(cur[0][F.status]);
+  if (curStatus !== OBYEM_STATUS.pending) return { ok: false, error: decidedMsg(s(cur[0][F.approver]), curStatus) };
+  if (partialBy(curStatus, s(cur[0][F.reason])) == null) {
+    return { ok: false, error: tr('Энэ илгээлт хагас бичигдээгүй — жирийн «Буцаах»-аар буцаана уу.') };
+  }
+  const holder = claimHolder(cur[0]);
+  if (holder && holder !== me) return { ok: false, error: heldMsg(holder) };
+  /* Түгжээг АТОМААР — эхний уншилт нь дээрх `cur` (`claimPlan`-ийн загвар) */
+  let first: Attrs | null = cur[0];
+  try {
+    const err = await casObyemClaim({
+      read: async () => {
+        if (first) { const f = first; first = null; return f; }
+        return (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null;
+      },
+      write: async (at) => {
+        const w = await arcgisPost(`${url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.approver]: me, [F.approverAt]: at } }]),
+          rollbackOnFailure: 'true',
+        });
+        return editOk(w.updateResults);
+      },
+    }, me);
+    if (err) return { ok: false, error: err };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
+  invalidate('OBYEM_BATLAH');
+  const reason = `${OBYEM_STUCK_PREFIX()}\n${why}`.slice(0, REASON_MAX);
+  try {
+    const j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: {
+        [F.oid]: args.oid,
+        [F.status]: OBYEM_STATUS.returned,
+        [F.approver]: me,
+        [F.approverAt]: Date.now(),
+        [F.reason]: reason,
+      } }]),
+      rollbackOnFailure: 'true',
+    });
+    if (!editOk(j.updateResults)) {
+      await releaseObyemClaim({ oid: args.oid, approver: me });
+      return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    }
+    invalidate('OBYEM_BATLAH');
+    return { ok: true };
+  } catch (e) {
+    /* хариу алдагдсан ч аюулгүй — `releaseObyemClaim` зөвхөн `pending` + өөрийн түгжээг тайлна */
+    await releaseObyemClaim({ oid: args.oid, approver: me });
     return { ok: false, error: String((e as Error).message || e) };
   }
 }

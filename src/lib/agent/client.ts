@@ -263,6 +263,7 @@ type RelayReply = {
 async function callRelay(
   body: { system: string; messages: ApiMessage[]; tools: typeof AGENT_TOOLS },
   signal?: AbortSignal,
+  botUser?: string,
 ): Promise<RelayReply> {
   const json = JSON.stringify(body);
   const post = (token: string | null) => relayFetch('/chat', {
@@ -275,6 +276,10 @@ async function callRelay(
       // ⚠️ Browser-гүй үйлчлүүлэгч (бот) ArcGIS токенгүй тул нууц түлхүүрээр
       //    батална. Browser build-д `BOT_SECRET` нь `undefined` — толгой алга.
       ...(BOT_SECRET ? { 'x-bot-secret': BOT_SECRET } : {}),
+      /* ⚠️ 2026-10-09: ботын Telegram хэрэглэгчийн ID — реле `bot:<id>`-аар хурдны хязгаар, зэрэг
+         хүсэлт, өдрийн төсвийг хэрэглэгч тус бүрд тоолно (`agent-proxy/rateLimit.mjs` `botCaller`).
+         ЗӨВХӨН бот (`BOT_SECRET`) — browser-т хэзээ ч нэмэгдэхгүй (CORS-д ч зөвшөөрөгдөөгүй). */
+      ...(BOT_SECRET && botUser && /^\d{1,20}$/.test(botUser) ? { 'x-bot-user': botUser } : {}),
     },
     body: json,
     signal,
@@ -325,6 +330,10 @@ function relayStatusText(status: number, code?: string): string {
      оролдож дэмий хүлээнэ; маргааш хүртэл нээгдэхгүйг ил хэлнэ. */
   if (status === 429 && code === 'daily_budget') {
     return tr('Өнөөдрийн AI хэрэглээний хязгаар дууслаа — маргааш дахин оролдоно уу.');
+  }
+  /* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг (реле `LIMITS.concurrent`) — өөр таб/цонхонд асуулт явж байна */
+  if (status === 429 && code === 'concurrent') {
+    return tr('Өөр цонхонд асуусан асуултын хариу хүлээгдэж байна — дуусахыг хүлээгээд дахин оролдоно уу.');
   }
   if (status === 401) return tr('AI туслахын нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж нэвтэрнэ үү.');
   if (status === 403) return tr('AI туслах руу хандах зөвшөөрөл алга.');
@@ -393,8 +402,10 @@ export async function ask(opts: {
   scope: AgentScope;
   onProgress?: (label: string) => void;
   signal?: AbortSignal;
+  /** ⚠️ 2026-10-09: зөвхөн Telegram бот — `x-bot-user` толгой (`callRelay`-ийн ⚠️) */
+  botUser?: string;
 }): Promise<AskResult> {
-  const { question, history, scope, onProgress, signal } = opts;
+  const { question, history, scope, onProgress, signal, botUser } = opts;
 
   // ⚠️ Заавар нь бүртгэлээс ЯГ ОДОО тооцоологдоно — өмнөх хариултын хуучирсан
   //    хуулбар хэзээ ч хэрэглэгдэхгүй.
@@ -404,7 +415,7 @@ export async function ask(opts: {
   onProgress?.(tr('Бодож байна…'));
 
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
-    const reply = await callRelay({ system, messages: history, tools: AGENT_TOOLS }, signal);
+    const reply = await callRelay({ system, messages: history, tools: AGENT_TOOLS }, signal, botUser);
 
     if (reply.stop_reason === 'refusal') {
       const msg = reply.note ?? tr('Энэ хүсэлтэд хариулах боломжгүй байна.');

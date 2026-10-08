@@ -570,7 +570,12 @@ export const loadFillPkgProgressFresh = (): Promise<Map<string, number>> => fill
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 
-export type HousingTotals = { blocks: number; ail: number };
+/**
+ * ⚠️ 2026-10-09: `ail` — өрхийн талбар (`AIL_TOO`) БҮХ блокт хоосон бол `null` («—»), ЗАРИМД нь
+ * хоосон бол нийлбэр нь мэдэгдэж буй хэсгийнх ба `ailPartial = true`. Урьд нь хоосон нүд
+ * `?? 0`-ээр 0 өрх болж дутуу нийлбэр бүрэн мэт гардаг байв (null ≠ 0). `ailMissing` — хоосон блокийн тоо.
+ */
+export type HousingTotals = { blocks: number; ail: number | null; ailPartial: boolean; ailMissing: number };
 
 /** Нүүр/тайланд хөнгөн нийлбэр — гүйцэтгэлийн хүнд join-гүйгээр */
 export const loadHousing = cached<HousingTotals>(async () => {
@@ -587,13 +592,17 @@ export const loadHousing = cached<HousingTotals>(async () => {
   });
   const seen = new Set<string>();
   let ail = 0;
+  let missing = 0;
   for (const r of rows) {
     const k = buildingKey(r[F.bagts], r[F.block]);
     if (seen.has(k)) continue;
     seen.add(k);
-    ail += Number(r[F.households] ?? 0) || 0;
+    const raw = r[F.households];
+    const v = raw == null || raw === '' ? NaN : Number(raw);
+    if (Number.isFinite(v)) ail += v; else missing += 1;
   }
-  return { blocks: seen.size, ail };
+  const all = seen.size > 0 && missing === seen.size;
+  return { blocks: seen.size, ail: all ? null : ail, ailPartial: !all && missing > 0, ailMissing: missing };
 }, SESSION_TTL_MS, ['BUILDING']);
 
 /* ══════════════ Нийгмийн үйлчилгээний барилга ══════════════ */
@@ -605,6 +614,12 @@ export type SocialRow = {
   n: number;
   /** Хүчин чадал (суудал/ор) — талбар хоосон давхаргад null */
   capacity: number | null;
+  /**
+   * ⚠️ 2026-10-09: `capacity` нь ДУТУУ нийлбэр — барилгатай (n > 0) давхаргын ЗАРИМ нь л хүчин
+   * чадлын утгатай. Урьд нь утгагүй давхарга чимээгүй алгасагдаж дутуу нийлбэр бүрэн мэт гардаг
+   * байв (null ≠ 0). Нийлбэр нь мэдэгдэж буй хэсгийнх хэвээр — дэлгэц «(дутуу)» гэж тэмдэглэнэ.
+   */
+  capPartial: boolean;
   /**
    * ⚠️ ШИНЭ — давхарга тус бүрийн задаргаа. `loadSocial` нь давхарга тутамд
    * count+sum аль хэдийн асуудаг байсан бөгөөд дүнг л ХАЯДАГ байв. Шинэ хүсэлт
@@ -660,11 +675,14 @@ export const loadSocial = cached<SocialLive>(async () => {
       const n = sumBy(per, (x) => x.n);
       const hasCap = per.some((x) => x.hasCap);
       const cap = sumBy(per, (x) => x.cap ?? 0);
+      /* ⚠️ 2026-10-09: барилгатай давхарга БҮГД хүчин чадалтай үед л бүрэн (`completeSum`-ийн дүрэм) */
+      const capPartial = hasCap && per.some((x) => x.n > 0 && !x.hasCap);
       return {
         key: g.key,
         label: g.label,
         n,
         capacity: hasCap ? cap : null,
+        capPartial,
         per: per
           .map((x) => ({ id: x.id, title: x.title, n: x.n, capacity: x.hasCap ? x.cap : null }))
           .filter((x) => x.n > 0),

@@ -34,7 +34,7 @@ import { t as tr } from '@/lib/i18nCore';
 import {
   MS_STATUS, ALL_REVIEWERS, REVIEWERS_OF, isMsStatus, isKind, isVerdict, emptyReviews, docNo, nextSeq, orgCode,
   repNo, repSeqFor, repFrom, parseBodyOf, normalizeNcr, normalizeInsp, normalizeMa, normalizeMeta, normalizeBounce,
-  parseCommon, ncrClosure, nextRevisionBody, applyRepToMaterials, canAct, myAction, waitDays, latest, type MyActionWhy,
+  parseCommon, ncrClosure, reviewerLabel, nextRevisionBody, applyRepToMaterials, canAct, myAction, waitDays, latest, type MyActionWhy,
   correctionChanged,
   review as reviewPure, submit as submitPure, submitCorrection as correctionPure, reopen as reopenPure,
   bounce as bouncePure, ackRep as ackPure, closeAn as closeAnPure, newRevision as newRevisionPure, closeNcr as closeNcrPure,
@@ -252,18 +252,17 @@ export async function listAttachments(oid: number): Promise<Attachment[]> {
   if (!url) return [];
   const j = await arcgisPost(`${url}/${Number(oid)}/attachments`, {});
   const infos = (j.attachmentInfos as { id: number; name: string; size: number }[]) ?? [];
-  /* ⚠️ ТОКЕН ХОЛБООСОНД (2026-09-16 аудит): хүснэгт зөвхөн байгууллагад
-     нээлттэй тул токенгүй `<a href>` шинэ табд нэвтрэлт шаардаж эсвэл хоосон
-     буцаадаг. `habeaUzleg`-ийн ижил шийдэл — хэрэглэгчийн ӨӨРИЙН богино
-     хугацаат токен; хугацаа нь дуусахаар холбоос хүчингүй болно. */
-  const tok = await getToken();
-  const q = tok ? `?token=${encodeURIComponent(tok.token)}` : '';
+  /* ⚠️ 2026-10-09 (аюулгүй байдал): URL-д ТОКЕН ШИНГЭЭХГҮЙ. Урьд нь (2026-09-16) `?token=`-ийг
+     холбоос бүрд залгадаг байв — токен хөтчийн түүх, `Referer`, прокси/серверийн логт үлдэж,
+     хуулсан холбоосоор хэн ч (хугацаа дуустал) хандах боломжтой. Одоо токенгүй хаяг буцаана;
+     нээхдээ `Chanar.tsx` POST-оор (токен БИЕЭР, `uzlegReport.fetchAttachment`) татаж blob URL
+     болгоно — токен зөвхөн байгууллагын хост руу (`isOrgUrl`). */
   return infos.map((a) => ({
-    id: a.id, name: a.name, size: a.size, url: `${url}/${Number(oid)}/attachments/${a.id}${q}`,
+    id: a.id, name: a.name, size: a.size, url: `${url}/${Number(oid)}/attachments/${a.id}`,
   }));
 }
 
-export async function addAttachment(oid: number, file: File): Promise<{ ok: boolean; error?: string }> {
+export async function addAttachment(oid: number, file: File): Promise<{ ok: boolean; error?: string; unsure?: boolean }> {
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const deny = await attachDeny(oid);
@@ -273,6 +272,10 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
      498-д дахин оролдохгүй байв. Одоо: илгээхийн ӨМНӨ `ensureFreshToken`, 120 секундын
      `AbortSignal.timeout` (том PDF-д хангалттай), токены алдаанд НЭГ удаа дахин. */
   type AddRes = { error?: { code?: number; message?: string }; addAttachmentResult?: { success?: boolean } };
+  /* ⚠️ 2026-10-09 (R6): ХҮСЭЛТ ИЛГЭЭГДСЭНИЙ ДАРАА (fetch эхэлсэн) хариу алдагдвал файл сервер дээр
+     орсон байж болно — урьд нь «алдаа» гэж хэлж, хэрэглэгч дахин хавсаргахад ДАВХАР файл үүсдэг
+     байв. `posted` — fetch эхэлсэн эсэх (токены шинэчлэлт/FormData-ийн алдаа үүнд орохгүй). */
+  let posted = false;
   const send = async (): Promise<{ sent: string | null; j: AddRes }> => {
     await ensureFreshToken();
     const fd = new FormData();
@@ -280,10 +283,11 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
     const tok = authToken();
     if (tok) fd.append('token', tok); // ⚠️ org-only хүснэгт (2026-09-17)
     fd.append('attachment', file, file.name);
+    posted = true;
     const r = await fetch(`${url}/${Number(oid)}/addAttachment`, {
       method: 'POST', body: fd, signal: AbortSignal.timeout(120_000),
     });
-    if (!r.ok) throw new Error(`ArcGIS HTTP ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(`ArcGIS HTTP ${r.status}`), { httpStatus: r.status });
     return { sent: tok || null, j: (await r.json()) as AddRes };
   };
   try {
@@ -296,8 +300,16 @@ export async function addAttachment(oid: number, file: File): Promise<{ ok: bool
     invalidate('CHANAR_BARIMT');
     return { ok: true };
   } catch (e) {
-    if ((e as Error)?.name === 'TimeoutError') {
-      return { ok: false, error: tr('Хавсралт илгээх хугацаа хэтэрлээ (2 минут) — сүлжээгээ шалгаад дахин оролдоно уу.') };
+    /* ⚠️ 2026-10-09 (R6): timeout · сүлжээ (TypeError) · 5xx · JSON биш хариу — ИЛГЭЭСНИЙ ДАРАА бол
+       үр дүн ТОДОРХОЙГҮЙ: жагсаалтыг хүчингүй болгож (`invalidate`), `unsure` — UI жагсаалтыг
+       дахин уншаад «орсон эсэх тодорхойгүй» гэж хэлнэ. ArcGIS-ийн тодорхой татгалзал (`j.error`)
+       дээр буцсан тул энд орохгүй. */
+    const x = e as { name?: string; httpStatus?: number } | null;
+    const lost = e instanceof TypeError || e instanceof SyntaxError
+      || x?.name === 'TimeoutError' || x?.name === 'AbortError' || (x?.httpStatus ?? 0) >= 500;
+    if (posted && lost) {
+      invalidate('CHANAR_BARIMT');
+      return { ok: false, unsure: true, error: tr('Хавсралт орсон эсэх тодорхойгүй — жагсаалтаа шалгана уу.') };
     }
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -416,30 +428,57 @@ export function parseBounce(raw: unknown): Bounce | null {
 const HYANALT_MAX = 8000;
 
 /** `hyanalt` баганы JSON — хянагчид + хариу + буцаалтын тэмдэг нэг дор */
-const reviewsJson = (reviews: Reviews, rep: Rep | null, bounce: Bounce | null = null): string => {
-  const json = JSON.stringify({ ...reviews, ...(rep ? { rep } : {}), ...(bounce ? { bounce } : {}) });
-  if (json.length <= HYANALT_MAX || !rep) return json;
+const reviewsJson = (reviews: Reviews, rep: Rep | null, bounce: Bounce | null = null): string =>
+  reviewsJsonEx(reviews, rep, bounce).json;
+
+/**
+ * `reviewsJson` + ХАССАН дэлгэрэнгүй (⚠️ 2026-10-09). `dropped` — `perMaterial` нь хасагдсан
+ * хянагчид (дуудагч хэрэглэгчид хэлнэ).
+ * ⚠️ 2026-10-09: ХАРИУГҮЙ (`rep` = null) үед ч хэтэрвэл `keep`-ээс (одоо шийдвэр өгч буй хянагч)
+ *    БУСАД (өмнөх) хянагчдын `perMaterial`-ийг хасна. Урьд нь «lean» зам зөвхөн хариутай үед
+ *    ажилладаг тул дунд шатны MA хянагч (cheng-ийн дараах chanar) том `cheng.perMaterial`-ийн
+ *    улмаас шийдвэрээ ОГТ хадгалж чаддаггүй байв (`hyanaltTooLong`). Хасагдсан хянагчийн
+ *    материалын задаргаа алга болоход `chanarMs.repFrom` түүний НИЙТ шийдвэрийг бүх
+ *    материалд хэрэглэнэ («тэмдэглээгүй хянагч» дүрэм) — зөвхөн ХАТУУ тал руу, зөөлрөхгүй.
+ */
+function reviewsJsonEx(
+  reviews: Reviews, rep: Rep | null, bounce: Bounce | null = null, keep?: Reviewer,
+): { json: string; dropped: Reviewer[] } {
+  const tail = bounce ? { bounce } : {};
+  const json = JSON.stringify({ ...reviews, ...(rep ? { rep } : {}), ...tail });
+  if (json.length <= HYANALT_MAX) return { json, dropped: [] };
+  /* Хянагчдын `perMaterial`-ийг хасна (`except`-ээс бусад) */
+  const leanOf = (except?: Reviewer) => {
+    const dropped: Reviewer[] = [];
+    const lean = Object.fromEntries(Object.entries(reviews).map(([k, v]) => {
+      if (!v || !v.perMaterial || k === except) return [k, v];
+      dropped.push(k as Reviewer);
+      const { perMaterial: _p, ...rest } = v;
+      void _p;
+      return [k, rest];
+    }));
+    return { lean, dropped };
+  };
+  if (!rep) {
+    const { lean, dropped } = leanOf(keep);
+    return dropped.length ? { json: JSON.stringify({ ...lean, ...tail }), dropped } : { json, dropped };
+  }
   /* ⚠️ 2026-09-25: `hyanalt` 8000 тэмдэгт — `chanarMs.NOTE_MAX`/`REP_NOTE_MAX` хязгаараар
      хэвийн үед багтана; сүүлийн хамгаалалт: хариун дахь саналын ХУВИЛБАРЫГ (anText ·
      rReasons — бүтэн текст `reviews[r].note`-д хэвээр) хаяж, бичилтийг унагахгүй. */
   const { anText: _a, rReasons: _r, ...slim } = rep;
   void _a; void _r;
-  const json2 = JSON.stringify({ ...reviews, rep: slim, ...(bounce ? { bounce } : {}) });
-  if (json2.length <= HYANALT_MAX) return json2;
+  const json2 = JSON.stringify({ ...reviews, rep: slim, ...tail });
+  if (json2.length <= HYANALT_MAX) return { json: json2, dropped: [] };
   /* ⚠️ 2026-10-09: ТОМ MA (олон материал) — хянагч бүрийн `perMaterial` газрын зураг + 3 санал
      нь 8000-аас хэтэрч ЭЦСИЙН шийдвэрийг унагадаг байв. Хариу (`rep`) гарсан үед хянагч бүрийн
      материалын задаргааг хаяна: нэгтгэл нь `rep.perMaterial`-д ба `body.materials[i].verdict`-д
      (`applyRepToMaterials`) хадгалагдана — алдагдах нь зөвхөн «хэн аль материалд юу гэсэн» дэлгэрэнгүй.
      Үүний дараа ч хэтэрвэл `reviewDoc` бичихээс ӨМНӨ тодорхой шалтгаантай татгалзана
      (`hyanaltTooLong`). */
-  const lean = Object.fromEntries(Object.entries(reviews).map(([k, v]) => {
-    if (!v || !v.perMaterial) return [k, v];
-    const { perMaterial: _p, ...rest } = v;
-    void _p;
-    return [k, rest];
-  }));
-  return JSON.stringify({ ...lean, rep: slim, ...(bounce ? { bounce } : {}) });
-};
+  const { lean, dropped } = leanOf();
+  return { json: JSON.stringify({ ...lean, rep: slim, ...tail }), dropped };
+}
 
 /** ⚠️ 2026-10-09: `hyanalt` хэтэрсэн бол хэрэглэгчид ойлгомжтой шалтгаан (ArcGIS-ийн ерөнхий алдааны оронд) */
 const hyanaltTooLong = (json: string): string | null => (json.length <= HYANALT_MAX ? null
@@ -532,6 +571,37 @@ async function newerExists(kind: DocKind, bagts: string, seq: number, rev: numbe
     F.oid,
   );
   return rows.length > 0;
+}
+
+/**
+ * rev+1 ДАВХАРДЛЫН ТУЛГАЛТ — шинэ хувилбарын мөр нэмсний ДАРАА (⚠️ 2026-10-09).
+ * ⚠️ ЯАГААД: `newerExists` нь бичихийн ӨМНӨ шалгадаг ч ArcGIS-д unique хязгаар үгүй — хоёр таб
+ *    / давхар товшилт / хоёр зохиогч зэрэг «Шинэ хувилбар»·«Засах»·«Дахин илгээх» дарвал хоёулаа
+ *    шалгалтыг давж ижил (bagts, seq, rev)-тэй ХОЁР мөр үүсгэдэг, `latest()` нэгийг нь нуудаг байв.
+ *    `createDraft`-ийн загвар: ХАМГИЙН БАГА OBJECTID үлдэнэ; манайх хожуу бол ЗӨВХӨН манайхыг устгана.
+ * Буцаах: `null` — манай мөр хүчинтэй; үгүй бол дуудагчийн буцаах `Result`
+ *    (устгасан → алдаа; устгаж/шалгаж чадаагүй → амжилт + `warn`).
+ */
+async function dedupeRevision(
+  url: string, kind: DocKind, bagts: string, seq: number, rev: number, oid: number,
+): Promise<Result | null> {
+  try {
+    const rows = await query(
+      `${F.kind} = '${kind}' AND ${F.bagts} = N'${bagts.replace(/'/g, "''")}' AND ${F.seq} = ${Number(seq)} AND ${F.rev} = ${Number(rev)}`,
+      F.oid,
+    );
+    const oids = rows.map((r) => Number(r[F.oid])).filter((n) => Number.isInteger(n));
+    if (oids.length <= 1 || Math.min(...oids) === oid) return null;
+    const j = await arcgisPost(`${url}/applyEdits`, { deletes: String(oid), rollbackOnFailure: 'true' });
+    invalidate('CHANAR_BARIMT');
+    if (editOk(j.deleteResults)) {
+      return { ok: false, error: tr('Энэ баримтын шинэ хувилбарыг (rev {0}) өөр газраас зэрэг үүсгэсэн — таны давхар мөр устгагдлаа. Жагсаалтаас сүүлийн хувилбарыг нээнэ үү.', String(rev)) };
+    }
+    return { ok: true, oid, warn: tr('Энэ баримтын rev {0} хувилбар давхар үүссэн — давхар мөрийг устгаж чадсангүй. Жагсаалтыг шалгаад админд хандана уу.', String(rev)) };
+  } catch (e) {
+    console.warn('[selbe] chanar: rev давхардлын тулгалт алдлаа', oid, e);
+    return { ok: true, oid, warn: tr('Шинэ хувилбарын давхардлыг шалгаж чадсангүй — жагсаалтад ижил хувилбар хоёр удаа байгаа эсэхийг шалгана уу.') };
+  }
 }
 
 /**
@@ -859,10 +929,13 @@ function ownClientBody(kind: DocKind, client: AnyBody, server: AnyBody | null): 
   /* ⚠️ 2026-10-09: MIR/FIC — захиалагчийн (ТУХ) багана нь ЗӨВХӨН `saveClientChecks`-ээр; зохиогчийн
      хадгалалт клиентийн `items[].client`-ийг (өмнөх хувилбарын үлдэгдэл ч) хуулдаг байв.
      Серверийн биеэс индексээр авна (үүсгэхэд / rev+1-д `nextRevisionBody` цэвэрлэсэн → null). */
+  /* ⚠️ 2026-10-09: НӨХЦӨЛГҮЙ `null` — серверээс ИНДЕКСЭЭР хуулах нь буруу байв: зохиогч мөр
+     нэмж/хасахад захиалагчийн OK/X өөр мөрөнд шилждэг, мөн өмнөх хувилбарын (rev N) үлдэгдэл
+     rev+1 ноорогт амьд үлддэг. Зохиогчийн бичилт ЗӨВХӨН ноорог/буцаагдсан төлөвт (захиалагч
+     хараахан бөглөөгүй, эсвэл rev+1 шинээр хянана) тул энд утга байх ёсгүй. */
   if (kind === 'MIR' || kind === 'FIC') {
-    const si = server ? ((server as InspBody).items ?? []) : [];
     const ci = (out as InspBody).items;
-    if (Array.isArray(ci)) (out as InspBody).items = ci.map((it, i) => ({ ...it, client: si[i]?.client ?? null }));
+    if (Array.isArray(ci)) (out as InspBody).items = ci.map((it) => ({ ...it, client: null }));
   }
   if (kind === 'NCR') {
     const sn = server ? (server as NcrBody) : null;
@@ -884,7 +957,9 @@ const editOk = (res: unknown): boolean => {
 };
 
 /* ⚠️ 2026-10-05: `unsure` — бичилтийн хариу алдагдсан (үр дүн тодорхойгүй); UI дахин илгээхээс өмнө асууна */
-type Result = { ok: true; oid: number } | { ok: false; error: string; unsure?: true };
+/* ⚠️ 2026-10-09: `warn` — бичилт АМЖИЛТТАЙ ч хэрэглэгчид хэлэх ёстой зүйл (давхар дугаар засагдаагүй,
+   материалын задаргаа хасагдсан г.м.); урьд нь зөвхөн консолд үлддэг байв. */
+type Result = { ok: true; oid: number; warn?: string } | { ok: false; error: string; unsure?: true };
 
 /**
  * ГАРЧГИЙН ДЭЭД УРТ — хүснэгтийн `ner` талбарын урт (`createTable`).
@@ -1000,10 +1075,11 @@ export async function createDraft(args: {
          байв. Шинэ дугаар дээр тулгалтыг ДАХИН ажиллуулна (тойрог бүрд хамгийн бага OBJECTID
          үлдэж, бусад нь цааш шилжинэ) — дугаарт цоорхой үүсгэдэггүй. */
       let cur = seq;
+      let settled = false;
       for (let round = 0; round < 3; round += 1) {
         const after = await loadDocs(kind);
         const twins = after.filter((d) => (seqScope === null || d.bagts === args.bagts) && d.seq === cur && d.rev === 0);
-        if (!(twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== oid)) break;
+        if (!(twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== oid)) { settled = true; break; }
         const seq2 = nextSeq(after, seqScope);
         const no2 = docNo(args.bagts, seq2, 0, kind);
         if (!no2) break;
@@ -1015,8 +1091,15 @@ export async function createDraft(args: {
         invalidate('CHANAR_BARIMT');
         cur = seq2;
       }
+      /* ⚠️ 2026-10-09: 3 тойрогт тогтоогүй эсвэл дахин дугаарлалт унасан — ХЭРЭГЛЭГЧИД хэлнэ (`warn`).
+         Урьд нь зөвхөн консолд тул ижил дугаартай хоёр ноорогийн нэг нь жагсаалтаас (`latest()`)
+         чимээгүй нуугдаж байв. */
+      if (!settled) {
+        return { ok: true, oid, warn: tr('Ноорог хадгалагдсан ч өөр ноорогтой ижил дугаар авсан байж магадгүй — засаж амжсангүй. Жагсаалтаас дугаарыг шалгаад админд хандана уу.') };
+      }
     } catch (e) {
       console.warn('[selbe] chanar: дугаарын тулгалт алдлаа', oid, e);
+      return { ok: true, oid, warn: tr('Ноорог хадгалагдсан ч дугаарын давхардлыг шалгаж чадсангүй — жагсаалтаас дугаарыг шалгана уу.') };
     }
     return { ok: true, oid };
   } catch (e) {
@@ -1129,7 +1212,8 @@ export async function saveDraft(args: {
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
     if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: a.objectId };
+    /* ⚠️ 2026-10-09: rev+1 давхардал (`dedupeRevision`-ийн ⚠️) */
+    return (await dedupeRevision(url, kind, doc.bagts, doc.seq, rev, a.objectId)) ?? { ok: true, oid: a.objectId };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
@@ -1181,6 +1265,16 @@ export async function submitDoc(args: {
         : nextRevisionBody(doc.kind, cb, { rev: r.rev, reason: revNote, by: act.who });
       bodyJson = JSON.stringify(nb);
     }
+    /* ⚠️ 2026-10-09: MIR/FIC rev>0 — захиалагчийн багана (`items[].client`) ШИНЭ хянагдана. Түүхтэй
+       (дээрх нөхцөл худал) салаа биеийг хөндөлгүй илгээдэг тул өмнөх хувилбарын OK/X үлдэгдэл
+       (хуучин ноорог, `ownClientBody`-гийн 2026-10-09-өөс өмнөх хадгалалт) хянагчид бөглөгдсөн мэт
+       очдог байв. Цэвэрлэнэ (`ownClientBody`-ийн ⚠️). */
+    if ((doc.kind === 'MIR' || doc.kind === 'FIC') && r.rev === doc.rev && r.rev > 0) {
+      const ib = parseBodyOf(doc.kind, bodyJson) as InspBody;
+      if (Array.isArray(ib.items) && ib.items.some((it) => it.client != null)) {
+        bodyJson = JSON.stringify({ ...ib, items: ib.items.map((it) => ({ ...it, client: null })) });
+      }
+    }
     if (r.rev === doc.rev) {
       /* Анхны илгээлт — ижил мөрийг шинэчилнэ (NCR: үргэлж энэ зам, rev үгүй) */
       onLost = () => lostResult(args.oid, { [F.oid]: args.oid, [F.status]: r.status, [F.sentAt]: r.sentAt });
@@ -1222,7 +1316,8 @@ export async function submitDoc(args: {
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
     if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: a.objectId };
+    /* ⚠️ 2026-10-09: rev+1 давхардал (`dedupeRevision`-ийн ⚠️) */
+    return (await dedupeRevision(url, kind, doc.bagts, doc.seq, r.rev, a.objectId)) ?? { ok: true, oid: a.objectId };
   } catch (e) {
     if (onLost && lostResponse(e)) return onLost();
     return { ok: false, error: String((e as Error).message || e) };
@@ -1285,6 +1380,16 @@ export async function reviewDoc(args: {
    * ⚠️ NCR approved → `body.closure` автоматаар (хаагдсан огноо, баталгаажуулагч).
    */
   let last: Result = { ok: false, error: tr('Шийдвэр хадгалагдсангүй.') };
+  /** ⚠️ 2026-10-09: 8000-д багтаахын тулд материалын задаргаа нь хасагдсан хянагчид (`reviewsJsonEx`) */
+  let lean: Reviewer[] = [];
+  let leanRep = false;
+  const leanWarn = () => {
+    if (!lean.length) return {};
+    const who = lean.map((x) => reviewerLabel(x)).join(', ');
+    return { warn: leanRep
+      ? tr('Хянагчдын бүртгэл {0} тэмдэгтийн хязгаарт багтахгүй тул {1}-ийн материал бүрийн шийдвэрийн дэлгэрэнгүй хадгалагдсангүй — нэгтгэсэн шийдвэр хариунд (REP) хадгалагдсан.', String(HYANALT_MAX), who)
+      : tr('Хянагчдын бүртгэл {0} тэмдэгтийн хязгаарт багтахгүй тул {1}-ийн материал бүрийн шийдвэрийн дэлгэрэнгүй хадгалагдсангүй — тэдний нийт шийдвэр бүх материалд үйлчилнэ.', String(HYANALT_MAX), who) };
+  };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
     if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй — устгагдсан байж магадгүй.') };
@@ -1321,6 +1426,11 @@ export async function reviewDoc(args: {
       if (!no) return { ok: false, error: tr('Хариуны дугаар үүсгэж чадсангүй.') };
       rep = { no, at: now, ...repFrom(r.reviews, doc.kind, maBody?.materials) };
     }
+    /* ⚠️ 2026-10-09: `keep` = энэ хянагч — хариугүй дунд шатанд ч өмнөх хянагчдын материалын
+       задаргааг хасаж багтаана (`reviewsJsonEx`-ийн ⚠️); хасагдсаныг хэрэглэгчид хэлнэ (`warn`). */
+    const rj = reviewsJsonEx(r.reviews, rep ?? doc.rep ?? null, null, args.as);
+    lean = rj.dropped;
+    leanRep = !!(rep ?? doc.rep);
     const attrs: Attrs = {
       [F.oid]: args.oid,
       [F.status]: r.status,
@@ -1329,7 +1439,7 @@ export async function reviewDoc(args: {
          хянагчийн бичилт `rep`-ийг арилгаж, эцсийн шийдвэрт `repSeqFor` lineage-ээ алдан
          0005-01-ийн оронд шинэ NNNN (эсвэл хуучин 0005-00-г ДАХИН) олгодог байв. Шинэ
          хувилбарын (rev) мөрд `doc.rep` угаас null — нөлөөгүй. */
-      [F.reviews]: reviewsJson(r.reviews, rep ?? doc.rep ?? null),
+      [F.reviews]: rj.json,
       [F.decidedAt]: decided ? now : null,
     };
     if (ncrBody && r.status === MS_STATUS.approved) attrs[F.body] = JSON.stringify(ncrClosure(ncrBody, me, now));
@@ -1381,7 +1491,7 @@ export async function reviewDoc(args: {
       await new Promise((res) => setTimeout(res, REVIEW_SETTLE_MS));
       if (await mineSurvives(args.oid, args.as, me)) {
         if (rep) await fixRepDuplicate(url, doc.kind, args.oid, doc.bagts, doc.seq, rep);
-        return { ok: true, oid: args.oid };
+        return { ok: true, oid: args.oid, ...leanWarn() };
       }
     }
     last = { ok: false, error: tr('Өөр хянагч зэрэг бичсэн тул шийдвэр дахин хадгалагдаж чадсангүй — дахин оролдоно уу.') };
@@ -1669,8 +1779,12 @@ export async function ackRepDoc(args: { oid: number; who: string }): Promise<Res
     const r = ackPure(doc, { who: act.who, contractor });
     if (!r.ok) return r;
     /* ⚠️ 2026-09-30: бичихийн өмнө дахин уншина — өөрчлөгдсөн бол шинэ мөрөөс дахин */
+    /* ⚠️ 2026-10-09: `hyanalt` 8000 — бичихээс ӨМНӨ шалтгаантай татгалзана (`reviewDoc`-ийн ижил) */
+    const rj = reviewsJson(doc.reviews, r.rep, doc.bounce ?? null);
+    const tooLong = hyanaltTooLong(rj);
+    if (tooLong) return { ok: false, error: tooLong };
     if (!(await unchanged(args.oid, row, [F.status, F.reviews]))) continue;
-    return update(url, { [F.oid]: args.oid, [F.reviews]: reviewsJson(doc.reviews, r.rep, doc.bounce ?? null) });
+    return update(url, { [F.oid]: args.oid, [F.reviews]: rj });
   }
   return { ok: false, error: RACE_MSG() };
 }
@@ -1695,6 +1809,9 @@ export async function closeAnDoc(args: { oid: number; who: string; as: Reviewer;
     const attrs: Attrs = { [F.oid]: args.oid, [F.reviews]: reviewsJson(doc.reviews, r.rep, doc.bounce ?? null) };
     /* ⚠️ 2026-09-30: `closeAnMaterials` — түгжигдсэн AN материал ч A (тэр функцийн ⚠️) */
     if (doc.kind === 'MA') attrs[F.body] = JSON.stringify(closeAnMaterials(normalizeMa(safeJson(row[F.body])), r.rep));
+    /* ⚠️ 2026-10-09: `hyanalt` 8000 — бичихээс ӨМНӨ шалтгаантай татгалзана (`reviewDoc`-ийн ижил) */
+    const tooLong = hyanaltTooLong(String(attrs[F.reviews]));
+    if (tooLong) return { ok: false, error: tooLong };
     /* ⚠️ 2026-09-30: бичихийн өмнө дахин уншина (MA-д биеийг ч дахин бичдэг тул бие ч) */
     const watch = doc.kind === 'MA' ? [F.status, F.reviews, F.body] : [F.status, F.reviews];
     if (!(await unchanged(args.oid, row, watch))) continue;
@@ -1732,8 +1849,21 @@ export async function newRevisionDoc(args: { oid: number; who: string; reason: s
     const a = (j.addResults as { success?: boolean; objectId?: number }[])?.[0];
     if (!(a?.success && a.objectId != null)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
     invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: a.objectId };
+    /* ⚠️ 2026-10-09: rev+1 давхардал (`dedupeRevision`-ийн ⚠️) */
+    return (await dedupeRevision(url, doc.kind, doc.bagts, doc.seq, r.rev, a.objectId)) ?? { ok: true, oid: a.objectId };
   } catch (e) {
+    /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН — `submitDoc`-ийн дахин илгээлтийн ижил: дахин ИЛГЭЭХГҮЙ,
+       дахин уншиж яг энэ дугаар (rev) · зохиогчтой ноорог байвал амжилт (хамгийн бага OBJECTID),
+       үгүй бол `unsure`. Урьд нь «алдаа» гэж хэлж, хэрэглэгч дахин дарахад rev+1 ДАВХАР үүсдэг байв. */
+    if (lostResponse(e)) {
+      try {
+        const hit = (await loadDocs(doc.kind))
+          .filter((d) => d.docNo === no && d.rev === r.rev && d.bagts === doc.bagts && d.seq === doc.seq)
+          .sort((x, y) => x.oid - y.oid)[0];
+        if (hit) { invalidate('CHANAR_BARIMT'); return { ok: true, oid: hit.oid }; }
+      } catch { /* уншиж чадсангүй — `unsure` */ }
+      return { ok: false, unsure: true, error: UNSURE_MSG() };
+    }
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
@@ -1816,30 +1946,28 @@ export async function saveMeta(args: {
      хооронд зохиогч/хянагч биеийг (материал, залруулга) өөрчилсөн бол хуучин `base`
      дээр `meta` наагаад тэр өөрчлөлтийг дардаг байв. Зөвхөн `meta` түлхүүр солигдоно;
      `hyanalt` (хянагчид) энэ бичилтэд ОГТ ОРОХГҮЙ. */
-  const fresh = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.body}`);
-  if (!fresh.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
-  const raw = safeJson(fresh[0][F.body]);
-  const base = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const meta = normalizeMeta(base.meta);
-  if (args.owners !== undefined) {
-    meta.owners = [...new Set(args.owners.map((o) => o.trim().toLowerCase()).filter(Boolean))].slice(0, 2);
-    meta.owner = meta.owners[0] ?? null;
-  } else if (args.owner !== undefined) {
-    const o = args.owner?.trim().toLowerCase() || null;
-    meta.owner = o;
-    meta.owners = o ? [o, ...meta.owners.filter((x) => x !== o)].slice(0, 2) : meta.owners.slice(1);
+  /* ⚠️ 2026-10-09: `RACE_TRIES` · `unchanged` давталт (`saveClientChecks`-ийн ижил) — дээрх ганц
+     дахин уншилт ба бичилтийн хооронд (ArcGIS-ийн хоёр хүсэлт) зохиогч/хянагч биеийг бичвэл
+     манай хуучин `base` түүнийг дарсаар байв. Одоо бичихийн өмнөхөн бие өөрчлөгдсөн бол
+     ШИНЭ биеэс дахин нийлүүлнэ. Хариу алдагдвал `update` → `lostResult` (`unsure`). */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const fresh = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.body}`);
+    if (!fresh.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
+    const raw = safeJson(fresh[0][F.body]);
+    const base = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const meta = normalizeMeta(base.meta);
+    if (args.owners !== undefined) {
+      meta.owners = [...new Set(args.owners.map((o) => o.trim().toLowerCase()).filter(Boolean))].slice(0, 2);
+      meta.owner = meta.owners[0] ?? null;
+    } else if (args.owner !== undefined) {
+      const o = args.owner?.trim().toLowerCase() || null;
+      meta.owner = o;
+      meta.owners = o ? [o, ...meta.owners.filter((x) => x !== o)].slice(0, 2) : meta.owners.slice(1);
+    }
+    if (args.category !== undefined) meta.category = args.category;
+    Object.assign(meta, patch);
+    if (!(await unchanged(args.oid, fresh[0], [F.body]))) continue;
+    return update(url, { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...base, meta: normalizeMeta(meta) }) });
   }
-  if (args.category !== undefined) meta.category = args.category;
-  Object.assign(meta, patch);
-  try {
-    const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...base, meta: normalizeMeta(meta) }) } }]),
-      rollbackOnFailure: 'true',
-    });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: args.oid };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
-  }
+  return { ok: false, error: RACE_MSG() };
 }

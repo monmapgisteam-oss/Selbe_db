@@ -360,34 +360,41 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
     let by0 = H - 1;
     let bx1 = 0;
     let by1 = 0;
-    for (let k = off[b]; k < off[b + 1]; k++) {
-      const i = order[k];
-      mask[i] = 1;
-      const gx = i % W;
-      const gy = (i / W) | 0;
-      if (gx < bx0) bx0 = gx;
-      if (gx > bx1) bx1 = gx;
-      if (gy < by0) by0 = gy;
-      if (gy > by1) by1 = gy;
+    /* ⚠️ 2026-10-09 (аудит): маскийг `try/finally`-д цэвэрлэнэ — `traceRings`/`chaikin` шидвэл
+       (жишээ нь хэт урт цагираг) сангийн маск (`sc.mask`, дараагийн дуудлагууд ДАХИН ашигладаг)
+       энэ зурвасын 1-үүдтэй үлдэж, дараагийн агшны бүх зурвас хуучин нүдийг «нойтон» гэж зурдаг байв. */
+    let rings: number[][][];
+    try {
+      for (let k = off[b]; k < off[b + 1]; k++) {
+        const i = order[k];
+        mask[i] = 1;
+        const gx = i % W;
+        const gy = (i / W) | 0;
+        if (gx < bx0) bx0 = gx;
+        if (gx > bx1) bx1 = gx;
+        if (gy < by0) by0 = gy;
+        if (gy > by1) by1 = gy;
+      }
+      rings = traceRings(mask, W, H, bx0, by0, bx1, by1)
+        .filter((r) => ringCells(r) >= MIN_RING_CELLS)
+        .map((r) => {
+          let pts = dedupeCollinear(r);
+          for (let k = 0; k < SMOOTH_PASSES; k++) pts = chaikin(pts);
+          /* ⚠️ ЭРГҮҮЛНЭ: торны мөр нь ХОЙНООС УРАГШ тул газрын зурагт хөрвүүлэхэд
+             эргэлт урвуу болно. ArcGIS-д ГАДНА цагираг нь ЦАГИЙН ЗҮҮНИЙ дагуу
+             байх ёстой — эргүүлэхгүй бол бүх полигон «нүх» болж алга болно. */
+          pts.reverse();
+          /* ⚠️ Цагирагийг ХААНА (эхний цэгийг давтана) — ArcGIS өөрөө хаадаг ч
+             хаагаагүй цагирагийг зарим үед «шугам» гэж үзэж дүүргэхгүй үлдээдэг */
+          const m = pts.map(([vx, vy]) => [e.xmin + vx * cw, e.ymax - vy * ch]);
+          if (m.length) m.push([m[0][0], m[0][1]]);
+          return m;
+        })
+        .filter((r) => r.length >= 4);
+    } finally {
+      /* ⚠️ Маскийг ЭНЭ зурвасын нүдээр цэвэрлэнэ — `fill(0)` нь бүтэн тор */
+      for (let k = off[b]; k < off[b + 1]; k++) mask[order[k]] = 0;
     }
-    const rings = traceRings(mask, W, H, bx0, by0, bx1, by1)
-      .filter((r) => ringCells(r) >= MIN_RING_CELLS)
-      .map((r) => {
-        let pts = dedupeCollinear(r);
-        for (let k = 0; k < SMOOTH_PASSES; k++) pts = chaikin(pts);
-        /* ⚠️ ЭРГҮҮЛНЭ: торны мөр нь ХОЙНООС УРАГШ тул газрын зурагт хөрвүүлэхэд
-           эргэлт урвуу болно. ArcGIS-д ГАДНА цагираг нь ЦАГИЙН ЗҮҮНИЙ дагуу
-           байх ёстой — эргүүлэхгүй бол бүх полигон «нүх» болж алга болно. */
-        pts.reverse();
-        /* ⚠️ Цагирагийг ХААНА (эхний цэгийг давтана) — ArcGIS өөрөө хаадаг ч
-           хаагаагүй цагирагийг зарим үед «шугам» гэж үзэж дүүргэхгүй үлдээдэг */
-        const m = pts.map(([vx, vy]) => [e.xmin + vx * cw, e.ymax - vy * ch]);
-        if (m.length) m.push([m[0][0], m[0][1]]);
-        return m;
-      })
-      .filter((r) => r.length >= 4);
-    /* ⚠️ Маскийг ЭНЭ зурвасын нүдээр цэвэрлэнэ — `fill(0)` нь бүтэн тор */
-    for (let k = off[b]; k < off[b + 1]; k++) mask[order[k]] = 0;
     if (!rings.length) continue;
     /* ⚠️ ВЕКТОРЫН нийлбэрээс өнцөг — өнцгүүдийн ДУНДЖИЙГ авбал 350° ба
        10° хоёрын дундаж 180° (эсрэг тал) болно. */

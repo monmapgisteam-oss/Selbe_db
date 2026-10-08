@@ -696,7 +696,8 @@ console.log('✅ дахин аудит — `a:` tombstone нэмсэн агши�
   assert.ok((tb.includes('setPending({});') && tb.includes('setPendDate({});'))
     || (tb.includes('setPending(keepTyped({}));') && tb.includes('setPendDate(keepTyped({}));')), '#2: хоосон нийлбэр төлөвийг хоослохгүй байна');
   /* 2026-10-04: илгээлтийн баримт (`rcptRef`) ч tombstone-той адил — алсыг цэвэрлэхгүй */
-  assert.ok(tb.includes('if (delRef.current.size || rcptRef.current.size) return;'), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
+  /* ⚠️ 2026-10-09: `pickDraft` үр дүнгээ (`PickRes`) буцаадаг болсон — `return res;` */
+  assert.ok(/if \(delRef\.current\.size \|\| rcptRef\.current\.size\) return( res)?;/.test(tb), '#2: tombstone-той хоосон нийлбэр алсыг цэвэрлэж байна');
   assert.ok(FN.includes('const liveDel: [string, number][]'), '#2: хадгалах эффектийн хоосон зам tombstone-ийг бичихгүй байна');
   assert.ok(FN.includes('for (const [k, a] of d.del ?? []) if (Number.isFinite(a) && (delRef.current.get(k) ?? 0) < a) delRef.current.set(k, a);'),
     '#2: pickDraft нийлбэрийн del-ийг delRef-д авахгүй байна');
@@ -980,3 +981,92 @@ console.log('✅ #6 ижил утгын хасалт — дүрэм хэвээр
   assert.deepEqual(m.hold.map(([k]) => k), ['1:0'], 'нүдгүй тэмдэг үлдэх ёсгүй');
 }
 console.log('✅ #7 тэмдэглэсэн нүд — хугацаатай · ноорогт бичигдэнэ · хаях товч');
+
+/* ══════════ 2026-10-09 — ХОЁР ХҮН НЭГ БАГЦЫГ ЗЭРЭГ БӨГЛӨХ (хоёр клиентийн симуляц, ЖИНХЭНЭ `mergeDrafts`) ══════════
+ * А ба Б нэг алсын ноорогтой (`remote`); клиент бүр локал ноорог + мэдэх баримт (`rcptRef`) + сүүлд хөндсөн агшинтай.
+ * Татах мөчлөг = `mergeDrafts(локал, алс)`. LWW дүрэм ӨӨРЧЛӨГДӨӨГҮЙ — шинэ туслахууд зөвхөн таньж ил хэлнэ. */
+import { newReceipts, claimMine, editStamp, lostMine } from './fill/draft.ts';
+{
+  const T = Date.now() - 60_000;
+  const X = '100:0';
+  const Y = '101:0';
+  /* ── Fix 1: А илгээсэн баримт Б-гийн татах мөчлөгт ШИНЭ гэж танигдана (нэг удаа) ── */
+  {
+    /* Б-гийн дэлгэц: А-гийн X=5 (татсан) + өөрийн Y=7 */
+    const bLocal = { t: T + 40, mode: 'inc', cells: [[X, '5'], [Y, '7']], by: [[X, 'a'], [Y, 'b']], byAt: [[X, T + 10], [Y, T + 40]] };
+    const bKnown = new Map();
+    /* А бүгдийг (X ба Б-гийн Y) илгээв — tombstone + баримт */
+    const pubAt = T + 50;
+    const aTomb = { t: pubAt, mode: 'inc', cells: [], del: [[X, pubAt], [Y, pubAt]], rcpt: [[X, pubAt, '5', T + 10], [Y, pubAt, '7', T + 40]] };
+    const remote = mergeDrafts(bLocal, aTomb);
+    const merged = mergeDrafts(bLocal, remote);
+    assert.equal(merged.cells.length, 0, 'илгээгдсэн нүд Б-гийн ноорогт үлдсэн — давхар тоологдоно');
+    const fresh = newReceipts(bKnown, merged);
+    assert.equal(fresh.length, 2, 'Б шинэ баримтыг танихгүй — staged/давхарлалт дахин уншигдахгүй (тоо хуучин нийт рүү үсэрнэ)');
+    for (const r of fresh) bKnown.set(r[0], r);
+    assert.equal(newReceipts(bKnown, mergeDrafts(merged, remote)).length, 0, 'ижил баримт дахин «шинэ» болж байна — мэдэгдэл давтагдана');
+    /* Б баримтыг харсны ДАРАА шинээр бичсэн нэмэлт — хасагдахгүй (bt ≥ a), шинэ баримт биш */
+    const bNext = { t: T + 90, mode: 'inc', cells: [[Y, '3']], by: [[Y, 'b']], byAt: [[Y, T + 90]], bt: [[Y, pubAt]] };
+    const m2 = mergeDrafts(merged, bNext);
+    assert.deepEqual(m2.cells, [[Y, '3']], 'баримтыг харсны дараах шинэ нэмэлт хасагдсан');
+    assert.equal(newReceipts(bKnown, m2).length, 0);
+  }
+  /* ── Fix 4: эзэмшил — өөр хүн ХОЖУУ дарж бичсэн нүдийг «минийх» гэж тамгалахгүй ── */
+  {
+    const bLocal = { t: T + 10, mode: 'inc', cells: [[X, '5']], by: [[X, 'b']], byAt: [[X, T + 10]] };
+    const aLater = { t: T + 20, mode: 'inc', cells: [[X, '8']], by: [[X, 'a']], byAt: [[X, T + 20]] };
+    const m = mergeDrafts(bLocal, aLater);
+    const at = new Map(m.byAt).get(X);
+    const by = new Map(m.by).get(X);
+    assert.equal(by, 'a');
+    assert.equal(claimMine(T + 10, at, by, 'b'), false, 'А-гийн хожуу бичилтийг Б «минийх» гэж тамгалж байна — тайлбар/waitingOn худал');
+    assert.equal(claimMine(T + 30, at, by, 'b'), true, 'Б дахин (хожуу) бичсэн бол минийх');
+    assert.equal(claimMine(T + 10, at, 'b', 'b'), true, 'өөрийн өөр төхөөрөмж');
+    assert.equal(claimMine(T + 10, undefined, undefined, 'b'), true, 'агшингүй (хуучин) ноорог — урьдын адил');
+  }
+  /* ── Fix 5: өөрийн нүдийг өөр хүн өөрчилсөн/буцаасныг таньна; илгээлт (баримт) — тусдаа ── */
+  {
+    const base = { me: 'b', mineAt: T + 10, rcptA: undefined, del: undefined };
+    assert.equal(lostMine({ ...base, prev: '5', next: '8', at: T + 20, by: 'a' }), 'over');
+    assert.equal(lostMine({ ...base, prev: '5', next: '5', at: T + 20, by: 'a' }), null, 'утга ижил — хэлэх зүйлгүй');
+    assert.equal(lostMine({ ...base, prev: '5', next: '8', at: T + 5, by: 'a' }), null, 'миний бичилт хожуу');
+    /* А буцаасан (tombstone) — жинхэнэ нийлүүлэлтээр */
+    const bLocal = { t: T + 10, mode: 'inc', cells: [[X, '5']], by: [[X, 'b']], byAt: [[X, T + 10]] };
+    const aDel = { t: T + 30, mode: 'inc', cells: [], del: [[X, T + 30]] };
+    const m = mergeDrafts(bLocal, aDel);
+    assert.equal(m.cells.length, 0);
+    assert.equal(lostMine({ ...base, prev: '5', next: undefined, at: undefined, by: undefined, del: new Map(m.del).get(X) }), 'del');
+    /* Өөрийн буцаалт (mineAt = өөрийн del) — хэлэхгүй */
+    assert.equal(lostMine({ ...base, mineAt: T + 30, prev: '5', next: undefined, at: undefined, by: undefined, del: T + 30 }), null);
+    /* Илгээлт (баримт ≥ del) — «{0} илгээв» замаар, энд биш */
+    assert.equal(lostMine({ ...base, prev: '5', next: undefined, at: undefined, by: undefined, del: T + 30, rcptA: T + 30 }), null);
+  }
+  /* ── Fix 6: HLC — А-гийн (цаг нь түрүүлсэн) tombstone-ийг ХАРСАН Б дахин бичвэл Б ялна ── */
+  {
+    const aClear = { t: T + 1000, mode: 'inc', cells: [], del: [[X, T + 1000]] };
+    /* Б-гийн цаг хоцорсон: локал цаг T+995 */
+    const naive = { t: T + 995, mode: 'inc', cells: [[X, '8']], by: [[X, 'b']], byAt: [[X, T + 995]] };
+    assert.equal(mergeDrafts(naive, aClear).cells.length, 0, '(хяналт) HLC-гүй бол Б-гийн шинэ бичилт хасагддаг');
+    const st = editStamp(T + 995, T + 1000);
+    assert.ok(st > T + 1000, 'editStamp харсан агшнаас хожуу биш');
+    const hlc = { ...naive, t: st, byAt: [[X, st]] };
+    assert.deepEqual(mergeDrafts(hlc, aClear).cells, [[X, '8']], 'HLC: Б-гийн шинэ бичилт А-гийн хуучин tombstone-д ялагдсан');
+    assert.deepEqual(mergeDrafts(aClear, hlc).cells, [[X, '8']], 'дараалал хамаарахгүй');
+    assert.equal(editStamp(T + 2000, T + 1000), T + 2000, 'локал цаг түрүүлсэн бол хэвээр');
+    assert.equal(editStamp(T + 5, undefined), T + 5);
+  }
+  /* ── Эх кодын гэрээ: publish эхэнд алсыг уншина · татах мөчлөг `poll` · `touchMine` HLC · сэргээлтийн мэдэгдэл салаа ── */
+  {
+    const FN = readSrc('src/modules/sheet/FillNew.tsx');
+    const pb = FN.slice(FN.indexOf('const publish = useCallback'));
+    assert.ok(pb.indexOf('await pullNow(pkg.key)') > 0 && pb.indexOf('await pullNow(pkg.key)') < pb.indexOf('await loadRows(pkg, sc)'),
+      'publish: алсын ноорогийг илгээхийн өмнө дахин уншихгүй байна (fix 2)');
+    assert.ok(FN.includes("pickDraftRef.current(merged, 'remote', { poll: true })"), 'татах мөчлөг `poll` тэмдэггүй — «Ноорог сэргээв» давтагдана (fix 3)');
+    assert.ok(FN.includes('mineAtRef.current.set(key, stampKey(key));'), 'touchMine HLC-гүй (fix 6)');
+    assert.ok(FN.includes('if (!claimMine(mineAt, at, u, meNow)) continue;'), 'pickDraft эзэмшлийг агшингүй тамгалж байна (fix 4)');
+    assert.ok(FN.includes('cbRef.current.onReceipts?.('), 'шинэ баримт FillNew-д мэдэгдэхгүй (fix 1)');
+    assert.ok(FN.includes('useSyncRef(refreshStagedRef,'), 'FillNew шинэ баримтаар илгээлтийг дахин уншихгүй (fix 1)');
+    assert.ok(!/if \(!warns\.length\) say\(dropped/.test(FN), '«Ноорог сэргээв» `say`-аар (давтагдаж чухал мэдэгдлийг дарна) (fix 3)');
+  }
+}
+console.log('✅ 2026-10-09 хоёр клиент — шинэ баримт · эзэмшил · өөрийн нүд өөрчлөгдсөн · HLC · эх кодын гэрээ');

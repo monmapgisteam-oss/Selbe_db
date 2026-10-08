@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
 /**
  * ЗҮҮН ЖАГСААЛТЫН БАГАНЫН ӨРГӨНИЙГ ЧИРЖ ӨӨРЧЛӨХ (2026-10-08, хэрэглэгч: «зүүн талын үндсэн
@@ -17,6 +17,13 @@ import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent } 
  *    гарвал урьдын адил сунана. Жагсаалт бүхэлдээ багтахгүй болвол `useSideExtra`-ийн
  *    баруун бариулаар жагсаалтаа өргөсгөнө.
  * ⚠️ localStorage хаалттай/хоосон бол анхдагч — хуудас хэвийн зурагдана.
+ * ⚠️ 2026-10-09: ЖАГСААЛТ ДАГАЖ ӨРГӨСНӨ — багана өргөсгөхөд `.gSide`-ийн өргөн (`flex-basis`) тогтмол
+ *    байсан тул нийлбэр самбараас хальж, нүднүүд хуанли дээр давхарладаг байв; «Ажил» (`flex: 1`)-ын
+ *    `--work-min`-ийг чирэхэд ч самбар хангалттай өргөн үед ЮУ Ч өөрчлөгддөггүй байв. Одоо анхдагчаас
+ *    ЗӨРСӨН нийлбэр (давтагдах баганыг тоогоор нь үржүүлсэн, `mult`) нь `--col-extra`
+ *    (нарийн дэлгэцийн дүрэмд — зөвхөн код · нэр · уялдаа: `--col-extra-n`) болж `.gSide`-ийн
+ *    өргөнд НЭМЭГДЭНЭ: багана өргөсөхөд бусад нь агшихгүй, «Ажил»-ын бариул нэрийн баганыг шууд
+ *    өргөсгөнө. Хуанлид үлдэх зайг `useSideExtra`-ийн хязгаар (элементийн бодит өргөнөөр) барина.
  */
 export type ColKey = 'des' | 'work' | 'date' | 'days' | 'res' | 'ham';
 
@@ -49,8 +56,18 @@ function load(): Widths {
   } catch { return {}; }
 }
 
-export function useColWidths() {
+/** Багана бүрийн ХАРАГДАХ тоо (2026-10-09) — `--col-extra`-д үржигдэхүүн; 0 = нуугдсан */
+export type ColMult = Record<ColKey, number>;
+/** Нарийн дэлгэцэд (≤1180px) огноо · хоног · нөөц нуугддаг — `--col-extra-n` */
+const NARROW_KEYS: ColKey[] = ['des', 'work', 'ham'];
+const extraOf = (w: Widths, mult: ColMult, keys: readonly ColKey[] = KEYS): number =>
+  keys.reduce((a, k) => a + (mult[k] ?? 0) * ((w[k] ?? SPEC[k].def) - SPEC[k].def), 0);
+
+export function useColWidths(mult: ColMult) {
   const [w, setW] = useState<Widths>(load);
+  /* ⚠️ 2026-10-09: чирэх явцад (`mv`) хамгийн сүүлийн үржигдэхүүнээр — React төлөв хөдөлгөхгүйн тулд ref */
+  const multRef = useRef(mult);
+  useEffect(() => { multRef.current = mult; });
   const [dragging, setDragging] = useState<ColKey | null>(null);
   const el = useRef<HTMLElement | null>(null);
 
@@ -78,7 +95,12 @@ export function useColWidths() {
     setDragging(k);
     const mv = (ev: globalThis.PointerEvent) => {
       cur = clampW(k, base + ev.clientX - x0);
-      el.current?.style.setProperty(SPEC[k].v, `${cur}px`);
+      const st = el.current?.style;
+      st?.setProperty(SPEC[k].v, `${cur}px`);
+      /* ⚠️ 2026-10-09: самбар ч чирэлттэй ЗЭРЭГ өргөснө (толгойн ⚠️) */
+      const w2 = { ...w, [k]: cur };
+      st?.setProperty('--col-extra', `${extraOf(w2, multRef.current)}px`);
+      st?.setProperty('--col-extra-n', `${extraOf(w2, multRef.current, NARROW_KEYS)}px`);
     };
     const up = () => {
       window.removeEventListener('pointermove', mv);
@@ -102,6 +124,8 @@ export function useColWidths() {
 
   const style: Record<string, string> = {};
   for (const k of KEYS) if (w[k] != null) style[SPEC[k].v] = `${w[k]}px`;
+  style['--col-extra'] = `${extraOf(w, mult)}px`;
+  style['--col-extra-n'] = `${extraOf(w, mult, NARROW_KEYS)}px`;
 
   return {
     elRef,
@@ -115,6 +139,9 @@ export function useColWidths() {
       onDoubleClick: () => commit(k, null),
       on: dragging === k,
       value: w[k] ?? SPEC[k].def,
+      /* ⚠️ 2026-10-09 (a11y): `aria-valuemin/max` — `ColGrip` */
+      min: SPEC[k].min,
+      max: SPEC[k].max,
     }),
   };
 }

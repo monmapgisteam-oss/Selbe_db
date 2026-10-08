@@ -21,7 +21,7 @@ import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
   assert.ok(body.includes("x.status === PLAN_STATUS.returned") && body.includes("huvaariScope(me, 'author')") && L.includes("cached(loadLastPerPkg, BADGE_TTL, ['HUVAARI_BATLAH'])"),
     'countPlanReturned: буцаагдсан · зохиогчийн хүрээ · HUVAARI_BATLAH кэш');
   const V = fs.readFileSync('src/components/ViewRail.tsx', 'utf8');
-  assert.ok(V.includes("k === 'huvaari' ? tr('буцаагдсан {0}', n)"), 'ViewRail: «Хуваарь» тэмдгийн утга «буцаагдсан N» биш');
+  assert.ok(V.includes("k === 'huvaari' ? tr('буцаагдсан {0}', num(n))"), 'ViewRail: «Хуваарь» тэмдгийн утга «буцаагдсан N» биш');
   console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан');
 }
 

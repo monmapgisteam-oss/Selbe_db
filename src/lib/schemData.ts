@@ -111,7 +111,7 @@ const schemSourcesFull = cached<SchemSources>(async () => {
      доорх `SchemPartial` кэшлэхгүй. `loadFinance` (`reportData`) хагас төлөвгүй: аль нэг
      хүснэгт унавал бүхэлдээ шиддэг тул `take` аль хэдийн «унасан» гэж тоолно. */
   const headline = take(NAME.headline, h);
-  if (headline?.partial) failed.push(NAME.headline);
+  if (headline?.partial && !failed.includes(NAME.headline)) failed.push(NAME.headline);
   const src: SchemSources = {
     headline,
     clearance: take(NAME.clearance, c),
@@ -130,7 +130,11 @@ const schemSourcesFull = cached<SchemSources>(async () => {
    * үг. Тэр үед хоосон схем зурахын оронд алдаа шидэж `Data`-гийн «дахин
    * оролдох» товчийг гаргана.
    */
-  if (failed.length === 9) {
+  /* ⚠️ 2026-10-09: «БҮГД унасан» = ЕСӨН эх БҮГД утгагүй (`null`). Урьд нь `failed.length === 9`
+     байсан тул ХАГАС толгой (утгатай, `failed`-д нэрлэгдсэн) + бусад 8 унасан үед хагас өгөгдлийг
+     хаяж «бүгд унасан» алдаа шиддэг байв. Давхардсан нэрийг ч тоолохгүй (`Set`). */
+  const got = [src.headline, src.clearance, src.overall, src.progress, src.finance, src.habea, src.zov, src.review, src.bagts];
+  if (got.every((v) => v == null) && new Set(failed).size >= got.length) {
     throw schemAllFailedError(firstReason);
   }
   if (failed.length) throw new SchemPartial(src);

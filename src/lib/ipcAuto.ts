@@ -157,6 +157,37 @@ export function contractFor(rows: readonly Row[], pkgKey: string): { code: strin
   return { code: pick?.code ?? '', warn };
 }
 
+/**
+ * AUTO МӨРИЙН ГЭРЭЭ — `syncIpcFromFill` ба `ipcDocLoad`-ын НЭГ эх (2026-10-09, F6).
+ * ⚠️ Тухайн багцын БАЙГАА AUTO мөрүүд (хамгийн сүүлийн өдрийнх) аль гэрээний кодтой байна, тэр код нь
+ *    ГАРААР оруулсан гэрээ болж хэвээр байвал ТҮҮНИЙГ сонгоно — `pickContract`-ийн дүрэм (эсвэл HO
+ *    хүснэгтийн засвар) өөрчлөгдөхөд шинэ AUTO мөр өөр гэрээнд очиж, гүйцэтгэлийн түүх хоёр гэрээнд
+ *    хуваагдахгүй (хуримтлал `cumPaidThrough` гэрээгээр бодогддог). Эс бөгөөс `contractFor`.
+ * ⚠️ `warn` ДАМЖИНА (урьд нь `contractCodeOf` түүнийг хаядаг байв) — дуудагч ил харуулна.
+ */
+export function autoContractFor(rows: readonly Row[], pkgKey: string): { code: string; warn: string | null } {
+  const base = contractFor(rows, pkgKey);
+  if (!pkgKey) return base;
+  let prev: { code: string; day: string } | null = null;
+  for (const r of rows) {
+    if (!isAuto(r) || pkgKeyOf(r[C.pkg]) !== pkgKey) continue;
+    const code = String(r[C.code] ?? '').trim();
+    if (!code) continue;
+    const day = autoDay(r) ?? '';
+    if (!prev || day > prev.day) prev = { code, day };
+  }
+  if (!prev || prev.code === base.code) return base;
+  const p = prev;
+  const manual = rows.some((r) => !isAuto(r) && pkgKeyOf(r[C.pkg]) === pkgKey && String(r[C.code] ?? '').trim() === p.code);
+  if (!manual) return base;
+  return {
+    code: p.code,
+    warn: base.warn || base.code
+      ? tr('«{0}» багцад гэрээний сонголт «{1}» болох байсан ч өмнөх AUTO мөрүүд «{2}» гэрээнд байгаа тул гүйцэтгэлийг тийш үргэлжлүүлэн холбов. HO хүснэгтийг шалгана уу.', pkgKey, base.code || '—', p.code)
+      : null,
+  };
+}
+
 /** Автомат мөрийн ID — багц ба АГШНААР ДАВТАГДАШГҮЙ */
 export const autoId = (pkgKey: string, day: string): string =>
   `${AUTO_PREFIX}${pkgKey}|${day}`;

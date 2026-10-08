@@ -562,6 +562,13 @@ function TailanFull() {
                             (урьд нь «0 нэгж талбар үлдсэн» гэж худал бичдэг байв) */}
                         {' '}{num(d.landLeft)} {tr('нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.')}
                       </p>
+                      {/* ⚠️ 2026-10-09: олголт уншигдаагүй бол «— нь бодитоор олгогдсон» гэж бичихгүй — PDF-ийн
+                          (`reportPdf` lead) ЯГ тэр түлхүүр */}
+                      {x.finance.paid == null ? (
+                        <p>
+                          {tr('Санхүүгийн хувьд захирамжаар {0} ₮ батлагдсанаас {1} ₮{2} нь гэрээгээр баталгаажсан; олгосон санхүүжилтийн мэдээлэл уншигдсангүй.', bn(x.finance.orderTotal), bn(x.finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '')}
+                        </p>
+                      ) : (
                       <p>
                         {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('₮')}</strong>
                         {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
@@ -571,6 +578,7 @@ function TailanFull() {
                         {/* ⚠️ 2026-10-04: хувийн тоологч (гэрээлсэн багцын олголт)-ийг ил бичнэ — PDF-тэй нэг (`reportPdf` lead) */}
                         {d.paidRate != null && <> ({tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', bn(x.finance.paidContracted), pct(d.paidRate, 1))})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
+                      )}
                       <p>
                         {/* ⚠️ 2026-10-09 (i18n): НЭГ өгүүлбэр, орлуулагчтай — PDF-ийн (`reportPdf` lead) ЯГ тэр түлхүүр.
                             Урьд нь хэсэгчилсэн түлхүүрүүд («ажилтан» нэгжийн шошгыг өгүүлбэрт) нийлүүлдэг тул англиар
@@ -670,7 +678,8 @@ function TailanFull() {
                         items={sorted.map((b) => ({
                           label: tr(b.label),
                           value: budgetOf(b.key) > 0 ? budgetOf(b.key) : null,
-                          text: `${bn(budgetOf(b.key))} ₮`,
+                          /* ⚠️ 2026-10-09: төсөвгүй (`null`) багана «0 ₮» биш «—» (null ≠ 0) */
+                          text: budgetOf(b.key) > 0 ? `${bn(budgetOf(b.key))} ₮` : '—',
                         }))}
                       />
                       <Fig no="2.2">{tr('Багц тус бүрийн гүйцэтгэл (хамгийн өндөр нь тодруулсан)')}</Fig>

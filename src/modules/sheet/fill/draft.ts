@@ -930,6 +930,62 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     datesB: datesB.size ? [...datesB] : undefined,
   };
 };
+
+/*
+ * ══════════ ХОЁР ХҮН НЭГ БАГЦЫГ ЗЭРЭГ БӨГЛӨХ (2026-10-09) — ЦЭВЭР туслахууд ══════════
+ * ⚠️ `useDraftSync.pickDraft` ба `touchMine` эдгээрийг дууддаг; `shareDraft.check.mjs` ЖИНХЭНЭ
+ *    `mergeDrafts`-тай хамт хоёр клиентээр ажиллуулж шалгана. LWW дүрэм (`mergeDrafts`) ӨӨРЧЛӨГДӨӨГҮЙ —
+ *    эдгээр нь зөвхөн «юу болсныг» таньж ИЛ хэлэх ба эзэмшлийг зөв тавихад.
+ */
+/**
+ * ⚠️ 2026-10-09: ШИНЭ ИЛГЭЭЛТИЙН БАРИМТ — `d`-д байгаа атлаа энэ табд (`known` = `rcptRef`) мэдэгдээгүй
+ *    (эсвэл хуучин агшинтай) баримтууд. Урьд нь татах мөчлөг А-гийн баримтыг нийлүүлж Б-гийн `pending`-ээс
+ *    тэр нүднүүдийг ЧИМЭЭГҮЙ хасдаг ч Б-гийн `staged`/мөрүүд дахин уншигддаггүй тул тоо нь хуучин нийт рүү
+ *    «үсэрч», Б дахин бичвэл ДАВХАР тоологддог байв. Хоосон биш бол дуудагч илгээлтийг дахин уншина.
+ */
+export function newReceipts(known: ReadonlyMap<string, Rcpt>, d: Draft): Rcpt[] {
+  const out: Rcpt[] = [];
+  for (const r of d.rcpt ? unpackRcpt(d.rcpt) : []) {
+    const c = known.get(r[0]);
+    if (!c || c[1] < r[1]) out.push(r);
+  }
+  return out;
+}
+/**
+ * ⚠️ 2026-10-09: ӨӨРИЙН ЭЗЭМШЛИЙГ ТАВИХ ЭСЭХ (`pickDraft`). Урьд нь энэ табын `mineRef`-ийн БҮХ түлхүүрийг
+ *    «минийх» гэж тамгалдаг тул Б миний нүдийг ХОЖУУ дарж бичсэн ч нүд «минийх» хэвээр — тайлбар
+ *    («{0} бөглөсөн») ба `waitingOn` (Б оролцогч) худал болдог байв. Одоо нийлбэрийн агшин (`at`) энэ табын
+ *    сүүлийн хөндөлтөөс (`mineAt`) ХОЖУУ бөгөөд эзэн нь ӨӨР хүн бол тэр хүнийх. Агшин/эзэн мэдэгдэхгүй
+ *    (хуучин ноорог) бол урьдын адил минийх.
+ */
+export const claimMine = (mineAt: number | undefined, at: number | undefined, by: string | undefined, me: string): boolean =>
+  at == null || !by || by === me || (mineAt ?? 0) >= at;
+/**
+ * ⚠️ 2026-10-09: ЛОКАЛ ЗАСВАРЫН АГШИН (HLC) — `max(логик цаг, тухайн түлхүүрт ХАРСАН хамгийн их алсын
+ *    агшин + 1)`. Урьд нь зөвхөн ерөнхий логик цаг (`stamp`) байсан бөгөөд түүний хамгаалалт (`seeClock`)
+ *    ирээдүйн хэт хол агшинг үл тоодог тул А-гийн (цаг нь түрүүлсэн) tombstone-ийг ХАРСНЫ ДАРАА Б дахин
+ *    бичсэн утга «эрт» болж `mergeDrafts`-д хасагдах боломжтой байв. Шинэ гараар засвар ҮРГЭЛЖ ялна.
+ */
+export const editStamp = (clock: number, seen: number | undefined): number =>
+  Math.max(clock, seen != null && Number.isFinite(seen) ? seen + 1 : 0);
+/**
+ * ⚠️ 2026-10-09: ЭНЭ ХЭРЭГЛЭГЧИЙН СҮҮЛД БИЧСЭН НҮДИЙГ НИЙЛҮҮЛЭЛТ ӨӨРЧИЛСӨН ҮҮ — `'over'` (өөр хүн ХОЖУУ
+ *    дарж бичсэн) · `'del'` (өөр хүн ХОЖУУ буцаасан — tombstone) · `null`. LWW-ийг ӨӨРЧЛӨХГҮЙ, зөвхөн ИЛ
+ *    хэлэхэд (урьд нь чимээгүй солигддог байв). Илгээлтийн баримтаар (`rcptA ≥ del`) хасагдсан нь энд
+ *    ТООЛОГДОХГҮЙ — тэр нь «{0} илгээв» мэдэгдэл (`newReceipts`).
+ *    `prev` = дэлгэц дээрх утга (нийлүүлэхээс өмнө), `next` = нийлүүлсний дараах, `mineAt` = энэ таб сүүлд
+ *    хөндсөн агшин (бичилт ба өөрийн буцаалтын их нь), `at`/`by`/`del` = нийлбэрийн.
+ */
+export function lostMine(o: {
+  prev: string | undefined; next: string | undefined; mineAt: number;
+  at: number | undefined; by: string | undefined; del: number | undefined; rcptA: number | undefined; me: string;
+}): 'over' | 'del' | null {
+  if (o.prev === undefined || o.prev === o.next) return null;
+  if (o.next !== undefined) return o.at != null && o.at > o.mineAt && !!o.by && o.by !== o.me ? 'over' : null;
+  if (o.del == null || o.del <= o.mineAt) return null;
+  if (o.rcptA != null && o.rcptA >= o.del) return null;
+  return 'del';
+}
 /** «Дуусгасан/дахин засах» тэмдэг — `[нэр, 1|0, seq, агшин]` (`Draft.marks`) */
 export type Mark = [string, 0 | 1, number, number];
 

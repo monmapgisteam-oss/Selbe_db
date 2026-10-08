@@ -14,6 +14,7 @@ import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
 import { t as tr } from "@/lib/i18nCore";
 import { invalidate } from "@/lib/dataBus";
+import { isLostWrite } from "@/lib/lostWrite";
 import { DAY, spanFrac } from "@/lib/plan";
 
 export type SheetRow = {
@@ -179,7 +180,18 @@ export const dayFilter = (fld: string, day: string) =>
  * Тэгвэл түүнийг алгасаад өмнөх БҮТЭН жаазыг буцаана: хуучин боловч БҮТЭН
  * агшин харуулах нь хуудсыг бүхэлд нь хаахаас хамаагүй дээр.
  */
-export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[] {
+export function lastFrame(
+  all: Feature[],
+  noField: string,
+  expect = 0,
+  /**
+   * ⚠️ 2026-10-09 (F5): өгвөл жаазны уртыг ХООСОН (№ ба Ажил хоёул хоосон) мөрийг ХАССАН тоогоор
+   *    жишнэ (`frameLenOf`). Нэг өдөр хоосон мөртэй (хуучин/дүүргэлттэй) ба хоосон мөргүй жааз зэрэг
+   *    бичигдвэл түүхий уртаар жишихэд шинэ (хоосон мөргүй) жааз «өмнөхөөсөө богино = тасарсан»
+   *    гэж мөнхөд алгасагдаж, хуучин жааз харагддаг байв. Өгөхгүй бол түүхий урт (хуучин зан төлөв).
+   */
+  workField?: string,
+): Feature[] {
   if (all.length < 2) return all;
   const first = String(all[0].attributes[noField] ?? "").trim();
   if (!first) return all;
@@ -191,7 +203,7 @@ export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[
   if (starts.length === 1) return all;
 
   const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
-  const lenOf = (k: number) => endOf(k) - starts[k];
+  const lenOf = frameLenOf(all, starts, endOf, noField, workField);
   const need = fullLen(starts.length, lenOf, expect);
 
   /* Сүүлийн жаазаас ухарч ЭХНИЙ бүтэн жаазыг ол */
@@ -222,6 +234,30 @@ export function lastFrame(all: Feature[], noField: string, expect = 0): Feature[
  *    батлалтын нэмэлт чимээгүй алга болдог. Жааз зөвхөн НЭМЭГДДЭГ тул
  *    ажиглагдсан хамгийн урт жааз нь «бүтэн»-ий бодит дээд хязгаар.
  */
+/**
+ * ЖААЗ БҮРИЙН ЖИШИХ УРТ — `workField` өгвөл № ба Ажил хоёул хоосон мөрийг ХАСНА (2026-10-09, F5;
+ * `lastFrame`-ийн `workField`-ийн ⚠️), эс бөгөөс түүхий урт.
+ */
+function frameLenOf(
+  all: Feature[],
+  starts: number[],
+  endOf: (k: number) => number,
+  noField: string,
+  workField?: string,
+): (k: number) => number {
+  if (!workField) return (k) => endOf(k) - starts[k];
+  const eff = starts.map((s, k) => {
+    let n = 0;
+    for (let i = s; i < endOf(k); i += 1) if (!isBlankAttrs(all[i].attributes, noField, workField)) n += 1;
+    return n;
+  });
+  return (k) => eff[k];
+}
+
+/** № ба Ажил хоёул хоосон мөр үү (`loadRows` ийм мөрийг алгасдаг) */
+export const isBlankAttrs = (a: Record<string, unknown>, noField: string, workField: string): boolean =>
+  !String(a[noField] ?? "").trim() && !String(a[workField] ?? "").trim();
+
 function fullLen(n: number, lenOf: (k: number) => number, expect: number): number {
   if (expect <= 0) return 0;
   let longest = 0;
@@ -247,7 +283,13 @@ function fullLen(n: number, lenOf: (k: number) => number, expect: number): numbe
  * үлддэг (`lastFrame`-ийн баримтжуулсан тохиолдол). Тиймээс урагшаа явж
  * ЭХНИЙ БҮТЭН жаазыг олно.
  */
-export function firstFrame(all: Feature[], noField: string, expect = 0): Feature[] {
+export function firstFrame(
+  all: Feature[],
+  noField: string,
+  expect = 0,
+  /** ⚠️ 2026-10-09 (F5): `lastFrame`-ийн ижил нэртэй параметр — хоосон мөрийг хассан уртаар жишнэ */
+  workField?: string,
+): Feature[] {
   if (all.length < 2) return all;
   const first = String(all[0].attributes[noField] ?? "").trim();
   if (!first) return all;
@@ -259,7 +301,7 @@ export function firstFrame(all: Feature[], noField: string, expect = 0): Feature
   if (starts.length === 1) return all;
 
   const endOf = (k: number) => (k + 1 < starts.length ? starts[k + 1] : all.length);
-  const lenOf = (k: number) => endOf(k) - starts[k];
+  const lenOf = frameLenOf(all, starts, endOf, noField, workField);
   /* ⚠️ 2026-09-29 (аудит 10): зураглалаас нэгээр богино жаазтай багцад (1470↔1471)
      `expect`-ээр шалгавал бүтэн жааз хэзээ ч олдохгүй — `fullLen`-ийн ⚠️ */
   const need = fullLen(starts.length, lenOf, expect);
@@ -318,8 +360,9 @@ function rowKey(f: Feature, sc: Schema): string {
    тул түлхүүрийг дуудалт бүрд хямдаар (сүлжээгүй) дахин таслана; урьдчилсан (rootNo-гүй) дуудалт
    ч ижил кэшийг дулаацуулна. */
 const baseKeyCache = new Map<string, Promise<Feature[]>>();
-function baseFetch(pkg: Pkg, sc: Schema, kind: "null" | "all", want: number): Promise<Feature[]> {
-  const ck = `${pkg.key}|${kind}`;
+function baseFetch(pkg: Pkg, sc: Schema, kind: "null" | "all", want: number, rootNo = ""): Promise<Feature[]> {
+  /* ⚠️ 2026-10-09 (F11): `all`-ийн эрт зогсолт `rootNo`-оос хамаардаг (доор) тул кэшийн түлхүүрт орно */
+  const ck = kind === "all" ? `${pkg.key}|all|${rootNo}` : `${pkg.key}|${kind}`;
   const hit = baseKeyCache.get(ck);
   if (hit) return hit;
   const fld = sc.f.fillDate;
@@ -345,7 +388,14 @@ function baseFetch(pkg: Pkg, sc: Schema, kind: "null" | "all", want: number): Pr
          `fullLen` = `want` (хамгийн урт ≥ тэр жааз ≥ `want`) тул `firstFrame` ЯГ тэр жаазыг
          сонгоно — үлдсэн хуудас нөлөөлөхгүй. 1470↔1471 багц (`fullLen`-ийн ⚠️) энэ нөхцлийг
          хангахгүй тул урьдын адил бүтнээр уншина. */
-      if (kind === "all" && want > 0 && firstDoneFrameAtLeast(out, sc.f.no, want)) break;
+      /* ⚠️ 2026-10-09 (F11): эрт зогсолтыг `loadBaseKeys`-ийн `firstFrame`-д очих ЯГ тэр (rootNo-оор
+         эхэнд үлдсэн хог хэсгийг тайрсан) жагсаалтаар шийднэ — урьд нь тайраагүй жагсаалтаар шийддэг
+         байсан тул хог хэсгийн давтагддаг № («3») түүнийг «дууссан жааз» гэж андуурч эрт зогсоод,
+         тайрсан жагсаалтад бүтэн жааз үлдэхгүй байж болох байв. rootNo хараахан олдоогүй бол зогсохгүй. */
+      if (kind === "all" && want > 0) {
+        const i0 = rootNo ? out.findIndex((f) => String(f.attributes[sc.f.no] ?? "").trim() === rootNo) : 0;
+        if (i0 >= 0 && firstDoneFrameAtLeast(i0 > 0 ? out.slice(i0) : out, sc.f.no, want)) break;
+      }
     }
     return out;
   })();
@@ -452,16 +502,17 @@ async function loadBaseKeys(pkg: Pkg, sc: Schema, rootNo = ""): Promise<string[]
       );
     }
     usedFallback = true;
-    const all = await baseFetch(pkg, sc, "all", want);
+    const all = await baseFetch(pkg, sc, "all", want, rootNo);
     /* ⚠️ 2026-10-09 (F3): эхэнд үлдсэн хог хэсгийг (жаазны эхний №-ээр эхлээгүй мөрүүд) алгасна —
        эс бөгөөс `firstFrame` түүний «3» г.м. давтагддаг №-ээр хувааж хэдхэн мөрийн лавлах өгнө. */
     const i0 = rootNo ? all.findIndex((f) => noOf(f) === rootNo) : 0;
     src = i0 > 0 ? all.slice(i0) : all;
   }
   /* ⚠️ Нөөц замд ЭХНИЙ жааз — дээрх ⚠️. Суурь байвал урьдын адил сүүлийнх. */
+  /* ⚠️ 2026-10-09 (F5): `sc.f.work` — хоосон мөрийг хассан уртаар жишнэ (`lastFrame`-ийн ⚠️) */
   const ref = usedFallback
-    ? firstFrame(src, sc.f.no, want)
-    : lastFrame(src, sc.f.no, want);
+    ? firstFrame(src, sc.f.no, want, sc.f.work)
+    : lastFrame(src, sc.f.no, want, sc.f.work);
   return ref.map((f) => rowKey(f, sc));
 }
 
@@ -581,12 +632,31 @@ export function treeMapOk(map: number[], tree: string): boolean {
  *    Дээд хязгаар ЗААВАЛ: огноогүй мөр нь бүтэн СУУРЬ жааз (≈ `expect`) байвал нийлбэр ≈ 2 жааз
  *    болж нэгтгэгдэхгүй — эс бөгөөс `lastFrame` хоцорсон суурийг (урт) сонгож чимээгүй хуучин
  *    агшин харуулна (1470↔1471 багц).
+ * ⚠️ 2026-10-09 (F2 доод хязгаар): `sum >= expect` нь зураглалын ХООСОН мөрийг (№ ба Ажил хоёул
+ *    хоосон — архивт хэзээ ч бичигддэггүй) тоолдог тул 1470↔1471 багцад (b31_9f) нийлбэр 1,470 нь
+ *    1,471-д ХЭЗЭЭ Ч хүрэхгүй — тэр багцын огноогүй хэлтэрхий мөнхөд нэгтгэгдэхгүй байв. Одоо доод
+ *    хязгаар нь `expect − blank` (`blank` = суурь лавлахын хоосон мөрийн тоо, `baseBlankCount`).
+ * ⚠️ 2026-10-09 (F9): хүлцэл 50 хэт сул байв (50 мөр «илүү» огноогүй мөр нь өөр жаазных байх
+ *    магадлал өндөр) — одоо `nNull ≤ expect − nDay + NULL_MERGE_SLACK` (2): огноогүй хэсэг нь
+ *    өдрийн жаазны ДУТУУ хэсгээс ердөө 2-оор л илүү байж болно (Багц 3.3: 1,239 + 221 = 1,460 ≤ 1,461).
  */
-export const NULL_MERGE_SLACK = 50;
-export function nullFragmentFits(nDay: number, nNull: number, expect: number): boolean {
+export const NULL_MERGE_SLACK = 2;
+export function nullFragmentFits(nDay: number, nNull: number, expect: number, blank = 0): boolean {
   if (expect <= 0 || nDay <= 0 || nNull <= 0 || nDay >= expect) return false;
-  const sum = nDay + nNull;
-  return sum >= expect && sum <= expect + NULL_MERGE_SLACK;
+  const lo = expect - Math.max(0, Math.min(blank, expect));
+  return nDay + nNull >= lo && nNull <= expect - nDay + NULL_MERGE_SLACK;
+}
+
+/**
+ * СУУРЬ ЛАВЛАХЫН ХООСОН МӨРИЙН ТОО (№ ба Ажил хоёул хоосон) — `nullFragmentFits`-ийн `blank`
+ * (2026-10-09, F3). Лавлах кэшлэгддэг (`baseKeyCache`). Татагдахгүй бол 0 — хуучин (хатуу) доод хязгаар.
+ */
+export async function baseBlankCount(pkg: Pkg, sc: Schema): Promise<number> {
+  try {
+    return (await loadBaseKeys(pkg, sc)).filter(isBlankKey).length;
+  } catch {
+    return 0;
+  }
 }
 
 async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
@@ -634,11 +704,53 @@ async function latestWhere(pkg: Pkg, sc: Schema, expect = 0): Promise<string> {
     const nDay = await cnt(day);
     if (nDay > 0 && nDay < expect) {
       const nNull = await cnt(`${fld} IS NULL`);
-      /* ⚠️ 2026-10-09 (F2): ЯГ тэнцүүгээр биш — `nullFragmentFits` (мөр нэмэгдсэн жааз ч) */
-      if (nullFragmentFits(nDay, nNull, expect)) return `((${day}) OR ${fld} IS NULL)`;
+      /* ⚠️ 2026-10-09 (F2): ЯГ тэнцүүгээр биш — `nullFragmentFits` (мөр нэмэгдсэн жааз ч);
+         доод хязгаарт зураглалын хоосон мөрийг хасна (F3, `baseBlankCount`) */
+      if (nullFragmentFits(nDay, nNull, expect, await baseBlankCount(pkg, sc))) return `((${day}) OR ${fld} IS NULL)`;
     }
   }
   return day;
+}
+
+/**
+ * ӨМНӨХ ӨДРИЙН СҮҮЛИЙН БҮТЭН ЖААЗНЫ УРТ (№ ба Ажил хоёул хоосон мөрийг ХАССАН) — `loadRows`-ийн F4
+ * шалгалтад (2026-10-09). Одоогийн жаазны хамгийн их `fillDate`-ийн ӨДРӨӨС өмнөх хамгийн сүүлийн
+ * өдрийг олж, `lastFrame`-ийн ижил дүрмээр таслана. Өмнөх өдөр байхгүй бол `null`. Алдааг ШИДНЭ.
+ */
+async function prevFrameLen(pkg: Pkg, sc: Schema, cur: Feature[], expect: number): Promise<number | null> {
+  const fld = sc.f.fillDate;
+  if (!fld) return null;
+  let mx: number | null = null;
+  for (const f of cur) {
+    const v = num(f.attributes[fld]);
+    if (v != null && (mx == null || v > mx)) mx = v;
+  }
+  if (mx == null) return null;
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: `${fld} < timestamp '${msToDay(mx)} 00:00:00'`,
+    outStatistics: JSON.stringify([{ statisticType: "max", onStatisticField: fld, outStatisticFieldName: "mx" }]),
+    returnGeometry: "false",
+  });
+  const pm = j.features?.[0]?.attributes?.mx as number | null | undefined;
+  if (pm == null) return null;
+  const out: Feature[] = [];
+  for (let offset = 0; ; ) {
+    const p = await agsFetch(`${pkg.url}/query`, {
+      where: dayFilter(fld, msToDay(pm)),
+      outFields: [sc.f.oid, sc.f.no, sc.f.work].join(","),
+      returnGeometry: "false",
+      orderByFields: `${sc.f.oid} ASC`,
+      resultRecordCount: "2000",
+      resultOffset: String(offset),
+    });
+    const fs = (p.features || []) as Feature[];
+    out.push(...fs);
+    if (!p.exceededTransferLimit || fs.length === 0) break;
+    offset += fs.length;
+  }
+  if (!out.length) return null;
+  return lastFrame(out, sc.f.no, expect, sc.f.work)
+    .filter((f) => !isBlankAttrs(f.attributes, sc.f.no, sc.f.work)).length;
 }
 
 /** Багцын бүх мөрийг татна — maxRecordCount 2000 тул хуудаслая. */
@@ -661,6 +773,14 @@ export async function loadRows(
    *    болж уншигдана — `raw` нь мөн хэсэгчилсэн болохыг анхаар.
    */
   fields?: string[],
+  /**
+   * ⚠️ 2026-10-09 (F1/F4): `strict` — БИЧИХ замууд (`hyanaltStore.archiveSubmission`) `true` өгнө.
+   *    `gun` замд жаазны уртыг лавлахаар шалгадаг; лавлах татагдахгүй (сүлжээ) үед урьд нь `need = 0`
+   *    болж ДУТУУ жааз хүлээн авагдаж, бичигч түүн дээр шинэ жааз угсардаг байв (тасарсан мөрүүд
+   *    архивын «сүүлийн агшин»-аас мөнхөд алга). `strict` үед лавлах/өмнөх жаазын шалгалт унавал
+   *    THROW (fail-closed). Анхдагч `false` — уншдаг самбарууд урьдын адил (бүртгэлд үлдээнэ).
+   */
+  opts?: { strict?: boolean },
 ): Promise<{
   rows: SheetRow[];
   asOf: number | null;
@@ -753,7 +873,10 @@ export async function loadRows(
    */
   /* ⚠️ `expect`-ийг дамжуулна: зураглалаас БОГИНО жааз нь хагас бичигдсэн
      нийтлэлийн үлдэгдэл тул түүнийг алгасаж өмнөх бүтэн агшныг авна. */
-  const feats2 = lastFrame(feats, sc.f.no, expect);
+  /* ⚠️ 2026-10-09 (F5): `sc.f.work` (уншсан бол) — хоосон мөрийг хассан уртаар жишнэ: хоосон мөртэй
+     ба хоосон мөргүй жааз нэг өдөр бичигдвэл шинэ нь «тасарсан» гэж алгасагдахгүй */
+  const hasWork = !fields?.length || fields.includes(sc.f.work);
+  const feats2 = lastFrame(feats, sc.f.no, expect, hasWork ? sc.f.work : undefined);
 
   /**
    * ШАТЛАЛ ХААНААС ГАРАХ ВЭ.
@@ -823,6 +946,9 @@ export async function loadRows(
         const ref = await loadBaseKeys(pkg, sc, rootNo);
         need = ref.filter((k) => !isBlankKey(k)).length;
       } catch (e) {
+        /* ⚠️ 2026-10-09 (F4): бичих зам (`strict`) лавлахгүйгээр ДУТУУ байж болох жаазыг хүлээн авахгүй */
+        if (opts?.strict)
+          throw new Error(tr('{0}: жаазны бүтэн эсэхийг шалгах лавлах татагдсангүй — юу ч бичсэнгүй, дахин оролдоно уу ({1})', pkg.label, String((e as Error)?.message ?? e)));
         console.warn(`[selbe] ${pkg.key}: лавлах татагдсангүй — жаазны уртыг шалгасангүй`, e);
       }
       if (feats2.length < need)
@@ -834,6 +960,36 @@ export async function loadRows(
             need,
           ),
         );
+    }
+    /**
+     * ⚠️ 2026-10-09 (F4): ӨМНӨХ БҮТЭН ЖААЗТАЙ ЖИШНЭ. Лавлахаас урт жааз (мөр нэмэгдсэн, 1,520) 500-ийн
+     *    багцын заагт тасарвал (1,500) дээрх `need` (лавлах ~1,470)-ийг давдаг тул баригддаггүй, тэр
+     *    өдрийн ЦОРЫН ГАНЦ жааз бол `lastFrame` жишэх өмнөх жаазгүй. `applyAdds` 500-аар бичдэг тул
+     *    тасарсан жааз ҮРГЭЛЖ 500-ийн үржвэр — зөвхөн тэр үед (хэвийн ачаалалтад хүсэлтгүй) өмнөх
+     *    өдрийн сүүлийн бүтэн жаазын (хоосон мөрийг хассан) урттай жишнэ: мөр зөвхөн НЭМЭГДДЭГ.
+     */
+    if (feats2.length > 0 && feats2.length % 500 === 0 && sc.f.fillDate) {
+      let prevLen: number | null = null;
+      try {
+        prevLen = await prevFrameLen(pkg, sc, feats2, expect);
+      } catch (e) {
+        if (opts?.strict)
+          throw new Error(tr('{0}: жаазны бүтэн эсэхийг шалгах лавлах татагдсангүй — юу ч бичсэнгүй, дахин оролдоно уу ({1})', pkg.label, String((e as Error)?.message ?? e)));
+        console.warn(`[selbe] ${pkg.key}: өмнөх жааз татагдсангүй — жаазны уртыг шалгасангүй`, e);
+      }
+      const curLen = feats2.filter((f) => !isBlankAttrs(f.attributes, sc.f.no, sc.f.work)).length;
+      if (prevLen != null && curLen < prevLen) {
+        if (opts?.strict)
+          throw new Error(
+            tr(
+              '{0}: сүүлийн агшин дутуу — {1} мөр ирлээ, дор хаяж {2} байх ёстой. Нийтлэл дундаа тасарсан байж болзошгүй — дахин нийтлэх эсвэл админд хандана уу.',
+              pkg.label,
+              curLen,
+              prevLen,
+            ),
+          );
+        console.warn(`[selbe] ${pkg.key}: сүүлийн жааз ${curLen} мөр — өмнөх бүтэн жааз ${prevLen}; тасарсан нийтлэл байж болзошгүй`);
+      }
     }
   } else if (expect > 0) {
     /**
@@ -2050,6 +2206,9 @@ export async function applyAdds(
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
+      /* ⚠️ 2026-10-09 (R6): хариу АЛДАГДСАН бол сервер бичсэн байж магадгүй — `finally` нь бичигдсэн нь
+         ТОДОРХОЙ үед л зарладаг тул энд кэшийг хүчингүй болгоно (`zovshoorol.ts`-ийн загвар) */
+      if (isLostWrite(e)) invalidate('BAGTS_SHEET');
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх
       //    chunk-ууд аль хэдийн бичигдсэн тул хагас амжилтыг тодруулна.
       /* ⚠️ 2026-10-06 аудит: «дахин Нийтлэх дарж гүйцээнэ үү» гэсэн заавар ХАСАГДСАН — дуудагч бүр
@@ -2156,6 +2315,8 @@ export async function applyUpdates(
         throw new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, ups.length));
       written += chunk.length;
     } catch (e) {
+      /* ⚠️ 2026-10-09 (R6): хариу алдагдсан chunk бичигдсэн байж магадгүй — `applyAdds`-ийн ижил ⚠️ */
+      if (isLostWrite(e)) invalidate('BAGTS_SHEET');
       // ⚠️ rollbackOnFailure зөвхөн НЭГ chunk дотроо үйлчилнэ — өмнөх chunk-ууд
       // аль хэдийн серверт бичигдсэн тул хагас амжилтыг мессежид тодруулна.
       /* ⚠️ 2026-10-01: бичигдсэн мөрийн тоог алдаанд хавсаргана — батлагч тал (`Huvaari.save`)

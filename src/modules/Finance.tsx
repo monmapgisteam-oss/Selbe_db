@@ -54,7 +54,7 @@ import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanCurve, type Plan
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 /* ⚠️ 2026-09-30: төслийн төлөвлөгөөг бодит талтай НЭГ (ХО) жингээр — `projectPlanOf`.
    Мөчлөггүй: `gdash` нь `Finance`-ээс юу ч импортолдоггүй. */
-import { housingPlanSeries, housingSeries, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { housingPlanSeries, housingSeries, pkgCostWeight, cfWeightRow, cfStartKeyOf } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
   CF_WORK_WHERE, CF_MONTH_WHERE, bagtsKey,
@@ -2070,11 +2070,8 @@ function FullTable({
          * утгыг UTC сараар — UTC-ээс баруун бүсэд локал уншвал өмнөх сар болдог. Бусад (шинэ үд
          * дунд, AGOL/Excel-ийн УБ шөнө дунд) нь `keyOf` (локал) хэвээр. УБ-д хоёр зам ижил сар.
          */
-        const startKeyOf = (t: number) => {
-          if (t % 86_400_000 !== 0) return keyOf(new Date(t));
-          const d = new Date(t);
-          return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-        };
+        /* ⚠️ 2026-10-09: дүрэм `gdash.cfStartKeyOf`-д нэгтгэгдсэн (gdash · tuhData · CashflowPlan ижил) */
+        const startKeyOf = (t: number) => cfStartKeyOf(t);
         /** Эхлэх–дуусах огнооны хоорондох сарууд (орон нутгийн сараар, дээд тал нь 480) */
         const monthsOf = (st: Date, en: Date) => {
           const want = new Map<string, { s: number; e: number }>();

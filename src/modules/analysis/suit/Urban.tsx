@@ -216,7 +216,11 @@ export function Weights({
 }) {
   /* ⚠️ 2026-10-09: `patchNorm` — урвуу муж (доод > дээд г.м.) оноолтыг эвдэхгүй; хумисан бол
      тухайн үзүүлэлтийн доор тайлбар (`fixMsg`). */
-  const [fixMsg, setFixMsg] = useState<Record<string, string>>({});
+  /* ⚠️ 2026-10-09: мессеж нь ТЭР ҮЕИЙН үзүүлэлтийн объекттой (`ind`) хамт хадгалагдаж, зөвхөн тэр
+     объект хэвээр байхад харагдана. «Анхны утга» (Suitability.tsx) нь БҮХ объектыг шинээр үүсгэдэг тул
+     reset хийхэд мессеж өөрөө алга болно — урьд нь сэргээсэн утгын доор хуучин «засав» үлддэг байв.
+     Жингийн гулсуур хөдлөхөд (`weight`, хумилтгүй) тухайн мөрийн мессеж мөн арилна. */
+  const [fixMsg, setFixMsg] = useState<Record<string, { msg: string; ind: Indicator }>>({});
   const patch = (id: string, key: keyof Indicator, value: number): boolean => {
     const cur = indicators.find((i) => i.id === id);
     if (!cur) return false;
@@ -229,7 +233,18 @@ export function Weights({
         void _drop;
         return rest;
       }
-      return { ...m, [id]: tr('Утгыг {0} болгож засав — нормын доод нь дээдээсээ их байж болохгүй.', nf(r.ind[key] as number, cur.decimals)) };
+      /* ⚠️ 2026-10-09: шалтгаан нь БОДИТ хумилттай таарна — жин (≥ 0) эсвэл горимын босгын дараалал
+         (`patchNorm`: band — 0 оноо ≤ доод ≤ дээд ≤ 0 оноо; higher — 0 оноо ≤ нормын доод;
+         lower — нормын дээд ≤ 0 оноо). Урьд нь бүгдэд «доод нь дээдээсээ их» гэж бичдэг байв. */
+      const v = nf(r.ind[key] as number, cur.decimals);
+      const msg = key === 'weight'
+        ? tr('Утгыг {0} болгож засав — жин сөрөг байж болохгүй.', v)
+        : cur.mode === 'higher'
+          ? tr('Утгыг {0} болгож засав — «0 оноо» нь нормын доодоос их байж болохгүй.', v)
+          : cur.mode === 'band'
+            ? tr('Утгыг {0} болгож засав — нормын доод нь дээдээсээ их байж болохгүй.', v)
+            : tr('Утгыг {0} болгож засав — «0 оноо» нь нормын дээдээс бага байж болохгүй.', v);
+      return { ...m, [id]: { msg, ind: r.ind } };
     });
     return r.clamped;
   };
@@ -255,6 +270,7 @@ export function Weights({
               type="range" className={s.wSlider} min={0} max={40} step={1}
               value={i.weight}
               aria-label={tr('{0} — жин', i.name)}
+              /* ⚠️ 2026-10-09: хумилтгүй `patch` нь тухайн мөрийн «засав» мессежийг арилгана (гулсуур ≥ 0) */
               onChange={(e) => patch(i.id, 'weight', Number(e.target.value))}
             />
             <div className={s.wReq}><b>{tr('Норм:')}</b> {normLine(i)}</div>
@@ -284,9 +300,9 @@ export function Weights({
                     />
                   </label>
                 ))}
-                {fixMsg[i.id] && (
+                {fixMsg[i.id]?.ind === i && (
                   <div role="status" style={{ gridColumn: '1 / -1', fontSize: 10.5, color: 'var(--warn-ink)' }}>
-                    {fixMsg[i.id]}
+                    {fixMsg[i.id].msg}
                   </div>
                 )}
               </div>

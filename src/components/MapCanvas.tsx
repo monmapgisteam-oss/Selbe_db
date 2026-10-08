@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import Map from '@arcgis/core/Map';
+import { version as arcgisVersion } from '@arcgis/core/kernel';
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
 import { adoptView, parkView, shouldPark, mapStats } from './mapPark';
 import { bimLayerFor } from './bimCache';
@@ -941,10 +942,21 @@ async function extentOf(url: string, view: AnyView, where = '1=1', token?: strin
   const wkid = view.spatialReference?.wkid ?? 102100;
   const box = await queryExtent(url, wkid, where, token);
   if (!box) return null;
+  /* ⚠️ 2026-10-09: харагдацын SR `null` (ачаалагдаж амжаагүй) үед `spatialReference: null` өгвөл
+     `Extent` нь АНХДАГЧ WGS84-өөр тэмдэглэгддэг — гэтэл хайрцаг нь 102100 (метр)-ээр асуугдсан тул
+     «сая градус»-ын экстент болж goTo алга болдог байв. АСУУСАН SR-ээр нь тэмдэглэнэ. */
   return new Extent({
     xmin: box.xmin, ymin: box.ymin, xmax: box.xmax, ymax: box.ymax,
-    spatialReference: view.spatialReference,
+    spatialReference: view.spatialReference ?? { wkid },
   });
+}
+
+/** Бүтэн дэлгэцийн товчны нэр/төлөв — toggle (`aria-pressed`), гарах үед «Бүтэн дэлгэцээс гарах» (2026-10-09) */
+function paintFsBtn(btn: HTMLElement, on: boolean): void {
+  const label = on ? tr('Бүтэн дэлгэцээс гарах (Esc)') : tr('Бүтэн дэлгэц');
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.setAttribute('aria-pressed', String(on));
 }
 
 /** Бүсийн шошго — цагаан halo-той тул аль ч дэвсгэрт уншигдана */
@@ -2193,6 +2205,13 @@ export const MapCanvas = memo(function MapCanvas({
   }, []);
   const toggleFsRef = useRef(toggleFs);
   useSyncRef(toggleFsRef, toggleFs);
+  /* ⚠️ 2026-10-09 (a11y): бүтэн дэлгэцийн товч нь toggle — `aria-pressed` ба нэр нь төлвийг дагана
+     (урьд нь үргэлж «Бүтэн дэлгэц» гэж уншигдаж, дэлгэц уншигч гарах товч гэдгийг мэдэхгүй байв).
+     Товч нь эффект дотор DOM-оор үүсдэг тул `fsBtnRef`/`fsNowRef`-ээр шинэчилнэ. */
+  const fsBtnRef = useRef<HTMLDivElement | null>(null);
+  const fsNowRef = useRef(fs);
+  useSyncRef(fsNowRef, fs);
+  useEffect(() => { if (fsBtnRef.current) paintFsBtn(fsBtnRef.current, fs); }, [fs]);
   useEffect(() => {
     const onChange = () => { if (!document.fullscreenElement) setFs(false); };
     document.addEventListener('fullscreenchange', onChange);
@@ -2230,7 +2249,8 @@ export const MapCanvas = memo(function MapCanvas({
 
     const mapKey = uniform ? 'uniform' : 'themed';
     if (!mapCache[mapKey] || mapCache[mapKey].destroyed) {
-      esriConfig.assetsPath = 'https://js.arcgis.com/4.34/@arcgis/core/assets';
+      /* ⚠️ 2026-10-09: хувилбарыг @arcgis/core-оос (SuitMap-тай ижил) — 4.35 руу шинэчлэхэд worker/WASM таарахгүй болохоос сэргийлнэ */
+      esriConfig.assetsPath = `https://js.arcgis.com/${String(arcgisVersion).split(".").slice(0, 2).join(".")}/@arcgis/core/assets`;
       mapCache[mapKey] = new Map({
         basemap: baseMap(),
         ground: new Ground({ layers: [new ElevationLayer({ url: ELEVATION_URL })] }),
@@ -2424,8 +2444,8 @@ export const MapCanvas = memo(function MapCanvas({
     fsBtn.className = 'esri-widget--button esri-widget';
     fsBtn.setAttribute('role', 'button');
     fsBtn.setAttribute('tabindex', '0');
-    fsBtn.title = tr('Бүтэн дэлгэц');
-    fsBtn.setAttribute('aria-label', tr('Бүтэн дэлгэц')); // ⚠️ 2026-10-09 (a11y): икон товч — нэр
+    paintFsBtn(fsBtn, fsNowRef.current); // ⚠️ 2026-10-09 (a11y): нэр + aria-pressed төлвөөр
+    fsBtnRef.current = fsBtn;
     fsBtn.innerHTML =
       '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
       + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '

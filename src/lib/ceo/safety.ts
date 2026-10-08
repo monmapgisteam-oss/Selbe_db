@@ -11,14 +11,10 @@
  *    гараар бичсэн «эд хөрөнгийн хохирол учруулсан» ч алдагдах ёсгүй. Хоёр
  *    газрын regex зөрвөл нүүр самбар ба ХАБЭА хуудас өөр тоо харуулна.
  *
- * ⚠️ ОГНООНЫ НӨӨЦ ЗАМ = `CreationDate` (2026-09-06-ны хяналт): `field_22`
- *    хоосон бол Survey123-ийн `CreationDate`-ыг авна — ХАБЭА хуудас
- *    (`Habea.tsx` `normIncident`: `nn(r[I.ognoo]) || nn(r['CreationDate'])`)
- *    ЯГ ИНГЭЖ огноолдог. Энд өөрөөр хийвэл нэг мөр ХАБЭА-д «2026-08-30»,
- *    нүүр самбарт «—» гарч, «сүүлийн 30 хоногт» хоёр газар өөр тоо болно.
- *    Ажилчдын (`labor`) хүснэгтийн «бөглөж дуусаагүй маягт = өнөөдрийн
- *    CreationDate» занга энд ч ҮЙЛЧИЛНЭ — гэхдээ хуудастай зөрөхөөс нэг
- *    дүрэм илүү; занга илэрвэл ХОЁР газар зэрэг засна.
+ * ⚠️ 2026-10-09: ОГНООНЫ `CreationDate` НӨӨЦ ЗАМ ХАСАГДАВ — ХАБЭА хуудас (`Habea.tsx`
+ *    `normIncident`) 2026-09-17-нд түүнийг аль хэдийн хассан (`d: nn(r[I.ognoo])`), харин энд
+ *    үлдсэн тул `field_22` хоосон мөр нүүр самбарт «өнөөдөр» (бөглөсөн өдөр) огноотой болж
+ *    «сүүлийн 30 хоногт» тоологдож, хуудаснаас өөр тоо гардаг байв. Огноо = ЗӨВХӨН `field_22`.
  *
  * ⚠️ `null` ≠ 0: хоёулаа хоосон бүртгэл нь «сүүлийн 30 хоногт» тоологдохгүй,
  *    `asOf`-д орохгүй, хүснэгтэд «—» гарна — ямар нэг огноо зохиож
@@ -61,15 +57,12 @@ export const damageLevel = (n: number | null): Level =>
 
 /* ══════════════ Мөр ══════════════ */
 
-/** Survey123-ийн систем талбар — `field_22` хоосон үеийн огнооны нөөц зам */
-export const CREATED_FIELD = 'CreationDate';
-
 /** Ослын нэг бүртгэл — эх талбаруудыг нэрлэсэн, текстийг цэвэрлэсэн */
 export type SafetyRow = {
   oid: number | null;
   /**
-   * Огноо, epoch ms — `field_22`, хоосон бол `CreationDate`; хоёулаа
-   * байхгүй бол null (ХЭЗЭЭ Ч 0 биш)
+   * Огноо, epoch ms — ЗӨВХӨН `field_22` (2026-10-09: `CreationDate` нөөц хасагдсан); хоосон/0
+   * бол null (ХЭЗЭЭ Ч 0 биш)
    */
   ognoo: number | null;
   company: string;
@@ -117,9 +110,9 @@ export function toSafetyRow(r: Row): SafetyRow {
   const oid = oidRaw == null ? null : Number(oidRaw);
   return {
     oid: oid != null && Number.isFinite(oid) ? oid : null,
-    /* ⚠️ `Habea.tsx` `normIncident`-тэй ИЖИЛ: `nn(ognoo) || nn(CreationDate)` —
-       0/хоосон огноог «байхгүй» гэж үзээд `CreationDate` руу унана. */
-    ognoo: toMs(r[I.ognoo]) ?? toMs(r[CREATED_FIELD]),
+    /* ⚠️ 2026-10-09: `Habea.tsx` `normIncident`-тэй ИЖИЛ — ЗӨВХӨН `field_22`; 0/хоосон → `null`
+       (`CreationDate` руу УНАХГҮЙ — толгойн ⚠️) */
+    ognoo: toMs(r[I.ognoo]),
     company: str(r[I.company]),
     bagts: str(r[I.bagts]),
     dugaar: str(r[I.dugaar]),
@@ -178,7 +171,9 @@ export function aggregateSafety(rows: readonly SafetyRow[], now: number): Safety
     damage: rows.filter(isDamage).length,
     last,
     daysSince: last == null ? null : daysBetween(last, now),
-    recent: rows.filter((r) => r.ognoo != null && r.ognoo >= since).length,
+    /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
+       тоологдож картыг улаан болгодог байв */
+    recent: rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now).length,
     byType: tally(rows, (r) => r.turul),
     byBagts: tally(rows, (r) => r.bagts),
     byCompany: tally(rows, (r) => r.company),
@@ -278,8 +273,8 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
 export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const I = HABEA.incident.fields;
   const raw = await queryFeatures(HABEA.incident.url, {
-    /* ⚠️ `CreationDate` заавал — огноогүй мөрийн нөөц зам (толгойн тайлбар) */
-    outFields: [...Object.values(I), 'objectid', CREATED_FIELD],
+    /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
+    outFields: [...Object.values(I), 'objectid'],
     /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
        дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
     orderBy: `${I.ognoo} DESC, objectid DESC`,

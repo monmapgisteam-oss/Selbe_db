@@ -1031,7 +1031,7 @@
    агуулгын мөрүүдийг (2 → төгсгөл) эзэлнэ — «Тохиромжтой байдлын үнэлгээ»-
    гийн resizer шиг өндөр нь баганатайгаа яг таарна. Хоёр горимд (тойм 2 мөр,
    дэлгэрэнгүй 3 мөр) '2 / -1' ижил ажиллана. */
-.shell > :global(button[class*='splitGrip_grip']) {
+.shell > button[data-split-grip] {
   position: relative;
   grid-row: 2 / -1;
   top: auto;
@@ -1039,7 +1039,7 @@
   z-index: 6;
 }
 
-.shell > :global(button[class*='splitGrip_left']) {
+.shell > button[data-split-grip='left'] {
   grid-column: 1 / 2;
   justify-self: end;
   left: auto;
@@ -1047,7 +1047,7 @@
   margin-right: -10.5px;
 }
 
-.shell > :global(button[class*='splitGrip_right']) {
+.shell > button[data-split-grip='right'] {
   grid-column: 3 / 4;
   justify-self: start;
   right: auto;
@@ -1056,7 +1056,7 @@
 
 /* Нэг баганат (нарийн) горимд зааг байхгүй тул бариул ч байхгүй */
 @media (max-width: 1180px) {
-  .shell > :global(button[class*='splitGrip_grip']) { display: none; }
+  .shell > button[data-split-grip] { display: none; }
 
 }
 

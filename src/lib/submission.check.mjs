@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX } from './submission.ts';
+import { parseSubmission, mergeSubmission, residualAfterArchive, saveSubmission, subKey, SUBMISSION_MAX, frameProbe, matchArchivedFrame } from './submission.ts';
 
 const FILL = Date.UTC(2026, 8, 4);
 const add = (oid, extra = {}) => ({
@@ -573,6 +573,44 @@ const nextOf = (over = {}) => {
   assert.ok(iMark > 0 && iAdds > iMark, 'тэмдэг applyAdds-ийн ӨМНӨ бичигдэх ёстой (R2)');
   assert.ok(HY2.includes('archiveSubmission(cur, a.subAt)'), 'apply subAt-ийг archiveSubmission руу дамжуулна (R3)');
   assert.ok(HY2.includes('unclosedSet(subOid, { at: staged.at })'), 'хаагдаагүй нэмэлтийн тэмдэг (R1)');
+}
+
+/* ── 2026-10-09 (R2-a/b/c · 7): тэмдэг нь ЭНЭ илгээлтийн жаазыг ЯГ таньна ── */
+{
+  const NOF = 'no';
+  const OIDF = 'oid';
+  /* дээж: зөвхөн өмнөхөөсөө ялгарах нүд; шинэ мөр бүхэлдээ */
+  const prev = [{ a: 1, b: 2 }, { a: 3, b: 4 }];
+  const frame = [{ a: 1, b: 2 }, { a: 3, b: 9 }, { a: 5, b: null }];
+  const pr = frameProbe(frame, (i) => prev[i], ['a', 'b']);
+  assert.deepEqual(pr, [[1, 'b', 9], [2, 'a', 5], [2, 'b', null]], 'өөрчлөгдсөн нүд л дээж болно');
+  assert.equal(frameProbe(Array.from({ length: 50 }, (_, i) => ({ a: i })), () => undefined, ['a'], 4).length, 4, 'дээд урт');
+
+  /* архив: өөр жааз (5 мөр, ажил нэмэх) + манай жааз (3 мөр) — ≥ n биш, ЯГ n + дээж */
+  const row = (oid, no, extra = {}) => ({ [OIDF]: oid, [NOF]: no, ...extra });
+  const other = [row(101, 'A'), row(102, 'x'), row(103, 'y'), row(104, 'z'), row(105, 'w')];
+  const ours = [row(106, 'A', { b: 2 }), row(107, 'x', { b: 9 }), row(108, 'y', { a: 5, b: null })];
+  const mk = { n: 3, rootNo: 'A', probe: pr };
+  assert.equal(matchArchivedFrame(other, mk, OIDF, NOF), null, 'тэр өдрийн ӨӨР (урт) жаазыг «архивлагдсан» гэж андуурахгүй');
+  assert.equal(matchArchivedFrame([...other, ...ours], mk, OIDF, NOF), 106, 'манай жааз олдоно');
+  const wrong = [row(106, 'A'), row(107, 'x', { b: 8 }), row(108, 'y', { a: 5, b: null })];
+  assert.equal(matchArchivedFrame(wrong, mk, OIDF, NOF), null, 'урт таарсан ч утга зөрвөл — манайх биш');
+  assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y'), row(4, 'q')], { n: 3, rootNo: 'A' }, OIDF, NOF), null, 'n-ээс урт жааз — манайх биш');
+  assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y')], { n: 3 }, OIDF, NOF), 1, 'хуучин тэмдэг (дээжгүй) — урт + эхний №');
+
+  /* задлал: rootNo · probe хадгалагдана, эвдэрсэн дээж хаягдана */
+  const base = { at: 1000, startedAt: 1001, maxOid0: 500, fillMs: FILL, n: 3 };
+  const p2 = parseSubmission(JSON.stringify({ ...valid(), archiving: { ...base, rootNo: 'A', probe: [...pr, [9, 'a', 1], ['x', 'a', 1]] } }));
+  assert.deepEqual(p2.archiving, { ...base, rootNo: 'A', probe: pr }, 'дээж уншигдана, n-ээс гадуур/эвдэрсэн хаягдана');
+
+  const SB3 = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB3.includes('attributes: { OBJECTID: oid, at: curAt, payload: JSON.stringify(next) }'), 'markArchiving at-ийг payload-тай нэг бичилтээр бичнэ (7)');
+  assert.ok(/const res2 = await fl\.queryFeatures/.test(SB3), 'markArchiving бичсэний дараа дахин уншиж батална (7)');
+  const HY3 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  assert.ok(HY3.includes('hitOid = matchArchivedFrame(rows, am, sc.f.oid, sc.f.no);') && !HY3.includes('hit.n >= am.n'), 'дахин батлалт жаазыг ЯГ таньна (R2-c)');
+  assert.ok(HY3.includes("if (!isLostWrite(e)) return { ok: false, error: why + (await clearMark()) };"), 'тодорхой татгалзалд тэмдэг арилна (R2-a)');
+  assert.ok(!HY3.includes('markArchiving(staged.oid, staged.at, null).catch(() => undefined)'), 'арилгалтын үр дүнг шалгана (R2-b)');
+  console.log('✅ R2-a/b/c · 7 — архивлах тэмдэг');
 }
 
 console.log('submission.check ✓');

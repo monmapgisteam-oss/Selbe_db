@@ -8,9 +8,9 @@
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. ОГНООГҮЙ бүртгэл 0 (1970) болох — «сүүлийнх 20 000 хоногийн өмнө» гэсэн
  *     худал баримт, `asOf` 0 болох, «сүүлийн 30 хоногт» тоологдох.
- *  1б. `field_22` хоосон мөрийг `CreationDate`-аар огноолохгүй байх — ХАБЭА
- *     хуудас (`Habea.tsx`) ингэж огноолдог тул нэг мөр хоёр газар өөр огноо,
- *     «сүүлийн 30 хоногт» өөр тоо болно (2026-09-06-ны хяналтын олдвор).
+ *  1б. `field_22` хоосон мөрийг `CreationDate`-аар огноолохГҮЙ байх (2026-10-09) — ХАБЭА
+ *     хуудас (`Habea.tsx`) 2026-09-17-нөөс огноолдоггүй тул энд огноолбол нэг мөр хоёр газар
+ *     өөр огноо, «сүүлийн 30 хоногт» өөр тоо болно. Ирээдүйн огноо «сүүлийн 30»-д орохгүй.
  *  2. Хохирлын regex `execTriage.loadDamage`-аас зөрөх — нүүр самбар ба
  *     ХАБЭА хуудас өөр тоо харуулна.
  *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай.
@@ -22,7 +22,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  computeSafety, aggregateSafety, toSafetyRow, damageLevel, DAMAGE_RE, RECENT_DAYS, CREATED_FIELD,
+  computeSafety, aggregateSafety, toSafetyRow, damageLevel, DAMAGE_RE, RECENT_DAYS,
   isBlankIncident,
 } from './safety.ts';
 import { DMG_BAD_N, INCIDENT_WARN_MAX } from '../kpiLevels.ts';
@@ -73,29 +73,24 @@ const row = (o = {}) => ({
   assert.equal(toSafetyRow({ field_22: NOW }).ognoo, NOW);
   assert.equal(toSafetyRow({}).oid, null);
 
-  // CreationDate нөөц зам — Habea.tsx normIncident-тэй ижил (`nn(a) || nn(b)`)
-  assert.equal(CREATED_FIELD, 'CreationDate');
-  assert.equal(toSafetyRow({ field_22: null, CreationDate: NOW - 5 * DAY }).ognoo, NOW - 5 * DAY,
-    'field_22 хоосон → CreationDate');
-  assert.equal(toSafetyRow({ field_22: 0, CreationDate: NOW - 5 * DAY }).ognoo, NOW - 5 * DAY,
-    'field_22 = 0 → CreationDate (Habea.tsx-ийн || шиг)');
+  // ⚠️ 2026-10-09: CreationDate нөөц зам ХАСАГДСАН — Habea.tsx normIncident-тэй ижил (`d: nn(ognoo)`)
+  assert.equal(toSafetyRow({ field_22: null, CreationDate: NOW - 5 * DAY }).ognoo, null,
+    'field_22 хоосон → null (CreationDate руу унахгүй)');
+  assert.equal(toSafetyRow({ field_22: 0, CreationDate: NOW - 5 * DAY }).ognoo, null,
+    'field_22 = 0 → null');
   assert.equal(toSafetyRow({ field_22: NOW - 9 * DAY, CreationDate: NOW }).ognoo, NOW - 9 * DAY,
-    'field_22 байвал CreationDate-ыг ХЭРЭГЛЭХГҮЙ');
-  assert.equal(toSafetyRow({ field_22: null, CreationDate: null }).ognoo, null, 'хоёулаа хоосон → null');
-  assert.equal(toSafetyRow({ field_22: null, CreationDate: 0 }).ognoo, null, 'CreationDate 0 → null');
+    'field_22 байвал түүгээр');
 
-  // Ачаалагч CreationDate-ыг ЗААВАЛ татдаг — эс бөгөөс нөөц зам хоосон ирнэ
-  const src = await (await import('node:fs/promises')).readFile(
-    new URL('./safety.ts', import.meta.url), 'utf8',
-  );
-  assert.ok(src.includes("'objectid', CREATED_FIELD]"), 'outFields-д CREATED_FIELD байхгүй');
-
-  // Нөөц огноотой мөр «сүүлийн 30 хоногт» тоологдоно — ХАБЭА хуудастай ижил
+  // Огноогүй мөр «сүүлийн 30 хоногт» тоологдохгүй — ХАБЭА хуудастай ижил
   const viaCreated = toSafetyRow({ field_22: null, CreationDate: NOW - 2 * DAY, field_7: 'Зөрчил', field_6: 'Багц 4' });
   const a = aggregateSafety([viaCreated], NOW);
-  assert.equal(a.recent, 1);
-  assert.equal(a.last, NOW - 2 * DAY);
-  assert.equal(a.daysSince, 2);
+  assert.equal(a.recent, 0);
+  assert.equal(a.last, null);
+  assert.equal(a.daysSince, null);
+
+  // Ирээдүйн огноо (буруу бөглөсөн) «сүүлийн 30 хоногт» орохгүй
+  const future = toSafetyRow({ field_22: NOW + 3 * DAY, field_7: 'Зөрчил' });
+  assert.equal(aggregateSafety([future], NOW).recent, 0, 'ирээдүйн огноо recent-д орохгүй');
 }
 
 /* ══════════════ 3. Хохирлын regex — execTriage-тэй ижил дүрэм ══════════════ */

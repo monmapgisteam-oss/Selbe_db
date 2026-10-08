@@ -917,6 +917,18 @@ export function Overlay({
   const symsRef = useRef<Record<string, Sym>>({});
   const dimRef = useRef<Dim>(dim);
   useSyncRef(dimRef, dim);
+  /* ⚠️ 2026-10-09 (аудит): усны гадаргуугийн кэшийг загварчлал солигдох/арилах (`flood`) ба 3D-ээс
+     ГАРАХАД шууд суллана. Урьд нь зөвхөн дараагийн `drawSurface` дуудлагад (`cache.fd !== fd`) хоосордог
+     тул 2D-д шилжсэн эсвэл үер арилсны дараа хуучин загварчлалын `SURF_CACHE_MAX` агшны полигон
+     (мегабайтаар) санах ойд үлддэг байв. */
+  const d3Now = is3D(dim);
+  useEffect(() => {
+    const c = surfCacheRef.current;
+    if (c.fd !== flood || !d3Now) {
+      c.fd = null;
+      c.m.clear();
+    }
+  }, [flood, d3Now]);
 
   /**
    * УСНЫ ГАДАРГУУГ БУТАРХАЙ АГШИНД шинэчилнэ.

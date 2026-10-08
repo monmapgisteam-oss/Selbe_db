@@ -5,6 +5,28 @@ import { PL_OVER, PL_ROW, ZOOM, type Zoom } from './types';
 import { todayUtc } from './util';
 
 /**
+ * «ӨНӨӨДӨР» (UTC шөнө дундаар түлхүүрлэсэн ЛОКАЛ өдөр) — шөнө дунд бүрд шинэчлэгдэнэ.
+ * ⚠️ 2026-10-09: `useCalendar`-аас ГАРГАВ — `Huvaari` нь «хоцорсон» чипт өнөөдрийг `useCalendar`-аас ӨМНӨ
+ *    (TDZ) хэрэглэдэг тул тусдаа `useState(todayUtc)` барьж, шөнө дунд өнгөрөхөд ХУУЧИН өдрөөр үлддэг
+ *    байв. Одоо нэг таймер: эцэг үүнийг дуудаж `useCalendar({ now })`-д дамжуулна.
+ */
+export function useToday(): number {
+  /* ⚠️ ЛОКАЛ өдөр (2026-09-17): UTC-ээр авбал УБ-д 00:00–08:00 хооронд «өнөөдөр»
+     өчигдөр болж, хоцрогдлын төлөв ба өнөөдрийн шугам нэг хоног хоцордог байв.
+     Хуанлийн өдрүүд өөрсдөө UTC шөнө дундаар түлхүүрлэгддэг тул ижил хэлбэрээр.
+     ⚠️ 2026-09-25: `useMemo([])` байсан тул шөнө дунд өнгөрсөн нээлттэй хуудас
+     «өнөөдөр»-ийг хуучин өдрөөр үлдээдэг байв — дараагийн шөнө дунд таймераар шинэчилнэ. */
+  const [now, setNow] = useState(todayUtc);
+  useEffect(() => {
+    const d = new Date();
+    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const t = window.setTimeout(() => setNow(todayUtc()), Math.max(1000, next - d.getTime() + 1000));
+    return () => window.clearTimeout(t);
+  }, [now]);
+  return now;
+}
+
+/**
  * ХУАНЛИЙН ГЕОМЕТР — «өнөөдөр» · хүрээ · хоног↔px · цонхлолт · толгойн шошго
  * (2026-09-30: `Huvaari.tsx`-ээс механикаар салгав; логик · тайлбар ХЭВЭЭР).
  *
@@ -12,8 +34,10 @@ import { todayUtc } from './util';
  *    `zoom`, харагдах мөрүүд `visible`, сонгосон мөр `sel`. Гаралт нь Gantt-ын
  *    зурагдалт ба чирэлтийн хөдөлгүүрт хэрэгтэй бүх хэмжээ.
  */
-export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, pin, jumpedRef }: {
+export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, pin, jumpedRef, now }: {
   plan: readonly PlanRow[];
+  /** ⚠️ 2026-10-09: «өнөөдөр» — эцгийн `useToday()` (нэг таймер, дээрх ⚠️) */
+  now: number;
   drag: boolean;
   /**
    * ⚠️ 2026-10-07: `sel` мөрийг цонхлолтод ХҮЧЭЭР багтаах уу — зөвхөн чирэлт ба нүдэнд
@@ -35,18 +59,7 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  /* ⚠️ ЛОКАЛ өдөр (2026-09-17): UTC-ээр авбал УБ-д 00:00–08:00 хооронд «өнөөдөр»
-     өчигдөр болж, хоцрогдлын төлөв ба өнөөдрийн шугам нэг хоног хоцордог байв.
-     Хуанлийн өдрүүд өөрсдөө UTC шөнө дундаар түлхүүрлэгддэг тул ижил хэлбэрээр.
-     ⚠️ 2026-09-25: `useMemo([])` байсан тул шөнө дунд өнгөрсөн нээлттэй хуудас
-     «өнөөдөр»-ийг хуучин өдрөөр үлдээдэг байв — дараагийн шөнө дунд таймераар шинэчилнэ. */
-  const [now, setNow] = useState(todayUtc);
-  useEffect(() => {
-    const d = new Date();
-    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-    const t = window.setTimeout(() => setNow(todayUtc()), Math.max(1000, next - d.getTime() + 1000));
-    return () => window.clearTimeout(t);
-  }, [now]);
+  /* ⚠️ 2026-10-09: «өнөөдөр» ба шөнө дундын таймер `useToday`-д (дээр) — эцэг дамжуулна (`now`) */
   /* ── ХУАНЛИЙН ХҮРЭЭ — доод тал нь 365 хоног, хоёр талдаа СУЛ ЗАЙТАЙ ── */
   const range = useMemo(() => {
     /* ⚠️ 2026-10-01: давталтаар — `Math.min(...all)` нь ~64k аргумент дамжуулж

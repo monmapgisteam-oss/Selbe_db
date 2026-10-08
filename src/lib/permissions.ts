@@ -32,7 +32,7 @@ import {
   type Role,
   type ViewKey,
 } from './services';
-import { capViewsOf, isWorkflowView } from './caps';
+import { capViewsOf, isWorkflowView, UNSAFE_KEY } from './caps';
 import { _typesMark, roleAccess } from './roleTypes';
 import { currentUser } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
@@ -220,8 +220,8 @@ const sanitizeEntry = (e: Entry): Entry => ({
  * Санах ойн CACHE — sync унших цорын ганц эх сурвалж. Эхэндээ `localStorage`-оос
  * (offline/хурдан), нэвтэрсний дараа `initRemote()`-оор ArcGIS хүснэгтээс шинэчлэгдэнэ.
  */
-/** Объектын түлхүүр болгож болохгүй нэрс (prototype pollution) — ⚠️ `cache`-ээс ӨМНӨ зарлана (TDZ: `loadLocal` модуль ачаалахад дуудагддаг) */
-const UNSAFE_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+/* ⚠️ 2026-10-09: `UNSAFE_KEY` (prototype pollution-ий түлхүүрүүд) нь `caps.ts`-ээс импортлогдоно —
+   `permsRemote.ts`-тэй НЭГ жагсаалт. Статик импорт тул `loadLocal` (модуль ачаалахад) үед бэлэн. */
 let cache: Store = loadLocal();
 
 /**
@@ -270,6 +270,8 @@ function loadDirty(): DirtyMap {
     if (!raw || typeof raw !== 'object') return {};
     const out: DirtyMap = {};
     for (const [k, v] of Object.entries(raw)) {
+      /* ⚠️ 2026-10-09: `__proto__` г.м. түлхүүрийг АЛГАСНА (`loadLocal`-ийн ижил дүрэм) */
+      if (UNSAFE_KEY.has(k)) continue;
       /* ⚠️ Хуучин хэлбэр (`Entry | null` шууд) — бичсэн хүн тодорхойгүй */
       const item = v && typeof v === 'object' && 'e' in v && 'by' in v
         ? (v as DirtyItem)

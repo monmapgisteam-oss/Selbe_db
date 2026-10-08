@@ -37,7 +37,6 @@
   overflow-y: auto;
   padding: 4px 8px 32px 4px;
   scroll-padding-top: 48px;
-  scroll-behavior: smooth;
 }
 
 .side {
@@ -260,7 +259,9 @@
   .tailan { padding: 4px; }
   .content { padding: 4px 4px 24px; }
 }
-@media (prefers-reduced-motion: reduce) { .content { scroll-behavior: auto; } }
+/* ⚠️ 2026-10-09: зөөлөн гүйлгэлт ЗӨВХӨН хэрэглэгч хөдөлгөөнөөс татгалзаагүй үед (opt-in) —
+   урьд үндсэн дүрэмд `smooth`, reduce-д буцаан `auto` байв. Сонгогч нь локал `.content` (pure). */
+@media (prefers-reduced-motion: no-preference) { .content { scroll-behavior: smooth; } }
 
 /* ══════════════ ХЭВЛЭХ ══════════════ */
 @media print {

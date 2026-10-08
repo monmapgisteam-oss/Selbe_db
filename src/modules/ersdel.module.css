@@ -529,7 +529,7 @@
    байв. Загварыг gazar.module.css-ийн 1180px блокоос авав. */
 @media (max-width: 1180px) {
   /* Босоо өрөлтөд чирэх бариул утгагүй — --side-* хувьсагч ажиллахаа болино */
-  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame > button[data-split-grip] { display: none; }
   .frame {
     grid-template-areas:
       "map"
@@ -969,21 +969,21 @@
  *    §splitGrip): бариулыг grid-ийн ЭЛЕМЕНТ болгож, баганын ирмэгт наана.
  *    Хоёрын аль нэгийг өөрчилбөл нөгөөг нь ХАМТ өөрчил.
  */
-.frame > :global(button[class*='splitGrip_grip']) {
+.frame > button[data-split-grip] {
   position: relative;
   grid-row: 1 / -1;
   top: auto;
   bottom: auto;
   z-index: 6;
 }
-.frame > :global(button[class*='splitGrip_left']) {
+.frame > button[data-split-grip='left'] {
   grid-column: 1 / 2;
   justify-self: end;
   left: auto;
   /* 10px завсрын голд — бариул өөрөө 11px */
   margin-right: -10.5px;
 }
-.frame > :global(button[class*='splitGrip_right']) {
+.frame > button[data-split-grip='right'] {
   grid-column: 3 / 4;
   justify-self: start;
   right: auto;

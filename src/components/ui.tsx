@@ -26,7 +26,8 @@ const tone = (c?: string) => ({ '--tone': c ?? 'var(--data)' }) as CSSProperties
  * болгохын оронд примитив өөрөө ийм утгыг 0 гэж үзнэ: багана нь хоосон
  * харагдаж, алдаа нүдэнд шууд илэрнэ.
  */
-const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+/* ⚠️ 2026-10-09: `null` (мэдээлэлгүй) ч хүлээн авна — зурвасын УРТАД 0 (зураасгүй), утга нь «—» */
+const fin = (v: number | null | undefined) => (v != null && Number.isFinite(v) ? v : 0);
 
 /**
  * Элементийн ОДООГИЙН өргөн (px). Хэмжигдэх хүртэл 0.
@@ -262,6 +263,9 @@ export function Section({
   return (
     <section
       className={`${s.section} ${tone === 'primary' ? s.sectionPrimary : ''} ${fill ? s.sectionFill : ''} ${collapsible && closed ? s.sectionClosed : ''}`}
+      /* ⚠️ 2026-10-09: data-* — модулиуд (pkgFin/pkgProg) эдгээр элементийг класс НЭРИЙН хэсгээр
+         (`[class*='sectionClosed']` …) барьдаг байв; тогтвортой атрибут руу шилжив. */
+      data-closed={collapsible && closed ? '' : undefined}
     >
       {/* ⚠️ `secHead` / `secTitle` — ГЛОБАЛ нэрс (`statCard`, `statsGrid`-тэй
           ижил зарчим). Дуудагч модуль тухайн харагдацын нягтралд тааруулж
@@ -273,14 +277,14 @@ export function Section({
             /* Гарчиг бүхэлдээ товч — жижиг сум онилохоос хялбар */
             <h3 className={`${s.sectionTitle} secTitle`}>
               <button type="button" className={s.secToggle} aria-expanded={!closed} onClick={toggle}>
-                <span className={`${s.secCaret} ${closed ? s.secCaretOff : ''}`} aria-hidden>▾</span>
+                <span className={`${s.secCaret} ${closed ? s.secCaretOff : ''}`} data-ui="sec-caret" aria-hidden>▾</span>
                 {title}
               </button>
             </h3>
           ) : (
             <h3 className={`${s.sectionTitle} secTitle`}>{title}</h3>
           )}
-          {note && <span className={s.sectionNote}>{note}</span>}
+          {note && <span className={s.sectionNote} data-ui="section-note">{note}</span>}
         </header>
       )}
       {(!collapsible || !closed) && children}
@@ -489,7 +493,8 @@ export function Stat({
 type Bar = {
   key: string;
   label: string;
-  value: number;
+  /** ⚠️ 2026-10-09: `null` = мэдээлэлгүй (null ≠ 0) — зурвасгүй, `display`-гүй бол «—» */
+  value: number | null;
   display?: string;
   color?: string;
   /*
@@ -586,7 +591,7 @@ export function Bars({
           <>
             <span className={s.barTop}>
               <span className={`${s.barName} ${on ? s.barNameOn : ''}`} title={tr(it.label)}>{tr(it.label)}</span>
-              <span className={`${s.barVal} ${on ? s.barValOn : ''} num`}>{it.display ?? it.value}</span>
+              <span className={`${s.barVal} ${on ? s.barValOn : ''} num`}>{it.display ?? it.value ?? '—'}</span>
             </span>
             {/* ⚠️ `chartTrack` / `chartFill` — ГЛОБАЛ нэрс (`statCard`,
                 `secTitle`-тэй ижил зарчим). Дуудагч харагдац зурвасны зузаан,
@@ -619,7 +624,7 @@ export function Bars({
         /** Бүх дашбоардад ИЖИЛ hover popup — нэр: утга (+шүүх заавар) */
         const tipData = {
           label: it.label,
-          value: String(it.tipValue ?? it.display ?? it.value),
+          value: String(it.tipValue ?? it.display ?? it.value ?? '—'),
           color: it.color ?? color,
           /* ⚠️ Мөрийн ӨӨРИЙН тайлбар давамгайлна — «Дарж шүүнэ» нь зөвхөн
              тайлбаргүй мөрд гарах ерөнхий заавар. */
@@ -1118,7 +1123,7 @@ export function Donut({
         </div>
       </div>
 
-      <ul className={s.donutLegend}>
+      <ul className={s.donutLegend} data-ui="donut-legend">
         {slices.map((sl) => {
           const on = sel.includes(sl.key);
           const body = (
@@ -1132,7 +1137,7 @@ export function Donut({
                   border: `1px solid ${sl.color}`,
                 }}
               />
-              <span className={s.donutName}>{tr(sl.label)}</span>
+              <span className={s.donutName} data-ui="donut-name">{tr(sl.label)}</span>
               {/**
                 * ⚠️ `toFixed(0)` ганцаараа ХУДАЛ уншигдана: 3,947-гийн 14 нь
                 * 0.35% тул «0%» болж, зүсмэг нь диаграм дээр харагдсаар атлаа
@@ -2216,8 +2221,8 @@ export function Rows({ items }: { items: { key: string; value: ReactNode }[] }) 
     <div className={`${s.rows} rowsList`}>
       {items.map((r) => (
         <div key={r.key} className={s.row}>
-          <span className={s.rowKey}>{r.key}</span>
-          <span className={s.rowVal}>{r.value}</span>
+          <span className={s.rowKey} data-ui="row-key">{r.key}</span>
+          <span className={s.rowVal} data-ui="row-val">{r.value}</span>
         </div>
       ))}
     </div>

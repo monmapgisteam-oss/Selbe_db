@@ -14,6 +14,10 @@
  * ⚠️ Хуучирсан түлхүүрийг цонх тутам нэг удаа цэвэрлэнэ — Map өсөхгүй (2026-09-15-ны аудит).
  * ⚠️ 2026-10-09: мөн ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`createBudget`) ба клиентэд харагдах ЕРӨНХИЙ алдааны
  *    мессеж (`upstreamErrorText`) энд — хоёр реле толин дүрмээр хуваалцана (файлын доод хэсэг).
+ * ⚠️ 2026-10-09 (2-р ээлж): төсвийн УРЬДЧИЛСАН ТООЦОО (`estimateInputTokens`/`reserveTokens`/
+ *    `settleTokens`), дуудагчийн ЗЭРЭГ хүсэлтийн таг (`createConcurrency`), ботын хэрэглэгчийн
+ *    түлхүүр (`botCaller`) ба дээд үйлчилгээ рүү явах `tools`/`messages`-ийн цагаан жагсаалт
+ *    (`sanitizeChat`) — бүгд энд, хоёр реле ижил.
  */
 
 export const WINDOW_MS = 60 * 1000;
@@ -23,8 +27,24 @@ export const LIMITS = Object.freeze({
   user: 40,
   /** IP-ийн таг — оффисын NAT-ын ард олон хэрэглэгч хуваалцана */
   ip: 300,
-  /** Амжилтгүй нэвтрэлт IP бүрд */
+  /** Амжилтгүй нэвтрэлт IP бүрд (Worker ба TRUSTED_PROXY-гүй server.mjs: IP + токены хэш бүрд) */
   authFail: 20,
+  /**
+   * ⚠️ 2026-10-09: амжилтгүй нэвтрэлтийн IP-ийн ТАГ (токены хэшээс үл хамааран) — `authFail` нь
+   * IP + токены хэшээр түлхүүрлэгдэх үед санамсаргүй токен бүр өөрийн 20-той болдог тул ArcGIS
+   * руу явах шалгалтын үерийг энэ таг барина. Оффисын NAT-ын ард нэг хуучирсан таб бүх хүнийг
+   * хаахгүйн тулд `authFail`-ээс ӨНДӨР.
+   */
+  authFailIp: 100,
+  /**
+   * ⚠️ 2026-10-09: нэг дуудагчийн ЗЭРЭГ (давхцсан) хүсэлт. Минутын хязгаар (40) нь эхлэх
+   * хүсэлтийг л тоолдог тул нэг хүн 40 урт хүсэлтийг ЗЭРЭГ илгээж өдрийн төсвийг шалгалт
+   * бүрийг давж (төсөв хариу ирсний ДАРАА нэмэгддэг байв) хэтрүүлж чаддаг байв.
+   * Агентын гогцоо дараалсан (нэг асуулт = нэг зэрэг хүсэлт) — 2 нь хоёр таб/цонхонд хүрэлцэнэ.
+   */
+  concurrent: 2,
+  /** ⚠️ 2026-10-09: `x-bot-user`-гүй (хуучин) ботын НИЙТЛЭГ `bot` түлхүүр — бүх ботын хэрэглэгч хуваалцана */
+  botConcurrent: 6,
 });
 
 /**
@@ -60,6 +80,50 @@ export function createLimiter({ windowMs = WINDOW_MS, now = Date.now } = {}) {
     },
     size: () => hits.size,
   };
+}
+
+/**
+ * ⚠️ 2026-10-09: ДУУДАГЧ БҮРИЙН ЗЭРЭГ ХҮСЭЛТИЙН ТООЛУУР (`LIMITS.concurrent`).
+ *   · `acquire(key, limit)` — слот авбал СУЛЛАХ функц, дүүрсэн бол `null` (→ 429 `code: 'concurrent'`);
+ *   · суллах функц ДАВТАН дуудагдахад аюулгүй (нэг л удаа хасна) — `finally` ба `close` хоёулаа дуудаж болно.
+ * ⚠️ Санах ойд — `server.mjs` нь нэг процесс тул бүрэн; Worker-д isolate тус бүрд (isolate хооронд
+ *    хуваалцахгүй, `worker.mjs`-ийн ⚠️). Бодит хил хэрэгтэй бол Durable Object.
+ */
+export function createConcurrency() {
+  const active = new Map();
+  return {
+    acquire(key, limit) {
+      const n = active.get(key) || 0;
+      if (n >= limit) return null;
+      active.set(key, n + 1);
+      let done = false;
+      return () => {
+        if (done) return;
+        done = true;
+        const m = (active.get(key) || 1) - 1;
+        if (m > 0) active.set(key, m);
+        else active.delete(key);
+      };
+    },
+    active: (key) => active.get(key) || 0,
+    size: () => active.size,
+  };
+}
+
+/** Зэрэг хүсэлтийн хязгаарт хүрсэн үеийн мессеж — хоёр реле ИЖИЛ */
+export const CONCURRENT_MSG =
+  'Өмнөх асуултын хариу хүлээгдэж байна — дуусахыг хүлээгээд дахин оролдоно уу.';
+
+/**
+ * ⚠️ 2026-10-09: БОТЫН ДУУДАГЧИЙН ТҮЛХҮҮР. Бот (`x-bot-secret` БАТЛАГДСАН үед л) Telegram
+ * хэрэглэгчийн ID-г `x-bot-user` толгойгоор илгээвэл `bot:<id>` — хурдны хязгаар, зэрэг хүсэлт,
+ * ӨДРИЙН ТӨСӨВ Telegram хэрэглэгч тус бүрд. Толгой алга/буруу (хуучин бот) бол урьдынх шиг
+ * нийтлэг `bot` (төсвөөс чөлөөт). ⚠️ Толгойг зөвхөн нууц таарсны ДАРАА уншина — эс бөгөөс хэн
+ * ч өөрийгөө `bot:` гэж зарлаж чадна.
+ */
+export function botCaller(raw) {
+  const s = String(raw ?? '').trim();
+  return /^\d{1,20}$/.test(s) ? `bot:${s}` : 'bot';
 }
 
 /* ═══════════════ Өдрийн токены төсөв (⚠️ 2026-10-09) ═══════════════ */
@@ -105,11 +169,50 @@ export const BUDGET_MSG =
   'Яаралтай бол системийн администраторт хандана уу.';
 
 /**
+ * ⚠️ 2026-10-09: УРЬДЧИЛСАН ТООЦОО (pre-debit). Урьд төсөв хариу ирсний ДАРАА л нэмэгддэг
+ *    байсан тул ЗЭРЭГ илгээсэн олон хүсэлт бүгд «төсөв дуусаагүй» шалгалтыг давж, хариу
+ *    ирэхэд төсвийг олон дахин хэтрүүлдэг байв. Одоо дээд үйлчилгээ рүү явахаас ӨМНӨ тооцоог
+ *    (`reserveTokens`) хасаж, хариу ирсний дараа БОДИТ хэрэглээгээр тааруулна (`adjust`).
+ *
+ * Оролтын тооцоо (`estimateInputTokens`): биеийн БАЙТ / 2 (кирилл UTF-8 2 байт ≈ 1 тэмдэгт —
+ * токеноос ихэвчлэн ИЛҮҮ, өөрөөр хэлбэл болгоомжтой). Системийн заавар нь КЭШЛЭГДДЭГ
+ * (`cache_control`) тул түүний хэсгийг `usageTokens`-ийн дүрмээр 1/10 жинтэй тоолно — эс бөгөөс
+ * урт давхаргын бүртгэлтэй хэрэглэгч цуцалсан асуулт бүрд төсвийн томоохон хэсгийг алдана.
+ */
+export function estimateInputTokens(bodyBytes, systemBytes = 0) {
+  const b = Math.max(0, Number(bodyBytes) || 0);
+  const s = Math.min(b, Math.max(0, Number(systemBytes) || 0));
+  return Math.ceil((b - s) / 2 + s / 20);
+}
+
+/** Урьдчилан хасах дүн = оролтын тооцоо + гаралтын дээд хэмжээ (`MAX_TOKENS`) */
+export const reserveTokens = (inputEstimate, maxTokens) =>
+  Math.max(0, Number(inputEstimate) || 0) + Math.max(0, Number(maxTokens) || 0);
+
+/**
+ * Хүсэлтийн ЭЦСИЙН төлбөр (урьдчилсан тооцоог үүгээр тааруулна):
+ *   · `usage` ирсэн (амжилттай, ТАТГАЛЗСАН ч) → бодит `usageTokens`;
+ *   · `usage` алга/0 (цуцлагдсан, холболт тасарсан, процесс унасан) → ОРОЛТЫН тооцоо — дээд
+ *     үйлчилгээ оролтыг аль хэдийн боловсруулсан байж болзошгүй.
+ * ⚠️ Дээд үйлчилгээ HTTP АЛДААГААР (4xx/5xx хариу) татгалзсан бол дуудагч 0 өгнө —
+ *    Anthropic тийм хүсэлтэд төлбөр авдаггүй; манай саатлыг хэрэглэгчийн төсвөөс хасахгүй.
+ */
+export function settleTokens(usage, inputEstimate) {
+  const n = usageTokens(usage);
+  return n > 0 ? n : Math.max(0, Number(inputEstimate) || 0);
+}
+
+/** UTF-8 байтын урт — Worker ба Node-д ижил */
+export const utf8Bytes = (s) => (typeof s === 'string' ? new TextEncoder().encode(s).byteLength : 0);
+
+/**
  * Санах ойн өдрийн тоолуур. Өдөр солигдоход БҮГД тэглэгдэнэ (Map өсөхгүй).
  *   · `over(key, limit)` — төсөв ДУУССАН эсэх (`limit` 0 бол ямагт `false`);
- *   · `add(key, n)` — хариу ирсний ДАРАА бодит хэрэглээг нэмнэ.
- * ⚠️ Хүсэлтийн ӨМНӨ шалгаж, ДАРАА нь нэмнэ — нэг хүсэлт төсвийг бага зэрэг (≤ `MAX_TOKENS`
- *    + оролт) давж болно; энэ нь хүлээн зөвшөөрсөн нарийвчлал.
+ *   · `add(key, n)` — эерэг хэрэглээг нэмнэ;
+ *   · `adjust(key, delta)` — урьдчилсан тооцоог тааруулах (сөрөг байж болно, 0-ээс доош орохгүй).
+ * ⚠️ 2026-10-09: хүсэлтийн ӨМНӨ `over` шалгаад тооцоог ХАСНА (`reserveTokens`), ДАРАА нь бодитоор
+ *    тааруулна — зэрэг хүсэлтүүд урьдчилсан тооцоог хардаг. Нэг хүсэлт төсвийг бага зэрэг давж
+ *    болно (шалгалт нь «дуусаагүй» эсэх л) — хүлээн зөвшөөрсөн нарийвчлал.
  */
 export function createBudget({ now = Date.now } = {}) {
   let day = '';
@@ -127,6 +230,13 @@ export function createBudget({ now = Date.now } = {}) {
     add(key, n) {
       roll();
       if (n > 0) used.set(key, (used.get(key) || 0) + n);
+    },
+    adjust(key, delta) {
+      roll();
+      if (!Number.isFinite(delta) || !delta) return;
+      const v = Math.max(0, (used.get(key) || 0) + delta);
+      if (v > 0) used.set(key, v);
+      else used.delete(key);
     },
     used(key) { roll(); return used.get(key) || 0; },
     size: () => used.size,
@@ -147,4 +257,122 @@ export function upstreamErrorText(status) {
   if (status === 400 || status === 413) return 'AI үйлчилгээ хүсэлтийг хүлээж авсангүй — яриаг ⟲ дарж шинээр эхлүүлээд дахин оролдоно уу.';
   if (status >= 500 || !status) return 'AI үйлчилгээ түр ажиллахгүй байна — хэсэг хүлээгээд дахин оролдоно уу.';
   return `AI үйлчилгээний алдаа (HTTP ${status}) — дахин оролдоно уу.`;
+}
+
+/* ═══════════════ Дээд үйлчилгээ рүү явах хүсэлтийн шалгалт (⚠️ 2026-10-09) ═══════════════ */
+
+/**
+ * `tools` ба `messages`-ийг ЦАГААН ЖАГСААЛТААР дахин угсарна — хоёр реле ИЖИЛ дүрэм.
+ *
+ * ⚠️ ЯАГААД: урьд browser-оос ирсэн `tools`/`messages`-ийг Anthropic руу ЯГ хэвээр нь дамжуулдаг
+ *    байсан тул байгууллагын аль ч гишүүн СЕРВЕРИЙН хэрэгсэл (`{type: 'web_search_…'}`,
+ *    `code_execution`, `web_fetch` …) — нэмэлт төлбөртэй, гадаад сүлжээнд хандах — эсвэл
+ *    зураг/PDF/`document` блок (их хэмжээний оролт) илгээж релег дурын зориулалтаар ашиглаж
+ *    чаддаг байв.
+ *    · `tools` — зөвхөн `{name, description, input_schema}` (клиентийн хэрэгсэл). `type` талбартай
+ *      хэрэгсэл (бүх серверийн/суурилагдсан хэрэгсэл) → 400.
+ *    · `messages` — зөвхөн `text`, `tool_use` (assistant), `tool_result` (user; агуулга нь мөр
+ *      эсвэл `text` блок) блокууд.
+ *    · ⚠️ `thinking` / `redacted_thinking` — ЗӨВХӨН assistant-д зөвшөөрнө: агентын гогцоо
+ *      (`src/lib/agent/client.ts`) загварын хариуг «ЯГ ИРСЭН ХЭВЭЭР» түүхэд буцааж хийдэг бөгөөд
+ *      бодолт асаалттай загварт tool_use-ийн өмнөх бодолтын блок (гарын үсэгтэй) ЗААВАЛ буцах
+ *      ёстой. Тэдгээрийг хасвал агент хэрэгсэл дуудсан дараагийн эргэлт бүрд 400 авна.
+ *    · Блок бүрийг МЭДЭГДЭХ талбаруудаар нь дахин угсарна (`cache_control`, `citations`,
+ *      `source` … хасагдана).
+ * @returns {{ok: true, tools: object[]|undefined, messages: object[]} | {ok: false, error: string}}
+ */
+export const MAX_TOOLS = 32;
+export const MAX_MESSAGES = 400;
+const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+export function sanitizeTools(tools) {
+  if (tools === undefined || tools === null) return { ok: true, tools: undefined };
+  if (!Array.isArray(tools) || tools.length > MAX_TOOLS) return { ok: false, error: '`tools` буруу бүтэцтэй байна' };
+  const out = [];
+  for (const t of tools) {
+    if (!isPlain(t)) return { ok: false, error: '`tools` буруу бүтэцтэй байна' };
+    if (has(t, 'type')) return { ok: false, error: 'Серверийн хэрэгсэл (`type`) зөвшөөрөгдөхгүй' };
+    if (typeof t.name !== 'string' || !TOOL_NAME.test(t.name)) return { ok: false, error: 'Хэрэгслийн нэр буруу' };
+    if (t.description !== undefined && typeof t.description !== 'string') return { ok: false, error: 'Хэрэгслийн тайлбар буруу' };
+    if (!isPlain(t.input_schema) || t.input_schema.type !== 'object') return { ok: false, error: 'Хэрэгслийн `input_schema` буруу' };
+    out.push({
+      name: t.name,
+      ...(t.description !== undefined ? { description: t.description } : {}),
+      input_schema: t.input_schema,
+    });
+  }
+  return { ok: true, tools: out.length ? out : undefined };
+}
+
+function cleanBlock(b, role) {
+  if (!isPlain(b)) return null;
+  switch (b.type) {
+    case 'text':
+      return typeof b.text === 'string' ? { type: 'text', text: b.text } : null;
+    case 'tool_use':
+      if (role !== 'assistant' || typeof b.id !== 'string' || typeof b.name !== 'string' || !isPlain(b.input)) return null;
+      return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
+    case 'tool_result': {
+      if (role !== 'user' || typeof b.tool_use_id !== 'string') return null;
+      let content;
+      if (b.content === undefined || typeof b.content === 'string') content = b.content;
+      else if (Array.isArray(b.content)) {
+        content = [];
+        for (const c of b.content) {
+          if (!isPlain(c) || c.type !== 'text' || typeof c.text !== 'string') return null;
+          content.push({ type: 'text', text: c.text });
+        }
+      } else return null;
+      return {
+        type: 'tool_result',
+        tool_use_id: b.tool_use_id,
+        ...(content !== undefined ? { content } : {}),
+        ...(b.is_error === true ? { is_error: true } : {}),
+      };
+    }
+    case 'thinking':
+      if (role !== 'assistant' || typeof b.thinking !== 'string' || typeof b.signature !== 'string') return null;
+      return { type: 'thinking', thinking: b.thinking, signature: b.signature };
+    case 'redacted_thinking':
+      if (role !== 'assistant' || typeof b.data !== 'string') return null;
+      return { type: 'redacted_thinking', data: b.data };
+    default:
+      return null;
+  }
+}
+
+export function sanitizeMessages(messages) {
+  if (!Array.isArray(messages) || !messages.length || messages.length > MAX_MESSAGES) {
+    return { ok: false, error: '`messages` хоосон эсвэл буруу байна' };
+  }
+  const out = [];
+  for (const m of messages) {
+    if (!isPlain(m) || (m.role !== 'user' && m.role !== 'assistant')) {
+      return { ok: false, error: '`messages` буруу бүтэцтэй байна' };
+    }
+    if (typeof m.content === 'string') {
+      out.push({ role: m.role, content: m.content });
+      continue;
+    }
+    if (!Array.isArray(m.content)) return { ok: false, error: '`messages` буруу бүтэцтэй байна' };
+    const blocks = [];
+    for (const b of m.content) {
+      const c = cleanBlock(b, m.role);
+      if (!c) return { ok: false, error: 'Зөвшөөрөгдөөгүй агуулгын блок (зөвхөн text · tool_use · tool_result)' };
+      blocks.push(c);
+    }
+    out.push({ role: m.role, content: blocks });
+  }
+  return { ok: true, messages: out };
+}
+
+/** `tools` + `messages` хоёуланг нь — нэгийг нь ч давахгүй бол `{ok:false, error}` */
+export function sanitizeChat({ tools, messages } = {}) {
+  const m = sanitizeMessages(messages);
+  if (!m.ok) return m;
+  const t = sanitizeTools(tools);
+  if (!t.ok) return t;
+  return { ok: true, tools: t.tools, messages: m.messages };
 }

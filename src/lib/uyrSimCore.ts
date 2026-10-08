@@ -759,7 +759,11 @@ export async function runFloodSim(
     simMin: SIM_MIN,
     /* ⚠️ 2026-10-09: бодитоор бодогдсон хугацаа ба алхмын хязгаарт тасарсан эсэх */
     simulatedMin: Math.round((t / 60) * 10) / 10,
-    truncated: hitCap,
+    /* ⚠️ 2026-10-09 (аудит): НЭГ Ч зүсмэл бодогдоогүй (`realSlices === 0`) бол бүх агшин нь дээрх
+       нөхөлтийн ХООСОН (хуурай) массив — «давталт» биш, үр дүн огт алга. Энэ үед `truncated`-ийг
+       ЗААВАЛ асаана (тусгаар туг = `simulatedSlices === 0`), UI «агшин бодогдоогүй» гэж хэлнэ
+       (`Ersdel.tsx`); урьд нь «N-р алхмаас хойш давталт» гэж бичигдэж «0-р агшин» бодогдсон мэт байв. */
+    truncated: hitCap || realSlices === 0,
     simulatedSlices: Math.min(SLICES, realSlices),
     /* ⚠️ 2026-09-30: голын оролтгүй бол «оролтын урсац» гэж худал тоо бичихгүй */
     peakQ: inlet.length ? Math.round(qPeak * 10) / 10 : undefined,

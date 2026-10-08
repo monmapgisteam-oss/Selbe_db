@@ -506,7 +506,9 @@ console.log('\naclParity.check: ok');
     assert.ok(i > 0, 'scopedAcl: syncCaps олдсонгүй');
     const b = s.slice(i, i + 1600);
     /* ⚠️ 2026-09-21: `capsStored` (тугтай `capsOf` биш) — remote унасан үед ч хадгалсан эрхийг УНШИЖ арчихгүй. */
-    assert.ok(b.includes('c.capsStored(user)') || b.includes('c.capsOf(user)'),
+    /* ⚠️ 2026-10-09: `|| b.includes('c.capsOf(user)')` хувилбарыг хасав — дээрх шалтгаанаар `capsOf`
+       руу буцах нь РЕГРЕСС (remote унахад эрх арчигдана), шалгуур түүнийг давуулах ёсгүй. */
+    assert.ok(b.includes('c.capsStored(user)'),
       'scopedAcl: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана');
     assert.ok(!/toggleCap\(user,\s*'\w+',\s*roles\.includes/.test(b),
       'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');

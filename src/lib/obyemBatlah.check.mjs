@@ -176,6 +176,14 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   const L = fs.readFileSync(new URL('./obyemBatlah.ts', import.meta.url), 'utf8');
   assert.ok(/export async function obyemBusyFor\(/.test(L), 'obyemBatlah: `obyemBusyFor` алга');
   assert.ok(/export async function loadHead\(/.test(L), 'obyemBatlah: `loadHead` алга');
+  /* ⚠️ 2026-10-09: гацсаныг буцаах (CAS-аар) · завгүй шалгалт fail-closed · хариу алдагдвал тэмдэг/түгжээ үлдэнэ · refresh seq */
+  const rs = L.slice(L.indexOf('export async function returnStuckObyem('), L.indexOf('export function withdrawDeny('));
+  assert.ok(rs.length > 0 && rs.indexOf('casObyemClaim(') > 0 && rs.indexOf('casObyemClaim(') < rs.indexOf('[F.status]: OBYEM_STATUS.returned'), 'returnStuckObyem: бичихээс өмнө CAS түгжээ алга');
+  assert.ok(rs.includes('partialBy(curStatus') && rs.includes('OBYEM_STUCK_PREFIX()'), 'returnStuckObyem: зөвхөн хагас бичигдсэнд · угтвартай шалтгаан');
+  const bz = L.slice(L.indexOf('export async function obyemBusyFor('), L.indexOf('export async function releaseObyemClaim('));
+  assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
+  assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
+  assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
 }
 console.log('✅ жааз солигдсон бол батлахгүй · алгассан нүд асууна/хадгална · хоёр таб');
 

@@ -22,6 +22,7 @@ import {
   nextStamp,
   parseQaqcDraft,
   pruneQaqcDraft,
+  rebaseQaqcCells,
   serializeQaqcDraft,
   TOMB_TTL_MS,
 } from './qaqcDraft.ts';
@@ -317,5 +318,27 @@ console.log('✅ цаг зөрсөн ч хэрэглэгчийн харсан у
   assert.equal(ad2.st.cells.get('1:0').v, 'шинэ');
 }
 console.log('✅ серверт байгаа утга ноорогоос сэргэхгүй');
+
+/* ── ⚠️ 2026-10-09: НҮДНИЙ СУУРЬ (засах үед харсан серверийн утга) ── */
+{
+  const clock = { t: NOW, stamp() { this.t += 1; return this.t; } };
+  const seen = { '5:1': 'хуучин', '6:1': null };
+  const r = applyPendDiff(emptyQaqcDraftState(), {}, { '5:1': 'шинэ', '6:1': 'x' }, () => clock.stamp(), (k) => seen[k]);
+  assert.equal(r.st.cells.get('5:1').b, 'хуучин');
+  assert.equal(r.st.cells.get('6:1').b, null, 'null суурь хадгалагдана (сервер хоосон)');
+  const doc1 = draftFromState(r.st, () => undefined);
+  const back = parseQaqcDraft(JSON.stringify(doc1), { now: NOW });
+  const c5 = back.cells.find((c) => c[0] === '5:1');
+  assert.equal(c5[3], 'хуучин', 'суурь цуваачлалд хадгалагдана');
+  assert.equal(back.cells.find((c) => c[0] === '6:1')[3], null);
+  const ad = adoptQaqcDraft(back, emptyQaqcDraftState(), () => true, () => clock.stamp());
+  assert.equal(ad.st.cells.get('5:1').b, 'хуучин', 'сэргээлт суурийг дагуулна');
+  const noB = parseQaqcDraft(JSON.stringify({ v: 2, t: NOW, cells: [['7:0', 'v', NOW]] }), { now: NOW });
+  assert.equal(noB.cells[0].length, 3, 'суурьгүй (хуучин) нүд 3 элемент хэвээр — null болж хувирахгүй');
+  const rb = rebaseQaqcCells(ad.st, new Map([['5:1', 'сервер']]));
+  assert.equal(rb.cells.get('5:1').b, 'сервер');
+  assert.equal(rb.cells.get('5:1').t, ad.st.cells.get('5:1').t, 'rebase агшинг хөндөхгүй');
+}
+console.log('✅ нүдний суурь — бичих · унших · сэргээх · rebase');
 
 console.log('\nqaqcDraft (lib).check: ok');

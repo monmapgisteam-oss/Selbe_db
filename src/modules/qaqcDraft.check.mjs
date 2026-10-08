@@ -178,7 +178,7 @@ console.log('✅ гүйцэтгэлийн ноорогтой тусгаарла�
    (г) сэргээлтийн дараа ArcGIS-д дутуу (зөвхөн локалд байсан) булш/нүд илгээгдэнэ. */
 {
   const eff = between('АРИЛГАЛТ = БУЛШ, УСТГАЛ БИШ', 'АЛСЫН ХУУЛБАР (2026-09-07');
-  assert.ok(eff.includes('applyPendDiff(draftStRef.current, prevPendRef.current, pend, stamp)'), '⚠️ (а) эффект pend-ийн шилжилтээс булш тооцох ёстой');
+  assert.ok(eff.includes('applyPendDiff(draftStRef.current, prevPendRef.current, pend, stamp, seenOf)'), '⚠️ (а) эффект pend-ийн шилжилтээс булш тооцох ёстой');
   assert.ok(eff.includes('prevPendRef.current = pend'), '⚠️ (а) харсан pend тэмдэглэгдэх ёстой');
   assert.ok(eff.includes('persistLocal(pkg.key, rows)'), '⚠️ (а) локалд НЭГТГЭЖ бичих ёстой');
   assert.ok(!eff.includes('clearDraftLS(dk('), '⚠️ (а) хоосон pend дээр локал ноорог УСТГАГДАХ ёсгүй');
@@ -254,7 +254,7 @@ console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · 
   const sv = between('const save = useCallback(', '/* Ctrl+S');
   /* (1A) бичихийн ӨМНӨ серверийн одоогийн утгыг уншиж, зөрчилтэй нүдийг бичихгүй */
   assert.ok(sv.indexOf('fetchQaqcDocs(') > 0 && sv.indexOf('fetchQaqcDocs(') < sv.indexOf('saveQaqc(pkg.key'), '⚠️ хадгалахаас ӨМНӨ одоогийн утга дахин уншигдах ёстой');
-  assert.ok(sv.includes('qaqcConflicts(pend,') && sv.includes('setPend(keep)'), '⚠️ зөрчилтэй нүд pend-д үлдэх ёстой');
+  assert.ok(sv.includes('qaqcConflicts(check,') && sv.includes('setPend(keep)'), '⚠️ зөрчилтэй нүд pend-д үлдэх ёстой');
   assert.ok(!sv.includes('setPend({})'), '⚠️ хадгалсны дараа зөрчилтэй нүд арчигдах ёсгүй');
   /* (5) талбарын урт — сүлжээнээс ӨМНӨ */
   assert.ok(sv.indexOf('qaqcTooLong(') >= 0 && sv.indexOf('qaqcTooLong(') < sv.indexOf('setBusy(true)'), '⚠️ уртын шалгалт сүлжээнээс өмнө');
@@ -266,7 +266,17 @@ console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · 
   /* (3) «алсыг уншиж чадаагүй» салаа дахин оролдлого армлана */
   const fl = between('const flush = () => {', 'const t = setTimeout(flush, 12_000);');
   const nv = fl.slice(fl.indexOf('if (remoteVerifiedRef.current !== q.pkg) {'), fl.indexOf('remoteQueue.current = null;\n      lastRemoteRef'));
-  assert.ok(nv.includes('armRemoteRetry()'), '⚠️ уншиж чадаагүй салаа дахин оролдлого армлах ёстой');
+  assert.ok(nv.includes('armRemoteRetry(true)'), '⚠️ уншиж чадаагүй салаа дахин оролдлого (өсөх завсарлагатай) армлах ёстой');
+  /* ⚠️ 2026-10-09: өсөх завсарлага 48 сек → дээд 10 мин; уншилтын toast 10 мин-д нэг */
+  assert.ok(SRC.includes('Math.min(retryDelayRef.current * 2, 600_000)'), '⚠️ дахин оролдлогын завсарлага өсөх ёстой (дээд 10 мин)');
+  assert.ok(SRC.includes('Date.now() - w.at >= 600_000'), '⚠️ уншилтын анхааруулга 10 мин-д нэгээс олон гарах ёсгүй');
+  /* ⚠️ 2026-10-09: устгагдсан мөр (gone) ба үл мэдэх түлхүүр — хадгалалтыг хаахгүй, хасагдана */
+  assert.ok(sv.includes('const drop = new Set(skipped);') && !/if \(skipped\.length\) \{\s*throw/.test(sv), '⚠️ үл мэдэх түлхүүр хадгалалтыг ЗОГСООХ ёсгүй');
+  assert.ok(sv.includes('const conflicts = all.filter((c) => !c.gone);') && sv.includes('for (const c of goneKeys) drop.add(c.key);'), '⚠️ gone зөрчил pend-д үлдэх ёсгүй');
+  assert.ok(sv.includes('rebaseQaqcCells('), '⚠️ зөрчилтэй нүдний суурь шинэ серверийн утга болох ёстой');
+  assert.ok(sv.includes('(k) => stNow.cells.get(k)?.b'), '⚠️ зөрчлийн суурь нь нүдний өөрийн суурь байх ёстой');
+  /* ⚠️ 2026-10-09: нүдний оролт maxLength-гүй (буулгалт чимээгүй таслагдахгүй) */
+  assert.ok(!/maxLength={maxLen/.test(SRC), '⚠️ maxLength нь ганц нүдний буулгалтыг чимээгүй тасална');
   /* (4) багц солиход дараалалд үлдсэнийг ЭХЛЭЭД илгээнэ */
   const sw = SRC.slice(SRC.indexOf('flushRef.current?.();'), SRC.indexOf('remoteQueue.current = null;\n    /* ⚠️ АЛСЫН БАЙДАЛ'));
   assert.ok(sw.length > 0 && sw.includes('setPend({});'), '⚠️ багц солих эффект дарааллыг хаяхаас ӨМНӨ flush хийх ёстой');

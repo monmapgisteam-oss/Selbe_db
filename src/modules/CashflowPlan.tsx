@@ -23,6 +23,7 @@ import { mnt, num } from '@/lib/format';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
 import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
+import { cfStartKeyOf } from '@/lib/gdash';
 import { FIN_XL_CODE, FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD } from '@/lib/finExcelLayout';
 import c from '@/modules/cfplan.module.css';
 import { userError } from '@/components/ui';
@@ -74,16 +75,9 @@ const cmpSeg = (a: number[], b: number[]): number => {
  * ⚠️ 2026-09-29 (аудит 10): `Finance.publish`-ийн сарын мужтай НЭГ дүрэм (тэндхийн
  *    `keyOf`-ийн ⚠️). УБ-ын шөнө дунд (өмнөх өдрийн 16:00Z) UTC-ээр өмнөх сар болдог байв.
  */
-const monthKey = (ms: unknown): string => {
-  const t = Number(ms);
-  if (!Number.isFinite(t)) return '';
-  const d = new Date(t);
-  /* ⚠️ 2026-10-09: `Finance.publish`-ийн `startKeyOf`-тэй нэг дүрэм — ХУУЧИН UTC шөнө дундаар бичсэн
-     мөрийг UTC сараар (UTC-ээс баруун бүсэд локалаар өмнөх сар болдог); шинэ мөр UTC үд дундаар
-     бичигдэх тул аль ч бүсэд локал сар нь зөв. УБ-д хоёр зам ижил. */
-  if (t % 86_400_000 === 0) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+/* ⚠️ 2026-10-09: дүрэм `gdash.cfStartKeyOf`-д нэгтгэгдсэн (Finance.publish · gdash · tuhData ижил) —
+   ХУУЧИН UTC шөнө дундын мөр UTC сараар, бусад нь орон нутгийн сараар. */
+const monthKey = (ms: unknown): string => cfStartKeyOf(ms);
 
 /** Бөглөлтийн төлөв — өнгө ба шошго нь эндээс */
 type Fill = 'none' | 'part' | 'done' | 'over';

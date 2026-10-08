@@ -34,7 +34,8 @@ import { loadLandStatus } from '@/lib/land';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { loadPlanCurveCached, planPctAt, measureDayOf } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
-import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
+import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
+import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
@@ -152,8 +153,8 @@ export type ExecReport = {
     givenOther: number;
     /** `givenContracted ÷ planTotal` — «олгосон дүн гэрээлсэн дүнд эзлэх хувь» */
     share: number | null;
-    /** `planTotal − givenContracted` */
-    remain: number;
+    /** `planTotal − givenContracted`; ⚠️ 2026-10-09: олголт уншигдаагүй (`given == null`) бол `null` («—») */
+    remain: number | null;
     rows: {
       key: string; label: string;
       /** Гэрээлсэн дүн (CONTRACTED мөр); гэрээгүй бол 0 */
@@ -295,13 +296,15 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      `PkgFin.plan` нь `geree_dun || ho_dun_geree` тул CONTRACTED биш мөрд ч
      `geree_dun` бөглөгдсөн бол тэр нь «төсөв» нэрээр гарч, гэрээгүй гэж ангилсан
      мөрөнд гэрээний дүн харагддаг байв. Түлхүүр `PkgFin.rowsByKey`-тэй ижил
-     (`pkgKeyOf(pkg2)`, `pkgKeyOf(pkg)` хоёулаа). `PkgFin.FIN_PKG_ALIAS`-аар
-     холбогдсон 3 түлхүүр (БАГЦ71→7, БАГЦ8/81→82) энд олдохгүй тул `r.plan`-д унана. */
+     (`pkgKeyOf(pkg2)`, `pkgKeyOf(pkg)` хоёулаа).
+     ⚠️ 2026-10-09: түлхүүрийг `finPkgKey` (`pkgAlias.FIN_PKG_ALIAS`)-ээр хөрвүүлнэ — `pkgFinRows`-ын
+     мөр холбоосын ЗОРИЛТОТ түлхүүртэй. Урьд нь түүхий түлхүүр тул холбоостой багцын (БАГЦ71→7,
+     БАГЦ8/81→82) төсөв олдохгүй `r.plan`-д унадаг байв. */
   const budgetByKey = new Map<string, number>();
   for (const r of cf) {
-    for (const k of new Set([pkgKeyOf(r.pkg2), pkgKeyOf(r.pkg)])) {
-      if (k && k !== '0') budgetByKey.set(k, (budgetByKey.get(k) ?? 0) + r.cost);
-    }
+    /* ⚠️ Хөрвүүлсний ДАРАА давхардлыг хасна — pkg2 «БАГЦ-8.1», pkg «БАГЦ-8» хоёулаа «Багц 8.2» */
+    const ks = new Set([pkgKeyOf(r.pkg2), pkgKeyOf(r.pkg)].filter((k) => k && k !== '0').map(finPkgKey));
+    for (const k of ks) budgetByKey.set(k, (budgetByKey.get(k) ?? 0) + r.cost);
   }
   const finRows = pf.rows.map((r) => ({
     key: r.key, label: r.label,
@@ -315,16 +318,38 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ⚠️ 2026-09-21: `share`/`remain`-ийн тоологч = ГЭРЭЭЛСЭН багцын олголт — хуваарь
      `csum` (CONTRACTED) тул нэг хүрээ. Урьд нь `finGiven` (бүх төлбөр) хуваагддаг байв. */
   /* ⚠️ 2026-09-22 (өгөгдлийн аудит): багцын Map-ийн нийлбэр (~26.1%) БИШ —
-     `reportData.finance.paidContracted` (522.71 тэрбум, Тайлан 26.0%). Гурван
-     харагдац (CEO IPC · Тайлан · ExecReport) нэг тоологч, нэг хуваарь (CONTRACTED). */
+     `reportData.finance.paidContracted` (Тайлан-тай нэг тоо). Гурван
+     харагдац (CEO IPC · Тайлан · ExecReport) нэг тоологч, нэг хуваарь (CONTRACTED).
+     ⚠️ 2026-10-09: урьдах «522.71 тэрбум / 26.0%» нь холбоосоос (`FIN_PKG_ALIAS`) өмнөх тоо — хуучирсан. */
   const finGivenContracted = finance.paidContracted;
-  /* ⚠️ 2026-10-09: төсөл (`paidShare`) ба багц бүр (`pkgFinRows`) НЭГ холбоосын хүснэгт
-     (`pkgAlias.FIN_PKG_ALIAS`) хэрэглэдэг болсон тул Σ гэрээт мөрийн олголт + `givenOther` = `given`
-     байх ёстой. Зөрвөл (газрын зурагт багцгүй гэрээлсэн түлхүүр г.м.) чимээгүй үлдээхгүй — консолд. */
+  /* ⚠️ 2026-10-09: ИЖИЛ ХҮРЭЭНИЙ шалгалт. `paidContracted` нь гэрээт мөрийн pkg2 БА pkg (ДЭЭД багц)
+     түлхүүрийн HO олголт; мөрийн `given` (`pkgGivenTotal`) нь pkg2-т олголтгүй бол дээд багцынхыг
+     авдаг тул дэд багц бүрд давхардаж болно — Σ `r.given`-ийг шууд харьцуулбал ҮРГЭЛЖ зөрж, консол
+     дуу чимээ болдог байв. Одоо HO мөрөөр: гэрээт мөрийн түлхүүрт + гэрээт мөрийн дээд багцад орсон
+     олголтыг хасахад үлдсэн нь (газрын зурагт багцгүй гэрээлсэн түлхүүр г.м.) л жинхэнэ зөрүү. */
   if (finGiven != null) {
-    const sumRows = finRows.reduce((a, r) => (r.contracted ? a + r.given : a), 0);
-    if (Math.abs(sumRows - finGivenContracted) > 1) {
-      console.warn('[execReport] Σ гэрээт багцын олголт ≠ paidContracted', { sumRows, paidContracted: finGivenContracted });
+    const HC = HO_IPC.contractFields;
+    const rowKeys = new Set(finRows.filter((r) => r.contracted).map((r) => r.key));
+    const parents = new Set<string>();
+    for (const r of cf) {
+      if (!r.inTotal || !isContracted(r)) continue;
+      const k2 = pkgKeyOf(r.pkg2);
+      const k3 = pkgKeyOf(r.pkg);
+      if (k2 && k3 && k3 !== '0' && finPkgKey(k2) !== finPkgKey(k3)) parents.add(finPkgKey(k3));
+    }
+    let inRows = 0;
+    let inParents = 0;
+    for (const p of fin.pays) {
+      const n = hoAmount(p);
+      const k = pkgKeyOf(p[HC.pkg]);
+      if (n == null || !k) continue;
+      const fk = finPkgKey(k);
+      if (rowKeys.has(fk)) inRows += n;
+      else if (parents.has(fk)) inParents += n;
+    }
+    const miss = finGivenContracted - inRows - inParents;
+    if (miss > 1) {
+      console.warn('[execReport] гэрээлсэн олголтын нэг хэсэг багцын мөрд ороогүй', { paidContracted: finGivenContracted, inRows, inParents, miss });
     }
   }
 
@@ -390,7 +415,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): томьёо ба оролт `paidShare` — Тайлан ·
          CEO карт · «IPC» · ТУХ-тай ЯГ нэг (`finance.contractAmount` = `csum`, нэг дүрэм). */
       share: finGiven != null ? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
-      remain: Math.max(0, csum - finGivenContracted),
+      /* ⚠️ 2026-10-09: олголт уншигдаагүй бол `paidContracted` 0 ирдэг — үлдэгдэл = бүх гэрээний дүн гэж
+         ХУДАЛ бичихгүй (`share`-тэй нэг дүрэм, null ≠ 0) */
+      remain: finGiven == null ? null : Math.max(0, csum - finGivenContracted),
       rows: finRows,
     },
     zov,
@@ -703,7 +730,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`## 04. Багцын санхүү`);
   /* ⚠️ 2026-09-21: «гэрээлсэн нийт» = 01-ийн «Нийт гэрээлсэн дүн»-тэй ижил (CONTRACTED мөр) */
   /* ⚠️ `given == null` = мэдээлэлгүй (0 ₮ БИШ) — дээрх мөрүүдтэй ижил үг */
-  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${num(x.fin.remain)} ₮`);
+  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);
   for (const r of x.fin.rows) {
     L.push(r.contracted
       ? `- ${cl(r.label)}: гэрээлсэн ${num(r.plan)} ₮, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`

@@ -125,7 +125,7 @@
 @media (max-width: 1180px) {
   /* Зураг ДЭЭШЭЭ, багцын жагсаалт доор нь. Талын багана байхгүй болсон тул
      чирэх бариул мөн нуугдана. */
-  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame > button[data-split-grip] { display: none; }
   .frame {
     grid-template-areas:
       "map"
@@ -207,12 +207,13 @@
   border: 0;
   border-radius: 0;
 }
-.frameEdit > :global(button[class*='splitGrip_grip']) { display: none; }
+.frameEdit > button[data-split-grip] { display: none; }
 
 /* ⚠️ 2D/3D сегмент нь зургийн дээд ТӨВД (`mapTools.module.css` → `.dimsBar`,
    top: 16px) — засварын зурвасын доор түлхэнэ, эс бөгөөс хоёулаа давхцана.
    Зүүн талын хэрэгслийн багана (top: 96px) зурвасаас доогуур тул хөндөхгүй. */
-.frameEdit :global(div[class*='mapTools_dimsBar']) { top: 52px; }
+/* ⚠️ 2026-10-09: `mapDims` — MapTools.tsx-ийн ГЛОБАЛ тогтвортой класс (урьд `[class*='mapTools_dimsBar']`). */
+.frameEdit :global(div.mapDims) { top: 52px; }
 
 /* ── Засварын ажлын зурвас — «энэ бол тусдаа цонх» гэдгийг хэлнэ ── */
 .editBar {
@@ -672,7 +673,7 @@
 /* ══ SplitGrip-ийг сүлжээний НҮДЭНД — завсрын ГОЛД (Irged-тэй ижил шийдэл):
    absolute давхарга байхад бариул баганын ДОТОР тооцогдож картуудын ирмэг
    дээр давхардана. Одоо grid-ийн 10px завсарт төвлөнө. ══ */
-.frame > :global(button[class*='splitGrip_grip']) {
+.frame > button[data-split-grip] {
   position: relative;
   grid-row: 1 / -1;
   top: auto;
@@ -680,14 +681,14 @@
   z-index: 6;
 }
 /* ⚠️ Багана хоёрхон болсон тул баруун бариул нь 2-р БАГАНАД (өмнө нь 3-т) */
-.frame > :global(button[class*='splitGrip_right']) {
+.frame > button[data-split-grip='right'] {
   grid-column: 2 / 3;
   justify-self: start;
   right: auto;
   margin-left: -10.5px;
 }
 @media (max-width: 1180px) {
-  .frame > :global(button[class*='splitGrip_grip']) { display: none; }
+  .frame > button[data-split-grip] { display: none; }
 }
 
 /* ⚠️ ЯВЦЫН мөр — «74-аас 31 давхарга». Үзүүлэлтүүд дэвшилттэй дүүрдэг болсноор

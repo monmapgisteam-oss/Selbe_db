@@ -1,18 +1,50 @@
-name: Test (typecheck + live-data checks)
+name: Test (typecheck + live-data checks + build)
 
-# ⚠️ 2026-09-29: ЗӨВХӨН PR ба гараар. `main` руу push хийхэд ИЖИЛ дөрвөн хаалт
+# ⚠️ 2026-10-09: `main`-ээс БУСАД салбарт push хийхэд ч ажиллана, төгсгөлд нь `npm run build`
+#    (Node 22) нэмэв. 2026-10-08-нд `*.module.css`-ийн цэвэр бус сонгогч `next build`-ийг
+#    унагаж, үүнийг deploy (main) л барьсан — салбар/PR дээр урьдчилан илрэх ёстой. Мөн
+#    `permissions: contents: read` — энэ workflow юу ч бичих эрхгүй.
+# ⚠️ 2026-09-29: `main` руу push-д ЭНД ажиллахгүй. `main` руу push хийхэд ИЖИЛ дөрвөн хаалт
 # одоо `deploy.yml`-ийн build job дотор, deploy-ийн ӨМНӨ ажилладаг (унавал сайт
 # хөндөгдөхгүй) — энд давхар ажиллуулбал нэг push-д хоёр удаа minute зарцуулна.
 # Энэ workflow нь PR-ыг merge-ээс өмнө шалгах, мөн Variables/токен өөрчилсний
 # дараа гараар (`workflow_dispatch`) шалгах зориулалттай.
 
 on:
+  push:
+    branches-ignore: [main]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # ⚠️ 2026-10-09: env нь JOB түвшинд — `npm test` ба `npm run build` ХОЁУЛАА хэрэглэнэ
+    #    (deploy.yml-тэй ИЖИЛ жагсаалт; `tools/envParity.check.mjs` зөрөхийг барина).
+    env:
+      # ⚠️ 2026-09-17: код дотор үйлчилгээний линк/fallback байхгүй, `.env` репод ордоггүй
+      #    тул тестэд ч хаягуудыг Variables-аас өгнө (deploy.yml-тэй ИЖИЛ жагсаалт).
+      NEXT_PUBLIC_AGENT_API: ${{ vars.AGENT_API }}
+      NEXT_PUBLIC_AGENT_PROMPT_HMAC: ${{ vars.AGENT_PROMPT_HMAC }}
+      NEXT_PUBLIC_AUTH_APP_ID: ${{ vars.NEXT_PUBLIC_AUTH_APP_ID }}
+      NEXT_PUBLIC_PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
+      NEXT_PUBLIC_ALLOWED_ORG_ID: ${{ vars.NEXT_PUBLIC_ALLOWED_ORG_ID }}
+      NEXT_PUBLIC_ARCGIS_HJ: ${{ vars.NEXT_PUBLIC_ARCGIS_HJ }}
+      NEXT_PUBLIC_ARCGIS_GAZAR: ${{ vars.NEXT_PUBLIC_ARCGIS_GAZAR }}
+      NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
+      NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
+      NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
+      NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
+      NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
+      NEXT_PUBLIC_IRGED_ORTHO_PRE: ${{ vars.NEXT_PUBLIC_IRGED_ORTHO_PRE }}
+      NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
+      NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
+      NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
+      NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
+      NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
     steps:
       # ⚠️ 2026-10-09 (аудит №11): `actions/*`-ыг COMMIT SHA-аар бэхлэв — шошго (v4)-ийг
       #    хэн нэгэн зөөвөл бидний build өөр код ажиллуулах эрсдэлтэй. SHA-г `git ls-remote`-оор
@@ -40,25 +72,10 @@ jobs:
       #  ARCGIS_ADMIN_TOKEN-гүй бол алгасна)
       - run: npm test
         env:
-          # ⚠️ 2026-09-17: код дотор үйлчилгээний линк/fallback байхгүй, `.env` репод ордоггүй
-          #    тул тестэд ч хаягуудыг Variables-аас өгнө (deploy.yml-тэй ИЖИЛ жагсаалт).
-          NEXT_PUBLIC_AGENT_API: ${{ vars.AGENT_API }}
-          NEXT_PUBLIC_AUTH_APP_ID: ${{ vars.NEXT_PUBLIC_AUTH_APP_ID }}
-          NEXT_PUBLIC_PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
-          NEXT_PUBLIC_ALLOWED_ORG_ID: ${{ vars.NEXT_PUBLIC_ALLOWED_ORG_ID }}
-          NEXT_PUBLIC_ARCGIS_HJ: ${{ vars.NEXT_PUBLIC_ARCGIS_HJ }}
-          NEXT_PUBLIC_ARCGIS_GAZAR: ${{ vars.NEXT_PUBLIC_ARCGIS_GAZAR }}
-          NEXT_PUBLIC_UBHUB_SCENE: ${{ vars.NEXT_PUBLIC_UBHUB_SCENE }}
-          NEXT_PUBLIC_ELEVATION_URL: ${{ vars.NEXT_PUBLIC_ELEVATION_URL }}
-          NEXT_PUBLIC_ARCGIS_IOT: ${{ vars.NEXT_PUBLIC_ARCGIS_IOT }}
-          NEXT_PUBLIC_REPORT_RECIPIENTS: ${{ vars.NEXT_PUBLIC_REPORT_RECIPIENTS }}
           # ⚠️ Амьд өгөгдлийн 11 тест энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
           #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
+          #    ⚠️ 2026-10-09: зөвхөн ЭНЭ алхамд (deploy.yml-тэй ижил) — build/npm ci хардаггүй.
           ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
-          NEXT_PUBLIC_ROAD_TILE_URL: ${{ vars.NEXT_PUBLIC_ROAD_TILE_URL }}
-          NEXT_PUBLIC_IRGED_ORTHO_PRE: ${{ vars.NEXT_PUBLIC_IRGED_ORTHO_PRE }}
-          NEXT_PUBLIC_HABEA_LABOR_SVC: ${{ vars.NEXT_PUBLIC_HABEA_LABOR_SVC }}
-          NEXT_PUBLIC_HABEA_INCIDENT_SVC: ${{ vars.NEXT_PUBLIC_HABEA_INCIDENT_SVC }}
-          NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
-          NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
-          NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
+      # ⚠️ 2026-10-09: жинхэнэ `next build` (Node 22 — локал Node 24-ийн build worker 0xC0000005-оор
+      #    санамсаргүй унадаг). `output: 'export'`-ийн алдаа (CSS-модулийн pure, prerender) зөвхөн энд илэрнэ.
+      - run: npm run build

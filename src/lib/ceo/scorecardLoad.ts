@@ -20,6 +20,7 @@ import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { bagtsKey, pkgKeyOf, BUILDING } from '@/lib/services';
+import { finPkgKey } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
@@ -124,6 +125,9 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   const inspections = new Map<string, Inspection[]>();
   for (const r of [...(uzV11 ?? []), ...(uzCo ?? [])]) {
     if (!r.bagtsK) continue;
+    /* ⚠️ 2026-10-09: `cnt_*` талбаргүй мөр (`sevKnown: false`) — зөрчлийн тоо МЭДЭГДЭХГҮЙ (0 биш).
+       Урьд нь 0 зөрчилтэй «цэвэр» үзлэг болж ХАБЭА оноог өсгөдөг байв (`habeaUzleg` нийлбэртэй нэг дүрэм). */
+    if (r.sevKnown === false) continue;
     const a = inspections.get(r.bagtsK) ?? [];
     a.push({ at: r.d, conf: r.conf, major: r.major, minor: r.minor, obs: r.obs });
     inspections.set(r.bagtsK, a);
@@ -215,8 +219,11 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
            дууссан ТЭЗҮ/зураг төслийн гэрээ (багц 20% олгогдсон) «олголт 80 нэгж
            хувиар хоцорсон» гэж 0 оноо, улаан асуудал авдаг байв. Одоо багцын
            түвшний биет хэмжилт (`lag` — барилга угсралтын мөр) байгаа үед л
-           харьцуулна; бусад мөрд энэ хэсэг оноонд ОРОХГҮЙ (null, 0 биш). */
-        paidPct: key && lag ? paid.get(key) ?? null : null,
+           харьцуулна; бусад мөрд энэ хэсэг оноонд ОРОХГҮЙ (null, 0 биш).
+           ⚠️ 2026-10-09: `pkgFinRows`-ын мөр холбоосын ЗОРИЛТОТ түлхүүртэй (`FIN_PKG_ALIAS`) тул
+           гэрээний мөрийн түлхүүрийг `finPkgKey`-ээр хөрвүүлж хайна — эс бөгөөс холбоостой
+           багцын (Багц-7 · Багц-8.1) олголт олдохгүй, харьцуулалт чимээгүй алгасагддаг байв. */
+        paidPct: key && lag ? paid.get(finPkgKey(key)) ?? null : null,
         actual,
       }),
       /* ⚠️ Хоёр маягт хоёулаа татагдаагүй бол «—» (мэдэхгүй) — «хүлээгдэж» БИШ.

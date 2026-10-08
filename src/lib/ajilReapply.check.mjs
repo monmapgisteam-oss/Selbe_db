@@ -124,6 +124,9 @@ A._io.loadPlanPending = (k) => planImpl(k);
 A._io.obyemBusy = (k) => obyemImpl(k);
 A._io.claimApply = (oid, me) => claimImpl(oid, me);
 A._io.releaseApply = async () => { rel.n += 1; };
+/* ⚠️ 2026-10-09: `markApplied`-ийн өмнөх түгжээний дахин уншилт — анхдагчаар минийх */
+let otherImpl = async () => null;
+A._io.claimOther = (oid, me) => otherImpl(oid, me);
 const go = (oid) => A.materializeAdds({ pkgKey: 'b1', ajilOid: oid });
 const reset = () => { c.write = 0; c.mark = 0; c.active = 0; c.maxActive = 0; };
 
@@ -252,6 +255,18 @@ if (globalThis.navigator?.locks?.request) {
   assert.equal(r.ok, false); assert.match(r.error, /яг одоо батлаж байна/);
   assert.equal(c.write, 0, 'обьём батлагдаж байхад жааз солив');
   obyemImpl = async () => null;
+  /* ⚠️ 2026-10-09: хоёр төрөл — жагсаалтын ХОЁР ДАХЬ (гэрээ тэмдэггүй, төлөвлөгөө хагас) ч хаана */
+  const PS = (o) => ({ oid: o.oid, pkgKey: 'b1', pkgGroup: 'Багц 1', status: 'Хүлээгдэж буй', author: 'z', authorSent: 1, approver: o.approver ?? null, approverAt: o.approverAt ?? null, reason: o.reason ?? null, note: null, rowCount: 1, payload: '', okRows: null });
+  planImpl = async () => [PS({ oid: 5 }), PS({ oid: 6, reason: '__hagas_bichigdsen__:hbatlagch' })];
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /ХЭСЭГЧЛЭН/); assert.match(r.error, /hbatlagch/);
+  assert.equal(c.write, 0, 'хоёр дахь төрлийн хагас бичилтийг харсангүй');
+  /* Хуваарийн батлагчийн хүчинтэй түгжээ — хаана */
+  planImpl = async () => [PS({ oid: 7, approver: 'hbatlagch', approverAt: Date.now() })];
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /hbatlagch/);
+  assert.equal(c.write, 0, 'хуваарийн батлагч түгжсэн атлаа жааз солив');
+  planImpl = async () => null;
   console.log('✅ хуваарь/обьёмын төлөв уншигдахгүй эсвэл батлалт явж байвал бичихгүй');
 }
 
@@ -278,6 +293,16 @@ if (globalThis.navigator?.locks?.request) {
   rel.n = 0;
   r = await go(32);
   assert.deepEqual(r, { ok: true, added: 1 }); assert.equal(rel.n, 0, 'амжилттай буулгалтын дараа дахин тайлав');
+  /* ⚠️ 2026-10-09: бичсэний дараа түгжээ ӨӨР хүнд шилжсэн — тэмдэглэхгүй (бусдын тэмдгийг арчихгүй) */
+  put(33, AJIL_STATUS.approved); reset();
+  otherImpl = async () => 'dorj';
+  r = await go(33);
+  assert.equal(r.ok, false); assert.match(r.error, /dorj/);
+  assert.equal(c.mark, 0, 'бусдын түгжээтэй байхад markApplied дуудав');
+  otherImpl = async () => { throw new Error('сүлжээ'); };
+  r = await go(33);
+  assert.equal(r.ok, false); assert.equal(c.mark, 0, 'түгжээ уншигдаагүй атлаа тэмдэглэв');
+  otherImpl = async () => null;
   console.log('✅ серверийн түгжээ — авч чадаагүй бол бичихгүй, бусад нь дуусгасан бол амжилт, унавал тайлна');
 }
 
@@ -335,7 +360,12 @@ if (globalThis.navigator?.locks?.request) {
   const a10 = body.indexOf('/* A.10 —');
   assert.ok(a10 > 0 && body.indexOf('undoWritten(', a10) > a10, 'A.10 илрүүлсэн алдаанд бичсэнээ буцаахгүй байна');
   assert.ok((body.match(/return await undoWritten\(/g) ?? []).length >= 2, 'A.10 ба A.10б хоёулаа бичсэнээ буцаах ёстой');
-  assert.ok(body.indexOf('loaded.rawFrameLen') > 0 && body.indexOf('loaded.rawFrameLen') < body.indexOf('applyAdds(pkg'), 'жаазын түүхий уртыг бичихээс ӨМНӨ шалгахгүй байна');
+  /* ⚠️ 2026-10-09: хоосон мөрөөр нөхөхгүй (дараагийн жааз «тасарсан» болно) — хоосон бус мөрийн тоогоор батална */
+  assert.ok(!body.includes('frame.push('), 'жаазыг хоосон мөрөөр нөхөж байна');
+  assert.ok(body.indexOf('frame.length < loaded.frameLen') > 0 && body.indexOf('frame.length < loaded.frameLen') < body.indexOf('applyAdds(pkg'), 'шинэ жааз ачаалснаас богино эсэхийг бичихээс ӨМНӨ шалгахгүй байна');
+  /* ⚠️ 2026-10-09: хуваарь/обьёмын хаалт A.8-ийн ДАРАА, `applyAdds`-ийн ЯГ ӨМНӨ дахин */
+  const iG = body.indexOf('await busyGate(pkgKey)');
+  assert.ok(iG > body.indexOf('sameFrame(loaded, now)') && iG < body.indexOf('applyAdds(pkg'), 'busyGate applyAdds-ийн өмнө дахин дуудагдахгүй байна');
   const D = readFileSync(new URL('./ajilBatlah.ts', import.meta.url), 'utf8');
   const dec = D.slice(D.indexOf('export async function decideAjil'), D.indexOf('export async function withdrawAjil'));
   assert.ok(dec.indexOf('claimAjil(') > 0 && dec.indexOf('claimAjil(') < dec.indexOf('arcgisPost('), 'decideAjil: түгжээ бичилтээс ӨМНӨ байх ёстой');
