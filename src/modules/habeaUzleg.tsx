@@ -29,7 +29,7 @@ import { fetchAttachment } from '@/lib/uzlegReport';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
-import { Section, Bars, Series, Loading, Empty, friendlyError } from '@/components/ui';
+import { Section, Bars, Donut, Series, Loading, Empty, friendlyError } from '@/components/ui';
 import { num, date, text, pct } from '@/lib/format';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
@@ -658,6 +658,38 @@ export function weekNcByPkg(rows: readonly ScoreRow[], cos: readonly string[]) {
     .sort((x, y) => y.value - x.value);
 }
 
+/**
+ * ОНООНЫ ӨНГӨ (2026-10-08, хэрэглэгчийн заасан босго):
+ *   70%-иас доош — улаан · 70–90% — улбар шар · 90% ба түүнээс дээш — ногоон.
+ * ⚠️ Оролт 0–100 (хувь), 0–1 БИШ. «Үзлэгийн оноо — компаниар» ба «Үзлэгийн оноо —
+ * багцаар» хоёр ИЖИЛ дүрмээр будагдана — нэг газраас.
+ */
+export const SCORE_GOOD = 90;
+export const SCORE_OK = 70;
+export const scoreColor = (p: number): string =>
+  p >= SCORE_GOOD ? '#5fd84a' : p >= SCORE_OK ? '#f2a33a' : '#e5484d';
+
+/**
+ * ӨМНӨХ ДОЛОО ХОНОГИЙН ОНОО — БАГЦААР (2026-10-08, хэрэглэгч: нүүрний «Үзлэгийн оноо —
+ * компаниар»-ын ОРОНД «Ажлын байрны үзлэг» шиг босоо багана). Долоо хоногийн дүрэм нь
+ * `loadWeekScores`-тэй НЭГ (KPI-тэй ижил), оноо = Σ авсан / Σ боломжит.
+ * ⚠️ Компанийн шүүлтийг ДАГАНА, багцын шүүлтийг ҮЛ ТООМСОРЛОНО (өөрийн хэмжээс).
+ * ⚠️ «Бусад» талбай (`pkgK` хоосон) ОРОХГҮЙ.
+ */
+export function weekScoreByPkg(rows: readonly ScoreRow[], cos: readonly string[]) {
+  const acc = new Map<string, { label: string; e: number; a: number }>();
+  for (const r of rows) {
+    if (!r.pkgK || r.a <= 0 || !passScore(r, [], cos)) continue;
+    const cur = acc.get(r.pkgK) ?? { label: r.pkgLabel, e: 0, a: 0 };
+    cur.e += r.e;
+    cur.a += r.a;
+    acc.set(r.pkgK, cur);
+  }
+  return [...acc.entries()]
+    .map(([key, v]) => ({ key, label: v.label, value: (v.e / v.a) * 100 }))
+    .sort((x, y) => y.value - x.value);
+}
+
 export function weekScoreByCo(rows: readonly ScoreRow[], pkgs: readonly string[]) {
   const acc = new Map<string, { e: number; a: number; label: string; sfx: string }>();
   for (const r of rows) {
@@ -671,7 +703,7 @@ export function weekScoreByCo(rows: readonly ScoreRow[], pkgs: readonly string[]
     .flatMap(([code, v]) => {
       if (v.a <= 0) return [];
       const p = (v.e / v.a) * 100;
-      return [{ key: v.sfx || `co:${code}`, label: v.label, value: p, display: pct(p, 0) }];
+      return [{ key: v.sfx || `co:${code}`, label: v.label, value: p, display: pct(p, 0), color: scoreColor(p) }];
     })
     .sort((x, y) => y.value - x.value);
 }
@@ -1318,6 +1350,60 @@ function byPkgNc(rows: UzlegRow[]) {
     .sort((a, b) => b.value - a.value);
 }
 
+/**
+ * ОНОО — БАГЦААР (2026-10-08, хэрэглэгчийн хүсэлт: жишээ зурагтай ижил БОСОО багана,
+ * өнгө нь `scoreColor`-ийн босгоор, 90%-ийн тасархай зураас).
+ * Оноо = Σ авсан / Σ боломжит (үзлэг бүрийн хувийн дундаж БИШ — жинтэй).
+ * ⚠️ Оноогүй маягт (гүйцэтгэгчийнх, `scE` null) — мөр үүсэхгүй тул карт зурагдахгүй.
+ * ⚠️ `pkgSt` — «Багц» шүүлтгүй олонлог: дарахад шүүлт тавигдана, бусад багц алга болохгүй.
+ */
+function byPkgScore(rows: UzlegRow[]) {
+  const m = new Map<string, { label: string; e: number; a: number }>();
+  for (const r of rows) {
+    if (!r.bagtsK || r.scE == null || r.scA == null || r.scA <= 0) continue;
+    const cur = m.get(r.bagtsK) ?? { label: habeaPkgLabel(r.site), e: 0, a: 0 };
+    cur.e += r.scE;
+    cur.a += r.scA;
+    m.set(r.bagtsK, cur);
+  }
+  return [...m.entries()]
+    .map(([key, v]) => ({ key, label: v.label, value: (v.e / v.a) * 100 }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/* ⚠️ 2026-10-08 (хэрэглэгч: «чартыг хөндлөн болго, хэвтээ»): БОСОО багана → ХЭВТЭЭ зурвас.
+   Мөр бүр: нэр · зурвас (90%-д тасархай тэмдэг) · хувь. Өнгө `scoreColor` хэвээр. */
+export function ScoreColumns({ items, selected, onSelect }: {
+  items: { key: string; label: string; value: number }[];
+  selected: string[];
+  onSelect?: (key: string) => void;
+}) {
+  return (
+    <div className={h.scoreCols}>
+      {items.map((it) => {
+        const on = selected.includes(it.key);
+        const dim = selected.length > 0 && !on;
+        return (
+          <button
+            key={it.key} type="button" aria-pressed={on}
+            className={h.scoreCol} style={{ opacity: dim ? 0.35 : 1 }}
+            onClick={onSelect ? () => onSelect(it.key) : undefined}
+            title={`${it.label}: ${pct(it.value, 0)}`}
+          >
+            <span className={h.scoreName}>{it.label}</span>
+            <span className={h.scoreTrack}>
+              <span className={h.scoreBar} style={{ width: `${Math.max(0, Math.min(100, it.value))}%`, ["--c" as string]: scoreColor(it.value) } as React.CSSProperties} />
+              {/* Зорилтот 90% — тасархай тэмдэг */}
+              <i className={h.scoreTarget} style={{ left: `${SCORE_GOOD}%` }} aria-hidden />
+            </span>
+            <b className={`${h.scoreVal} num`}>{pct(it.value, 0)}</b>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function UzlegLeft({
   st, url, sel, onPick, pkgSt, pkgSel, onPkg, photos = true,
 }: {
@@ -1355,6 +1441,7 @@ export function UzlegLeft({
     ? `${tr('{0} үзлэг', num(all.length))} · ${tr('Заалтын тоо мэдэгдэхгүй')}`
     : `${tr('{0} үзлэг · {1} заалт', num(all.length), num(total))}${noCnt ? ` ${tr('({0} үзлэг тоогүй)', num(noCnt))}` : ''}`;
   const byPkg = pkgSt?.state === 'ready' ? byPkgNc(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
+  const byScore = pkgSt?.state === 'ready' ? byPkgScore(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
 
   return (
     <>
@@ -1380,18 +1467,32 @@ export function UzlegLeft({
         * ⚠️ Дугуйн төвийн нийт заалтын тоо тэмдэглэлд шилжсэн — баганан чартад
         * «төв» гэж байхгүй ч тэр тоо хэрэгтэй хэвээр.
         */}
+      {/* ⚠️ 2026-10-08 (хэрэглэгч): «Үл нийцлийн зэрэг»-ийн ДЭЭР */}
+      {byScore.length > 0 && (
+        <Section title={tr('Ажлын байрны үзлэг')} note={tr('оноо — багцаар')} fill>
+          <ScoreColumns items={byScore} selected={pkgSel ?? []} onSelect={onPkg} />
+        </Section>
+      )}
       <Section
         title={tr('Үл нийцлийн зэрэг')}
         note={sevNote}
         tone="primary"
       >
+        {/* ⚠️ 2026-10-08 (хэрэглэгч): баганан → ДОНАТ, тайлбарт ХУВИАР (`display`-гүй үед
+            Donut хувийг өөрөө бодно). Заалтын тоо hover-т ба гарчгийн тэмдэглэлд хэвээр. */}
         {sev.length
-          ? <Bars items={sev} selected={sel.sev} onSelect={(k) => onPick('sev', k)} />
+          ? (
+            <Donut
+              items={sev.map(({ display: _d, ...x }) => x)}
+              stack size={120} center={num(total)} centerLabel={tr('заалт')}
+              selected={sel.sev} onSelect={(k) => onPick('sev', k)}
+            />
+          )
           : <Empty label={cntUnknown ? tr('Заалтын тоо мэдэгдэхгүй') : tr('Бүртгэл алга')} />}
       </Section>
       {pkgSt && (
         <Section
-          title={tr('Үл нийцэл — багцаар')}
+          title={tr('Нийт үл нийцэл — багцаар')}
           note={byPkg.length ? tr('ноцтой ба бага зэргийн үл нийцэл') : undefined}
         >
           {byPkg.length
@@ -1433,7 +1534,7 @@ export function UzlegRight({ st, sel, onPick }: { st: State } & Pick) {
   return (
     <>
       <Section
-        title={tr('Үзлэг — гүйцэтгэгчээр')}
+        title={tr('Нийт үзлэг — гүйцэтгэгчээр')}
         note={co.length ? tr('{0} компани', num(co.length)) : undefined}
       >
         {co.length

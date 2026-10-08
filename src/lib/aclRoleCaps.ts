@@ -50,7 +50,8 @@ export type DerivedSys = ScopedSys | 'qaqc';
  * ⚠️ `caps.CAPS` = гаргалгаатай ∪ энгийн, давхцалгүй (`aclParity.check.mjs` барина).
  * ⚠️ 2026-10-04: `hamaaral` (багцын хамаарал) — батлагчгүй, багцаар хуваарилагдахгүй.
  */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral'];
+/* ⚠️ 2026-10-08: `habeaData` (ХАБЭА-ийн бүртгэл оруулах) — батлагчгүй, багцаар хуваарилагдахгүй. */
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData'];
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

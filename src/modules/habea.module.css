@@ -209,34 +209,66 @@
 /* ══ KPI НҮД (`Habea.kpiTile`, 2026-09-17 шинэ зохиомж) ══
    Шошго дээр · том тоо · нимгэн харьцааны зурвас · тайлбар. Бүх мөр ГОЛЛОСОН.
    ⚠️ `habeaOv .tile`-ийг ашиглахгүй — тэр нь тоог ёроолд жижгээр наалдуулдаг. */
+/* ⚠️ 2026-10-08 ШИНЭ ЗОХИОМЖ (хэрэглэгчийн жишээ зураг): нүд бүр өөрийн өнгөтэй (`--t`,
+   `Habea.KPI_LOOK`) — ЗӨВХӨН дүрсний хайрцаг ба харьцааны зурвас өнгөтэй.
+   ⚠️ Эффект (уусгалт, гэрэлтэлт, ирмэгийн зурвас, бүдэг том дүрс) хэрэглэгчийн хүсэлтээр
+   ХАСАГДСАН — «эффектийг нь ав, icon нь болж байна». Дээр нь дүрс + шошго, ДООР нь тоо (`ktFoot` нь ёроолд
+   наалдана — урт ба богино шошготой нүднүүдийн тоо нэг шугамд). */
 .kt {
+  --t: var(--data);
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 5px;
+  gap: 4px; /* ⚠️ 2026-10-08 (хэрэглэгч: «хэмжээг нь шах»): 8 → 4, padding 10/11 → 7 */
   min-width: 0;
-  padding: 10px 12px 12px;
-  text-align: center;
+  padding: 6px 12px;
+  overflow: hidden;
+  text-align: left;
+  /* ⚠️ 2026-10-08: нүдний дэвсгэр ЭНГИЙН — эффектгүй (хэрэглэгч хоёр удаа хэлсэн). Уусгалт ба
+     дүрсүүд ч хасагдсан. */
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-/* ⚠️ ХОЁР МӨРИЙН ТОГТМОЛ өндөр, доод ирмэгтээ — нэг ба хоёр мөр шошготой
-   нүднүүдийн ТОО нэг шугам дээр гарна (`2.6em` = 10px × 1.3 × 2). */
-.ktLabel {
+/* ⚠️ 2026-10-08 (хэрэглэгч: «дээш нь жоохон шах»): дүрс ба шошго ЗЭРЭГЦЭЭ — дүрсний
+   мөр (26px + 6px) хэмнэгдэж тоо дээш гарна */
+.ktHead {
+  position: relative;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
+  /* ⚠️ 2026-10-08 (хэрэглэгч: «урт текстүүдийг голлуул»): шошго ГОЛЛОНО */
   justify-content: center;
-  min-height: 2.6em;
-  font-size: 10px;
-  font-weight: 600;
+  text-align: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* ⚠️ 2026-10-08 (хэрэглэгч: «жоохон дээшээ шах»): тоо ёроолд наалдахаа больж шошгын
+   ДООР шууд гарна. Шошго 3 мөрийн тогтмол өндөртэй — урт ба богино шошготой нүднүүдийн
+   тоо нэг шугамд хэвээр. */
+.ktLabel {
+  min-width: 0;
+  min-height: 2.6em; /* ⚠️ 2026-10-08 (хэрэглэгч: «зургийг дээш шах»): 3 → 2 мөр */
+  /* ⚠️ 2026-10-08 (хэрэглэгч): 10px → 9px */
+  font-size: 9px;
+  font-weight: 700;
   line-height: 1.3;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 /* Товчлол шошго (LTI) — бусдаас том */
 .ktLabelBig { font-size: 14px; letter-spacing: 0.06em; }
+/* ⚠️ 2026-10-08 (хэрэглэгч: «тоонуудыг жоохон жижиг болго, голлуул»): тоо, зурвас,
+   тайлбар ХЭВТЭЭ ГОЛЛОНО; шошго (дүрстэй мөр) зүүн тийш хэвээр. */
+.ktFoot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  min-width: 0;
+}
 .ktVal {
   display: flex;
   align-items: baseline;
@@ -245,12 +277,11 @@
   gap: 0 5px;
   min-width: 0;
 }
-/* ⚠️ `clamp` — 6 нүд нэг мөрөнд багтах нарийн өргөнд «2,065,424» хальж
-   тасрахгүй; өргөн дэлгэцэд 22px хүртэл томорно. */
+/* ⚠️ `clamp` — 6 нүд нэг мөрөнд багтах нарийн өргөнд «2,309,416» хальж тасрахгүй */
 .ktVal b {
-  font-size: clamp(16px, 1.45vw, 22px);
-  font-weight: 650;
-  line-height: 1.1;
+  font-size: clamp(15px, 1.15vw, 18px);
+  font-weight: 750;
+  line-height: 1.05;
   letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -262,24 +293,28 @@
   color: var(--ink-3);
   white-space: nowrap;
 }
-/* Харьцааны зурвас — өгөгдлийн өнгөөр, ард нь бүдэг зам (утга 0 ч ЗАМ харагдана) */
+/* Харьцааны зурвас — нүдний өнгөөр, ард нь бүдэг зам (утга 0 ч ЗАМ харагдана) */
 .ktBar {
-  width: min(132px, 80%);
-  height: 4px;
-  margin-top: 2px;
-  border-radius: 2px;
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
   overflow: hidden;
-  background: color-mix(in oklab, var(--data) 18%, transparent);
+  background: color-mix(in srgb, var(--t) 20%, transparent);
 }
 .ktBar span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--data);
+  background: var(--t);
 }
 .ktSub {
-  font-size: 10.5px;
-  line-height: 1.25;
+  font-size: 9.5px;
+  line-height: 1.3;
+  /* ⚠️ 2026-10-08: НЭГ мөр — нүдийг өндөрсгөхгүй, бүтэн бичиг title-д */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink-3);
 }
 /* ⚠️ 2026-10-01: хуучирсан тайлангийн анхааруулга («Сүүлийн тайлан: … · N хоног») */
@@ -371,6 +406,23 @@
    Мөр бүр: нэр · 100% зурвас · гадаадын хувь. Зурвасууд НЭГ баганад
    эгнэдэг тул компаниудыг нүдээр шууд харьцуулна (`Bars` нь хоёр
    утгыг нэг мөрөнд зурж чаддаггүй тул энд түүнийг хэрэглээгүй). */
+/* «Бусад үзүүлэлт» — ХАБ-ын бүртгэлүүд (2026-10-08): нэр · 7 хоног, доор нь долоо хоногийн харьцаа */
+.regs { display: flex; flex-direction: column; gap: 2px; }
+.regHead, .regRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  align-items: baseline;
+  gap: 8px;
+}
+.regHead { padding-bottom: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.regHead span:not(:first-child) { text-align: right; }
+.regRow { position: relative; padding: 8px 0 9px; font-size: 12.5px; }
+.regRow b { text-align: right; font-weight: 700; color: var(--ink); }
+.regLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+/* Доод зураас — саарал суурь, дээр нь нийтийн харьцааны өнгөт хэсэг */
+.regRow::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--line); }
+.regBar { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--data); z-index: 1; }
+
 /* «Компаниар — монгол, гадаад»-ын тайлбар (2026-10-07) */
 .mixLegend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); }
 .mixLegend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -1122,3 +1174,67 @@
   }
   .fin { grid-template-columns: 1fr; }
 }
+
+/* ══ ОНОО — БАГЦААР (2026-10-08, `habeaUzleg.ScoreColumns`) — ХЭВТЭЭ зурвас, 90% тасархай ══
+   ⚠️ Анх босоо багана байсан; хэрэглэгч «хөндлөн, хэвтээ» болгуулсан. Картыг дүүргэнэ (`Section fill`). */
+.scoreCols {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 2px 0;
+}
+.scoreCol {
+  display: grid;
+  grid-template-columns: minmax(56px, auto) minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.scoreCol:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
+.scoreName {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.scoreTrack {
+  position: relative;
+  height: 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink-3) 14%, transparent);
+}
+/* ⚠️ 2026-10-08 (хэрэглэгч): дүүргэлт 50%, хүрээ нь бүтэн өнгө */
+.scoreBar {
+  display: block;
+  box-sizing: border-box;
+  height: 100%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--c) 50%, transparent);
+  border: 1.5px solid var(--c);
+  transition: width 0.25s;
+}
+.scoreTarget {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 0;
+  border-left: 1.5px dashed var(--ink-2);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.scoreVal {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+@media (prefers-reduced-motion: reduce) { .scoreBar { transition: none; } }

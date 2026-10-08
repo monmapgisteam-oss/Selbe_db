@@ -697,7 +697,7 @@ const paintValue = (v: string): string | number => (
 const zoneTypeRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint?.field ?? 'Angilal',
-  defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
+  defaultSymbol: symbolOf(d, d.paint?.defaultHue ?? ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint?.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint?.values ?? {}).map(([value, hue]) => ({
     /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`) — эс бөгөөс «1», «2» */
@@ -715,7 +715,7 @@ const zoneTypeRenderer = (d: LayerDef) => ({
 const paintRenderer = (d: LayerDef) => ({
   type: 'unique-value',
   field: d.paint!.field,
-  defaultSymbol: symbolOf(d, ZONE_TYPE_EMPTY_HUE),
+  defaultSymbol: symbolOf(d, d.paint!.defaultHue ?? ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint!.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint!.values).map(([value, hue]) => ({
     /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`) — эс бөгөөс «1», «2» */

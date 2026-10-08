@@ -249,7 +249,7 @@ export const LAYERS: LayerDef[] = [
     id: "habea:buffer",
     n: 51,
     url: `${HJ}/${encodeURIComponent('Цамхагт_кран')}/FeatureServer/51`,
-    get title() { return tr('Аюулгүйн бүс'); },
+    get title() { return tr('Цамхагт краны аюултай бүс'); }, // ⚠️ 2026-10-08 (хэрэглэгч): «Аюулгүйн бүс» биш — краны хүрээ нь АЮУЛТАЙ бүс
     topic: "monitor",
     geom: "area",
     hue: "#dc2626",
@@ -257,6 +257,16 @@ export const LAYERS: LayerDef[] = [
     width: 1,
     noZone: true,
     oid: "OBJECTID",
+    /* ⚠️ 2026-10-08 (хэрэглэгч): «Буусан» краны бүс САРААЛ — цэг [50]-тай ЯГ ижил палитр.
+       Бүс [51] нь цэгийн буфер (`ORIG_FID`) тул `Tuluv` талбарыг өвлөсөн (попап нь уншдаг). */
+    paint: {
+      field: "Tuluv",
+      values: { "Одоо байгаа": "#dc2626", "Шинээр нэмэгдсэн": "#dc2626", "Буусан": "#9ca3af" },
+      /* ⚠️ ЗӨВХӨН «Буусан» саарал — бусад/хоосон төлөв улаан хэвээр */
+      defaultHue: "#dc2626",
+      force: true,
+      get emptyLabel() { return tr('Тодорхойгүй'); },
+    },
   },
   {
     id: "habea:crane",
@@ -267,9 +277,19 @@ export const LAYERS: LayerDef[] = [
     geom: "point",
     hue: "#dc2626",
     marker: "circle",
-    size: 11,
+    size: 7, // ⚠️ 2026-10-08 (хэрэглэгч): 11 → 7, жижиг цэг
     noZone: true,
     oid: "OBJECTID",
+    /* ⚠️ 2026-10-08 (хэрэглэгч): «Буусан» кран зураг ба чарт дээр САРААЛ (`Habea.CRANE_HUE`-тэй
+       ижил). `force` — webmap-ын снапшот нэг өнгөөр зурдаг тул давамгайлна. */
+    paint: {
+      field: "Tuluv",
+      values: { "Одоо байгаа": "#dc2626", "Шинээр нэмэгдсэн": "#dc2626", "Буусан": "#9ca3af" },
+      /* ⚠️ ЗӨВХӨН «Буусан» саарал — бусад/хоосон төлөв улаан хэвээр */
+      defaultHue: "#dc2626",
+      force: true,
+      get emptyLabel() { return tr('Тодорхойгүй'); },
+    },
   },
   /* Осол зөрчлийн бүртгэл — Survey123 цэгүүд (болсон газар нь) */
   {
@@ -281,7 +301,7 @@ export const LAYERS: LayerDef[] = [
     geom: "point",
     hue: "#f59e0b",
     marker: "diamond",
-    size: 12,
+    size: 7, // ⚠️ 2026-10-08 (хэрэглэгч): ХАБЭА-ийн бүх цэг ИЖИЛ 7
     noZone: true,
     oid: "objectid",
     get note() { return tr('Survey123 мобайл аппаас'); },
@@ -301,7 +321,7 @@ export const LAYERS: LayerDef[] = [
     geom: "point",
     hue: "#16a34a",
     marker: "square",
-    size: 10,
+    size: 7, // ⚠️ 2026-10-08: ХАБЭА-ийн бүх цэг ИЖИЛ 7
     noZone: true,
     oid: "objectid",
     auth: true,
@@ -316,7 +336,7 @@ export const LAYERS: LayerDef[] = [
     geom: "point",
     hue: "#7c3aed",
     marker: "square",
-    size: 10,
+    size: 7, // ⚠️ 2026-10-08: ХАБЭА-ийн бүх цэг ИЖИЛ 7
     noZone: true,
     oid: "objectid",
     auth: true,
@@ -333,7 +353,7 @@ export const LAYERS: LayerDef[] = [
     geom: "point",
     hue: "#0284c7",
     marker: "square",
-    size: 10,
+    size: 7, // ⚠️ 2026-10-08: ХАБЭА-ийн бүх цэг ИЖИЛ 7
     noZone: true,
     oid: "objectid",
     auth: true,
