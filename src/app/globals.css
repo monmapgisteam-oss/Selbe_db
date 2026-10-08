@@ -489,7 +489,9 @@ ul, ol { list-style: none; }
    `.wrap{flex:1}` хэвээр дүүргэнэ.
    ⚠️ 2026-10-09: `map.module.css`-ээс ЭНД шилжив — модуль дотор `:global(.mapFsHost)` ганцаараа
    «not pure» тул `next build` унадаг байв (dev барьдаггүй). */
-.mapFsHost {
+/* ⚠️ 2026-10-09: класс 3 давтсан (0,3,0) — globals.css модулиудаас ӨМНӨ импортлогддог тул эзэн хашлагын
+   модулийн `.map`/`.mapBox{position:relative}` (0,1,0) дараа ирж fixed-ийг дардаг байв (08fbd55-ийн регресс). */
+.mapFsHost.mapFsHost.mapFsHost {
   position: fixed;
   inset: 0;
   z-index: 2500;
