@@ -50,9 +50,13 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        ⚠️ Багц бүр 1–2 хуудастай (9F + 12F) бөгөөд гэрээ нь НЭГ. */
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
-    /* ⚠️ 2026-10-09 (F2): БЛОКГҮЙ багц (5.x · 6.x · 10) — обьёмын багана огт байхгүй тул IPC-д бичих тоо
-       байхгүй нь ХЭВИЙН (`negtgelWrite.registerApproved`-ийн `blockless`-тэй ижил). Урьд нь доорх
-       `missing`-ээр `ok:false` болж илгээлт «бүртгэл хүлээгдэж буй» хэвээр мөнхөд дахин оролддог байв. */
+    /* ⚠️ 2026-10-09 (F2): БЛОКГҮЙ багц (5.x · 6.x · 10) — IPC-д бичих тоо байхгүй нь ХЭВИЙН. Урьд нь доорх
+       `missing`-ээр `ok:false` болж илгээлт «бүртгэл хүлээгдэж буй» хэвээр мөнхөд дахин оролддог байв.
+       ⚠️ 2026-10-09 (дахин): блокгүй багц одоо `obyem_sum`-аар бөглөгддөг (`fillSchema`) ч энд SKIP
+       ХЭВЭЭР — `loadSchema(pkg)` (опт-ингүй) нь блокийн обьёмгүй тул доорх `snapshotOf` (блокийн
+       обьём × нэгж өртөг) хоосон; IPC-ийн AUTO мөр нь барилгын гэрээний (`autoContractFor`) загвартай
+       бөгөөд дэд бүтцийн багцын гэрээ/төлбөрийн хуваарь IPC хүснэгтэд байгаа эсэх нь
+       баталгаажаагүй. Буруу гэрээнд мөнгөн дүн бичихээс алгасах нь аюулгүй (хэрэглэгч шийднэ). */
     if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };
 
     let obyem: number | null = null;

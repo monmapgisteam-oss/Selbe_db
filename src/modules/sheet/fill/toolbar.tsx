@@ -524,7 +524,11 @@ export function PkgPctBadge({ pkgPct, pkg, dirtyCount, otherPct }: {
               *    тайлбартай болно.
               */}
             <span className={st.pkgPctLab}>
-              {tr('Бодит гүйцэтгэл · {0} · {1} блок', `${pkg.floors}F`, num(pkgPct.blocks))}
+              {/* ⚠️ 2026-10-09: блокгүй багцад (`floors: null`, синтетик НЭГ блок) «nullF · 1 блок» утгагүй —
+                  «Б» мөрийн гүйцэтгэл л харагдана */}
+              {pkg.floors == null
+                ? tr('Бодит гүйцэтгэл')
+                : tr('Бодит гүйцэтгэл · {0} · {1} блок', `${pkg.floors}F`, num(pkgPct.blocks))}
             </span>
             <b className={st.pkgPctNow} title={tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь дундаж. «Багцын гүйцэтгэл» дэлгэц дээрх багцын тоо нь бүх хувилбарын блокуудыг нийлүүлдэг тул арай өөр байж болно.', pkg.label)}>
               {pct(pkgPct.saved, 2)}

@@ -14,7 +14,7 @@ import {
   type SheetRow,
 } from "./bagtsSheet";
 import {
-  loadSchema,
+  fillSchema,
   pkgFloors,
   PKG_GROUPS,
   PKGS,
@@ -819,7 +819,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setPvErr("");
     setPvNote("");
     setEdit(null);
-    loadSchema(pkg)
+    /* ⚠️ 2026-10-09: `fillSchema` — блокгүй 8 багцад (5.x · 6.x · 10) синтетик НЭГ блок (обьём =
+       `obyem_sum`, гүйцэтгэл = `Ажил_гүйцэтгэл`) тул «Бөглөх» дарахад обьёмын нүд гарна. Хяналт/архив
+       (`hyanaltDetail` · `hyanaltStore`) ч ЯГ энэ бүдүүвчээр — `${oid}:${b}` түлхүүр нэг. Блоктой
+       багцад анхдагч `loadSchema`-тэй ижил. */
+    fillSchema(pkg)
       .then(async (schema) => {
         const nb = schema.bld.length;
         /* ⚠️ `view.subOid` байвал `view.day`-г ҮЛ ТООНО (2026-09-04): илгээлт
@@ -1318,8 +1322,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const calc = useMemo(
     /* ⚠️ `"inc"` (2026-09-25): `pending` нь НЭМЭЛТ — нүдэнд суурь + нэмэлт харагдана */
-    () => computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, "inc"),
-    [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct],
+    /* ⚠️ 2026-10-09: `synthetic` — блокгүй багцын J = L (хэмжилтгүй бол null), `computeAll`-ийн ⚠️ */
+    () => computeAll(rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, "inc", !!sc?.synthetic),
+    [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, sc],
   );
 
   const { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis } = useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan });

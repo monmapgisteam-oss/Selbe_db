@@ -780,10 +780,11 @@ async function archiveSubmission(
       : undefined;
     if (aOid > 0) {
       try {
-        const [{ PKGS, loadSchema }, { agsFetch }, { msToDay: m2d, normDayMs: ndm }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags'), import('@/modules/sheet/bagtsSheet')]);
+        const [{ PKGS, fillSchema }, { agsFetch }, { msToDay: m2d, normDayMs: ndm }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('@/modules/sheet/ags'), import('@/modules/sheet/bagtsSheet')]);
         const pkg = PKGS.find((p) => p.key === staged.payload.pkgKey);
         if (pkg) {
-          const sc = await loadSchema(pkg);
+          /* ⚠️ 2026-10-09: бөглөх урсгалын бүдүүвч (`fillSchema`) — архивлалттай нэг */
+          const sc = await fillSchema(pkg);
           if (sc.f.fillDate) {
             const j = await agsFetch(`${pkg.url}/query`, { where: `${sc.f.oid} = ${aOid}`, outFields: sc.f.fillDate, returnGeometry: 'false' });
             const v = j.features?.[0]?.attributes?.[sc.f.fillDate];
@@ -833,7 +834,7 @@ async function archiveSubmission(
   /* ⚠️ `let` (2026-10-04 дахин аудит #1): хуучин (`rowOcc`-гүй) payload-ын давтамжийг суурь жаазаас
      нөхсөн хувилбараар доор СОЛИГДОНО (`withFrameOcc`) — агуулга (нүд/огноо) хөндөгдөхгүй. */
   let pl = staged.payload;
-  const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
+  const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey) };
   /*
@@ -855,7 +856,10 @@ async function archiveSubmission(
     import('./ajilApply'),
     import('@/modules/sheet/ags'),
   ]);
-  const sc = await loadSchema(pkg);
+  /* ⚠️ 2026-10-09: `fillSchema` — бөглөгч (FillNew) ба хянагчийн (hyanaltDetail) бүдүүвчтэй НЭГ. Блокгүй
+     багцад синтетик НЭГ блок (обьём `obyem_sum`, гүйцэтгэл `Ажил_гүйцэтгэл`) — анхдагч бүдүүвчээр
+     архивлавал илгээлтийн `${oid}:0` нүд `unmoved` болж батлалт зогсоно. */
+  const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   /*

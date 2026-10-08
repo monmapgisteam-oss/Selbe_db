@@ -6728,7 +6728,11 @@ const en: Record<string, string> = {
   "{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)": "{0} photos will be downloaded — this is slow and may exhaust browser memory. Continue? (faster with «Without photos»)",
   "{0} зураг HEIC — хөрвүүлэх боломжгүй": "{0} photos are HEIC — cannot be converted",
   "Зураггүй": "Without photos",
-  "Серверээс хариу ирсэнгүй — үр дүн тодорхойгүй: зөвшөөрөл одоогоор устгагдаагүй харагдаж байна. Хуудсыг дахин ачаалж шалгаад шаардлагатай бол дахин устгана уу.": "No response from server — result unknown: the permit currently appears not deleted. Reload the page to check and delete again if needed."
+  "Серверээс хариу ирсэнгүй — үр дүн тодорхойгүй: зөвшөөрөл одоогоор устгагдаагүй харагдаж байна. Хуудсыг дахин ачаалж шалгаад шаардлагатай бол дахин устгана уу.": "No response from server — result unknown: the permit currently appears not deleted. Reload the page to check and delete again if needed.",
+  "Обьём (энэ удаа)": "Volume (this time)",
+  "Төлөвлөгөөт хуваарь": "Planned schedule",
+  "Энэ ажлын мөрд «Обьём» бөглөгдөөгүй (эсвэл 0) тул гүйцэтгэлийн хувь бодогдохгүй — бөглөх боломжгүй. Эх хүснэгтэд мөрийн Обьёмыг оруулна уу.": "This work row has no «Volume» (or it is 0), so progress cannot be calculated and the cell cannot be filled. Enter the row's Volume in the source sheet.",
+  "Өмнөх бөглөлтөөс хойш хийсэн обьёмоо бичнэ — «Обьёмын нийлбэр»-т нэмэгдэж, гүйцэтгэл = нийлбэр ÷ Обьём.": "Enter the volume done since the previous fill — it is added to «Volume total», and progress = total ÷ Volume."
 };
 
 export default en;

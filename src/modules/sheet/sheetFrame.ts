@@ -787,7 +787,8 @@ export function buildFrame(
     throw new Error(
       tr('«buglusun_ognoo» багана энэ үйлчилгээнд алга — архив үүсгэх боломжгүй тул нийтлэлийг зогсоов (AGOL дээр багана нэмнэ үү).'),
     );
-  const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct);
+  /* ⚠️ 2026-10-09: блокгүй багцын синтетик блокт J = L (хэмжилтгүй бол null) — `computeAll`-ийн `synthetic` */
+  const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct, "abs", sc.synthetic);
 
   /*
    * АЖЛЫН КОД (`Des_dugaar`) — ЗӨВХӨН ДУТУУ мөрд олгоно.
@@ -864,7 +865,10 @@ export function buildFrame(
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
     if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
-    if (sc.f.obyemSum) a[sc.f.obyemSum] = c[i].obyemSum;
+    /* ⚠️ 2026-10-09: блокгүй багцын бөглөх бүдүүвчид (`fillSchema`) синтетик блокийн обьём нь
+       ӨӨРӨӨ `obyem_sum` — дээрх `sc.obyem[b]` бичилт НЭГ эх сурвалж; энд ДАВХАР бичихгүй
+       (n = 1 тул утга ижил ч хоёр замаас нэг талбар руу бичих нь зөрөх эрсдэл). */
+    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = c[i].obyemSum;
     /*
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      *
@@ -901,6 +905,11 @@ export function buildFrame(
      *    null — ТЭР ЧИГЭЭР НЬ БИЧНЭ (2026-09-17-ны аудит). Амьд өгөгдөлд эдгээр
      *    талбар импортоос 0 гэж дүүрсэн байдаг; 0-г хадгалбал `blockProgress`/
      *    тайлан «0% хэмжигдсэн» гэж уншина (null ≠ 0). Хэмжээгүй = null.
+     * ⚠️ 2026-10-09: бөглөх урсгал (`fillSchema`) блокгүй багцад синтетик НЭГ блок
+     *    (n = 1) өгдөг болсон тул I = M, J = clamp(L), K = J/I, E = C×J нь Excel-ийн
+     *    томъёогоор БОДОГДОЖ бичигдэнэ; хэмжигдээгүй мөр/бүлэгт null хэвээр (дээрх дүрэм).
+     *    n = 0 зам (бүдүүвч синтетикгүй) ЗӨВХӨН огноо/гүйцэтгэлийн багана огт байхгүй
+     *    үйлчилгээнд л үлдэнэ.
      */
     /* ⚠️ 2026-10-08: `asOf` тохируулаагүй хуудсанд `I`/`K` нь `computeAll`-аас `null` ирнэ — 0 гэж
        архивлахгүй (`hyanaltStore`-ийн «төлөвлөгөөт хувь null болж бичигдэнэ» ⚠️). */

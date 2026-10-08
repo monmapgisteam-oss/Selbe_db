@@ -80,6 +80,12 @@ export const PKGS: Pkg[] = [
    *    болж ордог — `Schema.synthetic`-ийн тайлбарыг үз. Бусад бүх уншигч
    *    дээрх хоосон массивтай хэвээр.
    *
+   * ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛ БӨГЛӨХ урсгал (FillNew · хяналт · архив · ажил нэмэх ·
+   *    Улсын комисс) ч `fillSchema(pkg)` (`{ fill: true }`)-ээр синтетик НЭГ блок
+   *    авдаг болов — обьём нь `obyem_sum`, гүйцэтгэл нь `Ажил_гүйцэтгэл`
+   *    (`ResolveOpts.fill`-ийн ⚠️). Газрын зураг/дашбоард (`sheetRows` ·
+   *    `blockProgress`) нь опт-ингүй — блокгүй хэвээр.
+   *
    * ⚠️ `TREES`-д 2026-09-17-ноос ТҮЛХҮҮРТЭЙ (амьд өгөгдлөөс гаргасан мод —
    *    тайлбар нь `bagts.trees.ts`-д). Урьд нь түлхүүргүй тул `expect = 0`,
    *    бүх мөр гүн 0 болж, анхны нийтлэлд `gun=0` бүрмөсөн бичигдэх байв.
@@ -181,16 +187,23 @@ export type Schema = {
    *    МӨРИЙН багана бий ч `F<цуваа>_<блок>_` хэв алга тул «Хуваарь» модульд
    *    огноо огт харагддаггүй байв.
    * ⚠️ ЗӨВХӨН ОПТ-ИН: `loadSchema(pkg, { synthetic: true })` гэж ЗААСАН үед л
-   *    үүснэ (одоогоор зөвхөн `Huvaari.tsx`). Анхдагч `loadSchema(pkg)` нь
-   *    урьдын адил ХООСОН блокийн массив буцаана — FillNew (блокийн багана),
-   *    sheetRows (`mon:building` join · blockProgress · negtgel), planProgress
-   *    (блок-жинтэй нэгтгэл), hyanaltDetail/hyanaltStore (буулгах/архивлах),
-   *    execTriage, ipcAutoWrite, negtgelWrite, qaqc — эдгээрт синтетик блок
-   *    ОРОХГҮЙ, хуучин зан үйл хэвээр.
+   *    үүснэ (`Huvaari.tsx` · `tuhSchedule`). Анхдагч `loadSchema(pkg)` нь
+   *    урьдын адил ХООСОН блокийн массив буцаана — sheetRows (`mon:building`
+   *    join · blockProgress), planProgress (блок-жинтэй нэгтгэл), execTriage,
+   *    ipcAutoWrite, negtgelWrite, qaqc — эдгээрт синтетик блок ОРОХГҮЙ.
+   * ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛ БӨГЛӨХ урсгал (FillNew · hyanaltDetail ·
+   *    hyanaltStore · ajilApply · ulsiinKomiss) нь `fillSchema(pkg)` —
+   *    `{ fill: true }` (`ResolveOpts.fill`-ийн ⚠️): синтетик блок + обьём
+   *    `obyem_sum`. Урьд нь эдгээр нь хоосон блоктой тул блокгүй 8 багцад
+   *    «Бөглөх» дарахад засах багана ОГТ байхгүй байв (хэрэглэгчийн гомдол).
+   *    Илгээлтийн түлхүүр `${oid}:${b}` (b = 0) тул бөглөх · хянах · архивлах
+   *    ГУРВУУЛАА ЗААВАЛ НЭГ бүдүүвчтэй — нэг нь хоосон блоктой бол
+   *    `overlaySubmission` нүдийг `unmoved` гэж хаяна.
    * ⚠️ `bld` = `SYNTHETIC_BLOCK` (орчуулагддаггүй тогтмол) — сарын задаргааны
    *    хүснэгтэд блокийн түлхүүр болж бичигдэж болох тул тогтвортой байх ёстой.
-   * ⚠️ `obyem` = `[null]` — блокийн обьёмын багана байхгүй; мөрийн
-   *    `Инженерийн_төлөвлөсөн_обьём` (`f.plannedVol`) хөндөгдөхгүй.
+   * ⚠️ `obyem` = `[null]` (зөвхөн `synthetic`) — «Хуваарь» обьём бичдэггүй;
+   *    мөрийн `Инженерийн_төлөвлөсөн_обьём` (`f.plannedVol`) хөндөгдөхгүй.
+   *    `fill` үед `[obyem_sum]` (доорх ⚠️).
    */
   synthetic: boolean;
 
@@ -310,6 +323,32 @@ export const SYNTHETIC_BLOCK = 'Ажил';
 export type ResolveOpts = {
   /** Блок олдоогүй БӨГӨӨД мөрийн огнооны багана байвал синтетик нэг блок үүсгэх */
   synthetic?: boolean;
+  /**
+   * ГҮЙЦЭТГЭЛ БӨГЛӨХ бүдүүвч (2026-10-09) — `synthetic`-ийг АГУУЛНА.
+   *
+   * ⚠️ 2026-10-09: блокгүй 8 багцын (5.x · 6.x · 10) синтетик блок нь барилгын
+   *    блоктой ЯГ ИЖИЛ бөглөгдөнө (нэмэлтийн горим, «ӨМНӨХ БӨГЛӨЛТӨӨС ХОЙШ
+   *    хийсэн обьём»):
+   *      · `obyem[0]` = `obyem_sum` — мөрийн ХУРИМТЛАГДСАН обьём (Excel-ийн
+   *        «Обьёмын нийлбэр»). Блок нэг тул `computeAll`-ийн `obyemSum` =
+   *        `obyem[0]` — НЭГ эх сурвалж; `buildFrame` `f.obyemSum`-ийг ДАВХАР
+   *        бичихгүй (`sc.obyem`-д орсон бол алгасна).
+   *      · `act[0]` = `Ажил_гүйцэтгэл` (Excel L — оролтын багана) =
+   *        `obyem_sum ÷ Обьём` (`incCell` · `computeAll` — барилгын дүрэм);
+   *        архивт `actAgg` (≤ 1) бичигдэнэ. Бүлэгт `SUMPRODUCT(C, L)`.
+   *      · `plan[0]` = `Төлөвлөгөөт_гүйцэтгэл1` (Excel M — хуваарийн огноогоор
+   *        `IF(P<=N,0,IF(P>=O,1,(P−N)/(O−N)))`) — `f.plan` (I = M) ба `f.act`
+   *        (J = L), `f.ratio` (K = J/I) нь `computeAll`-ийн I/J/K (n = 1 тул
+   *        блокийн «дундаж» нь яг тэр блок). Багана байхгүй бол хуучин
+   *        `Төлөвлөгөөт_гүйцэтгэл` руу унана (n = 1 тул I-тэй ижил тоо).
+   *    Огнооны багана огт байхгүй ч `Ажил_гүйцэтгэл` эсвэл `obyem_sum` бий бол
+   *    блок үүснэ — бөглөх газар нь л хэрэгтэй.
+   * ⚠️ «Хуваарь» (`synthetic` ганцаараа) ӨӨРЧЛӨГДӨӨГҮЙ: `obyem = [null]`,
+   *    `plan` = `Төлөвлөгөөт_гүйцэтгэл`. Кэшийн түлхүүр тусдаа (`loadSchema`).
+   * ⚠️ Блоктой 10 багцад НӨЛӨӨГҮЙ — `bld.length > 0` үед синтетик хэзээ ч
+   *    үүсэхгүй тул `fill` ба анхдагч бүдүүвч ЯГ ижил.
+   */
+  fill?: boolean;
 };
 
 /** Харьцуулахад бэлдэх: жижиг үсэг, доогуур зураас/зай хасах */
@@ -457,9 +496,12 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
    *    тусгай зам хэрэггүй).
    * ⚠️ Огнооны багана НЭГ Ч байхгүй бол синтетик үүсгэхгүй — хоосон блок нь
    *    «Хуваарь»-д огноогүй мөр л үүсгэж, хадгалахад бичих газаргүй.
+   *    2026-10-09: `fill` (бөглөх) үед `Ажил_гүйцэтгэл`/`obyem_sum` байвал ч
+   *    үүснэ — тэнд бичих газар нь гүйцэтгэлийн багана (`ResolveOpts.fill`).
    * ⚠️ Блоктой 10 багцад ХЭЗЭЭ Ч орохгүй (`bld.length === 0` нөхцөл). */
   let synthetic = false;
-  if (opts.synthetic && bld.length === 0) {
+  /* ⚠️ 2026-10-09: `fill` нь `synthetic`-ийг агуулна (`ResolveOpts.fill`-ийн ⚠️) */
+  if ((opts.synthetic || opts.fill) && bld.length === 0) {
     const exact = (re: RegExp): string | null => names.find((n) => re.test(n)) ?? null;
     /* ⚠️ Зорилтот нэр ЭХЛЭЭД, fuzzy дараа нь (2026-09-23, `exactCI`). */
     const rStart = exactCI('Төлөвлөгөөт_хуваарь__Эхлэх') ?? find((n) => /^төлөвлөгөөтхуваарь.*эхлэх$/.test(n));
@@ -468,14 +510,21 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
     const rGE = exact(/^geree_duusah$/i);
     const rAS = exact(/^bodit_ehleh$/i);
     const rAE = exact(/^bodit_duusah$/i);
-    if (rStart || rEnd || rGS || rGE || rAS || rAE) {
+    const rAct = exactCI('Ажил_гүйцэтгэл') ?? find((n) => /^ажилгүйцэтгэл/.test(n));
+    /* ⚠️ 2026-10-09: бөглөх бүдүүвчид обьём = мөрийн `obyem_sum` (дээрх `ResolveOpts.fill`) */
+    const rOb = opts.fill ? exactCI('obyem_sum') : null;
+    /* ⚠️ 2026-10-09: `fill` үед огноогүй ч гүйцэтгэл/обьёмын багана байвал блок үүснэ */
+    if (rStart || rEnd || rGS || rGE || rAS || rAE || (opts.fill && (rAct || rOb))) {
       synthetic = true;
       bld.push(SYNTHETIC_BLOCK);
       /* Гүйцэтгэл/төлөвлөгөө — мөрийн багана; байхгүй бол доорх `f`-ийн
          нөөц нэр (уншихад `null`, Huvaari эдгээрийг БИЧДЭГГҮЙ). */
-      act.push(exactCI('Ажил_гүйцэтгэл') ?? find((n) => /^ажилгүйцэтгэл/.test(n)) ?? 'Ажил_гүйцэтгэл');
-      plan.push(exactCI('Төлөвлөгөөт_гүйцэтгэл') ?? find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n)) ?? 'Төлөвлөгөөт_гүйцэтгэл');
-      obyem.push(null);
+      act.push(rAct ?? 'Ажил_гүйцэтгэл');
+      /* ⚠️ 2026-10-09: `fill` үед Excel M (`Төлөвлөгөөт_гүйцэтгэл1`) — `f.plan` (I)-ээс ТУСДАА
+         багана; байхгүй бол хуучин I руу унана (n = 1 тул тоо нь ижил). «Хуваарь» хэвээр I. */
+      const rPlan = exactCI('Төлөвлөгөөт_гүйцэтгэл') ?? find((n) => /^төлөвлөгөөт(гүйцэтгэл|гүйцтэгэл)/.test(n));
+      plan.push((opts.fill ? exactCI('Төлөвлөгөөт_гүйцэтгэл1') : null) ?? rPlan ?? 'Төлөвлөгөөт_гүйцэтгэл');
+      obyem.push(rOb);
       start.push(rStart);
       end.push(rEnd);
       gStart.push(rGS);
@@ -572,9 +621,11 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
 /* ⚠️ Кэшийн түлхүүр `opts`-оор ялгаатай (2026-09-23): синтетик ба энгийн
    бүдүүвч хоёр өөр обьект — нэг түлхүүрт хийвэл Huvaari нээсний дараа FillNew
    синтетик блоктой бүдүүвч аваад блокийн багана зурна. */
+/* ⚠️ 2026-10-09: `fill` бүдүүвч нь ГУРАВ ДАХЬ обьект (`|fill`) — синтетиктэй ижил шалтгаан:
+   «Хуваарь»-ийн `obyem = [null]` бүдүүвч FillNew-д орвол бөглөх нүд түгжигдэнэ. */
 const cache = new Map<string, Promise<Schema>>();
 export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
-  const ck = opts.synthetic ? `${pkg.key}|synthetic` : pkg.key;
+  const ck = opts.fill ? `${pkg.key}|fill` : opts.synthetic ? `${pkg.key}|synthetic` : pkg.key;
   const hit = cache.get(ck);
   if (hit) return hit;
   const p = fieldsOf(pkg)
@@ -586,6 +637,16 @@ export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
   cache.set(ck, p);
   return p;
 }
+
+/**
+ * ГҮЙЦЭТГЭЛ БӨГЛӨХ урсгалын бүдүүвч (2026-10-09) — `loadSchema(pkg, { fill: true })`.
+ *
+ * ⚠️ БӨГЛӨХ · ХЯНАХ · АРХИВЛАХ бүх зам ЭНЭ функцээр (FillNew · hyanaltDetail ·
+ *    hyanaltStore · ajilApply · ulsiinKomiss) — илгээлтийн `${oid}:${b}` түлхүүр
+ *    ба архивын жааз нэг бүдүүвчээр бүтэх ёстой (`Schema.synthetic`-ийн ⚠️).
+ *    Блоктой багцад анхдагч `loadSchema(pkg)`-тэй ЯГ ижил.
+ */
+export const fillSchema = (pkg: Pkg): Promise<Schema> => loadSchema(pkg, { fill: true });
 
 /**
  * Үйлчилгээний ТҮҮХИЙ талбарын жагсаалт — багц тутамд НЭГ мета хүсэлт (2026-10-04, гүйцэтгэлийн аудит).

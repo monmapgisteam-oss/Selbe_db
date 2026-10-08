@@ -8,7 +8,7 @@ import type { Schema } from "../bagts.pkg";
 import { fmtInc, incCell, parseInc, type SheetRow } from "../bagtsSheet";
 import { isAmbiguousComma, normCell, parseGrid, planPaste } from "../paste";
 import { t as tr } from "@/lib/i18nCore";
-import { RO, cellKey, pc, qty, qtyRaw, type EditCell, type EditCol } from "./util";
+import { RO, cellKey, pc, qty, qtyRaw, synNoVol, type EditCell, type EditCol } from "./util";
 import { remainOf } from "./remain";
 
 /**
@@ -110,8 +110,10 @@ export function useCellEdit(p: {
    */
   /* ⚠️ Оролт нь `{ group }`-тай ямар ч мөр: нооргийн сэргээлт серверийн мөр ба
      хараахан нийтлэгдээгүй НЭМСЭН мөр хоёуланг нь нэг индексээр шалгадаг. */
-  const volMode = (r: { group: boolean }, b: number) =>
-    !r.group && (fillMode === "pct" || !!sc?.obyem[b]);
+  /* ⚠️ 2026-10-09: блокгүй багцын (синтетик блок) Обьёмгүй мөр түгжээтэй — `synNoVol`-ийн ⚠️
+     (барилгын блокт нөлөөгүй). `vol` нь сонголттой: дуудагч бүр `SheetRow` өгдөг. */
+  const volMode = (r: { group: boolean; vol?: number | null }, b: number) =>
+    !r.group && (fillMode === "pct" || !!sc?.obyem[b]) && !synNoVol(sc, r);
 
   /**
    * ХУВЬ ГОРИМД БИЧИХ БОЛОМЖТОЙ ЮУ.
@@ -496,7 +498,8 @@ export function useCellEdit(p: {
         w === 'neg'
           ? tr('сөрөг утга — буулгалтаар бууруулахгүй (нүд тус бүрээр залруулна)')
           : w === 'noWrite'
-            ? (rowsAll[row]?.group ? RO.groupAct : RO.noObyemField)
+            /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөрийн шалтгаан (`synNoVol`) */
+            ? (rowsAll[row]?.group ? RO.groupAct : rowsAll[row] && synNoVol(sc, rowsAll[row]) ? RO.synNoVol : RO.noObyemField)
             : tr('тоо гэж уншиж чадсангүй (тодорхойгүй таслал «1,250» эсвэл тоо биш)');
       setPastePrev({
         startI, startB, grid, rows: rowsAll,

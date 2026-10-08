@@ -217,7 +217,8 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
     F('buglusun_ognoo', 'esriFieldTypeDate'), F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'),
   ];
 
-  /* (а) анхдагч — ХООСОН хэвээр (FillNew · sheetRows · planProgress · hyanalt* зам) */
+  /* (а) анхдагч — ХООСОН хэвээр (sheetRows · planProgress · negtgel · ipc зам).
+     ⚠️ 2026-10-09: FillNew · hyanalt* · ajilApply · ulsiinKomiss нь `fillSchema` (§5) */
   const plain = resolveSchema(blokgui);
   assert.equal(plain.synthetic, false, 'анхдагч дуудалтад synthetic = false');
   assert.equal(plain.bld.length, 0, 'анхдагч дуудалтад блок ХООСОН — FillNew блокийн багана зурах ёсгүй');
@@ -264,5 +265,171 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
   assert.deepEqual(a.gStart, ['F5_1_geree_ehleh', null], 'мөрийн geree_ehleh блокт наалдахгүй');
 }
 console.log('✅ синтетик блок — анхдагч хоосон · опт-ин мөрийн нэрээр · блоктойд нөлөөгүй');
+
+/* ══════════ 5. БӨГЛӨХ БҮДҮҮВЧ — `fillSchema` / `{ fill: true }` (2026-10-09) ══════════
+ * ⚠️ 2026-10-09: блокгүй 8 багц бөглөгддөг болов — синтетик НЭГ блокийн оролт нь барилгын
+ *    блоктой ижил ОБЬЁМЫН НЭМЭЛТ (`incCell`), хуримтлал нь `obyem_sum`, гүйцэтгэл нь
+ *    `Ажил_гүйцэтгэл` = obyem_sum ÷ Обьём. Excel-ийн (`Багц_6_1_final.xlsx` · `*_publish`)
+ *    томъёо: навч E = C×J, J = L, I = M; бүлэг L/M = SUMPRODUCT(C, хүүхэд), E = C×ΣE;
+ *    K = IF(I=0,0,J/I). Энэ хэсэг нь (а) талбарын зураглал, (б) жижиг мод дээрх roll-up,
+ *    (в) нэмэлт/түгжээ, (г) архивын жааз (`buildFrame`) ба илгээлтийн давхарлалт
+ *    (`overlaySubmission`), (д) блоктой багц ХӨНДӨГДӨӨГҮЙ гэдгийг барина. Сүлжээгүй. */
+{
+  const { resolveSchema, SYNTHETIC_BLOCK } = await import('./bagts.pkg.ts');
+  const { planAt, synNoVol } = await import('./bagtsSheet.ts');
+  const { buildFrame, overlaySubmission } = await import('./sheetFrame.ts');
+  const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
+  /* Амьд `Bagts_6_1`-ийн мөрийн баганууд (Excel `6_1_final_publish`-ийн C…P + латин) */
+  const fields6 = [
+    F('ObjectID', 'esriFieldTypeOID'), F('F_', 'esriFieldTypeString'), F('Ажил', 'esriFieldTypeString'),
+    F('Хувийн_жин'), F('Хувийн_жин1'), F('Хувийн_жин__Одоо_байгаа'), F('Обьём'), F('Нэгж_өртөг'), F('Мөнгөн_дүн'),
+    F('Төлөвлөгөөт_гүйцэтгэл'), F('Бодит_гүйцэтгэл'), F('Төлөвлөгөө_биелэлт'), F('Ажил_гүйцэтгэл'),
+    F('Төлөвлөгөөт_гүйцэтгэл1'),
+    F('Төлөвлөгөөт_хуваарь__Эхлэх', 'esriFieldTypeDate'), F('Төлөвлөгөөт_хуваарь__Дуусах', 'esriFieldTypeDate'),
+    F('Шинэчлэгдсэн_огноо', 'esriFieldTypeDate'), F('buglusun_ognoo', 'esriFieldTypeDate'),
+    F('Des_dugaar', 'esriFieldTypeInteger'), F('Hamaaral', 'esriFieldTypeString'), F('Инженерийн_төлөвлөсөн_обьём'),
+    F('gun', 'esriFieldTypeSmallInteger'), F('hun_huch', 'esriFieldTypeInteger'), F('mashin_mehanizm', 'esriFieldTypeInteger'),
+    F('geree_ehleh', 'esriFieldTypeDate'), F('geree_duusah', 'esriFieldTypeDate'),
+    F('bodit_ehleh', 'esriFieldTypeDate'), F('bodit_duusah', 'esriFieldTypeDate'), F('obyem_sum'),
+  ];
+
+  /* (а) ЗУРАГЛАЛ */
+  const sc = resolveSchema(fields6, { fill: true });
+  assert.equal(sc.synthetic, true, 'fill → синтетик блок');
+  assert.deepEqual(sc.bld, [SYNTHETIC_BLOCK]);
+  assert.deepEqual(sc.obyem, ['obyem_sum'], 'синтетик блокийн обьём = obyem_sum (мөрийн хуримтлал)');
+  assert.deepEqual(sc.act, ['Ажил_гүйцэтгэл'], 'синтетик блокийн гүйцэтгэл = Ажил_гүйцэтгэл (Excel L)');
+  assert.deepEqual(sc.plan, ['Төлөвлөгөөт_гүйцэтгэл1'], 'синтетик блокийн төлөвлөгөө = Excel M');
+  assert.deepEqual(sc.start, ['Төлөвлөгөөт_хуваарь__Эхлэх']);
+  assert.deepEqual(sc.end, ['Төлөвлөгөөт_хуваарь__Дуусах']);
+  assert.equal(sc.f.obyemSum, 'obyem_sum');
+  assert.equal(sc.f.act, 'Бодит_гүйцэтгэл', 'J нь тусдаа багана хэвээр');
+  assert.equal(sc.f.plan, 'Төлөвлөгөөт_гүйцэтгэл', 'I нь тусдаа багана хэвээр');
+  assert.equal(sc.f.wE, 'Хувийн_жин__Одоо_байгаа');
+  assert.equal(sc.f.ratio, 'Төлөвлөгөө_биелэлт');
+  /* «Хуваарь»-ийн `synthetic` ӨӨРЧЛӨГДӨӨГҮЙ */
+  const hv = resolveSchema(fields6, { synthetic: true });
+  assert.deepEqual(hv.obyem, [null], '«Хуваарь»-ийн синтетик бүдүүвч обьём бичихгүй хэвээр');
+  assert.deepEqual(hv.plan, ['Төлөвлөгөөт_гүйцэтгэл'], '«Хуваарь»-ийн plan хэвээр I');
+  /* Огнооны багана алга ч гүйцэтгэл/обьёмын багана байвал fill-д блок үүснэ */
+  const noDates6 = resolveSchema(fields6.filter((x) => x.type !== 'esriFieldTypeDate' || /ognoo|огноо/i.test(x.name)), { fill: true });
+  assert.equal(noDates6.synthetic, true, 'fill: огноогүй ч Ажил_гүйцэтгэл/obyem_sum байвал блок');
+  assert.deepEqual(noDates6.start, [null]);
+  /* `Төлөвлөгөөт_гүйцэтгэл1` алга → хуучин I руу унана */
+  const noM = resolveSchema(fields6.filter((x) => x.name !== 'Төлөвлөгөөт_гүйцэтгэл1'), { fill: true });
+  assert.deepEqual(noM.plan, ['Төлөвлөгөөт_гүйцэтгэл']);
+
+  /* (б) ROLL-UP — Б (үндэс) › Б1 (бүлэг) › A·B·C, Б › D */
+  const d = (s) => Date.parse(`${s}T00:00:00Z`);
+  const asOf = d('2026-01-06');
+  const R = (o) => mkRow({ act: [null], obyem: [null], start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], ...o });
+  const rows = [
+    R({ oid: 1, no: 'Б', work: 'БАГЦ 6.1', depth: 0, group: true }),
+    R({ oid: 2, no: 'Б1', work: 'РП-ЫН БАРИЛГА', depth: 1, group: true }),
+    /* A: хэмжигдсэн 25/100 */
+    R({ oid: 3, no: '1', work: 'A', depth: 2, vol: 100, unit: 10, obyem: [25], start: [d('2026-01-01')], end: [d('2026-01-11')] }),
+    /* B: хэмжигдээгүй */
+    R({ oid: 4, no: '2', work: 'B', depth: 2, vol: 50, unit: 20, start: [d('2026-01-01')], end: [d('2026-01-03')] }),
+    /* C: Обьёмгүй (мөнгөн дүнгээр жинтэй) — түгжээтэй, act null */
+    R({ oid: 5, no: '3', work: 'C', depth: 2, vol: null, unit: null, money: 500 }),
+    /* D: 15/10 = 150% — нүд үнэн (1.5), нэгтгэлд 1 */
+    R({ oid: 6, no: '1', work: 'D', depth: 1, vol: 10, unit: 100, obyem: [15], start: [d('2026-01-10')], end: [d('2026-01-20')] }),
+  ];
+  const hasOb = sc.obyem.map(Boolean);
+  const c = computeAll(rows, 1, asOf, {}, {}, hasOb, undefined, 'inc', sc.synthetic);
+  const near = (x, y, m) => assert.ok(x != null && Math.abs(x - y) < 1e-12, `${m}: ${x} ≠ ${y}`);
+  /* H / C */
+  assert.equal(c[1].H, 2500); assert.equal(c[0].H, 3500);
+  near(c[2].C, 0.4, 'C(A)'); near(c[4].C, 0.2, 'C(C)'); near(c[1].C, 2500 / 3500, 'C(Б1)');
+  /* Навч: act = obyem_sum ÷ Обьём */
+  near(c[2].act[0], 0.25, 'A act = 25/100');
+  assert.equal(c[2].obyemSum, 25, 'obyemSum = синтетик блокийн обьём');
+  assert.equal(c[3].act[0], null, 'B хэмжигдээгүй → null (0 БИШ)');
+  assert.equal(c[3].J, null); assert.equal(c[3].E, null);
+  assert.equal(c[4].act[0], null, 'C Обьёмгүй → null');
+  near(c[5].act[0], 1.5, 'D нүд нь түүхий 150%'); assert.equal(c[5].actAgg[0], 1, 'D нэгтгэлд 1-ээр таслагдана');
+  assert.equal(c[5].actOver[0], true);
+  /* J = L (таслагдсан), I = M, E = C×J, K = J/I */
+  near(c[2].J, 0.25, 'J(A) = L');
+  near(c[2].E, 0.4 * 0.25, 'E(A) = C×J');
+  near(c[2].plan[0], planAt(asOf, d('2026-01-01'), d('2026-01-11')), 'M(A) хуваарийн огноогоор');
+  near(c[2].I, c[2].plan[0], 'I(A) = M');
+  near(c[2].K, c[2].J / c[2].I, 'K(A) = J/I');
+  /* Бүлэг Б1: L = SUMPRODUCT(C, L) = 0.4·0.25 + 0.4·0 + 0.2·0 */
+  near(c[1].act[0], 0.1, 'Б1 L = SUMPRODUCT(C, L)');
+  near(c[1].J, 0.1, 'Б1 J = L');
+  near(c[1].plan[0], 0.4 * c[2].plan[0] + 0.4 * c[3].plan[0] + 0.2 * 0, 'Б1 M = SUMPRODUCT(C, M)');
+  near(c[1].E, (2500 / 3500) * (0.4 * 0.25), 'Б1 E = C × ΣE');
+  /* Үндэс Б: L = C(Б1)·L(Б1) + C(D)·min(L(D),1) */
+  near(c[0].act[0], (2500 / 3500) * 0.1 + (1000 / 3500) * 1, 'Б L = SUMPRODUCT(C, L) (хүүхэд ≤ 1)');
+  near(c[0].J, c[0].act[0], 'Б J = L');
+  near(c[0].I, c[0].plan[0], 'Б I = M');
+  near(c[0].K, c[0].J / c[0].I, 'Б K = J/I');
+  near(c[0].E, 1 * (c[1].E + c[5].E), 'Б E = C × ΣE');
+  /* Юу ч хэмжигдээгүй мод → бүлэг/үндэс null */
+  const none = computeAll(rows.map((r) => ({ ...r, obyem: [null] })), 1, asOf, {}, {}, hasOb, undefined, 'inc', sc.synthetic);
+  assert.equal(none[0].act[0], null, 'хэмжилтгүй бол Б-ийн L null (0 БИШ)');
+  assert.equal(none[0].J, null); assert.equal(none[0].E, null); assert.equal(none[0].K, null);
+  assert.equal(none[1].J, null, 'Б1 J null');
+  assert.notEqual(none[0].I, null, 'төлөвлөгөө (I) нь хэмжилтээс үл хамаарна');
+  /* `synthetic` туггүй (барилгын дүрэм) — хоосон блок = 0 хэвээр (§2-ийн «J = 0») */
+  const bld1 = computeAll(rows, 1, asOf, {}, {}, hasOb, undefined, 'inc');
+  assert.equal(bld1[3].J, 0, 'туггүй бол J = AVERAGE(IF(…="",0,…)) = 0 — барилгын зан төлөв ХӨНДӨГДӨӨГҮЙ');
+
+  /* (в) НЭМЭЛТ ба ТҮГЖЭЭ */
+  const inc = computeAll(rows, 1, asOf, { '3:0': '10', '6:0': '-15' }, {}, hasOb, undefined, 'inc', sc.synthetic);
+  assert.equal(inc[2].obyem[0], 35, 'A: 25 + 10 = 35 (нэмэлт obyem_sum дээр)');
+  near(inc[2].act[0], 0.35, 'A act = 35/100');
+  assert.equal(inc[5].obyem[0], 0, 'D: 15 − 15 = 0 (залруулга)');
+  assert.equal(inc[5].act[0], 0, 'D: 0/10 = 0 — хэмжсэн тэг');
+  assert.equal(synNoVol(sc, rows[4]), true, 'Обьёмгүй мөр (C) — нүд түгжээтэй');
+  assert.equal(synNoVol(sc, { ...rows[4], vol: 0 }), true, 'Обьём 0 — түгжээтэй');
+  assert.equal(synNoVol(sc, { ...rows[4], vol: -3 }), true, 'сөрөг Обьём — түгжээтэй');
+  assert.equal(synNoVol(sc, rows[2]), false, 'Обьёмтой мөр — нээлттэй');
+  assert.equal(synNoVol(sc, rows[1]), false, 'бүлэг — synNoVol биш (groupAct шалтгаантай)');
+  assert.equal(synNoVol(resolveSchema(fields6), rows[4]), false, 'синтетикгүй бүдүүвчид хэзээ ч түгжихгүй');
+  /* Түгжигдсэн мөрөнд ямар нэг байдлаар нэмэлт орсон ч хувь бодогдохгүй (null ≠ 0) */
+  const leak = computeAll(rows, 1, asOf, { '5:0': '7' }, {}, hasOb, undefined, 'inc', sc.synthetic);
+  assert.equal(leak[4].act[0], null, 'Обьёмгүй мөрийн act null хэвээр');
+
+  /* (г) АРХИВЫН ЖААЗ — синтетик блокийн баганууд */
+  const fillMs = d('2026-01-06');
+  const fr = buildFrame(rows, sc, 1, asOf, hasOb, fillMs);
+  assert.equal(fr[2]['Ажил_гүйцэтгэл'], 0.25, 'Ажил_гүйцэтгэл = L');
+  assert.equal(fr[2]['obyem_sum'], 25, 'obyem_sum = хуримтлал');
+  near(fr[2]['Бодит_гүйцэтгэл'], 0.25, 'Бодит_гүйцэтгэл = J');
+  near(fr[2]['Хувийн_жин__Одоо_байгаа'], 0.1, 'E = C×J');
+  near(fr[2]['Төлөвлөгөөт_гүйцэтгэл1'], c[2].plan[0], 'Төлөвлөгөөт_гүйцэтгэл1 = M');
+  near(fr[2]['Төлөвлөгөөт_гүйцэтгэл'], c[2].I, 'Төлөвлөгөөт_гүйцэтгэл = I');
+  assert.equal(fr[5]['Ажил_гүйцэтгэл'], 1, 'архивт таслагдсан (actAgg) — 150% биш');
+  assert.equal(fr[5]['obyem_sum'], 15, 'обьём түүхийгээр — түүхий харьцаа сэргээгдэнэ');
+  assert.equal(fr[3]['Ажил_гүйцэтгэл'], null, 'хэмжигдээгүй мөр null');
+  assert.equal(fr[3]['obyem_sum'], null, 'хэмжигдээгүй мөрийн obyem_sum null (0 БИШ)');
+  assert.equal(fr[3]['Бодит_гүйцэтгэл'], null);
+  assert.equal(fr[1]['obyem_sum'], null, 'бүлгийн obyem_sum null (нэгж зөрдөг)');
+  near(fr[0]['Ажил_гүйцэтгэл'], c[0].act[0], 'Б-ийн L');
+  near(fr[0]['Бодит_гүйцэтгэл'], c[0].J, 'Б-ийн J — нэгтгэл (negtgelWrite) үүнийг уншина');
+  assert.equal(fr[0]['buglusun_ognoo'], fillMs);
+  /* (г2) ИЛГЭЭЛТ — `${oid}:0` нүд мөрөнд буух ёстой (unmoved БИШ) */
+  const ov = overlaySubmission(rows, { pkgKey: 'b61', cells: [['3:0', '10']], dates: [], rowKeys: [], mode: 'inc' }, sc, 1);
+  assert.equal(ov.unmoved, 0, 'синтетик блокийн нүд unmoved болохгүй');
+  assert.deepEqual(ov.cellKeys, ['3:0']);
+  assert.equal(ov.rows[2].obyem[0], 35, 'батлахад архивын СҮҮЛИЙН обьём дээр нэмэгдэнэ');
+  near(ov.rows[2].act[0], 0.35, 'act = 35/100');
+  /* n = 0 (хуучин анхдагч) бүдүүвчээр давхарлавал нүд хаягдана — бүдүүвч НЭГ байх ёстойн шалтгаан */
+  const ov0 = overlaySubmission(rows.map((r) => ({ ...r, act: [], obyem: [], start: [], end: [], gStart: [], gEnd: [], aStart: [], aEnd: [] })),
+    { pkgKey: 'b61', cells: [['3:0', '10']], dates: [], rowKeys: [], mode: 'inc' }, resolveSchema(fields6), 0);
+  assert.equal(ov0.unmoved, 1, 'анхдагч (n = 0) бүдүүвчээр синтетик нүд unmoved — бөглөх/архивлах бүдүүвч зөрвөл батлалт зогсоно');
+
+  /* (д) БЛОКТОЙ багц — fill нь бүдүүвчийг ӨӨРЧЛӨХГҮЙ */
+  const bloktoi6 = [
+    ...fields6.filter((x) => !/^(geree|bodit)_|хуваарь/.test(x.name)),
+    F('F5_1_гүйцэтгэл'), F('F5_1_төлөвлөгөөт'), F('F5_1_obyem'),
+    F('F5_1_барилга_Эхлэх', 'esriFieldTypeDate'), F('F5_1_барилга_Дуусах', 'esriFieldTypeDate'),
+  ];
+  assert.deepEqual(resolveSchema(bloktoi6, { fill: true }), resolveSchema(bloktoi6), 'блоктой багцад fill = анхдагч');
+  assert.deepEqual(resolveSchema(bloktoi6, { fill: true }).obyem, ['F5_1_obyem']);
+}
+console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act→Ажил_гүйцэтгэл · Excel roll-up · түгжээ · жааз · илгээлт · блоктойд нөлөөгүй');
 
 console.log('\nblokgui.check: ok — блокгүй багц ажиллана, блоктой нь хөндөгдөөгүй');

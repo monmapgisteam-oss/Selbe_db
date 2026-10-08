@@ -21,7 +21,7 @@
  * хэвээр ажиллана — гурван зам НЭГ `Submission` бүтэц буцаана.
  */
 
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
 import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
@@ -289,7 +289,9 @@ async function loadStaged(
   if (pkg.group !== bagts)
     throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
 
-  const sc = await loadSchema(pkg);
+  /* ⚠️ 2026-10-09: `fillSchema` — бөглөгчийн (FillNew) ба архивлагчийн (hyanaltStore) бүдүүвчтэй НЭГ:
+     блокгүй багцын синтетик блокийн нүд хянагчид харагдана (`Schema.synthetic`-ийн ⚠️) */
+  const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   const loaded = await loadRows(pkg, sc);
@@ -338,7 +340,8 @@ async function loadStaged(
          `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
          хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
     return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
-  });
+  /* ⚠️ 2026-10-09: блокгүй багцын синтетик блокт J = L (хэмжилтгүй бол null) — бөглөх/архивтай НЭГ дүрэм */
+  }, "abs", sc.synthetic);
 
   /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
   const blocks = sc.bld.filter((_, i) => sc.obyem[i]);
@@ -523,7 +526,8 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
        * `Бодит_гүйцэтгэл` ба `…_гүйцэтгэлийн_хувь` мэт багц бүрийн зөрүү энд
        * дахин гараар бичигдэж, нэг нь хоцорвол чимээгүй хоосон харагдана.
        */
-      const sc = await loadSchema(p);
+      /* ⚠️ 2026-10-09: `fillSchema` — бөглөх хуудасны схемтэй ЯГ ижил (блокгүй багцын синтетик блок) */
+      const sc = await fillSchema(p);
       const fill = sc.f.fillDate;
       if (!fill) continue;
 

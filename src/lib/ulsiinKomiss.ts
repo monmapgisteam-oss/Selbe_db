@@ -81,7 +81,7 @@ export function ensureKomissRow(pkgKey: string): Promise<EnsureResult> {
 async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   /* ⚠️ Эрх СҮЛЖЭЭНЭЭС ӨМНӨ — хуваарь төлөвлөх эрх + тухайн багцын зохиогчийн хүрээ */
   requireCap('plan');
-  const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
+  const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((x) => x.key === pkgKey);
   if (!pkg) return { ok: false, error: tr('Багц олдсонгүй: {0}', pkgKey) };
   if (AUTH.appId) {
@@ -106,8 +106,9 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     import('@/modules/sheet/sheetFrame'),
     import('@/modules/sheet/ags'),
   ]);
-  /* ⚠️ `synthetic` БИШ — архивын схем FillNew/hyanaltStore-той ИЖИЛ (materializeAdds-ийн ⚠️) */
-  const sc = await loadSchema(pkg);
+  /* ⚠️ 2026-10-09: `fillSchema` — архивын схем FillNew/hyanaltStore-той ИЖИЛ (materializeAdds-ийн ⚠️);
+     блокгүй багцад синтетик НЭГ блок, «Хуваарь»-ийн `synthetic` бүдүүвч БИШ */
+  const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
 

@@ -7,11 +7,13 @@ import type { Schema } from "../bagts.pkg";
 import type { seriesBands } from "../bagts.bands";
 import type { useColWidths } from "../colWidths";
 import { t as tr } from "@/lib/i18nCore";
-import { cls } from "./util";
+import { RO, cls } from "./util";
 
 export function SheetHead({ sc, nBld, bands, grip }: {
   sc: Schema; nBld: number; bands: ReturnType<typeof seriesBands>; grip: ReturnType<typeof useColWidths>['grip'];
 }) {
+  /* ⚠️ 2026-10-09: блокгүй багцын синтетик блок — 2-р/3-р мөрийн блокийн нүд алга (1-р мөрөөс хамарсан) */
+  const syn = sc.synthetic && nBld === 1;
   return (
     <>
             {/* ТОЛГОЙ нь `*_final_system` хуудасны бүтэц: 4 мөрт бүлэглэсэн.
@@ -49,7 +51,18 @@ export function SheetHead({ sc, nBld, bands, grip }: {
                 {/* ⚠️ БЛОКГҮЙ БАГЦАД (nBld = 0) ЭДГЭЭР БҮЛЭГ ГАРАХГҮЙ (2026-09-23, хэрэглэгч:
                     «инженерийн шугам сүлжээнд угаас барилга байхгүй — "0 барилга" гэж бичих
                     утгагүй»). Урьд нь colSpan=0 хоосон толгой «(0 барилга)» гэж зурагддаг байв. */}
-                {nBld > 0 && (
+                {/* ⚠️ 2026-10-09: БЛОКГҮЙ БАГЦЫН СИНТЕТИК НЭГ БЛОК (`fillSchema`) — «барилга»/«цуваа»
+                    гэсэн үг утгагүй (дээрх 2026-09-23-ны шалтгаан) тул 3 мөрийг хамарсан энгийн
+                    толгой: бөглөх «Обьём (энэ удаа)» (нүдэнд нийлбэр + хувь), төлөвлөгөөт хувь,
+                    хуваарийн Эхлэх/Дуусах (4-р мөр). Баганын тоо барилгын n = 1-тэй ЯГ ижил. */}
+                {sc.synthetic && nBld === 1 && (
+                  <>
+                    <th rowSpan={4} className={cls("bld")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
+                    <th rowSpan={4} className={cls("bld")} title={RO.blockPlan}>{tr('Төлөвлөгөөт гүйцэтгэл')}<i {...grip("bld")} /></th>
+                    <th rowSpan={3} colSpan={2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь')}</th>
+                  </>
+                )}
+                {nBld > 0 && !(sc.synthetic && nBld === 1) && (
                   <>
                     <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
                     <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
@@ -62,26 +75,26 @@ export function SheetHead({ sc, nBld, bands, grip }: {
               </tr>
               {/* 2-р мөр — барилгын төрөл (блокийн цуваагаар) */}
               <tr>
-                {bands.map((g, gi) => (
+                {!syn && bands.map((g, gi) => (
                   <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
                 ))}
-                {bands.map((g, gi) => (
+                {!syn && bands.map((g, gi) => (
                   <th key={`bp${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
                 ))}
-                {bands.map((g, gi) => (
+                {!syn && bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
 
               </tr>
               {/* 3-р мөр — блокийн код */}
               <tr>
-                {sc.bld.map((b) => (
+                {!syn && sc.bld.map((b) => (
                   <th key={`a${b}`} rowSpan={2} className={cls("bld")}>{b}<i {...grip("bld")} /></th>
                 ))}
-                {sc.bld.map((b) => (
+                {!syn && sc.bld.map((b) => (
                   <th key={`p${b}`} rowSpan={2} className={cls("bld")}>{b} {tr('барилга')}<i {...grip("bld")} /></th>
                 ))}
-                {sc.bld.map((b) => (
+                {!syn && sc.bld.map((b) => (
                   <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>
                 ))}
 

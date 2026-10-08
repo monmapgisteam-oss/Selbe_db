@@ -11,7 +11,7 @@ import { t as tr } from "@/lib/i18nCore";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
 import type { useCellEdit, PastePrev } from "./useCellEdit";
-import { RO, cellKey, cls, dt, full, pc, qty, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
+import { RO, cellKey, cls, dt, full, pc, qty, synNoVol, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
 import st from "../sheet.module.css";
 
 type ObyemT = ReturnType<typeof useObyem>;
@@ -252,7 +252,8 @@ export function FillRows({
                         if (busy) return say(RO.busy);
                         /* ⚠️ 2026-10-01: ноорог сэргэж дуустал нээхгүй — бичсэн утга сэргээлтэд дарагдахгүй */
                         if (restoring) return say(RO.restoring);
-                        if (!canVol) return say(r.group ? RO.groupAct : RO.noObyemField);
+                        /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр — тусдаа шалтгаан (`synNoVol`) */
+                        if (!canVol) return say(r.group ? RO.groupAct : synNoVol(sc, r) ? RO.synNoVol : RO.noObyemField);
                         /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
                            хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
                            бий). Хэрэглэгчид яагаад зөвхөн хувиар болохыг
@@ -341,11 +342,14 @@ export function FillRows({
                               : r.group
                               ? RO.groupAct
                               : !canVol
-                                ? RO.noObyemField
+                                /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр (`synNoVol`) */
+                                ? (synNoVol(sc, r) ? RO.synNoVol : RO.noObyemField)
                                 : r.vol
                                   /* ⚠️ Блок буулгах боломжийг ЭНД сануулна —
                                      эс тэгвээс хэн ч мэдэхгүй далд шинж болно. */
                                   ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
+                                    /* ⚠️ 2026-10-09: блокгүй багцад «энэ удаагийн обьём → нийлбэр → хувь»-г нэмж хэлнэ */
+                                    + (sc.synthetic ? '\n' + RO.synCell : '')
                                   : RO.noRowVol)
                           }
                         >

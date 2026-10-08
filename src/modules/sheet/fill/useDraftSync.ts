@@ -22,7 +22,7 @@ import {
   newReceipts, claimMine, editStamp, lostMine,
 } from "./draft";
 import { mapOldOids, rowOccOf } from "../sheetFrame";
-import { dt, type NoticeKind, type RemoteState } from "./util";
+import { dt, synNoVol, type NoticeKind, type RemoteState } from "./util";
 
 /**
  * ТЭМДЭГЛЭСЭН (буулгаагүй) НҮД — `heldRef` / `Draft.hold` (2026-10-04 дахин аудит, #7 · #3).
@@ -119,8 +119,9 @@ export function useDraftSync(p: {
   useEffect(() => { pendDateRef.current = pendDate; }, [pendDate]);
   /* ⚠️ 2026-09-30: `useCellEdit`-ийн `volMode`-той ИЖИЛ дүрэм (тэр hook энэ hook-ийн ДАРАА дуудагддаг
      тул сэргээлтэд (`pickDraft`) эндээ давтав — хаалтын зан төлөв урьдын адил). */
-  const volMode = (r: { group: boolean }, b: number) =>
-    !r.group && (fillMode === "pct" || !!sc?.obyem[b]);
+  /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр (`synNoVol`) — `useCellEdit.volMode`-той ИЖИЛ дүрэм */
+  const volMode = (r: { group: boolean; vol?: number | null }, b: number) =>
+    !r.group && (fillMode === "pct" || !!sc?.obyem[b]) && !synNoVol(sc, r);
   /**
    * НООРОГ СҮҮЛД ХАДГАЛАГДСАН АГШИН (ms) — зөвхөн дэлгэцийн баталгаа.
    * ⚠️ Автомат хадгалалт нь ЧИМЭЭГҮЙ бол хэрэглэгч итгэхгүй: «хадгалагдсан
@@ -959,7 +960,9 @@ export function useDraftSync(p: {
          ⚠️ ХУВИЙН бичлэгийг ГОРИМООР ШҮҮХГҮЙ хэвээр (2026-09-08): хувь нь `sc.act[b]`-д
             суудаг тул обьёмын багана шаардахгүй; обьёмын нэмэлт л `volMode` шаардана. */
       let incV: string | null = null;
-      if (r && Number.isInteger(b) && b >= 0 && b < nBld && !r.group) {
+      /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөрд (`synNoVol` — нүд түгжээтэй) ямар ч нэмэлт сэргээгдэхгүй,
+         хувийн (`%`) ч — тэр мөрд гүйцэтгэл бодогдохгүй тул хаягдана (`dropped`) */
+      if (r && Number.isInteger(b) && b >= 0 && b < nBld && !r.group && !synNoVol(sc, r as SheetRow)) {
         const rr0 = r as SheetRow;
         if (v.startsWith("=")) {
           const abs = v.slice(1).trim();

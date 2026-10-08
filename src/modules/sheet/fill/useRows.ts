@@ -536,9 +536,10 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     const base = ovBase && ovBase.size ? rowsAll.map((r) => ovBase.get(r.oid) ?? r) : null;
     /* ⚠️ Ноороггүй тооцоо — ЗӨВХӨН ноорог (эсвэл илгээлтийн давхарлалт) байгаа үед бодно (хүнд). */
     const saved = dirtyCount > 0 || base
-      ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct))
+      /* ⚠️ 2026-10-09: `synthetic` — блокгүй багцын J = L (`computeAll`-ийн ⚠️); энд `act` уншдаг тул тоо ижил */
+      ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct, "abs", !!sc?.synthetic))
       : draft;
     return { saved, draft, blocks };
-  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase]);
+  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc]);
   return { otherPct, pkgPct };
 }

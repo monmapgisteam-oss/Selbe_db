@@ -32,6 +32,8 @@ console.log('✅ sheetRows.bagts = pkg.group (label биш)');
  * синтетик «Ажил» блок энд орвол `buildingKey('Багц 5.1','Ажил')` гэсэн хуурамч
  * барилга үүснэ. Тиймээс энд `loadSchema(pkg)` ЗӨВХӨН опт-ингүй дуудагдана. */
 assert.ok(!/synthetic/.test(SRC), 'sheetRows нь loadSchema-г synthetic опт-интой дуудаж байна — mon:building join-д хуурамч блок орно');
+/* ⚠️ 2026-10-09: бөглөх бүдүүвч (`fillSchema` / `{ fill: true }`) ч мөн синтетик блок өгнө — энд ОРОХГҮЙ */
+assert.ok(!/fillSchema|fill:\s*true/.test(SRC), 'sheetRows нь бөглөх бүдүүвч (fillSchema) ашиглаж байна — mon:building join-д хуурамч «Ажил» блок орно');
 console.log('✅ sheetRows — синтетик блок ОРОХГҮЙ (loadSchema опт-ингүй)');
 
 /* ── 2. bagtsKey: label ба group нь ЯЛГААТАЙ түлхүүр ── */

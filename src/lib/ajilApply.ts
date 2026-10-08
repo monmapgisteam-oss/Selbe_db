@@ -590,7 +590,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
  * ⚠️ `markApplied`-ыг ЭНД дуудахгүй — дуудагч (A.11) бичилт амжилттай болсны ДАРАА.
  */
 async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<FrameWrite> {
-  const { PKGS, loadSchema } = await import('@/modules/sheet/bagts.pkg');
+  const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
   const [{ loadRows, applyAdds, applyDeletes }, { insertAdds, buildFrame }, { agsFetch }] = await Promise.all([
@@ -598,9 +598,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     import('@/modules/sheet/sheetFrame'),
     import('@/modules/sheet/ags'),
   ]);
-  /* ⚠️ `synthetic` БИШ — синтетик блок нь «Хуваарь»-ийн дэлгэцийн л хэлбэр;
-     архивт бичих схем нь `FillNew`/`hyanaltStore`-той ИЖИЛ байх ёстой. */
-  const sc = await loadSchema(pkg);
+  /* ⚠️ 2026-10-09: «Хуваарь»-ийн `synthetic` БИШ, харин `fillSchema` — архивт бичих схем нь
+     `FillNew`/`hyanaltStore`-той ИЖИЛ байх ёстой (урьдын дүрэм хэвээр); тэд блокгүй багцад синтетик
+     НЭГ блок (обьём `obyem_sum`) авдаг болсон тул энд ч мөн. Анхдагч бүдүүвчээр бичвэл блокгүй
+     багцын жаазанд I/J/K/E null болж бөглөсөн гүйцэтгэл (`Бодит_гүйцэтгэл`) арилна. */
+  const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   /**
