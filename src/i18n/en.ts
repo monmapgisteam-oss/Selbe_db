@@ -6636,7 +6636,6 @@ const en: Record<string, string> = {
   "тооцоогүй — загварчлалын мужаас гадна": "not computed — outside the simulation domain",
   "{0} давхарга тайрагдсан — CSV/GeoJSON-д тэдгээрийн зөвхөн эхний {1} объект орно (бүтэн тоо нь «total_n» баганад).": "{0} layer(s) truncated — CSV/GeoJSON include only the first {1} objects of those layers (full count in the «total_n» column).",
   "Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй": "An undated lost-time injury is recorded — cannot be computed",
-  "Сүүлийн ХЧТА осол: {0}": "Last lost-time injury: {0}",
   "{0} / {1} бүртгэл": "{0} / {1} records",
   "Маягтын талбар олдсонгүй: {0} — холбогдох тоо «—» гэж харагдана.": "Form field(s) not found: {0} — related counts are shown as «—».",
   "өрх тутам {0} тн нүүрс · {1} мг PM2.5/МЖ (уламжлалт зуух, SEET лаб 2014) · нэг өрхөд {2} кг": "{0} t of coal per household · {1} mg PM2.5/MJ (traditional stove, SEET lab 2014) · {2} kg per household",

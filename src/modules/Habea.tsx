@@ -2040,7 +2040,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           [
             ltiFree.undatedLti
               ? tr('Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй')
-              : ltiFree.since != null ? tr('Сүүлийн ХЧТА осол: {0}', date(ltiFree.since)) : '',
+              /* ⚠️ 2026-10-08 (хэрэглэгч): ердийн «Сүүлийн ХЧТА осол: огноо» мөр ХАСАГДАВ — анхааруулга (огноогүй / ирээдүйн) л үлдэнэ */
+              : '',
             ltiFree.futureLti > 0 ? tr('{0} ХЧТА осол ирээдүйн огноотой — тооцоонд ороогүй', num(ltiFree.futureLti)) : '',
           ].filter(Boolean).join(' · ') || undefined,
           undefined,
