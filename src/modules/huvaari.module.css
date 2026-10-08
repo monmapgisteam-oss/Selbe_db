@@ -218,7 +218,11 @@
   /* ⚠️ 5 (2026-09-23) — `.gSide` (4)-ээс дээш, `.mdBack` (60)-аас доош. */
   z-index: 5;
   display: flex;
-  align-items: center;
+  /* ⚠️ 2026-10-08: `center` → `stretch` — толгойн нүд бүтэн өндөртэй (PL_ROW) болж, баруун ирмэгийн
+     `.colGrip` (height 100%) толгойн БҮТЭН өндрөөр бариул болно; урьд нь зөвхөн текстийн өндөр
+     (~12px) тул чирэх бариулыг онох бараг боломжгүй байв. Текстийн босоо голлолт нь доорх
+     нүднүүдийн `display: flex; align-items: center`-ээр хэвээр. */
+  align-items: stretch;
   gap: 6px; /* ⚠️ `.row`-той ИЖИЛ — зөрвөл багана гулсана */
   padding: 0 8px;
   font-size: 10.5px;
@@ -234,7 +238,17 @@
  * ⚠️ `--date-w` (2026-09-15): дөрвөн огнооны багана. «2026-04-18» нь
  *    10 тэмдэгт, 11px tabular-nums дээр ~72px — 78px нь дүүргэлттэй.
  */
-.gSideHead, .row { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 140px; }
+/* ⚠️ 2026-10-08: анхдагчийг `.gSide` дээр — хэрэглэгч чирж өөрчилсөн утга (`useColWidths`, inline style)
+   энэ хувьсагчийг дарж, толгой · мөр хоёулаа өвлөнө. `.gSideHead, .row` дээр тавьбал inline утга
+   үл хэрэгсэгдэнэ (класс сонгогч нь өвлөлтөөс давамгайлна). */
+.gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 140px; --res-w: 44px; }
+/* Толгойн нүднүүд — баганын бариулын (`.colGrip`) агуулах блок */
+.gHeadDes, .gHeadWork, .gHeadDate, .gHeadDays, .gHeadRes, .gHeadHam { position: relative; }
+/* ⚠️ 2026-10-08: `.gSideHead` stretch болсон тул текстийг нүд ДОТРОО голлоно (баруун зэрэгцүүлэлт хэвээр —
+   `text-align: right` нь олон мөрт текстэд, `justify-content` нь нэг мөрт үйлчилнэ). `.gHeadHam`-ын
+   жишээ (`.gHeadHint`) тусдаа flex item болсон тул `gap`-аар зай. */
+.gHeadDes, .gHeadDate, .gHeadDays, .gHeadRes, .gHeadHam { display: flex; align-items: center; justify-content: flex-end; }
+.gHeadHam { gap: 4px; }
 .gHeadDes { flex: none; width: var(--des-w); padding-right: 8px; text-align: right; }
 .gHeadHam { flex: none; width: var(--ham-w); text-align: right; }
 /* ⚠️ Гарчиг нь ХОЁР МӨР болж эвхэгдэж болно («Төлөвлөгөө эхлэх») — тэр нь
@@ -255,7 +269,6 @@
   line-height: 1.15;
 }
 /* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ гарчиг (2026-09-23) — хоногийнхоос ч нарийн: 3–4 орон */
-.gSideHead, .row { --res-w: 44px; }
 .gHeadRes {
   flex: none;
   width: var(--res-w);
@@ -299,6 +312,23 @@
   touch-action: none;
 }
 .sideGrip:hover, .sideGrip:focus-visible, .sideGripOn { background: color-mix(in srgb, var(--data) 35%, transparent); }
+/* БАГАНЫН ӨРГӨН ЧИРЭХ БАРИУЛ (2026-10-08, `useColWidths`) — толгойн нүдний баруун ирмэг */
+.colGrip {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 1;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 2px;
+}
+.colGrip:hover, .colGrip:focus-visible, .colGripOn { background: color-mix(in srgb, var(--data) 35%, transparent); outline: none; }
+/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд бариул 14px (хуруугаар 7px-ийг онохгүй) — голлосон хэвээр */
+@media (pointer: coarse) {
+  .colGrip { width: 14px; right: -7px; }
+}
 /* ⚠️ `align-self: flex-start` (2026-09-22) — `.gSide`-тэй ИЖИЛ шалтгаан: stretch-ээр
    эцгийн бүтэн өндрийг авбал доторх `.plHead` (sticky; top: 0) наалдах газраа
    олохгүй, он/сарын мөр гүйлттэй хамт дээш алга болно. Хэрэглэгч: «Header түгжих». */
@@ -935,6 +965,8 @@
   /* Мэдрэгч дэлгэц — ~24px; дотогш илүү тэлэхгүй (зөөх талбай) */
   .plGrip::before { left: -17px; }
   .plGripR::before { left: -6px; right: -11px; }
+  /* ⚠️ 2026-10-08: харагдах бариул ч ≥14px — хуруугаар «энд уртасгана» гэдэг нь мэдэгдэнэ */
+  .plGrip { width: 14px; }
 }
 
 /* ── ХАМААРАЛ ШУГАМААР ХОЛБОХ (2026-09-22) ──
@@ -960,6 +992,11 @@
   z-index: 1;
 }
 .plLink::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд холбох цэг 18px, дарах талбар ~34px */
+@media (pointer: coarse) {
+  .plLink { width: 18px; height: 18px; margin-top: -9px; right: -20px; opacity: 0.6; }
+  .plLink::before { inset: -8px; }
+}
 .plLane:hover .plLink { opacity: 0.7; }
 .plBar:hover .plLink, .plLink:hover { opacity: 1; }
 /* Холбох чирэлтийн үед тавьж болох мөрүүд — зөөлөн тодруулга */
@@ -1318,6 +1355,42 @@
   cursor: text;
 }
 .rowDateEd:hover { border-color: var(--line); color: var(--ink); }
+/* ⚠️ 2026-10-08 (I8): ЗАСАГДАХ нүд гэдэг нь мэдэгдэнэ — hover/фокуст зөөлөн доогуур зураас + «✎»
+   (зөвхөн CSS, мөрийн өндөр хөдлөхгүй). Хуудас 1,400 мөртэй тул ҮРГЭЛЖ биш, зөвхөн hover/focus —
+   эс бөгөөс хүснэгт торлог болно (`.hamIn`-ийн ⚠️). `::after` нь `position: absolute` тул
+   баганын өргөнд нөлөөлөхгүй. */
+.rowDateEd { position: relative; }
+.rowDateEd:hover, .rowDateEd:focus-visible {
+  text-decoration: underline dotted color-mix(in srgb, var(--data) 70%, transparent);
+  text-underline-offset: 3px;
+}
+.rowDateEd:focus-visible { outline: none; border-color: var(--data); }
+.rowDateEd::after {
+  content: '✎';
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--data);
+  opacity: 0;
+  pointer-events: none;
+}
+.rowDateEd:hover::after, .rowDateEd:focus-visible::after { opacity: 0.8; }
+/* ⚠️ 2026-10-08: НӨГӨӨ ТАБЫН нүд — товч, дарахад таб солигдоно (`TaskRow.onOtherTab`); хэлбэр нь уншдаг
+   нүдтэй ижил, hover-т л «энд биш, нөгөө табд» гэсэн тасархай доогуур зураас. */
+.rowDateOther {
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px 0 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.rowDateOther:hover, .rowDateOther:focus-visible { color: var(--ink); text-decoration: underline dashed var(--ink-3); text-underline-offset: 3px; outline: none; }
 .rowDateIn {
   font: inherit;
   font-size: 11px;
@@ -1393,6 +1466,27 @@
   border-radius: var(--r-sm);
 }
 .hamIn:hover { border-color: var(--line); }
+/* ⚠️ 2026-10-08 (I8): уялдааны нүд ч hover/фокуст доогуур зураастай — `.rowDateEd`-тэй ижил */
+.hamIn:hover, .hamIn:focus { text-decoration: underline dotted color-mix(in srgb, var(--data) 70%, transparent); text-underline-offset: 3px; }
+/* ⚠️ 2026-10-08 (I9): бичиж байх үеийн НЭГ МӨР ЖИШЭЭ — нүдний ДООР абсолют (`.hamWrap` нь
+   `position: relative`), мөрийн өндөр хөдлөхгүй; дараагийн мөрийн дээгүүр (z 3 < gSide 4). */
+.hamWrap { position: relative; }
+.cellHelp {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-style: italic;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--ink) 12%, transparent);
+  pointer-events: none;
+}
 .hamIn:focus {
   outline: none;
   border-color: var(--data);
@@ -1575,6 +1669,11 @@
 /* ── Огнооны талбар: гараар бичих + 📅 (2026-10-04, `huvaari/DateField`) ── */
 .dateIn { display: inline-flex; align-items: center; gap: 2px; }
 .dateTxt { width: 104px; font-variant-numeric: tabular-nums; }
+/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд оролтууд өндөр (≥32px) — хуруугаар онохуйц */
+@media (pointer: coarse) {
+  .dateTxt, .numIn, .select { min-height: 32px; }
+  .rowDateIn, .hamIn { min-height: 24px; }
+}
 .dateBad { border-color: var(--bad-ink); color: var(--bad-ink); }
 .dateCal {
   flex: none;
@@ -1614,3 +1713,206 @@
 /* ⚠️ Дээрх дэвсгэр нь `.rowOn`/`.plLaneOn`-оос ХОЙНО тул сонголтыг дарна — буцааж тодруулна */
 .rowSub.rowOn { background: color-mix(in srgb, var(--data) 12%, transparent); }
 .plLaneSub.plLaneOn { background: color-mix(in srgb, var(--data) 10%, transparent); }
+
+/* ══════════════════ 2026-10-08 — ХАРИЛЦАН ҮЙЛДЛИЙН НЭМЭЛТҮҮД ══════════════════ */
+
+/* ШҮҮЛТИЙН ЖИЖИГ ЧИП — байгаа табуудын хажууд асаах/унтраах (`Huvaari.tsx`) */
+.chipFilter {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chipFilter:hover { border-color: var(--data); color: var(--ink); }
+.chipFilterOn { color: #fff; background: var(--data); border-color: var(--data); }
+
+/* ХЯНАЛТЫН ӨӨРЧЛӨЛТИЙН ХАЖУУГИЙН САМБАР — наалддаг, дотроо гүйнэ (`Huvaari.tsx`) */
+.chgPanel {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: none;
+  width: 240px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  font-size: 11.5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.chgItem {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  text-align: left;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.chgItem:hover { background: var(--surface-2); color: var(--ink); }
+.chgItemOn { color: var(--ink); background: color-mix(in srgb, var(--data) 12%, transparent); border-color: color-mix(in srgb, var(--data) 40%, transparent); }
+
+/* МӨР РҮҮ ҮСРЭХ ЖИЖИГ ОРОЛТ (№ · код) */
+.jumpBox {
+  font: inherit;
+  width: 72px;
+  padding: 3px 6px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
+}
+.jumpBox:focus { outline: none; border-color: var(--data); }
+
+/* АЛДААНЫ ЗУРВАС — ЖАГСААЛТ, мөр бүр нь холбоос (`.err`-ийн өнгөтэй ижил) */
+.errList {
+  margin: 0;
+  padding: 6px 12px 6px 26px;
+  font-size: 12px;
+  color: var(--bad-ink);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  border-radius: var(--r-sm);
+}
+.errList li { margin: 2px 0; }
+.errList a, .errList button {
+  font: inherit;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.errList a:hover, .errList button:hover { color: var(--bad); }
+
+/* БУЦААХ товч — анхааруулгын хажууд, тод биш */
+.undoBtn {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--data);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.undoBtn:hover { background: var(--surface-2); border-color: var(--data); }
+.undoBtn:disabled { opacity: 0.45; cursor: default; }
+
+/* ӨӨРЧЛӨГДСӨН БЛОКИЙН ЧИП — `TaskRow` нэрийн ард (хяналт); мөрийн өндөр хөдлөхгүй */
+.blkChips { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 4px; }
+.blkChip {
+  font: inherit;
+  font-size: 9.5px;
+  line-height: 1;
+  padding: 2px 5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.blkChip:hover { border-color: var(--data); color: var(--ink); }
+.blkChipOn { color: #fff; background: var(--data); border-color: var(--data); }
+span.blkChip { cursor: default; }
+
+/* ХАМТРАН ЗАСАГЧИЙН ЦЭГ — хуваалцсан нооргоос ирсэн мөр (`TaskRow.editedBy`) */
+.coDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* УРЬДЧИЛАГЧ СОНГОХ COMBOBOX (`PlanModal.DepPicker`) — жагсаалт оролтын доор, `.md` дотроо гүйнэ */
+.cbox { position: relative; display: block; }
+.cboxIn { width: 100%; box-sizing: border-box; text-overflow: ellipsis; }
+.cboxList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 2px 0 0;
+  padding: 2px 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.cboxItem {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cboxItemHi { background: color-mix(in srgb, var(--data) 14%, transparent); }
+.cboxItemOn { font-weight: 600; }
+.cboxEmpty { padding: 3px 8px; font-size: 11px; color: var(--ink-3); font-style: italic; }
+
+/* «ХЭРХЭН» ЗААВАР (`TaskRow.HowtoHint`) — жижиг «?» + popover; толгойн зурваст */
+.howto { position: relative; display: inline-flex; flex: none; }
+.howtoBtn {
+  font: inherit;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.howtoBtn:hover, .howtoBtnOn { color: var(--data); border-color: var(--data); }
+.howtoPop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 7;
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.howtoList { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; color: var(--ink-2); }
+.howtoPop .tlZoomB { align-self: flex-end; }

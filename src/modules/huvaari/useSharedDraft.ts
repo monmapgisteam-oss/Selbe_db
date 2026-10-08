@@ -18,6 +18,9 @@ import {
 import type { ADraft, Draft, PlanKind, ResDraft } from './types';
 import { useLatest } from './useLatest';
 
+/** «Саяхан» — хамтрагчийн нүдийг дарсан мэдэгдлийн цонх (мс, 2026-10-08) */
+const HD_RECENT = 10 * 60_000;
+
 /**
  * ХУВААЛЦСАН НООРОГ — ArcGIS дээрх нэг мөрөнд сэргээх · дифф · бичих · мөчлөг
  * (2026-09-30: `Huvaari.tsx`-ээс механикаар салгав; логик · тайлбар ХЭВЭЭР).
@@ -292,6 +295,8 @@ export function useSharedDraft({
   const hdOwed = useRef(false);
   /** Сэргээлтэд уншсан локал хуулбарын дээд агшин (`hdWriteLocal`-ийн ⚠️, 2026-10-04) */
   const hdLocalSeen = useRef(0);
+  /** «Ноорог хэт том» мэдэгдлийг нэг удаа л (2026-10-08) */
+  const hdBigNoted = useRef(false);
   const draggingRef = useLatest(dragging);
   const statusRef = useLatest(status);
   /** Хүлээгдэж буй цэвэрлэлтийн дахин оролдлого (2026-10-04)
@@ -377,6 +382,35 @@ export function useSharedDraft({
   }, [hdReadMark, hdPutMark]);
 
   /**
+   * ЗӨӨЛӨН МЭДЭГДЭЛ (2026-10-08) — энэ hook-ийн мэдэгдлүүд 2 секундээс ЗАЛУУ мэдэгдлийг дарахгүй
+   * (хойшилно). Хамтрагчийн нүд дарсан тухай («N нүд…») мэдэгдлийг дифф бүрд биш, богино хойшлолын
+   * дараа НЭГ удаа нэгтгэж бичнэ (`hdDiff`-ийн ⚠️). ⚠️ Зөвхөн ЭНЭ hook-ийн тавьсан мэдэгдлийн агшныг
+   * мэднэ — эцгийн мэдэгдлийг хамгаалах нь эцгийн асуудал.
+   */
+  const hdNoteAt = useRef(0);
+  const hdSoftNote = useCallback((msg: string) => {
+    const wait = 2000 - (Date.now() - hdNoteAt.current);
+    if (wait > 0) { setTimeout(() => { hdNoteAt.current = Date.now(); setNote(msg); }, wait); return; }
+    hdNoteAt.current = Date.now();
+    setNote(msg);
+  }, [setNote]);
+  const hdOverAgg = useRef<{ n: number; users: Set<string> }>({ n: 0, users: new Set() });
+  const hdOverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hdOverFlush = useCallback(() => {
+    if (hdOverTimer.current) return;
+    hdOverTimer.current = setTimeout(() => {
+      hdOverTimer.current = null;
+      const { n, users } = hdOverAgg.current;
+      hdOverAgg.current = { n: 0, users: new Set() };
+      if (!n) return;
+      hdSoftNote(n === 1
+        ? tr('{0} энэ мөрийг саяхан өөрчилсөн — таны утга дарлаа', [...users].join(', '))
+        : tr('{0} нүд: {1} саяхан өөрчилсөн — таны утга дарлаа', num(n), [...users].join(', ')));
+    }, 300);
+  }, [hdSoftNote]);
+  useEffect(() => () => { if (hdOverTimer.current) clearTimeout(hdOverTimer.current); }, []);
+
+  /**
    * ДИФФ — Map-уудыг (`hdMapsRef` — commit-ийн ХАМГИЙН СҮҮЛИЙН утга) `hdPrev`-тэй тулгаж
    * мета · tombstone хөтөлнө; өөрчлөлт байсан эсэхийг буцаана (2026-10-04 аудит).
    * ⚠️ ЯАГААД ТУСДАА: урьд нь зөвхөн идэвхгүй (`useEffect`) эффект хийдэг байсан тул
@@ -393,9 +427,19 @@ export function useSharedDraft({
     let changed = false;
     let now = 0;
     const stamp = () => (now || (now = hdStamp()));
+    /* ⚠️ 2026-10-08: ХАМТРАГЧИЙН САЯХНЫ НҮДИЙГ ДАРСАН бол ил хэлнэ (зохиомж хэвээр — нүд бүрээр
+       шинэ `at` ялна; цонх нээлттэй байхад нийлсэн нүдийг «Тавих» чимээгүй дардаг байв).
+       ⚠️ 2026-10-08 (нэгтгэл): нүд бүрд БИШ — урт гинжээр (уялдаа · бүлгийн шилжилт) нэг чирэлт олон
+       арван нүд дарахад дифф бүр шинэ мэдэгдэл бичиж, бусад мэдэгдлийг (сэргээлт · алдаа) дардаг байв.
+       Одоо нүд ба хүнийг `hdOverAgg`-д хуримтлуулж, богино хойшлолын дараа НЭГ мэдэгдэл («N нүд»). */
     for (const [k, c] of cur) {
       const p = prev.get(k);
       if (!p || !sameVal(p.val, c.val)) {
+        const old = hdMeta.current.get(k);
+        if (old?.user && old.user !== meRef.current && stamp() - old.at < HD_RECENT) {
+          hdOverAgg.current.n += 1;
+          hdOverAgg.current.users.add(old.user);
+        }
         hdMeta.current.set(k, { at: stamp(), user: meRef.current });
         hdDel.current.delete(k);
         changed = true;
@@ -405,8 +449,9 @@ export function useSharedDraft({
       if (!cur.has(k)) { hdMeta.current.delete(k); hdDel.current.set(k, stamp()); changed = true; }
     }
     hdPrev.current = cur;
+    if (hdOverAgg.current.n) hdOverFlush();
     return changed;
-  }, [hdStamp, hdKeyRef, obStateRef, hdWritableRef, hdMapsRef, hdCtxRef, meRef]);
+  }, [hdStamp, hdKeyRef, obStateRef, hdWritableRef, hdMapsRef, hdCtxRef, meRef, hdOverFlush]);
   /** Алдааны дараах дахин оролдлого — backoff-той */
   const hdRetry = useCallback(() => {
     hdSchedule(hdBackoff.current);
@@ -514,6 +559,18 @@ export function useSharedDraft({
       seen.set(k, s);
       st.set(k, e);
     }
+    /* ⚠️ 2026-10-08: ХАМТРАГЧ МИНИЙ САЯХНЫ НҮДИЙГ ХОЖУУ УТГААР ДАРСАН бол ил хэлнэ (нийлүүлэлтийн
+       дүрэм хэвээр — `merge`: нүд бүрээр ШИНЭ `at` ялна). Сэргээлтэд мета хоосон тул дуугарахгүй. */
+    const lost = new Set<string>();
+    for (const [k, e] of d.entries) {
+      if (dropped.has(k)) continue;
+      const old = hdMeta.current.get(k);
+      if (!old || old.user !== meRef.current || e.user === meRef.current || e.at <= old.at) continue;
+      if (sameVal(hdPrev.current.get(k)?.val, e.val)) continue;
+      lost.add(e.user);
+    }
+    /* ⚠️ 2026-10-08: зөөлөн мэдэгдэл (`hdSoftNote`) — залуу мэдэгдлийг дарахгүй */
+    if (lost.size) hdSoftNote(tr('{0} таны саяхан зассан нүдийг хожуу утгаараа дарлаа', [...lost].join(', ')));
     hdSeen.current = seen;
     hdMeta.current = meta;
     hdDel.current = del;
@@ -532,7 +589,7 @@ export function useSharedDraft({
     /* Устгасан хуучирсан нүдийг алсад хүргэнэ — дуудагчийн товлолтоос үл хамааран */
     if (tomb) hdSchedule(1500);
     return ap;
-  }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft]);
+  }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft, hdSoftNote]);
 
   /**
    * ЦЭВЭРЛЭХ НҮДНИЙ ТЭМДЭГ (2026-10-04 аудит) — одоо Map-д (дэлгэц дээр) байгаа нүд бүрт
@@ -745,7 +802,17 @@ export function useSharedDraft({
       /* ⚠️ Локал хуулбар БҮХ оролдлогод — алс унасан ч энэ компьютерт үлдэнэ */
       hdWriteLocal(key, local);
       if (s === hdLastSig.current) { if (!hdTimer.current) hdMarkSynced(); return; }
-      if (body.length > REMOTE_MAX) { setHdSt({ st: 'big' }); return; }
+      /* ⚠️ 2026-10-08: хэт том — толгойн шошгоос гадна НЭГ удаа ил мэдэгдэнэ (багтмагц дахин дуугарч болно);
+         `hdUnsynced` ч үүнийг «алсад хүрээгүй» гэж тоолно. */
+      if (body.length > REMOTE_MAX) {
+        setHdSt({ st: 'big' });
+        if (!hdBigNoted.current) {
+          hdBigNoted.current = true;
+          setNote(tr('Ноорог хэт том ({0} тэмдэгт, дээд {1}) — бусад төхөөрөмжид хуулагдахгүй', num(body.length), num(REMOTE_MAX)));
+        }
+        return;
+      }
+      hdBigNoted.current = false;
       setHdSt({ st: 'saving' });
       const gen = hdGen.current;
       /* ⚠️ 2026-09-29 аудит: optimistic lock — дээрх уншилтаас хойш өөр хүн бичсэн бол
@@ -776,7 +843,7 @@ export function useSharedDraft({
       hdBusy.current = false;
       if (hdAgain.current) { hdAgain.current = false; hdSchedule(300); }
     }
-  }, [hdLocal, hdApply, hdWriteLocal, hdMarkSynced, hdSettleMark, hdSchedule, hdRetry, hdKeyRef, hdWritableRef, draggingRef]);
+  }, [hdLocal, hdApply, hdWriteLocal, hdMarkSynced, hdSettleMark, hdSchedule, hdRetry, hdKeyRef, hdWritableRef, draggingRef, setNote]);
   /* ⚠️ 2026-09-30: commit-ийн дараа (`useLayoutEffect`) — уншигчид нь товлолт (setTimeout) ба
      async урсгал тул зурагдалтын дунд бичсэнтэй ижил утга. */
   useLayoutEffect(() => { hdFlushRef.current = hdFlush; hdClearRef.current = hdClear; hdRunClearRef.current = hdRunClear; });
@@ -1181,7 +1248,8 @@ export function useSharedDraft({
    *    Одоо бичих боломжтой үед зөвхөн товлогдсон/явж буй/унасан бичилт (`pending` · `saving`
    *    · `err`) эсвэл сэргээлт дуусаагүй завсрын засвар. Бичих боломжгүй (ArcGIS унтраалттай,
    *    түгжээ) үед Map нь ганц хадгалалт тул урьдын `dirtyN > 0` дүрэм хэвээр.
-   *    `big` (хэт том) — локал хуулбар синхрон бичигддэг тул анхааруулахгүй.
+   *    `big` (хэт том) — 2026-10-08 хүртэл анхааруулдаггүй байв (локал хуулбар синхрон); одоо засвартай
+   *    (`dirtyN > 0`) бол АСУУНА — ноорог алсад ОГТ очоогүй тул өөр төхөөрөмжид харагдахгүй.
    */
   const hdUnsynced = !canEdit ? false
     : !hdWritable ? dirtyN > 0
@@ -1190,7 +1258,8 @@ export function useSharedDraft({
            оролдлого дууссан) — тэр үед хуурамч «гарах уу?» асуулт гарч байв. `err`-д засвар
            (`dirtyN > 0`) шаардана. Хоосон Map-ын алсад хүрээгүй tombstone нь локал хуулбарт СИНХРОН
            бичигдсэн (`hdWriteLocal`) тул гарахад алдагдахгүй — дараагийн нээлтэд алсад очно. */
-        : hdSt.st === 'pending' || hdSt.st === 'saving' || (hdSt.st === 'err' && dirtyN > 0);
+        : hdSt.st === 'pending' || hdSt.st === 'saving' || (hdSt.st === 'err' && dirtyN > 0)
+          || (hdSt.st === 'big' && dirtyN > 0);
 
   return {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef,

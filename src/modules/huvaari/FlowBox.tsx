@@ -1,6 +1,6 @@
 'use client';
 
-import { type KeyboardEvent as KEvt, useEffect, useRef } from 'react';
+import { type KeyboardEvent as KEvt, type ReactNode, useEffect, useRef } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { REASON_MAX } from '@/lib/huvaariBatlah';
@@ -16,10 +16,15 @@ import h from '../huvaari.module.css';
  *    нэг хуудсанд танигдахгүй болно.
  */
 export function FlowBox({
-  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject,
+  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject, summary,
 }: {
   title: string; desc: string; label: string; okText: string;
   rejectText?: string; busy: boolean;
+  /**
+   * ⚠️ 2026-10-08: ИЛГЭЭХИЙН ӨМНӨХ ХУРААНГУЙ — юу илгээгдэх вэ (мөр · блок · хуучин→шинэ) тайлбарын
+   *    доор, гүйлгэгддэг жагсаалт. Эцэг (`Huvaari`) бүрдүүлнэ; байхгүй бол юу ч зурагдахгүй.
+   */
+  summary?: ReactNode;
   /** ⚠️ Текст ЭЦЭГТ хадгалагдана — ард нь дарж/Esc-ээр хаахад устахгүй (2026-09-23) */
   text: string;
   onText: (v: string) => void;
@@ -85,6 +90,7 @@ export function FlowBox({
           <button type="button" className={h.mdX} onClick={close} disabled={busy} aria-label={tr('Хаах')}>×</button>
         </header>
         <p className={h.note}>{desc}</p>
+        {summary}
         {err && <p className={h.err} role="alert">{err}</p>}
         <label className={h.mdField}>
           {label}

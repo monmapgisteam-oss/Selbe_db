@@ -96,10 +96,15 @@ console.log('✅ цөм инвариант — дараалал эх өгөгд�
 {
   assert.ok(V.includes('loadPayload'),
     'HuvaariBatlah: `loadPayload` алга — мөр дэлгэхэд агуулга харагдахгүй');
-  const i = V.indexOf('const toggle');
-  assert.ok(i > 0, 'HuvaariBatlah: мөр дэлгэх `toggle` олдсонгүй');
+  /* ⚠️ 2026-10-08: татах зам `ensureDetail`-д (дэлгэх · урьдчилан татах хоёулаа) — `toggle` түүнийг дуудна */
+  const i = V.indexOf('const ensureDetail');
+  assert.ok(i > 0, 'HuvaariBatlah: агуулга татах `ensureDetail` олдсонгүй');
   assert.ok(V.slice(i, i + 900).includes('loadPayload'),
     'HuvaariBatlah: `loadPayload` нь мөр дэлгэхэд дуудагдахгүй байна — жагсаалт хүндрэнэ');
+  const t = V.indexOf('const toggle');
+  assert.ok(t > 0 && V.slice(t, t + 300).includes('ensureDetail(oid)'), 'HuvaariBatlah: `toggle` агуулгыг татахгүй байна');
+  /* Жагсаалтын түвшинд БҮХ мөрийн payload татагдахгүй — зөвхөн эхний 5 урьдчилан */
+  assert.ok(V.includes('todo.slice(0, 5)'), 'HuvaariBatlah: урьдчилан татах эхний 5 мөрөөр хязгаарлагдаагүй');
 }
 console.log('✅ payload — зөвхөн мөр дэлгэхэд татагдана');
 
@@ -342,7 +347,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
   /* flowReady нь pending-тэй НЭГ зурагдалтад — «аль хэдийн шийдвэрлэгдсэн» худал алдаа */
   const rf = H.slice(H.indexOf('const refreshFlow = useCallback'), H.indexOf('useEffect(() => { void refreshFlow(); }'));
-  assert.ok(rf.indexOf('setFlowReady(true)') > rf.indexOf('await loadPending'),
+  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — `loadPending(pkg.key, kind)` */
+  assert.ok(rf.indexOf('loadPending(pkg.key, kind)') > 0 && rf.indexOf('setFlowReady(true)') > rf.indexOf('loadPending(pkg.key, kind)'),
     'Huvaari: `flowReady=true` нь `loadPending`-ээс ӨМНӨ — хяналт хүлээгдэж буйг шийдвэрлэгдсэн гэж андуурна');
 }
 console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахин ашиглана · бүгд ногоон · okRows хадгална');
@@ -396,7 +402,8 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   /* 7. Буцаасан шалтгаан — «Хуваарь батлах» хуудсанд зохиогчид; хуудсанд 30 с тутам шалгана */
   assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
-  assert.ok(/void loadPending\(key\)\.then\(\(p\) => \{[\s\S]{0,400}void refreshFlow\(\);/.test(H),
+  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — идэвхтэй төрлийнх л (`loadPending(key, kind)`) */
+  assert.ok(/void loadPending\(key, kind\)\.then\(\(p\) => \{[\s\S]{0,400}void refreshFlow\(\);/.test(H),
     'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй');
 }
 console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон блок · бодит огноо · сольж харах · буцаасан шалтгаан');

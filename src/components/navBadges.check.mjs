@@ -6,7 +6,24 @@
  *    эхэлсэн бол `null` (хэрэглэхгүй). Сүлжээгүй — ачаалагчийг орлуулна.
  */
 import assert from 'node:assert/strict';
-import { makeBadgeRefresher } from '@/components/navBadges';
+import fs from 'node:fs';
+import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
+
+/* ── ⚠️ 2026-10-08: «Хуваарь» харагдацад зохиогчийн БУЦААГДСАН илгээлтийн тэмдэг (`countPlanReturned`),
+   «Хуваарь батлах»-д батлагчийн хүлээгдэж буй (`countPlanPending`) — хоёулаа `huvaariBatlah.ts`-д ── */
+{
+  assert.ok(BADGE_VIEWS.has('huvaariBatlah'), 'huvaariBatlah тэмдэггүй');
+  assert.ok(BADGE_VIEWS.has('huvaari'), 'huvaari (буцаагдсан) тэмдэггүй');
+  const L = fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
+  assert.ok(/export async function countPlanReturned\(username: string \| null \| undefined\): Promise<number \| null>/.test(L), 'countPlanReturned алга');
+  assert.ok(/export async function countPlanPending\(username: string \| null \| undefined\): Promise<number \| null>/.test(L), 'countPlanPending алга');
+  const body = L.slice(L.indexOf('export async function countPlanReturned('));
+  assert.ok(body.includes("x.status === PLAN_STATUS.returned") && body.includes("huvaariScope(me, 'author')") && L.includes("cached(loadLastPerPkg, BADGE_TTL, ['HUVAARI_BATLAH'])"),
+    'countPlanReturned: буцаагдсан · зохиогчийн хүрээ · HUVAARI_BATLAH кэш');
+  const V = fs.readFileSync('src/components/ViewRail.tsx', 'utf8');
+  assert.ok(V.includes("k === 'huvaari' ? tr('буцаагдсан {0}', n)"), 'ViewRail: «Хуваарь» тэмдгийн утга «буцаагдсан N» биш');
+  console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан');
+}
 
 /** Гараар шийдэх Promise — хариуны дарааллыг тест удирдана */
 const deferred = () => {

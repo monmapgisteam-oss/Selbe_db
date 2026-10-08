@@ -78,8 +78,14 @@ export type HvPdfOpts = {
   /** Зөвхөн хоцорсон ба явж буй ажил (бүлгүүд нь дагаж үлдэнэ) */
   active: boolean;
   paper: 'A3' | 'A4';
+  /**
+   * ⚠️ 2026-10-08: «БҮХ БЛОК» — олон блоктой багцад блок бүрийг нэг баримтад (блок бүр өөрийн
+   *    хураангуй + бүлгийн хуудсуудтай, `HvPdfInput.blocks`). Сонголт нь дуудагчийнх; энд зөвхөн
+   *    `blocks` өгөгдсөн эсэх үйлчилнэ. Хуучин ганц блокийн зам ХЭВЭЭР (2026-09-30-ны загвар).
+   */
+  allBlocks?: boolean;
 };
-export const HV_PDF_DEFAULT: HvPdfOpts = { months: 0, active: false, paper: 'A3' };
+export const HV_PDF_DEFAULT: HvPdfOpts = { months: 0, active: false, paper: 'A3', allBlocks: false };
 
 export type HvPdfInput = {
   /** Багцын нэр (`pkg.label`) */
@@ -96,6 +102,12 @@ export type HvPdfInput = {
   rows: HvPdfRow[];
   hasActual: boolean;
   opts?: HvPdfOpts;
+  /**
+   * ⚠️ 2026-10-08: «БҮХ БЛОК» — блок бүрийн мөрүүд (`rows`-тай ижил дүрмээр, тэр блокийн зурвас).
+   *    Өгвөл `rows`/`block` ОРОЛГҮЙ, блок бүр ТУСДАА хэсэг (өөрийн хураангуй + бүлгүүд), гарчиг нь
+   *    «Блок · …», блок бүр шинэ хуудаснаас. Хоосон/байхгүй бол ганц блокийн хуучин зам.
+   */
+  blocks?: { block: string; rows: HvPdfRow[] }[];
 };
 
 /* ── Гэрэлтэй сэдвийн өнгө (`globals.css :root`) ── */
@@ -312,7 +324,11 @@ function topLabels(ax: Axis): { x: number; lab: string }[] {
 
 /* ══════════════════ БҮЛЭГЛЭЛТ ══════════════════ */
 
-type Section = { title: string; rows: HvPdfRow[]; axis: Axis; summary?: boolean };
+type Section = {
+  title: string; rows: HvPdfRow[]; axis: Axis; summary?: boolean;
+  /** ⚠️ 2026-10-08: «Бүх блок» — блокийн ЭХНИЙ хэсэг, үргэлж шинэ хуудаснаас */
+  blockStart?: boolean;
+};
 
 /** Хамгийн бага гүнтэй мөр бүрээс шинэ дэд мод эхэлнэ */
 function subtrees(rows: HvPdfRow[]): HvPdfRow[][] {
@@ -401,9 +417,9 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
    * (толгойн ⚠️). Мөрүүд модны дарааллаар (эцэг нь хүүхдийнхээ өмнө) ирдэг
    * тул гүнээр нь стек барина.
    */
-  const rowsIn: HvPdfRow[] = (() => {
+  const inherit = (rows: HvPdfRow[]): HvPdfRow[] => {
     const stack: { depth: number; span: Span | null }[] = [];
-    return x.rows.map((r) => {
+    return rows.map((r) => {
       while (stack.length && stack[stack.length - 1].depth >= r.depth) stack.pop();
       let inh: Span | null = null;
       if (!r.bar) {
@@ -412,7 +428,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       stack.push({ depth: r.depth, span: r.bar ?? inh });
       return { ...r, inh };
     });
-  })();
+  };
   /* ⚠️ Огноотой өвөг ч үгүй мөр (жинхэнэ хуваарьгүй) л хасагдана */
   const hasDate = (r: HvPdfRow) => !!(r.bar || r.inh || r.ref || (x.hasActual && r.aStart != null));
   /*
@@ -427,7 +443,13 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   const win: [number, number] | null = opts.months
     ? (() => {
       const d = new Date(today);
-      return [today, Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + opts.months, d.getUTCDate()) - DAY];
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + opts.months;
+      /* ⚠️ 2026-10-08: САРЫН ЭЦЭСТ ХАЛИХГҮЙ — `Date.UTC(y, m, 31)` нь 2-р сард 3-р сарын 3 болж
+         цонх ХЭТЭРДЭГ байв (01-31 + 1 сар → 03-02). Төгсгөл нь тэр сарын СҮҮЛИЙН өдрөөс
+         (`Date.UTC(y, m + 1, 0)`) хэтрэхгүй; ердийн өдөрт хуучин тоо хэвээр (01-15 → 02-14). */
+      const end = Math.min(Date.UTC(y, m, d.getUTCDate()) - DAY, Date.UTC(y, m + 1, 0));
+      return [today, end];
     })()
     : null;
   const inWin = (r: HvPdfRow) => {
@@ -437,23 +459,37 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   };
   /* ⚠️ Өвлөсөн мужтай мөр өөрийн төлөвгүй — «зөвхөн идэвхтэй» шүүлтэд орохгүй */
   const isActive = (r: HvPdfRow) => !opts.active || (!!r.bar && (r.st === 'late' || r.st === 'run'));
-  const dated = select(rowsIn, (r) => hasDate(r) && inWin(r) && isActive(r), hasDate);
-  const all0 = rangeOf(dated, nowAx, x.hasActual);
   /* Цонхтой бол муж нь цонхоор хязгаарлагдана */
   const clampR = (rg: [number, number] | null): [number, number] | null =>
     rg && win ? [Math.max(rg[0], win[0]), Math.min(rg[1], win[1])] : rg;
-  const all = clampR(all0);
 
+  /*
+   * ⚠️ 2026-10-08: «БҮХ БЛОК» — `blocks` өгөгдвөл блок бүр ӨӨРИЙН хураангуй + бүлгийн хуудсуудтай
+   *    (гарчиг «Блок · …», блокийн эхний хэсэг шинэ хуудаснаас); ганц блокийн зам ЯГ ХЭВЭЭР
+   *    (нэг багц = `{ block: x.block, rows: x.rows }`, гарчигт угтвар үгүй).
+   */
+  const sets = x.blocks?.length ? x.blocks : [{ block: x.block, rows: x.rows }];
+  const multi = !!x.blocks?.length;
   const sections: Section[] = [];
-  if (all) {
+  let datedN = 0;
+  let all: [number, number] | null = null;
+  for (const set of sets) {
+    const rowsIn = inherit(set.rows);
+    const dated = select(rowsIn, (r) => hasDate(r) && inWin(r) && isActive(r), hasDate);
+    datedN += dated.length;
+    const allB = clampR(rangeOf(dated, nowAx, x.hasActual));
+    if (!allB) continue;
+    all = all ? [Math.min(all[0], allB[0]), Math.max(all[1], allB[1])] : allB;
+    const pre = multi ? `${norm(set.block)} · ` : '';
+    const first = sections.length;
     /* ХУРААНГУЙ — хамгийн дээд 2 түвшин, төслийн бүх муж. Цонхгүй бол сараар,
        цонхтой бол (1–3 сар) мужаасаа автоматаар — 1 сарыг сараар зурах утгагүй. */
     const d0 = Math.min(...dated.map((r) => r.depth));
     const top = dated.filter((r) => r.depth <= d0 + 1);
     sections.push({
-      title: tr('Хураангуй — үндсэн бүлгүүд'),
+      title: pre + tr('Хураангуй — үндсэн бүлгүүд'),
       rows: top,
-      axis: makeAxis(all[0], all[1], GW, win ? undefined : 'month'),
+      axis: makeAxis(allB[0], allB[1], GW, win ? undefined : 'month'),
       summary: true,
     });
     const parts: Part[] = [];
@@ -461,8 +497,9 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     for (const p of pack(parts, G.perPage)) {
       const rg = clampR(rangeOf(p.rows, nowAx, x.hasActual));
       if (!rg) continue;
-      sections.push({ title: p.path.filter(Boolean).join('  ›  ') || x.pkg, rows: p.rows, axis: makeAxis(rg[0], rg[1], GW) });
+      sections.push({ title: pre + (p.path.filter(Boolean).join('  ›  ') || x.pkg), rows: p.rows, axis: makeAxis(rg[0], rg[1], GW) });
     }
+    if (multi && sections.length > first) sections[first].blockStart = true;
   }
 
   const content: Content[] = [];
@@ -695,7 +732,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     /* ⚠️ Хураангуй нь дангаараа 1-р хуудсанд ЗӨВХӨН бүтэн PDF-д — цонх/шүүлттэй
        үед хэдхэн мөр тул хуудас хоосон үлдэнэ. */
     const soloSummary = sections[si - 1]?.summary && !win && !opts.active;
-    const breakBefore = si > 0 && (soloSummary || used + need > G.avail - 4);
+    /* ⚠️ 2026-10-08: блокийн эхний хэсэг (`blockStart`) үргэлж шинэ хуудаснаас */
+    const breakBefore = si > 0 && (!!sec.blockStart || soloSummary || used + need > G.avail - 4);
     if (breakBefore) used = 0;
     /* Хуудас дамжсаны дараах `used`-ийг загварчилна.
        ⚠️ 2026-10-01: ХУУДАС БҮРИЙН мөрийн тоог (`chunks`) хадгална — хүснэгт бүр өөрийн
@@ -782,11 +820,12 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   const printed = dayKey(Date.now());
   const sub = [
     x.kindLabel,
-    x.block,
+    /* ⚠️ 2026-10-08: «Бүх блок» — блокийн тоо; ганц блокийн замд блокийн нэр хэвээр */
+    multi ? tr('Бүх блок ({0})', num(sets.length)) : x.block,
     win ? tr('Ирэх {0} сар', opts.months) : '',
     opts.active ? tr('Зөвхөн хоцорсон ба явж буй') : '',
     all ? `${iso(all[0])} – ${iso(all[1])}` : '',
-    tr('{0} мөр', num(dated.length)),
+    tr('{0} мөр', num(datedN)),
   ].filter(Boolean).join(' · ');
 
   return {

@@ -28,7 +28,7 @@ import {
 } from '@/modules/pkgShared';
 /* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
-import { loadPlanCurveCached, planPctAt, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, measureDayOf, type PlanPoint, type PlanCurve } from '@/lib/planProgress';
 
 /**
  * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
@@ -58,7 +58,7 @@ import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey,
   zoneWhere, parcelOidsWhere } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
-import { cat, shade, num, pct, monthKey } from '@/lib/format';
+import { cat, shade, num, pct, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgProgOv.module.css';
@@ -120,6 +120,9 @@ const meanOf = (vals: (number | null)[]) => {
  * Багцын жагсаалт, газрын зураг, өгөгдөл ачаалалт нь ХОЁУЛАНД ижил тул
  * хуваалцагдана — салгасан нь ЗӨВХӨН дээд индикатор ба баруун баганын карт.
  */
+/* ⚠️ 2026-10-08: `Date.now()`-ийг render-ийн гадна (react-hooks/purity) — `monthKey()`-тэй ижил загвар */
+const todayDayKey = (): string => dayKey(Date.now());
+
 export function PkgProg({ dim, setDim }: {
   dim: Dim;
   setDim: (d: Dim) => void;
@@ -969,7 +972,9 @@ function TsKpi(
        (`planPctAt` = `negtgelAuto.housingPlanOf`). Хэмжилтгүй бол энэ сарын эцэс (хуучин зан). */
     let lastM: { label: string; physAt?: string | null } | null = null;
     for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
-    const at = lastM ? (lastM.physAt ?? `${lastM.label}-31`) : `${nowYm}-31`;
+    /* ⚠️ 2026-10-08: `measureDayOf` — `Finance.lagOf` · `execReport` · ТУХ-тай НЭГ дүрэм (`planProgress`-ийн
+       «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш. */
+    const at = lastM ? measureDayOf(lastM.label, lastM.physAt, todayDayKey()) : `${nowYm}-31`;
     if (plan?.length) planned = planPctAt(plan, at);
     const gap = planned != null && actual != null ? planned - actual : null;
     /* ⚠️ 2026-09-06: НИЙТ ТӨЛӨВЛӨГӨӨ = ГЭРЭЭНИЙ дүнгүүдийн нийлбэр

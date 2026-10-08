@@ -120,6 +120,36 @@ assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаа�
   assert.equal(planPctAt(S, '2026-07-10'), null, 'бүх цэг ирээдүйд → null (төлөвлөгөөгүй ≠ 0)');
   assert.equal(planPctAt(S, 'хог'), null, 'эвдэрсэн огноо → null');
   assert.equal(planPctAt([], '2026-09-15'), null, 'хоосон муруй → null');
+  /* ⚠️ 2026-10-08: ЦООРХОЙТОЙ цуваа — өмнөх сарын цэг АЛГА ч түүнээс ӨМНӨХ цэгүүд бий.
+     `p0` null → 0-ээс эхэлж завсарлана (одоогийн дүрэм, `negtgelAuto.housingPlanOf`-той нэг);
+     энэ тест тэр зан төлөвийг БЭХЭЛНЭ — цоорхой нь «0 руу унах» биш, дуудагч (`loadPlanCurve`)
+     сар бүрд цэг өгдөг тул амьд өгөгдөлд цоорхой гарахгүй. */
+  const G = [{ label: '2026-06', pct: 10 }, { label: '2026-07', pct: 20 }, { label: '2026-09', pct: 50 }];
+  assert.equal(planPctAt(G, '2026-09-30'), 50, 'цоорхойн дараах сарын эцэс = тэр цэг');
+  assert.equal(planPctAt(G, '2026-09-15'), 25, 'өмнөх сарын (08) цэггүй → 0-ээс 50 хүртэл шугаман (15/30)');
+  assert.equal(planPctAt(G, '2026-08-15'), 20, 'цоорхой сар (08) дотор → хамгийн сүүлийн өнгөрсөн цэг (07 = 20)');
+  assert.equal(planPctAt(G, '2026-08-31'), 20, 'цоорхой сарын эцэс = өмнөх цэг');
+}
+
+/* ── 10б. `monthAxis` — тэнхлэгийн 120 сарын ХЯЗГААР чимээгүй биш (2026-10-08) ── */
+{
+  const { monthAxis, AXIS_MAX_MONTHS } = await import('./planProgress.ts');
+  const D = (iso) => Date.parse(`${iso}T00:00:00Z`);
+  const ok = monthAxis(D('2026-01-15'), D('2026-03-02'));
+  assert.deepEqual(ok.axis.map((a) => a.label), ['2026-01', '2026-02', '2026-03'], 'ердийн муж — сар бүр');
+  assert.equal(ok.capped, false, 'ердийн муж таслагдахгүй');
+  assert.equal(ok.axis[1].asOf, D('2026-02-28'), 'цэг = сарын эцэс');
+  const one = monthAxis(D('2026-05-10'), D('2026-05-20'));
+  assert.deepEqual(one.axis.map((a) => a.label), ['2026-05'], 'нэг сар');
+  const big = monthAxis(D('2026-01-01'), D('2046-01-01'));
+  assert.equal(big.capped, true, '20 жил → таслагдана');
+  assert.equal(big.axis.length, AXIS_MAX_MONTHS + 1, 'тэнхлэг хязгаарт таслагдсан (хуучин урт хэвээр)');
+  const edge = monthAxis(D('2026-01-01'), D('2036-01-01'));
+  assert.equal(edge.axis.length, AXIS_MAX_MONTHS + 1, 'яг 121 сар — хязгаарын зааг');
+  assert.equal(edge.capped, false, 'яг хязгаарт багтсан бол таслагдаагүй');
+  /* Эх код: таслагдсан бол тэнхлэгээс гадуур дуусах хуудас `failed`-д нэрээр нь ордог */
+  assert.match(SRC, /const \{ axis, capped \} = monthAxis\(from, to\);/, 'loadPlanCurve тэнхлэгийг monthAxis-аар');
+  assert.match(SRC, /if \(capped\) \{[\s\S]*?if \(sh\.to > last\) failedKeys\.push\(`\$\{sh\.key\}: \$\{tr\(/, 'таслагдсан тэнхлэг → failed-д хуудасны нэр (tr)');
 }
 
 /* ── 11. (2026-10-01, хэрэглэгч: бүгдийг зас) САР ДОТОРХ ХУВЬ АЖЛЫН ӨДРӨӨР · КЭШ ──

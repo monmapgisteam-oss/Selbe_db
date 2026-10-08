@@ -128,15 +128,47 @@ console.log('✅ блокгүй (n=0) — унахгүй · NaN алга · мө
     start: [null, null, null, null],
     end: [null, null, null, null],
   })];
-  const calc = computeAll(rows, 4, null, {}, {}, [], undefined);
+  /* ⚠️ 2026-10-08: `asOf` ТАВЬСАН — I/K-ийн «блок байхад null биш» дүрэм нь ЗӨВХӨН лавлах
+     огноотой хуудсанд (Excel `IF(range="",0,…)`: огноогүй блок = 0). `asOf == null` бол
+     I/K `null` — доорх §2б. */
+  const asOf = Date.parse('2026-01-01T00:00:00Z');
+  const calc = computeAll(rows, 4, asOf, {}, {}, [], undefined);
 
   /* J = (0.5 + 0.8 + 0 + 1) / 4 = 0.575 — ГОЛ шалгуур: блокийн ТООНД хуваана */
   assert.equal(calc[0].J, 0.575, 'J нь блокийн ТООНД хуваагдах ёстой (хоосон = 0)');
-  /* ⚠️ I нь оролтын `plan` БИШ — огноо/интерполяциас БОДОГДДОГ. Огноогүй
-     бэлдэцэд 0 гарах нь зөв; энд чухал нь `null` БИШ гэдэг (блок БАЙГАА). */
-  assert.notEqual(calc[0].I, null, 'блок байхад I нь `null` байх ЁСГҮЙ');
-  assert.notEqual(calc[0].K, null, 'блок байхад K нь `null` байх ЁСГҮЙ');
+  /* ⚠️ I нь оролтын `plan` БИШ — огноо/интерполяциас БОДОГДДОГ. `asOf` БАЙХАД огноогүй
+     бэлдэцэд 0 гарах нь зөв (Excel хоосон = 0); энд чухал нь `null` БИШ гэдэг (блок БАЙГАА). */
+  assert.equal(calc[0].I, 0, 'asOf байхад огноогүй блокийн I = 0 (Excel хоосон = 0)');
+  assert.notEqual(calc[0].I, null, 'блок байхад (asOf-той) I нь `null` байх ЁСГҮЙ');
+  assert.notEqual(calc[0].K, null, 'блок байхад (asOf-той) K нь `null` байх ЁСГҮЙ');
   assert.ok(calc[0].E != null, 'E = C×J нь блоктой үед утгатай');
+
+  /* ── 2б. `asOf == null` → I · K · бүлгийн plan `null` (0 БИШ) — 2026-10-08 ──
+     Лавлах огноо ОГТ тохируулаагүй хуудсанд төлөвлөгөөт хувь «мэдээлэлгүй»; урьд нь
+     `avg` null-уудыг 0 гэж нэгтгээд I = 0 → K = 0 архивлагдаж байв (`hyanaltStore` ⚠️). */
+  const noAsOf = computeAll([
+    mkRow({ oid: 10, no: '1', work: 'бүлэг', depth: 0, group: true, act: [null, null], plan: [null, null], obyem: [null, null], start: [null, null], end: [null, null] }),
+    mkRow({ oid: 11, no: '1.1', depth: 1, vol: 10, money: 1000, act: [0.5, 1], plan: [null, null], obyem: [5, 10],
+      start: [Date.parse('2026-01-01T00:00:00Z'), null], end: [Date.parse('2026-02-01T00:00:00Z'), null] }),
+  ], 2, null, {}, {}, [], undefined);
+  assert.equal(noAsOf[1].I, null, 'asOf алга → навчны I = null (0 биш)');
+  assert.equal(noAsOf[1].K, null, 'asOf алга → K = null');
+  assert.equal(noAsOf[1].J, 0.75, 'J огнооноос хамаарахгүй — хэвээр');
+  assert.deepEqual(noAsOf[1].plan, [null, null], 'огноотой блок ч asOf-гүй бол null');
+  assert.deepEqual(noAsOf[0].plan, [null, null], 'бүлгийн plan null (sp=0 → 0% БИШ)');
+  assert.equal(noAsOf[0].I, null, 'бүлгийн I null');
+  assert.equal(noAsOf[0].K, null, 'бүлгийн K null');
+  /* Ижил мөрүүд `asOf`-той бол тоо гарна — засвар зөвхөн asOf-гүй замд */
+  const withAsOf = computeAll([
+    mkRow({ oid: 10, no: '1', work: 'бүлэг', depth: 0, group: true, act: [null, null], plan: [null, null], obyem: [null, null], start: [null, null], end: [null, null] }),
+    mkRow({ oid: 11, no: '1.1', depth: 1, vol: 10, money: 1000, act: [0.5, 1], plan: [null, null], obyem: [5, 10],
+      start: [Date.parse('2026-01-01T00:00:00Z'), null], end: [Date.parse('2026-02-01T00:00:00Z'), null] }),
+  ], 2, Date.parse('2026-01-16T00:00:00Z'), {}, {}, [], undefined);
+  assert.ok(withAsOf[1].plan[0] > 0 && withAsOf[1].plan[0] < 1, 'asOf-той бол огноотой блок интерполяцилагдана');
+  assert.equal(withAsOf[1].plan[1], null, 'огноогүй блок null хэвээр');
+  assert.ok(withAsOf[1].I > 0, 'I = avg (огноогүй блок 0 гэж) > 0');
+  assert.equal(withAsOf[0].plan[0], withAsOf[1].plan[0], 'бүлгийн plan — ганц хүүхдийнх');
+  assert.equal(withAsOf[0].plan[1], 0, 'asOf-той бүлэгт огноогүй блок 0 (Excel дүрэм хэвээр, planCurve-тэй нэг)');
 
   /* Бүх блок хоосон → J = 0 (`null` БИШ: блок БАЙГАА, зүгээр бөглөөгүй) */
   const empty = computeAll(

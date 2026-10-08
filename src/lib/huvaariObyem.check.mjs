@@ -296,6 +296,14 @@ console.log('huvaariObyem.check: ok — сарын нөөц ✓');
   assert.equal(planPctFromMonths(m, d('2026-03-24'), sp), 0.5, '5 дахь өдөр 50%');
   assert.equal(planPctFromMonths(m, d('2026-03-29'), sp), 1, 'дуусах өдөр 100% (сарын эцэс хүлээхгүй)');
   assert.equal(planPctFromMonths(m, d('2026-03-31'), sp), 1, 'сарын эцэс 100% — муруйн цэг өөрчлөгдөхгүй');
+  /* ⚠️ 2026-10-08: УРВУУ муж (дуусах < эхлэх) = ХУВААРЬГҮЙ → null (`bagtsSheet.planAt`-тай нэг).
+     Урьд нь `own = null` болгоод бүтэн сараар ХУВЬ гаргадаг байв. */
+  assert.equal(planPctFromMonths(m, d('2026-03-25'), span('2026-03-29', '2026-03-20')), null,
+    'урвуу муж → null (бүтэн сарын хувь БИШ)');
+  assert.equal(planPctFromMonths(m, d('2026-03-31'), span('2026-03-29', '2026-03-20')), null,
+    'урвуу муж сарын эцэст ч null');
+  assert.equal(planPctFromMonths(m, d('2026-03-25'), { start: null, end: d('2026-03-20') }), planPctFromMonths(m, d('2026-03-25')),
+    'хагас муж (эхлэхгүй) → бүтэн сараар хэвээр (урвуу биш)');
   /* Олон сар: 1-р сар 20-ноос, 3-р сар 10 хүртэл */
   const m3 = new Map([['2026-01', 10], ['2026-02', 30], ['2026-03', 60]]);
   const sp3 = span('2026-01-20', '2026-03-10');
@@ -310,9 +318,9 @@ console.log('huvaariObyem.check: ok — сарын нөөц ✓');
   }
   /* Мужтай огт давхцахгүй сар (хуучирсан задаргаа) — бүтэн сараар, унахгүй */
   assert.equal(planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16'), sp3), planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16')));
-  /* Эвдэрсэн span (null/урвуу) → хуучин зам */
+  /* Хагас span (null) → хуучин зам; ⚠️ 2026-10-08: УРВУУ span → null (хуваарьгүй, `planAt`-тай нэг) */
   assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: null, end: d('2026-03-29') }), planPctFromMonths(m, d('2026-03-10')));
-  assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: d('2026-03-29'), end: d('2026-03-20') }), planPctFromMonths(m, d('2026-03-10')));
+  assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: d('2026-03-29'), end: d('2026-03-20') }), null, 'урвуу муж → null');
   /* `bagtsSheet.planAt` ба `plan.spanFrac` НЭГ томъёо */
   const { spanFrac } = await import('./plan.ts');
   const { planAt } = await import('@/modules/sheet/bagtsSheet.ts');
@@ -343,3 +351,19 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
   assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body), 'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
 }
 console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй ✓');
+
+/* ══════════ ⚠️ 2026-10-08: 500-ААС ИХ МӨРИЙН ДАРААЛАЛ — давхардлын устгал → нэмэх → шинэчлэх → бусад устгал
+ * Өдрийн эхэнд БҮХ устгал эхэлж явдаг байсан нь шууд хадгалах замд алдагдалтай (устгал орсон, нэмэлт
+ * унасан → сарын обьём алга). Зөвхөн `dups` (давхардсан dkey-ийн илүүдэл) эхэлнэ; `deletes`-д давхар
+ * орсон бол нэг л удаа. Сүлжээгүй — эх код. */
+{
+  const fs = await import('node:fs');
+  const SRC = fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8');
+  assert.ok(/dups\?: number\[\];/.test(SRC), 'PlanEdits.dups алга');
+  const body = SRC.slice(SRC.indexOf('export async function applyPlanEdits('));
+  const at = (s) => { const i = body.indexOf(s); assert.ok(i > 0, `${s} олдсонгүй`); return i; };
+  assert.ok(at('chunk(dups)') < at('chunk(e.adds)') && at('chunk(e.adds)') < at('chunk(e.updates)') && at('chunk(e.updates)') < at('chunk(rest)'),
+    'applyPlanEdits: дараалал dups → adds → updates → rest биш');
+  assert.ok(/const rest = e\.deletes\.filter\(\(x\) => !dupSet\.has\(x\)\);/.test(body), 'applyPlanEdits: dups давхар устгагдана');
+}
+console.log('huvaariObyem.check: ok — 500+ дараалал dups → adds → updates → deletes ✓');

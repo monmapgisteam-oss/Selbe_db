@@ -405,7 +405,8 @@ export function AjilBatlah() {
       /* ⚠️ 2026-10-01: оролдлого ДУУССАН — «Батлагдсан · буулгаагүй»-д хүлээлэггүй
          шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
-      if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
+      /* ⚠️ 2026-10-08: `materializeAdds`-ийн `warn` (хуваарийн илгээлт хүлээгдэж байна) — мэдэгдлийн ард залгана */
+      if (m.ok) setNote(tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
       /* ⚠️ БҮТЭН ДАХИН УНШИНА, локал хасалт БИШ: өөр батлагч зуур шийдсэн
@@ -441,7 +442,7 @@ export function AjilBatlah() {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
-      if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)));
+      if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
       reload();
     } catch (e) {

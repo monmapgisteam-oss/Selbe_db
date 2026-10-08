@@ -222,6 +222,28 @@ console.log('✅ нийлүүлэлт');
 }
 console.log('✅ хуучирсан нүд');
 
+/* ── 4б. ⚠️ 2026-10-08: ХУУЧИН (16:00Z — УБ-ын шөнө дунд) `bv`/`val` тэгшлэгдэнэ.
+ * Мөрүүд одоо `normDayMs`-ээр (UTC шөнө дунд) уншигддаг тул 2026-10-08-аас өмнө түүхий агшнаар
+ * бичигдсэн нүд «хуучирсан» гэж худлаа хаягддаг байв. ── */
+{
+  const H8 = 8 * 3_600_000;
+  const leg = (a, b) => ({ start: a * D - H8, end: b * D - H8 });
+  const ap = cellsToMaps(new Map([
+    [kS(10, 0), cell(leg(2, 6), 1, 'a', leg(1, 5))],            // суурь 16:00Z = сервер 00:00Z → орно, утга ч тэгшлэгдэнэ
+    [kS(11, 0), cell(leg(3, 8), 1, 'a', leg(3, 8))],            // тэгшлээд серверийнхтэй ижил → dropped (хуучирсан БИШ)
+    [kA(11, 0), cell([3 * D - H8, null], 1, 'a', [2 * D - H8, null])], // бодит огноо ч мөн
+  ]), ctx);
+  assert.equal(ap.stale, 0, '16:00Z суурь хуучирсан гэж хаягдав');
+  assert.equal(ap.applied, 2);
+  assert.deepEqual(ap.dropped, [kS(11, 0)]);
+  assert.deepEqual(ap.maps.draft.get(10), [sp(2, 6), null], 'утга UTC шөнө дунд руу тэгшлэгдээгүй');
+  assert.deepEqual(ap.maps.aDraft.get(11).start, [3 * D, null]);
+  /* Жинхэнэ зөрүү (өөр өдөр) хэвээр хуучирсан */
+  const st = cellsToMaps(new Map([[kS(10, 0), cell(leg(2, 6), 1, 'a', leg(1, 6))]]), ctx);
+  assert.equal(st.stale, 1, 'жинхэнэ зөрүү алга болов');
+}
+console.log('✅ хуучин 16:00Z нүд тэгшлэгдэнэ — хуучирсан биш');
+
 /* ── 5. Эвдэрсэн оролт ── */
 {
   assert.equal(parse(''), null);
@@ -354,5 +376,46 @@ console.log('✅ remapDraft');
   assert.equal(coversMark(null, m1), false);
 }
 console.log('✅ HLC · нүд тус бүрийн cleared · хэсэгчилсэн цэвэрлэлт');
+
+/* ── 8. ⚠️ 2026-10-08: НЯГТ БИЧИГЛЭЛ — муж хоногоор, нэр индексээр, val === bv нүд орохгүй; ХУУЧИН хэлбэр уншигдсаар ── */
+{
+  const d = mk([
+    [kS(10, 0), cell(sp(2, 6), 900, 'gtumenjargal', sp(1, 5))],
+    [kS(11, 1), cell({ start: 5 * D + 3600_000, end: 7 * D + 3600_000 }, 900, 'bat', { start: 4 * D + 1, end: 6 * D })], // цагтай — ms-ээр
+    [kS(12, 0), cell(null, 900, 'bat', sp(1, 2))],                 // арилгасан муж
+    [kH(10), cell('11SS0', 900, 'gtumenjargal', '18FS3')],
+    [kH(11), cell('18FS3', 900, 'bat', '18FS3')],                  // серверийнхтэй ижил → бичигдэхгүй
+    [kM('5|9F'), cell([['2026-01', 1]], 900, 'bat')],              // bv-гүй → хэвээр
+  ]);
+  const s = serialize(d);
+  const w = JSON.parse(s);
+  assert.deepEqual(w.u, ['bat', 'gtumenjargal'], 'нэрсийн хүснэгт эрэмбэтэй');
+  assert.deepEqual(w.spans[0], [10, 0, [2, 6], 900, 1, [1, 5]], 'муж хоногоор, нэр индексээр');
+  assert.deepEqual(w.spans[1].slice(2, 3), [[5 * D + 3600_000, 7 * D + 3600_000]], 'цагтай огноо ms-ээр хэвээр');
+  assert.deepEqual(w.spans[2][2], null, 'арилгасан муж null');
+  assert.equal(w.ham.length, 1, 'val === bv нүд бичигдэхгүй');
+  const back = parse(s);
+  assert.equal(back.entries.size, 5);
+  for (const k of [kS(10, 0), kS(11, 1), kS(12, 0), kH(10), kM('5|9F')]) assert.deepEqual(back.entries.get(k), d.entries.get(k), `эргэх ${k}`);
+  assert.equal(sig(back), sig(d));
+  /* Хуучин хэлбэр (объект муж · нэр мөрөөр · `u`-гүй) */
+  const old = parse(JSON.stringify({
+    v: 1, t: 5, kind: 'plan', pkg: 'b', by: { user: 'A', at: 5 },
+    spans: [[10, 0, { start: 2 * D, end: 6 * D }, 900, 'Bat', { start: D, end: 5 * D }], [12, 0, null, 900, 'bat', null]],
+    ham: [[10, '11SS0', 900, 'bat', '18FS3']], actual: [], res: [], months: [], del: [], base: { at: 1, n: 2 },
+  }));
+  assert.deepEqual(old.entries.get(kS(10, 0)), cell(sp(2, 6), 900, 'bat', sp(1, 5)), 'хуучин объект муж + bv');
+  assert.deepEqual(old.entries.get(kS(12, 0)), cell(null, 900, 'bat', null));
+  assert.equal(old.entries.get(kH(10)).user, 'bat');
+  assert.equal(sig(old), sig(parse(serialize(old))), 'хуучин → шинэ хэлбэр ижил гарын үсэг');
+  /* Хэмжээ: нэг мужийн нүд (val + bv + нэр) */
+  const c1 = cell(sp(20370, 20376), 1760000000000, 'gtumenjargal', sp(20255, 20261));
+  const one = mk([[kS(1234, 3), c1]]);
+  const two = mk([[kS(1234, 3), c1], [kS(1235, 3), c1]]);
+  const per = serialize(two).length - serialize(one).length;
+  assert.ok(per < 60, `нэг мужийн нүд ${per} тэмдэгт (< 60)`);
+  console.log(`   нэг мужийн нүд ≈ ${per} тэмдэгт (хуучин ≈ 130), нэрсийн хүснэгт нэг удаа`);
+}
+console.log('✅ нягт бичиглэл · хуучин хэлбэр уншигдана');
 
 console.log('✅ huvaariDraft: бүх шалгуур давлаа');

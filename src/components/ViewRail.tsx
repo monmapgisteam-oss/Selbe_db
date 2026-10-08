@@ -187,7 +187,11 @@ export function ViewRail({
     const n = badges?.[k];
     return typeof n === 'number' && n > 0 ? n : 0;
   };
-  const badgeLabel = (n: number) => (n ? tr('{0} хүлээгдэж байна', n) : '');
+  /* ⚠️ 2026-10-08: харагдац тус бүрийн тэмдгийн утга — «Хуваарь» дээрх тоо нь зохиогчид БУЦААГДСАН
+     илгээлт (`navBadges` → `countPlanReturned`), «хүлээгдэж байна» биш. Бусад харагдац хуучнаараа. */
+  const badgeLabel = (n: number, k?: ViewKey) => (n
+    ? (k === 'huvaari' ? tr('буцаагдсан {0}', n) : tr('{0} хүлээгдэж байна', n))
+    : '');
 
   {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
       Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`.
@@ -257,7 +261,7 @@ export function ViewRail({
         type="button"
         aria-current={on}
         /* ⚠️ 2026-09-30: тэмдэгтийн тоо ч нэрэнд — дэлгэц уншигч «3 хүлээгдэж байна» гэж сонсоно */
-        aria-label={n ? `${v.title} · ${badgeLabel(n)}` : v.title}
+        aria-label={n ? `${v.title} · ${badgeLabel(n, v.key)}` : v.title}
         /* Дэлгэгдсэн үед нэр харагдаж байгаа тул hover-т ТАЙЛБАРЫГ нь; хураагдсан
            үед өөрийн tooltip (`tipProps`) — давхар гарахгүйн тулд `title`-гүй. */
         title={collapsed && !header ? undefined : v.desc}

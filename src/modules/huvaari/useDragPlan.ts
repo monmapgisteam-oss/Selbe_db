@@ -3,7 +3,7 @@ import { DAY, type PlanRow, type Span } from '@/lib/plan';
 import { propagate } from '@/lib/deps';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
-import { kM, kN } from '@/lib/huvaariDraft';
+import { kM, kN, kS } from '@/lib/huvaariDraft';
 import type { Drag, DragMode } from './types';
 import { obKey, sameMonths, sameRes, sameSpan } from './util';
 
@@ -66,7 +66,16 @@ export function useDragPlan({
     /** Чирэлтээс өмнөх obDraft/obResDraft — гинжээр хөдөлсөн мөрийн задаргааг буцаана (2026-09-24 аудит) */
     obSnap: Map<string, Map<string, number>> | null;
     obResSnap: Map<string, Map<string, MonthRes>> | null;
+    /** ⚠️ 2026-10-08: чирэлтээс өмнөх БҮХ мөрийн БҮХ блокийн муж (`snapAll`-ийн ⚠️) */
+    snapAll: Map<number, (Span | null)[]> | null;
   } | null>(null);
+  /**
+   * ⚠️ 2026-10-08: ЧИРЭЛТЭЭС ӨМНӨХ БҮХ БЛОКИЙН АГШИН. `drag.snap` зөвхөн идэвхтэй блокийг
+   *    хадгалдаг тул гинж (`propagate`) хамаарагчийн ӨӨР блокийг хөндвөл цуцлахад тэр нь
+   *    ноорогт чимээгүй үлддэг байв. Гинжээр хөдөлсөн (`touched`) мөрийн бүх блокийг эндээс
+   *    сэргээнэ; чирсэн мөр өөрөө урьдын адил зөвхөн `u.blk` (2026-09-21-ний ⚠️).
+   */
+  const snapAll = useRef<Map<number, (Span | null)[]> | null>(null);
   /**
    * Чирэлт хамгийн сүүлд ЯМАР ХОНОГ дээр байсан.
    * ⚠️ `pointermove` секундэд ~60 удаа ирнэ, харин хоног нь зөвхөн багана
@@ -178,6 +187,8 @@ export function useDragPlan({
     const origMonths = r.des != null && blokName ? new Map(obOf(r.des, blokName)) : null;
     const origRes = r.des != null && blokName ? new Map(obResOf(r.des, blokName)) : null;
     dragTouched.current = new Set([r.oid]);
+    /* ⚠️ 2026-10-08: бүх блокийн агшин — `spans` массивууд хөндөгддөггүй (`commit` хуулдаг) тул лавлагаа хангалттай */
+    snapAll.current = new Map(plan.map((x) => [x.oid, x.spans] as const));
     setDrag({
       oid: r.oid, mode, anchor: k, orig: r.spans[blk], origMonths, origRes,
       snap: new Map(plan.map((x) => [x.oid, x.spans[blk]] as const)),
@@ -281,6 +292,7 @@ export function useDragPlan({
           oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
           touched: new Set(dragTouched.current),
           obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
+          snapAll: snapAll.current,
         };
       }
     }
@@ -301,6 +313,7 @@ export function useDragPlan({
         oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
         touched: new Set(dragTouched.current),
         obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
+        snapAll: snapAll.current,
       });
     }
     setDrag(null);
@@ -352,6 +365,22 @@ export function useDragPlan({
       plan.forEach((x, i) => {
         if (i === at) return;
         if (u.touched && !u.touched.has(x.oid)) return;
+        /* ⚠️ 2026-10-08: гинжээр хөдөлсөн мөрийн БҮХ блокийг агшнаар (`snapAll`-ийн ⚠️) — зөрсөн блок л */
+        const all = u.snapAll?.get(x.oid);
+        if (all) {
+          const next = x.spans.slice();
+          let diff = false;
+          for (let b = 0; b < next.length; b++) {
+            const s0 = all[b] ?? null;
+            if (sameSpan(next[b], s0)) continue;
+            /* ⚠️ БУСДЫН нүдийг агшнаар дарахгүй — доорх `other()`-ийн ижил дүрэм (цонх нээлттэй байхад нийлсэн) */
+            const mu = hdMeta.current.get(kS(x.oid, b))?.user;
+            if (mu && mu !== meRef.current) continue;
+            next[b] = s0; diff = true;
+          }
+          if (diff) ch.set(i, next);
+          return;
+        }
         const sp = u.snap!.get(x.oid);
         if (sp === undefined || sameSpan(x.spans[u.blk], sp)) return;
         put(i, sp);

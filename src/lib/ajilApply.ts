@@ -66,6 +66,8 @@ import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser, requireCap } from './who';
 import { AJIL_STATUS, loadHead, loadPayloadStamped, markApplied } from './ajilBatlah';
+/* ⚠️ 2026-10-08: хуваарийн хүлээгдэж буй илгээлт (хагас бичигдсэн бол буулгахгүй) — `huvaariBatlah` энэ файлыг импортлодоггүй */
+import { loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
@@ -295,7 +297,8 @@ export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: 
 /* ══════════════════ СҮЛЖЭЭТЭЙ ХЭСЭГ ══════════════════ */
 
 export type ApplyResult =
-  | { ok: true; /** Аль хэдийн `applied` байсан — юу ч бичээгүй */ already?: boolean; /** Энэ удаа бичигдсэн мөр */ added: number }
+  | { ok: true; /** Аль хэдийн `applied` байсан — юу ч бичээгүй */ already?: boolean; /** Энэ удаа бичигдсэн мөр */ added: number;
+      /** ⚠️ 2026-10-08: буулгасан ч анхааруулга (хуваарийн илгээлт хүлээгдэж байна) — дуудагч харуулна */ warn?: string }
   /** ⚠️ 2026-10-04: `code: 'no-parent'` — эцэг бүлэг хуудсанд алга (`classifyStuck.noParent`) */
   | { ok: false; error: string; code?: 'no-parent' };
 
@@ -404,9 +407,15 @@ export const _io: {
   loadPayloadStamped: typeof loadPayloadStamped;
   markApplied: typeof markApplied;
   writeFrame: (pkgKey: string, adds: readonly NewRow[]) => Promise<FrameWrite>;
+  /** ⚠️ 2026-10-08: багцын хүлээгдэж буй ХУВААРИЙН илгээлт — уншигдахгүй бол `null` (хаахгүй) */
+  loadPlanPending: (pkgKey: string) => Promise<PlanSubmission | null>;
   /** Өөр табын түгжээг хүлээх дээд хугацаа */
   lockWaitMs: number;
-} = { loadHead, loadPayloadStamped, markApplied, writeFrame: writeFrameLive, lockWaitMs: 120_000 };
+} = {
+  loadHead, loadPayloadStamped, markApplied, writeFrame: writeFrameLive,
+  loadPlanPending: (k) => loadPlanPending(k).catch(() => null),
+  lockWaitMs: 120_000,
+};
 
 /** `materializeAdds`-ийн бие — эрхийн шалгалтын ДАРАА л дуудагдана. */
 async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
@@ -425,6 +434,20 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (head.status === AJIL_STATUS.applied) return { ok: true, already: true, added: 0 };
   if (head.status !== AJIL_STATUS.approved)
     return { ok: false, error: tr('Илгээлт батлагдаагүй ({0}) — хуудсанд буулгах боломжгүй.', head.status) };
+  /* ⚠️ 2026-10-08: ХУВААРИЙН ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ БАЙХАД — нэмэлт ажил буулгавал хуудасны жааз шинэ
+     хуулбараар солигдож бүх OID шинэчлэгдэнэ. Батлагч ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) бол
+     хагас бичилтийн үлдсэн хэсэг шинэ агшинд тулгагдахгүй — ХААНА. Тэмдэггүй `pending` бол
+     үргэлжилнэ (`remapPayload` кодоор зөөнө), гэхдээ `warn`-аар ил хэлнэ. */
+  const pp = await _io.loadPlanPending(head.pkgKey);
+  if (pp) {
+    const pb = planPartialBy(pp.status, pp.reason);
+    if (pb != null) {
+      return { ok: false, error: tr('Энэ багцын хуваарийн илгээлтийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх (эсвэл буцаагдах) хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол хагас бичилт алдагдана.', pb || '—') };
+    }
+  }
+  const warn = pp
+    ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны агшин шинэчлэгдэж, батлагч саналыг шинэ агшинд тулгана.', pp.author)
+    : undefined;
 
   const st = await _io.loadPayloadStamped(args.ajilOid);
   const pl = st?.p ?? null;
@@ -445,9 +468,10 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
      тэмдэглэж амжаагүй) — юу ч бичээгүй, зөвхөн тэмдэглэнэ. */
   const m = await _io.markApplied(args.ajilOid);
   if (w.added === 0)
-    return m.ok ? { ok: true, already: true, added: 0 } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
+    return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('ArcGIS-т хадгалагдсангүй.') };
   if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
-  return { ok: true, added: w.added };
+  /* ⚠️ 2026-10-08: `warn` зөвхөн байвал — `ajilReapply.check`-ийн `deepStrictEqual` түлхүүр хүртэл тулгадаг */
+  return { ok: true, added: w.added, ...(warn ? { warn } : {}) };
 }
 
 /**

@@ -23,7 +23,7 @@
  * агшин ялгах түлхүүр БОЛОХГҮЙ.
  */
 import { PKGS, loadSchema, type Pkg, type Schema } from './bagts.pkg';
-import { msToDay } from './bagtsSheet';
+import { msToDay, normDayMs } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TREES } from './bagts.trees';
 import { TASK_SHEET, bagtsKey, buildingKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
@@ -429,9 +429,11 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
            * архивт бүтнээрээ хадгалагддаг тул мэдээлэл алдагдахгүй.
            */
           progress: (() => { const v = nOrNull(a[fld]); return v == null ? null : Math.min(1, v); })(),
-          /* ⚠️ Огноо нь ms epoch — `withDates` унтраалттай бол `null` */
-          start: withDates && sc.start[i] ? nOrNull(a[sc.start[i] as string]) : null,
-          end: withDates && sc.end[i] ? nOrNull(a[sc.end[i] as string]) : null,
+          /* ⚠️ Огноо нь ms epoch — `withDates` унтраалттай бол `null`
+             ⚠️ 2026-10-08: `normDayMs` — локал шөнө дундаар (16:00Z) хадгалагдсан хуучин огноог
+                UTC өдөрт тэгшитгэнэ (`loadRows`-тэй нэг дүрэм) */
+          start: withDates && sc.start[i] ? normDayMs(nOrNull(a[sc.start[i] as string])) : null,
+          end: withDates && sc.end[i] ? normDayMs(nOrNull(a[sc.end[i] as string])) : null,
           ord,
         });
       }

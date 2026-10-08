@@ -148,6 +148,22 @@ export const resOfVal = (v: unknown): Map<string, HDMonthRes> => {
 const spanVal = (s: HDSpan | undefined): HDSpan =>
   (s && Number.isFinite(s.start) && Number.isFinite(s.end) ? { start: s.start, end: s.end } : null);
 const hamVal = (s: string | null | undefined): string => s ?? '';
+/**
+ * ⚠️ 2026-10-08: ХАДГАЛАГДСАН НҮДНИЙ ОГНООГ UTC ӨДӨРТ ТЭГШИТГЭНЭ — `bagtsSheet.normDayMs`-ийн
+ *    ХУУЛБАР (энэ файл импортгүй — React-гүй, ArcGIS-гүй). Мөрүүд одоо уншихдаа тэгшлэгддэг
+ *    тул 2026-10-08-аас ӨМНӨ бичигдсэн нүдний `bv` (түүхий 16:00Z) нь серверийн тэгшлэгдсэн
+ *    утгаас зөрж, `cellsToMaps` нооргийг «хуучирсан» гэж ХУДЛАА хаядаг байв. `val` ч тэгшлэгдэнэ.
+ */
+const DAY = 86_400_000;
+const normDay = (ms: number | null): number | null =>
+  (ms == null || !Number.isFinite(ms) ? null : Math.round(ms / DAY) * DAY);
+const normSpan = (s: HDSpan): HDSpan => (s ? { start: normDay(s.start) ?? s.start, end: normDay(s.end) ?? s.end } : null);
+/** Хадгалагдсан `bv`/`val`-ыг (хэлбэр нь үл мэдэгдэх) муж болгож тэгшилнэ */
+const normSpanVal = (v: unknown): HDSpan => normSpan(spanVal(v as HDSpan));
+const normPair = (v: unknown): (number | null)[] => {
+  const raw = Array.isArray(v) ? v : [];
+  return [normDay(numOrNull(raw[0])), normDay(numOrNull(raw[1]))];
+};
 
 /* ══════════════ Huvaari-ийн 5 Map ↔ нүдний жагсаалт ══════════════ */
 
@@ -318,8 +334,9 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     if (p.type === 's') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = spanVal(r.spans[p.blk]);
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
-      const v = spanVal(e.val as HDSpan);
+      /* ⚠️ 2026-10-08: `bv`/`val`-ыг тэгшлээд тулгана (`normSpanVal`-ын ⚠️) — сервер тал аль хэдийн тэгшлэгдсэн */
+      if (e.bv !== undefined && !sameVal(normSpanVal(e.bv), cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
+      const v = normSpanVal(e.val);
       if (sameVal(v, cur)) { dropped.push(k); continue; }
       let arr = maps.draft.get(p.oid);
       if (!arr) { arr = r.spans.map(spanVal); maps.draft.set(p.oid, arr); }
@@ -328,9 +345,9 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     } else if (p.type === 'a') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = [numOrNull(r.aStart[p.blk]), numOrNull(r.aEnd[p.blk])];
-      if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
-      const raw = Array.isArray(e.val) ? e.val : [];
-      const v = [numOrNull(raw[0]), numOrNull(raw[1])];
+      /* ⚠️ 2026-10-08: бодит огноо ч тэгшлэгдсэн тулгалт (`normPair`) */
+      if (e.bv !== undefined && !sameVal(normPair(e.bv), cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
+      const v = normPair(e.val);
       if (sameVal(v, cur)) { dropped.push(k); continue; }
       let ad = maps.aDraft.get(p.oid);
       if (!ad) { ad = { start: r.aStart.map(numOrNull), end: r.aEnd.map(numOrNull) }; maps.aDraft.set(p.oid, ad); }
@@ -360,11 +377,39 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
 
 type Wire = {
   v: number; t: number; kind: HDKind; pkg: string; by: { user: string; at: number };
+  /** Хэрэглэгчийн нэрсийн хүснэгт (2026-10-08) — нүдний `user` нь энд заах индекс; хуучин ноорогт мөр хэвээр */
+  u?: string[];
   spans: unknown[]; ham: unknown[]; actual: unknown[]; res: unknown[]; months: unknown[];
   /** Сарын нөөц (2026-09-24) — хуучин ноорогт байхгүй, `parse` тэсвэрлэнэ */
   mres?: unknown[];
   del: unknown[]; base: { at: number; n: number };
   cleared?: number;
+};
+
+/**
+ * ⚠️ 2026-10-08: НЯГТ БИЧИГЛЭЛ — `REMOTE_MAX` (80 000) нь 1,266 мөр × 22 блокийн багцад ~600
+ *    мужийн нүдэнд л хүрч, түүнээс хойш ноорог алсад ОГТ очдоггүй байв. Нэг мужийн нүд
+ *    `{"start":1760000000000,"end":1760500000000}` × 2 (val + bv) + нэр = ~130 тэмдэгт.
+ *      · Муж → `[эхлэх, дуусах]` ХОНОГООР (ms / DAY, хоёулаа бүхэл хоног бол), эс бөгөөс ms-ээр
+ *        (гаднаас орсон цагтай огноо нарийвчлал алдахгүй). Хоног < 1e8, ms > 1e12 — ялгагдана.
+ *      · Хэрэглэгчийн нэр → `u` хүснэгтийн индекс.
+ *      · `val === bv` нүд (серверийнхтэй ижил — бичих зүйлгүй, `cellsToMaps` ямар ч байсан хаядаг) орохгүй.
+ *    Нэг нүд ~55 тэмдэгт. `parse` ХУУЧИН хэлбэрийг (объект муж, нэр мөрөөр) хэвээр уншина.
+ */
+const DAY_MS = 86_400_000;
+const spanWire = (s: HDSpan): [number, number] | null => {
+  if (!s) return null;
+  return s.start % DAY_MS === 0 && s.end % DAY_MS === 0 ? [s.start / DAY_MS, s.end / DAY_MS] : [s.start, s.end];
+};
+const spanOfWire = (x: unknown): HDSpan => {
+  if (Array.isArray(x)) {
+    const a = x[0];
+    const z = x[1];
+    if (typeof a !== 'number' || typeof z !== 'number' || !Number.isFinite(a) || !Number.isFinite(z)) return null;
+    const days = Math.abs(a) < 1e8 && Math.abs(z) < 1e8;
+    return { start: days ? a * DAY_MS : a, end: days ? z * DAY_MS : z };
+  }
+  return x && typeof x === 'object' ? spanVal(x as HDSpan) : null;
 };
 
 /** HDDraft → JSON мөр (алсын `payload`). Нүд бүр `[…, at, user, bv]` */
@@ -375,6 +420,10 @@ export function serialize(d: HDDraft): string {
   const res: unknown[] = [];
   const months: unknown[] = [];
   const mres: unknown[] = [];
+  /* Нэрсийн хүснэгт — эрэмбэлсэн (детерминист, `sig`-д нөлөөгүй) */
+  const u = [...new Set([...d.entries.values()].map((e) => e.user))].sort();
+  const ui = new Map(u.map((name, i) => [name, i]));
+  const usr = (e: HDEntry) => ui.get(e.user) ?? 0;
   const bv = (e: HDEntry) => (e.bv === undefined ? [] : [e.bv]);
   /* ⚠️ ТҮЛХҮҮРЭЭР ЭРЭМБЭЛНЭ: `merge`-ийн Map дараалал а/б-ийн эрэмбээс хамаардаг
      тул ижил агуулга өөр мөр болж, `sig` зөрж, хоёр клиент ээлжлэн дахин
@@ -384,19 +433,24 @@ export function serialize(d: HDDraft): string {
     const e = d.entries.get(k)!;
     const p = parseKey(k);
     if (!p) continue;
-    if (p.type === 's') spans.push([p.oid, p.blk, e.val ?? null, e.at, e.user, ...bv(e)]);
-    else if (p.type === 'h') ham.push([p.oid, e.val ?? '', e.at, e.user, ...bv(e)]);
+    /* ⚠️ 2026-10-08: серверийнхтэй ижил нүд бичигдэхгүй (дээрх ⚠️) */
+    if (e.bv !== undefined && sameVal(e.val, e.bv)) continue;
+    if (p.type === 's') {
+      const sbv = e.bv === undefined ? [] : [spanWire(spanVal(e.bv as HDSpan))];
+      spans.push([p.oid, p.blk, spanWire(spanVal(e.val as HDSpan)), e.at, usr(e), ...sbv]);
+    } else if (p.type === 'h') ham.push([p.oid, e.val ?? '', e.at, usr(e), ...bv(e)]);
     else if (p.type === 'a') {
       const v = Array.isArray(e.val) ? e.val : [];
-      actual.push([p.oid, p.blk, v[0] ?? null, v[1] ?? null, e.at, e.user, ...bv(e)]);
+      actual.push([p.oid, p.blk, v[0] ?? null, v[1] ?? null, e.at, usr(e), ...bv(e)]);
     } else if (p.type === 'r') {
       const v = Array.isArray(e.val) ? e.val : [];
-      res.push([p.oid, v[0] ?? null, v[1] ?? null, e.at, e.user, ...bv(e)]);
-    } else if (p.type === 'm') months.push([p.key, e.val ?? [], e.at, e.user, ...bv(e)]);
-    else if (p.type === 'n') mres.push([p.key, e.val ?? [], e.at, e.user, ...bv(e)]);
+      res.push([p.oid, v[0] ?? null, v[1] ?? null, e.at, usr(e), ...bv(e)]);
+    } else if (p.type === 'm') months.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
+    else if (p.type === 'n') mres.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
   }
   const w: Wire = {
     v: HD_VERSION, t: d.t, kind: d.kind, pkg: d.pkg, by: d.by,
+    ...(u.length ? { u } : {}),
     spans, ham, actual, res, months,
     ...(mres.length ? { mres } : {}),
     del: [...d.del].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
@@ -431,17 +485,20 @@ export function parse(s: string | null | undefined): HDDraft | null {
   const kind: HDKind = w.kind === 'geree' ? 'geree' : 'plan';
   const t = ms(w.t) ?? 0;
   const entries: HDEntries = new Map();
+  /* ⚠️ 2026-10-08: нэр — хүснэгтийн индекс (шинэ) эсвэл мөр (хуучин) хоёуланг уншина */
+  const uTab = Array.isArray(w.u) ? w.u.map(str) : [];
+  const usr = (x: unknown): string => (typeof x === 'number' ? uTab[x] ?? '' : str(x));
   const put = (k: string, val: unknown, at: unknown, user: unknown, bv: unknown[]) => {
     const a = ms(at);
     if (a == null) return;
-    const e: HDEntry = { val, at: a, user: str(user).toLowerCase() };
+    const e: HDEntry = { val, at: a, user: usr(user).toLowerCase() };
     if (bv.length) e.bv = bv[0] ?? null;
     entries.set(k, e);
   };
   for (const x of Array.isArray(w.spans) ? w.spans : []) {
     if (!Array.isArray(x) || !Number.isInteger(x[0]) || !Number.isInteger(x[1])) continue;
-    const v = x[2] && typeof x[2] === 'object' ? spanVal(x[2] as HDSpan) : null;
-    put(kS(x[0] as number, x[1] as number), v, x[3], x[4], x.slice(5));
+    /* ⚠️ 2026-10-08: муж `[хоног, хоног]` / `[ms, ms]` (шинэ) эсвэл `{start,end}` (хуучин) — `bv` ч мөн */
+    put(kS(x[0] as number, x[1] as number), spanOfWire(x[2]), x[3], x[4], x.length > 5 ? [spanOfWire(x[5])] : []);
   }
   for (const x of Array.isArray(w.ham) ? w.ham : []) {
     if (!Array.isArray(x) || !Number.isInteger(x[0])) continue;

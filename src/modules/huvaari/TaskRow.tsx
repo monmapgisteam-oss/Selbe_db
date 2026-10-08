@@ -16,7 +16,8 @@ import h from '../huvaari.module.css';
 export function TaskRow({
   r, on, dirty, collapsed, onToggle, onPick, geree, tolov, canEdit, onHamText,
   hasActual, hasRes, aStart, aEnd, hun, mashin, added, onAdd, onDrop, onEditAdd, mark, onMark, children,
-  onDate, onDays, edKind, onEditing,
+  onDate, onDays, edKind, onEditing, hamKeep,
+  onNextRow, onOtherTab, changedBlks, onPickBlk, blkOn, editedBy,
 }: {
   r: PlanRow; on: boolean; dirty: boolean;
   /**
@@ -80,7 +81,39 @@ export function TaskRow({
   canEdit: boolean;
   /** Нүдэнд бичсэн текстийг хадгална () */
   onHamText: (oid: number, text: string) => void;
+  /**
+   * ⚠️ 2026-10-08: `Hamaaral`-ийн ТАНИГДААГҮЙ токенууд (`residualDeps`) — нүдэнд харагддаггүй
+   *    ч хадгалахад хэвээр угтагддаг; title-д ил харуулна. Дуудагч өгөхгүй бол нуугдана.
+   */
+  hamKeep?: readonly string[];
+  /**
+   * ⚠️ 2026-10-08: МӨР ХООРОНД ГАРААР ШИЛЖИХ — нүдэнд (огноо · хоног · уялдаа) ↓/↑ дарахад
+   *    (хадгалалтын дараа) дуудагдана; дуудагч `[data-oid="…"] [data-col="…"]`-ийг фокуслоно.
+   *    Enter ХЭВЭЭР: нүдэнд Enter = хадгалаад цонх нээх (`Huvaari.applyDate` → `openAfterDate`,
+   *    2026-10-06) тул мөр шилжилтэд ↓/↑ л хэрэглэнэ; Tab хөтчийн анхдагчаараа.
+   */
+  onNextRow?: (oid: number, col: 'start' | 'end' | 'days' | 'ham', dir: 1 | -1) => void;
+  /**
+   * ⚠️ 2026-10-08: НӨГӨӨ ТАБЫН огнооны нүд — урьд нь зүгээр текст байсан тул «яагаад засагдахгүй
+   *    байна» гэж эргэлздэг байв. Өгвөл тэр нүднүүд товч болж, дарахад таб солигдоно.
+   */
+  onOtherTab?: () => void;
+  /**
+   * ⚠️ 2026-10-08: ХЯНАЛТЫН горимд ӨӨРЧЛӨГДСӨН БЛОКУУД (индекс) — нэрийн ард чип («2·5·7»);
+   *    чип дарахад `onPickBlk(b)` (тэр блок руу үсэрнэ). `blkOn` = идэвхтэй блок (чип тодорно).
+   */
+  changedBlks?: number[];
+  onPickBlk?: (b: number) => void;
+  blkOn?: number;
+  /** ⚠️ 2026-10-08: хамтран засагч — өнгөт цэг + «Нэр · 14:02» (хуваалцсан ноорог) */
+  editedBy?: { user: string; at: number } | null;
 }) {
+  /* ⚠️ 2026-10-08: нөгөө табын нүд дарагдах эсэх — засагдах мөрд л (бүлэг · нэмэлт мөр · эрхгүй → үгүй) */
+  const otherOk = !!onOtherTab && !!(onDate || onDays);
+  const otherTip = edKind === 'geree' ? tr('Төлөвлөгөө табд засна — дарж шилжинэ') : tr('Гэрээ табд засна — дарж шилжинэ');
+  const onOtherG = otherOk && edKind === 'plan' ? onOtherTab : undefined;
+  const onOtherP = otherOk && edKind === 'geree' ? onOtherTab : undefined;
+  const next = onNextRow ? (col: 'start' | 'end' | 'days' | 'ham') => (dir: 1 | -1) => onNextRow(r.oid, col, dir) : undefined;
   /* ⚠️ «Хуваарь» (хоногийн тоо) ба «блок» (12/12) багана 2026-09-03-нд
      ХАСАГДСАН (хэрэглэгч) — тоо нь зурвасны шошго ба tooltip-д давхардаж
      байв. Зүүн самбарт: код · нэр · хамаарал гурав л үлдэв. */
@@ -143,6 +176,31 @@ export function TaskRow({
             <span className={h.rowWork}>{r.work}</span>
           </button>
         )}
+        {/* ⚠️ 2026-10-08: ХАМТРАН ЗАСАГЧИЙН ЦЭГ — хуваалцсан нооргоос ирсэн мөр; цаг нь орон нутгийн */}
+        {editedBy && (
+          <span className={h.coDot} role="img"
+            aria-label={tr('{0} засаж байна', editedBy.user)}
+            /* ⚠️ 24 цагийн «14:02» (`hourCycle: 'h23'`) — хэлнээс үл хамааран нэг хэлбэр */
+            title={`${editedBy.user} · ${new Date(editedBy.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`} />
+        )}
+        {/* ⚠️ 2026-10-08: ХЯНАЛТ — өөрчлөгдсөн блокийн чип; мөрийн ӨНДӨР хөдлөхгүй (нэг мөрөнд, жижиг) */}
+        {!!changedBlks?.length && (
+          <span className={h.blkChips} title={tr('Өөрчлөгдсөн блок: {0}', changedBlks.map((b) => String(b + 1)).join('·'))}>
+            {changedBlks.map((b) => (
+              onPickBlk ? (
+                <button type="button" key={b}
+                  className={`${h.blkChip}${b === blkOn ? ` ${h.blkChipOn}` : ''}`}
+                  aria-pressed={b === blkOn}
+                  title={tr('{0}-р блок руу үсрэх', String(b + 1))}
+                  onClick={(e) => { e.stopPropagation(); onPickBlk(b); }}>
+                  {b + 1}
+                </button>
+              ) : (
+                <span key={b} className={`${h.blkChip}${b === blkOn ? ` ${h.blkChipOn}` : ''}`}>{b + 1}</span>
+              )
+            ))}
+          </span>
+        )}
         {added && onEditAdd && (
           <button type="button" className={h.dropBtn}
             title={tr('Шинэ мөрийг засах (№ · нэр · обьём · нэгж өртөг)')}
@@ -172,21 +230,29 @@ export function TaskRow({
         *    Өөр формат хэрэглэвэл нэг огноо хоёр газарт өөр харагдана.
         * ⚠️ Хуваарьгүй бол «—», 0 огноо БИШ.
         */}
-      <DateCell v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')} onEditing={onEditing}
-        onSet={edKind === 'geree' && onDate ? (d) => onDate('start', d) : undefined} />
-      <DateCell v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')} onEditing={onEditing}
-        onSet={edKind === 'geree' && onDate ? (d) => onDate('end', d) : undefined} />
+      {/* ⚠️ 2026-10-08: `col`/`onNext` — ↓/↑-аар мөр шилжих (`onNextRow`); `onOther`/`otherTip` — нөгөө
+          табын нүд дарахад таб солигдоно (`onOtherTab`). `data-col` зөвхөн ЗАСАГДАХ нүдэнд. */}
+      <DateCell v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')} onEditing={onEditing} col="start"
+        onSet={edKind === 'geree' && onDate ? (d) => onDate('start', d) : undefined}
+        onNext={edKind === 'geree' ? next?.('start') : undefined} onOther={onOtherG} otherTip={otherTip} />
+      <DateCell v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')} onEditing={onEditing} col="end"
+        onSet={edKind === 'geree' && onDate ? (d) => onDate('end', d) : undefined}
+        onNext={edKind === 'geree' ? next?.('end') : undefined} onOther={onOtherG} otherTip={otherTip} />
       {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
           `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
           хоёулаа ажлын өдөр) — хуанлийн зурвасын шошготой ЯГ ижил тоо. */}
       <DaysCell v={geree} tip={tr('Гэрээгээр үргэлжлэх хоног')} onEditing={onEditing}
-        onSet={edKind === 'geree' && onDays ? onDays : undefined} />
-      <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')} onEditing={onEditing}
-        onSet={edKind === 'plan' && onDate ? (d) => onDate('start', d) : undefined} />
-      <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')} onEditing={onEditing}
-        onSet={edKind === 'plan' && onDate ? (d) => onDate('end', d) : undefined} />
+        onSet={edKind === 'geree' && onDays ? onDays : undefined}
+        onNext={edKind === 'geree' ? next?.('days') : undefined} onOther={onOtherG} otherTip={otherTip} />
+      <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')} onEditing={onEditing} col="start"
+        onSet={edKind === 'plan' && onDate ? (d) => onDate('start', d) : undefined}
+        onNext={edKind === 'plan' ? next?.('start') : undefined} onOther={onOtherP} otherTip={otherTip} />
+      <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')} onEditing={onEditing} col="end"
+        onSet={edKind === 'plan' && onDate ? (d) => onDate('end', d) : undefined}
+        onNext={edKind === 'plan' ? next?.('end') : undefined} onOther={onOtherP} otherTip={otherTip} />
       <DaysCell v={tolov} tip={tr('Төлөвлөгөөгөөр үргэлжлэх хоног')} onEditing={onEditing}
-        onSet={edKind === 'plan' && onDays ? onDays : undefined} />
+        onSet={edKind === 'plan' && onDays ? onDays : undefined}
+        onNext={edKind === 'plan' ? next?.('days') : undefined} onOther={onOtherP} otherTip={otherTip} />
       {/* БОДИТ ЭХЭЛСЭН · ДУУССАН (2026-09-23) — идэвхтэй блок; «—» = бүртгэлгүй */}
       {hasActual && (
         <span className={h.rowDate} title={aStart != null ? tr('Бодит эхэлсэн огноо') : undefined}>
@@ -217,7 +283,8 @@ export function TaskRow({
           мөр дээр хулгана очиход «+» гарч дарагдахыг нь сануулна (CSS). */}
       {/* ⚠️ Нэмэлт мөрд `onPick` ДАМЖУУЛАХГҮЙ (2026-09-25 аудит) — нэрийн товч хаалттай
           атлаа уялдааны нүдээр popup нээгдэж, сөрөг oid ноорогт ордог байв. */}
-      <HamCell r={r} canEdit={canEdit && !added} onText={onHamText} onPick={added ? undefined : onPick} onEditing={onEditing} />
+      <HamCell r={r} canEdit={canEdit && !added} onText={onHamText} onPick={added ? undefined : onPick} onEditing={onEditing} hamKeep={hamKeep}
+        onNext={next?.('ham')} />
       {children}
     </div>
   );
@@ -333,27 +400,47 @@ export function AddBox({ parent, form, onForm, onOk, onCancel, edit = false }: {
  * ⚠️ `Escape` — цуцлах (`cancelRef`, `HamCell`-ийн 2026-09-17-ны занга).
  * ⚠️ Мөрийн ӨНДӨР (`PL_ROW`) хөдлөхгүй — оролт нь нүдний хэмжээнд.
  */
-function DateCell({ v, tip, onSet, onEditing }: {
+/** ⚠️ 2026-10-08: ↓/↑ → мөр шилжих чиглэл (`onNext`); хадгалалтын (`blur`) ДАРАА дуудагдана */
+const navDir = (key: string): 1 | -1 | 0 => (key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : 0);
+
+function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: {
   v: number | null;
   tip: string;
   onSet?: (day: string) => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
+  /** ⚠️ 2026-10-08: `data-col` — дуудагч `[data-oid] [data-col]`-оор фокуслоно (зөвхөн засагдах нүдэнд) */
+  col: 'start' | 'end';
+  /** ⚠️ 2026-10-08: ↓/↑ — мөр шилжих (`TaskRow.onNextRow`) */
+  onNext?: (dir: 1 | -1) => void;
+  /** ⚠️ 2026-10-08: нөгөө табын нүд — дарахад таб солигдоно (`TaskRow.onOtherTab`) */
+  onOther?: () => void;
+  otherTip?: string;
 }) {
   const [edit, setEdit] = useState(false);
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
+  const navRef = useRef<1 | -1 | 0>(0);
   const shown = v != null ? msToDay(v) : '—';
 
   if (!onSet) {
+    if (onOther) {
+      return (
+        <button type="button" className={`${h.rowDate} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
+          onClick={onOther}>
+          {shown}
+        </button>
+      );
+    }
     return <span className={h.rowDate} title={v != null ? tip : undefined}>{shown}</span>;
   }
 
   if (!edit) {
     return (
-      <button type="button" className={`${h.rowDate} ${h.rowDateEd}`}
+      <button type="button" className={`${h.rowDate} ${h.rowDateEd}`} data-col={col}
         title={`${tip}\n${tr('Дарж огноо бичнэ: 2026-10-04 · 20261004')}`}
-        onClick={() => { setTxt(v != null ? msToDay(v) : ''); setEdit(true); onEditing?.(true); }}>
+        onClick={() => { setTxt(v != null ? msToDay(v) : ''); setEdit(true); onEditing?.(true); }}
+        onKeyDown={(e) => { const d = navDir(e.key); if (d && onNext) { e.preventDefault(); onNext(d); } }}>
         {shown}
       </button>
     );
@@ -363,6 +450,7 @@ function DateCell({ v, tip, onSet, onEditing }: {
   return (
     <input
       className={`${h.rowDate} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      data-col={col}
       value={txt}
       autoFocus
       /* ⚠️ 2026-10-06 аудит: "text" — DateField-ийн ижил; iOS-ийн тоон гарт «-»/«.» байхгүй тул огноо бичих боломжгүй */
@@ -377,13 +465,21 @@ function DateCell({ v, tip, onSet, onEditing }: {
         onEditing?.(false);
         const cancel = cancelRef.current;
         cancelRef.current = false;
-        if (cancel) return;
-        const p = parseDayInput(txt);
-        if (p && p !== (v != null ? msToDay(v) : '')) onSet(p);
+        const nav = navRef.current;
+        navRef.current = 0;
+        if (!cancel) {
+          const p = parseDayInput(txt);
+          if (p && p !== (v != null ? msToDay(v) : '')) onSet(p);
+        }
+        /* ⚠️ 2026-10-08: хадгалалтын ДАРАА мөр шилжинэ — огноо өөрчлөгдсөн бол дуудагч цонх нээж
+           болно (`openAfterDate`); тэр үед фокус цонхонд үлдэх нь дуудагчийн шийдвэр. */
+        if (nav && onNext) onNext(nav);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.currentTarget.blur(); return; }
-        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
+        const d = navDir(e.key);
+        if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
       }}
     />
   );
@@ -399,44 +495,62 @@ function DateCell({ v, tip, onSet, onEditing }: {
  * ⚠️ Зөвхөн ЭЕРЭГ БҮХЭЛ тоо (1 = эхлэх өдөр = дуусах өдөр — `spanDays` хоёр захыг
  *    оруулж тоолдог). 0, сөрөг, бутархай → улаан, тавихгүй.
  */
-function DaysCell({ v, tip, onSet, onEditing }: {
+function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   v: Span | null;
   tip: string;
   onSet?: (days: number) => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
+  /** ⚠️ 2026-10-08: ↓/↑ — мөр шилжих (`TaskRow.onNextRow`, `data-col="days"`) */
+  onNext?: (dir: 1 | -1) => void;
+  /** ⚠️ 2026-10-08: нөгөө табын нүд — дарахад таб солигдоно (`TaskRow.onOtherTab`) */
+  onOther?: () => void;
+  otherTip?: string;
 }) {
   const [edit, setEdit] = useState(false);
   const [txt, setTxt] = useState('');
   const cancelRef = useRef(false);
+  const navRef = useRef<1 | -1 | 0>(0);
   const cur = v ? spanDays(v) : null;
   const shown = cur != null ? String(cur) : '—';
 
   if (!onSet || !v) {
+    if (onOther && v) {
+      return (
+        <button type="button" className={`${h.rowDays} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
+          onClick={onOther}>
+          {shown}
+        </button>
+      );
+    }
     return <span className={h.rowDays} title={v ? tip : undefined}>{shown}</span>;
   }
 
   if (!edit) {
     return (
-      <button type="button" className={`${h.rowDays} ${h.rowDateEd}`}
+      <button type="button" className={`${h.rowDays} ${h.rowDateEd}`} data-col="days"
         title={`${tip}\n${tr('Дарж хоногийн тоог бичнэ — дуусах огноо дагаж шилжинэ')}`}
-        onClick={() => { setTxt(shown); setEdit(true); onEditing?.(true); }}>
+        onClick={() => { setTxt(shown); setEdit(true); onEditing?.(true); }}
+        onKeyDown={(e) => { const d = navDir(e.key); if (d && onNext) { e.preventDefault(); onNext(d); } }}>
         {shown}
       </button>
     );
   }
 
   const n = /^\d{1,4}$/.test(txt.trim()) ? Number(txt.trim()) : NaN;
-  const bad = !(n >= 1);
+  /* ⚠️ 2026-10-08: дээд хязгаар 3650 (10 жил) — popup-ын талбартай (`max={3650}`) ИЖИЛ; урьд нь 9999
+     хүртэл зөвшөөрч зурвасыг хуанлиас хол гаргадаг байв. */
+  const bad = !(n >= 1 && n <= 3650);
   return (
     <input
       className={`${h.rowDays} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      data-col="days"
       value={txt}
       autoFocus
       inputMode="numeric"
       aria-label={tip}
       aria-invalid={bad}
-      title={bad ? tr('Хоног буруу — 1-ээс их бүхэл тоо') : tip}
+      title={bad ? tr('Хоног буруу — 1-ээс 3650 хүртэлх бүхэл тоо') : tip}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setTxt(e.target.value)}
       onBlur={() => {
@@ -444,12 +558,17 @@ function DaysCell({ v, tip, onSet, onEditing }: {
         onEditing?.(false);
         const cancel = cancelRef.current;
         cancelRef.current = false;
-        if (cancel || bad) return;
-        if (n !== cur) onSet(n);
+        const nav = navRef.current;
+        navRef.current = 0;
+        if (!cancel && !bad && n !== cur) onSet(n);
+        /* ⚠️ 2026-10-08: хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
+        if (nav && onNext) onNext(nav);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.currentTarget.blur(); return; }
-        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; e.currentTarget.blur(); return; }
+        const d = navDir(e.key);
+        if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
       }}
     />
   );
@@ -474,7 +593,7 @@ function DaysCell({ v, tip, onSet, onEditing }: {
  * ⚠️ `Escape` — засварыг хаяж, хадгалсан утга руу буцна.
  */
 function HamCell({
-  r, canEdit, onText, onPick, onEditing,
+  r, canEdit, onText, onPick, onEditing, hamKeep, onNext,
 }: {
   r: PlanRow;
   canEdit: boolean;
@@ -483,11 +602,18 @@ function HamCell({
   onPick?: () => void;
   /** ⚠️ 2026-10-07: бичиж эхлэх/дуусахыг эцэгт мэдэгдэнэ (`TaskRow.onEditing`) */
   onEditing?: (on: boolean) => void;
+  /** ⚠️ 2026-10-08: танигдаагүй токен — title-д (`TaskRow.hamKeep`) */
+  hamKeep?: readonly string[];
+  /** ⚠️ 2026-10-08: ↓/↑ — мөр шилжих (`TaskRow.onNextRow`, `data-col="ham"`) */
+  onNext?: (dir: 1 | -1) => void;
 }) {
   const saved = r.deps.length ? formatDeps(r.deps) : '';
+  /* ⚠️ 2026-10-08: далд (танигдаагүй) бичиглэлийг title-д ил харуулна — нүдэнд харагдахгүй ч хадгалагдана */
+  const keepTip = hamKeep?.length ? `\n${tr('Танигдаагүй бичиглэл (хэвээр хадгалагдана): {0}', hamKeep.join(', '))}` : '';
   const [txt, setTxt] = useState(saved);
   /* Escape-ээр цуцалсан бол `onBlur`-ийн хадгалалтыг алгасах туг (2026-09-17) */
   const cancelRef = useRef(false);
+  const navRef = useRef<1 | -1 | 0>(0);
   const [edit, setEdit] = useState(false);
 
   /* ⚠️ Гаднаас өөрчлөгдвөл (popup, чирэлтийн гинж, ноорог сэргээх) оролтыг
@@ -501,12 +627,12 @@ function HamCell({
     /* ⚠️ Popup-гүй мөр (2026-09-25 аудит) — товч БИШ; хоосон нүдэнд CSS-ийн «+»
        сануулга гарахгүйн тулд хоосон зай бичнэ. */
     if (!onPick) {
-      return <span className={h.rowHam} style={{ cursor: 'default' }}>{saved || '\u00a0'}</span>;
+      return <span className={h.rowHam} style={{ cursor: 'default' }} title={keepTip.trim() || undefined}>{saved || '\u00a0'}</span>;
     }
     /* ⚠️ Эрхгүй бол УНШИХ горим — товч хэвээр (popup нь зөвхөн харуулна) */
     return (
       <button type="button" className={h.rowHam} onClick={onPick}
-        title={saved ? `${saved}\n${tr('Уялдаа харах')}` : tr('Уялдаа харах')}>
+        title={(saved ? `${saved}\n${tr('Уялдаа харах')}` : tr('Уялдаа харах')) + keepTip}>
         {saved}
       </button>
     );
@@ -516,29 +642,87 @@ function HamCell({
     <span className={h.hamWrap}>
       <input
         className={h.hamIn}
+        data-col="ham"
         value={shown}
         aria-label={tr('Хамаарал')}
         /* ⚠️ `placeholder` БАЙХГҮЙ (2026-09-15, хэрэглэгч: «бүгд 11FS14
            болчихлоо — энэ жишээ шүү дээ»). Хоосон нүд бүрд жишээ бичиглэл
            харагдвал бодит утга мэт уншигдаж, 1,400 мөр «11FS14»-ээр дүүрсэн
            дүр зураг гарна. Жишээг ЗӨВХӨН `title` (hover) ба толгойн зааварт. */
-        title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5. @2 = зөвхөн 2-р блок (@-гүй = бүх блок)')}
+        title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5. @2 = зөвхөн 2-р блок (@-гүй = бүх блок)') + keepTip}
         onChange={(e) => { setEdit(true); setTxt(e.target.value); }}
         onFocus={() => { setEdit(true); setTxt(saved); onEditing?.(true); }}
-        onBlur={() => { setEdit(false); onEditing?.(false); if (!cancelRef.current) onText(r.oid, txt); cancelRef.current = false; }}
+        onBlur={() => {
+          setEdit(false); onEditing?.(false);
+          if (!cancelRef.current) onText(r.oid, txt);
+          cancelRef.current = false;
+          /* ⚠️ 2026-10-08: ↓/↑ — хадгалалтын дараа мөр шилжинэ (`DateCell`-ийн ижил) */
+          const nav = navRef.current;
+          navRef.current = 0;
+          if (nav && onNext) onNext(nav);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.currentTarget.blur(); return; }
           /* ⚠️ Escape = ЦУЦЛАХ: `blur()` синхрон тул `onBlur` хуучин `txt`-ээр хадгалдаг
              байв (2026-09-17). Тугаар хаана.
              ⚠️ 2026-10-06: `stopPropagation` — `DateCell`-ийн адил; урьд нь Esc өргөн горимоос
              ч зэрэг гаргадаг байв. */
-          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); }
+          if (e.key === 'Escape') { e.stopPropagation(); cancelRef.current = true; setTxt(saved); setEdit(false); e.currentTarget.blur(); return; }
+          const d = navDir(e.key);
+          if (d && onNext) { e.preventDefault(); navRef.current = d; e.currentTarget.blur(); }
         }}
       />
+      {/* ⚠️ 2026-10-08: БИЧИЖ БАЙХАД Л нэг мөр жишээ — мөрийн ДОТОР абсолют (өндөр хөдлөхгүй).
+          `placeholder` БИШ (дээрх 2026-09-15-ны ⚠️): фокустай ганц нүдэнд л гарна, 1,400 мөрт биш. */}
+      {edit && <span className={h.cellHelp} aria-hidden>11FS14 · 22SS-5 · @2</span>}
       {/* ⚠️ POPUP руу орох зам — кодоо мэдэхгүй хүнд жагсаалтаас нэрээр нь */}
       {onPick && (
         <button type="button" className={h.hamMore} onClick={onPick}
           title={tr('Жагсаалтаас сонгох')}>…</button>
+      )}
+    </span>
+  );
+}
+
+/* ══════════════════ «ХЭРХЭН» ЗААВАР (2026-10-08) ══════════════════ */
+
+const HOWTO_LS = 'selbe-huvaari-howto';
+
+/**
+ * Хүснэгтийн НЭГ УДААГИЙН «Хэрхэн» заавар — жижиг «?» товч + popover. Анх удаа өөрөө нээгдэнэ,
+ * «Ойлголоо» дарахад `localStorage`-д тэмдэглэгдэж дахин өөрөө гарахгүй; «?»-ээр хүссэн үедээ.
+ * ⚠️ `Huvaari.tsx` толгойн зурваст зурна (`<HowtoHint />`) — мөрийн бүрэлдэхүүн биш.
+ * ⚠️ Анхны төлөв нь lazy initializer (`Huvaari.tsx`-ийн `selbe-huvaari-wide`-тэй ижил хэв маяг):
+ *    модуль `dynamic(ssr:false)` доор ачаалагддаг тул hydration зөрөхгүй; эффектээр setState
+ *    хийхгүй (react-hooks/set-state-in-effect). localStorage хаалттай бол заавар гарахгүй (чимээгүй).
+ * ⚠️ Esc нь ЗӨВХӨН энэ popover-ыг хаана (`stopPropagation`, `AddBox`-ийн 2026-10-07-ны ⚠️).
+ */
+export function HowtoHint() {
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(HOWTO_LS) !== '1'; } catch { return false; }
+  });
+  const dismiss = () => {
+    setOpen(false);
+    try { localStorage.setItem(HOWTO_LS, '1'); } catch { /* хаалттай орчин */ }
+  };
+  return (
+    <span className={h.howto}>
+      <button type="button" className={`${h.howtoBtn}${open ? ` ${h.howtoBtnOn}` : ''}`}
+        aria-expanded={open} aria-label={tr('Хэрхэн ашиглах')} title={tr('Хэрхэн ашиглах')}
+        onClick={() => (open ? dismiss() : setOpen(true))}>?</button>
+      {open && (
+        <div className={h.howtoPop} role="dialog" aria-label={tr('Хэрхэн')}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); } }}>
+          <b>{tr('Хэрхэн')}</b>
+          <ul className={h.howtoList}>
+            <li>{tr('Огноо · хоног · уялдааны нүдэнд дарж бичнэ; Enter хадгалаад цонх нээнэ, Esc цуцална.')}</li>
+            <li>{tr('↓ / ↑ — дараагийн/өмнөх мөрийн ижил нүд рүү.')}</li>
+            <li>{tr('Уялдаа: 11FS14 (11-р ажил дууссанаас 14 хоногийн дараа) · 22SS-5 · @2 (зөвхөн 2-р блок).')}</li>
+            <li>{tr('Хуанли дээр чирж зөөнө, ирмэгээс уртасгана; нэр дээр дарж цонхоор нарийн тавина.')}</li>
+            <li>{tr('Толгойн баганын ирмэгийг чирж өргөнийг өөрчилнө, давхар дарвал анхны өргөн.')}</li>
+          </ul>
+          <button type="button" className={h.tlZoomB} onClick={dismiss}>{tr('Ойлголоо')}</button>
+        </div>
       )}
     </span>
   );

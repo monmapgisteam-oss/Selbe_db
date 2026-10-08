@@ -475,10 +475,40 @@ export function propagate(
     }
   };
 
-  /** Нэг мөрийг урьдчилагчдаас нь дахин бодно. Өөрчлөгдвөл true. */
-  const recompute = (i: number): boolean => {
+  /**
+   * Нэг мөрийг урьдчилагчдаас нь дахин бодно. Өөрчлөгдвөл true.
+   * ⚠️ 2026-10-08: ЗӨВХӨН ШААРДЛАГА НЬ ӨӨРЧЛӨГДСӨН БЛОКИЙГ (`all = false`, гинжээр ирсэн мөр).
+   *    Урьд нь гинжээр ирсэн хамаарагчийн БҮХ блокийг бодож, урд ажил зөвхөн 1-р блокт
+   *    хөдөлсөн ч 2..n блокт ХОЖУУ эхэлсэн (толгойн ⚠️: зөрчил БИШ) хамаарагчийг
+   *    `requiredStart` руу чимээгүй «наадаг» байв. Одоо блок `b`-д өөрчлөлтийн ӨМНӨХ
+   *    (`rows[].spans`) ба ДАРААХ (`out`) шаардлага ижил бол тэр блокийг алгасна.
+   *    `recalc`-ийн мөр (уялдаа нь сая өөрчлөгдсөн) бүх блокоо хэвээр бодно (`all = true`).
+   */
+  /**
+   * ⚠️ 2026-10-08 (давалгаа): (мөр · блок) бүрийн СҮҮЛД бодсон шаардлага. `reqMoved` урьд нь зөвхөн
+   *    ЭХ мөрүүдийн шаардлагатай тулгадаг тул дараагийн давалгаанд урьдчилагч ЭХ байрлалдаа буцвал
+   *    (ромбо: бүлгийн шилжилтээр хэтэрч, өөрийн уялдаагаар засагдсан) хамаарагчийн шаардлага эхнийхтэй
+   *    тэнцээд алгасагдаж, мөр 1-р давалгааны (буруу) байранд үлддэг байв. Сүүлд бодсонтой ч тулгана.
+   */
+  const lastReq = new Map<string, number>();
+  const recompute = (i: number, all = false): boolean => {
     const r = rows[i];
     if (!r.deps.length) return false;
+    /** Блок `b`-ийн шаардлага энэ гинжээр өөрчлөгдсөн үү — үгүй бол хөндөхгүй */
+    const reqMoved = (b: number, req: number): boolean => {
+      if (all) return true;
+      const key = `${i}:${b}`;
+      const prev = lastReq.get(key);
+      lastReq.set(key, req);
+      if (prev != null && prev !== req) return true;
+      if (requiredStart(rows, byCode, i, b) !== req) return true;
+      /* ⚠️ 2026-10-08: энэ блокийг гинж (бүлгийн дэд модны шилжилт) аль хэдийн ХӨДӨЛГӨСӨН бол өөрийн
+         уялдаагаар дахин бодно — эс бөгөөс шилжилтээр хэтэрсэн навч өөрийн уялдааг зөрчсөөр үлдэнэ.
+         Хөндөгдөөгүй блок (мужаараа эх мөртэй ижил) хуучнаараа алгасагдана. */
+      const cur = effSpan(rows, i, b, spansOf);
+      const org = effSpan(rows, i, b);
+      return (cur?.start ?? null) !== (org?.start ?? null) || (cur?.end ?? null) !== (org?.end ?? null);
+    };
     let changed = false;
     if (r.group) {
       /* Бүлэг хамаарагч: блок бүрд зөрүүг бодож ДЭД МОДЫГ БҮХЭЛД НЬ жигд
@@ -493,7 +523,7 @@ export function propagate(
       for (let b = 0; b < nBlocks; b++) {
         if (pinned.get(i)?.has(b)) continue;
         const req = requiredStart(rows, byCode, i, b, spansOf);
-        if (req == null) continue;
+        if (req == null || !reqMoved(b, req)) continue;
         const eff = effSpan(rows, i, b, spansOf);
         if (!eff || eff.start === req) continue;
         const delta = req - eff.start;
@@ -512,7 +542,7 @@ export function propagate(
     for (let b = 0; b < nBlocks; b++) {
       if (pinned.get(i)?.has(b)) continue;
       const req = requiredStart(rows, byCode, i, b, spansOf);
-      if (req == null) continue;
+      if (req == null || !reqMoved(b, req)) continue;
       const own = spansOf(i)[b];
       if (!own || own.start === req) continue;
       const next = spansOf(i).slice();
@@ -525,7 +555,7 @@ export function propagate(
   };
 
   for (const [i] of overrides) enqueue(i);
-  for (const i of recalc) if (recompute(i)) { /* enqueue нь recompute дотор */ }
+  for (const i of recalc) if (recompute(i, true)) { /* enqueue нь recompute дотор */ }
 
   /* ⚠️ Гацалтын хаалт: мөр бүр дээд тал нь 20 удаа. Олон урьдчилагчтай
      ромбо хэлбэрийн зөв гинжид мөр хэд хэдэн давалгаагаар бодогддог тул

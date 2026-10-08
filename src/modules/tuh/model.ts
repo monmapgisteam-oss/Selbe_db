@@ -223,7 +223,11 @@ export function buildModel(input: {
     const months = housing ? monthsBy.get(p.pkgKey) : undefined;
     const lag = months ? lagOf(months) : null;
     const series = housing ? plan?.byBagts.get(p.pkgKey) : undefined;
-    const planContractor = lag?.planned ?? (series?.length ? planPctAt(series, today) : null);
+    /* ⚠️ 2026-10-08: `lagOf` null (муруйн кэш хараахан алга) үед ч ХЭМЖИЛТИЙН өдрөөр (`measDayOf`)
+       — урьд нь `today` тул хэдэн долоо хоногийн өмнөх хэмжилтийг өнөөдрийн төлөвлөгөөтэй жишдэг
+       байв; хэмжилтгүй бол `measDayOf` өөрөө `today` буцаана. */
+    const planContractor = lag?.planned
+      ?? (series?.length ? planPctAt(series, measDayOf(months, nowYm, today)) : null);
     const gapContractor = lag ? lag.actual - lag.planned
       : progress != null && planContractor != null ? progress - planContractor : null;
     const items = cfItemsOf(p);

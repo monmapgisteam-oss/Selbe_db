@@ -94,6 +94,23 @@ const titles = (doc) => doc.content.filter((c) => c.columns).map((c) => c.column
   assert.ok(JSON.stringify(doc.content).includes('Хуваарьтай мөр алга.'), 'хоосон PDF-д мэдэгдэл алга');
 }
 
+/* ── 4б. «Ирэх N сар» цонх САРЫН ЭЦЭСТ халихгүй (2026-10-08) ──
+ * 01-31 + 1 сар: урьд нь `Date.UTC(y, 1, 31)` = 03-03 → цонх 03-02 хүртэл сунаж, 3-р сарын
+ * ажил «ирэх 1 сар»-д ордог байв. Одоо төгсгөл = 02-28. Ердийн өдөрт (01-15 → 02-14) хэвээр. */
+{
+  const rowsIn = (s, e) => [grp('2026-01-01', '2026-12-31'), task(1, '2026-02-27', '2026-02-28'), task(2, s, e)];
+  const names = (doc) => JSON.stringify(doc.content);
+  const endDoc = buildHuvaariDoc(input(rowsIn('2026-03-01', '2026-03-05'), D('2026-01-31'), { months: 1, active: false, paper: 'A4' }));
+  assert.ok(names(endDoc).includes('Ажил 1'), '02-27..02-28 ажил «ирэх 1 сар»-д ОРНО');
+  assert.ok(!names(endDoc).includes('Ажил 2'), '01-31 + 1 сар = 02-28 хүртэл — 03-01-ний ажил ОРОХГҮЙ (халилт)');
+  const midDoc = buildHuvaariDoc(input(rowsIn('2026-02-15', '2026-02-20'), D('2026-01-15'), { months: 1, active: false, paper: 'A4' }));
+  assert.ok(!names(midDoc).includes('Ажил 2'), '01-15 + 1 сар = 02-14 хүртэл — 02-15-ны ажил ОРОХГҮЙ (ердийн өдөр хэвээр)');
+  assert.ok(!names(midDoc).includes('Ажил 1'), '02-27 ажил 02-14-ний цонхонд ОРОХГҮЙ');
+  const decDoc = buildHuvaariDoc(input([grp('2026-01-01', '2027-12-31'), task(1, '2027-01-30', '2027-01-30'), task(2, '2027-02-01', '2027-02-02')], D('2026-12-31'), { months: 1, active: false, paper: 'A4' }));
+  assert.ok(names(decDoc).includes('Ажил 1') && !names(decDoc).includes('Ажил 2'), '12-31 + 1 сар = 2027-01-30 (жилийн халилт)');
+}
+console.log('✓ huvaariPdf: «ирэх N сар» цонх сарын эцэст халихгүй');
+
 console.log('✓ huvaariPdf: хэвлэсэн өдөр (УБ) · өдрийн дугаар давхцахгүй (A3/A4) · Є/Ї · хоосон');
 
 /* ── 5. (2026-10-01, хэрэглэгч: бүгдийг зас) САНАХ ОЙ — сүлжээ ХҮСНЭГТ БҮРД НЭГ УДАА ──
@@ -145,3 +162,31 @@ console.log('✓ huvaariPdf: хэвлэсэн өдөр (УБ) · өдрийн д
   assert.ok(tbl.slice(1).some((t) => t.pageBreak === 'before'), 'урт бүлэг гараар хуудаслагдаагүй');
 }
 console.log('✓ huvaariPdf: сүлжээ хүснэгт бүрд нэг удаа (санах ой)');
+
+/* ── 6. (2026-10-08) «БҮХ БЛОК» — блок бүр тусдаа хэсэг, нэг баримтад; ганц блокийн зам ХЭВЭЭР ──
+ * `blocks` өгвөл блок бүр өөрийн хураангуй + бүлгүүдтэй, гарчиг «Блок · …», блокийн эхний хэсэг
+ * шинэ хуудаснаас; дэд гарчигт блокийн тоо ба нийт мөр. `blocks` байхгүй/хоосон бол урьдын гаралт. */
+{
+  const now = D('2026-10-01');
+  const rows = [grp('2026-10-01', '2026-12-31'), task(1, '2026-10-01', '2026-10-20'), task(2, '2026-11-15', '2026-12-31')];
+  const one = buildHuvaariDoc(input(rows, now));
+  const same = buildHuvaariDoc({ ...input(rows, now), blocks: [] });
+  assert.deepEqual(titles(same), titles(one), 'хоосон `blocks` ганц блокийн гаралтыг өөрчилсөн');
+  assert.ok(titles(one).every((t) => !t.includes(' · Хураангуй')), 'ганц блокийн гарчигт блокийн угтвар орсон');
+  const multi = buildHuvaariDoc({
+    ...input(rows, now),
+    blocks: [{ block: 'B1', rows }, { block: 'B2', rows: [grp('2027-01-01', '2027-03-31'), task(3, '2027-01-05', '2027-02-10')] }],
+  });
+  /* `titles()` нь мужийн текст (columns[1]) — гарчиг нь columns[0] */
+  const tt = multi.content.filter((c) => c.columns).map((c) => c.columns[0].text);
+  assert.ok(tt.filter((t) => t.startsWith('B1 · ')).length >= 2 && tt.filter((t) => t.startsWith('B2 · ')).length >= 2,
+    `блок бүр угтвартай хэсгүүд: ${tt}`);
+  assert.ok(tt.filter((t) => t.endsWith('Хураангуй — үндсэн бүлгүүд')).length === 2, 'блок бүрд нэг хураангуй');
+  const heads = multi.content.filter((c) => c.columns);
+  const b2 = heads.findIndex((c) => c.columns[0].text.startsWith('B2 · '));
+  assert.equal(heads[b2].pageBreak, 'before', 'хоёр дахь блок шинэ хуудаснаас эхлээгүй');
+  const sub = multi.header().stack[0].columns[1].text;
+  assert.ok(sub.includes('Бүх блок (2)') && sub.includes('5 мөр'), `дэд гарчиг: ${sub}`);
+  assert.ok(JSON.stringify(multi.content).includes('Ажил 3'), 'хоёр дахь блокийн мөр алга');
+}
+console.log('✓ huvaariPdf: «Бүх блок» — блок бүр тусдаа хэсэг · ганц блок хэвээр');

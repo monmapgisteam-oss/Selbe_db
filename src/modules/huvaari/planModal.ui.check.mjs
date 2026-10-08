@@ -132,3 +132,77 @@ console.log('✓ PlanModal SSR: Hamaaral 255 хамгаалалт');
   assert.ok(SP.indexOf('hamLong') < SP.indexOf('for (const [oid, text] of ham) {'), 'savePrep шалгалт бичилтийн бэлтгэлээс хойно');
 }
 console.log('✓ savePrep: урт уялдаа тайрахгүй, татгалзана');
+
+/* ── 2026-10-08: I3 урьдчилагчийн combobox · I1 алхмаар хуулах товч · B5 эхлэх огнооны дүрэм ── */
+{
+  const cands = [5, 6, 8].map((c) => ({ code: c, label: `${c} · w${c}` }));
+  const base = { ...row([span('2026-10-01', '2026-12-31')], null), deps: [{ code: 5, type: 'FS', lag: 0 }] };
+  // I3: `<select>` биш, role="combobox" оролт; сонгосон кодын нэр харагдана
+  let o = render(base, new Map(), { hasHam: true, cands });
+  assert.ok(/role="combobox"/.test(o.html), 'урьдчилагч нь combobox');
+  assert.ok(!/<select class="select mdDepWork"/.test(o.html), 'хуучин 1,400 сонголттой select алга');
+  assert.ok(o.html.includes('value="5 · w5"'), `сонгосон кодын нэр оролтод: ${o.html.slice(o.html.indexOf('combobox') - 200, o.html.indexOf('combobox') + 200)}`);
+  // жагсаалтад алга код — тусдаа ил бичигдэнэ
+  o = render({ ...base, deps: [{ code: 99, type: 'FS', lag: 0 }] }, new Map(), { hasHam: true, cands });
+  assert.ok(o.html.includes('99 · (жагсаалтад алга)'), 'жагсаалтад алга код ил');
+
+  // I1: алхам > 0, 2 блок сонгосон, идэвхтэй тэнцсэн → товч идэвхтэй; алхам 0 → товч алга; тэнцээгүй → хаалттай
+  const two = (spans, vol = 900) => ({ ...row(spans, vol), act: [null, null], aStart: [null, null], aEnd: [null, null] });
+  const sp = span('2026-10-01', '2026-12-31');
+  const copyBtn = (html) => /<button[^>]*>Идэвхтэй блокийн задаргааг сонгосон блокуудад алхмаар шилжүүлж хуулах<\/button>/.exec(html)?.[0] ?? '';
+  let b = copyBtn(render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 }), { blocks: ['B1', 'B2'], initSel: new Set([0, 1]), takt: 30 }).html);
+  assert.ok(b && !/\bdisabled=""/.test(b), `алхам 30 · 2 блок · тэнцсэн → хуулах товч идэвхтэй: ${b}`);
+  b = copyBtn(render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 200 }), { blocks: ['B1', 'B2'], initSel: new Set([0, 1]), takt: 30 }).html);
+  assert.ok(b && /\bdisabled=""/.test(b), 'тэнцээгүй → хуулах товч хаалттай (зөрүүг олон блокт үржүүлэхгүй)');
+  b = copyBtn(render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 }), { blocks: ['B1', 'B2'], initSel: new Set([0, 1]), takt: 0 }).html);
+  assert.equal(b, '', 'алхам 0 → товч алга («Тавих» өөрөө бүх блокт хуулна)');
+  b = copyBtn(render(two([sp, sp]), M({ '2026-10': 300, '2026-11': 300, '2026-12': 300 }), { blocks: ['B1', 'B2'], takt: 30 }).html);
+  assert.equal(b, '', 'ганц блок сонгосон → товч алга');
+
+  // B5 (эх код): шинэ эхлэх ≤ одоогийн дуусах бол дуусах хэвээр (`applyDate`-тэй нэг дүрэм)
+  const fs = await import('node:fs');
+  const PM = fs.readFileSync('src/modules/huvaari/PlanModal.tsx', 'utf8');
+  const oi = PM.indexOf('const onStart = (v: string) => {');
+  assert.ok(oi > 0 && PM.slice(oi, oi + 400).includes('if (ms2 != null && s <= ms2) return;'), 'onStart: эхлэх ≤ дуусах → дуусах хэвээр');
+  assert.ok(PM.indexOf('copyShifted') > 0 && /window\.confirm\(/.test(PM.slice(PM.indexOf('const copyShifted'), PM.indexOf('const copyShifted') + 600)), 'хуулах нь баталгаажуулалттай ил үйлдэл');
+}
+console.log('✓ PlanModal SSR: combobox · алхмаар хуулах товч · onStart дүрэм');
+
+/* ── 2026-10-08: TaskRow — data-col · нөгөө табын товч · блокийн чип · хамтран засагчийн цэг ── */
+{
+  const { TaskRow } = await import('@/modules/huvaari/TaskRow');
+  const sp = span('2026-10-01', '2026-12-31');
+  const r = row([sp]);
+  const base = {
+    r, on: false, dirty: false, collapsed: false, onToggle: noop, onPick: noop, geree: sp, tolov: sp, canEdit: true, onHamText: noop,
+    hasActual: false, hasRes: false, aStart: null, aEnd: null, hun: null, mashin: null, edKind: 'plan', onDate: noop, onDays: noop,
+  };
+  const rend = (extra = {}) => renderToStaticMarkup(React.createElement(TaskRow, { ...base, ...extra }));
+  let html = rend({ onOtherTab: noop, onNextRow: noop });
+  assert.ok(/data-oid="7"/.test(html), 'мөрийн үндэс data-oid');
+  assert.equal((html.match(/data-col="start"/g) ?? []).length, 1, 'data-col="start" зөвхөн идэвхтэй табын нүдэнд');
+  assert.equal((html.match(/data-col="end"/g) ?? []).length, 1, 'data-col="end" нэг');
+  assert.equal((html.match(/data-col="days"/g) ?? []).length, 1, 'data-col="days" нэг');
+  assert.equal((html.match(/data-col="ham"/g) ?? []).length, 1, 'data-col="ham" нэг');
+  assert.equal((html.match(/rowDateOther/g) ?? []).length, 3, `нөгөө (гэрээ) табын 3 нүд товч: ${(html.match(/rowDateOther/g) ?? []).length}`);
+  assert.ok(html.includes('Гэрээ табд засна — дарж шилжинэ'), 'нөгөө табын title');
+  // гэрээ табд: эсрэгээр
+  html = rend({ onOtherTab: noop, edKind: 'geree' });
+  assert.ok(html.includes('Төлөвлөгөө табд засна — дарж шилжинэ'), 'төлөвлөгөө руу шилжих title');
+  // onOtherTab өгөөгүй → энгийн span
+  html = rend();
+  assert.ok(!/rowDateOther/.test(html), 'onOtherTab-гүй бол нөгөө таб товч биш');
+  // бүлэг/засагдахгүй мөрд нөгөө табын товч ч гарахгүй
+  html = rend({ onOtherTab: noop, onDate: undefined, onDays: undefined });
+  assert.ok(!/rowDateOther/.test(html), 'засагдахгүй мөрд нөгөө табын товч гарахгүй');
+  // өөрчлөгдсөн блокийн чип + идэвхтэй; хамтран засагчийн цэг
+  html = rend({ changedBlks: [1, 4, 6], onPickBlk: noop, blkOn: 4, editedBy: { user: 'Бат', at: Date.UTC(2026, 9, 8, 6, 2) } });
+  const chips = [...html.matchAll(/<button[^>]*class="blkChip[^"]*"[^>]*>(\d+)<\/button>/g)];
+  assert.deepEqual(chips.map((m) => m[1]), ['2', '5', '7'], `чип 2·5·7: ${chips.map((m) => m[1])}`);
+  assert.ok(/class="blkChip blkChipOn"[^>]*>5</.test(html), 'идэвхтэй блокийн чип тодорсон');
+  assert.ok(html.includes('Өөрчлөгдсөн блок: 2·5·7'), 'чипийн нэгдсэн title');
+  assert.ok(/class="coDot"[^>]*title="Бат · \d{2}:\d{2}"/.test(html), `хамтран засагчийн цэг + «Нэр · цаг»: ${/class="coDot"[^>]*/.exec(html)?.[0]}`);
+  html = rend();
+  assert.ok(!/blkChip|coDot/.test(html), 'чип/цэг өгөөгүй бол алга');
+}
+console.log('✓ TaskRow SSR: data-col · нөгөө таб · блокийн чип · хамтран засагч');

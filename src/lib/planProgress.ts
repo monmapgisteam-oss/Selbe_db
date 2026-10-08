@@ -65,7 +65,8 @@
  * дашбоард, KPI, хоцрогдол бүгд түүнээс уншина.
  */
 import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
-import { loadRows, planCurve } from '@/modules/sheet/bagtsSheet';
+import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
+import { t as tr } from './i18nCore';
 import { bagtsKey, isConstructionNo } from './services';
 import { loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 import { register } from './dataBus';
@@ -130,6 +131,30 @@ const sane = (ms: unknown): ms is number => typeof ms === 'number'
 /** Сарын СҮҮЛИЙН өдөр — тухайн сарын эцсийн байдлаар үнэлнэ */
 const monthEnd = (y: number, m: number) => Date.UTC(y, m + 1, 0);
 const ym = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`;
+
+/** Тэнхлэгийн дээд хязгаар (сар) — гажигтай огнооноос сэргийлнэ */
+export const AXIS_MAX_MONTHS = 120;
+
+/**
+ * САРЫН ТЭНХЛЭГ — `from`-ын сараас `to`-гийн сар хүртэл (цэвэр функц, тестлэгдэнэ).
+ * ⚠️ 2026-10-08: `AXIS_MAX_MONTHS`-оос урт бол ТАСЛАНА (хуучин дүрэм хэвээр), гэхдээ `capped`
+ *    туг буцаана — урьд нь таслалт ЧИМЭЭГҮЙ байсан тул тэнхлэгээс гадуурх огноотой хуудасны
+ *    муруй дутуу, хэн ч мэдэхгүй өнгөрдөг байв. Дуудагч тугаар `failed`-д тэмдэглэнэ.
+ */
+export function monthAxis(from: number, to: number): { axis: { label: string; asOf: number }[]; capped: boolean } {
+  const d0 = new Date(from);
+  const d1 = new Date(to);
+  const axis: { label: string; asOf: number }[] = [];
+  let capped = false;
+  for (let y = d0.getUTCFullYear(), m = d0.getUTCMonth(); ;) {
+    axis.push({ label: ym(y, m), asOf: monthEnd(y, m) });
+    if (y === d1.getUTCFullYear() && m === d1.getUTCMonth()) break;
+    m += 1; if (m > 11) { m = 0; y += 1; }
+    /* Гажигтай өгөгдлөөс сэргийлэх дээд хязгаар */
+    if (axis.length > AXIS_MAX_MONTHS) { capped = true; break; }
+  }
+  return { axis, capped };
+}
 
 /** Нэг хуудасны бэлтгэсэн төлөв */
 type Sheet = {
@@ -304,15 +329,17 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   const to = Math.max(...sheets.map((x) => x.to));
 
   /* Сарын тэнхлэг — хуваарийн ЭХНЭЭС ТӨГСГӨЛ хүртэл */
-  const d0 = new Date(from);
-  const d1 = new Date(to);
-  const axis: { label: string; asOf: number }[] = [];
-  for (let y = d0.getUTCFullYear(), m = d0.getUTCMonth(); ;) {
-    axis.push({ label: ym(y, m), asOf: monthEnd(y, m) });
-    if (y === d1.getUTCFullYear() && m === d1.getUTCMonth()) break;
-    m += 1; if (m > 11) { m = 0; y += 1; }
-    /* Гажигтай өгөгдлөөс сэргийлэх дээд хязгаар */
-    if (axis.length > 120) break;
+  const { axis, capped } = monthAxis(from, to);
+  /* ⚠️ 2026-10-08: ТАСЛАГДСАН тэнхлэг ЧИМЭЭГҮЙ ӨНГӨРӨХГҮЙ — тэнхлэгээс гадуур дуусах хуудсыг
+     `failed`-д нэрээр нь (огноотой) тэмдэглэнэ: ТУХ/PkgProg/ExecReport тэр жагсаалтыг ил
+     харуулдаг. Муруй нь ХЭВЭЭР бодогдоно (таслалт өөрчлөгдөөгүй); `failed` хоосон биш тул
+     `loadPlanCurveCached` кэшлэхгүй — гажиг огноог засах хүртэл уншилт давтагдана (санаатай:
+     буруу муруйг 5 минут кэшлэхээс дээр). */
+  if (capped) {
+    const last = axis[axis.length - 1].asOf;
+    for (const sh of sheets) {
+      if (sh.to > last) failedKeys.push(`${sh.key}: ${tr('хуваарийн огноо тэнхлэгийн хязгаараас ({0} сар) гадуур — {1}', String(AXIS_MAX_MONTHS), msToDay(sh.to))}`);
+    }
   }
   const asOfs = axis.map((a) => a.asOf);
 

@@ -238,7 +238,11 @@ export function planPctFromMonths(
   if (!(total > 0)) return null;
   const s0 = span?.start ?? null;
   const e0 = span?.end ?? null;
-  const own = s0 != null && e0 != null && Number.isFinite(s0) && Number.isFinite(e0) && s0 <= e0
+  /* ⚠️ 2026-10-08: УРВУУ муж (дуусах < эхлэх) = ХУВААРЬГҮЙ → `null` — `bagtsSheet.planAt`-ийн
+     2026-10-04-ний дүрэмтэй нэг. Урьд нь `own = null` болгоод бүтэн сараар хувь гаргадаг тул
+     задаргаатай урвуу мөр хуудас · муруйд «хуваарьтай» мэт тоо өгч байв. */
+  if (s0 != null && e0 != null && Number.isFinite(s0) && Number.isFinite(e0) && s0 > e0) return null;
+  const own = s0 != null && e0 != null && Number.isFinite(s0) && Number.isFinite(e0)
     ? { start: s0, end: e0 } : null;
   const keys = [...m.keys()].sort();
   let done = 0;
@@ -412,6 +416,12 @@ export type PlanEdits = {
   adds: Record<string, unknown>[];
   updates: Record<string, unknown>[];
   deletes: number[];
+  /**
+   * ⚠️ 2026-10-08: ДАВХАРДСАН `dkey`-ийн илүүдэл мөр (`indexOids().dups`) — СОНГОЛТТОЙ, дуудагч
+   *    (`Huvaari.save`) өгнө. `applyPlanEdits` 500-аас их мөрд ЗӨВХӨН эдгээрийг эхэлж устгана;
+   *    `deletes` дотор давхар байвал ч нэг л удаа явна.
+   */
+  dups?: number[];
 };
 
 /**
@@ -661,17 +671,35 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
        устгал унасан» хагас задаргаа үлдэж, дахин батлахад зөрчил, буцаах/татахад хагас бичилтийн
        тэмдэг саад болж батлалт гацдаг байв. Нэг хүсэлт = бүгд эсвэл юу ч үгүй.
        500-аас их бол хуучин багцлалт ХЭВЭЭР (тэнд хагас бичилт боломжтой — мессеж тоог хэлнэ). */
-    const total = e.adds.length + e.updates.length + e.deletes.length;
+    /* ⚠️ 2026-10-08: давхардлын устгал (`dups`) ба бусад устгалыг салгана — `deletes`-д давхар
+       орсон бол нэг л удаа (ArcGIS байхгүй OID-д алдаа өгнө). */
+    const dupSet = new Set((e.dups ?? []).filter((x) => Number.isFinite(x)));
+    const dups = [...dupSet];
+    const rest = e.deletes.filter((x) => !dupSet.has(x));
+    const deletes = [...dups, ...rest];
+    const total = e.adds.length + e.updates.length + deletes.length;
     if (total > 0 && total <= 500) {
       const body: Record<string, string> = {};
       if (e.adds.length) body.adds = JSON.stringify(e.adds);
       if (e.updates.length) body.updates = JSON.stringify(e.updates);
-      if (e.deletes.length) body.deletes = e.deletes.join(',');
-      await run(body, [e.adds.length, e.updates.length, e.deletes.length]);
+      if (deletes.length) body.deletes = deletes.join(',');
+      await run(body, [e.adds.length, e.updates.length, deletes.length]);
     } else {
+      /* ⚠️ 2026-10-08: ДАРААЛАЛ давхардлын устгал → нэмэх → шинэчлэх → бусад устгал.
+         (а) `indexOids().dups` (давхардсан `dkey`-ийн илүүдэл мөр) ЭХЛЭЭД: урьд нь нэмэлт түрүүлж
+             явж, устгал дунд нь унавал давхардал цэвэрлэгдээгүй дээр шинэ мөр нэмэгддэг байв.
+         (б) Харин `buildEdits`-ийн «хуваариас гарсан сар» устгалыг СҮҮЛД: өдрийн эхэнд (2026-10-08)
+             БҮХ устгалыг эхэлж явуулж байсан нь батлах БУС (шууд хадгалах) замд алдагдалтай байв —
+             устгал орсон, нэмэлт/шинэчлэл унасан бол сарын обьём АЛГА болж, дахин бичих эх нь
+             ноорогт л үлддэг. Нэмэлт/шинэчлэл орсон, устгал унасан бол ИЛҮҮДЭЛ (давхар сар) үлдэнэ —
+             тэр нь нийлбэрт харагдаж, дараагийн бичилтээр `prev`-ээс устгагдана: алдагдал биш.
+         ⚠️ ҮЛДЭХ ЭРСДЭЛ: 500-аас их мөрд `rollbackOnFailure` багц бүрд тусдаа тул дундуур унавал
+         хагас бичилт үлдэнэ — мессеж тоог хэлнэ (`written`), дахин батлахад `indexOids` ба `dkey`
+         дээр тулгуурлан нөхөгдөнө. */
+      for (const c of chunk(dups)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
       for (const c of chunk(e.adds)) await run({ adds: JSON.stringify(c) }, [c.length, 0, 0]);
       for (const c of chunk(e.updates)) await run({ updates: JSON.stringify(c) }, [0, c.length, 0]);
-      for (const c of chunk(e.deletes)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
+      for (const c of chunk(rest)) await run({ deletes: c.join(',') }, [0, 0, c.length]);
     }
   } finally {
     if (a + u + dl > 0) invalidate('HUVAARI_OBYEM');

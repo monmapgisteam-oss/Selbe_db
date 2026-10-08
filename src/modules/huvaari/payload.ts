@@ -1,6 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
-import type { SheetRow } from '@/modules/sheet/bagtsSheet';
+import { normDayMs, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { PlanRow, Span } from '@/lib/plan';
 import { formatDeps, parseDeps, rollUpGroups } from '@/lib/deps';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
@@ -12,6 +12,17 @@ import { hasDatedLeaf, sameMonths, sameRes, sameSpan, toPlanRows } from './util'
  * ИЛГЭЭЛТИЙН АГУУЛГА ↔ НООРОГ — цэвэр функцууд (2026-09-30: `Huvaari.tsx`-ээс
  * механикаар салгав; логик · тайлбар ХЭВЭЭР, зөвхөн state-гүй болсон).
  */
+
+/**
+ * ⚠️ 2026-10-08: ИЛГЭЭЛТИЙН ОГНООГ UTC ӨДӨРТ ТЭГШИТГЭНЭ (`normDayMs`). Мөрүүд (`rows`/`curRows`)
+ *    одоо уншихдаа тэгшлэгддэг (`bagtsSheet.loadRows`), харин 2026-10-08-аас ӨМНӨ илгээгдсэн
+ *    саналын `spans`/`base.spans`/`actual` нь ТҮҮХИЙ (УБ-ын шөнө дунд = 16:00Z) агшин — хатуу
+ *    тулгалт (`sameSpan` · `===`) тэднийг «зэрэгцээ өөрчлөлт» гэж ХУДЛАА зогсоож, батлагдах ч,
+ *    ноорогт буух ч боломжгүй болгодог байв. Хоёр талыг тэгшлээд тулгана; бичигдэх утга ч тэгшлэгдсэн.
+ */
+const nDay = (ms: number | null | undefined): number | null => normDayMs(ms ?? null);
+const nSpan = (s: { start: number; end: number } | null | undefined): Span | null =>
+  (s ? { start: nDay(s.start) ?? s.start, end: nDay(s.end) ?? s.end } : null);
 
 /**
  * ЗӨВШӨӨРӨЛ ШААРДАХ МӨРҮҮД — өөрчлөгдсөн АЖЛЫН мөр + бүлгийн ЖИНХЭНЭ өөрчлөлт
@@ -202,9 +213,10 @@ curRes: PkgRes,
        серверийн ОДООГИЙН хүүхдээс дахин нэгтгэнэ; «N нүд» тоонд оруулахгүй. */
     if (now?.group) { gOwn.push(k); continue; }
     const v = arr.map((s, b) => {
-      const v0 = s ? { start: s.start, end: s.end } : null;
+      /* ⚠️ 2026-10-08: хоёр тал тэгшлэгдсэн (`nSpan`) — дээрх ⚠️ */
+      const v0 = nSpan(s);
       if (!bs || !now) return v0;
-      const b0 = bs[b] ?? null;
+      const b0 = nSpan(bs[b]);
       /* Зохиогч хөндөөгүй → серверийн одоогийнх */
       if (sameSpan(v0, b0)) return now.spans[b] ?? null;
       /* ⚠️ Сервер аль хэдийн САНАЛТАЙ ИЖИЛ бол зөрчил БИШ (2026-09-24 аудит):
@@ -242,10 +254,10 @@ curRes: PkgRes,
     arr.forEach((s, b) => {
       if (b >= n) return;
       if (hasDatedLeaf(curPlanRows, now.i, b, (kk) => ch0.get(kk) ?? curPlanRows[kk].spans)) return;
-      const v0 = s ? { start: s.start, end: s.end } : null;
+      const v0 = nSpan(s);
       const nb = now.spans[b] ?? null;
       if (bs) {
-        const b0 = bs[b] ?? null;
+        const b0 = nSpan(bs[b]);
         /* Зохиогч хөндөөгүй → серверийн одоогийнх */
         if (sameSpan(v0, b0)) return;
         if (!sameSpan(b0, nb) && !sameSpan(v0, nb)) conflicts += 1;
@@ -298,9 +310,10 @@ curRes: PkgRes,
     const bs = p.base?.actual?.[k];
     const pick = (arr: (number | null)[], baseArr: (number | null)[] | undefined, nowArr: (number | null)[] | undefined) =>
       Array.from({ length: n }, (_, b) => {
-        const v0 = arr[b] ?? null;
+        /* ⚠️ 2026-10-08: бодит огноо ч тэгшлэгдсэн (`nDay`) — мөрийн `aStart`/`aEnd` одоо тэгшлэгддэг */
+        const v0 = nDay(arr[b]);
         if (!bs || !now || !baseArr || !nowArr) return v0;
-        const b0 = baseArr[b] ?? null;
+        const b0 = nDay(baseArr[b]);
         const n0 = nowArr[b] ?? null;
         if (v0 === b0) return n0;
         if (b0 !== n0 && v0 !== n0) conflicts += 1;
@@ -373,6 +386,16 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
   const rm = remapPayload(backMarks.pay, rows);
   const p = rm.pay;
   const okSet = new Set([...backMarks.ok].map((o) => rm.map.get(o) ?? o));
+  /* ⚠️ 2026-10-08: `okRows` нь ШИЙДВЭРИЙН үеийн жаазын `oid` (батлагчийн хуудас), `rm.map` нь
+     ИЛГЭЭЛТИЙН жаазынхыг л зөөдөг — хоёр жааз зөрвөл ногоон тэмдэг алга болж бүх мөр улаан
+     харагддаг байв. Ажлын КОДООР (`des`) давхар тулгана: илгээлтийн `keys` эсвэл одоогийн жааз. */
+  const desOfOld = new Map<number, number>(Object.entries(backMarks.pay.keys ?? {}).map(([k, d]) => [Number(k), d]));
+  const curDes = new Map(rows.map((r) => [r.oid, r.des]));
+  const okDes = new Set<number>();
+  for (const o of backMarks.ok) {
+    const d = desOfOld.get(o) ?? curDes.get(o);
+    if (d != null) okDes.add(d);
+  }
   const pb = p.base;
   const idx = new Map(plan.map((r, i) => [r.oid, i]));
   const oids = new Set<number>();
@@ -392,9 +415,9 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
     if (arr) {
       const bs = pb?.spans[k];
       for (let b = 0; b < n; b++) {
-        const s0 = arr[b];
-        const v0 = s0 ? { start: s0.start, end: s0.end } : null;
-        if (bs && sameSpan(v0, bs[b] ?? null)) continue;
+        /* ⚠️ 2026-10-08: тэгшлэгдсэн тулгалт (`nSpan`) — `payloadToDrafts`-тай нэг дүрэм */
+        const v0 = nSpan(arr[b]);
+        if (bs && sameSpan(v0, nSpan(bs[b]))) continue;
         /* Бүлгийн хүүхдээс бодогдох блок — зохиогчийн утга биш */
         if (r.group && hasDatedLeaf(plan, i, b, (kk) => plan[kk].spans)) continue;
         if (!sameSpan(v0, r.spans[b] ?? null)) return false;
@@ -409,10 +432,10 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
     if (ac) {
       const bs = pb?.actual?.[k];
       for (let b = 0; b < n; b++) {
-        const s0 = ac.start[b] ?? null;
-        const e0 = ac.end[b] ?? null;
-        if (!(bs && s0 === (bs.start[b] ?? null)) && s0 !== (r.aStart?.[b] ?? null)) return false;
-        if (!(bs && e0 === (bs.end[b] ?? null)) && e0 !== (r.aEnd?.[b] ?? null)) return false;
+        const s0 = nDay(ac.start[b]);
+        const e0 = nDay(ac.end[b]);
+        if (!(bs && s0 === nDay(bs.start[b])) && s0 !== (r.aStart?.[b] ?? null)) return false;
+        if (!(bs && e0 === nDay(bs.end[b])) && e0 !== (r.aEnd?.[b] ?? null)) return false;
       }
     }
     const rs = p.res[k];
@@ -445,7 +468,8 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
     const i = idx.get(o);
     if (i == null) continue;
     if (!samePay(plan[i], i)) continue;
-    out.set(o, okSet.has(o) ? 'ok' : 'bad');
+    const des = plan[i].des;
+    out.set(o, okSet.has(o) || (des != null && okDes.has(des)) ? 'ok' : 'bad');
   }
   return out;
 }

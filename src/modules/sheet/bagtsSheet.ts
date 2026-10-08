@@ -14,7 +14,7 @@ import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
 import { t as tr } from "@/lib/i18nCore";
 import { invalidate } from "@/lib/dataBus";
-import { spanFrac } from "@/lib/plan";
+import { DAY, spanFrac } from "@/lib/plan";
 
 export type SheetRow = {
   oid: number;
@@ -809,7 +809,8 @@ export async function loadRows(
   feats2.forEach((f, k) => {
     const a = f.attributes;
     const oid = Number(a[sc.f.oid]);
-    if (asOf == null && sc.f.asOf) asOf = num(a[sc.f.asOf]);
+    /* ⚠️ 2026-10-08: `normDayMs` — локал шөнө дундаар хадгалагдсан огноог UTC өдөрт тэгшитгэнэ */
+    if (asOf == null && sc.f.asOf) asOf = normDayMs(num(a[sc.f.asOf]));
     if (snapshot == null && sc.f.fillDate) snapshot = num(a[sc.f.fillDate]);
     const work = String(a[sc.f.work] ?? "").trim();
     const no = String(a[sc.f.no] ?? "").trim();
@@ -858,13 +859,15 @@ export async function loadRows(
       // ⚠ Огноогүй блок бий (Багц 3.1-ийн 5/2 — excel толгой нь эвдэрсэн);
       //   тэнд төлөвлөгөөт хувь бодогдохгүй, `null` хэвээр үлдэнэ.
       raw: a,
-      start: sc.start.map((x) => (x ? num(a[x]) : null)),
-      end: sc.end.map((x) => (x ? num(a[x]) : null)),
-      gStart: sc.gStart.map((x) => (x ? num(a[x]) : null)),
-      gEnd: sc.gEnd.map((x) => (x ? num(a[x]) : null)),
+      start: sc.start.map((x) => (x ? normDayMs(num(a[x])) : null)),
+      end: sc.end.map((x) => (x ? normDayMs(num(a[x])) : null)),
+      /* ⚠️ 2026-10-08: гэрээний ба бодит огноо ч `normDayMs`-ээр — `start`/`end`-тэй нэг дүрэм, эс
+         бөгөөс «Гэрээ» таб ба бодит огноо нэг өдрөөр гулсаж, илгээлтийн тулгалт зөрдөг байв */
+      gStart: sc.gStart.map((x) => (x ? normDayMs(num(a[x])) : null)),
+      gEnd: sc.gEnd.map((x) => (x ? normDayMs(num(a[x])) : null)),
       /* Бодит огноо · хүн хүч · машин механизм (2026-09-23) — талбаргүй бол `null` */
-      aStart: sc.aStart.map((x) => (x ? num(a[x]) : null)),
-      aEnd: sc.aEnd.map((x) => (x ? num(a[x]) : null)),
+      aStart: sc.aStart.map((x) => (x ? normDayMs(num(a[x])) : null)),
+      aEnd: sc.aEnd.map((x) => (x ? normDayMs(num(a[x])) : null)),
       hun: sc.f.hunHuch ? num(a[sc.f.hunHuch]) : null,
       mashin: sc.f.mashin ? num(a[sc.f.mashin]) : null,
     });
@@ -941,6 +944,17 @@ export const dayToMs = (s: string): number | null =>
   s ? Date.parse(`${s}T00:00:00Z`) : null;
 export const msToDay = (ms: number | null): string =>
   ms == null ? "" : new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * ХАДГАЛАГДСАН ОГНООГ UTC ШӨНӨ ДУНД РУУ ТЭГШИТГЭНЭ (хамгийн ойрын өдөр).
+ * ⚠️ 2026-10-08: хуучин мөрүүдэд ОРОН НУТГИЙН шөнө дунд (УБ: өмнөх өдрийн 16:00Z) хадгалагдсан
+ *    огноо бий — `msToDay`/`monthsOf`/`spanFrac` бүгд UTC өдрөөр боддог тул тэд нэг өдрөөр
+ *    урагшилж, сарын 1-ний огноо өмнөх сар руу гулсдаг байв. `Math.round(ms / DAY)` нь
+ *    ±12 цагийн доторх бүх хэлбэрийг (16:00Z · 08:00Z · 00:00Z) НЭГ өдөрт буулгана.
+ *    `null` хэвээр (`null ≠ 0`).
+ */
+export const normDayMs = (ms: number | null): number | null =>
+  ms == null || !Number.isFinite(ms) ? null : Math.round(ms / DAY) * DAY;
 
 /**
  * Нүдэнд бичигдсэн ОБЬЁМ — нийтлээгүй засвар байвал түүнийг, эс бөгөөс
@@ -1607,7 +1621,11 @@ export function computeAll(
           sa += w * (out[k].actAgg[b] ?? 0);
           cnt += w;
         }
-        plan[b] = cnt > 0 ? sp / cnt : null;
+        /* ⚠️ 2026-10-08: `asOf` АЛГА бол бүлгийн төлөвлөгөөт хувь `null` (0 БИШ) — дэд ажлын
+           `planAt` бүгд `null` тул `sp = 0` нь «0%» биш «мэдээлэлгүй». `asOf` байхад хуучин
+           Excel дүрэм хэвээр (огноогүй дэд ажил = 0, `anyKidPlan`-аар ШҮҮХГҮЙ — `planCurve`-тэй
+           нэг тоо, `planCurveShape.check` §7). */
+        plan[b] = cnt > 0 && asOf != null ? sp / cnt : null;
         act[b] = cnt > 0 && anyAct ? sa / cnt : null;
         /* Дэд мөрүүд нь аль хэдийн ≤1 тул дундаж нь ч ≤1 — гэхдээ шинэ зам
            нэмэгдэхэд чимээгүй давахаас сэргийлж дахин таслав. */
@@ -1743,7 +1761,11 @@ export function computeAll(
      */
     const avg = (v: (number | null)[]): number | null =>
       (n > 0 ? v.reduce<number>((s, x) => s + (x ?? 0), 0) / n : null);
-    const I = avg(plan);
+    /* ⚠️ 2026-10-08: `asOf == null` (хуудсанд лавлах огноо ОГТ тохируулаагүй) бол I · K `null` —
+       урьд нь `avg` null-уудыг 0 гэж нэгтгээд I = 0 → K = 0 гарч, `sheetFrame`-ээр АРХИВТ 0
+       бичигдэж `hyanaltStore`-ийн «төлөвлөгөөт хувь null болж бичигдэнэ» ⚠️-тай зөрж байв.
+       `asOf` БАЙХАД огноогүй блок 0 хэвээр (Excel `IF(range="",0,…)`, `blokgui.check` §2). */
+    const I = asOf == null ? null : avg(plan);
     /* ⚠️ J нь `actAgg`-аас (таслагдсан) — `act`-аас БИШ. J нь мөрийн НЭГТГЭСЭН
        тоо бөгөөд `E = C×J` замаар эцэг бүлэг, эцэст нь багцын нийт хувь руу
        дамждаг: түүхийгээр бодвол Багц 1·9F oid 31534-ийн J нь 25.8% (12

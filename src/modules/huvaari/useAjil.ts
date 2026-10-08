@@ -33,7 +33,7 @@ export function useAjil({
   pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
   adds, setAdds, setAddsSt, addsStRef,
   hdResetRestore, hdMapsRef, setDraft, setHam, setADraft, setResDraft,
-  setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef,
+  setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef, setOkRows, setCellEdit,
 }: {
   pkg: Pkg;
   user: { username?: string } | null | undefined;
@@ -63,6 +63,13 @@ export function useAjil({
   setModal: (v: number | null) => void;
   setLinkAsk: (v: null) => void;
   undoRef: React.RefObject<unknown>;
+  /**
+   * ⚠️ 2026-10-08: СОНГОЛТ (`sel` · `fGrp` · `collapsed`)-той адил oid-оор түлхүүрлэгдсэн ТӨЛӨВ —
+   *    батлагчийн ногоон тэмдэглэгээ (`okRows`) ба бичиж буй нүдний мөр (`cellEdit`) ч шинэ жаазад
+   *    зөөгдөнө. Сонголттой (өгөхгүй бол хөндөхгүй) — эцэг дамжуулна.
+   */
+  setOkRows?: React.Dispatch<React.SetStateAction<Set<number>>>;
+  setCellEdit?: React.Dispatch<React.SetStateAction<number | null>>;
 }) {
   /* ── НЭМЭЛТ АЖИЛ (2026-09-24; `adds.ts`-ийн `tmpOid`-ийн ⚠️). `adds`/`addsSt` нь ЭЦЭГТ (`rowsAll`-д хэрэгтэй) — параметрээр. ── */
   /** Маягт нээлттэй байгаа БҮЛГИЙН oid */
@@ -254,6 +261,13 @@ export function useAjil({
         for (const k of st) { const nk = map.get(k); if (nk != null) o.add(nk); }
         return o;
       });
+      /* ⚠️ 2026-10-08: батлагчийн тэмдэглэгээ · бичиж буй нүд ч шинэ oid руу (олдоогүй нь хаягдана) */
+      setOkRows?.((st) => {
+        const o = new Set<number>();
+        for (const k of st) { const nk = map.get(k); if (nk != null) o.add(nk); }
+        return o;
+      });
+      setCellEdit?.((o) => (o == null ? null : map.get(o) ?? null));
       setModal(null); setLinkAsk(null); undoRef.current = null;
       setAjApplied(false);
       setAjNote(lost
@@ -264,7 +278,7 @@ export function useAjil({
     } finally {
       setBusy(false);
     }
-  }, [busy, rows, hdMapsRef, hdResetRestore, refetchRef, setADraft, setBusy, setCollapsed, setDraft, setErr, setFGrp, setHam, setLinkAsk, setModal, setResDraft, setSel, undoRef]);
+  }, [busy, rows, hdMapsRef, hdResetRestore, refetchRef, setADraft, setBusy, setCollapsed, setDraft, setErr, setFGrp, setHam, setLinkAsk, setModal, setResDraft, setSel, undoRef, setOkRows, setCellEdit]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshAjil` нь ArcGIS-ээс хүлээгдэж буй илгээлтийг уншиж төлөвт тавьдаг — гадаад эх сурвалжтай синк
   useEffect(() => { void refreshAjil(null); }, [refreshAjil]);
   /* ⚠️ Хүлээгдэж байхад 30 сек тутам — шийдвэр гарахад зохиогчийн нээлттэй

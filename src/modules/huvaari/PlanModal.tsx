@@ -61,6 +61,94 @@ export function LagInput({ value, disabled, onCommit }: {
   );
 }
 
+/**
+ * УРЬДЧИЛАГЧ СОНГОХ COMBOBOX (2026-10-08). Урьд нь ~1,400 `<option>`-той `<select>` байсан тул
+ * хэрэглэгч кодоо мэдэхгүй бол жагсаалтыг гүйлгэж хайдаг, мэдэж байсан ч эхний үсгээр л
+ * үсэрдэг байв. Одоо: текст бичихэд `cands`-ыг КОД (угтвар) эсвэл НЭР (дэд мөр)-ээр шүүнэ;
+ * ↑/↓ тодруулна, Enter сонгоно, Esc хаана; хулганаар ч сонгоно.
+ * ⚠️ Дугуй/шатлалын ХАСАЛТ энд БИШ — `cands` аль хэдийн шүүгдсэн (`Huvaari.depCands`),
+ *    `applyModal` сүүлчийн хаалт. Энэ нь зөвхөн харагдац.
+ * ⚠️ Enter/Esc-д `preventDefault`+`stopPropagation` — эс бөгөөс цонхны Enter «Тавих»
+ *    (`onEnter`), Esc нь `tryClose` болно (`LinkModal`-ийн ижил занга).
+ * ⚠️ Жагсаалтыг 80-аар ТАСАЛНА — 1,400 `<li>` зурахгүй; шүүлт нарийсгахад бүгд харагдана.
+ * ⚠️ `onMouseDown`+`preventDefault` — товшилт оролтын blur-ээс ӨМНӨ сонгоно (blur жагсаалтыг хаадаг).
+ */
+function DepPicker({ value, cands, disabled, onPick }: {
+  value: number;
+  cands: { code: number; label: string }[];
+  disabled: boolean;
+  onPick: (code: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [hi, setHi] = useState(0);
+  const cur = cands.find((c) => c.code === value);
+  /* Хуучин хадгалагдсан код нэр дэвшигчдэд байхгүй байж болно (жиш. одоо дугуй үүсгэх
+     байрлалд) — сонголт алдагдахгүйн тулд ил бичнэ */
+  const shown = cur ? cur.label : `${value} · ${tr('(жагсаалтад алга)')}`;
+  const list = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return cands.slice(0, 80);
+    const byCode = /^\d+$/.test(s);
+    const out: { code: number; label: string }[] = [];
+    for (const c of cands) {
+      if (byCode ? String(c.code).startsWith(s) : c.label.toLowerCase().includes(s)) {
+        out.push(c);
+        if (out.length >= 80) break;
+      }
+    }
+    /* Тоо бичсэн ч кодоор олдохгүй бол нэрээр (жиш. «2026» гэсэн нэр) */
+    if (byCode && !out.length) for (const c of cands) { if (c.label.toLowerCase().includes(s)) { out.push(c); if (out.length >= 80) break; } }
+    return out;
+  }, [cands, q]);
+  const pick = (code: number) => { onPick(code); setOpen(false); setQ(''); };
+  return (
+    <span className={`${h.cbox} ${h.mdDepWork}`}>
+      <input
+        className={`${h.select} ${h.cboxIn}`}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        aria-label={tr('Урд ажил — код эсвэл нэрээр хайх')}
+        title={open ? tr('Код эсвэл нэрээр хайна · ↑↓ сонгоно · Enter тавина · Esc хаана') : shown}
+        value={open ? q : shown}
+        placeholder={open ? tr('код эсвэл нэр…') : undefined}
+        disabled={disabled}
+        onFocus={() => { setQ(''); setHi(0); setOpen(true); }}
+        onChange={(e) => { setQ(e.target.value); setHi(0); setOpen(true); }}
+        onBlur={() => { setOpen(false); setQ(''); }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) setOpen(true); else setHi((i) => Math.min(list.length - 1, i + 1)); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); return; }
+          if (e.key === 'Enter') {
+            if (!open) return;
+            e.preventDefault(); e.stopPropagation();
+            const c = list[hi];
+            if (c) { pick(c.code); e.currentTarget.blur(); }
+            return;
+          }
+          if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); setQ(''); e.currentTarget.blur(); }
+        }}
+      />
+      {open && (
+        <ul className={h.cboxList} role="listbox">
+          {list.length === 0 ? (
+            <li className={h.cboxEmpty}>{tr('Олдсонгүй')}</li>
+          ) : list.map((c, i) => (
+            <li key={c.code} role="option" aria-selected={c.code === value}
+              className={`${h.cboxItem}${i === hi ? ` ${h.cboxItemHi}` : ''}${c.code === value ? ` ${h.cboxItemOn}` : ''}`}
+              onMouseDown={(e) => { e.preventDefault(); pick(c.code); }}
+              onMouseEnter={() => setHi(i)}>
+              {c.label}
+            </li>
+          ))}
+          {list.length >= 80 && <li className={h.cboxEmpty}>{tr('… шүүлтээ нарийсгана уу')}</li>}
+        </ul>
+      )}
+    </span>
+  );
+}
+
 type PlanModalProps = {
   r: PlanRow;
   /** Хамгийн ойрын дээд БҮЛЭГ — түүний муж нь хатуу хязгаар */
@@ -340,11 +428,17 @@ function PlanModalBody({
     const n = durOk(v);
     if (n != null && ms1 != null) setZ(msToDay(endOf(ms1, n)));
   };
+  /* ⚠️ 2026-10-08: НҮДНИЙ дүрэмтэй (`Huvaari.applyDate`) НЭГ: шинэ эхлэх ≤ одоогийн дуусах бол дуусах
+     ХЭВЭЭР (сунгах/агшаах); дуусахаас ХОЙШ бол л үргэлжлэх хугацааг хадгалж дуусахыг зөөнө. Урьд нь
+     үргэлж хугацааг хадгалдаг тул «Дуусах»-ыг эхэлж бичээд дараа нь «Эхлэх» бичихэд дуусах огноо
+     алга болж, нүд ба цонх хоёр өөр хариу өгдөг байв. */
   const onStart = (v: string) => {
     setA(v);
     const s = dayToMs(v);
+    if (s == null) return;
+    if (ms2 != null && s <= ms2) return;
     const n = durOk(durTxt);
-    if (s != null && n != null) setZ(msToDay(endOf(s, n)));
+    if (n != null) setZ(msToDay(endOf(s, n)));
   };
 
   /**
@@ -665,6 +759,42 @@ function PlanModalBody({
     }
     onApply(next, depsDirty ? dlOut : null, obArg, actArg, resArg, obBlks, actBlks);
     onClose();
+  };
+
+  /**
+   * ИДЭВХТЭЙ БЛОКИЙН ЗАДАРГААГ СОНГОСОН БЛОКУУДАД АЛХМААР ШИЛЖҮҮЛЖ ХУУЛАХ (2026-10-08).
+   * Алхам > 0 үед «Тавих» сарын задаргааг ЗӨВХӨН идэвхтэй блокт тавьдаг (`obBlks`-ийн ⚠️) —
+   * 22 блокт нэг ижил ажлын саруудыг гараар дахин бөглөх хэрэгтэй байв.
+   * ⚠️ ЭНЭ НЬ ХЭРЭГЛЭГЧИЙН ИЛ ҮЙЛДЭЛ (товч + баталгаажуулалт), АВТОМАТ ТАРААЛТ БИШ — 2026-09-06-ны
+   *    «автомат обьём тараалт хийж болохгүй» дүрэм ХЭВЭЭР: утгыг зохиохгүй, хэрэглэгчийн өөрийн
+   *    бичсэн саруудыг л блокийн шилжилтээр (`(b − blk) × алхам` хоног) зөөж хуулна.
+   * ⚠️ Сар нь ИНДЕКСЭЭР тохирно: идэвхтэй блокийн i-р сар → шилжсэн мужийн i-р сар. Шилжсэн муж
+   *    цөөн сартай бол илүүдэл нь сүүлийн сард нэмэгдэнэ (нийлбэр хадгалагдана); олон сартай бол
+   *    сүүлийн сарууд ХООСОН үлдэж чип улаан болно — хэрэглэгч өөрөө бөглөнө (0 ч бичиж болно).
+   * ⚠️ Идэвхтэй блок ТЭНЦЭЭГҮЙ (`mvOk` худал) бол хаалттай — зөрүүг олон блокт үржүүлэхгүй. Хуулсны
+   *    дараа блок бүр `unbalancedBlocks`-оор (`badBlks`) хэвийн шалгагдана.
+   * ⚠️ Блок бүрд `onApply`-г ТУСАД нь дуудна (огноо · уялдаа · бодит `null`) — `applyModal` сарын
+   *    задаргааг тэр блокийн ноорогт бичнэ; цонх ХААГДАХГҮЙ, идэвхтэй блок хэвээр «Тавих»-аар.
+   */
+  const copyTargets = takt > 0 ? [...selB].filter((b) => b !== blk).sort((x, y) => x - y) : [];
+  const copyOff = !mvOk || ms1 == null || ms2 == null || bad || mv.size === 0;
+  const copyShifted = () => {
+    if (copyOff || !copyTargets.length || ms1 == null || ms2 == null) return;
+    if (!window.confirm(tr('Идэвхтэй блокийн сарын задаргааг сонгосон {0} блокт алхмаар шилжүүлж хуулах уу? Тэдгээр блокийн одоогийн задаргаа дарагдана.', num(copyTargets.length)))) return;
+    const len = spanDays({ start: ms1, end: ms2 });
+    for (const b of copyTargets) {
+      const shift = (b - blk) * takt * DAY;
+      const keys = monthsOf({ start: ms1 + shift, end: endOf(ms1 + shift, len) });
+      if (!keys.length) continue;
+      const out = new Map<string, number>();
+      mKeys.forEach((k, i) => {
+        const v = mv.get(k);
+        if (v == null) return;
+        const tk = keys[Math.min(i, keys.length - 1)];
+        out.set(tk, Math.round(((out.get(tk) ?? 0) + v) * 100) / 100);
+      });
+      onApply(null, null, { months: out, res: null }, null, null, [b], [b]);
+    }
   };
 
   const clear = () => {
@@ -1021,6 +1151,19 @@ function PlanModalBody({
                   )}
                 </p>
                 )}
+                {/* ⚠️ 2026-10-08: алхам > 0 · олон блок сонгосон үед л — ил товч + баталгаажуулалт
+                    (`copyShifted`-ийн ⚠️: автомат тараалт БИШ). */}
+                {dEdit && copyTargets.length > 0 && (
+                  <p className={h.mdPar}>
+                    <button type="button" className={h.tlZoomB} disabled={copyOff} onClick={copyShifted}
+                      title={copyOff
+                        ? tr('Эхлээд идэвхтэй блокийн сарын задаргааг бүрэн, нийлбэр тэнцүү бөглөнө')
+                        : tr('Идэвхтэй блокийн саруудыг блок бүрийн алхмын шилжилтээр ({0} хоног × блокийн зөрүү) зөөж хуулна — дараа нь блок бүрийг шалгана уу', num(takt))}>
+                      {tr('Идэвхтэй блокийн задаргааг сонгосон блокуудад алхмаар шилжүүлж хуулах')}
+                    </button>
+                    {' '}<span className={h.mdParWork}>{tr('{0} блокт', num(copyTargets.length))}</span>
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -1042,16 +1185,11 @@ function PlanModalBody({
                 засагддаг тул индекс аюулгүй. */}
             {dl.map((d, j) => (
               <div key={j} className={h.mdDepRow}>
-                <select className={`${h.select} ${h.mdDepWork}`} value={d.code} disabled={!canEdit}
-                  onChange={(e) => setDl((v) => v.map((x, k) => (k === j ? { ...x, code: Number(e.target.value) } : x)))}>
-                  {/* Хуучин хадгалагдсан код нэр дэвшигчдэд байхгүй байж болно
-                      (жиш. одоо дугуй үүсгэх байрлалд) — сонголт алдагдахгүйн
-                      тулд тусдаа мөрөөр үлдээнэ */}
-                  {!cands.some((c) => c.code === d.code) && (
-                    <option value={d.code}>{d.code} · {tr('(жагсаалтад алга)')}</option>
-                  )}
-                  {cands.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-                </select>
+                {/* ⚠️ 2026-10-08: ~1,400 сонголттой `<select>` → ХАЙДАГ combobox (`DepPicker`): код/нэрээр
+                    шүүнэ, ↑/↓/Enter-ээр сонгоно, Esc хаана. Дугуй/шатлалын хасалт `cands`-д хэвээр
+                    (`depCands`) — энд зөвхөн харагдац. Жагсаалтад алга код тусдаа мөрөөр хэвээр. */}
+                <DepPicker value={d.code} cands={cands} disabled={!canEdit}
+                  onPick={(code) => setDl((v) => v.map((x, k) => (k === j ? { ...x, code } : x)))} />
                 <select className={h.select} value={d.type} disabled={!canEdit}
                   title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
                   onChange={(e) => setDl((v) => v.map((x, k) => (k === j ? { ...x, type: e.target.value as DepType } : x)))}>
@@ -1087,6 +1225,13 @@ function PlanModalBody({
                 )}
               </div>
             ))}
+            {/* ⚠️ 2026-10-08: ТАНИГДААГҮЙ токен («5FF2» г.м.) — зөвхөн харуулна; хадгалахад хэвээр угтагдана
+                (`residualDeps`). Урьд нь огт харагддаггүй тул хэрэглэгч далд бичиглэлийг мэддэггүй байв. */}
+            {!!hamKeep?.length && (
+              <span className={h.mdParWork} title={tr('Энд дэмжигдээгүй MS Project бичиглэл — засагдахгүй, устгагдахгүй')}>
+                {tr('Танигдаагүй бичиглэл (хэвээр хадгалагдана): {0}', hamKeep.join(', '))}
+              </span>
+            )}
             {/* ⚠️ 2026-10-04: олон блок сонгосон үед идэвхтэй блокийн уялдаа бусад блокт хуулагдана — ил хэлнэ */}
             {canEdit && depsCopied && (
               <span className={h.mdParWork}>{tr('«Тавих» дарахад энэ блокийн уялдаа сонгосон {0} блокт хуулагдана', num(selB.size))}</span>

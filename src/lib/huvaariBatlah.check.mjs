@@ -555,3 +555,47 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
   assert.ok((dc.match(/partialRef\.current = null/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход partialRef арилахгүй');
 }
 console.log('✅ хагас бичилтийн сервер тэмдэг · давхардлын цуцлалт «сүүлийн шийдвэр» биш · obLost хаалт · түгжээ хадгална');
+
+/* ══════════ 2026-10-08: ГАЦСАНЫГ БУЦААХ — түгжигчийн гэйт · (багц · төрөл)-өөр давхардал · isApprovedBy ══════════
+ * ⚠️ `returnStuckPlan` урьд нь ӨӨР батлагчийн ХҮЧИНТЭЙ түгжээг шалгадаггүй тул бичилтээ гүйцээж буй
+ *    батлагчийн илгээлтийг хоёр дахь батлагч «гацсан» гэж буцааж чаддаг байв (`decidePlan`-тай нэг дүрэм).
+ * ⚠️ `loadPending(pkg, kind)` — гэрээний ба төлөвлөгөөний санал нэг багцад ЗЭРЭГ хүлээж болно;
+ *    `submitPlan`-ийн давхардал ч (багц · төрөл)-өөр. `kind` зөвхөн агуулгад тул `LIKE`-ээр. */
+{
+  const { returnStuckPlan, isApprovedBy, countPlanReturned, loadPending } = await import('@/lib/huvaariBatlah.ts');
+  assert.equal(typeof isApprovedBy, 'function');
+  assert.equal(typeof countPlanReturned, 'function');
+  assert.equal(typeof loadPending, 'function');
+  /* Дүрэм сүлжээнээс ӨМНӨ: нэргүй · шалтгаангүй */
+  let r = await returnStuckPlan({ oid: 1, approver: '   ', reason: 'x' });
+  assert.equal(r.ok, false); assert.match(r.error, /тодорхойгүй/);
+  r = await returnStuckPlan({ oid: 1, approver: 'batlagch_b', reason: '  ' });
+  assert.equal(r.ok, false); assert.match(r.error, /шалтгаан/i);
+  /* `isApprovedBy`: нэргүй → үгүй; сүлжээгүй (хүснэгт алга) → үгүй (fail-closed), шидэхгүй */
+  assert.equal(await isApprovedBy(1, '  '), false);
+  assert.equal(await isApprovedBy(1, 'bat'), false);
+
+  const fs = await import('node:fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const L = strip(fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8'));
+  const part = (a, b) => { const i = L.indexOf(a); const j = L.indexOf(b, i + a.length); assert.ok(i > 0 && j > i, `${a} олдсонгүй`); return L.slice(i, j); };
+  /* returnStuckPlan: түгжигчийг уншина · бичилтээс ӨМНӨ шалгана · decidePlan-тай нэг мессеж */
+  const rs = part('export async function returnStuckPlan(', 'export async function withdrawPlan(');
+  assert.ok(rs.includes('${F.approver},${F.approverAt}'), 'returnStuckPlan: түгжээний талбаруудыг уншихгүй байна');
+  const iH = rs.indexOf('const holder = claimHolder(cur[0]);');
+  assert.ok(iH > 0 && iH < rs.indexOf('[F.status]: PLAN_STATUS.returned'), 'returnStuckPlan: түгжигчийн гэйт бичилтээс ӨМНӨ биш');
+  assert.ok(/if \(holder && holder !== me\) \{\s*return \{ ok: false, error: tr\('\{0\} энэ илгээлтийг яг одоо батлаж байна/.test(rs), 'returnStuckPlan: өөр батлагчийн түгжээг татгалзахгүй байна');
+  /* loadPending(kind) · submitPlan (багц · төрөл) · loadAllPending (багц · төрөл) */
+  assert.ok(/const KIND_SQL = \(kind: PlanPayloadKind\): string =>/.test(L) && L.includes('"kind":"geree"'), 'KIND_SQL алга');
+  assert.ok(L.includes('export async function loadPending(pkgKey: string, kind?: PlanPayloadKind)'), 'loadPending: kind параметр алга');
+  const sp = part('export async function submitPlan(', 'export async function decidePlan(');
+  assert.ok(sp.includes('loadPending(args.pkgKey, args.payload.kind)'), 'submitPlan: давхардлыг төрлөөр шалгахгүй байна');
+  assert.ok(sp.includes('AND ${KIND_SQL(args.payload.kind)}'), 'submitPlan: бичсэний дараах давхардал төрлөөр биш');
+  const la = part('export async function loadAllPending(', 'export async function loadLastPerPkg(');
+  assert.ok(la.includes('`${x.pkgKey}|${k ?? \'\'}`'), 'loadAllPending: (багц · төрөл)-өөр давхардал хасахгүй байна');
+  /* UI: «Гацсаныг буцаах» товч өөр батлагчийн түгжээнд хаалттай */
+  const V = strip(fs.readFileSync('src/modules/HuvaariBatlah.tsx', 'utf8'));
+  const iBtn = V.indexOf('{onReturnStuck && partialWhy && (');
+  assert.ok(iBtn > 0 && /disabled=\{busy \|\| !reasonIn\.trim\(\) \|\| !!holder\}/.test(V.slice(iBtn, iBtn + 600)), 'HuvaariBatlah: «Гацсаныг буцаах» түгжээнд хаагдахгүй байна');
+}
+console.log('✅ гацсаныг буцаах — түгжигчийн гэйт · (багц · төрөл) давхардал · isApprovedBy fail-closed');

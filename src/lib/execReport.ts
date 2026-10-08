@@ -32,7 +32,7 @@ import {
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadNegtgelPct } from '@/lib/negtgel';
-import { loadPlanCurveCached, planPctAt } from '@/lib/planProgress';
+import { loadPlanCurveCached, planPctAt, measureDayOf } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf } from '@/lib/services';
 import { loadBuildings } from '@/modules/BuildingPanel';
@@ -231,7 +231,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      өдөр; байхгүй бол тэр сарын эцэс (`-31`); хэмжилтгүй бол энэ сарын эцэс. */
   let lastM: { label: string; physAt?: string | null } | null = null;
   for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
-  const measAt = lastM ? (lastM.physAt ?? `${lastM.label}-31`) : `${nowYm}-31`;
+  /* ⚠️ 2026-10-08: `measureDayOf` — `Finance.lagOf` · `PkgProg` · ТУХ-тай НЭГ дүрэм (`planProgress`-ийн
+     «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш. */
+  const measAt = lastM ? measureDayOf(lastM.label, lastM.physAt, dayKey(Date.now())) : `${nowYm}-31`;
   /* ⚠️ 2026-09-30: «Бодит»-ын ХЭМЖИЛТИЙН ОГНОО — `actual` гарсан цэгийнх
      (`physAt`, байхгүй бол тэр сар). Урьд нь `prog.asOf` = `bld.asOf` (барилгын
      давхаргын ХАМГИЙН СҮҮЛИЙН огноо) байсан тул «хэмжилт {огноо}» шошго нь тоо

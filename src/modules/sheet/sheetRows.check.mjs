@@ -106,4 +106,33 @@ console.log('✅ resolveSchema — зорилтот ба хуучин зэрэг
 
 
 
+/* ── 5. ХАДГАЛАГДСАН ОГНООГ UTC ӨДӨРТ ТЭГШИТГЭХ (2026-10-08) ──
+ * Хуучин мөрүүдэд ОРОН НУТГИЙН шөнө дунд (УБ: өмнөх өдрийн 16:00Z) хадгалагдсан огноо бий;
+ * `msToDay`/`spanFrac` UTC-ээр боддог тул тэд нэг өдрөөр гулсдаг байв. `normDayMs` нь
+ * хамгийн ойрын UTC шөнө дунд руу буулгана (`loadRows` · `sheetRows` хоёул). */
+{
+  const { normDayMs, msToDay } = await import('@/modules/sheet/bagtsSheet.ts');
+  const DAY = 86_400_000;
+  const mid = Date.parse('2026-03-01T00:00:00Z');
+  assert.equal(normDayMs(mid), mid, 'UTC шөнө дунд хэвээр');
+  assert.equal(normDayMs(mid + 8 * 3_600_000), mid, '+8 цаг (08:00Z) → тэр өдөр');
+  assert.equal(normDayMs(mid - 8 * 3_600_000), mid, 'УБ-ын шөнө дунд (өмнөх өдрийн 16:00Z) → 03-01, 02-28 БИШ');
+  assert.equal(msToDay(normDayMs(Date.parse('2026-02-28T16:00:00Z'))), '2026-03-01', 'сарын 1 өмнөх сар руу гулсахгүй');
+  assert.equal(normDayMs(mid + 11 * 3_600_000), mid, '+11 цаг → доош');
+  assert.equal(normDayMs(mid + 13 * 3_600_000), mid + DAY, '+13 цаг → дараагийн өдөр');
+  assert.equal(normDayMs(null), null, 'null хэвээр (null ≠ 0)');
+  assert.equal(normDayMs(NaN), null, 'NaN → null');
+  /* Эх код: `sheetRows` ба `loadRows` хоёул `normDayMs`-ээр уншина */
+  assert.match(SRC, /start: withDates && sc\.start\[i\] \? normDayMs\(/, 'sheetRows.start normDayMs-ээр');
+  assert.match(SRC, /end: withDates && sc\.end\[i\] \? normDayMs\(/, 'sheetRows.end normDayMs-ээр');
+  const SHEET = fs.readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
+  assert.match(SHEET, /start: sc\.start\.map\(\(x\) => \(x \? normDayMs\(num\(a\[x\]\)\) : null\)\)/, 'loadRows.start normDayMs-ээр');
+  assert.match(SHEET, /asOf = normDayMs\(num\(a\[sc\.f\.asOf\]\)\)/, 'loadRows.asOf normDayMs-ээр');
+  /* ⚠️ 2026-10-08: гэрээний ба бодит огноо ч нэг дүрмээр (илгээлтийн тулгалт зөрдөг байв) */
+  for (const f of ['gStart', 'gEnd', 'aStart', 'aEnd']) {
+    assert.match(SHEET, new RegExp(`${f}: sc\\.${f}\\.map\\(\\(x\\) => \\(x \\? normDayMs\\(num\\(a\\[x\\]\\)\\) : null\\)\\)`), `loadRows.${f} normDayMs-ээр`);
+  }
+}
+console.log('✅ normDayMs — локал шөнө дунд → UTC өдөр (loadRows · sheetRows)');
+
 console.log('\nsheetRows.check: ok');
