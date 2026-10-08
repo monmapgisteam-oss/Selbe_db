@@ -242,46 +242,46 @@ export function TaskRow({
         */}
       {/* ⚠️ 2026-10-08: `col`/`onNext` — ↓/↑-аар мөр шилжих (`onNextRow`); `onOther`/`otherTip` — нөгөө
           табын нүд дарахад таб солигдоно (`onOtherTab`). `data-col` зөвхөн ЗАСАГДАХ нүдэнд. */}
-      <DateCell v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')} onEditing={onEditing} col="start"
+      <DateCell c={h.cGs} v={geree?.start ?? null} tip={tr('Гэрээний эхлэх огноо')} onEditing={onEditing} col="start"
         onSet={edKind === 'geree' && onDate ? (d, via) => onDate('start', d, via) : undefined}
         onNext={edKind === 'geree' ? next?.('start') : undefined} onOther={onOtherG} otherTip={otherTip} />
-      <DateCell v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')} onEditing={onEditing} col="end"
+      <DateCell c={h.cGe} v={geree?.end ?? null} tip={tr('Гэрээний дуусах огноо')} onEditing={onEditing} col="end"
         onSet={edKind === 'geree' && onDate ? (d, via) => onDate('end', d, via) : undefined}
         onNext={edKind === 'geree' ? next?.('end') : undefined} onOther={onOtherG} otherTip={otherTip} />
       {/* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ — ТУСДАА багана (2026-09-15, хэрэглэгч).
           `spanDays` нь ХОЁР ҮЗҮҮРИЙГ ОРУУЛЖ тоолно (эхлэх ба дуусах өдөр
           хоёулаа ажлын өдөр) — хуанлийн зурвасын шошготой ЯГ ижил тоо. */}
-      <DaysCell v={geree} tip={tr('Гэрээгээр үргэлжлэх хоног')} onEditing={onEditing}
+      <DaysCell c={h.cGd} v={geree} tip={tr('Гэрээгээр үргэлжлэх хоног')} onEditing={onEditing}
         onSet={edKind === 'geree' && onDays ? onDays : undefined}
         onNext={edKind === 'geree' ? next?.('days') : undefined} onOther={onOtherG} otherTip={otherTip} />
-      <DateCell v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')} onEditing={onEditing} col="start"
+      <DateCell c={h.cPs} v={tolov?.start ?? null} tip={tr('Төлөвлөгөөт эхлэх огноо')} onEditing={onEditing} col="start"
         onSet={edKind === 'plan' && onDate ? (d, via) => onDate('start', d, via) : undefined}
         onNext={edKind === 'plan' ? next?.('start') : undefined} onOther={onOtherP} otherTip={otherTip} />
-      <DateCell v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')} onEditing={onEditing} col="end"
+      <DateCell c={h.cPe} v={tolov?.end ?? null} tip={tr('Төлөвлөгөөт дуусах огноо')} onEditing={onEditing} col="end"
         onSet={edKind === 'plan' && onDate ? (d, via) => onDate('end', d, via) : undefined}
         onNext={edKind === 'plan' ? next?.('end') : undefined} onOther={onOtherP} otherTip={otherTip} />
-      <DaysCell v={tolov} tip={tr('Төлөвлөгөөгөөр үргэлжлэх хоног')} onEditing={onEditing}
+      <DaysCell c={h.cPd} v={tolov} tip={tr('Төлөвлөгөөгөөр үргэлжлэх хоног')} onEditing={onEditing}
         onSet={edKind === 'plan' && onDays ? onDays : undefined}
         onNext={edKind === 'plan' ? next?.('days') : undefined} onOther={onOtherP} otherTip={otherTip} />
       {/* БОДИТ ЭХЭЛСЭН · ДУУССАН (2026-09-23) — идэвхтэй блок; «—» = бүртгэлгүй */}
       {hasActual && (
-        <span className={h.rowDate} title={aStart != null ? tr('Бодит эхэлсэн огноо') : undefined}>
+        <span className={`${h.rowDate} ${h.cAs}`} title={aStart != null ? tr('Бодит эхэлсэн огноо') : undefined}>
           {aStart != null ? msToDay(aStart) : '—'}
         </span>
       )}
       {hasActual && (
-        <span className={h.rowDate} title={aEnd != null ? tr('Бодит дууссан огноо') : undefined}>
+        <span className={`${h.rowDate} ${h.cAe}`} title={aEnd != null ? tr('Бодит дууссан огноо') : undefined}>
           {aEnd != null ? msToDay(aEnd) : '—'}
         </span>
       )}
       {/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — бүлэгт нийлбэр; `null` → «—», 0 БИШ */}
       {hasRes && (
-        <span className={h.rowRes} title={hun != null ? tr('Хүн хүч') : undefined}>
+        <span className={`${h.rowRes} ${h.cRh}`} title={hun != null ? tr('Хүн хүч') : undefined}>
           {hun != null ? num(hun) : '—'}
         </span>
       )}
       {hasRes && (
-        <span className={h.rowRes} title={mashin != null ? tr('Машин механизм') : undefined}>
+        <span className={`${h.rowRes} ${h.cRm}`} title={mashin != null ? tr('Машин механизм') : undefined}>
           {mashin != null ? num(mashin) : '—'}
         </span>
       )}
@@ -333,16 +333,16 @@ export function BlockRow({
           <span className={h.rowWork}>{name}</span>
         </button>
       </div>
-      {cell(h.rowDate, geree ? msToDay(geree.start) : null, tr('Гэрээний эхлэх огноо'))}
-      {cell(h.rowDate, geree ? msToDay(geree.end) : null, tr('Гэрээний дуусах огноо'))}
-      {cell(h.rowDays, geree ? spanDays(geree) : null, tr('Гэрээгээр үргэлжлэх хоног'))}
-      {cell(h.rowDate, tolov ? msToDay(tolov.start) : null, tr('Төлөвлөгөөт эхлэх огноо'))}
-      {cell(h.rowDate, tolov ? msToDay(tolov.end) : null, tr('Төлөвлөгөөт дуусах огноо'))}
-      {cell(h.rowDays, tolov ? spanDays(tolov) : null, tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))}
-      {hasActual && cell(h.rowDate, aStart != null ? msToDay(aStart) : null, tr('Бодит эхэлсэн огноо'))}
-      {hasActual && cell(h.rowDate, aEnd != null ? msToDay(aEnd) : null, tr('Бодит дууссан огноо'))}
-      {hasRes && <span className={h.rowRes}>{' '}</span>}
-      {hasRes && <span className={h.rowRes}>{' '}</span>}
+      {cell(`${h.rowDate} ${h.cGs}`, geree ? msToDay(geree.start) : null, tr('Гэрээний эхлэх огноо'))}
+      {cell(`${h.rowDate} ${h.cGe}`, geree ? msToDay(geree.end) : null, tr('Гэрээний дуусах огноо'))}
+      {cell(`${h.rowDays} ${h.cGd}`, geree ? spanDays(geree) : null, tr('Гэрээгээр үргэлжлэх хоног'))}
+      {cell(`${h.rowDate} ${h.cPs}`, tolov ? msToDay(tolov.start) : null, tr('Төлөвлөгөөт эхлэх огноо'))}
+      {cell(`${h.rowDate} ${h.cPe}`, tolov ? msToDay(tolov.end) : null, tr('Төлөвлөгөөт дуусах огноо'))}
+      {cell(`${h.rowDays} ${h.cPd}`, tolov ? spanDays(tolov) : null, tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))}
+      {hasActual && cell(`${h.rowDate} ${h.cAs}`, aStart != null ? msToDay(aStart) : null, tr('Бодит эхэлсэн огноо'))}
+      {hasActual && cell(`${h.rowDate} ${h.cAe}`, aEnd != null ? msToDay(aEnd) : null, tr('Бодит дууссан огноо'))}
+      {hasRes && <span className={`${h.rowRes} ${h.cRh}`}>{' '}</span>}
+      {hasRes && <span className={`${h.rowRes} ${h.cRm}`}>{' '}</span>}
       <span className={h.rowHam} style={{ cursor: 'default' }}>{' '}</span>
     </div>
   );
@@ -413,7 +413,9 @@ export function AddBox({ parent, form, onForm, onOk, onCancel, edit = false }: {
 /** ⚠️ 2026-10-08: ↓/↑ → мөр шилжих чиглэл (`onNext`); хадгалалтын (`blur`) ДАРАА дуудагдана */
 const navDir = (key: string): 1 | -1 | 0 => (key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : 0);
 
-function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: {
+function DateCell({ c, v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: {
+  /** ⚠️ 2026-10-08: баганын класс (`.cGs` г.м.) — багана бүр тусдаа өргөнтэй (`useColWidths`) */
+  c: string;
   v: number | null;
   tip: string;
   /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
@@ -439,18 +441,18 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
   if (!onSet) {
     if (onOther) {
       return (
-        <button type="button" className={`${h.rowDate} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
+        <button type="button" className={`${h.rowDate} ${c} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
           onClick={onOther}>
           {shown}
         </button>
       );
     }
-    return <span className={h.rowDate} title={v != null ? tip : undefined}>{shown}</span>;
+    return <span className={`${h.rowDate} ${c}`} title={v != null ? tip : undefined}>{shown}</span>;
   }
 
   if (!edit) {
     return (
-      <button type="button" className={`${h.rowDate} ${h.rowDateEd}`} data-col={col}
+      <button type="button" className={`${h.rowDate} ${c} ${h.rowDateEd}`} data-col={col}
         title={`${tip}\n${tr('Дарж огноо бичнэ: 2026-10-04 · 20261004')}`}
         onClick={() => { setTxt(v != null ? msToDay(v) : ''); setEdit(true); onEditing?.(true); }}
         onKeyDown={(e) => { const d = navDir(e.key); if (d && onNext) { e.preventDefault(); onNext(d); } }}>
@@ -462,7 +464,7 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
   const bad = parseDayInput(txt) == null;
   return (
     <input
-      className={`${h.rowDate} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      className={`${h.rowDate} ${c} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
       data-col={col}
       value={txt}
       autoFocus
@@ -510,7 +512,9 @@ function DateCell({ v, tip, onSet, onEditing, col, onNext, onOther, otherTip }: 
  * ⚠️ Зөвхөн ЭЕРЭГ БҮХЭЛ тоо (1 = эхлэх өдөр = дуусах өдөр — `spanDays` хоёр захыг
  *    оруулж тоолдог). 0, сөрөг, бутархай → улаан, тавихгүй.
  */
-function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
+function DaysCell({ c, v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
+  /** ⚠️ 2026-10-08: баганын класс (`.cGd`/`.cPd`) — `DateCell.c`-тэй ижил */
+  c: string;
   v: Span | null;
   tip: string;
   /** ⚠️ 2026-10-09: `via` — ямар товчоор хадгалсан (`CellVia`) */
@@ -535,18 +539,18 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   if (!onSet || !v) {
     if (onOther && v) {
       return (
-        <button type="button" className={`${h.rowDays} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
+        <button type="button" className={`${h.rowDays} ${c} ${h.rowDateOther}`} title={`${tip}\n${otherTip ?? ''}`.trim()}
           onClick={onOther}>
           {shown}
         </button>
       );
     }
-    return <span className={h.rowDays} title={v ? tip : undefined}>{shown}</span>;
+    return <span className={`${h.rowDays} ${c}`} title={v ? tip : undefined}>{shown}</span>;
   }
 
   if (!edit) {
     return (
-      <button type="button" className={`${h.rowDays} ${h.rowDateEd}`} data-col="days"
+      <button type="button" className={`${h.rowDays} ${c} ${h.rowDateEd}`} data-col="days"
         title={`${tip}\n${tr('Дарж хоногийн тоог бичнэ — дуусах огноо дагаж шилжинэ')}`}
         onClick={() => { setTxt(shown); setEdit(true); onEditing?.(true); }}
         onKeyDown={(e) => { const d = navDir(e.key); if (d && onNext) { e.preventDefault(); onNext(d); } }}>
@@ -562,7 +566,7 @@ function DaysCell({ v, tip, onSet, onEditing, onNext, onOther, otherTip }: {
   const bad = !(n >= 1 && n <= MAX_DAYS);
   return (
     <input
-      className={`${h.rowDays} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
+      className={`${h.rowDays} ${c} ${h.rowDateIn}${bad ? ` ${h.rowDateBad}` : ''}`}
       data-col="days"
       value={txt}
       autoFocus

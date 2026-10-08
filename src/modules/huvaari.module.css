@@ -244,6 +244,20 @@
    энэ хувьсагчийг дарж, толгой · мөр хоёулаа өвлөнө. `.gSideHead, .row` дээр тавьбал inline утга
    үл хэрэгсэгдэнэ (класс сонгогч нь өвлөлтөөс давамгайлна). */
 .gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 140px; --res-w: 44px; }
+/* ⚠️ 2026-10-08 (хэрэглэгч: «нэг нэгээр нь өргөн бүдүүн тааруулах ёстой»): БАГАНА БҮР ТУСДАА ӨРГӨН.
+   Баганын класс нь ӨӨРИЙН элемент дээр `--date-w`/`--days-w`/`--res-w`-ийг `--w-*`-ээр дарна
+   (`--w-*`-ийг `useColWidths` `.gSide` дээр тавина, толгой · мөр өвлөнө). `.rowDate` г.м.
+   өргөний дүрэм хөдлөөгүй. Fallback нь `useColWidths`-ийн анхдагчтай ИЖИЛ — зөрвөл багана гулсана. */
+.cGs { --date-w: var(--w-gs, 72px); }
+.cGe { --date-w: var(--w-ge, 72px); }
+.cPs { --date-w: var(--w-ps, 72px); }
+.cPe { --date-w: var(--w-pe, 72px); }
+.cAs { --date-w: var(--w-as, 72px); }
+.cAe { --date-w: var(--w-ae, 72px); }
+.cGd { --days-w: var(--w-gd, 40px); }
+.cPd { --days-w: var(--w-pd, 40px); }
+.cRh { --res-w: var(--w-rh, 44px); }
+.cRm { --res-w: var(--w-rm, 44px); }
 /* Толгойн нүднүүд — баганын бариулын (`.colGrip`) агуулах блок */
 .gHeadDes, .gHeadWork, .gHeadDate, .gHeadDays, .gHeadRes, .gHeadHam { position: relative; }
 /* ⚠️ 2026-10-08: `.gSideHead` stretch болсон тул текстийг нүд ДОТРОО голлоно (баруун зэрэгцүүлэлт хэвээр —

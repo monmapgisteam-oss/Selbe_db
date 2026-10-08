@@ -559,11 +559,15 @@ export function Huvaari({
      хоног · нөөц нуугдана; бодит огноо/нөөцийн багана талбартай үйлчилгээнд л (`hasActual`/`hasRes`-тэй ижил дүрэм). */
   const colAct = !!sc && sc.aStart.some(Boolean);
   const colRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
+  /* ⚠️ 2026-10-08: багана бүр тусдаа өргөнтэй (`useColWidths`-ийн ⚠️) — үржигдэхүүн 0/1 */
+  const cOn = cols ? 1 : 0;
+  const cAct = cols && colAct ? 1 : 0;
+  const cRes = cols && colRes ? 1 : 0;
   const colW = useColWidths({
     des: 1, work: 1, ham: 1,
-    date: cols ? 4 + (colAct ? 2 : 0) : 0,
-    days: cols ? 2 : 0,
-    res: cols && colRes ? 2 : 0,
+    gs: cOn, ge: cOn, gd: cOn, ps: cOn, pe: cOn, pd: cOn,
+    as: cAct, ae: cAct,
+    rh: cRes, rm: cRes,
   });
   const sideAndColRef = useCallback((node: HTMLDivElement | null) => { colW.elRef(node); return sideRef(node); }, [colW.elRef, sideRef]);
   useEffect(() => {
@@ -5802,30 +5806,30 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     *    хоёр өөр засварын зам үүсвэл аль нь үнэн болох нь
                     *    бүрхэг болно.
                     */}
-                  <span className={h.gHeadDate}>{tr('Гэрээ эхлэх')}<ColGrip g={colW.grip('date')} label={tr('«{0}» баганын өргөн', tr('Гэрээ эхлэх'))} /></span>
-                  <span className={h.gHeadDate}>{tr('Гэрээ дуусах')}<ColGrip g={colW.grip('date')} tab={false} label={tr('«{0}» баганын өргөн', tr('Гэрээ дуусах'))} /></span>
+                  <span className={`${h.gHeadDate} ${h.cGs}`}>{tr('Гэрээ эхлэх')}<ColGrip g={colW.grip('gs')} label={tr('«{0}» баганын өргөн', tr('Гэрээ эхлэх'))} /></span>
+                  <span className={`${h.gHeadDate} ${h.cGe}`}>{tr('Гэрээ дуусах')}<ColGrip g={colW.grip('ge')} label={tr('«{0}» баганын өргөн', tr('Гэрээ дуусах'))} /></span>
                   {/* ⚠️ ХОНОГ нь ТУСДАА БАГАНА (2026-09-15, хэрэглэгч).
                       Огнооны нүдэнд шигтгэвэл тэр нүд хоёр утга агуулж,
                       эрэмбэлэх · хуулах · нүдээр гүйлгэх бүгд хүндэрнэ. */}
-                  {/* ⚠️ 2026-10-09: давтагдах багана (нэг хувьсагч) — эхнийх нь л Tab-д (`ColGrip.tab`), шошго баганын нэрээр */}
-                  <span className={h.gHeadDays}>{tr('Хоног')}<ColGrip g={colW.grip('days')} label={tr('«{0}» баганын өргөн', tr('Гэрээгээр үргэлжлэх хоног'))} /></span>
+                  {/* ⚠️ 2026-10-08: багана бүр ТУСДАА өргөнтэй (`useColWidths`-ийн ⚠️) — бариул бүр Tab-д, шошго баганын нэрээр */}
+                  <span className={`${h.gHeadDays} ${h.cGd}`}>{tr('Хоног')}<ColGrip g={colW.grip('gd')} label={tr('«{0}» баганын өргөн', tr('Гэрээгээр үргэлжлэх хоног'))} /></span>
                   {/* ⚠️ «Төлөвлөгөөт» (2026-09-23, хэрэглэгч) — хажууд «Бодит» багана
                       нэмэгдсэн тул «Төлөвлөгөө эхлэх» гэвэл аль нь төлөвлөгөө, аль нь
                       баримт болох нь бүрхэг. */}
-                  <span className={h.gHeadDate}>{tr('Төлөвлөгөөт эхлэх')}<ColGrip g={colW.grip('date')} tab={false} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт эхлэх'))} /></span>
-                  <span className={h.gHeadDate}>{tr('Төлөвлөгөөт дуусах')}<ColGrip g={colW.grip('date')} tab={false} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт дуусах'))} /></span>
-                  <span className={h.gHeadDays}>{tr('Хоног')}<ColGrip g={colW.grip('days')} tab={false} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))} /></span>
+                  <span className={`${h.gHeadDate} ${h.cPs}`}>{tr('Төлөвлөгөөт эхлэх')}<ColGrip g={colW.grip('ps')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт эхлэх'))} /></span>
+                  <span className={`${h.gHeadDate} ${h.cPe}`}>{tr('Төлөвлөгөөт дуусах')}<ColGrip g={colW.grip('pe')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт дуусах'))} /></span>
+                  <span className={`${h.gHeadDays} ${h.cPd}`}>{tr('Хоног')}<ColGrip g={colW.grip('pd')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))} /></span>
                   {/*
                     * БОДИТ ЭХЭЛСЭН / ДУУССАН (2026-09-23) — идэвхтэй блокийн (`blk`)
                     * утга; popup-аас засагдана, энд зөвхөн харуулна (дээрх ⚠️-тэй
                     * ижил: засварын нэг л зам). Бүлгийн мөрд хүүхдийн MIN/MAX.
                     * ⚠️ Талбар байхгүй багцад багана ОГТ гарахгүй (`hasActual`).
                     */}
-                  {hasActual && <span className={h.gHeadDate}>{tr('Бодит эхэлсэн')}<ColGrip g={colW.grip('date')} tab={false} label={tr('«{0}» баганын өргөн', tr('Бодит эхэлсэн'))} /></span>}
-                  {hasActual && <span className={h.gHeadDate}>{tr('Бодит дууссан')}<ColGrip g={colW.grip('date')} tab={false} label={tr('«{0}» баганын өргөн', tr('Бодит дууссан'))} /></span>}
+                  {hasActual && <span className={`${h.gHeadDate} ${h.cAs}`}>{tr('Бодит эхэлсэн')}<ColGrip g={colW.grip('as')} label={tr('«{0}» баганын өргөн', tr('Бодит эхэлсэн'))} /></span>}
+                  {hasActual && <span className={`${h.gHeadDate} ${h.cAe}`}>{tr('Бодит дууссан')}<ColGrip g={colW.grip('ae')} label={tr('«{0}» баганын өргөн', tr('Бодит дууссан'))} /></span>}
                   {/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — мөрийн нөөц; бүлэгт нийлбэр. */}
-                  {hasRes && <span className={h.gHeadRes} title={tr('Хүн хүч')}>{tr('Хүн')}<ColGrip g={colW.grip('res')} label={tr('«{0}» баганын өргөн', tr('Хүн хүч'))} /></span>}
-                  {hasRes && <span className={h.gHeadRes} title={tr('Машин механизм')}>{tr('Техник')}<ColGrip g={colW.grip('res')} tab={false} label={tr('«{0}» баганын өргөн', tr('Машин механизм'))} /></span>}
+                  {hasRes && <span className={`${h.gHeadRes} ${h.cRh}`} title={tr('Хүн хүч')}>{tr('Хүн')}<ColGrip g={colW.grip('rh')} label={tr('«{0}» баганын өргөн', tr('Хүн хүч'))} /></span>}
+                  {hasRes && <span className={`${h.gHeadRes} ${h.cRm}`} title={tr('Машин механизм')}>{tr('Техник')}<ColGrip g={colW.grip('rm')} label={tr('«{0}» баганын өргөн', tr('Машин механизм'))} /></span>}
                   {/* ⚠️ ЖИШЭЭГ ТОЛГОЙД (2026-09-15): нүдний `placeholder`-т
                       тавьбал 1,400 хоосон мөр бүгд «11FS14» гэж харагдаж,
                       бодит утга мэт уншигдана. Толгойд нэг удаа бичих нь
