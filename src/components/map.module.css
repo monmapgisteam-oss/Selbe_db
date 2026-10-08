@@ -143,13 +143,10 @@
    хэрэгслийн зурвас, бүс/тунгалаг/каталогийн хавтан хашлагын дотор `.wrap`-ийн
    хажууд байдаг тул тэд ч бүтэн дэлгэцэд хамт гарна. Эзэн нь `display:flex` тул
    `.wrap{flex:1}` хэвээр дүүргэнэ. */
-:global(.mapFsHost) {
-  position: fixed;
-  inset: 0;
-  z-index: 2500;
-  border-radius: 0;
-  background: var(--sunken);
-}
+/* ⚠️ 2026-10-09: `.mapFsHost` дүрэм `src/app/globals.css`-д — CSS module дотор ЗӨВХӨН
+   `:global(...)` сонгогч (локал класс агуулаагүй) нь `next build`-д «selector is not pure»
+   алдаа өгч (css-loader pure mode) 007f07d-оос хойш deploy унаж байв; `next dev` үүнийг
+   барьдаггүй. Хашлага нь MapCanvas-ийн гадна (эзэн) элемент тул модулийн класс өгөх боломжгүй. */
 
 /* ══════ 3D НИСЛЭГ СОНГОХ — зургийн ДООД ГОЛД (2026-09-25) ══════
    ⚠️ `mapTools.module.css`-ийн 2D/3D/BIM сегменттэй (`.dimsBar`/`.dimBtn`) ИЖИЛ

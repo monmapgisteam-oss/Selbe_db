@@ -481,3 +481,18 @@ ul, ol { list-style: none; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── ГАЗРЫН ЗУРАГ — БҮТЭН ДЭЛГЭЦ (MapCanvas.toggleFs, 2026-10-07) ──
+   Зураг viewport-ыг бүхэлд нь эзэлнэ (ArcGIS view container-ийн хэмжээг өөрөө дагадаг).
+   `.wrap`-д биш, ЭЗЭН хашлагад — хэрэгслийн зурвас, бүс/тунгалаг/каталогийн хавтан хашлагын
+   дотор `.wrap`-ийн хажууд тул тэд ч бүтэн дэлгэцэд хамт гарна; эзэн `display:flex` тул
+   `.wrap{flex:1}` хэвээр дүүргэнэ.
+   ⚠️ 2026-10-09: `map.module.css`-ээс ЭНД шилжив — модуль дотор `:global(.mapFsHost)` ганцаараа
+   «not pure» тул `next build` унадаг байв (dev барьдаггүй). */
+.mapFsHost {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  border-radius: 0;
+  background: var(--sunken);
+}
