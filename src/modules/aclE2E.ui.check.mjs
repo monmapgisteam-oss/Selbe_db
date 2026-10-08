@@ -499,6 +499,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(rowOf().dirty, `${tag}: ноорог`);
   const save = () => findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el;
   save().props.onClick({});
+  /* ⚠️ 2026-10-09 (CI-д л унасан, 1b259da): `idle()` зөвхөн POOL-ын бичилтийг хүлээдэг — удаан runner дээр
+     хадгалалт (permsRemote upsert) дуусахаас өмнө `dirty` шалгагдаж байв. Доорх хатуу аккаунтын
+     устгалтай ижил аргаар бичилт дуустал (ноорог арилтал) хүлээнэ. */
+  await settle(() => { m.render(); return fake.inflight > 0 || rowOf().dirty; });
   await idle(); m.render();
   p = rowOf();
   eq(p.dirty, false, `${tag}: хадгалагдав`);
