@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { t as tr } from '@/lib/i18nCore';
+import { t as tr, getDictEpoch, getLocaleGeneration } from '@/lib/i18nCore';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
 import { useAsync } from '@/lib/useAsync';
@@ -52,6 +52,55 @@ import { loadSchemSources } from '@/lib/schemData';
 import c from './schem.module.css';
 
 /* ══════════════════ Туслах ══════════════════ */
+
+/**
+ * ДАГАЛДАХ ТООЦООНЫ КЭШ — `src` × багц × нарийвчлал × хэл.
+ *
+ * ⚠️ 2026-10-09: `buildSchem` · `stageRail` · `alertsByCard` · 24 картын `cardStat` нь
+ *    `Data`-гийн render prop ДОТОР дуудагддаг тул (hook хэрэглэх боломжгүй) карт сонгох,
+ *    самбар нээх зэрэг ямар ч төлөвийн өөрчлөлтөд БҮГД дахин бодогддог байв. `src` нь
+ *    ачаалал бүрд ШИНЭ объект тул `WeakMap`-ийн түлхүүр болж, хуучин нь өөрөө цэвэрлэгдэнэ.
+ * ⚠️ Хэлний үе (`getLocaleGeneration` · `getDictEpoch`) түлхүүрт ОРНО — тооцоо нь `tr()`
+ *    мөр үүсгэдэг тул хэл солиход хуучин хэлний мөр үлдэхгүй.
+ */
+type Derived = {
+  state: ReturnType<typeof buildSchem> | null;
+  rail: ReturnType<typeof stageRail>;
+  alerts: Map<string, Issue[]>;
+  alertN: number;
+  stats: Map<string, CardStat>;
+};
+const DERIVED = new WeakMap<SchemSources, Map<string, Derived>>();
+
+function derivedOf(src: SchemSources, pkg: string | null, fine: boolean): Derived {
+  let per = DERIVED.get(src);
+  if (!per) { per = new Map(); DERIVED.set(src, per); }
+  const key = `${pkg ?? ''}|${fine ? 1 : 0}|${getLocaleGeneration()}|${getDictEpoch()}`;
+  const hit = per.get(key);
+  if (hit) return hit;
+  /* ⚠️ Нарийвчилсан горимд амьд тоо ОГТ бодогдохгүй — карт дээр
+     гарахгүй тул тооцох ч шаардлагагүй. */
+  const state = fine ? null : buildSchem(src, pkg);
+  const rail = stageRail(src, pkg);
+  /* ⚠️ Горим солиход ДАХИН бодогдоно: ерөнхий схемд бүлгээр,
+     нарийвчилсанд карт бүрээр түлхүүрлэгддэг (`alertsByCard`). */
+  const alerts = alertsByCard(src, pkg, fine);
+  const alertN = [...alerts.values()].reduce((a, l) => a + l.length, 0);
+  /**
+   * ⚠️ ЗӨВХӨН НАРИЙН схемд. Ерөнхийд `buildSchem` картад 3–6 метрик
+   * аль хэдийн тавьдаг тул давхардуулбал нэг тоо хоёр удаа бичигдэнэ.
+   */
+  const stats = new Map<string, CardStat>();
+  if (fine) {
+    for (const n of FINE_NODES) {
+      const s = cardStat(src, pkg, n.id);
+      if (s) stats.set(n.id, s);
+    }
+  }
+  const out: Derived = { state, rail, alerts, alertN, stats };
+  per.set(key, out);
+  return out;
+}
 
 /**
  * Төлөвийн ҮГ — өнгө ганцаараа хангалтгүй (өнгө сохор, хар цагаан хэвлэлт).
@@ -787,25 +836,8 @@ export function Schem({
 
       <Data q={q} minH={420} loading={tr('Схем бэлтгэж байна…')}>
         {(src) => {
-          /* ⚠️ Нарийвчилсан горимд амьд тоо ОГТ бодогдохгүй — карт дээр
-             гарахгүй тул тооцох ч шаардлагагүй. */
-          const state = fine ? null : buildSchem(src, pkg || null);
-          const rail = stageRail(src, pkg || null);
-          /* ⚠️ Горим солиход ДАХИН бодогдоно: ерөнхий схемд бүлгээр,
-             нарийвчилсанд карт бүрээр түлхүүрлэгддэг (`alertsByCard`). */
-          const alerts = alertsByCard(src, pkg || null, fine);
-          const alertN = [...alerts.values()].reduce((a, l) => a + l.length, 0);
-          /**
-           * ⚠️ ЗӨВХӨН НАРИЙН схемд. Ерөнхийд `buildSchem` картад 3–6 метрик
-           * аль хэдийн тавьдаг тул давхардуулбал нэг тоо хоёр удаа бичигдэнэ.
-           */
-          const stats = new Map<string, CardStat>();
-          if (fine) {
-            for (const n of FINE_NODES) {
-              const s = cardStat(src, pkg || null, n.id);
-              if (s) stats.set(n.id, s);
-            }
-          }
+          /* ⚠️ 2026-10-09: `derivedOf` — render бүрд дахин бодохгүй (дээрх ⚠️) */
+          const { state, rail, alerts, alertN, stats } = derivedOf(src, pkg || null, fine);
           return (
             <>
               {src.failed.length > 0 && (

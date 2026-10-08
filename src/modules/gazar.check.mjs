@@ -125,4 +125,18 @@ console.log('✅ Кадастрын дугаараар хайж, олдсон т
 }
 console.log('✅ GazarEdit: хөндөөгүй төлөв хадгалалтыг хаахгүй, сүүлд засварласныг харуулна');
 
+/* ── 2026-10-09: «Тодорхойгүй» баганын WHERE — «—» ба зөвхөн зайтай түүхий утгууд орно ── */
+{
+  const { statusRawsWhere, statusKey } = await import('../lib/land.ts');
+  assert.equal(statusKey('—'), '', '«—» нь «Тодорхойгүй» бүлэгт');
+  assert.equal(statusKey('   '), '', 'зөвхөн зай нь «Тодорхойгүй» бүлэгт');
+  const w = statusRawsWhere('F', new Set(['—', '   ']), true, 'Тодорхойгүй');
+  assert.equal(w, "(F IS NULL OR F = '' OR F = N'—' OR F = N'   ')");
+  assert.equal(statusRawsWhere('F', new Set(), true, 'Тодорхойгүй'), "(F IS NULL OR F = '')");
+  assert.equal(statusRawsWhere('F', new Set(['a ', 'a']), false, 'a'), "(F = N'a ' OR F = N'a')");
+  assert.equal(statusRawsWhere('F', new Set(), false, 'a'), "F = N'a'");
+  assert.match(src, /statusRawsWhere\(L\.fields\.status, s\.raws, value === 'Тодорхойгүй', value\)/, 'Gazar нь туслахыг хэрэглэнэ');
+}
+console.log('✅ Тодорхойгүй баганын WHERE: NULL · хоосон · «—» · зай');
+
 console.log('\ngazar.check: ok — засварын горим ба полигоны шүүлт зөрөхгүй');

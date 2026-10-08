@@ -210,6 +210,9 @@ console.log('✅ хуучин payload суурь жаазаас давтамж �
   const orphan = { ...add, oid: -2, parentNo: '7', parentWork: 'БАЙХГҮЙ' };
   assert.equal(insertAdds(old, [orphan], sc, nBld).length, 7, 'эцэггүй add алгасагдав');
   assert.equal(insertAdds(old, [], sc, nBld), old, 'add-гүй бол суурь өөрөө');
+  /* ⚠️ 2026-10-09 (F6): payload-ын эцгийн №/нэрийн илүү зай — `ajilApply`-тай адил тайрч таарна */
+  const padded = { ...add, oid: -3, parentNo: ' 1.1 ', parentWork: 'Ухах  ' };
+  assert.equal(insertAdds(old, [padded], sc, nBld).length, 8, 'тайрсан эцэг олдоно');
 
   /* ⚠️ 2026-09-23 (аудитын #18): нэг эцэгт ХОЁР мөр — оруулсан дарааллаараа
      (эхнийх нь p+1, хоёр дахь нь түүний АРД), урвуу БИШ. */
@@ -506,6 +509,8 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const noVol = row(3, '3', 'C', 3, false, { act: [0.3, null] });
   assert.deepEqual(incCell(noVol, 0, '%10', true), { obyem: null, act: 0.4 }, 'Обьёмгүй мөрд хувь дээр нэмнэ');
   assert.ok(Math.abs(incCell(r, 1, '%10', false).act - 0.4) < 1e-12, 'талбаргүй блокт хувь дээр нэмнэ');
+  /* ⚠️ 2026-10-09 (F5): талбаргүй блокт обьёмын нэмэлт — архивлах зүйлгүй тул «өөрчлөлт» биш */
+  assert.equal(incCell(r, 1, '15', false), null, 'талбаргүй блокт обьёмын нэмэлт = өөрчлөлтгүй');
 
   /* 9c. computeAll — FillNew-ийн `pending` (inc) ба хуучин (abs) */
   const baseRows = mkRows(200); // 203: vol 100, obyem [5, 3]

@@ -496,16 +496,22 @@ export const MONTH_AXIS_FROM = "2025-09";
  * ⚠️ Төгсгөл нь ӨНӨӨДӨР: тогтмол цонхоор таславал шинэ IPC олголт, шинэ
  * биет хэмжилт хамгийн сүүлийн нүдэнд овоорч, график чимээгүй царцана.
  *
- * ⚠️ 60 сараар хязгаарлана — цаг буруу тохируулсан машин дээр тэнхлэг
- * хязгааргүй уртсахаас сэргийлнэ.
+ * ⚠️ 120 сараар хязгаарлана (2026-10-09: урьд нь 60) — цаг буруу тохируулсан машин дээр тэнхлэг
+ * хязгааргүй уртсахаас сэргийлнэ; хэтэрвэл `console.warn`.
  */
 export function cfMonthAxis(now: Date = new Date()): string[] {
   const out: string[] = [];
   const [fy, fm] = MONTH_AXIS_FROM.split("-").map(Number);
   const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  /* ⚠️ 2026-10-09: хязгаар нь «одоо» хүртэлх сарын тоо (`span`), дээд тал нь 120. Урьд нь ТОГТМОЛ 60
+     тул 2030-08-аас хойш тэнхлэг өнөөдрөөс ӨМНӨ чимээгүй тасарч, шинэ олголт/хэмжилт алга болох
+     байв. 120-оос хэтэрвэл (цаг буруу машин) таслаад консолд анхааруулна — чимээгүй биш. */
+  const span = (now.getFullYear() - fy) * 12 + (now.getMonth() + 1 - fm) + 1;
+  const limit = Math.min(120, Math.max(1, span));
+  if (span > 120) console.warn(`[cfMonthAxis] ${MONTH_AXIS_FROM}…${nowYm} = ${span} сар > 120 — тэнхлэг таслагдав`);
   let y = fy;
   let mo = fm;
-  for (let guard = 0; guard < 60; guard += 1) {
+  for (let guard = 0; guard < limit; guard += 1) {
     const label = `${y}-${String(mo).padStart(2, "0")}`;
     out.push(label);
     if (label >= nowYm) break;

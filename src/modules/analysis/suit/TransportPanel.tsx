@@ -9,6 +9,7 @@ import {
   BUS_BAND_COLOR, type TMode, type TransportCtx,
 } from './transportModes';
 import { BUS_GOOD_M, BUS_OK_M } from '@/lib/analysis/transport';
+import { TRANSIT_NORM_M } from './simulation';
 import { NetSelector, type NetSel } from './SimulationPanel';
 import c from './simulation.module.css';
 
@@ -187,7 +188,9 @@ function Legend({ mode, min, max, unit }: { mode: TMode; min: number; max: numbe
           <span className={c.legendEnd}>{BUS_OK_M} {tr('м+')}</span>
         </div>
         <p className={c.desc} style={{ marginTop: -2 }}>
-          {tr('Дунд цэг =')} <b>{tr('{0} м', BUS_GOOD_M)}</b> {tr('(БНБД-ийн сайн хүртээмжийн босго). Ажиглагдсан хамгийн хол нь')} <b>{tr('{0} м', nf0(max))}</b>.
+          {/* ⚠️ 2026-10-09: 400 м-ийг «БНБД-ийн босго» гэж бичдэг байв — БНБД 30-01-24, 10.22-ын норм
+              нь 500 м (`TRANSIT_NORM_M`); 400 м нь энэ шатлалын «сайн» хэсгийн өөрсдийн зааг. */}
+          {tr('Дунд цэг =')} <b>{tr('{0} м', BUS_GOOD_M)}</b> {tr('(шатлалын «сайн хүртээмж»-ийн зааг; БНБД 30-01-24, 10.22-ын норм {0} м). Ажиглагдсан хамгийн хол нь', TRANSIT_NORM_M)}{' '}<b>{tr('{0} м', nf0(max))}</b>.
         </p>
       </>
     );

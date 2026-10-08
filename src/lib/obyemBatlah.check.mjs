@@ -155,4 +155,28 @@ assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, '  '
 }
 console.log('✅ татан авах дүрэм · батлах баталгаа · бичилтийн дараах алдааны мессеж');
 
+/* ══════════════ 8. ⚠️ 2026-10-09: жааз солигдсон · алгассан нүд · хоёр таб ══════════════ */
+{
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('const decideObyemHere'));
+  const write = fn.indexOf('await applyUpdates(');
+  const decide = fn.indexOf('const r = await decideObyem(');
+  /* Бичсэний ДАРАА жаазыг дахин ачаалж тулгана — `decideObyem(approve)`-ээс ӨМНӨ */
+  const recheck = fn.indexOf('frameIdOf(await loadRows(');
+  assert.ok(recheck > write && recheck < decide, 'useObyem: бичсэний дараах жаазын шалгалт `applyUpdates` ба `decideObyem`-ийн ХООРОНД байх ёстой');
+  assert.ok(/if \(moved !== false\) \{[^]*?return;/.test(fn.slice(recheck, decide)), 'useObyem: жааз солигдсон/шалгаж чадаагүй бол шийдвэр бичихгүй');
+  /* Алгассан нүд — баталгаагүйгээр батлахгүй, түгжээ/бичилтээс ӨМНӨ асууна; тэмдэглэл `skipped`-ээр */
+  const ask = fn.indexOf('if (skippedN > 0)');
+  assert.ok(ask > 0 && ask < fn.indexOf('claimObyem('), 'useObyem: алгассан нүдийг түгжихээс ӨМНӨ асуух ёстой');
+  assert.ok(/window\.confirm\(/.test(fn.slice(ask, fn.indexOf('claimObyem('))), 'useObyem: алгассан нүдэд баталгаажуулалт алга');
+  assert.ok(/skipped: skipNote/.test(fn), 'useObyem: алгассан нүдийг `decideObyem.skipped`-ээр хадгалахгүй байна');
+  /* Нэг батлагч хоёр таб — «аль хэдийн шийдвэрлэсэн» ӨӨРӨӨ бол амжилт */
+  assert.ok(/doneByMe\(\)/.test(fn) && /h\.status === OBYEM_STATUS\.approved && h\.approver === meLc/.test(fn), 'useObyem: ӨӨРИЙН баталсныг амжилт гэж үзэхгүй байна');
+  const L = fs.readFileSync(new URL('./obyemBatlah.ts', import.meta.url), 'utf8');
+  assert.ok(/export async function obyemBusyFor\(/.test(L), 'obyemBatlah: `obyemBusyFor` алга');
+  assert.ok(/export async function loadHead\(/.test(L), 'obyemBatlah: `loadHead` алга');
+}
+console.log('✅ жааз солигдсон бол батлахгүй · алгассан нүд асууна/хадгална · хоёр таб');
+
 console.log('\nobyemBatlah.check: ok');

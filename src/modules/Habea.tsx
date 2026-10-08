@@ -33,9 +33,12 @@ import {
   laborCompanyFields,
 } from '@/lib/services';
 import { usePlanTotals } from '@/lib/totals';
-import { latestRowPerDay, companyReported, laborStaleness } from '@/lib/ceo/workforce';
+/* ⚠️ 2026-10-09: ӨДРИЙН ТҮЛХҮҮР — Улаанбаатарын хуанли (`ubDayKey`), хөтчийн локал `dayKey` БИШ.
+   CEO самбарын хүн хүч (`ceo/workforce`) UB-ээр огтолдог тул гадаад цагийн бүсэд нээхэд
+   энэ хуудасны өдөр/сар (цуваа, `incPass`, `uzPass`) нэг өдрөөр гулсдаг байв. */
+import { latestRowPerDay, companyReported, laborStaleness, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
-import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK } from './habeaRate';
+import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours } from './habeaRate';
 import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import {
@@ -49,7 +52,7 @@ import { MultiSelect } from '@/components/MultiSelect';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
 import { HabeaCardGrips } from './HabeaCardGrips';
-import { num, date, text, dayKey, pct } from '@/lib/format';
+import { num, date, text, pct } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
@@ -426,12 +429,12 @@ function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjil
      *    доорх нэгтгэл нь зөвхөн түлхүүр давхардахаас сэргийлэх нөөц хамгаалалт.
      */
     .reduce<{ key: string; label: string; value: number; display: string }[]>((acc, x) => {
-      /* ⚠️ ОРОН НУТГИЙН огноогоор бүлэглэнэ (`dayKey`). Урьд нь
+      /* ⚠️ ОРОН НУТГИЙН огноогоор бүлэглэнэ (`ubDayKey` — 2026-10-09: Улаанбаатарын хуанли). Урьд нь
          `toISOString().slice(0, 10)` байсан тул +08 бүсэд орон нутгийн
          00:00–07:59-д илгээсэн тайлан ӨМНӨХ өдрийн баганад нийлдэг байв;
          `byMonthSeries` нь энэ түлхүүрийн эхний 7 тэмдэгтээр сар авдаг тул
          сарын эхний шөнийн бүртгэл бүтэн сараар ч гулсдаг байлаа. */
-      const iso = dayKey(x.d);
+      const iso = ubDayKey(x.d);
       const last = acc[acc.length - 1];
       /* ⚠️ Дээрх шүүлт `value != null`-ыг баталсан — энд утга ҮРГЭЛЖ тоо */
       const v = x.value as number;
@@ -495,7 +498,7 @@ const cmpPkg = (a: string, b: string): number => {
  * «Ажилтан — өдрөөр»-ийг задаргаа орж ирсэн өдрөөс хойш хоёр муруйгаар).
  *
  * ⚠️ `byDaySeries`-ийн ИЖИЛ дүрэм: тайлан өгөөгүй гүйцэтгэгчийг алгасна
- *    (`companyReported`), орон нутгийн өдрийн түлхүүр (`dayKey`). Хоёул 0 бол
+ *    (`companyReported`), орон нутгийн өдрийн түлхүүр (`ubDayKey`). Хоёул 0 бол
  *    тэр өдөр задаргаагүй — Map-д ОРОХГҮЙ (0 гэж зурахгүй, цоорхой).
  */
 function mixByDay(rows: Row[], sfxs: readonly string[] | null): Map<string, { mongol: number; gadaad: number }> {
@@ -512,7 +515,7 @@ function mixByDay(rows: Row[], sfxs: readonly string[] | null): Map<string, { mo
       gadaad += nn(r[f.gadaad]);
     }
     if (mongol + gadaad <= 0) continue;
-    const k = dayKey(d);
+    const k = ubDayKey(d);
     const cur = out.get(k);
     if (cur) { cur.mongol += mongol; cur.gadaad += gadaad; } else out.set(k, { mongol, gadaad });
   }
@@ -988,7 +991,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      (анивчихгүй); долоо хоног солигдоход (`weekKey`) «…» гарч шинээр татна. */
   const weekScores = useAsync(() => loadWeekScores(new Date(now)), [weekKey, tick], { keepOn: [tick] });
   /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
-  const curYm = dayKey(now).slice(0, 7);
+  const curYm = ubDayKey(now).slice(0, 7);
 
   /* Олон хэмжээст хөндлөн шүүлт + зурган дээрээс сонгосон объект */
   const [sel, setSel] = useState<Sel>(NO_SEL);
@@ -1223,8 +1226,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    тоолдог байв (2026-08-21: 247 + 389 = 636; CEO самбар ба «Тайлан» 389).
    *    Хүн хүчний БҮХ дүрслэл ЭНЭ олонлогоос — `all.labor`-ийг шууд бүү хэрэглэ.
    */
-  const laborRows = useMemo(() => latestRowPerDay(all ? all.labor : [], dayKey), [all]);
+  const laborRows = useMemo(() => latestRowPerDay(all ? all.labor : [], ubDayKey), [all]);
   const labor = useMemo(() => laborState(laborRows), [laborRows]);
+  /* ⚠️ 2026-10-09 (аудит): «…осолгүй ажилласан цаг» — СҮҮЛИЙН LTI-ээс хойших хүн-цаг
+     (`habeaRate.ltiFreeHours`). Урьд нь Σ `Hun_tsag` (LTI-д тэглэгддэггүй). Ослын БҮХ
+     бүртгэлээс (шүүлтгүй) — KPI нь төслийн түвшний, шүүлт идэвхтэй үед «—». */
+  const ltiFree = useMemo(() => ltiFreeHours(laborRows, inc, ubDayKey), [laborRows, inc]);
   /**
    * ОГНООНЫ ШҮҮЛТТЭЙ хүн хүчний мөрүүд — өдөр/сарын цувааг ЭС тооцвол бүх
    * хүн хүчний дүрслэл (монгол/гадаад, компаниар) эндээс.
@@ -1239,7 +1246,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return rows.filter((r) => {
       const d = nn(r[L.ognoo]);
       if (d <= 0) return false;
-      const k = dayKey(d);
+      const k = ubDayKey(d);
       return inSet(sel.day, k) && inSet(sel.month, k.slice(0, 7));
     });
   }, [laborRows, sel.day, sel.month]);
@@ -1309,7 +1316,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     /* ⚠️ Огнооны сонголт идэвхтэй бол огноогүй осол ГАРАХГҮЙ — «аль өдрийнх
        нь мэдэгдэхгүй»-г сонгосон өдөрт хамааруулж болохгүй. */
     && ((!sel.day.length && !sel.month.length)
-      || (x.d > 0 && inSet(sel.day, dayKey(x.d)) && inSet(sel.month, dayKey(x.d).slice(0, 7))))
+      || (x.d > 0 && inSet(sel.day, ubDayKey(x.d)) && inSet(sel.month, ubDayKey(x.d).slice(0, 7))))
     && (!pickOsol || x.oid === pickOsol),
   [pkgEff, sel.incType, sel.cause, sel.incCompany, sel.day, sel.month, pickOsol]);
 
@@ -1537,7 +1544,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   }, [hourDays, inc, incPass]);
   const rateMonth = useMemo(
     () => rateByMonth(hourDays, fInc, {
-      ymOf: (ms) => dayKey(ms).slice(0, 7), pkgOfCo: PKG_OF_CO, pkgs: pkgEff,
+      ymOf: (ms) => ubDayKey(ms).slice(0, 7), pkgOfCo: PKG_OF_CO, pkgs: pkgEff,
     }),
     [hourDays, fInc, pkgEff],
   );
@@ -1879,7 +1886,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           st.stale,
         ))(laborStaleness(labor.asOf, now))}
-        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.hunTsag), tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'))}
+        {kpiTile(
+          pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),
+          tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
+          undefined,
+          ltiFree.undatedLti
+            ? tr('Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй')
+            : ltiFree.since != null ? tr('Сүүлийн ХЧТА осол: {0}', date(ltiFree.since)) : undefined,
+          undefined,
+          ltiFree.undatedLti,
+        )}
         {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
         {/**
           * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
@@ -2041,7 +2057,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
         {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.v11.url} sel={uzSel} />}
         {incOpen && (<>
-        <Section title={tr('Осол, зөрчил — төрлөөр')} note={tr('{0} бүртгэл', num(fInc.length))} tone="primary">
+        {/* ⚠️ 2026-10-09: төрөл сонгосон үед тайлбар «N / M» — төв нь БҮХ төрлийн нийт (M,
+            чарт өөрийн сонголтоор хумигдахгүй), тайлбар нь сонгосон төрлийн (N); урьд нь
+            хоёр өөр тоо тайлбаргүй зөрдөг байв. */}
+        <Section
+          title={tr('Осол, зөрчил — төрлөөр')}
+          note={sel.incType.length
+            ? tr('{0} / {1} бүртгэл', num(fInc.length), num(incTypeBase.length))
+            : tr('{0} бүртгэл', num(fInc.length))}
+          tone="primary"
+        >
           {incByType.length
             ? <Donut items={incByType} stack size={110} center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />

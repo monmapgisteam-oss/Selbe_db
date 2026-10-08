@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
@@ -82,6 +82,11 @@ function DepPicker({ value, cands, disabled, onPick }: {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
+  /* ⚠️ 2026-10-09 (a11y): `aria-controls` + `aria-activedescendant` — урьд нь ↑↓-оор
+     тодруулсан сонголт зөвхөн нүдэнд харагдаж, дэлгэц уншигч юу ч уншдаггүй байв
+     (фокус оролтод үлддэг тул идэвхтэй сонголтыг ID-гаар заах ёстой). */
+  const lbId = useId();
+  const optId = (i: number) => `${lbId}-o${i}`;
   const cur = cands.find((c) => c.code === value);
   /* Хуучин хадгалагдсан код нэр дэвшигчдэд байхгүй байж болно (жиш. одоо дугуй үүсгэх
      байрлалд) — сонголт алдагдахгүйн тулд ил бичнэ */
@@ -109,6 +114,8 @@ function DepPicker({ value, cands, disabled, onPick }: {
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
+        aria-controls={open ? lbId : undefined}
+        aria-activedescendant={open && list[hi] ? optId(hi) : undefined}
         aria-label={tr('Урд ажил — код эсвэл нэрээр хайх')}
         title={open ? tr('Код эсвэл нэрээр хайна · ↑↓ сонгоно · Enter тавина · Esc хаана') : shown}
         value={open ? q : shown}
@@ -131,11 +138,11 @@ function DepPicker({ value, cands, disabled, onPick }: {
         }}
       />
       {open && (
-        <ul className={h.cboxList} role="listbox">
+        <ul id={lbId} className={h.cboxList} role="listbox">
           {list.length === 0 ? (
             <li className={h.cboxEmpty}>{tr('Олдсонгүй')}</li>
           ) : list.map((c, i) => (
-            <li key={c.code} role="option" aria-selected={c.code === value}
+            <li key={c.code} id={optId(i)} role="option" aria-selected={c.code === value}
               className={`${h.cboxItem}${i === hi ? ` ${h.cboxItemHi}` : ''}${c.code === value ? ` ${h.cboxItemOn}` : ''}`}
               onMouseDown={(e) => { e.preventDefault(); pick(c.code); }}
               onMouseEnter={() => setHi(i)}>

@@ -16,7 +16,17 @@
 
 import { t as tr } from '@/lib/i18nCore';
 import type { EdgeKind, Geo } from '@/lib/schem';
-import type { ViewKey } from '@/lib/services';
+import { LAYERS, type ViewKey } from '@/lib/services';
+import { REVIEW_STAGES } from '@/lib/hyanalt';
+import { CEO_KPIS } from '@/lib/ceo/registry';
+
+/* ⚠️ 2026-10-09: картын тоонуудыг БҮРТГЭЛЭЭС уншина — урьд нь «174 давхарга», «13 KPI»,
+   «4 шат», «11 хүснэгтийн түлхүүр» гэж ХАТУУ бичигдсэн байсан бөгөөд бүртгэл өөрчлөгдөхөд
+   чимээгүй хуучирсан (давхарга 174 → 152, батлах шат 4 → 5 г.м.). Цикл үүсэхгүй: эдгээр модулийн аль
+   нь ч `sysSchem`-ийг импортлодоггүй.
+   ⚠️ Батлах шат = `REVIEW_STAGES` (компани/зохиогчийг ТООЛОХГҮЙ — тэр батлагч биш).
+   ⚠️ Кэшийн түлхүүр (`dataBus.DataKey`) нь ЗӨВХӨН төрөл — ажиллах үеийн жагсаалт байхгүй
+   тул тоо бичихгүй (дахин хатуу бичвэл мөн л хуучирна). */
 
 export type SysId =
   /* ── Эх сурвалж (баганa 0) ── */
@@ -61,7 +71,7 @@ export const SYS_NODES: readonly SysNode[] = [
   /* ══ Багана 0 · ЭХ СУРВАЛЖ ══ */
   {
     id: 'agsSpace', get title() { return tr('Орон зайн үйлчилгээ'); },
-    get desc() { return tr('174 давхарга · зам, шугам, барилга'); },
+    get desc() { return tr('{0} давхарга · зам, шугам, барилга', LAYERS.length); },
     view: 'plan', doc: '02-ogogdliin-esurvalj', icon: 'layers', col: 0, row: 0, tone: 'src',
   },
   {
@@ -93,7 +103,7 @@ export const SYS_NODES: readonly SysNode[] = [
   },
   {
     id: 'cache', get title() { return tr('Кэш'); },
-    get desc() { return tr('11 хүснэгтийн түлхүүр · хүчингүй болголт'); },
+    get desc() { return tr('Хүснэгтийн түлхүүр · хүчингүй болголт'); },
     view: null, doc: '03-ogogdliin-zam', icon: 'layers', col: 1, row: 2, tone: 'flow',
   },
 
@@ -105,7 +115,7 @@ export const SYS_NODES: readonly SysNode[] = [
   },
   {
     id: 'kpi', get title() { return tr('Удирдлагын үзүүлэлт'); },
-    get desc() { return tr('13 KPI · төслийн мөчлөгөөр'); },
+    get desc() { return tr('{0} KPI · төслийн мөчлөгөөр', CEO_KPIS.length); },
     view: 'gdash', doc: '03-ogogdliin-zam', icon: 'target', col: 2, row: 3, tone: 'calc',
   },
 
@@ -144,7 +154,7 @@ export const SYS_NODES: readonly SysNode[] = [
   },
   {
     id: 'approve', get title() { return tr('Батлах'); },
-    get desc() { return tr('4 шат · зохиогч өөрийгөө батлахгүй'); },
+    get desc() { return tr('{0} шат · зохиогч өөрийгөө батлахгүй', REVIEW_STAGES.length); },
     view: 'guitsetgel', doc: '05-erh-batlah', icon: 'target', col: 4, row: 2, tone: 'write',
   },
   {

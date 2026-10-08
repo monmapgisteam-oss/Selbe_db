@@ -310,7 +310,10 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
     for (const a of rows) {
       const ms = a[sc.f.fillDate];
       if (typeof ms !== 'number') continue;
-      const date = msToDay(ms);
+      /* ⚠️ 2026-10-09: `normDayMs` — `start`/`end`-тэй (доор) НЭГ дүрэм. Урьд нь UTC-ээр шууд
+         (`msToDay(ms)`) тул локал шөнө дундаар (16:00Z) тамгалагдсан хуучин жааз ӨМНӨХ өдрийн
+         огноо авч, 00:00Z-тэй шинэ жаазаас нэг өдрөөр зөрдөг байв. */
+      const date = msToDay(normDayMs(ms));
 
       const rawNo = String(a[sc.f.no] ?? '').trim();
       /* «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» → «Б.»; бүлгийн нэр нь № дотор байдаг.

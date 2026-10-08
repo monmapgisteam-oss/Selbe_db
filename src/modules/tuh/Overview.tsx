@@ -18,7 +18,7 @@ import {
   TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, daysBetween, elapsedPct,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
-import { lz, depRows, type TuhModel, type TuhRow } from './model';
+import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
 import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
 /* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
 import { Section as Card } from '@/components/ui';
@@ -153,9 +153,12 @@ export function ganttDomain(rows: { start: number | null; end: number | null; ex
       if (v > to) to = v;
     }
   }
+  /* ⚠️ 2026-10-09: ОРОН НУТГИЙН сар (`charts.Gantt`-ийн сарын толгойтой нэг дүрэм). Огноонууд нь орон
+     нутгийн шөнө дунд (+08) тул UTC-ээр бол «3-р сарын 1» нь 2-р сарын 28 болж, домэйн илүү сараар
+     эхэлж, сарын хил 8 цагаар зөрдөг байв. */
   const a = new Date(from);
   const b = new Date(to);
-  return { from: Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1), to: Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + 1, 1) };
+  return { from: new Date(a.getFullYear(), a.getMonth(), 1).getTime(), to: new Date(b.getFullYear(), b.getMonth() + 1, 1).getTime() };
 }
 
 /**
@@ -354,7 +357,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                     <small>{pct(r.progress, 2)}</small>
                   </td>
                   <td>{date(r.p.end)}</td>
-                  <td><b>{lz(m, 'commission')(date(r.commission))}</b><small>{tr('Хуваарийн «Улсын комисс»')}</small></td>
+                  <td><b>{commissionText(m, r)}</b><small>{tr('Хуваарийн «Улсын комисс»')}</small></td>
                   <td className={`${s.num} ${r.delay != null && r.delay > 0 ? s.bad : ''}`}>
                     {lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}
                   </td>
@@ -516,7 +519,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       <div className={s.wide}><span>{tr('Дүн')}</span><b>{mnt(r.p.cost)}</b></div>
                       <div><span>{tr('Дуусах')}</span><b>{date(r.p.end)}</b></div>
                       {r.p.group === 'housing' && (
-                        <div><span>{tr('Хамгийн эрт ашиглалтад')}</span><b>{lz(m, 'commission')(date(r.commission))}</b></div>
+                        <div><span>{tr('Хамгийн эрт ашиглалтад')}</span><b>{commissionText(m, r)}</b></div>
                       )}
                       <div className={s.wide}><span>{tr('Сүүлд тайлагнасан')}</span><b><ReportAge r={r} /></b></div>
                       <div className={s.wide}><span>{tr('Ерөнхий гүйцэтгэгч')}</span><b>{r.p.contractor || '—'}</b></div>
@@ -539,7 +542,8 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.multiples}>
           {housing.map((r) => (
             <div key={r.p.key} className={s.progCell}>
-              <ProgChart months={r.prog} title={`${r.p.code} · ${tr('Гүйцэтгэлийн явц')}`} />
+              {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhModel.planFailed`) */}
+              <ProgChart months={r.prog} title={`${r.p.code} · ${tr('Гүйцэтгэлийн явц')}`} loading={m.loading.has('plan')} planFailed={m.planFailed} />
               <button type="button" className={s.ghostBtn} onClick={() => onOpen(r.p.key)}>{tr('Энд нээх')}</button>
             </div>
           ))}

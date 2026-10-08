@@ -22,6 +22,7 @@ import { loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { agsFetch } from '@/modules/sheet/ags';
 import { bagtsKey } from '@/lib/services';
 import { loadHoRows, groupHo } from '@/lib/ipc';
+import { pickContract } from '@/lib/ipcAuto';
 import { monthEnds, pkgCodeOf, type IpcBlock, type IpcMonth, type IpcSheetStart } from '@/lib/ipcDoc';
 import { register } from '@/lib/dataBus';
 
@@ -42,6 +43,11 @@ export type IpcSource = {
    * (`...src`-ээр дамжина) орой эхэлсэн хуудсыг (`lateSheetsOf`) анхааруулна.
    */
   sheets: IpcSheetStart[];
+  /**
+   * ⚠️ 2026-10-09: багцад олон гэрээ ялгагдахгүй таарсан үед (`ipcAuto.pickContract`) — аль гэрээг
+   * сонгосныг хэлэх өгүүлбэр; дуудагч ил харуулна. Ганц/тодорхой бол `null`.
+   */
+  warn?: string | null;
 };
 
 /** Хуудасны шошго — олон хуудастай багцад давхраар («12F»), эс бөгөөс хуудасны нэр */
@@ -100,7 +106,15 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
       return { pkg, sc, days };
     })),
   ]);
-  const ho = groupHo(hoRows).find((c) => c.key === packKey) ?? null;
+  /* ⚠️ 2026-10-09: багцад ОЛОН гэрээ таарвал ЭХНИЙХ биш — `ipcAuto.pickContract` (барилга угсралт →
+     «Гүйцэтгэл» төлбөртэй → кодоор); ялгагдахгүй үлдвэл `warn` (баримтын цонх ил харуулна). */
+  const picked = pickContract(
+    groupHo(hoRows)
+      .filter((c) => c.key === packKey)
+      .map((c) => ({ c, code: c.code, workType: c.workType, hasWork: c.workTotal != null && c.workTotal > 0 })),
+    packKey,
+  );
+  const ho = picked.pick?.c ?? null;
 
   /* Сарууд — аль нэг хуудсанд агшинтай сар бүр */
   const allMonths = [...new Set(parts.flatMap((p) => [...monthEnds(p.days).keys()]))].sort();
@@ -169,6 +183,7 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
     blocks,
     months,
     sheets: multi ? parts.map(({ pkg, days }) => ({ label: sheetLabel(pkg), first: days[0] ?? null })) : [],
+    warn: picked.warn,
   };
 }
 

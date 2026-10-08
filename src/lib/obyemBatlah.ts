@@ -444,6 +444,17 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<ObyemSubm
   return list.slice(-limit).reverse();
 }
 
+/**
+ * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ — ⚠️ 2026-10-09 (`useObyem.decideObyemHere`): нэг батлагч хоёр табаас зэрэг
+ * баталбал хоёр дахь таб «аль хэдийн шийдвэрлэсэн»-ээр унадаг байв — утга нь аль хэдийн бичигдсэн, илгээлт
+ * ӨӨРӨӨ баталсан. Дахин уншиж `approved` && `approver === би` бол амжилт гэж үзнэ.
+ * ⚠️ Уншилт унавал ШИДНЭ — дуудагч «амжилт» гэж таамаглахгүй.
+ */
+export async function loadHead(oid: number): Promise<ObyemSubmission | null> {
+  const rows = await query(`${F.oid} = ${Number(oid)}`, HEAD_FIELDS);
+  return rows.length ? toSubmission(rows[0]) : null;
+}
+
 /** Нэг илгээлтийн АГУУЛГА — батлахад л хэрэгтэй тул тусад нь татна */
 export async function loadPayload(oid: number): Promise<ObyemPayload | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.payload}`);
@@ -699,6 +710,33 @@ export async function obyemApproveGuard(args: { oid: number; approver: string })
 }
 
 /**
+ * БАГЦЫН ОБЬЁМЫН БАТЛАЛТ ЯГ ОДОО ЯВЖ БАЙНА УУ — ⚠️ 2026-10-09 (`ajilApply.materializeInner`).
+ *
+ * ⚠️ ЯАГААД: обьёмын батлагч үндсэн өгөгдлийн ОДООГИЙН жаазын мөрүүдэд OID-оор бичдэг
+ *    (`useObyem.decideObyemHere` → `applyUpdates`). Тэр хооронд нэмэлт ажил буулгавал хуудас ШИНЭ
+ *    жаазаар солигдож, обьём ХУУЧИН (архивласан) жаазад бууна — «батлагдсан» атлаа хуудсанд харагдахгүй.
+ *    Тиймээс батлагч түгжсэн (`claimHolder`) эсвэл ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) үед буулгалтыг хаана.
+ * ⚠️ Уншилт унавал ШИДНЭ — дуудагч бичихгүй (fail-closed). Хүснэгт алга бол `null` (урсгал байхгүй).
+ * @returns `{ who, partial }` — хэн, хэсэгчлэн бичсэн эсэх; эсвэл `null` = чөлөөтэй
+ */
+export async function obyemBusyFor(pkgKey: string): Promise<{ who: string; partial: boolean } | null> {
+  const esc = pkgKey.replace(/'/g, "''");
+  const rows = await query(
+    `${F.pkgKey} = '${esc}' AND ${F.status} = N'${OBYEM_STATUS.pending}'`,
+    `${CLAIM_FIELDS},${F.reason}`,
+  );
+  for (const a of rows) {
+    const pb = partialBy(s(a[F.status]), s(a[F.reason]));
+    if (pb != null) return { who: pb, partial: true };
+  }
+  for (const a of rows) {
+    const h = claimHolder(a);
+    if (h) return { who: h, partial: false };
+  }
+  return null;
+}
+
+/**
  * ТҮГЖЭЭГ ТАЙЛАХ — бичилт эхлээгүй/унасан үед (⚠️ 2026-10-05). Зөвхөн ӨӨРИЙН, `pending` хэвээр
  * мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
  */
@@ -801,6 +839,13 @@ export async function decideObyem(args: {
    *    дараа нь тэмдэглэх» дараалал (дээрх ⚠️) хэвээр — энэ нь нэмэлт урьдчилсан шалгалт.
    */
   dryRun?: boolean;
+  /**
+   * ⚠️ 2026-10-09: АЛГАССАН НҮДНИЙ ТЭМДЭГЛЭЛ — батлагч сүүлийн жаазад тулгагдаагүй нүдтэйгээр
+   *    санаатайгаар баталсан бол (`useObyem`-ийн баталгаажуулалт) илгээлтийн `tailbar`-д нэмж
+   *    хадгална. Урьд нь зөвхөн мэдэгдэлд харагдаад алга болдог тул «батлагдсан» илгээлтийн аль
+   *    нүд үндсэн өгөгдөлд ОРООГҮЙГ хэн ч мэдэхгүй байв. Зөвхөн батлахад.
+   */
+  skipped?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   /*
    * ⚠️ ДҮРМҮҮДИЙГ СҮЛЖЭЭНЭЭС ӨМНӨ шалгана. `tableUrl`-ийн ДАРАА байрлуулбал
@@ -845,7 +890,7 @@ export async function decideObyem(args: {
    *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
    *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
    */
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason},${F.note}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
@@ -925,6 +970,13 @@ export async function decideObyem(args: {
     /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (талбар 2048) — батлахад `null` нь `PARTIAL_MARK`-ийг ч арилгана */
     [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
+  /* ⚠️ 2026-10-09: алгассан нүд — зохиогчийн тайлбарын АРД залгана (дарахгүй), талбар 2048 */
+  const skip = args.approve ? (args.skipped ?? '').trim() : '';
+  if (skip) {
+    const prev = s(cur[0][F.note]);
+    /* Дахин баталгаа (бичсэний дараа шийдвэр унасан) давхар залгахгүй */
+    attrs[F.note] = (prev ? (prev.includes(skip) ? prev : `${prev}\n${skip}`) : skip).slice(0, 2048);
+  }
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: attrs }]),

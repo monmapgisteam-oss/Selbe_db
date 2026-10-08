@@ -220,6 +220,8 @@ const sanitizeEntry = (e: Entry): Entry => ({
  * Санах ойн CACHE — sync унших цорын ганц эх сурвалж. Эхэндээ `localStorage`-оос
  * (offline/хурдан), нэвтэрсний дараа `initRemote()`-оор ArcGIS хүснэгтээс шинэчлэгдэнэ.
  */
+/** Объектын түлхүүр болгож болохгүй нэрс (prototype pollution) — ⚠️ `cache`-ээс ӨМНӨ зарлана (TDZ: `loadLocal` модуль ачаалахад дуудагддаг) */
+const UNSAFE_KEY = new Set(['__proto__', 'constructor', 'prototype']);
 let cache: Store = loadLocal();
 
 /**
@@ -235,7 +237,10 @@ function loadLocal(): Store {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}') as Store;
     const out: Store = {};
-    for (const [k, e] of Object.entries(raw)) out[k] = sanitizeEntry(e);
+    /* ⚠️ 2026-10-09: `__proto__` · `constructor` · `prototype` түлхүүрийг АЛГАСНА — localStorage-ийг
+       гараар засаж `{"__proto__": …}` бичвэл энгийн объект дээр `out[k] = …` нь прототипыг
+       солиж, бүртгэлгүй нэрэнд ч «оруулга» харагдах (prototype pollution) боломжтой байв. */
+    for (const [k, e] of Object.entries(raw)) if (!UNSAFE_KEY.has(k)) out[k] = sanitizeEntry(e);
     return out;
   } catch {
     return {};

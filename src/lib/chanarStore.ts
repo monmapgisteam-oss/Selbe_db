@@ -424,8 +424,26 @@ const reviewsJson = (reviews: Reviews, rep: Rep | null, bounce: Bounce | null = 
      rReasons — бүтэн текст `reviews[r].note`-д хэвээр) хаяж, бичилтийг унагахгүй. */
   const { anText: _a, rReasons: _r, ...slim } = rep;
   void _a; void _r;
-  return JSON.stringify({ ...reviews, rep: slim, ...(bounce ? { bounce } : {}) });
+  const json2 = JSON.stringify({ ...reviews, rep: slim, ...(bounce ? { bounce } : {}) });
+  if (json2.length <= HYANALT_MAX) return json2;
+  /* ⚠️ 2026-10-09: ТОМ MA (олон материал) — хянагч бүрийн `perMaterial` газрын зураг + 3 санал
+     нь 8000-аас хэтэрч ЭЦСИЙН шийдвэрийг унагадаг байв. Хариу (`rep`) гарсан үед хянагч бүрийн
+     материалын задаргааг хаяна: нэгтгэл нь `rep.perMaterial`-д ба `body.materials[i].verdict`-д
+     (`applyRepToMaterials`) хадгалагдана — алдагдах нь зөвхөн «хэн аль материалд юу гэсэн» дэлгэрэнгүй.
+     Үүний дараа ч хэтэрвэл `reviewDoc` бичихээс ӨМНӨ тодорхой шалтгаантай татгалзана
+     (`hyanaltTooLong`). */
+  const lean = Object.fromEntries(Object.entries(reviews).map(([k, v]) => {
+    if (!v || !v.perMaterial) return [k, v];
+    const { perMaterial: _p, ...rest } = v;
+    void _p;
+    return [k, rest];
+  }));
+  return JSON.stringify({ ...lean, rep: slim, ...(bounce ? { bounce } : {}) });
 };
+
+/** ⚠️ 2026-10-09: `hyanalt` хэтэрсэн бол хэрэглэгчид ойлгомжтой шалтгаан (ArcGIS-ийн ерөнхий алдааны оронд) */
+const hyanaltTooLong = (json: string): string | null => (json.length <= HYANALT_MAX ? null
+  : tr('Хянагчдын бүртгэл (санал + материал бүрийн шийдвэр) {0} тэмдэгтийн хязгаараас хэтэрлээ ({1}) — саналаа товчлоод дахин оролдоно уу. Шийдвэр хадгалагдсангүй.', String(HYANALT_MAX), String(json.length)));
 
 function toDoc(a: Attrs): MsDoc | null {
   const oid = Number(a[F.oid]);
@@ -661,8 +679,13 @@ export function actionableDocs(docs: readonly MsDoc[], ncr: NcrFlags | null, use
  *    өөрсдөө кэшлэгдэхгүй — харагдац, бичих замууд үргэлж шинэ уншина.
  */
 const BADGE_TTL = 60_000;
+/* ⚠️ 2026-10-09: NCR-ийн туг нь БҮХ NCR-ийн БИЕИЙГ татдаг (хүнд) — минут тутам дахин татахгүй,
+   5 мин. Өөрийн бичилт `CHANAR_BARIMT`-ээр шууд хүчингүй болгодог тул зөвхөн БУСДЫН
+   залруулга/хаалт тэмдэгт хоцорч тусна (цэсний 3 мин-ын шинэчлэлттэй ойролцоо). */
+const NCR_FLAGS_TTL = 5 * 60_000;
+const loadBadgeNcrFlags = cached(() => loadNcrFlags(), NCR_FLAGS_TTL, ['CHANAR_BARIMT']);
 const loadBadgeDocs = cached(
-  () => Promise.all([loadAllDocs(), loadNcrFlags()]),
+  () => Promise.all([loadAllDocs(), loadBadgeNcrFlags()]),
   BADGE_TTL,
   ['CHANAR_BARIMT'],
 );
@@ -833,6 +856,14 @@ function ownClientBody(kind: DocKind, client: AnyBody, server: AnyBody | null): 
       return { ...m, locked: true, verdict: sm[j].verdict };
     });
   }
+  /* ⚠️ 2026-10-09: MIR/FIC — захиалагчийн (ТУХ) багана нь ЗӨВХӨН `saveClientChecks`-ээр; зохиогчийн
+     хадгалалт клиентийн `items[].client`-ийг (өмнөх хувилбарын үлдэгдэл ч) хуулдаг байв.
+     Серверийн биеэс индексээр авна (үүсгэхэд / rev+1-д `nextRevisionBody` цэвэрлэсэн → null). */
+  if (kind === 'MIR' || kind === 'FIC') {
+    const si = server ? ((server as InspBody).items ?? []) : [];
+    const ci = (out as InspBody).items;
+    if (Array.isArray(ci)) (out as InspBody).items = ci.map((it, i) => ({ ...it, client: si[i]?.client ?? null }));
+  }
   if (kind === 'NCR') {
     const sn = server ? (server as NcrBody) : null;
     const n = out as NcrBody;
@@ -965,19 +996,24 @@ export async function createDraft(args: {
          ArcGIS-д unique хязгаар ҮГҮЙ. Хоёр зохиогч нэг багцад зэрэг үүсгэвэл ижил
          `seq` → `latest()` нэгийг нь ЖАГСААЛТААС НУУДАГ. Бичсэний ДАРАА тулгаж,
          ХОЖУУ (их OBJECTID) нь дараагийн дугаарт шилжинэ — эхнийх хөндөгдөхгүй. */
-      const after = await loadDocs(kind);
-      const twins = after.filter((d) => (seqScope === null || d.bagts === args.bagts) && d.seq === seq && d.rev === 0);
-      if (twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== oid) {
+      /* ⚠️ 2026-10-09: ГУРАВ+ зэрэг үүсгэгч — хожуу хоёр нь ижил `nextSeq` авч ДАХИН давхцдаг
+         байв. Шинэ дугаар дээр тулгалтыг ДАХИН ажиллуулна (тойрог бүрд хамгийн бага OBJECTID
+         үлдэж, бусад нь цааш шилжинэ) — дугаарт цоорхой үүсгэдэггүй. */
+      let cur = seq;
+      for (let round = 0; round < 3; round += 1) {
+        const after = await loadDocs(kind);
+        const twins = after.filter((d) => (seqScope === null || d.bagts === args.bagts) && d.seq === cur && d.rev === 0);
+        if (!(twins.length > 1 && Math.min(...twins.map((d) => d.oid)) !== oid)) break;
         const seq2 = nextSeq(after, seqScope);
         const no2 = docNo(args.bagts, seq2, 0, kind);
-        if (no2) {
-          const j2 = await arcgisPost(`${url}/applyEdits`, {
-            updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.seq]: seq2, [F.docNo]: no2 } }]),
-            rollbackOnFailure: 'true',
-          });
-          if (!editOk(j2.updateResults)) console.warn('[selbe] chanar: давхардсан дугаарыг засаж чадсангүй', oid);
-          else invalidate('CHANAR_BARIMT');
-        }
+        if (!no2) break;
+        const j2 = await arcgisPost(`${url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.seq]: seq2, [F.docNo]: no2 } }]),
+          rollbackOnFailure: 'true',
+        });
+        if (!editOk(j2.updateResults)) { console.warn('[selbe] chanar: давхардсан дугаарыг засаж чадсангүй', oid); break; }
+        invalidate('CHANAR_BARIMT');
+        cur = seq2;
       }
     } catch (e) {
       console.warn('[selbe] chanar: дугаарын тулгалт алдлаа', oid, e);
@@ -1299,6 +1335,9 @@ export async function reviewDoc(args: {
     if (ncrBody && r.status === MS_STATUS.approved) attrs[F.body] = JSON.stringify(ncrClosure(ncrBody, me, now));
     /* ⚠️ MA (2026-09-28): хариуг материал бүрд бичнэ — дараагийн хувилбарт A/AN түгжигдэнэ */
     if (maBody && rep) attrs[F.body] = JSON.stringify(applyRepToMaterials(maBody, rep));
+    /* ⚠️ 2026-10-09: `hyanalt` 8000 — хэтэрвэл ArcGIS ерөнхий алдаагаар унадаг байв; бичихээс ӨМНӨ шалтгаантай татгалзана */
+    const tooLong = hyanaltTooLong(String(attrs[F.reviews]));
+    if (tooLong) return { ok: false, error: tooLong };
     /* ⚠️ 2026-09-30: БИЧИХИЙН ӨМНӨ ДАХИН УНШИНА (`unchanged`, `ackRepDoc`-ийн ижил хамгаалалт).
        Доорх `mineSurvives` нь ЗӨВХӨН манай шийдвэр дарагдсаныг барина; харин уншсанаас
        хойш (REP дугаарлалт `loadDocs` — бүх мөрийн уншилт) өөр хянагч «хянахгүй буцаах»
@@ -1341,7 +1380,7 @@ export async function reviewDoc(args: {
          бүрэн хаагдахгүй — зөвхөн `REVIEW_SETTLE_MS`-ээс удаан сүлжээнд үлдэнэ. */
       await new Promise((res) => setTimeout(res, REVIEW_SETTLE_MS));
       if (await mineSurvives(args.oid, args.as, me)) {
-        if (rep) await fixRepDuplicate(url, doc.kind, args.oid, doc.bagts, doc.seq, rep, r.reviews);
+        if (rep) await fixRepDuplicate(url, doc.kind, args.oid, doc.bagts, doc.seq, rep);
         return { ok: true, oid: args.oid };
       }
     }
@@ -1361,7 +1400,7 @@ const safeJson = (raw: unknown): unknown => {
  * хадгалагдсан тул `ok:false` буцаахгүй.
  */
 async function fixRepDuplicate(
-  url: string, kind: DocKind, oid: number, bagts: string, seq: number, rep: Rep, reviews: Reviews,
+  url: string, kind: DocKind, oid: number, bagts: string, seq: number, rep: Rep,
 ): Promise<void> {
   try {
     const all = await loadDocs(kind);
@@ -1371,12 +1410,25 @@ async function fixRepDuplicate(
       const { n, rr } = repSeqFor(all.filter((d) => d.oid !== oid), kind, bagts, seq);
       const no2 = repNo(kind, bagts, n, rr);
       if (!no2 || no2 === rep.no) return;
-      const j = await arcgisPost(`${url}/applyEdits`, {
-        updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reviews]: reviewsJson(reviews, { ...rep, no: no2 }) } }]),
-        rollbackOnFailure: 'true',
-      });
-      if (!editOk(j.updateResults)) console.warn('[selbe] chanar: давхардсан REP дугаарыг засаж чадсангүй', oid);
-      else invalidate('CHANAR_BARIMT');
+      /* ⚠️ 2026-10-09: ДАХИН УНШИЖ НИЙЛҮҮЛНЭ (`unchanged`) — тогтох хүлээлтийн хооронд өөр хүн
+         (хүлээн авалт `receivedAt`, AN хаалт …) `hyanalt`-ыг бичсэн бол урьд нь манай ХУУЧИН
+         хянагчид + хариугаар сохроор дардаг байв. Одоо шинэ мөрийн хянагчид/хариу/тэмдэг дээр
+         зөвхөн дугаарыг солино; дугаар аль хэдийн өөрчлөгдсөн бол хөндөхгүй. */
+      for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+        const ld = await loadRow(oid);
+        if ('ok' in ld) { console.warn('[selbe] chanar: REP дугаарын засварт мөр уншиж чадсангүй', oid, ld.error); return; }
+        const fresh = ld.doc.rep;
+        if (!fresh || fresh.no !== rep.no) return;
+        if (!(await unchanged(oid, ld.row, [F.status, F.reviews]))) continue;
+        const j = await arcgisPost(`${url}/applyEdits`, {
+          updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reviews]: reviewsJson(ld.doc.reviews, { ...fresh, no: no2 }, ld.doc.bounce ?? null) } }]),
+          rollbackOnFailure: 'true',
+        });
+        if (!editOk(j.updateResults)) console.warn('[selbe] chanar: давхардсан REP дугаарыг засаж чадсангүй', oid);
+        else invalidate('CHANAR_BARIMT');
+        return;
+      }
+      console.warn('[selbe] chanar: давхардсан REP дугаар — мөр зэрэг өөрчлөгдөж байна, засаж амжсангүй', oid);
     }
   } catch (e) {
     console.warn('[selbe] chanar: REP дугаарын тулгалт алдлаа', oid, e);
@@ -1394,38 +1446,40 @@ async function fixRepDuplicate(
 export async function saveClientChecks(args: {
   oid: number; who: string; client: (InspCheck | null)[];
 }): Promise<Result> {
-  const url = await tableUrl(false);
-  if (!url) return { ok: false, error: tr('Чанарын баримтын хүснэгт олдсонгүй.') };
   const act = actor(args.who, 'chanarReview');
   if (!('who' in act)) return act;
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, '*');
-  if (!cur.length) return { ok: false, error: tr('Баримт олдсонгүй.') };
-  const doc = toDoc(cur[0]);
-  if (!doc) return { ok: false, error: tr('Баримтын мөр эвдэрсэн.') };
+  /* ⚠️ 2026-10-09: БИЧИХИЙН ӨМНӨ ДАХИН УНШИНА (`unchanged`, `bounceDoc`-ийн ижил) — биеийг
+     БҮХЭЛД нь дахин бичдэг тул уншсанаас хойшх `saveMeta` / ТУХ-ийн шийдвэр чимээгүй
+     дарагддаг байв. Өөрчлөгдсөн бол шинэ мөрөөс дахин. */
+  for (let attempt = 0; attempt < RACE_TRIES; attempt += 1) {
+    const ld = await loadRow(args.oid);
+    if ('ok' in ld) return ld;
+    const r = clientChecksPure(ld.doc, ld.row, act.who, args.client);
+    if (!r.ok) return r;
+    if (!(await unchanged(args.oid, ld.row, [F.status, F.reviews, F.body]))) continue;
+    return update(ld.url, { [F.oid]: args.oid, [F.body]: r.body });
+  }
+  return { ok: false, error: RACE_MSG() };
+}
+
+/** `saveClientChecks`-ийн дүрэм — уншсан мөр дээр (дахин оролдлого бүрд шинэ мөрөөс) */
+function clientChecksPure(
+  doc: MsDoc, row: Attrs, who: string, client: (InspCheck | null)[],
+): { ok: true; body: string } | { ok: false; error: string } {
   if (doc.kind !== 'MIR' && doc.kind !== 'FIC') return { ok: false, error: tr('Зөвхөн үзлэгийн хуудсанд захиалагчийн багана бий.') };
   if (doc.status !== MS_STATUS.review) return { ok: false, error: tr('Баримт хянагдаж буй төлөвт биш — шийдвэр өгөх боломжгүй') };
-  if (!reviewerRolesFor(act.who, doc.bagts).includes('tuh')) return { ok: false, error: tr('Захиалагчийн баганыг зөвхөн ТУХ-ийн хяналтын инженер бөглөнө.') };
-  if (doc.author.trim().toLowerCase() === act.who) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
+  if (!reviewerRolesFor(who, doc.bagts).includes('tuh')) return { ok: false, error: tr('Захиалагчийн баганыг зөвхөн ТУХ-ийн хяналтын инженер бөглөнө.') };
+  if (doc.author.trim().toLowerCase() === who) return { ok: false, error: tr('Зохиогч өөрийн аргачлалыг хянах боломжгүй') };
   if (doc.reviews.tuh) return { ok: false, error: tr('ТУХ шийдвэр өгсний дараа багана өөрчлөгдөхгүй.') };
   /* ⚠️ 2026-09-25: утгыг ШАЛГАНА — урьд нь дурын мөр `client`-д бичигдэж, дараагийн
      уншилтад (`normalizeInsp`) чимээгүй null болдог байв. */
-  if (!Array.isArray(args.client) || args.client.some((c) => c !== null && !isInspCheck(c))) {
+  if (!Array.isArray(client) || client.some((c) => c !== null && !isInspCheck(c))) {
     return { ok: false, error: tr('Захиалагчийн баганын утга танигдсангүй (OK · NA · X)') };
   }
-  const body: InspBody = normalizeInsp(safeJson(cur[0][F.body]), doc.kind);
-  if (args.client.length > body.items.length) return { ok: false, error: tr('Захиалагчийн багана мөрийн тооноос олон.') };
-  const items = body.items.map((it, i) => ({ ...it, client: i < args.client.length ? args.client[i] : it.client }));
-  try {
-    const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.body]: JSON.stringify({ ...body, items }) } }]),
-      rollbackOnFailure: 'true',
-    });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('CHANAR_BARIMT');
-    return { ok: true, oid: args.oid };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message || e) };
-  }
+  const body: InspBody = normalizeInsp(safeJson(row[F.body]), doc.kind);
+  if (client.length > body.items.length) return { ok: false, error: tr('Захиалагчийн багана мөрийн тооноос олон.') };
+  const items = body.items.map((it, i) => ({ ...it, client: i < client.length ? client[i] : it.client }));
+  return { ok: true, body: JSON.stringify({ ...body, items }) };
 }
 
 /* ══════════════════════ NCR — залруулга · дахин нээх ══════════════════════ */
@@ -1562,7 +1616,9 @@ export async function bounceDoc(args: {
     if (!r.ok) return r;
     const body = parseBodyOf(doc.kind, row[F.body]) as AnyBody & { bounces?: Bounce[] };
     const nb = { ...body, bounces: [...(body.bounces ?? []), r.bounce] };
-    if (!(await unchanged(args.oid, row, [F.status, F.reviews]))) continue;
+    /* ⚠️ 2026-10-09: БИЕ ч ажиглана — биеийг БҮХЭЛД нь дахин бичдэг тул уншсанаас хойшх
+       `saveMeta` (толгойн засвар) чимээгүй арилдаг байв. */
+    if (!(await unchanged(args.oid, row, [F.status, F.reviews, F.body]))) continue;
     return update(url, {
       [F.oid]: args.oid, [F.status]: r.status, [F.reviews]: reviewsJson(r.reviews, null, r.bounce),
       [F.decidedAt]: r.bounce.at, [F.body]: JSON.stringify(nb),

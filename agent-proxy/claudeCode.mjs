@@ -261,15 +261,23 @@ export async function selfTest() {
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e.message };
+    /* ⚠️ 2026-10-09: шалтгаан зөвхөн логт (`/health` задлахгүй) — дэлгэрэнгүйг хамт */
+    return { ok: false, reason: e.detail ? `${e.message} — ${e.detail}` : e.message };
   }
 }
 
+/**
+ * ⚠️ 2026-10-09 (аудит №7): `message` — клиент рүү ОЧДОГ ерөнхий монгол мөр; `detail` —
+ *    процессын stderr/stdout, `claude`-ийн түүхий алдаа зэрэг ДОТООД дэлгэрэнгүй, ЗӨВХӨН
+ *    хостын логт (`server.mjs`). Урьд stderr-ийн 400 тэмдэгт, stdout-ийн 300 тэмдэгт
+ *    `message`-д орж хэрэглэгчид харагддаг байв (замын нэр, хувилбар, дотоод алдаа).
+ */
 export class ClaudeCodeError extends Error {
-  constructor(message, { status = 502, retryable = false } = {}) {
+  constructor(message, { status = 502, retryable = false, detail } = {}) {
     super(message);
     this.status = status;
     this.retryable = retryable;
+    if (detail) this.detail = String(detail);
   }
 }
 
@@ -449,13 +457,13 @@ async function callRaw({ system, messages, tools, model, effort, bin, signal, qu
       child.on("error", (e) => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
-        reject(new ClaudeCodeError(`claude ажиллуулж чадсангүй: ${e.message}`, { status: 500 }));
+        reject(new ClaudeCodeError("AI туслахыг ажиллуулж чадсангүй — хостын тохиргоог шалгана уу.", { status: 500, detail: `claude ажиллуулж чадсангүй: ${e.message}` }));
       });
       child.on("close", (code) => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         if (out.trim()) resolve(out);
-        else reject(new ClaudeCodeError(`claude алдаатай дууслаа (код ${code}): ${err.trim().slice(0, 400)}`, { status: 502, retryable: true }));
+        else reject(new ClaudeCodeError("AI туслах алдаатай дууслаа — дахин оролдоно уу.", { status: 502, retryable: true, detail: `claude алдаатай дууслаа (код ${code}): ${err.trim().slice(0, 400)}` }));
       });
       /* ⚠️ 2026-10-06: цуцлалтаар алагдсан процесс руу бичихэд EPIPE — сонсогчгүй 'error'
          нь релег бүхэлд нь унагана. */
@@ -467,7 +475,7 @@ async function callRaw({ system, messages, tools, model, effort, bin, signal, qu
     try {
       j = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop());
     } catch {
-      throw new ClaudeCodeError(`claude-ийн гаралтыг уншиж чадсангүй: ${stdout.slice(0, 300)}`);
+      throw new ClaudeCodeError("AI туслахын хариуг уншиж чадсангүй — дахин оролдоно уу.", { detail: `claude-ийн гаралт: ${stdout.slice(0, 300)}` });
     }
     if (j.is_error) {
       const msg = String(j.result || j.subtype || "Тодорхойгүй алдаа");
@@ -476,9 +484,9 @@ async function callRaw({ system, messages, tools, model, effort, bin, signal, qu
         throw new ClaudeCodeError("Энэ PC дээр Claude Code нэвтрээгүй байна — терминалд `claude` ажиллуулаад /login хийнэ үү.", { status: 401 });
       }
       if (/limit|quota|usage/i.test(msg)) {
-        throw new ClaudeCodeError(`Claude бүртгэлийн хэрэглээний хязгаар хүрсэн: ${msg}`, { status: 429, retryable: true });
+        throw new ClaudeCodeError("Claude бүртгэлийн хэрэглээний хязгаар хүрсэн — хэсэг хугацааны дараа дахин оролдоно уу.", { status: 429, retryable: true, detail: msg });
       }
-      throw new ClaudeCodeError(msg);
+      throw new ClaudeCodeError("AI туслах хариу өгч чадсангүй — дахин оролдоно уу.", { detail: msg });
     }
     const parsed = parseReply(String(j.result ?? ""));
     return { ...parsed, usage: j.usage };

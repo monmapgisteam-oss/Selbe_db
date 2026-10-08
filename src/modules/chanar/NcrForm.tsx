@@ -29,6 +29,7 @@ import {
 } from '@/lib/chanarMs';
 import { keepLinesText, linesToList, listToLines, toDateInput, fromDateInput, ymd } from './chanarUi';
 import { Sec, Txt, Chk, DateInp, Inp, Radio, Multi, Sel, RowBtn, type Mode } from './fields';
+import { DateField } from '@/modules/huvaari/DateField';
 import s from '../chanar.module.css';
 
 /** Гүйцэтгэгчийн хаалтын ноорог — `Chanar.tsx` төлөвт барина, `closeNcrDoc`-д өгнө */
@@ -271,8 +272,9 @@ export function NcrForm({
                     ))}
                     <td>
                       {km.edit ? (
-                        <input type="date" className={s.input} aria-label={`${closerLabel(i)} — ${tr('Огноо')}`} value={toDateInput(c.date)} disabled={busy}
-                          onChange={(e) => setCloser(i, { date: fromDateInput(e.target.value) })} />
+                        /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
+                        <DateField label={`${closerLabel(i)} — ${tr('Огноо')}`} value={toDateInput(c.date)} disabled={busy}
+                          onChange={(v) => setCloser(i, { date: fromDateInput(v) })} />
                       ) : ymd(c.date)}
                     </td>
                   </tr>

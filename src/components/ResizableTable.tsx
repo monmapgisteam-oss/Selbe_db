@@ -136,6 +136,14 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     const wrap = wrapRef.current;
     const ths = wrap?.querySelectorAll<HTMLTableCellElement>('thead tr:last-child > th');
     if (!wrap || !ths?.length) return;
+    /* ⚠️ 2026-10-09 (a11y, WCAG 1.3.1): `<th>`-д `scope` — толгой `col`, биеийн мөрийн
+       толгой `row`. Хүснэгтийн агуулгыг дуудагч (`children`) зурдаг тул энд DOM-оор
+       нөхнө; дуудагч өөрөө `scope` өгсөн бол ХҮНДЭТГЭНЭ (дарахгүй). React нь өөрийн
+       мэдэхгүй атрибутыг арилгадаггүй тул дараагийн зурагт үлдэнэ; шинээр үүссэн нүдийг
+       `children`-ийн өөрчлөлтөөр дахин дуудагдах энэ хэмжилт барина. */
+    wrap.querySelectorAll<HTMLTableCellElement>('th:not([scope])').forEach((th) => {
+      th.setAttribute('scope', th.closest('thead') ? 'col' : 'row');
+    });
     const base = wrap.getBoundingClientRect().left;
     const next: number[] = [];
     const names: string[] = [];

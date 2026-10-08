@@ -42,11 +42,13 @@ import { transferList } from '@/lib/uyrSimCore';
       terrainZ: new Float32Array(1), bedZ: new Float32Array(1), maxDepth: new Float32Array(1),
       maxSpeed: new Float32Array(1), arrivalS: new Float32Array(1), accHa: a, catchHa: a,
       channelMask: new Uint8Array(1),
+      /* ⚠️ 2026-10-09: тооцооны муж */
+      domMask: new Uint8Array(1),
     },
   };
   const tl = transferList(out);
   assert.equal(new Set(tl).size, tl.length, 'transfer жагсаалтад давхар буфер');
-  assert.equal(tl.length, 8, 'buf + 7 өвөрмөц буфер');
+  assert.equal(tl.length, 9, 'buf + 8 өвөрмөц буфер');
 }
 import { fillSinks, flowAccum } from '@/lib/uyrHydro';
 
@@ -178,6 +180,18 @@ const acc = flowAccum(zf, N, undefined, valid);
     /* Ирэх хугацааны горим: растер зурагдана (canvas стуб) — алдаагүй */
     fd.frame(5, 0.5, 0, 'arrival');
     fd.frame(5, 0.5, 0, 'hazard');
+    /* ⚠️ 2026-10-09: алхмын хязгаар ба бодогдсон хугацаа метад; ердийн тохиолдолд тасраагүй */
+    assert.equal(m.truncated, false, 'ердийн загварчлал алхмын хязгаарт хүрэв');
+    assert.ok(Math.abs(m.simulatedMin - m.simMin) < 0.05, `бодогдсон хугацаа ${m.simulatedMin}`);
+    assert.equal(m.simulatedSlices, m.slices);
+    /* ⚠️ 2026-10-09: тооцооны муж — гадна нь «тооцоогүй», дотор нь нойтон нүд бүгд */
+    assert.equal(typeof fd.inDomain, 'function', 'inDomain алга');
+    let inDom = 0;
+    for (let i = 0; i < m.width * m.height; i++) {
+      if (fd.inDomain(i)) inDom++;
+      else assert.equal(fd.maxDepth(i), 0, 'мужаас гадна гүн бичигдэв');
+    }
+    assert.ok(inDom > 0, 'тооцооны муж хоосон');
 
     /* ⚠️ 2026-10-01: хэт жижиг талбай — цөмийн `SimError` орчуулагдаж ирнэ */
     const e0 = m.extent;

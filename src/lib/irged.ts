@@ -12,8 +12,10 @@
  * (`queryCount` ×3), «ДАРАА» талд бүхэлдээ `brief.ts`-ийн ХАТУУ мөрүүд байв.
  * Үйлчилгээнүүдийг хэмжихэд гурван бүлэг өгөгдөл ОГТ ХАРАГДАХГҮЙ байсныг
  * илрүүлэв:
- *   1. Гэр хорооллын барилгын ТАЛБАЙ (м², дундаж ул мөр) — энд ачаалагдаж,
- *      чарт болж гарна (`loadGerBuilt`).
+ *   1. Гэр хорооллын барилгын ТОО (байшин / гэр) — энд ачаалагдана (`loadGerBuilt`).
+ *      ⚠️ 2026-10-09: ТАЛБАЙН статистик (`sum(area)`, `areaM2`, `avgM2`) ХАСАГДАВ — дуудагч
+ *      (`Irged.tsx`) зөвхөн тоог (`n`) уншдаг тул үхсэн байсан, бас хэмжигдээгүй талбайг
+ *      `Number(r.a ?? 0)`-ээр 0 болгодог байв (null ≠ 0). Хэрэгтэй болбол `git` түүхээс.
  *   2. Нийгмийн барилгын АМЬД ХҮЧИН ЧАДАЛ (`Huchin_chadal`, нийт талбай) —
  *      ⚠️ 2026-09-25 (аудит 8): ачаалагч (`loadSocPlanned`) ХАСАГДАВ. Түүний
  *      карт `Irged.tsx`-ээс 2026-09-06-нд устсанаас хойш дуудагчгүй үхсэн код
@@ -31,7 +33,7 @@
  * порталаас бичигддэггүй тул `dataBus`-аар хүчингүй болох шалтгаангүй.
  */
 
-import { count, queryGroup, sum, type Row } from '@/lib/query';
+import { count, queryGroup, type Row } from '@/lib/query';
 import { cached } from '@/lib/live';
 import { IRGED_BUILT, LAYER_BY_ID } from '@/lib/services';
 
@@ -41,38 +43,23 @@ export type GerBuiltRow = {
   /** Түүхий утга — SQL шүүлтэд (`Байшин` / `Гэр`) */
   type: string;
   n: number;
-  /** Нийт ул мөрийн талбай, м² */
-  areaM2: number;
-  /** Дундаж ул мөр, м² — `null` бол тоо нь 0 */
-  avgM2: number | null;
   color?: string;
 };
 
 /**
  * ⚠️ НЭГ хүсэлт (`groupByFieldsForStatistics`) — урьд нь `queryCount` ХОЁР
- * удаа дуудагдаж зөвхөн тоо авдаг байв. Одоо тоо БА талбай нэг дор гарна:
- * хүсэлт нэгээр ЦӨӨРӨӨД өгөгдөл нэмэгдэв.
+ * удаа дуудагдаж зөвхөн тоо авдаг байв. Одоо төрөл бүрийн тоо нэг дор гарна.
  */
 export const loadGerBuilt = cached<GerBuiltRow[]>(async () => {
   const T = IRGED_BUILT.typeField;
-  const rows = await queryGroup(IRGED_BUILT.url, T, [
-    count(T, 'n'),
-    sum(IRGED_BUILT.areaField, 'a'),
-  ]);
+  const rows = await queryGroup(IRGED_BUILT.url, T, [count(T, 'n')]);
   const paint = LAYER_BY_ID[IRGED_BUILT.id]?.paint?.values ?? {};
   return rows
     .map((r: Row) => {
       const type = String(r[T] ?? '').trim();
+      /* `count` статистик нь бүлэг бүрд ҮРГЭЛЖ ирнэ (бүлэг байгаа = ≥ 1 мөр) */
       const n = Number(r.n ?? 0);
-      const areaM2 = Number(r.a ?? 0);
-      return {
-        type,
-        n,
-        areaM2,
-        // ⚠️ 0-д хуваахгүй — тоо нь 0 бол «дундаж 0 м²» биш МЭДЭЭЛЭЛГҮЙ
-        avgM2: n > 0 ? areaM2 / n : null,
-        color: paint[type],
-      };
+      return { type, n, color: paint[type] };
     })
     .filter((x) => x.type !== '')
     .sort((a, b) => b.n - a.n);

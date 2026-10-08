@@ -68,6 +68,17 @@ export type FloodMeta = {
   peakDepthM: number;
   /** Загварчлалын нийт хугацаа (мин) — зөвхөн вэб дээр бодогдсонд */
   simMin?: number;
+  /**
+   * БОДИТООР бодогдсон хугацаа (мин) — 2026-10-09.
+   * ⚠️ `truncated` үед `simMin`-ээс БАГА: алхмын хязгаарт (`uyrSimCore` §MAX_STEPS)
+   *    хүрч эрт зогссон бөгөөд `simulatedSlices`-ээс хойших зүсмэлүүд нь сүүлийн
+   *    бодогдсон агшны ДАВТАЛТ (шинэ мэдээлэл БИШ).
+   */
+  simulatedMin?: number;
+  /** Алхмын хязгаарт хүрч `simMin`-ээс өмнө зогссон (2026-10-09) */
+  truncated?: boolean;
+  /** Бодитоор бодогдсон зүсмэлийн тоо — үлдсэн нь давталт (2026-10-09) */
+  simulatedSlices?: number;
   /** Оролтын оргил урсац (м³/с) */
   peakQ?: number;
   /**
@@ -260,6 +271,13 @@ export type FloodData = {
    * больсон — суваг нь тооцоонд хэрэглэсэн ЭНЭ маскаас ирнэ.
    */
   channel?: (i: number) => boolean;
+  /**
+   * ТООЦООНЫ МУЖИД байна уу — 2026-10-09.
+   * ⚠️ Мужийн гадна цөм гүнийг 0 гэж бичдэг тул «хуурай» ба «тооцоогүй» хоёр
+   *    ялгагдахгүй байв (null ≠ 0). `false` бол гүн/хурдыг «—»/«тооцоогүй» гэж
+   *    харуулна. Байхгүй бол (хуучин дата) бүх нүдийг мужид гэж үзнэ.
+   */
+  inDomain?: (i: number) => boolean;
 };
 
 /**
@@ -425,6 +443,8 @@ export function floodDataFromBuffer(
     catchHa?: Float32Array;
     /** Голдрилын маск (1 = суваг) — `streamMask` ∪ шатаасан гол (2026-09-21) */
     channelMask?: Uint8Array;
+    /** Тооцооны муж (1 = бодогдсон) — 2026-10-09 */
+    domMask?: Uint8Array;
   },
 ): FloodData {
   const W = meta.width;
@@ -541,10 +561,11 @@ export function floodDataFromBuffer(
     }
     return a;
   };
-  const LUTS: Record<FloodMode, Uint8Array> = {
+  /* ⚠️ 2026-10-09: `hazard` LUT ХАСАГДАВ — тэр горим `HAZ_RGB`-ээр шууд ангилдаг
+     (доор), LUT нь хэзээ ч уншигддаггүй байв. `hazardColor` нь экспорттой хэвээр. */
+  const LUTS: Record<Exclude<FloodMode, 'hazard'>, Uint8Array> = {
     depth: mkLut(depthColor),
     speed: mkLut(speedColor),
-    hazard: mkLut(hazardColor),
     arrival: mkLut(arrivalColor),
   };
   /**
@@ -590,7 +611,8 @@ export function floodDataFromBuffer(
   ): HTMLCanvasElement => {
     /* ⚠️ Ирэх хугацааны тор байхгүй (бэлэн файл) бол гүний горим руу ухарна */
     const mode: FloodMode = mode0 === 'arrival' && !arrS ? 'depth' : mode0;
-    const LUT = LUTS[mode] ?? LUTS.depth;
+    /* `hazard` нь LUT ашигладаггүй (`HAZ_RGB`) — гүнийхийг орлуулга болгоно */
+    const LUT = (mode === 'hazard' ? null : LUTS[mode]) ?? LUTS.depth;
     turn = 1 - turn;
     const cv = bufs[turn];
     const ctx = ctxs[turn];
@@ -888,10 +910,13 @@ export function floodDataFromBuffer(
     : undefined;
   const chm = extra?.channelMask;
   const channel = chm && chm.length >= P ? (i: number) => chm[i] === 1 : undefined;
+  /* ⚠️ 2026-10-09: тооцооны муж — «тооцоогүй» ≠ «хуурай» */
+  const dmk = extra?.domMask;
+  const inDomain = dmk && dmk.length >= P ? (i: number) => dmk[i] === 1 : undefined;
 
   return {
     meta, depth, u, v, speed, series, indexAt, frame, minuteAt,
-    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa, catchHa, channel,
+    terrain, bed, maxDepth, maxSpeed, arrivalMin, accHa, catchHa, channel, inDomain,
   };
 }
 

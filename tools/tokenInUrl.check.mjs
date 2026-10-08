@@ -12,7 +12,10 @@
  * `GET …/0?f=json&token=…`-ээр илгээдэг байв.
  *
  * Шалгах хэв: (1) литерал дотор `?token=${…}` / `&token=${…}` / `'token=' +` угсралт,
- * (2) `fetch(…tokenQs()…)` — `tokenQs` нь зөвхөн img/a-д.
+ * (2) `fetch(…tokenQs()…)` — `tokenQs` нь зөвхөн img/a-д,
+ * (3) ⚠️ 2026-10-09: `tokenQs().slice(1)` ба `?${q}` — токентой хаягийг УРЬДЧИЛАН угсарч
+ *     дараа нь `fetch`-лэх зам (`uzlegReport.attUrl` → `toImg` GET-ээр татдаг байв). Зөвхөн
+ *     рендерийн агшинд `<img src>`/`<a href>`-д залгадаг файлууд (`IMG_ALLOW`) үл хамаарна.
  */
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -36,6 +39,17 @@ const files = [];
 })('src');
 for (const e of readdirSync('tools')) if (/\.mjs$/.test(e) && !/\.check\.mjs$/.test(e)) files.push(`tools/${e}`);
 
+/** (3)-ын үл хамаарал — файл → шалтгаан. Энд нэмэхээс өмнө хаяг fetch-д ОРОХГҮЙ гэдгийг батал. */
+const IMG_ALLOW = new Map([
+  ['src/modules/Habea.tsx', 'IncPhotos — рендерт <img src>/<a href>'],
+  ['src/modules/habeaUzleg.tsx', '`photoSrc` — рендерт <img src>/<a href>'],
+  ['src/modules/sheet/ags.ts', '`attachmentUrl` — <img src>'],
+]);
+const IMG_PATTERNS = [
+  /tokenQs\(\)\.slice\(1\)/,  // const q = tokenQs().slice(1)
+  /\?\$\{q\}/,                // `${url}?${q}`
+];
+
 const isComment = (l) => /^\s*(\/\/|\/\*|\*)/.test(l);
 const PATTERNS = [
   /[?&]token=\$\{/,           // `…?token=${t}` / `…&token=${t}` — литерал дотор
@@ -49,6 +63,7 @@ for (const f of files) {
   lines.forEach((l, i) => {
     if (isComment(l)) return;
     if (PATTERNS.some((re) => re.test(l)) && !ALLOW.has(f)) hits.push(`${f}:${i + 1}: ${l.trim().slice(0, 140)}`);
+    else if (IMG_PATTERNS.some((re) => re.test(l)) && !ALLOW.has(f) && !IMG_ALLOW.has(f)) hits.push(`${f}:${i + 1}: ${l.trim().slice(0, 140)}`);
   });
 }
 
@@ -56,4 +71,11 @@ console.log(`tokenInUrl: ${files.length} файл шалгав`);
 assert.equal(hits.length, 0, `✗ токен URL-д угсрагдсан (POST биед шилжүүл, эсвэл img/a бол ALLOW-д шалтгаантай нэм):\n  ${hits.join('\n  ')}`);
 /* Зөвшөөрлийн жагсаалт хоцроогүй — жагсаасан файл бүр оршин байна */
 for (const f of ALLOW.keys()) assert.ok(files.includes(f), `✗ ALLOW-д байгаа ${f} олдсонгүй — жагсаалтаас хас`);
-console.log('✓ токен зөвхөн POST биеэр (img/a хавсралтын 2 ил үл хамаарал)');
+for (const f of IMG_ALLOW.keys()) assert.ok(files.includes(f), `✗ IMG_ALLOW-д байгаа ${f} олдсонгүй — жагсаалтаас хас`);
+/* ⚠️ 2026-10-09: үзлэгийн тайлан — хавсралтыг POST биеэр (`fetchAttachment`), `tokenQs` огт үгүй */
+{
+  const rep = readFileSync('src/lib/uzlegReport.ts', 'utf8');
+  assert.ok(!/tokenQs/.test(rep), '✗ uzlegReport: tokenQs буцаж орсон — хавсралтын токен POST биеэр л');
+  assert.ok(/method: 'POST'/.test(rep) && /body\.set\('token'/.test(rep), '✗ uzlegReport: хавсралт POST + токен биеэр');
+}
+console.log('✓ токен зөвхөн POST биеэр (img/a хавсралтын ил үл хамаарлууд — ALLOW · IMG_ALLOW)');

@@ -26,7 +26,7 @@ import { cached, loadFillPkgProgress } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
-  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, CONTRACTED,
+  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, isContracted,
   type ProgressSrc,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
@@ -146,6 +146,8 @@ export type ExecReport = {
      *    хамарсан)» гэж нэрлэгддэг байв — үнэндээ диапазон мөр (5.97) + гэрээлсэн дүнгийн
      *    түлхүүрт таараагүй багц (Багц-7 1.87, Багц-8.1 0.32) орно. Одоо порталын НЭГ тодорхойлолт
      *    (ТУХ · «IPC»-ийн «гэрээлсэн багцаас гадуур олгосон»), нэг шошго.
+     * ⚠️ 2026-10-09: Багц-7 · Багц-8.1 нь холбоосоор (`pkgAlias.finPkgKey`) гэрээлсэн багцад ТООЛОГДОХ
+     *    болсон — энд үлдэх нь диапазон мөр ба гэрээлсэн дүнгүй багцын олголт.
      */
     givenOther: number;
     /** `givenContracted ÷ planTotal` — «олгосон дүн гэрээлсэн дүнд эзлэх хувь» */
@@ -254,7 +256,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      бүгд ижил). Урьд нь энд `inTotal`-гүй (бүх мөр) байсан тул §1-ийн «төсвийн X%»
      (`contract ÷ budget`) тоологч нь хуваарийн (`inTotal`) ГАДНАХ мөрийг ч агуулж,
      тайлан бусад дэлгэцээс өөр тоо хэвлэдэг байв. */
-  const csum = cf.reduce((s, r) => (r.inTotal && r.note === CONTRACTED ? s + (contracts.get(r.oid) ?? 0) : s), 0);
+  const csum = cf.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0);
   const k = kpisOf(cf, csum, land.pct, wbsPct);
   /* ⚠️ «ОРОН СУУЦНЫ ХОРООЛОЛ»-ын гүйцэтгэл нь ХО дүнгээр жигнэсэн биет хувь (`physNow`, 2026-09-30) —
      `GeneralDash.catPct`-тай ижил дүрэм. */
@@ -316,6 +318,15 @@ async function loadExecReportRaw(): Promise<ExecReport> {
      `reportData.finance.paidContracted` (522.71 тэрбум, Тайлан 26.0%). Гурван
      харагдац (CEO IPC · Тайлан · ExecReport) нэг тоологч, нэг хуваарь (CONTRACTED). */
   const finGivenContracted = finance.paidContracted;
+  /* ⚠️ 2026-10-09: төсөл (`paidShare`) ба багц бүр (`pkgFinRows`) НЭГ холбоосын хүснэгт
+     (`pkgAlias.FIN_PKG_ALIAS`) хэрэглэдэг болсон тул Σ гэрээт мөрийн олголт + `givenOther` = `given`
+     байх ёстой. Зөрвөл (газрын зурагт багцгүй гэрээлсэн түлхүүр г.м.) чимээгүй үлдээхгүй — консолд. */
+  if (finGiven != null) {
+    const sumRows = finRows.reduce((a, r) => (r.contracted ? a + r.given : a), 0);
+    if (Math.abs(sumRows - finGivenContracted) > 1) {
+      console.warn('[execReport] Σ гэрээт багцын олголт ≠ paidContracted', { sumRows, paidContracted: finGivenContracted });
+    }
+  }
 
   /* ── Зөвшөөрөл ── */
   let zov: ExecReport['zov'] = null;

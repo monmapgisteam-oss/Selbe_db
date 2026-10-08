@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { SCORE_LEVELS, levelOf, NO_DATA_COLOR, type Indicator } from '@/lib/analysis/config';
-import { scoreColor } from '@/lib/analysis/score';
+import { scoreColor, scoreInk } from '@/lib/analysis/score';
 import { nf } from './format';
 import { valueOf, type Mode, type Row } from './model';
 import { competitionRanks, countWithData, zoneCsv } from './rankUtil';
@@ -98,7 +98,7 @@ export function Ranking({
         <span className="rk">{ranks[i] ?? '—'}</span>
         <span className="nm">{r.id}<i>{r.type}</i></span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
-        <span className="tot" style={{ background: scoreColor(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
+        <span className="tot" style={{ background: scoreColor(tot), color: scoreInk(tot) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,
     );
   });

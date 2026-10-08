@@ -23,7 +23,10 @@ const src = readFileSync(new URL('./Dashboard.tsx', import.meta.url), 'utf8');
 const at = src.indexOf("tr('Санхүүжилтийн хуримтлал — сараар')");
 assert.ok(at > 0, '«Санхүүжилтийн хуримтлал» самбар олдсонгүй');
 const panel = src.slice(at, src.indexOf('</Panel>', at));
-assert.match(panel, /contractedScope\(f\.contracts\)/, 'хуримтлалын хуваагч contractedScope-оос биш');
+/* ⚠️ 2026-10-09: `contractedScope` нь `ScheduleDetail`-ийн дээд талд MEMO (`scope`) — самбар `const sc = scope;` */
+const scopeMemo = /const scope = useMemo\(\(\) => \(f \? contractedScope\(f\.contracts\) : null\), \[f\]\);/.test(src);
+assert.ok(/contractedScope\(f\.contracts\)/.test(panel) || (scopeMemo && /const sc = scope;/.test(panel)),
+  'хуримтлалын хуваагч contractedScope-оос биш');
 assert.ok(!/planTotal\.forEach/.test(panel), 'хуримтлал FinData.planTotal (гэрээ ЭСВЭЛ төсөв) руу буцав');
 assert.match(panel, /sc\.keys\.forEach\(\(k\) => \{ givenAll \+= f\.givenTotal\.get\(k\)/, 'тоологч гэрээлсэн багцаар шүүгдээгүй');
 assert.ok(!/cum \+= m\.given/.test(panel), 'сарын дүн БҮХ багцын олголтоос (m.given) авагдав');

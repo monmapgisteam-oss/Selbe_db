@@ -25,6 +25,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
+import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
 import type SceneView from '@arcgis/core/views/SceneView';
 import type BuildingSceneLayer from '@arcgis/core/layers/BuildingSceneLayer';
 
@@ -256,11 +257,29 @@ type Ranked = { id: string; d: number };
  *    `toScreen`-ээр буулгаж + камерын чиглэлийн ард (dot < 0) байгааг хасна (ар талын цэг ч
  *    дэлгэц рүү «толин» буудаг).
  * ⚠️ Web Mercator: масштабын коэффициент 1/cos(φ) — x/y-г cos(φ)-ээр үржүүлж метр болгоно.
+ * ⚠️ 2026-10-09: урьд нь давхаргын `fullExtent` ба харагдацыг ҮРГЭЛЖ Web Mercator гэж үздэг байв —
+ *    WGS84 (градус) экстенттэй BIM-ийн төвийг метртэй шууд хасаж, бүх зай ~сая метр болж эрэмбэ
+ *    санамсаргүй болдог. Одоо экстентийн SR харагдацынхаас өөр бол `webMercatorUtils`-ээр (синхрон,
+ *    WGS84 ↔ WM) харагдацын SR руу буулгана; буулгах боломжгүй бол хуучин зан (шууд) — эрэмбээс
+ *    хасвал «Хурдан» горимд тэр барилга ХЭЗЭЭ Ч харагдахгүй болно. Масштаб нь харагдацын SR-ээс:
+ *    WM → cos(φ), газарзүйн → градусын метр, бусад (проекцтой) → 1.
  */
 export function rankBim(view: SceneView, layers: { id: string | number; fullExtent?: __esri.Extent | null }[]): Ranked[] {
   const p = view.camera?.position;
   if (!p) return [];
-  const k = Math.cos(Math.atan(Math.sinh(p.y / 6378137)));
+  const vsr = view.spatialReference;
+  const geo = !!vsr?.isGeographic;
+  const lat = geo ? (p.y * Math.PI) / 180 : Math.atan(Math.sinh(p.y / 6378137));
+  /** Харагдацын SR-ийн нэгж → метр (x, y тус тусдаа — газарзүйн SR-д ялгаатай) */
+  const wm = vsr == null || vsr.isWebMercator;
+  const kx = geo ? 111_320 * Math.cos(lat) : (wm ? Math.cos(lat) : 1);
+  const ky = geo ? 110_574 : (wm ? Math.cos(lat) : 1);
+  const toView = (c: __esri.Point): __esri.Point => {
+    const sr = c.spatialReference;
+    if (!sr || !vsr || sr.equals(vsr)) return c;
+    if (webMercatorUtils.canProject(sr, vsr)) return (webMercatorUtils.project(c, vsr) as __esri.Point | null) ?? c;
+    return c;
+  };
   const w = view.width || 0;
   const h = view.height || 0;
   const mx = w * 0.25;
@@ -270,10 +289,11 @@ export function rankBim(view: SceneView, layers: { id: string | number; fullExte
   const fy = Math.cos(hd);
   const all: (Ranked & { inView: boolean })[] = [];
   for (const l of layers) {
-    const c = l.fullExtent?.center;
-    if (!c) continue;
-    const dx = (c.x - p.x) * k;
-    const dy = (c.y - p.y) * k;
+    const c0 = l.fullExtent?.center;
+    if (!c0) continue;
+    const c = toView(c0);
+    const dx = (c.x - p.x) * kx;
+    const dy = (c.y - p.y) * ky;
     const dz = c.z != null && p.z != null ? c.z - p.z : 0;
     const sp = w && h && dx * fx + dy * fy > 0 ? view.toScreen(c) : null;
     all.push({
@@ -341,7 +361,15 @@ export function manageBim(o: {
            `_rejectWhenSublayerView` дотор `null.set` TypeError + AbortError-ийг БАРИГДААГҮЙ
            (unhandledrejection) шиддэг (2026-10-04, горимыг дахин дахин солих туршилтаар баталсан). Үүссэний
            дараа хасна — дараагийн эрэмбэлэлтийг 800 мс-ийн дараа дахин. */
-        if (!view.allLayerViews.some((lv) => lv.layer === (l as unknown))) { deferred = true; continue; }
+        /* ⚠️ 2026-10-09: ачаалал УНАСАН (`loadStatus === 'failed'`) эсвэл LayerView үүсгэх нь
+           ТАТГАЛЗСАН (`lvFailed`) давхаргад LayerView ХЭЗЭЭ Ч үүсэхгүй — урьд нь тийм давхарга Map-д
+           мөнх үлдэж, 800 мс-ийн дахин оролдлого зогсолтгүй давтагддаг байв. Тэдгээрийг шууд хасна. */
+        const lvGone = l.loadStatus === 'failed' || lvFailed.has(id);
+        if (!lvGone && !view.allLayerViews.some((lv) => lv.layer === (l as unknown))) {
+          deferred = true;
+          watchLv(l);
+          continue;
+        }
         map.remove(l as never);
         applied.delete(id);
         continue;
@@ -354,7 +382,21 @@ export function manageBim(o: {
     const changed = next.size !== shown.size || [...next].some((id) => !shown.has(id));
     shown = next;
     if (changed) onShown?.(shown);
-    if (deferred && !retry) retry = setTimeout(() => { retry = null; soon(); }, 800);
+    /* ⚠️ 2026-10-09: дахин оролдлого ХЯЗГААРТАЙ (`RETRY_MAX`) — хойшлуулалтгүй эрэмбэлэлт тоолуурыг
+       тэглэнэ; хязгаарт хүрвэл дараагийн `stationary` хүртэл зогсоно. */
+    if (!deferred) tries = 0;
+    else if (!retry && tries < RETRY_MAX) { tries++; retry = setTimeout(() => { retry = null; soon(); }, 800); }
+  };
+  const RETRY_MAX = 10;
+  let tries = 0;
+  /** LayerView үүсгэх нь татгалзсан давхаргууд (id) */
+  const lvFailed = new Set<string>();
+  const lvWatched = new Set<string>();
+  const watchLv = (l: BuildingSceneLayer) => {
+    const id = String(l.id);
+    if (lvWatched.has(id)) return;
+    lvWatched.add(id);
+    view.whenLayerView(l as never).catch(() => { if (!stale) { lvFailed.add(id); soon(); } });
   };
   /* Метадата ачаалагдах бүрд биш — 120 мс-ээр багцалж нэг удаа эрэмбэлнэ */
   let t: ReturnType<typeof setTimeout> | null = null;
@@ -363,6 +405,6 @@ export function manageBim(o: {
   /* Өмнөх горимоос үлдсэн (Map-д байгаа) давхарга — эхний эрэмбэлэлт хүртэл хэвээр, дараа нь төсвөөр */
   shown = new Set(all.filter(inMap).map((l) => String(l.id)));
   for (const l of all) l.load().then(() => { if (!stale) soon(); }).catch(() => {});
-  const h = reactiveUtils.watch(() => view.stationary, (st) => { if (st) soon(); });
+  const h = reactiveUtils.watch(() => view.stationary, (st) => { if (st) { tries = 0; soon(); } });
   return () => { stale = true; h.remove(); if (t) clearTimeout(t); if (retry) clearTimeout(retry); };
 }

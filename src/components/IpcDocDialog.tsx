@@ -202,6 +202,7 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
         {err && <p className={s.err} role="alert">{err}</p>}
         {!src && !err && <p className={s.sub}>{tr('Гүйцэтгэлийн архивыг уншиж байна…')}</p>}
         {src && !src.months.length && <p className={s.err}>{tr('Энэ багцад батлагдсан гүйцэтгэлийн агшин алга.')}</p>}
+        {src?.warn && <p className={s.note}>⚠ {src.warn}</p>}
         {src && src.contract == null && <p className={s.err}>{tr('ХО-д энэ багцын гэрээний дүн бүртгэгдээгүй — баримт гаргах боломжгүй.')}</p>}
 
         {src && src.months.length > 0 && (

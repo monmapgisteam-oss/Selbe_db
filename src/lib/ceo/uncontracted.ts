@@ -64,6 +64,7 @@ import { CASHFLOW_NEW } from '@/lib/services';
 import { blank, date, mnt, num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { FIN_XL_LAND_CODE, FIN_XL_TOTAL_CODE_FIELD, finXlRowHidden } from '@/lib/finExcelLayout';
+import { isContracted } from '@/lib/gdash';
 import {
   cell, daysBetween, table,
   type Cell, type DetailTable, type KpiIssue, type KpiResult, type Level,
@@ -182,6 +183,12 @@ export function contractOf(r: CfRaw): CfContract {
   };
 }
 
+/**
+ * Картын үр дүн + ТОДОРХОЙЛОЛТЫН ЗӨРҮҮ (2026-10-09): `noteMismatch` — гэрээний дүнтэй (`geree_dun > 0`)
+ * атлаа `gdash.isContracted` биш мөрүүд (хасагдсан ажил орохгүй), дүнгээр буурах.
+ */
+export type UncontractedKpi = KpiResult & { noteMismatch: CfContract[] };
+
 /** Хоосон текст → `null` нүд («—»), эс бөгөөс текст */
 const txt = (s: string): Cell => cell(s || null);
 
@@ -196,18 +203,19 @@ const txt = (s: string): Cell => cell(s || null);
  * ⚠️ Хасагдсан ажил (`isCancelled`) n · Σ · эхэлсэн · дутуу · түвшний АЛЬ ЧИНЬ
  *    орохгүй; факт + 3-р хүснэгтээр ил. Гэрээ бүрэн мөрд шүүлт үйлчлэхгүй.
  */
-export function computeUncontracted(rows: readonly CfRaw[], now: number): KpiResult {
+export function computeUncontracted(rows: readonly CfRaw[], now: number): UncontractedKpi {
   const unit = tr('гэрээгүй ажил');
   if (rows.length === 0) {
     return {
       value: num(null), unit, facts: [], level: 'unknown',
-      tables: [], issues: [], asOf: null, failedSources: [],
+      tables: [], issues: [], asOf: null, failedSources: [], noteMismatch: [],
     };
   }
 
   const none: CfContract[] = [];
   const partial: CfContract[] = [];
   const cancelled: CfContract[] = [];
+  const noteMismatch: CfContract[] = [];
   for (const r of rows) {
     /* ⚠️ 2026-10-06: ГАЗАР ЧӨЛӨӨЛӨЛТ (6-р хэсэг — нөхөн олговор, гүйцэтгэгчтэй байгуулах гэрээ БИШ,
        «78 биш 74») ба НУУГДСАН «7 БОНДЫН ХҮҮ» (OID 78, ажил биш) мөр «гэрээгүй ажил»/«дутуу
@@ -215,6 +223,11 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): KpiRes
        `FIN_XL_LAND_CODE`). ⚠️ 5-р хэсэг (нийгмийн дэд бүтэц) нь ЖИНХЭНЭ ажил тул ХЭВЭЭР —
        `finXlInTotal` (5·6·7) хэрэглэвэл гэрээгүй сургууль/цэцэрлэг чимээгүй алга болно. */
     if (finXlRowHidden(r) || String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim() === FIN_XL_LAND_CODE) continue;
+    /* ⚠️ 2026-10-09: ТОДОРХОЙЛОЛТЫН ЗӨРҮҮ — гэрээний дүнтэй атлаа порталын «гэрээтэй» предикат
+       (`gdash.isContracted`, тайлбар === «Гэрээлсэн дүн») ҮГҮЙ мөр. Энэ карт дүн/гүйцэтгэгчээр,
+       бусад бүх газар (санхүү, оноо, гэрээ-төсвийн зөрүү) тайлбараар ангилдаг тул ийм мөр энд
+       «гэрээтэй», тэнд «гэрээгүй» болно — нуухгүй, тусад нь жагсаана. Тоо ба түвшинд НӨЛӨӨЛӨХГҮЙ. */
+    if (posOf(r[F.contractAmount]) != null && !isContracted(r) && !isCancelled(r)) noteMismatch.push(contractOf(r));
     const inScope = isUncontracted(r) ? none : isInconsistent(r) ? partial : null;
     if (!inScope) continue;
     (isCancelled(r) ? cancelled : inScope).push(contractOf(r));
@@ -301,6 +314,16 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): KpiRes
     ));
   }
 
+  /* ХҮСНЭГТ 4 — тодорхойлолтын зөрүү (2026-10-09): дүнтэй ч «Гэрээлсэн дүн» тайлбаргүй, дүнгээр буурах */
+  const mismatchSorted = [...noteMismatch].sort((a, b) => descNullLast(a.contractAmount, b.contractAmount));
+  if (mismatchSorted.length) {
+    tables.push(table(
+      tr('Гэрээний дүнтэй боловч «Гэрээлсэн дүн» тайлбаргүй'),
+      [tr('Ажил'), tr('Багц'), tr('Гэрээний дүн'), tr('Тайлбар')],
+      mismatchSorted.map((c) => [txt(c.work), txt(c.pkg), cell(c.contractAmount, 'mnt'), txt(c.note)]),
+    ));
+  }
+
   /* Анхааруулга — эхлэх хугацаа өнгөрсөн мөр бүр, хамгийн их хоцорсон нь эхэнд */
   const issues: KpiIssue[] = noneSorted.filter(isStarted).map((c) => ({
     tone: 'bad',
@@ -320,6 +343,7 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): KpiRes
     /* ⚠️ Хүснэгтэд «өгөгдлийн агшин» талбар байхгүй — огноо нь төлөвлөгөөт хугацаа */
     asOf: null,
     failedSources: [],
+    noteMismatch: mismatchSorted,
   };
 }
 

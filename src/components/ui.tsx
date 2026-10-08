@@ -1908,9 +1908,11 @@ export function Trend({
   const runArea = (run: { i: number; v: number }[]) =>
     `${runPts(run)} ${x(run[run.length - 1].i)},100 ${x(run[0].i)},100`;
 
-  /** Цэг нь босгоос ДЭЭШ гарсан уу */
+  /** Цэг нь босгонд ХҮРСЭН/давсан уу */
   /* ⚠️ Хэмжигдээгүй цэг ХЭЗЭЭ Ч босго давсан гэж тооцогдохгүй */
-  const over = (v: number | null) => alert != null && v != null && Number.isFinite(v) && v > alert.value;
+  /* ⚠️ 2026-10-09: `>` → `>=` — `sensors.ts` («Сав ≥80%»), `ceo/iot`, `iot-watch` бүгд `>=`;
+     яг 80%-тай сав самбарт «хэтэрсэн», чарт дээр саарал гэж зөрдөг байв. */
+  const over = (v: number | null) => alert != null && v != null && Number.isFinite(v) && v >= alert.value;
   const alertY = alert ? y(alert.value) : 0;
 
   /**

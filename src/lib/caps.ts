@@ -383,7 +383,13 @@ function load(): Store {
     const raw = window.localStorage.getItem(KEY);
     const j = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     const out: Store = {};
-    for (const [k, v] of Object.entries(j)) out[k.toLowerCase()] = sane(v);
+    /* ⚠️ 2026-10-09: `__proto__` · `constructor` · `prototype` АЛГАСНА (`permissions.loadLocal`-ийн ⚠️ —
+       гараар зассан localStorage прототипыг солихоос сэргийлнэ). */
+    for (const [k, v] of Object.entries(j)) {
+      const key = k.toLowerCase();
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      out[key] = sane(v);
+    }
     return out;
   } catch {
     return {};

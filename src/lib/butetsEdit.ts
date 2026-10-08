@@ -113,6 +113,9 @@ export type LayerMeta = {
    * багц дундаа унахад зарим мөр бичигдсэн үлдэнэ. Тэр үед мөр бүрийн үр дүнг
    * уншиж ХЭСЭГЧИЛСЭН алдааг ил мэдээлнэ (`saveRows`/`revertRows`, 2026-10-01).
    * Өгөөгүй (хуучин кэш, тест) бол `true` гэж үзнэ.
+   * ⚠️ 2026-10-09: метадатад `supportsRollbackOnFailureParameter` БАЙХГҮЙ (undefined) бол
+   *    `loadLayerMeta` нь `false` тавина — дэмжлэг нотлогдоогүй давхаргыг атом гэж таамаглахгүй
+   *    (мөр бүрийн үр дүнгээр бичих нь удаан ч хагас бичилтийг нуухгүй).
    */
   rollback?: boolean;
   /** Засагдах талбарууд — маягтын оролтууд */
@@ -269,11 +272,15 @@ async function fetchLayerMeta(layerId: string): Promise<LayerMeta> {
     canDelete: /delete/i.test(j.capabilities ?? ''),
     draw: drawOf(j.geometryType ?? ''),
     /* ⚠️ 2026-10-01: SR ба атом бичилтийн дэмжлэг — метадатаас (feature-detect) */
+    /* ⚠️ 2026-10-09: `extent.spatialReference` ЭХЭНД — `wkid`-ийн тайлбарын дагуу энэ нь
+       геометрийн БУЦААХ SR (`butetsLen.measureKind`-ийн суурь); `sourceSpatialReference` нь
+       эх өгөгдлийн SR бөгөөд ялгаатай байж болно — зөвхөн нөөц. */
     wkid: ((sr) => (typeof sr === 'number' ? sr : null))(
-      j.sourceSpatialReference?.latestWkid ?? j.sourceSpatialReference?.wkid
-      ?? j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid,
+      j.extent?.spatialReference?.latestWkid ?? j.extent?.spatialReference?.wkid
+      ?? j.sourceSpatialReference?.latestWkid ?? j.sourceSpatialReference?.wkid,
     ),
-    rollback: j.supportsRollbackOnFailureParameter !== false,
+    /* ⚠️ 2026-10-09: ЗӨВХӨН ил `true` үед атом — `LayerMeta.rollback`-ийн тайлбар */
+    rollback: j.supportsRollbackOnFailureParameter === true,
     fields,
     readOnly,
   };
@@ -738,7 +745,12 @@ async function writeUpdatesEach(
   try {
     await applyAll(meta.url, meta.oidField, { updates });
     return { done: updates.map(oidOf), failed: [] };
-  } catch {
+  } catch (e) {
+    /* ⚠️ 2026-10-09: мөрөөр дахин бичих нь ЗӨВХӨН серверийн ТОДОРХОЙ татгалзалд. Хариу
+       алдагдсан (timeout · сүлжээ) эсвэл нэвтрэлт дууссан үед урьд нь мөр бүрийг ДАХИН
+       илгээдэг байв — `isLostResponse`-ийн «бичилтийг автоматаар дахин оролдохгүй» дүрмийг
+       зөрчиж, үр дүн тодорхойгүй багцыг дахин бичнэ. Тэр үед алдааг ДАМЖУУЛНА. */
+    if (isLostResponse(e) || (e as ArcGISError | null)?.sessionExpired === true) throw e;
     /* багц унав — мөр бүрээр тогтооно (доор) */
   }
   const out: RowsResult = { done: [], failed: [] };
@@ -787,7 +799,16 @@ export async function saveRows(
   if (meta.rollback === false) {
     const acc: RowsResult = { done: [], failed: [] };
     for (const part of chunks(oids, BATCH)) {
-      const r = await writeUpdatesEach(meta, part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })));
+      let r: RowsResult;
+      try {
+        r = await writeUpdatesEach(meta, part.map((oid) => ({ [meta.oidField]: Math.trunc(oid), ...attrs })));
+      } catch (e) {
+        /* ⚠️ 2026-10-09: хариу алдагдсан/нэвтрэлт дууссан (`writeUpdatesEach` шиднэ) — өмнөх
+           багцуудын `done`-г атом замын ижлээр алдаанд хавсарна (алдааны төрөл хэвээр). */
+        const err = e instanceof Error ? e : new Error(String(e));
+        (err as Error & { done?: number[] }).done = acc.done.slice();
+        throw err;
+      }
       acc.done.push(...r.done);
       acc.failed.push(...r.failed);
     }
@@ -835,8 +856,20 @@ export async function revertRows(
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
   const live = rows.filter((r) => Object.keys(r.attrs).length);
   const acc: RowsResult = { done: [], failed: [] };
-  for (const part of chunks(live, BATCH)) {
-    const r = await writeUpdatesEach(meta, part.map((x) => ({ [meta.oidField]: Math.trunc(x.oid), ...x.attrs })));
+  const parts = chunks(live, BATCH);
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    let r: RowsResult;
+    try {
+      r = await writeUpdatesEach(meta, part.map((x) => ({ [meta.oidField]: Math.trunc(x.oid), ...x.attrs })));
+    } catch (e) {
+      /* ⚠️ 2026-10-09: `writeUpdatesEach` хариу алдагдсан/нэвтрэлт дууссан үед шиднэ. Энэ функц
+         ШИДДЭГГҮЙ гэрээтэй тул ЭНЭ ба ҮЛДСЭН багцын мөрүүдийг `failed` болгоно — буцаалт нь
+         идемпотент (хуучин утгаа дахин бичнэ) тул «Үйлдэл буцаах»-аар дахин оролдоход аюулгүй. */
+      const msg = e instanceof Error ? e.message : String(e);
+      for (const rest of parts.slice(i)) for (const x of rest) acc.failed.push({ oid: Math.trunc(x.oid), msg });
+      return acc;
+    }
     acc.done.push(...r.done);
     acc.failed.push(...r.failed);
   }

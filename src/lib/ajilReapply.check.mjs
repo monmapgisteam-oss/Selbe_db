@@ -115,6 +115,15 @@ A._io.writeFrame = async (pkgKey, adds) => {
   c.active -= 1;
   return writeImpl(pkgKey, adds);
 };
+/* ⚠️ 2026-10-09: шинэ сүлжээний хамаарлууд — хуваарь/обьём чөлөөтэй, серверийн түгжээ амжилттай */
+let planImpl = async () => null;
+let obyemImpl = async () => null;
+let claimImpl = async () => null;
+const rel = { n: 0 };
+A._io.loadPlanPending = (k) => planImpl(k);
+A._io.obyemBusy = (k) => obyemImpl(k);
+A._io.claimApply = (oid, me) => claimImpl(oid, me);
+A._io.releaseApply = async () => { rel.n += 1; };
 const go = (oid) => A.materializeAdds({ pkgKey: 'b1', ajilOid: oid });
 const reset = () => { c.write = 0; c.mark = 0; c.active = 0; c.maxActive = 0; };
 
@@ -219,6 +228,118 @@ if (globalThis.navigator?.locks?.request) {
     if (desc) Object.defineProperty(globalThis, 'navigator', desc); else delete globalThis.navigator;
   }
   console.log('✅ Web Locks-гүй орчин — дараалал хэвээр');
+}
+
+/* ── 3к. ⚠️ 2026-10-09: хуваарь/обьёмын төлөв уншигдахгүй бол бичихгүй (fail-closed) ── */
+{
+  put(30, AJIL_STATUS.approved); reset();
+  planImpl = async () => { throw new Error('сүлжээ'); };
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /хуваарийн илгээлтийн төлөв уншигдсангүй/, r.error);
+  assert.equal(c.write, 0, 'хуваарийн төлөв уншигдаагүй атлаа бичив');
+  planImpl = async () => null;
+
+  obyemImpl = async () => { throw new Error('сүлжээ'); };
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /обьёмын батлалтын төлөв уншигдсангүй/, r.error);
+  assert.equal(c.write, 0);
+  obyemImpl = async () => ({ who: 'obatlagch', partial: true });
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /ХЭСЭГЧЛЭН/); assert.match(r.error, /obatlagch/);
+  assert.equal(c.write, 0, 'обьём хагас бичигдсэн атлаа жааз солив');
+  obyemImpl = async () => ({ who: 'obatlagch', partial: false });
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /яг одоо батлаж байна/);
+  assert.equal(c.write, 0, 'обьём батлагдаж байхад жааз солив');
+  obyemImpl = async () => null;
+  console.log('✅ хуваарь/обьёмын төлөв уншигдахгүй эсвэл батлалт явж байвал бичихгүй');
+}
+
+/* ── 3л. ⚠️ 2026-10-09: серверийн түгжээ — авч чадаагүй бол бичихгүй; бусдын дуусгасныг амжилт гэж үзнэ ── */
+{
+  put(31, AJIL_STATUS.approved); reset(); rel.n = 0;
+  claimImpl = async () => 'batlagch2 энэ илгээлтийг яг одоо шийдвэрлэж/буулгаж байна';
+  r = await go(31);
+  assert.equal(r.ok, false); assert.match(r.error, /batlagch2/);
+  assert.equal(c.write, 0, 'түгжээгүй байхад бичив');
+  assert.equal(rel.n, 0, 'авч чадаагүй түгжээг тайлав');
+  /* Нөгөө компьютер дуусгасан — `applied` */
+  claimImpl = async (oid) => { db.get(oid).status = AJIL_STATUS.applied; return 'аль хэдийн шийдвэрлэсэн'; };
+  r = await go(31);
+  assert.deepEqual(r, { ok: true, already: true, added: 0 });
+  assert.equal(c.write, 0);
+  claimImpl = async () => null;
+  /* Бичилт унавал түгжээг тайлна; амжилттай бол `markApplied` арилгана (тайлахгүй) */
+  put(32, AJIL_STATUS.approved); reset(); rel.n = 0;
+  writeImpl = async () => ({ ok: false, error: 'унав' });
+  r = await go(32);
+  assert.equal(r.ok, false); assert.equal(rel.n, 1, 'унасан буулгалтын түгжээг тайлсангүй');
+  writeImpl = async () => ({ ok: true, added: 1 });
+  rel.n = 0;
+  r = await go(32);
+  assert.deepEqual(r, { ok: true, added: 1 }); assert.equal(rel.n, 0, 'амжилттай буулгалтын дараа дахин тайлав');
+  console.log('✅ серверийн түгжээ — авч чадаагүй бол бичихгүй, бусад нь дуусгасан бол амжилт, унавал тайлна');
+}
+
+/* ── 3м. ⚠️ 2026-10-09: `casAjilClaim` / `ajilClaimOf` — цэвэр ── */
+{
+  const { casAjilClaim, ajilClaimOf, AJIL_CLAIM_MARK, AJIL_CLAIM_TTL, F } = B;
+  const T0 = 1_760_000_000_000;
+  const mk = (row) => {
+    const s0 = { row: { ...row }, writes: 0 };
+    return {
+      s0,
+      io: (o = {}) => ({
+        now: () => T0, tab: 'tabA',
+        read: async () => ({ ...s0.row }),
+        write: async (mark) => { s0.writes += 1; if (o.steal) s0.row[F.reason] = o.steal; else s0.row[F.reason] = mark; return true; },
+      }),
+    };
+  };
+  /* Чөлөөтэй `pending` — түгжинэ */
+  let m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
+  assert.equal(await casAjilClaim(m.io(), 'Bat', AJIL_STATUS.pending), null);
+  assert.equal(m.s0.row[F.reason], `${AJIL_CLAIM_MARK}:${T0}:tabA:bat`);
+  assert.deepEqual(ajilClaimOf(AJIL_STATUS.pending, m.s0.row[F.reason], T0 + 1), { who: 'bat', at: T0, tab: 'tabA' });
+  /* Хугацаа дууссан / хэт ирээдүй / буруу төлөв — түгжээ БИШ */
+  assert.equal(ajilClaimOf(AJIL_STATUS.pending, m.s0.row[F.reason], T0 + AJIL_CLAIM_TTL), null);
+  assert.equal(ajilClaimOf(AJIL_STATUS.pending, m.s0.row[F.reason], T0 - AJIL_CLAIM_TTL), null);
+  assert.equal(ajilClaimOf(AJIL_STATUS.returned, m.s0.row[F.reason], T0), null);
+  assert.equal(ajilClaimOf(AJIL_STATUS.pending, 'жинхэнэ шалтгаан', T0), null);
+  /* Өөр хүн/таб түгжсэн — татгалзана, бичихгүй */
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:dorj` });
+  assert.match(await casAjilClaim(m.io(), 'bat', AJIL_STATUS.approved), /dorj/);
+  assert.equal(m.s0.writes, 0);
+  /* Ижил хэрэглэгч, ӨӨР таб — мөн татгалзана (хоёр компьютер) */
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:bat` });
+  assert.match(await casAjilClaim(m.io(), 'bat', AJIL_STATUS.approved), /bat/);
+  assert.equal(m.s0.writes, 0);
+  /* Хугацаа дууссан түгжээг давна */
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - AJIL_CLAIM_TTL - 1}:tabB:dorj` });
+  assert.equal(await casAjilClaim(m.io(), 'bat', AJIL_STATUS.approved), null);
+  /* Төлөв өөр — «аль хэдийн шийдвэрлэсэн» */
+  m = mk({ [F.status]: AJIL_STATUS.applied, [F.approver]: 'dorj', [F.reason]: null });
+  assert.match(await casAjilClaim(m.io(), 'bat', AJIL_STATUS.approved), /аль хэдийн шийдвэрлэсэн/);
+  /* Зэрэг бичсэн хүн ялсан — түүний нэр */
+  m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
+  assert.match(await casAjilClaim(m.io({ steal: `${AJIL_CLAIM_MARK}:${T0}:tabC:dorj` }), 'bat', AJIL_STATUS.pending), /dorj/);
+  /* Нэргүй — татгалзана */
+  assert.ok(await casAjilClaim(mk({ [F.status]: AJIL_STATUS.pending }).io(), '  ', AJIL_STATUS.pending));
+  console.log('✅ casAjilClaim — CAS, TTL, өөр таб, уралдаа');
+}
+
+/* ── 3н. ⚠️ 2026-10-09: эх код — A.10/A.10б бичсэнээ буцаана; шийдвэр түгжээтэй ── */
+{
+  const L = readFileSync(new URL('./ajilApply.ts', import.meta.url), 'utf8');
+  const body = L.slice(L.indexOf('async function writeFrameLive'));
+  const a10 = body.indexOf('/* A.10 —');
+  assert.ok(a10 > 0 && body.indexOf('undoWritten(', a10) > a10, 'A.10 илрүүлсэн алдаанд бичсэнээ буцаахгүй байна');
+  assert.ok((body.match(/return await undoWritten\(/g) ?? []).length >= 2, 'A.10 ба A.10б хоёулаа бичсэнээ буцаах ёстой');
+  assert.ok(body.indexOf('loaded.rawFrameLen') > 0 && body.indexOf('loaded.rawFrameLen') < body.indexOf('applyAdds(pkg'), 'жаазын түүхий уртыг бичихээс ӨМНӨ шалгахгүй байна');
+  const D = readFileSync(new URL('./ajilBatlah.ts', import.meta.url), 'utf8');
+  const dec = D.slice(D.indexOf('export async function decideAjil'), D.indexOf('export async function withdrawAjil'));
+  assert.ok(dec.indexOf('claimAjil(') > 0 && dec.indexOf('claimAjil(') < dec.indexOf('arcgisPost('), 'decideAjil: түгжээ бичилтээс ӨМНӨ байх ёстой');
+  console.log('✅ эх код: A.10/A.10б буцаалт · түүхий урт · decideAjil түгжээ');
 }
 
 /* ── 4. Эрхийн шалгуур ХӨТӨЧИЙН горимд (window бий) ── */

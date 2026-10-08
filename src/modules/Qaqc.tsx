@@ -33,13 +33,16 @@ import { useColWidths } from '@/modules/sheet/colWidths';
 import { parseGrid } from '@/modules/sheet/paste';
 import {
   attachTree,
+  fetchQaqcDocs,
   filledCount,
-  loadQaqcRows,
+  loadQaqcSheet,
   QAQC_BAND,
   QAQC_COLS,
   QAQC_GROUPS,
   planQaqcPaste,
+  qaqcConflicts,
   qaqcTableOf,
+  qaqcTooLong,
   qaqcUpdates,
   saveQaqc,
   type QaqcRow,
@@ -64,6 +67,7 @@ import {
 } from '@/lib/qaqcDraft';
 import { loadAllDocs } from '@/lib/chanarStore';
 import { MS_STATUS, latest, type DocKind } from '@/lib/chanarMs';
+import { register } from '@/lib/dataBus';
 import st from '@/modules/sheet/sheet.module.css';
 
 /** ⚠️ `FillNew`-тэй ИЖИЛ хэрэгсэл — нэг хүснэгтийн загвар хуваалцана. */
@@ -91,6 +95,15 @@ const docKindAt = (di: number): DocKind | null => DOC_KIND_OF[QAQC_COLS[di]?.nam
 /** Батлагдсан баримт — төрөл · багц · дугаар · нэр */
 type ApprovedDoc = { kind: DocKind; bagts: string; no: string; title: string };
 const normNo = (v: string) => v.trim().toUpperCase();
+/**
+ * ⚠️ 2026-10-09: БАТЛАГДСАН ЖАГСААЛТ ХУУЧИРНА — `chanarStore`-ийн бичих зам бүр
+ *    `invalidate('CHANAR_BARIMT')` дууддаг. Урьд нь жагсаалт харагдац нээгдэхэд НЭГ
+ *    удаа татагдаж, хооронд нь батлагдсан баримт «✓»/нэрийн автомат бөглөлтөд
+ *    сешн дуустал орж ирдэггүй байв. Модулийн түвшинд НЭГ бүртгэл (`register`-т
+ *    тайлах зам байхгүй — mount бүрд бүртгэвэл хуримтлагдана); харагдац дохиог сонсоно.
+ */
+const approvedStaleSubs = new Set<() => void>();
+register(() => { for (const fn of approvedStaleSubs) fn(); }, ['CHANAR_BARIMT']);
 /* ══════════════════════════ НООРОГ ══════════════════════════
  * ⚠️ Бөглөх хуудасны ноорогтой ИЖИЛ зарчим: localStorage нь ҮНДСЭН зам,
  *    ArcGIS дээрх хуулбар нь зөвхөн «өөр төхөөрөмж рүү шилжих» асуудлыг
@@ -275,6 +288,8 @@ export function Qaqc() {
   }
 
   const [rows, setRows] = useState<QaqcRow[]>([]);
+  /** ⚠️ 2026-10-09: баганын тэмдэгтийн дээд урт (`QAQC_COLS` дарааллаар; `null` = мэдэгдэхгүй) — `fieldsOf`-ийн ⚠️ */
+  const [maxLen, setMaxLen] = useState<(number | null)[]>([]);
   /** Шатлал холбогдсон эсэх — хавтгай зурагдвал шалтгааныг ил хэлнэ */
   const [flat, setFlat] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -372,7 +387,7 @@ export function Qaqc() {
     setFlat(false);
     loadedPkgRef.current = '';
     try {
-      const qRows = await loadQaqcRows(key);
+      const { rows: qRows, maxLen: ml } = await loadQaqcSheet(key);
       if (!live()) return;
       /**
        * ШАТЛАЛЫГ бөглөх хуудаснаас холбоно — ЗӨВХӨН харагдацад.
@@ -394,6 +409,7 @@ export function Qaqc() {
       }
       if (!live()) return;
       setRows(withTree ?? qRows);
+      setMaxLen(ml);
       setFlat(withTree == null);
       loadedPkgRef.current = key;
     } catch (e) {
@@ -428,6 +444,9 @@ export function Qaqc() {
      memo-г хадгалж чадахгүй байв). Тайлбарууд хуучин байрандаа (§НООРОГ — ХАДГАЛАХ). */
   const remoteQueue = useRef<{ pkg: string; draft: Draft } | null>(null);
   const remoteVerifiedRef = useRef('');
+  /** Хамгийн сүүлийн `flush` — салгах (unmount) ба багц солих үед дараалалд үлдсэнийг илгээнэ.
+      ⚠️ 2026-10-09: зарлалтыг ЭНД зөөв — доорх багц солих эффект ашиглана. */
+  const flushRef = useRef<(() => void) | null>(null);
   /**
    * ⚠️ 2026-10-01: НҮД БҮРИЙН АГШИН ба БУЛШ (`lib/qaqcDraft.ts`).
    *   `draftStRef` — энэ табын `pend`-ийн нүд бүрийн агшин + арилгасан нүдний булш;
@@ -441,6 +460,12 @@ export function Qaqc() {
   const prevPendRef = useRef<Record<string, string>>({});
   const clockRef = useRef(0);
   useEffect(() => {
+    /* ⚠️ 2026-10-09: ДАРААЛАЛД ҮЛДСЭН алсын хуулбарыг ЭХЛЭЭД илгээнэ. Урьд нь доорх
+       `remoteQueue.current = null` нь сүүлийн ≤12 секундын бөглөлтийг (локалд бий)
+       ArcGIS руу хуулалгүй хаядаг байв — өөр компьютероос тэр багцыг нээхэд дутуу.
+       `flush` нь ӨМНӨХ багцын closure (`q.pkg`-ээр шалгана), хариу нь `loadedPkgRef`-
+       ээр шүүгдэж шинэ багцын төлөвт бичигдэхгүй. Анхны mount-д `flushRef` хоосон. */
+    flushRef.current?.();
     /* ⚠️ Багц солиход хадгалаагүй засварыг ЗААВАЛ цэвэрлэнэ: түлхүүр нь
        ObjectID тул өөр хүснэгтийн ижил дугаартай мөрд наалдаж, ӨӨР БАГЦЫН
        ажилд акт бичих байлаа. */
@@ -664,25 +689,43 @@ export function Qaqc() {
 
   /* ══════════════ БАТЛАГДСАН ЧАНАРЫН БАРИМТ (толгойн ⚠️) ══════════════ */
   /** Бүх багцын батлагдсан MA · MIR · FIC (сүүлийн хувилбар); `null` = татаагүй */
-  const [approved, setApproved] = useState<ApprovedDoc[] | null>(null);
-  const apLoading = useRef(false);
+  /* ⚠️ 2026-10-09: жагсаалт нь ТҮЛХҮҮРТЭЙ (`apKey` = багцын бүлэг + хүчингүйдлийн үе) —
+     багц солигдох эсвэл `CHANAR_BARIMT` хүчингүй болоход ДАХИН татна (модулийн
+     `approvedStaleSubs`-ийн ⚠️). Дахин татах хооронд ХУУЧИН жагсаалт харагдсаар —
+     «✓» тэмдэг анивчихгүй. */
+  const [apGen, setApGen] = useState(0);
+  useEffect(() => {
+    const fn = () => setApGen((n) => n + 1);
+    approvedStaleSubs.add(fn);
+    return () => { approvedStaleSubs.delete(fn); };
+  }, []);
+  const apKey = `${pkg.group}|${apGen}`;
+  const apKeyRef = useRef(apKey);
+  useSyncRef(apKeyRef, apKey);
+  const [ap, setAp] = useState<{ key: string; list: ApprovedDoc[] } | null>(null);
+  const approved = ap?.list ?? null;
+  /** Татаж буй түлхүүр — ижил түлхүүрийг давхар татахгүй */
+  const apLoading = useRef<string | null>(null);
   const ensureApproved = useCallback(() => {
-    if (approved || apLoading.current) return;
-    apLoading.current = true;
+    if (ap?.key === apKey || apLoading.current === apKey) return;
+    const k = apKey;
+    apLoading.current = k;
     /* ⚠️ Бүх хувилбараас ЗӨВХӨН сүүлийнх нь (`latest`), тэр нь approved байвал. */
     const kinds = new Set<DocKind>(Object.values(DOC_KIND_OF));
     loadAllDocs()
       .then((docs) => {
+        /* Хуучирсан хариу — шинэ түлхүүрийн татац явж байгаа/явна */
+        if (apKeyRef.current !== k) return;
         const list = latest(docs.filter((d) => kinds.has(d.kind)))
           .filter((d) => d.status === MS_STATUS.approved)
           .map((d) => ({ kind: d.kind, bagts: d.bagts, no: d.docNo, title: d.title }))
           .sort((a, b) => a.no.localeCompare(b.no, 'mn', { numeric: true }));
-        setApproved(list);
+        setAp({ key: k, list });
       })
       .catch(() => { /* хуудсыг хаахгүй — жагсаалтгүйгээр чөлөөт текст хэвээр */ })
-      .finally(() => { apLoading.current = false; });
-  }, [approved]);
-  /* Харагдац нээгдэхэд нэг удаа; унасан бол дугаарын нүд нээхэд дахин */
+      .finally(() => { if (apLoading.current === k) apLoading.current = null; });
+  }, [ap, apKey]);
+  /* Харагдац нээгдэх · багц солих · хүчингүй болох бүрд; унасан бол дугаарын нүд нээхэд дахин */
   useEffect(() => { ensureApproved(); }, [ensureApproved]);
   useEffect(() => {
     if (editCell && docKindAt(Number(editCell.split(':')[1]))) ensureApproved();
@@ -707,8 +750,10 @@ export function Qaqc() {
     /* ⚠️ 2026-09-28: дугаар нь батлагдсан баримттай таарч, хажуугийн `*_ner`
        нүд (дараагийн багана) ХООСОН бол нэрийг нь автоматаар бөглөнө — зөвхөн
        хадгалаагүй засварт, хэрэглэгч дараа нь өөрчилж болно. Бөглөгдсөн нэрийг
-       ДАРАХГҮЙ. */
-    const hit = approvedHit(di, v);
+       ДАРАХГҮЙ.
+       ⚠️ 2026-10-09: ЗӨВХӨН дугаар ӨӨРЧЛӨГДСӨН үед — урьд нь хадгалагдсан дугаартай
+       нүдийг зүгээр нээж хаахад ч нэр автоматаар бөглөгдөж «Хадгалах (N)» асдаг байв. */
+    const hit = v !== cur ? approvedHit(di, v) : null;
     const nameDi = hit && QAQC_COLS[di + 1]?.name.endsWith('_ner') ? di + 1 : -1;
     const nameKey = `${oid}:${nameDi}`;
     setPend((p) => {
@@ -736,8 +781,6 @@ export function Qaqc() {
   const [localFail, setLocalFail] = useState(false);
   /** Унасан алсын бичилтийг дахин оролдуулах цаг хэмжигч (flush-ийн ⚠️ 2026-10-05) */
   const remoteRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Хамгийн сүүлийн `flush` — салгахад (unmount) дараалалд үлдсэнийг илгээнэ */
-  const flushRef = useRef<(() => void) | null>(null);
   /** Сүүлийн алсын илгээлтийн агшин — дээд хүлээлтийн (60 сек) лавлах цэг */
   const lastRemoteRef = useRef(0);
   const [remoteTick, setRemoteTick] = useState(0);
@@ -775,6 +818,40 @@ export function Qaqc() {
     remoteQueue.current = null;
     setRemoteTick(0);
     setRemoteState(null);
+  }, []);
+
+  /**
+   * УНАСАН алсын бичилтийг ~60 сек-ийн дараа дахин оролдуулна (48 сек + flush-ийн 12 сек
+   * завсарлага) — flush-ийн ⚠️ 2026-10-05. Дараалал хоосон бол юу ч хийхгүй.
+   * ⚠️ 2026-10-09: нэг газар — «алсыг уншиж чадаагүй» салаа ч ашиглана (flush-ийн ⚠️).
+   */
+  const armRemoteRetry = useCallback(() => {
+    if (remoteRetryTimer.current) clearTimeout(remoteRetryTimer.current);
+    remoteRetryTimer.current = setTimeout(() => {
+      remoteRetryTimer.current = null;
+      if (remoteQueue.current) setRemoteTick((n) => n + 1);
+    }, 48_000);
+  }, []);
+
+  /** Одоогийн багц — асинхрон дуусгалт (булшны дахин дараалал) багц солигдсоныг мэдэх */
+  const pkgKeyRef = useRef(pkg.key);
+  useSyncRef(pkgKeyRef, pkg.key);
+  /**
+   * БУЛШНЫ БИЧИЛТ УНАВАЛ ДАРААЛАЛД БУЦААНА (⚠️ 2026-10-09).
+   * ⚠️ Урьд нь «Хадгалах» ба «ноорог устгах»-ын дараах `saveQaqcDraft`-ийн үр дүнг
+   *    ХАЯДАГ байв: сүлжээ түр тасарвал ArcGIS дээрх ноорог хадгалсан/хаясан нүдүүдээ
+   *    АМЬД агуулсаар үлдэж, өөр компьютер дээр «хадгалаагүй засвар» болж буцаж
+   *    амилдаг — дараа нь «Хадгалах» дарвал серверийн ШИНЭ утгыг ХУУЧНААР дарна.
+   *    Одоо ердийн flush дарааллаар (12 сек завсарлага · 48 сек дахин оролдлого) явна.
+   * ⚠️ Дараалалд ШИНЭ ноорог байвал ДАРАХГҮЙ — `persistLocal` нь табын төлөвийг (булш
+   *    орно) локалтай нэгтгэдэг тул шинэ хуулбар эдгээр булшийг аль хэдийн агуулна.
+   * ⚠️ Багц солигдсон бол дараалалд оруулахгүй (flush нь өөр багцынхыг хаядаг) —
+   *    булш локалд бий; тэр багцыг дахин нээхэд сэргээлт (`draftIncludes`) илгээнэ.
+   */
+  const requeueRemote = useCallback((key: string, doc: Draft) => {
+    if (pkgKeyRef.current !== key) return;
+    if (!remoteQueue.current) remoteQueue.current = { pkg: key, draft: doc };
+    setRemoteTick((n) => n + 1);
   }, []);
 
   /** ⚠️ 2026-10-01: ЛАМПОРТ агшин — `lib/qaqcDraft.ts`-ийн «ЦАГИЙН ЗӨРҮҮ» */
@@ -821,10 +898,17 @@ export function Qaqc() {
    *    булшилна. Дараа нь эффект ажиллахад `prevPendRef` аль хэдийн `{}` тул
    *    давхар булш үүсэхгүй.
    */
-  const retirePend = useCallback((key: string, pendNow: Record<string, string>, rowsNow: QaqcRow[]): Draft | null => {
+  /* ⚠️ 2026-10-09: `keep` — ЗӨРЧИЛТЭЙ (бичигдээгүй) нүд булшлагдахгүй, `pend`-д үлдэнэ
+     (`save`-ийн «ЗЭРЭГ ЗАСВАР»). Дуудагч `setPend(keep)` хийнэ — `prevPendRef` түүнтэй тэнцүү. */
+  const retirePend = useCallback((
+    key: string,
+    pendNow: Record<string, string>,
+    rowsNow: QaqcRow[],
+    keep: Record<string, string> = {},
+  ): Draft | null => {
     const prev = { ...prevPendRef.current, ...pendNow };
-    draftStRef.current = applyPendDiff(draftStRef.current, prev, {}, stamp).st;
-    prevPendRef.current = {};
+    draftStRef.current = applyPendDiff(draftStRef.current, prev, keep, stamp).st;
+    prevPendRef.current = keep;
     return persistLocal(key, rowsNow);
   }, [stamp, persistLocal]);
 
@@ -896,6 +980,13 @@ export function Qaqc() {
          өөр компьютерийн ноорог байж болох тул дарвал алга болно. Уншилтыг
          дахин оролдуулна (`restoreTry`); амжилттай бол нийлүүлээд бичнэ. */
       if (remoteVerifiedRef.current !== q.pkg) {
+        /* ⚠️ 2026-10-09: ДАХИН ОРОЛДЛОГЫГ ЭНД Ч АРМЛАНА (`armRemoteRetry`). Урьд нь энэ
+           салаа зөвхөн уншилтыг дахин эхлүүлдэг байсан тул дараалалд үлдсэн хуулбар
+           дараагийн нүдний засвар хүртэл ХЭЗЭЭ Ч явдаггүй байв (уншилт дахин унавал,
+           эсвэл амжилттай ч сэргээлт шинэ дараалал үүсгээгүй бол) — заалтын tooltip
+           «автоматаар үргэлжилнэ» гэж амладаг атал. Уншилт явж байх үед ч армлана:
+           тэр уншилт унавал дахин flush хийх өөр дохио байхгүй. */
+        armRemoteRetry();
         /* Уншилт явж байгаа бол (тэмдэг тавигдсан) зүгээр хүлээнэ — дараалал үлдэнэ */
         if (promptedPkgRef.current === q.pkg) return;
         setRemoteState({ kind: 'fail' });
@@ -927,11 +1018,7 @@ export function Qaqc() {
            аюулгүй; «big» давтагдахгүй (хэмжээ өөрөө багасахгүй). */
         if (res === 'fail') {
           if (!remoteQueue.current) remoteQueue.current = q;
-          if (remoteRetryTimer.current) clearTimeout(remoteRetryTimer.current);
-          remoteRetryTimer.current = setTimeout(() => {
-            remoteRetryTimer.current = null;
-            if (remoteQueue.current) setRemoteTick((n) => n + 1);
-          }, 48_000);
+          armRemoteRetry();
         }
       });
       remoteInflight.current = inflight;
@@ -943,6 +1030,14 @@ export function Qaqc() {
     const cap = since >= 60_000
       ? setTimeout(flush, 0)
       : setTimeout(flush, Math.max(0, 60_000 - since));
+    /* ⚠️ 2026-10-09: `pagehide` ДЭЭРХ flush ДУУСАХ БАТАЛГААГҮЙ — хүлээн зөвшөөрсөн хязгаар.
+       `saveQaqcDraft` нь «уншаад → нэгтгээд → applyEdits» гэсэн ХЭД ХЭДЭН хүсэлт (arcgis
+       SDK-гаар) бөгөөд `fetch keepalive`/`sendBeacon` ганц, жижиг (≤64KB) хүсэлтэд л
+       зориулагдсан тул таб хаагдах агшинд эхэлсэн бичилт ихэвчлэн тасарна. Иймд ГОЛ зам
+       нь `visibilitychange` → `hidden`: таб нуугдах (өөр таб, апп солих, хаахын өмнөх
+       алхам) мөчид ДАРУЙ (12 сек хүлээхгүй) илгээж эхэлнэ — хуудас амьд хэвээр тул
+       хүсэлт дуусах боломжтой. `pagehide` нь нөөц дохио (iOS/bfcache). Тасарсан ч ажил
+       ЛОКАЛ ноорогт бүтэн; дараагийн нээлтэд сэргээлт (`draftIncludes`) алсад нөхөж бичнэ. */
     const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', flush);
@@ -951,7 +1046,7 @@ export function Qaqc() {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
     };
-  }, [remoteTick, pkg.key]);
+  }, [remoteTick, pkg.key, armRemoteRetry]);
 
   /* ⚠️ 2026-10-05: САЛГАХАД (харагдац солих) дараалалд үлдсэн ноорогийг ИЛГЭЭНЭ. Дээрх
      эффектийн цэвэрлэгээ зөвхөн цаг хэмжигчийг зогсоодог тул сүүлийн ≤12 секундын бөглөлт
@@ -1044,12 +1139,21 @@ export function Qaqc() {
           && Number.isInteger(di) && di >= 0 && di < QAQC_COLS.length
           && (want == null || want === `${r.no} ¦ ${r.work}`);
       };
+      /* ⚠️ 2026-10-09: СЕРВЕРТ АЛЬ ХЭДИЙН БАЙГАА утгатай нүд — ноорогт орохгүй, булшлагдана
+         (`adoptQaqcDraft`-ийн `isSaved`). Урьд нь өөр төхөөрөмж дээр хадгалагдсан ч булш нь
+         энд хүрээгүй хуучин ноорог «Хадгалах (N)»-ийг хөөрөгддөг байв. Жишилт `commit`-ийн
+         ижил (`trim`). Утга нь ӨӨР бол хадгалах үеийн зөрчлийн шалгалт (`qaqcConflicts`) хамгаална. */
+      const saved = (k: string, v: string) => {
+        const cut = k.lastIndexOf(':');
+        const r = byOid.get(Number(k.slice(0, cut)));
+        return !!r && v.trim() === (r.docs[Number(k.slice(cut + 1))] ?? '').trim();
+      };
       /* ⚠️ 2026-10-01: Лампорт — ХАРСАН агшнаас хойш л шинэ агшин тавина (хэрэглэгч
          харсан утгаа засаж/арилгавал түүний үйлдэл ялна, цаг зөрсөн ч). */
       clockRef.current = Math.max(clockRef.current, pick.t);
       /* ⚠️ 2026-10-01: ТАБЫН ТӨЛӨВТ хүлээн авна — сэргээлтийг хүлээх хооронд энэ табад
          бичсэн/арилгасан нүд ялна; тохирохгүй нүд булшлагдана (`adoptQaqcDraft`). */
-      const ad = adoptQaqcDraft(pick, draftStRef.current, fits, stamp);
+      const ad = adoptQaqcDraft(pick, draftStRef.current, fits, stamp, saved);
       draftStRef.current = ad.st;
       const { count, dropped, cells } = ad;
       /* ⚠️ 2026-10-01: нэгтгэлийг локалд бичиж, ArcGIS-д ДУТУУ зүйл (энэ төхөөрөмж
@@ -1162,10 +1266,15 @@ export function Qaqc() {
     const key = pkg.key;
     const doc = retirePend(key, pend, rows);
     clearRemoteQueue();
-    /* ⚠️ Явж буй алсын бичилтийг хүлээгээд бичнэ (flush-ийн ⚠️, 2026-09-25) */
-    if (doc) void awaitRemoteInflight().then(() => saveQaqcDraft(key, doc));
+    /* ⚠️ Явж буй алсын бичилтийг хүлээгээд бичнэ (flush-ийн ⚠️, 2026-09-25).
+       ⚠️ 2026-10-09: унавал ДАРААЛАЛД буцаана (`requeueRemote`-ийн ⚠️) — урьд нь үр дүн хаягддаг байв. */
+    if (doc) {
+      void awaitRemoteInflight()
+        .then(() => saveQaqcDraft(key, doc))
+        .then((res) => { if (res !== 'ok') requeueRemote(key, doc); });
+    }
     show('ok', tr('Ноорог устгав.'));
-  }, [dirtyCount, pkg.key, pend, rows, show, clearRemoteQueue, retirePend, awaitRemoteInflight]);
+  }, [dirtyCount, pkg.key, pend, rows, show, clearRemoteQueue, retirePend, awaitRemoteInflight, requeueRemote]);
 
   /* ══════════════ ХАДГАЛАХ ══════════════ */
   /* ⚠️ 2026-09-30: `RO_CAP` нь render бүрд `capsRemoteReady()` дууддаг (санаатай —
@@ -1181,11 +1290,33 @@ export function Qaqc() {
       setErr(roCapRef.current);
       return;
     }
+    const byOid = new Map(rows.map((r) => [r.oid, r]));
+    /** Нүдийг хэрэглэгчид нэрлэнэ — «№ · багана» (№ хоосон бол ажлын нэр) */
+    const cellName = (oid: number, di: number) => {
+      const r = byOid.get(oid);
+      const at = r ? (r.no || r.work.slice(0, 40)) : `#${oid}`;
+      return `${at} · ${QAQC_COLS[di]?.short ?? di}`;
+    };
+    /** Эхний 5-ыг нэрлээд үлдсэнийг тоогоор */
+    const listOf = (items: string[]) =>
+      items.slice(0, 5).join('; ') + (items.length > 5 ? ` ${tr('… бас {0}', items.length - 5)}` : '');
+    /* ⚠️ 2026-10-09: ТАЛБАРЫН УРТ — сүлжээнд гарахаас ӨМНӨ, нүдээр нь нэрлэнэ (`qaqcTooLong`-ийн
+       ⚠️). Урьд нь ArcGIS-ийн ерөнхий алдаагаар бүх хадгалалт унаж, аль нүд гэдэг нь
+       тодорхойгүй байв. Засвар `pend`-д хэвээр — хэрэглэгч тэр нүдийг богиносгоод дахин дарна. */
+    const long = qaqcTooLong(pend, maxLen);
+    if (long.length) {
+      setErr(tr(
+        '{0} нүдний утга талбарын дээд уртаас хэтэрсэн тул юу ч хадгалсангүй: {1}. Богиносгоод дахин «Хадгалах» дарна уу.',
+        long.length,
+        listOf(long.map((x) => `${cellName(x.oid, x.di)} (${x.len}/${x.max})`)),
+      ));
+      return;
+    }
     setBusy(true);
     setErr('');
     try {
       const known = new Set(rows.map((r) => r.oid));
-      const { updates, skipped } = qaqcUpdates(pend, known);
+      const { skipped } = qaqcUpdates(pend, known);
       /* ⚠️ Нэг ч түлхүүр таарахгүй бол ЗОГСООНО. Чимээгүй алгасвал
          «хадгаллаа» гэж худал мэдээлж, бөглөсөн акт алга болно. */
       if (skipped.length) {
@@ -1193,8 +1324,27 @@ export function Qaqc() {
           tr('{0} нүд хуудасны мөрүүдэд таарсангүй (хүснэгт хооронд нь шинэчлэгдсэн байж магадгүй). Хуудсыг дахин ачаална уу — засвар хадгалагдаагүй.', skipped.length),
         );
       }
-      const n = await saveQaqc(pkg.key, updates);
-      setPend({});
+      /*
+       * ⚠️ 2026-10-09: ЗЭРЭГ ЗАСВАРЫН ХАМГААЛАЛТ (`qaqcConflicts`-ийн ⚠️). Бичихийн ӨМНӨ
+       *    хөндөх мөрүүдийн 9 баганыг серверээс дахин уншиж, ачаалах үед харсан утгаас
+       *    (`rows[].docs`) ӨӨРЧЛӨГДСӨН нүдийг БИЧИХГҮЙ: тэд `pend`-д (ноорогт) үлдэж,
+       *    мөр/баганаар нэрлэгдэнэ. Дахин ачаалалтын дараа суурь нь шинэ утга болох
+       *    тул хэрэглэгч шалгаад ДАХИН «Хадгалах» дарвал өөрийн утгаар дарна — энэ нь
+       *    санаатай сонголт (чимээгүй дарахаас ялгаатай).
+       * ⚠️ Уншилт унавал (сүлжээ) юу ч бичихгүй — `catch` → `pend` хэвээр.
+       * ⚠️ Уншилт ба бичилтийн хоорондох миллисекундын цонх үлдэнэ (ArcGIS-д нөхцөлт
+       *    `applyEdits` байхгүй) — гэхдээ «ачаалснаас хойш минут/цаг» гэсэн гол эрсдэл хаагдана.
+       */
+      const touched = [...new Set(Object.keys(pend).map((k) => Number(k.slice(0, k.lastIndexOf(':')))))];
+      const live = await fetchQaqcDocs(pkg.key, touched);
+      const conflicts = qaqcConflicts(pend, new Map(rows.map((r) => [r.oid, r.docs])), live);
+      const held = new Set(conflicts.map((c) => c.key));
+      const keep: Record<string, string> = {};
+      const write: Record<string, string> = {};
+      for (const [k, v] of Object.entries(pend)) (held.has(k) ? keep : write)[k] = v;
+      const { updates } = qaqcUpdates(write, known);
+      const n = updates.length ? await saveQaqc(pkg.key, updates) : 0;
+      setPend(keep);
       setEditCell(null);
       /* ⚠️ 2026-10-01: ХАДГАЛСАН НҮД → БУЛШ (устгал биш). Урьд нь ArcGIS-ийн ноорогийг
          устгадаг байсан тул (а) өөр төхөөрөмжийн хуучин локал ноорог хадгалсан нүдийг
@@ -1203,18 +1353,33 @@ export function Qaqc() {
          төхөөрөмжийн нүд ч хамт устдаг байв. Одоо зөвхөн хадгалсан нүд булшлагдаж,
          ArcGIS-д НЭГТГЭЖ бичигдэнэ — бусад нь үлдэнэ. Нэгтгэл нь хамгаалалт тул
          урьдын «алсыг уншиж чадаагүй бол хөндөхгүй» нөхцөл ЭНД шаардлагагүй. */
-      const doc = retirePend(pkg.key, pend, rows);
+      /* ⚠️ 2026-10-09: ЗӨРЧИЛТЭЙ нүд (`keep`) булшлагдахгүй — ноорогт амьд үлдэнэ */
+      const doc = retirePend(pkg.key, pend, rows, keep);
       /* ⚠️ Эхлээд дараалал (2026-09-17) — хуучин хуулбар дараа нь бичигдэхгүй */
       clearRemoteQueue();
       /* ⚠️ Явж буй алсын бичилтийг ХҮЛЭЭНЭ (2026-09-25-ны аудит) */
       await awaitRemoteInflight();
-      if (doc) await saveQaqcDraft(pkg.key, doc);
+      /* ⚠️ 2026-10-09: булшны бичилт унавал ДАРААЛАЛД буцаана (`requeueRemote`-ийн ⚠️) */
+      if (doc) {
+        const res = await saveQaqcDraft(pkg.key, doc);
+        if (res !== 'ok') requeueRemote(pkg.key, doc);
+      }
       /* ⚠️ Хадгалсны дараа ЗААВАЛ дахин татна: хооронд нь өөр хүн бөглөсөн
          байж болно. Дэлгэц ба өгөгдөл зөрвөл дараагийн засвар хуучин суурин
          дээр явна. ⚠️ 2026-10-01: гүйлгэлтийн байрлалыг хадгална (`keepScroll`). */
       keepScroll(pkg.key);
       await load(pkg.key);
-      done(tr('{0} мөр хадгалагдлаа.', n));
+      if (n) done(tr('{0} мөр хадгалагдлаа.', n));
+      /* ⚠️ 2026-10-09: зөрчлийг `load`-ын ДАРАА тавина (`load` нь `err`-ийг арчдаг — catch-ийн ⚠️) */
+      if (conflicts.length) {
+        setErr(tr(
+          '{0} нүдийг ачаалснаас хойш өөр хэрэглэгч өөрчилсөн тул бичсэнгүй — таны засвар хадгалаагүй хэвээр үлдэв: {1}. Шинэ утгыг шалгаад дахин «Хадгалах» дарвал таны утгаар солигдоно.',
+          conflicts.length,
+          listOf(conflicts.map((c) => `${cellName(c.oid, c.di)} (${
+            c.gone ? tr('мөр устгагдсан') : tr('одоо: «{0}»', (c.live ?? '').trim() || '—')
+          })`)),
+        ));
+      }
     } catch (e) {
       /* ⚠️ Хагас бичигдсэн байж болзошгүй тул дэлгэцийг СЕРВЕРЭЭС сэргээнэ.
          ⚠️ ЭХЛЭЭД ачаална, ДАРАА нь алдааг тавина (2026-09-25-ны аудит, HIGH):
@@ -1227,7 +1392,7 @@ export function Qaqc() {
     } finally {
       setBusy(false);
     }
-  }, [busy, dirtyCount, canEdit, rows, pend, pkg.key, load, done, clearRemoteQueue, retirePend, keepScroll, awaitRemoteInflight]);
+  }, [busy, dirtyCount, canEdit, rows, pend, maxLen, pkg.key, load, done, clearRemoteQueue, retirePend, keepScroll, awaitRemoteInflight, requeueRemote]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
   /* ⚠️ НЭЭЛТТЭЙ НҮДИЙГ ЭХЛЭЭД COMMIT (2026-09-25 аудит): нүдний текст зөвхөн
@@ -1632,7 +1797,9 @@ export function Qaqc() {
                                 <input
                                   autoFocus
                                   type="text"
-                                  maxLength={4000}
+                                  /* ⚠️ 2026-10-09: талбарын БОДИТ урт (`fields[].length`) — урьд нь
+                                     дурын 4000; мэдэгдэхгүй бол хязгааргүй, хадгалахад сервер шийднэ */
+                                  maxLength={maxLen[di] ?? undefined}
                                   className={st.cellInputLine}
                                   defaultValue={val}
                                   /* ⚠️ Дугаарын нүд — батлагдсан баримтын жагсаалт (толгойн ⚠️) */

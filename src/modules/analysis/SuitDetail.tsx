@@ -6,7 +6,7 @@ import {
   PARKING_SOURCES,
   type Indicator, type ParkingOpt,
 } from '@/lib/analysis/config';
-import { scoreColor, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
+import { scoreColor, scoreInk, scoreLabel, normText, passesNorm, clamp, type Part } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
 import type { MapRow } from './SuitMap';
 import type { Mode } from './suit/model';
@@ -50,10 +50,11 @@ const hasNorm = (ind: Indicator) =>
  * (нэр · утга, доор нь зурвас). Нийтлэг тэнхлэгтэй (`max`) хоёр мөр нь хоёр
  * хэмжигдэхүүнийг харьцуулна.
  */
+/* ⚠️ 2026-10-09: `v = null` — мэдээлэлгүй: зурвас ЗУРАГДАХГҮЙ (0 урттай «тэг» биш, null ≠ 0) */
 function IndRow({ label, text, v, max, color }: {
   label: string;
   text: string;
-  v: number;
+  v: number | null;
   max: number;
   color: string;
 }) {
@@ -64,7 +65,7 @@ function IndRow({ label, text, v, max, color }: {
         <span className="v" style={{ color }}>{text}</span>
       </div>
       <div className={s.mBar}>
-        <i style={{ width: `${pctOf(v, max)}%`, background: color }} />
+        {v != null && <i style={{ width: `${pctOf(v, max)}%`, background: color }} />}
       </div>
     </div>
   );
@@ -261,7 +262,7 @@ export function SuitDetail({
     <div ref={box} className={s.detail}>
       <div className={s.dHead} onPointerDown={startDrag}>
         {/* ⚠️ `.gauge` нь `:global` — `.dHead .gauge` гэсэн үр удмын сонгогч тул */}
-        <div className="gauge" style={{ background: scoreColor(tot) }}>
+        <div className="gauge" style={{ background: scoreColor(tot), color: scoreInk(tot) }}>
           {tot == null ? '—' : Math.round(tot)}
         </div>
         <div>
@@ -403,7 +404,7 @@ export function SuitDetail({
               <IndRow
                 label={tr('Хэрэгцээ ({0})', parkSrc.short)}
                 text={r.parkingNeed == null ? '—' : nf(r.parkingNeed)}
-                v={r.parkingNeed ?? 0} max={Math.max(supply, r.parkingNeed ?? 0)} color={C2}
+                v={r.parkingNeed} max={r.parkingNeed == null ? supply : Math.max(supply, r.parkingNeed)} color={C2}
               />
               <div className={s.chCap}>
                 {tr('Хангалт')} <b style={{ color: scoreColor(r.parts.parking?.score) }}>

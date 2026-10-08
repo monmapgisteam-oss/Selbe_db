@@ -360,11 +360,17 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
         return;
       }
       if (e.key !== 'Tab' || !root) return;
+      /* ⚠️ 2026-10-09 (a11y): `a[href]` · `textarea` нэмэгдэв (`useFocusTrap`-ийн жагсаалттай
+         ижил), мөн фокус модалаас ГАДУУР байвал (хулганаар ард дарсан, эсвэл дотоод попап
+         хаагдаад `<body>`-д унасан) буцааж оруулна — урьд нь тэр үед Tab ард руу явдаг байв.
+         Урхи нь `useFocusTrap` БИШ, энд хэвээр: Esc/Ctrl+S-тэй нэг сонсогчид, фокусыг
+         буцаах нь доорх тусдаа эффектийн ажил (хайлтын талбар руу 60мс хойшлуулж оруулна). */
       const f = [...root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )].filter((el) => el.offsetParent !== null);
       if (!f.length) return;
       const first = f[0]; const last = f[f.length - 1];
+      if (!root.contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };

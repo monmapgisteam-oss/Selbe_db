@@ -47,8 +47,9 @@ try {
 }
 
 /* ── 1. SR ── */
-const wk = (m) => m.sourceSpatialReference?.latestWkid ?? m.sourceSpatialReference?.wkid
-  ?? m.extent?.spatialReference?.latestWkid ?? m.extent?.spatialReference?.wkid;
+/* ⚠️ 2026-10-09: `loadLayerMeta`-тэй ижил дараалал — extent ЭХЭНД, source нөөц */
+const wk = (m) => m.extent?.spatialReference?.latestWkid ?? m.extent?.spatialReference?.wkid
+  ?? m.sourceSpatialReference?.latestWkid ?? m.sourceSpatialReference?.wkid;
 const srs = [m1, m6, m69].map(wk);
 assert.ok(srs.every((x) => typeof x === 'number'), `SR уншигдсан: ${srs}`);
 assert.ok(srs.every((x) => x === srs[0]), `инженерийн давхаргууд НЭГ SR-тэй: ${srs}`);

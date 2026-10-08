@@ -127,10 +127,18 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
       c.style.height = last <= nat ? '' : `${last}px`;
       measure(el);
     };
+    /* ⚠️ 2026-10-09: `lostpointercapture` → `up`. Барилт өөр шалтгаанаар алдагдвал (элемент
+       DOM-оос салах, системийн цонх, alt+tab) `pointerup`/`pointercancel` ирэхгүй тул
+       `dragging`/`data-drag`/`user-select: none` ГАЦАЖ үлддэг байв. `pointerup`-ын дараа ч
+       `lostpointercapture` ирдэг тул `up` НЭГ л удаа ажиллана (`ended`). */
+    let ended = false;
     const up = () => {
+      if (ended) return;
+      ended = true;
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
+      grip.removeEventListener('lostpointercapture', up);
       delete grip.dataset.drag;
       dragging.current = false;
       document.body.style.userSelect = prevSel;
@@ -140,6 +148,7 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
     grip.addEventListener('pointercancel', up);
+    grip.addEventListener('lostpointercapture', up);
   };
 
   const onKey = (i: number) => (e: React.KeyboardEvent<HTMLDivElement>) => {

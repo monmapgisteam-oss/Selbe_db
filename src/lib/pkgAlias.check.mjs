@@ -3,7 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/pkgAlias.check.mjs
  */
 import assert from 'node:assert/strict';
-import { rangeMembers, rangePaysOf, hoPkgKey, HO_PKG_ALIAS, MAP_PKG_ALIAS } from './pkgAlias.ts';
+import { rangeMembers, rangePaysOf, hoPkgKey, HO_PKG_ALIAS, MAP_PKG_ALIAS, FIN_PKG_ALIAS, finPkgKey } from './pkgAlias.ts';
 import { HO_IPC } from './services.ts';
 
 /* ── гишүүн багцууд ── */
@@ -32,5 +32,13 @@ assert.equal(g[1].amount, 0.5e9);
 assert.equal(hoPkgKey('БАГЦ81'), 'БАГЦ8');
 assert.equal(hoPkgKey('БАГЦ1'), 'БАГЦ1');
 for (const cf of Object.values(HO_PKG_ALIAS)) assert.ok(MAP_PKG_ALIAS[cf], `${cf}: газрын зургийн холбоосгүй`);
+
+/* ⚠️ 2026-10-09: нэгдсэн санхүүгийн түлхүүр — HO ба Cashflow нэг түлхүүрт буух (paidShare ↔ PkgFin) */
+assert.equal(finPkgKey('БАГЦ81'), 'БАГЦ82', 'HO «Багц-8.1» → «Багц 8.2»');
+assert.equal(finPkgKey('БАГЦ8'), 'БАГЦ82', 'Cashflow «Багц 8» → «Багц 8.2»');
+assert.equal(finPkgKey('БАГЦ71'), 'БАГЦ7');
+assert.equal(finPkgKey('БАГЦ7'), 'БАГЦ7');
+assert.equal(finPkgKey('БАГЦ1'), 'БАГЦ1', 'холбоосгүй → өөрөө');
+assert.equal(FIN_PKG_ALIAS['БАГЦ81'].label, MAP_PKG_ALIAS['БАГЦ8'].label);
 
 console.log('pkgAlias.check: ok');

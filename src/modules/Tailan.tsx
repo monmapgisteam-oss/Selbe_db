@@ -43,7 +43,7 @@ import { TuhMap } from '@/modules/tuh/TuhMap';
 import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { num, pct, dateTime } from '@/lib/format';
+import { num, pct, dateTime, mnt } from '@/lib/format';
 import { invalidateAll } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
 import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } from '@/lib/emailReport';
@@ -566,14 +566,16 @@ function TailanFull() {
                         {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('₮')}</strong>
                         {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
                         {d.contractRate != null && <> ({pct(d.contractRate, 1)})</>} {tr('нь гэрээгээр баталгаажиж,')}
-                        {' '}<strong>{bn(x.finance.paid)} {tr('₮')}</strong>
+                        {/* ⚠️ 2026-10-09: `mnt` — HO_IPC хоосон (`paid` null) үед «—», «0 ₮» биш */}
+                        {' '}<strong>{mnt(x.finance.paid)}</strong>
                         {/* ⚠️ 2026-10-04: хувийн тоологч (гэрээлсэн багцын олголт)-ийг ил бичнэ — PDF-тэй нэг (`reportPdf` lead) */}
                         {d.paidRate != null && <> ({tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', bn(x.finance.paidContracted), pct(d.paidRate, 1))})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
                       <p>
-                        {tr('Барилгын талбайд')} <strong>{num(x.habea.workers)} {tr('ажилтан')}</strong>,
-                        {' '}{num(x.habea.tehnik)} {tr('нэгж техник ажиллаж байгаа бөгөөд орон сууцны')}
-                        {' '}{num(blocks)} {tr('блок,')} {num(ail)} {tr('өрхийн орон сууц баригдаж байна.')}
+                        {/* ⚠️ 2026-10-09 (i18n): НЭГ өгүүлбэр, орлуулагчтай — PDF-ийн (`reportPdf` lead) ЯГ тэр түлхүүр.
+                            Урьд нь хэсэгчилсэн түлхүүрүүд («ажилтан» нэгжийн шошгыг өгүүлбэрт) нийлүүлдэг тул англиар
+                            «… N workers and,» гэж эвдэрдэг байв. */}
+                        {tr('Барилгын талбайд {0} ажилтан, {1} нэгж техник ажиллаж байгаа бөгөөд орон сууцны {2} блок, {3} өрхийн орон сууц баригдаж байна.', num(x.habea.workers), num(x.habea.tehnik), num(blocks), num(ail))}
                       </p>
                     </div>
 
@@ -601,7 +603,7 @@ function TailanFull() {
                         { label: tr('Барилга угсралтын гүйцэтгэл (блокийн дундаж)'), value: pct(x.progress.overall, 2) },
                         { label: tr('Захирамжаар батлагдсан'), value: `${bn(x.finance.orderTotal)} ₮` },
                         { label: tr('Гэрээгээр байгуулагдсан'), value: `${bn(x.finance.contractAmount)} ₮` },
-                        { label: tr('Бодитоор олгосон'), value: `${bn(x.finance.paid)} ₮` },
+                        { label: tr('Бодитоор олгосон'), value: mnt(x.finance.paid) },
                       ]} />
                       {/* Санхүүжилтийн гурван шат нь ХООРОНДОО хамаарна:
                           захирамж ⊇ гэрээ ⊇ олголт. Тиймээс хэсэг-бүтэн БИШ,
@@ -612,7 +614,7 @@ function TailanFull() {
                         items={[
                           { label: tr('Захирамжаар батлагдсан'), value: x.finance.orderTotal, text: `${bn(x.finance.orderTotal)} ₮` },
                           { label: tr('Гэрээгээр байгуулагдсан'), value: x.finance.contractAmount, text: `${bn(x.finance.contractAmount)} ₮` },
-                          { label: tr('Бодитоор олгосон'), value: x.finance.paid, text: `${bn(x.finance.paid)} ₮`, hot: true },
+                          { label: tr('Бодитоор олгосон'), value: x.finance.paid, text: mnt(x.finance.paid), hot: true },
                         ]}
                       />
                       <Cap no="1">{tr('Төслийн нэгдсэн үзүүлэлт')}</Cap>
@@ -639,7 +641,7 @@ function TailanFull() {
                           </tr>
                           <tr className={r.total}>
                             <td>{tr('Бодитоор олгосон санхүүжилт')}</td>
-                            <td className={r.num}>{bn(x.finance.paid)} {tr('₮')}</td>
+                            <td className={r.num}>{mnt(x.finance.paid)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>

@@ -1819,10 +1819,10 @@ function FinCharts({
  */
 function ymOf(v: unknown): string | null {
   if (v == null || v === '' || v === 0) return null;
-  if (typeof v === 'number' && v > 1e12) {
-    const d = new Date(v);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-  }
+  /* ⚠️ 2026-10-09: UTC сар → `monthKey` (ОРОН НУТГИЙН сар) — бусад бүх сарын түлхүүр (`nowYm`,
+     Dashboard, Finance) `monthKey`-ээр тул UTC нь сарын 1-ний 00–08 цагийн (УБ) төлбөрийг ӨМНӨХ
+     сард оноож, «энэ сар» хүртэлх шүүлттэй зөрдөг байв. */
+  if (typeof v === 'number' && v > 1e12) return monthKey(v);
   const m = String(v).trim().match(/^(\d{4})-(\d{1,2})(?:\D|$)/);
   if (!m) return null;
   const y = Number(m[1]);
@@ -1874,6 +1874,9 @@ function Timeline({
     c: 'label' | 'sub' | 'pct' | 'ipc'; d: 1 | -1;
   }>({ c: 'label', d: 1 });
   const barRef = useRef<HTMLDivElement | null>(null);
+  /** Явагдаж буй чирэлтийн `window` сонсогчийг цэвэрлэгч — unmount-д дуудна (2026-10-09) */
+  const dragOff = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragOff.current?.(); }, []);
 
   const N = all.length;
   /*
@@ -1956,13 +1959,25 @@ function Timeline({
         setZoom([s, s + w]);
       }
     };
-    const up = () => {
-      el.releasePointerCapture(e.pointerId);
+    /* ⚠️ 2026-10-09: чирэлтийн дундуур компонент салвал (таб/хүрээ солих) `window`-ийн сонсогч
+       мөнх үлдэж, салсан компонентод `setZoom` дууддаг байв — `dragOff`-оор unmount-д ч цэвэрлэнэ;
+       хоёр дахь чирэлт эхлэхэд өмнөхийг нь хаана. `off` нь давтан дуудахад аюулгүй (removeEventListener идемпотент) тул ref-ийг тэглэхгүй (react-hooks/refs). */
+    const off = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
+    const up = () => {
+      if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      off();
+    };
+    // eslint-disable-next-line react-hooks/refs -- ⚠️ 2026-10-09: `drag(mode)` нь рендерт ДУУДАГДАЖ сонсогч буцаадаг тул дүрэм дотоод уншилтыг рендерийнх гэж үздэг; энэ мөр ЗӨВХӨН pointerdown-д ажиллана (дээрх `barRef`-ийн ⚠️-тэй ижил)
+    const prevOff = dragOff.current;
+    if (prevOff) prevOff();
+    dragOff.current = off;
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   if (!all.length) return <Empty label={tr('Төлөвлөгөөт хугацаатай ажил олдсонгүй')} />;

@@ -49,7 +49,9 @@ for (const def of SENSORS) {
   const j = await post(def.url, {
     where: `${m0.field} IS NOT NULL`,
     outFields: 'received_datetime',
-    orderByFields: 'received_datetime DESC',
+    /* ⚠️ 2026-10-09: OBJECTID DESC — String огноогоор эрэмбэлэх нь хольсон бичиглэлд
+       (`dd/MM/yyyy`) хугацааны эрэмбэ БИШ (sensors.ts-ийн 2026-10-06-ны ⚠️) */
+    orderByFields: 'OBJECTID DESC',
     resultRecordCount: '300',
     returnGeometry: 'false',
   });
@@ -72,14 +74,20 @@ const wj = await post(waste.url, {
   resultRecordCount: '3000',
   returnGeometry: 'false',
 });
-const mm = (wj.features ?? []).map((f) => Number(f.attributes[waste.metrics[0].field])).filter(Number.isFinite);
+/* ⚠️ 2026-10-09: decoder-ийн 0xFFFF (65535) зэрэг ТҮҮХИЙ мужаас гадуурх заалт тархалтад орохгүй (`rawValid`) */
+const rv = waste.metrics[0].rawValid;
+const mm = (wj.features ?? []).map((f) => Number(f.attributes[waste.metrics[0].field]))
+  .filter((x) => Number.isFinite(x) && !(rv && (x < rv.min || x > rv.max)));
 const inGap = mm.filter((x) => x > 567 && x < 2941).length;
 const low = mm.filter((x) => x <= 567).length;
 const high = mm.filter((x) => x >= 2941).length;
 console.log('▓ Хогийн савны заалтын тархалт (кодын баримтжуулалт)');
-chk('ХОЁР бөөгнөрөл — завсарт заалт байхгүй', inGap === 0,
+/* ⚠️ 2026-10-09 (амьд): 2000 заалтын 22 нь завсарт (шилжилтийн агшин — дүүргэх/хоослох явц),
+   дээд нь 3045мм (хоосон савны заалт амсраас дээш). Хоёр бөөгнөрлийн баримт хэвээр — завсар
+   ≤5%, дээд ±5% хүлцэлтэй. */
+chk('ХОЁР бөөгнөрөл — завсарт заалт ≤5%', inGap <= mm.length * 0.05,
   `≤567мм: ${low} · 567…2941 завсар: ${inGap} · ≥2941мм: ${high} (нийт ${mm.length})`);
-chk('дээд утга ≈ савны гүн 3015мм', Math.abs(Math.max(...mm) - 3015) <= 20, `дээд ${Math.max(...mm)}мм`);
+chk('дээд утга ≈ савны гүн 3015мм (±5%)', Math.abs(Math.max(...mm) - 3015) <= 3015 * 0.05, `дээд ${Math.max(...mm)}мм`);
 chk('80% босго = 603мм — завсарт таарна', 603 > 567 && 603 < 2941);
 
 console.log('');

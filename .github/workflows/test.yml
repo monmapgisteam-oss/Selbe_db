@@ -14,9 +14,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # ⚠️ 2026-10-09 (аудит №11): `actions/*`-ыг COMMIT SHA-аар бэхлэв — шошго (v4)-ийг
+      #    хэн нэгэн зөөвөл бидний build өөр код ажиллуулах эрсдэлтэй. SHA-г `git ls-remote`-оор
+      #    шалгав (2026-10-08, хөнгөн шошго → шууд commit). Шинэчлэхдээ ижил аргаар SHA авч,
+      #    хувилбарын тайлбарыг хамт солино.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm

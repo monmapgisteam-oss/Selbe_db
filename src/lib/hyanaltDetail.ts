@@ -24,7 +24,7 @@
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { computeAll, firstFrame, lastFrame, loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
+import { computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
 import { needsFrameOcc, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
@@ -569,9 +569,11 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
       let where = exact;
       if (nExpect > 0 && nRows > 0 && nRows < nExpect) {
         const nNull = await cntOf(`${fill} IS NULL`);
-        if (nRows + nNull === nExpect) {
+        /* ⚠️ 2026-10-09 (F2): `bagtsSheet.latestWhere`-тэй НЭГ туслах — ЯГ тэнцүүгээр шалгавал мөр
+           нэмэгдсэн жаазад (1,460 ≠ 1,459) хэзээ ч нэгтгэгдэхгүй. */
+        if (nullFragmentFits(nRows, nNull, nExpect)) {
           where = `((${exact}) OR ${fill} IS NULL)`;
-          nRows = nExpect;
+          nRows += nNull;
         }
       }
 
@@ -624,7 +626,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
           const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
           /* ⚠️ OBJECTID ЗААВАЛ (2026-09-25) — жаазыг `sheetOid`-оор олоход (доор) */
           const cols = [sc.f.oid, sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
-            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, ...obs, ...acts]
+            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, ...obs, ...acts]
             .filter(Boolean) as string[];
           /*
            * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`OBJECTID ASC`). Эрэмбийг
@@ -753,6 +755,15 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
           }
 
           const tree = TREES[p.key] ?? '';
+          /* ⚠️ 2026-10-09 (F4): ГҮН нь `loadRows`-ийн дүрмээр — эхлээд `gun` багана (жааз БҮХ мөрд
+             дүүрсэн бол; бүлэг = дараагийн мөр өөрөөсөө гүн), эс бөгөөс `TREES` байрлалаар. Урьд нь
+             зөвхөн байрлалаар тул мөр НЭМЭГДСЭН жаазад нэмсэн мөрөөс хойшхи шатлал нэгээр гулсаж,
+             хянагчийн хүснэгт бөглөх хуудсынхаас өөр харагддаг байв. */
+          const gunF = sc.f.gun;
+          const qf = q.features ?? [];
+          const gunDepth = gunF && qf.length > 0 && qf.every((x) => x.attributes[gunF] != null)
+            ? qf.map((x) => Number(x.attributes[gunF]) || 0)
+            : null;
           const blkLabels = sc.bld.filter((_, i) => sc.obyem[i]);
           /* ⚠️ 2026-10-01: тогтвортой танигч (`Change.rid`) — ТҮҮХИЙ №/ажил (trim), «—» БИШ */
           const sidsA = rowSids((q.features ?? []).map((x) => ({
@@ -776,7 +787,9 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               return num(prev[n]) !== now;
             });
             const ch = tree[ri] ?? '0';
-            const group = ch >= 'A' && ch <= 'E';
+            const group = gunDepth
+              ? ri + 1 < gunDepth.length && gunDepth[ri + 1] > gunDepth[ri]
+              : ch >= 'A' && ch <= 'E';
             changed.forEach((yes, k) => {
               if (!yes) return;
               changes.push({
@@ -796,7 +809,7 @@ async function loadArchived(bagts: string, sheetOid: number): Promise<Submission
               acts: acts.map((n) => num(a[n])),
               changed,
               before: beforeVals,
-              depth: group ? ch.charCodeAt(0) - 65 : Number(ch),
+              depth: gunDepth ? gunDepth[ri] : group ? ch.charCodeAt(0) - 65 : Number(ch),
               group,
               no: String(a[sc.f.no] ?? '').trim(),
               work: String(a[sc.f.work] ?? '').trim() || '—',

@@ -179,3 +179,57 @@ export function rateByPkg(
 export const CUR_MONTH_MARK = '*';
 export const markCurMonth = <T extends { key: string; label: string }>(items: T[], curYm: string): T[] =>
   items.map((x) => (x.key === curYm ? { ...x, label: `${x.label}${CUR_MONTH_MARK}` } : x));
+
+/* ══════════════ LTI — осолгүй ажилласан хүн-цаг ══════════════ */
+
+/**
+ * ХӨДӨЛМӨРИЙН ЧАДВАР ТҮР АЛДСАН (LTI) ОСОЛ — ослын ТӨРЛИЙН талбараас (`incident.turul`).
+ *
+ * ⚠️ 2026-10-09 (аудит): «Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг» KPI нь
+ *    урьд нь зүгээр Σ `Hun_tsag` (төслийн эхнээс) байсан — LTI гарсан ч тэглэгддэггүй тул
+ *    шошгоо худал хэлдэг байв. Шошгыг захиалагч шийдсэн (`Habea.tsx` KPI-ийн ⚠️) тул тоог
+ *    нь шошгод нийцүүлэв.
+ * ⚠️ ТӨРӨЛ НЬ ЧӨЛӨӨТ БИЧВЭРТЭЙ домэйн («Ноцтой осол», «Амь нас эрсдэж болзошгүй байсан» …),
+ *    LTI гэсэн тусдаа талбар/алдсан хоногийн талбар БАЙХГҮЙ. Иймд түлхүүр үгээр: ноцтой /
+ *    үйлдвэрлэлийн осол, «чадвар … алдсан», нас барсан, «lost time». Осолд ДӨХСӨН,
+ *    БОЛЗОШГҮЙ, эд хөрөнгийн ХОХИРОЛ нь LTI БИШ.
+ * ⚠️ 2026-10-09 АМЬДААР БАТАЛСАН (`field_7` домэйн 8 + бодит 8 утга): LTI = «Ноцтой осол»,
+ *    «Үйлдвэрлэлийн осол». LTI БИШ = «Амь нас/Хүний амь эрсдэж болзошгүй …», «Ноцтой байдалд
+ *    хүргэж болзошгүй», «Осол дөхсөн тохиолдол», «Эд хөрөнгө(ийн)/өмчийн хохирол», «Галын
+ *    тохиолдол», «Бусад», мөн «Эмнэлгийн/Эмнэлэгийн тусламж авсан (гэмтэл)» ба «Анхны тусламж
+ *    авсан …» (MTI/FAI — хоног алдаагүй), «Моторт тээврийн хэрэгсэлийн осол» (хүний гэмтэл
+ *    тодорхойгүй). Шинэ төрөл нэмэгдвэл ЭНД нэм.
+ */
+export const LTI_RE = /чадвар[^,;.]*алд|ноцтой\s*осол|үйлдвэрлэлийн\s*осол|нас\s*барс|амь\s*нас(аа)?\s*алд|lost[\s-]*time|\bLTI\b/i;
+const NOT_LTI_RE = /болзошгүй|дөхсөн|near[\s-]*miss|хохирол/i;
+export const isLtiType = (type: string): boolean => LTI_RE.test(type) && !NOT_LTI_RE.test(type);
+
+/**
+ * СҮҮЛИЙН LTI-ЭЭС ХОЙШ ажилласан хүн-цаг — Σ `Hun_tsag`, `Ognoo` > сүүлийн LTI-ийн ӨДӨР.
+ * LTI огт алга бол төслийн эхнээс (урьдын Σ-тэй ижил).
+ * ⚠️ Огноогүй LTI байвал хил тодорхойгүй → `hours: null` («—», 0 БИШ).
+ * ⚠️ Өдрийг `dayOf`-оор (Улаанбаатарын `ubDayKey`) — LTI гарсан өдрийн хүн-цаг ОРОХГҮЙ.
+ * ⚠️ Дуудагч өдөрт НЭГ мөр өгнө (`latestRowPerDay`).
+ */
+export function ltiFreeHours(
+  labor: readonly Row[],
+  incidents: readonly { d: number; type: string }[],
+  dayOf: (ms: number) => string,
+): { hours: number | null; since: number | null; undatedLti: boolean } {
+  const L = HABEA.labor.fields;
+  const lti = incidents.filter((x) => isLtiType(x.type));
+  if (lti.some((x) => !(x.d > 0))) return { hours: null, since: null, undatedLti: true };
+  const since = lti.length ? Math.max(...lti.map((x) => x.d)) : null;
+  const cut = since == null ? null : dayOf(since);
+  let hours = 0;
+  for (const r of labor) {
+    const h = numOrNull(r[L.hunTsag]);
+    if (h == null) continue;
+    if (cut != null) {
+      const ms = numOrNull(r[L.ognoo]);
+      if (ms == null || ms <= 0 || dayOf(ms) <= cut) continue;
+    }
+    hours += h;
+  }
+  return { hours, since, undatedLti: false };
+}

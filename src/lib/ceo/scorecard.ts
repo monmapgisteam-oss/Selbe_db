@@ -33,7 +33,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, date } from '@/lib/format';
-import { pctLevel, scoreLevel as urbanScoreLevel, type Level } from '@/lib/kpiLevels';
+import { overlapLevel, pctLevel, scoreLevel as urbanScoreLevel, type Level } from '@/lib/kpiLevels';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
@@ -131,6 +131,13 @@ export type DimScore = {
    *    шийдвэрлэх асуудлын жагсаалт». Эрэмбэ нь `workIssues`-д.
    */
   issues?: DimIssue[];
+  /**
+   * ⚠️ 2026-10-09: ОНООНООС ҮЛ ХАМААРАХ түвшин — оноо нь өөр хэмжүүрээс бодогддог бүлэгт.
+   *    Газар чөлөөлөлтийн БУС ажлын `land` = 100 − 5×давхцал тул 1 давхцал = 95 → `pctLevel`
+   *    «good» гардаг байв, харин CEO газрын карт `overlapLevel`-ээр (≥1 давхцал = bad). Тийм
+   *    бүлэгт түвшинг ЭНД өгнө; дэлгэц `workDimLevel`/`sc.level ?? dimLevel(…)`-ээр уншина.
+   */
+  level?: Level;
 };
 
 /** `bad` — заавал шийдвэрлэх · `warn` — анхаарах · `info` — дата оруулах */
@@ -374,9 +381,14 @@ export function scoreLand(i: LandInput): DimScore {
   const n = i.overlap ?? 0;
   const score = clamp(100 - n * RULE.landPerParcel);
   /* ⚠️ Давхцал нь ажил эхлүүлэхэд шууд саад — нэг ч байвал анхааруулга */
-  const tone = n > 0 ? dimToneOf('land', score) ?? 'warn' : null;
+  /* ⚠️ 2026-10-09: түвшин = CEO газрын карттай НЭГ `overlapLevel` (≥1 давхцал = bad). Урьд нь
+     `pctLevel(95)` = good тул «шийдвэрлэх» биш «анхаарах» гэж, бүлгийн төлөвт «хэвийн» гэж гардаг байв.
+     `pctLevel` нь ЗӨВХӨН газар чөлөөлөлтийн өөрийн ажилд (`isLandWork`, дээрх салаа). */
+  const level = overlapLevel(n);
+  const tone: IssueTone | null = n > 0 ? (level === 'bad' ? 'bad' : 'warn') : null;
   return {
     score,
+    level,
     issues: tone ? [{ tone, text: tr('Багцын талбайд {0} чөлөөлөгдөөгүй нэгж талбар давхцсан', num(n)) }] : [],
     facts: [fact(tr('Давхцсан чөлөөлөгдөөгүй нэгж талбар'), num(n))],
   };
@@ -675,6 +687,15 @@ export const workStatus = (w: WorkScore): WorkStatus => {
   return lv === 'bad' || lv === 'warn' || lv === 'good' ? lv : 'none';
 };
 
+/**
+ * НЭГ АЖЛЫН бүлгийн түвшин — `DimScore.level` (оноонос үл хамаарах, 2026-10-09) байвал түүгээр,
+ * үгүй бол `dimLevel(d, score)`. ⚠️ Бүлгийн/төслийн дундаж (`dimMeans`)-д `dimLevel` хэвээр.
+ */
+export const workDimLevel = (w: Pick<WorkScore, 'dims'>, d: Dim): Level => {
+  const sc = w.dims[d];
+  return sc.score == null ? 'unknown' : sc.level ?? dimLevel(d, sc.score);
+};
+
 /** Бүлгийн доторх ажлын төлөв — `pending` нь «дата хүлээгдэж буй» */
 export type DimStatus = WorkStatus | 'pending';
 export const DIM_STATUSES: readonly DimStatus[] = ['bad', 'warn', 'good', 'pending', 'none'];
@@ -682,7 +703,7 @@ export const DIM_STATUSES: readonly DimStatus[] = ['bad', 'warn', 'good', 'pendi
 export const dimStatus = (w: WorkScore, d: Dim): DimStatus => {
   const sc = w.dims[d];
   if (sc.score == null) return sc.pending ? 'pending' : 'none';
-  const lv = dimLevel(d, sc.score);
+  const lv = workDimLevel(w, d);
   return lv === 'bad' || lv === 'warn' || lv === 'good' ? lv : 'none';
 };
 

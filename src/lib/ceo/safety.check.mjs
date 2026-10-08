@@ -121,8 +121,11 @@ assert.equal(damageLevel(DMG_BAD_N), 'bad');
 const dated = (n, daysAgo, extra = {}) => Array.from({ length: n }, (_, i) =>
   row({ ognoo: NOW - (daysAgo + i) * DAY, turul: 'Зөрчил', bagts: 'Багц 2', company: 'К', ...extra }));
 
-assert.equal(computeSafety(dated(INCIDENT_WARN_MAX, 100), NOW).level, 'warn', '1–5 осол → Дунд');
-assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 100), NOW).level, 'bad', '6+ осол → Яаралтай');
+/* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`), бүх хугацааных биш */
+assert.equal(computeSafety(dated(INCIDENT_WARN_MAX, 0), NOW).level, 'warn', '30 хоногт 1–5 осол → Дунд');
+assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 0), NOW).level, 'bad', '30 хоногт 6+ осол → Яаралтай');
+assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 100), NOW).level, 'good', 'хуучин 6+ осол (хохиролгүй) → 30 хоногт 0 → Сайн');
+assert.equal(computeSafety(dated(3, 100), NOW).value, '0', 'гол тоо = сүүлийн 30 хоног');
 assert.equal(
   computeSafety(dated(DMG_BAD_N, 100, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
   'хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
@@ -151,12 +154,13 @@ assert.equal(computeSafety(dated(1, 100, { turul: 'Эд хөрөнгийн хо�
   assert.deepEqual(a.byCompany.map((g) => g.name).slice(0, 1).length, 1);
 
   const r = computeSafety(rows, NOW);
-  assert.equal(r.value, '5');
+  assert.equal(r.value, '2', '2026-10-09: гол тоо = сүүлийн 30 хоногийнх');
+  assert.equal(r.unit, `осол, зөрчил — сүүлийн ${RECENT_DAYS} хоногт`);
   assert.equal(r.asOf, NOW - 3 * DAY);
   assert.equal(r.level, 'warn');
   assert.ok(r.facts.length <= 4, 'баримт 3–4-өөс илүүгүй');
   assert.ok(r.facts[0].startsWith('сүүлийнх 3 хоногийн өмнө ('), r.facts[0]);
-  assert.ok(r.facts.includes(`сүүлийн ${RECENT_DAYS} хоногт 2`), r.facts.join(' | '));
+  assert.ok(r.facts.includes('нийт 5'), r.facts.join(' | '));
   // ⚠️ «{0} хохирол» ба «Багц: {0}» — en.ts-ийн БАЙГАА түлхүүрүүд (safety.ts-ийн тайлбар)
   assert.ok(r.facts.includes('2 хохирол'), r.facts.join(' | '));
   assert.ok(r.facts.includes('Багц: Багц 3 — 2'), r.facts.join(' | '));

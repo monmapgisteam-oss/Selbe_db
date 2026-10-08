@@ -15,14 +15,15 @@
  * ДҮРЭМ (2026-09-21-ний `reportData.loadFinanceRaw`-аас ЯГ шилжүүлсэн):
  *   · хуваарь `contract` = Cashflow-ийн `finXlInTotal` ∧ `ho_dungiin_tailbar === CONTRACTED`
  *     мөрийн `geree_dun` нийлбэр;
- *   · гэрээлсэн багцын түлхүүр = тэр мөрүүдийн `pkgKeyOf(pkg2)` ба `pkgKeyOf(pkg)`;
- *   · тоологч `paidContracted` = HO төлбөрийн `bagts` нь тэр түлхүүрт орох мөрийн `dun`;
+ *   · гэрээлсэн багцын түлхүүр = тэр мөрүүдийн `finPkgKey(pkgKeyOf(pkg2|pkg))` (2026-10-09: холбоостой);
+ *   · тоологч `paidContracted` = HO төлбөрийн `finPkgKey(pkgKeyOf(bagts))` тэр түлхүүрт орох мөрийн `dun`;
  *   · `paid` = HO-ийн БҮХ мөрийн `dun` (хоосон `dun` АЛГАСНА — null ≠ 0).
  * ⚠️ Хувь 0–100 (`pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ). Хуваарь 0 / олголт уншигдаагүй бол `null`.
  */
 import type { Row } from '@/lib/query';
 import { CASHFLOW_NEW, HO_IPC, hoAmount, pkgKeyOf } from '@/lib/services';
 import { finXlInTotal } from '@/lib/finExcelLayout';
+import { finPkgKey } from '@/lib/pkgAlias';
 
 /** `gdash.CONTRACTED`-тай ИЖИЛ утга — gdash-ийн хүнд импортоос зайлсхийж энд давтав (тест шалгана) */
 export const PAID_SHARE_CONTRACTED = 'Гэрээлсэн дүн';
@@ -67,9 +68,13 @@ export function paidShareOf(
   const F = CASHFLOW_NEW.fields;
   const contracted = cfRows.filter((r) => finXlInTotal(r) && str(r[F.amountNote]) === PAID_SHARE_CONTRACTED);
   const contract = contracted.reduce((a, r) => a + nn(r[F.contractAmount]), 0);
+  /* ⚠️ 2026-10-09: хоёр талын түлхүүрийг `finPkgKey` (`pkgAlias.FIN_PKG_ALIAS` — «Багцын санхүү»-тэй
+     НЭГ хүснэгт)-ээр нэгтгэж харьцуулна. Урьд нь түүхий `pkgKeyOf` тул HO «Багц-8.1» (→ «Багц 8»),
+     HO «Багц-7» (Cashflow «БАГЦ-7.1» → «Багц 7») олголт багц бүрийн мөрд гэрээлсэн, төслийн хувьд
+     `paidOther` болж хоёр түвшин зөрдөг байв. */
   const keys = new Set<string>();
   for (const r of contracted) {
-    for (const k of [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])]) if (k && k !== '0') keys.add(k);
+    for (const k of [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])]) if (k && k !== '0') keys.add(finPkgKey(k));
   }
   let paid = 0;
   let paidContracted = 0;
@@ -78,7 +83,7 @@ export function paidShareOf(
     if (n == null) continue;
     paid += n;
     const k = pkgKeyOf(r[HO_IPC.contractFields.pkg]);
-    if (k && keys.has(k)) paidContracted += n;
+    if (k && keys.has(finPkgKey(k))) paidContracted += n;
   }
   return {
     contract,

@@ -207,6 +207,8 @@ export function DedButetsBatch({
   const submit = () => {
     if (!meta || !rows || !oids.length) return;
     if (stale) { setFail(staleMsg()); return; }
+    /* ⚠️ 2026-10-09: нэг ч OID уншигдаагүй бол бичих мөр АЛГА — урьд нь 0 мөрөөр «хадгалагдлаа» гардаг байв */
+    if (nRead === 0) { setFail(staleMsg()); return; }
     if (!changed.length) { setFail(tr('Өөрчилсөн талбар алга.')); return; }
     /* Шалгуур — зөвхөн өөрчилсөн талбарт (`validateRow`-ийн дүрэм) */
     const sub: Patch = {};
@@ -270,6 +272,8 @@ export function DedButetsBatch({
     /* ⚠️ Бичих OID нь УНШСАН мөрүүдийнх (2026-09-25) — буцаалт (`undoRows`) ч
        яг тэднээс бэлтгэгддэг тул буцаалтгүй бичигдэх мөр үлдэхгүй. */
     const writeOids = undoRows.map((r) => r.oid).filter((n) => Number.isFinite(n));
+    /* ⚠️ 2026-10-09: 0 мөр — `saveRows` `[]` буцааж «0 объект хадгалагдлаа» гэх ХУДАЛ мэдэгдэл гарна */
+    if (!writeOids.length) { setFail(staleMsg()); return; }
 
     setBusy(true); setFail('');
     try {
@@ -342,7 +346,7 @@ export function DedButetsBatch({
                 hint={dirty && (
                   <>
                     <span className={d.fHint}>
-                      {tr('{0} объектод бичигдэнэ', num(nRead || oids.length))}
+                      {tr('{0} объектод бичигдэнэ', num(nRead))}
                     </span>
                     {/* ⚠️ 2026-10-01: УРТ нь объект бүрд өөр — олноор ижил урт бичих нь ихэвчлэн
                         алдаа (km KPI бүхэлдээ худал болно). Хориглохгүй, ил анхааруулна. */}
@@ -364,11 +368,12 @@ export function DedButetsBatch({
       {fail && <div className={d.formErr} role="alert">{fail}</div>}
       {/* Самбарын асуулт — `ask`-ийн тайлбар */}
       {ask && (
-        <div className={d.askRow} role="alertdialog">
+        /* ⚠️ 2026-10-09: `alertdialog` БИШ — модал биш, фокус барихгүй мөрийн асуулт */
+        <div className={d.askRow} role="group" aria-live="assertive">
           <span className={d.askMsg}>
             {tr(
               '{0} объектын {1} талбарыг бичих үү? Бүх сонгосон объектод ижил утга орно.',
-              num(nRead || oids.length), num(changed.length),
+              num(nRead), num(changed.length),
             )}
             {/* ⚠️ 2026-10-01: ХУУЧИН → ШИНЭ — юу өөрчлөгдөхийг бичихээс ӨМНӨ ил харуулна */}
             <ul className={d.diffList}>
@@ -397,14 +402,15 @@ export function DedButetsBatch({
           type="button"
           className={d.primary}
           onClick={submit}
-          disabled={busy || load || !canEdit || !meta.canUpdate || !oids.length || !changed.length}
-          title={!changed.length ? tr('Эхлээд өөрчлөх талбараа бөглөнө үү') : undefined}
+          /* ⚠️ 2026-10-09: `nRead === 0` — уншигдсан объект алга (бичих мөр алга) */
+          disabled={busy || load || !canEdit || !meta.canUpdate || !oids.length || nRead === 0 || !changed.length}
+          title={!load && nRead === 0 ? staleMsg() : !changed.length ? tr('Эхлээд өөрчлөх талбараа бөглөнө үү') : undefined}
         >
           {busy
             ? tr('Хадгалж байна…')
             : changed.length
-              ? tr('{0} талбарыг {1} объектод бичих', num(changed.length), num(nRead || oids.length))
-              : tr('{0} объектод бичих', num(nRead || oids.length))}
+              ? tr('{0} талбарыг {1} объектод бичих', num(changed.length), num(nRead))
+              : tr('{0} объектод бичих', num(nRead))}
         </button>
       </div>
     </div>

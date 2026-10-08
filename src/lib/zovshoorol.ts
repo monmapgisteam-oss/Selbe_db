@@ -128,8 +128,19 @@ const isTolov = (v: string): v is Exclude<Tolov, 'unknown'> =>
  * Тиймээс уншилтын зам нь ямар ч сүлжээний нэмэлт дуудлагагүйгээр мөрөөс
  * шууд олох ёстой.
  */
-export const oidKey = (a: Record<string, unknown>): string | null =>
-  Object.keys(a).find((k) => /^objectid$/i.test(k)) ?? null;
+export const oidKey = (a: Record<string, unknown>, name?: string | null): string | null => {
+  const keys = Object.keys(a);
+  /* ⚠️ 2026-10-09: метадатагийн `objectIdField` (`oidField()`) ЭХЭНД — урьд нь зөвхөн
+     `/^objectid$/i` тул `FID`/`OBJECTID_1` OID-той үйлчилгээнд мөр бүр `oid = 0` болж,
+     дээрх 2026-09-04-ний алдаа давтагдах байв (`F.oid`-ийн ⚠️). Нэр өгөөгүй/таараагүй бол
+     хуучин дүрэм нөөц. */
+  if (name) {
+    const n = name.toLowerCase();
+    const hit = keys.find((k) => k.toLowerCase() === n);
+    if (hit) return hit;
+  }
+  return keys.find((k) => /^objectid$/i.test(k)) ?? null;
+};
 
 /**
  * ДАВХАРГЫН МЕТАДАТА — НЭГ удаа татна (OID нэр ба Editor Tracking хоёул эндээс).
@@ -176,6 +187,35 @@ export function oidField(): Promise<string> {
   }
   return oidFieldP;
 }
+
+/* ═══════════════ ТЕКСТ ТАЛБАРЫН ДЭЭД УРТ (2026-10-09) ═══════════════ */
+
+/**
+ * ⚠️ 2026-10-09: маягтын `maxLength` (200/100/150/2000) ХАТУУ бичигдсэн байв — үйлчилгээний
+ *    жинхэнэ урт өөр бол урт текст зөвхөн ХАДГАЛАХ үед ArcGIS-ийн бүрхэг алдаагаар унана
+ *    (эсвэл боломжит уртыг дэмий хасна). `parcelEdit.fieldLensOf`-ийн загвар: метадатагийн
+ *    `fields[].length` үнэн эх; уншигдаагүй талбарт дуудагч өөрийн нөөц утгыг хэрэглэнэ.
+ */
+export type ZovTextKey = 'ner' | 'selbe' | 'dugaar' | 'baiguullaga' | 'hariutsagch' | 'tailbar';
+export type ZovFieldLens = Partial<Record<ZovTextKey, number>>;
+const ZOV_TEXT_KEYS: ZovTextKey[] = ['ner', 'selbe', 'dugaar', 'baiguullaga', 'hariutsagch', 'tailbar'];
+
+export function zovFieldLensOf(meta: unknown): ZovFieldLens {
+  const fs = (meta as { fields?: unknown } | null)?.fields;
+  const out: ZovFieldLens = {};
+  if (!Array.isArray(fs)) return out;
+  for (const k of ZOV_TEXT_KEYS) {
+    const name = F[k].toLowerCase();
+    const f = fs.find((x) => String((x as { name?: unknown })?.name ?? '').toLowerCase() === name) as
+      { type?: unknown; length?: unknown } | undefined;
+    if (f && f.type === 'esriFieldTypeString' && typeof f.length === 'number' && f.length > 0) out[k] = f.length;
+  }
+  return out;
+}
+
+/** ⚠️ Хэзээ ч унахгүй — метадата татагдаагүй бол `{}` (маягт нөөц уртаа хэрэглэнэ) */
+export const loadZovFieldLens = (): Promise<ZovFieldLens> =>
+  (URL ? zovMeta().then(zovFieldLensOf, () => ({})) : Promise.resolve({}));
 
 /* ═══════════════ ХҮЛЭЭЛТИЙН НАС — Editor Tracking (2026-10-01) ═══════════════ */
 
@@ -275,7 +315,9 @@ export async function loadZovResult(): Promise<{ rows: Zov[] | null; error: Erro
     const out: Zov[] = [];
     /* ⚠️ 2026-10-01: хүлээлтийн насны талбарууд (`since`) — метадата унасан ч
        жагсаалт ачаалагдана, зөвхөн «удаж буй» тэмдэглэгээ гарахгүй. */
-    const sf = await sinceFields();
+    /* ⚠️ 2026-10-09: OID-ын нэр уншилтад ч метадатагаас (`oidField` — хэзээ ч шидэхгүй,
+       унавал `F.oid`) — урьд нь `orderByFields` хатуу `OBJECTID` байв. */
+    const [sf, oidName] = await Promise.all([sinceFields(), oidField()]);
     for (let offset = 0; ; ) {
       const j = await agsFetch(`${URL}/query`, {
         where: '1=1',
@@ -283,7 +325,7 @@ export async function loadZovResult(): Promise<{ rows: Zov[] | null; error: Erro
         returnGeometry: 'false',
         /* ⚠️ OID нь tie-breaker (2026-09-17): (bagts, shat) давтагдаж болох тул
            2000-аас дээш үед хуудасны заагт мөр давхардах/алдагдах байв. */
-        orderByFields: `${F.bagts} ASC, ${F.shat} ASC, ${F.oid} ASC`,
+        orderByFields: `${F.bagts} ASC, ${F.shat} ASC, ${oidName} ASC`,
         resultRecordCount: '2000',
         resultOffset: String(offset),
       });
@@ -300,7 +342,7 @@ export async function loadZovResult(): Promise<{ rows: Zov[] | null; error: Erro
          * `oid = 0` нь «шинэ мөр» гэсэн утгатай тул засвар нь давхардал
          * үүсгэдэг: энэ бол өгөгдлийн алдаа, нуух ёсгүй.
          */
-        const k = oidKey(a);
+        const k = oidKey(a, oidName);
         const oidRaw = k ? Number(a[k]) : NaN;
         if (!Number.isFinite(oidRaw) || oidRaw <= 0) {
           console.warn(
@@ -355,7 +397,7 @@ export async function loadOneZov(oid: number): Promise<Zov | null> {
   const fs = (j.features ?? []) as { attributes: Record<string, unknown> }[];
   if (!fs.length) return null;
   const a = fs[0].attributes;
-  const k = oidKey(a);
+  const k = oidKey(a, oidName);
   const oidRaw = k ? Number(a[k]) : NaN;
   const t = str(a[F.tolov]);
   return {
@@ -536,6 +578,21 @@ export async function saveZov(d: ZovDraft, before?: Zov | null): Promise<number>
     if (Object.keys(delta).length === 0) return d.oid;
     edit.updates = JSON.stringify([{ attributes: { [oidName]: d.oid, ...delta } }]);
   } else {
+    /* ⚠️ 2026-10-09: ДАВХАРДСАН ДАРААЛАЛ (зэрэгцээ нэмэлт). `validateZov` нь маягт нээгдэх
+       үеийн `all` жагсаалтаар л шалгадаг тул хоёр хүн нэг багцад нэг `shat`-ыг зэрэг нэмэхэд
+       хоёул өнгөрч, гинжинд хоёр зөвшөөрөл нэг байранд зурагддаг байв. Бичихийн ЯГ ӨМНӨ
+       серверээс дахин асууна. Асуулга унавал шиднэ — бичилт явахаас өмнө тул аюулгүй. */
+    const q = (s: string) => `N'${s.replace(/'/g, "''")}'`;
+    const dupQ = await agsFetch(`${URL}/query`, {
+      where: `${F.bagts} = ${q(d.bagts.trim())} AND ${F.shat} = ${Math.trunc(d.shat)}`,
+      outFields: F.ner,
+      returnGeometry: 'false',
+      resultRecordCount: '1',
+    });
+    const dup = ((dupQ.features ?? []) as { attributes?: Record<string, unknown> }[])[0];
+    if (dup) {
+      throw new Error(tr('{0}-д {1}-р дараалал «{2}»-д аль хэдийн эзлэгдсэн.', d.bagts, String(d.shat), str(dup.attributes?.[F.ner])));
+    }
     edit.adds = JSON.stringify([{ attributes }]);
   }
 

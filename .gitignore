@@ -36,6 +36,7 @@ agent-proxy/.env*
 agent-proxy/host/logs/
 # Cloudflare Worker-ийн локал нууц — ХЭЗЭЭ Ч репод орохгүй
 agent-proxy/.dev.vars*
+!agent-proxy/.dev.vars.example
 # Wrangler-ийн локал кэш — build биш, түр файл
 agent-proxy/.wrangler/
 

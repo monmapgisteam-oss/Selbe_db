@@ -911,6 +911,10 @@ const mapCache: Record<string, Map> = {};
  *    ⚠️ 2026-10-01: `mapPark`-ийн устгагч ч энэ (хэл солилтоор хадгалсан view).
  */
 function destroyDetached(v: AnyView): void {
+  /* ⚠️ 2026-10-09: слот устгагдахад (`dropParked` — TTL / өөр view ирэх) энэ функц дуудагддаг тул
+     `tabParked3d`-ийг ЭНД цэвэрлэнэ — урьд нь устгагдсан view-г барьсаар байв (дараагийн `tabAdopt`
+     харьцуулалт, GC). `parkView(view, parkKey, destroyDetached)` хэлбэр `mapPark.check`-д бэхлэгдсэн. */
+  if (tabParked3d === v) tabParked3d = null;
   if (v.destroyed) return;
   v.container = null as unknown as HTMLDivElement;
   (v as unknown as { map: Map | null }).map = null;
@@ -1588,7 +1592,13 @@ export function MapProvider({ children }: { children: ReactNode }) {
       if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
       // 150 м-ээс нарийн хүрээг тэлнэ — контекстгүй ойртохоос сэргийлнэ
-      const MIN = 150;
+      /* ⚠️ 2026-10-09: `e` нь харагдацын SR-ийн НЭГЖЭЭР (Web Mercator) — тэр нь УБ-ын өргөрөгт
+         (~47.9°) газрын метрээс 1/cos(φ) ≈ 1.49 дахин том тул «150» нь бодитоор ~100 м байв.
+         WM үед 1/cos(φ)-ээр үржүүлж ГАЗРЫН 150 м болгоно; бусад SR-д хуучин зан. */
+      const cyWm = (e.ymin + e.ymax) / 2;
+      const MIN = e.spatialReference?.isWebMercator
+        ? 150 / Math.cos(Math.atan(Math.sinh(cyWm / 6378137)))
+        : 150;
       let box;
       if (e.width < MIN || e.height < MIN) {
         // ⚠️ expand() нь хэмжээг ҮРЖҮҮЛДЭГ тул тэг өргөнтэй хүрээ (нэг цэгэн объект)
@@ -2267,6 +2277,7 @@ export const MapCanvas = memo(function MapCanvas({
     const reused = parked && parked.map === map ? parked : null;
     /* ⚠️ 2026-10-04: ТАБ СОЛИХООР хадгалсан 3D view (доорх cleanup-ийн `tabPark3d`) — камерыг
        ШИНЭ view-тэй ИЖИЛ эхлэх байрлалд буцаана (хэл солилтынх л хэрэглэгчийн камерыг үлдээнэ). */
+    if (tabParked3d?.destroyed) tabParked3d = null; // ⚠️ 2026-10-09: устсан view-г барихгүй
     const tabAdopt = reused != null && reused === tabParked3d;
     if (parked) tabParked3d = null;
     if (parked && !reused) { destroyDetached(parked); mapStats.destroyed += 1; }
@@ -2414,6 +2425,7 @@ export const MapCanvas = memo(function MapCanvas({
     fsBtn.setAttribute('role', 'button');
     fsBtn.setAttribute('tabindex', '0');
     fsBtn.title = tr('Бүтэн дэлгэц');
+    fsBtn.setAttribute('aria-label', tr('Бүтэн дэлгэц')); // ⚠️ 2026-10-09 (a11y): икон товч — нэр
     fsBtn.innerHTML =
       '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
       + '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" '
@@ -2451,6 +2463,7 @@ export const MapCanvas = memo(function MapCanvas({
       swBtn3.setAttribute('tabindex', '0');
       swBtn3.setAttribute('aria-pressed', 'false');
       swBtn3.title = tr('Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн');
+      swBtn3.setAttribute('aria-label', tr('Меш харьцуулах — зүүн: нөгөө хувилбар, баруун: одоогийн')); // ⚠️ 2026-10-09 (a11y)
       swBtn3.innerHTML =
         '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
         + '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" '
@@ -3615,8 +3628,14 @@ export const MapCanvas = memo(function MapCanvas({
     tools.forEach((t) => {
       const b = mk('button', iconBtnCss) as HTMLButtonElement;
       b.title = t.name;
+      /* ⚠️ 2026-10-09 (a11y): зөвхөн икон + `title` — дэлгэц уншигч нэргүй «товч» гэж уншдаг байв.
+         `aria-label` + идэвхтэй төлөв (`aria-pressed`, `highlight`-д шинэчлэгдэнэ); икон `aria-hidden`. */
+      b.type = 'button';
+      b.setAttribute('aria-label', t.name);
+      b.setAttribute('aria-pressed', 'false');
       const ic = mk('span', 'font-size:18px');
       ic.className = t.icon;
+      ic.setAttribute('aria-hidden', 'true');
       b.append(ic);
       b.addEventListener('mouseenter', () => { if (t !== active) b.style.background = 'var(--surface-2)'; });
       b.addEventListener('mouseleave', () => { if (t !== active) b.style.background = 'transparent'; });
@@ -3640,6 +3659,7 @@ export const MapCanvas = memo(function MapCanvas({
         b.style.background = on ? 'var(--hue)' : 'transparent';
         b.style.color = on ? '#fff' : 'var(--ink-2)';
         b.style.borderColor = on ? 'transparent' : 'var(--line)';
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
       clearBtn.style.display = active ? 'block' : 'none';
       doneBtn.style.display = active ? 'block' : 'none';
@@ -3889,6 +3909,7 @@ export const MapCanvas = memo(function MapCanvas({
       const del = mk('button', 'flex:none;width:24px;height:24px;display:grid;place-items:center;border:0;'
         + 'background:transparent;color:var(--ink-3);cursor:pointer;font-size:1.15rem;line-height:1', '×') as HTMLButtonElement;
       del.title = tr('Устгах');
+      del.setAttribute('aria-label', `${tr('Устгах')}: ${slide.title?.text || tr('Слайд')}`); // ⚠️ 2026-10-09 (a11y): «×» нь нэр биш
       row.append(img, info, del);
       row.setAttribute('aria-label', slide.title?.text || tr('Слайд'));
       row.addEventListener('click', () => { void slide.applyTo(sv, { speedFactor: 0.6 }); });

@@ -7,7 +7,7 @@ import {
   type Indicator, type ParkingOpt, type ParkingSource, type CategoryKey,
   type GreenOpt, type GreenSource,
 } from '@/lib/analysis/config';
-import { scoreColor, clamp, passesNorm } from '@/lib/analysis/score';
+import { scoreColor, clamp, passesNorm, patchNorm } from '@/lib/analysis/score';
 import { Donut } from '@/components/ui';
 import { shade, CAT_LIGHT } from '@/lib/format';
 import { nf, normLine } from './format';
@@ -214,8 +214,25 @@ export function Weights({
   setIndicators: (v: Indicator[]) => void;
   totalW: number;
 }) {
-  const patch = (id: string, key: keyof Indicator, value: number) =>
-    setIndicators(indicators.map((i) => (i.id === id ? { ...i, [key]: value } : i)));
+  /* ⚠️ 2026-10-09: `patchNorm` — урвуу муж (доод > дээд г.м.) оноолтыг эвдэхгүй; хумисан бол
+     тухайн үзүүлэлтийн доор тайлбар (`fixMsg`). */
+  const [fixMsg, setFixMsg] = useState<Record<string, string>>({});
+  const patch = (id: string, key: keyof Indicator, value: number): boolean => {
+    const cur = indicators.find((i) => i.id === id);
+    if (!cur) return false;
+    const r = patchNorm(cur, key, value);
+    setIndicators(indicators.map((i) => (i.id === id ? r.ind : i)));
+    setFixMsg((m) => {
+      if (!r.clamped) {
+        if (!(id in m)) return m;
+        const { [id]: _drop, ...rest } = m;
+        void _drop;
+        return rest;
+      }
+      return { ...m, [id]: tr('Утгыг {0} болгож засав — нормын доод нь дээдээсээ их байж болохгүй.', nf(r.ind[key] as number, cur.decimals)) };
+    });
+    return r.clamped;
+  };
 
   return (
     <div>
@@ -261,22 +278,55 @@ export function Weights({
                     {/* ⚠️ Controlled: «Анхны утга» reset хийхэд дэлгэцийн тоо
                         төлөвтэйгээ ХАМТ буцах ёстой — defaultValue бол DOM
                         хуучин засварласан утгаа хадгалж, оноололтой зөрдөг. */}
-                    <input
-                      type="number" step="any"
-                      value={i[key] as number}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (Number.isFinite(v)) patch(i.id, key, v);
-                      }}
+                    <NormInput
+                      value={i[key] as number | undefined}
+                      onCommit={(v) => patch(i.id, key, v)}
                     />
                   </label>
                 ))}
+                {fixMsg[i.id] && (
+                  <div role="status" style={{ gridColumn: '1 / -1', fontSize: 10.5, color: 'var(--warn-ink)' }}>
+                    {fixMsg[i.id]}
+                  </div>
+                )}
               </div>
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Нормын тоон талбар — бичиж байх үеийн ТҮР утга (`draft`) нь хязгаарлалтаас ТУСДАА.
+ * ⚠️ 2026-10-09: `patchNorm` үсэг бүрд хумивал «25» бичих гэж «2» дарахад шууд хөршийн утга
+ *    руу үсэрч бичих боломжгүй болно. Тиймээс бичих явцад зөвхөн хүчинтэй тоог шууд илгээнэ
+ *    (оноо амьдаар шинэчлэгдэнэ), хумилт хийгдсэн бол тэр мөчид дэлгэцийн тоо засагдана
+ *    (blur/Enter-ээр батална). Controlled хэвээр — «Анхны утга» reset нь `draft`-гүй үед шууд харагдана.
+ */
+function NormInput({ value, onCommit }: { value: number | undefined; onCommit: (v: number) => boolean }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft == null) return;
+    const v = parseFloat(draft);
+    if (Number.isFinite(v)) onCommit(v);
+    setDraft(null);
+  };
+  return (
+    <input
+      type="number" step="any"
+      value={draft ?? (value ?? '')}
+      onChange={(e) => {
+        const txt = e.target.value;
+        setDraft(txt);
+        const v = parseFloat(txt);
+        /* Хүчинтэй бол шууд; хумигдвал бичигдэж буй текст хэвээр, blur-д засагдана */
+        if (Number.isFinite(v)) onCommit(v);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
   );
 }
 

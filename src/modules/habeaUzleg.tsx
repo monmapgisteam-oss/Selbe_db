@@ -30,7 +30,8 @@ import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
 import { Section, Bars, Series, Loading, Empty, friendlyError } from '@/components/ui';
-import { num, date, text, dayKey, pct } from '@/lib/format';
+import { num, date, text, pct } from '@/lib/format';
+import { ubDayKey } from '@/lib/ceo/workforce';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
 import h from './habea.module.css';
 
@@ -45,7 +46,6 @@ const U = HABEA.uzleg.fields;
 
 /** Талбар → (код → нэр) */
 type Domains = Record<string, Map<string, string>>;
-const domainCache = new Map<string, Promise<Domains>>();
 
 /**
  * ДОМЭЙНЫ КОД → НЭР. Survey123 нь `site` · `company` · `shift` · `week`-ийг
@@ -56,21 +56,34 @@ const domainCache = new Map<string, Promise<Domains>>();
  *
  * ⚠️ Унавал ХООСОН толь буцаана — код хэвээр харагдана, самбар унахгүй.
  * ⚠️ Метадата нь ӨГӨГДӨЛ биш тул автобусын тагт хамаарахгүй; url бүрд нэг
- *    л удаа татна (`domainCache`).
+ *    л удаа татна (`metaCache`).
  */
 /* ⚠️ 2026-10-06 (аудит): уналтын ТЭМДЭГ (лавлагаагаар танина) — урьд нь хоосон `{}` буцаад
    самбар түүхий кодыг («w3», «co_2») чимээгүй харуулдаг байв. Одоо `useUzleg` үүнийг
    `domFail` болгож, `UzlegLeft` «Кодын тайлбар уншигдсангүй» гэж хэлнэ. Хоосон толь
    хэвээр — самбар унахгүй. */
+/**
+ * ⚠️ 2026-10-09 (аудит): СХЕМИЙН ШАЛГАЛТ. Survey123 маягтыг дахин нийтлэхэд талбарын нэр
+ *    солигдвол (`cnt_major` → …) `norm`-ийн `nn(...)` чимээгүй 0 болж KPI «N үзлэг · 0 заалт»
+ *    гэж ХУДАЛ хэлдэг байв. Метадата ирсэн бол `U.*` нэр бүр байгаа эсэхийг шалгаж
+ *    `missing`-д буцаана → `useUzleg` `schemaMissing`, `UzlegLeft` ил анхааруулга.
+ *    Маягт бүрд байх албагүй талбарууд (`UZ_OPTIONAL`: V1.1-д `site_block`/`company_other`
+ *    байхгүй, гүйцэтгэгчийн маягтад оноо байхгүй — `services`-ийн ⚠️) тооцогдохгүй.
+ */
+type UzMeta = { dom: Domains; missing: readonly string[]; failed: boolean };
+const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([U.siteOther, U.companyOther, U.block, U.scEarned, U.scAppl]);
+const UZ_FIELDS: readonly string[] = [...new Set(Object.values(U))];
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
-function loadDomains(url: string): Promise<Domains> {
-  let p = domainCache.get(url);
+const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
+const metaCache = new Map<string, Promise<UzMeta>>();
+function loadDomains(url: string): Promise<UzMeta> {
+  let p = metaCache.get(url);
   if (!p) {
     type Meta = {
       fields?: { name?: string; domain?: { type?: string; codedValues?: { code?: unknown; name?: string }[] } | null }[];
     };
     /* ⚠️ 2026-09-21: ArcGIS алдаа HTTP 200-аар `{error}` биетэй ирдэг тул
-       ЗААВАЛ шалгана; урьд нь `{}` болж СЕШНИЙ ТУРШ кэшлэгдэж (`domainCache`),
+       ЗААВАЛ шалгана; урьд нь `{}` болж СЕШНИЙ ТУРШ кэшлэгдэж (`metaCache`),
        түр алдаа (токен хоцрох, 499) чартыг кодоор шошголсон хэвээр үлдээдэг
        байв. Одоо унавал кэшээс ХАСНА — дараагийн дуудалт дахин оролдоно;
        буцаах утга нь хэвээр хоосон толь (самбар унахгүй). Мөн слот —
@@ -81,20 +94,24 @@ function loadDomains(url: string): Promise<Domains> {
        (`timeoutMs`), 429 backoff, `{error}` → `ArcGISError` бүгд цөмд; гаднах
        `withSlot` хасагдав (цөм өөрөө слот авна — давхар авбал гацна). */
     p = arcgisPost<Meta>(url, { f: 'json' }, { timeoutMs: 30_000 })
-      .then((j) => {
+      .then((j): UzMeta => {
         const out: Domains = {};
+        const names = new Set<string>();
         for (const f of j.fields ?? []) {
+          if (f.name) names.add(f.name);
           const cv = f.domain?.type === 'codedValue' ? f.domain.codedValues : null;
           if (!f.name || !cv?.length) continue;
           out[f.name] = new Map(cv.map((c) => [String(c.code), String(c.name ?? c.code)]));
         }
-        return out;
+        /* Талбаргүй хариу (`fields` хоосон) — схемийг мэдэхгүй, «дутуу» гэж дүгнэхгүй */
+        const missing = names.size ? UZ_FIELDS.filter((n) => !UZ_OPTIONAL.has(n) && !names.has(n)) : [];
+        return { dom: out, missing, failed: false };
       })
       .catch(() => {
-        domainCache.delete(url);
-        return FAILED_DOMAINS;
+        metaCache.delete(url);
+        return FAILED_META;
       });
-    domainCache.set(url, p);
+    metaCache.set(url, p);
   }
   return p;
 }
@@ -103,8 +120,11 @@ export type UzlegRow = {
   oid: number;
   site: string;
   /**
-   * ДОЛОО ХОНОГИЙН КОД (`w1`…`w10`, `other`) — маягт өөрөө автоматаар
-   * бөглөдөг. Чарт ба шүүлтийн ТҮЛХҮҮР; шошгыг `weekLabel` гаргана.
+   * ДОЛОО ХОНОГИЙН ТҮЛХҮҮР — чарт ба шүүлтийн; шошгыг `weekLabel` гаргана.
+   * ⚠️ 2026-10-09: ҮЗЛЭГИЙН ОГНООНООС (`insp_datetime`) ISO-8601 долоо хоног, Улаанбаатарын
+   *    хуанлиар — «2026-W37». Урьд нь маягтын `week` кодыг (`w1`…, «37») шууд авдаг тул
+   *    бөглөгч/маягтын тооцоо ISO долоо хоногоос зөрөхөд KPI (огнооны хил) ба чарт өөр
+   *    долоо хоногт тоолдог байв. Огноогүй мөрөнд л маягтын `week` утга (нөөц).
    */
   week: string;
   /**
@@ -123,6 +143,12 @@ export type UzlegRow = {
   shift: string;
   /** Үзлэг хийсэн огноо (epoch ms) — байхгүй бол 0 */
   d: number;
+  /**
+   * ⚠️ 2026-10-09: `cnt_*` талбарууд мөрөнд БАЙГАА эсэх. `false` бол доорх тоонууд
+   *    МЭДЭГДЭХГҮЙ (0 нь орлуулга) — нийлбэрт оруулахгүй, «—» гэж харуулна. Төрлийг
+   *    `number | null` болгоогүй: `ceo/scorecardLoad` тоо хүлээдэг.
+   */
+  sevKnown: boolean;
   major: number;
   minor: number;
   obs: number;
@@ -151,8 +177,28 @@ const nnull = (v: unknown): number | null => {
  * дараалал руу унаж, «37» хамгийн ЭХЭНД харагдаж байв.
  */
 const weekNum = (k: string): number | null => {
-  const m = /^w?(\d+)$/i.exec(k.trim());
+  /* ⚠️ 2026-10-09: огнооноос гаргасан «2026-W37» түлхүүрийг мөн таньна */
+  const m = /^(?:\d{4}-)?w?(\d+)$/i.exec(k.trim());
   return m ? Number(m[1]) : null;
+};
+
+/** ISO-8601 долоо хоног (жил, дугаар) — хуанлийн өдрөөс; Даваа гарагаас, 1-р долоо хоног нь Пүрэв агуулсан */
+const isoWeekOf = (y: number, m0: number, d: number): { year: number; no: number } => {
+  const t = new Date(Date.UTC(y, m0, d));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return { year: t.getUTCFullYear(), no: Math.ceil(((t.getTime() - y0.getTime()) / 86_400_000 + 1) / 7) };
+};
+
+/**
+ * Үзлэгийн огноо → долоо хоногийн түлхүүр «2026-W37» (Улаанбаатарын хуанли — `ubDayKey`).
+ * ⚠️ Жилтэй: он солигдоход «2026-W01» ба «2027-W01» нийлэхгүй.
+ */
+export const uzWeekKey = (ms: number): string => {
+  const [y, m, d] = ubDayKey(ms).split('-').map(Number);
+  const w = isoWeekOf(y, m - 1, d);
+  return `${w.year}-W${String(w.no).padStart(2, '0')}`;
 };
 
 /** Долоо хоногийн шошго — `37` / `w37` → «37-р долоо хоног» */
@@ -238,10 +284,15 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
     return clean(dom[field]?.get(s) ?? s);
   };
   const site = named(U.site, U.siteOther);
+  const d = nn(r[U.ognoo]);
+  /* ⚠️ 2026-10-09: `outFields: *` тул БАЙГАА талбар бүр мөрөнд түлхүүртэй (утга нь null ч) —
+     түлхүүргүй бол талбар өөрөө алга (нэр солигдсон). Тэр үед 0 биш «мэдэгдэхгүй». */
+  const sevKnown = [U.major, U.minor, U.obs, U.conf, U.na].every((f) => f in r);
   return {
     oid: nn(r.objectid ?? r.OBJECTID),
     site,
-    week: r[U.week] == null ? '' : String(r[U.week]),
+    /* ⚠️ 2026-10-09: огнооноос (ISO, UB) — огноогүй бол маягтын `week` (нөөц) */
+    week: d > 0 ? uzWeekKey(d) : r[U.week] == null ? '' : String(r[U.week]),
     scE: nnull(r[U.scEarned]),
     scA: nnull(r[U.scAppl]),
     company: named(U.company, U.companyOther),
@@ -250,7 +301,8 @@ const norm = (r: Row, dom: Domains): UzlegRow => {
     coSfx: CO_SFX[String(r[U.company] ?? '')] ?? '',
     block: clean(r[U.block]),
     shift: named(U.shift),
-    d: nn(r[U.ognoo]),
+    d,
+    sevKnown,
     major: nn(r[U.major]),
     minor: nn(r[U.minor]),
     obs: nn(r[U.obs]),
@@ -335,13 +387,7 @@ export function UzSrcHead({ title, hue }: { title: string; hue: string }) {
 /* ═════════════════ Өмнөх долоо хоногийн дундаж оноо (KPI) ═════════════════ */
 
 /** ISO-8601 долоо хоногийн дугаар — Даваа гарагаас эхэлнэ, 1-р долоо хоног нь Пүрэв агуулсан */
-const isoWeek = (d: Date): number => {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return Math.ceil(((t.getTime() - y0.getTime()) / 86_400_000 + 1) / 7);
-};
+const isoWeek = (d: Date): number => isoWeekOf(d.getFullYear(), d.getMonth(), d.getDate()).no;
 
 /**
  * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГ — Даваа 00:00-оос Даваа 00:00 хүртэл, ЛОКАЛ цагаар.
@@ -420,12 +466,14 @@ export type WeekScores = { no: number; rows: ScoreRow[] };
  *    хоёр газар өөр оноо харуулж болдог байв. Одоо хоёулаа `week` (`weekNum` таних
  *    дүрэм) ба ИЖИЛ онооны дүрэм (`sc_all_earned IS NOT NULL AND sc_all_appl > 0` —
  *    `byWeek`-ийн `scA > 0 && scE != null`).
- * ⚠️ Он солигдоход ижил дугаар (өмнөх жилийн 39) давхцахгүйн тулд серверт ОГНООНЫ
- *    өргөн цонх (`WEEK_LOOKBACK_DAYS`) + огноогүй мөр; эцсийн шүүлт нь `week` дугаар.
+ * ⚠️ 2026-10-09: ДОЛОО ХОНОГ ОДОО ОГНООНООС (ISO) — чарт (`UzlegRow.week` = `uzWeekKey`) ч
+ *    мөн огнооноос тул «чарттай НЭГ эх» дүрэм хэвээр. Урьд нь маягтын `week` кодоор
+ *    (бөглөгчийн/маягтын тооцоо) тааруулдаг тул ISO долоо хоногоос зөрсөн мөр буруу долоо
+ *    хоногт ордог байв. Сервер: `[Даваа, дараа Даваа)` огнооны хил; ОГНООГҮЙ мөр л
+ *    маягтын `week` кодоор (`weekCodes`) — нөөц.
  * ⚠️ КЭШ ДОЛОО ХОНОГООР (`prevWeek().start`) — Даваа гараг дамжихад шинэ түлхүүр тул
  *    хуучин долоо хоногийн дүн 5 минут ч үлдэхгүй (`Habea`-ийн цаг/visibility дэгээ).
  */
-export const WEEK_LOOKBACK_DAYS = 28;
 const weekScoreLoaders = new Map<number, () => Promise<WeekScores>>();
 export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   const w = prevWeek(now);
@@ -438,17 +486,17 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   return f();
 }
 
-/** `week` талбарын утга тухайн долоо хоногийн дугаартай таарах уу (`37` / `w37`) */
-export const isWeekNo = (v: unknown, no: number): boolean =>
-  v != null && weekNum(String(v)) === no;
+/** Огноогүй мөрийн нөөц — маягтын `week` кодын хувилбарууд (`37` · `037` биш · `w37`) */
+export const weekCodes = (no: number): string[] =>
+  [...new Set([String(no), String(no).padStart(2, '0'), `w${no}`, `W${no}`])];
 
 async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  const from = new Date(w.start);
-  from.setDate(from.getDate() - WEEK_LOOKBACK_DAYS);
-  const where = `(${U.ognoo} >= ${sqlTs(from)} OR ${U.ognoo} IS NULL) AND ${U.week} IS NOT NULL`;
-  const groupBy = `${U.site},${U.company},${U.week}`;
+  const codes = weekCodes(w.no).map((c) => `'${c}'`).join(',');
+  const where = `((${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`
+    + ` OR (${U.ognoo} IS NULL AND ${U.week} IN (${codes})))`;
+  const groupBy = `${U.site},${U.company}`;
   const parts = await Promise.all(SCORE_URLS.map((url) => Promise.all([
     queryGroup(
       url,
@@ -470,11 +518,11 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
     ),
     loadDomains(url),
   ])));
-  /* ⚠️ (талбай × компани) нүдээр НИЙЛҮҮЛНЭ — серверээс `week`-ээр задарч ирдэг тул
-     зөвхөн тухайн долоо хоногийн мөрүүдийг аваад нүд бүрт нэмнэ. */
+  /* ⚠️ (талбай × компани) нүдээр НИЙЛҮҮЛНЭ — `where` аль хэдийн тухайн долоо хоногийн
+     мөрүүдийг л буцаана (2026-10-09). */
   type Acc = { site: string; coCode: string; n: number; nc: number; e: number; a: number; ns: number };
   const rows: ScoreRow[] = [];
-  for (const [grpAll, scoreAll, dom] of parts) {
+  for (const [grpAll, scoreAll, { dom }] of parts) {
     const keyOf = (r: Record<string, unknown>) =>
       `${r[U.site] == null ? '' : String(r[U.site])}|${r[U.company] == null ? '' : String(r[U.company])}`;
     const acc = new Map<string, Acc>();
@@ -492,13 +540,11 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
       return c;
     };
     for (const r of grpAll) {
-      if (!isWeekNo(r[U.week], w.no)) continue;
       const c = cell(r);
       c.n += Number(r.n ?? 0);
       c.nc += Number(r.mj ?? 0) + Number(r.mn ?? 0);
     }
     for (const r of scoreAll) {
-      if (!isWeekNo(r[U.week], w.no)) continue;
       const c = cell(r);
       c.e += Number(r.e ?? 0);
       c.a += Number(r.a ?? 0);
@@ -589,7 +635,7 @@ type State =
   /** `retry` — 2026-09-30: алдааны дараа ДАХИН татах (`cached` алдааг кэшлэдэггүй) */
   | { state: 'error'; message: string; retry?: () => void }
   /** `domFail` — 2026-10-06: кодын тайлбар (domain) уншигдсангүй, утга кодоор харагдана */
-  | { state: 'ready'; rows: UzlegRow[]; domFail?: boolean };
+  | { state: 'ready'; rows: UzlegRow[]; domFail?: boolean; schemaMissing?: readonly string[] };
 
 /**
  * Сонгосон маягтыг татна. `kind` нь `null` бол юу ч татахгүй.
@@ -688,9 +734,11 @@ export function uzPass(x: UzlegRow, uz: UzSel, except?: UzDim): boolean {
   if (except !== 'shift' && !inSet(uz.shift, x.shift)) return false;
   if (except !== 'company' && !inSet(uz.company, x.company)) return false;
   if (except !== 'week' && !inSet(uz.week, x.week)) return false;
-  /* ⚠️ Өдөр/сарыг ЛОКАЛ огноогоор — цувааны түлхүүртэй ЯГ ижил `dayKey` */
-  if (except !== 'day' && uz.day.length && !(x.d > 0 && uz.day.includes(dayKey(x.d)))) return false;
-  if (except !== 'month' && uz.month.length && !(x.d > 0 && uz.month.includes(dayKey(x.d).slice(0, 7)))) return false;
+  /* ⚠️ Өдөр/сарыг цувааны түлхүүртэй ЯГ ижил дүрмээр.
+     ⚠️ 2026-10-09: хөтчийн локал `dayKey` → Улаанбаатарын `ubDayKey` (`ceo/workforce`) —
+     хүн хүчний өдрийн түлхүүртэй НЭГ; гадаадад нээхэд өдөр гулсахгүй. */
+  if (except !== 'day' && uz.day.length && !(x.d > 0 && uz.day.includes(ubDayKey(x.d)))) return false;
+  if (except !== 'month' && uz.month.length && !(x.d > 0 && uz.month.includes(ubDayKey(x.d).slice(0, 7)))) return false;
   return true;
 }
 
@@ -717,8 +765,8 @@ type Pick = { sel: UzSel; onPick: (d: UzDim, key: string) => void };
  *    ачаалагч, домэйн, хэвийн болголт; кэш хуваалцана.
  */
 export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
-  const [rows, dom] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
-  return rows.map((r) => norm(r, dom));
+  const [rows, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
+  return rows.map((r) => norm(r, meta.dom));
 }
 
 /**
@@ -726,9 +774,10 @@ export async function loadUzlegRows(kind: UzlegKind): Promise<UzlegRow[]> {
  * (`UzlegExport`). Түүхий мөрөнд асуулт бүрийн хариулт, хэвийн болгосонд огноо,
  * багц, компанийн нэр. ⚠️ Хуудастай НЭГ ачаалагч (кэш хуваалцана).
  */
-export async function loadUzlegBoth(kind: UzlegKind): Promise<{ raw: Row[]; rows: UzlegRow[] }> {
-  const [raw, dom] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
-  return { raw, rows: raw.map((r) => norm(r, dom)) };
+export async function loadUzlegBoth(kind: UzlegKind): Promise<{ raw: Row[]; rows: UzlegRow[]; domFail: boolean }> {
+  const [raw, meta] = await Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)]);
+  /* ⚠️ 2026-10-09: `domFail` — тайлан татах цонх ч «Кодын тайлбар уншигдсангүй»-г хэлнэ */
+  return { raw, rows: raw.map((r) => norm(r, meta.dom)), domFail: meta.failed };
 }
 
 /** Тогтмол лавлагаа — рендер бүрд шинэ объект үүсгэж deps-ийг хөдөлгөхгүй */
@@ -751,8 +800,12 @@ export function useUzleg(kind: UzlegKind | null): State {
     let alive = true;
     setSt({ kind, st: { state: 'loading' } });
     Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url)])
-      .then(([rows, dom]) => {
-        if (alive) setSt({ kind, st: { state: 'ready', rows: rows.map((r) => norm(r, dom)), domFail: dom === FAILED_DOMAINS } });
+      .then(([rows, meta]) => {
+        if (alive) {
+          setSt({ kind, st: {
+            state: 'ready', rows: rows.map((r) => norm(r, meta.dom)), domFail: meta.failed, schemaMissing: meta.missing,
+          } });
+        }
       })
       .catch((e: unknown) => {
         if (alive) {
@@ -807,9 +860,14 @@ function byWeek(rows: UzlegRow[]) {
      * эсрэгээр. Огноогүй бол дугаараар, тэр ч үгүй бол («Бусад») хамгийн сүүлд.
      * Хамгийн шинэ долоо хоног БАРУУН захад — гүйлгэгч тийшээ нээгддэг.
      */
+    /* ⚠️ 2026-10-09: ДАМЖИХ (transitive) түлхүүр — (огноотой эсэх, d0, дугаар). Урьд нь
+       огноотой/огноогүй хосыг дугаараар, огноотой хосыг огноогоор харьцуулдаг тул гурван
+       долоо хоногийн дараалал эрэмбэлэгчээс хамаарч өөр гарч болдог байв. */
     .sort((x, y) => {
       const dx = x[1].d0, dy = y[1].d0;
-      if (dx !== dy && Number.isFinite(dx) && Number.isFinite(dy)) return dx - dy;
+      const fx = Number.isFinite(dx) ? 0 : 1, fy = Number.isFinite(dy) ? 0 : 1;
+      if (fx !== fy) return fx - fy;
+      if (!fx && dx !== dy) return dx - dy;
       return (weekNum(x[0]) ?? 1e9) - (weekNum(y[0]) ?? 1e9);
     })
     .flatMap(([k, v]) => {
@@ -848,7 +906,8 @@ function countBy(rows: UzlegRow[], of: (x: UzlegRow) => string) {
  * «Хамааралгүй» нь саарал — тэр нь үнэлгээ БИШ.
  */
 function severity(rows: UzlegRow[]) {
-  const sum = (of: (x: UzlegRow) => number) => rows.reduce((s, x) => s + of(x), 0);
+  /* ⚠️ 2026-10-09: `cnt_*` талбаргүй мөр (`sevKnown: false`) нийлбэрт ОРОХГҮЙ — 0 биш мэдэгдэхгүй */
+  const sum = (of: (x: UzlegRow) => number) => rows.reduce((s, x) => (x.sevKnown ? s + of(x) : s), 0);
   return [
     { key: 'major', label: tr('Ноцтой үл нийцэл'), value: sum((x) => x.major), color: '#dc2626' },
     { key: 'minor', label: tr('Бага зэргийн үл нийцэл'), value: sum((x) => x.minor), color: '#f97316' },
@@ -873,7 +932,8 @@ function severity(rows: UzlegRow[]) {
  * ӨДРИЙН ЦУВАА — нэг өдөрт хийгдсэн үзлэгийн тоо (2026-09-15, хэрэглэгчийн
  * хүсэлт: «Ажлын байрны үзлэг V1.1 өдрөөр чарт нэм»).
  *
- * ⚠️ ОРОН НУТГИЙН огноогоор (`dayKey`). `toISOString` хэрэглэвэл +08
+ * ⚠️ 2026-10-09: Улаанбаатарын хуанлиар (`ubDayKey`) — урьд нь хөтчийн локал `dayKey`.
+ * ⚠️ ОРОН НУТГИЙН огноогоор (UB). `toISOString` хэрэглэвэл +08
  * бүсэд 00:00–07:59-д хийсэн үзлэг ӨМНӨХ өдөрт тоологдоно — `Habea.tsx`-ийн
  * хүн хүчний өдрийн цуваанд гарсан ижил алдаа (2026-09-11 засагдсан).
  *
@@ -886,7 +946,7 @@ function byDay(rows: UzlegRow[]) {
   const m = new Map<string, number>();
   for (const r of rows) {
     if (r.d <= 0) continue;
-    const k = dayKey(r.d);
+    const k = ubDayKey(r.d);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
   return [...m.entries()]
@@ -914,8 +974,8 @@ function byMonth(rows: UzlegRow[], curYm = '') {
   const m = new Map<string, number>();
   for (const r of rows) {
     if (r.d <= 0) continue;
-    const dt = new Date(r.d);
-    const ym = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    /* ⚠️ 2026-10-09: Улаанбаатарын хуанлиар (`ubDayKey`) — өдрийн цуваа ба шүүлттэй НЭГ */
+    const ym = ubDayKey(r.d).slice(0, 7);
     m.set(ym, (m.get(ym) ?? 0) + 1);
   }
   /* ⚠️ 2026-10-01: ЯВАГДАЖ БУЙ сар «*»-тай (`habeaRate.markCurMonth`) — сарын дунд тоо
@@ -1002,9 +1062,10 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> 
     try {
       /* ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — биеийг ЗААВАЛ шалгана: `arcgisPost`
          (2026-09-30) үүнийг цөмдөө хийж `ArcGISError` шиднэ; timeout · слот · 429
-         backoff · `res.ok` нэмэгдэв. `token: 'org'` — дуудагч `getAuth()`-ын
-         токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ (`draftRemote`-той ижил). */
-      /* ⚠️ 2026-09-30: ил `token` ХАСАВ (`loadPrivate`-ийн ⚠️) — цөм одоогийн токеныг залгаж 498-д шинэчилнэ */
+         backoff · `res.ok` нэмэгдэв.
+         ⚠️ 2026-10-09 (хуучирсан тайлбар засав): `token: 'org'` — `params`-д ил токен
+         ӨГӨХГҮЙ (`getAuth()` нь зөвхөн нэвтэрсэн эсэхийн шалгалт, `loadPrivate`-ийн ⚠️);
+         цөм байгууллагын URL-д ОДООГИЙН токеныг POST биед залгаж, 498-д шинэчлээд нэг удаа давтана. */
       const j = await arcgisPost<{ attachmentGroups?: typeof groups }>(`${url}/queryAttachments`, {
         f: 'json',
         objectIds: chunk.map((x) => x.oid).join(','),
@@ -1158,8 +1219,11 @@ export function UzlegLeft({
   /* ⚠️ Чарт бүр ӨӨРИЙН сонголтгүй олонлогоос (ArcGIS зан — `uzPass`); тоо,
      зураг нь БҮХ шүүлттэй олонлогоос. */
   const all = st.rows.filter((x) => uzPass(x, sel));
-  const sev = severity(st.rows.filter((x) => uzPass(x, sel, 'sev')));
+  const sevRows = st.rows.filter((x) => uzPass(x, sel, 'sev'));
+  const sev = severity(sevRows);
   const total = sev.reduce((s, x) => s + x.value, 0);
+  /* ⚠️ 2026-10-09: `cnt_*` талбаргүй (нэр солигдсон) бол заалтын тоо «—» — «0 заалт» гэж ХУДАЛ хэлэхгүй */
+  const sevKnown = sevRows.some((x) => x.sevKnown) || !sevRows.length;
   const byPkg = pkgSt?.state === 'ready' ? byPkgNc(pkgSt.rows.filter((x) => uzPass(x, sel))) : [];
 
   return (
@@ -1167,6 +1231,11 @@ export function UzlegLeft({
       {st.domFail && (
         <p className={h.photoNote} role="status">
           ⚠ {tr('Кодын тайлбар уншигдсангүй — зарим утга кодоор харагдана.')}
+        </p>
+      )}
+      {!!st.schemaMissing?.length && (
+        <p className={h.photoNote} role="alert">
+          ⚠ {tr('Маягтын талбар олдсонгүй: {0} — холбогдох тоо «—» гэж харагдана.', st.schemaMissing.join(', '))}
         </p>
       )}
       {/*
@@ -1183,7 +1252,7 @@ export function UzlegLeft({
         */}
       <Section
         title={tr('Үл нийцлийн зэрэг')}
-        note={tr('{0} үзлэг · {1} заалт', num(all.length), num(total))}
+        note={tr('{0} үзлэг · {1} заалт', num(all.length), sevKnown ? num(total) : '—')}
         tone="primary"
       >
         {sev.length

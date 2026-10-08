@@ -556,4 +556,23 @@ const nextOf = (over = {}) => {
   assert.ok((FN.match(/await findNonce\(pkg\.key, /g) ?? []).length >= 2, 'ачаалах ба илгээх замууд findNonce ашиглах ёстой');
 }
 
+/* ── 2026-10-09 (R2): «архивлаж байна» тэмдэг — задлалт, mergeSubmission дамжуулахгүй ── */
+{
+  const mk = { at: 1000, startedAt: 1001, maxOid0: 500, fillMs: FILL, n: 1460 };
+  const p = parseSubmission(JSON.stringify({ ...valid(), archiving: mk }));
+  assert.deepEqual(p.archiving, mk, 'бүтэн тэмдэг уншигдана');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), archiving: { ...mk, n: 0 } })).archiving, undefined, 'n=0 хаягдана');
+  assert.equal(parseSubmission(JSON.stringify({ ...valid(), archiving: { ...mk, maxOid0: 'x' } })).archiving, undefined, 'эвдэрсэн хаягдана');
+  const m = mergeSubmission(p, { ...valid(), at: 2000, cells: [['12:0', '6']] });
+  assert.equal(m.archiving, undefined, 'шинэ агуулга (шинэ at) тэмдгийг өвлөхгүй');
+  const SB2 = fs.readFileSync('src/lib/submission.ts', 'utf8');
+  assert.ok(SB2.includes('export async function markArchiving(') && SB2.includes('delete next.archiving;'), 'markArchiving / closeSubmission-ийн арилгалт алга');
+  const HY2 = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
+  const iMark = HY2.indexOf('await markArchiving(staged.oid, staged.at, {');
+  const iAdds = HY2.indexOf('await applyAdds(pkg, frame, written)');
+  assert.ok(iMark > 0 && iAdds > iMark, 'тэмдэг applyAdds-ийн ӨМНӨ бичигдэх ёстой (R2)');
+  assert.ok(HY2.includes('archiveSubmission(cur, a.subAt)'), 'apply subAt-ийг archiveSubmission руу дамжуулна (R3)');
+  assert.ok(HY2.includes('unclosedSet(subOid, { at: staged.at })'), 'хаагдаагүй нэмэлтийн тэмдэг (R1)');
+}
+
 console.log('submission.check ✓');

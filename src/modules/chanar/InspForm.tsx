@@ -66,6 +66,9 @@ export function InspForm({
      бөглөгдсөн утга (хуучин мөр). */
   const tpl = body.template ? inspTemplateOf(kind, body.template) : null;
   const applyTpl = (key: string) => {
+    /* ⚠️ 2026-10-09: «— загвар сонгох —» руу буцаахад урьд нь юу ч болдоггүй байв (загвар цэвэрлэгдэхгүй).
+       Мөрүүд/хавсралт ХЭВЭЭР — зөвхөн загварын холбоос арилна (бөглөсөн зүйл устахгүй тул асуухгүй). */
+    if (key === '') { onChange({ ...body, template: '' }); return; }
     const t = tpls.find((x) => x.key === key);
     if (!t) return;
     /* ⚠️ 2026-09-25: бөглөсөн мөр байвал асууна — загвар солих нь мөрүүдийг дарна */

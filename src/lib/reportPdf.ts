@@ -23,7 +23,7 @@ import { buildFindings, type ReportExtra } from '@/lib/reportData';
 import { num, pct } from '@/lib/format';
 
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
-const bn = (v: number) => num(v);
+const bn = (v: number | null) => num(v);
 /**
  * ⚠️ ЗӨВХӨН Cashflow-ийн `budget`/`contract` дүнд хэрэглэнэ: тэг нь «төсөвт
  * өртөг хараахан батлагдаагүй / гэрээ байгуулагдаагүй» гэсэн утгатай тул 0
@@ -180,7 +180,8 @@ export function buildReportDoc(
         [td(tr('Барилга угсралтын гүйцэтгэл (блокийн дундаж)')), td(pct(progress.overall, 2), true)],
         [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} ₮', bn(finance.orderTotal)), true)],
         [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} ₮', bn(finance.contractAmount)), true)],
-        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(tr('{0} ₮', bn(finance.paid)), true, TOTAL)],
+        /* ⚠️ 2026-10-09: HO_IPC хоосон → `paid` null → «—» («0 ₮» биш) */
+        [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(finance.paid == null ? '—' : tr('{0} ₮', bn(finance.paid)), true, TOTAL)],
       ] }, layout: tableLayout },
       note(tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй) нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
 

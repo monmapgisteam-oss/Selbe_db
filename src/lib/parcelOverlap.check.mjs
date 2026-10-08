@@ -12,6 +12,8 @@
  *  3. Дараагийн бүтэн барилгын дуудлага (`allBld`) геометрээ кэшээс авна.
  *  4. Хүрэлцэх (хил дээр) = огтлолцох; салангид объект тоологдохгүй.
  *  5. Уналт: давхарга унасан дуудлага `failed`-тэй, бүгд унасан нь алдаа — хуучин зан.
+ *  6. (2026-10-09) «Бүрэн чөлөөлсөн.» зэрэг ХУВИЛБАР бичиглэл саад БИШ (ганц ба багцын зам).
+ *  7. (2026-10-09) Олон хэсэгтэй нэгж талбар: 2-р хэсэг нь эх полигон дотор бол давхцана.
  */
 import assert from 'node:assert/strict';
 
@@ -43,6 +45,7 @@ const infraFeats = (j) => (j % 2 === 0
   : [{ attributes: { OBJECTID: 1 }, geometry: { x: 20 * (45 + j) + 5, y: 5 } }]);
 const byUrl = new Map([[LAYER_BY_ID[BLD].url, () => bldFeats], ...infraIds.map((id, j) => [LAYER_BY_ID[id].url, () => infraFeats(j)])]);
 let broken = null; // энэ URL унана (5-р шалгалт)
+let variant = new Set(); // эдгээр FID-ийн төлөв «бүрэн  Чөлөөлсөн.» (6-р шалгалт)
 
 const boxOf = (coords) => {
   const xs = coords.map((c) => c[0]); const ys = coords.map((c) => c[1]);
@@ -63,12 +66,15 @@ globalThis.fetch = async (url, init) => {
     body = { objectIdField: base === PARCEL_LEFT.url ? 'FID' : 'OBJECTID', extent: { spatialReference: { wkid: WK } }, advancedQueryCapabilities: { supportsPagination: true } };
   } else if (base === PARCEL_LEFT.url && p.objectIds) {
     kinds.parcels += 1;
-    body = { features: p.objectIds.split(',').map(Number).map((id) => ({ attributes: { [PARCEL_LEFT.oid]: id }, geometry: { rings: PARCELS.get(id) } })) };
+    body = { features: p.objectIds.split(',').map(Number).map((id) => ({
+      attributes: { [PARCEL_LEFT.oid]: id, [PARCEL_LEFT.fields.status]: variant.has(id) ? 'бүрэн  Чөлөөлсөн. ' : 'зөвшилцөх' },
+      ...(p.returnGeometry === 'false' ? {} : { geometry: { rings: PARCELS.get(id) } }),
+    })) };
   } else if (base === PARCEL_LEFT.url && p.geometry) {
     kinds.intersect += 1;
     const g = JSON.parse(p.geometry);
     const parts = [...(g.rings ?? []), ...(g.paths ?? []), ...(g.points ?? []).map((pt) => [pt])].map(boxOf);
-    body = { objectIds: [...PARCELS].filter(([, r]) => parts.some((b) => hit(boxOf(r[0]), b))).map(([id]) => id) };
+    body = { objectIds: [...PARCELS].filter(([, r]) => parts.some((b) => r.some((ring) => hit(boxOf(ring), b)))).map(([id]) => id) };
   } else {
     kinds.geom += 1;
     if (base === broken) body = { error: { code: 400, message: 'down', details: [] } };
@@ -120,12 +126,12 @@ await ok(`хүсэлт: багц ${batchCalls} ↔ ганцаар ${singleCalls}
 });
 
 console.log('\n3. Дараагийн бүтэн барилгын дуудлага — геометр кэшээс');
-await ok('allBld: зөвхөн огтлолцлын асуулга', async () => {
+await ok('allBld: огтлолцол + дэвшигчдийн төлөв (2026-10-09)', async () => {
   const g0 = kinds.geom;
   calls = 0;
   const r = await A.overlapLeftParcels(allBld);
   assert.equal(kinds.geom, g0, 'геометр дахин татагдав');
-  assert.equal(calls, 1, `${calls} хүсэлт`);
+  assert.equal(calls, 2, `${calls} хүсэлт`);
   assert.deepEqual([...r.oids].sort(), [...Array.from({ length: 20 }, (_, i) => 102 + 2 * i), 141].sort());
 });
 
@@ -147,6 +153,36 @@ await ok('нэг давхарга унасан дуудлага `failed`, бүг
   assert.equal(r3.status, 'fulfilled');
   assert.deepEqual(r3.value.oids, [147]);
   assert.equal(r3.value.failed, undefined);
+});
+
+console.log('\n6. Чөлөөлсөн-ий хувилбар бичиглэл (2026-10-09)');
+await ok('«бүрэн  Чөлөөлсөн. » нь ганц ба багцын замд хоёуланд нь саад биш', async () => {
+  variant = new Set([146]);
+  const D = await import('./parcelOverlap.ts?variant');
+  const one = await D.overlapLeftParcels([{ layerId: infraIds[1], where: null }]);
+  const E = await import('./parcelOverlap.ts?variantBatch');
+  const [b1, b2] = await Promise.all([
+    E.overlapLeftParcels([{ layerId: infraIds[1], where: null }]),
+    E.overlapLeftParcels([{ layerId: infraIds[2], where: null }]),
+  ]);
+  variant = new Set();
+  assert.deepEqual(one.oids, []);
+  assert.deepEqual(b1.oids, []);
+  assert.deepEqual(b2.oids, [147]);
+});
+
+console.log('\n7. Олон хэсэгтэй нэгж талбар (2026-10-09)');
+await ok('эхний хэсэг гадна, 2-р хэсэг эх полигон дотор — багцын замд давхцана', async () => {
+  /* FID 159: 1-р хэсэг хол (y=900), 2-р хэсэг барилга 39-ийн (x=780…785, y=500…505) дотор бүрэн */
+  PARCELS.set(159, [...sq(20 * 59, 900), ...sq(781, 501, 2)]);
+  const F = await import('./parcelOverlap.ts?multipart');
+  const [r1, r2] = await Promise.all([
+    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (39)' }]),
+    F.overlapLeftParcels([{ layerId: BLD, where: 'OBJECTID IN (40)' }]),
+  ]);
+  PARCELS.set(159, sq(20 * 59, 0));
+  assert.deepEqual(r1.oids, [159]);
+  assert.deepEqual(r2.oids, [140]);
 });
 
 console.log(`\n${n} шалгалт ✓`);

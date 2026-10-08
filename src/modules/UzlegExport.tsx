@@ -58,7 +58,8 @@ const presetLabel = (p: Preset) => (p === 'day' ? tr('Өдрөөр') : p === 'w'
 /** Онооны өнгө — ≥90 сайн, ≥75 анхаар, бусад муу (оноогүй бол саарал) */
 const scoreTone = (p: number | null) => (p == null ? '' : p >= 90 ? x.good : p >= 75 ? x.warn : x.bad);
 
-type Loaded = { kind: UzlegKind; raw: Row[]; rows: UzlegRow[] };
+/** `domFail` — 2026-10-09: кодын тайлбар (domain) уншигдсангүй (`loadUzlegBoth`) */
+type Loaded = { kind: UzlegKind; raw: Row[]; rows: UzlegRow[]; domFail?: boolean };
 
 export function UzlegExportButton({ kind }: { kind?: UzlegKind | null }) {
   const [open, setOpen] = useState(false);
@@ -92,6 +93,8 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   const [prog, setProg] = useState<number | null>(null);
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
+  /** ⚠️ 2026-10-09: татагдаагүй зургийн анхааруулга — файл үүссэн ч ИЛ (чимээгүй хаягддаг байв) */
+  const [warn, setWarn] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -108,11 +111,18 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   }, [busy, onClose]);
 
   const ready = data && data.kind === kind ? data : null;
+  /* ⚠️ 2026-10-09: ОГНООГҮЙ үзлэг (`d = 0`) «Бүгд» хугацаанд ОРНО — урьд нь ямар ч хугацаанд
+     орохгүй тул хэзээ ч татагдах боломжгүй байв. Бусад хугацаанд огноогүйг аль өдөрт
+     хамааруулахаа мэдэхгүй тул хасна; «Бүгд»-д тоог нь ил хэлнэ («N огноогүй»). */
+  const withUndated = preset === 'all';
   const inRange = useMemo(() => {
     if (!ready) return [] as number[];
     const a = dayStart(from); const b = dayEnd(to);
-    return ready.rows.map((r, i) => ({ r, i })).filter(({ r }) => r.d >= a && r.d <= b).map(({ i }) => i);
-  }, [ready, from, to]);
+    return ready.rows.map((r, i) => ({ r, i }))
+      .filter(({ r }) => (r.d > 0 ? r.d >= a && r.d <= b : withUndated))
+      .map(({ i }) => i);
+  }, [ready, from, to, withUndated]);
+  const undated = useMemo(() => (ready && withUndated ? ready.rows.filter((r) => !(r.d > 0)).length : 0), [ready, withUndated]);
   const companies = useMemo(() => {
     if (!ready) return [] as { key: string; n: number }[];
     const m = new Map<string, number>();
@@ -132,7 +142,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   const effFmt = fmt === 'auto' ? (chosen.length === 1 ? 'pdf' : 'xlsx') : fmt;
   const allOn = chosen.length === list.length && list.length > 0;
 
-  const resetPick = () => { setPicked(null); setDone(''); };
+  const resetPick = () => { setPicked(null); setDone(''); setWarn(''); };
   const pickPreset = (p: Preset) => { setPreset(p); setFrom(presetFrom(p, today)); setTo(dayStr(today)); resetPick(); };
   const togglePick = (i: number) => {
     const next = new Set(picked ?? list);
@@ -147,7 +157,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
 
   const run = async () => {
     if (!ready || !chosen.length) return;
-    setErr(''); setDone(''); setProg(null);
+    setErr(''); setDone(''); setWarn(''); setProg(null);
     try {
       const url = HABEA.uzleg[kind].url;
       const form = HABEA.uzleg[kind].title;
@@ -174,7 +184,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       const base = one
         ? `${one.date > 0 ? fmtDate(one.date) : 'огноогүй'} ${companyShort(one.company) || one.pkg}`
         : xlsBase;
-      const img = await loadReportImages(reports, (d, t) => {
+      const { images: img, failed } = await loadReportImages(reports, (d, t) => {
         setBusy(tr('Зураг татаж байна… {0}/{1}', num(d), num(t)));
         setProg(t > 0 ? d / t : null);
       });
@@ -190,12 +200,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
         download(file, new Blob([bytes], { type: 'application/pdf' }));
       } else {
         setBusy(tr('Excel үүсгэж байна…'));
-        const bytes = buildUzXlsx(reports, img);
+        const bytes = buildUzXlsx(reports, img, new Set(failed));
         file = `${xlsBase}.xlsx`;
         download(file, new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       }
       setBusy(''); setProg(null);
       setDone(tr('Татагдлаа: {0}', file));
+      setWarn(failed.length ? tr('{0} зураг татагдсангүй', num(failed.length)) : '');
     } catch (e) {
       setBusy(''); setProg(null);
       setErr(friendlyError(e));
@@ -276,8 +287,12 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
               </label>
             </div>
             )}
+            {undated > 0 && <p className={x.note}>{tr('{0} огноогүй', num(undated))}</p>}
           </section>
 
+          {ready?.domFail && (
+            <p className={x.note} role="status">⚠ {tr('Кодын тайлбар уншигдсангүй — зарим утга кодоор харагдана.')}</p>
+          )}
           {loadErr && <p className={x.err} role="alert">{tr('Татагдсангүй: {0}', loadErr)}</p>}
           {!ready && !loadErr && <div className={x.skeleton} aria-busy="true">{tr('Үзлэгүүдийг уншиж байна…')}</div>}
 
@@ -378,6 +393,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
             </div>
           )}
           {done && !busy && <p className={x.done} role="status">{done}</p>}
+          {warn && !busy && <p className={x.err} role="alert">⚠ {warn}</p>}
           <div className={x.actions}>
             <button type="button" className={x.btn} onClick={onClose} disabled={lock}>{tr('Болих')}</button>
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void run(); }}

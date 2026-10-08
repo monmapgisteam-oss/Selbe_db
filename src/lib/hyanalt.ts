@@ -19,7 +19,7 @@ import { invalidate } from './dataBus';
 import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { HJ } from '@/lib/services';
-import { collidesBelow, idNum, renumberPlan } from './idUnique';
+import { collidesBelow, idNum, renumberPlan, type IdRow } from './idUnique';
 
 export const HYANALT = {
   /* ⚠️ 2026-09-17: MUST → monmap. Хүснэгт нь шинэ үйлчилгээнд id 205 (0 БИШ);
@@ -455,7 +455,51 @@ export async function queryAll(): Promise<Attrs[]> {
     if (!j.exceededTransferLimit || got.length === 0) break;
     offset += got.length;
   }
+  /* ⚠️ 2026-10-09 (R6): сешнд НЭГ удаа — үлдсэн давхар дугаарыг цэвэрлэнэ (`sweepDupIds`) */
+  if (!dupSweepDone && typeof window !== 'undefined') {
+    dupSweepDone = true;
+    void sweepDupIds(out);
+  }
   return out;
+}
+
+/**
+ * ДАВХАР ДУГААРЫН ЦЭВЭРЛЭГЭЭНИЙ ТӨЛӨВЛӨГӨӨ (2026-10-09, R6) — цэвэр, сүлжээгүй.
+ * Ижил `Бүртгэлийн_дугаар`-тай мөрүүдээс ХАМГИЙН БАГА OBJECTID-тай нь дугаараа хадгална
+ * (`collidesBelow`-ийн тэнцүүлэгчтэй ижил дүрэм), бусад нь OBJECTID-ийн дарааллаар max+1-ээс.
+ * ⚠️ Тодорхойлогдмол: хоёр хөтөч зэрэг цэвэрлэвэл ижил мөрд ижил дугаар онооно.
+ * @returns `oid → шинэ дугаар` (давхардалгүй бол хоосон)
+ */
+export function dupIdPlan(rows: readonly IdRow[]): Map<number, number> {
+  const owner = new Map<number, number>();
+  for (const r of rows) {
+    if (r.id == null) continue;
+    const m = owner.get(r.id);
+    if (m == null || r.oid < m) owner.set(r.id, r.oid);
+  }
+  const losers = rows.filter((r) => r.id != null && owner.get(r.id) !== r.oid).sort((a, b) => a.oid - b.oid);
+  const out = new Map<number, number>();
+  if (!losers.length) return out;
+  let next = 1 + rows.reduce((m, r) => Math.max(m, r.id ?? 0), 0);
+  for (const r of losers) { out.set(r.oid, next); next += 1; }
+  return out;
+}
+
+/**
+ * ⚠️ 2026-10-09 (R6): `ensureUniqueId` унасан (сүлжээ, эрх) мөрийн давхар дугаар урьд нь МӨНХӨД
+ *    үлддэг байв. Дараагийн амжилттай ачаалалтад (`queryAll`) сешнд нэг удаа — давхардал байвал л
+ *    бичнэ (хэвийн үед хүсэлтгүй). Унавал чимээгүй (`console.warn`) — дэлгэцийн дугаар тул
+ *    уншилтыг унагахгүй; дараагийн сешн дахин оролдоно.
+ */
+let dupSweepDone = false;
+async function sweepDupIds(all: readonly Attrs[]): Promise<void> {
+  try {
+    const plan = dupIdPlan(all.map((a) => ({ oid: Number(a[HYANALT.oid]), id: idNum(a[F.id]) })));
+    if (!plan.size) return;
+    await updateRows([...plan].map(([oid, n]) => ({ [HYANALT.oid]: oid, [F.id]: `G-${String(n).padStart(6, '0')}` })));
+  } catch (e) {
+    console.warn('[selbe] давхар бүртгэлийн дугаарыг цэвэрлэж чадсангүй:', e);
+  }
 }
 
 /**

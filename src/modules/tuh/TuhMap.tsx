@@ -53,6 +53,9 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
 }) {
   const { zoomToWhere, setHighlight } = useMap();
   useEffect(() => { setHighlight(null); }, [setHighlight]);
+  /* ⚠️ 2026-10-09: UNMOUNT-д ч тодруулгыг арилгана — газрын зургийн контекст (`useMap`) бусад
+     харагдацтай хуваалцагддаг тул ТУХ-аас гарахад блокийн тодруулга дараагийн харагдацад үлддэг байв. */
+  useEffect(() => () => setHighlight(null), [setHighlight]);
 
   /** Сонгосон багцын газрын зургийн илэрхийлэл — давхарга + шүүлт */
   const target = useMemo(() => {

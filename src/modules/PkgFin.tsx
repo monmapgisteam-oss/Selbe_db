@@ -20,7 +20,7 @@ import {
 import { useAsync, type Async } from '@/lib/useAsync';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope } from '@/lib/gdash';
-import { HO_PKG_ALIAS, MAP_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
+import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
 import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
@@ -29,7 +29,6 @@ import {
    БҮГД УСТСАН — шинэ эх сурвалжид СУУТГАЛ ба ТӨЛӨГДӨӨГҮЙ ҮЛДЭГДЭЛ гэсэн
    ойлголт ОГТ БАЙХГҮЙ. `dun` нь аль хэдийн бодит олгосон дүн. */
 import { cat, shade, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
-import { CONTRACTED } from '@/lib/gdash';
 import { hoTotals } from '@/lib/ipc';
 import { paidShareOf, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
@@ -247,10 +246,8 @@ function mergePkgMonths(
 /* ⚠️ 2026-10-04: хүснэгт нь `@/lib/pkgAlias`-д (ТУХ-тай НЭГ эх): HO «Багц-8.1» → Cashflow «Багц 8»
    (`HO_PKG_ALIAS`) → газрын зургийн «Багц 8.2» (`MAP_PKG_ALIAS`). Урьд нь энд «БАГЦ81 → БАГЦ82»
    гэж тусад нь бичигдсэн, ТУХ өөр замаар холбодог байв. Багц 7-ийн хуваарийн дүрэм тэр файлд. */
-const FIN_PKG_ALIAS: Record<string, { key: string; label: string }> = {
-  ...MAP_PKG_ALIAS,
-  ...Object.fromEntries(Object.entries(HO_PKG_ALIAS).map(([ho, cf]) => [ho, MAP_PKG_ALIAS[cf] ?? { key: cf, label: cf }])),
-};
+/* ⚠️ 2026-10-09: `FIN_PKG_ALIAS` нь `@/lib/pkgAlias`-д шилжсэн — төслийн «олгосон ÷ гэрээлсэн»
+   (`paidShare`) ЯГ ЭНЭ хүснэгтээр гэрээлсэн багцын олголтыг тоолно (нэг холбоос, хоёр түвшин). */
 
 /**
  * Санхүүгийн өгөгдлийг холбоостой хувилбар болгоно — хуудасны БҮХ хэсэг
@@ -369,8 +366,6 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
 } {
   const d = aliasFin(raw);
   const C = CASHFLOW_NEW.fields;
-  const isContracted = (r: FinData['contracts'][number]) =>
-    String(r[C.amountNote] ?? '').replace(/\s+/g, ' ').trim() === CONTRACTED;
   const rowsByKey = new Map<string, FinData['contracts']>();
   d.contracts.forEach((r) => {
     const k2 = pkgKeyOf(r[C.pkg2]);
@@ -391,11 +386,15 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
       if (plan <= 0 && given <= 0) return null;
       /* ⚠️ 2026-09-21: гэрээт мөрүүд нь `list`-ээс — `aliasFin` нь мөрийн `bagts`-ийг
          дарж бичсэн тул `rowsByKey` аль хэдийн холбоосын дараах түлхүүртэй. */
-      const contractedRows = list.filter(isContracted);
       /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): гэрээлсэн дүн = `gdash.contractedScope`
          (`finXlInTotal` ∧ CONTRACTED) — удирдлагын тайлан · Тайлан · Дашбоардтай ГАНЦ дүрэм. */
-      const contract = contractedScope(list).amount;
-      const contracted = contractedRows.length > 0;
+      const scope = contractedScope(list);
+      const contract = scope.amount;
+      /* ⚠️ 2026-10-09: `contracted` тэмдэг ч ЭНЭ хүрээгээр (Excel-ийн нийтэд орох ∧ CONTRACTED).
+         Урьд нь хүрээгүй `note === CONTRACTED` шалгадаг тул зөвхөн 5-р хэсэгт гэрээтэй багц
+         `contract = 0` атлаа «гэрээт» болж, удирдлагын тайланд «Олголт эхлээгүй гэрээт багц · 0 ₮»
+         гэж жагсагддаг байв. */
+      const contracted = scope.keys.size > 0 || scope.amount > 0;
       return {
         key: p.key, label: tr(p.name), plan, given,
         /* ⚠️ 2026-10-01 (ШИЙДВЭР): «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН («гэрээний дүнгийн %»),

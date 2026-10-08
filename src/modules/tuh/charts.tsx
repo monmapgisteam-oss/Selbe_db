@@ -107,19 +107,21 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
   const months: { at: number; left: number; label: string; year: boolean }[] = [];
   const a = new Date(from);
   const stepM = span / MS_DAY > 900 ? 3 : 1;
-  const y0 = a.getUTCFullYear();
+  /* ⚠️ 2026-10-09: ОРОН НУТГИЙН сар — огноонууд орон нутгийн шөнө дунд (+08) тул UTC-ийн сарын
+     хил 8 цагаар зөрж, сарын 1-ний огноо өмнөх сард буудаг байв (`Overview.ganttDomain`-тэй нэг дүрэм). */
+  const y0 = a.getFullYear();
   /* ⚠️ 2026-10-06 (аудит): алхам 3 сар үед эхлэлийг 1·4·7·10-р сард ТЭГШЛЭНЭ.
      Урьд нь домэйны эхний сараас (жишээ нь 2-р сар) 3-аар алхдаг тул 1-р сар
      ХЭЗЭЭ Ч таарахгүй — оны шошго, оны зураас огт гардаггүй байв. Тэгшилсэн
      эхлэл `from`-оос өмнө байж болно — доорх `at >= from` шүүлт түүнийг алгасна. */
-  const m0 = a.getUTCMonth();
+  const m0 = a.getMonth();
   for (let m = m0 - (m0 % stepM); ; m += stepM) {
-    const at = Date.UTC(y0, m, 1);
+    const at = new Date(y0, m, 1).getTime();
     if (at > to) break;
     if (at >= from) {
       const d = new Date(at);
-      const yr = d.getUTCMonth() === 0;
-      months.push({ at, left: pos(at), year: yr, label: yr ? String(d.getUTCFullYear()) : String(d.getUTCMonth() + 1).padStart(2, '0') });
+      const yr = d.getMonth() === 0;
+      months.push({ at, left: pos(at), year: yr, label: yr ? String(d.getFullYear()) : String(d.getMonth() + 1).padStart(2, '0') });
     }
   }
   return (

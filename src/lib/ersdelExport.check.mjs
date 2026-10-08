@@ -77,8 +77,10 @@ import { simplifyRings } from '@/lib/uyrSurface';
   }];
   const csv = damageCsv(rows).split('\r\n');
   assert.equal(csv.length, 3, 'толгой + 2 объект');
-  assert.ok(csv[1].endsWith(',123.46,m2,0.81,1000'), csv[1]);
-  assert.ok(csv[2].endsWith(',5,m2,,'), `мэдэгдэхгүй гүн/өртөг ХООСОН: ${csv[2]}`);
+  /* ⚠️ 2026-10-09: сүүлийн хоёр багана truncated/total_n — мэдэгдэхгүй бол хоосон */
+  assert.ok(csv[1].endsWith(',123.46,m2,0.81,1000,,'), csv[1]);
+  assert.ok(csv[2].endsWith(',5,m2,,,,'), `мэдэгдэхгүй гүн/өртөг ХООСОН: ${csv[2]}`);
+  assert.ok(csv[0].endsWith(',truncated,total_n'), csv[0]);
 
   /* 4. GeoJSON — мөр + объектууд */
   const fc = JSON.parse(damageGeoJSON(rows, [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]], { level: 2 }));
@@ -91,6 +93,17 @@ import { simplifyRings } from '@/lib/uyrSurface';
   assert.equal(fc.features[2].geometry.type, 'Point');
   /* Мөргүй бол зөвхөн объект */
   assert.equal(JSON.parse(damageGeoJSON(rows, null)).features.length, 2);
+  assert.equal(fc.properties.partial, false, 'тайрагдаагүй бол partial=false');
+
+  /* 4b. ⚠️ 2026-10-09: ТАЙРАГДСАН давхарга экспортод ИЛ */
+  const tr = [{ ...rows[0], truncated: true, totalN: 1611 }];
+  const tcsv = damageCsv(tr).split('\r\n');
+  assert.ok(tcsv[1].endsWith(',1,1611'), tcsv[1]);
+  const tfc = JSON.parse(damageGeoJSON(tr, null));
+  assert.equal(tfc.properties.partial, true);
+  assert.deepEqual(tfc.properties.truncated_layers, [{ layer_id: 'et:24', layer: 'Барилга', exported_n: 2, total_n: 1611 }]);
+  assert.equal(tfc.features[0].properties.layer_truncated, true);
+  assert.equal(tfc.features[0].properties.layer_total_n, 1611);
 }
 
 /* 5. Оройн төсөв */

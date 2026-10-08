@@ -24,11 +24,12 @@ import {
   groupLabel, milestonesOf, resourcesOf, rowSpan, rowAct, elapsedPct, daysBetween, HO_PENDING,
   statusOf as tuhStatus, firstFilled, rowProgress,
 } from '@/lib/tuhData';
-import { lz, depRows, type TuhModel, type TuhRow } from './model';
+import { payRows } from '@/lib/ipcTable';
+import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Meter, Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
 /* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`) */
-import { Section as Card, Series } from '@/components/ui';
+import { Section as Card, Series, type SeriesLineDef } from '@/components/ui';
 /* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
    ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
@@ -51,7 +52,6 @@ const gapTone = (gap: number | null): string => {
   return lv === 'red' ? s.bad : lv === 'yellow' ? s.warn : s.good;
 };
 
-type Row = Record<string, unknown>;
 const numOf = (v: unknown): number | null => {
   if (v == null || v === '') return null;
   const x = Number(v);
@@ -162,18 +162,19 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
    *    олголт (`cumKnown`) — хуваарь (`contractTotal`)-тай нэг хүрээ (`ipcOf.paidPct` ·
    *    `ipcTable.ipcTotals`); «Хуримтлагдсан» ₮ нь хэвээр БҮХ олголт.
    */
-  const payLog = useMemo(() => {
-    const P = HO_IPC.payFields;
-    const pays = (r.ipc?.contracts ?? []).flatMap((c) => c.pays.map((p) => ({ p, known: c.contractTotal != null })))
-      .filter((x) => numOf(x.p[P.amount]) != null)
-      .sort((a, b) => String(a.p[P.payDate] ?? '').localeCompare(String(b.p[P.payDate] ?? '')));
-    return pays.reduce<{ p: Row; amt: number | null; cum: number; cumKnown: number }[]>((acc, { p, known }) => {
-      const amt = numOf(p[P.amount]) ?? 0;
-      const prev = acc.length ? acc[acc.length - 1] : null;
-      acc.push({ p, amt, cum: (prev?.cum ?? 0) + amt, cumKnown: (prev?.cumKnown ?? 0) + (known ? amt : 0) });
-      return acc;
-    }, []);
-  }, [r.ipc]);
+  /*
+   * ⚠️ 2026-10-09: ГЭРЭЭ БҮРЭЭР `ipcTable.payRows`-ийн КАНОНИК дараалал (урьдчилгаа эхэнд, дараа нь
+   *    IPC № өсөх) ба ТҮҮНИЙ хуримтлал (`PayRow.cum` — зөвхөн гүйцэтгэлийн мөр, урьдчилгаанд `null`).
+   *    Урьд нь `guilgee_ognoo` МӨРӨӨР эрэмбэлдэг байв — огноогүй мөр (45-ийн 5) ЭХЭНД орж, хуримтлал
+   *    буруу мөрд наалдана (`payRows`-ийн ⚠️); бас багцын бүх гэрээг нэг хуримтлалд холино.
+   *    «гэрээний %» = тухайн мөрийн хуримтлал ÷ ТУХАЙН гэрээний гэрээт дүн (тодорхой, > 0 үед).
+   */
+  const payLog = useMemo(() => (r.ipc?.contracts ?? []).flatMap((c) => {
+    const tot = c.contractTotal != null && c.contractTotal > 0 ? c.contractTotal : null;
+    return payRows(c.pays)
+      .filter((x) => x.amount != null)
+      .map((x) => ({ x, contract: c.code, ofContract: tot != null && x.cum != null ? (x.cum / tot) * 100 : null }));
+  }), [r.ipc]);
   const l1 = useMemo(() => level1Rows(m.rows.filter((x) => x.p.key === r.p.key), onOpen, r.p.key), [m.rows, r.p.key, onOpen]);
   const dom = ganttDomain([
     { start: r.p.start, end: r.p.end, extra: [r.commission, ...(derived?.l3.flatMap((g) => [g.start ?? null, g.end ?? null]) ?? [])] },
@@ -382,16 +383,21 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
 
       {/* ── Гүйцэтгэл ── */}
       <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
-        <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} />
+        {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhModel.planFailed`) */}
+        <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} loading={m.loading.has('plan')} planFailed={m.planFailed} />
         {/* ⚠️ «ХАБЭА»-гийн «Ажилтан — өдрөөр»-тэй ИЖИЛ `ui.Series` (line + утга). Тайлангүй өдөр
-            цуваанд ОРОХГҮЙ (null ≠ 0) — 0 баганаар «ажилтангүй» гэж худал харуулахгүй. */}
+            0 БИШ (null ≠ 0) — 0 цэгээр «ажилтангүй» гэж худал харуулахгүй. */}
+        {/* ⚠️ 2026-10-09: тайлангүй өдрийг ХАСАХГҮЙ — ЦООРХОЙ (`Series.lines`-ийн `null`). Урьд нь шүүгдэж
+            хасагддаг тул тэнхлэг хуанлиа алдаж, 3 хоногийн завсар хөрш өдрүүд мэт нийлж зурагддаг байв. */}
         {(() => {
-          const pts = r.workerDays
-            .filter((d): d is { key: string; value: number } => d.value != null)
-            .map((d) => ({ key: d.key, label: d.key.slice(5).replace('-', '.'), value: d.value, display: num(d.value) }));
+          const days = r.workerDays;
+          const reported = days.some((d) => d.value != null);
+          /* `value` нь ЗӨВХӨН тэнхлэг/дарах талбайд — `lines` өгөгдсөн үед муруй, масштаб, hover нь `lines`-ээс */
+          const items = days.map((d) => ({ key: d.key, label: d.key.slice(5).replace('-', '.'), value: d.value ?? 0 }));
+          const lines: SeriesLineDef[] = [{ key: 'workers', label: tr('ажилтан'), color: 'var(--c1)', values: days.map((d) => d.value) }];
           return (
-            <Card title={tr('Ажилтан — өдрөөр')} note={pts.length ? tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(pts.length)) : undefined}>
-              {pts.length ? <Series items={pts} height={110} unit={tr('ажилтан')} line showValues /> : <p className={s.note}>—</p>}
+            <Card title={tr('Ажилтан — өдрөөр')} note={reported ? tr('ХАБЭА-гийн өдрийн тайлан — сүүлийн {0} өдөр', num(days.length)) : undefined}>
+              {reported ? <Series items={items} height={110} line lines={lines} showValues /> : <p className={s.note}>—</p>}
             </Card>
           );
         })()}
@@ -449,7 +455,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             <span className={s.stepNo}>{tr('3 · Улсын комисс')}</span>
             <dl className={s.kv}>
               <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
-              <dt>{tr('Хамгийн эрт ашиглалтад')}</dt><dd><b>{lz(m, 'commission')(date(r.commission))}</b></dd>
+              <dt>{tr('Хамгийн эрт ашиглалтад')}</dt><dd><b>{commissionText(m, r)}</b></dd>
               <dt>{tr('Хоцролт')}</dt><dd className={r.delay != null && r.delay > 0 ? s.bad : ''}>{lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}</dd>
             </dl>
           </div>
@@ -580,26 +586,17 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
               <th className={s.num}>{tr('Хуримтлагдсан')}</th><th className={s.num}>{tr('гэрээний %')}</th>
             </tr></thead>
             <tbody>
-              {(() => {
-                const P = HO_IPC.payFields;
-                const tot = r.ipc?.contractTotal ?? null;
-                return payLog.map(({ p, amt, cum, cumKnown }, i) => {
-                  const kind = String(p[P.kind] ?? '');
-                  return (
-                    <tr key={i}>
-                      {(r.ipc?.contracts.length ?? 0) > 1 && <td>{String(p[HO_IPC.contractFields.code] ?? '—')}</td>}
-                      <td><span className={s.chip} data-tone={kind === HO_IPC.kinds.advance ? 'mute' : 'good'}>
-                        {kind === HO_IPC.kinds.advance ? tr('Урьдчилгаа') : numOf(p[P.ipcNo]) != null ? `IPC-${numOf(p[P.ipcNo])}` : (kind || '—')}
-                      </span></td>
-                      <td>{String(p[P.payDate] ?? '').slice(0, 10) || '—'}</td>
-                      <td className={s.num}>{mnt(amt)}</td>
-                      <td className={s.num}>{mnt(cum)}</td>
-                      <td className={s.num}>{tot ? pct((cumKnown / tot) * 100) : '—'}</td>
-                    </tr>
-                  );
-                });
-              })()}
-              {!payLog.length && <EmptyRow cols={(r.ipc?.contracts.length ?? 0) > 1 ? 7 : 6} />}
+              {payLog.map(({ x, contract, ofContract }, i) => (
+                <tr key={i}>
+                  {(r.ipc?.contracts.length ?? 0) > 1 && <td>{contract || '—'}</td>}
+                  <td><span className={s.chip} data-tone={x.advance ? 'mute' : 'good'}>{x.code}</span></td>
+                  <td>{String(x.date ?? '').slice(0, 10) || '—'}</td>
+                  <td className={s.num}>{mnt(x.amount)}</td>
+                  <td className={s.num}>{mnt(x.cum)}</td>
+                  <td className={s.num}>{pct(ofContract)}</td>
+                </tr>
+              ))}
+              {!payLog.length && <EmptyRow cols={(r.ipc?.contracts.length ?? 0) > 1 ? 6 : 5} />}
             </tbody>
           </table>
         </div>

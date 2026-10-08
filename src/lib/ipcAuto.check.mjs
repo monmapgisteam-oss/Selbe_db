@@ -23,7 +23,7 @@
 import assert from 'node:assert/strict';
 import {
   dayOf, isAuto, autoDay, autoId, findAutoRow,
-  autoInsert, autoUpdate, planAuto, contractCodeOf, AUTO_PREFIX,
+  autoInsert, autoUpdate, planAuto, contractCodeOf, AUTO_PREFIX, contractFor, pickContract,
 } from './ipcAuto.ts';
 import { LINK_FIELDS } from './ipcLink.ts';
 import { HO_IPC, pkgKeyOf } from './services.ts';
@@ -191,6 +191,28 @@ const P = HO_IPC.payFields;
   }];
   assert.equal(contractCodeOf(autoOnly, 'БАГЦ33'), '',
     '⚠️ автомат мөрөөс код авбал алдаа мөнхөрнө');
+
+  /* ⚠️ 2026-10-09: нэг багцад ОЛОН гэрээ — эхнийх биш, барилга угсралт → «Гүйцэтгэл» төлбөртэй */
+  const multi = [
+    { [P.id]: 'ХО-0001', [C.pkg]: 'Багц-7', [C.code]: 'Багц-7 ЗТ', [C.workType]: 'ТЭЗҮ,Судалгаа', [P.kind]: 'Гүйцэтгэл' },
+    { [P.id]: 'ХО-0002', [C.pkg]: 'Багц-7', [C.code]: 'Багц-7', [C.workType]: 'Барилга угсралт', [P.kind]: 'Урьдчилгаа төлбөр' },
+  ];
+  assert.deepEqual(contractFor(multi, 'БАГЦ7'), { code: 'Багц-7', warn: null }, 'барилга угсралт давамгайлна');
+  assert.equal(contractCodeOf(multi, 'БАГЦ7'), 'Багц-7');
+  const two = [
+    { [P.id]: 'ХО-0003', [C.pkg]: 'Багц-5', [C.code]: 'Багц-5Б', [C.workType]: 'Барилга угсралт', [P.kind]: 'Урьдчилгаа төлбөр' },
+    { [P.id]: 'ХО-0004', [C.pkg]: 'Багц-5', [C.code]: 'Багц-5А', [C.workType]: 'Барилга угсралт', [P.kind]: 'Гүйцэтгэл' },
+  ];
+  assert.deepEqual(contractFor(two, 'БАГЦ5'), { code: 'Багц-5А', warn: null }, '«Гүйцэтгэл» төлбөртэй нь');
+  const tie = [
+    { [P.id]: 'ХО-0005', [C.pkg]: 'Багц-6', [C.code]: 'Багц-6Б', [C.workType]: 'Барилга угсралт' },
+    { [P.id]: 'ХО-0006', [C.pkg]: 'Багц-6', [C.code]: 'Багц-6А', [C.workType]: 'Барилга угсралт' },
+  ];
+  const t = contractFor(tie, 'БАГЦ6');
+  assert.equal(t.code, 'Багц-6А', 'тодорхой (кодын эрэмбэ), мөрийн дарааллаас үл хамаарна');
+  assert.equal(contractFor([...tie].reverse(), 'БАГЦ6').code, 'Багц-6А');
+  assert.ok(t.warn && t.warn.includes('Багц-6А') && t.warn.includes('Багц-6Б'), `анхааруулга: ${t.warn}`);
+  assert.deepEqual(pickContract([], 'X'), { pick: null, warn: null });
 }
 
 /* ══ 7. planAuto — алгасах тохиолдлууд ══ */

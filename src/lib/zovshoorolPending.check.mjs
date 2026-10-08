@@ -105,4 +105,82 @@ console.log('✅ бүртгэгдсэн цаг: CreationDate → EditDate → nu
 }
 console.log('✅ харагдац: хоосон төлөв · шүүлт · тэмдэглэгээ');
 
+/* ══════════════ 8. diffZov — танигдаагүй төлөв, null/'' (2026-10-09) ══════════════ */
+{
+  const { diffZov, F } = await import('./zovshoorol.ts');
+  const row = z({ oid: 9, tolov: 'unknown', dugaar: '', selbe: '', tailbar: '' });
+  const draft = (o) => ({ ...row, tolov: TOLOV.wait, ...o });
+  assert.deepEqual(diffZov(row, draft({})), { [F.tolov]: TOLOV.wait },
+    'танигдаагүй серверийн төлөв ЗААВАЛ бичигдэнэ (сонголт ижил мэт харагдсан ч)');
+  assert.deepEqual(diffZov(row, draft({ tolov: null })), {}, 'төлөв сонгоогүй (null) бол бичихгүй');
+  const known = z({ oid: 9, tolov: TOLOV.wait, dugaar: '', selbe: '' });
+  assert.deepEqual(diffZov(known, { ...known }), {}, "'' ↔ '' — ялгаа алга");
+  assert.deepEqual(diffZov(known, { ...known, dugaar: 'A-1' }), { [F.dugaar]: 'A-1' });
+  assert.deepEqual(diffZov({ ...known, dugaar: 'A-1' }, { ...known, dugaar: '' }), { [F.dugaar]: null },
+    "хоослох нь '' биш null бичнэ");
+}
+console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэвийншүүлэлт");
+
+/* ══════════════ 9. saveZov — хариуны боловсруулалт (хуурамч post, 2026-10-09) ══════════════ */
+{
+  const { saveZov, F, TOLOV: T } = await import('./zovshoorol.ts');
+  const calls = [];
+  let reply = {};
+  let dupRows = [];
+  const realF = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    const p = Object.fromEntries(new URLSearchParams(String(init?.body ?? '')));
+    calls.push({ u, p });
+    let body;
+    if (u.endsWith('/applyEdits')) body = reply;
+    else if (u.endsWith('/query')) body = { features: dupRows.map((a) => ({ attributes: a })) };
+    else body = { objectIdField: 'OBJECTID', fields: [] };
+    return { ok: true, status: 200, json: async () => structuredClone(body), text: async () => JSON.stringify(body) };
+  };
+  const draft = { bagts: 'Багц 1', shat: 3, ner: 'Шинэ', selbe: '', tolov: T.wait, ognoo: null,
+    dugaar: '', baiguullaga: '', hariutsagch: '', tailbar: '' };
+  const edits = () => calls.filter((c) => c.u.endsWith('/applyEdits'));
+  try {
+    /* нэмэх — давхардалгүй → шинэ OID */
+    reply = { addResults: [{ success: true, objectId: 42 }] };
+    assert.equal(await saveZov(draft), 42);
+    const dupQ = calls.find((c) => c.u.endsWith('/query'));
+    assert.ok(dupQ, 'нэмэхийн өмнө давхардлыг серверээс асууна');
+    assert.match(dupQ.p.where, new RegExp(`${F.bagts} = N'Багц 1' AND ${F.shat} = 3`));
+    assert.ok(calls.indexOf(dupQ) < calls.indexOf(edits()[0]), 'асуулт бичилтээс ӨМНӨ');
+
+    /* нэмэх — зэрэгцээ хэрэглэгч ижил дараалал эзэлсэн → бичихгүй, нэрээр нь хэлнэ */
+    calls.length = 0;
+    dupRows = [{ [F.ner]: 'Хуучин зөвшөөрөл' }];
+    await assert.rejects(() => saveZov(draft), /Хуучин зөвшөөрөл/);
+    assert.equal(edits().length, 0, 'давхардсан үед applyEdits явахгүй');
+    dupRows = [];
+
+    /* серверийн мөрийн татгалзал → шалтгаантай алдаа */
+    reply = { addResults: [{ success: false, error: { description: 'locked' } }] };
+    await assert.rejects(() => saveZov(draft), /locked/);
+    /* хоосон хариу → амжилт БИШ */
+    reply = {};
+    await assert.rejects(() => saveZov(draft), (e) => e instanceof Error);
+    /* 200-аар ирсэн алдаа → шидэнэ */
+    reply = { error: { code: 400, message: 'bad', details: [] } };
+    await assert.rejects(() => saveZov(draft));
+
+    /* засвар — ялгаагүй бол сүлжээ хөндөхгүй */
+    calls.length = 0;
+    const before = { ...draft, oid: 7, since: null };
+    assert.equal(await saveZov({ ...draft, oid: 7 }, before), 7);
+    assert.equal(edits().length, 0, 'өөрчлөлтгүй засвар бичигдэхгүй');
+    /* засвар — зөвхөн өөрчлөгдсөн талбар */
+    reply = { updateResults: [{ success: true, objectId: 7 }] };
+    assert.equal(await saveZov({ ...draft, oid: 7, dugaar: 'Z-9' }, before), 7);
+    const ups = JSON.parse(edits()[0].p.updates);
+    assert.deepEqual(ups[0].attributes, { OBJECTID: 7, [F.dugaar]: 'Z-9' });
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+console.log('✅ saveZov: давхардлын урьдчилсан асуулт · мөрийн татгалзал · хоосон/200 алдаа · зөвхөн ялгаа');
+
 console.log('\nzovshoorolPending.check: ok');

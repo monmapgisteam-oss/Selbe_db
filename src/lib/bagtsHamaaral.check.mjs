@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import {
   parseDeps, depsJson, reaches, linkError, upstreamOf, downstreamOf, chainOf, applyChange, HAMAARAL_KEY,
+  sameDeps,
 } from '@/lib/bagtsHamaaral.ts';
 
 const D = (from, to) => ({ from, to });
@@ -46,4 +47,8 @@ assert.deepEqual(applyChange(deps, { op: 'add', dep: D('X', 'Y') }), [...deps, D
 assert.equal(typeof applyChange(deps, { op: 'add', dep: D('БАГЦ1', 'energy:БАГЦ61') }), 'string', 'дугуй нэмэлт — шалтгаан');
 assert.deepEqual(applyChange(deps, { op: 'remove', dep: D('БАГЦ1', 'social:БАГЦ70') }), [deps[0], deps[2]]);
 assert.deepEqual(applyChange(deps, { op: 'remove', dep: D('Q', 'W') }), deps, 'байхгүйг устгах — өөрчлөлтгүй');
+/* 2026-10-09: `saveChange` өөрчлөлтгүй үед бичихгүй — `sameDeps` шалгуур */
+assert.ok(sameDeps(applyChange(deps, { op: 'remove', dep: D('Q', 'W') }), deps), 'байхгүйг устгах = ижил');
+assert.ok(sameDeps([deps[1], deps[0], deps[2]], deps), 'дараалал хамаагүй');
+assert.ok(!sameDeps(applyChange(deps, { op: 'remove', dep: deps[1] }), deps), 'жинхэнэ устгал = өөр');
 console.log('✅ нэмэх · устгах');

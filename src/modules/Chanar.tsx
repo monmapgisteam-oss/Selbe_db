@@ -46,8 +46,8 @@ import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { ALL_BAGTS } from '@/lib/scopedAcl';
 import { chanarAclReady, isAuthorFor, listChanarAssigns, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
 import {
-  activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
-  delayDays, emptyBodyOf, emptyKeySections, history, kindLabel, latest, myActionLabel, orgCode, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
+  activeSameTitle, bounceLabel, canAct, EMPTY_META, isAnOpen, isMsLike, KINDS, MS_STATUS, NOTE_MAX, REVIEWERS_OF, SEQUENTIAL_KINDS, VERDICT,
+  delayDays, emptyBodyOf, emptyKeySections, history, kindLabel, latest, myActionLabel, orgCode, parseBodyOf, progress, repVerdictText, requiredReviewers, reviewerLabel, roleWaitReason,
   statusLabel, verdictCode, verdictLabel,
   type AnyBody, type BodyCommon, type BounceReason, type DocKind, type InspBody, type InspCheck, type MaBody, type Meta, type MsDoc,
   type MsStatus, type NcrBody, type NcrCorrection, type Review, type Reviewer, type VerdictCode,
@@ -69,6 +69,7 @@ import { InspForm } from './chanar/InspForm';
 import { NcrForm, emptyNcrClose, ncrCloseFrom, type NcrCloseDraft } from './chanar/NcrForm';
 import { userError } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+import { DateField } from '@/modules/huvaari/DateField';
 import s from './chanar.module.css';
 
 const tagCls = (st: MsStatus): string => {
@@ -183,6 +184,11 @@ export function Chanar() {
   const bodiesGen = useRef(0);
   const bodiesPending = useRef<Set<number>>(new Set());
   const [bodies, setBodies] = useState<Map<number, AnyBody>>(new Map());
+  /* ⚠️ 2026-10-09: УНШИГДААГҮЙ биетэй баримтууд — ref нь эффектэд (дараалалаас хасна), state нь
+     зурахад. Урьд нь унасан багц бүр эффектийг дахин эхлүүлж ЗОГСОЛТГҮЙ дахин хүсэлт илгээдэг
+     эсвэл «ачаалж байна»-д гацдаг байв; одоо тоолж, «Дахин оролдох» товчоор л дахин татна. */
+  const bodiesFailedRef = useRef<Set<number>>(new Set());
+  const [bodiesFailed, setBodiesFailed] = useState<ReadonlySet<number>>(new Set());
   /* ⚠️ 2026-09-25: `run()` дуусахад сонголт солигдсон бол хуучин баримтын
      биеийг шинэ сонголт дээр бичихгүй — `selRef` нь сүүлийн `sel`. */
   const selRef = useRef<number | null>(null);
@@ -230,6 +236,8 @@ export function Chanar() {
       bodiesRef.current = new Map();
       bodiesPending.current.clear();
       setBodies(new Map());
+      bodiesFailedRef.current.clear();
+      setBodiesFailed(new Set());
     } catch (e) {
       setErr(userError(e));
       setLoadErr(true);
@@ -295,7 +303,8 @@ export function Chanar() {
   useEffect(() => {
     const gen = bodiesGen.current;
     const pending = bodiesPending.current;
-    const queue = allHeads.filter((d) => !bodiesRef.current.has(d.oid) && !pending.has(d.oid));
+    const failed = bodiesFailedRef.current;
+    const queue = allHeads.filter((d) => !bodiesRef.current.has(d.oid) && !pending.has(d.oid) && !failed.has(d.oid));
     if (!queue.length) return;
     for (const d of queue) pending.add(d.oid);
     let live = true;
@@ -308,7 +317,10 @@ export function Chanar() {
         try {
           const got = await loadBodiesOf(b.map((d) => d.oid));
           if (bodiesGen.current === gen) for (const d of b) bodiesRef.current.set(d.oid, got.get(d.oid)?.body ?? emptyBodyOf(d.kind));
-        } catch { /* хураангуй л — чимээгүй; дараагийн effect дахин оролдоно */ } finally {
+        } catch {
+          /* ⚠️ 2026-10-09: хураангуй л — тоолж «Дахин оролдох»-д үлдээнэ (`bodiesFailed`) */
+          if (bodiesGen.current === gen) for (const d of b) failed.add(d.oid);
+        } finally {
           for (const d of b) pending.delete(d.oid);
         }
       }
@@ -316,13 +328,19 @@ export function Chanar() {
     void Promise.all(Array.from({ length: Math.min(2, batches.length) }, worker))
       /* ⚠️ `live`-ээс үл хамааран агшин авна — effect дахин эхэлсэн ч явж байсан
          хүсэлтийн үр дүн зурагдана (эс тэгвээс «ачаалж байна» гацна) */
-      .then(() => { if (bodiesGen.current === gen) setBodies(new Map(bodiesRef.current)); });
+      .then(() => {
+        if (bodiesGen.current !== gen) return;
+        setBodies(new Map(bodiesRef.current));
+        setBodiesFailed(new Set(failed));
+      });
     return () => {
       live = false;
       for (const d of queue) pending.delete(d.oid);
     };
-  }, [allHeads, bodies]);
+  }, [allHeads, bodies, bodiesFailed]);
   const bodiesLoading = allHeads.some((d) => !bodies.has(d.oid));
+  const nBodiesFailed = allHeads.filter((d) => bodiesFailed.has(d.oid)).length;
+  const retryBodies = () => { bodiesFailedRef.current.clear(); setBodiesFailed(new Set()); };
 
   const reloadBody = useCallback(async (oid: number) => {
     const r = await loadBodyOf(oid);
@@ -411,26 +429,40 @@ export function Chanar() {
     ? (act.edit || act.correction)
     : act.edit && doc.status === MS_STATUS.draft && !hist.some((h) => h.rev > doc.rev));
 
-  const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
+  const run = async (fn: () => Promise<{ ok: boolean; error?: string; unsure?: boolean }>, okMsg: string) => {
     if (busy) return false;
     setBusy(true); setErr(''); setNote('');
     const sel0 = sel;
     try {
       const r = await fn();
       /* ⚠️ 2026-10-06 (аудит): store-ийн `error` нь түүхий ArcGIS мөр байж болно («Token Required») — `userError` */
-      if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Амжилтгүй.')); return false; }
+      if (!r.ok) {
+        const msg = r.error ? userError(r.error) : tr('Амжилтгүй.');
+        setErr(msg);
+        /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`unsure`) — бичилт сервер дээр хийгдсэн байж болох тул
+           жагсаалтыг шинэчилнэ. `refresh` алдааны мөрийг цэвэрлэдэг тул дараа нь БУЦААЖ тавина
+           (`saveNew`-ийн 2026-10-05 загвар). */
+        if (r.unsure) void refresh().then(() => setErr(msg), () => setErr(msg));
+        return false;
+      }
       setNote(okMsg);
       await refresh();
       /* ⚠️ 2026-09-25: хүлээх хооронд сонголт солигдсон бол (жагсаалт/таб busy үед
          хаалттай ч гэсэн) хуучин баримтын биеийг шинэ сонголт дээр БИЧИХГҮЙ. */
+      /* ⚠️ 2026-10-09: бичилт АМЖИЛТТАЙ болсны дараах дахин уншилт унавал «амжилтгүй» гэж
+         ХЭЛЭХГҮЙ (хэрэглэгч дахин дарж давхар бичилт хийдэг) — биеийн алдааг тусад нь. */
       if (sel0 != null && selRef.current === sel0) {
-        const b = await reloadBody(sel0);
-        if (selRef.current !== sel0) return true;
-        setBody(b);
-        if (b) { bodiesRef.current.set(sel0, b); setBodies(new Map(bodiesRef.current)); }
-        if (b && 'items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
-        /* ⚠️ 2026-10-04: залруулгын ноорог ч хадгалсан утгаар — эс бөгөөс `sideDirty` худал асууна */
-        if (b && 'correction' in b) { setNcrClose(ncrCloseFrom((b as NcrBody).closure)); setCorr({ ...(b as NcrBody).correction }); }
+        try {
+          const b = await reloadBody(sel0);
+          if (selRef.current !== sel0) return true;
+          setBody(b);
+          if (b) { bodiesRef.current.set(sel0, b); setBodies(new Map(bodiesRef.current)); }
+          if (b && 'items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
+          /* ⚠️ 2026-10-04: залруулгын ноорог ч хадгалсан утгаар — эс бөгөөс `sideDirty` худал асууна */
+          if (b && 'correction' in b) { setNcrClose(ncrCloseFrom((b as NcrBody).closure)); setCorr({ ...(b as NcrBody).correction }); }
+        } catch (e) {
+          if (selRef.current === sel0) setBodyErr(userError(e));
+        }
       }
       return true;
     } catch (e) {
@@ -562,12 +594,7 @@ export function Chanar() {
     }, tr('Ноорог хадгалагдлаа — дугаар автоматаар олгогдов.'));
     newUnsure.current = !!unsure;
     if (ok) { clearDraft('edit', ctx0); setEdit(false); setDirty(false); setSel(oid); }
-    /* Жагсаалтыг шинэчилнэ — хожуу бичигдсэн мөр харагдана. `refresh` алдааны мөрийг
-       цэвэрлэдэг тул дараа нь БУЦААЖ тавина. */
-    else if (unsure) {
-      const msg = userError(unsure);
-      void refresh().then(() => setErr(msg), () => setErr(msg));
-    }
+    /* Жагсаалтыг шинэчлэх (`unsure`) нь 2026-10-09-нөөс `run` дотор — бүх бичих замд нэг дүрэм. */
   };
   /* Засах горимд хувилбарын шалтгаан шаардлагатай юу — буцаагдсан (rev+1 үүснэ) эсвэл rev>0 ноорог */
   const needRevNote = !!doc && doc.kind !== 'NCR' && (doc.status === MS_STATUS.returned || doc.rev > 0);
@@ -592,7 +619,9 @@ export function Chanar() {
   const restoreDraft = () => {
     if (offerEdit) {
       if (sel != null && !edit) startEdit();
-      setDTitle(offerEdit.title); setDBody(offerEdit.body); setDirty(true);
+      /* ⚠️ 2026-10-09: localStorage-ийн бие хуучин хувилбарын бүтэцтэй/эвдэрсэн байж болно — серверийн
+         биеийн ижил нормчлолоор (`parseBodyOf`) оруулна; урьд нь шууд тавьж маягт унадаг байв. */
+      setDTitle(offerEdit.title); setDBody(parseBodyOf(offerEdit.kind, JSON.stringify(offerEdit.body))); setDirty(true);
     }
     if (offerCorr) setCorr(offerCorr.corr);
     setOffer(null);
@@ -641,10 +670,10 @@ export function Chanar() {
   /* ⚠️ 2026-10-06 (аудит): `window.prompt` → `ReasonDialog` (олон мөр, 2000 тэмдэгт, Esc болих) —
      prompt нэг мөртэй, уртын хязгааргүй (`hyanalt` 8000-д багтахгүй байж болно) байв. */
   const [ask, setAsk] = useState<'rev' | 'reopen' | null>(null);
-  const newRevision = () => { if (doc) setAsk('rev'); };
-  const doNewRevision = async (reason: string) => {
-    if (!doc) return;
-    if (!reason.trim()) { setErr(tr('Хувилбарын шалтгаанаа бичнэ үү.')); return; }
+  const newRevision = () => { if (doc) { setErr(''); setAsk('rev'); } };
+  const doNewRevision = async (reason: string): Promise<boolean> => {
+    if (!doc) return false;
+    if (!reason.trim()) { setErr(tr('Хувилбарын шалтгаанаа бичнэ үү.')); return false; }
     let oid = doc.oid;
     const ok = await run(async () => {
       const r = await newRevisionDoc({ oid: doc.oid, who: me, reason });
@@ -652,6 +681,7 @@ export function Chanar() {
       return r;
     }, tr('Шинэ хувилбарын ноорог үүслээ (rev {0}).', doc.rev + 1));
     if (ok) setSel(oid);
+    return ok;
   };
 
   /* MA: материал бүрийн шийдвэрт AN/R байвал нийт A боломжгүй (`chanarMs.review` өсгөдөг) — товч хаалттай, тайлбартай */
@@ -685,11 +715,13 @@ export function Chanar() {
     /* ⚠️ 2026-09-25: MIR/FIC — захиалагчийн баганын хадгалаагүй өөрчлөлтийг ЭХЛЭЭД
        хадгална (`saveClientChecks`), унавал шийдвэр өгөхгүй; өмнө нь алдагддаг байв. */
     const cd = clientDirty && act.clientChecks && clientDraft ? clientDraft : null;
+    let cdSaved = false;
     const ok = await run(
       async () => {
         if (cd) {
           const r = await saveClientChecks({ oid: doc.oid, who: me, client: cd });
           if (!r.ok) return { ok: false, error: tr('Захиалагчийн багана хадгалагдсангүй — шийдвэр өгөгдөөгүй: {0}', r.error ?? '') };
+          cdSaved = true;
         }
         /* ⚠️ 2026-10-04: NCR — хянагчийн ХАРСАН залруулгын агшин; зөрвөл store татгалзана */
         const seenCorrectionAt = doc.kind === 'NCR' && body && 'correctionAt' in body ? (body as NcrBody).correctionAt : undefined;
@@ -700,6 +732,20 @@ export function Chanar() {
       eff === 'R' ? tr('Татгалзаж, гүйцэтгэгч рүү буцаав.') : eff === 'AN' ? tr('Санал бүхий зөвшөөрөв.') : tr('Зөвшөөрөв.'),
     );
     if (ok) { setRNote(''); setPerMat({}); setAnDeadline(''); }
+    /* ⚠️ 2026-10-09: багана ХАДГАЛАГДСАН ч шийдвэр татгалзсан — `run` биеийг зөвхөн амжилтад дахин
+       уншдаг тул `body` хуучин хэвээр, `clientDirty` худал «хадгалаагүй» гэж асуудаг байв. */
+    else if (cdSaved) {
+      const oid0 = doc.oid;
+      try {
+        const b = await reloadBody(oid0);
+        if (selRef.current === oid0 && b) {
+          setBody(b);
+          if ('items' in b) setClientDraft((b as InspBody).items.map((it) => it.client));
+        }
+      } catch (e) {
+        if (selRef.current === oid0) setBodyErr(userError(e));
+      }
+    }
   };
 
   /* ── Хянахгүй буцаах (Чанарын хэлтэс) ── */
@@ -744,11 +790,11 @@ export function Chanar() {
     if (ok) clearDraft('corr', String(doc.oid));
   };
   /* ⚠️ 2026-09-30: шалтгаан ЗААВАЛ (`chanarMs.reopen`) — хаалтын бүртгэл `rounds`-д үлдэнэ */
-  const reopen = () => { if (doc) setAsk('reopen'); };
-  const doReopen = async (reason: string) => {
-    if (!doc) return;
-    if (!reason.trim()) { setErr(tr('Дахин нээх шалтгаанаа бичнэ үү.')); return; }
-    await run(() => reopenDoc({ oid: doc.oid, who: me, reason }), tr('Дахин нээгдлээ.'));
+  const reopen = () => { if (doc) { setErr(''); setAsk('reopen'); } };
+  const doReopen = async (reason: string): Promise<boolean> => {
+    if (!doc) return false;
+    if (!reason.trim()) { setErr(tr('Дахин нээх шалтгаанаа бичнэ үү.')); return false; }
+    return run(() => reopenDoc({ oid: doc.oid, who: me, reason }), tr('Дахин нээгдлээ.'));
   };
   const closeNcr = async () => {
     if (!doc) return;
@@ -792,12 +838,15 @@ export function Chanar() {
       const errs: string[] = [];
       for (const f of Array.from(files)) {
         if (f.size > MAX_ATT) { errs.push(tr('«{0}» хэт том — 10 МБ-аас бага файл хавсаргана уу.', f.name)); continue; }
-        const r = await addAttachment(doc.oid, f);
+        /* ⚠️ 2026-10-09: нэг файлын шидэлт (сүлжээ) бусад файлын алдааг арчихгүй — файл тус бүрд */
+        let r: { ok: boolean; error?: string };
+        try { r = await addAttachment(doc.oid, f); } catch (e) { errs.push(`${f.name}: ${userError(e)}`); continue; }
         /* ⚠️ 2026-10-06 (аудит): түүхий ArcGIS/сүлжээний мөр («TimeoutError», «HTTP 500») → `userError` */
         if (!r.ok) errs.push(`${f.name}: ${r.error ? userError(r.error) : tr('Хавсралт хадгалагдсангүй.')}`);
       }
+      /* ⚠️ 2026-10-09: жагсаалтын дахин уншилт унавал файл тус бүрийн алдааг ДАРАХГҮЙ — нэмнэ */
+      try { await reloadAtts(); } catch (e) { errs.push(tr('Хавсралтын жагсаалт шинэчлэгдсэнгүй: {0}', userError(e))); }
       if (errs.length) setErr(errs.join(' · '));
-      await reloadAtts();
     } catch (e) {
       setErr(userError(e));
     } finally {
@@ -806,12 +855,16 @@ export function Chanar() {
   };
   const removeAtt = async (a: Att) => {
     if (!doc || !window.confirm(tr('«{0}» хавсралтыг устгах уу?', a.name))) return;
-    setBusy(true);
+    /* ⚠️ 2026-10-09: өмнөх үйлдлийн алдаа/мэдэгдэл энэ устгалын үр дүн мэт үлддэг байв */
+    setBusy(true); setErr(''); setNote('');
     try {
       /* ⚠️ 2026-10-06 (аудит): шалтгаантай (`{ ok, error }`) — урьд нь зөвхөн ерөнхий мессеж */
       const r = await deleteAttachment(a.parentOid, a.id);
-      if (!r.ok) setErr(r.error ? userError(r.error) : tr('Хавсралт устгагдсангүй.'));
-      await reloadAtts();
+      const errs: string[] = [];
+      if (!r.ok) errs.push(r.error ? userError(r.error) : tr('Хавсралт устгагдсангүй.'));
+      /* ⚠️ 2026-10-09: жагсаалтын уншилт унавал устгалын алдааг дарахгүй (`upload`-ын ижил) */
+      try { await reloadAtts(); } catch (e) { errs.push(tr('Хавсралтын жагсаалт шинэчлэгдсэнгүй: {0}', userError(e))); }
+      if (errs.length) setErr(errs.join(' · '));
     } catch (e) {
       setErr(userError(e));
     } finally {
@@ -830,7 +883,10 @@ export function Chanar() {
 
   /* ── Багцын хураангуй мөр — төрлөөр (бие `bodies`-оос) ── */
   /* ⚠️ 2026-09-25: бие бүрэн татагдаагүй байхад «дутуу N» гэх худал тоо биш — «ачаалж байна» */
-  const LOADING = tr('биеийн хураангуй ачаалж байна…');
+  /* ⚠️ 2026-10-09: унасан бие байвал «ачаалж байна» гэж ХУДАЛ хүлээлгэхгүй — тоог нь хэлнэ (null ≠ 0: дутуу тоо гаргахгүй) */
+  const LOADING = nBodiesFailed > 0
+    ? tr('{0} баримтын агуулга уншигдсангүй — хураангуй дутуу', nBodiesFailed)
+    : tr('биеийн хураангуй ачаалж байна…');
   const summary = (): string[] => {
     if (isMsLike(kind)) {
       const ap = allHeads.filter((d) => d.status === MS_STATUS.approved).length;
@@ -1002,6 +1058,9 @@ export function Chanar() {
       {!listFailed && (
         <div className={s.summary} title={tr('Багцын хураангуй')}>
           {summary().map((line, i) => <span key={i}>{line}</span>)}
+          {nBodiesFailed > 0 && (
+            <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={retryBodies}>{tr('Дахин оролдох')}</button>
+          )}
         </div>
       )}
 
@@ -1020,11 +1079,15 @@ export function Chanar() {
           title={ask === 'rev'
             ? tr('Шинэ хувилбарын шалтгаан (rev {0}):', doc.rev + 1)
             : tr('«{0}» үл тохирлыг дахин нээх шалтгаан (заавал) — гүйцэтгэгч дахин залруулна:', doc.docNo)}
+          busy={busy}
+          error={err}
           onCancel={() => setAsk(null)}
-          onOk={(reason) => {
+          /* ⚠️ 2026-10-09: цонх БИЧИЛТ АМЖИЛТТАЙ болсны дараа л хаагдана — урьд нь бичихээс өмнө
+             хаагдаж, татгалзсан (эрх, зэрэг өөрчлөлт, сүлжээ) үед бичсэн шалтгаан алга болдог байв. */
+          onOk={async (reason) => {
             const a = ask;
-            setAsk(null);
-            if (a === 'rev') void doNewRevision(reason); else void doReopen(reason);
+            const ok = a === 'rev' ? await doNewRevision(reason) : await doReopen(reason);
+            if (ok) setAsk(null);
           }}
         />
       )}
@@ -1344,15 +1407,18 @@ export function Chanar() {
                       placeholder={tr('Санал, шаардлага — AN ба R-д ЗААВАЛ')}
                       aria-label={tr('Хянагчийн санал')}
                       value={rNote}
+                      /* ⚠️ 2026-10-09: `NOTE_MAX` — store (`chanarMs.review`) мөн татгалздаг; урьд нь хязгааргүй бичээд дарахад л унадаг байв */
+                      maxLength={NOTE_MAX}
                       onChange={(e) => setRNote(e.target.value)}
                       disabled={busy}
                     />
                     {doc.kind !== 'NCR' && (
-                      <label className={s.field}>
+                      /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️).
+                         Хадгалах хэлбэр ХЭВЭЭР — `YYYY-MM-DD` мөр, `decide` дотор `fromDateInput`. */
+                      <div className={s.field}>
                         {tr('AN нөхцөл биелэх хугацаа (сонголт)')}
-                        <input type="date" className={s.input} value={anDeadline} disabled={busy} aria-label={tr('AN нөхцөл биелэх хугацаа (сонголт)')}
-                          onChange={(e) => setAnDeadline(e.target.value)} />
-                      </label>
+                        <DateField label={tr('AN нөхцөл биелэх хугацаа (сонголт)')} value={anDeadline} disabled={busy} onChange={setAnDeadline} />
+                      </div>
                     )}
                   </>
                 )}
@@ -1360,7 +1426,7 @@ export function Chanar() {
                   <div className={s.revActs}>
                     {act.review.length === 0 && (
                       <textarea className={s.textarea} placeholder={tr('Буцаах тайлбар — заавал')} aria-label={tr('Буцаах тайлбар')}
-                        value={rNote} onChange={(e) => setRNote(e.target.value)} disabled={busy} />
+                        value={rNote} maxLength={NOTE_MAX} onChange={(e) => setRNote(e.target.value)} disabled={busy} />
                     )}
                     <label className={s.field}>
                       {tr('Хянахгүй буцаах шалтгаан')}
@@ -1380,7 +1446,7 @@ export function Chanar() {
                 {act.closeAn && closeAs && (
                   <div className={s.revActs}>
                     <textarea className={s.textarea} placeholder={tr('AN хаалтын тайлбар (сонголт)')} aria-label={tr('AN хаалтын тайлбар')}
-                      value={rNote} onChange={(e) => setRNote(e.target.value)} disabled={busy} />
+                      value={rNote} maxLength={NOTE_MAX} onChange={(e) => setRNote(e.target.value)} disabled={busy} />
                     <button type="button" className={`${s.btn} ${s.btnOk}`} disabled={busy} onClick={() => void closeAn()}>{tr('AN нөхцөл биелсэн — хаах')}</button>
                   </div>
                 )}
@@ -1595,27 +1661,33 @@ function FormHead({ head, kind, title, onTitle, busy }: { head: string; kind: Do
  * тэмдэгт), Esc → болих, Ctrl+Enter → батлах; хоосон шалтгаанд «Батлах» хаалттай.
  * `useFocusTrap` — фокус цонхонд түгжигдэж, хаахад өмнөх товч руу буцна.
  */
-function ReasonDialog({ title, onOk, onCancel }: { title: string; onOk: (reason: string) => void; onCancel: () => void }) {
+function ReasonDialog({ title, busy = false, error = '', onOk, onCancel }: {
+  title: string; busy?: boolean; error?: string; onOk: (reason: string) => void; onCancel: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
   /* ⚠️ Урхи эхний фокус авагч руу шилжүүлдэг — энэ эффект ДАРАА нь ажиллаж талбар руу оруулна (`LinkModal`-ын ⚠️) */
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { taRef.current?.focus(); }, []);
   const [text, setText] = useState('');
-  const ok = text.trim() !== '';
+  const ok = text.trim() !== '' && !busy;
+  /* ⚠️ 2026-10-09: бичилт явж байхад хаахгүй (Esc · гадна товшилт · «Болих») — үр дүнг цонх дотор харуулна */
+  const cancel = () => { if (!busy) onCancel(); };
   return (
-    <div className={s.dlgBack} role="presentation" onClick={onCancel}>
+    <div className={s.dlgBack} role="presentation" onClick={cancel}>
       <div ref={ref} className={s.dlg} role="dialog" aria-modal="true" aria-label={title}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return; }
+          if (e.key === 'Escape') { e.stopPropagation(); cancel(); return; }
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && ok) { e.preventDefault(); onOk(text); }
         }}>
         <p className={s.dlgTitle}>{title}</p>
-        <textarea ref={taRef} className={s.textarea} aria-label={title} value={text} maxLength={2000}
+        {/* ⚠️ 2026-10-09: `NOTE_MAX` (1500) — store мөн энэ хязгаараар татгалздаг; урьд нь 2000 */}
+        <textarea ref={taRef} className={s.textarea} aria-label={title} value={text} maxLength={NOTE_MAX} readOnly={busy}
           onChange={(e) => setText(e.target.value)} />
+        {error && <p className={s.err} role="alert">{error}</p>}
         <div className={s.dlgActs}>
-          <button type="button" className={s.btn} onClick={onCancel}>{tr('Болих')}</button>
+          <button type="button" className={s.btn} disabled={busy} onClick={cancel}>{tr('Болих')}</button>
           <button type="button" className={`${s.btn} ${s.btnPri}`} disabled={!ok} onClick={() => onOk(text)}>{tr('Батлах')}</button>
         </div>
       </div>

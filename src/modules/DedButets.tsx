@@ -1728,7 +1728,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   setHighlight(null);
                   setClearToken((x) => x + 1);
                 })}
-                title={tr('Олон объект сонгож, нэг маягтаар бүгдэд нь ижил утга бичнэ')}
+                /* ⚠️ 2026-10-09: 3D/BIM-д АСААХ боломжгүй (зураалт/сонголт зөвхөн 2D-д — `dim`
+                   эффектийн ⚠️); асаалттай бол УНТРААХ боломжтой үлдэнэ (гацахгүй). */
+                disabled={dim !== '2d' && !multi}
+                title={dim !== '2d' && !multi
+                  ? tr('Засварыг зөвхөн 2D дээр хийнэ')
+                  : tr('Олон объект сонгож, нэг маягтаар бүгдэд нь ижил утга бичнэ')}
               >
                 {tr('Олноор сонгох')}
               </button>
@@ -1911,7 +1916,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   <button
                     type="button"
                     className={`${d.btn} ${rectDraw ? d.editAddOn : ''}`}
-                    disabled={mselBusy}
+                    /* ⚠️ 2026-10-09: 3D/BIM-д идэвхгүй — тэгш өнцөгт зураалт зөвхөн 2D-д (`dim` эффектийн ⚠️) */
+                    disabled={mselBusy || dim !== '2d'}
                     aria-pressed={rectDraw}
                     onClick={() => {
                       if (rectDraw) { setRectDraw(false); setClearToken((x) => x + 1); return; }
@@ -1921,7 +1927,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                          байхад зураалт эхлүүлнэ. */
                       setTimeout(() => setDrawToken((x) => x + 1), 0);
                     }}
-                    title={tr('Зурагт тэгш өнцөгт татаж, дотор нь орсон объектуудыг сонголтод нэмнэ')}
+                    title={dim !== '2d'
+                      ? tr('Засварыг зөвхөн 2D дээр хийнэ')
+                      : tr('Зурагт тэгш өнцөгт татаж, дотор нь орсон объектуудыг сонголтод нэмнэ')}
                   >
                     {rectDraw ? tr('Татахыг болих') : tr('Тэгш өнцөгтөөр сонгох')}
                   </button>
@@ -1969,6 +1977,12 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                     dropTotalsLater();
                   }}
                   onDone={(rows, fields, back) => {
+                    /* ⚠️ 2026-10-09: 0 мөр — юу ч бичигдээгүй: «хадгалагдлаа» гэж хэлэхгүй, өмнөх
+                       буцаалт (`undoable`) ба сонголтыг ХӨНДӨХГҮЙ. */
+                    if (rows === 0) {
+                      toast(tr('Нэг ч объект бичигдсэнгүй — сонголтоо шинэчлээд дахин оролдоно уу.'), 'err');
+                      return;
+                    }
                     const id = msel.layerId;
                     setUndoable(back ? { ...back, layerId: id } : null);
                     /* ⚠️ Дан маягттай ИЖИЛ: давхарга дахин уншуулж, уртын
@@ -2144,7 +2158,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           {/* САМБАРЫН БАТАЛГААЖУУЛАЛТ — `confirmQ`-ийн тайлбар. Мэдэгдлийн
               дээр байрлана; «Тийм» үргэлжлүүлж, «Үгүй» юу ч хийхгүй. */}
           {confirmQ && (
-            <div className={d.confirm} role="alertdialog" aria-live="assertive">
+            /* ⚠️ 2026-10-09: `alertdialog` БИШ — модал биш, фокус барихгүй мөрийн асуулт */
+            <div className={d.confirm} role="group" aria-live="assertive" aria-label={confirmQ.msg}>
               <span className={d.confirmMsg}>{confirmQ.msg}</span>
               <button
                 type="button"

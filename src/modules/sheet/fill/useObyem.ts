@@ -9,11 +9,22 @@ import { applyUpdates, loadRows, type SheetRow } from "../bagtsSheet";
 import { buildOidMap, rowKeyOf } from "../sheetFrame";
 import {
   claimObyem, clearObyemPartial, decideObyem, markObyemPartial, obyemApproveGuard, releaseObyemClaim, loadHistory as loadObyemHistory, loadPending as loadObyemPending, loadPayload as loadObyemPayload,
+  loadHead as loadObyemHead,
   submitObyem, withdrawObyem, OBYEM_STATUS, type ObyemSubmission, type ObyemPayload,
 } from '@/lib/obyemBatlah';
 import { t as tr } from "@/lib/i18nCore";
 /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
 import { userError } from '@/components/ui';
+
+/**
+ * ⚠️ 2026-10-09: алгассан нүдний тэмдэглэлийн угтвар — илгээлтийн `tailbar`-д хадгалагдах
+ *    ӨГӨГДӨЛ тул ОРЧУУЛАГДАХГҮЙ (UI-ийн хэлээр хадгалбал нэг хүснэгтэд хоёр хэл холилдоно).
+ */
+const SKIP_NOTE = 'Алгассан нүд';
+
+/** Жаазын танигч — мөрүүдийн OID-ын дараалал + бөглөсөн огноо (утга БИШ — бид өөрсдөө бичсэн) */
+const frameIdOf = (x: { rows: readonly { oid: number }[]; snapshot: number | null }): string =>
+  `${x.snapshot ?? ''}|${x.rows.map((r) => r.oid).join(',')}`;
 
 /**
  * ОБЬЁМЫН ТӨЛӨВ (зөвхөн `useState`) — 2026-10-01: `useObyem`-ээс САЛГАВ.
@@ -223,6 +234,23 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
     let holdClaim = false;
     /** Бичигдсэний ДАРАА шийдвэр унасан үеийн тайлбар — юу болсон, яах вэ */
     const afterWrite = (why: string) => tr('Утгууд үндсэн өгөгдөлд АЛЬ ХЭДИЙН бичигдсэн, гэхдээ илгээлтийг «Батлагдсан» болгож чадсангүй ({0}). Хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу — ижил утга дахин бичигдэх тул аюулгүй. Давтан унавал админд мэдэгдэнэ үү.', why);
+    /**
+     * ⚠️ 2026-10-09: НЭГ БАТЛАГЧ ХОЁР ТАБААС — нөгөө таб аль хэдийн баталсан бол «аль хэдийн
+     *    шийдвэрлэсэн» нь алдаа БИШ (утга бичигдсэн, илгээлт ӨӨРИЙН нэрээр батлагдсан). Толгойг дахин
+     *    уншиж `approved` && батлагч = би бол амжилт. Уншилт унавал — алдаа хэвээр (таамаглахгүй).
+     */
+    const doneByMe = async (): Promise<boolean> => {
+      if (!approve) return false;
+      try {
+        const h = await loadObyemHead(pvSub.oid);
+        const meLc = (user?.username ?? '').trim().toLowerCase();
+        return !!h && !!meLc && h.status === OBYEM_STATUS.approved && h.approver === meLc;
+      } catch {
+        return false;
+      }
+    };
+    /** Алгассан нүдний тэмдэглэл (`decideObyem.skipped`) — батлагч санаатайгаар зөвшөөрсөн үед л */
+    let skipNote = '';
     try {
       if (approve) {
         const fld = sc.f.plannedVol;
@@ -244,7 +272,15 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           author: pvSub.author,
           dryRun: true,
         });
-        if (!pre.ok) { pvErrHere(pre.error ? userError(pre.error) : tr('Шийдвэр хадгалагдсангүй.')); return; }
+        if (!pre.ok) {
+          if (await doneByMe()) {
+            if (here()) setPvNote(tr('Энэ илгээлтийг та өөр цонхноос аль хэдийн баталсан байна — үндсэн өгөгдөлд бичигдсэн.'));
+            await refreshObyem();
+            return;
+          }
+          pvErrHere(pre.error ? userError(pre.error) : tr('Шийдвэр хадгалагдсангүй.'));
+          return;
+        }
         const pl = await loadObyemPayload(pvSub.oid);
         if (!pl) { pvErrHere(tr('Илгээлтийн агуулга уншигдсангүй.')); return; }
         /* ⚠️ ЗӨВХӨН БАЙГАА мөрөнд бичнэ: илгээснээс хойш агшин солигдож
@@ -281,15 +317,34 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           }
         }
         let skippedN = 0;
+        /** ⚠️ 2026-10-09: алгассан нүд бүрийн шошго — «№ ¦ Ажил» (`rowKeys`-ээс) эсвэл `#oid`, утгатай нь */
+        const skippedLbl: string[] = [];
+        const keyOf = new Map<number, string>(Array.isArray(pl.rowKeys) ? pl.rowKeys : []);
         const upd: Record<string, unknown>[] = [];
         for (const [oid, v] of pl.cells) {
           const to = freshOids.has(oid) ? oid : map.get(oid);
-          if (to == null || !freshOids.has(to)) { skippedN++; continue; }
+          if (to == null || !freshOids.has(to)) {
+            skippedN++;
+            skippedLbl.push(`${keyOf.get(oid) ?? `#${oid}`} = ${v ?? '∅'}`);
+            continue;
+          }
           upd.push({ [sc.f.oid]: to, [fld]: v });
         }
         if (!upd.length) {
           pvErrHere(tr('Илгээлтийн мөрүүд одоогийн хуудсанд олдсонгүй — хуудсаа шинэчилнэ үү.'));
           return;
+        }
+        /* ⚠️ 2026-10-09: АЛГАСАХ НҮД БАЙВАЛ ЧИМЭЭГҮЙ БАТЛАХГҮЙ. Урьд нь `skippedN` зөвхөн амжилтын
+           мэдэгдлийн ард тоогоор гардаг тул илгээлт «Батлагдсан» болж, аль нүд үндсэн өгөгдөлд ОРООГҮЙ
+           нь хаана ч үлддэггүй байв. Одоо нүд бүрийг нэрлэж АСУУНА; татгалзвал юу ч бичихгүй (`!upd.length`-тэй
+           ижил), зөвшөөрвөл алгассан нүдийг илгээлтийн `tailbar`-д хадгална (`decideObyem.skipped`). */
+        if (skippedN > 0) {
+          const list = skippedLbl.slice(0, 20).join('; ') + (skippedLbl.length > 20 ? ` … (+${skippedLbl.length - 20})` : '');
+          if (!window.confirm(tr('{0} нүд архивын сүүлийн жаазад тулгагдсангүй — тэдгээр нь үндсэн өгөгдөлд БИЧИГДЭХГҮЙ: {1}. Үлдсэн {2} нүдийг батлах уу? Алгассан нүд илгээлтийн тайлбарт тэмдэглэгдэнэ.', skippedN, list, upd.length))) {
+            pvErrHere(tr('Батлалт цуцлагдлаа — {0} нүд сүүлийн жаазад тулгагдсангүй: {1}. Буцааж, инженерээр дахин илгээлгэнэ үү.', skippedN, list));
+            return;
+          }
+          skipNote = `${SKIP_NOTE} (${skippedN}): ${skippedLbl.join('; ')}`;
         }
         /* ⚠️ 2026-10-05: БИЧИХИЙН ЯГ ӨМНӨ ТҮГЖИНЭ (`obyemBatlah.claimObyem`, `huvaariBatlah.claimPlan`-ийн
            загвар). Дээрх `dryRun` шалгалт ба энэ бичилтийн завсарт (агуулга · сүүлийн жааз татах
@@ -327,6 +382,24 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         holdClaim = false;
         wroteMain = true;
         pvSkipped = skippedN;
+        /* ⚠️ 2026-10-09: БИЧСЭНИЙ ДАРАА ЖААЗ СОЛИГДСОН ЭСЭХ. `base` татсанаас `applyUpdates` дуусах хооронд
+           архивт шинэ жааз орвол (нэмэлт ажил буулгах, гүйцэтгэл/хуваарь нийтлэх) утга ХУУЧИН (архивласан)
+           жаазад бичигдэж, «батлагдсан» атлаа хуудсанд харагдахгүй байв. Дахин ачаалж жаазын танигчийг
+           (OID-ын дараалал + огноо) тулгана; зөрвөл эсвэл шалгаж чадахгүй бол `decideObyem(approve)`
+           ДУУДАХГҮЙ — хагас бичилтийн тэмдэг (`markObyemPartial`) үлдэж, дахин батлахад (rowKeys-ээр)
+           шинэ жааз руу зөөгдөнө (ижил утга дахин бичигдэх нь аюулгүй). */
+        let moved: boolean | null = null;
+        try {
+          moved = frameIdOf(await loadRows(pkg, sc)) !== frameIdOf(base);
+        } catch {
+          moved = null;
+        }
+        if (moved !== false) {
+          pvErrHere(moved
+            ? tr('Бичих зуур хуудасны жааз солигдсон (өөр батлалт/нийтлэл) — утга хуучин жаазад бичигдсэн байж болзошгүй. Илгээлт «Хүлээгдэж буй» хэвээр; хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу.')
+            : tr('Бичсэний дараах жаазын шалгалт унав — илгээлт «Хүлээгдэж буй» хэвээр; хуудсаа шинэчлээд «Обьём батлах»-ыг дахин дарна уу.'));
+          return;
+        }
         /* ⚠️ 2026-09-30: БИЧИГДСЭН утгыг хуудасны мөрт ч тусгана — урьд нь зөвхөн
            `refreshObyem` явдаг тул баннер алга болмогц багана ХУУЧИН утгаа харуулж,
            батлалт «хэрэгжээгүй» мэт харагддаг байв (хуудас дахин ачаалтал). */
@@ -341,11 +414,15 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         approver: user?.username ?? '',
         author: pvSub.author,
         reason,
+        /* ⚠️ 2026-10-09: алгассан нүдийг илгээлтийн `tailbar`-д (дээрх ⚠️) */
+        ...(skipNote ? { skipped: skipNote } : {}),
       });
+      /* ⚠️ 2026-10-09: нөгөө таб (ижил батлагч) түрүүлж баталсан бол амжилт (`doneByMe`-ийн ⚠️) */
+      const sameMe = !r.ok && (await doneByMe());
       if (!here()) return;
       /* ⚠️ 2026-10-04: бичээд → тэмдэглэх дараалал (дээрх ⚠️) хэвээр; харин тэмдэглэл унавал
          «хадгалагдсангүй» биш — утга АЛЬ ХЭДИЙН бичигдсэнийг ба яах ёстойг хэлнэ. */
-      if (!r.ok) { setPvErr(wroteMain ? afterWrite(userError(r.error ?? '')) : (r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'))); return; }
+      if (!r.ok && !sameMe) { setPvErr(wroteMain ? afterWrite(userError(r.error ?? '')) : (r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'))); return; }
       setPvNote(approve
         ? tr('Инженерийн обьём батлагдаж, үндсэн өгөгдөлд бичигдлээ.')
           + (pvSkipped ? ' ' + tr('{0} мөр архивын сүүлийн жаазад тулгагдаагүй тул бичигдсэнгүй.', pvSkipped) : '')

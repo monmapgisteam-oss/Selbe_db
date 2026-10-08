@@ -40,6 +40,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useSyncRef } from '@/lib/useSyncRef';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import { km, num } from '@/lib/format';
 import { LAYER_BY_ID } from '@/lib/services';
 import type { Row } from '@/lib/query';
@@ -409,6 +410,12 @@ export function DedButetsEdit({
     return () => window.removeEventListener('keydown', h);
   }, [tryClose, docked]);
 
+  /* ⚠️ 2026-10-09: ТӨВИЙН ЦОНХ (`aria-modal="true"`) — фокусын урхи (`useFocusTrap`-ийн ⚠️:
+     `aria-modal` нь Tab-д нөлөөгүй). САМБАРТ (`docked`) идэвхгүй — модал биш, газрын зурагтай
+     зэрэг ажиллана. */
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, !docked);
+
   const submit = async () => {
     if (!meta || !p) return;
     if (!isNew && !before) return;
@@ -582,8 +589,9 @@ export function DedButetsEdit({
             {extra}
 
             {/* ⚠️ 2026-10-05: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
+            {/* ⚠️ 2026-10-09: `alertdialog` БИШ — диалог биш, фокус барихгүй мөрийн мэдэгдэл */}
             {unsure && (
-              <div className={d.askRow} role="alertdialog">
+              <div className={d.askRow} role="alert">
                 <span className={d.askMsg}>
                   {tr('Серверээс хариу ирсэнгүй — объект нэмэгдсэн эсэх ТОДОРХОЙГҮЙ. Дахин нэмэхээс өмнө газрын зургийг шинэчилж, объект үүссэн эсэхийг шалгана уу.')}
                 </span>
@@ -595,7 +603,7 @@ export function DedButetsEdit({
 
             {/* Самбарын асуулт — `askClose`-ийн тайлбар */}
             {askClose && (
-              <div className={d.askRow} role="alertdialog">
+              <div className={d.askRow} role="group" aria-live="assertive">
                 <span className={d.askMsg}>{tr('Хадгалаагүй өөрчлөлт байна. Хаах уу?')}</span>
                 <button type="button" className={d.primary} onClick={onCancel} disabled={busy}>
                   {tr('Тийм')}
@@ -632,7 +640,7 @@ export function DedButetsEdit({
 
   return (
     <div className={d.backdrop} role="dialog" aria-modal="true" onClick={tryClose}>
-      <div className={d.modal} onClick={(e) => e.stopPropagation()}>{body}</div>
+      <div ref={modalRef} className={d.modal} onClick={(e) => e.stopPropagation()}>{body}</div>
     </div>
   );
 }

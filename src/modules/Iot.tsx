@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { Data, Trend, Note } from '@/components/ui';
@@ -13,7 +13,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { usePlanTotals } from '@/lib/totals';
 import { useAsync } from '@/lib/useAsync';
 import {
-  loadSensors, RANGES, SENSOR_STALE_H, type RangeKey, type SensorLive, type MetricSeries,
+  loadSensors, RANGES, SENSOR_STALE_H, withGaps, type RangeKey, type SensorLive, type MetricSeries,
 } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { VIEW_BY_KEY } from '@/lib/services';
@@ -162,7 +162,8 @@ function Cell({ c }: { c: Card }) {
         {has && c.m.unit && <span className={s.metricUnit}>{c.m.unit}</span>}
       </span>
       {/* ⚠️ 2026-10-04: физик мужаас гадуур заалт (хөрсний чийг > 100%) — мэдрэгчийн гэмтэл, хэвийн БИШ */}
-      {has && c.m.fault && (
+      {/* ⚠️ 2026-10-09: `has` шаардахгүй — ТҮҮХИЙ мужаас гадуур (`rawValid`) үед утга нь `null` («—») ч гэмтэл */}
+      {c.m.fault && (
         <span className={`${s.metricAge} num`} style={{ color: 'var(--bad-ink)' }} title={tr('боломжгүй утга — мэдрэгчийн гэмтэл')}>
           {tr('мэдрэгчийн гэмтэл')}
         </span>
@@ -190,6 +191,12 @@ function Cell({ c }: { c: Card }) {
 
 /** Хугацааны цуваа — нэг чарт нэг карт */
 function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
+  /* ⚠️ 2026-10-09: тэнхлэг нь ИНДЕКСЭЭР тул урт завсарт `null` цэг оруулж муруйг тасална
+     (`sensors.withGaps`); минут тутмын `now` tick-д дахин бодохгүй (memo). */
+  const trendPts = useMemo(
+    () => withGaps(c.m.points).map((p) => ({ label: axisLabel(p.t), value: p.v })),
+    [c.m.points],
+  );
   return (
     <section className={s.card}>
       <header className={s.cardHd}>
@@ -230,10 +237,7 @@ function ChartCard({ c, height = 150 }: { c: Card; height?: number }) {
              хэвтээ тэнхлэг огнооны оронд «312 мм», «98 %» гэсэн утгын жагсаалт
              болдог байв. Утга нь Trend-ийн уншилтын мөр ба цэг бүрийн
              `aria-label`-д аль хэдийн бий. */
-          points={c.m.points.map((p) => ({
-            label: axisLabel(p.t),
-            value: p.v,
-          }))}
+          points={trendPts}
         />
       </div>
     </section>
@@ -377,10 +381,12 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 function Board({ all, range, setRange }: {
   all: SensorLive[]; range: RangeKey; setRange: (r: RangeKey) => void;
 }) {
-  const cards: Card[] = all.flatMap((sn) => sn.series.map((m) => ({ s: sn, m })));
+  /* ⚠️ 2026-10-09: `all`-аас гаргасан жагсаалтуудыг memo — эс бөгөөс минут тутмын `now`
+     tick бүрд шинэ массив үүсч, доорх бүх карт/чарт дахин бүтнэ. */
+  const cards: Card[] = useMemo(() => all.flatMap((sn) => sn.series.map((m) => ({ s: sn, m }))), [all]);
   /** Сервис нь ӨӨРӨӨ унасан мэдрэгч — decoder-ийн хоцролтоос ТУСДАА тоологдоно */
-  const failed = all.filter((x) => x.error);
-  const live = all.filter((x) => x.lastAt != null);
+  const failed = useMemo(() => all.filter((x) => x.error), [all]);
+  const live = useMemo(() => all.filter((x) => x.lastAt != null), [all]);
 
   /**
    * Цувааг зургийн ХОЁР ТАЛД агуулгаар нь хуваана (2026-08-21, хүсэлт).
@@ -397,10 +403,14 @@ function Board({ all, range, setRange }: {
    * ЗҮҮН — газар, орчны хэмжилт (хөрс + гэрэл).
    * БАРУУН — агаар ба нийтийн үйлчилгээний тоолуур (агаар + хог + ус).
    */
-  const LEFT_SENSORS = new Set(['soil', 'light']);
-  const plotted = cards.filter((c) => c.m.points.length >= 2);
-  const chartsL = plotted.filter((c) => LEFT_SENSORS.has(c.s.key));
-  const chartsR = plotted.filter((c) => !LEFT_SENSORS.has(c.s.key));
+  const [chartsL, chartsR] = useMemo(() => {
+    const LEFT_SENSORS = new Set(['soil', 'light']);
+    const plotted = cards.filter((c) => c.m.points.length >= 2);
+    return [
+      plotted.filter((c) => LEFT_SENSORS.has(c.s.key)),
+      plotted.filter((c) => !LEFT_SENSORS.has(c.s.key)),
+    ];
+  }, [cards]);
 
   return (
     <>

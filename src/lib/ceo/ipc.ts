@@ -221,14 +221,24 @@ const payWho = (r: Row): string => (
  *    гэрээт дүн хүснэгтэд хэвээр, «HO хүснэгтээр» гэж ИЛ нэрлэгдэнэ.
  *    `ref` байхгүй (тест, уналт) бол HO-ийн хувийг «HO хүснэгтээр» гэж ил бичнэ.
  */
-export type IpcContractRef = { contract: number; paidContracted: number };
+export type IpcContractRef = {
+  contract: number;
+  paidContracted: number;
+  /**
+   * ⚠️ 2026-10-09: `reportData.finance.paidPct` (= `paidShare.pct`) — өгсөн бол ДАХИН бодохгүй.
+   *    HO хоосон үед тэр нь `null`; урьд нь `paidPctOf(0, contract)` = 0% гардаг байв.
+   */
+  pct?: number | null;
+};
 
 export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRef | null = null): KpiResult {
   void now;
   const s = summarize(rows);
   const cs = groupHo(rows);
   /* ⚠️ 2026-10-01: томьёо `paidShare.paidPctOf` — порталын бүх газар НЭГ функц */
-  const refPct = ref ? paidPctOf(ref.paidContracted, ref.contract) : null;
+  /* ⚠️ 2026-10-09: төлбөрийн мөргүй (HO хоосон) бол хувь `null` — «0%» биш (null ≠ 0) */
+  const refPct = !ref || s.pays === 0 ? null
+    : ref.pct !== undefined ? ref.pct : paidPctOf(ref.paidContracted, ref.contract);
 
   /* ── Хүснэгт 1: ГЭРЭЭНИЙ САНХҮҮЖИЛТ — гэрээнд эзлэх хувь БАГА нь ЭХЭНД
         (эрсдэлийн эрэмбэ), хувь хэмжигдээгүй нь СҮҮЛД.
@@ -373,7 +383,7 @@ export const loadIpcKpi = cached<KpiResult>(async () => {
     import('@/lib/reportData').then((m) => m.loadFinance()).catch(() => null),
   ]);
   const ref: IpcContractRef | null = fin
-    ? { contract: fin.contractAmount, paidContracted: fin.paidContracted }
+    ? { contract: fin.contractAmount, paidContracted: fin.paidContracted, pct: fin.paidPct }
     : null;
   return computeIpc(rows, Date.now(), ref);
 }, IPC_TTL, ['HO_IPC', 'CASHFLOW_NEW']);

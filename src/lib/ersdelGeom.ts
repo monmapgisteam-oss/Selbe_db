@@ -25,7 +25,6 @@
  */
 
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
-import { arcgisPost } from '@/lib/query';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
@@ -36,7 +35,7 @@ import type FeatureLayer from '@arcgis/core/layers/FeatureLayer';
 import { LAYER_BY_ID, layerUrl, oidOf, TD } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import {
-  AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, classOf, damageCost,
+  AIR_LEVELS, FLOOD_LEVELS, FLOOD_SKIP_IDS, EXPOSURE, SEVERITY, classOf, damageCost, queryRingsPaged,
   type DamageClass, type HazardKey, type LevelKey, type Station,
 } from '@/lib/ersdel';
 
@@ -83,7 +82,8 @@ let riverPending: Promise<Polygon> | null = null;
 export async function loadRiver(): Promise<Polygon> {
   if (riverCache) return riverCache;
   riverPending ??= (async () => {
-    const body = await arcgisPost<{ features?: { geometry?: { rings?: number[][][] } }[] }>(`${RIVER_URL()}/query`, {
+    /* ⚠️ 2026-10-09: `exceededTransferLimit` → OID-оор эрэмбэлж хуудаслана (`ersdel.queryRingsPaged`) */
+    const rings = await queryRingsPaged(RIVER_URL(), {
       where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
       /**
        * ⚠️ ЕРӨНХИЙЛӨЛТ (2 м). Голын полигон нь 4,376 оройтой — түүнийг гурван удаа
@@ -93,7 +93,6 @@ export async function loadRiver(): Promise<Polygon> {
        */
       maxAllowableOffset: '2',
     });
-    const rings = (body.features ?? []).flatMap((f) => f.geometry?.rings ?? []);
     if (!rings.length) throw new Error(tr('Голын давхарга хоосон байна'));
     riverCache = new Polygon({ rings, spatialReference: WM });
     return riverCache;
@@ -418,7 +417,15 @@ export function airExtent(
   /* ⚠️ `wind` ба `pm25`-ыг ЗААВАЛ дамжуулна — эс бөгөөс хамрах хүрээ нь
      зурагдсан бүсээс ӨӨР хэлбэртэй тооцогдож, хохирлын үнэлгээ буруу
      объект тоолно. */
-  const bands = airBands(stations, level, wind, pm25);
+  return bandsExtent(airBands(stations, level, wind, pm25));
+}
+
+/**
+ * Бүсүүдийн НЭГДСЭН муж — бэлэн `Band[]`-аас (2026-10-09).
+ * ⚠️ `airExtent` нь `airBands`-ийг ДАХИН дуудаж буфер/нэгтгэлийг давтдаг байв;
+ *    бүс аль хэдийн бодогдсон бол (`Ersdel.tsx`) энийг шууд дууд.
+ */
+export function bandsExtent(bands: Band[]): Polygon | null {
   if (!bands.length) return null;
   const geoms = bands.map((b) => b.geometry);
   return geoms.length > 1

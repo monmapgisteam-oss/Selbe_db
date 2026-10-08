@@ -293,4 +293,29 @@ console.log('✅ ArcGIS-д дутуу булш/нүдийг таньна');
 }
 console.log('✅ цаг зөрсөн ч хэрэглэгчийн харсан утгын засвар ялна (Лампорт)');
 
+/* ── ⚠️ 2026-10-09: СЕРВЕРТ АЛЬ ХЭДИЙН БАЙГАА утга (`isSaved`) — pend-д орохгүй, булшлагдана ──
+   Өөр төхөөрөмж дээр хадгалагдсан ч булш нь энд хүрээгүй хуучин ноорог «Хадгалах (N)»-ийг
+   хөөрөгдөж, хадгалахад серверийн шинэ утгыг дарах эрсдэл үүсгэдэг байв. */
+{
+  const clock = mkClock(() => 50);
+  const stored = doc([['1:0', 'M-1 ', 100], ['2:0', 'M-2', 100]]);
+  clock.see(stored.t);
+  const server = { '1:0': 'M-1', '2:0': 'M-9' };
+  const ad = adoptQaqcDraft(stored, emptyQaqcDraftState(), () => true, clock.stamp,
+    (k, v) => v.trim() === (server[k] ?? '').trim());
+  assert.deepEqual(ad.cells, { '2:0': 'M-2' }, 'серверт байгаа (trim-тэй ижил) утга pend-д орохгүй');
+  assert.equal(ad.count, 1);
+  assert.equal(ad.same, 1);
+  assert.equal(ad.dropped, 0);
+  assert.equal(ad.st.gone.get('1:0'), 101, 'ТЭР хувилбараараа булшлагдана — алсын хуулбараас ч арилна');
+  assert.equal(live(mergeQaqcDrafts(stored, draftFromState(ad.st, () => undefined)))['1:0'], undefined);
+  /* `isSaved` өгөөгүй бол хуучин зан хэвээр */
+  assert.equal(adoptQaqcDraft(stored, emptyQaqcDraftState(), () => true, clock.stamp).count, 2);
+  /* Табад бичсэн нүдэд `isSaved` хамаарахгүй — табынх ялна */
+  const st = { cells: new Map([['1:0', { v: 'шинэ', t: 200 }]]), gone: new Map() };
+  const ad2 = adoptQaqcDraft(stored, st, () => true, clock.stamp, () => true);
+  assert.equal(ad2.st.cells.get('1:0').v, 'шинэ');
+}
+console.log('✅ серверт байгаа утга ноорогоос сэргэхгүй');
+
 console.log('\nqaqcDraft (lib).check: ok');

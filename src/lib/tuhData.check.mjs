@@ -350,6 +350,22 @@ ok('⚠️ нэг хуудас унасан бол огноо «—» (дуту�
   const both = mergeCommission([{ key: 'БАГЦ1', at: null, ok: false }, { key: 'БАГЦ1', at: null, ok: false }]);
   assert.deepEqual(both.failed, ['БАГЦ1']);
 });
+ok('⚠️ 2026-10-09: олон хуудасны НЭГ нь огноогүй (ok) — огноо «—», partial 1/2; бүгд огноогүй бол partial-гүй', () => {
+  for (const order of [[0, 1], [1, 0]]) {
+    const res = [{ key: 'БАГЦ1', at: 10, ok: true }, { key: 'БАГЦ1', at: null, ok: true }];
+    const r = mergeCommission(order.map((i) => res[i]));
+    assert.equal(r.dates.get('БАГЦ1'), null);
+    assert.deepEqual(r.partial.get('БАГЦ1'), { dated: 1, sheets: 2 });
+    assert.deepEqual(r.failed, []);
+  }
+  const none = mergeCommission([{ key: 'БАГЦ1', at: null, ok: true }, { key: 'БАГЦ1', at: null, ok: true }]);
+  assert.equal(none.dates.get('БАГЦ1'), null);
+  assert.equal(none.partial.size, 0);
+  /* унасан нь хагасаас ДАВУУ — failed-д, partial-д биш */
+  const f = mergeCommission([{ key: 'БАГЦ1', at: 10, ok: true }, { key: 'БАГЦ1', at: null, ok: true }, { key: 'БАГЦ1', at: null, ok: false }]);
+  assert.deepEqual(f.failed, ['БАГЦ1']);
+  assert.equal(f.partial.size, 0);
+});
 
 console.log('\n13. Хэмжилтийн өдөр (lagOf-ийн at)');
 ok('сүүлийн хэмжигдсэн сарын physAt; өөр сарынх бол сарын эцэс; хэмжилтгүй бол нөөц', () => {

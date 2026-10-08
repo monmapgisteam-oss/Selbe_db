@@ -124,12 +124,15 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       packs: bq.state === 'ready' ? packs : null,
       hist: histQ.state === 'ready' ? histQ.data : null,
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
+      commissionPartial: comQ.state === 'ready' ? comQ.data.partial : null,
       workforce: wf,
       docs: docQ.state === 'ready' ? docQ.data : null,
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
       contractedNote: CONTRACTED,
       failed,
       loading,
+      /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
+      planError: planQ.state === 'error',
     });
   }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, docQ, bq, packs, budgetQ, depQ]);
 

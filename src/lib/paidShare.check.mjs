@@ -69,6 +69,21 @@ ok('null ≠ 0: хуваарь 0 / тоологч уншигдаагүй / HO м
   assert.equal(paidShareOf([], ho).pct, null);
 });
 
+ok('2026-10-09: холбоостой багц (HO «Багц-8.1» → «Багц 8», HO «Багц-7» ↔ Cashflow «БАГЦ-7.1») гэрээлсэнд тоологдоно', () => {
+  const cfA = [
+    CF({ oid: 11, pkg: 'Багц 8', note: CONTRACTED, contract: 400 }),
+    CF({ oid: 12, pkg: 'БАГЦ-7.1', note: CONTRACTED, contract: 600 }),
+  ];
+  const hoA = [
+    HO({ oid: 11, code: 'Багц-8.1', pkg: 'Багц-8.1', dun: 32 }),
+    HO({ oid: 12, code: 'Багц-7', pkg: 'Багц-7', dun: 187 }),
+    HO({ oid: 13, code: 'Багц-1-4', pkg: 'Багц-1-4', dun: 5 }),
+  ];
+  const a = paidShareOf(cfA, hoA);
+  assert.equal(a.paidContracted, 219, 'холбоостой олголт paidOther-д хаягдахгүй');
+  assert.equal(a.paidOther, 5, 'зөвхөн диапазон мөр гадуур');
+});
+
 console.log('\n2. Ижил оролт → бүх дуудагч ЯГ нэг утга');
 const ref = { contract: s.contract, paidContracted: s.paidContracted };
 ok('Тайлан (buildFindings.paidRate) / удирдлагын тайлан (fin.share) — paidPctOf(finance)', () => {

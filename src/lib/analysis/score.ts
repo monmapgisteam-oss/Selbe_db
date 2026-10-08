@@ -4,7 +4,7 @@ import { t as tr } from '@/lib/i18nCore';
  */
 
 import {
-  SCORE_LEVELS, levelOf, NO_DATA_COLOR, STRICT_NORM, NORM_FAIL_MAX,
+  SCORE_LEVELS, levelOf, NO_DATA_COLOR, NO_DATA_INK, STRICT_NORM, NORM_FAIL_MAX,
   densityNormOf, type Indicator,
 } from './config';
 
@@ -67,6 +67,49 @@ export function scoreIndicator(value: number | null | undefined, ind: Indicator)
   }
 }
 
+/**
+ * НОРМЫН ЗАСВАРЫГ ХЯЗГААРЛАНА — Жингийн тохиргооны талбар (`Urban.Weights`) үүгээр бичнэ.
+ *
+ * ⚠️ 2026-10-09: урьд нь оролтыг ШАЛГАЛТГҮЙ бичдэг байсан тул «Нормын доод» > «Нормын дээд»,
+ *    эсвэл «0 оноо (доош)» > «Нормын доод» гэх мэт урвуу муж оноолтыг чимээгүй эвдэж
+ *    (`lerp`-ийн хуваагч сөрөг → норм хангасан утга 0, зөрчсөн нь 44) байв. Дүрэм:
+ *      band   — hardMin ≤ optMin ≤ optMax ≤ hardMax
+ *      higher — hardMin ≤ target
+ *      lower  — best ≤ hardMax
+ *      жин    — ≥ 0
+ *    Хөршөөсөө давсан утгыг ХӨРШИЙН утга руу хумина (нөгөө талбарыг ХӨДӨЛГӨХГҮЙ — хэрэглэгч
+ *    засаагүй тоог чимээгүй өөрчлөхгүй); `clamped` нь UI-д тайлбар гаргахад.
+ * ⚠️ Тодорхойгүй (`undefined`) хөрш хязгаар болохгүй.
+ */
+export function patchNorm(
+  ind: Indicator, key: keyof Indicator, value: number,
+): { ind: Indicator; clamped: boolean } {
+  if (!Number.isFinite(value)) return { ind, clamped: false };
+  const g = (k: keyof Indicator): number | undefined => {
+    const v = ind[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  };
+  let lo = -Infinity;
+  let hi = Infinity;
+  const bound = (k: keyof Indicator, side: 'lo' | 'hi') => {
+    const v = g(k);
+    if (v == null) return;
+    if (side === 'lo') lo = Math.max(lo, v); else hi = Math.min(hi, v);
+  };
+  if (key === 'weight') lo = 0;
+  else if (ind.mode === 'band') {
+    const order: (keyof Indicator)[] = ['hardMin', 'optMin', 'optMax', 'hardMax'];
+    const at = order.indexOf(key);
+    if (at >= 0) order.forEach((k, j) => { if (j < at) bound(k, 'lo'); else if (j > at) bound(k, 'hi'); });
+  } else if (ind.mode === 'higher') {
+    if (key === 'hardMin') bound('target', 'hi');
+    if (key === 'target') bound('hardMin', 'lo');
+  } else if (key === 'best') bound('hardMax', 'hi');
+  else if (key === 'hardMax') bound('best', 'lo');
+  const v = clamp(value, lo, hi);
+  return { ind: { ...ind, [key]: v }, clamped: v !== value };
+}
+
 export type Part = {
   value: number | null;
   score: number | null;
@@ -110,6 +153,15 @@ export function urbanScore(
 export function scoreColor(score: number | null | undefined): string {
   const i = levelOf(score);
   return i < 0 ? NO_DATA_COLOR : SCORE_LEVELS[i].color;
+}
+
+/**
+ * `scoreColor` ДЭВСГЭР дээрх бичгийн өнгө (WCAG ≥ 4.5:1) — 2026-10-09.
+ * ⚠️ Тэмдэг/хэмжүүрийн тоог `color: var(--bg)`-оор бичихгүй: цайвар түвшинд цагаан уншигдахгүй.
+ */
+export function scoreInk(score: number | null | undefined): string {
+  const i = levelOf(score);
+  return i < 0 ? NO_DATA_INK : SCORE_LEVELS[i].ink;
 }
 
 /** Оноог үгээр */

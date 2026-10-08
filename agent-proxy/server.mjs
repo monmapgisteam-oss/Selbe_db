@@ -16,10 +16,12 @@
  */
 
 import { createServer } from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash, createHmac } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { callClaudeCode, claudeBin, selfTest, stats, ClaudeCodeError } from "./claudeCode.mjs";
-import { createLimiter, LIMITS } from "./rateLimit.mjs";
+import {
+  createLimiter, LIMITS, createBudget, budgetFromEnv, usageTokens, BUDGET_MSG, upstreamErrorText,
+} from "./rateLimit.mjs";
 
 /**
  * АРЫН ХӨДӨЛГҮҮР (2026-09-17):
@@ -113,10 +115,20 @@ const ARCGIS_PORTAL = (process.env.ARCGIS_PORTAL || "https://www.arcgis.com").re
    нэвтрэлт УНАСАН токеныг кэшээс шууд хасна — ArcGIS 498/401 хариулсан агшнаас тэр
    токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй. */
 const VERIFIED_MAX = 500;
+/**
+ * ⚠️ 2026-10-09 (аудит №4): кэшийн ТҮЛХҮҮР нь токены SHA-256 хэш — урьд ТҮҮХИЙ токен
+ *    байсан тул процессын санах ойд (dump, дибаг) 500 хүртэл амьд ArcGIS токен 5 минут
+ *    хадгалагдаж байв. Одоо зөвхөн хэш + хэрэглэгчийн нэр үлдэнэ; токен өөрөө зөвхөн
+ *    тухайн хүсэлтийн хүрээнд (ArcGIS руу шалгуулахад) амьдарна.
+ * ⚠️ Хост нь хүсэлт бүрийн амьд токеныг ХАРДАГ хэвээр (зохион байгуулалтаараа) — итгэмжлэгдсэн
+ *    хостын жагсаалт: `docs/system/07-gadaad-erschim.md` §1.4.
+ */
+const tokenHash = (token) => createHash("sha256").update(String(token ?? "")).digest("hex");
 const verified = new Map();
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };
-  const hit = verified.get(token);
+  const key = tokenHash(token);
+  const hit = verified.get(key);
   if (hit && hit.until > Date.now()) return { ok: true, username: hit.username };
   let data;
   try {
@@ -127,20 +139,20 @@ async function checkArcGIS(token) {
     });
     data = await r.json();
   } catch {
-    verified.delete(token);
+    verified.delete(key);
     return { ok: false, reason: "Нэвтрэлт шалгах үйлчилгээ хариу өгсөнгүй" };
   }
   if (!data || data.error || !data.username) {
-    verified.delete(token);
+    verified.delete(key);
     return { ok: false, reason: "Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна" };
   }
   if (data.orgId !== ARCGIS_ORG_ID) {
-    verified.delete(token);
+    verified.delete(key);
     return { ok: false, reason: "Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна" };
   }
-  verified.delete(token);
+  verified.delete(key);
   while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
-  verified.set(token, { username: data.username, until: Date.now() + 5 * 60 * 1000 });
+  verified.set(key, { username: data.username, until: Date.now() + 5 * 60 * 1000 });
   return { ok: true, username: data.username };
 }
 
@@ -170,6 +182,23 @@ function secretMatches(given, expected) {
  *    Тохируулаагүй бол зан төлөв огт өөрчлөгдөхгүй.
  */
 const BOT_SECRET = process.env.BOT_SECRET?.trim() || "";
+
+/**
+ * СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (⚠️ 2026-10-09, аудит №1) — `PROMPT_HMAC` тохируулсан үед л.
+ * Клиент (`src/lib/agent/client.ts` → `relayFetch`) `system`-ийн HMAC-SHA256 (hex)-ыг
+ * `x-prompt-sig` толгойгоор илгээнэ; таарахгүй бол 403. Тохируулаагүй бол зан огт өөрчлөгдөхгүй.
+ * ⚠️ ХИЛ БИШ, ЗӨВХӨН СААД: browser-т түлхүүр нь `NEXT_PUBLIC_AGENT_PROMPT_HMAC`-аар JS багцад
+ *    ИЛ тул шийдсэн хүн гарын үсгийг өөрөө тооцож чадна. Санамсаргүй curl/скриптээр релег
+ *    ерөнхий LLM прокси болгохыг л хүндрүүлнэ; бодит хязгаар нь өдрийн төсөв (доор).
+ *    Бот (`x-bot-secret`) энэ шалгалтаас ЧӨЛӨӨТ — өөрийн нууцаар аль хэдийн батлагдсан.
+ * ⚠️ Заавар СЕРВЕР ТАЛД угсрагдахгүй — агентын логик browser-т (файлын толгойн ⚠️).
+ */
+const PROMPT_HMAC = process.env.PROMPT_HMAC?.trim() || "";
+const promptSig = (system) => createHmac("sha256", PROMPT_HMAC).update(system, "utf8").digest("hex");
+
+/** Өдрийн токены төсөв — `rateLimit.mjs`-ийн ⚠️ (`DAILY_TOKEN_BUDGET`, 0 = унтраалттай) */
+const DAILY_TOKEN_BUDGET = budgetFromEnv(process.env.DAILY_TOKEN_BUDGET);
+const budget = createBudget();
 
 const PORT = Number(process.env.PORT || 8787);
 
@@ -226,7 +255,8 @@ const cors = (res, origin) => {
   //    толгойгоор илгээдэг. Жагсаалтад байхгүй бол хөтөч preflight-д татгалзаж,
   //    чат «Failed to fetch» гэж унана (сервер тал огт дуудагдахгүй).
   //    Локал реле токеныг ШАЛГАХГҮЙ ч зөвшөөрөх ЁСТОЙ.
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-arcgis-token");
+  /* ⚠️ 2026-10-09: `x-prompt-sig` — `PROMPT_HMAC`-ийн гарын үсэг (жагсаалтад байхгүй бол preflight унана) */
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-arcgis-token, x-prompt-sig");
   res.setHeader("Access-Control-Max-Age", "86400");
 };
 
@@ -362,13 +392,20 @@ const server = createServer(async (req, res) => {
     caller = "bot";
   } else if (ARCGIS_ORG_ID) {
     /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт IP-д минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
-    if (limiter.full(`authfail:${ip}`, LIMITS.authFail)) {
+    /* ⚠️ 2026-10-09 (аудит №3): `TRUSTED_PROXY` АЛГА бол тунелийн БҮХ хэрэглэгч нэг IP
+       (127.0.0.1) хуваалцдаг тул нэг муу клиент (хуучирсан токентой таб) 20 удаа унахад
+       бүх хүн 429 авдаг байв. Тэр үед түлхүүрт ТОКЕНЫ ХЭШ нэмнэ — хүчингүй токен бүр
+       өөрийн 20-той. Санамсаргүй токенуудаар үерлэх нь IP-ийн тагаар (300) хязгаарлагдана. */
+    const failKey = TRUSTED_PROXY
+      ? `authfail:${ip}`
+      : `authfail:${ip}:${tokenHash(req.headers["x-arcgis-token"]).slice(0, 16)}`;
+    if (limiter.full(failKey, LIMITS.authFail)) {
       json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
       return;
     }
     const auth = await checkArcGIS(req.headers["x-arcgis-token"]);
     if (!auth.ok) {
-      limiter.hit(`authfail:${ip}`, LIMITS.authFail);
+      limiter.hit(failKey, LIMITS.authFail);
       json(res, 401, { error: auth.reason, retryable: false });
       return;
     }
@@ -376,6 +413,13 @@ const server = createServer(async (req, res) => {
   }
   if (limiter.hit(caller, LIMITS.user)) {
     json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
+    return;
+  }
+  /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`rateLimit.mjs`-ийн ⚠️). Бот ЧӨЛӨӨТ — бүх ботын
+     хэрэглэгч нэг `bot` түлхүүр хуваалцдаг тул нэг төсөв бүгдийг хаана; ботын хандалтыг
+     өөрийн цагаан жагсаалт барина. */
+  if (!isBot && budget.over(caller, DAILY_TOKEN_BUDGET)) {
+    json(res, 429, { error: BUDGET_MSG, code: "daily_budget", retryable: false });
     return;
   }
 
@@ -387,7 +431,9 @@ const server = createServer(async (req, res) => {
       json(res, 413, { error: e.message, retryable: false });
       return;
     }
-    json(res, 400, { error: `Биеийг уншиж чадсангүй: ${e.message}` });
+    /* ⚠️ 2026-10-09 (аудит №7): задлагчийн мессеж зөвхөн логт */
+    console.warn("[agent-proxy] бие уншигдсангүй:", caller, e?.message);
+    json(res, 400, { error: "Хүсэлтийн биеийг уншиж чадсангүй (JSON биш)." });
     return;
   }
 
@@ -395,6 +441,16 @@ const server = createServer(async (req, res) => {
   if (!Array.isArray(messages) || !messages.length) {
     json(res, 400, { error: "`messages` хоосон байна" });
     return;
+  }
+  /* ⚠️ 2026-10-09: `PROMPT_HMAC` (дээрх ⚠️) — `system` нь мөр (эсвэл алга) байх ёстой; гарын
+     үсгийг ТОГТМОЛ ХУГАЦААНД харьцуулна. */
+  if (PROMPT_HMAC && !isBot) {
+    const sysText = system == null ? "" : system;
+    if (typeof sysText !== "string" || !secretMatches(req.headers["x-prompt-sig"], promptSig(sysText))) {
+      console.warn("[agent-proxy] системийн зааврын гарын үсэг таарсангүй:", caller);
+      json(res, 403, { error: "Системийн зааврын гарын үсэг таарсангүй — хуудсыг дахин ачаална уу.", retryable: false });
+      return;
+    }
   }
 
   /* ⚠️ 2026-10-06: КЛИЕНТ ХААСАН үед (чат хаасан, ⟲, Esc, табаа хаасан) загварын дуудлагыг
@@ -417,7 +473,11 @@ const server = createServer(async (req, res) => {
       const out = await callClaudeCode({ system, messages, tools, model: MODEL, effort: EFFORT, bin, signal: ac.signal });
       const st = stats();
       console.log(`[agent-proxy:claude-code] ${caller} ${out.cached ? "кэш" : `${Date.now() - t0}мс`} ${out.stop_reason} · ажиллаж ${st.running} · дараалал ${st.queued}`);
-      if (!out.cached) ready = { ok: true };
+      if (!out.cached) {
+        ready = { ok: true };
+        /* ⚠️ 2026-10-09: кэшээс ирсэн хариу бүртгэлийг зарцуулаагүй — төсөвт тоолохгүй */
+        if (!isBot) budget.add(caller, usageTokens(out.usage));
+      }
       json(res, 200, out);
     } catch (err) {
       /* ⚠️ 2026-10-06: клиент хаасан — бичих socket алга, зөвхөн лог */
@@ -425,8 +485,12 @@ const server = createServer(async (req, res) => {
         console.log(`[agent-proxy:claude-code] ${caller} цуцлагдсан (клиент хаасан)`);
         return;
       }
-      const e = err instanceof ClaudeCodeError ? err : new ClaudeCodeError(err?.message ?? "Тодорхойгүй алдаа", { status: 500 });
-      console.error("[agent-proxy:claude-code]", caller, e.message);
+      /* ⚠️ 2026-10-09 (аудит №7): `e.message` нь клиентэд харагдах ЕРӨНХИЙ мөр; процессын
+         stderr/stdout зэрэг дэлгэрэнгүй нь `e.detail` — ЗӨВХӨН логт. */
+      const e = err instanceof ClaudeCodeError
+        ? err
+        : new ClaudeCodeError("AI туслах хариу өгч чадсангүй — дахин оролдоно уу.", { status: 500, detail: err?.message });
+      console.error("[agent-proxy:claude-code]", caller, e.message, e.detail ? `— ${e.detail}` : "");
       if (e.status === 401) ready = { ok: false, reason: e.message };
       json(res, e.status, { error: e.message, retryable: e.retryable });
     }
@@ -460,6 +524,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (!isBot) budget.add(caller, usageTokens(response.usage));
     json(res, 200, {
       stop_reason: response.stop_reason,
       content: response.content,
@@ -472,7 +537,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     const msg = err?.message ?? "Тодорхойгүй алдаа";
-    console.error("[agent-proxy]", msg);
+    console.error("[agent-proxy]", caller, msg);
 
     // ⚠️ ИТГЭМЖЛЭЛИЙН алдааг ТУСГАЙЛАН барина — SDK-ийн англи техник мессежийг
     //    дамжуулбал хэрэглэгч юу хийхээ ойлгохгүй. Windows дээрх түгээмэл
@@ -497,8 +562,11 @@ const server = createServer(async (req, res) => {
       err instanceof Anthropic.RateLimitError ||
       err instanceof Anthropic.InternalServerError ||
       err instanceof Anthropic.APIConnectionError;
-    json(res, err instanceof Anthropic.APIError ? (err.status ?? 502) : 500, {
-      error: msg,
+    /* ⚠️ 2026-10-09 (аудит №7): SDK-ийн түүхий мессеж (`msg`) зөвхөн дээрх логт — клиентэд
+       статусаас ЕРӨНХИЙ мөр (`worker.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
+    const status = err instanceof Anthropic.APIError ? (err.status ?? 502) : 500;
+    json(res, status, {
+      error: upstreamErrorText(err instanceof Anthropic.APIConnectionError ? 502 : status),
       retryable,
     });
   }
@@ -523,4 +591,5 @@ server.listen(PORT, '127.0.0.1', () => {
     `[agent-proxy] http://localhost:${PORT}  хөдөлгүүр=${BACKEND}  загвар=${MODEL}  effort=${EFFORT}`,
   );
   console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(", ")}`);
+  console.log(`[agent-proxy] өдрийн төсөв: ${DAILY_TOKEN_BUDGET ? `${DAILY_TOKEN_BUDGET} токен/хэрэглэгч` : "унтраалттай"} · заавар гарын үсэг: ${PROMPT_HMAC ? "асаалттай" : "унтраалттай"}`);
 });

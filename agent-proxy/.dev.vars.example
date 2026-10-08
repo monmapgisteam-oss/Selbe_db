@@ -1,0 +1,21 @@
+# Cloudflare Worker-ийн ЛОКАЛ тохиргоо (`npx wrangler dev`) — ЖИШЭЭ.
+#
+# Хэрэглэх:  copy .dev.vars.example .dev.vars   (`.dev.vars` нь .gitignore-д)
+# `.dev.vars` нь `wrangler.toml`-ийн [vars]-ыг ЗӨВХӨН локалд дарна.
+#
+# ⚠️ 2026-10-09 (аудит №9): `http://localhost:8123` нь production `ALLOW_ORIGIN`-оос
+#    хасагдсан тул локал порталаас Worker-ийг туршихдаа энд нэмнэ.
+# ⚠️ ЭНЭ ФАЙЛД НУУЦ БИЧИХГҮЙ. Жинхэнэ `.dev.vars`-д л ANTHROPIC_API_KEY г.м. тавина.
+
+ALLOW_ORIGIN=http://localhost:8123,http://127.0.0.1:8123
+
+# Локал туршилтад ArcGIS нэвтрэлт шаардахгүй бол хоосон үлдээнэ.
+ARCGIS_ORG_ID=
+
+# Өдрийн токены төсөв (0 = унтраалттай)
+DAILY_TOKEN_BUDGET=300000
+
+# ⚠️ Жинхэнэ `.dev.vars`-д (энд биш):
+# ANTHROPIC_API_KEY=sk-ant-...
+# BOT_SECRET=...
+# PROMPT_HMAC=...

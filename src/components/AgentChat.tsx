@@ -279,8 +279,11 @@ export function AgentChat({
 
   if (!open) return null;
 
+  /* ⚠️ 2026-10-09: `role="dialog"` → `role="complementary"` — самбар МОДАЛ БИШ (дээрх ⚠️:
+     хуудас ажилласаар, `aria-modal` санаатай алга). `dialog` гэж зарлавал дэлгэц уншигч
+     фокус самбарт баригдсан гэж ойлгоно; хажуугийн туслах самбарын зөв үүрэг нь landmark. */
   return (
-    <div className={`${s.panel} ${wide ? s.panelWide : ''}`} role="dialog" aria-label={tr('AI туслах')}>
+    <div className={`${s.panel} ${wide ? s.panelWide : ''}`} role="complementary" aria-label={tr('AI туслах')}>
       <div className={s.head}>
         <span aria-hidden style={{ color: 'var(--hue)', display: 'grid', placeItems: 'center' }}>
           <Spark />

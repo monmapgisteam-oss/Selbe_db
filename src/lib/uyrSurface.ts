@@ -191,6 +191,42 @@ function traceRings(
  * @param pos    бутархай зүсмэл (0 … slices−1)
  * @param minDepth зурах хамгийн бага гүн (м) — үүнээс нимгэн ус зурагдахгүй
  */
+/**
+ * ДАХИН АШИГЛАХ ТҮР САН — нүд тус бүрийн массивууд.
+ *
+ * ⚠️ 2026-10-09: `waterSurfaceAt` нь тоглуулах үед ~8 удаа/сек дуудагддаг
+ * бөгөөд дуудлага бүрд 7 ширхэг P-урттай массив (≈1 МБ) ШИНЭЭР үүсгэж
+ * байсан нь GC-г байнга өдөөж анимацийг тасалдуулдаг байв. Одоо тор
+ * томрох үед л дахин үүсгэнэ. JS нэг урсгалтай, функц дотроо өөрийгөө
+ * дууддаггүй тул модулийн түвшний сан аюулгүй.
+ */
+let scratch: {
+  P: number;
+  wse: Float32Array;
+  dep: Float32Array;
+  uu: Float32Array;
+  vv: Float32Array;
+  wet: Uint8Array;
+  bandOf: Int16Array;
+  mask: Uint8Array;
+} | null = null;
+
+function scratchOf(P: number) {
+  if (!scratch || scratch.P < P) {
+    scratch = {
+      P,
+      wse: new Float32Array(P),
+      dep: new Float32Array(P),
+      uu: new Float32Array(P),
+      vv: new Float32Array(P),
+      wet: new Uint8Array(P),
+      bandOf: new Int16Array(P),
+      mask: new Uint8Array(P),
+    };
+  }
+  return scratch;
+}
+
 export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): WaterBand[] {
   const ter = fd.terrain;
   if (!ter) return [];
@@ -229,12 +265,13 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
   const w0 = 1 - w1;
 
   /* ── 1. Нойтон нүд ба усны гадаргуугийн өндөр ── */
-  const wse = new Float32Array(P);
-  const dep = new Float32Array(P);
-  /* Урсгалын вектор — зурвасын дундаж чиглэлийг эндээс */
-  const uu = new Float32Array(P);
-  const vv = new Float32Array(P);
-  const wet = new Uint8Array(P);
+  /* ⚠️ 2026-10-09: дахин ашиглах сан — `wet`/`bandOf`-ыг доор цэвэрлэнэ;
+     `wse`/`dep`/`uu`/`vv` нь зөвхөн `wet` нүдэнд уншигддаг тул цэвэрлэх шаардлагагүй.
+     ⚠️ `mask` нь ЗУРВАС бүрийн төгсгөлд өөрөө 0 болдог (доорх цэвэрлэгээ). */
+  const sc = scratchOf(P);
+  const { wse, dep, uu, vv, wet } = sc;
+  /* Урсгалын вектор — зурвасын дундаж чиглэлийг эндээс (`uu`, `vv`) */
+  wet.fill(0, 0, P);
   let lo = Infinity;
   let hi = -Infinity;
   for (let i = 0; i < P; i++) {
@@ -270,7 +307,8 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
    * дор нь хуримтлуулна — 45,000 уншилт. Дүрслэл секундэд 8 удаа дуудагддаг
    * тул энэ нь шууд мэдрэгддэг.
    */
-  const bandOf = new Int16Array(P).fill(-1);
+  const bandOf = sc.bandOf;
+  bandOf.fill(-1, 0, P);
   const cnt = new Int32Array(nb);
   const zs = new Float64Array(nb);
   const ds = new Float64Array(nb);
@@ -308,7 +346,8 @@ export function waterSurfaceAt(fd: FloodData, pos: number, minDepth = 0.08): Wat
   }
 
   const out: WaterBand[] = [];
-  const mask = new Uint8Array(P);
+  /* ⚠️ 2026-10-09: сангийн маск — traceRings нь зөвхөн [0, P) мужийг уншдаг */
+  const mask = sc.mask;
   for (let b = 0; b < nb; b++) {
     const n = cnt[b];
     if (n < MIN_CELLS) continue;

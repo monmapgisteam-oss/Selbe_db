@@ -68,6 +68,8 @@ export type SimOutput = {
     accHa: Float32Array;
     catchHa: Float32Array;
     channelMask: Uint8Array;
+    /** ⚠️ 2026-10-09: ТООЦООНЫ МУЖ (1 = бодогдсон) — гадна нь гүн 0 БИШ «тооцоогүй» */
+    domMask: Uint8Array;
   };
 };
 
@@ -671,6 +673,15 @@ export async function runFloodSim(
       if (hooks.yieldFn) await hooks.yieldFn();
     }
   }
+  /**
+   * ⚠️ 2026-10-09: АЛХМЫН ХЯЗГААРТ (`MAX_STEPS`) хүрсэн бол загварчлал `SIM_MIN`-д
+   *    ХҮРЭЭГҮЙ. Доорх нөхөлт нь сүүлийн зүсмэлийг давтдаг — урьд нь энэ нь
+   *    ЧИМЭЭГҮЙ байсан тул «60 минутын үр дүн» гэж харагдах атлаа үнэндээ
+   *    эрт зогссон байв. Одоо `meta.truncated`/`simulatedMin`/`simulatedSlices`-д
+   *    бичиж UI-д ил хэлнэ (`Ersdel.tsx`).
+   */
+  const hitCap = step >= MAX_STEPS && t < totalS;
+  const realSlices = out.length;
   while (out.length < SLICES) {
     const last = out[out.length - 1];
     out.push(last ?? { d: new Float32Array(P), u: new Float32Array(P), v: new Float32Array(P) });
@@ -746,6 +757,10 @@ export async function runFloodSim(
     totalWetHa: Math.round(everHa * 100) / 100,
     peakDepthM: Math.round(peak * 1000) / 1000,
     simMin: SIM_MIN,
+    /* ⚠️ 2026-10-09: бодитоор бодогдсон хугацаа ба алхмын хязгаарт тасарсан эсэх */
+    simulatedMin: Math.round((t / 60) * 10) / 10,
+    truncated: hitCap,
+    simulatedSlices: Math.min(SLICES, realSlices),
     /* ⚠️ 2026-09-30: голын оролтгүй бол «оролтын урсац» гэж худал тоо бичихгүй */
     peakQ: inlet.length ? Math.round(qPeak * 10) / 10 : undefined,
     hydroQ: inlet.length ? qSeries.slice(0, SLICES) : undefined,
@@ -785,6 +800,8 @@ export async function runFloodSim(
     extra: {
       terrainZ: zReal, bedZ: z, maxDepth: maxD, maxSpeed: maxS, arrivalS: arrival,
       accHa, catchHa, channelMask: stream,
+      /* ⚠️ 2026-10-09: `dom` нь зурсан талбайгаар маскжсан эцсийн муж */
+      domMask: dom,
     },
   };
 }

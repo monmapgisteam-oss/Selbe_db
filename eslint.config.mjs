@@ -6,8 +6,24 @@ import nextTs from 'eslint-config-next/typescript';
  * `npm run lint` (CI-д мөн ажиллана). tsc-ийн давхардсан шалгалтууд
  * (unused г.м.) typecheck дээрээ байгаа тул энд Next/React-ийн дүрэм гол.
  */
+
+/**
+ * ⚠️ 2026-10-09: `tools/` доторх `.mjs` (Node скрипт: тестийн loader, i18n, бот, шалгуурын гүйгч) урьд нь
+ *    БҮХЭЛДЭЭ ignore байсан — тэнд хэвлэгдсэн алдаа/тодорхойгүй хувьсагч хэзээ ч баригддаггүй.
+ *    Одоо Node-ийн глобалтай шалгана. `globals` багцыг импортлохгүй: зөвхөн дамжин орсон
+ *    хамаарал (package.json-д алга) тул шинэчлэлтэд алга болж config бүхэлдээ унах эрсдэлтэй —
+ *    ашиглагдаж буй глобалуудыг энд ил жагсаав. `npm run lint` нь `eslint src` хэвээр тул
+ *    CI-ийн хаалт ӨӨРЧЛӨГДӨХГҮЙ; `npx eslint tools`-оор тусад нь ажиллуулна.
+ */
+const NODE_GLOBALS = Object.fromEntries([
+  'process', 'Buffer', 'console', 'URL', 'URLSearchParams', 'fetch', 'Headers', 'Request',
+  'Response', 'FormData', 'Blob', 'AbortSignal', 'AbortController', 'TextEncoder', 'TextDecoder',
+  'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate',
+  'queueMicrotask', 'structuredClone', 'performance', 'crypto', 'globalThis',
+].map((g) => [g, 'readonly']));
+
 export default [
-  { ignores: ['node_modules/**', '.next/**', 'out/**', 'tools/**'] },
+  { ignores: ['node_modules/**', '.next/**', 'out/**', 'tools/**/*.{js,cjs,py,ipynb,txt}'] },
   ...coreWebVitals,
   ...nextTs,
   {
@@ -40,5 +56,10 @@ export default [
         caughtErrorsIgnorePattern: '^_',
       }],
     },
+  },
+  {
+    files: ['tools/**/*.mjs'],
+    languageOptions: { sourceType: 'module', globals: NODE_GLOBALS },
+    rules: { 'no-undef': 'error' },
   },
 ];

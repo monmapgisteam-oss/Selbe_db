@@ -676,6 +676,10 @@ console.log('✅ нэг хүн НЭГ үүрэг — үүргийн слот Б�
   assert.equal(nb2.revHistory.length, 2); assert.equal(nb2.revHistory[1].rev, 2);
   const nbMs = nextRevisionBody('MS', { ...EMPTY_BODY_LIKE(), meta: EMPTY_META }, { rev: 1, reason: 'r', by: 'g', now: T });
   assert.equal(nbMs.revHistory.length, 1); assert.equal(nbMs.general, '');
+  /* ⚠️ 2026-10-09: MIR/FIC — ТУХ-ийн багана rev+1-д цэвэрлэгдэнэ, гүйцэтгэгчийнх үлдэнэ */
+  const insp = { ...EMPTY_INSP, items: [{ no: 1, text: 'a', section: null, contractor: 'OK', client: 'X', comment: 'c' }] };
+  const nbI = nextRevisionBody('MIR', insp, { rev: 1, reason: 'r', by: 'g', now: T });
+  assert.equal(nbI.items[0].client, null); assert.equal(nbI.items[0].contractor, 'OK'); assert.equal(insp.items[0].client, 'X', 'цэвэр');
   /* Түгжигдсэн материал хянагдахгүй: review perMaterial-аас хаягдана, repFrom-д өмнөх шийдвэр орно */
   const rev1 = { kind: 'MA', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
   const rr = review(rev1, { as: 'cheng', who: 'e', verdict: VERDICT.approve, perMaterial: { 0: 'R', 1: 'A', 2: 'A' }, materials: nb.materials });
@@ -739,6 +743,12 @@ console.log('✅ 2-р үе шат — AN нээлттэй · closeAn · newRevis
   assert.match(asCheng.error, /шаардлагагүй/);
   assert.equal(review(legacyMa, { as: 'chanar', who: 'c', verdict: VERDICT.approve }).ok, true);
   assert.equal(JSON.stringify({ ...noCheng, cheng: undefined }).includes('cheng'), false, 'stringify undefined-ийг хаяна → хуучин мөр хуучин хэвээр');
+  /* ⚠️ 2026-10-09: хуучин MA JSON — ЗӨВХӨН tuh/chanar/habea түлхүүр (tug ч undefined) → tug шаардагдана */
+  const oldKeys = { tuh: null, chanar: null, habea: null };
+  assert.deepEqual([...requiredReviewers(oldKeys, 'MA')], ['chanar', 'tug'], 'cheng алгасна, tug ҮЛДЭНЭ');
+  const oldDecided = { tuh: null, chanar: rv(VERDICT.approve, 'c'), habea: null };
+  assert.deepEqual([...requiredReviewers(oldDecided, 'MA')], ['chanar', 'tug']);
+  assert.equal(resolve(oldDecided, 'MA'), MS_STATUS.review, '⚠️ chanar ганцаараа батлахгүй');
   /* Саналын урт — NOTE_MAX */
   const long = 'x'.repeat(NOTE_MAX + 1);
   const ms = { kind: 'MS', status: MS_STATUS.review, author: 'g', reviews: emptyReviews() };
@@ -879,9 +889,15 @@ console.log('✅ 2026-09-30 — нэг хүн хоёр үүрэг (гацаа) �
   assert.ok(rd.indexOf('await unchanged(args.oid, cur[0], watch)') > 0
     && rd.indexOf('await unchanged(args.oid, cur[0], watch)') < w, '⚠️ reviewDoc: бичихийн өмнө `unchanged`');
   assert.ok(/const watch = \(ncrBody \|\| F\.body in attrs\) \? \[F\.status, F\.reviews, F\.body\]/.test(rd), '⚠️ reviewDoc: NCR/бие бичихэд биеийг ч ажиглана');
+  /* ⚠️ 2026-10-09: `hyanalt` 8000 — хэтэрвэл бичихээс ӨМНӨ шалтгаантай татгалзана */
+  assert.ok(rd.indexOf('hyanaltTooLong(') > 0 && rd.indexOf('hyanaltTooLong(') < w, '⚠️ reviewDoc: hyanalt хэтрэлтийг бичихээс өмнө барина');
   const bd = store.slice(store.indexOf('export async function bounceDoc'), store.indexOf('async function unchanged'));
-  assert.ok(bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') > 0
-    && bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews])') < bd.indexOf('return update(url'), '⚠️ bounceDoc: бичихийн өмнө `unchanged`');
+  /* ⚠️ 2026-10-09: биеийг бүхэлд нь бичдэг тул `F.body` ч ажиглана (`saveMeta` алдагдахгүй) */
+  assert.ok(bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews, F.body])') > 0
+    && bd.indexOf('await unchanged(args.oid, row, [F.status, F.reviews, F.body])') < bd.indexOf('return update(url'), '⚠️ bounceDoc: бичихийн өмнө `unchanged` (бие ч)');
+  const cc = store.slice(store.indexOf('export async function saveClientChecks'), store.indexOf('function clientChecksPure'));
+  assert.ok(cc.indexOf('await unchanged(args.oid, ld.row, [F.status, F.reviews, F.body])') > 0
+    && cc.indexOf('await unchanged(args.oid, ld.row, [F.status, F.reviews, F.body])') < cc.indexOf('return update(ld.url'), '⚠️ saveClientChecks: бичихийн өмнө `unchanged`');
 }
 console.log('✅ 2026-09-30 — MA материалын нийт шийдвэр · түгжигдсэн агуулга · AN хаалт · NCR REP · нотолгоо');
 

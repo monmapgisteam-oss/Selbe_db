@@ -143,6 +143,18 @@ export function xMatch(r: CfRow, dim: XDim, key: string): boolean {
 /** «Гэрээ хийсэн» гэдгийг тодорхойлох утга — 2, 3-р чартын дэд цуваа */
 export const CONTRACTED = 'Гэрээлсэн дүн';
 
+/**
+ * «ГЭРЭЭТЭЙ» — ПОРТАЛЫН НЭГ ПРЕДИКАТ (2026-10-09): `ho_dungiin_tailbar === CONTRACTED` (зайг нэгтгэж).
+ * Оролт нь CASHFLOW_NEW-ийн ТҮҮХИЙ мөр (`Record`) ЭСВЭЛ цэвэрлэсэн `CfRow`/`{ note }`.
+ * ⚠️ `geree_dun > 0`-ийг гэрээ гэж ТООЦОХГҮЙ — гэрээгүй мөрд ч бөглөгддөг (scorecardLoad-ийн
+ *    2026-09-21 ⚠️). Хоёр тодорхойлолтын зөрүү (дүнтэй атлаа CONTRACTED биш) нь «Гэрээгүй ажил»
+ *    картын `noteMismatch` жагсаалтад ил гарна (`ceo/uncontracted.ts`).
+ */
+export const isContracted = (r: Readonly<Record<string, unknown>>): boolean => {
+  const v = CF.note in r ? r[CF.note] : r.note;
+  return String(v ?? '').replace(/\s+/g, ' ').trim() === CONTRACTED;
+};
+
 export type CfRow = {
   oid: number;
   type: string;
@@ -566,7 +578,7 @@ export function chartTypeCost(
     rows,
     (r) => r.type,
     (r) => r.cost,
-    (r) => (r.note === CONTRACTED ? r.cost : 0),
+    (r) => (isContracted(r) ? r.cost : 0),
   );
   const cnt = new Map<string, { n: number; c: number }>();
   /* ⚠️ 2026-09-29 (аудит 10): ангилал «Нийт төсөв»-т ордог уу — `SubBar.inTotal` */
@@ -575,7 +587,7 @@ export function chartTypeCost(
     if (!r.type) continue;
     const a = cnt.get(r.type) ?? { n: 0, c: 0 };
     a.n += 1;
-    if (r.note === CONTRACTED) a.c += 1;
+    if (isContracted(r)) a.c += 1;
     cnt.set(r.type, a);
     if (r.inTotal) inTot.add(r.type);
   }
@@ -625,7 +637,7 @@ export function chartSourceCount(rows: CfRow[]): SubBar[] {
     for (const r of rows) {
       if (r.src[i] <= 0) continue;
       value += 1;
-      if (r.note === CONTRACTED) sub += 1;
+      if (isContracted(r)) sub += 1;
     }
     return { key: s.field, label: s.label, value, sub };
   }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
@@ -650,7 +662,7 @@ export function chartSourceAmount(rows: CfRow[]): SubBar[] {
     let sub = 0;
     for (const r of rows) {
       value += r.src[i];
-      if (r.note === CONTRACTED) sub += r.src[i];
+      if (isContracted(r)) sub += r.src[i];
     }
     return { key: s.field, label: s.label, value, sub };
   }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
@@ -1050,7 +1062,7 @@ export function contractedScope(
   const keys = new Set<string>();
   for (const r of rows) {
     if (FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1]))) continue;
-    if (String(r[CF.note] ?? '').replace(/\s+/g, ' ').trim() !== CONTRACTED) continue;
+    if (!isContracted(r)) continue;
     amount += nOf(r[CF.contract]);
     for (const v of [r[CF.pkg2], r[CF.pkg]]) {
       const k = isPkgRange(v) ? '' : bagtsKey(v);

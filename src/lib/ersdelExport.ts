@@ -112,6 +112,15 @@ export type ExportRow = {
   geom: 'area' | 'line' | 'point';
   clsLabel: string;
   objects: ExportObject[];
+  /**
+   * ⚠️ 2026-10-09: давхарга ТАЙРАГДСАН (`damageOf`-ийн `truncated`) — `objects`
+   *    нь зөвхөн татагдсан эхний хэсэг (`MAX_GEOM`), бүтэн жагсаалт БИШ.
+   *    Урьд нь экспорт үүнийг хаяж, ДУТУУ файл бүтэн мэт харагддаг байв.
+   *    `undefined` = мэдэгдэхгүй (хуучин дуудагч) — нүд хоосон.
+   */
+  truncated?: boolean;
+  /** ⚠️ 2026-10-09: мужид орсон объектын БҮТЭН тоо (`DamageRow.n`) — `objects.length`-ээс их байж болно */
+  totalN?: number;
 };
 
 /** Хэмжээний нэгж — геометрээс */
@@ -125,6 +134,8 @@ export function damageCsv(rows: ExportRow[]): string {
   const header = [
     tr('Давхарга'), 'layer_id', 'oid', tr('Ангилал'), tr('Хэмжээ'), tr('Нэгж'),
     tr('Дээд гүн (м)'), tr('Үнэлгээ (₮)'),
+    /* ⚠️ 2026-10-09: давхарга тайрагдсан эсэх ба бүтэн тоо — файл дутуу гэдгийг файл дотроо хэлнэ */
+    'truncated', 'total_n',
   ];
   const out: unknown[][] = [];
   for (const r of rows) {
@@ -134,6 +145,8 @@ export function damageCsv(rows: ExportRow[]): string {
         Math.round(o.measure * 100) / 100, unitOf(r.geom),
         o.depth == null ? null : Math.round(o.depth * 100) / 100,
         o.cost == null ? null : Math.round(o.cost),
+        r.truncated == null ? null : r.truncated ? 1 : 0,
+        r.totalN ?? null,
       ]);
     }
   }
@@ -172,9 +185,23 @@ export function damageGeoJSON(
           unit: unitOf(r.geom),
           depth_max_m: o.depth == null ? null : Math.round(o.depth * 100) / 100,
           cost_mnt: o.cost == null ? null : Math.round(o.cost),
+          layer_truncated: r.truncated ?? null,
+          layer_total_n: r.totalN ?? null,
         },
       });
     }
   }
-  return JSON.stringify({ type: 'FeatureCollection', features });
+  /**
+   * ⚠️ 2026-10-09: ТАЙРАГДСАН давхаргууд FeatureCollection-ийн `properties`-д
+   *    (RFC 7946 §6.1 «гадаад гишүүн» — уншигч мэдэхгүй бол үл тоомсорлоно).
+   *    `partial: true` = файл ДУТУУ: тэдгээр давхаргын объект бүгд ороогүй.
+   */
+  const truncatedLayers = rows
+    .filter((r) => r.truncated)
+    .map((r) => ({ layer_id: r.layerId, layer: r.title, exported_n: r.objects.length, total_n: r.totalN ?? null }));
+  return JSON.stringify({
+    type: 'FeatureCollection',
+    properties: { partial: truncatedLayers.length > 0, truncated_layers: truncatedLayers },
+    features,
+  });
 }

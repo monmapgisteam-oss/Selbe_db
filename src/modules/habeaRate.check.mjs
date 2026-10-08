@@ -11,7 +11,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  hoursByDay, rateByMonth, rateByPkg, markCurMonth, RATE_BASE,
+  hoursByDay, rateByMonth, rateByPkg, markCurMonth, RATE_BASE, isLtiType, ltiFreeHours,
 } from './habeaRate.ts';
 
 const day = (iso) => Date.parse(`${iso}T12:00:00+08:00`);
@@ -92,6 +92,29 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   assert.equal(m[1].label, '2026.10*');
   assert.equal(m[0].label, '2026.09', 'дууссан сар хөндөгдөхгүй');
   assert.equal(items[1].label, '2026.10', 'оролтыг мутацлахгүй');
+}
+
+/* ══════════ 5. LTI-гүй хүн-цаг (2026-10-09) ══════════
+   Урьд нь KPI «Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг» = Σ Hun_tsag (LTI-д тэглэгддэггүй). */
+{
+  const ub = (ms) => new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
+  assert.equal(isLtiType('Ноцтой осол'), true);
+  assert.equal(isLtiType('Хөдөлмөрийн чадвар түр алдсан осол'), true);
+  assert.equal(isLtiType('Амь нас эрсдэж болзошгүй байсан'), false, 'болзошгүй — LTI биш');
+  assert.equal(isLtiType('Осолд дөхсөн тохиолдол'), false);
+  assert.equal(isLtiType('Эд хөрөнгийн хохирол'), false);
+  const lab = [
+    { Ognoo: day('2026-08-10'), Hun_tsag: 1000 },
+    { Ognoo: day('2026-08-11'), Hun_tsag: 500 },
+    { Ognoo: day('2026-08-12'), Hun_tsag: null },
+    { Ognoo: day('2026-08-13'), Hun_tsag: 300 },
+  ];
+  assert.deepEqual(ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Эд хөрөнгийн хохирол' }], ub),
+    { hours: 1800, since: null, undatedLti: false }, 'LTI алга — бүх хүн-цаг');
+  const r = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }], ub);
+  assert.equal(r.hours, 300, 'LTI-ийн ӨДРИЙН дараах хүн-цаг л (тэр өдөр ороогүй, null 0 биш алгасна)');
+  assert.equal(r.since, day('2026-08-11'));
+  assert.equal(ltiFreeHours(lab, [{ d: 0, type: 'Ноцтой осол' }], ub).hours, null, 'огноогүй LTI — мэдэгдэхгүй (0 биш)');
 }
 
 console.log('habeaRate.check: OK');

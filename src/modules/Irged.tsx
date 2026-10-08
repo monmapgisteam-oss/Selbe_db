@@ -65,8 +65,11 @@ import { useAsync } from '@/lib/useAsync';
 import { queryCount } from '@/lib/query';
 import { SOCIAL } from '@/lib/brief';
 import { loadGerBuilt } from '@/lib/irged';
+/* ⚠️ 2026-10-09: тайлбар мөрийн коэффициентүүд (5 тн, 650 мг/МЖ, 16 МЖ/кг, 3.6 хүн, 0.05 м³, 4.5 кг N)
+   ЭНДЭЭС интерполяцлагдана — урьд нь `tr()` текстэд хатуу бичигдсэн тул `bohirdol.ts`-ийн тогтмол
+   өөрчлөгдөхөд тоо нь тооцооноос зөрж үлддэг байв. */
 import {
-  COAL_T_PER_HH, N_KG_PER_PERSON, PERSONS_PER_HH, PM25_KG_PER_T_COAL,
+  COAL_MJ_PER_KG, COAL_T_PER_HH, N_KG_PER_PERSON, PERSONS_PER_HH, PM25_KG_PER_T_COAL, PM25_MG_PER_MJ,
   SLUDGE_M3_PER_PERSON, latrineLoad, stoveLoad,
 } from '@/lib/bohirdol';
 import {
@@ -269,9 +272,9 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const qToilet = useAsync<number>(() => queryCount(IRGED_TOILET.url), []);
 
   /**
-   * ГЭР ХОРООЛЛЫН БАРИЛГА — төрөл тус бүрийн тоо БА ул мөрийн талбай.
-   * ⚠️ Урьд нь ХОЁР `queryCount` явдаг байсныг НЭГ `groupBy` болгов: хүсэлт
-   *    цөөрөөд талбайн мэдээлэл нэмэгдэв.
+   * ГЭР ХОРООЛЛЫН БАРИЛГА — төрөл тус бүрийн тоо.
+   * ⚠️ Урьд нь ХОЁР `queryCount` явдаг байсныг НЭГ `groupBy` болгов.
+   * ⚠️ 2026-10-09: ул мөрийн талбай ХАСАГДСАН — энд хэзээ ч уншигдаагүй (`irged.loadGerBuilt`-ийн ⚠️).
    */
   const qBuilt = useAsync(loadGerBuilt, []);
 
@@ -292,8 +295,13 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Нэрийг бүлгийн ЭХНИЙ давхаргын гарчгаас БИШ, `groupOf`-ийн бүлгийн
    * нэрээс авна: «Багц 19.1 · 960 хүүхдийн сургууль ×10» гэвэл үлдсэн есийг
    * нь тэр нэр буруу төлөөлнө.
+   *
+   * ⚠️ 2026-10-09: `useMemo([visible])` БИШ — РЕНДЕР бүрд бодно. Гарчиг нь `tr()`/`GROUP_TITLE()`
+   *    (хэлээс хамаарна) тул memo нь хэл солиход хуучин хэлээр үлдэх эрсдэлтэй байв (одоо
+   *    `LocaleRemount` дэд модыг дахин mount хийдэг ч түүнээс хамааралгүй зөв байх ёстой).
+   *    Ил давхаргын тоо цөөн (≤ хэдэн арав) тул тооцоо хямд.
    */
-  const legend = useMemo(() => {
+  const legend = (() => {
     /**
      * ⚠️ ГЭР ХОРООЛЛЫН БАРИЛГА нь ЗУРАГ ДЭЭР ХОЁР ӨНГӨТЭЙ (`Type` талбараар:
      * байшин · гэр) атлаа каталогид НЭГ `hue`-тэй тул тайлбарт «Одоогийн
@@ -341,7 +349,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         n: ids.length,
       };
     })];
-  }, [visible]);
+  })();
   const legendHidden = Math.max(0, legend.length - 8);
 
   return (
@@ -393,8 +401,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   ]}
                 />
                 <p className={i.chartNote}>
-                  {tr('өрх тутам 5 тн нүүрс · 650 мг PM2.5/МЖ (уламжлалт зуух, SEET лаб 2014) · нэг өрхөд {0} кг',
-                    num(s.pm25KgPerHh))}
+                  {tr('өрх тутам {0} тн нүүрс · {1} мг PM2.5/МЖ (уламжлалт зуух, SEET лаб 2014) · нэг өрхөд {2} кг',
+                    num(COAL_T_PER_HH), num(PM25_MG_PER_MJ), num(s.pm25KgPerHh))}
                 </p>
               </>
             );
@@ -430,8 +438,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   ]}
                 />
                 <p className={i.chartNote}>
-                  {tr('нэг жорлон = нэг өрх · {0} хүн (өрхийн дундаж 3.6, ҮСХ) × 4.5 кг N (Jönsson 2004)',
-                    num(l.pop))}
+                  {tr('нэг жорлон = нэг өрх · {0} хүн (өрхийн дундаж {1}, ҮСХ) × {2} кг N (Jönsson 2004)',
+                    num(l.pop), num(PERSONS_PER_HH, 1), num(N_KG_PER_PERSON, 1))}
                 </p>
               </>
             );
@@ -472,7 +480,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <em className={i.factUnit}>{tr('кг')}</em>
                 </span>
               </p>
-              <p className={i.factTxt}>{tr('уламжлалт зуух 650 мг/МЖ × 16 МЖ/кг · SEET лаб, 2014')}</p>
+              <p className={i.factTxt}>{tr('уламжлалт зуух {0} мг/МЖ × {1} МЖ/кг · SEET лаб, 2014', num(PM25_MG_PER_MJ), num(COAL_MJ_PER_KG))}</p>
             </div>
             <div className={i.fact}>
               <p className={i.factHead}>
@@ -483,7 +491,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <em className={i.factUnit}>{tr('м³')}</em>
                 </span>
               </p>
-              <p className={i.factTxt}>{tr('3.6 хүн × 0.05 м³ · WHO/SuSanA норм (40–60 л/хүн/жил)')}</p>
+              <p className={i.factTxt}>{tr('{0} хүн × {1} м³ · WHO/SuSanA норм (40–60 л/хүн/жил)', num(PERSONS_PER_HH, 1), num(SLUDGE_M3_PER_PERSON, 2))}</p>
             </div>
             <div className={i.fact}>
               <p className={i.factHead}>
@@ -494,7 +502,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <em className={i.factUnit}>{tr('кг')}</em>
                 </span>
               </p>
-              <p className={i.factTxt}>{tr('3.6 хүн × 4.5 кг N · Jönsson & Vinnerås, 2004')}</p>
+              <p className={i.factTxt}>{tr('{0} хүн × {1} кг N · Jönsson & Vinnerås, 2004', num(PERSONS_PER_HH, 1), num(N_KG_PER_PERSON, 1))}</p>
             </div>
           </div>
         </Panel>
@@ -687,7 +695,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </div>
                   <div className={i.socLine}>
                     <span className={i.socWhen}>{tr('Одоо байгаа')}</span>
-                    <span className={i.socDots}>{dots(now)}</span>
+                    {/* ⚠️ 2026-10-09: чимэглэлийн цэгүүд — тоо нь хажуудаа бичигдсэн тул дэлгэц уншигчид нуух */}
+                    <span className={i.socDots} aria-hidden="true">{dots(now)}</span>
                     <span className={i.socFact}>
                       {now ? <b>{now}</b> : <em>—</em>}
                       {cap(r.now) && <em>{tr('{0} хүн', cap(r.now)!)}</em>}
@@ -695,7 +704,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </div>
                   <div className={i.socLine}>
                     <span className={i.socWhen}>{tr('шинээр')}</span>
-                    <span className={i.socDots}>{dots(add)}</span>
+                    <span className={i.socDots} aria-hidden="true">{dots(add)}</span>
                     <span className={i.socFact}>
                       {add ? <b>{add}</b> : <em>—</em>}
                       {cap(r.add) && <em>{tr('{0} хүн', cap(r.add)!)}</em>}
@@ -727,7 +736,8 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 тэнхлэгт мөр бүр ӨӨРИЙН өндөрт суух тул хэчнээн урт нэр ч
                 хөршөө халхлахгүй. */}
             <div className={i.walkLine}>
-              <i className={i.walkFill} />
+              {/* ⚠️ 2026-10-09: чимэглэлийн зурвас — дэлгэц уншигчид нуух */}
+              <i className={i.walkFill} aria-hidden="true" />
               {[
                 { key: 'kinder', m: 300, label: tr('Цэцэрлэг') },
                 { key: 'school', m: 500, label: tr('Сургууль') },

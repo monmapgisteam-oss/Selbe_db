@@ -17,13 +17,15 @@ import { t as tr } from '@/lib/i18nCore';
 import { buildPacks } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
 import {
-  TOLOV, deleteZov, saveZov, validateZov, type Tolov, type Zov, type ZovDraft,
+  TOLOV, deleteZov, loadOneZov, loadZovFieldLens, saveZov, validateZov,
+  type Tolov, type Zov, type ZovDraft, type ZovFieldLens,
 } from '@/lib/zovshoorol';
 import { setNavDirty } from '@/lib/navGuard';
 import s from './zovshoorol.module.css';
 import { userError } from '@/components/ui';
 import { DateField } from '@/modules/huvaari/DateField';
 import { isLostResponse } from '@/lib/butetsEdit';
+import { invalidate } from '@/lib/dataBus';
 
 /** ms → YYYY-MM-DD (UTC). Огноогүй бол хоосон. */
 const toInput = (ms: number | null): string => {
@@ -89,6 +91,14 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   const [unsure, setUnsure] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const editing = init.oid != null;
+  /* ⚠️ 2026-10-09: текст талбарын дээд урт — метадатагаас (`zovshoorol.loadZovFieldLens`);
+     уншигдаагүй бол хуучин хатуу утга НӨӨЦ (хязгааргүй болгохгүй). */
+  const [lens, setLens] = useState<ZovFieldLens>({});
+  useEffect(() => {
+    let alive = true;
+    void loadZovFieldLens().then((l) => { if (alive) setLens(l); });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => { firstRef.current?.focus(); }, []);
   /** Хаахыг оролдох — өөрчлөлт байвал асууна. */
@@ -258,6 +268,23 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await deleteZov(d.oid);
       onDone();
     } catch (x) {
+      /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН устгалт (timeout/сүлжээ) — сервер устгасан эсэх
+         ТОДОРХОЙГҮЙ. Урьд нь шууд алдаа гаргаж, хэрэглэгч дахин дарахад «мөр олдсонгүй»
+         гэх мэт ойлгомжгүй алдаа авдаг байв. Мөрийг OID-оор ДАХИН асууна: алга бол
+         устгал амжилттай; байгаа бол анхны алдаа; асуулт ч унавал «тодорхойгүй». */
+      if (isLostResponse(x)) {
+        let still: Zov | null | undefined;
+        try { still = await loadOneZov(d.oid); } catch { still = undefined; }
+        if (still === null) {
+          invalidate('ZOVSHOOROL');
+          onDone();
+          return;
+        }
+        if (still === undefined) {
+          setFail(tr('Серверээс хариу ирсэнгүй — зөвшөөрөл устгагдсан эсэх ТОДОРХОЙГҮЙ. Хуудсыг дахин ачаалж шалгана уу.'));
+          return;
+        }
+      }
       setFail(userError(x));
     } finally {
       setBusy(false);
@@ -339,7 +366,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
               ref={firstRef}
               className={s.input}
               value={d.ner}
-              maxLength={200}
+              maxLength={lens.ner ?? 200}
               placeholder={tr('жиш. Барилга барих зөвшөөрөл')}
               onChange={(e) => set('ner', e.target.value)}
             />
@@ -388,37 +415,38 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
 
           <div className={s.grid2}>
             {field('dugaar', tr('Зөвшөөрлийн дугаар'), (
-              <input className={s.input} value={d.dugaar} maxLength={100}
+              <input className={s.input} value={d.dugaar} maxLength={lens.dugaar ?? 100}
                 onChange={(e) => set('dugaar', e.target.value)} />
             ), d.tolov === TOLOV.ok && !d.dugaar.trim()
               ? tr('Зөвшөөрсөн боловч дугаар бичээгүй байна')
               : undefined)}
             {field('baiguullaga', tr('Шийдвэрлэх байгууллага'), (
-              <input className={s.input} value={d.baiguullaga} maxLength={150}
+              <input className={s.input} value={d.baiguullaga} maxLength={lens.baiguullaga ?? 150}
                 onChange={(e) => set('baiguullaga', e.target.value)} />
             ))}
           </div>
 
           <div className={s.grid2}>
             {field('hariutsagch', tr('Байгууллагын хариуцагч'), (
-              <input className={s.input} value={d.hariutsagch} maxLength={100}
+              <input className={s.input} value={d.hariutsagch} maxLength={lens.hariutsagch ?? 100}
                 onChange={(e) => set('hariutsagch', e.target.value)} />
             ))}
             {field('selbe', tr('Сэлбэ талын хариуцагч'), (
-              <input className={s.input} value={d.selbe} maxLength={100}
+              <input className={s.input} value={d.selbe} maxLength={lens.selbe ?? 100}
                 onChange={(e) => set('selbe', e.target.value)} />
             ))}
           </div>
 
           {field('tailbar', tr('Тайлбар'), (
-            <textarea className={s.input + ' ' + s.area} rows={3} value={d.tailbar} maxLength={2000}
+            <textarea className={s.input + ' ' + s.area} rows={3} value={d.tailbar} maxLength={lens.tailbar ?? 2000}
               onChange={(e) => set('tailbar', e.target.value)} />
           ))}
 
           {fail && <div className={s.formErr} role="alert">{fail}</div>}
           {/* ⚠️ 2026-10-06: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
           {unsure && (
-            <div className={s.formErr} role="alertdialog">
+            /* ⚠️ 2026-10-09: `alertdialog` БИШ — модал доторх мөрийн мэдэгдэл (өөрөө диалог биш) */
+            <div className={s.formErr} role="alert">
               {tr('Серверээс хариу ирсэнгүй — зөвшөөрөл нэмэгдсэн эсэх ТОДОРХОЙГҮЙ. Дахин хадгалахаас өмнө хуудсыг дахин ачаалж, зөвшөөрөл үүссэн эсэхийг шалгана уу.')}
               {' '}
               <button type="button" className={s.btn} onClick={() => setUnsure(false)} disabled={busy}>

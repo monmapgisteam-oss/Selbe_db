@@ -14,7 +14,7 @@
  * уншигдана, тэр нь буруу тооноос ч дор.
  */
 
-import { cached, loadHeadline, loadClearance } from '@/lib/live';
+import { cached, loadHeadline, loadClearance, SESSION_TTL_MS } from '@/lib/live';
 import {
   loadOverall, loadProgress, loadFinance, loadHabeaSummary,
 } from '@/lib/reportData';
@@ -29,6 +29,18 @@ import { SOURCE_NAME, type SchemSources } from '@/lib/schem';
  * `failed`-тэй тулгадаг тул ХОЁР газар бичигдэж болохгүй.
  */
 const NAME = SOURCE_NAME;
+
+/**
+ * ⚠️ 2026-10-09: `loadZov` ба `hyanalt.queryAll` нь КЭШГҮЙ ачаалагч — файлын толгойн
+ *    «нэмэлт хүсэлт огт явахгүй» гэсэн амлалтыг зөрчиж, схем нээх бүрд хоёр бүтэн
+ *    хүснэгтийг (2000-аар хуудаслан) дахин татдаг байв. Энд `live.cached`-аар ороож
+ *    тухайн хүснэгтийн DataKey-ээр тэмдэглэв — бичилт (`invalidate('ZOVSHOOROL' | 'HYANALT')`)
+ *    кэшийг хаяна, TTL нь сешний анхдагч.
+ * ⚠️ `loadZov` унахдаа `null` БУЦААДАГ (шиддэггүй) тул `keep`-ээр `null`-ыг кэшлэхгүй —
+ *    эс бөгөөс түр уналт 5 минут «зөвшөөрөл татагдсангүй» болж үлдэнэ.
+ */
+const loadZovCached = cached(loadZov, SESSION_TTL_MS, ['ZOVSHOOROL'], (v) => v != null);
+const queryAllCached = cached(queryAll, SESSION_TTL_MS, ['HYANALT']);
 
 /**
  * ⚠️ 2026-09-25 аудит: ХЭСЭГЧИЛСЭН ҮР ДҮН КЭШЛЭГДЭХГҮЙ. Урьд нь нэг эх сурвалж
@@ -69,8 +81,8 @@ const schemSourcesFull = cached<SchemSources>(async () => {
     loadProgress(),
     loadFinance(),
     loadHabeaSummary(),
-    loadZov(),
-    queryAll(),
+    loadZovCached(),
+    queryAllCached(),
     loadBagtsRows(),
   ]);
 
@@ -93,8 +105,15 @@ const schemSourcesFull = cached<SchemSources>(async () => {
     return null;
   };
 
+  /* ⚠️ 2026-10-09: ХАГАС толгой (`Headline.partial` — хил/барилга/төсөв аль нэг нь унасан, NaN
+     талбартай) нь `fulfilled` ирдэг тул урьд нь «амжилттай» тоологдож, NaN-тай схем 5 минут
+     КЭШЛЭГДДЭГ байв. Утгыг нь харуулсаар (бусад талбар нь зөв) `failed`-д нэрлэнэ —
+     доорх `SchemPartial` кэшлэхгүй. `loadFinance` (`reportData`) хагас төлөвгүй: аль нэг
+     хүснэгт унавал бүхэлдээ шиддэг тул `take` аль хэдийн «унасан» гэж тоолно. */
+  const headline = take(NAME.headline, h);
+  if (headline?.partial) failed.push(NAME.headline);
   const src: SchemSources = {
-    headline: take(NAME.headline, h),
+    headline,
     clearance: take(NAME.clearance, c),
     overall: take(NAME.overall, o),
     progress: take(NAME.progress, p),

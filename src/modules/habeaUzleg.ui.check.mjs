@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { registerIdentity } from '../lib/authToken.ts';
 
-const { photoSrc, isWeekNo, weekScoreOf, prevWeek, WEEK_LOOKBACK_DAYS } = await import('./habeaUzleg.tsx');
+const { photoSrc, weekCodes, uzWeekKey, weekLabel, weekScoreOf, prevWeek } = await import('./habeaUzleg.tsx');
 
 /* 1. Нэвтрээгүй (identity бүртгэгдээгүй) — токенгүй хаяг, «?» үлдэхгүй */
 assert.equal(photoSrc('https://x/FeatureServer/0/5/attachments/7'), 'https://x/FeatureServer/0/5/attachments/7');
@@ -38,13 +38,14 @@ assert.ok(wall.includes('photoSrc(p.src)'));
 
 /* ══════════ 4. ДОЛОО ХОНОГИЙН KPI — чарттай НЭГ эх (2026-10-01) ══════════ */
 /* ⚠️ KPI нь урьд ОГНООНЫ хилээр, чарт нь `week` кодоор бүлэглэдэг тул нэг долоо хоног
-   хоёр өөр оноотой гардаг байв. Одоо хоёулаа `week` + ижил онооны дүрэм (appl > 0). */
-assert.equal(isWeekNo('37', 37), true);
-assert.equal(isWeekNo('w37', 37), true);
-assert.equal(isWeekNo(37, 37), true, 'тоон утга');
-assert.equal(isWeekNo('38', 37), false);
-assert.equal(isWeekNo(null, 37), false);
-assert.equal(isWeekNo('other', 37), false);
+   хоёр өөр оноотой гардаг байв. 2026-10-09: хоёулаа ОГНООНООС (ISO, Улаанбаатар) —
+   огноогүй мөрөнд л маягтын `week` код (нөөц). */
+assert.equal(uzWeekKey(Date.parse('2026-09-14T00:30:00+08:00')), '2026-W38', 'Даваа 00:30 UB — UTC-ээр Ням ч 38');
+assert.equal(uzWeekKey(Date.parse('2026-09-13T23:59:00+08:00')), '2026-W37', 'Ням — 37');
+assert.equal(uzWeekKey(Date.parse('2027-01-01T12:00:00+08:00')), '2026-W53', 'ISO жил: 2027-01-01 нь 2026-W53');
+assert.equal(weekLabel('2026-W38'), weekLabel('38'), 'шошго жилгүй ижил');
+assert.deepEqual(weekCodes(7), ['7', '07', 'w7', 'W7']);
+assert.deepEqual(weekCodes(37), ['37', 'w37', 'W37']);
 {
   const rows = [
     { pkgK: 'A', coSfx: 'MK', e: 80, a: 100, n: 3, ns: 2, nc: 1 },
@@ -62,13 +63,13 @@ assert.equal(isWeekNo('other', 37), false);
   const sun = prevWeek(new Date(2026, 8, 27, 23, 0));   // Ням
   const mon = prevWeek(new Date(2026, 8, 28, 0, 30));   // Даваа
   assert.equal(mon.no, sun.no + 1, 'Даваа гараг дамжихад KPI-ийн долоо хоног шилжинэ');
-  assert.ok(WEEK_LOOKBACK_DAYS >= 7);
 }
 {
   const fetchSrc = uz.slice(uz.indexOf('async function fetchWeekScores'), uz.indexOf('/** Хуудасны шүүлтээр нүднүүдийг'));
-  assert.ok(fetchSrc.includes('${U.week}'), 'KPI `week` талбараар бүлэглэнэ');
+  assert.ok(fetchSrc.includes('${U.ognoo} < ${sqlTs(w.end)}'), 'KPI огнооны хилээр (ISO долоо хоног)');
+  assert.ok(fetchSrc.includes('${U.ognoo} IS NULL AND ${U.week} IN'), 'огноогүй мөр л `week` кодоор');
   assert.ok(fetchSrc.includes('${U.scAppl} > 0'), 'онооны дүрэм: appl > 0 (byWeek-тэй ижил)');
-  assert.ok(fetchSrc.includes('isWeekNo(r[U.week], w.no)'), 'тухайн долоо хоногийн мөр л');
+  assert.ok(!fetchSrc.includes('isWeekNo('), 'хадгалсан долоо хоногийн дугаараар тааруулахгүй');
   assert.ok(habea.includes('[weekKey, tick]'), 'Habea: долоо хоног/таб харагдахад дахин татна');
 }
 

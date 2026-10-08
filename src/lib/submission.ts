@@ -173,6 +173,21 @@ export type SubmissionPayload = {
    *    өөрөө шинэ тойрог нээдэг); `done|` болоход утгагүй болно.
    */
   residual?: true;
+  /**
+   * «АРХИВЛАЖ БАЙНА» ТЭМДЭГ (2026-10-09, R2) — `hyanaltStore.archiveSubmission` `applyAdds`-ийн
+   * ӨМНӨ `markArchiving`-аар (at-ийн CAS) бичнэ. `at` ӨӨРЧЛӨГДӨХГҮЙ (агуулгын хувилбар хэвээр).
+   *   · `at` — архивлаж буй агуулгын `at`; одоогийн `at`-тай зөрвөл тэмдэг хүчингүй;
+   *   · `startedAt` — эхэлсэн агшин (мэдээлэл);
+   *   · `maxOid0` — бичихийн өмнөх архивын MAX OBJECTID;
+   *   · `fillMs` — жаазны `buglusun_ognoo` (өнөөдөр рүү залруулсан байж болно);
+   *   · `n` — жаазны мөрийн тоо.
+   * ⚠️ ЯАГААД: архив бичигдээд хаалт (`closeSubmission`) ба хяналтын мөр хоёулаа унавал
+   *    өөр хөтчийн дарга дахин батлахад `archivedSet` (localStorage) харагдахгүй тул БҮТЭН жааз
+   *    дахин бичигддэг байв. Тэмдэг байвал `OBJECTID > maxOid0 AND өдөр = fillMs` жааз архивт
+   *    бүтэн байгаа эсэхийг шалгаж, байвал бичихгүй шууд хаана.
+   * ⚠️ `mergeSubmission` ДАМЖУУЛАХГҮЙ (шинэ агуулга = шинэ `at`); `closeSubmission` арилгана.
+   */
+  archiving?: { at: number; startedAt: number; maxOid0: number; fillMs: number; n: number };
 };
 
 /** Хүснэгтээс уншсан илгээлт — мөрийн дугаар ба төлөвтэй */
@@ -365,6 +380,12 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (nonces.length) out.nonces = nonces.slice(-NONCE_KEEP);
     if (d.regPending === true) out.regPending = true;
     if (d.residual === true) out.residual = true;
+    /* ⚠️ 2026-10-09 (R2): «архивлаж байна» тэмдэг — бүх талбар бодит тоо байж л хүлээн авна */
+    const ar = d.archiving as Record<string, unknown> | undefined;
+    if (ar && typeof ar === 'object' && isFin(ar.at) && isFin(ar.startedAt) && Number.isInteger(ar.maxOid0)
+      && (ar.maxOid0 as number) >= 0 && isFin(ar.fillMs) && Number.isInteger(ar.n) && (ar.n as number) > 0) {
+      out.archiving = { at: ar.at, startedAt: ar.startedAt, maxOid0: ar.maxOid0 as number, fillMs: ar.fillMs, n: ar.n as number };
+    }
     return out;
   } catch {
     return null;
@@ -1143,6 +1164,8 @@ export async function closeSubmission(
      */
     const pkgKey = payload.pkgKey || dkey.slice(SUB_PREFIX.length).split('|')[0];
     const next: SubmissionPayload = { ...payload, archiveOid, approvedAt };
+    /* ⚠️ 2026-10-09 (R2): хаагдсан мөрд «архивлаж байна» тэмдэг утгагүй */
+    delete next.archiving;
     if (regPending) next.regPending = true;
     const edit = {
       updateFeatures: [{
@@ -1168,6 +1191,45 @@ export async function closeSubmission(
     const bad = ups.find((x) => x.error != null || typeof x.objectId !== 'number');
     if (bad) return { ok: false, error: errMsg(bad.error) || tr('Илгээлт хаагдсангүй.') };
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/**
+ * «АРХИВЛАЖ БАЙНА» ТЭМДЭГ ТАВИНА (2026-10-09, R2; `SubmissionPayload.archiving`-ийн ⚠️).
+ * ⚠️ `at`-ийн CAS (`closeSubmission`-тэй ижил, атом биш) — мөрийн `at` зөрвөл `{ok:false, changed:true}`,
+ *    юу ч бичихгүй. `dkey` ба `at` ХӨНДӨГДӨХГҮЙ — зөвхөн payload-д тэмдэг нэмнэ.
+ * ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг тул үр дүнгийн мөрийг шалгана (`updOk`).
+ */
+export async function markArchiving(
+  oid: number,
+  expectAt: number,
+  /** `null` → тэмдгийг арилгана (бичилт унаж буцаагдсан үед) */
+  mark: NonNullable<SubmissionPayload['archiving']> | null,
+): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
+  if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
+  try {
+    const url = await tableUrl(false);
+    if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
+    const fl = await layer(url);
+    const res = await fl.queryFeatures({ where: `OBJECTID = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
+    const a = res.features[0]?.attributes as RowAttrs | undefined;
+    if (!a) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
+    const dkey = String(a.dkey ?? '');
+    if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, changed: true, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
+    const payload = parseSubmission(String(a.payload ?? ''));
+    if (!payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
+    const curAt = isFin(a.at) ? Number(a.at) : payload.at;
+    if (curAt !== expectAt)
+      return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
+    const next: SubmissionPayload = { ...payload };
+    if (mark) next.archiving = mark; else delete next.archiving;
+    const r = await fl.applyEdits({
+      updateFeatures: [{ attributes: { OBJECTID: oid, payload: JSON.stringify(next) } }],
+    } as Parameters<typeof fl.applyEdits>[0]);
+    const err = updOk(r);
+    return err ? { ok: false, error: err } : { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }

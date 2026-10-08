@@ -1326,8 +1326,13 @@ export function requiredReviewers(reviews: Reviews, kind: DocKind): readonly Rev
   /* ⚠️ 2026-09-25: ШИЙДВЭРГҮЙ хуучин MA мөр (JSON-д `cheng` түлхүүр огт байхгүй) урьд нь
      cheng-ийг шаарддаг байв — «дараагийнх бөглөгдсөн» дүрэм зөвхөн шийдвэртэй мөрд
      ажилладаг тул. Одоо `undefined` слот (`parseReviews`: түлхүүр байхгүй) тоологдохгүй.
-     FAIL-CLOSED: бүгд алга бол (эвдэрсэн/хоосон JSON) бүх хянагчийг шаардана. */
-  const out = need.filter((r, i) => reviews[r] !== undefined
+     FAIL-CLOSED: бүгд алга бол (эвдэрсэн/хоосон JSON) бүх хянагчийг шаардана.
+     ⚠️ 2026-10-09: `undefined`-ийг ЗӨВХӨН ЭХНИЙ (тасралтгүй) слотуудад тэвчинэ — хуучин MA
+     JSON зөвхөн tuh/chanar/habea түлхүүртэй тул `cheng` ч, `tug` ч undefined; урьд нь хоёулаа
+     хаягдаж chanar ГАНЦААРАА баталдаг байв. Одоо cheng (эхний слот) алгасагдана, tug шаардагдана. */
+  const lead = need.findIndex((r) => reviews[r] !== undefined);
+  if (lead < 0) return need;
+  const out = need.filter((r, i) => i >= lead
     && (reviews[r] != null || !need.slice(i + 1).some((later) => reviews[later] != null)));
   return out.length ? out : need;
 }
@@ -1702,6 +1707,14 @@ export function nextRevisionBody<B extends AnyBody>(
         ? { ...m, locked: true }
         : { ...m, verdict: null, locked: false }
     ));
+  }
+  /* ⚠️ 2026-10-09: MIR/FIC — захиалагчийн (ТУХ) багана нь ӨМНӨХ хувилбарын хяналт; rev+1-д
+     хуулагдвал ТУХ шинэ хувилбарыг хараагүй атлаа «бөглөсөн» мэт харагдана. Цэвэрлэнэ. */
+  if (kind === 'MIR' || kind === 'FIC') {
+    const insp = out as unknown as InspBody;
+    if (Array.isArray(insp.items)) {
+      (out as unknown as InspBody).items = insp.items.map((it) => ({ ...it, client: null }));
+    }
   }
   return out;
 }

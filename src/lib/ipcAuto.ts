@@ -29,6 +29,7 @@
  */
 import { HO_IPC, num, pkgKeyOf } from '@/lib/services';
 import { LINK_FIELDS } from '@/lib/ipcLink';
+import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
 
@@ -93,14 +94,67 @@ export function autoDay(r: Row): string | null {
  * «кодгүй гэрээ» бөгөөд шинэ мөрийг тийш нь наавал буруу бүлэгт очно.
  */
 export function contractCodeOf(rows: readonly Row[], pkgKey: string): string {
-  if (!pkgKey) return '';
+  return contractFor(rows, pkgKey).code;
+}
+
+/** Барилга угсралтын гэрээний `ajliin_turul` (амьдаар «Барилга угсралт» 30 мөр) */
+export const CONSTRUCTION_WORK = 'Барилга угсралт';
+
+/** Гэрээ сонгох нэр дэвшигч — `geree_kod`, `ajliin_turul`, «Гүйцэтгэл» төлбөртэй эсэх */
+export type ContractCand = { code: string; workType: string; hasWork: boolean };
+
+const isBuildWork = (s: string): boolean =>
+  s.replace(/\s+/g, ' ').trim().toLowerCase().includes(CONSTRUCTION_WORK.toLowerCase());
+
+/**
+ * НЭГ БАГЦАД ОЛОН ГЭРЭЭ таарвал AUTO гүйцэтгэлийг АЛЬ гэрээнд холбох вэ (2026-10-09).
+ *
+ * ⚠️ Урьд нь багцын түлхүүр таарсан ЭХНИЙ гэрээ (OID дараалал) — нэг багцад ТЭЗҮ/зураг төсөл ба
+ *    барилга угсралтын гэрээ зэрэг байвал барилгын гүйцэтгэл зураг төслийн гэрээнд очих эрсдэлтэй.
+ *    Дүрэм: (1) `ajliin_turul` нь «Барилга угсралт»; (2) «Гүйцэтгэл» төлбөртэй; (3) үлдсэн нь
+ *    кодоор (тоон эрэмбэ) — ТОДОРХОЙ, давтагдах сонголт. (3)-т хүрвэл `warn` — дуудагч ил харуулна.
+ */
+export function pickContract<T extends ContractCand>(
+  cands: readonly T[],
+  pkgKey: string,
+): { pick: T | null; warn: string | null } {
+  if (!cands.length) return { pick: null, warn: null };
+  if (cands.length === 1) return { pick: cands[0], warn: null };
+  let left = [...cands];
+  const build = left.filter((c) => isBuildWork(c.workType));
+  if (build.length) left = build;
+  const work = left.filter((c) => c.hasWork);
+  if (work.length) left = work;
+  left.sort((a, b) => a.code.localeCompare(b.code, 'mn', { numeric: true }));
+  const pick = left[0];
+  return {
+    pick,
+    warn: left.length > 1
+      ? tr('«{0}» багцад {1} гэрээ ялгагдахгүй таарсан ({2}) — гүйцэтгэлийг «{3}» гэрээнд холбов. HO хүснэгтийн гэрээний код/ажлын төрлийг шалгана уу.',
+        pkgKey, left.length, left.map((c) => c.code || '—').join(', '), pick.code || '—')
+      : null,
+  };
+}
+
+/**
+ * Багцын гэрээний код + анхааруулга — ГАРААР оруулсан, кодтой мөрүүдийг кодоор бүлэглэж
+ * `pickContract`-аар сонгоно. Олдохгүй бол `code: ''`.
+ */
+export function contractFor(rows: readonly Row[], pkgKey: string): { code: string; warn: string | null } {
+  if (!pkgKey) return { code: '', warn: null };
+  const by = new Map<string, ContractCand>();
   for (const r of rows) {
     if (isAuto(r)) continue;
     if (pkgKeyOf(r[C.pkg]) !== pkgKey) continue;
     const code = String(r[C.code] ?? '').trim();
-    if (code) return code;
+    if (!code) continue;
+    const c = by.get(code) ?? { code, workType: '', hasWork: false };
+    if (!c.workType) c.workType = String(r[C.workType] ?? '').trim();
+    if (String(r[P.kind] ?? '').trim() === HO_IPC.kinds.work) c.hasWork = true;
+    by.set(code, c);
   }
-  return '';
+  const { pick, warn } = pickContract([...by.values()], pkgKey);
+  return { code: pick?.code ?? '', warn };
 }
 
 /** Автомат мөрийн ID — багц ба АГШНААР ДАВТАГДАШГҮЙ */

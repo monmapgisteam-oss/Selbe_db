@@ -376,6 +376,21 @@ export type MapFilter = {
 const sq = (v: string) => v.replace(/'/g, "''");
 
 /**
+ * `field LIKE N'утга%'` — УГТВАРААР жишинэ, утгын доторх LIKE-ийн тусгай тэмдэгтийг (`%` `_` `[` `]`)
+ * ТЭМДЭГТ болгож.
+ * ⚠️ 2026-10-09: урьд нь `sq()` л хийдэг байсан тул «50%_…» гэх мэт шошго дотрох `%`/`_` нь
+ *    wildcard болж ӨӨР мөрүүдийг тодруулдаг байв. ArcGIS-ийн стандартчилсан SQL-д `ESCAPE` баталгаагүй
+ *    тул (`parcelEdit.parcelNoLikeWhere`-ийн адил) тусгай тэмдэгтийг утгад ОРУУЛАХГҮЙ: эхний тусгай
+ *    тэмдэгтийн ӨМНӨХ хэсгээр угтвар (илүү өргөн ч юу ч АЛДАХГҮЙ); тийм хэсэг хоосон бол ЯГ тэнцүү.
+ */
+const likePrefix = (field: string, v: string): string => {
+  const cut = v.search(/[%_[\]]/);
+  if (cut < 0) return `${field} LIKE N'${sq(v)}%'`;
+  const head = v.slice(0, cut);
+  return head ? `${field} LIKE N'${sq(head)}%'` : `${field} = N'${sq(v)}'`;
+};
+
+/**
  * Нэгж талбарын ТӨЛӨВИЙН шүүлт (`land:left`) — чартын шошгоос WHERE.
  *
  * ⚠️ 2026-09-29 (аудит 10): «Тодорхойгүй» нь өгөгдлийн утга БИШ, `land.ts`-ийн
@@ -460,23 +475,29 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * идэвхждэг тул `open` түүнээс өмнө байх ёстой.
    */
   const [open, setOpen] = useState<SecKey[]>([]);
-  const d: DashData = {
-    bagts: useBagtsTable(),
-    fin: useFinData(),
-    pkgProg: useAsync(loadPkgProgress, []),
-    parcels: useLeftParcels(),
-    land: useAsync(loadLandStatus, []),
-    headline: useAsync(loadHeadline, []),
-    budget: useAsync(loadBudget, []),
-    social: useAsync(loadSocial, []),
-    sources: useSources(),
-    prog: useAsync(loadBlockProgress, []),
-    hist: useAsync(loadBlockHistory, []),
-    netTotals: usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS),
-    powTotals: usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS),
-    socTotals: usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS),
-    zone,
-  };
+  /* ⚠️ 2026-10-09 (гүйцэтгэл): `d`-г MEMO — урьд нь render бүрд ШИНЭ объект тул `d`-ээр
+     хамааралтай доорх бүх `useMemo`/дэд компонент (шүүлт, hover, баганын чирэлт г.м.) дэмий
+     дахин бодогддог байв. Hook-ууд нь ДЭЭР (дараалал тогтмол); `useAsync`/`usePlanTotals`-ын үр
+     дүн өөрөө memo тул өгөгдөл ирэх/солигдох үед л шинэ `d` үүснэ. */
+  const bagts = useBagtsTable();
+  const fin = useFinData();
+  const pkgProg = useAsync(loadPkgProgress, []);
+  const parcels = useLeftParcels();
+  const land = useAsync(loadLandStatus, []);
+  const headline = useAsync(loadHeadline, []);
+  const budget = useAsync(loadBudget, []);
+  const social = useAsync(loadSocial, []);
+  const sources = useSources();
+  const prog = useAsync(loadBlockProgress, []);
+  const hist = useAsync(loadBlockHistory, []);
+  const netTotals = usePlanTotals(zone, open[0] === 'network', NET_PACK_IDS);
+  const powTotals = usePlanTotals(zone, open[0] === 'power', POW_PACK_IDS);
+  const socTotals = usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS);
+  const d: DashData = useMemo(() => ({
+    bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+    netTotals, powTotals, socTotals, zone,
+  }), [bagts, fin, pkgProg, parcels, land, headline, budget, social, sources, prog, hist,
+    netTotals, powTotals, socTotals, zone]);
   const { setHighlight } = useMap();
 
   /** Чарт-шүүлт (бүх хэсэгт нэгдсэн) — аттрибутын тодруулгыг зурагт тусгана */
@@ -899,7 +920,10 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
        *    гүйцэтгэл» индикатор ~70%-ийн оронд ~19% гардаг байв.
        */
       const cntMap = f.physCnt.get(k);
-      const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
+      /* ⚠️ 2026-10-09: жин (блокийн тоо) МЭДЭГДЭХГҮЙ бол багцыг дунджаас АЛГАСНА — урьд нь `?? 1`
+         нь 40 блоктой багцыг 1 блокийн жинтэй болгож дундажийг гажуудуулж болох байв (null ≠ 1). */
+      const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
+      if (cnt == null) return;
       w += last * cnt; n += cnt;
     });
     return n ? w / n : null;
@@ -1856,7 +1880,12 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
   pkgProg: Async<PkgProgressRow[]>;
 }) {
   const f = fin.state === 'ready' ? fin.data : null;
-  const months = f ? aggregateMonths(f) : null;
+  /* ⚠️ 2026-10-09 (гүйцэтгэл): сарын нэгтгэл · хоцрогдлын цуваа · гэрээлсэн хүрээ нь `f`-ээс л
+     хамаарна — урьд нь render бүрд (hover, шүүлт) дахин бодогдож, `lagSeriesOf` хоёр самбарт
+     ХОЁР удаа дуудагддаг байв. */
+  const months = useMemo(() => (f ? aggregateMonths(f) : null), [f]);
+  const lagSeries = useMemo(() => (months ? lagSeriesOf(months) : []), [months]);
+  const scope = useMemo(() => (f ? contractedScope(f.contracts) : null), [f]);
 
   /**
    * «Одоо» хүртэлх сүүлийн бөглөгдсөн сарын төлөвлөгөө/биет.
@@ -2013,7 +2042,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const ms = (months ?? []).filter((m) => m.label <= nowYm && m.phys != null);
-            const plan = new Map((months ? lagSeriesOf(months) : []).map((x) => [x.month, x.planned]));
+            const plan = new Map(lagSeries.map((x) => [x.month, x.planned]));
             const pts = ms.map((m) => {
               const a = m.phys as number;
               const p = plan.get(m.label);
@@ -2168,7 +2197,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
                хуваадаг тул тайлбарынхаа «гэрээний нийт дүн»-тэй ч, Тайлангийн
                `paidRate` · удирдлагын тайлангийн `fin.share`-тэй ч зөрж, хэдэн нэгж
                хувиар доогуур төгсдөг байв. Сүүлийн цэг одоо тэдгээртэй НЭГ тоо. */
-            const sc = f ? contractedScope(f.contracts) : null;
+            const sc = scope;
             const planTotal = sc?.amount ?? 0;
             if (!f || !sc || !planTotal || ms.length < 2) return <Empty label={tr('Олголтын бүртгэл алга')} />;
             /* ⚠️ 2026-09-25: ОГНООГҮЙ олголтыг СҮҮЛИЙН цэгт нэмнэ. `given` цуваа
@@ -2214,7 +2243,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg }: {
       <Panel title={tr('Хоцрогдлын өөрчлөлт — сараар')} note={srcNote(tr('төл. − бодит, төслийн % (ХО жинтэй)'), SRC_SHEET)}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
-            const pts = (months ? lagSeriesOf(months) : []).map((x) => ({
+            const pts = lagSeries.map((x) => ({
               key: x.month,
               label: x.month.slice(2),
               /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
@@ -2457,7 +2486,9 @@ function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
     rows.push({ key: k, pct: last });
     /* ⚠️ Жинг УТГА АВСАН сараас — дээрх `pkgPct`-ийн ⚠️-тэй ижил дүрэм */
     const cntMap = f.physCnt.get(k);
-    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm) ?? 1;
+    /* ⚠️ 2026-10-09: жин тодорхойгүй бол жагсаалтад (дээр) гарна, ЖИГНЭСЭН дунджид ОРОХГҮЙ (`pkgPct`-ийн ⚠️) */
+    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
+    if (cnt == null) return;
     w += last * cnt; n += cnt;
   });
   /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ОГТ тайлагнаагүй багц (`physN`-д л байгаа) 0% —
@@ -2695,15 +2726,16 @@ function BagtsDetail({ q, prog, hist, pkgProg, fin, flt, onFlt }: {
           const natAil = sumBy(nat, (x) => x.ail);
           const allBlocks = sumBy(rows, (x) => x.blocks);
           const allAil = sumBy(rows, (x) => x.ail);
-          const p100 = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+          /* ⚠️ 2026-10-09: хуваагч 0 (мөр/блок/өрх алга) → `null` («—»), «0%» БИШ — null ≠ 0 */
+          const p100 = (a: number, b: number): number | null => (b ? Math.round((a / b) * 100) : null);
           return (
             <>
               <Stats cols={3}>
-                <Stat accent color={HUE[0]} value={`${p100(nat.length, rows.length)}%`}
+                <Stat accent color={HUE[0]} value={pct(p100(nat.length, rows.length), 0)}
                   label={tr('Үндэсний багц ({0}/{1})', num(nat.length), num(rows.length))} />
-                <Stat accent color={HUE[1]} value={`${p100(natBlocks, allBlocks)}%`}
+                <Stat accent color={HUE[1]} value={pct(p100(natBlocks, allBlocks), 0)}
                   label={tr('Блокийн эзлэх ({0}/{1})', num(natBlocks), num(allBlocks))} />
-                <Stat accent color={HUE[2]} value={`${p100(natAil, allAil)}%`}
+                <Stat accent color={HUE[2]} value={pct(p100(natAil, allAil), 0)}
                   label={tr('Өрхийн эзлэх ({0}/{1})', num(natAil), num(allAil))} />
               </Stats>
             </>
@@ -3000,7 +3032,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                     const eq =
                       label === tr('Тодорхойгүй')
                         ? `(${PL.progress} IS NULL OR ${PL.progress} = '')`
-                        : `${PL.progress} LIKE N'${sq(label)}%'`;
+                        : likePrefix(PL.progress, label); // ⚠️ 2026-10-09: LIKE тусгай тэмдэгт (`likePrefix`)
                     onFlt({
                       sec: 'land',
                       key: label,
@@ -4334,7 +4366,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
     if (!name || name.startsWith('#')) return;
     onFlt({
       sec: 'source', key: name, label: tr('Эх үүсвэр: {0}', name),
-      where: `${F.name} LIKE N'${sq(name)}%'`, only: ['source:eh'],
+      where: likePrefix(F.name, name), only: ['source:eh'], // ⚠️ 2026-10-09: `likePrefix`
     });
   };
   // ⚠️ 2026-08-20: Бүх биеийг ороосон `<Data>` боодол ЭРТ-БУЦААЛТ болов —

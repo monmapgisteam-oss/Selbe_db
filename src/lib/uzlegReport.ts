@@ -28,7 +28,7 @@
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
 import { arcgisPost, type Row } from '@/lib/query';
-import { tokenQs } from '@/lib/authToken';
+import { authToken, ensureFreshToken, refreshAfterTokenError } from '@/lib/authToken';
 
 /* ═════════════════ Метадата ═════════════════ */
 
@@ -134,7 +134,8 @@ export type UzReport = {
   pkg: string;
   company: string;
   score: { e: number; a: number } | null;
-  counts: Record<'major' | 'minor' | 'obs' | 'conf' | 'na', number>;
+  /** ⚠️ 2026-10-09: `null` = мэдэгдэхгүй (`cnt_*` талбаргүй БА асуулт танигдаагүй) — 0 БИШ */
+  counts: Record<'major' | 'minor' | 'obs' | 'conf' | 'na', number | null>;
   header: [string, string][];
   sections: UzSection[];
   /** «Дүн / Summary» — `cnt_*` ба `sc_*` талбарууд дарааллаараа */
@@ -319,7 +320,9 @@ export function buildUzReport(
 
   const cnt = (k: string) => numOrNull(r[`cnt_${k}`]);
   const all = sections.flatMap((s) => s.items);
-  const tally = (c: AnsCls) => all.filter((x) => x.cls === c).length;
+  /* ⚠️ 2026-10-09: асуулт ОГТ танигдаагүй (`answers` хоосон — схем өөр) бол гараар тоолох
+     боломжгүй тул `null` («—»). Урьд нь 0 болж PDF-д «Ноцтой 0» гэж ХУДАЛ бичигддэг байв. */
+  const tally = (c: AnsCls): number | null => (answers.length ? all.filter((x) => x.cls === c).length : null);
   const e = numOrNull(r.sc_all_earned); const a = numOrNull(r.sc_all_appl);
   const creator = r.Creator ?? r.creator;
   const created = numOrNull(r.CreationDate ?? r.creationdate);
@@ -381,9 +384,10 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
   try {
     for (let i = 0; i < oids.length; i += 200) {
       const chunk = oids.slice(i, i + 200);
+      /* ⚠️ 2026-10-09: `outFields` — зөвхөн OBJECTID (урьд нь `*`: 100+ талбарыг дэмий татдаг байв) */
       const j = await arcgisPost<{ objectIdFieldName?: string; features?: { attributes?: Row; geometry?: { x?: number; y?: number } }[] }>(
         `${url}/query`,
-        { f: 'json', objectIds: chunk.join(','), outFields: '*', returnGeometry: 'true', outSR: '4326' },
+        { f: 'json', objectIds: chunk.join(','), outFields: 'objectid', returnGeometry: 'true', outSR: '4326' },
         { token: 'org' },
       );
       const oidF = j.objectIdFieldName ?? 'objectid';
@@ -397,11 +401,52 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
   return out;
 }
 
-/** Хавсралтын хаяг — хаалттай маягт тул токентой */
-export const attUrl = (layerUrl: string, oid: number, id: number): string => {
-  const q = tokenQs().slice(1);
-  return `${layerUrl}/${oid}/attachments/${id}${q ? `?${q}` : ''}`;
-};
+/**
+ * Хавсралтын хаяг — ТОКЕНГҮЙ.
+ * ⚠️ 2026-10-09 (аюулгүй байдал): урьд нь тайлан угсрах агшинд `?token=` залгаж, зургийг
+ *    GET-ээр татдаг байв — токен ArcGIS/прокси/CDN-ийн access log-д бүтнээрээ үлдэж (CWE-598),
+ *    олон зурагтай тайлан удаан татагдахад хугацаа нь дуусаж 498 авдаг. Одоо токен ЗӨВХӨН
+ *    татах агшинд POST биеэр (`fetchAttachment`).
+ */
+export const attUrl = (layerUrl: string, oid: number, id: number): string =>
+  `${layerUrl}/${oid}/attachments/${id}`;
+
+/** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм) */
+const ORG_BASE = (process.env.NEXT_PUBLIC_ARCGIS_HJ ?? '').trim().replace(/\/+$/, '');
+const ARCGIS_COM_HOST = /^https?:\/\/[^/]*\.arcgis\.com(?::\d+)?\//i;
+const ORG_SEG = ARCGIS_COM_HOST.test(`${ORG_BASE}/`) ? ORG_BASE.match(/^https?:\/\/[^/]+\/([^/]+)\//)?.[1] ?? '' : '';
+const isOrgUrl = (url: string): boolean =>
+  (!!ORG_BASE && url.startsWith(`${ORG_BASE}/`))
+  || (!!ORG_SEG && ARCGIS_COM_HOST.test(url) && url.includes(`/${ORG_SEG}/`));
+
+/**
+ * ХАВСРАЛТЫН БАЙТ — POST, токен БИЕЭР (2026-10-09).
+ * ⚠️ Татахын ӨМНӨ `ensureFreshToken` — олон зурагтай тайлан минут гаруй татагдана.
+ * ⚠️ ArcGIS алдааг HTTP 200-аар JSON биетэй буцаадаг тул `content-type`-ийг шалгана;
+ *    498/499 бол `refreshAfterTokenError` → НЭГ удаа дахин. Бусад алдаа → `null`
+ *    (дуудагч «татагдсангүй»-д тоолно).
+ * ⚠️ `URLSearchParams` бие = энгийн CORS хүсэлт (preflight-гүй).
+ */
+async function fetchAttachment(url: string): Promise<Blob | null> {
+  await ensureFreshToken();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const sent = isOrgUrl(url) ? authToken() : null;
+    const body = new URLSearchParams();
+    if (sent) body.set('token', sent);
+    const res = await fetch(url, { method: 'POST', body });
+    let code = res.ok ? 0 : res.status;
+    if (res.ok && /json|text\/(plain|html)/i.test(res.headers.get('content-type') ?? '')) {
+      try {
+        const j = (await res.json()) as { error?: { code?: unknown } };
+        code = Number(j?.error?.code ?? 500) || 500;
+      } catch { code = 500; }
+    }
+    if (!code) return res.blob();
+    if ((code === 498 || code === 499) && attempt === 0 && sent && await refreshAfterTokenError(sent)) continue;
+    return null;
+  }
+  return null;
+}
 
 /** Татсан, жижигрүүлсэн зураг — PDF-д `data`, Excel-д `bytes` ба хэмжээ */
 export type UzImg = { data: string; bytes: Uint8Array; w: number; h: number; png: boolean };
@@ -412,9 +457,9 @@ export type UzImg = { data: string; bytes: Uint8Array; w: number; h: number; png
  */
 async function toImg(ref: UzPhotoRef, max: number): Promise<UzImg | null> {
   try {
-    const res = await fetch(ref.url);
-    if (!res.ok) return null;
-    const bmp = await createImageBitmap(await res.blob());
+    const blob = await fetchAttachment(ref.url);
+    if (!blob) return null;
+    const bmp = await createImageBitmap(blob);
     const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const cv = document.createElement('canvas');
     cv.width = Math.max(1, Math.round(bmp.width * k));
@@ -434,11 +479,16 @@ async function toImg(ref: UzPhotoRef, max: number): Promise<UzImg | null> {
   }
 }
 
-/** Бүх тайлангийн зургийг 4 зэрэгцээгээр татна — явцыг мэдэгдэнэ */
+/**
+ * Бүх тайлангийн зургийг 4 зэрэгцээгээр татна — явцыг мэдэгдэнэ.
+ * ⚠️ 2026-10-09: `failed` — татагдаагүй зургийн хаягууд. Урьд нь чимээгүй хаягддаг тул
+ *    PDF/Excel-д зураг дутуу атал Excel-ийн «зураг» тоо бүтнээрээ үлддэг байв. Цонх
+ *    «N зураг татагдсангүй» гэж хэлж, Excel татагдсан (ба татагдаагүй) тоог бичнэ.
+ */
 export async function loadReportImages(
   reports: UzReport[],
   onProgress?: (done: number, total: number) => void,
-): Promise<Map<string, UzImg>> {
+): Promise<{ images: Map<string, UzImg>; failed: string[] }> {
   const refs: { ref: UzPhotoRef; max: number }[] = [];
   const seen = new Set<string>();
   const add = (r: UzPhotoRef, max: number) => { if (!seen.has(r.url)) { seen.add(r.url); refs.push({ ref: r, max }); } };
@@ -448,6 +498,7 @@ export async function loadReportImages(
     rep.extraPhotos.forEach((p) => add(p, 900));
   }
   const out = new Map<string, UzImg>();
+  const failed: string[] = [];
   let next = 0;
   let done = 0;
   onProgress?.(0, refs.length);
@@ -455,13 +506,13 @@ export async function loadReportImages(
     while (next < refs.length) {
       const { ref, max } = refs[next++];
       const d = await toImg(ref, max);
-      if (d) out.set(ref.url, d);
+      if (d) out.set(ref.url, d); else failed.push(ref.url);
       done += 1;
       onProgress?.(done, refs.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, refs.length) }, worker));
-  return out;
+  return { images: out, failed };
 }
 
 /* ═════════════════ PDF ═════════════════ */
@@ -527,6 +578,8 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
     out.push(...blocks.slice(1));
   };
   const c = rep.counts;
+  /** ⚠️ 2026-10-09: мэдэгдэхгүй тоо «—» (0 БИШ) */
+  const cn = (v: number | null) => (v == null ? '—' : String(v));
   const out: Obj[] = [
     ...(logo ? [{ svg: logo, width: 150, margin: [0, 0, 0, 10], ...(first ? {} : { pageBreak: 'before' }) }] : (first ? [] : [{ text: '', pageBreak: 'before' }])),
     { text: rep.form, fontSize: 18, bold: true, color: INK, margin: [0, 4, 0, 6] },
@@ -536,8 +589,8 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
         widths: ['*', '*', '*'],
         body: [[
           { text: [{ text: 'Оноо  ', bold: true }, pctText(rep.score)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
-          { text: [{ text: 'Ноцтой  ', bold: true }, String(c.major)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
-          { text: [{ text: 'Бага зэргийн  ', bold: true }, String(c.minor)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
+          { text: [{ text: 'Ноцтой  ', bold: true }, cn(c.major)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
+          { text: [{ text: 'Бага зэргийн  ', bold: true }, cn(c.minor)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
         ]],
       },
       layout: 'noBorders',
@@ -547,7 +600,7 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
         widths: ['*', '*'],
         body: [
           ...rep.header.map(([k, v]) => [{ text: k, bold: true, fontSize: 9.5 }, { text: v, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }]),
-          [{ text: 'Ажиглалт, талбайд зассан / Нийцсэн / Хамааралгүй', bold: true, fontSize: 9.5 }, { text: `${c.obs} / ${c.conf} / ${c.na}`, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }],
+          [{ text: 'Ажиглалт, талбайд зассан / Нийцсэн / Хамааралгүй', bold: true, fontSize: 9.5 }, { text: `${cn(c.obs)} / ${cn(c.conf)} / ${cn(c.na)}`, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }],
         ],
       },
       layout: { hLineWidth: () => 0.6, vLineWidth: () => 0, hLineColor: () => LINE, paddingTop: () => 5, paddingBottom: () => 5 },
@@ -556,7 +609,7 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
   ];
 
   if (flagged.length) {
-    pushWithBand(band('Үл нийцэл (Flagged items)', `Ноцтой ${c.major}, Бага зэргийн ${c.minor}`), flagged.map((it) => itemBlock(it, true)));
+    pushWithBand(band('Үл нийцэл (Flagged items)', `Ноцтой ${cn(c.major)}, Бага зэргийн ${cn(c.minor)}`), flagged.map((it) => itemBlock(it, true)));
   }
   /* Жишээ тайлангийн дагуу зургийн дугаар хэсгүүдэд дахин 1-ээс эхэлнэ */
   photoNo = 0;
@@ -769,8 +822,19 @@ const sheetName = (s: string, used: Set<string>) => {
 export const reportTitle = (r: UzReport): string =>
   `${companyShort(r.company) || r.pkg || 'Үзлэг'} - ${r.formShort} ${r.date > 0 ? fmtDate(r.date) : ''}`.trim();
 
+/**
+ * Зургийн тоо — ТАТАГДСАН (эсвэл татаагүй) нь; татагдаагүй байвал «2 (1 татагдсангүй)».
+ * ⚠️ 2026-10-09: урьд нь хавсралтын БҮХ тоог бичдэг тул зураг дутуу атал тоо бүтэн харагддаг байв.
+ */
+const photoCount = (photos: UzPhotoRef[], failed: ReadonlySet<string>): string | number | null => {
+  const bad = photos.filter((p) => failed.has(p.url)).length;
+  const ok = photos.length - bad;
+  if (bad) return `${ok} (${bad} татагдсангүй)`;
+  return ok || null;
+};
+
 /** Нэг үзлэгийн хуудас («ObjectID 20») */
-function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string): XSheet {
+function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, failed: ReadonlySet<string>): XSheet {
   const rows: XRow[] = [];
   const pics: XPic[] = [];
   const PHOTO_PT = 190;
@@ -800,7 +864,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string): XS
         cells: [
           { v: it.code.toUpperCase(), s: ST.cell }, { v: it.q, s: ST.cell }, { v: it.ans, s: ANS_ST[it.cls] },
           { v: it.block ?? '', s: ST.cell }, { v: it.notes.join('; '), s: ST.cell },
-          { v: it.photos.length || null, s: ST.cell },
+          { v: photoCount(it.photos, failed), s: ST.cell },
         ],
         ...(ph.length ? { ht: PHOTO_PT } : {}),
       });
@@ -828,7 +892,7 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string): XS
  * «Хүснэгт» — нэг мөр = нэг үзлэг (жишээ файлын 216 баганатай ижил дараалал):
  * ObjectID · толгой · асуулт бүр 4 багана · дүн · гарын үсэг · илгээсэн хэрэглэгч/огноо.
  */
-function tableSheet(reports: UzReport[], name: string): XSheet {
+function tableSheet(reports: UzReport[], name: string, failed: ReadonlySet<string>): XSheet {
   const head: string[] = ['ObjectID'];
   const headerKeys: string[] = [];
   for (const r of reports) for (const [k] of r.header) if (!headerKeys.includes(k)) headerKeys.push(k);
@@ -856,11 +920,11 @@ function tableSheet(reports: UzReport[], name: string): XSheet {
     const items = new Map(r.sections.flatMap((s) => s.items).map((it) => [it.code, it]));
     const sm = new Map(r.summary.map((x) => [x.label, x.value]));
     const rk = sigRowKeys(r);
-    const sg = new Map(r.signatures.map((s, i) => [rk[i], s.photos.length ? s.photos.length : s.value]));
+    const sg = new Map(r.signatures.map((s, i) => [rk[i], s.photos.length ? photoCount(s.photos, failed) : s.value]));
     const v: (string | number | null)[] = [r.oid, ...headerKeys.map((k) => hm.get(k) ?? '')];
     for (const q of qOrder) {
       const it = items.get(q.code);
-      v.push(it?.ans ?? '', it?.block ?? '', it ? it.notes.join('; ') : '', it && it.photos.length ? it.photos.length : null);
+      v.push(it?.ans ?? '', it?.block ?? '', it ? it.notes.join('; ') : '', it ? photoCount(it.photos, failed) : null);
     }
     v.push(...sumKeys.map((k) => sm.get(k) ?? null));
     v.push(...sigKeys.map((k) => sg.get(k) ?? ''));
@@ -870,11 +934,18 @@ function tableSheet(reports: UzReport[], name: string): XSheet {
   return { name, rows, widths: head.map(() => 15.29), freezeRow: true, pics: [] };
 }
 
-/** Жишээ файлын бүтэцтэй xlsx: «Хүснэгт» + үзлэг бүр «ObjectID N» (зураг шигтгэсэн) */
-export function buildUzXlsx(reports: UzReport[], img: Map<string, UzImg> = new Map()): Uint8Array {
+/**
+ * Жишээ файлын бүтэцтэй xlsx: «Хүснэгт» + үзлэг бүр «ObjectID N» (зураг шигтгэсэн).
+ * @param failed — татагдаагүй зургийн хаягууд (`loadReportImages`) — тоонд ил бичигдэнэ
+ */
+export function buildUzXlsx(
+  reports: UzReport[],
+  img: Map<string, UzImg> = new Map(),
+  failed: ReadonlySet<string> = new Set(),
+): Uint8Array {
   const used = new Set<string>();
-  const sheets: XSheet[] = [tableSheet(reports, sheetName('Хүснэгт', used))];
-  for (const r of reports) sheets.push(inspectionSheet(r, img, sheetName(`ObjectID ${r.oid}`, used)));
+  const sheets: XSheet[] = [tableSheet(reports, sheetName('Хүснэгт', used), failed)];
+  for (const r of reports) sheets.push(inspectionSheet(r, img, sheetName(`ObjectID ${r.oid}`, used), failed));
 
   const files: { name: string; data: string | Uint8Array }[] = [];
   const ctOver: string[] = [];

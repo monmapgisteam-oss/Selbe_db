@@ -47,7 +47,7 @@ Clone хийсэн газар бүрд Claude Code энэ файлыг АВТО�
 
 **Why:** Хэрэглэгч 2026-08-21-нд шууд хэлсэн: «commit push merge дур мэдэн хийж
 болохгүй». Өмнө нь би салбарыг зөвшөөрөлгүй commit хийж, тэнцүүлж байсан. Мөн
-нэг репог 4 worktree (main · tezu-bonu · irgedin-hurteemj) зэрэг ашигладаг тул
+нэг репог олон worktree (main · tezu-bonu · irgediin-hurteemj …, `git worktree list`) зэрэг ашигладаг тул
 git-ийн үйлдэл бусад сессэд шууд нөлөөлнө.
 
 **How to apply:** Ажил дуусахад «дууслаа, өөрчлөгдсөн файлууд эдгээр» гэж
@@ -76,7 +76,11 @@ edit явж байхад хэт их шалгаж цаг авах шаардла
 ## Ажил дуусахад давах 4 шалгалт — tsc · eslint · npm test · i18n-extract
 
 
-Сэлбэ порталд ажил дуусахад ЗААВАЛ давах шалгалт:
+Сэлбэ порталд ажил дуусахад ЗААВАЛ давах шалгалт.
+
+**Урьдчилсан нөхцөл:** репоны үндсэнд `.env` байх ёстой — git-ignored тул шинэ
+clone/worktree-д алга: `cp .env.example .env`. Үгүй бол `npm test`-ийн ~28
+шалгуур `NEXT_PUBLIC_*` алга гэж унана (loader `.env алга` гэж анхааруулна).
 
 ```
 npx tsc --noEmit
@@ -94,9 +98,10 @@ JSX/CSS алдааг статик export барина.
 
 **How to apply:** Дөрвүүлээ цэвэр болтол ажил дуусаагүй. Хоёр байнгын занга:
 (1) `en.ts`-ийн СҮҮЛИЙН мөрөнд таслал тавихаа мартвал толь задарч БҮХ тест
-унана; (2) `npm test` доторх `test:agent` нь `agent-proxy/node_modules`
-суулгаагүй worktree дээр унана — энэ нь орчны асуудал, кодын биш
-(`cd agent-proxy && npm i`). [[edit-directly]]
+унана; (2) `test:agent` ба `test:drift` нь АМЬД шалгуур (`tools/test-all.mjs`-ийн
+`LIVE`) — `npm test`-д ОРОХГҮЙ, зөвхөн `npm run test:all` / `test:live`-д явна;
+тэнд `agent-proxy/node_modules` суулгаагүй worktree дээр унавал орчны асуудал,
+кодын биш (`cd agent-proxy && npm i`). [[edit-directly]]
 
 ---
 
@@ -184,7 +189,8 @@ JSX/CSS алдааг статик export барина.
 - Нэг репог хэд хэдэн worktree-ээр зэрэг ашигладаг (main · tezu-bonu …) —
   git-ийн үйлдэл бусад сешнд шууд нөлөөлнө.
 - Нууц: `ARCGIS_ADMIN_TOKEN` нь ЗӨВХӨН `.env.development.local` дотор.
-  `.env` нь track хийгддэг ч зөвхөн `NEXT_PUBLIC_*` нийтийн хаягтай.
+  `.env` нь git-ignored (зөвхөн `NEXT_PUBLIC_*` нийтийн хаягтай); репод
+  зөвхөн загвар нь `.env.example` track хийгддэг.
   ArcGIS auth-ыг асаах/унтраахыг ЗӨВХӨН хэрэглэгч шийднэ.
 
 **Why:** Эдгээрийг тус бүр нэг удаа алдаж мэдсэн — Python дуудаад унасан,
@@ -226,9 +232,16 @@ NEXT_DIST_DIR=.next-claude-dev npx next dev -p 8199
 
 | Хавтас | Branch | Порт |
 |---|---|---|
-| `E:\Selbe_db` | main | 8123 |
-| `E:\Selbe_irgedin-hurteemj` | irgediin-hurteemj | 5001 |
-| `E:\Selbe_db-tezu` | tezu-bonu | 5002 |
+| `D:\selbe\Selbe_db` | main | 8123 |
+| `D:\selbe\Selbe_irgediin-hurteemj` | irgediin-hurteemj | 5001 |
+| `D:\selbe\Selbe_tezu-bonu` | tezu-bonu | 5002 |
+
+Бусад worktree-ууд `D:\selbe\Selbe_<branch>` хэлбэртэй (ai-tuslah ·
+bagtsiin-medeelel · barilgiin-hyanalt · deploy/telegram-bot · eronhii-dashboard ·
+eronhii-tolovlogoo · gazar-choloololt · guitsetgel-bogloh · review/opus-code-fixes ·
+tailan · test-main · tohiromjtoi-baidal · tugsuu) — бүрэн жагсаалт `git worktree list`.
+⚠️ Бүх worktree-ийн `npm run dev` нь `-p 8123` — зэрэг ажиллуулахдаа портыг
+гараар (`npx next dev -p 500x`) өгнө.
 
 5001 / 5002 / 5003 / 8123 портуудад **хэзээ ч сервер асаахгүй**.
 

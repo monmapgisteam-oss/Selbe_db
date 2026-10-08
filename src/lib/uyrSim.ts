@@ -32,8 +32,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
-import { arcgisPost } from '@/lib/query';
-import { FLOOD_LEVELS, type LevelKey } from '@/lib/ersdel';
+import { FLOOD_LEVELS, queryRingsPaged, type LevelKey } from '@/lib/ersdel';
 import { floodDataFromBuffer, type FloodData } from '@/lib/uyr';
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
 import {
@@ -241,11 +240,11 @@ async function loadRiverRings(): Promise<SimArea> {
        токен хөтчийн HTTP кэшийн түлхүүрт орж диск дээр үлддэг байв. Одоо
        `query.arcgisPost` (токен биеэр, 200-аар ирдэг `{error}` цөмд); кэш нь энэ
        модулийн санах ой (`riverPending`, токенгүй) — сесс дотор нэг л удаа татна. */
-    const body = await arcgisPost<{ features?: { geometry?: { rings?: number[][][] } }[] }>(`${layerUrl(def)}/query`, {
+    /* ⚠️ 2026-10-09: `exceededTransferLimit` → OID-оор эрэмбэлж хуудаслана (`ersdel.queryRingsPaged`) */
+    const rings = await queryRingsPaged(layerUrl(def), {
       where: '1=1', outFields: '', returnGeometry: 'true', outSR: '102100',
       maxAllowableOffset: '2',
-    });
-    const rings = (body.features ?? []).flatMap((ft) => ft.geometry?.rings ?? []) as SimArea;
+    }) as SimArea;
     if (!rings.length) throw new Error(tr('Голын давхарга хоосон байна'));
     return rings;
   })();
@@ -301,8 +300,21 @@ function makeWorker(): Worker | null {
 }
 
 /**
+ * Ажилтны ЧИМЭЭГҮЙ БАЙДЛЫН хязгаар (мс) — 2026-10-09.
+ * ⚠️ Нийт хугацаа БИШ: явцын мэдэгдэл бүр цагийг дахин эхлүүлнэ. Ердийн
+ *    загварчлал 1–3 сек, явц нь алхам тутам ирдэг тул 120 сек чимээгүй
+ *    байна гэдэг нь ажилтан гацсан (эсвэл хариу нь алдагдсан) гэсэн үг.
+ */
+const WORKER_IDLE_MS = 120_000;
+
+/**
  * Ажилтанд ажиллуулна. Ажилтан ачаалагдаж ЧАДААГҮЙ бол (`error` үйл явдал —
  * скрипт олдсонгүй, CSP) `'fallback'` буцаана; цөмийн алдаа бол шиднэ.
+ *
+ * ⚠️ 2026-10-09: `messageerror` (хариуг задалж чадсангүй) ба ЧИМЭЭГҮЙ
+ *    ГАЦАЛТ (`WORKER_IDLE_MS`) — хоёулаа ажилтныг зогсоож `'fallback'`.
+ *    Урьд нь эдгээр үед Promise хэзээ ч шийдэгдэхгүй, UI «бодож байна»-д
+ *    мөнхөд үлддэг байв.
  */
 function runInWorker(
   w: Worker,
@@ -312,10 +324,21 @@ function runInWorker(
 ): Promise<SimOutput | 'fallback'> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
     const finish = () => {
       settled = true;
+      if (watchdog != null) clearTimeout(watchdog);
       w.terminate();
       signal?.removeEventListener('abort', onAbort);
+    };
+    /* ⚠️ 2026-10-09: чимээгүй гацалтын хамгаалалт — мэдэгдэл бүрд дахин эхэлнэ */
+    const arm = () => {
+      if (watchdog != null) clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (settled) return;
+        finish();
+        resolve('fallback');
+      }, WORKER_IDLE_MS);
     };
     /* ⚠️ ЦУЦЛАЛТ — `terminate()` нь давталтыг ТЭР ДОР нь зогсооно (үндсэн урсгалын
        хувилбар шиг 60 алхам хүлээхгүй) */
@@ -329,7 +352,7 @@ function runInWorker(
     w.onmessage = (ev: MessageEvent<WorkerMsg>) => {
       const m = ev.data;
       if (settled) return;
-      if (m.type === 'progress') { onProgress?.(m.p); return; }
+      if (m.type === 'progress') { arm(); onProgress?.(m.p); return; }
       finish();
       if (m.type === 'done') resolve(m.out);
       else {
@@ -343,6 +366,13 @@ function runInWorker(
       finish();
       resolve('fallback');
     };
+    /* ⚠️ 2026-10-09: хариуг задалж чадаагүй — үндсэн урсгалд дахин бодно */
+    w.onmessageerror = () => {
+      if (settled) return;
+      finish();
+      resolve('fallback');
+    };
+    arm();
     /* ⚠️ DSM-ийн массивыг TRANSFER ХИЙХГҮЙ (хуулна) — `dsmCache`-ийг салгачихна */
     w.postMessage(inp);
   });

@@ -91,7 +91,11 @@ const I = row({ OBJECTID: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 
   assert.ok(k.facts.some((f) => f.includes('2 дутуу')), `дутуу 2: ${k.facts}`);
   for (const f of k.facts) assert.match(f, /\d/, `факт тоогүй: «${f}»`);
 
-  assert.equal(k.tables.length, 2);
+  /* ⚠️ 2026-10-09: 4-р хүснэгт — E (дүнтэй, «Гэрээлсэн дүн» тайлбаргүй) тодорхойлолтын зөрүү */
+  assert.equal(k.tables.length, 3);
+  assert.deepEqual(k.noteMismatch.map((c) => c.work), ['E дүнтэй'], 'D (CONTRACTED) орохгүй');
+  assert.deepEqual(k.tables[2].rows.map((r) => r[0].v), ['E дүнтэй']);
+  assert.equal(k.tables[2].rows[0][2].v, 50);
   const [t1, t2] = k.tables;
   assert.equal(t1.cols.length, 7);
   assert.equal(t1.rows.length, 5);
@@ -159,7 +163,8 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   assert.ok(kw.facts.some((f) => f.includes('1 хасагдсан')), `хасагдсан зөвхөн X: ${kw.facts}`);
   assert.deepEqual(kw.tables[0].rows.map((r) => r[0].v), ['W НӨАТ', 'B ажил']);
 
-  assert.equal(k.tables.length, 3);
+  assert.equal(k.tables.length, 4, '+ тодорхойлолтын зөрүү (E); Z хасагдсан тул орохгүй');
+  assert.deepEqual(k.noteMismatch.map((c) => c.work), ['E дүнтэй']);
   const [t1, t2, t3] = k.tables;
   assert.deepEqual(t1.rows.map((r) => r[0].v), ['B ажил']);
   assert.deepEqual(t2.rows.map((r) => r[0].v), ['E дүнтэй'], 'Y 2-р хүснэгтэд орохгүй');
@@ -171,7 +176,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   /* хасагдсан байхгүй бол факт ч, хүснэгт ч нэмэгдэхгүй */
   const k0 = computeUncontracted([B, E], NOW);
   assert.ok(!k0.facts.some((f) => f.includes('хасагдсан')), `хасагдсан факт гарах ёсгүй: ${k0.facts}`);
-  assert.equal(k0.tables.length, 2);
+  assert.equal(k0.tables.length, 3, 'гэрээгүй + дутуу + тодорхойлолтын зөрүү (E)');
 }
 
 /* ── 3. Σ төсөв: бүгд төсөвгүй → факт байхгүй (0 ₮ гэж хэвлэхгүй) ── */
@@ -198,6 +203,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   assert.equal(none.value, '—');
   assert.deepEqual(none.facts, []);
   assert.deepEqual(none.tables, []);
+  assert.deepEqual(none.noteMismatch, []);
 }
 
 /* ── 5. Хязгаар — тасалсан тоо ИЛ ── */

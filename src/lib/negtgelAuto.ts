@@ -342,6 +342,30 @@ export function housingPlanOf(
 }
 
 /**
+ * Орон сууцны багцын хувь — ЗӨВХӨН дор хаяж НЭГ блок нь хэмжигдсэн (тайлагнасан) багц.
+ *
+ * ⚠️ 2026-10-09 (аудит): `blockProgress.pkgProgressOf` нь 2026-10-01-ний шийдвэрээр
+ *    («тайлагнаагүй блок 0%») нэг ч блок тайлагнаагүй багцад `{pct: 0, blocks: 0}` өгдөг —
+ *    ДАШБООРДОД зөв (0%), гэвч `live.fillPkgProgressRaw` зөвхөн `.pct`-ийг дамжуулдаг тул энд
+ *    `act = 0` болж `Negtgel_guitsetgel`-ийн ХҮНИЙ бичсэн утгыг 0-ээр дарж бичдэг байв.
+ *    Хэмжилт огт байхгүй багц нь хүснэгтийн хувьд «эх сурвалжгүй» (`null` → хадгалсан
+ *    утга үлдэнэ), 0 БИШ. Хэмжилт нь `blocks` (ижил `loadBlockProgress` эх) — нүд нь
+ *    тоон `overall`-тэй түлхүүр (`${bagtsKey}|…`).
+ */
+export function measuredHousing(
+  housing: Map<string, number>,
+  blocks: Iterable<[string, { overall: number } | null | undefined]>,
+): Map<string, number> {
+  const seen = new Set<string>();
+  for (const [key, c] of blocks) {
+    if (c == null || !Number.isFinite(c.overall)) continue;
+    const cut = key.indexOf('|');
+    seen.add(cut < 0 ? key : key.slice(0, cut));
+  }
+  return new Map([...housing].filter(([k]) => seen.has(k)));
+}
+
+/**
  * @param fresh `true` = КЭШГҮЙ (зөвхөн хүснэгт рүү БИЧИХ зам, `syncNegtgel`).
  *   ⚠️ 2026-09-25: `loadFillPkgProgress` (TTL-гүй) ба `loadBlockProgress`
  *   (memo) нь өөр хэрэглэгчийн бөглөлтөөр хүчингүй болдоггүй — хуучин табын
@@ -379,9 +403,10 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
   }
   const cf = settledValue(res[0]);
   const land = settledValue(res[1]);
-  const housing = settledValue(res[2]);
   const curve = settledValue(res[3]);
   const blocks = settledValue(res[4]);
+  /* ⚠️ 2026-10-09: тайлагнаагүй багцын 0%-ийг хүснэгтэд бичихгүй (`measuredHousing`-ийн ⚠️) */
+  const housing = measuredHousing(settledValue(res[2]), blocks);
   /* ⚠️ Барилгын (давхартай) хуудас = блоктой багц; 5.x · 6.x · 10 нь блокгүй */
   const housingPkgs = new Set(PKGS.filter((p) => p.floors != null).map((p) => bagtsKey(p.group)));
   /* Багц → блокуудын хамгийн СҮҮЛИЙН бөглөлтийн огноо (`finPhys.buildPhys`-ийн `physAt`-тай ижил дүрэм).

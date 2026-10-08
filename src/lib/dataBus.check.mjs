@@ -1,6 +1,7 @@
 /**
  * ӨГӨГДЛИЙН АВТОБУС — хүчингүй болголтын логик.
- *   node src/lib/dataBus.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/dataBus.check.mjs
+ *   (⚠️ 2026-10-09: §7 нь ЖИНХЭНЭ dataBus.ts-ийг импортлодог тул loader шаардлагатай)
  *
  * Хамгаалж буй алдаа: хүснэгт рүү бичсэн атал ТҮҮНЭЭС уншдаг кэш хаягдаагүй
  * үлдвэл дашбоард хуучин тоо харуулна — дэлгэц дээр юу ч анзаарагдахгүй тул
@@ -140,6 +141,55 @@ console.log('\n6. Удаан унасан хүсэлт — invalidate-ийн д�
   await old.catch(() => {});
   await load();
   check('хуучин хүсэлт унасан ч шинэ кэш хэвээр (дахин татаагүй)', n === 2);
+}
+
+console.log('\n7. ЖИНХЭНЭ dataBus.ts — зан төлөв (хуулбар биш)');
+{
+  /* ⚠️ 2026-10-09: дээрх 1–6 нь логикийн ХУУЛБАР дээр явдаг тул `dataBus.ts`-ийн өөрчлөлтийг
+     (жиш. `writeEpoch`, `invalidateAll`-ийн `refreshedAt`) огт барихгүй байв. Энд ЭХ модулийг
+     импортлож (ts-alias loader — `npm test` бүгдийг түүгээр ажиллуулна) ижил зан төлөвийг тулгана. */
+  const bus = await import('@/lib/dataBus');
+  let dA = 0;
+  let dB = 0;
+  let dNone = 0;
+  bus.register(() => { dA += 1; }, ['HO_IPC', 'CASHFLOW_NEW']);
+  bus.register(() => { dB += 1; }, ['CASHFLOW_NEW']);
+  bus.register(() => { dNone += 1; }, []);
+  let fired = 0;
+  const off = bus.subscribeData(() => { fired += 1; });
+
+  const v0 = bus.dataVersion();
+  const w0 = bus.writeEpoch();
+  bus.invalidate('HO_IPC');
+  check('HO_IPC → зөвхөн түүнийг уншдаг слот хаягдав', dA === 1 && dB === 0 && dNone === 0);
+  check('хувилбар +1, захиалагч нэг удаа', bus.dataVersion() === v0 + 1 && fired === 1);
+  check('бичилтийн үе өсөв', bus.writeEpoch() === w0 + 1);
+
+  bus.invalidate('CASHFLOW_NEW');
+  check('CASHFLOW_NEW → хоёр слот хоёулаа', dA === 2 && dB === 1 && dNone === 0);
+
+  const v1 = bus.dataVersion();
+  const w1 = bus.writeEpoch();
+  const f1 = fired;
+  bus.invalidate('HABEA');
+  check('тааралгүй түлхүүр: слот хөндөгдөөгүй, хувилбар/мэдэгдэл үгүй', dA === 2 && dB === 1
+    && bus.dataVersion() === v1 && fired === f1);
+  check('…гэхдээ бичилтийн үе ӨСНӨ (query.shared хуучин уншилтыг хуваалцахгүй)', bus.writeEpoch() === w1 + 1);
+
+  const w2 = bus.writeEpoch();
+  bus.invalidate();
+  check('түлхүүргүй invalidate() — юу ч хийхгүй (үе ч өсөхгүй)', bus.writeEpoch() === w2 && bus.dataVersion() === v1);
+
+  const r0 = bus.dataRefreshedAt();
+  await new Promise((r) => setTimeout(r, 5));
+  bus.invalidateAll();
+  check('invalidateAll — ХООСОН reads-тэй слот ч хаягдана', dA === 3 && dB === 2 && dNone === 1);
+  check('invalidateAll — хувилбар, үе, мэдэгдэл', bus.dataVersion() === v1 + 1 && bus.writeEpoch() === w2 + 1 && fired === f1 + 1);
+  check('invalidateAll — «Өгөгдөл: HH:MM» агшин шинэчлэгдэв', bus.dataRefreshedAt() > r0);
+
+  off();
+  bus.invalidate('HO_IPC');
+  check('тайлсан захиалагч дуудагдахгүй', fired === f1 + 1);
 }
 
 console.log('\n✅ Автобусын ' + ok + ' шалгуур давлаа');

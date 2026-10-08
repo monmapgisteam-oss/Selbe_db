@@ -97,6 +97,16 @@ const contract = (o = {}) => ({
   assert.equal(r[1].cum, 20, 'дараагийнх нь үргэлжилнэ');
 }
 {
+  /* ⚠️ 2026-10-09: дунд/сүүлд `dun` хоосон (AUTO) мөр өмнөх `cum`-ийг ӨВЛӨХГҮЙ, хуримтлал тасрахгүй */
+  const r = payRows([
+    pay(1, work, 20, { [P.ipcNo]: 1 }),
+    pay(2, work, null, { [P.ipcNo]: 2 }),
+    pay(3, work, 30, { [P.ipcNo]: 3 }),
+    pay(4, work, null, { [P.id]: 'AUTO|БАГЦ1|2026-09-09' }),
+  ]);
+  assert.deepEqual(r.map((x) => x.cum), [20, null, 50, null]);
+}
+{
   /* ЖИНХЭНЭ 0 төлбөр нь `null` БИШ — `null ≠ 0` дүрмийн НӨГӨӨ ТАЛ */
   const r = payRows([pay(1, work, 0, { [P.ipcNo]: 1 })]);
   assert.equal(r[0].amount, 0, 'жинхэнэ тэг хадгалагдана');

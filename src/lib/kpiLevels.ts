@@ -115,25 +115,9 @@ export const PCT_WARN = 80;
 export const pctLevel = (v: number | null | undefined): Level =>
   v == null ? 'unknown' : v >= PCT_GOOD ? 'good' : v >= PCT_WARN ? 'warn' : 'bad';
 
-/**
- * САНХҮҮЖИЛТ vs БИЕТ ЗӨРҮҮ, пункт.
- * ⚠️ 5/15 нь `ExecKpi.finance` картын одоогийн босго — хэвээр.
- */
-export const FIN_GAP_WARN = 5;
-export const FIN_GAP_BAD = 15;
-export const finGapLevel = (gap: number | null): Level =>
-  gap == null ? 'unknown'
-    : Math.abs(gap) <= FIN_GAP_WARN ? 'good'
-      : Math.abs(gap) <= FIN_GAP_BAD ? 'warn' : 'bad';
-
-/**
- * ГЭРЭЭЛЭЛТ vs БИЕТ, пункт (⭐ шинэ, CEO_KPI_PROMPT §5).
- * ⚠️ Гэрээлсэн хувь биетээс ДООГУУР байх нь «гэрээгүй ажил хийгдэж байна»
- *    гэсэн эрсдэл. 0-ээс дээш бол хэвийн; −10-аас доош бол яаралтай.
- */
-export const CONTRACT_GAP_BAD = -10;
-export const contractGapLevel = (gap: number | null): Level =>
-  gap == null ? 'unknown' : gap >= 0 ? 'good' : gap > CONTRACT_GAP_BAD ? 'warn' : 'bad';
+/* ⚠️ 2026-10-09: `finGapLevel` (5/15 пп) ба `contractGapLevel` (−10 пп) УСТСАН — нэг ч дуудагчгүй
+   байсан. Санхүү ↔ биетийн зөрүүг онооны самбар `scorecard.RULE` (30/10/−2 пп)-ээр, гэрээ ↔ төсвийг
+   `ceo/contractGap` (1 тэрбум)-ээр хэмждэг — CEO_KPI_PROMPT §5.1. */
 
 /**
  * ТАЙЛАН ИРЭЭГҮЙ БЛОК (⭐ шинэ) — блокийн эзлэх ХУВИАР.

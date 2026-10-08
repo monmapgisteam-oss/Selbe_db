@@ -623,7 +623,8 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                 {DIMS.map((d) => {
                   const sc = sel.dims[d];
                   const loading = !sel.cancelled && loadingDims.has(d);
-                  const lv = loading ? 'loading' : dimLevel(d, sc.score);
+                  /* ⚠️ 2026-10-09: ажлын бүлгийн өөрийн түвшин (газар — давхцлын тоо) оноонос давамгайлна */
+                  const lv = loading ? 'loading' : sc.level ?? dimLevel(d, sc.score);
                   return (
                     <li key={d}>
                       <button

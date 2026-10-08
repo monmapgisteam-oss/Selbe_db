@@ -36,7 +36,7 @@ import { bandAt, type Band, type DamageRow } from '@/lib/ersdelGeom';
 import type { Station } from '@/lib/ersdel';
 import { flowDeg, type FloodData, type FloodMode } from '@/lib/uyr';
 import Polygon from '@arcgis/core/geometry/Polygon';
-import { waterSurfaceAt } from '@/lib/uyrSurface';
+import { waterSurfaceAt, type WaterBand } from '@/lib/uyrSurface';
 import { buildWaterFlow, type WaterFlow } from '@/lib/uyrUrsgal';
 
 /** Давхаргын id-ууд — каталогт ОРОХГҮЙ (`listMode: 'hide'`) */
@@ -80,6 +80,25 @@ const FRAME_MS = 33;
  *    ба GPU руу секундэд 180,000 орой — илүүц. 8/сек нь нүдэнд тасралтгүй.
  */
 const SURF_MS = 125;
+
+/**
+ * Усны гадаргуугийн кэшийн АЛХАМ — 1/`SURF_Q` зүсмэл (2026-10-09).
+ * ⚠️ `SURF_MS`/`STEP_S` ≈ 0.14 зүсмэл тул 1/8 нь бутархай шингээлтийг
+ *    нүдэнд ялгагдахгүй хадгална.
+ */
+const SURF_Q = 8;
+
+/**
+ * Кэшийн ДЭЭД хэмжээ (агшин). ⚠️ Бүтэн тоглуулга = `slices × SURF_Q + 1`
+ * (24 × 8 + 1 = 193) агшин бүгд багтах ёстой — эс бөгөөс дараалсан
+ * тоглуулгад FIFO кэш хуучныг нь яг хэрэгтэй үед нь гаргаж, ДАХИН
+ * тоглуулахад нэг ч оногдохгүй. Цагирагийг `Float64Array`-аар шахаж
+ * хадгалдаг тул нэг агшин ≈ 8,000 орой × 16 Б ≈ 130 КБ → ~25 МБ.
+ */
+const SURF_CACHE_MAX = 200;
+
+/** Кэшид хадгалах шахсан зурвас — цагираг бүр `[x0, y0, x1, y1, …]` */
+type PackedBand = { z: number; depth: number; deg: number; rings: Float64Array[] };
 /**
  * УСНЫ ГАДАРГУУ (3D) — бүс тус бүрд ТУСДАА давхарга.
  *
@@ -862,6 +881,17 @@ export function Overlay({
    * дахин бодох нь илүүц (нэг зүсмэл ~15 мс). Анимацийн үед фрейм тутамд
    * БИШ, ЗҮСМЭЛ солигдоход л шинэчлэгдэнэ — усны долгион нь симболын өөрийн
    * шейдерээр тасралтгүй хөдөлдөг тул нүдэнд үсрэлт мэдэгдэхгүй.
+   *
+   * ⚠️ 2026-10-09: ДЭЭРХ НЬ ЗОРИЛГО байсан ч код түүнийг хэрэгжүүлээгүй —
+   * `drawSurface` нь 125 мс тутамд БУТАРХАЙ `pos`-оор `waterSurfaceAt`-ыг
+   * дахин дуудаж, дуудлага бүрд ~1 МБ массив үүсгэдэг байв. Одоо:
+   *  · кэш нь `pos`-ыг 1/`SURF_Q` зүсмэлийн алхамд ДУГУЙРУУЛСАН түлхүүрээр
+   *    (бүхэл зүсмэл = яг өөрийн түлхүүр). Бутархай шингээлт (2026-09-09)
+   *    ХАДГАЛАГДАНА — 1/8 зүсмэл нь 125 мс-ийн алхамтай (≈0.14) ойролцоо тул
+   *    нүдэнд ялгаагүй, харин ДАХИН тоглуулахад бүгд кэшээс;
+   *  · кэш ХЯЗГААРТАЙ (`SURF_CACHE_MAX`), хамгийн хуучныг нь гаргана;
+   *  · загварчлал (`flood`) солигдоход кэш хоосорно;
+   *  · `waterSurfaceAt` өөрөө түр массиваа дахин ашиглана (uyrSurface.ts).
    */
   /**
    * Зүсмэл бүрийн зурвасууд — БҮГД урьдчилж бодогдоно.
@@ -873,6 +903,10 @@ export function Overlay({
    * тасалж), тоглуулах үед ЗӨВХӨН геометр солигдоно.
    */
   const poolRef = useRef<Graphic[]>([]);
+  /** ⚠️ 2026-10-09: усны гадаргуугийн кэш — дээрх тайлбарыг үз */
+  const surfCacheRef = useRef<{ fd: FloodData | null; m: Map<number, PackedBand[]> }>({ fd: null, m: new Map() });
+  /** ⚠️ 2026-10-09: сүүлд ЗУРСАН агшин — ижил түлхүүрийг дахин зурахгүй (полигон дахин байгуулахгүй) */
+  const surfDrawnRef = useRef<{ key: number; fd: FloodData; gl: GraphicsLayer } | null>(null);
   /**
    * ⚠️ Сан нь ТУХАЙН давхаргынх. 2D↔3D↔BIM солиход давхаргууд ДАХИН үүсдэг
    * (эхний эффект `[view]` дээр устгаад шинээр нэмнэ) тул хуучин графикууд
@@ -898,8 +932,13 @@ export function Overlay({
     const fd = floodRef.current;
     if (!is3D(dimRef.current) || !fd?.terrain) {
       pool.forEach((g) => { g.visible = false; });
+      surfDrawnRef.current = null;
       return;
     }
+    /* ⚠️ 2026-10-09: дугуйруулсан агшин — өмнө зурсантай ижил бол юу ч хийхгүй */
+    const sKey = Math.round(pos * SURF_Q);
+    const drawn = surfDrawnRef.current;
+    if (drawn && drawn.key === sKey && drawn.fd === fd && drawn.gl === gl) return;
     /**
      * СИМБОЛЫН КЭШ — «чиглэл(30°) + хүч» түлхүүрээр.
      *
@@ -925,7 +964,24 @@ export function Overlay({
      * дээгүүр (эсвэл доогуур) хөвнө — Улаанбаатарт геоидын зөрүү тийм хэмжээтэй.
      */
     const sr = { wkid: fd.meta.wkid, vcsWkid: 3855 };
-    const bands = waterSurfaceAt(fd, pos);
+    /* ⚠️ 2026-10-09: дугуйруулсан агшны кэш — загварчлал солигдвол хоосорно */
+    const cache = surfCacheRef.current;
+    if (cache.fd !== fd) { cache.fd = fd; cache.m.clear(); }
+    let bands = cache.m.get(sKey);
+    if (!bands) {
+      bands = waterSurfaceAt(fd, sKey / SURF_Q).map((bd: WaterBand) => ({
+        z: bd.z,
+        depth: bd.depth,
+        deg: bd.deg,
+        rings: bd.rings.map((r) => Float64Array.from(r.flat())),
+      }));
+      if (cache.m.size >= SURF_CACHE_MAX) {
+        const oldest = cache.m.keys().next().value;
+        if (oldest !== undefined) cache.m.delete(oldest);
+      }
+      cache.m.set(sKey, bands);
+    }
+    surfDrawnRef.current = { key: sKey, fd, gl };
     bands.forEach((bd, i) => {
       /* Гүн ус — илүү хүчтэй долгион; захын нимгэн ус бараг тайван */
       const sym = symOf(bd.deg, bd.depth >= 1.2 ? 'moderate' : bd.depth >= 0.5 ? 'slight' : 'rippled');
@@ -933,7 +989,11 @@ export function Overlay({
          гадаргуугийн БОДИТ өндөр (м). `hasZ`-гүй бол бүгд 0 өндөрт унана. */
       const geom = new Polygon({
         hasZ: true,
-        rings: bd.rings.map((r) => r.map(([x, y]) => [x, y, bd.z])),
+        rings: bd.rings.map((r) => {
+          const out: number[][] = new Array(r.length >> 1);
+          for (let k = 0; k < out.length; k++) out[k] = [r[2 * k], r[2 * k + 1], bd.z];
+          return out;
+        }),
         spatialReference: sr,
       });
       let g = pool[i];
@@ -1248,7 +1308,8 @@ export function Overlay({
   useEffect(() => {
     if (!flood) { waveDirRef.current = 180; return; }
     const m = flood.meta;
-    const s = Math.min(m.slices - 1, m.slices - 1);
+    /* ⚠️ 2026-10-09: сүүлийн зүсмэл (урьд `Math.min(x, x)` — үйлдэл ижил) */
+    const s = m.slices - 1;
     let su = 0;
     let sv = 0;
     /* Бүх нүдийг гүйхгүй — 16 нүд тутам дээж (чиглэл дунджаар тогтвортой) */

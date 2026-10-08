@@ -195,6 +195,44 @@ function trimCut(history, max) {
  */
 const pending = new Map();
 
+/**
+ * ⚠️ 2026-10-09 (аудит №10): ХАНДАЛТЫН ХҮСЭЛТИЙН ХУРДНЫ ХЯЗГААР.
+ *    Урьд `pending` л хамгаалдаг байсан: админ ТАТГАЛЗМАГЦ (`pending.delete`) нэг хүн шууд
+ *    дахин хүсэлт илгээж админуудыг дахин дахин мэдэгдлээр дүүргэж чаддаг, мөн шинэ
+ *    Telegram бүртгэл бүр хязгааргүй мэдэгдэл үүсгэдэг байв.
+ *    · Нэг ID-д цагт НЭГ мэдэгдэл (`REQ_PER_ID_MS`) — татгалзсаны дараа ч;
+ *    · Бүх ID нийлээд цагт `REQ_GLOBAL_MAX` мэдэгдэл — хэтэрвэл зөвхөн логт.
+ */
+const REQ_PER_ID_MS = 60 * 60 * 1000;
+const REQ_GLOBAL_MAX = 20;
+/** id → сүүлд админд мэдэгдсэн агшин */
+const notifiedAt = new Map();
+/** Сүүлийн цагийн бүх мэдэгдлийн агшин */
+let notifyLog = [];
+function mayNotify(id) {
+  const now = Date.now();
+  for (const [k, t] of notifiedAt) if (now - t >= REQ_PER_ID_MS) notifiedAt.delete(k);
+  notifyLog = notifyLog.filter((t) => now - t < REQ_PER_ID_MS);
+  if (notifiedAt.has(id)) return false;
+  if (notifyLog.length >= REQ_GLOBAL_MAX) return false;
+  notifiedAt.set(id, now);
+  notifyLog.push(now);
+  return true;
+}
+
+/**
+ * Хэрэглэгчид харагдах алдааны мөр.
+ * ⚠️ 2026-10-09 (аудит №10): `ArcGISError.url` (үйлчилгээний дотоод хаяг) ба мессеж доторх
+ *    URL-ыг Telegram руу ГАРГАХГҮЙ — дэлгэрэнгүй нь зөвхөн консолын логт.
+ */
+function userErrorText(e) {
+  if (e?.name === 'ArcGISError' || (e && typeof e === 'object' && 'url' in e)) {
+    return 'ArcGIS үйлчилгээ хариу өгсөнгүй — түр хүлээгээд дахин оролдоно уу.';
+  }
+  const msg = String(e?.message ?? e ?? 'Тодорхойгүй алдаа');
+  return msg.replace(/https?:\/\/\S+/g, '[хаяг]');
+}
+
 const HELP = [
   'Сэлбэ төслийн AI туслах.',
   '',
@@ -226,6 +264,11 @@ async function requestAccess(from, chatId) {
   );
 
   if (pending.has(id)) return;
+  /* ⚠️ 2026-10-09: хурдны хязгаар (`mayNotify`-ийн ⚠️) — хэтэрвэл админд мэдэгдэхгүй */
+  if (!mayNotify(id)) {
+    console.warn(`[bot] хандалтын хүсэлт хязгаарлагдав (цагт 1/ID · нийт ${REQ_GLOBAL_MAX}): ${id}`);
+    return;
+  }
   pending.set(id, nameOf(from));
 
   // ⚠️ Хүсэлтийг БҮХ админд илгээнэ — нэг нь л хариулахад хангалттай
@@ -383,7 +426,7 @@ async function handle(msg) {
        assistant `tool_use` үлдэж, дараагийн асуулт бүр 400-аар унадаг байв.
        Буцаалт нь reply()-ээс ӨМНӨ — Telegram унасан ч түүх эвдрэхгүй. */
     history.length = base;
-    await reply(chatId, `Алдаа гарлаа: ${e?.message ?? e}`);
+    await reply(chatId, `Алдаа гарлаа: ${userErrorText(e)}`);
   } finally {
     clearInterval(typing);
     if (history.length > MAX_HISTORY) history.splice(0, trimCut(history, MAX_HISTORY));

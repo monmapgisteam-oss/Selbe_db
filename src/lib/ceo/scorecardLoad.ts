@@ -16,7 +16,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
-import { loadGdashCf, loadContractSum, CONTRACTED } from '@/lib/gdash';
+import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { bagtsKey, pkgKeyOf, BUILDING } from '@/lib/services';
@@ -168,7 +168,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
        `geree_dun` гэрээгүй мөрд ч бөглөгдсөн байдаг тул `contract > 0`-ийг гэрээ
        гэж тооцохгүй; гэрээгүй мөрд `contract: null` → дэлгэцэд «гэрээгүй»,
        `scoreFin` төсөвтэй харьцуулахгүй. */
-    const contracted = r.note === CONTRACTED;
+    const contracted = isContracted(r);
     /* ⚠️ 2026-09-21: багцын ХУВААРИЙН ХОЦРОГДОЛ (блокийн биет хэмжилт) ЗӨВХӨН
        БАРИЛГА УГСРАЛТЫН мөрд (`sec === '2'`). Урьд нь нэг багцын түлхүүрт
        байгаа ТЭЗҮ, зураг төслийн мөрд ч угсралтын хоцрогдол хуулагдаж, зураг

@@ -35,7 +35,7 @@
  * Гаралт: давсан файлын гаралтыг НУУНА (--verbose-гүй бол), унасан файлынхыг
  * төгсгөлд БҮТНЭЭР хэвлэнэ. Нэг ч унавал exit 1.
  */
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { runCheck, resolveTimeoutS } from './testRun.mjs';
 
@@ -85,6 +85,12 @@ const files = found
 if (!files.length) {
   console.error('test-all: тохирох *.check.mjs олдсонгүй');
   process.exit(1);
+}
+/* ⚠️ 2026-10-09: `.env` нь git-ignored — шинэ clone/worktree дээр ~28 шалгуур учир нь ойлгомжгүй
+   унадаг байв. Энд НЭГ удаа, эхэнд нь хэлнэ (`ts-alias.mjs` процесс бүрд мөн stderr-т бичнэ).
+   CI нь орчны хувьсагчаар өгдөг тул `NEXT_PUBLIC_ARCGIS_HJ` байвал чимээгүй. */
+if (!existsSync('.env') && !process.env.NEXT_PUBLIC_ARCGIS_HJ) {
+  console.warn('⚠️ test-all: .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env); эс бөгөөс NEXT_PUBLIC_* шаарддаг шалгуурууд унана\n');
 }
 console.log(`test-all: ${files.length} шалгуур · зэрэг ${jobs} · хязгаар ${timeoutS}с${live ? ' · амьд орсон' : ''}\n`);
 

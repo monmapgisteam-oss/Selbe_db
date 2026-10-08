@@ -25,7 +25,7 @@ import { bagtsKey } from '@/lib/services';
 import { KOMISS_NO, KOMISS_WORK } from '@/lib/ulsiinKomiss';
 import {
   isCommissionWork, keyedCache, mergeCommission, pickCommission,
-  type CommissionCand, type PlanLikeRow,
+  type CommissionCand, type CommissionPartial, type PlanLikeRow,
 } from '@/lib/tuhData';
 
 const toMs = (v: unknown): number | null => {
@@ -87,7 +87,8 @@ async function commissionOfSheet(pkg: Pkg): Promise<number | null> {
  * ⚠️ 2026-09-30: нэгтгэл нь `tuhData.mergeCommission` (шалгагдсан цэвэр функц) — урьд нь
  *    хоёр хуудасны НЭГ нь унахад нөгөөгийн (дутуу) огноо «—»-гийн оронд үлддэг байв.
  */
-export type CommissionDates = { dates: Map<string, number | null>; failed: string[] };
+/* ⚠️ 2026-10-09: `partial` — олон хуудасны зарим нь огноогүй (`mergeCommission`-ийн ⚠️); огноо нь `null` */
+export type CommissionDates = { dates: Map<string, number | null>; failed: string[]; partial: Map<string, CommissionPartial> };
 export const loadCommissionDates = cached<CommissionDates>(async () => {
   const res = await Promise.all(PKGS.map(async (pkg) => {
     const key = bagtsKey(pkg.group);

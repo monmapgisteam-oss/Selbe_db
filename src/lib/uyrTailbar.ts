@@ -53,6 +53,11 @@ export type FloodWhy = {
    *    талбайн ус нэг жалгаар цугларвал тэр жалга үерлэхээс өөр аргагүй.
    */
   accHa: number | null;
+  /**
+   * ТООЦООНЫ МУЖИД байна уу (2026-10-09, `FloodData.inDomain`).
+   * ⚠️ `false` бол гүн 0 нь «хуурай» БИШ — «тооцоогүй»; шалтгаан ч тийм.
+   */
+  computed: boolean;
   /** Богино, хүний хэлээр бичсэн шалтгаан */
   reason: string;
 };
@@ -128,6 +133,8 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
   const bankY = bank(zAt(x, y - 2), zAt(x, y + 2));
   const channel = fd.channel ? fd.channel(idx) : reliefM > 0.6 && bankX !== bankY;
 
+  /* ⚠️ 2026-10-09: мужаас гадна — цөм гүнийг 0 гэж бичсэн ч тэр нь «хуурай» биш */
+  const computed = fd.inDomain ? fd.inDomain(idx) : true;
   const d = fd.depth(s, idx);
   const sp = fd.speed(s, idx);
   /**
@@ -147,7 +154,7 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
   const catchTxt = accHa != null && accHa >= 1
     ? tr('Тооцооны мужид энэ цэг рүү дор хаяж {0} га талбайн ус цуглаж ирдэг. ', accHa.toFixed(accHa >= 10 ? 0 : 1))
     : '';
-  const reason = catchTxt + (channel
+  const cause = channel
     ? tr('Голын суваг — ус энд байх нь хэвийн; эрсдэл нь эрэг давах явдал.')
     : reliefM > 0.8
       ? tr('ХОНХОР: энэ цэг эргэн тойрноосоо {0} м нам тул ус цуглана.', reliefM.toFixed(1))
@@ -157,13 +164,17 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
           ? tr('УРСГАЛЫН ЗАМ: ус энд тогтохгүй, {0} м/с хурдтай өнгөрч байна.', sp.toFixed(1))
           : d > 0.05
             ? tr('Дээд урсгалаас ирсэн ус налуугаар ({0}%) энд дамжин урсаж байна.', slopePct.toFixed(1))
-            : tr('Ус бага — энэ цэг эргэн тойрноосоо өндөр.'));
+            : tr('Ус бага — энэ цэг эргэн тойрноосоо өндөр.');
+  const reason = computed
+    ? catchTxt + cause
+    : tr('Тооцооны мужаас гадна — энэ цэгт үерийг тооцоогүй (гүн мэдэгдэхгүй, хуурай гэсэн үг БИШ).');
 
   return {
     reliefM: Math.round(reliefM * 100) / 100,
     slopePct: Math.round(slopePct * 10) / 10,
     channel,
     accHa,
+    computed,
     reason,
   };
 }

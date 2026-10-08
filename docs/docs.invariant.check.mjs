@@ -100,7 +100,17 @@ chk(
  * ⚠️ `DataKey` нэгдлийн гишүүдийг `dataBus.ts`-ээс шууд уншина.
  */
 const BUS = read('src/lib/dataBus.ts');
-const keyBlock = BUS.slice(BUS.indexOf('export type DataKey'), BUS.indexOf("'ZOVSHOOROL'") + 14);
+/* ⚠️ 2026-10-09: нэгдлийг ТӨГСГӨЛ (`;`) хүртэл нь уншина. Урьд нь `'ZOVSHOOROL'` хүртэл
+   хатуу тасалдаг тул 2026-09-30-нд нэмэгдсэн 6 түлхүүр (`CHANAR_BARIMT` … `HUVAARI_OBYEM`)
+   ОГТ шалгагдаагүй, баримт «Арван нэгэн» гэсэн гарчигтай 10-ыг жагсааж байв. Тайлбарыг
+   эхлээд хасна — дотор нь `'IPC_LOG'` мэт хуучин нэр, `;` тэмдэгт байж болно. */
+const keyBlock = (() => {
+  const from = BUS.indexOf('export type DataKey');
+  if (from < 0) return '';
+  const body = BUS.slice(from).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const end = body.indexOf(';');
+  return end < 0 ? '' : body.slice(0, end);
+})();
 const keys = [...keyBlock.matchAll(/\|\s*'([A-Z_]+)'/g)].map((m) => m[1]);
 
 const DOC03 = read('docs/system/03-ogogdliin-zam.md');
@@ -114,6 +124,12 @@ chk(
   keyMiss.length === 0,
   keyMiss.length ? 'ДУТУУ: ' + keyMiss.join(' · ') : `${keys.length}/${keys.length}`,
 );
+/* ⚠️ 2026-10-09: §3.1-ийн гарчгийн ТОО — «Арван нэгэн» гэж 10-ыг жагсааж, код 16 байхад
+   хэн ч анзаараагүй (Ш7-гийн харагдацын тоотой ижил занга). */
+{
+  const m = DOC03.match(/### 3\.1 Хүснэгтийн түлхүүр \((\d+)\)/);
+  chk('§3.1 гарчгийн тоо кодтой таарна', !!m && Number(m[1]) === keys.length, m ? `${m[1]} ↔ код ${keys.length}` : 'гарчиг олдсонгүй');
+}
 
 /* ═══════════ Ш3 · БАРИМТАД ДУРДСАН ЭХ СУРВАЛЖ БОДИТОЙ ЭСЭХ ═══════════
  *

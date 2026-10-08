@@ -38,6 +38,9 @@ const fd = {
 };
 
 const bands = waterSurface(fd, 0);
+/* ⚠️ 2026-10-09: түр сан (`scratchOf`) дахин ашиглагдахад үр дүн ИЖИЛ — өмнөх дуудлагын
+   `wet`/`bandOf`/`mask` үлдэгдэл дараагийнхад нөлөөлөхгүй */
+assert.deepEqual(waterSurface(fd, 0), bands, 'дахин дуудахад үр дүн өөрчлөгдөв');
 assert.ok(bands.length > 0, 'зурвас огт гарсангүй');
 /* Налуу нь 8 нүдэнд 4 м — 0.35 м-ийн зурвасаар хуваахад олон зурвас гарна */
 assert.ok(bands.length >= 4, `налуу дээр зурвас цөөн: ${bands.length}`);

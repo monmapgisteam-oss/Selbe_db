@@ -17,7 +17,7 @@
  * `schemDetail`) эвдрэхгүйн тулд. Хувь = чөлөөлсөн ÷ нийт.
  */
 
-import { queryGroup, count, sum, type Row } from '@/lib/query';
+import { queryGroup, count, sum, sqlStr, type Row } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { PARCEL_CLEARED, PARCEL_LEFT } from '@/lib/services';
 import { text } from '@/lib/format';
@@ -57,6 +57,20 @@ export function statusKey(v: unknown): string {
   if (isClearedStatus(v)) return PARCEL_CLEARED;
   const s = text(v, '').trim();
   return s === '—' ? '' : s;
+}
+
+/**
+ * Төлөвийн баганыг ДАРЖ ШҮҮХ WHERE — бүлгийн ТҮҮХИЙ утгуудаас (`Gazar.tsx`).
+ *
+ * ⚠️ 2026-10-09: «Тодорхойгүй» багана урьд нь зөвхөн `IS NULL OR = ''` байсан тул
+ *    `statusKey`-ээр тэр бүлэгт нийлдэг «—» ба ЗӨВХӨН ЗАЙТАЙ утгын мөрүүд баганад
+ *    ТООЛОГДСОН атлаа дарж шүүхэд газрын зурагт ГАРДАГГҮЙ байв. Одоо түүхий утга бүрийг
+ *    (`''`-ээс бусад) `=`-ээр нэмнэ. Бусад төлөвт түүхий утга алга бол `value`-гаар.
+ */
+export function statusRawsWhere(field: string, raws: Iterable<string>, unknown: boolean, value: string): string {
+  const eq = [...raws].filter((x) => x !== '').map((x) => `${field} = ${sqlStr(x)}`);
+  if (unknown) return `(${[`${field} IS NULL`, `${field} = ''`, ...eq].join(' OR ')})`;
+  return eq.length ? `(${eq.join(' OR ')})` : `${field} = ${sqlStr(value)}`;
 }
 
 /**

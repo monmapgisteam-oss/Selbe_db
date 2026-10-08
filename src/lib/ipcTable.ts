@@ -161,7 +161,10 @@ export function payRows(pays: readonly Row[]): PayRow[] {
   for (const r of work) {
     const v = hoAmount(r);
     if (v != null) acc = (acc ?? 0) + v;
-    push(r, false, acc);
+    /* ⚠️ 2026-10-09: `dun` хоосон мөр (AUTO г.м.) ӨМНӨХ мөрийн хуримтлалыг ӨВЛӨХГҮЙ — `null` («—»).
+       Урьд нь өмнөх `cum`-ийг давтаж, олголтгүй мөр «өссөн дүн N» гэж харагддаг байв. Хуримтлал
+       ТАСРАХГҮЙ: дараагийн хэмжигдсэн мөр `acc`-аас үргэлжилнэ. */
+    push(r, false, v == null ? null : acc);
   }
   return out;
 }

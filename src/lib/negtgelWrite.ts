@@ -21,7 +21,7 @@
 
 import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
-import { BAGTS_NEGTGEL, constructionWhere } from './services';
+import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 
@@ -64,6 +64,52 @@ const toPct = (v: number | null): number | null => (v == null ? null : v * 100);
 /** Огноог ArcGIS-ийн SQL хэлбэрт — түүхий epoch тоо энэ үйлчилгээнд унадаг */
 const ts = (ms: number) =>
   `timestamp '${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')}'`;
+
+const DAY = 86_400_000;
+
+/**
+ * Агшны ӨДРИЙН МУЖ `[эхлэл, төгсгөл)` — ms.
+ *
+ * ⚠️ 2026-10-09: «багц · огноо»-ны давхардлыг ЯГ ms-ээр (`F.date = ts(s.at)`) таньдаг
+ *    байв, харин логик нь ӨДРӨӨР сэтгэдэг (`loadPkgProgress` → `dayKey`). Хуучин жааз
+ *    локал шөнө дундаар (16:00Z), шинэ нь UTC шөнө дундаар (00:00Z) тамгалагддаг тул
+ *    нэг өдөр ХОЁР мөр үүсч болж байв. Муж нь `bagtsSheet.normDayMs`-ийн дүрэм
+ *    (хамгийн ойрын UTC шөнө дунд ±12 цаг) — 16:00Z · 08:00Z · 00:00Z бүгд НЭГ өдөр.
+ */
+export const dayRange = (ms: number): [number, number] => {
+  const d = Math.round(ms / DAY) * DAY;
+  return [d - DAY / 2, d + DAY / 2];
+};
+const dayWhere = (fld: string, ms: number) => {
+  const [a, b] = dayRange(ms);
+  return `${fld} >= ${ts(a)} AND ${fld} < ${ts(b)}`;
+};
+
+/**
+ * Хуудсуудын «Б.» гүйцэтгэлийн БЛОКИЙН ТООГООР жигнэсэн дундаж (0–1).
+ * ⚠️ Аль нэг нь `null` бол `null` (`summaryOf`-ийн ⚠️ — өөр олонлогоор бодохгүй).
+ * Блокийн тоо 0 бол жин 1 (хуудас бүр дор хаяж нэг жинтэй).
+ */
+export const blendBlocks = (xs: { n: number; v: number | null }[]): number | null => {
+  let s = 0;
+  let d = 0;
+  for (const x of xs) {
+    if (x.v == null) return null;
+    const w = x.n > 0 ? x.n : 1;
+    s += x.v * w;
+    d += w;
+  }
+  return d > 0 ? s / d : null;
+};
+
+/**
+ * БЛОКГҮЙ БАГЦ уу (5.x · 6.x · 10 — бүх хуудас нь `floors: null`)?
+ * ⚠️ Нэрийг `bagtsKey`-ээр жишнэ («Багц 4-1» / «Багц 4.1»). Танигдаагүй нэр → `false`.
+ */
+export const isBlocklessBagts = (bagts: string): boolean => {
+  const g = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
+  return g.length > 0 && g.every((p) => p.floors == null);
+};
 
 type Pkg = (typeof PKGS)[number];
 type Schema = NonNullable<Awaited<ReturnType<typeof loadSchema>>>;
@@ -157,8 +203,16 @@ async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Prom
  * @param pkgKey   Архивласан ХУУДАСНЫ түлхүүр («b1_12f») — мэдэгдэж байвал
  *                 OBJECTID-гаар хуудас ТААМАГЛАХГҮЙ (`registerApproved`-ийн ⚠️)
  */
+/**
+ * Багцын дүнд орсон НЭГ хуудас. `real: false` = хэзээ ч нийтлэгдээгүй / «Б.» мөр нь
+ * хэмжигдээгүй хуудас — блокууд нь 0% гэж орсон (`summaryOf`-ийн ⚠️ 2026-10-09).
+ */
+type Part = { n: number; r: BRow; p: Pkg; sc: Schema; real: boolean };
+
 async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
-  const group = PKGS.filter((x) => x.group === bagts);
+  /* ⚠️ 2026-10-09: `bagtsKey`-ээр — хяналтын бүртгэлийн нэр «Багц 4.1» / «Багц 4-1» аль
+     хэлбэрээр ирсэн ч хуудас олдоно (урьд нь ЯГ тэнцүү тул өөр бичлэгт хоосон бүлэг). */
+  const group = PKGS.filter((x) => bagtsKey(x.group) === bagtsKey(bagts));
   /*
    * Нэг багцад 9F ба 12F хоёр хуудас байж болно — эх мөр аль нь болохыг олно.
    *
@@ -235,37 +289,45 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
    *    жигнэсэн дундаж нь хоёр хуудасны БҮХ блокийн дундажтай ЯГ тэнцүү —
    *    ижил томьёог багц руу өргөтгөсөн нь (`planProgress`-ийн хуудас
    *    хоорондын жин ч мөн блокийн тоо).
-   * ⚠️ «Б.» мөрийн гүйцэтгэл ХЭМЖИГДЭЭГҮЙ (`null`) эсвэл хэзээ ч нийтлэгдээгүй
-   *    хуудас ОРОХГҮЙ (`null ≠ 0`) — тэр нь 0% биш, мэдээлэлгүй.
+   * ⚠️ 2026-10-09 (2026-10-01-ний хэрэглэгчийн шийдвэр «тайлагнаагүй блок 0%»):
+   *    «Б.» мөрийн гүйцэтгэл ХЭМЖИГДЭЭГҮЙ (`null`) эсвэл хэзээ ч нийтлэгдээгүй
+   *    хуудасны блокууд 0% гэж ОРНО (`real: false`). Урьд нь «`null ≠ 0` —
+   *    мэдээлэлгүй» гэж хасагддаг байсан тул нэгтгэлийн мөр дашбоардын
+   *    `blockProgress.pkgProgressOf`-оос (хуваарь = `sheetRows.sheetBlockKeys` —
+   *    `fillDate`-тэй хуудасны БҮХ блок, тайлагнаагүй нь 0%) зөрдөг байв: Багц 1-ийн
+   *    9F 50%, 12F нийтлэгдээгүй → нэгтгэл 50, дашбоард ~21. Одоо хоёулаа нэг дүрэм.
+   *    `fillDate` талбаргүй хуудас дашбоардын хуваарьт ч ОРДОГГҮЙ тул энд ч орохгүй.
+   *    Батлагдаж буй хуудасны ӨӨРИЙН «Б.» `null` бол дүн `null` хэвээр (бичихгүй).
+   *    Нэгтгэлд хуучин дүрмээр бичигдсэн мөртэй жишихэд хуудсын олонлог өөрчлөгдсөн
+   *    тул ±20-ийн хамгаалалт `registerApproved`-д ЖИШИГДЭХҮЙЦ олонлогоор явна.
    * ⚠️ Бусад хуудсыг уншиж ЧАДАХГҮЙ бол АЛДАА шидэнэ (`registerApproved`
    *    дахин оролдоно): чимээгүй алгасвал яг энэ дарагдах алдаа буцаж ирнэ.
    * ⚠️ Төлөвлөгөөт хувь нь ИЖИЛ хуудсуудаар: аль нэгэнд нь `null` бол `null`
    *    — өөр блокийн олонлогоор бодсон төлөвлөгөөг гүйцэтгэлтэй жишвэл
-   *    хоцрогдол худал гарна.
+   *    хоцрогдол худал гарна. 0% гэж орсон (`real: false`) хуудасны төлөвлөгөө
+   *    мэдэгдэхгүй бол багцын `planned` нь `null` (цоорхой, 0 БИШ).
    */
-  const parts: { n: number; r: BRow }[] = [{ n: one.sc.bld.length, r: own }];
+  const parts: Part[] = [{ n: one.sc.bld.length, r: own, p: one.p, sc: one.sc, real: true }];
   if (own.act != null) {
     for (const p of group) {
       if (p.key === one.p.key) continue;
       const sc = await loadSchema(p);
-      if (!sc.f.fillDate) continue;              // архивын талбаргүй — хэзээ ч нийтлэгдээгүй
+      if (!sc.f.fillDate) continue;              // архивын талбаргүй — дашбоардын хуваарьт ч ороогүй
       const r = await bRowOf(p, sc, sc.f.fillDate, `${sc.f.fillDate} <= ${ts(at)}`);
-      if (r && r.act != null) parts.push({ n: sc.bld.length, r });
+      if (r && r.act != null) parts.push({ n: sc.bld.length, r, p, sc, real: true });
+      /* ⚠️ 2026-10-09: гүйцэтгэлийн баганатай блокгүй хуудас дашбоардын хуваарьт
+         ОРДОГГҮЙ (`sheetBlockKeys`-ийн `!!sc.act[i]`) — энд ч 0%-ийн жин өгөхгүй */
+      else if (sc.act.some(Boolean)) {
+        parts.push({
+          n: sc.bld.length,
+          r: { act: 0, plan: r?.plan ?? null, volume: r?.volume ?? null, volumePlan: r?.volumePlan ?? null },
+          p, sc, real: false,
+        });
+      }
     }
   }
-  const w = (n: number) => (n > 0 ? n : 1);
-  const mean = (pick: (r: BRow) => number | null): number | null => {
-    if (parts.length === 1) return pick(own);
-    let s = 0;
-    let d = 0;
-    for (const x of parts) {
-      const v = pick(x.r);
-      if (v == null) return null;
-      s += v * w(x.n);
-      d += w(x.n);
-    }
-    return d > 0 ? s / d : null;
-  };
+  const mean = (pick: (r: BRow) => number | null): number | null =>
+    parts.length === 1 ? pick(own) : blendBlocks(parts.map((x) => ({ n: x.n, v: pick(x.r) })));
   /*
    * ⚠️ ОБЬЁМ нь багцын түвшинд ХОЛИМОГ НЭГЖТЭЙ (м³ бетон + м² хана + ш цонх).
    *    Нийлбэр нь физик утгагүй ч хэрэглэгчийн шийдвэрээр бүртгэгдэнэ —
@@ -288,10 +350,50 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
     planned: toPct(mean((r) => r.plan)),
     volume: sum((r) => r.volume),
     volumePlan: sum((r) => r.volumePlan),
+    parts,
   };
 }
 
-export type NegtgelResult = { ok: true } | { ok: false; error: string };
+/**
+ * ±20-ийн ХАМГААЛАЛТАД ЖИШИГДЭХҮЙЦ гүйцэтгэл (0–100).
+ *
+ * ⚠️ 2026-10-09 (аудит): хоёр хуудастай багцын хэзээ ч нийтлэгдээгүй хуудасны
+ *    АНХНЫ батлалт МӨНХӨД татгалзагддаг байв: Багц 1 9F 50 гэж бүртгэгдсэн (12F
+ *    нийтлэгдээгүй тул хасагдсан), 12F-ийн анхны батлалт → блокоор жигнэсэн 20.9 vs
+ *    сүүлийн 50 → «хэт зөрүүтэй»; гурван оролдлого ба `retryPendingRegistrations`
+ *    хэзээ ч давахгүй. Бууралт нь бодит биш — дүнд орсон ХУУДСЫН ОЛОНЛОГ өөрчлөгдсөн.
+ *    Мөн 2026-10-09-ний «тайлагнаагүй блок 0%» шилжилтийн дараах анхны бүртгэл ч
+ *    хуучин дүрмийн мөртэй жишигдэнэ.
+ *
+ * ДҮРЭМ: сүүлийн мөрийн ӨДРӨӨС ӨМНӨ аль хэдийн «Б.» хэмжилттэй (`real`) байсан
+ *    хуудсуудын ОДООГИЙН утгаар л жишнэ. Олонлог өөрчлөгдөөгүй → `'same'` (бүтэн
+ *    дүнгээр, урьдын адил); жишигдэх хуудас байхгүй → `null` (хамгаалалт алгасна).
+ *    Хэмжээсийн алдаа (0–1 бичигдсэн) хуудас бүрийг 100 дахин багасгадаг тул
+ *    дэд олонлогоор ч баригдана — хамгаалалтын гол зорилго хэвээр.
+ */
+async function comparablePct(parts: Part[], lastAt: number | null): Promise<number | null | 'same'> {
+  if (parts.length < 2 || lastAt == null) return 'same';
+  const [dayStart] = dayRange(lastAt);
+  const kept: Part[] = [];
+  for (const x of parts) {
+    if (!x.real || !x.sc.f.fillDate) continue;
+    const r = await bRowOf(x.p, x.sc, x.sc.f.fillDate, `${x.sc.f.fillDate} < ${ts(dayStart)}`);
+    if (r && r.act != null) kept.push(x);
+  }
+  if (kept.length === parts.length) return 'same';
+  if (!kept.length) return null;
+  const v = blendBlocks(kept.map((x) => ({ n: x.n, v: x.r.act })));
+  return v == null ? null : v * 100;
+}
+
+/**
+ * ⚠️ 2026-10-09: `skipped: 'blockless'` — БЛОКГҮЙ багц (5.x · 6.x · 10): «Б.» мөрийн
+ *    гүйцэтгэл нь блокийн дундаж (J) тул ҮРГЭЛЖ `null` — нэгтгэлд бичих тоо байхгүй.
+ *    Урьд нь «хэмжигдээгүй» алдаагаар ДАНДАА унаж, илгээлт «бүртгэл хүлээгдэж буй»
+ *    хэвээр мөнхөд дахин оролддог байв. `ok: true` тул дуудагч (`hyanaltStore`)
+ *    бүртгэгдсэн гэж тэмдэглэнэ; юу ч бичигдээгүй.
+ */
+export type NegtgelResult = { ok: true; skipped?: 'blockless' } | { ok: false; error: string };
 
 /**
  * БАТЛАГДСАН гүйцэтгэлийг нэгтгэлд нэмнэ.
@@ -319,6 +421,8 @@ export async function registerApproved(
 ): Promise<NegtgelResult> {
   try {
     const s = await summaryOf(bagts, sheetOid, pkgKey);
+    /* ⚠️ 2026-10-09: блокгүй багцад бичих тоо байхгүй — алдаа биш (`NegtgelResult`-ийн ⚠️) */
+    if ((!s || s.progress == null) && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };
     if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };
 
     const nameSql = bagts.replace(/'/g, "''");
@@ -351,18 +455,24 @@ export async function registerApproved(
       orderByFields: `${F.date} DESC`,
       resultRecordCount: '1',
     })) as { features?: { attributes: Record<string, unknown> }[] };
-    const last = num(prev.features?.[0]?.attributes?.[F.progress]);
+    const prevA = prev.features?.[0]?.attributes;
+    const last = num(prevA?.[F.progress]);
 
     if (s.progress == null)
       return {
         ok: false,
         error: tr('Бөглөх хуудасны «Б.» мөрийн гүйцэтгэл хэмжигдээгүй тул нэгтгэлд бичсэнгүй — хуудсаа шалгаад дахин баталгаажуулна уу.'),
       };
-    if (last != null && s.progress < last - 20)
-      return {
-        ok: false,
-        error: tr('Нэгтгэлийн сүүлийн гүйцэтгэл {0}%, бөглөх хуудаснаас гарсан нь {1}% — хэт зөрүүтэй тул бичсэнгүй. Хуудасны хэмжээс (0–1 эсэх) ба «Б.» мөрийг шалгана уу.', last.toFixed(2), s.progress.toFixed(2)),
-      };
+    if (last != null && s.progress < last - 20) {
+      /* ⚠️ 2026-10-09: хуудсын олонлог өөрчлөгдсөн бол ЖИШИГДЭХҮЙЦ хэсгээр (`comparablePct`) */
+      const cmp = await comparablePct(s.parts, num(prevA?.[F.date]));
+      const shown = cmp === 'same' ? s.progress : cmp;
+      if (shown != null && shown < last - 20)
+        return {
+          ok: false,
+          error: tr('Нэгтгэлийн сүүлийн гүйцэтгэл {0}%, бөглөх хуудаснаас гарсан нь {1}% — хэт зөрүүтэй тул бичсэнгүй. Хуудасны хэмжээс (0–1 эсэх) ба «Б.» мөрийг шалгана уу.', last.toFixed(2), shown.toFixed(2)),
+        };
+    }
 
     /*
      * ⚠️ ДАВХАРДЛЫГ ЗӨВХӨН ОГНООГООР ТАНИХГҮЙ (2026-09-04-ний аудит): урьд нь
@@ -372,8 +482,9 @@ export async function registerApproved(
      *    өнгөрдөг байв. Одоо утгыг нь ЖИШНЭ: ижил бол үнэхээр давхардал
      *    (менежер хоёр удаа дарсан), зөрвөл ил алдаа — хүн шийднэ.
      */
+    /* ⚠️ 2026-10-09: ӨДРИЙН МУЖААР (`dayRange`) — ЯГ ms биш */
     const dupQ = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-      where: `${F.bagts} = N'${nameSql}' AND ${F.date} = ${ts(s.at)}`,
+      where: `${F.bagts} = N'${nameSql}' AND ${dayWhere(F.date, s.at)}`,
       outFields: `${BAGTS_NEGTGEL.oid},${F.progress}`,
       returnGeometry: 'false',
       orderByFields: `${BAGTS_NEGTGEL.oid} DESC`,
@@ -467,8 +578,9 @@ export async function registerApproved(
      */
     const newOid = num(r.objectId);
     if (newOid != null) {
+      /* ⚠️ 2026-10-09: `dupQ`-тэй ИЖИЛ өдрийн муж */
       const tw = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-        where: `${F.bagts} = N'${nameSql}' AND ${F.date} = ${ts(s.at)}`,
+        where: `${F.bagts} = N'${nameSql}' AND ${dayWhere(F.date, s.at)}`,
         outFields: `${BAGTS_NEGTGEL.oid}`,
         returnGeometry: 'false',
         orderByFields: `${BAGTS_NEGTGEL.oid} ASC`,

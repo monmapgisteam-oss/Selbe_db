@@ -405,7 +405,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   const { BAGTS_NEGTGEL, bagtsKey } = await import('@/lib/services');
   const F = BAGTS_NEGTGEL.fields;
   const rows = await queryFeatures(BAGTS_NEGTGEL.url, {
-    outFields: [F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
+    outFields: [BAGTS_NEGTGEL.oid, F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
     /* ⚠️ 2026-10-05: `limit: 4000` ХАСАГДАВ — хүснэгт append-only (багц × огноо) тул хязгаараас
        хэтэрмэгц ШИНЭ мөрүүд чимээгүй хаягдана. `queryFeatures` өөрөө хуудаслана (OID эрэмбээр). */
   });
@@ -428,6 +428,13 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   const cut = futureCutMs();
   let dropped = 0;
   const out: PkgProgressRow[] = [];
+  /* ⚠️ 2026-10-09: НЭГ БАГЦ · НЭГ ӨДӨР = НЭГ МӨР — ХАМГИЙН ИХ OID (сүүлд нэмэгдсэн) ялна.
+     `registerApproved`-ийн «шалгаад-нэмэх» дараалалд давтагдашгүй хязгаар байхгүй тул зэрэг
+     батлалт (9F · 12F хоёр таб) хоёр мөр үлдээж болно; мөн хуучин 16:00Z ба шинэ 00:00Z
+     тамгатай мөр нэг локал өдөрт (`dayKey`) буудаг. Урьд нь цуваанд нэг өдөр ХОЁР цэг гарч,
+     `latestPkgProgress` аль нь давамгайлахыг ArcGIS-ийн буцаах дараалал шийддэг байв.
+     Огноогүй (`''`) мөрийг нэгтгэхгүй — тэд тус тусдаа бүртгэлгүй мөр. */
+  const dayIdx = new Map<string, { i: number; oid: number }>();
   for (const r of rows) {
     const raw2 = String(r[F.bagts] ?? '').trim();
     const key = bagtsKey(raw2);
@@ -439,7 +446,7 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
        Энэ `date` нь `slice(0,7)`-оор САР болж дашбоардын цуваанд ордог тул
        сарын эхний шөнийн хэмжилт БҮТЭН САРААР гулсдаг байлаа (2026-09-15). */
     const date = ts == null ? '' : dayKey(Number(ts));
-    out.push({
+    const row: PkgProgressRow = {
       key,
       label: raw2,
       date,
@@ -447,7 +454,16 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
       planned: nOrNull(r[F.planned]),
       volume: nOrNull(r[F.volume]),
       volumePlan: nOrNull(r[F.volumePlan]),
-    });
+    };
+    const oid = nOrNull(r[BAGTS_NEGTGEL.oid]) ?? -1;
+    const dk = date ? `${key}|${date}` : '';
+    const had = dk ? dayIdx.get(dk) : undefined;
+    if (had) {
+      if (oid >= had.oid) { out[had.i] = row; had.oid = oid; }
+      continue;
+    }
+    if (dk) dayIdx.set(dk, { i: out.length, oid });
+    out.push(row);
   }
   /* ⚠️ Өгөгдлийн согогийг НУУХГҮЙ — хасагдсан мөрийн тоог консолд ил гаргана.
      Чимээгүй шүүвэл дараагийн хүн «нэгтгэл хоосон юм байна» гэж эндүүрнэ. */

@@ -798,3 +798,49 @@ export const scenarioNote = (h: HazardKey, lv: LevelKey): string => {
   return tr('Инверси {0} м · салхи {1} м/с · PM2.5 {2} µg/м³ · АЧИ {3} · {4} цаг үргэлжилнэ',
     p.inversion, p.wind, p.pm25, p.aqi, p.hours);
 };
+
+/**
+ * ПОЛИГОНЫ ЦАГИРАГУУДЫГ ХУУДАСЛАН ТАТНА — голын давхарга (`ersdelGeom.loadRiver`,
+ * `uyrSim.loadRiverRings`) — 2026-10-09.
+ *
+ * ⚠️ Урьд нь нэг л хүсэлт илгээж `exceededTransferLimit`-ийг үл тоомсорлодог
+ *    байв: сервер maxRecordCount-оор тайрвал голын нэг хэсэг ЧИМЭЭГҮЙ алга
+ *    болж, буфер/шатаалт дутуу гарна.
+ * ⚠️ Эрэмбэгүй `resultOffset` хуудаслалт ТОГТВОРГҮЙ (CLAUDE.md §ArcGIS) —
+ *    `query.queryFeatures`-тэй ижил арга: эхний хуудас тайрагдвал OID-оор
+ *    (`objectIdFieldName`) эрэмбэлж ЭХНЭЭС нь дахин татна. Нэг хуудасны
+ *    хариу (нийтлэг тохиолдол) өөрчлөгдөхгүй.
+ * ⚠️ `queryFeatures` геометр буцаадаггүй тул тусдаа — алдааг `arcgisPost` барина.
+ */
+export async function queryRingsPaged(url: string, params: Record<string, string>): Promise<number[][][]> {
+  type Body = {
+    features?: { geometry?: { rings?: number[][][] } }[];
+    exceededTransferLimit?: boolean;
+    objectIdFieldName?: string;
+  };
+  let order: string | null = null;
+  let rings: number[][][] = [];
+  let got = 0;
+  /* ⚠️ Хамгаалалт: 500 хуудас (~1 сая объект) — мөнхийн давталтаас гарна */
+  for (let guard = 0; guard < 500; guard++) {
+    const page: Record<string, string> = { ...params };
+    if (order) {
+      page.orderByFields = order;
+      if (got) page.resultOffset = String(got);
+    }
+    const body = await arcgisPost<Body>(`${url}/query`, page);
+    const feats = body.features ?? [];
+    if (!order && body.exceededTransferLimit) {
+      /* OID-гүй хариу — эрэмбэлж чадахгүй тул эхний хуудсаар (хуучин үйлдэл) */
+      if (!body.objectIdFieldName) return feats.flatMap((ft) => ft.geometry?.rings ?? []);
+      order = `${body.objectIdFieldName} ASC`;
+      rings = [];
+      got = 0;
+      continue;
+    }
+    for (const ft of feats) rings.push(...(ft.geometry?.rings ?? []));
+    got += feats.length;
+    if (!body.exceededTransferLimit || !feats.length) break;
+  }
+  return rings;
+}

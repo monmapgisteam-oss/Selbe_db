@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 
-const { buildUzReport, buildUzXlsx, ansCls, companyShort } = await import('@/lib/uzlegReport.ts');
+const { buildUzReport, buildUzXlsx, ansCls, companyShort, attUrl } = await import('@/lib/uzlegReport.ts');
 
 const ANS = new Map([
   ['conf', 'Conformance / Нийцсэн'],
@@ -117,4 +117,19 @@ assert.ok(txt.includes('&quot;Морин сувд&quot; ХХК'), 'XML escape');
 console.log('✅ xlsx — zip, 2 хуудас, escape');
 
 assert.equal(companyShort('"Морин сувд" ХХК'), 'Морин сувд');
+
+/* ── 2026-10-09 аудит ── */
+/* #9: асуулт танигдаагүй + cnt_ талбаргүй → «мэдэгдэхгүй» (null), 0 биш */
+const bare = buildUzReport('X', fields.filter((f) => !f.dom || f.name === 'site' || f.name === 'company').map((f) => (f.name === 'cnt_minor' ? { ...f, name: 'zz' } : f)),
+  { ...row, cnt_minor: undefined }, 10, [], (id) => `u/${id}`, { pkg: '', company: '', date: 0 });
+assert.equal(bare.counts.major, null, 'асуултгүй, cnt_major-гүй — null');
+assert.equal(bare.counts.minor, null);
+/* #4: хавсралтын хаяг ТОКЕНГҮЙ (токен татах агшинд POST биеэр) */
+assert.equal(attUrl('https://x/FeatureServer/0', 5, 7), 'https://x/FeatureServer/0/5/attachments/7');
+/* #3: татагдаагүй зураг Excel-ийн тоонд ил — «0 (1 татагдсангүй)» */
+{
+  const xf = new TextDecoder().decode(buildUzXlsx([rep], new Map(), new Set(['u/2'])));
+  assert.ok(xf.includes('0 (1 татагдсангүй)'), 'татагдаагүй тоо бичигдэнэ');
+}
+console.log('✅ мэдэгдэхгүй тоо null · токенгүй хавсралтын хаяг · татагдаагүй зургийн тоо');
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

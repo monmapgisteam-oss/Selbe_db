@@ -44,6 +44,9 @@ jobs:
       # ⚠️ Тохируулаагүй бол хоосон үлдэж, deploy хийсэн сайт дээр AI
       #    ажиллахгүй (бусад бүх хэсэг хэвийн) — энэ нэг нь deploy-г УНАГААХГҮЙ.
       NEXT_PUBLIC_AGENT_API: ${{ vars.AGENT_API }}
+      # ⚠️ 2026-10-09: релейн `PROMPT_HMAC`-тай ИЖИЛ утга (заавал биш; хоосон бол гарын үсэггүй —
+      #    урьдын зан). JS багцад ИЛ бичигдэнэ — хил биш, саад (`agent-proxy/README.md`).
+      NEXT_PUBLIC_AGENT_PROMPT_HMAC: ${{ vars.AGENT_PROMPT_HMAC }}
       NEXT_PUBLIC_AUTH_APP_ID: ${{ vars.NEXT_PUBLIC_AUTH_APP_ID }}
       NEXT_PUBLIC_PORTAL_URL: ${{ vars.NEXT_PUBLIC_PORTAL_URL }}
       NEXT_PUBLIC_ALLOWED_ORG_ID: ${{ vars.NEXT_PUBLIC_ALLOWED_ORG_ID }}
@@ -61,13 +64,17 @@ jobs:
       NEXT_PUBLIC_HABEA_UZLEG_V11_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_G_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_G_SVC }}
       NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC: ${{ vars.NEXT_PUBLIC_HABEA_UZLEG_ZAHIALAGCH_SVC }}
-      # ⚠️ Амьд өгөгдлийн шалгуурууд энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
-      #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
-      ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
+      # ⚠️ 2026-10-09 (аудит №11): `ARCGIS_ADMIN_TOKEN` JOB түвшнээс `npm test` АЛХАМ руу
+      #    шилжив — урьд `npm ci` (гуравдагчийн postinstall скрипт), lint, build бүгд АДМИН
+      #    токеныг орчинд хардаг байв. Одоо зөвхөн түүнийг хэрэглэдэг алхамд.
     steps:
-      - uses: actions/checkout@v4
+      # ⚠️ 2026-10-09 (аудит №11): `actions/*`-ыг COMMIT SHA-аар бэхлэв — шошго (v4)-ийг
+      #    хэн нэгэн зөөвөл бидний build өөр код ажиллуулах эрсдэлтэй. SHA-г `git ls-remote`-оор
+      #    шалгав (2026-10-08, хөнгөн шошго → шууд commit). Шинэчлэхдээ ижил аргаар SHA авч,
+      #    хувилбарын тайлбарыг хамт солино.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -83,6 +90,10 @@ jobs:
       - run: npm run lint
       - run: npm run i18n:check
       - run: npm test
+        env:
+          # ⚠️ Амьд өгөгдлийн шалгуурууд энэ токенгүй бол SELBE_LIVE_SKIP-ээр АЛГАСАГДАНА
+          #    (унах боломжгүй). Settings → Secrets → Actions-д ARCGIS_ADMIN_TOKEN нэмнэ.
+          ARCGIS_ADMIN_TOKEN: ${{ secrets.ARCGIS_ADMIN_TOKEN }}
 
       # next.config.mjs дахь output:'export' → out/ хавтас үүснэ (CNAME, .nojekyll нь public/-оос)
       - run: npm run build
@@ -92,10 +103,10 @@ jobs:
       #    рүү гараар орох шаардлагагүй бөгөөд repo дахин үүсгэсэн ч сэргэнэ.
       #    ⚠️ PRIVATE repo дээр Pages нь төлбөртэй төлөвлөгөө шаардана —
       #    үнэгүй төлөвлөгөөнд энэ алхам «Resource not accessible» гэж унана.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: out
 
@@ -107,4 +118,4 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

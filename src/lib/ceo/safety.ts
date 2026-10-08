@@ -211,13 +211,17 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   if (agg.last != null && agg.daysSince != null) {
     facts.push(tr('сүүлийнх {0} хоногийн өмнө ({1})', agg.daysSince, date(agg.last)));
   }
-  facts.push(tr('сүүлийн {0} хоногт {1}', RECENT_DAYS, agg.recent));
+  /* ⚠️ 2026-10-09: гол тоо нь сүүлийн 30 хоногийнх тул энд НИЙТ (бүх хугацааны) тоо */
+  facts.push(tr('нийт {0}', num(agg.total)));
   facts.push(tr('{0} хохирол', agg.damage));
   const topBagts = agg.byBagts[0];
   if (topBagts) facts.push(tr('Багц: {0}', `${topBagts.name} — ${topBagts.n}`));
 
   /* ── Түвшин ── */
-  const level = worstOf([incidentLevel(agg.total), damageLevel(agg.damage)]);
+  /* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`). Урьд нь бүх хугацааны
+     `agg.total` тул 6 дахь осол бүртгэгдмэгц карт мөнхөд «Яаралтай» болж, сайжрал харагддаггүй
+     байв. Хохирлын түвшин (`damage`) хэвээр бүх хугацаагаар. Гол тоо ба шошго ч 30 хоног. */
+  const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damage)]);
 
   /* ── Хүснэгтүүд: бүх бүртгэл нэрээр нь, дараа нь төрөл/багцын задаргаа ── */
   const all: Cell[][] = rows.map((r) => [
@@ -248,8 +252,8 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   }
 
   return {
-    value: num(agg.total),
-    unit: tr('осол, зөрчил бүртгэгдсэн'),
+    value: num(agg.recent),
+    unit: tr('осол, зөрчил — сүүлийн {0} хоногт', RECENT_DAYS),
     facts,
     level,
     tables,

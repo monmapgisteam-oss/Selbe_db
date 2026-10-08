@@ -220,12 +220,28 @@ export function attachTree(
 
 type Feat = { attributes: Record<string, unknown> };
 
-/** Хүснэгтийн БОДИТ талбарын нэрс — байхгүй багана асуувал query бүхэлдээ унана */
-async function fieldsOf(url: string): Promise<Set<string>> {
+/**
+ * Хүснэгтийн БОДИТ талбарууд — нэр → тэмдэгтийн дээд урт (`null` = мэдэгдэхгүй).
+ * Байхгүй багана асуувал query бүхэлдээ унана.
+ * ⚠️ 2026-10-09: `fields[].length`-ийг ч авна — урьд нь оролтын дээд урт нь дурын
+ *    4000 байсан тул талбараас урт утга бичих гэж оролдоод ArcGIS-ийн ерөнхий
+ *    алдаагаар (аль нүд гэдэг нь тодорхойгүй) бүх хадгалалт унадаг байв.
+ */
+async function fieldsOf(url: string): Promise<Map<string, number | null>> {
   const j = await agsFetch(url, {});
-  const fs = (j.fields ?? []) as { name?: string }[];
-  return new Set(fs.map((f) => String(f.name)));
+  const fs = (j.fields ?? []) as { name?: string; length?: unknown }[];
+  return new Map(fs.map((f) => {
+    const n = Number(f.length);
+    return [String(f.name), Number.isInteger(n) && n > 0 ? n : null] as [string, number | null];
+  }));
 }
+
+/** Баримтын баганын дээд урт — `QAQC_COLS`-той ИЖИЛ дараалал; `null` = мэдэгдэхгүй/багана алга */
+const maxLenOf = (have: ReadonlyMap<string, number | null>): (number | null)[] =>
+  QAQC_COLS.map((c) => have.get(c.name) ?? null);
+
+/** Ачаалсан хуудас — мөрүүд ба баганын дээд урт */
+export type QaqcSheet = { rows: QaqcRow[]; maxLen: (number | null)[] };
 
 /**
  * Багцын QAQC хүснэгтийг БҮТНЭЭР татна.
@@ -240,6 +256,11 @@ async function fieldsOf(url: string): Promise<Set<string>> {
  *    хооронд мөр давхардуулах/алгасах эрхтэй.
  */
 export async function loadQaqcRows(pkgKey: string): Promise<QaqcRow[]> {
+  return (await loadQaqcSheet(pkgKey)).rows;
+}
+
+/** `loadQaqcRows` + баганын дээд урт (⚠️ 2026-10-09, `fieldsOf`-ийн ⚠️) — «Чанар» харагдац */
+export async function loadQaqcSheet(pkgKey: string): Promise<QaqcSheet> {
   const ref = qaqcTableOf(pkgKey);
   if (!ref) throw new Error(tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.'));
   const url = qaqcUrl(ref);
@@ -273,8 +294,17 @@ export async function loadQaqcRows(pkgKey: string): Promise<QaqcRow[]> {
     if (!j.exceededTransferLimit || f.length === 0) break;
     off += f.length;
   }
-  return toRows(feats);
+  return { rows: toRows(feats), maxLen: maxLenOf(have) };
 }
+
+/** Мөрийн атрибутаас баримтын 9 утга — `toRows` ба `fetchQaqcDocs` НЭГ дүрэм */
+const docsOf = (a: Record<string, unknown>): (string | null)[] =>
+  /* ⚠️ Хоосон тэмдэгт мөрийг `null` болгоно — «бөглөгдөөгүй» тооллого нь
+     хоёуланг нэг гэж үзэх ёстой (эх өгөгдөлд хоёул тохиолддог). */
+  QAQC_COLS.map((c) => {
+    const v = a[c.name];
+    return v == null || s(v) === '' ? null : String(v);
+  });
 
 /** Түүхий `features` → дэлгэцийн мөрүүд (шалгуур энэ функцийг шууд дуудна). */
 export function toRows(feats: readonly Feat[]): QaqcRow[] {
@@ -299,12 +329,7 @@ export function toRows(feats: readonly Feat[]): QaqcRow[] {
          модыг холбоно. Хавтгай (0) нь «мод холбогдоогүй» гэсэн ҮНЭН төлөв. */
       depth: 0,
       group: false,
-      /* ⚠️ Хоосон тэмдэгт мөрийг `null` болгоно — «бөглөгдөөгүй» тооллого нь
-         хоёуланг нэг гэж үзэх ёстой (эх өгөгдөлд хоёул тохиолддог). */
-      docs: QAQC_COLS.map((c) => {
-        const v = a[c.name];
-        return v == null || s(v) === '' ? null : String(v);
-      }),
+      docs: docsOf(a),
     });
   }
   return out;
@@ -378,7 +403,10 @@ export function planQaqcPaste(
       if (!r) { skipped += 1; continue; }
       const v = String(grid[gr][gc] ?? '').trim();
       if (!v) { skipped += 1; continue; }
-      hits.push({ oid: r.oid, di, v: v.slice(0, 4000) });
+      /* ⚠️ 2026-10-09: ТАСЛАХГҮЙ (урьд нь дурын `slice(0, 4000)`) — таслагдсан дугаар/нэр
+         нь ЧИМЭЭГҮЙ буруу утга. Талбараас урт утгыг хадгалахын өмнө `qaqcTooLong`
+         нүдээр нь нэрлэж зогсооно. */
+      hits.push({ oid: r.oid, di, v });
     }
   }
   return { hits, skipped };
@@ -421,6 +449,118 @@ export function qaqcUpdates(
     byOid.set(oid, a);
   }
   return { updates: [...byOid.values()], skipped };
+}
+
+/** `«ObjectID:баганын индекс»` → [oid, di]; буруу түлхүүрт `null` (`qaqcUpdates`-ийн ⚠️ `cut <= 0`) */
+const splitKey = (pk: string): [number, number] | null => {
+  const cut = pk.lastIndexOf(':');
+  const oid = Number(pk.slice(0, cut));
+  const di = Number(pk.slice(cut + 1));
+  if (cut <= 0 || !Number.isInteger(oid) || !Number.isInteger(di) || di < 0 || di >= QAQC_COLS.length) return null;
+  return [oid, di];
+};
+
+/** Талбарт багтахгүй нүд */
+export type QaqcTooLong = { key: string; oid: number; di: number; len: number; max: number };
+
+/**
+ * ТАЛБАРЫН УРТААС ХЭТЭРСЭН НҮД — хадгалахын ӨМНӨ (⚠️ 2026-10-09).
+ * ⚠️ Урт нь `qaqcUpdates`-ийн илгээх утгаар (`trim`) хэмжигдэнэ. Дээд урт
+ *    мэдэгдэхгүй (`null`) баганыг шалгахгүй — сервер өөрөө татгалзана.
+ * ⚠️ ТАСЛАХГҮЙ, зогсооно: таслагдсан акт/баримтын дугаар нь чимээгүй худал.
+ */
+export function qaqcTooLong(
+  pend: Readonly<Record<string, string>>,
+  maxLen: readonly (number | null)[],
+): QaqcTooLong[] {
+  const out: QaqcTooLong[] = [];
+  for (const [key, text] of Object.entries(pend)) {
+    const kd = splitKey(key);
+    if (!kd) continue;
+    const max = maxLen[kd[1]];
+    const len = text.trim().length;
+    if (max != null && len > max) out.push({ key, oid: kd[0], di: kd[1], len, max });
+  }
+  return out;
+}
+
+/** Ачаалсны ДАРАА серверт өөрчлөгдсөн нүд; `gone` = мөр нь серверт алга болсон */
+export type QaqcConflict = {
+  key: string; oid: number; di: number;
+  base: string | null; live: string | null; gone: boolean;
+};
+
+/**
+ * ЗЭРЭГ ЗАСВАРЫН ЗӨРЧИЛ — хадгалахын ӨМНӨ (⚠️ 2026-10-09).
+ *
+ * ⚠️ ЯАГААД: `saveQaqc` нь нөхцөлгүй `updates` илгээдэг тул хуудсыг ачаалсны
+ *    ДАРАА өөр хүн (өөр төхөөрөмж) бөглөсөн утгыг энэ табын хуучин суурин дээрх
+ *    засвар ЧИМЭЭГҮЙ дардаг байв. Одоо бичихийн өмнө хөндөх мөрүүдийг дахин уншиж
+ *    (`fetchQaqcDocs`), ачаалах үед харсан утгаас (`base`) ӨӨРЧЛӨГДСӨН нүдийг
+ *    бичихгүй — дуудагч тэднийг хадгалаагүй засвар хэвээр үлдээж, нэрлэнэ.
+ * ⚠️ Жишилт `trim`-тэй, `null` = `''` (`commit`-ийн ижил дүрэм).
+ * ⚠️ Сервер аль хэдийн ЯГ энэ утгатай бол зөрчил БИШ (бичсэн ч үр дүн ижил).
+ * ⚠️ Мөр нь серверт алга (`live`-д байхгүй) бол зөрчил — устгагдсан мөр рүү бичихгүй.
+ * ⚠️ Буруу түлхүүрийг энд алгасна — тэднийг `qaqcUpdates`-ийн `skipped` барина.
+ */
+export function qaqcConflicts(
+  pend: Readonly<Record<string, string>>,
+  base: ReadonlyMap<number, readonly (string | null)[]>,
+  live: ReadonlyMap<number, readonly (string | null)[]>,
+): QaqcConflict[] {
+  const norm = (v: string | null | undefined) => (v ?? '').trim();
+  const out: QaqcConflict[] = [];
+  for (const [key, text] of Object.entries(pend)) {
+    const kd = splitKey(key);
+    if (!kd) continue;
+    const [oid, di] = kd;
+    const b = base.get(oid)?.[di] ?? null;
+    const lr = live.get(oid);
+    if (!lr) { out.push({ key, oid, di, base: b, live: null, gone: true }); continue; }
+    const l = lr[di] ?? null;
+    if (norm(l) === norm(b) || norm(l) === text.trim()) continue;
+    out.push({ key, oid, di, base: b, live: l, gone: false });
+  }
+  return out;
+}
+
+/**
+ * ХӨНДӨХ МӨРҮҮДИЙН ОДООГИЙН БАРИМТЫН 9 УТГА — `qaqcConflicts`-ийн `live` (⚠️ 2026-10-09).
+ * ⚠️ `objectIds`-оор 500-аар хуваана; хариу тасарвал (`exceededTransferLimit`)
+ *    ДУТУУ зураглалаар «мөр алга» гэж андуурахгүйн тулд ШИДНЭ.
+ * ⚠️ Алдаа HTTP 200-аар ирдэг — `agsFetch` (`arcgisPost`) `{error}`-ийг шиднэ.
+ * ⚠️ Зөвхөн УНШИЛТ — алдаа гарвал дуудагч юу ч бичихгүй зогсоно.
+ */
+export async function fetchQaqcDocs(
+  pkgKey: string,
+  oids: readonly number[],
+): Promise<Map<number, (string | null)[]>> {
+  const ref = qaqcTableOf(pkgKey);
+  if (!ref) throw new Error(tr('Энэ багцын QAQC хүснэгт тодорхойлогдоогүй байна.'));
+  const url = qaqcUrl(ref);
+  const out = new Map<number, (string | null)[]>();
+  const ids = [...new Set(oids)].filter((o) => Number.isInteger(o));
+  if (!ids.length) return out;
+  const have = await fieldsOf(url);
+  const cols = QAQC_COLS.map((c) => c.name).filter((f) => have.has(f));
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const j = await agsFetch(`${url}/query`, {
+      objectIds: chunk.join(','),
+      outFields: [OID, ...cols].join(','),
+      returnGeometry: 'false',
+    });
+    if (j.exceededTransferLimit) {
+      throw new Error(tr('QAQC-ийн одоогийн утгыг бүрэн уншиж чадсангүй — засвар хадгалагдаагүй. Дахин оролдоно уу.'));
+    }
+    for (const f of (j.features ?? []) as Feat[]) {
+      const a = f.attributes;
+      if (a?.[OID] == null) continue;
+      const oid = Number(a[OID]);
+      if (Number.isInteger(oid)) out.set(oid, docsOf(a));
+    }
+  }
+  return out;
 }
 
 /**

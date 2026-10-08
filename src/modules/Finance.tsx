@@ -128,10 +128,9 @@ const n = (v: unknown): number => {
 function ym(v: unknown): string | null {
   if (v == null || v === '' || v === 0) return null;
   // ArcGIS-ийн Date талбар — ms epoch тоо
-  if (typeof v === 'number' && v > 1e12) {
-    const d = new Date(v);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-  }
+  /* ⚠️ 2026-10-09: `format.monthKey` (локал сар) — портал сарыг ХААНА Ч локалаар түлхүүрлэдэг;
+     UTC сар нь Улаанбаатарын (UTC+8) сарын 1-ний 00–08 цагийн гүйлгээг ӨМНӨХ сард оруулдаг байв. */
+  if (typeof v === 'number' && v > 1e12) return monthKey(v);
   const s = String(v).trim().replace(/\./g, '-');
   const okYear = (y: number) => y >= 2000 && y <= 2100;
   // ISO: оныг мөрийн ЭХНЭЭС барина — «20026…» гэх гажигт дундаас таслахгүй
@@ -2066,6 +2065,16 @@ function FullTable({
          *    өгөгдлийн сар өөрчлөгдөхгүй. `Cashflow_start` `Date.UTC`-ээр бичигдсээр.
          */
         const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        /**
+         * БАЙГАА сарын мөрийн `Cashflow_start` → сар. ⚠️ 2026-10-09: ХУУЧИН (UTC шөнө дундаар бичсэн)
+         * утгыг UTC сараар — UTC-ээс баруун бүсэд локал уншвал өмнөх сар болдог. Бусад (шинэ үд
+         * дунд, AGOL/Excel-ийн УБ шөнө дунд) нь `keyOf` (локал) хэвээр. УБ-д хоёр зам ижил сар.
+         */
+        const startKeyOf = (t: number) => {
+          if (t % 86_400_000 !== 0) return keyOf(new Date(t));
+          const d = new Date(t);
+          return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        };
         /** Эхлэх–дуусах огнооны хоорондох сарууд (орон нутгийн сараар, дээд тал нь 480) */
         const monthsOf = (st: Date, en: Date) => {
           const want = new Map<string, { s: number; e: number }>();
@@ -2074,9 +2083,13 @@ function FullTable({
           const n2 = Math.min(480, Math.max(1,
             (en.getFullYear() - y) * 12 + (en.getMonth() - m) + 1));
           for (let i = 0; i < n2; i += 1) {
+            /* ⚠️ 2026-10-09: UTC ҮД ДУНД (12:00Z) — түлхүүр (`keyOf`) нь хөтчийн ЛОКАЛ сар тул UTC
+               шөнө дунд нь UTC-ээс БАРУУН бүсэд (Америк г.м.) өмнөх сарын сүүлийн өдөр болж, бичсэн
+               мөр «өөр сар» гэж уншигдан дахин нэмэгддэг байв. Үд дунд нь UTC−11…UTC+11 бүх бүсэд
+               ЯГ тэр өдөр. Уншихдаа хуучин (шөнө дундын) утгыг ч хүлээн авна — `keyOf` хэвээр. */
             want.set(`${y}-${String(m + 1).padStart(2, '0')}`, {
-              s: Date.UTC(y, m, 1),
-              e: Date.UTC(y, m + 1, 1) - 86400000,
+              s: Date.UTC(y, m, 1, 12),
+              e: Date.UTC(y, m + 1, 0, 12),
             });
             m += 1;
             if (m > 11) { m = 0; y += 1; }
@@ -2149,7 +2162,7 @@ function FullTable({
           const have = new Map<string, Row>();
           for (const mr of monthBy.get(id) ?? []) {
             const t = Number(mr.Cashflow_start);
-            if (Number.isFinite(t)) have.set(keyOf(new Date(t)), mr);
+            if (Number.isFinite(t)) have.set(startKeyOf(t), mr);
           }
 
           /* Шинээр гарсан сар — нэмнэ (хувь нь ХООСОН, хүн бөглөнө) */
@@ -2213,7 +2226,7 @@ function FullTable({
           for (const r of fresh) {
             const fid = cfIdOf(r.Cashflow_ID);
             const t = Number(r.Cashflow_start);
-            if (fid != null && r.Cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${keyOf(new Date(t))}`);
+            if (fid != null && r.Cashflow_start != null && Number.isFinite(t)) freshKeys.add(`${fid}|${startKeyOf(t)}`);
           }
           const has = (v: unknown) => v != null && String(v).trim() !== '';
           const dels = monthDels.filter((moid) => {

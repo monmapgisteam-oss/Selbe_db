@@ -103,6 +103,12 @@ assert.equal(epochOf(null), null);
   assert.equal(s.paid, 60, 'төлбөр нь мөр бүрээр НИЙЛҮҮЛНЭ');
   assert.equal(s.paidPct, (60 / 90) * 100, 'хувь нь 0–100, pct() 100-аар үржүүлдэггүй');
 
+  /* ⚠️ 2026-10-09: `ref.pct` өгсөн бол дахин бодохгүй; `null` → «—» (0% биш) */
+  const rp = computeIpc(rows, NOW, { contract: 200, paidContracted: 0, pct: null });
+  assert.ok(rp.facts.includes('гэрээнд эзлэх —'), rp.facts.join(' | '));
+  const rq = computeIpc(rows, NOW, { contract: 200, paidContracted: 50, pct: 12.5 });
+  assert.ok(rq.facts.includes('гэрээнд эзлэх 12.5%'), rq.facts.join(' | '));
+
   const r = computeIpc(rows, NOW);
   const t1 = r.tables[0];
   assert.equal(t1.rows.length, 1, '3 мөр → 1 гэрээний мөр');

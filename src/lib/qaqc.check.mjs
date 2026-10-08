@@ -32,6 +32,7 @@ import assert from 'node:assert/strict';
 import {
   QAQC_TABLE, QAQC_SERVICES, QAQC_COLS, QAQC_GROUPS, planQaqcPaste, QAQC_PASTE_MAX,
   qaqcTableOf, qaqcUrl, isDataRow, toRows, filledCount, qaqcUpdates, attachTree, qaqcPayload,
+  qaqcTooLong, qaqcConflicts,
 } from './qaqc.ts';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 
@@ -251,6 +252,33 @@ assert.equal(qaqcPayload([]), '[]');
   const b = planQaqcPaste(rows, vis, 0, 0, big);
   assert.equal(b.hits.length + b.skipped, 36, 'нүд бүр тоологдоно');
   assert.ok(QAQC_PASTE_MAX >= 5000);
+  /* ⚠️ 2026-10-09: урт утга ТАСЛАГДАХГҮЙ — хадгалахын өмнө `qaqcTooLong` нэрлэнэ */
+  const long = 'Ж'.repeat(5000);
+  assert.equal(planQaqcPaste(rows, vis, 0, 0, [[long, 'x']]).hits[0].v, long, 'буулгалт утгыг таслах ёсгүй');
 }
 
-console.log('qaqc.check ✓ (наалт ✓)');
+/* ── 10. ⚠️ 2026-10-09: ТАЛБАРЫН УРТ — нүдээр нь ── */
+{
+  const maxLen = QAQC_COLS.map(() => null);
+  maxLen[0] = 5;
+  const bad = qaqcTooLong({ '4:0': ' 123456 ', '5:0': '12345', '4:1': 'x'.repeat(9999), 'muu': 'xxxxxxxx' }, maxLen);
+  assert.deepEqual(bad, [{ key: '4:0', oid: 4, di: 0, len: 6, max: 5 }], 'trim-ийн дараах урт; мэдэгдэхгүй багана шалгагдахгүй');
+  assert.deepEqual(qaqcTooLong({ '4:0': 'x'.repeat(99) }, []), [], 'урт мэдэгдэхгүй бол зогсоохгүй');
+}
+
+/* ── 11. ⚠️ 2026-10-09: ЗЭРЭГ ЗАСВАРЫН ЗӨРЧИЛ ── */
+{
+  const d = (...v) => [...v, ...Array(9 - v.length).fill(null)];
+  const base = new Map([[1, d('M-1')], [2, d(null)], [3, d('A')], [4, d('B ')], [5, d('C')]]);
+  const live = new Map([[1, d('M-1')], [2, d('X')], [3, d('Z')], [4, d('B')]]);
+  const pend = { '1:0': 'M-2', '2:0': 'Y', '3:0': 'Z', '4:0': 'Q', '5:0': 'W', 'muu': 'x' };
+  const c = qaqcConflicts(pend, base, live);
+  assert.deepEqual(c.map((x) => x.key).sort(), ['2:0', '5:0'],
+    'хөндөөгүй (1) · сервер аль хэдийн ижил (3) · зөвхөн зай (4) нь зөрчил БИШ; өөрчлөгдсөн (2) · алга болсон (5) нь зөрчил');
+  const c2 = c.find((x) => x.key === '2:0');
+  assert.deepEqual([c2.base, c2.live, c2.gone], [null, 'X', false]);
+  assert.equal(c.find((x) => x.key === '5:0').gone, true, 'серверт мөр алга → зөрчил');
+  assert.deepEqual(qaqcConflicts({}, base, live), []);
+}
+
+console.log('qaqc.check ✓ (наалт ✓ · урт ✓ · зөрчил ✓)');

@@ -23,6 +23,7 @@ import { arcgisPost } from './query';
 import { register } from './dataBus';
 import { subscribeTotals } from './totals';
 import { t as tr } from '@/lib/i18nCore';
+import { isClearedStatus } from './land';
 
 /**
  * Барилга эхлүүлэхэд саад болж буй нэгж талбарын SQL нөхцөл.
@@ -75,7 +76,12 @@ function parcelSR(): Promise<number> {
         const sr = m?.extent?.spatialReference;
         return Number(sr?.wkid ?? sr?.latestWkid) || 32648;
       })
-      .catch(() => 32648);
+      /* ⚠️ 2026-10-09: түр зуурын уналтын нөөц утгыг КЭШЛЭХГҮЙ — урьд нь 32648 сесс дуустал
+         үлдэж, метадата сэргэсэн ч дахин асуудаггүй байв. Энэ дуудлагад л нөөцийг буцаана. */
+      .catch(() => {
+        srCache = null;
+        return 32648;
+      });
   return srCache;
 }
 
@@ -412,6 +418,38 @@ function shapesOf(g: Geoms, wkid: number): Array<[string, string]> {
   ];
 }
 
+/**
+ * «Бүрэн чөлөөлсөн»-ийн ХУВИЛБАР бичиглэлтэй (цэг · зай · том/жижиг үсэг) дэвшигчдийг хасна.
+ *
+ * ⚠️ 2026-10-09: `parcelLeftWhere` нь ЯГ таарцын SQL тул «Бүрэн чөлөөлсөн.» гэх мэт мөр
+ *    дашбоард дээр (`land.isClearedStatus`) ЧӨЛӨӨЛСӨН, харин давхцалд СААД болж ЗӨРДӨГ байв.
+ *    SQL-ээр хэвийншүүлэх найдваргүй (кирилл LOWER/TRIM үйлчилгээ бүрд ялгаатай) тул дэвшигч
+ *    OID-уудын төлөвийг асууж клиент талд ижил дүрмээр шүүнэ. Хариунд ирээгүй OID-г ҮЛДЭЭНЭ
+ *    (саад гэж үзэх нь «саадгүй» гэсэн худлаас аюулгүй).
+ */
+async function dropCleared(ids: Set<number>): Promise<Set<number>> {
+  if (!ids.size) return ids;
+  const oidF = PARCEL_LEFT.oid;
+  const all = [...ids];
+  const STEP = 500;
+  const pages: number[][] = [];
+  for (let i = 0; i < all.length; i += STEP) pages.push(all.slice(i, i + STEP));
+  const res = await Promise.all(pages.map((p) => post(PARCEL_LEFT.url, {
+    objectIds: p.join(','),
+    outFields: `${oidF},${PARCEL_LEFT.fields.status}`,
+    returnGeometry: 'false',
+  })));
+  const out = new Set(ids);
+  for (const j of res) {
+    if (j.exceededTransferLimit) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
+    for (const f of (j.features ?? []) as { attributes?: Record<string, unknown> }[]) {
+      const id = Number(f.attributes?.[oidF]);
+      if (Number.isFinite(id) && isClearedStatus(f.attributes?.[PARCEL_LEFT.fields.status])) out.delete(id);
+    }
+  }
+  return out;
+}
+
 /** Серверийн огтлолцол — хэлбэр бүртэй огтлолцох ҮЛДСЭН нэгж талбарын OID-ууд */
 async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<Set<number>> {
   // ⚠️ `N'…'` угтвар — талбар нь Unicode (nvarchar); зарим үйлчилгээнд
@@ -446,19 +484,25 @@ async function overlapSingle(sources: Src[]): Promise<Overlap> {
   /* ⚠️ Геометр огт гараагүй ч УНАСАН давхарга байвал түүнийг дамжуулна —
      эс бөгөөс «хэлбэр алга» нь «саад алга» гэж ХУДАЛ уншигдана. */
   if (!shapes.length) return withFailed([], failed);
-  return withFailed([...await askLeft(shapes, wkid)], failed);
+  /* ⚠️ 2026-10-09: чөлөөлсөн-ий хувилбар бичиглэлийг хасна (`dropCleared`) */
+  return withFailed([...await dropCleared(await askLeft(shapes, wkid))], failed);
 }
 
-/** Дэвшигч нэгж талбаруудын БҮТЭН геометр (ерөнхийлөлтгүй — сервер ч бүтнээр тулгадаг) */
+/**
+ * Дэвшигч нэгж талбаруудын БҮТЭН геометр (ерөнхийлөлтгүй — сервер ч бүтнээр тулгадаг).
+ * ⚠️ 2026-10-09: төлөвийг ХАМТ авч «Бүрэн чөлөөлсөн»-ий хувилбар бичиглэлтэйг ХАСНА
+ *    (`dropCleared`-ийн дүрэм — багцын зам нэмэлт хүсэлтгүй).
+ */
 async function parcelRings(ids: number[], wkid: number): Promise<Map<number, number[][][]>> {
   const oidF = PARCEL_LEFT.oid;
   const out = new Map<number, number[][][]>();
+  const cleared = new Set<number>();
   const STEP = 500;
   const pages: number[][] = [];
   for (let i = 0; i < ids.length; i += STEP) pages.push(ids.slice(i, i + STEP));
   const res = await Promise.all(pages.map((p) => post(PARCEL_LEFT.url, {
     objectIds: p.join(','),
-    outFields: oidF,
+    outFields: `${oidF},${PARCEL_LEFT.fields.status}`,
     returnGeometry: 'true',
     outSR: String(wkid),
   })));
@@ -466,11 +510,13 @@ async function parcelRings(ids: number[], wkid: number): Promise<Map<number, num
     if (j.exceededTransferLimit) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
     for (const f of (j.features ?? []) as { attributes?: Record<string, unknown>; geometry?: { rings?: number[][][] } }[]) {
       const id = Number(f.attributes?.[oidF]);
-      if (Number.isFinite(id) && f.geometry?.rings?.length) out.set(id, f.geometry.rings);
+      if (!Number.isFinite(id)) continue;
+      if (isClearedStatus(f.attributes?.[PARCEL_LEFT.fields.status])) cleared.add(id);
+      else if (f.geometry?.rings?.length) out.set(id, f.geometry.rings);
     }
   }
   /* ⚠️ Дэвшигч дутвал хуваарилалт ДУТУУ болно — алдаа (дуудагч хуучин зам руу шилжинэ) */
-  if (ids.some((id) => !out.has(id))) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
+  if (ids.some((id) => !out.has(id) && !cleared.has(id))) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
   return out;
 }
 
@@ -595,8 +641,12 @@ function hitsFeat(parcel: number[][][], pbb: Box, f: Feat, e: number): boolean {
   }
   if (f.rings) {
     for (const r of f.rings) if (edgesHit(parcel, pbb, r, e)) return true;
-    const v = parcel[0]?.[0];
-    if (v && inRings(f.rings, v[0], v[1])) return true;          // нэгж талбар эх полигон дотор
+    /* ⚠️ 2026-10-09: ОЛОН хэсэгтэй нэгж талбарын ЦАГИРАГ БҮРИЙН эхний оройг шалгана — урьд нь
+       зөвхөн `parcel[0][0]` тул эхний хэсэг гадна, бусад хэсэг эх полигон дотор бол алдагддаг байв. */
+    for (const pr of parcel) {
+      const v = pr[0];
+      if (v && inRings(f.rings, v[0], v[1])) return true;        // нэгж талбар эх полигон дотор
+    }
     for (const r of f.rings) if (r.length && inRings(parcel, r[0][0], r[0][1])) return true; // эх нь нэгж талбар дотор
   }
   return false;

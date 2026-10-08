@@ -26,7 +26,7 @@ import { register } from 'node:module';
  * ⚠️ 2026-09-25: токен ХЭЗЭЭ Ч query string-д орохгүй (сервер/прокси лог,
  *    Referer-ээр алдагдана) — GET хүсэлтийг POST form болгож хөрвүүлнэ.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const ENTRY = String(process.argv[1] ?? '').replace(/\\/g, '/');
 const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
@@ -36,13 +36,24 @@ const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
    `.env`-ийг өөрөө уншдаггүй тул энд ачаална (байгаа env-ийг дарахгүй).
    ⚠️ 2026-09-25: `.env.development.local`-ийг ЭХЛЭЖ уншина — «эхэнд тавьсан нь ялна»
    тул урьд `.env` локал давхаргыг дардаг байв (Next.js-ийн дараалалтай эсрэг). */
+const HAD_HJ = !!process.env.NEXT_PUBLIC_ARCGIS_HJ;
+let envRead = false;
 for (const f of ['../.env.development.local', '../.env']) {
   try {
+    if (f === '../.env') envRead = existsSync(new URL(f, import.meta.url));
     for (const line of readFileSync(new URL(f, import.meta.url), 'utf8').split(/\r?\n/)) {
       const m = /^\s*(NEXT_PUBLIC_[A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
       if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
     }
   } catch { /* файл алга — хэвийн */ }
+}
+/* ⚠️ 2026-10-09: `.env` нь git-ignored (зөвхөн `.env.example` track хийгддэг) — шинэ clone/worktree
+   дээр `npm test`-ийн ~28 шалгуур «NEXT_PUBLIC_* алга» алдаагаар учир нь ойлгомжгүй унадаг байв.
+   CI нь орчны хувьсагчаар өгдөг (`test.yml`) тул env-д `NEXT_PUBLIC_ARCGIS_HJ` байвал чимээгүй.
+   Процесс бүрд НЭГ мөр (stderr) — `test-all` эхэнд нь мөн нэг удаа хэлнэ, унасан шалгуурын
+   гаралтад ч учир нь шууд харагдана. */
+if (!envRead && !HAD_HJ) {
+  process.stderr.write('⚠️ .env алга — .env.example-ийг .env болгож хуулна уу (cp .env.example .env)\n');
 }
 const orgRoot = (u) => (u || '').replace(/\/+$/, '').replace(/arcgis\/rest\/services$/, '');
 const HJ = orgRoot(process.env.NEXT_PUBLIC_ARCGIS_HJ);

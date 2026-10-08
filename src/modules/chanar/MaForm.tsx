@@ -34,6 +34,7 @@ import {
 import { MA_CATEGORIES, maCategoryLabel } from '@/lib/chanarTemplates';
 import { toDateInput, fromDateInput, ymd } from './chanarUi';
 import { Sec, Txt, Chk, DateInp, Inp, Sel, Multi, NumInp, ListInp, RowBtn, type Mode } from './fields';
+import { DateField } from '@/modules/huvaari/DateField';
 import s from '../chanar.module.css';
 
 const TEXTS: { k: 'scope' | 'manufacturer' | 'intro' | 'standards' | 'sample' | 'storage' | 'transport' | 'techSpec' | 'purpose'; label: () => string }[] = [
@@ -244,8 +245,9 @@ export function MaForm({
                         <label className={s.matFld}>
                           <span className={s.matLbl}>{tr('Талбайд ирсэн огноо')}</span>
                           {m.edit && !mat.locked ? (
-                            <input type="date" className={s.input} aria-label={`${tr('Талбайд ирсэн огноо')} ${i + 1}`} value={toDateInput(mat.arrivedAt)} disabled={m.busy}
-                              onChange={(e) => setMat(i, { arrivedAt: fromDateInput(e.target.value) })} />
+                            /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
+                            <DateField label={`${tr('Талбайд ирсэн огноо')} ${i + 1}`} value={toDateInput(mat.arrivedAt)} disabled={m.busy}
+                              onChange={(v) => setMat(i, { arrivedAt: fromDateInput(v) })} />
                           ) : <span>{ymd(mat.arrivedAt)}</span>}
                         </label>
                       </div>
@@ -426,8 +428,9 @@ export function MaForm({
                     ))}
                     <td>
                       {m.edit ? (
-                        <input type="date" className={s.input} aria-label={`${r.label()} — ${tr('Огноо')}`} value={toDateInput(sg.date)} disabled={m.busy}
-                          onChange={(e) => setSig(r.k, { date: fromDateInput(e.target.value) })} />
+                        /* ⚠️ 2026-10-09: натив `<input type="date">` → `DateField` (`fields.tsx` 2026-10-05-ны ⚠️); хадгалах хэлбэр ХЭВЭЭР (`fromDateInput`) */
+                        <DateField label={`${r.label()} — ${tr('Огноо')}`} value={toDateInput(sg.date)} disabled={m.busy}
+                          onChange={(v) => setSig(r.k, { date: fromDateInput(v) })} />
                       ) : ymd(sg.date)}
                     </td>
                   </tr>

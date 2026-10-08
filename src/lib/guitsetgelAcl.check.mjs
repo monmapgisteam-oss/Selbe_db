@@ -299,7 +299,7 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
   /* ⚠️ АРХИВЛАЛТААС ӨМНӨ: `applyAdds` нь буцаашгүй тул нэг ч талбар
      хөндөгдөхөөс өмнө таслах ёстой. Дараалал нь шалгуурын БҮХ утга. */
   const ia = S.indexOf('const deny = authz(a.stage');
-  const iar = S.indexOf('archiveSubmission(cur)');
+  const iar = S.indexOf('archiveSubmission(cur, a.subAt)');
   assert.ok(ia > 0, 'apply-д authz дуудагдаагүй');
   assert.ok(iar > ia,
     'hyanaltStore: authz нь archiveSubmission-оос ХОЙШ — архивын бичилт таслагдахгүй');

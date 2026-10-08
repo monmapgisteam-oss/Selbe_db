@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import {
   scorePerf, scoreFin, scoreLand, scorePlan, scoreHse, scoreQual, scoreLevel, dimLevel, scorePermit,
   totalOf, groupByType, projectDims, pointInRings, ringCenter, blockZoneScores, meanOf, DIMS, workIssues,
-  statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve,
+  statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve, workDimLevel,
 } from './scorecard.ts';
 
 const DAY = 86_400_000;
@@ -63,6 +63,19 @@ assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, ove
 assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: 4, overlapFailed: false }).score, 80);
 assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: null, overlapFailed: true }).score, null, 'огтлолцол татагдаагүй → «цэвэр» гэж хэлэхгүй');
 assert.equal(scoreLand({ isLandWork: true, landPct: 71.4, hasFootprint: false, overlap: null, overlapFailed: false }).score, 71.4);
+/* ⚠️ 2026-10-09: газрын бус ажилд 1 давхцал (95 оноо) = CEO газрын карттай нэг `overlapLevel` → bad */
+{
+  const one = scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: 1, overlapFailed: false });
+  assert.equal(one.score, 95);
+  assert.equal(one.level, 'bad', '≥1 давхцал = bad (pctLevel(95)=good биш)');
+  assert.equal(one.issues[0].tone, 'bad');
+  assert.equal(workDimLevel({ dims: { land: one } }, 'land'), 'bad');
+  const zero = scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: 0, overlapFailed: false });
+  assert.equal(workDimLevel({ dims: { land: zero } }, 'land'), 'good');
+  const lw = scoreLand({ isLandWork: true, landPct: 96, hasFootprint: false, overlap: null, overlapFailed: false });
+  assert.equal(lw.level, undefined, 'газар чөлөөлөлтийн ажил pctLevel хэвээр');
+  assert.equal(workDimLevel({ dims: { land: lw } }, 'land'), 'good');
+}
 
 /* ── 4. Ерөнхий төлөвлөгөө ── */
 assert.equal(scorePlan({ blockScores: [], failingZones: [] }).score, null);

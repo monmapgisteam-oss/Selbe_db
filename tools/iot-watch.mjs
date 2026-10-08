@@ -15,7 +15,10 @@
  */
 
 import fs from 'node:fs';
-import { SENSORS, loadSensors } from '../src/lib/sensors.ts';
+import { loadSensors, outOfRange } from '../src/lib/sensors.ts';
+/* ⚠️ 2026-10-09: «их нь сайн» жагсаалтыг CEO самбараас ИМПОРТЛОНО — хуулбарлавал хоёр тал салж,
+   самбар «хуурай» гэж шар байхад Telegram «хэвийн» гэж хэлнэ. */
+import { IOT_HIGHER_IS_GOOD } from '../src/lib/ceo/iot.ts';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 /** Мэдэгдэл хүлээн авах chat id-ууд — таслалаар (ботын TELEGRAM_ALLOWED-той ижил хэлбэр) */
@@ -63,40 +66,65 @@ async function tg(method, body) {
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
- * Мэдрэгчийн ТӨЛӨВ — `Iot.tsx`-ийн `stateOf`-той ИЖИЛ дараалал.
- * ⚠️ Хоёр газарт өөр дүрэм бичвэл зурагт ногоон харагдаж байхад Telegram улаан
- *    дохио явуулж, аль нь үнэн болох нь мэдэгдэхгүй болно.
+ * Мэдрэгчийн ТӨЛӨВ — CEO самбарын `src/lib/ceo/iot.ts` (`computeIot`)-ийн дүрэмтэй НЭГ.
+ * ⚠️ 2026-10-09: урьд нь «`Iot.tsx`-ийн `stateOf`-той ИЖИЛ» гэж бичсэн байсан ч тийм
+ *    функц тэнд аль хэдийн байхгүй; харин босгыг ГЭНЭН `latest >= alert`-ээр шалгадаг
+ *    байсан тул (1) decoder-ийн 6553.5%-ийн гэмтэлтэй заалт «хөрс чийглэг» гэж ногоон,
+ *    (2) ХУУРАЙ хөрс (чийг < 15%) «хэвийн боллоо» гэж мэдэгддэг байв. Одоо:
+ *      · физик мужаас гадуур (`fault` / `outOfRange`) → «мэдрэгчийн гэмтэл», босготой ЖИШИХГҮЙ;
+ *      · `IOT_HIGHER_IS_GOOD` (хөрсний чийг) → босгоос ДООШ бол «хуурай» (анхааруулга).
+ * ⚠️ Хоёр газарт өөр дүрэм бичвэл самбар ногоон байхад Telegram улаан дохио явуулж,
+ *    аль нь үнэн болох нь мэдэгдэхгүй болно.
  */
+const isFault = (m) => m.fault || outOfRange(m, m.latest);
+const higherIsGood = (sn, m) => IOT_HIGHER_IS_GOOD.has(`${sn.key}:${m.key}`);
+const isHit = (sn, m) => !isFault(m) && m.alert && m.latest != null
+  && !higherIsGood(sn, m) && m.latest >= m.alert.value;
+const isDry = (sn, m) => !isFault(m) && m.alert && m.latest != null
+  && higherIsGood(sn, m) && m.latest < m.alert.value;
+
 function stateOf(sn) {
   if (sn.error) return 'down';
   if (sn.lastAt == null) return 'silent';
   const h = (Date.now() - sn.lastAt) / 3_600_000;
   if (h > STALE_H) return 'stale';
-  const hit = sn.series.some((m) => m.alert && m.latest != null && m.latest >= m.alert.value);
-  return hit ? 'alert' : 'ok';
+  if (sn.series.some((m) => isHit(sn, m))) return 'alert';
+  if (sn.series.some(isFault)) return 'fault';
+  if (sn.series.some((m) => isDry(sn, m))) return 'dry';
+  return 'ok';
 }
 
-const ICON = { down: '🔴', silent: '⚪', stale: '🟠', alert: '🔴', ok: '🟢' };
+const ICON = { down: '🔴', silent: '⚪', stale: '🟠', alert: '🔴', fault: '🟠', dry: '🟡', ok: '🟢' };
 const WORD = {
   down: 'үйлчилгээ унасан',
   silent: 'дүлий (задарсан заалт алга)',
   stale: `хуучирсан (>${STALE_H}ц)`,
   alert: 'БОСГО ДАВСАН',
+  fault: 'мэдрэгчийн гэмтэл (боломжгүй утга)',
+  dry: 'хөрс хуурай',
   ok: 'хэвийн боллоо',
 };
 
-/** Босго давсан үзүүлэлтүүдийн мөр — ЯМАР утга, ЯМАР босго вэ */
+const fmt = (m) => (m.latest == null ? '—' : m.latest.toFixed(m.dp));
+
+/** Босго давсан / гэмтэлтэй / хуурай үзүүлэлтүүдийн мөр — ЯМАР утга, ЯМАР босго вэ */
 function detail(sn) {
   const rows = [];
   for (const m of sn.series) {
-    if (!(m.alert && m.latest != null && m.latest >= m.alert.value)) continue;
-    rows.push(`  • ${esc(m.label)}: <b>${m.latest.toFixed(m.dp)}${esc(m.unit)}</b>`
-      + ` (босго ${m.alert.value}${esc(m.unit)}) — ${esc(m.alert.note)}`);
+    if (isFault(m)) {
+      rows.push(`  • ${esc(m.label)}: <b>${fmt(m)}${esc(m.unit)}</b> — боломжгүй утга, мэдрэгчийн гэмтэл`);
+    } else if (isHit(sn, m)) {
+      rows.push(`  • ${esc(m.label)}: <b>${fmt(m)}${esc(m.unit)}</b>`
+        + ` (босго ${m.alert.value}${esc(m.unit)}) — ${esc(m.alert.note)}`);
+    } else if (isDry(sn, m)) {
+      rows.push(`  • ${esc(m.label)}: <b>${fmt(m)}${esc(m.unit)}</b>`
+        + ` (босго ${m.alert.value}${esc(m.unit)}-аас ДООШ) — хуурай`);
+    }
   }
   // Таамаг — «хэзээ хүрэх вэ» нь урьдчилан төлөвлөхөд хамгийн үнэ цэнэтэй
   for (const m of sn.series) {
     const h = m.trend?.etaHours;
-    if (h == null || !m.alert) continue;
+    if (h == null || !m.alert || isFault(m)) continue;
     const w = h < 48 ? `≈${Math.round(h)} цаг` : `≈${Math.round(h / 24)} хоног`;
     rows.push(`  • ${esc(m.label)}: ${w} дараа ${m.alert.value}${esc(m.unit)} хүрэх төлөвтэй`);
   }
@@ -116,7 +144,7 @@ async function check() {
     if (prev[sn.key] === undefined && st === 'ok') continue; // анхны ажиллалт
     lines.push(`${ICON[st]} <b>${esc(sn.label)}</b> — ${WORD[st]}`);
     if (st === 'down' && sn.error) lines.push(`  • ${esc(sn.error)}`);
-    if (st === 'alert') lines.push(...detail(sn));
+    if (st === 'alert' || st === 'fault' || st === 'dry') lines.push(...detail(sn));
   }
 
   // ⚠️ Төлөвийг ИЛГЭЭХЭЭС ӨМНӨ хадгална: илгээлт унавал дараагийн ажиллалтад

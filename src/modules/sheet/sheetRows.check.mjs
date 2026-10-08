@@ -125,6 +125,8 @@ console.log('✅ resolveSchema — зорилтот ба хуучин зэрэг
   /* Эх код: `sheetRows` ба `loadRows` хоёул `normDayMs`-ээр уншина */
   assert.match(SRC, /start: withDates && sc\.start\[i\] \? normDayMs\(/, 'sheetRows.start normDayMs-ээр');
   assert.match(SRC, /end: withDates && sc\.end\[i\] \? normDayMs\(/, 'sheetRows.end normDayMs-ээр');
+  /* ⚠️ 2026-10-09: агшны огноо (`fillDate` → `date`) ч мөн normDayMs-ээр */
+  assert.match(SRC, /const date = msToDay\(normDayMs\(ms\)\);/, 'sheetRows.date normDayMs-ээр');
   const SHEET = fs.readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
   assert.match(SHEET, /start: sc\.start\.map\(\(x\) => \(x \? normDayMs\(num\(a\[x\]\)\) : null\)\)/, 'loadRows.start normDayMs-ээр');
   assert.match(SHEET, /asOf = normDayMs\(num\(a\[sc\.f\.asOf\]\)\)/, 'loadRows.asOf normDayMs-ээр');

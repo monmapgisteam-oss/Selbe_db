@@ -48,7 +48,7 @@ import { roleForUser } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
-  NO_PARENT_REASON, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
+  NO_PARENT_REASON, ajilClaimHolder, ajilTableState, decideAjil, loadAllApproved, loadAllPending, loadPayloadStamped, returnStuckAjil, withdrawAjil,
   type AjilPayload, type AjilSubmission,
 } from '@/lib/ajilBatlah';
 import { roleOf } from '@/lib/permissions';
@@ -442,7 +442,8 @@ export function AjilBatlah() {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
-      if (m.ok) setNote(m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added)) + (m.warn ? ' ' + m.warn : ''));
+      /* ⚠️ 2026-10-09: `warn` нь `already` замд ч ирдэг (`materializeInner`) — урьд нь зөвхөн бичсэн замд залгагддаг байв */
+      if (m.ok) setNote((m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added))) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
       reload();
     } catch (e) {
@@ -625,7 +626,7 @@ export function AjilBatlah() {
               ) : todo.map((x) => (
                 <Row
                   key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                  detail={detail.get(x.oid)} busy={busy}
+                  detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
                   reason={reason.get(x.oid) ?? ''}
                   onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                   onReject={() => void reject(x)}
@@ -654,7 +655,7 @@ export function AjilBatlah() {
                 {stuck.map(({ sub: x, kind, readyAt }) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy}
+                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
                     reason="" onReason={() => {}}
                     badge={tr('Батлагдсан')}
                     lastError={applyErr.get(x.oid)}
@@ -690,7 +691,7 @@ export function AjilBatlah() {
                 {own.map((x) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy}
+                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
                     reason="" onReason={() => {}}
                     ownWhy={tr('Өөрийн илгээсэн нэмэлт ажлыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')}
                     onWithdraw={() => void withdraw(x)}
@@ -713,7 +714,7 @@ export function AjilBatlah() {
                 {orphan.map((x) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
-                    detail={detail.get(x.oid)} busy={busy}
+                    detail={detail.get(x.oid)} busy={busy} holder={ajilClaimHolder(x, st.at)}
                     reason={reason.get(x.oid) ?? ''}
                     onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
                     /* ⚠️ Өөрийн илгээлт бол товч ГАРАХГҮЙ — дарахад
@@ -735,7 +736,7 @@ export function AjilBatlah() {
 /* ══════════════════════ НЭГ ИЛГЭЭЛТИЙН МӨР ══════════════════════ */
 
 function Row({
-  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, onReturnStuck, badge, lastError,
+  sub, open, onToggle, detail, busy, reason, onReason, onReject, onApprove, ownWhy, onWithdraw, onReapply, onReturnStuck, badge, lastError, holder,
 }: {
   sub: AjilSubmission;
   open: boolean;
@@ -758,6 +759,11 @@ function Row({
   badge?: string;
   /** ⚠️ 2026-10-01: энэ цонхны СҮҮЛИЙН буулгалтын алдаа — «Батлагдсан · буулгаагүй»-д */
   lastError?: string;
+  /**
+   * ⚠️ 2026-10-09: илгээлтийг СЕРВЕР дээр түгжсэн хүн (`ajilBatlah.ajilClaimHolder` — өөр батлагч
+   *    яг одоо шийдвэрлэж/буулгаж байна). Урьд нь харагддаггүй тул дарахад л «яг одоо…» алдаа гардаг байв.
+   */
+  holder?: string | null;
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
   const p = detail?.k === 'ok' ? detail.p : null;
@@ -784,6 +790,8 @@ function Row({
             {sub.authorSent == null ? '—' : dayKey(sub.authorSent)}
             {' · '}
             {tr('{0} мөр', num(sub.rowCount))}
+            {/* ⚠️ 2026-10-09: түгжигч — хумисан мөрөнд ч харагдана (`holder`-ийн ⚠️) */}
+            {holder && !busy ? ` · ${tr('{0} ажиллаж байна', holder)}` : ''}
           </span>
         </span>
         <span className={`${s.badge} ${s.bWait}`}>{badge ?? tr('Хүлээгдэж буй')}</span>
@@ -839,6 +847,12 @@ function Row({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {holder && !busy && (
+            <div className={s.note} role="status">
+              {tr('{0} энэ илгээлтийг яг одоо шийдвэрлэж/буулгаж байна — дуусахыг хүлээгээд хуудсаа шинэчилнэ үү.', holder)}
             </div>
           )}
 

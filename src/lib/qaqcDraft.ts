@@ -314,8 +314,13 @@ export function draftFromState(
  *     бүтнээр нь дардаг тул ийм нүд өөрөө алга болдог байв; одоо ArcGIS руу
  *     НЭГТГЭЖ бичдэг тул булшгүйгээр мөнхөд үлдэж, нээх бүрд «орхигдов» гэнэ.
  *   · Хадгалсан булш — табын төлөвт нэмэгдэнэ (дараагийн бичилтэд дамжина).
+ *   · ⚠️ 2026-10-09: СЕРВЕРТ АЛЬ ХЭДИЙН БАЙГАА утга (`isSaved`) — `same`, тэр
+ *     ХУВИЛБАРЫГ нь булшлана (`t + 1`). Урьд нь өөр төхөөрөмжийн хуучирсан ноорог
+ *     (тэнд хадгалагдсан ч булш нь энд хүрээгүй) сэргэж «Хадгалах (N)»-ийг
+ *     хөөрөгдөж, дараа нь серверт ШИНЭ утга орсон бол түүнийг ХУУЧНААР дардаг байв.
  *
  * `isValid(key, rowKey)` — дуудагч мөр/баганыг шалгана.
+ * `isSaved(key, v)` — серверийн одоогийн утга `v`-тэй ижил эсэх (заавал биш).
  * ⚠️ `stamp` дуудахаас ӨМНӨ дуудагч цагаа `stored.t` хүртэл урагшлуулсан байх
  *    ёстой (Лампорт); тэгээгүй ч `max(stamp(), t + 1)` хамгаална.
  */
@@ -324,11 +329,13 @@ export function adoptQaqcDraft(
   st: QaqcDraftState,
   isValid: (key: string, rowKey: string | undefined) => boolean,
   stamp: () => number,
+  isSaved?: (key: string, v: string) => boolean,
 ): {
   st: QaqcDraftState;
   cells: Record<string, string>;
   count: number;
   dropped: number;
+  same: number;
 } {
   const cells = new Map(st.cells);
   const gone = new Map(st.gone);
@@ -336,6 +343,7 @@ export function adoptQaqcDraft(
   const out: Record<string, string> = {};
   let count = 0;
   let dropped = 0;
+  let same = 0;
   const over = (t: number) => Math.max(stamp(), t + 1);
 
   for (const [k, v, t] of stored.cells) {
@@ -353,6 +361,11 @@ export function adoptQaqcDraft(
       gone.set(k, Math.max(gone.get(k) ?? 0, t + 1));
       continue;
     }
+    if (isSaved?.(k, v)) {
+      same += 1;
+      gone.set(k, Math.max(gone.get(k) ?? 0, t + 1));
+      continue;
+    }
     gone.delete(k);
     cells.set(k, { v, t });
     out[k] = v;
@@ -366,5 +379,5 @@ export function adoptQaqcDraft(
     }
     if (t > (gone.get(k) ?? -Infinity)) gone.set(k, t);
   }
-  return { st: { cells, gone }, cells: out, count, dropped };
+  return { st: { cells, gone }, cells: out, count, dropped, same };
 }

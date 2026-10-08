@@ -23,7 +23,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  applyAttrs, createRow, deleteRow, diffRow, emptyPatch, loadGeometry, loadLayerMeta,
+  applyAttrs, createRow, deleteRow, diffRow, emptyPatch, isLostResponse, loadGeometry, loadLayerMeta,
   oidWhere, revertAttrs, revertRows, rowToPatch, saveGeometry, saveRows, validateChanged, validateRow,
 } from './butetsEdit.ts';
 
@@ -553,6 +553,58 @@ assert.equal(
     ]);
     assert.deepEqual(r.done, [1, 3]);
     assert.deepEqual(r.failed.map((x) => x.oid), [2]);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+
+/* ── 2026-10-09: АТОМ БУС давхарга — хариу АЛДАГДСАН багцыг мөр бүрээр ДАХИН илгээхгүй ──
+   Урьд нь timeout/сүлжээний алдаанд ч мөр бүрийг дахин бичдэг байв (`isLostResponse`-ийн
+   «бичилтийг автоматаар дахин оролдохгүй» дүрмийг зөрчиж). */
+{
+  const nm = { ...meta, rollback: false };
+  let sent = 0;
+  const realF = globalThis.fetch;
+  globalThis.fetch = async () => {
+    sent += 1;
+    throw new TypeError('fetch failed');
+  };
+  try {
+    await assert.rejects(() => saveRows(nm, [1, 2, 3], { DocName: 'x' }), (e) => {
+      assert.ok(isLostResponse(e), 'алдагдсан хариу хэвээр дамжина');
+      assert.deepEqual(e.done, [], 'өмнөх багц алга');
+      return true;
+    });
+    assert.equal(sent, 1, 'мөр бүрээр дахин илгээгээгүй');
+    sent = 0;
+    const r = await revertRows(nm, [{ oid: 1, attrs: { DocName: 'a' } }, { oid: 2, attrs: { DocName: 'b' } }]);
+    assert.equal(sent, 1, 'буцаалт ч мөрөөр дахин илгээхгүй');
+    assert.deepEqual(r.done, []);
+    assert.deepEqual(r.failed.map((x) => x.oid), [1, 2], 'тодорхойгүй мөрүүд failed — дахин буцаах боломжтой');
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+
+/* ── 2026-10-09: loadLayerMeta — `supportsRollbackOnFailureParameter` алга → атом БИШ;
+   `extent.spatialReference` нь `sourceSpatialReference`-ээс ЭХЭНД ── */
+{
+  const realF = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      objectIdField: 'OBJECTID',
+      geometryType: 'esriGeometryPolyline',
+      capabilities: 'Query,Update',
+      extent: { spatialReference: { wkid: 32648, latestWkid: 32648 } },
+      sourceSpatialReference: { wkid: 4326, latestWkid: 4326 },
+      fields: [{ name: 'OBJECTID', type: 'esriFieldTypeOID' }],
+    }),
+  });
+  try {
+    const m = await loadLayerMeta('infra:7');
+    assert.equal(m.rollback, false, 'дэмжлэг нотлогдоогүй → атом гэж таамаглахгүй');
+    assert.equal(m.wkid, 32648, 'extent-ийн SR давамгайлна');
   } finally {
     globalThis.fetch = realF;
   }

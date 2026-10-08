@@ -78,6 +78,10 @@ const monthKey = (ms: unknown): string => {
   const t = Number(ms);
   if (!Number.isFinite(t)) return '';
   const d = new Date(t);
+  /* ⚠️ 2026-10-09: `Finance.publish`-ийн `startKeyOf`-тэй нэг дүрэм — ХУУЧИН UTC шөнө дундаар бичсэн
+     мөрийг UTC сараар (UTC-ээс баруун бүсэд локалаар өмнөх сар болдог); шинэ мөр UTC үд дундаар
+     бичигдэх тул аль ч бүсэд локал сар нь зөв. УБ-д хоёр зам ижил. */
+  if (t % 86_400_000 === 0) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 

@@ -73,11 +73,17 @@ export function BagtsHamaaral() {
     return out;
   }, [finQ, pkgs]);
   /* ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга болсон) — ХАРУУЛАХГҮЙ, хадгалалтад үлдэнэ */
-  const deps = useMemo(() => {
+  /* ⚠️ 2026-10-09: ШҮҮГЭЭГҮЙ жагсаалт (`allDeps`) — дугуй хамаарлын шалгалт (`linkError`) нь
+     серверийн `saveChange`-тэй ИЖИЛ бүтэн жагсаалтаар явна. Урьд нь өнчин холбоог хассан
+     жагсаалтаар шалгадаг тул UI «болно» гэж харуулсан холбоог сервер татгалздаг байв. */
+  const allDeps = useMemo(() => {
     const fresh = depQ.state === 'ready' ? depQ.data : null;
-    const all = saved && (!fresh || (fresh.at ?? 0) < (saved.at ?? 0)) ? saved.deps : (fresh?.deps ?? []);
-    return all.filter((d) => byKey.has(d.from) && byKey.has(d.to));
-  }, [saved, depQ, byKey]);
+    return saved && (!fresh || (fresh.at ?? 0) < (saved.at ?? 0)) ? saved.deps : (fresh?.deps ?? []);
+  }, [saved, depQ]);
+  const deps = useMemo(
+    () => allDeps.filter((d) => byKey.has(d.from) && byKey.has(d.to)),
+    [allDeps, byKey],
+  );
   const shown = useMemo(() => pkgs.filter((p) => (grp === 'all' || p.group === grp)
     && matchesSearch(q, p.code, [p.name, p.contractor])), [pkgs, grp, q]);
   /* ⚠️ 2026-10-07: ард багцын чип дээр дарахад зорилтот мөр шүүлтүүрээр нуугдсан бол урьд нь
@@ -114,7 +120,12 @@ export function BagtsHamaaral() {
     } finally {
       setBusy(false);
     }
-    try { setSaved(await loadDeps()); } catch { setSaved(null); retryDeps?.(); }
+    /* ⚠️ 2026-10-09: дахин уншилт удаан ирж байх хооронд ӨӨР (шинэ) хадгалалт `saved`-д орсон
+       байж болно — `at`-аар ШИНИЙГ нь үлдээнэ (хуучин уншилт шинэ хадгалалтыг дарахгүй). */
+    try {
+      const fresh = await loadDeps();
+      setSaved((prev) => (prev && (prev.at ?? 0) > (fresh.at ?? 0) ? prev : fresh));
+    } catch { setSaved(null); retryDeps?.(); }
     return false;
   }, [busy, retryDeps]);
 
@@ -159,7 +170,7 @@ export function BagtsHamaaral() {
         <input className={s.search} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('Багц хайх…')} aria-label={tr('Багц хайх')} />
       </div>
 
-      <List pkgs={shown} all={pkgs} deps={deps} byKey={byKey} progress={progress} canEdit={canEdit}
+      <List pkgs={shown} all={pkgs} deps={deps} allDeps={allDeps} byKey={byKey} progress={progress} canEdit={canEdit}
         busy={busy || depQ.state !== 'ready'} onChange={change} onJumpHidden={jumpHidden} />
     </div>
   );
@@ -167,8 +178,11 @@ export function BagtsHamaaral() {
 
 /* ══════════════ ЖАГСААЛТ — багц → ард багцууд ══════════════ */
 
-function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange, onJumpHidden }: {
-  pkgs: TuhPkg[]; all: TuhPkg[]; deps: Dep[]; byKey: Map<string, TuhPkg>;
+function List({ pkgs, all, deps, allDeps, byKey, progress, canEdit, busy, onChange, onJumpHidden }: {
+  pkgs: TuhPkg[]; all: TuhPkg[]; deps: Dep[];
+  /** Өнчин холбоог ХАССАНГҮЙ бүтэн жагсаалт — `linkError`-т (⚠️ 2026-10-09) */
+  allDeps: Dep[];
+  byKey: Map<string, TuhPkg>;
   /** Багц → бодит гүйцэтгэл (0–100), хэмжилтгүй бол `null` */
   progress: ReadonlyMap<string, number | null>;
   canEdit: boolean; busy: boolean; onChange: OnChange;
@@ -231,7 +245,7 @@ function List({ pkgs, all, deps, byKey, progress, canEdit, busy, onChange, onJum
                   </span>
                   {canEdit && addFor === p.key && (
                     <AddLink pkgs={all} self={p.key} busy={busy} label={tr('Ард багц нэмэх')}
-                      errOf={(k) => linkError(deps, p.key, k)}
+                      errOf={(k) => linkError(allDeps, p.key, k)}
                       onAdd={(k) => onChange('add', { from: p.key, to: k }).then((ok) => { if (ok) setAddFor(null); return ok; })}
                       onCancel={() => setAddFor(null)} />
                   )}

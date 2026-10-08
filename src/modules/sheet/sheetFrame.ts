@@ -50,9 +50,13 @@ export const firstSlot = (_list: SheetRow[], p: number): number => p + 1;
  */
 const parentOf = (list: SheetRow[], a: NewRow): number => {
   const cands: number[] = [];
+  /* ⚠️ 2026-10-09 (F6): хоёр талыг ТАЙРЧ жишнэ — `ajilApply` тайрсан мөрөөр жишдэг тул payload-ын
+     сүүлийн хоосон зай энд `no-parent` болж хоёр зам зөрдөг байв. */
+  const pNo = String(a.parentNo ?? "").trim();
+  const pWork = String(a.parentWork ?? "").trim();
   for (let i = 0; i < list.length; i += 1) {
     const r = list[i];
-    if (r.group && r.no === a.parentNo && r.work === a.parentWork) cands.push(i);
+    if (r.group && String(r.no ?? "").trim() === pNo && String(r.work ?? "").trim() === pWork) cands.push(i);
   }
   if (!cands.length) return -1;                // эцэг алга
   let p = cands[0];

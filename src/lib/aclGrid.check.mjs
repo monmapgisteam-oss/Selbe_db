@@ -8,7 +8,6 @@
  *    багц» руу тэлэх (fail-open) зэрэг чимээгүй эрхийн алдаа гарна.
  */
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   GRID_ALL, grantHolds, listHolds, planGrantAdd, planGrantRemove, planListAdd, planListRemove,
 } from './aclGrid.ts';
@@ -85,14 +84,21 @@ assert.deepEqual(planListRemove([GRID_ALL], P2, PK), { kind: 'narrow', bagts: [P
 assert.deepEqual(planListRemove([P1], P2, PK), { kind: 'none' });
 assert.deepEqual(planListRemove(null, P2, PK), { kind: 'none' });
 
-/* ══════════ C. GRID_ALL = scopedAcl/qaqcAcl ALL_BAGTS ══════════ */
-/* ⚠️ Модулийг импортлохгүй (window/ArcGIS шаардана) — эх кодоос уншина */
-for (const f of ['src/lib/scopedAcl.ts', 'src/lib/qaqcAcl.ts', 'src/lib/guitsetgelGrid.ts']) {
-  const src = fs.readFileSync(f, 'utf8');
-  const m = src.match(/export const (?:ALL_BAGTS|GRID_ALL)\s*=\s*'([^']*)'/)
-    ?? src.match(/export \{[^}]*ALL_BAGTS[^}]*\}/);
-  assert.ok(m, `${f}: ALL_BAGTS олдсонгүй`);
-  if (m[1] !== undefined) assert.equal(GRID_ALL, m[1], `${f}: GRID_ALL нь ALL_BAGTS-тай ижил байх ёстой`);
+/* ══════════ C. GRID_ALL = scopedAcl/qaqcAcl ALL_BAGTS · guitsetgelGrid GRID_ALL ══════════ */
+/* ⚠️ 2026-10-09: ЭХ ТЕКСТИЙГ regex-ээр уншихын оронд ЖИНХЭНЭ модулийг импортлоно — урьд нь
+   «window/ArcGIS шаардана» гэж үзэж байсан ч гурвуулаа Node-д (ts-alias loader) импортлогддог.
+   Regex-ийн 2-р хувилбар (`export { … ALL_BAGTS … }` дахин экспорт) утгыг ОГТ тулгалгүй
+   давуулдаг байв — одоо БОДИТ утгыг тулгана. */
+for (const [f, name] of [['@/lib/scopedAcl', 'ALL_BAGTS'], ['@/lib/qaqcAcl', 'ALL_BAGTS'], ['@/lib/guitsetgelGrid', 'GRID_ALL']]) {
+  const m = await import(f);
+  assert.equal(typeof m[name], 'string', `${f}: ${name} экспорт олдсонгүй`);
+  assert.equal(GRID_ALL, m[name], `${f}: GRID_ALL нь ${name}-тай ижил байх ёстой`);
+}
+/* Хэрэглээний тулгалт: тэр утгатай жагсаалт/grant нь ҮНЭХЭЭР «бүх багц» гэж уншигдана */
+{
+  const { ALL_BAGTS } = await import('@/lib/scopedAcl');
+  assert.equal(listHolds([ALL_BAGTS], P2), 'all', 'scopedAcl.ALL_BAGTS → бүх багц');
+  assert.equal(grantHolds([{ role: 'author', bagts: [ALL_BAGTS] }], 'author', P3), 'all');
 }
 
 console.log('aclGrid.check: ok');

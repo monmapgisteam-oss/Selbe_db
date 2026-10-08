@@ -389,7 +389,9 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   const head = useMemo(() => ipcHeadShare(t, finQ.state === 'ready'
     ? {
       contract: finQ.data.contractAmount,
-      pct: paidPctOf(finQ.data.paidContracted, finQ.data.contractAmount),
+      /* ⚠️ 2026-10-09: `paidShare.pct`-ийг шууд — HO хоосон үед `null` («—»); урьд нь
+         `paidPctOf(0, contract)` = «0%» гэж дахин боддог байв. */
+      pct: finQ.data.paid == null ? null : finQ.data.paidPct ?? paidPctOf(finQ.data.paidContracted, finQ.data.contractAmount),
       paidOther: finQ.data.paidOther,
     }
     : null), [t, finQ.state, finQ.data]);

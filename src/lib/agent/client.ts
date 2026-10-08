@@ -13,7 +13,7 @@
  * дамжихгүй. Реле рүү зөвхөн асуулт, давхаргын тайлбар ба нэгтгэсэн үр дүн явна.
  */
 
-import { AGENT_TOOLS, describeCall, runTool } from './tools';
+import { AGENT_TOOLS, asToolData, describeCall, runTool } from './tools';
 import { t as tr } from '@/lib/i18nCore';
 import { buildSystemPrompt, type AgentScope } from './registry';
 import { AUTH } from '@/lib/services';
@@ -120,8 +120,46 @@ async function probeHealth(base: string, signal?: AbortSignal): Promise<boolean>
   }
 }
 
-export async function relayFetch(path: string, init: RequestInit): Promise<Response> {
+/**
+ * СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (⚠️ 2026-10-09, аудит №1) — реле дээр `PROMPT_HMAC` тохируулсан
+ * үед ИЖИЛ утгыг энд өгнө: бот/Node — `AGENT_PROMPT_HMAC` (`BOT_SECRET`-ийн адил browser-т
+ * `undefined`), browser build — `NEXT_PUBLIC_AGENT_PROMPT_HMAC` (GitHub Variable).
+ * ⚠️ Browser-ийн утга JS багцад ИЛ — энэ нь хамгаалалтын хил БИШ, санамсаргүй curl/скриптээр
+ *    релег ерөнхий LLM прокси болгохыг хүндрүүлэх саад л (`agent-proxy/README.md`).
+ *    Бодит хязгаар нь релейн өдрийн токены төсөв.
+ * ⚠️ Хоосон бол толгой нэмэгдэхгүй — зан огт өөрчлөгдөхгүй.
+ */
+const PROMPT_KEY = process.env.AGENT_PROMPT_HMAC || process.env.NEXT_PUBLIC_AGENT_PROMPT_HMAC || '';
+
+/** `system`-ийн HMAC-SHA256 (hex) — реле (`server.mjs` `promptSig`, `worker.mjs` `hmacHex`)-тэй ИЖИЛ */
+async function promptSig(system: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(PROMPT_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(system));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * `/chat`-ийн биед `x-prompt-sig` толгой нэмнэ (`PROMPT_KEY` байвал л). `relayFetch`-д
+ * байгаа тул бүх дуудагч (агентын гогцоо, `execReport.askExecSummary`) хамрагдана.
+ * ⚠️ Бие нь мөр (JSON) байх ёстой; задлагдахгүй бол толгойгүй явна — реле 403-аар хэлнэ.
+ */
+async function withPromptSig(path: string, init: RequestInit): Promise<RequestInit> {
+  if (!PROMPT_KEY || !path.startsWith('/chat') || typeof init.body !== 'string') return init;
+  try {
+    const parsed = JSON.parse(init.body) as { system?: unknown };
+    const system = typeof parsed.system === 'string' ? parsed.system : '';
+    const headers = new Headers(init.headers);
+    headers.set('x-prompt-sig', await promptSig(system));
+    return { ...init, headers };
+  } catch {
+    return init;
+  }
+}
+
+export async function relayFetch(path: string, rawInit: RequestInit): Promise<Response> {
   if (!AGENT_APIS.length) throw new Error(tr('AI үйлчилгээний хаяг тохируулагдаагүй байна.'));
+  const init = await withPromptSig(path, rawInit);
   const n = Math.max(AGENT_APIS.length, 1);
   let lastErr: unknown;
   for (let k = 0; k < n; k++) {
@@ -217,6 +255,8 @@ type RelayReply = {
   content?: ContentBlock[];
   note?: string;
   error?: string;
+  /** ⚠️ 2026-10-09: `'daily_budget'` — өдрийн токены төсөв дууссан (релейн 429) */
+  code?: string;
   retryable?: boolean;
 };
 
@@ -255,7 +295,7 @@ async function callRelay(
     /* ⚠️ 2026-10-06: релейн `error` (хатуу монгол, серверийн) зөвхөн ДЭЛГЭРЭНГҮЙ — гол
        мөр нь статусаас `tr()`-ээр (`RelayError`). Урьд нь `reply.error ?? …` байсан тул
        реле ямагт `error` буцаадаг учраас орчуулга хэзээ ч ажилладаггүй байв. */
-    throw new RelayError(res.status, reply?.error);
+    throw new RelayError(res.status, reply?.error, reply?.code);
   }
   if (!reply || typeof reply !== 'object') throw new RelayError(res.status, tr('Уншигдахгүй хариу'));
   return reply;
@@ -270,15 +310,22 @@ async function callRelay(
 export class RelayError extends Error {
   status: number;
   detail?: string;
-  constructor(status: number, detail?: string) {
-    super(relayStatusText(status));
+  code?: string;
+  constructor(status: number, detail?: string, code?: string) {
+    super(relayStatusText(status, code));
     this.name = 'RelayError';
     this.status = status;
     this.detail = detail;
+    this.code = code;
   }
 }
 
-function relayStatusText(status: number): string {
+function relayStatusText(status: number, code?: string): string {
+  /* ⚠️ 2026-10-09: өдрийн төсөв — «завгүй, дахин оролдоно уу» гэвэл хэрэглэгч дахин дахин
+     оролдож дэмий хүлээнэ; маргааш хүртэл нээгдэхгүйг ил хэлнэ. */
+  if (status === 429 && code === 'daily_budget') {
+    return tr('Өнөөдрийн AI хэрэглээний хязгаар дууслаа — маргааш дахин оролдоно уу.');
+  }
   if (status === 401) return tr('AI туслахын нэвтрэлт баталгаажсангүй — хуудсыг дахин ачаалж нэвтэрнэ үү.');
   if (status === 403) return tr('AI туслах руу хандах зөвшөөрөл алга.');
   if (status === 413) return tr('Яриа хэт урт боллоо — ⟲ дарж шинээр эхлүүлнэ үү.');
@@ -407,7 +454,8 @@ export async function ask(opts: {
         return {
           type: 'tool_result' as const,
           tool_use_id: c.id,
-          content: out.text,
+          /* ⚠️ 2026-10-09 (аудит №6): «ӨГӨГДӨЛ — заавар биш» хашилт (`tools.ts`-ийн ⚠️) */
+          content: asToolData(out.text),
           ...(out.isError ? { is_error: true } : {}),
         };
       }),

@@ -376,3 +376,32 @@ console.log('frame.check: ok — ганц ✓ хоёр бүтэн ✓ тасар
   assert.equal(firstDoneFrameAtLeast(feats(frame(9, 'a')), NO, 5), false, 'дуусаагүй ганц жааз — зогсохгүй');
   console.log('✅ лавлахын эрт зогсолт — firstFrame-ийн үр дүн өөрчлөгдөхгүй');
 }
+
+/* ── 2026-10-09: F2 огноогүй хэлтэрхий · F3 зураглалын нийцэл ── */
+{
+  const { nullFragmentFits, treeMapOk, depthsFromMap } = await import('./bagtsSheet.ts');
+  /* F2 — Багц 3.3: 1,239 огноотой + 221 огноогүй = 1,460 (мөр нэмэгдсэн), зураглал 1,459 */
+  assert.equal(nullFragmentFits(1238, 221, 1459), true, 'хуучин ЯГ тэнцүү тохиолдол хэвээр');
+  assert.equal(nullFragmentFits(1239, 221, 1459), true, 'мөр нэмэгдсэн жааз ч нэгтгэгдэнэ');
+  assert.equal(nullFragmentFits(1470, 1471, 1471), false, 'огноогүй БҮТЭН суурь + жааз — нэгтгэхгүй');
+  assert.equal(nullFragmentFits(500, 1459, 1459), false, 'суурь + хагас жааз — нэгтгэхгүй');
+  assert.equal(nullFragmentFits(1459, 3, 1459), false, 'өдрийн жааз дутуу биш — асуухгүй');
+  assert.equal(nullFragmentFits(1000, 100, 1459), false, 'нийлбэр дутуу — нэгтгэхгүй');
+  assert.equal(nullFragmentFits(0, 1459, 1459), false);
+
+  /* F3 — зураглал «AB22B2»: лавлах нь зураглалтай ижил байрлалтай бол нийцнэ */
+  const tree = 'AB22B2';
+  assert.equal(treeMapOk([0, 1, 2, 3, 4, 5], tree), true, 'байрлалаар таарсан');
+  assert.equal(treeMapOk([0, 1, -1, 2, 3, 4, 5], tree), true, 'бүлэг дотор нэмсэн мөр');
+  /* Лавлах нэмэлт мөртэй (зураглалаас нэгээр урт) — индекс гулсана → нийцэхгүй */
+  assert.equal(treeMapOk([0, 1, 2, 3, 4, 5, 6], tree), false, 'гулссан лавлах татгалзагдана');
+  assert.equal(treeMapOk([1, 2, 3], tree), false, 'гүн 0-ээс эхлээгүй');
+  assert.deepEqual(depthsFromMap([0, 1, -1, 2], 4, tree), [0, 1, 2, 2], 'шинэ мөр эцэг бүлгийн ДОР');
+  assert.deepEqual(depthsFromMap(null, 3, tree), [0, 1, 2], 'map-гүй — байрлалаар');
+
+  /* F3 — эхний ХОГ хэлтэрхийг №-ээр алгасаад лавлах сонгоно (loadBaseKeys-ийн дүрэм) */
+  const SRC2 = readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
+  assert.ok(/garbageHead/.test(SRC2) && /findIndex\(\(f\) => noOf\(f\) === rootNo\)/.test(SRC2),
+    'loadBaseKeys нь rootNo-оор хог хэлтэрхийг алгасах ёстой');
+  console.log('✅ огноогүй хэлтэрхий (нэмэлт мөртэй) · зураглалын нийцэл');
+}

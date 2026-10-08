@@ -25,7 +25,14 @@ import {
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
+  isContracted,
 } from './gdash.ts';
+
+/* ⚠️ 2026-10-09: «гэрээтэй» — порталын НЭГ предикат: түүхий мөр (`ho_dungiin_tailbar`) ба `CfRow` (`note`) */
+assert.equal(isContracted({ [CF.note]: '  Гэрээлсэн   дүн ' }), true, 'зай нэгтгэнэ');
+assert.equal(isContracted({ [CF.note]: 'Урьдчилсан дүн', [CF.contract]: 900 }), false, 'дүнтэй ч тайлбаргүй → гэрээгүй');
+assert.equal(isContracted({ note: CONTRACTED }), true, 'CfRow');
+assert.equal(isContracted({ note: '' }), false);
 import { CASHFLOW_NEW } from './services.ts';
 
 /** Гэрээний ШАТНЫ талбарууд — индикаторын шинэ эх сурвалж */

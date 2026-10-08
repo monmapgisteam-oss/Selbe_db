@@ -5,7 +5,8 @@
  *    `physNow`, `planPctAt`, `housingPct`, `ipcTotals`) эсвэл
  *    `tuhData`-ийн шалгагдсан цэвэр функцээс. Энд зөвхөн холбоно.
  */
-import { monthKey } from '@/lib/format';
+import { monthKey, date } from '@/lib/format';
+import { t as tr } from '@/lib/i18nCore';
 import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
 import { contractBlocks, ipcTotals } from '@/lib/ipcTable';
@@ -23,7 +24,7 @@ import {
   buildTuhPkgs, progressOf, statusOf, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, daysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
   lastReportOf, reportAge,
-  type TuhPkg, type TuhStatus, type TuhIpc,
+  type TuhPkg, type TuhStatus, type TuhIpc, type CommissionPartial,
 } from '@/lib/tuhData';
 
 export type DocCount = { total: number; approved: number; review: number; returned: number; draft: number };
@@ -71,6 +72,11 @@ export type TuhRow = {
   ipc: TuhIpc | null;
   /** Улсын комиссын огноо («Хуваарь») */
   commission: number | null;
+  /**
+   * Олон хуудастай багцын ЗАРИМ хуудас л огноотой — `commission` нь `null` (`tuhData.mergeCommission`-ийн ⚠️).
+   * Дэлгэцэд «— (1/2 хуудас)» (`commissionText`). `null` = дутуу биш.
+   */
+  commissionPartial: CommissionPartial | null;
   /** Улсын комисс − гэрээт дуусах (хоног; эерэг = хоцорно) */
   delay: number | null;
   /** ⚠️ Барилгын давхарга уншигдаагүй бол `null` («—», 0 биш) */
@@ -123,6 +129,14 @@ export type TuhModel = {
   /** Ачаалж буй эх сурвалжууд — `lz` «…» харуулна */
   loading: ReadonlySet<TuhSrc>;
   /**
+   * Хуваарийн төлөвлөгөөт муруйн уналт — `PkgProg.ProgChart.planFailed`-ийн ЯГ утга:
+   * `0` = бүрэн/ачаалж буй, `> 0` = уншигдаагүй хуудасны тоо (`PlanCurve.failed`), `-1` = бүхэлдээ унасан.
+   * ⚠️ 2026-10-09: урьд нь ТУХ-ын `ProgChart` энэ ба `loading`-гүй дуудагддаг тул муруй ачаалж/унасан
+   *    үед «Гүйцэтгэлийн дата алга.» гэж ХАРИУЛТ мэт бичдэг байв (TUH ⚠️ 2026-10-01: ачаалал → «…»,
+   *    уналт → нэрлэнэ).
+   */
+  planFailed: number;
+  /**
    * Багц хоорондын хамаарал («Багцын хамаарал», `bagtsHamaaral.loadDeps`) — `null` = ирээгүй/унасан.
    * ⚠️ 2026-10-06 (аудит): урьд нь ТУХ огт уншдаггүй байв (`depRows`-ийг үз).
    */
@@ -143,6 +157,18 @@ export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'u
     if (r) out.push(r);
   }
   return out;
+}
+
+/**
+ * Улсын комиссын огнооны ДЭЛГЭЦИЙН текст.
+ * ⚠️ 2026-10-09: хагас огноотой багц (`commissionPartial`) «— (1/2 хуудас)» — «—» дангаараа
+ *    «огноо бүртгэгдээгүй» гэж уншигдаж, нэг хуудас огноотойг нуудаг (`mergeCommission`-ийн ⚠️).
+ */
+export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial'>): string {
+  if (r.commissionPartial) {
+    return `— ${tr('({0}/{1} хуудас)', r.commissionPartial.dated, r.commissionPartial.sheets)}`;
+  }
+  return lz(m, 'commission')(date(r.commission));
 }
 
 const countDocs = (docs: MsDoc[]): DocCount | null => {
@@ -170,6 +196,8 @@ export function buildModel(input: {
   packs: Pack[] | null;
   hist: BlockHistory | null;
   commission: ReadonlyMap<string, number | null> | null;
+  /** Хагас огноотой багцууд (`CommissionDates.partial`) — `null`/өгөөгүй = мэдэгдэхгүй */
+  commissionPartial?: ReadonlyMap<string, CommissionPartial> | null;
   workforce: WorkforceDetail | null;
   docs: MsDoc[] | null;
   /** «Багцын хамаарал»-ын холбоосууд — `null` = ирээгүй/унасан */
@@ -178,6 +206,8 @@ export function buildModel(input: {
   failed: string[];
   /** Ачаалж буй эх сурвалжууд (байхгүй бол хоосон) */
   loading?: ReadonlySet<TuhSrc>;
+  /** Хуваарийн муруй бүхэлдээ УНАСАН (`planQ.state === 'error'`) — `TuhModel.planFailed` = -1 */
+  planError?: boolean;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
@@ -243,6 +273,7 @@ export function buildModel(input: {
     const week = housing && hist ? weekDelta(hist, p.pkgKey, today, fin.physN?.get(p.pkgKey)) : null;
 
     const comm = housing ? (commission?.get(p.pkgKey) ?? null) : null;
+    const commPartial = housing ? (input.commissionPartial?.get(p.pkgKey) ?? null) : null;
     /* ⚠️ 2026-10-01: `assignHo`-ийн онооголт ЭЦСИЙН — дахин түлхүүрээр шүүхгүй (`null`):
        зураг төслийн мөр түлхүүргүй/эцэг кодтой гэрээ авдаг болсон (`ipcOf`-ийн ⚠️). */
     const ipc = ipcOf(null, hoBy.get(p.key) ?? [], ipcNumbers);
@@ -309,6 +340,7 @@ export function buildModel(input: {
       week,
       ipc,
       commission: comm,
+      commissionPartial: commPartial,
       delay: daysBetween(p.end, comm),
       blocks: packs ? (pack?.blocks.length ?? 0) : null,
       households: packs ? (pack?.households ?? 0) : null,
@@ -380,6 +412,7 @@ export function buildModel(input: {
     statusCount,
     failed: input.failed,
     loading: input.loading ?? new Set<TuhSrc>(),
+    planFailed: input.planError ? -1 : plan ? plan.failed.length : 0,
     deps: input.deps ?? null,
   };
 }

@@ -69,14 +69,27 @@ ArcGIS нэг хүсэлтэд ойролцоогоор **2,000 мөр** буц�
 
 ## 3. Кэш ба хүчингүй болголт
 
-### 3.1 Арван нэгэн хүснэгтийн түлхүүр
+### 3.1 Хүснэгтийн түлхүүр (16)
 
-Кэш нь **ачаалагчаар биш, ХҮСНЭГТЭЭР** зохион байгуулагдсан:
+Кэш нь **ачаалагчаар биш, ХҮСНЭГТЭЭР** зохион байгуулагдсан
+(`dataBus.ts`-ийн `DataKey`; тоог `docs.invariant.check.mjs` кодтой тулгана):
 
 ```
 HO_IPC · CASHFLOW_NEW · BAGTS_SHEET · BAGTS_NEGTGEL · BUILDING
 PARCEL_LEFT · SOURCE_FS · HABEA · HYANALT · ZOVSHOOROL
 ```
+
+Урсгалын (ноорог · батлах) хүснэгтүүд — 2026-09-30-нд нэмэгдсэн; урьд нь автобусад
+байгаагүй тул нооргийн бичилт цэсний тэмдгийг 3 мин хүртэл хуучин үлдээдэг байв:
+
+| Түлхүүр | Хүснэгт | Юуг хүчингүй болгоно |
+|---|---|---|
+| `CHANAR_BARIMT` | `Selbe_Chanar_Barimt` | Чанарын баримт (MS · MA · MIR · FIC · NCR · QMP · PRC) — `chanarStore.ts` |
+| `HUVAARI_BATLAH` | `Selbe_Huvaari_Batlah` | Хуваарийн илгээлт/батлалтын дараалал — `huvaariBatlah.ts` |
+| `OBYEM_BATLAH` | `Selbe_Obyem_Batlah` | Обьёмын өөрчлөлтийн батлалт — `obyemBatlah.ts` |
+| `AJIL_BATLAH` | `Selbe_Ajil_Batlah_csv` | Нэмэлт ажлын батлалт — `ajilBatlah.ts` |
+| `QAQC_DRAFT` | `Selbe_QAQC_Draft` | QAQC-ийн хуваалцсан ноорог — `qaqcDraftRemote.ts` |
+| `HUVAARI_OBYEM` | `huvaari_20260906/193` | Хуваарийн сарын обьём — төлөвлөгөөт муруй (`planProgress`), 2026-10-01 |
 
 Ачаалагч бүр «би энэ хүснэгтээс уншина» гэж зарлана; бичих тал «би энэ
 хүснэгтийг өөрчиллөө» гэж хэлнэ. Систем холбоосыг өөрөө олно.

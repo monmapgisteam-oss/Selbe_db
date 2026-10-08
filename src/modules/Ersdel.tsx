@@ -63,7 +63,7 @@ import {
   type HazardKey, type LevelKey, type Metric, type Station, type StationLive,
 } from '@/lib/ersdel';
 import {
-  airBands, airExtent, damageOf, floodBands, floodExtent,
+  airBands, bandsExtent, damageOf, floodBands, floodExtent,
   type Band, type DamageRow,
 } from '@/lib/ersdelGeom';
 import {
@@ -83,6 +83,8 @@ import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import { floodFootprint, simplifyRings } from '@/lib/uyrSurface';
 import Polygon from '@arcgis/core/geometry/Polygon';
 import Graphic from '@arcgis/core/Graphic';
+import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtils';
+import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { Overlay, type Pick } from './ersdel/Overlay';
 import o from './gazarOv.module.css';
 import e from './ersdel.module.css';
@@ -138,12 +140,25 @@ const SIM_CACHE_MAX = 6;
  */
 const FOOTPRINT_BUDGET = 2500;
 
+/** Web Mercator — зурсан талбайг загварчлалд өгөхийн өмнө (`areaToWm`, 2026-10-09) */
+const WM_SR = SpatialReference.WebMercator;
+
 /**
  * ЗАГВАРЧЛАЛААС ХОХИРЛЫН МУЖ — мөр → төсөвт багтаасан → `simplify` (топологи засна).
  * Хуурай (0.15 м-ээс гүн ус алга) бол `null`.
  */
+/**
+ * Нэг нүдний хэмжээ ТОРНЫ (WM) координатаар — 2026-10-09.
+ * ⚠️ `meta.cellM` нь ГАЗРЫН метр; Web Mercator-ын нэгж 47.9°-д 1/cos(lat) ≈ 1.49
+ *    дахин том тул `cellM`-ийг WM координатын алхам болгож хэрэглэвэл хүлцэл/дээж
+ *    ~1.5 дахин НАРИЙН (бага) гардаг байв. Тор нь WM-д тул хүрээнээс шууд.
+ */
+const wmCellOf = (fd: FloodData): number =>
+  (fd.meta.extent.xmax - fd.meta.extent.xmin) / fd.meta.width;
+
 function hazardPolygon(fd: FloodData): { poly: Polygon; rings: number[][][] } | null {
-  const rings = simplifyRings(floodFootprint(fd), { tol: fd.meta.cellM * 0.25, budget: FOOTPRINT_BUDGET });
+  /* ⚠️ 2026-10-09: хүлцэл WM нэгжээр (`wmCellOf`) — цагираг WM координаттай */
+  const rings = simplifyRings(floodFootprint(fd), { tol: wmCellOf(fd) * 0.25, budget: FOOTPRINT_BUDGET });
   if (!rings.length) return null;
   const raw = new Polygon({ rings, spatialReference: { wkid: fd.meta.wkid } });
   /* ⚠️ Цагираг бүрийг тусад нь хялбарчилсан тул хоорондоо шүргэлцэж болно —
@@ -295,16 +310,33 @@ function attrRows(attrs: Record<string, unknown>): { k: string; v: string }[] {
  * хилээр л хүрсэн) — дуудагч ухрах утгаа өөрөө шийднэ.
  */
 function footprintDepth(fd: FloodData, geom: __esri.Geometry | null | undefined): number | null {
-  if (!geom || !fd.maxDepth) return null;
+  return footprintDepthEx(fd, geom).depth;
+}
+
+/**
+ * `footprintDepth` + ТООЦООНЫ МУЖИД дээж орсон эсэх (2026-10-09).
+ * ⚠️ Мужийн гадна цөм гүнийг 0 гэж бичдэг — тэр нүдийг «хуурай» гэж тоолохгүй
+ *    (`FloodData.inDomain`). `computed: false` = объект бүхэлдээ мужаас гадна →
+ *    попап «тооцоогүй» гэнэ («ус ирээгүй» БИШ).
+ */
+function footprintDepthEx(
+  fd: FloodData, geom: __esri.Geometry | null | undefined,
+): { depth: number | null; computed: boolean } {
+  if (!geom || !fd.maxDepth) return { depth: null, computed: false };
   const md = fd.maxDepth;
+  const dom = fd.inDomain;
   let best = -1;
+  let computed = false;
   const take = (x: number, y: number) => {
     const i = fd.indexAt(x, y);
     if (i == null) return;
+    if (dom && !dom(i)) return;
+    computed = true;
     const v = md(i);
     if (v > best) best = v;
   };
-  const cell = fd.meta.cellM;
+  /* ⚠️ 2026-10-09: дээжийн алхам WM нэгжээр (`wmCellOf`) — геометр WM-д */
+  const cell = wmCellOf(fd);
   if (geom.type === 'point') {
     const p = geom as __esri.Point;
     take(p.x, p.y);
@@ -322,7 +354,7 @@ function footprintDepth(fd: FloodData, geom: __esri.Geometry | null | undefined)
   } else if (geom.type === 'polygon') {
     const rings = (geom as __esri.Polygon).rings;
     const ext = geom.extent;
-    if (!ext || !rings.length) return null;
+    if (!ext || !rings.length) return { depth: null, computed: false };
     const inside = (x: number, y: number) => {
       let on = false;
       for (const r of rings) {
@@ -347,7 +379,30 @@ function footprintDepth(fd: FloodData, geom: __esri.Geometry | null | undefined)
     /* Оройнууд — хүрээний дээж алгассан нарийн объектод */
     for (const r of rings) for (const [x, y] of r) take(x, y);
   }
-  return best > 0 ? best : null;
+  return { depth: best > 0 ? best : null, computed };
+}
+
+/**
+ * Зурсан полигоны цагирагууд → Web Mercator (2026-10-09).
+ * ⚠️ Загварчлал (`inRings`) нь цагирагийг WM координат гэж уншдаг. Харагдацын
+ *    SR нь 102100/3857 биш (жишээ нь SceneView-ийн WGS84) бол урьд нь градусаар
+ *    дамждаг тул зурсан талбай торонд огт тусахгүй байв. WM руу хөрвүүлж
+ *    чадахгүй SR бол хуучнаар нь (өөр гарцгүй).
+ */
+function areaToWm(g: __esri.Polygon): { rings: SimArea; wkid: number } {
+  const sr = g.spatialReference;
+  const wk = sr?.wkid ?? 3857;
+  let src: __esri.Polygon = g;
+  if (sr && !sr.isWebMercator && wk !== 102100 && wk !== 3857
+    && webMercatorUtils.canProject(sr, WM_SR)) {
+    const p = webMercatorUtils.project(g, WM_SR) as __esri.Polygon | null;
+    if (p?.rings?.length) src = p;
+  }
+  /* ⚠️ ЗӨВХӨН x, y — `hasZ`-тэй бол гурав дахь утга орж ирнэ (`inRings` 2D) */
+  return {
+    rings: src.rings.map((r) => r.map((p) => [p[0], p[1]])),
+    wkid: src === g ? wk : 102100,
+  };
 }
 
 /* ══════════════════════ Жижиг бүрэлдэхүүн ══════════════════════ */
@@ -750,10 +805,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       /* Шинэ полигон БЭЛЭН болсон тул л өмнөхийг арилгана */
       const old = gl.graphics.filter((x) => x !== ev.graphic).toArray();
       if (old.length) gl.removeMany(old);
-      areaWkidRef.current = g.spatialReference?.wkid ?? 3857;
       /* ⚠️ ЗӨВХӨН x, y — `hasZ` асаалттай бол гурав дахь утга орж ирэх ба
-         цэгэн доторх шалгалт (`inRings`) хоёр хэмжээст ажилладаг. */
-      setArea(g.rings.map((r) => r.map((p) => [p[0], p[1]])));
+         цэгэн доторх шалгалт (`inRings`) хоёр хэмжээст ажилладаг.
+         ⚠️ 2026-10-09: WM руу хөрвүүлнэ (`areaToWm`) — загварчлал WM координат хүлээнэ */
+      const wa = areaToWm(g);
+      areaWkidRef.current = wa.wkid;
+      setArea(wa.rings);
       /* ⚠️ Зурсан талбай руу ойртоно — загварчлал зөвхөн тэнд ажиллах тул
          хэрэглэгч бусад газрыг хайж «ус алга» гэж эргэлзэх ёсгүй. */
       if (!view.destroyed && g.extent) {
@@ -766,7 +823,10 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       if (ev.state !== 'complete') return;
       const g = ev.graphics[0]?.geometry as __esri.Polygon | undefined;
       if (!g?.rings?.length) return;
-      const next: SimArea = g.rings.map((r) => r.map((p) => [p[0], p[1]]));
+      /* ⚠️ 2026-10-09: WM руу (`areaToWm`) — `create`-тэй ижил */
+      const wa = areaToWm(g);
+      areaWkidRef.current = wa.wkid;
+      const next: SimArea = wa.rings;
       /* ⚠️ 2026-09-25 (аудит 8): `update … complete` нь полигон дээр ЗҮГЭЭР ДАРААД
          (сонгоод) гарахад ч ирдэг — цагираг өөрчлөгдөөгүй атлаа шинэ массив өгвөл
          доорх `area` эффект үр дүнг арилгаж, хэрэглэгч бодсон загварчлалаа алддаг
@@ -1137,12 +1197,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           if (stale()) return;
         }
       } else {
-        extent = airExtent(stations, level, windNow, pm25ByOid);
+        /* ⚠️ 2026-10-09: бүсийг НЭГ удаа бодоод мужийг тэдгээрийн нэгдлээс —
+           урьд нь `airExtent` нь `airBands`-ийг дахин дуудаж буфер/нэгтгэлийг давтдаг байв */
+        bands = airBands(stations, level, windNow, pm25ByOid);
+        extent = bandsExtent(bands);
       }
       if (!extent) throw new Error(tr('Аюулын мужийг байгуулж чадсангүй'));
-      if (hazard !== 'flood') {
-        bands = airBands(stations, level, windNow, pm25ByOid);
-      } else if (simFootprint) {
+      /* ⚠️ 2026-10-09: агаарын бүс дээр (`airBands`) аль хэдийн бодогдсон */
+      if (hazard === 'flood' && simFootprint) {
         bands = [{
           key: `flood-${level}`,
           label: tr('Загварчлалын үерийн мөр'),
@@ -1154,7 +1216,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
           hue: '#dc2626',
           geometry: extent,
         }];
-      } else {
+      } else if (hazard === 'flood') {
         bands = await floodBands(level);
         if (stale()) return;
       }
@@ -1414,16 +1476,18 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         setPath(null);
         /* ⚠️ 2026-09-30: `Overlay` энэ нүдийг БҮХ хугацааны дээд гүнээр (≥ `wetM`) сонгосон —
            одоогийн агшинд хуурай ч ус ИРЭХ/ИРСЭН нүдэнд «ус ирээгүй» гэх нь ХУДАЛ байв */
+        /* ⚠️ 2026-10-09: «Энэ цэгт ус ирээгүй» салаа ХАСАГДАВ — `Overlay` нь зөвхөн
+           дээд гүн ≥ `wetM` нүдийг (эсвэл `maxDepth`-гүй бол ОДООГИЙН гүнээр) сонгодог
+           тул энд ирэх нүд ҮРГЭЛЖ «өөр агшинд ус байсан» (`later` үргэлж үнэн байв). */
         const mx = fd.maxDepth ? fd.maxDepth(p.idx) : null;
         const arr = fd.arrivalMin ? fd.arrivalMin(p.idx) : null;
-        const later = mx != null && mx >= fd.meta.wetM;
         setHazInfo({
-          title: later ? tr('Одоогоор ус алга') : tr('Энэ цэгт ус ирээгүй'),
+          title: tr('Одоогоор ус алга'),
           sub: tr('{0}-р минут', num(fd.minuteAt(s), 1)),
-          rows: later ? [
-            { k: tr('Дээд гүн (бүх хугацаа)'), v: tr('{0} м', num(mx, 2)) },
+          rows: [
+            ...(mx != null ? [{ k: tr('Дээд гүн (бүх хугацаа)'), v: tr('{0} м', num(mx, 2)) }] : []),
             ...(arr != null ? [{ k: tr('Ус ирэх хугацаа'), v: tr('{0} мин', num(arr, 1)) }] : []),
-          ] : [],
+          ],
         });
         return;
       }
@@ -1545,8 +1609,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
       const a = f?.attributes as Record<string, unknown> | undefined;
       const depthRows: Info['rows'] = [];
       if (isFlood) {
-        const own = wantGeom && fdNow ? footprintDepth(fdNow, f?.geometry) : null;
-        if (own != null) {
+        const fpx = wantGeom && fdNow ? footprintDepthEx(fdNow, f?.geometry) : null;
+        const own = fpx?.depth ?? null;
+        if (fpx && !fpx.computed && f?.geometry) {
+          /* ⚠️ 2026-10-09: объект бүхэлдээ тооцооны мужаас гадна — «хуурай» БИШ, «тооцоогүй» */
+          depthRows.push({ k: tr('Усны гүн (объект дээр, дээд)'), v: tr('тооцоогүй — загварчлалын мужаас гадна') });
+        } else if (own != null) {
           const risk = depthRisk(own);
           depthRows.push({ k: tr('Усны гүн (объект дээр, дээд)'), v: tr('{0} м', num(own, 2)), tone: risk.color });
         } else if (p.band) {
@@ -1676,6 +1744,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
     geom: r.geom,
     clsLabel: DAMAGE_RATE[r.cls].label,
     objects: r.objects.map((o) => ({ ...o, geometry: o.geometry as unknown as GeomLike })),
+    /* ⚠️ 2026-10-09: тайрагдсаныг ЭКСПОРТОД дамжуулна — урьд нь хаягдаж дутуу файл бүтэн мэт харагддаг байв */
+    truncated: r.truncated,
+    totalN: r.n,
   })), [result]);
   const exportName = (ext: string) =>
     `ersdel-${result?.hazard ?? 'x'}-${result?.level ?? 0}-${fileDate()}.${ext}`;
@@ -2246,6 +2317,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         {tr('Зурган дээр дарж тухайн нүдний гүн, урсгалын хурд, чиглэл, {0} алхмын түүхийг үзнэ.',
                           num(flood.meta.slices))}
                       </p>
+                      {/* ⚠️ 2026-10-09: алхмын хязгаарт тасарсан бол ИЛ — сүүлийн агшнууд нь давталт */}
+                      {flood.meta.truncated && (
+                        <Note>
+                          {tr('Тооцоо алхмын дээд хязгаарт хүрч {0}-р минутад зогссон ({1} минутаас). {2}-р алхмаас хойших агшнууд нь сүүлийн бодогдсон агшны давталт — шинэ мэдээлэл биш.',
+                            num(flood.meta.simulatedMin ?? 0, 1), num(flood.meta.simMin ?? 60),
+                            num(Math.min(flood.meta.slices, (flood.meta.simulatedSlices ?? flood.meta.slices) + 1)))}
+                        </Note>
+                      )}
                       {/* ⚠️ ХОЁР ЭХ СУРВАЛЖ — нарийвчлал эрс өөр тул ил хэлнэ */}
                       {flood.meta.meshPct != null && (
                         <Note>
@@ -2882,6 +2961,13 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                         {tr('GeoJSON татах')}
                       </button>
                     </div>
+                    {/* ⚠️ 2026-10-09: тайрагдсан давхаргатай бол экспорт ДУТУУ гэдгийг ил хэлнэ */}
+                    {result.rows.some((r) => r.truncated) && (
+                      <Note>
+                        {tr('{0} давхарга тайрагдсан — CSV/GeoJSON-д тэдгээрийн зөвхөн эхний {1} объект орно (бүтэн тоо нь «total_n» баганад).',
+                          num(result.rows.filter((r) => r.truncated).length), num(1200))}
+                      </Note>
+                    )}
                     {sum.unknownCost > 0 && (
                       <Note>
                         {tr('{0} давхаргын өртөг тодорхойгүй (нэгж үнэ баримтад алга, жишээ нь замын ирмэгийн шугам) — нийт үнэлгээнд ОРООГҮЙ.', num(sum.unknownCost))}

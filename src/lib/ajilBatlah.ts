@@ -506,7 +506,9 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
   }
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
-      updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.applied } }]),
+      /* ⚠️ 2026-10-09: `reason: null` — буулгалтын түгжээний тэмдгийг (`AJIL_CLAIM_MARK`) хамт арилгана;
+         `approved` мөрд жинхэнэ шалтгаан хэзээ ч байдаггүй (`decideAjil` батлахад `null` бичдэг). */
+      updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.applied, [F.reason]: null } }]),
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
@@ -670,6 +672,139 @@ const editOk = (res: unknown): boolean => {
   const arr = (res as { success?: boolean }[]) ?? [];
   return arr.length > 0 && arr.every((r) => r.success === true);
 };
+
+/* ══════════════════ СЕРВЕРИЙН ТҮГЖЭЭ (claim) — ⚠️ 2026-10-09 ══════════════════ */
+
+/**
+ * НЭМЭЛТ АЖЛЫН ТҮГЖЭЭ — `obyemBatlah.casObyemClaim`-ийн загвар (⚠️ 2026-10-09).
+ *
+ * ⚠️ ЯАГААД: (1) `decideAjil` нь «дахин унш → бич» л байсан (last-writer-wins) — хоёр батлагч
+ *    зэрэг шийдвэл эхнийх нь чимээгүй дарагдана; (2) `ajilApply.materializeAdds`-ийн Web Locks
+ *    нь ЗӨВХӨН нэг хөтчийг хамгаалдаг тул хоёр компьютер ИЖИЛ илгээлтийг зэрэг буулгаж хоёр
+ *    жааз бичдэг байв. Түгжээ нь мөрөнд СЕРВЕР дээр.
+ * ⚠️ ХЭЛБЭР: ШИНЭ ТАЛБАР/ТӨЛӨВ НЭМЭЭГҮЙ — `butsaasan_shaltgaan` (`F.reason`) талбарт
+ *    `${AJIL_CLAIM_MARK}:${агшин}:${таб}:${нэр}`. `pending`/`approved` мөрийн шалтгааныг хэн ч
+ *    уншдаггүй (шалтгаан зөвхөн `returned`-д). `approver`/`approverAt`-ийг ХӨНДӨХГҮЙ — `approved`
+ *    мөрд тэд «хэн, хэзээ баталсан» (`classifyStuck`-ийн хүлээлэг) тул дарж болохгүй.
+ * ⚠️ Тэмдэг арилах: `decideAjil` (батлахад `null`, буцаахад шалтгаан), `markApplied` (`null`),
+ *    `releaseAjilClaim`, эсвэл `AJIL_CLAIM_TTL` дуусахад (хөтөч хаагдвал мөнхөд үлдэхгүй).
+ * ⚠️ Таб бүр ӨӨР (`TAB`) — нэг хэрэглэгч хоёр компьютер/таб дээр зэрэг буулгавал нэрээр ялгагдахгүй.
+ * ⚠️ Өгөгдөл тул ОРЧУУЛАГДАХГҮЙ.
+ */
+export const AJIL_CLAIM_MARK = '__ajil_tugjee__';
+export const AJIL_CLAIM_TTL = 10 * 60_000;
+/** Энэ табын танигч — түгжээ «минийх» эсэхийг нэрээс гадна үүгээр ялгана */
+const TAB = Math.random().toString(36).slice(2, 10) || 'tab';
+const CLAIM_RE = new RegExp(`^${AJIL_CLAIM_MARK}:(\\d+):([A-Za-z0-9]+):(.*)$`);
+/** Түгжээ тавьж болох төлвүүд — `pending` (шийдвэр), `approved` (буулгалт) */
+const CLAIMABLE: readonly string[] = [AJIL_STATUS.pending, AJIL_STATUS.approved];
+
+/** Хугацаа нь дуусаагүй түгжээ (`{ who, at, tab }`), эсвэл `null`. Цэвэр. */
+export function ajilClaimOf(
+  status: string | null | undefined,
+  reason: string | null | undefined,
+  now = Date.now(),
+): { who: string; at: number; tab: string } | null {
+  if (!status || !CLAIMABLE.includes(status)) return null;
+  const m = CLAIM_RE.exec((reason ?? '').trim());
+  if (!m) return null;
+  const at = Number(m[1]);
+  /* ⚠️ Хэт ирээдүйн агшин (компьютерийн цаг зөрсөн) түгжээг мөнхөд сунгахгүй */
+  if (!Number.isFinite(at) || now - at >= AJIL_CLAIM_TTL || at - now >= AJIL_CLAIM_TTL) return null;
+  return { who: m[3].trim().toLowerCase(), at, tab: m[2] };
+}
+
+/** UI-д: илгээлтийг яг одоо түгжиж буй хүн (жижиг үсгээр), эсвэл `null` */
+export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, now = Date.now()): string | null {
+  return ajilClaimOf(x.status, x.reason, now)?.who ?? null;
+}
+
+const ajilHeldMsg = (holder: string) => tr('{0} энэ илгээлтийг яг одоо шийдвэрлэж/буулгаж байна — хэсэг хугацааны дараа хуудсаа шинэчилнэ үү.', holder);
+const ajilDecidedMsg = (by: string | null, st: string | null) => (by
+  ? tr('Энэ илгээлтийг {0} аль хэдийн шийдвэрлэсэн байна ({1}). Хуудсаа шинэчилнэ үү.', by, st ?? '')
+  : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
+
+/**
+ * ТҮГЖЭЭГ АТОМААР АВАХ (CAS) — цэвэр (сүлжээг `io`-оор; `ajilReapply.check.mjs`).
+ * (1) дахин унш — төлөв `want`, өөр хүний/табын хүчинтэй түгжээгүй; (2) тэмдгээ бич;
+ * (3) дахин уншиж ЯГ манай тэмдэг үлдсэнийг батал — зэрэг бичсэн хүн ялсан бол түүний нэрийг буцаана.
+ * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ — завсар маш богино болно, тэг биш (`casObyemClaim`-ийн адил).
+ * @returns `null` = түгжээ минийх; мөр = яагаад авч чадаагүй
+ */
+export async function casAjilClaim(
+  io: { read: () => Promise<Attrs | null>; write: (mark: string) => Promise<boolean>; now?: () => number; tab?: string },
+  me: string,
+  want: AjilStatus,
+): Promise<string | null> {
+  const now = io.now ?? Date.now;
+  const tab = io.tab ?? TAB;
+  const u = me.trim().toLowerCase();
+  if (!u) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
+  const row = await io.read();
+  if (!row) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
+  const st = s(row[F.status]);
+  if (st !== want) return ajilDecidedMsg(s(row[F.approver]), st);
+  const h = ajilClaimOf(st, s(row[F.reason]), now());
+  if (h && !(h.who === u && h.tab === tab)) return ajilHeldMsg(h.who);
+  const mark = `${AJIL_CLAIM_MARK}:${now()}:${tab}:${u}`;
+  if (!(await io.write(mark))) return tr('ArcGIS-т хадгалагдсангүй.');
+  const back = await io.read();
+  if (back && s(back[F.status]) === want && s(back[F.reason]) === mark) return null;
+  if (back && s(back[F.status]) !== want) return ajilDecidedMsg(s(back[F.approver]), s(back[F.status]));
+  const other = back ? ajilClaimOf(s(back[F.status]), s(back[F.reason]), now()) : null;
+  return other ? ajilHeldMsg(other.who) : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.');
+}
+
+const CLAIM_FIELDS = `${F.oid},${F.status},${F.approver},${F.reason}`;
+
+/** Түгжээний тэмдгийг `reason` талбарт бичих — `editOk`-оор */
+async function writeReason(url: string, oid: number, reason: string | null): Promise<boolean> {
+  const j = await arcgisPost(`${url}/applyEdits`, {
+    updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: reason } }]),
+    rollbackOnFailure: 'true',
+  });
+  const ok = editOk(j.updateResults);
+  /* ⚠️ 2026-10-09: бичигч бүр өөрөө кэш хүчингүй болгоно (dataBus.invariant) */
+  if (ok) invalidate('AJIL_BATLAH');
+  return ok;
+}
+
+/**
+ * ТҮГЖЭЭ АВАХ — `ajilApply.materializeAdds` (`want: approved`) ба `decideAjil` (`want: pending`).
+ * ⚠️ Унавал ШИДЭХГҮЙ, шалтгаан буцаана (сүлжээний алдаа ч түгжээгүй гэсэн үг — бичихгүй).
+ * @returns `null` = түгжээ минийх
+ */
+export async function claimAjil(args: { oid: number; me: string; want: AjilStatus }): Promise<string | null> {
+  const url = await tableUrl();
+  if (!url) return tr('Батлах хүснэгт олдсонгүй — админд хандана уу.');
+  try {
+    const err = await casAjilClaim({
+      read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
+      write: (mark) => writeReason(url, args.oid, mark),
+    }, args.me, args.want);
+    if (!err) invalidate('AJIL_BATLAH');
+    return err;
+  } catch (e) {
+    return String((e as Error).message || e);
+  }
+}
+
+/**
+ * ТҮГЖЭЭГ ТАЙЛАХ — зөвхөн ЭНЭ табын, төлөв нь хэвээр (`pending`/`approved`) мөрийн тэмдгийг.
+ * Алдааг залгина: ямар ч байсан `AJIL_CLAIM_TTL`-ээр тайлагдана.
+ */
+export async function releaseAjilClaim(args: { oid: number; me: string }): Promise<void> {
+  const u = args.me.trim().toLowerCase();
+  try {
+    const url = await tableUrl();
+    if (!url) return;
+    const cur = (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0];
+    if (!cur) return;
+    const h = ajilClaimOf(s(cur[F.status]), s(cur[F.reason]));
+    if (!h || h.who !== u || h.tab !== TAB) return;
+    if (await writeReason(url, args.oid, null)) invalidate('AJIL_BATLAH');
+  } catch { /* AJIL_CLAIM_TTL-ээр тайлагдана */ }
+}
 
 /**
  * ИЛГЭЭХ — мөр нэмэгчийн «Батлуулах».
@@ -889,6 +1024,35 @@ export async function decideAjil(args: {
   if (args.stamp && payloadStamp(String(cur[0][F.payload] ?? '')) !== args.stamp) {
     return { ok: false, stale: true, error: tr('Зохиогч илгээлтийг өөрчилсөн — дахин харж шийднэ үү.') };
   }
+  /*
+   * ⚠️ 2026-10-09: ТҮГЖЭЭ + ДАХИН УНШИХ (`decideObyem`-ийн загвар). Урьд нь дээрх уншилт → доорх
+   *    бичилт л байсан тул хоёр батлагч зэрэг шийдвэл СҮҮЛД бичсэн нь чимээгүй ялж (last-writer-wins),
+   *    эхний батлагчийн «батлагдсан» нь «буцаагдсан» болж дарагдах (эсвэл эсрэгээр) боломжтой байв.
+   *    Одоо `casAjilClaim`-аар `pending` мөрийг АТОМААР түгжиж, бичихийн ЯГ ӨМНӨ төлөв/тэмдэг/агуулгыг
+   *    дахин уншина. Түгжээтэй үед өөр батлагчийн `decideAjil`, зохиогчийн `withdrawAjil`/`updateAjil`
+   *    татгалзана. Шийдвэрийн бичилт тэмдгийг өөрөө арилгана (`reason`: батлахад `null`, буцаахад шалтгаан).
+   * ⚠️ Нэвтрэлтгүй горимд (`me` хоосон) `anon` нэрээр — таб нь ялгана.
+   */
+  const claimer = me || 'anon';
+  const claimErr = await claimAjil({ oid: args.oid, me: claimer, want: AJIL_STATUS.pending });
+  if (claimErr) return { ok: false, error: claimErr };
+  const release = () => { void releaseAjilClaim({ oid: args.oid, me: claimer }); };
+  try {
+    const again = (await query(`${F.oid} = ${Number(args.oid)}`, `${CLAIM_FIELDS}${args.stamp ? `,${F.payload}` : ''}`))[0];
+    if (!again) { release(); return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') }; }
+    if (s(again[F.status]) !== AJIL_STATUS.pending) { release(); return { ok: false, error: ajilDecidedMsg(s(again[F.approver]), s(again[F.status])) }; }
+    const h = ajilClaimOf(s(again[F.status]), s(again[F.reason]));
+    if (!h || h.who !== claimer || h.tab !== TAB) {
+      return { ok: false, error: h ? ajilHeldMsg(h.who) : tr('Таны батлах түгжээний хугацаа дууссан — юу ч бичигдсэнгүй. Дахин оролдоно уу.') };
+    }
+    if (args.stamp && payloadStamp(String(again[F.payload] ?? '')) !== args.stamp) {
+      release();
+      return { ok: false, stale: true, error: tr('Зохиогч илгээлтийг өөрчилсөн — дахин харж шийднэ үү.') };
+    }
+  } catch (e) {
+    release();
+    return { ok: false, error: String((e as Error).message || e) };
+  }
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: args.approve ? AJIL_STATUS.approved : AJIL_STATUS.returned,
@@ -902,10 +1066,12 @@ export async function decideAjil(args: {
       updates: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
+    if (!editOk(j.updateResults)) { release(); return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') }; }
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
+    /* ⚠️ Сүлжээний алдаа — бичигдсэн эсэх тодорхойгүй; тайлах нь зөвхөн `pending` хэвээр үед ажиллана */
+    release();
     return { ok: false, error: String((e as Error).message || e) };
   }
 }
@@ -938,10 +1104,14 @@ export async function withdrawAjil(args: {
   }
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver}`);
+  const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.reason}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
+  /* ⚠️ 2026-10-09: батлагч түгжсэн (`decideAjil` шийдвэрээ бичиж буй) үед татахгүй — эс бөгөөс татсан
+     төлвийг батлагчийн шийдвэр дарж бичнэ (`AJIL_CLAIM_MARK`-ийн ⚠️). */
+  const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
+  if (held) return { ok: false, error: ajilHeldMsg(held.who) };
   const curStatus = s(cur[0][F.status]);
   if (curStatus !== AJIL_STATUS.pending) {
     const by = s(cur[0][F.approver]);
@@ -1010,7 +1180,7 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
-    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.pkgGroup}`);
+    const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.pkgGroup},${F.reason}`);
     if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     if (AUTH.appId) {
       const meNow = currentUser() ?? me;
@@ -1021,6 +1191,10 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     }
     const deny = returnStuckDeny(s(cur[0][F.status]), reason);
     if (deny) return { ok: false, error: deny };
+    /* ⚠️ 2026-10-09: хэн нэгэн яг одоо БУУЛГАЖ байвал (`claimAjil` · `approved`) буцаахгүй — эс бөгөөс мөрүүд
+       хуудсанд бичигдсэн атлаа илгээлт «буцаагдсан» болно (`AJIL_CLAIM_MARK`-ийн ⚠️). */
+    const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
+    if (held) return { ok: false, error: ajilHeldMsg(held.who) };
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: {
         [F.oid]: args.oid,
@@ -1074,7 +1248,7 @@ export async function updateAjil(args: {
   }
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const fields = `${F.oid},${F.status},${F.author},${F.approver},${F.pkgKey},${F.pkgGroup}`;
+  const fields = `${F.oid},${F.status},${F.author},${F.approver},${F.pkgKey},${F.pkgGroup},${F.reason}`;
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, fields);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -1096,6 +1270,9 @@ export async function updateAjil(args: {
   if (s(cur[0][F.status]) !== AJIL_STATUS.pending) {
     return { ok: false, error: gone(s(cur[0][F.status]), s(cur[0][F.approver])) };
   }
+  /* ⚠️ 2026-10-09: батлагч түгжсэн (шийдвэрээ бичиж буй) үед засахгүй — батлагчийн ХАРААГҮЙ агуулга батлагдана */
+  const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
+  if (held) return { ok: false, error: ajilHeldMsg(held.who) };
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.rowCount]: args.payload.adds.length,

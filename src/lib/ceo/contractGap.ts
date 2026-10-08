@@ -48,7 +48,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { mnt } from '@/lib/format';
 import { CASHFLOW_NEW, CF_WORK_WHERE } from '@/lib/services';
-import { CONTRACTED } from '@/lib/gdash';
+import { isContracted } from '@/lib/gdash';
 import { finXlInTotal, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
@@ -146,7 +146,7 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     const contract = money(r[F.contractAmount]);
     /* ⚠️ Гэрээгүй мөрийн төсөв ЭНД ХАЯГДАНА — `budgetTotal`-д орохгүй (толгойн ⚠️).
        ⚠️ 2026-09-25: гэрээтэй эсэх нь `note === CONTRACTED`-ээр (дүнгээр БИШ). */
-    if (str(r[F.amountNote]) !== CONTRACTED) { noContract += 1; continue; }
+    if (!isContracted(r)) { noContract += 1; continue; }
     if (budget == null) noBudget += 1;
     const diff = budget == null || contract == null ? null : contract - budget;
     rows.push({

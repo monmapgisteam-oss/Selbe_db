@@ -32,3 +32,10 @@ assert.ok(flow.includes('overlaySubmission(base.rows, pl, sc'), 'useFlow: overla
 const g = src('../modules/Guitsetgel.tsx');
 assert.ok(g.includes('data.unmoved'), 'Guitsetgel: тулгагдаагүй нүдний тоог харуулна');
 console.log('✅ hyanaltDetail · useFlow — батлалттай ижил withFrameOcc · unmoved харагдана');
+
+/* ── 2026-10-09: F2 огноогүй хэлтэрхийн нэг дүрэм · F4 гүн `gun`-аас ── */
+assert.ok(det.includes('nullFragmentFits(nRows, nNull, nExpect)') && !det.includes('nRows + nNull === nExpect'),
+  'hyanaltDetail: огноогүй хэлтэрхийг bagtsSheet-тэй НЭГ туслахаар (nullFragmentFits) шалгана');
+assert.ok(/sc.f.ratio, sc.f.gun,/.test(det) && det.includes('depth: gunDepth ? gunDepth[ri]'),
+  'hyanaltDetail: гүнийг эхлээд gun баганаас уншина');
+console.log('✅ hyanaltDetail — огноогүй хэлтэрхий (нэмэлт мөртэй) · gun гүн');

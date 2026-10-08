@@ -524,7 +524,7 @@ export type SchemSources = {
   overall: { pct: number | null; weightSum: number; rows: number } | null;
   /* ⚠️ 2026-10-04: `blocks` = бөглөх хуудасны БҮХ блок, `reported` = тайлагнасан (reportData.loadProgress) */
   progress: { blocks: number; reported?: number; overall: number | null; date: string; stalled: number } | null;
-  finance: { budget: number; contractAmount: number; paid: number; byBagts: Record<string, number> } | null;
+  finance: { budget: number; contractAmount: number; paid: number | null; byBagts: Record<string, number> } | null;
   habea: { workers: number; tehnik: number; incidents: number } | null;
   /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
   zov: Zov[] | null;

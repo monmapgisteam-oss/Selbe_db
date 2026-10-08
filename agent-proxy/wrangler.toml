@@ -18,7 +18,11 @@ compatibility_date = "2026-08-01"
 #    зөвхөн жагсаалтад байгаа эхээс ирсэн хүсэлт л нэвтэрнэ). Энэ өөрчлөлт
 #    ЗӨВХӨН `npm run deploy` (wrangler) хийсний ДАРАА байршуулсан Worker-т хүрнэ —
 #    файл засаад орхивол шинэ домэйн дээр AI туслах 403-оор хаагдсаар байна.
-ALLOW_ORIGIN = "https://smart.selbecity.mn,https://selbe.monmap.mn,https://monmapgisteam-oss.github.io,http://localhost:8123"
+# ⚠️ 2026-10-09 (аудит №9): `http://localhost:8123` PRODUCTION жагсаалтаас ХАСАГДАВ — хэрэглэгчийн
+#    машин дээрх дурын локал хуудас (8123 порт) нийтийн Worker-ийг дуудах боломжтой байв.
+#    Локал `wrangler dev`-д `agent-proxy/.dev.vars` (жишээ: `.dev.vars.example`) — тэр нь
+#    энэ утгыг ДАРНА. Локал хөгжүүлэлтэд ердийн зам нь `server.mjs` (анхдагч нь localhost).
+ALLOW_ORIGIN = "https://smart.selbecity.mn,https://selbe.monmap.mn,https://monmapgisteam-oss.github.io"
 
 # ⚠️ Энэ хувьсагчийг тохируулснаар ArcGIS нэвтрэлт ШААРДАГДАНА: зөвхөн энэ
 #    байгууллагад нэвтэрсэн хэрэглэгч AI-г ашиглана. Хоосон болговол реле
@@ -36,10 +40,31 @@ ARCGIS_PORTAL = "https://www.arcgis.com"
 # зам нь энэ нууц — санамсаргүй урт утга сонго (`openssl rand -hex 32`).
 # Тохируулаагүй бол бот энэ реле рүү холбогдож чадахгүй (401); портал хэвээр.
 
+# ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ хэрэглэгч бүрд (`rateLimit.mjs`) — хэтэрвэл маргааш хүртэл 429.
+#    Анхдагч 300000; "0" бол унтраалттай. Бот (`BOT_SECRET`) чөлөөт.
+DAILY_TOKEN_BUDGET = "300000"
+
+# ⚠️ 2026-10-09: СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (заавал биш) — энд БИЧИХГҮЙ, НУУЦ болгоно:
+#     npx wrangler secret put PROMPT_HMAC
+# Тохируулбал порталын build-д ИЖИЛ утгыг GitHub Variable `AGENT_PROMPT_HMAC` →
+# `NEXT_PUBLIC_AGENT_PROMPT_HMAC`-аар өгнө (JS багцад ИЛ — хил биш, саад; README).
+# Хоёр талын утга зөрвөл порталын AI бүх асуултад 403 буцаана.
+
 # Загвар ба гүнзгийрэл — `server.mjs`-ийн анхдагчтай ижил.
 # Туршилтын үед зардал хэмнэхийг хүсвэл AGENT_MODEL = "claude-haiku-4-5"
 AGENT_MODEL = "claude-opus-5"
 AGENT_EFFORT = "low"
+
+# ── Хурдны хязгаар ба төсвийн KV (заавал биш, ⚠️ 2026-10-09) ─────────────────
+# Холбосон үед `worker.mjs` нь хэрэглэгчийн минутын хязгаар, амжилтгүй нэвтрэлт ба
+# өдрийн төсвийг isolate ХООРОНД тоолно (ойролцоо — KV eventually consistent).
+# Холбоогүй бол isolate тус бүрийн санах ойд (урьдын зан). Үүсгэх:
+#     npx wrangler kv namespace create RL_KV
+# гаралтын `id`-г доор тавиад идэвхжүүлнэ:
+#
+# [[kv_namespaces]]
+# binding = "RL_KV"
+# id = "<kv namespace id>"
 
 # ── Өөрийн домэйн (заавал биш) ───────────────────────────────────────────
 # Cloudflare дээр `selbecity.mn` бүсийг нэмсэн бол доорхийг идэвхжүүлээд

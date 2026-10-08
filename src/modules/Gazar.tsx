@@ -26,7 +26,7 @@ import { overlapLeftParcels } from '@/lib/parcelOverlap';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { PARCEL_OID, parcelWhere, findParcelsByNo, type ParcelHit } from '@/lib/parcelEdit';
-import { statusKey, isClearedStatus, parcelAltAreaWhere } from '@/lib/land';
+import { statusKey, isClearedStatus, parcelAltAreaWhere, statusRawsWhere } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
 import { num, text, shades, CAT_LIGHT, NO_DATA } from '@/lib/format';
@@ -958,7 +958,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       const cur = smap.get(k) ?? { n: 0, a: 0, raws: new Set<string>() };
       cur.n += n;
       cur.a += a;
-      if (raw.trim() !== '') cur.raws.add(raw);
+      /* ⚠️ 2026-10-09: ЗӨВХӨН ЗАЙТАЙ утгыг ч хадгална — «Тодорхойгүй»-н WHERE-д хэрэгтэй (`statusRawsWhere`) */
+      if (raw !== '') cur.raws.add(raw);
       smap.set(k, cur);
     };
     for (const r of lStatus) addStatus(r, Number(r.n ?? 0), Number(r.a ?? 0));
@@ -990,13 +991,10 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         // ⚠️ Дарж шүүхэд WHERE-ийг ТҮҮХИЙ утгуудаас (шалтгааны шүүлттэй ижил) угсарна:
         //    түлхүүр нь арын зай арилгасан хувилбар тул `Tuluv = '<trim>'` нь зай-мэдрэг
         //    сан дээр таарахгүй байж болзошгүй. Тодорхойгүй = NULL/хоосон.
-        const eq = [...s.raws].filter((x) => x.trim() !== '')
-          /* ⚠️ 2026-09-21: `sqlStr` (`N'…'` угтвар) — угтваргүй кирилл харьцуулалт
-             зарим үйлчилгээнд 0 мөр буцаадаг (дээрх :404 ба `query.ts` `sqlStr`). */
-          .map((x) => `${L.fields.status} = ${sqlStr(x)}`);
-        const where = value === 'Тодорхойгүй'
-          ? `(${L.fields.status} IS NULL OR ${L.fields.status} = '')`
-          : eq.length ? `(${eq.join(' OR ')})` : `${L.fields.status} = ${sqlStr(value)}`;
+        /* ⚠️ 2026-09-21: `sqlStr` (`N'…'` угтвар) — угтваргүй кирилл харьцуулалт
+           зарим үйлчилгээнд 0 мөр буцаадаг (дээрх :404 ба `query.ts` `sqlStr`).
+           ⚠️ 2026-10-09: «Тодорхойгүй» = NULL/'' + ТҮҮХИЙ «—»/зайтай утгууд (`land.statusRawsWhere`). */
+        const where = statusRawsWhere(L.fields.status, s.raws, value === 'Тодорхойгүй', value);
         // Тоо ба нэгж (га) ХАМТ — «1,703 талбар · 78.08 га»
         return {
           key: value,

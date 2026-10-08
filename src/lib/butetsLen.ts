@@ -179,7 +179,13 @@ export function lenFieldUnit(
   const n = fieldName.toLowerCase();
   const qf = (qty?.field ?? '').toLowerCase();
   const isQty = qf !== '' && !qf.startsWith('shape__') && n === qf;
-  if (!LEN_FIELD_RE.test(fieldName) && !isQty) return null;
+  const byName = LEN_FIELD_RE.test(fieldName);
+  if (!byName && !isQty) return null;
+  /* ⚠️ 2026-10-09: хэмжээний талбар нь УРТ биш байж болно (ш · м² · м³ — худаг, тулгуур,
+     талбай). Урьд нь Shape__ биш бүх `qty.field`-ийг уртын талбар гэж үзэж, геометрийн
+     уртыг «ширхэг»-ийн талбарт санал болгодог байв. Нэрээр нь урт гэж танигдаагүй бол
+     нэгж нь м/км байх ёстой. */
+  if (!byName && qty?.unit !== 'м' && qty?.unit !== 'км') return null;
   if (/km/i.test(fieldName)) return 'km';
   if (isQty && qty?.unit === 'км') return 'km';
   return 'm';

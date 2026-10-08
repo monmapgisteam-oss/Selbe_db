@@ -20,7 +20,7 @@ import {
 import { ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, ZONE_FIELD, zoneRefValues } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
 import {
-  urbanScore, scoreColor, scoreLabel, passesNorm,
+  urbanScore, scoreColor, scoreInk, scoreLabel, passesNorm,
 } from '@/lib/analysis/score';
 import type { Dim } from '@/components/MapCanvas';
 import { SuitMap, type MapRow } from './SuitMap';
@@ -760,7 +760,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), scoreColor(score), score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), /* ⚠️ 2026-10-09: орчуулгын түлхүүрийг хөндөхгүйгээр бичгийн өнгийг style-д залгана (`scoreInk`) */ `${scoreColor(score)};color:${scoreInk(score)}`, score == null ? '—' : Math.round(score), esc(row.type), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
   }, [mode, ind, indicators, simKind, popBasis, simRng, simAvg]);
 

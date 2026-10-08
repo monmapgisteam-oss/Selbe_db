@@ -366,7 +366,7 @@ const ROWS = [
   const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
   const direct = src.split('all ? all.labor').length - 1;
   assert.equal(direct, 1, 'all.labor-ийг зөвхөн latestRowPerDay-ээр дамжуулна');
-  assert.ok(src.includes('latestRowPerDay(all ? all.labor : [], dayKey)'));
+  assert.ok(src.includes('latestRowPerDay(all ? all.labor : [], ubDayKey)'));
 }
 
 /* ══════════ 11. «Тайлан өгсөн» дүрэм ба хуучирсан тайлан (2026-10-01) ══════════ */

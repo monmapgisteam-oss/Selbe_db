@@ -48,6 +48,10 @@ export const depsJson = (deps: readonly Dep[]): string => JSON.stringify(deps.ma
 
 export const sameDep = (a: Dep, b: Dep): boolean => a.from === b.from && a.to === b.to;
 
+/** Хоёр жагсаалт ИЖИЛ холбоосуудтай юу (дараалал хамаагүй; `parseDeps` давхардлыг арилгасан) */
+export const sameDeps = (a: readonly Dep[], b: readonly Dep[]): boolean =>
+  a.length === b.length && a.every((d) => b.some((x) => sameDep(d, x)));
+
 /** `a`-аас сумаар явж `b`-д хүрэх үү (a → … → b) */
 export function reaches(deps: readonly Dep[], a: string, b: string): boolean {
   const seen = new Set<string>([a]);
@@ -139,7 +143,11 @@ export async function saveChange(c: DepChange): Promise<{ ok: true; state: DepSt
     try { cur = await loadDeps(); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const next = applyChange(cur.deps, c);
     if (typeof next === 'string') return { ok: false, error: next };
-    const at = Math.max(Date.now(), (cur.at ?? 0) + 1);
+    /* ⚠️ 2026-10-09: ӨӨРЧЛӨЛТГҮЙ (жиш. өөр хүн аль хэдийн устгасан холбоог «устгах») — урьд нь
+       ижил жагсаалтыг шинэ `at`-тай дахин бичиж, бусдын нээлттэй цонхонд дэмий conflict
+       үүсгэдэг байв. Сервер аль хэдийн хүссэн төлөвт тул бичихгүй. */
+    if (sameDeps(next, cur.deps)) return { ok: true, state: cur };
+    const at =Math.max(Date.now(), (cur.at ?? 0) + 1);
     const res = await saveRemoteDraft(HAMAARAL_KEY, at, depsJson(next), { expectAt: cur.at });
     if (res.ok) return { ok: true, state: { deps: next, at } };
     if (!res.conflict) return { ok: false, error: res.error };

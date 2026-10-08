@@ -408,3 +408,41 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.ok(src.includes('if (!negtgelComplete(v) && fullP === mine) fullP = null;'), 'loadNegtgelFull бүрэн бус үр дүнг кэшэд үлдээж байна');
   console.log('negtgel 2026-10-01: ok — бүрэн бус үр дүн кэшлэгдэхгүй · уналтын нэр');
 }
+
+/* ⚠️ 2026-10-09 (аудит): нэгтгэлийн бичилт ба автомат бодолт.
+   1. Тайлагнаагүй орон сууцны багц (`pkgProgressOf` → `{pct:0, blocks:0}`) хүснэгтэд 0 бичихгүй.
+   2. Хоёр хуудсын блокоор жигнэсэн дундаж — `null` бол `null`, 0-блоктой хуудас жин 1.
+   3. Давхардлын түлхүүр ӨДРӨӨР — 16:00Z ба 00:00Z нэг өдөр.
+   4. Блокгүй багц (5.x · 6.x · 10) танигдана — `registerApproved` `skipped: 'blockless'`. */
+{
+  const { measuredHousing } = await import('./negtgelAuto.ts');
+  const housing = new Map([['БАГЦ1', 21], ['БАГЦ2', 0], ['БАГЦ41', 0]]);
+  const blocks = new Map([
+    ['БАГЦ1|29/1', { overall: 42 }],
+    ['БАГЦ2|5/1', null],
+    ['БАГЦ41|1', { overall: NaN }],
+  ]);
+  const m = measuredHousing(housing, blocks);
+  assert.deepEqual([...m], [['БАГЦ1', 21]], 'хэмжилтгүй багц (0%) хүснэгт рүү бичигдэх ёсгүй');
+
+  const W = await import('./negtgelWrite.ts');
+  /* Багц 1: 9F 12 блок 50%, 12F 17 блок нийтлэгдээгүй (0%) → 12·0.5/29 */
+  assert.ok(Math.abs(W.blendBlocks([{ n: 12, v: 0.5 }, { n: 17, v: 0 }]) - 6 / 29) < 1e-12);
+  assert.equal(W.blendBlocks([{ n: 12, v: 0.5 }, { n: 17, v: null }]), null, 'null ≠ 0');
+  assert.ok(Math.abs(W.blendBlocks([{ n: 0, v: 0.4 }, { n: 0, v: 0.2 }]) - 0.3) < 1e-12, '0 блоктой хуудас жин 1');
+  assert.equal(W.blendBlocks([]), null);
+
+  const day = (iso) => W.dayRange(Date.parse(iso)).map((x) => new Date(x).toISOString());
+  const want = ['2026-10-07T12:00:00.000Z', '2026-10-08T12:00:00.000Z'];
+  assert.deepEqual(day('2026-10-07T16:00:00Z'), want, 'локал шөнө дунд (16:00Z) → 10-08');
+  assert.deepEqual(day('2026-10-08T00:00:00Z'), want, 'UTC шөнө дунд → 10-08');
+  assert.deepEqual(day('2026-10-08T08:00:00Z'), want, '08:00Z → 10-08');
+  assert.notDeepEqual(day('2026-10-08T16:00:00Z'), want, 'дараагийн локал өдөр');
+
+  assert.equal(W.isBlocklessBagts('Багц 5.1'), true);
+  assert.equal(W.isBlocklessBagts('Багц 10'), true);
+  assert.equal(W.isBlocklessBagts('Багц 1'), false);
+  assert.equal(W.isBlocklessBagts('Багц 4.1'), false, '«4.1» ба «4-1» нэг багц');
+  assert.equal(W.isBlocklessBagts('Байхгүй багц'), false);
+  console.log('negtgel 2026-10-09: ok — тайлагнаагүй багц бичихгүй · блокоор жигнэх · өдрийн муж · блокгүй багц');
+}

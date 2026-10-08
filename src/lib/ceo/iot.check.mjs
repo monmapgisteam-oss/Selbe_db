@@ -327,4 +327,19 @@ function sensor(key, label, series, error) {
   assert.equal(st.states[0].state, 'stale');
 }
 
+/* ══════════════ 2026-10-09: ТҮҮХИЙ МУЖААС ГАДУУР (`rawValid`) — утга null, гэмтэл, дуугүй БИШ ══════════════ */
+{
+  /* хогийн сав 65535мм — `derive` хумихаас ӨМНӨ барьсан: latest = null, latestAt бий, fault */
+  const s = computeIot([
+    sensor('waste', 'Хог', [metric('fill', 'Дүүрэлт', '%', 0, null, 1, 80, { latestAt: NOW - H, ageHours: 1, fault: true })]),
+  ], NOW);
+  assert.equal(s.faults.length, 1, 'түүхий мужаас гадуур заалт гэмтэл гэж тэмдэглэгдсэнгүй');
+  assert.equal(s.faults[0].latest, null, 'мм-ийг %-иар харуулах аргагүй — null');
+  assert.equal(s.silent, 0, 'гэмтэлтэй заалт «дуугүй» гэж тоологдов');
+  assert.equal(s.states[0].state, 'fault');
+  assert.equal(iotLevel(s), 'warn');
+  const k = buildIotKpi(s, []);
+  assert.ok(k.issues.some((x) => x.text.includes('—') && !x.text.includes('null')), 'анхааруулгад «null» бичигдэв');
+}
+
 console.log('iot.check: OK');

@@ -196,7 +196,13 @@ export type ReportExtra = {
      *    буй хүн «хоёр дахин өслөө» гэж эндүүрч болзошгүй тул энэ нь
      *    АЛДАА БИШ, ойлголтын өөрчлөлт.
      */
-    paid: number;
+    paid: number | null;
+    /**
+     * «Олгосон ÷ гэрээлсэн» хувь, 0–100 — `paidShare.pct` ЯГ (дахин бодохгүй).
+     * ⚠️ 2026-10-09: HO_IPC хоосон ирэхэд `paid` = `null`, `paidPct` = `null` («—»). Урьд нь
+     *    дуудагчид `paidPctOf(0, contract)` гэж дахин бодож «0%», «Бодитоор олгосон 0 ₮» бичдэг байв.
+     */
+    paidPct: number | null;
     /** ⚠️ `contract` = зөвхөн CONTRACTED мөрийн `geree_dun` (2026-09-21, §1-тэй нэг дүрэм) */
     byType: { type: string; n: number; budget: number; contract: number }[];
     /** «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — БҮХ мөрөөр (задаргаатай нийцнэ); `contract` CONTRACTED шүүлттэй */
@@ -820,7 +826,9 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
       .reduce((a, r) => a + nn(r[F.budget]), 0),
     sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
-    paid,
+    /* ⚠️ 2026-10-09: HO мөргүй → `null` (мэдээлэлгүй), 0 биш; хувь нь `share.pct` (тэр ч null) */
+    paid: ho.length ? paid : null,
+    paidPct: share.pct,
     paidContracted,
     paidOther: share.paidOther,
     byType: [...typeMap.entries()]
@@ -1173,7 +1181,9 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   /* ⚠️ 2026-09-21: тоологч = ГЭРЭЭЛСЭН багцын төлбөр (`paidContracted`), хуваарь =
      гэрээлсэн дүн — нэг хүрээ. Урьд нь бүх төлбөр (`paid`) хуваагддаг байв. */
   /* ⚠️ 2026-10-01: томьёо `paidShare.paidPctOf` — порталын бүх газар НЭГ функц */
-  const paidRate = paidPctOf(x.finance.paidContracted, x.finance.contractAmount);
+  /* ⚠️ 2026-10-09: `paidShare.pct`-ийг шууд (`finance.paidPct`) — HO хоосон үед `paidPctOf(0, …)` = 0%
+     гэж ДАХИН бодохгүй; олголт уншигдаагүй бол `null`. */
+  const paidRate = x.finance.paid == null ? null : x.finance.paidPct ?? paidPctOf(x.finance.paidContracted, x.finance.contractAmount);
 
   /* ⚠️ 2026-09-06: САНХҮҮЖИЛТИЙН САРЫН ХУВААРЬ дээр тогтсон гурван дүгнэлт
      (оргил сар, сүүлийн гурван сарын эрчим) ХАСАГДСАН — хуучин

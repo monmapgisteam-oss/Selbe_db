@@ -817,19 +817,40 @@ export function rowAct(r: PlanLikeRow): number | null {
  *    агшин биш ДУТУУ огноо харагдан хоцролт дутуу тоологддог байв
  *    (`loadCommissionDates`-ийн «огноо нь «—» болж» гэсэн зорилгын эсрэг).
  * ⚠️ `failed` — давхардалгүй (хоёр хуудас хоёулаа унахад нэг нэр).
+ * ⚠️ 2026-10-09: ОЛОН хуудастай багцын НЭГ хуудас уншигдсан ч «Улсын комисс» огноогүй
+ *    (`ok: true, at: null`) бол мөн ДУТУУ — огноо `null`, `partial`-д «огноотой/нийт» хуудас
+ *    (дэлгэцэд «(1/2 хуудас)»). Урьд нь нөгөө хуудасны огноо ЧИМЭЭГҮЙ үлдэж, бүх блок дууссан
+ *    агшин мэт харагддаг байв (дээрх 2026-09-30-ны ⚠️-тэй ижил шалтгаан). Бүх хуудас огноогүй бол
+ *    энгийн `null` («—»), `partial`-д орохгүй. Унасан хуудас хагасаас ДАВУУ (`failed`-д).
  */
+export type CommissionPartial = { dated: number; sheets: number };
 export function mergeCommission(
   res: readonly { key: string; at: number | null; ok: boolean }[],
-): { dates: Map<string, number | null>; failed: string[] } {
-  const dates = new Map<string, number | null>();
+): { dates: Map<string, number | null>; failed: string[]; partial: Map<string, CommissionPartial> } {
+  const acc = new Map<string, { sheets: number; dated: number; max: number | null }>();
   const bad = new Set<string>();
   for (const r of res) {
-    if (!r.ok) { bad.add(r.key); continue; }
-    const cur = dates.get(r.key) ?? null;
-    dates.set(r.key, r.at == null ? cur : cur == null || r.at > cur ? r.at : cur);
+    const a = acc.get(r.key) ?? { sheets: 0, dated: 0, max: null };
+    a.sheets += 1;
+    if (!r.ok) bad.add(r.key);
+    else if (r.at != null) {
+      a.dated += 1;
+      if (a.max == null || r.at > a.max) a.max = r.at;
+    }
+    acc.set(r.key, a);
   }
-  bad.forEach((k) => dates.set(k, null));
-  return { dates, failed: [...bad] };
+  const dates = new Map<string, number | null>();
+  const partial = new Map<string, CommissionPartial>();
+  acc.forEach((a, k) => {
+    if (bad.has(k)) { dates.set(k, null); return; }
+    if (a.dated > 0 && a.dated < a.sheets) {
+      dates.set(k, null);
+      partial.set(k, { dated: a.dated, sheets: a.sheets });
+      return;
+    }
+    dates.set(k, a.max);
+  });
+  return { dates, failed: [...bad], partial };
 }
 
 /** «Улсын комисс» мөр мөн эсэх */

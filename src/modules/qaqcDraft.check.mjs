@@ -185,13 +185,14 @@ console.log('✅ гүйцэтгэлийн ноорогтой тусгаарла�
   const drop = between('const dropDraft = useCallback(', '/* ══════════════ ХАДГАЛАХ');
   assert.ok(drop.includes('retirePend(key, pend, rows)') && drop.includes('saveQaqcDraft(key, doc)'), '⚠️ (б) «ноорог устгах» булшилж бичих ёстой');
   const sv = between('const save = useCallback(', '/* Ctrl+S');
-  assert.ok(sv.includes('retirePend(pkg.key, pend, rows)') && sv.includes('await saveQaqcDraft(pkg.key, doc)'), '⚠️ (б) «Хадгалах» хадгалсан нүдийг булшлах ёстой');
+  /* ⚠️ 2026-10-09: `keep` — зөрчилтэй (бичигдээгүй) нүд булшлагдахгүй (13-р хэсэг) */
+  assert.ok(sv.includes('retirePend(pkg.key, pend, rows, keep)') && sv.includes('await saveQaqcDraft(pkg.key, doc)'), '⚠️ (б) «Хадгалах» хадгалсан нүдийг булшлах ёстой');
   assert.ok(sv.indexOf('retirePend(') < sv.indexOf('await load(pkg.key)'), '⚠️ (б) булш нь дахин ачаалахаас ӨМНӨ (load нь loadedPkgRef-ийг хоосолдог)');
   assert.ok(!/clearQaqcDraft\(/.test(SRC), '⚠️ (в) хуудас ArcGIS-ийн ноорогийг бүрэн устгах ёсгүй (булшгүй устгал = буцаж амилалт)');
   const swap = between('setPend({});', 'void load(pkg.key);');
   assert.ok(swap.includes('prevPendRef.current = {}'), '⚠️ багц солиход pend-ийн тэглэлт «бүгдийг арилгасан» гэж булшлагдах ёсгүй');
   const rs = between('НООРОГ — СЭРГЭЭХ', 'ОЛОН НҮДЭНД БУУЛГАХ');
-  assert.ok(rs.includes('adoptQaqcDraft(pick, draftStRef.current, fits, stamp)'), '⚠️ сэргээлт табын төлөвт хүлээн авах ёстой');
+  assert.ok(rs.includes('adoptQaqcDraft(pick, draftStRef.current, fits, stamp, saved)'), '⚠️ сэргээлт табын төлөвт хүлээн авах ёстой (серверт байгаа утга `saved`-аар булшлагдана)');
   assert.ok(rs.includes('!draftIncludes(remD, stored)'), '⚠️ (г) ArcGIS-д дутуу булш/нүд илгээгдэх ёстой');
   assert.ok(rs.indexOf("if (!canEdit) { promptedPkgRef.current = ''; return; }") < rs.indexOf('adoptQaqcDraft('), '⚠️ эрхгүй үед булш/хүлээн авалт хийгдэх ёсгүй');
   assert.ok(rs.includes('clockRef.current = Math.max(clockRef.current, pick.t)'), '⚠️ Лампорт — харсан агшнаас хойш л шинэ агшин');
@@ -247,5 +248,35 @@ console.log('✅ хадгалсны дараа гүйлгэлтийн байрл
   assert.ok(REMOTE.includes('editFieldsInfo?.editDateField'), '⚠️ Editor Tracking байвал серверийн цагаар засна (feature-detect)');
 }
 console.log('✅ ArcGIS руу нэгтгэж бичнэ · дараалал · серверийн цаг');
+
+/* ── 13. ⚠️ 2026-10-09: ЗЭРЭГ ЗАСВАР · БУЛШНЫ ДАХИН ДАРААЛАЛ · ДАХИН ОРОЛДЛОГО ── */
+{
+  const sv = between('const save = useCallback(', '/* Ctrl+S');
+  /* (1A) бичихийн ӨМНӨ серверийн одоогийн утгыг уншиж, зөрчилтэй нүдийг бичихгүй */
+  assert.ok(sv.indexOf('fetchQaqcDocs(') > 0 && sv.indexOf('fetchQaqcDocs(') < sv.indexOf('saveQaqc(pkg.key'), '⚠️ хадгалахаас ӨМНӨ одоогийн утга дахин уншигдах ёстой');
+  assert.ok(sv.includes('qaqcConflicts(pend,') && sv.includes('setPend(keep)'), '⚠️ зөрчилтэй нүд pend-д үлдэх ёстой');
+  assert.ok(!sv.includes('setPend({})'), '⚠️ хадгалсны дараа зөрчилтэй нүд арчигдах ёсгүй');
+  /* (5) талбарын урт — сүлжээнээс ӨМНӨ */
+  assert.ok(sv.indexOf('qaqcTooLong(') >= 0 && sv.indexOf('qaqcTooLong(') < sv.indexOf('setBusy(true)'), '⚠️ уртын шалгалт сүлжээнээс өмнө');
+  assert.ok(!SRC.includes('maxLength={4000}'), '⚠️ дурын 4000 хязгаар буцаж ирэв');
+  /* (2) булшны бичилт унавал дахин дараалалд */
+  assert.ok(/if \(res !== 'ok'\) requeueRemote\(pkg\.key, doc\)/.test(sv), '⚠️ «Хадгалах»-ын булш унавал дараалалд буцах ёстой');
+  const drop = between('const dropDraft = useCallback(', '/* ══════════════ ХАДГАЛАХ');
+  assert.ok(/if \(res !== 'ok'\) requeueRemote\(key, doc\)/.test(drop), '⚠️ «ноорог устгах»-ын булш унавал дараалалд буцах ёстой');
+  /* (3) «алсыг уншиж чадаагүй» салаа дахин оролдлого армлана */
+  const fl = between('const flush = () => {', 'const t = setTimeout(flush, 12_000);');
+  const nv = fl.slice(fl.indexOf('if (remoteVerifiedRef.current !== q.pkg) {'), fl.indexOf('remoteQueue.current = null;\n      lastRemoteRef'));
+  assert.ok(nv.includes('armRemoteRetry()'), '⚠️ уншиж чадаагүй салаа дахин оролдлого армлах ёстой');
+  /* (4) багц солиход дараалалд үлдсэнийг ЭХЛЭЭД илгээнэ */
+  const sw = SRC.slice(SRC.indexOf('flushRef.current?.();'), SRC.indexOf('remoteQueue.current = null;\n    /* ⚠️ АЛСЫН БАЙДАЛ'));
+  assert.ok(sw.length > 0 && sw.includes('setPend({});'), '⚠️ багц солих эффект дарааллыг хаяхаас ӨМНӨ flush хийх ёстой');
+  /* (6) нэрийн автомат бөглөлт зөвхөн өөрчлөгдсөн дугаарт */
+  const cm = between('const commit = (oid: number, di: number, raw: string) => {', 'setPend((p) => {');
+  assert.ok(cm.includes('const hit = v !== cur ? approvedHit(di, v) : null;'), '⚠️ өөрчлөгдөөгүй дугаарт нэр автоматаар бөглөгдөх ёсгүй');
+  /* (7) батлагдсан жагсаалт багц солих · CHANAR_BARIMT хүчингүйдэлд дахин татагдана */
+  assert.ok(SRC.includes("register(() => { for (const fn of approvedStaleSubs) fn(); }, ['CHANAR_BARIMT']);"), '⚠️ CHANAR_BARIMT хүчингүйдэл сонсогдох ёстой');
+  assert.ok(SRC.includes('const apKey = `${pkg.group}|${apGen}`;'), '⚠️ батлагдсан жагсаалт багцаар дахин татагдах ёстой');
+}
+console.log('✅ зэрэг засвар · булшны дахин дараалал · дахин оролдлого · урт · батлагдсан жагсаалт');
 
 console.log('\nqaqcDraft.check: ok');
