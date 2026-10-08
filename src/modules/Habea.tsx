@@ -42,15 +42,20 @@ import { cached } from '@/lib/live';
 import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
-  habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByCo, weekNcByPkg, UzSrcHead, stepNote,
+  habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByPkg, ScoreColumns, scoreColor, weekNcByPkg, UzSrcHead, stepNote,
   UzlegPhotos, AttPhoto,
   SERIES_VISIBLE,
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
 import { MultiSelect } from '@/components/MultiSelect';
+import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
+import { loadHabeaRegisters, loadHabeaWaste } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
+import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { useAuth } from '@/components/AuthGate';
 import { num, date, text, pct } from '@/lib/format';
 import { MapCanvas, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -233,8 +238,9 @@ const normIncident = (r: Row): Inc => ({
    өгөгдлийн ГАНЦ өнгө (var(--data)), буусан нь саарал бэх. Ялгааг өнгөөр биш —
    дараалал, тайлбар, зүсмэгийн 1px зах өгнө (envhub). */
 const CRANE_HUE: Record<string, string> = {
-  'Шинээр нэмэгдсэн': 'var(--data)', 'Одоо байгаа': 'var(--data)', 'Буусан': 'var(--ink-3)',
+  'Шинээр нэмэгдсэн': 'var(--data)', 'Одоо байгаа': 'var(--data)', 'Буусан': '#9ca3af',
 };
+/* ⚠️ 2026-10-08: «Буусан» = САРААЛ `#9ca3af` — газрын зургийн `habea:crane.paint`-тэй ЯГ ижил */
 
 type Crane = {
   /** Цэг [50]-ийн OBJECTID — зураг · бүс · чартын ГАНЦ түлхүүр (`HABEA.crane.fields.oid`) */
@@ -594,20 +600,42 @@ function byMonthSeries(daily: { key: string; value: number }[], curYm = '') {
  * зурвас. Бусад нь (нийлбэр тоо) зурвасгүй: харьцуулах суурь байхгүй.
  */
 /* ⚠️ 2026-10-01: `subWarn` — доод мөрийг анхааруулгын өнгөөр (хуучирсан тайлан) */
+/**
+ * KPI НҮДНИЙ ӨНГӨ (2026-10-08, хэрэглэгчийн жишээ зураг). Нүд бүр ӨӨРИЙН өнгөтэй (`--t`) —
+ * харьцааны зурвас. Эффектүүд (уусгалт, гэрэлтэлт, бүдэг том дүрс) ба ДҮРСҮҮД хэрэглэгчийн
+ * хүсэлтээр хасагдсан («icon-уудыг нь хас»).
+ * ⚠️ Жишээ зурагт байсан жижиг муруй/багана нь ЧИМЭГЛЭЛ байсан — бодит өгөгдөлгүй
+ * «хандлага» зурвал худал мэдээлэл болно.
+ */
+type KpiLook = { tone: string };
+const KPI_LOOK: Record<'people' | 'hours' | 'tech' | 'crane' | 'inc' | 'score', KpiLook> = {
+  people: { tone: '#3b82f6' },
+  hours: { tone: '#14b8a6' },
+  tech: { tone: '#0ea5e9' },
+  crane: { tone: 'var(--data)' },
+  inc: { tone: '#8b5cf6' },
+  score: { tone: '#22c55e' },
+};
+
 const kpiTile = (
+  look: KpiLook,
   val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null, subWarn = false,
   /* ⚠️ 2026-10-06: товчлол шошго (LTI) — том үсгээр (хэрэглэгчийн хүсэлт) */
   bigLabel = false,
 ) => (
-  <div className={h.kt}>
-    <div className={`${h.ktLabel} ${bigLabel ? h.ktLabelBig : ""}`}>{label}</div>
-    <div className={h.ktVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
-    {ratio != null && Number.isFinite(ratio) && (
-      <div className={h.ktBar} aria-hidden>
-        <span style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }} />
-      </div>
-    )}
-    {sub && <div className={`${h.ktSub} ${subWarn ? h.ktSubWarn : ''}`} role={subWarn ? 'alert' : undefined}>{sub}</div>}
+  <div className={h.kt} style={{ '--t': look.tone } as React.CSSProperties}>
+    <div className={h.ktHead}>
+      <div className={`${h.ktLabel} ${bigLabel ? h.ktLabelBig : ""}`}>{label}</div>
+    </div>
+    <div className={h.ktFoot}>
+      <div className={h.ktVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
+      {ratio != null && Number.isFinite(ratio) && (
+        <div className={h.ktBar} aria-hidden>
+          <span style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }} />
+        </div>
+      )}
+      {sub && <div className={`${h.ktSub} ${subWarn ? h.ktSubWarn : ''}`} role={subWarn ? 'alert' : undefined} title={sub}>{sub}</div>}
+    </div>
   </div>
 );
 
@@ -980,6 +1008,18 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
      ⚠️ `keepOn: [tick]` — 5 минутын дахин таталтад хуучин оноо дэлгэцэд үлдэнэ
      (анивчихгүй); долоо хоног солигдоход (`weekKey`) «…» гарч шинээр татна. */
   const weekScores = useAsync(() => loadWeekScores(new Date(now)), [weekKey, tick], { keepOn: [tick] });
+  /* «Бусад үзүүлэлт» — ХАБ-ын бүртгэлүүд (2026-10-08). Долоо хоног солигдоход (`weekKey` —
+     Даваа гараг) шинээр, 5 минутын `tick`-д хуучин утга дэлгэцэд үлдэнэ. */
+  const regs = useAsync(loadHabeaRegisters, [weekKey, tick], { keepOn: [tick] });
+  /* Бүртгэл оруулах (2026-10-08) — ЗӨВХӨН `habeaData` эрхтэйд «+ Нэмэх»; бусдад карт энгийн */
+  const { user } = useAuth();
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((n) => n + 1)), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- capN: эрх шинэчлэгдэхэд дахин бодно
+  const canEnter = useMemo(() => hasCap(user?.username, 'habeaData'), [user, capN]);
+  const [entry, setEntry] = useState<null | 'reg' | 'waste'>(null);
+  /* «Хог хаягдал» (2026-10-08) — рейстэй төрлүүд, хуудасны «Багц» шүүлтийг дагана */
+  const waste = useAsync(loadHabeaWaste, [tick], { keepOn: [tick] });
   /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
   const curYm = ubDayKey(now).slice(0, 7);
 
@@ -991,6 +1031,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * нь эдгээрээс ДАМЖИН `pkgEff`/`coEff`-ээр шүүгдэнэ.
    */
   const [pkgs, setPkgs] = useState<string[]>([]);
+  const wasteSlices = useMemo(() => {
+    if (waste.state !== 'ready') return [];
+    return HABEA.waste.kinds.map((k) => {
+      const row = waste.data.rows.find((r) => r.metric === k.metric);
+      const value = row
+        ? Object.entries(row.byPkg).reduce((acc, [name, v]) => acc + (pkgs.length && !pkgs.includes(habeaPkgKey(name)) ? 0 : v), 0)
+        : 0;
+      return { key: k.metric, label: k.label, value, color: k.color };
+    });
+  }, [waste, pkgs]);
+  const wasteTotal = wasteSlices.reduce((acc, x) => acc + x.value, 0);
   const [cos, setCos] = useState<string[]>([]);
   const [picked, setPicked] = useState<{ id: string; attrs: Record<string, unknown> } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1217,6 +1268,44 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    *    Хүн хүчний БҮХ дүрслэл ЭНЭ олонлогоос — `all.labor`-ийг шууд бүү хэрэглэ.
    */
   const laborRows = useMemo(() => latestRowPerDay(all ? all.labor : [], ubDayKey), [all]);
+  /**
+   * ОГНООНЫ МУЖ (2026-10-08, хэрэглэгч: «огноогоор шүүх шүүлтүүр нэмье»).
+   * ⚠️ Шинэ шүүлтийн зам НЭМЭХГҮЙ: муж нь `sel.day`-ийг тухайн өдрүүдээр дүүргэнэ —
+   * хүн хүч, осол, үзлэг, газрын зураг аль хэдийн `sel.day`-ийг дагадаг тул бүгд нэг дүрмээр.
+   * ⚠️ Капсул мужийг ЗӨВХӨН өөрийн бичсэн жагсаалт `sel.day`-д хэвээр байхад харуулна —
+   * чартаас өдөр дарвал (шинэ массив) муж «Бүх огноо» болж, сонголт чартынх болно.
+   * ⚠️ Нэг тал хоосон: эхлэл = хүн хүчний хамгийн эртний өдөр, төгсгөл = өнөөдөр.
+   */
+  const [range, setRange] = useState<{ from: string; to: string; keys: string[] | null }>({ from: '', to: '', keys: null });
+  const dataMin = useMemo(() => {
+    let m = Infinity;
+    for (const r of laborRows) { const d = nn(r[L.ognoo]); if (d > 0 && d < m) m = d; }
+    return Number.isFinite(m) ? ubDayKey(m) : '';
+  }, [laborRows]);
+  const applyRange = useCallback((from: string, to: string) => {
+    if (!from && !to) {
+      setRange({ from: '', to: '', keys: null });
+      setSel((p) => ({ ...p, day: [], month: [] }));
+      setPicked(null);
+      return;
+    }
+    const a = from || dataMin || to;
+    const b = to || ubDayKey(Date.now());
+    const keys: string[] = [];
+    const [y0, m0, d0] = (a <= b ? a : b).split('-').map(Number);
+    const end = a <= b ? b : a;
+    /* ⚠️ Түлхүүр нь UB хуанлийн өдөр (`ubDayKey`) — мужийг ХУАНЛИЙН өдрөөр, цагийн бүсгүй
+       UTC арифметикаар угсарна (локал `setDate` нь DST/бүсийн зөрүүд өдөр алгасаж болно). */
+    for (let t = Date.UTC(y0, m0 - 1, d0); keys.length < 3700; t += 86_400_000) {
+      const k = new Date(t).toISOString().slice(0, 10);
+      if (k > end) break;
+      keys.push(k);
+    }
+    setRange({ from, to, keys });
+    setSel((p) => ({ ...p, day: keys, month: [] }));
+    setPicked(null);
+  }, [dataMin]);
+  const rangeOn = range.keys != null && sel.day === range.keys;
   const labor = useMemo(() => laborState(laborRows), [laborRows]);
   /* ⚠️ 2026-10-09 (аудит): «…осолгүй ажилласан цаг» — СҮҮЛИЙН LTI-ээс хойших хүн-цаг
      (`habeaRate.ltiFreeHours`). Урьд нь Σ `Hun_tsag` (LTI-д тэглэгддэггүй). Ослын БҮХ
@@ -1777,6 +1866,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * тул аль газраас сонгосон нь нөгөөд шууд тусна.
    */
   const filterPills = (<>
+    <DateRangePill
+      label={tr('Огноо')}
+      from={rangeOn ? range.from : ''}
+      to={rangeOn ? range.to : ''}
+      min={dataMin || undefined}
+      onChange={applyRange}
+    />
     {pkgOptions.length > 0 && (
       <MultiSelect
         label={tr("Багц")}
@@ -1864,19 +1960,19 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Сүүлийн тайлан: {огноо}» + хуучирсан
             анхааруулга (`ceo/workforce.laborStaleness` — CEO самбарын `WORKFORCE_STALE_DAYS`
             босготой НЭГ). Урьд нь тайлан хэдэн өдөр зогссон ч KPI хэвээр «шинэ» харагддаг байв. */}
-        {((st) => kpiTile(
+        {((st) => kpiTile(KPI_LOOK.people,
           pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.ajiltan),
           tr('Нийт ажилласан хүн хүч'),
           undefined,
-          labor.asOf == null
+          /* ⚠️ 2026-10-08 (хэрэглэгч): ердийн «Сүүлийн тайлан: огноо» мөр ХАСАГДАВ. Тайлан
+             ХУУЧИРСАН үед л анхааруулга гарна — эс бөгөөс зогссон тайланг «шинэ» гэж уншина. */
+          labor.asOf == null || !st.stale
             ? undefined
-            : st.stale
-              ? tr('Сүүлийн тайлан: {0} · {1} хоног шинэчлэгдээгүй', date(labor.asOf), num(st.days ?? 0))
-              : tr('Сүүлийн тайлан: {0}', date(labor.asOf)),
+            : tr('Сүүлийн тайлан: {0} · {1} хоног шинэчлэгдээгүй', date(labor.asOf), num(st.days ?? 0)),
           undefined,
           st.stale,
         ))(laborStaleness(labor.asOf, now))}
-        {kpiTile(
+        {kpiTile(KPI_LOOK.hours,
           pkgs.length || cos.length || sel.day.length || sel.month.length || ltiFree.hours == null ? '—' : num(ltiFree.hours),
           tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
           undefined,
@@ -1890,7 +1986,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           ltiFree.undatedLti,
         )}
-        {kpiTile(pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
+        {kpiTile(KPI_LOOK.tech, pkgs.length || cos.length || sel.day.length || sel.month.length ? '—' : num(labor.cum.tehnik), tr('Нийт ажилласан техникийн тоо'))}
         {/**
           * ⚠️ «ИДЭВХТЭЙ/НИЙТ» СЭРГЭВ (2026-09-04). Урьд нь ганц тоо болгож
           * хураасан шалтгаан нь ЭХ СУРВАЛЖИД байсан: test_data-гийн хуулбар
@@ -1901,14 +1997,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * ⚠️ ЯЛГАА БАЙХГҮЙ бол ГАНЦ тоо хэвээр: ирээдүйд эх сурвалж дахин
           * жигд болвол «50/50» гэсэн утгагүй заалт өөрөө арилна.
           */}
-        {kpiTile(
+        {kpiTile(KPI_LOOK.crane,
           craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
           tr('Кран'),
           craneUp === fCrane.length ? undefined : tr('идэвхтэй'),
           undefined,
           craneUp === fCrane.length || !fCrane.length ? null : craneUp / fCrane.length,
         )}
-        {kpiTile(num(fInc.length), tr('Осол, зөрчил'))}
+        {kpiTile(KPI_LOOK.inc, num(fInc.length), tr('Осол, зөрчил'))}
         {/**
           * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ДУНДАЖ ОНОО (2026-09-17, хэрэглэгчийн хүсэлт).
           * Дүрэм, тооцоо: `habeaUzleg.prevWeek` ба `loadWeekScore`.
@@ -1920,7 +2016,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {/* ⚠️ 2026-09-25: АЛДАА ≠ ХООСОН — урьд нь ачаалж буй, унасан, оноо
             бүртгэгдээгүй гурвуулаа «—» байсан тул үйлчилгээ унахад «оноо алга»
             гэж уншигддаг байв. Ачаалалт «…», алдаа нь доод мөрөнд ил. */}
-        {kpiTile(
+        {/* ⚠️ 2026-10-08 (хэрэглэгч): өнгө нь ОНООГООР — <70 улаан · 70–90 улбар шар · ≥90 ногоон
+            (`scoreColor`, «Ажлын байрны үзлэг» чарттай НЭГ дүрэм). Оноогүй үед анхдагч ногоон. */}
+        {kpiTile(((v) => (v == null ? KPI_LOOK.score : { ...KPI_LOOK.score, tone: scoreColor(v) }))(
+            weekScores.state === 'ready' ? weekScoreOf(weekScores.data.rows, pkgs, cos).pct : null),
           weekScores.state === 'loading'
             ? '…'
             : weekScores.state !== 'ready'
@@ -1931,11 +2030,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
              чухал, учир нь гүйцэтгэгчийн маягтад оноо огт бүртгэгддэггүй. */
           tr('Захиалагчийн ажлын байрны үзлэг'),
           undefined,
-          /* ⚠️ 2026-10-01: ТҮҮВРИЙН ХЭМЖЭЭ (оноотой үзлэгийн тоо) — 1 үзлэгийн 100% ба 40
-             үзлэгийн 100% ижил жинтэй уншигдахаас сэргийлнэ. */
+          /* ⚠️ 2026-10-08 (хэрэглэгч): «· N үзлэг» (түүврийн хэмжээ, 2026-10-01) ХАСАГДАВ. */
           weekScores.state === 'ready'
-            ? tr('{0}-р долоо хоногийн дундаж оноо · {1} үзлэг', num(weekScores.data.no),
-              num(weekScoreOf(weekScores.data.rows, pkgs, cos).ns))
+            ? tr('{0}-р долоо хоногийн дундаж оноо', num(weekScores.data.no))
             : weekScores.state === 'error'
               ? `${tr('Долоо хоногийн дундаж оноо')} — ${tr('татагдсангүй')}`
               : tr('Долоо хоногийн дундаж оноо'),
@@ -1977,6 +2074,59 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {(focus === null || laborFocus) && (<>
         {/* ⚠️ «Монгол, гадаад» донат 2026-10-07-нд ХАСАГДАВ (хэрэглэгчийн хүсэлт) — задаргаа нь
             «Компаниар — монгол, гадаад» ба «Ажилтан — өдрөөр»-ийн муруйд бий. */}
+        {focus === null && (
+        <Section
+          title={tr('Бусад үзүүлэлт')}
+          note={(
+            <>
+              {regs.state === 'ready' && tr('{0}-р долоо хоног', num(regs.data.weekNo))}
+              {canEnter && <> <AddButton onClick={() => setEntry('reg')} /></>}
+            </>
+          )}
+        >
+          {regs.state === 'loading' && <Loading />}
+          {regs.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(regs.error))} onRetry={regs.retry} />}
+          {regs.state === 'ready' && (() => {
+            const max = Math.max(1, ...regs.data.rows.map((r) => r.week ?? 0));
+            return (
+              <div className={h.regs}>
+                <div className={h.regHead}><span /><span>{tr('7 хоног')}</span></div>
+                {regs.data.rows.map((r) => (
+                  <div key={r.key} className={h.regRow} title={r.week == null ? tr('Эх сурвалж холбогдоогүй') : undefined}>
+                    <span className={h.regLabel}>{r.label}</span>
+                    <b className="num">{r.week == null ? '—' : num(r.week)}</b>
+                    {/* Долоо хоногийн тооны харьцаа — хамгийн ихтэй нь бүтэн */}
+                    <i className={h.regBar} style={{ width: `${r.week ? (r.week / max) * 100 : 0}%` }} aria-hidden />
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </Section>
+        )}
+        {/* ── ХОГ ХАЯГДАЛ (2026-10-08) — «Бусад үзүүлэлт»-ийн ДООР, эхний харагдацад.
+            ⚠️ Зөвхөн «рейс» нэгжтэй төрлүүд: kg, m3 нэгжтэйг нэмбэл утгагүй нийлбэр болно. ── */}
+        {focus === null && (
+        <Section
+          title={tr('Хог хаягдал')}
+          note={(
+            <>
+              {/* ⚠️ 2026-10-08 (хэрэглэгч): «нийт N рейс» тэмдэглэл ХАСАГДАВ — нийт нь донатын төвд бий */}
+              {canEnter && <AddButton onClick={() => setEntry('waste')} />}
+            </>
+          )}
+        >
+          {waste.state === 'loading' && <Loading />}
+          {waste.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(waste.error))} onRetry={waste.retry} />}
+          {waste.state === 'ready' && (wasteTotal > 0
+            ? <Donut items={wasteSlices} stack size={120} center={num(wasteTotal)} centerLabel={tr('нийт')} />
+            /* ⚠️ Бүгд 0 үед донат зурахгүй (хоосон цагираг «алдаа» мэт) — гэхдээ «өгөгдөл алга» биш,
+               бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). */
+            : <Empty label={tr('Бүртгэгдсэн рейс 0 — {0}-р долоо хоног', waste.data.weeks.join(', ') || '—')} />)}
+        </Section>
+        )}
+        {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} onSaved={() => regs.retry?.()} />}
+        {entry === 'waste' && <WasteAddDialog onClose={() => setEntry(null)} onSaved={() => waste.retry?.()} />}
         <Section
           title={tr("Компаниар — монгол, гадаад")}
           note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}
@@ -2318,8 +2468,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             );
           })}
           </div>
-          {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel */}
-          <UzlegExportButton kind={uzlegKind} />
+          {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel.
+              ⚠️ 2026-10-08: ЗӨВХӨН `habeaData` эрхтэйд (хэрэглэгчийн хүсэлт) — бусдад товч харагдахгүй. */}
+          {canEnter && <UzlegExportButton kind={uzlegKind} />}
           </div>
 
           {/* ⚠️ «ШҮҮЛТ» БҮЛЭГ (Багц · Компани) ЭНДЭЭС ХАСАГДАВ (2026-09-17,
@@ -2451,22 +2602,20 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * бүртгэлтэй холбогдсон компани (`co:` угтвартай түлхүүр дарахад юу ч
           * болохгүй). ⚠️ 2026-09-17: «Багц» шүүлтийг ДАГАНА (`weekScoreByCo`).
           */}
+        {/* ⚠️ 2026-10-08 (хэрэглэгч): «Үзлэгийн оноо — компаниар» (хэвтээ, компаниар) ОРОНД
+            «Ажлын байрны үзлэг» — ижил босоо багана (`ScoreColumns`), өмнөх долоо хоногийн
+            оноо БАГЦААР. Дарахад «Багц» шүүлт тавигдана. */}
         <Section
-          title={tr('Үзлэгийн оноо — компаниар')}
-          note={weekScores.state === 'ready' ? tr('{0}-р долоо хоногийн дундаж', num(weekScores.data.no)) : undefined}
+          title={tr('Ажлын байрны үзлэг')}
+          fill
+          note={weekScores.state === 'ready' ? tr('{0}-р долоо хоног · оноо — багцаар', num(weekScores.data.no)) : undefined}
         >
           {weekScores.state === 'loading'
             ? <Loading />
             : weekScores.state === 'error'
               ? <Empty label={tr('Татагдсангүй: {0}', friendlyError(weekScores.error))} onRetry={weekScores.retry} />
-              : weekScoreByCo(weekScores.data.rows, pkgs).length
-                ? (
-                  <Bars
-                    items={weekScoreByCo(weekScores.data.rows, pkgs)}
-                    selected={cos}
-                    onSelect={(k) => { if (!k.startsWith('co:')) toggleCo(k); }}
-                  />
-                )
+              : weekScoreByPkg(weekScores.data.rows, cos).length
+                ? <ScoreColumns items={weekScoreByPkg(weekScores.data.rows, cos)} selected={pkgs} onSelect={togglePkg} />
                 : <Empty label={tr('Энэ долоо хоногт оноо бүртгэгдээгүй')} />}
         </Section>
         {/**
@@ -2478,7 +2627,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           * гадаад»-ын доор) шилжсэн — баруун багана үзлэгийн хоёр чарттай болов.
           */}
         <Section
-          title={tr('Үл нийцэл — багцаар')}
+          title={tr('Нийт үл нийцэл — багцаар')}
           note={weekScores.state === 'ready' ? tr('{0}-р долоо хоногийн ноцтой ба бага зэргийн үл нийцэл', num(weekScores.data.no)) : undefined}
         >
           {weekScores.state === 'loading'

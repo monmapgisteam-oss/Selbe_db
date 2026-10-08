@@ -23,7 +23,7 @@ import { VIEWS, type ViewKey } from '@/lib/services';
 
 /** Хажуугийн цэсний засах эрхийн хуудас — `UserAdmin`-ы `pane` id */
 export type ErhPane =
-  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'qaqc' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral';
+  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'qaqc' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral' | 'habea';
 
 /**
  * ХУУДАС → ЭРХҮҮД. Дараалал = хажуугийн цэсний дараалал («Гүйцэтгэлийн урсгалын
@@ -43,6 +43,8 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   gazar: ['gazar'],
   /* ⚠️ 2026-10-04: бүрэн ТУСДАА хуудас (хэрэглэгчийн шийдвэр) — батлагчгүй, зөвхөн засах */
   hamaaral: ['hamaaral'],
+  /* ⚠️ 2026-10-08: ХАБЭА-ийн бүртгэл — тусдаа хуудас, батлагчгүй */
+  habea: ['habeaData'],
 };
 
 /** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 10 */
@@ -82,6 +84,7 @@ export const paneLabel = (p: ErhPane): string => {
   if (p === 'fin') return tr('Санхүүгийн бүртгэлийн эрх');
   if (p === 'gazar') return tr('Газрын төлөв засах');
   if (p === 'hamaaral') return tr('Багцын хамаарал засах');
+  if (p === 'habea') return tr('ХАБЭА-ийн бүртгэл оруулах');
   return p;
 };
 
@@ -106,6 +109,7 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх');
   if (k === 'gazar') return tr('Газрын төлөв засах');
   if (k === 'hamaaral') return tr('Багцын хамаарал засах');
+  if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл оруулах');
   return k;
 };
 
@@ -129,6 +133,7 @@ const paneSummary = (p: ErhPane): string => {
   if (p === 'fin') return tr('Cashflow хүснэгтийн утга засах ба мөр нэмэх эрх — аккаунтаар, тус тусад нь олгоно.');
   if (p === 'gazar') return tr('Нэгж талбарын төлөв, явцын мэдээ, эзэмшигчийг засах эрх — аккаунтаар олгоно.');
   if (p === 'hamaaral') return tr('Багц хоорондын хамаарлын холбоо нэмэх, устгах эрх — аккаунтаар олгоно.');
+  if (p === 'habea') return tr('ХАБЭА хуудасны «Бусад үзүүлэлт» ба «Хог хаягдал»-д бүртгэл нэмэх, үзлэгийн тайлан татах эрх — аккаунтаар олгоно.');
   return '';
 };
 
@@ -190,6 +195,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'hamaaral') {
     return tr('«Багцын хамаарал» дээр багц хоорондын холбоо нэмэх, устгах. Багц нэмэх, хасах боломжгүй; батлагч байхгүй — хадгалсан холбоо шууд бүх хүнд харагдана. Эрхгүй хүн зөвхөн харна.');
+  }
+  if (k === 'habeaData') {
+    return tr('ХАБЭА хуудасны «Бусад үзүүлэлт» (талбайн зааварчилгаа, сануулах хуудас, хариуцлага тооцох) ба «Хог хаягдал» картад шинэ бүртгэл нэмэх, үзлэгийн тайланг (PDF, Excel) татах. Батлагч байхгүй — хадгалсан бүртгэл шууд тоонд орно. Эрхгүй хүн карт энгийн харна, «Үзлэгийн тайлан татах» товч харагдахгүй.');
   }
   return '';
 };

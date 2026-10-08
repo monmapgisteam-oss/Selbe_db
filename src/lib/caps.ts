@@ -60,7 +60,8 @@ export type CapKey =
   | 'butets'
   | 'chanarAuthor'
   | 'chanarReview'
-  | 'hamaaral';
+  | 'hamaaral'
+  | 'habeaData';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -193,6 +194,13 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'hamaaral', icon: 'network' },
   /**
+   * ХАБЭА-ИЙН БҮРТГЭЛ ОРУУЛАХ (2026-10-08) — «Бусад үзүүлэлт» (талбайн зааварчилгаа ·
+   * сануулах хуудас · хариуцлага тооцох) ба «Хог хаягдал» картад мөр нэмэх/засах.
+   * 2026-10-08: үзлэгийн тайлан татах (`UzlegExportButton`) мөн энэ эрхээр.
+   * Батлагчгүй, багцаар хуваарилагдахгүй — шууд ArcGIS-д. Эрхгүй хүн карт ЭНГИЙН харна.
+   */
+  { key: 'habeaData', icon: 'shield' },
+  /**
    * ЧАНАРЫН БАРИМТ — АРГАЧЛАЛ ИРҮҮЛЭХ (гүйцэтгэгч). Зураглалын 1 · 2 · 6 · 9
    * алхам: боловсруулж ирүүлнэ, буцаагдвал сайжруулж дахин ирүүлнэ.
    *
@@ -259,6 +267,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   chanarAuthor: ['chanar'],
   chanarReview: ['chanar'],
   hamaaral: ['bagtsHamaaral'],
+  habeaData: ['habea'],
 };
 
 /**
