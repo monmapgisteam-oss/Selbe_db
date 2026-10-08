@@ -1,10 +1,10 @@
 import { type PointerEvent as PEvt, useCallback, useRef } from 'react';
-import { DAY, type PlanRow, type Span } from '@/lib/plan';
+import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { propagate } from '@/lib/deps';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { kM, kN, kS } from '@/lib/huvaariDraft';
-import type { Drag, DragMode } from './types';
+import { MAX_DAYS, type Drag, type DragMode } from './types';
 import { obKey, sameMonths, sameRes, sameSpan } from './util';
 
 /**
@@ -113,9 +113,17 @@ export function useDragPlan({
    * Мужийг мөрд бичнэ. Дээд бүлэгт муж байвал хүүхдийг ТҮҮН РҮҮ ХАВЧУУЛНА —
    * «бүлгийн цонхны дотор» гэсэн дүрмийг чирэлтийн үедээ шууд сахина.
    */
-  const commit = useCallback((oid: number, span: Span | null) => {
+  /* ⚠️ 2026-10-09: `edge` — чирэлтийн ХӨДӨЛЖ БУЙ ирмэг. Муж `MAX_DAYS`-аас урт болбол ЗӨВХӨН тэр ирмэгийг
+     хавчина (нөгөө ирмэг/зангуу хөдлөхгүй) — нүд · popup · `applyDate`-ийн ижил дээд хязгаар; урьд нь чирэлт
+     хязгааргүй байв. `move` (урт хадгалагдана) ба нэг хоногийн товшилтод `edge` алга — хавчихгүй. */
+  const commit = useCallback((oid: number, span0: Span | null, edge?: 'start' | 'end') => {
     const at = plan.findIndex((x) => x.oid === oid);
     if (at < 0) return;
+    const span = span0 && edge && spanDays(span0) > MAX_DAYS
+      ? (edge === 'start'
+        ? { start: span0.end - (MAX_DAYS - 1) * DAY, end: span0.end }
+        : { start: span0.start, end: endOf(span0.start, MAX_DAYS) })
+      : span0;
     const r = plan[at];
     /* ⚠️ ЭЦГИЙН МУЖ РУУ ХАВЧУУЛАХГҮЙ (2026-09-06-нд ЭРГҮҮЛСЭН): ажлын муж
        эрх чөлөөтэй, бүлэг нь `applyChanges` дотор хүүхдүүдээсээ
@@ -221,12 +229,13 @@ export function useDragPlan({
     if (drag.mode === 'new') {
       const a = Math.min(drag.anchor, k);
       const b = Math.max(drag.anchor, k);
-      commit(drag.oid, { start: msAt(a), end: msAt(b) });
+      /* ⚠️ 2026-10-09: зангуунаас ЗҮҮН тийш татвал эхлэл, баруун тийш бол төгсгөл хөдөлнө (`commit`-ийн ⚠️) */
+      commit(drag.oid, { start: msAt(a), end: msAt(b) }, k < drag.anchor ? 'start' : 'end');
     } else if (o) {
       const d = (k - drag.anchor) * DAY;
       if (drag.mode === 'move') commit(drag.oid, { start: o.start + d, end: o.end + d });
-      else if (drag.mode === 'l') commit(drag.oid, { start: Math.min(o.start + d, o.end), end: o.end });
-      else commit(drag.oid, { start: o.start, end: Math.max(o.end + d, o.start) });
+      else if (drag.mode === 'l') commit(drag.oid, { start: Math.min(o.start + d, o.end), end: o.end }, 'start');
+      else commit(drag.oid, { start: o.start, end: Math.max(o.end + d, o.start) }, 'end');
     }
   };
 

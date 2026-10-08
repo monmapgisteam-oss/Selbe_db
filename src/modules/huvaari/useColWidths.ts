@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { TL_MIN } from './useSideExtra';
 
 /**
  * ЗҮҮН ЖАГСААЛТЫН БАГАНЫН ӨРГӨНИЙГ ЧИРЖ ӨӨРЧЛӨХ (2026-10-08, хэрэглэгч: «зүүн талын үндсэн
@@ -28,7 +29,17 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type Poin
  *    ЗӨРСӨН нийлбэр (давтагдах баганыг тоогоор нь үржүүлсэн, `mult`) нь `--col-extra`
  *    (нарийн дэлгэцийн дүрэмд — зөвхөн код · нэр · уялдаа: `--col-extra-n`) болж `.gSide`-ийн
  *    өргөнд НЭМЭГДЭНЭ: багана өргөсөхөд бусад нь агшихгүй, «Ажил»-ын бариул нэрийн баганыг шууд
- *    өргөсгөнө. Хуанлид үлдэх зайг `useSideExtra`-ийн хязгаар (элементийн бодит өргөнөөр) барина.
+ *    өргөсгөнө.
+ * ⚠️ 2026-10-09 (засвар): урьд энд «хуанлид үлдэх зайг `useSideExtra`-ийн хязгаар барина» гэж ХУДАЛ бичигдсэн
+ *    байв — тэр нь зөвхөн `--side-extra`-г хязгаарладаг тул `--col-extra` хязгааргүй өсч, жагсаалт хуанлийг
+ *    бүхэлд нь таглаж болдог байв. Одоо чирэлтийн эхэнд (гараар — товчлуур бүрд) хуанлид `TL_MIN`
+ *    (`useSideExtra`-тай НЭГ тогтмол) үлдэх зайг (`roomOf`: `.gWrap` − `.gSide`-ийн бодит өргөн − `TL_MIN`)
+ *    хэмжиж, баганын ӨСӨЛТИЙГ түүгээр хавчина; нарийсгах үргэлж нээлттэй. Хадгалсан өргөн нь өргөн
+ *    дэлгэцээс нарийн руу шилжихэд хавчигдахгүй (хүсэл) — дахин чирэхэд л хязгаарлагдана.
+ * ⚠️ 2026-10-09: ГАР — сум ±8 · Home/End = доод/дээд (дээд нь `roomOf`-оор) · Enter/Delete = анхдагч.
+ *    Товчлуурын давталтад React төлөв ХӨДЛӨХГҮЙ (хувьсагчийг шууд бичнэ), `keyup`/`blur`-д нэг удаа хадгална.
+ * ⚠️ 2026-10-09: ХОЁР ТАБ — хадгалахдаа localStorage-ийн ШИНЭ утгатай нийлүүлнэ (`loadOr`), `storage`
+ *    үйл явдлаар бусад табын өөрчлөлтийг авна; урьд нь сүүлд хадгалсан таб нөгөөгийнхийг бүтнээр дардаг байв.
  */
 export type ColKey = 'des' | 'work' | 'gs' | 'ge' | 'gd' | 'ps' | 'pe' | 'pd' | 'as' | 'ae' | 'rh' | 'rm' | 'ham';
 
@@ -67,7 +78,8 @@ const LEGACY: Record<string, ColKey[]> = {
 
 const clampW = (k: ColKey, v: number) => Math.max(SPEC[k].min, Math.min(SPEC[k].max, Math.round(v)));
 
-function load(): Widths {
+/** ⚠️ 2026-10-09: localStorage уншигдахгүй (хаалттай орчин/эвдэрсэн) бол `fallback` — нийлүүлэлтэд одоогийн утга алдагдахгүй */
+function loadOr(fallback: Widths): Widths {
   try {
     const raw = localStorage.getItem(LS);
     if (!raw) return {};
@@ -79,8 +91,9 @@ function load(): Widths {
     }
     for (const k of KEYS) { const n = Number(j[k]); if (j[k] != null && Number.isFinite(n)) out[k] = clampW(k, n); }
     return out;
-  } catch { return {}; }
+  } catch { return fallback; }
 }
+const load = (): Widths => loadOr({});
 
 /** Багана бүрийн ХАРАГДАХ тоо (2026-10-09) — `--col-extra`-д үржигдэхүүн; 0 = нуугдсан */
 export type ColMult = Record<ColKey, number>;
@@ -89,21 +102,37 @@ export type ColMult = Record<ColKey, number>;
 const NARROW_KEYS: ColKey[] = ['des', 'work', 'ham'];
 const extraOf = (w: Widths, mult: ColMult, keys: readonly ColKey[] = KEYS): number =>
   keys.reduce((a, k) => a + (mult[k] ?? 0) * ((w[k] ?? SPEC[k].def) - SPEC[k].def), 0);
+/** ⚠️ 2026-10-09: `--col-extra` ба мөрийн өргөн 1:1 тул багана `room`-оос илүү ӨСӨХГҮЙ (толгойн ⚠️); нуугдсан (`m = 0`) багана хязгааргүй */
+const capOf = (k: ColKey, base: number, room: number, m: number): number =>
+  (m > 0 && Number.isFinite(room) ? Math.min(SPEC[k].max, base + Math.max(0, room) / m) : SPEC[k].max);
 
 export function useColWidths(mult: ColMult) {
   const [w, setW] = useState<Widths>(load);
   /* ⚠️ 2026-10-09: чирэх явцад (`mv`) хамгийн сүүлийн үржигдэхүүнээр — React төлөв хөдөлгөхгүйн тулд ref */
   const multRef = useRef(mult);
   useEffect(() => { multRef.current = mult; });
+  /* ⚠️ 2026-10-09: сүүлийн хадгалсан өргөн — бариулын хаалт (closure) хуучирахгүй, `w`-ээс deps-гүй */
+  const wRef = useRef(w);
+  useEffect(() => { wRef.current = w; });
   const [dragging, setDragging] = useState<ColKey | null>(null);
   const el = useRef<HTMLElement | null>(null);
+  /** Гарын хадгалагдаагүй утга (товчлуурын давталт) — `keyup`/`blur`-д `commit` */
+  const kb = useRef<{ k: ColKey; v: number } | null>(null);
 
   /** Хувьсагчийг тавих элемент (`.gSide`) — callback ref */
   const elRef = useCallback((node: HTMLElement | null) => { el.current = node; }, []);
 
+  /* ⚠️ 2026-10-09: ХОЁР ТАБ (толгойн ⚠️) — бусад табын хадгалалтыг авна */
+  useEffect(() => {
+    const on = (e: StorageEvent) => { if (e.key === LS || e.key === null) setW((prev) => loadOr(prev)); };
+    window.addEventListener('storage', on);
+    return () => window.removeEventListener('storage', on);
+  }, []);
+
   const commit = useCallback((k: ColKey, v: number | null) => {
     setW((prev) => {
-      const next = { ...prev };
+      /* ⚠️ 2026-10-09: localStorage-ийн ШИНЭ утга дээр зөвхөн ЭНЭ баганыг өөрчилнө (толгойн ⚠️) */
+      const next = { ...loadOr(prev) };
       if (v == null) delete next[k]; else next[k] = clampW(k, v);
       try { localStorage.setItem(LS, JSON.stringify(next)); } catch { /* хаалттай орчин */ }
       return next;
@@ -112,22 +141,39 @@ export function useColWidths(mult: ColMult) {
 
   const widthOf = useCallback((k: ColKey) => w[k] ?? SPEC[k].def, [w]);
 
+  /** Хуанлид `TL_MIN`-ээс илүү үлдэх зай (px) — хэмжих боломжгүй бол хязгааргүй (толгойн ⚠️) */
+  const roomOf = useCallback((): number => {
+    const side = el.current;
+    const wrap = side?.parentElement;
+    if (!side || !wrap) return Infinity;
+    return wrap.clientWidth - side.getBoundingClientRect().width - TL_MIN;
+  }, []);
+
+  /** Хувьсагчуудыг элемент дээр ШУУД бичнэ (React төлөвгүй — чирэлт/гарын давталт) */
+  const paint = useCallback((k: ColKey, v: number) => {
+    const st = el.current?.style;
+    if (!st) return;
+    st.setProperty(SPEC[k].v, `${v}px`);
+    /* ⚠️ 2026-10-09: самбар ч ЗЭРЭГ өргөснө (толгойн ⚠️) */
+    const w2 = { ...wRef.current, [k]: v };
+    st.setProperty('--col-extra', `${extraOf(w2, multRef.current)}px`);
+    st.setProperty('--col-extra-n', `${extraOf(w2, multRef.current, NARROW_KEYS)}px`);
+  }, []);
+
   const onPointerDown = useCallback((k: ColKey, e: PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const x0 = e.clientX;
-    const base = w[k] ?? SPEC[k].def;
+    const base = wRef.current[k] ?? SPEC[k].def;
+    /* ⚠️ 2026-10-09: хязгаарыг чирэлтийн ЭХЭНД нэг удаа хэмжинэ (чирэх явцад layout хэмжихгүй) */
+    const cap = capOf(k, base, roomOf(), multRef.current[k] ?? 0);
     let cur = base;
     setDragging(k);
     const mv = (ev: globalThis.PointerEvent) => {
-      cur = clampW(k, base + ev.clientX - x0);
-      const st = el.current?.style;
-      st?.setProperty(SPEC[k].v, `${cur}px`);
-      /* ⚠️ 2026-10-09: самбар ч чирэлттэй ЗЭРЭГ өргөснө (толгойн ⚠️) */
-      const w2 = { ...w, [k]: cur };
-      st?.setProperty('--col-extra', `${extraOf(w2, multRef.current)}px`);
-      st?.setProperty('--col-extra-n', `${extraOf(w2, multRef.current, NARROW_KEYS)}px`);
+      const want = base + ev.clientX - x0;
+      cur = clampW(k, want > base ? Math.min(want, cap) : want);
+      paint(k, cur);
     };
     const up = () => {
       window.removeEventListener('pointermove', mv);
@@ -139,15 +185,36 @@ export function useColWidths(mult: ColMult) {
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
-  }, [w, commit]);
+  }, [commit, paint, roomOf]);
+
+  /** Гарын хадгалагдаагүй утгыг хадгална (`keyup` · `blur`) */
+  const flushKb = useCallback(() => {
+    const p = kb.current;
+    kb.current = null;
+    if (p) commit(p.k, p.v);
+  }, [commit]);
 
   const onKeyDown = useCallback((k: ColKey, e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' || e.key === 'Delete') {
+      e.preventDefault();
+      e.stopPropagation();
+      kb.current = null;
+      commit(k, null);
+      return;
+    }
     const d = e.key === 'ArrowRight' ? 8 : e.key === 'ArrowLeft' ? -8 : 0;
-    if (!d) return;
+    if (!d && e.key !== 'Home' && e.key !== 'End') return;
     e.preventDefault();
     e.stopPropagation();
-    commit(k, (w[k] ?? SPEC[k].def) + d);
-  }, [w, commit]);
+    if (kb.current && kb.current.k !== k) flushKb();
+    const base = kb.current?.v ?? wRef.current[k] ?? SPEC[k].def;
+    const want = e.key === 'Home' ? SPEC[k].min : e.key === 'End' ? SPEC[k].max : base + d;
+    const cap = want > base ? capOf(k, base, roomOf(), multRef.current[k] ?? 0) : SPEC[k].max;
+    const v = clampW(k, Math.min(want, Math.max(base, cap)));
+    kb.current = { k, v };
+    paint(k, v);
+    e.currentTarget.setAttribute('aria-valuenow', String(v));
+  }, [commit, flushKb, paint, roomOf]);
 
   const style: Record<string, string> = {};
   for (const k of KEYS) if (w[k] != null) style[SPEC[k].v] = `${w[k]}px`;
@@ -163,6 +230,9 @@ export function useColWidths(mult: ColMult) {
     grip: (k: ColKey) => ({
       onPointerDown: (e: PointerEvent<HTMLElement>) => onPointerDown(k, e),
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => onKeyDown(k, e),
+      /* ⚠️ 2026-10-09: гарын давталтын утгыг нэг удаа хадгална (толгойн ⚠️) */
+      onKeyUp: flushKb,
+      onBlur: flushKb,
       onDoubleClick: () => commit(k, null),
       on: dragging === k,
       value: w[k] ?? SPEC[k].def,

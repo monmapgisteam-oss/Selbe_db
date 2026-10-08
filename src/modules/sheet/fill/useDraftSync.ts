@@ -40,6 +40,34 @@ type Held = {
 type PickRes = { changed: boolean; rcpt: number };
 
 /**
+ * СЕРВЕРИЙН ИЛГЭЭЛТЭЭС ГАРГАСАН БАРИМТ (2026-10-09) — ЦЭВЭР. Илгээгчийн (А) `pushReceipts` унасан бол хамтран
+ * бөглөгч (Б) А-гийн илгээсэн нүдний баримтыг ХЭЗЭЭ Ч авахгүй байв: Б-гийн сэргээлт тэдгээрийг «илгээгээгүй» гэж
+ * буцааж, дахин илгээхэд нэмэлтийн горимд ДАВХАР тоологдоно. Одоо ачаалах ба `refreshStaged`-д серверийн `sub|`
+ * payload-оос (нүд · огноо, илгээлтийн `at`) баримт гаргана — А-гийн табаас ҮЛ ХАМААРАН.
+ * ⚠️ Нүд бүрийн ЯГ илгээсэн утга payload-д алга (`cells` нь өдрийн НИЙЛБЭР), тиймээс баримт нь
+ *    `[түлхүүр, at, '', at]`: `rcptApply` илгээлтээс ӨМНӨ (`w ≤ at`) бичигдсэн хуулбарыг ХАСНА, ХОЙШ бичигдсэнийг
+ *    ХЭВЭЭР үлдээнэ (хоосон `sv` — зөрүү бодохгүй). Илгээлтийн агшинд хараахан нийлүүлэгдээгүй байсан хуулбар
+ *    ч хасагдаж болно (дутуу тоолол — ил, засагдана) — давхар тоололоос аюулгүй.
+ * ⚠️ ЖИНХЭНЭ баримт (агшин нь `at`-аас хойш — илгээгчийн `stamp()`) байвал ГАРГАХГҮЙ — тэр нь нарийн (зөрүү бодно).
+ */
+export function subReceipts(
+  p: { at: number; cells: readonly [string, string][]; dates: readonly [string, string][] },
+  known: ReadonlyMap<string, Rcpt>,
+): Rcpt[] {
+  if (!Number.isFinite(p.at) || p.at <= 0) return [];
+  const out: Rcpt[] = [];
+  for (const [k] of [...p.cells, ...p.dates]) {
+    const c = known.get(k);
+    if (c && c[1] >= p.at) continue;
+    out.push([k, p.at, '', p.at]);
+  }
+  return out;
+}
+/** Хоёр баримтаас ХОЖУУ (`a` их) нь — серверээс гаргасан (`subReceipts`) баримт жинхэнэ шинэ баримтыг дарахгүй */
+const newerRc = (a: Rcpt | undefined, b: Rcpt | undefined): Rcpt | undefined =>
+  !a ? b : !b ? a : b[1] > a[1] ? b : a;
+
+/**
  * Ноорогийн бүх төлөв (ref · state) ЭНД зарлагдана — FillNew-ийн ачаалах эффект, `publish`,
  * `commitDate` тэдгээрийг буцаах утгаас авна. Эффектүүдийн дараалал FillNew-ийнхтэй ижил
  * (сэргээх → хадгалах → алсын → unmount → татах → unload); FillNew энэ hook-ийг яг тэр байрлалд дуудна.
@@ -898,8 +926,10 @@ export function useDraftSync(p: {
       /* ⚠️ 2026-10-04 дахин аудит (#5): баримт ХУУЧИН түлхүүрээр ч (`key0`) — хариу тасарсан илгээлтийн
          (`Inflight`) ба хуучин жаазны баримт нь илгээх агшны ХУУДАСНЫ түлхүүртэй; жааз солигдсоны дараа
          зөвхөн шинэ түлхүүрээр хайвал олдохгүй, илгээгдсэн нүд дахин сэргэж ДАВХАР тоологдох байв. */
-      const rc = rcptRef.current.get(key) ?? dRc.get(key)
-        ?? (key0 !== key ? (rcptRef.current.get(key0) ?? dRc.get(key0)) : undefined);
+      /* ⚠️ 2026-10-09: ХОЖУУ нь (`newerRc`) — урьд нь `rcptRef` түрүүлдэг тул серверээс гаргасан (`subReceipts`)
+         хуучин баримт ноорогт ирсэн ЖИНХЭНЭ шинэ баримтыг дарах байв. */
+      const rc = newerRc(rcptRef.current.get(key), dRc.get(key))
+        ?? (key0 !== key ? newerRc(rcptRef.current.get(key0), dRc.get(key0)) : undefined);
       const isD = /:[se]$/.test(key);
       /* Суурь баримт: хуулбарынх (`d.bt`); байрандаа бол энэ сешний гараас бичсэнийх (`btRef`) ч */
       const bt0 = Math.max(dBt.get(key0) ?? 0, key0 === key ? (btRef.current.get(key) ?? 0) : 0);

@@ -1188,7 +1188,8 @@
 }
 .scoreCol {
   display: grid;
-  grid-template-columns: minmax(56px, auto) minmax(0, 1fr) 38px;
+  /* ⚠️ 2026-10-09: 38→50px — хувийн өмнө түвшний тэмдэг (✓ ▲ !) */
+  grid-template-columns: minmax(56px, auto) minmax(0, 1fr) 50px;
   align-items: center;
   gap: 8px;
   padding: 2px 0;
@@ -1237,4 +1238,5 @@
   color: var(--ink);
   text-align: right;
 }
+.scoreMark { display: inline-block; min-width: 1em; margin-right: 2px; text-align: center; }
 @media (prefers-reduced-motion: reduce) { .scoreBar { transition: none; } }

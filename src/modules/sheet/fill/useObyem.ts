@@ -15,6 +15,8 @@ import {
 } from '@/lib/obyemBatlah';
 /* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from '@/lib/lostWrite';
+/* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж буй эсэх (доорх `archBusy`-ийн ⚠️) */
+import { archivingBusy } from '@/lib/submission';
 import { t as tr } from "@/lib/i18nCore";
 /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг (`Token Required` г.м.) `userError`-оор л харуулна */
 import { userError } from '@/components/ui';
@@ -386,6 +388,20 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
           await refreshObyem();
           return true;
         };
+        /* ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД БАТЛАХГҮЙ — архивлагч (`hyanaltStore`) өөрийн ачаалсан
+           жаазаас шинэ жааз бичдэг тул манай `applyUpdates` хуучин жаазад үлдэж (эсвэл шинэ жааз нь батлагдсан
+           обьёмыг ХУУЧИН утгаар дарж) батлалт чимээгүй алга болдог байв. Түгжихийн ӨМНӨ ба бичихийн ЯГ ӨМНӨ
+           шалгана; уншилт унавал хаана (fail-closed). `null` = чөлөөтэй. */
+        const archBusy = async (): Promise<string | null> => {
+          try {
+            const a = await archivingBusy(pkg.key);
+            return a ? tr('{0} гүйцэтгэлийг яг одоо архивлаж байна — дуусахыг хүлээнэ үү', a.who || '—') : null;
+          } catch (e) {
+            return tr('Энэ багцын гүйцэтгэлийн архивлалтын төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', userError(e));
+          }
+        };
+        const ab0 = await archBusy();
+        if (ab0) { pvErrHere(ab0); return; }
         const claim = await claimObyem({ oid: pvSub.oid, approver: me });
         if (!claim.ok) {
           if (await alreadyMine()) return;
@@ -403,6 +419,13 @@ export function useObyem({ st, pkg, pkgKeyRef, rows, sc, user, locked, todayFill
         if (!mk.ok) {
           pvErrHere(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — үндсэн өгөгдөлд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
           return;
+        }
+        /* ⚠️ 2026-10-09: архивлалтыг ДАХИН (бичихийн ЯГ өмнө — дээрх `archBusy`-ийн ⚠️). Юу ч бичээгүй тул
+           тэмдгийг арилгаж түгжээг тайлна (`holdClaim` → `finally`). */
+        const ab1 = await archBusy();
+        if (ab1) {
+          await clearObyemPartial(pvSub.oid);
+          pvErrHere(ab1);
           return;
         }
         try {

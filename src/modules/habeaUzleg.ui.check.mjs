@@ -92,4 +92,28 @@ assert.ok(/UZ_OPTIONAL[^;]*U\.week, U\.shift/s.test(uz), 'week/shift — заа�
 assert.ok(wall.includes("tr('{0} бүртгэлийн зураг татагдсангүй'"), 'PhotoWall: N бүртгэлийн зураг татагдсангүй');
 assert.ok(uz.includes("tr('{0} үзлэгийн зураг татагдсангүй'"), 'Үзлэгийн слайдер: N үзлэгийн зураг татагдсангүй');
 
+/* ══════════ 6. Онооны өнгө — шошготой НЭГ дүгнэлт, LEVEL_TONE (2026-10-09) ══════════ */
+{
+  const { scoreColor, uzScoreLevel, UZLEG_SCORE_GOOD, inSel } = await import('./habeaUzleg.tsx');
+  const { LEVEL_TONE, SCORE_GOOD } = await import('../lib/kpiLevels.ts');
+  assert.equal(UZLEG_SCORE_GOOD, 90);
+  assert.notEqual(UZLEG_SCORE_GOOD, SCORE_GOOD, 'kpiLevels.SCORE_GOOD (65)-тай ялгаатай нэр');
+  assert.equal(uzScoreLevel(89.6), 'good', '«90%» гэж бичигдэх утга ногоон');
+  assert.equal(uzScoreLevel(89.4), 'warn');
+  assert.equal(uzScoreLevel(69.5), 'warn');
+  assert.equal(uzScoreLevel(69.4), 'bad');
+  assert.equal(scoreColor(95), LEVEL_TONE.good);
+  assert.ok(!/#[0-9a-f]{3,6}\b/i.test(scoreColor(50)), 'hex биш — CSS хувьсагч');
+  /* inSel — хоосон = бүгд, урт жагсаалт Set-ээр */
+  const days = Array.from({ length: 400 }, (_, i) => `d${i}`);
+  assert.ok(inSel([], 'x'));
+  assert.ok(inSel(days, 'd399') && !inSel(days, 'x'));
+  assert.ok(inSel(['a', 'b'], 'b') && !inSel(['a'], 'b'));
+  assert.ok(!/uz\.day\.includes\(/.test(uz), 'uzPass: өдрийн гишүүнчлэл Set-ээр (inSet)');
+}
+/* ══════════ 7. Огнооны муж ба капсул (Habea, 2026-10-09) ══════════ */
+assert.ok(habea.includes('from={pill.from}') && habea.includes('to={pill.to}'), 'капсул sel.day-ээс (массивын лавлагаа биш)');
+assert.ok(habea.includes('s.day === rangeKeysRef.current) return { ...s, day: [v] }'), 'муж идэвхтэй үед өдөр дарвал сонголтыг орлуулна');
+assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадгалсны дараа давхар татахгүй');
+
 console.log('habeaUzleg.ui.check: OK');

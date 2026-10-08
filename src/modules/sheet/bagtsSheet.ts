@@ -2177,6 +2177,17 @@ const SERVER_FIELDS = /^(ObjectID|OBJECTID|GlobalI[Dd]|CreationDate|Creator|Edit
  * ⚠️ Мөр бүрийн БҮХ талбарыг (`raw`) хуулж, зөвхөн бодогдсоныг нь дарж
  *    бичнэ — код мэддэггүй багана ч хуулбарт бүрэн үлдэнэ.
  */
+/**
+ * `applyAdds`-ИЙН АЛДАА (2026-10-09). `lost === true` — ХАРИУ АЛДАГДСАН/дутуу: тэр багц серверт суусан эсэх
+ * ТОДОРХОЙГҮЙ (timeout · сүлжээ · 5xx · дугааргүй хариу). Дуудагч «буцаагдсан» гэж БҮҮ тайлагна, тэмдэг/түгжээг
+ * БҮҮ тайл; `written`-д ороогүй мөр архивт байж болно. `cause` — анхны алдаа (ороосон үед).
+ * `lost` байхгүй/false — серверийн ТОДОРХОЙ татгалзал (`success:false` · ArcGIS `error.code`).
+ */
+export type AddsError = Error & { lost?: boolean; cause?: unknown };
+/** `applyAdds`-ийн алдаа үр дүн тодорхойгүй эсэх (`AddsError`-ийн ⚠️) — `isLostWrite`-ийг ч хамарна */
+export const addsLost = (e: unknown): boolean =>
+  (e as AddsError | null)?.lost === true || isLostWrite(e);
+
 export async function applyAdds(
   pkg: Pkg,
   features: Record<string, unknown>[],
@@ -2230,8 +2241,13 @@ export async function applyAdds(
          200-аар, эсвэл ДУТУУ/хоосон `addResults`-аар буцааж болно — урьд нь
          `bad` олдохгүй бол амжилт гэж үзэж, архивт ДУТУУ жааз бичигдсэн атлаа
          `ok` буцдаг байв. Мөр бүр дугаартай ирэх ёстой. */
-      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number"))
-        throw new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number").length));
+      /* ⚠️ 2026-10-09: дугааргүй/дутуу хариу = ҮР ДҮН ТОДОРХОЙГҮЙ (дугааргүй мөр серверт суусан байж болно) —
+         `lost` (доорх `AddsError`-ийн ⚠️); «юу ч бичигдээгүй» гэж үзэхгүй. */
+      if (res.length !== chunk.length || res.some((r) => typeof r.objectId !== "number")) {
+        const ie = new Error(tr('Серверээс {0} мөрийн хариу ирэх ёстой, {1} ирлээ', chunk.length, res.filter((r) => typeof r.objectId === "number").length)) as AddsError;
+        ie.lost = true;
+        throw ie;
+      }
       if (firstOid == null && typeof res[0]?.objectId === "number") firstOid = res[0].objectId;
       added += res.length;
     } catch (e) {
@@ -2243,15 +2259,24 @@ export async function applyAdds(
       /* ⚠️ 2026-10-06 аудит: «дахин Нийтлэх дарж гүйцээнэ үү» гэсэн заавар ХАСАГДСАН — дуудагч бүр
          (`hyanaltStore` · `ajilApply` · `ulsiinKomiss`) хагас жаазыг `written`-ээр БУЦААЖ устгадаг тул
          «гүйцээ» гэх нь худал байв (тэр нэртэй товч ч алга). Юу хийхийг дуудагч өөрөө нэмж хэлнэ. */
-      if (added > 0)
-        throw new Error(
+      /* ⚠️ 2026-10-09: `lost` ТУГ ДАМЖИНА (`AddsError`-ийн ⚠️) — урьд нь `added > 0` үед энгийн `Error`-оор
+         ороож (`ArcGISError` төрөл алдагдаж) дуудагчийн `isLostWrite` ХУДАЛ болж, хариу алдагдсан багцыг
+         «буцаагдсан» гэж тайлагнадаг байв. Анхны алдаа `cause`-д. */
+      const lost = (e as AddsError | null)?.lost === true || isLostWrite(e);
+      if (added > 0) {
+        const we = new Error(
           tr(
             '{0}/{1} мөр нэмэгдэв; үлдсэн нь амжилтгүй ({2})',
             added,
             features.length,
             String((e as Error).message || e),
           ),
-        );
+          { cause: e },
+        ) as AddsError;
+        we.lost = lost;
+        throw we;
+      }
+      if (lost && e && typeof e === "object") (e as AddsError).lost = true;
       throw e;
     }
   }

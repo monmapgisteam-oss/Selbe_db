@@ -13,15 +13,18 @@
  *
  * ⚠️ Эрх: товч нь зөвхөн `habeaData` эрхтэйд (`Habea.tsx`); бичих функц өөрөө ч шалгана.
  * ⚠️ Огноо `Date.UTC` — хүснэгтийн байгаа мөрүүд UTC шөнө дундаар хадгалагдсан тул ижил хэв.
+ * ⚠️ 2026-10-09: хадгалсны дараа картыг `invalidate('HABEA')` (өгөгдлийн автобус) шинэчилнэ —
+ *    `onSaved → retry` ХАСАГДАВ (хоёр дахин татдаг байв).
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
 import { friendlyError } from '@/components/ui';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import {
-  addRegister, loadEntryFields, loadWasteRaw, nextNumber, saveWaste, lastFullWeek,
-  type EntryField, type WasteRaw,
+  addRegister, addWaste, entryFieldLabel, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
+  loadWasteMetrics, newGlobalId, nextNumber, type EntryField,
 } from '@/lib/habeaRegisters';
 import x from './uzlegExport.module.css';
 import e from './habeaEntry.module.css';
@@ -37,6 +40,10 @@ const utcDay = (v: string) => {
 };
 /** «№» / «д/д» — автоматаар дараагийн дугаар санал болгох талбар */
 const isSeq = (f: EntryField) => f.type === 'number' && /^(№|д\/д)$/i.test(f.alias.trim());
+/** Хариу алдагдсан бичилтийн мессеж нь өөрөө тайлбартай — `friendlyError` ангилалд оруулахгүй */
+const errText = (ex: unknown) => (ex instanceof HabeaLostWrite ? ex.message : friendlyError(ex));
+/** «Багц 3.1» (шүүлтийн түлхүүр) → дэлгэцийн нэр */
+export const pkgColLabel = (name: string) => tr('Багц {0}', name.replace(/^Багц\s*/, ''));
 
 /** Картын гарчгийн жижиг «+ Нэмэх» товч — ЗӨВХӨН эрхтэйд зурагдана (дуудагч шийднэ) */
 export function AddButton({ onClick }: { onClick: () => void }) {
@@ -47,17 +54,34 @@ export function AddButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/**
+ * ⚠️ 2026-10-09 (хүртээмж): фокусын урхи (`useFocusTrap` — нээхэд дотор нь фокус, хаахад нээсэн
+ *    товч руу БУЦААНА). Ард товшиход ЗӨВХӨН mousedown ба mouseup ХОЁУЛАА ард байвал хаана —
+ *    урьд нь талбар дотор текст сонгоод хулганаа гадна суллахад цонх бөглөсөн утгатайгаа хаагддаг байв.
+ */
 function Shell({ title, busy, onClose, children, foot }: {
   title: string; busy: boolean; onClose: () => void; children: React.ReactNode; foot: React.ReactNode;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const downOnBack = useRef(false);
+  useFocusTrap(boxRef);
   useEffect(() => {
     const k = (ev: KeyboardEvent) => { if (ev.key === 'Escape' && !busy) onClose(); };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [busy, onClose]);
   return (
-    <div className={x.back} role="presentation" onClick={() => { if (!busy) onClose(); }}>
-      <div className={`${x.box} ${e.box}`} role="dialog" aria-modal="true" aria-label={title} onClick={(ev) => ev.stopPropagation()}>
+    <div
+      className={x.back}
+      role="presentation"
+      onMouseDown={(ev) => { downOnBack.current = ev.target === ev.currentTarget; }}
+      onMouseUp={(ev) => {
+        const both = downOnBack.current && ev.target === ev.currentTarget;
+        downOnBack.current = false;
+        if (both && !busy) onClose();
+      }}
+    >
+      <div ref={boxRef} className={`${x.box} ${e.box}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className={x.head}>
           <div><h2 className={x.title}>{title}</h2></div>
           <button type="button" className={x.close} onClick={onClose} aria-label={tr('Хаах')} disabled={busy}>
@@ -73,14 +97,28 @@ function Shell({ title, busy, onClose, children, foot }: {
 
 /* ═════════════ «Бусад үзүүлэлт» — бүртгэл нэмэх ═════════════ */
 
-export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
   const kinds = HABEA.registers.items.filter((it) => it.table != null);
   const [kind, setKind] = useState(kinds[0]?.key ?? '');
   const item = kinds.find((k) => k.key === kind) ?? kinds[0];
   const [fields, setFields] = useState<EntryField[] | null>(null);
   const [vals, setVals] = useState<Record<string, string>>({});
+  /** Санал болгосон дугаар — хэрэглэгч өөрчлөөгүй бол хадгалахын ЯГ ӨМНӨ дахин бодно */
+  const [seqHint, setSeqHint] = useState<{ name: string; value: string } | null>(null);
+  /**
+   * ⚠️ 2026-10-09: КЛИЕНТИЙН GlobalID — маягт (төрөл) бүрд НЭГ. Хариу алдагдсаны дараа дахин
+   *    «Хадгалах» дарахад ИЖИЛ id-аар эхлээд серверээс асууна (`addRegister`) — давхардахгүй.
+   */
+  const [gid, setGid] = useState(newGlobalId);
+  const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  const pickKind = useCallback((k: string) => {
+    setKind(k);
+    setGid(newGlobalId());
+    setTried(false);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -89,13 +127,18 @@ export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; o
     // eslint-disable-next-line react-hooks/set-state-in-effect -- төрөл солигдоход маягтыг цэвэрлэж дахин ачаална
     setFields(null);
     setErr('');
+    setSeqHint(null);
     loadEntryFields(t)
       .then(async (fs) => {
         const init: Record<string, string> = {};
         for (const f of fs) if (f.type === 'date') init[f.name] = todayStr();
         const seq = fs.find(isSeq);
-        if (seq) init[seq.name] = String(await nextNumber(t, seq.name).catch(() => 1));
-        if (alive) { setFields(fs); setVals(init); }
+        let hint: { name: string; value: string } | null = null;
+        if (seq) {
+          const n = await nextNumber(t, seq.name).catch(() => null);
+          if (n != null) { init[seq.name] = String(n); hint = { name: seq.name, value: String(n) }; }
+        }
+        if (alive) { setFields(fs); setVals(init); setSeqHint(hint); }
       })
       .catch((ex: unknown) => { if (alive) setErr(friendlyError(ex)); });
     return () => { alive = false; };
@@ -115,11 +158,13 @@ export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; o
         if (!v) continue;
         attrs[f.name] = f.type === 'date' ? utcDay(v) : f.type === 'number' ? Number(v) : v;
       }
-      await addRegister(item.table, attrs);
-      onSaved();
+      /* ⚠️ 2026-10-09: санал болгосон дугаарыг өөрчлөөгүй бол бичихийн ӨМНӨ дахин бодно */
+      const autoSeq = seqHint && (vals[seqHint.name] ?? '').trim() === seqHint.value ? seqHint.name : undefined;
+      await addRegister(item.table, attrs, gid, { autoSeq, retry: tried });
       onClose();
     } catch (ex) {
-      setErr(friendlyError(ex));
+      setTried(true);
+      setErr(errText(ex));
     } finally {
       setBusy(false);
     }
@@ -145,7 +190,7 @@ export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; o
       <div className={x.chips} role="radiogroup" aria-label={tr('Төрөл')}>
         {kinds.map((k) => (
           <button key={k.key} type="button" role="radio" aria-checked={kind === k.key} disabled={busy}
-            className={`${x.chip} ${kind === k.key ? x.chipOn : ''}`} onClick={() => setKind(k.key)}>
+            className={`${x.chip} ${kind === k.key ? x.chipOn : ''}`} onClick={() => pickKind(k.key)}>
             {k.label}
           </button>
         ))}
@@ -155,7 +200,7 @@ export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; o
         <div className={e.grid}>
           {fields.map((f) => (
             <label key={f.name} className={`${x.field} ${f.type === 'long' ? e.wide : ''}`}>
-              <span>{f.alias}{f.type === 'date' ? ' *' : ''}</span>
+              <span>{entryFieldLabel(f)}{f.type === 'date' ? ' *' : ''}</span>
               {f.type === 'long'
                 ? <textarea className={e.input} rows={3} value={vals[f.name] ?? ''} disabled={busy}
                     onChange={(ev) => setVals((v) => ({ ...v, [f.name]: ev.target.value }))} />
@@ -172,39 +217,63 @@ export function RegisterAddDialog({ onClose, onSaved }: { onClose: () => void; o
 
 /* ═════════════ «Хог хаягдал» — долоо хоногийн тоо ═════════════ */
 
-export function WasteAddDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+/**
+ * Багцын нүд — хоосон бол `null` (0 БИШ — «хэмжээгүй» ба «0 рейс» өөр), сөрөг/бутархай/буруу бол
+ * `undefined` (хадгалах хаагдана).
+ */
+const cellOf = (v: string | undefined): number | null | undefined => {
+  const s = (v ?? '').trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+};
+
+export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   const W = HABEA.waste;
-  const [raw, setRaw] = useState<{ rows: WasteRaw[]; metrics: string[] } | null>(null);
+  /** Домэйны кодууд — ачаалагдсан эсэх нь үйлчилгээ хүрэх эсэхийн шалгуур */
+  const [dom, setDom] = useState<string[] | null>(null);
   const [week, setWeek] = useState(() => String(lastFullWeek().no));
   const [metric, setMetric] = useState<string>(W.kinds[0].metric);
   const [cols, setCols] = useState<Record<string, string>>({});
+  /** ⚠️ 2026-10-09: хариу алдагдсан илгээлт — ИЖИЛ утгаар дахин дарахад эхлээд дахин тоолно */
+  const [prior, setPrior] = useState<{ before: number; sig: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     let alive = true;
-    loadWasteRaw().then((d) => { if (alive) setRaw(d); }).catch((ex: unknown) => { if (alive) setErr(friendlyError(ex)); });
+    loadWasteMetrics().then((d) => { if (alive) setDom(d); }).catch((ex: unknown) => { if (alive) setErr(friendlyError(ex)); });
     return () => { alive = false; };
   }, []);
 
-  const metrics = raw?.metrics.length ? raw.metrics : W.kinds.map((k) => k.metric);
-  const ok = Number.isInteger(Number(week)) && Number(week) > 0 && !!metric;
+  /* ⚠️ 2026-10-09: ЗӨВХӨН картад харагдах төрлүүд (`W.kinds`, рейс) — kg/m3 төрлийг оруулбал
+     картад хэзээ ч гарахгүй. Домэйнд байхгүй кодыг санал болгохгүй. */
+  const kinds = W.kinds.filter((k) => !dom?.length || dom.includes(k.metric));
+  const weekN = /^\d+$/.test(week.trim()) ? Number(week) : null;
+  const weekOk = isWeekNo(weekN);
+  const parsed = Object.fromEntries(W.pkgCols.map(([c]) => [c, cellOf(cols[c])]));
+  const cellsOk = Object.values(parsed).every((v) => v !== undefined);
+  const anyVal = Object.values(parsed).some((v) => v != null);
+  const ok = weekOk && cellsOk && anyVal && kinds.some((k) => k.metric === metric);
 
   const save = async () => {
+    if (!ok || weekN == null) return;
     setBusy(true);
     setErr('');
     try {
-      const out: Record<string, number> = {};
-      for (const [c] of W.pkgCols) out[c] = Math.max(0, Math.round(Number(cols[c] || 0)));
-      await saveWaste(Number(week), metric, out, null);
-      onSaved();
+      await addWaste(weekN, metric, parsed as Record<string, number | null>, prior);
       onClose();
     } catch (ex) {
-      setErr(friendlyError(ex));
+      if (ex instanceof HabeaLostWrite && ex.before != null && ex.sig) setPrior({ before: ex.before, sig: ex.sig });
+      setErr(errText(ex));
     } finally {
       setBusy(false);
     }
   };
+
+  const hint = !dom ? '' : !weekOk ? tr('Долоо хоног 1–53 байна.')
+    : !cellsOk ? tr('Тоо нь 0 ба түүнээс их бүхэл тоо байна.')
+      : !anyVal ? tr('Ядаж нэг багцын тоог оруулна уу.') : '';
 
   return (
     <Shell
@@ -216,7 +285,7 @@ export function WasteAddDialog({ onClose, onSaved }: { onClose: () => void; onSa
           {err && <p className={x.err} role="alert">{err}</p>}
           <div className={x.actions}>
             <button type="button" className={x.btn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
-            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !raw}>
+            <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !dom}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
             </button>
           </div>
@@ -226,24 +295,27 @@ export function WasteAddDialog({ onClose, onSaved }: { onClose: () => void; onSa
       <div className={e.grid}>
         <label className={x.field}>
           <span>{tr('Долоо хоног')}</span>
-          <input className={e.input} type="number" min={1} max={53} value={week} disabled={busy} onChange={(ev) => setWeek(ev.target.value)} />
+          <input className={e.input} type="number" min={1} max={53} step={1} value={week} disabled={busy}
+            aria-invalid={!weekOk} onChange={(ev) => setWeek(ev.target.value)} />
         </label>
         <label className={x.field}>
           <span>{tr('Төрөл')}</span>
           <select className={e.input} value={metric} disabled={busy} onChange={(ev) => setMetric(ev.target.value)}>
-            {metrics.map((m) => <option key={m} value={m}>{m}</option>)}
+            {kinds.map((k) => <option key={k.metric} value={k.metric}>{k.label}</option>)}
           </select>
         </label>
       </div>
       <div className={e.grid}>
         {W.pkgCols.map(([c, name]) => (
           <label key={c} className={x.field}>
-            <span>{name}</span>
-            <input className={e.input} type="number" min={0} value={cols[c] ?? ''} disabled={busy || !raw}
+            <span>{pkgColLabel(name)}</span>
+            <input className={e.input} type="number" min={0} step={1} value={cols[c] ?? ''} disabled={busy || !dom}
+              aria-invalid={parsed[c] === undefined}
               onChange={(ev) => setCols((v) => ({ ...v, [c]: ev.target.value }))} />
           </label>
         ))}
       </div>
+      {hint && <p className={e.muted}>{hint}</p>}
     </Shell>
   );
 }

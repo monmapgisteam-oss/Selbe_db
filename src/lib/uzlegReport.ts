@@ -461,11 +461,21 @@ export async function fetchAttachment(url: string, signal?: AbortSignal): Promis
     try {
       const res = await fetch(url, { method: 'POST', body, signal: ctl.signal });
       let code = res.ok ? 0 : res.status;
-      if (res.ok && /json|text\/(plain|html)/i.test(res.headers.get('content-type') ?? '')) {
+      /* ⚠️ 2026-10-09: текст төрлийн хариу нь ArcGIS-ийн алдаа ЗӨВХӨН `{ error }` түлхүүртэй JSON бол.
+         Урьд нь json/text/html БҮРИЙГ алдаа гэж үздэг тул `.txt/.json/.html` хавсралт (Чанар)
+         хэзээ ч нээгддэггүй байв. Бие нэг л удаа уншигдах тул текстээс нь Blob-ийг сэргээнэ. */
+      const ct = res.headers.get('content-type') ?? '';
+      if (res.ok && /json|text\/(plain|html)/i.test(ct)) {
+        const txt = await res.text();
+        let err: { code?: unknown } | null = null;
         try {
-          const j = (await res.json()) as { error?: { code?: unknown } };
-          code = Number(j?.error?.code ?? 500) || 500;
-        } catch { code = 500; }
+          const j = JSON.parse(txt) as unknown;
+          if (j && typeof j === 'object' && !Array.isArray(j) && 'error' in j) {
+            err = (j as { error?: { code?: unknown } | null }).error ?? {};
+          }
+        } catch { /* JSON биш — жинхэнэ хавсралт */ }
+        if (!err) return new Blob([txt], { type: ct });
+        code = Number(err.code ?? 500) || 500;
       }
       if (!code) return await res.blob();
       if ((code === 498 || code === 499) && attempt === 0 && sent && await refreshAfterTokenError(sent)) continue;

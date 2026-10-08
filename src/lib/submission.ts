@@ -185,7 +185,14 @@ export type SubmissionPayload = {
    *    өөр хөтчийн дарга дахин батлахад `archivedSet` (localStorage) харагдахгүй тул БҮТЭН жааз
    *    дахин бичигддэг байв. Тэмдэг байвал `OBJECTID > maxOid0 AND өдөр = fillMs` жааз архивт
    *    бүтэн байгаа эсэхийг шалгаж, байвал бичихгүй шууд хаана.
-   * ⚠️ `mergeSubmission` ДАМЖУУЛАХГҮЙ (шинэ агуулга = шинэ `at`); `closeSubmission` арилгана.
+   * ⚠️ 2026-10-09 (ДАХИН ЗАССАН): `mergeSubmission` ДАМЖУУЛНА (урьд нь «шинэ агуулга = шинэ `at`» гэж
+   *    хаядаг байв). Архив бичигдсэний ДАРАА (хаалт унасан/явж байхад) гүйцэтгэгч дахин илгээвэл тэмдэг
+   *    алга болж, дараагийн батлалт архивласан +15-ийг ДАХИН нэмдэг байв (base+15 → +5 → base+35).
+   *    Дамжуулахдаа архивлаж буй агуулгын хуулбарыг (`prev`) хадгална — `archiveSubmission` тэр жааз
+   *    буусан бол шинэ агуулгыг `residualAfterArchive`-аар хасч бичнэ (`archivedContent`). `closeSubmission`
+   *    ба шийдсэн бичигч (`saveSubmission`-ий `dropMark`) арилгана.
+   * ⚠️ 2026-10-09: `by`/`sid` — тэмдэг тавьсан хэрэглэгч ба хөтчийн сешн (`markArchiving`-ийн «claim»);
+   *    `archivingBusy` (Ажил · обьём · Хуваарийн бичигчид) ШИНЭ (`ARCHIVING_TTL_MS`) тэмдгийг хүлээнэ.
    * ⚠️ 2026-10-09 (R2-c): «≥ n мөр» нь ЭНЭ илгээлтийн жааз гэдгийг батлахгүй (тэр өдөр ӨӨР жааз бичигдэж
    *    болно) — `rootNo` (жаазны эхний мөрийн №) ба `probe` (илгээлтээр өөрчлөгдсөн нүднүүдийн дээж:
    *    [жаазан дахь индекс, талбар, бичсэн утга]) хадгалж `matchArchivedFrame`-ээр ЯГ таньна. Хуучин
@@ -199,19 +206,71 @@ export type ArchivingMark = {
   at: number; startedAt: number; maxOid0: number; fillMs: number; n: number;
   rootNo?: string;
   probe?: [number, string, number | string | null][];
+  /** ⚠️ 2026-10-09: тэмдэг тавьсан хэрэглэгч (жижиг үсгээр) — `archivingBusy`/`markArchiving`-ийн мессежид */
+  by?: string;
+  /** ⚠️ 2026-10-09: тавьсан хөтчийн табын сешн (`SESSION_ID`) — «claim»: өөр сешн ШИНЭ тэмдгийг дарахгүй */
+  sid?: string;
+  /**
+   * ⚠️ 2026-10-09: ДАМЖСАН тэмдгийн (`at` ≠ payload.at) архивлаж буй агуулга — `mergeSubmission` анх дамжуулахдаа
+   *    өмнөх payload-ын нүд/мөрийн танигчийг хуулна. Байхгүй бол буусан жаазаас хасах боломжгүй → татгалзана.
+   */
+  prev?: ArchSnap;
 };
+/** Архивлаж буй агуулгын хуулбар — `residualAfterArchive`-д хэрэгтэй хэсэг л (`ArchivingMark.prev`) */
+export type ArchSnap = { cells: [string, string][]; rowKeys: [number, string][]; rowOcc?: [number, number, number][] };
 
 /** `ArchivingMark.probe`-ийн дээд урт (payload-ыг дүүргэхгүй) */
 export const PROBE_MAX = 8;
 
-/** Архивт бичсэн утга ба буцаж уншсан утга ижил үү (тоо — харьцангуй 1e-6; хоосон = null) */
-function sameArchVal(a: unknown, b: number | string | null): boolean {
-  if (b == null || b === '') return a == null || a === '';
+/**
+ * «АРХИВЛАЖ БАЙНА» ТЭМДГИЙН ШИНЭ БАЙХ ХУГАЦАА (2026-10-09) — 15 мин. Жааз бичих (≈1–2 мин) ба хаах хугацаанаас
+ * хангалттай урт. Энэ хугацаанд тэмдэг «явж буй/үр дүн тодорхойгүй» — өөр сешн дарахгүй (`markArchiving`),
+ * гүйцэтгэгч дахин илгээхгүй (`FillNew.publish`), бусад бичигч хүлээнэ (`archivingBusy`). Хуучирсан тэмдгийг
+ * архивын жаазаар шийднэ (`matchArchivedFrame`).
+ */
+export const ARCHIVING_TTL_MS = 15 * 60_000;
+/** Тэмдэг ШИНЭ үү (`ARCHIVING_TTL_MS`). ⚠️ Цагийн зөрүүгээр ирээдүйд байвал ч шинэ гэж үзнэ (fail-closed). */
+export const markFresh = (m: Pick<ArchivingMark, 'startedAt'>, now = Date.now()): boolean =>
+  now - m.startedAt < ARCHIVING_TTL_MS;
+
+/**
+ * ЭНЭ ТАБЫН СЕШНИЙ ТАНИГЧ (2026-10-09) — `ArchivingMark.sid`. Модуль ачаалагдах бүрд шинэ (таб/F5 тутам).
+ */
+export const SESSION_ID = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+/** Огноо мэт тоо (epoch ms, 1973-аас хойш) эсвэл 'YYYY-MM-DD…' → UTC өдрийн дугаар (`normDayMs`-ийн дүрэм — ойрын шөнө дунд) */
+function dayNo(v: unknown): number | null {
+  const ms = typeof v === 'number' ? v
+    : typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v.trim()) ? Date.parse(`${v.trim().slice(0, 10)}T00:00:00Z`) : NaN;
+  return Number.isFinite(ms) ? Math.round(ms / 86_400_000) : null;
+}
+
+/**
+ * Архивт бичсэн утга ба буцаж уншсан утгын харьцаа (2026-10-09 — урьдын `sameArchVal`-ийн 1e-6 тэнцэл):
+ *   · `'eq'`   — тэнцүү: тоо харьцангуй 1e-9 дотор, огноо (`date`) UTC өдрөөр, мөр trim-ээр, хоосон = null;
+ *   · `'near'` — зөвхөн хөвөгч таслалын бөөрөнхийллөөр ялгаатай (≤ 1e-6 харьцангуй) — ЭНЭ ЖААЗ мөн/биш нь
+ *                ТОДОРХОЙГҮЙ (дуудагч fail-closed);
+ *   · `'far'`  — өөр утга.
+ */
+function cmpArchVal(a: unknown, b: number | string | null, date = false): 'eq' | 'near' | 'far' {
+  if (b == null || b === '') return a == null || a === '' ? 'eq' : 'far';
+  if (date || (typeof b === 'number' && typeof a === 'number' && Math.abs(b) > 1e11 && Math.abs(a) > 1e11)) {
+    const x = dayNo(a);
+    const y = dayNo(b);
+    if (x != null && y != null) return x === y ? 'eq' : 'far';
+  }
   if (typeof b === 'number') {
     const x = typeof a === 'number' ? a : typeof a === 'string' && a.trim() ? Number(a) : NaN;
-    return Number.isFinite(x) && Math.abs(x - b) <= 1e-6 * Math.max(1, Math.abs(b));
+    if (!Number.isFinite(x)) return 'far';
+    const d = Math.abs(x - b);
+    const m = Math.max(1, Math.abs(b));
+    return d <= 1e-9 * m ? 'eq' : d <= 1e-6 * m ? 'near' : 'far';
   }
-  return String(a ?? '').trim() === b.trim();
+  return String(a ?? '').trim() === b.trim() ? 'eq' : 'far';
+}
+/** Архивт бичсэн утга ба уншсан утга ижил үү (`cmpArchVal === 'eq'`) — `frameProbe`-ийн «өөрчлөгдсөн үү» */
+function sameArchVal(a: unknown, b: number | string | null): boolean {
+  return cmpArchVal(a, b) === 'eq';
 }
 
 /**
@@ -251,28 +310,96 @@ export function frameProbe(
  *    төгсгөл) хүртэл ЯГ `n` мөр; `probe`-ийн нүд бүр бичсэн утгатай тэнцүү. «≥ n мөр» хангалтгүй:
  *    тэр өдөр өөр жааз (ажил нэмэх · Улсын комисс) бичигдсэн бол андуурч, батлагдсан гүйцэтгэлийг
  *    архивт оруулалгүй илгээлтийг хаадаг байв.
+ * ⚠️ 2026-10-09: `'ambiguous'` — эхний № ба `n` таарсан жааз байгаа боловч дээжийн утга нь ЗӨВХӨН хөвөгч
+ *    таслалын бөөрөнхийллөөр (`cmpArchVal` → `'near'`) зөрсөн. Урьд нь (1e-6 тэнцэл/эсвэл зөрвөл `null`)
+ *    «буугаагүй» гэж үзэж жаазыг ДАХИН бичих эрсдэлтэй байв — дуудагч ТАТГАЛЗАНА (fail-closed). Тоог
+ *    харьцангуй 1e-9-өөр, огноог (`dateFields`; эсвэл хоёулаа epoch ms) UTC өдрөөр жишнэ.
  */
 export function matchArchivedFrame(
   rows: Record<string, unknown>[],
   mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
   oidField: string,
   noField: string,
-): number | null {
+  /** ⚠️ 2026-10-09: огнооны талбарууд — UTC өдрөөр жишнэ */
+  dateFields?: readonly string[],
+): number | null | 'ambiguous' {
   if (!rows.length || mark.n <= 0) return null;
+  const dates = new Set(dateFields ?? []);
   const noOf = (r: Record<string, unknown>) => String(r[noField] ?? '').trim();
   const root = mark.rootNo ?? noOf(rows[0]);
   const starts: number[] = [];
   if (root) rows.forEach((r, i) => { if (noOf(r) === root) starts.push(i); });
   else starts.push(0);
+  let ambiguous = false;
   for (let k = 0; k < starts.length; k += 1) {
     const s = starts[k];
     const end = root ? (k + 1 < starts.length ? starts[k + 1] : rows.length) : rows.length;
     if (end - s !== mark.n) continue;
-    if (!(mark.probe ?? []).every(([i, f, v]) => i < mark.n && sameArchVal(rows[s + i]?.[f], v))) continue;
+    let near = false;
+    let far = false;
+    for (const [i, f, v] of mark.probe ?? []) {
+      const c = i < mark.n ? cmpArchVal(rows[s + i]?.[f], v, dates.has(f)) : 'far';
+      if (c === 'far') { far = true; break; }
+      if (c === 'near') near = true;
+    }
+    if (far) continue;
+    if (near) { ambiguous = true; continue; }
     const oid = Number(rows[s][oidField]);
     if (Number.isInteger(oid) && oid > 0) return oid;
   }
-  return null;
+  return ambiguous ? 'ambiguous' : null;
+}
+
+/**
+ * ТЭМДГИЙН АРХИВЛАЖ БУЙ АГУУЛГА (2026-10-09) — тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бол payload өөрөө; ДАМЖСАН
+ * (`mergeSubmission`) бол түүний хуулбар (`prev`) payload-ын хэлбэрээр; аль нь ч биш бол `null` (хасах боломжгүй).
+ */
+export function archivedContent(p: SubmissionPayload): SubmissionPayload | null {
+  const m = p.archiving;
+  if (!m) return null;
+  if (m.at === p.at) return p;
+  if (!m.prev) return null;
+  const out: SubmissionPayload = { ...p, cells: m.prev.cells, rowKeys: m.prev.rowKeys };
+  if (m.prev.rowOcc) out.rowOcc = m.prev.rowOcc; else delete out.rowOcc;
+  return out;
+}
+
+/**
+ * ШИЙДСЭН ТЭМДГИЙГ ХЭРЭГЖҮҮЛНЭ (2026-10-09) — `archiveSubmission` ба `FillNew.publish`-ийн НЭГ дүрэм, ЦЭВЭР.
+ *   · `landed` (жааз архивт БУУСАН) → архивласан хэсгийг хассан үлдэгдэл (`residualAfterArchive`), `residual: true`
+ *     (архивт ороогүй агуулга — «Шилжүүлсэн» урсгалын дор ч давхарлагдана/нэгтгэгдэнэ);
+ *     хасах боломжгүй (хуулбаргүй · түлхүүр тулгагдаагүй) → `null` (дуудагч ТАТГАЛЗАНА).
+ *     ⚠️ Хуучин (НИЙТ) горимд дахин бичих нь орлуулалт тул хасахгүй — агуулга хэвээр.
+ *   · буугаагүй → агуулга хэвээр (тэр агуулга архивт ХЭЗЭЭ Ч ороогүй).
+ *   Хоёуланд тэмдэг арилна. Оролтыг ӨӨРЧЛӨХГҮЙ.
+ */
+export function resolveMark(p: SubmissionPayload, landed: boolean): SubmissionPayload | null {
+  let out: SubmissionPayload = { ...p };
+  if (landed && p.mode === 'inc') {
+    const arch = archivedContent(p);
+    if (!arch) return null;
+    /* ⚠️ Нэмсэн мөр (`adds`) буусан жаазад аль хэдийн байрласан — үлдэгдэлд үлдвэл ДАХИН нэмэгдэнэ, түүний
+       сөрөг түлхүүрийг архивын мөрөнд тулгах зам алга. Хасахгүй, ТАТГАЛЗАНА (хүн шийднэ). */
+    if (p.adds.length) return null;
+    const rest = residualAfterArchive(p, arch);
+    if (!rest) return null;
+    out = { ...rest, residual: true };
+  }
+  delete out.archiving;
+  return out;
+}
+
+/**
+ * «claim» ЗӨРЧИЛ (2026-10-09, `markArchiving`) — ЦЭВЭР. `existing` тэмдэг ижил `at`-тай, ШИНЭ, ӨӨР сешнийх бол
+ * `{ sameUser }` (ижил хэрэглэгчийн өөр таб/хөтөч эсэх), эс бөгөөс `null` (дарж болно).
+ */
+export function claimConflict(
+  existing: ArchivingMark | undefined, at: number, sid: string, me: string, now = Date.now(),
+): { sameUser: boolean; by: string } | null {
+  if (!existing || existing.at !== at || !markFresh(existing, now)) return null;
+  if (existing.sid && existing.sid === sid) return null;
+  const by = (existing.by ?? '').toLowerCase();
+  return { sameUser: !!by && by === me.toLowerCase(), by };
 }
 
 /** Хүснэгтээс уншсан илгээлт — мөрийн дугаар ба төлөвтэй */
@@ -479,6 +606,19 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
           && (e[2] === null || isFin(e[2]) || (isStr(e[2]) && e[2].length <= 256)))
         : [];
       if (pr.length) mk.probe = pr.slice(0, PROBE_MAX).map((e): [number, string, number | string | null] => [e[0], e[1], e[2]]);
+      /* ⚠️ 2026-10-09: тавьсан хүн/сешн ба дамжсан агуулгын хуулбар — эвдэрсэн хэсгийг л хаяна */
+      if (isStr(ar.by) && ar.by.length <= 128) mk.by = ar.by.toLowerCase();
+      if (isStr(ar.sid) && ar.sid.length <= 64) mk.sid = ar.sid;
+      const pv = ar.prev as Record<string, unknown> | undefined;
+      if (pv && typeof pv === 'object' && Array.isArray(pv.cells) && Array.isArray(pv.rowKeys)) {
+        const snap: ArchSnap = {
+          cells: (pv.cells as unknown[]).filter(isPair).map(([k, v]): [string, string] => [k, v]),
+          rowKeys: byPageOrder((pv.rowKeys as unknown[]).filter(isRowKey)),
+        };
+        const so = Array.isArray(pv.rowOcc) ? (pv.rowOcc as unknown[]).filter(isOcc).map((e): [number, number, number] => [e[0], e[1], e[2]]) : [];
+        if (so.length) snap.rowOcc = so;
+        mk.prev = snap;
+      }
       out.archiving = mk;
     }
     return out;
@@ -595,6 +735,25 @@ export function mergeSubmission(
   for (const e of next.rowOcc ?? []) { const o = remap.get(e[0]) ?? e[0]; occ.set(o, [o, e[1], e[2]]); }
   /* ⚠️ 2026-10-04 (#3): илгээлтийн танигчууд хуримтлагдана (сүүлийн `NONCE_KEEP`) */
   const nonces = [...new Set([...(prev?.nonces ?? []), ...(next.nonces ?? [])])].slice(-NONCE_KEEP);
+  /*
+   * ⚠️ 2026-10-09: «АРХИВЛАЖ БАЙНА» ТЭМДЭГ ДАМЖИНА (`SubmissionPayload.archiving`-ийн ⚠️ — урьд нь хаягддаг байв).
+   *    Анх дамжихдаа (`at` = өмнөх payload-ынх) архивлаж буй агуулгын хуулбарыг (`prev`) хадгална; аль хэдийн
+   *    дамжсан бол хуучин хуулбар хэвээр (тэр л архивлагдаж байсан агуулга). Нэмэлт ба хуучин горимд адил.
+   */
+  let archiving: ArchivingMark | undefined;
+  if (prev?.archiving) {
+    const am = prev.archiving;
+    archiving = am.prev || am.at !== prev.at
+      ? { ...am }
+      : {
+        ...am,
+        prev: {
+          cells: prev.cells.map(([k, v]): [string, string] => [k, v]),
+          rowKeys: prev.rowKeys.map(([o, l]): [number, string] => [o, l]),
+          ...(prev.rowOcc?.length ? { rowOcc: prev.rowOcc.map((e): [number, number, number] => [e[0], e[1], e[2]]) } : {}),
+        },
+      };
+  }
   return {
     v: inc ? 2 : 1,
     ...(inc ? { mode: 'inc' as const } : {}),
@@ -613,6 +772,7 @@ export function mergeSubmission(
     rowKeys: byPageOrder(rowKeys),
     ...(occ.size ? { rowOcc: [...occ.values()].filter(([o]) => rowKeys.has(o)).sort((a, b) => a[0] - b[0]) } : {}),
     ...(nonces.length ? { nonces } : {}),
+    ...(archiving ? { archiving } : {}),
   };
 }
 
@@ -1057,7 +1217,11 @@ export async function saveSubmission(
    *    байв — өөр хэрэглэгчийн илгээсэн нүднүүд ул мөргүй устана. Энд суурийг
    *    бичих АГШИНД нь дахин тулгана: зөрвөл `ok:false`, юу ч бичигдэхгүй.
    */
-  expect?: { at: number } | null,
+  /**
+   * ⚠️ 2026-10-09: `dropMark` — серверийн мөрийн «архивлаж байна» тэмдгийг (`startedAt`-аар) ДУУДАГЧ ШИЙДСЭН
+   *    (`resolveMark`) тул payload-д тэмдэггүй бичихийг зөвшөөрнө. Доорх тэмдгийн хамгаалалтыг үз.
+   */
+  expect?: { at: number; dropMark?: number } | null,
 ): Promise<{ ok: true; oid: number } | { ok: false; error: string }> {
   if (payload.pkgKey !== pkgKey) {
     /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
@@ -1136,6 +1300,25 @@ export async function saveSubmission(
         return {
           ok: false,
           error: tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.'),
+        };
+      }
+    }
+    /*
+     * ⚠️ 2026-10-09: «АРХИВЛАЖ БАЙНА» ТЭМДГИЙГ ЧИМЭЭГҮЙ ДАРАХГҮЙ. `markArchiving` нь `at`-ийг ӨӨРЧЛӨХГҮЙ тул
+     *    тэмдэг тавигдахаас ӨМНӨ уншсан дуудагчийн `expect.at` таарч, тэмдэггүй payload нь тэмдгийг арчдаг
+     *    байв — архив бичигдээд хаалт унасан бол дараагийн батлалт архивласан нэмэлтийг ДАХИН нэмнэ. Одоо
+     *    мөрд тэмдэг байхад payload ижил тэмдгийг (`startedAt`) дамжуулаагүй, дуудагч шийдээгүй (`dropMark`)
+     *    бол ЮУ Ч бичихгүй.
+     */
+    if (target != null) {
+      const curP = parseSubmission(String(feats[feats.length - 1].attributes.payload ?? ''));
+      const cm = curP?.archiving;
+      if (cm && payload.archiving?.startedAt !== cm.startedAt && expect?.dropMark !== cm.startedAt) {
+        return {
+          ok: false,
+          error: markFresh(cm)
+            ? tr('Энэ өдрийн илгээлтийг {0} яг одоо архивлаж байна — хэдэн минутын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.', cm.by || tr('газрын дарга'))
+            : tr('Энэ өдрийн илгээлтийн өмнөх архивлалт шалгагдаагүй — хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.'),
         };
       }
     }
@@ -1302,9 +1485,11 @@ export async function markArchiving(
   expectAt: number,
   /** `null` → тэмдгийг арилгана (бичилт унаж буцаагдсан үед) */
   mark: NonNullable<SubmissionPayload['archiving']> | null,
-): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
+): Promise<{ ok: boolean; error?: string; changed?: boolean; busy?: true }> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
+    /* ⚠️ 2026-10-09: тавьсан хэрэглэгч/сешн (`ArchivingMark.by`/`sid`) — «claim» */
+    const me = ((await getAuth())?.user ?? '').toLowerCase();
     const url = await tableUrl(false);
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
@@ -1318,8 +1503,31 @@ export async function markArchiving(
     const curAt = isFin(a.at) ? Number(a.at) : payload.at;
     if (curAt !== expectAt)
       return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
+    /*
+     * ⚠️ 2026-10-09: «CLAIM» — ХОЁР ХӨТӨЧ ЭЦСИЙН ШАТЫГ ЗЭРЭГ БАТЛАХ. Урьд нь хоёр дахь нь эхнийхийн ШИНЭ тэмдгийг
+     *    дарж, хоёулаа жааз бичдэг байв (бичсэний дараах уншилт зөвхөн СҮҮЛИЙН бичигчийг барина). Одоо ижил `at`-тай,
+     *    `ARCHIVING_TTL_MS`-ээс залуу, ӨӨР сешний тэмдэг байвал юу ч бичихгүй (`busy`); ижил хэрэглэгчийн өөр
+     *    таб/хөтөч бол тусгай мессеж. Хуучирсан тэмдгийг (тавьсан таб унасан) дарна — дуудагч архивыг өмнө нь
+     *    `matchArchivedFrame`-ээр шалгасан.
+     * ⚠️ АРИЛГАЛТ (`mark === null`) — ЗӨВХӨН өөрийн сешний тэмдгийг; өөр сешнийхийг арилгавал тэр бичиж
+     *    байхад «архивлаж байна» хамгаалалт алга болно.
+     */
+    if (mark) {
+      const cf = claimConflict(payload.archiving, expectAt, SESSION_ID, me);
+      if (cf) {
+        return {
+          ok: false,
+          busy: true,
+          error: cf.sameUser
+            ? tr('Та энэ ажлыг өөр цонх/хөтчөөс яг одоо батлаж (архивлаж) байна — тэр дуусахыг хүлээнэ үү. Юу ч бичсэнгүй.')
+            : tr('{0} энэ ажлыг яг одоо батлаж (архивлаж) байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', cf.by || tr('Өөр хянагч')),
+        };
+      }
+    } else if (payload.archiving?.sid && payload.archiving.sid !== SESSION_ID) {
+      return { ok: false, error: tr('«Архивлаж байна» тэмдэг өөр цонхных — арилгасангүй') };
+    }
     const next: SubmissionPayload = { ...payload };
-    if (mark) next.archiving = mark; else delete next.archiving;
+    if (mark) next.archiving = { ...mark, by: mark.by ?? me, sid: SESSION_ID }; else delete next.archiving;
     /* ⚠️ 2026-10-09 (R2/7): `at` талбарыг payload-тай НЭГ бичилтээр (атом) бичнэ, дараа нь ДАХИН уншиж
        батална. Урьд нь зөвхөн payload бичдэг байв: унших → бичих завсарт гүйцэтгэгч дахин илгээвэл мөрийн
        `at` нь ШИНЭ, payload нь ХУУЧИН (+тэмдэг) болж зөрдөг — уншигч (`readRow`) мөрийн `at`-ийг түрүүлж
@@ -1337,12 +1545,46 @@ export async function markArchiving(
     const p2 = a2 ? parseSubmission(String(a2.payload ?? '')) : null;
     const at2 = a2 && isFin(a2.at) ? Number(a2.at) : p2?.at;
     if (!a2 || !p2 || !String(a2.dkey ?? '').startsWith(SUB_PREFIX) || at2 !== expectAt || p2.at !== expectAt
-      || (mark ? p2.archiving?.at !== mark.at || p2.archiving?.startedAt !== mark.startedAt : p2.archiving != null))
+      || (mark ? p2.archiving?.at !== mark.at || p2.archiving?.startedAt !== mark.startedAt || p2.archiving?.sid !== SESSION_ID : p2.archiving != null))
       return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }
+}
+
+/**
+ * БАГЦЫН ГҮЙЦЭТГЭЛ ЯГ ОДОО АРХИВЛАГДАЖ БАЙНА УУ (2026-10-09, ГЭРЭЭ) — Ажил нэмэх · обьём · Хуваарийн бичигчид
+ * `Bagts_*`-д бичихийн ӨМНӨ дуудна.
+ *   · тухайн багцын нээлттэй `sub|` мөр(үүд)-ийн аль нэгэнд (өдрөөс үл хамааран) ШИНЭ (`ARCHIVING_TTL_MS`)
+ *     «архивлаж байна» тэмдэг байвал `{ who, at }` (`at` = эхэлсэн агшин), эс бөгөөс `null`;
+ *   · уншилт УНАВАЛ THROW — дуудагч ХААНА (fail-closed): «тэмдэг алга» гэж ҮЗЭХГҮЙ.
+ * ⚠️ ЯАГААД: `hyanaltStore.archiveSubmission` тэмдгийг жааз бичихээс ӨМНӨХ шалгалтын (`sameFrame`/MAX OID) ӨМНӨ
+ *    тавьдаг; энэ хооронд өөр бичигч жааз/шинэчлэл оруулбал нэг нь нөгөөгөө булна.
+ * ⚠️ Задраагүй мөрийг алгасна (тийм мөрийг архивлах боломжгүй — `readRow` ил алдаагаар зогсдог).
+ * ⚠️ Серверт `payload LIKE '%"archiving"%'`-аар шүүнэ (`JSON.stringify` яг ийм бичдэг) — бүх payload-ыг татахгүй.
+ */
+export async function archivingBusy(pkgKey: string): Promise<{ who: string; at: number } | null> {
+  const u = await readUrl();
+  if (!u.ok) throw new Error(u.error);
+  if (!u.url) return null;
+  const fl = await layer(u.url);
+  const res = await fl.queryFeatures({
+    where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)} AND payload LIKE '%"archiving"%'`,
+    outFields: OUT_FIELDS,
+    returnGeometry: false,
+    orderByFields: ['OBJECTID ASC'],
+  });
+  const now = Date.now();
+  let best: { who: string; at: number } | null = null;
+  for (const f of res.features) {
+    const r = readRow(f.attributes as RowAttrs | undefined);
+    if (!r.ok || !r.sub || r.sub.done || r.sub.payload.pkgKey !== pkgKey) continue;
+    const m = r.sub.payload.archiving;
+    if (!m || !markFresh(m, now)) continue;
+    if (!best || m.startedAt > best.at) best = { who: m.by ?? '', at: m.startedAt };
+  }
+  return best;
 }
 
 /** `applyEdits`-ийн шинэчлэлийн үр дүн — хоосон хариу ч алдаа (`closeSubmission`-ий ⚠️) */

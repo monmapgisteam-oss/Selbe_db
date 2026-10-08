@@ -347,8 +347,9 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
   /* flowReady нь pending-тэй НЭГ зурагдалтад — «аль хэдийн шийдвэрлэгдсэн» худал алдаа */
   const rf = H.slice(H.indexOf('const refreshFlow = useCallback'), H.indexOf('useEffect(() => { void refreshFlow(); }'));
-  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — `loadPending(pkg.key, kind)` */
-  assert.ok(rf.indexOf('loadPending(pkg.key, kind)') > 0 && rf.indexOf('setFlowReady(true)') > rf.indexOf('loadPending(pkg.key, kind)'),
+  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — 2026-10-09: хоёр төрөл НЭГ дор (`loadPendingBoth`), идэвхтэйнх нь `both[kind]` */
+  assert.ok(rf.indexOf('loadPendingBoth(pkg.key)') > 0 && rf.indexOf('both[kind]') > 0
+    && rf.indexOf('setFlowReady(true)') > rf.indexOf('loadPendingBoth(pkg.key)'),
     'Huvaari: `flowReady=true` нь `loadPending`-ээс ӨМНӨ — хяналт хүлээгдэж буйг шийдвэрлэгдсэн гэж андуурна');
 }
 console.log('✅ бүтэн дэлгэцийн хяналт — Huvaari дахин ашиглана · бүгд ногоон · okRows хадгална');
@@ -402,9 +403,25 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   /* 7. Буцаасан шалтгаан — «Хуваарь батлах» хуудсанд зохиогчид; хуудсанд 30 с тутам шалгана */
   assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
-  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — идэвхтэй төрлийнх л (`loadPending(key, kind)`) */
-  assert.ok(/void loadPending\(key, kind\)\.then\(\(p\) => \{[\s\S]{0,900}void refreshFlow\(\);/.test(H),
-    'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй');
+  /* ⚠️ 2026-10-09: ХОЁР төрлийг шалгана (`loadPendingBoth`) — идэвхтэйнх өөрчлөгдвөл `refreshFlow`, нөгөөх нь `setPendingOther`;
+     идэвхтэй табын илгээлт байхгүй үед ч мөчлөг ажиллана (`pending != null` нөхцөлгүй) */
+  assert.ok(/void loadPendingBoth\(key\)\.then\(\(both\) => \{[\s\S]{0,900}both\[k0\][\s\S]{0,400}void refreshFlow\(\);[\s\S]{0,300}setPendingOther\(pO\)/.test(H),
+    'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй (эсвэл нөгөө табынхыг шинэчлэхгүй)');
+  assert.ok(!/pollOkRef = useLatest\([^)]*pending != null/.test(H), 'Huvaari: мөчлөг идэвхтэй табын илгээлтгүй үед зогссоор — нөгөө табын түгжээ хоцорно');
+  /* ⚠️ 2026-10-09: бодит огноо · нөөцийн түгжээ ба архивлалтын хаалт — UI биш, БИЧИХИЙН ӨМНӨ серверээс (fail-closed) */
+  {
+    const xc = H.slice(H.indexOf('const xLockCheck = useCallback('), H.indexOf('}, [aDraft, resDraft, obResDraft, pkg.key, kind, rows'));
+    assert.ok(/await loadPending\(key, other\)/.test(xc) && /await loadPayload\(pO\.oid\)/.test(xc) && /catch \(e\) \{\s*return tr\(/.test(xc),
+      'Huvaari: xLockCheck нөгөө табын илгээлтийг серверээс (strict) уншихгүй эсвэл алдаанд нээлттэй');
+    const sv = H.slice(H.indexOf('const save = useCallback('), H.indexOf('/* ══════════════ БАТЛАХ УРСГАЛ'));
+    const iFresh = sv.indexOf('const fresh = await loadRows(pkg, sc);');
+    assert.ok(sv.indexOf('await archivingBusy(pkg.key)') > 0 && sv.indexOf('await archivingBusy(pkg.key)') < iFresh
+      && sv.indexOf('await xLockCheck()') > 0 && sv.indexOf('await xLockCheck()') < iFresh,
+      'Huvaari: save архивлалт/түгжээг агшин татах (бичих)-аас ӨМНӨ шалгахгүй байна');
+    const sa = H.slice(H.indexOf('const sendForApproval = useCallback('), H.indexOf('const applyPayloadToDraft'));
+    assert.ok(sa.indexOf('await xLockCheck()') > 0 && sa.indexOf('await xLockCheck()') < sa.indexOf('submitPlan('),
+      'Huvaari: sendForApproval түгжээг илгээхээс ӨМНӨ шалгахгүй байна');
+  }
 }
 console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон блок · бодит огноо · сольж харах · буцаасан шалтгаан');
 

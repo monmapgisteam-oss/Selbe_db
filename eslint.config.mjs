@@ -12,8 +12,8 @@ import nextTs from 'eslint-config-next/typescript';
  *    БҮХЭЛДЭЭ ignore байсан — тэнд хэвлэгдсэн алдаа/тодорхойгүй хувьсагч хэзээ ч баригддаггүй.
  *    Одоо Node-ийн глобалтай шалгана. `globals` багцыг импортлохгүй: зөвхөн дамжин орсон
  *    хамаарал (package.json-д алга) тул шинэчлэлтэд алга болж config бүхэлдээ унах эрсдэлтэй —
- *    ашиглагдаж буй глобалуудыг энд ил жагсаав. `npm run lint` нь `eslint src` хэвээр тул
- *    CI-ийн хаалт ӨӨРЧЛӨГДӨХГҮЙ; `npx eslint tools`-оор тусад нь ажиллуулна.
+ *    ашиглагдаж буй глобалуудыг энд ил жагсаав. `npm run lint` нь `eslint src tools` тул
+ *    CI-ийн хаалт (`test.yml` → `npm run lint`) `tools/`-ийг ч шалгана.
  */
 const NODE_GLOBALS = Object.fromEntries([
   'process', 'Buffer', 'console', 'URL', 'URLSearchParams', 'fetch', 'Headers', 'Request',

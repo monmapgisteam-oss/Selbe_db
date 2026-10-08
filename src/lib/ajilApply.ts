@@ -72,6 +72,8 @@ import { obyemBusyFor } from './obyemBatlah';
 /* ⚠️ 2026-10-08: хуваарийн хүлээгдэж буй илгээлт (хагас бичигдсэн бол буулгахгүй) — `huvaariBatlah` энэ файлыг импортлодоггүй */
 import { claimHolderOf as planClaimHolderOf, loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
+/* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
+import { isLostWrite } from './lostWrite';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
 
@@ -427,6 +429,12 @@ export const _io: {
   claimOther: (ajilOid: number, me: string) => Promise<string | null>;
   /** ⚠️ 2026-10-09: багцын обьёмын батлалт явж буй эсэх (`obyemBatlah.obyemBusyFor`) — унавал ШИДНЭ */
   obyemBusy: (pkgKey: string) => Promise<{ who: string; partial: boolean } | null>;
+  /**
+   * ⚠️ 2026-10-09: багцын ГҮЙЦЭТГЭЛИЙГ яг одоо архивлаж байна уу (`submission.archivingBusy`) — унавал ШИДНЭ.
+   *    Архивлагч сүүлийн жаазад `applyAdds`-аар шинэ жааз бичдэг тул тэр хооронд буулгасан мөр (бидний жааз)
+   *    түүний доор булагдаж, батлагдсан нэмэлт ажил чимээгүй алга болдог байв.
+   */
+  archivingBusy: (pkgKey: string) => Promise<{ who: string; at: number } | null>;
   /** ⚠️ 2026-10-09: илгээлтийн мөрийг СЕРВЕР дээр түгжих (`ajilBatlah.claimAjil`) — `null` = минийх */
   claimApply: (ajilOid: number, me: string) => Promise<string | null>;
   /** ⚠️ 2026-10-09: түгжээг тайлах (амжилтгүй үед) — алдааг залгина */
@@ -441,6 +449,8 @@ export const _io: {
   },
   claimOther: (oid, me) => ajilClaimOther(oid, me),
   obyemBusy: (k) => obyemBusyFor(k),
+  /* ⚠️ 2026-10-09: динамик импорт — `submission` нь `draftRemote`/`bagtsSheet`-ийг татдаг (тест `_io`-оор солино) */
+  archivingBusy: async (k) => (await import('./submission')).archivingBusy(k),
   claimApply: (oid, me) => claimAjil({ oid, me, want: AJIL_STATUS.approved }),
   releaseApply: (oid, me) => releaseAjilClaim({ oid, me }),
   lockWaitMs: 120_000,
@@ -501,6 +511,16 @@ async function busyGate(pkgKey: string): Promise<{ error: string } | { warn?: st
         : tr('{0} энэ багцын инженерийн обьёмыг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', ob.who),
     };
   }
+  /* ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД — архивлагч (`hyanaltStore`) өөрийн ачаалсан жаазаас
+     ШИНЭ жааз бичнэ; бидний жааз түүний ДООР булагдаж батлагдсан нэмэлт ажил чимээгүй алга болно. ХААНА.
+     Уншилт унавал мөн хаана (fail-closed). */
+  let ar: { who: string; at: number } | null;
+  try {
+    ar = await _io.archivingBusy(pkgKey);
+  } catch (e) {
+    return { error: tr('Энэ багцын гүйцэтгэлийн архивлалтын төлөв уншигдсангүй ({0}) — юу ч бичсэнгүй, дахин оролдоно уу.', String((e as Error)?.message ?? e)) };
+  }
+  if (ar) return { error: tr('{0} гүйцэтгэлийг яг одоо архивлаж байна — дуусахыг хүлээнэ үү', ar.who || '—') };
   return warn ? { warn } : {};
 }
 
@@ -593,7 +613,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
   const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((p) => p.key === pkgKey);
   if (!pkg) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
-  const [{ loadRows, applyAdds, applyDeletes }, { insertAdds, buildFrame }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, dayFilter, msToDay }, { insertAdds, buildFrame }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('@/modules/sheet/ags'),
@@ -721,6 +741,48 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     await applyAdds(pkg, frame, written);
   } catch (e) {
     const why = String((e as Error)?.message ?? e);
+    /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`applyAdds`-ийн `lost`, эсвэл түүхий алдаа нь `isLostWrite`) бол `written`
+       нь зөвхөн БАТАЛГААЖСАН мөрүүд — алдагдсан chunk серверт бичигдсэн байж болно. Урьд нь зөвхөн `written`-ийг
+       устгадаг тул тэр chunk архивт ХАГАС жааз болж үлдэж, `loadRows`-ийг хааж/дахин оролдлогын жаазыг булдаг
+       байв. Одоо ЭНЭ ӨДРИЙН, `maxOid0`-оос хойшхи БҮХ мөрийг устгана (A.8б-ийн хаалт тэр завсарт өөр бичигчийг
+       хаасан) ба «үр дүн тодорхойгүй» гэж хэлнэ. Хайлт унавал гараар цэвэрлүүлнэ. */
+    const ex = e as { lost?: unknown; cause?: unknown } | null;
+    const lost = ex?.lost === true || isLostWrite(e) || isLostWrite(ex?.cause);
+    if (lost && sc.f.fillDate) {
+      const head = tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй');
+      const strays = new Set<number>(written);
+      try {
+        for (let offset = 0; ; ) {
+          const j = await agsFetch(`${pkg.url}/query`, {
+            where: `${sc.f.oid} > ${maxOid0} AND ${dayFilter(sc.f.fillDate, msToDay(fillMs))}`,
+            outFields: sc.f.oid,
+            orderByFields: `${sc.f.oid} ASC`,
+            resultRecordCount: '2000',
+            resultOffset: String(offset),
+            returnGeometry: 'false',
+          });
+          const fs = (j?.features ?? []) as { attributes: Record<string, unknown> }[];
+          for (const f of fs) {
+            const o = Number(f.attributes?.[sc.f.oid]);
+            if (Number.isInteger(o) && o > maxOid0) strays.add(o);
+          }
+          if (!j?.exceededTransferLimit || fs.length === 0) break;
+          offset += fs.length;
+        }
+      } catch (qe) {
+        if (written.length) await applyDeletes(pkg, written);
+        return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — AGOL дээр гараар шалгаж цэвэрлэнэ үү', String((qe as Error)?.message ?? qe))}` };
+      }
+      if (!strays.size) return { ok: false, error: `${why} · ${head}` };
+      const gone = await applyDeletes(pkg, [...strays]);
+      const left = strays.size - gone;
+      return {
+        ok: false,
+        error: `${why} · ${head} · ${left > 0
+          ? tr('Хагас бичигдсэн {0} мөрийн {1}-ийг архиваас устгаж чадсангүй — AGOL дээр гараар цэвэрлэнэ үү', strays.size, left)
+          : tr('Хагас бичигдсэн {0} мөрийг архиваас буцаав', strays.size)}`,
+      };
+    }
     if (written.length) {
       const gone = await applyDeletes(pkg, written);
       const left = written.length - gone;

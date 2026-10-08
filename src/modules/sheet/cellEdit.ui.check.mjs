@@ -320,11 +320,11 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     return { head, body, trs, widths, tds: rowCells(0).length, rowCells, nBld };
   };
 
-  /* (а)(б)(в) блокгүй — бүх 16 багана */
+  /* (а)(б)(в) блокгүй — 14 багана (⚠️ 2026-10-09: синтетикт хадгалсан L/M хасагдсан — `extraCols.SYN_HIDE`) */
   const scB = resolveSchema(blokgui, { fill: true });
   const exB = extraCols(scB);
-  ok(exB.map((x) => x.key).join(',') === 'des,ham,gun,hun,mashin,gS,gE,aS,aE,fill,L,M,cre,creBy,ed,edBy',
-    `9a: блокгүй — 16 багана, заасан дарааллаар (${exB.map((x) => x.key)})`);
+  ok(exB.map((x) => x.key).join(',') === 'des,ham,gun,hun,mashin,gS,gE,aS,aE,fill,cre,creBy,ed,edBy',
+    `9a: блокгүй — 14 багана, заасан дарааллаар, L/M-гүй (${exB.map((x) => x.key)})`);
   ok(!exB.some((x) => /^(ObjectID|GlobalID)$/i.test(x.field)), '9a: ObjectID/GlobalID харуулахгүй');
   const rawB = {
     Des_dugaar: 17, Hamaaral: '18FS3,22SS-5', gun: 2, hun_huch: 0, mashin_mehanizm: null,
@@ -338,9 +338,9 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(B.widths.every((w) => w === wantB) && B.tds === wantB, `9b: толгой ${B.widths} == бие ${B.tds} == 14 + n×4 + ${exB.length} (${wantB})`);
   ok(/Бусад талбар/.test(B.head) && /rowSpan="3"/i.test(B.head), '9b: «Бусад талбар» бүлгийн гарчиг + баганын нэр 3 мөр хамарна');
   const cellsB = B.rowCells(0).slice(-exB.length);
-  ok(cellsB.join('|') === `17|18FS3,22SS-5|2|0||2026-03-01|2026-09-30|2026-03-05||2026-10-08|25.3%|0%|${cellsB[12]}|monmap_admin||tumenjargal.g`,
+  ok(cellsB.join('|') === `17|18FS3,22SS-5|2|0||2026-03-01|2026-09-30|2026-03-05||2026-10-08|${cellsB[10]}|monmap_admin||tumenjargal.g`,
     `9c: утга/хэлбэр (null хоосон, 0 нь «0», огноо YYYY-MM-DD, хувь 0–1 → %): ${cellsB.join('|')}`);
-  ok(/^2026-10-0[89]$/.test(cellsB[12]), `9c: Үүсгэсэн — локал өдөр (${cellsB[12]})`);
+  ok(/^2026-10-0[89]$/.test(cellsB[10]), `9c: Жааз бичсэн огноо — локал өдөр (${cellsB[10]})`);
   ok(B.rowCells(1).slice(-exB.length).every((t) => t === ''), '9c: хадгалсан утгагүй мөр — бүгд хоосон (0 БИШ)');
   ok(/title="18FS3,22SS-5"/.test(B.body), '9c: Хамаарал — tooltip-тэй (тайрагдана)');
 
@@ -372,6 +372,41 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const fr = readFileSync(new URL('./fill/FillRows.tsx', import.meta.url), 'utf8');
   const xBlock = fr.slice(fr.indexOf('extra.map('));
   ok(!/onChange|<input|setPending|setPendDate|setPick/.test(xBlock.slice(0, xBlock.indexOf('</tr>'))), '9f: «Бусад талбар» нүдэнд засах зам ҮГҮЙ');
+
+  /* ⚠️ 2026-10-09: блокгүй толгойн шошго — нүдний том тоо НИЙТ, «+N» энэ удаа */
+  ok(B.head.includes('Обьём (нийт · +энэ удаа)') && !B.head.includes('Обьём (энэ удаа)'), '9g: блокгүй толгой «Обьём (нийт · +энэ удаа)»');
+  ok(/title="[^"]*ХУРИМТЛАГДСАН нийт обьём[^"]*"/.test(B.head), '9g: баганын tooltip нийт/энэ удааг тайлбарлана');
+  /* ⚠️ 2026-10-09: «Бусад талбар»-ын бариул — БАГАНА ТУС БҮРИЙН түлхүүр, нүд толгойтой ижил өргөн */
+  const gripCols = [];
+  renderToStaticMarkup(React.createElement('table', null, React.createElement(SheetHead, {
+    sc: scB, nBld: scB.bld.length, bands: seriesBands('b33_9f', scB.bld), grip: (c) => { gripCols.push(c); return {}; }, extra: exB,
+  })));
+  const xg = gripCols.filter((c) => c.startsWith('x-'));
+  ok(xg.length === exB.length && new Set(xg).size === exB.length, `9h: «Бусад талбар» бариул багана бүрд ӨӨР түлхүүр (${xg})`);
+  ok(!gripCols.some((c) => /^x[ntdpu]$/.test(c)), '9h: төрлийн (xd/xn…) бариул үлдээгүй');
+  ok(B.head.includes('style="width:var(--w-x-des, var(--w-xn));min-width:var(--w-x-des, var(--w-xn));max-width:var(--w-x-des, var(--w-xn))"'), '9h: толгойн inline өргөн (төрлийн анхдагч руу унана)');
+  ok(B.body.includes('style="width:var(--w-x-edBy, var(--w-xu));min-width:var(--w-x-edBy, var(--w-xu));max-width:var(--w-x-edBy, var(--w-xu))"'), '9h: нүдний inline өргөн толгойтой ижил');
+  ok(/title="Архивын жаазны мөрийг[^"]*"/.test(B.head), '9h: «Жааз …» баганын tooltip');
+
+  /* ⚠️ 2026-10-09: ХУВААРИЙН ШҮҮЛТ — хуваарьтай мөр 0 эсвэл `asOf === null` бол хүснэгт ХООСОН болохгүй */
+  const { useRowFilter } = await import('./fill/useRows.ts');
+  const run = (rows, calc, asOf, byPlan = true) => {
+    let res = null;
+    const C = () => { res = useRowFilter({ rowsAll: rows, calc, nBld: 1, today: '2026-10-08', grpA: 0, grpB: 0, collapsed: new Set(), byPlan, asOf }); return null; };
+    renderToStaticMarkup(React.createElement(C));
+    return res;
+  };
+  const fr2 = [mk(scB, 1, {}), mk(scB, 2, {})];
+  const noDates = [{ start: [null], end: [null] }, { start: [null], end: [null] }];
+  const r0 = run(fr2, noDates, undefined);
+  ok(r0.planCount.on === 0 && r0.planOff && r0.vis.length === 2, `9i: хуваарьтай мөр 0 — шүүлт алгасагдана (${r0.vis.length}/2)`);
+  const oneOn = [{ start: [D('2026-10-01')], end: [D('2026-10-31')] }, { start: [D('2026-01-01')], end: [D('2026-02-01')] }];
+  const r1 = run(fr2, oneOn, D('2026-10-01'));
+  ok(!r1.planOff && r1.vis.join(',') === '0', `9i: хуваарьтай үед шүүлт ажиллана (${r1.vis})`);
+  ok(run(fr2, oneOn, D('2026-10-01'), false).vis.length === 2, '9i: товч унтраавал бүгд');
+  const r2 = run(fr2, oneOn, null);
+  ok(r2.planOff && r2.vis.length === 2, '9i: asOf === null — шүүлт алгасагдана');
+  ok(!run(fr2, oneOn, undefined).planOff, '9i: asOf дамжуулаагүй (undefined) — шүүлт хэвээр');
 }
 
 console.log(`✅ cellEdit: ${n} шалгалт — бүгд давлаа`);

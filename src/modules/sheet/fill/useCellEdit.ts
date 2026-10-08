@@ -172,7 +172,11 @@ export function useCellEdit(p: {
   };
   /** Оролтын `placeholder` — ӨМНӨХ нийт (одоогийн горимын нэгжээр). `null` бол «—» (0 БИШ). */
   const prevHint = (r: SheetRow, b: number): string => {
-    const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null ? r.obyem[b]! / r.vol : r.act[b];
+    /* ⚠️ 2026-10-09: блокгүй багц (`sc.synthetic`)-д обьёмгүй (`obyem_sum` null) нүдний хувь = null —
+       `r.act` нь Excel загварын 0 (хэмжилт БИШ), «өмнөх: 0%» гэж худал харуулдаг байв (null ≠ 0). */
+    const storedPct = r.vol != null && r.vol > 0 && r.obyem[b] != null
+      ? r.obyem[b]! / r.vol
+      : sc?.synthetic && r.obyem[b] == null ? null : r.act[b];
     const v = fillMode === "pct" ? (storedPct == null ? "" : pc(storedPct, 1)) : qty(r.obyem[b]);
     /* ⚠️ 2026-09-30: өөр өдрийн хяналтад байгаа нэмэлтийг ТУСАД НЬ (`reviewInc`-ийн ⚠️) */
     const ri = reviewInc.get(cellKey(r.oid, b));

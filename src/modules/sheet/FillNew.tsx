@@ -49,6 +49,9 @@ import {
      нэмэлт хүсэлт зарцуулаад ижил хариу авна. Функц нь `submission.ts`-д
      хянагчийн/тайлангийн зам болон тестэд үлдэнэ. */
   mergeSubmission,
+  /* ⚠️ 2026-10-09: «архивлаж байна» тэмдгийг илгээхийн өмнө шийднэ (`publish`) */
+  markFresh,
+  resolveMark,
   findNonce,
   readActiveSubmission,
   readSubmissionByOid,
@@ -96,7 +99,7 @@ import { useFlow, useReviewInc } from "./fill/useFlow";
 import { useObyem, useObyemState } from "./fill/useObyem";
 import { useAddedOids, usePkgPct, useRowFilter, useVirtualWindow } from "./fill/useRows";
 import { useCellEdit, type PastePrev } from "./fill/useCellEdit";
-import { useDraftSync, type DraftSync } from "./fill/useDraftSync";
+import { useDraftSync, subReceipts, type DraftSync } from "./fill/useDraftSync";
 import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, SubmitControls } from "./fill/toolbar";
 import { FillNotices, NoticeToast } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
@@ -1032,6 +1035,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             }
           }
         }
+        /* ⚠️ 2026-10-09: СЕРВЕРИЙН ИЛГЭЭЛТЭЭС БАРИМТ (`useDraftSync.subReceipts`-ийн ⚠️) — сэргээлтээс ӨМНӨ. Илгээгчийн
+           таб баримтаа ноорогт хуулж чадаагүй ч илгээгдсэн нүд энэ хуудасны сэргээлтэд «илгээгээгүй» болж буцахгүй. */
+        if (!view && useSub && sub) {
+          for (const rc of subReceipts(sub.payload, ds.rcptRef.current)) ds.rcptRef.current.set(rc[0], rc);
+        }
         setRows(ov ? ov.rows : r.rows);
         /* ⚠️ `null ≠ 0`: илгээлт «Шинэчлэгдсэн огноо»-г хөндөөгүй бол
            `ov.asOf` нь `null` — тэр үед архивынхыг АВНА, 0 болгохгүй. */
@@ -1347,7 +1355,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, sc],
   );
 
-  const { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis } = useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan });
+  const { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis } = useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan,
+    /* ⚠️ 2026-10-09: `computeAll`-д өгсөн ЯГ тэр тайлангийн огноо — `null` (алга) бол хуваарийн шүүлт унтарна */
+    asOf });
   const { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo } = useVirtualWindow({ vis, edit, view });
 
   const toggle = (oid: number) =>
@@ -1777,6 +1787,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (!live()) return;
         if (p2 !== act.payload) act = { ...act, payload: p2 };
       }
+      /* ⚠️ 2026-10-09: серверийн илгээлтээс баримт (`subReceipts`-ийн ⚠️) — дараагийн сэргээлт/хадгалалт түүгээр */
+      if (act) for (const rc of subReceipts(act.payload, rcptRef.current)) rcptRef.current.set(rc[0], rc);
       const ov = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
       setUnmovedWarn(ov && ov.unmoved > 0 && act ? describeUnmoved(ov.unmovedKeys, act.payload.rowKeys, sc.bld) : []);
       /* ⚠️ `staged` ба `rows` хамт — дараагийн «Илгээх»-ийн суурь (`act.at > staged.at`) ба дэлгэц нэг илгээлтээс */
@@ -1800,7 +1812,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         refreshStagedRef.current(a);
       }
     }
-  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef]);
+  }, [view, sc, pkg, todayFillMs, staged, rows, nBld, asOf, asOfOrig, reloadHy, show, flowRef, rcptRef]);
   useSyncRef(refreshStagedRef, (a: number) => { void refreshStaged(a); });
 
   /**
@@ -2055,6 +2067,34 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.'),
         );
       /*
+       * ⚠️ 2026-10-09: «АРХИВЛАЖ БАЙНА» ТЭМДЭГТЭЙ мөр дээр НЭГТГЭХГҮЙ — ЭХЛЭЭД ШИЙДНЭ (`submission.resolveMark`).
+       *    Урьд нь тэмдэг нэгтгэлд алга болж (архив бичигдээд хаалт унасан/явж байхад) дараагийн батлалт архивласан
+       *    +15-ийг ДАХИН нэмдэг байв (base+15 → +5 → base+35).
+       *      · тэмдэг ШИНЭ (батлалт явж буй/үр дүн тодорхойгүй) → ЗОГСОНО, юу ч илгээхгүй;
+       *      · хуучирсан → архивыг шалгана (`probeArchivedFrame`): буусан → архивласан хэсгийг хассан үлдэгдэл дээр
+       *        нэгтгэнэ; буугаагүй → агуулга хэвээр; шалгаж чадахгүй/тодорхойгүй/хасах боломжгүй → ЗОГСОНО.
+       *    Шийдсэн тэмдгийг `saveSubmission`-д `dropMark`-аар зарлана (тэр нь тэмдгийг чимээгүй арчихыг хориглодог).
+       */
+      let markDrop: number | undefined;
+      let resolvedBase: SubmissionPayload | null = null;
+      if (act && !act.done && act.payload.archiving) {
+        const am = act.payload.archiving;
+        if (markFresh(am))
+          throw new Error(tr('Энэ өдрийн илгээлтийг {0} яг одоо архивлаж байна — хэдэн минутын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.', am.by || tr('газрын дарга')));
+        const { probeArchivedFrame } = await import('@/lib/hyanaltStore');
+        let hit: number | null | 'ambiguous';
+        try { hit = await probeArchivedFrame(pkg.key, am); } catch (e) {
+          throw new Error(tr('Энэ өдрийн өмнөх архивлалт шалгагдаагүй — юу ч илгээсэнгүй, дахин оролдоно уу ({0}).', userError(e)));
+        }
+        if (hit === 'ambiguous')
+          throw new Error(tr('Энэ өдрийн өмнөх архивлалт шалгагдаагүй (архивын жааз тодорхойгүй) — юу ч илгээсэнгүй. Газрын даргаар дахин «Батлах» дарж шийдүүлнэ үү.'));
+        const rp = resolveMark(act.payload, hit != null);
+        if (!rp)
+          throw new Error(tr('Энэ өдрийн өмнөх илгээлт архивт бичигдсэн боловч хаагдаагүй бөгөөд шинэ илгээлтээс түүнийг хасах боломжгүй — газрын даргаар дахин «Батлах» дарж хаалгана уу. Юу ч илгээсэнгүй.'));
+        resolvedBase = rp;
+        markDrop = am.startedAt;
+      }
+      /*
        * ── ObjectID ШИЛЖИЛТ ───────────────────────────────────────────────
        * ⚠️ `pending`/`pendDate` нь `${oid}:…` түлхүүртэй бөгөөд тэр oid нь
        *    хуудсыг НЭЭХ үеийн архивын жаазынх. Ерөнхий менежер батлахад
@@ -2173,9 +2213,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       let mergeBase: SubmissionPayload | null = null;
       if (staged
         && staged.payload.fillMs === fillMs
-        && (!flow || flow[HF.status] !== STATUS.transferred || staged.payload.residual === true)) {
+        && (!flow || flow[HF.status] !== STATUS.transferred || (resolvedBase ?? staged.payload).residual === true)) {
         /* ⚠️ 2026-10-04 дахин аудит (#1): хуучин payload-ын давтамжийг суурь жаазаас нөхөөд зөөнө */
-        const mv = movePayload(await ensureFrameOcc(pkg, sc, staged.payload, freshRows));
+        /* ⚠️ 2026-10-09: тэмдэг шийдэгдсэн бол (`resolvedBase` — дээрх ⚠️) ТҮҮН дээр */
+        const mv = movePayload(await ensureFrameOcc(pkg, sc, resolvedBase ?? staged.payload, freshRows));
         /* ⚠️ ГАРЦ: тулгаж чадаагүй нүдийг нэрлэж ИЛ асууна — «Үгүй» бол урьдын адил зогсоно (ноорог
            хэвээр). «Тийм» бол тэр нүд ӨМНӨХ илгээлтээс ХАСАГДАНА (дутуу тоологдоно — ил, засагдана;
            буруу мөрөнд буух/давхардахаас аюулгүй). */
@@ -2293,7 +2334,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
          Өдөр зөрсөн `staged`-ыг expect болгон явуулбал `saveSubmission` тэр
          өдрийн мөр (эсвэл түүний байхгүйг) шалгаж чадахгүй, «өөр хэрэглэгч
          илгээсэн» гэсэн ХУДАЛ алдаа гарч гүйцэтгэгч гацна. */
-      const expectAt = staged && staged.payload.fillMs === fillMs ? { at: staged.at } : null;
+      /* ⚠️ 2026-10-09: шийдсэн «архивлаж байна» тэмдгийг зарлана (`dropMark` — дээрх `resolvedBase`-ийн ⚠️) */
+      const expectAt = staged && staged.payload.fillMs === fillMs
+        ? { at: staged.at, ...(markDrop != null ? { dropMark: markDrop } : {}) }
+        : null;
       /*
        * ⚠️ 2026-10-04 аудит (#3): ЯВЖ БУЙ ИЛГЭЭЛТИЙН ТЭМДЭГ — хадгалахаас ӨМНӨ бичнэ (`Inflight`-ийн ⚠️).
        *    Хариу тасарвал (throw/timeout/таб хаагдсан) дараагийн ачаалалт эсвэл «Илгээх» серверийн
@@ -2439,7 +2483,27 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       let rcWarn = '';
       {
         const rc = await pushReceipts(pkg.key);
-        if (!rc.ok) rcWarn = tr('⚠️ илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хуулагдсангүй ({0}) — автоматаар дахин оролдоно. «Ноорог хуулагдав» гэж гартал энэ хуудсыг бүү хаа, өөр компьютер/хөтчөөс энэ багцыг бүү илгээ (нүд давхар тоологдож болзошгүй).', rc.why);
+        if (!rc.ok) {
+          rcWarn = tr('⚠️ илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хуулагдсангүй ({0}) — автоматаар дахин оролдоно. «Ноорог хуулагдав» гэж гартал энэ хуудсыг бүү хаа, өөр компьютер/хөтчөөс энэ багцыг бүү илгээ (нүд давхар тоологдож болзошгүй).', rc.why);
+          /*
+           * ⚠️ 2026-10-09: ДЭЭРХ МЕССЕЖИЙН АМЛАЛТ БИЕЛНЭ — урьд нь «Ноорог хуулагдав» гэсэн мэдэгдэл ХЭЗЭЭ Ч гардаггүй
+           *    байв (ердийн `flush` чимээгүй). Одоо баримтыг өсөх завсартайгаар (5…30 сек, 6 удаа) дахин бичиж,
+           *    буумагц ИЛ хэлнэ; бүгд унавал ил анхааруулна. Илгээлтийг ДАХИН ИЛГЭЭХГҮЙ — зөвхөн баримт (идемпотент
+           *    нийлүүлэлт). Багц солигдсон бол зогсоно.
+           */
+          const rcKey = pkg.key;
+          void (async () => {
+            for (let i = 1; i <= 6; i += 1) {
+              await new Promise((res) => setTimeout(res, 5000 * i));
+              if (pkgKeyRef.current !== rcKey) return;
+              const r2 = await pushReceipts(rcKey).catch((x: unknown) => ({ ok: false as const, why: String(x) }));
+              if (pkgKeyRef.current !== rcKey) return;
+              if (r2.ok) { done(tr('Ноорог хуулагдав — илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хадгалагдлаа.')); return; }
+            }
+            if (pkgKeyRef.current === rcKey)
+              warn(tr('Илгээсэн нүдний тэмдэглэл ArcGIS-ийн ноорогт хуулагдсангүй — өөр компьютер/хөтчөөс энэ багцыг илгээхийн өмнө тэнд хуудсыг дахин ачаална уу (F5).'));
+          })();
+        }
       }
 
       /*

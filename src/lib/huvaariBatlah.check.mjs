@@ -604,3 +604,15 @@ console.log('✅ хагас бичилтийн сервер тэмдэг · да
   assert.ok(iBtn > 0 && /disabled=\{busy \|\| !reasonIn\.trim\(\) \|\| !!holder\}/.test(V.slice(iBtn, iBtn + 600)), 'HuvaariBatlah: «Гацсаныг буцаах» түгжээнд хаагдахгүй байна');
 }
 console.log('✅ гацсаныг буцаах — түгжигчийн гэйт · (багц · төрөл) давхардал · isApprovedBy fail-closed');
+/* ── ⚠️ 2026-10-09: `loadPendingBoth` — нэг хямд query, байвал төрөл тус бүр; STRICT (уншилт унавал шиднэ) ── */
+{
+  const fs = await import('node:fs');
+  const L = fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
+  const i = L.indexOf('export async function loadPendingBoth(');
+  assert.ok(i > 0, 'huvaariBatlah: loadPendingBoth алга');
+  const fn = L.slice(i, L.indexOf('\n}', i));
+  assert.ok(/F\.oid, true\)/.test(fn),'loadPendingBoth: эхний query strict биш (fail-open)');
+  assert.ok(fn.includes("loadPending(pkgKey, 'plan')") && fn.includes("loadPending(pkgKey, 'geree')"), 'loadPendingBoth: хоёр төрлийг тус тусад нь уншихгүй байна');
+  assert.ok(!/catch/.test(fn), 'loadPendingBoth: алдааг залгиж байна');
+}
+console.log('✅ loadPendingBoth — хямд · хоёр төрөл · strict');

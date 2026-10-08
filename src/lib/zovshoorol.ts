@@ -629,10 +629,19 @@ async function verifyLostAdd(d: ZovDraft, x: unknown): Promise<number> {
     }
     throw new Error(tr('Серверийн хариу алдагдсан ч шалгахад зөвшөөрөл бичигдээгүй байна — дахин «Хадгалах» дарж болно.'));
   }
+  /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН замд ЮУГ Ч УСТГАХГҮЙ. Урьд нь ижил нэртэй мөрүүдээс OID нь
+     ХАМГИЙН ИХ-ийг «манайх» гэж үзээд `resolveAddClash`-аар устгадаг байв — гэвч ижил нэрийг
+     өөр хэрэглэгч ч зэрэг нэмсэн байж болох тул тэр нь БУСДЫН мөр байх эрсдэлтэй (тодорхойгүй
+     дээр бусдын мөрийг устгахгүй). Одоо ижил нэртэйн ХАМГИЙН БАГА OID-г «манайх» гэж үзэж,
+     давхардал байвал зөвхөн МЭДЭЭЛНЭ (`kept=true` → маягт хаагдана), хэрэглэгч жагсаалтаас
+     шалгаж илүүдлийг гараар устгана. */
   const ids = own.map((r) => r.oid).filter((n) => Number.isFinite(n));
-  if (!ids.length) return 0;
-  const ours = Math.max(...ids);
-  await resolveAddClash(d, ours);
+  const ours = ids.length ? Math.min(...ids) : 0;
+  if (rows.length > 1) {
+    const others = rows.filter((r) => r.oid !== ours).map((r) => `«${r.ner}»`).join(', ');
+    throw new ZovClashError(tr('Серверийн хариу алдагдсан: {0}-д {1}-р дараалалд таны мөр бичигдсэн боловч давхардал илэрлээ ({2}). Юуг ч устгаагүй — жагсаалтаас шалгаж илүүдлийг гараар устгана уу.',
+      d.bagts, String(d.shat), others), true, ours || undefined);
+  }
   return ours;
 }
 

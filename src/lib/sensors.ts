@@ -98,7 +98,9 @@ export type Metric = {
    *    байв. Хумихаас өмнө түүхий мужийг шалгавал тэр заалт ЦУВААНД орохгүй, хамгийн
    *    сүүлийнх нь бол `fault` (утга нь `null` — мм-ийг %-иар харуулах аргагүй).
    */
-  rawValid?: { min: number; max: number };
+  /* ⚠️ 2026-10-09: `lowNote` — ДООД хилээс доош заалтын шошго (гэмтэл гэж дангаар хэлэх нь буруу
+     үед, жиш. хогийн сав хэт дүүрч мэдрэгчийн сохор бүсэд орсон) */
+  rawValid?: { min: number; max: number; lowNote?: string };
   /**
    * Түүхий заалтыг ХАРАГДАХ утга болгох хувиргалт.
    *
@@ -209,7 +211,12 @@ export const SENSORS: SensorDef[] = [
            ⚠️ 2026-10-09: ДООД хил 30мм — ультрасоник мэдрэгчийн «сохор бүс» (Milesight
            EM400-UDL: 3 см). Түүнээс ойр зайг мэдрэгч ФИЗИКООР хэмжиж чадахгүй тул 0мм нь
            «100% дүүрсэн» БИШ, гэмтэл/хаалттай мэдрэгч (`fault`). */
-        rawValid: { min: 30, max: BIN_DEPTH_MM * 1.5 },
+        /* ⚠️ 2026-10-09: 30мм-ээс ойр заалт нь гэмтэл ГЭХ ЭСВЭЛ хог мэдрэгчид тулж ХЭТ ДҮҮРСЭН
+           байж болно — хоёрыг ялгах аргагүй тул шошго нь хоёуланг нь хэлнэ (босго өөрчлөгдөөгүй). */
+        rawValid: {
+          min: 30, max: BIN_DEPTH_MM * 1.5,
+          get lowNote() { return tr('гэмтэл эсвэл хэт дүүрсэн (мэдрэгчийн сохор бүс)'); },
+        },
         /**
          * ⚠️ СТАНДАРТ БАЙХГҮЙ (шалгасан) — ухаалаг хог цуглуулалтын салбарын
          * ПРАКТИК нь 80%-ийг дуудлагын цэг болгодог (сав бүрэн дүүртэл
@@ -465,6 +472,11 @@ export type MetricSeries = Metric & {
    *    тэр үед `latest = null` ч `latestAt` нь тэр заалтын цаг (дуугүй БИШ — гэмтэл).
    */
   fault: boolean;
+  /**
+   * ⚠️ 2026-10-09: гэмтлийн ТОДОРХОЙ шошго (байвал UI «мэдрэгчийн гэмтэл»-ийн оронд харуулна) —
+   * сүүлийн заалт ТҮҮХИЙ мужийн ДООД хилээс доош (`rawValid.lowNote`). Бусад үед `null`.
+   */
+  faultNote?: string | null;
 };
 
 export type SensorLive = SensorDef & {
@@ -739,6 +751,8 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
 function summarize(
   m: Metric, pts: Reading[], total: number | null, all: Reading[] = pts, badAt: number | null = null,
   higherIsGood = false,
+  /** ⚠️ 2026-10-09: `badAt`-ийн заалт ДООД хилээс доош байсан эсэх (`rawValid.lowNote`) */
+  badLow = false,
 ): MetricSeries {
   const clean = m.valid ? pts.filter((x) => !outOfRange(m, x.v)) : pts;
   const vals = clean.map((x) => x.v);
@@ -768,6 +782,7 @@ function summarize(
     avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
     trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert) } : null,
     fault: badLast || outOfRange(m, last?.v ?? null),
+    faultNote: badLast && badLow ? (m.rawValid?.lowNote ?? null) : null,
   });
 }
 
@@ -812,6 +827,8 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       const pts: Reading[] = [];
       /** Түүхий мужаас гадуурх ХАМГИЙН СҮҮЛИЙН заалтын цаг (`Metric.rawValid`, 2026-10-09) */
       let badAt: number | null = null;
+      /** ⚠️ 2026-10-09: `badAt`-ийн заалт ДООД хилээс доош эсэх (`rawValid.lowNote`) */
+      let badLow = false;
       for (const r of rows) {
         const t = parseTs(r.received_datetime);
         if (t == null) continue;
@@ -821,7 +838,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
         if (!Number.isFinite(raw)) continue;
         /* ⚠️ 2026-10-09: `derive`-ээс ӨМНӨ — хумилт нь 65535-ыг «0%» болгож нуудаг байв */
         if (m.rawValid && (raw < m.rawValid.min || raw > m.rawValid.max)) {
-          if (badAt == null || t > badAt) badAt = t;
+          if (badAt == null || t > badAt) { badAt = t; badLow = raw < m.rawValid.min; }
           continue;
         }
         // ⚠️ Хувиргалтыг ЭНД, ганц газарт — цуваа/агшин/доод/дээд бүгд дагана
@@ -831,7 +848,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       // ⚠️ ХҮРЭЭГЭЭР огтолно (сервер талд БИШ — дээрх `RangeKey`-ийн тайлбарыг үз)
       const inRange = pts.filter((x) => x.t >= from);
 
-      const out = [summarize(m, inRange, total, pts, badAt, HIGHER_IS_GOOD.has(`${def.key}:${m.key}`))];
+      const out = [summarize(m, inRange, total, pts, badAt, HIGHER_IS_GOOD.has(`${def.key}:${m.key}`), badLow)];
       // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
       if (m.dailyDiff) {
         /* ⚠️ 2026-09-21: БҮТЭН цуваанаас бодоод дараа нь хүрээгээр огтолно —

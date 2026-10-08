@@ -84,9 +84,14 @@ export function useAddedOids(pkg: Pkg, rowsAll: SheetRow[]) {
 }
 
 /** Бүлгийн ХОЁР ШАТЛАЛТ шүүлт · хуваарийн дагуу шүүлт · эвхэлт → зурагдах мөрийн индекс. */
-export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan }: {
+export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan, asOf }: {
   rowsAll: SheetRow[]; calc: Calc; nBld: number; today: string;
   grpA: number; grpB: number; collapsed: Set<number>; byPlan: boolean;
+  /**
+   * ⚠️ 2026-10-09: тайлангийн огноо — ЗӨВХӨН «алга» (`null`) эсэхийг шалгана. Дамжуулаагүй
+   *    (`undefined`) бол «мэдэгдэхгүй» гэж үзэж шүүлтийг хаахгүй (доорх `planOff`-ийн ⚠️).
+   */
+  asOf?: number | null;
 }) {
   /**
    * ӨНӨӨДӨР (UTC шөнө дунд) — хуваарийн шүүлтийн лавлах цэг.
@@ -152,6 +157,16 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
     }
     return { on, all };
   }, [rowsAll, planKeep]);
+
+  /**
+   * ⚠️ 2026-10-09: ХУВААРИЙН ШҮҮЛТ ХААГДАХ нөхцөл — дээрх «`asOf` алга бол шүүлт ОГТ
+   *    ажиллахгүй» гэсэн тайлбар кодод ХЭРЭГЖЭЭГҮЙ байв. `byPlan` анхдагчаар асаалттай тул
+   *    хуваарийн огноо НЭГ Ч мөрд байхгүй хуудас (блокгүй 8 багц — 0 хуваарьтай мөр,
+   *    `asOf = null`) «Бөглөх»-д бүтэн ХООСОН хүснэгт нээгддэг байв. Одоо БҮХ багцад:
+   *    тайлангийн огноо алга (`asOf === null`) ЭСВЭЛ хуваарьтай навч мөр 0 (`planCount.on`)
+   *    бол шүүлтийг алгасна. Бусад үед товч хэвээр ажиллана.
+   */
+  const planOff = asOf === null || planCount.on === 0;
 
   // Хаагдсан бүлгийн доорх мөрүүд. Гүн буурах хүртэл нуугдана.
   /**
@@ -243,11 +258,11 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
      * Гогцоо дотор нөхцөл нэмбэл `continue` нь эвхэлтийн ГҮНИЙ СТЕКийг
      * алгасаж, эвхээстэй бүлгийн доорх мөрүүд гэнэт гарч ирнэ.
      */
-    if (byPlan) {
+    if (byPlan && !planOff) {
       for (let i = 0; i < h.length; i++) if (!planKeep[i]) h[i] = true;
     }
     return h;
-  }, [rowsAll, collapsed, grpRange, byPlan, planKeep]);
+  }, [rowsAll, collapsed, grpRange, byPlan, planOff, planKeep]);
 
   /** Зурагдах мөрүүдийн ИНДЕКС (нуугдсаныг хассан). */
   const vis = useMemo(() => {
@@ -255,7 +270,7 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
     for (let i = 0; i < rowsAll.length; i++) if (!hidden[i] && calc[i]) out.push(i);
     return out;
   }, [rowsAll, hidden, calc]);
-  return { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis };
+  return { planCount, planOff, grpAOpts, grpBOpts, grpBEff, hidden, vis };
 }
 
 /** Виртуаль гүйлгээний цонх ба «өөрчлөгдсөн нүд рүү үсрэх». */

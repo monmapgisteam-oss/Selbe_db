@@ -1301,13 +1301,21 @@ export async function submitDoc(args: {
       [F.status]: r.status, [F.author]: doc.author, [F.sentAt]: r.sentAt,
       [F.reviews]: JSON.stringify(r.reviews), [F.body]: JSON.stringify(nextBody),
     };
+    /* ⚠️ 2026-10-09: хариу алдагдсан замд ч ХАМГИЙН БАГА OID-г (өсөхөөр) авч, хэвийн замын ижил
+       `dedupeRevision`-ийг ажиллуулна. Урьд нь хамгийн ИХ-ийг аваад тулгалтгүй буцдаг тул зэрэг
+       үүссэн rev+1 давхардал (хоёр таб/зохиогч) энэ замд үлддэг байв. Тулгалт нь ЗӨВХӨН манай
+       (`sentAt` таарсан) мөрийг устгана — бусдын мөрийг хөндөхгүй. */
     onLost = async () => {
+      let hit: { oid: number } | undefined;
       try {
-        const hit = (await loadDocs(kind))
+        hit = (await loadDocs(kind))
           .filter((d) => d.docNo === no && d.rev === r.rev && d.sentAt === r.sentAt)
-          .sort((x, y) => y.oid - x.oid)[0];
-        if (hit) { invalidate('CHANAR_BARIMT'); return { ok: true, oid: hit.oid }; }
+          .sort((x, y) => x.oid - y.oid)[0];
       } catch { /* уншиж чадсангүй — `unsure` */ }
+      if (hit) {
+        invalidate('CHANAR_BARIMT');
+        return (await dedupeRevision(url, kind, doc.bagts, doc.seq, r.rev, hit.oid)) ?? { ok: true, oid: hit.oid };
+      }
       return { ok: false, unsure: true, error: UNSURE_MSG() };
     };
     const j = await arcgisPost(`${url}/applyEdits`, {

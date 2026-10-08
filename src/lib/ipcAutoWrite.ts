@@ -45,6 +45,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
   const at = dayOf(day);
   if (!at) return { ok: false, error: tr('Огноо танигдсангүй: {0}', day) };
 
+  /* ⚠️ 2026-10-09: БИЧИХ ОРОЛДЛОГО хийгдсэн үү — хариу алдагдсан (throw) ч сервер бичсэн байж магадгүй тул
+     `finally` дотор HO_IPC-ийг хүчингүй болгоно (`refreshAutoZoruu`-гийн `tried`-тэй ижил дүрэм). */
+  let tried = false;
   try {
     /* ── 1. Тухайн багцын БҮХ хуудасны тэр өдрийн дүнг нийлүүлнэ ──
        ⚠️ Багц бүр 1–2 хуудастай (9F + 12F) бөгөөд гэрээ нь НЭГ. */
@@ -97,7 +100,11 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
        */
       const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
       if (!upTo) { missing += 1; continue; }
-      const { rows } = await loadRows(pkg, sc, upTo, need);
+      /* ⚠️ 2026-10-09: `strict` — ЭНЭ ЗАМ IPC-д МӨНГӨН ДҮН БИЧДЭГ. Анхдагч (уншдаг самбарын) горимд жаазны
+         бүтэн эсэхийг шалгаж чадаагүй (лавлах татагдаагүй) үед ДУТУУ жааз хүлээн авагдаж, тасарсан мөрийн
+         обьёмгүй `guits_une` бичигддэг байв — шалгаж чадахгүй бол THROW → `ok:false` (батлалт `regPending`-ээр
+         дахин оролдоно). */
+      const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
       if (!rows.length) { missing += 1; continue; }
       read += 1;
       const s = snapshotOf(rows, day);
@@ -156,6 +163,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ── 4. Бичих ──
        ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — мөр БҮРИЙН үр дүнг шалгана. */
     const key = plan.op === 'insert' ? 'adds' : 'updates';
+    tried = true;
     const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
       [key]: JSON.stringify([{ attributes: plan.attrs }]),
       rollbackOnFailure: 'true',
@@ -189,6 +197,10 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     return { ok: true, op: plan.op, ...wx };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
+  } finally {
+    /* ⚠️ 2026-10-09: бичих оролдлого хийгдсэн бол ҮРГЭЛЖ (алдаа · хариу алдагдсан ч) — дээрх `tried`-ийн ⚠️.
+       Амжилтын замын `invalidate` (дээр) хэвээр — `dedupeAuto`/`refreshAutoZoruu` шинэ мөрийг уншина. */
+    if (tried) invalidate('HO_IPC');
   }
 }
 

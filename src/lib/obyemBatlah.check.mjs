@@ -184,7 +184,36 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
   assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
   assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
+  /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — түгжихийн ӨМНӨ ба `applyUpdates`-ийн ЯГ ӨМНӨ (fail-closed) */
+  const a0 = fn.indexOf('const ab0 = await archBusy()');
+  const a1 = fn.indexOf('const ab1 = await archBusy()');
+  assert.ok(a0 > 0 && a0 < fn.indexOf('await claimObyem('), 'useObyem: архивлалтын шалгалт түгжихээс ӨМНӨ алга');
+  assert.ok(a1 > fn.indexOf('await markObyemPartial(') && a1 < write, 'useObyem: архивлалтын шалгалт applyUpdates-ийн ЯГ ӨМНӨ алга');
+  assert.ok(/await clearObyemPartial\(pvSub\.oid\);\s*pvErrHere\(ab1\)/.test(fn), 'useObyem: архивлалтад татгалзахад хагас бичилтийн тэмдгийг арилгахгүй байна');
+  const ab = fn.slice(fn.indexOf('const archBusy'), a0);
+  assert.ok(/catch \(e\) \{\s*return tr\(/.test(ab), 'useObyem: архивлалтын төлөв уншигдахгүй бол хаахгүй (fail-open)');
+}
+/* ── ⚠️ 2026-10-09: `isLostWrite` = `butetsEdit.isLostResponse` (тодорхой татгалзал ≠ хариу алдагдсан) ── */
+{
+  const { isLostWrite } = await import('@/lib/lostWrite.ts');
+  const { isLostResponse } = await import('@/lib/butetsEdit.ts');
+  const { ArcGISError } = await import('@/lib/query.ts');
+  const E = (status, code, expired = false) => new ArcGISError('x', 'u', code, undefined, expired, status);
+  const cases = [
+    [new TypeError('Failed to fetch'), true],
+    [Object.assign(new Error('t'), { name: 'TimeoutError' }), true],
+    [E(undefined, undefined), true], // JSON биш хариу / timeout
+    [E(502), true], [E(500), true],
+    [E(400), false], [E(401), false], [E(403), false], [E(404), false],
+    [E(undefined, 498, true), false], [E(undefined, 499), false], [E(undefined, 400), false],
+    [new Error('success:false'), false],
+  ];
+  for (const [e, want] of cases) {
+    assert.equal(isLostWrite(e), want, `isLostWrite(${e.message} ${e.status ?? ''} ${e.code ?? ''})`);
+    assert.equal(isLostWrite(e), isLostResponse(e), `isLostWrite ≠ isLostResponse (${e.message} ${e.status ?? ''})`);
+  }
 }
 console.log('✅ жааз солигдсон бол батлахгүй · алгассан нүд асууна/хадгална · хоёр таб');
+console.log('✅ архивлалтын хаалт · isLostWrite = isLostResponse');
 
 console.log('\nobyemBatlah.check: ok');

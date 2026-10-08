@@ -819,6 +819,21 @@ export async function loadPending(pkgKey: string, kind?: PlanPayloadKind): Promi
   return list[0] ?? null;
 }
 
+/**
+ * ⚠️ 2026-10-09: БАГЦЫН ХОЁР ТӨРЛИЙН хүлээгдэж буй илгээлт НЭГ ДОР — «Хуваарь»-ийн төрөл тус бүрийн
+ *    түгжээний давтамжит шалгалтад (нөгөө төрлийг харах). ХЯМД: эхлээд НЭГ query (бүх төрлийн `pending`);
+ *    хоосон бол (ердийн тохиолдол) шууд `{ plan: null, geree: null }`, байвал л төрөл тус бүрийг
+ *    `loadPending(k, kind)`-аар (бага OBJECTID ялна — ижил дүрэм).
+ * ⚠️ STRICT: уншилт унавал ШИДНЭ (хүснэгт олдохгүй ч — `query(…, true)`) — «хүлээгдэж буй алга» гэж ҮЗЭХГҮЙ.
+ */
+export async function loadPendingBoth(pkgKey: string): Promise<{ plan: PlanSubmission | null; geree: PlanSubmission | null }> {
+  const esc = pkgKey.replace(/'/g, "''");
+  const any = await query(`${F.pkgKey} = '${esc}' AND ${F.status} = N'${PLAN_STATUS.pending}'`, F.oid, true);
+  if (!any.length) return { plan: null, geree: null };
+  const [plan, geree] = await Promise.all([loadPending(pkgKey, 'plan'), loadPending(pkgKey, 'geree')]);
+  return { plan, geree };
+}
+
 /** Батлагчийн жагсаалт — хүлээгдэж буй БҮХ илгээлт */
 export async function loadAllPending(): Promise<PlanSubmission[]> {
   const rows = await query(`${F.status} = N'${PLAN_STATUS.pending}'`, HEAD_FIELDS);

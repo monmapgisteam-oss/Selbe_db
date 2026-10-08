@@ -587,6 +587,21 @@ export function useSharedDraft({
         if (dropped.has(k) || e.user === meRef.current) continue;
         if (!sameVal(hdPrev.current.get(k)?.val, e.val)) remote.add(k);
       }
+      /* ⚠️ 2026-10-09: ХАМТРАГЧИЙН БУЦААЛТ (tombstone) ч мөн — `hdPrev`-д байсан нүд шинэ `d.del`-ээр арилсан бол
+         (миний өөрийн tombstone биш) агшинд хамаарна; урьд нь зөвхөн `entries`-ийг үздэг тул хамтрагч нүдийг
+         буцаасны дараа Ctrl+Z тэр нүдийг хуучин утгаар нь амилуулдаг байв. Мета-д «бусдын» (`by.user`, эсвэл
+         ерөнхий нэр) хэвээр үлдээнэ — `hdOtherRef`/`useDragPlan.rollback` түүнийг хөндөхгүй. Tombstone хэвээр
+         байх хооронд дараагийн нийлүүлэлтэд ч мета үлдэнэ. */
+      const delBy = d.by.user && d.by.user !== meRef.current ? d.by.user : tr('хамтрагч');
+      for (const [k, t] of d.del) {
+        if (d.entries.has(k)) continue;
+        const old = hdMeta.current.get(k);
+        if (hdPrev.current.has(k)) {
+          if (t === hdDel.current.get(k)) continue;
+          remote.add(k);
+          meta.set(k, { at: t, user: delBy });
+        } else if (old && old.user !== meRef.current && old.at === t) meta.set(k, old);
+      }
       if (remote.size) onRemoteRef.current?.(remote);
     }
     hdSeen.current = seen;

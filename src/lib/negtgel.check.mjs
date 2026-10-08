@@ -459,3 +459,16 @@ console.log('negtgelAuto: ok — давхардсан бүлэг · багцын
   assert.ok(iAdd > 0 || W.indexOf('    wrote = true;\r\n    const res = (await post(') > 0, 'нэмэх бичилтийн өмнө wrote тэмдэг');
   console.log('negtgel 2026-10-09 (F12/R6): ok — хэмжээс · finally');
 }
+
+/* ── 2026-10-09: блокгүй багцын `skipped` ЗӨВХӨН уншигдсан + хэмжигдээгүй үед; `!s` нь алдаа (дахин оролдоно) ── */
+{
+  const { readFileSync } = await import('node:fs');
+  const W = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8');
+  assert.ok(W.includes("if (s && s.progress == null && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };"),
+    'блокгүй алгасалт `s && s.progress == null` нөхцөлтэй');
+  assert.ok(!/\(!s \|\| s\.progress == null\) && isBlocklessBagts/.test(W), 'хураангуй уншигдаагүй (`!s`) блокгүй багц `ok: true` болж чимээгүй алгасагдаж байна');
+  const iSkip = W.indexOf('if (s && s.progress == null && isBlocklessBagts');
+  const iErr = W.indexOf("if (!s) return { ok: false, error: tr('Бөглөх хуудаснаас агшин олдсонгүй') };");
+  assert.ok(iSkip > 0 && iErr > iSkip, '`!s` → алдаа (блокгүй багцад ч)');
+  console.log('negtgel 2026-10-09 (блокгүй !s): ok — уншигдаагүй хураангуй алдаа');
+}

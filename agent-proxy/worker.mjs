@@ -171,11 +171,32 @@ async function kvHit(env, ctx, key, limit) {
  *    KV холбохыг зөвлөнө.
  */
 const memBudget = createBudget();
+/* ⚠️ 2026-10-09: KV горимд УРЬДЧИЛСАН ТООЦОО (`reserveTokens`) зөвхөн САНАХ ОЙД (isolate тус бүр).
+   Урьд нь хүсэлт бүр KV-д ХОЁР удаа уншиж-бичдэг байв (тооцоо + тааруулалт, секундэд багтан) —
+   KV нь нэг түлхүүрт ~1 бичилт/с тул хоёр дахь бичилт эхнийхийг дарах/алдах эрсдэлтэй. Одоо
+   KV-д ЗӨВХӨН бодит зарцуулалт нэг удаа (`budgetSettle`) бичигдэнэ. Хариу хүлээж буй тооцоо
+   isolate хооронд харагдахгүй — KV өөрөө ойролцоо тул хүлээн зөвшөөрсөн нарийвчлал. */
+const pendingBudget = createBudget();
 const budgetKey = (caller) => `budget:${budgetDay(Date.now())}:${caller}`;
 async function budgetOver(env, caller, limit) {
   if (!limit) return false;
-  if (env.RL_KV) return (await kvNum(env, budgetKey(caller))) >= limit;
+  if (env.RL_KV) return (await kvNum(env, budgetKey(caller))) + pendingBudget.used(caller) >= limit;
   return memBudget.over(caller, limit);
+}
+/** Урьдчилсан тооцоо — KV руу БИЧИХГҮЙ (дээрх ⚠️) */
+function budgetReserve(env, caller, n) {
+  if (!n) return;
+  if (env.RL_KV) pendingBudget.add(caller, n);
+  else memBudget.adjust(caller, n);
+}
+/** Тааруулалт — тооцоог санах ойгоос хасаж, бодит зарцуулалтыг (>0 бол) KV-д НЭГ удаа бичнэ */
+function budgetSettle(env, ctx, caller, reserved, charge) {
+  if (env.RL_KV) {
+    pendingBudget.adjust(caller, -reserved);
+    if (Number.isFinite(charge) && charge > 0) void budgetAdd(env, ctx, caller, charge);
+    return;
+  }
+  memBudget.adjust(caller, charge - reserved);
 }
 /* ⚠️ 2026-10-09: `n` СӨРӨГ байж болно — урьдчилсан тооцоог (`reserveTokens`) бодит хэрэглээгээр
    тааруулах; 0-ээс доош орохгүй. Promise буцаана: урьдчилсан хасалтыг `await` хийснээр дараагийн
@@ -385,7 +406,8 @@ export default {
     /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — нийтлэг `bot` түлхүүр (хуучин, `x-bot-user`-гүй бот) ЧӨЛӨӨТ
        (`server.mjs`-ийн ⚠️: бүх ботын хэрэглэгч нэг түлхүүр хуваалцана); `bot:<id>` төсөвтэй. */
     const dailyBudget = budgetFromEnv(env.DAILY_TOKEN_BUDGET);
-    const budgeted = caller !== 'bot';
+    /* ⚠️ 2026-10-09: төсөв унтраалттай (`DAILY_TOKEN_BUDGET=0`) бол тооцоо/KV бичилт ОГТ хийхгүй */
+    const budgeted = caller !== 'bot' && dailyBudget > 0;
     if (budgeted && await budgetOver(env, caller, dailyBudget)) {
       return json(429, { error: BUDGET_MSG, code: 'daily_budget', retryable: false }, cors);
     }
@@ -502,7 +524,7 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
        · Anthropic HTTP алдаагаар татгалзсан → 0 (төлбөр авдаггүй). */
   const inputEst = estimateInputTokens(read.bytes, utf8Bytes(system));
   const reserved = budgeted ? reserveTokens(inputEst, DEFAULTS.MAX_TOKENS) : 0;
-  if (reserved) await budgetAdd(env, ctx, caller, reserved);
+  if (reserved) budgetReserve(env, caller, reserved);
   let charge = inputEst;
   try {
     let res;
@@ -580,6 +602,6 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
     }, cors);
   } finally {
     /* ⚠️ `waitUntil` (KV) — хариуг бичилтээр саатуулахгүй */
-    if (reserved) void budgetAdd(env, ctx, caller, charge - reserved);
+    if (reserved) budgetSettle(env, ctx, caller, reserved, charge);
   }
 }

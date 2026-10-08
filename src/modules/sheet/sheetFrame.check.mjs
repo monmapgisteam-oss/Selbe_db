@@ -556,6 +556,26 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(overlaySubmission(once, mon, sc, nBld).rows[0].obyem[0], 60, 'inc давтвал 40 + 10 + 10');
   const legOnce = overlaySubmission(b40, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows;
   assert.equal(overlaySubmission(legOnce, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows[0].obyem[0], 50, 'abs давтахад 50 хэвээр');
+
+  /* 9i. ⚠️ 2026-10-09: БЛОКГҮЙ багцын (синтетик блок) Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) —
+     inc нэмэлт ХАЯГДАНА: `obyem_sum` нь L-гүй архивлагдахгүй, `cellKeys`/`unmoved`-д ч орохгүй. */
+  const scS = { ...sc, bld: ['—'], act: ['Ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
+    gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], synthetic: true };
+  const one = (oid, vol, ob, act) => row(oid, String(oid), `W${oid}`, 0, false, {
+    vol, obyem: [ob], act: [act], start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null] });
+  const syn = [one(31, null, null, 0), one(32, 0, 4, 0), one(33, -2, null, null), one(34, 50, 10, 0.2)];
+  const ovS = overlaySubmission(syn, inc([['31:0', '5'], ['32:0', '3'], ['33:0', '%10'], ['34:0', '5']]), scS, 1);
+  const byO = (o) => ovS.rows.find((x) => x.oid === o);
+  assert.deepEqual([byO(31).obyem[0], byO(31).act[0]], [null, 0], 'Обьём null — нэмэлт хаягдана (obyem_sum бичигдэхгүй)');
+  assert.deepEqual([byO(32).obyem[0], byO(32).act[0]], [4, 0], 'Обьём 0 — хэвээр');
+  assert.deepEqual([byO(33).obyem[0], byO(33).act[0]], [null, null], 'сөрөг Обьём — хувийн нэмэлт ч хаягдана');
+  assert.equal(byO(34).obyem[0], 15, 'Обьёмтой мөр — 10 + 5');
+  assert.ok(Math.abs(byO(34).act[0] - 0.3) < 1e-12, 'L = 15 ÷ 50');
+  assert.deepEqual(ovS.cellKeys, ['34:0'], 'зөвхөн Обьёмтой мөр cellKeys-д');
+  assert.equal(ovS.unmoved, 0, 'хаягдсан нүд unmoved БИШ (батлалт зогсохгүй)');
+  /* блоктой (синтетик бус) бүдүүвчид Обьёмгүй мөрд хувийн нэмэлт хэвээр ажиллана */
+  const plainNoVol = overlaySubmission([row(41, '1', 'A', 0, false, { act: [0.4, null] })], inc([['41:0', '%10']]), sc, nBld);
+  assert.ok(Math.abs(plainNoVol.rows[0].act[0] - 0.5) < 1e-12, 'синтетик бус — хуучин зан төлөв');
 }
 
 console.log('sheetFrame.check: OK');

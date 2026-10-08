@@ -630,6 +630,45 @@ assert.equal(
   }
 }
 
+/* ── 2026-10-09: CAS буцаалт (`wrote`) — одоогийн утга нь манай шинэ ч, хуучин ч биш бол АЛГАСНА ── */
+{
+  const realF = globalThis.fetch;
+  const sentUpdates = [];
+  let queryFails = false;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/query')) {
+      if (queryFails) throw new TypeError('fetch failed');
+      return { ok: true, json: async () => ({ features: [
+        { attributes: { OBJECTID: 1, DocName: 'new' } },   // манай бичсэн → буцаана
+        { attributes: { OBJECTID: 2, DocName: 'other' } }, // өөр хүн өөрчилсөн → алгасна
+        { attributes: { OBJECTID: 3, DocName: 'old' } },   // бичигдээгүй (хуучин) → буцаана (идемпотент)
+      ] }) };
+    }
+    const body = new URLSearchParams(String(init?.body ?? ''));
+    const ups = JSON.parse(body.get('updates') ?? '[]');
+    sentUpdates.push(...ups.map((x) => x.attributes.OBJECTID));
+    return { ok: true, json: async () => ({ updateResults: ups.map((x) => ({ objectId: x.attributes.OBJECTID, success: true })) }) };
+  };
+  try {
+    const rows = [1, 2, 3, 4].map((oid) => ({ oid, attrs: { DocName: 'old' }, wrote: { DocName: 'new' } }));
+    rows.push({ oid: 5, attrs: { DocName: 'x' } }); // `wrote`-гүй — CAS-гүй, ердийнхөөрөө
+    const r = await revertRows(meta, rows);
+    assert.deepEqual([...sentUpdates].sort(), [1, 3, 5], 'зөвхөн манай/хуучин утгатай мөрүүд буцаагдана');
+    assert.deepEqual([...r.skipped].sort(), [2, 4], 'өөрчлөгдсөн (2) ба олдоогүй (4) мөр алгасагдана');
+    assert.match(r.failed.find((x) => x.oid === 2).msg, /other/);
+    /* дахин уншилт унавал CAS мөрүүдийг БУЦААХГҮЙ */
+    sentUpdates.length = 0;
+    queryFails = true;
+    const r2 = await revertRows(meta, rows);
+    assert.deepEqual(sentUpdates, [5], 'уншиж чадаагүй CAS мөрийг дарахгүй');
+    assert.deepEqual([...r2.skipped].sort(), [1, 2, 3, 4]);
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+console.log('✅ revertRows CAS (wrote) — өөр хэрэглэгчийн утгыг дарахгүй');
+
 /* ── 2026-10-09: isLostResponse — HTTP 400/401/403/404 нь ТОДОРХОЙ татгалзал, 5xx/статусгүй нь алдагдсан ── */
 {
   const { ArcGISError } = await import('./query.ts');

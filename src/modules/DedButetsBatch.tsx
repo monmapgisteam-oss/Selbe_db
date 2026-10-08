@@ -264,9 +264,20 @@ export function DedButetsBatch({
       }
       return { oid, attrs: back };
     });
-    const undoOf = (written: number[]): UndoInfo | null => {
+    /* ⚠️ 2026-10-09: `unsure` — хариу АЛДАГДСАН мөрүүд. Тэдэнд манай бичсэн утгыг (`wrote`) хавсарна:
+       `revertRows` буцаахын ӨМНӨ дахин уншиж, одоогийн утга нь манай шинэ ч, хуучин ч биш (хооронд нь
+       өөр хэрэглэгч зассан) бол АЛГАСЧ мэдээлнэ (`butetsEdit.RevertRow`-ийн ⚠️). */
+    const undoOf = (written: number[], unsure: readonly number[] = []): UndoInfo | null => {
       const doneSet = new Set(written);
-      const u = undoRows.filter((r) => doneSet.has(r.oid) && Object.keys(r.attrs).length);
+      const unsureSet = new Set(unsure);
+      const u = undoRows
+        .filter((r) => doneSet.has(r.oid) && Object.keys(r.attrs).length)
+        .map((r) => {
+          if (!unsureSet.has(r.oid)) return r;
+          const wrote: Record<string, unknown> = {};
+          for (const k of Object.keys(r.attrs)) wrote[k] = attrs[k];
+          return { ...r, wrote };
+        });
       return u.length ? { kind: 'batch', rows: u } : null;
     };
     /* ⚠️ Бичих OID нь УНШСАН мөрүүдийнх (2026-09-25) — буцаалт (`undoRows`) ч
@@ -297,7 +308,7 @@ export function DedButetsBatch({
       const undoable = [...(partial ?? []), ...unknownRows];
       /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
          давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
-      if (undoable.length) onPartial?.(undoOf(undoable));
+      if (undoable.length) onPartial?.(undoOf(undoable, unknownRows));
       /* ⚠️ 2026-10-01: АТОМ БУС давхарга (`supportsRollbackOnFailureParameter: false`) — мөр бүрийн
          үр дүн (`failed`) ирнэ: аль нь бичигдээгүйг тоогоор хэлнэ («эхний N» биш — дунд нь ч унаж болно). */
       const failedRows = (x as { failed?: { oid: number }[] }).failed;

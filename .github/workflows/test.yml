@@ -19,8 +19,17 @@ on:
 permissions:
   contents: read
 
+# ⚠️ 2026-10-09: нэг ref дээр шинэ push ирэхэд хуучин ажиллагааг цуцална — дараалсан push бүр
+#    бүтэн build-ийн minute зарцуулахгүй.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    # ⚠️ 2026-10-09: ИЖИЛ репоны салбараас нээсэн PR-ыг `push` аль хэдийн шалгадаг (main-ээс бусад
+    #    салбар) — `pull_request` дээр давхар ажиллуулахгүй. Fork-оос ирсэн PR ба бусад үйл явдал хэвээр.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     # ⚠️ 2026-10-09: env нь JOB түвшинд — `npm test` ба `npm run build` ХОЁУЛАА хэрэглэнэ
     #    (deploy.yml-тэй ИЖИЛ жагсаалт; `tools/envParity.check.mjs` зөрөхийг барина).

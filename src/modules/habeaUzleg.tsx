@@ -33,6 +33,7 @@ import { Section, Bars, Donut, Series, Loading, Empty, friendlyError } from '@/c
 import { num, date, text, pct } from '@/lib/format';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { markCurMonth, CUR_MONTH_MARK } from './habeaRate';
+import { LEVEL_MARK, LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
 import h from './habea.module.css';
 
 /* ═════════════════ Төрөл ═════════════════ */
@@ -663,11 +664,18 @@ export function weekNcByPkg(rows: readonly ScoreRow[], cos: readonly string[]) {
  *   70%-иас доош — улаан · 70–90% — улбар шар · 90% ба түүнээс дээш — ногоон.
  * ⚠️ Оролт 0–100 (хувь), 0–1 БИШ. «Үзлэгийн оноо — компаниар» ба «Үзлэгийн оноо —
  * багцаар» хоёр ИЖИЛ дүрмээр будагдана — нэг газраас.
+ * ⚠️ 2026-10-09: босгыг ДҮГНЭСЭН утгаар (`Math.round`) — шошго `pct(v, 0)`-тэй нэг: 89.6 нь «90%»
+ *    гэж бичигдээд улбар шар байдаг байв. Өнгө нь `kpiLevels.LEVEL_TONE` (CSS хувьсагч — гэрэл/
+ *    харанхуй горим), hex БИШ; өнгөний хажууд `LEVEL_MARK` тэмдэг (WCAG 1.4.1).
+ * ⚠️ `UZLEG_` угтвартай — `kpiLevels.SCORE_GOOD` (65, багцын нийт оноо)-той андуурагдахгүй.
  */
-export const SCORE_GOOD = 90;
-export const SCORE_OK = 70;
-export const scoreColor = (p: number): string =>
-  p >= SCORE_GOOD ? '#5fd84a' : p >= SCORE_OK ? '#f2a33a' : '#e5484d';
+export const UZLEG_SCORE_GOOD = 90;
+export const UZLEG_SCORE_OK = 70;
+export const uzScoreLevel = (p: number): Level => {
+  const r = Math.round(p);
+  return r >= UZLEG_SCORE_GOOD ? 'good' : r >= UZLEG_SCORE_OK ? 'warn' : 'bad';
+};
+export const scoreColor = (p: number): string => LEVEL_TONE[uzScoreLevel(p)];
 
 /**
  * ӨМНӨХ ДОЛОО ХОНОГИЙН ОНОО — БАГЦААР (2026-10-08, хэрэглэгч: нүүрний «Үзлэгийн оноо —
@@ -799,7 +807,21 @@ const SEV_OF: Record<string, (x: UzlegRow) => number> = {
   conf: (x) => x.conf, na: (x) => x.na,
 };
 
-const inSet = (arr: readonly string[], v: string) => arr.length === 0 || arr.includes(v);
+/**
+ * Сонголтын гишүүнчлэл — хоосон = бүгд.
+ * ⚠️ 2026-10-09: урт жагсаалтад (огнооны муж → 365+ өдөр) мөр бүрд `includes` нь хуудсыг гацаадаг
+ *    байв (мөр × өдөр). Жагсаалт бүрийн Set-ийг лавлагаагаар нь (WeakMap) НЭГ удаа угсарна —
+ *    `sel.day` өөрчлөгдөхөд л шинэ Set.
+ */
+const SEL_SETS = new WeakMap<readonly string[], ReadonlySet<string>>();
+export const inSel = (arr: readonly string[], v: string): boolean => {
+  if (arr.length === 0) return true;
+  if (arr.length < 16) return arr.includes(v);
+  let s = SEL_SETS.get(arr);
+  if (!s) { s = new Set(arr); SEL_SETS.set(arr, s); }
+  return s.has(v);
+};
+const inSet = inSel;
 
 /**
  * НЭГ МӨР ШҮҮЛТЭЭР ГАРАХ УУ — `except` хэмжээсийг ТООЦОХГҮЙ.
@@ -817,7 +839,7 @@ export function uzPass(x: UzlegRow, uz: UzSel, except?: UzDim): boolean {
   /* ⚠️ Өдөр/сарыг цувааны түлхүүртэй ЯГ ижил дүрмээр.
      ⚠️ 2026-10-09: хөтчийн локал `dayKey` → Улаанбаатарын `ubDayKey` (`ceo/workforce`) —
      хүн хүчний өдрийн түлхүүртэй НЭГ; гадаадад нээхэд өдөр гулсахгүй. */
-  if (except !== 'day' && uz.day.length && !(x.d > 0 && uz.day.includes(ubDayKey(x.d)))) return false;
+  if (except !== 'day' && uz.day.length && !(x.d > 0 && inSet(uz.day, ubDayKey(x.d)))) return false;
   if (except !== 'month' && uz.month.length && !(x.d > 0 && uz.month.includes(ubDayKey(x.d).slice(0, 7)))) return false;
   return true;
 }
@@ -1383,20 +1405,25 @@ export function ScoreColumns({ items, selected, onSelect }: {
       {items.map((it) => {
         const on = selected.includes(it.key);
         const dim = selected.length > 0 && !on;
+        const lv = uzScoreLevel(it.value);
         return (
           <button
             key={it.key} type="button" aria-pressed={on}
             className={h.scoreCol} style={{ opacity: dim ? 0.35 : 1 }}
             onClick={onSelect ? () => onSelect(it.key) : undefined}
-            title={`${it.label}: ${pct(it.value, 0)}`}
+            title={`${it.label}: ${pct(it.value, 0)} · ${levelLabel(lv)}`}
           >
             <span className={h.scoreName}>{it.label}</span>
             <span className={h.scoreTrack}>
-              <span className={h.scoreBar} style={{ width: `${Math.max(0, Math.min(100, it.value))}%`, ["--c" as string]: scoreColor(it.value) } as React.CSSProperties} />
+              <span className={h.scoreBar} style={{ width: `${Math.max(0, Math.min(100, it.value))}%`, ["--c" as string]: LEVEL_TONE[lv] } as React.CSSProperties} />
               {/* Зорилтот 90% — тасархай тэмдэг */}
-              <i className={h.scoreTarget} style={{ left: `${SCORE_GOOD}%` }} aria-hidden />
+              <i className={h.scoreTarget} style={{ left: `${UZLEG_SCORE_GOOD}%` }} aria-hidden />
             </span>
-            <b className={`${h.scoreVal} num`}>{pct(it.value, 0)}</b>
+            {/* ⚠️ 2026-10-09: өнгөний хажууд тэмдэг (✓ ▲ !) — өнгө ганцаараа утга дамжуулахгүй */}
+            <b className={`${h.scoreVal} num`}>
+              <span className={h.scoreMark} style={{ color: LEVEL_TONE[lv] }}>{LEVEL_MARK[lv]}</span>
+              {pct(it.value, 0)}
+            </b>
           </button>
         );
       })}

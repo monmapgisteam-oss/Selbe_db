@@ -43,7 +43,7 @@ import { usePanes } from './habeaPanes';
 import {
   useUzleg, filterUzleg, uzPass, uzPickRows, uzValueLabel, UzlegLeft, UzlegRight, UzlegFin,
   habeaPkgKey, habeaPkgLabel, loadWeekScores, prevWeek, weekScoreOf, weekScoreByPkg, ScoreColumns, scoreColor, weekNcByPkg, UzSrcHead, stepNote,
-  UzlegPhotos, AttPhoto,
+  UzlegPhotos, AttPhoto, inSel,
   SERIES_VISIBLE,
   type UzlegKind, type UzDim,
 } from './habeaUzleg';
@@ -914,7 +914,9 @@ const NO_SEL: Sel = {
   day: [], month: [],
 };
 
-const inSet = (arr: readonly string[], v: string) => arr.length === 0 || arr.includes(v);
+/* ⚠️ 2026-10-09: `habeaUzleg.inSel` — урт жагсаалтад (огнооны муж → 365+ өдөр) Set-ээр (мөр бүрд
+   `includes` нь урт мужид хуудсыг гацаадаг байв). Хоосон = бүгд. */
+const inSet = inSel;
 
 /** Үзлэгийн самбарын хэмжээс → хуудасны сонголтын түлхүүр */
 const UZ_DIM: Record<UzDim, SelDim> = {
@@ -1010,7 +1012,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const weekScores = useAsync(() => loadWeekScores(new Date(now)), [weekKey, tick], { keepOn: [tick] });
   /* «Бусад үзүүлэлт» — ХАБ-ын бүртгэлүүд (2026-10-08). Долоо хоног солигдоход (`weekKey` —
      Даваа гараг) шинээр, 5 минутын `tick`-д хуучин утга дэлгэцэд үлдэнэ. */
-  const regs = useAsync(loadHabeaRegisters, [weekKey, tick], { keepOn: [tick] });
+  /* ⚠️ 2026-10-09: `now`-оор (UB долоо хоног) — кэш нь долоо хоногийн эхлэлээр түлхүүрлэгдэнэ */
+  const regs = useAsync(() => loadHabeaRegisters(new Date(now)), [weekKey, tick], { keepOn: [tick] });
   /* Бүртгэл оруулах (2026-10-08) — ЗӨВХӨН `habeaData` эрхтэйд «+ Нэмэх»; бусдад карт энгийн */
   const { user } = useAuth();
   const [capN, setCapN] = useState(0);
@@ -1031,15 +1034,22 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * нь эдгээрээс ДАМЖИН `pkgEff`/`coEff`-ээр шүүгдэнэ.
    */
   const [pkgs, setPkgs] = useState<string[]>([]);
-  const wasteSlices = useMemo(() => {
-    if (waste.state !== 'ready') return [];
-    return HABEA.waste.kinds.map((k) => {
+  /* ⚠️ 2026-10-09: `measured` — шүүлтэд орсон ХЭМЖИЛТТЭЙ нүд байгаа эсэх. Хэмжилтгүй бол «0 рейс» биш
+     «бүртгэл алга» (`null ≠ 0`; `byPkg`-д хоосон нүд орохгүй — `habeaRegisters.fetchWaste`). */
+  const { wasteSlices, wasteMeasured } = useMemo(() => {
+    if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
+    let measured = false;
+    const slices = HABEA.waste.kinds.map((k) => {
       const row = waste.data.rows.find((r) => r.metric === k.metric);
-      const value = row
-        ? Object.entries(row.byPkg).reduce((acc, [name, v]) => acc + (pkgs.length && !pkgs.includes(habeaPkgKey(name)) ? 0 : v), 0)
-        : 0;
+      let value = 0;
+      for (const [name, v] of Object.entries(row?.byPkg ?? {})) {
+        if (pkgs.length && !pkgs.includes(habeaPkgKey(name))) continue;
+        measured = true;
+        value += v;
+      }
       return { key: k.metric, label: k.label, value, color: k.color };
     });
+    return { wasteSlices: slices, wasteMeasured: measured };
   }, [waste, pkgs]);
   const wasteTotal = wasteSlices.reduce((acc, x) => acc + x.value, 0);
   const [cos, setCos] = useState<string[]>([]);
@@ -1213,8 +1223,17 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ⚠️ Зурган дээрх сонголтыг ЦУЦАЛНА: чартаас шүүхэд өмнөх нэг объектын
    * сонголт хүчинтэй үлдвэл хоёр шүүлт зөрчилдөж үр дүн үргэлж хоосон гарна.
    */
+  /**
+   * ⚠️ 2026-10-09: огнооны МУЖ идэвхтэй (`sel.day` нь мужийн өөрийн жагсаалт) үед өдрийн багана
+   *    дарвал СОНГОЛТЫГ ОРЛУУЛНА (тэр өдөр л) — урьд нь мужаас нэг өдрийг ХАСЧ (шинэ массив),
+   *    капсул «Бүх огноо» гэж харуулсаар 364 өдрийн шүүлт идэвхтэй үлддэг байв.
+   */
+  const rangeKeysRef = useRef<string[] | null>(null);
   const toggleDim = useCallback((d: SelDim, v: string) => {
-    setSel((s) => ({ ...s, [d]: s[d].includes(v) ? s[d].filter((x) => x !== v) : [...s[d], v] }));
+    setSel((s) => {
+      if (d === 'day' && rangeKeysRef.current != null && s.day === rangeKeysRef.current) return { ...s, day: [v] };
+      return { ...s, [d]: s[d].includes(v) ? s[d].filter((x) => x !== v) : [...s[d], v] };
+    });
     setPicked(null);
   }, []);
 
@@ -1274,38 +1293,78 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * хүн хүч, осол, үзлэг, газрын зураг аль хэдийн `sel.day`-ийг дагадаг тул бүгд нэг дүрмээр.
    * ⚠️ Капсул мужийг ЗӨВХӨН өөрийн бичсэн жагсаалт `sel.day`-д хэвээр байхад харуулна —
    * чартаас өдөр дарвал (шинэ массив) муж «Бүх огноо» болж, сонголт чартынх болно.
-   * ⚠️ Нэг тал хоосон: эхлэл = хүн хүчний хамгийн эртний өдөр, төгсгөл = өнөөдөр.
+   * ⚠️ Нэг тал хоосон: эхлэл = өгөгдлийн хамгийн эртний өдөр, төгсгөл = өнөөдөр.
+   * ⚠️ 2026-10-09: эхлэл = хүн хүч · осол · (ачаалагдсан) үзлэгийн ХАМГИЙН эртний өдөр (урьд нь зөвхөн
+   *    хүн хүч — хүн хүч ачаалагдаагүй үед «… хүртэл» муж ГАНЦ өдөр болж хумигддаг байв). Төгсгөл
+   *    өнөөдрөөс хойш бол өнөөдөр; эхлэл > төгсгөл бол ТАТГАЛЗАНА. Өгөгдлөөс өмнөх эхлэлийг
+   *    тоолохдоо `dataMin`-ээс эхэлнэ — 3700 өдрийн хязгаар СҮҮЛИЙН өдрүүдийг тайрахгүй.
    */
   const [range, setRange] = useState<{ from: string; to: string; keys: string[] | null }>({ from: '', to: '', keys: null });
   const dataMin = useMemo(() => {
     let m = Infinity;
     for (const r of laborRows) { const d = nn(r[L.ognoo]); if (d > 0 && d < m) m = d; }
+    for (const x of inc) if (x.d > 0 && x.d < m) m = x.d;
+    for (const st of [uz, uz2]) if (st.state === 'ready') for (const x of st.rows) if (x.d > 0 && x.d < m) m = x.d;
     return Number.isFinite(m) ? ubDayKey(m) : '';
-  }, [laborRows]);
+  }, [laborRows, inc, uz, uz2]);
   const applyRange = useCallback((from: string, to: string) => {
     if (!from && !to) {
+      rangeKeysRef.current = null;
       setRange({ from: '', to: '', keys: null });
       setSel((p) => ({ ...p, day: [], month: [] }));
       setPicked(null);
       return;
     }
-    const a = from || dataMin || to;
-    const b = to || ubDayKey(Date.now());
+    const today = ubDayKey(Date.now());
+    const b = !to || to > today ? today : to;
+    if (from && from > b) return;
+    /* Эхлэл: өгсөн нь эсвэл өгөгдлийн эхлэл; өгөгдлөөс өмнөх өдрүүдийг тоолохгүй (мөр байхгүй) */
+    const a = !from ? (dataMin || b) : dataMin && from < dataMin ? dataMin : from;
     const keys: string[] = [];
-    const [y0, m0, d0] = (a <= b ? a : b).split('-').map(Number);
-    const end = a <= b ? b : a;
+    const [y0, m0, d0] = a.split('-').map(Number);
     /* ⚠️ Түлхүүр нь UB хуанлийн өдөр (`ubDayKey`) — мужийг ХУАНЛИЙН өдрөөр, цагийн бүсгүй
        UTC арифметикаар угсарна (локал `setDate` нь DST/бүсийн зөрүүд өдөр алгасаж болно). */
     for (let t = Date.UTC(y0, m0 - 1, d0); keys.length < 3700; t += 86_400_000) {
       const k = new Date(t).toISOString().slice(0, 10);
-      if (k > end) break;
+      if (k > b) break;
       keys.push(k);
     }
-    setRange({ from, to, keys });
+    /* ⚠️ Хоосон жагсаалт = «бүгд» (`inSet`) — муж бүхэлдээ өгөгдлөөс хойш бол төгсгөлийн өдөр (мөр 0) */
+    if (!keys.length) keys.push(b);
+    rangeKeysRef.current = keys;
+    setRange({ from, to: to && to > today ? today : to, keys });
     setSel((p) => ({ ...p, day: keys, month: [] }));
     setPicked(null);
   }, [dataMin]);
   const rangeOn = range.keys != null && sel.day === range.keys;
+  /**
+   * КАПСУЛЫН УТГА — `sel.day`-ээс (2026-10-09). Урьд нь массивын ИЖИЛ ЛАВЛАГАА (`rangeOn`) л
+   * харуулдаг тул чартаас өдөр дармагц шүүлт идэвхтэй атлаа капсул «Бүх огноо», «Арилгах» хаалттай
+   * байв. Одоо: муж → мужийн утга; чартын сонголт → хамгийн бага – их өдөр (Арилгах идэвхтэй).
+   * ⚠️ `draft` — бичиж буй (хараахан хэрэглээгүй) утга: огнооны талбар товчлуур бүрд `onChange`
+   *    өгдөг тул («0002-…» → «2026-…») хагас онтой утгыг шүүлтэд хэрэглэхгүй, 400 мс хүлээнэ.
+   */
+  const [draft, setDraft] = useState<{ from: string; to: string } | null>(null);
+  const pill = useMemo(() => {
+    if (draft) return draft;
+    if (!sel.day.length) return { from: '', to: '' };
+    if (rangeOn) return { from: range.from, to: range.to };
+    let lo = sel.day[0];
+    let hi = sel.day[0];
+    for (const k of sel.day) { if (k < lo) lo = k; if (k > hi) hi = k; }
+    return { from: lo, to: hi };
+  }, [draft, sel.day, rangeOn, range.from, range.to]);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (draftTimer.current) clearTimeout(draftTimer.current); }, []);
+  const onPill = useCallback((from: string, to: string) => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (!from && !to) { setDraft(null); applyRange('', ''); return; }
+    setDraft({ from, to });
+    /* Хагас он (< 2000) эсвэл эхлэл > төгсгөл — ХЭРЭГЛЭХГҮЙ, бичиж дуусахыг хүлээнэ */
+    const yr = (v: string) => (v ? Number(v.slice(0, 4)) : 9999);
+    if (yr(from) < 2000 || yr(to) < 2000 || (from && to && from > to)) return;
+    draftTimer.current = setTimeout(() => { setDraft(null); applyRange(from, to); }, 400);
+  }, [applyRange]);
   const labor = useMemo(() => laborState(laborRows), [laborRows]);
   /* ⚠️ 2026-10-09 (аудит): «…осолгүй ажилласан цаг» — СҮҮЛИЙН LTI-ээс хойших хүн-цаг
      (`habeaRate.ltiFreeHours`). Урьд нь Σ `Hun_tsag` (LTI-д тэглэгддэггүй). Ослын БҮХ
@@ -1868,10 +1927,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const filterPills = (<>
     <DateRangePill
       label={tr('Огноо')}
-      from={rangeOn ? range.from : ''}
-      to={rangeOn ? range.to : ''}
+      from={pill.from}
+      to={pill.to}
       min={dataMin || undefined}
-      onChange={applyRange}
+      max={ubDayKey(now)}
+      onChange={onPill}
     />
     {pkgOptions.length > 0 && (
       <MultiSelect
@@ -2090,7 +2150,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             const max = Math.max(1, ...regs.data.rows.map((r) => r.week ?? 0));
             return (
               <div className={h.regs}>
-                <div className={h.regHead}><span /><span>{tr('7 хоног')}</span></div>
+                <div className={h.regHead}><span /><span>{tr('{0} хоног', num(7))}</span></div>
                 {regs.data.rows.map((r) => (
                   <div key={r.key} className={h.regRow} title={r.week == null ? tr('Эх сурвалж холбогдоогүй') : undefined}>
                     <span className={h.regLabel}>{r.label}</span>
@@ -2112,7 +2172,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           note={(
             <>
               {/* ⚠️ 2026-10-08 (хэрэглэгч): «нийт N рейс» тэмдэглэл ХАСАГДАВ — нийт нь донатын төвд бий */}
-              {canEnter && <AddButton onClick={() => setEntry('waste')} />}
+              {/* ⚠️ 2026-10-09: хүснэгтэд ОН талбар алга — нийлбэрийн ХАМРАХ долоо хоногийг ил шошголно */}
+              {waste.state === 'ready' && waste.data.weeks.length > 0
+                && tr('{0}-р долоо хоногийн нийлбэр', waste.data.weeks.join(', '))}
+              {canEnter && <> <AddButton onClick={() => setEntry('waste')} /></>}
             </>
           )}
         >
@@ -2121,12 +2184,16 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {waste.state === 'ready' && (wasteTotal > 0
             ? <Donut items={wasteSlices} stack size={120} center={num(wasteTotal)} centerLabel={tr('нийт')} />
             /* ⚠️ Бүгд 0 үед донат зурахгүй (хоосон цагираг «алдаа» мэт) — гэхдээ «өгөгдөл алга» биш,
-               бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). */
-            : <Empty label={tr('Бүртгэгдсэн рейс 0 — {0}-р долоо хоног', waste.data.weeks.join(', ') || '—')} />)}
+               бүртгэл БАЙГАА ч тэг гэдгийг ил хэлнэ (`null ≠ 0`). Хэмжилтгүй бол «Бүртгэл алга». */
+            : wasteMeasured
+              ? <Empty label={tr('Бүртгэгдсэн рейс {0} — {1}-р долоо хоног', num(0), waste.data.weeks.join(', ') || '—')} />
+              : <Empty label={tr('Бүртгэл алга')} />)}
         </Section>
         )}
-        {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} onSaved={() => regs.retry?.()} />}
-        {entry === 'waste' && <WasteAddDialog onClose={() => setEntry(null)} onSaved={() => waste.retry?.()} />}
+        {/* ⚠️ 2026-10-09: `onSaved → retry` ХАСАГДАВ — бичилт `invalidate('HABEA')` хийдэг тул автобус
+            картыг өөрөө дахин татна (урьд нь ХОЁР удаа татдаг байв). */}
+        {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} />}
+        {entry === 'waste' && <WasteAddDialog onClose={() => setEntry(null)} />}
         <Section
           title={tr("Компаниар — монгол, гадаад")}
           note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}

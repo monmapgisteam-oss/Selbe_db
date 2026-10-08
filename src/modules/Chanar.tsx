@@ -1370,10 +1370,19 @@ export function Chanar() {
                   {(atts ?? []).map((a) => (
                     <div key={a.id} className={s.att}>
                       {/* ⚠️ 2026-10-09: токенгүй URL — `openAtt` POST-оор татаж нээнэ (`openAtt`-ийн ⚠️) */}
-                      <a href={a.url} target="_blank" rel="noreferrer"
-                        onClick={(e) => { if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); void openAtt(a); }}>
-                        {a.name}
-                      </a>
+                      {/* ⚠️ 2026-10-09: байгууллагын (токен шаарддаг) URL-д `href` ӨГӨХГҮЙ — урьд нь Ctrl/Shift/
+                          дунд товч, «шинэ табад нээх» нь токенгүй `href`-ийг шууд нээж НЭВТРЭХ хуудас гаргадаг
+                          байв. Бүх товшилт (`onAuxClick` — дунд товч) `openAtt`-аар явна; гар: Enter/Space. */}
+                      {isOrgUrl(a.url) ? (
+                        <a role="link" tabIndex={0} style={{ cursor: 'pointer' }}
+                          onClick={(e) => { e.preventDefault(); void openAtt(a); }}
+                          onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); void openAtt(a); }}
+                          onKeyDown={(e) => { if (e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); void openAtt(a); }}>
+                          {a.name}
+                        </a>
+                      ) : (
+                        <a href={a.url} target="_blank" rel="noreferrer">{a.name}</a>
+                      )}
                       <span className={s.attSize}>{kb(a.size)}</span>
                       {a.parentOid !== doc.oid && (
                         <span className={s.attSize} title={tr('Өмнөх хувилбарын хавсралт')}>

@@ -207,8 +207,15 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
     /* 2026-10-09: хариу АЛДАГДСАН нэмэлт — дахин илгээхгүй, уншиж тогтооно */
     calls.length = 0;
     lose = true;
-    queryQueue.push([], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }]);
+    queryQueue.push([], [{ OBJECTID: 61, [F.ner]: 'Шинэ' }]);
     assert.equal(await saveZov(draft), 61, 'бичигдсэн мөрийг нэрээр нь таньж амжилт');
+    assert.equal(edits().length, 1, 'бичилтийг ДАХИН илгээгээгүй');
+    /* 2026-10-09: хариу алдагдсан + давхардал (ижил нэр 2 мөр + бусад) → ЮУГ Ч устгахгүй, kept=true,
+       «манайх» = ижил нэртэйн ХАМГИЙН БАГА OID */
+    calls.length = 0;
+    queryQueue.push([], [{ OBJECTID: 70, [F.ner]: 'Шинэ' }, { OBJECTID: 71, [F.ner]: 'Зэрэг' }, { OBJECTID: 72, [F.ner]: 'Шинэ' }]);
+    await assert.rejects(() => saveZov(draft), (e) => e.name === 'ZovClashError' && e.kept === true && e.oid === 70 && /Зэрэг/.test(e.message));
+    assert.equal(edits().filter((c) => c.p.deletes).length, 0, 'алдагдсан хариуны замд устгахгүй');
     assert.equal(edits().length, 1, 'бичилтийг ДАХИН илгээгээгүй');
     /* шалгах асуулга ч унавал анхны (алдагдсан) алдаа дамжина */
     calls.length = 0;

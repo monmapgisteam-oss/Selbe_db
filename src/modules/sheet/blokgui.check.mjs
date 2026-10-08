@@ -456,10 +456,29 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual([sc.f.rowGS, sc.f.rowGE, sc.f.rowAS, sc.f.rowAE], ['geree_ehleh', 'geree_duusah', 'bodit_ehleh', 'bodit_duusah']);
   assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['CreationDate', 'Creator', 'EditDate', 'Editor']);
   const cols = extraCols(sc);
+  /* ⚠️ 2026-10-09: синтетик (блокгүй) бүдүүвчид хадгалсан L/M ХАСАГДАНА — үндсэн нүдийг давхардуулж
+     хэмжилтгүй мөрд загварын 0%-ийг харуулдаг байв (`extraCols.SYN_HIDE`). */
+  assert.equal(sc.synthetic, true, 'блокгүй fill бүдүүвч — синтетик');
   assert.deepEqual(cols.map((c) => c.field), ['des_dugaar', 'hamaaral', 'gun', 'hun_huch', 'mashin_mehanizm', 'geree_ehleh',
-    'geree_duusah', 'bodit_ehleh', 'bodit_duusah', 'buglusun_ognoo', 'Ажил_гүйцэтгэл', 'Төлөвлөгөөт_гүйцэтгэл1',
-    'CreationDate', 'Creator', 'EditDate', 'Editor'], 'заасан дараалал, ObjectID/GlobalID-гүй');
+    'geree_duusah', 'bodit_ehleh', 'bodit_duusah', 'buglusun_ognoo',
+    'CreationDate', 'Creator', 'EditDate', 'Editor'], 'заасан дараалал, ObjectID/GlobalID-гүй, синтетикт L/M-гүй');
   assert.ok(cols.every((c) => typeof c.label() === 'string' && c.label().length > 0), 'шошго бүр tr()-ээр');
+  /* синтетик бус бүдүүвчид (ижил талбарууд) L/M хэвээр */
+  const plain = extraCols(resolveSchema(blokgui6));
+  assert.equal(resolveSchema(blokgui6).synthetic, false);
+  assert.deepEqual(plain.filter((c) => c.key === 'L' || c.key === 'M').map((c) => c.field), ['Ажил_гүйцэтгэл', 'Төлөвлөгөөт_гүйцэтгэл1'], 'синтетик бус — L/M харагдана');
+  /* ⚠️ 2026-10-09: Editor Tracking нь ЖААЗ бичсэн хүн/огноо — шошго + tooltip */
+  const lab = Object.fromEntries(cols.map((c) => [c.key, c.label()]));
+  assert.deepEqual([lab.cre, lab.creBy, lab.ed, lab.edBy], ['Жааз бичсэн огноо', 'Жааз бичигч', 'Жааз засварласан огноо', 'Жааз засварлагч']);
+  assert.ok(cols.filter((c) => /^(cre|creBy|ed|edBy)$/.test(c.key)).every((c) => typeof c.hint === 'function' && /жааз/i.test(c.hint())), 'жаазны tooltip');
+  assert.ok(cols.filter((c) => !/^(cre|creBy|ed|edBy)$/.test(c.key)).every((c) => c.hint === undefined), 'бусад баганад tooltip-ийн тайлбаргүй');
+  /* ⚠️ 2026-10-09: БАГАНА ТУС БҮРИЙН өргөний түлхүүр, төрлийн анхдагч руу унана */
+  assert.equal(new Set(cols.map((c) => c.wKey)).size, cols.length, 'өргөний түлхүүр багана бүрд ӨӨР');
+  const gSc = cols.find((c) => c.key === 'gS');
+  assert.equal(gSc.wKey, 'x-gS');
+  assert.deepEqual(gSc.wStyle, { width: 'var(--w-x-gS, var(--w-xd))', minWidth: 'var(--w-x-gS, var(--w-xd))', maxWidth: 'var(--w-x-gS, var(--w-xd))' }, 'огнооны баганын анхдагч --w-xd');
+  assert.equal(cols.find((c) => c.key === 'hun').wStyle.width, 'var(--w-x-hun, var(--w-xn))');
+  assert.equal(cols.find((c) => c.key === 'edBy').wStyle.width, 'var(--w-x-edBy, var(--w-xu))');
 
   /* (а)(б) барилгын: блокийн нэр ТААРАХГҮЙ, мөрийн түвшний талбаргүй бол багана алга */
   const bld = resolveSchema([...base, F('F5_1_гүйцэтгэл'), F('F5_1_obyem'), F('F5_1_geree_ehleh', 'esriFieldTypeDate'),
@@ -469,7 +488,7 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual(extraCols(null), []);
 
   /* (в) утга — `raw`-аас, null ≠ 0 */
-  const col = (k) => cols.find((c) => c.key === k);
+  const col = (k) => cols.find((c) => c.key === k) ?? plain.find((c) => c.key === k);
   const r = (raw) => ({ raw });
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: 0 })), { text: '0' }, 'хэмжсэн тэг «0»');
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: null })), { text: '' }, 'null хоосон (0 БИШ)');

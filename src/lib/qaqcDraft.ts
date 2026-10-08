@@ -322,18 +322,23 @@ export function draftFromState(
  * ЗӨРЧЛИЙН ДАРАА СУУРИЙГ ШИНЭЧИЛНЭ (⚠️ 2026-10-09). Хадгалахад зөрчилтэй гарсан нүдийг
  * хэрэглэгч шинэ серверийн утгыг ХАРСАН тул суурь нь тэр утга болно — эс бөгөөс дараагийн
  * «Хадгалах» нь мөн л хуучин суурьтай жишиж зөрчил гэсээр, санаатай дарах зам хаагдана.
- * Агшин хөндөгдөхгүй (утга өөрчлөгдөөгүй).
+ * Агшин хөндөгдөхгүй (утга өөрчлөгдөөгүй) — `stamp` өгөөгүй үед.
+ * ⚠️ 2026-10-09: `stamp` өгвөл шинэчилсэн нүд ШИНЭ агшин авна. Агшингүй бол хадгалсан
+ *    (локал/алсын) ноорогтой нэгтгэхэд (`mergeQaqcDrafts`) агшин ба утга тэнцүү тул ХУУЧИН
+ *    суурьтай хуулбар ялж, шинэ суурь хэзээ ч хадгалагдахгүй (дахин ачаалахад зөрчил дахин
+ *    гарна). Хадгалах замд (`Qaqc.tsx` `save`) заавал өгнө.
  */
 export function rebaseQaqcCells(
   st: QaqcDraftState,
   bases: ReadonlyMap<string, string | null>,
+  stamp?: () => number,
 ): QaqcDraftState {
   let cells: QaqcDraftState['cells'] | null = null;
   for (const [k, b] of bases) {
     const c = st.cells.get(k);
     if (!c || c.b === b) continue;
     cells ??= new Map(st.cells);
-    cells.set(k, { ...c, b });
+    cells.set(k, stamp ? { ...c, b, t: stamp() } : { ...c, b });
   }
   return cells ? { cells, gone: st.gone } : st;
 }

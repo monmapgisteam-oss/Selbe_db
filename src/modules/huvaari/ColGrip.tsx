@@ -14,6 +14,8 @@ type Grip = ReturnType<ReturnType<typeof useColWidths>['grip']>;
  *    урьд нь нэг өргөнийг 10 удаа Tab-аар дайрч гардаг байв.
  * ⚠️ 2026-10-08: багана бүр ТУСДАА өргөнтэй болсон (`useColWidths`-ийн ⚠️) тул бүх бариул Tab-д;
  *    `tab` нь сонголт хэвээр (анхдагч `true`).
+ * ⚠️ 2026-10-09: гар — сум ±8 · Home/End доод/дээд · Enter/Delete анхдагч; давталтын утга `keyup`/`blur`-д
+ *    хадгалагдана (`useColWidths`-ийн ⚠️).
  */
 export function ColGrip({ g, label, tab = true }: { g: Grip; label: string; tab?: boolean }) {
   return (
@@ -29,6 +31,8 @@ export function ColGrip({ g, label, tab = true }: { g: Grip; label: string; tab?
       title={tr('Чирж баганын өргөнийг өөрчилнө · давхар дарвал анхны өргөн')}
       onPointerDown={g.onPointerDown}
       onKeyDown={g.onKeyDown}
+      onKeyUp={g.onKeyUp}
+      onBlur={g.onBlur}
       onDoubleClick={g.onDoubleClick}
     />
   );

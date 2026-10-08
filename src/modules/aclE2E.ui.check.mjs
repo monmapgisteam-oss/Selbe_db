@@ -519,6 +519,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   rowOf().onFlipRemove(); m.render();
   takeConfirms();
   save().props.onClick({});
+  /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
+  await settle(() => { m.render(); return fake.inflight > 0 || acl().length > 0 || P.hasAccess(u); });
   await idle(); m.render();
   ok(takeConfirms().some((c) => /УСТГАГДАНА/.test(c)), `${tag}: устгахыг асуусан`);
   await P.initRemote(false, true); await idle();
@@ -540,6 +542,7 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(back, `${tag}: «Буцаах» товч`);
   setConfirmAnswer(true);
   back.el.props.onClick({});
+  await settle(() => fake.inflight > 0 || OPS.aclPendingFor(hard) || P.listRemoved().includes(hard));
   await idle(); await P.initRemote(false, true); await idle();
   eq(P.hasAccess(hard), true, `${tag}: сэргээв`);
   eq(OB.obyemScope(hard, 'editor'), [], `${tag}: хуучин хуваарилалт эргэж ирэхгүй`);
@@ -566,7 +569,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(rowOf(u).dirty, `${tag}: ноорог`);
   const rm = await run(OPS.flowCellOp(u, 'engineer', g, false));
   ok(rm.ok && !stored(u).includes('guitsetgel'), `${tag}: томилгоо хасагдахад «Гүйцэтгэл» хаагдав`);
-  m.render(); save(); await idle(); m.render();
+  m.render(); save();
+  /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
+  await settle(() => { m.render(); return fake.inflight > 0 || !!rowOf(u)?.dirty; });
+  await idle(); m.render();
   await P.initRemote(false, true); await idle();
   ok(!stored(u).includes('guitsetgel'), `${tag}: хуучин ноорог «Гүйцэтгэл»-ийг БУЦААЖ нээхгүй (${stored(u)})`);
   ok(!stored(u).includes('gdash'), `${tag}: картын өөрчлөлт (gdash) хадгалагдав`);
@@ -582,7 +588,9 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   preset('injener').el.props.onClick({}); m.render();
   eq(takeConfirms(), [], `${tag}: бөөнөөр preset — худал асуулт алга`);
   ok(rowOf(u2).dirty && rowOf(u2).d.role === 'injener', `${tag}: бөөнөөр preset ноорогт`);
-  save(); await idle(); m.render();
+  save();
+  await settle(() => { m.render(); return fake.inflight > 0 || !!rowOf(u2)?.dirty; });
+  await idle(); m.render();
   /* ⚠️ 2026-10-01: хадгалалтад бичигдэхгүй ч томилгоогоор нээлттэй (`workflowViewsOf`) */
   ok(P.resolveAccess(u2).views.includes('guitsetgel'), `${tag}: бөөнөөр preset — томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
 
@@ -603,7 +611,13 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(await P.removeUser(u3), `${tag}: өөр админ u3-ийг устгав`);
   ok(await P.removeUser(hard), `${tag}: өөр админ хатуу аккаунтыг устгав (tombstone)`);
   await idle(); m.render();
-  save(); await idle(); m.render();
+  save();
+  await settle(() => {
+    m.render();
+    return fake.inflight > 0 || !alerts(m).some((a) => a.includes(u3))
+      || !findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled;
+  });
+  await idle(); m.render();
   await P.initRemote(false, true); await idle();
   eq(P.hasAccess(u3), false, `${tag}: устгагдсан панелийн аккаунт амилахгүй`);
   eq(fake.find(u3), [], `${tag}: ArcGIS-т мөр дахин үүсэхгүй`);
@@ -737,7 +751,9 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m = mount(React.createElement(AclRepairNote, { pane: 'obyem' }));
   const rb = findAll(m.tree, (n) => n.type === 'button' && text(n) === 'Дахин илгээх').map((x) => x.el);
   ok(rb.length >= 1, `${tag}: «Дахин илгээх» товч`);
-  rb[0].props.onClick({}); await idle();
+  rb[0].props.onClick({});
+  await settle(() => { m.render?.(); return fake.inflight > 0 || OB.obyemFailedUsers().includes(f) || fake.json('__obyem__:', f)?.grants?.length !== 1; });
+  await idle();
   ok(!OB.obyemFailedUsers().includes(f) && fake.json('__obyem__:', f)?.grants?.length === 1, `${tag}: дахин илгээгдэв`);
   /* устгагдсан аккаунтын энгийн эрх — «Зөвшөөрөл» хуудсанд л харагдах ёстой */
   const ghost = 'ui_ghost_caps';
@@ -745,7 +761,9 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   await P.initRemote(false, true); await idle();
   m = mount(React.createElement(AclRepairNote, { pane: 'zovshoorol' }));
   ok(alerts(m).some((a) => a.includes(ghost)), `${tag}: устгагдсан аккаунтын үлдэгдэл жагсаагдав`);
-  btn(m, /^Цэвэрлэх$/)[0].props.onClick({}); await idle();
+  btn(m, /^Цэвэрлэх$/)[0].props.onClick({});
+  await settle(() => { m.render?.(); return fake.inflight > 0 || fake.find(`__cap__:${ghost}`).length > 0; });
+  await idle();
   eq(fake.find(`__cap__:${ghost}`), [], `${tag}: «Цэвэрлэх» → ArcGIS-оос арилав`);
 
   /* (3) матриц — устгагдсан · админ */
@@ -781,7 +799,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(btn(m, /шинэ хуудас — загварт тохируулаагүй/).length, 0, `${tag}: дарахад ноорогт «тохируулсан»`);
   const saveB = findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el;
   ok(!saveB.props.disabled, `${tag}: «Хадгалах» идэвхтэй`);
-  saveB.props.onClick({}); await idle(); m.render();
+  saveB.props.onClick({});
+  /* ⚠️ 2026-10-09: хамгийн эрсдэлтэй — ErhTypes «Хадгалах» нь `__type__:injener`-ийг бичнэ; seen бичигдтэл хүлээнэ */
+  await settle(() => { m.render?.(); return fake.inflight > 0 || !Array.isArray(fake.json('__type__:', 'injener')?.seen) || RT.unseenViews('injener').length > 0; });
+  await idle(); m.render();
   eq(RT.unseenViews('injener'), [], `${tag}: хадгалсны дараа тэмдэг арилав`);
   ok(Array.isArray(fake.json('__type__:', 'injener')?.seen), `${tag}: ArcGIS-т seen бичигдэв`);
   console.log('✅ §I засварын UI: картын урсгалтай хуудас · «Дахин олгох» · «Дахин илгээх» · устгагдсаны «Цэвэрлэх» · матрицын тэмдэг · шинэ аккаунтын төрөл · «шинэ хуудас» тэмдэг');

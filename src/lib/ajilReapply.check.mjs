@@ -122,6 +122,9 @@ let claimImpl = async () => null;
 const rel = { n: 0 };
 A._io.loadPlanPending = (k) => planImpl(k);
 A._io.obyemBusy = (k) => obyemImpl(k);
+/* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — анхдагчаар чөлөөтэй */
+let archImpl = async () => null;
+A._io.archivingBusy = (k) => archImpl(k);
 A._io.claimApply = (oid, me) => claimImpl(oid, me);
 A._io.releaseApply = async () => { rel.n += 1; };
 /* ⚠️ 2026-10-09: `markApplied`-ийн өмнөх түгжээний дахин уншилт — анхдагчаар минийх */
@@ -255,6 +258,16 @@ if (globalThis.navigator?.locks?.request) {
   assert.equal(r.ok, false); assert.match(r.error, /яг одоо батлаж байна/);
   assert.equal(c.write, 0, 'обьём батлагдаж байхад жааз солив');
   obyemImpl = async () => null;
+  /* ⚠️ 2026-10-09: гүйцэтгэлийн АРХИВЛАЛТ явж байхад ба төлөв уншигдахгүй бол хаана (fail-closed) */
+  archImpl = async () => ({ who: 'arhivlagch', at: 1 });
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /arhivlagch гүйцэтгэлийг яг одоо архивлаж байна/, r.error);
+  assert.equal(c.write, 0, 'архивлаж байхад жааз бичив');
+  archImpl = async () => { throw new Error('сүлжээ'); };
+  r = await go(30);
+  assert.equal(r.ok, false); assert.match(r.error, /архивлалтын төлөв уншигдсангүй/, r.error);
+  assert.equal(c.write, 0, 'архивлалтын төлөв уншигдаагүй атлаа бичив');
+  archImpl = async () => null;
   /* ⚠️ 2026-10-09: хоёр төрөл — жагсаалтын ХОЁР ДАХЬ (гэрээ тэмдэггүй, төлөвлөгөө хагас) ч хаана */
   const PS = (o) => ({ oid: o.oid, pkgKey: 'b1', pkgGroup: 'Багц 1', status: 'Хүлээгдэж буй', author: 'z', authorSent: 1, approver: o.approver ?? null, approverAt: o.approverAt ?? null, reason: o.reason ?? null, note: null, rowCount: 1, payload: '', okRows: null });
   planImpl = async () => [PS({ oid: 5 }), PS({ oid: 6, reason: '__hagas_bichigdsen__:hbatlagch' })];
@@ -348,6 +361,31 @@ if (globalThis.navigator?.locks?.request) {
   /* Зэрэг бичсэн хүн ялсан — түүний нэр */
   m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
   assert.match(await casAjilClaim(m.io({ steal: `${AJIL_CLAIM_MARK}:${T0}:tabC:dorj` }), 'bat', AJIL_STATUS.pending), /dorj/);
+  /* ⚠️ 2026-10-09: ижил хэрэглэгч, өөр таб — ЗӨВШӨӨРВӨЛ (takeover) шилжүүлнэ; өөр хүнийхийг хэзээ ч */
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:bat` });
+  let asked = 0;
+  assert.equal(await casAjilClaim({ ...m.io(), takeover: () => { asked += 1; return true; } }, 'bat', AJIL_STATUS.approved), null);
+  assert.equal(asked, 1); assert.equal(m.s0.row[F.reason], `${AJIL_CLAIM_MARK}:${T0}:tabA:bat`);
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:bat` });
+  assert.match(await casAjilClaim({ ...m.io(), takeover: () => false }, 'bat', AJIL_STATUS.approved), /bat/);
+  assert.equal(m.s0.writes, 0, 'татгалзсан атлаа түгжээ бичив');
+  m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:dorj` });
+  asked = 0;
+  assert.match(await casAjilClaim({ ...m.io(), takeover: () => { asked += 1; return true; } }, 'bat', AJIL_STATUS.approved), /dorj/);
+  assert.equal(asked, 0, 'өөр хүний түгжээг шилжүүлэхийг асуув'); assert.equal(m.s0.writes, 0);
+  /* ⚠️ 2026-10-09: тэмдгийн ХАРИУ АЛДАГДСАН — суусан бол амжилт; суугаагүй бол тайлж (release) алдаа; тодорхой татгалзал шиднэ */
+  const lostIo = (m0, land, rel) => ({ ...m0.io(), release: async () => { rel.n += 1; },
+    write: async (mark) => { m0.s0.writes += 1; if (land) m0.s0.row[F.reason] = mark; throw new TypeError('Failed to fetch'); } });
+  let relN = { n: 0 };
+  m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
+  assert.equal(await casAjilClaim(lostIo(m, true, relN), 'bat', AJIL_STATUS.pending), null, 'суусан тэмдгийг алдаа гэж үзэв');
+  assert.equal(relN.n, 0);
+  m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
+  assert.ok(await casAjilClaim(lostIo(m, false, relN), 'bat', AJIL_STATUS.pending), 'суугаагүй тэмдгийг амжилт гэж үзэв');
+  assert.equal(relN.n, 1, 'үр дүн тодорхойгүй үед тайлсангүй');
+  const { ArcGISError } = await import('@/lib/query.ts');
+  m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
+  await assert.rejects(casAjilClaim({ ...m.io(), write: async () => { throw new ArcGISError('HTTP 403', 'u', undefined, undefined, false, 403); } }, 'bat', AJIL_STATUS.pending), /403/);
   /* Нэргүй — татгалзана */
   assert.ok(await casAjilClaim(mk({ [F.status]: AJIL_STATUS.pending }).io(), '  ', AJIL_STATUS.pending));
   console.log('✅ casAjilClaim — CAS, TTL, өөр таб, уралдаа');
@@ -366,6 +404,10 @@ if (globalThis.navigator?.locks?.request) {
   /* ⚠️ 2026-10-09: хуваарь/обьёмын хаалт A.8-ийн ДАРАА, `applyAdds`-ийн ЯГ ӨМНӨ дахин */
   const iG = body.indexOf('await busyGate(pkgKey)');
   assert.ok(iG > body.indexOf('sameFrame(loaded, now)') && iG < body.indexOf('applyAdds(pkg'), 'busyGate applyAdds-ийн өмнө дахин дуудагдахгүй байна');
+  /* ⚠️ 2026-10-09: `applyAdds`-ийн хариу АЛДАГДСАН бол `maxOid0`-оос хойшхи тэр өдрийн БҮХ мөрийг устгана */
+  const aCatch = body.slice(body.indexOf('await applyAdds(pkg, frame, written)'), body.indexOf('/* A.10 —'));
+  assert.ok(/lost === true/.test(aCatch) && aCatch.includes('> ${maxOid0} AND ${dayFilter(sc.f.fillDate'), 'хариу алдагдсан applyAdds-ийн үлдэгдлийг OID > maxOid0 · өдрөөр цэвэрлэхгүй байна');
+  assert.ok(aCatch.includes("tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй')"), '«үр дүн тодорхойгүй» мессеж алга');
   const D = readFileSync(new URL('./ajilBatlah.ts', import.meta.url), 'utf8');
   const dec = D.slice(D.indexOf('export async function decideAjil'), D.indexOf('export async function withdrawAjil'));
   assert.ok(dec.indexOf('claimAjil(') > 0 && dec.indexOf('claimAjil(') < dec.indexOf('arcgisPost('), 'decideAjil: түгжээ бичилтээс ӨМНӨ байх ёстой');

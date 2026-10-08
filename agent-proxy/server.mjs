@@ -441,7 +441,8 @@ const server = createServer(async (req, res) => {
   /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`rateLimit.mjs`-ийн ⚠️). Нийтлэг `bot` түлхүүр (хуучин,
      `x-bot-user`-гүй бот) ЧӨЛӨӨТ — бүх ботын хэрэглэгч нэг түлхүүр хуваалцдаг тул нэг төсөв бүгдийг
      хаана; `bot:<id>` нь хэрэглэгч бүрийн төсөвтэй. */
-  const budgeted = caller !== "bot";
+  /* ⚠️ 2026-10-09: төсөв унтраалттай (`DAILY_TOKEN_BUDGET=0`) бол тооцоо ОГТ хийхгүй */
+  const budgeted = caller !== "bot" && DAILY_TOKEN_BUDGET > 0;
   if (budgeted && budget.over(caller, DAILY_TOKEN_BUDGET)) {
     json(res, 429, { error: BUDGET_MSG, code: "daily_budget", retryable: false });
     return;

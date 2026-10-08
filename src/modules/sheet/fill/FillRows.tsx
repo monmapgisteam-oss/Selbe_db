@@ -195,8 +195,12 @@ export function FillRows({
                        *    өмнөх архив (`ovBase`), нэмэлт = нийт − суурь. Нэгж нь горимын.
                        */
                       const volR = r.vol != null && r.vol > 0 ? r.vol : null;
+                      /* ⚠️ 2026-10-09: блокгүй багцын (`sc.synthetic`) обьёмгүй нүд — хувь null; `act` нь
+                         Excel загварын 0 тул «өмнөх: 0%» гэж худал харуулдаг байв (null ≠ 0) */
                       const pctOf = (x: SheetRow) =>
-                        volR != null && x.obyem[bi] != null ? x.obyem[bi]! / volR : x.act[bi];
+                        volR != null && x.obyem[bi] != null
+                          ? x.obyem[bi]! / volR
+                          : sc?.synthetic && x.obyem[bi] == null ? null : x.act[bi];
                       const incD = dirty ? parseInc(pending[key]) : null;
                       /** Нэмэлт (горимын нэгжээр); илэрхийлэх аргагүй бол `null` */
                       const incAmt = incD
@@ -600,6 +604,8 @@ export function FillRows({
                         <td
                           key={`x${x.key}`}
                           className={cls(`${x.kind === "int" || x.kind === "pct" ? "num " : ""}${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
+                          /* ⚠️ 2026-10-09: багана тус бүрийн өргөн (`ExtraCol.wStyle`) — толгойтой ИЖИЛ объект */
+                          style={x.wStyle}
                           {...ro(RO.extra)}
                           title={v.title ?? RO.extra}
                         >

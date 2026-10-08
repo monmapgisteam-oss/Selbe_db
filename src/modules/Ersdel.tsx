@@ -844,11 +844,14 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
        зурсан полигон зурагнаас алга болж, харин `area` төлөв (загварчлал)
        хэвээр үлддэг байв — хил харагдахгүй ус. Төлөвөөс полигоныг сэргээнэ. */
     const cur = areaRef.current;
+    /* ⚠️ 2026-10-09: СҮҮЛД ХЭРЭГЖСЭН талбайн график — хөрвүүлэлт унахад ҮҮНЭЭС бусдыг арилгана */
+    let applied: __esri.Graphic | null = null;
     if (cur?.length) {
-      gl.add(new Graphic({
+      applied = new Graphic({
         geometry: new Polygon({ rings: cur, spatialReference: { wkid: areaWkidRef.current } }),
         symbol: svm.polygonSymbol,
-      }));
+      });
+      gl.add(applied);
     }
     /** Сүүлийн хөрвүүлэлт л хүчинтэй — асинхрон `areaToWm` хариу эрэмбээ алдаж ирэхэд */
     let areaSeq = 0;
@@ -873,6 +876,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         /* Шинэ полигон БЭЛЭН болсон тул л өмнөхийг арилгана */
         const old = gl.graphics.filter((x) => x !== ev.graphic).toArray();
         if (old.length) gl.removeMany(old);
+        applied = ev.graphic ?? null;
         areaWkidRef.current = wa.wkid;
         setArea(wa.rings);
         /* ⚠️ Зурсан талбай руу ойртоно — загварчлал зөвхөн тэнд ажиллах тул
@@ -883,7 +887,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         }
       }, (err: unknown) => {
         if (mine !== areaSeq || view.destroyed) return;
-        if (ev.graphic) gl.remove(ev.graphic);
+        /* ⚠️ 2026-10-09: зөвхөн энэ полигоныг биш, СҮҮЛД ХЭРЭГЖСЭН талбайнхаас (`applied`) БУСАД
+           бүх графикийг арилгана. Урьд нь дараалан хоёр зурахад эхнийх нь хариу хоцорч (`mine`
+           хуучирсан) алгасагдаж, хоёр дахь нь унавал эхний полигон зураг дээр «хэрэгжсэн» мэт
+           үлдэж, загварчлал өөр (өмнөх) талбай дээр явдаг байв. */
+        const stray = gl.graphics.filter((x) => x !== applied).toArray();
+        if (stray.length) gl.removeMany(stray);
         setFloodErr(err instanceof Error ? err.message : String(err));
       });
     });

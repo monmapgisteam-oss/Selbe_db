@@ -84,7 +84,7 @@ clone/worktree-д алга: `cp .env.example .env`. Үгүй бол `npm test`-�
 
 ```
 npx tsc --noEmit
-npx eslint src                 # 0 алдаа (warning-ууд хуучнаас үлдсэн)
+npx eslint src tools           # 0 алдаа (warning-ууд хуучнаас үлдсэн)
 npm test
 node tools/i18n-extract.mjs    # дутуу 0, илүүдэл 0
 ```

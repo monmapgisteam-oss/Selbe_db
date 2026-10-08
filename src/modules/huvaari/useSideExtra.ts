@@ -20,8 +20,8 @@ import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent } 
  */
 const LS = 'selbe-huvaari-side-extra';
 const MAX = 900;
-/** Хуанлид заавал үлдэх хамгийн бага өргөн (px) */
-const TL_MIN = 240;
+/** Хуанлид заавал үлдэх хамгийн бага өргөн (px) — ⚠️ 2026-10-09: `useColWidths` ч мөн үүгээр (нэг хязгаар) */
+export const TL_MIN = 240;
 const NARROW = '(max-width: 1180px)';
 const clampX = (v: number, lim = MAX) => Math.max(0, Math.min(MAX, lim, Math.round(v)));
 

@@ -554,48 +554,52 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
    * гэж унана — талбарын нэр, утга зөв байсан ч.
    */
   const wrapped = rows.map((attributes) => ({ attributes }));
-  const j = (await post('/applyEdits', { [key]: JSON.stringify(wrapped) })) as Record<
-    string,
-    { success?: boolean; error?: { description?: string } }[]
-  >;
   /*
-   * ⚠️ `applyEdits` нь мөр БҮРИЙН үр дүнг тусад нь буцаадаг: бүхэл хүсэлт
-   * амжилттай ч дотор нь нэг мөр унасан байж болно.
-   */
-  const results = j[key === 'adds' ? 'addResults' : 'updateResults'] ?? [];
-  const bad = results.filter((r) => !r.success);
-  /*
-   * ⚠️ ХАГАС БИЧИГДСЭН ҮЕД Ч ХҮЧИНГҮЙ БОЛГОНО — `bad.length`-ийг шалгахаас
-   * ӨМНӨ. `applyEdits` мөр бүрийг ТУСАД НЬ боддог тул нэг нь унасан ч бусад
-   * нь ArcGIS дээр СУУСАН байна; алдааны замд кэшийг үлдээвэл дэлгэц бодит
-   * байдлаас хоцорно.
+   * ⚠️ БИЧИХ ОРОЛДЛОГО БҮРИЙН ДАРАА ХҮЧИНГҮЙ БОЛГОНО — `finally` дотор (2026-10-09 засвар).
+   * Урьд нь (2026-09 дүрэм) «хариунд нэг ч мөр `success` байвал» л хүчингүй болгодог байв: хагас
+   * бичигдсэн хариуг барьдаг ч хариу АЛДАГДСАН (timeout · сүлжээ — `post` шидсэн) үед сервер бичсэн
+   * байж болох атлаа кэш хуучин хэвээр үлддэг байлаа. Одоо `post` дуудагдсан бол ҮРГЭЛЖ.
    *
-   * ⚠️ Урьд нь энэ дуудлага ОГТ БАЙГААГҮЙ. Хянагч ажил батлахад ArcGIS
-   * шинэчлэгддэг ч `schemData` («Үйл ажиллагааны схем») ба
-   * `ExecKpi.loadReviewAging` кэшээ барьдаг тул 5 минут хүртэл ХУУЧИН тоо
-   * харагдаж, шийдвэр хийгдээгүй мэт сэтгэгдэл төрүүлж байв.
+   * ⚠️ Эх шалтгаан (хэвээр): энэ дуудлага ОГТ БАЙГААГҮЙ үед хянагч ажил батлахад ArcGIS
+   * шинэчлэгддэг ч `schemData` («Үйл ажиллагааны схем») ба `ExecKpi.loadReviewAging` кэшээ
+   * барьдаг тул 5 минут хүртэл ХУУЧИН тоо харагдаж байв.
    */
-  if (results.some((r) => r.success)) invalidate('HYANALT');
-  if (bad.length) {
-    throw new HyanaltError(
-      tr('{0} мөр хадгалагдсангүй: {1}', bad.length, bad[0].error?.description ?? tr('тодорхойгүй')),
-    );
+  let tried = false;
+  try {
+    tried = true;
+    const j = (await post('/applyEdits', { [key]: JSON.stringify(wrapped) })) as Record<
+      string,
+      { success?: boolean; error?: { description?: string } }[]
+    >;
+    /*
+     * ⚠️ `applyEdits` нь мөр БҮРИЙН үр дүнг тусад нь буцаадаг: бүхэл хүсэлт
+     * амжилттай ч дотор нь нэг мөр унасан байж болно.
+     */
+    const results = j[key === 'adds' ? 'addResults' : 'updateResults'] ?? [];
+    const bad = results.filter((r) => !r.success);
+    if (bad.length) {
+      throw new HyanaltError(
+        tr('{0} мөр хадгалагдсангүй: {1}', bad.length, bad[0].error?.description ?? tr('тодорхойгүй')),
+      );
+    }
+    /*
+     * ⚠️ ДУТУУ/ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-25-ны аудит) —
+     *    `submission.ts`, `ipcAutoWrite.ts`-тэй ижил дүрэм. HTTP 200
+     *    `{addResults: []}` ирэхэд `bad` хоосон тул урьд нь амжилттай буцдаг
+     *    байв: `submitForReview` «Хяналтад илгээв» гэсэн атлаа хяналтын мөр
+     *    ҮҮСЭЭГҮЙ (инженерт хэзээ ч очихгүй), `apply`-д мөр «Шилжүүлсэн»
+     *    болоогүй атлаа нэгтгэл/IPC бичигддэг байлаа. Илгээсэн мөр бүрд ЯГ
+     *    нэг үр дүн ирэх ёстой.
+     */
+    if (results.length !== rows.length) {
+      throw new HyanaltError(
+        tr('{0} мөр хадгалагдсангүй: {1}', Math.abs(rows.length - results.length), tr('серверээс үр дүн дутуу ирлээ')),
+      );
+    }
+    return results;
+  } finally {
+    if (tried) invalidate('HYANALT');
   }
-  /*
-   * ⚠️ ДУТУУ/ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-25-ны аудит) —
-   *    `submission.ts`, `ipcAutoWrite.ts`-тэй ижил дүрэм. HTTP 200
-   *    `{addResults: []}` ирэхэд `bad` хоосон тул урьд нь амжилттай буцдаг
-   *    байв: `submitForReview` «Хяналтад илгээв» гэсэн атлаа хяналтын мөр
-   *    ҮҮСЭЭГҮЙ (инженерт хэзээ ч очихгүй), `apply`-д мөр «Шилжүүлсэн»
-   *    болоогүй атлаа нэгтгэл/IPC бичигддэг байлаа. Илгээсэн мөр бүрд ЯГ
-   *    нэг үр дүн ирэх ёстой.
-   */
-  if (results.length !== rows.length) {
-    throw new HyanaltError(
-      tr('{0} мөр хадгалагдсангүй: {1}', Math.abs(rows.length - results.length), tr('серверээс үр дүн дутуу ирлээ')),
-    );
-  }
-  return results;
 };
 
 export const addRows = (rows: Attrs[]) => edit('adds', rows);

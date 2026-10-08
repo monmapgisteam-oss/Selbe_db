@@ -162,4 +162,31 @@ assert.equal(countReportImages([rep, rep]), 4, 'ижил тайлангийн з
   assert.equal(rh.sections[0].items[0].photos[0].heic, true);
 }
 console.log('✅ UB огноо · файлын нэрийн нөөц · огноогүй PDF · зургийн тоо · байтгүй зураг · HEIC');
+
+/* ══════════ fetchAttachment — текст хавсралт ≠ ArcGIS алдаа (2026-10-09) ══════════ */
+/* ⚠️ Урьд нь json/text/html БҮХ 200 хариуг алдаа гэж үзэж `.txt/.json/.html` хавсралт (Чанар)
+   хэзээ ч нээгддэггүй байв. Алдаа = ЗӨВХӨН `{ error }` түлхүүртэй JSON. */
+{
+  const { fetchAttachment } = await import('@/lib/uzlegReport.ts');
+  const realF = globalThis.fetch;
+  let reply = { ct: 'text/plain', body: 'hello' };
+  globalThis.fetch = async () => new Response(reply.body, { status: 200, headers: { 'content-type': reply.ct } });
+  try {
+    const url = 'https://example.invalid/x/FeatureServer/0/1/attachments/2';
+    const t = await fetchAttachment(url);
+    assert.ok(t, 'text/plain хавсралт → Blob');
+    assert.equal(await t.text(), 'hello');
+    reply = { ct: 'application/json', body: '{"a":1}' };
+    assert.equal(await (await fetchAttachment(url)).text(), '{"a":1}', 'error-гүй JSON хавсралт → Blob');
+    reply = { ct: 'text/html', body: '<p>x</p>' };
+    assert.ok(await fetchAttachment(url), 'HTML хавсралт → Blob');
+    reply = { ct: 'application/json', body: '{"error":{"code":400,"message":"bad"}}' };
+    assert.equal(await fetchAttachment(url), null, 'ArcGIS алдаа (200 + {error}) → null');
+    reply = { ct: 'image/png', body: 'PNG' };
+    assert.ok(await fetchAttachment(url), 'зураг → Blob');
+  } finally {
+    globalThis.fetch = realF;
+  }
+}
+console.log('✅ fetchAttachment: текст/JSON/HTML хавсралт нээгдэнэ, зөвхөн {error} JSON алдаа');
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

@@ -104,5 +104,9 @@ const body = (src, name) => {
     'цэвэрлэлтийн давталт түлхүүр бүрт биш (Map)');
   assert.ok(!/hdClearTries\.current = 0/.test(U) && !/hdClearTries\.current \+= 1/.test(U), 'хуваалцсан тоолуур үлдсэн');
   assert.ok(/hdSt\.st === 'err' && dirtyN > 0/.test(U), 'засваргүй err-д гарах анхааруулга гарсаар');
+  /* ⚠️ 2026-10-09: хамтрагчийн tombstone ч буцаалтын агшинд (`onRemote`) хүрнэ, мета «бусдын» хэвээр */
+  const apT = body(U, 'hdApply');
+  assert.ok(/for \(const \[k, t\] of d\.del\)[\s\S]{0,300}hdPrev\.current\.has\(k\)[\s\S]{0,200}remote\.add\(k\);\s*meta\.set\(k, \{ at: t, user: delBy \}\)/.test(apT),
+    'хамтрагчийн буцаалт (tombstone) буцаалтын агшныг хүчингүй болгохгүй байна');
 }
 console.log('✅ sharedDraft: автомат хадгалалтын эх кодын шалгуур давлаа');

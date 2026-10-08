@@ -26,10 +26,31 @@ export type ExtraCol = {
   kind: ExtraKind;
   /** ⚠️ Функц — хэл солиход `useMemo`-д хадгалсан шошго хуучрахгүй (зурах бүрд `tr()`) */
   label: () => string;
+  /** ⚠️ 2026-10-09: толгойн tooltip-ийн тайлбар (байвал талбарын нэрийн ӨМНӨ) */
+  hint?: () => string;
+  /**
+   * ⚠️ 2026-10-09: БАГАНА ТУС БҮРИЙН өргөний түлхүүр (`useColWidths.grip` → `--w-x-<key>`).
+   *    Урьд нь бариул нь ТӨРЛИЙН хувьсагч (`--w-xd` г.м.) чирдэг тул нэг огнооны баганыг
+   *    өргөсгөхөд бүх 7 огнооны багана хамт өргөсдөг байв. Түлхүүр нь `key`-ээс (тогтвортой).
+   */
+  wKey: string;
+  /**
+   * ⚠️ 2026-10-09: нүд/толгойн inline өргөн — `var(--w-x-<key>, var(--w-<төрөл>))`: багана тус бүрийн
+   *    хувьсагч тавигдаагүй бол ТӨРЛИЙН анхдагч (`sheet.module.css` `.b32 { --w-xn … }`, мөн хуучин
+   *    хадгалсан төрлийн өргөн) хэвээр үйлчилнэ. Объект нь багана тутамд НЭГ (мөр бүрд шинээр биш).
+   */
+  wStyle: { width: string; minWidth: string; maxWidth: string };
 };
 
+/**
+ * ⚠️ 2026-10-09: «Үүсгэсэн/Үүсгэгч/Засварласан/Засварлагч» нь архивын ЖААЗНЫ мөрийн Editor Tracking —
+ *    жааз бүр шинэ мөрүүдээр бичигддэг тул энэ нь «хэн/хэзээ ЖААЗ бичсэн» (батлалт · архивлалт),
+ *    тухайн ажлыг хэн бөглөснийг БИШ. Шошго нь үүнийг шууд хэлнэ.
+ */
+const frameHint = () => tr('Архивын жаазны мөрийг хэн/хэзээ бичсэн (Editor Tracking) — тухайн ажлыг хэн бөглөснийг БИШ.');
+
 /** Дараалал нь ХЭРЭГЛЭГЧИЙН заасан (2026-10-09) — өөрчлөхгүй. */
-const DEFS: { key: string; kind: ExtraKind; pick: (f: Schema["f"]) => string | null | undefined; label: () => string }[] = [
+const DEFS: { key: string; kind: ExtraKind; pick: (f: Schema["f"]) => string | null | undefined; label: () => string; hint?: () => string }[] = [
   { key: "des", kind: "int", pick: (f) => f.des, label: () => tr('Дэс дугаар') },
   { key: "ham", kind: "text", pick: (f) => f.ham, label: () => tr('Хамаарал') },
   { key: "gun", kind: "int", pick: (f) => f.gun, label: () => tr('Шатлал') },
@@ -42,19 +63,35 @@ const DEFS: { key: string; kind: ExtraKind; pick: (f: Schema["f"]) => string | n
   { key: "fill", kind: "day", pick: (f) => f.fillDate, label: () => tr('Бөглөсөн огноо') },
   { key: "L", kind: "pct", pick: (f) => f.rowAct, label: () => tr('Ажил гүйцэтгэл (хадгалсан)') },
   { key: "M", kind: "pct", pick: (f) => f.rowPlan1, label: () => tr('Төлөвлөгөөт гүйцэтгэл1 (хадгалсан)') },
-  { key: "cre", kind: "stamp", pick: (f) => f.created, label: () => tr('Үүсгэсэн') },
-  { key: "creBy", kind: "user", pick: (f) => f.creator, label: () => tr('Үүсгэгч') },
-  { key: "ed", kind: "stamp", pick: (f) => f.edited, label: () => tr('Засварласан') },
-  { key: "edBy", kind: "user", pick: (f) => f.editor, label: () => tr('Засварлагч') },
+  /* ⚠️ 2026-10-09: «Жааз …» — `frameHint`-ийн ⚠️ (урьд нь «Үүсгэсэн/Үүсгэгч/Засварласан/Засварлагч») */
+  { key: "cre", kind: "stamp", pick: (f) => f.created, label: () => tr('Жааз бичсэн огноо'), hint: frameHint },
+  { key: "creBy", kind: "user", pick: (f) => f.creator, label: () => tr('Жааз бичигч'), hint: frameHint },
+  { key: "ed", kind: "stamp", pick: (f) => f.edited, label: () => tr('Жааз засварласан огноо'), hint: frameHint },
+  { key: "edBy", kind: "user", pick: (f) => f.editor, label: () => tr('Жааз засварлагч'), hint: frameHint },
 ];
+
+/**
+ * ⚠️ 2026-10-09: синтетик (блокгүй) бүдүүвчид ХАСАГДАХ баганууд — хадгалсан L/M нь ЯГ тэр баганууд
+ *    (`Ажил_гүйцэтгэл` · `Төлөвлөгөөт_гүйцэтгэл1`) үндсэн «Ажил гүйцэтгэл» / «Төлөвлөгөөт
+ *    гүйцэтгэл» нүдэнд аль хэдийн харагддаг; давхардахаас гадна хэмжилтгүй мөрд Excel загварын 0-ийг
+ *    «0%» гэж харуулж (null ≠ 0) бодогдсон хоосон нүдтэй зөрдөг байв.
+ */
+const SYN_HIDE = new Set(["L", "M"]);
 
 /** Энэ бүдүүвчид БАЙГАА «Бусад талбар» баганууд — дарааллаараа. */
 export function extraCols(sc: Schema | null | undefined): ExtraCol[] {
   if (!sc) return [];
   const out: ExtraCol[] = [];
   for (const d of DEFS) {
+    if (sc.synthetic && SYN_HIDE.has(d.key)) continue;
     const field = d.pick(sc.f);
-    if (field) out.push({ key: d.key, field, kind: d.kind, label: d.label });
+    if (!field) continue;
+    /* ⚠️ 2026-10-09: багана тус бүрийн өргөн, төрлийн анхдагч руу унана (`ExtraCol.wStyle`-ийн ⚠️) */
+    const w = `var(--w-x-${d.key}, var(--w-${extraCls(d.kind).slice(2)}))`;
+    out.push({
+      key: d.key, field, kind: d.kind, label: d.label, ...(d.hint ? { hint: d.hint } : {}),
+      wKey: `x-${d.key}`, wStyle: { width: w, minWidth: w, maxWidth: w },
+    });
   }
   return out;
 }

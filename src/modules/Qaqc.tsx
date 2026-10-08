@@ -1383,8 +1383,12 @@ export function Qaqc() {
       setEditCell(null);
       /* ⚠️ 2026-10-09: зөрчилтэй нүдний суурь = ОДООГИЙН серверийн утга — хэрэглэгч түүнийг
          харсан тул дахин «Хадгалах» нь санаатай дарах болно (`rebaseQaqcCells`-ийн ⚠️). */
+      /* ⚠️ 2026-10-09: ШИНЭ АГШИНТАЙ (`stamp`) — эс бөгөөс `pend`-ийн агуулга өөрчлөгдөөгүй тул эффект
+         юу ч бичихгүй, доорх `retirePend` → `persistLocal`-ийн нэгтгэлд хадгалсан ноорогийн ХУУЧИН
+         суурьтай ижил агшинтай хуулбар ялж, шинэ суурь локал/алсад ХЭЗЭЭ Ч хадгалагддаггүй байв.
+         `retirePend` нь rebase-ийн ДАРАА ноорогийг ИЛ (эффектээс хамааралгүй) бичнэ. */
       if (conflicts.length) {
-        draftStRef.current = rebaseQaqcCells(draftStRef.current, new Map(conflicts.map((c) => [c.key, c.live])));
+        draftStRef.current = rebaseQaqcCells(draftStRef.current, new Map(conflicts.map((c) => [c.key, c.live])), stamp);
       }
       /* ⚠️ 2026-10-01: ХАДГАЛСАН НҮД → БУЛШ (устгал биш). Урьд нь ArcGIS-ийн ноорогийг
          устгадаг байсан тул (а) өөр төхөөрөмжийн хуучин локал ноорог хадгалсан нүдийг
@@ -1450,7 +1454,7 @@ export function Qaqc() {
     } finally {
       setBusy(false);
     }
-  }, [busy, dirtyCount, canEdit, rows, pend, maxLen, pkg.key, load, done, clearRemoteQueue, retirePend, keepScroll, awaitRemoteInflight, requeueRemote]);
+  }, [busy, dirtyCount, canEdit, rows, pend, maxLen, pkg.key, load, done, clearRemoteQueue, retirePend, keepScroll, awaitRemoteInflight, requeueRemote, stamp]);
 
   /* Ctrl+S — бөглөх хуудастай ижил */
   /* ⚠️ НЭЭЛТТЭЙ НҮДИЙГ ЭХЛЭЭД COMMIT (2026-09-25 аудит): нүдний текст зөвхөн

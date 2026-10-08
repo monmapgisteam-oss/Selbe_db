@@ -16,7 +16,7 @@
  * ⚠️ Хуулж авсан бүх `⚠️` тайлбар нь эх кодтойгоо ХАМТ явна — тэдгээр нь
  *    буцаагдаж болохгүй шийдвэрүүд (гүн, огноо, жин, `null ≠ 0`).
  */
-import { cellObyem, cellPct, computeAll, dayToMs, incCell, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, incCell, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -614,6 +614,11 @@ export function overlaySubmission(
        (өөрчлөгдөөгүй нүдийг «өөрчлөгдсөн» гэж будахгүй). Туггүй payload нь
        ХУУЧИН (орлуулах) дүрмээрээ доор. */
     if (sub.mode === "inc") {
+      /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) — нүд нь UI-д
+         түгжээтэй; хуучин ноорог/илгээлтээр ирсэн нэмэлтийг ХАЯНА (`cellKeys`-д ч оруулахгүй). Эс бөгөөс
+         `incCell` нь `obyem_sum`-ийг бичиж `act` (L)-ийг хуучнаар нь үлдээдэг тул архивт L-гүй обьём
+         орох байв. `unmoved` БИШ: тэр нь батлалтыг МӨНХӨД зогсооно, харин энэ нүдийг засах зам алга. */
+      if (synNoVol(sc, r)) continue;
       const res = incCell(r, b, v, !!sc.obyem[b]);
       if (!res) continue;
       r.obyem[b] = res.obyem;

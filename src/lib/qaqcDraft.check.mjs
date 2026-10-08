@@ -338,6 +338,13 @@ console.log('✅ серверт байгаа утга ноорогоос сэр�
   const rb = rebaseQaqcCells(ad.st, new Map([['5:1', 'сервер']]));
   assert.equal(rb.cells.get('5:1').b, 'сервер');
   assert.equal(rb.cells.get('5:1').t, ad.st.cells.get('5:1').t, 'rebase агшинг хөндөхгүй');
+  /* ⚠️ 2026-10-09: `stamp`-тай rebase — хадгалсан (хуучин суурьтай) ноорогтой нэгтгэхэд шинэ суурь ЯЛНА */
+  const rb2 = rebaseQaqcCells(ad.st, new Map([['5:1', 'сервер']]), () => clock.stamp());
+  assert.ok(rb2.cells.get('5:1').t > ad.st.cells.get('5:1').t, 'stamp-тай rebase шинэ агшин авна');
+  const merged = mergeQaqcDrafts(back, draftFromState(rb2, () => undefined));
+  assert.equal(merged.cells.find((c) => c[0] === '5:1')[3], 'сервер', 'шинэ суурь нэгтгэлд хадгалагдана');
+  const mergedOld = mergeQaqcDrafts(back, draftFromState(rb, () => undefined));
+  assert.equal(mergedOld.cells.find((c) => c[0] === '5:1')[3], 'хуучин', '(агшингүй rebase нэгтгэлд алдагддаг — дуудагч stamp өгнө)');
 }
 console.log('✅ нүдний суурь — бичих · унших · сэргээх · rebase');
 

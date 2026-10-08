@@ -23,7 +23,7 @@ import { register } from './dataBus';
 import { BUILDING, HABEA, PKG_BY_BAGTS, LAYER_BY_ID } from './services';
 import { overlapLeftParcels } from './parcelOverlap';
 import { t as tr } from './i18nCore';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 
 /* ══════════════ 1. Обьёмын зөрүү (Гүйцэтгэлийн хяналт) ══════════════ */
@@ -70,6 +70,7 @@ export type Variance = {
    * ⚠️ 2026-09-17: блокгүй 8 багцад `sc.obyem = []` тул тэд ХЭЗЭЭ Ч унахгүй,
    *    зөрүү ч гаргахгүй — `failedPkgs >= PKGS.length` (18) хэзээ ч биелэхгүй
    *    байв. Түвшинг ЭНЭ тоотой харьцуулна.
+   * ⚠️ 2026-10-09: `fillSchema`-аар блокгүй багц `obyem_sum` талбартай бол ХЭМЖИГДЭНЭ (тоолно).
    */
   measurable?: number;
 };
@@ -87,7 +88,7 @@ let varCache: Promise<Variance> | null = null;
  *
  * ⚠️ ТҮЛХҮҮР НЬ `BAGTS_SHEET` — эх сурвалжийг мөшгиж тогтоов: `loadVariance`
  * нь `PKGS` (`bagts.pkg.ts` — `Bagts_*` FeatureServer-ууд) дээр
- * `loadSchema` + `loadRows` дуудна, өөр хүснэгт УНШИХГҮЙ. Яг тэр мөрүүдийг
+ * `fillSchema` (2026-10-09 хүртэл `loadSchema`) + `loadRows` дуудна, өөр хүснэгт УНШИХГҮЙ. Яг тэр мөрүүдийг
  * «Гүйцэтгэл бөглөх» хуудас бичээд `invalidate('BAGTS_SHEET')` дууддаг
  * (`bagtsSheet.ts:1604·1641·1694`). Обьёмын зөрүү нь ТЭР мөрүүдээс бодогддог
  * тул холбоогүй үед CEO-гийн «Обьёмын зөрүү» карт обьём засагдмагц сесс
@@ -98,9 +99,14 @@ export function loadVariance(): Promise<Variance> {
   if (varCache) return varCache;
   const p: Promise<Variance> = (async () => {
     const results = await Promise.allSettled(PKGS.map(async (pkg) => {
-      const sc = await loadSchema(pkg);
-      /* Блокгүй багц — обьёмын багана алга, хэмжигдэхгүй (`null`). */
-      if (sc.obyem.length === 0) return null;
+      /* ⚠️ 2026-10-09: БӨГЛӨХ бүдүүвч (`fillSchema`) — блокгүй багц (5.x · 6.x · 10) синтетик НЭГ
+         блоктой, обьём нь мөрийн `obyem_sum` (хуримтлагдсан). Урьд нь `loadSchema` (`obyem = []`)
+         тул блокгүй багцын Обьём хэтрэлт (obyem_sum > Обьём) CEO-гийн самбарт ХЭЗЭЭ Ч гардаггүй
+         байв. Блоктой багцад `loadSchema(pkg)`-тэй ЯГ ижил. */
+      const sc = await fillSchema(pkg);
+      /* Обьёмын багана алга (блокгүй · `obyem_sum` талбаргүй) — хэмжигдэхгүй (`null`).
+         ⚠️ Синтетик блокт `obyem = [null]` байж болно — уртаар биш, жинхэнэ нэрээр шалгана. */
+      if (!sc.obyem.some(Boolean)) return null;
       /* Зөвхөн зөрүү бодоход хэрэгтэй талбарууд — бүтэн «*» татахад мөр ~60+
          баганатай, 10 багц ~10-20МБ JSON болдог (2026-08-21 аудит) */
       const need = [

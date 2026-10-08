@@ -54,12 +54,14 @@ import {
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
-  approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS,
+  approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS,
   clearPlanPartial, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 /* ⚠️ 2026-10-09: `isLostWrite` нэг эх сурвалжаас (урьд нь энд `butetsEdit.isLostResponse`-ийн хуулбар байв) */
 import { isLostWrite } from '@/lib/lostWrite';
+/* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж байгаа эсэх — `save`-ийн бичихийн өмнөх хаалт (fail-closed) */
+import { archivingBusy } from '@/lib/submission';
 import { setNavDirty } from '@/lib/navGuard';
 import { hdKey, kA, kH, kM, kN, kR, kS, parseKey } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
@@ -134,6 +136,31 @@ const minutesSince = (ms: number | null | undefined, now: number): number => (ms
 const frameIdOf = (x: { rows: readonly { oid: number }[]; snapshot: number | null }): string =>
   `${x.snapshot ?? ''}|${x.rows.map((r) => r.oid).join(',')}`;
 
+/**
+ * ⚠️ 2026-10-09: НӨГӨӨ ТАБЫН ИЛГЭЭЛТИЙН БОДИТ ОГНОО · НӨӨЦИЙН МӨРҮҮД (`xLock`-ийн ⚠️) — UI-ийн түгжээ (эффект) ба
+ *    бичихийн өмнөх шалгалт (`xLockCheck`) НЭГ дүрэм: `actual`/`res` мөр (oid + `keys`-ээр ажлын код) ба сарын
+ *    нөөцийн (`obres`) кодууд.
+ */
+type XLockSet = { oids: Set<number>; des: Set<number> };
+const xLockSetOf = (p: PlanPayload): XLockSet => {
+  const oids = new Set<number>();
+  const des = new Set<number>();
+  for (const k of [...Object.keys(p.actual ?? {}), ...Object.keys(p.res ?? {})]) {
+    const o = Number(k);
+    if (!Number.isFinite(o)) continue;
+    oids.add(o);
+    const d = p.keys?.[k];
+    if (d != null) des.add(d);
+  }
+  for (const k of Object.keys(p.obres ?? {})) {
+    const d = Number(k.slice(0, k.indexOf('|')));
+    if (Number.isFinite(d)) des.add(d);
+  }
+  return { oids, des };
+};
+/** Мөр (oid · ажлын код) түгжээнд орох эсэх — `xLockWhy` ба `xLockCheck`-ийн нэг нөхцөл */
+const xLockHit = (st: XLockSet, oid: number | null, des: number | null): boolean =>
+  (oid != null && st.oids.has(oid)) || (des != null && st.des.has(des));
 /**
  * ⚠️ 2026-10-08: НЭГ ТҮВШНИЙ БУЦААЛТ (Ctrl+Z · «Буцаах») — сүүлийн `applyChanges` багцын ӨМНӨХ агшин.
  *    `spans` — хөндөгдсөн мөрийн (чирэлтэд БҮХ мөрийн) муж; `ob`/`obRes` — хөндөгдсөн `${код}|${блок}`
@@ -569,7 +596,9 @@ export function Huvaari({
     as: cAct, ae: cAct,
     rh: cRes, rm: cRes,
   });
-  const sideAndColRef = useCallback((node: HTMLDivElement | null) => { colW.elRef(node); return sideRef(node); }, [colW.elRef, sideRef]);
+  /* ⚠️ 2026-10-09: `colW.elRef` нь тогтвортой (`useCallback([])`) — шинж чанараар биш, ХУВЬСАГЧААР deps-д (exhaustive-deps) */
+  const colElRef = colW.elRef;
+  const sideAndColRef = useCallback((node: HTMLDivElement | null) => { colElRef(node); return sideRef(node); }, [colElRef, sideRef]);
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-cols', cols ? '1' : '0'); } catch { /* хаалттай орчин */ }
   }, [cols]);
@@ -816,28 +845,14 @@ export function Huvaari({
    *    кодуудыг олно; тэр мөрүүдэд `applyExtra` ба popup-ын бодит/нөөцийн хэсэг ХААЛТТАЙ (шалтгаан ил).
    * ⚠️ FAIL-CLOSED: уншиж дуусаагүй/уншигдаагүй (`set: null`) бол БҮХ мөрөнд хаалттай — огноо · обьём хэвээр.
    */
-  const [xLock, setXLock] = useState<{ oid: number; set: { oids: Set<number>; des: Set<number> } | null } | null>(null);
+  const [xLock, setXLock] = useState<{ oid: number; set: XLockSet | null } | null>(null);
   const pendOtherOid = pendingOther?.oid ?? null;
   useEffect(() => {
     if (pendOtherOid == null) return undefined;
     let dead = false;
     void loadPayload(pendOtherOid).then((p) => {
       if (dead) return;
-      if (!p) { setXLock({ oid: pendOtherOid, set: null }); return; }
-      const oids = new Set<number>();
-      const des = new Set<number>();
-      for (const k of [...Object.keys(p.actual ?? {}), ...Object.keys(p.res ?? {})]) {
-        const o = Number(k);
-        if (!Number.isFinite(o)) continue;
-        oids.add(o);
-        const d = p.keys?.[k];
-        if (d != null) des.add(d);
-      }
-      for (const k of Object.keys(p.obres ?? {})) {
-        const d = Number(k.slice(0, k.indexOf('|')));
-        if (Number.isFinite(d)) des.add(d);
-      }
-      setXLock({ oid: pendOtherOid, set: { oids, des } });
+      setXLock({ oid: pendOtherOid, set: p ? xLockSetOf(p) : null });
     }).catch(() => { if (!dead) setXLock({ oid: pendOtherOid, set: null }); });
     return () => { dead = true; };
   }, [pendOtherOid]);
@@ -847,11 +862,61 @@ export function Huvaari({
     const lab = kind === 'plan' ? tr('Гэрээ') : tr('Төлөвлөгөө');
     const st = xLock && xLock.oid === pendOtherOid ? xLock.set : null;
     if (!st) return tr('Бодит огноо · нөөц түр түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт шалгагдаагүй байна.', lab);
-    if (st.oids.has(oid) || (des != null && st.des.has(des))) {
+    if (xLockHit(st, oid, des)) {
       return tr('Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт энэ мөрийн бодит огноо/нөөцийг агуулж байна. Шийдвэрлэгдсэний дараа засна.', lab);
     }
     return undefined;
   }, [pendOtherOid, xLock, kind]);
+  /**
+   * ⚠️ 2026-10-09: БИЧИХ/ИЛГЭЭХИЙН ӨМНӨХ ТҮГЖЭЭНИЙ ШАЛГАЛТ (`sendForApproval` · `save`). Дээрх `xLockWhy` нь ЗӨВХӨН UI
+   *    (popup · `applyExtra`) бөгөөс 30 с-ийн мөчлөгөөр шинэчлэгддэг тул хуучирсан байж болно: нөгөө табын илгээлт
+   *    ноорог бичсэний ДАРАА гарвал бодит огноо/нөөцийн ноорог хаалтгүй илгээгдэж/бичигдэж, хоёр илгээлт нэг талбарыг
+   *    бие биеэр нь дарах байв. Энд нөгөө табын хүлээгдэж буй илгээлтийг СЕРВЕРЭЭС дахин уншиж (strict), бодит огноо ·
+   *    нөөцийн ноорог (`aDraft` · `resDraft` · `obResDraft`) түгжээтэй мөрд байвал ТАТГАЛЗАНА — мөрүүдийг нэрлэнэ.
+   *    FAIL-CLOSED: уншиж чадахгүй бол ч татгалзана. Бодит/нөөцийн ноорог байхгүй бол шалгахгүй (`null`).
+   *    Уншсан илгээлтээр `pendingOther`/`xLock`-ийг ч шинэчилнэ (UI хоцрохгүй).
+   */
+  const xLockCheck = useCallback(async (): Promise<string | null> => {
+    const oids = new Set<number>([...aDraft.keys(), ...resDraft.keys()]);
+    const desR = new Set<number>();
+    for (const k of obResDraft.keys()) {
+      const d = Number(k.slice(0, k.indexOf('|')));
+      if (Number.isFinite(d)) desR.add(d);
+    }
+    if (!oids.size && !desR.size) return null;
+    const key = pkg.key;
+    const k0 = kind;
+    const other: PlanKind = k0 === 'plan' ? 'geree' : 'plan';
+    const lab = k0 === 'plan' ? tr('Гэрээ') : tr('Төлөвлөгөө');
+    const live = () => pkgKeyRef.current === key && kindRef.current === k0;
+    let st: XLockSet;
+    try {
+      const pO = await loadPending(key, other);
+      if (live()) setPendingOther(pO);
+      if (!pO) return null;
+      const p = await loadPayload(pO.oid);
+      if (!p) return tr('«{0}» табын хүлээгдэж буй илгээлтийн агуулга уншигдсангүй — бодит огноо · нөөцийн ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab);
+      st = xLockSetOf(p);
+      if (live()) setXLock({ oid: pO.oid, set: st });
+    } catch (e) {
+      return tr('«{0}» табын хүлээгдэж буй илгээлт шалгагдсангүй ({1}) — бодит огноо · нөөцийн ноорогтой тул хадгалагдсангүй; дахин оролдоно уу.', lab, friendlyError(e));
+    }
+    const names: string[] = [];
+    const nm = (r: SheetRow | undefined, fb: string) => (r ? `${r.no ?? '—'} · ${r.work ?? ''}` : fb);
+    for (const o of oids) {
+      const r = rows.find((x) => x.oid === o);
+      if (xLockHit(st, o, r?.des ?? null)) names.push(nm(r, String(o)));
+    }
+    for (const d of desR) {
+      if (!xLockHit(st, null, d)) continue;
+      const r = rows.find((x) => x.des === d);
+      if (r && oids.has(r.oid) && xLockHit(st, r.oid, d)) continue;
+      names.push(nm(r, String(d)));
+    }
+    if (!names.length) return null;
+    const shown = names.slice(0, 5).join(', ') + (names.length > 5 ? ` (+${num(names.length - 5)})` : '');
+    return tr('Бодит огноо · нөөц түгжээтэй — «{0}» табын хүлээгдэж буй илгээлт эдгээр мөрийн бодит огноо/нөөцийг агуулж байна: {1}. Тэр илгээлт шийдвэрлэгдсэний дараа дахин оролдоно уу.', lab, shown);
+  }, [aDraft, resDraft, obResDraft, pkg.key, kind, rows, pkgKeyRef, kindRef]);
 
   /**
    * ЛАВЛАГАА ХАРАГДАХ ЭСЭХ — нөгөө төрлийн зурвас (2026-09-11, хэрэглэгч:
@@ -2589,6 +2654,35 @@ export function Huvaari({
        * бүхэл сесс алдагдана. Тиймээс хадгалахын өмнө СҮҮЛИЙН агшныг дахин
        * татаж, мөр бүрийг (№ + ажлын нэр)-ээр шинэ OID руу зөөнө.
        */
+      /*
+       * ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД БИЧИХГҮЙ (батлах ба энгийн хадгалалт). Архивлалт хуудсыг шинэ
+       *    жааз болгон хуулдаг тул тэр зуур дахин татсан агшин (`fresh`) хуучин жааз болж, огноо архивласан хуулбарт
+       *    чимээгүй бичигдэх байв (батлах горимын бичсэний дараах `frameIdOf` шалгалт зөвхөн дараа нь илрүүлдэг).
+       *    `archivingBusy` уншиж чадахгүй бол ч ТАТГАЛЗАНА (fail-closed). Агшныг татахаас ӨМНӨ шалгана — эс бөгөөс
+       *    архивлалт дуусахаас өмнө татсан хуучин агшин руу бичигдэнэ.
+       */
+      {
+        let arch: { who: string; at: number } | null;
+        try {
+          arch = await archivingBusy(pkg.key);
+        } catch (e) {
+          setErr(tr('Гүйцэтгэлийн архивлалтын төлөв шалгагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', friendlyError(e)));
+          return false;
+        }
+        if (arch) {
+          setErr(tr('{0} энэ багцын гүйцэтгэлийг архивлаж байна ({1}-аас) — дуустал хуваарь бичихгүй. Эх хуудсанд юу ч бичигдсэнгүй; хэдэн минутын дараа дахин оролдоно уу.',
+            arch.who || '—', new Date(arch.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })));
+          return false;
+        }
+      }
+      /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээ — СЕРВЕРЭЭС дахин (`xLockCheck`-ийн ⚠️) */
+      {
+        const why = await xLockCheck();
+        if (why) {
+          setErr(approvalMode ? tr('Батлах боломжгүй — {0} Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр.', why) : why);
+          return false;
+        }
+      }
       const fresh = await loadRows(pkg, sc);
       let remapped = 0;
       let lost = 0;
@@ -2858,12 +2952,18 @@ export function Huvaari({
       if (errs.length) setErrList(errs);
       return true;
     } catch (e) {
-      setErr(userError(e));
+      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН (`isLostWrite`) бол «бичигдсэнгүй» гэж худал хэлэхгүй — үр дүн тодорхойгүй.
+         Тодорхой татгалзал (403 · хугацаа дууссан токен · `success:false`) — өөрийн мессеж. Батлах горимд хариу
+         алдагдсан (`lostWriteRef`) бол батлах эффект `lostWriteMsg`-ийг өөрөө нэмдэг тул энд давхардуулахгүй. */
+      const lostHere = isLostWrite(e) && !(approving != null && lostWriteRef.current === approving);
+      setErr(lostHere
+        ? tr('Хариу ирээгүй — эх хуудсанд бичигдсэн эсэх нь тодорхойгүй (үр дүн тодорхойгүй: {0}). Хуудсаа шинэчилж шалгаад шаардлагатай бол дахин хадгална уу.', friendlyError(e))
+        : userError(e));
       return false;
     } finally {
       setBusy(false);
     }
-  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, base, dirtyN, busy, pkg, rows, kind, approving, user,
+  }, [sc, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids, obDups, base, dirtyN, busy, pkg, rows, kind, approving, user, xLockCheck,
     setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
@@ -2933,7 +3033,9 @@ export function Huvaari({
       ));
       /* ⚠️ 2026-10-08: ТӨРӨЛ ТУС БҮРД (`pendingOther`-ийн ⚠️) — идэвхтэй табынх түгжинэ, нөгөөх нь мэдэгдэлд */
       const other: PlanKind = kind === 'plan' ? 'geree' : 'plan';
-      const [p, pOther] = ready ? await Promise.all([loadPending(pkg.key, kind), loadPending(pkg.key, other)]) : [null, null];
+      const both = ready ? await loadPendingBoth(pkg.key) : null;
+      const p = both ? both[kind] : null;
+      const pOther = both ? both[other] : null;
       if (!live()) return;
       setPending(p);
       setPendingOther(pOther);
@@ -3000,27 +3102,34 @@ export function Huvaari({
    *    шийдвэр · буцаасан шалтгаан «Батлагдсан хуваарь» руу буцтал харагддаггүй байв.
    *    Өөрчлөгдвөл `refreshFlow` харалтыг өөрөө цэвэрлэнэ. Батлагчийн харалтад хэвээр үгүй.
    */
-  const pollOkRef = useLatest(!review && pending != null && approving == null && (!previewing || isOwnSubmission) && !busy && flowReady === true);
+  /* ⚠️ 2026-10-09: ХОЁР ТӨРЛИЙГ шалгана (`loadPendingBoth`) — идэвхтэй табын илгээлт байхгүй үед ч мөчлөг ажиллана:
+     нөгөө табын илгээлт гарах/алга болох (`pendingOther` → бодит огноо · нөөцийн `xLock`) ба энэ табд бусдын шинэ
+     илгээлт (түгжээ) хуудас шинэчлэх хүртэл харагддаггүй байв. Идэвхтэй табынх өөрчлөгдвөл урьдын адил `refreshFlow`,
+     зөвхөн нөгөө табынх бол хөнгөн — `setPendingOther` (дэлгэц анивчихгүй). */
+  const pollOkRef = useLatest(!review && approving == null && (!previewing || isOwnSubmission) && !busy && flowReady === true);
   useEffect(() => {
     if (status === 'off') return undefined;
     const key = pkg.key;
     const k0 = kind;
+    const other: PlanKind = k0 === 'plan' ? 'geree' : 'plan';
     const id = window.setInterval(() => {
       if (document.hidden || !pollOkRef.current || pkgKeyRef.current !== key || kindRef.current !== k0) return;
       const was = flowPendRef.current.oid;
-      /* ⚠️ 2026-10-08: идэвхтэй төрлийнх л (`pendingOther`-ийн ⚠️) */
-      void loadPending(key, kind).then((p) => {
+      void loadPendingBoth(key).then((both) => {
         /* ⚠️ 2026-10-09: хариу ирэх зуур таб солигдсон бол хаяна (`kindRef`) — нөгөө табын `was`-тай тулгаж худал «өөрчлөгдсөн» гэдэг байв */
         if (!pollOkRef.current || pkgKeyRef.current !== key || kindRef.current !== k0) return;
-        if ((p?.oid ?? null) !== was) {
+        if ((both[k0]?.oid ?? null) !== was) {
           /* ⚠️ 2026-09-29 (аудит 10): харалт цэвэрлэгдэх тул «илгээсэн хуваарь харагдаж байна» мэдэгдэл худал болно */
           if (previewingRef.current) setNote('');
           void refreshFlow();
+          return;
         }
+        const pO = both[other];
+        if ((pO?.oid ?? null) !== (pendRef.current.other?.oid ?? null)) setPendingOther(pO);
       }).catch(() => { /* дараагийн мөчлөгт */ });
     }, 30_000);
     return () => window.clearInterval(id);
-  }, [pkg.key, kind, status, refreshFlow, pkgKeyRef, kindRef, pollOkRef]);
+  }, [pkg.key, kind, status, refreshFlow, pkgKeyRef, kindRef, pollOkRef, pendRef]);
 
   /**
    * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
@@ -3106,6 +3215,12 @@ export function Huvaari({
       }
     }
     setBusy(true); setErr(''); setNote('');
+    /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээг СЕРВЕРЭЭС дахин шалгана (`xLockCheck`-ийн ⚠️) —
+       UI-ийн `xLockWhy` хуучирсан байж болно; түгжээтэй мөр байвал (эсвэл шалгаж чадахгүй бол) ИЛГЭЭХГҮЙ. */
+    {
+      const why = await xLockCheck();
+      if (why) { setErr(why); setBusy(false); return; }
+    }
     /* ⚠️ 2026-10-04 аудит (HIGH): хуваалцсан ноорогийн мөчлөг · бичилтийг ЗОГСООЖ, илгээлтэд
        ОРОХ нүдний тэмдгийг `buildPayload`-тай НЭГ агшинд авна — цэвэрлэлт зөвхөн тэдгээрийг
        хаана; илгээх завсарт хамтрагчийн нэмсэн нүд алсад хэвээр (`useSharedDraft.hdClear`). */
@@ -3139,13 +3254,18 @@ export function Huvaari({
       await hdClearRef.current(hdKey(kind, pkg.key), hdMark);
       await refreshFlow();
     } catch (e) {
-      setErr(userError(e));
+      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН (`isLostWrite`) бол «илгээгдсэнгүй» гэж худал хэлэхгүй — үр дүн тодорхойгүй,
+         урсгалыг дахин уншина (илгээгдсэн бол түгжээ харагдана). Тодорхой татгалзал (403 · хугацаа дууссан) — өөрийн мессеж. */
+      if (isLostWrite(e)) {
+        setErr(tr('Хариу ирээгүй — илгээгдсэн эсэх нь тодорхойгүй (үр дүн тодорхойгүй: {0}). Хуудсаа шинэчилж шалгаад шаардлагатай бол дахин илгээнэ үү.', friendlyError(e)));
+        await refreshFlow().catch(() => { /* мэдэгдэл дээр */ });
+      } else setErr(userError(e));
     } finally {
       /* `refreshFlow`-ийн ДАРАА — `pending` тавигдсан тул зогсоосон бичилт түгжээнд буцна */
       hdSubmitEnd();
       setBusy(false);
     }
-  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef,
+  }, [dirtyN, dirtyRows, busy, previewing, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
     hdSubmitBegin, hdSubmitEnd, setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks]);
 
   /**
@@ -6330,6 +6450,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             /* ⚠️ 2026-10-09: ЧИРЭЛТ (`undoRef`) эсвэл НҮДНИЙ ОГНОО (`undoOpenRef`) нээсэн цонх — «Тавих» нь тэр
                өөрчлөлтийн буцаалтын агшинд НИЙЛНЭ (`undoMergeRef`-ийн ⚠️); `undoRef`-ийг цэвэрлэхээс ӨМНӨ уншина. */
             undoMergeRef.current = undoRef.current != null || undoOpenRef.current === modalRow.oid;
+            /* ⚠️ 2026-10-09: чирэлтээр нээгдсэн цонхны ДАРААГИЙН «Тавих» (жиш. «Алхмаар хуулах» → блок бүрийн `onApply`,
+               дараа нь идэвхтэй блокийн «Тавих») ч НИЙЛНЭ — `undoRef` доор цэвэрлэгдэх тул цонхны үлдсэн хугацаанд
+               `undoOpenRef`-оор (цонх хаагдахад арилна) тэмдэглэнэ. Урьд нь эхний `onApply` л нийлж, дараагийнх нь шинэ
+               агшин авч Ctrl+Z чирэлтийг алддаг байв. */
+            if (undoRef.current != null) undoOpenRef.current = modalRow.oid;
             /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
                эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */
             undoRef.current = null;

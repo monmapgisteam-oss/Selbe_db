@@ -56,7 +56,7 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                     утгагүй»). Урьд нь colSpan=0 хоосон толгой «(0 барилга)» гэж зурагддаг байв. */}
                 {/* ⚠️ 2026-10-09: БЛОКГҮЙ БАГЦЫН СИНТЕТИК НЭГ БЛОК (`fillSchema`) — «барилга»/«цуваа»
                     гэсэн үг утгагүй (дээрх 2026-09-23-ны шалтгаан) тул 3 мөрийг хамарсан энгийн
-                    толгой: бөглөх «Обьём (энэ удаа)» (нүдэнд нийлбэр + хувь), төлөвлөгөөт хувь,
+                    толгой: бөглөх «Обьём (нийт · +энэ удаа)» (нүдэнд нийлбэр + хувь), төлөвлөгөөт хувь,
                     хуваарийн Эхлэх/Дуусах (4-р мөр). Баганын тоо барилгын n = 1-тэй ЯГ ижил. */}
                 {/* ⚠️ 2026-10-09 (хэрэглэгч: «хүснэгт эвдрэлтэй»): эхний хувилбар rowSpan=4 ба rowSpan=3-ыг
                     холиод 2-р/3-р мөрийг ХООСОН <tr> үлдээдэг байв — sticky толгойн мөр бүр тогтмол
@@ -105,9 +105,13 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
                 {!syn && bands.map((g, gi) => (
                   <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
                 ))}
+                {/* ⚠️ 2026-10-09: бариул нь БАГАНА ТУС БҮРИЙН түлхүүр (`x.wKey`) — урьд нь төрлийн
+                    (`--w-xd` г.м.) тул нэг баганыг чирэхэд ижил төрлийн бүх багана хамт өргөсдөг байв.
+                    Өргөн нь inline `x.wStyle` (төрлийн анхдагч руу унана, `ExtraCol.wStyle`-ийн ⚠️). */}
                 {extra.map((x, xi) => (
-                  <th key={`x${x.key}`} rowSpan={3} className={cls(`xh ${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)} title={x.field}>
-                    {x.label()}<i {...grip(extraCls(x.kind).slice(2))} />
+                  <th key={`x${x.key}`} rowSpan={3} className={cls(`xh ${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
+                    style={x.wStyle} title={x.hint ? `${x.hint()} (${x.field})` : x.field}>
+                    {x.label()}<i {...grip(x.wKey)} />
                   </th>
                 ))}
 
@@ -116,7 +120,11 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [] }: {
               <tr>
                 {syn && (
                   <>
-                    <th rowSpan={2} className={cls("bld")} title={RO.synCell}>{tr('Обьём (энэ удаа)')}<i {...grip("bld")} /></th>
+                    {/* ⚠️ 2026-10-09: «Обьём (энэ удаа)» гэж нэрлэгдсэн байсан нь төөрөгдүүлдэг — нүдний ТОМ
+                        тоо нь ХУРИМТЛАГДСАН нийт (`obyem_sum`), энэ удаагийн нэмэлт нь жижиг «+N». */}
+                    <th rowSpan={2} className={cls("bld")}
+                      title={tr('Нүдний том тоо — ХУРИМТЛАГДСАН нийт обьём; жижиг «+N» — энэ удаа нэмж буй обьём. Өмнөх бөглөлтөөс хойш хийсэн обьёмоо бичнэ — нийтэд нэмэгдэж, гүйцэтгэл = нийт ÷ Обьём.')}>
+                      {tr('Обьём (нийт · +энэ удаа)')}<i {...grip("bld")} /></th>
                     <th rowSpan={2} className={cls("bld")} title={RO.blockPlan}>%<i {...grip("bld")} /></th>
                     <th colSpan={2} className={cls("c-date2")} aria-hidden="true" />
                   </>

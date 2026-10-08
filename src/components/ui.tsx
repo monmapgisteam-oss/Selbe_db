@@ -872,6 +872,27 @@ export function Donut({
   const centerText = center == null ? String(total) : nodeText(center) || String(total);
   const pctText = (frac: number) => `${frac > 0 && frac < 0.005 ? '<1' : (frac * 100).toFixed(0)}%`;
   /**
+   * ТАЙЛБАРЫН ХУВЬ — их үлдэгдлийн арга (largest remainder), бүхэл хувиуд нийлээд ЯГ 100.
+   * ⚠️ 2026-10-09: урьд нь зүсмэг бүрийг тусад нь `toFixed(0)` — 33.3·33.3·33.3 нь «33+33+33 = 99%»,
+   *    16.5·16.5·67 нь «17+17+67 = 101%» гэж уншигддаг байв. 0 биш боловч 0 болсон зүсмэг «<1%».
+   */
+  const legendPct = (() => {
+    const raw = slices.map((sl) => sl.frac * 100);
+    const base = raw.map((v) => Math.floor(v));
+    let left = total > 0 ? 100 - base.reduce((a, b) => a + b, 0) : 0;
+    const order = raw.map((v, i) => [v - base[i], i] as const).sort((p, q) => q[0] - p[0]);
+    for (const [, i] of order) {
+      if (left <= 0) break;
+      base[i] += 1;
+      left -= 1;
+    }
+    return (key: string) => {
+      const i = slices.findIndex((sl) => sl.key === key);
+      if (i < 0) return '';
+      return `${slices[i].frac > 0 && base[i] === 0 ? '<1' : base[i]}%`;
+    };
+  })();
+  /**
    * Зүсмэгийн tooltip-ийн утга.
    *
    * ⚠️ 2026-09-25: урьд нь ҮРГЭЛЖ түүхий `value` («20162536361 · 12%») —
@@ -996,7 +1017,7 @@ export function Donut({
           {laid.map(({ sl, sx, sy, ex, ey, right, lx }) => {
             // Текст зурааснаас GUTTER-ийн зайд — давхацахгүй
             const boxX = right ? lx + GUTTER : -PAD + 2;
-            const pct = sl.display ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`;
+            const pct = sl.display ?? legendPct(sl.key);
             const tb = tip.bind({
               label: sl.label,
               value: tipValue(sl),
@@ -1146,8 +1167,7 @@ export function Donut({
                 * ⚠️ Дуудагчийн өгсөн `display` нь үргэлж давамгайлна.
                 */}
               <b className={`${s.donutPct} num`}>
-                {sl.display
-                  ?? `${sl.frac > 0 && sl.frac < 0.005 ? '<1' : (sl.frac * 100).toFixed(0)}%`}
+                {sl.display ?? legendPct(sl.key)}
               </b>
             </>
           );

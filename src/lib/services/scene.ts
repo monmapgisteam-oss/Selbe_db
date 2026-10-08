@@ -568,6 +568,9 @@ export const HABEA = {
    */
   registers: {
     url: `${HJ}/${encodeURIComponent('Сэлбэ_ХАБ1007')}/FeatureServer`,
+    /** ⚠️ 2026-10-09: GlobalID талбар (35 · 36 · 38 бүгд, `supportsApplyEditsWithGlobalIds: true`) —
+     *  нэмэлт клиентийн GlobalID-тай (`useGlobalIds`), хариу алдагдвал үүгээр шалгана. */
+    gidField: 'GlobalID',
     items: [
       { key: 'zaavar', table: 35, date: 'Огноо', get label() { return tr('Талбайн зааварчилгаа'); } },
       { key: 'sanuulah', table: 38, date: 'Баримтын_он__сар__өдөр', get label() { return tr('Сануулах хуудас'); } },
@@ -584,8 +587,14 @@ export const HABEA = {
    */
   waste: {
     url: `${HJ}/${encodeURIComponent('Хог_хаягдал')}/FeatureServer/0`,
-    fields: { week: 'Week', metric: 'Metric' },
-    /** Багцын багана → хуудасны «Багц» шүүлтийн нэр (`habeaPkgKey`-д) */
+    /* ⚠️ 2026-10-09: `oid` — хуудаслалтын `orderByFields`. ОН/ОГНОО талбар БАЙХГҮЙ (амьд метадата:
+       Week · Category · Metric · Багц_* · FID; GlobalID/CreationDate ч алга) — он ялгах нь схемийн өөрчлөлт. */
+    fields: { week: 'Week', metric: 'Metric', oid: 'FID' },
+    /**
+     * Багцын багана → хуудасны «Багц» шүүлтийн нэр (`habeaPkgKey`-д).
+     * ⚠️ 2026-10-09: 2 дахь утга нь ТҮЛХҮҮР (орчуулахгүй) — дэлгэцэд `tr('Багц {0}', …)`-ээр
+     *    (`HabeaEntry.pkgColLabel`).
+     */
     pkgCols: [
       ['Багц_1', 'Багц 1'], ['Багц_2', 'Багц 2'], ['Багц_3_1', 'Багц 3.1'], ['Багц_3_2', 'Багц 3.2'],
       ['Багц_3_3', 'Багц 3.3'], ['Багц_4_1', 'Багц 4.1'], ['Багц_4_2', 'Багц 4.2'],

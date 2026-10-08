@@ -53,6 +53,8 @@ import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
 import { REASON_MAX } from './huvaariBatlah';
+/* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
+import { isLostWrite } from './lostWrite';
 
 /** Илгээлтийн төлөв */
 export const AJIL_STATUS = {
@@ -512,10 +514,14 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
       rollbackOnFailure: 'true',
     });
     if (!editOk(j.updateResults)) return { ok: false, error: tr('ArcGIS-т хадгалагдсангүй.') };
-    invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
+  } finally {
+    /* ⚠️ 2026-10-09: бичилт ОРОЛДСОН бол ҮРГЭЛЖ кэш хүчингүй — урьд нь зөвхөн амжилтад зарладаг тул хариу
+       алдагдсан (сервер дээр `applied` болсон) үед жагсаалт «Батлагдсан · буулгаагүй» хэвээр харагдаж,
+       «Дахин буулгах» дэмий санал болгогддог байв. «Бичигдээгүй атлаа дахин татах» нь хямд. */
+    invalidate('AJIL_BATLAH');
   }
 }
 
@@ -732,7 +738,20 @@ const ajilDecidedMsg = (by: string | null, st: string | null) => (by
  * @returns `null` = түгжээ минийх; мөр = яагаад авч чадаагүй
  */
 export async function casAjilClaim(
-  io: { read: () => Promise<Attrs | null>; write: (mark: string) => Promise<boolean>; now?: () => number; tab?: string },
+  io: {
+    read: () => Promise<Attrs | null>;
+    write: (mark: string) => Promise<boolean>;
+    now?: () => number;
+    tab?: string;
+    /**
+     * ⚠️ 2026-10-09: ИЖИЛ ХЭРЭГЛЭГЧ, ӨӨР ТАБ-ын хүчинтэй түгжээг авах уу (хэрэглэгчээс асууна). Түгжээ табаар
+     *    ялгагддаг тул хуудсаа дахин ачаалсан хэрэглэгч ӨӨРИЙН түгжээндээ 10 минут (`AJIL_CLAIM_TTL`) хаагддаг
+     *    байв. Байхгүй/`false` бол хуучин дүрэм (татгалзана).
+     */
+    takeover?: (who: string) => boolean | Promise<boolean>;
+    /** ⚠️ 2026-10-09: хариу алдагдсан тэмдэг МАНАЙХ болж (хожуу) суусан байж болзошгүй үед тайлах */
+    release?: () => Promise<void>;
+  },
   me: string,
   want: AjilStatus,
 ): Promise<string | null> {
@@ -745,24 +764,53 @@ export async function casAjilClaim(
   const st = s(row[F.status]);
   if (st !== want) return ajilDecidedMsg(s(row[F.approver]), st);
   const h = ajilClaimOf(st, s(row[F.reason]), now());
-  if (h && !(h.who === u && h.tab === tab)) return ajilHeldMsg(h.who);
+  if (h && !(h.who === u && h.tab === tab)) {
+    if (h.who !== u || !io.takeover || !(await io.takeover(h.who))) return ajilHeldMsg(h.who);
+  }
   const mark = `${AJIL_CLAIM_MARK}:${now()}:${tab}:${u}`;
-  if (!(await io.write(mark))) return tr('ArcGIS-т хадгалагдсангүй.');
-  const back = await io.read();
+  /* ⚠️ 2026-10-09: ТЭМДГИЙН ХАРИУ АЛДАГДСАН (`isLostWrite`) бол тэмдэг суусан эсэх ТОДОРХОЙГҮЙ — урьд нь алдааг
+     шууд буцаадаг тул тэмдэг суусан ч «авч чадсангүй» гэж үзэж, ӨӨРИЙН түгжээ нь 10 минут бусдыг (мөн өөрийг нь,
+     өөр табаас) хаадаг байв. Одоо доорх дахин уншилтаар шийднэ: манайх бол амжилт; үгүй бол (хожуу суухаас
+     сэргийлж) `release`. Дахин уншилт ч унавал `release` хийж «тодорхойгүй» гэж хэлнэ. */
+  let lost = false;
+  try {
+    if (!(await io.write(mark))) return tr('ArcGIS-т хадгалагдсангүй.');
+  } catch (e) {
+    if (!isLostWrite(e)) throw e;
+    lost = true;
+  }
+  const fail = async (msg: string): Promise<string> => {
+    if (lost && io.release) await io.release().catch(() => undefined);
+    return msg;
+  };
+  let back: Attrs | null;
+  try {
+    back = await io.read();
+  } catch (e) {
+    if (!lost) throw e;
+    return fail(tr('Түгжээний хариу алдагдсан — үр дүн тодорхойгүй; хуудсаа шинэчлээд дахин оролдоно уу.'));
+  }
   if (back && s(back[F.status]) === want && s(back[F.reason]) === mark) return null;
-  if (back && s(back[F.status]) !== want) return ajilDecidedMsg(s(back[F.approver]), s(back[F.status]));
+  if (back && s(back[F.status]) !== want) return fail(ajilDecidedMsg(s(back[F.approver]), s(back[F.status])));
   const other = back ? ajilClaimOf(s(back[F.status]), s(back[F.reason]), now()) : null;
-  return other ? ajilHeldMsg(other.who) : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.');
+  return fail(other ? ajilHeldMsg(other.who) : tr('Илгээлтийг өөр хүн зэрэг шийдвэрлэж байна — хуудсаа шинэчилнэ үү.'));
 }
 
 const CLAIM_FIELDS = `${F.oid},${F.status},${F.approver},${F.reason}`;
 
 /** Түгжээний тэмдгийг `reason` талбарт бичих — `editOk`-оор */
 async function writeReason(url: string, oid: number, reason: string | null): Promise<boolean> {
-  const j = await arcgisPost(`${url}/applyEdits`, {
-    updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: reason } }]),
-    rollbackOnFailure: 'true',
-  });
+  let j: Awaited<ReturnType<typeof arcgisPost>>;
+  try {
+    j = await arcgisPost(`${url}/applyEdits`, {
+      updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: reason } }]),
+      rollbackOnFailure: 'true',
+    });
+  } catch (e) {
+    /* ⚠️ 2026-10-09: хариу алдагдсан бол тэмдэг суусан байж магадгүй — кэшийг хүчингүй болгоно */
+    if (isLostWrite(e)) invalidate('AJIL_BATLAH');
+    throw e;
+  }
   const ok = editOk(j.updateResults);
   /* ⚠️ 2026-10-09: бичигч бүр өөрөө кэш хүчингүй болгоно (dataBus.invariant) */
   if (ok) invalidate('AJIL_BATLAH');
@@ -781,6 +829,10 @@ export async function claimAjil(args: { oid: number; me: string; want: AjilStatu
     const err = await casAjilClaim({
       read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
       write: (mark) => writeReason(url, args.oid, mark),
+      /* ⚠️ 2026-10-09: өөр табын ӨӨРИЙН түгжээ — хөтөчид асууна; Node/тестэд хэзээ ч авахгүй */
+      takeover: (who) => typeof window !== 'undefined' && typeof window.confirm === 'function'
+        && window.confirm(tr('Та ({0}) энэ илгээлтийг өөр цонх/табаас шийдвэрлэж/буулгаж байгаа түгжээ байна (эсвэл тэр цонхыг хаасан/дахин ачаалсан). Тэр цонх одоо ажиллахгүй байгаа гэдэгт итгэлтэй бол түгжээг энд шилжүүлэх үү?', who)),
+      release: () => releaseAjilClaim({ oid: args.oid, me: args.me }),
     }, args.me, args.want);
     if (!err) invalidate('AJIL_BATLAH');
     return err;

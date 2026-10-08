@@ -738,6 +738,11 @@ export type RowsResult = {
    * дуудагч буцаалтад (`undo`) оруулна. Хуучин дуудагчид үл тоож болно (сонголттой).
    */
   unknown?: number[];
+  /**
+   * ⚠️ 2026-10-09: `revertRows`-ийн CAS-аар АЛГАССАН мөрүүд (`failed`-д ч бий, шалтгаантай) —
+   * одоогийн утга нь манай бичсэн ч, хуучин ч биш (өөр хэрэглэгч өөрчилсөн) эсвэл дахин уншиж чадаагүй.
+   */
+  skipped?: number[];
 };
 
 /**
@@ -908,14 +913,57 @@ export async function saveRows(
  *    унасан мөрүүдийг дахин буцаах боломжтой үлдээнэ (`writeUpdatesEach`: багцаар, унавал
  *    мөр бүрээр).
  */
+/**
+ * ⚠️ 2026-10-09: `wrote` — манай БИЧСЭН (шинэ) утга. Өгсөн мөрийг буцаахын ӨМНӨ дахин уншиж,
+ *    талбар бүрийн одоогийн утга нь `wrote` ч, `attrs` (хуучин) ч биш бол АЛГАСНА (CAS маягийн).
+ *    Хариу АЛДАГДСАН (`unknown`) мөрүүдэд: бичигдсэн эсэх тодорхойгүй тул хооронд нь өөр хэрэглэгч
+ *    засвар оруулсан бол түүнийг хуучин утгаар ЧИМЭЭГҮЙ дарахгүй.
+ */
+export type RevertRow = { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> };
+
+/** Утгын харьцуулалт — `null`/'' нэг, тоо тоогоор */
+const sameVal = (a: unknown, b: unknown): boolean => {
+  const e = (v: unknown) => v == null || v === '';
+  if (e(a) || e(b)) return e(a) && e(b);
+  if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b);
+  return String(a) === String(b);
+};
+
 export async function revertRows(
   meta: LayerMeta,
-  rows: { oid: number; attrs: Record<string, unknown> }[],
+  rows: RevertRow[],
 ): Promise<RowsResult> {
   requireLayer(meta);
   if (!meta.canUpdate) throw new Error(tr('Энэ давхарга засварыг зөвшөөрөхгүй байна'));
-  const live = rows.filter((r) => Object.keys(r.attrs).length);
-  const acc: RowsResult = { done: [], failed: [] };
+  let live = rows.filter((r) => Object.keys(r.attrs).length);
+  const acc: RowsResult = { done: [], failed: [], skipped: [] };
+  /* ⚠️ 2026-10-09: CAS — `wrote`-тэй мөрүүдийг дахин уншина (`RevertRow`-ийн ⚠️). Уншилт унавал
+     тэдгээрийг БУЦААХГҮЙ (тодорхойгүй дээр бусдын утгыг дарахгүй), `failed` + `skipped`. */
+  const cas = live.filter((r) => r.wrote && Object.keys(r.wrote).length);
+  if (cas.length) {
+    const skip = new Map<number, string>();
+    let cur: Map<number, Row> | null = null;
+    try {
+      cur = new Map((await loadRows(meta, cas.map((r) => r.oid))).map((row) => [Math.trunc(Number(row[meta.oidField])), row]));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      for (const r of cas) skip.set(Math.trunc(r.oid), tr('одоогийн утгыг уншиж чадсангүй — буцаалтыг алгаслаа: {0}', msg));
+    }
+    if (cur) {
+      for (const r of cas) {
+        const row = cur.get(Math.trunc(r.oid));
+        if (!row) { skip.set(Math.trunc(r.oid), tr('мөр олдсонгүй — буцаалтыг алгаслаа')); continue; }
+        const moved = Object.keys(r.attrs).find((k) => !sameVal(row[k], r.wrote?.[k]) && !sameVal(row[k], r.attrs[k]));
+        if (moved != null) {
+          skip.set(Math.trunc(r.oid), tr('өөр хэрэглэгч өөрчилсөн («{0}» одоо: «{1}») — буцаалтыг алгаслаа', moved, str(row[moved]) || '—'));
+        }
+      }
+    }
+    if (skip.size) {
+      for (const [oid, msg] of skip) { acc.failed.push({ oid, msg }); acc.skipped?.push(oid); }
+      live = live.filter((r) => !skip.has(Math.trunc(r.oid)));
+    }
+  }
   const parts = chunks(live, BATCH);
   for (let i = 0; i < parts.length; i += 1) {
     const part = parts[i];
