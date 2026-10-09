@@ -26,6 +26,9 @@ import { join, sep } from 'node:path';
 const OPTIONAL_LOCAL = new Map([
   ['NEXT_PUBLIC_AUTH_OFF',
     'Нэвтрэлтийг санаатай унтраах (зөвхөн UI бүтэц харах) — production/CI-д ХЭЗЭЭ Ч тавихгүй (env.ts).'],
+  /* ⚠️ 2026-10-08: Enterprise геопорталын PDF item — ТУРШИЛТ (tezu-bonu), deploy-д хараахан үгүй */
+  ['NEXT_PUBLIC_ENT_PORTAL_URL',
+    'Enterprise геопортал (`…/geoportal`) — PDF-ийг item болгон хадгалах туршилт (lib/entDocs.ts); хоосон бол нуугдана.'],
 ]);
 
 const SELF = 'tools/envParity.check.mjs';

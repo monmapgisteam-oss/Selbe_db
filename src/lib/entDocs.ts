@@ -1,0 +1,150 @@
+import { t as tr } from '@/lib/i18nCore';
+
+/**
+ * ENTERPRISE ГЕОПОРТАЛ ДАХЬ PDF БАРИМТ (2026-10-08, туршилт — tezu-bonu).
+ *
+ * PDF бүр геопорталд ТУСДАА item (`type=PDF`) болж хадгалагдана — порталын
+ * «New item → файл оруулах»-тай яг ижил (`content/users/{u}/addItem`). Хавсралт
+ * (feature service `addAttachment`) БИШ — хэрэглэгчийн шийдвэр: «attach-аар feature
+ * service-д оруулах нь огт таалагдахгүй».
+ *
+ * ⚠️ ТУСДАА НЭВТРЭЛТ: портал одоо ArcGIS Online-оор нэвтэрдэг (`AUTH`); Enterprise-ийн
+ *    токен түүнээс хамаарахгүй. Туршилтад `generateToken` (нэр · нууц үг, `client=referer`)
+ *    ашиглана — геопорталд OAuth апп бүртгэгдсэний дараа OAuth руу солино.
+ *    Нууц үгийг ХАДГАЛАХГҮЙ; токен зөвхөн санах ойд (хуудас дахин ачаалахад дахин нэвтэрнэ).
+ * ⚠️ Токен ЗӨВХӨН POST-ын биеэр (`tools/tokenInUrl.check.mjs`) — `/data`-г ч POST-оор татна.
+ * ⚠️ ArcGIS алдаа HTTP 200-аар `{ error }` биед ирнэ — биеийг заавал шалгана.
+ * ⚠️ `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон бол энэ боломж бүхэлдээ нуугдана
+ *    (`tools/envParity.check.mjs`-ийн OPTIONAL_LOCAL — зөвхөн локал туршилт).
+ */
+export const ENT_PORTAL = (process.env.NEXT_PUBLIC_ENT_PORTAL_URL ?? '').trim().replace(/\/+$/, '');
+
+/** Порталын PDF-ээс ЗӨВХӨН энэ системийнхийг ялгах таг */
+export const ENT_TAG = 'selbe-portal';
+
+const TIMEOUT_MS = 120_000;
+
+type Sess = { user: string; token: string; expires: number };
+let sess: Sess | null = null;
+const subs = new Set<() => void>();
+const emit = () => { for (const f of subs) f(); };
+
+/** Хүчинтэй сешн (дуусахаас 1 минутын өмнө хүчингүйд тооцно) */
+export function entSession(): Sess | null {
+  return sess && sess.expires > Date.now() + 60_000 ? sess : null;
+}
+export function subscribeEnt(fn: () => void): () => void {
+  subs.add(fn);
+  return () => { subs.delete(fn); };
+}
+
+function need(): Sess {
+  const s = entSession();
+  if (!s) throw new Error(tr('Enterprise-д нэвтрээгүй эсвэл сешн дууссан — дахин нэвтэрнэ үү.'));
+  return s;
+}
+
+type ArcErr = { error?: { code?: number; message?: string; details?: string[] } };
+
+async function post<T>(path: string, body: FormData | URLSearchParams): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(`${ENT_PORTAL}/sharing/rest/${path}`, { method: 'POST', body, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new Error(tr('Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.'));
+    throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));
+  }
+  if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
+  let j: T & ArcErr;
+  try { j = await r.json(); } catch { throw new Error(tr('Enterprise JSON биш хариу буцаав.')); }
+  if (j?.error) {
+    /* 498 = токен хүчингүй, 499 = токен шаардлагатай → сешнийг цэвэрлэж дахин нэвтрүүлнэ */
+    if (j.error.code === 498 || j.error.code === 499) { sess = null; emit(); }
+    const det = j.error.details?.filter(Boolean).join(' · ');
+    throw new Error(`${j.error.message || tr('Enterprise алдаа')}${det ? ` — ${det}` : ''}`);
+  }
+  return j;
+}
+
+/** Нэр · нууц үгээр токен авна. Нууц үг санах ойд ч үлдэхгүй. */
+export async function entSignIn(username: string, password: string): Promise<void> {
+  const g = await post<{ token?: string; expires?: number }>('generateToken', new URLSearchParams({
+    username: username.trim(), password, client: 'referer', referer: window.location.origin, expiration: '120', f: 'json',
+  }));
+  if (!g.token) throw new Error(tr('Enterprise токен олгосонгүй.'));
+  /* ⚠️ Хэрэглэгчийн нэрийг порталаас (`community/self`) авна — оруулсан бичвэр том/жижиг
+     үсгээр зөрж болох бөгөөд `addItem`-ийн зам яг порталын нэрийг шаарддаг. */
+  const me = await post<{ username?: string }>('community/self', new URLSearchParams({ token: g.token, f: 'json' }));
+  if (!me.username) throw new Error(tr('Enterprise хэрэглэгч тодорхойгүй.'));
+  sess = { user: me.username, token: g.token, expires: g.expires ?? Date.now() + 110 * 60_000 };
+  emit();
+}
+
+export function entSignOut(): void {
+  sess = null;
+  emit();
+}
+
+export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null };
+
+type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number };
+const toPdf = (x: ItemJson): EntPdf => ({
+  id: x.id, title: x.title || x.id, owner: x.owner ?? '', modified: x.modified ?? 0,
+  size: typeof x.size === 'number' && x.size >= 0 ? x.size : null,
+});
+
+/** Энэ системийн тагтай, хэрэглэгчид харагдах бүх PDF item (сүүлд өөрчлөгдсөн нь эхэнд) */
+export async function entListPdfs(): Promise<EntPdf[]> {
+  const s = need();
+  const j = await post<{ results?: ItemJson[] }>('search', new URLSearchParams({
+    q: `type:"PDF" AND tags:"${ENT_TAG}"`, sortField: 'modified', sortOrder: 'desc', num: '100', f: 'json', token: s.token,
+  }));
+  return (j.results ?? []).map(toPdf);
+}
+
+/**
+ * PDF-ийг шинэ item болгон оруулна. Буцаах: шинэ item.
+ * ⚠️ Хайлтын индекс шинэ item-ийг хэдэн секундын дараа л олдог тул дуудагч
+ *    буцаасан item-ийг жагсаалтын эхэнд өөрөө нэмнэ.
+ */
+export async function entUploadPdf(file: File, title?: string): Promise<EntPdf> {
+  const s = need();
+  if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
+  const fd = new FormData();
+  fd.append('f', 'json');
+  fd.append('token', s.token);
+  fd.append('type', 'PDF');
+  fd.append('title', (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''));
+  fd.append('tags', ENT_TAG);
+  fd.append('typeKeywords', ENT_TAG);
+  fd.append('file', file, file.name);
+  const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(s.user)}/addItem`, fd);
+  if (!j.success || !j.id) throw new Error(tr('PDF item үүссэнгүй.'));
+  const it = await post<ItemJson>(`content/items/${encodeURIComponent(j.id)}`, new URLSearchParams({ f: 'json', token: s.token }));
+  return toPdf({ ...it, id: j.id });
+}
+
+/** Item-ийн PDF файлыг токентой (POST) татаж Blob болгоно — `<iframe>`-д objectURL-ээр харуулна */
+export async function entPdfBlob(id: string): Promise<Blob> {
+  const s = need();
+  let r: Response;
+  try {
+    r = await fetch(`${ENT_PORTAL}/sharing/rest/content/items/${encodeURIComponent(id)}/data`, {
+      method: 'POST', body: new URLSearchParams({ token: s.token }), signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));
+  }
+  if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
+  /* ⚠️ Алдаа PDF-ийн оронд JSON-оор (HTTP 200) ирнэ */
+  if ((r.headers.get('content-type') ?? '').includes('json')) {
+    let j: ArcErr = {};
+    try { j = await r.json(); } catch { /* доорх ерөнхий мессеж */ }
+    if (j.error?.code === 498 || j.error?.code === 499) { sess = null; emit(); }
+    throw new Error(j.error?.message || tr('PDF татагдсангүй.'));
+  }
+  return new Blob([await r.blob()], { type: 'application/pdf' });
+}
+
+/** Порталын item хуудас (порталд нэвтэрсэн хөтчид нээгдэнэ) — токенгүй */
+export const entItemPage = (id: string) => `${ENT_PORTAL}/home/item.html?id=${encodeURIComponent(id)}`;

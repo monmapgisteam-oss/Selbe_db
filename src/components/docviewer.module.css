@@ -196,3 +196,61 @@
   text-decoration: none;
 }
 .extBtn:hover { filter: brightness(1.08); }
+
+/*
+ * ENTERPRISE PDF ХЭСЭГ (2026-10-08, туршилт — `EntDocs.tsx`).
+ * Жагсаалтын доор тусгаарлагч зураасаар; нэвтрэх маягт ба оруулах товч.
+ */
+.entBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.entHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.entSub { font-size: 0.72rem; color: var(--ink-3); overflow-wrap: anywhere; }
+.entForm { display: flex; flex-direction: column; gap: 6px; }
+.entRow { display: flex; align-items: center; gap: 8px; }
+.entInput {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+.entBtn {
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--hue);
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.entBtn:disabled { opacity: 0.55; cursor: default; }
+.entLink {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: underline;
+}
+.entLink:disabled { opacity: 0.55; cursor: default; }
+.entErr {
+  white-space: pre-line;
+  font-size: 0.72rem;
+  color: var(--bad, #c0392b);
+  overflow-wrap: anywhere;
+}

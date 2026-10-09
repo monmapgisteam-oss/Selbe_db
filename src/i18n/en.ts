@@ -6768,6 +6768,27 @@ const en: Record<string, string> = {
   "Бүх огноо": "All dates",
   "{0}-ээс хойш": "From {0}",
   "{0} хүртэл": "Until {0}",
+  "Enterprise PDF": "Enterprise PDF",
+  "Enterprise хэрэглэгчийн нэр": "Enterprise username",
+  "Нууц үг": "Password",
+  "Нэвтэрч байна…": "Signing in…",
+  "Enterprise-д нэвтрэх": "Sign in to Enterprise",
+  "Түр хүлээнэ үү…": "Please wait…",
+  "PDF оруулах": "Upload PDF",
+  "PDF алга": "No PDFs",
+  "Геопорталд нээх ↗": "Open in geoportal ↗",
+  "PDF — шинэ таб-д нээх ↗": "PDF — open in new tab ↗",
+  "Enterprise-д нэвтрээгүй эсвэл сешн дууссан — дахин нэвтэрнэ үү.": "Not signed in to Enterprise or the session expired — please sign in again.",
+  "Enterprise хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.": "Enterprise did not respond in time — please try again.",
+  "Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.": "Could not connect to the Enterprise geoportal — check your network.",
+  "Enterprise алдаа (HTTP {0})": "Enterprise error (HTTP {0})",
+  "Enterprise JSON биш хариу буцаав.": "Enterprise returned a non-JSON response.",
+  "Enterprise алдаа": "Enterprise error",
+  "Enterprise токен олгосонгүй.": "Enterprise did not issue a token.",
+  "Enterprise хэрэглэгч тодорхойгүй.": "Enterprise user could not be determined.",
+  "Зөвхөн PDF файл оруулна.": "Only PDF files can be uploaded.",
+  "PDF item үүссэнгүй.": "The PDF item was not created.",
+  "PDF татагдсангүй.": "The PDF could not be downloaded."
 };
 
 export default en;
